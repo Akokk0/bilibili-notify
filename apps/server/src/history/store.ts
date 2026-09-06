@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -79,6 +79,12 @@ interface DailyAggregateOptions {
 
 // DailyHistoryCount 的类型本体在 @bilibili-notify/contract(web 同源消费)。
 
+export interface DeleteRangeOptions {
+	/** 闭区间,ms。 */
+	fromMs: number;
+	toMs: number;
+}
+
 export interface HistoryStore {
 	/**
 	 * 记一次推送对一个目标的一段消息。同 pushId + 同目标第一次来建行,之后追加;
@@ -88,6 +94,13 @@ export interface HistoryStore {
 	query(opts: HistoryQuery): Promise<HistoryEntry[]>;
 	aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]>;
 	imageDir(): string;
+	/**
+	 * 删掉 `ts` 落在窗内的行(本体行 + 补丁行 + 引用的图片),回删了几行。
+	 *
+	 * 今天只有 devtools 截流在用(清掉截流期间记下的 delivered 行)。与 `record` 串行 ——
+	 * 删的同时有行在追加,补丁会补到一行刚被删掉的本体上。
+	 */
+	deleteRange(opts: DeleteRangeOptions): Promise<number>;
 }
 
 function zeroCounts(): Record<PushKind, number> {
@@ -461,17 +474,81 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	}
 
 	async function readJsonl(path: string): Promise<HistoryEntry[]> {
-		const lines: string[] = [];
-		try {
-			const stream = createReadStream(path, { encoding: "utf8" });
-			const rl = createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY });
-			for await (const line of rl) {
-				if (line.trim()) lines.push(line);
-			}
-		} catch {
-			// missing file is fine
+		return parseLines(await readRawLines(path));
+	}
+
+	/** 一个日文件里 `ts` 落在窗内的行:本体行与它的补丁行一起丢,顺手收集它们引用的图。 */
+	async function deleteRangeInFile(
+		path: string,
+		fromMs: number,
+		toMs: number,
+	): Promise<{ doomed: Set<string>; images: string[] }> {
+		const lines = await readRawLines(path);
+		const doomed = new Set<string>();
+		const images: string[] = [];
+		const kept: string[] = [];
+		// 先认出窗内的本体行 —— 补丁行只带 id 不带 ts,得先知道谁是要删的。
+		for (const line of lines) {
+			if (isPatchLine(line)) continue;
+			const r = HistoryEntrySchema.safeParse(tryParse(line));
+			if (!r.success) continue;
+			const ts = Date.parse(r.data.ts);
+			if (ts >= fromMs && ts <= toMs) doomed.add(r.data.id);
 		}
-		return parseLines(lines);
+		if (doomed.size === 0) return { doomed, images };
+		for (const line of lines) {
+			const json = tryParse(line);
+			if (isPatchLine(line)) {
+				const r = HistoryPatchSchema.safeParse(json);
+				if (r.success && doomed.has(r.data.patch)) {
+					for (const m of r.data.messages) if (m.payload.imageRef) images.push(m.payload.imageRef);
+					continue;
+				}
+			} else {
+				const r = HistoryEntrySchema.safeParse(json);
+				if (r.success && doomed.has(r.data.id)) {
+					for (const m of r.data.messages) if (m.payload.imageRef) images.push(m.payload.imageRef);
+					continue;
+				}
+			}
+			kept.push(line);
+		}
+		// 先写旁边再换名:半路断电只会留下一个多余的临时文件,不会留下半个日文件。
+		const tmp = `${path}.tmp`;
+		await writeFile(tmp, kept.length === 0 ? "" : `${kept.join("\n")}\n`, "utf8");
+		await rename(tmp, path);
+		return { doomed, images };
+	}
+
+	async function deleteRangeSerialized({ fromMs, toMs }: DeleteRangeOptions): Promise<number> {
+		await ensureDirs();
+		let files: string[];
+		try {
+			files = (await readdir(root)).filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)).sort();
+		} catch {
+			return 0;
+		}
+		let deleted = 0;
+		for (const file of files) {
+			// 日文件按 UTC 日切;整天都不沾窗的直接跳过,别把一年的文件全读一遍。
+			const dayStart = Date.parse(`${file.slice(0, 10)}T00:00:00.000Z`);
+			if (dayStart + DAY_MS <= fromMs || dayStart > toMs) continue;
+			const { doomed, images } = await deleteRangeInFile(join(root, file), fromMs, toMs);
+			if (doomed.size === 0) continue;
+			deleted += doomed.size;
+			open.deleteWhere((entry) => doomed.has(entry.id));
+			for (const name of images) {
+				// 图片是附属物:删不掉(早被清理器收走了)不算失败。
+				await unlink(join(imgRoot, name)).catch(() => {});
+			}
+		}
+		return deleted;
+	}
+
+	function deleteRange(options: DeleteRangeOptions): Promise<number> {
+		const job = tail.then(() => deleteRangeSerialized(options));
+		tail = job.catch(() => {});
+		return job;
 	}
 
 	return {
@@ -479,7 +556,33 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		query,
 		aggregateDaily,
 		imageDir: () => imgRoot,
+		deleteRange,
 	};
+}
+
+const DAY_MS = 86_400_000;
+
+function tryParse(line: string): unknown {
+	try {
+		return JSON.parse(line);
+	} catch {
+		return undefined;
+	}
+}
+
+/** 整个文件的非空行,原样(不解析)。 */
+async function readRawLines(path: string): Promise<string[]> {
+	const lines: string[] = [];
+	try {
+		const stream = createReadStream(path, { encoding: "utf8" });
+		const rl = createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY });
+		for await (const line of rl) {
+			if (line.trim()) lines.push(line);
+		}
+	} catch {
+		// missing file is fine
+	}
+	return lines;
 }
 
 /** 补丁行的键序固定 `patch` 打头(见 record),行首一眼认出,不用先 JSON.parse。 */

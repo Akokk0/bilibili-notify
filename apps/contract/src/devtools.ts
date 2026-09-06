@@ -82,3 +82,39 @@ export interface DevRunResponse {
 export interface DevResetResponse {
 	active: DevInjection[];
 }
+
+// ---- 截流(D1) ----------------------------------------------------------------
+
+/**
+ * 截流期间被拦下的一条推送。只留摘要:载荷本体里有图片 buffer,整个交给面板既没必要也
+ * 太重;历史那边照记 `delivered`(不为调试改 history schema),这份列表才是对照。
+ */
+export interface DevCapturedDelivery {
+	/** 进程内递增的序号,面板当 key。 */
+	id: string;
+	/** 拦下的时刻(ms)。 */
+	at: number;
+	adapterId: string;
+	adapterName: string;
+	platform: string;
+	targetId: string;
+	targetName: string;
+	/** 强制私聊那条路(`sendPrivate`)。 */
+	private: boolean;
+	/** 载荷种类(`NotificationPayload["kind"]`)。 */
+	kind: string;
+	/** 文本摘要:纯文本 / 图说明 / 复合段拼接 / 小程序卡标题;超长截断。图集没有。 */
+	text?: string;
+	/** 带了几张图(内嵌 buffer 与图集 url 都算)。 */
+	images: number;
+}
+
+export interface DevCapturesDTO {
+	enabled: boolean;
+	entries: DevCapturedDelivery[];
+}
+
+/** `POST /api/dev/captures/purge-history`:清掉截流期间写进历史的行,回删了几行。 */
+export interface DevPurgeHistoryResponse {
+	deleted: number;
+}

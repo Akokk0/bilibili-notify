@@ -1,5 +1,5 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
 import { createDevtools } from "../index.js";
 
@@ -23,17 +23,23 @@ const updateService: UpdateService = {
 	probeMirrors: async () => [],
 };
 
+const BARE = {
+	updateService,
+	adapters: [],
+	historyStore: { deleteRange: async () => 0 },
+};
+
 describe("createDevtools", () => {
 	it.each(["0.0.0-dev", "dev"])("开发版 %s → 给", (payloadVersion) => {
-		expect(createDevtools({ payloadVersion, updateService })).not.toBeNull();
+		expect(createDevtools({ ...BARE, payloadVersion })).not.toBeNull();
 	});
 
 	it.each(["0.10.0", "0.11.0-alpha.1", "1.0.0-rc.1"])("发出去的版本 %s → 不给", (v) => {
-		expect(createDevtools({ payloadVersion: v, updateService })).toBeNull();
+		expect(createDevtools({ ...BARE, payloadVersion: v })).toBeNull();
 	});
 
 	it("给的那份:更新服务换成了可注入的装饰器,注册表里有 update.state", async () => {
-		const dev = createDevtools({ payloadVersion: "0.0.0-dev", updateService });
+		const dev = createDevtools({ ...BARE, payloadVersion: "0.0.0-dev" });
 		if (dev === null) throw new Error("unreachable");
 
 		expect(dev.registry.list().map((s) => s.id)).toContain("update.state");
@@ -41,5 +47,95 @@ describe("createDevtools", () => {
 		expect(dev.updateService.getStatus().state).toEqual({ phase: "idle" });
 		// 真服务没被动过。
 		expect(updateService.getStatus().state).toEqual({ phase: "disabled", reason: "dev-build" });
+	});
+});
+
+describe("createDevtools · 截流接线", () => {
+	const ADAPTER = { id: "ad", name: "A", platform: "onebot", enabled: true } as never;
+	const TARGET = { id: "t", name: "群", adapterId: "ad", platform: "onebot" } as never;
+
+	function setup() {
+		const send = vi.fn(async () => ({ ok: true, latencyMs: 1 }));
+		const inner = {
+			platforms: ["onebot"] as const,
+			isAvailable: () => true,
+			send,
+			probe: async () => ({ ok: true, latencyMs: 1 }),
+		};
+		const deleteRange = vi.fn(async () => 2);
+		const dev = createDevtools({
+			payloadVersion: "0.0.0-dev",
+			updateService,
+			adapters: [inner],
+			historyStore: { deleteRange } as never,
+		});
+		if (dev === null) throw new Error("unreachable");
+		return { dev, send, deleteRange };
+	}
+
+	it("交回去的 adapters 是包过闸的:跑 push.capture 之后不再真发,收摊后又真发", async () => {
+		const { dev, send } = setup();
+		const [wrapped] = dev.adapters;
+		if (!wrapped) throw new Error("unreachable");
+
+		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "1" });
+		expect(send).toHaveBeenCalledTimes(1);
+
+		const res = await dev.registry.run("push.capture", {});
+		expect(res.active).toEqual([{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }]);
+		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "2" });
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(dev.captures.status()).toMatchObject({ enabled: true, entries: [{ text: "2" }] });
+		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 1 条");
+
+		dev.registry.reset("push.capture");
+		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "3" });
+		expect(send).toHaveBeenCalledTimes(2);
+	});
+
+	it("清掉截流期间历史行:按每一段窗调 deleteRange,开着的那段截到现在,清完窗从头记", async () => {
+		vi.useFakeTimers();
+		try {
+			const { dev, deleteRange } = setup();
+			vi.setSystemTime(new Date("2026-09-06T08:00:00.000Z"));
+			await dev.registry.run("push.capture", {});
+			vi.setSystemTime(new Date("2026-09-06T08:10:00.000Z"));
+			dev.registry.reset("push.capture");
+			vi.setSystemTime(new Date("2026-09-06T08:20:00.000Z"));
+			await dev.registry.run("push.capture", {});
+			vi.setSystemTime(new Date("2026-09-06T08:25:00.000Z"));
+
+			const deleted = await dev.captures.purgeHistory();
+
+			expect(deleted).toBe(4);
+			expect(deleteRange.mock.calls).toEqual([
+				[
+					{
+						fromMs: Date.parse("2026-09-06T08:00:00.000Z"),
+						toMs: Date.parse("2026-09-06T08:10:00.000Z"),
+					},
+				],
+				[
+					{
+						fromMs: Date.parse("2026-09-06T08:20:00.000Z"),
+						toMs: Date.parse("2026-09-06T08:25:00.000Z"),
+					},
+				],
+			]);
+			// 清完:开着的那段从现在起算,再清一次不会把同一段又删一遍。
+			deleteRange.mockClear();
+			vi.setSystemTime(new Date("2026-09-06T08:30:00.000Z"));
+			await dev.captures.purgeHistory();
+			expect(deleteRange.mock.calls).toEqual([
+				[
+					{
+						fromMs: Date.parse("2026-09-06T08:25:00.000Z"),
+						toMs: Date.parse("2026-09-06T08:30:00.000Z"),
+					},
+				],
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

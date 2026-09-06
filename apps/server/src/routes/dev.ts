@@ -4,7 +4,12 @@
  * 400、场景自己抛了交给 app 级 `onError` 变 500。
  */
 
-import type { DevRunResponse, DevStatusDTO } from "@bilibili-notify/contract";
+import type {
+	DevCapturesDTO,
+	DevPurgeHistoryResponse,
+	DevRunResponse,
+	DevStatusDTO,
+} from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { z } from "zod";
 import { DevParamError, type DevRegistry, DevScenarioNotFound } from "../devtools/registry.js";
@@ -14,11 +19,20 @@ const RunBody = z.object({
 	params: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
 });
 
-export interface CreateDevRouteInput {
-	registry: DevRegistry;
+/** 截流那一组的口:列表 / 清空 / 清掉截流期间的历史行。 */
+export interface DevCapturesApi {
+	status(): DevCapturesDTO;
+	clear(): void;
+	purgeHistory(): Promise<number>;
 }
 
-export function createDevRoute({ registry }: CreateDevRouteInput): Hono {
+export interface CreateDevRouteInput {
+	registry: DevRegistry;
+	/** 不给就不挂 `/captures`,404。 */
+	captures?: DevCapturesApi;
+}
+
+export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => {
@@ -39,6 +53,18 @@ export function createDevRoute({ registry }: CreateDevRouteInput): Hono {
 			throw err;
 		}
 	});
+
+	if (captures) {
+		app.get("/captures", (c) => c.json(captures.status()));
+		app.post("/captures/clear", (c) => {
+			captures.clear();
+			return c.json(captures.status());
+		});
+		app.post("/captures/purge-history", async (c) => {
+			const body: DevPurgeHistoryResponse = { deleted: await captures.purgeHistory() };
+			return c.json(body);
+		});
+	}
 
 	app.post("/reset", (c) => c.json({ active: registry.reset() }));
 	app.post("/reset/:id", (c) => {

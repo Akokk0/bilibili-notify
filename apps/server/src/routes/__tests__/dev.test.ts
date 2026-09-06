@@ -105,3 +105,57 @@ describe("dev 路由", () => {
 		expect((await app.request("/reset/zzz", { method: "POST" })).status).toBe(404);
 	});
 });
+
+describe("dev 路由 · 截流", () => {
+	const captures = () => ({
+		status: vi.fn(() => ({
+			enabled: true,
+			entries: [
+				{
+					id: "1",
+					at: 1,
+					adapterId: "ad",
+					adapterName: "A",
+					platform: "onebot",
+					targetId: "t",
+					targetName: "群",
+					private: false,
+					kind: "text",
+					text: "hi",
+					images: 0,
+				},
+			],
+		})),
+		clear: vi.fn(),
+		purgeHistory: vi.fn(async () => 3),
+	});
+
+	it("没接截流 → /captures 404(和整个 /api/dev 没挂一样,不向外承认)", async () => {
+		const app = createDevRoute({ registry: fakeRegistry() });
+		expect((await app.request("/captures")).status).toBe(404);
+	});
+
+	it("GET /captures 交出开关与列表", async () => {
+		const c = captures();
+		const app = createDevRoute({ registry: fakeRegistry(), captures: c });
+		const res = await app.request("/captures");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ enabled: true, entries: [{ id: "1", text: "hi" }] });
+	});
+
+	it("POST /captures/clear 清空后交出新状态", async () => {
+		const c = captures();
+		const app = createDevRoute({ registry: fakeRegistry(), captures: c });
+		const res = await app.request("/captures/clear", { method: "POST" });
+		expect(res.status).toBe(200);
+		expect(c.clear).toHaveBeenCalledOnce();
+		expect(c.status).toHaveBeenCalled();
+	});
+
+	it("POST /captures/purge-history 回删了几行", async () => {
+		const c = captures();
+		const app = createDevRoute({ registry: fakeRegistry(), captures: c });
+		const res = await app.request("/captures/purge-history", { method: "POST" });
+		expect(await res.json()).toEqual({ deleted: 3 });
+	});
+});

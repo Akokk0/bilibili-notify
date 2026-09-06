@@ -21,4 +21,10 @@ export class RecencyTable<V> {
 			if (oldest !== undefined) this.map.delete(oldest);
 		}
 	}
+	/** 把满足条件的都摘掉(历史仓删行时,把还开着的那几行一起摘,免得再追加成孤儿补丁)。 */
+	deleteWhere(pred: (value: V) => boolean): void {
+		for (const [key, value] of this.map) {
+			if (pred(value)) this.map.delete(key);
+		}
+	}
 }

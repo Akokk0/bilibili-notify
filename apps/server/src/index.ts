@@ -236,7 +236,25 @@ export async function startStandaloneServer(
 		let onInboundGroup:
 			| ((platform: LinkSourcePlatform, msg: InboundGroupMessage, meta: InboundMeta) => void)
 			| undefined;
-		const adapters = [
+		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
+		const payloadVersion = APP_VERSION;
+		const updateService = createUpdateService({
+			currentVersion: payloadVersion,
+			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
+			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
+			// 「没得退」,而不是瞎猜一个版本号。
+			imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
+			// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
+			// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
+			versionsRoot: versionsRootIn(bootstrap.dataDir),
+			nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
+			trustedKeys: TRUSTED_UPDATE_KEYS,
+			manifestUrls: UPDATE_MANIFEST_URLS,
+			releasesPageUrl: RELEASES_PAGE_URL,
+			// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
+			readSettings: () => runtime.configStore.getGlobals().update,
+		});
+		const rawAdapters = [
 			createOnebotAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
@@ -252,6 +270,16 @@ export async function startStandaloneServer(
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
+		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
+		// 更新路由拿到的能被注入假状态,adapter 拿到的包着截流闸 —— 真服务 / 真 adapter 一行不动。
+		const devtools = createDevtools({
+			payloadVersion,
+			updateService,
+			adapters: rawAdapters,
+			historyStore: runtime.historyStore,
+		});
+		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
+		const adapters = devtools?.adapters ?? rawAdapters;
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
@@ -607,9 +635,6 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
-		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
-		const payloadVersion = APP_VERSION;
-
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
@@ -620,27 +645,6 @@ export async function startStandaloneServer(
 					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
 				})
 			: undefined;
-
-		const updateService = createUpdateService({
-			currentVersion: payloadVersion,
-			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
-			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
-			// 「没得退」,而不是瞎猜一个版本号。
-			imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
-			// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
-			// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
-			versionsRoot: versionsRootIn(bootstrap.dataDir),
-			nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
-			trustedKeys: TRUSTED_UPDATE_KEYS,
-			manifestUrls: UPDATE_MANIFEST_URLS,
-			releasesPageUrl: RELEASES_PAGE_URL,
-			// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
-			readSettings: () => runtime.configStore.getGlobals().update,
-		});
-		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话更新路由拿到的是
-		// 装饰过的那份 —— 面板看到的状态能被注入,真服务一行不动。
-		const devtools = createDevtools({ payloadVersion, updateService });
-		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 
 		const app = createApp(runtime, {
 			authSystem,
@@ -670,7 +674,7 @@ export async function startStandaloneServer(
 			},
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
 			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
-			devtools: devtools ?? undefined,
+			devtools: devtools ? { registry: devtools.registry, captures: devtools.captures } : undefined,
 			update: {
 				service: devtools?.updateService ?? updateService,
 				// 与 /api/health 报的是同一个值:面板靠「startedAt 变了」认新进程。
