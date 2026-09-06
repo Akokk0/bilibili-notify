@@ -77,6 +77,14 @@ export interface DevStatusDTO {
 	active: DevInjection[];
 }
 
+/**
+ * `GET /api/dev/active`:只有生效表。面板有注入生效时每几秒看一眼的是**这个**,不是
+ * `GET /api/dev` —— 那份带着整张场景表(十几 KB 的静态声明),按秒重发只是在搬同样的字节。
+ */
+export interface DevActiveDTO {
+	active: DevInjection[];
+}
+
 export interface DevRunResponse {
 	/** 跑完的一句回执(「已发一条开播事件」);状态类场景可省略。 */
 	summary?: string;

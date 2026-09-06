@@ -1,4 +1,5 @@
 import type {
+	DevActiveDTO,
 	DevInjection,
 	DevParamValues,
 	DevResetResponse,
@@ -18,6 +19,8 @@ import { findWebScenario, type WebDevScenario } from "./registry";
  * 错误态,devtools 不必再说一遍。
  */
 export const DEV_QUERY_KEY = ["dev"] as const;
+/** 生效表单独一个 key:它是被轮询的那份,别让轮询把整张场景表也一起搬。 */
+export const DEV_ACTIVE_KEY = ["dev", "active"] as const;
 
 export type DevAvailability =
 	| { status: "loading" }
@@ -28,30 +31,48 @@ export type DevAvailability =
  * 有注入生效时每几秒看一眼:生效条上的话会变(截流的「拦下 N 条」随真推送涨),而这些
  * 变化发生在服务端、面板没按任何键。什么都没注入时不打扰。
  */
-export function devRefetchInterval(data: DevStatusDTO | undefined): number | false {
+export function devRefetchInterval(data: DevActiveDTO | undefined): number | false {
 	return data && data.active.length > 0 ? 3_000 : false;
 }
 
+/**
+ * 场景表:探一次 `/api/dev`(404 = 不是开发版),拿到就不再动 —— 声明是静态的。
+ * 这一份**不轮询**;轮的是下面那个只有生效表的小查询。
+ */
 export function useDevStatus(): DevAvailability {
 	const q = useQuery({
 		queryKey: DEV_QUERY_KEY,
 		queryFn: () => api.get<DevStatusDTO>("/api/dev"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
-		refetchInterval: (query) => devRefetchInterval(query.state.data),
-		// 窗口失焦也照轮:人盯着终端 / 聊天软件看推送有没有出网时,面板正好在后台。
-		refetchIntervalInBackground: true,
 	});
 	if (q.data) return { status: "ready", data: q.data };
 	if (q.error) return { status: "absent" };
 	return { status: "loading" };
 }
 
+/**
+ * 生效表:`/api/dev/active`,几十字节。有东西生效时每 3 秒一次;首屏用场景表那次一起
+ * 带回来的 `active` 垫底,不必多等一个来回。
+ */
+export function useDevActive(initial: DevInjection[]): DevInjection[] {
+	const q = useQuery({
+		queryKey: DEV_ACTIVE_KEY,
+		queryFn: () => api.get<DevActiveDTO>("/api/dev/active"),
+		retry: false,
+		initialData: { active: initial },
+		refetchInterval: (query) => devRefetchInterval(query.state.data),
+		// 窗口失焦也照轮:人盯着终端 / 聊天软件看推送有没有出网时,面板正好在后台。
+		refetchIntervalInBackground: true,
+	});
+	return q.data.active;
+}
+
 /** 把回执里的生效表写回缓存 —— 面板不必再 GET 一次。 */
 function useApplyActive() {
 	const qc = useQueryClient();
 	return (active: DevInjection[]) => {
-		qc.setQueryData<DevStatusDTO>(DEV_QUERY_KEY, (prev) => (prev ? { ...prev, active } : prev));
+		qc.setQueryData<DevActiveDTO>(DEV_ACTIVE_KEY, { active });
 	};
 }
 

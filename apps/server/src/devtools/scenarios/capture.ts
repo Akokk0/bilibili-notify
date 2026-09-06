@@ -19,7 +19,7 @@ export function pushCaptureScenario(gate: CaptureGate): DevScenarioDef {
 		},
 		active() {
 			return gate.enabled()
-				? { scenarioId: "push.capture", label: `推送截流中 · 拦下 ${gate.entries().length} 条` }
+				? { scenarioId: "push.capture", label: `推送截流中 · 拦下 ${gate.count()} 条` }
 				: null;
 		},
 		reset() {

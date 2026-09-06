@@ -135,6 +135,13 @@ describe("dev 路由 · 截流", () => {
 		expect((await app.request("/captures")).status).toBe(404);
 	});
 
+	it("GET /active 只交生效表 —— 轮询打的是它,别把整张场景表按秒重发", async () => {
+		const app = createDevRoute({ registry: fakeRegistry() });
+		const res = await app.request("/active");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ active: [{ scenarioId: "a", label: "假的 A" }] });
+	});
+
 	it("GET /captures 交出开关与列表", async () => {
 		const c = captures();
 		const app = createDevRoute({ registry: fakeRegistry(), captures: c });

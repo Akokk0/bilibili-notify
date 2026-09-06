@@ -180,4 +180,10 @@ describe("createDevRegistry", () => {
 		expect(await reg.reset()).toEqual([]);
 		await expect(reg.reset("zzz")).rejects.toBeInstanceOf(DevScenarioNotFound);
 	});
+	it("list() 回的是同一份声明表:声明是静态的,轮询不该每次都重新剥一遍", () => {
+		const reg = createDevRegistry([
+			{ id: "a", group: "state", title: "A", params: [], run: () => ({}) },
+		]);
+		expect(reg.list()).toBe(reg.list());
+	});
 });

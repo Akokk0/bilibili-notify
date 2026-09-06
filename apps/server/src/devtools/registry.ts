@@ -112,6 +112,7 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 		if (byId.has(def.id)) throw new Error(`devtools 场景 id 撞了:${def.id}`);
 		byId.set(def.id, def);
 	}
+	const declarations = [...byId.values()].map(declarationOf);
 
 	function must(id: string): DevScenarioDef {
 		const def = byId.get(id);
@@ -129,7 +130,9 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 	}
 
 	return {
-		list: () => [...byId.values()].map(declarationOf),
+		// 声明是静态的(参数表、默认值都在建表时定型),建一次就够 —— 每次 GET 都重新剥一遍
+		// 二十多个对象,只是在给轮询多做无用功。
+		list: () => declarations,
 		async run(id, params) {
 			const def = must(id);
 			const outcome = await def.run(fillParams(def.params, params));

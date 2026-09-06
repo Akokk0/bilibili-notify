@@ -205,6 +205,19 @@ describe("DevDock", () => {
 		card.remove();
 	});
 
+	it("有注入生效时轮的是 /api/dev/active,不是整张场景表那份 /api/dev", async () => {
+		// 场景表十几 KB 且静态;生效表几十字节且会变。按秒重发前者只是在搬同样的字节。
+		const active = [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }];
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/dev/active" ? { active } : { ...STATUS, active },
+		);
+		renderDock();
+		await screen.findByRole("button", { name: "devtools" });
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/dev/active"));
+		// 场景表只拉了那一次。
+		expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/dev")).toHaveLength(1);
+	});
+
 	it("跑失败 → 那张卡里红字说原因", async () => {
 		vi.mocked(api.get).mockResolvedValue(STATUS);
 		vi.mocked(api.post).mockRejectedValue(

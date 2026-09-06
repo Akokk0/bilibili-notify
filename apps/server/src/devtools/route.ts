@@ -5,6 +5,7 @@
  */
 
 import type {
+	DevActiveDTO,
 	DevCapturesDTO,
 	DevPurgeHistoryResponse,
 	DevRunResponse,
@@ -37,6 +38,12 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 
 	app.get("/", (c) => {
 		const body: DevStatusDTO = { scenarios: registry.list(), active: registry.active() };
+		return c.json(body);
+	});
+
+	// 轮询打这里:生效表会在面板没按任何键的时候变(截流拦下的条数随真推送涨),而场景表不会。
+	app.get("/active", (c) => {
+		const body: DevActiveDTO = { active: registry.active() };
 		return c.json(body);
 	});
 

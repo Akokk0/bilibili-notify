@@ -13,6 +13,7 @@ import type {
 	DevParamField,
 	DevParamValues,
 	DevScenarioGroup,
+	DevStatusDTO,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -40,7 +41,7 @@ import {
 	WEB_SCENARIOS,
 	type WebDevScenario,
 } from "./registry";
-import { useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
+import { useDevActive, useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
 
 const GROUPS: ReadonlyArray<{ id: DevScenarioGroup; label: string; icon: ReactNode }> = [
 	{ id: "event", label: "事件", icon: <Icon.bell size={15} /> },
@@ -117,12 +118,20 @@ export function DevDock({
 }) {
 	const status = useDevStatus();
 	if (status.status !== "ready") return null;
+	return <Ready data={status.data} webScenarios={webScenarios} />;
+}
+
+/** 场景表到手之后才挂生效表的轮询 —— 不是开发版就连这个小查询也不该打。 */
+function Ready({
+	data,
+	webScenarios,
+}: {
+	data: DevStatusDTO;
+	webScenarios: readonly WebDevScenario[];
+}) {
+	const serverActive = useDevActive(data.active);
 	return (
-		<Dock
-			scenarios={status.data.scenarios}
-			serverActive={status.data.active}
-			webScenarios={webScenarios}
-		/>
+		<Dock scenarios={data.scenarios} serverActive={serverActive} webScenarios={webScenarios} />
 	);
 }
 

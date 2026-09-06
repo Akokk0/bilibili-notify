@@ -28,6 +28,8 @@ export interface CaptureGate {
 	enable(): void;
 	disable(): void;
 	entries(): DevCapturedDelivery[];
+	/** 拦下了几条。生效条上每几秒念一次,别为了一个数把整张表拷一遍。 */
+	count(): number;
 	clear(): void;
 	/** 截流开着的那几段时间 —— 「清掉截流期间历史行」按它删。 */
 	windows(): CaptureWindow[];
@@ -87,6 +89,7 @@ export function createCaptureGate(): CaptureGate {
 			if (open && open.to === null) open.to = Date.now();
 		},
 		entries: () => [...list],
+		count: () => list.length,
 		clear() {
 			list = [];
 		},

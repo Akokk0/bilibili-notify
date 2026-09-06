@@ -235,4 +235,14 @@ describe("createCaptureGate", () => {
 		expect(res).toMatchObject({ ok: true, synthetic: true });
 		expect(isReachabilityEvidence(res)).toBe(false);
 	});
+	it("count() 只回条数,不拷整张表 —— 生效条每几秒念一次拦下几条", async () => {
+		const gate = createCaptureGate();
+		const { inner } = fakeInner();
+		gate.enable();
+		const wrapped = gate.wrap(inner);
+		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "1" });
+		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "2" });
+		expect(gate.count()).toBe(2);
+		expect(gate.count()).toBe(gate.entries().length);
+	});
 });
