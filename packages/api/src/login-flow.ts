@@ -459,12 +459,26 @@ export class LoginFlow {
 		this.healthTimer = undefined;
 	}
 
-	private async runHealthCheck(): Promise<void> {
-		const skip =
+	/**
+	 * 把心跳提前到现在(宿主 devtools「现在就跑」)。走的就是定时器到点跑的那次;登录着才查,
+	 * 没登录 / 扫码中跳过、回 false。定时器本身不动,下一次到点照旧。
+	 */
+	async healthCheckNow(): Promise<boolean> {
+		if (this.shouldSkipHealthCheck()) return false;
+		await this.runHealthCheck();
+		return true;
+	}
+
+	private shouldSkipHealthCheck(): boolean {
+		return (
 			this.snapshot.status === BiliLoginStatus.LOGIN_QR ||
 			this.snapshot.status === BiliLoginStatus.LOGGING_QR ||
-			this.snapshot.status === BiliLoginStatus.NOT_LOGIN;
-		if (skip) return;
+			this.snapshot.status === BiliLoginStatus.NOT_LOGIN
+		);
+	}
+
+	private async runHealthCheck(): Promise<void> {
+		if (this.shouldSkipHealthCheck()) return;
 		// skip 判据取的是**发请求之前**那一帧,答复回来时状态可能早就变了。
 		const gen = this.authGeneration;
 		try {

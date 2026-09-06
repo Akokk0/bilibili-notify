@@ -570,3 +570,37 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 	});
 });
+
+/**
+ * `healthCheckNow`:把登录心跳提前到现在(宿主 devtools「现在就跑」)。走的就是定时器
+ * 到点跑的那次心跳:登录着才查(一次 getMyselfInfo),没登录 / 扫码中就跳过、回 false。
+ */
+describe("LoginFlow.healthCheckNow()", () => {
+	it("登录着:立刻查一次,-101 就翻成未登录并发 auth-lost", async () => {
+		const h = makeFlow();
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({
+			code: 0,
+			data: { card: { mid: "42", name: "n" } },
+		});
+		await h.flow.reportAccountInfo();
+		h.api.getMyselfInfo.mockClear();
+
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
+		expect(await h.flow.healthCheckNow()).toBe(true);
+
+		expect(h.api.getMyselfInfo).toHaveBeenCalledTimes(1);
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+	});
+
+	it("没登录:跳过,不打请求,回 false", async () => {
+		const h = makeFlow();
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
+		await h.flow.reportAccountInfo();
+		h.api.getMyselfInfo.mockClear();
+
+		expect(await h.flow.healthCheckNow()).toBe(false);
+		expect(h.api.getMyselfInfo).not.toHaveBeenCalled();
+	});
+});
