@@ -1,11 +1,16 @@
+import type { BilibiliAPI } from "@bilibili-notify/api";
+import { observeLiveConnections } from "@bilibili-notify/blive";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { DevCapturesApi } from "../routes/dev.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
+import { overridableApi } from "./api-overrides.js";
 import { createCaptureGate } from "./capture.js";
+import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
+import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
 
@@ -26,6 +31,10 @@ export interface CreateDevtoolsInput {
 	adapters: readonly PlatformAdapter[];
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
+	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
+	api: BilibiliAPI;
+	/** 场景挑订阅用:每次现读,订阅表会变。 */
+	subs: () => SubPick[];
 }
 
 export interface Devtools {
@@ -34,6 +43,8 @@ export interface Devtools {
 	updateService: UpdateService;
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
 	adapters: PlatformAdapter[];
+	/** 交给引擎的那份 —— 套了 Proxy 的。 */
+	api: BilibiliAPI;
 	captures: DevCapturesApi;
 }
 
@@ -41,6 +52,10 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	if (!isDevBuild(input.payloadVersion)) return null;
 	const update = injectableUpdateService(input.updateService);
 	const gate = createCaptureGate();
+	const api = overridableApi(input.api);
+	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
+	const rooms = createLiveRooms();
+	observeLiveConnections(rooms.observe);
 	const captures: DevCapturesApi = {
 		status: () => ({ enabled: gate.enabled(), entries: gate.entries() }),
 		clear: () => gate.clear(),
@@ -56,9 +71,14 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		},
 	};
 	return {
-		registry: createDevRegistry([updateStateScenario(update), pushCaptureScenario(gate)]),
+		registry: createDevRegistry([
+			updateStateScenario(update),
+			pushCaptureScenario(gate),
+			...liveScenarios({ subs: input.subs, rooms, api }),
+		]),
 		updateService: update.service,
 		adapters: input.adapters.map((a) => gate.wrap(a)),
+		api: api.api,
 		captures,
 	};
 }

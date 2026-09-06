@@ -27,6 +27,8 @@ const BARE = {
 	updateService,
 	adapters: [],
 	historyStore: { deleteRange: async () => 0 },
+	api: {} as never,
+	subs: () => [],
 };
 
 describe("createDevtools", () => {
@@ -64,8 +66,8 @@ describe("createDevtools · 截流接线", () => {
 		};
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({
+			...BARE,
 			payloadVersion: "0.0.0-dev",
-			updateService,
 			adapters: [inner],
 			historyStore: { deleteRange } as never,
 		});

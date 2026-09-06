@@ -56,6 +56,7 @@ function declarationOf(def: DevScenarioDef): DevScenario {
 	const out: DevScenario = { id: def.id, group: def.group, title: def.title, params: def.params };
 	if (def.desc !== undefined) out.desc = def.desc;
 	if (def.quick !== undefined) out.quick = def.quick;
+	if (def.icon !== undefined) out.icon = def.icon;
 	return out;
 }
 

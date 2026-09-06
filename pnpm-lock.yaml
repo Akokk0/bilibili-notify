@@ -277,6 +277,9 @@ importers:
       '@bilibili-notify/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@bilibili-notify/blive':
+        specifier: workspace:*
+        version: link:../../packages/blive
       '@bilibili-notify/contract':
         specifier: workspace:*
         version: link:../contract

@@ -271,12 +271,25 @@ export async function startStandaloneServer(
 			createWebhookAdapter({ logger: log }),
 		];
 		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
-		// 更新路由拿到的能被注入假状态,adapter 拿到的包着截流闸 —— 真服务 / 真 adapter 一行不动。
+		// 更新路由拿到的能被注入假状态,adapter 拿到的包着截流闸,api 套着 Proxy —— 真服务 /
+		// 真 adapter / 真 api 一行不动。
+		// `subBinding` 是个会在关停时清掉的 let,闭包里收不窄;先把 store 取出来。
+		const subStore = subBinding.store;
 		const devtools = createDevtools({
 			payloadVersion,
 			updateService,
 			adapters: rawAdapters,
 			historyStore: runtime.historyStore,
+			api: authSystem.api,
+			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
+			subs: () =>
+				subStore.list().map((sub) => ({
+					id: sub.id,
+					uid: sub.uid,
+					name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
+					enabled: sub.enabled,
+					roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
+				})),
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? rawAdapters;
@@ -284,7 +297,7 @@ export async function startStandaloneServer(
 			serviceCtx: runtime.serviceCtx,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
 			loadFontFace: runtime.loadFontFace,
-			api: authSystem.api,
+			api: devtools?.api ?? authSystem.api,
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,

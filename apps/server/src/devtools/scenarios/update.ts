@@ -95,6 +95,7 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 		title: "更新状态",
 		desc: "换掉面板看到的更新状态(系统页那一节、概览系统卡、右下角通知卡;刷新页面也在)。只有在这里收摊才复原;注入 ready 后按「立即重启并应用」会真的退出进程。",
 		quick: true,
+		icon: "download",
 		params: [
 			{ key: "phase", label: "相位", kind: "enum", options: PHASES, default: "available" },
 			{

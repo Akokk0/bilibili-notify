@@ -47,6 +47,11 @@ export interface DevScenario {
 	params: DevParamField[];
 	/** 在左下角药丸上占一个快捷位 —— 只给最常按的那几个。 */
 	quick?: boolean;
+	/**
+	 * 图标名(`@bilibili-notify/ui` 的 `IconName`),快捷位与卡片上用;不给就按分组取。
+	 * 同一组里有两个快捷位时必须给 —— 开播 / 下播都画成铃铛就分不清了。
+	 */
+	icon?: string;
 }
 
 /** 面板交上来的参数:key → 值。缺的字段服务端按默认值补。 */

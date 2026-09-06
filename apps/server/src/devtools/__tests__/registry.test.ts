@@ -26,7 +26,12 @@ function def(overrides: Partial<DevScenarioDef> = {}): DevScenarioDef {
 describe("createDevRegistry", () => {
 	it("list() 只交出声明,不带函数", () => {
 		const reg = createDevRegistry([
-			def({ id: "a", params: [{ key: "n", label: "N", kind: "number", default: 3 }], quick: true }),
+			def({
+				id: "a",
+				params: [{ key: "n", label: "N", kind: "number", default: 3 }],
+				quick: true,
+				icon: "live",
+			}),
 		]);
 		expect(reg.list()).toEqual([
 			{
@@ -35,6 +40,7 @@ describe("createDevRegistry", () => {
 				title: "一号",
 				params: [{ key: "n", label: "N", kind: "number", default: 3 }],
 				quick: true,
+				icon: "live",
 			},
 		]);
 	});

@@ -11,6 +11,7 @@ export function pushCaptureScenario(gate: CaptureGate): DevScenarioDef {
 		title: "推送截流",
 		desc: "开着时所有推送出口都不真发(开播 / 动态 / 链接回卡 / 指令回复全在内),拦下的列在这一组;历史照记 delivered 不打标,清历史行按截流的时间段删。收摊即恢复真发。",
 		quick: true,
+		icon: "filter",
 		params: [],
 		run() {
 			gate.enable();
