@@ -23,6 +23,7 @@ import {
 	HintNote,
 	Icon,
 	IconButton,
+	type IconName,
 	Pill,
 	SELECTED_TINT_BG,
 	TInput,
@@ -31,6 +32,7 @@ import {
 } from "@bilibili-notify/ui";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { CaptureView } from "./capture-view";
+import { PickSelect } from "./pick-select";
 import { type DevEntry, mergeScenarios, WEB_SCENARIOS } from "./registry";
 import { useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
 
@@ -41,6 +43,16 @@ const GROUPS: ReadonlyArray<{ id: DevScenarioGroup; label: string; icon: ReactNo
 	{ id: "capture", label: "截流", icon: <Icon.filter size={15} /> },
 	{ id: "web", label: "前端", icon: <Icon.eye size={15} /> },
 ];
+
+/** 场景自带的图标名优先(同组两个快捷位得分得开),没给就按分组取。 */
+function iconOf(decl: DevEntry["decl"]): ReactNode {
+	const named = decl.icon !== undefined ? Icon[decl.icon as IconName] : undefined;
+	if (named) {
+		const Glyph = named;
+		return <Glyph size={15} />;
+	}
+	return GROUPS.find((g) => g.id === decl.group)?.icon;
+}
 
 const HEIGHT_KEY = "bn:devtools:height";
 const DEFAULT_VIEWPORT_SHARE = 0.4;
@@ -108,7 +120,7 @@ function Dock({ scenarios, active }: { scenarios: DevEntry["decl"][]; active: De
 		.map((e) => ({
 			id: e.decl.id,
 			label: e.decl.title,
-			icon: GROUPS.find((g) => g.id === e.decl.group)?.icon,
+			icon: iconOf(e.decl),
 			// 快捷位不带参数:服务端按默认值补齐。
 			onRun: () => launch(e, {}),
 			busy: runningId === e.decl.id,
@@ -222,13 +234,6 @@ function ActiveStrip({
 }
 
 // ── 一张场景卡 ──────────────────────────────────────────────────────────────
-
-/** 三种「从站内挑一个」的字段先用文本框填 id;后面几片换成真选择器,这一处是唯一要换的地方。 */
-const PICK_HINT: Record<"sub" | "target" | "adapter", string> = {
-	sub: "订阅 uid,留空 = 第一个启用的",
-	target: "目标 id,留空 = 服务端默认",
-	adapter: "适配器 id,留空 = 服务端默认",
-};
 
 function defaultsOf(fields: DevParamField[]): DevParamValues {
 	const out: DevParamValues = {};
@@ -375,11 +380,10 @@ function ParamControl({
 		case "target":
 		case "adapter":
 			control = (
-				<TInput
-					ariaLabel={field.label}
+				<PickSelect
+					kind={field.kind}
+					label={field.label}
 					value={String(value ?? "")}
-					placeholder={PICK_HINT[field.kind]}
-					mono
 					onChange={onChange}
 				/>
 			);

@@ -155,13 +155,19 @@ describe("DevDock", () => {
 		await waitFor(() => expect(screen.queryByText("更新状态 → idle")).toBeNull());
 	});
 
-	it("quick 场景在药丸上占一个快捷位,点了按默认值跑(params 为空,服务端补)", async () => {
-		vi.mocked(api.get).mockResolvedValue(STATUS);
+	it("quick 场景在药丸上占一个快捷位,点了按默认值跑(params 为空,服务端补);图标按声明取", async () => {
+		vi.mocked(api.get).mockResolvedValue({
+			...STATUS,
+			scenarios: [{ ...UPDATE_STATE, icon: "download" }],
+		});
 		vi.mocked(api.post).mockResolvedValue({ active: [] });
 		renderDock();
 		const user = userEvent.setup();
 
-		await user.click(await screen.findByRole("button", { name: "更新状态" }));
+		const slot = await screen.findByRole("button", { name: "更新状态" });
+		// 声明了 icon 就画那一枚(download 是一条带箭头的路径),而不是分组的滑杆。
+		expect(slot.querySelector("svg path")?.getAttribute("d")).toMatch(/^M12 3v11/);
+		await user.click(slot);
 		await waitFor(() =>
 			expect(api.post).toHaveBeenCalledWith("/api/dev/run/update.state", { params: {} }),
 		);
@@ -198,6 +204,74 @@ describe("DevDock", () => {
 		expect(screen.getByText("推送截流")).toBeTruthy();
 		expect(await screen.findByText(/截流关着/)).toBeTruthy();
 		expect(api.get).toHaveBeenCalledWith("/api/dev/captures");
+	});
+
+	it("sub / target / adapter 三种字段是真选择器:选项来自站内列表,留空 = 服务端默认", async () => {
+		vi.mocked(api.get).mockImplementation(async (path: string) => {
+			switch (path) {
+				case "/api/subs":
+					return [
+						{ id: "s1", uid: "100", enabled: true, cachedProfile: { name: "甲" } },
+						{ id: "s2", uid: "200", enabled: false, name: "乙别名" },
+					];
+				case "/api/targets":
+					return [{ id: "t1", name: "测试群", enabled: true }];
+				case "/api/adapters":
+					return [{ id: "a1", name: "家里的 NapCat", enabled: true }];
+				default:
+					return {
+						...STATUS,
+						scenarios: [
+							{
+								id: "live.start",
+								group: "event",
+								title: "开播",
+								params: [
+									{ key: "sub", label: "订阅", kind: "sub" },
+									{ key: "target", label: "目标", kind: "target" },
+									{ key: "adapter", label: "适配器", kind: "adapter" },
+								],
+							},
+						],
+					};
+			}
+		});
+		vi.mocked(api.post).mockResolvedValue({ active: [] });
+		renderDock();
+		const user = userEvent.setup();
+		await user.click(await screen.findByRole("button", { name: "devtools" }));
+		await user.click(screen.getByRole("button", { name: /^事件/ }));
+
+		const sub = (await screen.findByRole("combobox", { name: "订阅" })) as HTMLSelectElement;
+		await waitFor(() => expect(sub.options.length).toBe(3));
+		expect([...sub.options].map((o) => o.textContent)).toEqual([
+			"（服务端默认）",
+			"甲 · 100",
+			"乙别名 · 200（停用）",
+		]);
+		expect(
+			[
+				...((await screen.findByRole("combobox", { name: "目标" })) as HTMLSelectElement).options,
+			].map((o) => o.textContent),
+		).toEqual(["（服务端默认）", "测试群"]);
+		expect(
+			[
+				...((await screen.findByRole("combobox", { name: "适配器" })) as HTMLSelectElement).options,
+			].map((o) => o.textContent),
+		).toEqual(["（服务端默认）", "家里的 NapCat"]);
+
+		// 留空全部不带;选了才带。
+		await user.click(screen.getByRole("button", { name: "跑一下" }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledWith("/api/dev/run/live.start", { params: {} }),
+		);
+		await user.selectOptions(sub, "s1");
+		await user.click(screen.getByRole("button", { name: "跑一下" }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/live.start", {
+				params: { sub: "s1" },
+			}),
+		);
 	});
 
 	it("面板高度记在 localStorage,下次打开还是那么高", async () => {
