@@ -140,10 +140,15 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	// 调用那一刻算一次落点,不会跟着元素走,于是人停在这一节**上方**。所以滚完还得跟一
 	// 会儿:页面高度一变就重滚,直到 CHASE_MS 到点。同一次平滑滚动被重发会就地改道,不
 	// 会一顿一顿。人自己动手滚了就立刻收手 —— 别跟用户抢滚动条。
+	//
+	// 时间窗之外还得盯着**这一节自己**从骨架换成整张卡:冷启动慢的时候那一下就发生在窗口
+	// 关掉之后,而撑开最狠的正是它。所以 `loaded` 也是重触发条件 —— 到齐多晚都补一次,
+	// 顺便重开一个窗口。
 	const location = useLocation();
 	const anchorRef = useRef<HTMLDivElement>(null);
 	const wanted = location.hash === UPDATE_SECTION_HASH;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 是刻意的重触发条件 —— 已经在这一页时再点一次「去更新」(hash 没变)也要再滚一次
+	const loaded = Boolean(status && settings);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 与 loaded 是刻意的重触发条件 —— 再点一次「去更新」(同 hash)与数据到齐各要再滚一次
 	useEffect(() => {
 		if (!wanted) return;
 		const scroll = () => anchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -161,7 +166,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 			window.removeEventListener("touchstart", stop);
 			ro.disconnect();
 		};
-	}, [location.key, wanted]);
+	}, [location.key, wanted, loaded]);
 
 	if (!status || !settings) {
 		return (

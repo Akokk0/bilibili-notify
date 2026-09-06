@@ -336,6 +336,40 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 		expect(scrollIntoView).toHaveBeenCalled();
 	});
 
+	it("数据比追焦窗口来得晚 → 到齐时照样滚一次,不能就把人扔在这一节上方", async () => {
+		// 追焦有个时间窗(冷启动 1.2s)。可冷启动慢的时候,这一节从骨架换成整张卡恰恰
+		// 发生在窗口关掉之后 —— 撑开的正是那一下,而那一下没人再滚。旧写法把「数据到齐」
+		// 当重触发条件,慢多久都不漏;时间窗不能把它替掉,只能加在它旁边。
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const status: UpdateStatusDTO = {
+			currentVersion: "0.8.0",
+			rollbackTarget: null,
+			pinnedVersion: null,
+			state: { phase: "idle" },
+		};
+		vi.mocked(api.get).mockImplementation(async (path: string) => {
+			if (path === "/api/update") {
+				await gate;
+				return status;
+			}
+			if (path === "/api/health") return health.next();
+			return { update: SETTINGS };
+		});
+
+		renderSection("/system#update");
+		// 骨架期先滚了一次;把窗口熬过去,追焦已经撒手。
+		await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+		FakeRO.last?.disconnect();
+		scrollIntoView.mockClear();
+
+		release();
+		await screen.findByText("还没查过");
+		expect(scrollIntoView).toHaveBeenCalled();
+	});
+
 	it("人自己动手滚了 → 立刻撒手,不再跟着重滚", async () => {
 		serve({ phase: "idle" });
 		renderSection("/system#update");
