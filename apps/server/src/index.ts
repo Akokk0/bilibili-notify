@@ -15,6 +15,7 @@ import { createBackupService } from "./backup/service.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
+import { createDevtools } from "./devtools/index.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -620,6 +621,27 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
+		const updateService = createUpdateService({
+			currentVersion: payloadVersion,
+			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
+			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
+			// 「没得退」,而不是瞎猜一个版本号。
+			imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
+			// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
+			// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
+			versionsRoot: versionsRootIn(bootstrap.dataDir),
+			nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
+			trustedKeys: TRUSTED_UPDATE_KEYS,
+			manifestUrls: UPDATE_MANIFEST_URLS,
+			releasesPageUrl: RELEASES_PAGE_URL,
+			// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
+			readSettings: () => runtime.configStore.getGlobals().update,
+		});
+		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话更新路由拿到的是
+		// 装饰过的那份 —— 面板看到的状态能被注入,真服务一行不动。
+		const devtools = createDevtools({ payloadVersion, updateService });
+		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
+
 		const app = createApp(runtime, {
 			authSystem,
 			backupService,
@@ -648,23 +670,9 @@ export async function startStandaloneServer(
 			},
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
 			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
+			devtools: devtools ?? undefined,
 			update: {
-				service: createUpdateService({
-					currentVersion: payloadVersion,
-					// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
-					// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
-					// 「没得退」,而不是瞎猜一个版本号。
-					imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
-					// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
-					// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
-					versionsRoot: versionsRootIn(bootstrap.dataDir),
-					nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
-					trustedKeys: TRUSTED_UPDATE_KEYS,
-					manifestUrls: UPDATE_MANIFEST_URLS,
-					releasesPageUrl: RELEASES_PAGE_URL,
-					// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
-					readSettings: () => runtime.configStore.getGlobals().update,
-				}),
+				service: devtools?.updateService ?? updateService,
 				// 与 /api/health 报的是同一个值:面板靠「startedAt 变了」认新进程。
 				startedAt: STARTED_AT,
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:

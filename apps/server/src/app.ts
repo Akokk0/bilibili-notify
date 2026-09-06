@@ -11,6 +11,7 @@ import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { ChromeSource } from "./config/persist.js";
+import type { DevRegistry } from "./devtools/registry.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
@@ -19,6 +20,7 @@ import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCommandsRoute } from "./routes/commands.js";
+import { createDevRoute } from "./routes/dev.js";
 import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
@@ -154,6 +156,13 @@ export interface CreateAppOptions {
 		/** 优雅停机 + 退出,让进程管理器把新版本拉起来。 */
 		startedAt: string;
 		applyUpdate: () => Promise<void>;
+	};
+	/**
+	 * devtools(造状态 / 造事件)。**只有开发版载荷才给**(`devtools/index.ts` 那道门),
+	 * 省略 → `/api/dev` 不挂载、404 —— 发出去的构建里不该向外承认有这么个口。
+	 */
+	devtools?: {
+		registry: DevRegistry;
 	};
 }
 
@@ -330,6 +339,11 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// app.ts 不必知道进程怎么关。
 	if (options.update) {
 		app.route("/api/update", createUpdateRoute(options.update));
+	}
+
+	// devtools。同样在 index.ts 组装(那里才知道载荷版本)后注入;不给就不挂。
+	if (options.devtools) {
+		app.route("/api/dev", createDevRoute(options.devtools));
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie
