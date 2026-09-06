@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
+import type { BilibiliAPI } from "@bilibili-notify/api";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -50,6 +51,12 @@ interface BasicAuthCredentials {
 export interface CreateAppOptions {
 	/** Optional auth subsystem; when present /api/auth/* is mounted. */
 	authSystem?: AuthSystem;
+	/**
+	 * 卡片预览用的 B 站 API 客户端。省略就从 `authSystem.api` 上取 —— 但那是**取值**,
+	 * 拿不到装饰过的那份(devtools 把 api 包了一层 Proxy 按方法覆盖,而 `authSystem` 上的
+	 * `api` 是个普通数据属性,Proxy 原样放行)。要让预览也吃到覆盖,就得显式传进来。
+	 */
+	api?: BilibiliAPI | null;
 	/** Optional backup/restore service; when present /api/backup/* is mounted. */
 	backupService?: BackupService;
 	/**
@@ -314,7 +321,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		createCardsRoute({
 			deps,
 			puppeteer: options.puppeteer ?? null,
-			api: options.authSystem?.api ?? null,
+			api: options.api ?? options.authSystem?.api ?? null,
 			persistChromeSource: options.persistChromeSource,
 			onPuppeteerEnabled: options.onPuppeteerEnabled,
 			chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,

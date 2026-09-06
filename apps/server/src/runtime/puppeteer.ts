@@ -278,9 +278,19 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		renderQueueDepth: () => renderGate.waiting(),
 		async closeIdleNow(): Promise<boolean> {
 			if (activePages > 0 || !browser) return false;
-			cancelIdleTimer();
-			await closeIdleBrowser();
-			return true;
+			// 光看 `activePages` 不够:它是在 `await b.newPage()` **之后**才 +1 的,渲染的开场
+			// 那一段(进闸 → ensure → newPage)里它还是 0。卡在那一段里关掉浏览器,那次渲染
+			// 会以 Target closed 失败 —— 一张该发的卡就没了。进闸再关:闸保证同一时刻只有一个
+			// 临界区,拿到闸就说明没有哪次渲染正在开场。
+			const release = await renderGate.acquire();
+			try {
+				if (activePages > 0 || !browser) return false;
+				cancelIdleTimer();
+				await closeIdleBrowser();
+				return true;
+			} finally {
+				release();
+			}
 		},
 		async page(options?: PageOptions): Promise<PageLike> {
 			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。低优先级
