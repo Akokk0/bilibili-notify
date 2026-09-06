@@ -1,7 +1,7 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { DevParamValues } from "@bilibili-notify/contract";
 import type { OverridableApi } from "../api-overrides.js";
-import type { LiveRooms } from "../live-rooms.js";
+import type { LiveRoomHandle, LiveRooms } from "../live-rooms.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 /**
@@ -21,13 +21,48 @@ export interface SubPick {
 	name: string;
 	enabled: boolean;
 	roomId?: string;
+	/** 特别关注的 uid(进场 / 弹幕推送的白名单)。 */
+	specialUsers?: string[];
 }
 
-export interface LiveScenarioDeps {
+export interface RoomPickerDeps {
 	subs: () => SubPick[];
 	rooms: LiveRooms;
+}
+
+export interface LiveScenarioDeps extends RoomPickerDeps {
 	/** 用 Pick 而不是整个 OverridableApi<BilibiliAPI>:测试里只需要装得下 `getLiveRoomInfo`。 */
 	api: OverridableApi<Pick<BilibiliAPI, "getLiveRoomInfo">>;
+}
+
+/**
+ * 直播类场景共用的「挑哪位 UP、连着的那条连接在哪」:`sub` 省略 = 第一个启用且直播间
+ * 已连上的;给了就按 id 找。房间没连上的一律拒绝,而且说清楚是哪一步没到。
+ */
+export function pickRoom(
+	deps: RoomPickerDeps,
+	params: DevParamValues,
+): { sub: SubPick; roomId: number; handle: LiveRoomHandle } {
+	const wanted = params.sub;
+	const subs = deps.subs();
+	const sub =
+		wanted === undefined
+			? subs.find((s) => s.enabled && s.roomId && deps.rooms.find(Number(s.roomId)))
+			: subs.find((s) => s.id === String(wanted));
+	if (!sub) {
+		throw new DevParamError(
+			wanted === undefined ? "没有一个启用且直播间已连上的订阅" : `没有这个订阅:${wanted}`,
+		);
+	}
+	if (!sub.roomId) throw new DevParamError(`${sub.name} 还没解析出房号(没登录 / 刚添加)`);
+	const roomId = Number(sub.roomId);
+	const handle = deps.rooms.find(roomId);
+	if (!handle) {
+		throw new DevParamError(
+			`${sub.name} 的直播间 ${roomId} 还没连上(订阅停用 / 还在预检 / 被风控)`,
+		);
+	}
+	return { sub, roomId, handle };
 }
 
 const DEFAULT_TITLE = "devtools 造的一场直播";
@@ -47,32 +82,6 @@ interface FakeLive {
 export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 	/** 假直播中的房间。 */
 	const fakes = new Map<number, FakeLive>();
-
-	function pick(params: DevParamValues): { sub: SubPick; roomId: number } {
-		const wanted = params.sub;
-		const subs = deps.subs();
-		const sub =
-			wanted === undefined
-				? subs.find((s) => s.enabled && s.roomId && deps.rooms.find(Number(s.roomId)))
-				: subs.find((s) => s.id === String(wanted));
-		if (!sub) {
-			throw new DevParamError(
-				wanted === undefined ? "没有一个启用且直播间已连上的订阅" : `没有这个订阅:${wanted}`,
-			);
-		}
-		if (!sub.roomId) throw new DevParamError(`${sub.name} 还没解析出房号(没登录 / 刚添加)`);
-		return { sub, roomId: Number(sub.roomId) };
-	}
-
-	function room(sub: SubPick, roomId: number) {
-		const handle = deps.rooms.find(roomId);
-		if (!handle) {
-			throw new DevParamError(
-				`${sub.name} 的直播间 ${roomId} 还没连上(订阅停用 / 还在预检 / 被风控)`,
-			);
-		}
-		return handle;
-	}
 
 	function syncOverride(): void {
 		if (fakes.size === 0) {
@@ -113,8 +122,7 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 			{ key: "title", label: "直播标题", kind: "text", default: DEFAULT_TITLE },
 		],
 		run(params) {
-			const { sub, roomId } = pick(params);
-			const handle = room(sub, roomId);
+			const { sub, roomId, handle } = pickRoom(deps, params);
 			const title =
 				typeof params.title === "string" && params.title !== "" ? params.title : DEFAULT_TITLE;
 			fakes.set(roomId, { sub, roomId, title, startedAt: Date.now() });
@@ -141,8 +149,7 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 		quick: true,
 		params: [{ key: "sub", label: "订阅", kind: "sub" }],
 		run(params) {
-			const { sub, roomId } = pick(params);
-			const handle = room(sub, roomId);
+			const { sub, roomId, handle } = pickRoom(deps, params);
 			if (fakes.has(roomId)) {
 				endFake(roomId);
 				return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了下播事件,假直播结束。` };

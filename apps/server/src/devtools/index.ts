@@ -11,6 +11,7 @@ import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
+import { liveEventScenarios } from "./scenarios/live-events.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
 
@@ -75,6 +76,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			updateStateScenario(update),
 			pushCaptureScenario(gate),
 			...liveScenarios({ subs: input.subs, rooms, api }),
+			...liveEventScenarios({ subs: input.subs, rooms }),
 		]),
 		updateService: update.service,
 		adapters: input.adapters.map((a) => gate.wrap(a)),

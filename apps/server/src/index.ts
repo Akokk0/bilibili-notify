@@ -289,6 +289,7 @@ export async function startStandaloneServer(
 					name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
 					enabled: sub.enabled,
 					roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
+					specialUsers: sub.specialUsers.map((u) => u.uid),
 				})),
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
