@@ -115,7 +115,8 @@ export function createCaptureGate(): CaptureGate {
 						...summarize(payload),
 					});
 					if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
-					return { ok: true, latencyMs: 0 };
+					// `synthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
+					return { ok: true, latencyMs: 0, synthetic: true };
 				},
 			};
 			// 可选方法有就有、没有就没有:sink 与能力探测按「方法在不在」判「这个平台有没有

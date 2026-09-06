@@ -54,6 +54,7 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	featureToPushKind,
+	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
 	resolveCardStyleForKind,
@@ -249,6 +250,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		adapters: opts.adapters,
 		logger: log,
 		onDelivery: (target, _payload, result) => {
+			// 没真出网的投递(devtools 截流)不是可达性证据 —— 写回去会把一个发不出去的目标
+			// 标成绿的,而且落盘、活得比截流本身还久。
+			if (!isReachabilityEvidence(result)) return;
 			const prev = target.testStatus;
 			if (!prev || prev.ok !== result.ok) {
 				const nextStatus = {
