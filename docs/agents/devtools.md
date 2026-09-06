@@ -52,12 +52,16 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 
 副作用规矩:**默认真发,可截流**。造事件之前先开截流,推送就只进列表不出网。
 
-## 面板那半的两个坑
+## 面板那半的三个坑
 
 - react-query 的 `refetchInterval` 窗口失焦就停;人盯着终端 / 聊天软件时面板恰好在后台,
   所以 devtools 的查询都开了 `refetchIntervalInBackground`。
 - 跑完一个场景把**所有**查询作废(连 `/api/dev` 自己),造出来的状态经各页自己的查询才看得见,
   逐个列 key 的话新场景必漏。
+- 靠作废查询看不到的消费点:只在某个**时机**才出手的那种。「有新版」通知卡只在打开面板那次
+  自动检查里发(`useUpdateCheckOnOpen`),注入 `available` 之后不刷新页面就没有卡。
+  `apps/web/src/devtools/follow-ups.ts` 按场景 id 登记「跑完后面板要补做的事」,`update.state`
+  跑完就地**重放**那次检查(同一个函数、同一条路),卡当场弹。补做失败的红字会说明注入已生效。
 
 ## 真机验过 / 没验过(2026-09-06)
 

@@ -93,7 +93,7 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 		id: "update.state",
 		group: "state",
 		title: "更新状态",
-		desc: "换掉面板看到的更新状态(系统页那一节、概览系统卡、右下角通知卡;刷新页面也在)。只有在这里收摊才复原;注入 ready 后按「立即重启并应用」会真的退出进程。",
+		desc: "换掉面板看到的更新状态(系统页那一节、概览系统卡;刷新页面注入也还在)。跑完会当场重放一次「打开面板那次自动检查」,所以右下角的通知卡也立刻弹。只有在这里收摊才复原;注入 ready 后按「立即重启并应用」会真的退出进程。",
 		quick: true,
 		icon: "download",
 		params: [

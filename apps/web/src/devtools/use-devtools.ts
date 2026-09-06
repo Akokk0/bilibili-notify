@@ -7,6 +7,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
+import { FOLLOW_UPS } from "./follow-ups";
 import { findWebScenario, type WebDevScenario } from "./registry";
 
 /**
@@ -71,6 +72,9 @@ export interface RunOutcome {
  * 各页自己的查询才看得见(更新状态那条链路就是系统页 / 概览卡 / 通知钩子各自的
  * `useUpdateStatus`),逐个列 key 的话,新加一个场景就得回来补一行 —— 而漏补的症状是「跑了
  * 没反应」。dev-only 的工具,多刷几个请求不算代价。
+ *
+ * 靠作废查询看不到的那几处(只在某个时机才出手的消费点),由 `FOLLOW_UPS` 在服务端那半
+ * 跑完之后就地重放那个时机。
  */
 export function useRunScenario(webScenarios: readonly WebDevScenario[]) {
 	const qc = useQueryClient();
@@ -85,6 +89,14 @@ export function useRunScenario(webScenarios: readonly WebDevScenario[]) {
 			}
 			const res = await api.post<DevRunResponse>(`/api/dev/run/${id}`, { params });
 			applyActive(res.active);
+			// 注入已经在服务端生效(生效表也写回去了),补做的事失败要说清楚是哪一半没成 ——
+			// 不然红字像是注入没打进去。
+			try {
+				await FOLLOW_UPS[id]?.(qc);
+			} catch (e) {
+				const why = e instanceof Error ? e.message : String(e);
+				throw new Error(`注入已生效,但面板这边跟着补做的那步没成:${why}`);
+			}
 			return res.summary === undefined ? {} : { summary: res.summary };
 		},
 		onSettled: () => {

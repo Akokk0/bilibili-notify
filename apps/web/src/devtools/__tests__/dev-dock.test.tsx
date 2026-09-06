@@ -7,7 +7,7 @@
  * 所有查询(更新状态那条链路靠这一刷才动)、收摊打的是对的 id。
  */
 
-import type { DevStatusDTO } from "@bilibili-notify/contract";
+import type { DevStatusDTO, UpdateStatusDTO } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -27,6 +27,7 @@ vi.mock("../../services/api", () => ({
 }));
 
 import { ApiError, api } from "../../services/api";
+import { useToastStore } from "../../store/notifications";
 import { DevDock } from "../dock";
 
 const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
@@ -52,6 +53,11 @@ const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
 };
 
 const STATUS: DevStatusDTO = { scenarios: [UPDATE_STATE], active: [] };
+
+/** 开发版上 `/api/update` 报的形状,`state` 是注入进去的那份。 */
+function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+	return { currentVersion: "0.0.0-dev", rollbackTarget: null, pinnedVersion: null, state };
+}
 
 function renderDock() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -90,10 +96,13 @@ describe("DevDock", () => {
 	});
 
 	it("点药丸 → 面板升起;状态组里有那张卡,改相位、跑一下 → POST 带上参数,跑完刷全部查询", async () => {
+		const ready = dto({ phase: "ready", target: "0.99.0", releaseUrl: "https://example.invalid" });
 		vi.mocked(api.get).mockResolvedValue(STATUS);
-		vi.mocked(api.post).mockResolvedValue({
-			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
-		});
+		vi.mocked(api.post).mockImplementation(async (path: string) =>
+			path === "/api/update/check"
+				? ready
+				: { active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
+		);
 		const { invalidate } = renderDock();
 		const user = userEvent.setup();
 
@@ -108,11 +117,13 @@ describe("DevDock", () => {
 		expect(screen.getByText("更新状态")).toBeTruthy();
 
 		await user.selectOptions(screen.getByRole("combobox", { name: "相位" }), "ready");
-		// 跑完会把所有查询作废,`/api/dev` 也会再拉一次 —— 服务端那时报的生效表就是注入后的。
-		vi.mocked(api.get).mockResolvedValue({
-			...STATUS,
-			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
-		});
+		// 跑完会把所有查询作废,`/api/dev` 也会再拉一次 —— 服务端那时报的生效表就是注入后的;
+		// 跟着补做的那次更新检查拉的是 `/api/update`,给它一份注入后的状态。
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/update"
+				? ready
+				: { ...STATUS, active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
+		);
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 
 		await waitFor(() =>
@@ -121,8 +132,9 @@ describe("DevDock", () => {
 			}),
 		);
 		await waitFor(() => expect(invalidate).toHaveBeenCalled());
-		// 「当前生效」条上出现了那一条。
+		// 「当前生效」条上出现了那一条;没有红字。
 		expect(await screen.findByText("更新状态 → ready 0.99.0")).toBeTruthy();
+		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
 	it("生效条上的 ✕ 收那一条、「全部收摊」收全部,都打对应的 reset", async () => {
@@ -186,6 +198,40 @@ describe("DevDock", () => {
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 
 		expect((await screen.findByRole("alert")).textContent).toContain("相位没有「x」这一档");
+	});
+
+	it("跑「更新状态」→ 当场重放打开面板那次自动检查,右下角出「有新版」卡,不用刷新页面", async () => {
+		const injected = dto({
+			phase: "available",
+			target: "0.99.0",
+			releaseUrl: "https://example.invalid/v0.99.0",
+			checkedAt: 1,
+			notes: "devtools 造的一版",
+		});
+		const active = [{ scenarioId: "update.state", label: "更新状态 → available 0.99.0" }];
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/update" ? injected : { ...STATUS, active },
+		);
+		vi.mocked(api.post).mockImplementation(async (path: string) =>
+			path === "/api/update/check" ? injected : { active },
+		);
+		useToastStore.getState().clear();
+		renderDock();
+		const user = userEvent.setup();
+
+		await user.click(await screen.findByRole("button", { name: "更新状态" }));
+		// 走的是打开面板那条路本身:先拉状态、再 POST check、再判有没有新版 —— 不另造一条发卡的路。
+		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/update/check", {}));
+		await waitFor(() =>
+			expect(useToastStore.getState().items).toContainEqual(
+				expect.objectContaining({
+					kind: "notice",
+					id: "update:0.99.0",
+					title: "有新版 0.99.0",
+					body: "devtools 造的一版\n到系统页下载;什么时候重启换版本由你按。",
+				}),
+			),
+		);
 	});
 
 	it("截流组:场景卡之外多一张拦截列表(打 /api/dev/captures)", async () => {
