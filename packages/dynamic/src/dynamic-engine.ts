@@ -409,6 +409,7 @@ export class DynamicEngine {
 			this.dynamicJob = undefined;
 			this.logger.info("[stop] 动态检测任务已停止");
 		}
+		this.releaseDetectLock();
 		while (this.busHandles.length > 0) {
 			const h = this.busHandles.pop();
 			h?.dispose();
@@ -658,6 +659,7 @@ export class DynamicEngine {
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 		}
+		this.releaseDetectLock();
 	}
 
 	private reconcileJob(): void {
@@ -683,6 +685,16 @@ export class DynamicEngine {
 
 	/** 正在跑的那一轮;cron tick 撞上就跳过,`detectNow` 撞上就排在后面。 */
 	private detectInFlight: Promise<void> | null = null;
+
+	/**
+	 * 拆掉检测器时松开锁。这把锁挂在实例上,活得比 cron job 长 —— 一轮要是永远不落定
+	 * (渲染闸堆住之类),它会把之后所有 tick 静默丢掉,而且**重启也救不回来**:登录恢复、
+	 * 改 cron 都只是重建 job,锁还是那一把。此前锁是随 job 一起新建的闭包,重建即重新武装;
+	 * 这里补回那个性质 —— 拆检测器 = 这一轮不再算数。
+	 */
+	private releaseDetectLock(): void {
+		this.detectInFlight = null;
+	}
 
 	/**
 	 * 带锁跑一轮。同一时刻只有一轮在跑(此前是 `withLock`,换成握着 promise 是为了让

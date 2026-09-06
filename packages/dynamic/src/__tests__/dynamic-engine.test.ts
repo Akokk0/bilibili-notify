@@ -2125,6 +2125,29 @@ describe("K. detectNow", () => {
 		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
 	});
 
+	it("一轮卡住不落定:检测器重启之后新 job 的 tick 还得能跑,不能被旧锁永久堵死", async () => {
+		// 锁挂在实例上,活得比 cron job 长。一轮要是永远不落定(渲染闸堆住之类),
+		// 旧写法的 tick 会全部静默丢弃 —— 而且是**永久**:登录恢复 / 改 cron 重建 job
+		// 也救不回来。停掉检测器时锁得跟着松开,重启才算真的重新武装。
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		const stuck = deferred();
+		b.getAllDynamic.mockReturnValueOnce(stuck.promise).mockResolvedValue(resp([]));
+		b.engine.start();
+		const first = cronMock.instances[0];
+		if (!first) throw new Error("cron 没建起来");
+		first.onTick();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+
+		b.engine.stop();
+		b.engine.start();
+		const second = cronMock.instances[1];
+		if (!second) throw new Error("重启后 cron 没重建");
+		second.onTick();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+
+		stuck.resolve(resp([]));
+	});
+
 	it("那一轮抛了:记日志、锁释放,下一次还能跑", async () => {
 		const b = makeEngine();
 		b.getAllDynamic.mockRejectedValueOnce(new TypeError("boom")).mockResolvedValue(resp([]));
