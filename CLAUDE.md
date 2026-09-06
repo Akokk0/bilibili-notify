@@ -60,6 +60,7 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约(app
 - `build-release.md` —— 工具链、分支模型、Docker 镜像与 tag 方案、桌面产物布局
 - `commands.md` —— 独立端私聊指令:入站链路、指令表、参数模型、可配置项;末尾是群里视频链接自动出卡片的「链接解析」
 - `self-update.md` —— 应用内自主升级:载荷布局、`boot.mjs` 选版、双密钥与渠道入口、撤回与自愈
+- `devtools.md` —— 开发版专属的 devtools(左下角药丸 + 底边面板):造状态 / 造事件的注册表、每种注入套在哪个边界上、真机验过什么
 
 ## Agent skills
 
