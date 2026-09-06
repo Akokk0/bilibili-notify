@@ -164,6 +164,7 @@
 	--z-bn-nav: 30; /* 页面级导航:tab 条、AI 悬浮球、页头下拉 */
 	--z-bn-header: 35; /* 全站吸顶栏 —— 压得住页面内容,让开一切浮层 */
 	--z-bn-scrim: 40; /* 整页遮罩:AI 抽屉、草稿岛展开态 */
+	--z-bn-dock: 45; /* devtools 底边 dock(药丸 + 面板):压住页面与遮罩,让开一切弹层 */
 	--z-bn-overlay: 50; /* 压在遮罩之上的弹层:登录框、统计页下拉 */
 	--z-bn-menu: 60; /* 贴着目标定位的右键菜单 */
 	--z-bn-toast-base: 80; /* Toast 组件默认档(调用方可覆盖) */
@@ -188,6 +189,9 @@
 }
 @utility z-bn-scrim {
 	z-index: var(--z-bn-scrim);
+}
+@utility z-bn-dock {
+	z-index: var(--z-bn-dock);
 }
 @utility z-bn-overlay {
 	z-index: var(--z-bn-overlay);
@@ -425,6 +429,16 @@ body {
 }
 .bn-anim-drawer-in {
 	animation: bn-drawer-in 0.25s ease-out;
+}
+
+/* 底边 dock(DockPill / DockPanel)的升起:同一条纪律,纯位移。 */
+@keyframes bn-dock-in {
+	from {
+		transform: translateY(24px);
+	}
+}
+.bn-anim-dock-in {
+	animation: bn-dock-in 0.25s ease-out;
 }
 
 /* 隐藏滚动条但保留滚动行为(容器内滚动、不想露出滚动条破坏卡片视觉时用)。 */

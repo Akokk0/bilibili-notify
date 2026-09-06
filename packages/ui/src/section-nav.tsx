@@ -104,6 +104,16 @@ const RAIL_ITEM_BASE =
 const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 text-bn-pink shadow-bn-card";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
+/**
+ * 竖栏项的三句语汇,**导出**给做不成 SectionNav 的竖栏用(DockPanel 的分组栏:它住在
+ * 底边面板里,不吸顶、不双形态,但「一栏里选一项」说的是同一句话)。别手抄。
+ */
+export const RAIL_ITEM_LANGUAGE = {
+	base: RAIL_ITEM_BASE,
+	active: RAIL_ITEM_ACTIVE,
+	idle: RAIL_ITEM_IDLE,
+} as const;
+
 // 顶栏底下那条线:既是 Tab 的吸顶位置,也是页内锚点该落到的位置。
 // = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
 // 该 1.5rem 与页面 `<main>` 的 pt-6 一致,故吸顶位恰好等于 Tab 在文档流中的自然起点 ——

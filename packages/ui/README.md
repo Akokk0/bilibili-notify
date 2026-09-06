@@ -15,7 +15,7 @@
 
 ## tokens(src/theme.css)
 
-`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in|drawer-in` 动效(页面根一律 `page-in`、抽屉用 `drawer-in`——都是纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的另一份正本在 `packages/image/src/styles.ts`(SSR 渲染器),改色要两边同步。
+`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in|drawer-in|dock-in` 动效(页面根一律 `page-in`、抽屉用 `drawer-in`、底边 dock 用 `dock-in`——都是纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的另一份正本在 `packages/image/src/styles.ts`(SSR 渲染器),改色要两边同步。
 
 ## 组件清单
 
@@ -77,6 +77,7 @@
 | `ModalShell` | 弹窗骨架:portal 到 body、遮罩 + 居中卡、ESC/点遮罩关闭;body padding 可覆盖。**标题走 `title`(+可选 `description`),别自己写标题行** —— 字号与间距由壳子出、不留口子,此前 11 个弹窗各写各的,漂成 14/15/16px 三种字号与四种下边距。自绘表头(封面渐变那种)才两个都不传 |
 | `ConfirmDialog` | ModalShell 之上的「确认/取消」轻对话框,`danger` 换红确认钮 |
 | `DrawerShell` | 右侧滑出的**非模态**玻璃抽屉:portal 到 body、全高内滚、ESC 关闭、无遮罩(页面保持可见可交互,实时调参工作台用) |
+| `DockPill` / `DockPanel` | 底边工作台(Vue DevTools 7 / Nuxt 那种 dock,devtools 用)。`DockPill` 是左下角常驻的玻璃药丸:主钮开合(`aria-expanded`,挂 `chip`/`chip-active`,同 DisclosurePill)+ 右侧图标快捷位(`actions`,`busy` 禁用)+ `active` 时的呼吸点(`activeTitle` 念给读屏器);与右下 AI 胶囊同基线(`bottom-5` / `h-12`),底部居中让给灵动岛;面板升起时传 `offsetBottom`(面板高 + 间隔)让它骑在面板顶边上。`DockPanel` 是底边升起的整宽玻璃面板(portal、`role=dialog`):顶边拖柄改高(**受控** `height`/`onHeightChange`,夹在 `minHeight` 与视口九成之间;方向键也能调;记不记住归调用方)、ESC 收、左栏分组(`rail`,挂 `nav`/`nav-item`,吃 `RAIL_ITEM_LANGUAGE`;`count` 走 `Pill subtle`)、顶部 `header` 插槽(「当前生效」+ 收摊)。两件都走 `z-bn-dock`(45)。贴边拖到任意边 / 左右停靠**刻意没做** |
 
 ### 导航
 
@@ -84,6 +85,7 @@
 | --- | --- |
 | `SectionNav` / `RailDot` | 页面分区导航,双形态:xl+ 左侧竖栏,窄视口顶部横向 chip 条(sticky) |
 | `BELOW_HEADER_TOP` | (导出的**位置常量**,不是组件)顶栏底下那条线 = `--bn-header-h` 实测高 + 1.5rem。SectionNav 双形态拿它当 sticky `top`;页内锚点(系统页「去更新」跳过来的那一节)拿它当 `scrollMarginTop` —— 写死一个小 margin 会把目标塞到吸顶顶栏底下 |
+| `RAIL_ITEM_LANGUAGE` | (导出的**语汇常量**,不是组件)SectionNav 竖栏项的三句话 `base` / `active` / `idle`。做不成 SectionNav 的竖栏(DockPanel 的分组栏:住在底边面板里,不吸顶、不双形态)也说这三句,别手抄 |
 | `TabBarShell` / `TabButton` | 页面级 tab 条的外壳与单钮(选中=粉实心块);要逐项自定义内容时用这对原语。两态语汇 `TAB_ACTIVE_LANGUAGE` / `TAB_IDLE_LANGUAGE` **已导出** —— 做不成 TabButton 的复合 tab(ScopeTabs 的 per-UP tab:主钮+移除钮)也说这两句,别手抄 |
 | `TabBar` | 一条普通的 N 项 tab(内部就是上面两件拼的),带右侧 hint 槽 |
 
@@ -106,7 +108,7 @@
   - **手写的输入框同理**,由 `apps/web/src/__tests__/input-hook-coverage.test.ts` 兜底:除挂点外它还钉住**底色 token** —— 输入面走 `bg-bn-field`,不走 `bg-bn-surface`。这条只能静态扫:亮色下两个 token 都是 `#ffffff`,肉眼与截图都验不出来,暗色下才分开(`theme.css` 的 elevation 阶梯是 muted < **field(输入)** < surface(卡片) < strong(弹窗)),而且 `field` 在皮肤契约里是独立一键,写错 token 等于那一键够不着它。能直接用 `apps/web` 的 T 系列(`TInput` / `TArea` / `TNum` / `TSelect`)就别手写,它们四件都自带挂点与正确底色。
   - **两栏骨架走 `xl:grid-bn-rail`**,不手写 `xl:grid-cols-[220px_1fr]`。`SectionNav` 那五页共用这个骨架,收编前六处逐字节相同 —— `section-nav.tsx` 的注释里还得三次把类名抄出来解释自己跟谁配对。栏宽在 `--bn-rail-width`,**皮肤能调**(`SKIN_LIMITS.railWidth`,160~320);`grid` 与 `gap-4` 留在调用方(各页真的可能不同)。
   - **字号走阶梯**。九档在 `theme.css` 的 `--text-bn-*`(micro 9 → 2xs 10 → xs 11 → sm 12 → base 13 → md 15 → lg 17 → xl 20 → hero 28),写 `text-bn-xs` 而不是 `text-[11px]`。收编前 454 处写死的字号漂成 21 个值,半档遍地 —— 同样是配 `text-bn-text-tertiary` 的小字注脚,10 / 10.5 / 11 / 11.5 四个档都有人用。**不像圆角那样接成派生轴**:字号派生出小数会糊,而且九档下半段是 +1 密排、上半段越拉越开,一根系数表达不了。相对单位(`text-[0.88em]`,markdown 行内 code 比父级小一点)不在网内。**九档刻意不进皮肤词表** —— 开了就是大字模式,而阶梯不是等比的(下半段 +1 密排、上半段越拉越开),没法像圆角那样一根系数整体缩放;逐档开九个键则挡不住有人把 `xs` 调得比 `sm` 大,版式主次当场反过来。栏宽是反例,它开了:单个数字、两头夹死、调坏了最多是左栏胖瘦。注意 `text-` 横跨两个 namespace —— `text-bn-xs` 是字号、`text-bn-text-primary` 是颜色,守卫按 `--text-*` / `--color-*` 分开查。
-  - **叠放层级走分层表**。`theme.css` 里一张 `--z-bn-*` 定死谁盖谁(raised 10 卡内抬升 → local 20 局部弹层 → nav 30 页面导航 → header 35 吸顶栏 → scrim 40 整页遮罩 → overlay 50 → menu 60 → toast-base 80 → island 100 → notify 200 → modal 300 → preview 500),写 `z-bn-modal` 而不是 `z-300`。收编前这 12 档散在十来个文件里,加一层浮层只能翻别处的 className 猜个不撞的数字 —— `header.tsx` 与 `draft-island.tsx` 的注释里各存了半张手写对照表就是这么来的。z-index 没有 Tailwind theme namespace,那一族和 shadow 一样手写 `@utility`。`color-token-conformance.test.ts` 拦裸数字,并钉住用到的每个 `z-bn-*` 在表里真有定义。
+  - **叠放层级走分层表**。`theme.css` 里一张 `--z-bn-*` 定死谁盖谁(raised 10 卡内抬升 → local 20 局部弹层 → nav 30 页面导航 → header 35 吸顶栏 → scrim 40 整页遮罩 → dock 45 devtools 底边 dock → overlay 50 → menu 60 → toast-base 80 → island 100 → notify 200 → modal 300 → preview 500),写 `z-bn-modal` 而不是 `z-300`。收编前这 12 档散在十来个文件里,加一层浮层只能翻别处的 className 猜个不撞的数字 —— `header.tsx` 与 `draft-island.tsx` 的注释里各存了半张手写对照表就是这么来的。z-index 没有 Tailwind theme namespace,那一族和 shadow 一样手写 `@utility`。`color-token-conformance.test.ts` 拦裸数字,并钉住用到的每个 `z-bn-*` 在表里真有定义。
   - **开关不许挂 `btn`,走 `switch` / `switch-on` / `switch-dot`**。挂 `btn` 的后果是皮肤给按钮写的实底盖掉轨道背景,开着的粉轨道和关着的灰轨道变成同一个色 —— 一屏设置里读不出哪些是开的。给它自己的词、并把「开」单分一档之后这个死法就不成立了:皮肤要重画轨道得在两档里分别写。轨道的**宽高留在行内**(行内压过一切 author 样式,皮肤掰不坏尺寸),底色则**必须走 class** —— 写在 `style` 里的话 `switch-on` 那一档只剩描边加影可写,等于摆设。滑块单独挂 `switch-dot`:只掰直轨道的话,方轨道里滚着个圆球。
 - **文字挑档按名字语义,别按当下看到的深浅**:`text-primary`(标题/人名)> `text-secondary`(正文、说明、区块标签)> `text-tertiary`(UID、时间戳、协议行、图标字形)> `text-disabled`(禁用/轨道底),四档在亮暗两套里**同向**。亮色默认装曾从设计稿原样抄来一份**反的**(secondary #999 比 tertiary #666 还淡),于是同一个 className 在亮色下是最淡一档、在暗色和每一套皮肤里都是较重一档,`hover:text-bn-text-secondary` 这种「悬停变亮」的写法当场变淡。`apps/web/src/__tests__/theme-conformance.test.ts` 现在按对比度拦单调性、档距(≥1.25×)与 AA 底线。
 - **`data-bn` 皮肤挂点是公开 API**:皮肤自定义 CSS 只能瞄准 `SKIN_CSS_HOOK_MAP`(contract skin.ts)里的挂点。映射到 `[data-bn~=…]` 的 hook 由组件真实背着属性(Btn=`btn`/`btn-primary`、Input 外框=`input`、Avatar 根=`avatar`、ModalShell 卡=`modal`、TabBarShell 与 SectionNav 双形态=`nav`、web 顶栏=`header`),`packages/ui/src/__tests__/skin-hooks.test.tsx` 拦挂点脱落。重构组件**不许丢属性**;换真实选择器改映射表,hook 名只增不改。

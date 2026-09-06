@@ -11,6 +11,7 @@
 
 export * from "./atoms";
 export * from "./dialog";
+export * from "./dock";
 export * from "./drawer";
 export * from "./field-updates";
 export * from "./form-controls";

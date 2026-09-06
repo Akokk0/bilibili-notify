@@ -24,6 +24,7 @@ import {
 	WarnNote,
 } from "../atoms";
 import { ModalShell } from "../dialog";
+import { DockPanel, DockPill } from "../dock";
 import { ArrayEditor } from "../form-controls";
 import { SectionNav } from "../section-nav";
 import { TabBarShell, TabButton } from "../tab-bar";
@@ -468,5 +469,48 @@ describe("CheckRow 挂 option 族", () => {
 			</CheckRow>,
 		);
 		expect(hooksOf(row())).toEqual(["option", "option-active"]);
+	});
+});
+
+/**
+ * Dock 两件:药丸与面板本体走玻璃族(`glass-strong`),面板左栏是「一栏里选一项」——
+ * 与 SectionNav 竖栏同挂 nav / nav-item;药丸主钮是开合钮,同 DisclosurePill 挂 chip。
+ */
+describe("Dock 挂点", () => {
+	it("DockPill 根挂 glass-strong,主钮挂 chip,开着时额外 chip-active", () => {
+		const { rerender } = render(
+			<DockPill label="devtools" icon={<i />} open={false} onToggle={() => {}} />,
+		);
+		const main = () => screen.getByRole("button", { name: "devtools" });
+		expect(hooksOf(main().closest("[data-dock-pill]"))).toEqual(["glass-strong"]);
+		expect(hooksOf(main())).toEqual(["chip"]);
+		rerender(<DockPill label="devtools" icon={<i />} open onToggle={() => {}} />);
+		expect(hooksOf(main())).toEqual(["chip", "chip-active"]);
+	});
+
+	it("DockPanel 本体挂 glass-strong,左栏挂 nav,项挂 nav-item(选中额外 nav-item-active)", () => {
+		render(
+			<DockPanel
+				title="devtools"
+				height={300}
+				onHeightChange={() => {}}
+				onClose={() => {}}
+				rail={[
+					{ id: "a", label: "甲" },
+					{ id: "b", label: "乙" },
+				]}
+				activeId="a"
+				onPick={() => {}}
+			>
+				<p>正文</p>
+			</DockPanel>,
+		);
+		expect(hooksOf(screen.getByRole("dialog", { name: "devtools" }))).toEqual(["glass-strong"]);
+		expect(hooksOf(screen.getByRole("navigation", { name: "devtools 分组" }))).toEqual(["nav"]);
+		expect(hooksOf(screen.getByRole("button", { name: "甲" }))).toEqual([
+			"nav-item",
+			"nav-item-active",
+		]);
+		expect(hooksOf(screen.getByRole("button", { name: "乙" }))).toEqual(["nav-item"]);
 	});
 });
