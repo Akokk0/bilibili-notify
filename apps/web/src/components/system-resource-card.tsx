@@ -207,8 +207,10 @@ export function SystemResourceCard({
 						/>
 					</div>
 
-					<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 sm:grid-cols-3">
-						<div className="col-span-2 min-w-0 sm:col-span-3">
+					{/* xl 起四列:那一档下这张卡拿到整行 1.6/2.6 的宽度,四个数(内存 / 堆 /
+					    常驻 / 浏览器)正好排满一行,三列会把浏览器挤到下一行去陪 sparkline。 */}
+					<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 sm:grid-cols-3 xl:grid-cols-4">
+						<div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-4">
 							<div className="text-bn-2xs text-bn-text-secondary">处理器</div>
 							<div
 								className="truncate text-bn-xs font-bold text-bn-text-primary"

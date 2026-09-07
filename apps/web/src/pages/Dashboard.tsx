@@ -867,9 +867,10 @@ export default function Dashboard() {
 				<TimelinePanel entries={history} subs={subs} targets={targets} />
 			</div>
 
-			{/* row 5: 系统资源(窄) + 各模块状态(宽) —— 同属「系统」这一组,并排不多占一行 */}
-			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.3fr]">
-				<SystemResourceCard state={resources} reachable={reachable} />
+			{/* row 5: 各模块状态(窄) + 系统资源(宽) —— 同属「系统」这一组,并排不多占一行。
+			    列比刻意不与 row 4 相同:两行都是 1fr_1.3fr 的话竖缝落在同一条线上,整页
+			    被切成两半。1fr_1.6fr 把缝挪出去,顺带让资源卡吃掉模块卡的一部分宽度。 */}
+			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.6fr]">
 				<SystemHealthCard
 					health={health.data}
 					reachable={reachable}
@@ -884,6 +885,7 @@ export default function Dashboard() {
 					aiEnabled={health.data?.modules?.ai ?? false}
 					update={updateQuery.data}
 				/>
+				<SystemResourceCard state={resources} reachable={reachable} />
 			</div>
 		</div>
 	);
