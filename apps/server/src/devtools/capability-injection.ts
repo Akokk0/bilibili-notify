@@ -27,24 +27,19 @@ export function createCapabilityInjector(): CapabilityInjector {
 		},
 		entries: () => [...fakes.entries()],
 		wrap(inner) {
-			const { capabilities, probeCapabilities, reconcile, dispose } = inner;
+			const { capabilities, probeCapabilities } = inner;
+			// 没有能力概念的平台(webhook)原样交回:替它补上等于替它声明了能力。
 			if (!capabilities && !probeCapabilities) return inner;
-			const wrapped: PlatformAdapter = {
-				platforms: inner.platforms,
-				send: (a, t, p, o) => inner.send(a, t, p, o),
-				isAvailable: (a, t) => inner.isAvailable(a, t),
-				probe: (a) => inner.probe(a),
-			};
+			// 展开而不是逐个转发:别的方法有就有、没有就没有,接口多一个方法这里也不用跟。
+			// 前提是 adapter 的方法不吃 `this`,那条写在 PlatformAdapter 的文档上。
+			const wrapped: PlatformAdapter = { ...inner };
 			if (capabilities) {
-				wrapped.capabilities = (adapter) =>
-					fakes.get(adapter.id) ?? capabilities.call(inner, adapter);
+				wrapped.capabilities = (adapter) => fakes.get(adapter.id) ?? capabilities(adapter);
 			}
 			if (probeCapabilities) {
 				wrapped.probeCapabilities = async (adapter) =>
-					fakes.get(adapter.id) ?? probeCapabilities.call(inner, adapter);
+					fakes.get(adapter.id) ?? probeCapabilities(adapter);
 			}
-			if (reconcile) wrapped.reconcile = (adapters) => reconcile.call(inner, adapters);
-			if (dispose) wrapped.dispose = () => dispose.call(inner);
 			return wrapped;
 		},
 	};

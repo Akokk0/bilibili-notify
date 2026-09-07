@@ -113,4 +113,12 @@ describe("adapter.capability", () => {
 		await wrapped.probeCapabilities?.(OB);
 		expect(probe).not.toHaveBeenCalled();
 	});
+	it("包装器不认识的成员也原样带过去 —— 接口日后多一个方法,这里不用跟、也不会悄悄丢", () => {
+		// 旧写法逐个转发,接口每加一个可选方法都得回来补一行;漏了不会有类型错,只会在开着
+		// devtools 的时候让那个平台看起来「不支持」某件事。
+		const injector = createCapabilityInjector();
+		const extra = () => "extra";
+		const wrapped = injector.wrap({ ...onebot(), extra } as ReturnType<typeof onebot>);
+		expect((wrapped as unknown as { extra: () => string }).extra).toBe(extra);
+	});
 });

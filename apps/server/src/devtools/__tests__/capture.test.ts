@@ -245,4 +245,11 @@ describe("createCaptureGate", () => {
 		expect(gate.count()).toBe(2);
 		expect(gate.count()).toBe(gate.entries().length);
 	});
+	it("包装器不认识的成员也原样带过去 —— 接口日后多一个方法,这里不用跟、也不会悄悄丢", () => {
+		const gate = createCaptureGate();
+		const { inner } = fakeInner();
+		const extra = () => "extra";
+		const wrapped = gate.wrap({ ...inner, extra } as typeof inner);
+		expect((wrapped as unknown as { extra: () => string }).extra).toBe(extra);
+	});
 });

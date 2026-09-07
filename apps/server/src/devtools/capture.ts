@@ -98,10 +98,11 @@ export function createCaptureGate(): CaptureGate {
 			windows = on ? [{ from: Date.now(), to: null }] : [];
 		},
 		wrap(inner) {
-			const wrapped: PlatformAdapter = {
-				platforms: inner.platforms,
-				isAvailable: (adapter, target) => inner.isAvailable(adapter, target),
-				probe: (adapter) => inner.probe(adapter),
+			// 展开而不是逐个转发:可选方法有就有、没有就没有(sink 与能力探测按「方法在不在」判
+			// 「这个平台有没有这个概念」),接口多一个方法这里也不用跟。前提是 adapter 的方法不吃
+			// `this`,那条写在 PlatformAdapter 的文档上。
+			return {
+				...inner,
 				async send(adapter, target, payload, opts) {
 					if (!on) return inner.send(adapter, target, payload, opts);
 					seq += 1;
@@ -122,17 +123,6 @@ export function createCaptureGate(): CaptureGate {
 					return { ok: true, latencyMs: 0, synthetic: true };
 				},
 			};
-			// 可选方法有就有、没有就没有:sink 与能力探测按「方法在不在」判「这个平台有没有
-			// 这个概念」,一律补上等于替 webhook 也声明了能力。
-			// `.call(inner, …)`:adapter 若是按 `this` 写的,裸取方法再调会丢掉它。
-			const { reconcile, dispose, capabilities, probeCapabilities } = inner;
-			if (reconcile) wrapped.reconcile = (adapters) => reconcile.call(inner, adapters);
-			if (dispose) wrapped.dispose = () => dispose.call(inner);
-			if (capabilities) wrapped.capabilities = (adapter) => capabilities.call(inner, adapter);
-			if (probeCapabilities) {
-				wrapped.probeCapabilities = (adapter) => probeCapabilities.call(inner, adapter);
-			}
-			return wrapped;
 		},
 	};
 	return gate;
