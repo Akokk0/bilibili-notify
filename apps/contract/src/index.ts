@@ -8,6 +8,7 @@
  */
 export * from "./devtools";
 export * from "./maid-skill";
+export * from "./resources";
 export * from "./rest";
 export * from "./skin";
 export * from "./update";
