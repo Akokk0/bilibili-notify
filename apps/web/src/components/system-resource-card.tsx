@@ -1,5 +1,5 @@
-import type { ResourceSample } from "@bilibili-notify/contract";
-import { Donut, ErrorNote, GlassPanel, Icon, LoadingBlock, Pill } from "@bilibili-notify/ui";
+import type { ResourceSample, ResourceStatic } from "@bilibili-notify/contract";
+import { Donut, ErrorNote, GlassPanel, LoadingBlock, Pill } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
 import type { ResourcesState } from "../hooks/useResourcesChannel";
@@ -8,12 +8,15 @@ import { Sparkline } from "../pages/stats/charts";
 /**
  * 概览页「系统资源」卡 —— CPU / 内存 / 本体 / 浏览器的实时读数。
  *
+ * 两个环是主角:环心报**总**占用,环上把「本体」与「其他」画成首尾相接的两段 ——
+ * 「我们占了多少」与「这台机器一共用了多少」在一个环里同时读得出来。文字退成辅助小字。
+ *
  * 语气上的一条硬要求:**量不到就说量不到**。首帧算不出 CPU 比例、容器里读不到浏览器
  * 子树、浏览器空闲被关掉 —— 这些都显示成「—」或那一档专门的话,绝不画成 0,
  * 「占 0MB」和「没量到」在排查时是完全相反的两条线索。
  */
 
-/** 与服务端 `HEAP_WARN_RATIO` 同一个数:环变色与日志出 warn 必须同时发生。 */
+/** 与服务端 `HEAP_WARN_RATIO` 同一个数:徽章变色与日志出 warn 必须同时发生。 */
 const HEAP_WARN_RATIO = 0.85;
 /** 再往上就只剩几十兆的余量,红。 */
 const HEAP_DANGER_RATIO = 0.95;
@@ -26,6 +29,11 @@ export function heapTone(ratio: number): string {
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
+
+/** 「本体」那段的两种颜色;「其他」共用一档静默灰,免得一个环里四种颜色抢戏。 */
+const BN_CPU_TONE = "var(--color-bn-blue)";
+const BN_MEM_TONE = "var(--color-bn-pink)";
+const REST_TONE = "var(--color-bn-inactive)";
 
 /** 字节转人话。GB 起保留一位小数,MB 取整 —— 卡上那一列不该跳字宽。 */
 function bytes(n: number | null): string {
@@ -52,42 +60,88 @@ function browserText(sample: ResourceSample): string {
 	}
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
-	return (
-		<div className="flex items-baseline justify-between gap-3 border-b border-bn-border-subtle py-1.5 last:border-b-0">
-			<span className="text-bn-xs text-bn-text-secondary">{label}</span>
-			<span className="tabular-nums text-bn-sm font-bold text-bn-text-primary">{value}</span>
-		</div>
-	);
+/**
+ * 本体 CPU 换算到「宿主机全部核」这个分母上。
+ *
+ * `procCpu` 的分母是**可用核数**(容器里是 cgroup 配额),`hostCpu` 的分母是整机所有核。
+ * 两个不同分母的比例直接相减会得出一段假的「其他」—— 有配额时差得尤其离谱。
+ */
+function bnCpuOfHost(sample: ResourceSample, statics: ResourceStatic): number | null {
+	if (sample.procCpu === null) return null;
+	if (statics.hostCores <= 0) return null;
+	return (sample.procCpu * statics.cpuBudget) / statics.hostCores;
+}
+
+/**
+ * 「其他」= 总 − 本体,夹到 0。
+ *
+ * 两个数不是同一瞬间读出来的,本体偶尔会量得比总量还大。真正把负值挡住的是 `Donut`
+ * (它对每段都夹一次);这里夹是为了让这个函数自己算出来的东西就说得通 —— 一段负长度的
+ * 弧交出去、指望画的人替我们兜,读代码的人得跑到组件里才知道会发生什么。
+ */
+function restOf(total: number, bn: number): number {
+	return Math.max(0, total - bn);
 }
 
 function Gauge({
 	title,
-	value,
-	color,
+	total,
+	bn,
+	bnTone,
 	caption,
+	detail,
 }: {
 	title: string;
-	value: number | null;
-	color: string;
+	/** 环心那个数,也是两段之和。null = 这一帧还算不出来。 */
+	total: number | null;
+	/** 本体那一段;null 时整圈按「其他」画。 */
+	bn: number | null;
+	bnTone: string;
 	caption: string;
+	detail: ReactNode;
 }) {
+	const bnValue = bn ?? 0;
+	const segments =
+		total === null
+			? []
+			: [
+					{ value: bnValue, color: bnTone },
+					{ value: restOf(total, bnValue), color: REST_TONE },
+				];
 	return (
-		<Donut
-			value={value ?? 0}
-			size={104}
-			stroke={11}
-			color={color}
-			title={title}
-			label={
-				<div className="text-center leading-none">
-					<div className="tabular-nums text-bn-xl font-bold text-bn-text-primary">
-						{percent(value)}
+		<div className="flex flex-col items-center gap-1.5">
+			<Donut
+				segments={segments}
+				size={132}
+				stroke={13}
+				title={title}
+				label={
+					<div className="text-center leading-none">
+						<div className="tabular-nums text-bn-hero font-bold text-bn-text-primary">
+							{percent(total)}
+						</div>
+						<div className="mt-1.5 text-bn-2xs text-bn-text-secondary">{caption}</div>
 					</div>
-					<div className="mt-1 text-bn-2xs text-bn-text-secondary">{caption}</div>
-				</div>
-			}
-		/>
+				}
+			/>
+			<span
+				className="inline-flex items-center gap-1 text-bn-xs font-bold"
+				style={{ color: bnTone }}
+			>
+				<span className="block h-2 w-2 rounded-sm" style={{ background: bnTone }} />
+				{detail}
+			</span>
+		</div>
+	);
+}
+
+/** 辅助小字里的一格:标签在上、值在下,占一列。 */
+function Fact({ label, value }: { label: string; value: ReactNode }) {
+	return (
+		<div className="min-w-0">
+			<div className="truncate text-bn-2xs text-bn-text-secondary">{label}</div>
+			<div className="truncate tabular-nums text-bn-xs font-bold text-bn-text-primary">{value}</div>
+		</div>
 	);
 }
 
@@ -102,6 +156,9 @@ export function SystemResourceCard({
 	const statics = state.static;
 	const ready = reachable && statics && latest;
 	const heapRatio = ready ? latest.heapUsed / statics.heapLimit : null;
+	// 浏览器是我们起的子进程,它占的内存算我们头上 —— 拆开写在小字里。
+	const bnMemBytes = ready ? latest.rss + (latest.browserRss ?? 0) : null;
+	const memTotal = statics?.memTotal ?? 0;
 
 	return (
 		<GlassPanel
@@ -130,54 +187,55 @@ export function SystemResourceCard({
 			) : !ready ? (
 				<LoadingBlock variant="inset" label="正在读取系统资源" hint="第一帧到了就开始画" />
 			) : (
-				<div className="flex flex-col items-center gap-4 xl:flex-row xl:items-stretch">
-					<div className="min-w-0 flex-1">
-						<div className="mb-1 flex items-center gap-1.5 text-bn-sm font-bold text-bn-text-primary">
-							<Icon.sliders size={13} />
-							CPU
-						</div>
-						<div
-							className="mb-1.5 truncate text-bn-xs text-bn-text-tertiary"
-							title={statics.cpuModel}
-						>
-							{statics.cpuModel || "—"}
-						</div>
-						<Row label="核数" value={statics.hostCores} />
-						<Row label="宿主机使用率" value={percent(latest.hostCpu)} />
-						<Row label="本体" value={percent(latest.procCpu)} />
-
-						<div className="mt-3 mb-1 flex items-center gap-1.5 text-bn-sm font-bold text-bn-text-primary">
-							<Icon.check size={13} />
-							内存
-						</div>
-						<Row
-							label={statics.memSource === "cgroup" ? "容器配额" : "宿主机总量"}
-							value={bytes(statics.memTotal)}
-						/>
-						<Row label="已用" value={bytes(latest.memUsed)} />
-						<Row label="本体堆" value={`${bytes(latest.heapUsed)} / ${bytes(statics.heapLimit)}`} />
-						<Row label="本体常驻" value={bytes(latest.rss)} />
-						<Row label="浏览器" value={browserText(latest)} />
-					</div>
-
-					<div className="flex flex-none flex-col items-center justify-center gap-3">
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-5">
 						<Gauge
 							title="CPU 占用"
-							value={latest.procCpu}
-							color="var(--color-bn-blue)"
-							caption="本体 CPU"
+							total={latest.hostCpu}
+							bn={bnCpuOfHost(latest, statics)}
+							bnTone={BN_CPU_TONE}
+							caption="CPU"
+							detail={`本体 ${percent(bnCpuOfHost(latest, statics))}`}
 						/>
 						<Gauge
-							title="堆占用"
-							value={heapRatio}
-							color={heapTone(heapRatio ?? 0)}
-							caption="本体堆"
+							title="内存占用"
+							total={memTotal > 0 ? latest.memUsed / memTotal : null}
+							bn={memTotal > 0 && bnMemBytes !== null ? bnMemBytes / memTotal : null}
+							bnTone={BN_MEM_TONE}
+							caption="内存"
+							detail={`本体 ${bytes(bnMemBytes)}`}
 						/>
-						<div className="flex flex-col items-center gap-0.5">
+					</div>
+
+					<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 sm:grid-cols-3">
+						<div className="col-span-2 min-w-0 sm:col-span-3">
+							<div className="text-bn-2xs text-bn-text-secondary">处理器</div>
+							<div
+								className="truncate text-bn-xs font-bold text-bn-text-primary"
+								title={statics.cpuModel}
+							>
+								{statics.cpuModel || "—"} · {statics.hostCores} 核
+							</div>
+						</div>
+						<Fact
+							label={statics.memSource === "cgroup" ? "容器配额" : "宿主机内存"}
+							value={`${bytes(latest.memUsed)} / ${bytes(memTotal)}`}
+						/>
+						<Fact
+							label="本体堆"
+							value={
+								<span style={{ color: heapTone(heapRatio ?? 0) }}>
+									{bytes(latest.heapUsed)} / {bytes(statics.heapLimit)}
+								</span>
+							}
+						/>
+						<Fact label="本体常驻" value={bytes(latest.rss)} />
+						<Fact label="浏览器" value={browserText(latest)} />
+						<div className="col-span-2 flex flex-col justify-center gap-0.5 sm:col-span-1">
 							<Sparkline
 								data={state.history.map((s) => s.heapUsed / statics.heapLimit)}
 								color={heapTone(heapRatio ?? 0)}
-								width={104}
+								width={140}
 								height={22}
 							/>
 							<span className="text-bn-2xs text-bn-text-tertiary">近 5 分钟堆占用</span>

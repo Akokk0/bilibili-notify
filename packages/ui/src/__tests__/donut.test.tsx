@@ -35,8 +35,12 @@ describe("Donut", () => {
 		// 堆上限读成 0 之类的意外会算出 Infinity,画成绕好几圈的弧比显示 100% 更难懂。
 		const over = render(<Donut value={4.2} size={80} color="#f0a" />);
 		expect(dashRatio(arc(over.container))).toBeCloseTo(1, 5);
-		const under = render(<Donut value={-1} size={80} color="#f0a" />);
-		expect(dashRatio(arc(under.container))).toBeCloseTo(0, 5);
+	});
+
+	it("负的 value 一段弧都不画,不往回画", () => {
+		const { container } = render(<Donut value={-1} size={80} color="#f0a" />);
+		// 只剩灰轨道那一个 circle。
+		expect(container.querySelectorAll("circle")).toHaveLength(1);
 	});
 
 	it("label 渲染在环心", () => {
@@ -49,5 +53,70 @@ describe("Donut", () => {
 		// 读屏器听到两声「占比」分不出谁是谁。
 		render(<Donut value={0.5} size={80} color="#f0a" title="内存占用" />);
 		expect(screen.getByTitle("内存占用")).toBeTruthy();
+	});
+});
+
+describe("Donut 分段", () => {
+	/** 每段弧的「画多长 / 从哪起画」—— 顺时针依次接上,前一段的终点是后一段的起点。 */
+	function arcs(container: HTMLElement) {
+		// 第一个 circle 是灰轨道,其余是段。
+		return [...container.querySelectorAll("circle")].slice(1).map((el) => {
+			const [drawn, whole] = (el.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
+			const offset = Number(el.getAttribute("stroke-dashoffset") ?? "0");
+			if (!whole) throw new Error("没有整周长");
+			return { len: (drawn ?? 0) / whole, start: -offset / whole };
+		});
+	}
+
+	it("两段首尾相接:第二段从第一段的终点起画", () => {
+		const { container } = render(
+			<Donut
+				size={104}
+				segments={[
+					{ value: 0.2, color: "#f0a" },
+					{ value: 0.41, color: "#ccc" },
+				]}
+			/>,
+		);
+		const [bn, rest] = arcs(container);
+		expect(bn?.len).toBeCloseTo(0.2, 5);
+		expect(bn?.start).toBeCloseTo(0, 5);
+		// 接不上的话「BN + 其他 = 总占用」就是句空话 —— 两段会重叠或中间露一段轨道。
+		expect(rest?.start).toBeCloseTo(0.2, 5);
+		expect(rest?.len).toBeCloseTo(0.41, 5);
+	});
+
+	it("总长超过一圈时按比例压回一圈,不绕第二圈", () => {
+		const { container } = render(
+			<Donut
+				size={104}
+				segments={[
+					{ value: 0.8, color: "#f0a" },
+					{ value: 0.6, color: "#ccc" },
+				]}
+			/>,
+		);
+		const [a, b] = arcs(container);
+		// 读数抖动能让两段之和越过 1;绕回去画的环没人看得懂。
+		expect((a?.len ?? 0) + (b?.len ?? 0)).toBeCloseTo(1, 5);
+		expect(a?.len).toBeCloseTo(0.8 / 1.4, 5);
+	});
+
+	it("值为 0 的段不画 —— 圆头线帽会让 0 长的弧变成一个点", () => {
+		const { container } = render(
+			<Donut
+				size={104}
+				segments={[
+					{ value: 0.3, color: "#f0a" },
+					{ value: 0, color: "#ccc" },
+				]}
+			/>,
+		);
+		expect(arcs(container)).toHaveLength(1);
+	});
+
+	it("负值当 0,不往回画", () => {
+		const { container } = render(<Donut size={104} segments={[{ value: -0.2, color: "#f0a" }]} />);
+		expect(arcs(container)).toHaveLength(0);
 	});
 });

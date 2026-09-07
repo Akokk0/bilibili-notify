@@ -51,33 +51,104 @@ function renderCard(
 	);
 }
 
+/** 读出某个环画了几段、每段多长(占整圈的比例)。 */
+function segmentsOf(title: string): number[] {
+	const svg = screen.getByTitle(title).closest("svg");
+	if (!svg) throw new Error(`没找到 ${title} 那个环`);
+	// 第一个 circle 是灰轨道。
+	return [...svg.querySelectorAll("circle")].slice(1).map((el) => {
+		const [drawn, whole] = (el.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
+		if (!whole) throw new Error("没有整周长");
+		return (drawn ?? 0) / whole;
+	});
+}
+
 afterEach(cleanup);
 
 describe("SystemResourceCard", () => {
-	it("报出 CPU 型号与核数,以及宿主机与本体两档使用率", () => {
+	it("环心报的是**总**占用,底下把本体那份单列出来", () => {
 		renderCard();
-		expect(screen.getByText(/AMD EPYC 7K62/)).toBeTruthy();
-		expect(screen.getByText("4")).toBeTruthy();
-		// 61% 是宿主机、20% 是本体 —— 只报一个的话看不出「机器忙」和「我们忙」的区别。
+		// 61% 是这台机器一共用掉的,20% 是我们用掉的 —— 环心只报一个数时必须是总数,
+		// 否则「机器很忙」这件事在卡上根本看不见。
 		expect(screen.getByText("61%")).toBeTruthy();
-		expect(screen.getAllByText("20%").length).toBeGreaterThan(0);
+		expect(screen.getByText(/本体 20%/)).toBeTruthy();
+		// 内存:3G / 8G = 38% 总占用,本体常驻 340MB。
+		expect(screen.getByText("38%")).toBeTruthy();
+		expect(screen.getByText(/本体 340 MB/)).toBeTruthy();
+	});
+
+	it("CPU 环画成「本体 + 其他 = 总占用」两段", () => {
+		renderCard();
+		const segs = segmentsOf("CPU 占用");
+		expect(segs).toHaveLength(2);
+		expect(segs[0]).toBeCloseTo(0.2, 4);
+		// 其他 = 总 61% − 本体 20%;两段加起来必须正好是总占用。
+		expect(segs[1]).toBeCloseTo(0.41, 4);
+	});
+
+	it("内存环里本体那段含浏览器 —— chromium 是我们起的,算我们头上", () => {
+		renderCard({
+			history: [sample({ browserState: "running", browserRss: 1 * GB, memUsed: 3 * GB })],
+		});
+		const segs = segmentsOf("内存占用");
+		// 本体 340MB + 浏览器 1G,分母 8G。
+		expect(segs[0]).toBeCloseTo((340 * MB + GB) / (8 * GB), 4);
+		// 两段之和 = 总占用 3G/8G,一个字节都不该多也不该少。
+		expect((segs[0] ?? 0) + (segs[1] ?? 0)).toBeCloseTo(3 / 8, 4);
+	});
+
+	it("容器里本体那段换算到整机分母 —— 两个比例的分母不一样,直接减会画出假的「其他」", () => {
+		// 4 核机器给了半核配额:procCpu 0.8 是「用掉了配额的 80%」= 0.4 核 = 整机的 10%。
+		// 不换算就会把 80% 画进环里,而总占用才 61%,「其他」立刻被夹成 0。
+		renderCard({
+			statics: { ...STATIC, cpuBudget: 0.5, memSource: "cgroup", memTotal: 2 * GB },
+			history: [sample({ hostCpu: 0.61, procCpu: 0.8 })],
+		});
+		const segs = segmentsOf("CPU 占用");
+		expect(segs[0]).toBeCloseTo(0.1, 4);
+		expect(segs[1]).toBeCloseTo(0.51, 4);
+		expect(screen.getByText(/本体 10%/)).toBeTruthy();
+	});
+
+	it("本体量出来比总量还大(读数不同步)时,「其他」那段夹到 0 不倒着画", () => {
+		renderCard({ history: [sample({ hostCpu: 0.1, procCpu: 0.2 })] });
+		const segs = segmentsOf("CPU 占用");
+		expect(segs).toHaveLength(1);
+		expect(segs[0]).toBeCloseTo(0.2, 4);
 	});
 
 	it("两个环各自念自己的名字,读屏器分得清", () => {
 		renderCard();
 		expect(screen.getByTitle("CPU 占用")).toBeTruthy();
-		expect(screen.getByTitle("堆占用")).toBeTruthy();
+		expect(screen.getByTitle("内存占用")).toBeTruthy();
+	});
+
+	it("CPU 型号与核数退成辅助小字,仍然在卡上", () => {
+		renderCard();
+		expect(screen.getByText(/AMD EPYC 7K62/)).toBeTruthy();
+		expect(screen.getByText(/4 核/)).toBeTruthy();
+	});
+
+	it("堆占比从环上退下来,但徽章与那行字还在 —— 它才是离 FATAL 多远", () => {
+		renderCard({ history: [sample({ heapUsed: 460 * MB })] });
+		// 460/512 = 90%
+		expect(screen.getByText("堆 90%")).toBeTruthy();
+		expect(screen.getByText(/460 MB \/ 512 MB/)).toBeTruthy();
 	});
 
 	it("还没收到第一帧:画读取中,不画一堆 0", () => {
 		renderCard({ statics: null, history: [] });
-		expect(screen.queryByTitle("堆占用")).toBeNull();
+		expect(screen.queryByTitle("内存占用")).toBeNull();
 		expect(screen.getByRole("status")).toBeTruthy();
 	});
 
 	it("首帧没有 CPU 比例(没有上一次可比)时显示「—」,不显示 0%", () => {
 		renderCard({ history: [sample({ hostCpu: null, procCpu: null })] });
-		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+		// 环心与底下那句都要说「没量到」;显示 0% 会被读成「一点都没用」。
+		expect(screen.getByText("—")).toBeTruthy();
+		expect(screen.getByText(/本体 —/)).toBeTruthy();
+		// 而且一段弧都不画 —— 画一整圈灰的等于说「全被别人占了」。
+		expect(segmentsOf("CPU 占用")).toHaveLength(0);
 	});
 
 	it("浏览器那一行:四种状态四句话,不是「有 / 没有」", () => {
@@ -100,7 +171,7 @@ describe("SystemResourceCard", () => {
 		// 徽章一句、正文一句 —— 徽章让人一眼看见,正文说清「为什么这里空了」。
 		expect(screen.getAllByText(/失联/).length).toBe(2);
 		expect(screen.getByRole("alert")).toBeTruthy();
-		expect(screen.queryByTitle("堆占用")).toBeNull();
+		expect(screen.queryByTitle("内存占用")).toBeNull();
 	});
 });
 

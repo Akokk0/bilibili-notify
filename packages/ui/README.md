@@ -43,7 +43,7 @@
 | `HintNote` | 「顺带说一句」低调旁注盒:虚线 + 软底 + 小字,不打断主流程(实线红盒是「出事了」,虚线是「旁白 / 引用落了空」)。三档 `tone`:`neutral` 中性说明 / `success` 报喜旁注(预览用的是真实数据)/ `danger` 警示旁注(引用的字体 / 推送目标已失效)。形状钉死家族 `sm` 档不设尺寸;底走**实色** soft token(`/60` 纱在壁纸皮肤下隐形);布局(flex 行)与外边距走 `className`。danger 档自带 `data-bn="note note-danger"`(对皮肤与红盒同档),其余只挂 `note` |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` / `platformTint` | 推送平台图标、显示名与**标识色**(onebot / qq-official / webhook)。三者同一张表 —— 色也导出,是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差);认不出的平台退 `--color-bn-inactive` |
-| `Donut` | 环形占比图:灰轨道 + 一段按 `value`(0..1,越界自动夹住)长的彩弧,`label` 摆环心。统计页「总活动」环与概览页资源卡的两个仪表共用。`title` 是念给读屏器的那句话 —— 同页两个环讲的不是同一件事,都念「占比」听不出区别,所以它有默认值但该逐个给 |
+| `Donut` | 环形占比图:灰轨道 + 按比例排布的彩弧,`label` 摆环心。单段给 `value`+`color`;**多段给 `segments`** —— 各段顺时针首尾相接,用来说「这部分 + 那部分 = 总占用」(概览页资源卡的 CPU / 内存两个环就是「本体 + 其他」)。负值当 0、0 长的段不画(圆头线帽会把它画成一个点)、各段之和越过一圈时整体按比例压回一圈;多段自动换平头线帽,圆头会让相邻两段互相盖住、读出来的比例不对。`title` 是念给读屏器的那句话 —— 同页两个环讲的不是同一件事,都念「占比」听不出区别,所以它有默认值但该逐个给 |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四段,由高到低堆)。**`colors` 必填,库里不留默认值** —— 那四段是推送家族色,唯一出处 `push-kinds.ts` 在业务侧,平台中立的库取不到;给默认值等于把此前那份写死的副本原样留下 |
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |
 | `NoticeStack` / `NoticeCard` | 角落通知栈(portal + fixed 角落 + aria-live)与富通知卡(图标片 + 标题/时间行 + 正文 + 关闭钮,挂 `glass-strong`)。推送 toast(右下 polite)与组件告警(右上 assertive)共用;**颜色语义全留调用方** —— 逐 kind 染色走 `tileStyle`、静态语义配色走 `tileClassName`/`titleClassName`/`style`。`time` 收**预格式化**字符串(toast 到分、告警到秒,精度是语义)。一句话瞬时提示别用它,那是 `Toast` 的活 |

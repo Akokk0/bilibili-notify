@@ -1208,29 +1208,60 @@ export function platformLabel(platform: string): string {
 
 // ── Donut (环形占比图) ─────────────────────────────────────────────────────
 
-/**
- * 环形占比图:一圈灰轨道 + 一段按 `value` 长度的彩弧。
- *
- * `value` 夹在 0..1 —— 算出来的比例再离谱(分母读成 0 就是 Infinity),环也不绕回去。
- * `title` 是念给读屏器的那句话:同一页上两个环讲的不是同一件事,都念「占比」听不出区别。
- */
-export function Donut({
-	value,
-	size = 104,
-	color,
-	stroke = 13,
-	label,
-	title = "占比",
-}: {
+/** 环上的一段弧。多段按给的顺序顺时针首尾相接。 */
+export interface DonutSegment {
+	/** 占整圈的比例(0..1)。负数当 0;各段之和越过一圈时整体按比例压回一圈。 */
 	value: number;
-	size?: number;
 	color: string;
+}
+
+export interface DonutProps {
+	/** 单段的简写。与 `segments` 二选一,同时给以 `segments` 为准。 */
+	value?: number;
+	color?: string;
+	/** 多段:表达「这部分 + 那部分 = 总占用」。 */
+	segments?: readonly DonutSegment[];
+	size?: number;
 	stroke?: number;
 	label?: ReactNode;
 	title?: string;
-}) {
+}
+
+/**
+ * 环形占比图:一圈灰轨道 + 一段或多段按比例排布的彩弧。
+ *
+ * 多段时首尾相接 —— 「BN + 其他 = 总占用」这句话靠的就是接得上;重叠或中间露轨道
+ * 都会把它读成别的意思。各段之和越过一圈时整体按比例压回,绝不绕第二圈。
+ *
+ * `title` 是念给读屏器的那句话:同一页上两个环讲的不是同一件事,都念「占比」听不出区别。
+ */
+export function Donut({
+	value = 0,
+	size = 104,
+	color = "var(--color-bn-pink)",
+	stroke = 13,
+	label,
+	title = "占比",
+	segments,
+}: DonutProps) {
 	const r = (size - stroke) / 2;
 	const c = 2 * Math.PI * r;
+	const raw = segments ?? [{ value, color }];
+	// 负值当 0:读数抖动不该让弧往回画。
+	const clamped = raw.map((s) => ({ ...s, value: Math.max(0, s.value) }));
+	const total = clamped.reduce((sum, s) => sum + s.value, 0);
+	// 超过一圈按比例压回。单段时这等价于旧的 Math.min(1, value)。
+	const scale = total > 1 ? 1 / total : 1;
+	// 0 长的弧配上圆头线帽会变成一个点,看着像多了一段不存在的东西。
+	const drawn: Array<{ len: number; start: number; color: string }> = [];
+	let cursor = 0;
+	for (const s of clamped) {
+		const len = s.value * scale;
+		if (len > 0) drawn.push({ len, start: cursor, color: s.color });
+		cursor += len;
+	}
+	// 多段时用平头:圆头会让每段两端各鼓出半个线宽,相邻两段互相盖住,读出来的比例不对。
+	const cap = drawn.length > 1 ? "butt" : "round";
 	return (
 		<div className="relative" style={{ width: size, height: size }}>
 			<svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
@@ -1243,16 +1274,20 @@ export function Donut({
 					stroke="var(--color-bn-code-bg)"
 					strokeWidth={stroke}
 				/>
-				<circle
-					cx={size / 2}
-					cy={size / 2}
-					r={r}
-					fill="none"
-					stroke={color}
-					strokeWidth={stroke}
-					strokeLinecap="round"
-					strokeDasharray={`${c * Math.max(0, Math.min(1, value))} ${c}`}
-				/>
+				{drawn.map((seg) => (
+					<circle
+						key={`${seg.start}-${seg.color}`}
+						cx={size / 2}
+						cy={size / 2}
+						r={r}
+						fill="none"
+						stroke={seg.color}
+						strokeWidth={stroke}
+						strokeLinecap={cap}
+						strokeDasharray={`${c * seg.len} ${c}`}
+						strokeDashoffset={-c * seg.start}
+					/>
+				))}
 			</svg>
 			{label ? (
 				<div className="absolute inset-0 flex items-center justify-center">{label}</div>
