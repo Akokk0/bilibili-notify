@@ -528,22 +528,30 @@ function buildVideoContent(archive: {
 }) {
 	return (
 		<div
-			class="flex gap-[10px] rounded-lg overflow-hidden mt-1"
+			class="rounded-lg overflow-hidden mt-1"
 			style="background: rgba(0,0,0,0.04); max-width: 600px;"
 		>
-			<div class="relative w-40 shrink-0">
-				<img class="w-full h-full object-cover block" src={archive.cover} alt="" />
-				<div class="absolute inset-0 bg-black/20" />
-				<span class="absolute bottom-1 right-[6px] text-white text-[11px] font-bold [text-shadow:0_1px_2px_rgba(0,0,0,.6)]">
-					{archive.duration_text}
-				</span>
+			{/* 封面整块铺在最上面 —— 与直播卡同一个骨架:先给一张图,文字压在下面。 */}
+			<div class="relative w-full">
+				<img class="w-full h-auto block" src={archive.cover} alt="" />
+				{/*
+				 * 时长角标自己衬一层深色底,不再靠「整张封面压暗 20% + 白字阴影」。封面现在是
+				 * 主体,压暗会让整张图发灰;而封面右下角是什么颜色完全由 UP 决定,亮底上的白字
+				 * 加弱阴影会糊没 —— 与关联视频小卡(buildUgcAdditional)同款处理。
+				 */}
+				{archive.duration_text ? (
+					<span class="absolute bottom-[8px] right-[8px] px-[6px] py-[2px] rounded-[4px] bg-black/60 text-white text-[12px] font-bold leading-[1.4]">
+						{archive.duration_text}
+					</span>
+				) : null}
 			</div>
-			<div class="flex-1 min-w-0 py-[10px] pr-[10px] flex flex-col justify-between">
-				<div>
-					<div class="text-[14px] font-bold text-[#18191C] line-clamp-2 mb-1">{archive.title}</div>
-					<div class="text-[12px] text-[#999] line-clamp-2">{archive.desc}</div>
-				</div>
-				<div class="flex gap-3 text-[12px] text-[#999] items-center">
+			<div class="p-[12px]">
+				<div class="text-[16px] font-bold text-[#18191C] line-clamp-2">{archive.title}</div>
+				{/* 简介常为空串,空就整行不渲染,免得标题与播放数之间多出一条空白。 */}
+				{archive.desc ? (
+					<div class="mt-[6px] text-[12px] text-[#999] line-clamp-2">{archive.desc}</div>
+				) : null}
+				<div class="mt-[10px] flex gap-3 text-[12px] text-[#999] items-center">
 					<span class="flex items-center gap-[4px]">
 						{SVG_VIEW}
 						{archive.stat.play}
