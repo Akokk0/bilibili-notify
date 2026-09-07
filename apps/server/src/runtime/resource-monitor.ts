@@ -50,6 +50,14 @@ function mb(bytes: number): number {
 	return Math.round(bytes / BYTES_PER_MB);
 }
 
+/** 只取用得上的四个字段(完整 MemoryUsage 还有 arrayBuffers 等)。 */
+export interface MemoryUsageSample {
+	rss: number;
+	heapUsed: number;
+	heapTotal: number;
+	external: number;
+}
+
 /** 读数口。全部同步、微秒级 —— 起子进程那种(浏览器子树)不在这里。 */
 export interface ResourceReaders {
 	now(): number;
@@ -57,7 +65,7 @@ export interface ResourceReaders {
 	cpuUsage(): { user: number; system: number };
 	/** 宿主机所有核累计 tick:`idle` 与 `total`(idle + user + nice + sys + irq)。 */
 	hostCpuTimes(): { idle: number; total: number };
-	memoryUsage(): { rss: number; heapUsed: number; heapTotal: number; external: number };
+	memoryUsage(): MemoryUsageSample;
 	hostMem(): { total: number; free: number };
 	cpuModel(): string;
 	hostCores(): number;

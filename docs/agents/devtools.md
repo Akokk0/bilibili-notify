@@ -60,6 +60,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `scenarios/login-state.ts`、`fake-qr.ts` |
 | 适配器能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`BilibiliPush.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
+| 堆逼近上限 | 包真 `process.memoryUsage()`,按注入的占比 × 堆上限造 `heapUsed`(顺带把 `heapTotal` 抬到不低于它)。注的是**读数**不是显示值 —— 概览页那两个环的染色、近 5 分钟曲线、服务端「已逼近堆上限」那条 warn 全照真的算一遍。包好的读数由 `createDevtools` 交回去(`index.ts` 只许从 `./devtools/index.js` 引 devtools,多一个 import 就多一条漏进产物的路) | `heap-injection.ts`、`scenarios/heap.ts` |
 | 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow` | 同上 |
 
 副作用规矩:**默认真发,可截流**。造事件之前先开截流,推送就只进列表不出网。

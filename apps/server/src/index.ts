@@ -353,6 +353,8 @@ export async function startStandaloneServer(
 		// 一处随「弹幕量 × 在播时长」无界增长的结构,堆涨时第一个该看它。
 		resourceMonitor = startResourceMonitor({
 			serviceCtx: runtime.serviceCtx,
+			// 开发版才有:堆读数可被 devtools 换掉,占比 / warn / 曲线全照真的算一遍。
+			readers: devtools ? { memoryUsage: devtools.memoryUsage } : undefined,
 			// 浏览器那一行:`puppeteer` 是可换的(系统页改 chrome 来源会热换一个新适配器),
 			// 所以每次现问那个变量,别把当下这一个捕进闭包。
 			browser: {

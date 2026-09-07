@@ -1,3 +1,4 @@
+import { getHeapStatistics } from "node:v8";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
 import type { MessageBus, PushAdapter, PushTarget } from "@bilibili-notify/internal";
@@ -6,12 +7,14 @@ import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { MuteState } from "../runtime/mute-state.js";
+import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
 import { overridableApi } from "./api-overrides.js";
 import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
+import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { createDevRoute, type DevCapturesApi } from "./route.js";
@@ -19,6 +22,7 @@ import { busEventScenarios } from "./scenarios/bus-events.js";
 import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
 import { type DynamicEngineLike, dynamicScenarios } from "./scenarios/dynamic.js";
+import { heapPressureScenario } from "./scenarios/heap.js";
 import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { liveEventScenarios } from "./scenarios/live-events.js";
@@ -87,6 +91,13 @@ export interface Devtools {
 	adapters: PlatformAdapter[];
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
 	api: BilibiliAPI;
+	/**
+	 * 交给采样器的堆读数口 —— 真 `process.memoryUsage()` 外面包了一层注入。
+	 *
+	 * 交出来的是**包好的读数**而不是注入口:`index.ts` 只许从 `./devtools/index.js` 这
+	 * 一处引 devtools(构建期整棵树靠它换空桩),多开一个 import 就多一条漏进产物的路。
+	 */
+	memoryUsage: () => MemoryUsageSample;
 	/** 交给路由的那份 —— `status()` 可注入。 */
 	authSystem: AuthSystem;
 	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
@@ -105,6 +116,8 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	const api = overridableApi(input.api);
 	const auth = overridableApi(input.authSystem);
 	const clock = createDevClock();
+	// 堆读数注入:交回去给采样器包在真 `process.memoryUsage()` 外面。
+	const heap = heapInjector();
 	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
 	const rooms = createLiveRooms();
 	observeLiveConnections(rooms.observe);
@@ -136,6 +149,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		}),
 		...busEventScenarios({ bus: input.bus }),
 		loginStateScenario({ auth, bus: input.bus }),
+		heapPressureScenario({ heap }),
 		capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
 		...timerScenarios({
 			clock,
@@ -157,6 +171,11 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		api: api.api,
 		authSystem: auth.api,
 		quietHoursNow: () => clock.now(),
+		memoryUsage: injectedMemoryUsage(
+			() => process.memoryUsage(),
+			heap,
+			() => getHeapStatistics().heap_size_limit,
+		),
 		captures,
 	};
 }
