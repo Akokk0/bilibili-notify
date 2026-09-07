@@ -36,20 +36,20 @@ const STATUSES: ReadonlyArray<{ value: Key; label: string }> = [
 const DEFAULT_FAIL = "devtools:二维码已过期,请重新获取";
 const FAKE_FACE = "https://i0.hdslb.com/bfs/face/member/noface.jpg";
 
-function build(key: Key, uname: string, message: string): LoginSnapshot {
+async function build(key: Key, uname: string, message: string): Promise<LoginSnapshot> {
 	switch (key) {
 		case "not-login":
 			return { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
 		case "loading":
 			return { status: BiliLoginStatus.LOADING_LOGIN_INFO, msg: "正在加载登录信息" };
 		case "qr":
-			return { status: BiliLoginStatus.LOGIN_QR, msg: "", data: fakeQrDataUrl() };
+			return { status: BiliLoginStatus.LOGIN_QR, msg: "", data: await fakeQrDataUrl() };
 		case "logging":
 			// 与真流程一致:扫了码等确认时二维码图还留着。
 			return {
 				status: BiliLoginStatus.LOGGING_QR,
 				msg: "已扫码,请在手机上确认",
-				data: fakeQrDataUrl(),
+				data: await fakeQrDataUrl(),
 			};
 		case "logged-in":
 			return {
@@ -85,13 +85,13 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 			{ key: "uname", label: "账号名(已登录时)", kind: "text", default: "devtools 假账号" },
 			{ key: "message", label: "失败原因(失败时)", kind: "text", default: DEFAULT_FAIL },
 		],
-		run(params) {
+		async run(params) {
 			const key = String(params.status ?? "qr") as Key;
 			const uname =
 				typeof params.uname === "string" && params.uname !== "" ? params.uname : "devtools 假账号";
 			const message =
 				typeof params.message === "string" && params.message !== "" ? params.message : DEFAULT_FAIL;
-			const snapshot = build(key, uname, message);
+			const snapshot = await build(key, uname, message);
 			fake = { key, snapshot };
 			deps.auth.override("status", () => snapshot);
 			deps.bus.emit("login-status-report", snapshot);
