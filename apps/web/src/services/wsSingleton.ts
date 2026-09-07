@@ -66,6 +66,15 @@ export function subscribeChannels(channels: ChannelName[]): void {
 	client?.subscribe(channels);
 }
 
+/**
+ * 退订几条频道。只有**用完就该停**的频道要它(`resources`:服务端据此决定还量不量,
+ * 那一步要起子进程);`state` / `log` 这些整个会话都开着的不用。
+ */
+export function unsubscribeChannels(channels: ChannelName[]): void {
+	for (const ch of channels) desired.delete(ch);
+	client?.unsubscribe(channels);
+}
+
 export function onWsEvent(handler: (env: WsEnvelope) => void): () => void {
 	eventHandlers.add(handler);
 	ensure();

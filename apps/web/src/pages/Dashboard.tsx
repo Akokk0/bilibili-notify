@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
+import { SystemResourceCard } from "../components/system-resource-card";
 import {
 	newerVersionOf,
 	phaseLabel,
@@ -29,6 +30,7 @@ import {
 	HEALTH_QUERY_OPTIONS,
 	useBackendReachable,
 } from "../hooks/useBackendReachable";
+import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { api } from "../services/api";
 import {
 	type DailyHistoryCountView,
@@ -716,6 +718,8 @@ export default function Dashboard() {
 		queryKey: ["globals"],
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
+	// 只在这一页订 `resources`:服务端据此决定还量不量浏览器子树(那一步要起子进程)。
+	const resources = useResourcesChannel();
 
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
@@ -818,21 +822,24 @@ export default function Dashboard() {
 				<TimelinePanel entries={history} subs={subs} targets={targets} />
 			</div>
 
-			{/* system health (full width) */}
-			<SystemHealthCard
-				health={health.data}
-				reachable={reachable}
-				logLevel={globalsQuery.data?.app.logLevel}
-				logLevels={globalsQuery.data?.app.logLevels}
-				loggedIn={loggedIn}
-				subCount={subs.length}
-				targetCount={targets.length}
-				dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
-				liveEnabled={health.data?.modules?.live ?? false}
-				imageEnabled={health.data?.modules?.image ?? false}
-				aiEnabled={health.data?.modules?.ai ?? false}
-				update={updateQuery.data}
-			/>
+			{/* row 5: 系统资源(窄) + 各模块状态(宽) —— 同属「系统」这一组,并排不多占一行 */}
+			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.6fr]">
+				<SystemResourceCard state={resources} reachable={reachable} />
+				<SystemHealthCard
+					health={health.data}
+					reachable={reachable}
+					logLevel={globalsQuery.data?.app.logLevel}
+					logLevels={globalsQuery.data?.app.logLevels}
+					loggedIn={loggedIn}
+					subCount={subs.length}
+					targetCount={targets.length}
+					dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
+					liveEnabled={health.data?.modules?.live ?? false}
+					imageEnabled={health.data?.modules?.image ?? false}
+					aiEnabled={health.data?.modules?.ai ?? false}
+					update={updateQuery.data}
+				/>
+			</div>
 		</div>
 	);
 }
