@@ -36,7 +36,10 @@ export function GlassBox({
 	const iconChip = accentChip(accent);
 	return (
 		<div
-			className={`bn-glass relative overflow-hidden rounded-bn-card shadow-bn-card ${className ?? ""}`}
+			// flex-col + 下面那个 flex-1 的正文:卡被摆进等高的 grid 行时(概览页「系统资源」
+			// 与「各模块」并排),给它 `h-full` 正文就跟着长满,不会在底下留一大片空玻璃。
+			// 不给高度时 flex-col 与块级排布完全等价,存量调用点一处不受影响。
+			className={`bn-glass relative flex flex-col overflow-hidden rounded-bn-card shadow-bn-card ${className ?? ""}`}
 		>
 			<div className="pointer-events-none absolute right-0 top-0 h-40 w-40" style={radial} />
 			<div className="relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5">
@@ -65,7 +68,9 @@ export function GlassBox({
 				</div>
 				{right}
 			</div>
-			<div className={`relative ${dense ? "px-[18px] pb-3.5 pt-2" : "px-[18px] pb-4 pt-2.5"}`}>
+			<div
+				className={`relative flex-1 ${dense ? "px-[18px] pb-3.5 pt-2" : "px-[18px] pb-4 pt-2.5"}`}
+			>
 				{children}
 			</div>
 		</div>

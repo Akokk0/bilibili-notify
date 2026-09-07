@@ -516,34 +516,39 @@ function VersionBadge({ children }: { children: ReactNode }) {
 
 function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 	return (
-		<div
-			className="grid gap-2"
-			// minmax(220, 1fr) 保证最窄的列也容得下 "日志 INFO* puppeteer 就绪"
-			// 这一行不折行;auto-fill + 1fr 让有空间时各列等宽撑满。
-			style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
-		>
+		// 竖向填:前四格(基础设施)进左列、后四格(引擎)进右列。分组是真的 —— 一批是 boot
+		// 就绪的基础件,一批是可开可关的引擎 —— 但给它们各加一行标题会吃掉这张卡本来就
+		// 不富裕的高度,靠位置隐含即可。窄屏收成一列八行,两列行条在手机上会把名字挤折行。
+		//
+		// grid-rows-* 是 `repeat(n, minmax(0,1fr))`,配 `h-full` 就把卡的剩余高度平摊给各行;
+		// 四行摊比两行摊温和得多,差个几十像素也看不出来。
+		// 行与行之间不画分隔线:四行平摊卡高之后每条 ~69px、内容只占 38px,剩下的留白
+		// 本身就把行分开了,再加一道线是多的(主人看过真机后拍板去掉)。
+		<div className="grid h-full auto-cols-fr grid-flow-col grid-rows-8 gap-x-5 gap-y-0 sm:grid-rows-4">
 			{cells.map((c) => {
 				const tone = pickLogTone(c.logLevel);
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
+				// 只有**被单独调过**的模块才挂徽章。八个模块各挂一个一模一样的 DEBUG 时,
+				// 重复度高到会被当成背景纹理,真正要紧的「哪个被单独设过」反而淹在里面;
+				// 全局那一档搬去了卡头副标题,一处说一遍。
 				const isOverride = c.logLevelSource === "module";
 				return (
-					<div key={c.id} className="rounded-lg px-3 py-2.5">
-						<div className="mb-1.5 flex items-center justify-between">
-							<span className="text-bn-sm font-bold text-bn-text-primary">{c.label}</span>
+					<div key={c.id} data-module={c.id} className="flex flex-col justify-center py-2">
+						<div className="flex items-center gap-2">
 							<StatusDot size="sm" kind={c.enabled ? "ok" : "off"} />
+							<span className="truncate text-bn-sm font-bold text-bn-text-primary">{c.label}</span>
+							{isOverride ? (
+								<span
+									className="ml-auto shrink-0 rounded-sm px-1.5 text-bn-2xs font-bold"
+									style={{ background: tone.bg, color: tone.fg }}
+									title="按模块覆盖"
+								>
+									{levelLabel}
+								</span>
+							) : null}
 						</div>
-						<div className="flex items-center gap-1.5 whitespace-nowrap text-bn-xs text-bn-text-secondary">
-							日志{" "}
-							<span
-								className="rounded-sm px-1.5 text-bn-2xs font-bold"
-								style={{ background: tone.bg, color: tone.fg }}
-								title={isOverride ? "按模块覆盖" : "继承全局"}
-							>
-								{levelLabel}
-								{isOverride ? "*" : ""}
-							</span>
-							{c.sub ? <span className="ml-auto text-bn-2xs">{c.sub}</span> : null}
-						</div>
+						{/* 缩进对齐名字(状态点 6px + gap 8px),不是对齐那颗点。 */}
+						<div className="mt-0.5 truncate pl-3.5 text-bn-xs text-bn-text-secondary">{c.sub}</div>
 					</div>
 				);
 			})}
@@ -641,6 +646,21 @@ export function SystemHealthCard({
 					<span className="opacity-40">·</span>
 					<span>面板</span>
 					<VersionBadge>{__WEB_VERSION__}</VersionBadge>
+					{/* 全局日志等级:模块矩阵里那八个一模一样的徽章收起来之后,这个信息
+					    一处说一遍。它跟两个版本号是同一类 —— 这套东西当前的全局事实。 */}
+					<span className="opacity-40">·</span>
+					<span>日志</span>
+					<span
+						className="inline-block rounded-md px-1.5 py-px text-bn-2xs font-bold"
+						style={{
+							background: pickLogTone(logLevel).bg,
+							color: pickLogTone(logLevel).fg,
+						}}
+						// 光一个「WARN」没有上下文,读屏器与鼠标悬停都得知道它说的是哪一档。
+						title="全局日志等级"
+					>
+						{logLevel ? logLevel.toUpperCase() : "—"}
+					</span>
 					{updateLabel ? (
 						<>
 							<span className="opacity-40">·</span>
@@ -662,14 +682,22 @@ export function SystemHealthCard({
 				) : undefined
 			}
 			dense
+			// 与「系统资源」并排时跟着行高长满,正文里的模块格子再把这份高度分掉。
+			className="h-full"
 		>
-			{!reachable ? (
-				<ErrorNote className="mb-2.5">
-					后端 API 当前不可达 (apps/server 未运行 或
-					网络中断),以下数据可能为最后一次成功拉取的快照。
-				</ErrorNote>
-			) : null}
-			<PluginMatrix cells={cells} />
+			<div className="flex h-full flex-col">
+				{!reachable ? (
+					<ErrorNote className="mb-2.5">
+						后端 API 当前不可达 (apps/server 未运行 或
+						网络中断),以下数据可能为最后一次成功拉取的快照。
+					</ErrorNote>
+				) : null}
+				{/* flex-1 + min-h-0:失联横幅在时把剩下的高度让给矩阵,而不是让矩阵按 h-full
+				    去顶满父高、把横幅挤出去。 */}
+				<div className="min-h-0 flex-1">
+					<PluginMatrix cells={cells} />
+				</div>
+			</div>
 		</GlassBox>
 	);
 }
@@ -823,7 +851,7 @@ export default function Dashboard() {
 			</div>
 
 			{/* row 5: 系统资源(窄) + 各模块状态(宽) —— 同属「系统」这一组,并排不多占一行 */}
-			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.6fr]">
+			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.3fr]">
 				<SystemResourceCard state={resources} reachable={reachable} />
 				<SystemHealthCard
 					health={health.data}
