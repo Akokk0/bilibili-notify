@@ -57,8 +57,8 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`getAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤 | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
 | 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored | `scenarios/bus-events.ts` |
-| 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码是手拼的 PNG | `scenarios/login-state.ts`、`fake-qr.ts` |
-| 适配器能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台) | `capability-injection.ts` |
+| 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `scenarios/login-state.ts`、`fake-qr.ts` |
+| 适配器能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`BilibiliPush.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
 | 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow` | 同上 |
 
