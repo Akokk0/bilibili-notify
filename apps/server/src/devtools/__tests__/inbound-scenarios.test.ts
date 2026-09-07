@@ -121,6 +121,7 @@ describe("inbound.link", () => {
 				groupId: "88888",
 				text: expect.stringContaining("bilibili.com"),
 				cardLinks: [],
+				miniAppCardLinks: [],
 			}),
 			{ adapterId: "ad-ob" },
 		);

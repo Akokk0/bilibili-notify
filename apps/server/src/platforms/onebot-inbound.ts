@@ -80,9 +80,9 @@ export function extractGroupMessage(frame: Record<string, unknown>): InboundGrou
 	const userId = toId(frame.user_id);
 	if (!groupId || !userId) return null;
 	const text = extractText(frame).trim();
-	const cardLinks = extractCardLinks(frame);
-	if (!text && cardLinks.length === 0) return null;
-	return { groupId, userId, selfId: toId(frame.self_id), text, cardLinks };
+	const { cardLinks, miniAppCardLinks } = extractCardLinks(frame);
+	if (!text && cardLinks.length === 0 && miniAppCardLinks.length === 0) return null;
+	return { groupId, userId, selfId: toId(frame.self_id), text, cardLinks, miniAppCardLinks };
 }
 
 /**
@@ -121,15 +121,26 @@ const CARD_HOST_HINT = /bilibili\.com|b23\.tv/i;
 const MAX_CARD_CHARS = 64 * 1024;
 const MAX_CARD_DEPTH = 8;
 
+/** QQ 小程序卡的 `app`;B 站 App「分享到 QQ」发出的就是它(链接在 `meta.detail_1.qqdocurl`)。 */
+const MINIAPP_CARD_APP = "com.tencent.miniapp_01";
+
 /**
  * 段数组里 json / xml 卡片(OneBot 的 `data.data` 是一整段 JSON / XML 文本)里的所有链接,
  * 按出现顺序。json 先 `JSON.parse` 再逐字符串找 —— 结构化消息里的 `jumpUrl` 是 `https:\/\/…`
  * 这种转义写法,对着原文找是找不到的;解析不动就退回原文找。xml 只需把 `&amp;` 还原。
  * 找出来的是「链接候选」,认不认由 {@link extractVideoLinks} 说了算。
+ *
+ * 小程序卡里的链接单独一格(`miniAppCardLinks`):群里已经有一张能点开播放的卡,链接解析
+ * 不再回卡(见 `InboundGroupMessage`)。只看 `app` 字段:能过 {@link CARD_HOST_HINT} 又是
+ * 小程序卡的,实际就是 B 站那个小程序。
  */
-function extractCardLinks(frame: Record<string, unknown>): string[] {
-	if (!Array.isArray(frame.message)) return [];
-	const links: string[] = [];
+function extractCardLinks(frame: Record<string, unknown>): {
+	cardLinks: string[];
+	miniAppCardLinks: string[];
+} {
+	const cardLinks: string[] = [];
+	const miniAppCardLinks: string[] = [];
+	if (!Array.isArray(frame.message)) return { cardLinks, miniAppCardLinks };
 	for (const seg of frame.message) {
 		if (typeof seg !== "object" || seg === null) continue;
 		const { type, data } = seg as { type?: unknown; data?: { data?: unknown } };
@@ -137,21 +148,26 @@ function extractCardLinks(frame: Record<string, unknown>): string[] {
 		const raw = data?.data;
 		if (typeof raw !== "string" || raw.length > MAX_CARD_CHARS) continue;
 		if (!CARD_HOST_HINT.test(raw)) continue;
-		for (const s of cardStrings(type, raw)) {
-			for (const m of s.matchAll(URL_RE)) links.push(m[0]);
+		const card = cardStrings(type, raw);
+		const into = card.miniApp ? miniAppCardLinks : cardLinks;
+		for (const s of card.strings) {
+			for (const m of s.matchAll(URL_RE)) into.push(m[0]);
 		}
 	}
-	return links;
+	return { cardLinks, miniAppCardLinks };
 }
 
-function cardStrings(type: "json" | "xml", raw: string): string[] {
-	if (type === "xml") return [raw.replace(/&amp;/g, "&")];
+function cardStrings(type: "json" | "xml", raw: string): { strings: string[]; miniApp: boolean } {
+	if (type === "xml") return { strings: [raw.replace(/&amp;/g, "&")], miniApp: false };
 	try {
+		const parsed: unknown = JSON.parse(raw);
 		const out: string[] = [];
-		collectStrings(JSON.parse(raw), out, 0);
-		return out;
+		collectStrings(parsed, out, 0);
+		const app =
+			typeof parsed === "object" && parsed !== null ? (parsed as { app?: unknown }).app : undefined;
+		return { strings: out, miniApp: app === MINIAPP_CARD_APP };
 	} catch {
-		return [raw.replace(/\\\//g, "/")];
+		return { strings: [raw.replace(/\\\//g, "/")], miniApp: false };
 	}
 }
 

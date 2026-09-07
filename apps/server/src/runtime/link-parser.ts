@@ -238,6 +238,9 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
 			if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
 			// 正文里的与分享卡里的一起找;卡片链接排在正文之后,与消息里的先后一致。
+			// `miniAppCardLinks` 刻意不读:进来的本身就是一张能点开播放的 B 站小程序卡,再回一张
+			// (图片卡也算)都是重复 —— 主人 2026-09-07 拍板一律不回,而且不留痕(不记冷却),
+			// 随后有人把同一条链接以文字贴出来照常出卡。
 			const refs = extractVideoLinks([msg.text, ...msg.cardLinks].join(" ")).slice(
 				0,
 				MAX_LINKS_PER_MESSAGE,

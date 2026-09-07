@@ -102,6 +102,13 @@ export interface InboundGroupMessage {
 	/**
 	 * 分享卡(json / xml 段)里的链接候选,按出现顺序。与正文分开放:下一个群消息消费者
 	 * 拿到的 `text` 得还是「用户敲的那句话」,而不是被接了一串卡片链接的东西。
+	 * **不含** QQ 小程序卡里的 —— 那些单放 {@link miniAppCardLinks}。
 	 */
 	cardLinks: string[];
+	/**
+	 * QQ 小程序卡(`com.tencent.miniapp_01`,B 站 App「分享到 QQ」发出的那种)里的链接候选。
+	 * 单放一格是因为链接解析对它的态度不一样:群里已经有一张能点开播放的卡了,再回一张
+	 * (不管是图片卡还是小程序卡)都是重复 —— 主人 2026-09-07 拍板一律不回。
+	 */
+	miniAppCardLinks: string[];
 }

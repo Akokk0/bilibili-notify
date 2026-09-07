@@ -1863,7 +1863,14 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", (
 		bot.connections[0]?.send(JSON.stringify(frame));
 		await waitFor(() => onInboundGroup.mock.calls.length > 0);
 		expect(onInboundGroup).toHaveBeenCalledWith(
-			{ groupId: "123", userId: "456", selfId: "10000", text: "hi", cardLinks: [] },
+			{
+				groupId: "123",
+				userId: "456",
+				selfId: "10000",
+				text: "hi",
+				cardLinks: [],
+				miniAppCardLinks: [],
+			},
 			{ adapterId: "a1" },
 		);
 		expect(onInboundPrivate).not.toHaveBeenCalled();

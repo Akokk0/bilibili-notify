@@ -108,7 +108,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 				typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_LINK_TEXT;
 			handler(
 				adapter.platform,
-				{ groupId, userId: FAKE_SENDER, text, cardLinks: [] },
+				{ groupId, userId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
 				{ adapterId: adapter.id },
 			);
 			return {

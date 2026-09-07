@@ -316,6 +316,7 @@ export function extractQQGroupMessage(
 		userId: typeof memberOpenid === "string" ? memberOpenid : "",
 		text: content,
 		cardLinks: [],
+		miniAppCardLinks: [],
 	};
 }
 

@@ -400,6 +400,7 @@ describe("createLinkParser", () => {
 				userId: "M_OPENID",
 				text: " https://www.bilibili.com/video/BV1zMtU6uEEb/",
 				cardLinks: [],
+				miniAppCardLinks: [],
 			});
 			expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 			expect(h.sent).toHaveLength(1);
@@ -421,8 +422,59 @@ describe("createLinkParser", () => {
 				userId: "M",
 				text: LINK,
 				cardLinks: [],
+				miniAppCardLinks: [],
 			});
 			expect(h.sent).toHaveLength(2);
+		});
+	});
+
+	describe("进来的本身就是 B 站小程序卡", () => {
+		/** B 站 App「分享到 QQ」发出的那张卡,链接在 meta.detail_1.qqdocurl。 */
+		const MINIAPP_CARD = JSON.stringify({
+			app: "com.tencent.miniapp_01",
+			prompt: "[QQ小程序]哔哩哔哩",
+			meta: { detail_1: { appid: "1109937557", qqdocurl: "https://b23.tv/AbCdEf" } },
+		});
+		const cardFrame = () =>
+			groupFrame("", {
+				message: [{ type: "json", data: { data: MINIAPP_CARD } }],
+				raw_message: "[CQ:json,data=…]",
+			});
+
+		it("群里已经有那张卡了 → 一律不回,不管这个群选的是哪种形式;也不打接口", async () => {
+			for (const form of ["image", "miniapp"] as const) {
+				const h = makeParser({}, undefined, {
+					policyFor: () => ({ parse: true, form }),
+					capabilities: () => ({ miniAppCard: { state: "supported", checkedAt: 1 } }),
+				});
+				await feed(h.parser, cardFrame());
+				expect(h.sent).toHaveLength(0);
+				expect(h.resolveShortLink).not.toHaveBeenCalled();
+				expect(h.getVideoInfo).not.toHaveBeenCalled();
+			}
+		});
+
+		it("跳过不留痕:随后有人把同一条链接以文字贴出来,照常出卡", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
+			await feed(h.parser, cardFrame());
+			await feed(h.parser, groupFrame("https://b23.tv/AbCdEf"));
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("其它分享卡(灰色链接卡之类)不算,照常出卡", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
+			const card =
+				'{"app":"com.tencent.structmsg","meta":{"news":{"jumpUrl":"https://b23.tv/AbCdEf"}}}';
+			await feed(
+				h.parser,
+				groupFrame("", {
+					message: [{ type: "json", data: { data: card } }],
+					raw_message: "[CQ:json]",
+				}),
+			);
+			expect(h.sent).toHaveLength(1);
 		});
 	});
 
@@ -520,6 +572,7 @@ describe("createLinkParser", () => {
 				userId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
+				miniAppCardLinks: [],
 			});
 			expect(h.sent).toHaveLength(1);
 			await h.parser.handleMessage({
@@ -529,6 +582,7 @@ describe("createLinkParser", () => {
 				userId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
+				miniAppCardLinks: [],
 			});
 			expect(h.sent).toHaveLength(1);
 		});
@@ -625,6 +679,7 @@ describe("createLinkParser", () => {
 				userId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
+				miniAppCardLinks: [],
 			});
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 		});
