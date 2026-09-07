@@ -584,16 +584,33 @@ export function SystemHealthCard({
 	imageEnabled: boolean;
 	aiEnabled: boolean;
 }) {
-	// ModuleLogLevels 当前只覆盖 core/dynamic/live/image/ai;infra 四件(api/storage/
-	// subscription/push)没有 per-package override 槽位,这里直接回退到全局等级。
-	const HAS_OVERRIDE_SLOT = new Set<ModuleCellId>(["dynamic", "live", "image", "ai"]);
+	/**
+	 * 每格读哪个覆盖键。
+	 *
+	 * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logLevels.core` 走
+	 * (`runtime/engines.ts`),而引擎之外的每一条日志(push / sink / master 私聊 /
+	 * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
+	 *
+	 * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。
+	 * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
+	 * 六天后服务端把基础 logger 接到 `logLevels.core` 上就不成立了,而没有任何东西
+	 * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
+	 */
+	const OVERRIDE_KEY: Record<ModuleCellId, "core" | "dynamic" | "live" | "image" | "ai"> = {
+		api: "core",
+		storage: "core",
+		subscription: "core",
+		push: "core",
+		dynamic: "dynamic",
+		live: "live",
+		image: "image",
+		ai: "ai",
+	};
 	const effectiveLevel = (
 		id: ModuleCellId,
 	): { level: string | undefined; source: "global" | "module" } => {
-		if (HAS_OVERRIDE_SLOT.has(id)) {
-			const override = logLevels?.[id as "dynamic" | "live" | "image" | "ai"];
-			if (override) return { level: override, source: "module" };
-		}
+		const override = logLevels?.[OVERRIDE_KEY[id]];
+		if (override) return { level: override, source: "module" };
 		return { level: logLevel, source: "global" };
 	};
 
