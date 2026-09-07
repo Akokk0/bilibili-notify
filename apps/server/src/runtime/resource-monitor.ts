@@ -29,6 +29,12 @@ export const HISTORY_POINTS = 150;
  */
 export const MEMORY_LOG_INTERVAL_MS = 600_000;
 
+/**
+ * 浏览器子树 RSS 的测量节奏:10 秒。它是三平台里唯一要起子进程的一项(macOS 的 `ps`、
+ * Windows 的 PowerShell),跟着 2 秒的采样 tick 走等于每分钟起 30 次子进程。
+ */
+export const BROWSER_MEASURE_INTERVAL_MS = 10_000;
+
 /** 堆占上限超过这个比例就 warn —— 留给用户反应的余地,而不是等 FATAL。 */
 export const HEAP_WARN_RATIO = 0.85;
 
@@ -82,9 +88,18 @@ export const defaultResourceReaders: ResourceReaders = {
 	cgroup: () => readCgroup(),
 };
 
+/** 浏览器那一行的数据源。省掉 = 这台没接 puppeteer,状态恒 `none`。 */
+export interface BrowserSource {
+	/** 现在是什么状态、pid 多少(本地跑着才有 pid)。同步、极便宜。 */
+	info(): { state: BrowserProcessState; pid: number | null };
+	/** 量一次子树 RSS(可能起子进程);量不到回 null。 */
+	subtreeRss(pid: number): Promise<number | null>;
+}
+
 export interface ResourceMonitorDeps {
 	serviceCtx: ServiceContext;
 	readers?: Partial<ResourceReaders>;
+	browser?: BrowserSource;
 	/**
 	 * 「内存自检打印」开关(`globals.app.memoryLog`),每个 tick 现问 —— 系统页一拨就生效,
 	 * 不用重启也不用另接 config-changed。缺省关。
@@ -127,7 +142,43 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 		cpu: { user: number; system: number };
 		host: { idle: number; total: number };
 	} | null = null;
-	const browserState: BrowserProcessState = "none";
+
+	// ---- 浏览器子树 RSS:只在有人看时量,10 秒一次 ----
+	/** 上一次量到的值,后续每帧都带着它 —— 每两秒闪一下 null 比不报还糟。 */
+	let browserRss: number | null = null;
+	let browserMeasuredAt: number | null = null;
+	let measuring = false;
+
+	function updateBrowser(at: number): BrowserProcessState {
+		const info = deps.browser?.info() ?? { state: "none" as const, pid: null };
+		if (info.state !== "running" || info.pid === null) {
+			// 关掉 / 远程 / 没配:留着上一次的字节数会让面板说一个已经不存在的进程占着内存。
+			browserRss = null;
+			browserMeasuredAt = null;
+			return info.state;
+		}
+		const due = browserMeasuredAt === null || at - browserMeasuredAt >= BROWSER_MEASURE_INTERVAL_MS;
+		// 没人订阅就一次都不量:面板不在这一页时这些数字没人要,而起子进程的代价不是零。
+		if (due && !measuring && listeners.size > 0) {
+			measuring = true;
+			browserMeasuredAt = at;
+			const pid = info.pid;
+			void deps.browser
+				?.subtreeRss(pid)
+				.then((rss) => {
+					browserRss = rss;
+				})
+				.catch(() => {
+					// 量不到是可选信息缺失(容器里没装 ps、权限不够),不是故障 —— 不刷日志,
+					// 更不能让它把 CPU / 堆那些主线数字一起带走。
+					browserRss = null;
+				})
+				.finally(() => {
+					measuring = false;
+				});
+		}
+		return info.state;
+	}
 
 	function tick(): void {
 		const at = r.now();
@@ -149,6 +200,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 		const hm = r.hostMem();
 		// 容器里已用量看 cgroup 的 memory.current(宿主机的 free 是整台机器的,不是这个容器的)。
 		const memUsed = r.cgroup().memUsed ?? hm.total - hm.free;
+		const browserState = updateBrowser(at);
 		const sample: ResourceSample = {
 			ts: at,
 			hostCpu,
@@ -156,7 +208,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 			heapUsed: mem.heapUsed,
 			rss: mem.rss,
 			memUsed,
-			browserRss: null,
+			browserRss,
 			browserState,
 		};
 		history.push(sample);

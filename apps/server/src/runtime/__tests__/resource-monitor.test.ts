@@ -297,3 +297,137 @@ describe("ResourceMonitor 内存自检日志", () => {
 		expect(logger.warn).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe("ResourceMonitor 浏览器进程", () => {
+	/** 把量那一步的 promise 链跑完 —— 真机上它是毫秒级的,测试里得显式让出。 */
+	const flush = () => new Promise((r) => setTimeout(r, 0));
+
+	function browserDeps() {
+		const measure = vi.fn(async () => 620 * MB);
+		return {
+			measure,
+			source: {
+				info: () => ({ state: "running" as const, pid: 4242 }),
+				subtreeRss: measure,
+			},
+		};
+	}
+
+	it("有人订着才量,而且 10 秒一次不是 2 秒一次 —— 那一步要起子进程", async () => {
+		const { ctx, fire } = makeCtx();
+		const { readers, advance } = makeReaders();
+		const { measure, source } = browserDeps();
+		const monitor = startResourceMonitor({ serviceCtx: ctx, readers, browser: source });
+
+		// 没人看的时候一次都不量。
+		for (let i = 0; i < 20; i++) {
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(measure).not.toHaveBeenCalled();
+
+		const seen = vi.fn();
+		const handle = monitor.subscribe(seen);
+		advance(2000, {});
+		fire(2000);
+		await flush();
+		expect(measure).toHaveBeenCalledTimes(1);
+
+		// 之后四个 tick(2/4/6/8 秒)都不该再量。
+		for (let i = 0; i < 4; i++) {
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(measure).toHaveBeenCalledTimes(1);
+		advance(2000, {});
+		fire(2000);
+		expect(measure).toHaveBeenCalledTimes(2);
+
+		handle.dispose();
+		for (let i = 0; i < 10; i++) {
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(measure).toHaveBeenCalledTimes(2);
+	});
+
+	it("量到的字节数跟着后面每一帧走,不是只在量到的那一帧才有", async () => {
+		const { ctx, fire } = makeCtx();
+		const { readers, advance } = makeReaders();
+		const { source } = browserDeps();
+		const monitor = startResourceMonitor({ serviceCtx: ctx, readers, browser: source });
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		fire(2000);
+		// 第一帧还没量到(量是异步的),先报 null 而不是编一个数。
+		expect(seen.mock.calls[0]?.[0]).toMatchObject({ browserRss: null, browserState: "running" });
+
+		await flush();
+		advance(2000, {});
+		fire(2000);
+		expect(seen.mock.calls[1]?.[0]).toMatchObject({
+			browserRss: 620 * MB,
+			browserState: "running",
+		});
+
+		// 中间那几帧照样带着上一次量到的值 —— 每两秒闪一下 null 比不报还糟。
+		advance(2000, {});
+		fire(2000);
+		expect(seen.mock.calls[2]?.[0]).toMatchObject({ browserRss: 620 * MB });
+	});
+
+	it("浏览器关掉 / 远程 → 状态照实报,字节数回 null 不留着上一次的残值", async () => {
+		const { ctx, fire } = makeCtx();
+		const { readers, advance } = makeReaders();
+		let state: "running" | "closed" = "running";
+		const monitor = startResourceMonitor({
+			serviceCtx: ctx,
+			readers,
+			browser: {
+				info: () => ({ state, pid: state === "running" ? 4242 : null }),
+				subtreeRss: async () => 620 * MB,
+			},
+		});
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		fire(2000);
+		await flush();
+		advance(2000, {});
+		fire(2000);
+		expect(seen.mock.calls[1]?.[0]).toMatchObject({ browserRss: 620 * MB });
+
+		// 空闲关掉之后还挂着 620MB,面板就会说一个已经不存在的进程占着内存。
+		state = "closed";
+		advance(2000, {});
+		fire(2000);
+		expect(seen.mock.calls[2]?.[0]).toMatchObject({ browserRss: null, browserState: "closed" });
+	});
+
+	it("量的那一步抛了,整条采样不受影响", async () => {
+		const { ctx, fire, logger } = makeCtx();
+		const { readers, advance } = makeReaders();
+		const monitor = startResourceMonitor({
+			serviceCtx: ctx,
+			readers,
+			browser: {
+				info: () => ({ state: "running" as const, pid: 4242 }),
+				subtreeRss: async () => {
+					throw new Error("ps 不在 PATH 上");
+				},
+			},
+		});
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		fire(2000);
+		await flush();
+		advance(2000, {});
+		fire(2000);
+
+		// 一个量不到的可选数字不该把 CPU / 堆那些主线数字一起带走,也不该刷 error 日志。
+		expect(seen.mock.calls[1]?.[0]).toMatchObject({ browserRss: null, heapUsed: 210 * MB });
+		expect(logger.error).not.toHaveBeenCalled();
+	});
+});

@@ -39,6 +39,7 @@ import { createLinkParser, type LinkSourcePlatform } from "./runtime/link-parser
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
+import { browserSubtreeRss } from "./runtime/process-tree.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
 import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
@@ -352,6 +353,12 @@ export async function startStandaloneServer(
 		// 一处随「弹幕量 × 在播时长」无界增长的结构,堆涨时第一个该看它。
 		resourceMonitor = startResourceMonitor({
 			serviceCtx: runtime.serviceCtx,
+			// 浏览器那一行:`puppeteer` 是可换的(系统页改 chrome 来源会热换一个新适配器),
+			// 所以每次现问那个变量,别把当下这一个捕进闭包。
+			browser: {
+				info: () => puppeteer?.browserProcess() ?? { state: "none", pid: null },
+				subtreeRss: (pid) => browserSubtreeRss(pid),
+			},
 			// 每 tick 现问,系统页拨一下开关立刻生效,不用重启也不用另接 config-changed。
 			memoryLogEnabled: () => runtime.configStore.getGlobals().app.memoryLog,
 			probes: [

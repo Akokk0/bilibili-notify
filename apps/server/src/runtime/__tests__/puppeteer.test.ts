@@ -67,12 +67,13 @@ function makeFakePage() {
 	};
 }
 
-function makeFakeBrowser() {
+function makeFakeBrowser(pid: number | null = 4242) {
 	let connected = true;
 	return {
 		get connected() {
 			return connected;
 		},
+		process: vi.fn(() => (pid === null ? null : { pid })),
 		newPage: vi.fn(async () => makeFakePage()),
 		close: vi.fn(async () => {
 			connected = false;
@@ -286,5 +287,57 @@ describe("createPuppeteerAdapter remote endpoint", () => {
 		await adapter.dispose();
 		expect(launcher.browsers[0]?.disconnect).toHaveBeenCalledTimes(1);
 		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+	});
+});
+
+describe("createPuppeteerAdapter browserProcess", () => {
+	it("没起过浏览器 → none:资源卡那一行显示「未接入」而不是 0MB", () => {
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher: makeFakeLauncher(),
+		});
+		expect(adapter.browserProcess()).toEqual({ state: "none", pid: null });
+	});
+
+	it("本地跑着 → running 带 pid,量子树 RSS 要靠它当根", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+		});
+		const page = await adapter.page();
+		expect(adapter.browserProcess()).toEqual({ state: "running", pid: 4242 });
+		await page.close();
+	});
+
+	it("空闲关掉之后 → closed:是「省内存关了」,不是「没配」", async () => {
+		vi.useFakeTimers();
+		try {
+			const adapter = createPuppeteerAdapter({
+				chromePath: "/fake/chrome",
+				logger: makeLogger(),
+				launcher: makeFakeLauncher(),
+				idleTimeoutMs: 5_000,
+			});
+			const page = await adapter.page();
+			await page.close();
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(adapter.browserProcess()).toEqual({ state: "closed", pid: null });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("远程浏览器 → remote:进程在别人机器上,这里量不到", async () => {
+		const adapter = createPuppeteerAdapter({
+			chromeEndpoint: "ws://browserless:3000",
+			logger: makeLogger(),
+			launcher: makeFakeLauncher(),
+		});
+		const page = await adapter.page();
+		expect(adapter.browserProcess()).toEqual({ state: "remote", pid: null });
+		await page.close();
 	});
 });
