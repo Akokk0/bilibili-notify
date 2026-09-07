@@ -1206,6 +1206,61 @@ export function platformLabel(platform: string): string {
 	return PLATFORM_META[platform]?.label ?? platform;
 }
 
+// ── Donut (环形占比图) ─────────────────────────────────────────────────────
+
+/**
+ * 环形占比图:一圈灰轨道 + 一段按 `value` 长度的彩弧。
+ *
+ * `value` 夹在 0..1 —— 算出来的比例再离谱(分母读成 0 就是 Infinity),环也不绕回去。
+ * `title` 是念给读屏器的那句话:同一页上两个环讲的不是同一件事,都念「占比」听不出区别。
+ */
+export function Donut({
+	value,
+	size = 104,
+	color,
+	stroke = 13,
+	label,
+	title = "占比",
+}: {
+	value: number;
+	size?: number;
+	color: string;
+	stroke?: number;
+	label?: ReactNode;
+	title?: string;
+}) {
+	const r = (size - stroke) / 2;
+	const c = 2 * Math.PI * r;
+	return (
+		<div className="relative" style={{ width: size, height: size }}>
+			<svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+				<title>{title}</title>
+				<circle
+					cx={size / 2}
+					cy={size / 2}
+					r={r}
+					fill="none"
+					stroke="var(--color-bn-code-bg)"
+					strokeWidth={stroke}
+				/>
+				<circle
+					cx={size / 2}
+					cy={size / 2}
+					r={r}
+					fill="none"
+					stroke={color}
+					strokeWidth={stroke}
+					strokeLinecap="round"
+					strokeDasharray={`${c * Math.max(0, Math.min(1, value))} ${c}`}
+				/>
+			</svg>
+			{label ? (
+				<div className="absolute inset-0 flex items-center justify-center">{label}</div>
+			) : null}
+		</div>
+	);
+}
+
 // ── StatsBar (mini bar chart) ──────────────────────────────────────────────
 
 export interface StatsBarDatum {
