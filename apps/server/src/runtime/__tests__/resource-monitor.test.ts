@@ -170,3 +170,130 @@ describe("ResourceMonitor 采样", () => {
 		expect(seen.mock.calls[1]?.[0]).toMatchObject({ memUsed: 1200 * MB, procCpu: 0.8 });
 	});
 });
+
+describe("ResourceMonitor 内存自检日志", () => {
+	function heap(mb: number) {
+		return () => ({
+			rss: 340 * MB,
+			heapUsed: mb * MB,
+			heapTotal: (mb + 40) * MB,
+			external: 12 * MB,
+		});
+	}
+
+	it("开关开着:10 分钟一行 info,带堆用量 / 上限 / 占比 / 已提交与业务规模采样点", () => {
+		const { ctx, fire, logger } = makeCtx();
+		const { readers, advance } = makeReaders({ memoryUsage: heap(210) });
+		startResourceMonitor({
+			serviceCtx: ctx,
+			readers,
+			memoryLogEnabled: () => true,
+			probes: [() => "弹幕 3 房/12000 词/8000 人"],
+		});
+
+		fire(2000);
+		// 第一个 tick 就落一行 —— 启动后的第一份曲线点不该等 10 分钟。
+		expect(logger.info).toHaveBeenCalledTimes(1);
+		const line = String(logger.info.mock.calls[0]?.[0] ?? "");
+		expect(line).toContain("210");
+		expect(line).toContain("512");
+		expect(line).toContain("41%");
+		expect(line).toMatch(/250\s*MB/);
+		expect(line).toContain("弹幕 3 房/12000 词/8000 人");
+
+		// 之后 2 秒一 tick 不能 2 秒一行 —— 一天 43200 行会把按天分卷的归档刷爆。
+		for (let i = 0; i < 299; i++) {
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(logger.info).toHaveBeenCalledTimes(1);
+		advance(2000, {});
+		fire(2000);
+		expect(logger.info).toHaveBeenCalledTimes(2);
+	});
+
+	it("开关关着(默认):一行 info 都不写;中途打开立刻生效", () => {
+		const { ctx, fire, logger } = makeCtx();
+		const { readers, advance } = makeReaders({ memoryUsage: heap(210) });
+		let enabled = false;
+		startResourceMonitor({ serviceCtx: ctx, readers, memoryLogEnabled: () => enabled });
+
+		for (let i = 0; i < 400; i++) {
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(logger.info).not.toHaveBeenCalled();
+
+		// 系统页拨开开关,不重启就该开始记。
+		enabled = true;
+		advance(2000, {});
+		fire(2000);
+		expect(logger.info).toHaveBeenCalledTimes(1);
+	});
+
+	it("某个采样点抛了,进程级那行照样落地", () => {
+		const { ctx, fire, logger } = makeCtx();
+		const { readers } = makeReaders({ memoryUsage: heap(210) });
+		startResourceMonitor({
+			serviceCtx: ctx,
+			readers,
+			memoryLogEnabled: () => true,
+			probes: [
+				() => {
+					throw new Error("引擎还没起来");
+				},
+				() => "弹幕 3 房/12000 词/8000 人",
+			],
+		});
+		fire(2000);
+		const line = String(logger.info.mock.calls[0]?.[0] ?? "");
+		expect(line).toContain("210");
+		expect(line).toContain("弹幕 3 房/12000 词/8000 人");
+	});
+
+	it("85% warn 是独立安全网:开关关着也响,越线一次只响一次,回落到 80% 以下才重新武装", () => {
+		const { ctx, fire, logger } = makeCtx();
+		let mb = 210;
+		const { readers, advance } = makeReaders({ memoryUsage: () => heap(mb)() });
+		startResourceMonitor({ serviceCtx: ctx, readers, memoryLogEnabled: () => false });
+
+		fire(2000);
+		expect(logger.warn).not.toHaveBeenCalled();
+
+		// 450/512 = 88%:响一次,说清撞上去的后果与怎么撑住。
+		mb = 450;
+		advance(2000, {});
+		fire(2000);
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		const line = String(logger.warn.mock.calls[0]?.[0] ?? "");
+		expect(line).toContain("88%");
+		expect(line).toMatch(/上限|FATAL|退出/);
+		expect(line).toContain("max-old-space-size");
+
+		// 一直在 85% 以上晃:2 秒一 tick 不能 2 秒一条 warn。
+		for (let i = 0; i < 30; i++) {
+			mb = i % 2 === 0 ? 440 : 460;
+			advance(2000, {});
+			fire(2000);
+		}
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+
+		// 掉到 82%(还没回 80% 以下)再冲上去也不算新一轮 —— 卡在阈值附近抖动不该刷屏。
+		mb = 420;
+		advance(2000, {});
+		fire(2000);
+		mb = 450;
+		advance(2000, {});
+		fire(2000);
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+
+		// 回到 400/512 = 78% 才重新武装,再越线就是新一轮。
+		mb = 400;
+		advance(2000, {});
+		fire(2000);
+		mb = 450;
+		advance(2000, {});
+		fire(2000);
+		expect(logger.warn).toHaveBeenCalledTimes(2);
+	});
+});

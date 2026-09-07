@@ -98,7 +98,6 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 | `NODE_OPTIONS` | `--max-old-space-size=512` | V8 堆上限,压住 RSS 浮高;compose 可覆盖 |
 | `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
 | `BN_LOG_LEVEL` | `info` | 日志级别;引擎启动后被 dashboard 配置接管 |
-| `BN_MEMORY_PROBE_SECONDS` | 未设(=600) | 内存自检日志的采样间隔(秒);`0` = 关闭,下限 30 |
 | `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` | 未设 | dashboard 登录凭据(首启动 seed 源) |
 | `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(首启动 seed 源) |
 
@@ -138,7 +137,7 @@ environment:
 ```
 
 但抬上限只是止痛 —— 堆要是**慢慢涨**上去的,抬完只是把崩溃推迟。想分清是哪一种,
-翻日志里的 `[mem]` 行(默认 10 分钟一条,一并报出弹幕收集器占的规模):
+翻日志里的 `[mem]` 行(开着的话 10 分钟一条,一并报出弹幕收集器占的规模):
 
 ```
 [mem] heap 210/512MB (41%, 已提交 250MB) rss 340MB external 12MB | 弹幕 3 房/12000 词/8000 人
@@ -149,8 +148,11 @@ environment:
 所以别照堆上限去设 `mem_limit`,否则会从撞 V8 上限变成被系统 OOM 杀。
 
 一开机就接近上限 → 是容量不够,抬上限就对了;几个小时一路爬上去 → 是泄漏,
-请带上这几行开 issue。堆用量超过上限 85% 时这条会升成 `warn` 并附上处理办法;
-不想要这条日志可设 `BN_MEMORY_PROBE_SECONDS=0` 关掉。
+请带上这几行开 issue。
+
+这行日志**默认不写**,要它请到控制台「系统 → Core · 应用 → 内存自检打印」拨开;
+概览页的「系统资源」卡不靠它,随时都能看实时值。堆用量超过上限 85% 时无论开关如何
+都会有一条 `warn` 并附上处理办法。
 
 ### 故障排查
 

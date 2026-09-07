@@ -1,5 +1,6 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { ResourceSample, ResourcesHydrate } from "@bilibili-notify/contract";
 import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
@@ -21,6 +22,15 @@ import {
 } from "./types.js";
 
 /** Public options accepted by `createWsServer`. */
+/**
+ * `resources` 频道要的那点能力 —— 结构性口,WS 这层不认识采样器本体。
+ * 生产实现是 `runtime/resource-monitor.ts` 的 `ResourceMonitor`。
+ */
+export interface ResourceMonitorSource {
+	hydrate(): ResourcesHydrate;
+	subscribe(listener: (sample: ResourceSample) => void): Disposable;
+}
+
 export interface CreateWsServerOptions {
 	httpServer: HttpServer;
 	bus: MessageBus;
@@ -33,6 +43,11 @@ export interface CreateWsServerOptions {
 	heartbeatTimeoutMs?: number;
 	/** Optional pre-built log channel. We create one if not provided. */
 	logChannel?: LogChannel;
+	/**
+	 * 资源采样器 —— `resources` 频道的数据源。订阅那一刻交出 hydrate,之后每个样本推一帧。
+	 * 省掉不传就是这台没接采样器:订阅照常 ACK,只是没有帧。
+	 */
+	resources?: ResourceMonitorSource;
 	/**
 	 * Whether dashboard auth is enabled. When true the WS upgrade handshake
 	 * requires a valid one-shot `?ticket=` (issued by the cookie-authed
@@ -105,6 +120,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		"push-events": new Set(),
 		log: new Set(),
 		state: new Set(),
+		resources: new Set(),
 	};
 
 	// ---------------- HTTP upgrade ---------------------------------------------
@@ -214,6 +230,33 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		}
 	}
 
+	/**
+	 * 采样监听的**惰性挂载**:只在有人订着 `resources` 时挂,最后一个走了就摘。
+	 *
+	 * 面板不在这一页时没人要这些数字,挂着只是白算 —— 而且浏览器子树那一项要起子进程,
+	 * 空转的代价不是零。订阅者数是唯一的开关,显式 unsubscribe 与断线走的是同一条路。
+	 */
+	let resourceHandle: Disposable | null = null;
+
+	function syncResourceListener(): void {
+		const wanted = roster.resources.size > 0;
+		if (wanted && !resourceHandle && opts.resources) {
+			resourceHandle = opts.resources.subscribe((sample) => {
+				broadcast({
+					type: "resources",
+					event: "sample",
+					ts: new Date().toISOString(),
+					data: sample,
+				});
+			});
+			return;
+		}
+		if (!wanted && resourceHandle) {
+			resourceHandle.dispose();
+			resourceHandle = null;
+		}
+	}
+
 	function broadcast(envelope: ServerEventEnvelope): void {
 		const channelClients = roster[envelope.type];
 		if (!channelClients || channelClients.size === 0) return;
@@ -298,6 +341,8 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			if (!clients.delete(client)) return;
 			for (const ch of client.subscriptions) roster[ch].delete(client);
 			client.subscriptions.clear();
+			// 关掉页面走的是这条路,不是显式 unsubscribe —— 摘监听两边都得管。
+			syncResourceListener();
 			log.debug(`ws client ${client.id} disconnected (total=${clients.size})`);
 		};
 
@@ -370,6 +415,16 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 				if (added.includes("state")) {
 					sendRaw(client, buildStateHydrate());
 				}
+				// 资源卡挂上就要有静态量与近 5 分钟那段,否则 sparkline 得从零长 5 分钟。
+				if (added.includes("resources") && opts.resources) {
+					sendRaw(client, {
+						type: "resources",
+						event: "hydrate",
+						ts: new Date().toISOString(),
+						data: opts.resources.hydrate(),
+					});
+				}
+				syncResourceListener();
 				break;
 			}
 			case "unsubscribe": {
@@ -381,6 +436,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 					channels: msg.channels,
 					ts: new Date().toISOString(),
 				});
+				syncResourceListener();
 				break;
 			}
 			case "ping": {
@@ -409,6 +465,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		}
 		clients.clear();
 		for (const k of CHANNELS) roster[k].clear();
+		syncResourceListener();
 		try {
 			wss.close();
 		} catch {

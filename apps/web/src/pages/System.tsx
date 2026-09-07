@@ -8,6 +8,7 @@ import {
 	LoadingBlock,
 	ModalShell,
 	StatusDot,
+	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -249,6 +250,14 @@ function SystemSettingsSection({
 					min={1}
 					max={365}
 					suffix="天"
+				/>
+			</Field>
+
+			<Field code="app.memoryLog">
+				<Toggle
+					value={app.memoryLog}
+					onChange={(v) => setApp("memoryLog", v)}
+					ariaLabel="内存自检打印"
 				/>
 			</Field>
 

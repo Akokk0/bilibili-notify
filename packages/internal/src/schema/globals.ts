@@ -99,6 +99,12 @@ export const AppConfigSchema = z.object({
 	 * 长期价值低)。
 	 */
 	logRetentionDays: z.number().int().min(1).max(365).default(7),
+	/**
+	 * 内存自检打印:开着就每 10 分钟往日志写一行 `[mem]`(堆用量 / 上限 / 占比 / RSS /
+	 * 弹幕收集器规模)。默认关 —— 概览页的「系统资源」卡已经实时在看,这行只给要留一条
+	 * 长曲线排泄漏的人。堆逼近上限的 warn 不归它管,始终在。
+	 */
+	memoryLog: z.boolean().default(false),
 });
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 

@@ -59,8 +59,8 @@ describe("buildStateHydrate", () => {
 		expect(env.data).toBeNull();
 	});
 
-	it("ALL_CHANNELS 即四频道注册表", () => {
-		expect(ALL_CHANNELS).toEqual(["auth", "push-events", "log", "state"]);
+	it("ALL_CHANNELS 即五频道注册表", () => {
+		expect(ALL_CHANNELS).toEqual(["auth", "push-events", "log", "state", "resources"]);
 	});
 });
 

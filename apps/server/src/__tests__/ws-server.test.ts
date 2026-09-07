@@ -3,6 +3,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ResourceSample, ResourcesHydrate } from "@bilibili-notify/contract";
 import type {
 	ConfigScope,
 	Disposable,
@@ -120,6 +121,48 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 // Suite
 // ---------------------------------------------------------------------------
 
+/**
+ * 假的资源采样器 —— WS 这层只关心两件事:订阅那一刻交出 hydrate、之后每个样本推一帧,
+ * 而且**没人订就一个都不推**(采样本身也该省下来)。真读数怎么来是采样器自己的测试。
+ */
+function fakeResourceMonitor() {
+	const listeners = new Set<(s: ResourceSample) => void>();
+	const sample: ResourceSample = {
+		ts: 1_700_000_000_000,
+		hostCpu: 0.6,
+		procCpu: 0.2,
+		heapUsed: 210 * 1024 * 1024,
+		rss: 340 * 1024 * 1024,
+		memUsed: 5 * 1024 * 1024 * 1024,
+		browserRss: null,
+		browserState: "none",
+	};
+	return {
+		sample,
+		listenerCount: () => listeners.size,
+		emit: () => {
+			for (const l of [...listeners]) l(sample);
+		},
+		monitor: {
+			hydrate: (): ResourcesHydrate => ({
+				static: {
+					cpuModel: "AMD EPYC 7K62 48-Core Processor",
+					hostCores: 4,
+					cpuBudget: 4,
+					memTotal: 8 * 1024 * 1024 * 1024,
+					memSource: "host",
+					heapLimit: 512 * 1024 * 1024,
+				},
+				history: [sample],
+			}),
+			subscribe(listener: (s: ResourceSample) => void) {
+				listeners.add(listener);
+				return { dispose: () => listeners.delete(listener) };
+			},
+		},
+	};
+}
+
 describe("WS server", () => {
 	let dataDir: string;
 	let bus: MessageBus;
@@ -128,6 +171,7 @@ describe("WS server", () => {
 	let httpServer: HttpServer;
 	let port: number;
 	let wsServer: WsServer;
+	let resources: ReturnType<typeof fakeResourceMonitor>;
 	let logHookDisposable: Disposable | undefined;
 
 	beforeEach(async () => {
@@ -139,10 +183,12 @@ describe("WS server", () => {
 		const started = await startHttpServer();
 		httpServer = started.server;
 		port = started.port;
+		resources = fakeResourceMonitor();
 		wsServer = createWsServer({
 			httpServer,
 			bus,
 			serviceCtx,
+			resources: resources.monitor,
 			// Fast heartbeat for the heartbeat test; 0 disables for tests that don't need it.
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -275,6 +321,61 @@ describe("WS server", () => {
 		const pong = await c.waitFor((m) => m?.type === "pong");
 		expect(pong).toBeDefined();
 		ws.close();
+	});
+
+	it("订阅 resources → 立刻收到 hydrate(静态量 + 已攒下的样本)", async () => {
+		const ws = await connect(port);
+		const c = collect(ws);
+		send(ws, { type: "subscribe", channels: ["resources"] });
+
+		const hydrate = await c.waitFor((m) => m?.type === "resources" && m?.event === "hydrate");
+		const data = dataOf(hydrate);
+		// sparkline 不该从零长起 —— 面板一挂上就要有近 5 分钟那段。
+		expect((data.static as { hostCores: number }).hostCores).toBe(4);
+		expect(data.history).toHaveLength(1);
+		ws.close();
+	});
+
+	it("之后每个样本推一帧 sample", async () => {
+		const ws = await connect(port);
+		const c = collect(ws);
+		send(ws, { type: "subscribe", channels: ["resources"] });
+		await c.waitFor((m) => m?.type === "resources" && m?.event === "hydrate");
+
+		resources.emit();
+		const frame = await c.waitFor((m) => m?.type === "resources" && m?.event === "sample");
+		expect(dataOf(frame).heapUsed).toBe(210 * 1024 * 1024);
+		ws.close();
+	});
+
+	it("没人订 resources 就不挂采样监听 —— 谁都没看时连采都省了", async () => {
+		expect(resources.listenerCount()).toBe(0);
+
+		const ws = await connect(port);
+		const c = collect(ws);
+		send(ws, { type: "subscribe", channels: ["resources"] });
+		await c.waitFor((m) => m?.type === "resources" && m?.event === "hydrate");
+		expect(resources.listenerCount()).toBe(1);
+
+		send(ws, { type: "unsubscribe", channels: ["resources"] });
+		await c.waitFor((m) => m?.type === "unsubscribed");
+		expect(resources.listenerCount()).toBe(0);
+		ws.close();
+	});
+
+	it("最后一个订阅者断线也要摘掉监听,不是只认显式 unsubscribe", async () => {
+		const ws = await connect(port);
+		const c = collect(ws);
+		send(ws, { type: "subscribe", channels: ["resources"] });
+		await c.waitFor((m) => m?.type === "resources" && m?.event === "hydrate");
+		expect(resources.listenerCount()).toBe(1);
+
+		ws.close();
+		// 关掉页面就是这条路径(前端不会先礼貌地退订)。
+		for (let i = 0; i < 50 && resources.listenerCount() > 0; i++) {
+			await new Promise((r) => setTimeout(r, 10));
+		}
+		expect(resources.listenerCount()).toBe(0);
 	});
 
 	it("logger.warn is forwarded onto the log channel", async () => {

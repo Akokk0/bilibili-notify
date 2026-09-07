@@ -131,6 +131,11 @@ export const FIELD_LABELS = {
 		hint: "到期的 jsonl 日志会被清理",
 		section: "logging",
 	},
+	"app.memoryLog": {
+		label: "内存自检打印",
+		hint: "每 10 分钟往日志写一行 [mem](堆用量 / 上限 / RSS / 弹幕规模),给排泄漏留曲线;概览页的系统资源卡不靠它。堆逼近上限的警告始终会响",
+		section: "logging",
+	},
 
 	// ── Master ────────────────────────────────────────────────────────────
 	"master.targetId": {

@@ -37,11 +37,11 @@ import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import { createLinkParser, type LinkSourcePlatform } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
-import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
+import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
@@ -92,6 +92,7 @@ export async function startStandaloneServer(
 	let wsTicketStore: ReturnType<typeof createWsTicketStore> | null | undefined;
 	let server: ServerType | undefined;
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
+	let resourceMonitor: ResourceMonitor | undefined;
 	let previousLogHook: ((entry: LogEntry) => void) | undefined;
 	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
 	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
@@ -346,12 +347,13 @@ export async function startStandaloneServer(
 		});
 		runtime.attachEngines(engines);
 
-		// 内存自检:默认 10 分钟一条,`BN_MEMORY_PROBE_SECONDS=0` 关掉。
+		// 资源采样:概览页「系统资源」卡的数据源,也是内存自检那行日志的出处。
 		// 挂在 engines 之后,好把弹幕收集器的规模一起报出来 —— 那是引擎里唯一
 		// 一处随「弹幕量 × 在播时长」无界增长的结构,堆涨时第一个该看它。
-		startMemoryProbe({
+		resourceMonitor = startResourceMonitor({
 			serviceCtx: runtime.serviceCtx,
-			intervalSeconds: resolveProbeInterval(process.env.BN_MEMORY_PROBE_SECONDS),
+			// 每 tick 现问,系统页拨一下开关立刻生效,不用重启也不用另接 config-changed。
+			memoryLogEnabled: () => runtime.configStore.getGlobals().app.memoryLog,
 			probes: [
 				() => {
 					const s = engines?.live.danmakuStats();
@@ -759,6 +761,7 @@ export async function startStandaloneServer(
 			httpServer,
 			bus: runtime.bus,
 			serviceCtx: runtime.serviceCtx,
+			resources: resourceMonitor,
 			authRequired: !!basicAuthCredentials,
 			wsTicketStore,
 			allowedOrigins,

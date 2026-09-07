@@ -1,5 +1,5 @@
 /**
- * WS wire 契约 —— 独立端单端点 `/ws`,四个逻辑 channel 复用 JSON envelope。
+ * WS wire 契约 —— 独立端单端点 `/ws`,五个逻辑 channel 复用 JSON envelope。
  *
  * Wire format
  * ----------
@@ -25,7 +25,7 @@
 // Channel registry
 // ---------------------------------------------------------------------------
 
-export const CHANNELS = ["auth", "push-events", "log", "state"] as const;
+export const CHANNELS = ["auth", "push-events", "log", "state", "resources"] as const;
 export type ChannelName = (typeof CHANNELS)[number];
 
 // ---------------------------------------------------------------------------
