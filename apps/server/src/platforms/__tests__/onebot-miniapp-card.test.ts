@@ -68,6 +68,7 @@ const CARD: NotificationPayload = {
 	title: "【测试】一个视频",
 	desc: "简介",
 	picUrl: "https://i0.hdslb.com/cover.jpg",
+	path: "pages/video/video?bvid=BV1zMtU6uEEb",
 	jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 };
 
@@ -252,12 +253,16 @@ describe("onebot — 发小程序卡", () => {
 		const r = await ad.send(obAdapter(), obTarget(), CARD);
 		expect(r.ok).toBe(true);
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
+		// 签卡请求里 jumpUrl 是**小程序页面路径**、webUrl 才是网页链接(QQ 客户端源码里
+		// 前者接的是 OpenSDK 的 mini_program_path,后者接的是 url,签回来落到 qqdocurl)。
+		// 把网址填进 jumpUrl 签出来的卡点开是「页面不存在」—— 2026-09-07 群友反馈那次。
 		expect(calledBody(0)).toEqual({
 			type: "bili",
 			title: CARD.kind === "miniapp-card" ? CARD.title : "",
 			desc: "简介",
 			picUrl: "https://i0.hdslb.com/cover.jpg",
-			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+			jumpUrl: "pages/video/video?bvid=BV1zMtU6uEEb",
+			webUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		});
 		expect(calledPath(1)).toBe("http://nb:3000/send_group_msg");
 		expect(calledBody(1)).toEqual({

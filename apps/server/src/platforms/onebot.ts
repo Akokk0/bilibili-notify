@@ -990,6 +990,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/**
 	 * 发一张小程序卡:先向腾讯签 ark(bili 模板),再把 ark 当 `json` 段走普通发送。
 	 * 签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动(可能只是暂时的)。
+	 *
+	 * 签卡请求的两个链接字段别看名字:`jumpUrl` 是**小程序页面路径**,`webUrl` 才是网页链接。
+	 * QQ 客户端源码里(MiniProgramOpenSdkUtil)前者接的是 OpenSDK 的 `mini_program_path`,
+	 * 后者接的是 `url`、签回来落到卡的 `qqdocurl`。NapCat 文档把前者写成「跳转 URL」,照着
+	 * 填网址签出来的卡点开是「页面不存在」;`webUrl` 不填则卡上压根没有 `qqdocurl`。
 	 */
 	async function sendMiniAppCard(
 		adapter: PushAdapter,
@@ -1005,7 +1010,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				title: card.title,
 				desc: card.desc,
 				picUrl: card.picUrl,
-				jumpUrl: card.jumpUrl,
+				jumpUrl: card.path,
+				webUrl: card.jumpUrl,
 			});
 			if (isActionMissing(r)) {
 				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";

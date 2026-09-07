@@ -206,9 +206,21 @@ export type NotificationPayload =
 	/**
 	 * QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。只有能向腾讯签 ark 的
 	 * OneBot 实现发得出(扩展接口 `get_mini_app_ark`,见 server 的 platforms/onebot.ts);
-	 * 别的平台一律回 `ok: false`,由链接解析那头回落图片卡。四个字段就是 bili 模板收的四样。
+	 * 别的平台一律回 `ok: false`,由链接解析那头回落图片卡。
+	 *
+	 * `path` 是**小程序里的页面路径**(B 站小程序的视频页是 `pages/video/video?bvid=…`),
+	 * `jumpUrl` 是网页链接。两个都要:签卡协议里页面路径决定点开落在哪一页,网页链接落到卡的
+	 * `qqdocurl`;把网址填进页面路径签出来的卡点开是「页面不存在」(2026-09-07 群友反馈那次)。
+	 * 签不了 ark 的平台降级成文字时只用 `jumpUrl`。
 	 */
-	| { kind: "miniapp-card"; title: string; desc: string; picUrl: string; jumpUrl: string };
+	| {
+			kind: "miniapp-card";
+			title: string;
+			desc: string;
+			picUrl: string;
+			path: string;
+			jumpUrl: string;
+	  };
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。

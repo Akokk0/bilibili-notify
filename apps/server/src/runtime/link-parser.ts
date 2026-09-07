@@ -155,8 +155,12 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	}
 
 	/**
-	 * 小程序卡的四个字段就是视频信息里的四样。简介太长腾讯那边显示不下,截前 80 字;空的
-	 * 用 UP 名顶上 —— 卡上那行小字空着很难看。
+	 * 小程序卡的字段都来自视频信息。简介太长腾讯那边显示不下,截前 80 字;空的用 UP 名
+	 * 顶上 —— 卡上那行小字空着很难看。
+	 *
+	 * 页面路径是 B 站小程序的视频页:拿 B 站 App 真分享出来的卡向腾讯问 `GetAppInfoByLink`
+	 * 解出来的是 `pages/video/video?bvid=…&share_source=qq_ugc&unique_k=…`,后两个是统计
+	 * 参数,只带 bvid 真机验过能开(2026-09-07)。
 	 */
 	function miniAppCardOf(info: VideoInfo): NotificationPayload {
 		const desc = info.desc.trim().slice(0, 80);
@@ -165,6 +169,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			title: info.title,
 			desc: desc || info.owner.name,
 			picUrl: info.pic,
+			path: `pages/video/video?bvid=${info.bvid}`,
 			jumpUrl: `https://www.bilibili.com/video/${info.bvid}`,
 		};
 	}

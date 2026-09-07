@@ -117,7 +117,14 @@ describe("createCaptureGate", () => {
 			{ kind: "forward-images", images: 2 },
 		],
 		[
-			{ kind: "miniapp-card", title: "标题", desc: "d", picUrl: "p", jumpUrl: "j" },
+			{
+				kind: "miniapp-card",
+				title: "标题",
+				desc: "d",
+				picUrl: "p",
+				path: "pages/x",
+				jumpUrl: "j",
+			},
 			{ kind: "miniapp-card", text: "标题", images: 0 },
 		],
 	])("各种载荷都摘得出:%j", async (payload, expected) => {

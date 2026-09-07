@@ -119,6 +119,7 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 			title: "示例标题",
 			desc: "简介",
 			picUrl: "https://i0.hdslb.com/cover.jpg",
+			path: "pages/video/video?bvid=BV1zMtU6uEEb",
 			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		};
 		expect(qqPayloadToParts(payload)).toEqual([

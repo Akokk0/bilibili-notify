@@ -551,6 +551,8 @@ describe("createLinkParser", () => {
 			title: "示例标题",
 			desc: "示例简介",
 			picUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+			// B 站小程序的视频页;真卡的路径是 GetAppInfoByLink 解出来的,只带 bvid 就能开。
+			path: "pages/video/video?bvid=BV1zMtU6uEEb",
 			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		};
 
