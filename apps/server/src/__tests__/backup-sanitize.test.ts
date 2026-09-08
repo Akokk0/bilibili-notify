@@ -64,6 +64,58 @@ describe("redactSecretKeys", () => {
 		expect(redactSecretKeys(input).defaults.ai.search.backend).toBe("bocha");
 	});
 
+	it("blanks every header value —— 自定义鉴权头的键名是用户自己起的,白名单认不出", () => {
+		// onebot 与 webhook 的 config 都有 `headers`,schema 注释自己写着「例如
+		// 自定义鉴权头 / Authorization」。键名由用户随手起(Authorization / X-Token /
+		// 公司自定义),按键名的白名单永远追不上 —— 容器名 `headers` 才是稳定信号。
+		const input = {
+			adapters: [
+				{
+					config: {
+						transport: "ws",
+						url: "ws://host",
+						headers: { Authorization: "Bearer hdr-SECRET", "X-Company-Key": "xck-SECRET" },
+					},
+				},
+			],
+		};
+		const json = JSON.stringify(redactSecretKeys(input));
+		expect(json).not.toContain("hdr-SECRET");
+		expect(json).not.toContain("xck-SECRET");
+		// 形状保留:头名还在(用户才知道要重填哪几个),只有值被抹空
+		expect(redactSecretKeys(input).adapters[0]?.config.headers).toEqual({
+			Authorization: "",
+			"X-Company-Key": "",
+		});
+	});
+
+	it("strips credentials carried inside a URL —— ?access_token= 与 user:pass@ 都不是叶子", () => {
+		// webhook 的 url 常自带凭据(`?access_token=`),onebot 的 baseUrl 也可能带
+		// userinfo。它们不是「某个叫 token 的叶子」,深走键名的白名单根本看不见。
+		const input = {
+			adapters: [
+				{ config: { url: "https://example.com/hook?access_token=url-SECRET&a=1" } },
+				{ config: { baseUrl: "http://bob:pw-SECRET@127.0.0.1:5700/" } },
+			],
+		};
+		const out = redactSecretKeys(input);
+		const json = JSON.stringify(out);
+		expect(json).not.toContain("url-SECRET");
+		expect(json).not.toContain("pw-SECRET");
+		// 端点本身留着 —— 脱敏档还得能看出这条连接原本指向哪
+		expect(out.adapters[0]?.config.url).toBe("https://example.com/hook");
+		expect(out.adapters[1]?.config.baseUrl).toBe("http://127.0.0.1:5700/");
+	});
+
+	it("leaves a URL without credentials byte-identical", () => {
+		const out = redactSecretKeys({ url: "ws://127.0.0.1:6199/", baseUrl: "http://h:5700" }) as {
+			url: string;
+			baseUrl: string;
+		};
+		expect(out.url).toBe("ws://127.0.0.1:6199/");
+		expect(out.baseUrl).toBe("http://h:5700");
+	});
+
 	it("does not mutate the input", () => {
 		const input = { a: { apiKey: "sk-SECRET" } };
 		redactSecretKeys(input);
@@ -93,33 +145,46 @@ describe("redactSecretKeys", () => {
  */
 describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 	const base = { name: "n", enabled: true } as const;
+	// 走真 schema 造夹具而不是 `as Connection` 硬转:带 default 的字段(protocolVersion /
+	// 各种超时)由 parse 补齐,夹具就是运行时真正会落盘的那个形状。
+	const conn = (v: unknown) => ConnectionSchema.parse(v);
 	const adapters: Array<[string, Connection]> = [
 		[
 			"onebot",
-			{
+			conn({
 				...base,
 				id: "00000000-0000-4000-8000-000000000001",
 				platform: "onebot",
-				config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "tok" },
-			} as Connection,
+				config: {
+					transport: "http",
+					baseUrl: "http://bob:pw@127.0.0.1:5700/",
+					accessToken: "tok",
+					headers: { Authorization: "Bearer x" },
+				},
+			}),
 		],
 		[
 			"webhook",
-			{
+			conn({
 				...base,
 				id: "00000000-0000-4000-8000-000000000002",
 				platform: "webhook",
-				config: { url: "https://example.com/hook", provider: "generic", secret: "wh" },
-			} as Connection,
+				config: {
+					url: "https://example.com/hook?access_token=t",
+					provider: "generic",
+					secret: "wh",
+					headers: { "X-Token": "x" },
+				},
+			}),
 		],
 		[
 			"qq-official",
-			{
+			conn({
 				...base,
 				id: "00000000-0000-4000-8000-000000000005",
 				platform: "qq-official",
 				config: { appId: "102000000", appSecret: "app-secret" },
-			} as Connection,
+			}),
 		],
 	];
 
