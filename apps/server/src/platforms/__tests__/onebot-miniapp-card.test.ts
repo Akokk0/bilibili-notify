@@ -45,6 +45,7 @@ function obConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "ob",
+		kind: "direct",
 		platform: "onebot",
 		enabled: true,
 		config: { transport: "http", baseUrl: "http://nb:3000", retryIntervalMs: 0, ...over },

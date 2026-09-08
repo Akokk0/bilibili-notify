@@ -36,7 +36,12 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
-import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
+import {
+	type Connection,
+	type DirectConnection,
+	isTargetPaused,
+	type PushTarget,
+} from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
 
@@ -236,7 +241,11 @@ function CapabilityPanel({
 	connections: readonly Connection[];
 	capabilities: ConnectionCapabilitiesMap;
 }) {
-	const onebots = connections.filter((a) => a.platform === "onebot");
+	// 只有直连认得出自己是不是 OneBot;桥接入的平台是它握手时报的,那一栏等接桥再说。
+	const onebots = connections.filter(
+		(a): a is Extract<DirectConnection, { platform: "onebot" }> =>
+			a.kind === "direct" && a.platform === "onebot",
+	);
 	return (
 		<section aria-label="连接支持情况" className="mt-4">
 			<Section label="连接支持情况">

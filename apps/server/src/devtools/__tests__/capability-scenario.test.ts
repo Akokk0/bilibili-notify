@@ -15,12 +15,14 @@ import { capabilityScenario } from "../scenarios/capability.js";
 const OB = {
 	id: "ad-ob",
 	name: "NapCat",
+	kind: "direct",
 	platform: "onebot",
 	enabled: true,
 } as unknown as Connection;
 const WH = {
 	id: "ad-wh",
 	name: "钩子",
+	kind: "direct",
 	platform: "webhook",
 	enabled: true,
 } as unknown as Connection;

@@ -1,5 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
 import type { NotificationPayload } from "@bilibili-notify/internal";
+import { connectionDispatchKey } from "@bilibili-notify/internal";
 import type { PlatformAdapter } from "../platforms/types.js";
 
 /**
@@ -111,7 +112,7 @@ export function createCaptureGate(): CaptureGate {
 						at: Date.now(),
 						connectionId: connection.id,
 						connectionName: connection.name,
-						platform: connection.platform,
+						platform: connectionDispatchKey(connection),
 						targetId: target.id,
 						targetName: target.name,
 						private: opts?.private === true,

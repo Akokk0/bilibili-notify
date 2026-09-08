@@ -13,6 +13,7 @@ import {
 	deterministicUuid,
 	type GlobalConfig,
 	GlobalConfigSchema,
+	isDirectConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	migrateConfigSections,
@@ -373,6 +374,21 @@ function isKnownConnectionPlatform(raw: unknown): boolean {
 }
 
 /**
+ * 盘上这条连接是不是「已撤下平台」的存量 —— 该静默丢掉的那种。
+ *
+ * ⚠️ 这个判断跑在 **parse 之前**、拿的是原始 JSON,所以它必须自己认得桥那一支:
+ * 桥接入**没有 `platform`**,照老写法会被当成撤下的平台**在开机时静默丢光**,
+ * 而且下一次任何写入都会把这个丢弃**写实到盘上**。判据先看 `kind`,只有直连那一支
+ * 才有平台可撤。
+ *
+ * 认不出 kind 又认不出平台的行,交给 parse 去报错 —— 那是真损坏,不许静默吃掉。
+ */
+function isRetiredConnection(raw: unknown): boolean {
+	if ((raw as { kind?: unknown })?.kind === "bridge") return false;
+	return !isKnownConnectionPlatform(raw);
+}
+
+/**
  * 这个目标是不是「已撤下平台留下的存量」。
  *
  * 目标的平台是**开放词表**,所以「认不认识」这个问题没法再靠词表回答 —— 桥驮进来的
@@ -388,14 +404,49 @@ function isRetiredTarget(raw: unknown): boolean {
 }
 
 /**
+ * 连接的**身份轴**不许改 —— 换 `kind` 或换 `platform` 都等于换了另一条连接,而目标还
+ * 挂在原来那个 id 上。允许改的话,「onebot 群目标」会一夜之间挂在一条飞书连接下面。
+ *
+ * 桥接入那一支只有 `kind` 一根身份轴(它没有 platform),所以两条判断分开写:
+ * 先比 kind,同为直连时再比 platform。
+ */
+function assertConnectionIdentityStable(current: Connection, next: Connection): void {
+	if (current.kind !== next.kind) {
+		throw new ConfigValidationError(
+			"connections",
+			{
+				id: next.id,
+				from: current.kind,
+				to: next.kind,
+				message: "connection kind cannot be changed",
+			},
+			`connection ${next.id} kind cannot be changed`,
+		);
+	}
+	if (!isDirectConnection(current) || !isDirectConnection(next)) return;
+	if (current.platform !== next.platform) {
+		throw new ConfigValidationError(
+			"connections",
+			{
+				id: next.id,
+				from: current.platform,
+				to: next.platform,
+				message: "connection platform cannot be changed",
+			},
+			`connection ${next.id} platform cannot be changed`,
+		);
+	}
+}
+
+/**
  * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
  *
  * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
  * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
  *
- * ⚠️ 接桥那步要重定义:桥连接**没有 platform**(平台靠探测),那时这里得先按
- * `connection.kind` 分岔 —— direct 才比平台,bridge 改比「桥探测到的平台集合」。
- * 届时 `connection.platform` 会直接编译不过,不会静默放行。
+ * 桥接入那一支**没有 platform**(平台是桥握手时报的、是运行时知识),所以这里只校验
+ * 「连接存在」。「这个平台真的挂在那条桥上吗」得等桥报了名单才答得出,那是投递层的事 ——
+ * 在存储期拒绝等于要求「先连上桥才能配目标」,而目标本来就允许先建壳后填。
  */
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
 	const owner = connections.find((a) => a.id === target.connectionId);
@@ -406,6 +457,7 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 			`target ${target.id} references unknown connection ${target.connectionId}`,
 		);
 	}
+	if (!isDirectConnection(owner)) return;
 	if (owner.platform !== target.platform) {
 		throw new ConfigValidationError(
 			"targets",
@@ -955,7 +1007,7 @@ class NodeConfigStore implements ConfigStore {
 
 			const connections: Connection[] = [];
 			for (const [idx, raw] of migrated.connections.entries()) {
-				if (!isKnownConnectionPlatform(raw)) continue;
+				if (isRetiredConnection(raw)) continue;
 				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
@@ -1213,18 +1265,7 @@ class NodeConfigStore implements ConfigStore {
 				throw new ConfigValidationError("connections", parsed.error.issues);
 			}
 			const existing = this.connections.find((a) => a.id === parsed.data.id);
-			if (existing && existing.platform !== parsed.data.platform) {
-				throw new ConfigValidationError(
-					"connections",
-					{
-						id: parsed.data.id,
-						from: existing.platform,
-						to: parsed.data.platform,
-						message: "connection platform cannot be changed",
-					},
-					`connection ${parsed.data.id} platform cannot be changed`,
-				);
-			}
+			if (existing) assertConnectionIdentityStable(existing, parsed.data);
 			const next = upsertById(this.connections, parsed.data);
 			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
@@ -1266,18 +1307,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("connections", parsed.error.issues);
 			}
-			if (current.platform !== parsed.data.platform) {
-				throw new ConfigValidationError(
-					"connections",
-					{
-						id,
-						from: current.platform,
-						to: parsed.data.platform,
-						message: "connection platform cannot be changed",
-					},
-					`connection ${id} platform cannot be changed`,
-				);
-			}
+			assertConnectionIdentityStable(current, parsed.data);
 			const next = [...this.connections];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("connections"), next);

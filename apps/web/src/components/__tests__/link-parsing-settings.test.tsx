@@ -11,7 +11,7 @@ import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { Connection, PushTarget } from "../../types/domain";
+import type { Connection, DirectConnection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { LinkParsingSettings } from "../link-parsing-settings";
 
@@ -58,8 +58,8 @@ const A_OB = "11111111-1111-4111-8111-111111111111";
 const A_OB2 = "22222222-2222-4222-8222-222222222222";
 const A_QQ = "33333333-3333-4333-8333-333333333333";
 
-function connection(id: string, name: string, platform: Connection["platform"]): Connection {
-	return { id, name, platform, enabled: true, config: {} } as unknown as Connection;
+function connection(id: string, name: string, platform: DirectConnection["platform"]): Connection {
+	return { id, name, kind: "direct", platform, enabled: true, config: {} } as unknown as Connection;
 }
 
 const ADAPTERS: Connection[] = [

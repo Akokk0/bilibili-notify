@@ -117,6 +117,7 @@ function obConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "ob",
+		kind: "direct",
 		platform: "onebot",
 		enabled: true,
 		config: {
@@ -134,6 +135,7 @@ function obWsConnection(port: number, over: Record<string, unknown> = {}): Conne
 	return {
 		id: "a1",
 		name: "ob-ws",
+		kind: "direct",
 		platform: "onebot",
 		enabled: true,
 		config: { transport: "ws", url: `ws://127.0.0.1:${port}`, retryIntervalMs: 0, ...over },
@@ -145,6 +147,7 @@ function obRevConnection(port: number, over: Record<string, unknown> = {}): Conn
 	return {
 		id: "a1",
 		name: "ob-rev",
+		kind: "direct",
 		platform: "onebot",
 		enabled: true,
 		config: { transport: "ws-reverse", port, retryIntervalMs: 0, ...over },

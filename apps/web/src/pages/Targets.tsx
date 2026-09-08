@@ -1,6 +1,10 @@
 import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
 // 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
-import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/constants";
+import {
+	addressNounFor,
+	connectionDispatchKey,
+	platformDescriptor,
+} from "@bilibili-notify/internal/constants";
 import {
 	AddCard,
 	Btn,
@@ -89,6 +93,10 @@ function scopeLabel(s: PushTargetScope): string {
 }
 
 function connectionEndpointSummary(a: Connection): string {
+	if (a.kind === "bridge") {
+		// 地址在桥那头(是桥主动连过来的),这边只说它是哪种桥。
+		return a.config.bridgeKind === "koishi" ? "koishi 桥接" : "AstrBot 桥接";
+	}
 	if (a.platform === "onebot") {
 		const c = a.config;
 		if (c.transport === "http") return c.baseUrl;
@@ -328,7 +336,7 @@ function ConnectionEditorModal({
 	const valid = value.name.trim().length > 0;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
 	const invalidHint = valid ? undefined : "请先填写显示名称";
-	const tint = platformTint(value.platform);
+	const tint = platformTint(connectionDispatchKey(value));
 	return (
 		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
@@ -337,7 +345,7 @@ function ConnectionEditorModal({
 					<Field label="平台" code="connection.platform" required>
 						<div className="flex flex-wrap gap-1.5">
 							{KNOWN_PLATFORMS.map((p) => {
-								const active = value.platform === p.value;
+								const active = value.kind === "direct" && value.platform === p.value;
 								const pTint = platformTint(p.value);
 								return (
 									<ToneChip
@@ -368,9 +376,9 @@ function ConnectionEditorModal({
 				<SectionBox
 					title="连接参数"
 					subtitle={
-						value.platform === "onebot"
+						value.kind === "direct" && value.platform === "onebot"
 							? "OneBot v11 连接信息"
-							: value.platform === "qq-official"
+							: value.kind === "direct" && value.platform === "qq-official"
 								? "QQ 官方机器人凭据(q.qq.com)"
 								: "Webhook 投递终点"
 					}
@@ -430,7 +438,7 @@ function ConnectionConfigFields({
 					>
 						<ConnectionFieldControl
 							field={field}
-							tint={platformTint(connection.platform)}
+							tint={platformTint(connectionDispatchKey(connection))}
 							onChange={onChange}
 						/>
 					</Field>
@@ -613,7 +621,7 @@ function TargetEditorModal({
 						<div className="space-y-1.5">
 							{eligibleConnections.map((a) => {
 								const active = value.connectionId === a.id;
-								const aTint = platformTint(a.platform);
+								const aTint = platformTint(connectionDispatchKey(a));
 								return (
 									<button
 										key={a.id}
@@ -634,13 +642,13 @@ function TargetEditorModal({
 										}`}
 										style={{ "--bn-tint": aTint } as CSSProperties}
 									>
-										<PlatformIcon platform={a.platform} size={16} />
+										<PlatformIcon platform={connectionDispatchKey(a)} size={16} />
 										<div className="min-w-0 flex-1">
 											<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 												{a.name}
 											</div>
 											<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-												{platformLabel(a.platform)} · {connectionEndpointSummary(a)}
+												{platformLabel(connectionDispatchKey(a))} · {connectionEndpointSummary(a)}
 											</div>
 										</div>
 										{active ? (
@@ -1136,17 +1144,17 @@ function ConnectionRail({
 				return {
 					id: a.id,
 					label: a.name || "（未命名）",
-					desc: `${platformLabel(a.platform)} · ${a.connector === "webhook" ? "单向投递" : `${count} 个目标`}`,
+					desc: `${platformLabel(connectionDispatchKey(a))} · ${a.connector === "webhook" ? "单向投递" : `${count} 个目标`}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (
 						<PlatformIcon
-							platform={a.platform}
+							platform={connectionDispatchKey(a)}
 							size={12}
 							tone={a.id === selectedId ? "currentColor" : undefined}
 						/>
 					),
-					iconTint: platformTint(a.platform),
+					iconTint: platformTint(connectionDispatchKey(a)),
 					// **不写死前景色** —— 它落在左栏选中项内部,而那一项的底由皮肤说了算
 					// (见 SectionNav 的 RAIL_ITEM_ACTIVE)。tertiary 这一档假设底是页面色,
 					// 皮肤把选中项画成实心块之后它就糊在上面了。弱化改由字号 + 字重扛,
@@ -1510,10 +1518,10 @@ export default function Targets() {
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
 										style={{
-											background: `color-mix(in srgb, ${platformTint(selectedConnection.platform)} 12%, transparent)`,
+											background: `color-mix(in srgb, ${platformTint(connectionDispatchKey(selectedConnection))} 12%, transparent)`,
 										}}
 									>
-										<PlatformIcon platform={selectedConnection.platform} size={22} />
+										<PlatformIcon platform={connectionDispatchKey(selectedConnection)} size={22} />
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
@@ -1526,7 +1534,7 @@ export default function Targets() {
 											) : null}
 										</div>
 										<div className="mt-0.5 truncate font-mono text-bn-xs text-bn-text-tertiary">
-											{platformLabel(selectedConnection.platform)} ·{" "}
+											{platformLabel(connectionDispatchKey(selectedConnection))} ·{" "}
 											{connectionEndpointSummary(selectedConnection)}
 										</div>
 										{selectedConnectionTestStatus ? (

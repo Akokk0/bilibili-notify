@@ -1,5 +1,6 @@
 import type { QQBindStartResponse } from "@bilibili-notify/contract";
 import type { QQOfficialConnectionConfig } from "@bilibili-notify/internal";
+import { isConnectionOn } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
 import { createBindTask, pollBindTask } from "../platforms/qq-bind.js";
@@ -82,7 +83,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 	app.get("/guilds/:connectionId", async (c) => {
 		const id = c.req.param("connectionId");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (connection?.platform !== "qq-official") {
+		if (!connection || !isConnectionOn(connection, "qq-official")) {
 			return c.json({ error: "not_found", message: "qq-official connection not found", id }, 404);
 		}
 		try {

@@ -35,6 +35,8 @@ function makeConnection(
 	return {
 		name: `adapter-${over.id}`,
 		enabled: true,
+		// 盘上的连接一定带 `kind`(迁移补的);夹具漏了它,按 kind 分岔的读点会当它不是直连。
+		kind: "direct",
 		config: { url: "https://example.com/hook", headers: {} },
 		...over,
 	} as unknown as Connection;

@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import {
 	type Connection,
+	connectionDispatchKey,
 	type DeliveryResult,
 	type Logger,
 	type NotificationPayload,
@@ -69,7 +70,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 					ok: false,
 					latencyMs: 0,
 					err:
-						`wrong shape: connection=${connection.platform}/${connection.connector} ` +
+						`wrong shape: connection=${connectionDispatchKey(connection)}/${connection.connector} ` +
 						`target=${target.platform}/${target.kind}`,
 				};
 			}

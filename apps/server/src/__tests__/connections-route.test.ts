@@ -24,8 +24,8 @@ describe("connections route — GET /capabilities", () => {
 		const app = createConnectionsRoute(
 			makeDeps({
 				connections: [
-					{ id: "ob", platform: "onebot" },
-					{ id: "qq", platform: "qq-official" },
+					{ id: "ob", kind: "direct", platform: "onebot" },
+					{ id: "qq", kind: "direct", platform: "qq-official" },
 				],
 				engines: {
 					connectionCapabilities: (id: string) => (id === "ob" ? supported : undefined),
@@ -41,7 +41,7 @@ describe("connections route — GET /capabilities", () => {
 
 	it("引擎还没起来 → 空表,200", async () => {
 		const app = createConnectionsRoute(
-			makeDeps({ connections: [{ id: "ob", platform: "onebot" }] }),
+			makeDeps({ connections: [{ id: "ob", kind: "direct", platform: "onebot" }] }),
 		);
 		const res = await app.request("/capabilities");
 		expect(res.status).toBe(200);

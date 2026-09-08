@@ -83,7 +83,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(true);
-		if (r.success && r.data.platform === "generic") {
+		if (r.success && r.data.kind === "direct" && r.data.platform === "generic") {
 			expect(r.data.config.headers).toEqual({});
 		}
 	});
@@ -519,7 +519,7 @@ describe("QQOfficial connection schema", () => {
 			config: { appId: "102000000", appSecret: "secret" },
 		});
 		expect(r.success).toBe(true);
-		if (r.success && r.data.platform === "qq-official") {
+		if (r.success && r.data.kind === "direct" && r.data.platform === "qq-official") {
 			expect(r.data.config.sandbox).toBe(false);
 			expect(r.data.config.botType).toBe("public");
 		}

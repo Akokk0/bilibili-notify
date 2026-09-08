@@ -27,6 +27,7 @@ function makeDeps(opts?: {
 	const connections = opts?.connections ?? [
 		{
 			id: "a1",
+			kind: "direct",
 			platform: "qq-official",
 			enabled: true,
 			config: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public" },
@@ -87,7 +88,9 @@ describe("GET /api/qq/guilds/:connectionId", () => {
 
 	it("非 qq-official adapter → 404", async () => {
 		const app = createQQRoute(
-			makeDeps({ connections: [{ id: "a1", platform: "onebot", enabled: true, config: {} }] }),
+			makeDeps({
+				connections: [{ id: "a1", kind: "direct", platform: "onebot", enabled: true, config: {} }],
+			}),
 		);
 		const r = await app.request("/guilds/a1");
 		expect(r.status).toBe(404);

@@ -8,9 +8,9 @@ import { inboundScenarios } from "../scenarios/inbound.js";
  */
 
 const ADAPTERS = [
-	{ id: "ad-web", name: "钩子", platform: "webhook", enabled: true },
-	{ id: "ad-ob", name: "NapCat", platform: "onebot", enabled: true },
-	{ id: "ad-qq", name: "官机", platform: "qq-official", enabled: false },
+	{ id: "ad-web", name: "钩子", kind: "direct", platform: "webhook", enabled: true },
+	{ id: "ad-ob", name: "NapCat", kind: "direct", platform: "onebot", enabled: true },
+	{ id: "ad-qq", name: "官机", kind: "direct", platform: "qq-official", enabled: false },
 ] as never[];
 
 const TARGETS = [

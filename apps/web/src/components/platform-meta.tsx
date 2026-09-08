@@ -13,12 +13,20 @@ import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
 import { type PlatformMeta, PlatformMetaProvider } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 
-const TABLE: Record<string, PlatformMeta> = Object.fromEntries(
-	Object.entries(PLATFORM_REGISTRY).map(([platform, meta]) => [
-		platform,
-		{ tint: meta.tint, label: meta.shortLabel, icon: meta.icon },
-	]),
-);
+const TABLE: Record<string, PlatformMeta> = {
+	...Object.fromEntries(
+		Object.entries(PLATFORM_REGISTRY).map(([platform, meta]) => [
+			platform,
+			{ tint: meta.tint, label: meta.shortLabel, icon: meta.icon },
+		]),
+	),
+	/**
+	 * 桥接入不是平台,所以它不在注册表里 —— 但界面上要给它一张脸,不然那些卡片会退成
+	 * 一个灰方章。喂给库的这张表是**「画谁」**,键是分发键(`connectionDispatchKey`),
+	 * 不是平台名;桥这一档正是那个键在直连之外的取值。
+	 */
+	bridge: { tint: "#a855f7", label: "桥接" },
+};
 
 /** 认不出的平台回 undefined —— 库据此退静默色、拿平台名本身当短名。 */
 export function lookupPlatformMeta(platform: string): PlatformMeta | undefined {

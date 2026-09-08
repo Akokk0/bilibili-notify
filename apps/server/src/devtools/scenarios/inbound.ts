@@ -1,7 +1,10 @@
 import {
 	type ChatIdentity,
 	type Connection,
+	connectionDispatchKey,
+	type DirectConnection,
 	groupAddressOf,
+	isDirectConnection,
 	type PushTarget,
 } from "@bilibili-notify/internal";
 import type {
@@ -69,8 +72,8 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const source = deps
 				.connections()
 				.find(
-					(a) =>
-						a.enabled && isChatPlatform(a.platform) && (!master || a.platform === master.platform),
+					(a): a is DirectConnection & { platform: LinkSourcePlatform } =>
+						a.enabled && isDirectChat(a) && (!master || a.platform === master.platform),
 				);
 			handler(
 				{ userId, text },
@@ -79,6 +82,13 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			return { summary: `已当作 ${userId} 私聊了一句「${text}」,回复走真链路。` };
 		},
 	};
+
+	/**
+	 * 能当聊天入口的**直连**。桥接入够不着 —— 它后面挂着哪些平台是握手时才报的运行时
+	 * 知识,devtools 这张声明表在 createDevtools 那一刻就定型了。桥的入站另开场景。
+	 */
+	const isDirectChat = (a: Connection): a is DirectConnection & { platform: LinkSourcePlatform } =>
+		isDirectConnection(a) && isChatPlatform(a.platform);
 
 	const link: DevScenarioDef = {
 		id: "inbound.link",
@@ -98,15 +108,20 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const wanted = params.connection;
 			const connection =
 				wanted === undefined
-					? connections.find((a) => a.enabled && isChatPlatform(a.platform))
+					? connections.find(
+							(a): a is DirectConnection & { platform: LinkSourcePlatform } =>
+								a.enabled && isDirectChat(a),
+						)
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
 					wanted === undefined ? "没有启用的聊天平台连接(OneBot / 官机)" : `没有这个连接:${wanted}`,
 				);
 			}
-			if (!isChatPlatform(connection.platform)) {
-				throw new DevParamError(`${connection.name} 是 ${connection.platform},没有群这回事`);
+			if (!isDirectChat(connection)) {
+				throw new DevParamError(
+					`${connection.name} 是 ${connectionDispatchKey(connection)},没有群这回事`,
+				);
 			}
 			const given = typeof params.groupId === "string" ? params.groupId : "";
 			const groupId =

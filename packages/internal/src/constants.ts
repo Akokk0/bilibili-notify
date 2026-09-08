@@ -229,6 +229,25 @@ export function platformDescriptor(platform: string): PlatformDescriptor | undef
 export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as const;
 export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 
+/**
+ * 分发键 —— 「该由哪套实现处理这条连接」。
+ *
+ * 直连就是它的平台(一条直连就是一个平台,那套协议是我们自己说的);桥接入只有一套实现,
+ * 共用 `"bridge"` 这一个键 —— 两种桥说的是同一套协议,BN 侧处理完全相同,具体是 koishi
+ * 还是 astrbot 只影响面板怎么说(`config.bridgeKind`)。
+ *
+ * 它是**算出来的**,不落盘:落一格分发键就等于把「连到哪」与「谁来处理」又焊回一起,
+ * 而那两件事正是这次重构拆开的。
+ *
+ * 入参按形状收(与 {@link isTargetPaused} 同一套安排),免得为了一个类型把 schema
+ * 拖进这个零依赖模块 —— 前端要**运行时**用它。
+ */
+export function connectionDispatchKey(
+	connection: { kind: "direct"; platform: string } | { kind: "bridge" },
+): string {
+	return connection.kind === "direct" ? connection.platform : "bridge";
+}
+
 /** 这个平台是不是靠 webhook 连的。 */
 export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
 	return platformDescriptor(platform)?.connectors[0] === "webhook";

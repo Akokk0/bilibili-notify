@@ -10,6 +10,7 @@ import type {
 	QQOfficialConnectionConfig,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import { connectionDispatchKey, isConnectionOn } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
 import type {
 	InboundGroupMessage,
@@ -1150,7 +1151,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		platforms: ["qq-official"],
 
 		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (connection.platform !== "qq-official" || target.platform !== "qq-official") return false;
+			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
+				return false;
+			}
 			if (!connection.enabled || !target.enabled) return false;
 			return isConnectable(connection.config as QQOfficialConnectionConfig);
 		},
@@ -1159,7 +1162,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (disposed) return;
 			const desired = new Map<string, Connection>();
 			for (const a of connections) {
-				if (a.platform !== "qq-official" || !a.enabled) continue;
+				if (!isConnectionOn(a, "qq-official") || !a.enabled) continue;
 				// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
 				// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
 				// config 一变 reconcile 自然会把它接上。
@@ -1205,8 +1208,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		async probe(connection: Connection): Promise<ProbeResult> {
 			const t0 = Date.now();
-			if (connection.platform !== "qq-official") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${connection.platform}` };
+			if (!isConnectionOn(connection, "qq-official")) {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: ${connectionDispatchKey(connection)}`,
+				};
 			}
 			// 实际推送走 REST(token + /v2/.../messages),与 WS 网关(仅用于捞 openid)彼此独立
 			// —— 探连通性应该测「REST 能不能通」,不是「WS 握手有没有跑完」。此前用
@@ -1246,11 +1253,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			payload: NotificationPayload,
 			_opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (connection.platform !== "qq-official" || target.platform !== "qq-official") {
+			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
+					err: `wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
 				};
 			}
 			const scope = target.scope;

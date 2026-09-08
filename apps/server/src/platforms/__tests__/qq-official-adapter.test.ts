@@ -39,6 +39,7 @@ function qqConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "qq",
+		kind: "direct",
 		platform: "qq-official",
 		enabled: true,
 		config: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public", ...over },

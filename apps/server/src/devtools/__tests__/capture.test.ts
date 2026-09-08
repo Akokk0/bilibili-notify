@@ -19,6 +19,7 @@ import { createCaptureGate } from "../capture.js";
 const ADAPTER: Connection = {
 	id: "ad-1",
 	name: "测试 OneBot",
+	kind: "direct",
 	platform: "onebot",
 	enabled: true,
 } as unknown as Connection;

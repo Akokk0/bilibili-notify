@@ -1,4 +1,5 @@
 import type { ConnectionCapabilities } from "@bilibili-notify/internal";
+import { isDirectConnection } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
@@ -32,6 +33,9 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const out: Record<string, Record<string, ConnectionCapabilities>> = {};
 		if (engines) {
 			for (const connection of deps.store.getConnections()) {
+				// 第二级这一层只有直连套得上:一条直连就是一个平台。桥接入驮着哪些平台是它
+				// 握手时报的,那时这一层要由引擎自己给出,这里改成原样透传。
+				if (!isDirectConnection(connection)) continue;
 				const caps = engines.connectionCapabilities(connection.id);
 				if (caps) out[connection.id] = { [connection.platform]: caps };
 			}

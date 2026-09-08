@@ -16,6 +16,7 @@ import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
+	DirectConnection,
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
@@ -63,6 +64,7 @@ export type {
 	Connection,
 	ConnectionPlatform,
 	ContentFiltersPartial as ContentFiltersOverride,
+	DirectConnection,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
@@ -197,7 +199,12 @@ export function makeEmptySubscription(uid: string): Subscription {
 	};
 }
 
-export function makeEmptyConnection(platform: ConnectionPlatform, name: string): Connection {
+/**
+ * 新建一条连接 —— 回的是**直连**那一支:面板这张表单只建直连,桥接入在拓展页建
+ * (它要的是 BN 地址 + token,跟这里问的东西完全不同)。收窄返回类型让调用方
+ * 直接拿得到 `platform` 与那一档的 config,不用再自己 narrow 一次。
+ */
+export function makeEmptyConnection(platform: ConnectionPlatform, name: string): DirectConnection {
 	// connector 的初值走 internal 那份 defaultConnectorFor —— 与迁移同一个答案,
 	// 免得「新建的」和「迁移来的」从不同默认值出发。它按平台重载,所以每一支拿到的
 	// 是那一档的字面量类型,正好对得上 schema 里逐支收窄过的 `connector`。
@@ -279,6 +286,12 @@ export function switchOnebotTransport(
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
+	if (connection.kind === "bridge") {
+		// 桥接入的目标得先知道「哪个平台的哪个 bot」—— 那份名单是桥握手时报的,这个工厂
+		// 手上没有,而 `platform` 是必填非空(空串存不下)。眼下面板还建不出桥接入,所以
+		// 这条路不可达;拓展页落地时这里换成「按选中的 bot 造」,别在这儿编一个平台名。
+		throw new Error("makeEmptyTarget:桥接入的目标要由拓展页按 bot 名单创建");
+	}
 	if (connection.platform === "onebot") {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
 	}

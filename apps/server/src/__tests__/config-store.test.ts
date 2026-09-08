@@ -9,6 +9,7 @@ import {
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
+	isDirectConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -897,7 +898,8 @@ describe("ConfigStore", () => {
 			store.patchConnection(connection.id, { platform: "onebot", config: onebot.config } as never),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 		await expect(store.upsertConnection(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getConnections()[0]?.platform).toBe(connection.platform);
+		const kept = store.getConnections()[0];
+		expect(kept && isDirectConnection(kept) && kept.platform).toBe(connection.platform);
 		expect(store.getTargets()).toHaveLength(1);
 	});
 

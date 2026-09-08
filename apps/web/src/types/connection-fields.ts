@@ -15,11 +15,11 @@
 
 import type {
 	Connection,
+	DirectConnection,
 	OnebotConnectionConfig,
 	OnebotTransport,
 	QQOfficialBotType,
 	QQOfficialConnectionConfig,
-	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -88,7 +88,7 @@ const ONEBOT_TRANSPORTS: ReadonlyArray<{ value: OnebotTransport; label: string }
 ];
 
 function onebotFields(
-	connection: Connection & { platform: "onebot"; config: OnebotConnectionConfig },
+	connection: Extract<DirectConnection, { platform: "onebot" }>,
 ): ConnectionField[] {
 	const cfg = connection.config;
 	// connector 跟着 transport 走 —— 这一版两份并存,schema 的 refine 会把漂掉的挡下来。
@@ -252,7 +252,7 @@ const QQ_BOT_TYPES: ReadonlyArray<{ value: QQOfficialBotType; label: string }> =
 ];
 
 function qqOfficialFields(
-	connection: Connection & { platform: "qq-official"; config: QQOfficialConnectionConfig },
+	connection: Extract<DirectConnection, { platform: "qq-official" }>,
 ): ConnectionField[] {
 	const cfg = connection.config;
 	const setCfg = (next: QQOfficialConnectionConfig): Connection => ({
@@ -322,7 +322,7 @@ function qqOfficialFields(
 }
 
 function webhookFields(
-	connection: Connection & { connector: "webhook"; platform: WebhookPlatform },
+	connection: Extract<DirectConnection, { connector: "webhook" }>,
 ): ConnectionField[] {
 	const cfg = connection.config;
 	// 「哪家的机器人」原先是这张表里一个叫「Webhook 协议」的下拉 —— 它现在就是上面那排
@@ -365,8 +365,14 @@ function webhookFields(
 	return fields;
 }
 
-/** 这条连接的配置该摆哪几栏。认不出的连接给空表 —— 页面那一侧不用再写一句兜底。 */
+/**
+ * 这条连接的配置该摆哪几栏。
+ *
+ * 桥接入眼下给空表 —— 它的参数(BN 地址 + token)在拓展页那侧填,不走这张连接表单。
+ * 认不出的也给空表:页面那一侧不用再写一句兜底。
+ */
 export function connectionFields(connection: Connection): ConnectionField[] {
+	if (connection.kind !== "direct") return [];
 	if (connection.platform === "onebot") return onebotFields(connection);
 	if (connection.platform === "qq-official") return qqOfficialFields(connection);
 	if (connection.connector === "webhook") return webhookFields(connection);

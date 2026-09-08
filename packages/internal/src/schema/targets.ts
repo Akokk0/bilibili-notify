@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
 	CONNECTION_PLATFORMS,
+	type ConnectionPlatform,
 	DIRECT_CONNECTORS,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
@@ -186,23 +187,30 @@ export type ConnectionTestStatus = z.infer<typeof ConnectionTestStatusSchema>;
 export const DirectConnectorSchema = z.enum(DIRECT_CONNECTORS);
 
 /**
- * Connection — 平台级的"连接实例"。
+ * Connection — 一条"连接实例"。
  *
  * 类比一个 bot 实例:一份 baseUrl/accessToken 一次配置,被多个 PushTarget
  * (实际的群/私聊/dashboard 会话) 复用。
  *
- * 两根正交的轴:`platform`(连到哪)与 `connector`(怎么连)。`kind` 是将来接桥时的
- * 判别子 —— 桥那一支没有 platform(平台靠探测),今天只有 `direct` 一档。
- * **老数据没有这两个字段**,由 `schema/migration.ts` 的一次性迁移补上;这里刻意不给
- * default,好让「没迁移过的数据」在 parse 阶段就响,而不是被默认值糊过去。
+ * 两根正交的轴:`platform`(连到哪)与 `connector`(怎么连)。`kind` 是**判别子**:
+ * - `direct` —— 我们自己说协议,连接就是一个平台,`platform` 必填;
+ * - `bridge` —— 桥(koishi / astrbot 里的插件)主动连过来,把它宿主里的 bot 借给我们。
+ *   **这一支没有 `platform`**:桥后面挂着哪些平台是它握手时报的,是运行时知识。
+ *
+ * **老数据没有 `kind` / `connector`**,由 `schema/migration.ts` 的一次性迁移补上;
+ * 这里刻意不给 default,好让「没迁移过的数据」在 parse 阶段就响,而不是被默认值糊过去。
  */
-const ConnectionCommonShape = {
+const ConnectionIdentityShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
 	enabled: z.boolean(),
+	testStatus: ConnectionTestStatusSchema.optional(),
+} as const;
+
+const ConnectionCommonShape = {
+	...ConnectionIdentityShape,
 	kind: z.literal("direct"),
 	connector: DirectConnectorSchema,
-	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
 // 每一支把 `connector` 收窄到自己**真走得通**的那几档。收窄不只是为了拦住乱写的配置:
@@ -230,7 +238,45 @@ const QQOfficialConnectionSchema = z.object({
 	config: QQOfficialConnectionConfigSchema,
 });
 
-export const ConnectionSchema = z
+/**
+ * 桥接入的连接配置。
+ *
+ * **桥主动连我们**,不是我们连桥:面板生成一个长期 token,插件那头填「BN 地址 + token」。
+ * 所以这里没有地址 —— 地址在桥那边。重连退避也归插件。
+ */
+export const BridgeConnectionConfigSchema = z.object({
+	/**
+	 * 长期 token,桥握手时出示。
+	 *
+	 * 空串**合法可存**:与 onebot 的 `accessToken`、官机的 `appSecret` 同一套建模 ——
+	 * 脱敏备份会把它抹成空串,存不回去就等于备份恢复不了(官机那格栽过一次)。
+	 * 「没 token 不许连」是**连接期**的约束,不是存储期的。
+	 */
+	token: z.string(),
+	/**
+	 * 哪一种桥。**只影响面板怎么说**(装插件的指引、卡片上的名字)——BN 侧对两种桥的
+	 * 处理完全相同,所以它住 config 而不是长成 `connector` 的第二档:两个桥说同一套协议,
+	 * 分两档就是两份几乎一样的 schema branch,而且每来一个新桥都要改核心词表发一次版。
+	 */
+	bridgeKind: z.enum(["koishi", "astrbot"]),
+});
+export type BridgeConnectionConfig = z.infer<typeof BridgeConnectionConfigSchema>;
+
+/**
+ * 桥接入 —— **没有 `platform`**。
+ *
+ * 桥后面挂着哪些平台(telegram / discord / …)是它握手时报的,是运行时知识,枚举不了;
+ * 给这一支塞一个可选的 `platform` 只会让全仓读点静默变 `undefined`。少那一格,读它的
+ * 地方就会**编译不过** —— 那份编译错清单正是「哪些地方假定了连接就是一个平台」。
+ */
+const BridgeConnectionSchema = z.object({
+	...ConnectionIdentityShape,
+	kind: z.literal("bridge"),
+	connector: z.literal("bridge"),
+	config: BridgeConnectionConfigSchema,
+});
+
+const DirectConnectionSchema = z
 	.discriminatedUnion("platform", [
 		OnebotConnectionSchema,
 		WebhookConnectionSchema,
@@ -249,7 +295,48 @@ export const ConnectionSchema = z
 			});
 		}
 	});
+
+/**
+ * 一条连接 —— 判别子是 `kind`。
+ *
+ * zod 4 认嵌套的判别联合,所以直连那侧仍按 `platform` 逐支收窄(config 跟着 narrow),
+ * 外面再按 `kind` 分岔;两层各自的错误消息都还是精确的那一条,不会退化成一大坨
+ * union 错误。
+ */
+export const ConnectionSchema = z.discriminatedUnion("kind", [
+	DirectConnectionSchema,
+	BridgeConnectionSchema,
+]);
 export type Connection = z.infer<typeof ConnectionSchema>;
+
+/** 直连那一支 —— 有 `platform`、由我们自己说协议。 */
+export type DirectConnection = z.infer<typeof DirectConnectionSchema>;
+/** 桥接入那一支 —— 没有 `platform`,平台由桥握手时报。 */
+export type BridgeConnection = z.infer<typeof BridgeConnectionSchema>;
+
+/**
+ * 这条连接自己就是一个平台吗 —— 是的话把平台名交出来。
+ *
+ * 读点写 `connection.platform` 的地方**大多真正想问的是这个**:桥接入没有单一平台,
+ * 该走的是「问桥报了哪些」那条路。留这个谓词是为了让那些地方显式说出「认不出就没有」,
+ * 而不是靠一个可选字段悄悄变 `undefined`。
+ */
+export function isDirectConnection(connection: Connection): connection is DirectConnection {
+	return connection.kind === "direct";
+}
+
+/**
+ * 这条连接是不是**这个平台的直连**。
+ *
+ * 三个 adapter 开头那句「不是我的就退回去」都问这个。桥接入恒 false —— 它没有单一平台,
+ * 该由桥那套实现处理。narrow 之后 `connection.config` 也跟着收窄到那一档的形状。
+ */
+export function isConnectionOn<P extends ConnectionPlatform>(
+	connection: Connection,
+	platform: P,
+): connection is Extract<DirectConnection, { platform: P }> {
+	return connection.kind === "direct" && connection.platform === platform;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Target (session-level) — references a connection                           */

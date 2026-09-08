@@ -16,6 +16,7 @@ export {
 	CONNECTION_PLATFORMS,
 	type ConnectionPlatform,
 	colorFromUid,
+	connectionDispatchKey,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_ROAST_SCHEDULE,

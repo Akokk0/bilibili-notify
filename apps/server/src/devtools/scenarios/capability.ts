@@ -1,4 +1,5 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
+import { connectionDispatchKey } from "@bilibili-notify/internal";
 import type { PlatformDialect } from "../../platforms/types.js";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
@@ -73,15 +74,17 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			const wanted = params.connection;
 			const connection =
 				wanted === undefined
-					? connections.find((a) => capable.has(a.platform))
+					? connections.find((a) => capable.has(connectionDispatchKey(a)))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
 					wanted === undefined ? "没有有能力概念的连接" : `没有这个连接:${wanted}`,
 				);
 			}
-			if (!capable.has(connection.platform)) {
-				throw new DevParamError(`${connection.name} 是 ${connection.platform},没有能力这回事`);
+			if (!capable.has(connectionDispatchKey(connection))) {
+				throw new DevParamError(
+					`${connection.name} 是 ${connectionDispatchKey(connection)},没有能力这回事`,
+				);
 			}
 			const state = String(params.state ?? "supported") as State;
 			const reason =

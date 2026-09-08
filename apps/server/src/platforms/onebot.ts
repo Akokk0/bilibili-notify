@@ -12,6 +12,7 @@ import type {
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import { connectionDispatchKey, isConnectionOn } from "@bilibili-notify/internal";
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
@@ -1163,7 +1164,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		platforms: ["onebot"],
 
 		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (connection.platform !== "onebot" || target.platform !== "onebot") return false;
+			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") return false;
 			if (!connection.enabled || !target.enabled) return false;
 			const cfg = connection.config as OnebotConnectionConfig;
 			if (cfg.transport === "http") return cfg.baseUrl.length > 0;
@@ -1173,7 +1174,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 		reconcile(connections: readonly Connection[]): void {
 			if (disposed) return;
-			const onebots = connections.filter((a) => a.platform === "onebot" && a.enabled);
+			const onebots = connections.filter((a) => isConnectionOn(a, "onebot") && a.enabled);
 
 			// --- bot 身份缓存清理 ---
 			// reconcile 触发频率低(dashboard 改 adapter / target 配置才触发),
@@ -1260,8 +1261,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
-			if (connection.platform !== "onebot") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${connection.platform}` };
+			if (!isConnectionOn(connection, "onebot")) {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: ${connectionDispatchKey(connection)}`,
+				};
 			}
 			const cfg = connection.config as OnebotConnectionConfig;
 			const t0 = Date.now();
@@ -1350,11 +1355,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			payload: NotificationPayload,
 			opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (connection.platform !== "onebot" || target.platform !== "onebot") {
+			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
+					err: `wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
 				};
 			}
 			if (payload.kind === "miniapp-card")

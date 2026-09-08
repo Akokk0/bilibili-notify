@@ -1213,7 +1213,14 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		const c = setup();
 		active = c;
 		c.configStore._setConnections([
-			{ id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any,
+			{
+				id: ADAPTER,
+				name: "bot",
+				enabled: true,
+				kind: "direct",
+				platform: "onebot",
+				config: {},
+			} as any,
 		]);
 		c.configStore._setTargets([
 			{
@@ -1276,7 +1283,14 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 
 describe("createEngines — 连接所在平台的能力", () => {
 	const ADAPTER = "11111111-1111-4111-8111-111111111111";
-	const onebot = { id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any;
+	const onebot = {
+		id: ADAPTER,
+		name: "bot",
+		enabled: true,
+		kind: "direct",
+		platform: "onebot",
+		config: {},
+	} as any;
 
 	/** 探一次就变「支持」的假平台实现;探之前是「未探测」。 */
 	function fakePlatform(answer: "supported" | "unknown" = "supported", probeOk = true) {
