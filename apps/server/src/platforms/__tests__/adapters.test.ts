@@ -679,7 +679,11 @@ describe("onebot — 失败与重试", () => {
 
 	it("wrong platform → ok:false", async () => {
 		const ad = createOnebotAdapter(obOpts());
-		const r = await ad.send(obConnection(), obTarget({ platform: "webhook" }), TEXT);
+		const r = await ad.send(
+			obConnection(),
+			obTarget({ kind: "endpoint", platform: "feishu" }),
+			TEXT,
+		);
 		expect(r.ok).toBe(false);
 		expect(r.err).toMatch(/wrong platform/);
 	});
@@ -1050,7 +1054,7 @@ describe("onebot — isAvailable / probe", () => {
 
 	it("probe:wrong platform → ok:false", async () => {
 		const ad = createOnebotAdapter(obOpts());
-		const wrong = { ...obConnection(), platform: "webhook" } as unknown as Connection;
+		const wrong = { ...obConnection(), platform: "feishu" } as unknown as Connection;
 		const r = await ad.probe(wrong);
 		expect(r).toMatchObject({ ok: false });
 		expect(r.err).toMatch(/wrong platform/);
@@ -1444,11 +1448,14 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 // Webhook
 // ---------------------------------------------------------------------------
 
-function whConnection(over: Record<string, unknown> = {}): Connection {
+/** 报文方言由连接的**平台**说了算 —— 它原先是 config 里那个 `provider`。 */
+function whConnection(platform = "generic", over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "w1",
 		name: "wh",
-		platform: "webhook",
+		platform,
+		kind: "direct",
+		connector: "webhook",
 		enabled: true,
 		config: { url: "http://hook.local", secret: "s3cr3t", headers: { "x-team": "ops" }, ...over },
 	} as unknown as Connection;
@@ -1458,7 +1465,8 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 		id: "wt1",
 		name: "团队群",
 		adapterId: "w1",
-		platform: "webhook",
+		kind: "endpoint",
+		platform: "generic",
 		scope: "group",
 		enabled: true,
 		session: {},
@@ -1498,7 +1506,7 @@ describe("webhook — send", () => {
 	it("generic provider 显式配置仍保持旧 envelope 且不解析业务 body", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 310000, errmsg: "bad" } }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "generic" }),
+			whConnection("generic"),
 			whTarget(),
 			TEXT,
 		);
@@ -1540,8 +1548,7 @@ describe("webhook — send", () => {
 		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({
-				provider: "dingtalk",
+			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok",
 				secret: "SECxxx",
 			}),
@@ -1563,7 +1570,7 @@ describe("webhook — send", () => {
 			res({ ok: true, json: { errcode: 310000, errmsg: "keywords not in content" } }),
 		);
 		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "dingtalk" }),
+			whConnection("dingtalk"),
 			whTarget(),
 			TEXT,
 		);
@@ -1573,7 +1580,7 @@ describe("webhook — send", () => {
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "dingtalk" }),
+			whConnection("dingtalk"),
 			whTarget(),
 			TEXT,
 		);
@@ -1584,8 +1591,7 @@ describe("webhook — send", () => {
 		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({
-				provider: "feishu",
+			whConnection("feishu", {
 				url: "https://open.feishu.cn/open-apis/bot/v2/hook/token",
 				secret: "sign-secret",
 			}),
@@ -1610,7 +1616,7 @@ describe("webhook — send", () => {
 			res({ ok: true, json: { StatusCode: 0, StatusMessage: "success" } }),
 		);
 		const ok = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "feishu" }),
+			whConnection("feishu"),
 			whTarget(),
 			TEXT,
 		);
@@ -1620,7 +1626,7 @@ describe("webhook — send", () => {
 			res({ ok: true, json: { code: 19021, msg: "sign match fail" } }),
 		);
 		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "feishu" }),
+			whConnection("feishu"),
 			whTarget(),
 			TEXT,
 		);
@@ -1630,7 +1636,7 @@ describe("webhook — send", () => {
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "feishu" }),
+			whConnection("feishu"),
 			whTarget(),
 			TEXT,
 		);
@@ -1640,8 +1646,7 @@ describe("webhook — send", () => {
 	it("wecom:text body + 业务成功码", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({
-				provider: "wecom",
+			whConnection("wecom", {
 				url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key",
 				secret: "unused-secret",
 			}),
@@ -1663,7 +1668,7 @@ describe("webhook — send", () => {
 			res({ ok: true, json: { errcode: 93000, errmsg: "invalid webhook key" } }),
 		);
 		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "wecom" }),
+			whConnection("wecom"),
 			whTarget(),
 			TEXT,
 		);
@@ -1673,7 +1678,7 @@ describe("webhook — send", () => {
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({ provider: "wecom" }),
+			whConnection("wecom"),
 			whTarget(),
 			TEXT,
 		);
@@ -1683,13 +1688,13 @@ describe("webhook — send", () => {
 	it("platform providers 将 image/composite/forward-images 降级为可读文本", async () => {
 		fetchMock.mockResolvedValue(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
 		const ad = createWebhookAdapter({ logger: makeLogger() });
-		await ad.send(whConnection({ provider: "dingtalk" }), whTarget(), {
+		await ad.send(whConnection("dingtalk"), whTarget(), {
 			kind: "image",
 			image: { buffer: Buffer.from("PIC"), mime: "image/png" },
 			caption: "卡片标题",
 		});
 		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "卡片标题" } });
-		await ad.send(whConnection({ provider: "dingtalk" }), whTarget(), {
+		await ad.send(whConnection("dingtalk"), whTarget(), {
 			kind: "composite",
 			segments: [
 				{ type: "text", text: "正文" },
@@ -1704,7 +1709,7 @@ describe("webhook — send", () => {
 		});
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
-		await ad.send(whConnection({ provider: "feishu", secret: undefined }), whTarget(), {
+		await ad.send(whConnection("feishu", { secret: undefined }), whTarget(), {
 			kind: "forward-images",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			forward: false,
@@ -1714,7 +1719,7 @@ describe("webhook — send", () => {
 			content: { text: "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg" },
 		});
 
-		await ad.send(whConnection({ provider: "wecom", secret: undefined }), whTarget(), {
+		await ad.send(whConnection("wecom", { secret: undefined }), whTarget(), {
 			kind: "forward-images",
 			images: [{ url: "https://i0.hdslb.com/3.jpg" }, { url: "https://i0.hdslb.com/4.jpg" }],
 			forward: false,
@@ -1744,8 +1749,7 @@ describe("webhook — send", () => {
 			}),
 		);
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection({
-				provider: "dingtalk",
+			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
 				secret: "SECxxx",
 			}),
@@ -1775,8 +1779,7 @@ describe("webhook — send", () => {
 		fetchMock.mockRejectedValueOnce(new Error(leaked));
 		const logger = makeLogger();
 		const r = await createWebhookAdapter({ logger }).send(
-			whConnection({
-				provider: "dingtalk",
+			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
 				secret: "SECxxx",
 			}),
@@ -1803,7 +1806,7 @@ describe("webhook — send", () => {
 		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed`));
 		const logger = makeLogger();
 		const r = await createWebhookAdapter({ logger }).send(
-			whConnection({ provider: "feishu", url }),
+			whConnection("feishu", { url }),
 			whTarget(),
 			TEXT,
 		);
@@ -1821,7 +1824,7 @@ describe("webhook — send", () => {
 		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed key=wx-key-123`));
 		const logger = makeLogger();
 		const r = await createWebhookAdapter({ logger }).send(
-			whConnection({ provider: "wecom", url, secret: "unused-secret" }),
+			whConnection("wecom", { url, secret: "unused-secret" }),
 			whTarget(),
 			TEXT,
 		);
@@ -1835,11 +1838,15 @@ describe("webhook — send", () => {
 		expect(logMsg).not.toContain("unused-secret");
 	});
 
-	it("wrong platform → ok:false", async () => {
+	it("形状不对 → ok:false", async () => {
 		const ad = createWebhookAdapter({ logger: makeLogger() });
-		const r = await ad.send(whConnection(), whTarget({ platform: "onebot" }), TEXT);
+		const r = await ad.send(
+			whConnection(),
+			whTarget({ kind: "session", platform: "onebot" }),
+			TEXT,
+		);
 		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/wrong platform/);
+		expect(r.err).toMatch(/wrong shape/);
 	});
 });
 
@@ -1847,7 +1854,7 @@ describe("webhook — isAvailable / probe", () => {
 	it("isAvailable:平台匹配+启用+url 非空", () => {
 		const ad = createWebhookAdapter({ logger: makeLogger() });
 		expect(ad.isAvailable(whConnection(), whTarget())).toBe(true);
-		expect(ad.isAvailable(whConnection({ url: "" }), whTarget())).toBe(false);
+		expect(ad.isAvailable(whConnection("generic", { url: "" }), whTarget())).toBe(false);
 		expect(ad.isAvailable(whConnection(), whTarget({ enabled: false }))).toBe(false);
 	});
 

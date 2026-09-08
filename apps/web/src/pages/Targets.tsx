@@ -23,7 +23,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
-import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum, TSelect } from "../components/forms";
+import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
@@ -42,9 +42,6 @@ import {
 	type QQOfficialConnectionConfig,
 	type QQOfficialSession,
 	switchOnebotTransport,
-	WEBHOOK_PROVIDERS,
-	type WebhookProvider,
-	webhookProviderLabel,
 	webhookSecretHint,
 	webhookUrlPlaceholder,
 } from "../types/domain";
@@ -107,9 +104,8 @@ function connectionEndpointSummary(a: Connection): string {
 		const id = c.appId || "未配置 appId";
 		return `QQ ${domain} · ${id}${c.sandbox ? " · 沙箱" : ""}`;
 	}
-	const provider = a.config.provider ?? "generic";
-	const url = maskWebhookUrl(a.config.url);
-	return provider === "generic" ? url : `${webhookProviderLabel(provider)} · ${url}`;
+	// webhook 那一族:平台名已经写在同一行的前半段(platformLabel),这里只报地址。
+	return maskWebhookUrl(a.config.url);
 }
 
 /**
@@ -145,7 +141,7 @@ function managedWebhookTargetForConnection(
 	connection: Connection,
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
-	if (connection.platform !== "webhook") return undefined;
+	if (connection.connector !== "webhook") return undefined;
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.adapterId === connection.id);
 	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 }
@@ -658,32 +654,22 @@ function ConnectionConfigFields({
 			</>
 		);
 	}
-	if (connection.platform === "webhook") {
+	if (connection.connector === "webhook") {
 		const cfg = connection.config;
-		const provider: WebhookProvider = cfg.provider ?? "generic";
+		// 「哪家的机器人」原先是这张表里一个叫「Webhook 协议」的下拉 —— 它现在就是上面
+		// 那排平台胶囊,不再问第二遍。
+		const platform = connection.platform;
 		return (
 			<>
-				<Field
-					label="Webhook 协议"
-					code="config.provider"
-					hint="Generic 保持旧 JSON envelope；钉钉/飞书/企业微信按平台机器人协议发送文本消息"
-					required
-				>
-					<TSelect<WebhookProvider>
-						value={provider}
-						onChange={(v) => onChange({ ...connection, config: { ...cfg, provider: v } })}
-						options={[...WEBHOOK_PROVIDERS]}
-					/>
-				</Field>
 				<Field label="URL" code="config.url" required>
 					<TInput
 						value={cfg.url}
 						onChange={(v) => onChange({ ...connection, config: { ...cfg, url: v } })}
-						placeholder={webhookUrlPlaceholder(provider)}
+						placeholder={webhookUrlPlaceholder(platform)}
 						mono
 					/>
 				</Field>
-				<Field label="Secret" code="config.secret" hint={webhookSecretHint(provider)}>
+				<Field label="Secret" code="config.secret" hint={webhookSecretHint(platform)}>
 					<TInput
 						value={cfg.secret ?? ""}
 						onChange={(v) =>
@@ -783,7 +769,7 @@ function TargetEditorModal({
 	const valid = value.name.trim().length > 0 && Boolean(value.adapterId);
 	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
-	const eligibleConnections = connections.filter((a) => a.platform !== "webhook");
+	const eligibleConnections = connections.filter((a) => a.connector !== "webhook");
 	return (
 		<ModalShell
 			onCancel={onCancel}
@@ -1359,7 +1345,7 @@ function ConnectionRail({
 				return {
 					id: a.id,
 					label: a.name || "（未命名）",
-					desc: `${platformLabel(a.platform)} · ${a.platform === "webhook" ? "单向投递" : `${count} 个目标`}`,
+					desc: `${platformLabel(a.platform)} · ${a.connector === "webhook" ? "单向投递" : `${count} 个目标`}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (
@@ -1535,7 +1521,7 @@ export default function Targets() {
 	});
 
 	async function testConnection(a: Connection): Promise<void> {
-		if (a.platform === "webhook") {
+		if (a.connector === "webhook") {
 			const target = managedWebhookTargetForConnection(a, targets);
 			if (!target) {
 				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
@@ -1654,7 +1640,7 @@ export default function Targets() {
 			showToast("请先新建一个连接", false);
 			return;
 		}
-		if (a.platform === "webhook") {
+		if (a.connector === "webhook") {
 			showToast("Webhook 目标由系统自动托管，无需手动新建", false);
 			return;
 		}
@@ -1671,13 +1657,13 @@ export default function Targets() {
 	}
 
 	const selectedConnectionStatus =
-		selectedConnection?.platform === "webhook" && selectedManagedWebhookTarget
+		selectedConnection?.connector === "webhook" && selectedManagedWebhookTarget
 			? targetStatusFor(selectedManagedWebhookTarget)
 			: selectedConnection
 				? connectionStatusFor(selectedConnection)
 				: "pending";
 	const selectedConnectionTestStatus =
-		selectedConnection?.platform === "webhook"
+		selectedConnection?.connector === "webhook"
 			? selectedManagedWebhookTarget?.testStatus
 			: selectedConnection?.testStatus;
 
@@ -1772,16 +1758,16 @@ export default function Targets() {
 											disabled={testing[selectedConnection.id] === "pending"}
 										>
 											{testing[selectedConnection.id] === "pending"
-												? selectedConnection.platform === "webhook"
+												? selectedConnection.connector === "webhook"
 													? "发送中…"
 													: "测试中…"
 												: testing[selectedConnection.id] === "ok"
-													? selectedConnection.platform === "webhook"
+													? selectedConnection.connector === "webhook"
 														? "已送达"
 														: "已连通"
 													: testing[selectedConnection.id] === "fail"
 														? "失败"
-														: selectedConnection.platform === "webhook"
+														: selectedConnection.connector === "webhook"
 															? "发送测试"
 															: "测试"}
 										</Btn>
@@ -1817,15 +1803,15 @@ export default function Targets() {
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-bn-md font-bold text-bn-text-primary">
-											{selectedConnection.platform === "webhook" ? "Webhook 投递目标" : "推送目标"}
+											{selectedConnection.connector === "webhook" ? "Webhook 投递目标" : "推送目标"}
 										</div>
 										<div className="text-bn-xs text-bn-text-tertiary">
-											{selectedConnection.platform === "webhook"
+											{selectedConnection.connector === "webhook"
 												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
 												: "本连接下的会话:群号 / 用户 ID 等。"}
 										</div>
 									</div>
-									{selectedConnection.platform === "webhook" ? null : (
+									{selectedConnection.connector === "webhook" ? null : (
 										<Btn
 											data-tour="target-add"
 											size="sm"
@@ -1836,7 +1822,7 @@ export default function Targets() {
 										</Btn>
 									)}
 								</div>
-								{selectedConnection.platform === "webhook" ? (
+								{selectedConnection.connector === "webhook" ? (
 									<div className="space-y-2.5">
 										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
@@ -1936,7 +1922,7 @@ export default function Targets() {
 					subjectName={confirmDelete.value.name}
 					hint={
 						confirmDelete.kind === "adapter"
-							? confirmDelete.value.platform === "webhook"
+							? confirmDelete.value.connector === "webhook"
 								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
 								: "连接若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他连接或先删除它们。"
 							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"

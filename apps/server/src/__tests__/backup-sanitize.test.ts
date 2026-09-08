@@ -181,16 +181,15 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 			}),
 		],
 		[
-			"webhook",
+			"generic",
 			conn({
 				...base,
 				id: "00000000-0000-4000-8000-000000000002",
-				platform: "webhook",
+				platform: "generic",
 				kind: "direct",
 				connector: "webhook",
 				config: {
 					url: "https://example.com/hook?access_token=t",
-					provider: "generic",
 					secret: "wh",
 					headers: { "X-Token": "x" },
 				},

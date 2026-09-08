@@ -81,16 +81,16 @@ function makeSampleSubscription(uid = "12345"): Subscription {
 }
 
 function makeWebhookConnection(
-	overrides: Partial<Extract<Connection, { platform: "webhook" }>> = {},
+	overrides: Partial<Extract<Connection, { connector: "webhook" }>> = {},
 ) {
 	return {
 		id: randomUUID(),
 		name: "团队 Webhook",
-		platform: "webhook" as const,
+		platform: "feishu" as const,
 		enabled: true,
 		kind: "direct" as const,
 		connector: "webhook" as const,
-		config: { url: "https://example.com/hook", provider: "generic" as const, headers: {} },
+		config: { url: "https://example.com/hook", headers: {} },
 		...overrides,
 	};
 }
@@ -121,15 +121,15 @@ function makeOnebotConnection(
 }
 
 function makeWebhookTarget(
-	connection: Extract<Connection, { platform: "webhook" }>,
-	overrides: Partial<Extract<PushTarget, { platform: "webhook" }>> = {},
+	connection: Extract<Connection, { connector: "webhook" }>,
+	overrides: Partial<Extract<PushTarget, { kind: "endpoint" }>> = {},
 ) {
 	return {
 		id: randomUUID(),
 		name: "手动 Webhook",
 		adapterId: connection.id,
 		kind: "endpoint" as const,
-		platform: "webhook" as const,
+		platform: connection.platform,
 		scope: "channel" as const,
 		enabled: true,
 		session: {},
@@ -493,7 +493,9 @@ describe("ConfigStore", () => {
 			id: managedWebhookTargetId(connection.id),
 			name: connection.name,
 			adapterId: connection.id,
-			platform: "webhook",
+			kind: "endpoint",
+			// 托管目标的平台跟着连接走。
+			platform: connection.platform,
 			scope: "channel",
 			enabled: true,
 			managedBy: "adapter",
@@ -688,9 +690,9 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load(); // 不应抛错
-		expect(store2.getConnections().map((a) => a.platform)).toEqual(["webhook"]);
+		expect(store2.getConnections().map((a) => a.connector)).toEqual(["webhook"]);
 		// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
-		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
+		expect(store2.getTargets().every((t) => t.kind === "endpoint")).toBe(true);
 		await rm(dir2, { recursive: true, force: true });
 	});
 
@@ -752,7 +754,7 @@ describe("ConfigStore", () => {
 			store.patchConnection(connection.id, { platform: "onebot", config: onebot.config } as never),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 		await expect(store.upsertConnection(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getConnections()[0]?.platform).toBe("webhook");
+		expect(store.getConnections()[0]?.platform).toBe(connection.platform);
 		expect(store.getTargets()).toHaveLength(1);
 	});
 

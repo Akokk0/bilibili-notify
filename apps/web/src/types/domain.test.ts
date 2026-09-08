@@ -16,7 +16,6 @@ import {
 	maskWebhookUrl,
 	newId,
 	switchOnebotTransport,
-	WEBHOOK_PROVIDERS,
 	webhookSecretHint,
 	webhookUrlPlaceholder,
 } from "./domain";
@@ -77,32 +76,30 @@ describe("newId", () => {
 });
 
 describe("webhook adapter factories", () => {
-	it("makeEmptyConnection(webhook) 默认使用 generic provider 并保留 headers", () => {
-		const connection = makeEmptyConnection("webhook", "团队 webhook");
-		expect(connection.platform).toBe("webhook");
-		if (connection.platform !== "webhook") return;
+	it("makeEmptyConnection(feishu) 走 webhook 连接器并保留 headers", () => {
+		const connection = makeEmptyConnection("feishu", "团队 webhook");
+		expect(connection.platform).toBe("feishu");
+		expect(connection.connector).toBe("webhook");
 		expect(connection.config).toMatchObject({
-			provider: "generic",
 			url: "https://example.com/hook",
 			headers: {},
 		});
+		// provider 已经升格成 platform —— 别在 config 里留一份影子。
+		expect(connection.config).not.toHaveProperty("provider");
 	});
 
-	it("WEBHOOK_PROVIDERS 覆盖 generic / dingtalk / feishu / wecom", () => {
-		expect(WEBHOOK_PROVIDERS.map((p) => p.value)).toEqual([
-			"generic",
-			"dingtalk",
-			"feishu",
-			"wecom",
-		]);
+	it("KNOWN_PLATFORMS 把 webhook 那四家平铺出来,不再有一个叫 webhook 的平台", () => {
+		const values = KNOWN_PLATFORMS.map((p) => p.value);
+		expect(values).toEqual(["onebot", "qq-official", "feishu", "dingtalk", "wecom", "generic"]);
 	});
 
-	it("makeEmptyTarget(webhook) 仍生成空 session 的合法手动目标", () => {
-		const connection = makeEmptyConnection("webhook", "团队 webhook");
+	it("makeEmptyTarget(webhook 那族) 生成 endpoint 形态、平台跟着连接走", () => {
+		const connection = makeEmptyConnection("wecom", "团队 webhook");
 		const target = makeEmptyTarget(connection, "团队 webhook");
 		expect(target).toMatchObject({
 			adapterId: connection.id,
-			platform: "webhook",
+			kind: "endpoint",
+			platform: "wecom",
 			scope: "channel",
 			enabled: true,
 			session: {},
@@ -110,7 +107,7 @@ describe("webhook adapter factories", () => {
 		expect(target.managedBy).toBeUndefined();
 	});
 
-	it("webhook placeholder / secret hint 随 provider 切换", () => {
+	it("webhook placeholder / secret hint 随平台切换", () => {
 		expect(webhookUrlPlaceholder("generic")).toContain("hooks.example.com");
 		expect(webhookSecretHint("generic")).toContain("x-bilibili-notify-secret");
 		expect(webhookUrlPlaceholder("dingtalk")).toContain("oapi.dingtalk.com");

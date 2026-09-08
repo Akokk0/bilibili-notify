@@ -111,6 +111,117 @@ describe("migrateConfigSections —— connector 从 config.transport 提上来"
 	});
 });
 
+describe("migrateConfigSections —— webhook 从平台降格成连接器", () => {
+	it.each(["feishu", "dingtalk", "wecom", "generic"])(
+		"config.provider %s 升格成 platform,并从 config 里摘掉",
+		(provider) => {
+			const out = migrateConfigSections({
+				connections: [onebotV1({ platform: "webhook", config: { url: "https://h/x", provider } })],
+			});
+			expect(out.connections[0]).toMatchObject({
+				platform: provider,
+				connector: "webhook",
+				kind: "direct",
+				config: { url: "https://h/x" },
+			});
+			expect((out.connections[0] as { config: Record<string, unknown> }).config).not.toHaveProperty(
+				"provider",
+			);
+		},
+	);
+
+	it("没有 provider 的老条目落 generic —— 与 schema 那个 default 同一个答案", () => {
+		const out = migrateConfigSections({
+			connections: [onebotV1({ platform: "webhook", config: { url: "https://h/x" } })],
+		});
+		expect(out.connections[0]).toMatchObject({ platform: "generic" });
+	});
+
+	it("认不出的 provider 也落 generic —— 别把一个不存在的平台名写进盘里", () => {
+		const out = migrateConfigSections({
+			connections: [
+				onebotV1({ platform: "webhook", config: { url: "https://h/x", provider: "wechat" } }),
+			],
+		});
+		expect(out.connections[0]).toMatchObject({ platform: "generic" });
+	});
+
+	it("降格完的连接能过 ConnectionSchema", () => {
+		const out = migrateConfigSections({
+			connections: [
+				onebotV1({ platform: "webhook", config: { url: "https://h/x", provider: "feishu" } }),
+			],
+		});
+		const parsed = ConnectionSchema.safeParse(out.connections[0]);
+		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+	});
+
+	it("webhook 目标跟着它那条连接的平台走 —— 目标自己不知道是飞书还是钉钉", () => {
+		const connectionId = "11111111-1111-4111-8111-111111111111";
+		const out = migrateConfigSections({
+			connections: [
+				onebotV1({
+					id: connectionId,
+					platform: "webhook",
+					config: { url: "https://h/x", provider: "dingtalk" },
+				}),
+			],
+			targets: [
+				targetV1({
+					platform: "webhook",
+					adapterId: connectionId,
+					scope: "channel",
+					session: {},
+					managedBy: "adapter",
+				}),
+			],
+		});
+		expect(out.targets[0]).toMatchObject({ platform: "dingtalk", kind: "endpoint" });
+		const parsed = PushTargetSchema.safeParse(out.targets[0]);
+		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+	});
+
+	it("连接找不到的悬空 webhook 目标落 generic —— 加载时托管同步会照连接重算", () => {
+		const out = migrateConfigSections({
+			targets: [
+				targetV1({ platform: "webhook", adapterId: "nope", scope: "channel", session: {} }),
+			],
+		});
+		expect(out.targets[0]).toMatchObject({ platform: "generic", kind: "endpoint" });
+	});
+
+	it("幂等:降格过一遍的不再报 changed", () => {
+		const raw = {
+			connections: [
+				onebotV1({ platform: "webhook", config: { url: "https://h/x", provider: "wecom" } }),
+			],
+			targets: [targetV1({ platform: "webhook", scope: "channel", session: {} })],
+		};
+		const once = migrateConfigSections(raw);
+		expect(once.changed).toEqual({ connections: true, targets: true });
+		const twice = migrateConfigSections(once);
+		expect(twice.changed).toEqual({ connections: false, targets: false });
+		expect(twice.connections).toEqual(once.connections);
+		expect(twice.targets).toEqual(once.targets);
+	});
+
+	it("只补了 connector、平台还写着 webhook 的半迁移状态仍算老形状", () => {
+		// 形状变更是分两片落的,中间那一刻真存在过。判据看得见它,才不会漏迁一半。
+		const half = [
+			onebotV1({
+				platform: "webhook",
+				kind: "direct",
+				connector: "webhook",
+				config: { url: "https://h/x" },
+			}),
+		];
+		expect(detectConfigVersion({ connections: half })).toBe(1);
+		expect(migrateConfigSections({ connections: half }).connections[0]).toMatchObject({
+			platform: "generic",
+		});
+	});
+});
+
 describe("migrateConfigSections —— 目标的形态提上来成 kind", () => {
 	it.each([
 		["onebot", "session"],

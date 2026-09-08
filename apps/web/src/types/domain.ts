@@ -19,7 +19,7 @@ import type {
 	OnebotTransport,
 	PushTarget,
 	PushTargetPlatform,
-	WebhookProvider,
+	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
 	countsAsDelivery,
@@ -79,7 +79,7 @@ export type {
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
 	TemplateBundlePartial as TemplateOverride,
-	WebhookProvider,
+	WebhookPlatform,
 } from "@bilibili-notify/internal";
 
 // ---- UI 文案 -----------------------------------------------------------
@@ -100,21 +100,8 @@ export const LIVE_END_EXTRA_LABELS: Record<LiveEndExtraKey, string> = {
 	liveSummary: "AI 总结",
 };
 
-export const WEBHOOK_PROVIDERS: ReadonlyArray<{ value: WebhookProvider; label: string }> = [
-	{ value: "generic", label: "Generic JSON" },
-	{ value: "dingtalk", label: "钉钉机器人" },
-	{ value: "feishu", label: "飞书机器人" },
-	{ value: "wecom", label: "企业微信机器人" },
-];
-
-export function webhookProviderLabel(provider: WebhookProvider | undefined): string {
-	return (
-		WEBHOOK_PROVIDERS.find((p) => p.value === (provider ?? "generic"))?.label ?? "Generic JSON"
-	);
-}
-
-export function webhookUrlPlaceholder(provider: WebhookProvider | undefined): string {
-	switch (provider ?? "generic") {
+export function webhookUrlPlaceholder(platform: WebhookPlatform): string {
+	switch (platform) {
 		case "dingtalk":
 			return "https://oapi.dingtalk.com/robot/send?access_token=...";
 		case "feishu":
@@ -126,8 +113,8 @@ export function webhookUrlPlaceholder(provider: WebhookProvider | undefined): st
 	}
 }
 
-export function webhookSecretHint(provider: WebhookProvider | undefined): string {
-	switch (provider ?? "generic") {
+export function webhookSecretHint(platform: WebhookPlatform): string {
+	switch (platform) {
 		case "dingtalk":
 			return "钉钉加签密钥 SEC...；填写后自动追加 timestamp/sign";
 		case "feishu":
@@ -150,10 +137,20 @@ export function maskWebhookUrl(url: string): string {
 	}
 }
 
+/**
+ * 平台选择器的候选。
+ *
+ * 后四个原先不在这里 —— 它们是 webhook 连接 config 里那个 `provider` 下拉的选项。
+ * webhook 降格成连接器之后,「飞书还是钉钉」跟「OneBot 还是官机」是同一个问题,
+ * 摆成两级选择只是在复述旧数据模型的形状。
+ */
 export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
 	{ value: "qq-official", label: "QQ 官方机器人" },
-	{ value: "webhook", label: "Webhook" },
+	{ value: "feishu", label: "飞书机器人" },
+	{ value: "dingtalk", label: "钉钉机器人" },
+	{ value: "wecom", label: "企业微信机器人" },
+	{ value: "generic", label: "未指明的 HTTP 端点" },
 ];
 
 // ---- Factories --------------------------------------------------------
@@ -208,17 +205,13 @@ export function makeEmptySubscription(uid: string): Subscription {
 
 export function makeEmptyConnection(platform: PushTargetPlatform, name: string): Connection {
 	// connector 的初值走 internal 那份 defaultConnectorFor —— 与迁移同一个答案,
-	// 免得「新建的」和「迁移来的」从不同默认值出发。
-	const base = {
-		id: newId(),
-		name,
-		enabled: true,
-		kind: "direct",
-		connector: defaultConnectorFor(platform) ?? "http",
-	} as const;
+	// 免得「新建的」和「迁移来的」从不同默认值出发。它按平台重载,所以每一支拿到的
+	// 是那一档的字面量类型,正好对得上 schema 里逐支收窄过的 `connector`。
+	const base = { id: newId(), name, enabled: true, kind: "direct" } as const;
 	if (platform === "onebot") {
 		return {
 			...base,
+			connector: defaultConnectorFor(platform),
 			platform: "onebot",
 			config: {
 				transport: "http",
@@ -236,14 +229,17 @@ export function makeEmptyConnection(platform: PushTargetPlatform, name: string):
 	if (platform === "qq-official") {
 		return {
 			...base,
+			connector: defaultConnectorFor(platform),
 			platform: "qq-official",
 			config: { appId: "", appSecret: "", sandbox: false, botType: "public", logReconnects: false },
 		};
 	}
+	// 剩下的都是 webhook 那一族 —— 平台不同、连法与配置形状一模一样。
 	return {
 		...base,
-		platform: "webhook",
-		config: { url: "https://example.com/hook", provider: "generic", headers: {} },
+		connector: defaultConnectorFor(platform),
+		platform,
+		config: { url: "https://example.com/hook", headers: {} },
 	};
 }
 
@@ -294,5 +290,12 @@ export function makeEmptyTarget(connection: Connection, name: string): PushTarge
 	if (connection.platform === "qq-official") {
 		return { ...base, kind: "session", platform: "qq-official", scope: "group", session: {} };
 	}
-	return { ...base, kind: "endpoint", platform: "webhook", scope: "channel", session: {} };
+	// webhook 那一族:目标是连接的单向终点,平台跟着连接走。
+	return {
+		...base,
+		kind: "endpoint",
+		platform: connection.platform,
+		scope: "channel",
+		session: {},
+	};
 }

@@ -58,20 +58,34 @@ async function openConnectionEditor() {
 }
 
 describe("适配器弹窗的平台胶囊", () => {
-	it("三个平台各一颗,默认选中 OneBot", async () => {
+	// webhook 那一族原先挤在一颗叫「Webhook」的胶囊后面,真平台藏在 config 里一个
+	// 叫「Webhook 协议」的下拉。降格之后它们就是平台,和 OneBot 摆在同一排。
+	it("每个平台各一颗,默认选中 OneBot", async () => {
 		await openConnectionEditor();
-		for (const label of ["OneBot v11", "QQ 官方机器人", "Webhook"]) {
+		for (const label of [
+			"OneBot v11",
+			"QQ 官方机器人",
+			"飞书机器人",
+			"钉钉机器人",
+			"企业微信机器人",
+			"未指明的 HTTP 端点",
+		]) {
 			expect(screen.getByRole("button", { name: new RegExp(label) })).toBeTruthy();
 		}
 		expect(isActive(screen.getByRole("button", { name: /OneBot/ }))).toBe(true);
-		expect(isActive(screen.getByRole("button", { name: /Webhook/ }))).toBe(false);
+		expect(isActive(screen.getByRole("button", { name: /飞书/ }))).toBe(false);
+	});
+
+	it("没有一颗叫「Webhook」的胶囊了 —— 它是连法,不是平台", async () => {
+		await openConnectionEditor();
+		expect(screen.queryByRole("button", { name: /^Webhook$/ })).toBeNull();
 	});
 
 	it("点另一个平台就换过去", async () => {
 		await openConnectionEditor();
-		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
 		await waitFor(() => {
-			expect(isActive(screen.getByRole("button", { name: /Webhook/ }))).toBe(true);
+			expect(isActive(screen.getByRole("button", { name: /飞书/ }))).toBe(true);
 		});
 		expect(isActive(screen.getByRole("button", { name: /OneBot/ }))).toBe(false);
 	});
@@ -80,11 +94,11 @@ describe("适配器弹窗的平台胶囊", () => {
 	it("每个平台的选中色各不相同", async () => {
 		await openConnectionEditor();
 		const onebot = screen.getByRole("button", { name: /OneBot/ }).style.borderColor;
-		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
 		await waitFor(() => {
-			const webhook = screen.getByRole("button", { name: /Webhook/ }).style.borderColor;
-			expect(webhook).not.toBe("");
-			expect(webhook).not.toBe(onebot);
+			const feishu = screen.getByRole("button", { name: /飞书/ }).style.borderColor;
+			expect(feishu).not.toBe("");
+			expect(feishu).not.toBe(onebot);
 		});
 	});
 });
@@ -98,10 +112,10 @@ describe("OneBot 传输方式胶囊", () => {
 		await waitFor(() => expect(isActive(screen.getByRole("button", { name: "HTTP" }))).toBe(true));
 	});
 
-	it("切到 Webhook 平台后这排就不在了 —— 它只属于 OneBot", async () => {
+	it("切到走 webhook 的平台后这排就不在了 —— 它只属于 OneBot", async () => {
 		await openConnectionEditor();
 		expect(screen.queryByRole("button", { name: "HTTP" })).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
 		await waitFor(() => {
 			expect(screen.queryByRole("button", { name: "HTTP" })).toBeNull();
 		});

@@ -37,7 +37,7 @@ export interface ProbeResult {
  * 方法会以装饰器对象为 `this` 被调;要是哪天有实现按 `this` 写,叠上去就悄悄丢状态。
  */
 export interface PlatformAdapter {
-	/** Platforms this adapter handles ("onebot" / "webhook"). */
+	/** Platforms this adapter handles ("onebot" / "feishu" / …). */
 	readonly platforms: readonly string[];
 	/** Return whether this adapter can deliver to `target` (via `adapter`) right now. */
 	isAvailable(connection: Connection, target: PushTarget): boolean;

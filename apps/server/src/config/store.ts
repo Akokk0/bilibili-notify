@@ -337,10 +337,11 @@ function migrateLegacyTargets(raw: unknown[]): {
 					enabled: true,
 					kind: "direct",
 					connector: "webhook",
-					platform: "webhook",
+					// 这条遗留路径来自「webhook 是一个平台」那一代,当时连 provider 都还没有
+					// (它是后来才加进 config 的)—— 所以一律落 generic。
+					platform: "generic",
 					config: {
 						url,
-						provider: "generic",
 						secret: cfg.secret || undefined,
 						headers: cfg.headers ?? {},
 					},
@@ -351,7 +352,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 				name: legacy.name,
 				adapterId,
 				kind: "endpoint",
-				platform: "webhook",
+				platform: "generic",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
 				session: {},
@@ -381,7 +382,8 @@ function deriveConnectionName(targetName: string, addr: string): string {
 	return targetName || "默认连接";
 }
 
-type WebhookConnection = Extract<Connection, { platform: "webhook" }>;
+/** 靠 webhook 连的那族连接 —— 判据是**连接器**,平台是飞书 / 钉钉 / 企微 / 未指明中的一个。 */
+type WebhookConnection = Extract<Connection, { connector: "webhook" }>;
 
 function managedWebhookTargetId(adapterId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
@@ -396,7 +398,8 @@ function makeManagedWebhookTarget(
 		name: connection.name || "Webhook",
 		adapterId: connection.id,
 		kind: "endpoint",
-		platform: "webhook",
+		// 托管目标的平台跟着连接走 —— 连接改成钉钉,这里下一次同步就跟着改。
+		platform: connection.platform,
 		scope: "channel",
 		enabled: connection.enabled,
 		managedBy: "adapter",
@@ -442,7 +445,7 @@ function syncManagedWebhookTargets(
 	let changed = false;
 	const aliases = new Map<string, string>();
 	for (const connection of connections) {
-		if (connection.platform !== "webhook") continue;
+		if (connection.connector !== "webhook") continue;
 		const r = syncManagedWebhookTarget(connection, next);
 		next = r.next;
 		changed ||= r.changed;
@@ -1167,7 +1170,7 @@ class NodeConfigStore implements ConfigStore {
 		});
 		let targetAliases = new Map<string, string>();
 		const targetsChanged =
-			saved.platform === "webhook"
+			saved.connector === "webhook"
 				? await this.runScoped("targets", async () => {
 						const synced = syncManagedWebhookTarget(saved, this.targets);
 						targetAliases = synced.aliases;
@@ -1221,7 +1224,7 @@ class NodeConfigStore implements ConfigStore {
 		});
 		let targetAliases = new Map<string, string>();
 		const targetsChanged =
-			result.platform === "webhook"
+			result.connector === "webhook"
 				? await this.runScoped("targets", async () => {
 						const synced = syncManagedWebhookTarget(result, this.targets);
 						targetAliases = synced.aliases;
@@ -1249,7 +1252,7 @@ class NodeConfigStore implements ConfigStore {
 			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
 			// (互补:upsertTarget 侧 assertConnectionMatches 也校验 adapter 存在。)
 			const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
-			if (connection.platform !== "webhook" && referencing.length > 0) {
+			if (connection.connector !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"adapters",
 					{ id, targetIds: referencing, message: "adapter still in use" },
@@ -1266,7 +1269,7 @@ class NodeConfigStore implements ConfigStore {
 
 		let targetsChanged = false;
 		let subscriptionsChanged = false;
-		if (removedConnection.platform === "webhook") {
+		if (removedConnection.connector === "webhook") {
 			let removedTargetIds: string[] = [];
 			targetsChanged = await this.runScoped("targets", async () => {
 				removedTargetIds = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
@@ -1318,7 +1321,7 @@ class NodeConfigStore implements ConfigStore {
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
 			const owner = this.connections.find((a) => a.id === parsed.data.adapterId);
-			if (owner?.platform === "webhook") {
+			if (owner?.connector === "webhook") {
 				const synced = syncManagedWebhookTarget(owner, next);
 				next = synced.next;
 				targetAliases = synced.aliases;

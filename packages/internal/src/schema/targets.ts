@@ -4,6 +4,7 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PUSH_TARGET_PLATFORMS,
+	WEBHOOK_PLATFORMS,
 } from "../constants.js";
 
 /**
@@ -12,8 +13,10 @@ import {
  * 往 constants 的 `PUSH_TARGET_PLATFORMS` 加一个平台名 + 一套 adapter/session schema +
  * 一个 server adapter。词表住零依赖的 constants 是为了前端也拿得到(平台能力判断在那边)。
  * - `onebot`:OneBot v11 HTTP adapter
- * - `webhook`:任意 HTTP POST JSON
  * - `qq-official`:QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
+ * - `feishu` / `dingtalk` / `wecom` / `generic`:走出站 webhook 那一族(见
+ *   {@link WEBHOOK_PLATFORMS})。它们**不是**四个 adapter,是同一个 adapter 的四种
+ *   报文方言 —— 「怎么连」由 `connector` 说了算,这里只说「连到哪」。
  */
 export const PushTargetPlatformSchema = z.enum(PUSH_TARGET_PLATFORMS);
 export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
@@ -101,13 +104,18 @@ export const OnebotConnectionConfigSchema = z.union([
 export type OnebotConnectionConfig = z.infer<typeof OnebotConnectionConfigSchema>;
 export type OnebotTransport = OnebotConnectionConfig["transport"];
 
-export const WebhookProviderSchema = z.enum(["generic", "dingtalk", "feishu", "wecom"]);
-export type WebhookProvider = z.infer<typeof WebhookProviderSchema>;
+/** 词表本体在零依赖的 constants,`WebhookPlatform` 这个类型也从那边导 —— 别在这儿再声明一份。 */
+export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
 
+/**
+ * 出站 webhook 的连接配置。
+ *
+ * **这里没有 `provider`** —— 它升格成了 `platform`(见 {@link WEBHOOK_PLATFORMS})。
+ * 老配置里那个字段由 `schema/migration.ts` 提上去并从 config 里摘掉;这一层是非 strict
+ * 的 z.object,所以万一漏了一条,strip 掉也不会让主人开不了机。
+ */
 export const WebhookConnectionConfigSchema = z.object({
 	url: z.url(),
-	/** 协议提供方;旧配置缺省为 generic,保持 bilibili-notify JSON envelope 兼容。 */
-	provider: WebhookProviderSchema.default("generic"),
 	secret: z.string().optional(),
 	/** 自定义 header 例如 Authorization */
 	headers: z.record(z.string(), z.string()).default({}),
@@ -179,20 +187,27 @@ const ConnectionCommonShape = {
 	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
+// 每一支把 `connector` 收窄到自己**真走得通**的那几档。收窄不只是为了拦住乱写的配置:
+// 收窄之后 `connection.connector === "webhook"` 才是个判别式,TS 能顺着它把 config
+// narrow 到对应形状 —— 否则每处都得改判 platform,「怎么连」这根轴白提了。
 const OnebotConnectionSchema = z.object({
 	...ConnectionCommonShape,
+	connector: z.enum(["http", "ws", "ws-reverse"]),
 	platform: z.literal("onebot"),
 	config: OnebotConnectionConfigSchema,
 });
 
 const WebhookConnectionSchema = z.object({
 	...ConnectionCommonShape,
-	platform: z.literal("webhook"),
+	connector: z.literal("webhook"),
+	platform: WebhookPlatformSchema,
 	config: WebhookConnectionConfigSchema,
 });
 
 const QQOfficialConnectionSchema = z.object({
 	...ConnectionCommonShape,
+	// 官机只有 WS 网关一条路。
+	connector: z.literal("ws"),
 	platform: z.literal("qq-official"),
 	config: QQOfficialConnectionConfigSchema,
 });
@@ -213,21 +228,6 @@ export const ConnectionSchema = z
 				code: "custom",
 				path: ["connector"],
 				message: `connector ${connection.connector} does not match config.transport ${connection.config.transport}`,
-			});
-		}
-		// 另外两个平台只有一条路,连接器是常量。
-		if (connection.platform === "webhook" && connection.connector !== "webhook") {
-			ctx.addIssue({
-				code: "custom",
-				path: ["connector"],
-				message: "webhook connector must be webhook",
-			});
-		}
-		if (connection.platform === "qq-official" && connection.connector !== "ws") {
-			ctx.addIssue({
-				code: "custom",
-				path: ["connector"],
-				message: "qq-official connector must be ws",
 			});
 		}
 	});
@@ -307,7 +307,7 @@ const OnebotPushTargetSchema = z.object({
 const WebhookPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	kind: z.literal("endpoint"),
-	platform: z.literal("webhook"),
+	platform: WebhookPlatformSchema,
 	session: WebhookSessionSchema,
 });
 

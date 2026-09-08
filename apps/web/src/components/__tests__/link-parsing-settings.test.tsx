@@ -50,7 +50,7 @@ const TARGETS: PushTarget[] = [
 	target(T_A, "群 A"),
 	target(T_B, "官机群 B", { platform: "qq-official", session: { groupOpenid: "op" } } as never),
 	target(T_PRIVATE, "主人私聊", { scope: "private", session: { userId: "1" } } as never),
-	target(T_WEBHOOK, "钩子", { platform: "webhook", session: {} } as never),
+	target(T_WEBHOOK, "钩子", { platform: "feishu", session: {} } as never),
 ];
 
 const A_OB = "11111111-1111-4111-8111-111111111111";

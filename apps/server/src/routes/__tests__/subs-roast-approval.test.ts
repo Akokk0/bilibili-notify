@@ -14,7 +14,7 @@ import { createSubsRoute } from "../subs.js";
 import type { RouteDeps } from "../types.js";
 
 const ONEBOT = [{ id: "m1", platform: "onebot" }] as never;
-const WEBHOOK = [{ id: "m1", platform: "webhook" }] as never;
+const WEBHOOK = [{ id: "m1", platform: "feishu" }] as never;
 
 describe("checkApprovalReachable", () => {
 	it("审批没开 → 不插手(别拿一道无关的闸拦住别的保存)", () => {
@@ -81,7 +81,7 @@ const patchRoast = (body: unknown) => ({
 
 describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
 	it("在收不到回复的通道上开审批 → 400,而且**没落盘**", async () => {
-		const { app, patchSubscription } = routeWith("webhook");
+		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
 			"/s1",
 			patchRoast({ roastSchedule: { approval: true } }) as RequestInit,
@@ -102,14 +102,14 @@ describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
 	});
 
 	it("这次 patch 不碰 roastSchedule → 闸不插手(别拦住改别的字段)", async () => {
-		const { app, patchSubscription } = routeWith("webhook");
+		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request("/s1", patchRoast({ enabled: false }) as RequestInit);
 		expect(res.status).toBe(200);
 		expect(patchSubscription).toHaveBeenCalledTimes(1);
 	});
 
 	it("只改 cron、审批本来就关着 → 放行", async () => {
-		const { app, patchSubscription } = routeWith("webhook");
+		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
 			"/s1",
 			patchRoast({ roastSchedule: { cron: "0 9 * * 1" } }) as RequestInit,

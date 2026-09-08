@@ -1,12 +1,14 @@
 import { createHmac } from "node:crypto";
-import type {
-	Connection,
-	DeliveryResult,
-	Logger,
-	NotificationPayload,
-	PayloadSegment,
-	PushTarget,
-	WebhookConnectionConfig,
+import {
+	type Connection,
+	type DeliveryResult,
+	type Logger,
+	type NotificationPayload,
+	type PayloadSegment,
+	type PushTarget,
+	WEBHOOK_PLATFORMS,
+	type WebhookConnectionConfig,
+	type WebhookPlatform,
 } from "@bilibili-notify/internal";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
 
@@ -25,8 +27,11 @@ export interface WebhookAdapterOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
-type WebhookConnectionConfigWithProvider = WebhookConnectionConfig & { provider?: WebhookProvider };
+/**
+ * 这个 adapter 驮的四个平台。它们共用一条 webhook 连法,差别只在**报文方言** ——
+ * 所以是一个 adapter 的四个分支,不是四个 adapter。
+ */
+type WebhookProvider = WebhookPlatform;
 
 interface WebhookHttpRequest {
 	url: string;
@@ -39,11 +44,11 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
 	return {
-		platforms: ["webhook"],
+		platforms: [...WEBHOOK_PLATFORMS],
 		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (connection.platform !== "webhook" || target.platform !== "webhook") return false;
+			if (connection.connector !== "webhook" || target.kind !== "endpoint") return false;
 			if (!connection.enabled || !target.enabled) return false;
-			const cfg = connection.config as WebhookConnectionConfigWithProvider;
+			const cfg = connection.config;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
 		async probe(_adapter: Connection): Promise<ProbeResult> {
@@ -59,15 +64,18 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			payload: NotificationPayload,
 			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (connection.platform !== "webhook" || target.platform !== "webhook") {
+			if (connection.connector !== "webhook" || target.kind !== "endpoint") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
+					err:
+						`wrong shape: connection=${connection.platform}/${connection.connector} ` +
+						`target=${target.platform}/${target.kind}`,
 				};
 			}
-			const cfg = connection.config as WebhookConnectionConfigWithProvider;
-			const provider = webhookProviderOf(cfg);
+			const cfg = connection.config;
+			// 方言由**连接的平台**说了算 —— 原先它藏在 config.provider 里。
+			const provider = connection.platform;
 			const t0 = Date.now();
 			const ctrl = new AbortController();
 			const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -104,13 +112,9 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	};
 }
 
-function webhookProviderOf(cfg: WebhookConnectionConfigWithProvider): WebhookProvider {
-	return cfg.provider ?? "generic";
-}
-
 function buildWebhookRequest(
 	provider: WebhookProvider,
-	cfg: WebhookConnectionConfigWithProvider,
+	cfg: WebhookConnectionConfig,
 	target: PushTarget,
 	payload: NotificationPayload,
 	pushOpts: { private?: boolean },
@@ -127,7 +131,7 @@ function buildWebhookRequest(
 	}
 }
 
-function baseHeaders(cfg: WebhookConnectionConfigWithProvider): Record<string, string> {
+function baseHeaders(cfg: WebhookConnectionConfig): Record<string, string> {
 	return {
 		"content-type": "application/json",
 		...cfg.headers,
@@ -135,7 +139,7 @@ function baseHeaders(cfg: WebhookConnectionConfigWithProvider): Record<string, s
 }
 
 function buildGenericWebhookRequest(
-	cfg: WebhookConnectionConfigWithProvider,
+	cfg: WebhookConnectionConfig,
 	target: PushTarget,
 	payload: NotificationPayload,
 	pushOpts: { private?: boolean },
@@ -157,7 +161,7 @@ function buildGenericWebhookRequest(
 }
 
 function buildDingTalkWebhookRequest(
-	cfg: WebhookConnectionConfigWithProvider,
+	cfg: WebhookConnectionConfig,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const url = cfg.secret ? signDingTalkUrl(cfg.url, cfg.secret) : cfg.url;
@@ -172,7 +176,7 @@ function buildDingTalkWebhookRequest(
 }
 
 function buildFeishuWebhookRequest(
-	cfg: WebhookConnectionConfigWithProvider,
+	cfg: WebhookConnectionConfig,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const body: Record<string, unknown> = {
@@ -188,7 +192,7 @@ function buildFeishuWebhookRequest(
 }
 
 function buildWeComWebhookRequest(
-	cfg: WebhookConnectionConfigWithProvider,
+	cfg: WebhookConnectionConfig,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	return {
@@ -315,7 +319,7 @@ function stringValue(value: unknown): string | null {
 	return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function sanitizeWebhookError(message: string, cfg: WebhookConnectionConfigWithProvider): string {
+function sanitizeWebhookError(message: string, cfg: WebhookConnectionConfig): string {
 	let out = message
 		.replace(/((?:[?&]|\b)(?:access_token|sign|token|secret|key)=)[^&\s"']+/gi, "$1***")
 		.replace(/\b(Authorization)\b(\s*[:=]\s*Bearer\s+)[^\s",;}]+/gi, "$1$2***")

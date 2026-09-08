@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { WEBHOOK_PLATFORMS } from "../constants";
 import { ConnectionSchema, OnebotConnectionConfigSchema, PushTargetSchema } from "./targets";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
@@ -71,48 +72,58 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts a valid webhook adapter and defaults provider to generic", () => {
+	it("accepts a valid webhook adapter and defaults headers to empty", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "wh1",
-			platform: "webhook",
+			platform: "generic",
 			enabled: true,
 			kind: "direct",
 			connector: "webhook",
 			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(true);
-		if (r.success && r.data.platform === "webhook") {
-			expect(r.data.config.provider).toBe("generic");
+		if (r.success && r.data.platform === "generic") {
 			expect(r.data.config.headers).toEqual({});
 		}
 	});
 
-	it("accepts supported webhook providers", () => {
-		for (const provider of ["generic", "dingtalk", "feishu", "wecom"] as const) {
-			const r = ConnectionSchema.safeParse({
-				id: UUID_A,
-				name: `wh-${provider}`,
-				platform: "webhook",
-				enabled: true,
-				kind: "direct",
-				connector: "webhook",
-				config: { provider, url: "https://example.com/hook", secret: "secret" },
-			});
-			expect(r.success, provider).toBe(true);
-			if (r.success && r.data.platform === "webhook") expect(r.data.config.provider).toBe(provider);
-		}
-	});
-
-	it("rejects unknown webhook provider", () => {
+	it.each(WEBHOOK_PLATFORMS)("accepts the %s webhook platform", (platform) => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
-			name: "bad-provider",
+			name: `wh-${platform}`,
+			platform,
+			enabled: true,
+			kind: "direct",
+			connector: "webhook",
+			config: { url: "https://example.com/hook", secret: "secret" },
+		});
+		expect(r.success, platform).toBe(true);
+	});
+
+	it("rejects the demoted `webhook` platform —— 它现在是连接器,不是平台", () => {
+		const r = ConnectionSchema.safeParse({
+			id: UUID_A,
+			name: "old-shape",
 			platform: "webhook",
 			enabled: true,
 			kind: "direct",
 			connector: "webhook",
-			config: { provider: "wechat", url: "https://example.com/hook" },
+			config: { url: "https://example.com/hook" },
+		});
+		expect(r.success).toBe(false);
+	});
+
+	it("rejects a webhook platform connected some other way", () => {
+		// 飞书只有一条路 —— 往 URL POST。写成 ws 就是配置错了,存下来只会在发送时才炸。
+		const r = ConnectionSchema.safeParse({
+			id: UUID_A,
+			name: "feishu-ws",
+			platform: "feishu",
+			enabled: true,
+			kind: "direct",
+			connector: "ws",
+			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(false);
 	});
@@ -368,7 +379,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			name: "wh:1",
 			adapterId: UUID_A,
 			kind: "endpoint",
-			platform: "webhook",
+			platform: "feishu",
 			scope: "channel",
 			enabled: true,
 			session: {},
@@ -382,7 +393,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			name: "wh:managed",
 			adapterId: UUID_A,
 			kind: "endpoint",
-			platform: "webhook",
+			platform: "feishu",
 			scope: "channel",
 			enabled: true,
 			managedBy: "adapter",
@@ -397,7 +408,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			name: "wh:bad-managed",
 			adapterId: UUID_A,
 			kind: "endpoint",
-			platform: "webhook",
+			platform: "feishu",
 			scope: "channel",
 			enabled: true,
 			managedBy: "user",
@@ -427,7 +438,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			name: "wh:1",
 			adapterId: UUID_A,
 			kind: "endpoint",
-			platform: "webhook",
+			platform: "feishu",
 			scope: "channel",
 			enabled: true,
 			session: { url: "https://example.com/hook" },

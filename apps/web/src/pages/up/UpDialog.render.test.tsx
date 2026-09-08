@@ -20,7 +20,7 @@ function targetFor(platform: PushTarget["platform"]): PushTarget {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", session: {} };
 	if (platform === "qq-official")
 		return { ...base, kind: "session", platform: "qq-official", scope: "group", session: {} };
-	return { ...base, kind: "endpoint", platform: "webhook", scope: "channel", session: {} };
+	return { ...base, kind: "endpoint", platform: "feishu", scope: "channel", session: {} };
 }
 
 /**
@@ -69,8 +69,8 @@ describe("UpDialog · QQ 官方 @全体 提示", () => {
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 	});
 
-	it("webhook target 不显示不支持说明", () => {
-		renderDialog(targetFor("webhook"));
+	it("webhook 那一族的 target 不显示不支持说明", () => {
+		renderDialog(targetFor("feishu"));
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 	});
 });

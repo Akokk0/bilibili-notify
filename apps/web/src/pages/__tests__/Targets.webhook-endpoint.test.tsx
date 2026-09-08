@@ -3,10 +3,10 @@
 /**
  * Webhook 那一支的**刻画测试** —— 钉住「系统托管的投递目标」在界面上的样子。
  *
- * 为什么单开一个文件钉它:webhook 眼下同时占着两个身份 —— 它既是 `Connection.platform`
- * 的一档,又是 `PushTarget.platform` 的一档。而数据模型重构要把它从「平台」降格成
- * 「连接器」(平台改由 provider 承担:飞书 / 钉钉 / 企业微信 / 未指明)。降格之后
- * `target.platform` 不再等于 `"webhook"`,页面里这几处 `=== "webhook"` 会**静默恒假**:
+ * 为什么单开一个文件钉它:webhook 原先同时占着两个身份 —— 它既是 `Connection.platform`
+ * 的一档,又是 `PushTarget.platform` 的一档。数据模型重构把它从「平台」降格成了
+ * 「连接器」(平台改由原先的 provider 承担:飞书 / 钉钉 / 企业微信 / 未指明)。降格之后
+ * `target.platform` 不再等于 `"webhook"`,页面里那几处 `=== "webhook"` 会**静默恒假**:
  *
  * - `managedWebhookTargetForConnection` 认不出自己那张托管目标 → 托管卡从界面消失,
  *   只剩一句「保存 Webhook 后系统会自动创建默认投递目标」的空态;
@@ -42,7 +42,7 @@ const WEBHOOK_CONNECTION = {
 	enabled: true,
 	kind: "direct",
 	connector: "webhook",
-	platform: "webhook",
+	platform: "feishu",
 	config: { url: "https://open.feishu.cn/hook/abcdef", provider: "feishu", headers: {} },
 } as unknown as Connection;
 
@@ -62,7 +62,7 @@ const MANAGED_TARGET = {
 	name: "飞书群机器人 · 投递",
 	adapterId: WEBHOOK_ID,
 	kind: "endpoint",
-	platform: "webhook",
+	platform: "feishu",
 	scope: "group",
 	enabled: true,
 	managedBy: "adapter",

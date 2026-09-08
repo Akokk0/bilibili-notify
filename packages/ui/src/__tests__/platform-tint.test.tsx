@@ -18,9 +18,10 @@ import { PlatformIcon, platformTint } from "../atoms";
 afterEach(cleanup);
 
 describe("platformTint", () => {
-	it("三个已知平台各有各的色,互不相同", () => {
-		const tints = ["onebot", "qq-official", "webhook"].map(platformTint);
-		expect(new Set(tints).size).toBe(3);
+	it("已知平台各有各的色,互不相同", () => {
+		const known = ["onebot", "qq-official", "feishu", "dingtalk", "wecom", "generic"];
+		const tints = known.map(platformTint);
+		expect(new Set(tints).size).toBe(known.length);
 		for (const t of tints) expect(t).toMatch(/^#[0-9a-fA-F]{6}$/);
 	});
 
@@ -29,9 +30,9 @@ describe("platformTint", () => {
 	});
 
 	it("图标用的就是它 —— 图标与胶囊不许各走各的", () => {
-		const { container } = render(<PlatformIcon platform="webhook" />);
+		const { container } = render(<PlatformIcon platform="feishu" />);
 		const badge = container.querySelector("span") as HTMLElement;
-		// webhook 没有图标,走首字母方章,底色即平台色。
+		// webhook 那一族没有图标,走首字母方章,底色即平台色。
 		expect(badge.style.background).toBeTruthy();
 		const { container: unknown } = render(<PlatformIcon platform="carrier-pigeon" />);
 		const fallback = unknown.querySelector("span") as HTMLElement;

@@ -1148,10 +1148,20 @@ export function HintNote({ children, tone = "neutral", className }: HintNoteProp
 
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
+/**
+ * 各平台的色与短名。
+ *
+ * 后四个是走 webhook 那一族 —— 飞书 / 钉钉 / 企微的品牌色都在蓝绿一带,单靠色摆不开,
+ * 所以它们**不给图标**:走首字母方章,「飞」「钉」「企」三个字本身就是最好的辨识。
+ * `generic` 是「未指明的 HTTP 端点」,没有品牌可借,给一档中性的板岩灰。
+ */
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
 	onebot: { color: "#3b82f6", label: "OneBot", icon: "qq" },
 	"qq-official": { color: "#14b8a6", label: "QQ官方", icon: "qq" },
-	webhook: { color: "#22c55e", label: "Webhook" },
+	feishu: { color: "#3370ff", label: "飞书" },
+	dingtalk: { color: "#00c2ff", label: "钉钉" },
+	wecom: { color: "#07c160", label: "企微" },
+	generic: { color: "#94a3b8", label: "HTTP 端点" },
 };
 
 /**

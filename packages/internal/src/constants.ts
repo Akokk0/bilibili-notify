@@ -50,10 +50,29 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 };
 
 /**
+ * 出站 webhook 那一族平台。
+ *
+ * 这四个原先是 webhook 连接 config 里的一个 `provider` 字段 —— 因为「webhook」被当成了
+ * 平台,真平台只好降级成它的一个属性。可 webhook 从来不是平台,它是**怎么连**:飞书和
+ * 钉钉是两个平台,只是恰好都用「往一个 URL POST 一段 JSON」这种连法。所以 provider 升格,
+ * webhook 挪去 {@link DIRECT_CONNECTORS}。
+ *
+ * `generic` 是承认的疤:主人贴的 URL 可能是自建服务,那就没有平台可言。面板上写
+ * 「未指明的 HTTP 端点」,不假装它是个什么。
+ */
+export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as const;
+export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
+
+/**
  * 推送目标平台词表。schema 本体在 schema/targets.ts(`PushTargetPlatformSchema`),那边从
  * 这里取值 —— 与 FEATURE_KEYS 同一套安排:词表住零依赖模块,前端也拿得到。
  */
-export const PUSH_TARGET_PLATFORMS = ["onebot", "webhook", "qq-official"] as const;
+export const PUSH_TARGET_PLATFORMS = ["onebot", "qq-official", ...WEBHOOK_PLATFORMS] as const;
+
+/** 这个平台是不是靠 webhook 连的 —— 判据在词表上,别在各处手写四个平台名。 */
+export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
+	return (WEBHOOK_PLATFORMS as readonly string[]).includes(platform);
+}
 
 /**
  * 直连连接器词表 —— 「**怎么**连」这一轴,与「连到**哪个**平台」正交。
@@ -73,14 +92,19 @@ export const DIRECT_CONNECTORS = ["http", "ws", "ws-reverse", "webhook"] as cons
  * 住零依赖的 constants 是因为前端要**运行时**用它 —— 从带 zod 的 schema 里导会把
  * zod 拖进 web 产物(见 apps/web/src/types/domain.ts 顶上那段)。
  */
+export function defaultConnectorFor(platform: "onebot"): "http";
+export function defaultConnectorFor(platform: "qq-official"): "ws";
+export function defaultConnectorFor(platform: WebhookPlatform): "webhook";
+export function defaultConnectorFor(
+	platform: string,
+): (typeof DIRECT_CONNECTORS)[number] | undefined;
 export function defaultConnectorFor(
 	platform: string,
 ): (typeof DIRECT_CONNECTORS)[number] | undefined {
+	if (isWebhookPlatform(platform)) return "webhook";
 	switch (platform) {
 		case "onebot":
 			return "http";
-		case "webhook":
-			return "webhook";
 		// 官机只有 WS 网关一条路;`connector` 提上来之后它才有地方写。
 		case "qq-official":
 			return "ws";
@@ -737,7 +761,7 @@ export function platformCanReceiveReply(platform: string): boolean {
  * 反复怀疑自己配错了。
  */
 export function inboundGapReason(platform: string): string {
-	return platform === "webhook"
+	return isWebhookPlatform(platform)
 		? "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话"
 		: `女仆还没在 ${platform} 上接入站消息，主人回的 y 送不到女仆手里`;
 }

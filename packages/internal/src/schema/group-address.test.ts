@@ -60,8 +60,8 @@ describe("groupAddressOf / groupSessionFor —— 两头必须认同一个地址
 	});
 
 	it("没有入站的平台没有群地址", () => {
-		// webhook 只有出站没有回程,它的 session 是空对象 —— 这里返回 undefined 是对的,
-		// 不是漏写。
+		// webhook 那族平台只有出站没有回程,它们的 session 是空对象 —— 这里返回
+		// undefined 是对的,不是漏写。
 		const webhook = PushTargetSchema.parse({
 			id: UUID_A,
 			name: "机器人",
@@ -69,7 +69,7 @@ describe("groupAddressOf / groupSessionFor —— 两头必须认同一个地址
 			kind: "endpoint",
 			scope: "group",
 			enabled: true,
-			platform: "webhook",
+			platform: "feishu",
 			session: {},
 		});
 		expect(groupAddressOf(webhook)).toBeUndefined();

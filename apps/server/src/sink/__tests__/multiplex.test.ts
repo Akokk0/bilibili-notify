@@ -43,7 +43,7 @@ function makeConnection(
 function makeTarget(over: { id: string; adapterId: string } & Record<string, unknown>): PushTarget {
 	return {
 		name: `target-${over.id}`,
-		platform: "webhook",
+		platform: "feishu",
 		scope: "group",
 		enabled: true,
 		session: {},
@@ -85,7 +85,7 @@ function makePlatformAdapter(
 
 describe("createMultiplexSink — adapter 注册表", () => {
 	it("一个 adapter 声明多 platform:全部进表", () => {
-		const pa = makePlatformAdapter(["onebot", "webhook"]);
+		const pa = makePlatformAdapter(["onebot", "feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "onebot" })],
@@ -98,19 +98,19 @@ describe("createMultiplexSink — adapter 注册表", () => {
 	});
 
 	it("同一 platform 被两个 adapter 声明:warn + 后者覆盖", () => {
-		const first = makePlatformAdapter(["webhook"], { isAvailable: vi.fn(() => false) });
-		const second = makePlatformAdapter(["webhook"], { isAvailable: vi.fn(() => true) });
+		const first = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
+		const second = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => true) });
 		const logger = makeLogger();
 		const sink = createMultiplexSink({
 			store: makeStore(
-				[makeConnection({ id: "a1", platform: "webhook" })],
-				[makeTarget({ id: "t1", adapterId: "a1", platform: "webhook" })],
+				[makeConnection({ id: "a1", platform: "feishu" })],
+				[makeTarget({ id: "t1", adapterId: "a1", platform: "feishu" })],
 			),
 			adapters: [first, second],
 			logger,
 		});
 		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("platform=webhook adapter override"),
+			expect.stringContaining("platform=feishu adapter override"),
 		);
 		// 后注册的 second 生效(isAvailable → true)。
 		expect(sink.isAvailable("t1")).toBe(true);
@@ -121,8 +121,8 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 	it("resolve:命中返回 target,未命中 undefined", () => {
 		const target = makeTarget({ id: "t1", adapterId: "a1" });
 		const sink = createMultiplexSink({
-			store: makeStore([makeConnection({ id: "a1", platform: "webhook" })], [target]),
-			adapters: [makePlatformAdapter(["webhook"])],
+			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger: makeLogger(),
 		});
 		expect(sink.resolve("t1")).toBe(target);
@@ -137,7 +137,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 				[makeConnection({ id: "a2", platform: "telegram" })],
 				[targetNoConnection, targetNoPA],
 			),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger: makeLogger(),
 		});
 		expect(sink.isAvailable("missing")).toBe(false); // target 缺
@@ -146,10 +146,10 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 	});
 
 	it("isAvailable:链路齐全时透传 platformAdapter.isAvailable", () => {
-		const paFalse = makePlatformAdapter(["webhook"], { isAvailable: vi.fn(() => false) });
+		const paFalse = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
 		const sink = createMultiplexSink({
 			store: makeStore(
-				[makeConnection({ id: "a1", platform: "webhook" })],
+				[makeConnection({ id: "a1", platform: "feishu" })],
 				[makeTarget({ id: "t1", adapterId: "a1" })],
 			),
 			adapters: [paFalse],
@@ -175,7 +175,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 	it("target 缺:返回 target not found,不触发 onDelivery", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([], []),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -188,7 +188,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		const logger = makeLogger();
 		const sink = createMultiplexSink({
 			store: makeStore([], [makeTarget({ id: "t1", adapterId: "ghost" })]),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger,
 			onDelivery,
 		});
@@ -206,7 +206,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 				[makeConnection({ id: "a1", platform: "telegram" })],
 				[makeTarget({ id: "t1", adapterId: "a1", platform: "telegram" })],
 			),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger,
 			onDelivery,
 		});
@@ -224,8 +224,8 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		// scope:"private" 的 target 吃掉(回归守卫见 platforms/__tests__/adapters.test.ts)。
 		// onDelivery 仍带 `{ private: false }` 作为 metadata,与 sendPrivate 区分。
 		const target = makeTarget({ id: "t1", adapterId: "a1" });
-		const connection = makeConnection({ id: "a1", platform: "webhook" });
-		const pa = makePlatformAdapter(["webhook"]);
+		const connection = makeConnection({ id: "a1", platform: "feishu" });
+		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore([connection], [target]),
 			adapters: [pa],
@@ -240,8 +240,8 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 
 	it("sendPrivate:private:true 透传到 platformAdapter.send 与 onDelivery", async () => {
 		const target = makeTarget({ id: "t1", adapterId: "a1" });
-		const connection = makeConnection({ id: "a1", platform: "webhook" });
-		const pa = makePlatformAdapter(["webhook"]);
+		const connection = makeConnection({ id: "a1", platform: "feishu" });
+		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore([connection], [target]),
 			adapters: [pa],
@@ -263,7 +263,7 @@ describe("createMultiplexSink — probeConnection", () => {
 	it("adapter 缺:adapter not found", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([], []),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger: makeLogger(),
 		});
 		expect(await sink.probeConnection("ghost")).toEqual({
@@ -276,7 +276,7 @@ describe("createMultiplexSink — probeConnection", () => {
 	it("platformAdapter 缺:no platform adapter for <platform>", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([makeConnection({ id: "a1", platform: "telegram" })], []),
-			adapters: [makePlatformAdapter(["webhook"])],
+			adapters: [makePlatformAdapter(["feishu"])],
 			logger: makeLogger(),
 		});
 		expect(await sink.probeConnection("a1")).toEqual({
@@ -287,8 +287,8 @@ describe("createMultiplexSink — probeConnection", () => {
 	});
 
 	it("happy:委派 platformAdapter.probe(adapter) 并回传其 ProbeResult", async () => {
-		const connection = makeConnection({ id: "a1", platform: "webhook" });
-		const pa = makePlatformAdapter(["webhook"], {
+		const connection = makeConnection({ id: "a1", platform: "feishu" });
+		const pa = makePlatformAdapter(["feishu"], {
 			probe: vi.fn(async () => ({ ok: null as boolean | null, latencyMs: 0 })),
 		});
 		const sink = createMultiplexSink({
@@ -306,14 +306,14 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	function sinkWith(connections: Connection[], targets: PushTarget[]) {
 		return createMultiplexSink({
 			store: makeStore(connections, targets),
-			adapters: [makePlatformAdapter(["webhook"], { isAvailable: vi.fn(() => false) })],
+			adapters: [makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) })],
 			logger: makeLogger(),
 		});
 	}
 
 	it("目标启用、适配器启用 → true,哪怕此刻不可达", () => {
 		const sink = sinkWith(
-			[makeConnection({ id: "a1", platform: "webhook" })],
+			[makeConnection({ id: "a1", platform: "feishu" })],
 			[makeTarget({ id: "t1", adapterId: "a1" })],
 		);
 		expect(sink.isEnabled("t1")).toBe(true);
@@ -322,7 +322,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 
 	it("目标停用 → false", () => {
 		const sink = sinkWith(
-			[makeConnection({ id: "a1", platform: "webhook" })],
+			[makeConnection({ id: "a1", platform: "feishu" })],
 			[makeTarget({ id: "t1", adapterId: "a1", enabled: false })],
 		);
 		expect(sink.isEnabled("t1")).toBe(false);
@@ -330,7 +330,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 
 	it("所属适配器停用 → false", () => {
 		const sink = sinkWith(
-			[makeConnection({ id: "a1", platform: "webhook", enabled: false })],
+			[makeConnection({ id: "a1", platform: "feishu", enabled: false })],
 			[makeTarget({ id: "t1", adapterId: "a1" })],
 		);
 		expect(sink.isEnabled("t1")).toBe(false);
@@ -367,11 +367,11 @@ describe("createMultiplexSink — connectionCapabilities / probeConnectionCapabi
 	});
 
 	it("适配器缺 / 平台实现缺 / 平台没有能力概念 → undefined", async () => {
-		const pa = makePlatformAdapter(["webhook"]);
+		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[
-					makeConnection({ id: "w1", platform: "webhook" }),
+					makeConnection({ id: "w1", platform: "feishu" }),
 					makeConnection({ id: "t1", platform: "telegram" }),
 				],
 				[],

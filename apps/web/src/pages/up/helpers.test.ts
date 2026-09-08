@@ -45,9 +45,9 @@ describe("platformSupportsAtAll", () => {
 		expect(platformSupportsAtAll("qq-official")).toBe(false);
 	});
 
-	it("onebot / webhook 支持 @全体", () => {
+	it("onebot / webhook 那一族支持 @全体", () => {
 		expect(platformSupportsAtAll("onebot")).toBe(true);
-		expect(platformSupportsAtAll("webhook")).toBe(true);
+		expect(platformSupportsAtAll("feishu")).toBe(true);
 	});
 });
 
