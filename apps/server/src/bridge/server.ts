@@ -111,6 +111,8 @@ export interface BridgeServer extends Disposable {
 	/** 已握手的会话数。没握完手的不算。 */
 	readonly sessionCount: number;
 	getSession(connectionId: string): BridgeSession | undefined;
+	/** 当前所有已握手的会话。配置对账(接入被删 / 被停用 / token 换了)要从这一头看起。 */
+	listSessions(): BridgeSession[];
 	/**
 	 * 发一条消息,等桥的回执。请求 ↔ 回执的配对是**传输层**的事(一条 socket 上多条
 	 * 在飞),不是 adapter 的 —— adapter 只负责把 payload 译成 {@link BridgeSendRequest}。
@@ -467,6 +469,18 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		});
 	}
 
+	function snapshot(conn: BridgeConn): BridgeSession | undefined {
+		if (!conn.hello) return undefined;
+		return {
+			connectionId: conn.connectionId,
+			kind: conn.hello.kind,
+			name: conn.hello.name,
+			version: conn.hello.version,
+			bots: conn.bots,
+			connectedAt: conn.connectedAt,
+		};
+	}
+
 	return {
 		dispose,
 		send,
@@ -475,15 +489,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		},
 		getSession(connectionId) {
 			const conn = sessions.get(connectionId);
-			if (!conn?.hello) return undefined;
-			return {
-				connectionId: conn.connectionId,
-				kind: conn.hello.kind,
-				name: conn.hello.name,
-				version: conn.hello.version,
-				bots: conn.bots,
-				connectedAt: conn.connectedAt,
-			};
+			return conn ? snapshot(conn) : undefined;
+		},
+		listSessions() {
+			return [...sessions.values()].flatMap((conn) => snapshot(conn) ?? []);
 		},
 		disconnect(connectionId, code) {
 			const conn = sessions.get(connectionId);

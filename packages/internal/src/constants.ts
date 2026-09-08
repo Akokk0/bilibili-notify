@@ -245,8 +245,15 @@ export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 export function connectionDispatchKey(
 	connection: { kind: "direct"; platform: string } | { kind: "bridge" },
 ): string {
-	return connection.kind === "direct" ? connection.platform : "bridge";
+	return connection.kind === "direct" ? connection.platform : BRIDGE_DISPATCH_KEY;
 }
+
+/**
+ * 桥接入那一档分发键。它**不是平台**,所以不在 `CONNECTION_PLATFORMS` 里 —— 但 adapter
+ * 矩阵是按分发键索引的,所以那张表的键集合是「平台词表 + 这一个」。给它一个名字是为了
+ * 让矩阵覆盖守卫能引用它,而不是在守卫里手抄一个 `"bridge"`。
+ */
+export const BRIDGE_DISPATCH_KEY = "bridge";
 
 /** 这个平台是不是靠 webhook 连的。 */
 export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
