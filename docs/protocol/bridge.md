@@ -403,3 +403,6 @@ BN 侧就是这么做的，所以你可以放心先发新帧。
 |---|---|
 | wire 类型与常量 | `apps/contract/src/bridge.ts` |
 | 帧校验 / 版本判定 / 能力归一 | `apps/server/src/bridge/protocol.ts` |
+| WS 端点：鉴权 / 握手 / 心跳 / 回执关联 | `apps/server/src/bridge/server.ts` |
+| `inbound` → BN 内部的入站形状 | `apps/server/src/bridge/inbound.ts` |
+| 推送 → `send` 帧（矩阵里的桥 adapter） | `apps/server/src/platforms/bridge.ts` |
