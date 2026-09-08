@@ -56,7 +56,7 @@ const ONEBOT_CONNECTION = {
 	config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 } as unknown as Connection;
 
-/** 系统托管的那张:`managedBy: "adapter"`,用户不可编辑 / 删除。 */
+/** 系统托管的那张:`managedBy: "connection"`,用户不可编辑 / 删除。 */
 const MANAGED_TARGET = {
 	id: "44444444-4444-4444-8444-444444444444",
 	name: "飞书群机器人 · 投递",
@@ -65,7 +65,7 @@ const MANAGED_TARGET = {
 	platform: "feishu",
 	scope: "group",
 	enabled: true,
-	managedBy: "adapter",
+	managedBy: "connection",
 	session: {},
 } as unknown as PushTarget;
 

@@ -498,7 +498,7 @@ describe("ConfigStore", () => {
 			platform: connection.platform,
 			scope: "channel",
 			enabled: true,
-			managedBy: "adapter",
+			managedBy: "connection",
 		});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
 		expect(scopes).toEqual(["adapters", "targets"]);
@@ -604,7 +604,7 @@ describe("ConfigStore", () => {
 		await store2.load();
 
 		expect(store2.getTargets()).toEqual([
-			expect.objectContaining({ id: legacyId, kind: "endpoint", managedBy: "adapter" }),
+			expect.objectContaining({ id: legacyId, kind: "endpoint", managedBy: "connection" }),
 		]);
 	});
 
@@ -646,7 +646,7 @@ describe("ConfigStore", () => {
 			expect.objectContaining({
 				id: managedWebhookTargetId(connection.id),
 				connectionId: connection.id,
-				managedBy: "adapter",
+				managedBy: "connection",
 			}),
 		]);
 		await rm(dir2, { recursive: true, force: true });
@@ -776,7 +776,7 @@ describe("ConfigStore", () => {
 			id: target.id,
 			name: connection.name,
 			connectionId: connection.id,
-			managedBy: "adapter",
+			managedBy: "connection",
 			scope: "channel",
 		});
 		expect(store2.getSubscriptions()[0]?.routing.dynamic).toEqual([target.id]);
@@ -797,7 +797,7 @@ describe("ConfigStore", () => {
 			id: managedWebhookTargetId(connection.id),
 			name: "飞书 Webhook",
 			enabled: false,
-			managedBy: "adapter",
+			managedBy: "connection",
 		});
 	});
 
@@ -937,7 +937,7 @@ describe("ConfigStore", () => {
 		// 身份,订阅 routing 当场断。
 		const connection = makeWebhookConnection();
 		await store.upsertConnection(connection);
-		const managed = store.getTargets().find((t) => t.managedBy === "adapter");
+		const managed = store.getTargets().find((t) => t.managedBy === "connection");
 		expect(managed).toBeDefined();
 
 		await expect(store.upsertTarget(managed as PushTarget)).resolves.toBeUndefined();
@@ -962,7 +962,7 @@ describe("ConfigStore", () => {
 		expect(managedId).toBe(managedWebhookTargetId(connection.id));
 
 		await store.upsertTarget(
-			makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" }) as PushTarget,
+			makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" }) as PushTarget,
 		);
 
 		expect(store.getTargets()).toHaveLength(1);
@@ -1011,7 +1011,7 @@ describe("ConfigStore", () => {
 		await writeFile(join(stateA, "adapters.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(
 			join(stateA, "targets.json"),
-			JSON.stringify([makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" })]),
+			JSON.stringify([makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" })]),
 			"utf8",
 		);
 		await writeFile(join(stateA, "subscriptions.json"), JSON.stringify([sub]), "utf8");
@@ -1031,7 +1031,7 @@ describe("ConfigStore", () => {
 			cookieStore: noCookies,
 		}).exportBackup({ kind: "sanitized" });
 		// 导出必然带着托管 target —— 正是老写法恢复不回去的那一条
-		expect(env.sections.targets?.some((t) => t.managedBy === "adapter")).toBe(true);
+		expect(env.sections.targets?.some((t) => t.managedBy === "connection")).toBe(true);
 
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-restore-"));
 		const fresh = createConfigStore({
@@ -1147,14 +1147,14 @@ describe("ConfigStore", () => {
 		await store.replaceSections({
 			adapters: [connection],
 			targets: [
-				makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" }) as PushTarget,
+				makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" }) as PushTarget,
 			],
 		});
 
 		expect(store.getTargets()).toHaveLength(1);
 		// 只有一条时它就是留下的那条 —— 老 id 保住,不会被换成确定性 id
 		expect(store.getTargets()[0]?.id).toBe(legacyId);
-		expect(store.getTargets()[0]?.managedBy).toBe("adapter");
+		expect(store.getTargets()[0]?.managedBy).toBe("connection");
 		expect(store.getSubscriptions()[0]?.routing.live).toEqual([legacyId]);
 	});
 
@@ -1182,7 +1182,7 @@ describe("ConfigStore", () => {
 		await store2.load();
 
 		expect(store2.getTargets()).toEqual([
-			expect.objectContaining({ id: primary.id, managedBy: "adapter", name: connection.name }),
+			expect.objectContaining({ id: primary.id, managedBy: "connection", name: connection.name }),
 		]);
 		const nextSub = store2.getSubscriptions()[0];
 		expect(nextSub?.routing.dynamic).toEqual([primary.id]);

@@ -61,9 +61,9 @@ function isMigratedConnection(entry: unknown): boolean {
 }
 
 /**
- * 一个目标已经是新形状？四件事都要成立:`kind` 在、`platform` 不再是被降格掉的
+ * 一个目标已经是新形状？五件事都要成立:`kind` 在、`platform` 不再是被降格掉的
  * `"webhook"`、每平台一套的 `session` 已经收成了一格 `address`、指向连接的那一格
- * 已经改叫 `connectionId`。
+ * 已经改叫 `connectionId`、`managedBy` 说的是「连接托管」而不是「adapter 托管」。
  */
 function isMigratedTarget(entry: unknown): boolean {
 	return (
@@ -71,7 +71,8 @@ function isMigratedTarget(entry: unknown): boolean {
 		typeof entry.kind === "string" &&
 		entry.platform !== "webhook" &&
 		entry.session === undefined &&
-		entry.adapterId === undefined
+		entry.adapterId === undefined &&
+		entry.managedBy !== "adapter"
 	);
 }
 
@@ -138,16 +139,19 @@ function connectorOf(entry: Record<string, unknown>): DirectConnector | undefine
 }
 
 /**
- * v1 → v2(目标):四件事,各自幂等。
+ * v1 → v2(目标):五件事,各自幂等。
  *
  * ① 指向连接的那一格从 `adapterId` 改叫 `connectionId` —— 排在最前面,后面几步(尤其是
- *    ②里那次按连接查平台)只认新名字,不必两个名字各写一遍。
- * ② `platform: "webhook"` 降格 —— 但目标自己不知道是飞书还是钉钉,**跟着它那条连接走**。
+ *    ③里那次按连接查平台)只认新名字,不必两个名字各写一遍。
+ * ② `managedBy` 的值从 `"adapter"` 改叫 `"connection"` —— 托管这张目标的是那条**连接**,
+ *    不是实现它的那个 adapter。注意托管目标的 **id 种子不跟着改**:那串 uuid 已经落在盘上,
+ *    被订阅的路由表引用着,换了种子等于把主人配好的路由指到一个不存在的目标上。
+ * ③ `platform: "webhook"` 降格 —— 但目标自己不知道是飞书还是钉钉,**跟着它那条连接走**。
  *    连接找不到(备份只导了 targets 这一段、或者引用悬空)就落 `generic`;托管目标是
  *    连接的派生物,加载时 `syncManagedWebhookTargets` 会照着连接重算,落错也自愈。
- * ③ 「这是个会话还是个单向终点」从 `platform` 提上来成 `kind`。老盘上这个判断处处写成
+ * ④ 「这是个会话还是个单向终点」从 `platform` 提上来成 `kind`。老盘上这个判断处处写成
  *    `platform === "webhook"`,降格后那些比较会**静默恒假**,所以判据必须搬轴。
- * ④ 每平台一套的 `session` 收成一格 `address`(+ 官机频道的 `parentAddress`)。
+ * ⑤ 每平台一套的 `session` 收成一格 `address`(+ 官机频道的 `parentAddress`)。
  *    取哪一格由 `scope` 决定 —— 这正是收成一格要消灭的那个矩阵。
  */
 function targetToV2(
@@ -163,6 +167,11 @@ function targetToV2(
 		const { adapterId, ...rest } = next;
 		// 两个名字都在(半迁移过的盘)以新的那个为准 —— 老的那格只可能更旧。
 		next = { ...rest, connectionId: rest.connectionId ?? adapterId };
+		changed = true;
+	}
+
+	if (next.managedBy === "adapter") {
+		next = { ...next, managedBy: "connection" };
 		changed = true;
 	}
 

@@ -270,7 +270,7 @@ const PushTargetCommonShape = {
 	scope: PushTargetScopeSchema,
 	enabled: z.boolean(),
 	/** 生命周期由 adapter 管理的系统目标；用户不直接编辑 / 删除。 */
-	managedBy: z.literal("adapter").optional(),
+	managedBy: z.literal("connection").optional(),
 	/**
 	 * 最近一次显式 `/api/push/test` 或真实业务推送的结果。
 	 * 跟 Connection.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
@@ -335,7 +335,7 @@ const EndpointPushTargetSchema = z.object({
 export const PushTargetSchema = z
 	.discriminatedUnion("kind", [SessionPushTargetSchema, EndpointPushTargetSchema])
 	.superRefine((target, ctx) => {
-		if (target.managedBy === "adapter" && target.kind !== "endpoint") {
+		if (target.managedBy === "connection" && target.kind !== "endpoint") {
 			ctx.addIssue({
 				code: "custom",
 				path: ["managedBy"],

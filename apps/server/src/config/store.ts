@@ -435,6 +435,11 @@ function deriveConnectionName(targetName: string, addr: string): string {
 /** 靠 webhook 连的那族连接 —— 判据是**连接器**,平台是飞书 / 钉钉 / 企微 / 未指明中的一个。 */
 type WebhookConnection = Extract<Connection, { connector: "webhook" }>;
 
+/**
+ * 托管目标的 id。**种子里那个 `adapter` 是冻住的**,别顺着改名一起改:它算出来的 uuid
+ * 已经落在主人盘上,订阅的路由表按 id 引用着它 —— 换种子等于给每条 webhook 连接凭空
+ * 换一张目标,主人配好的路由指向一个不存在的 id,而且不报错。
+ */
 function managedWebhookTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
@@ -452,7 +457,7 @@ function makeManagedWebhookTarget(
 		platform: connection.platform,
 		scope: "channel",
 		enabled: connection.enabled,
-		managedBy: "adapter",
+		managedBy: "connection",
 		testStatus: existing?.testStatus,
 	};
 }
@@ -462,7 +467,7 @@ function syncManagedWebhookTarget(
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
-	const existing = owned.find((t) => t.managedBy === "adapter") ?? owned[0];
+	const existing = owned.find((t) => t.managedBy === "connection") ?? owned[0];
 	const desired = makeManagedWebhookTarget(connection, existing);
 	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
 
@@ -1356,7 +1361,7 @@ class NodeConfigStore implements ConfigStore {
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
 			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
 			// 的,炸在这一步时 globals / 订阅 / adapters 已经落盘,配置只剩半新半旧)。
-			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "adapter") {
+			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "connection") {
 				throw new ConfigValidationError(
 					"targets",
 					{ message: "webhook target is managed by adapter" },
@@ -1394,7 +1399,7 @@ class NodeConfigStore implements ConfigStore {
 				);
 			}
 			const current = this.targets[idx] as PushTarget;
-			if (current.kind === "endpoint" && current.managedBy === "adapter") {
+			if (current.kind === "endpoint" && current.managedBy === "connection") {
 				throw new ConfigValidationError(
 					"targets",
 					{
@@ -1452,7 +1457,7 @@ class NodeConfigStore implements ConfigStore {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) return false;
 			const target = this.targets[idx] as PushTarget;
-			if (target.managedBy === "adapter") {
+			if (target.managedBy === "connection") {
 				throw new ConfigValidationError(
 					"targets",
 					{ id, message: "managed target cannot be deleted directly" },

@@ -116,7 +116,7 @@ function connectionEndpointSummary(a: Connection): string {
  */
 function targetSessionSummary(target: PushTarget): string {
 	if (target.kind === "endpoint") {
-		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
+		return target.managedBy === "connection" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 	}
 	// 地址收成一格之后,这里只剩「叫它什么」这一件事 —— 取哪一格由 scope 说了算,
 	// 不再是每个平台一套 session 字段名。
@@ -137,7 +137,7 @@ function managedWebhookTargetForConnection(
 ): PushTarget | undefined {
 	if (connection.connector !== "webhook") return undefined;
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
-	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
+	return owned.find((t) => t.managedBy === "connection") ?? owned[0];
 }
 
 // ── Adapter card ────────────────────────────────────────────────────────────
@@ -1611,7 +1611,7 @@ export default function Targets() {
 
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
-		if (t.kind === "endpoint" && t.managedBy === "adapter") {
+		if (t.kind === "endpoint" && t.managedBy === "connection") {
 			showToast("Webhook 目标由系统自动托管，请在连接里修改 URL", false);
 			return;
 		}
@@ -1830,7 +1830,7 @@ export default function Targets() {
 												}}
 												onTest={() => testTarget(t)}
 												testing={targetTesting[t.id]}
-												readOnly={t.managedBy === "adapter"}
+												readOnly={t.managedBy === "connection"}
 											/>
 										))}
 										<AddCard

@@ -332,6 +332,56 @@ describe("migrateConfigSections —— 指向连接的那一格改叫 connection
 	});
 });
 
+describe("migrateConfigSections —— 托管标记说的是「连接托管」", () => {
+	it("托管标记从 adapter 改成 connection —— 托管它的是那条连接", () => {
+		const out = migrateConfigSections({
+			targets: [
+				targetV1({ platform: "webhook", scope: "channel", session: {}, managedBy: "adapter" }),
+			],
+		});
+		expect(out.targets[0]).toMatchObject({ managedBy: "connection" });
+	});
+
+	it("没有托管标记的目标不凭空长一个", () => {
+		const out = migrateConfigSections({ targets: [targetV1()] });
+		expect(out.targets[0]).not.toHaveProperty("managedBy");
+	});
+
+	it("老托管标记还在就算没迁完", () => {
+		const half = [
+			{
+				...targetV1(),
+				connectionId: "11111111-1111-4111-8111-111111111111",
+				adapterId: undefined,
+				kind: "endpoint",
+				platform: "feishu",
+				session: undefined,
+				managedBy: "adapter",
+			},
+		];
+		expect(detectConfigVersion({ targets: half })).toBe(1);
+	});
+
+	it("老名字还在就算没迁完 —— 判据看得见它", () => {
+		const half = [{ ...targetV1(), kind: "session", address: "114514", session: undefined }];
+		expect(detectConfigVersion({ targets: half })).toBe(1);
+	});
+
+	it("幂等:搬完一遍不再报 changed", () => {
+		const once = migrateConfigSections({ targets: [targetV1()] });
+		const twice = migrateConfigSections({ targets: once.targets });
+		expect(twice.changed.targets).toBe(false);
+		expect(twice.targets).toEqual(once.targets);
+	});
+
+	it("不认识的平台整条原样放行 —— 连这一格也不动", () => {
+		const alien = { id: "t", adapterId: "a", platform: "koishi-bot" };
+		const out = migrateConfigSections({ targets: [alien] });
+		expect(out.targets[0]).toEqual(alien);
+		expect(out.changed.targets).toBe(false);
+	});
+});
+
 describe("migrateConfigSections —— 每平台一套的 session 收成一格 address", () => {
 	it.each([
 		["group", { groupId: "114514" }, "114514"],

@@ -395,7 +395,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "feishu",
 			scope: "channel",
 			enabled: true,
-			managedBy: "adapter",
+			managedBy: "connection",
 		});
 		expect(r.success).toBe(true);
 	});
@@ -423,7 +423,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			managedBy: "adapter",
+			managedBy: "connection",
 			address: "111",
 		});
 		expect(r.success).toBe(false);
