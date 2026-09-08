@@ -61,7 +61,6 @@ export const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
 export const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
 
 export interface BridgeServerOptions {
-	httpServer: HttpServer;
 	serviceCtx: NodeServiceContext;
 	/** 默认 `/bridge`。 */
 	path?: string;
@@ -80,6 +79,15 @@ export interface BridgeServerOptions {
 	heartbeatIntervalMs?: number;
 	heartbeatTimeoutMs?: number;
 	sendTimeoutMs?: number;
+	/**
+	 * 现在收不收这条接入。**现读** —— 折的是两个开关:桥接模块的总开关(`globals.extensions`)
+	 * 与这条接入自己的 `enabled`。
+	 *
+	 * 与 {@link BridgeServerOptions.resolveToken} 分成两问是因为**答案不一样**:token 不认识
+	 * 回 401(配置错了,别重连),认识但眼下不收回 **503**(暂时的,退避重连)。合成一问的话
+	 * 用户在面板上把接入停用一下,插件那头看到的是「token 不对」,而它其实好好的。
+	 */
+	accepts?(connectionId: string): boolean;
 	/** bot 名单来了(握手那份也算)。名单是**全量快照**,整份换掉。 */
 	onBots?(connectionId: string, bots: readonly BridgeBot[]): void;
 	/**
@@ -122,6 +130,14 @@ export interface BridgeSendOutcome {
 }
 
 export interface BridgeServer extends Disposable {
+	/**
+	 * 把 `/bridge` 挂到这台 HTTP server 上 —— **挂上之前它不收连接**。
+	 *
+	 * 两段式是被装配顺序逼出来的、也正好是对的:HTTP server 要等 `serve()` 才有,而桥
+	 * adapter 在那之前就得进矩阵。没挂上的桥服务器行为完全一致 —— 一条会话都没有,
+	 * 于是推送答「桥没连着」。再挂一次会先摘掉上一台。
+	 */
+	attach(httpServer: HttpServer): void;
 	/** 已握手的会话数。没握完手的不算。 */
 	readonly sessionCount: number;
 	getSession(connectionId: string): BridgeSession | undefined;
@@ -396,9 +412,9 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	// ---------------- HTTP upgrade ---------------------------------------------
 
-	function rejectUnauthorized(socket: Duplex): void {
+	function reject(socket: Duplex, status: "401 Unauthorized" | "503 Service Unavailable"): void {
 		try {
-			socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+			socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 		} catch {
 			// 尽力而为,反正下面要 destroy
 		}
@@ -443,12 +459,25 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		const connectionId = token ? opts.resolveToken(token) : null;
 		if (!connectionId) {
 			log.warn("bridge upgrade rejected: missing or invalid token");
-			rejectUnauthorized(socket);
+			reject(socket, "401 Unauthorized");
+			return;
+		}
+		if (opts.accepts && !opts.accepts(connectionId)) {
+			// 认得这个 token,只是眼下不收 —— 模块关了 / 这条接入停用了。503 而不是 401:
+			// 插件据此退避重连,用户把开关拨回来,它自己就回来了。
+			log.info(`bridge upgrade deferred: ${connectionId} is off`);
+			reject(socket, "503 Service Unavailable");
 			return;
 		}
 		wss.handleUpgrade(req, socket, head, (ws) => accept(ws, connectionId, bridgeOrigin(req)));
 	};
-	opts.httpServer.on("upgrade", onUpgrade);
+	/** 挂着的那台 HTTP server;没挂上就没有。 */
+	let attached: HttpServer | undefined;
+	const attach = (httpServer: HttpServer): void => {
+		attached?.off("upgrade", onUpgrade);
+		attached = httpServer;
+		httpServer.on("upgrade", onUpgrade);
+	};
 
 	// ---------------- 心跳 -----------------------------------------------------
 
@@ -479,7 +508,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	const dispose = (): void => {
 		if (heartbeatHandle) clearInterval(heartbeatHandle);
 		if (watchdogHandle) clearInterval(watchdogHandle);
-		opts.httpServer.off("upgrade", onUpgrade);
+		attached?.off("upgrade", onUpgrade);
+		attached = undefined;
 		for (const conn of [...conns]) close(conn, 1001, "server shutting down");
 		try {
 			wss.close();
@@ -527,6 +557,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	}
 
 	return {
+		attach,
 		dispose,
 		send,
 		get sessionCount() {

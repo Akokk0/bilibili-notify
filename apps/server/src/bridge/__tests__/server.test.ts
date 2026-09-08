@@ -176,7 +176,6 @@ describe("/bridge 端点", () => {
 	async function boot(over: Partial<Parameters<typeof createBridgeServer>[0]> = {}) {
 		server?.dispose();
 		server = createBridgeServer({
-			httpServer,
 			serviceCtx: fakeServiceCtx(),
 			serverVersion: "9.9.9",
 			resolveToken: (token) => (token === TOKEN ? CONNECTION_ID : null),
@@ -190,6 +189,7 @@ describe("/bridge 端点", () => {
 			onBots: (connectionId, bots) => botsCalls.push({ connectionId, bots }),
 			...over,
 		});
+		server.attach(httpServer);
 	}
 
 	function join(token: string | null = TOKEN): Peer {
@@ -231,12 +231,42 @@ describe("/bridge 端点", () => {
 
 	// ---- 鉴权在 upgrade ----------------------------------------------------
 
+	it("**没挂上 HTTP server 就不收连接** —— 装配顺序上它比 serve() 早生出来", async () => {
+		server.dispose();
+		server = createBridgeServer({
+			serviceCtx: fakeServiceCtx(),
+			serverVersion: "9.9.9",
+			resolveToken: () => CONNECTION_ID,
+			inbound: () => ({ private: true, group: "with-links" }),
+		});
+		const p = join();
+		// 没人应答 upgrade:既不会开成 WS,也不会收到 HTTP 拒绝。
+		await new Promise((r) => setTimeout(r, 40));
+		expect(p.socket.readyState).not.toBe(WebSocket.OPEN);
+		expect(server.sessionCount).toBe(0);
+	});
+
 	it("没有 Authorization 头 → upgrade 401,连 WS 都不给开", async () => {
 		expect(await join(null).waitRejected()).toBe(401);
 	});
 
 	it("token 认不出 → 401", async () => {
 		expect(await join("wrong").waitRejected()).toBe(401);
+	});
+
+	it("认得这个 token、只是眼下不收 → **503 不是 401**:插件据此退避重连而不是当配置错", async () => {
+		await boot({ accepts: () => false });
+		expect(await join().waitRejected()).toBe(503);
+		expect(server.sessionCount).toBe(0);
+	});
+
+	it("不收的判断是**现读**的 —— 用户把开关拨回来,下一次重连就进得来", async () => {
+		let on = false;
+		await boot({ accepts: () => on });
+		expect(await join().waitRejected()).toBe(503);
+		on = true;
+		await handshaken();
+		expect(server.sessionCount).toBe(1);
 	});
 
 	// ---- 握手 --------------------------------------------------------------

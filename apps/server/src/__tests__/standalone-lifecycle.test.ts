@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
 
 async function findFreePort(): Promise<number> {
@@ -101,6 +102,54 @@ describe("standalone server lifecycle", () => {
 		await handle.close("test");
 		await handle.close("test again");
 		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 桥接那三样东西(端点 / 取图口 / 矩阵里的 adapter)在 `index.ts` 里装配,除了这里
+	 * **没有别的地方证明它们真的挂上了** —— 各自的单元测试都是在自己搭的 server 上跑的。
+	 * 装配漏一步的症状是「插件连不上 / 图 404」,而进程照常启动、日志一个字都不说。
+	 */
+	it("启动之后 /bridge 与取图口都在:没 token 的 upgrade 被拒,取不到的图是 404", async () => {
+		const port = await findFreePort();
+		handle = await startStandaloneServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: makeEnv(),
+			shutdownTimeoutMs: 1_000,
+		});
+
+		// 取图口在 `/api/*` 之外,所以这一发不带任何凭据也该走到路由(而不是被鉴权挡掉)。
+		const blob = await fetch(`${handle.url}/bridge/blob/0123456789abcdef0123456789abcdef`);
+		expect(blob.status).toBe(404);
+		// 断 body 不只断状态码:路由**没挂上**的话请求落到 Hono 的默认 404,那也是 404 ——
+		// 只看状态码的话这条守卫永远不会红(实测过)。
+		expect(await blob.text()).toBe('{"ok":false,"err":"not found"}');
+
+		// `/bridge` 挂上了 —— 挂上才会有人应答 upgrade,没挂的话这条连接会一直吊着。
+		const status = await new Promise<number>((resolve, reject) => {
+			const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`);
+			const timer = setTimeout(() => reject(new Error("没人应答 upgrade:/bridge 没挂上")), 2_000);
+			socket.on("unexpected-response", (_req, res) => {
+				clearTimeout(timer);
+				socket.terminate();
+				resolve(res.statusCode ?? 0);
+			});
+			socket.on("open", () => {
+				clearTimeout(timer);
+				socket.terminate();
+				resolve(101);
+			});
+			socket.on("error", () => {});
+		});
+		expect(status).toBe(401);
 	});
 
 	it("non-loopback 无 auth 且无 BN_ALLOW_NO_AUTH 时拒绝启动但不调用 process.exit", async () => {

@@ -11,8 +11,10 @@
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
+import { BRIDGE_DISPATCH_KEY, CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { BridgeServer } from "../../bridge/server.js";
+import { createBridgeAdapter } from "../bridge.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import type { PlatformAdapter } from "../types.js";
@@ -45,24 +47,35 @@ function buildMatrix(): PlatformAdapter[] {
 		createOnebotAdapter({ logger, serviceCtx }),
 		createQQOfficialAdapter({ logger, serviceCtx, registry: createQQSessionRegistry() }),
 		createWebhookAdapter({ logger }),
+		createBridgeAdapter({
+			logger,
+			server: {} as unknown as BridgeServer,
+			blobs: { put: () => "blob" },
+		}),
 	];
 }
 
-describe("adapter 矩阵覆盖连接平台词表", () => {
-	it("每个平台都恰好有一个 adapter 认领", () => {
+/**
+ * 矩阵是按**分发键**索引的,而分发键 = 平台词表 + 桥那一个。桥不在平台词表里(它没有
+ * 单一平台),所以这张表的键集合比词表多一个,不是「恰好等于」。
+ */
+const DISPATCH_KEYS = [...CONNECTION_PLATFORMS, BRIDGE_DISPATCH_KEY];
+
+describe("adapter 矩阵覆盖分发键", () => {
+	it("每个分发键都恰好有一个 adapter 认领", () => {
 		const claimed = new Map<string, number>();
 		for (const adapter of buildMatrix()) {
 			for (const platform of adapter.platforms) {
 				claimed.set(platform, (claimed.get(platform) ?? 0) + 1);
 			}
 		}
-		for (const platform of CONNECTION_PLATFORMS) {
-			expect(claimed.get(platform) ?? 0, `平台 ${platform} 的 adapter`).toBe(1);
+		for (const key of DISPATCH_KEYS) {
+			expect(claimed.get(key) ?? 0, `分发键 ${key} 的 adapter`).toBe(1);
 		}
 	});
 
-	it("也没有多认领的 —— adapter 声明了一个词表里没有的平台就是拼错了", () => {
+	it("也没有多认领的 —— adapter 声明了一个表外的键就是拼错了", () => {
 		const declared = buildMatrix().flatMap((a) => [...a.platforms]);
-		expect([...new Set(declared)].sort()).toEqual([...CONNECTION_PLATFORMS].sort());
+		expect([...new Set(declared)].sort()).toEqual([...DISPATCH_KEYS].sort());
 	});
 });
