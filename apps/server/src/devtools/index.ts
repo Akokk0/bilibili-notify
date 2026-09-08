@@ -150,7 +150,13 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		...busEventScenarios({ bus: input.bus }),
 		loginStateScenario({ auth, bus: input.bus }),
 		heapPressureScenario({ heap }),
-		capabilityScenario({ injector: caps, connections: input.connectionConfigs }),
+		// 方言给的是**没包装过**的那份:「哪些平台有能力这回事」是方言自己的事实,
+		// 不该经过装饰器那一层(它今天原样交回没能力的 adapter,但那是它的实现细节)。
+		capabilityScenario({
+			injector: caps,
+			connections: input.connectionConfigs,
+			dialects: input.adapters,
+		}),
 		...timerScenarios({
 			clock,
 			subs: input.subs,

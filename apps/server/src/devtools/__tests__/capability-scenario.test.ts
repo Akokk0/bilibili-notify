@@ -50,9 +50,14 @@ function webhook(): PlatformAdapter {
 
 function setup() {
 	const injector = createCapabilityInjector();
-	const ob = injector.wrap(onebot());
-	const wh = injector.wrap(webhook());
-	const reg = createDevRegistry([capabilityScenario({ injector, connections: () => [OB, WH] })]);
+	const obDialect = onebot();
+	const whDialect = webhook();
+	const dialects = [obDialect, whDialect];
+	const ob = injector.wrap(obDialect);
+	const wh = injector.wrap(whDialect);
+	const reg = createDevRegistry([
+		capabilityScenario({ injector, connections: () => [OB, WH], dialects }),
+	]);
 	return { reg, ob, wh };
 }
 
@@ -96,6 +101,20 @@ describe("connection.capability", () => {
 		await expect(reg.run("connection.capability", { connection: "ad-wh" })).rejects.toBeInstanceOf(
 			DevParamError,
 		);
+	});
+
+	it("有能力概念的平台是问方言问出来的,不是写死的一份名单", async () => {
+		// 哪天给官机接上能力探测,devtools 就该跟着能选它 —— 而不是继续说「官机没有能力
+		// 这回事」。这里造一份实现了能力方法的官机方言,场景必须认它。
+		const injector = createCapabilityInjector();
+		const qq: PlatformAdapter = { ...onebot(), platforms: ["qq-official"] };
+		const conn = { ...OB, id: "ad-qq", name: "官机", platform: "qq-official" } as Connection;
+		const reg = createDevRegistry([
+			capabilityScenario({ injector, connections: () => [conn], dialects: [qq] }),
+		]);
+		const wrapped = injector.wrap(qq);
+		await reg.run("connection.capability", { state: "supported" });
+		expect(wrapped.capabilities?.(conn)?.miniAppCard.state).toBe("supported");
 	});
 
 	it("收摊回真", async () => {
