@@ -13,6 +13,7 @@ import type {
 	ReactNode,
 	SVGProps,
 } from "react";
+import { createContext, useContext } from "react";
 import { Icon, type IconName } from "./icons";
 
 // ── Avatar ──────────────────────────────────────────────────────────────────
@@ -1149,29 +1150,55 @@ export function HintNote({ children, tone = "neutral", className }: HintNoteProp
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 /**
- * 各平台的色与短名。
+ * 一个平台在界面上的样子 —— 由**消费方注入**。
  *
- * 后四个是走 webhook 那一族 —— 飞书 / 钉钉 / 企微的品牌色都在蓝绿一带,单靠色摆不开,
- * 所以它们**不给图标**:走首字母方章,「飞」「钉」「企」三个字本身就是最好的辨识。
- * `generic` 是「未指明的 HTTP 端点」,没有品牌可借,给一档中性的板岩灰。
+ * 这张表原先写死在库里:六个平台名、色、短名,连「飞书 / 钉钉 / 企微的品牌色都在蓝绿
+ * 一带,单靠色摆不开所以不给图标、走首字方章」这条理由都在。可这是个纯展示件库 ——
+ * 认识业务平台意味着桥每驮进来一个平台都得改一次库,而库根本不该知道有桥这回事。
+ *
+ * 所以留在库里的是**怎么画**(有图标画图标、没有画首字方章、色可被 tone 盖),
+ * **画谁**从外面注入。事实那一份住 `@bilibili-notify/internal` 的平台注册表。
  */
-const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
-	onebot: { color: "#3b82f6", label: "OneBot", icon: "qq" },
-	"qq-official": { color: "#14b8a6", label: "QQ官方", icon: "qq" },
-	feishu: { color: "#3370ff", label: "飞书" },
-	dingtalk: { color: "#00c2ff", label: "钉钉" },
-	wecom: { color: "#07c160", label: "企微" },
-	generic: { color: "#94a3b8", label: "HTTP 端点" },
-};
+export interface PlatformMeta {
+	/** 标识色。 */
+	tint: string;
+	/** 短名。没有图标时的方章取它的**首字**。 */
+	label: string;
+	/** 图标名(见 `Icon`)。留空、或给了一个库里没有的名字,都退首字方章。 */
+	icon?: string;
+}
+
+const PlatformMetaContext = createContext<((platform: string) => PlatformMeta | undefined) | null>(
+	null,
+);
+
+export const PlatformMetaProvider = PlatformMetaContext.Provider;
+
+const NO_PLATFORM_META = () => undefined;
+
+/**
+ * 查一个平台的样子。**没有 Provider 时恒 undefined** —— 调用方按「认不出」处理,
+ * 库在别处(只想画个方章)照常能用。
+ */
+export function usePlatformMeta(): (platform: string) => PlatformMeta | undefined {
+	return useContext(PlatformMetaContext) ?? NO_PLATFORM_META;
+}
 
 /**
  * 平台的标识色。**认不出的平台退静默档** —— 「不认识」正是那个 token 的意思。
  *
- * 导出它是为了让 Targets 的平台胶囊别再照着 `PLATFORM_META` 抄第二份:那份副本连
- * 兜底的 `#888` 都一字不差,而站里同义的灰正在往 `--color-bn-inactive` 上收。
+ * 它是个 hook 而不是裸函数,是因为表从 context 来。导出它是为了让 Targets 的平台
+ * 胶囊别再照着抄第二份:那份副本连兜底的 `#888` 都一字不差,而站里同义的灰正在往
+ * `--color-bn-inactive` 上收。
  */
-export function platformTint(platform: string): string {
-	return PLATFORM_META[platform]?.color ?? "var(--color-bn-inactive)";
+export function usePlatformTint(): (platform: string) => string {
+	const lookup = usePlatformMeta();
+	return (platform) => lookup(platform)?.tint ?? "var(--color-bn-inactive)";
+}
+
+export function usePlatformLabel(): (platform: string) => string {
+	const lookup = usePlatformMeta();
+	return (platform) => lookup(platform)?.label ?? platform;
 }
 
 export function PlatformIcon({
@@ -1182,7 +1209,7 @@ export function PlatformIcon({
 	platform: string;
 	size?: number;
 	/**
-	 * 盖掉标识色。留空走 {@link platformTint} —— 平常就该是标识色。
+	 * 盖掉标识色。留空走 {@link usePlatformTint} —— 平常就该是标识色。
 	 *
 	 * 有这个口子是因为标识色是**中等亮度**的品牌色,摆在皮肤画的实心强调块上会撞
 	 * (实测 QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。喂 `currentColor` 让它跟着
@@ -1190,9 +1217,11 @@ export function PlatformIcon({
 	 */
 	tone?: string;
 }) {
-	const meta = PLATFORM_META[platform];
-	const color = tone ?? platformTint(platform);
-	const I = meta?.icon ? Icon[meta.icon] : null;
+	const lookup = usePlatformMeta();
+	const tint = usePlatformTint();
+	const meta = lookup(platform);
+	const color = tone ?? tint(platform);
+	const I = meta?.icon ? Icon[meta.icon as IconName] : null;
 	if (I) return <I size={size} style={{ color }} />;
 	const label = meta?.label ?? platform;
 	const badgeStyle: CSSProperties & SVGProps<SVGSVGElement> = {
@@ -1210,10 +1239,6 @@ export function PlatformIcon({
 			{label[0]}
 		</span>
 	);
-}
-
-export function platformLabel(platform: string): string {
-	return PLATFORM_META[platform]?.label ?? platform;
 }
 
 // ── Donut (环形占比图) ─────────────────────────────────────────────────────

@@ -17,6 +17,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { PlatformMetaRoot } from "../../components/platform-meta";
 import type { Connection } from "../../types/domain";
 import Targets from "../Targets";
 
@@ -49,7 +50,9 @@ function renderPage() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<Targets />
+			<PlatformMetaRoot>
+				<Targets />
+			</PlatformMetaRoot>
 		</QueryClientProvider>,
 	);
 }

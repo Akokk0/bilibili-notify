@@ -139,7 +139,7 @@ export interface PlatformDescriptor {
  * `generic` 是承认的疤:主人贴的 URL 可能是自建服务,那就没有平台可言 —— 面板上写
  * 「未指明的 HTTP 端点」,不假装它是个什么。
  */
-export const PLATFORM_REGISTRY = {
+export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDescriptor>> = {
 	onebot: {
 		label: "OneBot v11",
 		shortLabel: "OneBot",
@@ -212,7 +212,7 @@ export const PLATFORM_REGISTRY = {
 		inbound: false,
 		atAll: true,
 	},
-} as const satisfies Record<ConnectionPlatform, PlatformDescriptor>;
+};
 
 /** 认不认识这个平台 —— 认识就把它的那一行交出来。目标侧的平台是开放词表,常常认不出。 */
 export function platformDescriptor(platform: string): PlatformDescriptor | undefined {

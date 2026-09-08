@@ -14,14 +14,14 @@ import {
 	Icon,
 	ModalShell,
 	PlatformIcon,
-	platformLabel,
-	platformTint,
 	SectionNav,
 	StatusDot,
 	TOAST_DURATION_MS,
 	Toast,
 	Toggle,
 	ToneChip,
+	usePlatformLabel,
+	usePlatformTint,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
@@ -226,6 +226,7 @@ function TargetCard({
 	testing,
 	readOnly,
 }: TargetCardProps) {
+	const platformTint = usePlatformTint();
 	const tint = platformTint(target.platform);
 	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
@@ -341,6 +342,7 @@ function ConnectionEditorModal({
 	saving,
 	error,
 }: ConnectionEditorProps) {
+	const platformTint = usePlatformTint();
 	const valid = value.name.trim().length > 0;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
 	const invalidHint = valid ? undefined : "请先填写显示名称";
@@ -420,6 +422,7 @@ function ConnectionConfigFields({
 	connection: Connection;
 	onChange: (next: Connection) => void;
 }) {
+	const platformTint = usePlatformTint();
 	if (connection.platform === "onebot") {
 		const cfg = connection.config;
 		// connector 跟着 transport 走 —— 这一版两份并存,schema 的 refine 会把漂掉的挡下来。
@@ -770,6 +773,8 @@ function TargetEditorModal({
 	saving,
 	error,
 }: TargetEditorProps) {
+	const platformTint = usePlatformTint();
+	const platformLabel = usePlatformLabel();
 	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
 	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
@@ -1300,6 +1305,8 @@ function ConnectionRail({
 	onAddClick: () => void;
 	targetCountByConnection: Map<string, number>;
 }) {
+	const platformTint = usePlatformTint();
+	const platformLabel = usePlatformLabel();
 	return (
 		<SectionNav
 			heading="推送连接"
@@ -1344,6 +1351,8 @@ function ConnectionRail({
 
 export default function Targets() {
 	const qc = useQueryClient();
+	const platformTint = usePlatformTint();
+	const platformLabel = usePlatformLabel();
 
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
