@@ -781,6 +781,7 @@ export async function startStandaloneServer(
 			qqSessionRegistry,
 			// 与桥 adapter 用的是**同一份**仓库:一个往里存,一个往外取。
 			bridgeBlobs,
+			bridgeServer,
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。
 			commands,

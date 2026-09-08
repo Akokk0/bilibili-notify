@@ -14,6 +14,7 @@ import type {
 	Subscription,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
+import type { BridgeBot, BridgeKind } from "./bridge";
 import type { LogLevel } from "./ws";
 
 export type { MiniAppCardSupport } from "@bilibili-notify/internal";
@@ -32,6 +33,47 @@ export type { ConnectionCapabilities, FansRefreshEntry, HistoryMessageRole, Push
  * 只有有能力概念的平台在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
  */
 export type ConnectionCapabilitiesMap = Record<string, Record<string, ConnectionCapabilities>>;
+
+// ---- /api/extensions ------------------------------------------------------
+
+/** 一个拓展模块在拓展页上的样子。模块是**编进产物**的,所以没有「装没装」,只有开没开。 */
+export interface ExtensionDTO {
+	id: string;
+	name: string;
+	/** 一句话说清它是干嘛的 —— 卡片上就印这句。 */
+	description: string;
+	enabled: boolean;
+}
+
+export interface ExtensionsResponse {
+	extensions: ExtensionDTO[];
+}
+
+// ---- /api/extensions/bridge -----------------------------------------------
+
+/**
+ * 一条桥接入现在的活口状态。**每条配好的接入都有一条**,没连着的那些只有前两格 ——
+ * 面板要能画出「配了但没连上」,那正是用户最需要看见的一格。
+ */
+export interface BridgeSessionDTO {
+	connectionId: string;
+	connected: boolean;
+	/**
+	 * 桥**自报**的类型。与配置里那格不一定一样(那格是用户在面板上选的)—— 对不上就说明
+	 * token 填到另一头去了,面板该说出来。
+	 */
+	kind?: BridgeKind;
+	/** 桥自报的名字与插件版本,排障用。 */
+	name?: string;
+	version?: string;
+	connectedAt?: number;
+	/** 这条桥当下驮着的 bot 与它们各自声明的能力。没连着就是空的。 */
+	bots: BridgeBot[];
+}
+
+export interface BridgeStatusResponse {
+	sessions: BridgeSessionDTO[];
+}
 
 // ---- /api/subs ------------------------------------------------------------
 

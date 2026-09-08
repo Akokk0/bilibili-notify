@@ -12,6 +12,7 @@ import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "./bridge/blob.js";
+import type { BridgeServer } from "./bridge/server.js";
 import type { ChromeSource } from "./config/persist.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
@@ -22,6 +23,7 @@ import { createBridgeBlobRoute } from "./routes/bridge-blob.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCommandsRoute } from "./routes/commands.js";
 import { createConnectionsRoute } from "./routes/connections.js";
+import { createExtensionsRoute } from "./routes/extensions.js";
 import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
@@ -65,6 +67,8 @@ export interface CreateAppOptions {
 	 * 桥 adapter 用**同一份**,不然存进去的取不出来)。
 	 */
 	bridgeBlobs?: BridgeBlobStore;
+	/** `/bridge` 端点;拓展页的状态面板读它。没有就当模块没装配起来(状态全是「没连着」)。 */
+	bridgeServer?: BridgeServer;
 	/**
 	 * Configured dashboard credentials. When provided, every request under
 	 * `/api/*` (including `/api/health`, excluding `/api/session/*`) requires a
@@ -316,6 +320,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/stats", statsRoute);
 	options.onStatsRoute?.(statsRoute);
 	app.route("/api/qq", createQQRoute(deps));
+	app.route(
+		"/api/extensions",
+		createExtensionsRoute({ store: deps.store, bridge: () => options.bridgeServer }),
+	);
 	app.route(
 		"/api/skins",
 		createSkinsRoute({
