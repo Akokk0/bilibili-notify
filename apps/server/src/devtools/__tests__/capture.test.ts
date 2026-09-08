@@ -91,7 +91,7 @@ describe("createCaptureGate", () => {
 				id: "1",
 				at: Date.parse("2026-09-06T08:00:00.000Z"),
 				connectionId: "ad-1",
-				adapterName: "测试 OneBot",
+				connectionName: "测试 OneBot",
 				platform: "onebot",
 				targetId: "t-1",
 				targetName: "测试群",

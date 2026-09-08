@@ -20,10 +20,10 @@ export const TOUR_ANCHORS = [
 	"bili-login-qr",
 	"subs-search",
 	"subs-add",
-	"adapter-add",
-	"adapter-form",
-	"adapter-test",
-	"adapter-config",
+	"connection-add",
+	"connection-form",
+	"connection-test",
+	"connection-config",
 	"target-add",
 	"target-form",
 	"target-test",
@@ -42,7 +42,7 @@ export type TourAnchor = (typeof TOUR_ANCHORS)[number];
  */
 export const MODAL_ONLY_ANCHORS: ReadonlySet<TourAnchor> = new Set<TourAnchor>([
 	"bili-login-qr",
-	"adapter-form",
+	"connection-form",
 	"target-form",
 	"subs-search",
 ]);
@@ -98,7 +98,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			body: "点高亮的「发起扫码登录」,用手机 B 站 App 扫码并确认。登录成功后这里会自动进入下一步。",
 		},
 	],
-	adapter: [
+	connection: [
 		{
 			route: "/targets",
 			// 出发前的选型思考步:不配 anchor(在目标页的动手指引归下一子步),
@@ -110,9 +110,9 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 		{
 			route: "/targets",
-			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;adapter-add 挂在
+			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;connection-add 挂在
 			// 左栏「+ 新建」与空态主 CTA 两处 —— 同名实例是等价入口,灯一起亮
-			anchor: ["adapter-form", "adapter-add"],
+			anchor: ["connection-form", "connection-add"],
 			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
 			doneWhen: (v) => v.hasConnection,
 			title: "新建推送连接",
@@ -123,8 +123,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		{
 			route: "/targets",
 			// 控件级:灯指适配器详情区的「测试」按钮本体;挂点没渲染时回落适配器区
-			anchor: ["adapter-test", "adapter-add"],
-			anchorOnFail: ["adapter-form", ["adapter-config", "adapter-test"], "adapter-add"],
+			anchor: ["connection-test", "connection-add"],
+			anchorOnFail: ["connection-form", ["connection-config", "connection-test"], "connection-add"],
 			title: "测试连通性",
 			body: "在刚建好的连接行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
 		},
@@ -132,7 +132,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	target: [
 		{
 			route: "/targets",
-			// 同 adapter:弹窗内让位;target-add 挂右上按钮与空态 AddCard 两处,一起亮。
+			// 同 connection:弹窗内让位;target-add 挂右上按钮与空态 AddCard 两处,一起亮。
 			// 末尾必须留 target-list 兜底:**选中的适配器是 webhook 时 target-add 一处
 			// 都不渲染**(右上按钮被 platform 判断掐掉,空态 AddCard 走的是另一条分支),
 			// 链解析不到任何元素 → 灯不亮、锁不铺,而小卡还在说「点高亮的『+ 新建』」,
@@ -169,7 +169,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
  *  不然小卡文案无声切到下一步,用户不知道刚才那步已经成了(真机反馈:突兀)。 */
 export const STEP_DONE_MESSAGES: Record<OnboardingStepKey, string> = {
 	login: "B 站登录完成!",
-	adapter: "连接打通了!",
+	connection: "连接打通了!",
 	target: "推送目标建好了!",
 	test: "测试消息已送达,通道全线打通!",
 	subs: "订阅成功,大功告成!",

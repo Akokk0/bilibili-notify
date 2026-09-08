@@ -45,8 +45,8 @@ describe("deriveOnboarding 步骤判据", () => {
 
 	it("登录后 active 直接推进到 adapter —— 订阅在最后,不挡通道配置", () => {
 		const v = deriveOnboarding(inputs({ biliLoggedIn: true }));
-		expect(stepMap(v)).toMatchObject({ login: true, adapter: false, subs: false });
-		expect(v.activeKey).toBe("adapter");
+		expect(stepMap(v)).toMatchObject({ login: true, connection: false, subs: false });
+		expect(v.activeKey).toBe("connection");
 	});
 
 	it("adapter 只建不测 → adapter 步未完成(定案:存在且 test 通过)", () => {
@@ -56,7 +56,7 @@ describe("deriveOnboarding 步骤判据", () => {
 				connections: [{ enabled: true, testStatus: undefined }],
 			}),
 		);
-		expect(stepMap(v).adapter).toBe(false);
+		expect(stepMap(v).connection).toBe(false);
 		// 但 hasConnection 已亮 —— 导览靠它把子步从「新建」翻到「测试连通」,灯不断档
 		expect(v.hasConnection).toBe(true);
 	});
@@ -69,7 +69,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({ connections: [{ enabled: false, testStatus: { ok: true } }] }),
 		);
-		expect(stepMap(v).adapter).toBe(false);
+		expect(stepMap(v).connection).toBe(false);
 	});
 
 	it("adapter 测过 + 启用目标存在 → active=test", () => {
@@ -176,7 +176,7 @@ describe("deriveOnboarding failNote", () => {
 				],
 			}),
 		);
-		expect(v.activeKey).toBe("adapter");
+		expect(v.activeKey).toBe("connection");
 		expect(v.failNote).toEqual({ text: "连接被拒绝", at: "t1" });
 	});
 

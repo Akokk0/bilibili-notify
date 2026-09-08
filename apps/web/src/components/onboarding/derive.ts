@@ -12,7 +12,7 @@
  * 它收回去 —— 但 target 步会退回未完成,active 指回它。
  */
 
-export type OnboardingStepKey = "login" | "adapter" | "target" | "test" | "subs";
+export type OnboardingStepKey = "login" | "connection" | "target" | "test" | "subs";
 export type OnboardingTailKey = "image" | "ai";
 
 interface TestStatusLike {
@@ -64,7 +64,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 	const steps: OnboardingView["steps"] = [
 		{ key: "login", done: inputs.biliLoggedIn },
 		{
-			key: "adapter",
+			key: "connection",
 			done: inputs.connections.some((a) => a.enabled && a.testStatus?.ok === true),
 		},
 		{ key: "target", done: inputs.targets.some((t) => t.enabled) },
@@ -83,7 +83,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		// 启用着的目标,被禁用目标上周留下的旧账既不是他的问题也不是他改得动的东西,
 		// 拿它当当前失败讲纯属误导(2026-08-31 审查)。
 		failNote:
-			activeKey === "adapter"
+			activeKey === "connection"
 				? failNoteFrom(inputs.connections.filter((a) => a.enabled))
 				: activeKey === "test"
 					? failNoteFrom(inputs.targets.filter((t) => t.enabled))

@@ -110,7 +110,7 @@ export function createCaptureGate(): CaptureGate {
 						id: String(seq),
 						at: Date.now(),
 						connectionId: connection.id,
-						adapterName: connection.name,
+						connectionName: connection.name,
 						platform: connection.platform,
 						targetId: target.id,
 						targetName: target.name,

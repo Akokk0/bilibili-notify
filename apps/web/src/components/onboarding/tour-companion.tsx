@@ -81,7 +81,7 @@ const TAIL_LINKS: Record<OnboardingTailKey, { to: string; label: string }> = {
 
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
 	login: "登录",
-	adapter: "连接",
+	connection: "连接",
 	target: "目标",
 	test: "测试",
 	subs: "订阅",

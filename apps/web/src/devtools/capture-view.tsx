@@ -123,7 +123,7 @@ function CaptureRow({ entry }: { entry: DevCapturedDelivery }) {
 						</Pill>
 					) : null}
 				</span>
-				<span className="truncate text-bn-2xs text-bn-text-tertiary">{entry.adapterName}</span>
+				<span className="truncate text-bn-2xs text-bn-text-tertiary">{entry.connectionName}</span>
 			</span>
 			<span className="min-w-0 flex-1">
 				<span className="flex items-center gap-1.5">

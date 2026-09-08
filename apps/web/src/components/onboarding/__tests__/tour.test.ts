@@ -25,30 +25,30 @@ describe("reconcileTourPos 判据跟随", () => {
 	});
 
 	it("判据前进(login 完成 → activeKey=adapter)→ 自动切到 adapter 第一子步", () => {
-		expect(reconcileTourPos({ stepKey: "login", subIndex: 0 }, "adapter")).toEqual({
-			stepKey: "adapter",
+		expect(reconcileTourPos({ stepKey: "login", subIndex: 0 }, "connection")).toEqual({
+			stepKey: "connection",
 			subIndex: 0,
 		});
 	});
 
 	it("判据回退(前置被破坏,如退出登录)→ 跟随回去补,不卡在做不了的后续步", () => {
-		expect(reconcileTourPos({ stepKey: "adapter", subIndex: 1 }, "login")).toEqual({
+		expect(reconcileTourPos({ stepKey: "connection", subIndex: 1 }, "login")).toEqual({
 			stepKey: "login",
 			subIndex: 0,
 		});
 	});
 
 	it("activeKey 未变 → 保持手动子步位置", () => {
-		expect(reconcileTourPos({ stepKey: "adapter", subIndex: 2 }, "adapter")).toEqual({
-			stepKey: "adapter",
+		expect(reconcileTourPos({ stepKey: "connection", subIndex: 2 }, "connection")).toEqual({
+			stepKey: "connection",
 			subIndex: 2,
 		});
 	});
 
 	it("子步越界(脚本改短了)→ 收回最后一个子步", () => {
-		const max = TOUR_SCRIPT.adapter.length - 1;
-		expect(reconcileTourPos({ stepKey: "adapter", subIndex: 99 }, "adapter")).toEqual({
-			stepKey: "adapter",
+		const max = TOUR_SCRIPT.connection.length - 1;
+		expect(reconcileTourPos({ stepKey: "connection", subIndex: 99 }, "connection")).toEqual({
+			stepKey: "connection",
 			subIndex: max,
 		});
 	});
@@ -63,7 +63,7 @@ describe("reconcileTourPos 判据跟随", () => {
 
 describe("TOUR_SCRIPT 脚本完整性", () => {
 	it("五个主步都有至少一个子步", () => {
-		for (const key of ["login", "adapter", "target", "test", "subs"] as const) {
+		for (const key of ["login", "connection", "target", "test", "subs"] as const) {
 			expect(TOUR_SCRIPT[key].length).toBeGreaterThan(0);
 		}
 	});
@@ -87,10 +87,10 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 	it("失败链:表单锚点在链头(过弹窗即复原靠它),「配置」与「测试」同亮成组(锁着也两个动作都可点)", () => {
 		const cases = [
 			{
-				sub: TOUR_SCRIPT.adapter.at(-1),
-				form: "adapter-form",
-				cfg: "adapter-config",
-				test: "adapter-test",
+				sub: TOUR_SCRIPT.connection.at(-1),
+				form: "connection-form",
+				cfg: "connection-config",
+				test: "connection-test",
 			},
 			{ sub: TOUR_SCRIPT.test[0], form: "target-form", cfg: "target-config", test: "target-test" },
 		] as const;

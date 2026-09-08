@@ -791,14 +791,14 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("适配器已落库(未测通)→ 子步判据对齐:直接站在「测试适配器连通」,灯指测试按钮", async () => {
 		const testBtn = document.createElement("div");
-		testBtn.setAttribute("data-tour", "adapter-test");
+		testBtn.setAttribute("data-tour", "connection-test");
 		document.body.appendChild(testBtn);
 		// 保存适配器后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
 		await mount({ loggedIn: true, connections: [{ id: "a1", enabled: true }], route: "/targets" });
 		expect(await screen.findByText("测试连通性")).toBeTruthy();
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
-				'[data-tour="adapter-test"]',
+				'[data-tour="connection-test"]',
 			),
 		);
 	});
@@ -807,11 +807,11 @@ describe("TourCompanion 常驻小卡", () => {
 		// 两处入口给真实的、相离的矩形 —— jsdom 默认 0×0 会让两洞完全重合,
 		// 被「相交洞合并」(mergeIntersecting)并成一个,测的就不再是多实例了
 		const railBtn = document.createElement("div");
-		railBtn.setAttribute("data-tour", "adapter-add");
+		railBtn.setAttribute("data-tour", "connection-add");
 		railBtn.getBoundingClientRect = () => new DOMRect(20, 100, 80, 24);
 		document.body.appendChild(railBtn);
 		const cta = document.createElement("div");
-		cta.setAttribute("data-tour", "adapter-add");
+		cta.setAttribute("data-tour", "connection-add");
 		cta.getBoundingClientRect = () => new DOMRect(400, 300, 120, 60);
 		document.body.appendChild(cta);
 		await mount({ loggedIn: true, route: "/targets" });
@@ -821,10 +821,10 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("display:none 的同名实例不开洞 —— 响应式双形态的隐藏份曾在视口原点画出一枚粉弧", async () => {
 		const visible = document.createElement("div");
-		visible.setAttribute("data-tour", "adapter-add");
+		visible.setAttribute("data-tour", "connection-add");
 		document.body.appendChild(visible);
 		const hiddenEl = document.createElement("div");
-		hiddenEl.setAttribute("data-tour", "adapter-add");
+		hiddenEl.setAttribute("data-tour", "connection-add");
 		// 实例级覆盖模拟 display:none(无盒)
 		(hiddenEl as unknown as { getClientRects: () => DOMRectList }).getClientRects = () =>
 			[] as unknown as DOMRectList;

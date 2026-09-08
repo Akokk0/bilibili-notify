@@ -323,7 +323,7 @@ export default function System() {
 	});
 	// 能力是连上时探的,面板开着的时候半分钟刷一次,bot 后连上也能看到它变绿。
 	const capabilitiesQuery = useQuery({
-		queryKey: ["adapter-capabilities"],
+		queryKey: ["connection-capabilities"],
 		queryFn: () => api.get<ConnectionCapabilitiesMap>("/api/connections/capabilities"),
 		refetchInterval: 30_000,
 	});

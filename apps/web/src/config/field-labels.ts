@@ -38,7 +38,7 @@ export type FieldSection =
 	| "specialUsers"
 	| "imageGroup"
 	| "target"
-	| "adapter"
+	| "connection"
 	| "transport"
 	| "logging"
 	| "commands"
@@ -567,9 +567,9 @@ export const FIELD_LABELS = {
 	},
 
 	// ── Targets(推送目标 / 适配器 / 传输 / 会话) ────────────────────────
-	"adapter.platform": { label: "平台", section: "adapter" },
-	"adapter.name": { label: "显示名称", section: "adapter" },
-	"adapter.enabled": { label: "启用", section: "adapter" },
+	"connection.platform": { label: "平台", section: "connection" },
+	"connection.name": { label: "显示名称", section: "connection" },
+	"connection.enabled": { label: "启用", section: "connection" },
 	"config.transport": { label: "连接方式", section: "transport" },
 	"config.baseUrl": { label: "HTTP baseUrl", section: "transport" },
 	"config.url": { label: "URL", section: "transport" },

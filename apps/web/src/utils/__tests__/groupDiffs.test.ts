@@ -77,7 +77,7 @@ describe("groupDiffsBySection", () => {
 			D("specialUsers"),
 			D("enable"),
 			D("targetId"),
-			D("adapter.platform"),
+			D("connection.platform"),
 			D("config.transport"),
 			D("session.userId"),
 			D("app.logLevel"),

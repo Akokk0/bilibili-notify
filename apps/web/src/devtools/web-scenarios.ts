@@ -107,7 +107,7 @@ const draftIsland: WebDevScenario = {
 
 const STEPS: ReadonlyArray<{ value: OnboardingStepKey | "done"; label: string }> = [
 	{ value: "login", label: "① 还没登录 B 站" },
-	{ value: "adapter", label: "② 该建连接了" },
+	{ value: "connection", label: "② 该建连接了" },
 	{ value: "target", label: "③ 该建推送目标了" },
 	{ value: "test", label: "④ 该测一次推送了" },
 	{ value: "subs", label: "⑤ 该订阅 UP 了" },
@@ -118,7 +118,7 @@ const STEPS: ReadonlyArray<{ value: OnboardingStepKey | "done"; label: string }>
 export function onboardingInputsFor(step: OnboardingStepKey | "done"): OnboardingInputs {
 	const order: (OnboardingStepKey | "done")[] = [
 		"login",
-		"adapter",
+		"connection",
 		"target",
 		"test",
 		"subs",
@@ -129,7 +129,7 @@ export function onboardingInputsFor(step: OnboardingStepKey | "done"): Onboardin
 	const ok = { ok: true, lastCheckedAt: "2026-09-06T00:00:00.000Z" };
 	return {
 		biliLoggedIn: done("login"),
-		connections: done("adapter") ? [{ enabled: true, testStatus: ok }] : [],
+		connections: done("connection") ? [{ enabled: true, testStatus: ok }] : [],
 		targets: done("target") ? [{ enabled: true, testStatus: done("test") ? ok : undefined }] : [],
 		subsCount: done("subs") ? 1 : 0,
 		modules: { image: true, ai: true },
@@ -142,9 +142,9 @@ const onboardingStep: WebDevScenario = {
 	title: "新手指引停在第几步",
 	icon: "list",
 	desc: "把新手指引的判据输入换成「前面几步都完成了、现在该做这一步」,导览卡与聚光灯照真算。导览本身得是开着的(系统页 · 新手指引 · 重新开始)。",
-	params: [{ key: "step", label: "停在", kind: "enum", options: STEPS, default: "adapter" }],
+	params: [{ key: "step", label: "停在", kind: "enum", options: STEPS, default: "connection" }],
 	run(params) {
-		const step = String(params.step ?? "adapter") as OnboardingStepKey | "done";
+		const step = String(params.step ?? "connection") as OnboardingStepKey | "done";
 		useOnboardingInputsOverride.getState().set(onboardingInputsFor(step));
 		return `新手指引现在停在:${STEPS.find((s) => s.value === step)?.label ?? step}。`;
 	},

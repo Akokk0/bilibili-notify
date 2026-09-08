@@ -338,9 +338,9 @@ function ConnectionEditorModal({
 	return (
 		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
-			<div data-tour="adapter-form" className="space-y-2.5">
+			<div data-tour="connection-form" className="space-y-2.5">
 				<SectionBox title="基本" subtitle="一个连接实例可被多个推送目标共享" accent={tint}>
-					<Field label="平台" code="adapter.platform" required>
+					<Field label="平台" code="connection.platform" required>
 						<div className="flex flex-wrap gap-1.5">
 							{KNOWN_PLATFORMS.map((p) => {
 								const active = value.platform === p.value;
@@ -359,14 +359,14 @@ function ConnectionEditorModal({
 							})}
 						</div>
 					</Field>
-					<Field label="显示名称" code="adapter.name" required>
+					<Field label="显示名称" code="connection.name" required>
 						<TInput
 							value={value.name}
 							onChange={(v) => onChange({ ...value, name: v })}
 							placeholder="如：NapCat 主连接"
 						/>
 					</Field>
-					<Field label="启用" code="adapter.enabled">
+					<Field label="启用" code="connection.enabled">
 						<Toggle value={value.enabled} onChange={(v) => onChange({ ...value, enabled: v })} />
 					</Field>
 				</SectionBox>
@@ -1194,7 +1194,7 @@ function DeleteModal({
 	deleting,
 	error,
 }: {
-	subjectKind: "adapter" | "target";
+	subjectKind: "connection" | "target";
 	subjectName: string;
 	hint?: ReactNode;
 	onCancel: () => void;
@@ -1206,7 +1206,7 @@ function DeleteModal({
 		<ModalShell
 			onCancel={onCancel}
 			width={420}
-			title={subjectKind === "adapter" ? "删除连接" : "删除推送目标"}
+			title={subjectKind === "connection" ? "删除连接" : "删除推送目标"}
 			description={
 				<>
 					确定要移除 <b className="text-bn-text-primary">{subjectName}</b> 吗？
@@ -1296,7 +1296,7 @@ function ConnectionRail({
 			onAdd={onAddClick}
 			addLabel="+ 新建"
 			// data-tour:导览「新建推送适配器」的常驻灯位(控件级 —— 只框按钮本体)
-			addButtonProps={{ "data-tour": "adapter-add" }}
+			addButtonProps={{ "data-tour": "connection-add" }}
 			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
 			emptyState={<EmptyNote size="sm">尚未配置任何连接</EmptyNote>}
 			items={connections.map((a) => {
@@ -1351,7 +1351,7 @@ export default function Targets() {
 		value: PushTarget;
 	} | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<
-		{ kind: "adapter"; value: Connection } | { kind: "target"; value: PushTarget } | null
+		{ kind: "connection"; value: Connection } | { kind: "target"; value: PushTarget } | null
 	>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1636,7 +1636,7 @@ export default function Targets() {
 			<div className="grid gap-4 xl:grid-bn-rail">
 				{/* ConnectionRail 直接坐在 grid 上,中间不许夹盒子 —— SectionNav 的根在 xl 以下是
 				    `display:contents`,包一层 div 就把它的包含块缩成矮格子,sticky 失去吸附
-				    行程(见 packages/ui/src/section-nav.tsx 的同段注释)。导览挂点(adapter-add)
+				    行程(见 packages/ui/src/section-nav.tsx 的同段注释)。导览挂点(connection-add)
 				    在内部「+ 新建」按钮本体上,不需要外层盒子 —— 曾框整栏:洞大到点空态占位
 				    也算「点过了」,灯白白退散(真机踩过)。 */}
 				<ConnectionRail
@@ -1659,7 +1659,12 @@ export default function Targets() {
 								先新建一个连接(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
 							</div>
 							{/* 与左栏「+ 新建」同名挂点 —— 同名实例是等价入口,聚光灯一起亮 */}
-							<Btn data-tour="adapter-add" variant="primary" size="sm" onClick={startNewConnection}>
+							<Btn
+								data-tour="connection-add"
+								variant="primary"
+								size="sm"
+								onClick={startNewConnection}
+							>
 								+ 新建连接
 							</Btn>
 						</div>
@@ -1713,7 +1718,7 @@ export default function Targets() {
 									<div className="flex shrink-0 gap-1">
 										{/* 导览「测试适配器连通」一步的控件级灯位 */}
 										<Btn
-											data-tour="adapter-test"
+											data-tour="connection-test"
 											size="sm"
 											variant="ghost"
 											onClick={() => testConnection(selectedConnection)}
@@ -1736,7 +1741,9 @@ export default function Targets() {
 										<Btn
 											// 导览失败链的灯位:测试失败时才亮(同 target-config)
 											data-tour={
-												selectedConnection.testStatus?.ok === false ? "adapter-config" : undefined
+												selectedConnection.testStatus?.ok === false
+													? "connection-config"
+													: undefined
 											}
 											size="sm"
 											variant="ghost"
@@ -1749,7 +1756,7 @@ export default function Targets() {
 											variant="ghost"
 											onClick={() => {
 												setDeleteError(null);
-												setConfirmDelete({ kind: "adapter", value: selectedConnection });
+												setConfirmDelete({ kind: "connection", value: selectedConnection });
 											}}
 											title="删除"
 											icon={<Icon.trash size={11} />}
@@ -1883,7 +1890,7 @@ export default function Targets() {
 					subjectKind={confirmDelete.kind}
 					subjectName={confirmDelete.value.name}
 					hint={
-						confirmDelete.kind === "adapter"
+						confirmDelete.kind === "connection"
 							? confirmDelete.value.connector === "webhook"
 								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
 								: "连接若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他连接或先删除它们。"
@@ -1894,7 +1901,7 @@ export default function Targets() {
 						setConfirmDelete(null);
 					}}
 					onConfirm={() => {
-						if (confirmDelete.kind === "adapter") {
+						if (confirmDelete.kind === "connection") {
 							delConnection.mutate(confirmDelete.value.id);
 						} else {
 							delTarget.mutate(confirmDelete.value.id);
