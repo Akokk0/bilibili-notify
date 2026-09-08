@@ -11,12 +11,14 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
+import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "./bridge/blob.js";
 import type { ChromeSource } from "./config/persist.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
+import { createBridgeBlobRoute } from "./routes/bridge-blob.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCommandsRoute } from "./routes/commands.js";
 import { createConnectionsRoute } from "./routes/connections.js";
@@ -58,6 +60,11 @@ export interface CreateAppOptions {
 	api?: BilibiliAPI | null;
 	/** Optional backup/restore service; when present /api/backup/* is mounted. */
 	backupService?: BackupService;
+	/**
+	 * 桥的一次性取图仓库;给了就挂 `GET /bridge/blob/:id`。在 `index.ts` 组装(要与
+	 * 桥 adapter 用**同一份**,不然存进去的取不出来)。
+	 */
+	bridgeBlobs?: BridgeBlobStore;
 	/**
 	 * Configured dashboard credentials. When provided, every request under
 	 * `/api/*` (including `/api/health`, excluding `/api/session/*`) requires a
@@ -349,6 +356,15 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// devtools。同样在 index.ts 组装(那里才知道载荷版本)后注入;不给就不挂。
 	if (options.devtools) {
 		app.route("/api/dev", options.devtools);
+	}
+
+	// 桥的一次性取图口。**刻意不在 `/api/*` 底下** —— 上面那道 dashboard 鉴权中间件是
+	// 按 `/api/*` 挂的,而桥手里只有一条 URL、没有会话。凭据是 id 本身(见 bridge/blob.ts)。
+	if (options.bridgeBlobs) {
+		app.route(
+			BRIDGE_BLOB_PATH,
+			createBridgeBlobRoute({ store: options.bridgeBlobs, logger: deps.runtime.serviceCtx.logger }),
+		);
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie
