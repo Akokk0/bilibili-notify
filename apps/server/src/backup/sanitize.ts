@@ -39,13 +39,28 @@ export const SECRET_CONTAINER_KEYS: readonly string[] = ["keys", "headers"];
 
 /**
  * Key names whose values are URLs. A URL carries credentials in places the key
- * denylist structurally cannot see — `?access_token=` on a webhook endpoint,
- * `user:pass@` on a bot API base — because neither is a leaf with a name of its
- * own. The query string and the userinfo are dropped; scheme, host and path
- * survive, so a sanitized backup still shows where the connection pointed and
- * still satisfies the `z.url()` / `wss?://` constraints on import.
+ * denylist structurally cannot see — `?access_token=` in the query, `user:pass@`
+ * in the userinfo, and for 飞书 / 钉钉 style webhooks the token **is the path** —
+ * so no part of a network URL can be assumed safe. The whole thing is replaced
+ * by {@link REDACTED_URL}, keeping only the scheme so the sanitized config still
+ * satisfies `z.url()` and OneBot's `wss?://` regex on import.
  */
 export const URL_KEYS: readonly string[] = ["url", "baseUrl"];
+
+/**
+ * Schemes we know how to hand back as a valid placeholder. Anything else (a
+ * `data:` URI, a relative path, the empty-string default on `ai.baseUrl`) is
+ * left untouched — rewriting it would turn "not configured" into "configured
+ * wrong", and none of them is an endpoint that can carry a bearer token.
+ */
+const PLACEHOLDER_SCHEMES = new Set(["http:", "https:", "ws:", "wss:"]);
+
+/**
+ * Host used for the placeholder. `.invalid` is reserved by RFC 2606 and can
+ * never resolve, so a restored backup whose endpoint was not refilled fails
+ * loudly at DNS instead of quietly reaching some other real host.
+ */
+const REDACTED_URL_HOST = "redacted.invalid";
 
 const SECRET_KEY_SET = new Set<string>(SECRET_KEYS);
 const SECRET_CONTAINER_SET = new Set<string>(SECRET_CONTAINER_KEYS);
@@ -68,7 +83,7 @@ function redact(value: unknown): unknown {
 		for (const [key, v] of Object.entries(value)) {
 			if (SECRET_KEY_SET.has(key)) out[key] = "";
 			else if (SECRET_CONTAINER_SET.has(key)) out[key] = blankLeaves(v);
-			else if (URL_KEY_SET.has(key)) out[key] = stripUrlCredentials(v);
+			else if (URL_KEY_SET.has(key)) out[key] = redactUrl(v);
 			else out[key] = redact(v);
 		}
 		return out;
@@ -76,13 +91,8 @@ function redact(value: unknown): unknown {
 	return value;
 }
 
-/**
- * Drop the query string and the userinfo from a URL, leaving everything else
- * byte-identical. Returns the input untouched when there is nothing to strip —
- * `new URL().href` normalises (adds a trailing slash, lowercases the host), and
- * a sanitized backup must not quietly rewrite an endpoint that leaked nothing.
- */
-function stripUrlCredentials(value: unknown): unknown {
+/** Replace a network URL with a scheme-preserving placeholder. */
+function redactUrl(value: unknown): unknown {
 	if (typeof value !== "string") return redact(value);
 	let parsed: URL;
 	try {
@@ -91,11 +101,8 @@ function stripUrlCredentials(value: unknown): unknown {
 		// 不是绝对 URL(默认空串、相对路径、占位文本)—— 原样留着。
 		return value;
 	}
-	if (!parsed.search && !parsed.username && !parsed.password) return value;
-	parsed.search = "";
-	parsed.username = "";
-	parsed.password = "";
-	return parsed.href;
+	if (!PLACEHOLDER_SCHEMES.has(parsed.protocol)) return value;
+	return `${parsed.protocol}//${REDACTED_URL_HOST}/`;
 }
 
 /** Blank every leaf under a secret container, keeping the shape intact. */

@@ -41,7 +41,9 @@ describe("redactSecretKeys", () => {
 
 		// non-secret siblings survive untouched
 		expect(out.defaults.ai.model).toBe("gpt-x");
-		expect(out.adapters[0]?.config.url).toBe("ws://host");
+		expect(out.adapters[0]?.platform).toBe("onebot");
+		// url 早已不算「无辜的兄弟字段」了 —— 整条抹掉,见下面那条用例
+		expect(out.adapters[0]?.config.url).toBe("ws://redacted.invalid/");
 		expect(out.targets[0]?.session.group).toBe("123");
 	});
 
@@ -89,31 +91,44 @@ describe("redactSecretKeys", () => {
 		});
 	});
 
-	it("strips credentials carried inside a URL —— ?access_token= 与 user:pass@ 都不是叶子", () => {
-		// webhook 的 url 常自带凭据(`?access_token=`),onebot 的 baseUrl 也可能带
-		// userinfo。它们不是「某个叫 token 的叶子」,深走键名的白名单根本看不见。
+	it("整条抹掉网络 URL,只留 scheme —— 凭据可以藏在 query、userinfo,也可以就是路径本身", () => {
+		// 主人拍板(2026-09-08):飞书 / 钉钉的 webhook 「路径即令牌」,只剥 query 是半个补丁。
+		// 保留 scheme 是为了脱敏档还能导入 —— webhook 的 `z.url()` 与 OneBot 的
+		// `/^wss?:\/\//` 都得过。`.invalid` 是 RFC 2606 保留域,永远解析不了:
+		// 忘了重填就当场 DNS 失败,不会悄悄打到别的真实主机上。
 		const input = {
 			adapters: [
-				{ config: { url: "https://example.com/hook?access_token=url-SECRET&a=1" } },
-				{ config: { baseUrl: "http://bob:pw-SECRET@127.0.0.1:5700/" } },
+				{ config: { url: "https://open.feishu.cn/open-apis/bot/v2/hook/PATH-SECRET?t=Q-SECRET" } },
+				{ config: { baseUrl: "http://bob:pw-SECRET@10.0.0.9:5700/" } },
+				{ config: { url: "wss://napcat.example.com:6199/ws" } },
 			],
 		};
 		const out = redactSecretKeys(input);
 		const json = JSON.stringify(out);
-		expect(json).not.toContain("url-SECRET");
-		expect(json).not.toContain("pw-SECRET");
-		// 端点本身留着 —— 脱敏档还得能看出这条连接原本指向哪
-		expect(out.adapters[0]?.config.url).toBe("https://example.com/hook");
-		expect(out.adapters[1]?.config.baseUrl).toBe("http://127.0.0.1:5700/");
+		for (const leaked of [
+			"PATH-SECRET",
+			"Q-SECRET",
+			"pw-SECRET",
+			"10.0.0.9",
+			"napcat.example.com",
+		]) {
+			expect(json).not.toContain(leaked);
+		}
+		expect(out.adapters[0]?.config.url).toBe("https://redacted.invalid/");
+		expect(out.adapters[1]?.config.baseUrl).toBe("http://redacted.invalid/");
+		expect(out.adapters[2]?.config.url).toBe("wss://redacted.invalid/");
 	});
 
-	it("leaves a URL without credentials byte-identical", () => {
-		const out = redactSecretKeys({ url: "ws://127.0.0.1:6199/", baseUrl: "http://h:5700" }) as {
-			url: string;
-			baseUrl: string;
-		};
-		expect(out.url).toBe("ws://127.0.0.1:6199/");
-		expect(out.baseUrl).toBe("http://h:5700");
+	it("不是网络 URL 的值原样留着 —— 空串默认值、相对路径、data: 都不该被改成占位符", () => {
+		// AI 的 baseUrl 是 `z.string().default("")`,抹成占位符会把「没配」变成「配错了」。
+		const out = redactSecretKeys({
+			baseUrl: "",
+			url: "/relative/path",
+			other: { url: "data:image/png;base64,AAAA" },
+		}) as { baseUrl: string; url: string; other: { url: string } };
+		expect(out.baseUrl).toBe("");
+		expect(out.url).toBe("/relative/path");
+		expect(out.other.url).toBe("data:image/png;base64,AAAA");
 	});
 
 	it("does not mutate the input", () => {
