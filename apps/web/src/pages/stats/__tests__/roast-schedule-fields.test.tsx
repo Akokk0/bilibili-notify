@@ -28,8 +28,9 @@ function target(id: string, name: string, enabled: boolean): PushTarget {
 		adapterId: "11111111-1111-4111-8111-111111111111",
 		scope: "group",
 		enabled,
+		kind: "session",
 		platform: "onebot",
-		session: { groupId: "123" },
+		address: "123",
 	} as PushTarget;
 }
 

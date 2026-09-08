@@ -66,14 +66,12 @@ export type {
 	// per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。
 	MessageLayout as MessageLayoutOverride,
 	OnebotConnectionConfig,
-	OnebotSession,
 	OnebotTransport,
 	PushTarget,
 	PushTargetPlatform,
 	PushTargetScope,
 	QQOfficialBotType,
 	QQOfficialConnectionConfig,
-	QQOfficialSession,
 	ScheduleConfigPartial as ScheduleOverride,
 	SpecialUser,
 	SubscriptionOverrides as OverridesShape,
@@ -283,19 +281,14 @@ export function switchOnebotTransport(
 }
 
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
+	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, adapterId: connection.id, enabled: true } as const;
 	if (connection.platform === "onebot") {
-		return { ...base, kind: "session", platform: "onebot", scope: "group", session: {} };
+		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
 	}
 	if (connection.platform === "qq-official") {
-		return { ...base, kind: "session", platform: "qq-official", scope: "group", session: {} };
+		return { ...base, kind: "session", platform: "qq-official", scope: "group", address: "" };
 	}
-	// webhook 那一族:目标是连接的单向终点,平台跟着连接走。
-	return {
-		...base,
-		kind: "endpoint",
-		platform: connection.platform,
-		scope: "channel",
-		session: {},
-	};
+	// webhook 那一族:目标是连接的单向终点,平台跟着连接走,地址烧在连接的 config 里。
+	return { ...base, kind: "endpoint", platform: connection.platform, scope: "channel" };
 }

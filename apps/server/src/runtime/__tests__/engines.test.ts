@@ -1223,7 +1223,8 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				scope: "group",
 				enabled: true,
 				platform: "onebot",
-				session: { groupId: "123" },
+				kind: "session",
+				address: "123",
 			} as PushTarget,
 		]);
 		const KEY = `onebot:${ADAPTER}:123`;

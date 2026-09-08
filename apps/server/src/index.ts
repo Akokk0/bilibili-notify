@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import { groupSessionFor, type NotificationPayload } from "@bilibili-notify/internal";
+import type { NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp } from "./app.js";
@@ -282,9 +282,10 @@ export async function startStandaloneServer(
 			const id = runtime.configStore.getGlobals().master.targetId;
 			if (!id) return undefined;
 			const t = runtime.configStore.getTargets().find((x) => x.id === id);
-			if (t?.platform === "onebot") return t.session.userId;
-			if (t?.platform === "qq-official") return t.session.userOpenid;
-			return undefined;
+			// 私聊目标的地址就是那个人的 id(OneBot 是 QQ 号,官机是 C2C openid)。
+			// 群目标的 address 是群,不是人 —— 拿它当主人身份会把整群当成主人。
+			if (t?.kind !== "session" || t.scope !== "private") return undefined;
+			return t.address || undefined;
 		};
 
 		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
@@ -590,17 +591,8 @@ export async function startStandaloneServer(
 					scope: "group" as const,
 					enabled: true,
 				};
-				return platformAdapter.send(
-					connection,
-					platform === "onebot"
-						? { ...common, platform: "onebot", session: groupSessionFor("onebot", groupId) }
-						: {
-								...common,
-								platform: "qq-official",
-								session: groupSessionFor("qq-official", groupId),
-							},
-					payload,
-				);
+				// 地址收成一格之后这里不再按平台分岔:群目标的地址就是群号 / 群 openid。
+				return platformAdapter.send(connection, { ...common, platform, address: groupId }, payload);
 			},
 		});
 

@@ -8,7 +8,6 @@ import type {
 	PushTarget,
 	PushTargetScope,
 	QQOfficialConnectionConfig,
-	QQOfficialSession,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
@@ -661,18 +660,16 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
  */
 export function qqMessageEndpoint(
 	scope: PushTargetScope,
-	session: QQOfficialSession,
+	address: string,
 ): { path: string } | { err: string } {
-	if (scope === "channel") {
-		if (!session.channelId) return { err: "channel: channelId missing" };
-		return { path: `/channels/${session.channelId}/messages` };
+	if (!address) {
+		const what =
+			scope === "channel" ? "channelId" : scope === "group" ? "groupOpenid" : "userOpenid";
+		return { err: `${scope}: ${what} missing` };
 	}
-	if (scope === "group") {
-		if (!session.groupOpenid) return { err: "group: groupOpenid missing" };
-		return { path: `/v2/groups/${session.groupOpenid}/messages` };
-	}
-	if (!session.userOpenid) return { err: "private: userOpenid missing" };
-	return { path: `/v2/users/${session.userOpenid}/messages` };
+	if (scope === "channel") return { path: `/channels/${address}/messages` };
+	if (scope === "group") return { path: `/v2/groups/${address}/messages` };
+	return { path: `/v2/users/${address}/messages` };
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,12 +1112,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		base: string,
 		headers: Record<string, string>,
 		scope: PushTargetScope,
-		session: QQOfficialSession,
+		address: string,
 		messagesPath: string,
 		part: QQSendPart,
 	): Promise<{ status: number; body: unknown } | { err: string }> {
 		if (scope === "channel") {
-			const channelId = session.channelId ?? "";
+			const channelId = address;
 			if (part.kind === "text") {
 				return qqPostJson(base, headers, messagesPath, { content: part.text });
 			}
@@ -1134,7 +1131,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		}
 		// group / private:文本直发;图片两步上传→media。
 		const gScope = scope === "group" ? "group" : "private";
-		const openid = scope === "group" ? (session.groupOpenid ?? "") : (session.userOpenid ?? "");
+		const openid = address;
 		if (part.kind === "text") {
 			return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content: part.text }));
 		}
@@ -1257,9 +1254,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				};
 			}
 			const scope = target.scope;
-			const session = target.session as QQOfficialSession;
-			// 先按 scope 校验会话字段:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
-			const endpoint = qqMessageEndpoint(scope, session);
+			const address = target.kind === "session" ? target.address : "";
+			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
+			const endpoint = qqMessageEndpoint(scope, address);
 			if ("err" in endpoint) return { ok: false, latencyMs: 0, err: endpoint.err };
 
 			const t0 = Date.now();
@@ -1314,7 +1311,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			let lastErr = "";
 			for (const part of parts) {
 				try {
-					const r = await sendPart(base, headers, scope, session, endpoint.path, part);
+					const r = await sendPart(base, headers, scope, address, endpoint.path, part);
 					if ("err" in r) {
 						lastErr = r.err;
 						break;

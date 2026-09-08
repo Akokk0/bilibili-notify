@@ -33,14 +33,12 @@ import {
 	makeEmptyTarget,
 	maskWebhookUrl,
 	type OnebotConnectionConfig,
-	type OnebotSession,
 	type OnebotTransport,
 	type PushTarget,
 	type PushTargetPlatform,
 	type PushTargetScope,
 	type QQOfficialBotType,
 	type QQOfficialConnectionConfig,
-	type QQOfficialSession,
 	switchOnebotTransport,
 	webhookSecretHint,
 	webhookUrlPlaceholder,
@@ -120,21 +118,17 @@ function targetSessionSummary(target: PushTarget): string {
 	if (target.kind === "endpoint") {
 		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 	}
-	if (target.platform === "onebot") {
-		const s = target.session;
-		if (target.scope === "private") return s.userId ? `→ 用户 ${s.userId}` : "→ 未指定用户";
-		return s.groupId ? `→ 群 ${s.groupId}` : "→ 未指定群号";
-	}
-	if (target.platform === "qq-official") {
-		const s = target.session;
-		if (target.scope === "channel")
-			return s.channelId ? `→ 子频道 ${s.channelId}` : "→ 未指定子频道";
-		if (target.scope === "private")
-			return s.userOpenid ? `→ C2C ${s.userOpenid}` : "→ 未指定用户 openid";
-		return s.groupOpenid ? `→ 群 ${s.groupOpenid}` : "→ 未指定群 openid";
-	}
-	// 还没写摘要的会话平台 —— 说不知道,别冒充成别人的终点。
-	return "→ 未知会话";
+	// 地址收成一格之后,这里只剩「叫它什么」这一件事 —— 取哪一格由 scope 说了算,
+	// 不再是每个平台一套 session 字段名。
+	const noun = addressNoun(target.platform, target.scope);
+	return target.address ? `→ ${noun} ${target.address}` : `→ 未指定${noun}`;
+}
+
+/** 这个平台的这种会话,地址那一格该叫什么。 */
+function addressNoun(platform: string, scope: PushTargetScope): string {
+	if (scope === "channel") return "子频道";
+	if (platform === "qq-official") return scope === "private" ? "C2C" : "群 openid";
+	return scope === "private" ? "用户" : "群";
 }
 
 function managedWebhookTargetForConnection(
@@ -850,15 +844,11 @@ function TargetEditorModal({
 										key={s.value}
 										active={active}
 										onClick={() => {
-											if (value.platform === "onebot") {
-												// OneBot group/private are mutually exclusive — drop the other field
-												const old = value.session as OnebotSession;
-												const session: OnebotSession =
-													s.value === "group" ? { groupId: old.groupId } : { userId: old.userId };
-												onChange({ ...value, scope: s.value, session });
-											} else {
-												onChange({ ...value, scope: s.value });
-											}
+											// 换了 scope 就是换了一种会话,原来那个地址不再有意义(群号不是 QQ 号)
+											// —— 清掉。老形状是每种 scope 各占一个 session 字段,换过去等于换了个
+											// 格子读,旧值还留在原格子里;收成一格之后必须自己清。
+											if (value.kind !== "session" || value.scope === s.value) return;
+											onChange({ ...value, scope: s.value, address: "", parentAddress: undefined });
 										}}
 									>
 										{s.label}
@@ -910,108 +900,77 @@ function TargetSessionFields({
 	target: PushTarget;
 	onChange: (next: PushTarget) => void;
 }) {
+	if (target.kind !== "session") return null;
+	const setAddress = (address: string) => onChange({ ...target, address });
+
 	if (target.platform === "onebot") {
-		const s = target.session as OnebotSession;
-		if (target.scope === "private") {
-			return (
-				<Field label="QQ 号 (userId)" code="session.userId" required>
-					<TInput
-						value={s.userId ?? ""}
-						onChange={(v) => onChange({ ...target, session: { userId: v || undefined } })}
-						placeholder="如:10001"
-						mono
-					/>
-				</Field>
-			);
-		}
-		return (
-			<Field label="群号 (groupId)" code="session.groupId" required>
-				<TInput
-					value={s.groupId ?? ""}
-					onChange={(v) => onChange({ ...target, session: { groupId: v || undefined } })}
-					placeholder="如:123456789"
-					mono
-				/>
+		return target.scope === "private" ? (
+			<Field label="QQ 号" code="target.address" required>
+				<TInput value={target.address} onChange={setAddress} placeholder="如:10001" mono />
+			</Field>
+		) : (
+			<Field label="群号" code="target.address" required>
+				<TInput value={target.address} onChange={setAddress} placeholder="如:123456789" mono />
 			</Field>
 		);
 	}
 	if (target.platform === "qq-official") {
-		const s = target.session as QQOfficialSession;
-		const setSession = (patch: Partial<QQOfficialSession>) =>
-			onChange({ ...target, session: { ...s, ...patch } });
 		if (target.scope === "channel") {
 			return (
 				<>
 					<Field
-						label="频道服务器 ID (guildId)"
-						code="session.guildId"
+						label="频道服务器 ID"
+						code="target.parentAddress"
 						hint="用下方「拉取频道」自动填入,或手填"
 					>
 						<TInput
-							value={s.guildId ?? ""}
-							onChange={(v) => setSession({ guildId: v || undefined })}
+							value={target.parentAddress ?? ""}
+							onChange={(v) => onChange({ ...target, parentAddress: v || undefined })}
 							placeholder="guild_id"
 							mono
 						/>
 					</Field>
-					<Field label="子频道 ID (channelId)" code="session.channelId" required>
+					<Field label="子频道 ID" code="target.address" required>
 						<TInput
-							value={s.channelId ?? ""}
-							onChange={(v) => setSession({ channelId: v || undefined })}
+							value={target.address}
+							onChange={setAddress}
 							placeholder="文字子频道 channel_id"
 							mono
 						/>
 					</Field>
 					<QQGuildPicker
 						adapterId={target.adapterId}
-						onPick={(guildId, channelId) => setSession({ guildId, channelId })}
+						onPick={(guildId, channelId) =>
+							onChange({ ...target, address: channelId, parentAddress: guildId })
+						}
 					/>
 				</>
 			);
 		}
-		if (target.scope === "private") {
-			return (
-				<>
-					<Field
-						label="用户 openid (C2C)"
-						code="session.userOpenid"
-						required
-						hint="QQ 无「列我的好友」接口,openid 只能从机器人收到的 C2C 消息事件捞 —— 见下方发现列表"
-					>
-						<TInput
-							value={s.userOpenid ?? ""}
-							onChange={(v) => setSession({ userOpenid: v || undefined })}
-							placeholder="用户 openid"
-							mono
-						/>
-					</Field>
-					<QQSessionPicker
-						adapterId={target.adapterId}
-						scope="private"
-						onPick={(openid) => setSession({ userOpenid: openid })}
-					/>
-				</>
-			);
-		}
+		const isPrivate = target.scope === "private";
 		return (
 			<>
 				<Field
-					label="群 openid (groupOpenid)"
-					code="session.groupOpenid"
+					label={isPrivate ? "用户 openid (C2C)" : "群 openid"}
+					code="target.address"
 					required
-					hint="QQ 无「列我的群」接口,openid 只能从机器人被 @ 的群消息事件捞 —— 见下方发现列表"
+					hint={
+						isPrivate
+							? "QQ 无「列我的好友」接口,openid 只能从机器人收到的 C2C 消息事件捞 —— 见下方发现列表"
+							: "QQ 无「列我的群」接口,openid 只能从机器人被 @ 的群消息事件捞 —— 见下方发现列表"
+					}
 				>
 					<TInput
-						value={s.groupOpenid ?? ""}
-						onChange={(v) => setSession({ groupOpenid: v || undefined })}
-						placeholder="群 openid"
+						value={target.address}
+						onChange={setAddress}
+						placeholder={isPrivate ? "用户 openid" : "群 openid"}
 						mono
 					/>
 				</Field>
 				<QQSessionPicker
 					adapterId={target.adapterId}
-					scope="group"
-					onPick={(openid) => setSession({ groupOpenid: openid })}
+					scope={isPrivate ? "private" : "group"}
+					onPick={setAddress}
 				/>
 			</>
 		);

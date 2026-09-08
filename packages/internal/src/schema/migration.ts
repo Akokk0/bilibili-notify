@@ -60,9 +60,17 @@ function isMigratedConnection(entry: unknown): boolean {
 	return isRecord(entry) && typeof entry.connector === "string" && entry.platform !== "webhook";
 }
 
-/** 一个目标已经是新形状？同理:`kind` 在,且 `platform` 不再是 `"webhook"`。 */
+/**
+ * 一个目标已经是新形状？三件事都要成立:`kind` 在、`platform` 不再是被降格掉的
+ * `"webhook"`、每平台一套的 `session` 已经收成了一格 `address`。
+ */
 function isMigratedTarget(entry: unknown): boolean {
-	return isRecord(entry) && typeof entry.kind === "string" && entry.platform !== "webhook";
+	return (
+		isRecord(entry) &&
+		typeof entry.kind === "string" &&
+		entry.platform !== "webhook" &&
+		entry.session === undefined
+	);
 }
 
 /**
@@ -128,13 +136,15 @@ function connectorOf(entry: Record<string, unknown>): DirectConnector | undefine
 }
 
 /**
- * v1 → v2(目标):同样两件事。
+ * v1 → v2(目标):三件事,各自幂等。
  *
  * ① `platform: "webhook"` 降格 —— 但目标自己不知道是飞书还是钉钉,**跟着它那条连接走**。
  *    连接找不到(备份只导了 targets 这一段、或者引用悬空)就落 `generic`;托管目标是
  *    连接的派生物,加载时 `syncManagedWebhookTargets` 会照着连接重算,落错也自愈。
  * ② 「这是个会话还是个单向终点」从 `platform` 提上来成 `kind`。老盘上这个判断处处写成
  *    `platform === "webhook"`,降格后那些比较会**静默恒假**,所以判据必须搬轴。
+ * ③ 每平台一套的 `session` 收成一格 `address`(+ 官机频道的 `parentAddress`)。
+ *    取哪一格由 `scope` 决定 —— 这正是收成一格要消灭的那个矩阵。
  */
 function targetToV2(
 	entry: unknown,
@@ -161,7 +171,30 @@ function targetToV2(
 		}
 	}
 
+	if (next.session !== undefined) {
+		const { session, ...rest } = next;
+		next = next.kind === "session" ? { ...rest, ...addressOf(next, session) } : rest;
+		changed = true;
+	}
+
 	return { next, changed };
+}
+
+/** 老 session 里那一格地址 —— 由 `scope` 决定读哪个字段。 */
+function addressOf(
+	entry: Record<string, unknown>,
+	session: unknown,
+): { address: string; parentAddress?: string } {
+	const s = isRecord(session) ? session : {};
+	const str = (v: unknown) => (typeof v === "string" ? v : "");
+	if (entry.platform === "onebot") {
+		return { address: str(entry.scope === "private" ? s.userId : s.groupId) };
+	}
+	if (entry.scope === "channel") {
+		const parentAddress = str(s.guildId);
+		return { address: str(s.channelId), ...(parentAddress ? { parentAddress } : {}) };
+	}
+	return { address: str(entry.scope === "private" ? s.userOpenid : s.groupOpenid) };
 }
 
 function targetKindOf(entry: Record<string, unknown>): "session" | "endpoint" | undefined {

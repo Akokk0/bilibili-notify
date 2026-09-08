@@ -36,7 +36,8 @@ function target(id: string, adapterId: string, enabled: boolean): PushTarget {
 		scope: "group",
 		enabled,
 		platform: "onebot",
-		session: { groupId: "123" },
+		kind: "session",
+		address: "123",
 	} as PushTarget;
 }
 

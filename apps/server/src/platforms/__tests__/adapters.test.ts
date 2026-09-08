@@ -243,10 +243,11 @@ function obTarget(over: Record<string, unknown> = {}): PushTarget {
 		id: "t1",
 		name: "群",
 		adapterId: "a1",
+		kind: "session",
 		platform: "onebot",
 		scope: "group",
 		enabled: true,
-		session: { groupId: "123" },
+		address: "123",
 		...over,
 	} as unknown as PushTarget;
 }
@@ -269,7 +270,7 @@ describe("onebot — send 路由", () => {
 	it("scope=private:/send_private_msg + user_id", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ scope: "private", session: { userId: "456" } }), TEXT);
+		await ad.send(obConnection(), obTarget({ scope: "private", address: "456" }), TEXT);
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
 		expect(lastBody().user_id).toBe(456);
 	});
@@ -277,7 +278,7 @@ describe("onebot — send 路由", () => {
 	it("opts.private 覆盖 group scope", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ session: { userId: "789" } }), TEXT, {
+		await ad.send(obConnection(), obTarget({ address: "789" }), TEXT, {
 			private: true,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
@@ -320,23 +321,18 @@ describe("onebot — send 路由", () => {
 		// scope:"private" 被忽略,走 group 分支 → "group: groupId missing"。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(
-			obConnection(),
-			obTarget({ scope: "private", session: { userId: "456" } }),
-			TEXT,
-			{
-				private: false,
-			},
-		);
+		await ad.send(obConnection(), obTarget({ scope: "private", address: "456" }), TEXT, {
+			private: false,
+		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
 		expect(lastBody().user_id).toBe(456);
 	});
 
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {
 		const ad = createOnebotAdapter(obOpts());
-		const p = await ad.send(obConnection(), obTarget({ scope: "private", session: {} }), TEXT);
+		const p = await ad.send(obConnection(), obTarget({ scope: "private", address: "" }), TEXT);
 		expect(p).toMatchObject({ ok: false, err: "private: userId missing" });
-		const g = await ad.send(obConnection(), obTarget({ session: {} }), TEXT);
+		const g = await ad.send(obConnection(), obTarget({ address: "" }), TEXT);
 		expect(g).toMatchObject({ ok: false, err: "group: groupId missing" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -388,7 +384,7 @@ describe("onebot — send 路由", () => {
 	it("forward-images forward:false + private scope → send_private_msg 多 image", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ scope: "private", session: { userId: "999" } }), {
+		await ad.send(obConnection(), obTarget({ scope: "private", address: "999" }), {
 			kind: "forward-images",
 			images: [{ url: "https://x/a.jpg" }],
 			forward: false,
@@ -576,8 +572,8 @@ describe("onebot — send 路由", () => {
 		// 必须先做 target 校验再 await get_login_info,否则浪费 15s 超时在注定
 		// 发不出去的消息上。
 		const ad = createOnebotAdapter(obOpts());
-		// 故意把 target.session 改成空 → 触发 "group: groupId missing"。
-		const r = await ad.send(obConnection(), obTarget({ session: {} }), {
+		// 故意把 target.address 改成空 → 触发 "group: groupId missing"。
+		const r = await ad.send(obConnection(), obTarget({ address: "" }), {
 			kind: "forward-images",
 			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
@@ -627,7 +623,7 @@ describe("onebot — send 路由", () => {
 			res({ ok: true, json: { status: "ok", retcode: 0, message_id: 999 } }),
 		);
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ scope: "private", session: { userId: "888" } }), {
+		await ad.send(obConnection(), obTarget({ scope: "private", address: "888" }), {
 			kind: "forward-images",
 			images: [{ url: "https://x/a.jpg" }],
 			forward: true,
@@ -1116,8 +1112,8 @@ describe("onebot — 正向 WS(ws)", () => {
 		await waitFor(() => wss.clients.size > 0);
 		await sleep(40);
 		const [r1, r2] = await Promise.all([
-			ad.send(connection, obTarget({ session: { groupId: "111" } }), TEXT),
-			ad.send(connection, obTarget({ session: { groupId: "222" } }), TEXT),
+			ad.send(connection, obTarget({ address: "111" }), TEXT),
+			ad.send(connection, obTarget({ address: "222" }), TEXT),
 		]);
 		expect(r1.ok).toBe(true);
 		expect(r2.ok).toBe(true);
@@ -1469,7 +1465,6 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 		platform: "generic",
 		scope: "group",
 		enabled: true,
-		session: {},
 		...over,
 	} as unknown as PushTarget;
 }

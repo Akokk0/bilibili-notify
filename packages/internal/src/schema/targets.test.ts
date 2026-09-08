@@ -359,7 +359,7 @@ describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 });
 
 describe("PushTargetSchema (discriminated by platform)", () => {
-	it("accepts an onebot target", () => {
+	it("accepts an onebot session target", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "ob:111",
@@ -368,12 +368,12 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			session: { groupId: "111" },
+			address: "111",
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts a webhook target with empty session", () => {
+	it("accepts a webhook endpoint target —— 单向终点没有地址这一格", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:1",
@@ -382,12 +382,11 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "feishu",
 			scope: "channel",
 			enabled: true,
-			session: {},
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts an adapter-managed webhook target", () => {
+	it("accepts an adapter-managed endpoint target", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:managed",
@@ -397,7 +396,6 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			scope: "channel",
 			enabled: true,
 			managedBy: "adapter",
-			session: {},
 		});
 		expect(r.success).toBe(true);
 	});
@@ -412,12 +410,11 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			scope: "channel",
 			enabled: true,
 			managedBy: "user",
-			session: {},
 		});
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects managedBy on non-webhook targets", () => {
+	it("rejects managedBy on session targets", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "onebot:managed",
@@ -427,21 +424,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			scope: "group",
 			enabled: true,
 			managedBy: "adapter",
-			session: { groupId: "111" },
-		});
-		expect(r.success).toBe(false);
-	});
-
-	it("rejects a webhook target with URL-like session keys", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID_B,
-			name: "wh:1",
-			adapterId: UUID_A,
-			kind: "endpoint",
-			platform: "feishu",
-			scope: "channel",
-			enabled: true,
-			session: { url: "https://example.com/hook" },
+			address: "111",
 		});
 		expect(r.success).toBe(false);
 	});
@@ -455,7 +438,6 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "web-dashboard",
 			scope: "channel",
 			enabled: true,
-			session: {},
 		});
 		expect(r.success).toBe(false);
 	});
@@ -468,25 +450,41 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			session: { groupId: "111" },
+			address: "111",
 		});
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects extraneous onebot session keys (P2: .strict() 让配置拼写错保存期暴露)", () => {
-		// session.strict() 后,`gruopId` 之类拼写错(多余键)即报错,
-		// 不再静默吞掉导致 target 无可投递地址却校验通过。
+	it("会话目标缺 address 就是缺 —— 老 session 形状不会被静默放过", () => {
+		// 收成一格之前,这道保护是 session 上的 `.strict()`:`gruopId` 之类拼写错会
+		// 被多余键规则拦下。收成一格之后**保护换了个来源**:`address` 是必填键,
+		// 拼错也好、迁移漏了也好,少的就是它,parse 当场失败,不会存成一个没有
+		// 投递地址却「校验通过」的目标。
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
-			name: "ok",
+			name: "老形状",
 			adapterId: UUID_A,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			session: { groupId: "1", extraneous: "ignored" },
+			session: { groupId: "111" },
 		});
 		expect(r.success).toBe(false);
+	});
+
+	it("address 可以是空串 —— 先建个壳、回头再填群号是正常用法", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "待填",
+			adapterId: UUID_A,
+			kind: "session",
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			address: "",
+		});
+		expect(r.success).toBe(true);
 	});
 });
 
@@ -529,7 +527,7 @@ describe("QQOfficial adapter schema", () => {
 });
 
 describe("QQOfficial target schema", () => {
-	it("accepts a channel target (guildId + channelId)", () => {
+	it("accepts a channel target (address = channelId, parentAddress = guildId)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:频道",
@@ -538,12 +536,13 @@ describe("QQOfficial target schema", () => {
 			platform: "qq-official",
 			scope: "channel",
 			enabled: true,
-			session: { guildId: "g1", channelId: "c1" },
+			address: "c1",
+			parentAddress: "g1",
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts a group target (groupOpenid)", () => {
+	it("accepts a group target (address = groupOpenid)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:群",
@@ -552,12 +551,12 @@ describe("QQOfficial target schema", () => {
 			platform: "qq-official",
 			scope: "group",
 			enabled: true,
-			session: { groupOpenid: "ABCDEF0123456789ABCDEF0123456789" },
+			address: "ABCDEF0123456789ABCDEF0123456789",
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts a private (C2C) target (userOpenid)", () => {
+	it("accepts a private (C2C) target (address = userOpenid)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:私聊",
@@ -566,21 +565,21 @@ describe("QQOfficial target schema", () => {
 			platform: "qq-official",
 			scope: "private",
 			enabled: true,
-			session: { userOpenid: "0123456789ABCDEF0123456789ABCDEF" },
+			address: "0123456789ABCDEF0123456789ABCDEF",
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("rejects unknown session keys (strict — openid 拼错保存期暴露)", () => {
+	it("老的 openid session 形状不再收 —— 缺 address 当场失败", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
-			name: "qq:bad",
+			name: "qq:老形状",
 			adapterId: UUID_A,
 			kind: "session",
 			platform: "qq-official",
 			scope: "group",
 			enabled: true,
-			session: { groupOpenId: "typo-cased-key" },
+			session: { groupOpenid: "ABCDEF" },
 		});
 		expect(r.success).toBe(false);
 	});

@@ -21,7 +21,8 @@ const TARGETS = [
 		platform: "onebot",
 		scope: "private",
 		enabled: true,
-		session: { userId: "10001" },
+		kind: "session",
+		address: "10001",
 	},
 	{
 		id: "t-g",
@@ -30,7 +31,8 @@ const TARGETS = [
 		platform: "onebot",
 		scope: "group",
 		enabled: true,
-		session: { groupId: "88888" },
+		kind: "session",
+		address: "88888",
 	},
 	{
 		id: "t-q",
@@ -39,7 +41,8 @@ const TARGETS = [
 		platform: "qq-official",
 		scope: "group",
 		enabled: true,
-		session: { groupOpenid: "OPENID-1" },
+		kind: "session",
+		address: "OPENID-1",
 	},
 ] as never[];
 

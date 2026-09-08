@@ -59,7 +59,8 @@ function obTarget(): PushTarget {
 		platform: "onebot",
 		scope: "group",
 		enabled: true,
-		session: { groupId: "123" },
+		kind: "session",
+		address: "123",
 	} as unknown as PushTarget;
 }
 

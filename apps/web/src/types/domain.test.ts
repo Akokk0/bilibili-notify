@@ -102,7 +102,6 @@ describe("webhook adapter factories", () => {
 			platform: "wecom",
 			scope: "channel",
 			enabled: true,
-			session: {},
 		});
 		expect(target.managedBy).toBeUndefined();
 	});
@@ -151,15 +150,16 @@ describe("qq-official adapter factories", () => {
 		});
 	});
 
-	it("makeEmptyTarget(qq-official) 默认 group scope + 空 session", () => {
+	it("makeEmptyTarget(qq-official) 默认 group scope + 空地址", () => {
 		const connection = makeEmptyConnection("qq-official", "QQ");
 		const target = makeEmptyTarget(connection, "测试群");
 		expect(target).toMatchObject({
 			adapterId: connection.id,
+			kind: "session",
 			platform: "qq-official",
 			scope: "group",
 			enabled: true,
-			session: {},
+			address: "",
 		});
 	});
 });

@@ -317,7 +317,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 				platform: "onebot",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
-				session: { groupId: cfg.groupId, userId: cfg.userId },
+				address: (legacy.scope === "private" ? cfg.userId : cfg.groupId) ?? "",
 			});
 		} else if (legacy.platform === "webhook") {
 			const cfg = legacy.config as {
@@ -355,7 +355,6 @@ function migrateLegacyTargets(raw: unknown[]): {
 				platform: "generic",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
-				session: {},
 			});
 		}
 		// Unknown legacy platform (incl. the removed web-dashboard) — drop silently;
@@ -404,7 +403,6 @@ function makeManagedWebhookTarget(
 		enabled: connection.enabled,
 		managedBy: "adapter",
 		testStatus: existing?.testStatus,
-		session: {},
 	};
 }
 
@@ -432,8 +430,7 @@ function syncManagedWebhookTarget(
 		existing.platform !== desired.platform ||
 		existing.scope !== desired.scope ||
 		existing.enabled !== desired.enabled ||
-		existing.managedBy !== desired.managedBy ||
-		Object.keys(existing.session).length !== 0;
+		existing.managedBy !== desired.managedBy;
 	return { next, changed, aliases };
 }
 

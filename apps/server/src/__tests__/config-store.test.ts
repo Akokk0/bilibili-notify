@@ -419,7 +419,7 @@ describe("ConfigStore", () => {
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
-			session: { groupId: "10001" },
+			address: "10001",
 		};
 		await store.upsertTarget(target);
 		expect(store.getTargets()).toHaveLength(1);
@@ -444,7 +444,7 @@ describe("ConfigStore", () => {
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
-			session: { groupId: "10001" },
+			address: "10001",
 		};
 		const keptTarget = {
 			id: randomUUID(),
@@ -454,7 +454,7 @@ describe("ConfigStore", () => {
 			platform: "onebot" as const,
 			scope: "private" as const,
 			enabled: true,
-			session: { userId: "20002" },
+			address: "20002",
 		};
 		await store.upsertTarget(target);
 		await store.upsertTarget(keptTarget);
@@ -499,7 +499,6 @@ describe("ConfigStore", () => {
 			scope: "channel",
 			enabled: true,
 			managedBy: "adapter",
-			session: {},
 		});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
 		expect(scopes).toEqual(["adapters", "targets"]);
@@ -741,7 +740,6 @@ describe("ConfigStore", () => {
 			name: "飞书 Webhook",
 			enabled: false,
 			managedBy: "adapter",
-			session: {},
 		});
 	});
 
@@ -794,7 +792,7 @@ describe("ConfigStore", () => {
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			session: { groupId: "10001" },
+			address: "10001",
 		});
 
 		await expect(store.deleteConnection(connection.id)).rejects.toBeInstanceOf(
@@ -1008,10 +1006,11 @@ describe("ConfigStore", () => {
 						id: randomUUID(),
 						name: "孤儿目标",
 						adapterId: randomUUID(),
+						kind: "session",
 						platform: "onebot",
 						scope: "group",
 						enabled: true,
-						session: { groupId: "1" },
+						address: "1",
 					} as PushTarget,
 				],
 			}),

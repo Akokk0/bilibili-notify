@@ -29,8 +29,9 @@ function onebotGroup(id: string, groupId: string, over: Partial<PushTarget> = {}
 		adapterId: ONEBOT_ADAPTER,
 		scope: "group",
 		enabled: true,
+		kind: "session",
 		platform: "onebot",
-		session: { groupId },
+		address: groupId,
 		...over,
 	} as PushTarget;
 }
@@ -42,8 +43,9 @@ function onebotPrivate(id: string, userId: string): PushTarget {
 		adapterId: ONEBOT_ADAPTER,
 		scope: "private",
 		enabled: true,
+		kind: "session",
 		platform: "onebot",
-		session: { userId },
+		address: userId,
 	} as PushTarget;
 }
 
@@ -54,8 +56,9 @@ function qqGroup(id: string, groupOpenid: string, over: Partial<PushTarget> = {}
 		adapterId: QQ_ADAPTER,
 		scope: "group",
 		enabled: true,
+		kind: "session",
 		platform: "qq-official",
-		session: { groupOpenid },
+		address: groupOpenid,
 		...over,
 	} as PushTarget;
 }

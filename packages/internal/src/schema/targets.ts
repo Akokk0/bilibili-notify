@@ -237,46 +237,14 @@ export type Connection = z.infer<typeof ConnectionSchema>;
 /* Target (session-level) — references an adapter                             */
 /* -------------------------------------------------------------------------- */
 
-// P2:.strict() —— 对齐已 strict 的 webhook session。此前
-// non-strict 放任 `gruopId` 之类拼写错被静默忽略,target 无可投递地址却校验
-// 通过、推送悄悄丢。多收一个未知键即报错,让配置拼写错在保存期就暴露。
-export const OnebotSessionSchema = z
-	.object({
-		groupId: z.string().optional(),
-		userId: z.string().optional(),
-	})
-	.strict();
-export type OnebotSession = z.infer<typeof OnebotSessionSchema>;
-
-export const WebhookSessionSchema = z.object({}).strict();
-export type WebhookSession = z.infer<typeof WebhookSessionSchema>;
-
-/**
- * QQ 官方机器人会话。按 target.scope 用不同字段(发送时运行期校验,缺失即拒)。
- * - channel(频道子频道):channelId 必填,guildId 仅面板分组/排错用。
- * - group(群):groupOpenid —— 不透明 id,只能从入站事件捞,用户不可手填群号。
- * - private(C2C 单聊):userOpenid —— 同样从入站事件捞。
- */
-export const QQOfficialSessionSchema = z
-	.object({
-		guildId: z.string().optional(),
-		channelId: z.string().optional(),
-		groupOpenid: z.string().optional(),
-		userOpenid: z.string().optional(),
-	})
-	.strict();
-export type QQOfficialSession = z.infer<typeof QQOfficialSessionSchema>;
-
 /**
  * 推送目标的两支形态。
  *
  * - `session` —— 一个**会话**:群、私聊、子频道。有地址,能收到入站消息,人手配。
  * - `endpoint` —— 一个**单向出站终点**:地址烧在连接的 config 里,目标本身只是个壳。
  *
- * 今天它与 `platform` 一一对应(webhook ⇔ endpoint),看着冗余 —— 但 webhook 马上要从
- * 「平台」降格成「连接器」,那之后 `platform` 会变成 feishu / dingtalk / wecom / generic
- * 这样的**开放词表**,`platform === "webhook"` 全线恒假。判据先搬到这根轴上,降格那步
- * 才不会在一堆静默恒假里做。
+ * 它眼下与 `platform` 一一对应(webhook 那族 ⇔ endpoint),看着冗余 —— 但 `target.platform`
+ * 将来要开放(桥驮来的平台枚举不了),那之后按平台名比会全线恒假。判据先搬到这根轴上。
  */
 export const PushTargetKindSchema = z.enum(["session", "endpoint"]);
 export type PushTargetKind = z.infer<typeof PushTargetKindSchema>;
@@ -297,25 +265,48 @@ const PushTargetCommonShape = {
 	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
+/**
+ * 会话目标的**地址**。
+ *
+ * 这一格原先是每个平台一套 `session` 对象:OneBot 的 `{groupId?, userId?}`、官机的
+ * `{guildId?, channelId?, groupOpenid?, userOpenid?}`。四个可选字段配一个 `scope`,
+ * 于是「scope 说 group、填的却是 userId」这种状态在类型上完全合法,只能在发送时才发现。
+ *
+ * 收成一格之后那一整类状态不存在了:**scope 说是哪种会话,address 就是那个会话的地址**。
+ * OneBot 是群号 / QQ 号,官机是群 openid / 用户 openid / 子频道 id,将来接进来的平台
+ * 自然也只需要填这一格 —— 不用再为它抄一份 session schema。
+ *
+ * 它是**必填键**(可以是空串:目标先建后填是正常用法),空不空的检查留在发送那一刻 ——
+ * 那里本来就要检查,而在保存期拒绝会让「先建个壳、回头再填群号」这种用法做不到。
+ */
+const PushTargetSessionShape = {
+	kind: z.literal("session"),
+	address: z.string(),
+	/**
+	 * 上一级容器的地址。今天只有官机的频道用得上(`guildId`:子频道挂在频道服务器下)。
+	 *
+	 * 留着这一格不是为了官机 —— 是 Telegram 那种**论坛话题**:话题 id 是每个超级群自己
+	 * 一套的小整数,只存话题 id 的话,两个不同群里的同号话题会折成同一个地址。
+	 */
+	parentAddress: z.string().optional(),
+} as const;
+
 const OnebotPushTargetSchema = z.object({
 	...PushTargetCommonShape,
-	kind: z.literal("session"),
+	...PushTargetSessionShape,
 	platform: z.literal("onebot"),
-	session: OnebotSessionSchema,
 });
 
 const WebhookPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	kind: z.literal("endpoint"),
 	platform: WebhookPlatformSchema,
-	session: WebhookSessionSchema,
 });
 
 const QQOfficialPushTargetSchema = z.object({
 	...PushTargetCommonShape,
-	kind: z.literal("session"),
+	...PushTargetSessionShape,
 	platform: z.literal("qq-official"),
-	session: QQOfficialSessionSchema,
 });
 
 export const PushTargetSchema = z
@@ -337,32 +328,17 @@ export type PushTarget = z.infer<typeof PushTargetSchema>;
 
 /**
  * 群目标的「群地址」—— 与入站帧里的 `groupId` 是同一个值(OneBot 是群号,官机是群
- * openid)。没有入站的平台(webhook)没有地址。
+ * openid)。
  *
- * 和 {@link groupSessionFor} 是一对反函数,都住在 session 形状声明的地方:各处自己
- * 按平台写一个 switch 的话,以后接进来的新平台会在一处落进 default、另一处被列出来,
- * 群配了却永远匹配不上,还不报错。
+ * 它以前是一对反函数里的一头:另一头 `groupSessionFor` 按平台造 session。两头各写一个
+ * switch,新平台在一处落进 default、另一处被列出来,群配了却永远匹配不上还不报错 ——
+ * `group-address.test.ts` 就是为这件事写的。地址收成一格之后**那对函数塌成了取一个字段**,
+ * 反函数没有了,失配也就无从发生。
+ *
+ * 剩下的判断只有一句:`scope` 说它是群,`address` 才是群地址。私聊目标的 address 是
+ * 那个人的 id,不是群。
  */
 export function groupAddressOf(target: PushTarget): string | undefined {
-	switch (target.platform) {
-		case "onebot":
-			return target.session.groupId;
-		case "qq-official":
-			return target.session.groupOpenid;
-		default:
-			return undefined;
-	}
-}
-
-/** 群地址 → 该平台的 session。给「回到来源群」造临时目标用(见 groupAddressOf)。 */
-export function groupSessionFor(
-	platform: "onebot",
-	groupId: string,
-): z.infer<typeof OnebotSessionSchema>;
-export function groupSessionFor(
-	platform: "qq-official",
-	groupId: string,
-): z.infer<typeof QQOfficialSessionSchema>;
-export function groupSessionFor(platform: "onebot" | "qq-official", groupId: string) {
-	return platform === "onebot" ? { groupId } : { groupOpenid: groupId };
+	if (target.kind !== "session" || target.scope !== "group") return undefined;
+	return target.address || undefined;
 }

@@ -272,3 +272,84 @@ describe("migrateConfigSections —— 目标的形态提上来成 kind", () => 
 		expect(out.changed).toEqual({ connections: false, targets: true });
 	});
 });
+
+describe("migrateConfigSections —— 每平台一套的 session 收成一格 address", () => {
+	it.each([
+		["group", { groupId: "114514" }, "114514"],
+		["private", { userId: "10001" }, "10001"],
+	])("onebot 的 %s 目标取 session 里对应那一格", (scope, session, address) => {
+		const out = migrateConfigSections({ targets: [targetV1({ scope, session })] });
+		expect(out.targets[0]).toMatchObject({ kind: "session", address });
+		expect(out.targets[0]).not.toHaveProperty("session");
+	});
+
+	it("onebot 的 scope 决定读哪一格 —— 群目标不许把 userId 当地址", () => {
+		// 这正是收成一格要消灭的那个矩阵:老形状里「scope 说 group、填的却是 userId」
+		// 在类型上完全合法,只能在发送那一刻才发现。
+		const out = migrateConfigSections({
+			targets: [targetV1({ scope: "group", session: { userId: "10001" } })],
+		});
+		expect(out.targets[0]).toMatchObject({ address: "" });
+	});
+
+	it.each([
+		["group", { groupOpenid: "G1" }, "G1"],
+		["private", { userOpenid: "U1" }, "U1"],
+	])("官机的 %s 目标取 openid", (scope, session, address) => {
+		const out = migrateConfigSections({
+			targets: [targetV1({ platform: "qq-official", scope, session })],
+		});
+		expect(out.targets[0]).toMatchObject({ address });
+	});
+
+	it("官机的频道目标:channelId 是地址,guildId 进 parentAddress", () => {
+		const out = migrateConfigSections({
+			targets: [
+				targetV1({
+					platform: "qq-official",
+					scope: "channel",
+					session: { guildId: "g1", channelId: "c1" },
+				}),
+			],
+		});
+		expect(out.targets[0]).toMatchObject({ address: "c1", parentAddress: "g1" });
+	});
+
+	it("没有 guildId 的频道目标不凭空造一格 parentAddress", () => {
+		const out = migrateConfigSections({
+			targets: [
+				targetV1({ platform: "qq-official", scope: "channel", session: { channelId: "c1" } }),
+			],
+		});
+		expect(out.targets[0]).toMatchObject({ address: "c1" });
+		expect(out.targets[0]).not.toHaveProperty("parentAddress");
+	});
+
+	it("单向终点连 session 一起摘掉,不长 address", () => {
+		const out = migrateConfigSections({
+			targets: [targetV1({ platform: "webhook", scope: "channel", session: {} })],
+		});
+		expect(out.targets[0]).toMatchObject({ kind: "endpoint" });
+		expect(out.targets[0]).not.toHaveProperty("session");
+		expect(out.targets[0]).not.toHaveProperty("address");
+	});
+
+	it("地址没填过的老目标落空串 —— parse 得过,发的时候才报缺地址", () => {
+		const out = migrateConfigSections({ targets: [targetV1({ session: {} })] });
+		expect(out.targets[0]).toMatchObject({ address: "" });
+		const parsed = PushTargetSchema.safeParse(out.targets[0]);
+		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+	});
+
+	it("session 还在就算没迁完 —— 半迁移状态判得出来", () => {
+		const half = [{ ...targetV1(), kind: "session" }];
+		expect(detectConfigVersion({ targets: half })).toBe(1);
+	});
+
+	it("幂等:收完一遍不再报 changed", () => {
+		const once = migrateConfigSections({ targets: [targetV1()] });
+		const twice = migrateConfigSections({ targets: once.targets });
+		expect(twice.changed.targets).toBe(false);
+		expect(twice.targets).toEqual(once.targets);
+	});
+});

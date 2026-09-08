@@ -40,7 +40,6 @@ export type FieldSection =
 	| "target"
 	| "adapter"
 	| "transport"
-	| "session"
 	| "logging"
 	| "commands"
 	| "linkParsing";
@@ -642,13 +641,11 @@ export const FIELD_LABELS = {
 	"target.name": { label: "显示名称", section: "target" },
 	"target.scope": { label: "作用域", section: "target" },
 	"target.enabled": { label: "启用", section: "target" },
-	"session.userId": { label: "QQ 号 (userId)", section: "session" },
-	"session.groupId": { label: "群号 (groupId)", section: "session" },
-	// QQ 官方机器人会话寻址(按 scope)
-	"session.guildId": { label: "频道服务器 ID (guildId)", section: "session" },
-	"session.channelId": { label: "子频道 ID (channelId)", section: "session" },
-	"session.groupOpenid": { label: "群 openid (groupOpenid)", section: "session" },
-	"session.userOpenid": { label: "用户 openid (C2C)", section: "session" },
+	// 地址这一格原先是每平台一套 session 字段(session.groupId / session.groupOpenid / …),
+	// 六个词条对着六个字段名。收成一格之后只剩这两条 —— 界面上叫什么由 scope 决定,
+	// 但差异摘要里不该逐 scope 换名字(同一格改了就是改了)。
+	"target.address": { label: "会话地址", section: "target" },
+	"target.parentAddress": { label: "上级容器 ID", section: "target" },
 
 	// ── 定时周报(roastSchedule.*) ─────────────────────────────────────────
 	// 周期与统计范围是**解耦**的两个字段:cron 定何时发,days 定统计多少天。

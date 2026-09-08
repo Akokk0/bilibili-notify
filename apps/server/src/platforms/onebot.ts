@@ -8,7 +8,6 @@ import type {
 	MiniAppCardSupport,
 	NotificationPayload,
 	OnebotConnectionConfig,
-	OnebotSession,
 	PayloadSegment,
 	PushTarget,
 	ServiceContext,
@@ -265,18 +264,11 @@ function buildSendAction(
 				content: [{ type: "image", data: { file: img.url } }],
 			},
 		}));
-		const session = target.session as OnebotSession;
-		const isPrivate = opts.private === true || target.scope === "private";
-		if (isPrivate) {
-			if (!session.userId) return { err: "private: userId missing" };
-			const uid = Number(session.userId);
-			if (!Number.isFinite(uid)) return { err: `private: userId 非数字 (${session.userId})` };
-			return { action: "send_private_forward_msg", params: { user_id: uid, messages: nodes } };
-		}
-		if (!session.groupId) return { err: "group: groupId missing" };
-		const gid = Number(session.groupId);
-		if (!Number.isFinite(gid)) return { err: `group: groupId 非数字 (${session.groupId})` };
-		return { action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } };
+		const to = onebotNumericAddress(target, opts);
+		if ("err" in to) return to;
+		return to.private
+			? { action: "send_private_forward_msg", params: { user_id: to.id, messages: nodes } }
+			: { action: "send_group_forward_msg", params: { group_id: to.id, messages: nodes } };
 	}
 	return buildSendActionFromSegments(target, buildSegments(payload), opts);
 }
@@ -288,26 +280,38 @@ function buildSendActionFromSegments(
 	opts: { private?: boolean },
 ): { action: string; params: Record<string, unknown> } | { err: string } {
 	if (segments.length === 0) return { err: "empty payload" };
-	const session = target.session as OnebotSession;
-	// `opts.private` 是「强制私聊」覆盖标志,仅 `=== true` 时覆盖 target.scope。
-	// 旧写法 `opts.private ?? scope==="private"` 的坑:caller(MultiplexSink.send)
-	// 恒传 `{ private: false }`,??（nullish coalescing）不替换 false,导致
-	// scope==="private" 的 target 永远走 group 分支并返回 "group: groupId missing"。
-	const isPrivate = opts.private === true || target.scope === "private";
+	const to = onebotNumericAddress(target, opts);
+	if ("err" in to) return to;
 	const params: Record<string, unknown> = { message: segments };
-	if (isPrivate) {
-		if (!session.userId) return { err: "private: userId missing" };
-		const uid = Number(session.userId);
-		// 非数字 userId → Number()=NaN → 序列化成 null,OneBot 端静默错投。提前拒。
-		if (!Number.isFinite(uid)) return { err: `private: userId 非数字 (${session.userId})` };
-		params.user_id = uid;
+	if (to.private) {
+		params.user_id = to.id;
 		return { action: "send_private_msg", params };
 	}
-	if (!session.groupId) return { err: "group: groupId missing" };
-	const gid = Number(session.groupId);
-	if (!Number.isFinite(gid)) return { err: `group: groupId 非数字 (${session.groupId})` };
-	params.group_id = gid;
+	params.group_id = to.id;
 	return { action: "send_group_msg", params };
+}
+
+/**
+ * 目标的地址 → OneBot 要的那个数字 id,外加「这一发是不是私聊」。
+ *
+ * `opts.private` 是「强制私聊」覆盖标志,**仅 `=== true` 时**覆盖 `target.scope`。
+ * 旧写法 `opts.private ?? scope==="private"` 的坑:caller(MultiplexSink.send)恒传
+ * `{ private: false }`,`??` 不替换 false,于是 scope==="private" 的 target 永远走
+ * group 分支并返回 "group: groupId missing"。
+ *
+ * 非数字地址 → `Number()` 得 NaN → 序列化成 null,OneBot 端静默错投。提前拒。
+ */
+function onebotNumericAddress(
+	target: PushTarget,
+	opts: { private?: boolean },
+): { private: boolean; id: number } | { err: string } {
+	const isPrivate = opts.private === true || target.scope === "private";
+	const what = isPrivate ? "private: userId" : "group: groupId";
+	if (target.kind !== "session") return { err: `${what} missing` };
+	if (!target.address) return { err: `${what} missing` };
+	const id = Number(target.address);
+	if (!Number.isFinite(id)) return { err: `${what} 非数字 (${target.address})` };
+	return { private: isPrivate, id };
 }
 
 /**

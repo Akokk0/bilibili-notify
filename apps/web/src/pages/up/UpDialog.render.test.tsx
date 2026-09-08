@@ -17,10 +17,10 @@ const noop = () => {};
 function targetFor(platform: PushTarget["platform"]): PushTarget {
 	const base = { id: `${platform}-1`, name: `${platform} 目标`, adapterId: "a-1", enabled: true };
 	if (platform === "onebot")
-		return { ...base, kind: "session", platform: "onebot", scope: "group", session: {} };
+		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
 	if (platform === "qq-official")
-		return { ...base, kind: "session", platform: "qq-official", scope: "group", session: {} };
-	return { ...base, kind: "endpoint", platform: "feishu", scope: "channel", session: {} };
+		return { ...base, kind: "session", platform: "qq-official", scope: "group", address: "" };
+	return { ...base, kind: "endpoint", platform: "feishu", scope: "channel" };
 }
 
 /**

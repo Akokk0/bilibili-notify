@@ -128,7 +128,7 @@ describe("会话摘要不会把别的平台标成 webhook", () => {
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
-			session: { groupId: "114514" },
+			address: "114514",
 		} as unknown as PushTarget;
 
 		renderPage([ONEBOT_CONNECTION], [onebotTarget]);
