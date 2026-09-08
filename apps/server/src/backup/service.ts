@@ -145,11 +145,15 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		// 形状迁移 —— 与启动路径同一个纯函数。备份的明文段是**原样带过来的**,没过任何
 		// schema,所以一份三个月前导出的备份和一份三个月前的磁盘状态是同一个形状问题。
 		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
-		if (sections.adapters) {
+		if (sections.adapters || sections.targets) {
+			const migrated = migrateConfigSections({
+				connections: sections.adapters,
+				targets: sections.targets,
+			});
 			sections = {
 				...sections,
-				adapters: migrateConfigSections({ connections: sections.adapters })
-					.connections as Connection[],
+				...(sections.adapters ? { adapters: migrated.connections as Connection[] } : {}),
+				...(sections.targets ? { targets: migrated.targets as PushTarget[] } : {}),
 			};
 		}
 

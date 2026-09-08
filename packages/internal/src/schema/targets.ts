@@ -267,6 +267,20 @@ export const QQOfficialSessionSchema = z
 	.strict();
 export type QQOfficialSession = z.infer<typeof QQOfficialSessionSchema>;
 
+/**
+ * 推送目标的两支形态。
+ *
+ * - `session` —— 一个**会话**:群、私聊、子频道。有地址,能收到入站消息,人手配。
+ * - `endpoint` —— 一个**单向出站终点**:地址烧在连接的 config 里,目标本身只是个壳。
+ *
+ * 今天它与 `platform` 一一对应(webhook ⇔ endpoint),看着冗余 —— 但 webhook 马上要从
+ * 「平台」降格成「连接器」,那之后 `platform` 会变成 feishu / dingtalk / wecom / generic
+ * 这样的**开放词表**,`platform === "webhook"` 全线恒假。判据先搬到这根轴上,降格那步
+ * 才不会在一堆静默恒假里做。
+ */
+export const PushTargetKindSchema = z.enum(["session", "endpoint"]);
+export type PushTargetKind = z.infer<typeof PushTargetKindSchema>;
+
 const PushTargetCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
@@ -285,18 +299,21 @@ const PushTargetCommonShape = {
 
 const OnebotPushTargetSchema = z.object({
 	...PushTargetCommonShape,
+	kind: z.literal("session"),
 	platform: z.literal("onebot"),
 	session: OnebotSessionSchema,
 });
 
 const WebhookPushTargetSchema = z.object({
 	...PushTargetCommonShape,
+	kind: z.literal("endpoint"),
 	platform: z.literal("webhook"),
 	session: WebhookSessionSchema,
 });
 
 const QQOfficialPushTargetSchema = z.object({
 	...PushTargetCommonShape,
+	kind: z.literal("session"),
 	platform: z.literal("qq-official"),
 	session: QQOfficialSessionSchema,
 });
@@ -308,11 +325,11 @@ export const PushTargetSchema = z
 		QQOfficialPushTargetSchema,
 	])
 	.superRefine((target, ctx) => {
-		if (target.managedBy === "adapter" && target.platform !== "webhook") {
+		if (target.managedBy === "adapter" && target.kind !== "endpoint") {
 			ctx.addIssue({
 				code: "custom",
 				path: ["managedBy"],
-				message: "managedBy is only supported for webhook targets",
+				message: "managedBy is only supported for endpoint targets",
 			});
 		}
 	});

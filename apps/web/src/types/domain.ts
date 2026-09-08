@@ -289,10 +289,10 @@ export function switchOnebotTransport(
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	const base = { id: newId(), name, adapterId: connection.id, enabled: true } as const;
 	if (connection.platform === "onebot") {
-		return { ...base, platform: "onebot", scope: "group", session: {} };
+		return { ...base, kind: "session", platform: "onebot", scope: "group", session: {} };
 	}
 	if (connection.platform === "qq-official") {
-		return { ...base, platform: "qq-official", scope: "group", session: {} };
+		return { ...base, kind: "session", platform: "qq-official", scope: "group", session: {} };
 	}
-	return { ...base, platform: "webhook", scope: "channel", session: {} };
+	return { ...base, kind: "endpoint", platform: "webhook", scope: "channel", session: {} };
 }

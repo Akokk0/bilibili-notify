@@ -586,6 +586,7 @@ export async function startStandaloneServer(
 					id: `link-reply:${groupId}`,
 					name: "链接解析回复",
 					adapterId,
+					kind: "session" as const,
 					scope: "group" as const,
 					enabled: true,
 				};

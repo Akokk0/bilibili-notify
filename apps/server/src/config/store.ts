@@ -313,6 +313,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 				id: legacy.id,
 				name: legacy.name,
 				adapterId,
+				kind: "session",
 				platform: "onebot",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
@@ -349,6 +350,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 				id: legacy.id,
 				name: legacy.name,
 				adapterId,
+				kind: "endpoint",
 				platform: "webhook",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
@@ -393,6 +395,7 @@ function makeManagedWebhookTarget(
 		id: existing?.id ?? managedWebhookTargetId(connection.id),
 		name: connection.name || "Webhook",
 		adapterId: connection.id,
+		kind: "endpoint",
 		platform: "webhook",
 		scope: "channel",
 		enabled: connection.enabled,
@@ -406,7 +409,7 @@ function syncManagedWebhookTarget(
 	connection: WebhookConnection,
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
-	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === connection.id);
+	const owned = targets.filter((t) => t.kind === "endpoint" && t.adapterId === connection.id);
 	const existing = owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 	const desired = makeManagedWebhookTarget(connection, existing);
 	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
@@ -416,14 +419,13 @@ function syncManagedWebhookTarget(
 		if (target.id !== desired.id) aliases.set(target.id, desired.id);
 	}
 	const next = targets
-		.filter(
-			(t) => !(t.platform === "webhook" && t.adapterId === connection.id && t.id !== desired.id),
-		)
+		.filter((t) => !(t.kind === "endpoint" && t.adapterId === connection.id && t.id !== desired.id))
 		.map((t) => (t.id === desired.id ? desired : t));
 	const changed =
 		aliases.size > 0 ||
 		existing.name !== desired.name ||
 		existing.adapterId !== desired.adapterId ||
+		existing.kind !== desired.kind ||
 		existing.platform !== desired.platform ||
 		existing.scope !== desired.scope ||
 		existing.enabled !== desired.enabled ||
@@ -849,19 +851,38 @@ class NodeConfigStore implements ConfigStore {
 					"adapters.json on disk is not an array",
 				);
 			}
-			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`,schema 会当场拒,开机就起不来。
-			// 判据是数据形状不是版本号,且迁移幂等,所以「上次写到一半掉电」重来一遍无害。
-			// 回退到旧载荷是安全的:连接这一层是非 strict 的 z.object,旧 schema 会把这两个
-			// 不认识的键 strip 掉照常加载;它写回去的没有新字段,下次再被这里迁一遍。
-			const migrated = migrateConfigSections({ connections: connectionsRaw });
-			if (migrated.changed) {
+			const { value, existed } = await readJsonOrInit<unknown[]>(
+				this.path("targets"),
+				() => [] as PushTarget[],
+			);
+			if (!Array.isArray(value)) {
+				throw new ConfigValidationError(
+					"targets",
+					{ message: "targets.json must be an array" },
+					"targets.json on disk is not an array",
+				);
+			}
+
+			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`、目标没有 `kind`,schema 会当场
+			// 拒,开机就起不来。判据是数据形状不是版本号,且迁移幂等,所以「上次写到一半掉电」
+			// 重来一遍无害;两个分区一起判,只有都迁完才算新形状。
+			// 回退到旧载荷是安全的:这两层都是非 strict 的 z.object,旧 schema 会把不认识的键
+			// strip 掉照常加载;它写回去的没有新字段,下次再被这里迁一遍。
+			const migrated = migrateConfigSections({ connections: connectionsRaw, targets: value });
+			if (migrated.changed.connections || migrated.changed.targets) {
+				this.serviceCtx.logger.info(
+					`config-store migrating config v${migrated.from} → v${CONFIG_SCHEMA_VERSION}` +
+						" (原件留在同名 .bak)",
+				);
+			}
+			if (migrated.changed.connections) {
 				// 原件留一份 —— 迁移错了主人还能自己捞回去。
 				await copyFile(this.path("adapters"), `${this.path("adapters")}.bak`);
 				await atomicWriteJson(this.path("adapters"), migrated.connections);
-				this.serviceCtx.logger.info(
-					`config-store migrated adapters.json v${migrated.from} → v${CONFIG_SCHEMA_VERSION} ` +
-						`(${migrated.connections.length} 条,原件留在 adapters.json.bak)`,
-				);
+			}
+			if (migrated.changed.targets) {
+				await copyFile(this.path("targets"), `${this.path("targets")}.bak`);
+				await atomicWriteJson(this.path("targets"), migrated.targets);
 			}
 
 			const connections: Connection[] = [];
@@ -882,19 +903,8 @@ class NodeConfigStore implements ConfigStore {
 			this.connections = connections;
 			this.meta.adapters.exists = true;
 
-			const { value, existed } = await readJsonOrInit<unknown[]>(
-				this.path("targets"),
-				() => [] as PushTarget[],
-			);
-			if (!Array.isArray(value)) {
-				throw new ConfigValidationError(
-					"targets",
-					{ message: "targets.json must be an array" },
-					"targets.json on disk is not an array",
-				);
-			}
 			const targets: PushTarget[] = [];
-			for (const [idx, raw] of value.entries()) {
+			for (const [idx, raw] of migrated.targets.entries()) {
 				// 已撤下平台的存量目标同理丢弃。
 				if (!isKnownPlatform(raw)) continue;
 				const r = PushTargetSchema.safeParse(raw);
@@ -1291,11 +1301,11 @@ class NodeConfigStore implements ConfigStore {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
 			this.assertConnectionMatches(parsed.data);
-			// webhook 目标是 adapter 的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
-			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以判据是 managedBy 而不是
-			// platform,否则任何含 webhook 适配器的备份都恢复不了(而恢复是逐条 await 的,炸在
-			// 这一步时 globals / 订阅 / adapters 已经落盘,配置只剩半新半旧)。
-			if (parsed.data.platform === "webhook" && parsed.data.managedBy !== "adapter") {
+			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
+			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
+			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
+			// 的,炸在这一步时 globals / 订阅 / adapters 已经落盘,配置只剩半新半旧)。
+			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "adapter") {
 				throw new ConfigValidationError(
 					"targets",
 					{ message: "webhook target is managed by adapter" },
@@ -1333,7 +1343,7 @@ class NodeConfigStore implements ConfigStore {
 				);
 			}
 			const current = this.targets[idx] as PushTarget;
-			if (current.platform === "webhook" && current.managedBy === "adapter") {
+			if (current.kind === "endpoint" && current.managedBy === "adapter") {
 				throw new ConfigValidationError(
 					"targets",
 					{

@@ -112,7 +112,18 @@ function connectionEndpointSummary(a: Connection): string {
 	return provider === "generic" ? url : `${webhookProviderLabel(provider)} · ${url}`;
 }
 
+/**
+ * 一行小字,写这个目标「投到哪」。
+ *
+ * **先判形态再判平台** —— endpoint 那一支的地址烧在连接里,目标本身没有会话可写;
+ * 剩下的会话目标各按自己的平台取地址。以前这里是 onebot / qq-official 两个 if 加一个
+ * 兜底 return,兜底那句写死「webhook 终点」:等桥把 telegram 驮进来,新平台会落进
+ * 兜底、被标成一个它根本不是的终点,而且**没有编译错也没有测试红**。
+ */
 function targetSessionSummary(target: PushTarget): string {
+	if (target.kind === "endpoint") {
+		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
+	}
 	if (target.platform === "onebot") {
 		const s = target.session;
 		if (target.scope === "private") return s.userId ? `→ 用户 ${s.userId}` : "→ 未指定用户";
@@ -126,7 +137,8 @@ function targetSessionSummary(target: PushTarget): string {
 			return s.userOpenid ? `→ C2C ${s.userOpenid}` : "→ 未指定用户 openid";
 		return s.groupOpenid ? `→ 群 ${s.groupOpenid}` : "→ 未指定群 openid";
 	}
-	return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
+	// 还没写摘要的会话平台 —— 说不知道,别冒充成别人的终点。
+	return "→ 未知会话";
 }
 
 function managedWebhookTargetForConnection(
@@ -134,7 +146,7 @@ function managedWebhookTargetForConnection(
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
 	if (connection.platform !== "webhook") return undefined;
-	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === connection.id);
+	const owned = targets.filter((t) => t.kind === "endpoint" && t.adapterId === connection.id);
 	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 }
 
@@ -1651,7 +1663,7 @@ export default function Targets() {
 
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
-		if (t.platform === "webhook" && t.managedBy === "adapter") {
+		if (t.kind === "endpoint" && t.managedBy === "adapter") {
 			showToast("Webhook 目标由系统自动托管，请在连接里修改 URL", false);
 			return;
 		}

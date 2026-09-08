@@ -128,6 +128,7 @@ function makeWebhookTarget(
 		id: randomUUID(),
 		name: "手动 Webhook",
 		adapterId: connection.id,
+		kind: "endpoint" as const,
 		platform: "webhook" as const,
 		scope: "channel" as const,
 		enabled: true,
@@ -414,6 +415,7 @@ describe("ConfigStore", () => {
 			id: randomUUID(),
 			name: "t1",
 			adapterId: connection.id,
+			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
@@ -438,6 +440,7 @@ describe("ConfigStore", () => {
 			id: randomUUID(),
 			name: "群聊",
 			adapterId: connection.id,
+			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
@@ -447,6 +450,7 @@ describe("ConfigStore", () => {
 			id: randomUUID(),
 			name: "私聊",
 			adapterId: connection.id,
+			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "private" as const,
 			enabled: true,
@@ -533,6 +537,74 @@ describe("ConfigStore", () => {
 		// 迁移前的原件留一份 —— 迁移错了主人还能自己捞回来。
 		const bak = JSON.parse(await readFile(join(state2, "adapters.json.bak"), "utf8"));
 		expect(bak).toEqual([legacy]);
+	});
+
+	it("load() 把老形状的 targets.json 就地迁移并回写 —— 主人盘上那份没有 kind", async () => {
+		// 与连接侧同一条路径:schema 一旦要求 kind,存量 targets.json 就 parse 不过、
+		// 开机直接炸。两支各验一条 —— webhook 那条要落到 endpoint、群那条要落到 session。
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-target-migrate-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const connection = makeOnebotConnection();
+		const legacyTarget = {
+			id: randomUUID(),
+			name: "老群目标",
+			adapterId: connection.id,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "10001" },
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([legacyTarget]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+
+		expect(store2.getTargets()).toEqual([
+			expect.objectContaining({ id: legacyTarget.id, kind: "session" }),
+		]);
+		const onDisk = JSON.parse(await readFile(join(state2, "targets.json"), "utf8"));
+		expect(onDisk[0]).toMatchObject({ kind: "session" });
+		const bak = JSON.parse(await readFile(join(state2, "targets.json.bak"), "utf8"));
+		expect(bak).toEqual([legacyTarget]);
+		// 连接那份已经是新形状 —— 别顺手也给它留一份 .bak。
+		await expect(readFile(join(state2, "adapters.json.bak"), "utf8")).rejects.toThrow();
+	});
+
+	it("load() 把老 webhook 目标迁成 endpoint —— 托管同步认的是形态,迁错就会重造一张", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-target-migrate-wh-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const connection = makeWebhookConnection();
+		const legacyId = managedWebhookTargetId(connection.id);
+		const legacyTarget = {
+			id: legacyId,
+			name: connection.name,
+			adapterId: connection.id,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			managedBy: "adapter",
+			session: {},
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([legacyTarget]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+
+		expect(store2.getTargets()).toEqual([
+			expect.objectContaining({ id: legacyId, kind: "endpoint", managedBy: "adapter" }),
+		]);
 	});
 
 	it("load() 对已经是新形状的 adapters.json 不回写 —— 也就不会每次开机都留一份 .bak", async () => {
@@ -716,6 +788,7 @@ describe("ConfigStore", () => {
 			id: randomUUID(),
 			name: "群聊",
 			adapterId: connection.id,
+			kind: "session",
 			platform: "onebot",
 			scope: "group",
 			enabled: true,

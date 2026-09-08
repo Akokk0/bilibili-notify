@@ -15,6 +15,9 @@
  *
  * 两处都**没有编译错、没有类型红**(比较的两边都是 string),所以先在这儿把行为钉死:
  * 降格那步一旦漏改,红的是这个文件而不是主人的真机。
+ *
+ * 判据眼下已经搬到 `target.kind` 上(`endpoint` / `session`),这个文件继续守着它 ——
+ * 哪天有人图省事把它改回按平台名比,这里会红。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -58,6 +61,7 @@ const MANAGED_TARGET = {
 	id: "44444444-4444-4444-8444-444444444444",
 	name: "飞书群机器人 · 投递",
 	adapterId: WEBHOOK_ID,
+	kind: "endpoint",
 	platform: "webhook",
 	scope: "group",
 	enabled: true,
@@ -120,6 +124,7 @@ describe("会话摘要不会把别的平台标成 webhook", () => {
 			id: "55555555-5555-4555-8555-555555555555",
 			name: "测试群",
 			adapterId: ONEBOT_ID,
+			kind: "session",
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
