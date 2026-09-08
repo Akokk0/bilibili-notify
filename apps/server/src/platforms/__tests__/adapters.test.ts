@@ -1896,7 +1896,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", (
 				cardLinks: [],
 				miniAppCardLinks: [],
 			},
-			{ adapterId: "a1" },
+			{ adapterId: "a1", platform: "onebot" },
 		);
 		expect(onInboundPrivate).not.toHaveBeenCalled();
 		ad.dispose?.();
@@ -1922,7 +1922,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", (
 		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
 		expect(onInboundPrivate).toHaveBeenCalledWith(
 			{ userId: "456", text: "y" },
-			{ adapterId: "a1" },
+			{ adapterId: "a1", platform: "onebot" },
 		);
 		// 还活着的直接证据:上一条让消费者抛了,再来一条照样送到。
 		bot.send(

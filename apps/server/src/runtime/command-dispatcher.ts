@@ -17,8 +17,17 @@
  * 的回音会先于鉴权漏出去。
  */
 
-import type { CommandConfig, Logger } from "@bilibili-notify/internal";
-import type { InboundPrivateMessage } from "../platforms/types.js";
+import {
+	type ChatIdentity,
+	type CommandConfig,
+	type Logger,
+	sameChatIdentity,
+} from "@bilibili-notify/internal";
+import {
+	type InboundMeta,
+	type InboundPrivateMessage,
+	inboundIdentity,
+} from "../platforms/types.js";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
 
@@ -90,17 +99,19 @@ export interface ConfirmationWindow {
 	/** 有待确认项吗?没有的话 `y` 只是个普通字母,压根不该进指令层。 */
 	isWaiting(): boolean;
 	/** 试着当确认回应处理。返回 true = 已消费,不再往下走。 */
-	tryHandle(msg: InboundPrivateMessage): Promise<boolean>;
+	tryHandle(msg: InboundPrivateMessage, meta: InboundMeta): Promise<boolean>;
 }
 
 export interface CommandDispatcherOptions {
 	logger: Logger;
 	/**
-	 * 主人在他那条私聊通道上的身份。取不到就谁都不认 ——
-	 * 与 `roast-command` 同一个来源,**绝不跨平台比对**(两个命名空间的字符串撞上
-	 * 就是认错人)。
+	 * 主人在他那条私聊通道上的身份 —— 平台 + 地址(+ 是哪个 bot 看到的)三坐标。
+	 * 取不到就谁都不认;与 `roast-command` 同一个来源。
+	 *
+	 * 从前这里是个裸字符串,比对就是字符串相等,「绝不跨平台比对」全靠注释写着 ——
+	 * 真正兜着它的是「一条连接只驮一个平台」这个前提,而那个前提正在被拆掉。
 	 */
-	masterUserId: () => string | undefined;
+	masterIdentity: () => ChatIdentity | undefined;
 	/** 回一句话给主人(用的是既有的私聊通道)。 */
 	reply: (text: string) => Promise<void>;
 	/**
@@ -120,7 +131,7 @@ export interface CommandDispatcher {
 	 * 不是指令,都静默返回。鉴权与路由全在这里 —— 唯一入口,不会有哪条路把「不是主人
 	 * 也放行」写漏。
 	 */
-	handleMessage(msg: InboundPrivateMessage): Promise<void>;
+	handleMessage(msg: InboundPrivateMessage, meta: InboundMeta): Promise<void>;
 	/**
 	 * 别名配置变了之后重建触发词表。挂在 `config-changed` 上。
 	 *
@@ -226,10 +237,9 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		return { kind: "unknown", typed: body.split(/\s+/, 1)[0] ?? "" };
 	}
 
-	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
+	async function handleMessage(msg: InboundPrivateMessage, meta: InboundMeta): Promise<void> {
 		// —— 第一道门:鉴权。必须在解析之前,理由见文件头。
-		const master = opts.masterUserId();
-		if (!master || msg.userId !== master) return;
+		if (!sameChatIdentity(opts.masterIdentity(), inboundIdentity(msg, meta))) return;
 
 		// —— 第二道门:待确认窗口。**只在真有待确认项时才开。**
 		//
@@ -238,7 +248,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		// 草稿 TTL 有 48 小时,真要批准几乎不可能撞上超时;没待审时那个 y 就只是
 		// 个普通字母,不该进指令层。
 		if (opts.confirmation?.isWaiting()) {
-			if (await opts.confirmation.tryHandle(msg)) return;
+			if (await opts.confirmation.tryHandle(msg, meta)) return;
 		}
 
 		// —— 第三道门:总开关。**排在确认流之后** —— 「关掉 = 整条链路只剩确认流」,

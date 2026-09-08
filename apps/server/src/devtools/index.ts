@@ -1,7 +1,7 @@
 import { getHeapStatistics } from "node:v8";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
-import type { Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
+import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
@@ -61,7 +61,7 @@ export interface CreateDevtoolsInput {
 	dynamic: () => DynamicEngineLike | undefined;
 	/** 入站口(私聊指令 / 群链接)。接线层后接,现取。 */
 	inbound: () => InboundHandlers | undefined;
-	commands: () => { prefix: string; masterUserId?: string };
+	commands: () => { prefix: string; master?: ChatIdentity };
 	connectionConfigs: () => Connection[];
 	targets: () => PushTarget[];
 	/** 引擎错误 / 登录失效 / 登录状态快照都从这条总线发。 */

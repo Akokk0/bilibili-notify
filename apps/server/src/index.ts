@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import type { NotificationPayload } from "@bilibili-notify/internal";
+import { chatIdentityOf, type NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp } from "./app.js";
@@ -272,20 +272,17 @@ export async function startStandaloneServer(
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
-		// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
-		// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
-		// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
-		// undefined,于是谁都不认。
+		// 主人是「谁」—— 平台 + 地址(+ 是哪个 bot 看到的)三坐标,不是一个裸字符串。
+		// onebot 的 user_id 与官机的 C2C openid 是两个命名空间,撞上就等于认错人;
+		// 从前那句「绝不能跨平台比对」只写在注释里,真正兜着它的是「一条连接只驮一个
+		// 平台」这个前提。取不到(没配 / 配的是群目标 / 地址还没填)就返回 undefined,
+		// 于是谁都不认。
 		//
 		// 审批与指令分发共用同一个来源:各写一份迟早有一边判得不一样。
-		const masterUserId = () => {
+		const masterIdentity = () => {
 			const id = runtime.configStore.getGlobals().master.targetId;
 			if (!id) return undefined;
-			const t = runtime.configStore.getTargets().find((x) => x.id === id);
-			// 私聊目标的地址就是那个人的 id(OneBot 是 QQ 号,官机是 C2C openid)。
-			// 群目标的 address 是群,不是人 —— 拿它当主人身份会把整群当成主人。
-			if (t?.kind !== "session" || t.scope !== "private") return undefined;
-			return t.address || undefined;
+			return chatIdentityOf(runtime.configStore.getTargets().find((x) => x.id === id));
 		};
 
 		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
@@ -317,7 +314,7 @@ export async function startStandaloneServer(
 			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),
 			commands: () => ({
 				prefix: runtime.configStore.getGlobals().commands.prefix,
-				masterUserId: masterUserId(),
+				master: masterIdentity(),
 			}),
 			connectionConfigs: () => runtime.configStore.getConnections(),
 			targets: () => runtime.configStore.getTargets(),
@@ -462,7 +459,7 @@ export async function startStandaloneServer(
 		const roastCommands = createRoastCommandHandler({
 			drafts: roastDrafts,
 			logger: log,
-			masterUserId,
+			masterIdentity,
 			deliver: (draft) => roastScheduler.deliverApproved(draft),
 			reply: tellMaster,
 		});
@@ -546,7 +543,7 @@ export async function startStandaloneServer(
 
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,
-			masterUserId,
+			masterIdentity,
 			reply: tellMaster,
 			config: () => runtime.configStore.getGlobals().commands,
 			commands,
@@ -598,7 +595,7 @@ export async function startStandaloneServer(
 
 		// 两个 adapter 交出来的是同一个形状:私聊进指令分发,群进链接解析。哪个平台来的
 		// 只有链接解析关心(回到来源群要按平台造目标),所以在这儿补上。
-		onInboundPrivate = (msg) => void commandDispatcher.handleMessage(msg);
+		onInboundPrivate = (msg, meta) => void commandDispatcher.handleMessage(msg, meta);
 		onInboundGroup = (platform, msg, meta) =>
 			void linkParser.handleMessage({ platform, adapterId: meta.adapterId, ...msg });
 

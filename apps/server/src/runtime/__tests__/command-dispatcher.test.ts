@@ -21,6 +21,9 @@ const logger = { debug() {}, info() {}, warn() {}, error() {} } as Any;
 
 const MASTER = "10001";
 const STRANGER = "20002";
+const PLATFORM = "onebot";
+/** 入站帧的来源。鉴权比的是三坐标,平台这一格得跟主人那条私聊对得上。 */
+const META = { adapterId: "a1", platform: PLATFORM };
 
 /** `null` = 主人私聊 user_id 没配上(不能用 undefined:默认参数会把它换成 MASTER)。 */
 function makeDispatcher(
@@ -41,7 +44,7 @@ function makeDispatcher(
 	const config = { enabled: true, prefix, aliases: {} as Record<string, string[]> };
 	const dispatcher = createCommandDispatcher({
 		logger,
-		masterUserId: () => master ?? undefined,
+		masterIdentity: () => (master === null ? undefined : { platform: PLATFORM, address: master }),
 		reply: reply as Any,
 		config: () => config,
 		commands,
@@ -55,10 +58,27 @@ describe("鉴权门", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run }]);
 
-		await dispatcher.handleMessage({ userId: STRANGER, text: "状态" });
+		await dispatcher.handleMessage({ userId: STRANGER, text: "状态" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 		// 回「你没权限」等于告诉对方这里有个接口可以试探。
+		expect(reply).not.toHaveBeenCalled();
+	});
+
+	it("🔴 号一样但平台不一样:不是主人", async () => {
+		// OneBot 的 QQ 号与官机的 C2C openid 是两个命名空间。从前这里比的是一个裸
+		// 字符串,撞上就等于把整条指令链路交给陌生人 —— 改配置、发推送、批准锐评。
+		const run = vi.fn(async () => {});
+		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run }]);
+
+		// 正文带前缀 —— 不带的话这条消息本来就不会路由到 handler,测试会因为
+		// 完全无关的原因变绿。
+		await dispatcher.handleMessage(
+			{ userId: MASTER, text: "/状态" },
+			{ adapterId: "a2", platform: "qq-official" },
+		);
+
+		expect(run).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
 	});
 });
@@ -68,7 +88,7 @@ describe("路由", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "状态", run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -79,7 +99,7 @@ describe("参数", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "静音", signature: "<时长:duration>", run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" }, META);
 
 		expect(run).toHaveBeenCalledWith({ 时长: 3 * 3600_000 });
 	});
@@ -90,7 +110,7 @@ describe("参数", () => {
 			{ name: "静音", signature: "<时长:duration>", run },
 		]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 一会儿" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 一会儿" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 		expect(reply).toHaveBeenCalledWith(expect.stringContaining("时长"));
@@ -102,7 +122,7 @@ describe("前缀闸", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "今天天气不错" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "今天天气不错" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
@@ -113,7 +133,7 @@ describe("前缀闸", () => {
 	it("带前缀但没这条指令 → 提示主人", async () => {
 		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run: async () => {} }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/不存在" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/不存在" }, META);
 
 		expect(reply).toHaveBeenCalled();
 	});
@@ -122,7 +142,7 @@ describe("前缀闸", () => {
 	it("敲错一点点 → 连带指出最近的那条", async () => {
 		const { dispatcher, reply } = makeDispatcher([{ name: "mute", run: async () => {} }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/mut" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/mut" }, META);
 
 		// 带上**当前**前缀,主人能直接照抄 —— 他把前缀改成 `bn ` 之后,写死 `/` 的
 		// 建议就是一条敲了没反应的指令。
@@ -134,7 +154,7 @@ describe("前缀闸", () => {
 			{ name: "mute", signature: "<时长:duration>", run: async () => {} },
 		]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/mut 3h" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/mut 3h" }, META);
 
 		expect(reply.mock.calls[0]?.[0]).toContain("/mute");
 	});
@@ -144,7 +164,7 @@ describe("前缀闸", () => {
 			{ name: "mute", aliases: ["静音"], run: async () => {} },
 		]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/静因" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静因" }, META);
 
 		expect(reply.mock.calls[0]?.[0]).toContain("/静音");
 	});
@@ -153,7 +173,7 @@ describe("前缀闸", () => {
 	it("差太远就只说没有,不乱指", async () => {
 		const { dispatcher, reply } = makeDispatcher([{ name: "mute", run: async () => {} }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/天气预报" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/天气预报" }, META);
 
 		expect(reply).toHaveBeenCalledOnce();
 		expect(reply.mock.calls[0]?.[0]).not.toContain("/mute");
@@ -167,7 +187,7 @@ describe("前缀闸", () => {
 			"",
 		);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "mut" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "mut" }, META);
 
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -182,7 +202,7 @@ describe("前缀闸", () => {
 			"",
 		);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "今天天气不错" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "今天天气不错" }, META);
 
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -191,7 +211,7 @@ describe("前缀闸", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "状态", run }], MASTER, "");
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "状态" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -202,7 +222,7 @@ describe("零回音(鉴权在解析之前)", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run }], null);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
@@ -213,7 +233,7 @@ describe("零回音(鉴权在解析之前)", () => {
 	it("陌生人发未知指令:同样零回音", async () => {
 		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run: async () => {} }]);
 
-		await dispatcher.handleMessage({ userId: STRANGER, text: "/不存在" });
+		await dispatcher.handleMessage({ userId: STRANGER, text: "/不存在" }, META);
 
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -224,7 +244,7 @@ describe("零回音(鉴权在解析之前)", () => {
 			{ name: "静音", signature: "<时长:duration>", run },
 		]);
 
-		await dispatcher.handleMessage({ userId: STRANGER, text: "/静音 3h" });
+		await dispatcher.handleMessage({ userId: STRANGER, text: "/静音 3h" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
@@ -236,7 +256,7 @@ describe("健壮性", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "状态", run }], MASTER, "");
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "看看状态吧" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "看看状态吧" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 	});
@@ -248,7 +268,7 @@ describe("健壮性", () => {
 		const { dispatcher } = makeDispatcher([{ name: "状态", run: boom }]);
 
 		await expect(
-			dispatcher.handleMessage({ userId: MASTER, text: "/状态" }),
+			dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META),
 		).resolves.toBeUndefined();
 		expect(boom).toHaveBeenCalledOnce();
 	});
@@ -266,7 +286,7 @@ describe("健壮性", () => {
 			raw_message: "/状态",
 		});
 		if (!msg) throw new Error("私聊帧没解析出来");
-		await dispatcher.handleMessage(msg);
+		await dispatcher.handleMessage(msg, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -286,7 +306,7 @@ describe("确认流窗口(第二道门)", () => {
 		const confirmation = makeConfirmation(true);
 		const { dispatcher } = makeDispatcher([{ name: "y", run }], MASTER, "", confirmation);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" }, META);
 
 		expect(confirmation.tryHandle).toHaveBeenCalledOnce();
 		expect(run).not.toHaveBeenCalled();
@@ -304,7 +324,7 @@ describe("确认流窗口(第二道门)", () => {
 			confirmation,
 		);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" }, META);
 
 		expect(confirmation.tryHandle).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
@@ -315,7 +335,7 @@ describe("确认流窗口(第二道门)", () => {
 		const confirmation = makeConfirmation(true);
 		const { dispatcher } = makeDispatcher([{ name: "状态", run }], MASTER, "/", confirmation);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 
 		expect(confirmation.tryHandle).toHaveBeenCalledOnce();
 		expect(run).toHaveBeenCalledOnce();
@@ -325,7 +345,7 @@ describe("确认流窗口(第二道门)", () => {
 		const confirmation = makeConfirmation(true);
 		const { dispatcher } = makeDispatcher([], MASTER, "/", confirmation);
 
-		await dispatcher.handleMessage({ userId: STRANGER, text: "y" });
+		await dispatcher.handleMessage({ userId: STRANGER, text: "y" }, META);
 
 		expect(confirmation.tryHandle).not.toHaveBeenCalled();
 	});
@@ -336,9 +356,9 @@ describe("别名", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "help", aliases: ["帮助", "?"], run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/帮助" });
-		await dispatcher.handleMessage({ userId: MASTER, text: "/?" });
-		await dispatcher.handleMessage({ userId: MASTER, text: "/help" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/帮助" }, META);
+		await dispatcher.handleMessage({ userId: MASTER, text: "/?" }, META);
+		await dispatcher.handleMessage({ userId: MASTER, text: "/help" }, META);
 
 		expect(run).toHaveBeenCalledTimes(3);
 	});
@@ -351,7 +371,7 @@ describe("别名", () => {
 			{ name: "mute", aliases: ["静音"], signature: "<duration:duration|时长>", run },
 		]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" }, META);
 
 		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
 	});
@@ -360,7 +380,7 @@ describe("别名", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "status", run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -369,7 +389,7 @@ describe("别名", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "mute", aliases: ["静音"], run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/静音吧" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音吧" }, META);
 
 		expect(run).not.toHaveBeenCalled();
 	});
@@ -449,13 +469,16 @@ describe("配置", () => {
 		);
 		config.enabled = false;
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
 		expect(run).not.toHaveBeenCalled();
 
 		// 总开关关着,y 仍然进得了确认流(每条消息都会被问一次 —— 那正是
 		// 「只剩确认流」的意思),而且是**被消费**的那一条。
-		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
-		expect(confirmation.tryHandle).toHaveBeenCalledWith(expect.objectContaining({ text: "y" }));
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" }, META);
+		expect(confirmation.tryHandle).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "y" }),
+			META,
+		);
 		expect(await confirmation.tryHandle.mock.results.at(-1)?.value).toBe(true);
 	});
 
@@ -465,7 +488,7 @@ describe("配置", () => {
 		const { dispatcher, reply, config } = makeDispatcher([{ name: "status", run: noop }]);
 		config.enabled = false;
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
 		expect(reply).not.toHaveBeenCalled();
 	});
 
@@ -474,7 +497,7 @@ describe("配置", () => {
 		const { dispatcher, config } = makeDispatcher([{ name: "status", run }]);
 		config.prefix = "bn ";
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "bn status" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "bn status" }, META);
 		expect(run).toHaveBeenCalledOnce();
 	});
 
@@ -484,11 +507,11 @@ describe("配置", () => {
 		config.aliases = { status: ["看看"] };
 		dispatcher.reconcile();
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/看看" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/看看" }, META);
 		expect(run).toHaveBeenCalledOnce();
 		// 整份替换:内置的「状态」已经不认了。区分「我不想要别名」和「我没动过」
 		// 正是为此 —— 两者在盘上必须长得不一样。
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 		expect(run).toHaveBeenCalledOnce();
 	});
 
@@ -498,9 +521,9 @@ describe("配置", () => {
 		config.aliases = { status: [] };
 		dispatcher.reconcile();
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 		expect(run).not.toHaveBeenCalled();
-		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
 		expect(run).toHaveBeenCalledOnce();
 	});
 
@@ -513,7 +536,7 @@ describe("配置", () => {
 		config.aliases = { mute: ["安静"] };
 		dispatcher.reconcile();
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 		expect(run).toHaveBeenCalledOnce();
 	});
 
@@ -529,7 +552,7 @@ describe("配置", () => {
 		config.aliases = { mute: ["status"] };
 
 		expect(() => dispatcher.reconcile()).not.toThrow();
-		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, META);
 		expect(run).toHaveBeenCalledOnce();
 	});
 });
@@ -544,7 +567,7 @@ describe("大小写", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "mute", run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/Mute" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/Mute" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -555,7 +578,7 @@ describe("大小写", () => {
 			{ name: "mute", signature: "<duration:duration|时长>", run },
 		]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/MuTe 3h" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/MuTe 3h" }, META);
 
 		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
 	});
@@ -564,7 +587,7 @@ describe("大小写", () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "report", aliases: ["Weekly"], run }]);
 
-		await dispatcher.handleMessage({ userId: MASTER, text: "/weekly" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/weekly" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
 	});

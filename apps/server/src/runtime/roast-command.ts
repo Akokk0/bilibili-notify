@@ -13,8 +13,12 @@
  * {@link createRoastCommandHandler} 负责鉴权与真正的批准 / 丢弃。
  */
 
-import type { Logger } from "@bilibili-notify/internal";
-import type { InboundPrivateMessage } from "../platforms/types.js";
+import { type ChatIdentity, type Logger, sameChatIdentity } from "@bilibili-notify/internal";
+import {
+	type InboundMeta,
+	type InboundPrivateMessage,
+	inboundIdentity,
+} from "../platforms/types.js";
 import type { ConfirmationWindow } from "./command-dispatcher.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 
@@ -43,8 +47,8 @@ export type { InboundPrivateMessage };
 export interface RoastCommandHandlerOptions {
 	drafts: RoastDraftStore;
 	logger: Logger;
-	/** 主人的 OneBot user_id。取自主人私聊目标的 session.userId;拿不到就谁都不认。 */
-	masterUserId: () => string | undefined;
+	/** 主人那条私聊目标的三坐标(见 `chatIdentityOf`);拿不到就谁都不认。 */
+	masterIdentity: () => ChatIdentity | undefined;
 	/** 批准之后把这份草稿真的发出去。 */
 	deliver: (draft: RoastDraft) => Promise<void>;
 	/** 回一句话给主人(用的是既有的私聊通道)。 */
@@ -123,11 +127,10 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 	 * 鉴权在这里**再做一次**,虽然 dispatcher 那边已经鉴过:两条路各写一份的话,
 	 * 迟早有一边把「不是主人也放行」写漏,而这条链路的代价是把没审过的锐评发出去。
 	 */
-	async function tryHandle(msg: InboundPrivateMessage): Promise<boolean> {
-		const master = opts.masterUserId();
+	async function tryHandle(msg: InboundPrivateMessage, meta: InboundMeta): Promise<boolean> {
 		// 不是主人就当没看见:不回复、不报错。回一句「你没权限」等于告诉对方
 		// 这里有个接口可以试探。
-		if (!master || msg.userId !== master) return false;
+		if (!sameChatIdentity(opts.masterIdentity(), inboundIdentity(msg, meta))) return false;
 
 		const cmd = parseRoastCommand(msg.text);
 		// 认不出来 → 让回给指令表。有待审的时候主人照样得能敲别的指令。

@@ -1,4 +1,5 @@
 import type {
+	ChatIdentity,
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -82,12 +83,31 @@ export interface PlatformAdapter {
 /** 收到这条消息的那条连接 —— 「回到消息来的那个群」得知道用哪个 adapter 的凭据发。 */
 export interface InboundMeta {
 	adapterId: string;
+	/**
+	 * 收到这条消息的平台。
+	 *
+	 * 主人身份的比对要按平台走:OneBot 的 QQ 号与官机的 C2C openid 是两个命名空间,
+	 * 光比字符串就是在赌两边永远不撞。这一格让那句「绝不能跨平台比对」第一次真的可校验。
+	 */
+	platform: string;
+	/** 收到这条消息的那个 bot 自己的号。一条连接驮多个 bot(桥)时才有,直连没有。 */
+	botId?: string;
 }
 
 /** 一条私聊。指令分发器只认这个;`userId` 在 OneBot 是 QQ 号,在官机是 C2C 用户 openid。 */
 export interface InboundPrivateMessage {
 	userId: string;
 	text: string;
+}
+
+/**
+ * 一条私聊 → 「谁」的三坐标,拿去跟主人比对。
+ *
+ * 地址在帧里、平台与 bot 在 meta 里 —— 两个鉴权口(指令分发、锐评审批)各自拼一份的话,
+ * 迟早有一边少拼一格,而少一格就是把「跨平台不许比」又变回一句注释。
+ */
+export function inboundIdentity(msg: InboundPrivateMessage, meta: InboundMeta): ChatIdentity {
+	return { platform: meta.platform, address: msg.userId, botId: meta.botId };
 }
 
 /** 一条群消息。链接解析只认这个;`groupId` 在 OneBot 是群号,在官机是群 openid。 */

@@ -303,6 +303,13 @@ const PushTargetSessionShape = {
 	 * 一套的小整数,只存话题 id 的话,两个不同群里的同号话题会折成同一个地址。
 	 */
 	parentAddress: z.string().optional(),
+	/**
+	 * 收到 / 发出这个会话的消息的那个 bot 自己的号。
+	 *
+	 * 直连没有:一条连接就是一个 bot,连接 id 已经说全了。桥不一样 —— 一条桥连接后面
+	 * 可能挂着好几个 bot,同一个群地址在两个 bot 眼里是两个会话。
+	 */
+	botId: z.string().optional(),
 } as const;
 
 /**
@@ -353,4 +360,44 @@ export type PushTarget = z.infer<typeof PushTargetSchema>;
 export function groupAddressOf(target: PushTarget): string | undefined {
 	if (target.kind !== "session" || target.scope !== "group") return undefined;
 	return target.address || undefined;
+}
+
+/**
+ * 「谁」的三坐标 —— 平台 + 地址(+ 是哪个 bot 看到的)。
+ *
+ * 主人身份以前塌成一个裸字符串,比对就是字符串相等。`onebot` 的 QQ 号与官机的 C2C
+ * openid 是**两个命名空间**,撞上就等于认错人 —— 代码注释一直这么写着,却从来没有
+ * 东西校验过它:那时「一条连接只驮一个平台」这个前提替它兜着,而这个前提正在被拆掉。
+ */
+export interface ChatIdentity {
+	platform: string;
+	/** 这个人在该平台上的地址:OneBot 是 QQ 号,官机是 C2C openid。 */
+	address: string;
+	/** 见 PushTarget 的 `botId`;直连没有。 */
+	botId?: string;
+}
+
+/**
+ * 主人那个私聊目标的三坐标。不是私聊会话就没有 ——
+ * 群目标的 `address` 是群,拿它当主人身份等于把整个群当成主人。
+ */
+export function chatIdentityOf(target: PushTarget | undefined): ChatIdentity | undefined {
+	if (target?.kind !== "session" || target.scope !== "private" || !target.address) return undefined;
+	return { platform: target.platform, address: target.address, botId: target.botId };
+}
+
+/**
+ * 两个坐标是不是同一个人。
+ *
+ * `botId` 只在**两边都有**时参与比对:直连这一格永远是空的,要求它相等等于谁都不认。
+ * 平台与地址则都必须给且相等 —— 少一格就不认,而不是当通配。
+ */
+export function sameChatIdentity(
+	a: ChatIdentity | undefined,
+	b: ChatIdentity | undefined,
+): boolean {
+	if (!a || !b) return false;
+	if (!a.platform || !a.address) return false;
+	if (a.platform !== b.platform || a.address !== b.address) return false;
+	return !a.botId || !b.botId || a.botId === b.botId;
 }

@@ -50,16 +50,18 @@ function setup(
 	over: {
 		master?: string;
 		inbound?: boolean;
-		commands?: () => { prefix: string; masterUserId?: string };
+		commands?: () => { prefix: string; master?: { platform: string; address: string } };
 	} = {},
 ) {
 	const priv = vi.fn();
 	const group = vi.fn();
-	const masterUserId = "master" in over ? over.master : "10001";
+	const address = "master" in over ? over.master : "10001";
+	// 鉴权换成三坐标之后主人身份带平台 —— 场景得按它挑连接,平台喂错就打不中。
+	const master = address ? { platform: "onebot", address } : undefined;
 	const reg = createDevRegistry(
 		inboundScenarios({
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
-			commands: over.commands ?? (() => ({ prefix: "/", masterUserId })),
+			commands: over.commands ?? (() => ({ prefix: "/", master })),
 			connections: () => ADAPTERS,
 			targets: () => TARGETS,
 		}),
@@ -83,7 +85,9 @@ describe("inbound.command", () => {
 
 	it("正文留空 → 用**现在**的前缀拼 help,不是建表那会儿的", async () => {
 		let prefix = "/";
-		const { reg, priv } = setup({ commands: () => ({ prefix, masterUserId: "master" }) });
+		const { reg, priv } = setup({
+			commands: () => ({ prefix, master: { platform: "onebot", address: "master" } }),
+		});
 
 		await reg.run("inbound.command", {});
 		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: "/help" });
@@ -96,14 +100,20 @@ describe("inbound.command", () => {
 	it("当作主人发一句私聊:userId 省略取配置里的主人", async () => {
 		const { reg, priv } = setup();
 		const res = await reg.run("inbound.command", { text: "/status" });
-		expect(priv).toHaveBeenCalledWith({ userId: "10001", text: "/status" }, { adapterId: "ad-ob" });
+		expect(priv).toHaveBeenCalledWith(
+			{ userId: "10001", text: "/status" },
+			{ adapterId: "ad-ob", platform: "onebot" },
+		);
 		expect(res.summary).toContain("/status");
 	});
 
 	it("指定 userId 就用给的 —— 拿来验「不是主人就不理」", async () => {
 		const { reg, priv } = setup();
 		await reg.run("inbound.command", { userId: "20002", text: "/help" });
-		expect(priv).toHaveBeenCalledWith({ userId: "20002", text: "/help" }, { adapterId: "ad-ob" });
+		expect(priv).toHaveBeenCalledWith(
+			{ userId: "20002", text: "/help" },
+			{ adapterId: "ad-ob", platform: "onebot" },
+		);
 	});
 
 	it("没配主人又没给 userId → 拒;入站口还没接上 → 拒", async () => {
@@ -126,7 +136,7 @@ describe("inbound.link", () => {
 				cardLinks: [],
 				miniAppCardLinks: [],
 			}),
-			{ adapterId: "ad-ob" },
+			{ adapterId: "ad-ob", platform: "onebot" },
 		);
 		expect(res.summary).toContain("88888");
 	});
@@ -137,7 +147,7 @@ describe("inbound.link", () => {
 		expect(group).toHaveBeenCalledWith(
 			"qq-official",
 			expect.objectContaining({ groupId: "OPENID-9", text: "BV1xx" }),
-			{ adapterId: "ad-qq" },
+			{ adapterId: "ad-qq", platform: "qq-official" },
 		);
 	});
 

@@ -1,4 +1,9 @@
-import { type Connection, groupAddressOf, type PushTarget } from "@bilibili-notify/internal";
+import {
+	type ChatIdentity,
+	type Connection,
+	groupAddressOf,
+	type PushTarget,
+} from "@bilibili-notify/internal";
 import type {
 	InboundGroupMessage,
 	InboundMeta,
@@ -21,7 +26,7 @@ export interface InboundHandlers {
 export interface InboundScenarioDeps {
 	/** 入站口是引擎建好之后才接上的,现取;还没接上就 undefined。 */
 	inbound: () => InboundHandlers | undefined;
-	commands: () => { prefix: string; masterUserId?: string };
+	commands: () => { prefix: string; master?: ChatIdentity };
 	connections: () => Connection[];
 	targets: () => PushTarget[];
 }
@@ -50,16 +55,27 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		run(params) {
 			const handler = deps.inbound()?.private;
 			if (!handler) throw new DevParamError("指令分发器还没接上(引擎没起来?)");
+			const master = deps.commands().master;
 			const given = typeof params.userId === "string" ? params.userId : "";
-			const userId = given !== "" ? given : deps.commands().masterUserId;
+			const userId = given !== "" ? given : master?.address;
 			if (!userId) throw new DevParamError("没配主人(系统页 · 主人私聊),得给一个发信人");
 			// 前缀现取 —— 它随时可能被改过。
 			const given2 = typeof params.text === "string" ? params.text : "";
 			const text = given2 !== "" ? given2 : `${deps.commands().prefix}help`;
-			// meta 里的 adapterId 指令分发用不上(它回主人那条配置好的私聊),给第一个启用的聊天平台就行。
-			const adapterId =
-				deps.connections().find((a) => a.enabled && isChatPlatform(a.platform))?.id ?? "";
-			handler({ userId, text }, { adapterId });
+			// 指令分发用不上 adapterId(它回主人那条配置好的私聊),但**平台是要比对的**:
+			// 鉴权换成三坐标之后,平台喂错这一枪就打不中,场景也就验不出东西来。所以按
+			// 主人自己那条私聊的平台走;没配主人时(上面已经要求手填发信人)退到第一个
+			// 启用的聊天连接。
+			const source = deps
+				.connections()
+				.find(
+					(a) =>
+						a.enabled && isChatPlatform(a.platform) && (!master || a.platform === master.platform),
+				);
+			handler(
+				{ userId, text },
+				{ adapterId: source?.id ?? "", platform: master?.platform ?? source?.platform ?? "" },
+			);
 			return { summary: `已当作 ${userId} 私聊了一句「${text}」,回复走真链路。` };
 		},
 	};
@@ -107,7 +123,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			handler(
 				connection.platform,
 				{ groupId, userId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
-				{ adapterId: connection.id },
+				{ adapterId: connection.id, platform: connection.platform },
 			);
 			return {
 				summary: `已当作 ${connection.name} 的群 ${groupId} 里有人说了「${text}」,回卡回到那个群。`,

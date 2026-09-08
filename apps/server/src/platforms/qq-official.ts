@@ -1066,13 +1066,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			...(opts.onInboundPrivate
 				? {
 						onInboundPrivate: (m: InboundPrivateMessage) =>
-							opts.onInboundPrivate?.(m, { adapterId: connection.id }),
+							opts.onInboundPrivate?.(m, { adapterId: connection.id, platform: "qq-official" }),
 					}
 				: {}),
 			...(opts.onInboundGroup
 				? {
 						onInboundGroup: (m: InboundGroupMessage) =>
-							opts.onInboundGroup?.(m, { adapterId: connection.id }),
+							opts.onInboundGroup?.(m, { adapterId: connection.id, platform: "qq-official" }),
 					}
 				: {}),
 			serviceCtx,

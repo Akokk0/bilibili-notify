@@ -550,7 +550,7 @@ function inboundSink(
 	adapterId: string,
 ): ((frame: Record<string, unknown>) => void) | undefined {
 	if (!sinks.onInboundPrivate && !sinks.onInboundGroup) return undefined;
-	return (frame) => routeInboundFrame(frame, { adapterId }, sinks);
+	return (frame) => routeInboundFrame(frame, { adapterId, platform: "onebot" }, sinks);
 }
 
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
