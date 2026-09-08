@@ -68,10 +68,13 @@ const ADAPTERS: Connection[] = [
 	connection(A_QQ, "官机", "qq-official"),
 ];
 
+/** 两级索引:连接 id → 平台名 → 能力。第二级是开放词表,读它的一侧自己带着平台名。 */
 const CAPS: ConnectionCapabilitiesMap = {
-	[A_OB]: { miniAppCard: { state: "supported", checkedAt: 1 } },
+	[A_OB]: { onebot: { miniAppCard: { state: "supported", checkedAt: 1 } } },
 	[A_OB2]: {
-		miniAppCard: { state: "unsupported", reason: "这个实现没有 get_mini_app_ark", checkedAt: 1 },
+		onebot: {
+			miniAppCard: { state: "unsupported", reason: "这个实现没有 get_mini_app_ark", checkedAt: 1 },
+		},
 	},
 };
 
@@ -277,6 +280,25 @@ describe("LinkParsingSettings", () => {
 			expect(panel.getByText("不支持,回落图片卡")).toBeTruthy();
 			expect(panel.getByText(/没有 get_mini_app_ark/)).toBeTruthy();
 			expect(panel.queryByText("官机")).toBeNull();
+		});
+
+		it("一条连接底下挂着两个平台时,读的是这一行自己那个平台", () => {
+			// 能力是**平台**的属性,不是连接的。一条连接驮多个平台是桥接那档的常态
+			// (一条 koishi 连接底下同时挂着 QQ 与别的),只按连接 id 查会把隔壁平台的
+			// 答案读过来 —— 面板照样渲染、照样不报错,只是说反了。
+			renderCard(draftWith(), vi.fn(), TARGETS, {
+				capabilities: {
+					[A_OB]: {
+						"qq-official": {
+							miniAppCard: { state: "unsupported", reason: "隔壁的", checkedAt: 1 },
+						},
+						onebot: { miniAppCard: { state: "supported", checkedAt: 1 } },
+					},
+				},
+			});
+			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
+			expect(panel.getByText("支持小程序卡")).toBeTruthy();
+			expect(panel.queryByText(/隔壁的/)).toBeNull();
 		});
 
 		it("表里没有的 OneBot 适配器(引擎还没探)显示「未探测」", () => {

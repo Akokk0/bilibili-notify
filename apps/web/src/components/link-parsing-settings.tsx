@@ -60,6 +60,18 @@ function isGroupCandidate(t: PushTarget): boolean {
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
 const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
 
+/**
+ * 能力表两级索引都要给全:能力是**平台**的属性,只按连接查在一条连接驮多个平台的时候
+ * 会把别的平台的答案读过来。两个读它的地方(一行群目标 / 一条连接)各自带着平台名。
+ */
+function miniAppSupport(
+	capabilities: ConnectionCapabilitiesMap,
+	connectionId: string,
+	platform: string,
+): MiniAppCardSupport | undefined {
+	return capabilities[connectionId]?.[platform]?.miniAppCard;
+}
+
 export function LinkParsingSettings({
 	draft,
 	onPatch,
@@ -181,7 +193,7 @@ export function LinkParsingSettings({
 										target={t}
 										cfg={cfg}
 										onPatch={onPatch}
-										support={capabilities[t.connectionId]?.miniAppCard}
+										support={miniAppSupport(capabilities, t.connectionId, t.platform)}
 										paused={isTargetPaused(t, connections)}
 									/>
 								))
@@ -229,7 +241,7 @@ function CapabilityPanel({
 					</EmptyNote>
 				) : (
 					onebots.map((a) => {
-						const support = capabilities[a.id]?.miniAppCard ?? NOT_PROBED;
+						const support = miniAppSupport(capabilities, a.id, a.platform) ?? NOT_PROBED;
 						const { dot, text } = supportText(support);
 						return (
 							<Row

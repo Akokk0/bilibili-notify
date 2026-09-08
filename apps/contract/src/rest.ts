@@ -22,10 +22,16 @@ export type { ConnectionCapabilities, FansRefreshEntry, HistoryMessageRole, Push
 // ---- /api/connections/capabilities ------------------------------------------
 
 /**
- * `GET /api/connections/capabilities`:各适配器的平台能力快照,按 adapter id 索引。只有有能力
- * 概念的平台(OneBot)在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
+ * `GET /api/connections/capabilities`:平台能力快照,索引是**两级** ——
+ * 连接 id → 平台名 → 能力。
+ *
+ * 一条连接只驮一个平台的今天,第二级看着是多余的一层。但能力是**平台**的属性不是连接的:
+ * 桥接那档一条 koishi 连接底下可能同时挂着 QQ 与 telegram,扁平表存不下,而两边读它的地方
+ * (一个推送目标 / 一条连接)本来就带着平台名。第二级的键是**开放词表**,别拿闭集去索引它。
+ *
+ * 只有有能力概念的平台在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
  */
-export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;
+export type ConnectionCapabilitiesMap = Record<string, Record<string, ConnectionCapabilities>>;
 
 // ---- /api/subs ------------------------------------------------------------
 

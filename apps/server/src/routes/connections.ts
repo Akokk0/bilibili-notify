@@ -19,17 +19,21 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.get("/", (c) => c.json(deps.store.getConnections()));
 
 	/**
-	 * 各适配器的平台能力快照(今天只有「能不能签小程序卡」),按 adapter id 索引。只列有
-	 * 能力概念的平台;官机 / webhook 不在里面,面板据此写「这个平台不支持」。引擎还没起来
-	 * 时是空表 —— 面板显示成「未探测」,不算错。
+	 * 平台能力快照(今天只有「能不能签小程序卡」),连接 id → 平台名 → 能力。只列有能力
+	 * 概念的平台;官机 / webhook 不在里面,面板据此写「这个平台不支持」。引擎还没起来时是
+	 * 空表 —— 面板显示成「未探测」,不算错。
+	 *
+	 * **第二级这一层是在这儿套上的**:引擎按连接寻址,而直连一条连接就是一个平台,平台名
+	 * 从连接自己身上读。接桥之后一条连接驮多个平台,那时这一层要由引擎自己给出,这里改成
+	 * 原样透传。
 	 */
 	app.get("/capabilities", (c) => {
 		const engines = deps.runtime.engines;
-		const out: Record<string, ConnectionCapabilities> = {};
+		const out: Record<string, Record<string, ConnectionCapabilities>> = {};
 		if (engines) {
 			for (const connection of deps.store.getConnections()) {
 				const caps = engines.connectionCapabilities(connection.id);
-				if (caps) out[connection.id] = caps;
+				if (caps) out[connection.id] = { [connection.platform]: caps };
 			}
 		}
 		return c.json(out);
