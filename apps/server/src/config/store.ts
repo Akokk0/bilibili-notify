@@ -652,7 +652,7 @@ class NodeConfigStore implements ConfigStore {
 			case "subscriptions":
 				return join(this.stateDir, "subscriptions.json");
 			case "adapters":
-				return join(this.stateDir, "adapters.json");
+				return join(this.stateDir, "connections.json");
 			case "targets":
 				return join(this.stateDir, "targets.json");
 			case "secrets":
@@ -891,22 +891,28 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * Loads adapters.json + targets.json. If adapters.json is missing AND the
-	 * existing targets.json is in the legacy single-blob format (config field
-	 * holding both connection and session params), runs a one-shot migration
-	 * that extracts adapters and rewrites targets to reference them.
+	 * Loads connections.json + targets.json. If neither connections.json nor the
+	 * file it replaced (adapters.json) is present AND the existing targets.json is
+	 * in the legacy single-blob format (config field holding both connection and
+	 * session params), runs a one-shot migration that extracts connections and
+	 * rewrites targets to reference them.
 	 */
 	private async loadConnectionsAndTargets(): Promise<void> {
-		const adaptersExist = await fileExists(this.path("adapters"));
+		const connectionsExist = await fileExists(this.path("adapters"));
+		// 这个文件从前叫 adapters.json。搬名字的方式是**读老的、写新的、老的一动不动** ——
+		// 老那份于是既是原件备份,又让回退到旧载荷这条路仍然能开机:旧构建找的正是它,
+		// 而它还是迁移前的形状。代价是升级后的编辑不会回流过去,回退等于退回升级那一刻。
+		const legacyPath = join(this.stateDir, "adapters.json");
+		const legacyOnly = !connectionsExist && (await fileExists(legacyPath));
+		const sourcePath = connectionsExist ? this.path("adapters") : legacyPath;
 
-		// New-format path: adapters.json is already present.
-		if (adaptersExist) {
-			const connectionsRaw = JSON.parse(await readFile(this.path("adapters"), "utf8"));
+		if (connectionsExist || legacyOnly) {
+			const connectionsRaw = JSON.parse(await readFile(sourcePath, "utf8"));
 			if (!Array.isArray(connectionsRaw)) {
 				throw new ConfigValidationError(
 					"adapters",
-					{ message: "adapters.json must be an array" },
-					"adapters.json on disk is not an array",
+					{ message: "connections.json must be an array" },
+					"connections.json on disk is not an array",
 				);
 			}
 			const { value, existed } = await readJsonOrInit<unknown[]>(
@@ -927,13 +933,17 @@ class NodeConfigStore implements ConfigStore {
 			// 回退到旧载荷是安全的:这两层都是非 strict 的 z.object,旧 schema 会把不认识的键
 			// strip 掉照常加载;它写回去的没有新字段,下次再被这里迁一遍。
 			const migrated = migrateConfigSections({ connections: connectionsRaw, targets: value });
-			if (migrated.changed.connections || migrated.changed.targets) {
+			if (legacyOnly || migrated.changed.connections || migrated.changed.targets) {
 				this.serviceCtx.logger.info(
 					`config-store migrating config v${migrated.from} → v${CONFIG_SCHEMA_VERSION}` +
-						" (原件留在同名 .bak)",
+						" (原件留在同名 .bak;adapters.json 原地不动)",
 				);
 			}
-			if (migrated.changed.connections) {
+			// 从老文件名读来的那趟一定要写:connections.json 还不存在。它自己的原件就是没被
+			// 动过的 adapters.json,所以这条路不留 .bak。
+			if (legacyOnly) {
+				await atomicWriteJson(this.path("adapters"), migrated.connections);
+			} else if (migrated.changed.connections) {
 				// 原件留一份 —— 迁移错了主人还能自己捞回去。
 				await copyFile(this.path("adapters"), `${this.path("adapters")}.bak`);
 				await atomicWriteJson(this.path("adapters"), migrated.connections);
@@ -951,7 +961,7 @@ class NodeConfigStore implements ConfigStore {
 					throw new ConfigValidationError(
 						"adapters",
 						{ index: idx, issues: r.error.issues },
-						`adapters.json[${idx}] failed schema validation`,
+						`connections.json[] failed schema validation`,
 					);
 				}
 				connections.push(r.data);
@@ -990,7 +1000,7 @@ class NodeConfigStore implements ConfigStore {
 			return;
 		}
 
-		// Legacy migration path: adapters.json missing. Inspect targets.json.
+		// Legacy migration path: neither connections.json nor adapters.json is there. Inspect targets.json.
 		const targetsExist = await fileExists(this.path("targets"));
 		if (!targetsExist) {
 			// Brand-new install: write empty files and continue.
@@ -1015,15 +1025,15 @@ class NodeConfigStore implements ConfigStore {
 		}
 
 		// Two possibilities: (a) already-new shape but the user manually deleted
-		// adapters.json — try parsing each entry against the new schema first.
+		// connections.json — try parsing each entry against the new schema first.
 		const tryNew = targetsRaw.every((t) => PushTargetSchema.safeParse(t).success);
 		if (tryNew && targetsRaw.length > 0) {
 			// New shape but no adapters file → bail with an explicit error so the
 			// user notices something is off rather than us silently inventing data.
 			throw new ConfigValidationError(
 				"adapters",
-				{ message: "adapters.json missing but targets.json is in new format" },
-				"adapters.json missing but targets.json already in new format; cannot rebuild adapters automatically",
+				{ message: "connections.json missing but targets.json is in new format" },
+				"connections.json missing but targets.json already in new format; cannot rebuild connections automatically",
 			);
 		}
 

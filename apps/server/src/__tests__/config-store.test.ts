@@ -504,9 +504,9 @@ describe("ConfigStore", () => {
 		expect(scopes).toEqual(["adapters", "targets"]);
 	});
 
-	it("load() 把老形状的 adapters.json 就地迁移并回写 —— 主人盘上那份没有 kind/connector", async () => {
+	it("load() 把老形状的 connections.json 就地迁移并回写 —— 主人盘上那份没有 kind/connector", async () => {
 		// 这是这次形状变更**唯一真会炸主人机器**的路径:schema 一旦要求 kind/connector,
-		// 存量 adapters.json 就 parse 不过、开机直接 ConfigValidationError。夹具刻意写成
+		// 存量连接就 parse 不过、开机直接 ConfigValidationError。夹具刻意写成
 		// 「史前」形状(连 transport 都没有),走的是与 schema `.default("http")` 同一个回落。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-migrate-"));
 		const state2 = join(dir2, "state");
@@ -518,7 +518,7 @@ describe("ConfigStore", () => {
 			enabled: true,
 			config: { baseUrl: "http://127.0.0.1:3000", accessToken: "tok" },
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([legacy]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([legacy]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
 
 		const store2 = createConfigStore({
@@ -533,10 +533,10 @@ describe("ConfigStore", () => {
 		]);
 		// 回写到盘上,而不是每次开机都在内存里补一遍 —— 否则任何一次 upsert 都会把
 		// 没迁移的那份原样写回去。
-		const onDisk = JSON.parse(await readFile(join(state2, "adapters.json"), "utf8"));
+		const onDisk = JSON.parse(await readFile(join(state2, "connections.json"), "utf8"));
 		expect(onDisk[0]).toMatchObject({ kind: "direct", connector: "http" });
 		// 迁移前的原件留一份 —— 迁移错了主人还能自己捞回来。
-		const bak = JSON.parse(await readFile(join(state2, "adapters.json.bak"), "utf8"));
+		const bak = JSON.parse(await readFile(join(state2, "connections.json.bak"), "utf8"));
 		expect(bak).toEqual([legacy]);
 	});
 
@@ -556,7 +556,7 @@ describe("ConfigStore", () => {
 			enabled: true,
 			session: { groupId: "10001" },
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([legacyTarget]), "utf8");
 
 		const store2 = createConfigStore({
@@ -574,7 +574,7 @@ describe("ConfigStore", () => {
 		const bak = JSON.parse(await readFile(join(state2, "targets.json.bak"), "utf8"));
 		expect(bak).toEqual([legacyTarget]);
 		// 连接那份已经是新形状 —— 别顺手也给它留一份 .bak。
-		await expect(readFile(join(state2, "adapters.json.bak"), "utf8")).rejects.toThrow();
+		await expect(readFile(join(state2, "connections.json.bak"), "utf8")).rejects.toThrow();
 	});
 
 	it("load() 把老 webhook 目标迁成 endpoint —— 托管同步认的是形态,迁错就会重造一张", async () => {
@@ -593,7 +593,7 @@ describe("ConfigStore", () => {
 			managedBy: "adapter",
 			session: {},
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([legacyTarget]), "utf8");
 
 		const store2 = createConfigStore({
@@ -608,12 +608,12 @@ describe("ConfigStore", () => {
 		]);
 	});
 
-	it("load() 对已经是新形状的 adapters.json 不回写 —— 也就不会每次开机都留一份 .bak", async () => {
+	it("load() 对已经是新形状的 connections.json 不回写 —— 也就不会每次开机都留一份 .bak", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-nomigrate-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
 		await writeFile(
-			join(state2, "adapters.json"),
+			join(state2, "connections.json"),
 			JSON.stringify([makeOnebotConnection()]),
 			"utf8",
 		);
@@ -625,7 +625,90 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load();
-		await expect(readFile(join(state2, "adapters.json.bak"), "utf8")).rejects.toThrow();
+		await expect(readFile(join(state2, "connections.json.bak"), "utf8")).rejects.toThrow();
+	});
+
+	// 连接那份从 adapters.json 改叫 connections.json。搬法是「读老的、写新的、老的一动不动」:
+	// 老那份既是原件备份,也让回退到旧载荷仍然开得了机 —— 旧构建找的正是它,且它还是迁移前
+	// 的形状。所以这几条盯的是「新的写出来了」「老的没被动」这两件事。
+	describe("连接文件改名 adapters.json → connections.json", () => {
+		async function loadFrom(dir2: string) {
+			const store2 = createConfigStore({
+				bootstrap: makeBootstrap(dir2),
+				bus: makeFakeBus(),
+				serviceCtx: makeFakeServiceCtx(),
+			});
+			await store2.load();
+			return store2;
+		}
+
+		it("只有老文件名时照样读得到连接,并写出一份 connections.json", async () => {
+			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-"));
+			const state2 = join(dir2, "state");
+			await mkdir(state2, { recursive: true });
+			const connection = makeOnebotConnection();
+			await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+			await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+			const store2 = await loadFrom(dir2);
+
+			expect(store2.getConnections()).toEqual([expect.objectContaining({ id: connection.id })]);
+			const onDisk = JSON.parse(await readFile(join(state2, "connections.json"), "utf8"));
+			expect(onDisk).toEqual([expect.objectContaining({ id: connection.id })]);
+			await rm(dir2, { recursive: true, force: true });
+		});
+
+		it("老文件原地不动 —— 它就是回退那条路要读的东西,不留 .bak 也不删", async () => {
+			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-keep-"));
+			const state2 = join(dir2, "state");
+			await mkdir(state2, { recursive: true });
+			// 刻意用**老形状**:回退回去的旧构建认得的正是这个形状。
+			const legacy = {
+				id: randomUUID(),
+				name: "老连接",
+				platform: "onebot",
+				enabled: true,
+				config: { transport: "http", baseUrl: "http://127.0.0.1:5700" },
+			};
+			await writeFile(join(state2, "adapters.json"), JSON.stringify([legacy]), "utf8");
+			await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+			const store2 = await loadFrom(dir2);
+
+			// 先证明这一趟真的走了老文件名那条路 —— 否则「老文件没被动」是空过的。
+			expect(store2.getConnections().map((c) => c.id)).toEqual([legacy.id]);
+			expect(JSON.parse(await readFile(join(state2, "adapters.json"), "utf8"))).toEqual([legacy]);
+			await expect(readFile(join(state2, "connections.json.bak"), "utf8")).rejects.toThrow();
+			await rm(dir2, { recursive: true, force: true });
+		});
+
+		it("两个文件都在时只认新的 —— 老的是快照,不该再被读", async () => {
+			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-both-"));
+			const state2 = join(dir2, "state");
+			await mkdir(state2, { recursive: true });
+			const current = makeOnebotConnection();
+			const stale = makeOnebotConnection({ id: randomUUID(), name: "升级前那份" });
+			await writeFile(join(state2, "connections.json"), JSON.stringify([current]), "utf8");
+			await writeFile(join(state2, "adapters.json"), JSON.stringify([stale]), "utf8");
+			await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+			const store2 = await loadFrom(dir2);
+
+			expect(store2.getConnections().map((c) => c.id)).toEqual([current.id]);
+			await rm(dir2, { recursive: true, force: true });
+		});
+
+		it("两个都没有、targets.json 也没有 = 全新安装,建的是 connections.json", async () => {
+			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-fresh-"));
+			const state2 = join(dir2, "state");
+			await mkdir(state2, { recursive: true });
+
+			await loadFrom(dir2);
+
+			expect(JSON.parse(await readFile(join(state2, "connections.json"), "utf8"))).toEqual([]);
+			await expect(readFile(join(state2, "adapters.json"), "utf8")).rejects.toThrow();
+			await rm(dir2, { recursive: true, force: true });
+		});
 	});
 
 	it("load() 回填缺失的 webhook 托管 target", async () => {
@@ -633,7 +716,7 @@ describe("ConfigStore", () => {
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
 		const connection = makeWebhookConnection();
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
 
 		const store2 = createConfigStore({
@@ -680,7 +763,11 @@ describe("ConfigStore", () => {
 			enabled: true,
 			session: stale.session,
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection, webhook]), "utf8");
+		await writeFile(
+			join(state2, "connections.json"),
+			JSON.stringify([connection, webhook]),
+			"utf8",
+		);
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 
 		const store2 = createConfigStore({
@@ -713,7 +800,7 @@ describe("ConfigStore", () => {
 			enabled: true,
 			address: "-1001234567890",
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([bridged]), "utf8");
 
 		const store2 = createConfigStore({
@@ -741,7 +828,7 @@ describe("ConfigStore", () => {
 			enabled: true,
 			address: "1",
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([broken]), "utf8");
 
 		const store2 = createConfigStore({
@@ -761,7 +848,7 @@ describe("ConfigStore", () => {
 		const target = makeWebhookTarget(connection, { id: randomUUID(), name: "旧 Webhook" });
 		const sub = makeSampleSubscription("44444");
 		sub.routing.dynamic = [target.id];
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
 
@@ -1008,7 +1095,7 @@ describe("ConfigStore", () => {
 		const dirA = await mkdtemp(join(tmpdir(), "bn-config-backup-src-"));
 		const stateA = join(dirA, "state");
 		await mkdir(stateA, { recursive: true });
-		await writeFile(join(stateA, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(stateA, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(
 			join(stateA, "targets.json"),
 			JSON.stringify([makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" })]),
@@ -1170,7 +1257,7 @@ describe("ConfigStore", () => {
 		sub.routing.live = [extra.id];
 		sub.atAll.dynamic[extra.id] = true;
 		sub.atAll.live[extra.id] = false;
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
 

@@ -166,7 +166,7 @@ environment:
 
 ```
 /data
-├── state/      globals.json / subscriptions.json / targets.json / adapters.json
+├── state/      globals.json / subscriptions.json / targets.json / connections.json
 ├── secrets/    加密的 B 站 cookie / AI apiKey
 ├── history/    推送历史(按日 jsonl)
 ├── logs/       日志归档(按日 jsonl)
