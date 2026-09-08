@@ -695,6 +695,64 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	it("load() 留下形状正确、平台却不认得的 target —— 桥驮来的就长这样", async () => {
+		// 目标的平台开放之后,「认不认识」不能再靠词表答:telegram 不在任何词表里,
+		// 但它是合法的。判据换成「认不得的平台**又** parse 不过才是存量」,所以这一条
+		// 必须活下来 —— 上一条用例(已撤下平台)与这一条一起才把那个判据钉住。
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-open-platform-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const connection = makeOnebotConnection();
+		const bridged = {
+			id: randomUUID(),
+			name: "桥上的 telegram 群",
+			adapterId: connection.id,
+			kind: "session",
+			platform: "telegram",
+			scope: "group",
+			enabled: true,
+			address: "-1001234567890",
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([bridged]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		expect(store2.getTargets()).toEqual([expect.objectContaining({ platform: "telegram" })]);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
+	it("load() 对认得的平台上坏掉的 target 照旧抛错 —— 别把真损坏当存量吃掉", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-broken-target-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const connection = makeOnebotConnection();
+		const broken = {
+			id: randomUUID(),
+			name: "坏的",
+			adapterId: connection.id,
+			kind: "session",
+			platform: "onebot",
+			scope: "群",
+			enabled: true,
+			address: "1",
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([broken]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await expect(store2.load()).rejects.toBeInstanceOf(ConfigValidationError);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 标记既有 webhook target 且保留 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
 		const state2 = join(dir2, "state");

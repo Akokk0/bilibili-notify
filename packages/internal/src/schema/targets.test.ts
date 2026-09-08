@@ -429,15 +429,34 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects the removed web-dashboard target platform", () => {
+	it("目标的平台是开放词表 —— 桥驮来的平台不用先改词表就收得下", () => {
+		// 连接那一侧仍是闭集(见上面的 ConnectionSchema 用例)。这一侧开着是因为桥接的
+		// 平台清单是运行时才知道的;拦「已撤下的平台」那件事挪去了加载器,判据换成
+		// 「认不得的平台又 parse 不过」,见 config-store 那边的用例。
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
-			name: "dash",
+			name: "桥上的 telegram 群",
 			adapterId: UUID_A,
-			kind: "endpoint",
-			platform: "web-dashboard",
-			scope: "channel",
+			kind: "session",
+			platform: "telegram",
+			scope: "group",
 			enabled: true,
+			address: "-1001234567890",
+			parentAddress: "42",
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("平台名不许是空串 —— 开放不等于什么都收", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "没平台",
+			adapterId: UUID_A,
+			kind: "session",
+			platform: "",
+			scope: "group",
+			enabled: true,
+			address: "1",
 		});
 		expect(r.success).toBe(false);
 	});

@@ -28,6 +28,7 @@ import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
 	type Connection,
+	type ConnectionPlatform,
 	KNOWN_PLATFORMS,
 	makeEmptyConnection,
 	makeEmptyTarget,
@@ -35,7 +36,6 @@ import {
 	type OnebotConnectionConfig,
 	type OnebotTransport,
 	type PushTarget,
-	type PushTargetPlatform,
 	type PushTargetScope,
 	type QQOfficialBotType,
 	type QQOfficialConnectionConfig,
@@ -1583,7 +1583,7 @@ export default function Targets() {
 		setError(null);
 		setConnectionDraft({
 			mode: "add",
-			value: makeEmptyConnection("onebot" as PushTargetPlatform, ""),
+			value: makeEmptyConnection("onebot" as ConnectionPlatform, ""),
 		});
 	}
 

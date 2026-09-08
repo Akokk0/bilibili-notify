@@ -1,25 +1,39 @@
 import { z } from "zod";
 import {
+	CONNECTION_PLATFORMS,
 	DIRECT_CONNECTORS,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-	PUSH_TARGET_PLATFORMS,
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
 
 /**
- * Push 目标平台。Adapter 矩阵按 platform 分发(server 侧 `apps/server/src/platforms/`
- * 一平台一实现)—— 这条 union 就是将来薄插件把 Koishi / AstrBot 桥接进来时的接入点:
- * 往 constants 的 `PUSH_TARGET_PLATFORMS` 加一个平台名 + 一套 adapter/session schema +
- * 一个 server adapter。词表住零依赖的 constants 是为了前端也拿得到(平台能力判断在那边)。
- * - `onebot`:OneBot v11 HTTP adapter
- * - `qq-official`:QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
+ * **连接**能连的平台 —— 闭集。Adapter 矩阵按它分发(server 侧 `apps/server/src/platforms/`)。
+ * 加一档要配齐:constants 的 {@link CONNECTION_PLATFORMS} 加个名字 + 一份 config schema +
+ * 一个 server adapter + 一排面板控件。词表住零依赖的 constants 是为了前端也拿得到。
+ * - `onebot`:OneBot v11(HTTP / 正向 WS / 反向 WS)
+ * - `qq-official`:QQ 官方机器人(q.qq.com)WS 网关,频道/群/C2C
  * - `feishu` / `dingtalk` / `wecom` / `generic`:走出站 webhook 那一族(见
  *   {@link WEBHOOK_PLATFORMS})。它们**不是**四个 adapter,是同一个 adapter 的四种
  *   报文方言 —— 「怎么连」由 `connector` 说了算,这里只说「连到哪」。
+ *
+ * **推送目标那一格不用这个**,见 {@link TargetPlatformSchema}。
  */
-export const PushTargetPlatformSchema = z.enum(PUSH_TARGET_PLATFORMS);
-export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
+export const ConnectionPlatformSchema = z.enum(CONNECTION_PLATFORMS);
+
+/**
+ * **推送目标**的平台 —— 开放词表,只要求非空。
+ *
+ * 为什么这一侧是开的:桥(koishi / astrbot)把它自己接着的平台驮进来,那份清单是**运行时**
+ * 才知道的(桥上装了 telegram 插件就有 telegram)。写成闭集等于「必须先改一次词表、发一版,
+ * 主人才能收到 telegram 的推送」—— 而那条平台上一行我们自己的代码都不需要。
+ *
+ * 代价是拼错不再有人拦(`onebot` 写成 `oneboot` 照样存得下)。这个代价是认下的:目标本来就
+ * 只由面板与桥两条路创建,两条都不会手打平台名;而闭集换来的那点保护,在桥接上之后会变成
+ * 「合法的平台进不来」这种更贵的毛病。真要挡的是**能力**(能不能 @全体、收不收得到回复),
+ * 那由能力位承载,不是平台名。
+ */
+export const TargetPlatformSchema = z.string().min(1);
 
 export const PushTargetScopeSchema = z.enum(["group", "private", "channel"]);
 export type PushTargetScope = z.infer<typeof PushTargetScopeSchema>;
@@ -291,30 +305,28 @@ const PushTargetSessionShape = {
 	parentAddress: z.string().optional(),
 } as const;
 
-const OnebotPushTargetSchema = z.object({
+/**
+ * 两支目标 —— 判别子是 {@link PushTargetKindSchema} 的 `kind`,**不是 platform**。
+ *
+ * 曾经是按 platform 判别的:onebot / webhook / qq-official 三支,各带一份自己的 session
+ * schema。地址收成一格之后两支会话目标的形状**一模一样**,而 `target.platform` 又开放了
+ * —— zod 的 discriminatedUnion 要求判别键取值可枚举,继续按 platform 判别会在**第一次
+ * parse 时**抛 `Invalid discriminated union option`:门禁全绿,炸在开机读配置那一刻。
+ */
+const SessionPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	...PushTargetSessionShape,
-	platform: z.literal("onebot"),
+	platform: TargetPlatformSchema,
 });
 
-const WebhookPushTargetSchema = z.object({
+const EndpointPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	kind: z.literal("endpoint"),
-	platform: WebhookPlatformSchema,
-});
-
-const QQOfficialPushTargetSchema = z.object({
-	...PushTargetCommonShape,
-	...PushTargetSessionShape,
-	platform: z.literal("qq-official"),
+	platform: TargetPlatformSchema,
 });
 
 export const PushTargetSchema = z
-	.discriminatedUnion("platform", [
-		OnebotPushTargetSchema,
-		WebhookPushTargetSchema,
-		QQOfficialPushTargetSchema,
-	])
+	.discriminatedUnion("kind", [SessionPushTargetSchema, EndpointPushTargetSchema])
 	.superRefine((target, ctx) => {
 		if (target.managedBy === "adapter" && target.kind !== "endpoint") {
 			ctx.addIssue({

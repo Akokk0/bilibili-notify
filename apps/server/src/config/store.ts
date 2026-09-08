@@ -5,6 +5,7 @@ import {
 	CONFIG_SCHEMA_VERSION,
 	type ConfigScope,
 	type Connection,
+	ConnectionPlatformSchema,
 	ConnectionSchema,
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
@@ -18,7 +19,6 @@ import {
 	normalizeCardLayout,
 	normalizeMessageLayout,
 	type PushTarget,
-	PushTargetPlatformSchema,
 	PushTargetSchema,
 	type ServiceContext,
 	type Subscription,
@@ -364,9 +364,27 @@ function migrateLegacyTargets(raw: unknown[]): {
 	return { connections, targets };
 }
 
-/** 平台字面量还在 union 里才算认识;不认识的就是被撤下的平台留下的存量,丢弃比启动期 throw 强。 */
-function isKnownPlatform(raw: unknown): boolean {
-	return PushTargetPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
+/**
+ * 连接的平台字面量还在闭集里才算认识;不认识的就是被撤下的平台(web-dashboard、koishi-bot、
+ * astrbot)留下的存量,丢弃比启动期 throw 强 —— 这里是开机路径,没有面板能进去改。
+ */
+function isKnownConnectionPlatform(raw: unknown): boolean {
+	return ConnectionPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
+}
+
+/**
+ * 这个目标是不是「已撤下平台留下的存量」。
+ *
+ * 目标的平台是**开放词表**,所以「认不认识」这个问题没法再靠词表回答 —— 桥驮进来的
+ * telegram 也不在任何词表里,可它是合法的。换成一句更准的:**我们认得的平台必须能 parse,
+ * 认不得的平台又 parse 不过,才是存量。**
+ *
+ * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃(与从前同样的行为)
+ * - 桥驮来的 telegram 新条目:词表外但 parse 得过 → 留下
+ * - onebot 的坏条目:词表内 → 照旧 throw,不许静默吃掉真正的损坏
+ */
+function isRetiredTarget(raw: unknown): boolean {
+	return !isKnownConnectionPlatform(raw);
 }
 
 function deriveConnectionName(targetName: string, addr: string): string {
@@ -887,9 +905,7 @@ class NodeConfigStore implements ConfigStore {
 
 			const connections: Connection[] = [];
 			for (const [idx, raw] of migrated.connections.entries()) {
-				// 已撤下的平台(web-dashboard、koishi-bot、astrbot,或将来的某个)留下的存量条目:
-				// 静默丢弃,不进严格校验 —— safeParse 失败会 throw,而这里是启动路径,没有面板能进去改。
-				if (!isKnownPlatform(raw)) continue;
+				if (!isKnownConnectionPlatform(raw)) continue;
 				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
@@ -905,10 +921,10 @@ class NodeConfigStore implements ConfigStore {
 
 			const targets: PushTarget[] = [];
 			for (const [idx, raw] of migrated.targets.entries()) {
-				// 已撤下平台的存量目标同理丢弃。
-				if (!isKnownPlatform(raw)) continue;
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
+					// 已撤下平台的存量目标同理丢弃。
+					if (isRetiredTarget(raw)) continue;
 					throw new ConfigValidationError(
 						"targets",
 						{ index: idx, issues: r.error.issues },

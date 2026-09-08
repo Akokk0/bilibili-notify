@@ -15,10 +15,10 @@
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
 	Connection,
+	ConnectionPlatform,
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
-	PushTargetPlatform,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
@@ -59,6 +59,7 @@ export type {
 	CardLayout as CardLayoutFull,
 	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
 	Connection,
+	ConnectionPlatform,
 	ContentFiltersPartial as ContentFiltersOverride,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
@@ -68,7 +69,6 @@ export type {
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
-	PushTargetPlatform,
 	PushTargetScope,
 	QQOfficialBotType,
 	QQOfficialConnectionConfig,
@@ -142,7 +142,7 @@ export function maskWebhookUrl(url: string): string {
  * webhook 降格成连接器之后,「飞书还是钉钉」跟「OneBot 还是官机」是同一个问题,
  * 摆成两级选择只是在复述旧数据模型的形状。
  */
-export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
+export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
 	{ value: "qq-official", label: "QQ 官方机器人" },
 	{ value: "feishu", label: "飞书机器人" },
@@ -201,7 +201,7 @@ export function makeEmptySubscription(uid: string): Subscription {
 	};
 }
 
-export function makeEmptyConnection(platform: PushTargetPlatform, name: string): Connection {
+export function makeEmptyConnection(platform: ConnectionPlatform, name: string): Connection {
 	// connector 的初值走 internal 那份 defaultConnectorFor —— 与迁移同一个答案,
 	// 免得「新建的」和「迁移来的」从不同默认值出发。它按平台重载,所以每一支拿到的
 	// 是那一档的字面量类型,正好对得上 schema 里逐支收窄过的 `connector`。

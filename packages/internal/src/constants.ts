@@ -64,10 +64,16 @@ export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as c
 export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 
 /**
- * 推送目标平台词表。schema 本体在 schema/targets.ts(`PushTargetPlatformSchema`),那边从
- * 这里取值 —— 与 FEATURE_KEYS 同一套安排:词表住零依赖模块,前端也拿得到。
+ * **连接**能连的平台。schema 本体在 schema/targets.ts(`ConnectionPlatformSchema`),
+ * 那边从这里取值 —— 与 FEATURE_KEYS 同一套安排:词表住零依赖模块,前端也拿得到。
+ *
+ * 这是**闭集**,因为每一档都要有一份 config schema、一个 server adapter、一排面板控件。
+ * 它以前叫 `PUSH_TARGET_PLATFORMS`,同时也是推送目标那一格的词表 —— 但**目标那边是开的**:
+ * 桥驮进来的平台(telegram、discord…)枚举不了,列进闭集等于要求先改词表才能收到它们。
+ * 一个类型糊着开、闭两套词表,总有一边是错的,所以拆了。
  */
-export const PUSH_TARGET_PLATFORMS = ["onebot", "qq-official", ...WEBHOOK_PLATFORMS] as const;
+export const CONNECTION_PLATFORMS = ["onebot", "qq-official", ...WEBHOOK_PLATFORMS] as const;
+export type ConnectionPlatform = (typeof CONNECTION_PLATFORMS)[number];
 
 /** 这个平台是不是靠 webhook 连的 —— 判据在词表上,别在各处手写四个平台名。 */
 export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
@@ -772,7 +778,9 @@ export function inboundGapReason(platform: string): string {
  * 失败),UP 抽屉里这种目标的 @全体开关也据此禁用并写着「发送时会自动跳过」。两边必须是
  * 同一份判断,界面上说跳过就得真的跳过。
  */
-export function platformSupportsAtAll(platform: (typeof PUSH_TARGET_PLATFORMS)[number]): boolean {
+export function platformSupportsAtAll(platform: string): boolean {
+	// 入参收 string 而不是闭集:它吃的是**目标**的平台,而那是开放词表。桥驮进来的平台
+	// 默认按「能 @全体」算 —— 真不能的话,能力位会在桥探测时说,推送层据能力位跳过。
 	return platform !== "qq-official";
 }
 

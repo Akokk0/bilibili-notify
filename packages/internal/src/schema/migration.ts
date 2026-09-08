@@ -164,11 +164,11 @@ function targetToV2(
 
 	if (typeof next.kind !== "string") {
 		const kind = targetKindOf(next);
-		// 已撤下平台的存量目标同样原样放行 —— 加载器会丢弃它们。
-		if (kind) {
-			next = { ...next, kind };
-			changed = true;
-		}
+		// 已撤下平台(web-dashboard / koishi-bot / astrbot)的存量目标**整条原样放行**:
+		// 加载器认不出它、会丢弃它,在这里替它改一半只会让 .bak 之外那份更难看懂。
+		if (!kind) return { next: entry, changed: false };
+		next = { ...next, kind };
+		changed = true;
 	}
 
 	if (next.session !== undefined) {
