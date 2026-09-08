@@ -71,7 +71,7 @@ function coerce(
 	switch (field.kind) {
 		case "sub":
 		case "target":
-		case "adapter":
+		case "connection":
 			return given === undefined ? undefined : String(given);
 		case "text":
 			return given === undefined ? field.default : String(given);

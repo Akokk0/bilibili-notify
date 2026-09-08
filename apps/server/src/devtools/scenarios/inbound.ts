@@ -87,7 +87,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		icon: "link",
 		desc: "当作群里有人发了一句话喂给链接解析。连接省略 = 第一个启用的聊天平台;群号省略 = 它名下第一个群目标。默认行 / 逐群例外照真的判 —— 那个群被例外停了解析就不会有回卡,换个群号试。",
 		params: [
-			{ key: "adapter", label: "连接", kind: "adapter" },
+			{ key: "connection", label: "连接", kind: "connection" },
 			{ key: "groupId", label: "群号 / 群 openid(可空)", kind: "text", default: "" },
 			{ key: "text", label: "正文", kind: "text", default: DEFAULT_LINK_TEXT },
 		],
@@ -95,7 +95,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const handler = deps.inbound()?.group;
 			if (!handler) throw new DevParamError("链接解析还没接上(引擎没起来?)");
 			const connections = deps.connections();
-			const wanted = params.adapter;
+			const wanted = params.connection;
 			const connection =
 				wanted === undefined
 					? connections.find((a) => a.enabled && isChatPlatform(a.platform))

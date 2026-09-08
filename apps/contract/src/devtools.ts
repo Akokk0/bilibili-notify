@@ -26,7 +26,7 @@ export type DevScenarioGroup = "event" | "state" | "timer" | "capture" | "web";
 export type DevParamField =
 	| { key: string; label: string; kind: "sub" }
 	| { key: string; label: string; kind: "target" }
-	| { key: string; label: string; kind: "adapter" }
+	| { key: string; label: string; kind: "connection" }
 	| { key: string; label: string; kind: "number"; default: number; min?: number; max?: number }
 	| {
 			key: string;

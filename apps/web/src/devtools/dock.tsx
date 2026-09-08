@@ -328,7 +328,7 @@ function stripBlank(fields: DevParamField[], values: DevParamValues): DevParamVa
 	for (const f of fields) {
 		const v = values[f.key];
 		if (v === undefined) continue;
-		if ((f.kind === "sub" || f.kind === "target" || f.kind === "adapter") && v === "") continue;
+		if ((f.kind === "sub" || f.kind === "target" || f.kind === "connection") && v === "") continue;
 		out[f.key] = v;
 	}
 	return out;
@@ -455,7 +455,7 @@ function ParamControl({
 			break;
 		case "sub":
 		case "target":
-		case "adapter":
+		case "connection":
 			control = (
 				<PickSelect
 					kind={field.kind}

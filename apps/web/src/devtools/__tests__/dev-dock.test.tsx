@@ -285,7 +285,7 @@ describe("DevDock", () => {
 		expect(api.get).toHaveBeenCalledWith("/api/dev/captures");
 	});
 
-	it("sub / target / adapter 三种字段是真选择器:选项来自站内列表,留空 = 服务端默认", async () => {
+	it("sub / target / connection 三种字段是真选择器:选项来自站内列表,留空 = 服务端默认", async () => {
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			switch (path) {
 				case "/api/subs":
@@ -308,7 +308,7 @@ describe("DevDock", () => {
 								params: [
 									{ key: "sub", label: "订阅", kind: "sub" },
 									{ key: "target", label: "目标", kind: "target" },
-									{ key: "adapter", label: "适配器", kind: "adapter" },
+									{ key: "connection", label: "连接", kind: "connection" },
 								],
 							},
 						],
@@ -335,7 +335,7 @@ describe("DevDock", () => {
 		).toEqual(["（服务端默认）", "测试群"]);
 		expect(
 			[
-				...((await screen.findByRole("combobox", { name: "适配器" })) as HTMLSelectElement).options,
+				...((await screen.findByRole("combobox", { name: "连接" })) as HTMLSelectElement).options,
 			].map((o) => o.textContent),
 		).toEqual(["（服务端默认）", "家里的 NapCat"]);
 

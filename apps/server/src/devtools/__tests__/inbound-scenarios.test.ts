@@ -143,7 +143,7 @@ describe("inbound.link", () => {
 
 	it("指定适配器与群号、正文", async () => {
 		const { reg, group } = setup();
-		await reg.run("inbound.link", { adapter: "ad-qq", groupId: "OPENID-9", text: "BV1xx" });
+		await reg.run("inbound.link", { connection: "ad-qq", groupId: "OPENID-9", text: "BV1xx" });
 		expect(group).toHaveBeenCalledWith(
 			"qq-official",
 			expect.objectContaining({ groupId: "OPENID-9", text: "BV1xx" }),
@@ -153,7 +153,7 @@ describe("inbound.link", () => {
 
 	it("webhook 没有群 → 拒;适配器名下没群目标又没给群号 → 拒", async () => {
 		const { reg } = setup();
-		await expect(reg.run("inbound.link", { adapter: "ad-web" })).rejects.toBeInstanceOf(
+		await expect(reg.run("inbound.link", { connection: "ad-web" })).rejects.toBeInstanceOf(
 			DevParamError,
 		);
 		const noGroups = createDevRegistry(
@@ -164,6 +164,6 @@ describe("inbound.link", () => {
 				targets: () => [],
 			}),
 		);
-		await expect(noGroups.run("inbound.link", { adapter: "ad-ob" })).rejects.toThrow(/群/);
+		await expect(noGroups.run("inbound.link", { connection: "ad-ob" })).rejects.toThrow(/群/);
 	});
 });

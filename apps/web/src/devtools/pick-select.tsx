@@ -10,7 +10,7 @@ import { TSelect } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
 
-export type PickKind = "sub" | "target" | "adapter";
+export type PickKind = "sub" | "target" | "connection";
 
 interface Option {
 	value: string;
@@ -38,7 +38,7 @@ function useOptions(kind: PickKind): Option[] {
 	const connections = useQuery({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),
-		enabled: kind === "adapter",
+		enabled: kind === "connection",
 	});
 	switch (kind) {
 		case "sub":
@@ -51,7 +51,7 @@ function useOptions(kind: PickKind): Option[] {
 				value: t.id,
 				label: `${t.name}${disabledTag(t.enabled)}`,
 			}));
-		case "adapter":
+		case "connection":
 			return (connections.data ?? []).map((a) => ({
 				value: a.id,
 				label: `${a.name}${disabledTag(a.enabled)}`,

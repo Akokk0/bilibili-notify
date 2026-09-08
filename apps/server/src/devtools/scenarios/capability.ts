@@ -36,19 +36,19 @@ function build(state: State, reason: string): ConnectionCapabilities {
 
 export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef {
 	return {
-		id: "adapter.capability",
+		id: "connection.capability",
 		group: "state",
 		title: "连接能力",
 		icon: "sparkle",
 		desc: "换掉某个 OneBot 连接「能不能签小程序卡」的探测结果(支持 / 不支持 / 未知)。探一次也回假的,不出网;官机 / webhook 没有能力概念,选不了。",
 		params: [
-			{ key: "adapter", label: "连接", kind: "adapter" },
+			{ key: "connection", label: "连接", kind: "connection" },
 			{ key: "state", label: "状态", kind: "enum", options: STATES, default: "supported" },
 			{ key: "reason", label: "不支持的理由", kind: "text", default: DEFAULT_REASON },
 		],
 		run(params) {
 			const connections = deps.connections();
-			const wanted = params.adapter;
+			const wanted = params.connection;
 			const connection =
 				wanted === undefined
 					? connections.find((a) => CAPABLE_PLATFORMS.has(a.platform))
@@ -79,7 +79,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 					return `${name} ${state}`;
 				})
 				.join(" / ");
-			return { scenarioId: "adapter.capability", label: `能力 → ${label}` };
+			return { scenarioId: "connection.capability", label: `能力 → ${label}` };
 		},
 		reset() {
 			deps.injector.clear();

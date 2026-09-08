@@ -56,7 +56,7 @@ function setup() {
 	return { reg, ob, wh };
 }
 
-describe("adapter.capability", () => {
+describe("connection.capability", () => {
 	it("没注入:原样透传;webhook 照样没有 capabilities 方法", async () => {
 		const { ob, wh } = setup();
 		expect(ob.capabilities?.(OB)).toBe(REAL);
@@ -66,42 +66,42 @@ describe("adapter.capability", () => {
 
 	it("注入 supported:capabilities 与 probeCapabilities 对那个 id 都回假的,别的 id 不受影响", async () => {
 		const { reg, ob } = setup();
-		const res = await reg.run("adapter.capability", { adapter: "ad-ob", state: "supported" });
+		const res = await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
 		expect(ob.capabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
 		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
 		expect(ob.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
 		expect(res.active).toEqual([
-			{ scenarioId: "adapter.capability", label: "能力 → NapCat 支持小程序卡" },
+			{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" },
 		]);
 	});
 
 	it("unsupported 带理由,unknown 可以不带", async () => {
 		const { reg, ob } = setup();
-		await reg.run("adapter.capability", {
-			adapter: "ad-ob",
+		await reg.run("connection.capability", {
+			connection: "ad-ob",
 			state: "unsupported",
 			reason: "假装 1404",
 		});
 		expect(ob.capabilities?.(OB)).toMatchObject({
 			miniAppCard: { state: "unsupported", reason: "假装 1404" },
 		});
-		await reg.run("adapter.capability", { adapter: "ad-ob", state: "unknown" });
+		await reg.run("connection.capability", { connection: "ad-ob", state: "unknown" });
 		expect(ob.capabilities?.(OB)?.miniAppCard.state).toBe("unknown");
 	});
 
-	it("adapter 省略取第一个有能力概念的;指到 webhook 就拒", async () => {
+	it("connection 省略取第一个有能力概念的;指到 webhook 就拒", async () => {
 		const { reg, ob } = setup();
-		await reg.run("adapter.capability", { state: "supported" });
+		await reg.run("connection.capability", { state: "supported" });
 		expect(ob.capabilities?.(OB)?.miniAppCard.state).toBe("supported");
-		await expect(reg.run("adapter.capability", { adapter: "ad-wh" })).rejects.toBeInstanceOf(
+		await expect(reg.run("connection.capability", { connection: "ad-wh" })).rejects.toBeInstanceOf(
 			DevParamError,
 		);
 	});
 
 	it("收摊回真", async () => {
 		const { reg, ob } = setup();
-		await reg.run("adapter.capability", { adapter: "ad-ob", state: "supported" });
-		expect(await reg.reset("adapter.capability")).toEqual([]);
+		await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
+		expect(await reg.reset("connection.capability")).toEqual([]);
 		expect(ob.capabilities?.(OB)).toBe(REAL);
 	});
 
