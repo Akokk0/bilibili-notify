@@ -12,7 +12,7 @@ import {
 	type BackupSections,
 	buildBackup,
 } from "./envelope.js";
-import { type ImportMode, planImport } from "./restore.js";
+import { foldPlan, type ImportMode, planImport } from "./restore.js";
 import { redactSecretKeys } from "./sanitize.js";
 
 /**
@@ -20,10 +20,12 @@ import { redactSecretKeys } from "./sanitize.js";
  * standalone end.
  *
  * Export reads the four config scopes (and, for a full backup, the cookie
- * store) and assembles an envelope. Import runs the pure {@link planImport} and
- * then applies each write through the config store's normal methods — which
- * already emit `config-changed` on the bus, so subscriptions/targets/adapters
- * hot-reload for free. Restoring cookies additionally calls
+ * store) and assembles an envelope. Import runs the pure {@link planImport},
+ * folds it into the end state with {@link foldPlan} and hands that to
+ * `replaceSections` in **one** call — restore is a wholesale state replacement,
+ * not a sequence of user edits, and pretending otherwise cost us both a guard
+ * meant for humans (webhook targets cannot be hand-created) and any chance of
+ * rolling back a half-applied import. Restoring cookies additionally calls
  * {@link BackupServiceDeps.onCookiesRestored} so the auth layer can re-activate
  * the login without a process restart (the one genuinely live-swapped piece).
  */
@@ -34,13 +36,12 @@ export interface BackupStore {
 	getSubscriptions(): Subscription[];
 	getAdapters(): PushAdapter[];
 	getTargets(): PushTarget[];
-	setGlobals(next: GlobalConfig): Promise<void>;
-	upsertSubscription(sub: Subscription): Promise<void>;
-	deleteSubscription(id: string): Promise<boolean>;
-	upsertAdapter(adapter: PushAdapter): Promise<void>;
-	deleteAdapter(id: string): Promise<boolean>;
-	upsertTarget(target: PushTarget): Promise<void>;
-	deleteTarget(id: string): Promise<boolean>;
+	replaceSections(next: {
+		globals?: GlobalConfig;
+		subscriptions?: Subscription[];
+		adapters?: PushAdapter[];
+		targets?: PushTarget[];
+	}): Promise<unknown>;
 }
 
 interface BackupCookieStore {
@@ -151,16 +152,9 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		let globalsApplied = false;
 		let cookiesRestored = false;
 		if (!opts.dryRun) {
-			if (plan.setGlobals) {
-				await deps.configStore.setGlobals(plan.setGlobals);
-				globalsApplied = true;
-			}
-			for (const s of plan.subscriptions.upsert) await deps.configStore.upsertSubscription(s);
-			for (const id of plan.subscriptions.delete) await deps.configStore.deleteSubscription(id);
-			for (const a of plan.adapters.upsert) await deps.configStore.upsertAdapter(a);
-			for (const id of plan.adapters.delete) await deps.configStore.deleteAdapter(id);
-			for (const t of plan.targets.upsert) await deps.configStore.upsertTarget(t);
-			for (const id of plan.targets.delete) await deps.configStore.deleteTarget(id);
+			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
+			await deps.configStore.replaceSections(foldPlan(current, plan));
+			globalsApplied = Boolean(plan.setGlobals);
 
 			if (cookies?.cookiesJson) {
 				await deps.cookieStore.save({

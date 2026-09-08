@@ -2,6 +2,7 @@ import {
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type PushAdapter,
+	type PushTarget,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -43,29 +44,23 @@ function makeFakeStore(
 ) {
 	let globals = makeDefaultGlobalConfig();
 	let subs = [...(init.subscriptions ?? [])];
-	const adapters = [...(init.adapters ?? [])];
+	let adapters = [...(init.adapters ?? [])];
+	let targets: PushTarget[] = [];
 	const store: BackupStore = {
 		getGlobals: () => globals,
 		getSubscriptions: () => subs,
 		getAdapters: () => adapters,
-		getTargets: () => [],
-		setGlobals: vi.fn(async (g) => {
-			globals = g;
+		getTargets: () => targets,
+		// 恢复是**一次整体替换**,不是一串编辑 —— 所以这个替身也只认终态,断言跟着看
+		// 「最后剩下什么」而不是「按什么顺序调了哪些方法」。老替身把 upsertTarget 打成
+		// 空函数,恰好把 webhook 目标根本恢复不了那个 bug 整个盖住了。
+		replaceSections: vi.fn(async (next) => {
+			if (next.globals) globals = next.globals;
+			if (next.subscriptions) subs = next.subscriptions;
+			if (next.adapters) adapters = next.adapters;
+			if (next.targets) targets = next.targets;
+			return [];
 		}),
-		upsertSubscription: vi.fn(async (s: Subscription) => {
-			const i = subs.findIndex((x) => x.id === s.id);
-			if (i >= 0) subs[i] = s;
-			else subs.push(s);
-		}),
-		deleteSubscription: vi.fn(async (id: string) => {
-			const before = subs.length;
-			subs = subs.filter((x) => x.id !== id);
-			return subs.length < before;
-		}),
-		upsertAdapter: vi.fn(async () => {}),
-		deleteAdapter: vi.fn(async () => true),
-		upsertTarget: vi.fn(async () => {}),
-		deleteTarget: vi.fn(async () => true),
 	};
 	return store;
 }
@@ -133,10 +128,13 @@ describe("BackupService", () => {
 
 		await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
 
+		// overwrite:备份里的 2、3 留下,本地独有的 1 被清掉
 		expect(
-			(store.upsertSubscription as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].id).sort(),
+			store
+				.getSubscriptions()
+				.map((s) => s.id)
+				.sort(),
 		).toEqual(["2", "3"]);
-		expect(store.deleteSubscription).toHaveBeenCalledWith("1");
 		expect(cookieStore.save).toHaveBeenCalledWith({ cookiesJson: "CJ2", refreshToken: "RT2" });
 		expect(onCookiesRestored).toHaveBeenCalledTimes(1);
 	});
@@ -158,7 +156,13 @@ describe("BackupService", () => {
 
 		await svc.importBackup({ envelope: env, mode: "merge" });
 
-		expect(store.deleteSubscription).not.toHaveBeenCalled();
+		// merge:本地独有的 1 必须还在
+		expect(
+			store
+				.getSubscriptions()
+				.map((s) => s.id)
+				.sort(),
+		).toEqual(["1", "2", "3"]);
 	});
 
 	it("a dry-run import reports the same plan but writes nothing", async () => {
@@ -184,9 +188,7 @@ describe("BackupService", () => {
 
 		expect(planned.subscriptions).toEqual({ upserted: 2, deleted: 1 });
 		expect(planned.cookiesRestored).toBe(true);
-		expect(store.upsertSubscription).not.toHaveBeenCalled();
-		expect(store.deleteSubscription).not.toHaveBeenCalled();
-		expect(store.setGlobals).not.toHaveBeenCalled();
+		expect(store.replaceSections).not.toHaveBeenCalled();
 		expect(cookieStore.save).not.toHaveBeenCalled();
 		expect(onCookiesRestored).not.toHaveBeenCalled();
 	});

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
 	type ConfigScope,
@@ -65,6 +65,17 @@ export interface ConfigScopeMeta {
 	lastUpdatedAt: string | null;
 }
 
+/**
+ * 一次整体替换要写进去的分区。缺席的分区保持不动 —— 「不给」和「给一个空数组」
+ * 是两回事:后者是真的清空。
+ */
+export interface ConfigSections {
+	globals?: GlobalConfig;
+	subscriptions?: Subscription[];
+	adapters?: PushAdapter[];
+	targets?: PushTarget[];
+}
+
 export interface ConfigStore {
 	readonly bootstrap: BootstrapConfig;
 
@@ -98,6 +109,12 @@ export interface ConfigStore {
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
 	recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget>;
 	deleteTarget(id: string): Promise<boolean>;
+
+	/**
+	 * 整体替换若干分区(恢复备份 / 一次性迁移)。先全量校验再落盘,失败不留半新半旧。
+	 * 详见实现处的注释。
+	 */
+	replaceSections(next: ConfigSections): Promise<ConfigScope[]>;
 }
 
 export interface CreateConfigStoreOptions {
@@ -1398,7 +1415,122 @@ class NodeConfigStore implements ConfigStore {
 		return removed;
 	}
 
+	/**
+	 * 整体替换若干配置分区 —— **恢复备份与一次性迁移走这条路**,别再伪装成一串用户编辑。
+	 *
+	 * 逐条 upsert/delete 的老写法有两处治不好的病:
+	 * ① 它会撞上专为用户设的守卫(webhook 目标不许手工创建),而恢复送回来的恰恰是系统
+	 *    自己生成的那条;
+	 * ② 中途失败时前面的分区**已经落盘**,配置只剩半新半旧 —— 订阅引用着从未创建的
+	 *    target id,而原状态已被覆盖,用户连退回去都做不到。
+	 *
+	 * 这里分两步:**先把所有分区校验完(一个字节都不写)**,再落盘。落盘顺序是三个数组
+	 * 先写(可回滚)、globals 最后写(`writeGlobals` 自带密钥袋回滚);数组写之前各留一份
+	 * `.bak`,任何一步炸了就拿它们推回去。
+	 *
+	 * 缺席的分区保持不动。返回真正改过的 scope。
+	 */
+	async replaceSections(next: ConfigSections): Promise<ConfigScope[]> {
+		const changed = await this.runAllScopes(async () => {
+			// ---- 1) 校验:任一分区不过就整个中止,不写任何东西 ----------------
+			let globals: GlobalConfig | undefined;
+			if (next.globals !== undefined) {
+				const r = GlobalConfigSchema.safeParse(next.globals);
+				if (!r.success) throw new ConfigValidationError("globals", r.error.issues);
+				globals = r.data;
+			}
+			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
+			const adapters = next.adapters && parseAll("adapters", next.adapters);
+			const targets = next.targets && parseAll("targets", next.targets);
+
+			// ---- 2) 跨分区不变式 + 托管目标归一化(与 load() 同一套) ----------
+			const effAdapters = adapters ?? this.adapters;
+			const effTargets = targets ?? this.targets;
+			const effSubs = subscriptions ?? this.subscriptions;
+			for (const t of effTargets) {
+				const owner = effAdapters.find((a) => a.id === t.adapterId);
+				if (!owner) {
+					throw new ConfigValidationError(
+						"targets",
+						{ id: t.id, adapterId: t.adapterId },
+						`target ${t.id} references unknown adapter ${t.adapterId}`,
+					);
+				}
+				if (owner.platform !== t.platform) {
+					throw new ConfigValidationError(
+						"targets",
+						{ id: t.id, target: t.platform, adapter: owner.platform },
+						`target ${t.id} platform ${t.platform} does not match adapter ${owner.platform}`,
+					);
+				}
+			}
+			const synced = syncManagedWebhookTargets(effAdapters, effTargets);
+			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
+
+			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
+			const writes: Array<[ConfigScope, unknown]> = [];
+			if (subscriptions || replaced.changed) writes.push(["subscriptions", replaced.next]);
+			if (adapters) writes.push(["adapters", effAdapters]);
+			if (targets || synced.changed) writes.push(["targets", synced.next]);
+
+			const backups: Array<[string, string]> = [];
+			for (const [scope] of writes) {
+				const path = this.path(scope);
+				if (!(await fileExists(path))) continue;
+				const bak = `${path}.bak`;
+				await copyFile(path, bak);
+				backups.push([path, bak]);
+			}
+			try {
+				for (const [scope, value] of writes) await atomicWriteJson(this.path(scope), value);
+				if (globals) await this.writeGlobals(globals);
+			} catch (e) {
+				for (const [path, bak] of backups) await copyFile(bak, path).catch(() => {});
+				throw e;
+			} finally {
+				for (const [, bak] of backups) await rm(bak, { force: true }).catch(() => {});
+			}
+
+			// ---- 4) 双写都成了才更新内存 -----------------------------------
+			const touched: ConfigScope[] = [];
+			if (subscriptions || replaced.changed) {
+				this.subscriptions = replaced.next;
+				this.touch("subscriptions");
+				touched.push("subscriptions");
+			}
+			if (adapters) {
+				this.adapters = effAdapters;
+				this.touch("adapters");
+				touched.push("adapters");
+			}
+			if (targets || synced.changed) {
+				this.targets = synced.next;
+				this.touch("targets");
+				touched.push("targets");
+			}
+			if (globals) {
+				this.touch("globals");
+				touched.push("globals");
+			}
+			return touched;
+		});
+		for (const scope of changed) this.bus.emit("config-changed", scope);
+		return changed;
+	}
+
 	// ---- internals ------------------------------------------------------
+
+	/**
+	 * 一次拿住全部四把 scope 锁。顺序固定(globals → subscriptions → adapters →
+	 * targets),别的调用方一次只拿一把,所以不会死锁。
+	 */
+	private runAllScopes<T>(task: () => Promise<T>): Promise<T> {
+		return this.runScoped("globals", () =>
+			this.runScoped("subscriptions", () =>
+				this.runScoped("adapters", () => this.runScoped("targets", task)),
+			),
+		);
+	}
 
 	private async replaceSubscriptionTargetAliases(
 		aliases: ReadonlyMap<string, string>,
@@ -1430,6 +1562,33 @@ class NodeConfigStore implements ConfigStore {
 		this.queues[scope] = next.catch(() => undefined);
 		return next;
 	}
+}
+
+function parseAll(scope: "subscriptions", items: readonly Subscription[]): Subscription[];
+function parseAll(scope: "adapters", items: readonly PushAdapter[]): PushAdapter[];
+function parseAll(scope: "targets", items: readonly PushTarget[]): PushTarget[];
+/**
+ * 逐条重新校验一个分区。入参虽然带着类型,但它来自备份文件 / 磁盘 JSON —— 那个类型
+ * 是句谎话,运行期必须自己验一遍。报错带下标,跟 load() 的口径一致。
+ */
+function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
+	const schema =
+		scope === "subscriptions"
+			? SubscriptionSchema
+			: scope === "adapters"
+				? PushAdapterSchema
+				: PushTargetSchema;
+	return items.map((item, idx) => {
+		const r = schema.safeParse(item);
+		if (!r.success) {
+			throw new ConfigValidationError(
+				scope,
+				{ index: idx, issues: r.error.issues },
+				`${scope}[${idx}] failed schema validation`,
+			);
+		}
+		return r.data;
+	});
 }
 
 function upsertById<T extends { id: string }>(arr: readonly T[], item: T): T[] {

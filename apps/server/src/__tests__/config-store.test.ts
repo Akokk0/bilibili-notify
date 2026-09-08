@@ -18,6 +18,7 @@ import {
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createBackupService } from "../backup/service.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, ConfigValidationError, createConfigStore } from "../config/store.js";
 
@@ -748,6 +749,167 @@ describe("ConfigStore", () => {
 			latencyMs: 12,
 		});
 		expect(patched.testStatus).toMatchObject({ ok: true, latencyMs: 12 });
+	});
+
+	it("端到端:含 webhook 适配器的备份,导出后能在一台干净机器上恢复回来", async () => {
+		// 这条住在这里,是因为真 ConfigStore 的夹具只有这个文件有 —— 而 backup-service
+		// 那边用的是替身,替身把 upsertTarget 打成空函数,正是它把这个 bug 整个盖住了。
+		// 源机器刻意造成「老装机」:托管 target 带的是**非确定性 id**(makeManagedWebhookTarget
+		// 取 `existing?.id ?? 确定性id`,老记录会一直保留自己的)。这一步是承重的 —— 否则
+		// 「把备份里的 target 恢复回来」和「照 adapter 重新生成一个」会得到同一个 id,测试
+		// 分不出这两件事,也就钉不住任何东西。
+		const adapter = makeWebhookAdapter();
+		const legacyId = randomUUID();
+		const sub = makeSampleSubscription("22222");
+		sub.routing.dynamic = [legacyId];
+		const dirA = await mkdtemp(join(tmpdir(), "bn-config-backup-src-"));
+		const stateA = join(dirA, "state");
+		await mkdir(stateA, { recursive: true });
+		await writeFile(join(stateA, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(
+			join(stateA, "targets.json"),
+			JSON.stringify([makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" })]),
+			"utf8",
+		);
+		await writeFile(join(stateA, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+		const source = createConfigStore({
+			bootstrap: makeBootstrap(dirA),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await source.load();
+		const managedId = source.getTargets()[0]?.id;
+		expect(managedId).toBe(legacyId);
+		expect(managedId).not.toBe(managedWebhookTargetId(adapter.id));
+
+		const noCookies = { load: async () => null, save: async () => {} };
+		const env = await createBackupService({
+			configStore: source,
+			cookieStore: noCookies,
+		}).exportBackup({ kind: "sanitized" });
+		// 导出必然带着托管 target —— 正是老写法恢复不回去的那一条
+		expect(env.sections.targets?.some((t) => t.managedBy === "adapter")).toBe(true);
+
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-restore-"));
+		const fresh = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await fresh.load();
+		await createBackupService({ configStore: fresh, cookieStore: noCookies }).importBackup({
+			envelope: env,
+			mode: "overwrite",
+		});
+
+		expect(fresh.getAdapters()).toHaveLength(1);
+		expect(fresh.getTargets()).toHaveLength(1);
+		// 恢复回来的是**备份里那一条**,不是照 adapter 重新生成的 —— 订阅还指着这个 id
+		expect(fresh.getTargets()[0]?.id).toBe(legacyId);
+		expect(fresh.getSubscriptions()[0]?.routing.dynamic).toEqual([legacyId]);
+		await rm(dir2, { recursive: true, force: true });
+		await rm(dirA, { recursive: true, force: true });
+	});
+
+	it("replaceSections:任一分区校验不过 → 一个字节都不写", async () => {
+		// 这是这个方法存在的理由。老写法逐条 upsert,炸在 targets 那步时 globals / 订阅 /
+		// adapters 已经落盘,配置只剩半新半旧且原状态已被覆盖。
+		const adapter = makeOnebotAdapter();
+		await store.upsertAdapter(adapter);
+		await store.upsertSubscription(makeSampleSubscription("88888"));
+		const before = {
+			subs: store.getSubscriptions(),
+			adapters: store.getAdapters(),
+			targets: store.getTargets(),
+			cron: store.getGlobals().app.dynamicCron,
+		};
+
+		await expect(
+			store.replaceSections({
+				globals: {
+					...store.getGlobals(),
+					app: { ...store.getGlobals().app, dynamicCron: "*/9 * * * *" },
+				},
+				subscriptions: [],
+				adapters: [adapter],
+				// scope 不在词表里 → schema 当场拒绝
+				targets: [
+					{
+						id: randomUUID(),
+						name: "坏目标",
+						adapterId: adapter.id,
+						platform: "onebot",
+						scope: "nope",
+						enabled: true,
+						session: { groupId: "1" },
+					} as unknown as PushTarget,
+				],
+			}),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+
+		expect(store.getSubscriptions()).toEqual(before.subs);
+		expect(store.getAdapters()).toEqual(before.adapters);
+		expect(store.getTargets()).toEqual(before.targets);
+		expect(store.getGlobals().app.dynamicCron).toBe(before.cron);
+	});
+
+	it("replaceSections:target 指向不存在的 adapter → 拒绝,且不写", async () => {
+		const adapter = makeOnebotAdapter();
+		await store.upsertAdapter(adapter);
+		const before = store.getAdapters();
+
+		await expect(
+			store.replaceSections({
+				adapters: [adapter],
+				targets: [
+					{
+						id: randomUUID(),
+						name: "孤儿目标",
+						adapterId: randomUUID(),
+						platform: "onebot",
+						scope: "group",
+						enabled: true,
+						session: { groupId: "1" },
+					} as PushTarget,
+				],
+			}),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getTargets()).toHaveLength(0);
+		expect(store.getAdapters()).toEqual(before);
+	});
+
+	it("replaceSections:缺席的分区保持不动,给空数组才是真清空", async () => {
+		const adapter = makeOnebotAdapter();
+		await store.upsertAdapter(adapter);
+		await store.upsertSubscription(makeSampleSubscription("99999"));
+
+		// 只给 targets:订阅与 adapters 不该被碰
+		await store.replaceSections({ targets: [] });
+		expect(store.getSubscriptions()).toHaveLength(1);
+		expect(store.getAdapters()).toHaveLength(1);
+
+		// 给空数组 → 真清空
+		await store.replaceSections({ subscriptions: [] });
+		expect(store.getSubscriptions()).toHaveLength(0);
+	});
+
+	it("replaceSections:webhook 托管目标照样归一化,订阅引用跟着迁", async () => {
+		const adapter = makeWebhookAdapter();
+		const legacyId = randomUUID();
+		const sub = makeSampleSubscription("11111");
+		sub.routing.live = [legacyId];
+		await store.upsertSubscription(sub);
+
+		await store.replaceSections({
+			adapters: [adapter],
+			targets: [makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" }) as PushTarget],
+		});
+
+		expect(store.getTargets()).toHaveLength(1);
+		// 只有一条时它就是留下的那条 —— 老 id 保住,不会被换成确定性 id
+		expect(store.getTargets()[0]?.id).toBe(legacyId);
+		expect(store.getTargets()[0]?.managedBy).toBe("adapter");
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([legacyId]);
 	});
 
 	it("load() 合并同一 webhook adapter 下多余 targets 并把订阅引用迁到托管 id", async () => {
