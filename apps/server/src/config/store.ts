@@ -387,6 +387,39 @@ function isRetiredTarget(raw: unknown): boolean {
 	return !isKnownConnectionPlatform(raw);
 }
 
+/**
+ * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
+ *
+ * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
+ * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
+ *
+ * ⚠️ 接桥那步要重定义:桥连接**没有 platform**(平台靠探测),那时这里得先按
+ * `connection.kind` 分岔 —— direct 才比平台,bridge 改比「桥探测到的平台集合」。
+ * 届时 `connection.platform` 会直接编译不过,不会静默放行。
+ */
+function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
+	const owner = connections.find((a) => a.id === target.adapterId);
+	if (!owner) {
+		throw new ConfigValidationError(
+			"targets",
+			{ id: target.id, adapterId: target.adapterId, message: "adapter not found" },
+			`target ${target.id} references unknown adapter ${target.adapterId}`,
+		);
+	}
+	if (owner.platform !== target.platform) {
+		throw new ConfigValidationError(
+			"targets",
+			{
+				id: target.id,
+				adapterPlatform: owner.platform,
+				targetPlatform: target.platform,
+				message: "platform mismatch",
+			},
+			`target ${target.id} platform ${target.platform} does not match adapter ${owner.platform}`,
+		);
+	}
+}
+
 function deriveConnectionName(targetName: string, addr: string): string {
 	if (addr) {
 		try {
@@ -1409,25 +1442,7 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	private assertConnectionMatches(target: PushTarget): void {
-		const connection = this.connections.find((a) => a.id === target.adapterId);
-		if (!connection) {
-			throw new ConfigValidationError(
-				"targets",
-				{ adapterId: target.adapterId, message: "adapter not found" },
-				`target.adapterId ${target.adapterId} does not match any adapter`,
-			);
-		}
-		if (connection.platform !== target.platform) {
-			throw new ConfigValidationError(
-				"targets",
-				{
-					adapterPlatform: connection.platform,
-					targetPlatform: target.platform,
-					message: "platform mismatch",
-				},
-				`target.platform (${target.platform}) ≠ adapter.platform (${connection.platform})`,
-			);
-		}
+		assertTargetOwner(target, this.connections);
 	}
 
 	async deleteTarget(id: string): Promise<boolean> {
@@ -1494,23 +1509,7 @@ class NodeConfigStore implements ConfigStore {
 			const effConnections = connections ?? this.connections;
 			const effTargets = targets ?? this.targets;
 			const effSubs = subscriptions ?? this.subscriptions;
-			for (const t of effTargets) {
-				const owner = effConnections.find((a) => a.id === t.adapterId);
-				if (!owner) {
-					throw new ConfigValidationError(
-						"targets",
-						{ id: t.id, adapterId: t.adapterId },
-						`target ${t.id} references unknown adapter ${t.adapterId}`,
-					);
-				}
-				if (owner.platform !== t.platform) {
-					throw new ConfigValidationError(
-						"targets",
-						{ id: t.id, target: t.platform, connection: owner.platform },
-						`target ${t.id} platform ${t.platform} does not match adapter ${owner.platform}`,
-					);
-				}
-			}
+			for (const t of effTargets) assertTargetOwner(t, effConnections);
 			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 

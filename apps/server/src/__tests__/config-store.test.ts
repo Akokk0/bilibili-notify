@@ -839,6 +839,51 @@ describe("ConfigStore", () => {
 		expect(scopes).toEqual(["adapters", "targets", "subscriptions"]);
 	});
 
+	// 目标的平台开放之后,「挂在 onebot 连接下、平台写着 telegram」这种目标**schema 收得下**
+	// —— 从前是闭集,它连 parse 都过不去。挡住它的只剩 store 里那条不变式,而那条不变式
+	// 在这两条路上各写了一份(逐条 upsert / 整体 replaceSections),原先一条测试都没有:
+	// 整个删掉,全仓 5986 个测试照样绿。
+	it("upsertTarget 拒绝平台与连接对不上的目标", async () => {
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
+		await expect(
+			store.upsertTarget({
+				id: randomUUID(),
+				name: "冒充的",
+				adapterId: connection.id,
+				kind: "session",
+				platform: "telegram",
+				scope: "group",
+				enabled: true,
+				address: "1",
+			}),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getTargets()).toHaveLength(0);
+	});
+
+	it("replaceSections 也拒绝 —— 恢复备份走的是这一条,不能只挡住手工那条", async () => {
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
+		await expect(
+			store.replaceSections({
+				adapters: [connection],
+				targets: [
+					{
+						id: randomUUID(),
+						name: "冒充的",
+						adapterId: connection.id,
+						kind: "session",
+						platform: "telegram",
+						scope: "group",
+						enabled: true,
+						address: "1",
+					} as PushTarget,
+				],
+			}),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getTargets()).toHaveLength(0);
+	});
+
 	it("deleteConnection(onebot) 仍在被 target 引用时拒绝", async () => {
 		const connection = makeOnebotConnection();
 		await store.upsertConnection(connection);
