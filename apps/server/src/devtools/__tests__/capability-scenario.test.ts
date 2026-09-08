@@ -6,7 +6,7 @@ import { createDevRegistry, DevParamError } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";
 
 /**
- * B3:适配器能力三态(小程序卡 支持 / 不支持 / 未知)。面板从 `/api/adapters/capabilities`
+ * B3:适配器能力三态(小程序卡 支持 / 不支持 / 未知)。面板从 `/api/connections/capabilities`
  * 读,那条路最终问的是 `PlatformAdapter.capabilities(adapter)`;探一次走 `probeCapabilities`。
  * 注入 = 两个方法对那个 adapter id 都回假的;没有能力概念的平台(webhook)不碰 —— 面板上
  * 「这个平台不支持」靠的是方法不在。

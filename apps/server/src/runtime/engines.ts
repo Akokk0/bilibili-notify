@@ -136,7 +136,7 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	linkCardPresentation(): { colors: CardColorOptions | undefined; layout: CardBlock[] | undefined };
 	/**
-	 * Out-of-band reachability probe for `/api/adapters/:id/test`. 顺路把还没探出来的平台
+	 * Out-of-band reachability probe for `/api/connections/:id/test`. 顺路把还没探出来的平台
 	 * 能力再探一次(与定时健康探测同一条路)。
 	 */
 	probeConnection(connectionId: string): Promise<ProbeResult>;

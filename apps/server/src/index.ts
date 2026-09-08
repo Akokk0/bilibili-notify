@@ -570,7 +570,7 @@ export async function startStandaloneServer(
 			api: runtimeEngines.api,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),
-			// 能力走 sink 那条适配器寻址(健康探测与 /api/adapters/capabilities 用的是同一份),
+			// 能力走 sink 那条适配器寻址(健康探测与 /api/connections/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>

@@ -19,10 +19,10 @@ import type { LogLevel } from "./ws";
 export type { MiniAppCardSupport } from "@bilibili-notify/internal";
 export type { ConnectionCapabilities, FansRefreshEntry, HistoryMessageRole, PushKind, PushStatus };
 
-// ---- /api/adapters/capabilities ------------------------------------------
+// ---- /api/connections/capabilities ------------------------------------------
 
 /**
- * `GET /api/adapters/capabilities`:各适配器的平台能力快照,按 adapter id 索引。只有有能力
+ * `GET /api/connections/capabilities`:各适配器的平台能力快照,按 adapter id 索引。只有有能力
  * 概念的平台(OneBot)在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
  */
 export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;

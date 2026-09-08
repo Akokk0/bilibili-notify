@@ -37,7 +37,7 @@ function useOptions(kind: PickKind): Option[] {
 	});
 	const connections = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/connections"),
 		enabled: kind === "adapter",
 	});
 	switch (kind) {

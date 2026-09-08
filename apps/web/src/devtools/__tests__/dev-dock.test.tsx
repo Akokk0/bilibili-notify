@@ -295,7 +295,7 @@ describe("DevDock", () => {
 					];
 				case "/api/targets":
 					return [{ id: "t1", name: "测试群", enabled: true }];
-				case "/api/adapters":
+				case "/api/connections":
 					return [{ id: "a1", name: "家里的 NapCat", enabled: true }];
 				default:
 					return {

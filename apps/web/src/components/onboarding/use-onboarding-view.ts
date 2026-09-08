@@ -68,7 +68,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	});
 	const connectionsQ = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/connections"),
 		enabled,
 	});
 	const targetsQ = useQuery({

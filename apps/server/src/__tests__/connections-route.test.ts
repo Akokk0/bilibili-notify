@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createConnectionsRoute } from "../routes/adapters.js";
+import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
 
 /**
- * `GET /api/adapters/capabilities` —— 面板「适配器支持情况」读的那张表。按 adapter id 索引,
+ * `GET /api/connections/capabilities` —— 面板「适配器支持情况」读的那张表。按 adapter id 索引,
  * 只列有能力概念的平台;引擎还没起来是空表,不是错。
  */
 function makeDeps(over: { connections?: unknown[]; engines?: unknown }): RouteDeps {

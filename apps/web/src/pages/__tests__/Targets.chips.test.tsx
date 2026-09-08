@@ -40,7 +40,7 @@ function isActive(el: HTMLElement): boolean {
 
 beforeEach(() => {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/adapters") return [];
+		if (url === "/api/connections") return [];
 		if (url === "/api/targets") return [];
 		return [];
 	});

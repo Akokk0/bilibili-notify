@@ -1335,7 +1335,7 @@ export default function Targets() {
 
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/connections"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -1412,7 +1412,7 @@ export default function Targets() {
 		mutationFn: async (a: Connection) => {
 			setError(null);
 			try {
-				await api.post<Connection[]>("/api/adapters", a);
+				await api.post<Connection[]>("/api/connections", a);
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
 				else setError(String(err));
@@ -1431,7 +1431,7 @@ export default function Targets() {
 		mutationFn: async (id: string) => {
 			setDeleteError(null);
 			try {
-				await api.delete(`/api/adapters/${id}`);
+				await api.delete(`/api/connections/${id}`);
 			} catch (err) {
 				const msg = err instanceof ApiError ? err.message : String(err);
 				setDeleteError(msg);
@@ -1525,7 +1525,7 @@ export default function Targets() {
 		setTesting((p) => ({ ...p, [a.id]: "pending" }));
 		try {
 			const res = await api.post<{ ok: boolean | null; latencyMs: number; err?: string }>(
-				`/api/adapters/${a.id}/test`,
+				`/api/connections/${a.id}/test`,
 				{},
 			);
 			if (res.ok === null) {

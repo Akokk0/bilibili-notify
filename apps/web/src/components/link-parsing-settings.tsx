@@ -73,7 +73,7 @@ export function LinkParsingSettings({
 	targets: readonly PushTarget[];
 	/** 适配器表(由页面取数),面板只列 OneBot 的。 */
 	connections: readonly Connection[];
-	/** `GET /api/adapters/capabilities`:各适配器能不能签小程序卡。 */
+	/** `GET /api/connections/capabilities`:各适配器能不能签小程序卡。 */
 	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkParsing;

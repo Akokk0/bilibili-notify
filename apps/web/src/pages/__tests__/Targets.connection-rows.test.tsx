@@ -56,7 +56,7 @@ function renderPage() {
 
 beforeEach(() => {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/adapters") return ADAPTERS;
+		if (url === "/api/connections") return ADAPTERS;
 		if (url === "/api/targets") return [];
 		return [];
 	});

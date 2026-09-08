@@ -28,7 +28,7 @@ async function mount(path: string) {
 	useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
 	apiGet.mockImplementation(async (p: string) => {
 		if (p === "/api/subs") return [{ id: "s1" }];
-		if (p === "/api/adapters") return [];
+		if (p === "/api/connections") return [];
 		if (p === "/api/targets") return [];
 		if (p === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };

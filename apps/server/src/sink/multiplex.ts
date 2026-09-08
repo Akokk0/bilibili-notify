@@ -13,7 +13,7 @@ import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**
  * Extended sink — keeps the canonical NotificationSink surface but adds an
- * `out-of-band` adapter probe entry point used by `/api/adapters/:id/test` and
+ * `out-of-band` adapter probe entry point used by `/api/connections/:id/test` and
  * the {@link AdapterProbeScheduler}.
  */
 export interface MultiplexSink extends NotificationSink {

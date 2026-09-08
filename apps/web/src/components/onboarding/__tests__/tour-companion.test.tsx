@@ -44,7 +44,7 @@ async function mount(s: Scenario) {
 	});
 	apiGet.mockImplementation(async (path: string) => {
 		if (path === "/api/subs") return s.subs ?? [];
-		if (path === "/api/adapters") return s.connections ?? [];
+		if (path === "/api/connections") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
@@ -181,7 +181,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await mount({ route: "/system", skipped: true });
 			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
 			await new Promise((r) => setTimeout(r, 50));
-			for (const path of ["/api/subs", "/api/adapters", "/api/targets", "/api/health"]) {
+			for (const path of ["/api/subs", "/api/connections", "/api/targets", "/api/health"]) {
 				expect(apiGet, `${path} 不该被问`).not.toHaveBeenCalledWith(path);
 			}
 		});

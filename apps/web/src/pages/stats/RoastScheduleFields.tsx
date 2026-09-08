@@ -135,7 +135,7 @@ export function RoastScheduleFields({
 	// 它挂的适配器停了,一样不发。
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/connections"),
 	});
 	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析的逐群表同一条规矩(主人定的:
 	// 停用是暂停不是消失)。发送时调度器会跳过它、记进「跳过」,不算失败;以前这里把它

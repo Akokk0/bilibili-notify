@@ -5,7 +5,7 @@ import { ConfigValidationError } from "../config/store.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `/api/adapters` — CRUD on the Connection[] list.
+ * `/api/connections` — CRUD on the Connection[] list.
  *
  * An adapter represents a connection instance (an OneBot HTTP endpoint, a
  * webhook URL, the dashboard WS bridge). PushTargets reference adapters via
@@ -49,7 +49,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
 			}
-			log.error("POST /api/adapters failed", err);
+			log.error("POST /api/connections failed", err);
 			throw err;
 		}
 	});
@@ -81,7 +81,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 				const status = isNotFound(err) ? 404 : 400;
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, status);
 			}
-			log.error("PATCH /api/adapters/:id failed", err);
+			log.error("PATCH /api/connections/:id failed", err);
 			throw err;
 		}
 	});
@@ -110,7 +110,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 					},
 				});
 			} catch (err) {
-				log.warn(`POST /api/adapters/${id}/test patchConnection failed: ${String(err)}`);
+				log.warn(`POST /api/connections/${id}/test patchConnection failed: ${String(err)}`);
 			}
 		}
 		return c.json(result);
@@ -126,7 +126,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 409);
 			}
-			log.error("DELETE /api/adapters/:id failed", err);
+			log.error("DELETE /api/connections/:id failed", err);
 			throw err;
 		}
 	});

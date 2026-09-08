@@ -71,7 +71,7 @@ const MANAGED_TARGET = {
 
 function renderPage(connections: Connection[], targets: PushTarget[]) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/adapters") return connections;
+		if (url === "/api/connections") return connections;
 		if (url === "/api/targets") return targets;
 		return [];
 	});
