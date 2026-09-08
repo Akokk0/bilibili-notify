@@ -121,6 +121,16 @@ const boardBody = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("POST /roast/push — 图片优先", () => {
+	it("targetId 不是 uuid → 400,与 /api/push、/api/cards、/api/ai 同一把尺子", async () => {
+		// PushTarget.id 本来就是 z.uuid();这里曾是 z.string().min(1),于是同一个
+		// 「目标 id」在四个端点上有两套校验,松的那个把错 id 一路带到投递层才失败。
+		const { deps, sendToTarget } = makeDeps();
+		const res = await push(createStatsRoute(deps), boardBody({ targetId: "not-a-uuid" }));
+
+		expect(res.status).toBe(400);
+		expect(sendToTarget).not.toHaveBeenCalled();
+	});
+
 	it("图片渲染开着时推图片,并把周报文本一起带上作图说明", async () => {
 		// caption 不是可有可无的装饰:图挂了 / 客户端不展图时,那段文字是唯一还能读的东西。
 		const { deps, sendToTarget } = makeDeps();

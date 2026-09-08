@@ -299,7 +299,7 @@ export interface FansResponse {
 
 // ---- 测试推送类端点(/api/push /api/cards /api/ai) --------------------------
 
-/** `POST /api/push/:targetId/test` 响应;cards/test-push 与它同形。 */
+/** `POST /api/push/test` 响应(targetId 在 body 里);cards/test-push 与它同形。 */
 export interface TestResponse {
 	ok: boolean;
 	latencyMs: number;

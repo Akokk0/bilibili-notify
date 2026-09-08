@@ -480,7 +480,7 @@ const SoloResultSchema = z.object({
 });
 
 const RoastPushSchema = z.intersection(
-	z.object({ targetId: z.string().min(1), days: z.number().int().min(MIN_DAYS).max(MAX_DAYS) }),
+	z.object({ targetId: z.uuid(), days: z.number().int().min(MIN_DAYS).max(MAX_DAYS) }),
 	z.discriminatedUnion("kind", [
 		z.object({ kind: z.literal("board"), result: BoardResultSchema }),
 		z.object({ kind: z.literal("solo"), result: SoloResultSchema }),
