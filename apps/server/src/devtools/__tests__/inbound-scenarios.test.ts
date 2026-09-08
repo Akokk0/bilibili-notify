@@ -129,7 +129,6 @@ describe("inbound.link", () => {
 		const { reg, group } = setup();
 		const res = await reg.run("inbound.link", {});
 		expect(group).toHaveBeenCalledWith(
-			"onebot",
 			expect.objectContaining({
 				groupId: "88888",
 				text: expect.stringContaining("bilibili.com"),
@@ -145,7 +144,6 @@ describe("inbound.link", () => {
 		const { reg, group } = setup();
 		await reg.run("inbound.link", { connection: "ad-qq", groupId: "OPENID-9", text: "BV1xx" });
 		expect(group).toHaveBeenCalledWith(
-			"qq-official",
 			expect.objectContaining({ groupId: "OPENID-9", text: "BV1xx" }),
 			{ connectionId: "ad-qq", platform: "qq-official" },
 		);

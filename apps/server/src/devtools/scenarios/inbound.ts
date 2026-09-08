@@ -6,13 +6,13 @@ import {
 	groupAddressOf,
 	isDirectConnection,
 	type PushTarget,
+	platformCanReceiveReply,
 } from "@bilibili-notify/internal";
 import type {
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
 } from "../../platforms/types.js";
-import type { LinkSourcePlatform } from "../../runtime/link-parser.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 /**
@@ -23,7 +23,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 export interface InboundHandlers {
 	private?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
-	group?: (platform: LinkSourcePlatform, msg: InboundGroupMessage, meta: InboundMeta) => void;
+	group?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
 }
 
 export interface InboundScenarioDeps {
@@ -37,10 +37,6 @@ export interface InboundScenarioDeps {
 const DEFAULT_LINK_TEXT = "看看这个 https://www.bilibili.com/video/BV1GJ411x7h7";
 /** 假的群成员;与真人不撞。 */
 const FAKE_SENDER = "900400001";
-
-function isChatPlatform(platform: string): platform is LinkSourcePlatform {
-	return platform === "onebot" || platform === "qq-official";
-}
 
 export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 	const command: DevScenarioDef = {
@@ -72,7 +68,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const source = deps
 				.connections()
 				.find(
-					(a): a is DirectConnection & { platform: LinkSourcePlatform } =>
+					(a): a is DirectConnection =>
 						a.enabled && isDirectChat(a) && (!master || a.platform === master.platform),
 				);
 			handler(
@@ -87,8 +83,8 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 	 * 能当聊天入口的**直连**。桥接入够不着 —— 它后面挂着哪些平台是握手时才报的运行时
 	 * 知识,devtools 这张声明表在 createDevtools 那一刻就定型了。桥的入站另开场景。
 	 */
-	const isDirectChat = (a: Connection): a is DirectConnection & { platform: LinkSourcePlatform } =>
-		isDirectConnection(a) && isChatPlatform(a.platform);
+	const isDirectChat = (a: Connection): a is DirectConnection =>
+		isDirectConnection(a) && platformCanReceiveReply(a.platform);
 
 	const link: DevScenarioDef = {
 		id: "inbound.link",
@@ -108,10 +104,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const wanted = params.connection;
 			const connection =
 				wanted === undefined
-					? connections.find(
-							(a): a is DirectConnection & { platform: LinkSourcePlatform } =>
-								a.enabled && isDirectChat(a),
-						)
+					? connections.find((a): a is DirectConnection => a.enabled && isDirectChat(a))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
@@ -136,7 +129,6 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const text =
 				typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_LINK_TEXT;
 			handler(
-				connection.platform,
 				{ groupId, userId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
 				{ connectionId: connection.id, platform: connection.platform },
 			);

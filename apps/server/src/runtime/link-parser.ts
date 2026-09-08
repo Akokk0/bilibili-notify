@@ -1,14 +1,14 @@
 /**
  * 链接解析 —— 群里有人贴 B 站视频链接,机器人自动回一张视频卡片。
  *
- * 与指令分发器并列挂在 OneBot 入站帧上,但它**不是指令**:没有前缀、不认主人、
- * 群里谁贴都算。正因为谁都能触发,它默认关着、有冷却、失败不回话 —— 群里没人
- * 要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群里」广播出去。
+ * 与指令分发器并列挂在群消息上,但它**不是指令**:没有前缀、不认主人、群里谁贴都算。
+ * 正因为谁都能触发,它默认关着、有冷却、失败不回话 —— 群里没人要求解析,失败了还回
+ * 一句只是噪音,而且等于把「机器人在这个群里」广播出去。
  *
  * 回到来源群不走推送目标表:用收到这一帧的那条连接直接发,群不必配成推送目标。
  *
- * 两个平台两个入口:OneBot 的原始帧走 {@link LinkParser.handle},官机网关已经解析好的群消息
- * 走 {@link LinkParser.handleMessage} —— 同一套闸门与流程,只有「怎么拿到文本」不同。
+ * **只有一个入口** {@link LinkParser.handleMessage}:进来的已经是 adapter 归一化好的群
+ * 消息,平台的原始帧长什么样到这里已经不可见了 —— 桥后面那些平台我们连帧都没见过。
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
@@ -18,7 +18,6 @@ import {
 	type ConnectionCapabilities,
 	type DeliveryResult,
 	extractVideoLinks,
-	type INBOUND_CAPABLE_PLATFORMS,
 	LINK_LIMITS,
 	type LinkLimits,
 	type LinkParsingConfig,
@@ -39,22 +38,26 @@ const MAX_LINKS_PER_MESSAGE = 3;
 const BUDGET_WINDOW_MS = 60_000;
 
 /**
- * 链接从哪个平台来 —— 就是「我们真的收得到入站消息」的那批平台,别另立一份名单:
- * 加第三个平台时只改一处的话,它能审批却解析不了群链接,而且哪儿都不报错。
+ * 回复往哪儿发。**用哪个 adapter 由 `connectionId` 决定,不是这里的 `platform`** ——
+ * 桥后面挂着 telegram 时平台报的是 `telegram`,而认领它的 adapter 声明的是 `bridge`。
+ *
+ * 平台这一格留着是因为它还担着两件事:逐群例外的键(`linkScopeKey`)、以及回卡时那个
+ * 临时目标的平台格。`groupId` 在 OneBot 是群号、在官机是群 openid、在桥那边是桥自己
+ * 报的那套编号 —— 三者都只要求「与用户在面板上填的是同一套」。
  */
-export type LinkSourcePlatform = (typeof INBOUND_CAPABLE_PLATFORMS)[number];
-
-/** 回复往哪儿发:平台决定用哪个适配器,`groupId` 在 OneBot 是群号、在官机是群 openid。 */
 export interface LinkReplyDestination {
-	platform: LinkSourcePlatform;
+	platform: string;
 	connectionId: string;
 	groupId: string;
+	/** 哪个 bot 收到的。一条连接驮多个 bot(桥)时才有,直连没有;回卡要原路回给它。 */
+	botId?: string;
 }
 
-/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接来。 */
+/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接、哪个 bot 来。 */
 export interface InboundLinkMessage extends InboundGroupMessage {
-	platform: LinkSourcePlatform;
+	platform: string;
 	connectionId: string;
+	botId?: string;
 }
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */

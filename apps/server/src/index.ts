@@ -19,6 +19,7 @@ import { createDevtools } from "./devtools/index.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
+import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./platforms/types.js";
@@ -35,7 +36,7 @@ import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
-import { createLinkParser, type LinkSourcePlatform } from "./runtime/link-parser.js";
+import { createLinkParser } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
@@ -235,9 +236,7 @@ export async function startStandaloneServer(
 		//
 		// 两个 adapter 都在自己那层把帧归一化成平台中立的形状,汇合点是同一个。
 		let onInboundPrivate: ((msg: InboundPrivateMessage, meta: InboundMeta) => void) | undefined;
-		let onInboundGroup:
-			| ((platform: LinkSourcePlatform, msg: InboundGroupMessage, meta: InboundMeta) => void)
-			| undefined;
+		let onInboundGroup: ((msg: InboundGroupMessage, meta: InboundMeta) => void) | undefined;
 		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
 		const payloadVersion = APP_VERSION;
 		const updateService = createUpdateService({
@@ -261,14 +260,14 @@ export async function startStandaloneServer(
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-				onInboundGroup: (msg, meta) => onInboundGroup?.("onebot", msg, meta),
+				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			}),
 			createQQOfficialAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
 				registry: qqSessionRegistry,
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-				onInboundGroup: (msg, meta) => onInboundGroup?.("qq-official", msg, meta),
+				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
@@ -556,11 +555,14 @@ export async function startStandaloneServer(
 		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
-		// 回到来源群用的是收到那一帧的那条连接:配置里那条 + 它所属平台的实现,两者都在才发得出。
-		const replyRoute = (platform: LinkSourcePlatform, connectionId: string) => {
+		// 回到来源群用的是收到那一帧的那条连接:配置里那条 + 认领它的那个 adapter,两者都在
+		// 才发得出。**按连接找 adapter,不按消息里报的平台名找** —— 桥后面挂着 telegram 时
+		// 平台报的是 telegram,而认领它的 adapter 声明的是 bridge。
+		const replyRoute = (connectionId: string) => {
 			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
-			const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
-			return connection && platformAdapter ? { connection, platformAdapter } : null;
+			if (!connection) return null;
+			const platformAdapter = adapterForConnection(adapters, connection);
+			return platformAdapter ? { connection, platformAdapter } : null;
 		};
 		const linkParser = createLinkParser({
 			logger: log,
@@ -575,8 +577,8 @@ export async function startStandaloneServer(
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>
 				runtimeEngines.probeConnectionCapabilities(connectionId),
-			send: async ({ platform, connectionId, groupId }, payload) => {
-				const route = replyRoute(platform, connectionId);
+			send: async ({ platform, connectionId, groupId, botId }, payload) => {
+				const route = replyRoute(connectionId);
 				if (!route) {
 					return {
 						ok: false,
@@ -594,15 +596,26 @@ export async function startStandaloneServer(
 					enabled: true,
 				};
 				// 地址收成一格之后这里不再按平台分岔:群目标的地址就是群号 / 群 openid。
-				return platformAdapter.send(connection, { ...common, platform, address: groupId }, payload);
+				// `botId` 只有桥有(一条连接驮多个 bot),原路回给收到这条消息的那个。
+				return platformAdapter.send(
+					connection,
+					{ ...common, platform, address: groupId, botId },
+					payload,
+				);
 			},
 		});
 
-		// 两个 adapter 交出来的是同一个形状:私聊进指令分发,群进链接解析。哪个平台来的
-		// 只有链接解析关心(回到来源群要按平台造目标),所以在这儿补上。
+		// adapter 们交出来的是同一个形状:私聊进指令分发,群进链接解析。「从哪儿来」全在
+		// `meta` 里 —— 平台曾经由接线层另传一个参数补上,那是把同一件事说了两遍,而且那个
+		// 参数是闭集,桥后面挂着的平台塞不进去。
 		onInboundPrivate = (msg, meta) => void commandDispatcher.handleMessage(msg, meta);
-		onInboundGroup = (platform, msg, meta) =>
-			void linkParser.handleMessage({ platform, connectionId: meta.connectionId, ...msg });
+		onInboundGroup = (msg, meta) =>
+			void linkParser.handleMessage({
+				...msg,
+				platform: meta.platform,
+				connectionId: meta.connectionId,
+				botId: meta.botId,
+			});
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {
