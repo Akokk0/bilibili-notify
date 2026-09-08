@@ -8,7 +8,7 @@ export type { ImportResult };
 function blankedCredentials(r: ImportResult): string[] {
 	return [
 		// 适配器的 appSecret / accessToken / webhook secret 全被脱敏抹成空串。
-		r.adapters.upserted > 0 ? "适配器密钥" : null,
+		r.adapters.upserted > 0 ? "连接密钥" : null,
 		// 全局设置里的 defaults.ai.apiKey 同理。
 		r.globalsApplied ? "AI API Key" : null,
 	].filter((x): x is string => x !== null);
@@ -29,7 +29,7 @@ export function summarizeImport(r: ImportResult, kind: BackupKind): string {
 	const parts = [
 		scope("订阅", r.subscriptions),
 		scope("推送目标", r.targets),
-		scope("适配器", r.adapters),
+		scope("连接", r.adapters),
 		r.globalsApplied ? "全局设置已应用" : null,
 		r.cookiesRestored ? "B 站登录已恢复" : null,
 	].filter(Boolean);

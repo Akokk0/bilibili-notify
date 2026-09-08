@@ -44,7 +44,7 @@ describe("summarizeImport", () => {
 			const s = summarizeImport({ ...empty, adapters: { upserted: 1, deleted: 0 } }, "sanitized");
 
 			expect(s).toContain("不含凭据");
-			expect(s).toContain("适配器密钥");
+			expect(s).toContain("连接密钥");
 		});
 
 		it("应用了全局设置 → 提示重填 AI API Key", () => {

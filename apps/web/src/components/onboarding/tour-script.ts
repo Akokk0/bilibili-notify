@@ -105,7 +105,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 抵达 /targets 即流转 —— 灯与文案永远同步
 			advanceOnRoute: true,
 			title: "先选一条接入路线",
-			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
+			body: "BN 有三类连接:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
@@ -115,7 +115,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			anchor: ["adapter-form", "adapter-add"],
 			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
 			doneWhen: (v) => v.hasConnection,
-			title: "新建推送适配器",
+			title: "新建推送连接",
 			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码连接 / 创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
 			// 上一子步在抵达时自动翻过 —— 一直待在本页的用户全程见不到它,选型入口在这也挂一份
 			link: { to: "/about/guide", label: "选型指引" },
@@ -125,8 +125,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 控件级:灯指适配器详情区的「测试」按钮本体;挂点没渲染时回落适配器区
 			anchor: ["adapter-test", "adapter-add"],
 			anchorOnFail: ["adapter-form", ["adapter-config", "adapter-test"], "adapter-add"],
-			title: "测试适配器连通",
-			body: "在刚建好的适配器行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
+			title: "测试连通性",
+			body: "在刚建好的连接行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
 		},
 	],
 	target: [
@@ -140,7 +140,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 降级提示也被抑制,导览就此死在这儿(2026-08-31 审查)。test 步早有这条兜底。
 			anchor: ["target-form", "target-add", "target-list"],
 			title: "添加推送目标",
-			body: "点高亮的「+ 新建」,选刚才的适配器,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
+			body: "点高亮的「+ 新建」,选刚才的连接,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
 		},
 	],
 	test: [
@@ -169,7 +169,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
  *  不然小卡文案无声切到下一步,用户不知道刚才那步已经成了(真机反馈:突兀)。 */
 export const STEP_DONE_MESSAGES: Record<OnboardingStepKey, string> = {
 	login: "B 站登录完成!",
-	adapter: "适配器连通了!",
+	adapter: "连接打通了!",
 	target: "推送目标建好了!",
 	test: "测试消息已送达,通道全线打通!",
 	subs: "订阅成功,大功告成!",

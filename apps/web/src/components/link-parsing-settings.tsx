@@ -221,11 +221,11 @@ function CapabilityPanel({
 }) {
 	const onebots = connections.filter((a) => a.platform === "onebot");
 	return (
-		<section aria-label="适配器支持情况" className="mt-4">
-			<Section label="适配器支持情况">
+		<section aria-label="连接支持情况" className="mt-4">
+			<Section label="连接支持情况">
 				{onebots.length === 0 ? (
 					<EmptyNote size="sm" className="m-2">
-						还没有 OneBot 适配器;小程序卡只有 OneBot 实现能签
+						还没有 OneBot 连接;小程序卡只有 OneBot 实现能签
 					</EmptyNote>
 				) : (
 					onebots.map((a) => {
@@ -333,7 +333,7 @@ function GroupRow({
 			{target.platform === "qq-official" ? (
 				<HintNote className="basis-full">QQ 官方机器人不支持小程序卡,选了也会回落图片卡</HintNote>
 			) : support?.state === "unsupported" ? (
-				<HintNote className="basis-full">该适配器不支持小程序卡,选了也会回落图片卡</HintNote>
+				<HintNote className="basis-full">该连接不支持小程序卡,选了也会回落图片卡</HintNote>
 			) : null}
 		</fieldset>
 	);

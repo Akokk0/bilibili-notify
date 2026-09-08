@@ -52,7 +52,7 @@ afterEach(() => {
 
 async function openConnectionEditor() {
 	renderPage();
-	const add = await screen.findByRole("button", { name: /新建适配器/ });
+	const add = await screen.findByRole("button", { name: /新建连接/ });
 	fireEvent.click(add);
 	await waitFor(() => screen.getByRole("dialog"));
 }

@@ -269,7 +269,7 @@ describe("LinkParsingSettings", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, {
 				capabilities: { ...CAPS, [A_OB2]: CAPS[A_OB2] as never },
 			});
-			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
 			expect(panel.getByText("NapCat 主号")).toBeTruthy();
 			expect(panel.getByText("支持小程序卡")).toBeTruthy();
 			expect(panel.getByText("Lagrange 备用")).toBeTruthy();
@@ -280,15 +280,15 @@ describe("LinkParsingSettings", () => {
 
 		it("表里没有的 OneBot 适配器(引擎还没探)显示「未探测」", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { capabilities: {} });
-			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
 			expect(panel.getAllByText("未探测")).toHaveLength(2);
 		});
 
 		it("官机与 webhook 用一句话说明不支持;没有 OneBot 适配器时只剩这句", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { connections: [ADAPTERS[2] as Connection] });
-			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
 			expect(panel.getByText(/QQ 官方机器人与 webhook 不支持小程序卡/)).toBeTruthy();
-			expect(panel.getByText(/还没有 OneBot 适配器/)).toBeTruthy();
+			expect(panel.getByText(/还没有 OneBot 连接/)).toBeTruthy();
 		});
 
 		it("群所在的适配器不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {

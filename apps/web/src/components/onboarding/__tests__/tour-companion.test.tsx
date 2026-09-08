@@ -534,12 +534,12 @@ describe("TourCompanion 常驻小卡", () => {
 		};
 		const { qc } = await mount(s);
 		// hasConnection=true → 「新建」子步的 doneWhen 已满足,自动翻到「测试连通」
-		await screen.findByText("测试适配器连通");
+		await screen.findByText("测试连通性");
 		s.connections = [];
 		await act(async () => {
 			await qc.invalidateQueries({ queryKey: ["adapters"] });
 		});
-		await screen.findByText("新建推送适配器");
+		await screen.findByText("新建推送连接");
 	});
 
 	/**
@@ -783,7 +783,7 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("adapter 主步 · 抵达即流转:身在 /targets 时说明步直接翻过,灯与文案同步进动手子步", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
-		expect(await screen.findByText("新建推送适配器")).toBeTruthy();
+		expect(await screen.findByText("新建推送连接")).toBeTruthy();
 		expect(screen.queryByText("先选一条接入路线")).toBeNull();
 		// 说明步被翻过也不丢选型入口 —— 动手子步上同样挂着「选型指引」
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
@@ -795,7 +795,7 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(testBtn);
 		// 保存适配器后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
 		await mount({ loggedIn: true, connections: [{ id: "a1", enabled: true }], route: "/targets" });
-		expect(await screen.findByText("测试适配器连通")).toBeTruthy();
+		expect(await screen.findByText("测试连通性")).toBeTruthy();
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
 				'[data-tour="adapter-test"]',
@@ -815,7 +815,7 @@ describe("TourCompanion 常驻小卡", () => {
 		cta.getBoundingClientRect = () => new DOMRect(400, 300, 120, 60);
 		document.body.appendChild(cta);
 		await mount({ loggedIn: true, route: "/targets" });
-		await screen.findByText("新建推送适配器");
+		await screen.findByText("新建推送连接");
 		await waitFor(() => expect(screen.getAllByTestId("tour-spot-frame").length).toBe(2));
 	});
 
@@ -830,7 +830,7 @@ describe("TourCompanion 常驻小卡", () => {
 			[] as unknown as DOMRectList;
 		document.body.appendChild(hiddenEl);
 		await mount({ loggedIn: true, route: "/targets" });
-		await screen.findByText("新建推送适配器");
+		await screen.findByText("新建推送连接");
 		await waitFor(() => expect(screen.getAllByTestId("tour-spot-frame").length).toBe(1));
 	});
 
@@ -861,9 +861,9 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
-		await screen.findByText("新建推送适配器");
+		await screen.findByText("新建推送连接");
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
-		expect(await screen.findByText("测试适配器连通")).toBeTruthy();
+		expect(await screen.findByText("测试连通性")).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
 	});
 

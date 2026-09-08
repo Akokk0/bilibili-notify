@@ -32,7 +32,7 @@ function deletions(r: ImportResult): string[] {
 	return [
 		["订阅", r.subscriptions.deleted] as const,
 		["推送目标", r.targets.deleted] as const,
-		["推送适配器", r.adapters.deleted] as const,
+		["推送连接", r.adapters.deleted] as const,
 	]
 		.filter(([, n]) => n > 0)
 		.map(([label, n]) => `${label} ${n} 项`);
@@ -125,14 +125,14 @@ export function BackupSection() {
 	return (
 		<GlassBox
 			title="备份与恢复 · backup"
-			subtitle="一键导出订阅 / 目标 / 适配器 / 全局设置 · 完整备份另含 B 站登录与密钥"
+			subtitle="一键导出订阅 / 目标 / 连接 / 全局设置 · 完整备份另含 B 站登录与密钥"
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.download size={14} />}
 			badge="导出 / 导入"
 		>
 			<div className="text-bn-sm leading-relaxed text-bn-text-secondary">
 				<span className="font-semibold text-bn-text-primary">完整备份</span>
-				：含机密（B 站 Cookie、AI Key、适配器凭据），用 6 位 PIN 加密，用于换机 / 灾备还原。
+				：含机密（B 站 Cookie、AI Key、连接凭据），用 6 位 PIN 加密，用于换机 / 灾备还原。
 				<br />
 				<span className="font-semibold text-bn-text-primary">脱敏导出</span>
 				：机密位置留空，纯明文 JSON，可存档、可分享给别人抄配置。

@@ -107,7 +107,7 @@ const draftIsland: WebDevScenario = {
 
 const STEPS: ReadonlyArray<{ value: OnboardingStepKey | "done"; label: string }> = [
 	{ value: "login", label: "① 还没登录 B 站" },
-	{ value: "adapter", label: "② 该建适配器了" },
+	{ value: "adapter", label: "② 该建连接了" },
 	{ value: "target", label: "③ 该建推送目标了" },
 	{ value: "test", label: "④ 该测一次推送了" },
 	{ value: "subs", label: "⑤ 该订阅 UP 了" },

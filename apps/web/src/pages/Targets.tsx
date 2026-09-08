@@ -257,7 +257,7 @@ function TargetCard({
 					{scopeLabel(target.scope)}
 					{" · "}
 					<span style={{ color: connectionMissing ? "var(--color-bn-danger-text)" : undefined }}>
-						{connectionMissing ? "适配器缺失" : `适配器: ${connection.name}`}
+						{connectionMissing ? "连接缺失" : `连接: ${connection.name}`}
 					</span>
 					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
 				</span>
@@ -334,14 +334,10 @@ function ConnectionEditorModal({
 	const invalidHint = valid ? undefined : "请先填写显示名称";
 	const tint = platformTint(value.platform);
 	return (
-		<ModalShell
-			onCancel={onCancel}
-			width={500}
-			title={mode === "add" ? "新建适配器" : "配置适配器"}
-		>
+		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
 			<div data-tour="adapter-form" className="space-y-2.5">
-				<SectionBox title="基本" subtitle="适配器代表一个连接实例,可被多个目标共享" accent={tint}>
+				<SectionBox title="基本" subtitle="一个连接实例可被多个推送目标共享" accent={tint}>
 					<Field label="平台" code="adapter.platform" required>
 						<div className="flex flex-wrap gap-1.5">
 							{KNOWN_PLATFORMS.map((p) => {
@@ -783,13 +779,13 @@ function TargetEditorModal({
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
 			<div data-tour="target-form" className="space-y-2.5">
 				<SectionBox
-					title="选择适配器"
-					subtitle="目标的平台跟随适配器,连接参数(baseUrl/accessToken)在适配器层维护"
+					title="选择连接"
+					subtitle="目标的平台跟随连接;baseUrl / accessToken 这些参数在连接上维护"
 					accent={tint}
 				>
 					{eligibleConnections.length === 0 ? (
 						<EmptyNote size="sm">
-							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
+							尚未配置任何可手动绑定的连接 · Webhook 目标由系统自动托管
 						</EmptyNote>
 					) : (
 						<div className="space-y-1.5">
@@ -1067,7 +1063,7 @@ function QQSessionPicker({
 			{isLoading ? (
 				<div className="text-bn-xs text-bn-text-tertiary">加载中…</div>
 			) : isError ? (
-				<div className="text-bn-xs text-bn-danger">拉取失败(适配器是否已保存并连上网关?)</div>
+				<div className="text-bn-xs text-bn-danger">拉取失败(这条连接是否已保存并连上网关?)</div>
 			) : list.length === 0 ? (
 				<div className="text-bn-xs leading-relaxed text-bn-text-tertiary">
 					暂无发现的{label}会话 —— 先让机器人在目标
@@ -1126,7 +1122,7 @@ function QQGuildPicker({
 			onAction={() => refetch()}
 		>
 			{isError ? (
-				<div className="text-bn-xs text-bn-danger">拉取失败(适配器是否已保存且凭据正确?)</div>
+				<div className="text-bn-xs text-bn-danger">拉取失败(这条连接是否已保存且凭据正确?)</div>
 			) : !fetched ? (
 				<div className="text-bn-xs text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
 			) : guilds.length === 0 ? (
@@ -1251,7 +1247,7 @@ function DeleteModal({
 		<ModalShell
 			onCancel={onCancel}
 			width={420}
-			title={subjectKind === "adapter" ? "删除适配器" : "删除推送目标"}
+			title={subjectKind === "adapter" ? "删除连接" : "删除推送目标"}
 			description={
 				<>
 					确定要移除 <b className="text-bn-text-primary">{subjectName}</b> 吗？
@@ -1297,7 +1293,7 @@ function TestConfirmModal({
 			title="发送测试推送?"
 			description={
 				<>
-					将通过 <b className="text-bn-text-primary">{connection?.name ?? "(未知适配器)"}</b> 向{" "}
+					将通过 <b className="text-bn-text-primary">{connection?.name ?? "(未知连接)"}</b> 向{" "}
 					<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
 					<br />
 					<span className="font-mono text-bn-xs text-bn-text-tertiary">
@@ -1335,7 +1331,7 @@ function ConnectionRail({
 }) {
 	return (
 		<SectionNav
-			heading="推送适配器"
+			heading="推送连接"
 			activeId={selectedId}
 			onPick={onPick}
 			onAdd={onAddClick}
@@ -1343,7 +1339,7 @@ function ConnectionRail({
 			// data-tour:导览「新建推送适配器」的常驻灯位(控件级 —— 只框按钮本体)
 			addButtonProps={{ "data-tour": "adapter-add" }}
 			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
-			emptyState={<EmptyNote size="sm">尚未配置任何适配器</EmptyNote>}
+			emptyState={<EmptyNote size="sm">尚未配置任何连接</EmptyNote>}
 			items={connections.map((a) => {
 				const count = targetCountByConnection.get(a.id) ?? 0;
 				return {
@@ -1464,7 +1460,7 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["adapters"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast(connectionDraft?.mode === "add" ? "已新建适配器" : "适配器已保存");
+			showToast(connectionDraft?.mode === "add" ? "已新建连接" : "连接已保存");
 			setConnectionDraft(null);
 		},
 	});
@@ -1483,7 +1479,7 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["adapters"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast("已移除适配器");
+			showToast("已移除连接");
 			setConfirmDelete(null);
 		},
 	});
@@ -1641,7 +1637,7 @@ export default function Targets() {
 		setError(null);
 		const a = connection ?? selectedConnection ?? connections[0];
 		if (!a) {
-			showToast("请先新建一个适配器", false);
+			showToast("请先新建一个连接", false);
 			return;
 		}
 		if (a.platform === "webhook") {
@@ -1654,7 +1650,7 @@ export default function Targets() {
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
 		if (t.platform === "webhook" && t.managedBy === "adapter") {
-			showToast("Webhook 目标由系统自动托管，请在适配器里修改 URL", false);
+			showToast("Webhook 目标由系统自动托管，请在连接里修改 URL", false);
 			return;
 		}
 		setTargetDraft({ mode: "edit", value: t });
@@ -1696,13 +1692,13 @@ export default function Targets() {
 						</div>
 					) : !selectedConnection ? (
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
-							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有适配器</div>
+							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有连接</div>
 							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
-								先新建一个适配器(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
+								先新建一个连接(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
 							</div>
 							{/* 与左栏「+ 新建」同名挂点 —— 同名实例是等价入口,聚光灯一起亮 */}
 							<Btn data-tour="adapter-add" variant="primary" size="sm" onClick={startNewConnection}>
-								+ 新建适配器
+								+ 新建连接
 							</Btn>
 						</div>
 					) : (
@@ -1812,7 +1808,7 @@ export default function Targets() {
 										<div className="text-bn-xs text-bn-text-tertiary">
 											{selectedConnection.platform === "webhook"
 												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
-												: "本适配器下的会话:群号 / 用户 ID 等。"}
+												: "本连接下的会话:群号 / 用户 ID 等。"}
 										</div>
 									</div>
 									{selectedConnection.platform === "webhook" ? null : (
@@ -1853,7 +1849,7 @@ export default function Targets() {
 										<AddCard
 											data-tour="target-add"
 											label="新建推送目标"
-											hint="绑定到当前适配器"
+											hint="绑定到当前连接"
 											className="min-h-22"
 											onClick={() => startNewTarget(selectedConnection)}
 										/>
@@ -1877,7 +1873,7 @@ export default function Targets() {
 										))}
 										<AddCard
 											label="新建推送目标"
-											hint="绑定到当前适配器"
+											hint="绑定到当前连接"
 											className="min-h-22"
 											onClick={() => startNewTarget(selectedConnection)}
 										/>
@@ -1928,7 +1924,7 @@ export default function Targets() {
 						confirmDelete.kind === "adapter"
 							? confirmDelete.value.platform === "webhook"
 								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
-								: "适配器若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他适配器或先删除它们。"
+								: "连接若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他连接或先删除它们。"
 							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"
 					}
 					onCancel={() => {

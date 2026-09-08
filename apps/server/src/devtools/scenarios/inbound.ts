@@ -69,9 +69,9 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		group: "event",
 		title: "群里贴链接",
 		icon: "link",
-		desc: "当作群里有人发了一句话喂给链接解析。适配器省略 = 第一个启用的聊天平台;群号省略 = 它名下第一个群目标。默认行 / 逐群例外照真的判 —— 那个群被例外停了解析就不会有回卡,换个群号试。",
+		desc: "当作群里有人发了一句话喂给链接解析。连接省略 = 第一个启用的聊天平台;群号省略 = 它名下第一个群目标。默认行 / 逐群例外照真的判 —— 那个群被例外停了解析就不会有回卡,换个群号试。",
 		params: [
-			{ key: "adapter", label: "适配器", kind: "adapter" },
+			{ key: "adapter", label: "连接", kind: "adapter" },
 			{ key: "groupId", label: "群号 / 群 openid(可空)", kind: "text", default: "" },
 			{ key: "text", label: "正文", kind: "text", default: DEFAULT_LINK_TEXT },
 		],
@@ -86,9 +86,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
-					wanted === undefined
-						? "没有启用的聊天平台适配器(OneBot / 官机)"
-						: `没有这个适配器:${wanted}`,
+					wanted === undefined ? "没有启用的聊天平台连接(OneBot / 官机)" : `没有这个连接:${wanted}`,
 				);
 			}
 			if (!isChatPlatform(connection.platform)) {

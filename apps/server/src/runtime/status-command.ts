@@ -54,7 +54,7 @@ function ago(at: number | undefined, now: number): string {
 
 function renderConnections(connections: StatusReport["connections"]): string {
 	// 一行空白看起来像功能坏了,而「还没配」是个明确的下一步。
-	if (connections.length === 0) return "还没配适配器";
+	if (connections.length === 0) return "还没配连接";
 	const down = connections.filter((a) => !a.ok);
 	if (down.length === 0) return `${connections.length} 个都连着`;
 	// 只点名断掉的那些 —— 连着的不需要主人做任何事。

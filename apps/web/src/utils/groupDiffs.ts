@@ -33,7 +33,7 @@ const SECTION_LABELS: Record<GroupSectionKey, string> = {
 	specialUsers: "特别关注",
 	imageGroup: "动态图集",
 	target: "推送目标",
-	adapter: "适配器",
+	adapter: "连接",
 	transport: "传输",
 	session: "会话",
 	commands: "私聊指令",

@@ -25,7 +25,7 @@ export function OnboardingReopenSection() {
 	return (
 		<GlassBox
 			title="新手指引 · onboarding"
-			subtitle="五步导览:登录 → 适配器 → 目标 → 测试 → 订阅 · 跳过或毕业后从这里重开"
+			subtitle="五步导览:登录 → 连接 → 目标 → 测试 → 订阅 · 跳过或毕业后从这里重开"
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.sparkle size={14} />}
 		>

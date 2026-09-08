@@ -45,7 +45,7 @@ describe("BackupExportDialog", () => {
 		render(<BackupExportDialog onCancel={vi.fn()} onExport={onExport} />);
 
 		fireEvent.click(screen.getByText(/脱敏/));
-		fireEvent.click(screen.getByRole("checkbox", { name: /推送适配器/ }));
+		fireEvent.click(screen.getByRole("checkbox", { name: /推送连接/ }));
 		fireEvent.click(screen.getByText("导出"));
 
 		expect(onExport.mock.calls[0]?.[0].sections.adapters).toBe(false);

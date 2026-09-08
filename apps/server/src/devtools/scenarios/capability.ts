@@ -38,11 +38,11 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 	return {
 		id: "adapter.capability",
 		group: "state",
-		title: "适配器能力",
+		title: "连接能力",
 		icon: "sparkle",
-		desc: "换掉某个 OneBot 适配器「能不能签小程序卡」的探测结果(支持 / 不支持 / 未知)。探一次也回假的,不出网;官机 / webhook 没有能力概念,选不了。",
+		desc: "换掉某个 OneBot 连接「能不能签小程序卡」的探测结果(支持 / 不支持 / 未知)。探一次也回假的,不出网;官机 / webhook 没有能力概念,选不了。",
 		params: [
-			{ key: "adapter", label: "适配器", kind: "adapter" },
+			{ key: "adapter", label: "连接", kind: "adapter" },
 			{ key: "state", label: "状态", kind: "enum", options: STATES, default: "supported" },
 			{ key: "reason", label: "不支持的理由", kind: "text", default: DEFAULT_REASON },
 		],
@@ -55,7 +55,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
-					wanted === undefined ? "没有 OneBot 适配器" : `没有这个适配器:${wanted}`,
+					wanted === undefined ? "没有 OneBot 连接" : `没有这个连接:${wanted}`,
 				);
 			}
 			if (!CAPABLE_PLATFORMS.has(connection.platform)) {
