@@ -255,6 +255,15 @@ export function connectionDispatchKey(
  */
 export const BRIDGE_DISPATCH_KEY = "bridge";
 
+/**
+ * 桥接那个**拓展模块**的 id —— `globals.extensions` 的键、拓展页那张卡的 id。
+ *
+ * 与 {@link BRIDGE_DISPATCH_KEY} 同名但**不是同一个东西**:那个是 adapter 矩阵的索引键
+ * (「这条连接归谁管」),这个是模块开关的键(「这块功能开没开」)。今天两者恰好都叫
+ * bridge,写成两个常量是为了哪天其中一个改了名,另一个不会跟着被误改。
+ */
+export const BRIDGE_EXTENSION_ID = "bridge";
+
 /** 这个平台是不是靠 webhook 连的。 */
 export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
 	return platformDescriptor(platform)?.connectors[0] === "webhook";

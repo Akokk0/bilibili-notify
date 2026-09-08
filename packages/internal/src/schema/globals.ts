@@ -209,6 +209,14 @@ export const DEFAULT_UPDATE_SETTINGS: UpdateSettings = {
 	mirrors: [],
 };
 
+/**
+ * 一个拓展模块的持久状态。今天只有「开没开」——模块本身是**编进产物**的,不存在装不装。
+ */
+export const ExtensionStateSchema = z.object({
+	enabled: z.boolean().default(false),
+});
+export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
+
 export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
 	master: MasterConfigSchema,
@@ -261,9 +269,30 @@ export const GlobalConfigSchema = z.object({
 	 * 少了它,存量实例升上来第一件事就是开不了机。
 	 */
 	update: UpdateSettingsSchema.default(DEFAULT_UPDATE_SETTINGS),
+	/**
+	 * 拓展模块的开关,键是模块 id(如 {@link BRIDGE_EXTENSION_ID})。
+	 *
+	 * **开放词表**,不是 `z.enum`:模块是编进产物的,而配置活得比某一版产物久 —— 一次
+	 * 回退、一次撤下,配置里就会多出一个当下没人认领的 id。闭集会把它判成非法(整份
+	 * globals 开不了机)或者被抹掉(用户再升回来时开关被人悄悄关了)。
+	 *
+	 * 读它用 {@link isExtensionEnabled} —— **缺失 = 关着**,别在读点各写各的 `?? false`。
+	 */
+	extensions: z.record(z.string(), ExtensionStateSchema).default({}),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+
+/**
+ * 这个拓展模块开了没有。**缺失 = 关着**:开关是用户按的,桥接模块一开就是在对外收长
+ * 连接,不该因为升了一版就自己开起来。
+ */
+export function isExtensionEnabled(
+	config: { extensions?: Record<string, { enabled?: boolean } | undefined> },
+	id: string,
+): boolean {
+	return config.extensions?.[id]?.enabled === true;
+}
 
 export const DEFAULT_AI = {
 	enabled: false,
