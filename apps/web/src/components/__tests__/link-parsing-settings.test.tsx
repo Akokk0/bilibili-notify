@@ -7,11 +7,11 @@
  * 显式值;「跟默认」发的是删除哨兵(null),不是把默认值抄一份进例外。
  */
 
-import type { AdapterCapabilitiesMap } from "@bilibili-notify/contract";
+import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PushAdapter, PushTarget } from "../../types/domain";
+import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { LinkParsingSettings } from "../link-parsing-settings";
 
@@ -57,17 +57,17 @@ const A_OB = "11111111-1111-4111-8111-111111111111";
 const A_OB2 = "22222222-2222-4222-8222-222222222222";
 const A_QQ = "33333333-3333-4333-8333-333333333333";
 
-function adapter(id: string, name: string, platform: PushAdapter["platform"]): PushAdapter {
-	return { id, name, platform, enabled: true, config: {} } as unknown as PushAdapter;
+function connection(id: string, name: string, platform: Connection["platform"]): Connection {
+	return { id, name, platform, enabled: true, config: {} } as unknown as Connection;
 }
 
-const ADAPTERS: PushAdapter[] = [
-	adapter(A_OB, "NapCat 主号", "onebot"),
-	adapter(A_OB2, "Lagrange 备用", "onebot"),
-	adapter(A_QQ, "官机", "qq-official"),
+const ADAPTERS: Connection[] = [
+	connection(A_OB, "NapCat 主号", "onebot"),
+	connection(A_OB2, "Lagrange 备用", "onebot"),
+	connection(A_QQ, "官机", "qq-official"),
 ];
 
-const CAPS: AdapterCapabilitiesMap = {
+const CAPS: ConnectionCapabilitiesMap = {
 	[A_OB]: { miniAppCard: { state: "supported", checkedAt: 1 } },
 	[A_OB2]: {
 		miniAppCard: { state: "unsupported", reason: "这个实现没有 get_mini_app_ark", checkedAt: 1 },
@@ -78,7 +78,7 @@ function renderCard(
 	draft: GlobalConfig,
 	onPatch = vi.fn(),
 	targets: PushTarget[] = TARGETS,
-	extra: { adapters?: PushAdapter[]; capabilities?: AdapterCapabilitiesMap } = {},
+	extra: { connections?: Connection[]; capabilities?: ConnectionCapabilitiesMap } = {},
 ) {
 	render(
 		<MemoryRouter>
@@ -86,7 +86,7 @@ function renderCard(
 				draft={draft}
 				onPatch={onPatch}
 				targets={targets}
-				adapters={extra.adapters ?? ADAPTERS}
+				connections={extra.connections ?? ADAPTERS}
 				capabilities={extra.capabilities ?? CAPS}
 			/>
 		</MemoryRouter>,
@@ -120,7 +120,7 @@ describe("LinkParsingSettings", () => {
 					draft={draftWith({ enabled: false })}
 					onPatch={() => {}}
 					targets={TARGETS}
-					adapters={ADAPTERS}
+					connections={ADAPTERS}
 					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
@@ -132,7 +132,7 @@ describe("LinkParsingSettings", () => {
 					draft={draftWith({ enabled: true, cooldownSeconds: 90 })}
 					onPatch={() => {}}
 					targets={TARGETS}
-					adapters={ADAPTERS}
+					connections={ADAPTERS}
 					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
@@ -147,7 +147,7 @@ describe("LinkParsingSettings", () => {
 					})}
 					onPatch={() => {}}
 					targets={TARGETS}
-					adapters={ADAPTERS}
+					connections={ADAPTERS}
 					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
@@ -245,7 +245,7 @@ describe("LinkParsingSettings", () => {
 			cleanup();
 
 			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A")], {
-				adapters: [{ ...ADAPTERS[0], enabled: false } as PushAdapter, ...ADAPTERS.slice(1)],
+				connections: [{ ...ADAPTERS[0], enabled: false } as Connection, ...ADAPTERS.slice(1)],
 			});
 			openGroups();
 			expect(row("群 A").getByText("已停用")).toBeTruthy();
@@ -285,7 +285,7 @@ describe("LinkParsingSettings", () => {
 		});
 
 		it("官机与 webhook 用一句话说明不支持;没有 OneBot 适配器时只剩这句", () => {
-			renderCard(draftWith(), vi.fn(), TARGETS, { adapters: [ADAPTERS[2] as PushAdapter] });
+			renderCard(draftWith(), vi.fn(), TARGETS, { connections: [ADAPTERS[2] as Connection] });
 			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
 			expect(panel.getByText(/QQ 官方机器人与 webhook 不支持小程序卡/)).toBeTruthy();
 			expect(panel.getByText(/还没有 OneBot 适配器/)).toBeTruthy();

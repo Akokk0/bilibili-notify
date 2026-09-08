@@ -728,10 +728,10 @@ export function platformSupportsAtAll(platform: (typeof PUSH_TARGET_PLATFORMS)[n
  */
 export function isTargetPaused(
 	target: { enabled: boolean; adapterId: string },
-	adapters: readonly { id: string; enabled: boolean }[],
+	connections: readonly { id: string; enabled: boolean }[],
 ): boolean {
 	if (!target.enabled) return true;
-	return !adapters.find((a) => a.id === target.adapterId)?.enabled;
+	return !connections.find((a) => a.id === target.adapterId)?.enabled;
 }
 
 /**

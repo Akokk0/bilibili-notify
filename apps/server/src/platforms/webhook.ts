@@ -1,12 +1,12 @@
 import { createHmac } from "node:crypto";
 import type {
+	Connection,
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
 	PayloadSegment,
-	PushAdapter,
 	PushTarget,
-	WebhookAdapterConfig,
+	WebhookConnectionConfig,
 } from "@bilibili-notify/internal";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
 
@@ -26,7 +26,7 @@ export interface WebhookAdapterOptions {
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
-type WebhookAdapterConfigWithProvider = WebhookAdapterConfig & { provider?: WebhookProvider };
+type WebhookConnectionConfigWithProvider = WebhookConnectionConfig & { provider?: WebhookProvider };
 
 interface WebhookHttpRequest {
 	url: string;
@@ -40,13 +40,13 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		platforms: ["webhook"],
-		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
-			if (adapter.platform !== "webhook" || target.platform !== "webhook") return false;
-			if (!adapter.enabled || !target.enabled) return false;
-			const cfg = adapter.config as WebhookAdapterConfigWithProvider;
+		isAvailable(connection: Connection, target: PushTarget): boolean {
+			if (connection.platform !== "webhook" || target.platform !== "webhook") return false;
+			if (!connection.enabled || !target.enabled) return false;
+			const cfg = connection.config as WebhookConnectionConfigWithProvider;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
-		async probe(_adapter: PushAdapter): Promise<ProbeResult> {
+		async probe(_adapter: Connection): Promise<ProbeResult> {
 			// Webhook has no standard side-effect-free ping verb — most endpoints
 			// reject everything except the exact POST shape they expect. Returning
 			// ok:null tells the UI to render "probe unsupported" and prompt the
@@ -54,19 +54,19 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			return { ok: null, latencyMs: 0, err: "webhook does not support connection probe" };
 		},
 		async send(
-			adapter: PushAdapter,
+			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
 			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (adapter.platform !== "webhook" || target.platform !== "webhook") {
+			if (connection.platform !== "webhook" || target.platform !== "webhook") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
 				};
 			}
-			const cfg = adapter.config as WebhookAdapterConfigWithProvider;
+			const cfg = connection.config as WebhookConnectionConfigWithProvider;
 			const provider = webhookProviderOf(cfg);
 			const t0 = Date.now();
 			const ctrl = new AbortController();
@@ -104,13 +104,13 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	};
 }
 
-function webhookProviderOf(cfg: WebhookAdapterConfigWithProvider): WebhookProvider {
+function webhookProviderOf(cfg: WebhookConnectionConfigWithProvider): WebhookProvider {
 	return cfg.provider ?? "generic";
 }
 
 function buildWebhookRequest(
 	provider: WebhookProvider,
-	cfg: WebhookAdapterConfigWithProvider,
+	cfg: WebhookConnectionConfigWithProvider,
 	target: PushTarget,
 	payload: NotificationPayload,
 	pushOpts: { private?: boolean },
@@ -127,7 +127,7 @@ function buildWebhookRequest(
 	}
 }
 
-function baseHeaders(cfg: WebhookAdapterConfigWithProvider): Record<string, string> {
+function baseHeaders(cfg: WebhookConnectionConfigWithProvider): Record<string, string> {
 	return {
 		"content-type": "application/json",
 		...cfg.headers,
@@ -135,7 +135,7 @@ function baseHeaders(cfg: WebhookAdapterConfigWithProvider): Record<string, stri
 }
 
 function buildGenericWebhookRequest(
-	cfg: WebhookAdapterConfigWithProvider,
+	cfg: WebhookConnectionConfigWithProvider,
 	target: PushTarget,
 	payload: NotificationPayload,
 	pushOpts: { private?: boolean },
@@ -157,7 +157,7 @@ function buildGenericWebhookRequest(
 }
 
 function buildDingTalkWebhookRequest(
-	cfg: WebhookAdapterConfigWithProvider,
+	cfg: WebhookConnectionConfigWithProvider,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const url = cfg.secret ? signDingTalkUrl(cfg.url, cfg.secret) : cfg.url;
@@ -172,7 +172,7 @@ function buildDingTalkWebhookRequest(
 }
 
 function buildFeishuWebhookRequest(
-	cfg: WebhookAdapterConfigWithProvider,
+	cfg: WebhookConnectionConfigWithProvider,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const body: Record<string, unknown> = {
@@ -188,7 +188,7 @@ function buildFeishuWebhookRequest(
 }
 
 function buildWeComWebhookRequest(
-	cfg: WebhookAdapterConfigWithProvider,
+	cfg: WebhookConnectionConfigWithProvider,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	return {
@@ -315,7 +315,7 @@ function stringValue(value: unknown): string | null {
 	return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function sanitizeWebhookError(message: string, cfg: WebhookAdapterConfigWithProvider): string {
+function sanitizeWebhookError(message: string, cfg: WebhookConnectionConfigWithProvider): string {
 	let out = message
 		.replace(/((?:[?&]|\b)(?:access_token|sign|token|secret|key)=)[^&\s"']+/gi, "$1***")
 		.replace(/\b(Authorization)\b(\s*[:=]\s*Bearer\s+)[^\s",;}]+/gi, "$1$2***")

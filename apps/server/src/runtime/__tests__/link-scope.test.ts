@@ -6,7 +6,7 @@
  * 怎么办、不是目标的群跟谁。解析器(link-parser)只拿结果做一次查表,不再各自判一遍。
  */
 
-import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { linkScopeKey, resolveLinkParsingPolicies } from "../link-scope.js";
 
@@ -18,8 +18,8 @@ const T_PRIVATE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const T_QQ_GROUP = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const T_GONE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
-function adapter(id: string, platform: "onebot" | "qq-official", enabled = true): PushAdapter {
-	return { id, name: platform, enabled, platform, config: {} } as unknown as PushAdapter;
+function connection(id: string, platform: "onebot" | "qq-official", enabled = true): Connection {
+	return { id, name: platform, enabled, platform, config: {} } as unknown as Connection;
 }
 
 function onebotGroup(id: string, groupId: string, over: Partial<PushTarget> = {}): PushTarget {
@@ -60,7 +60,7 @@ function qqGroup(id: string, groupOpenid: string, over: Partial<PushTarget> = {}
 	} as PushTarget;
 }
 
-const ADAPTERS = [adapter(ONEBOT_ADAPTER, "onebot"), adapter(QQ_ADAPTER, "qq-official")];
+const ADAPTERS = [connection(ONEBOT_ADAPTER, "onebot"), connection(QQ_ADAPTER, "qq-official")];
 
 const K_GROUP = linkScopeKey("onebot", ONEBOT_ADAPTER, "123");
 const K_GROUP_2 = linkScopeKey("onebot", ONEBOT_ADAPTER, "456");
@@ -75,7 +75,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "image" });
 		expect(table.policyFor(K_STRANGER)).toEqual({ parse: true, form: "image" });
@@ -85,7 +85,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP).parse).toBe(true);
 		expect(table.policyFor(K_GROUP_2).parse).toBe(false);
@@ -96,7 +96,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: false } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP).parse).toBe(false);
 		expect(table.policyFor(K_GROUP_2).parse).toBe(true);
@@ -106,7 +106,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { form: "miniapp" } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP).form).toBe("miniapp");
 		expect(table.policyFor(K_GROUP_2).form).toBe("image");
@@ -114,7 +114,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const flipped = resolveLinkParsingPolicies({
 			config: { defaults: { parse: true, form: "miniapp" }, groups: {} },
 			targets: [],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(flipped.policyFor(K_STRANGER)).toEqual({ parse: true, form: "miniapp" });
 	});
@@ -125,32 +125,32 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: true, form: "miniapp" } } },
 			targets: [onebotGroup(T_GROUP, "123", { enabled: false })],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP)).toEqual({ parse: false, form: "miniapp" });
 	});
 
 	it("目标所属的适配器已停用、或适配器已不存在 → 不解析", () => {
-		const disabledAdapter = resolveLinkParsingPolicies({
+		const disabledConnection = resolveLinkParsingPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
-			adapters: [adapter(ONEBOT_ADAPTER, "onebot", false)],
+			connections: [connection(ONEBOT_ADAPTER, "onebot", false)],
 		});
-		expect(disabledAdapter.policyFor(K_GROUP).parse).toBe(false);
+		expect(disabledConnection.policyFor(K_GROUP).parse).toBe(false);
 
-		const missingAdapter = resolveLinkParsingPolicies({
+		const missingConnection = resolveLinkParsingPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
-			adapters: [],
+			connections: [],
 		});
-		expect(missingAdapter.policyFor(K_GROUP).parse).toBe(false);
+		expect(missingConnection.policyFor(K_GROUP).parse).toBe(false);
 	});
 
 	it("官机群的地址是 groupOpenid,与入站帧里的 groupId 同一个值", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...NONE_ON, groups: { [T_QQ_GROUP]: { parse: true } } },
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(`qq-official:${QQ_ADAPTER}:openid-xyz`).parse).toBe(true);
 	});
@@ -159,7 +159,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...NONE_ON, groups: { [T_PRIVATE]: { parse: true } } },
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(linkScopeKey("onebot", ONEBOT_ADAPTER, "10001")).parse).toBe(false);
 	});
@@ -168,7 +168,7 @@ describe("resolveLinkParsingPolicies", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...NONE_ON, groups: { [T_GONE]: { parse: true }, [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP).parse).toBe(true);
 	});
@@ -180,7 +180,7 @@ describe("resolveLinkParsingPolicies", () => {
 				groups: { [T_GROUP]: { form: "miniapp" }, [T_GROUP_2]: { parse: false } },
 			},
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "123")],
-			adapters: ADAPTERS,
+			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "miniapp" });
 	});

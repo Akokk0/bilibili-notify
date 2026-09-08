@@ -35,9 +35,9 @@ import {
 } from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
-	AdapterCapabilities,
 	CardBlock,
 	CardKind,
+	ConnectionCapabilities,
 	Disposable,
 	FeatureKey,
 	GlobalConfig,
@@ -139,11 +139,11 @@ export interface EnginesRuntime extends Disposable {
 	 * Out-of-band reachability probe for `/api/adapters/:id/test`. 顺路把还没探出来的平台
 	 * 能力再探一次(与定时健康探测同一条路)。
 	 */
-	probeAdapter(adapterId: string): Promise<ProbeResult>;
+	probeConnection(adapterId: string): Promise<ProbeResult>;
 	/** 适配器的平台能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
-	adapterCapabilities(adapterId: string): AdapterCapabilities | undefined;
+	connectionCapabilities(adapterId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的适配器寻址。 */
-	probeAdapterCapabilities(adapterId: string): Promise<AdapterCapabilities | undefined>;
+	probeConnectionCapabilities(adapterId: string): Promise<ConnectionCapabilities | undefined>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
 	/**
@@ -272,7 +272,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// 有状态 adapter(OneBot ws / ws-reverse)—— boot 时按当前 adapter 集合建立
 	// 正向连接 / 反向监听器。后续每次 config-changed:adapters 再 reconcile(见下)。
-	for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getAdapters());
+	for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
 
 	const masterTarget = (): PushTarget | undefined => {
 		const id = globals().master.targetId;
@@ -672,34 +672,34 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// sending probes; this one only calls platformAdapter.probe (no side
 	// effects) and writes the result back to adapter.testStatus so the dashboard
 	// reflects reality without the user having to click "测试" on every adapter.
-	const ADAPTER_PROBE_INTERVAL_MS = 5 * 60 * 1000;
+	const CONNECTION_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 	let probeInFlight = false;
 	/**
 	 * 健康探测 + 顺路补探能力:连上那一刻没探到(反向 ws 的 bot 是后来才连入的)、或探的
 	 * 时候没连上,能力会停在「未探测」;开机、每五分钟、主人点「测试」都从这儿再给一次机会。
 	 * 只补「未探测」的,已经有答案的不重探 —— 那是 reconcile 的事。
 	 */
-	async function probeAdapterAndCapabilities(adapterId: string): Promise<ProbeResult> {
-		const result = await sink.probeAdapter(adapterId);
+	async function probeConnectionAndCapabilities(adapterId: string): Promise<ProbeResult> {
+		const result = await sink.probeConnection(adapterId);
 		// 连都连不上的适配器,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
 		// 而这条路是每五分钟一轮、逐个 await 的,离线适配器会把整轮时间翻倍。
 		if (result.ok === false) return result;
-		if (sink.adapterCapabilities(adapterId)?.miniAppCard.state === "unknown") {
-			await sink.probeAdapterCapabilities(adapterId);
+		if (sink.connectionCapabilities(adapterId)?.miniAppCard.state === "unknown") {
+			await sink.probeConnectionCapabilities(adapterId);
 		}
 		return result;
 	}
 
-	async function probeAllAdapters(): Promise<void> {
+	async function probeAllConnections(): Promise<void> {
 		if (probeInFlight) return;
 		probeInFlight = true;
 		try {
-			for (const adapter of opts.configStore.getAdapters()) {
-				if (!adapter.enabled) continue;
+			for (const connection of opts.configStore.getConnections()) {
+				if (!connection.enabled) continue;
 				try {
-					const result = await probeAdapterAndCapabilities(adapter.id);
+					const result = await probeConnectionAndCapabilities(connection.id);
 					if (result.ok === null) continue; // platform doesn't support probe (e.g. webhook)
-					await opts.configStore.patchAdapter(adapter.id, {
+					await opts.configStore.patchConnection(connection.id, {
 						testStatus: {
 							ok: result.ok,
 							lastCheckedAt: new Date().toISOString(),
@@ -708,7 +708,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						},
 					});
 				} catch (e) {
-					log.warn(`[probe] adapter ${adapter.id} update failed: ${String(e)}`);
+					log.warn(`[probe] adapter ${connection.id} update failed: ${String(e)}`);
 				}
 			}
 		} finally {
@@ -719,10 +719,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Kick off an immediate probe after engines come up, then poll on a timer.
 	// `config-changed` for 'adapters' scope triggers an extra immediate probe so
 	// the UI reflects new adapters / edits without waiting up to 5 min.
-	void probeAllAdapters();
+	void probeAllConnections();
 	const probeTimer = setInterval(() => {
-		void probeAllAdapters();
-	}, ADAPTER_PROBE_INTERVAL_MS);
+		void probeAllConnections();
+	}, CONNECTION_PROBE_INTERVAL_MS);
 	// Allow process exit without waiting for the next tick.
 	probeTimer.unref?.();
 
@@ -746,7 +746,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		resolveLinkParsingPolicies({
 			config: linkCard.config,
 			targets: opts.configStore.getTargets(),
-			adapters: opts.configStore.getAdapters(),
+			connections: opts.configStore.getConnections(),
 		});
 	let linkPolicies = linkPoliciesOf();
 
@@ -758,10 +758,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 连接 / 监听器。reconcile 幂等、不写 config、不调 probe → 不会 emit
 				// config-changed,无成环。
 				//
-				// 刻意不在这里触发 probeAllAdapters:probe 经 patchAdapter 写回
+				// 刻意不在这里触发 probeAllConnections:probe 经 patchConnection 写回
 				// testStatus 会再 emit config-changed:adapters → 死循环。adapter
 				// 连通状态由 5 分钟轮询刷新(或用户点"测试"立即刷)。
-				for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getAdapters());
+				for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
 				return;
 			}
 			if (scope === "globals" || scope === "targets") {
@@ -1018,9 +1018,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => listLiveRooms(live),
-		probeAdapter: (adapterId: string) => probeAdapterAndCapabilities(adapterId),
-		adapterCapabilities: (adapterId: string) => sink.adapterCapabilities(adapterId),
-		probeAdapterCapabilities: (adapterId: string) => sink.probeAdapterCapabilities(adapterId),
+		probeConnection: (adapterId: string) => probeConnectionAndCapabilities(adapterId),
+		connectionCapabilities: (adapterId: string) => sink.connectionCapabilities(adapterId),
+		probeConnectionCapabilities: (adapterId: string) => sink.probeConnectionCapabilities(adapterId),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({

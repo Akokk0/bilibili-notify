@@ -1,15 +1,15 @@
 import type {
-	AdapterCapabilities,
+	Connection,
+	ConnectionCapabilities,
 	DeliveryResult,
 	NotificationPayload,
-	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 
 /**
  * Platform adapter contract used by {@link MultiplexNotificationSink}.
  *
- * One adapter per `PushAdapter.platform` family. Each platform adapter is
+ * One adapter per `Connection.platform` family. Each platform adapter is
  * constructed with shared deps (HTTP client, WS server reference, etc.) and
  * exposes a single async `send(adapter, target, payload, opts)` method —
  * `adapter` carries the connection params (baseUrl, token, …), `target`
@@ -40,10 +40,10 @@ export interface PlatformAdapter {
 	/** Platforms this adapter handles ("onebot" / "webhook"). */
 	readonly platforms: readonly string[];
 	/** Return whether this adapter can deliver to `target` (via `adapter`) right now. */
-	isAvailable(adapter: PushAdapter, target: PushTarget): boolean;
+	isAvailable(connection: Connection, target: PushTarget): boolean;
 	/** Deliver `payload` to `target` over `adapter`. `private=true` flips group → private semantics where applicable. */
 	send(
-		adapter: PushAdapter,
+		connection: Connection,
 		target: PushTarget,
 		payload: NotificationPayload,
 		opts?: { private?: boolean },
@@ -53,7 +53,7 @@ export interface PlatformAdapter {
 	 * and the auto-poller. Implementations that have no out-of-band ping should
 	 * return `{ ok: null }` so the UI can render "probe unsupported".
 	 */
-	probe(adapter: PushAdapter): Promise<ProbeResult>;
+	probe(connection: Connection): Promise<ProbeResult>;
 	/**
 	 * Stateful adapters only — called once at boot and again on every
 	 * `config-changed: adapters`. Reconcile live connections / listeners against
@@ -61,16 +61,16 @@ export interface PlatformAdapter {
 	 * cheap (no-op when nothing changed) and MUST NOT write config or trigger a
 	 * probe (would loop back through `config-changed`).
 	 */
-	reconcile?(adapters: readonly PushAdapter[]): void;
+	reconcile?(connections: readonly Connection[]): void;
 	/** Stateful adapters only — close all connections / listeners / timers on shutdown. Idempotent. */
 	dispose?(): void | Promise<void>;
 	/**
 	 * 平台能力快照(探测结果的缓存,同步读、不打网络)。没有能力概念的平台不实现 ——
 	 * 调用方按「没实现 = 什么都不支持」处理。
 	 */
-	capabilities?(adapter: PushAdapter): AdapterCapabilities;
+	capabilities?(connection: Connection): ConnectionCapabilities;
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
-	probeCapabilities?(adapter: PushAdapter): Promise<AdapterCapabilities>;
+	probeCapabilities?(connection: Connection): Promise<ConnectionCapabilities>;
 }
 
 /**

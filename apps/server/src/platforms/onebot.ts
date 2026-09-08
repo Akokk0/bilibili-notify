@@ -1,15 +1,15 @@
 import type { IncomingMessage } from "node:http";
 import type {
-	AdapterCapabilities,
+	Connection,
+	ConnectionCapabilities,
 	DeliveryResult,
 	Disposable,
 	Logger,
 	MiniAppCardSupport,
 	NotificationPayload,
-	OnebotAdapterConfig,
+	OnebotConnectionConfig,
 	OnebotSession,
 	PayloadSegment,
-	PushAdapter,
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -24,7 +24,7 @@ import type { PlatformAdapter, ProbeResult } from "./types.js";
 /**
  * OneBot v11 adapter — HTTP / 正向 WS(ws)/ 反向 WS(ws-reverse)三种连接方式。
  *
- * 由 adapter config 的 `transport` 字段区分(见 `OnebotAdapterConfigSchema`):
+ * 由 adapter config 的 `transport` 字段区分(见 `OnebotConnectionConfigSchema`):
  * - `http`:独立端 fetch POST 到 bot 的 HTTP API(无状态,沿用原实现)。
  * - `ws`:独立端作 WS 客户端主动连 bot,长连接 + 自动重连。
  * - `ws-reverse`:独立端按 adapter 各自的 `port` 监听,bot 主动连入(端口即身份)。
@@ -153,9 +153,9 @@ function minTimeoutLimits(
 	};
 }
 
-type OnebotHttpConfig = Extract<OnebotAdapterConfig, { transport: "http" }>;
-type OnebotWsConfig = Extract<OnebotAdapterConfig, { transport: "ws" }>;
-type OnebotWsReverseConfig = Extract<OnebotAdapterConfig, { transport: "ws-reverse" }>;
+type OnebotHttpConfig = Extract<OnebotConnectionConfig, { transport: "http" }>;
+type OnebotWsConfig = Extract<OnebotConnectionConfig, { transport: "ws" }>;
+type OnebotWsReverseConfig = Extract<OnebotConnectionConfig, { transport: "ws-reverse" }>;
 
 interface OneBotMessageSegment {
 	type: "text" | "image" | "at" | "json";
@@ -802,7 +802,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		reverseListeners.clear();
 		botIdentityCache.clear();
 		miniAppCardSupport.clear();
-		knownAdapters.clear();
+		knownConnections.clear();
 		capabilityFingerprints.clear();
 	}
 	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
@@ -836,8 +836,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 *
 	 * 失败统一返回 null,buildSendAction 兜到 FALLBACK_BOT_IDENTITY,保推送可达。
 	 */
-	async function fetchBotIdentity(adapter: PushAdapter): Promise<BotIdentity | null> {
-		const cfg = adapter.config as OnebotAdapterConfig;
+	async function fetchBotIdentity(connection: Connection): Promise<BotIdentity | null> {
+		const cfg = connection.config as OnebotConnectionConfig;
 		try {
 			if (cfg.transport === "http") {
 				const res = await postOnebot(cfg, "/get_login_info", {}, fallbackTimeoutMs);
@@ -845,14 +845,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				if (!verdict.ok) return null;
 				return parseLoginInfo(res.data);
 			}
-			const channel = channelOf(adapter.id, cfg);
+			const channel = channelOf(connection.id, cfg);
 			if (!channel) return null;
 			const res = await channel.call("get_login_info", {}, cfg.timeoutMs ?? fallbackTimeoutMs);
 			const verdict = interpretResponse(res);
 			if (!verdict.ok) return null;
 			return parseLoginInfo(res.data);
 		} catch (e) {
-			log.warn(`[onebot] adapter=${adapter.id} get_login_info 失败: ${String(e)}`);
+			log.warn(`[onebot] adapter=${connection.id} get_login_info 失败: ${String(e)}`);
 			return null;
 		}
 	}
@@ -868,15 +868,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 续 send 命中缓存(此时 Promise 还未 resolve),不会重复发请求;Promise resolve
 	 * 后若是 null,后续来的 send 会重新发起 fetch。
 	 */
-	function getBotIdentity(adapter: PushAdapter): Promise<BotIdentity | null> {
-		const cached = botIdentityCache.get(adapter.id);
+	function getBotIdentity(connection: Connection): Promise<BotIdentity | null> {
+		const cached = botIdentityCache.get(connection.id);
 		if (cached) return cached;
-		const p = fetchBotIdentity(adapter);
-		botIdentityCache.set(adapter.id, p);
+		const p = fetchBotIdentity(connection);
+		botIdentityCache.set(connection.id, p);
 		p.then((result) => {
 			// 失败结果不留缓存,允许下次 send 重新探测。已被新 fetch 覆盖时不动。
-			if (result === null && botIdentityCache.get(adapter.id) === p) {
-				botIdentityCache.delete(adapter.id);
+			if (result === null && botIdentityCache.get(connection.id) === p) {
+				botIdentityCache.delete(connection.id);
 			}
 		});
 		return p;
@@ -889,7 +889,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/** 探测结果按 adapter 缓存;reconcile 清。没探过 = unknown。 */
 	const miniAppCardSupport = new Map<string, MiniAppCardSupport>();
 	/** 最近一次 reconcile 看到的 adapter 表 —— 通道就绪的回调只拿得到 id,探测要配置。 */
-	const knownAdapters = new Map<string, PushAdapter>();
+	const knownConnections = new Map<string, Connection>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
 	/** 上次探能力的时刻 —— 探不出来的适配器不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
@@ -907,14 +907,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 三种 transport 在这里汇成一条:http 直接 POST,ws / ws-reverse 从 channel 发 echo 帧。
 	 */
 	async function callOnce(
-		adapter: PushAdapter,
+		connection: Connection,
 		action: string,
 		params: Record<string, unknown>,
 	): Promise<OneBotResponse> {
-		const cfg = adapter.config as OnebotAdapterConfig;
+		const cfg = connection.config as OnebotConnectionConfig;
 		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
 		if (cfg.transport === "http") return postOnebotOnce(cfg, `/${action}`, params, timeoutMs);
-		const channel = channelOf(adapter.id, cfg);
+		const channel = channelOf(connection.id, cfg);
 		if (!channel) {
 			throw new Error(cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)");
 		}
@@ -946,45 +946,45 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 超时。节流住在这里而不是各个调用方那边:缓存与失效规则都在这个文件,再让链接解析、
 	 * 健康探测各维护一张时间戳表,「什么时候该重探」就会摊成三份。
 	 */
-	async function probeMiniAppCard(adapter: PushAdapter): Promise<MiniAppCardSupport> {
-		const cachedBefore = miniAppCardSupport.get(adapter.id);
-		const last = lastCapabilityProbeAt.get(adapter.id) ?? Number.NEGATIVE_INFINITY;
+	async function probeMiniAppCard(connection: Connection): Promise<MiniAppCardSupport> {
+		const cachedBefore = miniAppCardSupport.get(connection.id);
+		const last = lastCapabilityProbeAt.get(connection.id) ?? Number.NEGATIVE_INFINITY;
 		if (cachedBefore !== undefined && Date.now() - last < CAPABILITY_REPROBE_MS) {
 			return cachedBefore;
 		}
-		lastCapabilityProbeAt.set(adapter.id, Date.now());
+		lastCapabilityProbeAt.set(connection.id, Date.now());
 		let result: MiniAppCardSupport;
 		try {
-			result = interpretArkProbe(await callOnce(adapter, "get_mini_app_ark", {}));
+			result = interpretArkProbe(await callOnce(connection, "get_mini_app_ark", {}));
 		} catch (e) {
 			result = { state: "unknown", reason: e instanceof Error ? e.message : String(e) };
 		}
 		// 探不出来不推翻已经探实的答案:反向 WS 的 bot 断一次连一次就探一次,那一趟撞上实现
 		// 还没初始化完就超时,面板会莫名其妙地退回「未探测」、发卡前又要白探一趟。降级只认
 		// 一种证据 —— 真发时收到 1404(见 sendMiniAppCard)。
-		const cached = miniAppCardSupport.get(adapter.id);
+		const cached = miniAppCardSupport.get(connection.id);
 		if (result.state === "unknown" && cached !== undefined && cached.state !== "unknown") {
 			log.debug(
-				`[onebot] adapter=${adapter.id} 这次没探出小程序卡能力(${result.reason ?? "?"}),沿用上次的 ${cached.state}`,
+				`[onebot] adapter=${connection.id} 这次没探出小程序卡能力(${result.reason ?? "?"}),沿用上次的 ${cached.state}`,
 			);
 			return cached;
 		}
-		miniAppCardSupport.set(adapter.id, result);
+		miniAppCardSupport.set(connection.id, result);
 		// 与 get_login_info 同一条规矩:探成了不出声。发不了才留一行 —— 主人选了小程序卡却
 		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,健康探测每五分钟
 		// 会再试,放 debug 免得刷屏。
 		if (result.state === "unsupported") {
-			log.info(`[onebot] adapter=${adapter.id} 发不了小程序卡:${result.reason}`);
+			log.info(`[onebot] adapter=${connection.id} 发不了小程序卡:${result.reason}`);
 		} else if (result.state === "unknown") {
-			log.debug(`[onebot] adapter=${adapter.id} 小程序卡能力还没探出来:${result.reason ?? "?"}`);
+			log.debug(`[onebot] adapter=${connection.id} 小程序卡能力还没探出来:${result.reason ?? "?"}`);
 		}
 		return result;
 	}
 
 	/** 通道就绪(正向连上 / 反向 bot 连入)→ 探一次。拿不到配置(已被 reconcile 移除)就算了。 */
 	function probeOnReady(adapterId: string): void {
-		const adapter = knownAdapters.get(adapterId);
-		if (adapter && !disposed) void probeMiniAppCard(adapter);
+		const connection = knownConnections.get(adapterId);
+		if (connection && !disposed) void probeMiniAppCard(connection);
 	}
 
 	/**
@@ -997,7 +997,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 填网址签出来的卡点开是「页面不存在」;`webUrl` 不填则卡上压根没有 `qqdocurl`。
 	 */
 	async function sendMiniAppCard(
-		adapter: PushAdapter,
+		connection: Connection,
 		target: PushTarget,
 		card: Extract<NotificationPayload, { kind: "miniapp-card" }>,
 		opts: { private?: boolean },
@@ -1005,7 +1005,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const t0 = Date.now();
 		let ark: unknown;
 		try {
-			const r = await callOnce(adapter, "get_mini_app_ark", {
+			const r = await callOnce(connection, "get_mini_app_ark", {
 				type: "bili",
 				title: card.title,
 				desc: card.desc,
@@ -1015,7 +1015,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			});
 			if (isActionMissing(r)) {
 				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";
-				miniAppCardSupport.set(adapter.id, { state: "unsupported", reason, checkedAt: Date.now() });
+				miniAppCardSupport.set(connection.id, {
+					state: "unsupported",
+					reason,
+					checkedAt: Date.now(),
+				});
 				return { ok: false, latencyMs: Date.now() - t0, err: reason };
 			}
 			const verdict = interpretResponse(r);
@@ -1031,10 +1035,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		if (data === null) {
 			return { ok: false, latencyMs: Date.now() - t0, err: "签小程序卡失败: 返回的不是 ark" };
 		}
-		miniAppCardSupport.set(adapter.id, { state: "supported", checkedAt: Date.now() });
+		miniAppCardSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
 		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }], opts);
 		if ("err" in built) return { ok: false, latencyMs: Date.now() - t0, err: built.err };
-		return dispatch(adapter, target, built, t0);
+		return dispatch(connection, target, built, t0);
 	}
 
 	/**
@@ -1067,12 +1071,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	/** 一条已经翻好的 action 走 transport 发出去(带各自的重试与超时规则)。 */
 	async function dispatch(
-		adapter: PushAdapter,
+		connection: Connection,
 		target: PushTarget,
 		built: { action: string; params: Record<string, unknown> },
 		t0: number,
 	): Promise<DeliveryResult> {
-		const cfg = adapter.config as OnebotAdapterConfig;
+		const cfg = connection.config as OnebotConnectionConfig;
 		if (cfg.transport === "http") {
 			try {
 				const result = await postOnebot(cfg, `/${built.action}`, built.params, fallbackTimeoutMs, {
@@ -1098,7 +1102,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				return { ok: false, latencyMs: Date.now() - t0, err };
 			}
 		}
-		return sendOverWs(adapter.id, cfg, built.action, built.params, target.id, t0);
+		return sendOverWs(connection.id, cfg, built.action, built.params, target.id, t0);
 	}
 
 	/** WS / WS-reverse 共用的发送(echo 帧 + 重试)。 */
@@ -1152,18 +1156,18 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	return {
 		platforms: ["onebot"],
 
-		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
-			if (adapter.platform !== "onebot" || target.platform !== "onebot") return false;
-			if (!adapter.enabled || !target.enabled) return false;
-			const cfg = adapter.config as OnebotAdapterConfig;
+		isAvailable(connection: Connection, target: PushTarget): boolean {
+			if (connection.platform !== "onebot" || target.platform !== "onebot") return false;
+			if (!connection.enabled || !target.enabled) return false;
+			const cfg = connection.config as OnebotConnectionConfig;
 			if (cfg.transport === "http") return cfg.baseUrl.length > 0;
 			if (cfg.transport === "ws") return cfg.url.length > 0;
 			return true; // ws-reverse:运行期可达性由 send/probe 判断
 		},
 
-		reconcile(adapters: readonly PushAdapter[]): void {
+		reconcile(connections: readonly Connection[]): void {
 			if (disposed) return;
-			const onebots = adapters.filter((a) => a.platform === "onebot" && a.enabled);
+			const onebots = connections.filter((a) => a.platform === "onebot" && a.enabled);
 
 			// --- bot 身份缓存清理 ---
 			// reconcile 触发频率低(dashboard 改 adapter / target 配置才触发),
@@ -1176,9 +1180,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 只在适配器配置真变了(指向另一个实现)或适配器没了时丢;配置没变就留着。**不能全清**:
 			// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
 			// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
-			for (const id of [...knownAdapters.keys()]) {
+			for (const id of [...knownConnections.keys()]) {
 				if (onebots.some((a) => a.id === id)) continue;
-				knownAdapters.delete(id);
+				knownConnections.delete(id);
 				miniAppCardSupport.delete(id);
 				capabilityFingerprints.delete(id);
 				lastCapabilityProbeAt.delete(id);
@@ -1187,17 +1191,17 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				const fp = JSON.stringify(a.config);
 				const changed = capabilityFingerprints.get(a.id) !== fp;
 				capabilityFingerprints.set(a.id, fp);
-				knownAdapters.set(a.id, a);
+				knownConnections.set(a.id, a);
 				if (changed) miniAppCardSupport.delete(a.id);
 				// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
-				const cfg = a.config as OnebotAdapterConfig;
+				const cfg = a.config as OnebotConnectionConfig;
 				if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
 			}
 
 			// --- 正向 ws ---
 			const desiredFwd = new Map<string, OnebotWsConfig>();
 			for (const a of onebots) {
-				const cfg = a.config as OnebotAdapterConfig;
+				const cfg = a.config as OnebotConnectionConfig;
 				if (cfg.transport === "ws") desiredFwd.set(a.id, cfg);
 			}
 			for (const [id, conn] of forwardConns) {
@@ -1222,7 +1226,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// --- 反向 ws ---
 			const desiredRev = new Map<string, OnebotWsReverseConfig>();
 			for (const a of onebots) {
-				const cfg = a.config as OnebotAdapterConfig;
+				const cfg = a.config as OnebotConnectionConfig;
 				if (cfg.transport === "ws-reverse") desiredRev.set(a.id, cfg);
 			}
 			for (const [id, lis] of reverseListeners) {
@@ -1249,11 +1253,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			disposeAll();
 		},
 
-		async probe(adapter: PushAdapter): Promise<ProbeResult> {
-			if (adapter.platform !== "onebot") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${adapter.platform}` };
+		async probe(connection: Connection): Promise<ProbeResult> {
+			if (connection.platform !== "onebot") {
+				return { ok: false, latencyMs: 0, err: `wrong platform: ${connection.platform}` };
 			}
-			const cfg = adapter.config as OnebotAdapterConfig;
+			const cfg = connection.config as OnebotConnectionConfig;
 			const t0 = Date.now();
 			if (cfg.transport === "http") {
 				try {
@@ -1273,7 +1277,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			}
 
 			if (cfg.transport === "ws") {
-				const conn = forwardConns.get(adapter.id);
+				const conn = forwardConns.get(connection.id);
 				const channel = conn?.getChannel() ?? null;
 				if (!channel) {
 					return {
@@ -1299,7 +1303,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			}
 
 			// ws-reverse
-			const lis = reverseListeners.get(adapter.id);
+			const lis = reverseListeners.get(connection.id);
 			if (!lis) {
 				return { ok: false, latencyMs: Date.now() - t0, err: "反向 WS 监听未启动" };
 			}
@@ -1335,19 +1339,20 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		},
 
 		async send(
-			adapter: PushAdapter,
+			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
 			opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (adapter.platform !== "onebot" || target.platform !== "onebot") {
+			if (connection.platform !== "onebot" || target.platform !== "onebot") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
 				};
 			}
-			if (payload.kind === "miniapp-card") return sendMiniAppCard(adapter, target, payload, opts);
+			if (payload.kind === "miniapp-card")
+				return sendMiniAppCard(connection, target, payload, opts);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即 err 返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
@@ -1361,7 +1366,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 完整端到端开销 —— 用户视角 latency = 这条消息真发出来花了多久,bot 身份
 			// 探测是发它必经的一步。getBotIdentity 内部 lazy 缓存,大多数情况下命中走 O(1)。
 			if (payload.kind === "forward-images" && payload.forward) {
-				const botInfo = (await getBotIdentity(adapter)) ?? undefined;
+				const botInfo = (await getBotIdentity(connection)) ?? undefined;
 				const rebuilt = buildSendAction(target, payload, opts, botInfo);
 				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处 err 分支
 				// 理论不会触达。守一手保类型收敛。
@@ -1371,15 +1376,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				built = rebuilt;
 			}
 
-			return dispatch(adapter, target, built, t0);
+			return dispatch(connection, target, built, t0);
 		},
 
-		capabilities(adapter: PushAdapter): AdapterCapabilities {
-			return { miniAppCard: miniAppCardSupport.get(adapter.id) ?? NOT_PROBED };
+		capabilities(connection: Connection): ConnectionCapabilities {
+			return { miniAppCard: miniAppCardSupport.get(connection.id) ?? NOT_PROBED };
 		},
 
-		async probeCapabilities(adapter: PushAdapter): Promise<AdapterCapabilities> {
-			return { miniAppCard: await probeMiniAppCard(adapter) };
+		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
+			return { miniAppCard: await probeMiniAppCard(connection) };
 		},
 	};
 }

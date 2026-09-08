@@ -1,7 +1,7 @@
 import { getHeapStatistics } from "node:v8";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
-import type { MessageBus, PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
@@ -62,7 +62,7 @@ export interface CreateDevtoolsInput {
 	/** 入站口(私聊指令 / 群链接)。接线层后接,现取。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; masterUserId?: string };
-	adapterConfigs: () => PushAdapter[];
+	connectionConfigs: () => Connection[];
 	targets: () => PushTarget[];
 	/** 引擎错误 / 登录失效 / 登录状态快照都从这条总线发。 */
 	bus: MessageBus;
@@ -144,13 +144,13 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		...inboundScenarios({
 			inbound: input.inbound,
 			commands: input.commands,
-			adapters: input.adapterConfigs,
+			connections: input.connectionConfigs,
 			targets: input.targets,
 		}),
 		...busEventScenarios({ bus: input.bus }),
 		loginStateScenario({ auth, bus: input.bus }),
 		heapPressureScenario({ heap }),
-		capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
+		capabilityScenario({ injector: caps, connections: input.connectionConfigs }),
 		...timerScenarios({
 			clock,
 			subs: input.subs,

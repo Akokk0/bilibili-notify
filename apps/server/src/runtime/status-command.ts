@@ -24,7 +24,7 @@ export interface StatusReport {
 	lastFetchAt?: number;
 	/** 排队等渲染的卡片数。持续不为 0 = 推送在堆积。 */
 	renderQueue: number;
-	adapters: { name: string; ok: boolean }[];
+	connections: { name: string; ok: boolean }[];
 	/** 全局静音到期时刻,`0` = 没静音。 */
 	mutedUntil: number;
 }
@@ -52,20 +52,20 @@ function ago(at: number | undefined, now: number): string {
 	return `${Math.floor(hour / 24)} 天前`;
 }
 
-function renderAdapters(adapters: StatusReport["adapters"]): string {
+function renderConnections(connections: StatusReport["connections"]): string {
 	// 一行空白看起来像功能坏了,而「还没配」是个明确的下一步。
-	if (adapters.length === 0) return "还没配适配器";
-	const down = adapters.filter((a) => !a.ok);
-	if (down.length === 0) return `${adapters.length} 个都连着`;
+	if (connections.length === 0) return "还没配适配器";
+	const down = connections.filter((a) => !a.ok);
+	if (down.length === 0) return `${connections.length} 个都连着`;
 	// 只点名断掉的那些 —— 连着的不需要主人做任何事。
-	return `${down.map((a) => a.name).join("、")} 断了（共 ${adapters.length} 个）`;
+	return `${down.map((a) => a.name).join("、")} 断了（共 ${connections.length} 个）`;
 }
 
 export function renderStatus(report: StatusReport, now: number): string {
 	const lines = [
 		`登录：${report.login}`,
 		`上次抓取：${ago(report.lastFetchAt, now)}`,
-		`推送通道：${renderAdapters(report.adapters)}`,
+		`推送通道：${renderConnections(report.connections)}`,
 		`渲染排队：${report.renderQueue}`,
 	];
 	// 静音只在**真静音时**占一行。它是「怎么没动静」的第一嫌疑 —— 不说的话主人会

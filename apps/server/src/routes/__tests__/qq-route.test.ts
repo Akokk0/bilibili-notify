@@ -22,9 +22,9 @@ afterEach(() => {
 
 function makeDeps(opts?: {
 	registry?: ReturnType<typeof createQQSessionRegistry>;
-	adapters?: unknown[];
+	connections?: unknown[];
 }): RouteDeps {
-	const adapters = opts?.adapters ?? [
+	const connections = opts?.connections ?? [
 		{
 			id: "a1",
 			platform: "qq-official",
@@ -34,7 +34,7 @@ function makeDeps(opts?: {
 	];
 	return {
 		qqSessionRegistry: opts?.registry ?? null,
-		store: { getAdapters: () => adapters },
+		store: { getConnections: () => connections },
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 		},
@@ -87,7 +87,7 @@ describe("GET /api/qq/guilds/:adapterId", () => {
 
 	it("非 qq-official adapter → 404", async () => {
 		const app = createQQRoute(
-			makeDeps({ adapters: [{ id: "a1", platform: "onebot", enabled: true, config: {} }] }),
+			makeDeps({ connections: [{ id: "a1", platform: "onebot", enabled: true, config: {} }] }),
 		);
 		const r = await app.request("/guilds/a1");
 		expect(r.status).toBe(404);

@@ -1,7 +1,7 @@
 import {
+	type Connection,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
-	type PushAdapter,
 	type PushTarget,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -18,7 +18,7 @@ function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, uid });
 }
 
-function onebot(id: string, token: string): PushAdapter {
+function onebot(id: string, token: string): Connection {
 	return {
 		id,
 		platform: "onebot",
@@ -40,7 +40,7 @@ function onebot(id: string, token: string): PushAdapter {
 }
 
 function makeFakeStore(
-	init: Partial<{ subscriptions: Subscription[]; adapters: PushAdapter[] }> = {},
+	init: Partial<{ subscriptions: Subscription[]; adapters: Connection[] }> = {},
 ) {
 	let globals = makeDefaultGlobalConfig();
 	let subs = [...(init.subscriptions ?? [])];
@@ -49,7 +49,7 @@ function makeFakeStore(
 	const store: BackupStore = {
 		getGlobals: () => globals,
 		getSubscriptions: () => subs,
-		getAdapters: () => adapters,
+		getConnections: () => adapters,
 		getTargets: () => targets,
 		// 恢复是**一次整体替换**,不是一串编辑 —— 所以这个替身也只认终态,断言跟着看
 		// 「最后剩下什么」而不是「按什么顺序调了哪些方法」。老替身把 upsertTarget 打成

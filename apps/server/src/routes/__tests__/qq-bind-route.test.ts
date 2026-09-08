@@ -28,7 +28,7 @@ afterEach(() => {
 function makeDeps(): RouteDeps {
 	return {
 		qqSessionRegistry: null,
-		store: { getAdapters: () => [] },
+		store: { getConnections: () => [] },
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 		},

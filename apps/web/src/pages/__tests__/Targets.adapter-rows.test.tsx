@@ -17,7 +17,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PushAdapter } from "../../types/domain";
+import type { Connection } from "../../types/domain";
 import Targets from "../Targets";
 
 vi.mock("../../services/api", () => ({
@@ -43,7 +43,7 @@ const ADAPTERS = [
 		platform: "qq-official",
 		config: { appId: "1145141", appSecret: "x", sandbox: false, botType: "public" },
 	},
-] as unknown as PushAdapter[];
+] as unknown as Connection[];
 
 function renderPage() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

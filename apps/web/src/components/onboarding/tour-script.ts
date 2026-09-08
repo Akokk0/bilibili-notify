@@ -114,7 +114,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 左栏「+ 新建」与空态主 CTA 两处 —— 同名实例是等价入口,灯一起亮
 			anchor: ["adapter-form", "adapter-add"],
 			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
-			doneWhen: (v) => v.hasAdapter,
+			doneWhen: (v) => v.hasConnection,
 			title: "新建推送适配器",
 			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码连接 / 创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
 			// 上一子步在抵达时自动翻过 —— 一直待在本页的用户全程见不到它,选型入口在这也挂一份

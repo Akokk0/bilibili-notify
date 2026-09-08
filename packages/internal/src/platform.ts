@@ -273,6 +273,6 @@ export type MiniAppCardSupport =
 	| { state: "unknown"; reason?: string };
 
 /** 适配器的平台能力快照。今天只有一项;将来薄插件接进来时按需加。 */
-export interface AdapterCapabilities {
+export interface ConnectionCapabilities {
 	miniAppCard: MiniAppCardSupport;
 }

@@ -1,9 +1,4 @@
-import type {
-	GlobalConfig,
-	PushAdapter,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 
 /**
  * Restore planning — turns (current state + imported sections + mode) into a
@@ -25,14 +20,14 @@ export type ImportMode = "overwrite" | "merge";
 export interface CurrentState {
 	globals: GlobalConfig;
 	subscriptions: Subscription[];
-	adapters: PushAdapter[];
+	adapters: Connection[];
 	targets: PushTarget[];
 }
 
 export interface ImportSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: PushAdapter[];
+	adapters?: Connection[];
 	targets?: PushTarget[];
 }
 
@@ -44,7 +39,7 @@ interface ScopePlan<T> {
 export interface ImportPlan {
 	setGlobals?: GlobalConfig;
 	subscriptions: ScopePlan<Subscription>;
-	adapters: ScopePlan<PushAdapter>;
+	adapters: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
 }
 

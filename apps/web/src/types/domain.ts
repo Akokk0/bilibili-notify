@@ -14,9 +14,9 @@
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
-	OnebotAdapterConfig,
+	Connection,
+	OnebotConnectionConfig,
 	OnebotTransport,
-	PushAdapter,
 	PushTarget,
 	PushTargetPlatform,
 	WebhookProvider,
@@ -56,22 +56,22 @@ export type {
 	CardBlock as CardBlockFull,
 	// per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
 	CardLayout as CardLayoutFull,
+	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
+	Connection,
 	ContentFiltersPartial as ContentFiltersOverride,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
 	// per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。
 	MessageLayout as MessageLayoutOverride,
-	OnebotAdapterConfig,
+	OnebotConnectionConfig,
 	OnebotSession,
 	OnebotTransport,
-	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
-	PushAdapter,
 	PushTarget,
 	PushTargetPlatform,
 	PushTargetScope,
-	QQOfficialAdapterConfig,
 	QQOfficialBotType,
+	QQOfficialConnectionConfig,
 	QQOfficialSession,
 	ScheduleConfigPartial as ScheduleOverride,
 	SpecialUser,
@@ -205,7 +205,7 @@ export function makeEmptySubscription(uid: string): Subscription {
 	};
 }
 
-export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): PushAdapter {
+export function makeEmptyConnection(platform: PushTargetPlatform, name: string): Connection {
 	const base = { id: newId(), name, enabled: true } as const;
 	if (platform === "onebot") {
 		return {
@@ -239,8 +239,8 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 }
 
 /** OneBot 三种连接方式(transport)共用的连接字段。 */
-type OnebotAdapterConfigCommon = Pick<
-	OnebotAdapterConfig,
+type OnebotConnectionConfigCommon = Pick<
+	OnebotConnectionConfig,
 	| "accessToken"
 	| "protocolVersion"
 	| "timeoutMs"
@@ -256,10 +256,10 @@ type OnebotAdapterConfigCommon = Pick<
  * ws / ws-reverse 时,若 retryTimes 还是 0 则提到 3(bot 偶发重连不丢首条推送)。
  */
 export function switchOnebotTransport(
-	cfg: OnebotAdapterConfig,
+	cfg: OnebotConnectionConfig,
 	transport: OnebotTransport,
-): OnebotAdapterConfig {
-	const common: OnebotAdapterConfigCommon = {
+): OnebotConnectionConfig {
+	const common: OnebotConnectionConfigCommon = {
 		accessToken: cfg.accessToken,
 		protocolVersion: cfg.protocolVersion ?? "v11",
 		timeoutMs: cfg.timeoutMs,
@@ -277,12 +277,12 @@ export function switchOnebotTransport(
 	return { ...common, transport: "ws-reverse", port: 9797 };
 }
 
-export function makeEmptyTarget(adapter: PushAdapter, name: string): PushTarget {
-	const base = { id: newId(), name, adapterId: adapter.id, enabled: true } as const;
-	if (adapter.platform === "onebot") {
+export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
+	const base = { id: newId(), name, adapterId: connection.id, enabled: true } as const;
+	if (connection.platform === "onebot") {
 		return { ...base, platform: "onebot", scope: "group", session: {} };
 	}
-	if (adapter.platform === "qq-official") {
+	if (connection.platform === "qq-official") {
 		return { ...base, platform: "qq-official", scope: "group", session: {} };
 	}
 	return { ...base, platform: "webhook", scope: "channel", session: {} };

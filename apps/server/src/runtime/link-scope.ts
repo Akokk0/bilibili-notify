@@ -12,12 +12,12 @@
  */
 
 import {
+	type Connection,
 	groupAddressOf,
 	isTargetPaused,
 	type LinkParsingConfig,
 	type LinkParsingPolicy,
 	linkParsingFor,
-	type PushAdapter,
 	type PushTarget,
 } from "@bilibili-notify/internal";
 
@@ -34,13 +34,13 @@ export interface LinkPolicyTable {
 export interface ResolveLinkParsingPoliciesInput {
 	config: Pick<LinkParsingConfig, "defaults" | "groups">;
 	targets: readonly PushTarget[];
-	adapters: readonly PushAdapter[];
+	connections: readonly Connection[];
 }
 
 export function resolveLinkParsingPolicies({
 	config,
 	targets,
-	adapters,
+	connections,
 }: ResolveLinkParsingPoliciesInput): LinkPolicyTable {
 	const byKey = new Map<string, LinkParsingPolicy>();
 	for (const target of targets) {
@@ -50,7 +50,7 @@ export function resolveLinkParsingPolicies({
 		const key = linkScopeKey(target.platform, target.adapterId, groupId);
 		if (byKey.has(key)) continue;
 		const policy = linkParsingFor(config, target.id);
-		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, adapters) });
+		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, connections) });
 	}
 	const stranger: LinkParsingPolicy = linkParsingFor(config, undefined);
 	return { policyFor: (key) => byKey.get(key) ?? stranger };

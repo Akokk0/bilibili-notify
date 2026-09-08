@@ -5,13 +5,13 @@ import { join } from "node:path";
 import {
 	type BiliEvents,
 	type ConfigScope,
+	type Connection,
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
-	type PushAdapter,
 	type PushTarget,
 	type ServiceContext,
 	type Subscription,
@@ -80,8 +80,8 @@ function makeSampleSubscription(uid = "12345"): Subscription {
 	return makeEmptySubscription({ id: randomUUID(), uid });
 }
 
-function makeWebhookAdapter(
-	overrides: Partial<Extract<PushAdapter, { platform: "webhook" }>> = {},
+function makeWebhookConnection(
+	overrides: Partial<Extract<Connection, { platform: "webhook" }>> = {},
 ) {
 	return {
 		id: randomUUID(),
@@ -93,7 +93,9 @@ function makeWebhookAdapter(
 	};
 }
 
-function makeOnebotAdapter(overrides: Partial<Extract<PushAdapter, { platform: "onebot" }>> = {}) {
+function makeOnebotConnection(
+	overrides: Partial<Extract<Connection, { platform: "onebot" }>> = {},
+) {
 	return {
 		id: randomUUID(),
 		name: "NapCat",
@@ -115,13 +117,13 @@ function makeOnebotAdapter(overrides: Partial<Extract<PushAdapter, { platform: "
 }
 
 function makeWebhookTarget(
-	adapter: Extract<PushAdapter, { platform: "webhook" }>,
+	connection: Extract<Connection, { platform: "webhook" }>,
 	overrides: Partial<Extract<PushTarget, { platform: "webhook" }>> = {},
 ) {
 	return {
 		id: randomUUID(),
 		name: "手动 Webhook",
-		adapterId: adapter.id,
+		adapterId: connection.id,
 		platform: "webhook" as const,
 		scope: "channel" as const,
 		enabled: true,
@@ -402,12 +404,12 @@ describe("ConfigStore", () => {
 	});
 
 	it("targets CRUD: upsert / patch / delete with proper events", async () => {
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
 		const target = {
 			id: randomUUID(),
 			name: "t1",
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
@@ -426,12 +428,12 @@ describe("ConfigStore", () => {
 	});
 
 	it("deleteTarget 级联清理订阅 routing / atAll 并保持 schema 自洽", async () => {
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
 		const target = {
 			id: randomUUID(),
 			name: "群聊",
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
@@ -440,7 +442,7 @@ describe("ConfigStore", () => {
 		const keptTarget = {
 			id: randomUUID(),
 			name: "私聊",
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "onebot" as const,
 			scope: "private" as const,
 			enabled: true,
@@ -473,16 +475,16 @@ describe("ConfigStore", () => {
 		expect(scopes).toEqual(["targets", "subscriptions"]);
 	});
 
-	it("upsertAdapter(webhook) 自动创建系统托管 target", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
+	it("upsertConnection(webhook) 自动创建系统托管 target", async () => {
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
 
 		const targets = store.getTargets();
 		expect(targets).toHaveLength(1);
 		expect(targets[0]).toMatchObject({
-			id: managedWebhookTargetId(adapter.id),
-			name: adapter.name,
-			adapterId: adapter.id,
+			id: managedWebhookTargetId(connection.id),
+			name: connection.name,
+			adapterId: connection.id,
 			platform: "webhook",
 			scope: "channel",
 			enabled: true,
@@ -497,8 +499,8 @@ describe("ConfigStore", () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-empty-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
-		const adapter = makeWebhookAdapter();
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		const connection = makeWebhookConnection();
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
 
 		const store2 = createConfigStore({
@@ -509,8 +511,8 @@ describe("ConfigStore", () => {
 		await store2.load();
 		expect(store2.getTargets()).toEqual([
 			expect.objectContaining({
-				id: managedWebhookTargetId(adapter.id),
-				adapterId: adapter.id,
+				id: managedWebhookTargetId(connection.id),
+				adapterId: connection.id,
 				managedBy: "adapter",
 			}),
 		]);
@@ -528,8 +530,8 @@ describe("ConfigStore", () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-removed-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
-		const webhook = makeWebhookAdapter();
-		const adapter = {
+		const webhook = makeWebhookConnection();
+		const connection = {
 			id: randomUUID(),
 			name: stale.platform,
 			platform: stale.platform,
@@ -539,13 +541,13 @@ describe("ConfigStore", () => {
 		const target = {
 			id: randomUUID(),
 			name: "stale",
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: stale.platform,
 			scope: "group",
 			enabled: true,
 			session: stale.session,
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter, webhook]), "utf8");
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection, webhook]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 
 		const store2 = createConfigStore({
@@ -554,7 +556,7 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load(); // 不应抛错
-		expect(store2.getAdapters().map((a) => a.platform)).toEqual(["webhook"]);
+		expect(store2.getConnections().map((a) => a.platform)).toEqual(["webhook"]);
 		// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
 		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
 		await rm(dir2, { recursive: true, force: true });
@@ -564,11 +566,11 @@ describe("ConfigStore", () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
-		const adapter = makeWebhookAdapter();
-		const target = makeWebhookTarget(adapter, { id: randomUUID(), name: "旧 Webhook" });
+		const connection = makeWebhookConnection();
+		const target = makeWebhookTarget(connection, { id: randomUUID(), name: "旧 Webhook" });
 		const sub = makeSampleSubscription("44444");
 		sub.routing.dynamic = [target.id];
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
 
@@ -581,8 +583,8 @@ describe("ConfigStore", () => {
 		const managed = store2.getTargets()[0];
 		expect(managed).toMatchObject({
 			id: target.id,
-			name: adapter.name,
-			adapterId: adapter.id,
+			name: connection.name,
+			adapterId: connection.id,
 			managedBy: "adapter",
 			scope: "channel",
 		});
@@ -590,15 +592,18 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
-	it("patchAdapter(webhook) 同步托管 target 名称与启用状态", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
-		const patched = await store.patchAdapter(adapter.id, { name: "飞书 Webhook", enabled: false });
+	it("patchConnection(webhook) 同步托管 target 名称与启用状态", async () => {
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
+		const patched = await store.patchConnection(connection.id, {
+			name: "飞书 Webhook",
+			enabled: false,
+		});
 		expect(patched.name).toBe("飞书 Webhook");
 
 		const target = store.getTargets()[0];
 		expect(target).toMatchObject({
-			id: managedWebhookTargetId(adapter.id),
+			id: managedWebhookTargetId(connection.id),
 			name: "飞书 Webhook",
 			enabled: false,
 			managedBy: "adapter",
@@ -606,22 +611,22 @@ describe("ConfigStore", () => {
 		});
 	});
 
-	it("patchAdapter / upsertAdapter 拒绝变更既有 adapter platform", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
-		const onebot = makeOnebotAdapter({ id: adapter.id, name: adapter.name });
+	it("patchConnection / upsertConnection 拒绝变更既有 adapter platform", async () => {
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
+		const onebot = makeOnebotConnection({ id: connection.id, name: connection.name });
 
 		await expect(
-			store.patchAdapter(adapter.id, { platform: "onebot", config: onebot.config } as never),
+			store.patchConnection(connection.id, { platform: "onebot", config: onebot.config } as never),
 		).rejects.toBeInstanceOf(ConfigValidationError);
-		await expect(store.upsertAdapter(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getAdapters()[0]?.platform).toBe("webhook");
+		await expect(store.upsertConnection(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getConnections()[0]?.platform).toBe("webhook");
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
-	it("deleteAdapter(webhook) 级联删除托管 target 并清理订阅 routing / atAll", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
+	it("deleteConnection(webhook) 级联删除托管 target 并清理订阅 routing / atAll", async () => {
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
 		const targetId = store.getTargets()[0]?.id;
 		expect(targetId).toBeDefined();
 		const sub = makeSampleSubscription("55555");
@@ -632,8 +637,8 @@ describe("ConfigStore", () => {
 		await store.upsertSubscription(sub);
 		bus.events.length = 0;
 
-		await expect(store.deleteAdapter(adapter.id)).resolves.toBe(true);
-		expect(store.getAdapters()).toHaveLength(0);
+		await expect(store.deleteConnection(connection.id)).resolves.toBe(true);
+		expect(store.getConnections()).toHaveLength(0);
 		expect(store.getTargets()).toHaveLength(0);
 		const nextSub = store.getSubscriptions()[0];
 		expect(nextSub?.routing.dynamic).toEqual([]);
@@ -644,27 +649,29 @@ describe("ConfigStore", () => {
 		expect(scopes).toEqual(["adapters", "targets", "subscriptions"]);
 	});
 
-	it("deleteAdapter(onebot) 仍在被 target 引用时拒绝", async () => {
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
+	it("deleteConnection(onebot) 仍在被 target 引用时拒绝", async () => {
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
 		await store.upsertTarget({
 			id: randomUUID(),
 			name: "群聊",
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "onebot",
 			scope: "group",
 			enabled: true,
 			session: { groupId: "10001" },
 		});
 
-		await expect(store.deleteAdapter(adapter.id)).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getAdapters()).toHaveLength(1);
+		await expect(store.deleteConnection(connection.id)).rejects.toBeInstanceOf(
+			ConfigValidationError,
+		);
+		expect(store.getConnections()).toHaveLength(1);
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
 	it("deleteTarget(managed) 拒绝直接删除托管 target", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
 		const targetId = store.getTargets()[0]?.id;
 		expect(targetId).toBeDefined();
 
@@ -675,9 +682,9 @@ describe("ConfigStore", () => {
 	});
 
 	it("upsertTarget(webhook) 拒绝外部手动创建 webhook target", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
-		const manual = makeWebhookTarget(adapter, { id: randomUUID(), name: "额外 Webhook" });
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
+		const manual = makeWebhookTarget(connection, { id: randomUUID(), name: "额外 Webhook" });
 
 		await expect(store.upsertTarget(manual)).rejects.toBeInstanceOf(ConfigValidationError);
 		expect(store.getTargets()).toHaveLength(1);
@@ -692,8 +699,8 @@ describe("ConfigStore", () => {
 		// 托管 target 的 id 不能靠「导出时丢掉、恢复时重建」绕过去:makeManagedWebhookTarget
 		// 取的是 `existing?.id ?? 确定性id`,老记录会永远保留自己那个非确定性 id,重建就换了
 		// 身份,订阅 routing 当场断。
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
 		const managed = store.getTargets().find((t) => t.managedBy === "adapter");
 		expect(managed).toBeDefined();
 
@@ -707,19 +714,19 @@ describe("ConfigStore", () => {
 		// target,随后送回来的那条却带着备份里的**老 id**(老记录会一直保留自己的 id)。两条
 		// 同主并存时必须合并成一条,并把订阅里的老 id 改写过去 —— 否则用户恢复完会看到两个
 		// 一模一样的 webhook 目标,而订阅指着那个被吞掉的。
-		const adapter = makeWebhookAdapter();
+		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("77777");
 		sub.routing.dynamic = [legacyId];
 		sub.atAll.dynamic[legacyId] = true;
 		await store.upsertSubscription(sub);
-		await store.upsertAdapter(adapter);
+		await store.upsertConnection(connection);
 
 		const managedId = store.getTargets()[0]?.id;
-		expect(managedId).toBe(managedWebhookTargetId(adapter.id));
+		expect(managedId).toBe(managedWebhookTargetId(connection.id));
 
 		await store.upsertTarget(
-			makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" }) as PushTarget,
+			makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" }) as PushTarget,
 		);
 
 		expect(store.getTargets()).toHaveLength(1);
@@ -730,8 +737,8 @@ describe("ConfigStore", () => {
 	});
 
 	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
-		const adapter = makeWebhookAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
 		const target = store.getTargets()[0];
 		expect(target).toBeDefined();
 
@@ -758,17 +765,17 @@ describe("ConfigStore", () => {
 		// 取 `existing?.id ?? 确定性id`,老记录会一直保留自己的)。这一步是承重的 —— 否则
 		// 「把备份里的 target 恢复回来」和「照 adapter 重新生成一个」会得到同一个 id,测试
 		// 分不出这两件事,也就钉不住任何东西。
-		const adapter = makeWebhookAdapter();
+		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("22222");
 		sub.routing.dynamic = [legacyId];
 		const dirA = await mkdtemp(join(tmpdir(), "bn-config-backup-src-"));
 		const stateA = join(dirA, "state");
 		await mkdir(stateA, { recursive: true });
-		await writeFile(join(stateA, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(stateA, "adapters.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(
 			join(stateA, "targets.json"),
-			JSON.stringify([makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" })]),
+			JSON.stringify([makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" })]),
 			"utf8",
 		);
 		await writeFile(join(stateA, "subscriptions.json"), JSON.stringify([sub]), "utf8");
@@ -780,7 +787,7 @@ describe("ConfigStore", () => {
 		await source.load();
 		const managedId = source.getTargets()[0]?.id;
 		expect(managedId).toBe(legacyId);
-		expect(managedId).not.toBe(managedWebhookTargetId(adapter.id));
+		expect(managedId).not.toBe(managedWebhookTargetId(connection.id));
 
 		const noCookies = { load: async () => null, save: async () => {} };
 		const env = await createBackupService({
@@ -802,7 +809,7 @@ describe("ConfigStore", () => {
 			mode: "overwrite",
 		});
 
-		expect(fresh.getAdapters()).toHaveLength(1);
+		expect(fresh.getConnections()).toHaveLength(1);
 		expect(fresh.getTargets()).toHaveLength(1);
 		// 恢复回来的是**备份里那一条**,不是照 adapter 重新生成的 —— 订阅还指着这个 id
 		expect(fresh.getTargets()[0]?.id).toBe(legacyId);
@@ -814,12 +821,12 @@ describe("ConfigStore", () => {
 	it("replaceSections:任一分区校验不过 → 一个字节都不写", async () => {
 		// 这是这个方法存在的理由。老写法逐条 upsert,炸在 targets 那步时 globals / 订阅 /
 		// adapters 已经落盘,配置只剩半新半旧且原状态已被覆盖。
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
 		await store.upsertSubscription(makeSampleSubscription("88888"));
 		const before = {
 			subs: store.getSubscriptions(),
-			adapters: store.getAdapters(),
+			connections: store.getConnections(),
 			targets: store.getTargets(),
 			cron: store.getGlobals().app.dynamicCron,
 		};
@@ -831,13 +838,13 @@ describe("ConfigStore", () => {
 					app: { ...store.getGlobals().app, dynamicCron: "*/9 * * * *" },
 				},
 				subscriptions: [],
-				adapters: [adapter],
+				adapters: [connection],
 				// scope 不在词表里 → schema 当场拒绝
 				targets: [
 					{
 						id: randomUUID(),
 						name: "坏目标",
-						adapterId: adapter.id,
+						adapterId: connection.id,
 						platform: "onebot",
 						scope: "nope",
 						enabled: true,
@@ -848,19 +855,19 @@ describe("ConfigStore", () => {
 		).rejects.toBeInstanceOf(ConfigValidationError);
 
 		expect(store.getSubscriptions()).toEqual(before.subs);
-		expect(store.getAdapters()).toEqual(before.adapters);
+		expect(store.getConnections()).toEqual(before.connections);
 		expect(store.getTargets()).toEqual(before.targets);
 		expect(store.getGlobals().app.dynamicCron).toBe(before.cron);
 	});
 
 	it("replaceSections:target 指向不存在的 adapter → 拒绝,且不写", async () => {
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
-		const before = store.getAdapters();
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
+		const before = store.getConnections();
 
 		await expect(
 			store.replaceSections({
-				adapters: [adapter],
+				adapters: [connection],
 				targets: [
 					{
 						id: randomUUID(),
@@ -875,18 +882,18 @@ describe("ConfigStore", () => {
 			}),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 		expect(store.getTargets()).toHaveLength(0);
-		expect(store.getAdapters()).toEqual(before);
+		expect(store.getConnections()).toEqual(before);
 	});
 
 	it("replaceSections:缺席的分区保持不动,给空数组才是真清空", async () => {
-		const adapter = makeOnebotAdapter();
-		await store.upsertAdapter(adapter);
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
 		await store.upsertSubscription(makeSampleSubscription("99999"));
 
 		// 只给 targets:订阅与 adapters 不该被碰
 		await store.replaceSections({ targets: [] });
 		expect(store.getSubscriptions()).toHaveLength(1);
-		expect(store.getAdapters()).toHaveLength(1);
+		expect(store.getConnections()).toHaveLength(1);
 
 		// 给空数组 → 真清空
 		await store.replaceSections({ subscriptions: [] });
@@ -894,15 +901,17 @@ describe("ConfigStore", () => {
 	});
 
 	it("replaceSections:webhook 托管目标照样归一化,订阅引用跟着迁", async () => {
-		const adapter = makeWebhookAdapter();
+		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("11111");
 		sub.routing.live = [legacyId];
 		await store.upsertSubscription(sub);
 
 		await store.replaceSections({
-			adapters: [adapter],
-			targets: [makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" }) as PushTarget],
+			adapters: [connection],
+			targets: [
+				makeWebhookTarget(connection, { id: legacyId, managedBy: "adapter" }) as PushTarget,
+			],
 		});
 
 		expect(store.getTargets()).toHaveLength(1);
@@ -916,15 +925,15 @@ describe("ConfigStore", () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-duplicates-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
-		const adapter = makeWebhookAdapter();
-		const primary = makeWebhookTarget(adapter, { id: randomUUID(), name: "主 Webhook" });
-		const extra = makeWebhookTarget(adapter, { id: randomUUID(), name: "多余 Webhook" });
+		const connection = makeWebhookConnection();
+		const primary = makeWebhookTarget(connection, { id: randomUUID(), name: "主 Webhook" });
+		const extra = makeWebhookTarget(connection, { id: randomUUID(), name: "多余 Webhook" });
 		const sub = makeSampleSubscription("66666");
 		sub.routing.dynamic = [extra.id, primary.id];
 		sub.routing.live = [extra.id];
 		sub.atAll.dynamic[extra.id] = true;
 		sub.atAll.live[extra.id] = false;
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
 
@@ -936,7 +945,7 @@ describe("ConfigStore", () => {
 		await store2.load();
 
 		expect(store2.getTargets()).toEqual([
-			expect.objectContaining({ id: primary.id, managedBy: "adapter", name: adapter.name }),
+			expect.objectContaining({ id: primary.id, managedBy: "adapter", name: connection.name }),
 		]);
 		const nextSub = store2.getSubscriptions()[0];
 		expect(nextSub?.routing.dynamic).toEqual([primary.id]);

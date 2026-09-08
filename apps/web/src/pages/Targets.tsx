@@ -27,19 +27,19 @@ import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum, TSelect } from "../compo
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
+	type Connection,
 	KNOWN_PLATFORMS,
-	makeEmptyAdapter,
+	makeEmptyConnection,
 	makeEmptyTarget,
 	maskWebhookUrl,
-	type OnebotAdapterConfig,
+	type OnebotConnectionConfig,
 	type OnebotSession,
 	type OnebotTransport,
-	type PushAdapter,
 	type PushTarget,
 	type PushTargetPlatform,
 	type PushTargetScope,
-	type QQOfficialAdapterConfig,
 	type QQOfficialBotType,
+	type QQOfficialConnectionConfig,
 	type QQOfficialSession,
 	switchOnebotTransport,
 	WEBHOOK_PROVIDERS,
@@ -94,7 +94,7 @@ function scopeLabel(s: PushTargetScope): string {
 	return SCOPES.find((x) => x.value === s)?.label ?? s;
 }
 
-function adapterEndpointSummary(a: PushAdapter): string {
+function connectionEndpointSummary(a: Connection): string {
 	if (a.platform === "onebot") {
 		const c = a.config;
 		if (c.transport === "http") return c.baseUrl;
@@ -129,18 +129,18 @@ function targetSessionSummary(target: PushTarget): string {
 	return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 }
 
-function managedWebhookTargetForAdapter(
-	adapter: PushAdapter,
+function managedWebhookTargetForConnection(
+	connection: Connection,
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
-	if (adapter.platform !== "webhook") return undefined;
-	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === adapter.id);
+	if (connection.platform !== "webhook") return undefined;
+	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === connection.id);
 	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 }
 
 // ── Adapter card ────────────────────────────────────────────────────────────
 
-function adapterStatusFor(a: PushAdapter): "ok" | "warn" | "err" | "off" | "pending" {
+function connectionStatusFor(a: Connection): "ok" | "warn" | "err" | "off" | "pending" {
 	if (!a.enabled) return "off";
 	if (!a.testStatus) return "pending";
 	return a.testStatus.ok ? "ok" : "err";
@@ -156,7 +156,7 @@ function targetStatusFor(t: PushTarget): "ok" | "warn" | "err" | "off" | "pendin
 
 interface TargetCardProps {
 	target: PushTarget;
-	adapter: PushAdapter | undefined;
+	connection: Connection | undefined;
 	onEdit: () => void;
 	onDelete: () => void;
 	onTest: () => void;
@@ -207,7 +207,7 @@ function EdgeBadge({
 
 function TargetCard({
 	target,
-	adapter,
+	connection,
 	onEdit,
 	onDelete,
 	onTest,
@@ -215,7 +215,7 @@ function TargetCard({
 	readOnly,
 }: TargetCardProps) {
 	const tint = platformTint(target.platform);
-	const adapterMissing = !adapter;
+	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
 	const testStatus = target.testStatus;
 
@@ -223,7 +223,7 @@ function TargetCard({
 		<div
 			className="rounded-bn-sm border bg-bn-surface p-3.5 transition-[border-color] duration-200"
 			style={{
-				borderColor: adapterMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
+				borderColor: connectionMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
 			}}
 		>
 			<div className="mb-2.5 flex items-center gap-2.5">
@@ -256,8 +256,8 @@ function TargetCard({
 				<span className="truncate">
 					{scopeLabel(target.scope)}
 					{" · "}
-					<span style={{ color: adapterMissing ? "var(--color-bn-danger-text)" : undefined }}>
-						{adapterMissing ? "适配器缺失" : `适配器: ${adapter.name}`}
+					<span style={{ color: connectionMissing ? "var(--color-bn-danger-text)" : undefined }}>
+						{connectionMissing ? "适配器缺失" : `适配器: ${connection.name}`}
 					</span>
 					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
 				</span>
@@ -269,7 +269,7 @@ function TargetCard({
 						size="sm"
 						variant="ghost"
 						onClick={onTest}
-						disabled={testing === "pending" || !target.enabled || adapterMissing}
+						disabled={testing === "pending" || !target.enabled || connectionMissing}
 						title="向该目标真实发送一条测试消息"
 					>
 						{testing === "pending"
@@ -310,17 +310,17 @@ function TargetCard({
 
 // ── Editor: Adapter ─────────────────────────────────────────────────────────
 
-interface AdapterEditorProps {
+interface ConnectionEditorProps {
 	mode: "add" | "edit";
-	value: PushAdapter;
-	onChange: (next: PushAdapter) => void;
+	value: Connection;
+	onChange: (next: Connection) => void;
 	onSave: () => void;
 	onCancel: () => void;
 	saving: boolean;
 	error: string | null;
 }
 
-function AdapterEditorModal({
+function ConnectionEditorModal({
 	mode,
 	value,
 	onChange,
@@ -328,7 +328,7 @@ function AdapterEditorModal({
 	onCancel,
 	saving,
 	error,
-}: AdapterEditorProps) {
+}: ConnectionEditorProps) {
 	const valid = value.name.trim().length > 0;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
 	const invalidHint = valid ? undefined : "请先填写显示名称";
@@ -352,7 +352,7 @@ function AdapterEditorModal({
 										key={p.value}
 										tone={pTint}
 										active={active}
-										onClick={() => onChange(makeEmptyAdapter(p.value, value.name))}
+										onClick={() => onChange(makeEmptyConnection(p.value, value.name))}
 									>
 										<PlatformIcon platform={p.value} size={13} />
 										{p.label}
@@ -384,7 +384,7 @@ function AdapterEditorModal({
 					}
 					accent={tint}
 				>
-					<AdapterConnectionFields adapter={value} onChange={onChange} />
+					<ConnectionConfigFields connection={value} onChange={onChange} />
 				</SectionBox>
 			</div>
 
@@ -405,16 +405,16 @@ function AdapterEditorModal({
 	);
 }
 
-function AdapterConnectionFields({
-	adapter,
+function ConnectionConfigFields({
+	connection,
 	onChange,
 }: {
-	adapter: PushAdapter;
-	onChange: (next: PushAdapter) => void;
+	connection: Connection;
+	onChange: (next: Connection) => void;
 }) {
-	if (adapter.platform === "onebot") {
-		const cfg = adapter.config;
-		const setCfg = (next: OnebotAdapterConfig) => onChange({ ...adapter, config: next });
+	if (connection.platform === "onebot") {
+		const cfg = connection.config;
+		const setCfg = (next: OnebotConnectionConfig) => onChange({ ...connection, config: next });
 		return (
 			<>
 				<Field label="连接方式" code="config.transport" required>
@@ -567,9 +567,9 @@ function AdapterConnectionFields({
 			</>
 		);
 	}
-	if (adapter.platform === "qq-official") {
-		const cfg = adapter.config;
-		const setCfg = (next: QQOfficialAdapterConfig) => onChange({ ...adapter, config: next });
+	if (connection.platform === "qq-official") {
+		const cfg = connection.config;
+		const setCfg = (next: QQOfficialConnectionConfig) => onChange({ ...connection, config: next });
 		return (
 			<>
 				{/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
@@ -582,8 +582,8 @@ function AdapterConnectionFields({
 						// 会让保存钮一直灰着(唯一前端必填),用户看不出为什么存不了。
 						onCredentials={({ appId, appSecret }) =>
 							onChange({
-								...adapter,
-								name: adapter.name.trim() ? adapter.name : `QQ 机器人 ${appId}`,
+								...connection,
+								name: connection.name.trim() ? connection.name : `QQ 机器人 ${appId}`,
 								config: { ...cfg, appId, appSecret, botType: "public", sandbox: false },
 							})
 						}
@@ -648,8 +648,8 @@ function AdapterConnectionFields({
 			</>
 		);
 	}
-	if (adapter.platform === "webhook") {
-		const cfg = adapter.config;
+	if (connection.platform === "webhook") {
+		const cfg = connection.config;
 		const provider: WebhookProvider = cfg.provider ?? "generic";
 		return (
 			<>
@@ -661,14 +661,14 @@ function AdapterConnectionFields({
 				>
 					<TSelect<WebhookProvider>
 						value={provider}
-						onChange={(v) => onChange({ ...adapter, config: { ...cfg, provider: v } })}
+						onChange={(v) => onChange({ ...connection, config: { ...cfg, provider: v } })}
 						options={[...WEBHOOK_PROVIDERS]}
 					/>
 				</Field>
 				<Field label="URL" code="config.url" required>
 					<TInput
 						value={cfg.url}
-						onChange={(v) => onChange({ ...adapter, config: { ...cfg, url: v } })}
+						onChange={(v) => onChange({ ...connection, config: { ...cfg, url: v } })}
 						placeholder={webhookUrlPlaceholder(provider)}
 						mono
 					/>
@@ -676,7 +676,9 @@ function AdapterConnectionFields({
 				<Field label="Secret" code="config.secret" hint={webhookSecretHint(provider)}>
 					<TInput
 						value={cfg.secret ?? ""}
-						onChange={(v) => onChange({ ...adapter, config: { ...cfg, secret: v || undefined } })}
+						onChange={(v) =>
+							onChange({ ...connection, config: { ...cfg, secret: v || undefined } })
+						}
 						secret
 					/>
 				</Field>
@@ -750,7 +752,7 @@ function HeadersEditor({
 interface TargetEditorProps {
 	mode: "add" | "edit";
 	value: PushTarget;
-	adapters: PushAdapter[];
+	connections: Connection[];
 	onChange: (next: PushTarget) => void;
 	onSave: () => void;
 	onCancel: () => void;
@@ -761,7 +763,7 @@ interface TargetEditorProps {
 function TargetEditorModal({
 	mode,
 	value,
-	adapters,
+	connections,
 	onChange,
 	onSave,
 	onCancel,
@@ -771,7 +773,7 @@ function TargetEditorModal({
 	const valid = value.name.trim().length > 0 && Boolean(value.adapterId);
 	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
-	const eligibleAdapters = adapters.filter((a) => a.platform !== "webhook");
+	const eligibleConnections = connections.filter((a) => a.platform !== "webhook");
 	return (
 		<ModalShell
 			onCancel={onCancel}
@@ -785,13 +787,13 @@ function TargetEditorModal({
 					subtitle="目标的平台跟随适配器,连接参数(baseUrl/accessToken)在适配器层维护"
 					accent={tint}
 				>
-					{eligibleAdapters.length === 0 ? (
+					{eligibleConnections.length === 0 ? (
 						<EmptyNote size="sm">
 							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
 						</EmptyNote>
 					) : (
 						<div className="space-y-1.5">
-							{eligibleAdapters.map((a) => {
+							{eligibleConnections.map((a) => {
 								const active = value.adapterId === a.id;
 								const aTint = platformTint(a.platform);
 								return (
@@ -820,7 +822,7 @@ function TargetEditorModal({
 												{a.name}
 											</div>
 											<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-												{platformLabel(a.platform)} · {adapterEndpointSummary(a)}
+												{platformLabel(a.platform)} · {connectionEndpointSummary(a)}
 											</div>
 										</div>
 										{active ? (
@@ -1279,12 +1281,12 @@ function DeleteModal({
 
 function TestConfirmModal({
 	target,
-	adapter,
+	connection,
 	onCancel,
 	onConfirm,
 }: {
 	target: PushTarget;
-	adapter: PushAdapter | undefined;
+	connection: Connection | undefined;
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
@@ -1295,7 +1297,7 @@ function TestConfirmModal({
 			title="发送测试推送?"
 			description={
 				<>
-					将通过 <b className="text-bn-text-primary">{adapter?.name ?? "(未知适配器)"}</b> 向{" "}
+					将通过 <b className="text-bn-text-primary">{connection?.name ?? "(未知适配器)"}</b> 向{" "}
 					<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
 					<br />
 					<span className="font-mono text-bn-xs text-bn-text-tertiary">
@@ -1318,18 +1320,18 @@ function TestConfirmModal({
 
 // ── Adapter rail (left sidebar) ─────────────────────────────────────────────
 
-function AdapterRail({
-	adapters,
+function ConnectionRail({
+	connections,
 	selectedId,
 	onPick,
 	onAddClick,
-	targetCountByAdapter,
+	targetCountByConnection,
 }: {
-	adapters: PushAdapter[];
+	connections: Connection[];
 	selectedId: string | null;
 	onPick: (id: string) => void;
 	onAddClick: () => void;
-	targetCountByAdapter: Map<string, number>;
+	targetCountByConnection: Map<string, number>;
 }) {
 	return (
 		<SectionNav
@@ -1342,8 +1344,8 @@ function AdapterRail({
 			addButtonProps={{ "data-tour": "adapter-add" }}
 			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
 			emptyState={<EmptyNote size="sm">尚未配置任何适配器</EmptyNote>}
-			items={adapters.map((a) => {
-				const count = targetCountByAdapter.get(a.id) ?? 0;
+			items={connections.map((a) => {
+				const count = targetCountByConnection.get(a.id) ?? 0;
 				return {
 					id: a.id,
 					label: a.name || "（未命名）",
@@ -1376,25 +1378,25 @@ function AdapterRail({
 export default function Targets() {
 	const qc = useQueryClient();
 
-	const adaptersQuery = useQuery({
+	const connectionsQuery = useQuery({
 		queryKey: ["adapters"],
-		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/adapters"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 
-	const [adapterDraft, setAdapterDraft] = useState<{
+	const [connectionDraft, setConnectionDraft] = useState<{
 		mode: "add" | "edit";
-		value: PushAdapter;
+		value: Connection;
 	} | null>(null);
 	const [targetDraft, setTargetDraft] = useState<{
 		mode: "add" | "edit";
 		value: PushTarget;
 	} | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<
-		{ kind: "adapter"; value: PushAdapter } | { kind: "target"; value: PushTarget } | null
+		{ kind: "adapter"; value: Connection } | { kind: "target"; value: PushTarget } | null
 	>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1410,36 +1412,36 @@ export default function Targets() {
 			if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
 		};
 	}, []);
-	const [selectedAdapterId, setSelectedAdapterId] = useState<string | null>(null);
+	const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
 
-	const adapters = adaptersQuery.data ?? [];
+	const connections = connectionsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
-	const adaptersById = new Map(adapters.map((a) => [a.id, a]));
-	const targetCountByAdapter = new Map<string, number>();
+	const connectionsById = new Map(connections.map((a) => [a.id, a]));
+	const targetCountByConnection = new Map<string, number>();
 	for (const t of targets) {
-		targetCountByAdapter.set(t.adapterId, (targetCountByAdapter.get(t.adapterId) ?? 0) + 1);
+		targetCountByConnection.set(t.adapterId, (targetCountByConnection.get(t.adapterId) ?? 0) + 1);
 	}
 
-	// Keep selectedAdapterId valid: default to the first adapter; reselect if
+	// Keep selectedConnectionId valid: default to the first adapter; reselect if
 	// the user deletes the current one.
 	useEffect(() => {
-		if (adapters.length === 0) {
-			if (selectedAdapterId !== null) setSelectedAdapterId(null);
+		if (connections.length === 0) {
+			if (selectedConnectionId !== null) setSelectedConnectionId(null);
 			return;
 		}
-		if (!selectedAdapterId || !adapters.some((a) => a.id === selectedAdapterId)) {
-			setSelectedAdapterId(adapters[0]?.id ?? null);
+		if (!selectedConnectionId || !connections.some((a) => a.id === selectedConnectionId)) {
+			setSelectedConnectionId(connections[0]?.id ?? null);
 		}
-	}, [adapters, selectedAdapterId]);
+	}, [connections, selectedConnectionId]);
 
-	const selectedAdapter = selectedAdapterId
-		? adapters.find((a) => a.id === selectedAdapterId)
+	const selectedConnection = selectedConnectionId
+		? connections.find((a) => a.id === selectedConnectionId)
 		: undefined;
-	const selectedTargets = selectedAdapter
-		? targets.filter((t) => t.adapterId === selectedAdapter.id)
+	const selectedTargets = selectedConnection
+		? targets.filter((t) => t.adapterId === selectedConnection.id)
 		: [];
-	const selectedManagedWebhookTarget = selectedAdapter
-		? managedWebhookTargetForAdapter(selectedAdapter, targets)
+	const selectedManagedWebhookTarget = selectedConnection
+		? managedWebhookTargetForConnection(selectedConnection, targets)
 		: undefined;
 
 	const showToast = (msg: string, ok = true): void => {
@@ -1448,11 +1450,11 @@ export default function Targets() {
 		toastTimer.current = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
 	};
 
-	const upsertAdapter = useMutation({
-		mutationFn: async (a: PushAdapter) => {
+	const upsertConnection = useMutation({
+		mutationFn: async (a: Connection) => {
 			setError(null);
 			try {
-				await api.post<PushAdapter[]>("/api/adapters", a);
+				await api.post<Connection[]>("/api/adapters", a);
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
 				else setError(String(err));
@@ -1462,12 +1464,12 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["adapters"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast(adapterDraft?.mode === "add" ? "已新建适配器" : "适配器已保存");
-			setAdapterDraft(null);
+			showToast(connectionDraft?.mode === "add" ? "已新建适配器" : "适配器已保存");
+			setConnectionDraft(null);
 		},
 	});
 
-	const delAdapter = useMutation({
+	const delConnection = useMutation({
 		mutationFn: async (id: string) => {
 			setDeleteError(null);
 			try {
@@ -1522,9 +1524,9 @@ export default function Targets() {
 		},
 	});
 
-	async function testAdapter(a: PushAdapter): Promise<void> {
+	async function testConnection(a: Connection): Promise<void> {
 		if (a.platform === "webhook") {
-			const target = managedWebhookTargetForAdapter(a, targets);
+			const target = managedWebhookTargetForConnection(a, targets);
 			if (!target) {
 				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
 				return;
@@ -1622,22 +1624,22 @@ export default function Targets() {
 		setConfirmTest(t);
 	}
 
-	function startNewAdapter(): void {
+	function startNewConnection(): void {
 		setError(null);
-		setAdapterDraft({
+		setConnectionDraft({
 			mode: "add",
-			value: makeEmptyAdapter("onebot" as PushTargetPlatform, ""),
+			value: makeEmptyConnection("onebot" as PushTargetPlatform, ""),
 		});
 	}
 
-	function startEditAdapter(a: PushAdapter): void {
+	function startEditConnection(a: Connection): void {
 		setError(null);
-		setAdapterDraft({ mode: "edit", value: a });
+		setConnectionDraft({ mode: "edit", value: a });
 	}
 
-	function startNewTarget(adapter?: PushAdapter): void {
+	function startNewTarget(connection?: Connection): void {
 		setError(null);
-		const a = adapter ?? selectedAdapter ?? adapters[0];
+		const a = connection ?? selectedConnection ?? connections[0];
 		if (!a) {
 			showToast("请先新建一个适配器", false);
 			return;
@@ -1658,33 +1660,33 @@ export default function Targets() {
 		setTargetDraft({ mode: "edit", value: t });
 	}
 
-	const selectedAdapterStatus =
-		selectedAdapter?.platform === "webhook" && selectedManagedWebhookTarget
+	const selectedConnectionStatus =
+		selectedConnection?.platform === "webhook" && selectedManagedWebhookTarget
 			? targetStatusFor(selectedManagedWebhookTarget)
-			: selectedAdapter
-				? adapterStatusFor(selectedAdapter)
+			: selectedConnection
+				? connectionStatusFor(selectedConnection)
 				: "pending";
-	const selectedAdapterTestStatus =
-		selectedAdapter?.platform === "webhook"
+	const selectedConnectionTestStatus =
+		selectedConnection?.platform === "webhook"
 			? selectedManagedWebhookTarget?.testStatus
-			: selectedAdapter?.testStatus;
+			: selectedConnection?.testStatus;
 
-	const isLoading = adaptersQuery.isLoading || targetsQuery.isLoading;
+	const isLoading = connectionsQuery.isLoading || targetsQuery.isLoading;
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-bn-rail">
-				{/* AdapterRail 直接坐在 grid 上,中间不许夹盒子 —— SectionNav 的根在 xl 以下是
+				{/* ConnectionRail 直接坐在 grid 上,中间不许夹盒子 —— SectionNav 的根在 xl 以下是
 				    `display:contents`,包一层 div 就把它的包含块缩成矮格子,sticky 失去吸附
 				    行程(见 packages/ui/src/section-nav.tsx 的同段注释)。导览挂点(adapter-add)
 				    在内部「+ 新建」按钮本体上,不需要外层盒子 —— 曾框整栏:洞大到点空态占位
 				    也算「点过了」,灯白白退散(真机踩过)。 */}
-				<AdapterRail
-					adapters={adapters}
-					selectedId={selectedAdapterId}
-					onPick={setSelectedAdapterId}
-					onAddClick={startNewAdapter}
-					targetCountByAdapter={targetCountByAdapter}
+				<ConnectionRail
+					connections={connections}
+					selectedId={selectedConnectionId}
+					onPick={setSelectedConnectionId}
+					onAddClick={startNewConnection}
+					targetCountByConnection={targetCountByConnection}
 				/>
 
 				<div className="space-y-4">
@@ -1692,14 +1694,14 @@ export default function Targets() {
 						<div className="bn-glass rounded-bn-card p-6 shadow-bn-card">
 							<div className="h-20 animate-pulse rounded-bn-sm bg-bn-surface-muted" />
 						</div>
-					) : !selectedAdapter ? (
+					) : !selectedConnection ? (
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
 								先新建一个适配器(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
 							</div>
 							{/* 与左栏「+ 新建」同名挂点 —— 同名实例是等价入口,聚光灯一起亮 */}
-							<Btn data-tour="adapter-add" variant="primary" size="sm" onClick={startNewAdapter}>
+							<Btn data-tour="adapter-add" variant="primary" size="sm" onClick={startNewConnection}>
 								+ 新建适配器
 							</Btn>
 						</div>
@@ -1711,40 +1713,40 @@ export default function Targets() {
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
 										style={{
-											background: `color-mix(in srgb, ${platformTint(selectedAdapter.platform)} 12%, transparent)`,
+											background: `color-mix(in srgb, ${platformTint(selectedConnection.platform)} 12%, transparent)`,
 										}}
 									>
-										<PlatformIcon platform={selectedAdapter.platform} size={22} />
+										<PlatformIcon platform={selectedConnection.platform} size={22} />
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
 											<span className="truncate text-bn-md font-bold text-bn-text-primary">
-												{selectedAdapter.name || "（未命名）"}
+												{selectedConnection.name || "（未命名）"}
 											</span>
-											<StatusDot kind={selectedAdapterStatus} />
-											{!selectedAdapter.enabled ? (
+											<StatusDot kind={selectedConnectionStatus} />
+											{!selectedConnection.enabled ? (
 												<span className="text-bn-2xs text-bn-text-tertiary">(已停用)</span>
 											) : null}
 										</div>
 										<div className="mt-0.5 truncate font-mono text-bn-xs text-bn-text-tertiary">
-											{platformLabel(selectedAdapter.platform)} ·{" "}
-											{adapterEndpointSummary(selectedAdapter)}
+											{platformLabel(selectedConnection.platform)} ·{" "}
+											{connectionEndpointSummary(selectedConnection)}
 										</div>
-										{selectedAdapterTestStatus ? (
+										{selectedConnectionTestStatus ? (
 											<EdgeBadge
-												tone={selectedAdapterTestStatus.ok ? "success" : "warning"}
+												tone={selectedConnectionTestStatus.ok ? "success" : "warning"}
 												size="xs"
 												className="mt-2 inline-block"
 											>
-												{selectedAdapterTestStatus.ok
+												{selectedConnectionTestStatus.ok
 													? `上次测试 OK${
-															selectedAdapterTestStatus.latencyMs != null
-																? ` · ${selectedAdapterTestStatus.latencyMs}ms`
+															selectedConnectionTestStatus.latencyMs != null
+																? ` · ${selectedConnectionTestStatus.latencyMs}ms`
 																: ""
 														}`
 													: `上次测试失败${
-															selectedAdapterTestStatus.err
-																? ` — ${selectedAdapterTestStatus.err}`
+															selectedConnectionTestStatus.err
+																? ` — ${selectedConnectionTestStatus.err}`
 																: ""
 														}`}
 											</EdgeBadge>
@@ -1756,31 +1758,31 @@ export default function Targets() {
 											data-tour="adapter-test"
 											size="sm"
 											variant="ghost"
-											onClick={() => testAdapter(selectedAdapter)}
-											disabled={testing[selectedAdapter.id] === "pending"}
+											onClick={() => testConnection(selectedConnection)}
+											disabled={testing[selectedConnection.id] === "pending"}
 										>
-											{testing[selectedAdapter.id] === "pending"
-												? selectedAdapter.platform === "webhook"
+											{testing[selectedConnection.id] === "pending"
+												? selectedConnection.platform === "webhook"
 													? "发送中…"
 													: "测试中…"
-												: testing[selectedAdapter.id] === "ok"
-													? selectedAdapter.platform === "webhook"
+												: testing[selectedConnection.id] === "ok"
+													? selectedConnection.platform === "webhook"
 														? "已送达"
 														: "已连通"
-													: testing[selectedAdapter.id] === "fail"
+													: testing[selectedConnection.id] === "fail"
 														? "失败"
-														: selectedAdapter.platform === "webhook"
+														: selectedConnection.platform === "webhook"
 															? "发送测试"
 															: "测试"}
 										</Btn>
 										<Btn
 											// 导览失败链的灯位:测试失败时才亮(同 target-config)
 											data-tour={
-												selectedAdapter.testStatus?.ok === false ? "adapter-config" : undefined
+												selectedConnection.testStatus?.ok === false ? "adapter-config" : undefined
 											}
 											size="sm"
 											variant="ghost"
-											onClick={() => startEditAdapter(selectedAdapter)}
+											onClick={() => startEditConnection(selectedConnection)}
 										>
 											配置
 										</Btn>
@@ -1789,7 +1791,7 @@ export default function Targets() {
 											variant="ghost"
 											onClick={() => {
 												setDeleteError(null);
-												setConfirmDelete({ kind: "adapter", value: selectedAdapter });
+												setConfirmDelete({ kind: "adapter", value: selectedConnection });
 											}}
 											title="删除"
 											icon={<Icon.trash size={11} />}
@@ -1805,26 +1807,26 @@ export default function Targets() {
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-bn-md font-bold text-bn-text-primary">
-											{selectedAdapter.platform === "webhook" ? "Webhook 投递目标" : "推送目标"}
+											{selectedConnection.platform === "webhook" ? "Webhook 投递目标" : "推送目标"}
 										</div>
 										<div className="text-bn-xs text-bn-text-tertiary">
-											{selectedAdapter.platform === "webhook"
+											{selectedConnection.platform === "webhook"
 												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
 												: "本适配器下的会话:群号 / 用户 ID 等。"}
 										</div>
 									</div>
-									{selectedAdapter.platform === "webhook" ? null : (
+									{selectedConnection.platform === "webhook" ? null : (
 										<Btn
 											data-tour="target-add"
 											size="sm"
 											variant="outline"
-											onClick={() => startNewTarget(selectedAdapter)}
+											onClick={() => startNewTarget(selectedConnection)}
 										>
 											+ 新建推送目标
 										</Btn>
 									)}
 								</div>
-								{selectedAdapter.platform === "webhook" ? (
+								{selectedConnection.platform === "webhook" ? (
 									<div className="space-y-2.5">
 										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
@@ -1833,7 +1835,7 @@ export default function Targets() {
 											<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 												<TargetCard
 													target={selectedManagedWebhookTarget}
-													adapter={selectedAdapter}
+													connection={selectedConnection}
 													onEdit={() => {}}
 													onDelete={() => {}}
 													onTest={() => testTarget(selectedManagedWebhookTarget)}
@@ -1853,7 +1855,7 @@ export default function Targets() {
 											label="新建推送目标"
 											hint="绑定到当前适配器"
 											className="min-h-22"
-											onClick={() => startNewTarget(selectedAdapter)}
+											onClick={() => startNewTarget(selectedConnection)}
 										/>
 									</div>
 								) : (
@@ -1862,7 +1864,7 @@ export default function Targets() {
 											<TargetCard
 												key={t.id}
 												target={t}
-												adapter={adaptersById.get(t.adapterId)}
+												connection={connectionsById.get(t.adapterId)}
 												onEdit={() => startEditTarget(t)}
 												onDelete={() => {
 													setDeleteError(null);
@@ -1877,7 +1879,7 @@ export default function Targets() {
 											label="新建推送目标"
 											hint="绑定到当前适配器"
 											className="min-h-22"
-											onClick={() => startNewTarget(selectedAdapter)}
+											onClick={() => startNewTarget(selectedConnection)}
 										/>
 									</div>
 								)}
@@ -1887,17 +1889,17 @@ export default function Targets() {
 				</div>
 			</div>
 
-			{adapterDraft ? (
-				<AdapterEditorModal
-					mode={adapterDraft.mode}
-					value={adapterDraft.value}
-					onChange={(v) => setAdapterDraft({ mode: adapterDraft.mode, value: v })}
-					onSave={() => upsertAdapter.mutate(adapterDraft.value)}
+			{connectionDraft ? (
+				<ConnectionEditorModal
+					mode={connectionDraft.mode}
+					value={connectionDraft.value}
+					onChange={(v) => setConnectionDraft({ mode: connectionDraft.mode, value: v })}
+					onSave={() => upsertConnection.mutate(connectionDraft.value)}
 					onCancel={() => {
-						setAdapterDraft(null);
+						setConnectionDraft(null);
 						setError(null);
 					}}
-					saving={upsertAdapter.isPending}
+					saving={upsertConnection.isPending}
 					error={error}
 				/>
 			) : null}
@@ -1906,7 +1908,7 @@ export default function Targets() {
 				<TargetEditorModal
 					mode={targetDraft.mode}
 					value={targetDraft.value}
-					adapters={adapters}
+					connections={connections}
 					onChange={(v) => setTargetDraft({ mode: targetDraft.mode, value: v })}
 					onSave={() => upsertTarget.mutate(targetDraft.value)}
 					onCancel={() => {
@@ -1935,12 +1937,12 @@ export default function Targets() {
 					}}
 					onConfirm={() => {
 						if (confirmDelete.kind === "adapter") {
-							delAdapter.mutate(confirmDelete.value.id);
+							delConnection.mutate(confirmDelete.value.id);
 						} else {
 							delTarget.mutate(confirmDelete.value.id);
 						}
 					}}
-					deleting={delAdapter.isPending || delTarget.isPending}
+					deleting={delConnection.isPending || delTarget.isPending}
 					error={deleteError}
 				/>
 			) : null}
@@ -1948,7 +1950,7 @@ export default function Targets() {
 			{confirmTest ? (
 				<TestConfirmModal
 					target={confirmTest}
-					adapter={adaptersById.get(confirmTest.adapterId)}
+					connection={connectionsById.get(confirmTest.adapterId)}
 					onCancel={() => setConfirmTest(null)}
 					onConfirm={() => {
 						const t = confirmTest;

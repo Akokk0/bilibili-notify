@@ -92,18 +92,18 @@ export const OnebotWsReverseConfigSchema = z
  * branch 时 default 补上 → 旧数据无缝按 http 加载。三 branch 的 `transport` 是互斥
  * literal,新数据只会命中唯一一个 branch,无歧义。
  */
-export const OnebotAdapterConfigSchema = z.union([
+export const OnebotConnectionConfigSchema = z.union([
 	OnebotHttpConfigSchema,
 	OnebotWsConfigSchema,
 	OnebotWsReverseConfigSchema,
 ]);
-export type OnebotAdapterConfig = z.infer<typeof OnebotAdapterConfigSchema>;
-export type OnebotTransport = OnebotAdapterConfig["transport"];
+export type OnebotConnectionConfig = z.infer<typeof OnebotConnectionConfigSchema>;
+export type OnebotTransport = OnebotConnectionConfig["transport"];
 
 export const WebhookProviderSchema = z.enum(["generic", "dingtalk", "feishu", "wecom"]);
 export type WebhookProvider = z.infer<typeof WebhookProviderSchema>;
 
-export const WebhookAdapterConfigSchema = z.object({
+export const WebhookConnectionConfigSchema = z.object({
 	url: z.url(),
 	/** 协议提供方;旧配置缺省为 generic,保持 bilibili-notify JSON envelope 兼容。 */
 	provider: WebhookProviderSchema.default("generic"),
@@ -111,7 +111,7 @@ export const WebhookAdapterConfigSchema = z.object({
 	/** 自定义 header 例如 Authorization */
 	headers: z.record(z.string(), z.string()).default({}),
 });
-export type WebhookAdapterConfig = z.infer<typeof WebhookAdapterConfigSchema>;
+export type WebhookConnectionConfig = z.infer<typeof WebhookConnectionConfigSchema>;
 
 /**
  * QQ 官方机器人公域/私域类型。私域可发原生 markdown,公域只能发模板 markdown ——
@@ -124,7 +124,7 @@ export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
  * QQ 官方机器人(q.qq.com,非 OneBot/NapCat)适配器连接配置。
  * 鉴权 appId+appSecret → getAppAccessToken;`sandbox` 切沙箱/正式环境的 wss+REST host。
  */
-export const QQOfficialAdapterConfigSchema = z
+export const QQOfficialConnectionConfigSchema = z
 	.object({
 		appId: z.string().min(1),
 		/**
@@ -144,15 +144,15 @@ export const QQOfficialAdapterConfigSchema = z
 		logReconnects: z.boolean().default(false),
 	})
 	.strict();
-export type QQOfficialAdapterConfig = z.infer<typeof QQOfficialAdapterConfigSchema>;
+export type QQOfficialConnectionConfig = z.infer<typeof QQOfficialConnectionConfigSchema>;
 
-export const PushAdapterTestStatusSchema = z.object({
+export const ConnectionTestStatusSchema = z.object({
 	ok: z.boolean(),
 	lastCheckedAt: z.string(),
 	latencyMs: z.number().optional(),
 	err: z.string().optional(),
 });
-export type PushAdapterTestStatus = z.infer<typeof PushAdapterTestStatusSchema>;
+export type ConnectionTestStatus = z.infer<typeof ConnectionTestStatusSchema>;
 
 /**
  * Push adapter — 平台级的"连接实例"。
@@ -160,37 +160,37 @@ export type PushAdapterTestStatus = z.infer<typeof PushAdapterTestStatusSchema>;
  * 类比一个 bot 实例:一份 baseUrl/accessToken 一次配置,被多个 PushTarget
  * (实际的群/私聊/dashboard 会话) 复用。
  */
-const PushAdapterCommonShape = {
+const ConnectionCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
 	enabled: z.boolean(),
-	testStatus: PushAdapterTestStatusSchema.optional(),
+	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
-const OnebotAdapterSchema = z.object({
-	...PushAdapterCommonShape,
+const OnebotConnectionSchema = z.object({
+	...ConnectionCommonShape,
 	platform: z.literal("onebot"),
-	config: OnebotAdapterConfigSchema,
+	config: OnebotConnectionConfigSchema,
 });
 
-const WebhookAdapterSchema = z.object({
-	...PushAdapterCommonShape,
+const WebhookConnectionSchema = z.object({
+	...ConnectionCommonShape,
 	platform: z.literal("webhook"),
-	config: WebhookAdapterConfigSchema,
+	config: WebhookConnectionConfigSchema,
 });
 
-const QQOfficialAdapterSchema = z.object({
-	...PushAdapterCommonShape,
+const QQOfficialConnectionSchema = z.object({
+	...ConnectionCommonShape,
 	platform: z.literal("qq-official"),
-	config: QQOfficialAdapterConfigSchema,
+	config: QQOfficialConnectionConfigSchema,
 });
 
-export const PushAdapterSchema = z.discriminatedUnion("platform", [
-	OnebotAdapterSchema,
-	WebhookAdapterSchema,
-	QQOfficialAdapterSchema,
+export const ConnectionSchema = z.discriminatedUnion("platform", [
+	OnebotConnectionSchema,
+	WebhookConnectionSchema,
+	QQOfficialConnectionSchema,
 ]);
-export type PushAdapter = z.infer<typeof PushAdapterSchema>;
+export type Connection = z.infer<typeof ConnectionSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Target (session-level) — references an adapter                             */
@@ -236,10 +236,10 @@ const PushTargetCommonShape = {
 	managedBy: z.literal("adapter").optional(),
 	/**
 	 * 最近一次显式 `/api/push/test` 或真实业务推送的结果。
-	 * 跟 PushAdapter.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
-	 * adapter 连接级状态在 PushAdapter.testStatus。
+	 * 跟 Connection.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
+	 * adapter 连接级状态在 Connection.testStatus。
 	 */
-	testStatus: PushAdapterTestStatusSchema.optional(),
+	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
 const OnebotPushTargetSchema = z.object({

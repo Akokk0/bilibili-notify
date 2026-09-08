@@ -14,7 +14,7 @@ import type { BackupService } from "./backup/service.js";
 import type { ChromeSource } from "./config/persist.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
-import { createAdaptersRoute } from "./routes/adapters.js";
+import { createConnectionsRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
@@ -284,7 +284,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/globals", createGlobalsRoute(deps));
 	app.route("/api/commands", createCommandsRoute(deps));
 	app.route("/api/subs", createSubsRoute(deps));
-	app.route("/api/adapters", createAdaptersRoute(deps));
+	app.route("/api/adapters", createConnectionsRoute(deps));
 	app.route("/api/targets", createTargetsRoute(deps));
 	app.route("/api/live", createLiveRoute(deps));
 	app.route("/api/history", createHistoryRoute(deps));

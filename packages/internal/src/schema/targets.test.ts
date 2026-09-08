@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import { OnebotAdapterConfigSchema, PushAdapterSchema, PushTargetSchema } from "./targets";
+import { ConnectionSchema, OnebotConnectionConfigSchema, PushTargetSchema } from "./targets";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
 const UUID_B = "22222222-2222-4222-8222-222222222222";
 
-describe("PushAdapterSchema (discriminated by platform)", () => {
+describe("ConnectionSchema (discriminated by platform)", () => {
 	it("accepts a valid onebot adapter", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-main",
 			platform: "onebot",
@@ -17,7 +17,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("rejects an onebot adapter with webhook config", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "bad",
 			platform: "onebot",
@@ -28,7 +28,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("accepts a valid webhook adapter and defaults provider to generic", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "wh1",
 			platform: "webhook",
@@ -44,7 +44,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 
 	it("accepts supported webhook providers", () => {
 		for (const provider of ["generic", "dingtalk", "feishu", "wecom"] as const) {
-			const r = PushAdapterSchema.safeParse({
+			const r = ConnectionSchema.safeParse({
 				id: UUID_A,
 				name: `wh-${provider}`,
 				platform: "webhook",
@@ -57,7 +57,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("rejects unknown webhook provider", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "bad-provider",
 			platform: "webhook",
@@ -68,7 +68,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("rejects the removed web-dashboard adapter platform", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "dashboard",
 			platform: "web-dashboard",
@@ -79,7 +79,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("rejects unknown platform", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "bad",
 			platform: "koishi-onebot",
@@ -90,7 +90,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("accepts an onebot adapter with ws (正向 WS) config", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-ws",
 			platform: "onebot",
@@ -101,7 +101,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("accepts an onebot adapter with ws-reverse (反向 WS) config", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-rev",
 			platform: "onebot",
@@ -112,10 +112,10 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 });
 
-describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
+describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 	// --- 迁移:早期 adapters.json 的 onebot 条目没有 transport 字段 ---
 	it("迁移:无 transport 的旧 config(有 baseUrl)→ 视作 http", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			baseUrl: "http://localhost:5700",
 			accessToken: "secret",
 		});
@@ -124,7 +124,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("迁移:旧 config 缺省字段补 default(protocolVersion / headers / timeoutMs / retry)", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ baseUrl: "http://localhost:5700" });
+		const r = OnebotConnectionConfigSchema.safeParse({ baseUrl: "http://localhost:5700" });
 		expect(r.success).toBe(true);
 		if (r.success && r.data.transport === "http") {
 			expect(r.data.protocolVersion).toBe("v11");
@@ -137,13 +137,13 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 
 	// --- 超时下限(带图 / 合并转发) ---
 	it("超时下限:缺省补 default(带图 30s / 合并转发 60s),三种 transport 共用", () => {
-		const http = OnebotAdapterConfigSchema.safeParse({ baseUrl: "http://localhost:5700" });
+		const http = OnebotConnectionConfigSchema.safeParse({ baseUrl: "http://localhost:5700" });
 		expect(http.success).toBe(true);
 		if (http.success && http.data.transport === "http") {
 			expect(http.data.imageMinTimeoutMs).toBe(30_000);
 			expect(http.data.forwardMinTimeoutMs).toBe(60_000);
 		}
-		const rev = OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
+		const rev = OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
 		expect(rev.success).toBe(true);
 		if (rev.success && rev.data.transport === "ws-reverse") {
 			expect(rev.data.imageMinTimeoutMs).toBe(30_000);
@@ -152,7 +152,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("超时下限:显式 0 合法 —— 想「严格按我配的超时走」得关得掉", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			baseUrl: "http://localhost:5700",
 			imageMinTimeoutMs: 0,
 			forwardMinTimeoutMs: 0,
@@ -166,13 +166,13 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 
 	it("超时下限:负数拒绝", () => {
 		expect(
-			OnebotAdapterConfigSchema.safeParse({
+			OnebotConnectionConfigSchema.safeParse({
 				baseUrl: "http://localhost:5700",
 				imageMinTimeoutMs: -1,
 			}).success,
 		).toBe(false);
 		expect(
-			OnebotAdapterConfigSchema.safeParse({
+			OnebotConnectionConfigSchema.safeParse({
 				baseUrl: "http://localhost:5700",
 				forwardMinTimeoutMs: -1,
 			}).success,
@@ -181,7 +181,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 
 	// --- http branch ---
 	it("http branch:显式 transport + baseUrl 合法", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "http",
 			baseUrl: "http://localhost:5700",
 		});
@@ -189,7 +189,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("http branch:带 port(strict 拒多余键)→ 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "http",
 			baseUrl: "http://localhost:5700",
 			port: 6700,
@@ -200,16 +200,19 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	// --- ws branch ---
 	it("ws branch:ws:// 与 wss:// 都合法", () => {
 		expect(
-			OnebotAdapterConfigSchema.safeParse({ transport: "ws", url: "ws://127.0.0.1:3001" }).success,
+			OnebotConnectionConfigSchema.safeParse({ transport: "ws", url: "ws://127.0.0.1:3001" })
+				.success,
 		).toBe(true);
 		expect(
-			OnebotAdapterConfigSchema.safeParse({ transport: "ws", url: "wss://napcat.example.com/ws" })
-				.success,
+			OnebotConnectionConfigSchema.safeParse({
+				transport: "ws",
+				url: "wss://napcat.example.com/ws",
+			}).success,
 		).toBe(true);
 	});
 
 	it("ws branch:非 ws/wss 协议(http://)→ 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "ws",
 			url: "http://127.0.0.1:3001",
 		});
@@ -217,32 +220,32 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("ws branch:缺 url → 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ transport: "ws" });
+		const r = OnebotConnectionConfigSchema.safeParse({ transport: "ws" });
 		expect(r.success).toBe(false);
 	});
 
 	// --- ws-reverse branch ---
 	it("ws-reverse branch:port 合法", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
+		const r = OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
 		expect(r.success).toBe(true);
 	});
 
 	it("ws-reverse branch:port 越界(0 / 70000)→ 失败", () => {
-		expect(OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 0 }).success).toBe(
-			false,
-		);
 		expect(
-			OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 70_000 }).success,
+			OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 0 }).success,
+		).toBe(false);
+		expect(
+			OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 70_000 }).success,
 		).toBe(false);
 	});
 
 	it("ws-reverse branch:缺 port → 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse" });
+		const r = OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse" });
 		expect(r.success).toBe(false);
 	});
 
 	it("ws-reverse branch:带残留 baseUrl(strict 拒多余键)→ 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "ws-reverse",
 			port: 6700,
 			baseUrl: "http://localhost:5700",
@@ -251,7 +254,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("非法 transport 值 → 失败", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ transport: "bogus", baseUrl: "http://x" });
+		const r = OnebotConnectionConfigSchema.safeParse({ transport: "bogus", baseUrl: "http://x" });
 		expect(r.success).toBe(false);
 	});
 
@@ -259,7 +262,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	it("ws config 带残留 baseUrl(strict 拒多余键)→ 失败,不被 http branch 吞", () => {
 		// transport:"ws" 的 literal 不匹配 http branch 的 transport:"http",
 		// 又因 ws branch .strict() 拒掉 baseUrl → 整体失败(不会静默落到 http)。
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "ws",
 			url: "ws://127.0.0.1:3001",
 			baseUrl: "http://localhost:5700",
@@ -268,7 +271,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("显式 transport:ws 必定解析为 ws branch(不命中 http default)", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({
+		const r = OnebotConnectionConfigSchema.safeParse({
 			transport: "ws",
 			url: "ws://127.0.0.1:3001",
 		});
@@ -277,7 +280,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	});
 
 	it("显式 transport:ws-reverse 必定解析为 ws-reverse branch", () => {
-		const r = OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
+		const r = OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
 		expect(r.success).toBe(true);
 		if (r.success) expect(r.data.transport).toBe("ws-reverse");
 	});
@@ -285,7 +288,7 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 	it("迁移:无 transport 但缺 baseUrl 的损坏旧 config → 失败(不静默成 http)", () => {
 		// 没有 transport 字段时只可能命中 http branch,而 http branch 的 baseUrl
 		// 是必填 z.url() —— 缺它则迁移失败,而非生成无 endpoint 的僵尸 adapter。
-		const r = OnebotAdapterConfigSchema.safeParse({ accessToken: "secret" });
+		const r = OnebotConnectionConfigSchema.safeParse({ accessToken: "secret" });
 		expect(r.success).toBe(false);
 	});
 });
@@ -415,7 +418,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 
 describe("QQOfficial adapter schema", () => {
 	it("accepts a minimal qq-official adapter and defaults sandbox/botType", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "qq-bot",
 			platform: "qq-official",
@@ -431,14 +434,12 @@ describe("QQOfficial adapter schema", () => {
 
 	it("requires appId and appSecret", () => {
 		const base = { id: UUID_A, name: "x", platform: "qq-official", enabled: true } as const;
-		expect(PushAdapterSchema.safeParse({ ...base, config: { appSecret: "s" } }).success).toBe(
-			false,
-		);
-		expect(PushAdapterSchema.safeParse({ ...base, config: { appId: "1" } }).success).toBe(false);
+		expect(ConnectionSchema.safeParse({ ...base, config: { appSecret: "s" } }).success).toBe(false);
+		expect(ConnectionSchema.safeParse({ ...base, config: { appId: "1" } }).success).toBe(false);
 	});
 
 	it("config is strict — rejects unknown key (如误填 onebot 的 baseUrl)", () => {
-		const r = PushAdapterSchema.safeParse({
+		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "qq-bot",
 			platform: "qq-official",

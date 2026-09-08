@@ -20,12 +20,7 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-	GlobalConfig,
-	PushAdapter,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 import {
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
@@ -208,7 +203,7 @@ function makeServiceCtx() {
 function makeConfigStore(initial: GlobalConfig) {
 	let g = initial;
 	let targets: PushTarget[] = [];
-	let adapters: PushAdapter[] = [];
+	let connections: Connection[] = [];
 	return {
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
@@ -216,17 +211,17 @@ function makeConfigStore(initial: GlobalConfig) {
 		bootstrap: { dataDir: join(tmpdir(), "bn-engines-test-no-such-dir") },
 		getGlobals: () => g,
 		getTargets: () => targets,
-		getAdapters: () => adapters,
+		getConnections: () => connections,
 		patchTarget: vi.fn(async () => {}),
-		patchAdapter: vi.fn(async () => {}),
+		patchConnection: vi.fn(async () => {}),
 		_set: (next: GlobalConfig) => {
 			g = next;
 		},
 		_setTargets: (next: PushTarget[]) => {
 			targets = next;
 		},
-		_setAdapters: (next: PushAdapter[]) => {
-			adapters = next;
+		_setConnections: (next: Connection[]) => {
+			connections = next;
 		},
 	};
 }
@@ -245,13 +240,13 @@ function setup(opts?: {
 	puppeteer?: boolean;
 	subs?: Subscription[];
 	/** 配置表里的适配器(开机健康探测会挨个探它们)。 */
-	adapters?: PushAdapter[];
+	connections?: Connection[];
 	/** 平台实现(探测 / 能力都问它)。 */
 	platformAdapters?: PlatformAdapter[];
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
-	if (opts?.adapters) configStore._setAdapters(opts.adapters);
+	if (opts?.connections) configStore._setConnections(opts.connections);
 	const api = { setUserAgent: vi.fn() };
 	const loginFlow = { setHealthCheckMs: vi.fn() };
 	const bus = createNodeMessageBus();
@@ -1217,7 +1212,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		const TARGET = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		const c = setup();
 		active = c;
-		c.configStore._setAdapters([
+		c.configStore._setConnections([
 			{ id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any,
 		]);
 		c.configStore._setTargets([
@@ -1258,7 +1253,9 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
 		c.bus.emit("config-changed", "targets");
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
-		c.configStore._setAdapters([{ ...c.configStore.getAdapters()[0], enabled: false } as any]);
+		c.configStore._setConnections([
+			{ ...c.configStore.getConnections()[0], enabled: false } as any,
+		]);
 		c.bus.emit("config-changed", "adapters");
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 	});
@@ -1302,34 +1299,36 @@ describe("createEngines — 适配器的平台能力", () => {
 	}
 	const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
-	it("开机健康探测顺路把「未探测」的能力探一次;之后从 adapterCapabilities 读得到", async () => {
+	it("开机健康探测顺路把「未探测」的能力探一次;之后从 connectionCapabilities 读得到", async () => {
 		const { pa, probeCapabilities } = fakePlatform();
-		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		const c = setup({ connections: [onebot], platformAdapters: [pa] });
 		active = c;
 		await tick();
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
-		expect(c.runtime.adapterCapabilities(ADAPTER)).toEqual({
+		expect(c.runtime.connectionCapabilities(ADAPTER)).toEqual({
 			miniAppCard: { state: "supported", checkedAt: 1 },
 		});
 		// 已经有答案的不重探:主人点「测试」只做健康探测。
-		await c.runtime.probeAdapter(ADAPTER);
+		await c.runtime.probeConnection(ADAPTER);
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 	});
 
 	it("探完仍「未探测」→ 主人点「测试」会再给一次机会", async () => {
 		const { pa, probeCapabilities } = fakePlatform("unknown");
-		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		const c = setup({ connections: [onebot], platformAdapters: [pa] });
 		active = c;
 		await tick();
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
-		await c.runtime.probeAdapter(ADAPTER);
+		await c.runtime.probeConnection(ADAPTER);
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
-		expect(c.runtime.adapterCapabilities(ADAPTER)).toEqual({ miniAppCard: { state: "unknown" } });
+		expect(c.runtime.connectionCapabilities(ADAPTER)).toEqual({
+			miniAppCard: { state: "unknown" },
+		});
 	});
 
 	it("连都连不上的适配器不补探能力 —— 那一趟只会白等满一个超时", async () => {
 		const { pa, probeCapabilities } = fakePlatform("unknown", false);
-		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		const c = setup({ connections: [onebot], platformAdapters: [pa] });
 		active = c;
 		await tick();
 		expect(pa.probe).toHaveBeenCalled();
@@ -1339,6 +1338,6 @@ describe("createEngines — 适配器的平台能力", () => {
 	it("没有能力概念的平台(配置里没这条适配器也一样)→ undefined", () => {
 		const c = setup();
 		active = c;
-		expect(c.runtime.adapterCapabilities("nope")).toBeUndefined();
+		expect(c.runtime.connectionCapabilities("nope")).toBeUndefined();
 	});
 });

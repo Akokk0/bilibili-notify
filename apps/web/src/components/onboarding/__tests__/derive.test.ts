@@ -22,7 +22,7 @@ function inputs(partial: Partial<OnboardingInputs>): OnboardingInputs {
 	return {
 		biliLoggedIn: false,
 		subsCount: 0,
-		adapters: [],
+		connections: [],
 		targets: [],
 		modules: undefined,
 		...partial,
@@ -53,21 +53,21 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [{ enabled: true, testStatus: undefined }],
+				connections: [{ enabled: true, testStatus: undefined }],
 			}),
 		);
 		expect(stepMap(v).adapter).toBe(false);
-		// 但 hasAdapter 已亮 —— 导览靠它把子步从「新建」翻到「测试连通」,灯不断档
-		expect(v.hasAdapter).toBe(true);
+		// 但 hasConnection 已亮 —— 导览靠它把子步从「新建」翻到「测试连通」,灯不断档
+		expect(v.hasConnection).toBe(true);
 	});
 
-	it("hasAdapter:没建过任何适配器时为 false", () => {
-		expect(deriveOnboarding(inputs({})).hasAdapter).toBe(false);
+	it("hasConnection:没建过任何适配器时为 false", () => {
+		expect(deriveOnboarding(inputs({})).hasConnection).toBe(false);
 	});
 
 	it("disabled 的 adapter 测过也不算 —— 它不参与推送", () => {
 		const v = deriveOnboarding(
-			inputs({ adapters: [{ enabled: false, testStatus: { ok: true } }] }),
+			inputs({ connections: [{ enabled: false, testStatus: { ok: true } }] }),
 		);
 		expect(stepMap(v).adapter).toBe(false);
 	});
@@ -76,7 +76,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: true, testStatus: undefined }],
 			}),
 		);
@@ -88,7 +88,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: true, testStatus: { ok: true } }],
 			}),
 		);
@@ -102,7 +102,7 @@ describe("deriveOnboarding 步骤判据", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: true, testStatus: { ok: true } }],
 			}),
 		);
@@ -115,7 +115,7 @@ describe("deriveOnboarding 步骤判据", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: false, testStatus: { ok: true } }],
 			}),
 		);
@@ -146,7 +146,7 @@ describe("deriveOnboarding 可选尾巴", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: true, testStatus: { ok: true } }],
 				modules: { image: true, ai: false },
 			}),
@@ -171,7 +171,7 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [
+				connections: [
 					{ enabled: true, testStatus: { ok: false, err: "连接被拒绝", lastCheckedAt: "t1" } },
 				],
 			}),
@@ -184,7 +184,7 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [
+				connections: [
 					{ enabled: false, testStatus: { ok: false, err: "旧账", lastCheckedAt: "t0" } },
 					{ enabled: true, testStatus: { ok: false, lastCheckedAt: "t1" } },
 				],
@@ -197,7 +197,7 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [
 					{ enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: "t2" } },
 				],
@@ -217,7 +217,7 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [
 					{ enabled: false, testStatus: { ok: false, err: "上周的旧账", lastCheckedAt: "t0" } },
 					{ enabled: true },
@@ -231,7 +231,7 @@ describe("deriveOnboarding failNote", () => {
 	it("失败不属于当前步就沉默 —— login 未完成时不翻适配器的旧账", () => {
 		const v = deriveOnboarding(
 			inputs({
-				adapters: [{ enabled: true, testStatus: { ok: false, err: "x", lastCheckedAt: "t" } }],
+				connections: [{ enabled: true, testStatus: { ok: false, err: "x", lastCheckedAt: "t" } }],
 			}),
 		);
 		expect(v.activeKey).toBe("login");

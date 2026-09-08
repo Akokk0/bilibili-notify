@@ -1,4 +1,4 @@
-import type { AdapterCapabilities, PushAdapter } from "@bilibili-notify/internal";
+import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { PlatformAdapter } from "../../platforms/types.js";
 import { createCapabilityInjector } from "../capability-injection.js";
@@ -17,14 +17,14 @@ const OB = {
 	name: "NapCat",
 	platform: "onebot",
 	enabled: true,
-} as unknown as PushAdapter;
+} as unknown as Connection;
 const WH = {
 	id: "ad-wh",
 	name: "钩子",
 	platform: "webhook",
 	enabled: true,
-} as unknown as PushAdapter;
-const REAL: AdapterCapabilities = {
+} as unknown as Connection;
+const REAL: ConnectionCapabilities = {
 	miniAppCard: { state: "unsupported", reason: "1404", checkedAt: 1 },
 };
 
@@ -52,7 +52,7 @@ function setup() {
 	const injector = createCapabilityInjector();
 	const ob = injector.wrap(onebot());
 	const wh = injector.wrap(webhook());
-	const reg = createDevRegistry([capabilityScenario({ injector, adapters: () => [OB, WH] })]);
+	const reg = createDevRegistry([capabilityScenario({ injector, connections: () => [OB, WH] })]);
 	return { reg, ob, wh };
 }
 
@@ -69,7 +69,7 @@ describe("adapter.capability", () => {
 		const res = await reg.run("adapter.capability", { adapter: "ad-ob", state: "supported" });
 		expect(ob.capabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
 		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
-		expect(ob.capabilities?.({ ...OB, id: "other" } as PushAdapter)).toBe(REAL);
+		expect(ob.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
 		expect(res.active).toEqual([
 			{ scenarioId: "adapter.capability", label: "能力 → NapCat 支持小程序卡" },
 		]);

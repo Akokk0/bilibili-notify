@@ -1,4 +1,4 @@
-import { type PushAdapter, PushAdapterSchema } from "@bilibili-notify/internal";
+import { type Connection, ConnectionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
 
@@ -91,9 +91,9 @@ describe("redactSecretKeys", () => {
  * 所以这里逐平台钉死不变式。往后任何平台再给机密字段加非空约束,红在这里,
  * 而不是红在用户的恢复按钮上。
  */
-describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
+describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 	const base = { name: "n", enabled: true } as const;
-	const adapters: Array<[string, PushAdapter]> = [
+	const adapters: Array<[string, Connection]> = [
 		[
 			"onebot",
 			{
@@ -101,7 +101,7 @@ describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
 				id: "00000000-0000-4000-8000-000000000001",
 				platform: "onebot",
 				config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "tok" },
-			} as PushAdapter,
+			} as Connection,
 		],
 		[
 			"webhook",
@@ -110,7 +110,7 @@ describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
 				id: "00000000-0000-4000-8000-000000000002",
 				platform: "webhook",
 				config: { url: "https://example.com/hook", provider: "generic", secret: "wh" },
-			} as PushAdapter,
+			} as Connection,
 		],
 		[
 			"qq-official",
@@ -119,12 +119,12 @@ describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
 				id: "00000000-0000-4000-8000-000000000005",
 				platform: "qq-official",
 				config: { appId: "102000000", appSecret: "app-secret" },
-			} as PushAdapter,
+			} as Connection,
 		],
 	];
 
 	it.each(adapters)("%s", (_platform, adapter) => {
-		const parsed = PushAdapterSchema.safeParse(redactSecretKeys(adapter));
+		const parsed = ConnectionSchema.safeParse(redactSecretKeys(adapter));
 
 		// 失败时把 zod 的 issue 打出来,别只看到一句 "expected true"。
 		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);

@@ -57,7 +57,7 @@ function setup(
 		inboundScenarios({
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
 			commands: over.commands ?? (() => ({ prefix: "/", masterUserId })),
-			adapters: () => ADAPTERS,
+			connections: () => ADAPTERS,
 			targets: () => TARGETS,
 		}),
 	);
@@ -147,7 +147,7 @@ describe("inbound.link", () => {
 			inboundScenarios({
 				inbound: () => ({ private: vi.fn(), group: vi.fn() }),
 				commands: () => ({ prefix: "/" }),
-				adapters: () => ADAPTERS,
+				connections: () => ADAPTERS,
 				targets: () => [],
 			}),
 		);

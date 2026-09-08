@@ -24,7 +24,7 @@ interface TestStatusLike {
 export interface OnboardingInputs {
 	biliLoggedIn: boolean;
 	subsCount: number;
-	adapters: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
+	connections: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
 	targets: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
 	/** `/api/health` 的 modules 快照;还没回来时 undefined → 尾巴按未完成显示。 */
 	modules: { image: boolean; ai: boolean } | undefined;
@@ -40,7 +40,7 @@ export interface OnboardingView {
 	 * 导览要从「新建」翻到「测试连通」并把灯移到测试按钮上 —— 主步 done(测通)
 	 * 太晚,灯会在建完到测通之间断档(真机踩过)。
 	 */
-	hasAdapter: boolean;
+	hasConnection: boolean;
 	doneCount: number;
 	allDone: boolean;
 	/**
@@ -65,7 +65,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		{ key: "login", done: inputs.biliLoggedIn },
 		{
 			key: "adapter",
-			done: inputs.adapters.some((a) => a.enabled && a.testStatus?.ok === true),
+			done: inputs.connections.some((a) => a.enabled && a.testStatus?.ok === true),
 		},
 		{ key: "target", done: inputs.targets.some((t) => t.enabled) },
 		{
@@ -84,7 +84,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		// 拿它当当前失败讲纯属误导(2026-08-31 审查)。
 		failNote:
 			activeKey === "adapter"
-				? failNoteFrom(inputs.adapters.filter((a) => a.enabled))
+				? failNoteFrom(inputs.connections.filter((a) => a.enabled))
 				: activeKey === "test"
 					? failNoteFrom(inputs.targets.filter((t) => t.enabled))
 					: null,
@@ -93,7 +93,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 			{ key: "ai", done: inputs.modules?.ai === true },
 		],
 		activeKey,
-		hasAdapter: inputs.adapters.length > 0,
+		hasConnection: inputs.connections.length > 0,
 		doneCount,
 		allDone: doneCount === steps.length,
 	};

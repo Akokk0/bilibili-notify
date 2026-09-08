@@ -1,10 +1,5 @@
 import type { ImportResult } from "@bilibili-notify/contract";
-import type {
-	GlobalConfig,
-	PushAdapter,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,
@@ -34,12 +29,12 @@ import { redactSecretKeys } from "./sanitize.js";
 export interface BackupStore {
 	getGlobals(): GlobalConfig;
 	getSubscriptions(): Subscription[];
-	getAdapters(): PushAdapter[];
+	getConnections(): Connection[];
 	getTargets(): PushTarget[];
 	replaceSections(next: {
 		globals?: GlobalConfig;
 		subscriptions?: Subscription[];
-		adapters?: PushAdapter[];
+		adapters?: Connection[];
 		targets?: PushTarget[];
 	}): Promise<unknown>;
 }
@@ -107,7 +102,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const picked: BackupSections = {};
 		if (sel.globals) picked.globals = deps.configStore.getGlobals();
 		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
-		if (sel.adapters) picked.adapters = deps.configStore.getAdapters();
+		if (sel.adapters) picked.adapters = deps.configStore.getConnections();
 		if (sel.targets) picked.targets = deps.configStore.getTargets();
 		const createdAt = opts.createdAt ?? now();
 
@@ -144,7 +139,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const current = {
 			globals: deps.configStore.getGlobals(),
 			subscriptions: deps.configStore.getSubscriptions(),
-			adapters: deps.configStore.getAdapters(),
+			adapters: deps.configStore.getConnections(),
 			targets: deps.configStore.getTargets(),
 		};
 		const plan = planImport(current, sections, opts.mode);

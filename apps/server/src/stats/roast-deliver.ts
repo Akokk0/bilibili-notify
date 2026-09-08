@@ -160,13 +160,13 @@ export async function deliverRoast(
 	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
 	const targetsById = new Map(deps.store.getTargets().map((t) => [t.id, t]));
-	const adapters = deps.store.getAdapters();
+	const connections = deps.store.getConnections();
 	const sent: string[] = [];
 	const skipped: string[] = [];
 	const failed: DeliverOutcome["failed"] = [];
 	for (const targetId of opts.targetIds) {
 		const target = targetsById.get(targetId);
-		if (target && isTargetPaused(target, adapters)) {
+		if (target && isTargetPaused(target, connections)) {
 			skipped.push(targetId);
 			continue;
 		}

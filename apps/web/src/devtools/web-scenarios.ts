@@ -129,7 +129,7 @@ export function onboardingInputsFor(step: OnboardingStepKey | "done"): Onboardin
 	const ok = { ok: true, lastCheckedAt: "2026-09-06T00:00:00.000Z" };
 	return {
 		biliLoggedIn: done("login"),
-		adapters: done("adapter") ? [{ enabled: true, testStatus: ok }] : [],
+		connections: done("adapter") ? [{ enabled: true, testStatus: ok }] : [],
 		targets: done("target") ? [{ enabled: true, testStatus: done("test") ? ok : undefined }] : [],
 		subsCount: done("subs") ? 1 : 0,
 		modules: { image: true, ai: true },

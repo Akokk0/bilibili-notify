@@ -1,4 +1,4 @@
-import { makeDefaultGlobalConfig, type PushAdapter } from "@bilibili-notify/internal";
+import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
 
@@ -33,7 +33,7 @@ function globalsWithApiKey(k: string) {
 	return withDeepseekKey(makeDefaultGlobalConfig(), k);
 }
 
-function onebot(id: string, token: string): PushAdapter {
+function onebot(id: string, token: string): Connection {
 	return {
 		id,
 		platform: "onebot",

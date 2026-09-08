@@ -1,13 +1,13 @@
 import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
+	Connection,
 	DeliveryResult,
 	Disposable,
 	Logger,
 	NotificationPayload,
-	PushAdapter,
 	PushTarget,
 	PushTargetScope,
-	QQOfficialAdapterConfig,
+	QQOfficialConnectionConfig,
 	QQOfficialSession,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -321,7 +321,7 @@ export function extractQQGroupMessage(
 }
 
 /** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
-const QQ_DISCOVERY_MAX_PER_ADAPTER = 50;
+const QQ_DISCOVERY_MAX_PER_CONNECTION = 50;
 
 // QQDiscoveredEntry(= QQDiscoveredSession + lastSeenMs)在 @bilibili-notify/contract(web 同源消费)。
 
@@ -339,27 +339,27 @@ export interface QQSessionRegistry {
 	clear(adapterId: string): void;
 }
 
-export function createQQSessionRegistry(opts?: { maxPerAdapter?: number }): QQSessionRegistry {
-	const max = opts?.maxPerAdapter ?? QQ_DISCOVERY_MAX_PER_ADAPTER;
-	const byAdapter = new Map<string, QQDiscoveredEntry[]>();
+export function createQQSessionRegistry(opts?: { maxPerConnection?: number }): QQSessionRegistry {
+	const max = opts?.maxPerConnection ?? QQ_DISCOVERY_MAX_PER_CONNECTION;
+	const byConnection = new Map<string, QQDiscoveredEntry[]>();
 	const keyOf = (s: { scope: string; openid: string }) => `${s.scope}:${s.openid}`;
 
 	return {
 		record(adapterId, session, atMs) {
-			const prev = byAdapter.get(adapterId) ?? [];
+			const prev = byConnection.get(adapterId) ?? [];
 			// 后到的事件没带 displayHint(GROUP_ADD_ROBOT 不带用户名)时留着先前记住的那个:
 			// 群事件本来就不带群名,那个 hint 是面板上唯一能认的东西。带了就以新的为准。
 			const known = prev.find((e) => keyOf(e) === keyOf(session));
 			const next = prev.filter((e) => keyOf(e) !== keyOf(session));
 			next.unshift({ ...known, ...session, lastSeenMs: atMs });
 			if (next.length > max) next.length = max;
-			byAdapter.set(adapterId, next);
+			byConnection.set(adapterId, next);
 		},
 		list(adapterId) {
-			return [...(byAdapter.get(adapterId) ?? [])];
+			return [...(byConnection.get(adapterId) ?? [])];
 		},
 		clear(adapterId) {
-			byAdapter.delete(adapterId);
+			byConnection.delete(adapterId);
 		},
 	};
 }
@@ -963,7 +963,7 @@ export interface QQGuild {
  * `GET /guilds/{id}/channels`,只保留文字子频道(type 0)。某 guild 子频道列失败则跳过
  * 不整体崩。on-demand 一次性 token(不复用网关 manager,UI 偶发调用可接受)。
  */
-export async function fetchQQGuildChannels(cfg: QQOfficialAdapterConfig): Promise<QQGuild[]> {
+export async function fetchQQGuildChannels(cfg: QQOfficialConnectionConfig): Promise<QQGuild[]> {
 	const { token } = await fetchAppAccessToken(cfg.appId, cfg.appSecret);
 	const base = qqApiBase(cfg.sandbox);
 	const headers = qqRestHeaders(token, cfg.appId);
@@ -1010,21 +1010,21 @@ interface QQLive {
 	conn: QQGatewayConn;
 	fingerprint: string;
 	/** `logReconnects` 的活值容器 —— 这个开关不影响连接本身,不该被塞进
-	 * {@link qqAdapterFingerprint}(会导致纯改日志偏好也触发断连重建)。reconcile
+	 * {@link qqConnectionFingerprint}(会导致纯改日志偏好也触发断连重建)。reconcile
 	 * 每轮同步这个容器,conn 通过 `shouldLogReconnects` 读它,做到不重建连接也能热更。 */
 	logReconnectsBox: { value: boolean };
 }
 
-function qqAdapterFingerprint(cfg: QQOfficialAdapterConfig): string {
+function qqConnectionFingerprint(cfg: QQOfficialConnectionConfig): string {
 	return JSON.stringify({ appId: cfg.appId, appSecret: cfg.appSecret, sandbox: cfg.sandbox });
 }
 
 /**
- * 凭据齐不齐 —— 存储期允许空 appSecret(见 `QQOfficialAdapterConfigSchema`:脱敏备份
+ * 凭据齐不齐 —— 存储期允许空 appSecret(见 `QQOfficialConnectionConfigSchema`:脱敏备份
  * 恢复回来就是空的),所以「能不能真的连上去」得由运行期自己判断。建连(reconcile)
  * 与投递(isAvailable)两条路都走这一个谓词,不会一边挡一边放。
  */
-function isConnectable(cfg: QQOfficialAdapterConfig): boolean {
+function isConnectable(cfg: QQOfficialConnectionConfig): boolean {
 	return cfg.appId.length > 0 && cfg.appSecret.length > 0;
 }
 
@@ -1041,7 +1041,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
 
-	function makeTokenManager(cfg: QQOfficialAdapterConfig): QQTokenManager {
+	function makeTokenManager(cfg: QQOfficialConnectionConfig): QQTokenManager {
 		return createQQTokenManager({
 			appId: cfg.appId,
 			clientSecret: cfg.appSecret,
@@ -1050,13 +1050,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 
-	function makeLive(adapter: PushAdapter): QQLive {
-		const cfg = adapter.config as QQOfficialAdapterConfig;
+	function makeLive(connection: Connection): QQLive {
+		const cfg = connection.config as QQOfficialConnectionConfig;
 		const tm = makeTokenManager(cfg);
 		const base = qqApiBase(cfg.sandbox);
 		const logReconnectsBox = { value: cfg.logReconnects };
 		const conn = createQQGatewayConn({
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			resolveGatewayUrl: async () => {
 				const token = await tm.getToken();
 				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
@@ -1065,34 +1065,34 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				return qqGatewayUrlForHost(body.url, cfg.sandbox);
 			},
 			getToken: () => tm.getToken(),
-			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
+			onDiscovered: (s) => registry.record(connection.id, s, Date.now()),
 			...(opts.onInboundPrivate
 				? {
 						onInboundPrivate: (m: InboundPrivateMessage) =>
-							opts.onInboundPrivate?.(m, { adapterId: adapter.id }),
+							opts.onInboundPrivate?.(m, { adapterId: connection.id }),
 					}
 				: {}),
 			...(opts.onInboundGroup
 				? {
 						onInboundGroup: (m: InboundGroupMessage) =>
-							opts.onInboundGroup?.(m, { adapterId: adapter.id }),
+							opts.onInboundGroup?.(m, { adapterId: connection.id }),
 					}
 				: {}),
 			serviceCtx,
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,
 		});
-		return { tm, conn, fingerprint: qqAdapterFingerprint(cfg), logReconnectsBox };
+		return { tm, conn, fingerprint: qqConnectionFingerprint(cfg), logReconnectsBox };
 	}
 
 	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
-	function tokenManagerFor(adapter: PushAdapter): QQTokenManager {
-		const l = live.get(adapter.id);
+	function tokenManagerFor(connection: Connection): QQTokenManager {
+		const l = live.get(connection.id);
 		if (l) return l.tm;
-		let tm = tokenOnly.get(adapter.id);
+		let tm = tokenOnly.get(connection.id);
 		if (!tm) {
-			tm = makeTokenManager(adapter.config as QQOfficialAdapterConfig);
-			tokenOnly.set(adapter.id, tm);
+			tm = makeTokenManager(connection.config as QQOfficialConnectionConfig);
+			tokenOnly.set(connection.id, tm);
 		}
 		return tm;
 	}
@@ -1152,21 +1152,21 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	return {
 		platforms: ["qq-official"],
 
-		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
-			if (adapter.platform !== "qq-official" || target.platform !== "qq-official") return false;
-			if (!adapter.enabled || !target.enabled) return false;
-			return isConnectable(adapter.config as QQOfficialAdapterConfig);
+		isAvailable(connection: Connection, target: PushTarget): boolean {
+			if (connection.platform !== "qq-official" || target.platform !== "qq-official") return false;
+			if (!connection.enabled || !target.enabled) return false;
+			return isConnectable(connection.config as QQOfficialConnectionConfig);
 		},
 
-		reconcile(adapters: readonly PushAdapter[]): void {
+		reconcile(connections: readonly Connection[]): void {
 			if (disposed) return;
-			const desired = new Map<string, PushAdapter>();
-			for (const a of adapters) {
+			const desired = new Map<string, Connection>();
+			for (const a of connections) {
 				if (a.platform !== "qq-official" || !a.enabled) continue;
 				// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
 				// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
 				// config 一变 reconcile 自然会把它接上。
-				if (!isConnectable(a.config as QQOfficialAdapterConfig)) continue;
+				if (!isConnectable(a.config as QQOfficialConnectionConfig)) continue;
 				desired.set(a.id, a);
 			}
 			// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
@@ -1174,7 +1174,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				const want = desired.get(id);
 				if (
 					!want ||
-					qqAdapterFingerprint(want.config as QQOfficialAdapterConfig) !== l.fingerprint
+					qqConnectionFingerprint(want.config as QQOfficialConnectionConfig) !== l.fingerprint
 				) {
 					l.conn.close();
 					l.tm.dispose();
@@ -1191,7 +1191,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
 			for (const [id, l] of live) {
 				const want = desired.get(id);
-				if (want) l.logReconnectsBox.value = (want.config as QQOfficialAdapterConfig).logReconnects;
+				if (want)
+					l.logReconnectsBox.value = (want.config as QQOfficialConnectionConfig).logReconnects;
 			}
 			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
 			// desired 适配器都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
@@ -1205,10 +1206,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			disposeAll();
 		},
 
-		async probe(adapter: PushAdapter): Promise<ProbeResult> {
+		async probe(connection: Connection): Promise<ProbeResult> {
 			const t0 = Date.now();
-			if (adapter.platform !== "qq-official") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${adapter.platform}` };
+			if (connection.platform !== "qq-official") {
+				return { ok: false, latencyMs: 0, err: `wrong platform: ${connection.platform}` };
 			}
 			// 实际推送走 REST(token + /v2/.../messages),与 WS 网关(仅用于捞 openid)彼此独立
 			// —— 探连通性应该测「REST 能不能通」,不是「WS 握手有没有跑完」。此前用
@@ -1216,11 +1217,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// 造成"报错但其实能通"的假阴性;②读缓存布尔值不含任何网络往返,延迟恒为 0ms。
 			// 命中只读的 /gateway 端点(不发消息,符合"系统不要主动测试"发消息的既有约束),
 			// 换真实的可达性 + 延迟。
-			const cfg = adapter.config as QQOfficialAdapterConfig;
+			const cfg = connection.config as QQOfficialConnectionConfig;
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(adapter).getToken();
+				token = await tokenManagerFor(connection).getToken();
 			} catch (e) {
 				return {
 					ok: false,
@@ -1243,16 +1244,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		},
 
 		async send(
-			adapter: PushAdapter,
+			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
 			_opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (adapter.platform !== "qq-official" || target.platform !== "qq-official") {
+			if (connection.platform !== "qq-official" || target.platform !== "qq-official") {
 				return {
 					ok: false,
 					latencyMs: 0,
-					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+					err: `wrong platform: adapter=${connection.platform} target=${target.platform}`,
 				};
 			}
 			const scope = target.scope;
@@ -1262,11 +1263,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if ("err" in endpoint) return { ok: false, latencyMs: 0, err: endpoint.err };
 
 			const t0 = Date.now();
-			const cfg = adapter.config as QQOfficialAdapterConfig;
+			const cfg = connection.config as QQOfficialConnectionConfig;
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(adapter).getToken();
+				token = await tokenManagerFor(connection).getToken();
 			} catch (e) {
 				return {
 					ok: false,

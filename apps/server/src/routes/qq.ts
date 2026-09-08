@@ -1,5 +1,5 @@
 import type { QQBindStartResponse } from "@bilibili-notify/contract";
-import type { QQOfficialAdapterConfig } from "@bilibili-notify/internal";
+import type { QQOfficialConnectionConfig } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
 import { createBindTask, pollBindTask } from "../platforms/qq-bind.js";
@@ -81,12 +81,12 @@ export function createQQRoute(deps: RouteDeps): Hono {
 
 	app.get("/guilds/:adapterId", async (c) => {
 		const id = c.req.param("adapterId");
-		const adapter = deps.store.getAdapters().find((a) => a.id === id);
-		if (adapter?.platform !== "qq-official") {
+		const connection = deps.store.getConnections().find((a) => a.id === id);
+		if (connection?.platform !== "qq-official") {
 			return c.json({ error: "not_found", message: "qq-official adapter not found", id }, 404);
 		}
 		try {
-			const guilds = await fetchQQGuildChannels(adapter.config as QQOfficialAdapterConfig);
+			const guilds = await fetchQQGuildChannels(connection.config as QQOfficialConnectionConfig);
 			return c.json(guilds);
 		} catch (err) {
 			log.warn(`GET /api/qq/guilds/${id} failed: ${String(err)}`);

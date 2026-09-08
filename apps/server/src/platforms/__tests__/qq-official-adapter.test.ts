@@ -1,8 +1,8 @@
 import type {
+	Connection,
 	Disposable,
 	Logger,
 	NotificationPayload,
-	PushAdapter,
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -35,14 +35,14 @@ function adapterOpts() {
 	};
 }
 
-function qqAdapter(over: Record<string, unknown> = {}): PushAdapter {
+function qqConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "qq",
 		platform: "qq-official",
 		enabled: true,
 		config: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public", ...over },
-	} as unknown as PushAdapter;
+	} as unknown as Connection;
 }
 
 function qqTarget(scope: string, session: Record<string, unknown>): PushTarget {
@@ -90,17 +90,17 @@ function bodyOf(call: unknown[]): Record<string, unknown> {
 describe("createQQOfficialAdapter — isAvailable", () => {
 	it("enabled + 有 appId/appSecret → true", () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		expect(ad.isAvailable(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }))).toBe(true);
+		expect(ad.isAvailable(qqConnection(), qqTarget("group", { groupOpenid: "G1" }))).toBe(true);
 	});
 	it("缺 appSecret → false", () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 		expect(
-			ad.isAvailable(qqAdapter({ appSecret: "" }), qqTarget("group", { groupOpenid: "G1" })),
+			ad.isAvailable(qqConnection({ appSecret: "" }), qqTarget("group", { groupOpenid: "G1" })),
 		).toBe(false);
 	});
 	it("adapter disabled → false", () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const disabled = { ...qqAdapter(), enabled: false } as PushAdapter;
+		const disabled = { ...qqConnection(), enabled: false } as Connection;
 		expect(ad.isAvailable(disabled, qqTarget("group", { groupOpenid: "G1" }))).toBe(false);
 	});
 });
@@ -108,7 +108,7 @@ describe("createQQOfficialAdapter — isAvailable", () => {
 describe("createQQOfficialAdapter — send 文本", () => {
 	it("group:取 token → POST /v2/groups/{openid}/messages,QQBot 头 + msg_type 0", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/v2/groups/G1/messages");
 		expect(msg).toHaveLength(1);
@@ -120,14 +120,14 @@ describe("createQQOfficialAdapter — send 文本", () => {
 
 	it("private:POST /v2/users/{openid}/messages", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("private", { userOpenid: "U1" }), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("private", { userOpenid: "U1" }), TEXT);
 		expect(r.ok).toBe(true);
 		expect(callsTo("/v2/users/U1/messages")).toHaveLength(1);
 	});
 
 	it("channel:POST /channels/{channelId}/messages,JSON content", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("channel", { channelId: "C1" }), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("channel", { channelId: "C1" }), TEXT);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/channels/C1/messages");
 		expect(msg).toHaveLength(1);
@@ -136,7 +136,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 
 	it("session 缺字段 → 直接失败,不发 token/REST", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", {}), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("group", {}), TEXT);
 		expect(r.ok).toBe(false);
 		expect(r.err).toMatch(/groupOpenid/);
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -152,7 +152,7 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 
 	it("group 图片:先 POST /files(base64 file_data)→ 再 POST /messages media(msg_type 7)", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), IMG);
+		const r = await ad.send(qqConnection(), qqTarget("group", { groupOpenid: "G1" }), IMG);
 		expect(r.ok).toBe(true);
 		const upload = callsTo("/v2/groups/G1/files");
 		expect(upload).toHaveLength(1);
@@ -170,7 +170,7 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 
 	it("group composite 卡片图+文案:合并成一条 media 消息", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), {
+		const r = await ad.send(qqConnection(), qqTarget("group", { groupOpenid: "G1" }), {
 			kind: "composite",
 			segments: [
 				{ type: "image", buffer: Buffer.from("png-bytes"), mime: "image/png" },
@@ -191,7 +191,7 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 
 	it("channel 图片:multipart file_image 单条(body 是 FormData,无 content-type 头)", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("channel", { channelId: "C1" }), IMG);
+		const r = await ad.send(qqConnection(), qqTarget("channel", { channelId: "C1" }), IMG);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/channels/C1/messages");
 		expect(msg).toHaveLength(1);
@@ -216,7 +216,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	it("私域 group:图集合并成一条 markdown(msg_type 2),不走 /files 上传", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 		const r = await ad.send(
-			qqAdapter({ botType: "private" }),
+			qqConnection({ botType: "private" }),
 			qqTarget("group", { groupOpenid: "G1" }),
 			GALLERY,
 		);
@@ -234,7 +234,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	it("公域 group:图集走 N 条 media(每图 /files + /messages),不发 markdown", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 		const r = await ad.send(
-			qqAdapter({ botType: "public" }),
+			qqConnection({ botType: "public" }),
 			qqTarget("group", { groupOpenid: "G1" }),
 			GALLERY,
 		);
@@ -248,7 +248,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	it("私域 channel:图集不走 markdown(频道用频道消息 API,markdown 仅群/C2C)", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 		const r = await ad.send(
-			qqAdapter({ botType: "private" }),
+			qqConnection({ botType: "private" }),
 			qqTarget("channel", { channelId: "C1" }),
 			GALLERY,
 		);
@@ -271,7 +271,7 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 			});
 		});
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
 		expect(r.ok).toBe(true);
 	});
 
@@ -282,7 +282,7 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 			return res(400, { code: 11293, message: "bad request" });
 		});
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
+		const r = await ad.send(qqConnection(), qqTarget("group", { groupOpenid: "G1" }), TEXT);
 		expect(r.ok).toBe(false);
 		expect(r.err).toMatch(/11293/);
 	});
@@ -295,7 +295,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 	// (取 token + 命中 /gateway 只读端点),不依赖 reconcile/WS 状态、也不发消息。
 	it("未 reconcile,REST(token+/gateway)可达 → probe ok:true,且是真实网络往返而非读缓存状态", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const p = await ad.probe(qqAdapter());
+		const p = await ad.probe(qqConnection());
 		expect(p.ok).toBe(true);
 		expect(callsTo("/gateway")).toHaveLength(1);
 	});
@@ -303,7 +303,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 	it("取 App Access Token 失败 → probe ok:false(带错误信息)", async () => {
 		fetchMock.mockImplementation(async () => res(401, { message: "invalid appid" }));
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const p = await ad.probe(qqAdapter());
+		const p = await ad.probe(qqConnection());
 		expect(p.ok).toBe(false);
 		expect(p.err).toBeTruthy();
 	});
@@ -315,7 +315,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 			return res(500, {});
 		});
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const p = await ad.probe(qqAdapter());
+		const p = await ad.probe(qqConnection());
 		expect(p.ok).toBe(false);
 	});
 
@@ -340,7 +340,7 @@ describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
 	it("appSecret 为空的 enabled adapter 不建连、不换 token", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 
-		ad.reconcile?.([qqAdapter({ appSecret: "" })]);
+		ad.reconcile?.([qqConnection({ appSecret: "" })]);
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(tokenCalls()).toHaveLength(0);
@@ -352,7 +352,7 @@ describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
 	it("appSecret 正常的 enabled adapter 照常建连", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 
-		ad.reconcile?.([qqAdapter()]);
+		ad.reconcile?.([qqConnection()]);
 		await vi.waitFor(() => expect(tokenCalls().length).toBeGreaterThan(0));
 
 		ad.dispose?.();

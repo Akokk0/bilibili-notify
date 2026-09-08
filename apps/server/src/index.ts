@@ -318,7 +318,7 @@ export async function startStandaloneServer(
 				prefix: runtime.configStore.getGlobals().commands.prefix,
 				masterUserId: masterUserId(),
 			}),
-			adapterConfigs: () => runtime.configStore.getAdapters(),
+			connectionConfigs: () => runtime.configStore.getConnections(),
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			authSystem,
@@ -505,8 +505,8 @@ export async function startStandaloneServer(
 					lastFetchAt: engines?.dynamic.lastFetchAt(),
 					// 没装 Chrome 就没有渲染队列。
 					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
-					adapters: runtime.configStore
-						.getAdapters()
+					connections: runtime.configStore
+						.getConnections()
 						.filter((a) => a.enabled)
 						// **没探测过 ≠ 断了**。webhook 这类平台压根不支持探测,testStatus
 						// 永远是 undefined;当成断线的话主人会永远看见一条假报警。
@@ -560,9 +560,9 @@ export async function startStandaloneServer(
 		const runtimeEngines = engines;
 		// 回到来源群用的是收到那一帧的适配器:配置里那条 + 它所属平台的实现,两者都在才发得出。
 		const replyRoute = (platform: LinkSourcePlatform, adapterId: string) => {
-			const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
+			const connection = runtime.configStore.getConnections().find((a) => a.id === adapterId);
 			const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
-			return adapter && platformAdapter ? { adapter, platformAdapter } : null;
+			return connection && platformAdapter ? { connection, platformAdapter } : null;
 		};
 		const linkParser = createLinkParser({
 			logger: log,
@@ -574,14 +574,14 @@ export async function startStandaloneServer(
 			presentation: () => runtimeEngines.linkCardPresentation(),
 			// 能力走 sink 那条适配器寻址(健康探测与 /api/adapters/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
-			capabilities: ({ adapterId }) => runtimeEngines.adapterCapabilities(adapterId),
-			probeCapabilities: ({ adapterId }) => runtimeEngines.probeAdapterCapabilities(adapterId),
+			capabilities: ({ adapterId }) => runtimeEngines.connectionCapabilities(adapterId),
+			probeCapabilities: ({ adapterId }) => runtimeEngines.probeConnectionCapabilities(adapterId),
 			send: async ({ platform, adapterId, groupId }, payload) => {
 				const route = replyRoute(platform, adapterId);
 				if (!route) {
 					return { ok: false, latencyMs: 0, err: `adapter not found: adapterId=${adapterId}` };
 				}
-				const { adapter, platformAdapter } = route;
+				const { connection, platformAdapter } = route;
 				const common = {
 					id: `link-reply:${groupId}`,
 					name: "链接解析回复",
@@ -590,7 +590,7 @@ export async function startStandaloneServer(
 					enabled: true,
 				};
 				return platformAdapter.send(
-					adapter,
+					connection,
 					platform === "onebot"
 						? { ...common, platform: "onebot", session: groupSessionFor("onebot", groupId) }
 						: {

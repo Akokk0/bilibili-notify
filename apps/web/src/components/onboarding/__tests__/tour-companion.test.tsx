@@ -25,7 +25,7 @@ vi.mock("../../../services/api", () => ({ api: { get: apiGet, patch: apiPatch } 
 interface Scenario {
 	loggedIn?: boolean;
 	subs?: unknown[];
-	adapters?: unknown[];
+	connections?: unknown[];
 	targets?: unknown[];
 	route?: string;
 	/** globals 里那笔 `onboarding.skipped` —— `null` = 配置缺失(还没问过,该弹
@@ -44,7 +44,7 @@ async function mount(s: Scenario) {
 	});
 	apiGet.mockImplementation(async (path: string) => {
 		if (path === "/api/subs") return s.subs ?? [];
-		if (path === "/api/adapters") return s.adapters ?? [];
+		if (path === "/api/adapters") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
@@ -223,7 +223,7 @@ describe("TourCompanion 常驻小卡", () => {
 		it("走完五步毕业 → 自动记下 true,🎉 卡演完点「收起」才消失", async () => {
 			const s: Scenario = {
 				subs: [{ id: "s1" }],
-				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 				route: "/system",
 			};
@@ -258,7 +258,7 @@ describe("TourCompanion 常驻小卡", () => {
 		it("同一会话里毕业过、再重新开启指引:🎉 卡的「收起」照样谢幕,不是一颗死钮", async () => {
 			const s: Scenario = {
 				subs: [{ id: "s1" }],
-				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 				route: "/system",
 			};
@@ -350,7 +350,7 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(anchorEl);
 		await mount({
 			subs: [{ id: "s1" }],
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 			route: "/system",
 		});
@@ -383,7 +383,7 @@ describe("TourCompanion 常驻小卡", () => {
 			document.body.appendChild(anchorEl);
 			await mount({
 				subs: [{ id: "s1" }],
-				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 				route: "/system",
 			});
@@ -529,13 +529,13 @@ describe("TourCompanion 常驻小卡", () => {
 	it("子步判据回退:删掉适配器 → 小卡从「测试连通」退回「新建」", async () => {
 		const s: Scenario = {
 			loggedIn: true,
-			adapters: [{ id: "a1", enabled: true }],
+			connections: [{ id: "a1", enabled: true }],
 			route: "/targets",
 		};
 		const { qc } = await mount(s);
-		// hasAdapter=true → 「新建」子步的 doneWhen 已满足,自动翻到「测试连通」
+		// hasConnection=true → 「新建」子步的 doneWhen 已满足,自动翻到「测试连通」
 		await screen.findByText("测试适配器连通");
-		s.adapters = [];
+		s.connections = [];
 		await act(async () => {
 			await qc.invalidateQueries({ queryKey: ["adapters"] });
 		});
@@ -550,7 +550,7 @@ describe("TourCompanion 常驻小卡", () => {
 	describe("测试失败兜底", () => {
 		const failScenario = (at: string): Scenario => ({
 			loggedIn: true,
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [
 				{ id: "t1", enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: at } },
 			],
@@ -794,7 +794,7 @@ describe("TourCompanion 常驻小卡", () => {
 		testBtn.setAttribute("data-tour", "adapter-test");
 		document.body.appendChild(testBtn);
 		// 保存适配器后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
-		await mount({ loggedIn: true, adapters: [{ id: "a1", enabled: true }], route: "/targets" });
+		await mount({ loggedIn: true, connections: [{ id: "a1", enabled: true }], route: "/targets" });
 		expect(await screen.findByText("测试适配器连通")).toBeTruthy();
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
@@ -847,7 +847,7 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(list);
 		await mount({
 			loggedIn: true,
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: false }],
 			route: "/targets",
 		});
@@ -873,7 +873,7 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(addBtn);
 		await mount({
 			loggedIn: true,
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 			route: "/subs",
 		});
@@ -892,7 +892,7 @@ describe("TourCompanion 常驻小卡", () => {
 		// 除登录外全绿 —— 登录一完成即毕业,徽章与烟花一次验俩
 		await mount({
 			subs: [{ id: "s1" }],
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 			route: "/system",
 		});
@@ -960,7 +960,7 @@ describe("TourCompanion 常驻小卡", () => {
 		const s: Scenario = {
 			loggedIn: true,
 			subs: [{ id: "s1" }],
-			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 		};
 		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {

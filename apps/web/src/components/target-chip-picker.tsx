@@ -16,11 +16,11 @@
 
 import { EmptyNote, Pill, PlatformIcon, ToneChip } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
-import { isTargetPaused, type PushAdapter, type PushTarget } from "../types/domain";
+import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
 
 export function TargetChipPicker({
 	targets,
-	adapters,
+	connections,
 	selected,
 	onToggle,
 	tone,
@@ -28,7 +28,7 @@ export function TargetChipPicker({
 }: {
 	targets: readonly PushTarget[];
 	/** 适配器表 —— 「已停用」要跟运行时同一句话:适配器停用的目标也不发。 */
-	adapters: readonly PushAdapter[];
+	connections: readonly Connection[];
 	/** 已选的目标 id。 */
 	selected: readonly string[];
 	onToggle: (targetId: string) => void;
@@ -51,7 +51,7 @@ export function TargetChipPicker({
 				<ToneChip key={t.id} tone={tone} active={chosen.has(t.id)} onClick={() => onToggle(t.id)}>
 					<PlatformIcon platform={t.platform} size={13} />
 					{t.name}
-					{isTargetPaused(t, adapters) ? (
+					{isTargetPaused(t, connections) ? (
 						<Pill size="sm" subtle color="var(--color-bn-inactive)">
 							已停用
 						</Pill>

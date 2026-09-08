@@ -8,25 +8,25 @@
 import { describe, expect, it } from "vite-plus/test";
 import { isTargetPaused } from "./constants";
 
-const adapters = [
+const connections = [
 	{ id: "a-on", enabled: true },
 	{ id: "a-off", enabled: false },
 ];
 
 describe("isTargetPaused", () => {
 	it("目标自己关了 → 暂停", () => {
-		expect(isTargetPaused({ enabled: false, adapterId: "a-on" }, adapters)).toBe(true);
+		expect(isTargetPaused({ enabled: false, adapterId: "a-on" }, connections)).toBe(true);
 	});
 
 	it("目标开着但适配器停用 → 也算暂停(投递层对它回不可达)", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "a-off" }, adapters)).toBe(true);
+		expect(isTargetPaused({ enabled: true, adapterId: "a-off" }, connections)).toBe(true);
 	});
 
 	it("适配器压根不在配置里(被删了)→ 暂停", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "gone" }, adapters)).toBe(true);
+		expect(isTargetPaused({ enabled: true, adapterId: "gone" }, connections)).toBe(true);
 	});
 
 	it("两头都开着才不算暂停", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "a-on" }, adapters)).toBe(false);
+		expect(isTargetPaused({ enabled: true, adapterId: "a-on" }, connections)).toBe(false);
 	});
 });

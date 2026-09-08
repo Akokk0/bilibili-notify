@@ -1,4 +1,4 @@
-import { groupAddressOf, type PushAdapter, type PushTarget } from "@bilibili-notify/internal";
+import { type Connection, groupAddressOf, type PushTarget } from "@bilibili-notify/internal";
 import type {
 	InboundGroupMessage,
 	InboundMeta,
@@ -22,7 +22,7 @@ export interface InboundScenarioDeps {
 	/** 入站口是引擎建好之后才接上的,现取;还没接上就 undefined。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; masterUserId?: string };
-	adapters: () => PushAdapter[];
+	connections: () => Connection[];
 	targets: () => PushTarget[];
 }
 
@@ -58,7 +58,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const text = given2 !== "" ? given2 : `${deps.commands().prefix}help`;
 			// meta 里的 adapterId 指令分发用不上(它回主人那条配置好的私聊),给第一个启用的聊天平台就行。
 			const adapterId =
-				deps.adapters().find((a) => a.enabled && isChatPlatform(a.platform))?.id ?? "";
+				deps.connections().find((a) => a.enabled && isChatPlatform(a.platform))?.id ?? "";
 			handler({ userId, text }, { adapterId });
 			return { summary: `已当作 ${userId} 私聊了一句「${text}」,回复走真链路。` };
 		},
@@ -78,21 +78,21 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		run(params) {
 			const handler = deps.inbound()?.group;
 			if (!handler) throw new DevParamError("链接解析还没接上(引擎没起来?)");
-			const adapters = deps.adapters();
+			const connections = deps.connections();
 			const wanted = params.adapter;
-			const adapter =
+			const connection =
 				wanted === undefined
-					? adapters.find((a) => a.enabled && isChatPlatform(a.platform))
-					: adapters.find((a) => a.id === String(wanted));
-			if (!adapter) {
+					? connections.find((a) => a.enabled && isChatPlatform(a.platform))
+					: connections.find((a) => a.id === String(wanted));
+			if (!connection) {
 				throw new DevParamError(
 					wanted === undefined
 						? "没有启用的聊天平台适配器(OneBot / 官机)"
 						: `没有这个适配器:${wanted}`,
 				);
 			}
-			if (!isChatPlatform(adapter.platform)) {
-				throw new DevParamError(`${adapter.name} 是 ${adapter.platform},没有群这回事`);
+			if (!isChatPlatform(connection.platform)) {
+				throw new DevParamError(`${connection.name} 是 ${connection.platform},没有群这回事`);
 			}
 			const given = typeof params.groupId === "string" ? params.groupId : "";
 			const groupId =
@@ -100,19 +100,19 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 					? given
 					: deps
 							.targets()
-							.filter((t) => t.adapterId === adapter.id && t.scope === "group")
+							.filter((t) => t.adapterId === connection.id && t.scope === "group")
 							.map((t) => groupAddressOf(t))
 							.find((g): g is string => typeof g === "string" && g !== "");
-			if (!groupId) throw new DevParamError(`${adapter.name} 名下没有群目标,得给一个群号`);
+			if (!groupId) throw new DevParamError(`${connection.name} 名下没有群目标,得给一个群号`);
 			const text =
 				typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_LINK_TEXT;
 			handler(
-				adapter.platform,
+				connection.platform,
 				{ groupId, userId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
-				{ adapterId: adapter.id },
+				{ adapterId: connection.id },
 			);
 			return {
-				summary: `已当作 ${adapter.name} 的群 ${groupId} 里有人说了「${text}」,回卡回到那个群。`,
+				summary: `已当作 ${connection.name} 的群 ${groupId} 里有人说了「${text}」,回卡回到那个群。`,
 			};
 		},
 	};

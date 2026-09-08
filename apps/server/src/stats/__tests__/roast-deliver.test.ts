@@ -9,7 +9,7 @@
  * 一次停用换来一条失败通知,而且要等好几分钟。
  */
 
-import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { type BoardLike, deliverRoast, type RoastDeliverDeps } from "../roast-deliver.js";
@@ -40,8 +40,8 @@ function target(id: string, adapterId: string, enabled: boolean): PushTarget {
 	} as PushTarget;
 }
 
-function adapter(id: string, enabled: boolean): PushAdapter {
-	return { id, name: "bot", enabled, platform: "onebot", config: {} } as unknown as PushAdapter;
+function connection(id: string, enabled: boolean): Connection {
+	return { id, name: "bot", enabled, platform: "onebot", config: {} } as unknown as Connection;
 }
 
 function makeDeps() {
@@ -61,7 +61,7 @@ function makeDeps() {
 				target(T_OFF, ADAPTER, false),
 				target(T_ON_ADAPTER_OFF, ADAPTER_OFF, true),
 			],
-			getAdapters: () => [adapter(ADAPTER, true), adapter(ADAPTER_OFF, false)],
+			getConnections: () => [connection(ADAPTER, true), connection(ADAPTER_OFF, false)],
 		},
 	} as unknown as RoastDeliverDeps;
 	return { deps, sendToTarget };

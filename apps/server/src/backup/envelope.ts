@@ -1,9 +1,4 @@
-import type {
-	GlobalConfig,
-	PushAdapter,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 import type { EncryptedSecrets } from "./crypto.js";
 
 /**
@@ -32,7 +27,7 @@ export type BackupKind = "full" | "sanitized";
 export interface BackupSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: PushAdapter[];
+	adapters?: Connection[];
 	targets?: PushTarget[];
 }
 

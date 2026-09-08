@@ -9,7 +9,7 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PushAdapter, PushTarget } from "../../types/domain";
+import type { Connection, PushTarget } from "../../types/domain";
 import { TargetChipPicker } from "../target-chip-picker";
 
 const T_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -28,7 +28,7 @@ function target(id: string, name: string, enabled = true): PushTarget {
 }
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
-const adapters = [{ id: ADAPTER, enabled: true }] as PushAdapter[];
+const connections = [{ id: ADAPTER, enabled: true }] as Connection[];
 
 afterEach(cleanup);
 
@@ -38,7 +38,7 @@ describe("TargetChipPicker", () => {
 		render(
 			<TargetChipPicker
 				targets={[target(T_A, "群 A"), target(T_B, "群 B")]}
-				adapters={adapters}
+				connections={connections}
 				selected={[T_A]}
 				onToggle={onToggle}
 				tone="#ff0000"
@@ -52,7 +52,7 @@ describe("TargetChipPicker", () => {
 		render(
 			<TargetChipPicker
 				targets={[target(T_A, "群 A"), target(T_B, "群 B")]}
-				adapters={adapters}
+				connections={connections}
 				selected={[T_A]}
 				onToggle={() => {}}
 				tone="#ff0000"
@@ -71,7 +71,7 @@ describe("TargetChipPicker", () => {
 		render(
 			<TargetChipPicker
 				targets={[target(T_A, "群 A"), target(T_B, "群 B", false)]}
-				adapters={adapters}
+				connections={connections}
 				selected={[]}
 				onToggle={onToggle}
 				tone="#ff0000"
@@ -88,7 +88,7 @@ describe("TargetChipPicker", () => {
 		render(
 			<TargetChipPicker
 				targets={[target(T_A, "群 A")]}
-				adapters={[{ id: ADAPTER, enabled: false }] as PushAdapter[]}
+				connections={[{ id: ADAPTER, enabled: false }] as Connection[]}
 				selected={[]}
 				onToggle={() => {}}
 				tone="#ff0000"
@@ -101,7 +101,7 @@ describe("TargetChipPicker", () => {
 		render(
 			<TargetChipPicker
 				targets={[]}
-				adapters={adapters}
+				connections={connections}
 				selected={[]}
 				onToggle={() => {}}
 				tone="#ff0000"

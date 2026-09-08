@@ -86,7 +86,7 @@ function makeDeps(opts: StubOpts = {}) {
 					adapterId: ADAPTER,
 					...t,
 				})),
-			getAdapters: () => [{ id: ADAPTER, enabled: true }],
+			getConnections: () => [{ id: ADAPTER, enabled: true }],
 		},
 		runtime: {
 			engines: {

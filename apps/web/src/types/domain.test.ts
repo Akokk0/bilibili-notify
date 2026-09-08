@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	KNOWN_PLATFORMS,
-	makeEmptyAdapter,
+	makeEmptyConnection,
 	makeEmptyTarget,
 	maskWebhookUrl,
 	newId,
@@ -77,11 +77,11 @@ describe("newId", () => {
 });
 
 describe("webhook adapter factories", () => {
-	it("makeEmptyAdapter(webhook) 默认使用 generic provider 并保留 headers", () => {
-		const adapter = makeEmptyAdapter("webhook", "团队 webhook");
-		expect(adapter.platform).toBe("webhook");
-		if (adapter.platform !== "webhook") return;
-		expect(adapter.config).toMatchObject({
+	it("makeEmptyConnection(webhook) 默认使用 generic provider 并保留 headers", () => {
+		const connection = makeEmptyConnection("webhook", "团队 webhook");
+		expect(connection.platform).toBe("webhook");
+		if (connection.platform !== "webhook") return;
+		expect(connection.config).toMatchObject({
 			provider: "generic",
 			url: "https://example.com/hook",
 			headers: {},
@@ -98,10 +98,10 @@ describe("webhook adapter factories", () => {
 	});
 
 	it("makeEmptyTarget(webhook) 仍生成空 session 的合法手动目标", () => {
-		const adapter = makeEmptyAdapter("webhook", "团队 webhook");
-		const target = makeEmptyTarget(adapter, "团队 webhook");
+		const connection = makeEmptyConnection("webhook", "团队 webhook");
+		const target = makeEmptyTarget(connection, "团队 webhook");
 		expect(target).toMatchObject({
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "webhook",
 			scope: "channel",
 			enabled: true,
@@ -141,11 +141,11 @@ describe("qq-official adapter factories", () => {
 		expect(KNOWN_PLATFORMS.map((p) => p.value)).toContain("qq-official");
 	});
 
-	it("makeEmptyAdapter(qq-official) 默认 public 域 + 非沙箱 + 空凭据", () => {
-		const adapter = makeEmptyAdapter("qq-official", "QQ 官方机器人");
-		expect(adapter.platform).toBe("qq-official");
-		if (adapter.platform !== "qq-official") return;
-		expect(adapter.config).toEqual({
+	it("makeEmptyConnection(qq-official) 默认 public 域 + 非沙箱 + 空凭据", () => {
+		const connection = makeEmptyConnection("qq-official", "QQ 官方机器人");
+		expect(connection.platform).toBe("qq-official");
+		if (connection.platform !== "qq-official") return;
+		expect(connection.config).toEqual({
 			appId: "",
 			appSecret: "",
 			sandbox: false,
@@ -155,10 +155,10 @@ describe("qq-official adapter factories", () => {
 	});
 
 	it("makeEmptyTarget(qq-official) 默认 group scope + 空 session", () => {
-		const adapter = makeEmptyAdapter("qq-official", "QQ");
-		const target = makeEmptyTarget(adapter, "测试群");
+		const connection = makeEmptyConnection("qq-official", "QQ");
+		const target = makeEmptyTarget(connection, "测试群");
 		expect(target).toMatchObject({
-			adapterId: adapter.id,
+			adapterId: connection.id,
 			platform: "qq-official",
 			scope: "group",
 			enabled: true,
@@ -171,7 +171,7 @@ describe("switchOnebotTransport", () => {
 	it("换连接方式时保留共用字段 —— 超时下限不该被悄悄打回默认", () => {
 		// strict schema 逼着换 transport 要整体换 config,共用字段得一个个搬过去。
 		// 漏搬哪个,主人就会遇到「明明调过、换个连接方式又变回去了」。
-		const http = makeEmptyAdapter("onebot", "NapCat").config as Parameters<
+		const http = makeEmptyConnection("onebot", "NapCat").config as Parameters<
 			typeof switchOnebotTransport
 		>[0];
 		const tuned = {

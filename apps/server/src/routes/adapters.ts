@@ -1,22 +1,22 @@
-import type { AdapterCapabilities } from "@bilibili-notify/internal";
+import type { ConnectionCapabilities } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `/api/adapters` — CRUD on the PushAdapter[] list.
+ * `/api/adapters` — CRUD on the Connection[] list.
  *
  * An adapter represents a connection instance (an OneBot HTTP endpoint, a
  * webhook URL, the dashboard WS bridge). PushTargets reference adapters via
  * `adapterId`. Deleting an adapter referenced by any target is rejected with
  * 409 so the caller can detach first.
  */
-export function createAdaptersRoute(deps: RouteDeps): Hono {
+export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(deps.store.getAdapters()));
+	app.get("/", (c) => c.json(deps.store.getConnections()));
 
 	/**
 	 * 各适配器的平台能力快照(今天只有「能不能签小程序卡」),按 adapter id 索引。只列有
@@ -25,11 +25,11 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 	 */
 	app.get("/capabilities", (c) => {
 		const engines = deps.runtime.engines;
-		const out: Record<string, AdapterCapabilities> = {};
+		const out: Record<string, ConnectionCapabilities> = {};
 		if (engines) {
-			for (const adapter of deps.store.getAdapters()) {
-				const caps = engines.adapterCapabilities(adapter.id);
-				if (caps) out[adapter.id] = caps;
+			for (const connection of deps.store.getConnections()) {
+				const caps = engines.connectionCapabilities(connection.id);
+				if (caps) out[connection.id] = caps;
 			}
 		}
 		return c.json(out);
@@ -43,8 +43,8 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
 		}
 		try {
-			await deps.store.upsertAdapter(body as never);
-			return c.json(deps.store.getAdapters(), 200);
+			await deps.store.upsertConnection(body as never);
+			return c.json(deps.store.getConnections(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
@@ -74,7 +74,7 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 			);
 		}
 		try {
-			const next = await deps.store.patchAdapter(id, shapeCheck.data);
+			const next = await deps.store.patchConnection(id, shapeCheck.data);
 			return c.json(next);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
@@ -88,20 +88,20 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 
 	app.post("/:id/test", async (c) => {
 		const id = c.req.param("id");
-		const adapter = deps.store.getAdapters().find((a) => a.id === id);
-		if (!adapter) return c.json({ ok: false, latencyMs: 0, err: "adapter not found" }, 404);
+		const connection = deps.store.getConnections().find((a) => a.id === id);
+		if (!connection) return c.json({ ok: false, latencyMs: 0, err: "adapter not found" }, 404);
 		const engines = deps.runtime.engines;
 		if (!engines) {
 			return c.json({ ok: false, latencyMs: 0, err: "engines not yet attached" }, 503);
 		}
-		const result = await engines.probeAdapter(id);
+		const result = await engines.probeConnection(id);
 		// Persist the probe outcome to adapter.testStatus so the dashboard's
 		// status dot reflects this click without waiting for the 5-min poller.
 		// `ok: null` (probe unsupported) deliberately doesn't write back — we
 		// want the UI to remain "pending / unsupported" rather than green.
 		if (result.ok !== null) {
 			try {
-				await deps.store.patchAdapter(id, {
+				await deps.store.patchConnection(id, {
 					testStatus: {
 						ok: result.ok,
 						lastCheckedAt: new Date().toISOString(),
@@ -110,7 +110,7 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 					},
 				});
 			} catch (err) {
-				log.warn(`POST /api/adapters/${id}/test patchAdapter failed: ${String(err)}`);
+				log.warn(`POST /api/adapters/${id}/test patchConnection failed: ${String(err)}`);
 			}
 		}
 		return c.json(result);
@@ -119,7 +119,7 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
 		try {
-			const removed = await deps.store.deleteAdapter(id);
+			const removed = await deps.store.deleteConnection(id);
 			if (!removed) return c.json({ error: "not_found", id }, 404);
 			return c.body(null, 204);
 		} catch (err) {

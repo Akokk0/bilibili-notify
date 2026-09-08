@@ -5,7 +5,7 @@
  */
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
-import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { TSelect } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
@@ -35,9 +35,9 @@ function useOptions(kind: PickKind): Option[] {
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 		enabled: kind === "target",
 	});
-	const adapters = useQuery({
+	const connections = useQuery({
 		queryKey: ["adapters"],
-		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
+		queryFn: () => api.get<Connection[]>("/api/adapters"),
 		enabled: kind === "adapter",
 	});
 	switch (kind) {
@@ -52,7 +52,7 @@ function useOptions(kind: PickKind): Option[] {
 				label: `${t.name}${disabledTag(t.enabled)}`,
 			}));
 		case "adapter":
-			return (adapters.data ?? []).map((a) => ({
+			return (connections.data ?? []).map((a) => ({
 				value: a.id,
 				label: `${a.name}${disabledTag(a.enabled)}`,
 			}));

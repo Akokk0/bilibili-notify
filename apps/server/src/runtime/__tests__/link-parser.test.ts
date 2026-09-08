@@ -10,8 +10,8 @@
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import type {
-	AdapterCapabilities,
 	CardBlock,
+	ConnectionCapabilities,
 	DeliveryResult,
 	LinkParsingConfig,
 	LinkParsingPolicy,
@@ -80,8 +80,8 @@ function makeParser(
 	limits?: Partial<LinkLimits>,
 	extra: {
 		policyFor?: (key: string) => LinkParsingPolicy;
-		capabilities?: (dest: LinkReplyDestination) => AdapterCapabilities | undefined;
-		probeCapabilities?: (dest: LinkReplyDestination) => Promise<AdapterCapabilities | undefined>;
+		capabilities?: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
+		probeCapabilities?: (dest: LinkReplyDestination) => Promise<ConnectionCapabilities | undefined>;
 		/** 每条 payload 的投递结果;缺省全部成功。 */
 		sendResult?: (payload: NotificationPayload) => DeliveryResult;
 	} = {},
@@ -592,7 +592,7 @@ describe("createLinkParser", () => {
 	describe("回复形式(图片卡 / 小程序卡)", () => {
 		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 		const miniapp = () => ({ parse: true, form: "miniapp" as const });
-		const caps = (state: "supported" | "unsupported" | "unknown"): AdapterCapabilities => ({
+		const caps = (state: "supported" | "unsupported" | "unknown"): ConnectionCapabilities => ({
 			miniAppCard:
 				state === "supported"
 					? { state, checkedAt: 1 }

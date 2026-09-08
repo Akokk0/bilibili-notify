@@ -259,10 +259,10 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 */
 	function allTargetsPaused(ids: readonly string[]): boolean {
 		const byId = new Map(deps.store.getTargets().map((t) => [t.id, t]));
-		const adapters = deps.store.getAdapters();
+		const connections = deps.store.getConnections();
 		return ids.every((id) => {
 			const target = byId.get(id);
-			return target !== undefined && isTargetPaused(target, adapters);
+			return target !== undefined && isTargetPaused(target, connections);
 		});
 	}
 

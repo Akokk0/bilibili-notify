@@ -12,7 +12,7 @@
  * 规矩:停用是暂停不是消失),运行时不解析。
  */
 
-import type { AdapterCapabilitiesMap, MiniAppCardSupport } from "@bilibili-notify/contract";
+import type { ConnectionCapabilitiesMap, MiniAppCardSupport } from "@bilibili-notify/contract";
 import {
 	INBOUND_CAPABLE_PLATFORMS,
 	LINK_REPLY_FORMS,
@@ -36,7 +36,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
-import { isTargetPaused, type PushAdapter, type PushTarget } from "../types/domain";
+import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
 
@@ -64,7 +64,7 @@ export function LinkParsingSettings({
 	draft,
 	onPatch,
 	targets,
-	adapters,
+	connections,
 	capabilities,
 }: {
 	draft: GlobalConfig;
@@ -72,9 +72,9 @@ export function LinkParsingSettings({
 	/** 推送目标表(由页面取数),这里只挑群类的列出来。 */
 	targets: readonly PushTarget[];
 	/** 适配器表(由页面取数),面板只列 OneBot 的。 */
-	adapters: readonly PushAdapter[];
+	connections: readonly Connection[];
 	/** `GET /api/adapters/capabilities`:各适配器能不能签小程序卡。 */
-	capabilities: AdapterCapabilitiesMap;
+	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkParsing;
 	const candidates = targets.filter(isGroupCandidate);
@@ -182,7 +182,7 @@ export function LinkParsingSettings({
 										cfg={cfg}
 										onPatch={onPatch}
 										support={capabilities[t.adapterId]?.miniAppCard}
-										paused={isTargetPaused(t, adapters)}
+										paused={isTargetPaused(t, connections)}
 									/>
 								))
 							: null}
@@ -190,7 +190,7 @@ export function LinkParsingSettings({
 				)}
 			</Field>
 
-			<CapabilityPanel adapters={adapters} capabilities={capabilities} />
+			<CapabilityPanel connections={connections} capabilities={capabilities} />
 		</GlassBox>
 	);
 }
@@ -213,13 +213,13 @@ function supportText(s: MiniAppCardSupport): { dot: "ok" | "off" | "pending"; te
  * 目标页点「测试」也会补探「未探测」的。
  */
 function CapabilityPanel({
-	adapters,
+	connections,
 	capabilities,
 }: {
-	adapters: readonly PushAdapter[];
-	capabilities: AdapterCapabilitiesMap;
+	connections: readonly Connection[];
+	capabilities: ConnectionCapabilitiesMap;
 }) {
-	const onebots = adapters.filter((a) => a.platform === "onebot");
+	const onebots = connections.filter((a) => a.platform === "onebot");
 	return (
 		<section aria-label="适配器支持情况" className="mt-4">
 			<Section label="适配器支持情况">

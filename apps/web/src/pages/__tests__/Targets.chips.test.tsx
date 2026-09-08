@@ -50,7 +50,7 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-async function openAdapterEditor() {
+async function openConnectionEditor() {
 	renderPage();
 	const add = await screen.findByRole("button", { name: /新建适配器/ });
 	fireEvent.click(add);
@@ -59,7 +59,7 @@ async function openAdapterEditor() {
 
 describe("适配器弹窗的平台胶囊", () => {
 	it("三个平台各一颗,默认选中 OneBot", async () => {
-		await openAdapterEditor();
+		await openConnectionEditor();
 		for (const label of ["OneBot v11", "QQ 官方机器人", "Webhook"]) {
 			expect(screen.getByRole("button", { name: new RegExp(label) })).toBeTruthy();
 		}
@@ -68,7 +68,7 @@ describe("适配器弹窗的平台胶囊", () => {
 	});
 
 	it("点另一个平台就换过去", async () => {
-		await openAdapterEditor();
+		await openConnectionEditor();
 		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
 		await waitFor(() => {
 			expect(isActive(screen.getByRole("button", { name: /Webhook/ }))).toBe(true);
@@ -78,7 +78,7 @@ describe("适配器弹窗的平台胶囊", () => {
 
 	/** 选中色是平台色,不再是写死的十六进制 —— 皮肤换 token 时跟着走。 */
 	it("每个平台的选中色各不相同", async () => {
-		await openAdapterEditor();
+		await openConnectionEditor();
 		const onebot = screen.getByRole("button", { name: /OneBot/ }).style.borderColor;
 		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
 		await waitFor(() => {
@@ -91,7 +91,7 @@ describe("适配器弹窗的平台胶囊", () => {
 
 describe("OneBot 传输方式胶囊", () => {
 	it("摆出全部传输方式,选中的那颗有底色", async () => {
-		await openAdapterEditor();
+		await openConnectionEditor();
 		const http = screen.getByRole("button", { name: "HTTP" });
 		expect(http).toBeTruthy();
 		fireEvent.click(http);
@@ -99,7 +99,7 @@ describe("OneBot 传输方式胶囊", () => {
 	});
 
 	it("切到 Webhook 平台后这排就不在了 —— 它只属于 OneBot", async () => {
-		await openAdapterEditor();
+		await openConnectionEditor();
 		expect(screen.queryByRole("button", { name: "HTTP" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
 		await waitFor(() => {

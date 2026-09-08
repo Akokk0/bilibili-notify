@@ -14,8 +14,8 @@
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import {
-	type AdapterCapabilities,
 	type CardBlock,
+	type ConnectionCapabilities,
 	type DeliveryResult,
 	extractVideoLinks,
 	type INBOUND_CAPABLE_PLATFORMS,
@@ -98,9 +98,9 @@ export interface LinkParserOptions {
 	 * 目的地所在适配器的平台能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
 	 * 什么都发不了。形式选了小程序卡时据它决定发小程序卡还是回落图片卡。
 	 */
-	capabilities: (dest: LinkReplyDestination) => AdapterCapabilities | undefined;
+	capabilities: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
 	/** 还没探出来时主动探一次(零副作用);不实现就当探不了。 */
-	probeCapabilities?: (dest: LinkReplyDestination) => Promise<AdapterCapabilities | undefined>;
+	probeCapabilities?: (dest: LinkReplyDestination) => Promise<ConnectionCapabilities | undefined>;
 	now?: () => number;
 	/** 硬上限,缺省 {@link LINK_LIMITS};测试用小数字把边界拉到眼前。 */
 	limits?: Partial<LinkLimits>;

@@ -1,4 +1,4 @@
-import type { AdapterCapabilities, PushAdapter } from "@bilibili-notify/internal";
+import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
@@ -8,7 +8,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
  */
 export interface CapabilityScenarioDeps {
 	injector: CapabilityInjector;
-	adapters: () => PushAdapter[];
+	connections: () => Connection[];
 }
 
 const STATES = [
@@ -23,7 +23,7 @@ type State = (typeof STATES)[number]["value"];
 const CAPABLE_PLATFORMS = new Set(["onebot"]);
 const DEFAULT_REASON = "devtools:假装 1404 不支持的动作";
 
-function build(state: State, reason: string): AdapterCapabilities {
+function build(state: State, reason: string): ConnectionCapabilities {
 	switch (state) {
 		case "supported":
 			return { miniAppCard: { state: "supported", checkedAt: Date.now() } };
@@ -47,33 +47,33 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			{ key: "reason", label: "不支持的理由", kind: "text", default: DEFAULT_REASON },
 		],
 		run(params) {
-			const adapters = deps.adapters();
+			const connections = deps.connections();
 			const wanted = params.adapter;
-			const adapter =
+			const connection =
 				wanted === undefined
-					? adapters.find((a) => CAPABLE_PLATFORMS.has(a.platform))
-					: adapters.find((a) => a.id === String(wanted));
-			if (!adapter) {
+					? connections.find((a) => CAPABLE_PLATFORMS.has(a.platform))
+					: connections.find((a) => a.id === String(wanted));
+			if (!connection) {
 				throw new DevParamError(
 					wanted === undefined ? "没有 OneBot 适配器" : `没有这个适配器:${wanted}`,
 				);
 			}
-			if (!CAPABLE_PLATFORMS.has(adapter.platform)) {
-				throw new DevParamError(`${adapter.name} 是 ${adapter.platform},没有能力这回事`);
+			if (!CAPABLE_PLATFORMS.has(connection.platform)) {
+				throw new DevParamError(`${connection.name} 是 ${connection.platform},没有能力这回事`);
 			}
 			const state = String(params.state ?? "supported") as State;
 			const reason =
 				typeof params.reason === "string" && params.reason !== "" ? params.reason : DEFAULT_REASON;
-			deps.injector.set(adapter.id, build(state, reason));
+			deps.injector.set(connection.id, build(state, reason));
 			return {};
 		},
 		active() {
 			const entries = deps.injector.entries();
 			if (entries.length === 0) return null;
-			const adapters = deps.adapters();
+			const connections = deps.connections();
 			const label = entries
 				.map(([id, caps]) => {
-					const name = adapters.find((a) => a.id === id)?.name ?? id;
+					const name = connections.find((a) => a.id === id)?.name ?? id;
 					const state =
 						STATES.find((s) => s.value === caps.miniAppCard.state)?.label ?? caps.miniAppCard.state;
 					return `${name} ${state}`;

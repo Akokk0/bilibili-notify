@@ -33,7 +33,7 @@ const BARE = {
 	dynamic: () => undefined,
 	inbound: () => undefined,
 	commands: () => ({ prefix: "/" }),
-	adapterConfigs: () => [],
+	connectionConfigs: () => [],
 	targets: () => [],
 	bus: createNodeMessageBus(),
 	authSystem: { status: () => ({ status: 5, msg: "" }) } as never,

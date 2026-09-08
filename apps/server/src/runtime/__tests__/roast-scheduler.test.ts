@@ -108,7 +108,7 @@ function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 			getGlobals: () => globals,
 			getSubscriptions: () => over.subs ?? [],
 			getTargets: () => targetsTable,
-			getAdapters: () => [{ id: ADAPTER, enabled: true }],
+			getConnections: () => [{ id: ADAPTER, enabled: true }],
 		},
 	} as Any;
 	const sched = createRoastScheduler({

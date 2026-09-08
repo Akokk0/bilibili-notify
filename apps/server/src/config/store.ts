@@ -3,6 +3,8 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promis
 import { dirname, join } from "node:path";
 import {
 	type ConfigScope,
+	type Connection,
+	ConnectionSchema,
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
 	type Disposable,
@@ -13,8 +15,6 @@ import {
 	makeDefaultGlobalConfig,
 	normalizeCardLayout,
 	normalizeMessageLayout,
-	type PushAdapter,
-	PushAdapterSchema,
 	type PushTarget,
 	PushTargetPlatformSchema,
 	PushTargetSchema,
@@ -72,7 +72,7 @@ export interface ConfigScopeMeta {
 export interface ConfigSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: PushAdapter[];
+	adapters?: Connection[];
 	targets?: PushTarget[];
 }
 
@@ -88,12 +88,12 @@ export interface ConfigStore {
 	// --- reads ------------------------------------------------------------
 	getGlobals(): GlobalConfig;
 	getSubscriptions(): Subscription[];
-	getAdapters(): PushAdapter[];
+	getConnections(): Connection[];
 	getTargets(): PushTarget[];
 
 	getGlobalsMeta(): ConfigScopeMeta;
 	getSubscriptionsMeta(): ConfigScopeMeta;
-	getAdaptersMeta(): ConfigScopeMeta;
+	getConnectionsMeta(): ConfigScopeMeta;
 	getTargetsMeta(): ConfigScopeMeta;
 
 	// --- writes -----------------------------------------------------------
@@ -102,9 +102,9 @@ export interface ConfigStore {
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
-	upsertAdapter(adapter: PushAdapter): Promise<void>;
-	patchAdapter(id: string, patch: DeepPartial<PushAdapter>): Promise<PushAdapter>;
-	deleteAdapter(id: string): Promise<boolean>;
+	upsertConnection(connection: Connection): Promise<void>;
+	patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection>;
+	deleteConnection(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
 	recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget>;
@@ -248,7 +248,7 @@ async function fileExists(absPath: string): Promise<boolean> {
 
 /**
  * Splits the legacy `PushTarget` shape (config bundled connection + session)
- * into the new (PushAdapter, PushTarget) pair. Targets with the same platform
+ * into the new (Connection, PushTarget) pair. Targets with the same platform
  * and connection params share an adapter so the user doesn't end up with N
  * identical NapCat connection entries after migrating N groups.
  */
@@ -262,13 +262,13 @@ interface LegacyPushTarget {
 }
 
 function migrateLegacyTargets(raw: unknown[]): {
-	adapters: PushAdapter[];
+	connections: Connection[];
 	targets: PushTarget[];
 } {
-	const adapters: PushAdapter[] = [];
+	const connections: Connection[] = [];
 	const targets: PushTarget[] = [];
 	// connection-key → adapterId, so duplicate connections collapse.
-	const adapterIdByKey = new Map<string, string>();
+	const connectionIdByKey = new Map<string, string>();
 
 	for (const item of raw) {
 		const legacy = item as LegacyPushTarget;
@@ -283,13 +283,13 @@ function migrateLegacyTargets(raw: unknown[]): {
 			const baseUrl = cfg.baseUrl ?? "";
 			const accessToken = cfg.accessToken ?? "";
 			const key = `onebot|${baseUrl}|${accessToken}`;
-			let adapterId = adapterIdByKey.get(key);
+			let adapterId = connectionIdByKey.get(key);
 			if (!adapterId) {
 				adapterId = randomUUID();
-				adapterIdByKey.set(key, adapterId);
-				adapters.push({
+				connectionIdByKey.set(key, adapterId);
+				connections.push({
 					id: adapterId,
-					name: deriveAdapterName(legacy.name, baseUrl),
+					name: deriveConnectionName(legacy.name, baseUrl),
 					enabled: true,
 					platform: "onebot",
 					config: {
@@ -323,13 +323,13 @@ function migrateLegacyTargets(raw: unknown[]): {
 			};
 			const url = cfg.url ?? "";
 			const key = `webhook|${url}|${cfg.secret ?? ""}`;
-			let adapterId = adapterIdByKey.get(key);
+			let adapterId = connectionIdByKey.get(key);
 			if (!adapterId) {
 				adapterId = randomUUID();
-				adapterIdByKey.set(key, adapterId);
-				adapters.push({
+				connectionIdByKey.set(key, adapterId);
+				connections.push({
 					id: adapterId,
-					name: deriveAdapterName(legacy.name, url),
+					name: deriveConnectionName(legacy.name, url),
 					enabled: true,
 					platform: "webhook",
 					config: {
@@ -354,7 +354,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 		// the user sees the target disappear and can re-create it under a supported platform.
 	}
 
-	return { adapters, targets };
+	return { connections, targets };
 }
 
 /** 平台字面量还在 union 里才算认识;不认识的就是被撤下的平台留下的存量,丢弃比启动期 throw 强。 */
@@ -362,7 +362,7 @@ function isKnownPlatform(raw: unknown): boolean {
 	return PushTargetPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
 }
 
-function deriveAdapterName(targetName: string, addr: string): string {
+function deriveConnectionName(targetName: string, addr: string): string {
 	if (addr) {
 		try {
 			const u = new URL(addr);
@@ -374,20 +374,23 @@ function deriveAdapterName(targetName: string, addr: string): string {
 	return targetName || "默认连接";
 }
 
-type WebhookAdapter = Extract<PushAdapter, { platform: "webhook" }>;
+type WebhookConnection = Extract<Connection, { platform: "webhook" }>;
 
 function managedWebhookTargetId(adapterId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
 }
 
-function makeManagedWebhookTarget(adapter: WebhookAdapter, existing?: PushTarget): PushTarget {
+function makeManagedWebhookTarget(
+	connection: WebhookConnection,
+	existing?: PushTarget,
+): PushTarget {
 	return {
-		id: existing?.id ?? managedWebhookTargetId(adapter.id),
-		name: adapter.name || "Webhook",
-		adapterId: adapter.id,
+		id: existing?.id ?? managedWebhookTargetId(connection.id),
+		name: connection.name || "Webhook",
+		adapterId: connection.id,
 		platform: "webhook",
 		scope: "channel",
-		enabled: adapter.enabled,
+		enabled: connection.enabled,
 		managedBy: "adapter",
 		testStatus: existing?.testStatus,
 		session: {},
@@ -395,12 +398,12 @@ function makeManagedWebhookTarget(adapter: WebhookAdapter, existing?: PushTarget
 }
 
 function syncManagedWebhookTarget(
-	adapter: WebhookAdapter,
+	connection: WebhookConnection,
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
-	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === adapter.id);
+	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === connection.id);
 	const existing = owned.find((t) => t.managedBy === "adapter") ?? owned[0];
-	const desired = makeManagedWebhookTarget(adapter, existing);
+	const desired = makeManagedWebhookTarget(connection, existing);
 	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
 
 	const aliases = new Map<string, string>();
@@ -408,7 +411,9 @@ function syncManagedWebhookTarget(
 		if (target.id !== desired.id) aliases.set(target.id, desired.id);
 	}
 	const next = targets
-		.filter((t) => !(t.platform === "webhook" && t.adapterId === adapter.id && t.id !== desired.id))
+		.filter(
+			(t) => !(t.platform === "webhook" && t.adapterId === connection.id && t.id !== desired.id),
+		)
 		.map((t) => (t.id === desired.id ? desired : t));
 	const changed =
 		aliases.size > 0 ||
@@ -423,15 +428,15 @@ function syncManagedWebhookTarget(
 }
 
 function syncManagedWebhookTargets(
-	adapters: readonly PushAdapter[],
+	connections: readonly Connection[],
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
 	let next = [...targets];
 	let changed = false;
 	const aliases = new Map<string, string>();
-	for (const adapter of adapters) {
-		if (adapter.platform !== "webhook") continue;
-		const r = syncManagedWebhookTarget(adapter, next);
+	for (const connection of connections) {
+		if (connection.platform !== "webhook") continue;
+		const r = syncManagedWebhookTarget(connection, next);
 		next = r.next;
 		changed ||= r.changed;
 		for (const [from, to] of r.aliases) aliases.set(from, to);
@@ -541,7 +546,7 @@ class NodeConfigStore implements ConfigStore {
 
 	private globals: GlobalConfig;
 	private subscriptions: Subscription[];
-	private adapters: PushAdapter[];
+	private connections: Connection[];
 	private targets: PushTarget[];
 
 	private readonly meta: Record<ConfigScope, ScopeMetaInternal> = {
@@ -571,7 +576,7 @@ class NodeConfigStore implements ConfigStore {
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
 		this.subscriptions = [];
-		this.adapters = [];
+		this.connections = [];
 		this.targets = [];
 	}
 
@@ -812,11 +817,11 @@ class NodeConfigStore implements ConfigStore {
 
 		// adapters + targets (with one-time migration from the legacy single-file
 		// targets.json that bundled connection+session into `config`)
-		await this.loadAdaptersAndTargets();
+		await this.loadConnectionsAndTargets();
 
 		this.loaded = true;
 		this.serviceCtx.logger.info(
-			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} adapters=${this.adapters.length} targets=${this.targets.length})`,
+			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} adapters=${this.connections.length} targets=${this.targets.length})`,
 		);
 	}
 
@@ -826,25 +831,25 @@ class NodeConfigStore implements ConfigStore {
 	 * holding both connection and session params), runs a one-shot migration
 	 * that extracts adapters and rewrites targets to reference them.
 	 */
-	private async loadAdaptersAndTargets(): Promise<void> {
+	private async loadConnectionsAndTargets(): Promise<void> {
 		const adaptersExist = await fileExists(this.path("adapters"));
 
 		// New-format path: adapters.json is already present.
 		if (adaptersExist) {
-			const adaptersRaw = JSON.parse(await readFile(this.path("adapters"), "utf8"));
-			if (!Array.isArray(adaptersRaw)) {
+			const connectionsRaw = JSON.parse(await readFile(this.path("adapters"), "utf8"));
+			if (!Array.isArray(connectionsRaw)) {
 				throw new ConfigValidationError(
 					"adapters",
 					{ message: "adapters.json must be an array" },
 					"adapters.json on disk is not an array",
 				);
 			}
-			const adapters: PushAdapter[] = [];
-			for (const [idx, raw] of adaptersRaw.entries()) {
+			const connections: Connection[] = [];
+			for (const [idx, raw] of connectionsRaw.entries()) {
 				// 已撤下的平台(web-dashboard、koishi-bot、astrbot,或将来的某个)留下的存量条目:
 				// 静默丢弃,不进严格校验 —— safeParse 失败会 throw,而这里是启动路径,没有面板能进去改。
 				if (!isKnownPlatform(raw)) continue;
-				const r = PushAdapterSchema.safeParse(raw);
+				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
 						"adapters",
@@ -852,9 +857,9 @@ class NodeConfigStore implements ConfigStore {
 						`adapters.json[${idx}] failed schema validation`,
 					);
 				}
-				adapters.push(r.data);
+				connections.push(r.data);
 			}
-			this.adapters = adapters;
+			this.connections = connections;
 			this.meta.adapters.exists = true;
 
 			const { value, existed } = await readJsonOrInit<unknown[]>(
@@ -882,7 +887,7 @@ class NodeConfigStore implements ConfigStore {
 				}
 				targets.push(r.data);
 			}
-			const synced = syncManagedWebhookTargets(this.adapters, targets);
+			const synced = syncManagedWebhookTargets(this.connections, targets);
 			this.targets = synced.next;
 			this.meta.targets.exists = true;
 			this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
@@ -905,7 +910,7 @@ class NodeConfigStore implements ConfigStore {
 			// Brand-new install: write empty files and continue.
 			await atomicWriteJson(this.path("adapters"), []);
 			await atomicWriteJson(this.path("targets"), []);
-			this.adapters = [];
+			this.connections = [];
 			this.targets = [];
 			this.meta.adapters.exists = true;
 			this.meta.adapters.lastUpdatedAt = new Date().toISOString();
@@ -940,13 +945,13 @@ class NodeConfigStore implements ConfigStore {
 		this.serviceCtx.logger.info(
 			`config-store migrating ${targetsRaw.length} legacy push target(s) → adapter + target split`,
 		);
-		const { adapters, targets } = migrateLegacyTargets(targetsRaw);
-		const synced = syncManagedWebhookTargets(adapters, targets);
+		const { connections, targets } = migrateLegacyTargets(targetsRaw);
+		const synced = syncManagedWebhookTargets(connections, targets);
 		const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
-		this.adapters = adapters;
+		this.connections = connections;
 		this.targets = synced.next;
 		if (replaced.changed) this.subscriptions = replaced.next;
-		await atomicWriteJson(this.path("adapters"), adapters);
+		await atomicWriteJson(this.path("adapters"), connections);
 		await atomicWriteJson(this.path("targets"), this.targets);
 		if (replaced.changed) {
 			await atomicWriteJson(this.path("subscriptions"), this.subscriptions);
@@ -972,8 +977,8 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.subscriptions);
 	}
 
-	getAdapters(): PushAdapter[] {
-		return deepClone(this.adapters);
+	getConnections(): Connection[] {
+		return deepClone(this.connections);
 	}
 
 	getTargets(): PushTarget[] {
@@ -988,7 +993,7 @@ class NodeConfigStore implements ConfigStore {
 		return { ...this.meta.subscriptions };
 	}
 
-	getAdaptersMeta(): ConfigScopeMeta {
+	getConnectionsMeta(): ConfigScopeMeta {
 		return { ...this.meta.adapters };
 	}
 
@@ -1109,13 +1114,13 @@ class NodeConfigStore implements ConfigStore {
 		return removed;
 	}
 
-	async upsertAdapter(adapter: PushAdapter): Promise<void> {
+	async upsertConnection(connection: Connection): Promise<void> {
 		const saved = await this.runScoped("adapters", async () => {
-			const parsed = PushAdapterSchema.safeParse(adapter);
+			const parsed = ConnectionSchema.safeParse(connection);
 			if (!parsed.success) {
 				throw new ConfigValidationError("adapters", parsed.error.issues);
 			}
-			const existing = this.adapters.find((a) => a.id === parsed.data.id);
+			const existing = this.connections.find((a) => a.id === parsed.data.id);
 			if (existing && existing.platform !== parsed.data.platform) {
 				throw new ConfigValidationError(
 					"adapters",
@@ -1128,9 +1133,9 @@ class NodeConfigStore implements ConfigStore {
 					`adapter ${parsed.data.id} platform cannot be changed`,
 				);
 			}
-			const next = upsertById(this.adapters, parsed.data);
+			const next = upsertById(this.connections, parsed.data);
 			await atomicWriteJson(this.path("adapters"), next);
-			this.adapters = next;
+			this.connections = next;
 			this.touch("adapters");
 			return parsed.data;
 		});
@@ -1153,9 +1158,9 @@ class NodeConfigStore implements ConfigStore {
 		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 	}
 
-	async patchAdapter(id: string, patch: DeepPartial<PushAdapter>): Promise<PushAdapter> {
+	async patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection> {
 		const result = await this.runScoped("adapters", async () => {
-			const idx = this.adapters.findIndex((a) => a.id === id);
+			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) {
 				throw new ConfigValidationError(
 					"adapters",
@@ -1163,9 +1168,9 @@ class NodeConfigStore implements ConfigStore {
 					`adapter ${id} not found`,
 				);
 			}
-			const current = this.adapters[idx] as PushAdapter;
+			const current = this.connections[idx] as Connection;
 			const merged = deepMerge(current, { ...patch, id });
-			const parsed = PushAdapterSchema.safeParse(merged);
+			const parsed = ConnectionSchema.safeParse(merged);
 			if (!parsed.success) {
 				throw new ConfigValidationError("adapters", parsed.error.issues);
 			}
@@ -1181,10 +1186,10 @@ class NodeConfigStore implements ConfigStore {
 					`adapter ${id} platform cannot be changed`,
 				);
 			}
-			const next = [...this.adapters];
+			const next = [...this.connections];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("adapters"), next);
-			this.adapters = next;
+			this.connections = next;
 			this.touch("adapters");
 			return parsed.data;
 		});
@@ -1208,34 +1213,34 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(result);
 	}
 
-	async deleteAdapter(id: string): Promise<boolean> {
-		const removedAdapter = await this.runScoped("adapters", async () => {
-			const idx = this.adapters.findIndex((a) => a.id === id);
+	async deleteConnection(id: string): Promise<boolean> {
+		const removedConnection = await this.runScoped("adapters", async () => {
+			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) return undefined;
-			const adapter = this.adapters[idx] as PushAdapter;
+			const connection = this.connections[idx] as Connection;
 			// 引用检查必须在任务体内(执行期)对 this.targets 求值,而非 enqueue
 			// 时 —— 在 scope 外同步检查会与并行 targets 队列竞态:check 通过后、
 			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
-			// (互补:upsertTarget 侧 assertAdapterMatches 也校验 adapter 存在。)
+			// (互补:upsertTarget 侧 assertConnectionMatches 也校验 adapter 存在。)
 			const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
-			if (adapter.platform !== "webhook" && referencing.length > 0) {
+			if (connection.platform !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"adapters",
 					{ id, targetIds: referencing, message: "adapter still in use" },
 					`adapter ${id} is still referenced by ${referencing.length} target(s)`,
 				);
 			}
-			const next = this.adapters.filter((_, i) => i !== idx);
+			const next = this.connections.filter((_, i) => i !== idx);
 			await atomicWriteJson(this.path("adapters"), next);
-			this.adapters = next;
+			this.connections = next;
 			this.touch("adapters");
-			return adapter;
+			return connection;
 		});
-		if (!removedAdapter) return false;
+		if (!removedConnection) return false;
 
 		let targetsChanged = false;
 		let subscriptionsChanged = false;
-		if (removedAdapter.platform === "webhook") {
+		if (removedConnection.platform === "webhook") {
 			let removedTargetIds: string[] = [];
 			targetsChanged = await this.runScoped("targets", async () => {
 				removedTargetIds = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
@@ -1269,7 +1274,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
-			this.assertAdapterMatches(parsed.data);
+			this.assertConnectionMatches(parsed.data);
 			// webhook 目标是 adapter 的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以判据是 managedBy 而不是
 			// platform,否则任何含 webhook 适配器的备份都恢复不了(而恢复是逐条 await 的,炸在
@@ -1285,8 +1290,8 @@ class NodeConfigStore implements ConfigStore {
 			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedWebhookTarget 取的是
 			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与 adapter 名下当前那条
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
-			// upsertAdapter 完全同一条路径,别在这儿另写一套。
-			const owner = this.adapters.find((a) => a.id === parsed.data.adapterId);
+			// upsertConnection 完全同一条路径,别在这儿另写一套。
+			const owner = this.connections.find((a) => a.id === parsed.data.adapterId);
 			if (owner?.platform === "webhook") {
 				const synced = syncManagedWebhookTarget(owner, next);
 				next = synced.next;
@@ -1328,7 +1333,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
-			this.assertAdapterMatches(parsed.data);
+			this.assertConnectionMatches(parsed.data);
 			const next = [...this.targets];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("targets"), next);
@@ -1361,24 +1366,24 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(result);
 	}
 
-	private assertAdapterMatches(target: PushTarget): void {
-		const adapter = this.adapters.find((a) => a.id === target.adapterId);
-		if (!adapter) {
+	private assertConnectionMatches(target: PushTarget): void {
+		const connection = this.connections.find((a) => a.id === target.adapterId);
+		if (!connection) {
 			throw new ConfigValidationError(
 				"targets",
 				{ adapterId: target.adapterId, message: "adapter not found" },
 				`target.adapterId ${target.adapterId} does not match any adapter`,
 			);
 		}
-		if (adapter.platform !== target.platform) {
+		if (connection.platform !== target.platform) {
 			throw new ConfigValidationError(
 				"targets",
 				{
-					adapterPlatform: adapter.platform,
+					adapterPlatform: connection.platform,
 					targetPlatform: target.platform,
 					message: "platform mismatch",
 				},
-				`target.platform (${target.platform}) ≠ adapter.platform (${adapter.platform})`,
+				`target.platform (${target.platform}) ≠ adapter.platform (${connection.platform})`,
 			);
 		}
 	}
@@ -1440,15 +1445,15 @@ class NodeConfigStore implements ConfigStore {
 				globals = r.data;
 			}
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
-			const adapters = next.adapters && parseAll("adapters", next.adapters);
+			const connections = next.adapters && parseAll("adapters", next.adapters);
 			const targets = next.targets && parseAll("targets", next.targets);
 
 			// ---- 2) 跨分区不变式 + 托管目标归一化(与 load() 同一套) ----------
-			const effAdapters = adapters ?? this.adapters;
+			const effConnections = connections ?? this.connections;
 			const effTargets = targets ?? this.targets;
 			const effSubs = subscriptions ?? this.subscriptions;
 			for (const t of effTargets) {
-				const owner = effAdapters.find((a) => a.id === t.adapterId);
+				const owner = effConnections.find((a) => a.id === t.adapterId);
 				if (!owner) {
 					throw new ConfigValidationError(
 						"targets",
@@ -1459,18 +1464,18 @@ class NodeConfigStore implements ConfigStore {
 				if (owner.platform !== t.platform) {
 					throw new ConfigValidationError(
 						"targets",
-						{ id: t.id, target: t.platform, adapter: owner.platform },
+						{ id: t.id, target: t.platform, connection: owner.platform },
 						`target ${t.id} platform ${t.platform} does not match adapter ${owner.platform}`,
 					);
 				}
 			}
-			const synced = syncManagedWebhookTargets(effAdapters, effTargets);
+			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[ConfigScope, unknown]> = [];
 			if (subscriptions || replaced.changed) writes.push(["subscriptions", replaced.next]);
-			if (adapters) writes.push(["adapters", effAdapters]);
+			if (connections) writes.push(["adapters", effConnections]);
 			if (targets || synced.changed) writes.push(["targets", synced.next]);
 
 			const backups: Array<[string, string]> = [];
@@ -1498,8 +1503,8 @@ class NodeConfigStore implements ConfigStore {
 				this.touch("subscriptions");
 				touched.push("subscriptions");
 			}
-			if (adapters) {
-				this.adapters = effAdapters;
+			if (connections) {
+				this.connections = effConnections;
 				this.touch("adapters");
 				touched.push("adapters");
 			}
@@ -1565,7 +1570,7 @@ class NodeConfigStore implements ConfigStore {
 }
 
 function parseAll(scope: "subscriptions", items: readonly Subscription[]): Subscription[];
-function parseAll(scope: "adapters", items: readonly PushAdapter[]): PushAdapter[];
+function parseAll(scope: "adapters", items: readonly Connection[]): Connection[];
 function parseAll(scope: "targets", items: readonly PushTarget[]): PushTarget[];
 /**
  * 逐条重新校验一个分区。入参虽然带着类型,但它来自备份文件 / 磁盘 JSON —— 那个类型
@@ -1576,7 +1581,7 @@ function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
 		scope === "subscriptions"
 			? SubscriptionSchema
 			: scope === "adapters"
-				? PushAdapterSchema
+				? ConnectionSchema
 				: PushTargetSchema;
 	return items.map((item, idx) => {
 		const r = schema.safeParse(item);

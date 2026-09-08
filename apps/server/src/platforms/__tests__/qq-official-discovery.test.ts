@@ -101,7 +101,7 @@ describe("createQQSessionRegistry — per-adapter 发现 ring buffer", () => {
 	});
 
 	it("超容丢最旧", () => {
-		const reg = createQQSessionRegistry({ maxPerAdapter: 2 });
+		const reg = createQQSessionRegistry({ maxPerConnection: 2 });
 		reg.record("a1", { scope: "group", openid: "G1" }, 1000);
 		reg.record("a1", { scope: "group", openid: "G2" }, 2000);
 		reg.record("a1", { scope: "group", openid: "G3" }, 3000);
