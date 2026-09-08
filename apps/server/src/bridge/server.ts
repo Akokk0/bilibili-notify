@@ -102,6 +102,14 @@ export interface BridgeSession {
 	readonly version?: string;
 	readonly bots: readonly BridgeBot[];
 	readonly connectedAt: number;
+	/**
+	 * **这条桥自己连进来时用的地址**,形如 `http://192.168.1.5:8787`。
+	 *
+	 * 取图 URL 拿它拼。协议里那句「这条 URL 只保证桥自己可达」于是不再靠谁记得配对:
+	 * 地址就是桥刚刚成功连到的那个,可达是结构上成立的。BN 自己**不知道**别人从哪个
+	 * 地址找得到它(NAS / 反代 / 桌面壳各不相同),猜一个只会猜错。
+	 */
+	readonly origin: string;
 }
 
 /** `id` 由这一层生成并配对,所以调用方给不了也不用给。 */
@@ -131,6 +139,8 @@ export interface BridgeServer extends Disposable {
 interface BridgeConn {
 	socket: WebSocket;
 	connectionId: string;
+	/** 见 {@link BridgeSession.origin}。upgrade 那一刻从请求上算出来,之后不变。 */
+	origin: string;
 	connectedAt: number;
 	lastSeenAt: number;
 	handshakeTimer?: NodeJS.Timeout;
@@ -171,6 +181,31 @@ function readBearerToken(req: IncomingMessage): string | null {
 	if (header.slice(0, prefix.length).toLowerCase() !== prefix) return null;
 	const token = header.slice(prefix.length).trim();
 	return token.length > 0 ? token : null;
+}
+
+/**
+ * 这条桥**是从哪个地址连到我们的** —— 取图 URL 就拿它拼。
+ *
+ * BN 自己不知道别人从哪儿找得到它:NAS、反代、桌面壳、Docker 端口映射各不相同,猜一个
+ * 只会猜错,而猜错的症状是「群里那条消息没有图」且**一声不吭**(平台去拉图失败是静默的)。
+ * `Host` 头是桥刚刚成功连上时用的那个地址,所以它是唯一一个**已被证实可达**的答案。
+ *
+ * 协议(RFC 6455 / HTTP/1.1)要求握手带 `Host`;真缺了就退到这条 socket 自己的本地地址,
+ * 总比给一条拼不出来的 URL 强。反代后面看 `X-Forwarded-Proto` 决定 http 还是 https。
+ */
+export function bridgeOrigin(req: IncomingMessage): string {
+	const forwarded = req.headers["x-forwarded-proto"];
+	const declared = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+	const encrypted = "encrypted" in req.socket && req.socket.encrypted === true;
+	const scheme = declared || (encrypted ? "https" : "http");
+	return `${scheme}://${req.headers.host ?? localAuthority(req)}`;
+}
+
+/** `Host` 缺席时的兜底:这条 socket 落在本机哪个地址、哪个端口上。IPv6 要加方括号。 */
+function localAuthority(req: IncomingMessage): string {
+	const address = req.socket.localAddress ?? "127.0.0.1";
+	const host = address.includes(":") ? `[${address}]` : address;
+	return `${host}:${req.socket.localPort ?? 80}`;
 }
 
 export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
@@ -374,11 +409,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 	}
 
-	function accept(socket: WebSocket, connectionId: string): void {
+	function accept(socket: WebSocket, connectionId: string, origin: string): void {
 		const now = Date.now();
 		const conn: BridgeConn = {
 			socket,
 			connectionId,
+			origin,
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
@@ -410,7 +446,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			rejectUnauthorized(socket);
 			return;
 		}
-		wss.handleUpgrade(req, socket, head, (ws) => accept(ws, connectionId));
+		wss.handleUpgrade(req, socket, head, (ws) => accept(ws, connectionId, bridgeOrigin(req)));
 	};
 	opts.httpServer.on("upgrade", onUpgrade);
 
@@ -486,6 +522,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			version: conn.hello.version,
 			bots: conn.bots,
 			connectedAt: conn.connectedAt,
+			origin: conn.origin,
 		};
 	}
 

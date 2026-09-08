@@ -26,38 +26,40 @@ import {
 	type PayloadSegment,
 	type PushTarget,
 } from "@bilibili-notify/internal";
-import type { BridgeSendRequest, BridgeServer } from "../bridge/server.js";
+import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "../bridge/blob.js";
+import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../bridge/server.js";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
-
-/**
- * 「把这张图存起来,给我一个桥取得到的 URL」。
- *
- * 由**用它的这一层**声明、`bridge/blob.ts` 去实现 —— 一次性 id + 短 TTL,id 即凭据。
- * ⚠️ 这条 URL **只保证桥自己可达**:桥要把图交给平台去拉必须先自己下载(协议文档里
- * 那条大写的警告)。BN 常在 NAS 上,外网进不来,而平台拉不到是**静默失败**。
- */
-export interface BridgeBlobStore {
-	publish(buffer: Buffer, mime: string): string;
-}
 
 export interface BridgeAdapterOptions {
 	server: BridgeServer;
-	blobs: BridgeBlobStore;
+	/**
+	 * 图片仓库 —— 只用得着「存进去」那一半(取图是路由的事)。
+	 *
+	 * ⚠️ 拼出来的 URL **只保证桥自己可达**:桥要把图交给平台去拉必须先自己下载(协议
+	 * 文档 §9 那条大写的警告)。BN 常在 NAS 上,外网进不来,而平台拉不到是**静默失败**。
+	 * 所以 URL 拿的是**那条桥自己连进来时用的地址**({@link BridgeSession.origin})。
+	 */
+	blobs: Pick<BridgeBlobStore, "put">;
 	logger: Logger;
 }
 
+/** 「把这张图存起来,给我一条**这条桥**取得到的 URL」。 */
+type BlobUrl = (buffer: Buffer, mime: string) => string;
+
 type SessionTarget = Extract<PushTarget, { kind: "session" }>;
 
-type Resolved = { ok: true; bot: BridgeBot; target: SessionTarget } | { ok: false; err: string };
+type Resolved =
+	| { ok: true; bot: BridgeBot; target: SessionTarget; session: BridgeSession }
+	| { ok: false; err: string };
 
-function toSegment(segment: PayloadSegment, blobs: BridgeBlobStore): BridgeSegment {
+function toSegment(segment: PayloadSegment, blobUrl: BlobUrl): BridgeSegment {
 	switch (segment.type) {
 		case "text":
 			return { type: "text", text: segment.text };
 		case "image":
 			return {
 				type: "image",
-				url: blobs.publish(segment.buffer, segment.mime),
+				url: blobUrl(segment.buffer, segment.mime),
 				mime: segment.mime,
 			};
 		case "link":
@@ -76,21 +78,21 @@ function toSegment(segment: PayloadSegment, blobs: BridgeBlobStore): BridgeSegme
  * 唯一的实质转换是**图**:`Buffer` 过不了 JSON,换成一次性取图 URL。已经是远端 URL 的
  * (图廊、小程序卡封面)原样透传 —— 它们本来就公网可达,再倒一手只是白占内存。
  */
-function toBridgeMessage(payload: NotificationPayload, blobs: BridgeBlobStore): BridgeMessage {
+function toBridgeMessage(payload: NotificationPayload, blobUrl: BlobUrl): BridgeMessage {
 	switch (payload.kind) {
 		case "text":
 			return { kind: "text", text: payload.text };
 		case "image":
 			return {
 				kind: "image",
-				url: blobs.publish(payload.image.buffer, payload.image.mime),
+				url: blobUrl(payload.image.buffer, payload.image.mime),
 				mime: payload.image.mime,
 				caption: payload.caption,
 			};
 		case "composite":
 			return {
 				kind: "composite",
-				segments: payload.segments.map((segment) => toSegment(segment, blobs)),
+				segments: payload.segments.map((segment) => toSegment(segment, blobUrl)),
 			};
 		case "forward-images":
 			return {
@@ -140,7 +142,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		if (!session) return { ok: false, err: "桥没连着" };
 		const bot = session.bots.find((candidate) => candidate.botId === target.botId);
 		if (!bot) return { ok: false, err: `桥上现在没有这个 bot(${target.botId})` };
-		return { ok: true, bot, target };
+		return { ok: true, bot, target, session };
 	}
 
 	return {
@@ -173,6 +175,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 			// `{ private: false }`,所以只能读 `=== true`。onebot 上把它当后者读、拿
 			// `??` 兜底,结果 scope 本来就是 private 的目标永远走了群那一支。
 			const scope = pushOpts.private === true ? ("private" as const) : resolved.target.scope;
+			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
+			const blobUrl: BlobUrl = (buffer, mime) =>
+				`${resolved.session.origin}${BRIDGE_BLOB_PATH}/${blobs.put(buffer, mime)}`;
 			const request: BridgeSendRequest = {
 				botId: resolved.bot.botId,
 				platform: resolved.target.platform,
@@ -181,7 +186,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 					address: resolved.target.address,
 					parentAddress: resolved.target.parentAddress,
 				},
-				message: toBridgeMessage(payload, blobs),
+				message: toBridgeMessage(payload, blobUrl),
 			};
 			const outcome = await server.send(connection.id, request);
 			return { ok: outcome.ok, latencyMs: Date.now() - t0, err: outcome.err };

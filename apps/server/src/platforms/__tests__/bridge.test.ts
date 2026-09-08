@@ -62,6 +62,7 @@ function session(over: Partial<BridgeSession> = {}): BridgeSession {
 			},
 		],
 		connectedAt: 0,
+		origin: "http://192.168.1.5:8787",
 		...over,
 	};
 }
@@ -95,9 +96,9 @@ function harness(live: BridgeSession | null = session()): Harness {
 		server,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 		blobs: {
-			publish(buffer: Buffer, mime: string) {
+			put(buffer: Buffer, mime: string) {
 				published.push({ mime, bytes: buffer.byteLength });
-				return `http://bn.local/bridge/blob/blob${published.length}`;
+				return `blob${published.length}`;
 			},
 		},
 	});
@@ -168,7 +169,7 @@ describe("桥 adapter", () => {
 		});
 	});
 
-	it("图:Buffer **换成一次性 URL**(JSON 驮不动 Buffer)", async () => {
+	it("图:Buffer **换成一次性 URL**,地址是这条桥自己连进来时用的那个", async () => {
 		const h = harness();
 		await h.adapter.send(connection(), target(), {
 			kind: "image",
@@ -178,9 +179,20 @@ describe("桥 adapter", () => {
 		expect(h.published).toEqual([{ mime: "image/png", bytes: 3 }]);
 		expect(h.lastRequest().message).toEqual({
 			kind: "image",
-			url: "http://bn.local/bridge/blob/blob1",
+			url: "http://192.168.1.5:8787/bridge/blob/blob1",
 			mime: "image/png",
 			caption: "封面",
+		});
+	});
+
+	it("图 URL 的地址跟着**会话**走,不是写死的 —— 每条桥从哪儿连进来的都不一样", async () => {
+		const h = harness(session({ origin: "https://bn.example.com" }));
+		await h.adapter.send(connection(), target(), {
+			kind: "image",
+			image: { buffer: Buffer.from([1]), mime: "image/png" },
+		});
+		expect(h.lastRequest().message).toMatchObject({
+			url: "https://bn.example.com/bridge/blob/blob1",
 		});
 	});
 
@@ -200,7 +212,7 @@ describe("桥 adapter", () => {
 			segments: [
 				{ type: "at-all" },
 				{ type: "text", text: "看这个" },
-				{ type: "image", url: "http://bn.local/bridge/blob/blob1", mime: "image/jpeg" },
+				{ type: "image", url: "http://192.168.1.5:8787/bridge/blob/blob1", mime: "image/jpeg" },
 				{ type: "link", href: "https://b23.tv/x", title: "视频" },
 			],
 		});

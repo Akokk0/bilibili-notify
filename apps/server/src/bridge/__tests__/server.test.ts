@@ -7,13 +7,18 @@
  * 才成立,mock 掉 socket 等于什么都没证。
  */
 
-import { createServer, type Server as HttpServer } from "node:http";
+import { createServer, type Server as HttpServer, type IncomingMessage } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { BRIDGE_CLOSE_CODES, BRIDGE_PROTOCOL_VERSION } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import type { NodeServiceContext } from "../../runtime/service-context.js";
-import { type BridgeServer, type BridgeSession, createBridgeServer } from "../server.js";
+import {
+	type BridgeServer,
+	type BridgeSession,
+	bridgeOrigin,
+	createBridgeServer,
+} from "../server.js";
 
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TOKEN = "good-token";
@@ -108,6 +113,55 @@ function peer(port: number, token: string | null) {
 }
 
 type Peer = ReturnType<typeof peer>;
+
+function fakeReq(over: {
+	headers?: Record<string, string | string[]>;
+	socket?: Record<string, unknown>;
+}): IncomingMessage {
+	return {
+		headers: over.headers ?? {},
+		socket: { localAddress: "127.0.0.1", localPort: 8787, ...over.socket },
+	} as unknown as IncomingMessage;
+}
+
+/**
+ * 取图 URL 的地址从哪儿来。BN **不知道**别人从哪个地址找得到它(NAS / 反代 / Docker
+ * 端口映射各不相同),猜错的症状是「那条消息没有图」而且一声不吭 —— 平台去拉图失败是
+ * 静默的。桥刚刚成功连上时用的 `Host`,是唯一一个已被证实可达的答案。
+ */
+describe("bridgeOrigin", () => {
+	it("就是桥连进来时用的那个 Host", () => {
+		expect(bridgeOrigin(fakeReq({ headers: { host: "192.168.1.5:8787" } }))).toBe(
+			"http://192.168.1.5:8787",
+		);
+	});
+
+	it("反代说是 https 就是 https —— 不然图 URL 会被浏览器 / 平台按混合内容拦掉", () => {
+		expect(
+			bridgeOrigin(fakeReq({ headers: { host: "bn.example.com", "x-forwarded-proto": "https" } })),
+		).toBe("https://bn.example.com");
+	});
+
+	it("串了好几层反代时取最外面那一跳", () => {
+		expect(
+			bridgeOrigin(
+				fakeReq({ headers: { host: "bn.example.com", "x-forwarded-proto": "https, http" } }),
+			),
+		).toBe("https://bn.example.com");
+	});
+
+	it("直接 TLS 连进来的算 https", () => {
+		expect(
+			bridgeOrigin(fakeReq({ headers: { host: "bn:8787" }, socket: { encrypted: true } })),
+		).toBe("https://bn:8787");
+	});
+
+	it("没有 Host(协议其实不允许)→ 退到这条 socket 的本地地址,IPv6 要加方括号", () => {
+		expect(bridgeOrigin(fakeReq({ socket: { localAddress: "::1", localPort: 9000 } }))).toBe(
+			"http://[::1]:9000",
+		);
+	});
+});
 
 describe("/bridge 端点", () => {
 	let httpServer: HttpServer;
@@ -314,6 +368,11 @@ describe("/bridge 端点", () => {
 		await new Promise((r) => setTimeout(r, 30));
 		expect(inboundSessions.at(-1)?.connectionId).toBe(CONNECTION_ID);
 		expect(inboundSessions.at(-1)?.bots.map((b) => b.selfId)).toEqual(["77770000"]);
+	});
+
+	it("会话记着桥是从哪个地址连进来的 —— 取图 URL 拿它拼", async () => {
+		await handshaken();
+		expect(server.getSession(CONNECTION_ID)?.origin).toBe(`http://127.0.0.1:${port}`);
 	});
 
 	it("同一个 token 又连进来一条 → **新的赢**,老的收 4006", async () => {
