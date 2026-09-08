@@ -14,9 +14,9 @@
 
 import type { ConnectionCapabilitiesMap, MiniAppCardSupport } from "@bilibili-notify/contract";
 import {
-	INBOUND_CAPABLE_PLATFORMS,
 	LINK_REPLY_FORMS,
 	type LinkReplyForm,
+	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
 import {
 	DisclosurePill,
@@ -50,11 +50,16 @@ export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
 /** 三态格的取值:跟默认,或一个显式值。 */
 const INHERIT = "inherit" as const;
 
-/** 能列进例外表的目标:群类,且平台收得到入站消息(webhook 只出不进,配了也没用)。 */
+/**
+ * 能列进例外表的目标:群类,且平台收得到入站消息(webhook 只出不进,配了也没用)。
+ *
+ * **问的是 `platformCanReceiveReply`,不是自己拿词表 `includes` 一遍** —— 这里原先是那份
+ * 词表的第三个消费方,而另外两个走的是这个谓词。接桥之后「收不收得到」要由能力位回答、
+ * 不再看平台名,那时只有谓词那一处改;各写各的话,这张表会继续按平台名筛,把桥驮进来的
+ * 群整批漏掉,而且不报错。
+ */
 function isGroupCandidate(t: PushTarget): boolean {
-	return (
-		t.scope === "group" && (INBOUND_CAPABLE_PLATFORMS as readonly string[]).includes(t.platform)
-	);
+	return t.scope === "group" && platformCanReceiveReply(t.platform);
 }
 
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
