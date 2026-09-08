@@ -22,6 +22,7 @@ import type {
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
+	CONNECTION_PLATFORMS,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
@@ -34,6 +35,7 @@ import {
 	type LiveEndExtraKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	PLATFORM_REGISTRY,
 } from "@bilibili-notify/internal/constants";
 
 export type { FeatureKey, LiveEndExtraKey };
@@ -136,20 +138,14 @@ export function maskWebhookUrl(url: string): string {
 }
 
 /**
- * 平台选择器的候选。
+ * 平台选择器的候选 —— 顺序与显示名都从 {@link PLATFORM_REGISTRY} 取。
  *
- * 后四个原先不在这里 —— 它们是 webhook 连接 config 里那个 `provider` 下拉的选项。
+ * webhook 那一族原先不在这里,它们是 webhook 连接 config 里那个 `provider` 下拉的选项。
  * webhook 降格成连接器之后,「飞书还是钉钉」跟「OneBot 还是官机」是同一个问题,
  * 摆成两级选择只是在复述旧数据模型的形状。
  */
-export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: string }> = [
-	{ value: "onebot", label: "OneBot v11" },
-	{ value: "qq-official", label: "QQ 官方机器人" },
-	{ value: "feishu", label: "飞书机器人" },
-	{ value: "dingtalk", label: "钉钉机器人" },
-	{ value: "wecom", label: "企业微信机器人" },
-	{ value: "generic", label: "未指明的 HTTP 端点" },
-];
+export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: string }> =
+	CONNECTION_PLATFORMS.map((value) => ({ value, label: PLATFORM_REGISTRY[value].label }));
 
 // ---- Factories --------------------------------------------------------
 

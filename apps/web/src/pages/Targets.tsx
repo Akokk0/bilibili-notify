@@ -1,8 +1,10 @@
 import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
 // 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
 import {
+	addressNounFor,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	platformDescriptor,
 } from "@bilibili-notify/internal/constants";
 import {
 	AddCard,
@@ -45,27 +47,23 @@ import {
 } from "../types/domain";
 
 /**
- * Targets page — two-layer "adapter → target" model.
+ * Targets page — two-layer "connection → target" model.
  *
- * **Adapter** = a connection instance (NapCat HTTP endpoint, webhook URL,
- * dashboard bridge). Holds baseUrl / accessToken etc.
+ * **Connection** = one instance of somewhere to send to (a NapCat HTTP
+ * endpoint, a QQ official gateway, a webhook URL). Holds baseUrl / token etc.
  *
- * **Target** = a session bound to an adapter (group/private/channel). Holds
- * groupId / userId. References its adapter by `connectionId`.
+ * **Target** = a session or a one-way endpoint under a connection, referencing
+ * it by `connectionId`. A session target holds the address; an endpoint target
+ * is a shell, its address burnt into the connection's config.
  *
- * One adapter can drive many targets, so a single NapCat connection only needs
- * its credentials filled once even when pushing to N groups.
+ * One connection can drive many targets, so a single NapCat connection only
+ * needs its credentials filled once even when pushing to N groups.
  */
 
 const SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
 	{ value: "group", label: "群组" },
 	{ value: "private", label: "私聊" },
 	{ value: "channel", label: "频道" },
-];
-
-const ONEBOT_SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
-	{ value: "group", label: "群聊" },
-	{ value: "private", label: "私聊" },
 ];
 
 /** OneBot 连接方式 —— 是 adapter config 的 transport 字段,不是独立 platform。 */
@@ -75,12 +73,31 @@ const ONEBOT_TRANSPORTS: ReadonlyArray<{ value: OnebotTransport; label: string }
 	{ value: "ws-reverse", label: "反向 WS" },
 ];
 
-function scopesFor(platform: PushTarget["platform"]): ReadonlyArray<{
+/**
+ * 这个平台的目标能选哪几种会话 —— 词表在 {@link PLATFORM_REGISTRY}(OneBot 没有频道概念,
+ * 只有群与私聊)。**认不出的平台给全三档**:桥驮进来的平台我们不知道它有没有频道,
+ * 少给一档就是让主人配不出一个本来配得出的会话。
+ */
+function scopesFor(platform: string): ReadonlyArray<{
 	value: PushTargetScope;
 	label: string;
 }> {
-	if (platform === "onebot") return ONEBOT_SCOPES;
-	return SCOPES;
+	const allowed = platformDescriptor(platform)?.scopes;
+	return allowed ? SCOPES.filter((s) => allowed.includes(s.value)) : SCOPES;
+}
+
+/**
+ * 「会话信息」那一节的小字 —— 说清这一格该填什么。
+ *
+ * OneBot 与官机各有一句专门的话(QQ 号 / 群号、频道 / 群 / C2C 三档寻址);别的平台
+ * 拿注册表里的地址称呼拼一句 —— 认不出的平台也说得出话,而不是留一句空白。
+ */
+function sessionFieldsHint(target: PushTarget): string {
+	if (target.platform === "onebot") {
+		return target.scope === "private" ? "私聊目标 QQ 号" : "群聊号(QQ 群号)";
+	}
+	if (target.platform === "qq-official") return "QQ 官方机器人会话寻址(频道/群/C2C)";
+	return `这个会话的${addressNounFor(target.platform, target.scope)}地址`;
 }
 
 type TestState = "pending" | "ok" | "fail";
@@ -119,16 +136,9 @@ function targetSessionSummary(target: PushTarget): string {
 		return target.managedBy === "connection" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 	}
 	// 地址收成一格之后,这里只剩「叫它什么」这一件事 —— 取哪一格由 scope 说了算,
-	// 不再是每个平台一套 session 字段名。
-	const noun = addressNoun(target.platform, target.scope);
+	// 不再是每个平台一套 session 字段名。称呼在注册表里,认不出的平台走通用说法。
+	const noun = addressNounFor(target.platform, target.scope);
 	return target.address ? `→ ${noun} ${target.address}` : `→ 未指定${noun}`;
-}
-
-/** 这个平台的这种会话,地址那一格该叫什么。 */
-function addressNoun(platform: string, scope: PushTargetScope): string {
-	if (scope === "channel") return "子频道";
-	if (platform === "qq-official") return scope === "private" ? "C2C" : "群 openid";
-	return scope === "private" ? "用户" : "群";
 }
 
 function managedWebhookTargetForConnection(
@@ -862,18 +872,13 @@ function TargetEditorModal({
 					</Field>
 				</SectionBox>
 
-				{value.platform === "onebot" || value.platform === "qq-official" ? (
-					<SectionBox
-						title="会话信息"
-						subtitle={
-							value.platform === "onebot"
-								? value.scope === "private"
-									? "私聊目标 QQ 号"
-									: "群聊号(QQ 群号)"
-								: "QQ 官方机器人会话寻址(频道/群/C2C)"
-						}
-						accent={tint}
-					>
+				{/*
+				 * 判据是**形态**不是平台名:会话目标要填地址,单向终点的地址烧在连接里。
+				 * 原先这里写死「onebot 或官机」,桥把 telegram 驮进来时那个会话目标会连
+				 * 地址栏都没有 —— 保存得下、发不出去,而且没有编译错。
+				 */}
+				{value.kind === "session" ? (
+					<SectionBox title="会话信息" subtitle={sessionFieldsHint(value)} accent={tint}>
 						<TargetSessionFields target={value} onChange={onChange} />
 					</SectionBox>
 				) : null}
@@ -975,7 +980,14 @@ function TargetSessionFields({
 			</>
 		);
 	}
-	return null;
+	// 认不出的平台(桥驮进来的)。地址收成一格之后通用的一格输入就够了 —— 叫什么由
+	// 注册表说,不认识就走通用称呼。这里以前是 `return null`:那种目标连地址栏都没有。
+	const noun = addressNounFor(target.platform, target.scope);
+	return (
+		<Field label={`${noun}地址`} code="target.address" required>
+			<TInput value={target.address} onChange={setAddress} placeholder={`${noun}的 id`} mono />
+		</Field>
+	);
 }
 
 // ── QQ 官方机器人选择器 ───────────────────────────────────────────────────────
