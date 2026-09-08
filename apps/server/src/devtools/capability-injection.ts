@@ -2,7 +2,7 @@ import type { ConnectionCapabilities } from "@bilibili-notify/internal";
 import type { PlatformAdapter } from "../platforms/types.js";
 
 /**
- * B3:适配器能力注入。`PlatformAdapter.capabilities` / `probeCapabilities` 外面套一层:
+ * B3:连接能力注入。`PlatformAdapter.capabilities` / `probeCapabilities` 外面套一层:
  * 对注入过的 adapter id 回假的(探一次也回假的、不出网),别的原样。
  *
  * 没有能力概念的平台(没实现这两个方法的)不碰:面板上「这个平台不支持」靠的正是方法

@@ -77,7 +77,7 @@ describe("ToneChip", () => {
 	/**
 	 * 选中的底与边**刻意留在 inline** —— 皮肤盖不动是设计,不是遗漏。
 	 *
-	 * 站里同期把服务商卡与适配器行的品牌色底拆成了 `--bn-tint` + @utility,好让
+	 * 站里同期把服务商卡与连接行的品牌色底拆成了 `--bn-tint` + @utility,好让
 	 * `option-active` 那一档真的盖得动(7e8a00e)。这排胶囊**不跟**,因为它能
 	 * 同时亮好几颗:日志页的等级筛选是多选,DEBUG/INFO/WARN/ERROR 四档可以一起
 	 * 选中。底挪出 inline 之后,皮肤一句 `chip-active{background:…}` 就把四档抹成

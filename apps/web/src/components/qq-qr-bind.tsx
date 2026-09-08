@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../services/api";
 
 /**
- * QQ 官方机器人「扫码连接 / 创建」—— 适配器表单里 appId/appSecret 的旁路入口。
+ * QQ 官方机器人「扫码连接 / 创建」—— 连接表单里 appId/appSecret 的旁路入口。
  * 不只能新建:腾讯 H5 里也能重选之前通道建的 bot 重发 secret,凭据直接回填。
  *
  * 借道腾讯给 OpenClaw 开的 lite 绑定通道(server 代理,见 server 端

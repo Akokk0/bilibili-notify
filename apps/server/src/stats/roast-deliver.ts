@@ -36,7 +36,7 @@ export interface DeliverOutcome {
 	/** 成功送达的 targetId。 */
 	sent: string[];
 	/**
-	 * 因为停用而没发的 targetId(目标自己停用,或它的适配器停用)。**不算失败**:停用是
+	 * 因为停用而没发的 targetId(目标自己停用,或它的连接停用)。**不算失败**:停用是
 	 * 主人自己按的,不该换来一条失败通知;以前把它扔给管线,要退避重试到上限才报「持续
 	 * 不可达」。判定与链接解析同一份(internal 的 `isTargetPaused`)。
 	 */

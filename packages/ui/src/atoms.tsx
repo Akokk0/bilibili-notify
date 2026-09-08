@@ -691,7 +691,7 @@ export function ToneChip({
 	uppercase,
 }: ToneChipProps) {
 	// 底与边**刻意留在 inline**,不像候选行那样拆成 `--bn-tint` + @utility(那条路
-	// 是 7e8a00e 给服务商卡与适配器行走的)。原因是这排胶囊**能同时亮好几颗**:
+	// 是 7e8a00e 给服务商卡与连接行走的)。原因是这排胶囊**能同时亮好几颗**:
 	// 日志页的等级筛选是多选(`levels.has(l)` + toggleLevel),DEBUG/INFO/WARN/ERROR
 	// 四档可以一起选中。底一旦挪出 inline,皮肤一句 `chip-active{background:…}` 就
 	// 把四档抹成同一个颜色 —— 而「严重度是产品语言、皮肤重上色会让 warn 和 error

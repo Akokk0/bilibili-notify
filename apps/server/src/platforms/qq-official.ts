@@ -1192,9 +1192,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					l.logReconnectsBox.value = (want.config as QQOfficialConnectionConfig).logReconnects;
 			}
 			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
-			// desired 适配器都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
+			// desired 的连接都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
 			// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
-			// 禁用」的适配器,泄漏其刷新定时器,这里整张清掉根治。
+			// 禁用」的连接,泄漏其刷新定时器,这里整张清掉根治。
 			for (const tm of tokenOnly.values()) tm.dispose();
 			tokenOnly.clear();
 		},

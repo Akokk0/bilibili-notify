@@ -7,10 +7,10 @@ import type { RouteDeps } from "./types.js";
 /**
  * `/api/connections` — CRUD on the Connection[] list.
  *
- * An adapter represents a connection instance (an OneBot HTTP endpoint, a
- * webhook URL, the dashboard WS bridge). PushTargets reference adapters via
- * `connectionId`. Deleting an adapter referenced by any target is rejected with
- * 409 so the caller can detach first.
+ * A connection is one instance of somewhere to send to: an OneBot HTTP
+ * endpoint, a webhook URL. PushTargets reference one by `connectionId`, so
+ * deleting a connection any target still points at is rejected with 409 and
+ * the caller detaches first.
  */
 export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -93,13 +93,13 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.post("/:id/test", async (c) => {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (!connection) return c.json({ ok: false, latencyMs: 0, err: "adapter not found" }, 404);
+		if (!connection) return c.json({ ok: false, latencyMs: 0, err: "connection not found" }, 404);
 		const engines = deps.runtime.engines;
 		if (!engines) {
 			return c.json({ ok: false, latencyMs: 0, err: "engines not yet attached" }, 503);
 		}
 		const result = await engines.probeConnection(id);
-		// Persist the probe outcome to adapter.testStatus so the dashboard's
+		// Persist the probe outcome to the connection's testStatus so the dashboard's
 		// status dot reflects this click without waiting for the 5-min poller.
 		// `ok: null` (probe unsupported) deliberately doesn't write back — we
 		// want the UI to remain "pending / unsupported" rather than green.
@@ -140,5 +140,5 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 
 function isNotFound(err: ConfigValidationError): boolean {
 	const issues = err.issues as { message?: string } | undefined;
-	return issues?.message === "adapter not found";
+	return issues?.message === "connection not found";
 }

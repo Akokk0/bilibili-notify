@@ -1295,7 +1295,7 @@ function ConnectionRail({
 			onPick={onPick}
 			onAdd={onAddClick}
 			addLabel="+ 新建"
-			// data-tour:导览「新建推送适配器」的常驻灯位(控件级 —— 只框按钮本体)
+			// data-tour:导览「新建连接」的常驻灯位(控件级 —— 只框按钮本体)
 			addButtonProps={{ "data-tour": "connection-add" }}
 			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
 			emptyState={<EmptyNote size="sm">尚未配置任何连接</EmptyNote>}
@@ -1716,7 +1716,7 @@ export default function Targets() {
 										) : null}
 									</div>
 									<div className="flex shrink-0 gap-1">
-										{/* 导览「测试适配器连通」一步的控件级灯位 */}
+										{/* 导览「测试连通性」一步的控件级灯位 */}
 										<Btn
 											data-tour="connection-test"
 											size="sm"

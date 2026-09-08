@@ -9,7 +9,7 @@ import {
 /**
  * The secret payload of a full backup — everything that must never sit in the
  * plaintext sections. Assembled at the service layer from the config store
- * (每家两把 apiKey、adapter configs) 与 cookie store (cookiesJson/refreshToken)。
+ * (每家两把 apiKey、连接的 config) 与 cookie store (cookiesJson/refreshToken)。
  */
 export interface BackupSecretBag {
 	/**

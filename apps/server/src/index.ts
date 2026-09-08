@@ -552,11 +552,11 @@ export async function startStandaloneServer(
 		});
 
 		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那个
-		// adapter 直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
+		// 那条连接直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
 		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
-		// 回到来源群用的是收到那一帧的适配器:配置里那条 + 它所属平台的实现,两者都在才发得出。
+		// 回到来源群用的是收到那一帧的那条连接:配置里那条 + 它所属平台的实现,两者都在才发得出。
 		const replyRoute = (platform: LinkSourcePlatform, connectionId: string) => {
 			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
 			const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
@@ -570,7 +570,7 @@ export async function startStandaloneServer(
 			api: runtimeEngines.api,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),
-			// 能力走 sink 那条适配器寻址(健康探测与 /api/connections/capabilities 用的是同一份),
+			// 能力走 sink 那条连接寻址(健康探测与 /api/connections/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>
@@ -581,7 +581,7 @@ export async function startStandaloneServer(
 					return {
 						ok: false,
 						latencyMs: 0,
-						err: `adapter not found: connectionId=${connectionId}`,
+						err: `connection not found: connectionId=${connectionId}`,
 					};
 				}
 				const { connection, platformAdapter } = route;

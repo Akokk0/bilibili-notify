@@ -6,7 +6,7 @@ const UUID_A = "11111111-1111-4111-8111-111111111111";
 const UUID_B = "22222222-2222-4222-8222-222222222222";
 
 describe("ConnectionSchema (discriminated by platform)", () => {
-	it("accepts a valid onebot adapter", () => {
+	it("accepts a valid onebot connection", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-main",
@@ -59,7 +59,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(qq.success).toBe(false);
 	});
 
-	it("rejects an onebot adapter with webhook config", () => {
+	it("rejects an onebot connection with webhook config", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "bad",
@@ -72,7 +72,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts a valid webhook adapter and defaults headers to empty", () => {
+	it("accepts a valid webhook connection and defaults headers to empty", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "wh1",
@@ -128,7 +128,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects the removed web-dashboard adapter platform", () => {
+	it("rejects the removed web-dashboard connection platform", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "dashboard",
@@ -150,7 +150,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts an onebot adapter with ws (正向 WS) config", () => {
+	it("accepts an onebot connection with ws (正向 WS) config", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-ws",
@@ -163,7 +163,7 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts an onebot adapter with ws-reverse (反向 WS) config", () => {
+	it("accepts an onebot connection with ws-reverse (反向 WS) config", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "napcat-rev",
@@ -352,7 +352,7 @@ describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 
 	it("迁移:无 transport 但缺 baseUrl 的损坏旧 config → 失败(不静默成 http)", () => {
 		// 没有 transport 字段时只可能命中 http branch,而 http branch 的 baseUrl
-		// 是必填 z.url() —— 缺它则迁移失败,而非生成无 endpoint 的僵尸 adapter。
+		// 是必填 z.url() —— 缺它则迁移失败,而非生成无 endpoint 的僵尸连接。
 		const r = OnebotConnectionConfigSchema.safeParse({ accessToken: "secret" });
 		expect(r.success).toBe(false);
 	});
@@ -386,7 +386,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts an adapter-managed endpoint target", () => {
+	it("accepts a connection-managed endpoint target", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:managed",
@@ -507,8 +507,8 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 	});
 });
 
-describe("QQOfficial adapter schema", () => {
-	it("accepts a minimal qq-official adapter and defaults sandbox/botType", () => {
+describe("QQOfficial connection schema", () => {
+	it("accepts a minimal qq-official connection and defaults sandbox/botType", () => {
 		const r = ConnectionSchema.safeParse({
 			id: UUID_A,
 			name: "qq-bot",

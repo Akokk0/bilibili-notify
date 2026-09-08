@@ -5,7 +5,7 @@
  * 群里谁贴都算。正因为谁都能触发,它默认关着、有冷却、失败不回话 —— 群里没人
  * 要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群里」广播出去。
  *
- * 回到来源群不走推送目标表:用收到这一帧的那个 adapter 直接发,群不必配成推送目标。
+ * 回到来源群不走推送目标表:用收到这一帧的那条连接直接发,群不必配成推送目标。
  *
  * 两个平台两个入口:OneBot 的原始帧走 {@link LinkParser.handle},官机网关已经解析好的群消息
  * 走 {@link LinkParser.handleMessage} —— 同一套闸门与流程,只有「怎么拿到文本」不同。
@@ -95,7 +95,7 @@ export interface LinkParserOptions {
 	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	/**
-	 * 目的地所在适配器的平台能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
+	 * 目的地那条连接上、那个平台的能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
 	 * 什么都发不了。形式选了小程序卡时据它决定发小程序卡还是回落图片卡。
 	 */
 	capabilities: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
@@ -258,9 +258,9 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 				connectionId: msg.connectionId,
 				groupId: msg.groupId,
 			};
-			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这个适配器签得了,签不了就
+			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这条连接签得了,签不了就
 			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
-			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然适配器一恢复,
+			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
 			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
 			const useMiniApp = policy.form === "miniapp" && (await canSendMiniAppCard(dest));
 			if (!useMiniApp && !opts.renderer()) return;

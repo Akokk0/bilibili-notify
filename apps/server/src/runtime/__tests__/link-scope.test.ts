@@ -1,7 +1,7 @@
 /**
  * 链接解析的逐群答案 —— 把「默认行 + 逐群例外」(例外引用推送目标 id)对上入站帧里的群。
  *
- * 缝在 `resolveLinkParsingPolicies`:配置 + 目标表 + 适配器表进,一张「群键 → 解不解析、
+ * 缝在 `resolveLinkParsingPolicies`:配置 + 目标表 + 连接表进,一张「群键 → 解不解析、
  * 回什么」的表出。它是纯函数,所有决定都在这儿:哪些目标算群、停用算不算、悬空 id
  * 怎么办、不是目标的群跟谁。解析器(link-parser)只拿结果做一次查表,不再各自判一遍。
  */
@@ -133,7 +133,7 @@ describe("resolveLinkParsingPolicies", () => {
 		expect(table.policyFor(K_GROUP)).toEqual({ parse: false, form: "miniapp" });
 	});
 
-	it("目标所属的适配器已停用、或适配器已不存在 → 不解析", () => {
+	it("目标所属的连接已停用、或连接已不存在 → 不解析", () => {
 		const disabledConnection = resolveLinkParsingPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],

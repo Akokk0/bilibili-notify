@@ -566,7 +566,7 @@ export const FIELD_LABELS = {
 		section: "target",
 	},
 
-	// ── Targets(推送目标 / 适配器 / 传输 / 会话) ────────────────────────
+	// ── Targets(推送目标 / 连接 / 传输 / 会话) ────────────────────────
 	"connection.platform": { label: "平台", section: "connection" },
 	"connection.name": { label: "显示名称", section: "connection" },
 	"connection.enabled": { label: "启用", section: "connection" },
@@ -611,7 +611,7 @@ export const FIELD_LABELS = {
 		section: "transport",
 		secret: true,
 	},
-	// QQ 官方机器人(q.qq.com)适配器凭据
+	// QQ 官方机器人(q.qq.com)连接凭据
 	"config.appId": {
 		label: "AppID",
 		hint: "QQ 开放平台机器人的 AppID(明文存储)",

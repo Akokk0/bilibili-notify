@@ -587,7 +587,7 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 		});
 	});
-	// 形式(图片卡 / 小程序卡)× 适配器能力 → 发什么、失败怎么回落。能力本身怎么探在
+	// 形式(图片卡 / 小程序卡)× 连接能力 → 发什么、失败怎么回落。能力本身怎么探在
 	// onebot 适配器那边守,这里只看解析器拿着答案做没做对。
 	describe("回复形式(图片卡 / 小程序卡)", () => {
 		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
@@ -610,7 +610,7 @@ describe("createLinkParser", () => {
 			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		};
 
-		it("形式=小程序卡、适配器支持 → 发小程序卡,字段来自视频信息;不碰渲染器", async () => {
+		it("形式=小程序卡、连接支持 → 发小程序卡,字段来自视频信息;不碰渲染器", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,
 				capabilities: () => caps("supported"),
@@ -621,7 +621,7 @@ describe("createLinkParser", () => {
 			expect(h.probeCapabilities).not.toHaveBeenCalled();
 		});
 
-		it("适配器不支持 → 回落图片卡,和形式=图片卡一样", async () => {
+		it("连接不支持 → 回落图片卡,和形式=图片卡一样", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,
 				capabilities: () => caps("unsupported"),
@@ -702,9 +702,9 @@ describe("createLinkParser", () => {
 			expect(none.sent).toHaveLength(0);
 		});
 
-		it("一张也发不出来时不吃冷却:适配器一恢复,同一条链接立刻出卡", async () => {
-			// 形式=小程序卡、适配器签不了、又没有渲染器 —— 回落无门。这一趟要是把冷却记上,
-			// 主人把 Chrome 装好 / 适配器连上之后,还得干等一整个冷却才看得到卡。
+		it("一张也发不出来时不吃冷却:连接一恢复,同一条链接立刻出卡", async () => {
+			// 形式=小程序卡、连接签不了、又没有渲染器 —— 回落无门。这一趟要是把冷却记上,
+			// 主人把 Chrome 装好 / 连接连上之后,还得干等一整个冷却才看得到卡。
 			let state: "unsupported" | "supported" = "unsupported";
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,

@@ -5,7 +5,7 @@
  *   - 探测:拿**空参数**调 `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404(不支持的
  *     动作)= 不支持;1400(参数错)= 支持,接口在;别的 = 未探测出来,带原因。零副作用,
  *     不真向腾讯要卡。认接口不认实现名:NapCat 只是今天唯一已知能签的,逻辑里不出现它。
- *   - 缓存:结果按适配器记住;reconcile 清掉重探。
+ *   - 缓存:结果按连接记住;reconcile 清掉重探。
  *   - 真发:先签 ark(`type: "bili"` + 四个字段),再把返回值当 `json` 段发进群。
  *   - 发不了:签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动。
  *
@@ -177,7 +177,7 @@ describe("onebot — 小程序卡能力探测", () => {
 			reason: expect.stringMatching(/ECONNREFUSED/),
 		});
 
-		// 探不出来的适配器每问一次赔一个超时:窗口内再问只拿上次那个答案,不再打接口。
+		// 探不出来的连接每问一次赔一个超时:窗口内再问只拿上次那个答案,不再打接口。
 		const throttled = await ad.probeCapabilities?.(obConnection());
 		expect(throttled?.miniAppCard).toMatchObject({ state: "unknown" });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -207,7 +207,7 @@ describe("onebot — 小程序卡能力探测", () => {
 		expect(capsOf(ad).miniAppCard).toMatchObject({ state: "supported" });
 	});
 
-	it("第一次 reconcile 对 http 适配器直接探(它没有「连上」这一刻)", async () => {
+	it("第一次 reconcile 对 http 连接直接探(它没有「连上」这一刻)", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		ad.reconcile?.([obConnection()]);
@@ -230,7 +230,7 @@ describe("onebot — 小程序卡能力探测", () => {
 		ad.dispose?.();
 	});
 
-	it("配置变了(指向别的实现)→ 丢掉旧答案重探;适配器没了 → 答案一起没了", async () => {
+	it("配置变了(指向别的实现)→ 丢掉旧答案重探;连接没了 → 答案一起没了", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		ad.reconcile?.([obConnection()]);

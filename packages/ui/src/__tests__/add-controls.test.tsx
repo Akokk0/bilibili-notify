@@ -101,8 +101,8 @@ describe("AddCard", () => {
 	});
 
 	it("标题最重、副标题最轻 —— 三行的分量顺序不许倒", () => {
-		render(<AddCard label="新建适配器" hint="连接实例" onClick={() => {}} />);
-		expect(screen.getByText("新建适配器").className).toContain("text-bn-text-primary");
+		render(<AddCard label="新建连接" hint="连接实例" onClick={() => {}} />);
+		expect(screen.getByText("新建连接").className).toContain("text-bn-text-primary");
 		expect(screen.getByText("连接实例").className).toContain("text-bn-text-tertiary");
 		expect(screen.getByText("＋").className).toContain("text-bn-text-tertiary");
 	});

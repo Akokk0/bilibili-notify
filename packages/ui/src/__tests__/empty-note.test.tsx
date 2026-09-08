@@ -20,7 +20,7 @@ afterEach(cleanup);
  * 两档共用的骨架:中性虚线边 + 居中。
  *
  * 边色与 add 家族同一档 `bn-inactive/50` —— 2026-08-30 主人真机对着「添加 UP 主」
- * 与「尚未配置任何适配器」两框指出深浅不一致后统一。皮肤若想要原来的淡边,
+ * 与「尚未配置任何连接」两框指出深浅不一致后统一。皮肤若想要原来的淡边,
  * 在 note-empty 挂点自己钉 border-color。
  */
 const SHARED = ["border", "border-dashed", "border-bn-inactive/50", "text-center"];

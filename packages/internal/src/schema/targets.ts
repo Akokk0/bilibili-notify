@@ -39,12 +39,12 @@ export const PushTargetScopeSchema = z.enum(["group", "private", "channel"]);
 export type PushTargetScope = z.infer<typeof PushTargetScopeSchema>;
 
 /* -------------------------------------------------------------------------- */
-/* Adapter (connection-level) configs                                         */
+/* Connection-level configs                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * OneBot 适配器三种连接方式(`transport`)共用的字段。
- * `transport` 是连接属性,只活在 adapter config 里 —— PushTarget / session 不受影响。
+ * OneBot 连接的三种连法(`transport`)共用的字段。
+ * `transport` 是连接属性,只活在连接的 config 里 —— PushTarget 不受影响。
  */
 const onebotCommonConfigShape = {
 	accessToken: z.string().optional(),
@@ -96,14 +96,14 @@ export const OnebotWsConfigSchema = z
 export const OnebotWsReverseConfigSchema = z
 	.object({
 		transport: z.literal("ws-reverse"),
-		/** 独立端为该 adapter 开的 WS 监听端口；bot 连 `ws://<host>:<port>/`。 */
+		/** 独立端为该连接开的 WS 监听端口；bot 连 `ws://<host>:<port>/`。 */
 		port: z.number().int().min(1).max(65_535),
 		...onebotCommonConfigShape,
 	})
 	.strict();
 
 /**
- * OneBot 适配器连接配置 —— 按 `transport` 区分 HTTP / 正向 WS / 反向 WS。
+ * OneBot 连接配置 —— 按 `transport` 区分 HTTP / 正向 WS / 反向 WS。
  *
  * 用 `z.union`(而非 `discriminatedUnion`):http branch 的 `transport` 带
  * `.default("http")`,早期没有 `transport` 字段的旧 adapters.json 条目试到 http
@@ -144,7 +144,7 @@ export const QQOfficialBotTypeSchema = z.enum(["public", "private"]);
 export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
 
 /**
- * QQ 官方机器人(q.qq.com,非 OneBot/NapCat)适配器连接配置。
+ * QQ 官方机器人(q.qq.com,非 OneBot/NapCat)连接配置。
  * 鉴权 appId+appSecret → getAppAccessToken;`sandbox` 切沙箱/正式环境的 wss+REST host。
  */
 export const QQOfficialConnectionConfigSchema = z
@@ -153,7 +153,7 @@ export const QQOfficialConnectionConfigSchema = z
 		/**
 		 * 空串 = 尚未配置密钥,**合法可存**(与 onebot 的 `accessToken`、webhook 的
 		 * `secret` 建模一致)。这里曾经是 `.min(1)`,结果脱敏备份把 appSecret 抹成空串
-		 * 后就再也存不回去 —— 恢复直接 ConfigValidationError(scope=adapters)。
+		 * 后就再也存不回去 —— 恢复直接 ConfigValidationError(scope=connections)。
 		 *
 		 * 「要有真密钥才能连」是**连接期**的约束,不是**存储期**的:见
 		 * `platforms/qq-official.ts` 的 isAvailable / reconcile,两处都拒绝空密钥的
@@ -248,7 +248,7 @@ export const ConnectionSchema = z
 export type Connection = z.infer<typeof ConnectionSchema>;
 
 /* -------------------------------------------------------------------------- */
-/* Target (session-level) — references an adapter                             */
+/* Target (session-level) — references a connection                           */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -269,12 +269,12 @@ const PushTargetCommonShape = {
 	connectionId: z.uuid(),
 	scope: PushTargetScopeSchema,
 	enabled: z.boolean(),
-	/** 生命周期由 adapter 管理的系统目标；用户不直接编辑 / 删除。 */
+	/** 生命周期由所属连接管理的系统目标；用户不直接编辑 / 删除。 */
 	managedBy: z.literal("connection").optional(),
 	/**
 	 * 最近一次显式 `/api/push/test` 或真实业务推送的结果。
 	 * 跟 Connection.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
-	 * adapter 连接级状态在 Connection.testStatus。
+	 * 连接级状态在 Connection.testStatus。
 	 */
 	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;

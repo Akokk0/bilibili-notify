@@ -68,7 +68,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("CaptureView", () => {
-	it("列出拦下的每一条:目标、适配器、文本、图数、私聊标记", async () => {
+	it("列出拦下的每一条:目标、连接、文本、图数、私聊标记", async () => {
 		vi.mocked(api.get).mockResolvedValue(CAPTURES);
 		renderView();
 		expect(await screen.findByText("开播啦")).toBeTruthy();

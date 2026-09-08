@@ -26,8 +26,8 @@ const header = () => screen.getByTestId("body").previousElementSibling;
 
 describe("ModalShell 的标题槽", () => {
 	it("只有标题:15px 粗体正文色,块下 mb-3", () => {
-		shell({ title: "新建适配器" });
-		const t = screen.getByText("新建适配器");
+		shell({ title: "新建连接" });
+		const t = screen.getByText("新建连接");
 		const cls = t.className.split(/\s+/);
 		for (const c of ["text-bn-md", "font-bold", "text-bn-text-primary"]) {
 			expect([c, cls.includes(c)]).toEqual([c, true]);

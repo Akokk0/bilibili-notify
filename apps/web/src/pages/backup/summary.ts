@@ -7,7 +7,7 @@ export type { ImportResult };
 /** 这次导入碰到的段里,有没有「凭据被抹空」的东西。 */
 function blankedCredentials(r: ImportResult): string[] {
 	return [
-		// 适配器的 appSecret / accessToken / webhook secret 全被脱敏抹成空串。
+		// 连接的 appSecret / accessToken / webhook secret 全被脱敏抹成空串。
 		r.connections.upserted > 0 ? "连接密钥" : null,
 		// 全局设置里的 defaults.ai.apiKey 同理。
 		r.globalsApplied ? "AI API Key" : null,
@@ -17,8 +17,8 @@ function blankedCredentials(r: ImportResult): string[] {
 /**
  * 把导入回执写成一句人话。
  *
- * 脱敏档要额外交代一句「凭据是空的」——否则用户看到「导入完成:适配器 1 项」,以为
- * 大功告成,结果推送悄无声息:适配器在、开关也开着,就是没密钥。这个因果链没人猜得到。
+ * 脱敏档要额外交代一句「凭据是空的」——否则用户看到「导入完成:连接 1 项」,以为
+ * 大功告成,结果推送悄无声息:连接在、开关也开着,就是没密钥。这个因果链没人猜得到。
  * 只在这次真的导入了带凭据的段时才提示,免得喊狼来了。
  */
 export function summarizeImport(r: ImportResult, kind: BackupKind): string {

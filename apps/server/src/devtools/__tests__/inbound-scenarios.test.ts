@@ -125,7 +125,7 @@ describe("inbound.command", () => {
 });
 
 describe("inbound.link", () => {
-	it("默认:第一个启用的聊天平台适配器 + 它名下第一个群目标的群地址", async () => {
+	it("默认:第一条启用的聊天平台连接 + 它名下第一个群目标的群地址", async () => {
 		const { reg, group } = setup();
 		const res = await reg.run("inbound.link", {});
 		expect(group).toHaveBeenCalledWith(
@@ -141,7 +141,7 @@ describe("inbound.link", () => {
 		expect(res.summary).toContain("88888");
 	});
 
-	it("指定适配器与群号、正文", async () => {
+	it("指定连接与群号、正文", async () => {
 		const { reg, group } = setup();
 		await reg.run("inbound.link", { connection: "ad-qq", groupId: "OPENID-9", text: "BV1xx" });
 		expect(group).toHaveBeenCalledWith(
@@ -151,7 +151,7 @@ describe("inbound.link", () => {
 		);
 	});
 
-	it("webhook 没有群 → 拒;适配器名下没群目标又没给群号 → 拒", async () => {
+	it("webhook 没有群 → 拒;连接名下没群目标又没给群号 → 拒", async () => {
 		const { reg } = setup();
 		await expect(reg.run("inbound.link", { connection: "ad-web" })).rejects.toBeInstanceOf(
 			DevParamError,

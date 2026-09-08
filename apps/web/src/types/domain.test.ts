@@ -5,7 +5,7 @@
  * 回归背景:旧实现优先 `crypto.randomUUID()`,但该 API 仅在 secure context
  * (HTTPS / localhost)可用 —— 独立端 docker 经 `http://<内网IP>:8787` 访问时
  * 它是 undefined,旧 fallback 产出非法格式(4 段任意长 hex),后端 z.uuid()
- * 拒 → 添加订阅 / 适配器 / 目标全部 400。
+ * 拒 → 添加订阅 / 连接 / 目标全部 400。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -41,7 +41,7 @@ describe("newId", () => {
 	 * 核心回归守护:即使 `crypto.randomUUID` 完全不存在(= 非 secure context,
 	 * docker 经 `http://<内网IP>:8787` 访问的真实形态),`newId()` 仍必须产出合法
 	 * UUID。旧实现在此场景会落进 4 段任意长 hex 的非法 fallback → 后端 z.uuid()
-	 * 拒 → 添加订阅 / 适配器 / 目标全 400。新实现根本不引用 `crypto.randomUUID`,
+	 * 拒 → 添加订阅 / 连接 / 目标全 400。新实现根本不引用 `crypto.randomUUID`,
 	 * 这条用例把"不依赖 secure-context-only API"这个契约钉死。
 	 *
 	 * `crypto.randomUUID` 是 `Crypto.prototype` 上 `configurable: true` 的方法,

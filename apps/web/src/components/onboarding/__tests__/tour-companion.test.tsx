@@ -114,7 +114,7 @@ describe("TourCompanion 常驻小卡", () => {
 	 *
 	 * 缺失 = 还没问过 → 屏幕中间弹询问框(新用户开始指引 / 老用户跳过);
 	 * false = 要指引 → 导览照常;true = 不要 → **整个导览不渲染**(标签也没有,
-	 * 对「永久常驻」的修订),系统页可重开。判据认「按过测试」才算配好适配器,
+	 * 对「永久常驻」的修订),系统页可重开。判据认「按过测试」才算配好连接,
 	 * 存量老用户升级后会被判成没配完 —— 询问框就是他们的出口,选一次记一世。
 	 */
 	describe("三态询问框", () => {
@@ -520,13 +520,13 @@ describe("TourCompanion 常驻小卡", () => {
 
 	/**
 	 * 子步层的判据回退(2026-08-30 真机反馈)。主步 activeKey 的前进回退早有
-	 * (reconcileTourPos),但子步曾只进不退:删掉适配器后 activeKey 仍是 adapter,
+	 * (reconcileTourPos),但子步曾只进不退:删掉连接后 activeKey 仍是 adapter,
 	 * 手动位停在「测试连通」—— 聚光灯靠链回落指对了「+ 新建」,小卡文案却还在讲
 	 * 测试。规则:只盯**从真变假的转变沿** —— 当前位之前有带 doneWhen 的子步判据
 	 * 被破坏 → 退回那一子步。「为假就退」会把手动「下一步」的提前预读当场按回去
 	 * (下一条「子步只向前翻页」测试钉着那半);纯说明步无 doneWhen,不做回退目标。
 	 */
-	it("子步判据回退:删掉适配器 → 小卡从「测试连通」退回「新建」", async () => {
+	it("子步判据回退:删掉连接 → 小卡从「测试连通」退回「新建」", async () => {
 		const s: Scenario = {
 			loggedIn: true,
 			connections: [{ id: "a1", enabled: true }],
@@ -789,11 +789,11 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
 	});
 
-	it("适配器已落库(未测通)→ 子步判据对齐:直接站在「测试适配器连通」,灯指测试按钮", async () => {
+	it("连接已落库(未测通)→ 子步判据对齐:直接站在「测试连通性」,灯指测试按钮", async () => {
 		const testBtn = document.createElement("div");
 		testBtn.setAttribute("data-tour", "connection-test");
 		document.body.appendChild(testBtn);
-		// 保存适配器后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
+		// 保存连接后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
 		await mount({ loggedIn: true, connections: [{ id: "a1", enabled: true }], route: "/targets" });
 		expect(await screen.findByText("测试连通性")).toBeTruthy();
 		await waitFor(() =>
@@ -835,7 +835,7 @@ describe("TourCompanion 常驻小卡", () => {
 	});
 
 	/**
-	 * 选中的适配器是 webhook 时,`target-add` **一处都不渲染** —— 右上「+ 新建推送
+	 * 选中的连接是 webhook 时,`target-add` **一处都不渲染** —— 右上「+ 新建推送
 	 * 目标」被 platform 判断掐掉,空态 AddCard 走的是另一条分支。链只有
 	 * `["target-form", "target-add"]` 的话解析不到任何元素:灯不亮、锁不铺,小卡却
 	 * 还在说「点高亮的『+ 新建』」;而人已经在 /targets 上,连「点亮起的页签前往」

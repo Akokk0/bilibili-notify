@@ -239,7 +239,7 @@ function setup(opts?: {
 	globals?: GlobalConfig;
 	puppeteer?: boolean;
 	subs?: Subscription[];
-	/** 配置表里的适配器(开机健康探测会挨个探它们)。 */
+	/** 配置表里的连接(开机健康探测会挨个探它们)。 */
 	connections?: Connection[];
 	/** 平台实现(探测 / 能力都问它)。 */
 	platformAdapters?: PlatformAdapter[];
@@ -1205,7 +1205,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
 	});
 
-	// 例外引用的是目标:目标或适配器停用、删掉都会改变答案,所以逐群表要跟着
+	// 例外引用的是目标:目标或连接停用、删掉都会改变答案,所以逐群表要跟着
 	// globals / targets / adapters 三种变更重算,不能只盯 globals。
 	it("逐群答案随 globals、targets、adapters 三种 config-changed 重算", () => {
 		const ADAPTER = "11111111-1111-4111-8111-111111111111";
@@ -1250,7 +1250,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		c.bus.emit("config-changed", "targets");
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 
-		// 目标恢复、但适配器停用 → 同样不算;只发 adapters 的变更。
+		// 目标恢复、但连接停用 → 同样不算;只发 connections 的变更。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
 		c.bus.emit("config-changed", "targets");
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
@@ -1274,7 +1274,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 	});
 });
 
-describe("createEngines — 适配器的平台能力", () => {
+describe("createEngines — 连接所在平台的能力", () => {
 	const ADAPTER = "11111111-1111-4111-8111-111111111111";
 	const onebot = { id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any;
 
@@ -1327,7 +1327,7 @@ describe("createEngines — 适配器的平台能力", () => {
 		});
 	});
 
-	it("连都连不上的适配器不补探能力 —— 那一趟只会白等满一个超时", async () => {
+	it("连都连不上的连接不补探能力 —— 那一趟只会白等满一个超时", async () => {
 		const { pa, probeCapabilities } = fakePlatform("unknown", false);
 		const c = setup({ connections: [onebot], platformAdapters: [pa] });
 		active = c;
@@ -1336,7 +1336,7 @@ describe("createEngines — 适配器的平台能力", () => {
 		expect(probeCapabilities).not.toHaveBeenCalled();
 	});
 
-	it("没有能力概念的平台(配置里没这条适配器也一样)→ undefined", () => {
+	it("没有能力概念的平台(配置里没这条连接也一样)→ undefined", () => {
 		const c = setup();
 		active = c;
 		expect(c.runtime.connectionCapabilities("nope")).toBeUndefined();

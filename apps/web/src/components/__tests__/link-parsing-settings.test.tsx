@@ -242,7 +242,7 @@ describe("LinkParsingSettings", () => {
 			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { form: null } } } });
 		});
 
-		it("停用的目标照列,标「已停用」;适配器停用的也算(运行时一样不解析)", () => {
+		it("停用的目标照列,标「已停用」;连接停用的也算(运行时一样不解析)", () => {
 			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A", { enabled: false })]);
 			openGroups();
 			expect(row("群 A").getByText("已停用")).toBeTruthy();
@@ -268,8 +268,8 @@ describe("LinkParsingSettings", () => {
 			expect(screen.getByRole("link", { name: /推送目标/ }).getAttribute("href")).toBe("/targets");
 		});
 	});
-	describe("适配器支持情况", () => {
-		it("只列 OneBot 适配器,三态各有说法:支持 / 不支持带原因 / 未探测", () => {
+	describe("连接支持情况", () => {
+		it("只列 OneBot 连接,三态各有说法:支持 / 不支持带原因 / 未探测", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, {
 				capabilities: { ...CAPS, [A_OB2]: CAPS[A_OB2] as never },
 			});
@@ -301,20 +301,20 @@ describe("LinkParsingSettings", () => {
 			expect(panel.queryByText(/隔壁的/)).toBeNull();
 		});
 
-		it("表里没有的 OneBot 适配器(引擎还没探)显示「未探测」", () => {
+		it("表里没有的 OneBot 连接(引擎还没探)显示「未探测」", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { capabilities: {} });
 			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
 			expect(panel.getAllByText("未探测")).toHaveLength(2);
 		});
 
-		it("官机与 webhook 用一句话说明不支持;没有 OneBot 适配器时只剩这句", () => {
+		it("官机与 webhook 用一句话说明不支持;没有 OneBot 连接时只剩这句", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { connections: [ADAPTERS[2] as Connection] });
 			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
 			expect(panel.getByText(/QQ 官方机器人与 webhook 不支持小程序卡/)).toBeTruthy();
 			expect(panel.getByText(/还没有 OneBot 连接/)).toBeTruthy();
 		});
 
-		it("群所在的适配器不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {
+		it("群所在的连接不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {
 			renderCard(draftWith(), vi.fn(), [
 				target(T_A, "群 A", { connectionId: A_OB2 } as never),
 				target(T_B, "群 B", { connectionId: A_OB } as never),

@@ -51,7 +51,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			const cfg = connection.config;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
-		async probe(_adapter: Connection): Promise<ProbeResult> {
+		async probe(_connection: Connection): Promise<ProbeResult> {
 			// Webhook has no standard side-effect-free ping verb — most endpoints
 			// reject everything except the exact POST shape they expect. Returning
 			// ok:null tells the UI to render "probe unsupported" and prompt the

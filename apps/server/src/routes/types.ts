@@ -26,7 +26,7 @@ export interface RouteDeps {
 	wsTicketStore: WsTicketStore | null;
 	/**
 	 * QQ 官方机器人网关发现表(群/C2C openid)。`/api/qq/sessions/:id` 读它。null =
-	 * 未启用 QQ adapter(路由仍挂载,返回空列表)。
+	 * 未配 QQ 连接(路由仍挂载,返回空列表)。
 	 */
 	qqSessionRegistry: QQSessionRegistry | null;
 	/**

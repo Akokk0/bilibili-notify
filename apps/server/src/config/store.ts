@@ -250,7 +250,7 @@ async function fileExists(absPath: string): Promise<boolean> {
 /**
  * Splits the legacy `PushTarget` shape (config bundled connection + session)
  * into the new (Connection, PushTarget) pair. Targets with the same platform
- * and connection params share an adapter so the user doesn't end up with N
+ * and connection params share a connection so the user doesn't end up with N
  * identical NapCat connection entries after migrating N groups.
  */
 interface LegacyPushTarget {
@@ -402,8 +402,8 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 	if (!owner) {
 		throw new ConfigValidationError(
 			"targets",
-			{ id: target.id, connectionId: target.connectionId, message: "adapter not found" },
-			`target ${target.id} references unknown adapter ${target.connectionId}`,
+			{ id: target.id, connectionId: target.connectionId, message: "connection not found" },
+			`target ${target.id} references unknown connection ${target.connectionId}`,
 		);
 	}
 	if (owner.platform !== target.platform) {
@@ -411,11 +411,11 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 			"targets",
 			{
 				id: target.id,
-				adapterPlatform: owner.platform,
+				connectionPlatform: owner.platform,
 				targetPlatform: target.platform,
 				message: "platform mismatch",
 			},
-			`target ${target.id} platform ${target.platform} does not match adapter ${owner.platform}`,
+			`target ${target.id} platform ${target.platform} does not match connection ${owner.platform}`,
 		);
 	}
 }
@@ -880,7 +880,7 @@ class NodeConfigStore implements ConfigStore {
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
 		}
 
-		// adapters + targets (with one-time migration from the legacy single-file
+		// connections + targets (with one-time migration from the legacy single-file
 		// targets.json that bundled connection+session into `config`)
 		await this.loadConnectionsAndTargets();
 
@@ -1028,7 +1028,7 @@ class NodeConfigStore implements ConfigStore {
 		// connections.json — try parsing each entry against the new schema first.
 		const tryNew = targetsRaw.every((t) => PushTargetSchema.safeParse(t).success);
 		if (tryNew && targetsRaw.length > 0) {
-			// New shape but no adapters file → bail with an explicit error so the
+			// New shape but no connections file → bail with an explicit error so the
 			// user notices something is off rather than us silently inventing data.
 			throw new ConfigValidationError(
 				"connections",
@@ -1039,7 +1039,7 @@ class NodeConfigStore implements ConfigStore {
 
 		// Run migration: targetsRaw is the legacy shape.
 		this.serviceCtx.logger.info(
-			`config-store migrating ${targetsRaw.length} legacy push target(s) → adapter + target split`,
+			`config-store migrating ${targetsRaw.length} legacy push target(s) → connection + target split`,
 		);
 		const { connections, targets } = migrateLegacyTargets(targetsRaw);
 		const synced = syncManagedWebhookTargets(connections, targets);
@@ -1220,9 +1220,9 @@ class NodeConfigStore implements ConfigStore {
 						id: parsed.data.id,
 						from: existing.platform,
 						to: parsed.data.platform,
-						message: "adapter platform cannot be changed",
+						message: "connection platform cannot be changed",
 					},
-					`adapter ${parsed.data.id} platform cannot be changed`,
+					`connection ${parsed.data.id} platform cannot be changed`,
 				);
 			}
 			const next = upsertById(this.connections, parsed.data);
@@ -1256,8 +1256,8 @@ class NodeConfigStore implements ConfigStore {
 			if (idx < 0) {
 				throw new ConfigValidationError(
 					"connections",
-					{ id, message: "adapter not found" },
-					`adapter ${id} not found`,
+					{ id, message: "connection not found" },
+					`connection ${id} not found`,
 				);
 			}
 			const current = this.connections[idx] as Connection;
@@ -1273,9 +1273,9 @@ class NodeConfigStore implements ConfigStore {
 						id,
 						from: current.platform,
 						to: parsed.data.platform,
-						message: "adapter platform cannot be changed",
+						message: "connection platform cannot be changed",
 					},
-					`adapter ${id} platform cannot be changed`,
+					`connection ${id} platform cannot be changed`,
 				);
 			}
 			const next = [...this.connections];
@@ -1312,14 +1312,14 @@ class NodeConfigStore implements ConfigStore {
 			const connection = this.connections[idx] as Connection;
 			// 引用检查必须在任务体内(执行期)对 this.targets 求值,而非 enqueue
 			// 时 —— 在 scope 外同步检查会与并行 targets 队列竞态:check 通过后、
-			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
-			// (互补:upsertTarget 侧 assertConnectionMatches 也校验 adapter 存在。)
+			// 删除执行前一个 upsertTarget 引用该连接即产生孤儿 target。
+			// (互补:upsertTarget 侧 assertTargetOwner 也校验连接存在。)
 			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
 			if (connection.connector !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"connections",
-					{ id, targetIds: referencing, message: "adapter still in use" },
-					`adapter ${id} is still referenced by ${referencing.length} target(s)`,
+					{ id, targetIds: referencing, message: "connection still in use" },
+					`connection ${id} is still referenced by ${referencing.length} target(s)`,
 				);
 			}
 			const next = this.connections.filter((_, i) => i !== idx);
@@ -1370,17 +1370,17 @@ class NodeConfigStore implements ConfigStore {
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
 			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
-			// 的,炸在这一步时 globals / 订阅 / adapters 已经落盘,配置只剩半新半旧)。
+			// 的,炸在这一步时 globals / 订阅 / 连接已经落盘,配置只剩半新半旧)。
 			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "connection") {
 				throw new ConfigValidationError(
 					"targets",
-					{ message: "webhook target is managed by adapter" },
-					"webhook targets are created from webhook adapters automatically",
+					{ message: "webhook target is managed by its connection" },
+					"webhook targets are created from webhook connections automatically",
 				);
 			}
 			let next = upsertById(this.targets, parsed.data);
 			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedWebhookTarget 取的是
-			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与 adapter 名下当前那条
+			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与该连接名下当前那条
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
 			const owner = this.connections.find((a) => a.id === parsed.data.connectionId);
@@ -1417,7 +1417,7 @@ class NodeConfigStore implements ConfigStore {
 						keys: Object.keys(patch as Record<string, unknown>),
 						message: "managed target cannot be edited directly",
 					},
-					`target ${id} is managed by adapter and cannot be edited directly`,
+					`target ${id} is managed by its connection and cannot be edited directly`,
 				);
 			}
 			const merged = deepMerge(current, { ...patch, id });
@@ -1471,7 +1471,7 @@ class NodeConfigStore implements ConfigStore {
 				throw new ConfigValidationError(
 					"targets",
 					{ id, message: "managed target cannot be deleted directly" },
-					`target ${id} is managed by adapter and cannot be deleted directly`,
+					`target ${id} is managed by its connection and cannot be deleted directly`,
 				);
 			}
 			const next = this.targets.filter((_, i) => i !== idx);
@@ -1584,7 +1584,7 @@ class NodeConfigStore implements ConfigStore {
 	// ---- internals ------------------------------------------------------
 
 	/**
-	 * 一次拿住全部四把 scope 锁。顺序固定(globals → subscriptions → adapters →
+	 * 一次拿住全部四把 scope 锁。顺序固定(globals → subscriptions → connections →
 	 * targets),别的调用方一次只拿一把,所以不会死锁。
 	 */
 	private runAllScopes<T>(task: () => Promise<T>): Promise<T> {

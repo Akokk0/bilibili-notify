@@ -1,7 +1,7 @@
 /**
  * 「这个推送目标算不算暂停」—— 服务端跳过它、面板标「已停用」,说的必须是同一件事。
  *
- * 判定住在 internal 就是为了这个:前端只看 `target.enabled` 的话,适配器停用的目标在
+ * 判定住在 internal 就是为了这个:前端只看 `target.enabled` 的话,连接停用的目标在
  * 选择器里显示为启用,发的时候却被跳过。
  */
 
@@ -18,11 +18,11 @@ describe("isTargetPaused", () => {
 		expect(isTargetPaused({ enabled: false, connectionId: "a-on" }, connections)).toBe(true);
 	});
 
-	it("目标开着但适配器停用 → 也算暂停(投递层对它回不可达)", () => {
+	it("目标开着但连接停用 → 也算暂停(投递层对它回不可达)", () => {
 		expect(isTargetPaused({ enabled: true, connectionId: "a-off" }, connections)).toBe(true);
 	});
 
-	it("适配器压根不在配置里(被删了)→ 暂停", () => {
+	it("连接压根不在配置里(被删了)→ 暂停", () => {
 		expect(isTargetPaused({ enabled: true, connectionId: "gone" }, connections)).toBe(true);
 	});
 

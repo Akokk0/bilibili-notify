@@ -232,7 +232,7 @@ export interface NotificationSink {
 	/** 允许 adapter 通过 id 查目标的元数据（platform / scope / 启停状态）。 */
 	resolve(targetId: string): PushTarget | undefined;
 	/**
-	 * 配置层面能不能推:目标存在、目标启用、所属适配器启用。停用的目标不是候选 ——
+	 * 配置层面能不能推:目标存在、目标启用、所属连接启用。停用的目标不是候选 ——
 	 * 推送层既不发也不等它「恢复可达」。与 {@link isAvailable} 分开:那是运行时的健康。
 	 */
 	isEnabled(targetId: string): boolean;
@@ -262,7 +262,7 @@ export function isReachabilityEvidence(result: DeliveryResult): boolean {
 }
 
 /**
- * 一个适配器能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口
+ * 一条连接上的一个平台能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口
  * `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404「不支持的动作」= 不支持,
  * 1400「参数错」= 接口在、支持;别的(连不上、别的错)= 还没探出来,带原因。
  * 面板上就是这三态;发送失败不翻它,只有再收到 1404 才翻成不支持。
@@ -272,7 +272,7 @@ export type MiniAppCardSupport =
 	| { state: "unsupported"; reason: string; checkedAt: number }
 	| { state: "unknown"; reason?: string };
 
-/** 适配器的平台能力快照。今天只有一项;将来薄插件接进来时按需加。 */
+/** 一个平台的能力快照。今天只有一项;将来薄插件接进来时按需加。 */
 export interface ConnectionCapabilities {
 	miniAppCard: MiniAppCardSupport;
 }

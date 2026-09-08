@@ -13,14 +13,14 @@ import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**
  * Extended sink — keeps the canonical NotificationSink surface but adds an
- * `out-of-band` adapter probe entry point used by `/api/connections/:id/test` and
- * the {@link AdapterProbeScheduler}.
+ * `out-of-band` connection probe entry point, used by
+ * `/api/connections/:id/test` and by the engines' periodic health probe.
  */
 export interface MultiplexSink extends NotificationSink {
 	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/**
-	 * 适配器的平台能力快照(能不能签小程序卡);适配器缺、平台实现缺、平台没有能力概念都是
-	 * undefined —— 调用方按「什么都不支持」处理。
+	 * 这条连接所在平台的能力快照(能不能签小程序卡);连接缺、平台实现缺、平台没有能力
+	 * 概念都是 undefined —— 调用方按「什么都不支持」处理。
 	 */
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次能力;同上的三种缺失回 undefined。 */
@@ -31,7 +31,7 @@ export interface MultiplexSink extends NotificationSink {
  * Standalone {@link NotificationSink} implementation.
  *
  * Resolves `targetId → PushTarget → Connection` against the live ConfigStore,
- * looks up the matching {@link PlatformAdapter} by `adapter.platform`, and
+ * looks up the matching {@link PlatformAdapter} by `connection.platform`, and
  * delegates the delivery. The sink itself stays generic — adding a new platform
  * just means registering another platform adapter.
  */
@@ -68,7 +68,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		return opts.store.getConnections().find((a) => a.id === target.connectionId);
 	}
 
-	/** 配置里的那条适配器 + 它所属平台的实现;缺一个就没法问它任何事。 */
+	/** 配置里的那条连接 + 它所属平台的实现;缺一个就没法问它任何事。 */
 	function routeOf(connectionId: string) {
 		const connection = opts.store.getConnections().find((a) => a.id === connectionId);
 		if (!connection) return undefined;
@@ -120,7 +120,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
 			const connection = opts.store.getConnections().find((a) => a.id === connectionId);
 			if (!connection) {
-				return { ok: false, latencyMs: 0, err: "adapter not found" };
+				return { ok: false, latencyMs: 0, err: "connection not found" };
 			}
 			const platformAdapter = adapterByPlatform.get(connection.platform);
 			if (!platformAdapter) {
@@ -144,7 +144,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 			const result: DeliveryResult = {
 				ok: false,
 				latencyMs: 0,
-				err: `adapter not found: connectionId=${target.connectionId}`,
+				err: `connection not found: connectionId=${target.connectionId}`,
 			};
 			log.warn(`[sink] ${result.err} (target=${target.id})`);
 			opts.onDelivery?.(target, payload, result, options);

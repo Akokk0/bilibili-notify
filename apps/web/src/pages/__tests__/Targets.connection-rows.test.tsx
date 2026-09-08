@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * 推送目标弹窗里那列「选一个适配器」的行。
+ * 推送目标弹窗里那列「选一个连接」的行。
  *
  * 它挂着 `option` / `option-active`,但选中态此前**只买到一半**:染色的底与边写
  * 在 `style` 里(平台 tint),inline 压过一切 author 样式、清洗层又会摘掉皮肤写的
@@ -27,7 +27,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** 两个**不同平台**的适配器 —— tint 逐平台不同,才验得出「没被抹成一个通用色」。 */
+/** 两个**不同平台**的连接 —— tint 逐平台不同,才验得出「没被抹成一个通用色」。 */
 const ADAPTERS = [
 	{
 		id: "11111111-1111-4111-8111-111111111111",
@@ -67,10 +67,10 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-/** 打开「新建推送目标」弹窗 —— 那列适配器行就在里面。 */
+/** 打开「新建推送目标」弹窗 —— 那列连接行就在里面。 */
 async function openTargetEditor(): Promise<void> {
 	renderPage();
-	// 页面上不止一处入口(空态一个、每张适配器卡上各一个)—— 点头一个就行。
+	// 页面上不止一处入口(空态一个、每张连接卡上各一个)—— 点头一个就行。
 	const [add] = await screen.findAllByRole("button", { name: /新建推送目标/ });
 	fireEvent.click(add as HTMLElement);
 	await waitFor(() => screen.getByRole("dialog"));
@@ -81,11 +81,11 @@ function rowOf(name: string): HTMLElement {
 	const row = [...dialog.querySelectorAll<HTMLElement>('[data-bn~="option"]')].find((el) =>
 		(el.textContent ?? "").includes(name),
 	);
-	if (!row) throw new Error(`没找到适配器行:${name}`);
+	if (!row) throw new Error(`没找到连接行:${name}`);
 	return row;
 }
 
-describe("适配器候选行的两态都够得到皮肤", () => {
+describe("连接候选行的两态都够得到皮肤", () => {
 	it("选中那行的底与边不在 inline 上 —— 皮肤才盖得动", async () => {
 		await openTargetEditor();
 		const row = rowOf("家里那台 OneBot");

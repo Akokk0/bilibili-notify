@@ -131,8 +131,8 @@ export function RoastScheduleFields({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 「已停用」要跟调度器跳过它时同一条判定,所以连适配器表一起取:目标自己开着、
-	// 它挂的适配器停了,一样不发。
+	// 「已停用」要跟调度器跳过它时同一条判定,所以把连接表一起取:目标自己开着、
+	// 它挂的连接停了,一样不发。
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),

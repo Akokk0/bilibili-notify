@@ -57,7 +57,7 @@ async function openConnectionEditor() {
 	await waitFor(() => screen.getByRole("dialog"));
 }
 
-describe("适配器弹窗的平台胶囊", () => {
+describe("连接弹窗的平台胶囊", () => {
 	// webhook 那一族原先挤在一颗叫「Webhook」的胶囊后面,真平台藏在 config 里一个
 	// 叫「Webhook 协议」的下拉。降格之后它们就是平台,和 OneBot 摆在同一排。
 	it("每个平台各一颗,默认选中 OneBot", async () => {

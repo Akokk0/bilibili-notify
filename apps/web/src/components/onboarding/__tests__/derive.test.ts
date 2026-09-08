@@ -2,7 +2,7 @@
  * 新手导览的判据核心(2026-08-29 grilling 定案:5 步全机器判据、按结果态建模)。
  *
  * 步骤链(五轮定稿顺序:先打通推送通道,订阅放最后 —— 订阅表单要勾推送目标,
- * 先订阅的话通道没就绪还得回头重编辑):①B站登录 ②适配器存在且 test 通过
+ * 先订阅的话通道没就绪还得回头重编辑):①B站登录 ②连接存在且 test 通过
  * ③启用的推送目标存在 ④target 测试推送成功 ⑤订阅数>0。可选尾巴(image/ai)
  * 不计毕业。
  *
@@ -61,7 +61,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		expect(v.hasConnection).toBe(true);
 	});
 
-	it("hasConnection:没建过任何适配器时为 false", () => {
+	it("hasConnection:没建过任何连接时为 false", () => {
 		expect(deriveOnboarding(inputs({})).hasConnection).toBe(false);
 	});
 
@@ -167,7 +167,7 @@ describe("deriveOnboarding 可选尾巴", () => {
  * 供每次尝试都触发灯重亮(同一原因连败两次,err 文本不变,at 一定变)。
  */
 describe("deriveOnboarding failNote", () => {
-	it("adapter 步失败 → 带出启用适配器的 err 与 lastCheckedAt", () => {
+	it("adapter 步失败 → 带出启用连接的 err 与 lastCheckedAt", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
@@ -180,7 +180,7 @@ describe("deriveOnboarding failNote", () => {
 		expect(v.failNote).toEqual({ text: "连接被拒绝", at: "t1" });
 	});
 
-	it("err 缺失回落「测试未通过」;disabled 适配器的失败不算", () => {
+	it("err 缺失回落「测试未通过」;disabled 连接的失败不算", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
@@ -228,7 +228,7 @@ describe("deriveOnboarding failNote", () => {
 		expect(v.failNote).toBeNull();
 	});
 
-	it("失败不属于当前步就沉默 —— login 未完成时不翻适配器的旧账", () => {
+	it("失败不属于当前步就沉默 —— login 未完成时不翻连接的旧账", () => {
 		const v = deriveOnboarding(
 			inputs({
 				connections: [{ enabled: true, testStatus: { ok: false, err: "x", lastCheckedAt: "t" } }],

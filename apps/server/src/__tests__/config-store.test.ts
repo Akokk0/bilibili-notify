@@ -1015,7 +1015,7 @@ describe("ConfigStore", () => {
 
 	it("备份往返:getTargets() 吐得出来的,upsertTarget() 就必须吃得下", async () => {
 		// 备份导出走 getTargets()(必然含托管 target),恢复走 upsertTarget() —— 两头对不上
-		// 的话,**任何含 webhook 适配器的备份都恢复不了**。而恢复是逐条 await、没有事务也
+		// 的话,**任何含 webhook 连接的备份都恢复不了**。而恢复是逐条 await、没有事务也
 		// 没有回滚的:炸在 targets 这步时 globals / 订阅 / adapters 已经落盘,配置变成半新
 		// 半旧,订阅里还引用着从未创建的 target id,而原状态已被覆盖。
 		//
@@ -1081,7 +1081,7 @@ describe("ConfigStore", () => {
 		expect(patched.testStatus).toMatchObject({ ok: true, latencyMs: 12 });
 	});
 
-	it("端到端:含 webhook 适配器的备份,导出后能在一台干净机器上恢复回来", async () => {
+	it("端到端:含 webhook 连接的备份,导出后能在一台干净机器上恢复回来", async () => {
 		// 这条住在这里,是因为真 ConfigStore 的夹具只有这个文件有 —— 而 backup-service
 		// 那边用的是替身,替身把 upsertTarget 打成空函数,正是它把这个 bug 整个盖住了。
 		// 源机器刻意造成「老装机」:托管 target 带的是**非确定性 id**(makeManagedWebhookTarget

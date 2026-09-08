@@ -12,10 +12,10 @@ import type {
  *
  * One adapter per `Connection.platform` family. Each platform adapter is
  * constructed with shared deps (HTTP client, WS server reference, etc.) and
- * exposes a single async `send(adapter, target, payload, opts)` method —
- * `adapter` carries the connection params (baseUrl, token, …), `target`
- * carries the session (groupId, userId, …). The sink dispatches by
- * matching `adapter.platform`.
+ * exposes a single async `send(connection, target, payload, opts)` method —
+ * `connection` carries the connection params (baseUrl, token, …), `target`
+ * carries the session (scope + address). The sink dispatches by matching
+ * `connection.platform`.
  *
  * Adapters should NOT throw — return `{ ok: false, err: "..." }` instead.
  * The router will retry on transient failures.
@@ -40,9 +40,9 @@ export interface ProbeResult {
 export interface PlatformAdapter {
 	/** Platforms this adapter handles ("onebot" / "feishu" / …). */
 	readonly platforms: readonly string[];
-	/** Return whether this adapter can deliver to `target` (via `adapter`) right now. */
+	/** Return whether this adapter can deliver to `target` over `connection` right now. */
 	isAvailable(connection: Connection, target: PushTarget): boolean;
-	/** Deliver `payload` to `target` over `adapter`. `private=true` flips group → private semantics where applicable. */
+	/** Deliver `payload` to `target` over `connection`. `private=true` flips group → private semantics where applicable. */
 	send(
 		connection: Connection,
 		target: PushTarget,
@@ -50,15 +50,15 @@ export interface PlatformAdapter {
 		opts?: { private?: boolean },
 	): Promise<DeliveryResult>;
 	/**
-	 * Side-effect-free reachability probe. Used by the adapter status indicator
+	 * Side-effect-free reachability probe. Used by the connection status indicator
 	 * and the auto-poller. Implementations that have no out-of-band ping should
 	 * return `{ ok: null }` so the UI can render "probe unsupported".
 	 */
 	probe(connection: Connection): Promise<ProbeResult>;
 	/**
 	 * Stateful adapters only — called once at boot and again on every
-	 * `config-changed: adapters`. Reconcile live connections / listeners against
-	 * the current adapter set (start / stop / rebind). MUST be idempotent and
+	 * `config-changed: connections`. Reconcile live sockets / listeners against
+	 * the current connection set (start / stop / rebind). MUST be idempotent and
 	 * cheap (no-op when nothing changed) and MUST NOT write config or trigger a
 	 * probe (would loop back through `config-changed`).
 	 */
@@ -80,7 +80,7 @@ export interface PlatformAdapter {
  * adapter 交出来的是同一个形状,接线层才不用替每个平台各写一份映射。
  */
 
-/** 收到这条消息的那条连接 —— 「回到消息来的那个群」得知道用哪个 adapter 的凭据发。 */
+/** 收到这条消息的那条连接 —— 「回到消息来的那个群」得知道用哪条连接的凭据发。 */
 export interface InboundMeta {
 	connectionId: string;
 	/**

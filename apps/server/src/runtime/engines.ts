@@ -126,7 +126,7 @@ export interface EnginesRuntime extends Disposable {
 	linkParsing(): LinkParsingConfig;
 	/**
 	 * 链接解析里某个群的答案:解不解析、回什么(键与表见 `link-scope.ts`)。表随 globals /
-	 * targets / adapters 三种 config-changed 重算 —— 例外引用的是目标,目标或适配器停用、
+	 * targets / connections 三种 config-changed 重算 —— 例外引用的是目标,目标或连接停用、
 	 * 删掉都会改变答案,只盯 globals 的话面板上开着、实际却还在按旧目标表解析。
 	 */
 	linkPolicyFor(key: string): LinkParsingPolicy;
@@ -140,9 +140,9 @@ export interface EnginesRuntime extends Disposable {
 	 * 能力再探一次(与定时健康探测同一条路)。
 	 */
 	probeConnection(connectionId: string): Promise<ProbeResult>;
-	/** 适配器的平台能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
+	/** 这条连接所在平台的能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
-	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的适配器寻址。 */
+	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
@@ -271,7 +271,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	});
 
 	// 有状态 adapter(OneBot ws / ws-reverse)—— boot 时按当前 adapter 集合建立
-	// 正向连接 / 反向监听器。后续每次 config-changed:adapters 再 reconcile(见下)。
+	// 正向连接 / 反向监听器。后续每次 config-changed:connections 再 reconcile(见下)。
 	for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
 
 	const masterTarget = (): PushTarget | undefined => {
@@ -667,11 +667,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			live.teardown();
 		}),
 	);
-	// ---------- Adapter probe scheduler ----------
+	// ---------- Connection probe scheduler ----------
 	// Background reachability check. Plan §"系统不要主动测试" excludes message-
 	// sending probes; this one only calls platformAdapter.probe (no side
-	// effects) and writes the result back to adapter.testStatus so the dashboard
-	// reflects reality without the user having to click "测试" on every adapter.
+	// effects) and writes the result back to the connection's testStatus so the
+	// dashboard reflects reality without the user clicking "测试" on every one.
 	const CONNECTION_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 	let probeInFlight = false;
 	/**
@@ -681,8 +681,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 */
 	async function probeConnectionAndCapabilities(connectionId: string): Promise<ProbeResult> {
 		const result = await sink.probeConnection(connectionId);
-		// 连都连不上的适配器,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
-		// 而这条路是每五分钟一轮、逐个 await 的,离线适配器会把整轮时间翻倍。
+		// 连都连不上的连接,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
+		// 而这条路是每五分钟一轮、逐个 await 的,离线的连接会把整轮时间翻倍。
 		if (result.ok === false) return result;
 		if (sink.connectionCapabilities(connectionId)?.miniAppCard.state === "unknown") {
 			await sink.probeConnectionCapabilities(connectionId);
@@ -708,7 +708,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						},
 					});
 				} catch (e) {
-					log.warn(`[probe] adapter ${connection.id} update failed: ${String(e)}`);
+					log.warn(`[probe] connection ${connection.id} update failed: ${String(e)}`);
 				}
 			}
 		} finally {
@@ -717,8 +717,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	}
 
 	// Kick off an immediate probe after engines come up, then poll on a timer.
-	// `config-changed` for 'adapters' scope triggers an extra immediate probe so
-	// the UI reflects new adapters / edits without waiting up to 5 min.
+	// `config-changed` for the 'connections' scope triggers an extra immediate probe
+	// so the UI reflects new connections / edits without waiting up to 5 min.
 	void probeAllConnections();
 	const probeTimer = setInterval(() => {
 		void probeAllConnections();
@@ -741,7 +741,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 	});
 	let linkCard = linkCardViewOf(initialGlobals);
-	// 逐群答案从默认行 + 例外 + 目标表 + 适配器表算出来,三者任一变了都重算(见接口上的说明)。
+	// 逐群答案从默认行 + 例外 + 目标表 + 连接表算出来,三者任一变了都重算(见接口上的说明)。
 	const linkPoliciesOf = () =>
 		resolveLinkParsingPolicies({
 			config: linkCard.config,
@@ -759,7 +759,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// config-changed,无成环。
 				//
 				// 刻意不在这里触发 probeAllConnections:probe 经 patchConnection 写回
-				// testStatus 会再 emit config-changed:adapters → 死循环。adapter
+				// testStatus 会再 emit config-changed:connections → 死循环。adapter
 				// 连通状态由 5 分钟轮询刷新(或用户点"测试"立即刷)。
 				for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
 				return;

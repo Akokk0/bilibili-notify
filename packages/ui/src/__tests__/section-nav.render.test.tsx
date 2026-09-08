@@ -92,7 +92,7 @@ describe("SectionNav", () => {
 		const onAdd = vi.fn();
 		const { rerender } = render(
 			<SectionNav
-				heading="适配器"
+				heading="连接"
 				items={items}
 				activeId="a"
 				onPick={() => {}}
@@ -113,21 +113,21 @@ describe("SectionNav", () => {
 			expect(hooks).toContain("btn-primary");
 		}
 
-		rerender(<SectionNav heading="适配器" items={items} activeId="a" onPick={() => {}} />);
+		rerender(<SectionNav heading="连接" items={items} activeId="a" onPick={() => {}} />);
 		expect(screen.queryByRole("button", { name: /新建/ })).toBeNull();
 	});
 
 	it("renders emptyState in the rail when items is empty", () => {
 		render(
 			<SectionNav
-				heading="适配器"
+				heading="连接"
 				items={[]}
 				activeId={null}
 				onPick={() => {}}
-				emptyState={<div>尚未配置任何适配器</div>}
+				emptyState={<div>尚未配置任何连接</div>}
 			/>,
 		);
-		expect(screen.getByText("尚未配置任何适配器")).toBeTruthy();
+		expect(screen.getByText("尚未配置任何连接")).toBeTruthy();
 	});
 	/**
 	 * 选中项内部的颜色分工 —— 这两条是一对,单看任何一条都能被作弊过关。
@@ -237,7 +237,7 @@ describe("带标识色的图标胶囊", () => {
 	}
 
 	it("选中那格的底改用 currentColor 调,别处照旧用标识色", () => {
-		render(<SectionNav heading="适配器" items={tinted} activeId="a" onPick={() => {}} />);
+		render(<SectionNav heading="连接" items={tinted} activeId="a" onPick={() => {}} />);
 
 		expect(boxStyle("恶魔兔")).toMatch(/currentcolor/i);
 		// 没选中的那些正是「一眼认出是哪家」的所在,标识色一个都不能动。
@@ -246,7 +246,7 @@ describe("带标识色的图标胶囊", () => {
 	});
 
 	it("换一格选中,让位的跟着换 —— 绑的是选中态", () => {
-		render(<SectionNav heading="适配器" items={tinted} activeId="b" onPick={() => {}} />);
+		render(<SectionNav heading="连接" items={tinted} activeId="b" onPick={() => {}} />);
 
 		expect(boxStyle("别的")).toMatch(/currentcolor/i);
 		expect(boxStyle("恶魔兔")).toMatch(/rgb\(20,\s*184,\s*166\)/);

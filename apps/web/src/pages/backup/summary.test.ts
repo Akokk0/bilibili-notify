@@ -3,7 +3,7 @@ import type { ImportResult } from "./summary";
 import { summarizeImport } from "./summary";
 
 /**
- * 脱敏备份**不含任何凭据** —— 恢复回来的适配器密钥是空的、AI API Key 是空的。
+ * 脱敏备份**不含任何凭据** —— 恢复回来的连接密钥是空的、AI API Key 是空的。
  * 配置都在、开关也开着,但推不出去。用户不会想到是这个原因,除非导入回执直接讲明。
  *
  * (schema 层的坑同时也修了:appSecret 曾经 `.min(1)`,脱敏档根本存不回去,直接
@@ -40,7 +40,7 @@ describe("summarizeImport", () => {
 	});
 
 	describe("脱敏档:凭据是空的,必须讲出来", () => {
-		it("导入了适配器 → 提示重填适配器密钥", () => {
+		it("导入了连接 → 提示重填连接密钥", () => {
 			const s = summarizeImport(
 				{ ...empty, connections: { upserted: 1, deleted: 0 } },
 				"sanitized",

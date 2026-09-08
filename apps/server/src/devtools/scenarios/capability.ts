@@ -3,7 +3,7 @@ import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 /**
- * B3:适配器能力三态 —— 小程序卡 支持 / 不支持 / 未知。面板的能力探测面板、系统页支持面板、
+ * B3:连接能力三态 —— 小程序卡 支持 / 不支持 / 未知。面板的能力探测面板、系统页支持面板、
  * 链接解析「形式」那一栏都从这儿读。
  */
 export interface CapabilityScenarioDeps {

@@ -144,7 +144,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 		});
 		expect(sink.isAvailable("missing")).toBe(false); // target 缺
 		expect(sink.isAvailable("t1")).toBe(false); // connectionId 指向不存在的 adapter
-		expect(sink.isAvailable("t2")).toBe(false); // adapter.platform 无对应 platformAdapter
+		expect(sink.isAvailable("t2")).toBe(false); // connection.platform 无对应 platformAdapter
 	});
 
 	it("isAvailable:链路齐全时透传 platformAdapter.isAvailable", () => {
@@ -196,8 +196,8 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		});
 		const r = await sink.send("t1", PAYLOAD);
 		expect(r.ok).toBe(false);
-		expect(r.err).toBe("adapter not found: connectionId=ghost");
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("adapter not found"));
+		expect(r.err).toBe("connection not found: connectionId=ghost");
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("connection not found"));
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
 
@@ -262,7 +262,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 });
 
 describe("createMultiplexSink — probeConnection", () => {
-	it("adapter 缺:adapter not found", async () => {
+	it("连接缺:connection not found", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([], []),
 			adapters: [makePlatformAdapter(["feishu"])],
@@ -271,7 +271,7 @@ describe("createMultiplexSink — probeConnection", () => {
 		expect(await sink.probeConnection("ghost")).toEqual({
 			ok: false,
 			latencyMs: 0,
-			err: "adapter not found",
+			err: "connection not found",
 		});
 	});
 
@@ -313,7 +313,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 		});
 	}
 
-	it("目标启用、适配器启用 → true,哪怕此刻不可达", () => {
+	it("目标启用、连接启用 → true,哪怕此刻不可达", () => {
 		const sink = sinkWith(
 			[makeConnection({ id: "a1", platform: "feishu" })],
 			[makeTarget({ id: "t1", connectionId: "a1" })],
@@ -330,7 +330,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 		expect(sink.isEnabled("t1")).toBe(false);
 	});
 
-	it("所属适配器停用 → false", () => {
+	it("所属连接停用 → false", () => {
 		const sink = sinkWith(
 			[makeConnection({ id: "a1", platform: "feishu", enabled: false })],
 			[makeTarget({ id: "t1", connectionId: "a1" })],
@@ -338,7 +338,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 		expect(sink.isEnabled("t1")).toBe(false);
 	});
 
-	it("目标不存在 / 适配器不存在 → false", () => {
+	it("目标不存在 / 连接不存在 → false", () => {
 		const sink = sinkWith([], [makeTarget({ id: "t1", connectionId: "gone" })]);
 		expect(sink.isEnabled("t1")).toBe(false);
 		expect(sink.isEnabled("nope")).toBe(false);
@@ -346,7 +346,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 });
 
 /**
- * 平台能力(能不能签小程序卡)从 platform adapter 透出来:适配器缺、平台实现缺、平台没有
+ * 平台能力(能不能签小程序卡)从 platform adapter 透出来:连接缺、平台实现缺、平台没有
  * 能力概念(没实现 capabilities)都是 undefined —— 调用方按「什么都不支持」处理。
  */
 describe("createMultiplexSink — connectionCapabilities / probeConnectionCapabilities", () => {
@@ -368,7 +368,7 @@ describe("createMultiplexSink — connectionCapabilities / probeConnectionCapabi
 		expect(probeCapabilities).toHaveBeenCalledWith(connection);
 	});
 
-	it("适配器缺 / 平台实现缺 / 平台没有能力概念 → undefined", async () => {
+	it("连接缺 / 平台实现缺 / 平台没有能力概念 → undefined", async () => {
 		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore(

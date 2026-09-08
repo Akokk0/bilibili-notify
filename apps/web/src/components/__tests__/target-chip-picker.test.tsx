@@ -2,9 +2,9 @@
 /**
  * 「从推送目标里勾几个」的胶囊选择器 —— 今天周报的「发送到」用它。
  *
- * 缝在组件 props:目标列表、适配器表与已选 id 进,点击回调 id 出。停用的目标**照列照勾**
+ * 缝在组件 props:目标列表、连接表与已选 id 进,点击回调 id 出。停用的目标**照列照勾**
  * 并标「已停用」(主人定的:停用是暂停不是消失),而「停用」与服务端跳过它时同一条判定 ——
- * 适配器停用的目标也标。不测样式。
+ * 连接停用的目标也标。不测样式。
  */
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -85,7 +85,7 @@ describe("TargetChipPicker", () => {
 		expect(onToggle).toHaveBeenCalledWith(T_B);
 	});
 
-	it("目标自己开着、它挂的适配器停了 → 也标「已停用」(服务端一样不发)", () => {
+	it("目标自己开着、它挂的连接停了 → 也标「已停用」(服务端一样不发)", () => {
 		render(
 			<TargetChipPicker
 				targets={[target(T_A, "群 A")]}

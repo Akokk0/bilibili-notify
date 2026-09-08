@@ -71,7 +71,7 @@ export interface OnebotPlatformAdapterOptions {
 	imageMinTimeoutMs?: number;
 }
 
-/** 同一条适配器的能力最多这么久重探一次 —— 探不出来时别让每个调用方各赔一次超时。 */
+/** 同一条连接的能力最多这么久重探一次 —— 探不出来时别让每个调用方各赔一次超时。 */
 const CAPABILITY_REPROBE_MS = 60_000;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -898,7 +898,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const knownConnections = new Map<string, Connection>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
-	/** 上次探能力的时刻 —— 探不出来的适配器不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
+	/** 上次探能力的时刻 —— 探不出来的连接不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
 	const lastCapabilityProbeAt = new Map<string, number>();
 	const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
 
@@ -948,7 +948,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	/**
-	 * 探不出来的适配器(连不上 / 回自己的错误码)会一直停在「未探测」,而问一次要赔满一个
+	 * 探不出来的连接(连不上 / 回自己的错误码)会一直停在「未探测」,而问一次要赔满一个
 	 * 超时。节流住在这里而不是各个调用方那边:缓存与失效规则都在这个文件,再让链接解析、
 	 * 健康探测各维护一张时间戳表,「什么时候该重探」就会摊成三份。
 	 */
@@ -1183,7 +1183,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			botIdentityCache.clear();
 
 			// --- 能力缓存 ---
-			// 只在适配器配置真变了(指向另一个实现)或适配器没了时丢;配置没变就留着。**不能全清**:
+			// 只在连接的配置真变了(指向另一个实现)或连接没了时丢;配置没变就留着。**不能全清**:
 			// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
 			// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
 			for (const id of [...knownConnections.keys()]) {

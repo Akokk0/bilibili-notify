@@ -5,7 +5,7 @@ import type { OnboardingStepKey, OnboardingView } from "./derive";
  *
  * 主步切换由机器判据驱动(reconcileTourPos 跟随 activeKey),主步内的子步
  * 才是手动翻页 —— 所以「扫码成功自动进下一步」不需要任何额外探测代码。
- * 主步顺序:登录 → 适配器 → 目标 → 测试 → 订阅(理由见 derive.ts)。
+ * 主步顺序:登录 → 连接 → 目标 → 测试 → 订阅(理由见 derive.ts)。
  *
  * `anchor` 指向页面控件上的 `data-tour` 挂点(高亮描边 + 滚入视口);
  * 控件级原则:聚光灯只指到按钮/区块,字段明细写在 `body` 文字里 ——
@@ -78,7 +78,7 @@ export interface TourSubStep {
 	/**
 	 * 此子步的目标已达成的判据 —— 成立即自动流转到下一子步(与 advanceOnRoute
 	 * 同为单向自动流转,只是信号来自探测数据而非路由)。给「主步内的中间动作」用:
-	 * 主步判据只认最终结果(如适配器**测通**),而「建好适配器」这一步做完时导览
+	 * 主步判据只认最终结果(如连接**测通**),而「建好连接」这一步做完时导览
 	 * 必须立刻把灯移到「测试」上,不能等用户自己想起来。
 	 */
 	doneWhen?: (view: OnboardingView) => boolean;
@@ -122,7 +122,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 		{
 			route: "/targets",
-			// 控件级:灯指适配器详情区的「测试」按钮本体;挂点没渲染时回落适配器区
+			// 控件级:灯指连接详情区的「测试」按钮本体;挂点没渲染时回落连接区
 			anchor: ["connection-test", "connection-add"],
 			anchorOnFail: ["connection-form", ["connection-config", "connection-test"], "connection-add"],
 			title: "测试连通性",
@@ -133,7 +133,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		{
 			route: "/targets",
 			// 同 connection:弹窗内让位;target-add 挂右上按钮与空态 AddCard 两处,一起亮。
-			// 末尾必须留 target-list 兜底:**选中的适配器是 webhook 时 target-add 一处
+			// 末尾必须留 target-list 兜底:**选中的连接是 webhook 时 target-add 一处
 			// 都不渲染**(右上按钮被 platform 判断掐掉,空态 AddCard 走的是另一条分支),
 			// 链解析不到任何元素 → 灯不亮、锁不铺,而小卡还在说「点高亮的『+ 新建』」,
 			// 指着一个不存在的东西;又因为人已经在目标路由上,「点亮起的页签前往」那条
@@ -182,9 +182,9 @@ export interface TourPos {
 
 /**
  * 判据跟随:activeKey(第一个未完成主步)变了就跳到该主步的第一个子步 ——
- * **前进与回退都跟**。回退=前置被破坏(退出登录、删掉已测通的适配器),导览
+ * **前进与回退都跟**。回退=前置被破坏(退出登录、删掉已测通的连接),导览
  * 必须带用户回去补,否则卡在一个做不了的后续步上(真机踩过:退出登录后停在
- * 适配器步,登录被略过)。「顺序流转、不回头」只约束**交互层** —— 没有
+ * 连接步,登录被略过)。「顺序流转、不回头」只约束**交互层** —— 没有
  * 「上一步」按钮,用户不能手动倒退;判据说话永远算数。
  * 没变则保持手动子步位置(越界收回,防脚本改短);全绿(activeKey=null)进入
  * done 祝贺态。

@@ -17,7 +17,7 @@ const BIND_POLL_INTERVAL_SEC = 2;
  *
  * - `GET /sessions/:connectionId` — 网关从入站事件捞到的群/C2C 会话(openid),供建 target
  *   时的选择器(QQ 无「列我加入的群」接口,只能让机器人先被 @ 一次)。内存发现表,不落盘。
- * - `GET /guilds/:connectionId`   — REST 枚举该 adapter 能见的频道服务器 + 文字子频道,供频道
+ * - `GET /guilds/:connectionId`   — REST 枚举该连接能见的频道服务器 + 文字子频道,供频道
  *   scope target 选择器。每次实时拉(一次性 token)。
  * - `POST /bind/start` / `POST /bind/poll` — 扫码一键建 bot(借道腾讯 OpenClaw lite
  *   通道,见 `platforms/qq-bind.ts`)。bindKey 只存本路由内存,不出响应、不落盘;
@@ -83,7 +83,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("connectionId");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
 		if (connection?.platform !== "qq-official") {
-			return c.json({ error: "not_found", message: "qq-official adapter not found", id }, 404);
+			return c.json({ error: "not_found", message: "qq-official connection not found", id }, 404);
 		}
 		try {
 			const guilds = await fetchQQGuildChannels(connection.config as QQOfficialConnectionConfig);

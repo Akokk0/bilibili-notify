@@ -246,7 +246,7 @@ export class BilibiliPush {
 	 * @全体 是 fire-and-forget,不计入返回值)。
 	 *
 	 * 闸门按代价排:全局静音 → 无订阅 → 特性总开关 → 免扰时段,任一挡下都静默返回 —— 这些
-	 * 不是「无目标」。过了闸再看目标:路由里**启用的**(目标启用、所属适配器启用)才是候选,
+	 * 不是「无目标」。过了闸再看目标:路由里**启用的**(目标启用、所属连接启用)才是候选,
 	 * 停用的既不发也不进可达性重试;一个候选都没有就是「无目标」,回调 `onSend` 落一行。
 	 *
 	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 且 `opts.allowAtAll !== false` 进入):
@@ -306,7 +306,7 @@ export class BilibiliPush {
 			pushId: opts?.pushId ?? randomUUID(),
 			role: opts?.role ?? "main",
 		};
-		// 只有启用的目标才是候选:停用的目标 / 停用的适配器不进重试、不落历史。
+		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
 		const targetIds = (sub.routing[feature] ?? []).filter((id) => this.sink.isEnabled(id));
 		if (targetIds.length === 0) {
 			this.logger.debug(`[push] uid=${uid} feature=${feature} 无可用目标`);

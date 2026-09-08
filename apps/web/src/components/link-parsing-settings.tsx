@@ -88,9 +88,9 @@ export function LinkParsingSettings({
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 推送目标表(由页面取数),这里只挑群类的列出来。 */
 	targets: readonly PushTarget[];
-	/** 适配器表(由页面取数),面板只列 OneBot 的。 */
+	/** 连接表(由页面取数),面板只列 OneBot 的。 */
 	connections: readonly Connection[];
-	/** `GET /api/connections/capabilities`:各适配器能不能签小程序卡。 */
+	/** `GET /api/connections/capabilities`:各连接能不能签小程序卡。 */
 	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkParsing;
@@ -225,7 +225,7 @@ function supportText(s: MiniAppCardSupport): { dot: "ok" | "off" | "pending"; te
 }
 
 /**
- * 「适配器支持情况」:每个 OneBot 适配器一行,三态 支持 / 不支持(带原因)/ 未探测。只列
+ * 「连接支持情况」:每条 OneBot 连接一行,三态 支持 / 不支持(带原因)/ 未探测。只列
  * OneBot —— 官机与 webhook 没有能力概念,一句话说清。探测是连上时自动做的,主人在推送
  * 目标页点「测试」也会补探「未探测」的。
  */
@@ -295,9 +295,9 @@ function GroupRow({
 	target: PushTarget;
 	cfg: LinkParsing;
 	onPatch: (delta: GlobalConfigPatch) => void;
-	/** 这群所在适配器能不能签小程序卡;没有能力概念的平台(官机)是 undefined。 */
+	/** 这群所在连接能不能签小程序卡;没有能力概念的平台(官机)是 undefined。 */
 	support: MiniAppCardSupport | undefined;
-	/** 目标自己停用、或它挂的适配器停用 —— 运行时都不解析,面板得说同一句话。 */
+	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
 	paused: boolean;
 }) {
 	const o = cfg.groups[target.id];

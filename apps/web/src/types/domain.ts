@@ -155,7 +155,7 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
 
 /**
  * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `connectionId` 都是 `z.uuid()` 严格
- * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 适配器 / 目标的 POST 全 400。
+ * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 连接 / 目标的 POST 全 400。
  *
  * 刻意**不用** `crypto.randomUUID()` —— 它只在 **secure context**(HTTPS 或
  * localhost)可用;独立端 docker 部署常经 `http://<内网IP>:8787` 访问 = 非 secure
@@ -254,7 +254,7 @@ type OnebotConnectionConfigCommon = Pick<
 >;
 
 /**
- * 切换 OneBot 适配器的连接方式 —— 整体替换 config(branch schema 是 strict,不能
+ * 切换 OneBot 连接的连法 —— 整体替换 config(branch schema 是 strict,不能
  * 留上一个 transport 的残字段),保留 accessToken / 超时 / 重试等共用字段。切到
  * ws / ws-reverse 时,若 retryTimes 还是 0 则提到 3(bot 偶发重连不丢首条推送)。
  */

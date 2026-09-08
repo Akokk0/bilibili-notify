@@ -78,7 +78,7 @@ function makeDeps(opts: StubOpts = {}) {
 					cardStyle: { enabled: opts.cardStyleEnabled ?? true },
 				},
 			}),
-			// 投递前会看目标与适配器是不是停用了(停用 = 跳过),所以夹具里的目标得像真的一样
+			// 投递前会看目标与连接是不是停用了(停用 = 跳过),所以夹具里的目标得像真的一样
 			// 带着 enabled 与 connectionId,不然全被当成停用、一条都发不出去。
 			getTargets: () =>
 				(opts.targets ?? [{ id: "11111111-1111-4111-8111-111111111111" }]).map((t) => ({

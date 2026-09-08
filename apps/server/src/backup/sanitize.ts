@@ -3,7 +3,7 @@
  *
  * The sanitized backup must never carry a credential. Rather than enumerate
  * every platform-specific secret field (a denylist that silently rots as new
- * adapter/target platforms land), {@link redactSecretKeys} walks the whole tree
+ * connection/target platforms land), {@link redactSecretKeys} walks the whole tree
  * and blanks any leaf whose *key name* is a known secret. This is structural:
  * a newly-added `accessToken` under any future shape is caught for free.
  *

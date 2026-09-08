@@ -13,7 +13,7 @@ import type { EncryptedSecrets } from "./crypto.js";
  *     (cookie / apiKey / bot tokens). See the `secrets` slice for that shape.
  *
  * `sections` carries the platform-neutral config scopes verbatim (the same
- * shapes `ConfigStore` reads/writes). Secret-bearing residue (apiKey, adapter
+ * shapes `ConfigStore` reads/writes). Secret-bearing residue (apiKey, connection
  * credentials) is stripped from these plaintext sections and, for `full`
  * backups, re-homed into the encrypted block — never left in the clear here.
  */

@@ -32,7 +32,7 @@ describe("data-* 透传", () => {
 	});
 
 	it("AddButton 同样透传", () => {
-		render(<AddButton data-tour="adapter-add">＋ 新建适配器</AddButton>);
+		render(<AddButton data-tour="adapter-add">＋ 新建连接</AddButton>);
 		expect(btn().getAttribute("data-tour")).toBe("adapter-add");
 	});
 
