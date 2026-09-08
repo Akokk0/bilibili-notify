@@ -1246,25 +1246,42 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async upsertTarget(target: PushTarget): Promise<void> {
+		let targetAliases: ReadonlyMap<string, string> = new Map();
 		await this.runScoped("targets", async () => {
 			const parsed = PushTargetSchema.safeParse(target);
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
 			this.assertAdapterMatches(parsed.data);
-			if (parsed.data.platform === "webhook") {
+			// webhook 目标是 adapter 的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
+			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以判据是 managedBy 而不是
+			// platform,否则任何含 webhook 适配器的备份都恢复不了(而恢复是逐条 await 的,炸在
+			// 这一步时 globals / 订阅 / adapters 已经落盘,配置只剩半新半旧)。
+			if (parsed.data.platform === "webhook" && parsed.data.managedBy !== "adapter") {
 				throw new ConfigValidationError(
 					"targets",
 					{ message: "webhook target is managed by adapter" },
 					"webhook targets are created from webhook adapters automatically",
 				);
 			}
-			const next = upsertById(this.targets, parsed.data);
+			let next = upsertById(this.targets, parsed.data);
+			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedWebhookTarget 取的是
+			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与 adapter 名下当前那条
+			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
+			// upsertAdapter 完全同一条路径,别在这儿另写一套。
+			const owner = this.adapters.find((a) => a.id === parsed.data.adapterId);
+			if (owner?.platform === "webhook") {
+				const synced = syncManagedWebhookTarget(owner, next);
+				next = synced.next;
+				targetAliases = synced.aliases;
+			}
 			await atomicWriteJson(this.path("targets"), next);
 			this.targets = next;
 			this.touch("targets");
 		});
+		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
 		this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 	}
 
 	async patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget> {

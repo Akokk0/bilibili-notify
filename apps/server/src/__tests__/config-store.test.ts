@@ -682,6 +682,52 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
+	it("备份往返:getTargets() 吐得出来的,upsertTarget() 就必须吃得下", async () => {
+		// 备份导出走 getTargets()(必然含托管 target),恢复走 upsertTarget() —— 两头对不上
+		// 的话,**任何含 webhook 适配器的备份都恢复不了**。而恢复是逐条 await、没有事务也
+		// 没有回滚的:炸在 targets 这步时 globals / 订阅 / adapters 已经落盘,配置变成半新
+		// 半旧,订阅里还引用着从未创建的 target id,而原状态已被覆盖。
+		//
+		// 托管 target 的 id 不能靠「导出时丢掉、恢复时重建」绕过去:makeManagedWebhookTarget
+		// 取的是 `existing?.id ?? 确定性id`,老记录会永远保留自己那个非确定性 id,重建就换了
+		// 身份,订阅 routing 当场断。
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const managed = store.getTargets().find((t) => t.managedBy === "adapter");
+		expect(managed).toBeDefined();
+
+		await expect(store.upsertTarget(managed as PushTarget)).resolves.toBeUndefined();
+		expect(store.getTargets()).toHaveLength(1);
+		expect(store.getTargets()[0]?.id).toBe(managed?.id);
+	});
+
+	it("备份往返:恢复回来的老 id 与当前托管 target 并存 → 合并,订阅引用迁过去", async () => {
+		// 恢复的顺序是 订阅 → adapters → targets:adapter 一落盘就先生成了确定性 id 的托管
+		// target,随后送回来的那条却带着备份里的**老 id**(老记录会一直保留自己的 id)。两条
+		// 同主并存时必须合并成一条,并把订阅里的老 id 改写过去 —— 否则用户恢复完会看到两个
+		// 一模一样的 webhook 目标,而订阅指着那个被吞掉的。
+		const adapter = makeWebhookAdapter();
+		const legacyId = randomUUID();
+		const sub = makeSampleSubscription("77777");
+		sub.routing.dynamic = [legacyId];
+		sub.atAll.dynamic[legacyId] = true;
+		await store.upsertSubscription(sub);
+		await store.upsertAdapter(adapter);
+
+		const managedId = store.getTargets()[0]?.id;
+		expect(managedId).toBe(managedWebhookTargetId(adapter.id));
+
+		await store.upsertTarget(
+			makeWebhookTarget(adapter, { id: legacyId, managedBy: "adapter" }) as PushTarget,
+		);
+
+		expect(store.getTargets()).toHaveLength(1);
+		expect(store.getTargets()[0]?.id).toBe(managedId);
+		const nextSub = store.getSubscriptions().find((s) => s.id === sub.id);
+		expect(nextSub?.routing.dynamic).toEqual([managedId]);
+		expect(nextSub?.atAll.dynamic).toEqual({ [managedId as string]: true });
+	});
+
 	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
 		const adapter = makeWebhookAdapter();
 		await store.upsertAdapter(adapter);
