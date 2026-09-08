@@ -1257,7 +1257,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		c.configStore._setConnections([
 			{ ...c.configStore.getConnections()[0], enabled: false } as any,
 		]);
-		c.bus.emit("config-changed", "adapters");
+		c.bus.emit("config-changed", "connections");
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 	});
 

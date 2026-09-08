@@ -537,7 +537,7 @@ describe("TourCompanion 常驻小卡", () => {
 		await screen.findByText("测试连通性");
 		s.connections = [];
 		await act(async () => {
-			await qc.invalidateQueries({ queryKey: ["adapters"] });
+			await qc.invalidateQueries({ queryKey: ["connections"] });
 		});
 		await screen.findByText("新建推送连接");
 	});

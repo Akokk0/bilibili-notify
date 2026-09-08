@@ -501,7 +501,7 @@ describe("ConfigStore", () => {
 			managedBy: "connection",
 		});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
-		expect(scopes).toEqual(["adapters", "targets"]);
+		expect(scopes).toEqual(["connections", "targets"]);
 	});
 
 	it("load() 把老形状的 connections.json 就地迁移并回写 —— 主人盘上那份没有 kind/connector", async () => {
@@ -923,7 +923,7 @@ describe("ConfigStore", () => {
 		expect(nextSub?.atAll.dynamic).toEqual({});
 		expect(nextSub?.atAll.live).toEqual({});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
-		expect(scopes).toEqual(["adapters", "targets", "subscriptions"]);
+		expect(scopes).toEqual(["connections", "targets", "subscriptions"]);
 	});
 
 	// 目标的平台开放之后,「挂在 onebot 连接下、平台写着 telegram」这种目标**schema 收得下**

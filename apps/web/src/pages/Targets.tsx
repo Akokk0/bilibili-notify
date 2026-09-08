@@ -1334,7 +1334,7 @@ export default function Targets() {
 	const qc = useQueryClient();
 
 	const connectionsQuery = useQuery({
-		queryKey: ["adapters"],
+		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/adapters"),
 	});
 	const targetsQuery = useQuery({
@@ -1420,7 +1420,7 @@ export default function Targets() {
 			}
 		},
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["adapters"] });
+			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			showToast(connectionDraft?.mode === "add" ? "已新建连接" : "连接已保存");
 			setConnectionDraft(null);
@@ -1439,7 +1439,7 @@ export default function Targets() {
 			}
 		},
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["adapters"] });
+			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			showToast("已移除连接");
 			setConfirmDelete(null);
@@ -1539,7 +1539,7 @@ export default function Targets() {
 			}
 			setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
 			showToast(res.ok ? `连通 · ${res.latencyMs}ms` : `失败:${res.err ?? "未知错误"}`, res.ok);
-			qc.invalidateQueries({ queryKey: ["adapters"] });
+			qc.invalidateQueries({ queryKey: ["connections"] });
 		} catch (err) {
 			setTesting((p) => ({ ...p, [a.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);

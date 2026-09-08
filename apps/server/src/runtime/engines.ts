@@ -752,7 +752,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	handles.push(
 		opts.bus.on("config-changed", (scope) => {
-			if (scope === "adapters") {
+			if (scope === "connections") {
 				linkPolicies = linkPoliciesOf();
 				// 有状态 adapter(OneBot ws / ws-reverse)按新 adapter 集合 reconcile
 				// 连接 / 监听器。reconcile 幂等、不写 config、不调 probe → 不会 emit

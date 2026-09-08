@@ -134,7 +134,7 @@ export function RoastScheduleFields({
 	// 「已停用」要跟调度器跳过它时同一条判定,所以连适配器表一起取:目标自己开着、
 	// 它挂的适配器停了,一样不发。
 	const connectionsQuery = useQuery({
-		queryKey: ["adapters"],
+		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/adapters"),
 	});
 	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析的逐群表同一条规矩(主人定的:

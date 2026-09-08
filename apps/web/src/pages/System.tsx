@@ -318,7 +318,7 @@ export default function System() {
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 	const connectionsQuery = useQuery({
-		queryKey: ["adapters"],
+		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/adapters"),
 	});
 	// 能力是连上时探的,面板开着的时候半分钟刷一次,bot 后连上也能看到它变绿。

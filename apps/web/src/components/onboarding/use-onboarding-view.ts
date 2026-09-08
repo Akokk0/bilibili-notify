@@ -27,7 +27,7 @@ const POLL_MS = 3_000;
 const POLLED_KEYS: readonly (readonly unknown[])[] = [
 	["auth-status"],
 	["subscriptions"],
-	["adapters"],
+	["connections"],
 	["targets"],
 	HEALTH_QUERY_KEY,
 ];
@@ -67,7 +67,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 		enabled,
 	});
 	const connectionsQ = useQuery({
-		queryKey: ["adapters"],
+		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/adapters"),
 		enabled,
 	});

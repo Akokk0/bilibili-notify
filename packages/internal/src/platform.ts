@@ -141,7 +141,7 @@ export interface FansRefreshEntry {
 }
 
 /** ConfigStore 在 set 后 emit 'config-changed' 时携带的范围标识。 */
-export type ConfigScope = "globals" | "subscriptions" | "adapters" | "targets" | "secrets";
+export type ConfigScope = "globals" | "subscriptions" | "connections" | "targets" | "secrets";
 
 /** 用于 'login-status-report' 事件 / Dashboard auth channel；具体 schema 在 packages/api。 */
 export interface LoginSnapshot {

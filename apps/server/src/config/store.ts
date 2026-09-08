@@ -617,7 +617,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly meta: Record<ConfigScope, ScopeMetaInternal> = {
 		globals: { exists: false, lastUpdatedAt: null },
 		subscriptions: { exists: false, lastUpdatedAt: null },
-		adapters: { exists: false, lastUpdatedAt: null },
+		connections: { exists: false, lastUpdatedAt: null },
 		targets: { exists: false, lastUpdatedAt: null },
 		secrets: { exists: false, lastUpdatedAt: null },
 	};
@@ -625,7 +625,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly queues: Record<ConfigScope, Queue> = {
 		globals: Promise.resolve(),
 		subscriptions: Promise.resolve(),
-		adapters: Promise.resolve(),
+		connections: Promise.resolve(),
 		targets: Promise.resolve(),
 		secrets: Promise.resolve(),
 	};
@@ -651,7 +651,7 @@ class NodeConfigStore implements ConfigStore {
 				return join(this.stateDir, "globals.json");
 			case "subscriptions":
 				return join(this.stateDir, "subscriptions.json");
-			case "adapters":
+			case "connections":
 				return join(this.stateDir, "connections.json");
 			case "targets":
 				return join(this.stateDir, "targets.json");
@@ -898,19 +898,19 @@ class NodeConfigStore implements ConfigStore {
 	 * rewrites targets to reference them.
 	 */
 	private async loadConnectionsAndTargets(): Promise<void> {
-		const connectionsExist = await fileExists(this.path("adapters"));
+		const connectionsExist = await fileExists(this.path("connections"));
 		// 这个文件从前叫 adapters.json。搬名字的方式是**读老的、写新的、老的一动不动** ——
 		// 老那份于是既是原件备份,又让回退到旧载荷这条路仍然能开机:旧构建找的正是它,
 		// 而它还是迁移前的形状。代价是升级后的编辑不会回流过去,回退等于退回升级那一刻。
 		const legacyPath = join(this.stateDir, "adapters.json");
 		const legacyOnly = !connectionsExist && (await fileExists(legacyPath));
-		const sourcePath = connectionsExist ? this.path("adapters") : legacyPath;
+		const sourcePath = connectionsExist ? this.path("connections") : legacyPath;
 
 		if (connectionsExist || legacyOnly) {
 			const connectionsRaw = JSON.parse(await readFile(sourcePath, "utf8"));
 			if (!Array.isArray(connectionsRaw)) {
 				throw new ConfigValidationError(
-					"adapters",
+					"connections",
 					{ message: "connections.json must be an array" },
 					"connections.json on disk is not an array",
 				);
@@ -942,11 +942,11 @@ class NodeConfigStore implements ConfigStore {
 			// 从老文件名读来的那趟一定要写:connections.json 还不存在。它自己的原件就是没被
 			// 动过的 adapters.json,所以这条路不留 .bak。
 			if (legacyOnly) {
-				await atomicWriteJson(this.path("adapters"), migrated.connections);
+				await atomicWriteJson(this.path("connections"), migrated.connections);
 			} else if (migrated.changed.connections) {
 				// 原件留一份 —— 迁移错了主人还能自己捞回去。
-				await copyFile(this.path("adapters"), `${this.path("adapters")}.bak`);
-				await atomicWriteJson(this.path("adapters"), migrated.connections);
+				await copyFile(this.path("connections"), `${this.path("connections")}.bak`);
+				await atomicWriteJson(this.path("connections"), migrated.connections);
 			}
 			if (migrated.changed.targets) {
 				await copyFile(this.path("targets"), `${this.path("targets")}.bak`);
@@ -959,7 +959,7 @@ class NodeConfigStore implements ConfigStore {
 				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
-						"adapters",
+						"connections",
 						{ index: idx, issues: r.error.issues },
 						`connections.json[] failed schema validation`,
 					);
@@ -967,7 +967,7 @@ class NodeConfigStore implements ConfigStore {
 				connections.push(r.data);
 			}
 			this.connections = connections;
-			this.meta.adapters.exists = true;
+			this.meta.connections.exists = true;
 
 			const targets: PushTarget[] = [];
 			for (const [idx, raw] of migrated.targets.entries()) {
@@ -1004,12 +1004,12 @@ class NodeConfigStore implements ConfigStore {
 		const targetsExist = await fileExists(this.path("targets"));
 		if (!targetsExist) {
 			// Brand-new install: write empty files and continue.
-			await atomicWriteJson(this.path("adapters"), []);
+			await atomicWriteJson(this.path("connections"), []);
 			await atomicWriteJson(this.path("targets"), []);
 			this.connections = [];
 			this.targets = [];
-			this.meta.adapters.exists = true;
-			this.meta.adapters.lastUpdatedAt = new Date().toISOString();
+			this.meta.connections.exists = true;
+			this.meta.connections.lastUpdatedAt = new Date().toISOString();
 			this.meta.targets.exists = true;
 			this.meta.targets.lastUpdatedAt = new Date().toISOString();
 			return;
@@ -1031,7 +1031,7 @@ class NodeConfigStore implements ConfigStore {
 			// New shape but no adapters file → bail with an explicit error so the
 			// user notices something is off rather than us silently inventing data.
 			throw new ConfigValidationError(
-				"adapters",
+				"connections",
 				{ message: "connections.json missing but targets.json is in new format" },
 				"connections.json missing but targets.json already in new format; cannot rebuild connections automatically",
 			);
@@ -1047,14 +1047,14 @@ class NodeConfigStore implements ConfigStore {
 		this.connections = connections;
 		this.targets = synced.next;
 		if (replaced.changed) this.subscriptions = replaced.next;
-		await atomicWriteJson(this.path("adapters"), connections);
+		await atomicWriteJson(this.path("connections"), connections);
 		await atomicWriteJson(this.path("targets"), this.targets);
 		if (replaced.changed) {
 			await atomicWriteJson(this.path("subscriptions"), this.subscriptions);
 			this.touch("subscriptions");
 		}
-		this.meta.adapters.exists = true;
-		this.meta.adapters.lastUpdatedAt = new Date().toISOString();
+		this.meta.connections.exists = true;
+		this.meta.connections.lastUpdatedAt = new Date().toISOString();
 		this.meta.targets.exists = true;
 		this.meta.targets.lastUpdatedAt = new Date().toISOString();
 	}
@@ -1207,15 +1207,15 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async upsertConnection(connection: Connection): Promise<void> {
-		const saved = await this.runScoped("adapters", async () => {
+		const saved = await this.runScoped("connections", async () => {
 			const parsed = ConnectionSchema.safeParse(connection);
 			if (!parsed.success) {
-				throw new ConfigValidationError("adapters", parsed.error.issues);
+				throw new ConfigValidationError("connections", parsed.error.issues);
 			}
 			const existing = this.connections.find((a) => a.id === parsed.data.id);
 			if (existing && existing.platform !== parsed.data.platform) {
 				throw new ConfigValidationError(
-					"adapters",
+					"connections",
 					{
 						id: parsed.data.id,
 						from: existing.platform,
@@ -1226,9 +1226,9 @@ class NodeConfigStore implements ConfigStore {
 				);
 			}
 			const next = upsertById(this.connections, parsed.data);
-			await atomicWriteJson(this.path("adapters"), next);
+			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
-			this.touch("adapters");
+			this.touch("connections");
 			return parsed.data;
 		});
 		let targetAliases = new Map<string, string>();
@@ -1245,17 +1245,17 @@ class NodeConfigStore implements ConfigStore {
 					})
 				: false;
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "adapters");
+		this.bus.emit("config-changed", "connections");
 		if (targetsChanged) this.bus.emit("config-changed", "targets");
 		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 	}
 
 	async patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection> {
-		const result = await this.runScoped("adapters", async () => {
+		const result = await this.runScoped("connections", async () => {
 			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) {
 				throw new ConfigValidationError(
-					"adapters",
+					"connections",
 					{ id, message: "adapter not found" },
 					`adapter ${id} not found`,
 				);
@@ -1264,11 +1264,11 @@ class NodeConfigStore implements ConfigStore {
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = ConnectionSchema.safeParse(merged);
 			if (!parsed.success) {
-				throw new ConfigValidationError("adapters", parsed.error.issues);
+				throw new ConfigValidationError("connections", parsed.error.issues);
 			}
 			if (current.platform !== parsed.data.platform) {
 				throw new ConfigValidationError(
-					"adapters",
+					"connections",
 					{
 						id,
 						from: current.platform,
@@ -1280,9 +1280,9 @@ class NodeConfigStore implements ConfigStore {
 			}
 			const next = [...this.connections];
 			next[idx] = parsed.data;
-			await atomicWriteJson(this.path("adapters"), next);
+			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
-			this.touch("adapters");
+			this.touch("connections");
 			return parsed.data;
 		});
 		let targetAliases = new Map<string, string>();
@@ -1299,14 +1299,14 @@ class NodeConfigStore implements ConfigStore {
 					})
 				: false;
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "adapters");
+		this.bus.emit("config-changed", "connections");
 		if (targetsChanged) this.bus.emit("config-changed", "targets");
 		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 		return deepClone(result);
 	}
 
 	async deleteConnection(id: string): Promise<boolean> {
-		const removedConnection = await this.runScoped("adapters", async () => {
+		const removedConnection = await this.runScoped("connections", async () => {
 			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) return undefined;
 			const connection = this.connections[idx] as Connection;
@@ -1317,15 +1317,15 @@ class NodeConfigStore implements ConfigStore {
 			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
 			if (connection.connector !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
-					"adapters",
+					"connections",
 					{ id, targetIds: referencing, message: "adapter still in use" },
 					`adapter ${id} is still referenced by ${referencing.length} target(s)`,
 				);
 			}
 			const next = this.connections.filter((_, i) => i !== idx);
-			await atomicWriteJson(this.path("adapters"), next);
+			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
-			this.touch("adapters");
+			this.touch("connections");
 			return connection;
 		});
 		if (!removedConnection) return false;
@@ -1353,7 +1353,7 @@ class NodeConfigStore implements ConfigStore {
 			});
 		}
 
-		this.bus.emit("config-changed", "adapters");
+		this.bus.emit("config-changed", "connections");
 		if (targetsChanged) this.bus.emit("config-changed", "targets");
 		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 		return true;
@@ -1519,7 +1519,7 @@ class NodeConfigStore implements ConfigStore {
 				globals = r.data;
 			}
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
-			const connections = next.adapters && parseAll("adapters", next.adapters);
+			const connections = next.adapters && parseAll("connections", next.adapters);
 			const targets = next.targets && parseAll("targets", next.targets);
 
 			// ---- 2) 跨分区不变式 + 托管目标归一化(与 load() 同一套) ----------
@@ -1533,7 +1533,7 @@ class NodeConfigStore implements ConfigStore {
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[ConfigScope, unknown]> = [];
 			if (subscriptions || replaced.changed) writes.push(["subscriptions", replaced.next]);
-			if (connections) writes.push(["adapters", effConnections]);
+			if (connections) writes.push(["connections", effConnections]);
 			if (targets || synced.changed) writes.push(["targets", synced.next]);
 
 			const backups: Array<[string, string]> = [];
@@ -1563,8 +1563,8 @@ class NodeConfigStore implements ConfigStore {
 			}
 			if (connections) {
 				this.connections = effConnections;
-				this.touch("adapters");
-				touched.push("adapters");
+				this.touch("connections");
+				touched.push("connections");
 			}
 			if (targets || synced.changed) {
 				this.targets = synced.next;
@@ -1590,7 +1590,7 @@ class NodeConfigStore implements ConfigStore {
 	private runAllScopes<T>(task: () => Promise<T>): Promise<T> {
 		return this.runScoped("globals", () =>
 			this.runScoped("subscriptions", () =>
-				this.runScoped("adapters", () => this.runScoped("targets", task)),
+				this.runScoped("connections", () => this.runScoped("targets", task)),
 			),
 		);
 	}
@@ -1628,7 +1628,7 @@ class NodeConfigStore implements ConfigStore {
 }
 
 function parseAll(scope: "subscriptions", items: readonly Subscription[]): Subscription[];
-function parseAll(scope: "adapters", items: readonly Connection[]): Connection[];
+function parseAll(scope: "connections", items: readonly Connection[]): Connection[];
 function parseAll(scope: "targets", items: readonly PushTarget[]): PushTarget[];
 /**
  * 逐条重新校验一个分区。入参虽然带着类型,但它来自备份文件 / 磁盘 JSON —— 那个类型
@@ -1638,7 +1638,7 @@ function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
 	const schema =
 		scope === "subscriptions"
 			? SubscriptionSchema
-			: scope === "adapters"
+			: scope === "connections"
 				? ConnectionSchema
 				: PushTargetSchema;
 	return items.map((item, idx) => {
