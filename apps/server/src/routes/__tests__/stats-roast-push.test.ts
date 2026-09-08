@@ -41,7 +41,7 @@ interface StubOpts {
 	renderThrows?: boolean;
 	/** 让投递失败。 */
 	sendFails?: boolean;
-	targets?: Array<{ id: string; enabled?: boolean; adapterId?: string }>;
+	targets?: Array<{ id: string; enabled?: boolean; connectionId?: string }>;
 }
 
 const ADAPTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -79,11 +79,11 @@ function makeDeps(opts: StubOpts = {}) {
 				},
 			}),
 			// 投递前会看目标与适配器是不是停用了(停用 = 跳过),所以夹具里的目标得像真的一样
-			// 带着 enabled 与 adapterId,不然全被当成停用、一条都发不出去。
+			// 带着 enabled 与 connectionId,不然全被当成停用、一条都发不出去。
 			getTargets: () =>
 				(opts.targets ?? [{ id: "11111111-1111-4111-8111-111111111111" }]).map((t) => ({
 					enabled: true,
-					adapterId: ADAPTER,
+					connectionId: ADAPTER,
 					...t,
 				})),
 			getConnections: () => [{ id: ADAPTER, enabled: true }],

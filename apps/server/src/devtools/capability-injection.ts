@@ -9,8 +9,8 @@ import type { PlatformAdapter } from "../platforms/types.js";
  * 不在,给它补上等于替 webhook 也声明了能力。与截流闸叠着用:`caps.wrap(gate.wrap(a))`。
  */
 export interface CapabilityInjector {
-	set(adapterId: string, caps: ConnectionCapabilities): void;
-	clear(adapterId?: string): void;
+	set(connectionId: string, caps: ConnectionCapabilities): void;
+	clear(connectionId?: string): void;
 	entries(): Array<[string, ConnectionCapabilities]>;
 	wrap(inner: PlatformAdapter): PlatformAdapter;
 }
@@ -18,12 +18,12 @@ export interface CapabilityInjector {
 export function createCapabilityInjector(): CapabilityInjector {
 	const fakes = new Map<string, ConnectionCapabilities>();
 	return {
-		set(adapterId, caps) {
-			fakes.set(adapterId, caps);
+		set(connectionId, caps) {
+			fakes.set(connectionId, caps);
 		},
-		clear(adapterId) {
-			if (adapterId === undefined) fakes.clear();
-			else fakes.delete(adapterId);
+		clear(connectionId) {
+			if (connectionId === undefined) fakes.clear();
+			else fakes.delete(connectionId);
 		},
 		entries: () => [...fakes.entries()],
 		wrap(inner) {

@@ -183,7 +183,7 @@ describe("extractPrivateMessage", () => {
 });
 
 describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析都不做", () => {
-	const meta = { adapterId: "a1", platform: "onebot" };
+	const meta = { connectionId: "a1", platform: "onebot" };
 	const priv = { post_type: "message", message_type: "private", user_id: 7, raw_message: "y" };
 	const group = { ...BASE, self_id: 1, message: [{ type: "text", data: { text: "hi" } }] };
 

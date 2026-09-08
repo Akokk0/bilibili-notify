@@ -114,7 +114,7 @@ describe("dev 路由 · 截流", () => {
 				{
 					id: "1",
 					at: 1,
-					adapterId: "ad",
+					connectionId: "ad",
 					adapterName: "A",
 					platform: "onebot",
 					targetId: "t",

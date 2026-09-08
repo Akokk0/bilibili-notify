@@ -139,11 +139,11 @@ export interface EnginesRuntime extends Disposable {
 	 * Out-of-band reachability probe for `/api/adapters/:id/test`. 顺路把还没探出来的平台
 	 * 能力再探一次(与定时健康探测同一条路)。
 	 */
-	probeConnection(adapterId: string): Promise<ProbeResult>;
+	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/** 适配器的平台能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
-	connectionCapabilities(adapterId: string): ConnectionCapabilities | undefined;
+	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的适配器寻址。 */
-	probeConnectionCapabilities(adapterId: string): Promise<ConnectionCapabilities | undefined>;
+	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
 	/**
@@ -679,13 +679,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 * 时候没连上,能力会停在「未探测」;开机、每五分钟、主人点「测试」都从这儿再给一次机会。
 	 * 只补「未探测」的,已经有答案的不重探 —— 那是 reconcile 的事。
 	 */
-	async function probeConnectionAndCapabilities(adapterId: string): Promise<ProbeResult> {
-		const result = await sink.probeConnection(adapterId);
+	async function probeConnectionAndCapabilities(connectionId: string): Promise<ProbeResult> {
+		const result = await sink.probeConnection(connectionId);
 		// 连都连不上的适配器,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
 		// 而这条路是每五分钟一轮、逐个 await 的,离线适配器会把整轮时间翻倍。
 		if (result.ok === false) return result;
-		if (sink.connectionCapabilities(adapterId)?.miniAppCard.state === "unknown") {
-			await sink.probeConnectionCapabilities(adapterId);
+		if (sink.connectionCapabilities(connectionId)?.miniAppCard.state === "unknown") {
+			await sink.probeConnectionCapabilities(connectionId);
 		}
 		return result;
 	}
@@ -1018,9 +1018,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => listLiveRooms(live),
-		probeConnection: (adapterId: string) => probeConnectionAndCapabilities(adapterId),
-		connectionCapabilities: (adapterId: string) => sink.connectionCapabilities(adapterId),
-		probeConnectionCapabilities: (adapterId: string) => sink.probeConnectionCapabilities(adapterId),
+		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
+		connectionCapabilities: (connectionId: string) => sink.connectionCapabilities(connectionId),
+		probeConnectionCapabilities: (connectionId: string) =>
+			sink.probeConnectionCapabilities(connectionId),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({

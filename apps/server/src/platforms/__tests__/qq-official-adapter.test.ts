@@ -49,7 +49,7 @@ function qqTarget(scope: string, address: string, parentAddress?: string): PushT
 	return {
 		id: "t1",
 		name: "目标",
-		adapterId: "a1",
+		connectionId: "a1",
 		kind: "session",
 		platform: "qq-official",
 		scope,

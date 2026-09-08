@@ -37,7 +37,7 @@ function target(id: string, name: string, over: Partial<PushTarget> = {}): PushT
 	return {
 		id,
 		name,
-		adapterId: "11111111-1111-4111-8111-111111111111",
+		connectionId: "11111111-1111-4111-8111-111111111111",
 		scope: "group",
 		enabled: true,
 		kind: "session",
@@ -294,8 +294,8 @@ describe("LinkParsingSettings", () => {
 
 		it("群所在的适配器不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {
 			renderCard(draftWith(), vi.fn(), [
-				target(T_A, "群 A", { adapterId: A_OB2 } as never),
-				target(T_B, "群 B", { adapterId: A_OB } as never),
+				target(T_A, "群 A", { connectionId: A_OB2 } as never),
+				target(T_B, "群 B", { connectionId: A_OB } as never),
 			]);
 			openGroups();
 			expect(row("群 A").getByText(/会回落图片卡/)).toBeTruthy();

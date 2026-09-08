@@ -107,7 +107,7 @@ export interface DevCapturedDelivery {
 	id: string;
 	/** 拦下的时刻(ms)。 */
 	at: number;
-	adapterId: string;
+	connectionId: string;
 	adapterName: string;
 	platform: string;
 	targetId: string;

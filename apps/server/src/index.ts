@@ -557,8 +557,8 @@ export async function startStandaloneServer(
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
 		// 回到来源群用的是收到那一帧的适配器:配置里那条 + 它所属平台的实现,两者都在才发得出。
-		const replyRoute = (platform: LinkSourcePlatform, adapterId: string) => {
-			const connection = runtime.configStore.getConnections().find((a) => a.id === adapterId);
+		const replyRoute = (platform: LinkSourcePlatform, connectionId: string) => {
+			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
 			const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
 			return connection && platformAdapter ? { connection, platformAdapter } : null;
 		};
@@ -572,18 +572,23 @@ export async function startStandaloneServer(
 			presentation: () => runtimeEngines.linkCardPresentation(),
 			// 能力走 sink 那条适配器寻址(健康探测与 /api/adapters/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
-			capabilities: ({ adapterId }) => runtimeEngines.connectionCapabilities(adapterId),
-			probeCapabilities: ({ adapterId }) => runtimeEngines.probeConnectionCapabilities(adapterId),
-			send: async ({ platform, adapterId, groupId }, payload) => {
-				const route = replyRoute(platform, adapterId);
+			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
+			probeCapabilities: ({ connectionId }) =>
+				runtimeEngines.probeConnectionCapabilities(connectionId),
+			send: async ({ platform, connectionId, groupId }, payload) => {
+				const route = replyRoute(platform, connectionId);
 				if (!route) {
-					return { ok: false, latencyMs: 0, err: `adapter not found: adapterId=${adapterId}` };
+					return {
+						ok: false,
+						latencyMs: 0,
+						err: `adapter not found: connectionId=${connectionId}`,
+					};
 				}
 				const { connection, platformAdapter } = route;
 				const common = {
 					id: `link-reply:${groupId}`,
 					name: "链接解析回复",
-					adapterId,
+					connectionId,
 					kind: "session" as const,
 					scope: "group" as const,
 					enabled: true,
@@ -597,7 +602,7 @@ export async function startStandaloneServer(
 		// 只有链接解析关心(回到来源群要按平台造目标),所以在这儿补上。
 		onInboundPrivate = (msg, meta) => void commandDispatcher.handleMessage(msg, meta);
 		onInboundGroup = (platform, msg, meta) =>
-			void linkParser.handleMessage({ platform, adapterId: meta.adapterId, ...msg });
+			void linkParser.handleMessage({ platform, connectionId: meta.connectionId, ...msg });
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {

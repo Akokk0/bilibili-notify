@@ -23,7 +23,7 @@ const MASTER = "10001";
 const STRANGER = "20002";
 const PLATFORM = "onebot";
 /** 入站帧的来源。鉴权比的是三坐标,平台这一格得跟主人那条私聊对得上。 */
-const META = { adapterId: "a1", platform: PLATFORM };
+const META = { connectionId: "a1", platform: PLATFORM };
 
 /** `null` = 主人私聊 user_id 没配上(不能用 undefined:默认参数会把它换成 MASTER)。 */
 function makeDispatcher(
@@ -75,7 +75,7 @@ describe("鉴权门", () => {
 		// 完全无关的原因变绿。
 		await dispatcher.handleMessage(
 			{ userId: MASTER, text: "/状态" },
-			{ adapterId: "a2", platform: "qq-official" },
+			{ connectionId: "a2", platform: "qq-official" },
 		);
 
 		expect(run).not.toHaveBeenCalled();

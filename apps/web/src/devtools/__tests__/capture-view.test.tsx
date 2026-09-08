@@ -24,7 +24,7 @@ const CAPTURES: DevCapturesDTO = {
 		{
 			id: "1",
 			at: Date.parse("2026-09-06T08:01:02.000Z"),
-			adapterId: "ad-1",
+			connectionId: "ad-1",
 			adapterName: "家里的 NapCat",
 			platform: "onebot",
 			targetId: "t-1",
@@ -37,7 +37,7 @@ const CAPTURES: DevCapturesDTO = {
 		{
 			id: "2",
 			at: Date.parse("2026-09-06T08:02:00.000Z"),
-			adapterId: "ad-1",
+			connectionId: "ad-1",
 			adapterName: "家里的 NapCat",
 			platform: "onebot",
 			targetId: "t-2",

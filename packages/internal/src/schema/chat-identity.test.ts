@@ -19,7 +19,7 @@ const target = (over: Record<string, unknown>): PushTarget =>
 	({
 		id: UUID_A,
 		name: "主人",
-		adapterId: UUID_B,
+		connectionId: UUID_B,
 		enabled: true,
 		...over,
 	}) as unknown as PushTarget;

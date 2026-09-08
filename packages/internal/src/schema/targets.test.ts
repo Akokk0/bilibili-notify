@@ -363,7 +363,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "ob:111",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
@@ -377,7 +377,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:1",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "endpoint",
 			platform: "feishu",
 			scope: "channel",
@@ -390,7 +390,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:managed",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "endpoint",
 			platform: "feishu",
 			scope: "channel",
@@ -404,7 +404,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "wh:bad-managed",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "endpoint",
 			platform: "feishu",
 			scope: "channel",
@@ -418,7 +418,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "onebot:managed",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
@@ -436,7 +436,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "桥上的 telegram 群",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "telegram",
 			scope: "group",
@@ -451,7 +451,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "没平台",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "",
 			scope: "group",
@@ -461,7 +461,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects onebot target missing adapterId", () => {
+	it("rejects onebot target missing connectionId", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "bad",
@@ -482,7 +482,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "老形状",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
@@ -496,7 +496,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "待填",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
@@ -550,7 +550,7 @@ describe("QQOfficial target schema", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:频道",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "qq-official",
 			scope: "channel",
@@ -565,7 +565,7 @@ describe("QQOfficial target schema", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:群",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "qq-official",
 			scope: "group",
@@ -579,7 +579,7 @@ describe("QQOfficial target schema", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:私聊",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "qq-official",
 			scope: "private",
@@ -593,7 +593,7 @@ describe("QQOfficial target schema", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "qq:老形状",
-			adapterId: UUID_A,
+			connectionId: UUID_A,
 			kind: "session",
 			platform: "qq-official",
 			scope: "group",

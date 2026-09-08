@@ -25,7 +25,7 @@ function target(id: string, name: string, enabled: boolean): PushTarget {
 	return {
 		id,
 		name,
-		adapterId: "11111111-1111-4111-8111-111111111111",
+		connectionId: "11111111-1111-4111-8111-111111111111",
 		scope: "group",
 		enabled,
 		kind: "session",

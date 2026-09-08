@@ -13,7 +13,7 @@ const SUB_ID = "11111111-1111-4111-8111-111111111111";
 const target = {
 	id: "22222222-2222-4222-8222-222222222222",
 	name: "群",
-	adapterId: "a",
+	connectionId: "a",
 	platform: "onebot",
 	scope: "group",
 	enabled: true,

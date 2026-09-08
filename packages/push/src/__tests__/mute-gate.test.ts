@@ -38,7 +38,7 @@ function makeSink(): { sink: NotificationSink; calls: string[] } {
 			calls.push(targetId);
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		resolve: (id) => ({ id, name: id, adapterId: "a" }) as unknown as PushTarget,
+		resolve: (id) => ({ id, name: id, connectionId: "a" }) as unknown as PushTarget,
 	};
 	return { sink, calls };
 }
@@ -54,7 +54,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 	};
 }
 
-const MASTER = { id: "master", name: "master", adapterId: "a" } as unknown as PushTarget;
+const MASTER = { id: "master", name: "master", connectionId: "a" } as unknown as PushTarget;
 
 function setup(muted: () => boolean) {
 	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });

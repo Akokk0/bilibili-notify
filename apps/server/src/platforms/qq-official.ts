@@ -331,11 +331,11 @@ const QQ_DISCOVERY_MAX_PER_CONNECTION = 50;
  */
 export interface QQSessionRegistry {
 	/** 记一次发现:同 scope+openid 去重(更新 lastSeen/hint 并移到最前),超容丢最旧。 */
-	record(adapterId: string, session: QQDiscoveredSession, atMs: number): void;
+	record(connectionId: string, session: QQDiscoveredSession, atMs: number): void;
 	/** 列出某 adapter 最近发现的会话(最近优先)。 */
-	list(adapterId: string): QQDiscoveredEntry[];
+	list(connectionId: string): QQDiscoveredEntry[];
 	/** 删除某 adapter 的全部发现(reconcile 删该 adapter 时)。 */
-	clear(adapterId: string): void;
+	clear(connectionId: string): void;
 }
 
 export function createQQSessionRegistry(opts?: { maxPerConnection?: number }): QQSessionRegistry {
@@ -344,21 +344,21 @@ export function createQQSessionRegistry(opts?: { maxPerConnection?: number }): Q
 	const keyOf = (s: { scope: string; openid: string }) => `${s.scope}:${s.openid}`;
 
 	return {
-		record(adapterId, session, atMs) {
-			const prev = byConnection.get(adapterId) ?? [];
+		record(connectionId, session, atMs) {
+			const prev = byConnection.get(connectionId) ?? [];
 			// 后到的事件没带 displayHint(GROUP_ADD_ROBOT 不带用户名)时留着先前记住的那个:
 			// 群事件本来就不带群名,那个 hint 是面板上唯一能认的东西。带了就以新的为准。
 			const known = prev.find((e) => keyOf(e) === keyOf(session));
 			const next = prev.filter((e) => keyOf(e) !== keyOf(session));
 			next.unshift({ ...known, ...session, lastSeenMs: atMs });
 			if (next.length > max) next.length = max;
-			byConnection.set(adapterId, next);
+			byConnection.set(connectionId, next);
 		},
-		list(adapterId) {
-			return [...(byConnection.get(adapterId) ?? [])];
+		list(connectionId) {
+			return [...(byConnection.get(connectionId) ?? [])];
 		},
-		clear(adapterId) {
-			byConnection.delete(adapterId);
+		clear(connectionId) {
+			byConnection.delete(connectionId);
 		},
 	};
 }
@@ -380,7 +380,7 @@ function qqRawToString(raw: RawData): string {
 }
 
 export interface QQGatewayConnOptions {
-	adapterId: string;
+	connectionId: string;
 	/** 解析 wss 网关地址(REST GET /gateway → url,沙箱改写)。每次连接前调,便于换 host。 */
 	resolveGatewayUrl(): Promise<string>;
 	/** 取当前 App Access Token(token manager 已缓存/刷新),用于 IDENTIFY/RESUME。 */
@@ -424,7 +424,7 @@ export interface QQGatewayConn {
  * openid 与监听审核,不回消息。
  */
 export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
-	const { adapterId, serviceCtx, logger } = opts;
+	const { connectionId, serviceCtx, logger } = opts;
 	const intents = opts.intents ?? QQ_PUSH_INTENTS;
 	const reconnectBase = opts.reconnectBaseMs ?? QQ_RECONNECT_BASE_MS;
 
@@ -449,7 +449,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		if (!acked) {
 			// 上一拍心跳没收到 ACK = 僵尸连接,关掉触发重连(对齐 @satorijs)。
-			logger.warn(`[qq] adapter=${adapterId} 心跳无 ACK,判定僵尸连接,关闭重连`);
+			logger.warn(`[qq] adapter=${connectionId} 心跳无 ACK,判定僵尸连接,关闭重连`);
 			try {
 				ws.close();
 			} catch {
@@ -471,7 +471,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			token = await opts.getToken();
 		} catch (e) {
 			state.lastError = `getToken 失败: ${String(e)}`;
-			logger.warn(`[qq] adapter=${adapterId} ${state.lastError}`);
+			logger.warn(`[qq] adapter=${connectionId} ${state.lastError}`);
 			try {
 				ws?.close();
 			} catch {
@@ -506,7 +506,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			sink(msg);
 		} catch (err) {
 			logger.warn(
-				`[qq] adapter=${adapterId} 处理入站${what}失败: ${err instanceof Error ? err.message : String(err)}`,
+				`[qq] adapter=${connectionId} 处理入站${what}失败: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -518,17 +518,17 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (t === "READY") {
 			if (typeof d.session_id === "string") sessionId = d.session_id;
 			online = true;
-			logger.info(`[qq] adapter=${adapterId} 网关已就绪(READY)`);
+			logger.info(`[qq] adapter=${connectionId} 网关已就绪(READY)`);
 			return;
 		}
 		if (t === "RESUMED") {
 			online = true;
 			if (opts.shouldLogReconnects?.())
-				logger.info(`[qq] adapter=${adapterId} 网关已续连(RESUMED)`);
+				logger.info(`[qq] adapter=${connectionId} 网关已续连(RESUMED)`);
 			return;
 		}
 		if (t === "MESSAGE_AUDIT_REJECT") {
-			logger.warn(`[qq] adapter=${adapterId} 消息审核未通过(MESSAGE_AUDIT_REJECT)`);
+			logger.warn(`[qq] adapter=${connectionId} 消息审核未通过(MESSAGE_AUDIT_REJECT)`);
 			return;
 		}
 		if (typeof t === "string") {
@@ -555,11 +555,11 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			case QQ_OPCODE.INVALID_SESSION:
 				sessionId = "";
 				lastSeq = null;
-				logger.warn(`[qq] adapter=${adapterId} 会话失效(INVALID_SESSION),将重新鉴权`);
+				logger.warn(`[qq] adapter=${connectionId} 会话失效(INVALID_SESSION),将重新鉴权`);
 				break;
 			case QQ_OPCODE.RECONNECT:
 				if (opts.shouldLogReconnects?.())
-					logger.warn(`[qq] adapter=${adapterId} 服务端要求重连(RECONNECT)`);
+					logger.warn(`[qq] adapter=${connectionId} 服务端要求重连(RECONNECT)`);
 				try {
 					ws?.close();
 				} catch {
@@ -1053,7 +1053,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		const base = qqApiBase(cfg.sandbox);
 		const logReconnectsBox = { value: cfg.logReconnects };
 		const conn = createQQGatewayConn({
-			adapterId: connection.id,
+			connectionId: connection.id,
 			resolveGatewayUrl: async () => {
 				const token = await tm.getToken();
 				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
@@ -1066,13 +1066,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			...(opts.onInboundPrivate
 				? {
 						onInboundPrivate: (m: InboundPrivateMessage) =>
-							opts.onInboundPrivate?.(m, { adapterId: connection.id, platform: "qq-official" }),
+							opts.onInboundPrivate?.(m, { connectionId: connection.id, platform: "qq-official" }),
 					}
 				: {}),
 			...(opts.onInboundGroup
 				? {
 						onInboundGroup: (m: InboundGroupMessage) =>
-							opts.onInboundGroup?.(m, { adapterId: connection.id, platform: "qq-official" }),
+							opts.onInboundGroup?.(m, { connectionId: connection.id, platform: "qq-official" }),
 					}
 				: {}),
 			serviceCtx,

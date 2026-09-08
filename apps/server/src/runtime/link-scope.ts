@@ -1,7 +1,7 @@
 /**
  * 链接解析的逐群答案 —— 把「默认行 + 逐群例外」对上入站帧里的群。
  *
- * 例外引用的是推送目标(`PushTarget.id`),入站帧带的却是 `平台 + adapterId + 群地址`;
+ * 例外引用的是推送目标(`PushTarget.id`),入站帧带的却是 `平台 + connectionId + 群地址`;
  * 两边在这里对上。结果是一张表,键与解析器给冷却表用的 scope 键同一个格式
  * ({@link linkScopeKey}),解析器拿到消息只做一次 `policyFor`。
  *
@@ -22,8 +22,8 @@ import {
 } from "@bilibili-notify/internal";
 
 /** 一个群在链接解析里的身份:平台、来自哪条连接、群地址(OneBot 群号 / 官机群 openid)。 */
-export function linkScopeKey(platform: string, adapterId: string, groupId: string): string {
-	return `${platform}:${adapterId}:${groupId}`;
+export function linkScopeKey(platform: string, connectionId: string, groupId: string): string {
+	return `${platform}:${connectionId}:${groupId}`;
 }
 
 export interface LinkPolicyTable {
@@ -47,7 +47,7 @@ export function resolveLinkParsingPolicies({
 		if (target.scope !== "group") continue;
 		const groupId = groupAddressOf(target);
 		if (!groupId) continue;
-		const key = linkScopeKey(target.platform, target.adapterId, groupId);
+		const key = linkScopeKey(target.platform, target.connectionId, groupId);
 		if (byKey.has(key)) continue;
 		const policy = linkParsingFor(config, target.id);
 		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, connections) });

@@ -487,7 +487,7 @@ export interface EnableRenderingResponse {
 
 // ---- /api/qq ----------------------------------------------------------------
 
-/** `GET /api/qq/sessions/:adapterId` 单条 —— 网关入站事件捞到的群/C2C 会话。 */
+/** `GET /api/qq/sessions/:connectionId` 单条 —— 网关入站事件捞到的群/C2C 会话。 */
 export interface QQDiscoveredEntry {
 	scope: "group" | "private";
 	/** group_openid(群)或用户 openid(C2C)。 */

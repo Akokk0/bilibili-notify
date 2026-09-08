@@ -58,7 +58,7 @@ function makeSink(failOn?: (targetId: string, nthCallForTarget: number) => boole
 			({
 				id,
 				name: id,
-				adapterId: "a",
+				connectionId: "a",
 				platform: "test",
 				scope: "group",
 				enabled: true,

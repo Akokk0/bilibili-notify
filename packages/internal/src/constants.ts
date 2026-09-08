@@ -793,11 +793,11 @@ export function platformSupportsAtAll(platform: string): boolean {
  * 跳过。入参按形状收,免得为了两个类型把 schema 拖进这个零依赖模块。
  */
 export function isTargetPaused(
-	target: { enabled: boolean; adapterId: string },
+	target: { enabled: boolean; connectionId: string },
 	connections: readonly { id: string; enabled: boolean }[],
 ): boolean {
 	if (!target.enabled) return true;
-	return !connections.find((a) => a.id === target.adapterId)?.enabled;
+	return !connections.find((a) => a.id === target.connectionId)?.enabled;
 }
 
 /**

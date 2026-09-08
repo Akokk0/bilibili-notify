@@ -9,7 +9,7 @@ import type { RouteDeps } from "./types.js";
  *
  * An adapter represents a connection instance (an OneBot HTTP endpoint, a
  * webhook URL, the dashboard WS bridge). PushTargets reference adapters via
- * `adapterId`. Deleting an adapter referenced by any target is rejected with
+ * `connectionId`. Deleting an adapter referenced by any target is rejected with
  * 409 so the caller can detach first.
  */
 export function createConnectionsRoute(deps: RouteDeps): Hono {

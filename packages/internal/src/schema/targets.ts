@@ -266,7 +266,7 @@ export type PushTargetKind = z.infer<typeof PushTargetKindSchema>;
 const PushTargetCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
-	adapterId: z.uuid(),
+	connectionId: z.uuid(),
 	scope: PushTargetScopeSchema,
 	enabled: z.boolean(),
 	/** 生命周期由 adapter 管理的系统目标；用户不直接编辑 / 删除。 */

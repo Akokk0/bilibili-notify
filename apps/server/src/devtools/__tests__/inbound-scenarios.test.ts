@@ -17,7 +17,7 @@ const TARGETS = [
 	{
 		id: "t-p",
 		name: "主人",
-		adapterId: "ad-ob",
+		connectionId: "ad-ob",
 		platform: "onebot",
 		scope: "private",
 		enabled: true,
@@ -27,7 +27,7 @@ const TARGETS = [
 	{
 		id: "t-g",
 		name: "测试群",
-		adapterId: "ad-ob",
+		connectionId: "ad-ob",
 		platform: "onebot",
 		scope: "group",
 		enabled: true,
@@ -37,7 +37,7 @@ const TARGETS = [
 	{
 		id: "t-q",
 		name: "官机群",
-		adapterId: "ad-qq",
+		connectionId: "ad-qq",
 		platform: "qq-official",
 		scope: "group",
 		enabled: true,
@@ -102,7 +102,7 @@ describe("inbound.command", () => {
 		const res = await reg.run("inbound.command", { text: "/status" });
 		expect(priv).toHaveBeenCalledWith(
 			{ userId: "10001", text: "/status" },
-			{ adapterId: "ad-ob", platform: "onebot" },
+			{ connectionId: "ad-ob", platform: "onebot" },
 		);
 		expect(res.summary).toContain("/status");
 	});
@@ -112,7 +112,7 @@ describe("inbound.command", () => {
 		await reg.run("inbound.command", { userId: "20002", text: "/help" });
 		expect(priv).toHaveBeenCalledWith(
 			{ userId: "20002", text: "/help" },
-			{ adapterId: "ad-ob", platform: "onebot" },
+			{ connectionId: "ad-ob", platform: "onebot" },
 		);
 	});
 
@@ -136,7 +136,7 @@ describe("inbound.link", () => {
 				cardLinks: [],
 				miniAppCardLinks: [],
 			}),
-			{ adapterId: "ad-ob", platform: "onebot" },
+			{ connectionId: "ad-ob", platform: "onebot" },
 		);
 		expect(res.summary).toContain("88888");
 	});
@@ -147,7 +147,7 @@ describe("inbound.link", () => {
 		expect(group).toHaveBeenCalledWith(
 			"qq-official",
 			expect.objectContaining({ groupId: "OPENID-9", text: "BV1xx" }),
-			{ adapterId: "ad-qq", platform: "qq-official" },
+			{ connectionId: "ad-qq", platform: "qq-official" },
 		);
 	});
 

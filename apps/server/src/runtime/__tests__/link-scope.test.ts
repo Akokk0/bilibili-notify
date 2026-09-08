@@ -26,7 +26,7 @@ function onebotGroup(id: string, groupId: string, over: Partial<PushTarget> = {}
 	return {
 		id,
 		name: `群 ${groupId}`,
-		adapterId: ONEBOT_ADAPTER,
+		connectionId: ONEBOT_ADAPTER,
 		scope: "group",
 		enabled: true,
 		kind: "session",
@@ -40,7 +40,7 @@ function onebotPrivate(id: string, userId: string): PushTarget {
 	return {
 		id,
 		name: `私聊 ${userId}`,
-		adapterId: ONEBOT_ADAPTER,
+		connectionId: ONEBOT_ADAPTER,
 		scope: "private",
 		enabled: true,
 		kind: "session",
@@ -53,7 +53,7 @@ function qqGroup(id: string, groupOpenid: string, over: Partial<PushTarget> = {}
 	return {
 		id,
 		name: `官机群 ${groupOpenid}`,
-		adapterId: QQ_ADAPTER,
+		connectionId: QQ_ADAPTER,
 		scope: "group",
 		enabled: true,
 		kind: "session",

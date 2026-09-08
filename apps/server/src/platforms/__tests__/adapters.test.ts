@@ -129,7 +129,7 @@ function obConnection(over: Record<string, unknown> = {}): Connection {
 	} as unknown as Connection;
 }
 
-/** 正向 WS 形态的 onebot adapter(id 与 obTarget.adapterId 同为 a1)。 */
+/** 正向 WS 形态的 onebot adapter(id 与 obTarget.connectionId 同为 a1)。 */
 function obWsConnection(port: number, over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
@@ -242,7 +242,7 @@ function obTarget(over: Record<string, unknown> = {}): PushTarget {
 	return {
 		id: "t1",
 		name: "群",
-		adapterId: "a1",
+		connectionId: "a1",
 		kind: "session",
 		platform: "onebot",
 		scope: "group",
@@ -1460,7 +1460,7 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 	return {
 		id: "wt1",
 		name: "团队群",
-		adapterId: "w1",
+		connectionId: "w1",
 		kind: "endpoint",
 		platform: "generic",
 		scope: "group",
@@ -1867,8 +1867,8 @@ describe("webhook — isAvailable / probe", () => {
 // 得把自己的 id 一并带上,不然上层无从知道该用哪条连接回话。
 // ---------------------------------------------------------------------------
 
-describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", () => {
-	it("正向 WS:群消息帧 → onInboundGroup(平台中立形状 + {adapterId})", async () => {
+describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId", () => {
+	it("正向 WS:群消息帧 → onInboundGroup(平台中立形状 + {connectionId})", async () => {
 		const bot = await startFakeBotServer();
 		const onInboundGroup = vi.fn();
 		const onInboundPrivate = vi.fn();
@@ -1896,7 +1896,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", (
 				cardLinks: [],
 				miniAppCardLinks: [],
 			},
-			{ adapterId: "a1", platform: "onebot" },
+			{ connectionId: "a1", platform: "onebot" },
 		);
 		expect(onInboundPrivate).not.toHaveBeenCalled();
 		ad.dispose?.();
@@ -1922,7 +1922,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", (
 		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
 		expect(onInboundPrivate).toHaveBeenCalledWith(
 			{ userId: "456", text: "y" },
-			{ adapterId: "a1", platform: "onebot" },
+			{ connectionId: "a1", platform: "onebot" },
 		);
 		// 还活着的直接证据:上一条让消费者抛了,再来一条照样送到。
 		bot.send(

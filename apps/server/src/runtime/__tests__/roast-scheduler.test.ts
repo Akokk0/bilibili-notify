@@ -90,8 +90,8 @@ function memDrafts() {
 let globals: GlobalConfig;
 let tellMaster: ReturnType<typeof vi.fn>;
 let tellMasterPayload: ReturnType<typeof vi.fn>;
-/** 目标表。跑之前会看目标是不是停用了,所以夹具里的目标得带 enabled 与 adapterId。 */
-let targetsTable: Array<{ id: string; enabled: boolean; adapterId: string }>;
+/** 目标表。跑之前会看目标是不是停用了,所以夹具里的目标得带 enabled 与 connectionId。 */
+let targetsTable: Array<{ id: string; enabled: boolean; connectionId: string }>;
 const ADAPTER = "a1";
 
 function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
@@ -127,8 +127,8 @@ beforeEach(() => {
 	cronMock.instances.length = 0;
 	globals = makeDefaultGlobalConfig();
 	targetsTable = [
-		{ id: "t1", enabled: true, adapterId: ADAPTER },
-		{ id: "t2", enabled: true, adapterId: ADAPTER },
+		{ id: "t1", enabled: true, connectionId: ADAPTER },
+		{ id: "t2", enabled: true, connectionId: ADAPTER },
 	];
 	generateBoardRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });
 	generateSoloRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });

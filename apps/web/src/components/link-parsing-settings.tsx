@@ -181,7 +181,7 @@ export function LinkParsingSettings({
 										target={t}
 										cfg={cfg}
 										onPatch={onPatch}
-										support={capabilities[t.adapterId]?.miniAppCard}
+										support={capabilities[t.connectionId]?.miniAppCard}
 										paused={isTargetPaused(t, connections)}
 									/>
 								))

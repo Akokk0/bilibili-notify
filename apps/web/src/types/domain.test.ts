@@ -97,7 +97,7 @@ describe("webhook adapter factories", () => {
 		const connection = makeEmptyConnection("wecom", "团队 webhook");
 		const target = makeEmptyTarget(connection, "团队 webhook");
 		expect(target).toMatchObject({
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "endpoint",
 			platform: "wecom",
 			scope: "channel",
@@ -154,7 +154,7 @@ describe("qq-official adapter factories", () => {
 		const connection = makeEmptyConnection("qq-official", "QQ");
 		const target = makeEmptyTarget(connection, "测试群");
 		expect(target).toMatchObject({
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session",
 			platform: "qq-official",
 			scope: "group",

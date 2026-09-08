@@ -47,14 +47,14 @@ export type LinkSourcePlatform = (typeof INBOUND_CAPABLE_PLATFORMS)[number];
 /** 回复往哪儿发:平台决定用哪个适配器,`groupId` 在 OneBot 是群号、在官机是群 openid。 */
 export interface LinkReplyDestination {
 	platform: LinkSourcePlatform;
-	adapterId: string;
+	connectionId: string;
 	groupId: string;
 }
 
 /** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接来。 */
 export interface InboundLinkMessage extends InboundGroupMessage {
 	platform: LinkSourcePlatform;
-	adapterId: string;
+	connectionId: string;
 }
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
@@ -114,9 +114,9 @@ export interface LinkParser {
 export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const now = opts.now ?? (() => Date.now());
 	const limits: LinkLimits = { ...LINK_LIMITS, ...opts.limits };
-	/** `平台:adapterId:群:视频` → 上次开始处理的时刻。冷却关着(0)时不碰它。 */
+	/** `平台:connectionId:群:视频` → 上次开始处理的时刻。冷却关着(0)时不碰它。 */
 	const lastSeen = new RecencyTable<number>(limits.tableCap);
-	/** `平台:adapterId:群` → 最近一分钟里开始处理的时刻。 */
+	/** `平台:connectionId:群` → 最近一分钟里开始处理的时刻。 */
 	const groupStarts = new RecencyTable<number[]>(limits.tableCap);
 	/** 全局正在处理(取信息 / 渲染 / 发送)的链接数。 */
 	let inflight = 0;
@@ -250,12 +250,12 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			if (!config.enabled) return;
 			// 逐群答案在渲染器之前、记账之前:不解析的群什么都不该留下 —— 冷却也不记,
 			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
-			const scope = linkScopeKey(msg.platform, msg.adapterId, msg.groupId);
+			const scope = linkScopeKey(msg.platform, msg.connectionId, msg.groupId);
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
 			const dest: LinkReplyDestination = {
 				platform: msg.platform,
-				adapterId: msg.adapterId,
+				connectionId: msg.connectionId,
 				groupId: msg.groupId,
 			};
 			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这个适配器签得了,签不了就

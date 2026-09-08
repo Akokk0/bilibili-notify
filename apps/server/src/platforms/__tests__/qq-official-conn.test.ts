@@ -98,7 +98,7 @@ async function startFakeGateway(opts?: { heartbeatInterval?: number }): Promise<
 
 function connOpts(gw: FakeGateway, over: Partial<Parameters<typeof createQQGatewayConn>[0]> = {}) {
 	return {
-		adapterId: "a1",
+		connectionId: "a1",
 		resolveGatewayUrl: async () => gw.url,
 		getToken: async () => "ACCESS",
 		onDiscovered: vi.fn(),

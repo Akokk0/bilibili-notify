@@ -28,11 +28,11 @@ const BOARD: BoardLike = {
 	scores: [],
 };
 
-function target(id: string, adapterId: string, enabled: boolean): PushTarget {
+function target(id: string, connectionId: string, enabled: boolean): PushTarget {
 	return {
 		id,
 		name: id.slice(0, 4),
-		adapterId,
+		connectionId,
 		scope: "group",
 		enabled,
 		platform: "onebot",

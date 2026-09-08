@@ -547,10 +547,10 @@ class WsChannel {
  */
 function inboundSink(
 	sinks: OnebotInboundSinks,
-	adapterId: string,
+	connectionId: string,
 ): ((frame: Record<string, unknown>) => void) | undefined {
 	if (!sinks.onInboundPrivate && !sinks.onInboundGroup) return undefined;
-	return (frame) => routeInboundFrame(frame, { adapterId, platform: "onebot" }, sinks);
+	return (frame) => routeInboundFrame(frame, { connectionId, platform: "onebot" }, sinks);
 }
 
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
@@ -563,7 +563,7 @@ class ForwardConn {
 	lastError: string | null = null;
 
 	constructor(
-		readonly adapterId: string,
+		readonly connectionId: string,
 		readonly fingerprint: string,
 		private readonly url: string,
 		private readonly headers: Record<string, string>,
@@ -593,11 +593,11 @@ class ForwardConn {
 			this.lastError = null;
 			this.channel = new WsChannel(
 				ws,
-				`fwd:${this.adapterId}`,
+				`fwd:${this.connectionId}`,
 				this.serviceCtx,
-				inboundSink(this.sinks, this.adapterId),
+				inboundSink(this.sinks, this.connectionId),
 			);
-			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
+			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.connectionId} url=${this.url}`);
 			this.onChannelReady?.();
 		});
 		ws.on("error", (err: Error) => {
@@ -647,7 +647,7 @@ class ReverseListener {
 	private readonly bots = new Set<{ ws: WebSocket; channel: WsChannel }>();
 
 	constructor(
-		readonly adapterId: string,
+		readonly connectionId: string,
 		readonly port: number,
 		private readonly accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
@@ -670,7 +670,7 @@ class ReverseListener {
 		this.wss = wss;
 		wss.on("listening", () => {
 			this.bindError = null;
-			this.log.info(`[onebot] 反向 WS 监听就绪 adapter=${this.adapterId} port=${this.port}`);
+			this.log.info(`[onebot] 反向 WS 监听就绪 adapter=${this.connectionId} port=${this.port}`);
 		});
 		wss.on("error", (err: Error) => {
 			const code = (err as NodeJS.ErrnoException).code;
@@ -683,25 +683,27 @@ class ReverseListener {
 	private onConnection(ws: WebSocket, req: IncomingMessage): void {
 		if (!this.checkAuth(req)) {
 			this.log.warn(
-				`[onebot] 反向 WS 鉴权失败 adapter=${this.adapterId} port=${this.port},拒绝连接`,
+				`[onebot] 反向 WS 鉴权失败 adapter=${this.connectionId} port=${this.port},拒绝连接`,
 			);
 			ws.close(1008, "unauthorized");
 			return;
 		}
 		const channel = new WsChannel(
 			ws,
-			`rev:${this.adapterId}`,
+			`rev:${this.connectionId}`,
 			this.serviceCtx,
-			inboundSink(this.sinks, this.adapterId),
+			inboundSink(this.sinks, this.connectionId),
 		);
 		const entry = { ws, channel };
 		this.bots.add(entry);
-		this.log.info(`[onebot] 反向 WS bot 已连入 adapter=${this.adapterId}(在线 ${this.bots.size})`);
+		this.log.info(
+			`[onebot] 反向 WS bot 已连入 adapter=${this.connectionId}(在线 ${this.bots.size})`,
+		);
 		if (this.bots.size > 1) {
 			// 一个反向 WS 端口正常只对应一个 bot;多个时推送只发往最近连入的那个,
 			// 其余静默闲置 —— 大概率是把多个 bot 误指到同一端口,告警提示。
 			this.log.warn(
-				`[onebot] 反向 WS adapter=${this.adapterId} 端口 ${this.port} 有 ${this.bots.size} 个 bot 连入,` +
+				`[onebot] 反向 WS adapter=${this.connectionId} 端口 ${this.port} 有 ${this.bots.size} 个 bot 连入,` +
 					"推送只发往最近连入的那个;通常一个端口应只对应一个 bot",
 			);
 		}
@@ -900,10 +902,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const lastCapabilityProbeAt = new Map<string, number>();
 	const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
 
-	function channelOf(adapterId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
+	function channelOf(connectionId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
 		return cfg.transport === "ws"
-			? (forwardConns.get(adapterId)?.getChannel() ?? null)
-			: (reverseListeners.get(adapterId)?.getChannel() ?? null);
+			? (forwardConns.get(connectionId)?.getChannel() ?? null)
+			: (reverseListeners.get(connectionId)?.getChannel() ?? null);
 	}
 
 	/**
@@ -986,8 +988,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	/** 通道就绪(正向连上 / 反向 bot 连入)→ 探一次。拿不到配置(已被 reconcile 移除)就算了。 */
-	function probeOnReady(adapterId: string): void {
-		const connection = knownConnections.get(adapterId);
+	function probeOnReady(connectionId: string): void {
+		const connection = knownConnections.get(connectionId);
 		if (connection && !disposed) void probeMiniAppCard(connection);
 	}
 
@@ -1111,7 +1113,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	/** WS / WS-reverse 共用的发送(echo 帧 + 重试)。 */
 	async function sendOverWs(
-		adapterId: string,
+		connectionId: string,
 		cfg: OnebotWsConfig | OnebotWsReverseConfig,
 		action: string,
 		params: Record<string, unknown>,
@@ -1129,8 +1131,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		for (let attempt = 0; attempt <= retryTimes; attempt++) {
 			const channel =
 				cfg.transport === "ws"
-					? (forwardConns.get(adapterId)?.getChannel() ?? null)
-					: (reverseListeners.get(adapterId)?.getChannel() ?? null);
+					? (forwardConns.get(connectionId)?.getChannel() ?? null)
+					: (reverseListeners.get(connectionId)?.getChannel() ?? null);
 			if (!channel) {
 				lastErr = cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)";
 			} else {

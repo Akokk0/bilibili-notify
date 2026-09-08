@@ -82,7 +82,7 @@ export interface PlatformAdapter {
 
 /** 收到这条消息的那条连接 —— 「回到消息来的那个群」得知道用哪个 adapter 的凭据发。 */
 export interface InboundMeta {
-	adapterId: string;
+	connectionId: string;
 	/**
 	 * 收到这条消息的平台。
 	 *

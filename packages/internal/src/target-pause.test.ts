@@ -15,18 +15,18 @@ const connections = [
 
 describe("isTargetPaused", () => {
 	it("目标自己关了 → 暂停", () => {
-		expect(isTargetPaused({ enabled: false, adapterId: "a-on" }, connections)).toBe(true);
+		expect(isTargetPaused({ enabled: false, connectionId: "a-on" }, connections)).toBe(true);
 	});
 
 	it("目标开着但适配器停用 → 也算暂停(投递层对它回不可达)", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "a-off" }, connections)).toBe(true);
+		expect(isTargetPaused({ enabled: true, connectionId: "a-off" }, connections)).toBe(true);
 	});
 
 	it("适配器压根不在配置里(被删了)→ 暂停", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "gone" }, connections)).toBe(true);
+		expect(isTargetPaused({ enabled: true, connectionId: "gone" }, connections)).toBe(true);
 	});
 
 	it("两头都开着才不算暂停", () => {
-		expect(isTargetPaused({ enabled: true, adapterId: "a-on" }, connections)).toBe(false);
+		expect(isTargetPaused({ enabled: true, connectionId: "a-on" }, connections)).toBe(false);
 	});
 });

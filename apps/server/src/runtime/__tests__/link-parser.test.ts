@@ -64,7 +64,7 @@ function groupFrame(text: string, over: Record<string, unknown> = {}) {
 async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise<void> {
 	const msg = extractGroupMessage(frame);
 	if (!msg) return;
-	await parser.handleMessage({ platform: "onebot", adapterId: ADAPTER, ...msg });
+	await parser.handleMessage({ platform: "onebot", connectionId: ADAPTER, ...msg });
 }
 
 /** 主人在版式编辑器里改过的动态卡版式 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
@@ -190,7 +190,7 @@ describe("createLinkParser", () => {
 
 		expect(h.sent).toEqual([
 			{
-				dest: { platform: "onebot", adapterId: ADAPTER, groupId: String(GROUP) },
+				dest: { platform: "onebot", connectionId: ADAPTER, groupId: String(GROUP) },
 				payload: {
 					kind: "image",
 					image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
@@ -395,7 +395,7 @@ describe("createLinkParser", () => {
 			const h = makeParser();
 			await h.parser.handleMessage({
 				platform: "qq-official",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
 				text: " https://www.bilibili.com/video/BV1zMtU6uEEb/",
@@ -406,7 +406,7 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 			expect(h.sent[0]?.dest).toEqual({
 				platform: "qq-official",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 			});
 		});
@@ -417,7 +417,7 @@ describe("createLinkParser", () => {
 			await feed(h.parser, groupFrame(LINK));
 			await h.parser.handleMessage({
 				platform: "qq-official",
-				adapterId: "22222222-2222-4222-8222-222222222222",
+				connectionId: "22222222-2222-4222-8222-222222222222",
 				groupId: "G_OPENID",
 				userId: "M",
 				text: LINK,
@@ -567,7 +567,7 @@ describe("createLinkParser", () => {
 			});
 			await h.parser.handleMessage({
 				platform: "qq-official",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
 				text: LINK,
@@ -577,7 +577,7 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 			await h.parser.handleMessage({
 				platform: "qq-official",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: "G_OTHER",
 				userId: "M_OPENID",
 				text: LINK,
@@ -641,7 +641,7 @@ describe("createLinkParser", () => {
 			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
 			expect(h.probeCapabilities).toHaveBeenCalledWith({
 				platform: "onebot",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: String(GROUP),
 			});
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
@@ -674,7 +674,7 @@ describe("createLinkParser", () => {
 			const h = makeParser({}, undefined, { policyFor: miniapp, capabilities: () => undefined });
 			await h.parser.handleMessage({
 				platform: "qq-official",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
 				text: LINK,

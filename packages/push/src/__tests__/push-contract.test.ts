@@ -63,7 +63,7 @@ function makeSink(opts: SinkOptions = {}) {
 			({
 				id,
 				name: id,
-				adapterId: "a",
+				connectionId: "a",
 				platform: "test",
 				scope: "group",
 				enabled: !opts.disabled?.includes(id),

@@ -78,7 +78,7 @@ describe("createDevtools", () => {
 
 describe("createDevtools · 截流接线", () => {
 	const ADAPTER = { id: "ad", name: "A", platform: "onebot", enabled: true } as never;
-	const TARGET = { id: "t", name: "群", adapterId: "ad", platform: "onebot" } as never;
+	const TARGET = { id: "t", name: "群", connectionId: "ad", platform: "onebot" } as never;
 
 	function setup() {
 		const send = vi.fn(async () => ({ ok: true, latencyMs: 1 }));

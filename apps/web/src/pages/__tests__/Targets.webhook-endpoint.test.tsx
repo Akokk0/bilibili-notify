@@ -60,7 +60,7 @@ const ONEBOT_CONNECTION = {
 const MANAGED_TARGET = {
 	id: "44444444-4444-4444-8444-444444444444",
 	name: "飞书群机器人 · 投递",
-	adapterId: WEBHOOK_ID,
+	connectionId: WEBHOOK_ID,
 	kind: "endpoint",
 	platform: "feishu",
 	scope: "group",
@@ -123,7 +123,7 @@ describe("会话摘要不会把别的平台标成 webhook", () => {
 		const onebotTarget = {
 			id: "55555555-5555-4555-8555-555555555555",
 			name: "测试群",
-			adapterId: ONEBOT_ID,
+			connectionId: ONEBOT_ID,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",

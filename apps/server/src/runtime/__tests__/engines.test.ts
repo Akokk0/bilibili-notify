@@ -1219,7 +1219,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 			{
 				id: TARGET,
 				name: "群",
-				adapterId: ADAPTER,
+				connectionId: ADAPTER,
 				scope: "group",
 				enabled: true,
 				platform: "onebot",

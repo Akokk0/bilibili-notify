@@ -26,7 +26,7 @@ function target(over: Record<string, unknown>): PushTarget {
 	return PushTargetSchema.parse({
 		id: UUID_A,
 		name: "来源群",
-		adapterId: UUID_B,
+		connectionId: UUID_B,
 		enabled: true,
 		...over,
 	});

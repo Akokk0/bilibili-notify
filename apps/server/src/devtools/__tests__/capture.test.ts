@@ -26,7 +26,7 @@ const ADAPTER: Connection = {
 const TARGET: PushTarget = {
 	id: "t-1",
 	name: "测试群",
-	adapterId: "ad-1",
+	connectionId: "ad-1",
 	platform: "onebot",
 	scope: "group",
 	enabled: true,
@@ -90,7 +90,7 @@ describe("createCaptureGate", () => {
 			{
 				id: "1",
 				at: Date.parse("2026-09-06T08:00:00.000Z"),
-				adapterId: "ad-1",
+				connectionId: "ad-1",
 				adapterName: "测试 OneBot",
 				platform: "onebot",
 				targetId: "t-1",

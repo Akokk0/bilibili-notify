@@ -62,7 +62,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			// 前缀现取 —— 它随时可能被改过。
 			const given2 = typeof params.text === "string" ? params.text : "";
 			const text = given2 !== "" ? given2 : `${deps.commands().prefix}help`;
-			// 指令分发用不上 adapterId(它回主人那条配置好的私聊),但**平台是要比对的**:
+			// 指令分发用不上 connectionId(它回主人那条配置好的私聊),但**平台是要比对的**:
 			// 鉴权换成三坐标之后,平台喂错这一枪就打不中,场景也就验不出东西来。所以按
 			// 主人自己那条私聊的平台走;没配主人时(上面已经要求手填发信人)退到第一个
 			// 启用的聊天连接。
@@ -74,7 +74,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 				);
 			handler(
 				{ userId, text },
-				{ adapterId: source?.id ?? "", platform: master?.platform ?? source?.platform ?? "" },
+				{ connectionId: source?.id ?? "", platform: master?.platform ?? source?.platform ?? "" },
 			);
 			return { summary: `已当作 ${userId} 私聊了一句「${text}」,回复走真链路。` };
 		},
@@ -114,7 +114,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 					? given
 					: deps
 							.targets()
-							.filter((t) => t.adapterId === connection.id && t.scope === "group")
+							.filter((t) => t.connectionId === connection.id && t.scope === "group")
 							.map((t) => groupAddressOf(t))
 							.find((g): g is string => typeof g === "string" && g !== "");
 			if (!groupId) throw new DevParamError(`${connection.name} 名下没有群目标,得给一个群号`);
@@ -123,7 +123,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			handler(
 				connection.platform,
 				{ groupId, userId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
-				{ adapterId: connection.id, platform: connection.platform },
+				{ connectionId: connection.id, platform: connection.platform },
 			);
 			return {
 				summary: `已当作 ${connection.name} 的群 ${groupId} 里有人说了「${text}」,回卡回到那个群。`,

@@ -40,7 +40,9 @@ function makeConnection(
 	} as unknown as Connection;
 }
 
-function makeTarget(over: { id: string; adapterId: string } & Record<string, unknown>): PushTarget {
+function makeTarget(
+	over: { id: string; connectionId: string } & Record<string, unknown>,
+): PushTarget {
 	return {
 		name: `target-${over.id}`,
 		platform: "feishu",
@@ -89,7 +91,7 @@ describe("createMultiplexSink — adapter 注册表", () => {
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "onebot" })],
-				[makeTarget({ id: "t1", adapterId: "a1", platform: "onebot" })],
+				[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
 			),
 			adapters: [pa],
 			logger: makeLogger(),
@@ -104,7 +106,7 @@ describe("createMultiplexSink — adapter 注册表", () => {
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "feishu" })],
-				[makeTarget({ id: "t1", adapterId: "a1", platform: "feishu" })],
+				[makeTarget({ id: "t1", connectionId: "a1", platform: "feishu" })],
 			),
 			adapters: [first, second],
 			logger,
@@ -119,7 +121,7 @@ describe("createMultiplexSink — adapter 注册表", () => {
 
 describe("createMultiplexSink — resolve / isAvailable", () => {
 	it("resolve:命中返回 target,未命中 undefined", () => {
-		const target = makeTarget({ id: "t1", adapterId: "a1" });
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const sink = createMultiplexSink({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
 			adapters: [makePlatformAdapter(["feishu"])],
@@ -130,8 +132,8 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 	});
 
 	it("isAvailable:target 缺 / Connection 缺 / platformAdapter 缺 → false", () => {
-		const targetNoConnection = makeTarget({ id: "t1", adapterId: "ghost" });
-		const targetNoPA = makeTarget({ id: "t2", adapterId: "a2" });
+		const targetNoConnection = makeTarget({ id: "t1", connectionId: "ghost" });
+		const targetNoPA = makeTarget({ id: "t2", connectionId: "a2" });
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a2", platform: "telegram" })],
@@ -141,7 +143,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 			logger: makeLogger(),
 		});
 		expect(sink.isAvailable("missing")).toBe(false); // target 缺
-		expect(sink.isAvailable("t1")).toBe(false); // adapterId 指向不存在的 adapter
+		expect(sink.isAvailable("t1")).toBe(false); // connectionId 指向不存在的 adapter
 		expect(sink.isAvailable("t2")).toBe(false); // adapter.platform 无对应 platformAdapter
 	});
 
@@ -150,7 +152,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "feishu" })],
-				[makeTarget({ id: "t1", adapterId: "a1" })],
+				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
 			adapters: [paFalse],
 			logger: makeLogger(),
@@ -184,17 +186,17 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		expect(onDelivery).not.toHaveBeenCalled();
 	});
 
-	it("Connection 缺:返回带 adapterId 的错误 + warn + onDelivery", async () => {
+	it("Connection 缺:返回带 connectionId 的错误 + warn + onDelivery", async () => {
 		const logger = makeLogger();
 		const sink = createMultiplexSink({
-			store: makeStore([], [makeTarget({ id: "t1", adapterId: "ghost" })]),
+			store: makeStore([], [makeTarget({ id: "t1", connectionId: "ghost" })]),
 			adapters: [makePlatformAdapter(["feishu"])],
 			logger,
 			onDelivery,
 		});
 		const r = await sink.send("t1", PAYLOAD);
 		expect(r.ok).toBe(false);
-		expect(r.err).toBe("adapter not found: adapterId=ghost");
+		expect(r.err).toBe("adapter not found: connectionId=ghost");
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("adapter not found"));
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
@@ -204,7 +206,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		const sink = createMultiplexSink({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "telegram" })],
-				[makeTarget({ id: "t1", adapterId: "a1", platform: "telegram" })],
+				[makeTarget({ id: "t1", connectionId: "a1", platform: "telegram" })],
 			),
 			adapters: [makePlatformAdapter(["feishu"])],
 			logger,
@@ -223,7 +225,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		// adapter 不传 `private: false` —— 否则 OneBot adapter 内 `?? scope` 会把
 		// scope:"private" 的 target 吃掉(回归守卫见 platforms/__tests__/adapters.test.ts)。
 		// onDelivery 仍带 `{ private: false }` 作为 metadata,与 sendPrivate 区分。
-		const target = makeTarget({ id: "t1", adapterId: "a1" });
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
 		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
@@ -239,7 +241,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 	});
 
 	it("sendPrivate:private:true 透传到 platformAdapter.send 与 onDelivery", async () => {
-		const target = makeTarget({ id: "t1", adapterId: "a1" });
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
 		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
@@ -314,7 +316,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	it("目标启用、适配器启用 → true,哪怕此刻不可达", () => {
 		const sink = sinkWith(
 			[makeConnection({ id: "a1", platform: "feishu" })],
-			[makeTarget({ id: "t1", adapterId: "a1" })],
+			[makeTarget({ id: "t1", connectionId: "a1" })],
 		);
 		expect(sink.isEnabled("t1")).toBe(true);
 		expect(sink.isAvailable("t1")).toBe(false);
@@ -323,7 +325,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	it("目标停用 → false", () => {
 		const sink = sinkWith(
 			[makeConnection({ id: "a1", platform: "feishu" })],
-			[makeTarget({ id: "t1", adapterId: "a1", enabled: false })],
+			[makeTarget({ id: "t1", connectionId: "a1", enabled: false })],
 		);
 		expect(sink.isEnabled("t1")).toBe(false);
 	});
@@ -331,13 +333,13 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	it("所属适配器停用 → false", () => {
 		const sink = sinkWith(
 			[makeConnection({ id: "a1", platform: "feishu", enabled: false })],
-			[makeTarget({ id: "t1", adapterId: "a1" })],
+			[makeTarget({ id: "t1", connectionId: "a1" })],
 		);
 		expect(sink.isEnabled("t1")).toBe(false);
 	});
 
 	it("目标不存在 / 适配器不存在 → false", () => {
-		const sink = sinkWith([], [makeTarget({ id: "t1", adapterId: "gone" })]);
+		const sink = sinkWith([], [makeTarget({ id: "t1", connectionId: "gone" })]);
 		expect(sink.isEnabled("t1")).toBe(false);
 		expect(sink.isEnabled("nope")).toBe(false);
 	});

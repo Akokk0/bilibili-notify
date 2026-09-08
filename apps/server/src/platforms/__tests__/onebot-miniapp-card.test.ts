@@ -55,7 +55,7 @@ function obTarget(): PushTarget {
 	return {
 		id: "t1",
 		name: "群",
-		adapterId: "a1",
+		connectionId: "a1",
 		platform: "onebot",
 		scope: "group",
 		enabled: true,

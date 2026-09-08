@@ -127,7 +127,7 @@ function makeWebhookTarget(
 	return {
 		id: randomUUID(),
 		name: "手动 Webhook",
-		adapterId: connection.id,
+		connectionId: connection.id,
 		kind: "endpoint" as const,
 		platform: connection.platform,
 		scope: "channel" as const,
@@ -137,8 +137,8 @@ function makeWebhookTarget(
 	};
 }
 
-function managedWebhookTargetId(adapterId: string): string {
-	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
+function managedWebhookTargetId(connectionId: string): string {
+	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +414,7 @@ describe("ConfigStore", () => {
 		const target = {
 			id: randomUUID(),
 			name: "t1",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "group" as const,
@@ -439,7 +439,7 @@ describe("ConfigStore", () => {
 		const target = {
 			id: randomUUID(),
 			name: "群聊",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "group" as const,
@@ -449,7 +449,7 @@ describe("ConfigStore", () => {
 		const keptTarget = {
 			id: randomUUID(),
 			name: "私聊",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session" as const,
 			platform: "onebot" as const,
 			scope: "private" as const,
@@ -492,7 +492,7 @@ describe("ConfigStore", () => {
 		expect(targets[0]).toMatchObject({
 			id: managedWebhookTargetId(connection.id),
 			name: connection.name,
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "endpoint",
 			// 托管目标的平台跟着连接走。
 			platform: connection.platform,
@@ -645,7 +645,7 @@ describe("ConfigStore", () => {
 		expect(store2.getTargets()).toEqual([
 			expect.objectContaining({
 				id: managedWebhookTargetId(connection.id),
-				adapterId: connection.id,
+				connectionId: connection.id,
 				managedBy: "adapter",
 			}),
 		]);
@@ -706,7 +706,7 @@ describe("ConfigStore", () => {
 		const bridged = {
 			id: randomUUID(),
 			name: "桥上的 telegram 群",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session",
 			platform: "telegram",
 			scope: "group",
@@ -734,7 +734,7 @@ describe("ConfigStore", () => {
 		const broken = {
 			id: randomUUID(),
 			name: "坏的",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session",
 			platform: "onebot",
 			scope: "群",
@@ -775,7 +775,7 @@ describe("ConfigStore", () => {
 		expect(managed).toMatchObject({
 			id: target.id,
 			name: connection.name,
-			adapterId: connection.id,
+			connectionId: connection.id,
 			managedBy: "adapter",
 			scope: "channel",
 		});
@@ -850,7 +850,7 @@ describe("ConfigStore", () => {
 			store.upsertTarget({
 				id: randomUUID(),
 				name: "冒充的",
-				adapterId: connection.id,
+				connectionId: connection.id,
 				kind: "session",
 				platform: "telegram",
 				scope: "group",
@@ -871,7 +871,7 @@ describe("ConfigStore", () => {
 					{
 						id: randomUUID(),
 						name: "冒充的",
-						adapterId: connection.id,
+						connectionId: connection.id,
 						kind: "session",
 						platform: "telegram",
 						scope: "group",
@@ -890,7 +890,7 @@ describe("ConfigStore", () => {
 		await store.upsertTarget({
 			id: randomUUID(),
 			name: "群聊",
-			adapterId: connection.id,
+			connectionId: connection.id,
 			kind: "session",
 			platform: "onebot",
 			scope: "group",
@@ -1080,7 +1080,7 @@ describe("ConfigStore", () => {
 					{
 						id: randomUUID(),
 						name: "坏目标",
-						adapterId: connection.id,
+						connectionId: connection.id,
 						platform: "onebot",
 						scope: "nope",
 						enabled: true,
@@ -1108,7 +1108,7 @@ describe("ConfigStore", () => {
 					{
 						id: randomUUID(),
 						name: "孤儿目标",
-						adapterId: randomUUID(),
+						connectionId: randomUUID(),
 						kind: "session",
 						platform: "onebot",
 						scope: "group",

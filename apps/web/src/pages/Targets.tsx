@@ -51,7 +51,7 @@ import {
  * dashboard bridge). Holds baseUrl / accessToken etc.
  *
  * **Target** = a session bound to an adapter (group/private/channel). Holds
- * groupId / userId. References its adapter by `adapterId`.
+ * groupId / userId. References its adapter by `connectionId`.
  *
  * One adapter can drive many targets, so a single NapCat connection only needs
  * its credentials filled once even when pushing to N groups.
@@ -136,7 +136,7 @@ function managedWebhookTargetForConnection(
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
 	if (connection.connector !== "webhook") return undefined;
-	const owned = targets.filter((t) => t.kind === "endpoint" && t.adapterId === connection.id);
+	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
 	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 }
 
@@ -760,7 +760,7 @@ function TargetEditorModal({
 	saving,
 	error,
 }: TargetEditorProps) {
-	const valid = value.name.trim().length > 0 && Boolean(value.adapterId);
+	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
 	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleConnections = connections.filter((a) => a.connector !== "webhook");
@@ -784,7 +784,7 @@ function TargetEditorModal({
 					) : (
 						<div className="space-y-1.5">
 							{eligibleConnections.map((a) => {
-								const active = value.adapterId === a.id;
+								const active = value.connectionId === a.id;
 								const aTint = platformTint(a.platform);
 								return (
 									<button
@@ -939,7 +939,7 @@ function TargetSessionFields({
 						/>
 					</Field>
 					<QQGuildPicker
-						adapterId={target.adapterId}
+						connectionId={target.connectionId}
 						onPick={(guildId, channelId) =>
 							onChange({ ...target, address: channelId, parentAddress: guildId })
 						}
@@ -968,7 +968,7 @@ function TargetSessionFields({
 					/>
 				</Field>
 				<QQSessionPicker
-					adapterId={target.adapterId}
+					connectionId={target.connectionId}
 					scope={isPrivate ? "private" : "group"}
 					onPick={setAddress}
 				/>
@@ -992,22 +992,22 @@ interface QQGuildView {
 }
 
 /**
- * 群/C2C 发现列表 —— 读 `/api/qq/sessions/:adapterId`(内存 ring buffer,网关从入站
+ * 群/C2C 发现列表 —— 读 `/api/qq/sessions/:connectionId`(内存 ring buffer,网关从入站
  * 事件捞的 openid)。点一条把 openid 填进会话。QQ 无「列我的群/好友」接口,这是唯一来源。
  */
 function QQSessionPicker({
-	adapterId,
+	connectionId,
 	scope,
 	onPick,
 }: {
-	adapterId: string;
+	connectionId: string;
 	scope: "group" | "private";
 	onPick: (openid: string) => void;
 }) {
 	const { data, isLoading, isError, refetch, isFetching } = useQuery({
-		queryKey: ["qq-sessions", adapterId],
-		queryFn: () => api.get<QQDiscoveredEntry[]>(`/api/qq/sessions/${adapterId}`),
-		enabled: Boolean(adapterId),
+		queryKey: ["qq-sessions", connectionId],
+		queryFn: () => api.get<QQDiscoveredEntry[]>(`/api/qq/sessions/${connectionId}`),
+		enabled: Boolean(connectionId),
 	});
 	const list = (data ?? []).filter((e) => e.scope === scope);
 	const label = scope === "group" ? "群" : "用户";
@@ -1055,19 +1055,19 @@ function QQSessionPicker({
 }
 
 /**
- * 频道子频道选择器 —— 手动触发 `/api/qq/guilds/:adapterId`(每次实时拉,避免每次打开
+ * 频道子频道选择器 —— 手动触发 `/api/qq/guilds/:connectionId`(每次实时拉,避免每次打开
  * 弹窗都打 QQ REST)。点子频道把 guildId+channelId 一起填进会话。
  */
 function QQGuildPicker({
-	adapterId,
+	connectionId,
 	onPick,
 }: {
-	adapterId: string;
+	connectionId: string;
 	onPick: (guildId: string, channelId: string) => void;
 }) {
 	const { data, isError, refetch, isFetching, fetchStatus } = useQuery({
-		queryKey: ["qq-guilds", adapterId],
-		queryFn: () => api.get<QQGuildView[]>(`/api/qq/guilds/${adapterId}`),
+		queryKey: ["qq-guilds", connectionId],
+		queryFn: () => api.get<QQGuildView[]>(`/api/qq/guilds/${connectionId}`),
 		enabled: false, // 手动触发:枚举会打 QQ REST,不在打开弹窗时自动拉
 	});
 	const guilds = data ?? [];
@@ -1374,7 +1374,10 @@ export default function Targets() {
 	const connectionsById = new Map(connections.map((a) => [a.id, a]));
 	const targetCountByConnection = new Map<string, number>();
 	for (const t of targets) {
-		targetCountByConnection.set(t.adapterId, (targetCountByConnection.get(t.adapterId) ?? 0) + 1);
+		targetCountByConnection.set(
+			t.connectionId,
+			(targetCountByConnection.get(t.connectionId) ?? 0) + 1,
+		);
 	}
 
 	// Keep selectedConnectionId valid: default to the first adapter; reselect if
@@ -1393,7 +1396,7 @@ export default function Targets() {
 		? connections.find((a) => a.id === selectedConnectionId)
 		: undefined;
 	const selectedTargets = selectedConnection
-		? targets.filter((t) => t.adapterId === selectedConnection.id)
+		? targets.filter((t) => t.connectionId === selectedConnection.id)
 		: [];
 	const selectedManagedWebhookTarget = selectedConnection
 		? managedWebhookTargetForConnection(selectedConnection, targets)
@@ -1819,7 +1822,7 @@ export default function Targets() {
 											<TargetCard
 												key={t.id}
 												target={t}
-												connection={connectionsById.get(t.adapterId)}
+												connection={connectionsById.get(t.connectionId)}
 												onEdit={() => startEditTarget(t)}
 												onDelete={() => {
 													setDeleteError(null);
@@ -1905,7 +1908,7 @@ export default function Targets() {
 			{confirmTest ? (
 				<TestConfirmModal
 					target={confirmTest}
-					connection={connectionsById.get(confirmTest.adapterId)}
+					connection={connectionsById.get(confirmTest.connectionId)}
 					onCancel={() => setConfirmTest(null)}
 					onConfirm={() => {
 						const t = confirmTest;

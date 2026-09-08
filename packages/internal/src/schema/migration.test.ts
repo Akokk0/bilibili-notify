@@ -273,6 +273,65 @@ describe("migrateConfigSections —— 目标的形态提上来成 kind", () => 
 	});
 });
 
+describe("migrateConfigSections —— 指向连接的那一格改叫 connectionId", () => {
+	it("adapterId 搬成 connectionId,老名字不留在盘上", () => {
+		const out = migrateConfigSections({ targets: [targetV1()] });
+		expect(out.targets[0]).toMatchObject({
+			connectionId: "11111111-1111-4111-8111-111111111111",
+		});
+		expect(out.targets[0]).not.toHaveProperty("adapterId");
+	});
+
+	it("搬完能过 PushTargetSchema —— 新 schema 只认 connectionId,这一格漏搬就整条目标没了", () => {
+		const out = migrateConfigSections({ targets: [targetV1()] });
+		const parsed = PushTargetSchema.safeParse(out.targets[0]);
+		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+	});
+
+	it("webhook 目标查平台用的是搬完的那一格 —— 顺序搞反就查不到连接、一律落 generic", () => {
+		// ①(改名)必须排在 ②(降格)前面。反过来的话 `platformByConnection.get(undefined)`
+		// 永远落空,飞书 / 钉钉的托管目标会被静默写成 generic —— 迁移不报错,盘上是错的。
+		const connectionId = "11111111-1111-4111-8111-111111111111";
+		const out = migrateConfigSections({
+			connections: [
+				onebotV1({
+					id: connectionId,
+					platform: "webhook",
+					config: { url: "https://h/x", provider: "feishu" },
+				}),
+			],
+			targets: [targetV1({ platform: "webhook", scope: "channel", session: {} })],
+		});
+		expect(out.targets[0]).toMatchObject({ platform: "feishu" });
+	});
+
+	it("两个名字都在的半迁移盘以新的为准", () => {
+		const out = migrateConfigSections({
+			targets: [targetV1({ connectionId: "new-one" })],
+		});
+		expect(out.targets[0]).toMatchObject({ connectionId: "new-one" });
+	});
+
+	it("老名字还在就算没迁完 —— 判据看得见它", () => {
+		const half = [{ ...targetV1(), kind: "session", address: "114514", session: undefined }];
+		expect(detectConfigVersion({ targets: half })).toBe(1);
+	});
+
+	it("幂等:搬完一遍不再报 changed", () => {
+		const once = migrateConfigSections({ targets: [targetV1()] });
+		const twice = migrateConfigSections({ targets: once.targets });
+		expect(twice.changed.targets).toBe(false);
+		expect(twice.targets).toEqual(once.targets);
+	});
+
+	it("不认识的平台整条原样放行 —— 连这一格也不动", () => {
+		const alien = { id: "t", adapterId: "a", platform: "koishi-bot" };
+		const out = migrateConfigSections({ targets: [alien] });
+		expect(out.targets[0]).toEqual(alien);
+		expect(out.changed.targets).toBe(false);
+	});
+});
+
 describe("migrateConfigSections —— 每平台一套的 session 收成一格 address", () => {
 	it.each([
 		["group", { groupId: "114514" }, "114514"],

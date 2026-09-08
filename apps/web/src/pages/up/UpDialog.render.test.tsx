@@ -15,7 +15,12 @@ const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
 const noop = () => {};
 
 function targetFor(platform: PushTarget["platform"]): PushTarget {
-	const base = { id: `${platform}-1`, name: `${platform} 目标`, adapterId: "a-1", enabled: true };
+	const base = {
+		id: `${platform}-1`,
+		name: `${platform} 目标`,
+		connectionId: "a-1",
+		enabled: true,
+	};
 	if (platform === "onebot")
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
 	if (platform === "qq-official")

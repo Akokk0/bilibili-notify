@@ -268,7 +268,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 } {
 	const connections: Connection[] = [];
 	const targets: PushTarget[] = [];
-	// connection-key → adapterId, so duplicate connections collapse.
+	// connection-key → connectionId, so duplicate connections collapse.
 	const connectionIdByKey = new Map<string, string>();
 
 	for (const item of raw) {
@@ -284,12 +284,12 @@ function migrateLegacyTargets(raw: unknown[]): {
 			const baseUrl = cfg.baseUrl ?? "";
 			const accessToken = cfg.accessToken ?? "";
 			const key = `onebot|${baseUrl}|${accessToken}`;
-			let adapterId = connectionIdByKey.get(key);
-			if (!adapterId) {
-				adapterId = randomUUID();
-				connectionIdByKey.set(key, adapterId);
+			let connectionId = connectionIdByKey.get(key);
+			if (!connectionId) {
+				connectionId = randomUUID();
+				connectionIdByKey.set(key, connectionId);
 				connections.push({
-					id: adapterId,
+					id: connectionId,
 					name: deriveConnectionName(legacy.name, baseUrl),
 					enabled: true,
 					kind: "direct",
@@ -312,7 +312,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 			targets.push({
 				id: legacy.id,
 				name: legacy.name,
-				adapterId,
+				connectionId,
 				kind: "session",
 				platform: "onebot",
 				scope: legacy.scope,
@@ -327,12 +327,12 @@ function migrateLegacyTargets(raw: unknown[]): {
 			};
 			const url = cfg.url ?? "";
 			const key = `webhook|${url}|${cfg.secret ?? ""}`;
-			let adapterId = connectionIdByKey.get(key);
-			if (!adapterId) {
-				adapterId = randomUUID();
-				connectionIdByKey.set(key, adapterId);
+			let connectionId = connectionIdByKey.get(key);
+			if (!connectionId) {
+				connectionId = randomUUID();
+				connectionIdByKey.set(key, connectionId);
 				connections.push({
-					id: adapterId,
+					id: connectionId,
 					name: deriveConnectionName(legacy.name, url),
 					enabled: true,
 					kind: "direct",
@@ -350,7 +350,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 			targets.push({
 				id: legacy.id,
 				name: legacy.name,
-				adapterId,
+				connectionId,
 				kind: "endpoint",
 				platform: "generic",
 				scope: legacy.scope,
@@ -398,12 +398,12 @@ function isRetiredTarget(raw: unknown): boolean {
  * 届时 `connection.platform` 会直接编译不过,不会静默放行。
  */
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
-	const owner = connections.find((a) => a.id === target.adapterId);
+	const owner = connections.find((a) => a.id === target.connectionId);
 	if (!owner) {
 		throw new ConfigValidationError(
 			"targets",
-			{ id: target.id, adapterId: target.adapterId, message: "adapter not found" },
-			`target ${target.id} references unknown adapter ${target.adapterId}`,
+			{ id: target.id, connectionId: target.connectionId, message: "adapter not found" },
+			`target ${target.id} references unknown adapter ${target.connectionId}`,
 		);
 	}
 	if (owner.platform !== target.platform) {
@@ -435,8 +435,8 @@ function deriveConnectionName(targetName: string, addr: string): string {
 /** 靠 webhook 连的那族连接 —— 判据是**连接器**,平台是飞书 / 钉钉 / 企微 / 未指明中的一个。 */
 type WebhookConnection = Extract<Connection, { connector: "webhook" }>;
 
-function managedWebhookTargetId(adapterId: string): string {
-	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
+function managedWebhookTargetId(connectionId: string): string {
+	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
 function makeManagedWebhookTarget(
@@ -446,7 +446,7 @@ function makeManagedWebhookTarget(
 	return {
 		id: existing?.id ?? managedWebhookTargetId(connection.id),
 		name: connection.name || "Webhook",
-		adapterId: connection.id,
+		connectionId: connection.id,
 		kind: "endpoint",
 		// 托管目标的平台跟着连接走 —— 连接改成钉钉,这里下一次同步就跟着改。
 		platform: connection.platform,
@@ -461,7 +461,7 @@ function syncManagedWebhookTarget(
 	connection: WebhookConnection,
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
-	const owned = targets.filter((t) => t.kind === "endpoint" && t.adapterId === connection.id);
+	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
 	const existing = owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 	const desired = makeManagedWebhookTarget(connection, existing);
 	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
@@ -471,12 +471,14 @@ function syncManagedWebhookTarget(
 		if (target.id !== desired.id) aliases.set(target.id, desired.id);
 	}
 	const next = targets
-		.filter((t) => !(t.kind === "endpoint" && t.adapterId === connection.id && t.id !== desired.id))
+		.filter(
+			(t) => !(t.kind === "endpoint" && t.connectionId === connection.id && t.id !== desired.id),
+		)
 		.map((t) => (t.id === desired.id ? desired : t));
 	const changed =
 		aliases.size > 0 ||
 		existing.name !== desired.name ||
-		existing.adapterId !== desired.adapterId ||
+		existing.connectionId !== desired.connectionId ||
 		existing.kind !== desired.kind ||
 		existing.platform !== desired.platform ||
 		existing.scope !== desired.scope ||
@@ -1297,7 +1299,7 @@ class NodeConfigStore implements ConfigStore {
 			// 时 —— 在 scope 外同步检查会与并行 targets 队列竞态:check 通过后、
 			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
 			// (互补:upsertTarget 侧 assertConnectionMatches 也校验 adapter 存在。)
-			const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
+			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
 			if (connection.connector !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"adapters",
@@ -1318,8 +1320,8 @@ class NodeConfigStore implements ConfigStore {
 		if (removedConnection.connector === "webhook") {
 			let removedTargetIds: string[] = [];
 			targetsChanged = await this.runScoped("targets", async () => {
-				removedTargetIds = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
-				const next = this.targets.filter((t) => t.adapterId !== id);
+				removedTargetIds = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
+				const next = this.targets.filter((t) => t.connectionId !== id);
 				if (next.length === this.targets.length) return false;
 				await atomicWriteJson(this.path("targets"), next);
 				this.targets = next;
@@ -1366,7 +1368,7 @@ class NodeConfigStore implements ConfigStore {
 			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与 adapter 名下当前那条
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
-			const owner = this.connections.find((a) => a.id === parsed.data.adapterId);
+			const owner = this.connections.find((a) => a.id === parsed.data.connectionId);
 			if (owner?.connector === "webhook") {
 				const synced = syncManagedWebhookTarget(owner, next);
 				next = synced.next;

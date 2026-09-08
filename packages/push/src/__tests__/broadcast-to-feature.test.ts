@@ -55,7 +55,7 @@ function makeSink(opts?: { available?: boolean; platform?: string }): {
 			({
 				id,
 				name: id,
-				adapterId: "a",
+				connectionId: "a",
 				platform: opts?.platform ?? "test",
 				scope: "group",
 				enabled: true,
@@ -502,7 +502,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 				({
 					id,
 					name: id,
-					adapterId: "a",
+					connectionId: "a",
 					platform: "test",
 					scope: "group",
 					enabled: true,

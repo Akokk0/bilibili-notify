@@ -22,7 +22,7 @@ const logger = { debug() {}, info() {}, warn() {}, error() {} } as Any;
 const MASTER = "10001";
 const PLATFORM = "onebot";
 /** 入站帧的来源。鉴权比的是三坐标,平台这一格得跟主人那条私聊对得上。 */
-const META = { adapterId: "a1", platform: PLATFORM };
+const META = { connectionId: "a1", platform: PLATFORM };
 
 /** 经存活的 seam(确认窗)喂一句私聊。帧解析已收口 dispatcher,这里没有帧入口。 */
 async function feed(

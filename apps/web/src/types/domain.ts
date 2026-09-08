@@ -154,7 +154,7 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
 // ---- Factories --------------------------------------------------------
 
 /**
- * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `adapterId` 都是 `z.uuid()` 严格
+ * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `connectionId` 都是 `z.uuid()` 严格
  * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 适配器 / 目标的 POST 全 400。
  *
  * 刻意**不用** `crypto.randomUUID()` —— 它只在 **secure context**(HTTPS 或
@@ -282,7 +282,7 @@ export function switchOnebotTransport(
 
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
-	const base = { id: newId(), name, adapterId: connection.id, enabled: true } as const;
+	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
 	if (connection.platform === "onebot") {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
 	}

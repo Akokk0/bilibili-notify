@@ -109,7 +109,7 @@ export function createCaptureGate(): CaptureGate {
 					list.push({
 						id: String(seq),
 						at: Date.now(),
-						adapterId: connection.id,
+						connectionId: connection.id,
 						adapterName: connection.name,
 						platform: connection.platform,
 						targetId: target.id,
