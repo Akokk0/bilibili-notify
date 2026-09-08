@@ -164,10 +164,10 @@ describe("QQ 官方机器人连接", () => {
 });
 
 describe("webhook 那一族", () => {
-	it("只有 URL 与 Secret,占位符与提示按平台走", async () => {
+	it("URL / Secret / 自定义请求头三栏,占位符与提示按平台走", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, /飞书机器人/);
-		expect(configCodes(dialog)).toEqual(["config.url", "config.secret"]);
+		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
 		expect((control(dialog, "config.url") as HTMLInputElement).placeholder).toContain(
 			"open.feishu.cn",
 		);
@@ -175,10 +175,16 @@ describe("webhook 那一族", () => {
 		expect(secretRow.textContent).toContain("飞书签名密钥");
 	});
 
-	it("换成钉钉:同样两栏,提示换成钉钉那份", async () => {
+	it("自建端点那档也是同样三栏 —— 四家统一,不按平台增减", async () => {
+		const dialog = await openNewConnection();
+		click(dialog, /未指明的 HTTP 端点/);
+		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
+	});
+
+	it("换成钉钉:同样三栏,提示换成钉钉那份", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, /钉钉机器人/);
-		expect(configCodes(dialog)).toEqual(["config.url", "config.secret"]);
+		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
 		const secretRow = dialog.querySelector('[data-code="config.secret"]') as HTMLElement;
 		expect(secretRow.textContent).toContain("加签密钥");
 	});

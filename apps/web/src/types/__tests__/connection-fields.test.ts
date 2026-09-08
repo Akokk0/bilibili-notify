@@ -28,17 +28,11 @@ import {
 /** 只要 `.shape` 这一格 —— web 不依赖 zod,别把它的类型拖进来。 */
 type ShapeCarrier = { shape: Record<string, unknown> };
 
-/**
- * 刻意不给主人填的格子 —— 键是 `<用例>.<config 键>`,值是为什么。
- *
- * `webhook.headers` 是个**旧账**:schema 里有(脱敏备份还专门抹过它),面板从来没给过
- * 入口,只能打 API 或改盘上的 JSON 才填得进去。先如实记在这儿,别让它继续隐身。
- */
+/** 刻意不给主人填的格子 —— 键是 `<用例>.<config 键>`,值是为什么。 */
 const HIDDEN: Record<string, string> = {
 	"onebot-http.protocolVersion": "首期固定 v11,留位以便后续扩展 v12;面板不给改",
 	"onebot-ws.protocolVersion": "同 onebot-http:固定 v11,面板不给改",
 	"onebot-ws-reverse.protocolVersion": "同 onebot-http:固定 v11,面板不给改",
-	"webhook.headers": "面板一直没给入口(旧账,不是这次改没的)",
 };
 
 function codesOf(connection: Connection): string[] {
@@ -73,8 +67,13 @@ const CASES: Array<{ name: string; connection: Connection; schema: ShapeCarrier 
 		schema: QQOfficialConnectionConfigSchema,
 	},
 	{
-		name: "webhook",
+		name: "webhook-official",
 		connection: makeEmptyConnection("feishu", "fs"),
+		schema: WebhookConnectionConfigSchema,
+	},
+	{
+		name: "webhook-generic",
+		connection: makeEmptyConnection("generic", "自建端点"),
 		schema: WebhookConnectionConfigSchema,
 	},
 ];

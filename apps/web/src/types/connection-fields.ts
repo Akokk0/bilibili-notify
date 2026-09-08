@@ -328,7 +328,7 @@ function webhookFields(
 	// 「哪家的机器人」原先是这张表里一个叫「Webhook 协议」的下拉 —— 它现在就是上面那排
 	// 平台胶囊,不再问第二遍。
 	const platform = connection.platform;
-	return [
+	const fields: ConnectionField[] = [
 		{
 			kind: "text",
 			code: "config.url",
@@ -349,6 +349,20 @@ function webhookFields(
 			set: (v) => ({ ...connection, config: { ...cfg, secret: v || undefined } }),
 		},
 	];
+
+	// 自定义请求头**四家都给**(主人拍板要统一)。`config.headers` 本来就是四家共用的一格,
+	// 投递时也确实摊进每一次 POST(`platforms/webhook.ts` 的 `baseHeaders`)——「官方 hook
+	// 用不上」只在直连官方地址时成立,一旦谁把它挡在反向代理后面就不成立了,而那种情况
+	// 少一栏就等于从面板配不出来。
+	fields.push({
+		kind: "headers",
+		code: "config.headers",
+		label: "自定义请求头",
+		hint: "端点挡在反向代理 / Cloudflare Access 后面时要带的鉴权头(如 Authorization)。直连官方地址一般用不上;签名密钥填上面那栏,别写这里",
+		value: cfg.headers,
+		set: (v) => ({ ...connection, config: { ...cfg, headers: v } }),
+	});
+	return fields;
 }
 
 /** 这条连接的配置该摆哪几栏。认不出的连接给空表 —— 页面那一侧不用再写一句兜底。 */
