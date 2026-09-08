@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	DIRECT_CONNECTORS,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PUSH_TARGET_PLATFORMS,
@@ -154,16 +155,27 @@ export const ConnectionTestStatusSchema = z.object({
 });
 export type ConnectionTestStatus = z.infer<typeof ConnectionTestStatusSchema>;
 
+/** 直连连接器 —— 「怎么连」。词表与理由见 constants 的 {@link DIRECT_CONNECTORS}。 */
+export const DirectConnectorSchema = z.enum(DIRECT_CONNECTORS);
+export type DirectConnector = z.infer<typeof DirectConnectorSchema>;
+
 /**
- * Push adapter — 平台级的"连接实例"。
+ * Connection — 平台级的"连接实例"。
  *
  * 类比一个 bot 实例:一份 baseUrl/accessToken 一次配置,被多个 PushTarget
  * (实际的群/私聊/dashboard 会话) 复用。
+ *
+ * 两根正交的轴:`platform`(连到哪)与 `connector`(怎么连)。`kind` 是将来接桥时的
+ * 判别子 —— 桥那一支没有 platform(平台靠探测),今天只有 `direct` 一档。
+ * **老数据没有这两个字段**,由 `schema/migration.ts` 的一次性迁移补上;这里刻意不给
+ * default,好让「没迁移过的数据」在 parse 阶段就响,而不是被默认值糊过去。
  */
 const ConnectionCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
 	enabled: z.boolean(),
+	kind: z.literal("direct"),
+	connector: DirectConnectorSchema,
 	testStatus: ConnectionTestStatusSchema.optional(),
 } as const;
 
@@ -185,11 +197,40 @@ const QQOfficialConnectionSchema = z.object({
 	config: QQOfficialConnectionConfigSchema,
 });
 
-export const ConnectionSchema = z.discriminatedUnion("platform", [
-	OnebotConnectionSchema,
-	WebhookConnectionSchema,
-	QQOfficialConnectionSchema,
-]);
+export const ConnectionSchema = z
+	.discriminatedUnion("platform", [
+		OnebotConnectionSchema,
+		WebhookConnectionSchema,
+		QQOfficialConnectionSchema,
+	])
+	.superRefine((connection, ctx) => {
+		// `connector` 与 OneBot 的 `config.transport` 在这一版是**同一件事的两份**
+		// (前者是新轴,后者是它今天的住处)。两份就会漂,所以这里把它钉死:漂了当场
+		// 报错,而不是让面板显示 ws、实际按 http 连。`config.transport` 那份会在
+		// 收口那步删掉,到时这条 refine 一并退休。
+		if (connection.platform === "onebot" && connection.connector !== connection.config.transport) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["connector"],
+				message: `connector ${connection.connector} does not match config.transport ${connection.config.transport}`,
+			});
+		}
+		// 另外两个平台只有一条路,连接器是常量。
+		if (connection.platform === "webhook" && connection.connector !== "webhook") {
+			ctx.addIssue({
+				code: "custom",
+				path: ["connector"],
+				message: "webhook connector must be webhook",
+			});
+		}
+		if (connection.platform === "qq-official" && connection.connector !== "ws") {
+			ctx.addIssue({
+				code: "custom",
+				path: ["connector"],
+				message: "qq-official connector must be ws",
+			});
+		}
+	});
 export type Connection = z.infer<typeof ConnectionSchema>;
 
 /* -------------------------------------------------------------------------- */

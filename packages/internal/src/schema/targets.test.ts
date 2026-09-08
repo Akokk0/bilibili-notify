@@ -11,9 +11,51 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "napcat-main",
 			platform: "onebot",
 			enabled: true,
+			kind: "direct",
+			connector: "http",
 			config: { baseUrl: "http://localhost:5700", accessToken: "secret" },
 		});
 		expect(r.success).toBe(true);
+	});
+
+	it("connector 与 config.transport 漂了就拒 —— 面板显示 ws、实际按 http 连是最坏的一种绿", () => {
+		// 这一版 `connector` 与 OneBot 的 `config.transport` 是同一件事的两份(前者是新轴,
+		// 后者是它今天的住处)。两份就会漂,所以 schema 把它钉死。等 transport 那份删掉时
+		// 这条 refine 一并退休。
+		const r = ConnectionSchema.safeParse({
+			id: UUID_A,
+			name: "drift",
+			platform: "onebot",
+			enabled: true,
+			kind: "direct",
+			connector: "ws",
+			config: { transport: "http", baseUrl: "http://localhost:5700" },
+		});
+		expect(r.success).toBe(false);
+		expect(r.success ? [] : r.error.issues.map((i) => i.path.join("."))).toContain("connector");
+	});
+
+	it("webhook / qq-official 的 connector 是常量,写别的就拒", () => {
+		const wh = ConnectionSchema.safeParse({
+			id: UUID_A,
+			name: "wh",
+			platform: "webhook",
+			enabled: true,
+			kind: "direct",
+			connector: "http",
+			config: { url: "https://example.com/hook" },
+		});
+		const qq = ConnectionSchema.safeParse({
+			id: UUID_A,
+			name: "qq",
+			platform: "qq-official",
+			enabled: true,
+			kind: "direct",
+			connector: "webhook",
+			config: { appId: "1", appSecret: "s" },
+		});
+		expect(wh.success).toBe(false);
+		expect(qq.success).toBe(false);
 	});
 
 	it("rejects an onebot adapter with webhook config", () => {
@@ -22,6 +64,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "bad",
 			platform: "onebot",
 			enabled: true,
+			kind: "direct",
+			connector: "http",
 			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(false);
@@ -33,6 +77,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "wh1",
 			platform: "webhook",
 			enabled: true,
+			kind: "direct",
+			connector: "webhook",
 			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(true);
@@ -49,6 +95,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 				name: `wh-${provider}`,
 				platform: "webhook",
 				enabled: true,
+				kind: "direct",
+				connector: "webhook",
 				config: { provider, url: "https://example.com/hook", secret: "secret" },
 			});
 			expect(r.success, provider).toBe(true);
@@ -62,6 +110,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "bad-provider",
 			platform: "webhook",
 			enabled: true,
+			kind: "direct",
+			connector: "webhook",
 			config: { provider: "wechat", url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(false);
@@ -95,6 +145,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "napcat-ws",
 			platform: "onebot",
 			enabled: true,
+			kind: "direct",
+			connector: "ws",
 			config: { transport: "ws", url: "ws://127.0.0.1:3001" },
 		});
 		expect(r.success).toBe(true);
@@ -106,6 +158,8 @@ describe("ConnectionSchema (discriminated by platform)", () => {
 			name: "napcat-rev",
 			platform: "onebot",
 			enabled: true,
+			kind: "direct",
+			connector: "ws-reverse",
 			config: { transport: "ws-reverse", port: 6700 },
 		});
 		expect(r.success).toBe(true);
@@ -423,6 +477,8 @@ describe("QQOfficial adapter schema", () => {
 			name: "qq-bot",
 			platform: "qq-official",
 			enabled: true,
+			kind: "direct",
+			connector: "ws",
 			config: { appId: "102000000", appSecret: "secret" },
 		});
 		expect(r.success).toBe(true);
@@ -444,6 +500,8 @@ describe("QQOfficial adapter schema", () => {
 			name: "qq-bot",
 			platform: "qq-official",
 			enabled: true,
+			kind: "direct",
+			connector: "ws",
 			config: { appId: "1", appSecret: "s", baseUrl: "http://x" },
 		});
 		expect(r.success).toBe(false);

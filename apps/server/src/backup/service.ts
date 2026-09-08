@@ -1,5 +1,11 @@
 import type { ImportResult } from "@bilibili-notify/contract";
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	type GlobalConfig,
+	migrateConfigSections,
+	type PushTarget,
+	type Subscription,
+} from "@bilibili-notify/internal";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,
@@ -134,6 +140,17 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			cookies = opened.cookies;
 		} else {
 			sections = opts.envelope.sections;
+		}
+
+		// 形状迁移 —— 与启动路径同一个纯函数。备份的明文段是**原样带过来的**,没过任何
+		// schema,所以一份三个月前导出的备份和一份三个月前的磁盘状态是同一个形状问题。
+		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
+		if (sections.adapters) {
+			sections = {
+				...sections,
+				adapters: migrateConfigSections({ connections: sections.adapters })
+					.connections as Connection[],
+			};
 		}
 
 		const current = {

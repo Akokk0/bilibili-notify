@@ -55,6 +55,40 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
  */
 export const PUSH_TARGET_PLATFORMS = ["onebot", "webhook", "qq-official"] as const;
 
+/**
+ * 直连连接器词表 —— 「**怎么**连」这一轴,与「连到**哪个**平台」正交。
+ *
+ * 今天它的值住在 OneBot config 的 `transport` 里,所以「加一个平台」要连带抄一份传输分支;
+ * 提到连接自己身上之后,tencent 走 ws、feishu 走 webhook 这类组合就是两根轴的叉乘,不用再各抄一份。
+ * 桥(koishi / astrbot)是这根轴上的另外两档,等接桥那期再进词表。
+ */
+export const DIRECT_CONNECTORS = ["http", "ws", "ws-reverse", "webhook"] as const;
+
+/**
+ * 一个平台默认走哪个连接器。
+ *
+ * 两个用处共用这一份:迁移时老 OneBot 条目没有 `transport` 字段的回落(与 schema 的
+ * `.default("http")` 同一个答案),以及前端新建连接时的初值。两处各写一份的话,
+ * 「新建的连接」与「迁移过来的连接」会从不同的默认值出发,而且没人会发现。
+ * 住零依赖的 constants 是因为前端要**运行时**用它 —— 从带 zod 的 schema 里导会把
+ * zod 拖进 web 产物(见 apps/web/src/types/domain.ts 顶上那段)。
+ */
+export function defaultConnectorFor(
+	platform: string,
+): (typeof DIRECT_CONNECTORS)[number] | undefined {
+	switch (platform) {
+		case "onebot":
+			return "http";
+		case "webhook":
+			return "webhook";
+		// 官机只有 WS 网关一条路;`connector` 提上来之后它才有地方写。
+		case "qq-official":
+			return "ws";
+		default:
+			return undefined;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // UP 主强调色
 // ---------------------------------------------------------------------------

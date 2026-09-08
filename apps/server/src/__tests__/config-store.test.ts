@@ -88,6 +88,8 @@ function makeWebhookConnection(
 		name: "团队 Webhook",
 		platform: "webhook" as const,
 		enabled: true,
+		kind: "direct" as const,
+		connector: "webhook" as const,
 		config: { url: "https://example.com/hook", provider: "generic" as const, headers: {} },
 		...overrides,
 	};
@@ -101,6 +103,8 @@ function makeOnebotConnection(
 		name: "NapCat",
 		platform: "onebot" as const,
 		enabled: true,
+		kind: "direct" as const,
+		connector: "http" as const,
 		config: {
 			transport: "http" as const,
 			baseUrl: "http://127.0.0.1:3000",
@@ -493,6 +497,62 @@ describe("ConfigStore", () => {
 		});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
 		expect(scopes).toEqual(["adapters", "targets"]);
+	});
+
+	it("load() 把老形状的 adapters.json 就地迁移并回写 —— 主人盘上那份没有 kind/connector", async () => {
+		// 这是这次形状变更**唯一真会炸主人机器**的路径:schema 一旦要求 kind/connector,
+		// 存量 adapters.json 就 parse 不过、开机直接 ConfigValidationError。夹具刻意写成
+		// 「史前」形状(连 transport 都没有),走的是与 schema `.default("http")` 同一个回落。
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-migrate-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const legacy = {
+			id: randomUUID(),
+			name: "老 NapCat",
+			platform: "onebot",
+			enabled: true,
+			config: { baseUrl: "http://127.0.0.1:3000", accessToken: "tok" },
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([legacy]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+
+		expect(store2.getConnections()).toEqual([
+			expect.objectContaining({ id: legacy.id, kind: "direct", connector: "http" }),
+		]);
+		// 回写到盘上,而不是每次开机都在内存里补一遍 —— 否则任何一次 upsert 都会把
+		// 没迁移的那份原样写回去。
+		const onDisk = JSON.parse(await readFile(join(state2, "adapters.json"), "utf8"));
+		expect(onDisk[0]).toMatchObject({ kind: "direct", connector: "http" });
+		// 迁移前的原件留一份 —— 迁移错了主人还能自己捞回来。
+		const bak = JSON.parse(await readFile(join(state2, "adapters.json.bak"), "utf8"));
+		expect(bak).toEqual([legacy]);
+	});
+
+	it("load() 对已经是新形状的 adapters.json 不回写 —— 也就不会每次开机都留一份 .bak", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-nomigrate-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		await writeFile(
+			join(state2, "adapters.json"),
+			JSON.stringify([makeOnebotConnection()]),
+			"utf8",
+		);
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		await expect(readFile(join(state2, "adapters.json.bak"), "utf8")).rejects.toThrow();
 	});
 
 	it("load() 回填缺失的 webhook 托管 target", async () => {

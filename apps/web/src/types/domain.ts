@@ -26,6 +26,7 @@ import {
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
 	DEFAULT_ROAST_SCHEDULE,
+	defaultConnectorFor,
 	FEATURE_KEYS,
 	type FeatureKey,
 	isTargetPaused,
@@ -206,7 +207,15 @@ export function makeEmptySubscription(uid: string): Subscription {
 }
 
 export function makeEmptyConnection(platform: PushTargetPlatform, name: string): Connection {
-	const base = { id: newId(), name, enabled: true } as const;
+	// connector 的初值走 internal 那份 defaultConnectorFor —— 与迁移同一个答案,
+	// 免得「新建的」和「迁移来的」从不同默认值出发。
+	const base = {
+		id: newId(),
+		name,
+		enabled: true,
+		kind: "direct",
+		connector: defaultConnectorFor(platform) ?? "http",
+	} as const;
 	if (platform === "onebot") {
 		return {
 			...base,

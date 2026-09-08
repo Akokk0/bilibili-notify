@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
+	CONFIG_SCHEMA_VERSION,
 	type ConfigScope,
 	type Connection,
 	ConnectionSchema,
@@ -13,6 +14,7 @@ import {
 	GlobalConfigSchema,
 	type MessageBus,
 	makeDefaultGlobalConfig,
+	migrateConfigSections,
 	normalizeCardLayout,
 	normalizeMessageLayout,
 	type PushTarget,
@@ -290,6 +292,8 @@ function migrateLegacyTargets(raw: unknown[]): {
 					id: adapterId,
 					name: deriveConnectionName(legacy.name, baseUrl),
 					enabled: true,
+					kind: "direct",
+					connector: "http",
 					platform: "onebot",
 					config: {
 						transport: "http",
@@ -330,6 +334,8 @@ function migrateLegacyTargets(raw: unknown[]): {
 					id: adapterId,
 					name: deriveConnectionName(legacy.name, url),
 					enabled: true,
+					kind: "direct",
+					connector: "webhook",
 					platform: "webhook",
 					config: {
 						url,
@@ -843,8 +849,23 @@ class NodeConfigStore implements ConfigStore {
 					"adapters.json on disk is not an array",
 				);
 			}
+			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`,schema 会当场拒,开机就起不来。
+			// 判据是数据形状不是版本号,且迁移幂等,所以「上次写到一半掉电」重来一遍无害。
+			// 回退到旧载荷是安全的:连接这一层是非 strict 的 z.object,旧 schema 会把这两个
+			// 不认识的键 strip 掉照常加载;它写回去的没有新字段,下次再被这里迁一遍。
+			const migrated = migrateConfigSections({ connections: connectionsRaw });
+			if (migrated.changed) {
+				// 原件留一份 —— 迁移错了主人还能自己捞回去。
+				await copyFile(this.path("adapters"), `${this.path("adapters")}.bak`);
+				await atomicWriteJson(this.path("adapters"), migrated.connections);
+				this.serviceCtx.logger.info(
+					`config-store migrated adapters.json v${migrated.from} → v${CONFIG_SCHEMA_VERSION} ` +
+						`(${migrated.connections.length} 条,原件留在 adapters.json.bak)`,
+				);
+			}
+
 			const connections: Connection[] = [];
-			for (const [idx, raw] of connectionsRaw.entries()) {
+			for (const [idx, raw] of migrated.connections.entries()) {
 				// 已撤下的平台(web-dashboard、koishi-bot、astrbot,或将来的某个)留下的存量条目:
 				// 静默丢弃,不进严格校验 —— safeParse 失败会 throw,而这里是启动路径,没有面板能进去改。
 				if (!isKnownPlatform(raw)) continue;

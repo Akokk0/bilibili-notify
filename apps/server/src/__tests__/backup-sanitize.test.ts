@@ -170,6 +170,8 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000001",
 				platform: "onebot",
+				kind: "direct",
+				connector: "http",
 				config: {
 					transport: "http",
 					baseUrl: "http://bob:pw@127.0.0.1:5700/",
@@ -184,6 +186,8 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000002",
 				platform: "webhook",
+				kind: "direct",
+				connector: "webhook",
 				config: {
 					url: "https://example.com/hook?access_token=t",
 					provider: "generic",
@@ -198,6 +202,8 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000005",
 				platform: "qq-official",
+				kind: "direct",
+				connector: "ws",
 				config: { appId: "102000000", appSecret: "app-secret" },
 			}),
 		],

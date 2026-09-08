@@ -39,6 +39,8 @@ function onebot(id: string, token: string): Connection {
 		platform: "onebot",
 		name: "bot",
 		enabled: true,
+		kind: "direct",
+		connector: "ws",
 		config: {
 			transport: "ws",
 			url: "ws://host",

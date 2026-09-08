@@ -410,7 +410,9 @@ function ConnectionConfigFields({
 }) {
 	if (connection.platform === "onebot") {
 		const cfg = connection.config;
-		const setCfg = (next: OnebotConnectionConfig) => onChange({ ...connection, config: next });
+		// connector 跟着 transport 走 —— 这一版两份并存,schema 的 refine 会把漂掉的挡下来。
+		const setCfg = (next: OnebotConnectionConfig) =>
+			onChange({ ...connection, connector: next.transport, config: next });
 		return (
 			<>
 				<Field label="连接方式" code="config.transport" required>
