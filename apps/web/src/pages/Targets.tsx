@@ -1,11 +1,6 @@
 import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
 // 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
-import {
-	addressNounFor,
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-	platformDescriptor,
-} from "@bilibili-notify/internal/constants";
+import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/constants";
 import {
 	AddCard,
 	Btn,
@@ -28,6 +23,7 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
+import { type ConnectionField, connectionFields } from "../types/connection-fields";
 import {
 	type Connection,
 	type ConnectionPlatform,
@@ -35,15 +31,8 @@ import {
 	makeEmptyConnection,
 	makeEmptyTarget,
 	maskWebhookUrl,
-	type OnebotConnectionConfig,
-	type OnebotTransport,
 	type PushTarget,
 	type PushTargetScope,
-	type QQOfficialBotType,
-	type QQOfficialConnectionConfig,
-	switchOnebotTransport,
-	webhookSecretHint,
-	webhookUrlPlaceholder,
 } from "../types/domain";
 
 /**
@@ -64,13 +53,6 @@ const SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
 	{ value: "group", label: "群组" },
 	{ value: "private", label: "私聊" },
 	{ value: "channel", label: "频道" },
-];
-
-/** OneBot 连接方式 —— 是 adapter config 的 transport 字段,不是独立 platform。 */
-const ONEBOT_TRANSPORTS: ReadonlyArray<{ value: OnebotTransport; label: string }> = [
-	{ value: "http", label: "HTTP" },
-	{ value: "ws", label: "正向 WS" },
-	{ value: "ws-reverse", label: "反向 WS" },
 ];
 
 /**
@@ -423,272 +405,103 @@ function ConnectionConfigFields({
 	onChange: (next: Connection) => void;
 }) {
 	const platformTint = usePlatformTint();
-	if (connection.platform === "onebot") {
-		const cfg = connection.config;
-		// connector 跟着 transport 走 —— 这一版两份并存,schema 的 refine 会把漂掉的挡下来。
-		const setCfg = (next: OnebotConnectionConfig) =>
-			onChange({ ...connection, connector: next.transport, config: next });
-		return (
-			<>
-				<Field label="连接方式" code="config.transport" required>
-					<div className="flex flex-wrap gap-1.5">
-						{ONEBOT_TRANSPORTS.map((t) => {
-							const active = cfg.transport === t.value;
-							return (
-								<ToneChip
-									key={t.value}
-									tone={platformTint("onebot")}
-									active={active}
-									onClick={() => setCfg(switchOnebotTransport(cfg, t.value))}
-								>
-									{t.label}
-								</ToneChip>
-							);
-						})}
-					</div>
-				</Field>
-
-				{cfg.transport === "http" ? (
-					<Field label="HTTP baseUrl" code="config.baseUrl" required>
-						<TInput
-							value={cfg.baseUrl}
-							onChange={(v) => setCfg({ ...cfg, baseUrl: v })}
-							placeholder="http://napcat:3000"
-							mono
-						/>
-					</Field>
-				) : null}
-				{cfg.transport === "ws" ? (
-					<Field label="正向 WS 地址" code="config.url" required hint="bot 的 OneBot 正向 WS 服务">
-						<TInput
-							value={cfg.url}
-							onChange={(v) => setCfg({ ...cfg, url: v })}
-							placeholder="ws://napcat:3001"
-							mono
-						/>
-					</Field>
-				) : null}
-				{cfg.transport === "ws-reverse" ? (
+	return (
+		<>
+			{connectionFields(connection).map((field) => {
+				if (field.kind === "qq-bind") {
+					return (
+						/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
+						   此前逐字符手抄,行距一漂两种行就对不齐。 */
+						<div key="qq-bind" className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
+							<QQQrBindButton onCredentials={(creds) => onChange(field.apply(creds))} />
+							<span className="text-bn-xs text-bn-text-secondary">
+								没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏
+							</span>
+						</div>
+					);
+				}
+				return (
 					<Field
-						label="反向 WS 监听端口"
-						code="config.port"
-						hint="bot 主动连入此端口;端口即身份,与主端口 8787 独立"
+						key={field.code}
+						label={field.label}
+						code={field.code}
+						hint={field.hint}
+						required={field.required}
 					>
-						<TNum
-							value={cfg.port}
-							onChange={(v) => setCfg({ ...cfg, port: v })}
-							min={1}
-							max={65_535}
-							width={120}
+						<ConnectionFieldControl
+							field={field}
+							tint={platformTint(connection.platform)}
+							onChange={onChange}
 						/>
 					</Field>
-				) : null}
+				);
+			})}
+		</>
+	);
+}
 
-				<Field
-					label="accessToken"
-					code="config.accessToken"
-					hint={
-						cfg.transport === "ws-reverse"
-							? "校验连入 bot 的握手;反向 WS 强烈建议设置,否则端口对局域网裸开"
-							: undefined
-					}
-				>
-					<TInput
-						value={cfg.accessToken ?? ""}
-						onChange={(v) => setCfg({ ...cfg, accessToken: v || undefined })}
-						secret
-					/>
-				</Field>
-				{/* 这句 hint 要说的不是「超时是什么」,而是「为什么它看起来没生效」:带图
-				    消息另有更长的下限,不然主人会以为自己调的 15s 被无视了。下限现在就在
-				    下面两栏里,调得动也关得掉 —— 别再让它在代码里悄悄盖掉主人配的数。 */}
-				<Field
-					label={cfg.transport === "http" ? "请求超时" : "响应超时"}
-					code="config.timeoutMs"
-					hint={`${
-						cfg.transport === "http" ? "单次 HTTP 请求总超时(毫秒)" : "等 OneBot echo 响应的超时"
-					}。纯文字消息按这个数走；带图的另看下面两栏的下限`}
-				>
-					<TNum
-						value={cfg.timeoutMs}
-						onChange={(v) => setCfg({ ...cfg, timeoutMs: v })}
-						min={1000}
-						step={1000}
-						suffix="ms"
-						width={120}
-					/>
-				</Field>
-				<Field
-					label="带图超时下限"
-					code="config.imageMinTimeoutMs"
-					hint={`带图消息实际等 max(上面的超时, 此值)。协议端要先把图传到 QQ 图床才回响应，实测常超 15s，所以单独放宽（默认 ${ONEBOT_IMAGE_MIN_TIMEOUT_MS / 1000}s）。填 0 = 不放宽，严格按上面的超时走`}
-				>
-					<TNum
-						value={cfg.imageMinTimeoutMs}
-						onChange={(v) => setCfg({ ...cfg, imageMinTimeoutMs: v })}
-						min={0}
-						step={1000}
-						suffix="ms"
-						width={120}
-					/>
-				</Field>
-				<Field
-					label="合并转发超时下限"
-					code="config.forwardMinTimeoutMs"
-					hint={`语义同上，只是合并转发要把每张图逐张下载再上传组装，更慢（默认 ${ONEBOT_FORWARD_MIN_TIMEOUT_MS / 1000}s）。填 0 = 不放宽`}
-				>
-					<TNum
-						value={cfg.forwardMinTimeoutMs}
-						onChange={(v) => setCfg({ ...cfg, forwardMinTimeoutMs: v })}
-						min={0}
-						step={1000}
-						suffix="ms"
-						width={120}
-					/>
-				</Field>
-				<Field label="重试次数" code="config.retryTimes" hint="不含首次,失败后再尝试">
-					<TNum
-						value={cfg.retryTimes}
-						onChange={(v) => setCfg({ ...cfg, retryTimes: v })}
-						min={0}
-						max={10}
-						suffix="次"
-					/>
-				</Field>
-				<Field label="重试间隔" code="config.retryIntervalMs">
-					<TNum
-						value={cfg.retryIntervalMs}
-						onChange={(v) => setCfg({ ...cfg, retryIntervalMs: v })}
-						min={0}
-						step={500}
-						suffix="ms"
-						width={120}
-					/>
-				</Field>
-				{cfg.transport !== "ws-reverse" ? (
-					<Field
-						label={cfg.transport === "http" ? "自定义请求头" : "WS 握手头"}
-						code="config.headers"
-						hint="例如反向代理鉴权头"
-					>
-						<HeadersEditor
-							value={cfg.headers}
-							onChange={(next) => setCfg({ ...cfg, headers: next })}
-						/>
-					</Field>
-				) : null}
-			</>
-		);
-	}
-	if (connection.platform === "qq-official") {
-		const cfg = connection.config;
-		const setCfg = (next: QQOfficialConnectionConfig) => onChange({ ...connection, config: next });
-		return (
-			<>
-				{/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
-				    此前逐字符手抄,行距一漂两种行就对不齐。 */}
-				<div className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
-					<QQQrBindButton
-						// 回填 = 「用扫出来的这个 lite bot」,顺手把域/沙箱归到它的正确档:
-						// lite bot 无原生 markdown 特权,留在私域档会让图集推送必败。
-						// 显示名称为空时补默认名 —— 扫码流程跳过了表单上半截,名称空着
-						// 会让保存钮一直灰着(唯一前端必填),用户看不出为什么存不了。
-						onCredentials={({ appId, appSecret }) =>
-							onChange({
-								...connection,
-								name: connection.name.trim() ? connection.name : `QQ 机器人 ${appId}`,
-								config: { ...cfg, appId, appSecret, botType: "public", sandbox: false },
-							})
-						}
-					/>
-					<span className="text-bn-xs text-bn-text-secondary">
-						没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏
-					</span>
+/** 一栏的控件 —— 只认 kind,不认平台。 */
+function ConnectionFieldControl({
+	field,
+	tint,
+	onChange,
+}: {
+	field: Exclude<ConnectionField, { kind: "qq-bind" }>;
+	tint: string;
+	onChange: (next: Connection) => void;
+}) {
+	switch (field.kind) {
+		case "text":
+			return (
+				<TInput
+					value={field.value}
+					onChange={(v) => onChange(field.set(v))}
+					placeholder={field.placeholder}
+					mono={field.mono}
+					secret={field.secret}
+				/>
+			);
+		case "number":
+			return (
+				<TNum
+					value={field.value}
+					onChange={(v) => onChange(field.set(v))}
+					min={field.min}
+					max={field.max}
+					step={field.step}
+					suffix={field.suffix}
+					width={field.width}
+				/>
+			);
+		case "toggle":
+			return <Toggle value={field.value} onChange={(v) => onChange(field.set(v))} />;
+		case "select":
+			return (
+				<Picker
+					value={field.value}
+					onChange={(v) => onChange(field.set(v))}
+					// Picker 的 options 收可变数组;字段表交出来的是只读的,拷一份给它。
+					options={[...field.options]}
+				/>
+			);
+		case "chips":
+			return (
+				<div className="flex flex-wrap gap-1.5">
+					{field.options.map((o) => (
+						<ToneChip
+							key={o.value}
+							tone={tint}
+							active={field.value === o.value}
+							onClick={() => onChange(field.set(o.value))}
+						>
+							{o.label}
+						</ToneChip>
+					))}
 				</div>
-				<Field
-					label="AppID"
-					code="config.appId"
-					required
-					hint="QQ 开放平台机器人的 AppID(明文存储)"
-				>
-					<TInput
-						value={cfg.appId}
-						onChange={(v) => setCfg({ ...cfg, appId: v })}
-						placeholder="102xxxxxx"
-						mono
-					/>
-				</Field>
-				<Field
-					label="AppSecret"
-					code="config.appSecret"
-					required
-					hint="机器人密钥;用于换取 App Access Token"
-				>
-					<TInput value={cfg.appSecret} onChange={(v) => setCfg({ ...cfg, appSecret: v })} secret />
-				</Field>
-				<Field
-					label="机器人域"
-					code="config.botType"
-					required
-					hint="私域可发原生 markdown(图集合并成一条多图);公域不支持原生 markdown(图集逐条发,需报备模板)"
-				>
-					<Picker<QQOfficialBotType>
-						value={cfg.botType}
-						onChange={(v) => setCfg({ ...cfg, botType: v })}
-						options={[
-							{ value: "public", label: "公域" },
-							{ value: "private", label: "私域" },
-						]}
-					/>
-				</Field>
-				<Field
-					label="沙箱模式"
-					code="config.sandbox"
-					hint="开启后走 QQ 沙箱环境(sandbox.api.sgroup.qq.com),仅对沙箱内成员可见"
-				>
-					<Toggle value={cfg.sandbox} onChange={(v) => setCfg({ ...cfg, sandbox: v })} />
-				</Field>
-				<Field
-					label="记录重连日志"
-					code="config.logReconnects"
-					hint="QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启"
-				>
-					<Toggle
-						value={cfg.logReconnects}
-						onChange={(v) => setCfg({ ...cfg, logReconnects: v })}
-					/>
-				</Field>
-			</>
-		);
+			);
+		case "headers":
+			return <HeadersEditor value={field.value} onChange={(next) => onChange(field.set(next))} />;
 	}
-	if (connection.connector === "webhook") {
-		const cfg = connection.config;
-		// 「哪家的机器人」原先是这张表里一个叫「Webhook 协议」的下拉 —— 它现在就是上面
-		// 那排平台胶囊,不再问第二遍。
-		const platform = connection.platform;
-		return (
-			<>
-				<Field label="URL" code="config.url" required>
-					<TInput
-						value={cfg.url}
-						onChange={(v) => onChange({ ...connection, config: { ...cfg, url: v } })}
-						placeholder={webhookUrlPlaceholder(platform)}
-						mono
-					/>
-				</Field>
-				<Field label="Secret" code="config.secret" hint={webhookSecretHint(platform)}>
-					<TInput
-						value={cfg.secret ?? ""}
-						onChange={(v) =>
-							onChange({ ...connection, config: { ...cfg, secret: v || undefined } })
-						}
-						secret
-					/>
-				</Field>
-			</>
-		);
-	}
-	return null;
 }
 
 function HeadersEditor({
