@@ -1,8 +1,9 @@
 /**
  * `/bridge` 端点 —— 桥连进来的那条长连接的**传输层**。
  *
- * 只管「连上、认得出是谁、握好手、活着、断得明白」。桥后面挂着哪些平台、怎么把一条推送
- * 译成对面听得懂的东西,是 `platforms/bridge.ts` 的事;这里一个平台名都不认识。
+ * 只管「连上、认得出是谁、握好手、活着、断得明白、一条 socket 上多条请求各认各的回执」。
+ * 桥后面挂着哪些平台、怎么把一条推送译成对面听得懂的东西,是 `platforms/bridge.ts` 的事;
+ * 这里一个平台名都不认识。
  *
  * 协议规范在 `docs/protocol/bridge.md`,wire 形状在 `@bilibili-notify/contract`。
  * 每一条行为背后都有一句协议承诺,改之前先看那份文档:
@@ -14,8 +15,10 @@
  * - **不认识的帧忽略、认识但畸形的帧断连 4003** —— 前者是让协议能单边演进的唯一出路。
  * - **同 token 二次连接新的赢**,而且是在**新的握完手之后**才踢老的:版本不对的重连
  *   不该干掉正在用的那条。
+ * - **桥断线 → 在飞的推送立刻失败**,不排队不补推:推一条三小时前的「正在直播」比不推更糟。
  */
 
+import { randomUUID } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import {
@@ -29,6 +32,7 @@ import {
 	type BridgeInboundFrame,
 	type BridgeInboundSubscription,
 	type BridgeKind,
+	type BridgeSendFrame,
 	type ServerToBridgeFrame,
 } from "@bilibili-notify/contract";
 import type { Disposable } from "@bilibili-notify/internal";
@@ -50,6 +54,12 @@ export const DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS = 90_000;
 /** 单帧上限。对面是不受信的第三方插件,`ws` 超限自己会关 1009。 */
 export const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
 
+/**
+ * 一条 `send` 等回执等多久。桥那边要下载图再交给平台,给得宽一点;但**必须有上限** ——
+ * 推送有时效,吊着不如早点告诉用户失败。
+ */
+export const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
+
 export interface BridgeServerOptions {
 	httpServer: HttpServer;
 	serviceCtx: NodeServiceContext;
@@ -69,6 +79,7 @@ export interface BridgeServerOptions {
 	handshakeTimeoutMs?: number;
 	heartbeatIntervalMs?: number;
 	heartbeatTimeoutMs?: number;
+	sendTimeoutMs?: number;
 	/** bot 名单来了(握手那份也算)。名单是**全量快照**,整份换掉。 */
 	onBots?(connectionId: string, bots: readonly BridgeBot[]): void;
 	/** 收到一条入站消息。归一成 BN 内部形状是下一层的事,这里原样交出去。 */
@@ -87,10 +98,24 @@ export interface BridgeSession {
 	readonly connectedAt: number;
 }
 
+/** `id` 由这一层生成并配对,所以调用方给不了也不用给。 */
+export type BridgeSendRequest = Omit<BridgeSendFrame, "type" | "id">;
+
+/** 一次投递的结果。**永远不抛** —— 上面那层要的是投递结果,不是异常。 */
+export interface BridgeSendOutcome {
+	ok: boolean;
+	err?: string;
+}
+
 export interface BridgeServer extends Disposable {
 	/** 已握手的会话数。没握完手的不算。 */
 	readonly sessionCount: number;
 	getSession(connectionId: string): BridgeSession | undefined;
+	/**
+	 * 发一条消息,等桥的回执。请求 ↔ 回执的配对是**传输层**的事(一条 socket 上多条
+	 * 在飞),不是 adapter 的 —— adapter 只负责把 payload 译成 {@link BridgeSendRequest}。
+	 */
+	send(connectionId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
 	/** 吊销 token / 删接入 / 关模块 —— 按给的 close code 把那条桥踢下线。 */
 	disconnect(connectionId: string, code: BridgeCloseCode): void;
 }
@@ -107,6 +132,13 @@ interface BridgeConn {
 	 */
 	hello?: { kind: BridgeKind; name?: string; version?: string };
 	bots: BridgeBot[];
+	/** 这条 socket 上还没回执的 `send`。断线时全部就地失败。 */
+	pending: Map<string, PendingSend>;
+}
+
+interface PendingSend {
+	settle(outcome: BridgeSendOutcome): void;
+	timer: NodeJS.Timeout;
 }
 
 function toBot(wire: BridgeBotWire): BridgeBot {
@@ -139,6 +171,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	const handshakeTimeoutMs = opts.handshakeTimeoutMs ?? BRIDGE_HANDSHAKE_TIMEOUT_MS;
 	const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS;
 	const heartbeatTimeoutMs = opts.heartbeatTimeoutMs ?? DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS;
+	const sendTimeoutMs = opts.sendTimeoutMs ?? DEFAULT_BRIDGE_SEND_TIMEOUT_MS;
 
 	const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_BRIDGE_FRAME_BYTES });
 	/** 所有还连着的 socket,含没握完手的。 */
@@ -148,13 +181,24 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	// ---------------- 收发 -----------------------------------------------------
 
-	function sendFrame(conn: BridgeConn, frame: ServerToBridgeFrame): void {
-		if (conn.socket.readyState !== WebSocket.OPEN) return;
+	/** 回「送出去了没有」—— `send` 要拿它决定「立刻失败」还是「等回执」。 */
+	function sendFrame(conn: BridgeConn, frame: ServerToBridgeFrame): boolean {
+		if (conn.socket.readyState !== WebSocket.OPEN) return false;
 		try {
 			conn.socket.send(JSON.stringify(frame));
+			return true;
 		} catch (err) {
 			log.warn(`bridge ${conn.connectionId} send failed: ${String(err)}`);
+			return false;
 		}
+	}
+
+	/**
+	 * 桥断了 → 在飞的**立刻失败**,不排队不补推。协议里写死的:推送有时效,补推一条
+	 * 三小时前的「正在直播」比不推更糟。
+	 */
+	function failPending(conn: BridgeConn, err: string): void {
+		for (const entry of [...conn.pending.values()]) entry.settle({ ok: false, err });
 	}
 
 	/**
@@ -170,6 +214,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			clearTimeout(conn.handshakeTimer);
 			conn.handshakeTimer = undefined;
 		}
+		failPending(conn, "桥断开了");
 		if (sessions.get(conn.connectionId) === conn) {
 			sessions.delete(conn.connectionId);
 			opts.onSessionChange?.(conn.connectionId, false);
@@ -289,7 +334,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				break;
 			}
 			case "result": {
-				// 请求 ↔ 回执的关联在下一片;眼下没人发 `send`,所以也不会有回执。
+				const entry = conn.pending.get(frame.id);
+				if (!entry) {
+					// 超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
+					// 断连不合适;而已经结算过的那条投递也不该被翻案。
+					log.debug(`bridge ${conn.connectionId} sent a result for an unknown id`);
+					break;
+				}
+				entry.settle({ ok: frame.ok, err: frame.err });
 				break;
 			}
 			case "pong":
@@ -320,6 +372,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
+			pending: new Map(),
 		};
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
@@ -389,8 +442,34 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 	};
 
+	function send(connectionId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome> {
+		const conn = sessions.get(connectionId);
+		if (!conn) return Promise.resolve({ ok: false, err: "桥没连着" });
+		const id = randomUUID();
+		return new Promise<BridgeSendOutcome>((resolve) => {
+			// 只结算一次:超时、回执、断线三路都可能先到,后到的那些看见 pending 里
+			// 没有这一格就散了。
+			const settle = (outcome: BridgeSendOutcome): void => {
+				const entry = conn.pending.get(id);
+				if (!entry) return;
+				clearTimeout(entry.timer);
+				conn.pending.delete(id);
+				resolve(outcome);
+			};
+			const timer = setTimeout(
+				() => settle({ ok: false, err: `桥 ${sendTimeoutMs}ms 内没给回执` }),
+				sendTimeoutMs,
+			);
+			conn.pending.set(id, { settle, timer });
+			if (!sendFrame(conn, { type: "send", id, ...request })) {
+				settle({ ok: false, err: "桥没连着" });
+			}
+		});
+	}
+
 	return {
 		dispose,
+		send,
 		get sessionCount() {
 			return sessions.size;
 		},

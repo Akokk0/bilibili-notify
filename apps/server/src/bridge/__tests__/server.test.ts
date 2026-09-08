@@ -351,6 +351,91 @@ describe("/bridge 端点", () => {
 		expect(server.sessionCount).toBe(0);
 	});
 
+	// ---- 发消息与回执 ------------------------------------------------------
+
+	const sendRequest = {
+		botId: "b1",
+		platform: "telegram",
+		target: { scope: "group" as const, address: "-100" },
+		message: { kind: "text" as const, text: "开播啦" },
+	};
+
+	it("send 把帧发出去(带一个自己生成的 id),回执回来才落地", async () => {
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		const frame = await p.next();
+		expect(frame).toMatchObject({ type: "send", ...sendRequest });
+		expect(typeof frame.id).toBe("string");
+		p.send({ type: "result", id: frame.id, ok: true });
+		expect(await pending).toEqual({ ok: true });
+	});
+
+	it("回执报失败 → **回 ok:false,不抛** —— 上面那层要的是投递结果不是异常", async () => {
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		const frame = await p.next();
+		p.send({ type: "result", id: frame.id, ok: false, err: "bot 掉线了" });
+		expect(await pending).toEqual({ ok: false, err: "bot 掉线了" });
+	});
+
+	it("桥不回 → 超时后失败,而不是永远吊着", async () => {
+		await boot({ sendTimeoutMs: 40 });
+		const p = await handshaken();
+		const outcome = await server.send(CONNECTION_ID, sendRequest);
+		expect(outcome.ok).toBe(false);
+		expect(outcome.err).toContain("回执");
+		expect(p.socket.readyState).toBe(WebSocket.OPEN);
+	});
+
+	it("超时之后回执才来 → 忽略,不炸也不断连", async () => {
+		await boot({ sendTimeoutMs: 40 });
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		const frame = await p.next();
+		await pending;
+		p.send({ type: "result", id: frame.id, ok: true });
+		await new Promise((r) => setTimeout(r, 30));
+		expect(p.socket.readyState).toBe(WebSocket.OPEN);
+	});
+
+	it("桥不认得的 id → 忽略,不断连(这不是畸形帧)", async () => {
+		const p = await handshaken();
+		p.send({ type: "result", id: "凭空捏造", ok: true });
+		await new Promise((r) => setTimeout(r, 30));
+		expect(p.socket.readyState).toBe(WebSocket.OPEN);
+	});
+
+	it("**桥断线 → 在飞的立刻失败**,不排队不补推(推一条三小时前的开播比不推更糟)", async () => {
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		await p.next();
+		p.socket.terminate();
+		const outcome = await pending;
+		expect(outcome.ok).toBe(false);
+		expect(outcome.err).toBeTruthy();
+	});
+
+	it("桥没连着 → 立刻失败,不等超时", async () => {
+		const started = Date.now();
+		const outcome = await server.send(CONNECTION_ID, sendRequest);
+		expect(outcome.ok).toBe(false);
+		expect(Date.now() - started).toBeLessThan(1_000);
+	});
+
+	it("两条同时在飞,各拿各的回执 —— id 不许串", async () => {
+		const p = await handshaken();
+		const first = server.send(CONNECTION_ID, sendRequest);
+		const second = server.send(CONNECTION_ID, { ...sendRequest, botId: "b2" });
+		const a = await p.next();
+		const b = await p.next();
+		expect(a.id).not.toBe(b.id);
+		// 故意倒着回,证明配对靠 id 不靠顺序。
+		p.send({ type: "result", id: b.id, ok: false, err: "第二条炸了" });
+		p.send({ type: "result", id: a.id, ok: true });
+		expect(await first).toEqual({ ok: true });
+		expect(await second).toEqual({ ok: false, err: "第二条炸了" });
+	});
+
 	// ---- 共存与收摊 --------------------------------------------------------
 
 	it("别的路径的 upgrade **不吃掉** —— dashboard 那条 /ws 还得有人接", async () => {
