@@ -18,7 +18,7 @@ function currentWith(subs: Subscription[]): CurrentState {
 	return {
 		globals: makeDefaultGlobalConfig(),
 		subscriptions: subs,
-		adapters: [],
+		connections: [],
 		targets: [],
 	};
 }
@@ -99,7 +99,7 @@ describe("planImport", () => {
 	it("a scope absent from the backup produces no writes for it", () => {
 		const current = currentWith([sub("1")]);
 
-		const plan = planImport(current, { adapters: [] }, "overwrite");
+		const plan = planImport(current, { connections: [] }, "overwrite");
 
 		// subscriptions untouched (not in the backup) — no upserts, no deletes
 		expect(plan.subscriptions.upsert).toEqual([]);

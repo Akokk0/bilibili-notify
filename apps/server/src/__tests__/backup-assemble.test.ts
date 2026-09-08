@@ -1,6 +1,8 @@
 import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
+import { sealSecrets } from "../backup/crypto.js";
+import type { BackupEnvelope } from "../backup/envelope.js";
 
 /**
  * 完整档组装:明文段走 redactSecretKeys(连完整档明文都零机密),真机密(apiKey /
@@ -61,7 +63,7 @@ describe("full backup assemble/open", () => {
 		const env = assembleFullBackup(
 			{
 				globals: globalsWithApiKey("sk-SECRET"),
-				adapters: [onebot("a1", "tok-SECRET")],
+				connections: [onebot("a1", "tok-SECRET")],
 				cookies: { cookiesJson: '{"SESSDATA":"cookie-SECRET"}', refreshToken: "rt-SECRET" },
 			},
 			"123456",
@@ -80,7 +82,7 @@ describe("full backup assemble/open", () => {
 		const env = assembleFullBackup(
 			{
 				globals: globalsWithApiKey("sk-1"),
-				adapters: [onebot("a1", "tok-1")],
+				connections: [onebot("a1", "tok-1")],
 				cookies: { cookiesJson: "CJ", refreshToken: "RT" },
 			},
 			"123456",
@@ -89,12 +91,30 @@ describe("full backup assemble/open", () => {
 
 		const { sections, cookies } = openFullBackup(env, "123456");
 		expect(sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
-		expect(sections.adapters?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
+		expect(sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 	});
 
 	it("open with the wrong PIN throws", () => {
 		const env = assembleFullBackup({ globals: globalsWithApiKey("sk-1") }, "123456", "t");
 		expect(() => openFullBackup(env, "0000")).toThrow();
+	});
+
+	it("老备份的加密袋里那格叫 adapterConfigs,也要认", () => {
+		// 明文段的凭据是抹平过的,真值只在袋里 —— 认不出老键名不会报错,只会让主人
+		// 恢复出一堆没有 token 的连接,而他要到发第一条推送时才发现。
+		const bag = {
+			connectionConfigs: undefined,
+			adapterConfigs: { a1: { accessToken: "tok-old" } },
+		};
+		const env = assembleFullBackup(
+			{ connections: [onebot("a1", "tok-1")] },
+			"123456",
+			"t",
+		) as BackupEnvelope;
+		env.secrets = sealSecrets("123456", bag);
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-old" });
 	});
 });

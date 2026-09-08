@@ -32,7 +32,7 @@ function deletions(r: ImportResult): string[] {
 	return [
 		["订阅", r.subscriptions.deleted] as const,
 		["推送目标", r.targets.deleted] as const,
-		["推送连接", r.adapters.deleted] as const,
+		["推送连接", r.connections.deleted] as const,
 	]
 		.filter(([, n]) => n > 0)
 		.map(([label, n]) => `${label} ${n} 项`);

@@ -48,6 +48,6 @@ describe("BackupExportDialog", () => {
 		fireEvent.click(screen.getByRole("checkbox", { name: /推送连接/ }));
 		fireEvent.click(screen.getByText("导出"));
 
-		expect(onExport.mock.calls[0]?.[0].sections.adapters).toBe(false);
+		expect(onExport.mock.calls[0]?.[0].sections.connections).toBe(false);
 	});
 });

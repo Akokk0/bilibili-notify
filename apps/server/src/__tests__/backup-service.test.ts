@@ -42,16 +42,16 @@ function onebot(id: string, token: string): Connection {
 }
 
 function makeFakeStore(
-	init: Partial<{ subscriptions: Subscription[]; adapters: Connection[] }> = {},
+	init: Partial<{ subscriptions: Subscription[]; connections: Connection[] }> = {},
 ) {
 	let globals = makeDefaultGlobalConfig();
 	let subs = [...(init.subscriptions ?? [])];
-	let adapters = [...(init.adapters ?? [])];
+	let connections = [...(init.connections ?? [])];
 	let targets: PushTarget[] = [];
 	const store: BackupStore = {
 		getGlobals: () => globals,
 		getSubscriptions: () => subs,
-		getConnections: () => adapters,
+		getConnections: () => connections,
 		getTargets: () => targets,
 		// 恢复是**一次整体替换**,不是一串编辑 —— 所以这个替身也只认终态,断言跟着看
 		// 「最后剩下什么」而不是「按什么顺序调了哪些方法」。老替身把 upsertTarget 打成
@@ -59,7 +59,7 @@ function makeFakeStore(
 		replaceSections: vi.fn(async (next) => {
 			if (next.globals) globals = next.globals;
 			if (next.subscriptions) subs = next.subscriptions;
-			if (next.adapters) adapters = next.adapters;
+			if (next.connections) connections = next.connections;
 			if (next.targets) targets = next.targets;
 			return [];
 		}),
@@ -76,7 +76,10 @@ function makeCookieStore(data: { cookiesJson: string; refreshToken?: string } | 
 
 describe("BackupService", () => {
 	it("exports a full backup whose secrets round-trip back through the PIN", async () => {
-		const store = makeFakeStore({ subscriptions: [sub("1")], adapters: [onebot("a1", "tok-1")] });
+		const store = makeFakeStore({
+			subscriptions: [sub("1")],
+			connections: [onebot("a1", "tok-1")],
+		});
 		const cookieStore = makeCookieStore({ cookiesJson: "CJ", refreshToken: "RT" });
 		const svc = createBackupService({ configStore: store, cookieStore, now: () => "t0" });
 
@@ -86,11 +89,14 @@ describe("BackupService", () => {
 		expect(env.createdAt).toBe("t0");
 		const opened = openFullBackup(env, "123456");
 		expect(opened.cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
-		expect(opened.sections.adapters?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
+		expect(opened.sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 	});
 
 	it("sanitized export respects the section selection and carries no secrets block", async () => {
-		const store = makeFakeStore({ subscriptions: [sub("1")], adapters: [onebot("a1", "tok-1")] });
+		const store = makeFakeStore({
+			subscriptions: [sub("1")],
+			connections: [onebot("a1", "tok-1")],
+		});
 		const svc = createBackupService({
 			configStore: store,
 			cookieStore: makeCookieStore(null),
@@ -99,13 +105,13 @@ describe("BackupService", () => {
 
 		const env = await svc.exportBackup({
 			kind: "sanitized",
-			sections: { subscriptions: true, adapters: false, targets: false, globals: false },
+			sections: { subscriptions: true, connections: false, targets: false, globals: false },
 		});
 
 		expect(env.kind).toBe("sanitized");
 		expect(env.secrets).toBeUndefined();
 		expect(env.sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
-		expect(env.sections.adapters).toBeUndefined();
+		expect(env.sections.connections).toBeUndefined();
 	});
 
 	it("import overwrite replaces subscriptions, restores cookies, and fires the hot-reload hook", async () => {
@@ -218,7 +224,7 @@ describe("BackupService", () => {
 				schemaVersion: 1,
 				kind: "sanitized",
 				createdAt: "t",
-				sections: { adapters: [legacy] },
+				sections: { connections: [legacy] },
 			},
 			mode: "overwrite",
 		});

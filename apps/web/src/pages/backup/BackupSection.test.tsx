@@ -89,7 +89,7 @@ describe("BackupSection", () => {
 	it("imports a merge backup straight through (nothing gets deleted, so no confirmation)", async () => {
 		post.mockResolvedValue({
 			subscriptions: { upserted: 3, deleted: 0 },
-			adapters: { upserted: 0, deleted: 0 },
+			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 2, deleted: 0 },
 			globalsApplied: true,
 			cookiesRestored: false,
@@ -117,7 +117,7 @@ describe("BackupSection", () => {
 	it("confirms an overwrite that deletes things, and applies it only after 确认", async () => {
 		const plan = {
 			subscriptions: { upserted: 2, deleted: 1 },
-			adapters: { upserted: 0, deleted: 0 },
+			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 2 },
 			globalsApplied: true,
 			cookiesRestored: true,
@@ -155,7 +155,7 @@ describe("BackupSection", () => {
 	it("cancels a confirmed overwrite: nothing is written", async () => {
 		post.mockResolvedValue({
 			subscriptions: { upserted: 0, deleted: 3 },
-			adapters: { upserted: 0, deleted: 0 },
+			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 0 },
 			globalsApplied: false,
 			cookiesRestored: false,

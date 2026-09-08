@@ -20,14 +20,14 @@ export type ImportMode = "overwrite" | "merge";
 export interface CurrentState {
 	globals: GlobalConfig;
 	subscriptions: Subscription[];
-	adapters: Connection[];
+	connections: Connection[];
 	targets: PushTarget[];
 }
 
 export interface ImportSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: Connection[];
+	connections?: Connection[];
 	targets?: PushTarget[];
 }
 
@@ -39,7 +39,7 @@ interface ScopePlan<T> {
 export interface ImportPlan {
 	setGlobals?: GlobalConfig;
 	subscriptions: ScopePlan<Subscription>;
-	adapters: ScopePlan<Connection>;
+	connections: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
 }
 
@@ -62,7 +62,7 @@ export function planImport(
 ): ImportPlan {
 	const plan: ImportPlan = {
 		subscriptions: planScope(current.subscriptions, incoming.subscriptions, mode),
-		adapters: planScope(current.adapters, incoming.adapters, mode),
+		connections: planScope(current.connections, incoming.connections, mode),
 		targets: planScope(current.targets, incoming.targets, mode),
 	};
 	if (mode === "overwrite" && incoming.globals) plan.setGlobals = incoming.globals;
@@ -95,7 +95,7 @@ export function foldPlan(current: CurrentState, plan: ImportPlan): ImportSection
 	return {
 		globals: plan.setGlobals,
 		subscriptions: applyScope(current.subscriptions, plan.subscriptions),
-		adapters: applyScope(current.adapters, plan.adapters),
+		connections: applyScope(current.connections, plan.connections),
 		targets: applyScope(current.targets, plan.targets),
 	};
 }

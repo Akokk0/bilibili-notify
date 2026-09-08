@@ -12,14 +12,14 @@ export interface BackupExportDialogProps {
 const SECTIONS: { key: keyof BackupSectionSelection; label: string }[] = [
 	{ key: "subscriptions", label: "订阅 + 分组" },
 	{ key: "targets", label: "推送目标" },
-	{ key: "adapters", label: "推送连接" },
+	{ key: "connections", label: "推送连接" },
 	{ key: "globals", label: "全局设置" },
 ];
 
 const ALL_SELECTED: BackupSectionSelection = {
 	globals: true,
 	subscriptions: true,
-	adapters: true,
+	connections: true,
 	targets: true,
 };
 

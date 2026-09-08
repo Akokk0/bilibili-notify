@@ -12,7 +12,7 @@ import { summarizeImport } from "./summary";
 
 const empty: ImportResult = {
 	subscriptions: { upserted: 0, deleted: 0 },
-	adapters: { upserted: 0, deleted: 0 },
+	connections: { upserted: 0, deleted: 0 },
 	targets: { upserted: 0, deleted: 0 },
 	globalsApplied: false,
 	cookiesRestored: false,
@@ -41,7 +41,10 @@ describe("summarizeImport", () => {
 
 	describe("脱敏档:凭据是空的,必须讲出来", () => {
 		it("导入了适配器 → 提示重填适配器密钥", () => {
-			const s = summarizeImport({ ...empty, adapters: { upserted: 1, deleted: 0 } }, "sanitized");
+			const s = summarizeImport(
+				{ ...empty, connections: { upserted: 1, deleted: 0 } },
+				"sanitized",
+			);
 
 			expect(s).toContain("不含凭据");
 			expect(s).toContain("连接密钥");
@@ -56,7 +59,7 @@ describe("summarizeImport", () => {
 		// 完整备份带着密钥一起回来,提示只会添乱。
 		it("完整备份不提示", () => {
 			const s = summarizeImport(
-				{ ...empty, adapters: { upserted: 1, deleted: 0 }, globalsApplied: true },
+				{ ...empty, connections: { upserted: 1, deleted: 0 }, globalsApplied: true },
 				"full",
 			);
 

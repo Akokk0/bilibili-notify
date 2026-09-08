@@ -529,7 +529,7 @@ export type QQBindPollResult =
 /** What an import did — or, under `dryRun`, what it *would* do. */
 export interface ImportResult {
 	subscriptions: { upserted: number; deleted: number };
-	adapters: { upserted: number; deleted: number };
+	connections: { upserted: number; deleted: number };
 	targets: { upserted: number; deleted: number };
 	globalsApplied: boolean;
 	cookiesRestored: boolean;

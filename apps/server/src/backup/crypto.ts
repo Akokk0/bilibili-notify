@@ -25,7 +25,12 @@ export interface BackupSecretBag {
 	aiApiKeys?: Record<string, string>;
 	cookiesJson?: string;
 	refreshToken?: string;
-	/** Full per-adapter connection configs keyed by adapter id (they carry credentials). */
+	/** Full per-connection configs keyed by connection id (they carry credentials). */
+	connectionConfigs?: Record<string, unknown>;
+	/**
+	 * 这一格从前叫 `adapterConfigs`。**只读不写** —— 加密袋在老的 full 备份里就是这个键名,
+	 * 认不出它等于把主人那份备份里的连接凭据全丢掉(明文段是抹平过的,真值只在袋里)。
+	 */
 	adapterConfigs?: Record<string, unknown>;
 }
 

@@ -26,7 +26,7 @@ export function looksLikeBackup(obj: unknown): obj is ClientBackup {
 export interface BackupSectionSelection {
 	globals: boolean;
 	subscriptions: boolean;
-	adapters: boolean;
+	connections: boolean;
 	targets: boolean;
 }
 

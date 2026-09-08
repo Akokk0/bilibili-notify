@@ -40,7 +40,7 @@ export interface BackupStore {
 	replaceSections(next: {
 		globals?: GlobalConfig;
 		subscriptions?: Subscription[];
-		adapters?: Connection[];
+		connections?: Connection[];
 		targets?: PushTarget[];
 	}): Promise<unknown>;
 }
@@ -54,7 +54,7 @@ interface BackupCookieStore {
 export interface SectionSelection {
 	globals?: boolean;
 	subscriptions?: boolean;
-	adapters?: boolean;
+	connections?: boolean;
 	targets?: boolean;
 }
 
@@ -96,7 +96,7 @@ export interface BackupService {
 const ALL_SECTIONS: Required<SectionSelection> = {
 	globals: true,
 	subscriptions: true,
-	adapters: true,
+	connections: true,
 	targets: true,
 };
 
@@ -108,7 +108,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const picked: BackupSections = {};
 		if (sel.globals) picked.globals = deps.configStore.getGlobals();
 		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
-		if (sel.adapters) picked.adapters = deps.configStore.getConnections();
+		if (sel.connections) picked.connections = deps.configStore.getConnections();
 		if (sel.targets) picked.targets = deps.configStore.getTargets();
 		const createdAt = opts.createdAt ?? now();
 
@@ -119,7 +119,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				{
 					globals: picked.globals,
 					subscriptions: picked.subscriptions,
-					adapters: picked.adapters,
+					connections: picked.connections,
 					targets: picked.targets,
 					cookies,
 				},
@@ -145,14 +145,14 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		// 形状迁移 —— 与启动路径同一个纯函数。备份的明文段是**原样带过来的**,没过任何
 		// schema,所以一份三个月前导出的备份和一份三个月前的磁盘状态是同一个形状问题。
 		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
-		if (sections.adapters || sections.targets) {
+		if (sections.connections || sections.targets) {
 			const migrated = migrateConfigSections({
-				connections: sections.adapters,
+				connections: sections.connections,
 				targets: sections.targets,
 			});
 			sections = {
 				...sections,
-				...(sections.adapters ? { adapters: migrated.connections as Connection[] } : {}),
+				...(sections.connections ? { connections: migrated.connections as Connection[] } : {}),
 				...(sections.targets ? { targets: migrated.targets as PushTarget[] } : {}),
 			};
 		}
@@ -160,7 +160,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const current = {
 			globals: deps.configStore.getGlobals(),
 			subscriptions: deps.configStore.getSubscriptions(),
-			adapters: deps.configStore.getConnections(),
+			connections: deps.configStore.getConnections(),
 			targets: deps.configStore.getTargets(),
 		};
 		const plan = planImport(current, sections, opts.mode);
@@ -190,7 +190,10 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				upserted: plan.subscriptions.upsert.length,
 				deleted: plan.subscriptions.delete.length,
 			},
-			adapters: { upserted: plan.adapters.upsert.length, deleted: plan.adapters.delete.length },
+			connections: {
+				upserted: plan.connections.upsert.length,
+				deleted: plan.connections.delete.length,
+			},
 			targets: { upserted: plan.targets.upsert.length, deleted: plan.targets.delete.length },
 			globalsApplied,
 			cookiesRestored,

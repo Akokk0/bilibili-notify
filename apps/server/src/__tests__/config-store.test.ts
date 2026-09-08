@@ -953,7 +953,7 @@ describe("ConfigStore", () => {
 		await store.upsertConnection(connection);
 		await expect(
 			store.replaceSections({
-				adapters: [connection],
+				connections: [connection],
 				targets: [
 					{
 						id: randomUUID(),
@@ -1161,7 +1161,7 @@ describe("ConfigStore", () => {
 					app: { ...store.getGlobals().app, dynamicCron: "*/9 * * * *" },
 				},
 				subscriptions: [],
-				adapters: [connection],
+				connections: [connection],
 				// scope 不在词表里 → schema 当场拒绝
 				targets: [
 					{
@@ -1190,7 +1190,7 @@ describe("ConfigStore", () => {
 
 		await expect(
 			store.replaceSections({
-				adapters: [connection],
+				connections: [connection],
 				targets: [
 					{
 						id: randomUUID(),
@@ -1232,7 +1232,7 @@ describe("ConfigStore", () => {
 		await store.upsertSubscription(sub);
 
 		await store.replaceSections({
-			adapters: [connection],
+			connections: [connection],
 			targets: [
 				makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" }) as PushTarget,
 			],

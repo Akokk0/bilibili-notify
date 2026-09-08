@@ -9,15 +9,15 @@ import { redactSecretKeys } from "./sanitize.js";
  *
  * A full backup keeps the SAME redacted plaintext sections as a sanitized one
  * (so even the full backup's cleartext leaks nothing), and carries the real
- * credential values — apiKey, cookie/refreshToken, and each adapter's full
- * connection config — inside the PIN-encrypted `secrets` block. `openFullBackup`
+ * credential values — apiKey, cookie/refreshToken, and each connection's full
+ * config — inside the PIN-encrypted `secrets` block. `openFullBackup`
  * decrypts and merges those back to rebuild the ready-to-persist config.
  */
 
 export interface FullBackupInput {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: Connection[];
+	connections?: Connection[];
 	targets?: PushTarget[];
 	cookies?: { cookiesJson?: string; refreshToken?: string };
 }
@@ -41,9 +41,9 @@ export function assembleFullBackup(
 	}
 	if (input.cookies?.cookiesJson) bag.cookiesJson = input.cookies.cookiesJson;
 	if (input.cookies?.refreshToken) bag.refreshToken = input.cookies.refreshToken;
-	if (input.adapters?.length) {
-		bag.adapterConfigs = {};
-		for (const a of input.adapters) bag.adapterConfigs[a.id] = a.config;
+	if (input.connections?.length) {
+		bag.connectionConfigs = {};
+		for (const c of input.connections) bag.connectionConfigs[c.id] = c.config;
 	}
 
 	// redactSecretKeys deep-clones, so `input` is left intact and the plaintext
@@ -51,7 +51,7 @@ export function assembleFullBackup(
 	const sections = redactSecretKeys<BackupSections>({
 		globals: input.globals,
 		subscriptions: input.subscriptions,
-		adapters: input.adapters,
+		connections: input.connections,
 		targets: input.targets,
 	});
 
@@ -74,10 +74,12 @@ export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBack
 		};
 		sections.globals = applyAiSecrets(sections.globals, keys);
 	}
-	if (sections.adapters && bag.adapterConfigs) {
-		for (const a of sections.adapters) {
-			const cfg = bag.adapterConfigs[a.id];
-			if (cfg !== undefined) (a as { config: unknown }).config = cfg;
+	// 老备份的袋子里这一格叫 `adapterConfigs`。
+	const connectionConfigs = bag.connectionConfigs ?? bag.adapterConfigs;
+	if (sections.connections && connectionConfigs) {
+		for (const c of sections.connections) {
+			const cfg = connectionConfigs[c.id];
+			if (cfg !== undefined) (c as { config: unknown }).config = cfg;
 		}
 	}
 

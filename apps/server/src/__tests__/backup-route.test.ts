@@ -31,7 +31,7 @@ function fakeService(over: Partial<BackupService> = {}): BackupService {
 		exportBackup: vi.fn(async () => envelope("sanitized")),
 		importBackup: vi.fn(async () => ({
 			subscriptions: { upserted: 1, deleted: 0 },
-			adapters: { upserted: 0, deleted: 0 },
+			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 0 },
 			globalsApplied: false,
 			cookiesRestored: false,

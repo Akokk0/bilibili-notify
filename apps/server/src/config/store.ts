@@ -74,7 +74,7 @@ export interface ConfigScopeMeta {
 export interface ConfigSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	adapters?: Connection[];
+	connections?: Connection[];
 	targets?: PushTarget[];
 }
 
@@ -886,7 +886,7 @@ class NodeConfigStore implements ConfigStore {
 
 		this.loaded = true;
 		this.serviceCtx.logger.info(
-			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} adapters=${this.connections.length} targets=${this.targets.length})`,
+			`config-store loaded (stateDir=${this.stateDir} subs= connections=${this.connections.length} targets=${this.targets.length})`,
 		);
 	}
 
@@ -1519,7 +1519,7 @@ class NodeConfigStore implements ConfigStore {
 				globals = r.data;
 			}
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
-			const connections = next.adapters && parseAll("connections", next.adapters);
+			const connections = next.connections && parseAll("connections", next.connections);
 			const targets = next.targets && parseAll("targets", next.targets);
 
 			// ---- 2) 跨分区不变式 + 托管目标归一化(与 load() 同一套) ----------
