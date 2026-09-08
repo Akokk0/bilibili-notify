@@ -4,8 +4,14 @@ import {
 	DIRECT_CONNECTORS,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	PUSH_TARGET_KINDS,
+	PUSH_TARGET_SCOPES,
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
+
+// 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
+// 别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
+export type { DirectConnector, PushTargetKind, PushTargetScope } from "../constants.js";
 
 /**
  * **连接**能连的平台 —— 闭集。Adapter 矩阵按它分发(server 侧 `apps/server/src/platforms/`)。
@@ -35,8 +41,7 @@ export const ConnectionPlatformSchema = z.enum(CONNECTION_PLATFORMS);
  */
 export const TargetPlatformSchema = z.string().min(1);
 
-export const PushTargetScopeSchema = z.enum(["group", "private", "channel"]);
-export type PushTargetScope = z.infer<typeof PushTargetScopeSchema>;
+export const PushTargetScopeSchema = z.enum(PUSH_TARGET_SCOPES);
 
 /* -------------------------------------------------------------------------- */
 /* Connection-level configs                                                   */
@@ -179,7 +184,6 @@ export type ConnectionTestStatus = z.infer<typeof ConnectionTestStatusSchema>;
 
 /** 直连连接器 —— 「怎么连」。词表与理由见 constants 的 {@link DIRECT_CONNECTORS}。 */
 export const DirectConnectorSchema = z.enum(DIRECT_CONNECTORS);
-export type DirectConnector = z.infer<typeof DirectConnectorSchema>;
 
 /**
  * Connection — 平台级的"连接实例"。
@@ -260,8 +264,7 @@ export type Connection = z.infer<typeof ConnectionSchema>;
  * 它眼下与 `platform` 一一对应(webhook 那族 ⇔ endpoint),看着冗余 —— 但 `target.platform`
  * 将来要开放(桥驮来的平台枚举不了),那之后按平台名比会全线恒假。判据先搬到这根轴上。
  */
-export const PushTargetKindSchema = z.enum(["session", "endpoint"]);
-export type PushTargetKind = z.infer<typeof PushTargetKindSchema>;
+export const PushTargetKindSchema = z.enum(PUSH_TARGET_KINDS);
 
 const PushTargetCommonShape = {
 	id: z.uuid(),

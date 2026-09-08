@@ -50,18 +50,28 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 };
 
 /**
- * 出站 webhook 那一族平台。
+ * 直连连接器词表 —— 「**怎么**连」这一轴,与「连到**哪个**平台」正交。
  *
- * 这四个原先是 webhook 连接 config 里的一个 `provider` 字段 —— 因为「webhook」被当成了
- * 平台,真平台只好降级成它的一个属性。可 webhook 从来不是平台,它是**怎么连**:飞书和
- * 钉钉是两个平台,只是恰好都用「往一个 URL POST 一段 JSON」这种连法。所以 provider 升格,
- * webhook 挪去 {@link DIRECT_CONNECTORS}。
- *
- * `generic` 是承认的疤:主人贴的 URL 可能是自建服务,那就没有平台可言。面板上写
- * 「未指明的 HTTP 端点」,不假装它是个什么。
+ * 今天它的值住在 OneBot config 的 `transport` 里,所以「加一个平台」要连带抄一份传输分支;
+ * 提到连接自己身上之后,tencent 走 ws、feishu 走 webhook 这类组合就是两根轴的叉乘,不用再各抄一份。
+ * 桥(koishi / astrbot)是这根轴上的另外两档,等接桥那期再进词表。
  */
-export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as const;
-export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
+export const DIRECT_CONNECTORS = ["http", "ws", "ws-reverse", "webhook"] as const;
+export type DirectConnector = (typeof DIRECT_CONNECTORS)[number];
+
+/**
+ * 推送目标的会话种类。`schema/targets.ts` 的 `PushTargetScopeSchema` 从这里取值 ——
+ * 词表住零依赖模块,前端才拿得到运行时的那一份(见文件头 FEATURE_KEYS 那套安排)。
+ */
+export const PUSH_TARGET_SCOPES = ["group", "private", "channel"] as const;
+export type PushTargetScope = (typeof PUSH_TARGET_SCOPES)[number];
+
+/**
+ * 推送目标的两支形态 —— `session` 是一个会话(有地址、收得到入站),
+ * `endpoint` 是一个单向出站终点(地址烧在连接的 config 里,目标只是个壳)。
+ */
+export const PUSH_TARGET_KINDS = ["session", "endpoint"] as const;
+export type PushTargetKind = (typeof PUSH_TARGET_KINDS)[number];
 
 /**
  * **连接**能连的平台。schema 本体在 schema/targets.ts(`ConnectionPlatformSchema`),
@@ -72,25 +82,160 @@ export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
  * 桥驮进来的平台(telegram、discord…)枚举不了,列进闭集等于要求先改词表才能收到它们。
  * 一个类型糊着开、闭两套词表,总有一边是错的,所以拆了。
  */
-export const CONNECTION_PLATFORMS = ["onebot", "qq-official", ...WEBHOOK_PLATFORMS] as const;
+export const CONNECTION_PLATFORMS = [
+	"onebot",
+	"qq-official",
+	"feishu",
+	"dingtalk",
+	"wecom",
+	"generic",
+] as const;
 export type ConnectionPlatform = (typeof CONNECTION_PLATFORMS)[number];
 
-/** 这个平台是不是靠 webhook 连的 —— 判据在词表上,别在各处手写四个平台名。 */
-export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
-	return (WEBHOOK_PLATFORMS as readonly string[]).includes(platform);
+/**
+ * 一个平台的全部事实 —— 面板怎么叫它、走哪些连接器、它的目标长什么样、收不收得到回复。
+ *
+ * 这些事实原先散在**六处**各说各的:连接侧闭集与 webhook 那一族(本文件)、入站能力词表
+ * (本文件)、面板的平台选择器(`apps/web/src/types/domain.ts` 的 `KNOWN_PLATFORMS`)、
+ * 组件库里的色与短名(`packages/ui` 的 `PLATFORM_META`)、目标表单的会话种类与地址称呼
+ * (`apps/web/src/pages/Targets.tsx`)、以及 server 那边每个 adapter 自报的 `platforms`。
+ * 六份的代价不是重复本身,是**加一个平台要记得改六个地方**,漏掉哪一处都没有编译错 ——
+ * 少了色就退灰、少了会话种类就只给通用三档,全都是「能跑但不对」。
+ *
+ * 所以事实收在这一张表里,那六处改成从它取。色与图标名也在这儿:一个十六进制串是数据、
+ * 不是组件,把它留在组件库等于让纯展示件库认识业务平台(那正是 `PlatformIcon` 要改成
+ * 注入式的原因)。
+ */
+export interface PlatformDescriptor {
+	/** 面板上的全名 —— 平台选择器那一排写这个。 */
+	label: string;
+	/** 短名 —— 胶囊、一行小字里写这个;没有图标时的方章取它的**首字**。 */
+	shortLabel: string;
+	/** 标识色。认不出的平台在展示层退静默档,不在这儿兜底。 */
+	tint: string;
+	/** 图标名(组件库图标表里的键)。留空 = 走首字母方章。 */
+	icon?: string;
+	/** 这个平台走得通的连接器,**第一个是默认**(新建连接与迁移回落共用这个答案)。 */
+	connectors: readonly DirectConnector[];
+	/** 它名下的推送目标是哪一支形态。 */
+	targetKind: PushTargetKind;
+	/** 会话目标能选的会话种类。endpoint 那一族只有一档,目标本来就没得选。 */
+	scopes: readonly PushTargetScope[];
+	/** 地址那一格在这个平台叫什么(按会话种类)。缺的那档走通用称呼。 */
+	addressNouns: Partial<Record<PushTargetScope, string>>;
+	/** 主人在这个平台上回一句话,女仆**真的收得到**吗 —— 不是「协议上可行」。 */
+	inbound: boolean;
+	/** 能不能 @全体成员。 */
+	atAll: boolean;
 }
 
 /**
- * 直连连接器词表 —— 「**怎么**连」这一轴,与「连到**哪个**平台」正交。
+ * 平台注册表。加一个平台从这里开始 —— 少一格是编译错,不是静默的默认值。
  *
- * 今天它的值住在 OneBot config 的 `transport` 里,所以「加一个平台」要连带抄一份传输分支;
- * 提到连接自己身上之后,tencent 走 ws、feishu 走 webhook 这类组合就是两根轴的叉乘,不用再各抄一份。
- * 桥(koishi / astrbot)是这根轴上的另外两档,等接桥那期再进词表。
+ * `feishu` / `dingtalk` / `wecom` / `generic` 这一族原先是 webhook 连接 config 里的一个
+ * `provider` 字段 —— 因为「webhook」被当成了平台,真平台只好降级成它的一个属性。可
+ * webhook 从来不是平台,它是**怎么连**:飞书和钉钉是两个平台,只是恰好都用「往一个 URL
+ * POST 一段 JSON」这种连法。所以 provider 升格成平台,webhook 挪进 {@link DIRECT_CONNECTORS}。
+ * `generic` 是承认的疤:主人贴的 URL 可能是自建服务,那就没有平台可言 —— 面板上写
+ * 「未指明的 HTTP 端点」,不假装它是个什么。
  */
-export const DIRECT_CONNECTORS = ["http", "ws", "ws-reverse", "webhook"] as const;
+export const PLATFORM_REGISTRY = {
+	onebot: {
+		label: "OneBot v11",
+		shortLabel: "OneBot",
+		tint: "#3b82f6",
+		icon: "qq",
+		connectors: ["http", "ws", "ws-reverse"],
+		targetKind: "session",
+		// OneBot 没有频道概念 —— 只给群与私聊两档。
+		scopes: ["group", "private"],
+		addressNouns: { group: "群", private: "用户" },
+		inbound: true,
+		atAll: true,
+	},
+	"qq-official": {
+		label: "QQ 官方机器人",
+		shortLabel: "QQ官方",
+		tint: "#14b8a6",
+		icon: "qq",
+		// 官机只有 WS 网关一条路。
+		connectors: ["ws"],
+		targetKind: "session",
+		scopes: ["group", "private", "channel"],
+		addressNouns: { group: "群 openid", private: "C2C", channel: "子频道" },
+		inbound: true,
+		// 群里 @全体要特殊权限,适配器对 at-all 段一律丢弃。
+		atAll: false,
+	},
+	feishu: {
+		label: "飞书机器人",
+		shortLabel: "飞书",
+		tint: "#3370ff",
+		connectors: ["webhook"],
+		targetKind: "endpoint",
+		scopes: ["channel"],
+		addressNouns: {},
+		inbound: false,
+		atAll: true,
+	},
+	dingtalk: {
+		label: "钉钉机器人",
+		shortLabel: "钉钉",
+		tint: "#00c2ff",
+		connectors: ["webhook"],
+		targetKind: "endpoint",
+		scopes: ["channel"],
+		addressNouns: {},
+		inbound: false,
+		atAll: true,
+	},
+	wecom: {
+		label: "企业微信机器人",
+		shortLabel: "企微",
+		tint: "#07c160",
+		connectors: ["webhook"],
+		targetKind: "endpoint",
+		scopes: ["channel"],
+		addressNouns: {},
+		inbound: false,
+		atAll: true,
+	},
+	generic: {
+		label: "未指明的 HTTP 端点",
+		shortLabel: "HTTP 端点",
+		// 没有品牌可借,给一档中性的板岩灰。
+		tint: "#94a3b8",
+		connectors: ["webhook"],
+		targetKind: "endpoint",
+		scopes: ["channel"],
+		addressNouns: {},
+		inbound: false,
+		atAll: true,
+	},
+} as const satisfies Record<ConnectionPlatform, PlatformDescriptor>;
+
+/** 认不认识这个平台 —— 认识就把它的那一行交出来。目标侧的平台是开放词表,常常认不出。 */
+export function platformDescriptor(platform: string): PlatformDescriptor | undefined {
+	return (PLATFORM_REGISTRY as Record<string, PlatformDescriptor>)[platform];
+}
 
 /**
- * 一个平台默认走哪个连接器。
+ * 出站 webhook 那一族平台。
+ *
+ * 它是注册表的一个**投影**,写成字面量只因为 `z.enum` 与类型都要求可枚举的元组 ——
+ * 两边会不会漂由 `platform-registry.test.ts` 钉着。判据本身在注册表:走 webhook 连的
+ * 就是这一族,别在各处手写四个平台名。
+ */
+export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as const;
+export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
+
+/** 这个平台是不是靠 webhook 连的。 */
+export function isWebhookPlatform(platform: string): platform is WebhookPlatform {
+	return platformDescriptor(platform)?.connectors[0] === "webhook";
+}
+
+/**
+ * 一个平台默认走哪个连接器 —— 注册表里 `connectors` 的第一档。
  *
  * 两个用处共用这一份:迁移时老 OneBot 条目没有 `transport` 字段的回落(与 schema 的
  * `.default("http")` 同一个答案),以及前端新建连接时的初值。两处各写一份的话,
@@ -101,22 +246,22 @@ export const DIRECT_CONNECTORS = ["http", "ws", "ws-reverse", "webhook"] as cons
 export function defaultConnectorFor(platform: "onebot"): "http";
 export function defaultConnectorFor(platform: "qq-official"): "ws";
 export function defaultConnectorFor(platform: WebhookPlatform): "webhook";
-export function defaultConnectorFor(
-	platform: string,
-): (typeof DIRECT_CONNECTORS)[number] | undefined;
-export function defaultConnectorFor(
-	platform: string,
-): (typeof DIRECT_CONNECTORS)[number] | undefined {
-	if (isWebhookPlatform(platform)) return "webhook";
-	switch (platform) {
-		case "onebot":
-			return "http";
-		// 官机只有 WS 网关一条路;`connector` 提上来之后它才有地方写。
-		case "qq-official":
-			return "ws";
-		default:
-			return undefined;
-	}
+export function defaultConnectorFor(platform: string): DirectConnector | undefined;
+export function defaultConnectorFor(platform: string): DirectConnector | undefined {
+	return platformDescriptor(platform)?.connectors[0];
+}
+
+/**
+ * 这个平台的这种会话,地址那一格该叫什么。
+ *
+ * 认不出的平台(桥驮进来的)走通用称呼 —— 不认识不等于说不出话,「群 / 用户 / 子频道」
+ * 对任何一个聊天平台都成立。
+ */
+export function addressNounFor(platform: string, scope: PushTargetScope): string {
+	const named = platformDescriptor(platform)?.addressNouns[scope];
+	if (named) return named;
+	if (scope === "channel") return "子频道";
+	return scope === "private" ? "用户" : "群";
 }
 
 // ---------------------------------------------------------------------------
@@ -750,12 +895,15 @@ export const DEFAULT_ROAST_SCHEDULE = {
  *
  * webhook 天生不可能:它就是个出站 HTTP POST,没有回程。将来薄插件桥接进来的平台
  * 协议上收得到、只是还没接时 —— 说法见 {@link inboundGapReason},别写成平台的毛病。
+ *
+ * 与 {@link WEBHOOK_PLATFORMS} 一样是 {@link PLATFORM_REGISTRY} 的**投影**,写成字面量
+ * 只因为 `LinkSourcePlatform` 要从它取联合类型;两边漂了由注册表的守卫测试报红。
  */
 export const INBOUND_CAPABLE_PLATFORMS = ["onebot", "qq-official"] as const;
 
 /** 这个平台收不收得到主人的回复。审批开关能不能用就看它。 */
 export function platformCanReceiveReply(platform: string): boolean {
-	return (INBOUND_CAPABLE_PLATFORMS as readonly string[]).includes(platform);
+	return platformDescriptor(platform)?.inbound === true;
 }
 
 /**
@@ -781,7 +929,7 @@ export function inboundGapReason(platform: string): string {
 export function platformSupportsAtAll(platform: string): boolean {
 	// 入参收 string 而不是闭集:它吃的是**目标**的平台,而那是开放词表。桥驮进来的平台
 	// 默认按「能 @全体」算 —— 真不能的话,能力位会在桥探测时说,推送层据能力位跳过。
-	return platform !== "qq-official";
+	return platformDescriptor(platform)?.atAll ?? true;
 }
 
 /**
