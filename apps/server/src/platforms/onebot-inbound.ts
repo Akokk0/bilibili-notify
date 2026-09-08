@@ -7,12 +7,12 @@
  * 转义规则,官机那边也早就是这么做的。
  */
 
-import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./types.js";
-
-export interface OnebotInboundSinks {
-	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
-	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
-}
+import type {
+	InboundGroupMessage,
+	InboundMeta,
+	InboundPrivateMessage,
+	InboundSinks,
+} from "./types.js";
 
 /**
  * 一帧 → 至多一路。没接的那路连解析都不做(官机开着「全部消息」时群里每句话都进这儿)。
@@ -21,7 +21,7 @@ export interface OnebotInboundSinks {
 export function routeInboundFrame(
 	frame: Record<string, unknown>,
 	meta: InboundMeta,
-	sinks: OnebotInboundSinks,
+	sinks: InboundSinks,
 ): void {
 	if (sinks.onInboundPrivate) {
 		const msg = extractPrivateMessage(frame);

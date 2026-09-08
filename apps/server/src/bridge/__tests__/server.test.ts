@@ -13,7 +13,7 @@ import { BRIDGE_CLOSE_CODES, BRIDGE_PROTOCOL_VERSION } from "@bilibili-notify/co
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import type { NodeServiceContext } from "../../runtime/service-context.js";
-import { type BridgeServer, createBridgeServer } from "../server.js";
+import { type BridgeServer, type BridgeSession, createBridgeServer } from "../server.js";
 
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TOKEN = "good-token";
@@ -115,6 +115,7 @@ describe("/bridge 端点", () => {
 	let server: BridgeServer;
 	let peers: Peer[];
 	let inboundFrames: unknown[];
+	let inboundSessions: BridgeSession[];
 	let botsCalls: { connectionId: string; bots: readonly unknown[] }[];
 	let sockets: Socket[];
 
@@ -128,7 +129,10 @@ describe("/bridge 端点", () => {
 			inbound: () => ({ private: true, group: "with-links" }),
 			handshakeTimeoutMs: 20_000,
 			heartbeatIntervalMs: 0,
-			onInbound: (_id, frame) => inboundFrames.push(frame),
+			onInbound: (session, frame) => {
+				inboundSessions.push(session);
+				inboundFrames.push(frame);
+			},
 			onBots: (connectionId, bots) => botsCalls.push({ connectionId, bots }),
 			...over,
 		});
@@ -152,6 +156,7 @@ describe("/bridge 端点", () => {
 	beforeEach(async () => {
 		peers = [];
 		inboundFrames = [];
+		inboundSessions = [];
 		botsCalls = [];
 		sockets = [];
 		httpServer = createServer((_req, res) => res.end());
@@ -295,6 +300,20 @@ describe("/bridge 端点", () => {
 				message: { scope: "private", userId: "u1", text: "订阅列表" },
 			},
 		]);
+	});
+
+	it("交上去的是整个会话 —— 归一化要拿名单查 selfId,再回头 getSession 就多一条丢消息的路", async () => {
+		const p = await handshaken();
+		p.send({ type: "bots", bots: [{ botId: "b1", platform: "telegram", selfId: "77770000" }] });
+		p.send({
+			type: "inbound",
+			botId: "b1",
+			platform: "telegram",
+			message: { scope: "group", groupId: "-100", userId: "u1", text: "http://b23.tv/x" },
+		});
+		await new Promise((r) => setTimeout(r, 30));
+		expect(inboundSessions.at(-1)?.connectionId).toBe(CONNECTION_ID);
+		expect(inboundSessions.at(-1)?.bots.map((b) => b.selfId)).toEqual(["77770000"]);
 	});
 
 	it("同一个 token 又连进来一条 → **新的赢**,老的收 4006", async () => {

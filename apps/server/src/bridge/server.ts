@@ -82,8 +82,14 @@ export interface BridgeServerOptions {
 	sendTimeoutMs?: number;
 	/** bot 名单来了(握手那份也算)。名单是**全量快照**,整份换掉。 */
 	onBots?(connectionId: string, bots: readonly BridgeBot[]): void;
-	/** 收到一条入站消息。归一成 BN 内部形状是下一层的事,这里原样交出去。 */
-	onInbound?(connectionId: string, frame: BridgeInboundFrame): void;
+	/**
+	 * 收到一条入站消息。帧原样交出去 —— 归一成 BN 内部形状是下一层的事。
+	 *
+	 * 给的是**整个会话**而不是一个 id:归一化要拿 bot 名单查 `selfId`(「机器人自己贴的
+	 * 链接不解析」那道闸),下一层再回头 `getSession` 一次的话,查不到时只能静默丢一条
+	 * 消息 —— 而这里查得到是**确定**的(下面那道 hello 闸保证了握过手)。
+	 */
+	onInbound?(session: BridgeSession, frame: BridgeInboundFrame): void;
 	/** 会话建立 / 消失。面板的在线状态与推送的可达性都看它。 */
 	onSessionChange?(connectionId: string, connected: boolean): void;
 }
@@ -332,7 +338,9 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				break;
 			}
 			case "inbound": {
-				opts.onInbound?.(conn.connectionId, frame);
+				// 上面那道 hello 闸保证了握过手,所以快照必然在;这个 `if` 只是收窄类型。
+				const session = snapshot(conn);
+				if (session) opts.onInbound?.(session, frame);
 				break;
 			}
 			case "result": {

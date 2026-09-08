@@ -18,8 +18,8 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
-import { type OnebotInboundSinks, routeInboundFrame } from "./onebot-inbound.js";
-import type { PlatformAdapter, ProbeResult } from "./types.js";
+import { routeInboundFrame } from "./onebot-inbound.js";
+import type { InboundSinks, PlatformAdapter, ProbeResult } from "./types.js";
 
 /**
  * OneBot v11 adapter — HTTP / 正向 WS(ws)/ 反向 WS(ws-reverse)三种连接方式。
@@ -47,8 +47,8 @@ export interface OnebotPlatformAdapterOptions {
 	 * 网关交出来的一模一样;附上收到这一帧的 adapter id —— 帧里只有 self_id(bot 的号),
 	 * 对不上配置里的 adapter,而「回到消息来的那个群」得知道该用哪条连接。
 	 */
-	onInboundPrivate?: OnebotInboundSinks["onInboundPrivate"];
-	onInboundGroup?: OnebotInboundSinks["onInboundGroup"];
+	onInboundPrivate?: InboundSinks["onInboundPrivate"];
+	onInboundGroup?: InboundSinks["onInboundGroup"];
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
@@ -547,7 +547,7 @@ class WsChannel {
  * 就悄悄少了那个字段。
  */
 function inboundSink(
-	sinks: OnebotInboundSinks,
+	sinks: InboundSinks,
 	connectionId: string,
 ): ((frame: Record<string, unknown>) => void) | undefined {
 	if (!sinks.onInboundPrivate && !sinks.onInboundGroup) return undefined;
@@ -570,7 +570,7 @@ class ForwardConn {
 		private readonly headers: Record<string, string>,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly sinks: OnebotInboundSinks,
+		private readonly sinks: InboundSinks,
 		/** 通道就绪(连上 / bot 连入)时叫一声 —— 能力探测挂在这里,连上就探。 */
 		private readonly onChannelReady?: () => void,
 	) {
@@ -653,7 +653,7 @@ class ReverseListener {
 		private readonly accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly sinks: OnebotInboundSinks,
+		private readonly sinks: InboundSinks,
 		/** 同 ForwardConn:bot 连入就探一次能力。 */
 		private readonly onChannelReady?: () => void,
 	) {

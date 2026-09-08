@@ -124,6 +124,15 @@ export function inboundIdentity(msg: InboundPrivateMessage, meta: InboundMeta): 
 	return { platform: meta.platform, address: msg.userId, botId: meta.botId };
 }
 
+/**
+ * 入站的两路收口。三个直连 adapter 与桥交出来的是同一对回调,所以形状只声明这一份 ——
+ * 各写一份的话,哪天加一格(N-3 给 meta 加平台那次)就会有人漏掉。
+ */
+export interface InboundSinks {
+	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
+	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
+}
+
 /** 一条群消息。链接解析只认这个;`groupId` 在 OneBot 是群号,在官机是群 openid。 */
 export interface InboundGroupMessage {
 	groupId: string;
