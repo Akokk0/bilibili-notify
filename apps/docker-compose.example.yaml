@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
-      # 用 OneBot 反向 WS 适配器时,把它的监听端口也映射出来,如 "9797:9797"
+      # 用 OneBot 反向 WS 连接时,把它的监听端口也映射出来,如 "9797:9797"
     environment:
       # BN_* 仅首启动 seed 进 yaml;之后改值请编辑 ./config/bn.config.yaml
       BN_LOG_LEVEL: info

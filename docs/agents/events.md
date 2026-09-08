@@ -12,7 +12,7 @@
 | `auth-lost` / `auth-restored` | 登录状态切换(限流通知 master) |
 | `cookies-refreshed` | 触发 cookie 持久化 |
 | `subscription-changed` | `SubscriptionStore` CRUD 后发出的 `SubscriptionOp[]` diff |
-| `config-changed` | 独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|adapters\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
+| `config-changed` | 独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|connections\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
 | `engine-error` | 引擎或子系统的运行时错误 `(source, message)`。`master-notifier`(→ master 私聊)+ `log` WS channel(→ AlertShell)消费 |
 | `history-recorded` | `HistoryStore.record` 建起一行(一次推送 × 一个目标,本体落地那一刻;无目标行也建)时发出的完整 `HistoryEntry`;独立端转到 `push-events` WS channel。`BilibiliPush.onSend` 每个目标一段回调 → `runtime/push-history.ts` 搬字段 → `record` |
 | `history-updated` | 同一次推送的后续消息(@全体 / 图集 / 词云 / 总结)追加到已有那一行之后发出的**合并后整行**;前端按 `id` 换缓存、小卡同 id 换字不重弹。盘上是补丁行,读时并回 |

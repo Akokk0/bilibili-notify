@@ -31,7 +31,7 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
 
 ### 宿主适配
 
-引擎(`dynamic` / `live` / `push` / `image`)通过 `ServiceContext` / `MessageBus` / `PushLike` / 各自的注入钩子与宿主对接;独立端 `apps/server/src/runtime/` 是唯一宿主,这些钩子一律必填、不留「宿主不注入就走旧路径」的分支。将来薄适配插件把 Koishi / AstrBot 桥接进来时,接的是**跑着的独立端**(推送平台 union + `apps/server/src/platforms/` adapter 矩阵),不再各自内嵌一份引擎。
+引擎(`dynamic` / `live` / `push` / `image`)通过 `ServiceContext` / `MessageBus` / `PushLike` / 各自的注入钩子与宿主对接;独立端 `apps/server/src/runtime/` 是唯一宿主,这些钩子一律必填、不留「宿主不注入就走旧路径」的分支。将来薄适配插件把 Koishi / AstrBot 桥接进来时,接的是**跑着的独立端**(`CONNECTION_PLATFORMS` 连接平台词表 + `apps/server/src/platforms/` adapter 矩阵),不再各自内嵌一份引擎。
 
 ## 工作区依赖卫生
 
@@ -42,7 +42,7 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
 ## 服务依赖图(独立端)
 
 ```
-ConfigStore        (apps/server/src/config;globals / subscriptions / targets / adapters 的文件权威,写入后 emit config-changed)
+ConfigStore        (apps/server/src/config;globals / subscriptions / targets / connections 的文件权威,写入后 emit config-changed)
 BilibiliAPI        (@bilibili-notify/api)
 SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威)
 BilibiliPush       (@bilibili-notify/push;sink = MultiplexSink → 各平台 adapter,注入 defaults / muted / serviceCtx)
@@ -86,11 +86,11 @@ src/
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
-  routes/               REST:auth / subs / targets / adapters / globals / history / logs / fans / live / cards / push / health
+  routes/               REST:auth / subs / targets / connections / globals / history / logs / fans / live / cards / push / health
                         / ai / skins / maid-skills
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   sink/                 NotificationSink 分发(PushTarget.id → 平台适配器)
-  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ Webhook + QQ 官方机器人 + WebDashboard 适配器;连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`),schema 在 internal/schema/targets.ts
+  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个 adapter;连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`),schema 在 internal/schema/targets.ts
 ```
 
 ### `apps/web`

@@ -19,7 +19,7 @@ export type DevScenarioGroup = "event" | "state" | "timer" | "capture" | "web";
 /**
  * 一个参数字段。六种,面板照 `kind` 画控件:
  *
- * - `sub` / `target` / `adapter` —— 从站内既有列表里挑一个(订阅 / 推送目标 / 适配器),
+ * - `sub` / `target` / `connection` —— 从站内既有列表里挑一个(订阅 / 推送目标 / 连接),
  *   值是它们的 id。**省略时的默认值住服务端**(`sub` = 第一个启用的订阅),面板不猜。
  * - `number` / `enum` / `text` —— 自带默认值。
  */

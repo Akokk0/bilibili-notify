@@ -102,7 +102,7 @@ docker pull ghcr.io/akokk0/bilibili-notify:latest
 
 ## 接入 QQ(OneBot)
 
-控制台 **推送目标** → 新建适配器,platform 选 `onebot`,连接方式三选一:
+控制台 **推送目标** → 新建连接,platform 选 `onebot`,连接方式三选一:
 
 - **HTTP** —— 填 bot 的 HTTP API 地址
 - **正向 WS** —— 填 bot 的 WebSocket 地址

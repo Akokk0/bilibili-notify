@@ -190,7 +190,7 @@ B 站 cookie 与 AI apiKey 存在 `<dataDir>/secrets/`,AES-256-GCM 加密。密�
 
 ## 接入 OneBot(NapCat)
 
-控制台 **推送目标** → 新建适配器,platform 选 `onebot`,连接方式三选一:
+控制台 **推送目标** → 新建连接,platform 选 `onebot`,连接方式三选一:
 
 - **HTTP** —— 填 bot 的 HTTP API `baseUrl`,如 `http://napcat:3000`。
 - **正向 WS** —— 填 bot 的 WS 地址,如 `ws://napcat:3001`。
