@@ -93,7 +93,6 @@ export interface ConfigStore {
 
 	getGlobalsMeta(): ConfigScopeMeta;
 	getSubscriptionsMeta(): ConfigScopeMeta;
-	getConnectionsMeta(): ConfigScopeMeta;
 	getTargetsMeta(): ConfigScopeMeta;
 
 	// --- writes -----------------------------------------------------------
@@ -991,10 +990,6 @@ class NodeConfigStore implements ConfigStore {
 
 	getSubscriptionsMeta(): ConfigScopeMeta {
 		return { ...this.meta.subscriptions };
-	}
-
-	getConnectionsMeta(): ConfigScopeMeta {
-		return { ...this.meta.adapters };
 	}
 
 	getTargetsMeta(): ConfigScopeMeta {
