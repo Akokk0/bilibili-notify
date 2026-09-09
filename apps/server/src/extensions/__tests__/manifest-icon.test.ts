@@ -5,6 +5,9 @@
  * 也说不清是什么,而灰方章至少诚实。ADR 那句「失败退回灰方章」说的就是这件事。
  */
 
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { safeExtensionIcon } from "../manifest-icon.js";
 
@@ -87,5 +90,29 @@ describe("safeExtensionIcon", () => {
 
 	it("标签之外的裸尖括号也算数 —— 扫不干净就别放行", () => {
 		expect(safeExtensionIcon(`<svg viewBox="0 0 24 24">a < b</svg>`)).toBeUndefined();
+	});
+});
+
+/**
+ * 🔴 **我们自己那枚图标也要过得了这道门。** 过滤器是静默的:不通过就退回灰方章,没有一条
+ * 日志、没有一次报错 —— 门禁全绿而屏幕上是个灰方块。所以仓里唯一那个拓展的图标钉在这儿。
+ */
+describe("仓里那个桥", () => {
+	it("它自己那枚图标过得了白名单", async () => {
+		// 从本文件往上五级到仓根(apps/server/src/extensions/__tests__)。
+		const manifest = join(
+			fileURLToPath(dirname(import.meta.url)),
+			"..",
+			"..",
+			"..",
+			"..",
+			"..",
+			"extensions",
+			"bridge",
+			"extension.json",
+		);
+		const { icon } = JSON.parse(await readFile(manifest, "utf8")) as { icon?: string };
+		expect(icon).toBeTruthy();
+		expect(safeExtensionIcon(icon)).toBe(icon);
 	});
 });
