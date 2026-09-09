@@ -9,6 +9,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
+import { adapterForConnection } from "../platforms/dispatch.js";
+import type { AdapterRegistry } from "../platforms/registry.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**
@@ -37,7 +39,7 @@ export interface MultiplexSink extends NotificationSink {
  */
 export interface MultiplexSinkOptions {
 	store: ConfigStore;
-	adapters: PlatformAdapter[];
+	adapters: AdapterRegistry;
 	logger: Logger;
 	/** Optional hook fired after every send (success or failure). Used by the history store. */
 	onDelivery?: (
@@ -50,18 +52,11 @@ export interface MultiplexSinkOptions {
 
 export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 	const log = opts.logger;
-	// 键是**分发键**不是平台名:直连的分发键就是它的平台,桥接入只有一套实现、共用
-	// `"bridge"` 这一个键(见 internal 的 `connectionDispatchKey`)。方言自报的
-	// `platforms` 就是它认领的那几个键。
-	const adapterByKey = new Map<string, PlatformAdapter>();
-	for (const ad of opts.adapters) {
-		for (const p of ad.platforms) {
-			if (adapterByKey.has(p)) {
-				log.warn(`[sink] platform=${p} adapter override; previous registration replaced`);
-			}
-			adapterByKey.set(p, ad);
-		}
-	}
+	// 出口**每次现问注册表** —— 拓展是后加载的,而且拨一下开关就会来去(ADR-0012 决策 29)。
+	// 从前这里自己建了一张键 → adapter 的 Map,那是「哪个 adapter 管这条连接」的第二份
+	// 实现;现在与别处共用 `adapterForConnection` 那一份。
+	const adapterFor = (connection: Connection): PlatformAdapter | undefined =>
+		adapterForConnection(opts.adapters.list(), connection);
 
 	function findTarget(targetId: string): PushTarget | undefined {
 		return opts.store.getTargets().find((t) => t.id === targetId);
@@ -75,7 +70,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 	function routeOf(connectionId: string) {
 		const connection = opts.store.getConnections().find((a) => a.id === connectionId);
 		if (!connection) return undefined;
-		const platformAdapter = adapterByKey.get(connectionDispatchKey(connection));
+		const platformAdapter = adapterFor(connection);
 		return platformAdapter ? { connection, platformAdapter } : undefined;
 	}
 
@@ -95,7 +90,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 			if (!target) return false;
 			const connection = findConnectionFor(target);
 			if (!connection) return false;
-			const platformAdapter = adapterByKey.get(connectionDispatchKey(connection));
+			const platformAdapter = adapterFor(connection);
 			if (!platformAdapter) return false;
 			return platformAdapter.isAvailable(connection, target);
 		},
@@ -125,7 +120,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 			if (!connection) {
 				return { ok: false, latencyMs: 0, err: "connection not found" };
 			}
-			const platformAdapter = adapterByKey.get(connectionDispatchKey(connection));
+			const platformAdapter = adapterFor(connection);
 			if (!platformAdapter) {
 				return {
 					ok: false,
@@ -157,7 +152,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 			opts.onDelivery?.(target, payload, result, options);
 			return result;
 		}
-		const platformAdapter = adapterByKey.get(connectionDispatchKey(connection));
+		const platformAdapter = adapterFor(connection);
 		if (!platformAdapter) {
 			const result: DeliveryResult = {
 				ok: false,

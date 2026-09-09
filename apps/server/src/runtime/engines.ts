@@ -72,7 +72,8 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
-import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
+import type { AdapterRegistry } from "../platforms/registry.js";
+import type { ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
@@ -192,7 +193,7 @@ export interface CreateEnginesOptions {
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	bus: import("@bilibili-notify/internal").MessageBus;
-	adapters: PlatformAdapter[];
+	adapters: AdapterRegistry;
 	/**
 	 * Optional puppeteer adapter. When provided the engines spin up a shared
 	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
@@ -272,7 +273,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// 有状态 adapter(OneBot ws / ws-reverse)—— boot 时按当前 adapter 集合建立
 	// 正向连接 / 反向监听器。后续每次 config-changed:connections 再 reconcile(见下)。
-	for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
+	for (const ad of opts.adapters.list()) ad.reconcile?.(opts.configStore.getConnections());
 
 	const masterTarget = (): PushTarget | undefined => {
 		const id = globals().master.targetId;
@@ -761,7 +762,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 刻意不在这里触发 probeAllConnections:probe 经 patchConnection 写回
 				// testStatus 会再 emit config-changed:connections → 死循环。adapter
 				// 连通状态由 5 分钟轮询刷新(或用户点"测试"立即刷)。
-				for (const ad of opts.adapters) ad.reconcile?.(opts.configStore.getConnections());
+				for (const ad of opts.adapters.list()) ad.reconcile?.(opts.configStore.getConnections());
 				return;
 			}
 			if (scope === "globals" || scope === "targets") {
@@ -987,7 +988,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			log.warn(`[engines] masterNotifier.dispose failed: ${String(e)}`);
 		}
 		// 有状态 adapter:关正向连接 / 反向监听器 / 定时器。best-effort 同步触发。
-		for (const ad of opts.adapters) {
+		for (const ad of opts.adapters.list()) {
 			try {
 				void ad.dispose?.();
 			} catch (e) {

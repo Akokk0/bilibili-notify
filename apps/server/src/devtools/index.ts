@@ -5,6 +5,7 @@ import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
+import type { AdapterRegistry } from "../platforms/registry.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
@@ -49,8 +50,8 @@ export interface CreateDevtoolsInput {
 	 */
 	sourceRun: boolean;
 	updateService: UpdateService;
-	/** 推送出口。交回去的是包过截流闸的那份。 */
-	adapters: readonly PlatformAdapter[];
+	/** 推送出口的注册表。交回去的是包过截流闸的那份**视图**。 */
+	adapters: AdapterRegistry;
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
 	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
@@ -88,7 +89,7 @@ export interface Devtools {
 	/** 交给 `/api/update` 路由的那份 —— 装饰过的。 */
 	updateService: UpdateService;
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
-	adapters: PlatformAdapter[];
+	adapters: AdapterRegistry;
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
 	api: BilibiliAPI;
 	/**
@@ -135,6 +136,8 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			return deleted;
 		},
 	};
+	/** 包好的出口按原 adapter 记一份 —— 见下面 `adapters` 那段。 */
+	const wrappedAdapters = new WeakMap<PlatformAdapter, PlatformAdapter>();
 	const registry = createDevRegistry([
 		updateStateScenario(update),
 		pushCaptureScenario(gate),
@@ -155,7 +158,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		capabilityScenario({
 			injector: caps,
 			connections: input.connectionConfigs,
-			dialects: input.adapters,
+			dialects: input.adapters.list(),
 		}),
 		...timerScenarios({
 			clock,
@@ -173,7 +176,23 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		route: createDevRoute({ registry, captures }),
 		updateService: update.service,
 		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
-		adapters: input.adapters.map((a) => caps.wrap(gate.wrap(a))),
+		//
+		// 是个**视图**不是一份拷贝:注册转交给真注册表,包装在 `list()` 那一刻现做。
+		// 拷一份的话,拓展后注册进来的出口在开发版里根本不存在 —— 而那正是「生产好好的、
+		// 本地一跑就不生效」那类假绿(ADR-0012 决策 29)。
+		// 包好的按原 adapter 记一份:每次 list 都新包一个的话,同一个出口在两次调用里
+		// 会是两个对象。
+		adapters: {
+			register: (adapter) => input.adapters.register(adapter),
+			list: () =>
+				input.adapters.list().map((adapter) => {
+					const cached = wrappedAdapters.get(adapter);
+					if (cached) return cached;
+					const wrapped = caps.wrap(gate.wrap(adapter));
+					wrappedAdapters.set(adapter, wrapped);
+					return wrapped;
+				}),
+		},
 		api: api.api,
 		authSystem: auth.api,
 		quietHoursNow: () => clock.now(),

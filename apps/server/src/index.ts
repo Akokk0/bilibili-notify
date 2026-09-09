@@ -39,6 +39,7 @@ import { createBridgeAdapter } from "./platforms/bridge.js";
 import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
+import { createAdapterRegistry } from "./platforms/registry.js";
 import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./platforms/types.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
@@ -329,6 +330,10 @@ export async function startStandaloneServer(
 			createWebhookAdapter({ logger: log }),
 			createBridgeAdapter({ server: bridgeServer, blobs: bridgeBlobs, logger: log }),
 		];
+		// 出口从此住在一张**活的注册表**里:内置这几个开机就在,拓展注册进来的后到、
+		// 拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
+		const adapterRegistry = createAdapterRegistry(rawAdapters);
+
 		// 主人是「谁」—— 平台 + 地址(+ 是哪个 bot 看到的)三坐标,不是一个裸字符串。
 		// onebot 的 user_id 与官机的 C2C openid 是两个命名空间,撞上就等于认错人;
 		// 从前那句「绝不能跨平台比对」只写在注释里,真正兜着它的是「一条连接只驮一个
@@ -352,7 +357,7 @@ export async function startStandaloneServer(
 			// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。见 createDevtools 那道门。
 			sourceRun: import.meta.url.endsWith(".ts"),
 			updateService,
-			adapters: rawAdapters,
+			adapters: adapterRegistry,
 			historyStore: runtime.historyStore,
 			api: authSystem.api,
 			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
@@ -385,7 +390,7 @@ export async function startStandaloneServer(
 			loginFlow: () => authSystem?.flow,
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
-		const adapters = devtools?.adapters ?? rawAdapters;
+		const adapters = devtools?.adapters ?? adapterRegistry;
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
@@ -619,7 +624,7 @@ export async function startStandaloneServer(
 		const replyRoute = (connectionId: string) => {
 			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
 			if (!connection) return null;
-			const platformAdapter = adapterForConnection(adapters, connection);
+			const platformAdapter = adapterForConnection(adapters.list(), connection);
 			return platformAdapter ? { connection, platformAdapter } : null;
 		};
 		const linkParser = createLinkParser({

@@ -22,6 +22,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { PlatformAdapter, ProbeResult } from "../../platforms/types.js";
 import { createMultiplexSink } from "../multiplex.js";
 
@@ -95,29 +96,18 @@ describe("createMultiplexSink — adapter 注册表", () => {
 				[makeConnection({ id: "a1", platform: "onebot" })],
 				[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
 			),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 		});
 		expect(sink.isAvailable("t1")).toBe(true);
 	});
 
-	it("同一 platform 被两个 adapter 声明:warn + 后者覆盖", () => {
+	it("同一 platform 被两个 adapter 声明 → **注册那一步就抛**,轮不到这一层", () => {
+		// 从前这里是「warn 一行 + 后者覆盖」。悄悄顶掉意味着推送全走了另一个实现,
+		// 而两边都不报错 —— 现在这道门挪进了注册表,而且从「提醒」变成了「拒绝」。
 		const first = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
 		const second = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => true) });
-		const logger = makeLogger();
-		const sink = createMultiplexSink({
-			store: makeStore(
-				[makeConnection({ id: "a1", platform: "feishu" })],
-				[makeTarget({ id: "t1", connectionId: "a1", platform: "feishu" })],
-			),
-			adapters: [first, second],
-			logger,
-		});
-		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("platform=feishu adapter override"),
-		);
-		// 后注册的 second 生效(isAvailable → true)。
-		expect(sink.isAvailable("t1")).toBe(true);
+		expect(() => createAdapterRegistry([first, second])).toThrow(/feishu/);
 	});
 });
 
@@ -126,7 +116,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const sink = createMultiplexSink({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger: makeLogger(),
 		});
 		expect(sink.resolve("t1")).toBe(target);
@@ -141,7 +131,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 				[makeConnection({ id: "a2", platform: "telegram" })],
 				[targetNoConnection, targetNoPA],
 			),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger: makeLogger(),
 		});
 		expect(sink.isAvailable("missing")).toBe(false); // target 缺
@@ -156,7 +146,7 @@ describe("createMultiplexSink — resolve / isAvailable", () => {
 				[makeConnection({ id: "a1", platform: "feishu" })],
 				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
-			adapters: [paFalse],
+			adapters: createAdapterRegistry([paFalse]),
 			logger: makeLogger(),
 		});
 		expect(sink.isAvailable("t1")).toBe(false);
@@ -179,7 +169,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 	it("target 缺:返回 target not found,不触发 onDelivery", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([], []),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -192,7 +182,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		const logger = makeLogger();
 		const sink = createMultiplexSink({
 			store: makeStore([], [makeTarget({ id: "t1", connectionId: "ghost" })]),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger,
 			onDelivery,
 		});
@@ -210,7 +200,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 				[makeConnection({ id: "a1", platform: "telegram" })],
 				[makeTarget({ id: "t1", connectionId: "a1", platform: "telegram" })],
 			),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger,
 			onDelivery,
 		});
@@ -232,7 +222,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore([connection], [target]),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -248,7 +238,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		const pa = makePlatformAdapter(["feishu"]);
 		const sink = createMultiplexSink({
 			store: makeStore([connection], [target]),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -267,7 +257,7 @@ describe("createMultiplexSink — probeConnection", () => {
 	it("连接缺:connection not found", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([], []),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger: makeLogger(),
 		});
 		expect(await sink.probeConnection("ghost")).toEqual({
@@ -280,7 +270,7 @@ describe("createMultiplexSink — probeConnection", () => {
 	it("platformAdapter 缺:no platform adapter for <platform>", async () => {
 		const sink = createMultiplexSink({
 			store: makeStore([makeConnection({ id: "a1", platform: "telegram" })], []),
-			adapters: [makePlatformAdapter(["feishu"])],
+			adapters: createAdapterRegistry([makePlatformAdapter(["feishu"])]),
 			logger: makeLogger(),
 		});
 		expect(await sink.probeConnection("a1")).toEqual({
@@ -297,7 +287,7 @@ describe("createMultiplexSink — probeConnection", () => {
 		});
 		const sink = createMultiplexSink({
 			store: makeStore([connection], []),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 		});
 		const r = await sink.probeConnection("a1");
@@ -310,7 +300,9 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	function sinkWith(connections: Connection[], targets: PushTarget[]) {
 		return createMultiplexSink({
 			store: makeStore(connections, targets),
-			adapters: [makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) })],
+			adapters: createAdapterRegistry([
+				makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) }),
+			]),
 			logger: makeLogger(),
 		});
 	}
@@ -361,7 +353,7 @@ describe("createMultiplexSink — connectionCapabilities / probeConnectionCapabi
 		const connection = makeConnection({ id: "a1", platform: "onebot" });
 		const sink = createMultiplexSink({
 			store: makeStore([connection], []),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 		});
 		expect(sink.connectionCapabilities("a1")).toEqual(CAPS);
@@ -380,7 +372,7 @@ describe("createMultiplexSink — connectionCapabilities / probeConnectionCapabi
 				],
 				[],
 			),
-			adapters: [pa],
+			adapters: createAdapterRegistry([pa]),
 			logger: makeLogger(),
 		});
 		expect(sink.connectionCapabilities("nope")).toBeUndefined();

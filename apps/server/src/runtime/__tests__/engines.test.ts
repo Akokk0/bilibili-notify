@@ -29,6 +29,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { PlatformAdapter } from "../../platforms/types.js";
 import { standaloneContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -271,7 +272,7 @@ function setup(opts?: {
 			load: vi.fn(async () => {}),
 		} as any,
 		bus,
-		adapters: opts?.platformAdapters ?? [],
+		adapters: createAdapterRegistry(opts?.platformAdapters ?? []),
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
