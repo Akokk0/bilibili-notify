@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上不再有任何包(所以也不需要 changesets)。Koishi 插件与 AstrBot 插件已从 dev 移除、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;后续以「薄的适配插件桥接到跑着的独立端」的形式回归,接入点是 `packages/internal` 的连接平台词表(`constants.ts` 的 `CONNECTION_PLATFORMS`,schema 在 `schema/targets.ts`;推送目标那一侧的平台是开放词表,不用改它)+ `apps/server/src/platforms/` 的 adapter 矩阵 —— 引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,别再给它们留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上不再有任何包(所以也不需要 changesets)。Koishi 插件与 AstrBot 插件已从 dev 移除、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;后续以「薄的适配插件桥接到跑着的独立端」的形式回归,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **别再往 `CONNECTION_PLATFORMS` 里加档**:拓展提供的连接走 `kind: "extension"` 那一支,**没有 `platform`** —— 桥后面挂着哪些平台是运行时才知道的,枚举不了(推送目标那一侧的平台本来就是开放词表)。引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,别再给它们留可选钩子。
 
 ## 工具链与命令
 
@@ -30,8 +30,9 @@ vp run build:update-payload   # server 自包含 bundle + 装配 + web dist(Dock
 ## 顶层布局
 
 ```
-packages/   平台中立业务核心(@bilibili-notify/*)
-apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约(apps/contract)
+packages/     平台中立业务核心(@bilibili-notify/*)
+apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约(apps/contract)
+extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第一个是机器人框架桥接)
 ```
 
 单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 消费业务核心。包清单与模块图见 `docs/agents/architecture.md`。
@@ -39,6 +40,8 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约(app
 ## 硬约束(违反即 bug)
 
 - **写前端 UI 前先查组件清单**:`packages/ui`(`@bilibili-notify/ui`)是纯展示基础件库,给 web / desktop 写任何 UI **之前必须先读 `packages/ui/README.md` 的组件清单**——清单里有的组件不许重写。新增纯展示件(零业务依赖)进库并**同步更新清单**;缠 api/store/react-query 的留在 `apps/web/src/components`。库是源码直出(exports 指 src,无构建步),消费方入口 CSS 要 `@import "@bilibili-notify/ui/theme.css"` + `@source` 库的 src。
+
+- **拓展只从一扇门拿 BN 的东西**:`extensions/<id>/` 底下第三方随便用,但我们自己的东西**只准从 `@bilibili-notify/extension` 进** —— 那个包列出来的就是契约的全部,直接依赖 `internal` 等于把契约放宽成「整个域模型」。反方向也一样:**核心不 import 拓展**。两条都由 `apps/server/src/extensions/__tests__/extension-import-boundary.test.ts` 真扫目录钉着,越界是静默的(类型、测试、构建全绿)。
 
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。类型增强(`declare module "x"`)也算 —— 解析不到就静默变成孤立声明。pnpm 是 isolated 布局,幻影依赖直接解析不到,不会像 hoisted 年代那样碰巧能跑。
 - **MessageBus**:`apps/server/src/runtime/message-bus.ts` 是唯一事件通道,绝不写 bus 与任何别的事件通道之间的转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。

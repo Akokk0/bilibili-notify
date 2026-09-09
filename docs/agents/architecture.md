@@ -5,11 +5,12 @@
 ## 顶层布局
 
 ```
-packages/   平台中立业务核心(@bilibili-notify/*)
-apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
+packages/     平台中立业务核心(@bilibili-notify/*)
+apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
+extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 ```
 
-`pnpm-workspace.yaml` glob:`["packages/*", "apps/*"]`。单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 协议消费业务核心。Koishi 插件与 AstrBot 插件不在 dev 上(维护线 `koishi-astrbot-maintenance`,见 build-release.md)。
+`pnpm-workspace.yaml` glob:`["packages/*", "apps/*", "extensions/*"]`。单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 协议消费业务核心。Koishi 插件与 AstrBot 插件不在 dev 上(维护线 `koishi-astrbot-maintenance`,见 build-release.md)。
 
 ## 包清单
 
@@ -27,11 +28,12 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
 | `packages/blive` | `@bilibili-notify/blive` | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
 | `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS/JSDOM SSR + 经 `PuppeteerLike` 接口包 puppeteer |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
+| `packages/extension` | `@bilibili-notify/extension` | **宿主给拓展的那一面**,也是拓展拿 BN 东西的**唯一一扇门**:ctx / 挂载点 / upgrade / 表单字段表定义在这里,推送源契约与域类型从 `internal` **转出一道**。只放类型不放实现(拓展会被打成自包含 bundle)。列出来的就是契约的全部 —— 加一格是一次明确的加宽决定 |
 | `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README |
 
 ### 宿主适配
 
-引擎(`dynamic` / `live` / `push` / `image`)通过 `ServiceContext` / `MessageBus` / `PushLike` / 各自的注入钩子与宿主对接;独立端 `apps/server/src/runtime/` 是唯一宿主,这些钩子一律必填、不留「宿主不注入就走旧路径」的分支。将来薄适配插件把 Koishi / AstrBot 桥接进来时,接的是**跑着的独立端**(`CONNECTION_PLATFORMS` 连接平台词表 + `apps/server/src/platforms/` adapter 矩阵),不再各自内嵌一份引擎。
+引擎(`dynamic` / `live` / `push` / `image`)通过 `ServiceContext` / `MessageBus` / `PushLike` / 各自的注入钩子与宿主对接;独立端 `apps/server/src/runtime/` 是唯一宿主,这些钩子一律必填、不留「宿主不注入就走旧路径」的分支。薄适配插件把 Koishi / AstrBot 桥接进来时,接的是**跑着的独立端**,走的是**拓展**那条路(见下面「拓展」一节),不再各自内嵌一份引擎。
 
 ## 工作区依赖卫生
 
@@ -87,10 +89,11 @@ src/
   skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
   routes/               REST:auth / subs / targets / connections / globals / history / logs / fans / live / cards / push / health
-                        / ai / skins / maid-skills
+                        / ai / skins / maid-skills / ext(拓展清单与每个拓展的面板数据)
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   sink/                 NotificationSink 分发(PushTarget.id → 平台适配器)
-  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个 adapter;连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`),schema 在 internal/schema/targets.ts
+  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter + `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛);推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
+  extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```
 
 ### `apps/web`
@@ -108,6 +111,30 @@ src/
 ```
 
 页面级状态归 tanstack-query;WS push 帧经 `setQueryData` 打补丁,实时更新无需额外 HTTP 往返。
+
+## 拓展(`extensions/`)
+
+一个拓展 = 一个目录 + 一份 `extension.json` 清单 + 一个导出 `activate(ctx)` 的入口。定案见
+`docs/adr/0012-extensions.md`;第一个(也是眼下唯一一个)是**机器人框架桥接**
+`extensions/bridge/`,它对外的线上协议在 `extensions/bridge/PROTOCOL.md`。
+
+- **一切副作用都从 `ctx` 过** —— 定时器、HTTP 挂载点、WS upgrade、推送源、入站、面板数据。
+  裸 `setInterval`、裸挂端点是禁止的:那是「停用得干净」的唯一承重条件。
+- **一扇门**:拓展只从 `@bilibili-notify/extension` 拿 BN 的东西(见 CLAUDE.md 硬约束),
+  反方向核心也不 import 拓展。两条都有可执行守卫。
+- **扫多个根**,先命中先用、被盖住 warn 一行:仓里 `extensions/`(**仅源码运行时**,入口
+  `src/index.ts`)> `<dataDir>/extensions/` > 载荷自带(入口 `index.mjs`)。清单里**没有
+  `entry` 字段** —— 入口固定,宿主自己判。
+- **开箱即有 ≠ 默认开着**:`globals.extensions.<id>.enabled` 缺失就是关着。关着的拓展
+  **一行代码都不 import**,但列得出来。
+- **两个 URL 前缀,分开它们的是鉴权域**:`/ext/<id>/*`(拓展自己的 HTTP 与 WS,**刻意在
+  dashboard 鉴权之外** —— 对家手里只有 URL、没有会话)与 `/api/ext`(清单、
+  `/api/ext/<id>/status` 面板数据,吃 dashboard 会话鉴权)。代码与配置面一律写全称
+  (`globals.extensions` / `loadExtensions`)。
+- **推送源的分发键由宿主按拓展 id 填**,拓展自报的那份会被覆盖 —— 否则一个拓展声明
+  `"onebot"` 就能把内置连接的推送整个截走。
+- 眼下**还做不到的**:换代码要重启(ESM 换不掉已加载的模块),拨开关只在开机时生效;
+  拓展也还没有打包步骤(源码运行全通,随载荷预装是发行侧的活)。
 
 ## 女仆技能(Agent Skill)
 

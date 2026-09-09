@@ -1,5 +1,5 @@
 /**
- * `/bridge` 端点 —— 桥连进来的那条长连接。
+ * WS 端点 —— 桥连进来的那条长连接。
  *
  * 这一层的每一条都是**协议里写死的承诺**,所以每条都拿真 socket 验(而不是调一个纯函数):
  * 断连码是插件用来决定「要不要重连」的唯一依据,握手超时是不给未鉴权的空连接占位子的
@@ -241,6 +241,10 @@ describe("/bridge 端点", () => {
 	/**
 	 * 挂载点底下**还有别的路**(取图口是 `/blob/<id>`),只有根那一条是 WS。从前这一层
 	 * 自己比对绝对路径 `/bridge`;现在宿主已经按前缀分过,它只需要认「剩下的那一段」。
+	 *
+	 * 「同前缀的**名字**不是它」(`/ext/bridgefoo`)那一半跟着搬去了宿主 —— 分段是
+	 * `extensions/upgrade.ts` 的活,由它自己的 `upgrade.test.ts` 钉着。这一层收到 `path`
+	 * 时前缀已经剥掉了,再在这儿比一次只会比出一个假的安心。
 	 */
 	it("挂载点底下的别的路径不是 WS —— 回 404,不是把 socket 吊着", async () => {
 		const p = peer(port, TOKEN, "/blob/abc");
@@ -570,25 +574,6 @@ describe("/bridge 端点", () => {
 		await new Promise((r) => setTimeout(r, 50));
 		expect(sawOther).toBe(true);
 		stray.terminate();
-	});
-
-	/**
-	 * `/bridge/blob/<id>` 是**取图口**,一条普通 HTTP GET。前缀匹配会把它也算成本端点的
-	 * 地盘 —— 今天没人往那儿发 upgrade 所以看不出来,等取图口落地就是一处静默错认。
-	 * `/bridgefoo` 同理:一个能被前缀吃掉的名字就是一个能被冒名的端点。
-	 */
-	it("只认 /bridge 本身 —— 子路径与同前缀的名字都不是它", async () => {
-		for (const url of ["/bridge/blob/abc", "/bridgefoo"]) {
-			// 拿**对的 token** 去连,把变量压到只剩路径这一个。
-			const stray = new WebSocket(`ws://127.0.0.1:${port}${url}`, {
-				headers: { Authorization: `Bearer ${TOKEN}` },
-			});
-			stray.on("error", () => {});
-			await new Promise((r) => setTimeout(r, 60));
-			// 桥没伸手 → 没人应答这条 upgrade → 永远握不上手。伸手了就会是 OPEN。
-			expect(stray.readyState, url).not.toBe(WebSocket.OPEN);
-			stray.terminate();
-		}
 	});
 
 	it("dispose() 关掉在连的桥、并摘掉 upgrade 处理器", async () => {

@@ -2,7 +2,7 @@
 
 主人在 IM 私聊里敲的那套指令:入站链路、指令表、参数模型、可配置项;末尾另有**链接解析**(群里贴视频链接自动出卡片 —— 挂在同一条入站帧上,但**不是指令**)。CLAUDE.md 的渐进式披露目标之一。
 
-**只覆盖独立端。** 将来薄适配插件把宿主(Koishi / AstrBot)桥接进来时,宿主自带的指令系统不在此列、也不强行统一。
+**只覆盖独立端自己这套。** 桥驮上来的 bot(`extensions/bridge/`)**走的是同一条链路** —— 归一化在拓展那一侧做完,交进来时已经是下面那两个形状,所以指令对它们照样生效。宿主框架(Koishi / AstrBot)自带的指令系统不在此列、也不强行统一。
 
 ## 三条约束
 
@@ -10,7 +10,7 @@
 
 1. **这条私聊同时是主人正常说话的地方。** 它不是一个专用的命令行终端 —— 任何「对认不出的输入给回音」的设计都会让主人没法在这儿好好聊天。
 2. **通道对面是 B 站账号与推送控制权。** 任何回音都是接口指纹,试探者靠报错差异就能摸出指令表。
-3. **只有 onebot / qq-official 收得到回复**(`INBOUND_CAPABLE_PLATFORMS`)。webhook 天生没有回程。所以指令是**增量入口,不是 Dashboard 的替代** —— 每个能力在网页上都得有一份。
+3. **不是每条连接都有回程。** 直连里只有 onebot / qq-official 收得到回复(`INBOUND_CAPABLE_PLATFORMS`),webhook 天生没有;桥那条**不经过这张表** —— 收不收得到由桥**逐 bot** 报的 `inbound` 能力位回答(⚠️ 别把那张表开成 string 来「顺便支持桥」,它问的是「**直连**的这个平台」,`inbound-capability.test.ts` 拿 `"someday-telegram"` 钉着这道守卫:没实现入站的平台一律判 false)。所以指令是**增量入口,不是 Dashboard 的替代** —— 每个能力在网页上都得有一份。
 
 ## 模块清单
 
@@ -18,7 +18,7 @@
 
 | 文件 | 角色 |
 |---|---|
-| `platforms/types.ts` / `platforms/onebot-inbound.ts` | 入站消息的平台中立形状 `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text,cardLinks}` 住在 `types.ts`;**归一化在 adapter 里做**:OneBot 帧由 `onebot-inbound.ts` 的 `extractPrivateMessage` / `extractGroupMessage` 解析(`routeInboundFrame` 一帧至多进一路),官机由 `qq-official.ts` 的 `extractQQPrivateMessage` / `extractQQGroupMessage` 解析;两个 adapter 交出同一个形状,消费者不碰原始帧 |
+| `packages/internal/src/push-source.ts` / `platforms/onebot-inbound.ts` | 入站消息的平台中立形状 `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text,cardLinks}` 住在 **internal 的推送源契约**里(核心与拓展都要认得它,所以在公共包);**归一化在各自那一侧做**:OneBot 帧由 `onebot-inbound.ts` 的 `extractPrivateMessage` / `extractGroupMessage` 解析(`routeInboundFrame` 一帧至多进一路),官机由 `qq-official.ts` 的 `extractQQPrivateMessage` / `extractQQGroupMessage` 解析,桥由 `extensions/bridge/src/inbound.ts` 解析后经 `ctx.inbound` 喂回来;三条路交出同一个形状,消费者不碰原始帧 |
 | `command-dispatcher.ts` | 鉴权、四道门、路由、触发词查重(`effectiveAliases` / `command()` 注册助手) |
 | `command-params.ts` | 签名解析 `parseSignature` + 入参解析 `parseArgs` + 从签名推 handler 入参类型的 `Values<S>` |
 | `command-help.ts` | `renderUsage` / `renderHelp` —— 纯函数,私聊帮助与面板卡片共用 |
@@ -35,8 +35,9 @@
 ## 入站链路
 
 ```
-平台事件帧
-    ↓  adapter 归一化(OneBot: onebot-inbound.ts;官机: qq-official.ts)—— 平台差异到此为止
+平台事件帧 / 桥的 inbound 帧
+    ↓  归一化(直连: onebot-inbound.ts / qq-official.ts;桥: extensions/bridge/src/inbound.ts
+    ↓            → ctx.inbound,宿主校验「这条连接是不是它的」)—— 平台差异到此为止
 InboundPrivateMessage {userId, text}
     ↓
 ┌─────────────────────────────────────────────────┐
@@ -71,7 +72,7 @@ InboundPrivateMessage {userId, text}
 - **总开关排在确认流之后** —— 「关掉 = 整条链路只剩确认流」。一起关掉的话,主人关一下指令,手里那份等审批的周报就再也批不掉了。
 - **前缀闸排在路由之前** —— 不带前缀的一律当聊天,连「没有这条指令」都不说。
 
-只有一个入口 `handleMessage(msg)`:两个 adapter 都在自己那层把帧归一化成同一个形状再交过来。曾经 OneBot 走 `handle(frame)` 在指令层解析、官机走 `handleMessage`,两条路各写一份鉴权迟早有一边把「不是主人也放行」写漏 —— 现在鉴权与路由只有一处。
+只有一个入口 `handleMessage(msg)`:每条来路都在自己那层把帧归一化成同一个形状再交过来。曾经 OneBot 走 `handle(frame)` 在指令层解析、官机走 `handleMessage`,两条路各写一份鉴权迟早有一边把「不是主人也放行」写漏 —— 现在鉴权与路由只有一处。这也是桥能白接进来的原因:它多的那一层只是**归属校验**(`ctx.inbound` 上,宿主判这条 `connectionId` 是不是那个拓展自己的),鉴权那道门一个字没动。
 
 ## 指令表
 

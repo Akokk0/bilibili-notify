@@ -1,9 +1,10 @@
 /**
- * 桥接协议 wire 契约 —— 独立端的 `/bridge` 端点 ↔ 跑在机器人框架里的桥接插件。
+ * 桥接协议 wire 契约 —— 独立端的 WS 端点 ↔ 跑在机器人框架里的桥接插件。
  *
- * 形态一句话:**桥主动连 BN**。BN 开 `/bridge`,插件(koishi / AstrBot)填「BN 地址 +
- * token」连过来,把它宿主里的 bot 借给 BN 用。重连退避归插件 —— 先例是 OneBot 的
- * ws-reverse,本来就是「BN 开口、bot 连进来」。
+ * 形态一句话:**桥主动连 BN**。BN 开一条 WS 端点(桥是拓展,地址由宿主分配,今天是
+ * `/ext/bridge`),插件(koishi / AstrBot)填「BN 地址 + token」连过来,把它宿主里的
+ * bot 借给 BN 用。重连退避归插件 —— 先例是 OneBot 的 ws-reverse,本来就是
+ * 「BN 开口、bot 连进来」。
  *
  * 与 dashboard 那条 `/ws` **彻底分开**:那条的帧想改就改(两端同版本同时发),这条
  * 对面是**独立发版的第三方插件**,所以有独立的协议版本号与「不认识就忽略」的演进纪律。
@@ -287,7 +288,7 @@ export interface BridgeWelcomeFrame {
 /**
  * 发一条消息。`id` 由 BN 生成,桥用 {@link BridgeResultFrame} 原样带回。
  *
- * ⚠️ **图里的 URL 只保证桥自己可达**(`/bridge/blob/<id>`,一次性 id + 短 TTL 即凭据)。
+ * ⚠️ **图里的 URL 只保证桥自己可达**(`<挂载点>/blob/<id>`,一次性 id + 短 TTL 即凭据)。
  * 桥要把图交给平台去拉的话**必须自己先下载**再以文件 / base64 交上去 —— BN 常跑在
  * NAS 上、外网根本进不来,Telegram 服务器去拉那个 URL 会**静默失败**。
  * (便宜的地方:koishi 的 `<img src>` 与 AstrBot 的 `Comp.Image.fromURL` 都直接吃 http

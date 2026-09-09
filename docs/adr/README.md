@@ -7,7 +7,7 @@
 | 内容 | 去处 |
 |---|---|
 | **为什么这么定**(决定 / 被否的选项 / 代价) | 这里 |
-| **怎么用**(接口、约定、操作步骤) | `docs/agents/*.md`、`docs/protocol/*.md`、各包的 `README.md` |
+| **怎么用**(接口、约定、操作步骤) | `docs/agents/*.md`、各包的 `README.md`、拓展的 `extensions/<id>/PROTOCOL.md` |
 | **做到哪了**(进度、断点、待办) | 工作稿与 issue,**不入这里** |
 
 ## 索引
