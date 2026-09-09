@@ -18,7 +18,15 @@ import type {
 import type { LogLevel } from "./ws";
 
 export type { MiniAppCardSupport } from "@bilibili-notify/internal";
-export type { ConnectionCapabilities, FansRefreshEntry, HistoryMessageRole, PushKind, PushStatus };
+export type {
+	ConnectionCapabilities,
+	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 MiniAppCardSupport 那条。
+	ExtensionProvides,
+	FansRefreshEntry,
+	HistoryMessageRole,
+	PushKind,
+	PushStatus,
+};
 
 // ---- /api/connections/capabilities ------------------------------------------
 

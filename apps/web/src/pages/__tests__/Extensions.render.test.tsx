@@ -27,6 +27,7 @@ const LISTED: ExtensionsResponse = {
 			description: "把别的机器人框架里的 bot 借过来发推送",
 			version: "1.0.0",
 			provides: ["push"],
+			icon: '<svg viewBox="0 0 24 24" data-testid="bridge-icon"><path d="M4 4h16"/></svg>',
 			enabled: true,
 			state: "running",
 			root: { kind: "data", dir: "/data/extensions/bridge" },
@@ -125,5 +126,57 @@ describe("拓展页", () => {
 	it("一个拓展都没装时给一句空态,不是空白", async () => {
 		renderPage({ extensions: [], shadowed: [] });
 		expect(await screen.findByText(/还没有装任何拓展/)).toBeTruthy();
+	});
+
+	/**
+	 * 拓展只开两口(ADR-0012):推送源接进「推送目标」,订阅源接进「订阅 UP 主」。分组不是
+	 * 排版口味 —— 主人来这一页多半是**为了某一口**,而卡片上的机器词 `provides` 说不清
+	 * 它会出现在哪。
+	 */
+	it("按开的那一口分组,空的那一口也留着并说清楚它空着", async () => {
+		renderPage();
+		// 「推送源」在页面上有两处:分节标题,与桥那张卡上的药丸 —— 两处都该有。
+		expect(await screen.findByText("接进「推送目标」")).toBeTruthy();
+		expect(screen.getAllByText("推送源").length).toBeGreaterThan(1);
+		expect(screen.getByText("接进「订阅 UP 主」")).toBeTruthy();
+		expect(screen.getByText(/还没有订阅源拓展/)).toBeTruthy();
+	});
+
+	/** 两份同名的摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
+	it("每张卡都说得出自己是从哪儿扫出来的", async () => {
+		renderPage();
+		expect(await screen.findByText("/data/extensions/bridge")).toBeTruthy();
+		expect(screen.getAllByText(/主人装的/).length).toBeGreaterThan(0);
+	});
+
+	/**
+	 * 🔴 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因:盘上两份、列表上一行,
+	 * 不说的话没有任何办法判断跑的是哪个。
+	 */
+	it("同一个 id 有两份时,页面上把两份的位置都摆出来", async () => {
+		renderPage({
+			...LISTED,
+			shadowed: [
+				{
+					id: "bridge",
+					winner: { kind: "source", dir: "/repo/extensions/bridge" },
+					shadowed: { kind: "data", dir: "/data/extensions/bridge" },
+				},
+			],
+		});
+		expect(await screen.findByText(/\/repo\/extensions\/bridge/)).toBeTruthy();
+		expect(screen.getAllByText(/仓里源码/).length).toBeGreaterThan(0);
+	});
+
+	/**
+	 * 图标跟着拓展走(决策 20)—— 清单里那段 SVG **服务端已经过过白名单**,这里只管画。
+	 * 一直没画的后果是:字段一路送到浏览器,类型、门禁、测试全绿,而屏幕上什么都没有。
+	 */
+	it("清单里的图标真的画出来;没有图标的退回灰方章", async () => {
+		const { container } = renderPage();
+		await screen.findByText("机器人框架桥接");
+		expect(container.querySelector('[data-testid="bridge-icon"]')).toBeTruthy();
+		// 抖音那条没有 icon —— 它得有个占位,而不是一个空方块。
+		expect(container.querySelectorAll('[data-bn-ext-icon="fallback"]')).toHaveLength(1);
 	});
 });
