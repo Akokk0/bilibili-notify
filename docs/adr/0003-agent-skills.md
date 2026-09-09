@@ -1,8 +1,8 @@
-# ADR-0001:用户可写的 Agent Skill 取代写死的技能胶囊
+# ADR-0003:用户可写的 Agent Skill 取代写死的技能胶囊
 
 - **状态**:**已实现**(2026-08-20 经 `/grill-me` 拷问定案,同日落 dev:`8cff038` → `2d25c81` 七笔;**尚未发版、尚未真机验证**)
 - **影响面**:独立端 dashboard 的 AI 聊天(`apps/web/src/components/ai-chat/`、`apps/server/src/routes/ai.ts`、`packages/ai/src/commentary-generator.ts`)
-- **不影响**:koishi 的 `bili.chat`、AstrBot —— 见「决策 · 边界」第 2 条
+- **不影响**:群聊那条 AI 入口 —— 见「决策 · 边界」第 5 条
 
 ## 背景
 
@@ -27,7 +27,7 @@
 
 ### 边界
 
-5. **只给独立端 dashboard。** koishi 的 `bili.chat` 没有权限门,而 skill 正文是提示词注入面 —— 群里任何人都能触发主人写的 skill,这条口子不开。AstrBot 同理。
+5. **只给独立端 dashboard。** skill 正文是提示词注入面,而群聊那条入口**没有权限门** —— 群里任何人都能触发主人写的 skill。这条口子不开。
 6. `load_skill` 工具走 dashboard 调用点的 `ExtraTool` 注入(与 `create_skin` 同一条路,`routes/ai.ts:442`),**绝不进 `TOOL_DEFINITIONS`** —— 那是三端共享的只读表。
 
 ### 触发与展示
