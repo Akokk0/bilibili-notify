@@ -325,44 +325,8 @@ export type DirectConnection = z.infer<typeof DirectConnectionSchema>;
 /** 拓展那一支 —— 没有 `platform`,config 归拓展自己校验。 */
 export type ExtensionConnection = z.infer<typeof ExtensionConnectionSchema>;
 
-/**
- * 这条连接是不是 webhook 那种**单向投递**。
- *
- * 从前全仓 20 处写的是 `connection.connector === "webhook"` —— 那是把一个字段当接口用:
- * 拓展那一支没有 `connector`,于是每一处都要先想一遍「它有没有这一格」。问题本来就只有
- * 一个,答案也只有一份,所以收成这一句。
- */
-export function isWebhookConnection(connection: Connection): connection is WebhookConnection {
-	return connection.kind === "direct" && connection.connector === "webhook";
-}
-
 /** webhook 那一档直连 —— 单向投递,没有会话。 */
 export type WebhookConnection = Extract<DirectConnection, { connector: "webhook" }>;
-
-/**
- * 这条连接归不归某个拓展 —— 不给 id 就是问「是不是拓展提供的」。
- *
- * ctx 交给拓展的那份快照就是拿它筛的(决策 30):**归属是宿主的判断**,所以筛这一步
- * 只有一份实现。
- */
-export function isExtensionConnection(
-	connection: Connection,
-	extensionId?: string,
-): connection is ExtensionConnection {
-	if (connection.kind !== "extension") return false;
-	return extensionId === undefined || connection.extensionId === extensionId;
-}
-
-/**
- * 这条连接自己就是一个平台吗 —— 是的话把平台名交出来。
- *
- * 读点写 `connection.platform` 的地方**大多真正想问的是这个**:桥接入没有单一平台,
- * 该走的是「问桥报了哪些」那条路。留这个谓词是为了让那些地方显式说出「认不出就没有」,
- * 而不是靠一个可选字段悄悄变 `undefined`。
- */
-export function isDirectConnection(connection: Connection): connection is DirectConnection {
-	return connection.kind === "direct";
-}
 
 /**
  * 这条连接是不是**这个平台的直连**。

@@ -20,7 +20,6 @@ import type {
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
-	WebhookConnection,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
@@ -33,6 +32,7 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	isTargetPaused,
+	isWebhookConnection,
 	LIVE_END_EXTRA_KEYS,
 	type LiveEndExtraKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -47,6 +47,7 @@ export {
 	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,
 	isTargetPaused,
+	isWebhookConnection,
 	LIVE_END_EXTRA_KEYS,
 };
 
@@ -282,17 +283,6 @@ export function switchOnebotTransport(
 		return { ...common, transport: "ws", url: "ws://127.0.0.1:3001", headers: {} };
 	}
 	return { ...common, transport: "ws-reverse", port: 9797 };
-}
-
-/**
- * 这条连接是不是 webhook 那种**单向投递**。
- *
- * ⚠️ 与 `@bilibili-notify/internal` 里那个同名谓词是**同一句话的两份实现**,而这是被逼的:
- * 那份住在 `schema/targets.ts`(带 zod),web 只能 `import type` 域模型 —— 把它拽进来
- * 等于把 zod 拽进前端 bundle。函数体是一行纯字段比较,两边漂不了;真要改判据,两处一起改。
- */
-export function isWebhookConnection(connection: Connection): connection is WebhookConnection {
-	return connection.kind === "direct" && connection.connector === "webhook";
 }
 
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {

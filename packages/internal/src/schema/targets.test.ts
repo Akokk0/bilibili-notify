@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { connectionDispatchKey, WEBHOOK_PLATFORMS } from "../constants";
+import { connectionDispatchKey, isDirectConnection, WEBHOOK_PLATFORMS } from "../constants";
 import {
 	ConnectionSchema,
 	isConnectionOn,
-	isDirectConnection,
 	OnebotConnectionConfigSchema,
 	PushTargetSchema,
 } from "./targets";

@@ -1,9 +1,22 @@
 /**
- * 纯常量模块 —— 必须保持**零 import、零副作用**:它经 `@bilibili-notify/internal/constants`
- * 子路径直供浏览器端(apps/web)运行时消费,不能把 zod 或任何 schema
- * 模块拽进前端 bundle。schema/common.ts 反向引用这里(`z.enum(FEATURE_KEYS)`)并从根
- * 入口重导出,后端消费者(server)照旧从根入口拿 —— 两条路径同一份值。
+ * 零依赖的核心词表 —— 常量,加上**只碰几个字段就能答**的纯形状判断(见文件末尾那组连接
+ * 谓词)。
+ *
+ * 🔴 **只许有 `import type`,值级 import 一条都不许**:它经
+ * `@bilibili-notify/internal/constants` 子路径**直供浏览器端(apps/web)运行时消费**,
+ * 一条值级 import 就能把 zod 与它拽着的整张 schema 图拉进前端 bundle —— 而症状不是报错,
+ * 是产物悄悄胖一圈。`import type` 编译后整条擦掉,所以类型随便引。
+ * 这条不是靠这段话拦着的,是靠 `constants-imports.test.ts`。
+ *
+ * schema/common.ts 反向引用这里(`z.enum(FEATURE_KEYS)`)并从根入口重导出,后端消费者
+ * (server)照旧从根入口拿 —— 两条路径同一份值。
  */
+import type {
+	Connection,
+	DirectConnection,
+	ExtensionConnection,
+	WebhookConnection,
+} from "./schema/targets.js";
 
 /**
  * 全部可订阅的特性键 —— 每一把都是一类**能单独开关、能配路由**的推送。新增或删除会扩散到
@@ -1045,4 +1058,53 @@ export const MIRROR_PREFIX_RE = /^https:\/\/[^\s/]+/;
 
 export function isMirrorPrefix(value: string): boolean {
 	return MIRROR_PREFIX_RE.test(value);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 连接的形状判断 —— 只看 `kind` / `connector` 两个字段,一点 zod 都用不上          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ⚠️ 这几个谓词**刻意住在这里而不是 `schema/targets.ts`**:面板(apps/web)也要问同样的
+ * 问题,而它只能 `import type` 域模型 —— 谓词留在带 zod 的那一侧,web 就只能自己再抄一份,
+ * 于是同一句话有两份实现、改判据要记得改两处。搬到这个零依赖模块之后只剩一份。
+ *
+ * (`isConnectionOn` 留在 schema 那边:它 narrow 到某个平台的 **config 形状**,那是 schema
+ * 自己的事。)
+ */
+
+/**
+ * 这条连接自己就是一个平台吗 —— 是的话把平台名交出来。
+ *
+ * 读点写 `connection.platform` 的地方**大多真正想问的是这个**:桥接入没有单一平台,
+ * 该走的是「问桥报了哪些」那条路。留这个谓词是为了让那些地方显式说出「认不出就没有」,
+ * 而不是靠一个可选字段悄悄变 `undefined`。
+ */
+export function isDirectConnection(connection: Connection): connection is DirectConnection {
+	return connection.kind === "direct";
+}
+
+/**
+ * 这条连接是不是 webhook 那种**单向投递**。
+ *
+ * 从前全仓 20 处写的是 `connection.connector === "webhook"` —— 那是把一个字段当接口用:
+ * 拓展那一支没有 `connector`,于是每一处都要先想一遍「它有没有这一格」。问题本来就只有
+ * 一个,答案也只有一份,所以收成这一句。
+ */
+export function isWebhookConnection(connection: Connection): connection is WebhookConnection {
+	return connection.kind === "direct" && connection.connector === "webhook";
+}
+
+/**
+ * 这条连接归不归某个拓展 —— 不给 id 就是问「是不是拓展提供的」。
+ *
+ * ctx 交给拓展的那份快照就是拿它筛的(决策 30):**归属是宿主的判断**,所以筛这一步
+ * 只有一份实现。
+ */
+export function isExtensionConnection(
+	connection: Connection,
+	extensionId?: string,
+): connection is ExtensionConnection {
+	if (connection.kind !== "extension") return false;
+	return extensionId === undefined || connection.extensionId === extensionId;
 }
