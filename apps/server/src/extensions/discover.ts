@@ -9,18 +9,20 @@ import {
 } from "@bilibili-notify/internal";
 
 /**
- * 拓展从哪个根扫出来的 —— 三个根的优先级就是这三格的先后(ADR-0012 决策 34)。
+ * 拓展从哪个根扫出来的 —— 两个根的优先级就是这两格的先后。
  *
- * 分开它们的不只是路径,还有**入口长什么样**(源码那份是 `src/index.ts`)与
- * **谁负责换掉它**(载荷那份跟着升级走,`<dataDir>` 那份归主人)。
+ * ⛔ **没有「载荷自带」那一档**(主人 2026-09-09 拍板推翻 ADR-0012 决策 34):本体一个拓展
+ * 都不带,拓展只有下载与手放两条来路。删掉那个根不只是省一次 `readdir` —— 留着它,下一个
+ * 人看见的是「拓展可以随载荷走」,而那正是被否掉的做法。
+ *
+ * 分开这两个的不只是路径,还有**入口长什么样**(源码那份是 `src/index.ts`)与**谁负责换掉
+ * 它**(源码那份跟着仓库走,`<dataDir>` 那份归主人)。
  */
 export type ExtensionRootKind =
 	/** 仓里的 `extensions/` —— **只在源码运行时存在**,构建产物里这条路结构上没有。 */
 	| "source"
 	/** `<dataDir>/extensions/` —— 面板装的、主人手放的。 */
-	| "data"
-	/** 载荷自带、与入口平级的 `extensions/` —— 跟着升级一起换。 */
-	| "payload";
+	| "data";
 
 export interface ExtensionRoot {
 	kind: ExtensionRootKind;
@@ -31,7 +33,6 @@ export interface ExtensionRoot {
 export const EXTENSION_ROOT_LABEL: Record<ExtensionRootKind, string> = {
 	source: "仓里源码",
 	data: "主人装的",
-	payload: "载荷自带",
 };
 
 /**
@@ -61,11 +62,11 @@ export function extensionEntryFileFor(kind: ExtensionRootKind): string {
 }
 
 /**
- * 算出这次开机要扫的几个根,**已按优先级排好**(决策 34:先命中先用)。
+ * 算出这次开机要扫的根,**已按优先级排好**(先命中先用)。
  *
- * 规矩与 dashboard 静态资源同一条(见 `config/web-dist.ts`):**属于载荷的东西相对入口
- * 解析,属于用户的东西用固定绝对路径**。载荷自带那份必须跟着当前跑的这份载荷走,否则
- * 在线升级之后会变成「新宿主配旧拓展」。
+ * 构建产物里就只有 `<dataDir>/extensions/` 一个根 —— 拓展是主人下载或手放进去的,
+ * 本体不带。源码运行时**多一个仓里的根**并排在最前(决策 35),这是我们自己开发拓展的路:
+ * 改一行 `tsx watch` 就重启,不必打包、也不必往哪儿拷。
  */
 export function extensionRootsFor(input: {
 	dataDir: string;
@@ -81,9 +82,6 @@ export function extensionRootsFor(input: {
 	if (sourceRun)
 		roots.push({ kind: "source", dir: resolve(entryDir, "..", "..", "..", "extensions") });
 	roots.push({ kind: "data", dir: extensionsRootIn(input.dataDir) });
-	// 源码运行时**没有载荷根**:那时「与入口平级的 extensions/」指的是宿主自己那个
-	// `apps/server/src/extensions/`(装载器的代码),扫它毫无意义,还会随手误伤。
-	if (!sourceRun) roots.push({ kind: "payload", dir: resolve(entryDir, "extensions") });
 	return roots;
 }
 

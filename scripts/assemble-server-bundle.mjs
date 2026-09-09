@@ -18,6 +18,8 @@ import { missingServerBundleFilesIn, writeServerBundleManifest } from "./server-
 // - static/*:词云模板,image 包运行时 readFileSync(resolve(__dirname, "static/*.js"))。
 //   用 monorepo 源路径(始终存在、与 lib/static 内容一致),原因同 sidecar 脚本。
 // - bn.config.example.yaml:first-boot 配置样例,镜像内与 bundle 平级。
+// ⛔ **拓展不进载荷**(主人 2026-09-09 拍板推翻 ADR-0012 决策 34 的「随载荷预装」):
+//   本体一个拓展都不带,拓展只有两条来路 —— 下载,或者主人自己放进 <dataDir>/extensions/。
 // - package.json:resolveAppVersion 从 index.mjs 往上找最近的这一份展示独立端版本
 //   (发布 workflow 按 tag 临时同步 version 后再构建)。必须与 bundle 平级 —— 它读的
 //   是**载荷自己**的版本,不是进程 cwd 的。

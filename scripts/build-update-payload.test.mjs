@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { installPayload } from "../apps/server/src/update/install-payload.js";
 import { buildUpdatePayload } from "./build-update-payload.mjs";
@@ -38,17 +38,22 @@ describe("buildUpdatePayload", () => {
 		const at = join(root, `seed-${seedSeq++}`);
 		const serverDist = join(at, "server-dist");
 		const webDist = join(at, "web-dist-src");
-		await mkdir(join(serverDist, "static"), { recursive: true });
 		await mkdir(join(webDist, "assets"), { recursive: true });
+		// 清单里的条目**可以带目录**(static/、拓展包),所以父目录跟着文件建,不手抄一份
+		// 目录清单 —— 手抄的那份只会在下一个带目录的条目进来时才发现自己漏了。
+		const put = async (file, content) => {
+			const path = join(serverDist, ...file.split("/"));
+			await mkdir(dirname(path), { recursive: true });
+			await writeFile(path, content);
+		};
 		for (const file of SERVER_BUNDLE_FILES) {
 			if (file === "index.mjs" || file === "package.json" || file === "static/render.js") continue;
 			if (file === BUNDLE_MANIFEST_FILE) continue; // 最后由装配那一步写,见下
-			await writeFile(join(serverDist, ...file.split("/")), `// ${file}\n`);
+			await put(file, `// ${file}\n`);
 		}
-		if (overrides.serverEntry !== false)
-			await writeFile(join(serverDist, "index.mjs"), "console.log('bn');\n");
-		await writeFile(join(serverDist, "package.json"), JSON.stringify({ version: "0.9.0" }));
-		await writeFile(join(serverDist, "static", "render.js"), "// 词云\n");
+		if (overrides.serverEntry !== false) await put("index.mjs", "console.log('bn');\n");
+		await put("package.json", JSON.stringify({ version: "0.9.0" }));
+		await put("static/render.js", "// 词云\n");
 		if (overrides.webEntry !== false)
 			await writeFile(join(webDist, "index.html"), "<!doctype html><title>bn</title>");
 		await writeFile(join(webDist, "assets", "app.js"), "export {};\n");

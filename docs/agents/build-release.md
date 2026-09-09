@@ -143,7 +143,7 @@ image-release run 在相同 build job 里顺带构建(同 buildx 实例复用 bu
 
 ### Dockerfile
 
-`apps/Dockerfile` 多阶段:builder 跑 `vp pm ci` + 按需构建(`packages/*` → `apps/web` → `apps/server` 的 `build:bundle` + `scripts/assemble-server-bundle.mjs`);runtime `FROM` 自建 chromium base,只 COPY server 的**自包含 bundle**(`apps/server/dist`,~15MB:入口 + 若干 hash 分块 + wasm / worker / 词云 static / package.json)+ web dist。镜像里**没有 node_modules**。
+`apps/Dockerfile` 多阶段:builder 跑 `vp pm ci` + 按需构建(`packages/*` → `apps/web` → `apps/server` 的 `build:bundle` + `scripts/assemble-server-bundle.mjs`);runtime `FROM` 自建 chromium base,只 COPY server 的**自包含 bundle**(`apps/server/dist`,~15MB:入口 + 若干 hash 分块 + wasm / worker / 词云 static / package.json)+ web dist。镜像里**没有 node_modules**。⛔ **镜像一个拓展都不带**:拓展走下载或主人手放进 `<dataDir>/extensions/`。
 
 **chromium base 镜像**(`apps/base.Dockerfile` → `akokk0/bilibili-notify-base`):node-slim + chromium + CJK/emoji 字体 + tini,~300MB 冻结在 base、digest 只随显式重建而变 —— 用户拉一次、之后每次升级只下 app 小层。重建走 `base-image.yml`(workflow_dispatch,不可变递增 tag `b1`/`b2`/… + `:latest`,双 arch 经 QEMU),刷新后 bump `apps/Dockerfile` 的 `ARG BN_BASE_IMAGE`。**时序**:新 base tag 必须先推上 registry,image-release(含 dry-run)才构建得动。
 

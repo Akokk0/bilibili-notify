@@ -122,9 +122,12 @@ src/
   裸 `setInterval`、裸挂端点是禁止的:那是「停用得干净」的唯一承重条件。
 - **一扇门**:拓展只从 `@bilibili-notify/extension` 拿 BN 的东西(见 CLAUDE.md 硬约束),
   反方向核心也不 import 拓展。两条都有可执行守卫。
-- **扫多个根**,先命中先用、被盖住 warn 一行:仓里 `extensions/`(**仅源码运行时**,入口
-  `src/index.ts`)> `<dataDir>/extensions/` > 载荷自带(入口 `index.mjs`)。清单里**没有
-  `entry` 字段** —— 入口固定,宿主自己判。
+- ⛔ **本体一个拓展都不带。** 拓展只有两条来路:下载,或者主人自己放进
+  `<dataDir>/extensions/<id>/`。载荷里没有 `extensions/`,装载器也**没有那个根** ——
+  这一条是结构性的,不是约定(主人 2026-09-09 推翻了 ADR-0012 决策 34 的「随载荷预装」)。
+- **扫两个根**,先命中先用、被盖住 warn 一行:仓里 `extensions/`(**仅源码运行时**,入口
+  `src/index.ts`)> `<dataDir>/extensions/`(入口 `index.mjs`)。清单里**没有 `entry`
+  字段** —— 入口固定,宿主自己判。
 - **开箱即有 ≠ 默认开着**:`globals.extensions.<id>.enabled` 缺失就是关着。关着的拓展
   **一行代码都不 import**,但列得出来。
 - **两个 URL 前缀,分开它们的是鉴权域**:`/ext/<id>/*`(拓展自己的 HTTP 与 WS,**刻意在
@@ -133,8 +136,14 @@ src/
   (`globals.extensions` / `loadExtensions`)。
 - **推送源的分发键由宿主按拓展 id 填**,拓展自报的那份会被覆盖 —— 否则一个拓展声明
   `"onebot"` 就能把内置连接的推送整个截走。
+- **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
+  —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
+  `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<dataDir>/extensions/<id>/`
+  就能跑,日后的下载分发发的也是它。**我们自己开发拓展不走这条路** —— 源码根直接跑
+  `src/index.ts`,`tsx watch` 盯得到(实测),改一行重启即可。
 - 眼下**还做不到的**:换代码要重启(ESM 换不掉已加载的模块),拨开关只在开机时生效;
-  拓展也还没有打包步骤(源码运行全通,随载荷预装是发行侧的活)。
+  **按需下载(签名镜像链)还没建** —— 所以今天要在构建产物上跑桥,只有「自己 `vp pack`
+  出包、手放进 `<dataDir>/extensions/bridge/`」这一条路。
 
 ## 女仆技能(Agent Skill)
 

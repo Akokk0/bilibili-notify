@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"build": "vp pack",
 		"typecheck": "tsc --noEmit",
 		"test": "vp test"
 	},

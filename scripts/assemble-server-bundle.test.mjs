@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -17,9 +18,15 @@ const nodeBuiltins = new Set([
 	...builtinModules.map((moduleName) => `node:${moduleName}`),
 ]);
 
-// 构建 + 装配一次,三个用例共享产物(build:bundle 带 clean,重复跑互相擦除)。
+// 构建 + 装配一次,各用例共享产物(build:bundle 带 clean,重复跑互相擦除)。
 beforeAll(async () => {
 	await execFileAsync("vp", ["run", "-F", "@bilibili-notify/server", "build:bundle"], {
+		cwd: repoRoot,
+		env: { ...process.env },
+		timeout: 180_000,
+	});
+	// 拓展**不进载荷**;构建它是为了底下那条「手放进 <dataDir> 就能跑」的用例。
+	await execFileAsync("vp", ["run", "-F", "./extensions/*", "build"], {
 		cwd: repoRoot,
 		env: { ...process.env },
 		timeout: 180_000,
@@ -179,4 +186,113 @@ function isBareRuntimeImport(specifier) {
 		return false;
 	}
 	return !nodeBuiltins.has(specifier);
+}
+
+/**
+ * 🔴 **本体一个拓展都不带**(主人 2026-09-09 拍板推翻 ADR-0012 决策 34 的「随载荷预装」)。
+ *
+ * 拓展只有两条来路:下载,或者主人自己放进 `<dataDir>/extensions/`。所以这里钉两件事 ——
+ * 载荷里确实**没有**拓展,以及**手放进去的那份真的能跑起来**。
+ *
+ * 第二条刻意走**行为**而不是看文件在不在:401 是桥自己回的(token 不对),404 是宿主回的
+ * (`/ext/bridge` 没人认领)。收到 401 = 包是自包含的(装外没有 node_modules)+ 清单读得懂
+ * + 入口 import 得动 + `activate` 跑完了 + upgrade 认领上了,一次问清。
+ */
+describe("拓展不进载荷,手放进 <dataDir> 就能跑", () => {
+	it("载荷里一个拓展都没有", async () => {
+		const { files } = JSON.parse(await readFile(join(distDir, "bundle-manifest.json"), "utf8"));
+		expect(files.filter((file) => file.startsWith("extensions/"))).toEqual([]);
+	});
+
+	it("把构建好的包放进 <dataDir>/extensions/bridge/、拨开开关 → 桥认领了 /ext/bridge", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-payload-ext-"));
+		const appDir = join(tempRoot, "app");
+		await cp(distDir, appDir, { recursive: true });
+		const dataDir = join(tempRoot, "data");
+		const port = 18400 + (process.pid % 500);
+		const run = async () => {
+			const child = spawn(process.execPath, [join(appDir, "boot.mjs")], {
+				cwd: tempRoot,
+				stdio: ["ignore", "pipe", "pipe"],
+				env: {
+					...process.env,
+					BN_DATA_DIR: dataDir,
+					BN_CONFIG: join(tempRoot, "bn.config.yaml"),
+					BN_HOST: "127.0.0.1",
+					BN_PORT: String(port),
+					BN_CHROME_PATH: join(tempRoot, "no-chrome"),
+				},
+			});
+			const output = [];
+			child.stdout?.on("data", (chunk) => output.push(String(chunk)));
+			child.stderr?.on("data", (chunk) => output.push(String(chunk)));
+			try {
+				await waitForHealth(`http://127.0.0.1:${port}/api/health`, child, output);
+			} catch (err) {
+				// 起不来就把它收掉再抛,别给 CI 留一个占着端口的孤儿。
+				child.kill("SIGKILL");
+				throw err;
+			}
+			return child;
+		};
+
+		try {
+			// 先空跑一趟让它把 globals 写全:`app` / `master` / `defaults` 都没有默认值,
+			// 手写一份缺格的会在开机 parse 时整份被判废。
+			const seed = await run();
+			seed.kill("SIGTERM");
+			await waitForExit(seed);
+
+			// **主人手放的那一下**:构建出来的 dist/ 原样拷成 <dataDir>/extensions/bridge/。
+			await cp(
+				join(repoRoot, "extensions", "bridge", "dist"),
+				join(dataDir, "extensions", "bridge"),
+				{
+					recursive: true,
+				},
+			);
+			const globalsPath = join(dataDir, "state", "globals.json");
+			const globals = JSON.parse(await readFile(globalsPath, "utf8"));
+			globals.extensions = { bridge: { enabled: true } };
+			await writeFile(globalsPath, JSON.stringify(globals));
+
+			const live = await run();
+			try {
+				// 不带 token 的 upgrade:桥认领了就是 401,没人认领是宿主的 404。
+				expect(await upgradeStatus(port, "/ext/bridge")).toBe(401);
+			} finally {
+				live.kill("SIGTERM");
+				await waitForExit(live);
+			}
+		} finally {
+			await rm(tempRoot, { recursive: true, force: true });
+		}
+	}, 90_000);
+});
+
+/** 发一次真 upgrade 握手,回**状态码**(101 = 收下了)。 */
+async function upgradeStatus(port, path) {
+	return new Promise((resolvePromise, reject) => {
+		const req = httpRequest({
+			host: "127.0.0.1",
+			port,
+			path,
+			headers: {
+				Connection: "Upgrade",
+				Upgrade: "websocket",
+				"Sec-WebSocket-Version": "13",
+				"Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+			},
+		});
+		req.on("response", (res) => {
+			res.resume();
+			resolvePromise(res.statusCode);
+		});
+		req.on("upgrade", (_res, socket) => {
+			socket.destroy();
+			resolvePromise(101);
+		});
+		req.on("error", reject);
+		req.end();
+	});
 }

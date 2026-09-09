@@ -7,7 +7,8 @@
  *
  * ⚠️ 拿不到清单时**身份取目录名** —— 失败记账要有个键,而最容易炸的恰恰是读清单这一步。
  *
- * 根有三个(决策 34):仓里源码 > `<dataDir>/extensions/` > 载荷自带,**先命中先用**。
+ * 根有两个:仓里源码(**只在源码运行时**) > `<dataDir>/extensions/`,**先命中先用**。
+ * ⛔ 没有「载荷自带」那一档 —— 本体一个拓展都不带,拓展只有下载与手放两条来路。
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -180,22 +181,27 @@ describe("discoverExtensions", () => {
 });
 
 describe("discoverExtensions · 多根", () => {
-	let payload: string;
+	/** 仓里那个源码根 —— 只有开发时才有它,入口是 `src/index.ts`。 */
+	let sourceDir: string;
 
 	beforeEach(async () => {
-		payload = await mkdtemp(join(tmpdir(), "bn-ext-payload-"));
+		sourceDir = await mkdtemp(join(tmpdir(), "bn-ext-source-"));
 	});
 
 	afterEach(async () => {
-		await rm(payload, { recursive: true, force: true });
+		await rm(sourceDir, { recursive: true, force: true });
 	});
+
+	function sourceRoot(): ExtensionRoot {
+		return { kind: "source", dir: sourceDir };
+	}
 
 	it("几个根的拓展合成一张表,仍按 id 排", async () => {
 		await plant("zeta", manifest({ id: "zeta" }));
-		await plant("bridge", manifest(), { in: payload });
-		const found = await discoverExtensions([dataRoot(), { kind: "payload", dir: payload }]);
+		await plant("bridge", manifest(), { in: sourceDir, entry: "source" });
+		const found = await discoverExtensions([sourceRoot(), dataRoot()]);
 		expect(found.map((e) => [e.id, e.origin])).toEqual([
-			["bridge", "payload"],
+			["bridge", "source"],
 			["zeta", "data"],
 		]);
 	});
@@ -203,15 +209,18 @@ describe("discoverExtensions · 多根", () => {
 	/**
 	 * 🔴 **先命中先用,而且被盖住要说一声。**
 	 *
-	 * 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因 —— 载荷自带一份桥、主人自己又
-	 * 装了一份,两份都在盘上、面板上只有一行,不出声的话根本无从判断跑的是哪个。
+	 * 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因 —— 仓里改着一份桥,`<dataDir>` 里
+	 * 还放着一份装过的,两份都在盘上、面板上只有一行,不出声的话根本无从判断跑的是哪个。
 	 */
 	it("同一个 id 在两个根里 → 高优先级那份赢,而且**叫一声**说清盖住了谁", async () => {
-		const winner = await plant("bridge", manifest({ version: "2.0.0" }));
-		const loser = await plant("bridge", manifest({ version: "1.0.0" }), { in: payload });
+		const winner = await plant("bridge", manifest({ version: "2.0.0" }), {
+			in: sourceDir,
+			entry: "source",
+		});
+		const loser = await plant("bridge", manifest({ version: "1.0.0" }));
 
 		const shadows: ShadowedExtension[] = [];
-		const found = await discoverExtensions([dataRoot(), { kind: "payload", dir: payload }], {
+		const found = await discoverExtensions([sourceRoot(), dataRoot()], {
 			onShadowed: (s) => shadows.push(s),
 		});
 
@@ -224,27 +233,27 @@ describe("discoverExtensions · 多根", () => {
 		expect(shadows).toEqual([
 			{
 				id: "bridge",
-				winner: { kind: "data", dir: winner },
-				shadowed: { kind: "payload", dir: loser },
+				winner: { kind: "source", dir: winner },
+				shadowed: { kind: "data", dir: loser },
 			},
 		]);
 	});
 
 	it("低优先级那个目录没有清单 → 它本来就不是拓展,不叫", async () => {
-		await plant("bridge", manifest());
-		await plant("bridge", null, { in: payload });
+		await plant("bridge", manifest(), { in: sourceDir, entry: "source" });
+		await plant("bridge", null);
 		const shadows: ShadowedExtension[] = [];
-		await discoverExtensions([dataRoot(), { kind: "payload", dir: payload }], {
+		await discoverExtensions([sourceRoot(), dataRoot()], {
 			onShadowed: (s) => shadows.push(s),
 		});
 		expect(shadows).toEqual([]);
 	});
 
 	it("坏掉的那份照样赢 —— 先命中先用不因为它坏了就跳过(不然「怎么没生效」更难查)", async () => {
-		await plant("bridge", "{ not json");
-		await plant("bridge", manifest(), { in: payload });
+		await plant("bridge", "{ not json", { in: sourceDir, entry: "source" });
+		await plant("bridge", manifest());
 		const shadows: ShadowedExtension[] = [];
-		const found = await discoverExtensions([dataRoot(), { kind: "payload", dir: payload }], {
+		const found = await discoverExtensions([sourceRoot(), dataRoot()], {
 			onShadowed: (s) => shadows.push(s),
 		});
 		expect(found.map((e) => [e.id, e.state])).toEqual([["bridge", "unreadable"]]);
@@ -254,25 +263,23 @@ describe("discoverExtensions · 多根", () => {
 
 describe("extensionRootsFor", () => {
 	/**
-	 * 「属于载荷的东西相对入口解析,属于用户的东西用固定绝对路径」—— 与 web-dist 同一条
-	 * 规矩(见 `config/web-dist.ts`)。
+	 * ⛔ **构建产物里只有一个根**:`<dataDir>/extensions/`。本体一个拓展都不带(主人
+	 * 2026-09-09 拍板推翻 ADR-0012 决策 34 的「随载荷预装」)—— 与入口平级的
+	 * `extensions/` 这条路**结构上不存在**,不是「有但空着」。
 	 */
-	it("构建产物:`<dataDir>` 那份盖过载荷自带的,没有源码根", () => {
+	it("构建产物:只有 `<dataDir>` 那一个根", () => {
 		const roots = extensionRootsFor({
 			dataDir: "/data",
 			bundleUrl: pathToFileURL("/app/index.mjs").href,
 		});
-		expect(roots).toEqual([
-			{ kind: "data", dir: join("/data", "extensions") },
-			{ kind: "payload", dir: join("/app", "extensions") },
-		]);
+		expect(roots).toEqual([{ kind: "data", dir: join("/data", "extensions") }]);
 	});
 
 	/**
-	 * 源码运行时**多一个仓里的根**,而且**没有载荷根** —— 那时 `dirname(入口)/extensions`
-	 * 指的是宿主自己那个 `apps/server/src/extensions/`(装载器的代码),扫它毫无意义。
+	 * 源码运行时**多一个仓里的根**并排在最前(决策 35)—— 那是我们自己开发拓展的路:
+	 * 改一行 `tsx watch` 就重启,不必打包、也不必往 `<dataDir>` 里拷。
 	 */
-	it("源码运行:多出仓里 extensions/ 且排在最前,载荷根整个不存在", () => {
+	it("源码运行:多出仓里 extensions/ 且排在最前", () => {
 		const roots = extensionRootsFor({
 			dataDir: "/data",
 			bundleUrl: pathToFileURL("/repo/apps/server/src/index.ts").href,

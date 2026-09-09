@@ -286,14 +286,14 @@ describe("拓展声明的密钥字段", () => {
  * **加载器怎么用它** —— 入口 import 哪个文件、账记在哪、被盖住时谁出声。
  */
 describe("多根", () => {
-	let payload: string;
+	let repoDir: string;
 
 	beforeEach(async () => {
-		payload = await mkdtemp(join(tmpdir(), "bn-ext-loader-payload-"));
+		repoDir = await mkdtemp(join(tmpdir(), "bn-ext-loader-source-"));
 	});
 
 	afterEach(async () => {
-		await rm(payload, { recursive: true, force: true });
+		await rm(repoDir, { recursive: true, force: true });
 	});
 
 	/** 摆一份**源码形态**的拓展:入口在 `src/index.ts`,而不是平级的 `index.mjs`。 */
@@ -322,10 +322,10 @@ describe("多根", () => {
 	 * **宿主算出来交给 import 的是哪个文件**,不是 TypeScript 能不能被 import。
 	 */
 	it("源码根:import 的是 src/index.ts,不是 index.mjs", async () => {
-		const dir = await plantSource("dev-ext", payload);
+		const dir = await plantSource("dev-ext", repoDir);
 		const seen: string[] = [];
 		const loaded = await loadExtensions({
-			roots: [{ kind: "source", dir: payload }],
+			roots: [{ kind: "source", dir: repoDir }],
 			ledgerRoot: root,
 			host: fakeHost().ctx,
 			mounts: createExtensionMounts(),
@@ -351,9 +351,9 @@ describe("多根", () => {
 	 * 拉屎。而「这个拓展连炸了几次」本来就是**这一台机器**的状态,与拓展本体同寿是错的。
 	 */
 	it("失败记账落在 ledgerRoot,拓展所在的那个根一个文件都不多", async () => {
-		const dir = await plantSource("boom", payload);
+		const dir = await plantSource("boom", repoDir);
 		await loadExtensions({
-			roots: [{ kind: "source", dir: payload }],
+			roots: [{ kind: "source", dir: repoDir }],
 			ledgerRoot: root,
 			host: fakeHost().ctx,
 			mounts: createExtensionMounts(),
@@ -367,7 +367,7 @@ describe("多根", () => {
 
 		expect(await readdir(root)).toEqual(["load-state.json"]);
 		// 拓展那个根里只有它自己那个目录 —— 没被写进任何东西。
-		expect(await readdir(payload)).toEqual(["boom"]);
+		expect(await readdir(repoDir)).toEqual(["boom"]);
 		expect((await readdir(dir)).sort()).toEqual(["extension.json", "src"]);
 	});
 
@@ -378,14 +378,15 @@ describe("多根", () => {
 	 * 的测试全绿)、拓展照样跑 —— 只是主人再也不知道跑的是哪一份。这条就是那根线的守卫。
 	 */
 	it("同一个 id 两个根都有 → 用高优先级那份,并且**日志里说得出**盖住了谁", async () => {
+		// 仓里改着一份,`<dataDir>` 里还装着一份 —— 开发时最容易撞上的正是这一幕。
+		await plantSource("bridge", repoDir);
 		await plant("bridge", HEALTHY);
-		await plantSource("bridge", payload);
 
 		const host = fakeHost();
 		const loaded = await loadExtensions({
 			roots: [
+				{ kind: "source", dir: repoDir },
 				{ kind: "data", dir: root },
-				{ kind: "payload", dir: payload },
 			],
 			ledgerRoot: root,
 			host: host.ctx,
@@ -396,12 +397,12 @@ describe("多根", () => {
 		});
 
 		expect(loaded.list().map((e) => [e.id, e.state, e.origin])).toEqual([
-			["bridge", "running", "data"],
+			["bridge", "running", "source"],
 		]);
 		const warned = host.lines.filter((line) => line.startsWith("warn "));
 		expect(warned).toHaveLength(1);
 		expect(warned[0]).toContain("bridge");
 		expect(warned[0]).toContain(root);
-		expect(warned[0]).toContain(payload);
+		expect(warned[0]).toContain(repoDir);
 	});
 });
