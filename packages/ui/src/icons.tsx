@@ -212,6 +212,15 @@ export const Icon = {
 	),
 	/** 空心方框 —— 与 {@link Icon.check} 配对表示「未选中」。 */
 	square: stroke(<rect x="4" y="4" width="16" height="16" rx="3" />),
+	/** 装进来的那种东西(拓展):一个带天线的盒子。 */
+	extension: stroke(
+		<>
+			<path d="M12 3v6" />
+			<rect x="3" y="9" width="18" height="12" rx="3" />
+			<path d="M8 15h.01" />
+			<path d="M16 15h.01" />
+		</>,
+	),
 	/** 文件夹 —— 「这东西在盘上的哪个目录」。 */
 	folder: stroke(
 		<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />,

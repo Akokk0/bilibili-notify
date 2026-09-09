@@ -20,6 +20,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
+import { ExtensionsEmpty } from "./extensions/empty-state";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
@@ -242,22 +243,24 @@ export default function Extensions() {
 				<ShadowWarning key={shadow.id} shadow={shadow} />
 			))}
 
-			{/*
-			 * ⚠️ 这句话是**必须**的,不是装饰:开关热、代码不热(ADR-0012 决策 10)。两半
-			 * 都要说 —— 只说前半,主人换完代码会以为拨一下开关就够;只说后半,他会为一次
-			 * 停用去重启整个进程,还顺手把别的推送一起停了。
-			 */}
-			<HintNote>
-				拓展是装进来的,不编在主程序里。拨动开关
-				<strong className="text-bn-text-secondary">立刻生效</strong>:关掉当场收摊(正连着的
-				插件会被断开,配置全留),打开就地装起来。装进来一个新拓展、或者换掉一份拓展的代码,
-				才要重启一次 —— 已经加载的代码在进程里换不掉。
-			</HintNote>
-
 			{extensions.length === 0 ? (
-				<EmptyNote>还没有装任何拓展</EmptyNote>
+				<ExtensionsEmpty />
 			) : (
 				<>
+					{/*
+					 * ⚠️ 这句话是**必须**的,不是装饰:开关热、代码不热(ADR-0012 决策 10)。
+					 * 两半都要说 —— 只说前半,主人换完代码会以为拨一下开关就够;只说后半,
+					 * 他会为一次停用去重启整个进程,还顺手把别的推送一起停了。
+					 *
+					 * 一个拓展都没装时**不说**:那一屏要讲的是「怎么装」,开关的脾气还轮不到。
+					 */}
+					<HintNote>
+						拓展是装进来的,不编在主程序里。拨动开关
+						<strong className="text-bn-text-secondary">立刻生效</strong>:关掉当场收摊
+						(正连着的插件会被断开,配置全留),打开就地装起来。装进来一个新拓展、
+						或者换掉一份拓展的代码,才要重启一次 —— 已经加载的代码在进程里换不掉。
+					</HintNote>
+
 					{SECTIONS.map((section) => {
 						const mine = extensions.filter((ext) => (ext.provides ?? []).includes(section.code));
 						return (

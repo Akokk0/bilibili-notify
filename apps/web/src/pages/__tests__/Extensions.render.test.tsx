@@ -123,9 +123,19 @@ describe("拓展页", () => {
 		]);
 	});
 
-	it("一个拓展都没装时给一句空态,不是空白", async () => {
+	/**
+	 * 🔴 **开箱就是这一屏** —— 本体一个拓展都不带,新装的 BN 打开这一页是空的。所以它要
+	 * 把「怎么装」说完,而不是只写一句「还没有装任何拓展」。
+	 */
+	it("一个拓展都没装时,把两条来路说完", async () => {
 		renderPage({ extensions: [], shadowed: [] });
 		expect(await screen.findByText(/还没有装任何拓展/)).toBeTruthy();
+		// 面板安装那条路还没建 —— **明说**「还没做」,不是藏起来让人以为按钮在别处。
+		expect(screen.getByText("还没做")).toBeTruthy();
+		expect(screen.getByText("现在能用")).toBeTruthy();
+		expect(screen.getByText(/<dataDir>\/extensions\//)).toBeTruthy();
+		// 我们自己开发拓展走的是仓里那个源码根,不是往 dataDir 里拷。
+		expect(screen.getByText(/tsx watch/)).toBeTruthy();
 	});
 
 	/**
