@@ -174,6 +174,71 @@ describe("standalone server lifecycle", () => {
 	});
 
 	/**
+	 * 🔴 **载荷自带那个根也得真的被扫到。**
+	 *
+	 * 上一条钉的是 `<dataDir>/extensions/`;把 `index.ts` 里那几个根砍成只剩它,上一条
+	 * 照样绿 —— 而桥就是随载荷预装的(决策 34),那等于「装了 BN 却没有桥」,且不报错。
+	 * 载荷根按**当前跑的这份入口**就近解析,所以这里拿 `bundleUrl` 摆一份假载荷。
+	 */
+	it("载荷自带的拓展(与入口平级的 extensions/):扫得到、开了就跑得起来", async () => {
+		const payload = await seedPayloadWebDist("bn payload dashboard");
+		const extDir = join(payload.dir, "extensions", "shipped");
+		await mkdir(extDir, { recursive: true });
+		await writeFile(
+			join(extDir, "extension.json"),
+			JSON.stringify({
+				id: "shipped",
+				name: "随载荷带的拓展",
+				description: "接线用",
+				version: "1.0.0",
+				apiVersion: 1,
+				provides: ["push"],
+			}),
+		);
+		await writeFile(
+			join(extDir, "index.mjs"),
+			`export function activate(ctx) { ctx.mount(async () => new Response("shipped pong")); }`,
+		);
+
+		const boot = async () => {
+			const port = await findFreePort();
+			return startStandaloneServer({
+				argv: [
+					"--host",
+					"127.0.0.1",
+					"--port",
+					String(port),
+					"--data-dir",
+					dataDir,
+					"--log-level",
+					"silent",
+				],
+				env: makeEnv(),
+				bundleUrl: payload.bundleUrl,
+				shutdownTimeoutMs: 1_000,
+			});
+		};
+
+		// 开箱即有 ≠ 默认开着(决策 34):头一趟仍是关的,但**列得出来**。
+		handle = await boot();
+		const listed = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+			extensions: Array<{ id: string; state: string; name: string }>;
+		};
+		expect(listed.extensions).toEqual([
+			expect.objectContaining({ id: "shipped", state: "disabled", name: "随载荷带的拓展" }),
+		]);
+		await handle.close("test");
+
+		const globalsPath = join(dataDir, "state", "globals.json");
+		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
+		globals.extensions = { shipped: { enabled: true } };
+		await writeFile(globalsPath, JSON.stringify(globals));
+
+		handle = await boot();
+		expect(await (await fetch(`${handle.url}/ext/shipped/ping`)).text()).toBe("shipped pong");
+	});
+
+	/**
 	 * 桥接那三样东西(端点 / 取图口 / 矩阵里的 adapter)在 `index.ts` 里装配,除了这里
 	 * **没有别的地方证明它们真的挂上了** —— 各自的单元测试都是在自己搭的 server 上跑的。
 	 * 装配漏一步的症状是「插件连不上 / 图 404」,而进程照常启动、日志一个字都不说。

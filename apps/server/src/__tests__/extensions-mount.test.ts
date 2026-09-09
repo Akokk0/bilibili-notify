@@ -55,7 +55,9 @@ describe("拓展挂载点接线", () => {
 		const app = createApp(runtime, {
 			extensions: {
 				mounts: createExtensionMounts(),
-				loaded: () => [{ id: "junk", state: "unreadable", detail: "不是合法 JSON" }],
+				loaded: () => [
+					{ id: "junk", origin: "data", state: "unreadable", detail: "不是合法 JSON" },
+				],
 			},
 		});
 		const body = (await (await app.request("/api/extensions")).json()) as {

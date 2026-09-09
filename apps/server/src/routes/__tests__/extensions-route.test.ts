@@ -91,6 +91,7 @@ function boot(
 function running(id: string): ExtensionEntry {
 	return {
 		id,
+		origin: "data",
 		state: "running",
 		manifest: {
 			id,
@@ -124,7 +125,7 @@ describe("GET /api/extensions", () => {
 		const body = (await (
 			await boot({
 				enabled: true,
-				entries: [{ id: "bridge", state: "blocked", detail: "连续加载失败 3 次" }],
+				entries: [{ id: "bridge", origin: "data", state: "blocked", detail: "连续加载失败 3 次" }],
 			}).request("/")
 		).json()) as ExtensionsResponse;
 		const bridge = body.extensions[0];
@@ -136,7 +137,7 @@ describe("GET /api/extensions", () => {
 	it("清单读不出来的那条:名字退回目录名,原因带着 —— 消失的东西没法排查", async () => {
 		const body = (await (
 			await boot({
-				entries: [{ id: "junk", state: "unreadable", detail: "不是合法 JSON" }],
+				entries: [{ id: "junk", origin: "data", state: "unreadable", detail: "不是合法 JSON" }],
 			}).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions[0]?.name).toBe("junk");
@@ -145,7 +146,9 @@ describe("GET /api/extensions", () => {
 
 	it("每张卡都有名字 —— 卡片上总得印点什么", async () => {
 		const body = (await (
-			await boot({ entries: [running("bridge"), { id: "junk", state: "unreadable" }] }).request("/")
+			await boot({
+				entries: [running("bridge"), { id: "junk", origin: "data", state: "unreadable" }],
+			}).request("/")
 		).json()) as ExtensionsResponse;
 		for (const ext of body.extensions) expect(ext.name.length).toBeGreaterThan(0);
 	});
