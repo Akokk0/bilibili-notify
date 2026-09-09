@@ -14,7 +14,9 @@ import { join } from "node:path";
 import { EXTENSION_API_VERSION, type Logger, type ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import { createAdapterRegistry } from "../../platforms/registry.js";
+import type { ExtensionContext } from "../context.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
@@ -230,5 +232,45 @@ describe("加载拓展", () => {
 			["future", "incompatible"],
 			["junk", "unreadable"],
 		]);
+	});
+});
+
+describe("拓展声明的密钥字段", () => {
+	it("跑起来的拓展把它的 secret 键交出来 —— 备份脱敏照这份抹", async () => {
+		await plant("bridge", "export function activate() {}");
+		const registry = createAdapterRegistry();
+		const loaded = await loadExtensions({
+			root,
+			host: fakeHost().ctx,
+			mounts: createExtensionMounts(),
+			upgrades: createExtensionUpgrades(),
+			adapters: registry,
+			connections: () => [],
+			onConnectionsChanged: () => ({ dispose() {} }),
+			inbound: {},
+			isEnabled: () => true,
+			maxFailures: 3,
+			// ⚠️ 换掉 import:真拓展包会把 zod 内联进自己的产物,而这里种的是一行裸 mjs。
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					ctx.registerPushSource({
+						adapter: { platforms: [], isAvailable: () => true } as never,
+						descriptor: {} as never,
+						configSchema: z.object({ botKey: z.string(), note: z.string().optional() }),
+						configFields: [
+							{ kind: "text", code: "botKey", label: "密钥", secret: true },
+							{ kind: "text", code: "note", label: "备注" },
+						],
+					});
+				},
+			}),
+		});
+
+		expect(loaded.list()[0]?.state).toBe("running");
+		// 只有声明过的那一格 —— `note` 不该被抹。
+		expect(loaded.secretConfigCodes()).toEqual(["botKey"]);
+
+		await loaded.dispose();
+		expect(loaded.secretConfigCodes()).toEqual([]);
 	});
 });

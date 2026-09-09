@@ -65,6 +65,11 @@ export interface BackupServiceDeps {
 	onCookiesRestored?: () => void | Promise<void>;
 	/** Injectable ISO clock (keeps exports deterministic in tests). */
 	now?: () => string;
+	/**
+	 * 额外算作密钥的 config 键 —— 跑着的拓展在字段表里声明 `secret: true` 的那些。
+	 * **现取**:拓展会被拨开关加载 / 卸载。
+	 */
+	extraSecretKeys?: () => readonly string[];
 }
 
 interface ExportOptions {
@@ -125,9 +130,14 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				},
 				opts.pin,
 				createdAt,
+				deps.extraSecretKeys?.(),
 			);
 		}
-		return buildBackup({ kind: "sanitized", createdAt, sections: redactSecretKeys(picked) });
+		return buildBackup({
+			kind: "sanitized",
+			createdAt,
+			sections: redactSecretKeys(picked, deps.extraSecretKeys?.()),
+		});
 	}
 
 	async function importBackup(opts: ImportOptions): Promise<ImportResult> {

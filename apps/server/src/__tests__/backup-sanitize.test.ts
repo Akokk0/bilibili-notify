@@ -215,3 +215,35 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
 	});
 });
+
+/**
+ * 拓展的密钥字段 —— **靠声明,不靠猜名字**(ADR-0012 决策 33)。
+ *
+ * 上面那份键名黑名单能覆盖 `token` / `accessToken` 这些约定俗成的名字,但拓展的 config
+ * 形状归拓展自己定:它把密钥叫 `botKey`,黑名单**结构性地看不见**,于是原样进备份文件。
+ * 而备份是主人会发出去求助的东西 —— 漏出去就收不回来了。
+ *
+ * 所以字段表里那格 `secret: true` 同时当脱敏的依据:声明了就抹。
+ */
+describe("拓展声明的密钥字段", () => {
+	const input = {
+		connections: [
+			{
+				id: "c1",
+				kind: "extension",
+				extensionId: "bridge",
+				config: { botKey: "s3cret", note: "家里那台" },
+			},
+		],
+	};
+
+	it("拓展说了它是密钥 → 抹平;没说的原样留着", () => {
+		const out = redactSecretKeys(input, ["botKey"]);
+		expect(out.connections[0]?.config.botKey).toBe("");
+		expect(out.connections[0]?.config.note).toBe("家里那台");
+	});
+
+	it("**没声明就漏** —— 这条钉的正是「靠猜名字」为什么不行", () => {
+		expect(redactSecretKeys(input).connections[0]?.config.botKey).toBe("s3cret");
+	});
+});

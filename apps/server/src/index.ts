@@ -769,6 +769,9 @@ export async function startStandaloneServer(
 					configStore: runtime.configStore,
 					cookieStore: authSystem.storage.cookieStore,
 					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
+					// 拓展声明成密钥的 config 键。**现取** —— 拓展会被拨开关加载 / 卸载,
+					// 而且备份服务比装载早一步建起来。
+					extraSecretKeys: () => loadedExtensions?.secretConfigCodes() ?? [],
 				})
 			: undefined;
 

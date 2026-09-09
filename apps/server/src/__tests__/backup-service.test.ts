@@ -92,6 +92,40 @@ describe("BackupService", () => {
 		expect(opened.sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 	});
 
+	/**
+	 * 拓展声明的密钥要真的走到脱敏那一步 —— 这条钉的是**接线**。
+	 *
+	 * `redactSecretKeys` 自己的单元测试证明它会抹,但那证明不了备份服务真的把拓展那份
+	 * 名单递了进去。漏了这一环的症状是:拓展的密钥原样躺在主人发出去的备份文件里,
+	 * 而所有测试全绿。
+	 */
+	it("拓展声明成密钥的 config 键,在两种档里都被抹平", async () => {
+		const extension = {
+			id: "e1",
+			name: "桥",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			config: { botKey: "s3cret", note: "家里那台" },
+		} as unknown as Connection;
+		const svc = createBackupService({
+			configStore: makeFakeStore({ connections: [extension] }),
+			cookieStore: makeCookieStore(null),
+			now: () => "t0",
+			extraSecretKeys: () => ["botKey"],
+		});
+
+		const sanitized = await svc.exportBackup({ kind: "sanitized" });
+		expect(sanitized.sections.connections?.[0]?.config).toEqual({
+			botKey: "",
+			note: "家里那台",
+		});
+
+		// 完整档的明文段同样不许带 —— 真值只存在于加密袋里。
+		const full = await svc.exportBackup({ kind: "full", pin: "123456" });
+		expect(full.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "家里那台" });
+	});
+
 	it("sanitized export respects the section selection and carries no secrets block", async () => {
 		const store = makeFakeStore({
 			subscriptions: [sub("1")],

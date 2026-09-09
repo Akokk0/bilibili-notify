@@ -40,6 +40,13 @@ export interface ExtensionEntry {
 
 export interface LoadedExtensions {
 	list(): readonly ExtensionEntry[];
+	/**
+	 * 所有跑着的拓展声明成密钥的 config 键,合成一份 —— 备份脱敏拿它当依据。
+	 *
+	 * 合起来不按拓展分:脱敏是**按键名**深度遍历的,而不同拓展的 config 住在各自的连接
+	 * 记录里,多抹一个别人的同名键没有代价(它本来也是密钥)。
+	 */
+	secretConfigCodes(): readonly string[];
 	/** 收回所有跑着的拓展。宿主关机时调。 */
 	dispose(): Promise<void>;
 }
@@ -168,6 +175,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	return {
 		list: () => entries,
+		secretConfigCodes: () => [...new Set(running.flatMap((r) => r.secretConfigCodes()))],
 		async dispose() {
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
 			for (const runtime of [...running].reverse()) await runtime.dispose();

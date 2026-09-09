@@ -70,21 +70,30 @@ const URL_KEY_SET = new Set<string>(URL_KEYS);
  * Deep-clone `value`, replacing every leaf whose key is in {@link SECRET_KEYS}
  * with `""`. Does not mutate the input. Arrays and nested objects are walked.
  */
-export function redactSecretKeys<T>(value: T): T {
-	return redact(value) as T;
+/**
+ * @param extraSecretKeys 额外算作密钥的键名 —— **拓展在字段表里声明 `secret: true` 的那些**。
+ *
+ * 上面那份黑名单只认约定俗成的名字,而拓展的 config 形状归它自己定:叫 `botKey` 的密钥
+ * 黑名单结构性地看不见,于是原样进备份文件 —— 而备份是主人会发出去求助的东西。
+ * 所以密钥要**声明**出来,不能靠猜。
+ */
+export function redactSecretKeys<T>(value: T, extraSecretKeys: readonly string[] = []): T {
+	const secrets =
+		extraSecretKeys.length > 0 ? new Set([...SECRET_KEY_SET, ...extraSecretKeys]) : SECRET_KEY_SET;
+	return redact(value, secrets) as T;
 }
 
-function redact(value: unknown): unknown {
+function redact(value: unknown, secrets: ReadonlySet<string> = SECRET_KEY_SET): unknown {
 	if (Array.isArray(value)) {
-		return value.map(redact);
+		return value.map((entry) => redact(entry, secrets));
 	}
 	if (value !== null && typeof value === "object") {
 		const out: Record<string, unknown> = {};
 		for (const [key, v] of Object.entries(value)) {
-			if (SECRET_KEY_SET.has(key)) out[key] = "";
+			if (secrets.has(key)) out[key] = "";
 			else if (SECRET_CONTAINER_SET.has(key)) out[key] = blankLeaves(v);
-			else if (URL_KEY_SET.has(key)) out[key] = redactUrl(v);
-			else out[key] = redact(v);
+			else if (URL_KEY_SET.has(key)) out[key] = redactUrl(v, secrets);
+			else out[key] = redact(v, secrets);
 		}
 		return out;
 	}
@@ -92,8 +101,8 @@ function redact(value: unknown): unknown {
 }
 
 /** Replace a network URL with a scheme-preserving placeholder. */
-function redactUrl(value: unknown): unknown {
-	if (typeof value !== "string") return redact(value);
+function redactUrl(value: unknown, secrets: ReadonlySet<string>): unknown {
+	if (typeof value !== "string") return redact(value, secrets);
 	let parsed: URL;
 	try {
 		parsed = new URL(value);

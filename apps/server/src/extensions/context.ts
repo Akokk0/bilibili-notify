@@ -146,6 +146,13 @@ export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
 	/** 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。 */
 	status(): unknown;
+	/**
+	 * 它在字段表里声明成密钥的那些键 —— **备份脱敏照这个抹**。
+	 *
+	 * 脱敏本来靠一份键名黑名单,而拓展的 config 形状归它自己定:叫 `botKey` 的密钥
+	 * 黑名单看不见,会原样进备份文件。密钥要声明出来,不能靠猜。
+	 */
+	secretConfigCodes(): readonly string[];
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
 }
@@ -212,6 +219,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
+	let secretCodes: readonly string[] = [];
 
 	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
 	function ownConnections<TConfig>(
@@ -282,6 +290,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields);
 			pushSourceRegistered = true;
+			secretCodes = def.configFields.filter((f) => "secret" in f && f.secret).map((f) => f.code);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
 			registered.add(adapters.register(adapter));
@@ -324,6 +333,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	return {
 		ctx,
 		status: () => statusOf?.(),
+		secretConfigCodes: () => secretCodes,
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
@@ -347,6 +357,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			registered.clear();
 			statusOf = undefined;
+			secretCodes = [];
 		},
 	};
 }

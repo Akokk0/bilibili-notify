@@ -31,6 +31,8 @@ export function assembleFullBackup(
 	input: FullBackupInput,
 	pin: string,
 	createdAt: string,
+	/** 拓展声明成密钥的 config 键 —— 明文段照它一并抹平。 */
+	extraSecretKeys: readonly string[] = [],
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
 	// 每家两把,全收。`redactSecretKeys` 会按键名把明文段里的 apiKey 一律抹平
@@ -48,12 +50,15 @@ export function assembleFullBackup(
 
 	// redactSecretKeys deep-clones, so `input` is left intact and the plaintext
 	// sections come out credential-free.
-	const sections = redactSecretKeys<BackupSections>({
-		globals: input.globals,
-		subscriptions: input.subscriptions,
-		connections: input.connections,
-		targets: input.targets,
-	});
+	const sections = redactSecretKeys<BackupSections>(
+		{
+			globals: input.globals,
+			subscriptions: input.subscriptions,
+			connections: input.connections,
+			targets: input.targets,
+		},
+		extraSecretKeys,
+	);
 
 	return buildBackup({ kind: "full", createdAt, sections, secrets: sealSecrets(pin, bag) });
 }
