@@ -54,6 +54,11 @@ export interface LoadedExtensions {
 	 * 记录里,多抹一个别人的同名键没有代价(它本来也是密钥)。
 	 */
 	secretConfigCodes(): readonly string[];
+	/**
+	 * 某个拓展交上来的面板数据(`ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
+	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
+	 */
+	status(id: string): unknown;
 	/** 收回所有跑着的拓展。宿主关机时调。 */
 	dispose(): Promise<void>;
 }
@@ -130,6 +135,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	const entries: ExtensionEntry[] = [];
 	const running: ExtensionRuntime[] = [];
+	const byId = new Map<string, ExtensionRuntime>();
 
 	for (const dir of found) {
 		if (dir.state === "unreadable") {
@@ -186,6 +192,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			await mod.activate(runtime.ctx);
 			markLoadSucceeded({ root: ledgerRoot, id, version: manifest.version });
 			running.push(runtime);
+			byId.set(id, runtime);
 			entries.push({ id, origin, state: "running", manifest });
 		} catch (err) {
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
@@ -199,10 +206,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	return {
 		list: () => entries,
 		secretConfigCodes: () => [...new Set(running.flatMap((r) => r.secretConfigCodes()))],
+		status: (id) => byId.get(id)?.status(),
 		async dispose() {
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
 			for (const runtime of [...running].reverse()) await runtime.dispose();
 			running.length = 0;
+			byId.clear();
 		},
 	};
 }

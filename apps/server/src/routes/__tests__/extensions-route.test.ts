@@ -70,6 +70,7 @@ function boot(
 		live?: BridgeSession[];
 		enabled?: boolean;
 		entries?: ExtensionEntry[];
+		status?: Record<string, unknown>;
 	} = {},
 ) {
 	const store = {
@@ -84,6 +85,7 @@ function boot(
 		store,
 		bridge: () => (over.live ? server : undefined),
 		extensions: () => over.entries ?? [],
+		status: (id) => over.status?.[id],
 	});
 }
 
@@ -104,7 +106,7 @@ function running(id: string): ExtensionEntry {
 	};
 }
 
-describe("GET /api/extensions", () => {
+describe("GET /api/ext", () => {
 	it("列的是**真装着的**那些,带上主人的开关与它现在的状态", async () => {
 		const body = (await (
 			await boot({ enabled: true, entries: [running("bridge")] }).request("/")
@@ -154,7 +156,46 @@ describe("GET /api/extensions", () => {
 	});
 });
 
-describe("GET /api/extensions/bridge", () => {
+describe("GET /api/ext/:id/status", () => {
+	it("拓展交上来什么就下发什么 —— 形状第一版不约束(决策 36)", async () => {
+		const res = await boot({
+			entries: [running("bridge")],
+			status: { bridge: { sessions: [{ connectionId: "a", connected: false }] } },
+		}).request("/bridge/status");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ sessions: [{ connectionId: "a", connected: false }] });
+	});
+
+	/**
+	 * 「没这个拓展」与「它没交过数据」都是 404 而不是空对象 —— 面板要能把这两件事
+	 * 与「交上来的就是一张空表」分开说。
+	 */
+	it("没跑 / 没交过 → 404,不是空对象", async () => {
+		expect((await boot({ entries: [running("bridge")] }).request("/bridge/status")).status).toBe(
+			404,
+		);
+		expect((await boot().request("/nobody/status")).status).toBe(404);
+	});
+
+	it("**现取** —— 拓展给的是个函数,两次问拿到的是两次的真相", async () => {
+		let n = 0;
+		const app = boot({ status: {} });
+		expect(app).toBeDefined();
+		const counted = createExtensionsRoute({
+			store: {
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getConnections: () => [],
+			} as unknown as ConfigStore,
+			bridge: () => undefined,
+			extensions: () => [],
+			status: () => ({ n: ++n }),
+		});
+		expect(await (await counted.request("/x/status")).json()).toEqual({ n: 1 });
+		expect(await (await counted.request("/x/status")).json()).toEqual({ n: 2 });
+	});
+});
+
+describe("GET /api/ext/bridge", () => {
 	it("配了但没连上的照样列出来 —— 那正是用户要看见的一条", async () => {
 		const res = await boot({ connections: [bridgeConnection(BRIDGE_A)] }).request("/bridge");
 		const body = (await res.json()) as BridgeStatusResponse;

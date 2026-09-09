@@ -16,10 +16,15 @@ export interface ExtensionsRouteOptions {
 	 * 没有写死的清单了 —— 拓展是**装进来的**,盘上有什么就是什么(ADR-0012)。
 	 */
 	extensions: () => readonly ExtensionEntry[];
+	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
+	status: (id: string) => unknown;
 }
 
 /**
- * 拓展页要的两样东西:有哪些模块(以及开没开),和桥接模块的活口状态。
+ * 拓展页要的两样东西:装了哪些拓展(以及开没开),和某个拓展自己交上来的那份面板数据。
+ *
+ * 🔴 **状态走 `/api/*` 而不是 `/ext/<id>/*`**(ADR-0012 决策 36):后者**刻意**在鉴权外
+ * (对家手里只有 URL、没有会话),把面板数据挂那儿等于把会话列表与 bot 名单公开出去。
  *
  * 开关本身不在这儿改 —— 它住 `globals.extensions`,走 `PATCH /api/globals`,与别的全局
  * 设置同一条路。这里只读。
@@ -43,6 +48,17 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			detail: entry.detail,
 		}));
 		return c.json({ extensions });
+	});
+
+	/**
+	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
+	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
+	 * 面板要能分开说。
+	 */
+	app.get("/:id/status", (c) => {
+		const status = opts.status(c.req.param("id"));
+		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);
+		return c.json(status);
 	});
 
 	app.get("/bridge", (c) => {

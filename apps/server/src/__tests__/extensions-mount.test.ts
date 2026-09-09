@@ -41,7 +41,9 @@ describe("拓展挂载点接线", () => {
 		await runtime.configStore.load();
 		const mounts = createExtensionMounts();
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
-		const app = createApp(runtime, { extensions: { mounts, loaded: () => [] } });
+		const app = createApp(runtime, {
+			extensions: { mounts, loaded: () => [], status: () => undefined },
+		});
 
 		expect(await (await app.request("/ext/bridge/x")).text()).toBe("桥在这儿");
 		// 同一条路挂到 /api 底下是不存在的 —— 万一哪天有人挪过去,这条会红。
@@ -54,13 +56,14 @@ describe("拓展挂载点接线", () => {
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			extensions: {
+				status: () => undefined,
 				mounts: createExtensionMounts(),
 				loaded: () => [
 					{ id: "junk", origin: "data", state: "unreadable", detail: "不是合法 JSON" },
 				],
 			},
 		});
-		const body = (await (await app.request("/api/extensions")).json()) as {
+		const body = (await (await app.request("/api/ext")).json()) as {
 			extensions: Array<{ id: string; state: string }>;
 		};
 		expect(body.extensions).toEqual([

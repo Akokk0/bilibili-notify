@@ -149,7 +149,7 @@ describe("standalone server lifecycle", () => {
 		// 头一趟:开关是关的(缺失 = 关着)——**一行代码都不该被 import**,但列得出来。
 		handle = await boot();
 		expect((await fetch(`${handle.url}/ext/demo/ping`)).status).toBe(404);
-		const listed = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+		const listed = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string; name: string }>;
 		};
 		expect(listed.extensions).toEqual([
@@ -165,7 +165,7 @@ describe("standalone server lifecycle", () => {
 
 		handle = await boot();
 		expect(await (await fetch(`${handle.url}/ext/demo/ping`)).text()).toBe("pong");
-		const running = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+		const running = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string }>;
 		};
 		expect(running.extensions).toEqual([
@@ -221,7 +221,7 @@ describe("standalone server lifecycle", () => {
 
 		// 开箱即有 ≠ 默认开着(决策 34):头一趟仍是关的,但**列得出来**。
 		handle = await boot();
-		const listed = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+		const listed = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string; name: string }>;
 		};
 		expect(listed.extensions).toEqual([

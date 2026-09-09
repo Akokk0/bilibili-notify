@@ -77,7 +77,12 @@ export interface CreateAppOptions {
 	 * `mounts` 是那条动态挂载点的总入口,`loaded` 是拓展页要列的那份名单。不给就当这台
 	 * 机器一个拓展都没装:`/ext/*` 一律 404,拓展页空着。
 	 */
-	extensions?: { mounts: ExtensionMounts; loaded: () => readonly ExtensionEntry[] };
+	extensions?: {
+		mounts: ExtensionMounts;
+		loaded: () => readonly ExtensionEntry[];
+		/** 某个拓展交上来的面板数据(`ctx.publishStatus`)。没交过 / 没跑就是 undefined。 */
+		status: (id: string) => unknown;
+	};
 	/**
 	 * Configured dashboard credentials. When provided, every request under
 	 * `/api/*` (including `/api/health`, excluding `/api/session/*`) requires a
@@ -329,12 +334,14 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/stats", statsRoute);
 	options.onStatsRoute?.(statsRoute);
 	app.route("/api/qq", createQQRoute(deps));
+	// 面板那一侧的拓展口。URL 面用短词 `ext`(ADR-0012 决策 38),代码面照旧全称。
 	app.route(
-		"/api/extensions",
+		"/api/ext",
 		createExtensionsRoute({
 			store: deps.store,
 			bridge: () => options.bridgeServer,
 			extensions: () => options.extensions?.loaded() ?? [],
+			status: (id) => options.extensions?.status(id),
 		}),
 	);
 	app.route(
