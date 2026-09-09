@@ -1,5 +1,4 @@
-import type { Disposable } from "@bilibili-notify/internal";
-import type { PlatformAdapter } from "./types.js";
+import type { Disposable, PlatformAdapter } from "@bilibili-notify/internal";
 
 /**
  * 推送出口的**活注册表** —— adapter 矩阵的家(ADR-0012 决策 29)。

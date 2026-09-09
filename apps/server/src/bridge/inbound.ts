@@ -10,7 +10,7 @@
  */
 
 import type { BridgeBot, BridgeInboundFrame } from "@bilibili-notify/contract";
-import type { InboundMeta, InboundSinks } from "../platforms/types.js";
+import type { InboundMeta, InboundSinks } from "@bilibili-notify/internal";
 
 /** 这一帧从哪条桥来,以及那条桥当下报的 bot 名单(只为查 `selfId`)。 */
 export interface BridgeInboundSource {

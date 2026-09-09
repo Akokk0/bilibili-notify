@@ -46,6 +46,7 @@ import type {
 	LinkParsingPolicy,
 	NotificationPayload,
 	PayloadSegment,
+	ProbeResult,
 	PushKind,
 	PushTarget,
 	Subscription,
@@ -73,7 +74,6 @@ import { attachReadOnlyTools } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
-import type { ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";

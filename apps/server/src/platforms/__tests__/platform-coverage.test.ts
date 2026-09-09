@@ -10,14 +10,13 @@
  * 构造期只是拼闭包,连的时候才动网络。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import type { PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
 import { BRIDGE_DISPATCH_KEY, CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { BridgeServer } from "../../bridge/server.js";
 import { createBridgeAdapter } from "../bridge.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
-import type { PlatformAdapter } from "../types.js";
 import { createWebhookAdapter } from "../webhook.js";
 
 function makeLogger() {

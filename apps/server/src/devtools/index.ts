@@ -1,12 +1,17 @@
 import { getHeapStatistics } from "node:v8";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
-import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
+import type {
+	ChatIdentity,
+	Connection,
+	MessageBus,
+	PlatformAdapter,
+	PushTarget,
+} from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
-import type { PlatformAdapter } from "../platforms/types.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";

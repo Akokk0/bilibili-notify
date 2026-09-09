@@ -1,7 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
-import type { NotificationPayload } from "@bilibili-notify/internal";
+import type { NotificationPayload, PlatformAdapter } from "@bilibili-notify/internal";
 import { connectionDispatchKey } from "@bilibili-notify/internal";
-import type { PlatformAdapter } from "../platforms/types.js";
 
 /**
  * D1 截流:推送出口(`PlatformAdapter.send`)外面套一层闸。

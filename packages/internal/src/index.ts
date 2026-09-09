@@ -58,5 +58,19 @@ export {
 	webSearchBackendMeta,
 } from "./constants";
 export * from "./platform";
+/**
+ * 推送源契约 —— 核心的三个 adapter 与拓展的桥都实现它。见 `push-source.ts` 的文件头。
+ */
+export {
+	type Connector,
+	type InboundGroupMessage,
+	type InboundMeta,
+	type InboundPrivateMessage,
+	type InboundSinks,
+	inboundIdentity,
+	type PlatformAdapter,
+	type PlatformDialect,
+	type ProbeResult,
+} from "./push-source";
 export * from "./schema";
 export * from "./util";

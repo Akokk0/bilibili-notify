@@ -18,6 +18,7 @@
 		"@bilibili-notify/blive": "workspace:*",
 		"@bilibili-notify/contract": "workspace:*",
 		"@bilibili-notify/dynamic": "workspace:*",
+		"@bilibili-notify/extension": "workspace:*",
 		"@bilibili-notify/image": "workspace:*",
 		"@bilibili-notify/internal": "workspace:*",
 		"@bilibili-notify/live": "workspace:*",

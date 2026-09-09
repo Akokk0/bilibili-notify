@@ -1,3 +1,8 @@
+import type {
+	InboundGroupMessage,
+	InboundMeta,
+	InboundPrivateMessage,
+} from "@bilibili-notify/internal";
 import {
 	type ChatIdentity,
 	type Connection,
@@ -8,11 +13,6 @@ import {
 	type PushTarget,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal";
-import type {
-	InboundGroupMessage,
-	InboundMeta,
-	InboundPrivateMessage,
-} from "../../platforms/types.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 /**

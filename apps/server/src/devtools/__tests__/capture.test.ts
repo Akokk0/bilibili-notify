@@ -2,11 +2,11 @@ import type {
 	Connection,
 	ConnectionCapabilities,
 	NotificationPayload,
+	PlatformAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import { isReachabilityEvidence } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PlatformAdapter } from "../../platforms/types.js";
 import { createCaptureGate } from "../capture.js";
 
 /**

@@ -1,24 +1,10 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 import type { Disposable } from "@bilibili-notify/internal";
 import { EXTENSION_MOUNT_PREFIX, extensionMountPrefix } from "./mount.js";
 
-/** 一条落到某个拓展名下的 WS upgrade。 */
-export interface ExtensionUpgrade {
-	/** 原样的请求 —— `ws` 的 `handleUpgrade` 吃的就是这三样。 */
-	req: IncomingMessage;
-	socket: Duplex;
-	head: Buffer;
-	/**
-	 * 去掉 `/ext/<id>` 之后那一段(至少是 `/`)。
-	 *
-	 * 单给一格而**不改 `req.url`**:`upgrade` 事件上还挂着别的监听器(面板那条 `/ws`),
-	 * 改掉它等于在别人脚下换地板。
-	 */
-	path: string;
-}
-
-export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
+export type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 
 export interface ExtensionUpgrades {
 	/** 认领 `/ext/<id>` 底下的 upgrade。同一个 id 已经有主人时抛。 */

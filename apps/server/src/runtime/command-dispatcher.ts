@@ -20,14 +20,12 @@
 import {
 	type ChatIdentity,
 	type CommandConfig,
-	type Logger,
-	sameChatIdentity,
-} from "@bilibili-notify/internal";
-import {
 	type InboundMeta,
 	type InboundPrivateMessage,
 	inboundIdentity,
-} from "../platforms/types.js";
+	type Logger,
+	sameChatIdentity,
+} from "@bilibili-notify/internal";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
 

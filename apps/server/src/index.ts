@@ -6,6 +6,9 @@ import { BRIDGE_CLOSE_CODES, type StatsOverviewResponse } from "@bilibili-notify
 import {
 	BRIDGE_EXTENSION_ID,
 	chatIdentityOf,
+	type InboundGroupMessage,
+	type InboundMeta,
+	type InboundPrivateMessage,
 	isExtensionEnabled,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
@@ -45,7 +48,6 @@ import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdapterRegistry } from "./platforms/registry.js";
-import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./platforms/types.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";

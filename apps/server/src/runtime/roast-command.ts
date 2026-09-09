@@ -13,12 +13,14 @@
  * {@link createRoastCommandHandler} 负责鉴权与真正的批准 / 丢弃。
  */
 
-import { type ChatIdentity, type Logger, sameChatIdentity } from "@bilibili-notify/internal";
 import {
+	type ChatIdentity,
 	type InboundMeta,
 	type InboundPrivateMessage,
 	inboundIdentity,
-} from "../platforms/types.js";
+	type Logger,
+	sameChatIdentity,
+} from "@bilibili-notify/internal";
 import type { ConfirmationWindow } from "./command-dispatcher.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 

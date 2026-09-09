@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import type { PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
 import {
 	type Connection,
 	connectionDispatchKey,
@@ -12,7 +13,6 @@ import {
 	type WebhookConnectionConfig,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
-import type { PlatformAdapter, ProbeResult } from "./types.js";
 
 /**
  * Webhook adapter — POST payloads to either the legacy bilibili-notify JSON

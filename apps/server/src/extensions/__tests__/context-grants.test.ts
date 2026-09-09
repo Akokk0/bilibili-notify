@@ -9,12 +9,17 @@
 
 import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
-import type { Connection, Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	Disposable,
+	Logger,
+	PlatformAdapter,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { adapterForConnection } from "../../platforms/dispatch.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
-import type { PlatformAdapter } from "../../platforms/types.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";

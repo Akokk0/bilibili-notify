@@ -84,21 +84,11 @@ export interface ExtensionDTO {
  * `config[code] = v`。所以第一版 config 必须是**扁平的一层键值**;跨字段联动表达不了,
  * 那是认下的代价。
  */
-export type ExtensionConfigField = ExtensionConfigFieldBase &
-	(
-		| { kind: "text"; placeholder?: string; mono?: boolean; secret?: boolean }
-		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
-		| { kind: "toggle" }
-		| { kind: "select"; options: readonly { value: string; label: string }[] }
-	);
-
-interface ExtensionConfigFieldBase {
-	/** config 里的键名。**同时是这一栏的身份** —— 值就落在 `config[code]`。 */
-	code: string;
-	label: string;
-	hint?: string;
-	required?: boolean;
-}
+/**
+ * 拓展的配置字段表 —— 本体住 `@bilibili-notify/extension`(拓展要用它声明自己的表单),
+ * 这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
+ */
+export type { ExtensionConfigField } from "@bilibili-notify/extension";
 
 export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];

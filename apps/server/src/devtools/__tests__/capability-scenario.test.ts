@@ -1,6 +1,9 @@
-import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	ConnectionCapabilities,
+	PlatformAdapter,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { PlatformAdapter } from "../../platforms/types.js";
 import { createCapabilityInjector } from "../capability-injection.js";
 import { createDevRegistry, DevParamError } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";

@@ -5,13 +5,14 @@ import type {
 	Logger,
 	NotificationPayload,
 	NotificationSink,
+	PlatformAdapter,
+	ProbeResult,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "../platforms/dispatch.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
-import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**
  * Extended sink — keeps the canonical NotificationSink surface but adds an

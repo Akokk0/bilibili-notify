@@ -17,6 +17,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@bilibili-notify/extension": "workspace:*",
 		"@bilibili-notify/internal": "workspace:*"
 	},
 	"engines": {

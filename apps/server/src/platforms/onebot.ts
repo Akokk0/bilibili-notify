@@ -4,11 +4,14 @@ import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	Disposable,
+	InboundSinks,
 	Logger,
 	MiniAppCardSupport,
 	NotificationPayload,
 	OnebotConnectionConfig,
 	PayloadSegment,
+	PlatformAdapter,
+	ProbeResult,
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -19,7 +22,6 @@ import {
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { routeInboundFrame } from "./onebot-inbound.js";
-import type { InboundSinks, PlatformAdapter, ProbeResult } from "./types.js";
 
 /**
  * OneBot v11 adapter — HTTP / 正向 WS(ws)/ 反向 WS(ws-reverse)三种连接方式。

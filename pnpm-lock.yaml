@@ -222,6 +222,9 @@ importers:
 
   apps/contract:
     dependencies:
+      '@bilibili-notify/extension':
+        specifier: workspace:*
+        version: link:../../packages/extension
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../../packages/internal
@@ -286,6 +289,9 @@ importers:
       '@bilibili-notify/dynamic':
         specifier: workspace:*
         version: link:../../packages/dynamic
+      '@bilibili-notify/extension':
+        specifier: workspace:*
+        version: link:../../packages/extension
       '@bilibili-notify/image':
         specifier: workspace:*
         version: link:../../packages/image
@@ -525,6 +531,15 @@ importers:
       '@types/luxon':
         specifier: 'catalog:'
         version: 3.7.5
+
+  packages/extension:
+    dependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../internal
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/image:
     dependencies:

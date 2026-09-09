@@ -3,8 +3,13 @@ import type {
 	Connection,
 	DeliveryResult,
 	Disposable,
+	InboundGroupMessage,
+	InboundMeta,
+	InboundPrivateMessage,
 	Logger,
 	NotificationPayload,
+	PlatformAdapter,
+	ProbeResult,
 	PushTarget,
 	PushTargetScope,
 	QQOfficialConnectionConfig,
@@ -12,13 +17,6 @@ import type {
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isConnectionOn } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
-import type {
-	InboundGroupMessage,
-	InboundMeta,
-	InboundPrivateMessage,
-	PlatformAdapter,
-	ProbeResult,
-} from "./types.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";

@@ -20,7 +20,13 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	GlobalConfig,
+	PlatformAdapter,
+	PushTarget,
+	Subscription,
+} from "@bilibili-notify/internal";
 import {
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
@@ -30,7 +36,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
-import type { PlatformAdapter } from "../../platforms/types.js";
 import { standaloneContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { NodeServiceContext } from "../service-context.js";

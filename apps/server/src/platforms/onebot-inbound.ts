@@ -1,5 +1,5 @@
 /**
- * OneBot v11 事件帧 → 入站消息。平台差异到此为止:交出去的是 `platforms/types.ts` 里
+ * OneBot v11 事件帧 → 入站消息。平台差异到此为止:交出去的是 `@bilibili-notify/internal` 里
  * 那两个平台中立的形状,与官机网关交出来的一模一样。
  *
  * 曾经住在 `runtime/inbound-message.ts`,由指令分发与链接解析各自对同一帧解析一遍;
@@ -12,7 +12,7 @@ import type {
 	InboundMeta,
 	InboundPrivateMessage,
 	InboundSinks,
-} from "./types.js";
+} from "@bilibili-notify/internal";
 
 /**
  * 一帧 → 至多一路。没接的那路连解析都不做(官机开着「全部消息」时群里每句话都进这儿)。

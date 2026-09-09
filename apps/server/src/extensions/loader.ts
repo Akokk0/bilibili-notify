@@ -3,10 +3,10 @@ import type {
 	Connection,
 	Disposable,
 	ExtensionManifest,
+	InboundSinks,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import type { AdapterRegistry } from "../platforms/registry.js";
-import type { InboundSinks } from "../platforms/types.js";
 import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } from "./context.js";
 import {
 	discoverExtensions,

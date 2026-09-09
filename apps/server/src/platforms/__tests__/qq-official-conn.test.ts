@@ -1,10 +1,15 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	InboundGroupMessage,
+	InboundPrivateMessage,
+	Logger,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
 import { createQQGatewayConn, QQ_OPCODE, type QQDiscoveredSession } from "../qq-official";
-import type { InboundGroupMessage, InboundPrivateMessage } from "../types.js";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function waitFor(cond: () => boolean, timeoutMs = 3000): Promise<void> {

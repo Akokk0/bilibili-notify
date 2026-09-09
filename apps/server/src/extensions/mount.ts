@@ -1,15 +1,10 @@
+import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 import { Hono } from "hono";
 
 /** 所有拓展的挂载根 —— 一条总入口 `/ext/:id/*`,后面按 id 查活的路由表。 */
 export const EXTENSION_MOUNT_PREFIX = "/ext";
 
-/**
- * 拓展交给宿主的 HTTP 处理函数。
- *
- * 是**标准 fetch 形状**而不是一个 Hono 子应用:拓展包旁边没有 node_modules,它 import
- * 不到 hono(也 import 不到任何我们的包)。`Request` / `Response` 是运行时自带的。
- */
-export type ExtensionFetchHandler = (req: Request) => Response | Promise<Response>;
+export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 
 /** 一条挂上去的总入口。`prefix` 是宿主分配的,拓展自己不该猜(ADR-0012 决策 12)。 */
 export interface ExtensionMountHandle {

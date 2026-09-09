@@ -1,11 +1,15 @@
-import type {
-	ChatIdentity,
-	Connection,
-	ConnectionCapabilities,
-	DeliveryResult,
-	NotificationPayload,
-	PushTarget,
-} from "@bilibili-notify/internal";
+/**
+ * 推送源契约 —— 「一个能把消息送出去的出口长什么样」。
+ *
+ * 住在公共部分是因为**两边都在实现它**:核心里的 onebot / 官机 / webhook,以及拓展里的
+ * 桥(ADR-0012 决策 3)。从前它在 `apps/server/src/platforms/types.ts`,于是拓展要够到
+ * 核心才拿得到自己该实现的接口 —— 那条边是反的。
+ *
+ * ⚠️ 这里只放**契约**,不放任何一个实现:实现要碰网络、要认平台方言,而这个包是平台中立的。
+ */
+
+import type { ConnectionCapabilities, DeliveryResult, NotificationPayload } from "./platform";
+import type { ChatIdentity, Connection, PushTarget } from "./schema/targets";
 
 /**
  * Connection-level probe outcome. Distinct from {@link DeliveryResult} so the

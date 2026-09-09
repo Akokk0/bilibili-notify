@@ -9,11 +9,10 @@
  * 而两边都不会报错。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
+import type { Connection, PlatformAdapter } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { adapterForConnection } from "../dispatch.js";
 import { createAdapterRegistry } from "../registry.js";
-import type { PlatformAdapter } from "../types.js";
 
 function fakeAdapter(...platforms: string[]): PlatformAdapter {
 	return { platforms, isAvailable: () => true } as unknown as PlatformAdapter;

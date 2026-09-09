@@ -1,6 +1,9 @@
-import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	ConnectionCapabilities,
+	PlatformDialect,
+} from "@bilibili-notify/internal";
 import { connectionDispatchKey } from "@bilibili-notify/internal";
-import type { PlatformDialect } from "../../platforms/types.js";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 

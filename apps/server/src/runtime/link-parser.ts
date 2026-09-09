@@ -13,6 +13,7 @@
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
+import type { InboundGroupMessage } from "@bilibili-notify/internal";
 import {
 	type CardBlock,
 	type ConnectionCapabilities,
@@ -27,7 +28,6 @@ import {
 	type VideoLinkRef,
 	videoLinkKey,
 } from "@bilibili-notify/internal";
-import type { InboundGroupMessage } from "../platforms/types.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
 import { videoToDynamic } from "./video-card.js";

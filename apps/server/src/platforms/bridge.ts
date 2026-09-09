@@ -15,6 +15,7 @@ import {
 	type BridgeMessage,
 	type BridgeSegment,
 } from "@bilibili-notify/contract";
+import type { PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
 import {
 	BRIDGE_DISPATCH_KEY,
 	type Connection,
@@ -28,7 +29,6 @@ import {
 import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "../bridge/blob.js";
 import { asBridgeConnection, type BridgeConnection } from "../bridge/connection.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../bridge/server.js";
-import type { PlatformAdapter, ProbeResult } from "./types.js";
 
 export interface BridgeAdapterOptions {
 	server: BridgeServer;

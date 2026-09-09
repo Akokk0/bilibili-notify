@@ -1,5 +1,4 @@
-import type { ConnectionCapabilities } from "@bilibili-notify/internal";
-import type { PlatformAdapter } from "../platforms/types.js";
+import type { ConnectionCapabilities, PlatformAdapter } from "@bilibili-notify/internal";
 
 /**
  * B3:连接能力注入。`PlatformAdapter.capabilities` / `probeCapabilities` 外面套一层:
