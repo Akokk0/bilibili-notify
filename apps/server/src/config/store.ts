@@ -366,41 +366,23 @@ function migrateLegacyTargets(raw: unknown[]): {
 }
 
 /**
- * 连接的平台字面量还在闭集里才算认识;不认识的就是被撤下的平台(web-dashboard、koishi-bot、
- * astrbot)留下的存量,丢弃比启动期 throw 强 —— 这里是开机路径,没有面板能进去改。
- */
-function isKnownConnectionPlatform(raw: unknown): boolean {
-	return ConnectionPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
-}
-
-/**
- * 盘上这条连接是不是「已撤下平台」的存量 —— 该静默丢掉的那种。
+ * 盘上这一行是不是「已撤下平台留下的存量」—— 该静默丢掉的那种。连接与目标同一条判据。
  *
- * ⚠️ 这个判断跑在 **parse 之前**、拿的是原始 JSON,所以它必须自己认得桥那一支:
- * 桥接入**没有 `platform`**,照老写法会被当成撤下的平台**在开机时静默丢光**,
- * 而且下一次任何写入都会把这个丢弃**写实到盘上**。判据先看 `kind`,只有直连那一支
- * 才有平台可撤。
+ * 判据是:**我们认得的平台必须能 parse;认不得的平台又 parse 不过,才是存量。**
+ * 所以它**只在 parse 失败之后**才问,永远不跑在 parse 之前。
  *
- * 认不出 kind 又认不出平台的行,交给 parse 去报错 —— 那是真损坏,不许静默吃掉。
- */
-function isRetiredConnection(raw: unknown): boolean {
-	if ((raw as { kind?: unknown })?.kind === "bridge") return false;
-	return !isKnownConnectionPlatform(raw);
-}
-
-/**
- * 这个目标是不是「已撤下平台留下的存量」。
- *
- * 目标的平台是**开放词表**,所以「认不认识」这个问题没法再靠词表回答 —— 桥驮进来的
- * telegram 也不在任何词表里,可它是合法的。换成一句更准的:**我们认得的平台必须能 parse,
- * 认不得的平台又 parse 不过,才是存量。**
+ * ⚠️ **别再把它挪回 parse 之前。** 拿原始 JSON 用闭集问「这个平台认得吗」,等于
+ * 「词表里没有 = 不存在」:桥接入根本没有 `platform` 那一格,拓展带来的连接平台也不在
+ * 闭集里 —— 两者都会在**开机时被静默丢光**,而且下一次任何写入都会把这个丢弃**写实到
+ * 盘上**。主人看到的是配置自己消失,没有一行报错。换成「parse 得过就留下」之后,以后
+ * 新增哪一支都不必回来改这里。
  *
  * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃(与从前同样的行为)
- * - 桥驮来的 telegram 新条目:词表外但 parse 得过 → 留下
+ * - 桥接入 / 桥驮来的 telegram 目标:parse 得过 → 走不到这里
  * - onebot 的坏条目:词表内 → 照旧 throw,不许静默吃掉真正的损坏
  */
-function isRetiredTarget(raw: unknown): boolean {
-	return !isKnownConnectionPlatform(raw);
+function isRetiredPlatformRecord(raw: unknown): boolean {
+	return !ConnectionPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
 }
 
 /**
@@ -1007,9 +989,10 @@ class NodeConfigStore implements ConfigStore {
 
 			const connections: Connection[] = [];
 			for (const [idx, raw] of migrated.connections.entries()) {
-				if (isRetiredConnection(raw)) continue;
 				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
+					// 已撤下平台的存量连接静默丢弃 —— 判据见 isRetiredPlatformRecord。
+					if (isRetiredPlatformRecord(raw)) continue;
 					throw new ConfigValidationError(
 						"connections",
 						{ index: idx, issues: r.error.issues },
@@ -1026,7 +1009,7 @@ class NodeConfigStore implements ConfigStore {
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
 					// 已撤下平台的存量目标同理丢弃。
-					if (isRetiredTarget(raw)) continue;
+					if (isRetiredPlatformRecord(raw)) continue;
 					throw new ConfigValidationError(
 						"targets",
 						{ index: idx, issues: r.error.issues },
