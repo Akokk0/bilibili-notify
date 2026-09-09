@@ -504,7 +504,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		if (heartbeatHandle) clearInterval(heartbeatHandle);
 		if (watchdogHandle) clearInterval(watchdogHandle);
 		// upgrade 那一路不用摘 —— 它挂在 ctx 上,`dispose()` 之后宿主根本不会再叫过来。
-		for (const conn of [...conns]) close(conn, 1001, "server shutting down");
+		// 1001 = Going Away,**两种收摊都是真话**:BN 关机,或者主人把桥拓展的开关关了
+		// (热卸载,ADR-0012 决策 10)。桥分不出这两者 —— ctx 只说「收摊」,不说为什么,
+		// 而对插件来说该做的事也一样:退避重连。所以别在这儿写「服务器要关了」。
+		for (const conn of [...conns]) close(conn, 1001, "bridge going away");
 		try {
 			wss.close();
 		} catch {
