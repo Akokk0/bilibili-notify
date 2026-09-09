@@ -41,6 +41,14 @@ export interface ExtensionModule {
 	activate(ctx: ExtensionContext): void | Promise<void>;
 }
 
+/**
+ * 连着加载失败几次就自动停用。
+ *
+ * 3 与自主升级那边的开机自愈同一个量级:够吃掉一两次偶发(装到一半断电、依赖的目录
+ * 还没建好),又不至于让一个真炸的拓展反复把开机拖慢。
+ */
+export const EXTENSION_MAX_LOAD_FAILURES = 3;
+
 export interface LoadExtensionsOptions {
 	/** 装载根,`<dataDir>/extensions/`。 */
 	root: string;

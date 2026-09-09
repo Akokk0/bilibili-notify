@@ -1,11 +1,21 @@
 import type { Dirent } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
 	EXTENSION_API_VERSION,
 	type ExtensionManifest,
 	ExtensionManifestSchema,
 } from "@bilibili-notify/internal";
+
+/**
+ * 拓展装在 `<dataDir>/extensions/`。
+ *
+ * 🔴 **刻意不在 `<dataDir>/versions/` 底下**:那个目录归自主升级管,`pruneOldVersions`
+ * 只留当前 + 上一版,会**主动删掉不在名单里的目录** —— 拓展装进去等于下次升级被清掉。
+ */
+export function extensionsRootIn(dataDir: string): string {
+	return resolve(dataDir, "extensions");
+}
 
 /** 拓展包里那两个文件的名字 —— 拓展包 = 清单 + 代码(ADR-0012 决策 8)。 */
 export const EXTENSION_MANIFEST_FILE = "extension.json";

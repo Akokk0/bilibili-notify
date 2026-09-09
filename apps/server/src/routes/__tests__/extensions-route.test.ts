@@ -11,6 +11,7 @@ import type { Connection, GlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import type { BridgeServer, BridgeSession } from "../../bridge/server.js";
 import type { ConfigStore } from "../../config/store.js";
+import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionsRoute } from "../extensions.js";
 
 const BRIDGE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -64,7 +65,12 @@ function session(connectionId: string): BridgeSession {
 }
 
 function boot(
-	over: { connections?: Connection[]; live?: BridgeSession[]; enabled?: boolean } = {},
+	over: {
+		connections?: Connection[];
+		live?: BridgeSession[];
+		enabled?: boolean;
+		entries?: ExtensionEntry[];
+	} = {},
 ) {
 	const store = {
 		getGlobals: () =>
@@ -74,29 +80,74 @@ function boot(
 	const server = {
 		getSession: (id: string) => (over.live ?? []).find((s) => s.connectionId === id),
 	} as unknown as BridgeServer;
-	return createExtensionsRoute({ store, bridge: () => (over.live ? server : undefined) });
+	return createExtensionsRoute({
+		store,
+		bridge: () => (over.live ? server : undefined),
+		extensions: () => over.entries ?? [],
+	});
+}
+
+/** 一条「装着、跑着」的拓展。 */
+function running(id: string): ExtensionEntry {
+	return {
+		id,
+		state: "running",
+		manifest: {
+			id,
+			name: `${id} 拓展`,
+			description: "一句话说明",
+			version: "1.0.0",
+			apiVersion: 1,
+			provides: ["push"],
+		},
+	};
 }
 
 describe("GET /api/extensions", () => {
-	it("列出模块,带上开没开", async () => {
-		const res = await boot({ enabled: true }).request("/");
-		const body = (await res.json()) as ExtensionsResponse;
-		expect(body.extensions.map((e) => e.id)).toContain("bridge");
-		expect(body.extensions.find((e) => e.id === "bridge")?.enabled).toBe(true);
+	it("列的是**真装着的**那些,带上主人的开关与它现在的状态", async () => {
+		const body = (await (
+			await boot({ enabled: true, entries: [running("bridge")] }).request("/")
+		).json()) as ExtensionsResponse;
+		const bridge = body.extensions.find((e) => e.id === "bridge");
+		expect(bridge?.enabled).toBe(true);
+		expect(bridge?.state).toBe("running");
+		expect(bridge?.version).toBe("1.0.0");
+		expect(bridge?.provides).toEqual(["push"]);
 	});
 
-	it("没开就是没开 —— 缺失也是没开", async () => {
-		const res = await boot().request("/");
-		const body = (await res.json()) as ExtensionsResponse;
-		expect(body.extensions.find((e) => e.id === "bridge")?.enabled).toBe(false);
-	});
-
-	it("每张卡都有名字与一句话说明 —— 卡片上印的就是它们", async () => {
+	it("一个都没装 → 空表。**没有写死的清单了** —— 拓展是装进来的", async () => {
 		const body = (await (await boot().request("/")).json()) as ExtensionsResponse;
-		for (const ext of body.extensions) {
-			expect(ext.name.length).toBeGreaterThan(0);
-			expect(ext.description.length).toBeGreaterThan(0);
-		}
+		expect(body.extensions).toEqual([]);
+	});
+
+	it("开关开着、却因为连败被自动停用 —— 两件事都要看得见", async () => {
+		const body = (await (
+			await boot({
+				enabled: true,
+				entries: [{ id: "bridge", state: "blocked", detail: "连续加载失败 3 次" }],
+			}).request("/")
+		).json()) as ExtensionsResponse;
+		const bridge = body.extensions[0];
+		expect(bridge?.enabled).toBe(true);
+		expect(bridge?.state).toBe("blocked");
+		expect(bridge?.detail).toContain("连续");
+	});
+
+	it("清单读不出来的那条:名字退回目录名,原因带着 —— 消失的东西没法排查", async () => {
+		const body = (await (
+			await boot({
+				entries: [{ id: "junk", state: "unreadable", detail: "不是合法 JSON" }],
+			}).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.name).toBe("junk");
+		expect(body.extensions[0]?.detail).toContain("JSON");
+	});
+
+	it("每张卡都有名字 —— 卡片上总得印点什么", async () => {
+		const body = (await (
+			await boot({ entries: [running("bridge"), { id: "junk", state: "unreadable" }] }).request("/")
+		).json()) as ExtensionsResponse;
+		for (const ext of body.extensions) expect(ext.name.length).toBeGreaterThan(0);
 	});
 });
 

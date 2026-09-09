@@ -14,6 +14,8 @@ import type { BackupService } from "./backup/service.js";
 import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "./bridge/blob.js";
 import type { BridgeServer } from "./bridge/server.js";
 import type { ChromeSource } from "./config/persist.js";
+import type { ExtensionEntry } from "./extensions/loader.js";
+import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAiRoute } from "./routes/ai.js";
@@ -69,6 +71,13 @@ export interface CreateAppOptions {
 	bridgeBlobs?: BridgeBlobStore;
 	/** `/bridge` 端点;拓展页的状态面板读它。没有就当模块没装配起来(状态全是「没连着」)。 */
 	bridgeServer?: BridgeServer;
+	/**
+	 * 开机装载起来的拓展。在 `index.ts` 组装(那里才知道 `<dataDir>`)。
+	 *
+	 * `mounts` 是那条动态挂载点的总入口,`loaded` 是拓展页要列的那份名单。不给就当这台
+	 * 机器一个拓展都没装:`/ext/*` 一律 404,拓展页空着。
+	 */
+	extensions?: { mounts: ExtensionMounts; loaded: () => readonly ExtensionEntry[] };
 	/**
 	 * Configured dashboard credentials. When provided, every request under
 	 * `/api/*` (including `/api/health`, excluding `/api/session/*`) requires a
@@ -322,7 +331,11 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/qq", createQQRoute(deps));
 	app.route(
 		"/api/extensions",
-		createExtensionsRoute({ store: deps.store, bridge: () => options.bridgeServer }),
+		createExtensionsRoute({
+			store: deps.store,
+			bridge: () => options.bridgeServer,
+			extensions: () => options.extensions?.loaded() ?? [],
+		}),
 	);
 	app.route(
 		"/api/skins",
@@ -373,6 +386,13 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			BRIDGE_BLOB_PATH,
 			createBridgeBlobRoute({ store: options.bridgeBlobs, logger: deps.runtime.serviceCtx.logger }),
 		);
+	}
+
+	// 拓展的动态挂载点。**刻意不在 `/api/*` 底下** —— 同 `/bridge/blob`:上面那道
+	// dashboard 鉴权是按 `/api/*` 挂的,而拓展的对家(桥、回调)手里只有一条 URL、没有
+	// 会话。谁能进来由拓展自己在 handler 里判。
+	if (options.extensions) {
+		app.route(EXTENSION_MOUNT_PREFIX, options.extensions.mounts.route);
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie

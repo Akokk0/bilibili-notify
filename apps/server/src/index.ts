@@ -25,6 +25,13 @@ import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
+import { extensionsRootIn } from "./extensions/discover.js";
+import {
+	EXTENSION_MAX_LOAD_FAILURES,
+	type LoadedExtensions,
+	loadExtensions,
+} from "./extensions/loader.js";
+import { createExtensionMounts } from "./extensions/mount.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -107,6 +114,7 @@ export async function startStandaloneServer(
 	let bridgeServer: ReturnType<typeof createBridgeServer> | undefined;
 	let bridgeBlobs: ReturnType<typeof createBridgeBlobStore> | undefined;
 	let resourceMonitor: ResourceMonitor | undefined;
+	let loadedExtensions: LoadedExtensions | undefined;
 	let previousLogHook: ((entry: LogEntry) => void) | undefined;
 	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
 	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
@@ -127,6 +135,9 @@ export async function startStandaloneServer(
 				processHandlerCleanup = undefined;
 				runtime?.serviceCtx.setLogHook(previousLogHook);
 				wsServer?.dispose();
+				// 拓展先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
+				// 才不会在核心已经拆了之后还被回调进去。
+				await loadedExtensions?.dispose();
 				bridgeServer?.dispose();
 				bridgeBlobs?.dispose();
 				wsTicketStore?.dispose();
@@ -755,6 +766,25 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
+		// 拓展装载。**在 createApp 之前**:总入口要随 app 一起挂上,而拓展在 `activate`
+		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
+		const extensionMounts = createExtensionMounts();
+		loadedExtensions = await loadExtensions({
+			root: extensionsRootIn(bootstrap.dataDir),
+			host: runtime.serviceCtx,
+			mounts: extensionMounts,
+			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
+			isEnabled: (id) => isExtensionEnabled(runtime.configStore.getGlobals(), id),
+			maxFailures: EXTENSION_MAX_LOAD_FAILURES,
+		});
+		for (const entry of loadedExtensions.list()) {
+			if (entry.state === "running") log.info(`[ext] ${entry.id} 已加载`);
+			else if (entry.state !== "disabled")
+				log.warn(
+					`[ext] ${entry.id} 没加载(${entry.state})${entry.detail ? `:${entry.detail}` : ""}`,
+				);
+		}
+
 		const app = createApp(runtime, {
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
 			authSystem: devtools?.authSystem ?? authSystem,
@@ -782,6 +812,7 @@ export async function startStandaloneServer(
 			// 与桥 adapter 用的是**同一份**仓库:一个往里存,一个往外取。
 			bridgeBlobs,
 			bridgeServer,
+			extensions: { mounts: extensionMounts, loaded: () => loadedExtensions?.list() ?? [] },
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。
 			commands,

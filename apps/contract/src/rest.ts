@@ -7,6 +7,7 @@
 import type {
 	CachedProfile,
 	ConnectionCapabilities,
+	ExtensionProvides,
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PushKind,
@@ -37,12 +38,40 @@ export type ConnectionCapabilitiesMap = Record<string, Record<string, Connection
 // ---- /api/extensions ------------------------------------------------------
 
 /** 一个拓展模块在拓展页上的样子。模块是**编进产物**的,所以没有「装没装」,只有开没开。 */
+/**
+ * 一个拓展现在处于什么状态 —— 与主人按的那个开关是**两件事**。
+ *
+ * 开关开着而它没跑,恰恰是最需要看见的那一格(连败自动停用、清单坏了、版本不合)。
+ */
+export type ExtensionStateDTO =
+	| "running"
+	| "disabled"
+	| "blocked"
+	| "failed"
+	| "unreadable"
+	| "incompatible";
+
+/**
+ * 拓展页那张卡。**没跑起来的也在这儿** —— 消失的东西没法排查。
+ *
+ * 清单读得出来的字段才有;读不出来时 `name` 退回目录名,`detail` 说明为什么。
+ */
 export interface ExtensionDTO {
 	id: string;
+	/** 清单里的名字;清单读不出来时是目录名。 */
 	name: string;
 	/** 一句话说清它是干嘛的 —— 卡片上就印这句。 */
-	description: string;
+	description?: string;
+	version?: string;
+	/** 它开的是哪一口:推送源 / 订阅源。 */
+	provides?: ExtensionProvides[];
+	/** 卡片图标,一段 SVG。没有就退回灰方章。 */
+	icon?: string;
+	/** 主人按的那个开关(`globals.extensions.<id>.enabled`)。 */
 	enabled: boolean;
+	state: ExtensionStateDTO;
+	/** 没跑起来时那句「为什么」。 */
+	detail?: string;
 }
 
 export interface ExtensionsResponse {

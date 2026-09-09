@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,6 +102,75 @@ describe("standalone server lifecycle", () => {
 		await handle.close("test");
 		await handle.close("test again");
 		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 拓展装载在 `index.ts` 里接线,除了这里**没有别的地方证明它真的接上了** ——
+	 * 扫目录、开关、ctx、挂载点各自的单元测试都是在自己搭的零件上跑的。
+	 * 漏一步的症状是「装了拓展但面板上什么都没有」,而进程照常启动、日志一个字都不说。
+	 */
+	it("装在 <dataDir>/extensions/ 里的拓展:关着不 import,开了就真的跑起来", async () => {
+		const extDir = join(dataDir, "extensions", "demo");
+		await mkdir(extDir, { recursive: true });
+		await writeFile(
+			join(extDir, "extension.json"),
+			JSON.stringify({
+				id: "demo",
+				name: "示例拓展",
+				description: "接线用",
+				version: "1.0.0",
+				apiVersion: 1,
+				provides: ["push"],
+			}),
+		);
+		await writeFile(
+			join(extDir, "index.mjs"),
+			`export function activate(ctx) { ctx.mount(async () => new Response("pong")); }`,
+		);
+
+		const boot = async () => {
+			const port = await findFreePort();
+			return startStandaloneServer({
+				argv: [
+					"--host",
+					"127.0.0.1",
+					"--port",
+					String(port),
+					"--data-dir",
+					dataDir,
+					"--log-level",
+					"silent",
+				],
+				env: makeEnv(),
+				shutdownTimeoutMs: 1_000,
+			});
+		};
+
+		// 头一趟:开关是关的(缺失 = 关着)——**一行代码都不该被 import**,但列得出来。
+		handle = await boot();
+		expect((await fetch(`${handle.url}/ext/demo/ping`)).status).toBe(404);
+		const listed = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+			extensions: Array<{ id: string; state: string; name: string }>;
+		};
+		expect(listed.extensions).toEqual([
+			expect.objectContaining({ id: "demo", state: "disabled", name: "示例拓展" }),
+		]);
+		await handle.close("test");
+
+		// 把开关拨开,重启 —— 换代码要重启,换开关本来不用,但这里连开机接线一起验。
+		const globalsPath = join(dataDir, "state", "globals.json");
+		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
+		globals.extensions = { demo: { enabled: true } };
+		await writeFile(globalsPath, JSON.stringify(globals));
+
+		handle = await boot();
+		expect(await (await fetch(`${handle.url}/ext/demo/ping`)).text()).toBe("pong");
+		const running = (await (await fetch(`${handle.url}/api/extensions`)).json()) as {
+			extensions: Array<{ id: string; state: string }>;
+		};
+		expect(running.extensions).toEqual([
+			expect.objectContaining({ id: "demo", state: "running", enabled: true }),
+		]);
 	});
 
 	/**

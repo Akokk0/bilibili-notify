@@ -3,12 +3,18 @@ import { isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import type { BridgeServer } from "../bridge/server.js";
 import type { ConfigStore } from "../config/store.js";
-import { EXTENSIONS } from "../extensions/registry.js";
+import type { ExtensionEntry } from "../extensions/loader.js";
 
 export interface ExtensionsRouteOptions {
 	store: ConfigStore;
 	/** `/bridge` 端点。**现取** —— 它比路由晚挂上 HTTP server,但对象本身早就有了。 */
 	bridge: () => BridgeServer | undefined;
+	/**
+	 * 开机那一趟扫出来 + 加载出来的结果。**现取**,理由同上。
+	 *
+	 * 没有写死的清单了 —— 拓展是**装进来的**,盘上有什么就是什么(ADR-0012)。
+	 */
+	extensions: () => readonly ExtensionEntry[];
 }
 
 /**
@@ -22,9 +28,18 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 
 	app.get("/", (c) => {
 		const globals = opts.store.getGlobals();
-		const extensions: ExtensionDTO[] = EXTENSIONS.map((def) => ({
-			...def,
-			enabled: isExtensionEnabled(globals, def.id),
+		const extensions: ExtensionDTO[] = opts.extensions().map((entry) => ({
+			id: entry.id,
+			// 清单读不出来时退回目录名 —— 卡片总得印点什么,而目录名正是那时唯一的身份。
+			name: entry.manifest?.name ?? entry.id,
+			description: entry.manifest?.description,
+			version: entry.manifest?.version,
+			provides: entry.manifest?.provides,
+			icon: entry.manifest?.icon,
+			// 开关与状态是**两件事**:开着却没跑(连败停用 / 清单坏了)正是最该看见的一格。
+			enabled: isExtensionEnabled(globals, entry.id),
+			state: entry.state,
+			detail: entry.detail,
 		}));
 		return c.json({ extensions });
 	});
