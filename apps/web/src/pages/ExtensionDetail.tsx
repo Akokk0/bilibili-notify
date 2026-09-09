@@ -3,7 +3,7 @@ import { EmptyNote, GlassBox, LoadingBlock, StatusDot } from "@bilibili-notify/u
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../services/api";
-import { BridgeSessions } from "./extensions/bridge-panel";
+import { BridgeConnections } from "./extensions/bridge-panel";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
@@ -55,7 +55,7 @@ export default function ExtensionDetail() {
 					{ext.version ? (
 						<span className="font-mono text-bn-xs text-bn-text-tertiary">v{ext.version}</span>
 					) : null}
-					{id === "bridge" ? <BridgeSessions extensionId={id} /> : null}
+					{id === "bridge" ? <BridgeConnections extensionId={id} /> : null}
 				</div>
 			</GlassBox>
 		</div>
