@@ -1,6 +1,7 @@
 export * from "./card-layout";
 export * from "./commands";
 export * from "./common";
+export * from "./extension-manifest";
 export * from "./globals";
 export * from "./history";
 export * from "./link-parsing";
