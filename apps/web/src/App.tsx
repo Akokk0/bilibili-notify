@@ -23,6 +23,7 @@ import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
 import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
+import Extensions from "./pages/Extensions";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Rules from "./pages/Rules";
@@ -111,6 +112,7 @@ function AuthedApp() {
 						<Route path="/" element={<Dashboard />} />
 						<Route path="/subs" element={<Subs />} />
 						<Route path="/targets" element={<Targets />} />
+						<Route path="/extensions" element={<Extensions />} />
 						<Route path="/history" element={<History />} />
 						<Route path="/stats" element={<Stats />} />
 						<Route path="/rules" element={<Rules />} />

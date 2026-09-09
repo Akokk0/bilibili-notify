@@ -23,6 +23,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{ to: "/", label: "概览" },
 	{ to: "/subs", label: "订阅 UP 主", countKey: "subs" },
 	{ to: "/targets", label: "推送目标", countKey: "targets" },
+	{ to: "/extensions", label: "拓展" },
 	{ to: "/history", label: "推送历史" },
 	{ to: "/stats", label: "数据统计" },
 	{ to: "/rules", label: "高级规则" },
