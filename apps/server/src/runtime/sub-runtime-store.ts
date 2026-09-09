@@ -129,15 +129,22 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 
 		patch(id, partial) {
 			return runSerial(async () => {
-				const prev = records[id] ?? {};
 				// Per-key replace: callers pass complete cachedProfile / fansBaseline
-				// objects. `undefined` keys in `partial` are skipped so a fans-only
-				// tick doesn't clobber an existing fansBaseline.
-				const next: SubRuntime = { ...prev };
-				if (partial.cachedProfile !== undefined) next.cachedProfile = partial.cachedProfile;
-				if (partial.fansBaseline !== undefined) next.fansBaseline = partial.fansBaseline;
-				if (partial.roomId !== undefined) next.roomId = partial.roomId;
-				records = { ...records, [id]: next };
+				// objects rather than deep-merge fragments.
+				//
+				// 🔴 判据是**键在不在**,不是值等不等于 `undefined`,而且**逐键遍历、不点名**:
+				//   - 点名的话(原先那张三键清单)往 `SubRuntime` 加一个字段而忘了补一行,
+				//     那个键就静默不落盘 —— `followed` / `followError` 正是这么丢了很久的,
+				//     类型、门禁、运行期都不会说一个字。
+				//   - 按值判的话,`{ followed: true, followError: undefined }`(两处调用方
+				//     都这么写,意思是「关上了,把上次那条错误清掉」)永远清不掉。
+				// 「不带这个键」仍然是「别动它」—— fans-only 那一轮就靠这个不冲掉 baseline。
+				const next: Record<string, unknown> = { ...(records[id] ?? {}) };
+				for (const [key, value] of Object.entries(partial)) {
+					if (value === undefined) delete next[key];
+					else next[key] = value;
+				}
+				records = { ...records, [id]: next as SubRuntime };
 				await persist();
 			});
 		},

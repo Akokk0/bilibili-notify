@@ -130,6 +130,62 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 		});
 		await expect(readFileJson()).resolves.toMatchObject({ s1: { roomId: "930987" } });
 	});
+
+	/**
+	 * 🔴 **`SubRuntime` 有几个键,`patch` 就得认几个。**
+	 *
+	 * 原先这里是一张**手抄的三键清单**(cachedProfile / fansBaseline / roomId),往
+	 * `SubRuntime` 上加字段而忘了补一行,那个键就**静默不落盘** —— 类型、门禁、运行期
+	 * 全无一句话。`followed` / `followError` 正是这么丢的:`follow-sync` 与
+	 * `POST /api/subs` 两处都在写,`/api/subs` 也在读,但重启之后恒为 `undefined`,
+	 * 于是订阅卡上的「未关注」告警一重启就消失 —— 而那是「这个订阅收不到动态」的唯一提示。
+	 */
+	it("🔴 followed / followError 真的落盘 —— 重启之后「未关注」告警还在", async () => {
+		const store = make();
+		await store.patch("s1", { cachedProfile: PROFILE_A });
+		await store.patch("s1", { followed: false, followError: "风控了" });
+
+		expect(store.get("s1")).toEqual({
+			cachedProfile: PROFILE_A,
+			followed: false,
+			followError: "风控了",
+		});
+		await expect(readFileJson()).resolves.toMatchObject({
+			s1: { followed: false, followError: "风控了" },
+		});
+
+		// 重启:另起一个实例读盘。
+		const reborn = make();
+		await reborn.load();
+		expect(reborn.get("s1")).toMatchObject({ followed: false, followError: "风控了" });
+	});
+
+	/**
+	 * 🔴 **判「键在不在」,不判「值是不是 undefined」。**
+	 *
+	 * 两处调用方都写 `{ followed: true, followError: undefined }`,意思是「关上了,把上次
+	 * 那条错误**清掉**」。按值判的话这一清永远不生效,主人会一直看着一条早就不成立的报错。
+	 * 而「不带这个键」仍然是「别动它」—— fans-only 那一轮就靠这个不冲掉 baseline。
+	 */
+	it("🔴 显式传 undefined = 清掉这个键;不带这个键 = 别动它", async () => {
+		const store = make();
+		await store.patch("s1", { cachedProfile: PROFILE_A, followed: false, followError: "风控了" });
+
+		// 关注上了 —— 错误要跟着消失。
+		await store.patch("s1", { followed: true, followError: undefined });
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, followed: true });
+		await expect(readFileJson()).resolves.toEqual({
+			s1: { cachedProfile: PROFILE_A, followed: true },
+		});
+
+		// 只写 roomId 的那种 patch 不该动到关注状态。
+		await store.patch("s1", { roomId: "930987" });
+		expect(store.get("s1")).toEqual({
+			cachedProfile: PROFILE_A,
+			followed: true,
+			roomId: "930987",
+		});
+	});
 });
 
 describe("SubRuntimeStore.get / getAll — 防御性克隆", () => {
