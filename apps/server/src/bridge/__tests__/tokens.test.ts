@@ -15,8 +15,8 @@ function bridge(id: string, token: string, enabled = true): Connection {
 		id,
 		name: `桥 ${id}`,
 		enabled,
-		kind: "bridge",
-		connector: "bridge",
+		kind: "extension",
+		extensionId: "bridge",
 		config: { token, bridgeKind: "koishi" },
 	} as Connection;
 }

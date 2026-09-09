@@ -243,9 +243,9 @@ export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
  * 拖进这个零依赖模块 —— 前端要**运行时**用它。
  */
 export function connectionDispatchKey(
-	connection: { kind: "direct"; platform: string } | { kind: "bridge" },
+	connection: { kind: "direct"; platform: string } | { kind: "extension"; extensionId: string },
 ): string {
-	return connection.kind === "direct" ? connection.platform : BRIDGE_DISPATCH_KEY;
+	return connection.kind === "direct" ? connection.platform : connection.extensionId;
 }
 
 /**

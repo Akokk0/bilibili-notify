@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import { WEBHOOK_PLATFORMS } from "../constants";
-import { ConnectionSchema, OnebotConnectionConfigSchema, PushTargetSchema } from "./targets";
+import { connectionDispatchKey, WEBHOOK_PLATFORMS } from "../constants";
+import {
+	ConnectionSchema,
+	isConnectionOn,
+	isDirectConnection,
+	OnebotConnectionConfigSchema,
+	PushTargetSchema,
+} from "./targets";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
 const UUID_B = "22222222-2222-4222-8222-222222222222";
@@ -601,5 +607,62 @@ describe("QQOfficial target schema", () => {
 			session: { groupOpenid: "ABCDEF" },
 		});
 		expect(r.success).toBe(false);
+	});
+});
+
+/**
+ * 拓展提供的连接(ADR-0012 决策 27)。
+ *
+ * 三格刻意都没有:**没有 `platform`**(拓展不一定就是一个平台 —— 桥后面挂着哪个平台是它
+ * 握手时报的)、**没有 `connector`**(全仓读它的地方无一例外在问「是不是 webhook」)、
+ * **config 不由核心定形状**(归拓展自己那份 zod)。
+ *
+ * 判别子仍是 `kind` —— 拿拓展 id 直接当 `kind` 的话判别键不可枚举,第一次 parse 就抛。
+ */
+describe("拓展连接", () => {
+	const base = {
+		id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		name: "家里那台",
+		enabled: true,
+		kind: "extension",
+		extensionId: "bridge",
+		config: { token: "t0ken", bridgeKind: "koishi" },
+	};
+
+	it("存得下,而且没有 platform / connector 那两格", () => {
+		const r = ConnectionSchema.safeParse(base);
+		expect(r.success).toBe(true);
+		expect(r.data).not.toHaveProperty("platform");
+		expect(r.data).not.toHaveProperty("connector");
+	});
+
+	it("分发键 = extensionId —— 装几个拓展就是几个键,撞不了", () => {
+		const parsed = ConnectionSchema.parse(base);
+		expect(connectionDispatchKey(parsed)).toBe("bridge");
+		const other = ConnectionSchema.parse({ ...base, extensionId: "matrix" });
+		expect(connectionDispatchKey(other)).toBe("matrix");
+	});
+
+	it("extensionId 得是个合法拓展 id —— 它同时是 URL 的一段与装载目录名", () => {
+		expect(ConnectionSchema.safeParse({ ...base, extensionId: "../etc" }).success).toBe(false);
+		expect(ConnectionSchema.safeParse({ ...base, extensionId: "" }).success).toBe(false);
+	});
+
+	it("**不是直连** —— `isDirectConnection` 恒 false,平台谓词也恒 false", () => {
+		const parsed = ConnectionSchema.parse(base);
+		expect(isDirectConnection(parsed)).toBe(false);
+		expect(isConnectionOn(parsed, "onebot")).toBe(false);
+	});
+
+	it('`kind:"bridge"` 那支没了 —— 桥就是一个拓展,核心里不该再有它的特例', () => {
+		const legacy = {
+			id: base.id,
+			name: base.name,
+			enabled: true,
+			kind: "bridge",
+			connector: "bridge",
+			config: { token: "t0ken", bridgeKind: "koishi" },
+		};
+		expect(ConnectionSchema.safeParse(legacy).success).toBe(false);
 	});
 });

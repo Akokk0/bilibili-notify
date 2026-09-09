@@ -9,6 +9,7 @@ import {
 	PUSH_TARGET_SCOPES,
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
+import { ExtensionIdSchema } from "./extension-manifest.js";
 
 // 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
 // 别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
@@ -263,17 +264,27 @@ export const BridgeConnectionConfigSchema = z.object({
 export type BridgeConnectionConfig = z.infer<typeof BridgeConnectionConfigSchema>;
 
 /**
- * 桥接入 —— **没有 `platform`**。
+ * 拓展提供的连接(ADR-0012 决策 27)。三格刻意都没有:
  *
- * 桥后面挂着哪些平台(telegram / discord / …)是它握手时报的,是运行时知识,枚举不了;
- * 给这一支塞一个可选的 `platform` 只会让全仓读点静默变 `undefined`。少那一格,读它的
- * 地方就会**编译不过** —— 那份编译错清单正是「哪些地方假定了连接就是一个平台」。
+ * - **没有 `platform`** —— 拓展不一定就是一个平台。桥后面挂着哪些平台(telegram /
+ *   discord / …)是它握手时报的,是运行时知识,枚举不了;塞一个可选的只会让全仓读点静默
+ *   变 `undefined`。少那一格,读它的地方就**编译不过** —— 那份编译错清单正是「哪些地方
+ *   假定了连接就是一个平台」。平台信息住在**推送目标**那一侧(那边本来就是开放词表)。
+ * - **没有 `connector`** —— 全仓读它的地方无一例外在问「是不是 webhook」(见
+ *   {@link isWebhookConnection})。给这一支塞一格,唯一作用是让那些读点编译得过。
+ * - **config 不由核心定形状** —— 归拓展自己那份 zod(决策 19)。核心只保证它是个对象。
+ *   ⚠️ 在加载期对表做出来之前,**消费方自己 parse**(桥就是这么读 `token` 的):核心的
+ *   schema 不该认识任何一个拓展 id。
+ *
+ * 判别子仍是 `kind`,不拿 `extensionId` 直接当 `kind` —— 那样判别键不可枚举,
+ * `discriminatedUnion` 第一次 parse 就抛。
  */
-const BridgeConnectionSchema = z.object({
+const ExtensionConnectionSchema = z.object({
 	...ConnectionIdentityShape,
-	kind: z.literal("bridge"),
-	connector: z.literal("bridge"),
-	config: BridgeConnectionConfigSchema,
+	kind: z.literal("extension"),
+	/** 哪个拓展负责它 —— **同时就是分发键**(由宿主填,拓展不自报,见决策 28)。 */
+	extensionId: ExtensionIdSchema,
+	config: z.unknown(),
 });
 
 const DirectConnectionSchema = z
@@ -305,14 +316,42 @@ const DirectConnectionSchema = z
  */
 export const ConnectionSchema = z.discriminatedUnion("kind", [
 	DirectConnectionSchema,
-	BridgeConnectionSchema,
+	ExtensionConnectionSchema,
 ]);
 export type Connection = z.infer<typeof ConnectionSchema>;
 
 /** 直连那一支 —— 有 `platform`、由我们自己说协议。 */
 export type DirectConnection = z.infer<typeof DirectConnectionSchema>;
-/** 桥接入那一支 —— 没有 `platform`,平台由桥握手时报。 */
-export type BridgeConnection = z.infer<typeof BridgeConnectionSchema>;
+/** 拓展那一支 —— 没有 `platform`,config 归拓展自己校验。 */
+export type ExtensionConnection = z.infer<typeof ExtensionConnectionSchema>;
+
+/**
+ * 这条连接是不是 webhook 那种**单向投递**。
+ *
+ * 从前全仓 20 处写的是 `connection.connector === "webhook"` —— 那是把一个字段当接口用:
+ * 拓展那一支没有 `connector`,于是每一处都要先想一遍「它有没有这一格」。问题本来就只有
+ * 一个,答案也只有一份,所以收成这一句。
+ */
+export function isWebhookConnection(connection: Connection): connection is WebhookConnection {
+	return connection.kind === "direct" && connection.connector === "webhook";
+}
+
+/** webhook 那一档直连 —— 单向投递,没有会话。 */
+export type WebhookConnection = Extract<DirectConnection, { connector: "webhook" }>;
+
+/**
+ * 这条连接归不归某个拓展 —— 不给 id 就是问「是不是拓展提供的」。
+ *
+ * ctx 交给拓展的那份快照就是拿它筛的(决策 30):**归属是宿主的判断**,所以筛这一步
+ * 只有一份实现。
+ */
+export function isExtensionConnection(
+	connection: Connection,
+	extensionId?: string,
+): connection is ExtensionConnection {
+	if (connection.kind !== "extension") return false;
+	return extensionId === undefined || connection.extensionId === extensionId;
+}
 
 /**
  * 这条连接自己就是一个平台吗 —— 是的话把平台名交出来。

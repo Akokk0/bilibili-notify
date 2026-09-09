@@ -22,8 +22,8 @@ function connection(over: Partial<Connection> = {}): Connection {
 		id: CONNECTION_ID,
 		name: "家里那台 koishi",
 		enabled: true,
-		kind: "bridge",
-		connector: "bridge",
+		kind: "extension",
+		extensionId: "bridge",
 		config: { token: "t0ken", bridgeKind: "koishi" },
 		...over,
 	} as Connection;

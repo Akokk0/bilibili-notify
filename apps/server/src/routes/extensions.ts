@@ -1,6 +1,7 @@
 import type { BridgeSessionDTO, ExtensionDTO } from "@bilibili-notify/contract";
 import { isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { asBridgeConnection } from "../bridge/connection.js";
 import type { BridgeServer } from "../bridge/server.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
@@ -50,7 +51,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		// 那条,而那条在会话表里根本不存在。
 		const sessions: BridgeSessionDTO[] = opts.store
 			.getConnections()
-			.filter((connection) => connection.kind === "bridge")
+			.map((raw) => asBridgeConnection(raw))
+			.filter((connection) => connection !== null)
 			.map((connection) => {
 				const live = server?.getSession(connection.id);
 				if (!live) return { connectionId: connection.id, connected: false, bots: [] };

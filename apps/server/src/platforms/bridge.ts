@@ -17,7 +17,6 @@ import {
 } from "@bilibili-notify/contract";
 import {
 	BRIDGE_DISPATCH_KEY,
-	type BridgeConnection,
 	type Connection,
 	connectionDispatchKey,
 	type DeliveryResult,
@@ -27,6 +26,7 @@ import {
 	type PushTarget,
 } from "@bilibili-notify/internal";
 import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "../bridge/blob.js";
+import { asBridgeConnection, type BridgeConnection } from "../bridge/connection.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../bridge/server.js";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
 
@@ -131,14 +131,15 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 	 * 不看名单就发,等于把推送扔进黑洞再等 30 秒超时,用户看到的是「发了一半才失败」。
 	 */
 	function resolve(connection: Connection, target: PushTarget): Resolved {
-		if (connection.kind !== "bridge") {
+		const bridge = asBridgeConnection(connection);
+		if (!bridge) {
 			return { ok: false, err: `不是桥接入(${connectionDispatchKey(connection)})` };
 		}
 		if (target.kind !== "session") return { ok: false, err: "桥只发会话目标" };
-		if (!connection.enabled) return { ok: false, err: "这条桥接入已停用" };
+		if (!bridge.enabled) return { ok: false, err: "这条桥接入已停用" };
 		if (!target.enabled) return { ok: false, err: "这个推送目标已停用" };
 		if (!target.botId) return { ok: false, err: "这个目标没记是哪个 bot" };
-		const session = server.getSession(connection.id);
+		const session = server.getSession(bridge.id);
 		if (!session) return { ok: false, err: "桥没连着" };
 		const bot = session.bots.find((candidate) => candidate.botId === target.botId);
 		if (!bot) return { ok: false, err: `桥上现在没有这个 bot(${target.botId})` };
@@ -201,8 +202,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		 */
 		reconcile(connections: readonly Connection[]): void {
 			const bridges = new Map<string, BridgeConnection>();
-			for (const connection of connections) {
-				if (connection.kind === "bridge") bridges.set(connection.id, connection);
+			for (const raw of connections) {
+				const connection = asBridgeConnection(raw);
+				if (connection) bridges.set(connection.id, connection);
 			}
 			for (const session of server.listSessions()) {
 				const connection = bridges.get(session.connectionId);

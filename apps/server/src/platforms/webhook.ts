@@ -3,6 +3,7 @@ import {
 	type Connection,
 	connectionDispatchKey,
 	type DeliveryResult,
+	isWebhookConnection,
 	type Logger,
 	type NotificationPayload,
 	type PayloadSegment,
@@ -47,7 +48,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	return {
 		platforms: [...WEBHOOK_PLATFORMS],
 		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (connection.connector !== "webhook" || target.kind !== "endpoint") return false;
+			if (!isWebhookConnection(connection) || target.kind !== "endpoint") return false;
 			if (!connection.enabled || !target.enabled) return false;
 			const cfg = connection.config;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
@@ -65,12 +66,12 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			payload: NotificationPayload,
 			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (connection.connector !== "webhook" || target.kind !== "endpoint") {
+			if (!isWebhookConnection(connection) || target.kind !== "endpoint") {
 				return {
 					ok: false,
 					latencyMs: 0,
 					err:
-						`wrong shape: connection=${connectionDispatchKey(connection)}/${connection.connector} ` +
+						`wrong shape: connection=${connectionDispatchKey(connection)} ` +
 						`target=${target.platform}/${target.kind}`,
 				};
 			}

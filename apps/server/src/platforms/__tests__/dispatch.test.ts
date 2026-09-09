@@ -27,8 +27,8 @@ function bridge(): Connection {
 		id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		name: "家里那台 koishi",
 		enabled: true,
-		kind: "bridge",
-		connector: "bridge",
+		kind: "extension",
+		extensionId: "bridge",
 		config: { token: "t0ken", bridgeKind: "koishi" },
 	} as Connection;
 }

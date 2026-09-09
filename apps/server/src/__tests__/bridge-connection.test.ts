@@ -55,8 +55,8 @@ function bridgeConnection(over: Partial<Connection> = {}): Connection {
 		id: BRIDGE_ID,
 		name: "家里那台 koishi",
 		enabled: true,
-		kind: "bridge",
-		connector: "bridge",
+		kind: "extension",
+		extensionId: "bridge",
 		config: { token: "t0ken", bridgeKind: "koishi" },
 		...over,
 	} as Connection;
@@ -106,8 +106,10 @@ describe("桥接入", () => {
 		await store.upsertConnection(bridgeConnection());
 		const raw = JSON.parse(await readFile(join(stateDir, "connections.json"), "utf8"));
 		expect(raw).toHaveLength(1);
-		expect(raw[0].kind).toBe("bridge");
+		expect(raw[0].kind).toBe("extension");
+		expect(raw[0].extensionId).toBe("bridge");
 		expect(raw[0]).not.toHaveProperty("platform");
+		expect(raw[0]).not.toHaveProperty("connector");
 		expect(raw[0].config).toEqual({ token: "t0ken", bridgeKind: "koishi" });
 	});
 
@@ -167,7 +169,7 @@ describe("桥接入", () => {
 				config: { transport: "http", baseUrl: "http://127.0.0.1:3000" },
 			} as unknown as Connection),
 		).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getConnections()[0]?.kind).toBe("bridge");
+		expect(store.getConnections()[0]?.kind).toBe("extension");
 	});
 });
 

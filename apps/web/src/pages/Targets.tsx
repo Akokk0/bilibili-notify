@@ -31,6 +31,7 @@ import { type ConnectionField, connectionFields } from "../types/connection-fiel
 import {
 	type Connection,
 	type ConnectionPlatform,
+	isWebhookConnection,
 	KNOWN_PLATFORMS,
 	makeEmptyConnection,
 	makeEmptyTarget,
@@ -93,9 +94,10 @@ function scopeLabel(s: PushTargetScope): string {
 }
 
 function connectionEndpointSummary(a: Connection): string {
-	if (a.kind === "bridge") {
-		// 地址在桥那头(是桥主动连过来的),这边只说它是哪种桥。
-		return a.config.bridgeKind === "koishi" ? "koishi 桥接" : "AstrBot 桥接";
+	if (a.kind !== "direct") {
+		// 拓展提供的连接:形状归拓展自己定,这一层看不懂它的 config,也不该看懂。
+		// 拓展页落地后这句换成拓展交上来的那份描述(ADR-0012 决策 36)。
+		return a.extensionId;
 	}
 	if (a.platform === "onebot") {
 		const c = a.config;
@@ -135,7 +137,7 @@ function managedWebhookTargetForConnection(
 	connection: Connection,
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
-	if (connection.connector !== "webhook") return undefined;
+	if (!isWebhookConnection(connection)) return undefined;
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
 	return owned.find((t) => t.managedBy === "connection") ?? owned[0];
 }
@@ -599,7 +601,7 @@ function TargetEditorModal({
 	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
 	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
-	const eligibleConnections = connections.filter((a) => a.connector !== "webhook");
+	const eligibleConnections = connections.filter((a) => !isWebhookConnection(a));
 	return (
 		<ModalShell
 			onCancel={onCancel}
@@ -1144,7 +1146,7 @@ function ConnectionRail({
 				return {
 					id: a.id,
 					label: a.name || "（未命名）",
-					desc: `${platformLabel(connectionDispatchKey(a))} · ${a.connector === "webhook" ? "单向投递" : `${count} 个目标`}`,
+					desc: `${platformLabel(connectionDispatchKey(a))} · ${isWebhookConnection(a) ? "单向投递" : `${count} 个目标`}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (
@@ -1325,7 +1327,7 @@ export default function Targets() {
 	});
 
 	async function testConnection(a: Connection): Promise<void> {
-		if (a.connector === "webhook") {
+		if (isWebhookConnection(a)) {
 			const target = managedWebhookTargetForConnection(a, targets);
 			if (!target) {
 				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
@@ -1444,7 +1446,7 @@ export default function Targets() {
 			showToast("请先新建一个连接", false);
 			return;
 		}
-		if (a.connector === "webhook") {
+		if (isWebhookConnection(a)) {
 			showToast("Webhook 目标由系统自动托管，无需手动新建", false);
 			return;
 		}
@@ -1461,13 +1463,13 @@ export default function Targets() {
 	}
 
 	const selectedConnectionStatus =
-		selectedConnection?.connector === "webhook" && selectedManagedWebhookTarget
+		selectedConnection && isWebhookConnection(selectedConnection) && selectedManagedWebhookTarget
 			? targetStatusFor(selectedManagedWebhookTarget)
 			: selectedConnection
 				? connectionStatusFor(selectedConnection)
 				: "pending";
 	const selectedConnectionTestStatus =
-		selectedConnection?.connector === "webhook"
+		selectedConnection && isWebhookConnection(selectedConnection)
 			? selectedManagedWebhookTarget?.testStatus
 			: selectedConnection?.testStatus;
 
@@ -1567,16 +1569,16 @@ export default function Targets() {
 											disabled={testing[selectedConnection.id] === "pending"}
 										>
 											{testing[selectedConnection.id] === "pending"
-												? selectedConnection.connector === "webhook"
+												? isWebhookConnection(selectedConnection)
 													? "发送中…"
 													: "测试中…"
 												: testing[selectedConnection.id] === "ok"
-													? selectedConnection.connector === "webhook"
+													? isWebhookConnection(selectedConnection)
 														? "已送达"
 														: "已连通"
 													: testing[selectedConnection.id] === "fail"
 														? "失败"
-														: selectedConnection.connector === "webhook"
+														: isWebhookConnection(selectedConnection)
 															? "发送测试"
 															: "测试"}
 										</Btn>
@@ -1614,15 +1616,15 @@ export default function Targets() {
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-bn-md font-bold text-bn-text-primary">
-											{selectedConnection.connector === "webhook" ? "Webhook 投递目标" : "推送目标"}
+											{isWebhookConnection(selectedConnection) ? "Webhook 投递目标" : "推送目标"}
 										</div>
 										<div className="text-bn-xs text-bn-text-tertiary">
-											{selectedConnection.connector === "webhook"
+											{isWebhookConnection(selectedConnection)
 												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
 												: "本连接下的会话:群号 / 用户 ID 等。"}
 										</div>
 									</div>
-									{selectedConnection.connector === "webhook" ? null : (
+									{isWebhookConnection(selectedConnection) ? null : (
 										<Btn
 											data-tour="target-add"
 											size="sm"
@@ -1633,7 +1635,7 @@ export default function Targets() {
 										</Btn>
 									)}
 								</div>
-								{selectedConnection.connector === "webhook" ? (
+								{isWebhookConnection(selectedConnection) ? (
 									<div className="space-y-2.5">
 										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
@@ -1733,7 +1735,7 @@ export default function Targets() {
 					subjectName={confirmDelete.value.name}
 					hint={
 						confirmDelete.kind === "connection"
-							? confirmDelete.value.connector === "webhook"
+							? isWebhookConnection(confirmDelete.value)
 								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
 								: "连接若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他连接或先删除它们。"
 							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"

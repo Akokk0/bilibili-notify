@@ -6,6 +6,7 @@ import {
 	type BiliEvents,
 	type ConfigScope,
 	type Connection,
+	connectionDispatchKey,
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
@@ -777,7 +778,8 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load(); // 不应抛错
-		expect(store2.getConnections().map((a) => a.connector)).toEqual(["webhook"]);
+		// 活下来的只剩那条 webhook 直连(平台即分发键)。
+		expect(store2.getConnections().map((a) => connectionDispatchKey(a))).toEqual(["feishu"]);
 		// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
 		expect(store2.getTargets().every((t) => t.kind === "endpoint")).toBe(true);
 		await rm(dir2, { recursive: true, force: true });

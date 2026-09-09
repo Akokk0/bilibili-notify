@@ -20,6 +20,7 @@ import type {
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
+	WebhookConnection,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
@@ -283,14 +284,26 @@ export function switchOnebotTransport(
 	return { ...common, transport: "ws-reverse", port: 9797 };
 }
 
+/**
+ * 这条连接是不是 webhook 那种**单向投递**。
+ *
+ * ⚠️ 与 `@bilibili-notify/internal` 里那个同名谓词是**同一句话的两份实现**,而这是被逼的:
+ * 那份住在 `schema/targets.ts`(带 zod),web 只能 `import type` 域模型 —— 把它拽进来
+ * 等于把 zod 拽进前端 bundle。函数体是一行纯字段比较,两边漂不了;真要改判据,两处一起改。
+ */
+export function isWebhookConnection(connection: Connection): connection is WebhookConnection {
+	return connection.kind === "direct" && connection.connector === "webhook";
+}
+
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
-	if (connection.kind === "bridge") {
-		// 桥接入的目标得先知道「哪个平台的哪个 bot」—— 那份名单是桥握手时报的,这个工厂
-		// 手上没有,而 `platform` 是必填非空(空串存不下)。眼下面板还建不出桥接入,所以
-		// 这条路不可达;拓展页落地时这里换成「按选中的 bot 造」,别在这儿编一个平台名。
-		throw new Error("makeEmptyTarget:桥接入的目标要由拓展页按 bot 名单创建");
+	if (connection.kind !== "direct") {
+		// 拓展提供的连接上**没有平台**那一格 —— 它后面挂着哪个平台是运行时知识(桥是握手时
+		// 报的)。而目标的 `platform` 是必填非空,这个工厂手上没有可填的东西。眼下面板还建
+		// 不出拓展连接,所以这条路不可达;拓展页落地时这里换成「按拓展交上来的名单造」,
+		// 别在这儿编一个平台名。
+		throw new Error("makeEmptyTarget:拓展连接的目标要由拓展页按它自己的名单创建");
 	}
 	if (connection.platform === "onebot") {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };

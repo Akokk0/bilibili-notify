@@ -14,6 +14,7 @@ import {
 	type GlobalConfig,
 	GlobalConfigSchema,
 	isDirectConnection,
+	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	migrateConfigSections,
@@ -534,7 +535,7 @@ function syncManagedWebhookTargets(
 	let changed = false;
 	const aliases = new Map<string, string>();
 	for (const connection of connections) {
-		if (connection.connector !== "webhook") continue;
+		if (!isWebhookConnection(connection)) continue;
 		const r = syncManagedWebhookTarget(connection, next);
 		next = r.next;
 		changed ||= r.changed;
@@ -1256,18 +1257,17 @@ class NodeConfigStore implements ConfigStore {
 			return parsed.data;
 		});
 		let targetAliases = new Map<string, string>();
-		const targetsChanged =
-			saved.connector === "webhook"
-				? await this.runScoped("targets", async () => {
-						const synced = syncManagedWebhookTarget(saved, this.targets);
-						targetAliases = synced.aliases;
-						if (!synced.changed) return false;
-						await atomicWriteJson(this.path("targets"), synced.next);
-						this.targets = synced.next;
-						this.touch("targets");
-						return true;
-					})
-				: false;
+		const targetsChanged = isWebhookConnection(saved)
+			? await this.runScoped("targets", async () => {
+					const synced = syncManagedWebhookTarget(saved, this.targets);
+					targetAliases = synced.aliases;
+					if (!synced.changed) return false;
+					await atomicWriteJson(this.path("targets"), synced.next);
+					this.targets = synced.next;
+					this.touch("targets");
+					return true;
+				})
+			: false;
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
 		this.bus.emit("config-changed", "connections");
 		if (targetsChanged) this.bus.emit("config-changed", "targets");
@@ -1299,18 +1299,17 @@ class NodeConfigStore implements ConfigStore {
 			return parsed.data;
 		});
 		let targetAliases = new Map<string, string>();
-		const targetsChanged =
-			result.connector === "webhook"
-				? await this.runScoped("targets", async () => {
-						const synced = syncManagedWebhookTarget(result, this.targets);
-						targetAliases = synced.aliases;
-						if (!synced.changed) return false;
-						await atomicWriteJson(this.path("targets"), synced.next);
-						this.targets = synced.next;
-						this.touch("targets");
-						return true;
-					})
-				: false;
+		const targetsChanged = isWebhookConnection(result)
+			? await this.runScoped("targets", async () => {
+					const synced = syncManagedWebhookTarget(result, this.targets);
+					targetAliases = synced.aliases;
+					if (!synced.changed) return false;
+					await atomicWriteJson(this.path("targets"), synced.next);
+					this.targets = synced.next;
+					this.touch("targets");
+					return true;
+				})
+			: false;
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
 		this.bus.emit("config-changed", "connections");
 		if (targetsChanged) this.bus.emit("config-changed", "targets");
@@ -1328,7 +1327,7 @@ class NodeConfigStore implements ConfigStore {
 			// 删除执行前一个 upsertTarget 引用该连接即产生孤儿 target。
 			// (互补:upsertTarget 侧 assertTargetOwner 也校验连接存在。)
 			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
-			if (connection.connector !== "webhook" && referencing.length > 0) {
+			if (!isWebhookConnection(connection) && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"connections",
 					{ id, targetIds: referencing, message: "connection still in use" },
@@ -1345,7 +1344,7 @@ class NodeConfigStore implements ConfigStore {
 
 		let targetsChanged = false;
 		let subscriptionsChanged = false;
-		if (removedConnection.connector === "webhook") {
+		if (isWebhookConnection(removedConnection)) {
 			let removedTargetIds: string[] = [];
 			targetsChanged = await this.runScoped("targets", async () => {
 				removedTargetIds = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
@@ -1397,7 +1396,7 @@ class NodeConfigStore implements ConfigStore {
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
 			const owner = this.connections.find((a) => a.id === parsed.data.connectionId);
-			if (owner?.connector === "webhook") {
+			if (owner && isWebhookConnection(owner)) {
 				const synced = syncManagedWebhookTarget(owner, next);
 				next = synced.next;
 				targetAliases = synced.aliases;

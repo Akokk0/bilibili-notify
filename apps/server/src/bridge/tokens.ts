@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { Connection } from "@bilibili-notify/internal";
+import { asBridgeConnection } from "./connection.js";
 
 /**
  * 这条 token 是哪条桥接入的 —— 认不出就是 `null`。
@@ -18,8 +19,9 @@ export function resolveBridgeToken(
 ): string | null {
 	const given = digest(token);
 	let matched: string | null = null;
-	for (const connection of connections) {
-		if (connection.kind !== "bridge") continue;
+	for (const raw of connections) {
+		const connection = asBridgeConnection(raw);
+		if (!connection) continue;
 		// 空 token 存得下(脱敏备份把它抹成空串,存不回去等于备份恢复不了),但**永远不许
 		// 匹配** —— 否则恢复回来的那条接入谁都能连。这个分支只看配置、不看来人,不漏时序。
 		if (connection.config.token === "") continue;
