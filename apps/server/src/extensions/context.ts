@@ -1,3 +1,4 @@
+import type { ExtensionConfigField } from "@bilibili-notify/contract";
 import {
 	type Connection,
 	type Disposable,
@@ -16,6 +17,7 @@ import type {
 	InboundSinks,
 	PlatformAdapter,
 } from "../platforms/types.js";
+import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { type ExtensionFetchHandler, type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import type { ExtensionUpgradeHandler, ExtensionUpgrades } from "./upgrade.js";
 
@@ -40,6 +42,11 @@ export interface PushExtensionDef<TConfig> {
 	descriptor: ExtensionDescriptor;
 	/** config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展。 */
 	configSchema: ZodType<TConfig>;
+	/**
+	 * config 的**字段表** —— 面板照它画表单。与 `configSchema` 是两份声明,
+	 * 注册那一刻逐格对表,对不上直接抛(决策 19 / 33)。
+	 */
+	configFields: readonly ExtensionConfigField[];
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */
@@ -271,6 +278,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
+			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
+			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
+			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields);
 			pushSourceRegistered = true;
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };

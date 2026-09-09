@@ -94,6 +94,18 @@ function def() {
 		adapter: fakeAdapter(),
 		descriptor: { label: "桥接", shortLabel: "桥" } as never,
 		configSchema: CONFIG,
+		configFields: [
+			{ kind: "text" as const, code: "token", label: "长期 token", secret: true },
+			{
+				kind: "select" as const,
+				code: "bridgeKind",
+				label: "哪一种桥",
+				options: [
+					{ value: "koishi", label: "koishi" },
+					{ value: "astrbot", label: "AstrBot" },
+				],
+			},
+		],
 	};
 }
 
@@ -111,6 +123,13 @@ describe("注册推送源", () => {
 		h.ctx.registerPushSource(def());
 		await h.runtime.dispose();
 		expect(h.adapters.list()).toEqual([]);
+	});
+
+	it("两份 config 声明对不上 → 注册那一刻就抛,不等到面板上才发现", () => {
+		const h = harness();
+		expect(() => h.ctx.registerPushSource({ ...def(), configFields: [] })).toThrow(
+			/必填键 "token"/,
+		);
 	});
 
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {

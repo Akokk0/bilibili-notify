@@ -74,6 +74,32 @@ export interface ExtensionDTO {
 	detail?: string;
 }
 
+/**
+ * 拓展 config 里的一栏 —— **可序列化的字段描述**,面板照它画控件(ADR-0012 决策 33)。
+ *
+ * 它与拓展交的那份 zod 是**两份声明**:这份给人填(标签、控件、提示),那份给机器校验
+ * (类型、必填、跨字段规则)。加载时逐格对表,对不上拒绝加载。
+ *
+ * 没有 `set` 那种回调:整条描述要能过 JSON 送到面板,而**值怎么落**是固定的 ——
+ * `config[code] = v`。所以第一版 config 必须是**扁平的一层键值**;跨字段联动表达不了,
+ * 那是认下的代价。
+ */
+export type ExtensionConfigField = ExtensionConfigFieldBase &
+	(
+		| { kind: "text"; placeholder?: string; mono?: boolean; secret?: boolean }
+		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
+		| { kind: "toggle" }
+		| { kind: "select"; options: readonly { value: string; label: string }[] }
+	);
+
+interface ExtensionConfigFieldBase {
+	/** config 里的键名。**同时是这一栏的身份** —— 值就落在 `config[code]`。 */
+	code: string;
+	label: string;
+	hint?: string;
+	required?: boolean;
+}
+
 export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];
 }
