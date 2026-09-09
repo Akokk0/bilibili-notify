@@ -316,6 +316,7 @@ describe("/bridge 端点", () => {
 			forward: "unknown",
 			miniAppCard: "unknown",
 			shareCardLinks: "unknown",
+			markdown: "unknown",
 		});
 	});
 

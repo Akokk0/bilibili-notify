@@ -266,6 +266,8 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 								forward: "unknown",
 								miniAppCard: "unknown",
 								shareCardLinks: "unknown",
+								// 桥没报 markdown → 补成 unknown。BN 据此把主人写的排版剥成纯文本。
+								markdown: "unknown",
 							},
 						}),
 					],

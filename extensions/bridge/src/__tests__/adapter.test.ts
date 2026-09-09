@@ -19,6 +19,7 @@ import type {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createBridgeAdapter } from "../adapter.js";
 import type { BridgeConnectionConfig } from "../config.js";
+import type { BridgeCapabilityReport } from "../contract.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../server.js";
 
 /** 宿主交给拓展的那份连接视图 —— config 已经过本拓展那份 zod。 */
@@ -63,7 +64,11 @@ function target(over: Partial<PushTarget> = {}): PushTarget {
 	} as PushTarget;
 }
 
-function session(over: Partial<BridgeSession> = {}): BridgeSession {
+/** 一条会话,可以只改某一格能力 —— markdown 那一档的用例全靠它。 */
+function session(
+	over: Partial<BridgeSession> = {},
+	caps: Partial<BridgeCapabilityReport> = {},
+): BridgeSession {
 	return {
 		connectionId: CONNECTION_ID,
 		kind: "koishi",
@@ -77,6 +82,8 @@ function session(over: Partial<BridgeSession> = {}): BridgeSession {
 					forward: "unknown",
 					miniAppCard: "unknown",
 					shareCardLinks: "unknown",
+					markdown: "unknown",
+					...caps,
 				},
 			},
 		],
@@ -393,5 +400,71 @@ describe("桥 adapter", () => {
 		const h = harness();
 		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 🔴 **主人写在文案模板里的 markdown,按 bot 的能力降级**(ADR-0012 决策 32)。
+ *
+ * 分叉的理由很实在:不认 markdown 的那一头收到的是**字面上的一堆星号**。宁可少点排版,
+ * 也别让群里收到一串符号。而这件事只有桥知道 —— 能力是 per-bot 的。
+ */
+describe("markdown 按能力降级", () => {
+	const RICH = "**开播**了,[进直播间](https://live.bilibili.com/1)";
+	const PLAIN = "开播了,进直播间 https://live.bilibili.com/1";
+
+	async function sendText(caps: Partial<BridgeCapabilityReport>, text = RICH) {
+		const h = harness(session({}, caps));
+		await h.adapter.send(connection(), target(), { kind: "text", text }, {});
+		return h.lastRequest().message;
+	}
+
+	it("报了 supported → 原样发,一个字不动", async () => {
+		expect(await sendText({ markdown: "supported" })).toEqual({ kind: "text", text: RICH });
+	});
+
+	it("报了 unsupported → 剥成纯文本", async () => {
+		expect(await sendText({ markdown: "unsupported" })).toEqual({ kind: "text", text: PLAIN });
+	});
+
+	/** 拿不准就别发星号 —— `unknown` 与 `unsupported` 在这件事上做同一个选择。 */
+	it("没报(unknown)→ 也剥", async () => {
+		expect(await sendText({ markdown: "unknown" })).toEqual({ kind: "text", text: PLAIN });
+	});
+
+	it("图说明也过一遍 —— 它跟正文一样是主人写的", async () => {
+		const h = harness(session({}, { markdown: "unknown" }));
+		await h.adapter.send(
+			connection(),
+			target(),
+			{ kind: "image", image: { buffer: Buffer.from("x"), mime: "image/png" }, caption: RICH },
+			{},
+		);
+		expect(h.lastRequest().message).toMatchObject({ kind: "image", caption: PLAIN });
+	});
+
+	it("composite:每一段文字都过一遍,图那一段不受影响", async () => {
+		const h = harness(session({}, { markdown: "unknown" }));
+		await h.adapter.send(
+			connection(),
+			target(),
+			{
+				kind: "composite",
+				segments: [
+					{ type: "text", text: RICH },
+					{ type: "image", buffer: Buffer.from("x"), mime: "image/png" },
+					{ type: "link", href: "https://b23.tv/a", title: "**标题**" },
+				],
+			},
+			{},
+		);
+		expect(h.lastRequest().message).toEqual({
+			kind: "composite",
+			segments: [
+				{ type: "text", text: PLAIN },
+				{ type: "image", url: "http://192.168.1.5:8787/ext/bridge/blob/blob1", mime: "image/png" },
+				{ type: "link", href: "https://b23.tv/a", title: "标题" },
+			],
+		});
 	});
 });

@@ -27,7 +27,7 @@ import { type Connection, newId } from "../../types/domain";
  * 所以下面这些类型是**本地的**:契约里一格桥的字都没有,也不该有。
  */
 
-/** 桥自报的五项能力,三态。 */
+/** 桥自报的六项能力,三态。 */
 type CapabilityState = "supported" | "unsupported" | "unknown";
 
 interface BridgeBotView {
@@ -70,6 +70,7 @@ const CAPABILITIES: ReadonlyArray<{ code: string; label: string }> = [
 	{ code: "forward", label: "合并转发" },
 	{ code: "miniAppCard", label: "小程序卡" },
 	{ code: "shareCardLinks", label: "分享卡链接" },
+	{ code: "markdown", label: "markdown" },
 ];
 
 /**

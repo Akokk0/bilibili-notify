@@ -44,7 +44,7 @@ export interface BridgeProtocolVersion {
  * 谁大谁小都不管。所以:加可选字段 / 加新帧类型 → 只升 minor;改已有字段的含义或
  * 删字段 → 升 major(那会把所有旧插件挡在门外,是刻意的)。
  */
-export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 0 };
+export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 1 };
 
 /** 桥的种类。**BN 侧处理完全相同**,这一格只用来显示与排障。 */
 export const BRIDGE_KINDS = ["koishi", "astrbot"] as const;
@@ -55,7 +55,7 @@ export type BridgeKind = (typeof BRIDGE_KINDS)[number];
 // ---------------------------------------------------------------------------
 
 /**
- * 桥**必报**的五项能力。
+ * 桥**必报**的六项能力。
  *
  * 为什么是「声明」不是「探测」:四家框架(koishi/Satori、AstrBot、NoneBot、OneBot v11)
  * 都自省不了这些 —— koishi 的 `bot.supports()` 粒度是 Satori 的 **API 方法**
@@ -71,6 +71,11 @@ export type BridgeKind = (typeof BRIDGE_KINDS)[number];
  * - `forward` —— 合并转发(「聊天记录」卡)。
  * - `miniAppCard` —— 能不能发 QQ 小程序卡(要能向腾讯签 ark)。
  * - `shareCardLinks` —— 群里的分享卡 / 小程序卡消息,桥能不能解出里面的链接回传。
+ * - `markdown` —— 那一头认不认 markdown。**BN 据此分叉**:认就把主人写的排版原样发出去,
+ *   不认(或 `unknown`)就在 BN 这一侧剥成干净纯文本 —— 不然群里收到的是一堆星号。
+ *   ⛔ 与之相对,`link` 段怎么渲染**不是**能力项:那本来就归桥自己判,BN 不必据此分叉。
+ *   能力项的门槛是「**BN 要据此做不同的事**」,不是「对面有什么区别」。
+ *   BN 只出 CommonMark 的一个子集,**方言转换(转义 / 平台富文本)归桥**,BN 一种都不懂。
  *
  * **发文本恒真,不做成能力项** —— 一个连文本都发不出的 bot 没有接进来的意义。
  */
@@ -80,6 +85,7 @@ export const BRIDGE_CAPABILITIES = [
 	"forward",
 	"miniAppCard",
 	"shareCardLinks",
+	"markdown",
 ] as const;
 export type BridgeCapability = (typeof BRIDGE_CAPABILITIES)[number];
 
@@ -90,7 +96,7 @@ export type BridgeCapability = (typeof BRIDGE_CAPABILITIES)[number];
 export const BRIDGE_CAPABILITY_STATES = ["supported", "unsupported", "unknown"] as const;
 export type BridgeCapabilityState = (typeof BRIDGE_CAPABILITY_STATES)[number];
 
-/** 归一之后的能力表 —— 五项恒在。BN 内部只该看见这个形状。 */
+/** 归一之后的能力表 —— 六项恒在。BN 内部只该看见这个形状。 */
 export type BridgeCapabilityReport = Record<BridgeCapability, BridgeCapabilityState>;
 
 /**
@@ -121,7 +127,7 @@ export interface BridgeBotWire {
 	capabilities?: BridgeCapabilityWire;
 }
 
-/** 归一之后的 bot —— 能力表已补成五项恒在。 */
+/** 归一之后的 bot —— 能力表已补成六项恒在。 */
 export interface BridgeBot extends Omit<BridgeBotWire, "capabilities"> {
 	capabilities: BridgeCapabilityReport;
 }

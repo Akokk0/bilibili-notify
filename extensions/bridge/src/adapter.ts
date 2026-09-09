@@ -28,6 +28,7 @@ import {
 	type BridgeMessage,
 	type BridgeSegment,
 } from "./contract.js";
+import { stripMarkdown } from "./markdown.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
 
 /** 一条桥接入 —— 宿主已经拿本拓展那份 zod 把 config 解好了(决策 30)。 */
@@ -57,16 +58,22 @@ export interface BridgeAdapterOptions {
 /** 「把这张图存起来,给我一条**这条桥**取得到的 URL」。 */
 type BlobUrl = (buffer: Buffer, mime: string) => string;
 
+/**
+ * 主人写的那段文字**这一发该怎么出去** —— 认 markdown 就原样,不认就剥成纯文本
+ * (ADR-0012 决策 32)。逐 bot 决定,所以它是投影的入参而不是模块级的开关。
+ */
+type PlainText = (text: string) => string;
+
 type SessionTarget = Extract<PushTarget, { kind: "session" }>;
 
 type Resolved =
 	| { ok: true; bot: BridgeBot; target: SessionTarget; session: BridgeSession }
 	| { ok: false; err: string };
 
-function toSegment(segment: PayloadSegment, blobUrl: BlobUrl): BridgeSegment {
+function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText): BridgeSegment {
 	switch (segment.type) {
 		case "text":
-			return { type: "text", text: segment.text };
+			return { type: "text", text: plain(segment.text) };
 		case "image":
 			return {
 				type: "image",
@@ -74,7 +81,8 @@ function toSegment(segment: PayloadSegment, blobUrl: BlobUrl): BridgeSegment {
 				mime: segment.mime,
 			};
 		case "link":
-			return { type: "link", href: segment.href, title: segment.title };
+			// `href` 不过 —— 它是地址,不是主人写的排版。标题过。
+			return { type: "link", href: segment.href, title: plain(segment.title ?? "") || undefined };
 		case "at-all":
 			// 桥按 `atAll` 能力决定翻成真 @全体还是降级成一句文字 —— 那是它那侧的事。
 			return { type: "at-all" };
@@ -89,21 +97,25 @@ function toSegment(segment: PayloadSegment, blobUrl: BlobUrl): BridgeSegment {
  * 唯一的实质转换是**图**:`Buffer` 过不了 JSON,换成一次性取图 URL。已经是远端 URL 的
  * (图廊、小程序卡封面)原样透传 —— 它们本来就公网可达,再倒一手只是白占内存。
  */
-function toBridgeMessage(payload: NotificationPayload, blobUrl: BlobUrl): BridgeMessage {
+function toBridgeMessage(
+	payload: NotificationPayload,
+	blobUrl: BlobUrl,
+	plain: PlainText,
+): BridgeMessage {
 	switch (payload.kind) {
 		case "text":
-			return { kind: "text", text: payload.text };
+			return { kind: "text", text: plain(payload.text) };
 		case "image":
 			return {
 				kind: "image",
 				url: blobUrl(payload.image.buffer, payload.image.mime),
 				mime: payload.image.mime,
-				caption: payload.caption,
+				caption: payload.caption === undefined ? undefined : plain(payload.caption),
 			};
 		case "composite":
 			return {
 				kind: "composite",
-				segments: payload.segments.map((segment) => toSegment(segment, blobUrl)),
+				segments: payload.segments.map((segment) => toSegment(segment, blobUrl, plain)),
 			};
 		case "forward-images":
 			return {
@@ -116,6 +128,8 @@ function toBridgeMessage(payload: NotificationPayload, blobUrl: BlobUrl): Bridge
 				forward: payload.forward,
 			};
 		case "miniapp-card":
+			// 小程序卡那几格**不过剥离**:它们是卡片的结构化字段,由平台自己渲染,
+			// 从来不是一段 markdown 正文。
 			return {
 				kind: "miniapp-card",
 				title: payload.title,
@@ -192,6 +206,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
 			const blobUrl: BlobUrl = (buffer, mime) =>
 				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
+			// 拿不准就别发星号:只有明确报了 `supported` 才原样发(决策 32)。
+			const plain: PlainText =
+				resolved.bot.capabilities.markdown === "supported" ? (text) => text : stripMarkdown;
 			const request: BridgeSendRequest = {
 				botId: resolved.bot.botId,
 				platform: resolved.target.platform,
@@ -200,7 +217,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 					address: resolved.target.address,
 					parentAddress: resolved.target.parentAddress,
 				},
-				message: toBridgeMessage(payload, blobUrl),
+				message: toBridgeMessage(payload, blobUrl, plain),
 			};
 			const outcome = await server.send(connection.id, request);
 			return { ok: outcome.ok, latencyMs: Date.now() - t0, err: outcome.err };

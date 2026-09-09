@@ -176,7 +176,7 @@ export function isBridgeProtocolCompatible(theirs: BridgeProtocolVersion): boole
 const CAPABILITY_STATES: ReadonlySet<string> = new Set(BRIDGE_CAPABILITY_STATES);
 
 /**
- * 开放词表 → 闭合的五项三态。归一**只在边界做这一次**:让「桥没报」以 `unknown`
+ * 开放词表 → 闭合的六项三态。归一**只在边界做这一次**:让「桥没报」以 `unknown`
  * 的身份进业务层,而不是以「这个键不存在」的身份 —— 后者迟早在某处被 `?? true`
  * 之类的兜底悄悄当成「支持」。
  *

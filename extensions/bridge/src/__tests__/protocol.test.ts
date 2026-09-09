@@ -6,7 +6,7 @@
  *    前者反了 → 桥升级多发一种帧就把老 BN 打死(协议再也没法单边演进);
  *    后者反了 → 一条畸形帧被当成正常帧喂进 BN 内部。
  * 2. **能力表要归一**。桥报的是开放词表(它可能少报、多报、报个 BN 没见过的值),
- *    BN 内部只该看见闭合的五项三态 —— 归一放在边界上做一次,别让「缺失」漏进业务层
+ *    BN 内部只该看见闭合的六项三态 —— 归一放在边界上做一次,别让「缺失」漏进业务层
  *    再被 `?? true` 之类的兜底悄悄当成「支持」。
  * 3. **版本按 major 判**。minor 不同要能连上,不然协议加一个可选字段就得两边同时发版。
  */
@@ -165,7 +165,7 @@ describe("isBridgeProtocolCompatible", () => {
 });
 
 describe("normalizeBridgeCapabilities", () => {
-	it("五项恒在 —— 桥没报的一律 unknown,不是 unsupported 也不是支持", () => {
+	it("六项恒在 —— 桥没报的一律 unknown,不是 unsupported 也不是支持", () => {
 		const caps = normalizeBridgeCapabilities({ atAll: "supported" });
 		expect(Object.keys(caps).sort()).toEqual([...BRIDGE_CAPABILITIES].sort());
 		expect(caps.atAll).toBe("supported");

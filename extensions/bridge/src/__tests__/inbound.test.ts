@@ -23,6 +23,7 @@ function bot(over: Partial<BridgeBot> = {}): BridgeBot {
 			forward: "unknown",
 			miniAppCard: "unknown",
 			shareCardLinks: "unknown",
+			markdown: "unknown",
 		},
 		...over,
 	};
