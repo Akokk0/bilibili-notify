@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { Connection } from "@bilibili-notify/internal";
-import { asBridgeConnection } from "./connection.js";
+import type { ExtensionConnectionView } from "@bilibili-notify/extension";
+import type { BridgeConnectionConfig } from "./config.js";
 
 /**
  * 这条 token 是哪条桥接入的 —— 认不出就是 `null`。
@@ -11,17 +11,16 @@ import { asBridgeConnection } from "./connection.js";
  * **不提前退出**,比对次数只跟连接条数有关。
  *
  * 「认得」不等于「现在收」:停用的接入照样认得出来 —— 那一层由 `BridgeServerOptions.accepts`
- * 判,它回 503 而不是 401,插件据此退避重连而不是当成配置错。
+ * 判,它回 503 而不是 401,插件据此退避重连而不是当成配置错。**所以名单里必须有停用的那些**
+ * (`ctx` 给的正是全量,见 ADR-0012 决策 30)。
  */
 export function resolveBridgeToken(
-	connections: readonly Connection[],
+	connections: readonly ExtensionConnectionView<BridgeConnectionConfig>[],
 	token: string,
 ): string | null {
 	const given = digest(token);
 	let matched: string | null = null;
-	for (const raw of connections) {
-		const connection = asBridgeConnection(raw);
-		if (!connection) continue;
+	for (const connection of connections) {
 		// 空 token 存得下(脱敏备份把它抹成空串,存不回去等于备份恢复不了),但**永远不许
 		// 匹配** —— 否则恢复回来的那条接入谁都能连。这个分支只看配置、不看来人,不漏时序。
 		if (connection.config.token === "") continue;

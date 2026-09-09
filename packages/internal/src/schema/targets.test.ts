@@ -624,8 +624,8 @@ describe("拓展连接", () => {
 		name: "家里那台",
 		enabled: true,
 		kind: "extension",
-		extensionId: "bridge",
-		config: { token: "t0ken", bridgeKind: "koishi" },
+		extensionId: "demo-ext",
+		config: { token: "t0ken", flavor: "a" },
 	};
 
 	it("存得下,而且没有 platform / connector 那两格", () => {
@@ -637,7 +637,7 @@ describe("拓展连接", () => {
 
 	it("分发键 = extensionId —— 装几个拓展就是几个键,撞不了", () => {
 		const parsed = ConnectionSchema.parse(base);
-		expect(connectionDispatchKey(parsed)).toBe("bridge");
+		expect(connectionDispatchKey(parsed)).toBe("demo-ext");
 		const other = ConnectionSchema.parse({ ...base, extensionId: "matrix" });
 		expect(connectionDispatchKey(other)).toBe("matrix");
 	});
@@ -653,14 +653,22 @@ describe("拓展连接", () => {
 		expect(isConnectionOn(parsed, "onebot")).toBe(false);
 	});
 
-	it('`kind:"bridge"` 那支没了 —— 桥就是一个拓展,核心里不该再有它的特例', () => {
+	/**
+	 * 🔴 **一个拓展不许占 `kind` 的一档。**
+	 *
+	 * 判别子只有 `direct` / `extension` 两档,拓展的身份住 `extensionId`。给每个拓展开一档
+	 * `kind` 的话判别键不可枚举 —— zod 会在**第一次 parse** 时抛
+	 * `Invalid discriminated union option`,门禁全绿,炸在开机读配置那一刻。
+	 * (核心里曾经真有过这样一支,随桥接搬进拓展一起拆掉了。)
+	 */
+	it("拓展不许自己占一档 kind —— 判别键得可枚举", () => {
 		const legacy = {
 			id: base.id,
 			name: base.name,
 			enabled: true,
-			kind: "bridge",
-			connector: "bridge",
-			config: { token: "t0ken", bridgeKind: "koishi" },
+			kind: "demo-ext",
+			connector: "demo-ext",
+			config: { token: "t0ken" },
 		};
 		expect(ConnectionSchema.safeParse(legacy).success).toBe(false);
 	});

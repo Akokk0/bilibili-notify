@@ -152,9 +152,11 @@ describe("standalone server lifecycle", () => {
 		const listed = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string; name: string }>;
 		};
-		expect(listed.extensions).toEqual([
+		// ⚠️ 源码运行时**仓里那个真桥也在名单里**(源码根,决策 35),所以这里挑自己种的
+		// 那条看,不断整张表 —— 断整张表的话谁往仓里加个拓展这条就红,而它并没有坏。
+		expect(listed.extensions).toContainEqual(
 			expect.objectContaining({ id: "demo", state: "disabled", name: "示例拓展" }),
-		]);
+		);
 		await handle.close("test");
 
 		// 把开关拨开,重启 —— 换代码要重启,换开关本来不用,但这里连开机接线一起验。
@@ -168,9 +170,9 @@ describe("standalone server lifecycle", () => {
 		const running = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string }>;
 		};
-		expect(running.extensions).toEqual([
+		expect(running.extensions).toContainEqual(
 			expect.objectContaining({ id: "demo", state: "running", enabled: true }),
-		]);
+		);
 	});
 
 	/**
@@ -224,9 +226,9 @@ describe("standalone server lifecycle", () => {
 		const listed = (await (await fetch(`${handle.url}/api/ext`)).json()) as {
 			extensions: Array<{ id: string; state: string; name: string }>;
 		};
-		expect(listed.extensions).toEqual([
+		expect(listed.extensions).toContainEqual(
 			expect.objectContaining({ id: "shipped", state: "disabled", name: "随载荷带的拓展" }),
-		]);
+		);
 		await handle.close("test");
 
 		const globalsPath = join(dataDir, "state", "globals.json");
@@ -239,38 +241,69 @@ describe("standalone server lifecycle", () => {
 	});
 
 	/**
-	 * 桥接那三样东西(端点 / 取图口 / 矩阵里的 adapter)在 `index.ts` 里装配,除了这里
-	 * **没有别的地方证明它们真的挂上了** —— 各自的单元测试都是在自己搭的 server 上跑的。
-	 * 装配漏一步的症状是「插件连不上 / 图 404」,而进程照常启动、日志一个字都不说。
+	 * 🔴 **桥现在是个拓展了,这条守卫跟着变成「整条拓展流水线通不通」。**
+	 *
+	 * 从前它证明的是 `index.ts` 有没有把桥那三样(端点 / 取图口 / 矩阵)接上;现在核心里
+	 * 一根桥的线都没有了,要证明的是:扫多根扫到了仓里那份源码 → 开关开着 → 真 import 了
+	 * `src/index.ts` → `activate` 跑通 → `ctx.mount` 与 `ctx.onUpgrade` 都真的接进了 HTTP
+	 * server。**任何一环断掉,症状都是「插件连不上 / 图 404」,而进程照常启动、日志一个字
+	 * 都不说。**
+	 *
+	 * 拿真桥而不是再种一个假拓展:假的证明不了那条 upgrade 分发真的把 socket 交到了拓展
+	 * 手里(它得有个 WS 服务器才接得住)。
 	 */
-	it("启动之后 /bridge 与取图口都在:没 token 的 upgrade 被拒,取不到的图是 404", async () => {
-		const port = await findFreePort();
-		handle = await startStandaloneServer({
-			argv: [
-				"--host",
-				"127.0.0.1",
-				"--port",
-				String(port),
-				"--data-dir",
-				dataDir,
-				"--log-level",
-				"silent",
-			],
-			env: makeEnv(),
-			shutdownTimeoutMs: 1_000,
-		});
+	it("桥拓展开着:`/ext/bridge` 的无 token upgrade 回 401,取图口回 404", async () => {
+		const boot = async () => {
+			const port = await findFreePort();
+			const started = await startStandaloneServer({
+				argv: [
+					"--host",
+					"127.0.0.1",
+					"--port",
+					String(port),
+					"--data-dir",
+					dataDir,
+					"--log-level",
+					"silent",
+				],
+				env: makeEnv(),
+				shutdownTimeoutMs: 1_000,
+			});
+			return { started, port };
+		};
 
-		// 取图口在 `/api/*` 之外,所以这一发不带任何凭据也该走到路由(而不是被鉴权挡掉)。
-		const blob = await fetch(`${handle.url}/bridge/blob/0123456789abcdef0123456789abcdef`);
+		// 头一趟只为把 globals 落到盘上 —— 开关缺失 = 关着(决策 34:开箱即有 ≠ 默认开着)。
+		handle = (await boot()).started;
+		await handle.close("test");
+		const globalsPath = join(dataDir, "state", "globals.json");
+		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
+		globals.extensions = { bridge: { enabled: true } };
+		await writeFile(globalsPath, JSON.stringify(globals));
+
+		const second = await boot();
+		handle = second.started;
+
+		// `activate` 真的跑完了 —— 它最后一件事是 `ctx.publishStatus`,而这条口只有跑完
+		// 才答得出来。⚠️ 光断取图口那个 404 是不够的:拓展**根本没装载**时,请求会落到
+		// 挂载表自己那句「没这个拓展」,body 一模一样(实测过,那条断言两种情况都绿)。
+		const status = await fetch(`${handle.url}/api/ext/bridge/status`);
+		expect(status.status).toBe(200);
+		expect(await status.json()).toEqual({ sessions: [] });
+
+		// 取图口在 `/api/*` 之外,所以这一发不带任何凭据也该走到拓展的 handler。
+		const blob = await fetch(`${handle.url}/ext/bridge/blob/0123456789abcdef0123456789abcdef`);
 		expect(blob.status).toBe(404);
-		// 断 body 不只断状态码:路由**没挂上**的话请求落到 Hono 的默认 404,那也是 404 ——
+		// 断 body 不只断状态码:挂载点**没接上**的话请求落到 Hono 的默认 404,那也是 404 ——
 		// 只看状态码的话这条守卫永远不会红(实测过)。
 		expect(await blob.text()).toBe('{"ok":false,"err":"not found"}');
 
-		// `/bridge` 挂上了 —— 挂上才会有人应答 upgrade,没挂的话这条连接会一直吊着。
-		const status = await new Promise<number>((resolve, reject) => {
-			const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`);
-			const timer = setTimeout(() => reject(new Error("没人应答 upgrade:/bridge 没挂上")), 2_000);
+		// upgrade 交到桥手里了 —— 交到了才会有人应答,没交的话这条连接会一直吊着。
+		const upgradeStatus = await new Promise<number>((resolve, reject) => {
+			const socket = new WebSocket(`ws://127.0.0.1:${second.port}/ext/bridge`);
+			const timer = setTimeout(
+				() => reject(new Error("没人应答 upgrade:/ext/bridge 没接到桥手里")),
+				2_000,
+			);
 			socket.on("unexpected-response", (_req, res) => {
 				clearTimeout(timer);
 				socket.terminate();
@@ -283,7 +316,7 @@ describe("standalone server lifecycle", () => {
 			});
 			socket.on("error", () => {});
 		});
-		expect(status).toBe(401);
+		expect(upgradeStatus).toBe(401);
 	});
 
 	it("non-loopback 无 auth 且无 BN_ALLOW_NO_AUTH 时拒绝启动但不调用 process.exit", async () => {

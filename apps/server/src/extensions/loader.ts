@@ -99,6 +99,8 @@ export interface LoadExtensionsOptions {
 	/** WS upgrade 的分发表。 */
 	upgrades: ExtensionUpgrades;
 	isEnabled(id: string): boolean;
+	/** 载荷版本号,原样交给每个拓展的 ctx。 */
+	hostVersion?: string;
 	/** 连着失败多少次就自动停用。 */
 	maxFailures: number;
 	/**
@@ -181,6 +183,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			onConnectionsChanged: opts.onConnectionsChanged,
 			inbound: opts.inbound,
 			upgrades: opts.upgrades,
+			hostVersion: opts.hostVersion,
 		});
 		try {
 			// 入口是**宿主按根算出来的**(源码根 `src/index.ts`,其余 `index.mjs`),

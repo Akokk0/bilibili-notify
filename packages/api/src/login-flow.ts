@@ -48,7 +48,7 @@ const MESSAGES: Record<LoginStatusMsgKey, string> = {
 /** Snapshot of the current login state — alias of BiliDataServer for API consumers. */
 export type LoginSnapshot = BiliDataServer;
 
-/** Outcome of a single QR poll tick. The bridge does not need to act on this directly. */
+/** Outcome of a single QR poll tick. Callers do not need to act on this directly. */
 export type LoginPollResult =
 	| { kind: "pending"; reason: "waitScan" | "waitConfirm" }
 	| { kind: "success" }

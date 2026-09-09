@@ -270,7 +270,7 @@ export const GlobalConfigSchema = z.object({
 	 */
 	update: UpdateSettingsSchema.default(DEFAULT_UPDATE_SETTINGS),
 	/**
-	 * 拓展模块的开关,键是模块 id(如 {@link BRIDGE_EXTENSION_ID})。
+	 * 拓展的开关,键是拓展 id(= 装载目录名 = 挂载点那一段)。
 	 *
 	 * **开放词表**,不是 `z.enum`:模块是编进产物的,而配置活得比某一版产物久 —— 一次
 	 * 回退、一次撤下,配置里就会多出一个当下没人认领的 id。闭集会把它判成非法(整份

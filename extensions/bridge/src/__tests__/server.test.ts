@@ -9,10 +9,9 @@
 
 import { createServer, type Server as HttpServer, type IncomingMessage } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
-import { BRIDGE_CLOSE_CODES, BRIDGE_PROTOCOL_VERSION } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
-import type { NodeServiceContext } from "../../runtime/service-context.js";
+import { BRIDGE_CLOSE_CODES, BRIDGE_PROTOCOL_VERSION } from "../contract.js";
 import {
 	type BridgeServer,
 	type BridgeSession,
@@ -23,10 +22,18 @@ import {
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TOKEN = "good-token";
 
-function fakeServiceCtx(): NodeServiceContext {
-	return {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-	} as unknown as NodeServiceContext;
+const SILENT = { info() {}, warn() {}, error() {}, debug() {} };
+
+/**
+ * 把桥接上一台真 HTTP server —— **宿主做的就是这件事**:按 `/ext/<id>` 前缀挑出属于它的
+ * upgrade,剥掉前缀,把剩下那一段连同三样原料交过来(见 `extensions/upgrade.ts`)。
+ */
+function serve(httpServer: HttpServer, server: BridgeServer): void {
+	httpServer.removeAllListeners("upgrade");
+	httpServer.on("upgrade", (req, socket, head) => {
+		const path = (req.url ?? "").replace(/^\/ext\/bridge/, "").split("?")[0] ?? "";
+		server.upgrade({ req, socket, head, path });
+	});
 }
 
 function helloFrame(over: Record<string, unknown> = {}) {
@@ -40,8 +47,8 @@ function helloFrame(over: Record<string, unknown> = {}) {
 }
 
 /** 一个假桥 —— 把帧、关闭码、upgrade 的 HTTP 状态都攒起来,好让测试等它们。 */
-function peer(port: number, token: string | null) {
-	const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, {
+function peer(port: number, token: string | null, path = "") {
+	const socket = new WebSocket(`ws://127.0.0.1:${port}/ext/bridge${path}`, {
 		headers: token === null ? {} : { Authorization: `Bearer ${token}` },
 	});
 	const frames: Record<string, unknown>[] = [];
@@ -176,7 +183,7 @@ describe("/bridge 端点", () => {
 	async function boot(over: Partial<Parameters<typeof createBridgeServer>[0]> = {}) {
 		server?.dispose();
 		server = createBridgeServer({
-			serviceCtx: fakeServiceCtx(),
+			logger: SILENT,
 			serverVersion: "9.9.9",
 			resolveToken: (token) => (token === TOKEN ? CONNECTION_ID : null),
 			inbound: () => ({ private: true, group: "with-links" }),
@@ -189,7 +196,7 @@ describe("/bridge 端点", () => {
 			onBots: (connectionId, bots) => botsCalls.push({ connectionId, bots }),
 			...over,
 		});
-		server.attach(httpServer);
+		serve(httpServer, server);
 	}
 
 	function join(token: string | null = TOKEN): Peer {
@@ -231,14 +238,18 @@ describe("/bridge 端点", () => {
 
 	// ---- 鉴权在 upgrade ----------------------------------------------------
 
-	it("**没挂上 HTTP server 就不收连接** —— 装配顺序上它比 serve() 早生出来", async () => {
-		server.dispose();
-		server = createBridgeServer({
-			serviceCtx: fakeServiceCtx(),
-			serverVersion: "9.9.9",
-			resolveToken: () => CONNECTION_ID,
-			inbound: () => ({ private: true, group: "with-links" }),
-		});
+	/**
+	 * 挂载点底下**还有别的路**(取图口是 `/blob/<id>`),只有根那一条是 WS。从前这一层
+	 * 自己比对绝对路径 `/bridge`;现在宿主已经按前缀分过,它只需要认「剩下的那一段」。
+	 */
+	it("挂载点底下的别的路径不是 WS —— 回 404,不是把 socket 吊着", async () => {
+		const p = peer(port, TOKEN, "/blob/abc");
+		peers.push(p);
+		expect(await p.waitRejected()).toBe(404);
+	});
+
+	it("**没挂上 HTTP server 就不收连接** —— 那时它根本收不到 upgrade", async () => {
+		httpServer.removeAllListeners("upgrade");
 		const p = join();
 		// 没人应答 upgrade:既不会开成 WS,也不会收到 HTTP 拒绝。
 		await new Promise((r) => setTimeout(r, 40));

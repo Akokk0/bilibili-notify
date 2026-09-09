@@ -5,33 +5,45 @@
  * 协议帧交出去,编解码全在桥那一侧(它借的是 koishi / AstrBot 已经写好的适配器)。所以
  * 这里没有任何平台名 —— 桥后面挂着 telegram 还是 discord,BN 一概不预设。
  *
- * 它按**分发键** `"bridge"` 认领:一条桥连接没有 `platform`,`connectionDispatchKey`
- * 给它的就是这个键。协议规范在 `docs/protocol/bridge.md`。
+ * 它按**分发键**认领,而那个键**由宿主按拓展 id 填**(ADR-0012 决策 28)—— 自报的话,
+ * 一个拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走。归属是宿主的判断。
+ * 协议规范在 `../PROTOCOL.md`。
  */
 
+import type { ExtensionConnectionView } from "@bilibili-notify/extension";
+import type {
+	Connection,
+	DeliveryResult,
+	NotificationPayload,
+	PayloadSegment,
+	PlatformAdapter,
+	ProbeResult,
+	PushTarget,
+} from "@bilibili-notify/internal";
+import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
+import type { BridgeConnectionConfig } from "./config.js";
 import {
 	BRIDGE_CLOSE_CODES,
 	type BridgeBot,
 	type BridgeMessage,
 	type BridgeSegment,
-} from "@bilibili-notify/contract";
-import type { PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
-import {
-	BRIDGE_DISPATCH_KEY,
-	type Connection,
-	connectionDispatchKey,
-	type DeliveryResult,
-	type Logger,
-	type NotificationPayload,
-	type PayloadSegment,
-	type PushTarget,
-} from "@bilibili-notify/internal";
-import { BRIDGE_BLOB_PATH, type BridgeBlobStore } from "../bridge/blob.js";
-import { asBridgeConnection, type BridgeConnection } from "../bridge/connection.js";
-import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../bridge/server.js";
+} from "./contract.js";
+import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
+
+/** 一条桥接入 —— 宿主已经拿本拓展那份 zod 把 config 解好了(决策 30)。 */
+type BridgeConnection = ExtensionConnectionView<BridgeConnectionConfig>;
 
 export interface BridgeAdapterOptions {
 	server: BridgeServer;
+	/**
+	 * 属于自己的连接,**现读**。别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」。
+	 */
+	connections(): readonly BridgeConnection[];
+	/**
+	 * 宿主分配给本拓展的挂载前缀(`ctx.mount()` 的返回值,形如 `/ext/bridge`)。
+	 * **拓展不该知道自己挂在哪**(决策 12),拼绝对地址时才用得上它。
+	 */
+	mountPath: string;
 	/**
 	 * 图片仓库 —— 只用得着「存进去」那一半(取图是路由的事)。
 	 *
@@ -40,7 +52,6 @@ export interface BridgeAdapterOptions {
 	 * 所以 URL 拿的是**那条桥自己连进来时用的地址**({@link BridgeSession.origin})。
 	 */
 	blobs: Pick<BridgeBlobStore, "put">;
-	logger: Logger;
 }
 
 /** 「把这张图存起来,给我一条**这条桥**取得到的 URL」。 */
@@ -118,6 +129,7 @@ function toBridgeMessage(payload: NotificationPayload, blobUrl: BlobUrl): Bridge
 
 export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter {
 	const { server, blobs } = opts;
+	const blobPrefix = `${opts.mountPath}${BRIDGE_BLOB_SEGMENT}`;
 	/**
 	 * 上一轮对账时每条桥接入的 token。**只为了发现「token 被重新生成了」** —— 会话本身
 	 * 不带 token,而重新生成 token 却踢不掉旧连接的话,那个动作就等于没做。
@@ -131,10 +143,10 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 	 * 不看名单就发,等于把推送扔进黑洞再等 30 秒超时,用户看到的是「发了一半才失败」。
 	 */
 	function resolve(connection: Connection, target: PushTarget): Resolved {
-		const bridge = asBridgeConnection(connection);
-		if (!bridge) {
-			return { ok: false, err: `不是桥接入(${connectionDispatchKey(connection)})` };
-		}
+		// 从**自己那份名单**里找,而不是自己去 parse 一条来路不明的连接:宿主只把属于这个
+		// 拓展、且 config 解得出形状的那些交过来(决策 30)。找不到就不是我的活。
+		const bridge = opts.connections().find((candidate) => candidate.id === connection.id);
+		if (!bridge) return { ok: false, err: "不是桥接入" };
 		if (target.kind !== "session") return { ok: false, err: "桥只发会话目标" };
 		if (!bridge.enabled) return { ok: false, err: "这条桥接入已停用" };
 		if (!target.enabled) return { ok: false, err: "这个推送目标已停用" };
@@ -147,7 +159,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 	}
 
 	return {
-		platforms: [BRIDGE_DISPATCH_KEY],
+		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
+		platforms: [],
 
 		isAvailable(connection: Connection, target: PushTarget): boolean {
 			return resolve(connection, target).ok;
@@ -178,7 +191,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 			const scope = pushOpts.private === true ? ("private" as const) : resolved.target.scope;
 			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
 			const blobUrl: BlobUrl = (buffer, mime) =>
-				`${resolved.session.origin}${BRIDGE_BLOB_PATH}/${blobs.put(buffer, mime)}`;
+				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
 			const request: BridgeSendRequest = {
 				botId: resolved.bot.botId,
 				platform: resolved.target.platform,
@@ -200,12 +213,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		 * 从**活着的会话**看起而不是从配置看起:配置里那条早就删了,能告诉我们「还有谁连着」
 		 * 的只有会话表。
 		 */
-		reconcile(connections: readonly Connection[]): void {
+		reconcile(): void {
 			const bridges = new Map<string, BridgeConnection>();
-			for (const raw of connections) {
-				const connection = asBridgeConnection(raw);
-				if (connection) bridges.set(connection.id, connection);
-			}
+			for (const connection of opts.connections()) bridges.set(connection.id, connection);
 			for (const session of server.listSessions()) {
 				const connection = bridges.get(session.connectionId);
 				if (!connection) {

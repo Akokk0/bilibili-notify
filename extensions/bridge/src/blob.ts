@@ -1,5 +1,5 @@
 /**
- * 一次性取图口的存储那一半 —— `send` 帧里那条 `/bridge/blob/<id>` URL 背后的东西。
+ * 一次性取图口的存储那一半 —— `send` 帧里那条 `<挂载点>/blob/<id>` URL 背后的东西。
  *
  * 图为什么不能直接进帧:{@link NotificationPayload} 里的图是 `Buffer`,过不了 JSON。
  * base64 塞进帧倒是能过,但一条 WS 帧就得驮着整张卡的字节,而桥那侧多半还要再解一遍
@@ -14,10 +14,15 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type { ServiceContext } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/extension";
 
-/** 取图口的路径前缀。路由挂在这儿,URL 也按它拼 —— 两处写岔了就是 404。 */
-export const BRIDGE_BLOB_PATH = "/bridge/blob";
+/**
+ * 取图口在**拓展自己那条挂载点底下**的那一段。
+ *
+ * ⛔ 从前这里是一条写死的绝对路径 `/bridge/blob`。**拓展不该知道自己挂在哪**
+ * (ADR-0012 决策 12)—— 前缀由宿主分配、`ctx.mount()` 交回来,拼 URL 时才把这一段接上去。
+ */
+export const BRIDGE_BLOB_SEGMENT = "/blob";
 
 /**
  * 一张图能等多久。`send` 的回执窗口是 30 秒(桥要下载大图),给它两倍 —— 桥取图必然
@@ -44,7 +49,8 @@ export interface BridgeBlobStore {
 }
 
 export interface BridgeBlobStoreOptions {
-	serviceCtx: ServiceContext;
+	/** 定时器与日志都从 ctx 走 —— 裸 `setInterval` 是禁止的(决策 11)。 */
+	ctx: Pick<ExtensionContext, "setInterval" | "logger">;
 	ttlMs?: number;
 	maxBytes?: number;
 	now?: () => number;
@@ -80,7 +86,7 @@ export function createBridgeBlobStore(opts: BridgeBlobStoreOptions): BridgeBlobS
 		}
 	}
 
-	const sweeper = opts.serviceCtx.setInterval(sweep, Math.max(1_000, Math.floor(ttlMs / 2)));
+	const sweeper = opts.ctx.setInterval(sweep, Math.max(1_000, Math.floor(ttlMs / 2)));
 
 	return {
 		put(buffer, mime) {

@@ -2,8 +2,11 @@
 
 bilibili-notify（下称 **BN**）与**机器人框架桥接插件**（下称**桥**）之间的线上协议。
 
-写给插件作者看。BN 侧的类型定义在 `apps/contract/src/bridge.ts`，校验在
-`apps/server/src/bridge/protocol.ts` —— 两处与本文档任何不一致，**以本文档为准**并提 issue。
+写给插件作者看。BN 侧的类型定义在 `src/contract.ts`，校验在 `src/protocol.ts` —— 两处与本
+文档任何不一致，**以本文档为准**并提 issue。
+
+> 桥接自 BN v0.11 起是一个**拓展**（`extensions/bridge/`），不再编在主程序里：地址因此
+> 从 `/bridge` 变成 `/ext/bridge`，其余协议语义一个字没改。
 
 ---
 
@@ -32,7 +35,7 @@ BN 只认识「桥」这一档，桥后面挂着什么，是握手时你告诉�
 
 | | |
 |---|---|
-| 端点 | `ws://<BN 地址>/bridge`（BN 挂在 https 后面时用 `wss://`） |
+| 端点 | `ws://<BN 地址>/ext/bridge`（BN 挂在 https 后面时用 `wss://`） |
 | 鉴权 | HTTP upgrade 请求头 `Authorization: Bearer <token>` |
 | 编码 | JSON 文本帧，一帧一个对象，`type` 是判别子 |
 
@@ -333,7 +336,7 @@ BN 拿它写推送历史。`err` 直接展示给用户，请写人话。
 `send` 里的图片给的是 URL，形如：
 
 ```
-http://<BN 地址>/bridge/blob/<128 位随机 id>
+http://<BN 地址>/ext/bridge/blob/<128 位随机 id>
 ```
 
 **这个 id 本身就是凭据**：一次性、短 TTL，不用带 token。
@@ -392,7 +395,7 @@ BN 侧就是这么做的，所以你可以放心先发新帧。
 
 一个能用的桥，做完这些就够了：
 
-- [ ] 连 `ws://<BN>/bridge`，带 `Authorization: Bearer <token>`
+- [ ] 连 `ws://<BN>/ext/bridge`，带 `Authorization: Bearer <token>`
 - [ ] 连上立刻发 `hello`（协议版本 + 桥类型 + 全量 bot 名单 + 每个 bot 的能力表）
 - [ ] 收 `welcome`，记下 `inbound` 订阅
 - [ ] 收 `ping` 回 `pong`
@@ -408,8 +411,8 @@ BN 侧就是这么做的，所以你可以放心先发新帧。
 
 | | |
 |---|---|
-| wire 类型与常量 | `apps/contract/src/bridge.ts` |
-| 帧校验 / 版本判定 / 能力归一 | `apps/server/src/bridge/protocol.ts` |
-| WS 端点：鉴权 / 握手 / 心跳 / 回执关联 | `apps/server/src/bridge/server.ts` |
-| `inbound` → BN 内部的入站形状 | `apps/server/src/bridge/inbound.ts` |
-| 推送 → `send` 帧（矩阵里的桥 adapter） | `apps/server/src/platforms/bridge.ts` |
+| wire 类型与常量 | `src/contract.ts` |
+| 帧校验 / 版本判定 / 能力归一 | `src/protocol.ts` |
+| WS 端点：鉴权 / 握手 / 心跳 / 回执关联 | `src/server.ts` |
+| `inbound` → BN 内部的入站形状 | `src/inbound.ts` |
+| 推送 → `send` 帧（桥注册的推送源 adapter） | `src/adapter.ts` |

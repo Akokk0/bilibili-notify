@@ -5,7 +5,7 @@
  * 桥后面挂着哪些平台、怎么把一条推送译成对面听得懂的东西,是 `platforms/bridge.ts` 的事;
  * 这里一个平台名都不认识。
  *
- * 协议规范在 `docs/protocol/bridge.md`,wire 形状在 `@bilibili-notify/contract`。
+ * 协议规范在 `../PROTOCOL.md`,wire 形状在 `./contract.js`。
  * 每一条行为背后都有一句协议承诺,改之前先看那份文档:
  *
  * - **鉴权在 upgrade**(`Authorization: Bearer`)—— token 不对连 WS 都不开,token 也不进
@@ -19,8 +19,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Server as HttpServer, IncomingMessage } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
+import type { Disposable, Logger } from "@bilibili-notify/internal";
+import { type RawData, WebSocket, WebSocketServer } from "ws";
 import {
 	BRIDGE_CLOSE_CODES,
 	BRIDGE_HANDSHAKE_TIMEOUT_MS,
@@ -34,10 +37,7 @@ import {
 	type BridgeKind,
 	type BridgeSendFrame,
 	type ServerToBridgeFrame,
-} from "@bilibili-notify/contract";
-import type { Disposable } from "@bilibili-notify/internal";
-import { type RawData, WebSocket, WebSocketServer } from "ws";
-import type { NodeServiceContext } from "../runtime/service-context.js";
+} from "./contract.js";
 import {
 	isBridgeProtocolCompatible,
 	normalizeBridgeCapabilities,
@@ -61,9 +61,7 @@ export const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
 export const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
 
 export interface BridgeServerOptions {
-	serviceCtx: NodeServiceContext;
-	/** 默认 `/bridge`。 */
-	path?: string;
+	logger: Logger;
 	/**
 	 * token → 这是哪条桥接入(连接 id)。认不出回 `null` → upgrade 401。
 	 *
@@ -131,13 +129,13 @@ export interface BridgeSendOutcome {
 
 export interface BridgeServer extends Disposable {
 	/**
-	 * 把 `/bridge` 挂到这台 HTTP server 上 —— **挂上之前它不收连接**。
+	 * 认领一条 `/ext/<id>` 底下的 WS upgrade —— 交给 `ctx.onUpgrade()`。
 	 *
-	 * 两段式是被装配顺序逼出来的、也正好是对的:HTTP server 要等 `serve()` 才有,而桥
-	 * adapter 在那之前就得进矩阵。没挂上的桥服务器行为完全一致 —— 一条会话都没有,
-	 * 于是推送答「桥没连着」。再挂一次会先摘掉上一台。
+	 * 宿主只回答「这条 upgrade 归谁」;握手、401/503、帧上限、心跳全在这一层
+	 * (ADR-0012 决策 26:**401 与 503 的区分是桥协议的语义**,翻译成宿主的枚举之后,
+	 * 协议每加一档都要动核心发一版 —— 而拓展化整件事就是为了不这样)。
 	 */
-	attach(httpServer: HttpServer): void;
+	upgrade: ExtensionUpgradeHandler;
 	/** 已握手的会话数。没握完手的不算。 */
 	readonly sessionCount: number;
 	getSession(connectionId: string): BridgeSession | undefined;
@@ -185,11 +183,6 @@ function toBot(wire: BridgeBotWire): BridgeBot {
 	};
 }
 
-/** `/bridge` 与 `/bridge?x=1` 算,`/bridge/blob/…`(HTTP 取图口)与 `/bridgefoo` 不算。 */
-function matchesPath(url: string, path: string): boolean {
-	return url === path || url.startsWith(`${path}?`);
-}
-
 function readBearerToken(req: IncomingMessage): string | null {
 	const header = req.headers.authorization;
 	if (typeof header !== "string") return null;
@@ -225,8 +218,7 @@ function localAuthority(req: IncomingMessage): string {
 }
 
 export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
-	const path = opts.path ?? "/bridge";
-	const log = opts.serviceCtx.logger;
+	const log = opts.logger;
 	const handshakeTimeoutMs = opts.handshakeTimeoutMs ?? BRIDGE_HANDSHAKE_TIMEOUT_MS;
 	const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS;
 	const heartbeatTimeoutMs = opts.heartbeatTimeoutMs ?? DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS;
@@ -412,7 +404,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	// ---------------- HTTP upgrade ---------------------------------------------
 
-	function reject(socket: Duplex, status: "401 Unauthorized" | "503 Service Unavailable"): void {
+	function reject(
+		socket: Duplex,
+		status: "401 Unauthorized" | "404 Not Found" | "503 Service Unavailable",
+	): void {
 		try {
 			socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 		} catch {
@@ -451,10 +446,13 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		});
 	}
 
-	const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-		// 别的路径**什么都不做**(不是 destroy)—— dashboard 那条 `/ws` 也挂在同一个
-		// HTTP server 上,得留给它自己的处理器。
-		if (!matchesPath(req.url ?? "", path)) return;
+	const onUpgrade = ({ req, socket, head, path }: ExtensionUpgrade): void => {
+		// 到这儿的一定是 `/ext/bridge` 底下的(宿主已经按前缀分过),但**底下还有别的路**
+		// —— 取图口就是 `/blob/<id>`。只有挂载点根那一条是 WS。
+		if (path !== "" && path !== "/") {
+			reject(socket, "404 Not Found");
+			return;
+		}
 		const token = readBearerToken(req);
 		const connectionId = token ? opts.resolveToken(token) : null;
 		if (!connectionId) {
@@ -471,14 +469,6 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 		wss.handleUpgrade(req, socket, head, (ws) => accept(ws, connectionId, bridgeOrigin(req)));
 	};
-	/** 挂着的那台 HTTP server;没挂上就没有。 */
-	let attached: HttpServer | undefined;
-	const attach = (httpServer: HttpServer): void => {
-		attached?.off("upgrade", onUpgrade);
-		attached = httpServer;
-		httpServer.on("upgrade", onUpgrade);
-	};
-
 	// ---------------- 心跳 -----------------------------------------------------
 
 	let heartbeatHandle: NodeJS.Timeout | undefined;
@@ -508,8 +498,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	const dispose = (): void => {
 		if (heartbeatHandle) clearInterval(heartbeatHandle);
 		if (watchdogHandle) clearInterval(watchdogHandle);
-		attached?.off("upgrade", onUpgrade);
-		attached = undefined;
+		// upgrade 那一路不用摘 —— 它挂在 ctx 上,`dispose()` 之后宿主根本不会再叫过来。
 		for (const conn of [...conns]) close(conn, 1001, "server shutting down");
 		try {
 			wss.close();
@@ -557,7 +546,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	}
 
 	return {
-		attach,
+		upgrade: onUpgrade,
 		dispose,
 		send,
 		get sessionCount() {

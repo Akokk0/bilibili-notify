@@ -12,8 +12,6 @@ export {
 	API_FLAVOR_IDS,
 	type APIFlavorId,
 	addressNounFor,
-	BRIDGE_DISPATCH_KEY,
-	BRIDGE_EXTENSION_ID,
 	BUILTIN_AI_PRESETS,
 	CONNECTION_PLATFORMS,
 	type ConnectionPlatform,

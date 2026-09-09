@@ -18,7 +18,7 @@ import {
 
 function manifest(over: Record<string, unknown> = {}): unknown {
 	return {
-		id: "bridge",
+		id: "demo-ext",
 		name: "机器人框架桥接",
 		description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
 		version: "1.0.0",
@@ -33,7 +33,7 @@ describe("ExtensionManifestSchema", () => {
 		const r = ExtensionManifestSchema.safeParse(manifest());
 		expect(r.success).toBe(true);
 		const m = r.data as ExtensionManifest;
-		expect(m.id).toBe("bridge");
+		expect(m.id).toBe("demo-ext");
 		expect(m.version).toBe("1.0.0");
 		expect(m.apiVersion).toBe(EXTENSION_API_VERSION);
 		expect(m.provides).toEqual(["push"]);
@@ -47,7 +47,7 @@ describe("ExtensionManifestSchema", () => {
 	 * 而且必须**在清单校验这一步**拦住 —— 放过去之后每一处都得自己防一遍。
 	 */
 	describe("id", () => {
-		it.each(["bridge", "douyin-source", "x2"])("%s —— 收下", (id) => {
+		it.each(["demo-ext", "douyin-source", "x2"])("%s —— 收下", (id) => {
 			expect(ExtensionManifestSchema.safeParse(manifest({ id })).success).toBe(true);
 		});
 
@@ -56,7 +56,7 @@ describe("ExtensionManifestSchema", () => {
 			[".", "同上"],
 			["a/b", "斜杠会把 /ext/:id/* 劈成两段"],
 			["a b", "空格进 URL 要转义,转义完就跟目录名对不上了"],
-			["Bridge", "大写:macOS / Windows 的文件系统不分大小写,Bridge 与 bridge 会撞同一个目录"],
+			["Douyin", "大写:macOS / Windows 的文件系统不分大小写,Douyin 与 douyin 会撞同一个目录"],
 			["-lead", "连字符开头 / 结尾:肉眼难认,复制粘贴容易掉"],
 			["trail-", "同上"],
 			["a".repeat(65), "长度没上限的话它会变成一段没人读得完的 URL"],

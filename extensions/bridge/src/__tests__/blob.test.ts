@@ -32,7 +32,7 @@ function boot(over: { ttlMs?: number; maxBytes?: number } = {}) {
 	const { ctx, sweeps } = fakeCtx();
 	let clock = 1_000;
 	const store = createBridgeBlobStore({
-		serviceCtx: ctx,
+		ctx,
 		now: () => clock,
 		...over,
 	});

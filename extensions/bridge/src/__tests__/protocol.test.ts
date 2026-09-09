@@ -11,14 +11,14 @@
  * 3. **版本按 major 判**。minor 不同要能连上,不然协议加一个可选字段就得两边同时发版。
  */
 
+import type { NotificationPayload } from "@bilibili-notify/internal";
+import { describe, expect, it } from "vite-plus/test";
 import {
 	BRIDGE_CAPABILITIES,
 	BRIDGE_MESSAGE_KINDS,
 	BRIDGE_PROTOCOL_VERSION,
 	type BridgeMessageKind,
-} from "@bilibili-notify/contract";
-import type { NotificationPayload } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+} from "../contract.js";
 import {
 	isBridgeProtocolCompatible,
 	normalizeBridgeCapabilities,

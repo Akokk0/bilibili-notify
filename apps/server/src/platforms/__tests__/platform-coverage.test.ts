@@ -11,10 +11,8 @@
  */
 
 import type { PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
-import { BRIDGE_DISPATCH_KEY, CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
+import { CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BridgeServer } from "../../bridge/server.js";
-import { createBridgeAdapter } from "../bridge.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import { createWebhookAdapter } from "../webhook.js";
@@ -46,19 +44,15 @@ function buildMatrix(): PlatformAdapter[] {
 		createOnebotAdapter({ logger, serviceCtx }),
 		createQQOfficialAdapter({ logger, serviceCtx, registry: createQQSessionRegistry() }),
 		createWebhookAdapter({ logger }),
-		createBridgeAdapter({
-			logger,
-			server: {} as unknown as BridgeServer,
-			blobs: { put: () => "blob" },
-		}),
 	];
 }
 
 /**
- * 矩阵是按**分发键**索引的,而分发键 = 平台词表 + 桥那一个。桥不在平台词表里(它没有
- * 单一平台),所以这张表的键集合比词表多一个,不是「恰好等于」。
+ * 矩阵是按**分发键**索引的。核心装配的这几个恰好覆盖平台词表 —— **拓展注册进来的那些
+ * 不在这儿**:它们的键是拓展 id,由宿主填(ADR-0012 决策 28),盘上装了什么决定有几个,
+ * 而这条守卫问的是「核心自己有没有漏掉一个平台」。
  */
-const DISPATCH_KEYS = [...CONNECTION_PLATFORMS, BRIDGE_DISPATCH_KEY];
+const DISPATCH_KEYS = [...CONNECTION_PLATFORMS];
 
 describe("adapter 矩阵覆盖分发键", () => {
 	it("每个分发键都恰好有一个 adapter 认领", () => {

@@ -2,14 +2,15 @@
  * 桥接协议的**边界层** —— 把不受信的外部帧变成 BN 内部形状。
  *
  * wire 形状(帧、能力词表、close code、协议版本)的单一来源是
- * `@bilibili-notify/contract` 的 `bridge` 段;这里放服务端职责的那一半:zod 校验、
- * 版本判定、能力归一。给插件作者看的规范在 `docs/protocol/bridge.md`。
+ * `./contract.js` 是 wire 形状;这里放宿主侧职责的那一半:zod 校验、
+ * 版本判定、能力归一。给插件作者看的规范在 `../PROTOCOL.md`。
  *
  * 这一层最要紧的一条纪律是**「不认识的帧忽略、认识但畸形的帧拒」**:
  * 反过来任何一边都是 bug —— 前者反了,桥升级多发一种帧就把老 BN 打死,协议再也没法
  * 单边演进;后者反了,一条畸形帧被当成正常帧喂进 BN 内部。
  */
 
+import { z } from "zod";
 import {
 	BRIDGE_CAPABILITIES,
 	BRIDGE_CAPABILITY_STATES,
@@ -21,8 +22,7 @@ import {
 	type BridgeCapabilityWire,
 	type BridgeProtocolVersion,
 	type BridgeToServerFrame,
-} from "@bilibili-notify/contract";
-import { z } from "zod";
+} from "./contract.js";
 
 // ---------------------------------------------------------------------------
 // 帧 schema

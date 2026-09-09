@@ -12,7 +12,6 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { BRIDGE_EXTENSION_ID } from "../constants";
 import { GlobalConfigSchema, isExtensionEnabled, makeDefaultGlobalConfig } from "./globals";
 
 function withExtensions(value: unknown) {
@@ -36,17 +35,19 @@ describe("globals.extensions", () => {
 	});
 
 	it("**缺失 = 关着**:桥接模块不会因为升了一版就自己开始收长连接", () => {
-		expect(isExtensionEnabled(makeDefaultGlobalConfig(), BRIDGE_EXTENSION_ID)).toBe(false);
+		expect(isExtensionEnabled(makeDefaultGlobalConfig(), "anything")).toBe(false);
 	});
 
 	it("开了就是开了,关了就是关了", () => {
-		expect(isExtensionEnabled(withExtensions({ bridge: { enabled: true } }), "bridge")).toBe(true);
-		expect(isExtensionEnabled(withExtensions({ bridge: { enabled: false } }), "bridge")).toBe(
+		expect(isExtensionEnabled(withExtensions({ "demo-ext": { enabled: true } }), "demo-ext")).toBe(
+			true,
+		);
+		expect(isExtensionEnabled(withExtensions({ "demo-ext": { enabled: false } }), "demo-ext")).toBe(
 			false,
 		);
 	});
 
 	it("有这个 id 但没写 enabled → 当关着", () => {
-		expect(withExtensions({ bridge: {} }).extensions.bridge?.enabled).toBe(false);
+		expect(withExtensions({ "demo-ext": {} }).extensions["demo-ext"]?.enabled).toBe(false);
 	});
 });

@@ -61,6 +61,8 @@ export interface CreateExtensionContextOptions {
 	/** WS upgrade 的分发表。 */
 	upgrades: ExtensionUpgrades;
 	hostApiVersion?: number;
+	/** 载荷版本号。测试里可以不给。 */
+	hostVersion?: string;
 }
 
 function prefixed(logger: Logger, id: string): Logger {
@@ -155,6 +157,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const ctx: ExtensionContext = {
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_VERSION,
+		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
 		setTimeout: (fn, ms) => (disposed ? refuse("setTimeout") : track(host.setTimeout(fn, ms))),
 		setInterval: (fn, ms) => (disposed ? refuse("setInterval") : track(host.setInterval(fn, ms))),

@@ -23,8 +23,8 @@
  *   - 收到**认识的 type 但形状不对** → 拒(BN 侧断连 4003)。这不是「新帧」,是畸形帧。
  *   - 能力表里**不认识的键静默丢掉**,不认识的**值**当 `unknown`。
  *
- * 帧的 zod 校验、心跳间隔、blob TTL 是服务端实现细节,在 `apps/server/src/bridge/`;
- * 给插件作者看的规范在 `docs/protocol/bridge.md`。
+ * 帧的 zod 校验、心跳间隔、blob TTL 是实现细节,在这个拓展的别的文件里;
+ * 给插件作者看的规范在 `../PROTOCOL.md`。
  */
 
 import type { PushTargetScope } from "@bilibili-notify/internal";

@@ -1,6 +1,9 @@
 packages:
   - "packages/*"
   - "apps/*"
+  # 拓展(ADR-0012 决策 4)。住本仓、workspace 引类型 —— 契约改一格,所有拓展
+  # 当场编译不过,`vp run typecheck` 一跑清单就出来了。发版用 tag 前缀分开。
+  - "extensions/*"
 
 # The pnpm version lives in package.json#packageManager (vp reads it and fetches
 # that pnpm on demand); nothing here pins it. Two things to know when bumping it:

@@ -1,36 +1,25 @@
 /**
  * 「这条 token 是哪条桥接入的」。
  *
- * 这是**未鉴权的外来输入**第一次碰到配置,所以两件事都不能马虎:比对要恒定时间(别让
- * 攻击者按响应快慢逐字节猜 token),以及**只认桥那一支** —— onebot 的 accessToken、官机
- * 的 appSecret 都住在同一份连接表里,它们不是桥凭据。
+ * 这是**未鉴权的外来输入**第一次碰到配置,所以比对不能马虎:要恒定时间,别让攻击者按
+ * 响应快慢逐字节猜 token。
+ *
+ * ⛔ 「别人的凭据不算数」(onebot 的 accessToken、官机的 appSecret 住在同一份连接表里)
+ * 从前要在这一层自己判,现在**判不着了** —— 宿主只把属于这个拓展的连接交过来
+ * (ADR-0012 决策 30),那条守卫在 `extensions/__tests__/context-grants.test.ts`。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
+import type { ExtensionConnectionView } from "@bilibili-notify/extension";
 import { describe, expect, it } from "vite-plus/test";
+import type { BridgeConnectionConfig } from "../config.js";
 import { resolveBridgeToken } from "../tokens.js";
 
-function bridge(id: string, token: string, enabled = true): Connection {
-	return {
-		id,
-		name: `桥 ${id}`,
-		enabled,
-		kind: "extension",
-		extensionId: "bridge",
-		config: { token, bridgeKind: "koishi" },
-	} as Connection;
-}
-
-function direct(id: string, token: string): Connection {
-	return {
-		id,
-		name: "onebot",
-		enabled: true,
-		kind: "direct",
-		platform: "onebot",
-		connector: "ws",
-		config: { transport: "ws", url: "ws://127.0.0.1:3001", accessToken: token, token },
-	} as unknown as Connection;
+function bridge(
+	id: string,
+	token: string,
+	enabled = true,
+): ExtensionConnectionView<BridgeConnectionConfig> {
+	return { id, name: `桥 ${id}`, enabled, config: { token, bridgeKind: "koishi" } };
 }
 
 describe("resolveBridgeToken", () => {
@@ -53,10 +42,6 @@ describe("resolveBridgeToken", () => {
 
 	it("**空 token 永远不匹配**:脱敏备份会把它抹成空串,恢复回来的那条不能变成谁都能连", () => {
 		expect(resolveBridgeToken([bridge("a", "")], "")).toBeNull();
-	});
-
-	it("直连的凭据不算数 —— onebot 的 accessToken 不是桥 token", () => {
-		expect(resolveBridgeToken([direct("d", "s3cret")], "s3cret")).toBeNull();
 	});
 
 	it("多条接入里挑对的那条", () => {

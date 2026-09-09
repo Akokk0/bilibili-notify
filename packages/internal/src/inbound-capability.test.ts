@@ -31,7 +31,7 @@ describe("platformCanReceiveReply", () => {
 	});
 
 	it("没实现入站的平台一律拦下 —— 宁可少列", () => {
-		for (const p of [...WEBHOOK_PLATFORMS, "someday-bridge", ""]) {
+		for (const p of [...WEBHOOK_PLATFORMS, "someday-telegram", ""]) {
 			expect(platformCanReceiveReply(p)).toBe(false);
 		}
 	});
@@ -45,7 +45,7 @@ describe("inboundGapReason", () => {
 	});
 
 	it("还没接的平台:说的是我们还没接,不能说成通道收不到", () => {
-		const why = inboundGapReason("someday-bridge");
+		const why = inboundGapReason("someday-telegram");
 		// 这两句是这条测试的全部意义 —— 反过来写就是主人当初抓到的那个错:
 		// 把「女仆没实现」写成「这个通道只能发不能收」,主人会去查自己的配置。
 		expect(why).toMatch(/还没/);
@@ -53,6 +53,6 @@ describe("inboundGapReason", () => {
 	});
 
 	it("理由里带上平台名 —— 主人得知道说的是哪条通道", () => {
-		expect(inboundGapReason("someday-bridge")).toContain("someday-bridge");
+		expect(inboundGapReason("someday-telegram")).toContain("someday-telegram");
 	});
 });

@@ -1,89 +1,27 @@
 /**
- * 拓展页要的两个只读口。
+ * 拓展页要的两个只读口:装了什么,以及某个拓展自己交上来的那份面板数据。
  *
- * 桥状态那个口**从配置那一头看起**,不是从活着的会话:面板最需要看见的恰恰是「配了但
- * 没连上」那一条 —— 而那条在会话表里根本不存在。从会话看起的话,用户填错 token 时面板
- * 会干干净净地什么都不显示。
+ * 🔴 状态那条走 `/api/*` 而不是 `/ext/<id>/*` —— 后者**刻意**在会话鉴权外
+ * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import type { BridgeStatusResponse, ExtensionsResponse } from "@bilibili-notify/contract";
-import type { Connection, GlobalConfig } from "@bilibili-notify/internal";
+import type { ExtensionsResponse } from "@bilibili-notify/contract";
+import type { GlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import type { BridgeServer, BridgeSession } from "../../bridge/server.js";
 import type { ConfigStore } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionsRoute } from "../extensions.js";
 
-const BRIDGE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const BRIDGE_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-function bridgeConnection(id: string): Connection {
-	return {
-		id,
-		name: `桥 ${id}`,
-		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
-		config: { token: "t0ken", bridgeKind: "koishi" },
-	} as Connection;
-}
-
-function directConnection(): Connection {
-	return {
-		id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-		name: "onebot",
-		enabled: true,
-		kind: "direct",
-		platform: "onebot",
-		connector: "ws",
-		config: {},
-	} as unknown as Connection;
-}
-
-function session(connectionId: string): BridgeSession {
-	return {
-		connectionId,
-		kind: "koishi",
-		name: "家里那台",
-		version: "0.1.0",
-		bots: [
-			{
-				botId: "b1",
-				platform: "telegram",
-				capabilities: {
-					atAll: "unsupported",
-					inbound: "supported",
-					forward: "unknown",
-					miniAppCard: "unknown",
-					shareCardLinks: "unknown",
-				},
-			},
-		],
-		connectedAt: 1_700_000_000_000,
-		origin: "http://127.0.0.1:8787",
-	};
-}
-
 function boot(
-	over: {
-		connections?: Connection[];
-		live?: BridgeSession[];
-		enabled?: boolean;
-		entries?: ExtensionEntry[];
-		status?: Record<string, unknown>;
-	} = {},
+	over: { enabled?: boolean; entries?: ExtensionEntry[]; status?: Record<string, unknown> } = {},
 ) {
 	const store = {
 		getGlobals: () =>
 			({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
-		getConnections: () => over.connections ?? [],
+		getConnections: () => [],
 	} as unknown as ConfigStore;
-	const server = {
-		getSession: (id: string) => (over.live ?? []).find((s) => s.connectionId === id),
-	} as unknown as BridgeServer;
 	return createExtensionsRoute({
 		store,
-		bridge: () => (over.live ? server : undefined),
 		extensions: () => over.entries ?? [],
 		status: (id) => over.status?.[id],
 	});
@@ -179,67 +117,15 @@ describe("GET /api/ext/:id/status", () => {
 
 	it("**现取** —— 拓展给的是个函数,两次问拿到的是两次的真相", async () => {
 		let n = 0;
-		const app = boot({ status: {} });
-		expect(app).toBeDefined();
-		const counted = createExtensionsRoute({
+		const app = createExtensionsRoute({
 			store: {
 				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
-			bridge: () => undefined,
 			extensions: () => [],
 			status: () => ({ n: ++n }),
 		});
-		expect(await (await counted.request("/x/status")).json()).toEqual({ n: 1 });
-		expect(await (await counted.request("/x/status")).json()).toEqual({ n: 2 });
-	});
-});
-
-describe("GET /api/ext/bridge", () => {
-	it("配了但没连上的照样列出来 —— 那正是用户要看见的一条", async () => {
-		const res = await boot({ connections: [bridgeConnection(BRIDGE_A)] }).request("/bridge");
-		const body = (await res.json()) as BridgeStatusResponse;
-		expect(body.sessions).toEqual([{ connectionId: BRIDGE_A, connected: false, bots: [] }]);
-	});
-
-	it("连上的带着桥自报的元信息与 bot 名单", async () => {
-		const res = await boot({
-			connections: [bridgeConnection(BRIDGE_A)],
-			live: [session(BRIDGE_A)],
-		}).request("/bridge");
-		const body = (await res.json()) as BridgeStatusResponse;
-		expect(body.sessions[0]).toMatchObject({
-			connectionId: BRIDGE_A,
-			connected: true,
-			kind: "koishi",
-			name: "家里那台",
-			version: "0.1.0",
-		});
-		expect(body.sessions[0]?.bots[0]?.capabilities.inbound).toBe("supported");
-	});
-
-	it("两条接入各算各的:一条连着一条没有", async () => {
-		const res = await boot({
-			connections: [bridgeConnection(BRIDGE_A), bridgeConnection(BRIDGE_B)],
-			live: [session(BRIDGE_B)],
-		}).request("/bridge");
-		const body = (await res.json()) as BridgeStatusResponse;
-		expect(body.sessions.map((s) => [s.connectionId, s.connected])).toEqual([
-			[BRIDGE_A, false],
-			[BRIDGE_B, true],
-		]);
-	});
-
-	it("直连不在这张表里 —— 它们不是桥", async () => {
-		const res = await boot({
-			connections: [directConnection(), bridgeConnection(BRIDGE_A)],
-		}).request("/bridge");
-		const body = (await res.json()) as BridgeStatusResponse;
-		expect(body.sessions.map((s) => s.connectionId)).toEqual([BRIDGE_A]);
-	});
-
-	it("端点还没装配起来 → 全都算没连着,不是报错", async () => {
-		const res = await boot({ connections: [bridgeConnection(BRIDGE_A)] }).request("/bridge");
-		expect(res.status).toBe(200);
+		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
+		expect(await (await app.request("/x/status")).json()).toEqual({ n: 2 });
 	});
 });

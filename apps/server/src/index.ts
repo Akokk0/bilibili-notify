@@ -2,9 +2,8 @@ import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
-import { BRIDGE_CLOSE_CODES, type StatsOverviewResponse } from "@bilibili-notify/contract";
+import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import {
-	BRIDGE_EXTENSION_ID,
 	chatIdentityOf,
 	type InboundGroupMessage,
 	type InboundMeta,
@@ -20,10 +19,6 @@ import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
-import { createBridgeBlobStore } from "./bridge/blob.js";
-import { routeBridgeInbound } from "./bridge/inbound.js";
-import { createBridgeServer } from "./bridge/server.js";
-import { resolveBridgeToken } from "./bridge/tokens.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
@@ -43,7 +38,6 @@ import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
-import { createBridgeAdapter } from "./platforms/bridge.js";
 import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
@@ -119,8 +113,6 @@ export async function startStandaloneServer(
 	let wsTicketStore: ReturnType<typeof createWsTicketStore> | null | undefined;
 	let server: ServerType | undefined;
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
-	let bridgeServer: ReturnType<typeof createBridgeServer> | undefined;
-	let bridgeBlobs: ReturnType<typeof createBridgeBlobStore> | undefined;
 	let resourceMonitor: ResourceMonitor | undefined;
 	let loadedExtensions: LoadedExtensions | undefined;
 	let previousLogHook: ((entry: LogEntry) => void) | undefined;
@@ -146,8 +138,6 @@ export async function startStandaloneServer(
 				// 拓展先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 				// 才不会在核心已经拆了之后还被回调进去。
 				await loadedExtensions?.dispose();
-				bridgeServer?.dispose();
-				bridgeBlobs?.dispose();
 				wsTicketStore?.dispose();
 				subBinding?.dispose();
 				engines?.dispose();
@@ -288,38 +278,6 @@ export async function startStandaloneServer(
 			// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
 			readSettings: () => runtime.configStore.getGlobals().update,
 		});
-		// 桥接:一次性取图仓库 + `/bridge` 端点 + 矩阵里那个 adapter。
-		//
-		// 🔴 **取图仓库只建这一份**,同时给 adapter(往里存)与路由(往外取)。建两份的话
-		// 存进去的取不出来,症状是桥拿到的每条图 URL 都 404,而两边都不报错。
-		//
-		// 端点这会儿还没挂上 HTTP server —— 那台要等 `serve()`,而 adapter 现在就得进矩阵。
-		// 没挂上的桥服务器一条会话都没有,推送答「桥没连着」,与桥没连上时完全一样。
-		bridgeBlobs = createBridgeBlobStore({ serviceCtx: runtime.serviceCtx });
-		const bridgeModuleOn = () =>
-			isExtensionEnabled(runtime.configStore.getGlobals(), BRIDGE_EXTENSION_ID);
-		bridgeServer = createBridgeServer({
-			serviceCtx: runtime.serviceCtx,
-			serverVersion: payloadVersion,
-			// 现读配置:面板上重新生成 token,下一次连接立刻按新的判。
-			resolveToken: (token) => resolveBridgeToken(runtime.configStore.getConnections(), token),
-			// 认得这个 token 不等于现在收它:模块关着 / 这条接入停用了都回 503(退避重连),
-			// 而不是 401(配置错了别重连)。
-			accepts: (connectionId) =>
-				bridgeModuleOn() &&
-				runtime.configStore.getConnections().some((c) => c.id === connectionId && c.enabled),
-			// 群消息**恒要含链接的那些**,不跟着链接解析的开关走:订阅只在握手时下发一次,
-			// 跟着开关走的话主人开完链接解析,已经连着的那条桥仍然一条群消息都不发,而且
-			// 要等它自己重连才恢复。要不要解析在本地判(link-parser 自己会看开关)。
-			inbound: () => ({ private: true, group: "with-links" }),
-			onInbound: (session, frame) =>
-				routeBridgeInbound(frame, session, {
-					onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-					onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
-				}),
-			onSessionChange: (connectionId, connected) =>
-				log.info(`[bridge] ${connectionId} ${connected ? "已连接" : "已断开"}`),
-		});
 		const rawAdapters = [
 			createOnebotAdapter({
 				logger: log,
@@ -335,7 +293,6 @@ export async function startStandaloneServer(
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			}),
 			createWebhookAdapter({ logger: log }),
-			createBridgeAdapter({ server: bridgeServer, blobs: bridgeBlobs, logger: log }),
 		];
 		// 出口从此住在一张**活的注册表**里:内置这几个开机就在,拓展注册进来的后到、
 		// 拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
@@ -626,8 +583,8 @@ export async function startStandaloneServer(
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
 		// 回到来源群用的是收到那一帧的那条连接:配置里那条 + 认领它的那个 adapter,两者都在
-		// 才发得出。**按连接找 adapter,不按消息里报的平台名找** —— 桥后面挂着 telegram 时
-		// 平台报的是 telegram,而认领它的 adapter 声明的是 bridge。
+		// 才发得出。**按连接找 adapter,不按消息里报的平台名找** —— 拓展驮进来的连接后面
+		// 挂着 telegram 时平台报的是 telegram,而认领它的 adapter 按的是拓展 id。
 		const replyRoute = (connectionId: string) => {
 			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
 			if (!connection) return null;
@@ -695,14 +652,6 @@ export async function startStandaloneServer(
 			// reconcile 自己吞异常 —— 这里是总线回调,抛出去会被 unhandledRejection
 			// 处理器变成一次进程退出。
 			if (scope === "globals") commandDispatcher.reconcile();
-			// 桥接模块被关掉 → 把还连着的踢下线。给的是「可以退避重连」那个码:配置全留,
-			// 主人把开关拨回来,插件自己就回来了(upgrade 那一侧关着时回的是 503)。
-			// 接入自己被停用 / 被删 / token 换了那三种,由桥 adapter 的 reconcile 管。
-			if (scope === "globals" && !bridgeModuleOn()) {
-				for (const session of bridgeServer?.listSessions() ?? []) {
-					bridgeServer?.disconnect(session.connectionId, BRIDGE_CLOSE_CODES.disabled);
-				}
-			}
 		});
 		runtime.serviceCtx.onDispose(() => roastScheduler.stop());
 
@@ -799,6 +748,8 @@ export async function startStandaloneServer(
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
 			isEnabled: (id) => isExtensionEnabled(runtime.configStore.getGlobals(), id),
 			maxFailures: EXTENSION_MAX_LOAD_FAILURES,
+			// 拓展拿它报给对家看(桥在 `welcome` 帧里告诉插件 BN 是哪一版)。
+			hostVersion: payloadVersion,
 			// 拓展注册的推送源进的是**没包装过**那份注册表 —— dev 下 devtools 那层视图
 			// 会在 `list()` 时现包(见 devtools/index.ts)。
 			adapters: adapterRegistry,
@@ -847,9 +798,6 @@ export async function startStandaloneServer(
 			allowedOrigins,
 			desktopToken,
 			qqSessionRegistry,
-			// 与桥 adapter 用的是**同一份**仓库:一个往里存,一个往外取。
-			bridgeBlobs,
-			bridgeServer,
 			extensions: {
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
@@ -905,10 +853,9 @@ export async function startStandaloneServer(
 		// log channel is then installed back onto the serviceCtx via setLogHook so
 		// every subsequent `logger.<level>(...)` call also lands on the `log` channel.
 		const httpServer = server as unknown as HttpServer;
-		// `/bridge` 从这一刻起开始收桥。放在这儿而不是构造那会儿:HTTP server 要等 serve()。
-		// 拓展的 upgrade 分发也挂在这台上 —— 与桥同一个理由:HTTP server 要等 serve()。
+		// 拓展的 upgrade 分发从这一刻起开始收连接(`ws://<BN>/ext/<id>`)。放在这儿而不是
+		// 构造那会儿:HTTP server 要等 serve()。
 		extensionUpgrades.attach(httpServer);
-		bridgeServer.attach(httpServer);
 		wsServer = createWsServer({
 			httpServer,
 			bus: runtime.bus,

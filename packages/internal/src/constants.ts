@@ -245,9 +245,9 @@ export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 /**
  * 分发键 —— 「该由哪套实现处理这条连接」。
  *
- * 直连就是它的平台(一条直连就是一个平台,那套协议是我们自己说的);桥接入只有一套实现,
- * 共用 `"bridge"` 这一个键 —— 两种桥说的是同一套协议,BN 侧处理完全相同,具体是 koishi
- * 还是 astrbot 只影响面板怎么说(`config.bridgeKind`)。
+ * 直连就是它的平台(一条直连就是一个平台,那套协议是我们自己说的);拓展提供的连接
+ * 用**拓展 id** —— 一个拓展一个推送源(ADR-0012 决策 28),后面挂着哪些平台是它运行时
+ * 才知道的事,枚举不了。
  *
  * 它是**算出来的**,不落盘:落一格分发键就等于把「连到哪」与「谁来处理」又焊回一起,
  * 而那两件事正是这次重构拆开的。
@@ -260,22 +260,6 @@ export function connectionDispatchKey(
 ): string {
 	return connection.kind === "direct" ? connection.platform : connection.extensionId;
 }
-
-/**
- * 桥接入那一档分发键。它**不是平台**,所以不在 `CONNECTION_PLATFORMS` 里 —— 但 adapter
- * 矩阵是按分发键索引的,所以那张表的键集合是「平台词表 + 这一个」。给它一个名字是为了
- * 让矩阵覆盖守卫能引用它,而不是在守卫里手抄一个 `"bridge"`。
- */
-export const BRIDGE_DISPATCH_KEY = "bridge";
-
-/**
- * 桥接那个**拓展模块**的 id —— `globals.extensions` 的键、拓展页那张卡的 id。
- *
- * 与 {@link BRIDGE_DISPATCH_KEY} 同名但**不是同一个东西**:那个是 adapter 矩阵的索引键
- * (「这条连接归谁管」),这个是模块开关的键(「这块功能开没开」)。今天两者恰好都叫
- * bridge,写成两个常量是为了哪天其中一个改了名,另一个不会跟着被误改。
- */
-export const BRIDGE_EXTENSION_ID = "bridge";
 
 /** 这个平台是不是靠 webhook 连的。 */
 export function isWebhookPlatform(platform: string): platform is WebhookPlatform {

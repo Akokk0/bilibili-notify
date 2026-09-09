@@ -10,10 +10,25 @@
  *    连接还在;不看名单就发等于把一条推送扔进黑洞再等 30 秒超时。
  */
 
+import type { ExtensionConnectionView } from "@bilibili-notify/extension";
 import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../../bridge/server.js";
-import { createBridgeAdapter } from "../bridge.js";
+import { createBridgeAdapter } from "../adapter.js";
+import type { BridgeConnectionConfig } from "../config.js";
+import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../server.js";
+
+/** 宿主交给拓展的那份连接视图 —— config 已经过本拓展那份 zod。 */
+type View = ExtensionConnectionView<BridgeConnectionConfig>;
+
+function view(over: Partial<View> = {}): View {
+	return {
+		id: CONNECTION_ID,
+		name: "家里那台 koishi",
+		enabled: true,
+		config: { token: "t0ken", bridgeKind: "koishi" },
+		...over,
+	};
+}
 
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -73,6 +88,8 @@ interface Harness {
 	disconnect: ReturnType<typeof vi.fn>;
 	published: { mime: string; bytes: number }[];
 	lastRequest(): BridgeSendRequest;
+	/** 宿主交给它的那份名单 —— 换掉它再 `reconcile()` 就是「配置动了」。 */
+	setConnections(list: View[]): void;
 }
 
 /** `live: null` = 桥没连着。**别用 `undefined`** —— 显式传它会触发默认参数,那条用例就空过了。 */
@@ -92,9 +109,11 @@ function harness(live: BridgeSession | null = session()): Harness {
 		sessionCount: live ? 1 : 0,
 		dispose() {},
 	} as unknown as BridgeServer;
+	let connections: View[] = [view()];
 	const adapter = createBridgeAdapter({
 		server,
-		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+		connections: () => connections,
+		mountPath: "/ext/bridge",
 		blobs: {
 			put(buffer: Buffer, mime: string) {
 				published.push({ mime, bytes: buffer.byteLength });
@@ -108,12 +127,21 @@ function harness(live: BridgeSession | null = session()): Harness {
 		disconnect,
 		published,
 		lastRequest: () => send.mock.calls.at(-1)?.[1] as BridgeSendRequest,
+		setConnections: (list) => {
+			connections = list;
+		},
 	};
 }
 
 describe("桥 adapter", () => {
-	it("按**分发键**认领,不是按平台 —— 桥后面挂什么平台它一概不预设", () => {
-		expect([...harness().adapter.platforms]).toEqual(["bridge"]);
+	/**
+	 * 🔴 **分发键由宿主按拓展 id 填,拓展自己不报**(ADR-0012 决策 28)。
+	 *
+	 * 自报的话,一个拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走 —— 归属是宿主的
+	 * 判断,不是拓展的声明。覆盖那一步的守卫在 `extensions/__tests__/context-grants.test.ts`。
+	 */
+	it("自己**不报**分发键 —— 报了也会被宿主覆盖掉", () => {
+		expect([...harness().adapter.platforms]).toEqual([]);
 	});
 
 	// ---- 发得出去吗 --------------------------------------------------------
@@ -140,7 +168,9 @@ describe("桥 adapter", () => {
 
 	it("连接或目标停用 → 不可发", () => {
 		const h = harness();
-		expect(h.adapter.isAvailable(connection({ enabled: false }), target())).toBe(false);
+		h.setConnections([view({ enabled: false })]);
+		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
+		h.setConnections([view()]);
 		expect(h.adapter.isAvailable(connection(), target({ enabled: false }))).toBe(false);
 	});
 
@@ -179,7 +209,7 @@ describe("桥 adapter", () => {
 		expect(h.published).toEqual([{ mime: "image/png", bytes: 3 }]);
 		expect(h.lastRequest().message).toEqual({
 			kind: "image",
-			url: "http://192.168.1.5:8787/bridge/blob/blob1",
+			url: "http://192.168.1.5:8787/ext/bridge/blob/blob1",
 			mime: "image/png",
 			caption: "封面",
 		});
@@ -192,7 +222,7 @@ describe("桥 adapter", () => {
 			image: { buffer: Buffer.from([1]), mime: "image/png" },
 		});
 		expect(h.lastRequest().message).toMatchObject({
-			url: "https://bn.example.com/bridge/blob/blob1",
+			url: "https://bn.example.com/ext/bridge/blob/blob1",
 		});
 	});
 
@@ -212,7 +242,7 @@ describe("桥 adapter", () => {
 			segments: [
 				{ type: "at-all" },
 				{ type: "text", text: "看这个" },
-				{ type: "image", url: "http://192.168.1.5:8787/bridge/blob/blob1", mime: "image/jpeg" },
+				{ type: "image", url: "http://192.168.1.5:8787/ext/bridge/blob/blob1", mime: "image/jpeg" },
 				{ type: "link", href: "https://b23.tv/x", title: "视频" },
 			],
 		});
@@ -323,39 +353,41 @@ describe("桥 adapter", () => {
 
 	it("接入被删了 → 把还连着的那条踢下线", () => {
 		const h = harness();
+		h.setConnections([]);
 		h.adapter.reconcile?.([]);
 		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4005);
 	});
 
 	it("接入被停用 → 踢下线,但用的是「可以退避重连」那个码", () => {
 		const h = harness();
-		h.adapter.reconcile?.([connection({ enabled: false })]);
+		h.setConnections([view({ enabled: false })]);
+		h.adapter.reconcile?.([]);
 		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4007);
 	});
 
 	it("**token 被重新生成 → 踢下线** —— 不然重新生成 token 这个动作等于没做", () => {
 		const h = harness();
-		h.adapter.reconcile?.([connection()]);
+		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
-		h.adapter.reconcile?.([
-			connection({ config: { token: "新的", bridgeKind: "koishi" } } as never),
-		]);
+		h.setConnections([view({ config: { token: "新的", bridgeKind: "koishi" } })]);
+		h.adapter.reconcile?.([]);
 		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4005);
 	});
 
 	it("什么都没变 → 不动它(reconcile 每次配置变更都会跑)", () => {
 		const h = harness();
-		h.adapter.reconcile?.([connection()]);
-		h.adapter.reconcile?.([connection()]);
+		h.adapter.reconcile?.([]);
+		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});
 
-	it("直连不归它管 —— reconcile 里混着别的连接也不该被踢", () => {
+	/**
+	 * 别人的连接根本不会进这份名单 —— 宿主只把属于这个拓展、且 config 解得出形状的交过来
+	 * (ADR-0012 决策 30)。从前这一层要自己 parse 一条来路不明的连接,现在不必了。
+	 */
+	it("名单里只有自己的:别人的连接进不来,所以也踢不着", () => {
 		const h = harness();
-		h.adapter.reconcile?.([
-			connection(),
-			{ id: "x", kind: "direct", platform: "onebot", enabled: true } as unknown as Connection,
-		]);
+		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});
 });

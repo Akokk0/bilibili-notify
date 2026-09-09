@@ -1,0 +1,8 @@
+{
+	"id": "bridge",
+	"name": "机器人框架桥接",
+	"description": "把 koishi / AstrBot 里已经配好的机器人借给 BN 用：插件那头填 BN 地址与 token，桥主动连过来。",
+	"version": "1.0.0",
+	"apiVersion": 1,
+	"provides": ["push"]
+}

@@ -152,13 +152,18 @@ export interface ExtensionContext {
 	readonly id: string;
 	/** 宿主契约的主版本。拓展自己也可能要按它分叉。 */
 	readonly hostApiVersion: number;
+	/**
+	 * 独立端自己的版本号(载荷版本)。**与契约版本是两件事** —— 那个决定「加不加载」,
+	 * 这个是拿去报给对家看的(桥在 `welcome` 帧里把它告诉插件)。
+	 */
+	readonly hostVersion: string;
 	/** 每一行都自动带上 `[ext:<id>]` —— 日志里认得出是谁写的。 */
 	readonly logger: Logger;
 	/** 可回收定时器。卸载时宿主统一清,拓展自己漏了也不会留下幽灵。 */
 	setTimeout(fn: () => void, ms: number): Disposable;
 	setInterval(fn: () => void, ms: number): Disposable;
 	/**
-	 * 申请一条 HTTP 总入口,回宿主分配的前缀(如 `/ext/bridge`)。
+	 * 申请一条 HTTP 总入口,回宿主分配的前缀(`/ext/<自己的 id>`)。
 	 *
 	 * **拓展不该知道自己挂在哪**(决策 12):handler 收到的路径已经剥掉前缀,要拼绝对
 	 * 地址时才用这个返回值。一个拓展只有一条总入口,再申请一次会抛。

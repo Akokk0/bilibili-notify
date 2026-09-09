@@ -6,11 +6,12 @@
  * 直连交出来的一模一样。区别只在于**这里没有解析** —— 帧在桥那一侧就已经被 koishi /
  * AstrBot 的适配器归一化过了,我们只是换个字段名。
  *
- * 协议见 `docs/protocol/bridge.md` §5.3。
+ * 协议见 `../PROTOCOL.md` §5.3。
  */
 
-import type { BridgeBot, BridgeInboundFrame } from "@bilibili-notify/contract";
-import type { InboundMeta, InboundSinks } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/extension";
+import type { InboundMeta } from "@bilibili-notify/internal";
+import type { BridgeBot, BridgeInboundFrame } from "./contract.js";
 
 /** 这一帧从哪条桥来,以及那条桥当下报的 bot 名单(只为查 `selfId`)。 */
 export interface BridgeInboundSource {
@@ -19,7 +20,7 @@ export interface BridgeInboundSource {
 }
 
 /**
- * 一帧 → 至多一路。没接的那一路什么都不做。
+ * 一帧 → 一路。
  *
  * `selfId` 从 bot 名单里查:链接解析那道「机器人自己贴的链接不解析」的闸全靠它。
  * **查不到也照走** —— 名单是全量快照,新上线的 bot 可能比它的第一条消息晚到;为这个
@@ -28,7 +29,7 @@ export interface BridgeInboundSource {
 export function routeBridgeInbound(
 	frame: BridgeInboundFrame,
 	source: BridgeInboundSource,
-	sinks: InboundSinks,
+	inbound: ExtensionContext["inbound"],
 ): void {
 	const meta: InboundMeta = {
 		connectionId: source.connectionId,
@@ -36,10 +37,10 @@ export function routeBridgeInbound(
 		botId: frame.botId,
 	};
 	if (frame.message.scope === "private") {
-		sinks.onInboundPrivate?.({ userId: frame.message.userId, text: frame.message.text }, meta);
+		inbound.private({ userId: frame.message.userId, text: frame.message.text }, meta);
 		return;
 	}
-	sinks.onInboundGroup?.(
+	inbound.group(
 		{
 			groupId: frame.message.groupId,
 			userId: frame.message.userId,

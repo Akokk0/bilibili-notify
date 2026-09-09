@@ -1,0 +1,22 @@
+{
+	"name": "@bilibili-notify/extension-bridge",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "vp test"
+	},
+	"dependencies": {
+		"@bilibili-notify/extension": "workspace:*",
+		"@bilibili-notify/internal": "workspace:*",
+		"ws": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@types/ws": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	}
+}

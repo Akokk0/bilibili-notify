@@ -1,8 +1,8 @@
 # ADR-0009:借 koishi / AstrBot 的机器人 —— 桥接的形态与协议
 
-- **状态**:**协议与服务端已实现,未发版、一次真机都没跑过**(2026-09-07 经 `/grill-me` 六轮拷问定案;服务端八片落 dev,协议 v1 见 `docs/protocol/bridge.md`)。插件那一侧还没写,所以**桥连不进来**。
+- **状态**:**协议与服务端已实现,未发版、一次真机都没跑过**(2026-09-07 经 `/grill-me` 六轮拷问定案;服务端八片落 dev,协议 v1 见 `extensions/bridge/PROTOCOL.md`)。插件那一侧还没写,所以**桥连不进来**。
 - **记录方式**:⚠️ **事后追认** —— 据定案记录与已落地的实现整理,**非当时拷问的原文**。
-- **影响面**:`apps/contract/src/bridge.ts`、`apps/server/src/bridge/`、`apps/server/src/platforms/bridge.ts`、`docs/protocol/bridge.md`;数据模型那一侧见 ADR-0011
+- **影响面**:整块住 `extensions/bridge/`(2026-09-09 起,见 ADR-0012 决策 3;从前散在 `apps/contract/src/bridge.ts`、`apps/server/src/bridge/`、`apps/server/src/platforms/bridge.ts`、`docs/protocol/bridge.md`);数据模型那一侧见 ADR-0011
 - **⚠️ 已被取代的部分**:本 ADR 原稿里的**数据模型**一节(`platform` → `{driver, platform?}`)**已作废** —— 主人 2026-09-08 撤回整套改名,由 ADR-0011 的新模型取代。**别再提议改名到 `driver`。** 桥接的**形态**与**协议**决定不受影响,全部仍然有效。
 - **🔗 后续**:桥接本身将被搬出核心、成为第一个拓展,见 ADR-0012
 

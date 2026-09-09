@@ -24,7 +24,7 @@ export type ExtensionProvides = z.infer<typeof ExtensionProvidesSchema>;
  * (`<dataDir>/extensions/<id>/`)、失败记账的键。所以「非空字符串」远远不够,而且必须
  * **在清单校验这一步**就拦住:放过去之后每一处都得自己防一遍,漏一处就是路径穿越。
  *
- * 一律**小写** —— 不是洁癖:macOS 与 Windows 的文件系统不分大小写,`Bridge` 与 `bridge`
+ * 一律**小写** —— 不是洁癖:macOS 与 Windows 的文件系统不分大小写,`Douyin` 与 `douyin`
  * 会落进同一个目录,而 URL 那一段是分的,两边对不上。
  */
 export const ExtensionIdSchema = z

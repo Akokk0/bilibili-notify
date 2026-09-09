@@ -195,8 +195,8 @@ export const DirectConnectorSchema = z.enum(DIRECT_CONNECTORS);
  *
  * 两根正交的轴:`platform`(连到哪)与 `connector`(怎么连)。`kind` 是**判别子**:
  * - `direct` —— 我们自己说协议,连接就是一个平台,`platform` 必填;
- * - `bridge` —— 桥(koishi / astrbot 里的插件)主动连过来,把它宿主里的 bot 借给我们。
- *   **这一支没有 `platform`**:桥后面挂着哪些平台是它握手时报的,是运行时知识。
+ * - `extension` —— 一个拓展提供的连接(对家主动连过来,把它那头的 bot 借给我们)。
+ *   **这一支没有 `platform`**:后面挂着哪些平台是运行时才知道的事,枚举不了。
  *
  * **老数据没有 `kind` / `connector`**,由 `schema/migration.ts` 的一次性迁移补上;
  * 这里刻意不给 default,好让「没迁移过的数据」在 parse 阶段就响,而不是被默认值糊过去。
@@ -238,30 +238,6 @@ const QQOfficialConnectionSchema = z.object({
 	platform: z.literal("qq-official"),
 	config: QQOfficialConnectionConfigSchema,
 });
-
-/**
- * 桥接入的连接配置。
- *
- * **桥主动连我们**,不是我们连桥:面板生成一个长期 token,插件那头填「BN 地址 + token」。
- * 所以这里没有地址 —— 地址在桥那边。重连退避也归插件。
- */
-export const BridgeConnectionConfigSchema = z.object({
-	/**
-	 * 长期 token,桥握手时出示。
-	 *
-	 * 空串**合法可存**:与 onebot 的 `accessToken`、官机的 `appSecret` 同一套建模 ——
-	 * 脱敏备份会把它抹成空串,存不回去就等于备份恢复不了(官机那格栽过一次)。
-	 * 「没 token 不许连」是**连接期**的约束,不是存储期的。
-	 */
-	token: z.string(),
-	/**
-	 * 哪一种桥。**只影响面板怎么说**(装插件的指引、卡片上的名字)——BN 侧对两种桥的
-	 * 处理完全相同,所以它住 config 而不是长成 `connector` 的第二档:两个桥说同一套协议,
-	 * 分两档就是两份几乎一样的 schema branch,而且每来一个新桥都要改核心词表发一次版。
-	 */
-	bridgeKind: z.enum(["koishi", "astrbot"]),
-});
-export type BridgeConnectionConfig = z.infer<typeof BridgeConnectionConfigSchema>;
 
 /**
  * 拓展提供的连接(ADR-0012 决策 27)。三格刻意都没有:
