@@ -781,6 +781,19 @@ export async function startStandaloneServer(
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
 			isEnabled: (id) => isExtensionEnabled(runtime.configStore.getGlobals(), id),
 			maxFailures: EXTENSION_MAX_LOAD_FAILURES,
+			// 拓展注册的推送源进的是**没包装过**那份注册表 —— dev 下 devtools 那层视图
+			// 会在 `list()` 时现包(见 devtools/index.ts)。
+			adapters: adapterRegistry,
+			connections: () => runtime.configStore.getConnections(),
+			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
+			onConnectionsChanged: (fn) =>
+				runtime.bus.on("config-changed", (scope) => {
+					if (scope === "connections") fn();
+				}),
+			inbound: {
+				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
+				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
+			},
 		});
 		for (const entry of loadedExtensions.list()) {
 			if (entry.state === "running") log.info(`[ext] ${entry.id} 已加载`);

@@ -1,6 +1,13 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ExtensionManifest, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	Disposable,
+	ExtensionManifest,
+	ServiceContext,
+} from "@bilibili-notify/internal";
+import type { AdapterRegistry } from "../platforms/registry.js";
+import type { InboundSinks } from "../platforms/types.js";
 import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } from "./context.js";
 import { discoverExtensions, EXTENSION_ENTRY_FILE } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
@@ -54,6 +61,14 @@ export interface LoadExtensionsOptions {
 	root: string;
 	host: ServiceContext;
 	mounts: ExtensionMounts;
+	/** 出口的活注册表。拓展注册的推送源往这里进。 */
+	adapters: AdapterRegistry;
+	/** 全部连接,现读。属于谁由 ctx 那一层筛。 */
+	connections: () => readonly Connection[];
+	/** 订阅「连接配置动过了」。 */
+	onConnectionsChanged: (fn: () => void) => Disposable;
+	/** 入站的两路收口。 */
+	inbound: InboundSinks;
 	isEnabled(id: string): boolean;
 	/** 连着失败多少次就自动停用。 */
 	maxFailures: number;
@@ -118,7 +133,15 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
 		recordLoadAttempt({ root, id, version: manifest.version, maxFailures });
 
-		const runtime = createExtensionContext({ id, host, mounts });
+		const runtime = createExtensionContext({
+			id,
+			host,
+			mounts,
+			adapters: opts.adapters,
+			connections: opts.connections,
+			onConnectionsChanged: opts.onConnectionsChanged,
+			inbound: opts.inbound,
+		});
 		try {
 			const mod = (await importModule(
 				pathToFileURL(join(dir.dir, EXTENSION_ENTRY_FILE)).href,

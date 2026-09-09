@@ -9,6 +9,7 @@
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 
@@ -44,12 +45,22 @@ function fakeHost() {
 	};
 }
 
+/** 这个文件钉的是**生命周期**,与核心打交道那几格由 `context-grants.test.ts` 管。 */
+function coreStubs() {
+	return {
+		adapters: createAdapterRegistry(),
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
+		inbound: {},
+	};
+}
+
 function makeRuntime(id = "bridge") {
 	const host = fakeHost();
 	const mounts = createExtensionMounts();
 	const app = new Hono();
 	app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
-	const runtime = createExtensionContext({ id, host: host.ctx, mounts });
+	const runtime = createExtensionContext({ id, host: host.ctx, mounts, ...coreStubs() });
 	return { host, mounts, app, runtime, ctx: runtime.ctx };
 }
 
@@ -141,8 +152,8 @@ describe("拓展 ctx", () => {
 		const mounts = createExtensionMounts();
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
-		const a = createExtensionContext({ id: "a", host: host.ctx, mounts });
-		const b = createExtensionContext({ id: "b", host: host.ctx, mounts });
+		const a = createExtensionContext({ id: "a", host: host.ctx, mounts, ...coreStubs() });
+		const b = createExtensionContext({ id: "b", host: host.ctx, mounts, ...coreStubs() });
 		a.ctx.mount(async () => new Response("a"));
 		b.ctx.mount(async () => new Response("b"));
 		let bTicks = 0;

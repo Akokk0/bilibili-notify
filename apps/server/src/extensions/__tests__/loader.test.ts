@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { EXTENSION_API_VERSION, type Logger, type ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 
@@ -67,6 +68,16 @@ const HEALTHY = `export function activate(ctx) {
 	ctx.mount(async () => new Response("hi from " + ctx.id));
 }`;
 
+/** 与核心打交道那几格在 `context-grants.test.ts` 里钉;这里只关心装载。 */
+function coreStubs() {
+	return {
+		adapters: createAdapterRegistry(),
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
+		inbound: {},
+	};
+}
+
 function run(opts: {
 	host: ReturnType<typeof fakeHost>;
 	mounts: ReturnType<typeof createExtensionMounts>;
@@ -79,6 +90,7 @@ function run(opts: {
 		mounts: opts.mounts,
 		isEnabled: opts.enabled ?? (() => true),
 		maxFailures: opts.maxFailures ?? 3,
+		...coreStubs(),
 	});
 }
 
@@ -198,6 +210,7 @@ describe("加载拓展", () => {
 				isEnabled: () => true,
 				maxFailures: 2,
 				importModule,
+				...coreStubs(),
 			});
 
 		expect((await runOnce()).list()[0]?.state).toBe("failed");
