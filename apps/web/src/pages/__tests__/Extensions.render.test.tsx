@@ -3,6 +3,7 @@
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Extensions from "../Extensions";
 
@@ -45,7 +46,9 @@ function renderPage(listed: ExtensionsResponse = LISTED) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<Extensions />
+			<MemoryRouter>
+				<Extensions />
+			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 }
@@ -103,6 +106,16 @@ describe("拓展页", () => {
 	it("说清楚开关要重启才生效", async () => {
 		renderPage();
 		expect(await screen.findByText(/重启后生效/)).toBeTruthy();
+	});
+
+	/** 详情页是拓展自己那块面板的唯一去处 —— 卡片上不给入口的话只能手敲地址。 */
+	it("每张卡都通到自己的详情页", async () => {
+		renderPage();
+		const links = await screen.findAllByText("详情 →");
+		expect(links.map((a) => a.getAttribute("href"))).toEqual([
+			"/extensions/bridge",
+			"/extensions/douyin",
+		]);
 	});
 
 	it("一个拓展都没装时给一句空态,不是空白", async () => {

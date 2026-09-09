@@ -1,8 +1,4 @@
-import type {
-	ExtensionDTO,
-	ExtensionStateDTO,
-	ExtensionsResponse,
-} from "@bilibili-notify/contract";
+import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
 import {
 	EmptyNote,
 	ErrorNote,
@@ -15,7 +11,9 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "../services/api";
+import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
  * `/extensions` —— 装了哪些拓展、开没开、跑没跑起来。
@@ -28,19 +26,6 @@ import { api } from "../services/api";
  * 同一条 `PATCH /api/globals`(ADR-0012)。
  */
 
-/** 状态 → 说给主人听的那句话 + 状态点的档位。**开关与状态是两件事**,所以两样都印。 */
-const STATE_META: Record<
-	ExtensionStateDTO,
-	{ label: string; dot: "ok" | "off" | "warn" | "err"; severity: "none" | "warn" | "err" }
-> = {
-	running: { label: "运行中", dot: "ok", severity: "none" },
-	disabled: { label: "已停用", dot: "off", severity: "none" },
-	blocked: { label: "已自动停用", dot: "warn", severity: "warn" },
-	failed: { label: "加载失败", dot: "err", severity: "err" },
-	unreadable: { label: "清单读不出来", dot: "err", severity: "err" },
-	incompatible: { label: "版本不合", dot: "warn", severity: "warn" },
-};
-
 /** 它开的是哪一口 —— 清单里的机器词,印给人看要换句话。 */
 const PROVIDES_LABEL: Record<string, string> = {
 	push: "推送源",
@@ -48,7 +33,7 @@ const PROVIDES_LABEL: Record<string, string> = {
 };
 
 function StateLine({ ext }: { ext: ExtensionDTO }) {
-	const meta = STATE_META[ext.state];
+	const meta = EXTENSION_STATE_META[ext.state];
 	return (
 		<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 			<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-secondary">
@@ -73,7 +58,7 @@ function StateLine({ ext }: { ext: ExtensionDTO }) {
  */
 function StateDetail({ ext }: { ext: ExtensionDTO }) {
 	if (!ext.detail) return null;
-	const { severity } = STATE_META[ext.state];
+	const { severity } = EXTENSION_STATE_META[ext.state];
 	if (severity === "err") return <ErrorNote size="sm">{ext.detail}</ErrorNote>;
 	if (severity === "warn") return <WarnNote size="sm">{ext.detail}</WarnNote>;
 	return null;
@@ -135,6 +120,13 @@ export default function Extensions() {
 							<div className="flex flex-col gap-2">
 								<StateLine ext={ext} />
 								<StateDetail ext={ext} />
+								{/* 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。 */}
+								<Link
+									to={`/extensions/${ext.id}`}
+									className="self-start text-bn-xs text-bn-text-tertiary hover:text-bn-pink"
+								>
+									详情 →
+								</Link>
 							</div>
 						</GlassPanel>
 					))}
