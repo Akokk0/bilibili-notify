@@ -1,0 +1,142 @@
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import type { ExtensionManifest, ServiceContext } from "@bilibili-notify/internal";
+import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } from "./context.js";
+import { discoverExtensions, EXTENSION_ENTRY_FILE } from "./discover.js";
+import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
+import type { ExtensionMounts } from "./mount.js";
+
+/** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
+export type ExtensionRunState =
+	/** 跑着。 */
+	| "running"
+	/** 主人把开关关了。**没启用的拓展一行代码都不会被 import。** */
+	| "disabled"
+	/** 连着加载失败,自动停用了(见 `load-ledger`)。 */
+	| "blocked"
+	/** 这一次加载炸了。 */
+	| "failed"
+	/** 清单读不了 / 与目录对不上 / 缺入口。 */
+	| "unreadable"
+	/** 给别的宿主契约版本写的。 */
+	| "incompatible";
+
+export interface ExtensionEntry {
+	id: string;
+	state: ExtensionRunState;
+	/** 清单读得出来就带上 —— 面板要印名字,哪怕它没跑起来。 */
+	manifest?: ExtensionManifest;
+	/** 没跑起来时那句「为什么」。 */
+	detail?: string;
+}
+
+export interface LoadedExtensions {
+	list(): readonly ExtensionEntry[];
+	/** 收回所有跑着的拓展。宿主关机时调。 */
+	dispose(): Promise<void>;
+}
+
+/** 拓展的 `index.mjs` 要导出的东西 —— 第一版只有这一个。 */
+export interface ExtensionModule {
+	activate(ctx: ExtensionContext): void | Promise<void>;
+}
+
+export interface LoadExtensionsOptions {
+	/** 装载根,`<dataDir>/extensions/`。 */
+	root: string;
+	host: ServiceContext;
+	mounts: ExtensionMounts;
+	isEnabled(id: string): boolean;
+	/** 连着失败多少次就自动停用。 */
+	maxFailures: number;
+	/**
+	 * 换掉 `import()` 那一步 —— **只给测试用**。
+	 *
+	 * 生产永远走真的动态 import:ESM 模块在同一个进程里换不掉(决策 10 认下的代价),
+	 * 而那正是「升级要重启」的原因,不该被一层间接掩盖掉。
+	 */
+	importModule?: (specifier: string) => Promise<unknown>;
+}
+
+function realImport(specifier: string): Promise<unknown> {
+	return import(specifier);
+}
+
+/**
+ * 扫一遍装载目录,把该跑的跑起来。
+ *
+ * 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
+ * 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
+ */
+export async function loadExtensions(opts: LoadExtensionsOptions): Promise<LoadedExtensions> {
+	const { root, host, mounts, isEnabled, maxFailures } = opts;
+	const importModule = opts.importModule ?? realImport;
+	const found = await discoverExtensions(root);
+	const blocked = readLoadLedger(root).blocked;
+
+	const entries: ExtensionEntry[] = [];
+	const running: ExtensionRuntime[] = [];
+
+	for (const dir of found) {
+		if (dir.state === "unreadable") {
+			entries.push({ id: dir.id, state: "unreadable", detail: dir.detail });
+			continue;
+		}
+		if (dir.state === "incompatible") {
+			entries.push({
+				id: dir.id,
+				state: "incompatible",
+				manifest: dir.manifest,
+				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
+			});
+			continue;
+		}
+
+		const { id, manifest } = dir;
+		if (!isEnabled(id)) {
+			entries.push({ id, state: "disabled", manifest });
+			continue;
+		}
+		if (blocked.includes(`${id}@${manifest.version}`)) {
+			entries.push({
+				id,
+				state: "blocked",
+				manifest,
+				detail: `连续加载失败 ${maxFailures} 次,已自动停用;换一版会重新试`,
+			});
+			continue;
+		}
+
+		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
+		recordLoadAttempt({ root, id, version: manifest.version, maxFailures });
+
+		const runtime = createExtensionContext({ id, host, mounts });
+		try {
+			const mod = (await importModule(
+				pathToFileURL(join(dir.dir, EXTENSION_ENTRY_FILE)).href,
+			)) as Partial<ExtensionModule>;
+			if (typeof mod.activate !== "function") {
+				throw new Error(`${EXTENSION_ENTRY_FILE} 没有导出 activate()`);
+			}
+			await mod.activate(runtime.ctx);
+			markLoadSucceeded({ root, id, version: manifest.version });
+			running.push(runtime);
+			entries.push({ id, state: "running", manifest });
+		} catch (err) {
+			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
+			// 留着的话面板写「没起来」而它的定时器还在跑 —— 那比要求重启难查得多。
+			await runtime.dispose();
+			runtime.ctx.logger.error(`加载失败:${(err as Error).message}`);
+			entries.push({ id, state: "failed", manifest, detail: (err as Error).message });
+		}
+	}
+
+	return {
+		list: () => entries,
+		async dispose() {
+			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
+			for (const runtime of [...running].reverse()) await runtime.dispose();
+			running.length = 0;
+		},
+	};
+}

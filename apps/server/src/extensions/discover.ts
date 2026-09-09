@@ -130,7 +130,7 @@ export async function readExtensionDir(
 export async function discoverExtensions(
 	root: string,
 	hostApiVersion: number = EXTENSION_API_VERSION,
-): Promise<ExtensionDirRead[]> {
+): Promise<Array<Exclude<ExtensionDirRead, { state: "absent" }>>> {
 	let entries: Dirent[];
 	try {
 		entries = await readdir(root, { withFileTypes: true });
@@ -147,5 +147,7 @@ export async function discoverExtensions(
 	const read = await Promise.all(
 		dirs.map((name) => readExtensionDir(join(root, name), hostApiVersion)),
 	);
-	return read.filter((entry) => entry.state !== "absent");
+	return read.filter((entry) => entry.state !== "absent") as Array<
+		Exclude<ExtensionDirRead, { state: "absent" }>
+	>;
 }
