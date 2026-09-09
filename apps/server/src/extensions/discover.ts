@@ -7,6 +7,7 @@ import {
 	type ExtensionManifest,
 	ExtensionManifestSchema,
 } from "@bilibili-notify/internal";
+import { safeExtensionIcon } from "./manifest-icon.js";
 
 /**
  * 拓展从哪个根扫出来的 —— 两个根的优先级就是这两格的先后。
@@ -179,7 +180,9 @@ export async function readExtensionDir(
 			detail: `${EXTENSION_MANIFEST_FILE} 不合法 —— ${detail}`,
 		};
 	}
-	const manifest = parsed.data;
+	// 图标当场过白名单(决策 20)—— **这里是唯一的门**:再往下走,清单会被面板原样
+	// 塞进 DOM。坏图标不是拒绝加载的理由,它只是退回灰方章。
+	const manifest: ExtensionManifest = { ...parsed.data, icon: safeExtensionIcon(parsed.data.icon) };
 
 	// 清单里的 id 与目录名对不上 = 两个身份。挂载点按目录算、清单按自己那格算,
 	// 放过去的话「面板上点的」与「实际在跑的」会是两个东西。

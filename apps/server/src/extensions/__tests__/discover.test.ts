@@ -85,6 +85,30 @@ describe("readExtensionDir", () => {
 		expect(r.entry).toBe(join(dir, "index.mjs"));
 	});
 
+	/**
+	 * 图标是**加载时**过白名单的(ADR-0012 决策 20),而这里就是那一刻:清单读出来立刻过
+	 * 一遍,下游(面板、`/api/ext`)没有任何一条路能拿到原样的 SVG。
+	 */
+	it("清单里的图标过白名单:干净的留着", async () => {
+		const icon = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
+		const r = await readExtensionDir(await plant("bridge", manifest({ icon })));
+		if (r.state !== "ready") throw new Error("unreachable");
+		expect(r.manifest.icon).toBe(icon);
+	});
+
+	it("清单里的图标过白名单:夹带脚本的整枚丢掉,但拓展本身照常加载", async () => {
+		const r = await readExtensionDir(
+			await plant(
+				"bridge",
+				manifest({ icon: '<svg viewBox="0 0 24 24"><script>x()</script></svg>' }),
+			),
+		);
+		// 图标坏了不是拒绝加载的理由 —— 它退回灰方章,拓展该跑还是跑。
+		expect(r.state).toBe("ready");
+		if (r.state !== "ready") throw new Error("unreachable");
+		expect(r.manifest.icon).toBeUndefined();
+	});
+
 	it("清单与目录名对不上 → 拒,而且说得出两边分别是什么", async () => {
 		const r = await readExtensionDir(await plant("bridge", manifest({ id: "not-bridge" })));
 		expect(r.state).toBe("unreadable");
