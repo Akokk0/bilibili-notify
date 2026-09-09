@@ -15,6 +15,7 @@ import {
 	type ExtensionRoot,
 	type ExtensionRootKind,
 	extensionEntryFileFor,
+	type ShadowedExtension,
 } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
@@ -40,6 +41,8 @@ export interface ExtensionEntry {
 	state: ExtensionRunState;
 	/** 从哪个根扫出来的 —— 有好几个根之后,「跑的到底是哪一份」得说得出来。 */
 	origin: ExtensionRootKind;
+	/** 它自己那个目录,绝对路径。根名字只说得出「哪一类」,同名两份要靠全路径分。 */
+	dir: string;
 	/** 清单读得出来就带上 —— 面板要印名字,哪怕它没跑起来。 */
 	manifest?: ExtensionManifest;
 	/** 没跑起来时那句「为什么」。 */
@@ -48,6 +51,13 @@ export interface ExtensionEntry {
 
 export interface LoadedExtensions {
 	list(): readonly ExtensionEntry[];
+	/**
+	 * 这次开机扫出来的「同一个 id 有两份」。
+	 *
+	 * 🔴 开机那句 warn 只在日志里闪一次,而**主人是在面板上找答案的** —— 「我明明改了怎么
+	 * 没生效」正是这一格要回答的问题,所以它得一直摆着。
+	 */
+	shadowed(): readonly ShadowedExtension[];
 	/**
 	 * 所有跑着的拓展声明成密钥的 config 键,合成一份 —— 备份脱敏拿它当依据。
 	 *
@@ -139,13 +149,18 @@ function realImport(specifier: string): Promise<unknown> {
 export async function loadExtensions(opts: LoadExtensionsOptions): Promise<LoadedExtensions> {
 	const { roots, ledgerRoot, host, mounts, isEnabled, maxFailures } = opts;
 	const importModule = opts.importModule ?? realImport;
+	/** 被盖住的那些 —— 面板要一直摆着,不能只在开机日志里闪一次。 */
+	const shadows: ShadowedExtension[] = [];
 	const found = await discoverExtensions(roots, {
 		// 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因(决策 34)。
-		onShadowed: ({ id, winner, shadowed }) =>
+		onShadowed: (shadow) => {
+			const { id, winner, shadowed } = shadow;
+			shadows.push(shadow);
 			host.logger.warn(
 				`[ext] ${id} 有多份:用的是${EXTENSION_ROOT_LABEL[winner.kind]}那份(${winner.dir}),` +
 					`盖住了${EXTENSION_ROOT_LABEL[shadowed.kind]}的(${shadowed.dir})`,
-			),
+			);
+		},
 	});
 
 	/** 面板那张表。按发现顺序(已按 id 排好)插入,后面只改不重排。 */
@@ -159,11 +174,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	async function start(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
 		const { id, manifest, origin } = dir;
+		const at = { id, origin, dir: dir.dir };
 		// 记账**现读**:热装卸期间失败也要算数,拿开机那一刻的快照会漏掉。
 		if (readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
 			entries.set(id, {
-				id,
-				origin,
+				...at,
 				state: "blocked",
 				manifest,
 				detail: `连续加载失败 ${maxFailures} 次,已自动停用;换一版会重新试`,
@@ -197,13 +212,13 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			await mod.activate(runtime.ctx);
 			markLoadSucceeded({ root: ledgerRoot, id, version: manifest.version });
 			runtimes.set(id, runtime);
-			entries.set(id, { id, origin, state: "running", manifest });
+			entries.set(id, { ...at, state: "running", manifest });
 		} catch (err) {
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
 			// 留着的话面板写「没起来」而它的定时器还在跑 —— 那比要求重启难查得多。
 			await runtime.dispose();
 			runtime.ctx.logger.error(`加载失败:${(err as Error).message}`);
-			entries.set(id, { id, origin, state: "failed", manifest, detail: (err as Error).message });
+			entries.set(id, { ...at, state: "failed", manifest, detail: (err as Error).message });
 		}
 	}
 
@@ -215,6 +230,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		entries.set(dir.id, {
 			id: dir.id,
 			origin: dir.origin,
+			dir: dir.dir,
 			state: "disabled",
 			manifest: dir.manifest,
 		});
@@ -227,6 +243,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			entries.set(dir.id, {
 				id: dir.id,
 				origin: dir.origin,
+				dir: dir.dir,
 				state: "unreadable",
 				detail: dir.detail,
 			});
@@ -236,6 +253,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			entries.set(dir.id, {
 				id: dir.id,
 				origin: dir.origin,
+				dir: dir.dir,
 				state: "incompatible",
 				manifest: dir.manifest,
 				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
@@ -251,6 +269,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			entries.set(dir.id, {
 				id: dir.id,
 				origin: dir.origin,
+				dir: dir.dir,
 				state: "disabled",
 				manifest: dir.manifest,
 			});
@@ -260,6 +279,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	return {
 		list: () => [...entries.values()],
+		shadowed: () => shadows,
 		secretConfigCodes: () => [
 			...new Set([...runtimes.values()].flatMap((r) => r.secretConfigCodes())),
 		],

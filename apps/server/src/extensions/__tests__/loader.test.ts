@@ -407,6 +407,22 @@ describe("多根", () => {
 		expect(warned[0]).toContain("bridge");
 		expect(warned[0]).toContain(root);
 		expect(warned[0]).toContain(repoDir);
+
+		// 日志只有开机那一刻看得见 —— 面板要在卡片旁边一直说着这句,所以它也得交出来。
+		expect(loaded.shadowed()).toEqual([
+			{
+				id: "bridge",
+				winner: { kind: "source", dir: join(repoDir, "bridge") },
+				shadowed: { kind: "data", dir: join(root, "bridge") },
+			},
+		]);
+	});
+
+	/** 两份同名的拓展摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
+	it("每条都带着自己的目录", async () => {
+		await plant("bridge", HEALTHY);
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		expect(loaded.list().map((e) => e.dir)).toEqual([join(root, "bridge")]);
 	});
 });
 

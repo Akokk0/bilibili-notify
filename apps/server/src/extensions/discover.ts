@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXTENSION_ROOT_LABEL, type ExtensionRootKind } from "@bilibili-notify/contract";
 import {
 	EXTENSION_API_VERSION,
 	type ExtensionManifest,
@@ -18,23 +19,17 @@ import { safeExtensionIcon } from "./manifest-icon.js";
  *
  * 分开这两个的不只是路径,还有**入口长什么样**(源码那份是 `src/index.ts`)与**谁负责换掉
  * 它**(源码那份跟着仓库走,`<dataDir>` 那份归主人)。
+ *
+ * 档位与那句人话的名字都住**契约**:面板要在卡片上印同一句(`GET /api/ext` 把根带下去),
+ * 各写各的话同一个根在日志与面板上会叫两个名字,而两边都不会报错。
  */
-export type ExtensionRootKind =
-	/** 仓里的 `extensions/` —— **只在源码运行时存在**,构建产物里这条路结构上没有。 */
-	| "source"
-	/** `<dataDir>/extensions/` —— 面板装的、主人手放的。 */
-	| "data";
+export type { ExtensionRootKind };
+export { EXTENSION_ROOT_LABEL };
 
 export interface ExtensionRoot {
 	kind: ExtensionRootKind;
 	dir: string;
 }
-
-/** 说人话的根名字 —— 「被谁盖住了」那句警告要印得出来。 */
-export const EXTENSION_ROOT_LABEL: Record<ExtensionRootKind, string> = {
-	source: "仓里源码",
-	data: "主人装的",
-};
 
 /**
  * 主人装的拓展落在 `<dataDir>/extensions/`。

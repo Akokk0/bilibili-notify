@@ -51,6 +51,31 @@ export type ExtensionStateDTO =
 	| "incompatible";
 
 /**
+ * 一个拓展是从**哪个根**扫出来的。两个根,优先级就是这两格的先后
+ * (仓里源码 > `<dataDir>/extensions/`,先命中先用)。
+ *
+ * ⛔ 没有「载荷自带」那一档:本体一个拓展都不带(主人 2026-09-09 推翻 ADR-0012 决策 34)。
+ */
+export type ExtensionRootKind = "source" | "data";
+
+/**
+ * 说人话的根名字。**放在契约里是因为两头都要印同一句话** —— 服务端那句「被谁盖住了」的
+ * 日志,和卡片上那行「这一份是从哪来的」。各写各的话,同一个根在日志里叫一个名字、
+ * 在面板上叫另一个,而两边都不会报错。
+ */
+export const EXTENSION_ROOT_LABEL: Record<ExtensionRootKind, string> = {
+	source: "仓里源码",
+	data: "主人装的",
+};
+
+/** 盘上那一份的位置。 */
+export interface ExtensionRootDTO {
+	kind: ExtensionRootKind;
+	/** 这个拓展自己的目录,绝对路径 —— 「我改的到底是不是它」只有全路径答得了。 */
+	dir: string;
+}
+
+/**
  * 拓展页那张卡。**没跑起来的也在这儿** —— 消失的东西没法排查。
  *
  * 清单读得出来的字段才有;读不出来时 `name` 退回目录名,`detail` 说明为什么。
@@ -64,8 +89,10 @@ export interface ExtensionDTO {
 	version?: string;
 	/** 它开的是哪一口:推送源 / 订阅源。 */
 	provides?: ExtensionProvides[];
-	/** 卡片图标,一段 SVG。没有就退回灰方章。 */
+	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
+	/** 从哪个根扫出来的。装了两份时,主人靠这一行判断改的是不是跑着的那个。 */
+	root: ExtensionRootDTO;
 	/** 主人按的那个开关(`globals.extensions.<id>.enabled`)。 */
 	enabled: boolean;
 	state: ExtensionStateDTO;
@@ -89,8 +116,22 @@ export interface ExtensionDTO {
  */
 export type { ExtensionConfigField } from "@bilibili-notify/extension";
 
+/**
+ * 同一个 id 在两个根里都有 —— 跑的是 `winner` 那份,`shadowed` 那份这次一行都没被 import。
+ *
+ * 🔴 **必须让它出声**:悄悄盖掉正是「我明明改了怎么没生效」最难查的原因 —— 盘上有两份、
+ * 列表上只有一行,不说的话没有任何办法判断跑的是哪个。
+ */
+export interface ExtensionShadowDTO {
+	id: string;
+	winner: ExtensionRootDTO;
+	shadowed: ExtensionRootDTO;
+}
+
 export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];
+	/** 这次开机扫出来的「有两份」。没有就是空表。 */
+	shadowed: ExtensionShadowDTO[];
 }
 
 // ---- /api/subs ------------------------------------------------------------

@@ -808,6 +808,7 @@ export async function startStandaloneServer(
 			extensions: {
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
+				shadowed: () => loadedExtensions?.shadowed() ?? [],
 				status: (id) => loadedExtensions?.status(id),
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {

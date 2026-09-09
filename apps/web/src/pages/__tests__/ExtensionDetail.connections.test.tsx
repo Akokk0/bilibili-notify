@@ -27,7 +27,16 @@ const LINK_ID = "11111111-1111-4111-8111-111111111111";
 const OLD_TOKEN = "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f";
 
 const LISTED: ExtensionsResponse = {
-	extensions: [{ id: "bridge", name: "机器人框架桥接", enabled: true, state: "running" }],
+	extensions: [
+		{
+			id: "bridge",
+			name: "机器人框架桥接",
+			enabled: true,
+			state: "running",
+			root: { kind: "data", dir: "/data/extensions/bridge" },
+		},
+	],
+	shadowed: [],
 };
 
 const CONNECTIONS = [

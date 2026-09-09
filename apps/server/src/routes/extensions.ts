@@ -2,6 +2,7 @@ import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import type { ConfigStore } from "../config/store.js";
+import type { ShadowedExtension } from "../extensions/discover.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 
 export interface ExtensionsRouteOptions {
@@ -12,6 +13,13 @@ export interface ExtensionsRouteOptions {
 	 * 没有写死的清单了 —— 拓展是**装进来的**,盘上有什么就是什么(ADR-0012)。
 	 */
 	extensions: () => readonly ExtensionEntry[];
+	/**
+	 * 这次开机扫出来的「同一个 id 有两份」。**现取**,理由同上。
+	 *
+	 * 🔴 开机那句 warn 只在日志里闪一次,而主人是在**面板上**找「我明明改了怎么没生效」的
+	 * 答案 —— 所以这一格要一直摆着。
+	 */
+	shadowed: () => readonly ShadowedExtension[];
 	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
 	status: (id: string) => unknown;
 	/**
@@ -47,12 +55,14 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			version: entry.manifest?.version,
 			provides: entry.manifest?.provides,
 			icon: entry.manifest?.icon,
+			// 从哪个根、哪个目录扫出来的 —— 同名两份时,只有全路径答得了「改的是不是它」。
+			root: { kind: entry.origin, dir: entry.dir },
 			// 开关与状态是**两件事**:开着却没跑(连败停用 / 清单坏了)正是最该看见的一格。
 			enabled: isExtensionEnabled(globals, entry.id),
 			state: entry.state,
 			detail: entry.detail,
 		}));
-		return c.json({ extensions });
+		return c.json({ extensions, shadowed: opts.shadowed() });
 	});
 
 	/**

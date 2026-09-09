@@ -42,7 +42,7 @@ describe("拓展挂载点接线", () => {
 		const mounts = createExtensionMounts();
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
 		const app = createApp(runtime, {
-			extensions: { mounts, loaded: () => [], status: () => undefined },
+			extensions: { mounts, loaded: () => [], shadowed: () => [], status: () => undefined },
 		});
 
 		expect(await (await app.request("/ext/bridge/x")).text()).toBe("桥在这儿");
@@ -58,8 +58,15 @@ describe("拓展挂载点接线", () => {
 			extensions: {
 				status: () => undefined,
 				mounts: createExtensionMounts(),
+				shadowed: () => [],
 				loaded: () => [
-					{ id: "junk", origin: "data", state: "unreadable", detail: "不是合法 JSON" },
+					{
+						id: "junk",
+						origin: "data",
+						dir: "/data/extensions/junk",
+						state: "unreadable",
+						detail: "不是合法 JSON",
+					},
 				],
 			},
 		});

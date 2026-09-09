@@ -29,6 +29,7 @@ const LISTED: ExtensionsResponse = {
 			provides: ["push"],
 			enabled: true,
 			state: "running",
+			root: { kind: "data", dir: "/data/extensions/bridge" },
 		},
 		{
 			id: "douyin",
@@ -37,8 +38,10 @@ const LISTED: ExtensionsResponse = {
 			enabled: true,
 			state: "blocked",
 			detail: "连续加载失败 3 次,已自动停用;换一版会重新试",
+			root: { kind: "data", dir: "/data/extensions/douyin" },
 		},
 	],
+	shadowed: [],
 };
 
 function renderPage(listed: ExtensionsResponse = LISTED) {
@@ -120,7 +123,7 @@ describe("拓展页", () => {
 	});
 
 	it("一个拓展都没装时给一句空态,不是空白", async () => {
-		renderPage({ extensions: [] });
+		renderPage({ extensions: [], shadowed: [] });
 		expect(await screen.findByText(/还没有装任何拓展/)).toBeTruthy();
 	});
 });
