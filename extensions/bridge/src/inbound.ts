@@ -9,8 +9,7 @@
  * 协议见 `../PROTOCOL.md` §5.3。
  */
 
-import type { ExtensionContext } from "@bilibili-notify/extension";
-import type { InboundMeta } from "@bilibili-notify/internal";
+import type { ExtensionContext, InboundMeta } from "@bilibili-notify/extension";
 import type { BridgeBot, BridgeInboundFrame } from "./contract.js";
 
 /** 这一帧从哪条桥来,以及那条桥当下报的 bot 名单(只为查 `selfId`)。 */

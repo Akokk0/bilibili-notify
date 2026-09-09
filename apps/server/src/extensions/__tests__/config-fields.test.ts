@@ -10,7 +10,7 @@
 
 import type { ExtensionConfigField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import { assertConfigFieldsMatchSchema } from "../config-fields.js";
 
 const SCHEMA = z.object({
@@ -63,5 +63,28 @@ describe("字段表 × zod 对表", () => {
 	it("config 的 schema 不是个对象 → 拒。**第一版 config 必须是扁平的一层键值**", () => {
 		// `set` 由前端统一生成成 `config[code] = v`,前提就是它是扁平的。
 		expect(() => check([], z.string())).toThrow(/对象/);
+	});
+
+	/**
+	 * 🔴 **判据按形状问,不认 zod 的类身份。**
+	 *
+	 * 拓展会被打成自包含的 `index.mjs`,它那份 zod 是**另一个实例** —— `instanceof ZodObject`
+	 * 当场为假,而报出来的会是「schema 必须是一个对象」,把人指向完全错误的方向。这里拿一个
+	 * **不是本进程 zod 造的**、只是形状对得上的 schema 当替身:它必须照常通过。
+	 */
+	it("拓展自带的另一份 zod 造出来的 schema 照样认得 —— 不看类身份,看有没有 shape", () => {
+		const foreign = {
+			shape: {
+				token: { safeParse: (v: unknown) => ({ success: v !== undefined }) },
+				note: { safeParse: () => ({ success: true }) },
+			},
+		} as unknown as ZodType;
+		expect(() =>
+			assertConfigFieldsMatchSchema("bridge", foreign, [
+				{ kind: "text", code: "token", label: "token" },
+			]),
+		).not.toThrow();
+		// 必填那条判据也得照样生效(`note` 收得下 undefined,所以不必有栏)。
+		expect(() => assertConfigFieldsMatchSchema("bridge", foreign, [])).toThrow(/token/);
 	});
 });

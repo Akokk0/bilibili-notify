@@ -6,12 +6,12 @@
  * 桥不来取的图必须自己消失 —— BN 常跑在 NAS 上,几百 KB 一张的卡攒起来是真占地方。
  */
 
-import type { Disposable, ServiceContext } from "@bilibili-notify/internal";
+import type { Disposable, ExtensionContext } from "@bilibili-notify/extension";
 import { describe, expect, it } from "vite-plus/test";
 import { createBridgeBlobStore } from "../blob.js";
 
 /** 攒下扫地的那个回调,好让测试自己决定什么时候扫。 */
-function fakeCtx(): { ctx: ServiceContext; sweeps: (() => void)[] } {
+function fakeCtx(): { ctx: ExtensionContext; sweeps: (() => void)[] } {
 	const sweeps: (() => void)[] = [];
 	const noop: Disposable = { dispose() {} };
 	const ctx = {
@@ -24,7 +24,7 @@ function fakeCtx(): { ctx: ServiceContext; sweeps: (() => void)[] } {
 			return noop;
 		},
 		onDispose() {},
-	} as unknown as ServiceContext;
+	} as unknown as ExtensionContext;
 	return { ctx, sweeps };
 }
 

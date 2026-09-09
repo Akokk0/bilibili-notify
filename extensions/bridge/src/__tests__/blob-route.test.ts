@@ -8,8 +8,7 @@
  * 路径是**相对挂载点**的:宿主剥掉 `/ext/bridge` 之后才交进来(决策 12)。
  */
 
-import type { ExtensionContext } from "@bilibili-notify/extension";
-import type { Disposable } from "@bilibili-notify/internal";
+import type { Disposable, ExtensionContext } from "@bilibili-notify/extension";
 import { describe, expect, it } from "vite-plus/test";
 import { createBridgeBlobStore } from "../blob.js";
 import { createBridgeFetchHandler } from "../blob-route.js";

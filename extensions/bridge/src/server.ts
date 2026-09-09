@@ -21,8 +21,12 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
-import type { Disposable, Logger } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	ExtensionUpgrade,
+	ExtensionUpgradeHandler,
+	Logger,
+} from "@bilibili-notify/extension";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import {
 	BRIDGE_CLOSE_CODES,

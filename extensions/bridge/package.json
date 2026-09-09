@@ -9,7 +9,6 @@
 	},
 	"dependencies": {
 		"@bilibili-notify/extension": "workspace:*",
-		"@bilibili-notify/internal": "workspace:*",
 		"ws": "catalog:",
 		"zod": "catalog:"
 	},

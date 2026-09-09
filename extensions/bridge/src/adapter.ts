@@ -10,16 +10,16 @@
  * 协议规范在 `../PROTOCOL.md`。
  */
 
-import type { ExtensionConnectionView } from "@bilibili-notify/extension";
 import type {
 	Connection,
 	DeliveryResult,
+	ExtensionConnectionView,
 	NotificationPayload,
 	PayloadSegment,
 	PlatformAdapter,
 	ProbeResult,
 	PushTarget,
-} from "@bilibili-notify/internal";
+} from "@bilibili-notify/extension";
 import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
 import type { BridgeConnectionConfig } from "./config.js";
 import {

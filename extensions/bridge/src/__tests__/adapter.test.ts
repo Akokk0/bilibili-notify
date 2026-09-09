@@ -10,8 +10,12 @@
  *    连接还在;不看名单就发等于把一条推送扔进黑洞再等 30 秒超时。
  */
 
-import type { ExtensionConnectionView } from "@bilibili-notify/extension";
-import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	ExtensionConnectionView,
+	NotificationPayload,
+	PushTarget,
+} from "@bilibili-notify/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createBridgeAdapter } from "../adapter.js";
 import type { BridgeConnectionConfig } from "../config.js";

@@ -5,11 +5,14 @@
  * 「ctx 上有哪几格」「一个推送源要交哪几样」这些类型。它们必须住在一个**双方都够得到的
  * 公共包**里:放核心里的话,拓展得反过来依赖宿主应用,那条边是反的。
  *
- * 分工:
+ * 🔴 **拓展只从这一个包拿 BN 的东西。** 它自己那一面(ctx、挂载点、upgrade、表单字段表)
+ * 定义在这里;推送源契约与 adapter 签名要用的域类型定义在 `@bilibili-notify/internal`
+ * (那是**核心也在实现**的业务词汇),由这里**转出一道** —— 拓展不直接依赖 internal。
  *
- * - **这个包**装「只有宿主实现、只有拓展消费」的那一面 —— ctx、挂载点、upgrade、表单字段表。
- * - **推送源契约**(`PlatformAdapter` / `InboundMeta` / …)在 `@bilibili-notify/internal`:
- *   那是**两边都在实现**的业务词汇(核心的 onebot / 官机 / webhook,拓展的桥)。
+ * 为什么转一道而不是让拓展自己去拿:`internal` 导出的是**整个域模型**(globals、
+ * subscriptions、patch……),拓展依赖了它就能伸手拿全部,那面太宽。**这里列出来的这些就是
+ * 契约的全部** —— 加一格是一次明确的加宽决定(决策 13:契约的宽度不可逆),而不是
+ * 「反正 internal 里有」。
  *
  * ⚠️ **只放类型,不放实现。** 拓展会被打成自包含的 `index.mjs`,从这里 import 一个运行时
  * 值等于把一份宿主代码的拷贝塞进拓展包里。真有非放不可的值,先想清楚再破例。
@@ -18,6 +21,35 @@
  * (两张宿主的分发表)、`InboundSinks`(绕过归属校验的那条管子)刻意都不在这儿 ——
  * **契约的宽度是不可逆的**(决策 13),窄面加宽容易,反过来不行。
  */
+
+/**
+ * 推送源契约 —— 一个出口长什么样。核心的 onebot / 官机 / webhook 与每个推送拓展实现的
+ * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
+ */
+/**
+ * 实现推送源用得着的域类型 —— `send` / `probe` / `reconcile` 的签名就是拿它们拼的。
+ *
+ * ⛔ 域模型的其余部分(globals / subscriptions / 订阅与推送的落盘形状……)**刻意不转** ——
+ * 拓展碰不着配置的写路径,那条路在这仓里只有一条。
+ */
+export type {
+	Connection,
+	ConnectionCapabilities,
+	Connector,
+	DeliveryResult,
+	Disposable,
+	InboundGroupMessage,
+	InboundMeta,
+	InboundPrivateMessage,
+	Logger,
+	NotificationPayload,
+	PayloadSegment,
+	PlatformAdapter,
+	PlatformDialect,
+	ProbeResult,
+	PushTarget,
+	PushTargetScope,
+} from "@bilibili-notify/internal";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";

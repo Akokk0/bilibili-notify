@@ -453,9 +453,6 @@ importers:
       '@bilibili-notify/extension':
         specifier: workspace:*
         version: link:../../packages/extension
-      '@bilibili-notify/internal':
-        specifier: workspace:*
-        version: link:../../packages/internal
       ws:
         specifier: 'catalog:'
         version: 8.21.3

@@ -27,7 +27,7 @@
  * 给插件作者看的规范在 `../PROTOCOL.md`。
  */
 
-import type { PushTargetScope } from "@bilibili-notify/internal";
+import type { PushTargetScope } from "@bilibili-notify/extension";
 
 // ---------------------------------------------------------------------------
 // 协议版本
