@@ -774,6 +774,13 @@ export async function startStandaloneServer(
 				);
 		}
 
+		// 拨开关即热装卸(决策 10)。`sync()` 自己吞异常、自己排队,这里只负责把「全局配置
+		// 动过了」转过去 —— 它认的是开关**变没变**,别的全局设置存一百次也不会惊动拓展。
+		const extensions = loadedExtensions;
+		runtime.bus.on("config-changed", (scope) => {
+			if (scope === "globals") void extensions.sync();
+		});
+
 		const app = createApp(runtime, {
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
 			authSystem: devtools?.authSystem ?? authSystem,
@@ -802,6 +809,10 @@ export async function startStandaloneServer(
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
 				status: (id) => loadedExtensions?.status(id),
+				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
+				settle: async () => {
+					await loadedExtensions?.sync();
+				},
 			},
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。

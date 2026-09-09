@@ -11,6 +11,7 @@ import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } 
 import {
 	discoverExtensions,
 	EXTENSION_ROOT_LABEL,
+	type ExtensionDirRead,
 	type ExtensionRoot,
 	type ExtensionRootKind,
 	extensionEntryFileFor,
@@ -59,6 +60,19 @@ export interface LoadedExtensions {
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
 	 */
 	status(id: string): unknown;
+	/**
+	 * 按**现在的开关**再对一遍:开了的装上,关了的收掉(决策 10 的「启用 / 停用热」)。
+	 *
+	 * 🔴 判据是**开关变了**,不是「现在跑没跑」。按后者写的话,一个加载失败的拓展会在
+	 * 主人每存一次全局设置时重试一次,几下就把失败记账烧到自动停用 —— 而主人根本没碰它。
+	 * 想重试就拨一下开关,那也正是人会做的动作。
+	 *
+	 * **不重扫盘**:新装进来的拓展要等下次开机。热的只有开关这一件事,而扫盘 + 读清单
+	 * 挂在「任何一次全局设置保存」上,是拿一条高频路径去办一件低频的事。
+	 *
+	 * 排队执行,不并发 —— 连拨两下开关得按顺序落地。自己吞异常,不会抛。
+	 */
+	sync(): Promise<void>;
 	/** 收回所有跑着的拓展。宿主关机时调。 */
 	dispose(): Promise<void>;
 }
@@ -117,10 +131,10 @@ function realImport(specifier: string): Promise<unknown> {
 }
 
 /**
- * 扫一遍装载目录,把该跑的跑起来。
+ * 扫一遍装载目录,把该跑的跑起来,并把这批拓展的**装卸把手**交回去。
  *
- * 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
- * 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
+ * 开机扫这一次就够了:之后主人拨开关走 `sync()`,拿的是这次扫出来的那份名单
+ * (决策 10 只把**开关**做成热的,新装进来的拓展仍要等下次开机)。
  */
 export async function loadExtensions(opts: LoadExtensionsOptions): Promise<LoadedExtensions> {
 	const { roots, ledgerRoot, host, mounts, isEnabled, maxFailures } = opts;
@@ -133,42 +147,28 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 					`盖住了${EXTENSION_ROOT_LABEL[shadowed.kind]}的(${shadowed.dir})`,
 			),
 	});
-	const blocked = readLoadLedger(ledgerRoot).blocked;
 
-	const entries: ExtensionEntry[] = [];
-	const running: ExtensionRuntime[] = [];
-	const byId = new Map<string, ExtensionRuntime>();
+	/** 面板那张表。按发现顺序(已按 id 排好)插入,后面只改不重排。 */
+	const entries = new Map<string, ExtensionEntry>();
+	/** 眼下真跑着的。插入顺序 = 起来的顺序,收摊时倒着来。 */
+	const runtimes = new Map<string, ExtensionRuntime>();
+	/** 装得起来的那些(清单读得懂、版本合)—— 开关拨回来时不必重扫盘。 */
+	const ready = new Map<string, Extract<ExtensionDirRead, { state: "ready" }>>();
+	/** 上一次落实过的开关。热装卸只认**变化**,见 `sync()` 的注释。 */
+	const applied = new Map<string, boolean>();
 
-	for (const dir of found) {
-		if (dir.state === "unreadable") {
-			entries.push({ id: dir.id, origin: dir.origin, state: "unreadable", detail: dir.detail });
-			continue;
-		}
-		if (dir.state === "incompatible") {
-			entries.push({
-				id: dir.id,
-				origin: dir.origin,
-				state: "incompatible",
-				manifest: dir.manifest,
-				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
-			});
-			continue;
-		}
-
+	async function start(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
 		const { id, manifest, origin } = dir;
-		if (!isEnabled(id)) {
-			entries.push({ id, origin, state: "disabled", manifest });
-			continue;
-		}
-		if (blocked.includes(`${id}@${manifest.version}`)) {
-			entries.push({
+		// 记账**现读**:热装卸期间失败也要算数,拿开机那一刻的快照会漏掉。
+		if (readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
+			entries.set(id, {
 				id,
 				origin,
 				state: "blocked",
 				manifest,
 				detail: `连续加载失败 ${maxFailures} 次,已自动停用;换一版会重新试`,
 			});
-			continue;
+			return;
 		}
 
 		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
@@ -188,33 +188,99 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		try {
 			// 入口是**宿主按根算出来的**(源码根 `src/index.ts`,其余 `index.mjs`),
 			// 清单说了不算 —— 见 `extensionEntryFileFor`。
+			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
+			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
 			const mod = (await importModule(pathToFileURL(dir.entry).href)) as Partial<ExtensionModule>;
 			if (typeof mod.activate !== "function") {
 				throw new Error(`${extensionEntryFileFor(origin)} 没有导出 activate()`);
 			}
 			await mod.activate(runtime.ctx);
 			markLoadSucceeded({ root: ledgerRoot, id, version: manifest.version });
-			running.push(runtime);
-			byId.set(id, runtime);
-			entries.push({ id, origin, state: "running", manifest });
+			runtimes.set(id, runtime);
+			entries.set(id, { id, origin, state: "running", manifest });
 		} catch (err) {
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
 			// 留着的话面板写「没起来」而它的定时器还在跑 —— 那比要求重启难查得多。
 			await runtime.dispose();
 			runtime.ctx.logger.error(`加载失败:${(err as Error).message}`);
-			entries.push({ id, origin, state: "failed", manifest, detail: (err as Error).message });
+			entries.set(id, { id, origin, state: "failed", manifest, detail: (err as Error).message });
 		}
 	}
 
+	async function stop(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
+		const runtime = runtimes.get(dir.id);
+		runtimes.delete(dir.id);
+		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
+		await runtime?.dispose();
+		entries.set(dir.id, {
+			id: dir.id,
+			origin: dir.origin,
+			state: "disabled",
+			manifest: dir.manifest,
+		});
+	}
+
+	// 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
+	// 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
+	for (const dir of found) {
+		if (dir.state === "unreadable") {
+			entries.set(dir.id, {
+				id: dir.id,
+				origin: dir.origin,
+				state: "unreadable",
+				detail: dir.detail,
+			});
+			continue;
+		}
+		if (dir.state === "incompatible") {
+			entries.set(dir.id, {
+				id: dir.id,
+				origin: dir.origin,
+				state: "incompatible",
+				manifest: dir.manifest,
+				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
+			});
+			continue;
+		}
+
+		ready.set(dir.id, dir);
+		const enabled = isEnabled(dir.id);
+		applied.set(dir.id, enabled);
+		if (enabled) await start(dir);
+		else
+			entries.set(dir.id, {
+				id: dir.id,
+				origin: dir.origin,
+				state: "disabled",
+				manifest: dir.manifest,
+			});
+	}
+
+	let queue: Promise<void> = Promise.resolve();
+
 	return {
-		list: () => entries,
-		secretConfigCodes: () => [...new Set(running.flatMap((r) => r.secretConfigCodes()))],
-		status: (id) => byId.get(id)?.status(),
+		list: () => [...entries.values()],
+		secretConfigCodes: () => [
+			...new Set([...runtimes.values()].flatMap((r) => r.secretConfigCodes())),
+		],
+		status: (id) => runtimes.get(id)?.status(),
+		sync() {
+			// 串起来跑:连拨两下开关时,后一次要看见前一次的结果。
+			queue = queue.then(async () => {
+				for (const [id, dir] of ready) {
+					const wanted = isEnabled(id);
+					if (wanted === applied.get(id)) continue;
+					applied.set(id, wanted);
+					if (wanted) await start(dir);
+					else await stop(dir);
+				}
+			});
+			return queue;
+		},
 		async dispose() {
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
-			for (const runtime of [...running].reverse()) await runtime.dispose();
-			running.length = 0;
-			byId.clear();
+			for (const runtime of [...runtimes.values()].reverse()) await runtime.dispose();
+			runtimes.clear();
 		},
 	};
 }

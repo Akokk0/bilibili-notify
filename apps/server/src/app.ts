@@ -72,6 +72,8 @@ export interface CreateAppOptions {
 		loaded: () => readonly ExtensionEntry[];
 		/** 某个拓展交上来的面板数据(`ctx.publishStatus`)。没交过 / 没跑就是 undefined。 */
 		status: (id: string) => unknown;
+		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
+		settle?: () => Promise<void>;
 	};
 	/**
 	 * Configured dashboard credentials. When provided, every request under
@@ -331,6 +333,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			store: deps.store,
 			extensions: () => options.extensions?.loaded() ?? [],
 			status: (id) => options.extensions?.status(id),
+			settle: options.extensions?.settle,
 		}),
 	);
 	app.route(

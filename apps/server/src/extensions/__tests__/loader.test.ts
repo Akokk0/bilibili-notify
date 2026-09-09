@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { ExtensionContext } from "../context.js";
+import { readLoadLedger } from "../load-ledger.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
@@ -90,6 +91,7 @@ function run(opts: {
 	mounts: ReturnType<typeof createExtensionMounts>;
 	enabled?: (id: string) => boolean;
 	maxFailures?: number;
+	importModule?: (specifier: string) => Promise<unknown>;
 }) {
 	return loadExtensions({
 		roots: [{ kind: "data", dir: root }],
@@ -98,6 +100,7 @@ function run(opts: {
 		mounts: opts.mounts,
 		isEnabled: opts.enabled ?? (() => true),
 		maxFailures: opts.maxFailures ?? 3,
+		importModule: opts.importModule,
 		...coreStubs(),
 	});
 }
@@ -404,5 +407,105 @@ describe("多根", () => {
 		expect(warned[0]).toContain("bridge");
 		expect(warned[0]).toContain(root);
 		expect(warned[0]).toContain(repoDir);
+	});
+});
+
+/**
+ * 🔴 **拨开关即热装卸**(ADR-0012 决策 10)。
+ *
+ * 热的是**副作用**,不是代码:`sync()` 收回 / 重新登记拓展注册过的那些东西,而那份
+ * 模块本身在进程里换不掉。所以下面第二条才是真正要钉的 —— 第二次启用时 `import()` 拿到
+ * 的是**缓存里那份**,只有 `activate` 会再跑一遍。拓展的模块顶层因此不许存状态。
+ *
+ * 第三条钉的是**判据**:`sync()` 只认「开关变了」,不认「现在跑没跑」。按后者写的话,
+ * 一个加载失败的拓展会在主人每存一次全局设置时重试一次,几下就把失败记账烧到自动停用。
+ */
+describe("拨开关即热装卸", () => {
+	it("关掉 → 它注册的东西当场没了,身份还列得出来", async () => {
+		await plant("bridge", HEALTHY);
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		let on = true;
+
+		const loaded = await run({ host, mounts, enabled: () => on });
+		expect(host.pending()).toBe(1);
+
+		on = false;
+		await loaded.sync();
+
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "disabled"]]);
+		expect(host.pending()).toBe(0);
+		expect((await app.request("/ext/bridge/x")).status).toBe(404);
+	});
+
+	it("再打开 → activate 又跑了一遍(ESM 模块缓存不挡二次启用)", async () => {
+		await plant("bridge", HEALTHY);
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		let on = true;
+
+		const loaded = await run({ host, mounts, enabled: () => on });
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
+		// 定时器与端点都是 `activate` 现场注册的 —— 它们回来了就等于 activate 又跑了一遍。
+		expect(host.pending()).toBe(1);
+		expect(await (await app.request("/ext/bridge/x")).text()).toBe("hi from bridge");
+	});
+
+	it("开关没动过 → sync 一行代码都不重新 import", async () => {
+		await plant("bridge", HEALTHY);
+		const imported: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			importModule: (specifier) => {
+				imported.push(specifier);
+				return import(specifier);
+			},
+		});
+		expect(imported).toHaveLength(1);
+
+		await loaded.sync();
+		await loaded.sync();
+
+		expect(imported).toHaveLength(1);
+	});
+
+	it("加载失败的那个,开关不动就不重试 —— 否则每存一次全局设置就烧一次失败记账", async () => {
+		await plant("bad", `export function activate() { throw new Error("炸"); }`);
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+
+		await loaded.sync();
+		await loaded.sync();
+
+		// 记账里只该有开机那一次 —— 再来两次就到上限、把一个只是暂时炸了的拓展判死。
+		expect(readLoadLedger(root).blocked).toEqual([]);
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+	});
+
+	it("关了又开、每次都炸 → 记账照样累加,到上限自动停用", async () => {
+		await plant("bad", `export function activate() { throw new Error("炸"); }`);
+		const host = fakeHost();
+		let on = true;
+		// 开机那次算第 1 笔,底下每拨一轮再来一笔。第 3 笔**当场**还是 failed(报的是真
+		// 原因,比「已停用」有用),自动停用从第 4 次尝试起生效 —— 开机那条路也是这个次序。
+		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		for (let i = 0; i < 3; i++) {
+			on = false;
+			await loaded.sync();
+			on = true;
+			await loaded.sync();
+		}
+		expect(loaded.list().map((e) => e.state)).toEqual(["blocked"]);
+		expect(loaded.list()[0]?.detail).toContain("连续加载失败");
 	});
 });

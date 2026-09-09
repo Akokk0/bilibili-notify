@@ -100,12 +100,13 @@ describe("拓展页", () => {
 	});
 
 	/**
-	 * 🔴 **热装卸还没做。** 拨完开关什么都不会发生,直到重启 —— 不说清楚的话,主人会
-	 * 反复拨那个开关找原因。
+	 * 🔴 **开关热、代码不热**(ADR-0012 决策 10),两半都得说清楚:只说前半,主人换完
+	 * 拓展代码会以为拨一下开关就够;只说后半,他会为一次停用去重启整个进程。
 	 */
-	it("说清楚开关要重启才生效", async () => {
+	it("说清楚开关立刻生效、换代码才要重启", async () => {
 		renderPage();
-		expect(await screen.findByText(/重启后生效/)).toBeTruthy();
+		expect(await screen.findByText(/立刻生效/)).toBeTruthy();
+		expect(await screen.findByText(/才要重启一次/)).toBeTruthy();
 	});
 
 	/** 详情页是拓展自己那块面板的唯一去处 —— 卡片上不给入口的话只能手敲地址。 */

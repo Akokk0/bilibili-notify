@@ -14,6 +14,14 @@ export interface ExtensionsRouteOptions {
 	extensions: () => readonly ExtensionEntry[];
 	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
 	status: (id: string) => unknown;
+	/**
+	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
+	 *
+	 * 🔴 热装卸是异步的,而 `PATCH /api/globals` 在它落地之前就回 200 了 —— 面板紧接着
+	 * 刷这一口,拿到的会是**上一秒**的状态。启用那一路尤其明显:第一次 `import()` 一个
+	 * 文件是真 I/O。症状是「开关明明拨上去了,状态还写着已停用」,而且不会自己好。
+	 */
+	settle?: () => Promise<void>;
 }
 
 /**
@@ -28,7 +36,8 @@ export interface ExtensionsRouteOptions {
 export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	const app = new Hono();
 
-	app.get("/", (c) => {
+	app.get("/", async (c) => {
+		await opts.settle?.();
 		const globals = opts.store.getGlobals();
 		const extensions: ExtensionDTO[] = opts.extensions().map((entry) => ({
 			id: entry.id,

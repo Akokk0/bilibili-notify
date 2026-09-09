@@ -13,17 +13,24 @@ import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionsRoute } from "../extensions.js";
 
 function boot(
-	over: { enabled?: boolean; entries?: ExtensionEntry[]; status?: Record<string, unknown> } = {},
+	over: {
+		enabled?: boolean;
+		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
+		status?: Record<string, unknown>;
+		settle?: () => Promise<void>;
+	} = {},
 ) {
 	const store = {
 		getGlobals: () =>
 			({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
 		getConnections: () => [],
 	} as unknown as ConfigStore;
+	const entries = over.entries ?? [];
 	return createExtensionsRoute({
 		store,
-		extensions: () => over.entries ?? [],
+		extensions: () => (typeof entries === "function" ? entries() : entries),
 		status: (id) => over.status?.[id],
+		settle: over.settle,
 	});
 }
 
@@ -45,6 +52,23 @@ function running(id: string): ExtensionEntry {
 }
 
 describe("GET /api/ext", () => {
+	/**
+	 * 🔴 热装卸是异步的,而 `PATCH /api/globals` 在它落地之前就回 200 了 —— 面板紧接着
+	 * 刷这一口。不先落实的话,拨完开关刷出来的是**上一秒**的状态,而且不会自己好。
+	 */
+	it("先把还没落地的开关落实掉,再报状态", async () => {
+		let entry = { ...running("bridge"), state: "disabled" } as ExtensionEntry;
+		const app = boot({
+			enabled: true,
+			entries: () => [entry],
+			settle: async () => {
+				entry = running("bridge");
+			},
+		});
+		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.state).toBe("running");
+	});
+
 	it("列的是**真装着的**那些,带上主人的开关与它现在的状态", async () => {
 		const body = (await (
 			await boot({ enabled: true, entries: [running("bridge")] }).request("/")

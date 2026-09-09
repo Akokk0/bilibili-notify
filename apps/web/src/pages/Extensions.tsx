@@ -89,14 +89,15 @@ export default function Extensions() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/*
-			 * ⚠️ 这句话是**必须**的,不是装饰:热装卸还没做(ADR-0012 决策 10 说得到,
-			 * 地基只实现了开机时按开关决定装不装载)。不说的话,主人拨完开关看不出任何
-			 * 变化,只会反复拨它找原因。
+			 * ⚠️ 这句话是**必须**的,不是装饰:开关热、代码不热(ADR-0012 决策 10)。两半
+			 * 都要说 —— 只说前半,主人换完代码会以为拨一下开关就够;只说后半,他会为一次
+			 * 停用去重启整个进程,还顺手把别的推送一起停了。
 			 */}
 			<HintNote>
-				拓展是装进来的,不编在主程序里。拨动开关会立刻存下来,但要
-				<strong className="text-bn-text-secondary">重启后生效</strong> —— 换掉一份正在跑的代码
-				这件事,得等进程重来一次。
+				拓展是装进来的,不编在主程序里。拨动开关
+				<strong className="text-bn-text-secondary">立刻生效</strong>:关掉当场收摊(正连着的
+				插件会被断开,配置全留),打开就地装起来。装进来一个新拓展、或者换掉一份拓展的代码,
+				才要重启一次 —— 已经加载的代码在进程里换不掉。
 			</HintNote>
 
 			{extensions.length === 0 ? (

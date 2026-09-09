@@ -76,6 +76,10 @@ function peer(port: number, token: string) {
 	});
 	// upgrade 被拒时 ws 会 emit error;不接住会变成 unhandled rejection。
 	socket.on("error", () => {});
+	let closeCode: number | undefined;
+	socket.on("close", (code) => {
+		closeCode = code;
+	});
 
 	return {
 		open(): Promise<void> {
@@ -96,6 +100,13 @@ function peer(port: number, token: string) {
 			if (buffered) return Promise.resolve(buffered);
 			return new Promise((resolve) => {
 				waiter = resolve;
+			});
+		},
+		/** 等 BN 把这条连接断掉,回它给的 close code。 */
+		closed(): Promise<number> {
+			if (socket.readyState === WebSocket.CLOSED) return Promise.resolve(closeCode ?? 1006);
+			return new Promise((resolve) => {
+				socket.once("close", (code: number) => resolve(code));
 			});
 		},
 		dispose(): void {
@@ -347,4 +358,49 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 			err: "telegram 说这个群不存在",
 		});
 	});
+
+	/**
+	 * 🔴 **拨开关即热装卸**(ADR-0012 决策 10),整条线走一遍:
+	 * `PATCH /api/globals` → 落盘 → `config-changed` → 装载器 `sync()` → 拓展被收回。
+	 *
+	 * 零件各自的单元测试证明不了这一根线接上了没有:`sync()` 自己有测试,总线也有,
+	 * 而**谁去订这个事件、订的是哪个 scope** 只有从这一头推到那一头才看得见。
+	 *
+	 * 断开那一下要**看得见**:配置全留、代码没了,插件收到的是可以退避重连的那种断连,
+	 * 而不是「BN 还在,但它永远不理我了」。
+	 */
+	it("关掉拓展 → 活着的桥当场掉线、端点也没了;拨回来又能连上", async () => {
+		await handshake();
+		if (!client) throw new Error("unreachable");
+		const wentAway = client.closed();
+
+		expect((await setBridgeEnabled(false)).status).toBe(200);
+
+		// ① 活着的那条当场断开 —— 不用等它自己发现。
+		expect(await wentAway).toBeGreaterThan(0);
+		// ② 端点也跟着摘了:再连过来是宿主的 404(没人认领),不是桥的 401 / 503。
+		await expect(peerOnce()).rejects.toThrow("HTTP 404");
+
+		// ③ 拨回来:同一个进程里 activate 又跑一遍,一切照旧。
+		expect((await setBridgeEnabled(true)).status).toBe(200);
+		await handshake();
+	});
+
+	function setBridgeEnabled(enabled: boolean): Promise<Response> {
+		return fetch(`${handle?.url}/api/globals`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ extensions: { bridge: { enabled } } }),
+		});
+	}
+
+	/** 连一次就丢 —— 只想知道 upgrade 是被谁、以什么理由挡下来的。 */
+	async function peerOnce(): Promise<void> {
+		const probe = peer(port, TOKEN);
+		try {
+			await probe.open();
+		} finally {
+			probe.dispose();
+		}
+	}
 });
