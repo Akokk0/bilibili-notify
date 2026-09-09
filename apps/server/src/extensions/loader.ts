@@ -12,6 +12,7 @@ import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } 
 import { discoverExtensions, EXTENSION_ENTRY_FILE } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
+import type { ExtensionUpgrades } from "./upgrade.js";
 
 /** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
 export type ExtensionRunState =
@@ -69,6 +70,8 @@ export interface LoadExtensionsOptions {
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
+	/** WS upgrade 的分发表。 */
+	upgrades: ExtensionUpgrades;
 	isEnabled(id: string): boolean;
 	/** 连着失败多少次就自动停用。 */
 	maxFailures: number;
@@ -141,6 +144,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			connections: opts.connections,
 			onConnectionsChanged: opts.onConnectionsChanged,
 			inbound: opts.inbound,
+			upgrades: opts.upgrades,
 		});
 		try {
 			const mod = (await importModule(

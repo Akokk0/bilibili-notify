@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
+import { createExtensionUpgrades } from "../upgrade.js";
 
 let root: string;
 
@@ -75,6 +76,7 @@ function coreStubs() {
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		inbound: {},
+		upgrades: createExtensionUpgrades(),
 	};
 }
 

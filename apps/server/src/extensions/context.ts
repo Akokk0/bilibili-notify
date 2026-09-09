@@ -17,6 +17,7 @@ import type {
 	PlatformAdapter,
 } from "../platforms/types.js";
 import { type ExtensionFetchHandler, type ExtensionMounts, extensionMountPrefix } from "./mount.js";
+import type { ExtensionUpgradeHandler, ExtensionUpgrades } from "./upgrade.js";
 
 /**
  * 拓展交给面板的元信息 —— **就是 `PlatformDescriptor`,少掉 `connectors` 那一格**。
@@ -115,6 +116,14 @@ export interface ExtensionContext {
 		group(msg: InboundGroupMessage, meta: InboundMeta): void;
 	};
 	/**
+	 * 认领 `/ext/<id>` 底下的 WS upgrade。
+	 *
+	 * 交给它的是**原样的三样原料**(`req` / `socket` / `head`)加一段剥掉前缀的路径:
+	 * 握手、鉴权、帧上限、心跳全归拓展 —— 那些是协议语义(决策 26)。宿主只回答
+	 * 「这条 upgrade 归谁」。
+	 */
+	onUpgrade(handler: ExtensionUpgradeHandler): void;
+	/**
 	 * 交一份给面板看的数据(任意 JSON)。宿主在 `/api/ext/<id>/status` 下发 —— 走
 	 * `/api/*` 才吃得到 dashboard 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。
 	 *
@@ -147,6 +156,8 @@ export interface CreateExtensionContextOptions {
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
+	/** WS upgrade 的分发表。 */
+	upgrades: ExtensionUpgrades;
 	hostApiVersion?: number;
 }
 
@@ -276,6 +287,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			private: (msg, meta) =>
 				feed("private", meta, () => opts.inbound.onInboundPrivate?.(msg, meta)),
 			group: (msg, meta) => feed("group", meta, () => opts.inbound.onInboundGroup?.(msg, meta)),
+		},
+		onUpgrade(handler) {
+			if (disposed) {
+				refuse("onUpgrade");
+				return;
+			}
+			registered.add(opts.upgrades.register(id, handler));
 		},
 		publishStatus(fn) {
 			if (disposed) {

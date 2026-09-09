@@ -7,6 +7,8 @@
  * - 读连接给的是**全部**(带 `enabled`),config **已经过拓展自己那份 zod**
  */
 
+import { EventEmitter } from "node:events";
+import type { Server as HttpServer } from "node:http";
 import type { Connection, Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -15,6 +17,7 @@ import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { PlatformAdapter } from "../../platforms/types.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts } from "../mount.js";
+import { createExtensionUpgrades } from "../upgrade.js";
 
 const CONFIG = z.object({ token: z.string(), bridgeKind: z.enum(["koishi", "astrbot"]) });
 
@@ -60,6 +63,7 @@ function harness(opts: { connections?: Connection[] } = {}) {
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
 		},
+		upgrades: createExtensionUpgrades(),
 		inbound: {
 			onInboundPrivate: (_msg, meta) =>
 				inboundSeen.push({ route: "private", connectionId: meta.connectionId }),
@@ -200,5 +204,49 @@ describe("给面板看的数据", () => {
 		h.ctx.publishStatus(() => ({ n: ++n }));
 		expect(h.runtime.status()).toEqual({ n: 1 });
 		expect(h.runtime.status()).toEqual({ n: 2 });
+	});
+});
+
+describe("认领 WS upgrade", () => {
+	it("卸载之后 upgrade 不再打到它 —— 裸 socket 是 ctx 管不着的资源,这道回收更要紧", async () => {
+		const upgrades = createExtensionUpgrades();
+		const host = new EventEmitter();
+		upgrades.attach(host as unknown as HttpServer);
+
+		const lines: string[] = [];
+		const logger: Logger = {
+			info: () => {},
+			warn: (m) => lines.push(m),
+			error: () => {},
+			debug: () => {},
+		};
+		const runtime = createExtensionContext({
+			id: "bridge",
+			host: {
+				logger,
+				setInterval: () => ({ dispose() {} }),
+				setTimeout: () => ({ dispose() {} }),
+				onDispose() {},
+			} as unknown as ServiceContext,
+			mounts: createExtensionMounts(),
+			adapters: createAdapterRegistry(),
+			connections: () => [],
+			onConnectionsChanged: () => ({ dispose() {} }),
+			inbound: {},
+			upgrades,
+		});
+
+		const seen: string[] = [];
+		runtime.ctx.onUpgrade((u) => seen.push(u.path));
+		const fire = () => {
+			const socket = { write: () => {}, destroy: () => {} };
+			host.emit("upgrade", { url: "/ext/bridge/x", headers: {} }, socket, Buffer.alloc(0));
+		};
+		fire();
+		expect(seen).toEqual(["/x"]);
+
+		await runtime.dispose();
+		fire();
+		expect(seen).toEqual(["/x"]);
 	});
 });

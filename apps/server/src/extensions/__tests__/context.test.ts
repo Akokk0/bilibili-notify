@@ -12,6 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
+import { createExtensionUpgrades } from "../upgrade.js";
 
 /** 一个手动跑的假宿主 ctx:定时器不真的走时钟,由测试自己 `tick()`。 */
 function fakeHost() {
@@ -52,6 +53,7 @@ function coreStubs() {
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		inbound: {},
+		upgrades: createExtensionUpgrades(),
 	};
 }
 

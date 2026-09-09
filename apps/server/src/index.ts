@@ -32,6 +32,7 @@ import {
 	loadExtensions,
 } from "./extensions/loader.js";
 import { createExtensionMounts } from "./extensions/mount.js";
+import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -774,6 +775,7 @@ export async function startStandaloneServer(
 		// 拓展装载。**在 createApp 之前**:总入口要随 app 一起挂上,而拓展在 `activate`
 		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
 		const extensionMounts = createExtensionMounts();
+		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
 			root: extensionsRootIn(bootstrap.dataDir),
 			host: runtime.serviceCtx,
@@ -794,6 +796,7 @@ export async function startStandaloneServer(
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			},
+			upgrades: extensionUpgrades,
 		});
 		for (const entry of loadedExtensions.list()) {
 			if (entry.state === "running") log.info(`[ext] ${entry.id} 已加载`);
@@ -882,6 +885,8 @@ export async function startStandaloneServer(
 		// every subsequent `logger.<level>(...)` call also lands on the `log` channel.
 		const httpServer = server as unknown as HttpServer;
 		// `/bridge` 从这一刻起开始收桥。放在这儿而不是构造那会儿:HTTP server 要等 serve()。
+		// 拓展的 upgrade 分发也挂在这台上 —— 与桥同一个理由:HTTP server 要等 serve()。
+		extensionUpgrades.attach(httpServer);
 		bridgeServer.attach(httpServer);
 		wsServer = createWsServer({
 			httpServer,
