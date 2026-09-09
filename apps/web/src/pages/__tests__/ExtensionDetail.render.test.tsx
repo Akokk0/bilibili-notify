@@ -2,15 +2,21 @@
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import ExtensionDetail from "../ExtensionDetail";
 
-const { apiGetMock } = vi.hoisted(() => ({ apiGetMock: vi.fn() }));
+const { apiGetMock, apiPatchMock } = vi.hoisted(() => ({
+	apiGetMock: vi.fn(),
+	apiPatchMock: vi.fn(),
+}));
 
 vi.mock("../../services/api", () => ({
-	api: { get: apiGetMock as unknown as (url: string) => Promise<unknown> },
+	api: {
+		get: apiGetMock as unknown as (url: string) => Promise<unknown>,
+		patch: apiPatchMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
+	},
 }));
 
 const CONNECTED_ID = "11111111-1111-4111-8111-111111111111";
@@ -103,6 +109,8 @@ describe("拓展详情页", () => {
 	// 症状是每条用例末尾多一发 `api.get(undefined)`,栈里看不出是自己写的。
 	beforeEach(() => {
 		apiGetMock.mockReset();
+		apiPatchMock.mockReset();
+		apiPatchMock.mockResolvedValue({});
 	});
 	afterEach(() => {
 		cleanup();
@@ -111,8 +119,26 @@ describe("拓展详情页", () => {
 
 	it("头上印的是这个拓展自己的名字与状态", async () => {
 		renderDetail();
-		expect(await screen.findByText("机器人框架桥接")).toBeTruthy();
+		// 名字有两处:面包屑与头卡 —— 两处都该是它自己的名字。
+		expect(await screen.findAllByText("机器人框架桥接")).toHaveLength(2);
 		expect(screen.getByText("运行中")).toBeTruthy();
+		expect(screen.getByText("v1.0.0")).toBeTruthy();
+		// 从哪个根扫出来的 —— 与列表页说同一句话。
+		expect(screen.getByText("/data/extensions/bridge")).toBeTruthy();
+	});
+
+	/**
+	 * 点进详情页正是为了「摆弄它」,而开关是这一页最主要的那个动作 —— 只能回列表去拨的话,
+	 * 这一页就成了只读的展板。补丁仍然**只带自己那一格**(JSON Merge Patch)。
+	 */
+	it("详情页也能拨开关,发出去的还是只有自己那一格", async () => {
+		renderDetail();
+		fireEvent.click(await screen.findByLabelText("机器人框架桥接"));
+		await waitFor(() =>
+			expect(apiPatchMock).toHaveBeenCalledWith("/api/globals", {
+				extensions: { bridge: { enabled: false } },
+			}),
+		);
 	});
 
 	it("连上了的那条:桥自报的种类 / 名字 / 版本都印出来", async () => {

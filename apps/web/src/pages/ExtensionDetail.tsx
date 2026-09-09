@@ -1,17 +1,25 @@
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { EmptyNote, GlassBox, LoadingBlock, StatusDot } from "@bilibili-notify/ui";
+import { EmptyNote, GlassBox, LoadingBlock, Pill, StatusDot, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import { BridgeConnections } from "./extensions/bridge-panel";
+import {
+	ExtensionIcon,
+	ExtensionRootLine,
+	extensionAccent,
+	useExtensionToggle,
+} from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
  * `/extensions/:id` —— 一个拓展自己那一页。
  *
- * 头上那块是**通用的**(名字 / 说明 / 版本 / 跑没跑起来,全来自清单);底下那块是拓展
- * 自己交上来的面板数据,而它的形状 ADR-0012 决策 36 **刻意没约束** —— 所以眼下按 id 分岔,
- * 只有桥有一块。等第二个拓展也要面板时,再从两个真实例子里抽形状。
+ * 头上那块是**通用的**(名字 / 图标 / 说明 / 版本 / 跑没跑起来 / 从哪个根来,全来自清单);
+ * 底下那块是拓展自己交上来的面板数据,而它的形状 ADR-0012 决策 36 **刻意没约束** ——
+ * 所以眼下按 id 分岔,只有桥有一块。等第二个拓展也要面板时,再从两个真实例子里抽形状。
+ *
+ * 开关也摆在这儿:点进来正是为了摆弄它,只能回列表去拨的话这一页就是块只读展板。
  */
 export default function ExtensionDetail() {
 	const { id = "" } = useParams<{ id: string }>();
@@ -19,6 +27,7 @@ export default function ExtensionDetail() {
 		queryKey: ["extensions"],
 		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
 	});
+	const toggle = useExtensionToggle();
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 
@@ -38,23 +47,44 @@ export default function ExtensionDetail() {
 	const meta = EXTENSION_STATE_META[ext.state];
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
-			<Link to="/extensions" className="text-bn-sm text-bn-text-tertiary hover:text-bn-pink">
-				← 拓展
-			</Link>
+			<div className="flex items-center gap-1.5 text-bn-xs text-bn-text-tertiary">
+				<Link to="/extensions" className="hover:text-bn-pink">
+					拓展
+				</Link>
+				<span>/</span>
+				<span className="text-bn-text-secondary">{ext.name}</span>
+			</div>
 			<GlassBox
 				title={ext.name}
 				subtitle={ext.description}
+				accent={extensionAccent(ext)}
+				icon={<ExtensionIcon svg={ext.icon} />}
 				badge={
 					<span className="flex items-center gap-1.5">
 						<StatusDot kind={meta.dot} />
 						{meta.label}
 					</span>
 				}
+				right={
+					<Toggle
+						ariaLabel={ext.name}
+						value={ext.enabled}
+						onChange={(on) => toggle.mutate({ id: ext.id, enabled: on })}
+					/>
+				}
 			>
 				<div className="flex flex-col gap-4">
-					{ext.version ? (
-						<span className="font-mono text-bn-xs text-bn-text-tertiary">v{ext.version}</span>
-					) : null}
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+						{ext.version ? (
+							<span className="font-mono text-bn-xs text-bn-text-tertiary">v{ext.version}</span>
+						) : null}
+						{(ext.provides ?? []).map((provide) => (
+							<Pill key={provide} subtle color="var(--color-bn-pink)">
+								{provide === "push" ? "推送源" : provide === "subscription" ? "订阅源" : provide}
+							</Pill>
+						))}
+						<ExtensionRootLine ext={ext} />
+					</div>
 					{id === "bridge" ? <BridgeConnections extensionId={id} /> : null}
 				</div>
 			</GlassBox>

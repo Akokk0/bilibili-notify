@@ -95,6 +95,26 @@ describe("桥接接入的增删改", () => {
 	});
 
 	/**
+	 * 🔴 **插件那头必须手敲这个地址**,面板不给就等于让主人去翻文档。
+	 *
+	 * 而且它最容易填错的那一处也得说出来:BN 常在 NAS / 容器里,`127.0.0.1` 对桥来说
+	 * 是**桥自己那台机器**。
+	 */
+	it("把插件那头要填的 BN 地址印出来,还能一键复制", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+		renderDetail();
+
+		const address = `ws://${window.location.host}/ext/bridge`;
+		expect(await screen.findByText(address)).toBeTruthy();
+		// 「别填 127.0.0.1」那句与地址一样要紧 —— 填错了这一页不会留下任何记录。
+		expect(screen.getByText(/127\.0\.0\.1/)).toBeTruthy();
+
+		fireEvent.click(screen.getByLabelText("复制 BN 地址"));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith(address));
+	});
+
+	/**
 	 * 🔴 **token 是前端生成的**(桥接设计定案):它只需要「两边一样」,不需要服务端参与。
 	 * 生成得不够随机的话,这条接入就是一把谁都猜得到的钥匙 —— 而那条 WS 端点**刻意**
 	 * 在 dashboard 鉴权之外。

@@ -59,6 +59,15 @@ export type ExtensionStateDTO =
 	| "incompatible";
 
 /**
+ * 拓展挂载点的前缀 —— `/ext/<id>/*`。
+ *
+ * 🔴 **住契约是因为两头都要拼这条路**:服务端在这儿挂路由,面板要把桥该连的地址印给主人
+ * 抄进插件里。各写各的话,改了一头就是「桥连过来 404、而两边都不报错」。
+ * (URL 面用短词 `ext`,代码面照旧全称 —— ADR-0012 决策 38。)
+ */
+export const EXTENSION_MOUNT_PREFIX = "/ext";
+
+/**
  * 一个拓展是从**哪个根**扫出来的。两个根,优先级就是这两格的先后
  * (仓里源码 > `<dataDir>/extensions/`,先命中先用)。
  *

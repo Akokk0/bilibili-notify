@@ -1,3 +1,4 @@
+import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import {
 	AddButton,
 	Btn,
@@ -179,6 +180,54 @@ function TokenRow({ token }: { token: string }) {
 			>
 				{copied ? "已复制" : "复制"}
 			</Btn>
+		</div>
+	);
+}
+
+/**
+ * 插件那头要填的 BN 地址 —— **面板不给,主人只能去翻文档**。
+ *
+ * 从浏览器地址栏现算:主人此刻正是**经这个地址**看着这一页,所以它至少是一条通到 BN 的
+ * 真路。服务端算不了这件事(它只知道自己绑在哪个口上,不知道外面怎么访问得到它),
+ * 而写死 `127.0.0.1` 是最坏的那个答案 —— 桥常在另一台机器上。
+ */
+function bnBridgeAddress(extensionId: string): string {
+	const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+	return `${scheme}://${window.location.host}${EXTENSION_MOUNT_PREFIX}/${extensionId}`;
+}
+
+/**
+ * 地址块。它与 token 那一行是**一对**:插件那头两样都要填,少一样连不上。
+ */
+function BridgeAddress({ extensionId }: { extensionId: string }) {
+	const [copied, setCopied] = useState(false);
+	const address = bnBridgeAddress(extensionId);
+	return (
+		<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-bn-card border border-bn-border p-3">
+			<span className="text-bn-sm font-bold text-bn-text-secondary">BN 地址</span>
+			<span className="rounded-bn-card bg-bn-surface-muted px-2 py-1 font-mono text-bn-sm text-bn-text-primary">
+				{address}
+			</span>
+			<Btn
+				variant="outline"
+				size="sm"
+				aria-label="复制 BN 地址"
+				onClick={() => {
+					// 非 secure context 里没有 clipboard —— 别炸,按钮维持原样就行。
+					void navigator.clipboard
+						?.writeText(address)
+						.then(() => setCopied(true))
+						.catch(() => setCopied(false));
+				}}
+			>
+				{copied ? "已复制" : "复制"}
+			</Btn>
+			<p className="min-w-64 flex-1 text-bn-xs leading-relaxed text-bn-text-tertiary">
+				这是<strong className="text-bn-text-secondary">桥那台机器</strong>要访问得到的地址 —— BN 在
+				NAS / 容器里时别填 <span className="font-mono">127.0.0.1</span>,那是桥自己。 token
+				填错那头收到的是 <span className="font-mono">401</span>,拓展关着是{" "}
+				<span className="font-mono">404</span>,两种都不会在这一页留下记录。
+			</p>
 		</div>
 	);
 }
@@ -370,6 +419,8 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 
 	return (
 		<div className="flex flex-col gap-3">
+			<BridgeAddress extensionId={extensionId} />
+
 			{status.isError ? (
 				<HintNote>这个拓展现在没跑起来,底下只有配置、没有连接状态。</HintNote>
 			) : null}

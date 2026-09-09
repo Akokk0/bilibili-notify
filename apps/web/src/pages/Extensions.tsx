@@ -10,17 +10,22 @@ import {
 	ErrorNote,
 	GlassPanel,
 	HintNote,
-	Icon,
 	LoadingBlock,
 	Pill,
 	StatusDot,
 	Toggle,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { ExtensionsEmpty } from "./extensions/empty-state";
+import {
+	ExtensionIcon,
+	ExtensionRootLine,
+	extensionAccent,
+	useExtensionToggle,
+} from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
@@ -66,30 +71,6 @@ function providesLabel(code: string): string {
 	return SECTIONS.find((section) => section.code === code)?.label ?? code;
 }
 
-/**
- * 清单里那枚图标 —— **服务端已经过过白名单**(ADR-0012 决策 20 与 `manifest-icon.ts`),
- * 这里只管画。没有 / 没通过的退回灰方章:一个空方块与「这个拓展没给图标」看起来一样,
- * 而后者才是事实。
- */
-function ExtensionIcon({ svg }: { svg?: string }) {
-	if (!svg) {
-		return (
-			<span data-bn-ext-icon="fallback" className="flex">
-				<Icon.square size={17} />
-			</span>
-		);
-	}
-	return (
-		<span
-			data-bn-ext-icon="manifest"
-			className="flex [&>svg]:h-4.5 [&>svg]:w-4.5"
-			// 这段 SVG 要吃 currentColor 才能在渐变方块上是白的,`<img src="data:">` 做不到。
-			// biome-ignore lint/security/noDangerouslySetInnerHtml: 服务端读清单那一刻就过了白名单(safeExtensionIcon),那是唯一的门
-			dangerouslySetInnerHTML={{ __html: svg }}
-		/>
-	);
-}
-
 function StateLine({ ext }: { ext: ExtensionDTO }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	return (
@@ -122,17 +103,6 @@ function StateDetail({ ext }: { ext: ExtensionDTO }) {
 	return null;
 }
 
-/** 这一份是从哪儿扫出来的。盘上有同名的两份时,只有全路径答得了「我改的是不是它」。 */
-function RootLine({ ext }: { ext: ExtensionDTO }) {
-	return (
-		<div className="flex items-center gap-1.5 text-bn-xs text-bn-text-tertiary">
-			<Icon.folder size={12} />
-			<span className="shrink-0">{EXTENSION_ROOT_LABEL[ext.root.kind]} ·</span>
-			<span className="truncate font-mono">{ext.root.dir}</span>
-		</div>
-	);
-}
-
 function ExtensionCard({
 	ext,
 	onToggle,
@@ -146,14 +116,14 @@ function ExtensionCard({
 			subtitle={ext.description}
 			// 没有图标的那张连方块一起转灰 —— 灰是「关于它我们只知道这么多」,
 			// 而不是某个拓展被挑出来上了另一种色。
-			accent={ext.icon ? "var(--color-bn-pink)" : "var(--color-bn-inactive)"}
+			accent={extensionAccent(ext)}
 			icon={<ExtensionIcon svg={ext.icon} />}
 			right={<Toggle ariaLabel={ext.name} value={ext.enabled} onChange={(on) => onToggle(on)} />}
 		>
 			<div className="flex flex-col gap-2">
 				<StateLine ext={ext} />
 				<StateDetail ext={ext} />
-				<RootLine ext={ext} />
+				<ExtensionRootLine ext={ext} />
 				{/* 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。 */}
 				<Link
 					to={`/extensions/${ext.id}`}
@@ -196,22 +166,11 @@ function ShadowWarning({ shadow }: { shadow: ExtensionShadowDTO }) {
 }
 
 export default function Extensions() {
-	const qc = useQueryClient();
 	const listed = useQuery({
 		queryKey: ["extensions"],
 		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
 	});
-
-	const toggle = useMutation({
-		// 🔴 补丁**只带自己那一格**。配置是 JSON Merge Patch,整张 `extensions` 表发出去
-		// 的话,别处刚拨的开关会被这一发按回旧值 —— 两边都不报错。
-		mutationFn: (next: { id: string; enabled: boolean }) =>
-			api.patch("/api/globals", { extensions: { [next.id]: { enabled: next.enabled } } }),
-		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["extensions"] });
-			void qc.invalidateQueries({ queryKey: ["globals"] });
-		},
-	});
+	const toggle = useExtensionToggle();
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 

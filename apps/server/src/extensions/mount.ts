@@ -1,10 +1,14 @@
+import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 import { Hono } from "hono";
 
-/** 所有拓展的挂载根 —— 一条总入口 `/ext/:id/*`,后面按 id 查活的路由表。 */
-export const EXTENSION_MOUNT_PREFIX = "/ext";
-
 export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
+/**
+ * 所有拓展的挂载根 —— 一条总入口 `/ext/:id/*`,后面按 id 查活的路由表。
+ *
+ * 前缀本体住契约:面板要拼出同一条地址印给主人抄进插件里(见契约里那段注释)。
+ */
+export { EXTENSION_MOUNT_PREFIX };
 
 /** 一条挂上去的总入口。`prefix` 是宿主分配的,拓展自己不该猜(ADR-0012 决策 12)。 */
 export interface ExtensionMountHandle {
