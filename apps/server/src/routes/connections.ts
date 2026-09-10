@@ -2,7 +2,11 @@ import type { ConnectionCapabilities } from "@bilibili-notify/internal";
 import { isDirectConnection } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { ConfigValidationError } from "../config/store.js";
+import {
+	CONNECTION_NOT_FOUND,
+	ConfigValidationError,
+	isConnectionNotFound,
+} from "../config/store.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -86,7 +90,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			return c.json(next);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
-				const status = isNotFound(err) ? 404 : 400;
+				const status = isConnectionNotFound(err) ? 404 : 400;
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, status);
 			}
 			log.error("PATCH /api/connections/:id failed", err);
@@ -97,7 +101,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.post("/:id/test", async (c) => {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (!connection) return c.json({ ok: false, latencyMs: 0, err: "connection not found" }, 404);
+		if (!connection) return c.json({ ok: false, latencyMs: 0, err: CONNECTION_NOT_FOUND }, 404);
 		const engines = deps.runtime.engines;
 		if (!engines) {
 			return c.json({ ok: false, latencyMs: 0, err: "engines not yet attached" }, 503);
@@ -140,9 +144,4 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	});
 
 	return app;
-}
-
-function isNotFound(err: ConfigValidationError): boolean {
-	const issues = err.issues as { message?: string } | undefined;
-	return issues?.message === "connection not found";
 }

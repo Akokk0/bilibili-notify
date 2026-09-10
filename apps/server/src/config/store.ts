@@ -431,12 +431,28 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
  * 「连接存在」。「这个平台真的挂在那条桥上吗」得等桥报了名单才答得出,那是投递层的事 ——
  * 在存储期拒绝等于要求「先连上桥才能配目标」,而目标本来就允许先建壳后填。
  */
+/**
+ * 「这条连接不存在」那一句。
+ *
+ * 🔴 **它是被别的模块读的**(路由拿它把错分成 404 还是 400),所以不能只是一句文案:
+ * 两处各写一遍字符串,改一个字就静默变成 500 —— 类型、测试、门禁全绿。要判「是不是
+ * 没找到」走 {@link isConnectionNotFound},别再拿 message 做相等比较。
+ */
+export const CONNECTION_NOT_FOUND = "connection not found";
+
+/** 这个错是不是「没有这条连接」。跨模块的判据只此一处。 */
+export function isConnectionNotFound(err: unknown): boolean {
+	if (!(err instanceof ConfigValidationError)) return false;
+	const issues = err.issues as { message?: string } | undefined;
+	return issues?.message === CONNECTION_NOT_FOUND;
+}
+
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
 	const owner = connections.find((a) => a.id === target.connectionId);
 	if (!owner) {
 		throw new ConfigValidationError(
 			"targets",
-			{ id: target.id, connectionId: target.connectionId, message: "connection not found" },
+			{ id: target.id, connectionId: target.connectionId, message: CONNECTION_NOT_FOUND },
 			`target ${target.id} references unknown connection ${target.connectionId}`,
 		);
 	}
@@ -1280,7 +1296,7 @@ class NodeConfigStore implements ConfigStore {
 			if (idx < 0) {
 				throw new ConfigValidationError(
 					"connections",
-					{ id, message: "connection not found" },
+					{ id, message: CONNECTION_NOT_FOUND },
 					`connection ${id} not found`,
 				);
 			}

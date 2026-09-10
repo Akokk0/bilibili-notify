@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
+import { createAppRuntime } from "../runtime/bootstrap.js";
 
 /**
  * `GET /api/connections/capabilities` —— 面板「连接支持情况」读的那张表。索引两级:
@@ -46,5 +50,46 @@ describe("connections route — GET /capabilities", () => {
 		const res = await app.request("/capabilities");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({});
+	});
+});
+
+/**
+ * 🔴 **「没有这条连接」是一个跨模块的判据。** 路由靠它把错分成 404 还是 400,而它此前是
+ * 拿 `err.issues.message` 跟一句**手抄的字符串**比相等 —— store 那句改一个字,这里就静默
+ * 变成 400,两边的测试却各自全绿。所以这条**不 mock store**:让它真抛一次。
+ */
+describe("connections route — PATCH 一条不存在的", () => {
+	let dataDir: string;
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-conn-route-"));
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("404,而且判据来自 store 自己抛的那个错", async () => {
+		const runtime = createAppRuntime({
+			server: { host: "127.0.0.1", port: 8787 },
+			dataDir,
+			logLevel: "silent",
+		});
+		await runtime.configStore.load();
+		const app = createConnectionsRoute({
+			runtime: {
+				serviceCtx: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } },
+			},
+			store: runtime.configStore,
+			puppeteer: null,
+			wsTicketStore: null,
+		} as unknown as RouteDeps);
+
+		const res = await app.request("/nobody", {
+			method: "PATCH",
+			body: JSON.stringify({ name: "改个名" }),
+			headers: { "content-type": "application/json" },
+		});
+
+		expect(res.status).toBe(404);
+		await runtime.dispose();
 	});
 });
