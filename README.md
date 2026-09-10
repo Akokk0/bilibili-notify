@@ -128,7 +128,7 @@ vp install
 vp run typecheck
 vp run build
 vp test
-vp run dev:apps     # apps/server + apps/web 并行
+vp run dev:apps     # apps/server + apps/web 并行,顺带 watch 打包仓里的拓展
 vp run check        # Biome lint + format(:fix 自动修)
 ```
 

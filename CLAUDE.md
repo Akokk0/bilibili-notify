@@ -18,7 +18,7 @@ vp run build           # 全 workspace 拓扑序构建
 vp run typecheck       # 全 workspace tsc --noEmit
 vp test                # vitest,全包;定向跑用 vp test <路径>(别用 vpx vitest,根不再声明 vitest,会 dlx 一份野的 runner)
 vp run check           # Biome lint + format 检查(check:fix 自动修)
-vp run dev:apps        # apps/server + apps/web 并行 dev
+vp run dev:apps        # apps/server + apps/web 并行 dev,顺带 watch 打包仓里的拓展
 vp run -F <pkg> build  # 构建单个包
 vp run build:update-payload   # server 自包含 bundle + 装配 + web dist(Docker / 桌面 / 应用内更新共用的载荷)
 ```
