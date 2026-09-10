@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import type {
 	Connection,
@@ -68,6 +69,20 @@ export interface LoadedExtensions {
 	 * 排队执行,不并发 —— 连拨两下开关得按顺序落地。自己吞异常,不会抛。
 	 */
 	sync(): Promise<void>;
+	/**
+	 * **换掉代码再跑一遍** —— 收摊 → 换一个 URL 重新 `import` → 重新 `activate`。
+	 *
+	 * 🔴 **开发版专用**:ESM 的模块缓存删不掉,靠的是「URL 不一样就是一份新模块」
+	 * (`?v=<mtime>`),于是**旧模块回收不掉** —— 每重载一次漏一份。开发时无所谓,
+	 * 生产里长跑的进程不该这么用:那边换代码就是重启一次。
+	 *
+	 * ⚠️ **刻意不挂在开关上**:拨开关保持生产语义(复用模块缓存),不然开发版比生产宽容,
+	 * 「拓展模块顶层存了状态」这种 bug 只会在真机上露面。
+	 *
+	 * 不记账:记账防的是开机反复炸,而这是主人手按的 —— 改一行崩一次,三次就被自动停用
+	 * 的话开发循环当场卡死。装不起来 / 关着 / 没这个 id 都抛。
+	 */
+	reload(id: string): Promise<void>;
 	/** 收回所有跑着的拓展。宿主关机时调。 */
 	dispose(): Promise<void>;
 }
@@ -119,6 +134,23 @@ function realImport(specifier: string): Promise<unknown> {
 }
 
 /**
+ * 要 import 的那个 URL。
+ *
+ * 平时就是文件本身 —— **同一个 URL 拿到的是模块缓存里那份**,这正是「代码不热」的由来,
+ * 也是生产的真实行为。`fresh` 时在后面挂一段 `?v=<mtime>`:URL 不同,Node 就当没见过它,
+ * 于是真的重新读盘、重新跑顶层。mtime 读不到(理论上不会)就退回当前时刻,宁可多换一次。
+ */
+async function entryUrl(entry: string, fresh: boolean): Promise<string> {
+	const href = pathToFileURL(entry).href;
+	if (!fresh) return href;
+	const version = await stat(entry).then(
+		(s) => s.mtimeMs,
+		() => Date.now(),
+	);
+	return `${href}?v=${version}`;
+}
+
+/**
  * 扫一遍装载目录,把该跑的跑起来,并把这批拓展的**装卸把手**交回去。
  *
  * 开机扫这一次就够了:之后主人拨开关走 `sync()`,拿的是这次扫出来的那份名单
@@ -142,7 +174,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	/** 上一次落实过的开关。热装卸只认**变化**,见 `sync()` 的注释。 */
 	const applied = new Map<string, boolean>();
 
-	async function start(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
+	async function start(
+		dir: Extract<ExtensionDirRead, { state: "ready" }>,
+		/** 主人手按的重载:换个 URL 拿新代码,并且**不走记账**(理由见 `reload`)。 */
+		fresh = false,
+	): Promise<void> {
 		const { id, manifest } = dir;
 		const at = {
 			id,
@@ -150,7 +186,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
 		};
 		// 记账**现读**:热装卸期间失败也要算数,拿开机那一刻的快照会漏掉。
-		if (readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
+		if (!fresh && readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
 			entries.set(id, {
 				...at,
 				state: "blocked",
@@ -161,7 +197,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		}
 
 		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
-		recordLoadAttempt({ root: ledgerRoot, id, version: manifest.version, maxFailures });
+		if (!fresh) recordLoadAttempt({ root: ledgerRoot, id, version: manifest.version, maxFailures });
 
 		const runtime = createExtensionContext({
 			id,
@@ -179,7 +215,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 清单说了不算 —— 见 `extensionEntryFileFor`。
 			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
 			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
-			const mod = (await importModule(pathToFileURL(dir.entry).href)) as Partial<ExtensionModule>;
+			const mod = (await importModule(
+				await entryUrl(dir.entry, fresh),
+			)) as Partial<ExtensionModule>;
 			if (typeof mod.activate !== "function") {
 				throw new Error(`${EXTENSION_ENTRY_FILE} 没有导出 activate()`);
 			}
@@ -267,6 +305,23 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				}
 			});
 			return queue;
+		},
+		reload(id) {
+			// 与 sync() 同一条队:连着按两下、或者边拨开关边重载,得按顺序落地。
+			const run = queue.then(async () => {
+				const dir = ready.get(id);
+				if (!dir) throw new Error(`没有装着叫 ${id} 的拓展(或者它的清单就读不出来)`);
+				if (!isEnabled(id)) throw new Error(`${id} 的开关关着 —— 先打开它,重载才有东西可换`);
+				await stop(dir);
+				await start(dir, true);
+				// 收摊那一下把开关记成了「没应用」,补回来,免得下一次 sync() 又装一遍。
+				applied.set(id, true);
+			});
+			// 🔴 **队尾接的是吞掉失败的那份**:直接把 `run` 留在队尾的话,一次拒绝会让
+			// 之后**每一次 `sync()` 都被跳过**(rejected promise 的 `.then` 不跑回调)——
+			// 症状是「重载报错之后开关再也拨不动」,而且没有任何人报错。调用方照样拿到拒绝。
+			queue = run.catch(() => {});
+			return run;
 		},
 		async dispose() {
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。

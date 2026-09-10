@@ -318,6 +318,123 @@ describe("装载目录", () => {
 });
 
 /**
+ * 🔴 **显式重载:开发版才有的「换掉代码」。**
+ *
+ * ESM 的模块缓存删不掉 —— 这正是决策 10 写「开关热、代码不热」的原因。但**换个 URL 就是
+ * 一份新模块**(`?v=<mtime>`),所以「换代码」这件事在开发版里做得到,代价是旧模块回收
+ * 不掉(每重载一次漏一份)。
+ *
+ * ⚠️ **刻意不挂在开关上**:拨开关要保持**生产语义**(复用模块缓存),否则开发版比生产
+ * 宽容 —— 拓展模块顶层存了状态,生产里第二次启用会残留,开发里却次次干净,那种 bug
+ * 只在真机上露面。要新代码就显式说一声。
+ */
+describe("重载(开发版换代码)", () => {
+	it("重载换一个 URL 再 import —— 拨开关不换", async () => {
+		await plant("bridge", HEALTHY);
+		const seen: string[] = [];
+		let on = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => on,
+			importModule: async (specifier) => {
+				seen.push(specifier);
+				return { activate() {} };
+			},
+		});
+
+		// 关再开:走的还是生产那条路,同一个 URL(于是拿到的是模块缓存里那份)。
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+		expect(new Set(seen).size).toBe(1);
+
+		await loaded.reload("bridge");
+		expect(seen).toHaveLength(3);
+		expect(seen[2]).not.toBe(seen[0]);
+		expect(seen[2]).toContain("?v=");
+	});
+
+	it("重载先收摊 —— 旧那份注册的东西不会留下", async () => {
+		await plant("bridge", HEALTHY);
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+
+		const loaded = await run({ host, mounts });
+		expect(host.pending()).toBe(1);
+
+		await loaded.reload("bridge");
+		// 定时器还是一个:旧那份收了,新那份又注册了一个。漏收的话这里是 2。
+		expect(host.pending()).toBe(1);
+		expect(await (await app.request("/ext/bridge/x")).text()).toBe("hi from bridge");
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+	});
+
+	/**
+	 * 🔴 **重载不记账。** 记账防的是「开机反复炸」,而重载是主人**手按的**:改一行、崩一次、
+	 * 再改一行,三次就被自动停用的话,开发循环当场卡死,还得去删记账文件。
+	 */
+	it("连着重载失败也不会被自动停用,改好了下一发就起来", async () => {
+		await plant("bridge", HEALTHY);
+		let boom = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			maxFailures: 3,
+			importModule: async () => {
+				if (boom) throw new Error("炸");
+				return { activate() {} };
+			},
+		});
+
+		boom = true;
+		for (let i = 0; i < 4; i++) await loaded.reload("bridge");
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+
+		boom = false;
+		await loaded.reload("bridge");
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+	});
+
+	it("关着的拓展不给重载 —— 那是开关的活", async () => {
+		await plant("bridge", HEALTHY);
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => false,
+		});
+		await expect(loaded.reload("bridge")).rejects.toThrow(/关着/);
+	});
+
+	/**
+	 * 🔴 **一次重载失败,不许把后面的队列毒死。** 队列是 `queue = queue.then(...)`:
+	 * 让一发拒绝留在队尾的话,之后**每一次 `sync()` 都会被那条 rejected promise 跳过** ——
+	 * 症状是「重载报了个错之后,开关就再也拨不动了」,而且不报错。
+	 */
+	it("重载抛过之后,开关照样拨得动", async () => {
+		await plant("bridge", HEALTHY);
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		await expect(loaded.reload("nobody")).rejects.toThrow();
+
+		let on = true;
+		const again = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		await expect(again.reload("nobody")).rejects.toThrow();
+		on = false;
+		void on;
+		await loaded.sync();
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+	});
+
+	it("没这个拓展 → 抛,别装作重载过了", async () => {
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		await expect(loaded.reload("nobody")).rejects.toThrow(/nobody/);
+	});
+});
+
+/**
  * 🔴 **拨开关即热装卸**(ADR-0012 决策 10)。
  *
  * 热的是**副作用**,不是代码:`sync()` 收回 / 重新登记拓展注册过的那些东西,而那份
