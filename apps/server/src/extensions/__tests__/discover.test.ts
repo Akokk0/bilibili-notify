@@ -11,7 +11,7 @@
  * ⛔ 没有「载荷自带」那一档 —— 本体一个拓展都不带,拓展只有下载与手放两条来路。
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -192,6 +192,25 @@ describe("discoverExtensions", () => {
 		await plant("some-junk", null);
 		const found = await discoverExtensions([dataRoot()]);
 		expect(found.map((e) => e.id)).toEqual(["bridge"]);
+	});
+
+	/**
+	 * 🔴 **软链要当目录看。** `readdir(withFileTypes)` 走的是 lstat 语义:一条指向目录的
+	 * 软链 `isDirectory()` 是 **false**、`isSymbolicLink()` 才是 true —— 只认前者的话,
+	 * 装进来的拓展在这一页上**根本不出现,而且不报错**。
+	 *
+	 * 开发版正是这么装的:devtools 把仓里那份 `dist` 软链进 `<dataDir>/extensions/<id>`。
+	 */
+	it("软链进来的拓展照样扫得到 —— readdir 里它不是目录", async () => {
+		const elsewhere = await mkdtemp(join(tmpdir(), "bn-ext-real-"));
+		try {
+			await plant("bridge", manifest(), { in: elsewhere });
+			await symlink(join(elsewhere, "bridge"), join(root, "bridge"), "dir");
+			const found = await discoverExtensions([dataRoot()]);
+			expect(found.map((r) => [r.id, r.state])).toEqual([["bridge", "ready"]]);
+		} finally {
+			await rm(elsewhere, { recursive: true, force: true });
+		}
 	});
 
 	it("目录压根不存在 → 空表,不是错误(头一次开机就是这样)", async () => {

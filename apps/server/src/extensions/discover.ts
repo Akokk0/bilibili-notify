@@ -240,7 +240,13 @@ async function readRoot(root: ExtensionRoot, hostApiVersion: number): Promise<Ex
 	} catch {
 		return [];
 	}
-	const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+	// 🔴 **软链也算**:`readdir(withFileTypes)` 是 lstat 语义 —— 一条指向目录的软链
+	// `isDirectory()` 是 false。只认目录的话,软链进来的拓展**一声不响地不出现**。
+	// 开发版就是这么装的(devtools 把仓里的 `dist` 链进来),下载装的将来也可能是链。
+	// 链到文件 / 断链的那些照旧走 `readExtensionDir`:读不到清单 = 不是拓展目录,跳过。
+	const dirs = entries
+		.filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+		.map((entry) => entry.name);
 	return Promise.all(
 		dirs.map((name) => readExtensionDir(join(root.dir, name), { kind: root.kind, hostApiVersion })),
 	);
