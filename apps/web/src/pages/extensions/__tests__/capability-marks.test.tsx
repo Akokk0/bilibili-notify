@@ -71,7 +71,7 @@ function renderPanel() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" />
+			<BridgeConnections extensionId="bridge" enabled />
 		</QueryClientProvider>,
 	);
 }

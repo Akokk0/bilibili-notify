@@ -71,7 +71,7 @@ function renderPanel(links: Connection[], status: unknown) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" />
+			<BridgeConnections extensionId="bridge" enabled />
 		</QueryClientProvider>,
 	);
 }
@@ -105,15 +105,15 @@ describe("现在接着几条", () => {
 		renderPanel(LINKS, STATUS);
 		await screen.findByText("阿库娅"); // 等两条查询都落地
 		const counts = screen.getByTestId("bridge-counts");
-		expect(counts.textContent).toMatch(/2 条接入/);
-		expect(counts.textContent).toMatch(/2 个 bot 在线/);
+		expect(counts.textContent).toMatch(/2\s*条接入/);
+		expect(counts.textContent).toMatch(/2\s*个 bot 在线/);
 	});
 
 	it("拓展没跑起来时只数接入,不假装有 bot 在线", async () => {
 		renderPanel(LINKS, undefined);
 		await screen.findByText(/这个拓展现在没跑起来/); // 等状态那条查询认输
 		const counts = screen.getByTestId("bridge-counts");
-		expect(counts.textContent).toMatch(/2 条接入/);
+		expect(counts.textContent).toMatch(/2\s*条接入/);
 		expect(counts.textContent).not.toMatch(/bot 在线/);
 	});
 });

@@ -85,7 +85,7 @@ export default function ExtensionDetail() {
 						))}
 						<ExtensionWhereLine ext={ext} />
 					</div>
-					{id === "bridge" ? <BridgeConnections extensionId={id} /> : null}
+					{id === "bridge" ? <BridgeConnections extensionId={id} enabled={ext.enabled} /> : null}
 				</div>
 			</GlassBox>
 		</div>

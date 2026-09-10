@@ -154,7 +154,8 @@ describe("桥接接入的增删改", () => {
 		renderDetail();
 		fireEvent.click(await screen.findByLabelText("删除 家里那台"));
 		expect(apiDeleteMock).not.toHaveBeenCalled();
-		fireEvent.click(screen.getByText("删除"));
+		// 卡上那颗叫「删除 家里那台」,弹窗里那颗就叫「删除」—— 按名字取,别按文字
+		fireEvent.click(screen.getByRole("button", { name: "删除" }));
 		await waitFor(() => expect(apiDeleteMock).toHaveBeenCalledWith(`/api/connections/${LINK_ID}`));
 	});
 

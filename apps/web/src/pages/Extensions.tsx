@@ -90,14 +90,16 @@ function LinkCount({ ext, connections }: { ext: ExtensionDTO; connections: Exten
 	const mine = connections.filter(
 		(connection) => connection.kind === "extension" && connection.extensionId === ext.id,
 	);
+	// 大数字 —— 照设计稿 V1:这是卡上唯一要一眼读到的数,和旁边那排小字不是一个量级。
 	return (
-		<span className="text-bn-xs text-bn-text-secondary">
-			<strong className="font-bold text-bn-text-primary">{mine.length}</strong> 条接入
-		</span>
+		<div className="flex items-baseline gap-1.5">
+			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{mine.length}</span>
+			<span className="text-bn-xs text-bn-text-tertiary">条接入</span>
+		</div>
 	);
 }
 
-function StateLine({ ext, connections }: { ext: ExtensionDTO; connections: ExtensionLink[] }) {
+function StateLine({ ext }: { ext: ExtensionDTO }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	return (
 		<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -113,7 +115,6 @@ function StateLine({ ext, connections }: { ext: ExtensionDTO; connections: Exten
 					{providesLabel(provide)}
 				</Pill>
 			))}
-			<LinkCount ext={ext} connections={connections} />
 		</div>
 	);
 }
@@ -150,15 +151,19 @@ function ExtensionCard({
 			right={<Toggle ariaLabel={ext.name} value={ext.enabled} onChange={(on) => onToggle(on)} />}
 		>
 			<div className="flex flex-col gap-2">
-				<StateLine ext={ext} connections={connections} />
+				<StateLine ext={ext} />
 				<StateDetail ext={ext} />
+				<LinkCount ext={ext} connections={connections} />
 				<ExtensionWhereLine ext={ext} />
-				{/* 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。 */}
+				{/*
+				 * 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。
+				 * 照设计稿 V1 摆右下、叫「管理」:进去是要动手改东西的,不是去读一页说明。
+				 */}
 				<Link
 					to={`/extensions/${ext.id}`}
-					className="self-start text-bn-xs text-bn-text-tertiary hover:text-bn-pink"
+					className="mt-auto self-end text-bn-sm font-bold text-bn-pink transition-opacity hover:opacity-80"
 				>
-					详情 →
+					管理 →
 				</Link>
 			</div>
 		</GlassPanel>

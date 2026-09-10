@@ -100,6 +100,13 @@ export const Icon = {
 			<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
 		</>,
 	),
+	/** 两张叠着的纸 —— 「复制到剪贴板」。给放不下「复制」两个字的窄处(接入卡的地址行)。 */
+	copy: stroke(
+		<>
+			<rect x="9" y="9" width="11" height="11" rx="2" />
+			<path d="M5 15V5a2 2 0 0 1 2-2h10" />
+		</>,
+	),
 	edit: stroke(<path d="M14 4l6 6L9 21H3v-6L14 4Z" />),
 	trash: stroke(
 		<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m1 0v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6" />,

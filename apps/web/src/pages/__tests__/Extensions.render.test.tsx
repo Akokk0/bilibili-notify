@@ -131,7 +131,7 @@ describe("拓展页", () => {
 	it("开推送源那一口的卡数得出自己名下几条接入", async () => {
 		renderPage();
 		const card = (await screen.findByText("机器人框架桥接")).closest(".bn-glass");
-		expect(card?.textContent).toMatch(/2 条接入/);
+		expect(card?.textContent).toMatch(/2\s*条接入/);
 	});
 
 	it("不开推送源那一口的卡不说这句 —— 它压根没有接入这回事", async () => {
@@ -143,12 +143,12 @@ describe("拓展页", () => {
 	it("一条都没配的也报 0 —— 那正是「装好了但还没接上」该看见的", async () => {
 		renderPage(LISTED, []);
 		const card = (await screen.findByText("机器人框架桥接")).closest(".bn-glass");
-		expect(card?.textContent).toMatch(/0 条接入/);
+		expect(card?.textContent).toMatch(/0\s*条接入/);
 	});
 
 	it("每张卡都通到自己的详情页", async () => {
 		renderPage();
-		const links = await screen.findAllByText("详情 →");
+		const links = await screen.findAllByText("管理 →");
 		expect(links.map((a) => a.getAttribute("href"))).toEqual([
 			"/extensions/bridge",
 			"/extensions/douyin",

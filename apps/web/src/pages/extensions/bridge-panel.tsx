@@ -1,8 +1,8 @@
 import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import {
-	AddButton,
 	Btn,
 	ConfirmDialog,
+	GlassBox,
 	HintNote,
 	Icon,
 	IconButton,
@@ -10,7 +10,6 @@ import {
 	Pill,
 	PlatformIcon,
 	StatusDot,
-	Toggle,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -189,36 +188,39 @@ function bridgeConfigOf(connection: Connection): BridgeLinkConfig {
 	};
 }
 
+/**
+ * 一个 bot 一行 —— 照设计稿 V1:平台方块 + **定宽的名字/平台列** + 能力横排。
+ *
+ * 定宽那一列是版式的承重件:多个 bot 排下来,能力记号得在同一条竖线上起排,不然一列
+ * 「@全体」有的在左有的在右,整张表就读不成表了。
+ */
 function BotRow({ bot }: { bot: BridgeBotView }) {
 	return (
-		<div data-bot-row className="flex gap-2.5 rounded-bn-card bg-bn-surface px-3 py-2">
+		<div data-bot-row className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
 			{/*
 			 * 平台标识走库里那件:认得的画真图标,认不得的退首字方章 —— 桥后面挂着哪些
 			 * 平台是**握手时才知道**的开放词表,「退得下去」这件事在这一页是刚需。
 			 */}
-			<span data-bot-mark className="mt-0.5 flex shrink-0">
+			<span data-bot-mark className="flex shrink-0">
 				<PlatformIcon platform={bot.platform} size={26} />
 			</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-				<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-					<span className="text-bn-sm text-bn-text-primary">{bot.name ?? bot.botId}</span>
-					<Pill subtle color="var(--color-bn-pink)">
-						{bot.platform}
-					</Pill>
-					{bot.selfId ? (
-						<span className="font-mono text-bn-xs text-bn-text-tertiary">{bot.selfId}</span>
-					) : null}
+			<div className="w-52 min-w-0 shrink-0">
+				<div className="truncate text-bn-sm font-bold text-bn-text-primary">
+					{bot.name ?? bot.botId}
 				</div>
-				<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-					{CAPABILITIES.map((cap) => (
-						<CapabilityChip
-							key={cap.code}
-							label={cap.label}
-							// 桥少报的那些按「还不知道」算 —— 缺席不是「不支持」。
-							state={bot.capabilities?.[cap.code] ?? "unknown"}
-						/>
-					))}
+				<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
+					{[bot.platform, bot.selfId].filter(Boolean).join(" · ")}
 				</div>
+			</div>
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+				{CAPABILITIES.map((cap) => (
+					<CapabilityChip
+						key={cap.code}
+						label={cap.label}
+						// 桥少报的那些按「还不知道」算 —— 缺席不是「不支持」。
+						state={bot.capabilities?.[cap.code] ?? "unknown"}
+					/>
+				))}
 			</div>
 		</div>
 	);
@@ -266,6 +268,21 @@ function CopyButton({ label, text }: { label: string; text: string }) {
 		>
 			{copied ? "已复制" : "复制"}
 		</Btn>
+	);
+}
+
+/** 只有图标的那一颗 —— V1 的地址行放不下「复制」两个字。 */
+function CopyIconButton({ label, text }: { label: string; text: string }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<IconButton
+			label={copied ? `${label}(已复制)` : label}
+			icon={copied ? <Icon.check size={13} /> : <Icon.copy size={13} />}
+			size="sm"
+			onClick={() => {
+				void copyToClipboard(text).then(setCopied);
+			}}
+		/>
 	);
 }
 
@@ -322,23 +339,63 @@ function bnBridgeAddress(extensionId: string): string {
 }
 
 /**
- * 地址块。它与 token 那一行是**一对**:插件那头两样都要填,少一样连不上。
+ * 模块信息块 —— 照设计稿 V1 的模块卡第二段:一行统计 + 一行地址,发丝线隔开。
+ *
+ * 统计那半原本在 V1 的**拓展列表卡**上。搬到这儿是因为「N 个 bot 在线」是**桥自己的概念**,
+ * 而列表卡上的每个字都得来自服务端清单 —— 详情页是它唯一放得下的地方。
+ *
+ * 地址与 token 是**一对**:插件那头两样都要填,少一样连不上。
  */
-function BridgeAddress({ extensionId }: { extensionId: string }) {
-	const address = bnBridgeAddress(extensionId);
+function BridgeModuleInfo({
+	address,
+	links,
+	onlineBots,
+	statusUnavailable,
+}: {
+	address: string;
+	links: number;
+	onlineBots: number;
+	statusUnavailable: boolean;
+}) {
 	return (
-		<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-bn-card border border-bn-border p-3">
-			<span className="text-bn-sm font-bold text-bn-text-secondary">BN 地址</span>
-			<span className="rounded-bn-card bg-bn-surface-muted px-2 py-1 font-mono text-bn-sm text-bn-text-primary">
-				{address}
-			</span>
-			<CopyButton label="复制 BN 地址" text={address} />
-			<p className="min-w-64 flex-1 text-bn-xs leading-relaxed text-bn-text-tertiary">
-				这是<strong className="text-bn-text-secondary">桥那台机器</strong>要访问得到的地址 —— BN 在
-				NAS / 容器里时别填 <span className="font-mono">127.0.0.1</span>,那是桥自己。 token
-				填错那头收到的是 <span className="font-mono">401</span>,拓展关着是{" "}
-				<span className="font-mono">404</span>,两种都不会在这一页留下记录。
-			</p>
+		<div className="flex flex-col gap-2.5">
+			<div data-testid="bridge-counts" className="flex items-center gap-3.5">
+				<span className="flex items-baseline gap-1.5">
+					<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{links}</span>
+					<span className="text-bn-xs text-bn-text-tertiary">条接入</span>
+				</span>
+				{/*
+				 * 拓展没跑起来时**只报接入数**:那时 `/status` 是 404,一个 bot 都数不着,
+				 * 而印一个「0 个 bot 在线」会被读成「桥连着但没借来账号」—— 完全是另一回事。
+				 */}
+				{statusUnavailable ? null : (
+					<>
+						<span className="h-4 w-px bg-bn-border" />
+						<span className="flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
+							<StatusDot kind={onlineBots > 0 ? "ok" : "off"} />
+							<strong className="font-bold text-bn-text-primary">{onlineBots}</strong> 个 bot 在线
+						</span>
+					</>
+				)}
+			</div>
+
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-bn-border-subtle pt-2.5">
+				<span className="text-bn-xs text-bn-text-tertiary">BN 地址</span>
+				<span className="rounded-bn-card bg-bn-surface-muted px-2 py-1 font-mono text-bn-xs text-bn-text-primary">
+					{address}
+				</span>
+				<CopyIconButton label="复制 BN 地址" text={address} />
+				<span className="h-4 w-px bg-bn-border" />
+				{/*
+				 * 只留「填哪个地址」这一句。401 / 连不上那两句搬去了**「没连上」那张卡** ——
+				 * 那才是它们真正被需要的时刻,摆在这儿等于人人都要先读一遍排错说明。
+				 */}
+				<span className="text-bn-xs text-bn-text-tertiary">
+					这是<strong className="font-bold text-bn-text-secondary">桥那台机器</strong>
+					要访问得到的地址 —— BN 在 NAS / 容器里时别填 <span className="font-mono">127.0.0.1</span>
+					,那是桥自己。
+				</span>
+			</div>
 		</div>
 	);
 }
@@ -414,6 +471,14 @@ function LinkName({
 	);
 }
 
+/**
+ * 一条接入 = 一张卡 —— 解剖照设计稿 V1:accent 角光 + 方块 + 名字 + 状态徽章 + 右侧动作,
+ * 头部与正文之间一条发丝线。这正是 `GlassBox` 的形状,所以直接用它,不再手画一张。
+ *
+ * **accent 就是状态**:连上了走绿、对不上走琥珀、没连上走静默灰。角光与方块一起吃这一档,
+ * 于是「这条现在好不好」隔着一屏也读得出来 —— 那是主人打开这一页要问的第一件事。
+ * (V1 把方块画成恒定的灰、只让角光变色;那样得凑近了才看得出差别。)
+ */
 function LinkCard({
 	connection,
 	session,
@@ -438,89 +503,134 @@ function LinkCard({
 	const reportedKind = connected ? session?.kind : undefined;
 	const mismatched = reportedKind !== undefined && reportedKind !== config.bridgeKind;
 	const reportedLabel = BRIDGE_KINDS.find((k) => k.value === reportedKind)?.label ?? reportedKind;
+	const accent = mismatched
+		? "var(--color-bn-warning)"
+		: connected
+			? "var(--color-bn-success)"
+			: "var(--color-bn-inactive)";
 
 	return (
-		<div
-			data-link-card={connection.id}
-			className="flex flex-col gap-2 rounded-bn-card border border-bn-border p-3"
-		>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-				<LinkMark kind={config.bridgeKind} />
-				<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-primary">
-					<StatusDot kind={mismatched ? "warn" : connected ? "ok" : "off"} />
+		<div data-link-card={connection.id}>
+			<GlassBox
+				accent={accent}
+				icon={<LinkMark kind={config.bridgeKind} />}
+				title={
 					<LinkName
 						connection={connection}
 						onRename={(name) => actions.rename(connection.id, name)}
 					/>
-				</span>
-				<span className="text-bn-xs text-bn-text-tertiary">
-					{mismatched ? "连上了,但对不上" : connected ? "已连接" : "未连接"}
-				</span>
-				{connected ? (
-					<span className="text-bn-xs text-bn-text-tertiary">
-						{[
-							session?.kind,
-							session?.name,
-							session?.version ? `v${session.version}` : undefined,
-							// 🔴 桥一直在报这一格,面板此前收下就扔。「刚刚连上」与「连了三天」
-							// 说的是两件事:前者意味着它刚断过。
-							session?.connectedAt ? `${relativeTime(session.connectedAt)}连上` : undefined,
-						]
-							.filter(Boolean)
-							.join(" · ")}
+				}
+				badge={mismatched ? "连上了,但对不上" : connected ? "已连接" : "未连接"}
+				subtitle={
+					connected ? (
+						<span className="font-mono">
+							{[
+								// 对不上的时候先说清**配置里是哪一种** —— 否则这一行印着自报的
+								// 名字,而卡上的警告在说「对不上」,两者互相打架。
+								mismatched ? `配置:${kindLabel ?? config.bridgeKind}` : session?.kind,
+								session?.name,
+								session?.version ? `v${session.version}` : undefined,
+								// 🔴 桥一直在报这一格,面板此前收下就扔。「刚刚连上」与「连了三天」
+								// 说的是两件事:前者意味着它刚断过。
+								session?.connectedAt ? `${relativeTime(session.connectedAt)}连上` : undefined,
+							]
+								.filter(Boolean)
+								.join(" · ")}
+						</span>
+					) : (
+						// V1 的原话。「未连接」是状态,这一句是**事实** —— 它排除掉「连过又断了」。
+						<>从来没有桥用这个 token 连进来过。</>
+					)
+				}
+				right={
+					<span className="flex shrink-0 items-center gap-2">
+						{mismatched ? (
+							<Btn
+								variant="outline"
+								size="sm"
+								onClick={() => actions.setKind(connection.id, reportedKind)}
+							>
+								改成 {reportedLabel}
+							</Btn>
+						) : null}
+						{/*
+						 * V1 是两颗文字钮。开关那一档换成「停用 / 启用」的字面动作,是因为这一行
+						 * 里另外两颗都是动作钮,夹一个开关在中间读起来是三种不同的东西。
+						 */}
+						<Btn
+							variant="outline"
+							size="sm"
+							aria-label={`${connection.enabled ? "停用" : "启用"} ${connection.name}`}
+							onClick={() => actions.setEnabled(connection.id, !connection.enabled)}
+						>
+							{connection.enabled ? "停用" : "启用"}
+						</Btn>
+						<Btn
+							variant="danger-outline"
+							size="sm"
+							aria-label={`删除 ${connection.name}`}
+							onClick={() => actions.remove(connection.id)}
+						>
+							删除
+						</Btn>
 					</span>
-				) : (
-					<span className="text-bn-xs text-bn-text-tertiary">{kindLabel ?? config.bridgeKind}</span>
-				)}
-				<span className="ml-auto flex items-center gap-1.5">
-					<Toggle
-						size="sm"
-						ariaLabel={`启用 ${connection.name}`}
-						value={connection.enabled}
-						onChange={(on) => actions.setEnabled(connection.id, on)}
+				}
+			>
+				<div className="flex flex-col gap-3">
+					<TokenRow
+						token={config.token}
+						linkName={connection.name}
+						onRegenerate={() => actions.regenerate(connection.id)}
 					/>
-					<IconButton
-						label={`删除 ${connection.name}`}
-						icon={<Icon.close size={13} />}
-						size="sm"
-						tone="danger"
-						onClick={() => actions.remove(connection.id)}
-					/>
-				</span>
-			</div>
 
-			<TokenRow
-				token={config.token}
-				linkName={connection.name}
-				onRegenerate={() => actions.regenerate(connection.id)}
-			/>
+					{mismatched ? (
+						<WarnNote size="sm">
+							<span data-kind-mismatch-note>
+								这条接入配的是{" "}
+								<strong className="font-bold">{kindLabel ?? config.bridgeKind}</strong>,
+								连进来的却自报 <strong className="font-bold">{reportedLabel}</strong> —— 多半是
+								token 填到另一头的插件里去了。
+								<strong className="font-bold">收发照常能用</strong>(BN 对两种桥的处理完全相同),
+								只是面板上的名字会一直对不上;改掉其中一边就好。
+							</span>
+						</WarnNote>
+					) : null}
 
-			{mismatched ? (
-				<WarnNote size="sm">
-					<span data-kind-mismatch-note>
-						这条接入配的是 <strong className="font-bold">{kindLabel ?? config.bridgeKind}</strong>,
-						连进来的却自报 <strong className="font-bold">{reportedLabel}</strong> —— 多半是 token
-						填到另一头的插件里去了。
-						<strong className="font-bold">收发照常能用</strong>(BN 对两种桥的处理完全相同),
-						只是面板上的名字会一直对不上;改掉其中一边就好。
-					</span>
-					<Btn
-						variant="outline"
-						size="sm"
-						onClick={() => actions.setKind(connection.id, reportedKind)}
-					>
-						改成 {reportedLabel}
-					</Btn>
-				</WarnNote>
-			) : null}
+					{/*
+					 * 「没连上」那张卡才需要排错说明 —— 401 与「连不上」这两句原先摆在页顶的
+					 * 地址块里,人人都得先读一遍;搬到这儿,只有真的卡住的那条卡上才出现。
+					 */}
+					{connected ? null : (
+						<HintNote>
+							插件那头要填两样:上面这个 <span className="font-mono">token</span> 与页顶那条 BN
+							地址。填错 token 那头收到的是 <span className="font-mono">401</span>,拓展关着是{" "}
+							<span className="font-mono">404</span>,地址不通则是连不上 ——
+							<strong className="text-bn-text-secondary">三种都不会在这里留下记录</strong>。
+						</HintNote>
+					)}
 
-			{connected && bots.length === 0 ? (
-				// 连上了却一个 bot 都没借过来 —— 桥那侧还没登录任何账号,值得单独说一句。
-				<HintNote>桥连上了,但它现在一个 bot 都没有</HintNote>
-			) : null}
-			{bots.map((bot) => (
-				<BotRow key={bot.botId} bot={bot} />
-			))}
+					{connected && bots.length === 0 ? (
+						// 连上了却一个 bot 都没借过来 —— 桥那侧还没登录任何账号,值得单独说一句。
+						<HintNote>桥连上了,但它现在一个 bot 都没有</HintNote>
+					) : null}
+
+					{bots.length > 0 ? (
+						<div className="flex flex-col border-t border-bn-border-subtle pt-2.5">
+							<div className="flex items-center gap-2">
+								<span className="text-bn-xs font-bold text-bn-text-tertiary">它驮着的 bot</span>
+								<Pill subtle color="var(--color-bn-pink)">
+									{bots.length}
+								</Pill>
+							</div>
+							<div className="flex flex-col divide-y divide-bn-border-subtle">
+								{bots.map((bot) => (
+									<BotRow key={bot.botId} bot={bot} />
+								))}
+							</div>
+						</div>
+					) : null}
+				</div>
+			</GlassBox>
 		</div>
 	);
 }
@@ -665,7 +775,17 @@ function AddLinkDialog({
  * ② 拓展没跑起来时 `/status` 是 404,而主人正是那个时候要来这一页把接入改对 —— 从会话
  * 那头看起的话,这一页在最需要它的时刻恰好是空的。
  */
-export function BridgeConnections({ extensionId }: { extensionId: string }) {
+export function BridgeConnections({
+	extensionId,
+	enabled,
+}: {
+	extensionId: string;
+	/**
+	 * 拓展本身开没开。**关着与崩了在这一页此前长得一模一样** —— 两者都只有一句
+	 * 「没跑起来」,而它们要主人做的事完全相反:前者是他自己刚拨的开关,后者要去查日志。
+	 */
+	enabled: boolean;
+}) {
 	const qc = useQueryClient();
 	const [adding, setAdding] = useState(false);
 	const [removing, setRemoving] = useState<Connection | null>(null);
@@ -755,60 +875,67 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 
 	return (
 		<div className="flex flex-col gap-3">
-			<BridgeAddress extensionId={extensionId} />
+			<BridgeModuleInfo
+				address={bnBridgeAddress(extensionId)}
+				links={links.length}
+				onlineBots={onlineBots}
+				statusUnavailable={status.isError}
+			/>
 
 			{/*
-			 * 接入这一节的标题行。图例挂在这儿而不是每张卡里:它解释的是整节的记号,
-			 * 逐卡重复一遍只会把卡挤满,而主人要的是「进这一节时看一眼」。
+			 * 接入这一节的标题行 —— 照设计稿 V1:小标题 · 发丝线 · 图例 · 新建。
+			 *
+			 * 图例挂在这儿而不是每张卡里:它解释的是整节的记号,逐卡重复一遍只会把卡挤满,
+			 * 而主人要的是「进这一节时看一眼」。新建也在这儿 —— 这一节讲的就是接入。
 			 */}
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<b className="text-bn-xs font-bold tracking-wide text-bn-text-tertiary">桥接入</b>
-				{/*
-				 * 「它现在到底在干活吗」。配了两条一条没连上,与两条全连着,在一屏卡片里
-				 * 长得几乎一样 —— 这一行是唯一能一眼分开的地方。
-				 *
-				 * 拓展没跑起来时**只报接入数**:那时 `/status` 是 404,一个 bot 都数不着,
-				 * 而印一个「0 个 bot 在线」会被读成「桥连着但没借来账号」——完全是另一回事。
-				 */}
-				<span data-testid="bridge-counts" className="flex items-center gap-2 text-bn-xs">
-					<span className="text-bn-text-secondary">
-						<strong className="font-bold text-bn-text-primary">{links.length}</strong> 条接入
-					</span>
-					{status.isError ? null : (
-						<>
-							<span className="h-3 w-px bg-bn-border" />
-							<span className="flex items-center gap-1.5 text-bn-text-secondary">
-								<StatusDot kind={onlineBots > 0 ? "ok" : "off"} size="sm" />
-								<strong className="font-bold text-bn-text-primary">{onlineBots}</strong> 个 bot 在线
-							</span>
-						</>
-					)}
-				</span>
 				<span className="h-px min-w-4 flex-1 bg-bn-border" />
 				<CapabilityLegend />
+				{links.length > 0 ? (
+					<Btn size="sm" onClick={() => setAdding(true)}>
+						<Icon.plus size={13} />
+						新建接入
+					</Btn>
+				) : null}
 			</div>
 
-			{status.isError ? (
+			{/*
+			 * ⚠️ 设计稿 V1 的黄盒里还有第三句「期间发往桥的推送一律失败并记『桥接模块已关闭』」。
+			 * **那个字符串今天不存在**(全仓查过),所以只写查得到的两件事。
+			 */}
+			{enabled ? null : (
+				<WarnNote size="sm">
+					拓展关着,桥都被断开了。
+					<strong className="font-bold">配置一样不动</strong>
+					;重新打开它们会自己退避重连回来 —— 关着的这段时间里,发往桥的推送一律失败。
+				</WarnNote>
+			)}
+
+			{/* 开着却还是拿不到状态 —— 那才是「它自己出事了」,与上面那条要分开说。 */}
+			{enabled && status.isError ? (
 				<HintNote>这个拓展现在没跑起来,底下只有配置、没有连接状态。</HintNote>
 			) : null}
 
 			{links.length === 0 ? <BridgeEmpty onAdd={() => setAdding(true)} /> : null}
 
-			{links.map((connection) => (
-				<LinkCard
-					key={connection.id}
-					connection={connection}
-					session={sessions.get(connection.id)}
-					actions={actions}
-				/>
-			))}
-
-			{links.length > 0 ? (
-				<AddButton block onClick={() => setAdding(true)}>
-					<Icon.plus size={13} />
-					新建接入
-				</AddButton>
-			) : null}
+			{/*
+			 * 关着的时候整片压暗,但**照样列得出来、照样改得动** —— 主人关掉它多半就是为了
+			 * 回头改配置,列表在这时候消失等于把唯一的入口藏起来。
+			 */}
+			<div
+				{...(enabled ? {} : { "data-links-dimmed": true })}
+				className={`flex flex-col gap-3 ${enabled ? "" : "opacity-60 saturate-50"}`}
+			>
+				{links.map((connection) => (
+					<LinkCard
+						key={connection.id}
+						connection={connection}
+						session={sessions.get(connection.id)}
+						actions={actions}
+					/>
+				))}
+			</div>
 
 			{adding ? (
 				<AddLinkDialog
