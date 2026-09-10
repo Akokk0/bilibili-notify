@@ -53,18 +53,29 @@ afterEach(() => {
 describe("拓展被关着", () => {
 	it("说的是「是你关的」,不是「它没跑起来」", async () => {
 		renderPanel(false);
-		const note = await screen.findByText(/拓展关着,桥都被断开了/);
-		expect(note.textContent).toMatch(/配置一样不动/);
-		expect(note.textContent).toMatch(/重新打开/);
+		const lead = await screen.findByText(/拓展关着,桥都被断开了/);
+		const note = lead.closest('[data-bn~="note"]');
+		expect(note?.textContent).toMatch(/配置一样不动/);
+		expect(note?.textContent).toMatch(/重新打开/);
 		// 「没跑起来」那句是给「崩了」用的,这时候不该出现 —— 两句一起等于没说
 		expect(screen.queryByText(/没跑起来/)).toBeNull();
 	});
 
-	it("接入照样列得出来,只是整片压暗 —— 关着也得改得了配置", async () => {
+	it("关着就不去问状态 —— 问了也是 404,还会闪一下「没跑起来」", async () => {
+		renderPanel(false);
+		await screen.findByText(/拓展关着/);
+		expect(api.get).not.toHaveBeenCalledWith("/api/ext/bridge/status");
+	});
+
+	it("接入压暗成一行一条,说「已随拓展断开」—— 不是一张张还在等连接的卡", async () => {
 		renderPanel(false);
 		expect(await screen.findByText("家里那台")).toBeTruthy();
 		const list = document.querySelector("[data-links-dimmed]");
 		expect(list).toBeTruthy();
+		expect(list?.textContent).toMatch(/已随拓展断开/);
+		// 关着的时候没有「没连上」这回事 —— 那是开着时才成立的判断
+		expect(screen.queryByText("没连上")).toBeNull();
+		expect(screen.queryByRole("button", { name: /新建接入/ })).toBeNull();
 	});
 
 	it("开着而 /status 还是拿不到 → 那才是「没跑起来」", async () => {
@@ -72,5 +83,7 @@ describe("拓展被关着", () => {
 		expect(await screen.findByText(/没跑起来/)).toBeTruthy();
 		expect(screen.queryByText(/拓展关着,桥都被断开了/)).toBeNull();
 		expect(document.querySelector("[data-links-dimmed]")).toBeNull();
+		// 崩了的时候接入照样是整张卡 —— 配置还得改得动
+		expect(screen.getByRole("button", { name: "删除 家里那台" })).toBeTruthy();
 	});
 });

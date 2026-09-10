@@ -51,6 +51,7 @@ const STATUS = {
 			name: "客厅那台 koishi",
 			version: "0.1.0",
 			connectedAt: 1_700_000_000_000,
+			remoteAddress: "192.168.1.5",
 			bots: [
 				{
 					botId: "bot-1",
@@ -116,12 +117,25 @@ describe("拓展详情页", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("头上印的是这个拓展自己的名字与状态", async () => {
+	it("头上印的是这个拓展自己的名字、说明与状态", async () => {
 		renderDetail();
 		// 名字有两处:面包屑与头卡 —— 两处都该是它自己的名字。
 		expect(await screen.findAllByText("机器人框架桥接")).toHaveLength(2);
 		expect(screen.getByText("已启用")).toBeTruthy();
-		expect(screen.getByText("v1.0.0")).toBeTruthy();
+		expect(screen.getByText("把别的机器人框架里的 bot 借过来发推送")).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 接入卡是**页面级**的兄弟节点,不套在头卡肚子里(设计稿 V1)——
+	 * 此前整张接入列表被塞进头卡正文,头卡长成了整页。
+	 */
+	it("接入卡不在头卡肚子里", async () => {
+		renderDetail();
+		const head = (await screen.findByText("已启用")).closest(".bn-glass");
+		expect(head).toBeTruthy();
+		const card = (await screen.findByText("家里那台")).closest("[data-link-card]");
+		expect(card).toBeTruthy();
+		expect(head?.contains(card as Node)).toBe(false);
 	});
 
 	/**
@@ -138,12 +152,14 @@ describe("拓展详情页", () => {
 		);
 	});
 
-	it("连上了的那条:桥自报的种类 / 名字 / 版本都印出来", async () => {
+	it("连上了的那条:桥自报的种类 / 名字 / 版本 / 从哪来都印出来", async () => {
 		renderDetail();
 		expect(await screen.findByText("家里那台")).toBeTruthy();
-		expect(screen.getByText(/koishi/)).toBeTruthy();
-		expect(screen.getByText(/客厅那台 koishi/)).toBeTruthy();
-		expect(screen.getByText(/0\.1\.0/)).toBeTruthy();
+		// 两条接入各有一枚「哪一种」徽章 —— 两条都配的 koishi
+		expect(screen.getAllByText("koishi")).toHaveLength(2);
+		expect(screen.getByText(/客厅那台 koishi v0\.1\.0/)).toBeTruthy();
+		expect(screen.getByText(/来自 192\.168\.1\.5/)).toBeTruthy();
+		expect(screen.getByText("已连接")).toBeTruthy();
 		expect(screen.getByText("小电视")).toBeTruthy();
 	});
 
@@ -154,7 +170,7 @@ describe("拓展详情页", () => {
 	it("配了但没连上的那条也要在列表里", async () => {
 		renderDetail();
 		expect(await screen.findByText("公司那台")).toBeTruthy();
-		expect(screen.getByText("未连接")).toBeTruthy();
+		expect(screen.getByText("没连上")).toBeTruthy();
 	});
 
 	/**
@@ -164,8 +180,8 @@ describe("拓展详情页", () => {
 	it("能力三态分开说 —— 支持 / 不支持 / 还不知道", async () => {
 		renderDetail();
 		await screen.findByText("小电视");
-		expect(screen.getByTitle("@全体成员:支持")).toBeTruthy();
-		expect(screen.getByTitle("接收消息:不支持")).toBeTruthy();
+		expect(screen.getByTitle("@全体:支持")).toBeTruthy();
+		expect(screen.getByTitle("收私聊指令:不支持")).toBeTruthy();
 		expect(screen.getByTitle("合并转发:还不知道")).toBeTruthy();
 	});
 

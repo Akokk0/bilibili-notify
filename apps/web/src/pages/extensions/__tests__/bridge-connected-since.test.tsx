@@ -94,6 +94,7 @@ describe("连上多久了", () => {
 		const card = (await screen.findByText("机房那台")).closest("[data-link-card]");
 		expect(card).toBeTruthy();
 		if (!card) throw new Error("没有这张卡");
-		expect(within(card as HTMLElement).queryByText(/连上/)).toBeNull();
+		// 状态那句「没连上」里也有「连上」两个字 —— 问的是「多久前连上」那一句
+		expect(within(card as HTMLElement).queryByText(/(前|刚刚)连上/)).toBeNull();
 	});
 });

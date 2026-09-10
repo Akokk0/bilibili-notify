@@ -22,7 +22,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
+import { BridgeAddressRow, BridgeConnections } from "../bridge-panel";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
@@ -41,8 +41,10 @@ function renderPanel() {
 		throw new Error("拓展没跑起来");
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	// 地址行住在详情页的头卡上,token 行在接入卡上 —— 两处的「复制」走的是同一件事
 	return render(
 		<QueryClientProvider client={qc}>
+			<BridgeAddressRow extensionId="bridge" />
 			<BridgeConnections extensionId="bridge" enabled />
 		</QueryClientProvider>,
 	);

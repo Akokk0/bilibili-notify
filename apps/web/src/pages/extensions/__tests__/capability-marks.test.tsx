@@ -104,7 +104,7 @@ describe("能力三态怎么画", () => {
 		renderPanel();
 		await screen.findByText("阿库娅");
 		const marks = [
-			markOf("@全体成员").className, // supported
+			markOf("@全体").className, // supported
 			markOf("分享卡链接").className, // unsupported
 			markOf("小程序卡").className, // unknown
 		];

@@ -36,7 +36,10 @@ function renderPanel() {
 async function openDialog() {
 	renderPanel();
 	await userEvent.click(await screen.findByRole("button", { name: /新建.*接入|添加接入/ }));
-	return screen.findByRole("dialog");
+	const dialog = await screen.findByRole("dialog");
+	// 没名字的接入在卡上什么都认不出 —— 「创建」要等名字填了才亮
+	await userEvent.type(within(dialog).getByRole("textbox", { name: "接入名字" }), "家里那台");
+	return dialog;
 }
 
 /** 弹窗里那把明文 token —— 32 位十六进制。 */
@@ -84,7 +87,7 @@ describe("新建接入", () => {
 	it("在弹窗里换一把,存下去的跟着换", async () => {
 		const dialog = await openDialog();
 		const first = shownToken(dialog);
-		await userEvent.click(screen.getByRole("button", { name: /换一把/ }));
+		await userEvent.click(within(dialog).getByRole("button", { name: "重新生成 token" }));
 		const second = shownToken(dialog);
 		expect(second).not.toBe(first);
 		await userEvent.click(screen.getByRole("button", { name: "创建" }));
@@ -98,5 +101,22 @@ describe("新建接入", () => {
 		await userEvent.click(screen.getByRole("button", { name: "取消" }));
 		expect(api.post).not.toHaveBeenCalled();
 		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("两种桥是两张可选的卡,不印插件包名 —— 那两个包今天都还不存在", async () => {
+		const dialog = await openDialog();
+		const options = within(dialog).getAllByRole("button", { pressed: true });
+		expect(options).toHaveLength(1);
+		expect(options[0]?.textContent).toMatch(/koishi/);
+		await userEvent.click(within(dialog).getByRole("button", { name: /AstrBot/ }));
+		expect(within(dialog).getByRole("button", { pressed: true }).textContent).toMatch(/AstrBot/);
+		expect(dialog.textContent).not.toMatch(/koishi-plugin|astrbot_plugin/);
+		await userEvent.click(screen.getByRole("button", { name: "创建" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		const [, body] = vi.mocked(api.post).mock.calls[0] as [
+			string,
+			{ config: { bridgeKind: string } },
+		];
+		expect(body.config.bridgeKind).toBe("astrbot");
 	});
 });

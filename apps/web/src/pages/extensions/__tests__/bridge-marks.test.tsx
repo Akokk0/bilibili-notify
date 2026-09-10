@@ -5,8 +5,8 @@
  * 一屏上常有两三条接入、每条底下挂几个 bot,全是清一色的文字行时,主人得逐行读名字才
  * 认得出谁是谁。方块是**扫一眼就能分**的那条通道 —— 设计稿 V1 里两处都有,实现时漏掉了。
  *
- * bot 那一侧走库里的 `PlatformIcon`:认得的平台画真图标,认不得的退首字方章 ——
- * 而桥后面挂着什么平台是**运行时才知道**的开放词表,退得下去这件事是刚需。
+ * bot 那一侧印平台名的头两个字母 —— 桥后面挂着什么平台是**运行时才知道**的开放词表,
+ * 两个字母对任何平台都画得出来。
  */
 
 import type { Connection } from "@bilibili-notify/internal";
@@ -94,10 +94,13 @@ describe("bot 行的平台方块", () => {
 	it("认得的平台与认不得的平台都画得出来 —— 桥后面挂什么是运行时才知道的", async () => {
 		renderPanel();
 		await screen.findByText("阿库娅");
-		for (const name of ["阿库娅", "小电视"]) {
-			const row = screen.getByText(name).closest("[data-bot-row]");
+		for (const [name, mark] of [
+			["阿库娅", "on"],
+			["小电视", "从没"],
+		]) {
+			const row = screen.getByText(name as string).closest("[data-bot-row]");
 			expect(row).toBeTruthy();
-			expect(row?.querySelector("[data-bot-mark]")?.children.length).toBeGreaterThan(0);
+			expect(row?.querySelector("[data-bot-mark]")?.textContent?.trim()).toBe(mark);
 		}
 	});
 });
