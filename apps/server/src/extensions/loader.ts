@@ -63,12 +63,28 @@ export interface LoadedExtensions {
 	 * 主人每存一次全局设置时重试一次,几下就把失败记账烧到自动停用 —— 而主人根本没碰它。
 	 * 想重试就拨一下开关,那也正是人会做的动作。
 	 *
-	 * **不重扫盘**:新装进来的拓展要等下次开机。热的只有开关这一件事,而扫盘 + 读清单
-	 * 挂在「任何一次全局设置保存」上,是拿一条高频路径去办一件低频的事。
+	 * **不重扫盘**:装进来 / 卸掉了走 {@link LoadedExtensions.rescan}。扫盘 + 读清单挂在
+	 * 「任何一次全局设置保存」上,是拿一条高频路径去办一件低频的事。
 	 *
 	 * 排队执行,不并发 —— 连拨两下开关得按顺序落地。自己吞异常,不会抛。
 	 */
 	sync(): Promise<void>;
+	/**
+	 * **再扫一遍装载目录**:新装进来的当场装上,卸掉的当场收摊 —— 装 / 卸都不用重启。
+	 *
+	 * 🔴 决策 10 否掉的只有「**换掉已加载的代码**」(ESM 模块缓存删不掉)。而一个新出现的
+	 * id 从来没被 import 过,它第一次 import 与「拨开关第一次启用」是同一档事实,没有缓存
+	 * 这回事 —— 曾经要重启,纯粹是因为开机扫一次就把名单定死了。
+	 *
+	 * 🔴 **已经收进名单的那些一律不碰**,哪怕目录里的代码变了:换代码是
+	 * {@link LoadedExtensions.reload} 的活(开发版专用,每次漏一份模块)。这里顺手换掉的话,
+	 * 生产会悄悄多出一条「换代码不重启」的路。清单坏了 / 版本不合的那些则每次重读 ——
+	 * 它们一行代码都没跑过,主人把清单修好了就该装得上。
+	 *
+	 * 显式调用:装 / 卸是低频动作,而扫盘不该挂在高频路径上(同 `sync()` 那条理由)。
+	 * 与 `sync()` / `reload()` 同一条队,自己吞异常,不会抛。
+	 */
+	rescan(): Promise<void>;
 	/**
 	 * **换掉代码再跑一遍** —— 收摊 → 换一个 URL 重新 `import` → 重新 `activate`。
 	 *
@@ -153,8 +169,8 @@ async function entryUrl(entry: string, fresh: boolean): Promise<string> {
 /**
  * 扫一遍装载目录,把该跑的跑起来,并把这批拓展的**装卸把手**交回去。
  *
- * 开机扫这一次就够了:之后主人拨开关走 `sync()`,拿的是这次扫出来的那份名单
- * (决策 10 只把**开关**做成热的,新装进来的拓展仍要等下次开机)。
+ * 之后名单靠三个把手动:拨开关走 `sync()`,装 / 卸走 `rescan()`(再扫一遍盘),
+ * 换代码走 `reload()`(开发版专用)。三件事分开,是因为它们的代价与语义都不一样。
  */
 export async function loadExtensions(opts: LoadExtensionsOptions): Promise<LoadedExtensions> {
 	const { root, host, mounts, isEnabled, maxFailures } = opts;
@@ -165,7 +181,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	const importModule = opts.importModule ?? realImport;
 	const found = await discoverExtensions(root);
 
-	/** 面板那张表。按发现顺序(已按 id 排好)插入,后面只改不重排。 */
+	/** 面板那张表。按 id 排(`discoverExtensions` 已排好,重扫之后 `resort()` 再归位)。 */
 	const entries = new Map<string, ExtensionEntry>();
 	/** 眼下真跑着的。插入顺序 = 起来的顺序,收摊时倒着来。 */
 	const runtimes = new Map<string, ExtensionRuntime>();
@@ -247,9 +263,14 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		});
 	}
 
-	// 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
-	// 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
-	for (const dir of found) {
+	/**
+	 * 把一条扫出来的记录收进名单 —— **开机与重扫走的是同一段**,两处分头写的话,新装进来
+	 * 的拓展会与开机装上的差一点(记账、开关、面板那一行),而差别只在真机上露面。
+	 *
+	 * 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
+	 * 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
+	 */
+	async function admit(dir: Exclude<ExtensionDirRead, { state: "absent" }>): Promise<void> {
 		if (dir.state === "unreadable") {
 			entries.set(dir.id, {
 				id: dir.id,
@@ -257,7 +278,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				state: "unreadable",
 				detail: dir.detail,
 			});
-			continue;
+			return;
 		}
 		if (dir.state === "incompatible") {
 			entries.set(dir.id, {
@@ -267,7 +288,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				manifest: dir.manifest,
 				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
 			});
-			continue;
+			return;
 		}
 
 		ready.set(dir.id, dir);
@@ -283,6 +304,15 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				manifest: dir.manifest,
 			});
 	}
+
+	/** 面板那张表按 id 排。**次序不该跟着「什么时候装的」走** —— 否则重启一次就换个样。 */
+	function resort(): void {
+		const sorted = [...entries].sort(([a], [b]) => a.localeCompare(b));
+		entries.clear();
+		for (const [id, entry] of sorted) entries.set(id, entry);
+	}
+
+	for (const dir of found) await admit(dir);
 
 	let queue: Promise<void> = Promise.resolve();
 
@@ -302,6 +332,34 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 					if (wanted) await start(dir);
 					else await stop(dir);
 				}
+			});
+			return queue;
+		},
+		rescan() {
+			// 与 sync() / reload() 同一条队:装完紧跟着拨开关时,后一次得看见前一次的结果。
+			queue = queue.then(async () => {
+				const now = await discoverExtensions(root);
+				const onDisk = new Set(now.map((dir) => dir.id));
+
+				// 先送走消失的。**三张表都要删干净** —— 在 `ready` 里留一格的话,下一次
+				// `sync()` 会把一个已经不在盘上的拓展装回来(它的代码还在模块缓存里,真装得起来)。
+				for (const id of [...entries.keys()]) {
+					if (onDisk.has(id)) continue;
+					const dir = ready.get(id);
+					if (dir) await stop(dir);
+					ready.delete(id);
+					applied.delete(id);
+					entries.delete(id);
+				}
+
+				for (const dir of now) {
+					// 已经收进装载名单的一律不碰,哪怕目录里的代码换了 —— 那是 `reload()` 的活。
+					// 清单坏了 / 版本不合的那些则重读一遍:它们一行代码都没跑过,主人把清单
+					// 修好、或者换了个版本合的包,重扫就该认出来。
+					if (ready.has(dir.id)) continue;
+					await admit(dir);
+				}
+				resort();
 			});
 			return queue;
 		},

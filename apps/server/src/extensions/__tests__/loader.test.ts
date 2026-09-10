@@ -533,3 +533,164 @@ describe("拨开关即热装卸", () => {
 		expect(loaded.list()[0]?.detail).toContain("连续加载失败");
 	});
 });
+
+/**
+ * 🔴 **装 / 卸也是热的**(2026-09-10 补;原先要重启一次才进出拓展页)。
+ *
+ * 决策 10 否掉的只有「**换掉已加载的代码**」—— ESM 模块缓存删不掉。而一个**新出现的 id**
+ * 从来没被 import 过,它第一次 import 与「拨开关第一次启用」是同一档事实,没有缓存这回事。
+ * 之所以曾经要重启,纯粹是因为开机扫一次就把名单定死了。
+ *
+ * 🔴 **两边都有的一律不碰**:重扫顺手把跑着的那份换掉的话,「装」就把「重载」的语义
+ * 偷偷做了 —— 而那是开发版专用、每次漏一份模块的路(决策 39)。
+ */
+describe("重扫(装 / 卸不必重启)", () => {
+	it("新装进来的当场跑起来 —— 不用重启", async () => {
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+
+		const loaded = await run({ host, mounts });
+		expect(loaded.list()).toEqual([]);
+
+		await plant("bridge", HEALTHY);
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
+		expect(await (await app.request("/ext/bridge/x")).text()).toBe("hi from bridge");
+		expect(host.pending()).toBe(1);
+	});
+
+	it("卸掉的当场收摊 —— 定时器与端点跟着走,列表里也没了", async () => {
+		await plant("bridge", HEALTHY);
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+
+		const loaded = await run({ host, mounts });
+		expect(host.pending()).toBe(1);
+
+		await rm(join(root, "bridge"), { recursive: true, force: true });
+		await loaded.rescan();
+
+		expect(loaded.list()).toEqual([]);
+		expect(host.pending()).toBe(0);
+		expect((await app.request("/ext/bridge/x")).status).toBe(404);
+	});
+
+	/**
+	 * 🔴 目录内容变了也**不换** —— 那是 `reload()` 的活(开发版专用)。这里换掉的话,
+	 * 生产会悄悄多出一条「换代码不重启」的路,而它每走一次漏一份模块。
+	 */
+	it("已经跑着的那份一行代码都不重新 import —— 换代码是「重载」的活", async () => {
+		await plant("bridge", HEALTHY);
+		const imported: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			importModule: (specifier) => {
+				imported.push(specifier);
+				return import(specifier);
+			},
+		});
+		expect(imported).toHaveLength(1);
+
+		await plant(
+			"bridge",
+			`export function activate(ctx) { ctx.mount(async () => new Response("新的")); }`,
+		);
+		await loaded.rescan();
+
+		expect(imported).toHaveLength(1);
+	});
+
+	it("新装进来但开关关着 → 列得出来,一行代码都不 import", async () => {
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => false,
+		});
+		// import 一下就会抛的代码:只要它没被 import,这条就绿。
+		await plant("bridge", `throw new Error("不该被 import");`);
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "disabled"]]);
+	});
+
+	/**
+	 * 🔴 **进的是热装卸那份名单,不只是面板上那一行。** 只往列表里画一行的话,症状是
+	 * 「装完看得见,拨开关没反应」—— 而两头都不报错。
+	 */
+	it("新装进来的进得了热装卸名单 —— 拨开关当场装上", async () => {
+		let on = false;
+		const host = fakeHost();
+		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+
+		await plant("bridge", HEALTHY);
+		await loaded.rescan();
+		expect(loaded.list().map((e) => e.state)).toEqual(["disabled"]);
+
+		on = true;
+		await loaded.sync();
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+		expect(host.pending()).toBe(1);
+	});
+
+	it("卸掉的从热装卸名单里也删干净 —— 之后拨开关不会把它招回来", async () => {
+		await plant("bridge", HEALTHY);
+		let on = true;
+		const host = fakeHost();
+		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+
+		on = false;
+		await loaded.sync();
+		await rm(join(root, "bridge"), { recursive: true, force: true });
+		await loaded.rescan();
+		on = true;
+		await loaded.sync();
+
+		expect(loaded.list()).toEqual([]);
+		expect(host.pending()).toBe(0);
+	});
+
+	/**
+	 * 🔴 判据是「**进没进装载名单**」,不是「面板上有没有这一行」。按后者写的话,一份
+	 * 清单写坏了的拓展会被永远钉死在 unreadable 上 —— 主人改好那一行,重扫说没变化,
+	 * 而唯一的出路是重启,正是这一整片要去掉的东西。
+	 */
+	it("清单坏了的那条重扫会重读 —— 主人修好了当场就装得上", async () => {
+		await mkdir(join(root, "bridge"), { recursive: true });
+		await writeFile(join(root, "bridge", "extension.json"), "{ 不是 JSON");
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		expect(loaded.list().map((e) => e.state)).toEqual(["unreadable"]);
+
+		await plant("bridge", HEALTHY);
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+	});
+
+	it("新装的按 id 归位 —— 现在这个次序就是重启之后的次序", async () => {
+		await plant("zeta", HEALTHY);
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+
+		await plant("alpha", HEALTHY);
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => e.id)).toEqual(["alpha", "zeta"]);
+	});
+
+	it("新装进来的清单坏了 → 照样列出来说清楚,不是一声不响地没有", async () => {
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+
+		await mkdir(join(root, "junk"), { recursive: true });
+		await writeFile(join(root, "junk", "extension.json"), "{ 不是 JSON");
+		await loaded.rescan();
+
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("unreadable");
+		expect(entry?.detail).toContain("JSON");
+	});
+});
