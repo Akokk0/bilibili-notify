@@ -60,6 +60,7 @@ import { browserSubtreeRss } from "./runtime/process-tree.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
 import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
+import { resolveRestartAbility, runningInContainer } from "./runtime/restart-ability.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
@@ -259,6 +260,35 @@ export async function startStandaloneServer(
 		let onInboundGroup: ((msg: InboundGroupMessage, meta: InboundMeta) => void) | undefined;
 		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
 		const payloadVersion = APP_VERSION;
+		// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。devtools 那道门与
+		// 「能不能重启」是同一个事实,算一次两处用。
+		const sourceRun = import.meta.url.endsWith(".ts");
+		// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。
+		const restartAbility = resolveRestartAbility({
+			parentPid: process.env.BN_PARENT_PID,
+			sourceRun,
+			inContainer: runningInContainer(),
+		});
+
+		/**
+		 * 优雅停机 + 退 0,等外面那位把它拉起来 —— 应用更新与「重启一下」共用这一段。
+		 *
+		 * **退出码必须是 0**:非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff;
+		 * 桌面外壳那边同样只认 0(见 sidecar_exit_disposition),非 0 会摊出一张崩溃页。
+		 */
+		const stopAndExit = async (reason: string): Promise<void> => {
+			try {
+				await close(reason);
+			} catch (err) {
+				// close() 是 rethrow 的。停机里某一处 dispose 抛了也得退 0:这时进程反正
+				// 要没了,非 0 只会让编排系统当成崩溃去退避重启。
+				log.error(
+					`${reason}: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			} finally {
+				process.exit(0);
+			}
+		};
 		const updateService = createUpdateService({
 			currentVersion: payloadVersion,
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
@@ -315,8 +345,7 @@ export async function startStandaloneServer(
 		const subStore = subBinding.store;
 		const devtools = createDevtools({
 			payloadVersion,
-			// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。见 createDevtools 那道门。
-			sourceRun: import.meta.url.endsWith(".ts"),
+			sourceRun,
 			updateService,
 			adapters: adapterRegistry,
 			// 开发版装拓展那条路(见 devtools/scenarios/extensions.ts)。仓里那个目录只在
@@ -830,19 +859,14 @@ export async function startStandaloneServer(
 				startedAt: STARTED_AT,
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
 				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
-				applyUpdate: async () => {
-					try {
-						await close("update apply");
-					} catch (err) {
-						// close() 是 rethrow 的。停机里某一处 dispose 抛了也得退 0:这时进程
-						// 反正要没了,非 0 只会让编排系统当成崩溃去退避重启。
-						log.error(
-							`update apply: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
-						);
-					} finally {
-						process.exit(0);
-					}
-				},
+				applyUpdate: () => stopAndExit("update apply"),
+			},
+			// 「重启一下」走的是同一条路 —— 差别只在**为什么**关,不在怎么关。
+			system: {
+				ability: restartAbility,
+				startedAt: STARTED_AT,
+				version: payloadVersion,
+				restart: () => stopAndExit("restart requested"),
 			},
 		});
 		await new Promise<void>((resolveServe) => {

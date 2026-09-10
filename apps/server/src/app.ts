@@ -36,6 +36,7 @@ import { createSessionRoute } from "./routes/session.js";
 import { createSkinsRoute } from "./routes/skins.js";
 import { createStatsRoute } from "./routes/stats.js";
 import { createSubsRoute } from "./routes/subs.js";
+import { type CreateSystemRouteInput, createSystemRoute } from "./routes/system.js";
 import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
 import { createUpdateRoute } from "./routes/update.js";
@@ -179,6 +180,11 @@ export interface CreateAppOptions {
 		startedAt: string;
 		applyUpdate: () => Promise<void>;
 	};
+	/**
+	 * 系统级动作(现在只有「重启一下」)。同样由 index.ts 构建 —— 只有它知道怎么优雅地
+	 * 关掉自己,以及这台机器上退了之后有没有人拉。省略 → `/api/system` 不挂载。
+	 */
+	system?: CreateSystemRouteInput;
 	/**
 	 * devtools(造状态 / 造事件)的 `/api/dev` 子应用,由 `devtools/index.ts` 建好交过来。
 	 * 这里**只收一个 Hono**、不 import 任何 devtools 模块:整套 devtools 只从 `src/index.ts`
@@ -371,6 +377,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// app.ts 不必知道进程怎么关。
 	if (options.update) {
 		app.route("/api/update", createUpdateRoute(options.update));
+	}
+
+	if (options.system) {
+		app.route("/api/system", createSystemRoute(options.system));
 	}
 
 	// devtools。同样在 index.ts 组装(那里才知道载荷版本)后注入;不给就不挂。

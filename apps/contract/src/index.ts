@@ -14,5 +14,6 @@ export * from "./maid-skill";
 export * from "./resources";
 export * from "./rest";
 export * from "./skin";
+export * from "./system";
 export * from "./update";
 export * from "./ws";
