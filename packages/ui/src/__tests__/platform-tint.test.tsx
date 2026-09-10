@@ -25,6 +25,12 @@ const TABLE: Record<string, PlatformMeta> = {
 	"no-icon": { tint: "#07c160", label: "方章" },
 	// 注入的是外来数据,给个库里没有的图标名是迟早的事 —— 不许因此炸掉。
 	"bad-icon": { tint: "#00c2ff", label: "坏名字", icon: "not-an-icon" },
+	// 拓展交上来的那种:一段 SVG,不是库里图标表的键
+	"own-svg": {
+		tint: "#a855f7",
+		label: "自带",
+		svg: '<svg viewBox="0 0 24 24" data-testid="own"><path d="M4 4h16"/></svg>',
+	},
 };
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -101,6 +107,23 @@ describe("PlatformIcon", () => {
 		);
 		expect(container.querySelector("svg")).toBeNull();
 		expect((container.querySelector("span") as HTMLElement).textContent).toBe("坏");
+	});
+
+	/**
+	 * 拓展的图标随清单来(ADR-0012 决策 20),是一段**服务端过过白名单**的 SVG,不是图标表
+	 * 的键 —— 表里塞不进,只能整段画。少了这条,拓展那一档在推送目标页永远是首字方章。
+	 */
+	it("给了整段 SVG 就画那一段,颜色跟标识色走", () => {
+		const { container } = render(
+			<Wrap>
+				<PlatformIcon platform="own-svg" size={20} />
+			</Wrap>,
+		);
+		const svg = container.querySelector('[data-testid="own"]');
+		expect(svg).toBeTruthy();
+		const box = svg?.parentElement as HTMLElement;
+		expect(box.style.width).toBe("20px");
+		expect(box.style.color).toBe("rgb(168, 85, 247)");
 	});
 
 	it("认不出的平台:方章底色退静默档,字是平台名首字", () => {

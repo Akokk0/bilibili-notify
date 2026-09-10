@@ -42,7 +42,7 @@
 | `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂。自带 `data-bn="note note-empty"`(**虚线是它的语义**,皮肤那头的 NOTES 也这么嘱咐) |
 | `HintNote` | 「顺带说一句」低调旁注盒:虚线 + 软底 + 小字,不打断主流程(实线红盒是「出事了」,虚线是「旁白 / 引用落了空」)。三档 `tone`:`neutral` 中性说明 / `success` 报喜旁注(预览用的是真实数据)/ `danger` 警示旁注(引用的字体 / 推送目标已失效)。形状钉死家族 `sm` 档不设尺寸;底走**实色** soft token(`/60` 纱在壁纸皮肤下隐形);布局(flex 行)与外边距走 `className`。danger 档自带 `data-bn="note note-danger"`(对皮肤与红盒同档),其余只挂 `note` |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
-| `PlatformIcon` / `usePlatformLabel` / `usePlatformTint` / `PlatformMetaProvider` | 推送平台的图标、短名与**标识色**。**表由消费方注入**(`PlatformMetaProvider`,web 那份接的是 internal 的 `PLATFORM_REGISTRY`)—— 库只管怎么画:有图标画图标、没有画首字方章、`tone` 盖得掉色。没 Provider 或表里没有的平台一律退「认不出」:色 `--color-bn-inactive`、短名就是平台名本身。色也导出(hook 形式)是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差) |
+| `PlatformIcon` / `usePlatformLabel` / `usePlatformTint` / `PlatformMetaProvider` | 推送平台的图标、短名与**标识色**。**表由消费方注入**(`PlatformMetaProvider`,web 那份接的是 internal 的 `PLATFORM_REGISTRY`)—— 库只管怎么画:有图标名画图标表里那枚、有整段 `svg`(拓展随清单交上来、**消费方保证过过白名单**)就画那一段、都没有画首字方章、`tone` 盖得掉色。品牌图形的来源见 `THIRD_PARTY_ICONS.md`。没 Provider 或表里没有的平台一律退「认不出」:色 `--color-bn-inactive`、短名就是平台名本身。色也导出(hook 形式)是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差) |
 | `Donut` | 环形占比图:灰轨道 + 按比例排布的彩弧,`label` 摆环心。单段给 `value`+`color`;**多段给 `segments`** —— 各段顺时针首尾相接,用来说「这部分 + 那部分 = 总占用」(概览页资源卡的 CPU / 内存两个环就是「本体 + 其他」)。负值当 0、0 长的段不画(圆头线帽会把它画成一个点)、各段之和越过一圈时整体按比例压回一圈;多段自动换平头线帽,圆头会让相邻两段互相盖住、读出来的比例不对。`title` 是念给读屏器的那句话 —— 同页两个环讲的不是同一件事,都念「占比」听不出区别,所以它有默认值但该逐个给 |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四段,由高到低堆)。**`colors` 必填,库里不留默认值** —— 那四段是推送家族色,唯一出处 `push-kinds.ts` 在业务侧,平台中立的库取不到;给默认值等于把此前那份写死的副本原样留下 |
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |

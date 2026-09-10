@@ -41,7 +41,9 @@ export function buildPlatformTable(
 	const table: Record<string, PlatformMeta> = { ...BUILT_IN };
 	for (const ext of extensions) {
 		const descriptor = ext.descriptor;
-		if (descriptor) table[ext.id] = { tint: descriptor.tint, label: descriptor.shortLabel };
+		// 图标是清单里那段 SVG(服务端过过白名单,决策 20)—— 没有就退首字方章。
+		if (descriptor)
+			table[ext.id] = { tint: descriptor.tint, label: descriptor.shortLabel, svg: ext.icon };
 	}
 	return (platform: string) => table[platform];
 }

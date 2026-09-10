@@ -9,7 +9,8 @@
  */
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { usePlatformLabel } from "@bilibili-notify/ui";
+import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
+import { Icon, type IconName, usePlatformLabel } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -51,9 +52,20 @@ describe("平台元信息表", () => {
 		expect(buildPlatformTable([])("bridge")).toBeUndefined();
 	});
 
-	it("拓展自己报的短名与标识色进得了表", () => {
-		const table = buildPlatformTable([BRIDGE]);
-		expect(table("bridge")).toEqual({ tint: "#a855f7", label: "桥接" });
+	it("拓展自己报的短名与标识色进得了表,清单里的图标也一起", () => {
+		const icon = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
+		const table = buildPlatformTable([{ ...BRIDGE, icon }]);
+		expect(table("bridge")).toEqual({ tint: "#a855f7", label: "桥接", svg: icon });
+	});
+
+	/**
+	 * 🔴 注册表里写的图标名要真在图标表里 —— 写错一个字母不会有任何编译错,
+	 * 只是那个平台在推送目标页悄悄退成首字方章。
+	 */
+	it("内置平台声明的图标名,组件库的图标表里都有", () => {
+		for (const [code, meta] of Object.entries(PLATFORM_REGISTRY)) {
+			if (meta.icon) expect(Icon[meta.icon as IconName], `${code} → ${meta.icon}`).toBeTruthy();
+		}
 	});
 
 	/** 没跑起来的拓展没有 descriptor(那是 activate 里报的)—— 不能因此塞一份空壳进去。 */

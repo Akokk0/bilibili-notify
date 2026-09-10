@@ -1166,6 +1166,11 @@ export interface PlatformMeta {
 	label: string;
 	/** 图标名(见 `Icon`)。留空、或给了一个库里没有的名字,都退首字方章。 */
 	icon?: string;
+	/**
+	 * 整段 SVG —— 拓展随清单交上来的那种,不是图标表的键。**调用方保证它过过白名单**
+	 * (BN 的服务端读清单那一刻就过了),这里只管画、吃 `currentColor`。有 `icon` 时优先 `icon`。
+	 */
+	svg?: string;
 }
 
 const PlatformMetaContext = createContext<((platform: string) => PlatformMeta | undefined) | null>(
@@ -1223,6 +1228,16 @@ export function PlatformIcon({
 	const color = tone ?? tint(platform);
 	const I = meta?.icon ? Icon[meta.icon as IconName] : null;
 	if (I) return <I size={size} style={{ color }} />;
+	if (meta?.svg) {
+		return (
+			<span
+				className="inline-flex shrink-0 [&>svg]:h-full [&>svg]:w-full"
+				style={{ width: size, height: size, color }}
+				// biome-ignore lint/security/noDangerouslySetInnerHtml: 表由消费方注入,SVG 是它保证过过白名单的(见 PlatformMeta.svg)
+				dangerouslySetInnerHTML={{ __html: meta.svg }}
+			/>
+		);
+	}
 	const label = meta?.label ?? platform;
 	const badgeStyle: CSSProperties & SVGProps<SVGSVGElement> = {
 		width: size,
