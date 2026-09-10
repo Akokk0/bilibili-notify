@@ -50,6 +50,8 @@ describe("拓展挂载点接线", () => {
 				loaded: () => [],
 				status: () => undefined,
 				descriptor: () => undefined,
+				configFields: () => undefined,
+				bots: () => undefined,
 			},
 		});
 
@@ -66,6 +68,8 @@ describe("拓展挂载点接线", () => {
 			extensions: {
 				status: () => undefined,
 				descriptor: () => undefined,
+				configFields: () => undefined,
+				bots: () => undefined,
 				mounts: createExtensionMounts(),
 				loaded: () => [
 					{
@@ -112,6 +116,8 @@ describe("面板上传装拓展的接线", () => {
 				loaded: () => [],
 				status: () => undefined,
 				descriptor: () => undefined,
+				configFields: () => undefined,
+				bots: () => undefined,
 				install: { root, rescan, restartAbility: { can: true, how: "container" } },
 			},
 		});

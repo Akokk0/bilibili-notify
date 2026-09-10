@@ -85,6 +85,7 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 	let fetchHandler: ExtensionFetchHandler | undefined;
 	let upgradeHandler: ExtensionUpgradeHandler | undefined;
 	let adapter: PlatformAdapter | undefined;
+	let pushSource: PushExtensionDef<unknown> | undefined;
 	let statusOf: (() => unknown) | undefined;
 
 	function track(timer: NodeJS.Timeout): Disposable {
@@ -125,6 +126,7 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig> {
 			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。
 			adapter = { ...def.adapter, platforms: [EXTENSION_ID] };
+			pushSource = def as PushExtensionDef<unknown>;
 			return {
 				// 宿主拿**拓展自己那份 zod** 解 config,解不出的那条根本不交给它(决策 30)。
 				connections: (): readonly ExtensionConnectionView<TConfig>[] =>
@@ -151,6 +153,10 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 
 	return {
 		ctx,
+		pushSource: () => {
+			if (!pushSource) throw new Error("拓展没注册推送源");
+			return pushSource;
+		},
 		adapter: () => {
 			if (!adapter) throw new Error("拓展没注册推送源");
 			return adapter;
@@ -319,6 +325,15 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	 * 面板要看的是**从配置那头看起**的名单 —— 最需要看见的恰恰是「配了但没连上」那条,
 	 * 而它在会话表里根本不存在。
 	 */
+	/** 推送目标页新建目标时,要从这里挑「绑哪个 bot」—— 只报连着的那条会话驮着的。 */
+	it("listBots:按连接列得出 bot,没连上的连接是空的", async () => {
+		await handshake();
+		expect(host.pushSource().listBots?.(CONNECTION_ID)).toEqual([
+			expect.objectContaining({ botId: BOT_ID, platform: "telegram", icon: BOT_ICON }),
+		]);
+		expect(host.pushSource().listBots?.("nobody")).toEqual([]);
+	});
+
 	it("publishStatus:握过手之后,面板拿得到会话与 bot 名单", async () => {
 		await handshake();
 		expect(host.status()).toEqual({

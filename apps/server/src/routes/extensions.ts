@@ -1,4 +1,7 @@
 import type {
+	ExtensionBotsResponse,
+	ExtensionBotView,
+	ExtensionConfigField,
 	ExtensionDescriptorDTO,
 	ExtensionDTO,
 	ExtensionInstallResponse,
@@ -32,6 +35,10 @@ export interface ExtensionsRouteOptions {
 	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
 	 */
 	descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
+	/** 它注册推送源时交的字段表(决策 33)—— 推送目标页照它画「新建连接」。没跑就是 `undefined`。 */
+	configFields: (id: string) => readonly ExtensionConfigField[] | undefined;
+	/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
+	bots: (id: string, connectionId: string) => readonly ExtensionBotView[] | undefined;
 	/**
 	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
 	 *
@@ -84,6 +91,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			provides: entry.manifest?.provides,
 			// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
 			descriptor: opts.descriptor(entry.id),
+			configFields: opts.configFields(entry.id),
 			icon: entry.manifest?.icon,
 			// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
 			// 只有那一句答得了。
@@ -144,6 +152,13 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
 	 * 面板要能分开说。
 	 */
+	app.get("/:id/bots/:connectionId", (c) => {
+		const bots = opts.bots(c.req.param("id"), c.req.param("connectionId"));
+		if (bots === undefined) return c.json({ ok: false, err: "not found" }, 404);
+		const body: ExtensionBotsResponse = { bots };
+		return c.json(body);
+	});
+
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

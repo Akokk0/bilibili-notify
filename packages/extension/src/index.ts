@@ -73,7 +73,20 @@ import type { ZodType } from "zod";
  */
 export type ExtensionConfigField = ExtensionConfigFieldBase &
 	(
-		| { kind: "text"; placeholder?: string; mono?: boolean; secret?: boolean }
+		| {
+				kind: "text";
+				placeholder?: string;
+				mono?: boolean;
+				secret?: boolean;
+				/**
+				 * 新建时**预填 N 字节的随机十六进制**,并给一颗「重新生成」钮。
+				 *
+				 * 给 token 那种「只要两边一样、不需要人记住」的密钥用:留空让主人自己编一个,
+				 * 编出来的多半是「123456」。生成在面板那一头做(它要给主人看全文、要能复制),
+				 * 服务端不参与 —— 与拓展页那条新建流程同一把。
+				 */
+				generate?: number;
+		  }
 		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
 		| { kind: "toggle" }
 		| { kind: "select"; options: readonly { value: string; label: string }[] }
@@ -138,6 +151,27 @@ export interface PushExtensionDef<TConfig> {
 	 * 注册那一刻逐格对表,对不上直接抛(决策 19 / 33)。
 	 */
 	configFields: readonly ExtensionConfigField[];
+	/**
+	 * 这条连接上现在能绑目标的 bot,**现读**。可选:endpoint 形态的推送源没有 bot 这回事。
+	 *
+	 * 目标要绑到哪个 bot 上只有拓展知道 —— 宿主拿它列给主人挑,而不是让主人手敲一个
+	 * `botId`。给了就要**按连接**答:一条桥连接后面可能挂着好几个 bot。
+	 */
+	listBots?: (connectionId: string) => readonly ExtensionBotView[];
+}
+
+/**
+ * 一个能把推送目标绑上去的 bot —— 会话形态的推送源才有。
+ *
+ * 面板新建目标时列给主人挑,挑中的 `botId` 与 `platform` 落进目标。`platform` 是开放词表
+ * (桥后面挂什么是握手时才知道的);`icon` 是 data URL(与桥协议 §5.2 同一种)。
+ */
+export interface ExtensionBotView {
+	botId: string;
+	platform: string;
+	name?: string;
+	selfId?: string;
+	icon?: string;
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */

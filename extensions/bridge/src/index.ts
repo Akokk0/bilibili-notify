@@ -91,6 +91,15 @@ export function activate(ctx: ExtensionContext): void {
 		descriptor: DESCRIPTOR,
 		configSchema: BridgeConnectionConfigSchema,
 		configFields: BRIDGE_CONFIG_FIELDS,
+		// 推送目标页新建目标时挑「绑哪个 bot」—— 只有连着的那条会话驮着的 bot 能挑。
+		listBots: (connectionId) =>
+			(server.getSession(connectionId)?.bots ?? []).map((bot) => ({
+				botId: bot.botId,
+				platform: bot.platform,
+				name: bot.name,
+				selfId: bot.selfId,
+				icon: bot.icon,
+			})),
 	});
 
 	// 面板要的活口状态。**从配置那一头看起**,不是从活着的会话:最需要看见的恰恰是

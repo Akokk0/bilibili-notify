@@ -1,4 +1,6 @@
 import type {
+	ExtensionBotView,
+	ExtensionConfigField,
 	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionDescriptor,
@@ -45,6 +47,18 @@ export interface ExtensionRuntime {
 	 * 一份短名与颜色,而手抄的副本迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
 	 */
 	descriptor(): ExtensionDescriptor | undefined;
+	/**
+	 * 它注册推送源时交的字段表。没注册过就是 `undefined`。
+	 *
+	 * 🔴 交上来是为了**被画出来**(决策 33):推送目标页照它画「新建连接」的表单。此前它只
+	 * 用来对表与找密钥键,面板从没拿到过 —— 于是拓展连接只能在拓展页建。
+	 */
+	configFields(): readonly ExtensionConfigField[] | undefined;
+	/**
+	 * 某条连接上现在能绑目标的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
+	 * 前者是「这种推送源没有 bot 这回事」,后者是「现在一个都没连着」)。
+	 */
+	bots(connectionId: string): readonly ExtensionBotView[] | undefined;
 	/**
 	 * 它在字段表里声明成密钥的那些键 —— **备份脱敏照这个抹**。
 	 *
@@ -121,6 +135,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
 	let descriptor: ExtensionDescriptor | undefined;
+	let configFields: readonly ExtensionConfigField[] | undefined;
+	let listBots: ((connectionId: string) => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
 
 	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
@@ -194,6 +210,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields);
 			pushSourceRegistered = true;
 			descriptor = def.descriptor;
+			configFields = def.configFields;
+			listBots = def.listBots;
 			secretCodes = def.configFields.filter((f) => "secret" in f && f.secret).map((f) => f.code);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
@@ -238,6 +256,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		ctx,
 		status: () => statusOf?.(),
 		descriptor: () => descriptor,
+		configFields: () => configFields,
+		bots: (connectionId) => listBots?.(connectionId),
 		secretConfigCodes: () => secretCodes,
 		async dispose() {
 			if (disposed) return;

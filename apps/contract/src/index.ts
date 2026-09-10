@@ -9,6 +9,7 @@
  * import 值(CHANNELS / LOG_LEVELS)。校验逻辑(zod schema)是服务端职责,留在 apps/server
  * 各自模块里,用这里的类型做注解防漂移。
  */
+export type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension";
 export * from "./devtools";
 export * from "./maid-skill";
 export * from "./resources";

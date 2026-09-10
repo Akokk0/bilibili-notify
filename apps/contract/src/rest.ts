@@ -4,6 +4,7 @@
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
+import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension";
 import type {
 	CachedProfile,
 	ConnectionCapabilities,
@@ -88,6 +89,11 @@ export interface ExtensionDTO {
 	 * 面板拿它给这一档画脸(推送目标卡上的短名与标识色),不许再手抄一份。
 	 */
 	descriptor?: ExtensionDescriptorDTO;
+	/**
+	 * 它注册推送源时交的 config **字段表**(ADR-0012 决策 33)—— 推送目标页照它画「新建连接」
+	 * 的表单。**只有跑着的拓展有**,与 `descriptor` 同一个来路。
+	 */
+	configFields?: readonly ExtensionConfigField[];
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
 	/** 它自己那个目录,绝对路径(`<dataDir>/extensions/<id>`)。 */
@@ -137,6 +143,11 @@ export type { ExtensionConfigField } from "@bilibili-notify/extension";
  * 副本会跟拓展自己报的悄悄漂开,而门禁一片绿。
  */
 export type ExtensionDescriptorDTO = Omit<PlatformDescriptor, "connectors">;
+
+/** `GET /api/ext/:id/bots/:connectionId` —— 这条连接上现在能把目标绑上去的 bot。 */
+export interface ExtensionBotsResponse {
+	bots: readonly ExtensionBotView[];
+}
 
 export interface ExtensionInstallResponse {
 	id: string;

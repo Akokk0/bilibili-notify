@@ -152,6 +152,37 @@ describe("注册推送源", () => {
 		expect(harness().runtime.descriptor()).toBeUndefined();
 	});
 
+	/**
+	 * 🔴 **字段表交上来也是为了被画出来**(决策 33)—— 它此前只用来对表与找密钥键,面板
+	 * 从没拿到过,于是推送目标页建不出拓展连接。同一族的洞:收下就扔,门禁全绿。
+	 */
+	it("交上来的字段表留得住 —— 面板照它画新建连接的表单", () => {
+		const h = harness();
+		h.ctx.registerPushSource(def());
+		expect(h.runtime.configFields()?.map((f) => f.code)).toEqual(["token", "bridgeKind"]);
+		expect(harness().runtime.configFields()).toBeUndefined();
+	});
+
+	/**
+	 * 目标要绑到哪个 bot 上,只有拓展知道(桥后面挂着什么是握手时才知道的)。`listBots`
+	 * 是可选的:endpoint 形态的推送源压根没有 bot 这回事。
+	 */
+	it("给了 listBots 就按连接查得到 bot;没给的查不到,不是空数组", () => {
+		const h = harness();
+		h.ctx.registerPushSource({
+			...def(),
+			listBots: (connectionId) =>
+				connectionId === "c1" ? [{ botId: "onebot:1", platform: "onebot", name: "阿库娅" }] : [],
+		});
+		expect(h.runtime.bots("c1")).toEqual([
+			{ botId: "onebot:1", platform: "onebot", name: "阿库娅" },
+		]);
+		expect(h.runtime.bots("c2")).toEqual([]);
+		const bare = harness();
+		bare.ctx.registerPushSource(def());
+		expect(bare.runtime.bots("c1")).toBeUndefined();
+	});
+
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {
 		const h = harness();
 		h.ctx.registerPushSource(def());

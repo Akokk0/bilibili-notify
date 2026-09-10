@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ExtensionDescriptorDTO, RestartAbility } from "@bilibili-notify/contract";
+import type {
+	ExtensionBotView,
+	ExtensionConfigField,
+	ExtensionDescriptorDTO,
+	RestartAbility,
+} from "@bilibili-notify/contract";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -76,6 +81,10 @@ export interface CreateAppOptions {
 		status: (id: string) => unknown;
 		/** 某个拓展注册推送源时报的面板元信息。没跑就是 undefined。 */
 		descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
+		/** 它交的 config 字段表(决策 33)。没跑就是 undefined。 */
+		configFields: (id: string) => readonly ExtensionConfigField[] | undefined;
+		/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 undefined。 */
+		bots: (id: string, connectionId: string) => readonly ExtensionBotView[] | undefined;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
 		settle?: () => Promise<void>;
 		/** 面板上传装拓展那条路要的:装载根、装完重扫、以及「这台机器重启回不回得来」。 */
@@ -349,6 +358,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			extensions: () => options.extensions?.loaded() ?? [],
 			status: (id) => options.extensions?.status(id),
 			descriptor: (id) => options.extensions?.descriptor(id),
+			configFields: (id) => options.extensions?.configFields(id),
+			bots: (id, connectionId) => options.extensions?.bots(id, connectionId),
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,
 		}),

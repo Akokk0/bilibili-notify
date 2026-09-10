@@ -25,6 +25,8 @@ function boot(
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
 		descriptor?: Record<string, unknown>;
+		configFields?: Record<string, unknown[]>;
+		bots?: Record<string, Record<string, unknown[]>>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
 	} = {},
@@ -40,6 +42,8 @@ function boot(
 		extensions: () => (typeof entries === "function" ? entries() : entries),
 		status: (id) => over.status?.[id],
 		descriptor: (id) => over.descriptor?.[id] as never,
+		configFields: (id) => over.configFields?.[id] as never,
+		bots: (id, connectionId) => over.bots?.[id]?.[connectionId] as never,
 		settle: over.settle,
 		install: {
 			root: installRoot,
@@ -175,6 +179,17 @@ describe("GET /api/ext", () => {
 		expect(body.extensions[0]?.descriptor).toMatchObject({ shortLabel: "桥接", tint: "#a855f7" });
 	});
 
+	/** 字段表随清单下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
+	it("跑着的那条带字段表", async () => {
+		const fields = [{ kind: "text", code: "token", label: "token", secret: true }];
+		const res = await boot({
+			entries: [running("bridge")],
+			configFields: { bridge: fields },
+		}).request("/");
+		const body = (await res.json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.configFields).toEqual(fields);
+	});
+
 	it("没跑起来的那条没有 descriptor —— 那是 activate 里才报的", async () => {
 		const body = (await (
 			await boot({ entries: [{ id: "x", dir: "/d/x", state: "disabled" }] }).request("/")
@@ -237,6 +252,24 @@ describe("GET /api/ext", () => {
 	});
 });
 
+describe("GET /api/ext/:id/bots/:connectionId", () => {
+	it("列这条连接上能绑目标的 bot", async () => {
+		const bots = [{ botId: "onebot:1", platform: "onebot", name: "阿库娅" }];
+		const res = await boot({
+			entries: [running("bridge")],
+			bots: { bridge: { c1: bots } },
+		}).request("/bridge/bots/c1");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ bots });
+	});
+
+	it("没跑 / 没这个口 → 404,不是空名单 —— 面板要分得开「没 bot」与「问不到」", async () => {
+		expect((await boot({ entries: [running("bridge")] }).request("/bridge/bots/c1")).status).toBe(
+			404,
+		);
+	});
+});
+
 describe("GET /api/ext/:id/status", () => {
 	it("拓展交上来什么就下发什么 —— 形状第一版不约束(决策 36)", async () => {
 		const res = await boot({
@@ -268,6 +301,8 @@ describe("GET /api/ext/:id/status", () => {
 			extensions: () => [],
 			status: () => ({ n: ++n }),
 			descriptor: () => undefined,
+			configFields: () => undefined,
+			bots: () => undefined,
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 2 });
