@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
+import type { RestartAbility } from "@bilibili-notify/contract";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -75,6 +76,12 @@ export interface CreateAppOptions {
 		status: (id: string) => unknown;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
 		settle?: () => Promise<void>;
+		/** 面板上传装拓展那条路要的:装载根、装完重扫、以及「这台机器重启回不回得来」。 */
+		install?: {
+			root: string;
+			rescan: () => Promise<void>;
+			restartAbility: RestartAbility;
+		};
 	};
 	/**
 	 * Configured dashboard credentials. When provided, every request under
@@ -340,6 +347,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			extensions: () => options.extensions?.loaded() ?? [],
 			status: (id) => options.extensions?.status(id),
 			settle: options.extensions?.settle,
+			install: options.extensions?.install,
 		}),
 	);
 	app.route(

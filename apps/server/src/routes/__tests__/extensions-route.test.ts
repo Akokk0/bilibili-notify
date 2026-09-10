@@ -5,12 +5,19 @@
  * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import type { GlobalConfig } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
+import { EXTENSION_API_VERSION, type GlobalConfig } from "@bilibili-notify/internal";
+import { strToU8, zipSync } from "fflate";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionsRoute } from "../extensions.js";
+
+let installRoot: string;
+let rescan: ReturnType<typeof vi.fn<() => Promise<void>>>;
 
 function boot(
 	over: {
@@ -18,6 +25,7 @@ function boot(
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
 		settle?: () => Promise<void>;
+		canRestart?: boolean;
 	} = {},
 ) {
 	const store = {
@@ -31,8 +39,54 @@ function boot(
 		extensions: () => (typeof entries === "function" ? entries() : entries),
 		status: (id) => over.status?.[id],
 		settle: over.settle,
+		install: {
+			root: installRoot,
+			rescan,
+			restartAbility:
+				over.canRestart === false
+					? { can: false, reason: "source-run" }
+					: { can: true, how: "container" },
+		},
 	});
 }
+
+/** 一个装得进去的包:清单 + 入口,两个文件。 */
+function pack(over: Record<string, unknown> = {}): Blob {
+	const zip = zipSync({
+		"extension.json": strToU8(
+			JSON.stringify({
+				id: "bridge",
+				name: "机器人框架桥接",
+				description: "测试用",
+				version: "1.1.0",
+				apiVersion: EXTENSION_API_VERSION,
+				provides: ["push"],
+				...over,
+			}),
+		),
+		"index.mjs": strToU8("export function activate() {}"),
+	});
+	return new Blob([zip]);
+}
+
+async function upload(app: ReturnType<typeof boot>, body: FormData): Promise<Response> {
+	return app.request("/install", { method: "POST", body });
+}
+
+function form(file: Blob | undefined): FormData {
+	const fd = new FormData();
+	if (file) fd.append("file", new File([file], "bridge.zip"));
+	return fd;
+}
+
+beforeEach(async () => {
+	installRoot = await mkdtemp(join(tmpdir(), "bn-ext-route-"));
+	rescan = vi.fn(async () => {});
+});
+
+afterEach(async () => {
+	await rm(installRoot, { recursive: true, force: true });
+});
 
 /** 一条「装着、跑着」的拓展。 */
 function running(id: string): ExtensionEntry {
@@ -192,5 +246,64 @@ describe("GET /api/ext/:id/status", () => {
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 2 });
+	});
+});
+
+/**
+ * 面板上传装拓展。**这条路把「往装载目录放代码」降到了一次面板会话**,所以路由这一层
+ * 钉三件事:拆包那句拒绝要原样送到面板上、装完要**当场重扫**、以及**覆盖 ≠ 新装**——
+ * 后者是热的,前者要重启,而说错任何一边主人都会以为面板在骗他。
+ */
+describe("POST /api/ext/install", () => {
+	it("传一个新拓展 → 装进装载根,当场重扫,不必重启", async () => {
+		const res = await upload(boot(), form(pack()));
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as ExtensionInstallResponse;
+		expect(body).toMatchObject({ id: "bridge", name: "机器人框架桥接", version: "1.1.0" });
+		expect(body.needsRestart).toBe(false);
+		// 🔴 装完不重扫的话,它要等下一次开机才出现在拓展页 —— 那正是这一整片要去掉的。
+		expect(rescan).toHaveBeenCalledOnce();
+		expect(await readFile(join(installRoot, "bridge", "index.mjs"), "utf8")).toContain("activate");
+	});
+
+	/** 覆盖 = 换掉已经加载过的代码,ESM 在这个进程里换不掉(决策 10)。 */
+	it("盖掉一份已经装着的 → 说得出「要重启一次」,并带上这台机器给不给按钮", async () => {
+		const { mkdir } = await import("node:fs/promises");
+		await mkdir(join(installRoot, "bridge"), { recursive: true });
+		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 旧的");
+
+		const body = (await (await upload(boot(), form(pack()))).json()) as ExtensionInstallResponse;
+
+		expect(body.needsRestart).toBe(true);
+		expect(body.restart).toEqual({ can: true, how: "container" });
+	});
+
+	/** 拉不起来的机器上也照装,只是那句提示里不能有按钮 —— 判据原样交出去就行。 */
+	it("这台机器重启不回来 → 照样装,判据说清为什么没按钮", async () => {
+		const { mkdir } = await import("node:fs/promises");
+		await mkdir(join(installRoot, "bridge"), { recursive: true });
+		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 旧的");
+
+		const body = (await (
+			await upload(boot({ canRestart: false }), form(pack()))
+		).json()) as ExtensionInstallResponse;
+
+		expect(body.needsRestart).toBe(true);
+		expect(body.restart).toEqual({ can: false, reason: "source-run" });
+	});
+
+	it("包不合规 → 400,拆包那几句原样送到面板上,而且一个字节都没落盘", async () => {
+		const res = await upload(boot(), form(new Blob([strToU8("这不是 zip")])));
+
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("zip");
+		expect(rescan).not.toHaveBeenCalled();
+	});
+
+	it("压根没带文件 → 400,说清楚少的是哪个字段", async () => {
+		const res = await upload(boot(), form(undefined));
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("file");
 	});
 });

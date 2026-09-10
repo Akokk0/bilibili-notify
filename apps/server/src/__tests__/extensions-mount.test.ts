@@ -6,10 +6,13 @@
  * 对家(桥、回调)手里只有一条 URL、没有会话。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
+import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
+import { strToU8, zipSync } from "fflate";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createExtensionMounts } from "../extensions/mount.js";
@@ -74,6 +77,73 @@ describe("拓展挂载点接线", () => {
 		expect(body.extensions).toEqual([
 			expect.objectContaining({ id: "junk", state: "unreadable", enabled: false }),
 		]);
+		await runtime.dispose();
+	});
+});
+
+/**
+ * 🔴 **接线守卫。** 拆包、落盘、`rescan()` 各自的测试全绿,证明不了「从面板传一个包上来
+ * 真的装得进去」—— 少接一根线的症状就是主人报的那句「装了拓展要我重启,可我没处按」,
+ * 而门禁一片绿。这条从 app 那一头真发一次 multipart。
+ */
+describe("面板上传装拓展的接线", () => {
+	let dataDir: string;
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-install-mount-"));
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("传上去 → 落进装载根,并且当场重扫", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const rescan = vi.fn(async () => {});
+		const root = join(dataDir, "extensions");
+		const app = createApp(runtime, {
+			extensions: {
+				mounts: createExtensionMounts(),
+				loaded: () => [],
+				status: () => undefined,
+				install: { root, rescan, restartAbility: { can: true, how: "container" } },
+			},
+		});
+
+		const zip = zipSync({
+			"extension.json": strToU8(
+				JSON.stringify({
+					id: "douyin",
+					name: "抖音订阅源",
+					description: "测试用",
+					version: "0.2.0",
+					apiVersion: EXTENSION_API_VERSION,
+					provides: ["subscription"],
+				}),
+			),
+			"index.mjs": strToU8("export function activate() {}"),
+		});
+		const body = new FormData();
+		body.append("file", new File([zip], "douyin.zip"));
+
+		const res = await app.request("/api/ext/install", { method: "POST", body });
+
+		expect(res.status).toBe(200);
+		expect((await res.json()) as ExtensionInstallResponse).toMatchObject({
+			id: "douyin",
+			needsRestart: false,
+		});
+		expect(await readFile(join(root, "douyin", "index.mjs"), "utf8")).toContain("activate");
+		expect(rescan).toHaveBeenCalledOnce();
+		await runtime.dispose();
+	});
+
+	it("没接装载器的构建 → 404,而不是装进一个没人加载的目录", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const app = createApp(runtime);
+		const body = new FormData();
+		body.append("file", new File([new Uint8Array()], "x.zip"));
+		expect((await app.request("/api/ext/install", { method: "POST", body })).status).toBe(404);
 		await runtime.dispose();
 	});
 });

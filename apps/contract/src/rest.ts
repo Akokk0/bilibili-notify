@@ -15,6 +15,7 @@ import type {
 	Subscription,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
+import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
 
 export type { MiniAppCardSupport } from "@bilibili-notify/internal";
@@ -115,6 +116,25 @@ export interface ExtensionDTO {
  * 这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
  */
 export type { ExtensionConfigField } from "@bilibili-notify/extension";
+
+/**
+ * `POST /api/ext/install` 装完之后的回话。
+ *
+ * ⛔ 面板上**没有**常驻的「重启」按钮(ADR-0005 决策 22)—— 要不要给那颗按钮,由这份回话
+ * 说了算:只有刚做完一件确实需要重启的事,才就地提示一次。
+ */
+export interface ExtensionInstallResponse {
+	id: string;
+	name: string;
+	version: string;
+	/**
+	 * 盖掉了一份**已经装着**的 → 那份代码在这个进程里换不掉(ADR-0012 决策 10),
+	 * 要重启一次才会换成新的。全新装进来的是热的 —— `false`。
+	 */
+	needsRestart: boolean;
+	/** 需要重启时,这台机器上按下去回不回得来。判据见 ADR-0005 决策 22。 */
+	restart: RestartAbility;
+}
 
 export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];

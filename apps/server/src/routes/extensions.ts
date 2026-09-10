@@ -1,8 +1,18 @@
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type {
+	ExtensionDTO,
+	ExtensionInstallResponse,
+	RestartAbility,
+} from "@bilibili-notify/contract";
 import { isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import type { ConfigStore } from "../config/store.js";
+import {
+	installExtensionPackage,
+	MAX_EXTENSION_PACKAGE_BYTES,
+	openExtensionPackage,
+} from "../extensions/install.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import { uploadBodyLimit } from "./upload-limit.js";
 
 export interface ExtensionsRouteOptions {
 	store: ConfigStore;
@@ -22,6 +32,24 @@ export interface ExtensionsRouteOptions {
 	 * 文件是真 I/O。症状是「开关明明拨上去了,状态还写着已停用」,而且不会自己好。
 	 */
 	settle?: () => Promise<void>;
+	/**
+	 * 面板上传装拓展要的三样。闸与拆包在 `extensions/install.ts`,这里只做 wire。
+	 *
+	 * 省略 → `POST /install` 回 404(装载器没接上来的构建里,装了也没人加载)。
+	 */
+	install?: {
+		/** 装载根 —— `<dataDir>/extensions/`。 */
+		root: string;
+		/**
+		 * 装完叫装载器再扫一遍盘。
+		 *
+		 * 🔴 少这一下,新装的拓展要等下一次开机才出现在这一页 —— 而那正是「装了个拓展,
+		 * 面板叫我重启,可我没处按」的由来。
+		 */
+		rescan: () => Promise<void>;
+		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。 */
+		restartAbility: RestartAbility;
+	};
 }
 
 /**
@@ -57,6 +85,48 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			detail: entry.detail,
 		}));
 		return c.json({ extensions });
+	});
+
+	/**
+	 * 传一个 zip 上来装拓展。
+	 *
+	 * 三条各自的理由:
+	 * - **闸在 `parseBody()` 之前**(同皮肤那条):整个 multipart 实体化进堆之后再拦,拦到的
+	 *   不是那句「过大」而是一次 OOM —— 进程被杀、面板断线重连,该收到的提示永远不来。
+	 * - **拆包那几句原样交出去**:它们是主人手里那个包**哪里不对**的唯一线索。
+	 * - **装完当场重扫**,于是新拓展立刻出现在这一页;而**盖掉一份已经装着的**要如实说
+	 *   「得重启一次」—— 那份代码已经 import 过,ESM 在这个进程里换不掉(决策 10)。
+	 */
+	app.post("/install", uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, "拓展包"), async (c) => {
+		const install = opts.install;
+		if (!install) return c.json({ errors: ["这个构建没接装载器,装不了"] }, 404);
+		const body = await c.req.parseBody().catch(() => null);
+		const file = body?.file;
+		if (!(file instanceof File)) {
+			return c.json({ errors: ["缺少拓展包文件(multipart 字段 file)"] }, 400);
+		}
+		const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
+		if (!opened.ok) return c.json({ errors: opened.errors }, 400);
+
+		let replaced: boolean;
+		try {
+			({ replaced } = await installExtensionPackage({ root: install.root, pkg: opened.pkg }));
+		} catch (err) {
+			// 落盘那头拒绝的只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
+			return c.json({ errors: [(err as Error).message] }, 400);
+		}
+		// 新装的当场跑起来;覆盖的那份**不会**被换掉(装载器不碰已收进名单的),所以下面
+		// 才要如实说重启。两种情形都扫一遍:代价只是一次读目录。
+		await install.rescan();
+
+		const answer: ExtensionInstallResponse = {
+			id: opened.pkg.id,
+			name: opened.pkg.manifest.name,
+			version: opened.pkg.manifest.version,
+			needsRestart: replaced,
+			restart: install.restartAbility,
+		};
+		return c.json(answer);
 	});
 
 	/**

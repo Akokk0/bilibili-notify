@@ -843,6 +843,14 @@ export async function startStandaloneServer(
 				settle: async () => {
 					await loadedExtensions?.sync();
 				},
+				// 面板上传装拓展:落到唯一那个装载根,装完当场重扫(新装的于是立刻跑起来)。
+				install: {
+					root: extensionsRootIn(bootstrap.dataDir),
+					rescan: async () => {
+						await loadedExtensions?.rescan();
+					},
+					restartAbility,
+				},
 			},
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。
