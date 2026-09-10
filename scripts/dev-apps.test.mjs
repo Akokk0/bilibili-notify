@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	buildWindowsTreeKillArgs,
@@ -58,6 +61,33 @@ describe("dev-apps supervisor", () => {
 		expect(specs.flatMap((spec) => [spec.command, ...spec.args])).not.toContain("pnpm");
 	});
 
+	it("仓里的拓展顺带 watch 打包 —— 改完 30ms 重建,配 devtools 的自动重载就是保存即生效", async () => {
+		const root = mkdtempSync(join(tmpdir(), "bn-dev-specs-"));
+		try {
+			mkdirSync(join(root, "extensions", "bridge"), { recursive: true });
+			writeFileSync(join(root, "extensions", "bridge", "extension.json"), "{}");
+			// 没有清单的目录不算拓展(node_modules、临时目录都会落在这儿)。
+			mkdirSync(join(root, "extensions", "node_modules"), { recursive: true });
+
+			const specs = createDevProcessSpecs(root);
+			const packs = specs.filter((spec) => spec.args[0] === "pack");
+			expect(packs).toEqual([
+				expect.objectContaining({
+					// 🔴 `--no-clean`:清一次 dist 会让装载器**在开机那一眼**看见一个空目录,
+					// 而软链正指着它 —— 症状是拓展页上那条突然变成「装不起来」。
+					args: ["pack", "-w", "--no-clean"],
+					cwd: join(root, "extensions", "bridge"),
+				}),
+			]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("仓里没有 extensions 目录时不多起进程", () => {
+		expect(createDevProcessSpecs("/repo")).toHaveLength(2);
+	});
+
 	it("等待后端可连接后再启动 web,避免 Vite 首次请求打到未监听的 8787", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
 		let markReady;
@@ -68,6 +98,8 @@ describe("dev-apps supervisor", () => {
 				}),
 		);
 		const run = runDevApps({
+			// 显式给一个空 root:不给的话这条测试悄悄依赖「仓里眼下有几个拓展」。
+			root: "/repo",
 			spawnProcess,
 			processPlatform: "test",
 			log: () => {},
@@ -105,6 +137,7 @@ describe("dev-apps supervisor", () => {
 	it("SIGINT 后停止两个 dev 子进程并返回 0", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
 		const run = runDevAppsNoWait({
+			root: "/repo",
 			spawnProcess,
 			processPlatform: "test",
 			log: () => {},
@@ -121,6 +154,7 @@ describe("dev-apps supervisor", () => {
 	it("子进程非 0 退出时停止另一个 dev 子进程并保留退出码", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
 		const run = runDevAppsNoWait({
+			root: "/repo",
 			spawnProcess,
 			processPlatform: "test",
 			log: () => {},

@@ -238,6 +238,90 @@ describe("重载", () => {
 	});
 });
 
+describe("改完自动重载", () => {
+	/** 盯的是**装进来那份**的 `index.mjs` —— 也就是软链指过去的仓里那个 dist。 */
+	async function installed(id: string): Promise<string> {
+		await plantRepo(id, true);
+		await must("ext.install").run({ ext: id });
+		return join(repoDir, id, "dist", "index.mjs");
+	}
+
+	it("盯上之后,代码一变就自己重载一次", async () => {
+		const entry = await installed("bridge");
+		const reloaded: string[] = [];
+		const over = {
+			reload: async (id: string) => {
+				reloaded.push(id);
+			},
+		};
+		const watch = must("ext.watch", over);
+		await watch.run({ ext: "bridge" });
+		try {
+			// 重建一次:内容换掉(`vp pack -w` 干的就是这件事)。
+			await writeFile(entry, "export function activate() {/* v2 */}");
+			await waitFor(() => reloaded.length > 0);
+			expect(reloaded).toEqual(["bridge"]);
+		} finally {
+			await watch.reset?.();
+		}
+	});
+
+	it("盯着的时候进「当前生效」条,收摊就不盯了", async () => {
+		const entry = await installed("bridge");
+		const reloaded: string[] = [];
+		const over = {
+			reload: async (id: string) => {
+				reloaded.push(id);
+			},
+		};
+		const watch = must("ext.watch", over);
+		await watch.run({ ext: "bridge" });
+		expect(watch.active?.()).toMatchObject({ scenarioId: "ext.watch" });
+
+		await watch.reset?.();
+		expect(watch.active?.()).toBeNull();
+		// 收摊之后再改一次,不该再有动静。
+		await writeFile(entry, "export function activate() {/* v3 */}");
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(reloaded).toEqual([]);
+	});
+
+	/**
+	 * 🔴 重载失败(拓展关着、代码崩了)**不许把监听掐掉** —— 改一行崩一次就得重新去点一遍,
+	 * 开发循环当场卡死。那句理由挂到「当前生效」条上,主人看得见。
+	 */
+	it("重载失败照样盯着,理由挂到生效条上", async () => {
+		const entry = await installed("bridge");
+		const watch = must("ext.watch", {
+			reload: async () => {
+				throw new Error("bridge 的开关关着");
+			},
+		});
+		await watch.run({ ext: "bridge" });
+		try {
+			await writeFile(entry, "export function activate() {/* v2 */}");
+			await waitFor(() => /开关关着/.test(watch.active?.()?.label ?? ""));
+			expect(watch.active?.()).toMatchObject({ scenarioId: "ext.watch" });
+		} finally {
+			await watch.reset?.();
+		}
+	});
+
+	it("没装进来的拓展盯不了 —— 说清楚先装", async () => {
+		await plantRepo("bridge", true);
+		await expect(must("ext.watch").run({ ext: "bridge" })).rejects.toThrow(/装/);
+	});
+});
+
+async function waitFor(ok: () => boolean, timeoutMs = 3_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (ok()) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error("等超时了");
+}
+
 describe("软链进去的那份,装载器认得", () => {
 	/**
 	 * 接线守卫:场景把链建对了、装载器却不认软链的话,拓展在页面上**一声不响地不出现**。

@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
-import { access, lstat, rm, symlink } from "node:fs/promises";
+import { readdirSync, watch as watchDir } from "node:fs";
+import { access, lstat, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
 import type { DevParamField } from "@bilibili-notify/contract";
@@ -157,5 +157,92 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 				return { summary: `已按新代码重跑 ${id} 的 activate` };
 			},
 		},
+		watchScenario(input, pick, installedAt),
 	];
+}
+
+/**
+ * 「改完自动重载」—— 把上面那一下也去掉。
+ *
+ * 盯的是**装进来那份**的目录(软链指过去的仓里 `dist`),`index.mjs` 一变就叫一次
+ * {@link ext.reload} 做的那件事。配着 `vp pack -w`(30ms 一次重建)就是保存即生效。
+ *
+ * ⚠️ 每重载一次**漏一份旧模块**(ESM 的模块注册表删不掉,ADR-0012 决策 39)。开发版无所谓,
+ * 但这就是它**默认关着、要主人自己拨开**的原因 —— 挂成常开等于让它无声地漏。
+ */
+function watchScenario(
+	input: ExtensionScenariosInput,
+	pick: DevParamField,
+	installedAt: (id: string) => string,
+): DevScenarioDef {
+	/** 眼下盯着的那一个。同时只盯一个 —— 面板上「当前生效」也只该有一格。 */
+	let live: { id: string; stop: () => void; reloads: number; failure?: string } | undefined;
+
+	function stop(): void {
+		live?.stop();
+		live = undefined;
+	}
+
+	return {
+		id: "ext.watch",
+		group: "ext",
+		title: "改完自动重载",
+		icon: "refresh",
+		desc: "盯着装进来那份的 index.mjs,一变就自己重载。配 `vp pack -w` 就是保存即生效。⚠️ 每重载一次漏一份旧模块(ESM 卸不掉),开发版无所谓,但别当常态开着。",
+		params: [pick],
+		async run(params) {
+			const id = String(params.ext);
+			const at = installedAt(id);
+			// 盯的是**软链指过去的那个真目录** —— 盯软链本身,重建时看不到里头的变化。
+			const dir = await realpath(at).catch(() => undefined);
+			if (!dir) throw new DevParamError(`${id} 还没装进来 —— 先按「装一个仓里的拓展」`);
+
+			stop();
+			const state = { id, stop: () => {}, reloads: 0 } as {
+				id: string;
+				stop: () => void;
+				reloads: number;
+				failure?: string;
+			};
+			// 一次重建会连着来好几发事件(写文件、改名),攒一下只重载一次。
+			let pending: NodeJS.Timeout | undefined;
+			const watcher = watchDir(dir, (_event, name) => {
+				if (name !== null && name !== EXTENSION_ENTRY_FILE) return;
+				if (pending) clearTimeout(pending);
+				pending = setTimeout(() => {
+					void reload();
+				}, 80);
+			});
+			state.stop = () => {
+				if (pending) clearTimeout(pending);
+				watcher.close();
+			};
+
+			async function reload(): Promise<void> {
+				const loaded = input.extensions();
+				if (!loaded) {
+					state.failure = "装载器还没起来";
+					return;
+				}
+				try {
+					await loaded.reload(id);
+					state.reloads += 1;
+					state.failure = undefined;
+				} catch (err) {
+					// 🔴 失败**不掐监听**:改一行崩一次就得重新去点一遍的话,开发循环当场卡死。
+					// 那句理由挂到「当前生效」条上,主人看得见。
+					state.failure = (err as Error).message;
+				}
+			}
+
+			live = state;
+			return { summary: `盯上了 ${dir};改完自动重载(记得 vp pack -w 开着)` };
+		},
+		active() {
+			if (!live) return null;
+			const tail = live.failure ? `上次重载失败:${live.failure}` : `已重载 ${live.reloads} 次`;
+			return { scenarioId: "ext.watch", label: `自动重载 → ${live.id}(${tail})` };
+		},
+		reset: stop,
+	};
 }
