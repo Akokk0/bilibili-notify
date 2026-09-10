@@ -8,6 +8,7 @@ import {
 	Icon,
 	IconButton,
 	Pill,
+	PlatformIcon,
 	StatusDot,
 	Toggle,
 } from "@bilibili-notify/ui";
@@ -188,27 +189,57 @@ function bridgeConfigOf(connection: Connection): BridgeLinkConfig {
 
 function BotRow({ bot }: { bot: BridgeBotView }) {
 	return (
-		<div className="flex flex-col gap-1.5 rounded-bn-card bg-bn-surface px-3 py-2">
-			<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-				<span className="text-bn-sm text-bn-text-primary">{bot.name ?? bot.botId}</span>
-				<Pill subtle color="var(--color-bn-pink)">
-					{bot.platform}
-				</Pill>
-				{bot.selfId ? (
-					<span className="font-mono text-bn-xs text-bn-text-tertiary">{bot.selfId}</span>
-				) : null}
-			</div>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-				{CAPABILITIES.map((cap) => (
-					<CapabilityChip
-						key={cap.code}
-						label={cap.label}
-						// 桥少报的那些按「还不知道」算 —— 缺席不是「不支持」。
-						state={bot.capabilities?.[cap.code] ?? "unknown"}
-					/>
-				))}
+		<div data-bot-row className="flex gap-2.5 rounded-bn-card bg-bn-surface px-3 py-2">
+			{/*
+			 * 平台标识走库里那件:认得的画真图标,认不得的退首字方章 —— 桥后面挂着哪些
+			 * 平台是**握手时才知道**的开放词表,「退得下去」这件事在这一页是刚需。
+			 */}
+			<span data-bot-mark className="mt-0.5 flex shrink-0">
+				<PlatformIcon platform={bot.platform} size={26} />
+			</span>
+			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+				<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+					<span className="text-bn-sm text-bn-text-primary">{bot.name ?? bot.botId}</span>
+					<Pill subtle color="var(--color-bn-pink)">
+						{bot.platform}
+					</Pill>
+					{bot.selfId ? (
+						<span className="font-mono text-bn-xs text-bn-text-tertiary">{bot.selfId}</span>
+					) : null}
+				</div>
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+					{CAPABILITIES.map((cap) => (
+						<CapabilityChip
+							key={cap.code}
+							label={cap.label}
+							// 桥少报的那些按「还不知道」算 —— 缺席不是「不支持」。
+							state={bot.capabilities?.[cap.code] ?? "unknown"}
+						/>
+					))}
+				</div>
 			</div>
 		</div>
+	);
+}
+
+/**
+ * 接入卡左边那枚方块 —— 两个字母认出「这条是哪一种桥」。
+ *
+ * 🔴 印的是**配置里那一种**,不是桥自报的那一种:两者对不上正是要看见的事(token 填到
+ * 另一头的插件里去了),而把自报的印在这儿会把那个错悄悄抹平。
+ *
+ * 走 `--color-bn-inactive` 一档中性色:桥的种类**不是语义状态**,给它一档语义色的话,
+ * 这张卡上真正的状态(连没连上)就得跟它抢注意力。
+ */
+function LinkMark({ kind }: { kind: string }) {
+	return (
+		<span
+			role="img"
+			aria-label={`${kind} 接入`}
+			className="grid size-8 shrink-0 place-items-center rounded-bn-card bg-bn-surface-muted font-bold text-bn-base text-bn-inactive lowercase"
+		>
+			{kind.slice(0, 2)}
+		</span>
 	);
 }
 
@@ -396,6 +427,7 @@ function LinkCard({
 	return (
 		<div className="flex flex-col gap-2 rounded-bn-card border border-bn-border p-3">
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+				<LinkMark kind={config.bridgeKind} />
 				<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-primary">
 					<StatusDot kind={connected ? "ok" : "off"} />
 					<LinkName
