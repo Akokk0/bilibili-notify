@@ -327,6 +327,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 					kind: "koishi",
 					name: "家里那台 koishi",
 					version: "0.1.0",
+					remoteAddress: "127.0.0.1",
 					bots: [expect.objectContaining({ botId: BOT_ID, platform: "telegram" })],
 				}),
 			],

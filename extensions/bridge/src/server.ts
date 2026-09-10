@@ -121,6 +121,13 @@ export interface BridgeSession {
 	 * 地址找得到它(NAS / 反代 / 桌面壳各不相同),猜一个只会猜错。
 	 */
 	readonly origin: string;
+	/**
+	 * 桥**自己**在哪台机器上 —— 面板上那句「来自 192.168.1.5」。
+	 *
+	 * 与 `origin` 是两个方向:那个是桥连到了**我们的**哪个地址,这个是它从哪儿来。
+	 * 反代后面看 `X-Forwarded-For` 的第一跳;直连就是 socket 对端。拿不到就没有。
+	 */
+	readonly remoteAddress?: string;
 }
 
 /** `id` 由这一层生成并配对,所以调用方给不了也不用给。 */
@@ -160,6 +167,8 @@ interface BridgeConn {
 	connectionId: string;
 	/** 见 {@link BridgeSession.origin}。upgrade 那一刻从请求上算出来,之后不变。 */
 	origin: string;
+	/** 见 {@link BridgeSession.remoteAddress}。同样只在 upgrade 那一刻取一次。 */
+	remoteAddress?: string;
 	connectedAt: number;
 	lastSeenAt: number;
 	handshakeTimer?: NodeJS.Timeout;
@@ -213,6 +222,18 @@ export function bridgeOrigin(req: IncomingMessage): string {
 	const encrypted = "encrypted" in req.socket && req.socket.encrypted === true;
 	const scheme = declared || (encrypted ? "https" : "http");
 	return `${scheme}://${req.headers.host ?? localAuthority(req)}`;
+}
+
+/**
+ * 桥从哪台机器连进来的。反代会把真实来源放在 `X-Forwarded-For` 的第一跳,直连就看 socket
+ * 对端;IPv4 走在 IPv6 栈上时 Node 报的是 `::ffff:192.168.1.5`,那层壳对人没有意义,剥掉。
+ */
+export function bridgeRemoteAddress(req: IncomingMessage): string | undefined {
+	const forwarded = req.headers["x-forwarded-for"];
+	const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+	const raw = first || req.socket.remoteAddress;
+	if (!raw) return undefined;
+	return raw.startsWith("::ffff:") ? raw.slice("::ffff:".length) : raw;
 }
 
 /** `Host` 缺席时的兜底:这条 socket 落在本机哪个地址、哪个端口上。IPv6 要加方括号。 */
@@ -425,12 +446,18 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 	}
 
-	function accept(socket: WebSocket, connectionId: string, origin: string): void {
+	function accept(
+		socket: WebSocket,
+		connectionId: string,
+		origin: string,
+		remoteAddress: string | undefined,
+	): void {
 		const now = Date.now();
 		const conn: BridgeConn = {
 			socket,
 			connectionId,
 			origin,
+			remoteAddress,
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
@@ -472,7 +499,9 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			reject(socket, "503 Service Unavailable");
 			return;
 		}
-		wss.handleUpgrade(req, socket, head, (ws) => accept(ws, connectionId, bridgeOrigin(req)));
+		wss.handleUpgrade(req, socket, head, (ws) =>
+			accept(ws, connectionId, bridgeOrigin(req), bridgeRemoteAddress(req)),
+		);
 	};
 	// ---------------- 心跳 -----------------------------------------------------
 
@@ -550,6 +579,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			bots: conn.bots,
 			connectedAt: conn.connectedAt,
 			origin: conn.origin,
+			remoteAddress: conn.remoteAddress,
 		};
 	}
 

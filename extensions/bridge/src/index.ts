@@ -106,6 +106,7 @@ export function activate(ctx: ExtensionContext): void {
 				name: live.name,
 				version: live.version,
 				connectedAt: live.connectedAt,
+				remoteAddress: live.remoteAddress,
 				bots: [...live.bots],
 			};
 		}),

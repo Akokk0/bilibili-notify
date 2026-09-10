@@ -16,6 +16,7 @@ import {
 	type BridgeServer,
 	type BridgeSession,
 	bridgeOrigin,
+	bridgeRemoteAddress,
 	createBridgeServer,
 } from "../server.js";
 
@@ -167,6 +168,35 @@ describe("bridgeOrigin", () => {
 		expect(bridgeOrigin(fakeReq({ socket: { localAddress: "::1", localPort: 9000 } }))).toBe(
 			"http://[::1]:9000",
 		);
+	});
+});
+
+describe("bridgeRemoteAddress", () => {
+	it("直连就是 socket 对端", () => {
+		expect(bridgeRemoteAddress(fakeReq({ socket: { remoteAddress: "192.168.1.5" } }))).toBe(
+			"192.168.1.5",
+		);
+	});
+
+	it("IPv4 走在 IPv6 栈上时剥掉 ::ffff: 那层壳 —— 对人没有意义", () => {
+		expect(bridgeRemoteAddress(fakeReq({ socket: { remoteAddress: "::ffff:192.168.1.5" } }))).toBe(
+			"192.168.1.5",
+		);
+	});
+
+	it("反代后面取 X-Forwarded-For 的第一跳,不是反代自己", () => {
+		expect(
+			bridgeRemoteAddress(
+				fakeReq({
+					headers: { "x-forwarded-for": "10.0.0.7, 172.17.0.1" },
+					socket: { remoteAddress: "172.17.0.1" },
+				}),
+			),
+		).toBe("10.0.0.7");
+	});
+
+	it("什么都拿不到就是没有,不编一个", () => {
+		expect(bridgeRemoteAddress(fakeReq({}))).toBeUndefined();
 	});
 });
 
@@ -419,6 +449,15 @@ describe("/bridge 端点", () => {
 	it("会话记着桥是从哪个地址连进来的 —— 取图 URL 拿它拼", async () => {
 		await handshaken();
 		expect(server.getSession(CONNECTION_ID)?.origin).toBe(`http://127.0.0.1:${port}`);
+	});
+
+	/**
+	 * 面板上那句「来自 192.168.1.5」:两条接入都叫「家里那台」时,主人靠它分辨哪条是哪台。
+	 * 与 `origin` 是两个方向 —— 那个是桥连到了**我们的**哪个地址,这个是桥**自己**在哪。
+	 */
+	it("会话也记着桥是从哪台机器来的", async () => {
+		await handshaken();
+		expect(server.getSession(CONNECTION_ID)?.remoteAddress).toBe("127.0.0.1");
 	});
 
 	it("同一个 token 又连进来一条 → **新的赢**,老的收 4006", async () => {
