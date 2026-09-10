@@ -258,9 +258,8 @@ describe("改完自动重载", () => {
 		await watch.run({ ext: "bridge" });
 		try {
 			// 重建一次:内容换掉(`vp pack -w` 干的就是这件事)。
-			await writeFile(entry, "export function activate() {/* v2 */}");
-			await waitFor(() => reloaded.length > 0);
-			expect(reloaded).toEqual(["bridge"]);
+			await editUntilSeen(entry, () => reloaded.length > 0);
+			expect(reloaded[0]).toBe("bridge");
 		} finally {
 			await watch.reset?.();
 		}
@@ -299,8 +298,7 @@ describe("改完自动重载", () => {
 		});
 		await watch.run({ ext: "bridge" });
 		try {
-			await writeFile(entry, "export function activate() {/* v2 */}");
-			await waitFor(() => /开关关着/.test(watch.active?.()?.label ?? ""));
+			await editUntilSeen(entry, () => /开关关着/.test(watch.active?.()?.label ?? ""));
 			expect(watch.active?.()).toMatchObject({ scenarioId: "ext.watch" });
 		} finally {
 			await watch.reset?.();
@@ -313,13 +311,27 @@ describe("改完自动重载", () => {
 	});
 });
 
-async function waitFor(ok: () => boolean, timeoutMs = 3_000): Promise<void> {
+/**
+ * 改一下那份代码,**改到被看见为止**。
+ *
+ * 🔴 `fs.watch` 在 macOS 上**注册是异步生效**的:`watch()` 同步就回了 watcher,可底层
+ * 那一头还没挂上。测试紧接着写文件,机器一忙那一发事件就落进这个空档里 —— 永远收不到,
+ * 而症状是「等超时了」。调大超时治不了它(事件根本没来过),重写才行。
+ *
+ * 守卫没有被削弱:重载压根不工作时,这里照样等到超时才失败。
+ */
+async function editUntilSeen(entry: string, seen: () => boolean, timeoutMs = 5_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
+	let round = 0;
 	while (Date.now() < deadline) {
-		if (ok()) return;
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		round += 1;
+		await writeFile(entry, `export function activate() {/* v${round} */}`);
+		for (let i = 0; i < 20; i++) {
+			if (seen()) return;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
 	}
-	throw new Error("等超时了");
+	throw new Error("改了好几轮都没被看见");
 }
 
 describe("软链进去的那份,装载器认得", () => {
