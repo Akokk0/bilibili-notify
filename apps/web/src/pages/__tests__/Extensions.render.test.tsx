@@ -133,8 +133,10 @@ describe("拓展页", () => {
 		expect(screen.getByText("还没做")).toBeTruthy();
 		expect(screen.getByText("现在能用")).toBeTruthy();
 		expect(screen.getByText(/<dataDir>\/extensions\//)).toBeTruthy();
-		// 我们自己开发拓展走的是仓里那个源码根,不是往 dataDir 里拷。
-		expect(screen.getByText(/tsx watch/)).toBeTruthy();
+		// 开发版走的还是第②条,只是那几下由 devtools 代劳 —— 不说的话下一个人会去翻
+		// 那个已经不存在的「源码根」。
+		expect(screen.getByText(/devtools/)).toBeTruthy();
+		expect(screen.getByText(/重载/)).toBeTruthy();
 	});
 
 	/**

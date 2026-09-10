@@ -211,8 +211,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			hostVersion: opts.hostVersion,
 		});
 		try {
-			// 入口是**宿主按根算出来的**(源码根 `src/index.ts`,其余 `index.mjs`),
-			// 清单说了不算 —— 见 `extensionEntryFileFor`。
+			// 入口固定 `index.mjs`,**宿主自己判**、清单说了不算 —— 见 `EXTENSION_ENTRY_FILE`。
 			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
 			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
 			const mod = (await importModule(

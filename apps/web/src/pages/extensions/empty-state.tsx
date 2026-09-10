@@ -63,11 +63,15 @@ export function ExtensionsEmpty() {
 					</div>
 				</div>
 
-				{/* 我们自己开发拓展**不走上面两条**(决策 35)——不说的话下一个人会先打包再拷。 */}
+				{/*
+				 * 开发版走的还是**上面第②条**,只是那几下由 devtools 代劳(决策 35)——
+				 * 不说的话下一个人会以为仓里那个目录还会被自动扫到(2026-09-10 起不会了)。
+				 */}
 				<HintNote>
-					我们自己开发拓展<strong className="text-bn-text-secondary">不走这两条</strong>:源码跑
-					起来时仓里的 <span className="font-mono">extensions/</span> 自动就是一个根,改一行{" "}
-					<span className="font-mono">tsx watch</span> 重启,不用打包、也不用往这儿拷。
+					开发版不用自己动手:左下角 devtools 的
+					<strong className="text-bn-text-secondary">「拓展」</strong>那一组能把仓里构建好的{" "}
+					<span className="font-mono">dist</span> 装进来(软链),还能在改完代码之后
+					<strong className="text-bn-text-secondary">重载</strong> —— 换代码不必重启整个 server。
 				</HintNote>
 			</div>
 		</GlassPanel>
