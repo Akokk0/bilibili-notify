@@ -235,7 +235,70 @@ function BridgeAddress({ extensionId }: { extensionId: string }) {
 interface LinkActions {
 	setEnabled(id: string, enabled: boolean): void;
 	regenerate(id: string): void;
+	rename(id: string, name: string): void;
 	remove(id: string): void;
+}
+
+/**
+ * 卡片上那个名字 —— 平时是一行字,点一下「改名」就地变成输入框。
+ *
+ * 🔴 名字是这张卡上**唯一**能认出「这条是给谁的」的东西(token 是乱码、地址两条一模一样),
+ * 而它此前只在新建那一刻能填:填错了只能删掉重配,而重配 = 换 token = 对面那个插件也得
+ * 跟着改一次。所以这不是顺手加的装饰。
+ *
+ * 存 / 撤各一颗钮(不给共享库的 T 系列加 `onKeyDown`/`onBlur` 三个口去换回车与失焦 ——
+ * 一个低频动作不值得动那份契约);**空名字当没改** —— 存下去这张卡上就什么都不剩了。
+ */
+function LinkName({
+	connection,
+	onRename,
+}: {
+	connection: Connection;
+	onRename: (name: string) => void;
+}) {
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(connection.name);
+
+	function commit(): void {
+		setEditing(false);
+		const next = draft.trim();
+		if (next === "" || next === connection.name) return;
+		onRename(next);
+	}
+
+	if (!editing) {
+		return (
+			<span className="flex items-center gap-1">
+				{connection.name}
+				<IconButton
+					label={`改名 ${connection.name}`}
+					icon={<Icon.edit size={12} />}
+					size="xs"
+					onClick={() => {
+						setDraft(connection.name);
+						setEditing(true);
+					}}
+				/>
+			</span>
+		);
+	}
+
+	return (
+		<span className="flex items-center gap-1">
+			<TInput
+				ariaLabel={`${connection.name} 的名字`}
+				value={draft}
+				onChange={setDraft}
+				width={150}
+			/>
+			<Btn variant="ghost" size="sm" onClick={commit}>
+				保存
+			</Btn>
+			<Btn variant="ghost" size="sm" onClick={() => setEditing(false)}>
+				取消
+			</Btn>
+		</span>
+	);
 }
 
 function LinkCard({
@@ -257,7 +320,10 @@ function LinkCard({
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-primary">
 					<StatusDot kind={connected ? "ok" : "off"} />
-					{connection.name}
+					<LinkName
+						connection={connection}
+						onRename={(name) => actions.rename(connection.id, name)}
+					/>
 				</span>
 				<span className="text-bn-xs text-bn-text-tertiary">{connected ? "已连接" : "未连接"}</span>
 				{connected ? (
@@ -414,6 +480,8 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 				body: { config: { ...bridgeConfigOf(current), token: newBridgeToken() } },
 			});
 		},
+		// 只发 name 那一格:整条发出去的话,config 里的 token 会被这一发按回旧值。
+		rename: (id, name) => patch.mutate({ id, body: { name } }),
 		remove: (id) => setRemoving(links.find((c) => c.id === id) ?? null),
 	};
 
