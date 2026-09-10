@@ -5,14 +5,17 @@
  * 一屏上常有两三条接入、每条底下挂几个 bot,全是清一色的文字行时,主人得逐行读名字才
  * 认得出谁是谁。方块是**扫一眼就能分**的那条通道 —— 设计稿 V1 里两处都有,实现时漏掉了。
  *
- * bot 那一侧印平台名的头两个字母 —— 桥后面挂着什么平台是**运行时才知道**的开放词表,
- * 两个字母对任何平台都画得出来。
+ * 方块里画什么,三级退让(主人 2026-09-10 拍板「koishi / AstrBot 有自己的 logo,平台 logo
+ * 让桥来提供」):**桥随 bot 报上来的图标 → BN 自己认得的平台图标 → 平台名头两个字母**。
+ * 桥那一级排最前:桥后面挂着什么平台是**运行时才知道**的开放词表,BN 认得的只是一小撮。
  */
 
 import type { Connection } from "@bilibili-notify/internal";
+import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { buildPlatformTable } from "../../../components/platform-meta";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -40,6 +43,9 @@ const ASTRBOT = {
 	config: { token: "ffffffffffffffffffffffffffffffff", bridgeKind: "astrbot" },
 } as unknown as Connection;
 
+/** 桥随 bot 报上来的平台图标(协议 §5.2)。 */
+const BRIDGE_ICON = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
+
 const STATUS = {
 	sessions: [
 		{
@@ -50,7 +56,19 @@ const STATUS = {
 			version: "0.1.0",
 			connectedAt: 1_700_000_000_000,
 			bots: [
-				{ botId: "onebot:1", platform: "onebot", name: "阿库娅", selfId: "2854196310" },
+				// 桥给了图标,而且 BN 自己也认得 onebot —— 桥那份要赢
+				{
+					botId: "onebot:1",
+					platform: "onebot",
+					name: "阿库娅",
+					selfId: "2854196310",
+					icon: BRIDGE_ICON,
+				},
+				// 桥没给、BN 认得(注册表里有图标)—— 画 BN 自己那枚
+				{ botId: "onebot:9", platform: "onebot", name: "备用机" },
+				// 桥没给、BN 只有短名没图标 —— 与不认得同一档,别画个方章套方块
+				{ botId: "feishu:4", platform: "feishu", name: "飞书机" },
+				// 谁都不认得 —— 两个字母
 				{ botId: "nostalgia:2", platform: "从没见过的平台", name: "小电视" },
 			],
 		},
@@ -65,11 +83,20 @@ function renderPanel() {
 		throw new Error("没有这个口");
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	// 与真页面同一张表:内置平台那份注册表,拓展一个都没装
 	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
+		<PlatformMetaProvider value={buildPlatformTable([])}>
+			<QueryClientProvider client={qc}>
+				<BridgeConnections extensionId="bridge" enabled />
+			</QueryClientProvider>
+		</PlatformMetaProvider>,
 	);
+}
+
+function botMark(name: string): Element {
+	const mark = screen.getByText(name).closest("[data-bot-row]")?.querySelector("[data-bot-mark]");
+	if (!mark) throw new Error(`「${name}」那一行没有方块`);
+	return mark;
 }
 
 afterEach(() => {
@@ -88,19 +115,45 @@ describe("接入卡的方块", () => {
 		expect(screen.getByLabelText("koishi 接入")).toBeTruthy();
 		expect(screen.getByLabelText("astrbot 接入")).toBeTruthy();
 	});
+
+	it("方块里是那种桥自己的 logo,不是两个字母", async () => {
+		renderPanel();
+		await screen.findByText("家里那台");
+		for (const kind of ["koishi", "astrbot"]) {
+			const img = screen.getByLabelText(`${kind} 接入`).querySelector("img");
+			expect(img?.getAttribute("src")).toMatch(/^data:image\//);
+		}
+	});
 });
 
 describe("bot 行的平台方块", () => {
-	it("认得的平台与认不得的平台都画得出来 —— 桥后面挂什么是运行时才知道的", async () => {
+	it("桥给了图标就画桥给的 —— 哪怕 BN 自己也认得这个平台", async () => {
 		renderPanel();
 		await screen.findByText("阿库娅");
-		for (const [name, mark] of [
-			["阿库娅", "on"],
-			["小电视", "从没"],
-		]) {
-			const row = screen.getByText(name as string).closest("[data-bot-row]");
-			expect(row).toBeTruthy();
-			expect(row?.querySelector("[data-bot-mark]")?.textContent?.trim()).toBe(mark);
-		}
+		expect(botMark("阿库娅").querySelector("img")?.getAttribute("src")).toBe(BRIDGE_ICON);
+	});
+
+	it("桥没给、BN 认得 → 画 BN 自己那枚", async () => {
+		renderPanel();
+		await screen.findByText("备用机");
+		const mark = botMark("备用机");
+		expect(mark.querySelector("img")).toBeNull();
+		expect(mark.querySelector("svg")).toBeTruthy();
+	});
+
+	it("桥没给、BN 只有短名没图标 → 还是两个字母,不画方章套方块", async () => {
+		renderPanel();
+		await screen.findByText("飞书机");
+		const mark = botMark("飞书机");
+		expect(mark.querySelector("img, svg")).toBeNull();
+		expect(mark.textContent?.trim()).toBe("fe");
+	});
+
+	it("谁都不认得 → 平台名头两个字母,任何平台都画得出来", async () => {
+		renderPanel();
+		await screen.findByText("小电视");
+		const mark = botMark("小电视");
+		expect(mark.querySelector("img, svg")).toBeNull();
+		expect(mark.textContent?.trim()).toBe("从没");
 	});
 });

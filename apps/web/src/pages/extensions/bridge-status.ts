@@ -21,6 +21,8 @@ export interface BridgeBotView {
 	platform: string;
 	name?: string;
 	selfId?: string;
+	/** 桥随 bot 报上来的平台图标,data URL(协议 §5.2);桥没给就没有。 */
+	icon?: string;
 	capabilities?: Partial<Record<string, CapabilityState>>;
 }
 

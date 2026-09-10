@@ -9,17 +9,20 @@ import {
 	IconButton,
 	ModalShell,
 	Pill,
+	PlatformIcon,
 	SELECTED_LANGUAGE,
 	StatusDot,
+	usePlatformMeta,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { TInput } from "../../components/forms";
 import { api } from "../../services/api";
 import { type Connection, newId } from "../../types/domain";
 import { copyToClipboard } from "../../utils/clipboard";
 import { relativeTime } from "../up/helpers";
+import { BRIDGE_KIND_LOGOS } from "./bridge-logos";
 import {
 	type BridgeBotView,
 	type BridgeSessionView,
@@ -71,21 +74,29 @@ const MUTED_TINT: CSSProperties = {
 };
 
 /**
- * 「哪一种」那枚方块:两个字母,灰底灰字。接入卡左上(32)、bot 行(26)、新建弹窗里的
- * 选项(28)三处同一件,尺寸不同。
+ * 「哪一种」那枚方块:灰底,里面是 logo 或两个字母。接入卡左上(32)、bot 行(26)、
+ * 新建弹窗里的选项(28)三处同一件,尺寸不同。
  *
  * 走中性灰而不是语义色:种类**不是状态**,给它一档语义色的话,卡上真正的状态(连没连上)
  * 就得跟它抢注意力。
+ *
+ * `logo` 是一个 data URL(两种桥的 logo 写死在 `bridge-logos.ts`;bot 的平台图标由桥随 bot
+ * 报上来,协议 §5.2),走 `<img>` —— 不跑脚本、拉不进外部资源,不用过白名单。`glyph` 是
+ * 库里已有的图标(BN 自己认得的平台)。都没有才印字母。
  */
 function KindMark({
 	text,
 	size,
 	label,
+	logo,
+	glyph,
 	style,
 }: {
 	text: string;
 	size: 26 | 28 | 32;
 	label?: string;
+	logo?: string;
+	glyph?: ReactNode;
 	style?: CSSProperties;
 }) {
 	const shape =
@@ -96,15 +107,43 @@ function KindMark({
 				: "size-[26px] rounded-md text-bn-xs";
 	const className = `grid shrink-0 place-items-center font-bold lowercase ${shape}`;
 	const tint = style ?? MUTED_TINT;
+	// logo 占方块的六成出头 —— 与 GlassBox 图标芯片里 17/32 那个比例一档
+	const inner = Math.round(size * 0.62);
+	const body = logo ? (
+		<img src={logo} alt="" draggable={false} style={{ width: inner, height: inner }} />
+	) : glyph ? (
+		glyph
+	) : (
+		text.slice(0, 2)
+	);
 	// 有名字的是一枚「图」(读屏器念 label);没名字的是旁边那行字的装饰,读屏器跳过。
 	return label ? (
 		<span role="img" aria-label={label} className={className} style={tint}>
-			{text.slice(0, 2)}
+			{body}
 		</span>
 	) : (
 		<span aria-hidden="true" className={className} style={tint}>
-			{text.slice(0, 2)}
+			{body}
 		</span>
+	);
+}
+
+/**
+ * bot 行左边那枚:**桥给的图标 → BN 自己认得的平台图标 → 平台名头两个字母**。
+ *
+ * 桥那一级排最前:桥后面挂着什么平台是**握手时才知道**的开放词表,BN 认得的只是一小撮;
+ * 而对 BN 也认得的那几个,桥给的图标才是「它那头真正的样子」。
+ */
+function BotMark({ bot }: { bot: BridgeBotView }) {
+	// 注册表里**有图标**的才算认得:只有短名的那几个(飞书 / 钉钉)画出来是方章套方块。
+	const known = usePlatformMeta()(bot.platform)?.icon !== undefined;
+	return (
+		<KindMark
+			text={bot.platform}
+			size={26}
+			logo={bot.icon}
+			glyph={known ? <PlatformIcon platform={bot.platform} size={16} /> : undefined}
+		/>
 	);
 }
 
@@ -364,14 +403,13 @@ function TokenRow({
  * 定宽那一列是版式的承重件:多个 bot 排下来,能力记号得在同一条竖线上起排,不然一列
  * 「@全体」有的在左有的在右,整张表就读不成表了。
  *
- * 方块印的是平台名的头两个字母:桥后面挂着哪些平台是**握手时才知道**的开放词表,
- * 两个字母对任何平台都画得出来。
+ * 方块见 {@link BotMark}。
  */
 function BotRow({ bot }: { bot: BridgeBotView }) {
 	return (
 		<div data-bot-row className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-[9px]">
 			<span data-bot-mark className="flex shrink-0">
-				<KindMark text={bot.platform} size={26} />
+				<BotMark bot={bot} />
 			</span>
 			<div className="w-[210px] min-w-0">
 				<div className="truncate text-bn-sm font-bold text-bn-text-primary">
@@ -494,7 +532,14 @@ function LinkCard({
 		<div data-link-card={connection.id}>
 			<GlassBox
 				accent={accent}
-				mark={<KindMark text={config.bridgeKind} size={32} label={`${config.bridgeKind} 接入`} />}
+				mark={
+					<KindMark
+						text={config.bridgeKind}
+						size={32}
+						label={`${config.bridgeKind} 接入`}
+						logo={BRIDGE_KIND_LOGOS[config.bridgeKind]}
+					/>
+				}
 				title={connection.name}
 				aside={
 					<>
@@ -639,7 +684,11 @@ function ModuleOff({ links }: { links: Connection[] }) {
 							data-link-card={connection.id}
 							className="flex items-center gap-3 rounded-lg border border-bn-border-subtle px-3.5 py-[11px]"
 						>
-							<KindMark text={bridgeConfigOf(connection).bridgeKind} size={26} />
+							<KindMark
+								text={bridgeConfigOf(connection).bridgeKind}
+								size={26}
+								logo={BRIDGE_KIND_LOGOS[bridgeConfigOf(connection).bridgeKind]}
+							/>
 							<div className="min-w-0 flex-1">
 								<div className="truncate text-bn-sm font-bold text-bn-text-primary">
 									{connection.name}
@@ -714,6 +763,7 @@ function AddLinkDialog({
 									<KindMark
 										text={kind.value}
 										size={28}
+										logo={BRIDGE_KIND_LOGOS[kind.value]}
 										style={
 											active
 												? {
