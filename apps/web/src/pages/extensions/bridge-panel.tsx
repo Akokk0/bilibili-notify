@@ -3,7 +3,6 @@ import {
 	AddButton,
 	Btn,
 	ConfirmDialog,
-	EmptyNote,
 	HintNote,
 	Icon,
 	IconButton,
@@ -527,6 +526,33 @@ function LinkCard({
 }
 
 /**
+ * 一条接入都没有的那一屏。
+ *
+ * 🔴 装完桥拓展点进来看到的**必然**是它,所以它不是「空态提示」,而是这一页唯一一份
+ * 「桥怎么接上来」的说明。只写一句「还没有配过接入」等于让主人去翻文档 —— 而这一步的
+ * 三个关节(建一条 → 拿到 token 与地址 → 填进插件,然后**桥自己连过来**)缺哪个都会卡住。
+ */
+function BridgeEmpty({ onAdd }: { onAdd: () => void }) {
+	return (
+		<div
+			data-bridge-empty
+			className="flex flex-col items-center gap-2 rounded-bn-card border border-dashed border-bn-inactive/50 px-4 py-6 text-center"
+		>
+			<span className="text-bn-sm text-bn-text-secondary">还没有桥接入。</span>
+			<span className="max-w-lg text-bn-xs leading-relaxed text-bn-text-tertiary">
+				在这儿建一条,把生成的 <span className="font-mono">token</span> 与 BN
+				地址填进插件设置里,它就会<strong className="font-bold">自己连过来</strong> —— BN
+				不去连桥,所以桥在内网、在别的机器上都行,只要它够得着这台 BN。
+			</span>
+			<Btn size="md" onClick={onAdd}>
+				<Icon.plus size={13} />
+				新建第一条接入
+			</Btn>
+		</div>
+	);
+}
+
+/**
  * 新建一条接入。
  *
  * 🔴 **这一步真正的产出是「要填进插件的那两样」** —— BN 地址与 token,少一样连不上。
@@ -699,6 +725,10 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 	const sessions = new Map(
 		(status.data?.sessions ?? []).map((session) => [session.connectionId, session]),
 	);
+	// 只数**连着的那些会话**驮上来的 bot:断开的会话在这张表里还留着最后一次的名单。
+	const onlineBots = [...sessions.values()]
+		.filter((session) => session.connected)
+		.reduce((sum, session) => sum + (session.bots?.length ?? 0), 0);
 
 	const actions: LinkActions = {
 		setEnabled: (id, enabled) => patch.mutate({ id, body: { enabled } }),
@@ -733,6 +763,27 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 			 */}
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<b className="text-bn-xs font-bold tracking-wide text-bn-text-tertiary">桥接入</b>
+				{/*
+				 * 「它现在到底在干活吗」。配了两条一条没连上,与两条全连着,在一屏卡片里
+				 * 长得几乎一样 —— 这一行是唯一能一眼分开的地方。
+				 *
+				 * 拓展没跑起来时**只报接入数**:那时 `/status` 是 404,一个 bot 都数不着,
+				 * 而印一个「0 个 bot 在线」会被读成「桥连着但没借来账号」——完全是另一回事。
+				 */}
+				<span data-testid="bridge-counts" className="flex items-center gap-2 text-bn-xs">
+					<span className="text-bn-text-secondary">
+						<strong className="font-bold text-bn-text-primary">{links.length}</strong> 条接入
+					</span>
+					{status.isError ? null : (
+						<>
+							<span className="h-3 w-px bg-bn-border" />
+							<span className="flex items-center gap-1.5 text-bn-text-secondary">
+								<StatusDot kind={onlineBots > 0 ? "ok" : "off"} size="sm" />
+								<strong className="font-bold text-bn-text-primary">{onlineBots}</strong> 个 bot 在线
+							</span>
+						</>
+					)}
+				</span>
 				<span className="h-px min-w-4 flex-1 bg-bn-border" />
 				<CapabilityLegend />
 			</div>
@@ -741,7 +792,7 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 				<HintNote>这个拓展现在没跑起来,底下只有配置、没有连接状态。</HintNote>
 			) : null}
 
-			{links.length === 0 && !adding ? <EmptyNote>还没有配过接入</EmptyNote> : null}
+			{links.length === 0 ? <BridgeEmpty onAdd={() => setAdding(true)} /> : null}
 
 			{links.map((connection) => (
 				<LinkCard
@@ -752,10 +803,12 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 				/>
 			))}
 
-			<AddButton block onClick={() => setAdding(true)}>
-				<Icon.plus size={13} />
-				新建接入
-			</AddButton>
+			{links.length > 0 ? (
+				<AddButton block onClick={() => setAdding(true)}>
+					<Icon.plus size={13} />
+					新建接入
+				</AddButton>
+			) : null}
 
 			{adding ? (
 				<AddLinkDialog
