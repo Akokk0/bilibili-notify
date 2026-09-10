@@ -60,9 +60,11 @@ export const BRIDGE_CONFIG_FIELDS: readonly ExtensionConfigField[] = [
 		kind: "text",
 		code: "token",
 		label: "接入 token",
-		hint: "填进插件那一侧,连同 BN 的地址。桥主动连过来,BN 不去连桥。",
+		hint: "填进插件那一侧,连同 BN 的地址(在拓展页那张卡上)。桥主动连过来,BN 不去连桥。",
 		required: true,
 		mono: true,
 		secret: true,
+		// 新建时面板预填 128 位随机的一把,并给「重新生成」—— token 只要两边一样,不用人记。
+		generate: 16,
 	},
 ];

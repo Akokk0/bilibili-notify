@@ -66,8 +66,8 @@ const STATUS = {
 				},
 				// 桥没给、BN 认得(注册表里有图标)—— 画 BN 自己那枚
 				{ botId: "onebot:9", platform: "onebot", name: "备用机" },
-				// 桥没给、BN 只有短名没图标 —— 与不认得同一档,别画个方章套方块
-				{ botId: "feishu:4", platform: "feishu", name: "飞书机" },
+				// 桥没给、BN 只有短名没图标(「未指明的 HTTP 端点」)—— 与不认得同一档,别画个方章套方块
+				{ botId: "generic:4", platform: "generic", name: "通用机" },
 				// 谁都不认得 —— 两个字母
 				{ botId: "nostalgia:2", platform: "从没见过的平台", name: "小电视" },
 			],
@@ -143,10 +143,10 @@ describe("bot 行的平台方块", () => {
 
 	it("桥没给、BN 只有短名没图标 → 还是两个字母,不画方章套方块", async () => {
 		renderPanel();
-		await screen.findByText("飞书机");
-		const mark = botMark("飞书机");
+		await screen.findByText("通用机");
+		const mark = botMark("通用机");
 		expect(mark.querySelector("img, svg")).toBeNull();
-		expect(mark.textContent?.trim()).toBe("fe");
+		expect(mark.textContent?.trim()).toBe("ge");
 	});
 
 	it("谁都不认得 → 平台名头两个字母,任何平台都画得出来", async () => {

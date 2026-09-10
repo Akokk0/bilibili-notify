@@ -12,11 +12,12 @@
  * (cardLayout / messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { ExtensionConfigField, SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
 	DirectConnection,
+	ExtensionConnection,
 	OnebotConnectionConfig,
 	OnebotTransport,
 	PushTarget,
@@ -67,6 +68,7 @@ export type {
 	ConnectionPlatform,
 	ContentFiltersPartial as ContentFiltersOverride,
 	DirectConnection,
+	ExtensionConnection,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
@@ -162,6 +164,47 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
  * context,该方法直接是 `undefined`。`crypto.getRandomValues()` 不受 secure context
  * 限制(所有现代浏览器恒有),用它手搓 v4 UUID,任何部署形态下都产出合法格式。
  */
+/**
+ * N 字节的随机十六进制 —— 拓展字段表里标了 `generate` 的那一栏(token 那种「只要两边一样、
+ * 不需要人记住」的密钥)新建时预填的就是它。走 `getRandomValues` 而不是 `randomUUID`,
+ * 理由同 {@link newId}:非安全上下文里也得能生成。
+ */
+export function randomHex(bytes: number): string {
+	const buf = new Uint8Array(bytes);
+	crypto.getRandomValues(buf);
+	return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 一条挂在某个拓展名下的空连接 —— 默认值照它交上来的字段表:select 取第一档、标了
+ * `generate` 的文本现生成、数字取下限、开关关着。config 的形状归拓展自己定,这里只按
+ * 字段表逐格放,不认得任何具体拓展。
+ */
+export function makeEmptyExtensionConnection(
+	extensionId: string,
+	fields: readonly ExtensionConfigField[],
+	name: string,
+): ExtensionConnection {
+	const config: Record<string, unknown> = {};
+	for (const field of fields) {
+		switch (field.kind) {
+			case "select":
+				config[field.code] = field.options[0]?.value ?? "";
+				break;
+			case "text":
+				config[field.code] = field.generate ? randomHex(field.generate) : "";
+				break;
+			case "number":
+				config[field.code] = field.min ?? 0;
+				break;
+			case "toggle":
+				config[field.code] = false;
+				break;
+		}
+	}
+	return { id: newId(), name, enabled: true, kind: "extension", extensionId, config };
+}
+
 export function newId(): string {
 	const bytes = new Uint8Array(16);
 	crypto.getRandomValues(bytes);

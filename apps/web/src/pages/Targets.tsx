@@ -1,5 +1,7 @@
 import type {
 	ExtensionBotsResponse,
+	ExtensionDTO,
+	ExtensionsResponse,
 	QQDiscoveredEntry,
 	TestResponse,
 } from "@bilibili-notify/contract";
@@ -16,6 +18,7 @@ import {
 	ErrorNote,
 	HintNote,
 	Icon,
+	IconButton,
 	LoadingBlock,
 	ModalShell,
 	PlatformIcon,
@@ -33,13 +36,18 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
-import { type ConnectionField, connectionFields } from "../types/connection-fields";
+import {
+	type ConnectionField,
+	connectionFields,
+	extensionConnectionFields,
+} from "../types/connection-fields";
 import {
 	type Connection,
 	type ConnectionPlatform,
 	isWebhookConnection,
 	KNOWN_PLATFORMS,
 	makeEmptyConnection,
+	makeEmptyExtensionConnection,
 	makeEmptyTarget,
 	maskWebhookUrl,
 	type PushTarget,
@@ -324,6 +332,8 @@ function TargetCard({
 interface ConnectionEditorProps {
 	mode: "add" | "edit";
 	value: Connection;
+	/** 跑着的、开推送源那一口的拓展 —— 平台那一排的后几档,表单照它们的字段表画。 */
+	extensions: readonly PushExtension[];
 	onChange: (next: Connection) => void;
 	onSave: () => void;
 	onCancel: () => void;
@@ -334,6 +344,7 @@ interface ConnectionEditorProps {
 function ConnectionEditorModal({
 	mode,
 	value,
+	extensions,
 	onChange,
 	onSave,
 	onCancel,
@@ -341,9 +352,22 @@ function ConnectionEditorModal({
 	error,
 }: ConnectionEditorProps) {
 	const platformTint = usePlatformTint();
-	const valid = value.name.trim().length > 0;
+	const extension =
+		value.kind === "extension" ? extensions.find((ext) => ext.id === value.extensionId) : undefined;
+	const fields = editorFields(value, extension);
+	// 必填的空着也不许存 —— 拓展的字段表里标了 required 的(token)尤其。
+	const requiredMissing = fields.find(
+		(f): f is Extract<ConnectionField, { kind: "text" }> =>
+			f.kind === "text" && f.required === true && f.value.trim().length === 0,
+	);
+	const valid = value.name.trim().length > 0 && !requiredMissing;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
-	const invalidHint = valid ? undefined : "请先填写显示名称";
+	const invalidHint =
+		value.name.trim().length === 0
+			? "请先填写显示名称"
+			: requiredMissing
+				? `请先填写${requiredMissing.label}`
+				: undefined;
 	const tint = platformTint(connectionDispatchKey(value));
 	return (
 		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
@@ -367,6 +391,27 @@ function ConnectionEditorModal({
 									</ToneChip>
 								);
 							})}
+							{/*
+							 * 跑着的推送源拓展是同一排的后几档 —— 桥接入从这儿建,而不是只能去拓展页。
+							 * 这一排**不认得任何具体拓展**:名字来自它报的 descriptor,表单照它的字段表画。
+							 */}
+							{extensions.map((ext) => {
+								const active = value.kind === "extension" && value.extensionId === ext.id;
+								const eTint = platformTint(ext.id);
+								return (
+									<ToneChip
+										key={ext.id}
+										tone={eTint}
+										active={active}
+										onClick={() =>
+											onChange(makeEmptyExtensionConnection(ext.id, ext.configFields, value.name))
+										}
+									>
+										<PlatformIcon platform={ext.id} size={13} />
+										{ext.descriptor.label}
+									</ToneChip>
+								);
+							})}
 						</div>
 					</Field>
 					<Field label="显示名称" code="connection.name" required>
@@ -384,15 +429,26 @@ function ConnectionEditorModal({
 				<SectionBox
 					title="连接参数"
 					subtitle={
-						value.kind === "direct" && value.platform === "onebot"
-							? "OneBot v11 连接信息"
-							: value.kind === "direct" && value.platform === "qq-official"
-								? "QQ 官方机器人凭据(q.qq.com)"
-								: "Webhook 投递终点"
+						value.kind === "extension"
+							? `${extension?.descriptor.label ?? value.extensionId} 的接入参数`
+							: value.platform === "onebot"
+								? "OneBot v11 连接信息"
+								: value.platform === "qq-official"
+									? "QQ 官方机器人凭据(q.qq.com)"
+									: "Webhook 投递终点"
 					}
 					accent={tint}
 				>
-					<ConnectionConfigFields connection={value} onChange={onChange} />
+					{value.kind === "extension" && !extension ? (
+						<HintNote>这个拓展现在没跑起来,它的参数表拿不到 —— 先去拓展页把它开起来。</HintNote>
+					) : (
+						<ConnectionConfigFields
+							fields={fields}
+							connection={value}
+							onChange={onChange}
+							revealGenerated={mode === "add"}
+						/>
+					)}
 				</SectionBox>
 			</div>
 
@@ -413,17 +469,52 @@ function ConnectionEditorModal({
 	);
 }
 
+/**
+ * 跑着的、开推送源那一口、报了 descriptor 与字段表的拓展 —— 新建连接那一排要的就是这些。
+ * 三样缺一不可:少 descriptor 没名字,少字段表画不出表单。
+ */
+type PushExtension = ExtensionDTO & {
+	descriptor: NonNullable<ExtensionDTO["descriptor"]>;
+	configFields: NonNullable<ExtensionDTO["configFields"]>;
+};
+
+function pushExtensionsOf(extensions: readonly ExtensionDTO[]): PushExtension[] {
+	return extensions.filter(
+		(ext): ext is PushExtension =>
+			ext.state === "running" &&
+			(ext.provides ?? []).includes("push") &&
+			ext.descriptor !== undefined &&
+			ext.configFields !== undefined,
+	);
+}
+
+/** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的字段表翻。 */
+function editorFields(
+	connection: Connection,
+	extension: PushExtension | undefined,
+): ConnectionField[] {
+	if (connection.kind === "extension") {
+		return extension ? extensionConnectionFields(connection, extension.configFields) : [];
+	}
+	return connectionFields(connection);
+}
+
 function ConnectionConfigFields({
+	fields,
 	connection,
 	onChange,
+	revealGenerated,
 }: {
+	fields: ConnectionField[];
 	connection: Connection;
 	onChange: (next: Connection) => void;
+	/** 新建那一刻标了 generate 的栏(token)**明文**给看 —— 要复制去填插件;之后遮着。 */
+	revealGenerated: boolean;
 }) {
 	const platformTint = usePlatformTint();
 	return (
 		<>
-			{connectionFields(connection).map((field) => {
+			{fields.map((field) => {
 				if (field.kind === "qq-bind") {
 					return (
 						/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
@@ -448,6 +539,7 @@ function ConnectionConfigFields({
 							field={field}
 							tint={platformTint(connectionDispatchKey(connection))}
 							onChange={onChange}
+							revealGenerated={revealGenerated}
 						/>
 					</Field>
 				);
@@ -461,14 +553,34 @@ function ConnectionFieldControl({
 	field,
 	tint,
 	onChange,
+	revealGenerated,
 }: {
 	field: Exclude<ConnectionField, { kind: "qq-bind" }>;
 	tint: string;
 	onChange: (next: Connection) => void;
+	revealGenerated: boolean;
 }) {
 	switch (field.kind) {
 		case "text":
-			return (
+			return field.regenerate ? (
+				// 标了 generate 的那栏(token):新建那一刻**明文**给看 —— 要复制去填插件,遮住就
+				// 抄不了;之后只遮着(ADR-0009 决策 21)。旁边一颗「重新生成」。
+				<div className="flex items-center gap-2">
+					<TInput
+						value={field.value}
+						onChange={(v) => onChange(field.set(v))}
+						placeholder={field.placeholder}
+						mono
+						secret={!revealGenerated}
+					/>
+					<IconButton
+						label="重新生成"
+						icon={<Icon.refresh size={13} />}
+						size="sm"
+						onClick={() => onChange((field.regenerate as () => Connection)())}
+					/>
+				</div>
+			) : (
 				<TInput
 					value={field.value}
 					onChange={(v) => onChange(field.set(v))}
@@ -1306,6 +1418,13 @@ export default function Targets() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	// 跑着的推送源拓展是「新建连接」那一排的后几档。与拓展页共用同一个 key。
+	const extensionsQuery = useQuery({
+		queryKey: ["extensions"],
+		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
+		retry: false,
+	});
+	const pushExtensions = pushExtensionsOf(extensionsQuery.data?.extensions ?? []);
 
 	const [connectionDraft, setConnectionDraft] = useState<{
 		mode: "add" | "edit";
@@ -1823,6 +1942,7 @@ export default function Targets() {
 				<ConnectionEditorModal
 					mode={connectionDraft.mode}
 					value={connectionDraft.value}
+					extensions={pushExtensions}
 					onChange={(v) => setConnectionDraft({ mode: connectionDraft.mode, value: v })}
 					onSave={() => upsertConnection.mutate(connectionDraft.value)}
 					onCancel={() => {

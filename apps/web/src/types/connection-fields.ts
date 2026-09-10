@@ -13,9 +13,11 @@
  * 要整份换 config 并同步 `connector`,官机扫码回填还要补显示名),页面不用知道。
  */
 
+import type { ExtensionConfigField } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	DirectConnection,
+	ExtensionConnection,
 	OnebotConnectionConfig,
 	OnebotTransport,
 	QQOfficialBotType,
@@ -25,7 +27,12 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
-import { switchOnebotTransport, webhookSecretHint, webhookUrlPlaceholder } from "./domain";
+import {
+	randomHex,
+	switchOnebotTransport,
+	webhookSecretHint,
+	webhookUrlPlaceholder,
+} from "./domain";
 
 interface FieldBase {
 	/** 全局唯一的字段身份 —— 默认值广播、导览聚光灯、测试都按它找。 */
@@ -43,6 +50,8 @@ export type ConnectionField =
 			mono?: boolean;
 			secret?: boolean;
 			set: (v: string) => Connection;
+			/** 有就给一颗「重新生成」钮 —— 拓展字段表里标了 `generate` 的那一栏(token)。 */
+			regenerate?: () => Connection;
 	  })
 	| (FieldBase & {
 			kind: "number";
@@ -371,6 +380,74 @@ function webhookFields(
  * 桥接入眼下给空表 —— 它的参数(BN 地址 + token)在拓展页那侧填,不走这张连接表单。
  * 认不出的也给空表:页面那一侧不用再写一句兜底。
  */
+/**
+ * 拓展连接的表单:拓展交上来的字段表(`ExtensionDTO.configFields`,ADR-0012 决策 33)
+ * 一栏翻一栏。字段身份带着拓展 id(`ext.<id>.<code>`),与内置平台的字段不撞。
+ * 值就落在 `config[code]`,这一层不认得任何具体拓展。
+ */
+export function extensionConnectionFields(
+	connection: ExtensionConnection,
+	fields: readonly ExtensionConfigField[],
+): ConnectionField[] {
+	const bag = (
+		typeof connection.config === "object" && connection.config !== null ? connection.config : {}
+	) as Record<string, unknown>;
+	const put = (code: string, v: unknown): Connection => ({
+		...connection,
+		config: { ...bag, [code]: v },
+	});
+	return fields.map((field): ConnectionField => {
+		const base = {
+			code: `ext.${connection.extensionId}.${field.code}`,
+			label: field.label,
+			hint: field.hint,
+			required: field.required,
+		};
+		const raw = bag[field.code];
+		switch (field.kind) {
+			case "text":
+				return {
+					...base,
+					kind: "text",
+					value: typeof raw === "string" ? raw : "",
+					placeholder: field.placeholder,
+					mono: field.mono,
+					secret: field.secret,
+					set: (v) => put(field.code, v),
+					regenerate: field.generate
+						? () => put(field.code, randomHex(field.generate ?? 16))
+						: undefined,
+				};
+			case "number":
+				return {
+					...base,
+					kind: "number",
+					value: typeof raw === "number" ? raw : (field.min ?? 0),
+					min: field.min,
+					max: field.max,
+					step: field.step,
+					suffix: field.suffix,
+					set: (v) => put(field.code, v),
+				};
+			case "toggle":
+				return { ...base, kind: "toggle", value: raw === true, set: (v) => put(field.code, v) };
+			case "select":
+				return {
+					...base,
+					kind: "select",
+					value: typeof raw === "string" ? raw : (field.options[0]?.value ?? ""),
+					options: field.options,
+					set: (v) => put(field.code, v),
+				};
+			default: {
+				// 字段表加了新 kind 而这里没接 —— 编译期就该红,别悄悄画成空白。
+				const never: never = field;
+				throw new Error(`unknown extension field kind: ${JSON.stringify(never)}`);
+			}
+		}
+	});
+}
+
 export function connectionFields(connection: Connection): ConnectionField[] {
 	if (connection.kind !== "direct") return [];
 	if (connection.platform === "onebot") return onebotFields(connection);
