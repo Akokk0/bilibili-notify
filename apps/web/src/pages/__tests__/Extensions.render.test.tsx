@@ -30,7 +30,7 @@ const LISTED: ExtensionsResponse = {
 			icon: '<svg viewBox="0 0 24 24" data-testid="bridge-icon"><path d="M4 4h16"/></svg>',
 			enabled: true,
 			state: "running",
-			root: { kind: "data", dir: "/data/extensions/bridge" },
+			dir: "/data/extensions/bridge",
 		},
 		{
 			id: "douyin",
@@ -39,10 +39,9 @@ const LISTED: ExtensionsResponse = {
 			enabled: true,
 			state: "blocked",
 			detail: "连续加载失败 3 次,已自动停用;换一版会重新试",
-			root: { kind: "data", dir: "/data/extensions/douyin" },
+			dir: "/data/extensions/douyin",
 		},
 	],
-	shadowed: [],
 };
 
 function renderPage(listed: ExtensionsResponse = LISTED) {
@@ -128,7 +127,7 @@ describe("拓展页", () => {
 	 * 把「怎么装」说完,而不是只写一句「还没有装任何拓展」。
 	 */
 	it("一个拓展都没装时,把两条来路说完", async () => {
-		renderPage({ extensions: [], shadowed: [] });
+		renderPage({ extensions: [] });
 		expect(await screen.findByText(/还没有装任何拓展/)).toBeTruthy();
 		// 面板安装那条路还没建 —— **明说**「还没做」,不是藏起来让人以为按钮在别处。
 		expect(screen.getByText("还没做")).toBeTruthy();
@@ -152,30 +151,21 @@ describe("拓展页", () => {
 		expect(screen.getByText(/还没有订阅源拓展/)).toBeTruthy();
 	});
 
-	/** 两份同名的摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
-	it("每张卡都说得出自己是从哪儿扫出来的", async () => {
+	/** 「我改的是不是跑着的那个」只有全路径答得了。 */
+	it("每张卡都说得出自己在盘上的哪儿", async () => {
 		renderPage();
 		expect(await screen.findByText("/data/extensions/bridge")).toBeTruthy();
-		expect(screen.getAllByText(/主人装的/).length).toBeGreaterThan(0);
 	});
 
 	/**
-	 * 🔴 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因:盘上两份、列表上一行,
-	 * 不说的话没有任何办法判断跑的是哪个。
+	 * 🔴 开发版的拓展是 devtools **链**进装载目录的:卡片上写着 `<dataDir>/…`,而跑的其实
+	 * 是主人正在改的那份工作树。落点不印出来,「我改了怎么没生效」就没法回答。
 	 */
-	it("同一个 id 有两份时,页面上把两份的位置都摆出来", async () => {
+	it("软链进来的那张把落点也印出来", async () => {
 		renderPage({
-			...LISTED,
-			shadowed: [
-				{
-					id: "bridge",
-					winner: { kind: "source", dir: "/repo/extensions/bridge" },
-					shadowed: { kind: "data", dir: "/data/extensions/bridge" },
-				},
-			],
+			extensions: [{ ...LISTED.extensions[0]!, linkedTo: "/repo/extensions/bridge/dist" }],
 		});
-		expect(await screen.findByText(/\/repo\/extensions\/bridge/)).toBeTruthy();
-		expect(screen.getAllByText(/仓里源码/).length).toBeGreaterThan(0);
+		expect(await screen.findByText("/repo/extensions/bridge/dist")).toBeTruthy();
 	});
 
 	/**

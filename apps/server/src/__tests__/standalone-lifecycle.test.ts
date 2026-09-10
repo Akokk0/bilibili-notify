@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { installBridgeInto } from "./support/install-bridge.js";
 
 async function findFreePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
@@ -214,6 +215,9 @@ describe("standalone server lifecycle", () => {
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { bridge: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
+		// 拓展是**装进来的**:本体一个都不带,仓里那个目录也不再是根(2026-09-10)。
+		// 这一下就是开发版 devtools / 日后插件市场做的那件事。
+		await installBridgeInto(dataDir);
 
 		const second = await boot();
 		handle = second.started;

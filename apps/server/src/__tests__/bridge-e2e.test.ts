@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { installBridgeInto } from "./support/install-bridge.js";
 
 const CONNECTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const TARGET_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -168,6 +169,9 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		const globalsPath = join(dataDir, "state", "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { bridge: { enabled: true } };
+		// 拓展是**装进来的**(本体一个都不带,仓里那个目录也不再是根)—— 这一下就是
+		// 开发版 devtools / 日后插件市场做的那件事:把包摆进唯一那个装载根。
+		await installBridgeInto(dataDir);
 		await writeFile(globalsPath, JSON.stringify(globals));
 
 		await writeFile(

@@ -33,10 +33,9 @@ const LISTED: ExtensionsResponse = {
 			name: "机器人框架桥接",
 			enabled: true,
 			state: "running",
-			root: { kind: "data", dir: "/data/extensions/bridge" },
+			dir: "/data/extensions/bridge",
 		},
 	],
-	shadowed: [],
 };
 
 const CONNECTIONS = [

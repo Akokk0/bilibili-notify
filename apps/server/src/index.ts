@@ -23,11 +23,7 @@ import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
-import {
-	EXTENSION_ROOT_LABEL,
-	extensionRootsFor,
-	extensionsRootIn,
-} from "./extensions/discover.js";
+import { extensionsRootIn } from "./extensions/discover.js";
 import {
 	EXTENSION_MAX_LOAD_FAILURES,
 	type LoadedExtensions,
@@ -735,14 +731,9 @@ export async function startStandaloneServer(
 		const extensionMounts = createExtensionMounts();
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
-			// 三个根,优先级 源码 > `<dataDir>` > 载荷(决策 34)。载荷那份相对入口解析,
-			// 与 dashboard 静态资源同一条规矩 —— 它俩是同一次发布的两半。
-			roots: extensionRootsFor({
-				dataDir: bootstrap.dataDir,
-				bundleUrl: options.bundleUrl ?? import.meta.url,
-			}),
-			// 记账固定落 `<dataDir>`:载荷那份跟着升级换掉,源码那份是仓库工作树。
-			ledgerRoot: extensionsRootIn(bootstrap.dataDir),
+			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
+			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
+			root: extensionsRootIn(bootstrap.dataDir),
 			host: runtime.serviceCtx,
 			mounts: extensionMounts,
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
@@ -767,7 +758,9 @@ export async function startStandaloneServer(
 		});
 		for (const entry of loadedExtensions.list()) {
 			if (entry.state === "running")
-				log.info(`[ext] ${entry.id} 已加载(${EXTENSION_ROOT_LABEL[entry.origin]})`);
+				// 软链那份把落点也印出来:开发版跑的其实是仓里的工作树,日志里看不出来的话
+				// 「我改的那个到底跑没跑」还得再查一遍。
+				log.info(`[ext] ${entry.id} 已加载${entry.linkedTo ? `(→ ${entry.linkedTo})` : ""}`);
 			else if (entry.state !== "disabled")
 				log.warn(
 					`[ext] ${entry.id} 没加载(${entry.state})${entry.detail ? `:${entry.detail}` : ""}`,
@@ -808,7 +801,6 @@ export async function startStandaloneServer(
 			extensions: {
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
-				shadowed: () => loadedExtensions?.shadowed() ?? [],
 				status: (id) => loadedExtensions?.status(id),
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {

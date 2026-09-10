@@ -1,5 +1,4 @@
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import { EXTENSION_ROOT_LABEL } from "@bilibili-notify/contract";
 import { Icon } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
@@ -38,13 +37,24 @@ export function extensionAccent(ext: ExtensionDTO): string {
 	return ext.icon ? "var(--color-bn-pink)" : "var(--color-bn-inactive)";
 }
 
-/** 这一份是从哪儿扫出来的。盘上有同名两份时,只有全路径答得了「我改的是不是它」。 */
-export function ExtensionRootLine({ ext }: { ext: ExtensionDTO }) {
+/**
+ * 它在盘上的哪儿。
+ *
+ * 🔴 软链那份**要把落点也印出来**:开发版的拓展是 devtools 链进装载目录的,只印
+ * `<dataDir>/extensions/bridge` 的话,主人看不出跑的其实是自己正在改的那份工作树 ——
+ * 「我改了怎么没生效」正是这一行要回答的问题。
+ */
+export function ExtensionWhereLine({ ext }: { ext: ExtensionDTO }) {
 	return (
 		<div className="flex items-center gap-1.5 text-bn-xs text-bn-text-tertiary">
 			<Icon.folder size={12} />
-			<span className="shrink-0">{EXTENSION_ROOT_LABEL[ext.root.kind]} ·</span>
-			<span className="truncate font-mono">{ext.root.dir}</span>
+			<span className="truncate font-mono">{ext.dir}</span>
+			{ext.linkedTo ? (
+				<>
+					<span className="shrink-0">→</span>
+					<span className="truncate font-mono">{ext.linkedTo}</span>
+				</>
+			) : null}
 		</div>
 	);
 }

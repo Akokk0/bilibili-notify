@@ -6,7 +6,7 @@ import { api } from "../services/api";
 import { BridgeConnections } from "./extensions/bridge-panel";
 import {
 	ExtensionIcon,
-	ExtensionRootLine,
+	ExtensionWhereLine,
 	extensionAccent,
 	useExtensionToggle,
 } from "./extensions/shared";
@@ -83,7 +83,7 @@ export default function ExtensionDetail() {
 								{provide === "push" ? "推送源" : provide === "subscription" ? "订阅源" : provide}
 							</Pill>
 						))}
-						<ExtensionRootLine ext={ext} />
+						<ExtensionWhereLine ext={ext} />
 					</div>
 					{id === "bridge" ? <BridgeConnections extensionId={id} /> : null}
 				</div>

@@ -6,14 +6,12 @@
  * - **半个拓展不许留在那**:`activate` 中途抛了,它此前注册的定时器 / 端点当场回收
  * - **一个炸了不牵连另一个**
  * - 连着失败到上限 → 自动停用,不再 import
- * - **入口按根算**:源码根那份 import 的是 `src/index.ts`
- * - **记账固定落在 `<dataDir>`**,不跟着拓展自己那个根走
+ * - **记账落在装载目录**,绝不写进某个拓展自己的目录(开发版那份是仓库工作树的软链)
  */
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { EXTENSION_API_VERSION, type Logger, type ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -94,8 +92,7 @@ function run(opts: {
 	importModule?: (specifier: string) => Promise<unknown>;
 }) {
 	return loadExtensions({
-		roots: [{ kind: "data", dir: root }],
-		ledgerRoot: root,
+		root,
 		host: opts.host.ctx,
 		mounts: opts.mounts,
 		isEnabled: opts.enabled ?? (() => true),
@@ -215,8 +212,7 @@ describe("加载拓展", () => {
 
 		const runOnce = () =>
 			loadExtensions({
-				roots: [{ kind: "data", dir: root }],
-				ledgerRoot: root,
+				root,
 				host: fakeHost().ctx,
 				mounts: createExtensionMounts(),
 				isEnabled: () => true,
@@ -248,8 +244,7 @@ describe("拓展声明的密钥字段", () => {
 		await plant("bridge", "export function activate() {}");
 		const registry = createAdapterRegistry();
 		const loaded = await loadExtensions({
-			roots: [{ kind: "data", dir: root }],
-			ledgerRoot: root,
+			root,
 			host: fakeHost().ctx,
 			mounts: createExtensionMounts(),
 			upgrades: createExtensionUpgrades(),
@@ -285,79 +280,28 @@ describe("拓展声明的密钥字段", () => {
 });
 
 /**
- * 多根(ADR-0012 决策 34/35)。扫目录那一层的规矩钉在 `discover.test.ts`,这里钉的是
- * **加载器怎么用它** —— 入口 import 哪个文件、账记在哪、被盖住时谁出声。
+ * 装载目录那一层的规矩钉在 `discover.test.ts`,这里钉的是**加载器怎么用它** ——
+ * 每条记录带着自己的位置,以及账记在哪。
  */
-describe("多根", () => {
-	let repoDir: string;
-
-	beforeEach(async () => {
-		repoDir = await mkdtemp(join(tmpdir(), "bn-ext-loader-source-"));
-	});
-
-	afterEach(async () => {
-		await rm(repoDir, { recursive: true, force: true });
-	});
-
-	/** 摆一份**源码形态**的拓展:入口在 `src/index.ts`,而不是平级的 `index.mjs`。 */
-	async function plantSource(id: string, into: string): Promise<string> {
-		const dir = join(into, id);
-		await mkdir(join(dir, "src"), { recursive: true });
-		await writeFile(
-			join(dir, "extension.json"),
-			JSON.stringify({
-				id,
-				name: id,
-				description: "测试用",
-				version: "1.0.0",
-				apiVersion: EXTENSION_API_VERSION,
-				provides: ["push"],
-			}),
-		);
-		await writeFile(join(dir, "src", "index.ts"), "export function activate() {}");
-		return dir;
-	}
-
-	/**
-	 * 源码根那份 import 的是 `src/index.ts`。
-	 *
-	 * ⚠️ 这里换掉 import:真跑起来靠的是 tsx 那层 loader(dev 才有),而要钉的是
-	 * **宿主算出来交给 import 的是哪个文件**,不是 TypeScript 能不能被 import。
-	 */
-	it("源码根:import 的是 src/index.ts,不是 index.mjs", async () => {
-		const dir = await plantSource("dev-ext", repoDir);
-		const seen: string[] = [];
-		const loaded = await loadExtensions({
-			roots: [{ kind: "source", dir: repoDir }],
-			ledgerRoot: root,
-			host: fakeHost().ctx,
-			mounts: createExtensionMounts(),
-			isEnabled: () => true,
-			maxFailures: 3,
-			importModule: async (specifier) => {
-				seen.push(specifier);
-				return { activate() {} };
-			},
-			...coreStubs(),
-		});
-
-		expect(loaded.list().map((e) => [e.id, e.state, e.origin])).toEqual([
-			["dev-ext", "running", "source"],
-		]);
-		expect(seen).toEqual([pathToFileURL(join(dir, "src", "index.ts")).href]);
+describe("装载目录", () => {
+	/** 两份同名的摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
+	it("每条都带着自己的目录", async () => {
+		await plant("bridge", HEALTHY);
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		expect(loaded.list().map((e) => e.dir)).toEqual([join(root, "bridge")]);
 	});
 
 	/**
-	 * 🔴 **账记在 `<dataDir>`,不记在拓展自己那个根里。**
+	 * 🔴 **账记在装载目录里,绝不写进某个拓展自己的目录。**
 	 *
-	 * 记在载荷根 = 升级换掉整个目录,连着失败的记录跟着没;记在源码根 = 往仓库工作树里
-	 * 拉屎。而「这个拓展连炸了几次」本来就是**这一台机器**的状态,与拓展本体同寿是错的。
+	 * 「这个拓展连炸了几次」是**这一台机器**的状态,与拓展本体同寿是错的:装的那份随时
+	 * 会被换掉(升级 / 重装),记录跟着没。而开发版装进来的那份**是仓库工作树的软链** ——
+	 * 往里写等于往 `git status` 里拉屎。
 	 */
-	it("失败记账落在 ledgerRoot,拓展所在的那个根一个文件都不多", async () => {
-		const dir = await plantSource("boom", repoDir);
+	it("失败记账落在装载目录,拓展自己那个目录一个文件都不多", async () => {
+		await plant("boom", HEALTHY);
 		await loadExtensions({
-			roots: [{ kind: "source", dir: repoDir }],
-			ledgerRoot: root,
+			root,
 			host: fakeHost().ctx,
 			mounts: createExtensionMounts(),
 			isEnabled: () => true,
@@ -368,61 +312,8 @@ describe("多根", () => {
 			...coreStubs(),
 		});
 
-		expect(await readdir(root)).toEqual(["load-state.json"]);
-		// 拓展那个根里只有它自己那个目录 —— 没被写进任何东西。
-		expect(await readdir(repoDir)).toEqual(["boom"]);
-		expect((await readdir(dir)).sort()).toEqual(["extension.json", "src"]);
-	});
-
-	/**
-	 * 🔴 **被盖住要出声。**
-	 *
-	 * 剪掉加载器接给 `discoverExtensions` 的那个 `onShadowed`,扫目录那一层照样对(它自己
-	 * 的测试全绿)、拓展照样跑 —— 只是主人再也不知道跑的是哪一份。这条就是那根线的守卫。
-	 */
-	it("同一个 id 两个根都有 → 用高优先级那份,并且**日志里说得出**盖住了谁", async () => {
-		// 仓里改着一份,`<dataDir>` 里还装着一份 —— 开发时最容易撞上的正是这一幕。
-		await plantSource("bridge", repoDir);
-		await plant("bridge", HEALTHY);
-
-		const host = fakeHost();
-		const loaded = await loadExtensions({
-			roots: [
-				{ kind: "source", dir: repoDir },
-				{ kind: "data", dir: root },
-			],
-			ledgerRoot: root,
-			host: host.ctx,
-			mounts: createExtensionMounts(),
-			isEnabled: () => true,
-			maxFailures: 3,
-			...coreStubs(),
-		});
-
-		expect(loaded.list().map((e) => [e.id, e.state, e.origin])).toEqual([
-			["bridge", "running", "source"],
-		]);
-		const warned = host.lines.filter((line) => line.startsWith("warn "));
-		expect(warned).toHaveLength(1);
-		expect(warned[0]).toContain("bridge");
-		expect(warned[0]).toContain(root);
-		expect(warned[0]).toContain(repoDir);
-
-		// 日志只有开机那一刻看得见 —— 面板要在卡片旁边一直说着这句,所以它也得交出来。
-		expect(loaded.shadowed()).toEqual([
-			{
-				id: "bridge",
-				winner: { kind: "source", dir: join(repoDir, "bridge") },
-				shadowed: { kind: "data", dir: join(root, "bridge") },
-			},
-		]);
-	});
-
-	/** 两份同名的拓展摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
-	it("每条都带着自己的目录", async () => {
-		await plant("bridge", HEALTHY);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
-		expect(loaded.list().map((e) => e.dir)).toEqual([join(root, "bridge")]);
+		expect((await readdir(root)).sort()).toEqual(["boom", "load-state.json"]);
+		expect((await readdir(join(root, "boom"))).sort()).toEqual(["extension.json", "index.mjs"]);
 	});
 });
 

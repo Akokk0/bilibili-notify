@@ -31,10 +31,9 @@ const LISTED: ExtensionsResponse = {
 			version: "1.0.0",
 			enabled: true,
 			state: "running",
-			root: { kind: "data", dir: "/data/extensions/bridge" },
+			dir: "/data/extensions/bridge",
 		},
 	],
-	shadowed: [],
 };
 
 const CONNECTIONS = [

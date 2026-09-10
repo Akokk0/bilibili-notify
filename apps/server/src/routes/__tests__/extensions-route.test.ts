@@ -9,7 +9,6 @@ import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
-import type { ShadowedExtension } from "../../extensions/discover.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionsRoute } from "../extensions.js";
 
@@ -17,7 +16,6 @@ function boot(
 	over: {
 		enabled?: boolean;
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
-		shadowed?: ShadowedExtension[];
 		status?: Record<string, unknown>;
 		settle?: () => Promise<void>;
 	} = {},
@@ -31,7 +29,6 @@ function boot(
 	return createExtensionsRoute({
 		store,
 		extensions: () => (typeof entries === "function" ? entries() : entries),
-		shadowed: () => over.shadowed ?? [],
 		status: (id) => over.status?.[id],
 		settle: over.settle,
 	});
@@ -41,7 +38,6 @@ function boot(
 function running(id: string): ExtensionEntry {
 	return {
 		id,
-		origin: "data",
 		dir: `/data/extensions/${id}`,
 		state: "running",
 		manifest: {
@@ -84,33 +80,33 @@ describe("GET /api/ext", () => {
 		expect(bridge?.provides).toEqual(["push"]);
 	});
 
-	/** 两份同名的摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
-	it("每条都说得出自己是从哪个根、哪个目录扫出来的", async () => {
+	/** 「我改的是不是跑着的那个」只有全路径答得了。 */
+	it("每条都说得出自己在盘上的哪儿", async () => {
 		const body = (await (
 			await boot({ entries: [running("bridge")] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.root).toEqual({ kind: "data", dir: "/data/extensions/bridge" });
+		expect(body.extensions[0]?.dir).toBe("/data/extensions/bridge");
+		expect(body.extensions[0]?.linkedTo).toBeUndefined();
 	});
 
 	/**
-	 * 🔴 开机那句 warn 只在日志里闪一次,而主人是在**面板上**找「我改了怎么没生效」的答案。
+	 * 🔴 开发版的拓展是 devtools **链**进装载目录的 —— 面板上写着 `<dataDir>/…`,而跑的
+	 * 其实是主人正在改的工作树。落点不交出来,「我改的是不是它」就没法回答。
 	 */
-	it("有 id 被盖住时,这一口把两份的位置都交出来", async () => {
-		const shadow: ShadowedExtension = {
-			id: "bridge",
-			winner: { kind: "source", dir: "/repo/extensions/bridge" },
-			shadowed: { kind: "data", dir: "/data/extensions/bridge" },
+	it("软链进来的那条把落点也交出来", async () => {
+		const linked: ExtensionEntry = {
+			...running("bridge"),
+			linkedTo: "/repo/extensions/bridge/dist",
 		};
 		const body = (await (
-			await boot({ entries: [running("bridge")], shadowed: [shadow] }).request("/")
+			await boot({ entries: [linked] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.shadowed).toEqual([shadow]);
+		expect(body.extensions[0]?.linkedTo).toBe("/repo/extensions/bridge/dist");
 	});
 
 	it("一个都没装 → 空表。**没有写死的清单了** —— 拓展是装进来的", async () => {
 		const body = (await (await boot().request("/")).json()) as ExtensionsResponse;
 		expect(body.extensions).toEqual([]);
-		expect(body.shadowed).toEqual([]);
 	});
 
 	it("开关开着、却因为连败被自动停用 —— 两件事都要看得见", async () => {
@@ -120,7 +116,6 @@ describe("GET /api/ext", () => {
 				entries: [
 					{
 						id: "bridge",
-						origin: "data",
 						dir: "/data/extensions/bridge",
 						state: "blocked",
 						detail: "连续加载失败 3 次",
@@ -140,7 +135,6 @@ describe("GET /api/ext", () => {
 				entries: [
 					{
 						id: "junk",
-						origin: "data",
 						dir: "/data/extensions/junk",
 						state: "unreadable",
 						detail: "不是合法 JSON",
@@ -157,7 +151,7 @@ describe("GET /api/ext", () => {
 			await boot({
 				entries: [
 					running("bridge"),
-					{ id: "junk", origin: "data", dir: "/data/extensions/junk", state: "unreadable" },
+					{ id: "junk", dir: "/data/extensions/junk", state: "unreadable" },
 				],
 			}).request("/")
 		).json()) as ExtensionsResponse;
@@ -194,7 +188,6 @@ describe("GET /api/ext/:id/status", () => {
 				getConnections: () => [],
 			} as unknown as ConfigStore,
 			extensions: () => [],
-			shadowed: () => [],
 			status: () => ({ n: ++n }),
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });

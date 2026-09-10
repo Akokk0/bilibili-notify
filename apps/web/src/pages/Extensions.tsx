@@ -1,10 +1,8 @@
 import type {
 	ExtensionDTO,
 	ExtensionProvides,
-	ExtensionShadowDTO,
 	ExtensionsResponse,
 } from "@bilibili-notify/contract";
-import { EXTENSION_ROOT_LABEL } from "@bilibili-notify/contract";
 import {
 	EmptyNote,
 	ErrorNote,
@@ -22,7 +20,7 @@ import { api } from "../services/api";
 import { ExtensionsEmpty } from "./extensions/empty-state";
 import {
 	ExtensionIcon,
-	ExtensionRootLine,
+	ExtensionWhereLine,
 	extensionAccent,
 	useExtensionToggle,
 } from "./extensions/shared";
@@ -123,7 +121,7 @@ function ExtensionCard({
 			<div className="flex flex-col gap-2">
 				<StateLine ext={ext} />
 				<StateDetail ext={ext} />
-				<ExtensionRootLine ext={ext} />
+				<ExtensionWhereLine ext={ext} />
 				{/* 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。 */}
 				<Link
 					to={`/extensions/${ext.id}`}
@@ -147,24 +145,6 @@ function SectionHead({ label, hint }: { label: string; hint: string }) {
 	);
 }
 
-/**
- * 🔴 同一个 id 在两个根里都有。
- *
- * 悄悄盖掉正是「我明明改了怎么没生效」最难查的原因 —— 盘上两份、这一页只有一行,
- * 不把两份的位置都摆出来,没有任何办法判断跑的是哪个。
- */
-function ShadowWarning({ shadow }: { shadow: ExtensionShadowDTO }) {
-	return (
-		<WarnNote size="sm">
-			<strong>{shadow.id} 有两份</strong>:跑的是
-			{EXTENSION_ROOT_LABEL[shadow.winner.kind]}那份(
-			<span className="font-mono">{shadow.winner.dir}</span>),盖住了
-			{EXTENSION_ROOT_LABEL[shadow.shadowed.kind]}的(
-			<span className="font-mono">{shadow.shadowed.dir}</span>)。
-		</WarnNote>
-	);
-}
-
 export default function Extensions() {
 	const listed = useQuery({
 		queryKey: ["extensions"],
@@ -175,7 +155,6 @@ export default function Extensions() {
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 
 	const extensions = listed.data?.extensions ?? [];
-	const shadowed = listed.data?.shadowed ?? [];
 	// 归不了口的那些(清单读不出来 / 版本不合 → 没有 provides)。它们**不许消失**:
 	// 消失的东西没法排查,而这一页正是主人来看「它怎么了」的地方。
 	const homeless = extensions.filter((ext) => (ext.provides ?? []).length === 0);
@@ -197,10 +176,6 @@ export default function Extensions() {
 					<strong className="text-bn-text-primary">本体一个拓展都不带</strong>。
 				</div>
 			</div>
-
-			{shadowed.map((shadow) => (
-				<ShadowWarning key={shadow.id} shadow={shadow} />
-			))}
 
 			{extensions.length === 0 ? (
 				<ExtensionsEmpty />

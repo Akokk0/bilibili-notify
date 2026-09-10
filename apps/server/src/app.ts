@@ -12,7 +12,6 @@ import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { ChromeSource } from "./config/persist.js";
-import type { ShadowedExtension } from "./extensions/discover.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
@@ -71,8 +70,6 @@ export interface CreateAppOptions {
 	extensions?: {
 		mounts: ExtensionMounts;
 		loaded: () => readonly ExtensionEntry[];
-		/** 这次开机扫出来的「同一个 id 有两份」。见 routes/extensions.ts。 */
-		shadowed: () => readonly ShadowedExtension[];
 		/** 某个拓展交上来的面板数据(`ctx.publishStatus`)。没交过 / 没跑就是 undefined。 */
 		status: (id: string) => unknown;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
@@ -335,7 +332,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		createExtensionsRoute({
 			store: deps.store,
 			extensions: () => options.extensions?.loaded() ?? [],
-			shadowed: () => options.extensions?.shadowed() ?? [],
 			status: (id) => options.extensions?.status(id),
 			settle: options.extensions?.settle,
 		}),
