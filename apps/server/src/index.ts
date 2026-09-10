@@ -355,6 +355,9 @@ export async function startStandaloneServer(
 				installRoot: extensionsRootIn(bootstrap.dataDir),
 				loaded: () => loadedExtensions,
 			},
+			// 「假装一条桥连上来」要连回自己身上。走 127.0.0.1 而不是 bootstrap 里那个 host:
+			// 那格常是 `0.0.0.0`(监听通配),拿它当目的地连不上。
+			address: () => (listeningPort ? `127.0.0.1:${listeningPort}` : undefined),
 			historyStore: runtime.historyStore,
 			api: authSystem.api,
 			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。

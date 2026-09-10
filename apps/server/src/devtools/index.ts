@@ -24,6 +24,7 @@ import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { createDevRoute, type DevCapturesApi } from "./route.js";
+import { bridgeScenarios } from "./scenarios/bridge.js";
 import { busEventScenarios } from "./scenarios/bus-events.js";
 import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
@@ -85,6 +86,11 @@ export interface CreateDevtoolsInput {
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
 	connectionConfigs: () => Connection[];
+	/**
+	 * BN 自己的 `host:port` —— 「假装一条桥连上来」拿它连回自己身上(那是条真 WS)。
+	 * **现取**:端口是 `serve()` 之后才知道的,而 devtools 比它先建。
+	 */
+	address: () => string | undefined;
 	targets: () => PushTarget[];
 	/** 引擎错误 / 登录失效 / 登录状态快照都从这条总线发。 */
 	bus: MessageBus;
@@ -172,6 +178,13 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			targets: input.targets,
 		}),
 		...busEventScenarios({ bus: input.bus }),
+		// 桥是拓展,核心 import 不到它 —— 这几条说的协议是手写的第二份,那笔账在
+		// ADR-0012 决策 42(主人 2026-09-10 拍板)。
+		...bridgeScenarios({
+			connections: input.connectionConfigs,
+			address: input.address,
+			commands: input.commands,
+		}),
 		loginStateScenario({ auth, bus: input.bus }),
 		heapPressureScenario({ heap }),
 		// 方言给的是**没包装过**的那份:「哪些平台有能力这回事」是方言自己的事实,
