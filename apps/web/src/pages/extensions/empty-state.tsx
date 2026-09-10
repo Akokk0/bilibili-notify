@@ -52,7 +52,7 @@ export function ExtensionsEmpty() {
 								<span className="font-mono">&lt;dataDir&gt;/extensions/&lt;拓展 id&gt;/</span>
 							</li>
 							<li>
-								重启 BN 一次 —— 它就出现在这一页,
+								到系统页按一下「重启一下」(或者自己重启容器)—— 它就出现在这一页,
 								<strong className="text-bn-text-primary">默认是关着的</strong>
 							</li>
 						</ol>
@@ -70,8 +70,10 @@ export function ExtensionsEmpty() {
 				<HintNote>
 					开发版不用自己动手:左下角 devtools 的
 					<strong className="text-bn-text-secondary">「拓展」</strong>那一组能把仓里构建好的{" "}
-					<span className="font-mono">dist</span> 装进来(软链),还能在改完代码之后
-					<strong className="text-bn-text-secondary">重载</strong> —— 换代码不必重启整个 server。
+					<span className="font-mono">dist</span> 装进来(软链,
+					<strong className="text-bn-text-secondary">装完当场就出现在这一页</strong>),
+					还能在改完代码之后<strong className="text-bn-text-secondary">重载</strong>
+					—— 换代码不必重启整个 server。
 				</HintNote>
 			</div>
 		</GlassPanel>

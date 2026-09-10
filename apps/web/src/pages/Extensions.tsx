@@ -191,8 +191,9 @@ export default function Extensions() {
 					<HintNote>
 						拓展是装进来的,不编在主程序里。拨动开关
 						<strong className="text-bn-text-secondary">立刻生效</strong>:关掉当场收摊
-						(正连着的插件会被断开,配置全留),打开就地装起来。装进来一个新拓展、
-						或者换掉一份拓展的代码,才要重启一次 —— 已经加载的代码在进程里换不掉。
+						(正连着的插件会被断开,配置全留),打开就地装起来。新放进来一个拓展包、
+						或者换掉一份拓展的代码,才要重启一次 —— 已经加载的代码在进程里换不掉;
+						系统页底下的「重启一下」那一节按一下就行。
 					</HintNote>
 
 					{SECTIONS.map((section) => {
@@ -232,7 +233,7 @@ export default function Extensions() {
 							<span className="text-bn-sm font-bold text-bn-text-secondary">装一个拓展</span>
 							<span className="text-bn-xs text-bn-text-tertiary">
 								把包放进 <span className="font-mono">&lt;dataDir&gt;/extensions/</span>,
-								重启一次就看得见
+								到系统页按一下「重启一下」就看得见
 							</span>
 						</EmptyNote>
 					</div>
