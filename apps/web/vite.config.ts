@@ -45,6 +45,11 @@ export default defineConfig({
 				},
 			},
 			"/ws": { target: "ws://127.0.0.1:8787", ws: true },
+			// 🔴 拓展的挂载点。**开发时不转它,面板印的那条地址就是假的** —— 拓展页把桥的接入
+			// 地址算成 `ws://<当前页面 host>/ext/<id>`(生产同源,算得对),主人照抄下来会打到
+			// Vite 自己身上,只得到一句「WebSocket was closed before the connection was
+			// established」。`ws: true` 一条同时管那条长连接与取图口那些普通 HTTP。
+			"/ext": { target: "http://127.0.0.1:8787", ws: true },
 		},
 	},
 });
