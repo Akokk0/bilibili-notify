@@ -11,6 +11,7 @@ import {
 	PlatformIcon,
 	StatusDot,
 	Toggle,
+	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -344,6 +345,8 @@ function BridgeAddress({ extensionId }: { extensionId: string }) {
 
 interface LinkActions {
 	setEnabled(id: string, enabled: boolean): void;
+	/** 把配置里的种类改成桥自报的那一种 —— 「对不上」那一档唯一的出口。 */
+	setKind(id: string, kind: string): void;
 	regenerate(id: string): void;
 	rename(id: string, name: string): void;
 	remove(id: string): void;
@@ -424,6 +427,17 @@ function LinkCard({
 	const bots = session?.bots ?? [];
 	const connected = session?.connected === true;
 	const kindLabel = BRIDGE_KINDS.find((k) => k.value === config.bridgeKind)?.label;
+	/**
+	 * 🔴 配置里那一种与桥自报的那一种**对不上**。
+	 *
+	 * 两个值一直都在手上,此前就是没比过 —— 连上之后面板只印自报的那个,于是这个错被
+	 * 悄悄抹平。它的成因很具体:两条接入的 token 长得一模一样(都是 32 位十六进制),
+	 * 填到另一头那个插件里去是最容易犯的错;而它**收发一切照常**,除了名字对不上没有
+	 * 任何别的症状,不主动说就永远发现不了。
+	 */
+	const reportedKind = connected ? session?.kind : undefined;
+	const mismatched = reportedKind !== undefined && reportedKind !== config.bridgeKind;
+	const reportedLabel = BRIDGE_KINDS.find((k) => k.value === reportedKind)?.label ?? reportedKind;
 
 	return (
 		<div
@@ -433,13 +447,15 @@ function LinkCard({
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<LinkMark kind={config.bridgeKind} />
 				<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-primary">
-					<StatusDot kind={connected ? "ok" : "off"} />
+					<StatusDot kind={mismatched ? "warn" : connected ? "ok" : "off"} />
 					<LinkName
 						connection={connection}
 						onRename={(name) => actions.rename(connection.id, name)}
 					/>
 				</span>
-				<span className="text-bn-xs text-bn-text-tertiary">{connected ? "已连接" : "未连接"}</span>
+				<span className="text-bn-xs text-bn-text-tertiary">
+					{mismatched ? "连上了,但对不上" : connected ? "已连接" : "未连接"}
+				</span>
 				{connected ? (
 					<span className="text-bn-xs text-bn-text-tertiary">
 						{[
@@ -478,6 +494,25 @@ function LinkCard({
 				linkName={connection.name}
 				onRegenerate={() => actions.regenerate(connection.id)}
 			/>
+
+			{mismatched ? (
+				<WarnNote size="sm">
+					<span data-kind-mismatch-note>
+						这条接入配的是 <strong className="font-bold">{kindLabel ?? config.bridgeKind}</strong>,
+						连进来的却自报 <strong className="font-bold">{reportedLabel}</strong> —— 多半是 token
+						填到另一头的插件里去了。
+						<strong className="font-bold">收发照常能用</strong>(BN 对两种桥的处理完全相同),
+						只是面板上的名字会一直对不上;改掉其中一边就好。
+					</span>
+					<Btn
+						variant="outline"
+						size="sm"
+						onClick={() => actions.setKind(connection.id, reportedKind)}
+					>
+						改成 {reportedLabel}
+					</Btn>
+				</WarnNote>
+			) : null}
 
 			{connected && bots.length === 0 ? (
 				// 连上了却一个 bot 都没借过来 —— 桥那侧还没登录任何账号,值得单独说一句。
@@ -590,6 +625,13 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 
 	const actions: LinkActions = {
 		setEnabled: (id, enabled) => patch.mutate({ id, body: { enabled } }),
+		setKind: (id, kind) => {
+			const current = links.find((c) => c.id === id);
+			if (!current) return;
+			// config 整份发 —— 与「重新生成」同一个理由:它的形状归拓展自己定,这一层
+			// 做不了「只改一格」的合并。**token 要原样带上**,漏了就等于顺手换了钥匙。
+			patch.mutate({ id, body: { config: { ...bridgeConfigOf(current), bridgeKind: kind } } });
+		},
 		regenerate: (id) => {
 			const current = links.find((c) => c.id === id);
 			if (!current) return;
