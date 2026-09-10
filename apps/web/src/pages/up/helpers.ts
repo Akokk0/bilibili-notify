@@ -39,9 +39,13 @@ export function targetsById(targets: PushTarget[]): Map<string, PushTarget> {
 	return m;
 }
 
-export function relativeTime(iso: string | undefined): string {
-	if (!iso) return "—";
-	const ts = new Date(iso).getTime();
+/**
+ * 距今多久。收 ISO 串**或** epoch 毫秒 —— 后者是给拓展面板那边的:桥报上来的
+ * `connectedAt` 就是个数字,为它再抄一份同样的阶梯是这仓里已经有三份的那种重复。
+ */
+export function relativeTime(iso: string | number | undefined): string {
+	if (iso === undefined || iso === "") return "—";
+	const ts = typeof iso === "number" ? iso : new Date(iso).getTime();
 	if (Number.isNaN(ts)) return "—";
 	const delta = Date.now() - ts;
 	if (delta < 60_000) return "刚刚";

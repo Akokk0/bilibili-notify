@@ -18,6 +18,7 @@ import { Picker, TInput } from "../../components/forms";
 import { api } from "../../services/api";
 import { type Connection, newId } from "../../types/domain";
 import { copyToClipboard } from "../../utils/clipboard";
+import { relativeTime } from "../up/helpers";
 
 /**
  * 桥接拓展那一页:接入的增删改 + 每条接入现在什么样。
@@ -425,7 +426,10 @@ function LinkCard({
 	const kindLabel = BRIDGE_KINDS.find((k) => k.value === config.bridgeKind)?.label;
 
 	return (
-		<div className="flex flex-col gap-2 rounded-bn-card border border-bn-border p-3">
+		<div
+			data-link-card={connection.id}
+			className="flex flex-col gap-2 rounded-bn-card border border-bn-border p-3"
+		>
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<LinkMark kind={config.bridgeKind} />
 				<span className="flex items-center gap-1.5 text-bn-sm text-bn-text-primary">
@@ -438,7 +442,14 @@ function LinkCard({
 				<span className="text-bn-xs text-bn-text-tertiary">{connected ? "已连接" : "未连接"}</span>
 				{connected ? (
 					<span className="text-bn-xs text-bn-text-tertiary">
-						{[session?.kind, session?.name, session?.version ? `v${session.version}` : undefined]
+						{[
+							session?.kind,
+							session?.name,
+							session?.version ? `v${session.version}` : undefined,
+							// 🔴 桥一直在报这一格,面板此前收下就扔。「刚刚连上」与「连了三天」
+							// 说的是两件事:前者意味着它刚断过。
+							session?.connectedAt ? `${relativeTime(session.connectedAt)}连上` : undefined,
+						]
 							.filter(Boolean)
 							.join(" · ")}
 					</span>
