@@ -1,4 +1,8 @@
-import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionBotsResponse,
+	QQDiscoveredEntry,
+	TestResponse,
+} from "@bilibili-notify/contract";
 // 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
 import {
 	addressNounFor,
@@ -10,7 +14,9 @@ import {
 	Btn,
 	EmptyNote,
 	ErrorNote,
+	HintNote,
 	Icon,
+	LoadingBlock,
 	ModalShell,
 	PlatformIcon,
 	SectionNav,
@@ -598,8 +604,15 @@ function TargetEditorModal({
 }: TargetEditorProps) {
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
-	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
-	const tint = platformTint(value.platform);
+	const connection = connections.find((a) => a.id === value.connectionId);
+	// 拓展连接上的目标要绑到某个 bot 上 —— 没挑 bot 的目标发出去也发不到任何地方。
+	const needsBot = connection?.kind === "extension" && value.kind === "session";
+	const botMissing = needsBot && !(value.botId && value.platform);
+	const valid = value.name.trim().length > 0 && Boolean(value.connectionId) && !botMissing;
+	const invalidHint = botMissing ? "先挑一个 bot" : undefined;
+	const tint = platformTint(
+		value.platform || (connection ? connectionDispatchKey(connection) : ""),
+	);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleConnections = connections.filter((a) => !isWebhookConnection(a));
 	return (
@@ -665,6 +678,15 @@ function TargetEditorModal({
 					)}
 				</SectionBox>
 
+				{needsBot && connection?.kind === "extension" ? (
+					<ExtensionBotSection
+						connection={connection}
+						value={value}
+						onChange={onChange}
+						accent={tint}
+					/>
+				) : null}
+
 				<SectionBox title="基本" subtitle="目标的会话级配置" accent={tint}>
 					<Field label="显示名称" code="target.name" required>
 						<TInput
@@ -714,15 +736,114 @@ function TargetEditorModal({
 
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 
-			<div className="mt-4 flex justify-end gap-2">
+			<div className="mt-4 flex items-center justify-end gap-2">
+				{invalidHint ? (
+					<span className="mr-auto text-bn-xs text-bn-text-tertiary">{invalidHint}</span>
+				) : null}
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
 					取消
 				</Btn>
-				<Btn variant="primary" onClick={onSave} disabled={saving || !valid}>
+				<Btn variant="primary" onClick={onSave} disabled={saving || !valid} title={invalidHint}>
 					{saving ? "保存中…" : "保存"}
 				</Btn>
 			</div>
 		</ModalShell>
+	);
+}
+
+/**
+ * 拓展连接上「绑哪个 bot」那一节。
+ *
+ * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经 `/api/ext/:id/bots/:connectionId`
+ * 交上来;这里**不认得任何具体拓展**,列什么就画什么。挑中的 bot 把 `botId` 与它的
+ * `platform` 一起落进目标 —— 目标的平台在这一支就是这么来的。
+ *
+ * 三种「没得挑」要分开说:问不到(拓展没跑起来)、名单空(桥没连上)、还没挑。
+ */
+function ExtensionBotSection({
+	connection,
+	value,
+	onChange,
+	accent,
+}: {
+	connection: Extract<Connection, { kind: "extension" }>;
+	value: PushTarget;
+	onChange: (next: PushTarget) => void;
+	accent: string;
+}) {
+	const platformTint = usePlatformTint();
+	const bots = useQuery({
+		queryKey: ["extension-bots", connection.extensionId, connection.id],
+		queryFn: () =>
+			api.get<ExtensionBotsResponse>(`/api/ext/${connection.extensionId}/bots/${connection.id}`),
+		retry: false,
+	});
+	const list = bots.data?.bots ?? [];
+	return (
+		<SectionBox
+			title="绑哪个 bot"
+			subtitle="这条连接后面可能挂着好几个,目标的平台跟着它走"
+			accent={accent}
+		>
+			{bots.isPending ? (
+				<LoadingBlock variant="inset" label="正在问它有哪些 bot" />
+			) : bots.isError ? (
+				<HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>
+			) : list.length === 0 ? (
+				<EmptyNote size="sm">现在一个 bot 都没有 —— 桥连上来、报了名单,这里才有得挑。</EmptyNote>
+			) : (
+				<div className="space-y-1.5">
+					{list.map((bot) => {
+						const active = value.kind === "session" && value.botId === bot.botId;
+						const botTint = platformTint(bot.platform);
+						return (
+							<button
+								key={bot.botId}
+								type="button"
+								onClick={() => {
+									if (value.kind !== "session") return;
+									// 换 bot 多半换了平台,原来那个地址不再有意义 —— 清掉;scope 不在新平台
+									// 的可选档里也退回群。
+									const scopes = scopesFor(bot.platform).map((s) => s.value);
+									onChange({
+										...value,
+										botId: bot.botId,
+										platform: bot.platform,
+										scope: scopes.includes(value.scope) ? value.scope : "group",
+										address: active ? value.address : "",
+										parentAddress: active ? value.parentAddress : undefined,
+									});
+								}}
+								data-bn={active ? "option option-active" : "option"}
+								className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
+									active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
+								}`}
+								style={{ "--bn-tint": botTint } as CSSProperties}
+							>
+								{bot.icon ? (
+									<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
+								) : (
+									<PlatformIcon platform={bot.platform} size={16} />
+								)}
+								<div className="min-w-0 flex-1">
+									<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
+										{bot.name ?? bot.botId}
+									</div>
+									<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
+										{[bot.platform, bot.selfId].filter(Boolean).join(" · ")}
+									</div>
+								</div>
+								{active ? (
+									<span className="text-bn-xs font-bold" style={{ color: botTint }}>
+										已选
+									</span>
+								) : null}
+							</button>
+						);
+					})}
+				</div>
+			)}
+		</SectionBox>
 	);
 }
 

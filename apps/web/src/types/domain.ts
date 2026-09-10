@@ -290,10 +290,10 @@ export function makeEmptyTarget(connection: Connection, name: string): PushTarge
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
 	if (connection.kind !== "direct") {
 		// 拓展提供的连接上**没有平台**那一格 —— 它后面挂着哪个平台是运行时知识(桥是握手时
-		// 报的)。而目标的 `platform` 是必填非空,这个工厂手上没有可填的东西。眼下面板还建
-		// 不出拓展连接,所以这条路不可达;拓展页落地时这里换成「按拓展交上来的名单造」,
-		// 别在这儿编一个平台名。
-		throw new Error("makeEmptyTarget:拓展连接的目标要由拓展页按它自己的名单创建");
+		// 报的)。目标的平台跟着主人在弹窗里挑的那个 bot 走(`/api/ext/:id/bots/:connectionId`),
+		// 所以这里先留空:**空平台的目标存不了**(弹窗按它灰掉保存钮),别在这儿编一个平台名。
+		// 曾经在这里 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
+		return { ...base, kind: "session", platform: "", scope: "group", address: "" };
 	}
 	if (connection.platform === "onebot") {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
