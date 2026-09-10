@@ -126,17 +126,24 @@ describe("拓展页", () => {
 	 * 🔴 **开箱就是这一屏** —— 本体一个拓展都不带,新装的 BN 打开这一页是空的。所以它要
 	 * 把「怎么装」说完,而不是只写一句「还没有装任何拓展」。
 	 */
-	it("一个拓展都没装时,把两条来路说完", async () => {
-		renderPage({ extensions: [] });
+	it("一个拓展都没装时,把两条来路说完 —— 而且两条都当场能走", async () => {
+		const { container } = renderPage({ extensions: [] });
 		expect(await screen.findByText(/还没有装任何拓展/)).toBeTruthy();
-		// 面板安装那条路还没建 —— **明说**「还没做」,不是藏起来让人以为按钮在别处。
-		expect(screen.getByText("还没做")).toBeTruthy();
+		// 🔴 开箱这一屏就得能装:传一个包上来那条**在这一页上**,不是一句「去别处」。
+		expect(container.querySelector('input[type="file"]')).toBeTruthy();
 		expect(screen.getByText("现在能用")).toBeTruthy();
 		expect(screen.getByText(/<dataDir>\/extensions\//)).toBeTruthy();
 		// 开发版走的还是第②条,只是那几下由 devtools 代劳 —— 不说的话下一个人会去翻
 		// 那个已经不存在的「源码根」。
 		expect(screen.getByText(/devtools/)).toBeTruthy();
 		expect(screen.getByText(/重载/)).toBeTruthy();
+	});
+
+	/** 「还能再装一个」那一格现在是真能装的:列表页上也有那个上传口。 */
+	it("列表页上也摆着上传口", async () => {
+		const { container } = renderPage();
+		await screen.findByText("机器人框架桥接");
+		expect(container.querySelector('input[type="file"]')).toBeTruthy();
 	});
 
 	/**

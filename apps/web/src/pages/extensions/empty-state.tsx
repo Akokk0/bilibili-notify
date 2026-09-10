@@ -1,4 +1,5 @@
 import { GlassPanel, HintNote, Icon, Pill } from "@bilibili-notify/ui";
+import { ExtensionInstallSlot } from "./install-slot";
 
 /**
  * 拓展页的**开箱那一屏** —— 一个拓展都没装时它就是整页。
@@ -7,8 +8,8 @@ import { GlassPanel, HintNote, Icon, Pill } from "@bilibili-notify/ui";
  * 这一页必然是空的**:这一屏不是「空态提示」,它是这台机器上唯一一份「拓展怎么来」的说明。
  * 只写一句「还没有装任何拓展」等于让主人去翻文档。
  *
- * 两条来路都写,包括**还没建好的那条**:藏起来的话主人会以为按钮在别的页面,来回找;
- * 明说「还没做」他就知道该走下面那条。
+ * 两条来路都写,而且**都能走通**:从这一页传一个包上来(装完当场就跑),或者自己把目录
+ * 放进 `<dataDir>/extensions/`(服务器上更顺手,代价是要重启一次)。
  */
 export function ExtensionsEmpty() {
 	return (
@@ -20,26 +21,23 @@ export function ExtensionsEmpty() {
 		>
 			<div className="flex flex-col gap-4">
 				<div className="grid gap-4 md:grid-cols-2">
-					{/* 来路一:面板安装 —— 签名镜像那条链还没建,如实说。 */}
-					<div className="flex flex-col gap-2 rounded-bn-card border border-dashed border-bn-inactive/50 p-4 opacity-75">
+					{/* 来路一:就在这一页传上来。新装的是热的 —— 装完当场跑起来,不用重启。 */}
+					<div className="flex flex-col gap-2.5 rounded-bn-card border border-bn-border bg-bn-surface p-4">
 						<div className="flex items-center gap-2">
-							<span className="text-bn-sm font-bold text-bn-text-secondary">① 在面板里装</span>
-							<Pill subtle color="var(--color-bn-warning)">
-								还没做
+							<span className="text-bn-sm font-bold text-bn-text-primary">① 传一个包上来</span>
+							<Pill subtle color="var(--color-bn-success)">
+								现在能用
 							</Pill>
 						</div>
-						<p className="text-bn-xs leading-relaxed text-bn-text-tertiary">
-							从我们签过名的镜像下载、验签、原子落盘。这条路要先建完一整套分发流水线,排在后面 ——
-							在那之前用右边那条。
-						</p>
+						<ExtensionInstallSlot />
 					</div>
 
 					{/* 来路二:手放 —— 今天唯一能走通的。 */}
 					<div className="flex flex-col gap-2.5 rounded-bn-card border border-bn-border bg-bn-surface p-4">
 						<div className="flex items-center gap-2">
 							<span className="text-bn-sm font-bold text-bn-text-primary">② 自己放进去</span>
-							<Pill subtle color="var(--color-bn-success)">
-								现在能用
+							<Pill subtle color="var(--color-bn-text-tertiary)">
+								服务器上更顺手
 							</Pill>
 						</div>
 						<ol className="ml-4 list-decimal text-bn-xs leading-loose text-bn-text-secondary">
@@ -54,6 +52,7 @@ export function ExtensionsEmpty() {
 							<li>
 								重启 BN 一次 —— 它就出现在这一页,
 								<strong className="text-bn-text-primary">默认是关着的</strong>
+								(从①传上来的不用重启,当场就在)
 							</li>
 						</ol>
 						<p className="border-t border-dashed border-bn-border pt-2 text-bn-xs leading-relaxed text-bn-text-tertiary">

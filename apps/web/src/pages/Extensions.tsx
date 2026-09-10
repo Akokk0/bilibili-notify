@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { ExtensionsEmpty } from "./extensions/empty-state";
+import { ExtensionInstallSlot } from "./extensions/install-slot";
 import {
 	ExtensionIcon,
 	ExtensionWhereLine,
@@ -223,18 +224,9 @@ export default function Extensions() {
 					{/*
 					 * 「还能再装一个」。**它不属于任何一口** —— 装这件事跟拓展开哪一口无关,
 					 * 所以摆在分组之外。
-					 *
-					 * 刻意**不是** `AddCard`:那是一颗按钮,而面板安装那条路还没建,按下去
-					 * 没有任何事发生。虚线框说的是同一句话,又不假装自己能点。
 					 */}
 					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-						<EmptyNote className="flex flex-col justify-center gap-1">
-							<span className="text-bn-sm font-bold text-bn-text-secondary">装一个拓展</span>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								把包放进 <span className="font-mono">&lt;dataDir&gt;/extensions/</span>,
-								重启一次就看得见
-							</span>
-						</EmptyNote>
+						<ExtensionInstallSlot />
 					</div>
 				</>
 			)}
