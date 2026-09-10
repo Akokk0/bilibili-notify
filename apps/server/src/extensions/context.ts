@@ -4,6 +4,7 @@ import type {
 	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionDescriptor,
+	ExtensionSettings,
 } from "@bilibili-notify/extension";
 import {
 	type Connection,
@@ -81,6 +82,10 @@ export interface CreateExtensionContextOptions {
 	connections: () => readonly Connection[];
 	/** 订阅「连接配置动过了」。⛔ 拿不到 bus —— 宿主替它订,只把结果转给它。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/** 它自己那份设置(`globals.extensions.<id>.settings`),**现读**、原样。 */
+	settings: () => unknown;
+	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
+	onSettingsChanged: (fn: () => void) => Disposable;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -170,6 +175,31 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			);
 	}
 
+	/**
+	 * 设置的解析结果按**原始值的身份**缓存:globals 每落一次盘就是一个新对象,同一个对象
+	 * 再问一次不必再解一遍 —— 更要紧的是坏形状那一行**只记一次**,握手一次问一次不该刷屏。
+	 */
+	const settingsCache = new WeakMap<object, Map<ZodType, unknown>>();
+	function readSettings<T>(schema: ZodType<T>): T | undefined {
+		const raw = opts.settings();
+		if (raw === undefined || raw === null) return undefined;
+		const cacheable = typeof raw === "object";
+		const bucket = cacheable ? settingsCache.get(raw as object) : undefined;
+		if (bucket?.has(schema)) return bucket.get(schema) as T | undefined;
+		const parsed = schema.safeParse(raw);
+		if (!parsed.success) logger.warn(`设置的形状不对,按没有算:${parsed.error.message}`);
+		const value = parsed.success ? parsed.data : undefined;
+		if (cacheable) {
+			const map = bucket ?? new Map<ZodType, unknown>();
+			map.set(schema, value);
+			settingsCache.set(raw as object, map);
+		}
+		return value;
+	}
+
+	/** 上一次看见的设置(序列化),用来判「这次 globals 落盘动的是不是我这一格」。 */
+	let lastSettingsSeen = JSON.stringify(opts.settings() ?? null);
+
 	function feed(route: "private" | "group", meta: InboundMeta, deliver: () => void): void {
 		if (!owns(meta.connectionId)) {
 			// 冒充别人的连接 —— 丢掉。主人身份比对走「平台 + 地址 + bot」三坐标,放过去
@@ -242,6 +272,22 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return;
 			}
 			statusOf = fn;
+		},
+		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
+			return {
+				get: () => readSettings(schema),
+				onChange: (fn: () => void) => {
+					if (disposed) return refuse("settings.onChange");
+					return track(
+						opts.onSettingsChanged(() => {
+							const now = JSON.stringify(opts.settings() ?? null);
+							if (now === lastSettingsSeen) return;
+							lastSettingsSeen = now;
+							fn();
+						}),
+					);
+				},
+			};
 		},
 		onDispose(fn) {
 			if (disposed) {

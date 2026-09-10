@@ -51,3 +51,20 @@ describe("globals.extensions", () => {
 		expect(withExtensions({ "demo-ext": {} }).extensions["demo-ext"]?.enabled).toBe(false);
 	});
 });
+
+describe("globals.extensions.<id>.settings", () => {
+	/**
+	 * 拓展自己的持久设置(桥的接入名单住这儿)。**宿主不认识它的形状**:归拓展自己那份
+	 * zod —— 所以这里只能是原样存、原样取,多一层「清洗」就是核心在猜拓展的形状。
+	 */
+	it("原样存、原样取 —— 宿主不认识形状,也不替它清洗", () => {
+		const settings = { links: [{ id: "a", name: "家里那台", token: "t0ken", enabled: true }] };
+		const parsed = withExtensions({ bridge: { enabled: true, settings } });
+		expect(parsed.extensions.bridge?.settings).toEqual(settings);
+	});
+
+	it("没设过就是没有 —— 不补一个空对象,空对象在拓展眼里可能是「形状不对」", () => {
+		const parsed = withExtensions({ bridge: { enabled: true } });
+		expect(parsed.extensions.bridge?.settings).toBeUndefined();
+	});
+});

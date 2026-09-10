@@ -189,6 +189,26 @@ export interface ExtensionConnectionView<TConfig> {
 	config: TConfig;
 }
 
+/**
+ * 拓展自己的持久设置 —— 主人在面板上给**这个拓展**填的那些(桥的接入名单就住这儿),
+ * 落盘在 `globals.extensions.<id>.settings`,**形状归拓展自己那份 zod**,宿主只保证存得住。
+ *
+ * 与连接是两回事:连接是「一个 bot」,是宿主认识、推送目标能挂上去的东西;设置是拓展
+ * 为了拿到那些 bot 而需要主人填的东西(token、对家的名字……),宿主一格都不认识。
+ *
+ * ⛔ **没有写口** —— 配置的写路径在这仓里只有面板那一条(决策 30 同一条纪律)。拓展要
+ * 自己记东西的那天(订阅源的游标)再开,按同一条纪律等真实用例。
+ */
+export interface ExtensionSettings<T> {
+	/**
+	 * **现读**,已经过交进来的那份 zod。没设过、或形状不对(宿主记一行)都是 `undefined`
+	 * —— 两种在拓展眼里都是「按没有算」。
+	 */
+	get(): T | undefined;
+	/** 内容**真的变了**才叫(globals 别处动一下不算)。卸载时自动摘掉。 */
+	onChange(fn: () => void): Disposable;
+}
+
 /** 注册完一个推送源之后拿到的把手。 */
 export interface PushSourceHandle<TConfig> {
 	/**
@@ -267,6 +287,11 @@ export interface ExtensionContext {
 	 * 形状第一版不约束:面板那一页还没写,而抽象要两个例子。**现取**,不缓存。
 	 */
 	publishStatus(fn: () => unknown): void;
+	/**
+	 * 自己的持久设置(见 {@link ExtensionSettings})。交一份 zod 进来,拿回一个现读的把手。
+	 * 可以叫多次,每次都是同一份数据的一个视图。
+	 */
+	settings<T>(schema: ZodType<T>): ExtensionSettings<T>;
 	/** 卸载时要跑的收摊钩子。后注册的先跑。 */
 	onDispose(fn: () => void | Promise<void>): void;
 }

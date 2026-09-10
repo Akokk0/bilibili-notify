@@ -81,6 +81,8 @@ function hostStubs() {
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		settings: () => undefined,
+		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
 	};

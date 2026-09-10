@@ -790,6 +790,12 @@ export async function startStandaloneServer(
 				runtime.bus.on("config-changed", (scope) => {
 					if (scope === "connections") fn();
 				}),
+			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
+			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,
+			onSettingsChanged: (fn) =>
+				runtime.bus.on("config-changed", (scope) => {
+					if (scope === "globals") fn();
+				}),
 			inbound: {
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),

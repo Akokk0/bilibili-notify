@@ -38,7 +38,7 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 	} as Connection;
 }
 
-function harness(opts: { connections?: Connection[] } = {}) {
+function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) {
 	const lines: string[] = [];
 	const logger: Logger = {
 		info: (m) => lines.push(`info ${m}`),
@@ -54,7 +54,9 @@ function harness(opts: { connections?: Connection[] } = {}) {
 	} as unknown as ServiceContext;
 
 	let connections = opts.connections ?? [connection()];
+	let settings: unknown = opts.settings;
 	const listeners = new Set<() => void>();
+	const settingsListeners = new Set<() => void>();
 	const inboundSeen: Array<{ route: "private" | "group"; connectionId: string }> = [];
 	const adapters = createAdapterRegistry();
 
@@ -67,6 +69,11 @@ function harness(opts: { connections?: Connection[] } = {}) {
 		onConnectionsChanged: (fn): Disposable => {
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
+		},
+		settings: () => settings,
+		onSettingsChanged: (fn): Disposable => {
+			settingsListeners.add(fn);
+			return { dispose: () => settingsListeners.delete(fn) };
 		},
 		upgrades: createExtensionUpgrades(),
 		inbound: {
@@ -86,6 +93,11 @@ function harness(opts: { connections?: Connection[] } = {}) {
 		setConnections(next: Connection[]) {
 			connections = next;
 			for (const fn of [...listeners]) fn();
+		},
+		/** 模拟「globals 落了一次盘」—— 宿主那头是整个 globals 的变更通知,内容变没变由 ctx 自己判。 */
+		setSettings(next: unknown) {
+			settings = next;
+			for (const fn of [...settingsListeners]) fn();
 		},
 	};
 }
@@ -302,6 +314,8 @@ describe("认领 WS upgrade", () => {
 			adapters: createAdapterRegistry(),
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
+			settings: () => undefined,
+			onSettingsChanged: () => ({ dispose() {} }),
 			inbound: {},
 			upgrades,
 		});
@@ -318,5 +332,49 @@ describe("认领 WS upgrade", () => {
 		await runtime.dispose();
 		fire();
 		expect(seen).toEqual(["/x"]);
+	});
+});
+
+describe("读自己的设置", () => {
+	const LINKS = z.object({ links: z.array(z.object({ id: z.string(), token: z.string() })) });
+
+	it("已经过自己那份 zod;没设过就是 undefined,而不是一个空壳", () => {
+		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		expect(h.ctx.settings(LINKS).get()).toEqual({ links: [{ id: "a", token: "t" }] });
+		h.setSettings(undefined);
+		expect(h.ctx.settings(LINKS).get()).toBeUndefined();
+	});
+
+	it("形状不对 → undefined 并留一行;同一份坏设置**只记一次**,握手一次问一次不该刷屏", () => {
+		const h = harness({ settings: { links: "not-a-list" } });
+		const settings = h.ctx.settings(LINKS);
+		expect(settings.get()).toBeUndefined();
+		expect(settings.get()).toBeUndefined();
+		expect(h.lines.filter((l) => l.includes("设置"))).toHaveLength(1);
+	});
+
+	it("是**现读**:面板改了下一次问就是新的", () => {
+		const h = harness({ settings: { links: [] } });
+		const settings = h.ctx.settings(LINKS);
+		expect(settings.get()?.links).toHaveLength(0);
+		h.setSettings({ links: [{ id: "a", token: "t" }] });
+		expect(settings.get()?.links).toHaveLength(1);
+	});
+
+	it("变更通知只在**内容真的变了**时叫 —— globals 别处动一下不该踢一遍所有桥;卸载后不再叫", async () => {
+		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		let calls = 0;
+		h.ctx.settings(LINKS).onChange(() => {
+			calls++;
+		});
+		// 同样的内容再落一次盘(别的全局项变了)→ 不叫
+		h.setSettings({ links: [{ id: "a", token: "t" }] });
+		expect(calls).toBe(0);
+		h.setSettings({ links: [{ id: "a", token: "t2" }] });
+		expect(calls).toBe(1);
+
+		await h.runtime.dispose();
+		h.setSettings({ links: [] });
+		expect(calls).toBe(1);
 	});
 });

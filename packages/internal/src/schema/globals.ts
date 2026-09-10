@@ -210,10 +210,16 @@ export const DEFAULT_UPDATE_SETTINGS: UpdateSettings = {
 };
 
 /**
- * 一个拓展模块的持久状态。今天只有「开没开」——模块本身是**编进产物**的,不存在装不装。
+ * 宿主记的一个拓展的持久状态:主人按的开关,加上拓展自己的那份设置。
  */
 export const ExtensionStateSchema = z.object({
 	enabled: z.boolean().default(false),
+	/**
+	 * 这个拓展自己的持久设置(桥的接入名单住这儿)。**宿主不认识它的形状** —— 归拓展自己
+	 * 那份 zod(经 `ctx.settings(schema)` 现读),这里只保证原样存、原样取。写路径仍只有
+	 * 面板那一条(`PATCH /api/globals`)。
+	 */
+	settings: z.unknown().optional(),
 });
 export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
 

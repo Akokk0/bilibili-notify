@@ -142,6 +142,10 @@ export interface LoadExtensionsOptions {
 	connections: () => readonly Connection[];
 	/** 订阅「连接配置动过了」。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/** 某个拓展自己那份设置(`globals.extensions.<id>.settings`),现读、原样。 */
+	settings: (id: string) => unknown;
+	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
+	onSettingsChanged: (fn: () => void) => Disposable;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -237,6 +241,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			adapters: opts.adapters,
 			connections: opts.connections,
 			onConnectionsChanged: opts.onConnectionsChanged,
+			settings: () => opts.settings(dir.id),
+			onSettingsChanged: opts.onSettingsChanged,
 			inbound: opts.inbound,
 			upgrades: opts.upgrades,
 			hostVersion: opts.hostVersion,

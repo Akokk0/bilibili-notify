@@ -79,6 +79,8 @@ function coreStubs() {
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		settings: () => undefined,
+		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
 	};
@@ -251,6 +253,8 @@ describe("拓展声明的密钥字段", () => {
 			adapters: registry,
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
+			settings: () => undefined,
+			onSettingsChanged: () => ({ dispose() {} }),
 			inbound: {},
 			isEnabled: () => true,
 			maxFailures: 3,
