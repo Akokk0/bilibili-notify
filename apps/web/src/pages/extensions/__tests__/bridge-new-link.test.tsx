@@ -1,0 +1,102 @@
+// @vitest-environment jsdom
+/**
+ * 新建一条桥接入。
+ *
+ * 🔴 这一步的产出**不是「面板上多了一张卡」**,而是主人手上多了**要填进插件的两样东西**:
+ * BN 地址与 token。此前它们分居两处 —— 地址在页顶、token 建完只剩掩码 —— 而这两样是
+ * 一对,少一样连不上。所以新建这一刻要把它们摆在一起、都能复制。
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("../../../services/api", () => ({
+	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+	ApiError: class extends Error {},
+}));
+
+import { api } from "../../../services/api";
+import { BridgeConnections } from "../bridge-panel";
+
+function renderPanel() {
+	vi.mocked(api.get).mockImplementation(async (path: string) => {
+		if (path === "/api/connections") return [];
+		throw new Error("拓展没跑起来");
+	});
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<QueryClientProvider client={qc}>
+			<BridgeConnections extensionId="bridge" />
+		</QueryClientProvider>,
+	);
+}
+
+async function openDialog() {
+	renderPanel();
+	await userEvent.click(await screen.findByRole("button", { name: /新建.*接入|添加接入/ }));
+	return screen.findByRole("dialog");
+}
+
+/** 弹窗里那把明文 token —— 32 位十六进制。 */
+function shownToken(dialog: HTMLElement): string {
+	const hit = [...dialog.querySelectorAll("*")]
+		.map((el) => el.textContent ?? "")
+		.find((text) => /^[0-9a-f]{32}$/.test(text.trim()));
+	if (!hit) throw new Error("弹窗里没有明文 token");
+	return hit.trim();
+}
+
+beforeEach(() => {
+	vi.mocked(api.post).mockResolvedValue({});
+});
+
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
+});
+
+describe("新建接入", () => {
+	it("token 与 BN 地址摆在一起,两样都能复制 —— 它们是一对", async () => {
+		const dialog = await openDialog();
+		expect(shownToken(dialog)).toMatch(/^[0-9a-f]{32}$/);
+		expect(dialog.textContent).toMatch(/ws:\/\//);
+		// 页顶那块也有一颗复制地址 —— 这里问的是**弹窗里**两样是否成对
+		const inDialog = within(dialog);
+		expect(inDialog.getByRole("button", { name: /复制.*token/ })).toBeTruthy();
+		expect(inDialog.getByRole("button", { name: /复制 BN 地址/ })).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 **显示一把、存下另一把**是这类界面的经典错法,而且症状极难查:主人照着屏幕填进
+	 * 插件,插件收到 401,而面板上一切正常。
+	 */
+	it("存下去的就是屏幕上那一把,不是另生成的", async () => {
+		const dialog = await openDialog();
+		const shown = shownToken(dialog);
+		await userEvent.click(screen.getByRole("button", { name: "创建" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		const [, body] = vi.mocked(api.post).mock.calls[0] as [string, { config: { token: string } }];
+		expect(body.config.token).toBe(shown);
+	});
+
+	it("在弹窗里换一把,存下去的跟着换", async () => {
+		const dialog = await openDialog();
+		const first = shownToken(dialog);
+		await userEvent.click(screen.getByRole("button", { name: /换一把/ }));
+		const second = shownToken(dialog);
+		expect(second).not.toBe(first);
+		await userEvent.click(screen.getByRole("button", { name: "创建" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		const [, body] = vi.mocked(api.post).mock.calls[0] as [string, { config: { token: string } }];
+		expect(body.config.token).toBe(second);
+	});
+
+	it("取消什么都不发", async () => {
+		await openDialog();
+		await userEvent.click(screen.getByRole("button", { name: "取消" }));
+		expect(api.post).not.toHaveBeenCalled();
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+});

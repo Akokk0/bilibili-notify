@@ -120,9 +120,9 @@ describe("桥接接入的增删改", () => {
 	 */
 	it("建一条接入:token 现生成,128 位随机", async () => {
 		renderDetail();
-		fireEvent.click(await screen.findByText("添加接入"));
+		fireEvent.click(await screen.findByText("新建接入"));
 		fireEvent.change(screen.getByLabelText("接入名字"), { target: { value: "公司那台" } });
-		fireEvent.click(screen.getByText("建好了"));
+		fireEvent.click(screen.getByText("创建"));
 
 		await waitFor(() => expect(apiPostMock).toHaveBeenCalled());
 		const [url, body] = apiPostMock.mock.calls[0] as [string, Record<string, unknown>];

@@ -7,6 +7,7 @@ import {
 	HintNote,
 	Icon,
 	IconButton,
+	ModalShell,
 	Pill,
 	PlatformIcon,
 	StatusDot,
@@ -525,35 +526,109 @@ function LinkCard({
 	);
 }
 
-function AddLinkForm({
+/**
+ * 新建一条接入。
+ *
+ * 🔴 **这一步真正的产出是「要填进插件的那两样」** —— BN 地址与 token,少一样连不上。
+ * 所以它们在这儿摆在一起、各配一颗复制钮:此前地址在页顶、token 建完只剩掩码,主人得
+ * 在两个地方来回找。
+ *
+ * token **在这儿就生成好**,而不是提交那一刻现生成:屏幕上显示的与真正存下去的必须是
+ * 同一把 —— 那类「显示一把、存另一把」的错,症状是插件收到 401 而面板一切正常。
+ *
+ * ⚠️ 设计稿 V1 在种类那两格里还写了「装 koishi-plugin-… / astrbot_plugin_…」。
+ * **这两个包名今天都不成立**(koishi 那份没发布、AstrBot 那份一行没写),照抄等于教主人
+ * 去装一个不存在的东西,所以只留种类本身。
+ */
+function AddLinkDialog({
+	address,
 	onCancel,
 	onCreate,
 }: {
+	address: string;
 	onCancel: () => void;
-	onCreate: (draft: { name: string; bridgeKind: string }) => void;
+	onCreate: (draft: { name: string; bridgeKind: string; token: string }) => void;
 }) {
 	const [name, setName] = useState("");
 	const [bridgeKind, setBridgeKind] = useState("koishi");
+	const [token, setToken] = useState(newBridgeToken);
 	return (
-		<div className="flex flex-col items-start gap-2 rounded-bn-card border border-bn-border p-3">
-			<TInput
-				ariaLabel="接入名字"
-				value={name}
-				onChange={setName}
-				placeholder="给它起个名字,比如「家里那台 koishi」"
-				full
-			/>
-			<Picker value={bridgeKind} onChange={setBridgeKind} options={BRIDGE_KINDS} />
-			<div className="flex items-center gap-2">
-				{/* 名字空着也让建 —— 先建个壳回头再改,是这仓里一贯的用法。 */}
-				<Btn size="sm" onClick={() => onCreate({ name: name.trim() || "新接入", bridgeKind })}>
-					建好了
-				</Btn>
-				<Btn variant="ghost" size="sm" onClick={onCancel}>
-					取消
-				</Btn>
+		<ModalShell
+			width={520}
+			onCancel={onCancel}
+			title="新建桥接入"
+			description="给这条桥起个名字,选它是哪一种。token 在这儿生成 —— 连同下面那条地址一起填进插件,桥就会自己连过来。"
+		>
+			<div className="flex flex-col gap-4">
+				<div className="flex flex-col gap-1.5">
+					<span className="text-bn-xs font-bold text-bn-text-tertiary">名字</span>
+					<TInput
+						ariaLabel="接入名字"
+						value={name}
+						onChange={setName}
+						placeholder="比如「家里那台 koishi」"
+						full
+					/>
+				</div>
+
+				<div className="flex flex-col gap-1.5">
+					<span className="text-bn-xs font-bold text-bn-text-tertiary">哪一种桥</span>
+					<Picker value={bridgeKind} onChange={setBridgeKind} options={BRIDGE_KINDS} />
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						只影响面板怎么称呼它。两种桥说的是同一套协议,BN 这边的处理完全相同。
+					</span>
+				</div>
+
+				{/*
+				 * 「把这两样填进插件设置」。**成对出现**是这块的全部意义 —— 分开摆的话,
+				 * 主人填完一样就走了。
+				 */}
+				<div className="flex flex-col gap-2 rounded-bn-card border border-dashed border-bn-inactive/50 bg-bn-surface-muted p-3">
+					<span className="text-bn-xs font-bold text-bn-text-secondary">把这两样填进插件设置</span>
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="w-14 shrink-0 text-bn-2xs text-bn-text-tertiary">BN 地址</span>
+						<span className="min-w-0 flex-1 truncate rounded-bn-card bg-bn-field px-2 py-1 font-mono text-bn-xs text-bn-text-primary">
+							{address}
+						</span>
+						<CopyButton label="复制 BN 地址" text={address} />
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="w-14 shrink-0 text-bn-2xs text-bn-text-tertiary">token</span>
+						<span className="min-w-0 flex-1 truncate rounded-bn-card bg-bn-field px-2 py-1 font-mono text-bn-xs text-bn-text-primary">
+							{token}
+						</span>
+						<CopyButton label="复制这条接入的 token" text={token} />
+						<Btn
+							variant="ghost"
+							size="sm"
+							aria-label="换一把 token"
+							onClick={() => setToken(newBridgeToken())}
+						>
+							<Icon.refresh size={13} />
+							换一把
+						</Btn>
+					</div>
+					<span className="text-bn-2xs leading-relaxed text-bn-text-tertiary">
+						token 只在这一刻看得到全文,存下之后面板只显示头尾 —— 忘了就重新生成一把(对面那个
+						插件也要跟着改)。地址要填<strong className="font-bold">桥那台机器访问得到</strong>
+						的那个。
+					</span>
+				</div>
+
+				<div className="flex justify-end gap-2">
+					<Btn variant="outline" size="md" onClick={onCancel}>
+						取消
+					</Btn>
+					{/* 名字空着也让建 —— 先建个壳回头再改,是这仓里一贯的用法。 */}
+					<Btn
+						size="md"
+						onClick={() => onCreate({ name: name.trim() || "新接入", bridgeKind, token })}
+					>
+						创建
+					</Btn>
+				</div>
 			</div>
-		</div>
+		</ModalShell>
 	);
 }
 
@@ -585,14 +660,16 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 	};
 
 	const create = useMutation({
-		mutationFn: (draft: { name: string; bridgeKind: string }) =>
+		// token 由弹窗带过来 —— **屏幕上显示的就是存下去的那一把**。在这儿现生成的话,
+		// 主人照着屏幕填进插件,插件收到的是 401,而面板上一切正常。
+		mutationFn: (draft: { name: string; bridgeKind: string; token: string }) =>
 			api.post("/api/connections", {
 				id: newId(),
 				name: draft.name,
 				enabled: true,
 				kind: "extension",
 				extensionId,
-				config: { token: newBridgeToken(), bridgeKind: draft.bridgeKind },
+				config: { token: draft.token, bridgeKind: draft.bridgeKind },
 			}),
 		onSuccess: () => {
 			setAdding(false);
@@ -675,14 +752,18 @@ export function BridgeConnections({ extensionId }: { extensionId: string }) {
 				/>
 			))}
 
+			<AddButton block onClick={() => setAdding(true)}>
+				<Icon.plus size={13} />
+				新建接入
+			</AddButton>
+
 			{adding ? (
-				<AddLinkForm onCancel={() => setAdding(false)} onCreate={(d) => create.mutate(d)} />
-			) : (
-				<AddButton block onClick={() => setAdding(true)}>
-					<Icon.plus size={13} />
-					添加接入
-				</AddButton>
-			)}
+				<AddLinkDialog
+					address={bnBridgeAddress(extensionId)}
+					onCancel={() => setAdding(false)}
+					onCreate={(draft) => create.mutate(draft)}
+				/>
+			) : null}
 
 			{removing ? (
 				<ConfirmDialog
