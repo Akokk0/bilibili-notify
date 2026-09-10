@@ -1,15 +1,10 @@
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { EmptyNote, GlassBox, LoadingBlock, Pill, StatusDot, Toggle } from "@bilibili-notify/ui";
+import { EmptyNote, GlassBox, LoadingBlock, Pill, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import { BridgeConnections } from "./extensions/bridge-panel";
-import {
-	ExtensionIcon,
-	ExtensionWhereLine,
-	extensionAccent,
-	useExtensionToggle,
-} from "./extensions/shared";
+import { ExtensionIcon, useExtensionToggle } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
@@ -57,14 +52,9 @@ export default function ExtensionDetail() {
 			<GlassBox
 				title={ext.name}
 				subtitle={ext.description}
-				accent={extensionAccent(ext)}
+				accent={meta.accent}
 				icon={<ExtensionIcon svg={ext.icon} />}
-				badge={
-					<span className="flex items-center gap-1.5">
-						<StatusDot kind={meta.dot} />
-						{meta.label}
-					</span>
-				}
+				badge={meta.label}
 				right={
 					<Toggle
 						ariaLabel={ext.name}
@@ -83,7 +73,6 @@ export default function ExtensionDetail() {
 								{provide === "push" ? "推送源" : provide === "subscription" ? "订阅源" : provide}
 							</Pill>
 						))}
-						<ExtensionWhereLine ext={ext} />
 					</div>
 					{id === "bridge" ? <BridgeConnections extensionId={id} enabled={ext.enabled} /> : null}
 				</div>

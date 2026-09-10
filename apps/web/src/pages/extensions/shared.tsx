@@ -1,7 +1,8 @@
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import { Icon } from "@bilibili-notify/ui";
+import { ErrorNote, Icon, WarnNote } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
+import { EXTENSION_STATE_META } from "./state-meta";
 
 /**
  * 列表页与详情页共用的那几件 —— **两页说的是同一个拓展**,抄两份的下场是同一件事
@@ -32,31 +33,19 @@ export function ExtensionIcon({ svg, size = 17 }: { svg?: string; size?: number 
 	);
 }
 
-/** 有图标的一张跟着品牌色走;没有的连方块一起转灰 —— 灰是「关于它我们只知道这么多」。 */
-export function extensionAccent(ext: ExtensionDTO): string {
-	return ext.icon ? "var(--color-bn-pink)" : "var(--color-bn-inactive)";
-}
+/** 一段说明文字(卡片正文 / 提示盒里那种):11px、行距 1.65,设计稿上所有段落都是这一档。 */
+export const PARAGRAPH_CLS = "text-bn-xs leading-[1.65] text-bn-text-secondary text-pretty";
 
 /**
- * 它在盘上的哪儿。
- *
- * 🔴 软链那份**要把落点也印出来**:开发版的拓展是 devtools 链进装载目录的,只印
- * `<dataDir>/extensions/bridge` 的话,主人看不出跑的其实是自己正在改的那份工作树 ——
- * 「我改了怎么没生效」正是这一行要回答的问题。
+ * 「为什么没跑起来」。分红黄两档不是口味:清单坏了 / 加载炸了要主人去动手,而连败自动
+ * 停用与版本不合是「换一版就好」,同一个红盒会让前者被当成后者放着不管。
  */
-export function ExtensionWhereLine({ ext }: { ext: ExtensionDTO }) {
-	return (
-		<div className="flex items-center gap-1.5 text-bn-xs text-bn-text-tertiary">
-			<Icon.folder size={12} />
-			<span className="truncate font-mono">{ext.dir}</span>
-			{ext.linkedTo ? (
-				<>
-					<span className="shrink-0">→</span>
-					<span className="truncate font-mono">{ext.linkedTo}</span>
-				</>
-			) : null}
-		</div>
-	);
+export function ExtensionStateDetail({ ext }: { ext: ExtensionDTO }) {
+	if (!ext.detail) return null;
+	const { severity } = EXTENSION_STATE_META[ext.state];
+	if (severity === "err") return <ErrorNote size="sm">{ext.detail}</ErrorNote>;
+	if (severity === "warn") return <WarnNote size="sm">{ext.detail}</WarnNote>;
+	return null;
 }
 
 /**

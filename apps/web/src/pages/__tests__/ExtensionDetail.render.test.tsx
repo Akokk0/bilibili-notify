@@ -120,10 +120,8 @@ describe("拓展详情页", () => {
 		renderDetail();
 		// 名字有两处:面包屑与头卡 —— 两处都该是它自己的名字。
 		expect(await screen.findAllByText("机器人框架桥接")).toHaveLength(2);
-		expect(screen.getByText("运行中")).toBeTruthy();
+		expect(screen.getByText("已启用")).toBeTruthy();
 		expect(screen.getByText("v1.0.0")).toBeTruthy();
-		// 从哪个根扫出来的 —— 与列表页说同一句话。
-		expect(screen.getByText("/data/extensions/bridge")).toBeTruthy();
 	});
 
 	/**

@@ -107,6 +107,8 @@ export const Icon = {
 			<path d="M5 15V5a2 2 0 0 1 2-2h10" />
 		</>,
 	),
+	/** 「往里走」的那个小尖角 —— 面包屑的分隔、卡片右下「管理 ›」。 */
+	chevronRight: stroke(<path d="m9 18 6-6-6-6" />, 2.5),
 	edit: stroke(<path d="M14 4l6 6L9 21H3v-6L14 4Z" />),
 	trash: stroke(
 		<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m1 0v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6" />,
