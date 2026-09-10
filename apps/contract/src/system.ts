@@ -4,6 +4,9 @@
  * 重启 = 优雅停机 + 退 0,等**外面那位**把它拉起来(与应用更新走的是同一条路)。所以
  * 「能不能重启」问的其实是「外面有没有那位」—— 面板据此决定给不给按钮。给了却没人拉,
  * 用户按下去就是把 BN 关了,而界面上只会显示连不上。
+ *
+ * ⛔ **不做成一颗常驻按钮**:重启是某个动作的后果,只在刚做完需要它的那件事之后就地提示
+ * 一次。所以这份判据**跟着那件事的回话走**,没有只读口。
  */
 
 /** 谁把退出的服务端拉起来 —— 答案决定了按钮出不出,以及旁边那句话怎么写。 */
@@ -24,11 +27,6 @@ export type RestartAbility =
 			 */
 			reason: "source-run" | "unsupervised";
 	  };
-
-/** `GET /api/system` —— 面板画这一节要知道的东西。 */
-export interface SystemInfoResponse {
-	restart: RestartAbility;
-}
 
 /** `POST /api/system/restart` 的回话。**先回话再关自己**,否则用户看到的是网络错误。 */
 export interface RestartResponse {

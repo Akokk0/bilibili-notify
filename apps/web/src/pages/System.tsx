@@ -24,7 +24,6 @@ import {
 } from "../components/forms";
 import { LinkParsingSettings } from "../components/link-parsing-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
-import { RestartSection } from "../components/system/restart-section";
 import { UpdateSection } from "../components/update/update-section";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
@@ -522,8 +521,6 @@ export default function System() {
 			<BackupSection />
 
 			<UpdateSection />
-
-			<RestartSection />
 
 			<OnboardingReopenSection />
 

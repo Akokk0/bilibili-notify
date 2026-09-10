@@ -21,22 +21,6 @@ function boot(ability: RestartAbility, restart = vi.fn(async () => {})) {
 	};
 }
 
-describe("GET /api/system", () => {
-	it("交出判据 —— 面板据它决定按钮出不出、旁边写什么", async () => {
-		const { app } = boot({ can: true, how: "container" });
-		expect(await (await app.request("/")).json()).toEqual({
-			restart: { can: true, how: "container" },
-		});
-	});
-
-	it("拉不起来时把**为什么**也交出去 —— 藏个按钮不解释最像功能坏了", async () => {
-		const { app } = boot({ can: false, reason: "source-run" });
-		expect(await (await app.request("/")).json()).toEqual({
-			restart: { can: false, reason: "source-run" },
-		});
-	});
-});
-
 describe("POST /api/system/restart", () => {
 	it("先回话,再关自己", async () => {
 		const { app, restart } = boot({ can: true, how: "desktop" });

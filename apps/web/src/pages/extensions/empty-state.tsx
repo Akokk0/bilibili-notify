@@ -52,7 +52,7 @@ export function ExtensionsEmpty() {
 								<span className="font-mono">&lt;dataDir&gt;/extensions/&lt;拓展 id&gt;/</span>
 							</li>
 							<li>
-								到系统页按一下「重启一下」(或者自己重启容器)—— 它就出现在这一页,
+								重启 BN 一次 —— 它就出现在这一页,
 								<strong className="text-bn-text-primary">默认是关着的</strong>
 							</li>
 						</ol>

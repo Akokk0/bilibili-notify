@@ -4,13 +4,13 @@
  * 重启本身不在这一层 —— 它就是「优雅停机 + 退 0」,与应用更新完全同一条路(见 index.ts),
  * 把它拉起来的是外面那位(桌面外壳 / 容器的 `restart:` 策略)。这一层只做两件实质的事,
  * 而两件都是「用户会以为功能坏了」的地方:**先回话再关自己**,以及**拉不起来就别关**。
+ *
+ * ⛔ **面板上没有「重启」这颗常驻按钮**(主人 2026-09-10 拍板):重启是**某个动作的后果**,
+ * 只在刚做完一件需要它的事之后就地提示一次。所以这里**不开只读的判据口** —— 要不要给那颗
+ * 按钮,由**做那件事的那个回话**自己带上。
  */
 
-import type {
-	RestartAbility,
-	RestartResponse,
-	SystemInfoResponse,
-} from "@bilibili-notify/contract";
+import type { RestartAbility, RestartResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 
 export interface CreateSystemRouteInput {
@@ -33,8 +33,6 @@ function refusal(ability: Extract<RestartAbility, { can: false }>): string {
 
 export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 	const app = new Hono();
-
-	app.get("/", (c) => c.json({ restart: input.ability } satisfies SystemInfoResponse));
 
 	app.post("/restart", (c) => {
 		// 🔴 按钮藏起来 ≠ 没人发这个请求(旧标签页、curl)。放过去就是把 BN 关了没人拉,
