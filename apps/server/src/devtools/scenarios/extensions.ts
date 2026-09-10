@@ -17,8 +17,9 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
  * 软链而不是拷贝:`vp pack -w` 一改就重打包,链着的那份当场就是新的,再按一下「重载」
  * 就换掉了代码 —— 中间没有「重新拷一遍」这一步。
  *
- * ⚠️ **装 / 卸都要重启一次才生效**:装载器开机扫一遍就定了(决策 10 只把**开关**做成热的)。
- * 已经装着的那些改代码不用重启 —— 那是「重载」。
+ * **装 / 卸当场生效**:链建好(或删掉)之后叫装载器再扫一遍盘(`rescan()`)—— 一个新出现的
+ * id 从来没被 import 过,装它与「拨开关第一次启用」是同一档事实。已经装着的那些**改代码**
+ * 仍要按一下「重载」:换掉已加载的代码是另一回事(决策 39)。
  */
 export interface ExtensionScenariosInput {
 	/** 仓里那个 `extensions/`。devtools 只在源码运行时存在,所以这条路一定在。 */
@@ -26,7 +27,13 @@ export interface ExtensionScenariosInput {
 	/** 唯一那个装载根 —— `<dataDir>/extensions/`。 */
 	installRoot: string;
 	/** 装载器。**现取**:拓展比 devtools 后装起来。 */
-	extensions: () => { reload(id: string): Promise<void> } | undefined;
+	extensions: () =>
+		| {
+				reload(id: string): Promise<void>;
+				/** 再扫一遍装载目录 —— 装 / 卸靠它当场生效。 */
+				rescan(): Promise<void>;
+		  }
+		| undefined;
 }
 
 /** 仓里有哪些拓展 —— 有清单的子目录就算。开机扫一次,面板照它画下拉。 */
@@ -77,7 +84,7 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 			id: "ext.install",
 			group: "ext",
 			title: "装一个仓里的拓展",
-			desc: "把仓里构建好的 dist 链进 <dataDir>/extensions/。要先 vp run -F <包名> build;装完重启一次才看得见。",
+			desc: "把仓里构建好的 dist 链进 <dataDir>/extensions/,当场生效。要先 vp run -F <包名> build。",
 			icon: "download",
 			params: [pick],
 			async run(params) {
@@ -99,14 +106,21 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 					throw new DevParamError(`${at} 已经有一个真目录了(手放的?)—— devtools 不碰它`);
 				}
 				await symlink(dist, at, platform() === "win32" ? "junction" : "dir");
-				return { summary: `已装 ${id} → ${dist};**重启一次**它才出现在拓展页(装载不是热的)` };
+				// 链建完了才叫装载器去看 —— 反过来的话它扫的是装之前那一眼,什么都不会变。
+				const loaded = input.extensions();
+				if (!loaded) {
+					// devtools 比装载器先建起来。这一次它是真要等重启,别说成「已生效」。
+					return { summary: `已装 ${id} → ${dist};装载器还没起来,**重启一次**它才出现在拓展页` };
+				}
+				await loaded.rescan();
+				return { summary: `已装上 ${id} → ${dist};拓展页上当场就有(开关还得自己拨)` };
 			},
 		},
 		{
 			id: "ext.uninstall",
 			group: "ext",
 			title: "卸掉一个装好的拓展",
-			desc: "只删 devtools 自己链进去的那条软链;真目录(手放的包)不碰。",
+			desc: "只删 devtools 自己链进去的那条软链,当场收摊;真目录(手放的包)不碰。",
 			icon: "trash",
 			params: [pick],
 			async run(params) {
@@ -118,7 +132,11 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 					throw new DevParamError(`${at} 是个真目录,不是 devtools 链进去的 —— 要删自己动手`);
 				}
 				await rm(at);
-				return { summary: `已卸 ${id};它要到**重启之后**才从拓展页上消失` };
+				const loaded = input.extensions();
+				// 收摊要走装载器:光删掉软链的话,它注册的定时器与端点还在这个进程里跑着。
+				if (!loaded) return { summary: `已卸 ${id};装载器还没起来,**重启一次**它才消失` };
+				await loaded.rescan();
+				return { summary: `已卸 ${id};它注册的东西当场收摊,拓展页上也没了` };
 			},
 		},
 		{

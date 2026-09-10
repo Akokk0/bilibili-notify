@@ -63,13 +63,15 @@ export interface CreateDevtoolsInput {
 	 *
 	 * 装载器只认 `<dataDir>/extensions/` 一个根,所以「开发时怎么让仓里那份跑起来」
 	 * 从宿主的一条特例变成了这里的一个动作 —— 见 `scenarios/extensions.ts`。
+	 *
+	 * 要的两个把手:`rescan()` 让装 / 卸当场生效,`reload()` 换掉已经跑着那份的代码。
 	 */
 	extensions: {
 		/** 仓里那个 `extensions/`。 */
 		repoDir: string;
 		/** `<dataDir>/extensions/`。 */
 		installRoot: string;
-		loaded: () => { reload(id: string): Promise<void> } | undefined;
+		loaded: () => { reload(id: string): Promise<void>; rescan(): Promise<void> } | undefined;
 	};
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;

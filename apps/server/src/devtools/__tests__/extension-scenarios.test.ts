@@ -11,7 +11,12 @@
 import { lstat, mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { loadExtensions } from "../../extensions/loader.js";
+import { createExtensionMounts } from "../../extensions/mount.js";
+import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import { extensionScenarios } from "../scenarios/extensions.js";
 
 let repoDir: string;
@@ -27,12 +32,58 @@ async function plantRepo(id: string, built: boolean): Promise<void> {
 	}
 }
 
-function scenarios(over: { reload?: (id: string) => Promise<void> } = {}) {
+interface FakeLoader {
+	reload?: (id: string) => Promise<void>;
+	rescan?: () => Promise<void>;
+	/** 装载器还没起来(devtools 比它先建)—— 那几条降级路径靠这个摆出来。 */
+	down?: boolean;
+}
+
+function scenarios(over: FakeLoader = {}) {
+	const loaded = {
+		reload: over.reload ?? (async () => {}),
+		rescan: over.rescan ?? (async () => {}),
+	};
 	return extensionScenarios({
 		repoDir,
 		installRoot,
-		extensions: () => (over.reload ? { reload: over.reload } : undefined),
+		extensions: () => (over.down ? undefined : loaded),
 	});
+}
+
+/** 往仓里那份 `dist` 里补一份**装载器读得懂**的清单 —— 装进去之后它就是拓展包本身。 */
+async function plantManifest(id: string): Promise<void> {
+	await writeFile(
+		join(repoDir, id, "dist", "extension.json"),
+		JSON.stringify({
+			id,
+			name: "桥",
+			description: "测试用",
+			version: "1.0.0",
+			apiVersion: 1,
+			provides: ["push"],
+		}),
+	);
+}
+
+/** 装载器要的那一圈核心零件 —— 这条测试只关心装 / 卸,它们给个能用的空壳就够。 */
+function hostStubs() {
+	const logger: Logger = { info() {}, warn() {}, error() {}, debug() {} };
+	const host: ServiceContext = {
+		logger,
+		setInterval: () => ({ dispose() {} }),
+		setTimeout: () => ({ dispose() {} }),
+		onDispose() {},
+	};
+	return {
+		host,
+		mounts: createExtensionMounts(),
+		adapters: createAdapterRegistry(),
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
+		inbound: {},
+		upgrades: createExtensionUpgrades(),
+	};
 }
 
 function must(id: string, over?: Parameters<typeof scenarios>[0]) {
@@ -62,7 +113,34 @@ describe("装", () => {
 		const at = join(installRoot, "bridge");
 		expect((await lstat(at)).isSymbolicLink()).toBe(true);
 		expect(await readlink(at)).toBe(join(repoDir, "bridge", "dist"));
-		// 装载不是热的 —— 不说这句,主人会以为拓展页刷新一下就有了。
+		expect(out.summary).toContain("bridge");
+	});
+
+	/**
+	 * 🔴 **装完就得能用。** 链建好了却不重扫的话,装载器名单还是开机那一份 —— 症状是
+	 * 「装完了拓展页上没有」,而唯一的出路是重启,那正是这一整片要去掉的东西。
+	 */
+	it("装完当场重扫一遍 —— 不用重启,也别再叫主人去重启", async () => {
+		await plantRepo("bridge", true);
+		let rescanned = 0;
+		const out = await must("ext.install", {
+			rescan: async () => {
+				rescanned++;
+			},
+		}).run({ ext: "bridge" });
+		expect(rescanned).toBe(1);
+		expect(out.summary).toMatch(/已装上/);
+		expect(out.summary).not.toMatch(/重启/);
+	});
+
+	/**
+	 * 降级路径:devtools 比装载器先建起来。链照建,但这一次它确实要等重启 ——
+	 * 说成「已生效」就是骗人,主人会去拓展页上找一个不存在的东西。
+	 */
+	it("装载器还没起来 → 链照建,但把「要重启一次」说明白", async () => {
+		await plantRepo("bridge", true);
+		const out = await must("ext.install", { down: true }).run({ ext: "bridge" });
+		expect((await lstat(join(installRoot, "bridge"))).isSymbolicLink()).toBe(true);
 		expect(out.summary).toMatch(/重启/);
 	});
 
@@ -91,6 +169,19 @@ describe("装", () => {
 });
 
 describe("卸", () => {
+	it("卸完当场重扫一遍 —— 它当场从拓展页上消失", async () => {
+		await plantRepo("bridge", true);
+		let rescanned = 0;
+		const rescan = async () => {
+			rescanned++;
+		};
+		await must("ext.install", { rescan }).run({ ext: "bridge" });
+		rescanned = 0;
+		const out = await must("ext.uninstall", { rescan }).run({ ext: "bridge" });
+		expect(rescanned).toBe(1);
+		expect(out.summary).not.toMatch(/重启/);
+	});
+
 	it("删掉自己链进去的那条,仓里那份一根汗毛都不少", async () => {
 		await plantRepo("bridge", true);
 		await must("ext.install").run({ ext: "bridge" });
@@ -141,7 +232,9 @@ describe("重载", () => {
 
 	it("装载器还没起来 → 说清楚,不是崩一个 500", async () => {
 		await plantRepo("bridge", true);
-		await expect(must("ext.reload").run({ ext: "bridge" })).rejects.toThrow(/还没起来/);
+		await expect(must("ext.reload", { down: true }).run({ ext: "bridge" })).rejects.toThrow(
+			/还没起来/,
+		);
 	});
 });
 
@@ -152,20 +245,36 @@ describe("软链进去的那份,装载器认得", () => {
 	 */
 	it("装完之后 discoverExtensions 扫得到它", async () => {
 		await plantRepo("bridge", true);
-		await writeFile(
-			join(repoDir, "bridge", "dist", "extension.json"),
-			JSON.stringify({
-				id: "bridge",
-				name: "桥",
-				description: "测试用",
-				version: "1.0.0",
-				apiVersion: 1,
-				provides: ["push"],
-			}),
-		);
+		await plantManifest("bridge");
 		await must("ext.install").run({ ext: "bridge" });
 		const { discoverExtensions } = await import("../../extensions/discover.js");
 		const found = await discoverExtensions(installRoot);
 		expect(found.map((r) => [r.id, r.state])).toEqual([["bridge", "ready"]]);
+	});
+
+	/**
+	 * 🔴 **端到端,因为两半各自绿证明不了接上了**:场景老老实实调了 `rescan()`,装载器
+	 * 也认得软链 —— 可只要中间那根线接错(传进去的不是真装载器、或者装完才建的链),
+	 * 症状仍旧是主人报的那一句「装了拓展要重启,可它没重启」。这里用**真装载器**走一遍。
+	 */
+	it("按一下装 → 真装载器当场把它跑起来;按一下卸 → 当场没了", async () => {
+		await plantRepo("bridge", true);
+		await plantManifest("bridge");
+		const loaded = await loadExtensions({
+			root: installRoot,
+			isEnabled: () => true,
+			maxFailures: 3,
+			...hostStubs(),
+		});
+		// 开机那一眼:装载根还是空的 —— 之后的变化只可能来自那两下按钮。
+		expect(loaded.list()).toEqual([]);
+		const rescan = () => loaded.rescan();
+
+		await must("ext.install", { rescan }).run({ ext: "bridge" });
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
+
+		await must("ext.uninstall", { rescan }).run({ ext: "bridge" });
+		expect(loaded.list()).toEqual([]);
+		await loaded.dispose();
 	});
 });
