@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Picker, TInput } from "../../components/forms";
 import { api } from "../../services/api";
 import { type Connection, newId } from "../../types/domain";
+import { copyToClipboard } from "../../utils/clipboard";
 
 /**
  * 桥接拓展那一页:接入的增删改 + 每条接入现在什么样。
@@ -212,27 +213,64 @@ function BotRow({ bot }: { bot: BridgeBotView }) {
 }
 
 /**
- * token 是密钥 —— 屏幕上只留个尾巴,要用时按「复制」。明文摆着的后果是它被随手截进
- * 求助帖里,而拿着它就能连上这台 BN(那条 WS 端点在 dashboard 鉴权之外)。
+ * 「复制」这一颗。**两处共用** —— token 与 BN 地址是插件那头必须原样填进去的一对,
+ * 谁抄错都是「连不上」。
+ *
+ * 🔴 走 `copyToClipboard` 而不是裸 `navigator.clipboard`:BN 常经
+ * `http://<内网 IP>:8787` 打开,那是**非安全上下文**,`navigator.clipboard` 根本不存在 ——
+ * 裸写法在那里按下去静默无事,而这一页恰恰最常从内网 IP 打开。
  */
-function TokenRow({ token }: { token: string }) {
+function CopyButton({ label, text }: { label: string; text: string }) {
 	const [copied, setCopied] = useState(false);
+	return (
+		<Btn
+			variant="outline"
+			size="sm"
+			aria-label={label}
+			onClick={() => {
+				void copyToClipboard(text).then(setCopied);
+			}}
+		>
+			{copied ? "已复制" : "复制"}
+		</Btn>
+	);
+}
+
+/**
+ * token 是密钥 —— 屏幕上只留头尾,要用时按「复制」。明文摆着的后果是它被随手截进
+ * 求助帖里,而拿着它就能连上这台 BN(那条 WS 端点在 dashboard 鉴权之外)。
+ *
+ * **头尾各留四位**,不是只留尾巴:主人配了两条接入时,这一行是唯一能对上「插件里填的
+ * 是哪一把」的东西,只剩四位撞得太容易。
+ *
+ * 「重新生成」跟在同一行:它讲的就是这把 token。摆去卡片标题栏的话,那一栏里
+ * 「停用 / 换钥匙 / 删除」三颗轻重完全不同的钮挨在一起,手一抖就换掉了对面正用着的钥匙。
+ */
+function TokenRow({
+	token,
+	linkName,
+	onRegenerate,
+}: {
+	token: string;
+	linkName: string;
+	onRegenerate: () => void;
+}) {
 	if (!token) return <HintNote tone="danger">这条接入还没有 token,重新生成一把</HintNote>;
 	return (
-		<div className="flex items-center gap-2 text-bn-xs text-bn-text-tertiary">
-			<span className="font-mono">token ····{token.slice(-4)}</span>
+		<div data-token-row className="flex flex-wrap items-center gap-2">
+			<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">token</span>
+			<span className="min-w-0 flex-1 truncate rounded-bn-card bg-bn-surface-muted px-2 py-1 font-mono text-bn-xs text-bn-text-secondary">
+				{`${token.slice(0, 4)}${"•".repeat(Math.max(4, token.length - 8))}${token.slice(-4)}`}
+			</span>
+			<CopyButton label={`复制 ${linkName} 的 token`} text={token} />
 			<Btn
-				variant="ghost"
+				variant="danger-outline"
 				size="sm"
-				onClick={() => {
-					// 非 secure context 里没有 clipboard —— 别炸,按钮维持原样就行。
-					void navigator.clipboard
-						?.writeText(token)
-						.then(() => setCopied(true))
-						.catch(() => setCopied(false));
-				}}
+				aria-label={`重新生成 ${linkName} 的 token`}
+				onClick={onRegenerate}
 			>
-				{copied ? "已复制" : "复制"}
+				<Icon.refresh size={13} />
+				重新生成
 			</Btn>
 		</div>
 	);
@@ -254,7 +292,6 @@ function bnBridgeAddress(extensionId: string): string {
  * 地址块。它与 token 那一行是**一对**:插件那头两样都要填,少一样连不上。
  */
 function BridgeAddress({ extensionId }: { extensionId: string }) {
-	const [copied, setCopied] = useState(false);
 	const address = bnBridgeAddress(extensionId);
 	return (
 		<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-bn-card border border-bn-border p-3">
@@ -262,20 +299,7 @@ function BridgeAddress({ extensionId }: { extensionId: string }) {
 			<span className="rounded-bn-card bg-bn-surface-muted px-2 py-1 font-mono text-bn-sm text-bn-text-primary">
 				{address}
 			</span>
-			<Btn
-				variant="outline"
-				size="sm"
-				aria-label="复制 BN 地址"
-				onClick={() => {
-					// 非 secure context 里没有 clipboard —— 别炸,按钮维持原样就行。
-					void navigator.clipboard
-						?.writeText(address)
-						.then(() => setCopied(true))
-						.catch(() => setCopied(false));
-				}}
-			>
-				{copied ? "已复制" : "复制"}
-			</Btn>
+			<CopyButton label="复制 BN 地址" text={address} />
 			<p className="min-w-64 flex-1 text-bn-xs leading-relaxed text-bn-text-tertiary">
 				这是<strong className="text-bn-text-secondary">桥那台机器</strong>要访问得到的地址 —— BN 在
 				NAS / 容器里时别填 <span className="font-mono">127.0.0.1</span>,那是桥自己。 token
@@ -397,12 +421,6 @@ function LinkCard({
 						onChange={(on) => actions.setEnabled(connection.id, on)}
 					/>
 					<IconButton
-						label={`重新生成 ${connection.name} 的 token`}
-						icon={<Icon.refresh size={13} />}
-						size="sm"
-						onClick={() => actions.regenerate(connection.id)}
-					/>
-					<IconButton
 						label={`删除 ${connection.name}`}
 						icon={<Icon.close size={13} />}
 						size="sm"
@@ -412,7 +430,11 @@ function LinkCard({
 				</span>
 			</div>
 
-			<TokenRow token={config.token} />
+			<TokenRow
+				token={config.token}
+				linkName={connection.name}
+				onRegenerate={() => actions.regenerate(connection.id)}
+			/>
 
 			{connected && bots.length === 0 ? (
 				// 连上了却一个 bot 都没借过来 —— 桥那侧还没登录任何账号,值得单独说一句。
