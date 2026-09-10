@@ -43,6 +43,9 @@ const BARE = {
 	mute: () => undefined,
 	fansPoller: () => undefined,
 	loginFlow: () => undefined,
+	// 仓里那个目录在测试里指向一个不存在的路径 → 拓展那三条场景没有可选项,不注册。
+	// 它们自己的规矩在 `devtools-extensions.test.ts` 里钉。
+	extensions: { repoDir: "/nope/extensions", installRoot: "/nope/data", loaded: () => undefined },
 	sourceRun: true,
 };
 

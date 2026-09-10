@@ -28,6 +28,7 @@ import { busEventScenarios } from "./scenarios/bus-events.js";
 import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
 import { type DynamicEngineLike, dynamicScenarios } from "./scenarios/dynamic.js";
+import { extensionScenarios } from "./scenarios/extensions.js";
 import { heapPressureScenario } from "./scenarios/heap.js";
 import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
@@ -57,6 +58,19 @@ export interface CreateDevtoolsInput {
 	updateService: UpdateService;
 	/** 推送出口的注册表。交回去的是包过截流闸的那份**视图**。 */
 	adapters: AdapterRegistry;
+	/**
+	 * 拓展那三条场景要的两个目录 + 装载器本体(**现取**,拓展比 devtools 后起来)。
+	 *
+	 * 装载器只认 `<dataDir>/extensions/` 一个根,所以「开发时怎么让仓里那份跑起来」
+	 * 从宿主的一条特例变成了这里的一个动作 —— 见 `scenarios/extensions.ts`。
+	 */
+	extensions: {
+		/** 仓里那个 `extensions/`。 */
+		repoDir: string;
+		/** `<dataDir>/extensions/`。 */
+		installRoot: string;
+		loaded: () => { reload(id: string): Promise<void> } | undefined;
+	};
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
 	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
@@ -164,6 +178,11 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			injector: caps,
 			connections: input.connectionConfigs,
 			dialects: input.adapters.list(),
+		}),
+		...extensionScenarios({
+			repoDir: input.extensions.repoDir,
+			installRoot: input.extensions.installRoot,
+			extensions: input.extensions.loaded,
 		}),
 		...timerScenarios({
 			clock,

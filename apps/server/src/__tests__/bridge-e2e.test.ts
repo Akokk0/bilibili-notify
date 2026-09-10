@@ -387,8 +387,19 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		// ③ 拨回来:同一个进程里 activate 又跑一遍,一切照旧。
 		expect((await setBridgeEnabled(true)).status).toBe(200);
+		// 🔴 `PATCH /api/globals` **在热装卸落地之前就回 200**(启用那一路要真 import 一个
+		// 文件)。面板靠 `GET /api/ext` 先 settle 再报状态,这里也走同一条 —— 不等的话
+		// 这一发 upgrade 有时会撞在「端点还没挂回来」的那一瞬,报 404。
+		expect(await bridgeState()).toBe("running");
 		await handshake();
 	});
+
+	/** 现在拓展什么状态 —— 这一口会先把还没落地的开关 settle 掉,是「等它装完」的正路。 */
+	async function bridgeState(): Promise<string | undefined> {
+		const res = await fetch(`${handle?.url}/api/ext`);
+		const body = (await res.json()) as { extensions: Array<{ id: string; state: string }> };
+		return body.extensions.find((e) => e.id === "bridge")?.state;
+	}
 
 	function setBridgeEnabled(enabled: boolean): Promise<Response> {
 		return fetch(`${handle?.url}/api/globals`, {

@@ -14,7 +14,7 @@
 /**
  * 面板左栏的五组。`web` 是浏览器里跑的那半,其余四组都在服务端。
  */
-export type DevScenarioGroup = "event" | "state" | "timer" | "capture" | "web";
+export type DevScenarioGroup = "event" | "state" | "timer" | "capture" | "web" | "ext";
 
 /**
  * 一个参数字段。六种,面板照 `kind` 画控件:

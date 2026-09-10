@@ -1,7 +1,8 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import {
 	chatIdentityOf,
@@ -318,6 +319,13 @@ export async function startStandaloneServer(
 			sourceRun: import.meta.url.endsWith(".ts"),
 			updateService,
 			adapters: adapterRegistry,
+			// 开发版装拓展那条路(见 devtools/scenarios/extensions.ts)。仓里那个目录只在
+			// 源码运行时够得着,而 devtools 本来就只在那种构建里存在 —— 两道门是同一道。
+			extensions: {
+				repoDir: resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions"),
+				installRoot: extensionsRootIn(bootstrap.dataDir),
+				loaded: () => loadedExtensions,
+			},
 			historyStore: runtime.historyStore,
 			api: authSystem.api,
 			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
