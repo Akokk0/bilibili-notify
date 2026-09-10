@@ -7,7 +7,13 @@
  */
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { awaitRestartedServer, leaveRestartMark, takeRestartMark } from "../restart";
+import {
+	awaitRestartedServer,
+	leaveRestartMark,
+	type RestartMark,
+	restartNotice,
+	takeRestartMark,
+} from "../restart";
 import { healthScript, NEW, OLD } from "./health-script";
 
 /** 假时钟:sleep 直接把表往前拨,now 读表。不碰真 timer。 */
@@ -85,6 +91,17 @@ describe("重启记号", () => {
 		leaveRestartMark({ target: "0.9.0", mode: "update" });
 		expect(takeRestartMark()).toEqual({ target: "0.9.0", mode: "update" });
 		expect(takeRestartMark()).toBeNull();
+	});
+
+	/**
+	 * 🔴 系统页「重启一下」按出来的那次**什么都没换**。刷新回来照旧说「已更新到 0.10.1」
+	 * 的话,用户会以为自己刚升过级 —— 而 CHANGELOG 里那一版他早就跑着了。
+	 */
+	it("纯重启回来说的是「已重启」,不是「已更新到」", () => {
+		leaveRestartMark({ target: "0.10.1", mode: "restart" });
+		const mark = takeRestartMark();
+		expect(mark).toEqual({ target: "0.10.1", mode: "restart" });
+		expect(restartNotice(mark as RestartMark).title).toBe("已重启");
 	});
 
 	it("记号被写坏了就当没有,别让一条坏字符串把整个面板炸掉", () => {

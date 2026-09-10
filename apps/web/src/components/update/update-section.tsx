@@ -91,11 +91,14 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	// 按下重启之后的进度住在模块级 store 里(理由见 restart.ts):用户中途离开系统页,
 	// 等待照样进行、换成了照样刷新;回来看到的还是同一份进度。
 	const {
-		view: restart,
+		view,
 		begin: beginRestart,
 		retry: retryRestart,
 		dismiss: dismissRestart,
 	} = useRestartStore();
+	// 「重启一下」那一节按出来的等待归它自己显示 —— 这里只管更新 / 回退带来的那一次,
+	// 否则同一份状态会被两节各画一遍,而且这一节的措辞讲的是「换到哪一版」。
+	const restart = view?.intent.mode === "restart" ? null : view;
 	const statusQuery = useUpdateStatus();
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
@@ -183,7 +186,8 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	}
 
 	const { state } = status;
-	const restarting = restart?.kind === "waiting";
+	// 忙不忙看的是**任何一种**重启:进程都要没了,这一节的按钮全都不该还能按。
+	const restarting = view?.kind === "waiting";
 	const busy = act.isPending || apply.isPending || restarting;
 	// 和服务端 `POST /api/update/apply` 那道门用的是同一个判定,见契约。
 	const canApply = canApplyUpdate(state);

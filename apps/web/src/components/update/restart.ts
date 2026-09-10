@@ -70,7 +70,8 @@ export async function awaitRestartedServer(input: AwaitRestartInput): Promise<Re
  */
 export interface RestartMark {
 	target: string;
-	mode: "update" | "rollback";
+	/** `restart` = 什么都不换、只是重来一次(系统页那一节按的)。 */
+	mode: "update" | "rollback" | "restart";
 }
 
 const RESTART_MARK_KEY = "bn.update.restarted";
@@ -93,7 +94,7 @@ export function takeRestartMark(): RestartMark | null {
 		if (typeof parsed !== "object" || parsed === null) return null;
 		const { target, mode } = parsed as Record<string, unknown>;
 		if (typeof target !== "string") return null;
-		if (mode !== "update" && mode !== "rollback") return null;
+		if (mode !== "update" && mode !== "rollback" && mode !== "restart") return null;
 		return { target, mode };
 	} catch {
 		return null;
@@ -105,6 +106,13 @@ export function takeRestartMark(): RestartMark | null {
  * 重启的结果,不能拿来报喜。
  */
 export function restartNotice(mark: RestartMark): NoticeView {
+	if (mark.mode === "restart") {
+		return {
+			id: `restarted:${mark.target}`,
+			title: "已重启",
+			body: `BN 回来了,跑的还是 ${mark.target} 这一版。`,
+		};
+	}
 	return mark.mode === "rollback"
 		? {
 				id: `restarted:${mark.target}`,
