@@ -44,8 +44,19 @@ const LISTED: ExtensionsResponse = {
 	],
 };
 
-function renderPage(listed: ExtensionsResponse = LISTED) {
-	apiGetMock.mockResolvedValue(listed);
+/** 桥名下两条接入,外加一条与拓展无关的直连 —— 数错了它就会混进来。 */
+const CONNECTIONS = [
+	{ id: "a", name: "家里那台", kind: "extension", extensionId: "bridge", enabled: true },
+	{ id: "b", name: "机房那台", kind: "extension", extensionId: "bridge", enabled: true },
+	{ id: "c", name: "本地 OneBot", kind: "direct", enabled: true },
+	// ⚠️ 别的拓展名下的一条。少了它,「按 extensionId 过滤」这条守卫离了保护也不会坏。
+	{ id: "d", name: "别人家的", kind: "extension", extensionId: "somewhere-else", enabled: true },
+];
+
+function renderPage(listed: ExtensionsResponse = LISTED, connections: unknown = CONNECTIONS) {
+	apiGetMock.mockImplementation(async (url: string) =>
+		url === "/api/connections" ? connections : listed,
+	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
@@ -113,6 +124,28 @@ describe("拓展页", () => {
 	});
 
 	/** 详情页是拓展自己那块面板的唯一去处 —— 卡片上不给入口的话只能手敲地址。 */
+	/**
+	 * 🔴 数的是**这个拓展名下**的接入,而且**只按 `provides` 判**,不按拓展 id ——
+	 * 列表页认得某个具体拓展就是那条硬约束的破口。别的连接(直连的 OneBot)不算数。
+	 */
+	it("开推送源那一口的卡数得出自己名下几条接入", async () => {
+		renderPage();
+		const card = (await screen.findByText("机器人框架桥接")).closest(".bn-glass");
+		expect(card?.textContent).toMatch(/2 条接入/);
+	});
+
+	it("不开推送源那一口的卡不说这句 —— 它压根没有接入这回事", async () => {
+		renderPage();
+		const card = (await screen.findByText("抖音订阅源")).closest(".bn-glass");
+		expect(card?.textContent).not.toMatch(/条接入/);
+	});
+
+	it("一条都没配的也报 0 —— 那正是「装好了但还没接上」该看见的", async () => {
+		renderPage(LISTED, []);
+		const card = (await screen.findByText("机器人框架桥接")).closest(".bn-glass");
+		expect(card?.textContent).toMatch(/0 条接入/);
+	});
+
 	it("每张卡都通到自己的详情页", async () => {
 		renderPage();
 		const links = await screen.findAllByText("详情 →");

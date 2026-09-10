@@ -27,6 +27,12 @@ import {
 } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
+/** 卡片只要接入的这两格,所以就地说清 —— 连接的完整形状不归这一页管。 */
+interface ExtensionLink {
+	kind?: string;
+	extensionId?: string;
+}
+
 /**
  * `/extensions` —— 装了哪些拓展、开没开、跑没跑起来。
  *
@@ -70,7 +76,28 @@ function providesLabel(code: string): string {
 	return SECTIONS.find((section) => section.code === code)?.label ?? code;
 }
 
-function StateLine({ ext }: { ext: ExtensionDTO }) {
+/**
+ * 「它名下配了几条接入」。
+ *
+ * ⚠️ 设计稿 V1 这一行还有后半句「N 个 bot 在线」—— **那半句留在详情页**:bot 是桥自己的
+ * 概念,数它就得让列表页认得桥,而「卡片上的每一个字都来自服务端」正是为了挡住这个。
+ * 接入数不一样:任何开推送源那一口的拓展都有接入,按 `provides` 判就够,不必认得是谁。
+ *
+ * **0 也报**:那正是「装好了但还没接上」该看见的一行。
+ */
+function LinkCount({ ext, connections }: { ext: ExtensionDTO; connections: ExtensionLink[] }) {
+	if (!(ext.provides ?? []).includes("push")) return null;
+	const mine = connections.filter(
+		(connection) => connection.kind === "extension" && connection.extensionId === ext.id,
+	);
+	return (
+		<span className="text-bn-xs text-bn-text-secondary">
+			<strong className="font-bold text-bn-text-primary">{mine.length}</strong> 条接入
+		</span>
+	);
+}
+
+function StateLine({ ext, connections }: { ext: ExtensionDTO; connections: ExtensionLink[] }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	return (
 		<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -86,6 +113,7 @@ function StateLine({ ext }: { ext: ExtensionDTO }) {
 					{providesLabel(provide)}
 				</Pill>
 			))}
+			<LinkCount ext={ext} connections={connections} />
 		</div>
 	);
 }
@@ -104,9 +132,11 @@ function StateDetail({ ext }: { ext: ExtensionDTO }) {
 
 function ExtensionCard({
 	ext,
+	connections,
 	onToggle,
 }: {
 	ext: ExtensionDTO;
+	connections: ExtensionLink[];
 	onToggle: (enabled: boolean) => void;
 }) {
 	return (
@@ -120,7 +150,7 @@ function ExtensionCard({
 			right={<Toggle ariaLabel={ext.name} value={ext.enabled} onChange={(on) => onToggle(on)} />}
 		>
 			<div className="flex flex-col gap-2">
-				<StateLine ext={ext} />
+				<StateLine ext={ext} connections={connections} />
 				<StateDetail ext={ext} />
 				<ExtensionWhereLine ext={ext} />
 				{/* 详情页那块是拓展自己交上来的面板数据 —— 没有入口的话只能手敲地址。 */}
@@ -151,6 +181,12 @@ export default function Extensions() {
 		queryKey: ["extensions"],
 		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
 	});
+	// 接入表 —— 只为卡片上那句「N 条接入」。**与拓展表分开取**:拓展没跑起来时它照样在,
+	// 而「配了但那个拓展没起来」正是最该看见的一种。
+	const connections = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<ExtensionLink[]>("/api/connections"),
+	});
 	const toggle = useExtensionToggle();
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
@@ -160,10 +196,12 @@ export default function Extensions() {
 	// 消失的东西没法排查,而这一页正是主人来看「它怎么了」的地方。
 	const homeless = extensions.filter((ext) => (ext.provides ?? []).length === 0);
 
+	const links = connections.data ?? [];
 	const card = (ext: ExtensionDTO) => (
 		<ExtensionCard
 			key={ext.id}
 			ext={ext}
+			connections={links}
 			onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 		/>
 	);
