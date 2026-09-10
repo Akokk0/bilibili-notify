@@ -24,6 +24,7 @@ function boot(
 		enabled?: boolean;
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
+		descriptor?: Record<string, unknown>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
 	} = {},
@@ -38,6 +39,7 @@ function boot(
 		store,
 		extensions: () => (typeof entries === "function" ? entries() : entries),
 		status: (id) => over.status?.[id],
+		descriptor: (id) => over.descriptor?.[id] as never,
 		settle: over.settle,
 		install: {
 			root: installRoot,
@@ -158,6 +160,28 @@ describe("GET /api/ext", () => {
 		expect(body.extensions[0]?.linkedTo).toBe("/repo/extensions/bridge/dist");
 	});
 
+	/**
+	 * 🔴 拓展自己在 `activate` 里报了短名与标识色,而面板此前**手抄了一份**
+	 * (`platform-meta.tsx` 里那行躺了整整一片)。字段不下发的话,那份手抄就是唯一出路,
+	 * 而它迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
+	 */
+	it("跑着的那条把它自报的面板元信息一并交出去", async () => {
+		const body = (await (
+			await boot({
+				entries: [running("bridge")],
+				descriptor: { bridge: { shortLabel: "桥接", tint: "#a855f7" } },
+			}).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.descriptor).toMatchObject({ shortLabel: "桥接", tint: "#a855f7" });
+	});
+
+	it("没跑起来的那条没有 descriptor —— 那是 activate 里才报的", async () => {
+		const body = (await (
+			await boot({ entries: [{ id: "x", dir: "/d/x", state: "disabled" }] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.descriptor).toBeUndefined();
+	});
+
 	it("一个都没装 → 空表。**没有写死的清单了** —— 拓展是装进来的", async () => {
 		const body = (await (await boot().request("/")).json()) as ExtensionsResponse;
 		expect(body.extensions).toEqual([]);
@@ -243,6 +267,7 @@ describe("GET /api/ext/:id/status", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => ({ n: ++n }),
+			descriptor: () => undefined,
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 2 });

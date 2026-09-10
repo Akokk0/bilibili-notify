@@ -10,6 +10,7 @@ import type {
 	ExtensionProvides,
 	FansRefreshEntry,
 	HistoryMessageRole,
+	PlatformDescriptor,
 	PushKind,
 	PushStatus,
 	Subscription,
@@ -82,6 +83,11 @@ export interface ExtensionDTO {
 	version?: string;
 	/** 它开的是哪一口:推送源 / 订阅源。 */
 	provides?: ExtensionProvides[];
+	/**
+	 * 它注册推送源时交的那份面板元信息。**只有跑着的拓展有** —— 那是 `activate` 里报的。
+	 * 面板拿它给这一档画脸(推送目标卡上的短名与标识色),不许再手抄一份。
+	 */
+	descriptor?: ExtensionDescriptorDTO;
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
 	/** 它自己那个目录,绝对路径(`<dataDir>/extensions/<id>`)。 */
@@ -123,6 +129,15 @@ export type { ExtensionConfigField } from "@bilibili-notify/extension";
  * ⛔ 面板上**没有**常驻的「重启」按钮(ADR-0005 决策 22)—— 要不要给那颗按钮,由这份回话
  * 说了算:只有刚做完一件确实需要重启的事,才就地提示一次。
  */
+/**
+ * 拓展**自己报**的那份面板元信息(短名 / 标识色 / 目标形态 / 会话种类…)。
+ *
+ * 就是 `PlatformDescriptor` 少掉 `connectors` 那一格 —— 「怎么连」在拓展这一支不存在
+ * (ADR-0012 决策 27)。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
+ * 副本会跟拓展自己报的悄悄漂开,而门禁一片绿。
+ */
+export type ExtensionDescriptorDTO = Omit<PlatformDescriptor, "connectors">;
+
 export interface ExtensionInstallResponse {
 	id: string;
 	name: string;

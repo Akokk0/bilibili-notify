@@ -8,7 +8,12 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import type { AdapterRegistry } from "../platforms/registry.js";
-import { createExtensionContext, type ExtensionContext, type ExtensionRuntime } from "./context.js";
+import {
+	createExtensionContext,
+	type ExtensionContext,
+	type ExtensionDescriptor,
+	type ExtensionRuntime,
+} from "./context.js";
 import { discoverExtensions, EXTENSION_ENTRY_FILE, type ExtensionDirRead } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
@@ -56,6 +61,11 @@ export interface LoadedExtensions {
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
 	 */
 	status(id: string): unknown;
+	/**
+	 * 某个拓展注册推送源时交的那份面板元信息(`ExtensionDescriptor`)。没跑 / 没注册过就是
+	 * `undefined`。**现取** —— 与 `status()` 同一条理由。
+	 */
+	descriptor(id: string): ExtensionDescriptor | undefined;
 	/**
 	 * 按**现在的开关**再对一遍:开了的装上,关了的收掉(决策 10 的「启用 / 停用热」)。
 	 *
@@ -322,6 +332,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			...new Set([...runtimes.values()].flatMap((r) => r.secretConfigCodes())),
 		],
 		status: (id) => runtimes.get(id)?.status(),
+		descriptor: (id) => runtimes.get(id)?.descriptor(),
 		sync() {
 			// 串起来跑:连拨两下开关时,后一次要看见前一次的结果。
 			queue = queue.then(async () => {

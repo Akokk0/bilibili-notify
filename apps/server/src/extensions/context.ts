@@ -1,4 +1,8 @@
-import type { ExtensionConnectionView, ExtensionContext } from "@bilibili-notify/extension";
+import type {
+	ExtensionConnectionView,
+	ExtensionContext,
+	ExtensionDescriptor,
+} from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
@@ -34,6 +38,13 @@ export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
 	/** 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。 */
 	status(): unknown;
+	/**
+	 * 它注册推送源时交的那份面板元信息(短名 / 标识色 / 目标形态…)。没注册过就是 `undefined`。
+	 *
+	 * 🔴 **收下就得能拿出来**:面板要靠它给拓展那一档一张脸。丢掉的话 web 只能自己手抄
+	 * 一份短名与颜色,而手抄的副本迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
+	 */
+	descriptor(): ExtensionDescriptor | undefined;
 	/**
 	 * 它在字段表里声明成密钥的那些键 —— **备份脱敏照这个抹**。
 	 *
@@ -109,6 +120,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
+	let descriptor: ExtensionDescriptor | undefined;
 	let secretCodes: readonly string[] = [];
 
 	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
@@ -181,6 +193,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields);
 			pushSourceRegistered = true;
+			descriptor = def.descriptor;
 			secretCodes = def.configFields.filter((f) => "secret" in f && f.secret).map((f) => f.code);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
@@ -224,6 +237,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	return {
 		ctx,
 		status: () => statusOf?.(),
+		descriptor: () => descriptor,
 		secretConfigCodes: () => secretCodes,
 		async dispose() {
 			if (disposed) return;

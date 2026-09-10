@@ -1,4 +1,5 @@
 import type {
+	ExtensionDescriptorDTO,
 	ExtensionDTO,
 	ExtensionInstallResponse,
 	RestartAbility,
@@ -24,6 +25,13 @@ export interface ExtensionsRouteOptions {
 	extensions: () => readonly ExtensionEntry[];
 	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
 	status: (id: string) => unknown;
+	/**
+	 * 某个拓展注册推送源时报的面板元信息(短名 / 标识色 / 目标形态)。没跑就是 `undefined`。
+	 *
+	 * 🔴 **这是那份元信息唯一的出处**:不下发的话面板只能自己手抄一份短名与颜色,而手抄
+	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
+	 */
+	descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
 	/**
 	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
 	 *
@@ -74,6 +82,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			description: entry.manifest?.description,
 			version: entry.manifest?.version,
 			provides: entry.manifest?.provides,
+			// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
+			descriptor: opts.descriptor(entry.id),
 			icon: entry.manifest?.icon,
 			// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
 			// 只有那一句答得了。

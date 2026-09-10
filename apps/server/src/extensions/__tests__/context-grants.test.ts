@@ -137,6 +137,21 @@ describe("注册推送源", () => {
 		);
 	});
 
+	/**
+	 * 🔴 **descriptor 交上来是为了被画出来。** 收下就扔的话,面板只能自己手抄一份短名与
+	 * 标识色 —— 而手抄的副本迟早跟拓展自己报的漂开,且门禁全绿(`platform-meta.tsx` 里
+	 * 就躺过这么一行,躺了整整一片)。
+	 */
+	it("交上来的 descriptor 留得住 —— 面板要拿它画那张脸", () => {
+		const h = harness();
+		h.ctx.registerPushSource(def());
+		expect(h.runtime.descriptor()).toMatchObject({ shortLabel: "桥" });
+	});
+
+	it("没注册推送源的拓展没有 descriptor,而不是一份空壳", () => {
+		expect(harness().runtime.descriptor()).toBeUndefined();
+	});
+
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {
 		const h = harness();
 		h.ctx.registerPushSource(def());
