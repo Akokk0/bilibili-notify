@@ -81,7 +81,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 
 	/**
 	 * 能当聊天入口的**直连**。桥接入够不着 —— 它后面挂着哪些平台是握手时才报的运行时
-	 * 知识,devtools 这张声明表在 createDevtools 那一刻就定型了。桥的入站另开场景。
+	 * 知识,devtools 这张声明表在 createDevtools 那一刻就定型了。桥的入站在 `scenarios/bridge.ts` —— 那条真的连一条桥进来,平台名由它自己报。
 	 */
 	const isDirectChat = (a: Connection): a is DirectConnection =>
 		isDirectConnection(a) && platformCanReceiveReply(a.platform);

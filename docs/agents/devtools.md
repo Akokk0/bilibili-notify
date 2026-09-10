@@ -64,6 +64,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 开播 / 下播 / 弹幕 / SC / 上舰 / 礼物 / 进场 | blive 的 `observeLiveConnections` 观察钩子拿到房间的 `emit`,与真帧同一条回调;假直播期间 `getLiveRoomInfo` 对那个房间打补丁(live_status=1、live_time=现在) | `live-rooms.ts`、`scenarios/live*.ts` |
 | 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`getAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤 | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
+| 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishStatus` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
 | 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored | `scenarios/bus-events.ts` |
 | 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `scenarios/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |
