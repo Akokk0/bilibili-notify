@@ -45,6 +45,7 @@ import {
 } from "./contract.js";
 import {
 	isBridgeProtocolCompatible,
+	normalizeBridgeBotIcon,
 	normalizeBridgeCapabilities,
 	parseBridgeFrame,
 } from "./protocol.js";
@@ -193,6 +194,7 @@ function toBot(wire: BridgeBotWire): BridgeBot {
 		platform: wire.platform,
 		name: wire.name,
 		selfId: wire.selfId,
+		icon: normalizeBridgeBotIcon(wire.icon),
 		capabilities: normalizeBridgeCapabilities(wire.capabilities),
 	};
 }

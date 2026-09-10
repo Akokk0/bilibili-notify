@@ -69,7 +69,12 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 | 加一个可选字段、加一种新帧类型、能力表加一项 | 升 `minor` |
 | 改已有字段的含义、删字段、改判别子取值 | 升 `major` |
 
-当前：**`1.0`**。
+当前：**`1.2`**。
+
+| 版本 | 加了什么 |
+|---|---|
+| `1.1` | 能力表加 `markdown`（§7） |
+| `1.2` | bot 加可选 `icon`：平台图标（§5.2） |
 
 ---
 
@@ -103,7 +108,7 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 ```jsonc
 {
   "type": "hello",
-  "protocol": { "major": 1, "minor": 0 },
+  "protocol": { "major": 1, "minor": 2 },
   "bridge": {
     "kind": "koishi",        // "koishi" | "astrbot"
     "name": "家里那台",       // 可选，面板上显示
@@ -126,11 +131,20 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
       "platform": "telegram",      // 开放词表，随你的框架叫什么就叫什么
       "name": "阿伦",               // 可选，显示名
       "selfId": "12345",           // 可选，bot 在平台上的账号。仅供显示
+      "icon": "data:image/svg+xml;base64,PHN2Zy…",   // 可选，平台图标，见下
       "capabilities": { /* 见 §7 */ }
     }
   ]
 }
 ```
+
+**`icon` 是平台的图标**，BN 面板拿它画 bot 那一行左边的方块。BN 不认得你后面挂着什么平台
+（`platform` 是开放词表），所以图标只能由你给；不给就退回平台名的头两个字母。
+
+- **只收 `data:image/png|jpeg|webp|svg+xml;base64,…`**。http(s) 地址不认 —— 面板一打开就去
+  你给的地址取图，等于替对方点了一次名，图标不该有这个本事。
+- **上限 32 KB**（整个字符串）。超了、格式不对，BN 只丢图标、不丢 bot。
+- 名单是快照、整份重发，所以图标别塞太大；一枚 24 × 24 的 SVG 通常一两 KB。
 
 **是快照，不是增量。** bot 名单一有变化就整份重发，`bots: []` 合法（宿主里一个 bot 都没有）。
 
@@ -200,7 +214,7 @@ BN 拿它写推送历史。`err` 直接展示给用户，请写人话。
 ```jsonc
 {
   "type": "welcome",
-  "protocol": { "major": 1, "minor": 0 },
+  "protocol": { "major": 1, "minor": 2 },
   "server": { "version": "0.10.1" },
   "inbound": { "private": true, "group": "with-links" }
 }

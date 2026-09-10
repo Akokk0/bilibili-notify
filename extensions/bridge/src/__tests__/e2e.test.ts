@@ -42,6 +42,8 @@ const CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const TARGET_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const TOKEN = "protocol-walk-token";
 const BOT_ID = "bot-9";
+/** 桥随 bot 报上来的平台图标 —— 面板拿它画 bot 行左边那枚方块。 */
+const BOT_ICON = `data:image/png;base64,${"A".repeat(32)}`;
 
 /** 一张真图的字节 —— 内容随便,**要能逐字节比对**才证明得了取回来的就是存进去的那张。 */
 const PNG = Buffer.from(
@@ -247,7 +249,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		});
 		client.send({
 			type: "bots",
-			bots: [{ botId: BOT_ID, platform: "telegram", name: "小电视" }],
+			bots: [{ botId: BOT_ID, platform: "telegram", name: "小电视", icon: BOT_ICON }],
 		});
 		// bots 是异步到达的,adapter 要在名单里找得到这个 bot 才发得出去。
 		await expectEventually(() =>
@@ -328,7 +330,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 					name: "家里那台 koishi",
 					version: "0.1.0",
 					remoteAddress: "127.0.0.1",
-					bots: [expect.objectContaining({ botId: BOT_ID, platform: "telegram" })],
+					bots: [expect.objectContaining({ botId: BOT_ID, platform: "telegram", icon: BOT_ICON })],
 				}),
 			],
 		});

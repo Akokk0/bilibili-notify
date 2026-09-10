@@ -44,7 +44,7 @@ export interface BridgeProtocolVersion {
  * 谁大谁小都不管。所以:加可选字段 / 加新帧类型 → 只升 minor;改已有字段的含义或
  * 删字段 → 升 major(那会把所有旧插件挡在门外,是刻意的)。
  */
-export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 1 };
+export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 2 };
 
 /** 桥的种类。**BN 侧处理完全相同**,这一格只用来显示与排障。 */
 export const BRIDGE_KINDS = ["koishi", "astrbot"] as const;
@@ -124,6 +124,13 @@ export interface BridgeBotWire {
 	name?: string;
 	/** bot 在平台上的账号(QQ 号 / telegram id / …)。**仅用于显示**,别拿去当身份比对。 */
 	selfId?: string;
+	/**
+	 * 平台的图标,给面板上 bot 那一行画方块用。**只收 `data:image/…;base64,` 的 data URL**
+	 * (png / jpeg / webp / svg+xml),不收 http(s) 地址 —— 面板一开就去对家点名不是图标该有的
+	 * 本事。BN 这头**不认得**桥后面的平台(开放词表),所以图标只能由桥给;不给就退回
+	 * 首字母。上限 32 KB,超了整枚丢掉。
+	 */
+	icon?: string;
 	capabilities?: BridgeCapabilityWire;
 }
 

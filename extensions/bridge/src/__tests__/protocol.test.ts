@@ -21,6 +21,7 @@ import {
 } from "../contract.js";
 import {
 	isBridgeProtocolCompatible,
+	normalizeBridgeBotIcon,
 	normalizeBridgeCapabilities,
 	parseBridgeFrame,
 } from "../protocol.js";
@@ -190,6 +191,37 @@ describe("normalizeBridgeCapabilities", () => {
 		const caps = normalizeBridgeCapabilities({ atAll: "yes", forward: "true" });
 		expect(caps.atAll).toBe("unknown");
 		expect(caps.forward).toBe("unknown");
+	});
+});
+
+describe("normalizeBridgeBotIcon", () => {
+	const PNG = `data:image/png;base64,${"A".repeat(64)}`;
+
+	it("data:image 的 base64 原样放行 —— png / svg / webp / jpeg 都认", () => {
+		expect(normalizeBridgeBotIcon(PNG)).toBe(PNG);
+		const svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+		expect(normalizeBridgeBotIcon(svg)).toBe(svg);
+	});
+
+	/**
+	 * 🔴 只收 data URL:一个 http(s) 地址会让面板每次打开都去对家那儿点一次名(拿得到
+	 * 内网 IP 与访问时间),图标不该有这个本事。同一条理由,`data:text/html` 之类也不认。
+	 */
+	it("不是 data:image 的一律丢掉 —— http 地址、html、裸 svg 文本", () => {
+		expect(normalizeBridgeBotIcon("https://example.com/qq.png")).toBeUndefined();
+		expect(normalizeBridgeBotIcon("data:text/html;base64,PGI+aGk8L2I+")).toBeUndefined();
+		expect(normalizeBridgeBotIcon("<svg></svg>")).toBeUndefined();
+		expect(normalizeBridgeBotIcon("data:image/png,notbase64")).toBeUndefined();
+	});
+
+	it("太大的丢掉 —— 名单一变就整份重发,一枚图标不该比一条消息还重", () => {
+		const huge = `data:image/png;base64,${"A".repeat(40_000)}`;
+		expect(normalizeBridgeBotIcon(huge)).toBeUndefined();
+	});
+
+	it("没给就是没给", () => {
+		expect(normalizeBridgeBotIcon(undefined)).toBeUndefined();
+		expect(normalizeBridgeBotIcon("")).toBeUndefined();
 	});
 });
 

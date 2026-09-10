@@ -432,6 +432,24 @@ describe("/bridge 端点", () => {
 		]);
 	});
 
+	it("bot 带着自己的平台图标进来,会话里就有 —— 坏图标只丢图标,不丢 bot", async () => {
+		const p = await handshaken();
+		const icon = `data:image/png;base64,${"A".repeat(64)}`;
+		p.send({
+			type: "bots",
+			bots: [
+				{ botId: "b1", platform: "telegram", icon },
+				{ botId: "b2", platform: "kook", icon: "https://example.com/kook.png" },
+			],
+		});
+		await new Promise((r) => setTimeout(r, 30));
+		const bots = server.getSession(CONNECTION_ID)?.bots ?? [];
+		expect(bots.map((b) => [b.botId, b.icon])).toEqual([
+			["b1", icon],
+			["b2", undefined],
+		]);
+	});
+
 	it("交上去的是整个会话 —— 归一化要拿名单查 selfId,再回头 getSession 就多一条丢消息的路", async () => {
 		const p = await handshaken();
 		p.send({ type: "bots", bots: [{ botId: "b1", platform: "telegram", selfId: "77770000" }] });

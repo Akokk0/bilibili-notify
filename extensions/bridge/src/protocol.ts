@@ -44,6 +44,9 @@ const BotSchema = z.object({
 	platform: z.string().min(1),
 	name: z.string().optional(),
 	selfId: z.string().optional(),
+	// 与能力表同一个道理:wire 上只要求是字符串,收窄在 normalizeBridgeBotIcon 一处做 ——
+	// 一枚坏图标不该把整份 bot 名单拒掉。
+	icon: z.string().optional(),
 	capabilities: CapabilityWireSchema.optional(),
 });
 
@@ -183,6 +186,24 @@ const CAPABILITY_STATES: ReadonlySet<string> = new Set(BRIDGE_CAPABILITY_STATES)
  * 缺的、值不认识的一律 `unknown`(保守:不是「不支持」,那是个结论,我们没有);
  * 桥多报的键静默丢掉,让协议两个方向都能单边演进。
  */
+/** 图标 data URL 的上限。名单一变就整份重发,一枚图标不该比一条消息还重。 */
+export const BRIDGE_BOT_ICON_MAX_BYTES = 32 * 1024;
+
+const BOT_ICON_DATA_URL = /^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/;
+
+/**
+ * bot 的平台图标过一道门:只认 `data:image/…;base64,` 且不超上限,其余一律当没给。
+ *
+ * 🔴 **不收 http(s) 地址**:面板每次打开都会去那个地址取图,等于替对家点一次名(拿得到
+ * 内网 IP 与访问时间)。data URL 是自包含的,浏览器画它不会发任何请求;而 `<img>` 里的
+ * SVG 不会跑脚本、也拉不进外部资源,所以这里不用像清单图标那样逐标签过白名单。
+ */
+export function normalizeBridgeBotIcon(icon: string | undefined): string | undefined {
+	if (!icon) return undefined;
+	if (icon.length > BRIDGE_BOT_ICON_MAX_BYTES) return undefined;
+	return BOT_ICON_DATA_URL.test(icon) ? icon : undefined;
+}
+
 export function normalizeBridgeCapabilities(
 	wire: BridgeCapabilityWire | undefined,
 ): BridgeCapabilityReport {
