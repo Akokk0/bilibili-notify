@@ -91,16 +91,17 @@ jobs:
           ID: ${{ steps.ext.outputs.id }}
         run: vp run -F "@bilibili-notify/extension-${ID}" build
 
+      # 资产名不在这儿拼 —— 它由 scripts/release-urls.mjs 说了算(打包、索引里那条下载
+      # 链接、这里上传的三处必须是同一个名字),所以 `--out` 不传,路径也从脚本的输出读。
       - name: Pack the extension package
         id: pkg
         env:
           ID: ${{ steps.ext.outputs.id }}
-          VERSION: ${{ steps.ext.outputs.version }}
         run: |
           set -euo pipefail
-          node scripts/pack-extension.mjs --id "$ID" --out "dist/${ID}-${VERSION}.zip" > /tmp/pkg.json
+          node scripts/pack-extension.mjs --id "$ID" > /tmp/pkg.json
           cat /tmp/pkg.json
-          echo "path=dist/${ID}-${VERSION}.zip" >> "$GITHUB_OUTPUT"
+          echo "path=$(node -p "require('/tmp/pkg.json').path")" >> "$GITHUB_OUTPUT"
           echo "sha256=$(node -p "require('/tmp/pkg.json').sha256")" >> "$GITHUB_OUTPUT"
           echo "size=$(node -p "require('/tmp/pkg.json').size")" >> "$GITHUB_OUTPUT"
 
@@ -164,22 +165,7 @@ jobs:
           NOTES: ${{ steps.notes.outputs.value }}
         run: |
           set -euo pipefail
-          node -e '
-            const fs = require("fs");
-            const m = JSON.parse(fs.readFileSync(`extensions/${process.env.ID}/extension.json`, "utf8"));
-            const tag = encodeURIComponent(`ext/${process.env.ID}@${process.env.VERSION}`);
-            const entry = {
-              id: m.id, name: m.name, description: m.description ?? "", version: process.env.VERSION,
-              apiVersion: m.apiVersion, prerelease: process.env.PRERELEASE === "true",
-              package: {
-                url: `https://github.com/${process.env.REPO}/releases/download/${tag}/${process.env.ID}-${process.env.VERSION}.zip`,
-                sha256: process.env.SHA256, size: Number(process.env.SIZE),
-              },
-              releaseUrl: `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
-              notes: process.env.NOTES,
-            };
-            fs.writeFileSync("dist/entry.json", JSON.stringify(entry, null, 2));
-          '
+          node scripts/marketplace-entry.mjs --out dist/entry.json
           current=""
           if [ -f dist/current.json ]; then current="--current dist/current.json"; fi
           # shellcheck disable=SC2086
