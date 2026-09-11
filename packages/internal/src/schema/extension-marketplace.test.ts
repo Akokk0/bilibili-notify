@@ -147,6 +147,12 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 			]),
 		).toMatchObject(twice);
 	});
+
+	it("prerelease 旗标与版本号对不上 → 拒(第三方源写 alpha 却不标,稳定渠道会看见它)", () => {
+		const mismatch = { ok: false, err: expect.stringContaining("对不上") };
+		expect(check([entry({ version: "0.1.0-alpha.1" })])).toMatchObject(mismatch);
+		expect(check([entry({ version: "0.1.0", prerelease: true })])).toMatchObject(mismatch);
+	});
 });
 
 describe("isMarketplaceRevoked", () => {

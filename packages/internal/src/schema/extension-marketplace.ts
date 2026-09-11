@@ -79,6 +79,9 @@ export function isPrereleaseEntry(entry: { prerelease?: boolean }): boolean {
  * - 官方源:条目 id 不带命名空间(没有点的 id 就是官方的),且必须有 `issuedAt`;
  * - 第三方源:必须声明 `namespace`,每个条目都得在自己的命名空间里 —— 列一个 `bridge`
  *   是冒充官方,列一个 `bob.xxx` 是冒用别人的命名空间,都拒。
+ * - `prerelease` 旗标必须与版本号对得上(带 `-` 的才是预发布):官方流水线里旗标就是从
+ *   版本号算出来的,恒等;第三方源写 `1.0.0-alpha.1` 却不标旗标的话,稳定渠道的人会在
+ *   市场卡上看见一个 alpha。
  * - 两种都不许同一个 id 在**同一档**里列两遍(正式一条、预发布一条,合计最多两条):
  *   同一档两条的话「那一档的最新版」就没法唯一,挑哪条给用户只能靠数组顺序。
  */
@@ -89,6 +92,11 @@ export function checkMarketplaceIndex(
 	const seen = new Set<string>();
 	for (const entry of index.extensions) {
 		const tier = isPrereleaseEntry(entry) ? "预发布" : "正式";
+		if (isPrereleaseEntry(entry) !== entry.version.includes("-"))
+			return {
+				ok: false,
+				err: `索引里 ${entry.id} ${entry.version} 标成了${tier}版,与版本号对不上`,
+			};
 		// 键别写成 `id@x`,那是 revoked 里 `id@version` 的样子。
 		const key = `${tier} ${entry.id}`;
 		if (seen.has(key)) return { ok: false, err: `索引里 ${entry.id} 的${tier}版列了两遍` };

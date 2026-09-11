@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { loadSignedJson } from "../apps/server/src/update/signed-manifest.js";
 import { compareVersions } from "../apps/server/src/update/version-order.js";
+import { ExtensionVersionSchema } from "../packages/internal/src/schema/extension-manifest.ts";
 import {
 	checkMarketplaceIndex,
 	MarketplaceIndexSchema,
@@ -210,6 +211,11 @@ describe("issuedAt 与版本只许往前走", () => {
 		).toEqual(["0.1.0", "0.1.1-alpha.1"]);
 	});
 
+	it("prerelease 旗标与版本号对不上 → 拒(手跑脚本传错档,不该悄悄落进正式档)", () => {
+		expect(() => merged(entry({ version: "0.1.0-alpha.1" }))).toThrow(/对不上/);
+		expect(() => merged(entry({ version: "0.1.0", prerelease: true }))).toThrow(/对不上/);
+	});
+
 	it("并索引用的那把版本尺子与客户端的是同一把(手抄了一份,别让它漂)", () => {
 		const pairs = [
 			["0.9.0", "0.10.0"],
@@ -300,14 +306,17 @@ describe("tag 守卫里那两条正则没跟这边漂开", () => {
 			]);
 	});
 
-	it("version:两边对同一批样本给同样的答案", () => {
+	it("version:三把尺子(tag 守卫 / 并索引脚本 / 客户端 schema)对同一批样本给同样的答案", () => {
 		const shellVersion = ereFor("version");
+		// 客户端那把是真正执行的那把(条目与 extension.json 都用它),也得在这一排里。
+		const schemaVersion = { test: (v) => ExtensionVersionSchema.safeParse(v).success };
 		for (const sample of ["0.0.1", "1.2.3", "10.20.30", "0.1.0-alpha.7"])
-			expect([sample, shellVersion.test(sample), SEMVER.test(sample)]).toEqual([
+			expect([
 				sample,
-				true,
-				true,
-			]);
+				shellVersion.test(sample),
+				SEMVER.test(sample),
+				schemaVersion.test(sample),
+			]).toEqual([sample, true, true, true]);
 		// `1.0.0+build.1`:build 元数据两边一起拒。tag 里的 `+` 到不了并索引这一步(守卫先
 		// 红),而这边收着的话,手跑一次脚本就能把一个 tag 打不出来的版本发进索引。
 		for (const sample of [
@@ -319,10 +328,11 @@ describe("tag 守卫里那两条正则没跟这边漂开", () => {
 			"latest",
 			"1.0.0+build.1",
 		])
-			expect([sample, shellVersion.test(sample), SEMVER.test(sample)]).toEqual([
+			expect([
 				sample,
-				false,
-				false,
-			]);
+				shellVersion.test(sample),
+				SEMVER.test(sample),
+				schemaVersion.test(sample),
+			]).toEqual([sample, false, false, false]);
 	});
 });

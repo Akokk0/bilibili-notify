@@ -87,12 +87,13 @@ export function extensionNamespaceOf(id: string): string | undefined {
  * 它是**失败记账的另一半**:记账按 id + 版本(ADR-0012 后果段),换一版就该重新给机会。
  * 所以它必须能比大小、必须一眼看得出「换过版本」——`latest` 这种活标签做不到。
  */
-export const ExtensionVersionSchema = z
-	.string()
-	.regex(
-		/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
-		"拓展版本号必须是 semver,如 1.0.0 或 1.0.0-alpha.1",
-	);
+export const ExtensionVersionSchema = z.string().regex(
+	// 与 tag 守卫(assert-extension-tag.sh)、并索引脚本(marketplace-index.mjs 的 SEMVER)
+	// 是同一把尺子:不收前导零、不收 build 元数据。三把对同一批样本的答案由
+	// marketplace-index.test.mjs 钉着。
+	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/,
+	"拓展版本号必须是 semver,如 1.0.0 或 1.0.0-alpha.1",
+);
 
 /**
  * `extension.json` —— 拓展包的清单。

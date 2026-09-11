@@ -82,9 +82,12 @@ describe("ExtensionManifestSchema", () => {
 			expect(ExtensionManifestSchema.safeParse(manifest({ version })).success).toBe(true);
 		});
 
-		it.each(["1", "1.0", "v1.0.0", "latest", "1.0.0.0"])("%s —— 拒", (version) => {
-			expect(ExtensionManifestSchema.safeParse(manifest({ version })).success).toBe(false);
-		});
+		it.each(["1", "1.0", "v1.0.0", "latest", "1.0.0.0", "01.0.0", "1.0.0+build.1"])(
+			"%s —— 拒",
+			(version) => {
+				expect(ExtensionManifestSchema.safeParse(manifest({ version })).success).toBe(false);
+			},
+		);
 	});
 
 	it("图标有长度上限 —— 清单是要进签名摘要、还要随列表发到面板的那份", () => {

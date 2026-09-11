@@ -29,7 +29,7 @@
       "description": "一句话",
       "version": "1.0.0",          // semver(不收 `+build` 元数据);每个 id 每档只列最新那一版
       "apiVersion": 1,             // 对上 BN 的 EXTENSION_API_VERSION 才能装
-      "prerelease": false,         // 可选:true 的那条是预发布档,只有预发布渠道挑得到
+      "prerelease": false,         // 可选:true 的那条是预发布档,只有预发布渠道挑得到;必须与版本号对得上(带 - 的才标 true)
       "package": { "url": "https://…/douyin-1.0.0.zip", "sha256": "<64 位小写 hex>", "size": 123456 },
       "releaseUrl": "https://…",   // 可选
       "notes": "这一版改了什么"     // 可选,卡上那一小行

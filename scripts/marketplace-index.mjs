@@ -44,6 +44,9 @@ export function assertEntryShape(e) {
 	if (typeof e.name !== "string" || e.name === "") fail(`${e.id}:name 必须是非空字符串`);
 	if (typeof e.version !== "string" || !SEMVER.test(e.version))
 		fail(`${e.id}:version 必须是 semver:${e.version}`);
+	// 档由旗标定、旗标由版本号定(tag 守卫按 `-` 给的),两者对不上就是手跑脚本传错了。
+	if (isPre(e) !== e.version.includes("-"))
+		fail(`${e.id}:${e.version} 标成了${tierName(e)}版,与版本号对不上`);
 	if (!Number.isInteger(e.apiVersion) || e.apiVersion <= 0) fail(`${e.id}:apiVersion 必须是正整数`);
 	if (!e.package || typeof e.package !== "object") fail(`${e.id}:缺 package`);
 	const { url, sha256, size } = e.package;
