@@ -171,8 +171,9 @@ export interface BridgeServer extends Disposable {
 	send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
 	/**
 	 * 打一趟 ping、等它的 pong,报真实往返时长 —— 面板那颗「测试」按钮量的就是它。
-	 * 1.3 的桥按 id 配对;老桥的 pong 不带 id,按先来后到认(心跳的 pong 也可能被认走,
-	 * 那一趟读数偏小,但不会错到「通 / 不通」上)。
+	 *
+	 * **配对只认 id**(BN 的每一发 ping 都带,心跳那些也带)。不带 id 的 pong 只算「还活着」,
+	 * 结算不了任何一趟探活 —— 1.2 的老桥因此测不出读数,那比报一个被心跳回声偷来的数好。
 	 */
 	ping(linkId: string): Promise<BridgePingOutcome>;
 	/** 吊销 token / 删接入 / 关模块 —— 按给的 close code 把那条桥踢下线。 */
@@ -354,12 +355,24 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "hello is the first frame, and only once");
 			return;
 		}
+		// 版本先判:那是**永久**的结论(别重连,去升级),而下面那一问是暂时的。反过来的话,
+		// 一个版本根本对不上的插件会被告知「退避重连」,于是拿着同样的老版本一直回来。
 		if (!isBridgeProtocolCompatible(frame.protocol)) {
 			log.warn(
 				`bridge ${conn.linkId} speaks protocol v${frame.protocol.major}.${frame.protocol.minor}, ` +
 					`we speak v${BRIDGE_PROTOCOL_VERSION.major}.${BRIDGE_PROTOCOL_VERSION.minor}`,
 			);
 			close(conn, BRIDGE_CLOSE_CODES.incompatibleProtocol, "incompatible protocol major");
+			return;
+		}
+		// 🔴 **再问一次「现在收不收」**。upgrade 那一道是 10 秒之前的事了,而这中间主人可能
+		// 刚把这条接入停用 / 删掉。不复查的话,刚吊销的接入能在握手窗口里溜进来变成一条正常
+		// 会话 —— 它那时不在会话表里,对账(`reconcile`)也够不着它。
+		// 码给 `disabled`(可退避重连)而不是 `revoked`:这一问答的是「眼下收不收」,分不出
+		// 「删了」与「关了」;真被删了的话下一次 upgrade 会以 401 把它劝退。
+		if (opts.accepts && !opts.accepts(conn.linkId)) {
+			log.info(`bridge ${conn.linkId} went off during the handshake window`);
+			close(conn, BRIDGE_CLOSE_CODES.disabled, "this link is off");
 			return;
 		}
 		if (conn.handshakeTimer) {
@@ -450,11 +463,13 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				break;
 			}
 			case "pong": {
-				// 带 id 的按 id 认;不带的(1.2 老桥、或心跳的回声)给最早那趟探活。
-				const entry = frame.id
-					? conn.pendingPings.find((candidate) => candidate.id === frame.id)
-					: conn.pendingPings[0];
-				entry?.settle({ ok: true, latencyMs: 0 });
+				// 🔴 不带 id 的 pong(1.2 的老桥)**只当「还活着」**:上面那句 `lastSeenAt` 已经
+				// 记过了,看门狗满足。拿它去结算最早那趟探活的话,面板那颗「测试」的读数就是
+				// 偷来的 —— 宁可让那趟探活如实超时,也别报一个不知道量的是谁的数。
+				if (!frame.id) break;
+				conn.pendingPings
+					.find((candidate) => candidate.id === frame.id)
+					?.settle({ ok: true, latencyMs: 0 });
 				break;
 			}
 		}
@@ -541,8 +556,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	let heartbeatHandle: NodeJS.Timeout | undefined;
 	if (heartbeatIntervalMs > 0) {
 		heartbeatHandle = setInterval(() => {
+			// 心跳的 ping **也带 id**:不带的话桥回的 pong 也不带,而那个回声正好会掉进
+			// 面板那趟探活的坑里(读数被偷)。这里没人等这个 id 回来 —— 看门狗看的是
+			// 「最近说过话」,不是「回过这一发」。
 			for (const conn of [...conns]) {
-				if (conn.hello) sendFrame(conn, { type: "ping" });
+				if (conn.hello) sendFrame(conn, { type: "ping", id: randomUUID() });
 			}
 		}, heartbeatIntervalMs);
 	}
@@ -657,8 +675,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			return [...sessions.values()].flatMap((conn) => snapshot(conn) ?? []);
 		},
 		disconnect(linkId, code) {
-			const conn = sessions.get(linkId);
-			if (conn) close(conn, code, "closed by the server");
+			// **所有**还连着的,不只是已握手那条:握手窗口里那条已经过了 upgrade 那道闸,
+			// 却还不在会话表里 —— 只踢会话的话,刚吊销的接入能在那 10 秒里握完手溜进来,
+			// 而那之后再也没人对账它。
+			for (const conn of [...conns]) {
+				if (conn.linkId === linkId) close(conn, code, "closed by the server");
+			}
 		},
 	};
 }

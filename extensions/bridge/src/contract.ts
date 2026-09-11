@@ -260,7 +260,12 @@ export interface BridgeResultFrame {
 
 export interface BridgePongFrame {
 	type: "pong";
-	/** 1.3 起:回的是哪一趟 `ping`(原样抄 `ping.id`)。老桥不带,BN 就按先来后到认。 */
+	/**
+	 * 1.3 起:回的是哪一趟 `ping`(原样抄 `ping.id`)。
+	 *
+	 * 不带的话 BN 只把它当「这条桥还活着」,**结算不了任何一趟探活** —— 面板那颗「测试」
+	 * 会如实超时。按先来后到认是不行的:心跳的回声会把那一趟的读数偷走。
+	 */
 	id?: string;
 }
 
@@ -325,8 +330,11 @@ export interface BridgeSendFrame {
 export interface BridgePingFrame {
 	type: "ping";
 	/**
-	 * 1.3 起可选:探活(面板那颗「测试」)要量**这一趟**的往返,同一条 socket 上心跳的
-	 * pong 与探活的 pong 才分得开。心跳 ping 不带。
+	 * 1.3 起:探活(面板那颗「测试」)要量**这一趟**的往返,同一条 socket 上心跳的 pong
+	 * 与探活的 pong 才分得开。
+	 *
+	 * **BN 每一发 ping 都带它,心跳也带** —— 心跳不带的话桥回的 pong 也不带,而那个回声
+	 * 恰好会被当成某一趟探活的答案。形状上仍是可选的:桥那侧不认得它也照样回得了 pong。
 	 */
 	id?: string;
 }

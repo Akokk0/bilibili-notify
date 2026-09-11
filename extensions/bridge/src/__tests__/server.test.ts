@@ -503,6 +503,45 @@ describe("/bridge 端点", () => {
 		expect(server.getSession(CONNECTION_ID)).toBeUndefined();
 	});
 
+	/**
+	 * 🔴 **握手窗口里那条也是一条连接**。它已经过了 upgrade 那道 `accepts`,但还没进会话表 ——
+	 * 只踢会话的话,「刚吊销的接入」在这 10 秒里既踢不掉、也没人再对账它,握完手就是一条
+	 * 正常会话了。两条路一起堵:disconnect 按 linkId 踢**所有**还连着的,hello 再复查一次。
+	 */
+	it("disconnect() 连**还没握手**的那条一起踢 —— 它不在会话表里,谁也不会再对账它", async () => {
+		const p = join();
+		await p.open();
+		server.disconnect(CONNECTION_ID, BRIDGE_CLOSE_CODES.revoked);
+		expect(await p.waitClose()).toBe(BRIDGE_CLOSE_CODES.revoked);
+	});
+
+	it("握手窗口里接入被停用了 → hello 不给过(upgrade 那一道早就过完了)", async () => {
+		let on = true;
+		await boot({ accepts: () => on });
+		const p = join();
+		await p.open();
+		on = false;
+		p.send(helloFrame());
+		// 4007 而不是 4005:这一问答的是「眼下收不收」,分不出「删了」与「关了」,
+		// 所以给能退避重连的那个 —— 真被删了的话下一次 upgrade 会以 401 把它劝退。
+		expect(await p.waitClose()).toBe(BRIDGE_CLOSE_CODES.disabled);
+		expect(server.sessionCount).toBe(0);
+	});
+
+	it("hello 那道复查**不踢正在用的那条** —— 只关自己", async () => {
+		let on = true;
+		await boot({ accepts: () => on });
+		const live = await handshaken();
+		// 后来那条也是趁着还收的时候连进来的 —— 不然它连 upgrade 那道都过不去。
+		const late = join();
+		await late.open();
+		on = false;
+		late.send(helloFrame());
+		expect(await late.waitClose()).toBe(BRIDGE_CLOSE_CODES.disabled);
+		expect(live.socket.readyState).toBe(WebSocket.OPEN);
+		expect(server.sessionCount).toBe(1);
+	});
+
 	it("桥自己断开 → 会话清掉", async () => {
 		const p = await handshaken();
 		expect(server.sessionCount).toBe(1);
@@ -545,14 +584,32 @@ describe("/bridge 端点", () => {
 		expect(outcome.latencyMs).toBeGreaterThanOrEqual(25);
 	});
 
-	it("ping():1.2 的老桥回的 pong 不带 id → 也认(最早那趟 ping 收下它)", async () => {
-		await boot({ heartbeatIntervalMs: 0 });
+	/**
+	 * 🔴 **心跳的 ping 也带 id**。不带的话 1.3 的桥照样回一个不带 id 的 pong,而那个回声
+	 * 会掉进 `pendingPings[0]` —— 面板那颗「测试」只要撞上一次心跳,量出来的就是心跳的
+	 * 往返而不是它自己那趟。带上 id,两种 pong 从此各认各的。
+	 */
+	it("心跳的 ping **也带 id** —— 不然 1.3 的桥回的心跳 pong 会被探活收走", async () => {
+		await boot({ heartbeatIntervalMs: 20, heartbeatTimeoutMs: 0 });
 		const p = await handshaken();
-		p.socket.on("message", (raw) => {
-			const frame = JSON.parse(raw.toString("utf8")) as { type?: string };
-			if (frame.type === "ping") p.send({ type: "pong" });
-		});
-		expect(await server.ping(CONNECTION_ID)).toMatchObject({ ok: true });
+		const ping = await p.next();
+		expect(ping).toMatchObject({ type: "ping" });
+		expect(typeof ping.id).toBe("string");
+	});
+
+	/**
+	 * 不带 id 的 pong(1.2 的老桥)**只当「还活着」**:`lastSeenAt` 已经记过了,看门狗满足。
+	 * 拿它去结算最早那趟探活的话,读数就是被偷来的 —— 宁可让那趟探活如实超时。
+	 */
+	it("无 id 的 pong 不结算任何一趟探活 —— 读数不许是偷来的", async () => {
+		await boot({ heartbeatIntervalMs: 0, pingTimeoutMs: 60 });
+		const p = await handshaken();
+		const probing = server.ping(CONNECTION_ID);
+		expect(await p.next()).toMatchObject({ type: "ping" });
+		p.send({ type: "pong" });
+		expect(await probing).toMatchObject({ ok: false });
+		// 但它照样是「活着」的证据 —— 不断连。
+		expect(p.socket.readyState).toBe(WebSocket.OPEN);
 	});
 
 	it("ping():桥不回 → 超时报错,不挂死", async () => {
