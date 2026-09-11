@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { platform } from "node:os";
 
 /**
@@ -138,10 +138,7 @@ export async function readProcTableFromProcfs(deps: {
 }
 
 export const procfsDeps = {
-	listPids: async (): Promise<string[]> => {
-		const { readdir } = await import("node:fs/promises");
-		return readdir("/proc");
-	},
+	listPids: (): Promise<string[]> => readdir("/proc"),
 	readStatus: (pid: number) => readTextOrNull(`/proc/${pid}/status`),
 };
 

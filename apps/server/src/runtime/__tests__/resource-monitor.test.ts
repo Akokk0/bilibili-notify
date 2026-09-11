@@ -63,6 +63,7 @@ function makeReaders(overrides: Partial<ResourceReaders> = {}) {
 		hostCores: () => 4,
 		heapLimit: () => 512 * MB,
 		cgroup: () => ({ memLimit: null, memUsed: null, cpuQuota: null }),
+		cgroupMemUsed: () => null,
 		...overrides,
 	};
 	return {
@@ -150,6 +151,7 @@ describe("ResourceMonitor 采样", () => {
 		let current = 900 * MB;
 		const { readers, advance } = makeReaders({
 			cgroup: () => ({ memLimit: 2 * GB, memUsed: current, cpuQuota: 0.5 }),
+			cgroupMemUsed: () => current,
 		});
 		const monitor = startResourceMonitor({ serviceCtx: ctx, readers });
 		const seen = vi.fn();
@@ -171,6 +173,36 @@ describe("ResourceMonitor 采样", () => {
 	});
 
 	/**
+	 * 🔴 **每 tick 只读「已用」那一格。**
+	 *
+	 * `cgroup()` 为了判 v2 还是 v1,一趟要连着读三个 sysfs 文件;而 tick 要的只有
+	 * `memory.current` 一个数。上限与 CPU 配额都是静态量,开机问一次就够 —— 把整趟
+	 * 塞进 2 秒一次的 tick 里,是白烧的三份文件 I/O。
+	 */
+	it("tick 只问窄口 cgroupMemUsed,整趟 cgroup() 只在开机问一次", () => {
+		const { ctx, fire } = makeCtx();
+		let current = 900 * MB;
+		const cgroup = vi.fn(() => ({ memLimit: 2 * GB, memUsed: 111 * MB, cpuQuota: 0.5 }));
+		const cgroupMemUsed = vi.fn(() => current);
+		const { readers } = makeReaders({ cgroup, cgroupMemUsed });
+		const monitor = startResourceMonitor({ serviceCtx: ctx, readers });
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		expect(cgroup).toHaveBeenCalledTimes(1); // 开机那一次(上限 + CPU 配额)
+		fire(2000);
+		current = 1200 * MB;
+		fire(2000);
+		fire(2000);
+
+		expect(cgroup).toHaveBeenCalledTimes(1); // 三个 tick 之后还是那一次
+		expect(cgroupMemUsed).toHaveBeenCalledTimes(3);
+		// 报出去的确实是窄口现读的那个数,不是开机那趟里的 memUsed。
+		expect(seen.mock.calls[0]?.[0]).toMatchObject({ memUsed: 900 * MB });
+		expect(seen.mock.calls[2]?.[0]).toMatchObject({ memUsed: 1200 * MB });
+	});
+
+	/**
 	 * 🔴 **两个口径不许混着报。**
 	 *
 	 * cgroup 读得到、但**没设内存上限**(`memory.max` 是 `max`,`docker run` 不加 `-m` 就是
@@ -183,6 +215,7 @@ describe("ResourceMonitor 采样", () => {
 		const { readers } = makeReaders({
 			// 有 memory.current,没有 memory.max —— 那一格解出来就是 null。
 			cgroup: () => ({ memLimit: null, memUsed: 900 * MB, cpuQuota: null }),
+			cgroupMemUsed: () => 900 * MB,
 		});
 		const monitor = startResourceMonitor({ serviceCtx: ctx, readers });
 		const seen = vi.fn();

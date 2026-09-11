@@ -98,3 +98,28 @@ export function readCgroup(readFile: ReadTextFile = readTextOrNull): CgroupSnaps
 	}
 	return { memLimit: null, memUsed: null, cpuQuota: null };
 }
+
+/**
+ * 只读**已用内存**那一格的窄口(`memory.current` / v1 的 `usage_in_bytes`)。
+ *
+ * 采样器 2 秒一 tick,而每 tick 真正要的只有这一个数;走 {@link readCgroup} 的话,每趟都
+ * 要为「这台是 v2 还是 v1」把上限与 CPU 配额那两个文件一并探一遍。版本在**建这个读数口
+ * 的时候**定一次:cgroup 版本不会在进程活着的时候变。
+ *
+ * 不在 cgroup 里(桌面版 / 裸跑 / macOS)回一个恒 null 的读数口。
+ */
+export function makeCgroupMemUsedReader(
+	readFile: ReadTextFile = readTextOrNull,
+): () => number | null {
+	const path =
+		readFile(V2.memLimit) !== null
+			? V2.memUsed
+			: readFile(V1.memLimit) !== null
+				? V1.memUsed
+				: null;
+	if (path === null) return () => null;
+	return () => {
+		const raw = readFile(path);
+		return raw === null ? null : parseCgroupBytes(raw);
+	};
+}

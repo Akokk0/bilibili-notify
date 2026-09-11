@@ -7,7 +7,7 @@ import type {
 	ResourcesHydrate,
 } from "@bilibili-notify/contract";
 import type { Disposable, ServiceContext } from "@bilibili-notify/internal";
-import { readCgroup } from "./cgroup.js";
+import { makeCgroupMemUsedReader, readCgroup } from "./cgroup.js";
 
 /**
  * 常驻资源采样器 —— 概览页「系统资源」卡的数据源。
@@ -70,8 +70,16 @@ export interface ResourceReaders {
 	cpuModel(): string;
 	hostCores(): number;
 	heapLimit(): number;
-	/** cgroup 读数;不在 cgroup 里(桌面版 / 裸跑)三项全 null。 */
+	/**
+	 * cgroup 读数;不在 cgroup 里(桌面版 / 裸跑)三项全 null。**开机问一次** —— 上限与
+	 * CPU 配额都是静态量。
+	 */
 	cgroup(): { memLimit: number | null; memUsed: number | null; cpuQuota: number | null };
+	/**
+	 * cgroup 的**已用内存**那一格,每 tick 读它。单开一个窄口而不是每趟 {@link cgroup}:
+	 * 那一趟为了判版本要连着读三个 sysfs 文件,而 tick 要的只有这一个数。
+	 */
+	cgroupMemUsed(): number | null;
 }
 
 function sumHostCpuTimes(): { idle: number; total: number } {
@@ -84,6 +92,14 @@ function sumHostCpuTimes(): { idle: number; total: number } {
 	return { idle, total };
 }
 
+/** 已用内存那个窄读数口,第一次 tick 时建(建的那一刻定死 cgroup 版本),之后共用。 */
+let cgroupMemUsedReader: (() => number | null) | undefined;
+
+function readCgroupMemUsed(): number | null {
+	cgroupMemUsedReader ??= makeCgroupMemUsedReader();
+	return cgroupMemUsedReader();
+}
+
 export const defaultResourceReaders: ResourceReaders = {
 	now: () => Date.now(),
 	cpuUsage: () => process.cpuUsage(),
@@ -94,6 +110,7 @@ export const defaultResourceReaders: ResourceReaders = {
 	hostCores: () => cpus().length,
 	heapLimit: () => getHeapStatistics().heap_size_limit,
 	cgroup: () => readCgroup(),
+	cgroupMemUsed: readCgroupMemUsed,
 };
 
 /** 浏览器那一行的数据源。省掉 = 这台没接 puppeteer,状态恒 `none`。 */
@@ -218,7 +235,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 		const hm = r.hostMem();
 		// 容器里已用量看 cgroup 的 memory.current(宿主机的 free 是整台机器的,不是这个容器的)。
 		// ⚠️ **只在总量也来自 cgroup 时才用它**:没设上限时总量是宿主机的,两边口径得一致。
-		const memUsed = (memFromCgroup ? r.cgroup().memUsed : null) ?? hm.total - hm.free;
+		const memUsed = (memFromCgroup ? r.cgroupMemUsed() : null) ?? hm.total - hm.free;
 		const browserState = updateBrowser(at);
 		const sample: ResourceSample = {
 			ts: at,
