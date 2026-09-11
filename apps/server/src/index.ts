@@ -291,10 +291,13 @@ export async function startStandaloneServer(
 				process.exit(0);
 			}
 		};
+		// **唯一那个装载根**(`<dataDir>/extensions/`)。市场、装载器、面板上传装包、开发版
+		// devtools 认的是同一个目录 —— 算四遍等于给「拓展装在哪」留了四个改错的机会。
+		const extensionsRoot = extensionsRootIn(bootstrap.dataDir);
 		// 拓展市场(ADR-0013):官方源与自主升级共用同一对信任公钥与同一份加速前缀;没有公钥的
 		// 构建(fork 出去自己构建的)就没有官方源,第三方源照用。
 		const marketplace = createMarketplace({
-			root: extensionsRootIn(bootstrap.dataDir),
+			root: extensionsRoot,
 			official:
 				TRUSTED_UPDATE_KEYS.length > 0
 					? { url: EXTENSION_MARKETPLACE_URL, trustedKeys: TRUSTED_UPDATE_KEYS }
@@ -374,7 +377,7 @@ export async function startStandaloneServer(
 			// 源码运行时够得着,而 devtools 本来就只在那种构建里存在 —— 两道门是同一道。
 			extensions: {
 				repoDir: resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions"),
-				installRoot: extensionsRootIn(bootstrap.dataDir),
+				installRoot: extensionsRoot,
 				loaded: () => loadedExtensions,
 			},
 			// 「假装一条桥连上来」要连回自己身上。走 127.0.0.1 而不是 bootstrap 里那个 host:
@@ -792,7 +795,7 @@ export async function startStandaloneServer(
 		loadedExtensions = await loadExtensions({
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
-			root: extensionsRootIn(bootstrap.dataDir),
+			root: extensionsRoot,
 			host: runtime.serviceCtx,
 			mounts: extensionMounts,
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
@@ -878,7 +881,7 @@ export async function startStandaloneServer(
 				},
 				// 面板上传装拓展:落到唯一那个装载根,装完当场重扫(新装的于是立刻跑起来)。
 				install: {
-					root: extensionsRootIn(bootstrap.dataDir),
+					root: extensionsRoot,
 					rescan: async () => {
 						await loadedExtensions?.rescan();
 					},
