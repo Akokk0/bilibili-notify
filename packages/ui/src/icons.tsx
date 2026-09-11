@@ -216,6 +216,12 @@ export const Icon = {
 			<path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
 		</>,
 	),
+	globe: stroke(
+		<>
+			<circle cx="12" cy="12" r="9" />
+			<path d="M3 12h18M12 3a13.5 13.5 0 0 1 0 18M12 3a13.5 13.5 0 0 0 0 18" />
+		</>,
+	),
 	sliders: stroke(
 		<>
 			<line x1="4" y1="6" x2="20" y2="6" />

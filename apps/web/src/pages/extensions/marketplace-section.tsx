@@ -199,8 +199,13 @@ export function MarketplaceSection({
 							});
 						}}
 					/>
-					<Btn variant="outline" size="sm" onClick={() => setManagingSources(true)}>
-						源{thirdPartyCount > 0 ? ` · ${thirdPartyCount}` : ""}
+					<Btn
+						variant="outline"
+						size="sm"
+						icon={<Icon.globe size={13} />}
+						onClick={() => setManagingSources(true)}
+					>
+						市场源{thirdPartyCount > 0 ? ` · ${thirdPartyCount}` : ""}
 					</Btn>
 				</div>
 			</div>

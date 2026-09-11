@@ -253,14 +253,14 @@ describe("拓展市场", () => {
 		cleanup();
 		renderSection({ available: false, fetchedAt: 1, sources: [], extensions: [] });
 		expect(await screen.findByText(/没有官方源/)).toBeTruthy();
-		expect(screen.getByRole("button", { name: /源/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /市场源/ })).toBeTruthy();
 	});
 });
 
 describe("源", () => {
 	it("弹窗列官方(不可删)与第三方(可删,名字是索引报的);加源只填地址、先看见风险提示,存的是整份名单", async () => {
 		renderSection();
-		await userEvent.click(await screen.findByRole("button", { name: /源/ }));
+		await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByText("BN 官方拓展")).toBeTruthy();
 		// 名字从市场那一口(索引里的 name)来,不是用户起的。
@@ -290,7 +290,7 @@ describe("源", () => {
 
 	it("http 地址不收;删掉一个源存的是剩下的名单", async () => {
 		renderSection();
-		await userEvent.click(await screen.findByRole("button", { name: /源/ }));
+		await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));
 		const dialog = await screen.findByRole("dialog");
 		await userEvent.type(within(dialog).getByLabelText("索引地址"), "http://bob.example/m.json");
 		await userEvent.click(within(dialog).getByRole("button", { name: "加进来" }));
