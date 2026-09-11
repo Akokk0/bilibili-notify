@@ -21,7 +21,6 @@ import {
 	type ServerEventEnvelope,
 } from "./types.js";
 
-/** Public options accepted by `createWsServer`. */
 /**
  * `resources` 频道要的那点能力 —— 结构性口,WS 这层不认识采样器本体。
  * 生产实现是 `runtime/resource-monitor.ts` 的 `ResourceMonitor`。
@@ -31,6 +30,7 @@ export interface ResourceMonitorSource {
 	subscribe(listener: (sample: ResourceSample) => void): Disposable;
 }
 
+/** Public options accepted by `createWsServer`. */
 export interface CreateWsServerOptions {
 	httpServer: HttpServer;
 	bus: MessageBus;
