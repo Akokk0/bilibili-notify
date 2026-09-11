@@ -1,0 +1,202 @@
+name: bilibili-notify — extension release
+
+# 发一个拓展(ADR-0013):tag `ext/<id>@<version>` 触发 —— 构建那个拓展、打成拓展包、
+# 挂到一个**不可变**的 release(同名 tag)上,然后把这一条并进官方索引、重签、覆盖到滚动的
+# `extension-marketplace` release 上。拓展与本体分开发布,所以这条流水线与 update-payload
+# 各管各的 release,不排同一把锁。
+#
+# 版本不像本体那样按 tag 临时改元数据:拓展是独立发布物,清单里的版本就该是真的 ——
+# tag 与 extensions/<id>/extension.json 对不上直接红(assert-extension-tag.sh)。
+
+on:
+  push:
+    tags:
+      - "ext/*@*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build + sign only, skip creating the release and publishing the index"
+        type: boolean
+        default: true
+      id:
+        description: "Extension id for dry-run builds, e.g. bridge"
+        required: true
+      version:
+        description: "Version declared in extensions/<id>/extension.json, e.g. 0.0.1"
+        required: true
+
+concurrency:
+  group: extension-marketplace
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  gate:
+    if: startsWith(github.ref, 'refs/tags/ext/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    uses: ./.github/workflows/gate.yml
+
+  publish:
+    name: Build + publish extension
+    needs: [gate]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/ext/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert tag matches the extension manifest
+        id: ext
+        env:
+          EXT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.id || '' }}
+          EXT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/assert-extension-tag.sh
+
+      - name: Assert release commit is on dev
+        if: startsWith(github.ref, 'refs/tags/ext/')
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Install deps
+        run: vp install
+
+      # 条目上那句 notes 从 extensions/<id>/CHANGELOG.md 该版本段的概述抽 —— 与本体同一套规矩、
+      # 同一个脚本。抽不出来在这儿就红,别等构建跑完。
+      - name: Read release summary from the extension CHANGELOG
+        id: notes
+        env:
+          ID: ${{ steps.ext.outputs.id }}
+          VERSION: ${{ steps.ext.outputs.version }}
+        run: |
+          set -euo pipefail
+          summary=$(node scripts/changelog-section.mjs --version "$VERSION" --file "extensions/${ID}/CHANGELOG.md" --part summary)
+          echo "summary: $summary"
+          echo "value=$summary" >> "$GITHUB_OUTPUT"
+
+      - name: Build the extension
+        env:
+          ID: ${{ steps.ext.outputs.id }}
+        run: vp run -F "@bilibili-notify/extension-${ID}" build
+
+      - name: Pack the extension package
+        id: pkg
+        env:
+          ID: ${{ steps.ext.outputs.id }}
+          VERSION: ${{ steps.ext.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/pack-extension.mjs --id "$ID" --out "dist/${ID}-${VERSION}.zip" > /tmp/pkg.json
+          cat /tmp/pkg.json
+          echo "path=dist/${ID}-${VERSION}.zip" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(node -p "require('/tmp/pkg.json').sha256")" >> "$GITHUB_OUTPUT"
+          echo "size=$(node -p "require('/tmp/pkg.json').size")" >> "$GITHUB_OUTPUT"
+
+      # 官方索引与升级清单用同一把私钥。没配就整条跳过并打 warning —— 同 update-payload。
+      - name: Assert signing key
+        id: key
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
+            echo "::warning::未配置 BN_UPDATE_SIGNING_KEY,跳过索引签名 —— 这次发的拓展不会出现在市场里。生成方法见 docs/agents/self-update.md"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate release token
+        if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: bash .github/scripts/validate-release-token.sh
+
+      # 包先于索引上传:索引一旦发布就有客户端来拉,它指的包必须已经在。同名 release 已存在
+      # 就是重跑,资产 --clobber 覆盖成同样的字节(打包是可复现的)。
+      - name: Create the extension release and upload the package
+        if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          ID: ${{ steps.ext.outputs.id }}
+          VERSION: ${{ steps.ext.outputs.version }}
+          PRERELEASE: ${{ steps.ext.outputs.prerelease }}
+          NOTES: ${{ steps.notes.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="ext/${ID}@${VERSION}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            extra=()
+            if [ "$PRERELEASE" = "true" ]; then extra+=(--prerelease); fi
+            gh release create "$tag" --title "${ID} ${VERSION}" --notes "$NOTES" --latest=false "${extra[@]}"
+          fi
+          gh release upload "$tag" "${{ steps.pkg.outputs.path }}" --clobber
+
+      # 当前索引:滚动 release 上的信封 → 取出本体。第一次发时没有,并进一份空的。
+      - name: Fetch the current marketplace index
+        if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if gh release download extension-marketplace --pattern marketplace.json --dir dist --clobber 2>/dev/null; then
+            node -e 'const fs=require("fs");const e=JSON.parse(fs.readFileSync("dist/marketplace.json","utf8"));fs.writeFileSync("dist/current.json",e.manifest)'
+            echo "current index: $(node -p "JSON.parse(require('fs').readFileSync('dist/current.json','utf8')).extensions.length") entries"
+          else
+            echo "no marketplace index yet — starting a fresh one"
+          fi
+
+      - name: Merge this entry and sign the index
+        if: steps.key.outputs.present == 'true'
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          ID: ${{ steps.ext.outputs.id }}
+          VERSION: ${{ steps.ext.outputs.version }}
+          PRERELEASE: ${{ steps.ext.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+          SHA256: ${{ steps.pkg.outputs.sha256 }}
+          SIZE: ${{ steps.pkg.outputs.size }}
+          NOTES: ${{ steps.notes.outputs.value }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const m = JSON.parse(fs.readFileSync(`extensions/${process.env.ID}/extension.json`, "utf8"));
+            const tag = encodeURIComponent(`ext/${process.env.ID}@${process.env.VERSION}`);
+            const entry = {
+              id: m.id, name: m.name, description: m.description ?? "", version: process.env.VERSION,
+              apiVersion: m.apiVersion, prerelease: process.env.PRERELEASE === "true",
+              package: {
+                url: `https://github.com/${process.env.REPO}/releases/download/${tag}/${process.env.ID}-${process.env.VERSION}.zip`,
+                sha256: process.env.SHA256, size: Number(process.env.SIZE),
+              },
+              releaseUrl: `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
+              notes: process.env.NOTES,
+            };
+            fs.writeFileSync("dist/entry.json", JSON.stringify(entry, null, 2));
+          '
+          current=""
+          if [ -f dist/current.json ]; then current="--current dist/current.json"; fi
+          # shellcheck disable=SC2086
+          node scripts/marketplace-index.mjs --entry dist/entry.json $current --out dist/marketplace-next
+          cat dist/marketplace-next.json
+
+      - name: Publish the marketplace index
+        if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'
+        env:
+          FILE: dist/marketplace-next.sig.json
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/publish-extension-marketplace.sh
