@@ -143,20 +143,13 @@ jobs:
           fi
           gh release upload "$tag" "${{ steps.pkg.outputs.path }}" --clobber
 
-      # 当前索引:滚动 release 上的信封 → 取出本体。第一次发时没有,并进一份空的。
+      # 当前索引:滚动 release 上的信封 → 取出本体。**只有 release 还不存在**才当第一次发 ——
+      # 别的失败当场红,详见脚本头。
       - name: Fetch the current marketplace index
         if: steps.key.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          if gh release download extension-marketplace --pattern marketplace.json --dir dist --clobber 2>/dev/null; then
-            node -e 'const fs=require("fs");const e=JSON.parse(fs.readFileSync("dist/marketplace.json","utf8"));fs.writeFileSync("dist/current.json",e.manifest)'
-            echo "current index: $(node -p "JSON.parse(require('fs').readFileSync('dist/current.json','utf8')).extensions.length") entries"
-          else
-            echo "no marketplace index yet — starting a fresh one"
-          fi
+        run: bash .github/scripts/fetch-marketplace-index.sh
 
       - name: Merge this entry and sign the index
         if: steps.key.outputs.present == 'true'
