@@ -936,6 +936,12 @@ function AddLinkDialog({
 
 // ── 整节 ─────────────────────────────────────────────────────────────────────
 
+/** 要先问一句的那两件事:删掉这条接入 / 换一把钥匙。 */
+type ConfirmKind = "remove" | "regenerate";
+
+/** 正等着确认的那一下 —— 哪一件事、对哪条接入。 */
+type Confirming = { kind: ConfirmKind; link: BridgeLink };
+
 /**
  * 「桥接入」那一节:标题行 + 三种状态 + 接入卡 + 两个弹窗。摆在详情页头卡**之外**,
  * 与设计稿一样是页面级的兄弟节点。
@@ -953,9 +959,8 @@ export function BridgeConnections({
 }) {
 	const qc = useQueryClient();
 	const [adding, setAdding] = useState(false);
-	const [removing, setRemoving] = useState<BridgeLink | null>(null);
-	/** 正等着确认换钥匙的那条 —— 见底下那个确认框。 */
-	const [regenerating, setRegenerating] = useState<BridgeLink | null>(null);
+	/** 两件事共用底下那**一个**确认框 —— 谁在等,由它说了算。 */
+	const [confirming, setConfirming] = useState<Confirming | null>(null);
 	const address = bnBridgeAddress(extensionId);
 
 	// 接入名单住桥自己的设置里(`globals.extensions.<id>.settings`)。与拓展表分开取:
@@ -982,8 +987,7 @@ export function BridgeConnections({
 			api.patch("/api/globals", { extensions: { [extensionId]: { settings: { links: next } } } }),
 		onSuccess: () => {
 			setAdding(false);
-			setRemoving(null);
-			setRegenerating(null);
+			setConfirming(null);
 			refresh();
 		},
 	});
@@ -999,6 +1003,45 @@ export function BridgeConnections({
 	const busy = save.isPending;
 	const update = (id: string, patch: Partial<BridgeLink>) =>
 		save.mutate(links.map((link) => (link.id === id ? { ...link, ...patch } : link)));
+	const linkOf = (id: string) => links.find((link) => link.id === id);
+
+	/**
+	 * 那两个确认框的**全部差别**:三句话 + 按下去干什么。除此之外它们逐行同形 —— 都是
+	 * `danger`、写不进去时都把原因摆在正文尾巴上(框留在原地)、写回期间都不接第二下。
+	 * 收编前是两份逐行重复的 JSX,连 `links.find` 都各写了一遍。
+	 */
+	const CONFIRMS: Record<
+		ConfirmKind,
+		{
+			title: string;
+			body: (link: BridgeLink) => string;
+			/** 写不进去时那句得贴着这一下说 —— 通用的「保存失败」等于让人对着黑盒按第二下。 */
+			errorLead: string;
+			label: string;
+			busyLabel: string;
+			run: (link: BridgeLink) => void;
+		}
+	> = {
+		remove: {
+			title: "删掉这条接入?",
+			body: (link) =>
+				`「${link.name}」删掉之后,那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。`,
+			errorLead: "删不掉",
+			label: "删除",
+			busyLabel: "删除中…",
+			run: (link) => save.mutate(links.filter((item) => item.id !== link.id)),
+		},
+		regenerate: {
+			title: "重新生成 token?",
+			body: (link) =>
+				`「${link.name}」的旧 token 立刻作废:正用着它连着的桥会当场掉线,要它连回来,得把新的那把按「复制」取走、重新填进那一头的插件设置里。`,
+			errorLead: "换不了钥匙",
+			label: "重新生成",
+			busyLabel: "重新生成中…",
+			run: (link) => update(link.id, { token: newBridgeToken() }),
+		},
+	};
+	const confirmation = confirming ? CONFIRMS[confirming.kind] : null;
 
 	const sessions = new Map(
 		(status.data?.sessions ?? []).map((session) => [session.linkId, session]),
@@ -1017,14 +1060,17 @@ export function BridgeConnections({
 		 * 常态就是空的),它恰恰是最该顺手按下去的那一颗。
 		 */
 		regenerate: (id) => {
-			const link = links.find((item) => item.id === id);
+			const link = linkOf(id);
 			if (link?.token) {
-				setRegenerating(link);
+				setConfirming({ kind: "regenerate", link });
 				return;
 			}
 			update(id, { token: newBridgeToken() });
 		},
-		remove: (id) => setRemoving(links.find((link) => link.id === id) ?? null),
+		remove: (id) => {
+			const link = linkOf(id);
+			setConfirming(link ? { kind: "remove", link } : null);
+		},
 		busy,
 	};
 
@@ -1098,51 +1144,27 @@ export function BridgeConnections({
 				/>
 			) : null}
 
-			{removing ? (
+			{confirming && confirmation ? (
 				<ConfirmDialog
-					title="删掉这条接入?"
+					title={confirmation.title}
 					message={
 						<>
-							{`「${removing.name}」删掉之后,那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。`}
-							{/* 删不掉时框留在原地 —— 不说原因就是让人对着黑盒按第二下。 */}
+							{confirmation.body(confirming.link)}
+							{/* 事情没成时框留在原地 —— 不说原因就是让人对着黑盒按第二下。 */}
 							{saveError ? (
 								<ErrorNote size="sm" className="mt-2.5">
-									删不掉:{saveError}
+									{confirmation.errorLead}:{saveError}
 								</ErrorNote>
 							) : null}
 						</>
 					}
-					confirmLabel={busy ? "删除中…" : "删除"}
+					confirmLabel={busy ? confirmation.busyLabel : confirmation.label}
 					danger
 					onConfirm={() => {
 						if (busy) return;
-						save.mutate(links.filter((link) => link.id !== removing.id));
+						confirmation.run(confirming.link);
 					}}
-					onCancel={() => setRemoving(null)}
-				/>
-			) : null}
-
-			{regenerating ? (
-				<ConfirmDialog
-					title="重新生成 token?"
-					message={
-						<>
-							{`「${regenerating.name}」的旧 token 立刻作废:正用着它连着的桥会当场掉线,要它连回来,得把新的那把按「复制」取走、重新填进那一头的插件设置里。`}
-							{/* 换不成时框留在原地 —— 与删除那条同一个道理:不说原因就是让人对着黑盒按第二下。 */}
-							{saveError ? (
-								<ErrorNote size="sm" className="mt-2.5">
-									换不了钥匙:{saveError}
-								</ErrorNote>
-							) : null}
-						</>
-					}
-					confirmLabel={busy ? "重新生成中…" : "重新生成"}
-					danger
-					onConfirm={() => {
-						if (busy) return;
-						update(regenerating.id, { token: newBridgeToken() });
-					}}
-					onCancel={() => setRegenerating(null)}
+					onCancel={() => setConfirming(null)}
 				/>
 			) : null}
 		</>
