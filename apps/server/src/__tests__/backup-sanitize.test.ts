@@ -1,6 +1,6 @@
 import { type Connection, ConnectionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
+import { redactBackupSections, redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
 
 /**
  * redactSecretKeys 是脱敏档的安全核心:平台无关地按密钥名深度抹除机密值,
@@ -226,24 +226,76 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
  * 所以字段表里那格 `secret: true` 同时当脱敏的依据:声明了就抹。
  */
 describe("拓展声明的密钥字段", () => {
-	const input = {
+	const sections = () => ({
+		globals: {
+			extensions: {
+				bridge: { enabled: true, settings: { links: [{ name: "家里那台", botKey: "s3cret" }] } },
+				other: { enabled: false, settings: { botKey: "别人的" } },
+			},
+		},
 		connections: [
 			{
 				id: "c1",
+				name: "阿库娅",
 				kind: "extension",
 				extensionId: "bridge",
 				config: { botKey: "s3cret", note: "家里那台" },
 			},
+			{
+				id: "c2",
+				name: "NapCat",
+				kind: "direct",
+				platform: "onebot",
+				config: { botKey: "不是拓展的", note: "直连" },
+			},
 		],
-	};
+		targets: [{ id: "t1", name: "测试群", connectionId: "c1" }],
+	});
 
 	it("拓展说了它是密钥 → 抹平;没说的原样留着", () => {
-		const out = redactSecretKeys(input, ["botKey"]);
+		const out = redactBackupSections(sections(), { bridge: ["botKey"] });
 		expect(out.connections[0]?.config.botKey).toBe("");
 		expect(out.connections[0]?.config.note).toBe("家里那台");
 	});
 
-	it("**没声明就漏** —— 这条钉的正是「靠猜名字」为什么不行", () => {
-		expect(redactSecretKeys(input).connections[0]?.config.botKey).toBe("s3cret");
+	/**
+	 * 🔴 拓展声明的键**只对它自己那两格生效**。
+	 *
+	 * 并进全局键名集合的话,一个拓展把 `name` 声明成密钥,备份里**每一条**连接与目标的
+	 * `name` 全成空串 —— 而 `name` 是 `min(1)`,恢复时整份被拒。「一个拓展能把整份备份
+	 * 弄报废」不是任何人做过的决定。
+	 */
+	it("声明的键不外溢:别的连接、目标、别的拓展都不受影响", () => {
+		const out = redactBackupSections(sections(), { bridge: ["name"] });
+		// 它自己那一格照抹。
+		expect(out.globals.extensions.bridge.settings.links[0]?.name).toBe("");
+		// 旁边这些一个都不许动。
+		expect(out.connections[0]?.name).toBe("阿库娅");
+		expect(out.connections[1]?.config.botKey).toBe("不是拓展的");
+		expect(out.targets[0]?.name).toBe("测试群");
+	});
+
+	/**
+	 * 🔴 **不在表里 = 那个拓展没跑起来**(开关拨掉 / 清单坏了 / 连败停用)。字段表是代码
+	 * 交上来的、清单里没有,所以问不出来 —— 问不出来就整片当密钥。此前是「问不出来就
+	 * 什么都不抹」,于是**关掉一个拓展就把它连接里的密钥漏进备份文件**。
+	 */
+	it("拓展没跑起来 → 它的 config 与 settings 整片抹平", () => {
+		const out = redactBackupSections(sections(), {});
+		expect(out.connections[0]?.config).toEqual({ botKey: "", note: "" });
+		expect(out.globals.extensions.bridge.settings.links[0]).toEqual({ name: "", botKey: "" });
+		// 开关不是设置,不许跟着抹掉。
+		expect(out.globals.extensions.bridge.enabled).toBe(true);
+		// 直连那条与拓展无关,照旧只吃基础黑名单。
+		expect(out.connections[1]?.config.note).toBe("直连");
+	});
+
+	it("跑起来但一格都没声明(字段表是空表)→ 只吃基础黑名单", () => {
+		const out = redactBackupSections(sections(), { bridge: [], other: [] });
+		expect(out.connections[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
+	});
+
+	it("**基础黑名单靠猜名字就是不行** —— 这条钉的正是为什么要声明", () => {
+		expect(redactSecretKeys(sections()).connections[0]?.config.botKey).toBe("s3cret");
 	});
 });

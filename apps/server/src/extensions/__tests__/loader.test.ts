@@ -275,11 +275,13 @@ describe("拓展声明的密钥字段", () => {
 		});
 
 		expect(loaded.list()[0]?.state).toBe("running");
-		// 只有声明过的那一格 —— `note` 不该被抹。
-		expect(loaded.secretConfigCodes()).toEqual(["botKey"]);
+		// 只有声明过的那一格 —— `note` 不该被抹。按 id 分格:声明的键只对它自己那两格生效。
+		expect(loaded.secretConfigCodes()).toEqual({ bridge: ["botKey"] });
 
+		// 收摊之后它**不在表里** —— 在脱敏那边这不是「什么都不抹」而是「整片当密钥」,
+		// 见 `../backup/sanitize.ts` 的 ExtensionSecretCodes。
 		await loaded.dispose();
-		expect(loaded.secretConfigCodes()).toEqual([]);
+		expect(loaded.secretConfigCodes()).toEqual({});
 	});
 });
 

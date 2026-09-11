@@ -32,6 +32,12 @@ export interface BackupSecretBag {
 	 * 认不出它等于把主人那份备份里的连接凭据全丢掉(明文段是抹平过的,真值只在袋里)。
 	 */
 	adapterConfigs?: Record<string, unknown>;
+	/**
+	 * 明文段**每一处**被脱敏改掉的地方(路径 + 原值),见 `./sanitize.ts` 的
+	 * `collectRedactions`。上面那几格是手抄的清单,这一格是照脱敏结果现算的全集 ——
+	 * 完整档「原样恢复」这件事由它兜底。老备份没有这一格。
+	 */
+	redacted?: Array<{ path: ReadonlyArray<string | number>; value: unknown }>;
 }
 
 /**

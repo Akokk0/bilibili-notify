@@ -51,12 +51,17 @@ export interface ExtensionEntry {
 export interface LoadedExtensions {
 	list(): readonly ExtensionEntry[];
 	/**
-	 * 所有跑着的拓展声明成密钥的 config 键,合成一份 —— 备份脱敏拿它当依据。
+	 * 跑着的拓展各自声明成密钥的 config 键,**按 id 分格** —— 备份脱敏拿它当依据。
 	 *
-	 * 合起来不按拓展分:脱敏是**按键名**深度遍历的,而不同拓展的 config 住在各自的连接
-	 * 记录里,多抹一个别人的同名键没有代价(它本来也是密钥)。
+	 * 🔴 **分格,不合并**:合成一份全局键名集合的话,一个拓展把 `name` 声明成密钥,备份里
+	 * 每一条连接与目标的 `name` 都会被抹平,而 `name` 是 `min(1)` —— 恢复时整份被拒。
+	 *
+	 * 🔴 **没跑起来的不在表里**,而「不在表里」在脱敏那边的意思是**整片当密钥**,不是
+	 * 「什么都不抹」(见 `../backup/sanitize.ts` 的 `ExtensionSecretCodes`)。字段表是代码在
+	 * `registerPushSource` 时交上来的、清单里没有,所以停用的拓展问不出来 —— 问不出来时
+	 * 宁可多抹:从前那条路的症状是「拨掉一个拓展的开关,它连接里的密钥就原样进备份文件」。
 	 */
-	secretConfigCodes(): readonly string[];
+	secretConfigCodes(): Readonly<Record<string, readonly string[]>>;
 	/**
 	 * 某个拓展交上来的面板数据(`ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
@@ -342,9 +347,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	return {
 		list: () => [...entries.values()],
-		secretConfigCodes: () => [
-			...new Set([...runtimes.values()].flatMap((r) => r.secretConfigCodes())),
-		],
+		secretConfigCodes: () =>
+			Object.fromEntries([...runtimes].map(([id, r]) => [id, r.secretConfigCodes()])),
 		status: (id) => runtimes.get(id)?.status(),
 		descriptor: (id) => runtimes.get(id)?.descriptor(),
 		configFields: (id) => runtimes.get(id)?.configFields(),

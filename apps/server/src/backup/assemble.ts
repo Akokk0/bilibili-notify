@@ -2,7 +2,12 @@ import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibi
 import { applyAiSecrets, collectAiSecrets } from "../config/ai-secrets.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
-import { redactSecretKeys } from "./sanitize.js";
+import {
+	applyRedactions,
+	collectRedactions,
+	type ExtensionSecretCodes,
+	redactBackupSections,
+} from "./sanitize.js";
 
 /**
  * Full-backup assembly — ties envelope + sanitize + PIN crypto together.
@@ -31,11 +36,11 @@ export function assembleFullBackup(
 	input: FullBackupInput,
 	pin: string,
 	createdAt: string,
-	/** 拓展声明成密钥的 config 键 —— 明文段照它一并抹平。 */
-	extraSecretKeys: readonly string[] = [],
+	/** 拓展声明成密钥的 config 键,按拓展 id 分格 —— 明文段照它一并抹平。 */
+	extensionSecrets: ExtensionSecretCodes = {},
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
-	// 每家两把,全收。`redactSecretKeys` 会按键名把明文段里的 apiKey 一律抹平
+	// 每家两把,全收。`redactBackupSections` 会按键名把明文段里的 apiKey 一律抹平
 	// (它是深度遍历的,桶里那些自动覆盖到),所以真值只存在于这个加密袋里。
 	if (input.globals) {
 		const aiApiKeys = collectAiSecrets(input.globals);
@@ -48,17 +53,21 @@ export function assembleFullBackup(
 		for (const c of input.connections) bag.connectionConfigs[c.id] = c.config;
 	}
 
-	// redactSecretKeys deep-clones, so `input` is left intact and the plaintext
+	const original: BackupSections = {
+		globals: input.globals,
+		subscriptions: input.subscriptions,
+		connections: input.connections,
+		targets: input.targets,
+	};
+	// redactBackupSections deep-clones, so `input` is left intact and the plaintext
 	// sections come out credential-free.
-	const sections = redactSecretKeys<BackupSections>(
-		{
-			globals: input.globals,
-			subscriptions: input.subscriptions,
-			connections: input.connections,
-			targets: input.targets,
-		},
-		extraSecretKeys,
-	);
+	const sections = redactBackupSections<BackupSections>(original, extensionSecrets);
+	// 🔴 **不变式:凡是明文段被抹掉的,袋子里都要有对应项**(见 `collectRedactions`)。
+	// 上面那三格是手抄的,只覆盖了当年想到的那几样;这一格是照着脱敏的结果现算的,
+	// 以后脱敏那边再加规则,恢复自动跟上。手抄那三格留着,是为了**旧版本也打得开**
+	// 这份新备份(回退一版是真实存在的路)。
+	const redacted = collectRedactions(original, sections);
+	if (redacted.length > 0) bag.redacted = redacted;
 
 	return buildBackup({ kind: "full", createdAt, sections, secrets: sealSecrets(pin, bag) });
 }
@@ -87,6 +96,10 @@ export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBack
 			if (cfg !== undefined) (c as { config: unknown }).config = cfg;
 		}
 	}
+
+	// 最后照不变式那一份把**所有**被抹掉的地方填回去 —— 上面两格是老备份才有的形状,
+	// 这一格是新备份的全集(URL、拓展的 settings 与 config,以及往后新加的任何规则)。
+	if (bag.redacted) applyRedactions(sections, bag.redacted);
 
 	return {
 		sections,

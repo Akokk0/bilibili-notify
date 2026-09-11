@@ -14,7 +14,7 @@ import {
 	buildBackup,
 } from "./envelope.js";
 import { foldPlan, type ImportMode, planImport } from "./restore.js";
-import { redactSecretKeys } from "./sanitize.js";
+import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
 
 /**
  * BackupService — the IO seam wiring the pure backup core to the running
@@ -66,10 +66,13 @@ export interface BackupServiceDeps {
 	/** Injectable ISO clock (keeps exports deterministic in tests). */
 	now?: () => string;
 	/**
-	 * 额外算作密钥的 config 键 —— 跑着的拓展在字段表里声明 `secret: true` 的那些。
+	 * 拓展在字段表里声明 `secret: true` 的那些 config 键,**按拓展 id 分格**。
 	 * **现取**:拓展会被拨开关加载 / 卸载。
+	 *
+	 * 不在表里的拓展 = 没跑起来 = 问不出来,脱敏那边把它那两格整片当密钥
+	 * (见 {@link ExtensionSecretCodes})。
 	 */
-	extraSecretKeys?: () => readonly string[];
+	extensionSecretCodes?: () => ExtensionSecretCodes;
 }
 
 interface ExportOptions {
@@ -130,13 +133,13 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				},
 				opts.pin,
 				createdAt,
-				deps.extraSecretKeys?.(),
+				deps.extensionSecretCodes?.(),
 			);
 		}
 		return buildBackup({
 			kind: "sanitized",
 			createdAt,
-			sections: redactSecretKeys(picked, deps.extraSecretKeys?.()),
+			sections: redactBackupSections(picked, deps.extensionSecretCodes?.()),
 		});
 	}
 
@@ -157,7 +160,12 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
 		if (sections.connections || sections.targets) {
 			const migrated = migrateConfigSections({
-				connections: sections.connections,
+				// 🔴 只勾了 targets 那一段导出的老备份:v1 的 `platform: "webhook"` 得跟着
+				// **它那条连接**降格(飞书 / 钉钉 / 企微),而连接不在这份备份里 —— 查不到表
+				// 就整份落成 `generic`,落地时被 `assertTargetOwner` 判「平台对不上」,整份
+				// 恢复被拒(托管目标的归一化排在那道校验之后,救不回来)。备份没带的那一段,
+				// 拿**现在盘上那份**补位。
+				connections: sections.connections ?? deps.configStore.getConnections(),
 				targets: sections.targets,
 			});
 			sections = {

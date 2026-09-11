@@ -112,7 +112,7 @@ describe("BackupService", () => {
 			configStore: makeFakeStore({ connections: [extension] }),
 			cookieStore: makeCookieStore(null),
 			now: () => "t0",
-			extraSecretKeys: () => ["botKey"],
+			extensionSecretCodes: () => ({ bridge: ["botKey"] }),
 		});
 
 		const sanitized = await svc.exportBackup({ kind: "sanitized" });
@@ -124,6 +124,32 @@ describe("BackupService", () => {
 		// 完整档的明文段同样不许带 —— 真值只存在于加密袋里。
 		const full = await svc.exportBackup({ kind: "full", pin: "123456" });
 		expect(full.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "家里那台" });
+	});
+
+	/**
+	 * 🔴 拓展**没跑起来**时(开关拨掉 / 清单坏了 / 连败停用)问不出它的字段表 —— 从前
+	 * 那就等于「什么都不抹」,于是关掉一个拓展就把它连接里的密钥漏进备份文件,而备份是
+	 * 主人会发出去求助的东西。这条钉的是接线:服务真的把「它不在表里」这件事带了下去。
+	 */
+	it("拓展没跑起来 → 它那条连接的 config 整片抹平", async () => {
+		const extension = {
+			id: "e1",
+			name: "桥",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			config: { botKey: "s3cret", note: "家里那台" },
+		} as unknown as Connection;
+		const svc = createBackupService({
+			configStore: makeFakeStore({ connections: [extension] }),
+			cookieStore: makeCookieStore(null),
+			now: () => "t0",
+			// 跑着的一个都没有 —— 拓展全停用时就是这个样子。
+			extensionSecretCodes: () => ({}),
+		});
+
+		const sanitized = await svc.exportBackup({ kind: "sanitized" });
+		expect(sanitized.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "" });
 	});
 
 	it("sanitized export respects the section selection and carries no secrets block", async () => {

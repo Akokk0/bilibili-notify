@@ -100,6 +100,74 @@ describe("full backup assemble/open", () => {
 		expect(() => openFullBackup(env, "0000")).toThrow();
 	});
 
+	/**
+	 * 🔴 **凡是明文段被抹掉的,加密袋里都要有对应项** —— 完整档的不变式。
+	 *
+	 * 袋子从前是一份手抄清单(aiApiKeys / cookie / connectionConfigs),而抹的那一侧是
+	 * 结构性的深度遍历,两边早就漂了:`url` / `baseUrl` 一律被换成
+	 * `https://redacted.invalid/`,而袋子里一格都没有 —— 恢复之后 AI 的 baseUrl 与市场
+	 * 源的地址全是占位符,DNS 永远解析不了,而恢复流程一句话都不会说。
+	 */
+	it("被抹成占位符的 URL 原样恢复:AI 的 baseUrl、市场源的地址", () => {
+		const globals = globalsWithApiKey("sk-1");
+		globals.marketplace.sources = [
+			{ id: "s1", name: "阿库娅的源", url: "https://ext.example.com/index.json" },
+		];
+		const env = assembleFullBackup({ globals }, "123456", "t");
+
+		// 明文段照旧一个真地址都不带。
+		const plaintext = JSON.stringify(env.sections);
+		expect(plaintext).not.toContain("api.deepseek.com");
+		expect(plaintext).not.toContain("ext.example.com");
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.globals?.defaults.ai.providers.deepseek?.baseUrl).toBe(
+			"https://api.deepseek.com",
+		);
+		expect(sections.globals?.marketplace.sources[0]?.url).toBe(
+			"https://ext.example.com/index.json",
+		);
+	});
+
+	/**
+	 * 拓展自己那份设置(桥的接入 token 住这儿)同样在明文段被抹平 —— 袋子里没有它,
+	 * 恢复之后每一条接入都连不上,主人得照着插件那边重抄一遍 token。
+	 */
+	it("拓展 settings 里的密钥原样恢复", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.extensions = {
+			bridge: { enabled: true, settings: { links: [{ name: "家里那台", token: "tok-SECRET" }] } },
+		};
+		const env = assembleFullBackup({ globals }, "123456", "t");
+		expect(JSON.stringify(env.sections)).not.toContain("tok-SECRET");
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.globals?.extensions.bridge?.settings).toEqual({
+			links: [{ name: "家里那台", token: "tok-SECRET" }],
+		});
+	});
+
+	/**
+	 * 拓展没跑起来时它的 config 被整片当密钥抹掉(见 sanitize 那边的理由)——
+	 * 完整档必须照样原样还回来,否则「关掉一个拓展再备份」就等于把那些连接毁了。
+	 */
+	it("没跑起来的拓展:整片抹掉的 config 也原样恢复", () => {
+		const extension = {
+			id: "c1",
+			name: "阿库娅",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			platform: "telegram",
+			config: { botKey: "s3cret", note: "家里那台" },
+		} as unknown as Connection;
+		const env = assembleFullBackup({ connections: [extension] }, "123456", "t");
+		expect(env.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "" });
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.connections?.[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
+	});
+
 	it("老备份的加密袋里那格叫 adapterConfigs,也要认", () => {
 		// 明文段的凭据是抹平过的,真值只在袋里 —— 认不出老键名不会报错,只会让主人
 		// 恢复出一堆没有 token 的连接,而他要到发第一条推送时才发现。

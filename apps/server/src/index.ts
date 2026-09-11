@@ -778,9 +778,10 @@ export async function startStandaloneServer(
 					configStore: runtime.configStore,
 					cookieStore: authSystem.storage.cookieStore,
 					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
-					// 拓展声明成密钥的 config 键。**现取** —— 拓展会被拨开关加载 / 卸载,
-					// 而且备份服务比装载早一步建起来。
-					extraSecretKeys: () => loadedExtensions?.secretConfigCodes() ?? [],
+					// 拓展声明成密钥的 config 键,按 id 分格。**现取** —— 拓展会被拨开关加载 /
+					// 卸载,而且备份服务比装载早一步建起来。空表 = 一个都没跑起来 = 每条拓展
+					// 连接的 config 整片当密钥(见 sanitize 的 ExtensionSecretCodes)。
+					extensionSecretCodes: () => loadedExtensions?.secretConfigCodes() ?? {},
 				})
 			: undefined;
 
