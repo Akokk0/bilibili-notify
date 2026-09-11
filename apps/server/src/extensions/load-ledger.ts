@@ -47,24 +47,22 @@ export interface RecordLoadAttemptInput {
 	maxFailures: number;
 }
 
-export interface LoadAttempt {
-	attempts: number;
-	/** 这一次就到上限了 —— 加载器该停手。 */
-	blocked: boolean;
-}
-
 /**
  * **要加载它了,先记一笔。** 由 {@link markLoadSucceeded} 销账。
  *
  * 顺序不能反:等加载成功再记的话,「一 import 就把进程带走」这种循环永远累加不到上限
  * —— 而那正是这套机制唯一要救的场景。
+ *
+ * **什么都不回**:这一笔记完之后「它算不算被停用了」是**盘上**的事,而加载器每次都现读
+ * ({@link readLoadLedger})—— 热装卸期间别处也在往同一份记账上写。再回一份内存里的副本,
+ * 就多了一个会与盘上漂开的真相。
  */
 export function recordLoadAttempt({
 	root,
 	id,
 	version,
 	maxFailures,
-}: RecordLoadAttemptInput): LoadAttempt {
+}: RecordLoadAttemptInput): void {
 	const state = readState(root);
 	const key = ledgerKey(id, version);
 	const attempts = (state.attempts[key] ?? 0) + 1;
@@ -73,7 +71,6 @@ export function recordLoadAttempt({
 		attempts: { ...state.attempts, [key]: attempts },
 		blocked: blocked && !state.blocked.includes(key) ? [...state.blocked, key] : state.blocked,
 	} satisfies LoadState);
-	return { attempts, blocked };
 }
 
 /**
