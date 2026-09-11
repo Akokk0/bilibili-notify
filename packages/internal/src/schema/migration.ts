@@ -55,9 +55,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /**
  * 一条连接已经是新形状？两件事都要成立:`connector` 在,且 `platform` 不再是 `"webhook"`
  * —— 后者是被降格掉的那个假平台,还留着就说明上一半迁移没跑完。
+ *
+ * 拓展连接(`kind: "extension"`)不在这套判据里:它从来没有 `connector`(怎么连是桥的事),
+ * 它的 `platform` 是从桥报的 bot 上抄来的、可能恰好叫 `onebot` —— 按「没有 connector」去判
+ * 就会把它当成史前直连,凭空戴上 `kind: "direct"`,改完当场过不了 schema。
  */
 function isMigratedConnection(entry: unknown): boolean {
-	return isRecord(entry) && typeof entry.connector === "string" && entry.platform !== "webhook";
+	if (!isRecord(entry)) return false;
+	if (isExtensionConnection(entry)) return true;
+	return typeof entry.connector === "string" && entry.platform !== "webhook";
+}
+
+function isExtensionConnection(entry: Record<string, unknown>): boolean {
+	return entry.kind === "extension";
 }
 
 /**
@@ -101,6 +111,8 @@ export function detectConfigVersion(input: RawConfigSections): number {
  */
 function connectionToV2(entry: unknown): { next: unknown; changed: boolean } {
 	if (!isRecord(entry)) return { next: entry, changed: false };
+	// 拓展连接自成一种形状,这两步都不归它 —— 见 isMigratedConnection。
+	if (isExtensionConnection(entry)) return { next: entry, changed: false };
 
 	let next = entry;
 	let changed = false;

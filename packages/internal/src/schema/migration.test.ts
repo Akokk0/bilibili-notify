@@ -462,3 +462,39 @@ describe("migrateConfigSections —— 每平台一套的 session 收成一格 a
 		expect(twice.targets).toEqual(once.targets);
 	});
 });
+
+/**
+ * 拓展连接(`kind: "extension"`)不归这套迁移管:它从来没有 `connector`(怎么连是桥的事),
+ * 而 `platform` 是从桥报的 bot 上抄来的开放词表 —— 抄到 `onebot` 时,按「没有 connector
+ * = 史前直连」去判就会给它凭空戴上 `kind: "direct"` + `connector: "http"`,改完当场过不了
+ * ConnectionSchema,开机直接挂(2026-09-11 主人本地真撞过)。
+ */
+describe("migrateConfigSections —— 拓展连接原样放行", () => {
+	const bridgedBot = (over: Record<string, unknown> = {}) => ({
+		id: "33333333-3333-4333-8333-333333333333",
+		name: "家里那台 koishi 上的 bot",
+		enabled: true,
+		kind: "extension",
+		extensionId: "bridge",
+		platform: "onebot",
+		config: { link: "link-home", botId: "onebot:10086" },
+		...over,
+	});
+
+	it("没有 connector 的拓展连接 = 已经是新形状,不触发迁移回写", () => {
+		expect(detectConfigVersion({ connections: [bridgedBot()] })).toBe(CONFIG_SCHEMA_VERSION);
+	});
+
+	it("平台抄到 onebot 也不戴 direct/connector —— 戴上就过不了 schema", () => {
+		const out = migrateConfigSections({ connections: [bridgedBot()] });
+		expect(out.changed.connections).toBe(false);
+		expect(out.connections[0]).toEqual(bridgedBot());
+		expect(ConnectionSchema.safeParse(out.connections[0]).success).toBe(true);
+	});
+
+	it("与史前直连混在一张表里,只迁直连那条", () => {
+		const out = migrateConfigSections({ connections: [onebotV1(), bridgedBot()] });
+		expect(out.changed.connections).toBe(true);
+		expect(out.connections[1]).toEqual(bridgedBot());
+	});
+});

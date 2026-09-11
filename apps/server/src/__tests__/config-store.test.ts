@@ -824,6 +824,40 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	/**
+	 * 桥借来的 bot 平台抄到 `onebot` 时,形状迁移不许把它当成「没有 connector 的史前直连」
+	 * 去戴 `kind: "direct"` —— 戴上就过不了 schema,开机直接挂;上一条用例用的 telegram
+	 * 恰好躲开了这一枪(迁移不认得的平台原样放行),所以这里非用 onebot 不可。
+	 */
+	it("load() 不把桥借来的 onebot bot 当成史前直连去迁移", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-ext-onebot-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const bot = {
+			id: randomUUID(),
+			name: "koishi 上那只 onebot",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			platform: "onebot",
+			config: { link: "link-home", botId: "onebot:10086" },
+		};
+		const written = JSON.stringify([bot]);
+		await writeFile(join(state2, "connections.json"), written, "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		expect(store2.getConnections().map((c) => c.id)).toEqual([bot.id]);
+		// 没有东西要迁,盘上一个字都不该动(也就没有 .bak)。
+		expect(await readFile(join(state2, "connections.json"), "utf8")).toBe(written);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 留下形状正确、平台却不认得的 target —— 桥驮来的就长这样", async () => {
 		// 目标的平台开放之后,「认不认识」不能再靠词表答:telegram 不在任何词表里,
 		// 但它是合法的。判据换成「认不得的平台**又** parse 不过才是存量」,所以这一条
