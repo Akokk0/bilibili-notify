@@ -16,7 +16,7 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -175,6 +175,105 @@ describe("仓里的拓展没有越界", () => {
 				if (bad) violations.push(`${relative(EXTENSIONS_ROOT, file)}: ${specifier} —— ${bad.why}`);
 			}
 		}
+		expect(violations).toEqual([]);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/* 反方向:核心不 import 拓展                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 🔴 **另一条边:核心不 import 拓展。**
+ *
+ * 上半场只扫了「拓展够不够得到核心」,而那条规矩是**两条边**:核心伸手进
+ * `extensions/` 同样致命,而且更隐蔽 ——
+ *
+ * - **拓展是装进来的,本体一个都不带**(ADR-0012)。核心 import 它等于把一个可选的、
+ *   随时会被卸载 / 换版本的东西编进主程序:那个目录在主人机器上根本不存在。
+ * - **它把契约变成双向的。** 契约只有一扇门(`@bilibili-notify/extension`),核心直接
+ *   够到某个拓展的内部,等于宣布「桥的那个文件也是契约」—— 而那个拓展有自己的发版节奏。
+ * - **越界照样是静默的**:仓里有源码、tsc 编得过、测试全绿,只有真机上那份没有仓库源码
+ *   的载荷会炸,或者更糟:装的那一版和编进去的那一份不是同一版。
+ */
+export function reachesIntoExtensions(
+	specifier: string,
+	/** 写这行的文件所在目录,**绝对路径**。 */
+	fromDir: string,
+	/** 仓根那个 `extensions/`,绝对路径。 */
+	extensionsRoot: string,
+): boolean {
+	if (specifier.startsWith(".")) {
+		// 拿**解析之后的绝对路径**判,别拿字符串猜:核心自己有一个 `src/extensions/`
+		// (宿主这侧的装载器),按名字猜会把它整片误伤。
+		const resolved = resolve(fromDir, specifier);
+		return resolved === extensionsRoot || resolved.startsWith(`${extensionsRoot}${sep}`);
+	}
+	// 拓展都是 workspace 包(`@bilibili-notify/extension-<id>`)。⚠️ 那扇门本身叫
+	// `@bilibili-notify/extension`,不带横杠 —— 核心当然要 import 它。
+	return specifier.startsWith(`${EXTENSION_PACKAGE}-`);
+}
+
+describe("核心越界判据", () => {
+	const root = `${sep}repo${sep}extensions`;
+	const from = `${sep}repo${sep}apps${sep}server${sep}src`;
+
+	it("放行:宿主自己那个 src/extensions/(装载器住那儿),以及那扇门本身", () => {
+		expect(reachesIntoExtensions("./extensions/loader.js", from, root)).toBe(false);
+		expect(reachesIntoExtensions("../extensions/mount.js", from, root)).toBe(false);
+		expect(reachesIntoExtensions(EXTENSION_PACKAGE, from, root)).toBe(false);
+		expect(reachesIntoExtensions("@bilibili-notify/internal", from, root)).toBe(false);
+	});
+
+	it("判红:爬到仓根的 extensions/ 里,或者依赖某个拓展的包", () => {
+		expect(reachesIntoExtensions("../../../extensions/bridge/src/protocol.js", from, root)).toBe(
+			true,
+		);
+		expect(reachesIntoExtensions("@bilibili-notify/extension-bridge", from, root)).toBe(true);
+	});
+});
+
+/** 仓根 —— 从本文件往上五级(`apps/server/src/extensions/__tests__`)。 */
+const REPO_ROOT = join(fileURLToPath(dirname(import.meta.url)), "..", "..", "..", "..", "..");
+
+/** 核心那一侧要扫的源码根:每个 app / package 自己的 `src`(`extensions/*` 不在其中)。 */
+async function coreSourceRoots(): Promise<string[]> {
+	const roots: string[] = [];
+	for (const group of ["apps", "packages"]) {
+		const base = join(REPO_ROOT, group);
+		for (const entry of await readdir(base, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const src = join(base, entry.name, "src");
+			try {
+				await readdir(src);
+				roots.push(src);
+			} catch {
+				// 没有 src/ 的(桌面壳那种)跳过。
+			}
+		}
+	}
+	return roots;
+}
+
+describe("核心没有伸手进拓展", () => {
+	it("apps/**/src 与 packages/**/src 里没有一条 import 够到 extensions/", async () => {
+		const extensionsRoot = join(REPO_ROOT, "extensions");
+		const roots = await coreSourceRoots();
+		// 一个源码根都没扫到 = 这条守卫在空转,那比没有还糟。
+		expect(roots.length).toBeGreaterThan(0);
+
+		const violations: string[] = [];
+		let scanned = 0;
+		for (const root of roots) {
+			for (const file of await tsFilesIn(root)) {
+				scanned += 1;
+				for (const specifier of importSpecifiersIn(await readFile(file, "utf8"))) {
+					if (!reachesIntoExtensions(specifier, dirname(file), extensionsRoot)) continue;
+					violations.push(`${relative(REPO_ROOT, file)}: ${specifier}`);
+				}
+			}
+		}
+		expect(scanned).toBeGreaterThan(0);
 		expect(violations).toEqual([]);
 	});
 });
