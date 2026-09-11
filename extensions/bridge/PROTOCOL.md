@@ -109,7 +109,7 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 ```jsonc
 {
   "type": "hello",
-  "protocol": { "major": 1, "minor": 2 },
+  "protocol": { "major": 1, "minor": 3 },
   "bridge": {
     "kind": "koishi",        // "koishi" | "astrbot"
     "name": "家里那台",       // 可选，面板上显示
@@ -222,7 +222,7 @@ BN 拿 `pong.id` 配对，量面板上那颗「测试」按钮那一趟的真实
 ```jsonc
 {
   "type": "welcome",
-  "protocol": { "major": 1, "minor": 2 },
+  "protocol": { "major": 1, "minor": 3 },
   "server": { "version": "0.10.1" },
   "inbound": { "private": true, "group": "with-links" }
 }
