@@ -30,27 +30,13 @@ const id = (over: Partial<ChatIdentity> = {}): ChatIdentity => ({
 	...over,
 });
 
-describe("chatIdentityOf —— 从主人那条私聊目标取三坐标", () => {
+describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => {
 	it("私聊会话目标 → 平台 + 地址", () => {
 		expect(
 			chatIdentityOf(
 				target({ kind: "session", scope: "private", platform: "onebot", address: "10001" }),
 			),
-		).toEqual({ platform: "onebot", address: "10001", botId: undefined });
-	});
-
-	it("带 botId 的一起带出来 —— 桥上同一个号可能挂在两个 bot 底下", () => {
-		expect(
-			chatIdentityOf(
-				target({
-					kind: "session",
-					scope: "private",
-					platform: "telegram",
-					address: "42",
-					botId: "bot-a",
-				}),
-			),
-		).toMatchObject({ botId: "bot-a" });
+		).toEqual({ platform: "onebot", address: "10001" });
 	});
 
 	it("群目标没有身份 —— 群地址不是人,拿它当主人等于把整个群当主人", () => {
@@ -95,19 +81,14 @@ describe("sameChatIdentity —— 认不认这个人", () => {
 		expect(sameChatIdentity(id(), id({ address: "20002" }))).toBe(false);
 	});
 
-	it("两边都有 botId 且不同 → 不是 —— 同一条桥上的两个 bot 是两个会话", () => {
-		expect(sameChatIdentity(id({ botId: "bot-a" }), id({ botId: "bot-b" }))).toBe(false);
-	});
-
-	it("两边都有 botId 且相同 → 是", () => {
-		expect(sameChatIdentity(id({ botId: "bot-a" }), id({ botId: "bot-a" }))).toBe(true);
-	});
-
-	it("只有一边有 botId → 仍算同一个人", () => {
-		// 直连这一格永远是空的。要求它相等等于谁都不认;而它是**后加的**一格,
-		// 存量配置里一条都没有,严格比会把主人自己锁在门外。
-		expect(sameChatIdentity(id({ botId: "bot-a" }), id())).toBe(true);
-		expect(sameChatIdentity(id(), id({ botId: "bot-a" }))).toBe(true);
+	/**
+	 * 身份**没有 bot 那一格**(ADR-0012 决策 45):一条连接就是一个 bot,同一个平台上同一个
+	 * 地址就是同一个人 —— 两个 bot 各看见他一次也还是他。多出来的键不参与比对。
+	 */
+	it("同平台同地址就是同一个人 —— 谁看见的不重要", () => {
+		const seenByA = { ...id(), botId: "bot-a" } as ChatIdentity;
+		const seenByB = { ...id(), botId: "bot-b" } as ChatIdentity;
+		expect(sameChatIdentity(seenByA, seenByB)).toBe(true);
 	});
 
 	it("没配主人 → 谁都不认", () => {

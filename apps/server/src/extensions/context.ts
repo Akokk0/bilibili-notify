@@ -56,10 +56,10 @@ export interface ExtensionRuntime {
 	 */
 	configFields(): readonly ExtensionConfigField[] | undefined;
 	/**
-	 * 某条连接上现在能绑目标的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
+	 * 现在能借来当连接的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
 	 * 前者是「这种推送源没有 bot 这回事」,后者是「现在一个都没连着」)。
 	 */
-	bots(connectionId: string): readonly ExtensionBotView[] | undefined;
+	bots(): readonly ExtensionBotView[] | undefined;
 	/**
 	 * 它在字段表里声明成密钥的那些键 —— **备份脱敏照这个抹**。
 	 *
@@ -141,7 +141,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let pushSourceRegistered = false;
 	let descriptor: ExtensionDescriptor | undefined;
 	let configFields: readonly ExtensionConfigField[] | undefined;
-	let listBots: ((connectionId: string) => readonly ExtensionBotView[]) | undefined;
+	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
 
 	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
@@ -237,7 +237,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
-			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields);
+			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields, {
+				picked: def.listBots !== undefined,
+			});
 			pushSourceRegistered = true;
 			descriptor = def.descriptor;
 			configFields = def.configFields;
@@ -303,7 +305,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		status: () => statusOf?.(),
 		descriptor: () => descriptor,
 		configFields: () => configFields,
-		bots: (connectionId) => listBots?.(connectionId),
+		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
 		async dispose() {
 			if (disposed) return;

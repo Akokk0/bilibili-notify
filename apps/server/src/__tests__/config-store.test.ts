@@ -785,6 +785,45 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	/**
+	 * 拓展连接曾经没有 `platform`(那时它是「一条桥接入」);改成「一个 bot」之后必填。
+	 * 老形状没发过版、不写迁移 —— 当作已撤下的形状丢掉;新形状(带开放词表的 platform)
+	 * 必须活下来。两条一起才把那个判据钉住:只丢老形状,不丢桥借来的 telegram bot。
+	 */
+	it("load() 丢掉没有 platform 的老拓展连接,留下带 platform 的新形状", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-ext-shape-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const stale = {
+			id: randomUUID(),
+			name: "家里那台(老形状)",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			config: { token: "t0ken", bridgeKind: "koishi" },
+		};
+		const bot = {
+			id: randomUUID(),
+			name: "阿库娅",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			platform: "telegram",
+			config: { link: stale.id, botId: "telegram:42" },
+		};
+		await writeFile(join(state2, "connections.json"), JSON.stringify([stale, bot]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		expect(store2.getConnections().map((c) => c.id)).toEqual([bot.id]);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 留下形状正确、平台却不认得的 target —— 桥驮来的就长这样", async () => {
 		// 目标的平台开放之后,「认不认识」不能再靠词表答:telegram 不在任何词表里,
 		// 但它是合法的。判据换成「认不得的平台**又** parse 不过才是存量」,所以这一条

@@ -18,7 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
-const CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const LINK_ID = "link-home";
 const TOKEN = "devtools-fake-bridge-token";
 
 async function findFreePort(): Promise<number> {
@@ -49,22 +49,25 @@ describe("devtools 的假桥 → 真桥", () => {
 
 		const globalsPath = join(dataDir, "state", "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
-		globals.extensions = { bridge: { enabled: true } };
+		// 接入(token)住桥自己的设置里 —— 场景从那儿挑(ADR-0012 决策 45)。
+		globals.extensions = {
+			bridge: {
+				enabled: true,
+				settings: {
+					links: [
+						{
+							id: LINK_ID,
+							name: "家里那台 koishi",
+							enabled: true,
+							token: TOKEN,
+							bridgeKind: "koishi",
+						},
+					],
+				},
+			},
+		};
 		await installBridgeInto(dataDir);
 		await writeFile(globalsPath, JSON.stringify(globals));
-		await writeFile(
-			join(dataDir, "state", "connections.json"),
-			JSON.stringify([
-				{
-					id: CONNECTION_ID,
-					name: "家里那台 koishi",
-					enabled: true,
-					kind: "extension",
-					extensionId: "bridge",
-					config: { token: TOKEN, bridgeKind: "koishi" },
-				},
-			]),
-		);
 	});
 
 	afterAll(async () => {

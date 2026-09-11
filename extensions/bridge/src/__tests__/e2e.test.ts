@@ -38,6 +38,7 @@ import { activate } from "../index.js";
 
 const EXTENSION_ID = "bridge";
 const MOUNT_PREFIX = `/ext/${EXTENSION_ID}`;
+const LINK_ID = "link-home";
 const CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const TARGET_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const TOKEN = "protocol-walk-token";
@@ -54,13 +55,22 @@ const PNG = Buffer.from(
 
 const SILENT = { info() {}, warn() {}, error() {}, debug() {} };
 
+/** 一条接入 —— 住设置里(`ctx.settings`),插件拿它的 token 连上来。 */
+const SETTINGS = {
+	links: [
+		{ id: LINK_ID, name: "家里那台 koishi", enabled: true, token: TOKEN, bridgeKind: "koishi" },
+	],
+};
+
+/** 一条连接 = 那条接入上的一个 bot(ADR-0012 决策 45)。 */
 const CONNECTION: Connection = {
 	id: CONNECTION_ID,
-	name: "家里那台 koishi",
+	name: "电报那个 bot",
 	enabled: true,
 	kind: "extension",
 	extensionId: EXTENSION_ID,
-	config: { token: TOKEN, bridgeKind: "koishi" },
+	platform: "telegram",
+	config: { link: LINK_ID, botId: BOT_ID },
 };
 
 const TARGET: PushTarget = {
@@ -71,7 +81,6 @@ const TARGET: PushTarget = {
 	platform: "telegram",
 	scope: "group",
 	address: "g-42",
-	botId: BOT_ID,
 	enabled: true,
 };
 
@@ -146,6 +155,11 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		publishStatus(fn) {
 			statusOf = fn;
 		},
+		// 设置也按真宿主的做法:拿拓展交的那份 zod 解,变更通知这里不需要。
+		settings: (schema) => ({
+			get: () => schema.parse(SETTINGS),
+			onChange: () => ({ dispose() {} }),
+		}),
 		onDispose(fn) {
 			hooks.push(fn);
 		},
@@ -325,13 +339,22 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	 * 面板要看的是**从配置那头看起**的名单 —— 最需要看见的恰恰是「配了但没连上」那条,
 	 * 而它在会话表里根本不存在。
 	 */
-	/** 推送目标页新建目标时,要从这里挑「绑哪个 bot」—— 只报连着的那条会话驮着的。 */
-	it("listBots:按连接列得出 bot,没连上的连接是空的", async () => {
+	/**
+	 * 推送目标页「新建连接」从这里挑 bot —— 只报连着的接入驮着的;每个 bot 带着那条连接
+	 * 该存的 config、经由哪条接入、已经绑成了哪条连接。
+	 */
+	it("listBots:列得出连着的接入上的 bot,带 config / via / boundTo;没连上就是空的", async () => {
+		expect(host.pushSource().listBots?.()).toEqual([]);
 		await handshake();
-		expect(host.pushSource().listBots?.(CONNECTION_ID)).toEqual([
-			expect.objectContaining({ botId: BOT_ID, platform: "telegram", icon: BOT_ICON }),
+		expect(host.pushSource().listBots?.()).toEqual([
+			expect.objectContaining({
+				config: { link: LINK_ID, botId: BOT_ID },
+				platform: "telegram",
+				icon: BOT_ICON,
+				via: "家里那台 koishi",
+				boundTo: CONNECTION_ID,
+			}),
 		]);
-		expect(host.pushSource().listBots?.("nobody")).toEqual([]);
 	});
 
 	it("publishStatus:握过手之后,面板拿得到会话与 bot 名单", async () => {
@@ -339,7 +362,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		expect(host.status()).toEqual({
 			sessions: [
 				expect.objectContaining({
-					connectionId: CONNECTION_ID,
+					linkId: LINK_ID,
 					connected: true,
 					kind: "koishi",
 					name: "家里那台 koishi",

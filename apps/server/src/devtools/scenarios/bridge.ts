@@ -4,7 +4,7 @@
  * 没有真插件时,拓展页上那条桥接入永远是灰的:能力矩阵、状态面板、bot 名单、失败提示
  * 一格都看不见。这两条场景拿那条接入自己的 token 连一条**真 socket** 回 BN 身上,于是
  * upgrade、鉴权、握手、`publishStatus`、推送 adapter、回执全是真的 —— 假的只有
- * 「后面没有 bot」这一件。
+ * 「后面没有 bot」这一件。连上之后推送目标页「新建连接」里就挑得到那个假 bot。
  *
  * 🔴 **这是「真动作」还是「假状态」?** —— 是**假状态**:连着的这条是 devtools 造出来的,
  * 面板上那条卡因它变绿。所以它进「当前生效」条、也归一键收摊(见 `devtools.md` 那条
@@ -14,16 +14,27 @@
  * ⚠️ 帧在 `../fake-bridge.ts` 里手写(核心 import 不到拓展),那笔账记在 ADR-0012 决策 42。
  */
 
-import type { ChatIdentity, Connection, ExtensionConnection } from "@bilibili-notify/internal";
-import { isExtensionConnection } from "@bilibili-notify/internal";
+import type { ChatIdentity } from "@bilibili-notify/internal";
 import { createFakeBridge, type FakeBridge, type FakeBridgeBot } from "../fake-bridge.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
-/** 桥那个拓展的 id。挂载点 `/ext/<id>` 与「哪条接入算桥」都按它认。 */
+/** 桥那个拓展的 id。挂载点 `/ext/<id>` 与设置住在哪一格都按它认。 */
 const BRIDGE_EXTENSION_ID = "bridge";
 
+/** 一条桥接入 —— 只抠这几格,形状归桥自己(见 `links()`)。 */
+interface BridgeLink {
+	id: string;
+	name: string;
+	token: string;
+	enabled: boolean;
+}
+
 export interface BridgeScenarioDeps {
-	connections: () => Connection[];
+	/**
+	 * 桥那个拓展自己的设置(`globals.extensions.bridge.settings`),**原样**。接入名单
+	 * (token 住在里面)在这儿,不在连接表里 —— 连接是「一个 bot」(ADR-0012 决策 45)。
+	 */
+	settings: () => unknown;
 	/**
 	 * BN 自己的 `host:port`。**现取** —— `serve()` 在 `createDevtools` 之后才拿到端口,
 	 * 建表那一刻它还不存在。
@@ -96,14 +107,35 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 		live = undefined;
 	}
 
-	/** 哪条接入是桥。**认 `extensionId`,不认名字** —— 名字是主人随手起的。 */
-	function pick(wanted: string | number | undefined): ExtensionConnection {
-		const connections = deps.connections();
-		if (wanted === undefined) {
-			const found = connections.find(
-				(c): c is ExtensionConnection =>
-					isExtensionConnection(c) && c.extensionId === BRIDGE_EXTENSION_ID,
-			);
+	/**
+	 * 接入名单从桥的设置里读。
+	 *
+	 * ⚠️ 核心**不认识**拓展设置的形状(那归拓展自己那份 zod,ADR-0012 决策 19),所以这里
+	 * 是按键名读的 —— 与桥自己 `resolveBridgeToken` 读的是同一格。读得防着点:形状不对就当
+	 * 一条都没有,别在 devtools 里炸。
+	 */
+	function links(): BridgeLink[] {
+		const raw = (deps.settings() as { links?: unknown } | undefined)?.links;
+		if (!Array.isArray(raw)) return [];
+		return raw.flatMap((entry): BridgeLink[] => {
+			const link = entry as Partial<Record<keyof BridgeLink, unknown>> | undefined;
+			if (typeof link?.id !== "string" || typeof link.name !== "string") return [];
+			return [
+				{
+					id: link.id,
+					name: link.name,
+					token: typeof link.token === "string" ? link.token : "",
+					enabled: link.enabled !== false,
+				},
+			];
+		});
+	}
+
+	/** 哪条接入。空 = 第一条;给了按 id 或名字认。 */
+	function pick(wanted: string | number | undefined): BridgeLink {
+		const all = links();
+		if (wanted === undefined || wanted === "") {
+			const found = all[0];
 			if (!found) {
 				throw new DevParamError(
 					"还没有桥接入 —— 先去拓展页 · 机器人框架桥接建一条(它会生成 token)",
@@ -111,29 +143,22 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			}
 			return found;
 		}
-		const found = connections.find((c) => c.id === String(wanted));
-		if (!found) throw new DevParamError(`没有这个连接:${wanted}`);
-		if (!isExtensionConnection(found) || found.extensionId !== BRIDGE_EXTENSION_ID) {
-			throw new DevParamError(`${found.name} 不是桥接入`);
-		}
+		const key = String(wanted);
+		const found = all.find((link) => link.id === key || link.name === key);
+		if (!found) throw new DevParamError(`没有这条接入:${key}`);
 		return found;
 	}
 
 	/**
-	 * 从接入的 config 里把 token 抠出来。
-	 *
-	 * ⚠️ 核心**不认识**拓展 config 的形状(那归拓展自己那份 zod,ADR-0012 决策 19),所以
-	 * 这里是按键名读的 —— 与桥自己 `resolveBridgeToken` 读的是同一格。空串是合法可存的
-	 * (脱敏备份把它抹成空串),但**永远连不上**,所以在这儿就说清楚。
+	 * 空 token 是合法可存的(脱敏备份把它抹成空串),但**永远连不上**,所以在这儿就说清楚。
 	 */
-	function tokenOf(connection: ExtensionConnection): string {
-		const token = (connection.config as { token?: unknown } | undefined)?.token;
-		if (typeof token !== "string" || token === "") {
+	function tokenOf(link: BridgeLink): string {
+		if (link.token === "") {
 			throw new DevParamError(
-				`${connection.name} 的 token 是空的 —— 去拓展页给它生成一条(脱敏备份恢复回来的就是空的)`,
+				`${link.name} 的 token 是空的 —— 去拓展页给它重新生成一把(脱敏备份恢复回来的就是空的)`,
 			);
 		}
-		return token;
+		return link.token;
 	}
 
 	const connect: DevScenarioDef = {
@@ -143,7 +168,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 		icon: "link",
 		desc: "拿那条桥接入自己的 token 连一条真 WS 回 BN 身上:拓展页那张卡当场变绿,bot 名单与能力矩阵有东西看。推送真的走到 adapter —— 回执是成是败这儿说了算,「失败提示」平时几乎没法看。收摊即断开。",
 		params: [
-			{ key: "connection", label: "桥接入", kind: "connection" },
+			{ key: "link", label: "桥接入(名字或 id,空 = 第一条)", kind: "text", default: "" },
 			{ key: "platform", label: "报一个什么平台的 bot", kind: "text", default: "onebot" },
 			{ key: "caps", label: "能力表", kind: "enum", options: CAP_PRESETS, default: "mixed" },
 			{
@@ -154,8 +179,8 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			},
 		],
 		async run(params) {
-			const connection = pick(params.connection);
-			const token = tokenOf(connection);
+			const link = pick(params.link);
+			const token = tokenOf(link);
 			const address = deps.address();
 			// 端口是 `serve()` 之后才有的。没有就是还没起监听 —— 说清楚,别去连一个 undefined。
 			if (!address) throw new DevParamError("HTTP 服务还没起来,等一下再按");
@@ -177,7 +202,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			// 会由 BN 那头替我们断,而那一路上面板会闪一下「掉线又上线」。
 			teardown();
 			const bridge = createFakeBridge({
-				url: `ws://${address}/ext/${connection.extensionId}`,
+				url: `ws://${address}/ext/${BRIDGE_EXTENSION_ID}`,
 				token,
 				kind: "koishi",
 				name: "devtools 的假桥",
@@ -192,10 +217,10 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 				// 401 / 404 / 503 的分档在这句话里 —— 它是主人手里唯一的线索。
 				throw new DevParamError(`连不上:${(err as Error).message}`);
 			}
-			live = { bridge, connectionName: connection.name, bots };
+			live = { bridge, connectionName: link.name, bots };
 			return {
 				summary:
-					`已假装一条桥连上 ${connection.name},报了 1 个 ${platform} 的 bot。` +
+					`已假装一条桥连上 ${link.name},报了 1 个 ${platform} 的 bot。` +
 					(fail === "" ? "推过来的都回成功。" : `推过来的都回失败:${fail}。`),
 			};
 		},

@@ -47,7 +47,7 @@ const LISTED: ExtensionsResponse = {
 	],
 };
 
-/** 桥名下两条接入,外加一条与拓展无关的直连 —— 数错了它就会混进来。 */
+/** 从桥借来的 bot 建的两条连接,外加一条与拓展无关的直连 —— 数错了它就会混进来。 */
 const CONNECTIONS = [
 	{ id: "a", name: "家里那台", kind: "extension", extensionId: "bridge", enabled: true },
 	{ id: "b", name: "机房那台", kind: "extension", extensionId: "bridge", enabled: true },
@@ -56,7 +56,7 @@ const CONNECTIONS = [
 	{ id: "d", name: "别人家的", kind: "extension", extensionId: "somewhere-else", enabled: true },
 ];
 
-/** 桥的活口状态:两条接入一条连着(驮两个 bot)、一条没连上。 */
+/** 桥的活口状态:两条连接一条连着(驮两个 bot)、一条没连上。接入住桥的设置里,与连接是两回事。 */
 const STATUS = {
 	sessions: [
 		{
@@ -153,25 +153,25 @@ describe("拓展页", () => {
 	});
 
 	/**
-	 * 🔴 数的是**这个拓展名下**的接入,而且**只按 `provides` 判**,不按拓展 id ——
+	 * 🔴 数的是**这个拓展名下**的连接(一条连接就是一个借来的 bot),而且**只按 `provides` 判**,不按拓展 id ——
 	 * 列表页认得某个具体拓展就是那条硬约束的破口。别的连接(直连的 OneBot)不算数。
 	 */
-	it("开推送源那一口的卡数得出自己名下几条接入", async () => {
+	it("开推送源那一口的卡数得出自己名下几条连接", async () => {
 		renderPage();
 		const card = await cardOf("机器人框架桥接");
-		expect(card.textContent).toMatch(/2\s*条接入/);
+		expect(card.textContent).toMatch(/2\s*条连接/);
 	});
 
-	it("不开推送源那一口的卡不说这句 —— 它压根没有接入这回事", async () => {
+	it("不开推送源那一口的卡不说这句 —— 它压根没有连接这回事", async () => {
 		renderPage();
 		const card = await cardOf("抖音订阅源");
-		expect(card.textContent).not.toMatch(/条接入/);
+		expect(card.textContent).not.toMatch(/条连接/);
 	});
 
 	it("一条都没配的也报 0 —— 那正是「装好了但还没接上」该看见的", async () => {
 		renderPage(LISTED, []);
 		const card = await cardOf("机器人框架桥接");
-		expect(card.textContent).toMatch(/0\s*条接入/);
+		expect(card.textContent).toMatch(/0\s*条连接/);
 	});
 
 	/**
@@ -184,13 +184,13 @@ describe("拓展页", () => {
 		await waitFor(() => expect(card.textContent).toMatch(/2\s*个 bot 在线/));
 	});
 
-	it("拓展没跑起来时只数接入,不假装有 bot 在线", async () => {
+	it("拓展没跑起来时只数连接,不假装有 bot 在线", async () => {
 		renderPage(LISTED, CONNECTIONS, null);
 		const card = await cardOf("机器人框架桥接");
 		// 状态那条查询要先认输,才能断言它「没出现」而不是「还没来」
 		await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith("/api/ext/bridge/status"));
 		await new Promise((r) => setTimeout(r, 20));
-		expect(card.textContent).toMatch(/2\s*条接入/);
+		expect(card.textContent).toMatch(/2\s*条连接/);
 		expect(card.textContent).not.toMatch(/bot 在线/);
 	});
 

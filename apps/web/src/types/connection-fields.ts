@@ -27,12 +27,7 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
-import {
-	randomHex,
-	switchOnebotTransport,
-	webhookSecretHint,
-	webhookUrlPlaceholder,
-} from "./domain";
+import { switchOnebotTransport, webhookSecretHint, webhookUrlPlaceholder } from "./domain";
 
 interface FieldBase {
 	/** 全局唯一的字段身份 —— 默认值广播、导览聚光灯、测试都按它找。 */
@@ -50,8 +45,6 @@ export type ConnectionField =
 			mono?: boolean;
 			secret?: boolean;
 			set: (v: string) => Connection;
-			/** 有就给一颗「重新生成」钮 —— 拓展字段表里标了 `generate` 的那一栏(token)。 */
-			regenerate?: () => Connection;
 	  })
 	| (FieldBase & {
 			kind: "number";
@@ -414,9 +407,6 @@ export function extensionConnectionFields(
 					mono: field.mono,
 					secret: field.secret,
 					set: (v) => put(field.code, v),
-					regenerate: field.generate
-						? () => put(field.code, randomHex(field.generate ?? 16))
-						: undefined,
 				};
 			case "number":
 				return {

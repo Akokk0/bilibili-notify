@@ -9,7 +9,6 @@
  * **那个字符串今天不存在**(全仓查过),所以只写查得到的:配置全留、重开会自己连回来。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -22,18 +21,22 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const LINK = {
 	id: "c1",
 	name: "家里那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: "0123456789abcdef0123456789abcdef", bridgeKind: "koishi" },
-} as unknown as Connection;
+	token: "0123456789abcdef0123456789abcdef",
+	bridgeKind: "koishi",
+};
 
 function renderPanel(enabled: boolean) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [LINK];
+		if (path === "/api/globals") return globalsWith([LINK]);
 		// 关着的拓展没跑起来 —— `/status` 是 404,与「崩了」在这条路上一模一样
 		throw new Error("没跑起来");
 	});

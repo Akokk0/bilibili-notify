@@ -4,6 +4,7 @@ import { observeLiveConnections } from "@bilibili-notify/blive";
 import type {
 	ChatIdentity,
 	Connection,
+	GlobalConfig,
 	MessageBus,
 	PlatformAdapter,
 	PushTarget,
@@ -86,6 +87,8 @@ export interface CreateDevtoolsInput {
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
 	connectionConfigs: () => Connection[];
+	/** 全局配置,现读 —— 「假装一条桥连上来」从桥的设置里挑接入。 */
+	globals: () => Pick<GlobalConfig, "extensions">;
 	/**
 	 * BN 自己的 `host:port` —— 「假装一条桥连上来」拿它连回自己身上(那是条真 WS)。
 	 * **现取**:端口是 `serve()` 之后才知道的,而 devtools 比它先建。
@@ -181,7 +184,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		// 桥是拓展,核心 import 不到它 —— 这几条说的协议是手写的第二份,那笔账在
 		// ADR-0012 决策 42(主人 2026-09-10 拍板)。
 		...bridgeScenarios({
-			connections: input.connectionConfigs,
+			settings: () => input.globals().extensions.bridge?.settings,
 			address: input.address,
 			commands: input.commands,
 		}),

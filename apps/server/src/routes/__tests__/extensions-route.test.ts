@@ -26,7 +26,7 @@ function boot(
 		status?: Record<string, unknown>;
 		descriptor?: Record<string, unknown>;
 		configFields?: Record<string, unknown[]>;
-		bots?: Record<string, Record<string, unknown[]>>;
+		bots?: Record<string, unknown[]>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
 	} = {},
@@ -43,7 +43,7 @@ function boot(
 		status: (id) => over.status?.[id],
 		descriptor: (id) => over.descriptor?.[id] as never,
 		configFields: (id) => over.configFields?.[id] as never,
-		bots: (id, connectionId) => over.bots?.[id]?.[connectionId] as never,
+		bots: (id) => over.bots?.[id] as never,
 		settle: over.settle,
 		install: {
 			root: installRoot,
@@ -252,21 +252,26 @@ describe("GET /api/ext", () => {
 	});
 });
 
-describe("GET /api/ext/:id/bots/:connectionId", () => {
-	it("列这条连接上能绑目标的 bot", async () => {
-		const bots = [{ botId: "onebot:1", platform: "onebot", name: "阿库娅" }];
+describe("GET /api/ext/:id/bots", () => {
+	it("列现在能借来当连接的 bot —— 拓展交什么(含它自己那份 config)就原样下发", async () => {
+		const bots = [
+			{
+				config: { link: "l1", botId: "onebot:1" },
+				platform: "onebot",
+				name: "阿库娅",
+				via: "家里那台",
+			},
+		];
 		const res = await boot({
 			entries: [running("bridge")],
-			bots: { bridge: { c1: bots } },
-		}).request("/bridge/bots/c1");
+			bots: { bridge: bots },
+		}).request("/bridge/bots");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ bots });
 	});
 
 	it("没跑 / 没这个口 → 404,不是空名单 —— 面板要分得开「没 bot」与「问不到」", async () => {
-		expect((await boot({ entries: [running("bridge")] }).request("/bridge/bots/c1")).status).toBe(
-			404,
-		);
+		expect((await boot({ entries: [running("bridge")] }).request("/bridge/bots")).status).toBe(404);
 	});
 });
 

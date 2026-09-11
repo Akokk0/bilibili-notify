@@ -9,7 +9,6 @@
  * (「现在接着几条 / 几个 bot 在线」那一行在**列表页**的卡上,守卫在 Extensions.render 里。)
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -22,9 +21,14 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
-function renderPanel(links: Connection[], status: unknown) {
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
+function renderPanel(links: unknown[], status: unknown) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return links;
+		if (path === "/api/globals") return globalsWith(links);
 		if (path.startsWith("/api/ext/")) {
 			if (status === undefined) throw new Error("拓展没跑起来");
 			return status;

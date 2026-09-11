@@ -379,6 +379,7 @@ export async function startStandaloneServer(
 				master: masterIdentity(),
 			}),
 			connectionConfigs: () => runtime.configStore.getConnections(),
+			globals: () => runtime.configStore.getGlobals(),
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			authSystem,
@@ -640,7 +641,7 @@ export async function startStandaloneServer(
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>
 				runtimeEngines.probeConnectionCapabilities(connectionId),
-			send: async ({ platform, connectionId, groupId, botId }, payload) => {
+			send: async ({ platform, connectionId, groupId }, payload) => {
 				const route = replyRoute(connectionId);
 				if (!route) {
 					return {
@@ -659,12 +660,8 @@ export async function startStandaloneServer(
 					enabled: true,
 				};
 				// 地址收成一格之后这里不再按平台分岔:群目标的地址就是群号 / 群 openid。
-				// `botId` 只有桥有(一条连接驮多个 bot),原路回给收到这条消息的那个。
-				return platformAdapter.send(
-					connection,
-					{ ...common, platform, address: groupId, botId },
-					payload,
-				);
+				// 用哪个 bot 回由连接说了算 —— 一条连接就是一个 bot,桥那一支也一样。
+				return platformAdapter.send(connection, { ...common, platform, address: groupId }, payload);
 			},
 		});
 
@@ -677,7 +674,6 @@ export async function startStandaloneServer(
 				...msg,
 				platform: meta.platform,
 				connectionId: meta.connectionId,
-				botId: meta.botId,
 			});
 
 		roastScheduler.start();
@@ -850,7 +846,7 @@ export async function startStandaloneServer(
 				status: (id) => loadedExtensions?.status(id),
 				descriptor: (id) => loadedExtensions?.descriptor(id),
 				configFields: (id) => loadedExtensions?.configFields(id),
-				bots: (id, connectionId) => loadedExtensions?.bots(id, connectionId),
+				bots: (id) => loadedExtensions?.bots(id),
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {
 					await loadedExtensions?.sync();

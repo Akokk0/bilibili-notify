@@ -12,6 +12,7 @@
 
 import type {
 	Connection,
+	ConnectionCapabilities,
 	DeliveryResult,
 	ExtensionConnectionView,
 	NotificationPayload,
@@ -30,8 +31,9 @@ import {
 } from "./contract.js";
 import { stripMarkdown } from "./markdown.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
+import type { BridgeLink } from "./settings.js";
 
-/** 一条桥接入 —— 宿主已经拿本拓展那份 zod 把 config 解好了(决策 30)。 */
+/** 一条桥连接(一个借来的 bot)—— 宿主已经拿本拓展那份 zod 把 config 解好了(决策 30)。 */
 type BridgeConnection = ExtensionConnectionView<BridgeConnectionConfig>;
 
 export interface BridgeAdapterOptions {
@@ -40,6 +42,8 @@ export interface BridgeAdapterOptions {
 	 * 属于自己的连接,**现读**。别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」。
 	 */
 	connections(): readonly BridgeConnection[];
+	/** 接入名单(设置里那份),**现读**,理由同上。 */
+	links(): readonly BridgeLink[];
 	/**
 	 * 宿主分配给本拓展的挂载前缀(`ctx.mount()` 的返回值,形如 `/ext/bridge`)。
 	 * **拓展不该知道自己挂在哪**(决策 12),拼绝对地址时才用得上它。
@@ -65,6 +69,16 @@ type BlobUrl = (buffer: Buffer, mime: string) => string;
 type PlainText = (text: string) => string;
 
 type SessionTarget = Extract<PushTarget, { kind: "session" }>;
+
+type Located =
+	| {
+			ok: true;
+			connection: BridgeConnection;
+			link: BridgeLink;
+			session: BridgeSession;
+			bot: BridgeBot;
+	  }
+	| { ok: false; err: string };
 
 type Resolved =
 	| { ok: true; bot: BridgeBot; target: SessionTarget; session: BridgeSession }
@@ -151,25 +165,48 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 	const lastTokens = new Map<string, string>();
 
 	/**
-	 * 「这条推送现在发得出去吗」的**唯一**判据,`isAvailable` 与 `send` 共用一份。
+	 * 「这条连接现在通到哪个 bot」—— `isAvailable` / `send` / `probe` / `capabilities` 共用
+	 * **这一份**判据。
 	 *
-	 * 里头那句 bot 名单检查是关键:一条桥连接后面挂着好几个 bot,**bot 掉了连接还在**。
+	 * 里头那句 bot 名单检查是关键:一条接入后面挂着好几个 bot,**bot 掉了接入还在**。
 	 * 不看名单就发,等于把推送扔进黑洞再等 30 秒超时,用户看到的是「发了一半才失败」。
 	 */
-	function resolve(connection: Connection, target: PushTarget): Resolved {
+	function locate(connection: Connection): Located {
 		// 从**自己那份名单**里找,而不是自己去 parse 一条来路不明的连接:宿主只把属于这个
 		// 拓展、且 config 解得出形状的那些交过来(决策 30)。找不到就不是我的活。
-		const bridge = opts.connections().find((candidate) => candidate.id === connection.id);
-		if (!bridge) return { ok: false, err: "不是桥接入" };
+		const mine = opts.connections().find((candidate) => candidate.id === connection.id);
+		if (!mine) return { ok: false, err: "不是桥连接" };
+		const link = opts.links().find((candidate) => candidate.id === mine.config.link);
+		if (!link) return { ok: false, err: "这条连接绑的那条接入已经删了" };
+		if (!link.enabled) return { ok: false, err: `接入「${link.name}」已停用` };
+		const session = server.getSession(link.id);
+		if (!session) return { ok: false, err: `接入「${link.name}」没连着` };
+		const bot = session.bots.find((candidate) => candidate.botId === mine.config.botId);
+		if (!bot) return { ok: false, err: `桥上现在没有这个 bot(${mine.config.botId})` };
+		return { ok: true, connection: mine, link, session, bot };
+	}
+
+	function resolve(connection: Connection, target: PushTarget): Resolved {
+		const located = locate(connection);
+		if (!located.ok) return located;
 		if (target.kind !== "session") return { ok: false, err: "桥只发会话目标" };
-		if (!bridge.enabled) return { ok: false, err: "这条桥接入已停用" };
+		if (!located.connection.enabled) return { ok: false, err: "这条连接已停用" };
 		if (!target.enabled) return { ok: false, err: "这个推送目标已停用" };
-		if (!target.botId) return { ok: false, err: "这个目标没记是哪个 bot" };
-		const session = server.getSession(bridge.id);
-		if (!session) return { ok: false, err: "桥没连着" };
-		const bot = session.bots.find((candidate) => candidate.botId === target.botId);
-		if (!bot) return { ok: false, err: `桥上现在没有这个 bot(${target.botId})` };
-		return { ok: true, bot, target, session };
+		return { ok: true, bot: located.bot, target, session: located.session };
+	}
+
+	/**
+	 * 桥报的能力翻成宿主那份。今天宿主只问一项(小程序卡);三态原样对应,`checkedAt`
+	 * 取会话建立那一刻 —— 能力是握手时报的。
+	 */
+	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
+		const state = located.bot.capabilities.miniAppCard;
+		const checkedAt = located.session.connectedAt;
+		if (state === "supported") return { miniAppCard: { state, checkedAt } };
+		if (state === "unsupported") {
+			return { miniAppCard: { state, reason: "桥报的:这个 bot 发不了小程序卡", checkedAt } };
+		}
+		return { miniAppCard: { state: "unknown", reason: "桥没报这一项" } };
 	}
 
 	return {
@@ -181,13 +218,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
-			// 不打网络:桥是**自己连过来的**,连着就是通,没连上就是不通。
-			const connected = server.getSession(connection.id) !== undefined;
-			return {
-				ok: connected,
-				latencyMs: 0,
-				err: connected ? undefined : "桥没连过来",
-			};
+			// 不打网络:桥是**自己连过来的**,接入连着、bot 在名单上就是通。
+			const located = locate(connection);
+			return { ok: located.ok, latencyMs: 0, err: located.ok ? undefined : located.err };
 		},
 
 		async send(
@@ -211,7 +244,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				resolved.bot.capabilities.markdown === "supported" ? (text) => text : stripMarkdown;
 			const request: BridgeSendRequest = {
 				botId: resolved.bot.botId,
-				platform: resolved.target.platform,
+				platform: resolved.bot.platform,
 				target: {
 					scope,
 					address: resolved.target.address,
@@ -219,49 +252,57 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				},
 				message: toBridgeMessage(payload, blobUrl, plain),
 			};
-			const outcome = await server.send(connection.id, request);
+			const outcome = await server.send(resolved.session.linkId, request);
 			return { ok: outcome.ok, latencyMs: Date.now() - t0, err: outcome.err };
 		},
 
 		/**
 		 * 配置对账。桥是自己连过来的,所以这里没有「去建连」那一半 —— 只有**该踢的踢掉**:
-		 * 接入没了、被停用了、token 被重新生成了。
+		 * 接入没了、被停用了、token 被重新生成了。看的是**接入名单**(设置),不是连接 ——
+		 * 连接是一个 bot,删一条连接不该断谁;宿主按连接变更叫它时也无妨,一样对得上。
 		 *
 		 * 从**活着的会话**看起而不是从配置看起:配置里那条早就删了,能告诉我们「还有谁连着」
 		 * 的只有会话表。
 		 */
 		reconcile(): void {
-			const bridges = new Map<string, BridgeConnection>();
-			for (const connection of opts.connections()) bridges.set(connection.id, connection);
+			const links = new Map<string, BridgeLink>();
+			for (const link of opts.links()) links.set(link.id, link);
 			for (const session of server.listSessions()) {
-				const connection = bridges.get(session.connectionId);
-				if (!connection) {
-					server.disconnect(session.connectionId, BRIDGE_CLOSE_CODES.revoked);
+				const link = links.get(session.linkId);
+				if (!link) {
+					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
 					continue;
 				}
-				if (!connection.enabled) {
+				if (!link.enabled) {
 					// 停用不是吊销:配置全留、重开即恢复,所以给的是「可以退避重连」那个码。
-					server.disconnect(session.connectionId, BRIDGE_CLOSE_CODES.disabled);
+					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.disabled);
 					continue;
 				}
-				const before = lastTokens.get(session.connectionId);
-				if (before !== undefined && before !== connection.config.token) {
-					server.disconnect(session.connectionId, BRIDGE_CLOSE_CODES.revoked);
+				const before = lastTokens.get(session.linkId);
+				if (before !== undefined && before !== link.token) {
+					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
 				}
 			}
 			lastTokens.clear();
-			for (const [id, connection] of bridges) lastTokens.set(id, connection.config.token);
+			for (const [id, link] of links) lastTokens.set(id, link.token);
 		},
 
 		/**
-		 * `capabilities` / `probeCapabilities` **刻意不实现**。
-		 *
-		 * 桥报的能力是 **per-bot** 的(一条 koishi 连接底下可能同时挂着 QQ 与 telegram),
-		 * 而这两个方法的入参只有连接。跨 bot 合并出来的答案对谁都不对,所以宁可不答 ——
-		 * 调用方按「没实现 = 什么都不支持」处理,那是保守的一侧。
-		 *
-		 * 要答得准,得先把 `MultiplexSink.connectionCapabilities` 与契约那张两级 Map
-		 * 再扩一级到 bot。那是独立的一片活。
+		 * 能力按 bot 答 —— 一条连接就是一个 bot(决策 45),所以答得准。这两个方法曾经刻意
+		 * 不实现:那时连接是「一条接入」,底下同时挂着 QQ 与 telegram,跨 bot 合并出来的答案
+		 * 对谁都不对。没连着 / 没这个 bot 时答「还不知道」,带上原因。
 		 */
+		capabilities(connection: Connection): ConnectionCapabilities {
+			const located = locate(connection);
+			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.err } };
+			return capabilitiesOf(located);
+		},
+
+		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
+			// 不打网络:能力是桥握手时报的,再问一次也是同一份。
+			const located = locate(connection);
+			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.err } };
+			return capabilitiesOf(located);
+		},
 	};
 }

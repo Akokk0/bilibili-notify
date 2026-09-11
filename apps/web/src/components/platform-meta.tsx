@@ -15,8 +15,9 @@
  */
 
 import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type { Connection } from "@bilibili-notify/internal";
 import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
-import { type PlatformMeta, PlatformMetaProvider } from "@bilibili-notify/ui";
+import { type PlatformMeta, PlatformMetaProvider, usePlatformMeta } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { api } from "../services/api";
@@ -46,6 +47,22 @@ export function buildPlatformTable(
 			table[ext.id] = { tint: descriptor.tint, label: descriptor.shortLabel, svg: ext.icon };
 	}
 	return (platform: string) => table[platform];
+}
+
+/**
+ * 一条连接**画成谁的脸**(图标 / 标识色 / 短名)。
+ *
+ * 直连就是它的平台。拓展连接是一个 bot(ADR-0012 决策 45):它的平台认得(桥借来的 QQ /
+ * telegram)就画那个平台的脸;认不得(桥驮来的 kook 这种)退回拓展自己那张脸 —— 灰方章
+ * 不如「这是桥接来的」有用。⚠️ 与分发键(`connectionDispatchKey`,决定哪个 adapter 认领)
+ * 是两回事:那个在拓展这一支恒是拓展 id。
+ */
+export function useConnectionFace(): (connection: Connection) => string {
+	const lookup = usePlatformMeta();
+	return (connection) => {
+		if (connection.kind === "direct") return connection.platform;
+		return lookup(connection.platform) ? connection.platform : connection.extensionId;
+	};
 }
 
 export function PlatformMetaRoot({ children }: { children: ReactNode }) {

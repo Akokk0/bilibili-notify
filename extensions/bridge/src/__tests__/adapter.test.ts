@@ -6,8 +6,11 @@
  * 1. **投影穷尽** —— 每个 payload kind 都有一条路。漏一个就是运行时静默发不出去。
  * 2. **图换成一次性 URL** —— `Buffer` 过不了 JSON,而这条 URL 的可达性有个致命前提
  *    (只保证桥自己能取),所以「哪些图进 blob、哪些原样透传」必须是明确的。
- * 3. **发之前先问「这个 bot 还在不在」** —— 一条桥连接后面挂着好几个 bot,bot 掉了
- *    连接还在;不看名单就发等于把一条推送扔进黑洞再等 30 秒超时。
+ * 3. **发之前先问「这个 bot 还在不在」** —— 一条接入后面挂着好几个 bot,bot 掉了
+ *    接入还在;不看名单就发等于把一条推送扔进黑洞再等 30 秒超时。
+ *
+ * 连接是「一个 bot」(ADR-0012 决策 45):config 记的是「哪条接入上的哪个 bot」,目标身上
+ * 没有 `botId`。接入(token)住设置里,adapter 现读那份名单。
  */
 
 import type {
@@ -21,30 +24,44 @@ import { createBridgeAdapter } from "../adapter.js";
 import type { BridgeConnectionConfig } from "../config.js";
 import type { BridgeCapabilityReport } from "../contract.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../server.js";
+import type { BridgeLink } from "../settings.js";
 
-/** 宿主交给拓展的那份连接视图 —— config 已经过本拓展那份 zod。 */
+const LINK_ID = "link-home";
+const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+function link(over: Partial<BridgeLink> = {}): BridgeLink {
+	return {
+		id: LINK_ID,
+		name: "家里那台 koishi",
+		enabled: true,
+		token: "t0ken",
+		bridgeKind: "koishi",
+		...over,
+	};
+}
+
+/** 宿主交给拓展的那份连接视图 —— config 已经过本拓展那份 zod:接入 + bot。 */
 type View = ExtensionConnectionView<BridgeConnectionConfig>;
 
 function view(over: Partial<View> = {}): View {
 	return {
 		id: CONNECTION_ID,
-		name: "家里那台 koishi",
+		name: "电报那个 bot",
 		enabled: true,
-		config: { token: "t0ken", bridgeKind: "koishi" },
+		config: { link: LINK_ID, botId: "b1" },
 		...over,
 	};
 }
 
-const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-
 function connection(over: Partial<Connection> = {}): Connection {
 	return {
 		id: CONNECTION_ID,
-		name: "家里那台 koishi",
+		name: "电报那个 bot",
 		enabled: true,
 		kind: "extension",
 		extensionId: "bridge",
-		config: { token: "t0ken", bridgeKind: "koishi" },
+		platform: "telegram",
+		config: { link: LINK_ID, botId: "b1" },
 		...over,
 	} as Connection;
 }
@@ -59,7 +76,6 @@ function target(over: Partial<PushTarget> = {}): PushTarget {
 		scope: "group",
 		enabled: true,
 		address: "-100",
-		botId: "b1",
 		...over,
 	} as PushTarget;
 }
@@ -70,7 +86,7 @@ function session(
 	caps: Partial<BridgeCapabilityReport> = {},
 ): BridgeSession {
 	return {
-		connectionId: CONNECTION_ID,
+		linkId: LINK_ID,
 		kind: "koishi",
 		bots: [
 			{
@@ -99,8 +115,10 @@ interface Harness {
 	disconnect: ReturnType<typeof vi.fn>;
 	published: { mime: string; bytes: number }[];
 	lastRequest(): BridgeSendRequest;
-	/** 宿主交给它的那份名单 —— 换掉它再 `reconcile()` 就是「配置动了」。 */
+	/** 宿主交给它的那份连接名单。 */
 	setConnections(list: View[]): void;
+	/** 设置里那份接入名单 —— 换掉它再 `reconcile()` 就是「接入动了」。 */
+	setLinks(list: BridgeLink[]): void;
 }
 
 /** `live: null` = 桥没连着。**别用 `undefined`** —— 显式传它会触发默认参数,那条用例就空过了。 */
@@ -113,7 +131,7 @@ function harness(live: BridgeSession | null = session()): Harness {
 	const disconnect = vi.fn();
 	const published: { mime: string; bytes: number }[] = [];
 	const server = {
-		getSession: (id: string) => (id === CONNECTION_ID ? (live ?? undefined) : undefined),
+		getSession: (id: string) => (id === LINK_ID ? (live ?? undefined) : undefined),
 		listSessions: () => (live ? [live] : []),
 		send,
 		disconnect,
@@ -121,9 +139,11 @@ function harness(live: BridgeSession | null = session()): Harness {
 		dispose() {},
 	} as unknown as BridgeServer;
 	let connections: View[] = [view()];
+	let links: BridgeLink[] = [link()];
 	const adapter = createBridgeAdapter({
 		server,
 		connections: () => connections,
+		links: () => links,
 		mountPath: "/ext/bridge",
 		blobs: {
 			put(buffer: Buffer, mime: string) {
@@ -140,6 +160,9 @@ function harness(live: BridgeSession | null = session()): Harness {
 		lastRequest: () => send.mock.calls.at(-1)?.[1] as BridgeSendRequest,
 		setConnections: (list) => {
 			connections = list;
+		},
+		setLinks: (list) => {
+			links = list;
 		},
 	};
 }
@@ -167,14 +190,19 @@ describe("桥 adapter", () => {
 		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
 	});
 
-	it("**bot 不在名单里 → 不可发**(连接还在,是那个 bot 掉了)", () => {
+	it("**bot 不在名单里 → 不可发**(接入还在,是那个 bot 掉了)", () => {
 		const h = harness();
-		expect(h.adapter.isAvailable(connection(), target({ botId: "没这个" }))).toBe(false);
+		h.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
 	});
 
-	it("目标没记 botId → 不可发(一条桥后面好几个 bot,不指名发给谁)", () => {
+	it("连接绑的接入删了 / 停用了 → 不可发,理由说的是接入", async () => {
 		const h = harness();
-		expect(h.adapter.isAvailable(connection(), target({ botId: undefined }))).toBe(false);
+		h.setLinks([]);
+		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
+		expect((await h.adapter.probe(connection())).err).toMatch(/接入/);
+		h.setLinks([link({ enabled: false })]);
+		expect((await h.adapter.probe(connection())).err).toMatch(/停用/);
 	});
 
 	it("连接或目标停用 → 不可发", () => {
@@ -187,10 +215,8 @@ describe("桥 adapter", () => {
 
 	it("发之前先问一遍 —— bot 不在名单就**一帧都不发**,别扔进黑洞等超时", async () => {
 		const h = harness();
-		const result = await h.adapter.send(connection(), target({ botId: "没这个" }), {
-			kind: "text",
-			text: "喵",
-		});
+		h.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		const result = await h.adapter.send(connection(), target(), { kind: "text", text: "喵" });
 		expect(result.ok).toBe(false);
 		expect(h.send).not.toHaveBeenCalled();
 	});
@@ -201,7 +227,8 @@ describe("桥 adapter", () => {
 		const h = harness();
 		const result = await h.adapter.send(connection(), target(), { kind: "text", text: "开播啦" });
 		expect(result.ok).toBe(true);
-		expect(h.send.mock.calls[0]?.[0]).toBe(CONNECTION_ID);
+		// 帧走的是**接入**那条 socket;平台是 bot 自己报的那个,不是目标身上抄的。
+		expect(h.send.mock.calls[0]?.[0]).toBe(LINK_ID);
 		expect(h.lastRequest()).toEqual({
 			botId: "b1",
 			platform: "telegram",
@@ -355,34 +382,59 @@ describe("桥 adapter", () => {
 
 	// ---- 探测 --------------------------------------------------------------
 
-	it("probe:连着就是通,没连上是不通 —— 不打网络,桥是自己连过来的", async () => {
+	it("probe:接入连着、bot 在名单上就是通;没连上是不通 —— 不打网络,桥是自己连过来的", async () => {
 		expect((await harness().adapter.probe(connection())).ok).toBe(true);
 		expect((await harness(null).adapter.probe(connection())).ok).toBe(false);
+	});
+
+	// ---- 能力 --------------------------------------------------------------
+
+	/**
+	 * 一条连接就是一个 bot,所以能力**按 bot 答得准** —— 这两个方法从前刻意不实现(那时
+	 * 连接是一条接入,底下同时挂着 QQ 与 telegram,合并出来的答案对谁都不对)。
+	 */
+	it("capabilities:桥报的三态原样对应;没连着就是「还不知道」并带原因", async () => {
+		expect(
+			harness(session({}, { miniAppCard: "supported" })).adapter.capabilities?.(connection()),
+		).toMatchObject({ miniAppCard: { state: "supported" } });
+		expect(
+			harness(session({}, { miniAppCard: "unsupported" })).adapter.capabilities?.(connection()),
+		).toMatchObject({ miniAppCard: { state: "unsupported" } });
+		expect(harness().adapter.capabilities?.(connection())).toMatchObject({
+			miniAppCard: { state: "unknown" },
+		});
+		const offline = harness(null);
+		expect(offline.adapter.capabilities?.(connection())).toMatchObject({
+			miniAppCard: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+		});
+		expect(await offline.adapter.probeCapabilities?.(connection())).toMatchObject({
+			miniAppCard: { state: "unknown" },
+		});
 	});
 
 	// ---- 吊销 --------------------------------------------------------------
 
 	it("接入被删了 → 把还连着的那条踢下线", () => {
 		const h = harness();
-		h.setConnections([]);
+		h.setLinks([]);
 		h.adapter.reconcile?.([]);
-		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4005);
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
 	it("接入被停用 → 踢下线,但用的是「可以退避重连」那个码", () => {
 		const h = harness();
-		h.setConnections([view({ enabled: false })]);
+		h.setLinks([link({ enabled: false })]);
 		h.adapter.reconcile?.([]);
-		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4007);
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4007);
 	});
 
 	it("**token 被重新生成 → 踢下线** —— 不然重新生成 token 这个动作等于没做", () => {
 		const h = harness();
 		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
-		h.setConnections([view({ config: { token: "新的", bridgeKind: "koishi" } })]);
+		h.setLinks([link({ token: "新的" })]);
 		h.adapter.reconcile?.([]);
-		expect(h.disconnect).toHaveBeenCalledWith(CONNECTION_ID, 4005);
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
 	it("什么都没变 → 不动它(reconcile 每次配置变更都会跑)", () => {
@@ -392,12 +444,10 @@ describe("桥 adapter", () => {
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});
 
-	/**
-	 * 别人的连接根本不会进这份名单 —— 宿主只把属于这个拓展、且 config 解得出形状的交过来
-	 * (ADR-0012 决策 30)。从前这一层要自己 parse 一条来路不明的连接,现在不必了。
-	 */
-	it("名单里只有自己的:别人的连接进不来,所以也踢不着", () => {
+	/** 删一条连接不该断谁 —— 连接是一个 bot,断不断看的是接入。 */
+	it("连接删光了、接入还在 → 会话留着", () => {
 		const h = harness();
+		h.setConnections([]);
 		h.adapter.reconcile?.([]);
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});

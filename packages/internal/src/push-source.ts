@@ -108,8 +108,6 @@ export interface InboundMeta {
 	 * 光比字符串就是在赌两边永远不撞。这一格让那句「绝不能跨平台比对」第一次真的可校验。
 	 */
 	platform: string;
-	/** 收到这条消息的那个 bot 自己的号。一条连接驮多个 bot(桥)时才有,直连没有。 */
-	botId?: string;
 }
 
 /** 一条私聊。指令分发器只认这个;`userId` 在 OneBot 是 QQ 号,在官机是 C2C 用户 openid。 */
@@ -119,13 +117,13 @@ export interface InboundPrivateMessage {
 }
 
 /**
- * 一条私聊 → 「谁」的三坐标,拿去跟主人比对。
+ * 一条私聊 → 「谁」的两坐标,拿去跟主人比对。
  *
- * 地址在帧里、平台与 bot 在 meta 里 —— 两个鉴权口(指令分发、锐评审批)各自拼一份的话,
+ * 地址在帧里、平台在 meta 里 —— 两个鉴权口(指令分发、锐评审批)各自拼一份的话,
  * 迟早有一边少拼一格,而少一格就是把「跨平台不许比」又变回一句注释。
  */
 export function inboundIdentity(msg: InboundPrivateMessage, meta: InboundMeta): ChatIdentity {
-	return { platform: meta.platform, address: msg.userId, botId: meta.botId };
+	return { platform: meta.platform, address: msg.userId };
 }
 
 /**

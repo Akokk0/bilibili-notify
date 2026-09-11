@@ -10,7 +10,6 @@
  * 那个,于是这个错被悄悄抹平,主人永远看不见。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -24,25 +23,29 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const LINK = {
 	id: "c1",
 	name: "家里那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: TOKEN, bridgeKind: "koishi" },
-} as unknown as Connection;
+	token: TOKEN,
+	bridgeKind: "koishi",
+};
 
 function renderPanel(reportedKind: string) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [LINK];
+		if (path === "/api/globals") return globalsWith([LINK]);
 		if (path.startsWith("/api/ext/")) {
 			return {
 				sessions: [
 					{
-						connectionId: "c1",
+						linkId: "c1",
 						connected: true,
 						kind: reportedKind,
 						name: "机房那台",
@@ -95,13 +98,19 @@ describe("桥自报的种类和这条接入对不上", () => {
 		renderPanel("astrbot");
 		await userEvent.click(await screen.findByRole("button", { name: /改成 AstrBot/ }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		// 接入住桥的设置里:整份名单写回,改的只有种类那一格。
 		const [url, body] = vi.mocked(api.patch).mock.calls[0] as [
 			string,
-			{ config: { bridgeKind: string; token: string } },
+			{
+				extensions: {
+					bridge: { settings: { links: { id: string; bridgeKind: string; token: string }[] } };
+				};
+			},
 		];
-		expect(url).toBe("/api/connections/c1");
-		expect(body.config.bridgeKind).toBe("astrbot");
-		expect(body.config.token).toBe(TOKEN);
+		expect(url).toBe("/api/globals");
+		const links = body.extensions.bridge.settings.links;
+		expect(links).toHaveLength(1);
+		expect(links[0]).toMatchObject({ id: "c1", bridgeKind: "astrbot", token: TOKEN });
 	});
 
 	it("对得上的时候什么都不说 —— 别把正常态也画成警告", async () => {

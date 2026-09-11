@@ -20,9 +20,14 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 function renderPanel() {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [];
+		if (path === "/api/globals") return globalsWith([]);
 		throw new Error("拓展没跑起来");
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -51,8 +56,24 @@ function shownToken(dialog: HTMLElement): string {
 	return hit.trim();
 }
 
+/** 存下去的那条接入 —— 接入名单是整份写回 `globals.extensions.bridge.settings.links` 的,新的那条在末尾。 */
+function savedLink(): { token: string; bridgeKind: string; name: string } {
+	const [url, body] = vi.mocked(api.patch).mock.calls[0] as [
+		string,
+		{
+			extensions: {
+				bridge: { settings: { links: { token: string; bridgeKind: string; name: string }[] } };
+			};
+		},
+	];
+	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
+	const link = body.extensions.bridge.settings.links.at(-1);
+	if (!link) throw new Error("名单里没有新的那条");
+	return link;
+}
+
 beforeEach(() => {
-	vi.mocked(api.post).mockResolvedValue({});
+	vi.mocked(api.patch).mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -79,9 +100,8 @@ describe("新建接入", () => {
 		const dialog = await openDialog();
 		const shown = shownToken(dialog);
 		await userEvent.click(screen.getByRole("button", { name: "创建" }));
-		await waitFor(() => expect(api.post).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.post).mock.calls[0] as [string, { config: { token: string } }];
-		expect(body.config.token).toBe(shown);
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		expect(savedLink().token).toBe(shown);
 	});
 
 	it("在弹窗里换一把,存下去的跟着换", async () => {
@@ -91,15 +111,14 @@ describe("新建接入", () => {
 		const second = shownToken(dialog);
 		expect(second).not.toBe(first);
 		await userEvent.click(screen.getByRole("button", { name: "创建" }));
-		await waitFor(() => expect(api.post).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.post).mock.calls[0] as [string, { config: { token: string } }];
-		expect(body.config.token).toBe(second);
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		expect(savedLink().token).toBe(second);
 	});
 
 	it("取消什么都不发", async () => {
 		await openDialog();
 		await userEvent.click(screen.getByRole("button", { name: "取消" }));
-		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
@@ -112,11 +131,7 @@ describe("新建接入", () => {
 		expect(within(dialog).getByRole("button", { pressed: true }).textContent).toMatch(/AstrBot/);
 		expect(dialog.textContent).not.toMatch(/koishi-plugin|astrbot_plugin/);
 		await userEvent.click(screen.getByRole("button", { name: "创建" }));
-		await waitFor(() => expect(api.post).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.post).mock.calls[0] as [
-			string,
-			{ config: { bridgeKind: string } },
-		];
-		expect(body.config.bridgeKind).toBe("astrbot");
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		expect(savedLink().bridgeKind).toBe("astrbot");
 	});
 });

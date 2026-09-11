@@ -49,15 +49,12 @@ export interface LinkReplyDestination {
 	platform: string;
 	connectionId: string;
 	groupId: string;
-	/** 哪个 bot 收到的。一条连接驮多个 bot(桥)时才有,直连没有;回卡要原路回给它。 */
-	botId?: string;
 }
 
-/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接、哪个 bot 来。 */
+/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接来。 */
 export interface InboundLinkMessage extends InboundGroupMessage {
 	platform: string;
 	connectionId: string;
-	botId?: string;
 }
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */

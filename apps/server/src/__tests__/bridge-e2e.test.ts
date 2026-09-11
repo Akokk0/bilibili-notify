@@ -33,6 +33,7 @@ const CONNECTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const TARGET_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 /** 主人在面板上生成的那条长期 token —— 桥握手时拿它换身份。 */
 const TOKEN = "e2e-bridge-token-0123456789";
+const LINK_ID = "link-home";
 const BOT_ID = "bot-1";
 const GROUP_ADDRESS = "g-42";
 
@@ -155,8 +156,8 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 	let client: Peer | undefined;
 
 	/**
-	 * 摆一份**主人已经配好**的数据目录:桥拓展开着、一条接入(带 token)、一个挂在它
-	 * 名下的群目标。
+	 * 摆一份**主人已经配好**的数据目录:桥拓展开着、一条接入(带 token,住桥的设置里)、
+	 * 一条绑到那条接入上某个 bot 的连接、一个挂在连接名下的群目标(ADR-0012 决策 45)。
 	 *
 	 * globals 先跑一趟空启动再改,而不是手写一份 —— `GlobalConfigSchema` 的 `app` /
 	 * `master` / `defaults` 都没有默认值,手写一份缺格的会在开机 parse 时整份被判废。
@@ -168,7 +169,22 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		const globalsPath = join(dataDir, "state", "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
-		globals.extensions = { bridge: { enabled: true } };
+		globals.extensions = {
+			bridge: {
+				enabled: true,
+				settings: {
+					links: [
+						{
+							id: LINK_ID,
+							name: "家里那台 koishi",
+							enabled: true,
+							token: TOKEN,
+							bridgeKind: "koishi",
+						},
+					],
+				},
+			},
+		};
 		// 拓展是**装进来的**(本体一个都不带,仓里那个目录也不再是根)—— 这一下就是
 		// 开发版 devtools / 日后插件市场做的那件事:把包摆进唯一那个装载根。
 		await installBridgeInto(dataDir);
@@ -179,11 +195,13 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 			JSON.stringify([
 				{
 					id: CONNECTION_ID,
-					name: "家里那台 koishi",
+					name: "电报那个 bot",
 					enabled: true,
 					kind: "extension",
 					extensionId: "bridge",
-					config: { token: TOKEN, bridgeKind: "koishi" },
+					// 桥后面挂着什么平台是**运行时**才知道的,这一格是开放词表,从挑中的 bot 上抄。
+					platform: "telegram",
+					config: { link: LINK_ID, botId: BOT_ID },
 				},
 			]),
 		);
@@ -195,12 +213,9 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 					name: "测试群",
 					connectionId: CONNECTION_ID,
 					kind: "session",
-					// 桥后面挂着什么平台是**运行时**才知道的,目标那一格是开放词表。
 					platform: "telegram",
 					scope: "group",
 					address: GROUP_ADDRESS,
-					// 一条桥连接后面可能挂着好几个 bot,所以目标要记是哪一个。
-					botId: BOT_ID,
 					enabled: true,
 				},
 			]),
@@ -264,7 +279,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		await expectStatusEventually((status) => {
 			expect(status.sessions).toEqual([
 				expect.objectContaining({
-					connectionId: CONNECTION_ID,
+					linkId: LINK_ID,
 					connected: true,
 					kind: "koishi",
 					name: "家里那台 koishi",
@@ -330,7 +345,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		expect(frame).toMatchObject({
 			type: "send",
 			botId: BOT_ID,
-			// 平台跟着**目标**走,不是跟着连接走 —— 桥接入根本没有 platform 那一格。
+			// 平台是 bot 自己报的那个 —— 连接就是这个 bot。
 			platform: "telegram",
 			target: { scope: "group", address: GROUP_ADDRESS },
 			message: { kind: "text", text: expect.stringContaining("测试推送") },

@@ -38,26 +38,39 @@ const LISTED: ExtensionsResponse = {
 	],
 };
 
-const CONNECTIONS = [
-	{
-		id: LINK_ID,
-		name: "家里那台",
-		kind: "extension",
-		extensionId: "bridge",
-		enabled: true,
-		config: { token: OLD_TOKEN, bridgeKind: "koishi" },
-	},
-	{ id: "33333333-3333-4333-8333-333333333333", name: "本地 OneBot", kind: "direct" },
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里(ADR-0012 决策 45)。 */
+const LINKS = [
+	{ id: LINK_ID, name: "家里那台", enabled: true, token: OLD_TOKEN, bridgeKind: "koishi" },
 ];
+
+/** 写回去的那份名单 —— 接入名单整份写回 globals 的那一格。 */
+function savedLinks(): Array<{ id: string; name: string; token: string; bridgeKind: string }> {
+	const [url, body] = apiPatchMock.mock.calls[0] as [
+		string,
+		{
+			extensions: {
+				bridge: {
+					settings: {
+						links: Array<{ id: string; name: string; token: string; bridgeKind: string }>;
+					};
+				};
+			};
+		},
+	];
+	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
+	return body.extensions.bridge.settings.links;
+}
 
 /** 拓展没跑起来时这一口是 404 —— 接入照样得管得了。 */
 function mockApi(opts: { statusFails?: boolean } = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return LISTED;
-		if (url === "/api/connections") return CONNECTIONS;
+		if (url === "/api/globals")
+			return { extensions: { bridge: { enabled: true, settings: { links: LINKS } } } };
+		if (url === "/api/connections") return [];
 		if (url.startsWith("/api/ext/")) {
 			if (opts.statusFails) throw new Error("not found");
-			return { sessions: [{ connectionId: LINK_ID, connected: false, bots: [] }] };
+			return { sessions: [{ linkId: LINK_ID, connected: false, bots: [] }] };
 		}
 		return {};
 	});
@@ -124,18 +137,14 @@ describe("桥接接入的增删改", () => {
 		fireEvent.change(screen.getByLabelText("接入名字"), { target: { value: "公司那台" } });
 		fireEvent.click(screen.getByText("创建"));
 
-		await waitFor(() => expect(apiPostMock).toHaveBeenCalled());
-		const [url, body] = apiPostMock.mock.calls[0] as [string, Record<string, unknown>];
-		expect(url).toBe("/api/connections");
-		expect(body).toMatchObject({
-			name: "公司那台",
-			kind: "extension",
-			extensionId: "bridge",
-			enabled: true,
-		});
-		const config = body.config as { token: string; bridgeKind: string };
-		expect(config.token).toMatch(/^[0-9a-f]{32}$/);
-		expect(config.bridgeKind).toBe("koishi");
+		await waitFor(() => expect(apiPatchMock).toHaveBeenCalled());
+		// 原来那条原样带着,新的在末尾 —— 名单是整份写回的。
+		const links = savedLinks();
+		expect(links).toHaveLength(2);
+		expect(links[0]).toMatchObject({ id: LINK_ID, token: OLD_TOKEN });
+		expect(links[1]).toMatchObject({ name: "公司那台", bridgeKind: "koishi" });
+		expect(links[1]?.token).toMatch(/^[0-9a-f]{32}$/);
+		expect(links[1]?.id).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
 	/** 重新生成 = 换一把新钥匙。发出去的必须**不是**旧那把,否则这个动作等于没做。 */
@@ -143,20 +152,20 @@ describe("桥接接入的增删改", () => {
 		renderDetail();
 		fireEvent.click(await screen.findByLabelText("重新生成 家里那台 的 token"));
 		await waitFor(() => expect(apiPatchMock).toHaveBeenCalled());
-		const [url, body] = apiPatchMock.mock.calls[0] as [string, { config: { token: string } }];
-		expect(url).toBe(`/api/connections/${LINK_ID}`);
-		expect(body.config.token).toMatch(/^[0-9a-f]{32}$/);
-		expect(body.config.token).not.toBe(OLD_TOKEN);
+		const [link] = savedLinks();
+		expect(link?.token).toMatch(/^[0-9a-f]{32}$/);
+		expect(link?.token).not.toBe(OLD_TOKEN);
 	});
 
 	/** 删接入是不可逆的,要问一句再动手。 */
 	it("删接入先问一句", async () => {
 		renderDetail();
 		fireEvent.click(await screen.findByLabelText("删除 家里那台"));
-		expect(apiDeleteMock).not.toHaveBeenCalled();
+		expect(apiPatchMock).not.toHaveBeenCalled();
 		// 卡上那颗叫「删除 家里那台」,弹窗里那颗就叫「删除」—— 按名字取,别按文字
 		fireEvent.click(screen.getByRole("button", { name: "删除" }));
-		await waitFor(() => expect(apiDeleteMock).toHaveBeenCalledWith(`/api/connections/${LINK_ID}`));
+		await waitFor(() => expect(apiPatchMock).toHaveBeenCalled());
+		expect(savedLinks()).toEqual([]);
 	});
 
 	/** token 是密钥,不该躺在屏幕上等着被截图带走。 */

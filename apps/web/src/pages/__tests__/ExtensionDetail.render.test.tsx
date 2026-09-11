@@ -36,16 +36,25 @@ const LISTED: ExtensionsResponse = {
 	],
 };
 
-const CONNECTIONS = [
-	{ id: CONNECTED_ID, name: "家里那台", kind: "extension", extensionId: "bridge", enabled: true },
-	{ id: CONFIGURED_ID, name: "公司那台", kind: "extension", extensionId: "bridge", enabled: true },
-	{ id: "33333333-3333-4333-8333-333333333333", name: "本地 OneBot", kind: "direct" },
-];
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里(ADR-0012 决策 45)。 */
+const GLOBALS = {
+	extensions: {
+		bridge: {
+			enabled: true,
+			settings: {
+				links: [
+					{ id: CONNECTED_ID, name: "家里那台", enabled: true, token: "t1", bridgeKind: "koishi" },
+					{ id: CONFIGURED_ID, name: "公司那台", enabled: true, token: "t2", bridgeKind: "koishi" },
+				],
+			},
+		},
+	},
+};
 
 const STATUS = {
 	sessions: [
 		{
-			connectionId: CONNECTED_ID,
+			linkId: CONNECTED_ID,
 			connected: true,
 			kind: "koishi",
 			name: "客厅那台 koishi",
@@ -67,13 +76,13 @@ const STATUS = {
 				},
 			],
 		},
-		{ connectionId: CONFIGURED_ID, connected: false, bots: [] },
+		{ linkId: CONFIGURED_ID, connected: false, bots: [] },
 	],
 };
 
 function route(url: string): string {
 	if (url === "/api/ext") return "listed";
-	if (url === "/api/connections") return "connections";
+	if (url === "/api/globals") return "globals";
 	if (url.startsWith("/api/ext/")) return "status";
 	return "other";
 }
@@ -83,8 +92,8 @@ function renderDetail(id = "bridge") {
 		switch (route(url)) {
 			case "listed":
 				return LISTED;
-			case "connections":
-				return CONNECTIONS;
+			case "globals":
+				return GLOBALS;
 			case "status":
 				return STATUS;
 			default:

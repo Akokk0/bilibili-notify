@@ -20,6 +20,13 @@ export function assertConfigFieldsMatchSchema(
 	id: string,
 	schema: ZodType,
 	fields: readonly ExtensionConfigField[],
+	opts: {
+		/**
+		 * 连接是从 `listBots` 里**挑**出来的(ADR-0012 决策 45)—— config 由拓展自己交,没有
+		 * 一栏是人填的,所以「必填键没人填」那一半不查:那正是它的常态,不是漂了。
+		 */
+		picked?: boolean;
+	} = {},
 ): void {
 	const fail = (msg: string): never => {
 		throw new Error(`extension ${id}: ${msg}`);
@@ -44,6 +51,7 @@ export function assertConfigFieldsMatchSchema(
 		}
 	}
 
+	if (opts.picked) return;
 	for (const [key, member] of Object.entries(members)) {
 		// 收不下 `undefined` 的就是必填(可选与带默认值的都收得下)。
 		const required = !member.safeParse(undefined).success;

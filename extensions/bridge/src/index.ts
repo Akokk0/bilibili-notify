@@ -12,8 +12,10 @@
  * - **推送源**(`ctx.registerPushSource`)—— 矩阵里那个按分发键认领的 adapter
  * - **入站**(`ctx.inbound`)—— 桥驮上来的私聊 / 群消息,归一化在这一侧做完
  *
- * ⚠️ 配置对账(接入被删 / 被停用 / token 换了 → 踢掉那条会话)**不在这里接** ——
- * 宿主在配置动过之后会挨个叫 `adapter.reconcile(connections)`,桥那份实现在 `adapter.ts`。
+ * 两份配置(ADR-0012 决策 45):**接入**(koishi / AstrBot 实例 + token)住拓展自己的设置,
+ * 面板在拓展页建;**连接**是从接入驮着的 bot 里挑出来的一个 bot,面板在推送目标页建。
+ * 对账(接入被删 / 被停用 / token 换了 → 踢掉那条会话)的实现在 `adapter.ts`,设置一动
+ * 就叫它;宿主按连接变更叫的那一下也对得上。
  */
 
 import type {
@@ -31,6 +33,7 @@ import {
 } from "./config.js";
 import { routeBridgeInbound } from "./inbound.js";
 import { createBridgeServer } from "./server.js";
+import { type BridgeLink, BridgeSettingsSchema } from "./settings.js";
 import { resolveBridgeToken } from "./tokens.js";
 
 /** 面板上这一档叫什么、什么颜色。少掉 `connectors` 那一格 —— 拓展连接没有「怎么连」。 */
@@ -55,61 +58,82 @@ export function activate(ctx: ExtensionContext): void {
 	// 先要挂载点:取图 URL 拿它拼,而 adapter 一注册就可能被叫去发消息。
 	const mountPath = ctx.mount(createBridgeFetchHandler({ store: blobs, logger: ctx.logger }));
 
-	// `source` 与 `server` 互相要对方:端点靠连接名单认 token,adapter 靠端点发消息。
+	// 接入名单住设置里,**现读**:面板上重新生成 token,下一次连接立刻按新的判。
+	const settings = ctx.settings(BridgeSettingsSchema);
+	const links = (): readonly BridgeLink[] => settings.get()?.links ?? [];
+
+	// `source` 与 `server` 互相要对方:端点靠接入名单认 token,adapter 靠端点发消息。
 	// 现读的闭包把这个环拆开 —— 两者都只在**运行时**才碰对方,那时早就都建好了。
 	let source: PushSourceHandle<BridgeConnectionConfig> | undefined;
 	const connections = (): readonly ExtensionConnectionView<BridgeConnectionConfig>[] =>
 		source?.connections() ?? [];
 
+	/** 这条接入上的这个 bot 绑成了哪条连接 —— 入站归属靠它。没绑就是没有。 */
+	const connectionFor = (linkId: string, botId: string): string | undefined =>
+		connections().find((c) => c.config.link === linkId && c.config.botId === botId)?.id;
+
 	const server = createBridgeServer({
 		logger: ctx.logger,
 		serverVersion: ctx.hostVersion,
-		// 现读配置:面板上重新生成 token,下一次连接立刻按新的判。
-		resolveToken: (token) => resolveBridgeToken(connections(), token),
+		resolveToken: (token) => resolveBridgeToken(links(), token),
 		// 认得这个 token 不等于现在收它:这条接入停用了回 503(退避重连),而不是 401
 		// (配置错了别重连)。拓展的总开关不在这儿判 —— 关着的拓展根本不会被加载。
-		accepts: (connectionId) =>
-			connections().some((connection) => connection.id === connectionId && connection.enabled),
+		accepts: (linkId) => links().some((link) => link.id === linkId && link.enabled),
 		// 群消息**恒要含链接的那些**,不跟着链接解析的开关走:订阅只在握手时下发一次,
 		// 跟着开关走的话主人开完链接解析,已经连着的那条桥仍然一条群消息都不发,而且
 		// 要等它自己重连才恢复。要不要解析在本地判(link-parser 自己会看开关)。
 		inbound: () => ({ private: true, group: "with-links" }),
-		onInbound: (session, frame) =>
-			routeBridgeInbound(
-				frame,
-				{ connectionId: session.connectionId, bots: session.bots },
-				ctx.inbound,
-			),
-		onSessionChange: (connectionId, connected) =>
-			ctx.logger.info(`${connectionId} ${connected ? "已连接" : "已断开"}`),
+		onInbound: (session, frame) => {
+			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
+			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
+			const connectionId = connectionFor(session.linkId, frame.botId);
+			if (!connectionId) {
+				ctx.logger.debug(`${session.linkId} 上的 ${frame.botId} 没绑成连接,这条消息不收`);
+				return;
+			}
+			routeBridgeInbound(frame, { connectionId, bots: session.bots }, ctx.inbound);
+		},
+		onSessionChange: (linkId, connected) =>
+			ctx.logger.info(`${linkId} ${connected ? "已连接" : "已断开"}`),
 	});
 	ctx.onDispose(() => server.dispose());
 	ctx.onUpgrade(server.upgrade);
 
+	const adapter = createBridgeAdapter({ server, connections, links, mountPath, blobs });
 	source = ctx.registerPushSource({
-		adapter: createBridgeAdapter({ server, connections, mountPath, blobs }),
+		adapter,
 		descriptor: DESCRIPTOR,
 		configSchema: BridgeConnectionConfigSchema,
 		configFields: BRIDGE_CONFIG_FIELDS,
-		// 推送目标页新建目标时挑「绑哪个 bot」—— 只有连着的那条会话驮着的 bot 能挑。
-		listBots: (connectionId) =>
-			(server.getSession(connectionId)?.bots ?? []).map((bot) => ({
-				botId: bot.botId,
-				platform: bot.platform,
-				name: bot.name,
-				selfId: bot.selfId,
-				icon: bot.icon,
-			})),
+		// 推送目标页「新建连接」挑的那一排:每条**连着**的接入驮着的每个 bot。config 就是
+		// 那条连接要存的东西;`boundTo` 让面板标出「已加过」。
+		listBots: () =>
+			links().flatMap((link) => {
+				const session = server.getSession(link.id);
+				if (!session) return [];
+				return session.bots.map((bot) => ({
+					config: { link: link.id, botId: bot.botId },
+					platform: bot.platform,
+					name: bot.name,
+					selfId: bot.selfId,
+					icon: bot.icon,
+					via: link.name,
+					boundTo: connectionFor(link.id, bot.botId),
+				}));
+			}),
 	});
+	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时叫 reconcile,而
+	// 桥的对账看的是接入名单(现读),那个参数它用不着 —— 给空表就是这个意思。
+	settings.onChange(() => adapter.reconcile?.([]));
 
-	// 面板要的活口状态。**从配置那一头看起**,不是从活着的会话:最需要看见的恰恰是
+	// 面板要的活口状态。**从接入名单那一头看起**,不是从活着的会话:最需要看见的恰恰是
 	// 「配了但没连上」那条,而它在会话表里根本不存在。
 	ctx.publishStatus(() => ({
-		sessions: connections().map((connection) => {
-			const live = server.getSession(connection.id);
-			if (!live) return { connectionId: connection.id, connected: false, bots: [] };
+		sessions: links().map((link) => {
+			const live = server.getSession(link.id);
+			if (!live) return { linkId: link.id, connected: false, bots: [] };
 			return {
-				connectionId: connection.id,
+				linkId: link.id,
 				connected: true,
 				kind: live.kind,
 				name: live.name,

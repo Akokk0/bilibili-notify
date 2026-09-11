@@ -91,9 +91,9 @@ export interface BridgeServerOptions {
 	 * 回 401(配置错了,别重连),认识但眼下不收回 **503**(暂时的,退避重连)。合成一问的话
 	 * 用户在面板上把接入停用一下,插件那头看到的是「token 不对」,而它其实好好的。
 	 */
-	accepts?(connectionId: string): boolean;
+	accepts?(linkId: string): boolean;
 	/** bot 名单来了(握手那份也算)。名单是**全量快照**,整份换掉。 */
-	onBots?(connectionId: string, bots: readonly BridgeBot[]): void;
+	onBots?(linkId: string, bots: readonly BridgeBot[]): void;
 	/**
 	 * 收到一条入站消息。帧原样交出去 —— 归一成 BN 内部形状是下一层的事。
 	 *
@@ -103,12 +103,12 @@ export interface BridgeServerOptions {
 	 */
 	onInbound?(session: BridgeSession, frame: BridgeInboundFrame): void;
 	/** 会话建立 / 消失。面板的在线状态与推送的可达性都看它。 */
-	onSessionChange?(connectionId: string, connected: boolean): void;
+	onSessionChange?(linkId: string, connected: boolean): void;
 }
 
 /** 一条**已握手**的桥会话的只读快照。 */
 export interface BridgeSession {
-	readonly connectionId: string;
+	readonly linkId: string;
 	readonly kind: BridgeKind;
 	readonly name?: string;
 	readonly version?: string;
@@ -151,21 +151,21 @@ export interface BridgeServer extends Disposable {
 	upgrade: ExtensionUpgradeHandler;
 	/** 已握手的会话数。没握完手的不算。 */
 	readonly sessionCount: number;
-	getSession(connectionId: string): BridgeSession | undefined;
+	getSession(linkId: string): BridgeSession | undefined;
 	/** 当前所有已握手的会话。配置对账(接入被删 / 被停用 / token 换了)要从这一头看起。 */
 	listSessions(): BridgeSession[];
 	/**
 	 * 发一条消息,等桥的回执。请求 ↔ 回执的配对是**传输层**的事(一条 socket 上多条
 	 * 在飞),不是 adapter 的 —— adapter 只负责把 payload 译成 {@link BridgeSendRequest}。
 	 */
-	send(connectionId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
+	send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
 	/** 吊销 token / 删接入 / 关模块 —— 按给的 close code 把那条桥踢下线。 */
-	disconnect(connectionId: string, code: BridgeCloseCode): void;
+	disconnect(linkId: string, code: BridgeCloseCode): void;
 }
 
 interface BridgeConn {
 	socket: WebSocket;
-	connectionId: string;
+	linkId: string;
 	/** 见 {@link BridgeSession.origin}。upgrade 那一刻从请求上算出来,之后不变。 */
 	origin: string;
 	/** 见 {@link BridgeSession.remoteAddress}。同样只在 upgrade 那一刻取一次。 */
@@ -267,7 +267,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			conn.socket.send(JSON.stringify(frame));
 			return true;
 		} catch (err) {
-			log.warn(`bridge ${conn.connectionId} send failed: ${String(err)}`);
+			log.warn(`bridge ${conn.linkId} send failed: ${String(err)}`);
 			return false;
 		}
 	}
@@ -294,9 +294,9 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			conn.handshakeTimer = undefined;
 		}
 		failPending(conn, "桥断开了");
-		if (sessions.get(conn.connectionId) === conn) {
-			sessions.delete(conn.connectionId);
-			opts.onSessionChange?.(conn.connectionId, false);
+		if (sessions.get(conn.linkId) === conn) {
+			sessions.delete(conn.linkId);
+			opts.onSessionChange?.(conn.linkId, false);
 		}
 	}
 
@@ -311,7 +311,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	}
 
 	function terminate(conn: BridgeConn, why: string): void {
-		log.warn(`bridge ${conn.connectionId} ${why}; terminating`);
+		log.warn(`bridge ${conn.linkId} ${why}; terminating`);
 		try {
 			conn.socket.terminate();
 		} catch {
@@ -324,13 +324,13 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	function onHello(conn: BridgeConn, frame: BridgeHelloFrame): void {
 		if (conn.hello) {
-			log.warn(`bridge ${conn.connectionId} sent a second hello`);
+			log.warn(`bridge ${conn.linkId} sent a second hello`);
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "hello is the first frame, and only once");
 			return;
 		}
 		if (!isBridgeProtocolCompatible(frame.protocol)) {
 			log.warn(
-				`bridge ${conn.connectionId} speaks protocol v${frame.protocol.major}.${frame.protocol.minor}, ` +
+				`bridge ${conn.linkId} speaks protocol v${frame.protocol.major}.${frame.protocol.minor}, ` +
 					`we speak v${BRIDGE_PROTOCOL_VERSION.major}.${BRIDGE_PROTOCOL_VERSION.minor}`,
 			);
 			close(conn, BRIDGE_CLOSE_CODES.incompatibleProtocol, "incompatible protocol major");
@@ -349,12 +349,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 		// 新的赢 —— 但只在这里(握手已成)才踢老的。放在 upgrade 那步的话,一个版本
 		// 对不上的重连就能把正在用的会话打下线。
-		const previous = sessions.get(conn.connectionId);
+		const previous = sessions.get(conn.linkId);
 		if (previous && previous !== conn) {
-			log.info(`bridge ${conn.connectionId} replaced by a newer connection`);
+			log.info(`bridge ${conn.linkId} replaced by a newer connection`);
 			close(previous, BRIDGE_CLOSE_CODES.replaced, "replaced by a newer connection");
 		}
-		sessions.set(conn.connectionId, conn);
+		sessions.set(conn.linkId, conn);
 
 		sendFrame(conn, {
 			type: "welcome",
@@ -362,11 +362,9 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			server: { version: opts.serverVersion },
 			inbound: opts.inbound(),
 		});
-		log.info(
-			`bridge ${conn.connectionId} connected (${conn.hello.kind}, ${conn.bots.length} bot(s))`,
-		);
-		opts.onSessionChange?.(conn.connectionId, true);
-		opts.onBots?.(conn.connectionId, conn.bots);
+		log.info(`bridge ${conn.linkId} connected (${conn.hello.kind}, ${conn.bots.length} bot(s))`);
+		opts.onSessionChange?.(conn.linkId, true);
+		opts.onBots?.(conn.linkId, conn.bots);
 	}
 
 	// ---------------- 收帧 -----------------------------------------------------
@@ -384,10 +382,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		if (!parsed.ok) {
 			if (parsed.reason === "unknown-type") {
 				// 桥比我们新。忽略是协议写死的 —— 断在这里等于每次插件加一种帧就打死老 BN。
-				log.debug(`bridge ${conn.connectionId} sent unknown frame "${parsed.type}"; ignoring`);
+				log.debug(`bridge ${conn.linkId} sent unknown frame "${parsed.type}"; ignoring`);
 				return;
 			}
-			log.warn(`bridge ${conn.connectionId} sent a malformed frame: ${parsed.message}`);
+			log.warn(`bridge ${conn.linkId} sent a malformed frame: ${parsed.message}`);
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "malformed frame");
 			return;
 		}
@@ -397,7 +395,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			return;
 		}
 		if (!conn.hello) {
-			log.warn(`bridge ${conn.connectionId} sent "${frame.type}" before hello`);
+			log.warn(`bridge ${conn.linkId} sent "${frame.type}" before hello`);
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "hello must come first");
 			return;
 		}
@@ -405,7 +403,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			case "bots": {
 				// 全量快照,整份换掉 —— 增量合并会在丢帧时留下一个永远不消失的幽灵 bot。
 				conn.bots = frame.bots.map(toBot);
-				opts.onBots?.(conn.connectionId, conn.bots);
+				opts.onBots?.(conn.linkId, conn.bots);
 				break;
 			}
 			case "inbound": {
@@ -419,7 +417,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				if (!entry) {
 					// 超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
 					// 断连不合适;而已经结算过的那条投递也不该被翻案。
-					log.debug(`bridge ${conn.connectionId} sent a result for an unknown id`);
+					log.debug(`bridge ${conn.linkId} sent a result for an unknown id`);
 					break;
 				}
 				entry.settle({ ok: frame.ok, err: frame.err });
@@ -450,14 +448,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	function accept(
 		socket: WebSocket,
-		connectionId: string,
+		linkId: string,
 		origin: string,
 		remoteAddress: string | undefined,
 	): void {
 		const now = Date.now();
 		const conn: BridgeConn = {
 			socket,
-			connectionId,
+			linkId,
 			origin,
 			remoteAddress,
 			connectedAt: now,
@@ -468,14 +466,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
 			conn.handshakeTimer = setTimeout(() => {
-				log.warn(`bridge ${connectionId} never sent hello`);
+				log.warn(`bridge ${linkId} never sent hello`);
 				close(conn, BRIDGE_CLOSE_CODES.handshakeTimeout, "handshake timeout");
 			}, handshakeTimeoutMs);
 		}
 		socket.on("message", (raw: RawData) => onMessage(conn, raw));
 		socket.on("close", () => drop(conn));
 		socket.on("error", (err) => {
-			log.warn(`bridge ${connectionId} socket error: ${String(err)}`);
+			log.warn(`bridge ${linkId} socket error: ${String(err)}`);
 			drop(conn);
 		});
 	}
@@ -488,21 +486,21 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			return;
 		}
 		const token = readBearerToken(req);
-		const connectionId = token ? opts.resolveToken(token) : null;
-		if (!connectionId) {
+		const linkId = token ? opts.resolveToken(token) : null;
+		if (!linkId) {
 			log.warn("bridge upgrade rejected: missing or invalid token");
 			reject(socket, "401 Unauthorized");
 			return;
 		}
-		if (opts.accepts && !opts.accepts(connectionId)) {
+		if (opts.accepts && !opts.accepts(linkId)) {
 			// 认得这个 token,只是眼下不收 —— 模块关了 / 这条接入停用了。503 而不是 401:
 			// 插件据此退避重连,用户把开关拨回来,它自己就回来了。
-			log.info(`bridge upgrade deferred: ${connectionId} is off`);
+			log.info(`bridge upgrade deferred: ${linkId} is off`);
 			reject(socket, "503 Service Unavailable");
 			return;
 		}
 		wss.handleUpgrade(req, socket, head, (ws) =>
-			accept(ws, connectionId, bridgeOrigin(req), bridgeRemoteAddress(req)),
+			accept(ws, linkId, bridgeOrigin(req), bridgeRemoteAddress(req)),
 		);
 	};
 	// ---------------- 心跳 -----------------------------------------------------
@@ -546,8 +544,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 	};
 
-	function send(connectionId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome> {
-		const conn = sessions.get(connectionId);
+	function send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome> {
+		const conn = sessions.get(linkId);
 		if (!conn) return Promise.resolve({ ok: false, err: "桥没连着" });
 		const id = randomUUID();
 		return new Promise<BridgeSendOutcome>((resolve) => {
@@ -574,7 +572,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	function snapshot(conn: BridgeConn): BridgeSession | undefined {
 		if (!conn.hello) return undefined;
 		return {
-			connectionId: conn.connectionId,
+			linkId: conn.linkId,
 			kind: conn.hello.kind,
 			name: conn.hello.name,
 			version: conn.hello.version,
@@ -592,15 +590,15 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		get sessionCount() {
 			return sessions.size;
 		},
-		getSession(connectionId) {
-			const conn = sessions.get(connectionId);
+		getSession(linkId) {
+			const conn = sessions.get(linkId);
 			return conn ? snapshot(conn) : undefined;
 		},
 		listSessions() {
 			return [...sessions.values()].flatMap((conn) => snapshot(conn) ?? []);
 		},
-		disconnect(connectionId, code) {
-			const conn = sessions.get(connectionId);
+		disconnect(linkId, code) {
+			const conn = sessions.get(linkId);
 			if (conn) close(conn, code, "closed by the server");
 		},
 	};

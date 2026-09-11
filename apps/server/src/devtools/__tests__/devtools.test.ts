@@ -35,6 +35,7 @@ const BARE = {
 	inbound: () => undefined,
 	commands: () => ({ prefix: "/" }),
 	connectionConfigs: () => [],
+	globals: () => ({ extensions: {} }),
 	// 还没起监听 —— 假桥那条场景据此说「等一下再按」,而不是去连一个 undefined。
 	address: () => undefined,
 	targets: () => [],

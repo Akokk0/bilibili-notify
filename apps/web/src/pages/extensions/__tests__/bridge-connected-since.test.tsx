@@ -10,7 +10,6 @@
  * 「它一直好好的」,那正是主人查桥的时候要问的第一件事。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -23,33 +22,36 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const LINKS = [
 	{
 		id: "c1",
 		name: "家里那台",
 		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
-		config: { token: "0123456789abcdef0123456789abcdef", bridgeKind: "koishi" },
+		token: "0123456789abcdef0123456789abcdef",
+		bridgeKind: "koishi",
 	},
 	{
 		id: "c2",
 		name: "机房那台",
 		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
-		config: { token: "ffffffffffffffffffffffffffffffff", bridgeKind: "astrbot" },
+		token: "ffffffffffffffffffffffffffffffff",
+		bridgeKind: "astrbot",
 	},
-] as unknown as Connection[];
+];
 
 function renderPanel(connectedAt: number) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return LINKS;
+		if (path === "/api/globals") return globalsWith(LINKS);
 		if (path.startsWith("/api/ext/")) {
 			return {
 				sessions: [
 					{
-						connectionId: "c1",
+						linkId: "c1",
 						connected: true,
 						kind: "koishi",
 						name: "客厅那台",
@@ -57,7 +59,7 @@ function renderPanel(connectedAt: number) {
 						connectedAt,
 						bots: [],
 					},
-					{ connectionId: "c2", connected: false, bots: [] },
+					{ linkId: "c2", connected: false, bots: [] },
 				],
 			};
 		}

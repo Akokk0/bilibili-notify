@@ -70,7 +70,7 @@ export interface LoadedExtensions {
 	/** 某个拓展注册推送源时交的字段表(决策 33)。没跑就是 `undefined`。 */
 	configFields(id: string): readonly ExtensionConfigField[] | undefined;
 	/** 某个拓展某条连接上能绑目标的 bot。没跑 / 它没给 `listBots` 就是 `undefined`。 */
-	bots(id: string, connectionId: string): readonly ExtensionBotView[] | undefined;
+	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/**
 	 * 按**现在的开关**再对一遍:开了的装上,关了的收掉(决策 10 的「启用 / 停用热」)。
 	 *
@@ -345,7 +345,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		status: (id) => runtimes.get(id)?.status(),
 		descriptor: (id) => runtimes.get(id)?.descriptor(),
 		configFields: (id) => runtimes.get(id)?.configFields(),
-		bots: (id, connectionId) => runtimes.get(id)?.bots(connectionId),
+		bots: (id) => runtimes.get(id)?.bots(),
 		sync() {
 			// 串起来跑:连拨两下开关时,后一次要看见前一次的结果。
 			queue = queue.then(async () => {

@@ -10,7 +10,6 @@
  * 桥那一级排最前:桥后面挂着什么平台是**运行时才知道**的开放词表,BN 认得的只是一小撮。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -25,23 +24,26 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const KOISHI = {
 	id: "c1",
 	name: "家里那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: "0123456789abcdef0123456789abcdef", bridgeKind: "koishi" },
-} as unknown as Connection;
+	token: "0123456789abcdef0123456789abcdef",
+	bridgeKind: "koishi",
+};
 
 const ASTRBOT = {
 	id: "c2",
 	name: "机房那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: "ffffffffffffffffffffffffffffffff", bridgeKind: "astrbot" },
-} as unknown as Connection;
+	token: "ffffffffffffffffffffffffffffffff",
+	bridgeKind: "astrbot",
+};
 
 /** 桥随 bot 报上来的平台图标(协议 §5.2)。 */
 const BRIDGE_ICON = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
@@ -49,7 +51,7 @@ const BRIDGE_ICON = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3
 const STATUS = {
 	sessions: [
 		{
-			connectionId: "c1",
+			linkId: "c1",
 			connected: true,
 			kind: "koishi",
 			name: "客厅那台",
@@ -72,13 +74,13 @@ const STATUS = {
 				{ botId: "nostalgia:2", platform: "从没见过的平台", name: "小电视" },
 			],
 		},
-		{ connectionId: "c2", connected: false, bots: [] },
+		{ linkId: "c2", connected: false, bots: [] },
 	],
 };
 
 function renderPanel() {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [KOISHI, ASTRBOT];
+		if (path === "/api/globals") return globalsWith([KOISHI, ASTRBOT]);
 		if (path.startsWith("/api/ext/")) return STATUS;
 		throw new Error("没有这个口");
 	});

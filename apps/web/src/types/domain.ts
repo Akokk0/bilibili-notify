@@ -12,7 +12,7 @@
  * (cardLayout / messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type { ExtensionConfigField, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { ExtensionBotView, SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
@@ -165,44 +165,43 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
  * 限制(所有现代浏览器恒有),用它手搓 v4 UUID,任何部署形态下都产出合法格式。
  */
 /**
- * N 字节的随机十六进制 —— 拓展字段表里标了 `generate` 的那一栏(token 那种「只要两边一样、
- * 不需要人记住」的密钥)新建时预填的就是它。走 `getRandomValues` 而不是 `randomUUID`,
- * 理由同 {@link newId}:非安全上下文里也得能生成。
- */
-export function randomHex(bytes: number): string {
-	const buf = new Uint8Array(bytes);
-	crypto.getRandomValues(buf);
-	return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * 一条挂在某个拓展名下的空连接 —— 默认值照它交上来的字段表:select 取第一档、标了
- * `generate` 的文本现生成、数字取下限、开关关着。config 的形状归拓展自己定,这里只按
- * 字段表逐格放,不认得任何具体拓展。
+ * 一条挂在某个拓展名下的连接 —— **就是主人挑中的那个 bot**(ADR-0012 决策 45)。拓展在
+ * `listBots` 里交出来的 config 原样存进连接,平台从 bot 上抄;这里不认得任何具体拓展。
+ * 显示名默认用 bot 的名字,主人没填的话。
  */
 export function makeEmptyExtensionConnection(
 	extensionId: string,
-	fields: readonly ExtensionConfigField[],
+	bot: ExtensionBotView,
 	name: string,
 ): ExtensionConnection {
-	const config: Record<string, unknown> = {};
-	for (const field of fields) {
-		switch (field.kind) {
-			case "select":
-				config[field.code] = field.options[0]?.value ?? "";
-				break;
-			case "text":
-				config[field.code] = field.generate ? randomHex(field.generate) : "";
-				break;
-			case "number":
-				config[field.code] = field.min ?? 0;
-				break;
-			case "toggle":
-				config[field.code] = false;
-				break;
-		}
-	}
-	return { id: newId(), name, enabled: true, kind: "extension", extensionId, config };
+	return {
+		id: newId(),
+		name: name || bot.name || "",
+		enabled: true,
+		kind: "extension",
+		extensionId,
+		platform: bot.platform,
+		config: bot.config,
+	};
+}
+
+/**
+ * 刚挑了拓展、还没挑 bot 的那条草稿:平台空着,**存不了**(弹窗按它灰掉保存钮)。别在这儿
+ * 编一个平台名 —— 目标的平台正要从这里抄。
+ */
+export function makeExtensionConnectionDraft(
+	extensionId: string,
+	name: string,
+): ExtensionConnection {
+	return {
+		id: newId(),
+		name,
+		enabled: true,
+		kind: "extension",
+		extensionId,
+		platform: "",
+		config: undefined,
+	};
 }
 
 export function newId(): string {
@@ -332,11 +331,9 @@ export function makeEmptyTarget(connection: Connection, name: string): PushTarge
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
 	if (connection.kind !== "direct") {
-		// 拓展提供的连接上**没有平台**那一格 —— 它后面挂着哪个平台是运行时知识(桥是握手时
-		// 报的)。目标的平台跟着主人在弹窗里挑的那个 bot 走(`/api/ext/:id/bots/:connectionId`),
-		// 所以这里先留空:**空平台的目标存不了**(弹窗按它灰掉保存钮),别在这儿编一个平台名。
-		// 曾经在这里 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
-		return { ...base, kind: "session", platform: "", scope: "group", address: "" };
+		// 拓展提供的连接就是一个 bot,平台跟着连接走(ADR-0012 决策 45)—— 与直连同一套逻辑,
+		// 目标只填地址。曾经在这里 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
+		return { ...base, kind: "session", platform: connection.platform, scope: "group", address: "" };
 	}
 	if (connection.platform === "onebot") {
 		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };

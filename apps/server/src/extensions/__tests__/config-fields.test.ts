@@ -54,6 +54,26 @@ describe("字段表 × zod 对表", () => {
 		expect(() => check([fields()[0] as ExtensionConfigField])).toThrow(/bridgeKind/);
 	});
 
+	/**
+	 * 连接是**挑**出来的(`listBots`,ADR-0012 决策 45)时,config 由拓展自己交、没有一栏是人填的
+	 * —— 必填键不在字段表里是正常的,不是漂了。字段表里有格、zod 不认识仍然要拒。
+	 */
+	it("config 是挑出来的(有 listBots)→ 必填键不在字段表里也放行;字段表里多出来的格照拒", () => {
+		expect(() =>
+			assertConfigFieldsMatchSchema("bridge", SCHEMA, [], { picked: true }),
+		).not.toThrow();
+		expect(() =>
+			assertConfigFieldsMatchSchema(
+				"bridge",
+				SCHEMA,
+				[{ kind: "text", code: "nope", label: "?" }],
+				{
+					picked: true,
+				},
+			),
+		).toThrow(/nope/);
+	});
+
 	it("同一个 code 摆了两栏 → 拒。哪一栏说了算是个没人想回答的问题", () => {
 		expect(() => check([...fields(), { kind: "text", code: "token", label: "又一个" }])).toThrow(
 			/token/,

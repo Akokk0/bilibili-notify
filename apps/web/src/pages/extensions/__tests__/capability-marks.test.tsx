@@ -11,7 +11,6 @@
  * ③ 图例**必须在场** —— 没有图例,主人只能靠猜每个记号是什么意思,今天就是这么猜错的。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -24,19 +23,23 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const LINK = {
 	id: "c1",
 	name: "koishi 那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: "0123456789abcdef0123456789abcdef", bridgeKind: "koishi" },
-} as unknown as Connection;
+	token: "0123456789abcdef0123456789abcdef",
+	bridgeKind: "koishi",
+};
 
 const STATUS = {
 	sessions: [
 		{
-			connectionId: "c1",
+			linkId: "c1",
 			connected: true,
 			kind: "koishi",
 			name: "客厅那台",
@@ -64,7 +67,7 @@ const STATUS = {
 
 function renderPanel() {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [LINK];
+		if (path === "/api/globals") return globalsWith([LINK]);
 		if (path.startsWith("/api/ext/")) return STATUS;
 		throw new Error("没有这个口");
 	});

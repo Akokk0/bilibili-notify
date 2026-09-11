@@ -10,7 +10,6 @@
  * 各写了一份裸 `navigator.clipboard?.writeText` —— 按下去什么都不发生,也不报错。
  */
 
-import type { Connection } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -24,20 +23,24 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 import { BridgeAddressRow, BridgeConnections } from "../bridge-panel";
 
+/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
+function globalsWith(links: unknown[]) {
+	return { extensions: { bridge: { enabled: true, settings: { links } } } };
+}
+
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const LINK = {
 	id: "c1",
 	name: "koishi 那台",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: TOKEN, bridgeKind: "koishi" },
-} as unknown as Connection;
+	token: TOKEN,
+	bridgeKind: "koishi",
+};
 
 function renderPanel() {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/connections") return [LINK];
+		if (path === "/api/globals") return globalsWith([LINK]);
 		throw new Error("拓展没跑起来");
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

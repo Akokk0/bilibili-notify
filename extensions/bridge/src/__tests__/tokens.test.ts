@@ -4,22 +4,15 @@
  * 这是**未鉴权的外来输入**第一次碰到配置,所以比对不能马虎:要恒定时间,别让攻击者按
  * 响应快慢逐字节猜 token。
  *
- * ⛔ 「别人的凭据不算数」(onebot 的 accessToken、官机的 appSecret 住在同一份连接表里)
- * 从前要在这一层自己判,现在**判不着了** —— 宿主只把属于这个拓展的连接交过来
- * (ADR-0012 决策 30),那条守卫在 `extensions/__tests__/context-grants.test.ts`。
+ * 名单是**接入**(设置里那份,ADR-0012 决策 45),不是连接:连接是一个 bot,身上没有 token。
  */
 
-import type { ExtensionConnectionView } from "@bilibili-notify/extension";
 import { describe, expect, it } from "vite-plus/test";
-import type { BridgeConnectionConfig } from "../config.js";
+import type { BridgeLink } from "../settings.js";
 import { resolveBridgeToken } from "../tokens.js";
 
-function bridge(
-	id: string,
-	token: string,
-	enabled = true,
-): ExtensionConnectionView<BridgeConnectionConfig> {
-	return { id, name: `桥 ${id}`, enabled, config: { token, bridgeKind: "koishi" } };
+function bridge(id: string, token: string, enabled = true): BridgeLink {
+	return { id, name: `桥 ${id}`, enabled, token, bridgeKind: "koishi" };
 }
 
 describe("resolveBridgeToken", () => {

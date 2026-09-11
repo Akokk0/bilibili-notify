@@ -61,12 +61,12 @@ function groupFrame(over: Partial<BridgeInboundFrame> = {}): BridgeInboundFrame 
 const source = { connectionId: CONNECTION_ID, bots: [bot()] };
 
 describe("routeBridgeInbound", () => {
-	it("私聊走指令那一路,三坐标齐全 —— 平台与 bot 都在 meta 里", () => {
+	it("私聊走指令那一路,两坐标齐全 —— 平台在 meta 里,连接是绑成的那条", () => {
 		const s = sinks();
 		routeBridgeInbound(privateFrame(), source, s);
 		expect(s.private).toHaveBeenCalledWith(
 			{ userId: "u1", text: "/status" },
-			{ connectionId: CONNECTION_ID, platform: "telegram", botId: "b1" },
+			{ connectionId: CONNECTION_ID, platform: "telegram" },
 		);
 		expect(s.group).not.toHaveBeenCalled();
 	});
@@ -83,7 +83,7 @@ describe("routeBridgeInbound", () => {
 				cardLinks: [],
 				miniAppCardLinks: [],
 			},
-			{ connectionId: CONNECTION_ID, platform: "telegram", botId: "b1" },
+			{ connectionId: CONNECTION_ID, platform: "telegram" },
 		);
 		expect(s.private).not.toHaveBeenCalled();
 	});
@@ -102,7 +102,6 @@ describe("routeBridgeInbound", () => {
 		const s = sinks();
 		routeBridgeInbound(groupFrame({ botId: "b9" }), source, s);
 		expect(s.group.mock.calls[0]?.[0]).toMatchObject({ selfId: undefined });
-		expect(s.group.mock.calls[0]?.[1]).toMatchObject({ botId: "b9" });
 	});
 
 	it("bot 没报 selfId 就没有 —— 不拿 botId 顶替(那是两套编号)", () => {

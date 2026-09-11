@@ -240,17 +240,20 @@ const QQOfficialConnectionSchema = z.object({
 });
 
 /**
- * 拓展提供的连接(ADR-0012 决策 27)。三格刻意都没有:
+ * 拓展提供的连接(ADR-0012 决策 27 / 45)—— **一个借来的 bot**。
  *
- * - **没有 `platform`** —— 拓展不一定就是一个平台。桥后面挂着哪些平台(telegram /
- *   discord / …)是它握手时报的,是运行时知识,枚举不了;塞一个可选的只会让全仓读点静默
- *   变 `undefined`。少那一格,读它的地方就**编译不过** —— 那份编译错清单正是「哪些地方
- *   假定了连接就是一个平台」。平台信息住在**推送目标**那一侧(那边本来就是开放词表)。
+ * 与直连同一套操作逻辑:一条连接就是一个 bot,底下的推送目标只填地址。桥那种「一条接入
+ * 驮 N 个 bot」的东西不是连接,是拓展自己的**设置**(`globals.extensions.<id>.settings`),
+ * 新建连接时从它驮着的 bot 里挑一个。
+ *
+ * - **有 `platform`**,开放词表 —— 一个 bot 就是一个平台,这一格从挑中的 bot 上来
+ *   (`ExtensionBotView.platform`)。它曾经刻意没有(决策 27:那时这一支是「一条桥接入」,
+ *   桥后面挂几个平台枚举不了);连接改成一个 bot 之后那个理由不再成立,而目标的
+ *   `platform` 正要从这里抄。
  * - **没有 `connector`** —— 全仓读它的地方无一例外在问「是不是 webhook」(见
  *   {@link isWebhookConnection})。给这一支塞一格,唯一作用是让那些读点编译得过。
- * - **config 不由核心定形状** —— 归拓展自己那份 zod(决策 19)。核心只保证它是个对象。
- *   ⚠️ 在加载期对表做出来之前,**消费方自己 parse**(桥就是这么读 `token` 的):核心的
- *   schema 不该认识任何一个拓展 id。
+ * - **config 不由核心定形状** —— 归拓展自己那份 zod(决策 19)。它是拓展在 `listBots`
+ *   里交出来的那份,面板原样存回;核心的 schema 不该认识任何一个拓展 id。
  *
  * 判别子仍是 `kind`,不拿 `extensionId` 直接当 `kind` —— 那样判别键不可枚举,
  * `discriminatedUnion` 第一次 parse 就抛。
@@ -260,6 +263,8 @@ const ExtensionConnectionSchema = z.object({
 	kind: z.literal("extension"),
 	/** 哪个拓展负责它 —— **同时就是分发键**(由宿主填,拓展不自报,见决策 28)。 */
 	extensionId: ExtensionIdSchema,
+	/** 这个 bot 在哪个平台上 —— 开放词表,同 {@link TargetPlatformSchema}。 */
+	platform: TargetPlatformSchema,
 	config: z.unknown(),
 });
 
@@ -372,13 +377,9 @@ const PushTargetSessionShape = {
 	 * 一套的小整数,只存话题 id 的话,两个不同群里的同号话题会折成同一个地址。
 	 */
 	parentAddress: z.string().optional(),
-	/**
-	 * 收到 / 发出这个会话的消息的那个 bot 自己的号。
-	 *
-	 * 直连没有:一条连接就是一个 bot,连接 id 已经说全了。桥不一样 —— 一条桥连接后面
-	 * 可能挂着好几个 bot,同一个群地址在两个 bot 眼里是两个会话。
-	 */
-	botId: z.string().optional(),
+	// 这里**没有 `botId`**:一条连接就是一个 bot,连接 id 已经说全了 —— 对拓展连接也一样
+	// (ADR-0012 决策 45)。它曾经为「一条桥连接驮好几个 bot」留过一格,那件事现在住在
+	// 连接那一层。
 } as const;
 
 /**
@@ -432,34 +433,30 @@ export function groupAddressOf(target: PushTarget): string | undefined {
 }
 
 /**
- * 「谁」的三坐标 —— 平台 + 地址(+ 是哪个 bot 看到的)。
+ * 「谁」的两坐标 —— 平台 + 地址。
  *
  * 主人身份以前塌成一个裸字符串,比对就是字符串相等。`onebot` 的 QQ 号与官机的 C2C
  * openid 是**两个命名空间**,撞上就等于认错人 —— 代码注释一直这么写着,却从来没有
- * 东西校验过它:那时「一条连接只驮一个平台」这个前提替它兜着,而这个前提正在被拆掉。
+ * 东西校验过它。**没有 bot 那一格**:同一个平台上同一个地址就是同一个人,两个 bot 各看
+ * 见他一次也还是他(一条连接就是一个 bot,ADR-0012 决策 45)。
  */
 export interface ChatIdentity {
 	platform: string;
 	/** 这个人在该平台上的地址:OneBot 是 QQ 号,官机是 C2C openid。 */
 	address: string;
-	/** 见 PushTarget 的 `botId`;直连没有。 */
-	botId?: string;
 }
 
 /**
- * 主人那个私聊目标的三坐标。不是私聊会话就没有 ——
+ * 主人那个私聊目标的两坐标。不是私聊会话就没有 ——
  * 群目标的 `address` 是群,拿它当主人身份等于把整个群当成主人。
  */
 export function chatIdentityOf(target: PushTarget | undefined): ChatIdentity | undefined {
 	if (target?.kind !== "session" || target.scope !== "private" || !target.address) return undefined;
-	return { platform: target.platform, address: target.address, botId: target.botId };
+	return { platform: target.platform, address: target.address };
 }
 
 /**
- * 两个坐标是不是同一个人。
- *
- * `botId` 只在**两边都有**时参与比对:直连这一格永远是空的,要求它相等等于谁都不认。
- * 平台与地址则都必须给且相等 —— 少一格就不认,而不是当通配。
+ * 两个坐标是不是同一个人。平台与地址都必须给且相等 —— 少一格就不认,而不是当通配。
  */
 export function sameChatIdentity(
 	a: ChatIdentity | undefined,
@@ -467,6 +464,5 @@ export function sameChatIdentity(
 ): boolean {
 	if (!a || !b) return false;
 	if (!a.platform || !a.address) return false;
-	if (a.platform !== b.platform || a.address !== b.address) return false;
-	return !a.botId || !b.botId || a.botId === b.botId;
+	return a.platform === b.platform && a.address === b.address;
 }

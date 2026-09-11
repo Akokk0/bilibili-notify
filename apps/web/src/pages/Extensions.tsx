@@ -26,17 +26,17 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * `/extensions` —— 装了哪些拓展、各开在哪一口、开没开。
  *
  * 版式照设计稿 V1 的「Main」那块画板:页头一行 + 按口子分两节,每节一排卡;卡 = 头
- * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条接入 · N 个 bot 在线」+ 右下「管理 ›」。
+ * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条连接 · N 个 bot 在线」+ 右下「管理 ›」。
  *
  * 这一页**不认得任何具体拓展**(ADR-0012),唯一的例外是那句「N 个 bot 在线」——
  * 它读的是桥交上来的活口状态,形状只有桥有(见 `bridge-status.ts` 顶上那段)。
  */
 
 /**
- * 接入表里这一页要看的那几格。整张 `Connection` 是业务域的,这里只数「谁名下有几条」,
+ * 连接表里这一页要看的那几格。整张 `Connection` 是业务域的,这里只数「谁名下有几条」,
  * 不需要认得别的字段。
  */
-interface ExtensionLink {
+interface ConnectionRow {
 	kind?: string;
 	extensionId?: string;
 }
@@ -68,15 +68,16 @@ function SectionHead({ label }: { label: string }) {
 }
 
 /**
- * 「它名下配了几条接入」。任何开推送源那一口的拓展都有接入,按 `provides` 判就够,
- * 不必认得是谁;别的连接(直连的 OneBot)不算数。0 也要报 —— 那正是「装好了但还没接上」。
+ * 「从它借来的 bot 建了几条连接」(一条连接就是一个 bot,ADR-0012 决策 45)。任何开推送源
+ * 那一口的拓展都有连接,按 `provides` 判就够,不必认得是谁;别的连接(直连的 OneBot)不算数。
+ * 0 也要报 —— 那正是「装好了但还没接上」。桥的接入(token 那条)不在这儿数,它在详情页。
  */
-function LinkCount({ ext, links }: { ext: ExtensionDTO; links: ExtensionLink[] }) {
-	const mine = links.filter((link) => link.kind === "extension" && link.extensionId === ext.id);
+function ConnectionCount({ ext, rows }: { ext: ExtensionDTO; rows: ConnectionRow[] }) {
+	const mine = rows.filter((row) => row.kind === "extension" && row.extensionId === ext.id);
 	return (
 		<div className="flex items-baseline gap-[5px]">
 			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{mine.length}</span>
-			<span className="text-bn-xs text-bn-text-tertiary">条接入</span>
+			<span className="text-bn-xs text-bn-text-tertiary">条连接</span>
 		</div>
 	);
 }
@@ -103,11 +104,11 @@ function BridgeLiveCount({ ext }: { ext: ExtensionDTO }) {
 
 function ExtensionCard({
 	ext,
-	links,
+	rows,
 	onToggle,
 }: {
 	ext: ExtensionDTO;
-	links: ExtensionLink[];
+	rows: ConnectionRow[];
 	onToggle: (enabled: boolean) => void;
 }) {
 	const meta = EXTENSION_STATE_META[ext.state];
@@ -127,7 +128,7 @@ function ExtensionCard({
 				<ExtensionStateDetail ext={ext} />
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
-						<LinkCount ext={ext} links={links} />
+						<ConnectionCount ext={ext} rows={rows} />
 						{ext.id === "bridge" ? <BridgeLiveCount ext={ext} /> : null}
 					</div>
 				) : null}
@@ -151,11 +152,11 @@ export default function Extensions() {
 		queryKey: ["extensions"],
 		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
 	});
-	// 接入表 —— 只为卡片上那句「N 条接入」。**与拓展表分开取**:拓展没跑起来时它照样在,
+	// 连接表 —— 只为卡片上那句「N 条连接」。**与拓展表分开取**:拓展没跑起来时它照样在,
 	// 而「配了但那个拓展没起来」正是最该看见的一种。
 	const connections = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<ExtensionLink[]>("/api/connections"),
+		queryFn: () => api.get<ConnectionRow[]>("/api/connections"),
 	});
 	const toggle = useExtensionToggle();
 	const [installing, setInstalling] = useState(false);
@@ -166,7 +167,7 @@ export default function Extensions() {
 	// 归不了口的那些(清单读不出来 / 版本不合 → 没有 provides)。它们**不许消失**:
 	// 消失的东西没法排查,而这一页正是主人来看「它怎么了」的地方。
 	const homeless = extensions.filter((ext) => (ext.provides ?? []).length === 0);
-	const links = connections.data ?? [];
+	const rows = connections.data ?? [];
 
 	const grid = (items: ExtensionDTO[]) => (
 		<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -174,7 +175,7 @@ export default function Extensions() {
 				<ExtensionCard
 					key={ext.id}
 					ext={ext}
-					links={links}
+					rows={rows}
 					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 				/>
 			))}

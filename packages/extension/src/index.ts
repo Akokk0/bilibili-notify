@@ -78,14 +78,6 @@ export type ExtensionConfigField = ExtensionConfigFieldBase &
 				placeholder?: string;
 				mono?: boolean;
 				secret?: boolean;
-				/**
-				 * 新建时**预填 N 字节的随机十六进制**,并给一颗「重新生成」钮。
-				 *
-				 * 给 token 那种「只要两边一样、不需要人记住」的密钥用:留空让主人自己编一个,
-				 * 编出来的多半是「123456」。生成在面板那一头做(它要给主人看全文、要能复制),
-				 * 服务端不参与 —— 与拓展页那条新建流程同一把。
-				 */
-				generate?: number;
 		  }
 		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
 		| { kind: "toggle" }
@@ -147,44 +139,48 @@ export interface PushExtensionDef<TConfig> {
 	/** config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展。 */
 	configSchema: ZodType<TConfig>;
 	/**
-	 * config 的**字段表** —— 面板照它画表单。与 `configSchema` 是两份声明,
+	 * config 里**要主人亲手填**的那几栏 —— 面板照它画表单。与 `configSchema` 是两份声明,
 	 * 注册那一刻逐格对表,对不上直接抛(决策 19 / 33)。
+	 *
+	 * 可以是空表:桥那种「连接是从 `listBots` 里挑出来的」推送源,config 整份由拓展自己
+	 * 交(见 {@link ExtensionBotView.config}),没有一栏是人填的。
 	 */
 	configFields: readonly ExtensionConfigField[];
 	/**
-	 * 这条连接上现在能绑目标的 bot,**现读**。可选:endpoint 形态的推送源没有 bot 这回事。
+	 * **现在能借来当连接的 bot**,现读。可选:endpoint 形态的推送源没有 bot 这回事。
 	 *
-	 * 目标要绑到哪个 bot 上只有拓展知道 —— 宿主拿它列给主人挑,而不是让主人手敲一个
-	 * `botId`。给了就要**按连接**答:一条桥连接后面可能挂着好几个 bot。
+	 * 🔴 **一条连接就是一个 bot**(ADR-0012 决策 45)—— 与直连同一套操作逻辑:新建连接时
+	 * 挑一个 bot,底下的推送目标只填地址。哪些 bot 能挑只有拓展知道(桥后面挂什么是握手时
+	 * 才知道的),所以宿主拿这一格列给主人挑,而不是让主人手敲一个 id。
 	 */
-	listBots?: (connectionId: string) => readonly ExtensionBotView[];
+	listBots?: () => readonly ExtensionBotView<TConfig>[];
 }
 
 /**
- * 一个能把推送目标绑上去的 bot —— 会话形态的推送源才有。
+ * 一个能借来当连接的 bot。
  *
- * 面板新建目标时列给主人挑,挑中的 `botId` 与 `platform` 落进目标。`platform` 是开放词表
- * (桥后面挂什么是握手时才知道的);`icon` 是 data URL(与桥协议 §5.2 同一种)。
+ * 面板新建连接时列给主人挑,挑中的那个**整个 `config` 原样落进连接**、`platform` 落进
+ * 连接的 `platform` —— 宿主看不懂 config(那归拓展自己那份 zod),只负责原样存回。
+ * `platform` 是开放词表;`icon` 是 data URL(与桥协议 §5.2 同一种)。
  */
-export interface ExtensionBotView {
-	botId: string;
+export interface ExtensionBotView<TConfig = unknown> {
+	/** 绑上这个 bot 的连接该存的 config。拓展自己认得就行。 */
+	config: TConfig;
 	platform: string;
 	name?: string;
 	selfId?: string;
 	icon?: string;
+	/** 经由谁借来的(桥:那条接入的名字)—— 两条桥各驮一个同名 bot 时分得开。 */
+	via?: string;
+	/** 已经被哪条连接绑着 —— 面板标「已加过」,同一个 bot 别建两条连接。 */
+	boundTo?: string;
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */
 export interface ExtensionConnectionView<TConfig> {
 	id: string;
 	name: string;
-	/**
-	 * 主人有没有停用这条。
-	 *
-	 * **停用的也在名单里**:桥必须认得出一条已停用接入的 token,才能回 503(退避重连)
-	 * 而不是 401(配置错了别重连)。只给启用的话,主人在面板上停用一下,插件那头看到的是
-	 * 「token 不对」,而它其实好好的。
-	 */
+	/** 主人有没有停用这条。**停用的也在名单里** —— 拓展要拿它答「这条为什么发不出去」。 */
 	enabled: boolean;
 	config: TConfig;
 }

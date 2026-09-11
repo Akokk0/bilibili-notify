@@ -27,7 +27,8 @@ export interface BridgeBotView {
 }
 
 export interface BridgeSessionView {
-	connectionId: string;
+	/** 哪条接入(住桥的设置里,不是连接 —— 连接是一个 bot,ADR-0012 决策 45)。 */
+	linkId: string;
 	connected: boolean;
 	kind?: string;
 	name?: string;

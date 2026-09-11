@@ -379,11 +379,17 @@ function migrateLegacyTargets(raw: unknown[]): {
  * 新增哪一支都不必回来改这里。
  *
  * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃(与从前同样的行为)
- * - 桥接入 / 桥驮来的 telegram 目标:parse 得过 → 走不到这里
+ * - 没有 `platform` 的拓展连接(桥接入还是连接那一版的形状,未发版):丢弃
+ * - 桥借来的 telegram bot 那条连接 / 它底下的目标:parse 得过 → 走不到这里
  * - onebot 的坏条目:词表内 → 照旧 throw,不许静默吃掉真正的损坏
  */
 function isRetiredPlatformRecord(raw: unknown): boolean {
-	return !ConnectionPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
+	const record = raw as { kind?: unknown; platform?: unknown } | undefined;
+	// 拓展连接曾经**没有** `platform`(那时它是「一条桥接入」,ADR-0012 决策 27);连接改成
+	// 「一个 bot」之后这一格必填(决策 45)。老形状没发过版,不写迁移 —— 当作已撤下的形状
+	// 丢掉,主人在拓展页重建一条接入即可。带 platform 的拓展连接 parse 得过,走不到这里。
+	if (record?.kind === "extension") return record.platform === undefined;
+	return !ConnectionPlatformSchema.safeParse(record?.platform).success;
 }
 
 /**

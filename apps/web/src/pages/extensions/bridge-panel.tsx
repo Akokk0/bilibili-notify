@@ -19,7 +19,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { TInput } from "../../components/forms";
 import { api } from "../../services/api";
-import { type Connection, newId } from "../../types/domain";
+import { newId } from "../../types/domain";
+import type { GlobalConfig } from "../../types/globals";
 import { copyToClipboard } from "../../utils/clipboard";
 import { relativeTime } from "../up/helpers";
 import { BRIDGE_KIND_LOGOS } from "./bridge-logos";
@@ -39,10 +40,16 @@ import {
  * 都没有(ADR-0012 决策 36),这里是面板里唯一认得它的地方。
  */
 
-/** 一条桥接入的 config —— 形状归拓展自己定,所以这一层读得**防着点**。 */
-interface BridgeLinkConfig {
-	token: string;
+/**
+ * 一条桥接入 —— 住桥自己的设置里(`globals.extensions.<id>.settings.links`,ADR-0012 决策 45),
+ * 形状归拓展自己定,所以这一层读得**防着点**。它不是连接:连接是一个 bot,在推送目标页建。
+ */
+interface BridgeLink {
+	id: string;
+	name: string;
 	bridgeKind: string;
+	token: string;
+	enabled: boolean;
 }
 
 /** 桥的两种。`label` 是面板上的叫法,`value` 是配置里的字。 */
@@ -268,16 +275,26 @@ export function newBridgeToken(): string {
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function bridgeConfigOf(connection: Connection): BridgeLinkConfig {
-	const config = (connection as { config?: unknown }).config;
-	const bag = (typeof config === "object" && config !== null ? config : {}) as Record<
-		string,
-		unknown
-	>;
-	return {
-		token: typeof bag.token === "string" ? bag.token : "",
-		bridgeKind: typeof bag.bridgeKind === "string" ? bag.bridgeKind : "koishi",
-	};
+/** 设置里那份接入名单。形状不对的条目跳过 —— 面板不替拓展猜形状,也别因为一条坏的整页白屏。 */
+function linksOf(settings: unknown): BridgeLink[] {
+	const raw = (settings as { links?: unknown } | undefined)?.links;
+	if (!Array.isArray(raw)) return [];
+	return raw.flatMap((entry): BridgeLink[] => {
+		const bag = (typeof entry === "object" && entry !== null ? entry : {}) as Record<
+			string,
+			unknown
+		>;
+		if (typeof bag.id !== "string" || typeof bag.name !== "string") return [];
+		return [
+			{
+				id: bag.id,
+				name: bag.name,
+				bridgeKind: typeof bag.bridgeKind === "string" ? bag.bridgeKind : "koishi",
+				token: typeof bag.token === "string" ? bag.token : "",
+				enabled: bag.enabled !== false,
+			},
+		];
+	});
 }
 
 /** 屏幕上只留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏。 */
@@ -468,22 +485,21 @@ function LinkStatus({
  * 另一头的插件里去了),而把自报的印在这儿会把那个错悄悄抹平。
  */
 function LinkCard({
-	connection,
+	link,
 	session,
 	address,
 	actions,
 }: {
-	connection: Connection;
+	link: BridgeLink;
 	session: BridgeSessionView | undefined;
 	address: string;
 	actions: LinkActions;
 }) {
-	const config = bridgeConfigOf(connection);
 	const connected = session?.connected === true;
 	// 桥自报的种类只在**连着**的时候作数 —— 断开的会话不会再自报什么。
 	const reportedKind = connected ? session?.kind : undefined;
-	const mismatched = reportedKind !== undefined && reportedKind !== config.bridgeKind;
-	const paused = connection.enabled === false;
+	const mismatched = reportedKind !== undefined && reportedKind !== link.bridgeKind;
+	const paused = link.enabled === false;
 
 	const accent = mismatched
 		? "var(--color-bn-warning)"
@@ -529,22 +545,22 @@ function LinkCard({
 	const bots = session?.bots ?? [];
 
 	return (
-		<div data-link-card={connection.id}>
+		<div data-link-card={link.id}>
 			<GlassBox
 				accent={accent}
 				mark={
 					<KindMark
-						text={config.bridgeKind}
+						text={link.bridgeKind}
 						size={32}
-						label={`${config.bridgeKind} 接入`}
-						logo={BRIDGE_KIND_LOGOS[config.bridgeKind]}
+						label={`${link.bridgeKind} 接入`}
+						logo={BRIDGE_KIND_LOGOS[link.bridgeKind]}
 					/>
 				}
-				title={connection.name}
+				title={link.name}
 				aside={
 					<>
 						<Pill subtle size="sm" color="var(--color-bn-inactive)">
-							{mismatched ? `配置:${config.bridgeKind}` : config.bridgeKind}
+							{mismatched ? `配置:${link.bridgeKind}` : link.bridgeKind}
 						</Pill>
 						{status}
 					</>
@@ -556,7 +572,7 @@ function LinkCard({
 							<Btn
 								variant="outline"
 								size="sm"
-								onClick={() => actions.setKind(connection.id, reportedKind)}
+								onClick={() => actions.setKind(link.id, reportedKind)}
 							>
 								改成 {kindLabel(reportedKind)}
 							</Btn>
@@ -564,16 +580,16 @@ function LinkCard({
 						<Btn
 							variant="outline"
 							size="sm"
-							aria-label={`${paused ? "启用" : "停用"} ${connection.name}`}
-							onClick={() => actions.setEnabled(connection.id, paused)}
+							aria-label={`${paused ? "启用" : "停用"} ${link.name}`}
+							onClick={() => actions.setEnabled(link.id, paused)}
 						>
 							{paused ? "启用" : "停用"}
 						</Btn>
 						<Btn
 							variant="danger-outline"
 							size="sm"
-							aria-label={`删除 ${connection.name}`}
-							onClick={() => actions.remove(connection.id)}
+							aria-label={`删除 ${link.name}`}
+							onClick={() => actions.remove(link.id)}
 						>
 							删除
 						</Btn>
@@ -590,7 +606,7 @@ function LinkCard({
 							<Icon.warning size={15} className="mt-px shrink-0" />
 							<div data-kind-mismatch-note>
 								<strong className="font-bold">
-									这条接入配的是 {config.bridgeKind},连进来的却自报 {reportedKind}。
+									这条接入配的是 {link.bridgeKind},连进来的却自报 {reportedKind}。
 								</strong>
 								多半是 token 填到另一头的插件里去了。收发照常能用 —— BN 对两种桥的处理完全相同 ——
 								但面板上的名字会一直对不上,建议改掉其中一边。
@@ -599,9 +615,9 @@ function LinkCard({
 					) : null}
 
 					<TokenRow
-						token={config.token}
-						linkName={connection.name}
-						onRegenerate={() => actions.regenerate(connection.id)}
+						token={link.token}
+						linkName={link.name}
+						onRegenerate={() => actions.regenerate(link.id)}
 					/>
 
 					{connected ? (
@@ -666,7 +682,7 @@ function BridgeEmpty({ onAdd }: { onAdd: () => void }) {
  * ⚠️ 设计稿的黄盒里还有第三句「期间发往桥的推送一律失败并记『桥接模块已关闭』」。
  * **那个字符串今天不存在**(全仓查过),所以只写查得到的两件事。
  */
-function ModuleOff({ links }: { links: Connection[] }) {
+function ModuleOff({ links }: { links: BridgeLink[] }) {
 	return (
 		<>
 			<WarnNote size="sm" className="flex gap-[9px] leading-[1.7]">
@@ -678,20 +694,20 @@ function ModuleOff({ links }: { links: Connection[] }) {
 			</WarnNote>
 			{links.length > 0 ? (
 				<div data-links-dimmed className="flex flex-col gap-2 opacity-45 saturate-[0.6]">
-					{links.map((connection) => (
+					{links.map((link) => (
 						<div
-							key={connection.id}
-							data-link-card={connection.id}
+							key={link.id}
+							data-link-card={link.id}
 							className="flex items-center gap-3 rounded-lg border border-bn-border-subtle px-3.5 py-[11px]"
 						>
 							<KindMark
-								text={bridgeConfigOf(connection).bridgeKind}
+								text={link.bridgeKind}
 								size={26}
-								logo={BRIDGE_KIND_LOGOS[bridgeConfigOf(connection).bridgeKind]}
+								logo={BRIDGE_KIND_LOGOS[link.bridgeKind]}
 							/>
 							<div className="min-w-0 flex-1">
 								<div className="truncate text-bn-sm font-bold text-bn-text-primary">
-									{connection.name}
+									{link.name}
 								</div>
 								<div className="mt-px font-mono text-bn-2xs text-bn-text-tertiary">
 									已随拓展断开
@@ -881,78 +897,50 @@ export function BridgeConnections({
 }) {
 	const qc = useQueryClient();
 	const [adding, setAdding] = useState(false);
-	const [removing, setRemoving] = useState<Connection | null>(null);
+	const [removing, setRemoving] = useState<BridgeLink | null>(null);
 	const address = bnBridgeAddress(extensionId);
 
-	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
+	// 接入名单住桥自己的设置里(`globals.extensions.<id>.settings`)。与拓展表分开取:
+	// 拓展没跑起来时它照样在,「配了但没连上」那张卡正是要看见的。
+	const globals = useQuery({
+		queryKey: ["globals"],
+		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const status = useBridgeStatus(extensionId, enabled);
+	const links = linksOf(globals.data?.extensions[extensionId]?.settings);
 
 	const refresh = () => {
-		void qc.invalidateQueries({ queryKey: ["connections"] });
+		void qc.invalidateQueries({ queryKey: ["globals"] });
 		void qc.invalidateQueries({ queryKey: ["extension-status", extensionId] });
 	};
 
-	const create = useMutation({
-		// token 由弹窗带过来 —— **屏幕上显示的就是存下去的那一把**。
-		mutationFn: (draft: { name: string; bridgeKind: string; token: string }) =>
-			api.post("/api/connections", {
-				id: newId(),
-				name: draft.name,
-				enabled: true,
-				kind: "extension",
-				extensionId,
-				config: { token: draft.token, bridgeKind: draft.bridgeKind },
-			}),
+	/**
+	 * 名单整份写回 —— 它是设置里的一个数组,补丁对数组是整个换掉的;而且形状归拓展自己定,
+	 * 这一层做不了「只改一格」的合并。服务端**现读**:重新生成 token,下一次连接立刻按新的判;
+	 * 还连着的那条由桥自己的对账踢下线(吊销那个断连码),不用面板操心。
+	 */
+	const save = useMutation({
+		mutationFn: (next: BridgeLink[]) =>
+			api.patch("/api/globals", { extensions: { [extensionId]: { settings: { links: next } } } }),
 		onSuccess: () => {
 			setAdding(false);
-			refresh();
-		},
-	});
-
-	// 重新生成:服务端**现读** token,所以下一次连接立刻按新的判;还连着的那条由桥自己的
-	// 对账踢下线(吊销那个断连码),不用面板操心。
-	const patch = useMutation({
-		mutationFn: (next: { id: string; body: Record<string, unknown> }) =>
-			api.patch(`/api/connections/${next.id}`, next.body),
-		onSuccess: refresh,
-	});
-
-	const remove = useMutation({
-		mutationFn: (id: string) => api.delete(`/api/connections/${id}`),
-		onSuccess: () => {
 			setRemoving(null);
 			refresh();
 		},
 	});
+	const update = (id: string, patch: Partial<BridgeLink>) =>
+		save.mutate(links.map((link) => (link.id === id ? { ...link, ...patch } : link)));
 
-	const links = (connections.data ?? []).filter(
-		(c) => c.kind === "extension" && c.extensionId === extensionId,
-	);
 	const sessions = new Map(
-		(status.data?.sessions ?? []).map((session) => [session.connectionId, session]),
+		(status.data?.sessions ?? []).map((session) => [session.linkId, session]),
 	);
 
 	const actions: LinkActions = {
-		setEnabled: (id, enabled) => patch.mutate({ id, body: { enabled } }),
-		setKind: (id, kind) => {
-			const current = links.find((c) => c.id === id);
-			if (!current) return;
-			// config 整份发 —— 与「重新生成」同一个理由:它的形状归拓展自己定,这一层
-			// 做不了「只改一格」的合并。**token 要原样带上**,漏了就等于顺手换了钥匙。
-			patch.mutate({ id, body: { config: { ...bridgeConfigOf(current), bridgeKind: kind } } });
-		},
-		regenerate: (id) => {
-			const current = links.find((c) => c.id === id);
-			if (!current) return;
-			patch.mutate({
-				id,
-				body: { config: { ...bridgeConfigOf(current), token: newBridgeToken() } },
-			});
-		},
-		remove: (id) => setRemoving(links.find((c) => c.id === id) ?? null),
+		setEnabled: (id, enabled) => update(id, { enabled }),
+		// 「对不上」那一档唯一的出口:把配置里的种类改成桥自报的那一种。**token 原样带着**。
+		setKind: (id, kind) => update(id, { bridgeKind: kind }),
+		regenerate: (id) => update(id, { token: newBridgeToken() }),
+		remove: (id) => setRemoving(links.find((link) => link.id === id) ?? null),
 	};
 
 	return (
@@ -984,11 +972,11 @@ export function BridgeConnections({
 			{links.length === 0 ? <BridgeEmpty onAdd={() => setAdding(true)} /> : null}
 
 			{enabled
-				? links.map((connection) => (
+				? links.map((link) => (
 						<LinkCard
-							key={connection.id}
-							connection={connection}
-							session={sessions.get(connection.id)}
+							key={link.id}
+							link={link}
+							session={sessions.get(link.id)}
 							address={address}
 							actions={actions}
 						/>
@@ -999,17 +987,18 @@ export function BridgeConnections({
 				<AddLinkDialog
 					address={address}
 					onCancel={() => setAdding(false)}
-					onCreate={(draft) => create.mutate(draft)}
+					// token 由弹窗带过来 —— **屏幕上显示的就是存下去的那一把**。
+					onCreate={(draft) => save.mutate([...links, { id: newId(), enabled: true, ...draft }])}
 				/>
 			) : null}
 
 			{removing ? (
 				<ConfirmDialog
 					title="删掉这条接入?"
-					message={`「${removing.name}」删掉之后,那一头的插件会连不上,挂在它名下的推送目标也会失效。`}
+					message={`「${removing.name}」删掉之后,那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。`}
 					confirmLabel="删除"
 					danger
-					onConfirm={() => remove.mutate(removing.id)}
+					onConfirm={() => save.mutate(links.filter((link) => link.id !== removing.id))}
 					onCancel={() => setRemoving(null)}
 				/>
 			) : null}

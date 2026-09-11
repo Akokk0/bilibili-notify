@@ -176,23 +176,21 @@ describe("注册推送源", () => {
 	});
 
 	/**
-	 * 目标要绑到哪个 bot 上,只有拓展知道(桥后面挂着什么是握手时才知道的)。`listBots`
+	 * 哪些 bot 能借来当连接,只有拓展知道(桥后面挂着什么是握手时才知道的)。`listBots`
 	 * 是可选的:endpoint 形态的推送源压根没有 bot 这回事。
 	 */
-	it("给了 listBots 就按连接查得到 bot;没给的查不到,不是空数组", () => {
+	it("给了 listBots 就查得到 bot(连它交的那份 config);没给的查不到,不是空数组", () => {
 		const h = harness();
-		h.ctx.registerPushSource({
-			...def(),
-			listBots: (connectionId) =>
-				connectionId === "c1" ? [{ botId: "onebot:1", platform: "onebot", name: "阿库娅" }] : [],
-		});
-		expect(h.runtime.bots("c1")).toEqual([
-			{ botId: "onebot:1", platform: "onebot", name: "阿库娅" },
-		]);
-		expect(h.runtime.bots("c2")).toEqual([]);
+		const bot = {
+			config: { token: "t0ken", bridgeKind: "koishi" as const },
+			platform: "onebot",
+			name: "阿库娅",
+		};
+		h.ctx.registerPushSource({ ...def(), listBots: () => [bot] });
+		expect(h.runtime.bots()).toEqual([bot]);
 		const bare = harness();
 		bare.ctx.registerPushSource(def());
-		expect(bare.runtime.bots("c1")).toBeUndefined();
+		expect(bare.runtime.bots()).toBeUndefined();
 	});
 
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {

@@ -207,7 +207,7 @@ describe("/bridge 端点", () => {
 	let peers: Peer[];
 	let inboundFrames: unknown[];
 	let inboundSessions: BridgeSession[];
-	let botsCalls: { connectionId: string; bots: readonly unknown[] }[];
+	let botsCalls: { linkId: string; bots: readonly unknown[] }[];
 	let sockets: Socket[];
 
 	async function boot(over: Partial<Parameters<typeof createBridgeServer>[0]> = {}) {
@@ -223,7 +223,7 @@ describe("/bridge 端点", () => {
 				inboundSessions.push(session);
 				inboundFrames.push(frame);
 			},
-			onBots: (connectionId, bots) => botsCalls.push({ connectionId, bots }),
+			onBots: (linkId, bots) => botsCalls.push({ linkId, bots }),
 			...over,
 		});
 		serve(httpServer, server);
@@ -410,7 +410,7 @@ describe("/bridge 端点", () => {
 		p.send({ type: "bots", bots: [{ botId: "b2", platform: "discord" }] });
 		await new Promise((r) => setTimeout(r, 30));
 		expect(server.getSession(CONNECTION_ID)?.bots.map((b) => b.botId)).toEqual(["b2"]);
-		expect(botsCalls.at(-1)?.connectionId).toBe(CONNECTION_ID);
+		expect(botsCalls.at(-1)?.linkId).toBe(CONNECTION_ID);
 	});
 
 	it("入站帧交给上面,原样带着 botId 与 platform", async () => {
@@ -460,7 +460,7 @@ describe("/bridge 端点", () => {
 			message: { scope: "group", groupId: "-100", userId: "u1", text: "http://b23.tv/x" },
 		});
 		await new Promise((r) => setTimeout(r, 30));
-		expect(inboundSessions.at(-1)?.connectionId).toBe(CONNECTION_ID);
+		expect(inboundSessions.at(-1)?.linkId).toBe(CONNECTION_ID);
 		expect(inboundSessions.at(-1)?.bots.map((b) => b.selfId)).toEqual(["77770000"]);
 	});
 

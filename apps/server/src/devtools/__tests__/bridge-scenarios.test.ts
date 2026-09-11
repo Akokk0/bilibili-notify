@@ -8,12 +8,11 @@
 
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Connection } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
 import { bridgeScenarios } from "../scenarios/bridge.js";
 
-const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const LINK_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TOKEN = "panel-token";
 
 let httpServer: HttpServer;
@@ -22,30 +21,20 @@ let port: number;
 let frames: Record<string, unknown>[];
 let paths: string[];
 let sockets: WebSocket[];
-let connections: Connection[];
+/** 桥的设置(接入名单住这儿),形状归桥自己 —— 场景按键名读。 */
+let settings: unknown;
 
-const BRIDGE_CONNECTION: Connection = {
-	id: CONNECTION_ID,
+const LINK = {
+	id: LINK_ID,
 	name: "家里那台 koishi",
+	bridgeKind: "koishi",
+	token: TOKEN,
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
-	config: { token: TOKEN, bridgeKind: "koishi" },
 };
-
-const ONEBOT_CONNECTION = {
-	id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-	name: "家里那台 QQ",
-	enabled: true,
-	kind: "direct",
-	platform: "onebot",
-	connector: "ws",
-	config: {},
-} as unknown as Connection;
 
 function scenarios() {
 	return bridgeScenarios({
-		connections: () => connections,
+		settings: () => settings,
 		address: () => `127.0.0.1:${port}`,
 		commands: () => ({ prefix: "/", master: { platform: "bridge", address: "10086" } }),
 	});
@@ -76,7 +65,7 @@ beforeEach(async () => {
 	frames = [];
 	paths = [];
 	sockets = [];
-	connections = [BRIDGE_CONNECTION];
+	settings = { links: [LINK] };
 	httpServer = createServer();
 	wss = new WebSocketServer({ noServer: true });
 	httpServer.on("upgrade", (req, socket, head) => {
@@ -139,20 +128,25 @@ describe("假装一条桥连上来", () => {
 	});
 
 	it("没有桥接入 → 说清楚要先去建一条,别默默连一条空的", async () => {
-		connections = [ONEBOT_CONNECTION];
+		settings = undefined;
+		await expect(from("bridge.connect").run({})).rejects.toThrow(/接入/);
+	});
+
+	it("设置的形状不对 → 当一条都没有,不在 devtools 里炸", async () => {
+		settings = { links: "nope" };
 		await expect(from("bridge.connect").run({})).rejects.toThrow(/接入/);
 	});
 
 	it("接入的 token 是空的 → 明说(备份恢复回来的那条就是空的)", async () => {
-		connections = [{ ...BRIDGE_CONNECTION, config: { token: "", bridgeKind: "koishi" } }];
+		settings = { links: [{ ...LINK, token: "" }] };
 		await expect(from("bridge.connect").run({})).rejects.toThrow(/token/);
 	});
 
-	it("挑了一条不是拓展的连接 → 明说它不是桥", async () => {
-		connections = [BRIDGE_CONNECTION, ONEBOT_CONNECTION];
-		await expect(from("bridge.connect").run({ connection: ONEBOT_CONNECTION.id })).rejects.toThrow(
-			/不是/,
-		);
+	it("按名字或 id 挑得到接入;挑了没有的 → 明说", async () => {
+		settings = { links: [{ ...LINK, id: "other", name: "机房那台" }, LINK] };
+		const out = await from("bridge.connect").run({ link: "家里那台 koishi" });
+		expect(out.summary).toContain("家里那台 koishi");
+		await expect(from("bridge.connect").run({ link: "没有这条" })).rejects.toThrow(/没有这条接入/);
 	});
 });
 

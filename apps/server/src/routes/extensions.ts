@@ -37,8 +37,8 @@ export interface ExtensionsRouteOptions {
 	descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
 	/** 它注册推送源时交的字段表(决策 33)—— 推送目标页照它画「新建连接」。没跑就是 `undefined`。 */
 	configFields: (id: string) => readonly ExtensionConfigField[] | undefined;
-	/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
-	bots: (id: string, connectionId: string) => readonly ExtensionBotView[] | undefined;
+	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
+	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
 	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
 	 *
@@ -148,17 +148,21 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	});
 
 	/**
-	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
-	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
-	 * 面板要能分开说。
+	 * 现在能借来当连接的 bot —— 推送目标页「新建连接」挑的那一排。404 与空名单分开:
+	 * 前者是「问不到」(没跑 / 这种推送源没有 bot 这回事),后者是「一个都没连着」。
 	 */
-	app.get("/:id/bots/:connectionId", (c) => {
-		const bots = opts.bots(c.req.param("id"), c.req.param("connectionId"));
+	app.get("/:id/bots", (c) => {
+		const bots = opts.bots(c.req.param("id"));
 		if (bots === undefined) return c.json({ ok: false, err: "not found" }, 404);
 		const body: ExtensionBotsResponse = { bots };
 		return c.json(body);
 	});
 
+	/**
+	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
+	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
+	 * 面板要能分开说。
+	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

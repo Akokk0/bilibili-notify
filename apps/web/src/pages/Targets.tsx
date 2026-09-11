@@ -1,16 +1,13 @@
 import type {
 	ExtensionBotsResponse,
+	ExtensionBotView,
 	ExtensionDTO,
 	ExtensionsResponse,
 	QQDiscoveredEntry,
 	TestResponse,
 } from "@bilibili-notify/contract";
 // 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
-import {
-	addressNounFor,
-	connectionDispatchKey,
-	platformDescriptor,
-} from "@bilibili-notify/internal/constants";
+import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/constants";
 import {
 	AddCard,
 	Btn,
@@ -18,7 +15,6 @@ import {
 	ErrorNote,
 	HintNote,
 	Icon,
-	IconButton,
 	LoadingBlock,
 	ModalShell,
 	PlatformIcon,
@@ -34,6 +30,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
+import { useConnectionFace } from "../components/platform-meta";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
@@ -49,6 +46,7 @@ import {
 	makeEmptyConnection,
 	makeEmptyExtensionConnection,
 	makeEmptyTarget,
+	makeExtensionConnectionDraft,
 	maskWebhookUrl,
 	type PushTarget,
 	type PushTargetScope,
@@ -107,11 +105,11 @@ function scopeLabel(s: PushTargetScope): string {
 	return SCOPES.find((x) => x.value === s)?.label ?? s;
 }
 
-function connectionEndpointSummary(a: Connection): string {
+function connectionEndpointSummary(a: Connection, platformLabel: (p: string) => string): string {
 	if (a.kind !== "direct") {
-		// 拓展提供的连接:形状归拓展自己定,这一层看不懂它的 config,也不该看懂。
-		// 拓展页落地后这句换成拓展交上来的那份描述(ADR-0012 决策 36)。
-		return a.extensionId;
+		// 拓展提供的连接是一个借来的 bot:说清经谁借的。config 的形状归拓展自己定,这一层
+		// 看不懂,也不该看懂。
+		return `经 ${platformLabel(a.extensionId)}`;
 	}
 	if (a.platform === "onebot") {
 		const c = a.config;
@@ -352,23 +350,27 @@ function ConnectionEditorModal({
 	error,
 }: ConnectionEditorProps) {
 	const platformTint = usePlatformTint();
+	const face = useConnectionFace();
 	const extension =
 		value.kind === "extension" ? extensions.find((ext) => ext.id === value.extensionId) : undefined;
 	const fields = editorFields(value, extension);
-	// 必填的空着也不许存 —— 拓展的字段表里标了 required 的(token)尤其。
+	// 必填的空着也不许存 —— 拓展的字段表里标了 required 的尤其。
 	const requiredMissing = fields.find(
 		(f): f is Extract<ConnectionField, { kind: "text" }> =>
 			f.kind === "text" && f.required === true && f.value.trim().length === 0,
 	);
-	const valid = value.name.trim().length > 0 && !requiredMissing;
+	// 拓展连接就是一个 bot(ADR-0012 决策 45):没挑 bot 的连接没有平台,存不了。
+	const botMissing = value.kind === "extension" && value.platform === "";
+	const valid = value.name.trim().length > 0 && !requiredMissing && !botMissing;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
-	const invalidHint =
-		value.name.trim().length === 0
+	const invalidHint = botMissing
+		? "先挑一个 bot"
+		: value.name.trim().length === 0
 			? "请先填写显示名称"
 			: requiredMissing
 				? `请先填写${requiredMissing.label}`
 				: undefined;
-	const tint = platformTint(connectionDispatchKey(value));
+	const tint = platformTint(face(value));
 	return (
 		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
@@ -392,8 +394,8 @@ function ConnectionEditorModal({
 								);
 							})}
 							{/*
-							 * 跑着的推送源拓展是同一排的后几档 —— 桥接入从这儿建,而不是只能去拓展页。
-							 * 这一排**不认得任何具体拓展**:名字来自它报的 descriptor,表单照它的字段表画。
+							 * 跑着的推送源拓展是同一排的后几档 —— 挑了它,底下从它借得到的 bot 里挑一个,
+							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的 descriptor。
 							 */}
 							{extensions.map((ext) => {
 								const active = value.kind === "extension" && value.extensionId === ext.id;
@@ -403,9 +405,10 @@ function ConnectionEditorModal({
 										key={ext.id}
 										tone={eTint}
 										active={active}
-										onClick={() =>
-											onChange(makeEmptyExtensionConnection(ext.id, ext.configFields, value.name))
-										}
+										onClick={() => {
+											if (active) return;
+											onChange(makeExtensionConnectionDraft(ext.id, value.name));
+										}}
 									>
 										<PlatformIcon platform={ext.id} size={13} />
 										{ext.descriptor.label}
@@ -426,30 +429,43 @@ function ConnectionEditorModal({
 					</Field>
 				</SectionBox>
 
-				<SectionBox
-					title="连接参数"
-					subtitle={
-						value.kind === "extension"
-							? `${extension?.descriptor.label ?? value.extensionId} 的接入参数`
-							: value.platform === "onebot"
-								? "OneBot v11 连接信息"
-								: value.platform === "qq-official"
-									? "QQ 官方机器人凭据(q.qq.com)"
-									: "Webhook 投递终点"
-					}
-					accent={tint}
-				>
-					{value.kind === "extension" && !extension ? (
-						<HintNote>这个拓展现在没跑起来,它的参数表拿不到 —— 先去拓展页把它开起来。</HintNote>
-					) : (
-						<ConnectionConfigFields
-							fields={fields}
-							connection={value}
-							onChange={onChange}
-							revealGenerated={mode === "add"}
-						/>
-					)}
-				</SectionBox>
+				{value.kind === "extension" ? (
+					<SectionBox
+						title="哪个 bot"
+						subtitle={`经 ${extension?.descriptor.label ?? value.extensionId} 借来的,连接就是它`}
+						accent={tint}
+					>
+						{extension ? (
+							<ExtensionBotPicker
+								extension={extension}
+								value={value}
+								onChange={onChange}
+								editing={mode === "edit"}
+							/>
+						) : (
+							<HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>
+						)}
+					</SectionBox>
+				) : null}
+
+				{/* 拓展的字段表可以是空的(桥):连接是挑出来的,没有一栏是人填的,那一节就不画。 */}
+				{value.kind === "extension" && fields.length === 0 ? null : (
+					<SectionBox
+						title="连接参数"
+						subtitle={
+							value.kind === "extension"
+								? `${extension?.descriptor.label ?? value.extensionId} 的接入参数`
+								: value.platform === "onebot"
+									? "OneBot v11 连接信息"
+									: value.platform === "qq-official"
+										? "QQ 官方机器人凭据(q.qq.com)"
+										: "Webhook 投递终点"
+						}
+						accent={tint}
+					>
+						<ConnectionConfigFields fields={fields} connection={value} onChange={onChange} />
+					</SectionBox>
+				)}
 			</div>
 
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
@@ -466,6 +482,124 @@ function ConnectionEditorModal({
 				</Btn>
 			</div>
 		</ModalShell>
+	);
+}
+
+/**
+ * 「挑哪个 bot」那一节 —— 拓展连接就是一个 bot(ADR-0012 决策 45)。
+ *
+ * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经 `/api/ext/:id/bots` 交上来;
+ * 这里**不认得任何具体拓展**,列什么就画什么。挑中的那个:它的 `config` 原样落进连接、
+ * `platform` 落进连接的平台、名字补进空着的显示名。
+ *
+ * 三种「没得挑」要分开说:问不到(拓展没跑起来)、名单空(桥没连上)、都被加过了。
+ * 已经绑成别的连接的 bot 标出来、不给点 —— 同一个 bot 建两条连接只会让目标各推一遍。
+ */
+function ExtensionBotPicker({
+	extension,
+	value,
+	onChange,
+	editing,
+}: {
+	extension: PushExtension;
+	value: Extract<Connection, { kind: "extension" }>;
+	onChange: (next: Connection) => void;
+	/** 改连接时名单里可能没有它现在绑的那个(桥没连着)—— 那一行要照画,别让它像没绑过。 */
+	editing: boolean;
+}) {
+	const platformTint = usePlatformTint();
+	const bots = useQuery({
+		queryKey: ["extension-bots", extension.id],
+		queryFn: () => api.get<ExtensionBotsResponse>(`/api/ext/${extension.id}/bots`),
+		retry: false,
+	});
+	const list = bots.data?.bots ?? [];
+	const chosen = JSON.stringify(value.config ?? null);
+	const isChosen = (bot: ExtensionBotView) => JSON.stringify(bot.config) === chosen;
+	const currentListed = list.some(isChosen);
+
+	if (bots.isPending) return <LoadingBlock variant="inset" label="正在问它有哪些 bot" />;
+	if (bots.isError) {
+		return <HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>;
+	}
+	// 边色由 `bn-tint-row` 按 `--bn-tint` 算,与底下那排候选行同一套涂法。
+	const currentStyle = { "--bn-tint": platformTint(value.platform) } as CSSProperties;
+	if (list.length === 0 && !(editing && value.platform)) {
+		return (
+			<EmptyNote size="sm">
+				现在一个 bot 都没有 —— 去拓展页把桥接上、让它报了名单,这里才有得挑。
+			</EmptyNote>
+		);
+	}
+	return (
+		<div className="space-y-1.5">
+			{editing && value.platform && !currentListed ? (
+				<div
+					data-bn="option option-active"
+					className="flex w-full items-center gap-2 rounded-md border bn-tint-row px-2.5 py-2 text-left"
+					style={currentStyle}
+				>
+					<PlatformIcon platform={value.platform} size={16} />
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
+							现在绑着的那个
+						</div>
+						<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
+							{value.platform} · 它这会儿不在线,名单里没有它
+						</div>
+					</div>
+				</div>
+			) : null}
+			{list.map((bot) => {
+				const active = isChosen(bot);
+				const taken = bot.boundTo !== undefined && bot.boundTo !== value.id;
+				const botTint = platformTint(bot.platform);
+				return (
+					<button
+						// config 才是它的身份(拓展自己定的),名单里没有别的稳定键。
+						key={JSON.stringify(bot.config)}
+						type="button"
+						disabled={taken}
+						onClick={() => {
+							if (active) return;
+							onChange({
+								...makeEmptyExtensionConnection(extension.id, bot, value.name),
+								id: value.id,
+								enabled: value.enabled,
+							});
+						}}
+						data-bn={active ? "option option-active" : "option"}
+						className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
+							active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
+						} ${taken ? "cursor-not-allowed opacity-50" : ""}`}
+						style={{ "--bn-tint": botTint } as CSSProperties}
+					>
+						{bot.icon ? (
+							<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
+						) : (
+							<PlatformIcon platform={bot.platform} size={16} />
+						)}
+						<div className="min-w-0 flex-1">
+							<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
+								{bot.name ?? bot.selfId ?? bot.platform}
+							</div>
+							<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
+								{[bot.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
+									.filter(Boolean)
+									.join(" · ")}
+							</div>
+						</div>
+						{active ? (
+							<span className="text-bn-xs font-bold" style={{ color: botTint }}>
+								已选
+							</span>
+						) : taken ? (
+							<span className="text-bn-xs text-bn-text-tertiary">已加过</span>
+						) : null}
+					</button>
+				);
+			})}
+		</div>
 	);
 }
 
@@ -503,15 +637,13 @@ function ConnectionConfigFields({
 	fields,
 	connection,
 	onChange,
-	revealGenerated,
 }: {
 	fields: ConnectionField[];
 	connection: Connection;
 	onChange: (next: Connection) => void;
-	/** 新建那一刻标了 generate 的栏(token)**明文**给看 —— 要复制去填插件;之后遮着。 */
-	revealGenerated: boolean;
 }) {
 	const platformTint = usePlatformTint();
+	const face = useConnectionFace();
 	return (
 		<>
 			{fields.map((field) => {
@@ -537,9 +669,8 @@ function ConnectionConfigFields({
 					>
 						<ConnectionFieldControl
 							field={field}
-							tint={platformTint(connectionDispatchKey(connection))}
+							tint={platformTint(face(connection))}
 							onChange={onChange}
-							revealGenerated={revealGenerated}
 						/>
 					</Field>
 				);
@@ -553,34 +684,14 @@ function ConnectionFieldControl({
 	field,
 	tint,
 	onChange,
-	revealGenerated,
 }: {
 	field: Exclude<ConnectionField, { kind: "qq-bind" }>;
 	tint: string;
 	onChange: (next: Connection) => void;
-	revealGenerated: boolean;
 }) {
 	switch (field.kind) {
 		case "text":
-			return field.regenerate ? (
-				// 标了 generate 的那栏(token):新建那一刻**明文**给看 —— 要复制去填插件,遮住就
-				// 抄不了;之后只遮着(ADR-0009 决策 21)。旁边一颗「重新生成」。
-				<div className="flex items-center gap-2">
-					<TInput
-						value={field.value}
-						onChange={(v) => onChange(field.set(v))}
-						placeholder={field.placeholder}
-						mono
-						secret={!revealGenerated}
-					/>
-					<IconButton
-						label="重新生成"
-						icon={<Icon.refresh size={13} />}
-						size="sm"
-						onClick={() => onChange((field.regenerate as () => Connection)())}
-					/>
-				</div>
-			) : (
+			return (
 				<TInput
 					value={field.value}
 					onChange={(v) => onChange(field.set(v))}
@@ -716,15 +827,11 @@ function TargetEditorModal({
 }: TargetEditorProps) {
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
+	const face = useConnectionFace();
 	const connection = connections.find((a) => a.id === value.connectionId);
-	// 拓展连接上的目标要绑到某个 bot 上 —— 没挑 bot 的目标发出去也发不到任何地方。
-	const needsBot = connection?.kind === "extension" && value.kind === "session";
-	const botMissing = needsBot && !(value.botId && value.platform);
-	const valid = value.name.trim().length > 0 && Boolean(value.connectionId) && !botMissing;
-	const invalidHint = botMissing ? "先挑一个 bot" : undefined;
-	const tint = platformTint(
-		value.platform || (connection ? connectionDispatchKey(connection) : ""),
-	);
+	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
+	const invalidHint = undefined;
+	const tint = platformTint(value.platform || (connection ? face(connection) : ""));
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleConnections = connections.filter((a) => !isWebhookConnection(a));
 	return (
@@ -748,7 +855,7 @@ function TargetEditorModal({
 						<div className="space-y-1.5">
 							{eligibleConnections.map((a) => {
 								const active = value.connectionId === a.id;
-								const aTint = platformTint(connectionDispatchKey(a));
+								const aTint = platformTint(face(a));
 								return (
 									<button
 										key={a.id}
@@ -769,13 +876,13 @@ function TargetEditorModal({
 										}`}
 										style={{ "--bn-tint": aTint } as CSSProperties}
 									>
-										<PlatformIcon platform={connectionDispatchKey(a)} size={16} />
+										<PlatformIcon platform={face(a)} size={16} />
 										<div className="min-w-0 flex-1">
 											<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 												{a.name}
 											</div>
 											<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-												{platformLabel(connectionDispatchKey(a))} · {connectionEndpointSummary(a)}
+												{platformLabel(face(a))} · {connectionEndpointSummary(a, platformLabel)}
 											</div>
 										</div>
 										{active ? (
@@ -789,15 +896,6 @@ function TargetEditorModal({
 						</div>
 					)}
 				</SectionBox>
-
-				{needsBot && connection?.kind === "extension" ? (
-					<ExtensionBotSection
-						connection={connection}
-						value={value}
-						onChange={onChange}
-						accent={tint}
-					/>
-				) : null}
 
 				<SectionBox title="基本" subtitle="目标的会话级配置" accent={tint}>
 					<Field label="显示名称" code="target.name" required>
@@ -860,102 +958,6 @@ function TargetEditorModal({
 				</Btn>
 			</div>
 		</ModalShell>
-	);
-}
-
-/**
- * 拓展连接上「绑哪个 bot」那一节。
- *
- * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经 `/api/ext/:id/bots/:connectionId`
- * 交上来;这里**不认得任何具体拓展**,列什么就画什么。挑中的 bot 把 `botId` 与它的
- * `platform` 一起落进目标 —— 目标的平台在这一支就是这么来的。
- *
- * 三种「没得挑」要分开说:问不到(拓展没跑起来)、名单空(桥没连上)、还没挑。
- */
-function ExtensionBotSection({
-	connection,
-	value,
-	onChange,
-	accent,
-}: {
-	connection: Extract<Connection, { kind: "extension" }>;
-	value: PushTarget;
-	onChange: (next: PushTarget) => void;
-	accent: string;
-}) {
-	const platformTint = usePlatformTint();
-	const bots = useQuery({
-		queryKey: ["extension-bots", connection.extensionId, connection.id],
-		queryFn: () =>
-			api.get<ExtensionBotsResponse>(`/api/ext/${connection.extensionId}/bots/${connection.id}`),
-		retry: false,
-	});
-	const list = bots.data?.bots ?? [];
-	return (
-		<SectionBox
-			title="绑哪个 bot"
-			subtitle="这条连接后面可能挂着好几个,目标的平台跟着它走"
-			accent={accent}
-		>
-			{bots.isPending ? (
-				<LoadingBlock variant="inset" label="正在问它有哪些 bot" />
-			) : bots.isError ? (
-				<HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>
-			) : list.length === 0 ? (
-				<EmptyNote size="sm">现在一个 bot 都没有 —— 桥连上来、报了名单,这里才有得挑。</EmptyNote>
-			) : (
-				<div className="space-y-1.5">
-					{list.map((bot) => {
-						const active = value.kind === "session" && value.botId === bot.botId;
-						const botTint = platformTint(bot.platform);
-						return (
-							<button
-								key={bot.botId}
-								type="button"
-								onClick={() => {
-									if (value.kind !== "session") return;
-									// 换 bot 多半换了平台,原来那个地址不再有意义 —— 清掉;scope 不在新平台
-									// 的可选档里也退回群。
-									const scopes = scopesFor(bot.platform).map((s) => s.value);
-									onChange({
-										...value,
-										botId: bot.botId,
-										platform: bot.platform,
-										scope: scopes.includes(value.scope) ? value.scope : "group",
-										address: active ? value.address : "",
-										parentAddress: active ? value.parentAddress : undefined,
-									});
-								}}
-								data-bn={active ? "option option-active" : "option"}
-								className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
-									active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
-								}`}
-								style={{ "--bn-tint": botTint } as CSSProperties}
-							>
-								{bot.icon ? (
-									<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
-								) : (
-									<PlatformIcon platform={bot.platform} size={16} />
-								)}
-								<div className="min-w-0 flex-1">
-									<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-										{bot.name ?? bot.botId}
-									</div>
-									<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-										{[bot.platform, bot.selfId].filter(Boolean).join(" · ")}
-									</div>
-								</div>
-								{active ? (
-									<span className="text-bn-xs font-bold" style={{ color: botTint }}>
-										已选
-									</span>
-								) : null}
-							</button>
-						);
-					})}
-				</div>
-			)}
-		</SectionBox>
 	);
 }
 
@@ -1363,6 +1365,7 @@ function ConnectionRail({
 }) {
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
+	const face = useConnectionFace();
 	return (
 		<SectionNav
 			heading="推送连接"
@@ -1379,17 +1382,17 @@ function ConnectionRail({
 				return {
 					id: a.id,
 					label: a.name || "（未命名）",
-					desc: `${platformLabel(connectionDispatchKey(a))} · ${isWebhookConnection(a) ? "单向投递" : `${count} 个目标`}`,
+					desc: `${platformLabel(face(a))} · ${isWebhookConnection(a) ? "单向投递" : `${count} 个目标`}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (
 						<PlatformIcon
-							platform={connectionDispatchKey(a)}
+							platform={face(a)}
 							size={12}
 							tone={a.id === selectedId ? "currentColor" : undefined}
 						/>
 					),
-					iconTint: platformTint(connectionDispatchKey(a)),
+					iconTint: platformTint(face(a)),
 					// **不写死前景色** —— 它落在左栏选中项内部,而那一项的底由皮肤说了算
 					// (见 SectionNav 的 RAIL_ITEM_ACTIVE)。tertiary 这一档假设底是页面色,
 					// 皮肤把选中项画成实心块之后它就糊在上面了。弱化改由字号 + 字重扛,
@@ -1409,6 +1412,7 @@ export default function Targets() {
 	const qc = useQueryClient();
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
+	const face = useConnectionFace();
 
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
@@ -1760,10 +1764,10 @@ export default function Targets() {
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
 										style={{
-											background: `color-mix(in srgb, ${platformTint(connectionDispatchKey(selectedConnection))} 12%, transparent)`,
+											background: `color-mix(in srgb, ${platformTint(face(selectedConnection))} 12%, transparent)`,
 										}}
 									>
-										<PlatformIcon platform={connectionDispatchKey(selectedConnection)} size={22} />
+										<PlatformIcon platform={face(selectedConnection)} size={22} />
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
@@ -1776,8 +1780,8 @@ export default function Targets() {
 											) : null}
 										</div>
 										<div className="mt-0.5 truncate font-mono text-bn-xs text-bn-text-tertiary">
-											{platformLabel(connectionDispatchKey(selectedConnection))} ·{" "}
-											{connectionEndpointSummary(selectedConnection)}
+											{platformLabel(face(selectedConnection))} ·{" "}
+											{connectionEndpointSummary(selectedConnection, platformLabel)}
 										</div>
 										{selectedConnectionTestStatus ? (
 											<EdgeBadge

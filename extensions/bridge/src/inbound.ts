@@ -12,7 +12,10 @@
 import type { ExtensionContext, InboundMeta } from "@bilibili-notify/extension";
 import type { BridgeBot, BridgeInboundFrame } from "./contract.js";
 
-/** 这一帧从哪条桥来,以及那条桥当下报的 bot 名单(只为查 `selfId`)。 */
+/**
+ * 这一帧归哪条连接(收到它的那个 bot 绑成的那条,由 `index.ts` 按接入 + `botId` 查出来),
+ * 以及那条桥当下报的 bot 名单(只为查 `selfId`)。
+ */
 export interface BridgeInboundSource {
 	connectionId: string;
 	bots: readonly BridgeBot[];
@@ -30,11 +33,7 @@ export function routeBridgeInbound(
 	source: BridgeInboundSource,
 	inbound: ExtensionContext["inbound"],
 ): void {
-	const meta: InboundMeta = {
-		connectionId: source.connectionId,
-		platform: frame.platform,
-		botId: frame.botId,
-	};
+	const meta: InboundMeta = { connectionId: source.connectionId, platform: frame.platform };
 	if (frame.message.scope === "private") {
 		inbound.private({ userId: frame.message.userId, text: frame.message.text }, meta);
 		return;

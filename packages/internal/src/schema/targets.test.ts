@@ -610,29 +610,40 @@ describe("QQOfficial target schema", () => {
 });
 
 /**
- * 拓展提供的连接(ADR-0012 决策 27)。
+ * 拓展提供的连接(ADR-0012 决策 27 / 45)—— **一个借来的 bot**。
  *
- * 三格刻意都没有:**没有 `platform`**(拓展不一定就是一个平台 —— 桥后面挂着哪个平台是它
- * 握手时报的)、**没有 `connector`**(全仓读它的地方无一例外在问「是不是 webhook」)、
- * **config 不由核心定形状**(归拓展自己那份 zod)。
+ * **有 `platform`**(一个 bot 就是一个平台,开放词表)、**没有 `connector`**(全仓读它的
+ * 地方无一例外在问「是不是 webhook」)、**config 不由核心定形状**(归拓展自己那份 zod,
+ * 是它在 `listBots` 里交出来的那份)。
  *
  * 判别子仍是 `kind` —— 拿拓展 id 直接当 `kind` 的话判别键不可枚举,第一次 parse 就抛。
  */
 describe("拓展连接", () => {
 	const base = {
 		id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		name: "家里那台",
+		name: "阿库娅",
 		enabled: true,
 		kind: "extension",
 		extensionId: "demo-ext",
-		config: { token: "t0ken", flavor: "a" },
+		platform: "telegram",
+		config: { link: "l1", botId: "telegram:42" },
 	};
 
-	it("存得下,而且没有 platform / connector 那两格", () => {
+	it("存得下:带开放词表的 platform,没有 connector 那格", () => {
 		const r = ConnectionSchema.safeParse(base);
 		expect(r.success).toBe(true);
-		expect(r.data).not.toHaveProperty("platform");
+		expect(r.data).toHaveProperty("platform", "telegram");
 		expect(r.data).not.toHaveProperty("connector");
+	});
+
+	/**
+	 * 🔴 少了 platform 就存不下 —— 目标的平台正要从这里抄。它曾经是可选甚至没有的
+	 * (那时这一支是「一条桥接入」);老形状的存量条目由加载器按「已撤下的形状」丢掉。
+	 */
+	it("没有 platform 存不下 —— 一个 bot 必然在某个平台上", () => {
+		const { platform: _dropped, ...withoutPlatform } = base;
+		expect(ConnectionSchema.safeParse(withoutPlatform).success).toBe(false);
+		expect(ConnectionSchema.safeParse({ ...base, platform: "" }).success).toBe(false);
 	});
 
 	it("分发键 = extensionId —— 装几个拓展就是几个键,撞不了", () => {
