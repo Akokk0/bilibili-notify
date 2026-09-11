@@ -141,6 +141,15 @@ export interface RestartWait {
 	timeoutMs: number;
 }
 
+/**
+ * 每秒探一次,最多等 90 秒。优雅停机最多 10 秒,加上容器把进程拉起来、载荷启动到
+ * 开始 listen,几十秒都算正常;一分半还没回来,多半就不是慢了。
+ *
+ * 系统页的「立即重启并应用」与装完拓展那颗「重启一次」共用这一份 —— 重启的代价两边
+ * 一样,各拍各的只会让其中一边先放弃、另一边还在等。
+ */
+export const DEFAULT_RESTART_WAIT: RestartWait = { intervalMs: 1_000, timeoutMs: 90_000 };
+
 /** 按下「立即重启并应用」那一刻记下的:要换到哪、是升是退、要换掉的进程是哪个。 */
 export interface RestartIntent extends RestartMark {
 	/** 被换掉的那个进程的 `startedAt` —— 之后只认和它不同的回答。 */

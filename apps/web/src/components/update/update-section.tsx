@@ -25,7 +25,7 @@ import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
-import { type RestartWait, useRestartStore } from "./restart";
+import { DEFAULT_RESTART_WAIT, type RestartWait, useRestartStore } from "./restart";
 import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } from "./status";
 
 /**
@@ -74,12 +74,6 @@ const ERROR_COPY: Record<UpdateErrorReason, string> = {
 
 /** 唯一弹红字的一条。其余一律中性旁注 —— 把代理站抽风渲染成安全警告只会训练用户忽略它。 */
 const DANGEROUS_REASON: UpdateErrorReason = "untrusted";
-
-/**
- * 每秒探一次,最多等 90 秒。优雅停机最多 10 秒,加上容器把进程拉起来、载荷启动到
- * 开始 listen,几十秒都算正常;一分半还没回来,多半就不是慢了。
- */
-const DEFAULT_RESTART_WAIT: RestartWait = { intervalMs: 1_000, timeoutMs: 90_000 };
 
 export interface UpdateSectionProps {
 	/** 只给测试压短等待;正常挂载不传。 */

@@ -8,6 +8,7 @@
  */
 
 import type { MarketplaceResponse } from "@bilibili-notify/contract";
+import { ErrorNote } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -32,7 +33,12 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
-import { MarketplaceSection } from "../marketplace-section";
+import { ExtensionInstallOutcome } from "../install-outcome";
+import {
+	MarketplaceInstallConfirm,
+	MarketplaceSection,
+	useMarketplaceInstall,
+} from "../marketplace-section";
 
 const MARKET: MarketplaceResponse = {
 	available: true,
@@ -131,6 +137,31 @@ const GLOBALS = {
 	marketplace: { sources: [{ id: "s1", name: "alice", url: "https://alice.example/m.json" }] },
 };
 
+/**
+ * 与拓展页同构的宿主:`installer` 是**页面**那一份,「装完那句话」、失败那几句与第三方
+ * 那道确认框都由页面画,市场那一节只出卡与钮。
+ *
+ * 🔴 这里不许让 `MarketplaceSection` 自己起一份 installer:那条路生产里不存在
+ * (`Extensions.tsx` 永远传),照着它写的测试钉住的是一条没人走的路 —— 真路上画不出
+ * 那几句话也照样全绿。
+ */
+function Host() {
+	const installer = useMarketplaceInstall();
+	return (
+		<>
+			{installer.errors.length > 0 ? (
+				<ErrorNote size="sm">
+					{installer.action === "update" ? "更新不了:" : "装不了:"}
+					{installer.errors.join(";")}
+				</ErrorNote>
+			) : null}
+			<ExtensionInstallOutcome done={installer.done} />
+			<MarketplaceSection installer={installer} />
+			<MarketplaceInstallConfirm installer={installer} />
+		</>
+	);
+}
+
 function renderSection(market: MarketplaceResponse = MARKET) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url.startsWith("/api/ext/marketplace")) return market;
@@ -141,7 +172,7 @@ function renderSection(market: MarketplaceResponse = MARKET) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<MarketplaceSection />
+			<Host />
 		</QueryClientProvider>,
 	);
 }
@@ -233,6 +264,27 @@ describe("拓展市场", () => {
 			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "装" }),
 		);
 		expect(await screen.findByText(/校验和/)).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 装与更新走同一发请求,失败那句话却不是同一句。一律说「更新不了」的话,从市场装
+	 * 一个**没装过**的拓展失败了,主人会去找一个根本不存在的旧版本;反过来一律说「装不了」,
+	 * 更新失败时又会让人以为已装的那份也没了。
+	 */
+	it("失败那句话跟着刚才那一下走:装说「装不了」,更新说「更新不了」", async () => {
+		const { ApiError } = await import("../../../services/api");
+		apiPostMock.mockRejectedValue(new ApiError(400, { errors: ["下不动"] }, "400"));
+
+		renderSection();
+		await userEvent.click(
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "装" }),
+		);
+		expect(await screen.findByText(/装不了:下不动/)).toBeTruthy();
+		cleanup();
+
+		renderSection();
+		await userEvent.click(within(await cardOf("Foo")).getByRole("button", { name: /更新到/ }));
+		expect(await screen.findByText(/更新不了:下不动/)).toBeTruthy();
 	});
 
 	it("源拿不到 → 那句原因原样摆出来;没有官方源的构建说清楚、还能加源", async () => {

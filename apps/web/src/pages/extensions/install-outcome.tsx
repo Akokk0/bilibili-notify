@@ -12,11 +12,12 @@
 import type { ExtensionInstallResponse, RestartResponse } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, HintNote, LoadingBlock } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
-import { type RestartWait, useRestartStore } from "../../components/update/restart";
+import {
+	DEFAULT_RESTART_WAIT,
+	type RestartWait,
+	useRestartStore,
+} from "../../components/update/restart";
 import { api } from "../../services/api";
-
-/** 与「立即重启并应用」同一组等待参数 —— 重启的代价两边一样。 */
-export const DEFAULT_RESTART_WAIT: RestartWait = { intervalMs: 1_000, timeoutMs: 90_000 };
 
 /** 重启回不来的那两档各自的出路不一样,所以不能合成一句「不支持」。 */
 function whyNoButton(reason: "source-run" | "unsupervised"): string {

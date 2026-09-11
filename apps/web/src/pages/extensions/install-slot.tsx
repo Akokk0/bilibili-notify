@@ -13,26 +13,18 @@
  */
 
 import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
-import { AddFileButton, ErrorNote } from "@bilibili-notify/ui";
+import { AddFileButton } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { RestartWait } from "../../components/update/restart";
-import { ApiError, api } from "../../services/api";
-import { DEFAULT_RESTART_WAIT, ExtensionInstallOutcome } from "./install-outcome";
+import { DEFAULT_RESTART_WAIT, type RestartWait } from "../../components/update/restart";
+import { api } from "../../services/api";
+import { errorsOf, InstallErrors } from "./install-errors";
+import { ExtensionInstallOutcome } from "./install-outcome";
 
 export interface ExtensionInstallSlotProps {
 	/** 等待参数,只有测试会给。 */
 	wait?: RestartWait;
 	className?: string;
-}
-
-/** 服务端那几句拒绝。拿不到就退回一句 message —— 但**别把它伪装成服务端说的**。 */
-function errorsOf(err: unknown): string[] {
-	if (err instanceof ApiError) {
-		const body = err.body as { errors?: unknown } | null;
-		if (Array.isArray(body?.errors)) return body.errors.map((e) => String(e));
-	}
-	return [err instanceof Error ? err.message : String(err)];
 }
 
 export function ExtensionInstallSlot({
@@ -78,16 +70,7 @@ export function ExtensionInstallSlot({
 				</span>
 			</AddFileButton>
 
-			{errors.length > 0 ? (
-				<ErrorNote size="sm">
-					<span className="font-semibold">这个包装不了:</span>
-					<ul className="mt-1 ml-4 list-disc">
-						{errors.map((line) => (
-							<li key={line}>{line}</li>
-						))}
-					</ul>
-				</ErrorNote>
-			) : null}
+			<InstallErrors lead="这个包装不了:" errors={errors} />
 
 			<ExtensionInstallOutcome done={done} wait={wait} />
 		</div>

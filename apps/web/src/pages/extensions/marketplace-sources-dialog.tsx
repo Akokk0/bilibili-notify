@@ -22,6 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../services/api";
+import { newId } from "../../types/domain";
 
 interface SourceRow {
 	id: string;
@@ -32,12 +33,6 @@ interface SourceRow {
 
 function sourcesOf(globals: GlobalConfig | undefined): SourceRow[] {
 	return globals?.marketplace?.sources ?? [];
-}
-
-function newId(): string {
-	return typeof crypto !== "undefined" && "randomUUID" in crypto
-		? crypto.randomUUID()
-		: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function hostOf(url: string): string {

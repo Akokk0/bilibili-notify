@@ -27,8 +27,8 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, api } from "../../services/api";
-import { ExtensionInstallOutcome } from "./install-outcome";
+import { api } from "../../services/api";
+import { errorsOf } from "./install-errors";
 import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
 export function useMarketplace() {
@@ -37,15 +37,6 @@ export function useMarketplace() {
 		queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace"),
 		retry: false,
 	});
-}
-
-/** 服务端那几句拒绝。拿不到就退回一句 message —— 但**别把它伪装成服务端说的**。 */
-function errorsOf(err: unknown): string[] {
-	if (err instanceof ApiError) {
-		const body = err.body as { errors?: unknown } | null;
-		if (Array.isArray(body?.errors)) return body.errors.map((e) => String(e));
-	}
-	return [err instanceof Error ? err.message : String(err)];
 }
 
 /**
@@ -62,6 +53,12 @@ export function useMarketplaceInstall() {
 	const [done, setDone] = useState<ExtensionInstallResponse | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
 	const [confirming, setConfirming] = useState<MarketplaceEntryDTO | null>(null);
+	/*
+	 * 刚才那一下是**装**还是**更新**。两者落地的是同一发请求(所以同一个 mutation),
+	 * 但失败时要说的话不一样 —— 从市场装一个新的却被告知「更新不了」,主人会去找一个
+	 * 他根本没装过的旧版本。这一格只为那句话存在。
+	 */
+	const [action, setAction] = useState<"install" | "update">("install");
 	const install = useMutation({
 		mutationFn: (input: { source: string; id: string }) =>
 			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
@@ -78,6 +75,7 @@ export function useMarketplaceInstall() {
 	});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
 	const start = (entry: MarketplaceEntryDTO) => {
+		setAction(entry.state === "updatable" ? "update" : "install");
 		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
 		else setConfirming(entry);
 	};
@@ -85,6 +83,7 @@ export function useMarketplaceInstall() {
 		install,
 		done,
 		errors,
+		action,
 		start,
 		confirming,
 		confirm: () => {
@@ -99,8 +98,8 @@ export function useMarketplaceInstall() {
 export type MarketplaceInstaller = ReturnType<typeof useMarketplaceInstall>;
 
 /**
- * 第三方那道确认框。摆在哪儿由**谁持有那份 installer** 决定:页面持有就页面画,
- * 市场那一节自己起一份就它自己画 —— 两处都画会弹两个一模一样的弹窗。
+ * 第三方那道确认框。由**持有那份 installer 的页面**画,画一次 —— 两处都画会弹两个
+ * 一模一样的弹窗。
  *
  * 两句话不重复:添加源那一次是给「不知道自己在干什么」的人看的,这一次是给「知道但
  * 手滑」的人看的。
@@ -213,17 +212,18 @@ function EntryCard({
 export function MarketplaceSection({
 	installer,
 }: {
-	/** 页面级那一份「从市场装」(已装卡片的更新钮也用它);不给就自己起一份。 */
-	installer?: MarketplaceInstaller;
+	/**
+	 * 页面级那一份「从市场装」——「装完那句话」、错误与那道确认框全由**页面**画(已装卡片
+	 * 上的更新钮走的是同一份 state),这一节只出那一排卡与那两颗钮。
+	 *
+	 * 🔴 **必填**:自己起一份的话,这一节点「装」与卡片上点「更新」就落在两份互不相干的
+	 * state 上 —— 弹两个一模一样的确认框、装完那句话出两遍,而且两边都不报错。
+	 */
+	installer: MarketplaceInstaller;
 }) {
 	const qc = useQueryClient();
 	const market = useMarketplace();
-	const own = useMarketplaceInstall();
-	const shop = installer ?? own;
-	const { install, done, errors, start } = shop;
-	// 页面给了那一份,「装完那句话」、错误与那道确认框都由页面画(已装卡片的更新钮也走它
-	// 同一份 state),这里别再画一遍 —— 两处都画就是两个一模一样的弹窗。
-	const owns = installer === undefined;
+	const { install, start } = installer;
 	const [managingSources, setManagingSources] = useState(false);
 
 	const data = market.data;
@@ -276,18 +276,6 @@ export function MarketplaceSection({
 				</ErrorNote>
 			))}
 
-			{owns && errors.length > 0 ? (
-				<ErrorNote size="sm">
-					<span className="font-semibold">装不了:</span>
-					<ul className="mt-1 ml-4 list-disc">
-						{errors.map((line) => (
-							<li key={line}>{line}</li>
-						))}
-					</ul>
-				</ErrorNote>
-			) : null}
-			{owns ? <ExtensionInstallOutcome done={done} /> : null}
-
 			{data && data.extensions.length > 0 ? (
 				<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
 					{data.extensions.map((entry) => (
@@ -308,7 +296,6 @@ export function MarketplaceSection({
 				<EmptyNote>市场里现在没有能装的拓展</EmptyNote>
 			) : null}
 
-			{owns ? <MarketplaceInstallConfirm installer={shop} /> : null}
 			{managingSources ? (
 				<MarketplaceSourcesDialog
 					status={data?.sources ?? []}
