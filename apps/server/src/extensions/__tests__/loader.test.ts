@@ -538,6 +538,36 @@ describe("拨开关即热装卸", () => {
 		expect(loaded.list().map((e) => e.state)).toEqual(["blocked"]);
 		expect(loaded.list()[0]?.detail).toContain("连续加载失败");
 	});
+
+	/**
+	 * 🔴 **队列里一发拒绝,不许把后面的都毒死。** 三条把手(`sync` / `rescan` / `reload`)
+	 * 串在**同一条队**上,而队尾是 `queue = queue.then(...)`:让一个 rejected promise 留在
+	 * 队尾的话,之后**每一次** `sync()` 的回调都不会跑 —— 症状是「开关再也拨不动了」,而且
+	 * 没有任何人报错。`reload()` 那条钉在上面,这条钉 `sync()` 自己。
+	 */
+	it("sync() 抛过之后,下一次 sync() 照样跑得动", async () => {
+		await plant("bridge", HEALTHY);
+		let boom = false;
+		let on = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			// 开关是**现读**配置的:读那一下抛了(盘上那份正被换掉),整趟 sync 就是一发拒绝。
+			enabled: () => {
+				if (boom) throw new Error("读开关炸了");
+				return on;
+			},
+		});
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+
+		boom = true;
+		await expect(loaded.sync()).rejects.toThrow(/读开关/);
+
+		boom = false;
+		on = false;
+		await loaded.sync();
+		expect(loaded.list().map((e) => e.state)).toEqual(["disabled"]);
+	});
 });
 
 /**

@@ -193,6 +193,27 @@ async function entryUrl(entry: string, fresh: boolean): Promise<string> {
 }
 
 /**
+ * 面板那一行里「它是谁、在盘上哪儿」那几格 —— 跑着的、停用的、刚收摊的,都得原样带上。
+ *
+ * `linkedTo` 只有**它真是条软链**时才有这一格:开发版由 devtools 链进来的那份指着仓库
+ * 工作树,而「跑的到底是哪一份」只有它答得了。
+ */
+function entryBase(
+	dir: Extract<ExtensionDirRead, { state: "ready" }>,
+): Pick<ExtensionEntry, "id" | "dir" | "linkedTo"> {
+	return {
+		id: dir.id,
+		dir: dir.dir,
+		...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
+	};
+}
+
+/** 「装得起来,只是主人把开关关了」那一行 —— 开机、收摊、重扫三处是同一格。 */
+function disabledEntry(dir: Extract<ExtensionDirRead, { state: "ready" }>): ExtensionEntry {
+	return { ...entryBase(dir), state: "disabled", manifest: dir.manifest };
+}
+
+/**
  * 扫一遍装载目录,把该跑的跑起来,并把这批拓展的**装卸把手**交回去。
  *
  * 之后名单靠三个把手动:拨开关走 `sync()`,装 / 卸走 `rescan()`(再扫一遍盘),
@@ -222,11 +243,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		fresh = false,
 	): Promise<void> {
 		const { id, manifest } = dir;
-		const at = {
-			id,
-			dir: dir.dir,
-			...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
-		};
+		const at = entryBase(dir);
 		// 记账**现读**:热装卸期间失败也要算数,拿开机那一刻的快照会漏掉。
 		if (!fresh && readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
 			entries.set(id, {
@@ -283,13 +300,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		runtimes.delete(dir.id);
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		await runtime?.dispose();
-		entries.set(dir.id, {
-			id: dir.id,
-			dir: dir.dir,
-			...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
-			state: "disabled",
-			manifest: dir.manifest,
-		});
+		entries.set(dir.id, disabledEntry(dir));
 	}
 
 	/**
@@ -324,14 +335,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const enabled = isEnabled(dir.id);
 		applied.set(dir.id, enabled);
 		if (enabled) await start(dir);
-		else
-			entries.set(dir.id, {
-				id: dir.id,
-				dir: dir.dir,
-				...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
-				state: "disabled",
-				manifest: dir.manifest,
-			});
+		else entries.set(dir.id, disabledEntry(dir));
 	}
 
 	/** 面板那张表按 id 排。**次序不该跟着「什么时候装的」走** —— 否则重启一次就换个样。 */
@@ -343,7 +347,24 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	for (const dir of found) await admit(dir);
 
+	/**
+	 * 三条把手(`sync` / `rescan` / `reload`)走**同一条队**:连拨两下开关、装完紧跟着拨、
+	 * 边拨开关边重载,后一次都得看见前一次的结果。
+	 */
 	let queue: Promise<void> = Promise.resolve();
+
+	/**
+	 * 串到队尾跑。
+	 *
+	 * 🔴 **留在队尾的是吞掉失败的那一份。** 把 `run` 本身接回队尾的话,一发拒绝会让之后
+	 * **每一次**排队的回调都不跑(rejected promise 的 `.then` 不跑回调)—— 症状是「报过
+	 * 一次错之后开关再也拨不动了」,而且没有任何人报错。调用方照样拿到那个拒绝。
+	 */
+	function enqueue(fn: () => Promise<void>): Promise<void> {
+		const run = queue.then(fn);
+		queue = run.catch(() => {});
+		return run;
+	}
 
 	return {
 		list: () => [...entries.values()],
@@ -354,8 +375,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		configFields: (id) => runtimes.get(id)?.configFields(),
 		bots: (id) => runtimes.get(id)?.bots(),
 		sync() {
-			// 串起来跑:连拨两下开关时,后一次要看见前一次的结果。
-			queue = queue.then(async () => {
+			return enqueue(async () => {
 				for (const [id, dir] of ready) {
 					const wanted = isEnabled(id);
 					if (wanted === applied.get(id)) continue;
@@ -364,11 +384,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 					else await stop(dir);
 				}
 			});
-			return queue;
 		},
 		rescan() {
-			// 与 sync() / reload() 同一条队:装完紧跟着拨开关时,后一次得看见前一次的结果。
-			queue = queue.then(async () => {
+			return enqueue(async () => {
 				const now = await discoverExtensions(root);
 				const onDisk = new Set(now.map((dir) => dir.id));
 
@@ -392,11 +410,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				}
 				resort();
 			});
-			return queue;
 		},
 		reload(id) {
-			// 与 sync() 同一条队:连着按两下、或者边拨开关边重载,得按顺序落地。
-			const run = queue.then(async () => {
+			return enqueue(async () => {
 				const dir = ready.get(id);
 				if (!dir) throw new Error(`没有装着叫 ${id} 的拓展(或者它的清单就读不出来)`);
 				if (!isEnabled(id)) throw new Error(`${id} 的开关关着 —— 先打开它,重载才有东西可换`);
@@ -405,11 +421,6 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				// 收摊那一下把开关记成了「没应用」,补回来,免得下一次 sync() 又装一遍。
 				applied.set(id, true);
 			});
-			// 🔴 **队尾接的是吞掉失败的那份**:直接把 `run` 留在队尾的话,一次拒绝会让
-			// 之后**每一次 `sync()` 都被跳过**(rejected promise 的 `.then` 不跑回调)——
-			// 症状是「重载报错之后开关再也拨不动」,而且没有任何人报错。调用方照样拿到拒绝。
-			queue = run.catch(() => {});
-			return run;
 		},
 		async dispose() {
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
