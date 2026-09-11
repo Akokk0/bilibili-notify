@@ -68,3 +68,33 @@ describe("globals.extensions.<id>.settings", () => {
 		expect(parsed.extensions.bridge?.settings).toBeUndefined();
 	});
 });
+
+/**
+ * `globals.marketplace` —— 拓展市场的源列表(ADR-0013)。官方源不在这里(它是内置的、
+ * 不能删),这里只有主人自己加的第三方源。
+ */
+describe("globals.marketplace", () => {
+	it("老 globals.json 没有这一段 → 解析得过,源列表补成空", () => {
+		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		delete g.marketplace;
+		expect(GlobalConfigSchema.parse(g).marketplace).toEqual({ sources: [] });
+	});
+
+	it("源 = id + 名字 + https 地址;http 与空名字拒,封顶 20 条", () => {
+		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const src = (over: Record<string, unknown> = {}) => ({
+			id: "s1",
+			name: "alice 的拓展",
+			url: "https://alice.example/bn/marketplace.json",
+			...over,
+		});
+		g.marketplace = { sources: [src()] };
+		expect(GlobalConfigSchema.parse(g).marketplace.sources).toEqual([src()]);
+		for (const bad of [src({ url: "http://alice.example/m.json" }), src({ name: "" })]) {
+			g.marketplace = { sources: [bad] };
+			expect(GlobalConfigSchema.safeParse(g).success).toBe(false);
+		}
+		g.marketplace = { sources: Array.from({ length: 21 }, (_, i) => src({ id: `s${i}` })) };
+		expect(GlobalConfigSchema.safeParse(g).success).toBe(false);
+	});
+});

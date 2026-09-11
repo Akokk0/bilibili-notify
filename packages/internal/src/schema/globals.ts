@@ -210,6 +210,26 @@ export const DEFAULT_UPDATE_SETTINGS: UpdateSettings = {
 };
 
 /**
+ * 拓展市场的源(ADR-0013)。官方源是内置的、不能删,**不在这里**;这里只有主人自己加的
+ * 第三方源 —— 一个 https 地址指向一份 `marketplace.json`。
+ */
+export const MarketplaceSourceSchema = z.object({
+	/** 本地身份(uuid);已装拓展记「从哪个源装的」靠它,改名不影响。 */
+	id: z.string().min(1).max(64),
+	name: z.string().min(1).max(40),
+	url: z.string().url().regex(MIRROR_PREFIX_RE, "源地址必须是 https:// 开头"),
+});
+export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
+
+export const MarketplaceSettingsSchema = z.object({
+	/** 封顶 20 条 —— 打开市场那一页会去真连每一个。 */
+	sources: z.array(MarketplaceSourceSchema).max(20).default([]),
+});
+export type MarketplaceSettings = z.infer<typeof MarketplaceSettingsSchema>;
+
+export const DEFAULT_MARKETPLACE_SETTINGS: MarketplaceSettings = { sources: [] };
+
+/**
  * 宿主记的一个拓展的持久状态:主人按的开关,加上拓展自己的那份设置。
  */
 export const ExtensionStateSchema = z.object({
@@ -285,6 +305,8 @@ export const GlobalConfigSchema = z.object({
 	 * 读它用 {@link isExtensionEnabled} —— **缺失 = 关着**,别在读点各写各的 `?? false`。
 	 */
 	extensions: z.record(z.string(), ExtensionStateSchema).default({}),
+	/** 拓展市场的第三方源。老配置没有这一段 → 空表。 */
+	marketplace: MarketplaceSettingsSchema.default(DEFAULT_MARKETPLACE_SETTINGS),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

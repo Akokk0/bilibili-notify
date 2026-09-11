@@ -12,8 +12,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	EXTENSION_API_VERSION,
+	ExtensionIdSchema,
 	type ExtensionManifest,
 	ExtensionManifestSchema,
+	extensionNamespaceOf,
 } from "./extension-manifest";
 
 function manifest(over: Record<string, unknown> = {}): unknown {
@@ -107,5 +109,29 @@ describe("ExtensionManifestSchema", () => {
 		expect(
 			ExtensionManifestSchema.safeParse(manifest({ provides: ["kitchen-sink"] })).success,
 		).toBe(false);
+	});
+});
+
+/**
+ * 命名空间(ADR-0013):第三方源发的拓展 id 是 `<命名空间>.<名字>`,**没有点的 id 保留给
+ * 官方源**。命名空间烧进 id 而不是装的时候拼 —— id 在 BN 里是落盘的键(连接的
+ * `extensionId`、设置槽、目录名),它必须与用户怎么称呼那个源无关。
+ */
+describe("拓展 id 的命名空间", () => {
+	it("一个点分两段,两段各自仍是小写字母数字连字符", () => {
+		for (const id of ["alice.douyin", "a1.b-2", "bridge", "x"]) {
+			expect(ExtensionIdSchema.safeParse(id).success, id).toBe(true);
+		}
+	});
+
+	it("只许一个点,点两边都不能空,也不能连着点", () => {
+		for (const id of ["a.b.c", ".x", "x.", "a..b", "A.b", "a.-b", "a-.b"]) {
+			expect(ExtensionIdSchema.safeParse(id).success, id).toBe(false);
+		}
+	});
+
+	it("extensionNamespaceOf:有点的取点前那段,没点的是官方(undefined)", () => {
+		expect(extensionNamespaceOf("alice.douyin")).toBe("alice");
+		expect(extensionNamespaceOf("bridge")).toBeUndefined();
 	});
 });

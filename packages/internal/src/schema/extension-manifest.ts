@@ -27,14 +27,29 @@ export type ExtensionProvides = z.infer<typeof ExtensionProvidesSchema>;
  * 一律**小写** —— 不是洁癖:macOS 与 Windows 的文件系统不分大小写,`Douyin` 与 `douyin`
  * 会落进同一个目录,而 URL 那一段是分的,两边对不上。
  */
+/** id 的一段:小写字母、数字、连字符,首尾必须是字母或数字。 */
+const ID_SEGMENT = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
+
+/**
+ * 形状是 `<名字>` 或 `<命名空间>.<名字>`(ADR-0013):**没有点的 id 保留给官方源**,第三方源
+ * 发的拓展必须带自己的命名空间。命名空间烧进 id 而不是装的时候拼 —— id 在 BN 里是落盘的
+ * 键(连接的 `extensionId`、设置槽、目录名),它必须与用户怎么称呼那个源无关。
+ * 一个点、两段各自非空,所以拼不出 `..`,当目录名与 URL 段都安全。
+ */
 export const ExtensionIdSchema = z
 	.string()
 	.min(1)
 	.max(64)
 	.regex(
-		/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
-		"拓展 id 只能是小写字母、数字与连字符,且首尾必须是字母或数字",
+		new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`),
+		"拓展 id 只能是小写字母、数字与连字符(可用一个点分出命名空间),且每段首尾必须是字母或数字",
 	);
+
+/** 命名空间那一段;没有点 = 官方源的拓展,回 `undefined`。 */
+export function extensionNamespaceOf(id: string): string | undefined {
+	const dot = id.indexOf(".");
+	return dot < 0 ? undefined : id.slice(0, dot);
+}
 
 /**
  * 拓展版本号 —— 一个真 semver(`1.0.0` / `1.0.0-alpha.1`)。
