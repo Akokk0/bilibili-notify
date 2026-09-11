@@ -13,7 +13,6 @@ import {
 	deterministicUuid,
 	type GlobalConfig,
 	GlobalConfigSchema,
-	isDirectConnection,
 	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -367,7 +366,19 @@ function migrateLegacyTargets(raw: unknown[]): {
 }
 
 /**
- * 盘上这一行是不是「已撤下平台留下的存量」—— 该静默丢掉的那种。连接与目标同一条判据。
+ * 随宿主一起撤下的那些平台 —— 盘上还留着它们的存量条目。
+ *
+ * 当年的 schema 是收它们的(面板不给建,但直调 API / 旧备份都能留下),今天没有任何
+ * adapter 认领,加载时一律静默丢掉:safeParse 一失败就是启动期 throw,而那时没有面板
+ * 可以进去改,boot 三振回落也救不回来。
+ *
+ * **写成显式名单,不用「词表里没有」反推** —— 目标的平台是开放词表(桥驮来什么算什么),
+ * 反推在那一侧等于「认不得的平台上的损坏一律吃掉」。
+ */
+const RETIRED_PLATFORMS: ReadonlySet<string> = new Set(["web-dashboard", "koishi-bot", "astrbot"]);
+
+/**
+ * 盘上这条**连接**是不是「已撤下平台留下的存量」—— 该静默丢掉的那种。
  *
  * 判据是:**我们认得的平台必须能 parse;认不得的平台又 parse 不过,才是存量。**
  * 所以它**只在 parse 失败之后**才问,永远不跑在 parse 之前。
@@ -378,12 +389,15 @@ function migrateLegacyTargets(raw: unknown[]): {
  * 盘上**。主人看到的是配置自己消失,没有一行报错。换成「parse 得过就留下」之后,以后
  * 新增哪一支都不必回来改这里。
  *
+ * ⚠️ **目标那一侧不用这条**(见 {@link isRetiredTargetRecord}):连接的平台是闭集、目标的
+ * 是开放词表,同一条判据套过去就变成「桥驮来的平台上的真损坏一律静默吃掉」。
+ *
  * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃(与从前同样的行为)
  * - 没有 `platform` 的拓展连接(桥接入还是连接那一版的形状,未发版):丢弃
- * - 桥借来的 telegram bot 那条连接 / 它底下的目标:parse 得过 → 走不到这里
+ * - 桥借来的 telegram bot 那条连接:parse 得过 → 走不到这里
  * - onebot 的坏条目:词表内 → 照旧 throw,不许静默吃掉真正的损坏
  */
-function isRetiredPlatformRecord(raw: unknown): boolean {
+function isRetiredConnectionRecord(raw: unknown): boolean {
 	const record = raw as { kind?: unknown; platform?: unknown } | undefined;
 	// 拓展连接曾经**没有** `platform`(那时它是「一条桥接入」,ADR-0012 决策 27);连接改成
 	// 「一个 bot」之后这一格必填(决策 45)。老形状没发过版,不写迁移 —— 当作已撤下的形状
@@ -393,11 +407,27 @@ function isRetiredPlatformRecord(raw: unknown): boolean {
 }
 
 /**
+ * 盘上这条**目标**是不是已撤下平台留下的存量。
+ *
+ * 🔴 判据只有一条:**平台名在那份显式的撤下名单里**。目标的平台是开放词表
+ * (`TargetPlatformSchema`),所以「认不认得」根本不能靠词表答 —— 拿连接那份闭集去反推
+ * 的话,一条桥借来的 telegram bot 底下的目标只要有任何真实损坏(地址没了、scope 打错)
+ * 就会被当成「老形状」静默丢掉,下一次写盘再把这个丢弃变成永久的;而同样的损坏落在
+ * onebot 目标上却是照旧 throw。同一种坏数据两种下场,且丢掉那一侧没有任何一行报错。
+ */
+function isRetiredTargetRecord(raw: unknown): boolean {
+	const record = raw as { platform?: unknown } | undefined;
+	return typeof record?.platform === "string" && RETIRED_PLATFORMS.has(record.platform);
+}
+
+/**
  * 连接的**身份轴**不许改 —— 换 `kind` 或换 `platform` 都等于换了另一条连接,而目标还
  * 挂在原来那个 id 上。允许改的话,「onebot 群目标」会一夜之间挂在一条飞书连接下面。
  *
- * 桥接入那一支只有 `kind` 一根身份轴(它没有 platform),所以两条判断分开写:
- * 先比 kind,同为直连时再比 platform。
+ * 🔴 **两支都比 platform。** 拓展那一支曾经没有这一格(那时它是「一条桥接入」,驮着 N 个
+ * 平台的 bot,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的 bot」
+ * (决策 45)之后它有了,而早退没跟着改 —— 症状是把一条桥连接从 QQ bot 换成 telegram bot
+ * 能存下去,底下的 QQ 群目标平台原地不动,投递却跑去了 telegram。
  */
 function assertConnectionIdentityStable(current: Connection, next: Connection): void {
 	if (current.kind !== next.kind) {
@@ -412,7 +442,6 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
 			`connection ${next.id} kind cannot be changed`,
 		);
 	}
-	if (!isDirectConnection(current) || !isDirectConnection(next)) return;
 	if (current.platform !== next.platform) {
 		throw new ConfigValidationError(
 			"connections",
@@ -433,9 +462,10 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
  * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
  * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
  *
- * 桥接入那一支**没有 platform**(平台是桥握手时报的、是运行时知识),所以这里只校验
- * 「连接存在」。「这个平台真的挂在那条桥上吗」得等桥报了名单才答得出,那是投递层的事 ——
- * 在存储期拒绝等于要求「先连上桥才能配目标」,而目标本来就允许先建壳后填。
+ * 🔴 **拓展那一支同样比平台。** 它曾经没有 `platform`(那时一条连接是「一条驮着 N 个
+ * 平台的桥接入」,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的
+ * bot」(决策 45)之后它有了,面板建目标时也正是从连接上抄的这一格 —— 早退留着,就等于
+ * 「目标写着 onebot、连接却是 telegram」能存下去,而错要到发第一条推送时才现形。
  */
 /**
  * 「这条连接不存在」那一句。
@@ -462,7 +492,6 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 			`target ${target.id} references unknown connection ${target.connectionId}`,
 		);
 	}
-	if (!isDirectConnection(owner)) return;
 	if (owner.platform !== target.platform) {
 		throw new ConfigValidationError(
 			"targets",
@@ -943,7 +972,7 @@ class NodeConfigStore implements ConfigStore {
 
 		this.loaded = true;
 		this.serviceCtx.logger.info(
-			`config-store loaded (stateDir=${this.stateDir} subs= connections=${this.connections.length} targets=${this.targets.length})`,
+			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} connections=${this.connections.length} targets=${this.targets.length})`,
 		);
 	}
 
@@ -1014,8 +1043,8 @@ class NodeConfigStore implements ConfigStore {
 			for (const [idx, raw] of migrated.connections.entries()) {
 				const r = ConnectionSchema.safeParse(raw);
 				if (!r.success) {
-					// 已撤下平台的存量连接静默丢弃 —— 判据见 isRetiredPlatformRecord。
-					if (isRetiredPlatformRecord(raw)) continue;
+					// 已撤下平台的存量连接静默丢弃 —— 判据见 isRetiredConnectionRecord。
+					if (isRetiredConnectionRecord(raw)) continue;
 					throw new ConfigValidationError(
 						"connections",
 						{ index: idx, issues: r.error.issues },
@@ -1031,8 +1060,9 @@ class NodeConfigStore implements ConfigStore {
 			for (const [idx, raw] of migrated.targets.entries()) {
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
-					// 已撤下平台的存量目标同理丢弃。
-					if (isRetiredPlatformRecord(raw)) continue;
+					// 已撤下平台的存量目标同理丢弃 —— 但判据是**另一条**(目标的平台是开放词表),
+					// 见 isRetiredTargetRecord。
+					if (isRetiredTargetRecord(raw)) continue;
 					throw new ConfigValidationError(
 						"targets",
 						{ index: idx, issues: r.error.issues },
@@ -1574,7 +1604,10 @@ class NodeConfigStore implements ConfigStore {
 			for (const [scope] of writes) {
 				const path = this.path(scope);
 				if (!(await fileExists(path))) continue;
-				const bak = `${path}.bak`;
+				// 🔴 **不能叫 `.bak`**:那个名字是 v1→v2 迁移留给主人的**救命原件**(「迁移错了
+				// 还能自己捞回去」),而这里这份是写一半用来推回去的临时件、`finally` 里无条件
+				// 删掉 —— 同名的话,恢复一次备份就把那份原件顺手抹了,没有一行日志。
+				const bak = `${path}.restore.bak`;
 				await copyFile(path, bak);
 				backups.push([path, bak]);
 			}

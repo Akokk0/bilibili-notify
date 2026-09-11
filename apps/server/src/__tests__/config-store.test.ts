@@ -916,6 +916,41 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	/**
+	 * 🔴 **目标的平台是开放词表,不许拿连接那份闭集去判「认不认得」。**
+	 *
+	 * 判据从前是连接与目标共用的一条:「平台不在 `CONNECTION_PLATFORMS` 里 + parse 不过
+	 * = 已撤下的存量」。桥借来的 telegram 目标本来就不在那份闭集里,于是它上面**任何**
+	 * 真实损坏都被当成存量静默丢掉,而且下一次任何写入会把这个丢弃永久写实到盘上 ——
+	 * 同样的损坏在 onebot 目标上是照旧抛错(上一条用例)。两条一起才把判据钉住。
+	 */
+	it("load() 对桥驮来的 telegram 目标上的真损坏照旧抛错 —— 别拿连接的闭集判目标", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-broken-bridged-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const connection = makeOnebotConnection();
+		const broken = {
+			id: randomUUID(),
+			name: "坏的桥目标",
+			connectionId: connection.id,
+			kind: "session",
+			platform: "telegram",
+			scope: "群",
+			enabled: true,
+			address: "1",
+		};
+		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([broken]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await expect(store2.load()).rejects.toBeInstanceOf(ConfigValidationError);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 标记既有 webhook target 且保留 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
 		const state2 = join(dir2, "state");
@@ -1216,6 +1251,131 @@ describe("ConfigStore", () => {
 		expect(fresh.getSubscriptions()[0]?.routing.dynamic).toEqual([legacyId]);
 		await rm(dir2, { recursive: true, force: true });
 		await rm(dirA, { recursive: true, force: true });
+	});
+
+	/**
+	 * 🔴 只勾了 targets 那一段导出的老备份:v1 的 `platform: "webhook"` 得跟着**它那条
+	 * 连接**降格成飞书 / 钉钉,而连接不在这份备份里 —— 迁移那一步于是查不到表,整份目标
+	 * 落成 `generic`,落地时被 `assertTargetOwner` 判「平台对不上」**整份拒掉**
+	 * (`syncManagedWebhookTargets` 救不回来:它排在那道校验之后)。
+	 *
+	 * 备份没有的那一段,拿**现在盘上那份**补位。
+	 */
+	it("只导了 targets 的老备份:webhook 目标跟着现有连接降格,不落成 generic", async () => {
+		const connection = makeWebhookConnection();
+		await store.upsertConnection(connection);
+		const legacyId = randomUUID();
+		const noCookies = { load: async () => null, save: async () => {} };
+
+		await createBackupService({ configStore: store, cookieStore: noCookies }).importBackup({
+			envelope: {
+				format: "bilibili-notify-backup",
+				schemaVersion: 1,
+				kind: "sanitized",
+				createdAt: "t",
+				sections: {
+					targets: [
+						{
+							id: legacyId,
+							name: "老 webhook 目标",
+							adapterId: connection.id,
+							platform: "webhook",
+							scope: "channel",
+							enabled: true,
+							managedBy: "adapter",
+							session: {},
+						},
+					],
+				},
+			} as never,
+			mode: "overwrite",
+		});
+
+		expect(store.getTargets()).toEqual([
+			expect.objectContaining({ connectionId: connection.id, platform: connection.platform }),
+		]);
+	});
+
+	/**
+	 * 🔴 **拓展连接的 platform 同样是身份轴。**
+	 *
+	 * 「一条连接 = 一个借来的 bot」(ADR-0012 决策 45)之后,拓展连接**有** `platform`,
+	 * 目标的平台正是从它抄的。而两道校验(改连接时的身份轴、目标↔连接的平台一致)都还停在
+	 * 「桥接入没有 platform」那一版,对拓展连接一律早退 —— 于是把一条桥连接从 QQ bot 换成
+	 * telegram bot 能保存成功,底下的 QQ 群目标平台原地不动,投递却跑去了 telegram。
+	 */
+	const bridgeConnection = (platform: string) => ({
+		id: "11111111-1111-4111-8111-111111111111",
+		name: "阿库娅",
+		enabled: true,
+		kind: "extension" as const,
+		extensionId: "bridge",
+		platform,
+		config: { botId: `${platform}:42` },
+	});
+
+	it("拓展连接也不许换 platform —— 底下的目标还挂在原来那个平台上", async () => {
+		await store.upsertConnection(bridgeConnection("onebot") as never);
+		await expect(store.upsertConnection(bridgeConnection("telegram") as never)).rejects.toThrow(
+			/platform cannot be changed/,
+		);
+		expect(store.getConnections()[0]?.platform).toBe("onebot");
+	});
+
+	it("拓展连接底下的目标平台必须和它一致", async () => {
+		const connection = bridgeConnection("telegram");
+		await store.upsertConnection(connection as never);
+		await expect(
+			store.upsertTarget({
+				id: randomUUID(),
+				name: "对不上的群",
+				connectionId: connection.id,
+				kind: "session",
+				platform: "onebot",
+				scope: "group",
+				enabled: true,
+				address: "123",
+			} as never),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+	});
+
+	/**
+	 * 🔴 **恢复用的回滚副本不许和迁移留的救命原件同名。**
+	 *
+	 * v1→v2 迁移会把动过的那份原件留成 `<scope>.json.bak`(「迁移错了主人还能自己捞回去」)。
+	 * `replaceSections` 落盘前也留一份同名的回滚副本,并且**在 `finally` 里无条件删掉** ——
+	 * 于是恢复一次备份(或者任何一次整体替换)就把那份救命原件顺手抹了,而且没有一行日志。
+	 */
+	it("replaceSections 不碰迁移留下的 .bak 原件", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-bak-collide-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		// 老形状(没有 kind / connector)→ 开机迁移,原件留成 connections.json.bak。
+		const legacy = {
+			id: randomUUID(),
+			name: "老 NapCat",
+			platform: "onebot",
+			enabled: true,
+			config: { transport: "http", baseUrl: "http://127.0.0.1:3000" },
+		};
+		await writeFile(join(state2, "connections.json"), JSON.stringify([legacy]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		const rescued = await readFile(join(state2, "connections.json.bak"), "utf8");
+		expect(JSON.parse(rescued)).toEqual([legacy]);
+
+		await store2.replaceSections({ connections: store2.getConnections() });
+
+		expect(JSON.parse(await readFile(join(state2, "connections.json.bak"), "utf8"))).toEqual([
+			legacy,
+		]);
+		await rm(dir2, { recursive: true, force: true });
 	});
 
 	it("replaceSections:任一分区校验不过 → 一个字节都不写", async () => {
