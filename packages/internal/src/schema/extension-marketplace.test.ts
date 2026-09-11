@@ -125,10 +125,45 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 		).toMatchObject({ ok: false, err: expect.stringContaining("bob.douyin") });
 	});
 
-	it("同一份索引里同一个 id 列两遍 → 拒(「最新版」就没法唯一)", () => {
+	it("同一个 id 一条正式 + 一条预发布 → 放行(两个渠道各留最新那一版)", () => {
+		expect(
+			checkMarketplaceIndex(
+				MarketplaceIndexSchema.parse(
+					index({
+						extensions: [entry(), entry({ version: "0.1.0-alpha.1", prerelease: true })],
+					}),
+				),
+				{ official: true },
+			),
+		).toEqual({ ok: true });
+	});
+
+	it("同一个 id 同一档列两遍 → 拒(那一档的「最新版」就没法唯一)", () => {
 		expect(
 			checkMarketplaceIndex(
 				MarketplaceIndexSchema.parse(index({ extensions: [entry(), entry({ version: "0.0.3" })] })),
+				{ official: true },
+			),
+		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+		// `prerelease: false` 与不写是同一档 —— 按字段的真假分档,不是按「写没写」。
+		expect(
+			checkMarketplaceIndex(
+				MarketplaceIndexSchema.parse(
+					index({ extensions: [entry(), entry({ version: "0.0.3", prerelease: false })] }),
+				),
+				{ official: true },
+			),
+		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+		expect(
+			checkMarketplaceIndex(
+				MarketplaceIndexSchema.parse(
+					index({
+						extensions: [
+							entry({ version: "0.1.0-alpha.1", prerelease: true }),
+							entry({ version: "0.1.0-alpha.2", prerelease: true }),
+						],
+					}),
+				),
 				{ official: true },
 			),
 		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });

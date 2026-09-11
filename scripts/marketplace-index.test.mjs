@@ -143,6 +143,85 @@ describe("issuedAt 与版本只许往前走", () => {
 		).toBe("0.0.2");
 	});
 
+	it("预发布并进去不碰正式档 —— 打一个 alpha tag 不该让稳定渠道看不见这个拓展", () => {
+		const current = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), { issuedAt: 1 });
+		const next = mergeMarketplaceEntry(
+			current,
+			entry({ version: "0.1.0-alpha.1", prerelease: true }),
+			{ issuedAt: 2 },
+		);
+		expect(next.extensions.map((e) => [e.id, e.version, e.prerelease === true])).toEqual([
+			["bridge", "0.0.2", false],
+			["bridge", "0.1.0-alpha.1", true],
+		]);
+		// 再发一版预发布只换预发布那一条。
+		const again = mergeMarketplaceEntry(
+			next,
+			entry({ version: "0.1.0-alpha.2", prerelease: true }),
+			{ issuedAt: 3 },
+		);
+		expect(again.extensions.map((e) => e.version)).toEqual(["0.0.2", "0.1.0-alpha.2"]);
+	});
+
+	it("正式版并进去,比它旧的预发布档一并删掉;比它新的留着", () => {
+		const base = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), { issuedAt: 1 });
+		const withAlpha = mergeMarketplaceEntry(
+			base,
+			entry({ version: "0.1.0-alpha.1", prerelease: true }),
+			{ issuedAt: 2 },
+		);
+		// 0.1.0 正式发了,0.1.0-alpha.1 比它旧,留着只会让预发布渠道看见一个更旧的版本。
+		const released = mergeMarketplaceEntry(withAlpha, entry({ version: "0.1.0" }), { issuedAt: 3 });
+		expect(released.extensions.map((e) => [e.version, e.prerelease === true])).toEqual([
+			["0.1.0", false],
+		]);
+		// 下一轮的 alpha 比正式版新,发一个补丁正式版不该把它抹掉。
+		const nextAlpha = mergeMarketplaceEntry(
+			released,
+			entry({ version: "0.2.0-alpha.1", prerelease: true }),
+			{ issuedAt: 4 },
+		);
+		const patched = mergeMarketplaceEntry(nextAlpha, entry({ version: "0.1.1" }), { issuedAt: 5 });
+		expect(patched.extensions.map((e) => [e.version, e.prerelease === true])).toEqual([
+			["0.1.1", false],
+			["0.2.0-alpha.1", true],
+		]);
+	});
+
+	it("预发布不许比同档旧(重跑旧 tag);等于放行", () => {
+		const current = mergeMarketplaceEntry(
+			mergeMarketplaceEntry(undefined, entry({ version: "0.1.0" }), { issuedAt: 1 }),
+			entry({ version: "0.2.0-alpha.2", prerelease: true }),
+			{ issuedAt: 2 },
+		);
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.2.0-alpha.1", prerelease: true }), {
+				issuedAt: 3,
+			}),
+		).toThrow(/0\.2\.0-alpha\.1/);
+		expect(
+			mergeMarketplaceEntry(current, entry({ version: "0.2.0-alpha.2", prerelease: true }), {
+				issuedAt: 3,
+			}).extensions.map((e) => e.version),
+		).toEqual(["0.1.0", "0.2.0-alpha.2"]);
+	});
+
+	it("预发布比正式档还旧 → 拒(发进去也没人看得见)", () => {
+		// 预发布档这会儿是空的,所以拦住它的只可能是「比正式档旧」那一条。
+		const current = mergeMarketplaceEntry(undefined, entry({ version: "0.1.0" }), { issuedAt: 1 });
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.0.9-alpha.1", prerelease: true }), {
+				issuedAt: 2,
+			}),
+		).toThrow(/正式版 0\.1\.0/);
+		// 正式版之后的预发布照收。
+		expect(
+			mergeMarketplaceEntry(current, entry({ version: "0.1.1-alpha.1", prerelease: true }), {
+				issuedAt: 2,
+			}).extensions.map((e) => e.version),
+		).toEqual(["0.1.0", "0.1.1-alpha.1"]);
+	});
+
 	it("并索引用的那把版本尺子与客户端的是同一把(手抄了一份,别让它漂)", () => {
 		const pairs = [
 			["0.9.0", "0.10.0"],
@@ -183,6 +262,18 @@ describe("签出来的索引,客户端验得过、读得出、过得了官方源
 			version: "0.0.2",
 			notes: "第一版。",
 		});
+	});
+
+	it("同 id 两档(正式 + 预发布)的索引,客户端那两条规矩照样过", () => {
+		const stable = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), { issuedAt: 1 });
+		const both = mergeMarketplaceEntry(
+			stable,
+			entry({ version: "0.1.0-alpha.1", prerelease: true }),
+			{ issuedAt: 2 },
+		);
+		const parsed = MarketplaceIndexSchema.parse(both);
+		expect(checkMarketplaceIndex(parsed, { official: true })).toEqual({ ok: true });
+		expect(parsed.extensions).toHaveLength(2);
 	});
 });
 
@@ -229,18 +320,21 @@ describe("tag 守卫里那两条正则没跟这边漂开", () => {
 				true,
 				true,
 			]);
-		for (const sample of ["v1.0.0", "1.0", "01.0.0", "1.0.0-", "1.0.0.0", "latest"])
+		// `1.0.0+build.1`:build 元数据两边一起拒。tag 里的 `+` 到不了并索引这一步(守卫先
+		// 红),而这边收着的话,手跑一次脚本就能把一个 tag 打不出来的版本发进索引。
+		for (const sample of [
+			"v1.0.0",
+			"1.0",
+			"01.0.0",
+			"1.0.0-",
+			"1.0.0.0",
+			"latest",
+			"1.0.0+build.1",
+		])
 			expect([sample, shellVersion.test(sample), SEMVER.test(sample)]).toEqual([
 				sample,
 				false,
 				false,
 			]);
-	});
-
-	it("⚠️ 已知的一处不一样:build 元数据(`+…`)守卫不收,这边收", () => {
-		// 不是 bug 也不是巧合,是今天的事实:tag 里带 `+` 的版本根本进不到并索引这一步。
-		// 哪天要放开,两边一起改 —— 这一条会提醒还有另一半。
-		expect(ereFor("version").test("1.0.0+build.1")).toBe(false);
-		expect(SEMVER.test("1.0.0+build.1")).toBe(true);
 	});
 });

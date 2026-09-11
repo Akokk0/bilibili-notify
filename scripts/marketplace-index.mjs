@@ -30,8 +30,7 @@ export const OFFICIAL_INDEX_NAME = "BN 官方拓展";
  * 里那一段拿 `.sh` 的原文逐个样本比对,漂了当场红。导出只是为了给那一段用。
  */
 export const ID_SEGMENT = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-export const SEMVER =
-	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+export const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 
 function fail(msg) {
 	throw new Error(`索引不合规:${msg}`);
@@ -67,16 +66,25 @@ export function assertEntryShape(e) {
 	return e;
 }
 
+/** 这条条目归哪一档。按 `prerelease` 的真假分,不按版本号里有没有 `-`。 */
+function channelOf(e) {
+	return e.prerelease === true ? "pre" : "stable";
+}
+
 export function assertIndexShape(index) {
 	if (typeof index.name !== "string" || index.name === "") fail("name 必须是非空字符串");
 	if (!Number.isInteger(index.issuedAt) || index.issuedAt <= 0)
 		fail("issuedAt 必须是正整数(epoch 秒)");
 	if (!Array.isArray(index.extensions)) fail("extensions 必须是数组");
+	// 同一个 id 每档只许一条(正式 / 预发布),合计最多两条 —— 同档两条的话「那一档的最新版」
+	// 就没法唯一,挑哪条给用户只能靠数组顺序。客户端的 checkMarketplaceIndex 是同一条规矩。
 	const seen = new Set();
 	for (const e of index.extensions) {
 		assertEntryShape(e);
-		if (seen.has(e.id)) fail(`${e.id} 列了两遍`);
-		seen.add(e.id);
+		const key = channelOf(e);
+		if (seen.has(`${e.id}@${key}`))
+			fail(`${e.id} 的${key === "pre" ? "预发布" : "正式"}版列了两遍`);
+		seen.add(`${e.id}@${key}`);
 	}
 	if (index.revoked !== undefined) {
 		if (
@@ -170,8 +178,20 @@ function cleanEntry(e) {
 }
 
 /**
- * 把一条新发的拓展并进当前索引:同 id 换掉、别的照留、按 id 排;`revoked` 照抄再并上新撤的。
- * 每个 id 只列**最新**那一版 —— 老版本靠发布页还能手动下。
+ * 把一条新发的拓展并进当前索引:**同 id 同档**换掉、别的照留、按 id 排(同 id 正式在前);
+ * `revoked` 照抄再并上新撤的。
+ *
+ * 每个 id 留两条:一条正式、一条预发布。两档分开是因为**打一个 alpha tag 不该让稳定渠道的
+ * 人看不见这个拓展** —— 整条被 alpha 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会
+ * 被标成「从别处装的」。每档内部仍然只留最新那一版,老版本靠发布页还能手动下。
+ *
+ * 三条「只许往前走」:
+ * - 同档降版本 → 拒(重跑一个旧 tag 是最常见的来路);**等于**放行,那是重发同一版
+ *   (打包可复现,字节一样)。
+ * - 预发布比**正式档**还旧 → 也拒:它进了索引也没人看得见(预发布渠道挑两档里版本更高
+ *   的那条),白白让一个 tag 看着发成功了。
+ * - 正式版发出去之后,比它旧的预发布档**一并删掉** —— 留着只会让尝鲜的人看见一个比正式版
+ *   还旧的版本。比它新的(下一轮的 alpha)留着。
  *
  * @param {object | undefined} current 当前索引本体(第一次发时没有)
  * @param {object} entry 新条目
@@ -179,16 +199,31 @@ function cleanEntry(e) {
  */
 export function mergeMarketplaceEntry(current, entry, opts = {}) {
 	const fresh = cleanEntry(assertEntryShape(entry));
-	// 每个 id 只列最新那一版,所以并进来的这一条就是它的新现状 —— 版本降回去等于把已经
-	// 发出去的那版从市场上抹掉,装着它的人还会被标成「从别处装的」。重跑一个旧 tag 是这
-	// 件事最常见的来路,所以拒;**等于**放行,那是重发同一版(打包可复现,字节一样)。
-	const previous = (current?.extensions ?? []).find((e) => e.id === fresh.id);
+	const channel = channelOf(fresh);
+	const sameId = (current?.extensions ?? []).filter((e) => e.id === fresh.id);
+	const previous = sameId.find((e) => channelOf(e) === channel);
 	if (previous && compareEntryVersions(fresh.version, previous.version) < 0)
 		fail(
-			`${fresh.id}:要并进去的 ${fresh.version} 比索引里已经有的 ${previous.version} 旧 —— 是不是重跑了一个旧 tag`,
+			`${fresh.id}:要并进去的 ${fresh.version} 比索引里已经有的${channel === "pre" ? "预发布" : "正式"}版 ${previous.version} 旧 —— 是不是重跑了一个旧 tag`,
 		);
-	const rest = (current?.extensions ?? []).filter((e) => e.id !== fresh.id).map(cleanEntry);
-	const extensions = [...rest, fresh].sort((a, b) => a.id.localeCompare(b.id));
+	const stable = sameId.find((e) => channelOf(e) === "stable");
+	if (channel === "pre" && stable && compareEntryVersions(fresh.version, stable.version) < 0)
+		fail(
+			`${fresh.id}:预发布 ${fresh.version} 比索引里的正式版 ${stable.version} 还旧 —— 发进去也没人看得见`,
+		);
+	const kept = sameId.filter((e) => {
+		if (channelOf(e) === channel) return false;
+		// 正式版发出去了,比它旧的预发布档就没有意义了。
+		return channel === "stable" ? compareEntryVersions(e.version, fresh.version) > 0 : true;
+	});
+	const rest = (current?.extensions ?? []).filter((e) => e.id !== fresh.id);
+	const extensions = [...rest, ...kept, fresh]
+		.map(cleanEntry)
+		.sort(
+			(a, b) =>
+				a.id.localeCompare(b.id) ||
+				(channelOf(a) === "stable" ? 0 : 1) - (channelOf(b) === "stable" ? 0 : 1),
+		);
 	const revoked = [...new Set([...(current?.revoked ?? []), ...(opts.revoke ?? [])])];
 	const index = {
 		name: current?.name ?? OFFICIAL_INDEX_NAME,

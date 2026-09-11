@@ -20,6 +20,8 @@ import { createMarketplace, MARKETPLACE_PROVENANCE_FILE } from "../marketplace.j
 const OFFICIAL_URL =
 	"https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json";
 const ZIP_URL = "https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-0.0.2.zip";
+const ALPHA_ZIP_URL =
+	"https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-alpha.zip";
 const THIRD_URL = "https://alice.example/bn/marketplace.json";
 const THIRD_ZIP = "https://alice.example/bn/douyin-1.0.0.zip";
 const SILENT = { info() {}, warn() {}, error() {}, debug() {} };
@@ -89,6 +91,22 @@ let root: string;
 const key = makeKey();
 const bridgeZip = pack("bridge", "0.0.2");
 const douyinZip = pack("alice.douyin", "1.0.0");
+/** 预发布那一档的包。同一个版本要拿同一份字节 —— 索引里写的 sha256 得对得上发出去的那份。 */
+const alphaZips = new Map<string, Uint8Array>();
+function alphaZip(version: string): Uint8Array {
+	const made = alphaZips.get(version) ?? pack("bridge", version);
+	alphaZips.set(version, made);
+	return made;
+}
+
+/** bridge 的**预发布**那一档。包与正式那档不是同一个,地址也不是。 */
+function alphaEntry(version: string) {
+	const zip = alphaZip(version);
+	return entry("bridge", version, zip, {
+		prerelease: true,
+		package: { url: ALPHA_ZIP_URL, sha256: sha256(zip), size: zip.byteLength },
+	});
+}
 
 function official(over: Record<string, unknown> = {}) {
 	return {
@@ -365,6 +383,70 @@ describe("list():第三方源", () => {
 		}).marketplace.list();
 		expect(view.sources[0]).toMatchObject({ id: "s2", ok: true, namespace: "alice" });
 		expect(view.extensions).toHaveLength(1);
+	});
+});
+
+/**
+ * 索引里同一个 id 最多两条:一条正式、一条预发布(打一个 alpha tag 不该让稳定渠道的人
+ * 看不见这个拓展)。面板上仍然**只出一张卡** —— 挑哪一条是这一层的事。
+ */
+describe("list():同一个 id 两档(正式 + 预发布)", () => {
+	/** 正式 0.0.2 + 预发布 0.1.0-alpha.1。 */
+	function bothChannels(over: Record<string, unknown> = {}) {
+		return official({
+			extensions: [entry("bridge", "0.0.2", bridgeZip), alphaEntry("0.1.0-alpha.1")],
+			...over,
+		});
+	}
+
+	it("只出一张卡:稳定渠道给正式那条,预发布渠道给预发布那条", async () => {
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, bothChannels()) });
+		expect((await harness().marketplace.list()).extensions).toEqual([
+			expect.objectContaining({ id: "bridge", version: "0.0.2", prerelease: false }),
+		]);
+		expect((await harness({ prerelease: true }).marketplace.list()).extensions).toEqual([
+			expect.objectContaining({ id: "bridge", version: "0.1.0-alpha.1", prerelease: true }),
+		]);
+	});
+
+	it("预发布渠道取两档里版本更高的那条 —— 索引里那条预发布比正式版还旧就不挑它", async () => {
+		// 我们自己发的索引并进正式版时会把更旧的预发布删掉,但第三方源的不归我们管。
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [entry("bridge", "0.0.2", bridgeZip), alphaEntry("0.0.1-alpha.1")],
+				}),
+			),
+		});
+		expect((await harness({ prerelease: true }).marketplace.list()).extensions).toEqual([
+			expect.objectContaining({ version: "0.0.2", prerelease: false }),
+		]);
+	});
+
+	it("状态按挑出来的那条算:稳定渠道装着正式版不会被预发布顶成「有新版」", async () => {
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, bothChannels()), [ZIP_URL]: bridgeZip });
+		const h = harness();
+		await h.marketplace.install("official", "bridge");
+		h.setInstalled([{ id: "bridge", version: "0.0.2" }]);
+		expect((await h.marketplace.list({ refresh: true })).extensions).toEqual([
+			expect.objectContaining({ version: "0.0.2", state: "installed" }),
+		]);
+	});
+
+	it("install() 装的就是卡上那一条 —— 两个渠道各拿各的包", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(key.privateKey, bothChannels()),
+			[ZIP_URL]: bridgeZip,
+			[ALPHA_ZIP_URL]: alphaZip("0.1.0-alpha.1"),
+		});
+		expect(
+			await harness({ prerelease: true }).marketplace.install("official", "bridge"),
+		).toMatchObject({ ok: true, version: "0.1.0-alpha.1" });
+		expect(await harness().marketplace.install("official", "bridge")).toMatchObject({
+			ok: true,
+			version: "0.0.2",
+		});
 	});
 });
 

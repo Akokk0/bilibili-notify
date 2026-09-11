@@ -14,8 +14,11 @@ import {
  * 添加第三方源时要提示的风险。两种源**同一个 schema**,差别只在 {@link checkMarketplaceIndex}
  * 那两条规矩。
  *
- * 每个 id 只列**最新**那一版:「有没有新版」于是就是一次版本比较,索引永远很小。老版本靠
- * 发布页还能手动下。
+ * 每个 id **每档只列最新那一版**:一条正式(`prerelease` 缺省 / false)+ 一条预发布
+ * (`prerelease: true`),最多两条。「有没有新版」于是仍然是一次版本比较,索引永远很小;
+ * 老版本靠发布页还能手动下。两档并存是因为**打了一个 alpha tag 不该让稳定渠道的人看不见
+ * 这个拓展** —— 整条被预发布那版顶掉的话,市场上那张卡会消失,已经装着的还会被标成
+ * 「从别处装的」。挑哪一条给谁看是宿主那头的事(`apps/server/src/extensions/marketplace.ts`)。
  */
 const HttpsUrl = z.string().url().startsWith("https://");
 
@@ -65,7 +68,8 @@ export type MarketplaceIndexCheck = { ok: true } | { ok: false; err: string };
  * - 官方源:条目 id 不带命名空间(没有点的 id 就是官方的),且必须有 `issuedAt`;
  * - 第三方源:必须声明 `namespace`,每个条目都得在自己的命名空间里 —— 列一个 `bridge`
  *   是冒充官方,列一个 `bob.xxx` 是冒用别人的命名空间,都拒。
- * - 两种都不许同一个 id 列两遍。
+ * - 两种都不许同一个 id 在**同一档**里列两遍(正式一条、预发布一条,合计最多两条):
+ *   同一档两条的话「那一档的最新版」就没法唯一,挑哪条给用户只能靠数组顺序。
  */
 export function checkMarketplaceIndex(
 	index: MarketplaceIndex,
@@ -73,8 +77,11 @@ export function checkMarketplaceIndex(
 ): MarketplaceIndexCheck {
 	const seen = new Set<string>();
 	for (const entry of index.extensions) {
-		if (seen.has(entry.id)) return { ok: false, err: `索引里 ${entry.id} 列了两遍` };
-		seen.add(entry.id);
+		const pre = entry.prerelease === true;
+		const key = `${entry.id}@${pre ? "pre" : "stable"}`;
+		if (seen.has(key))
+			return { ok: false, err: `索引里 ${entry.id} 的${pre ? "预发布" : "正式"}版列了两遍` };
+		seen.add(key);
 	}
 	if (opts.official) {
 		if (index.issuedAt === undefined) return { ok: false, err: "官方索引缺 issuedAt" };

@@ -29,7 +29,8 @@ import {
  * 拓展市场(ADR-0013)。
  *
  * 一个内置的**官方源**(签名索引、走加速镜像、不能删)+ 主人自己加的**第三方源**(裸 JSON、
- * 不签、不走镜像)。每个源一份 `marketplace.json`,列它能装的拓展 —— 每个 id 只列最新那一版。
+ * 不签、不走镜像)。每个源一份 `marketplace.json`,列它能装的拓展 —— 每个 id 每档最新那一版
+ * (一条正式 + 一条预发布),面板上仍然只出一张卡({@link pickForChannel})。
  * 装 = 下载 → 对索引里的 sha256(防的是下载途中被换包,不是防作者)→ 走面板上传装包那
  * **同一段**落地逻辑 → 记下「从哪个源装的哪一版」→ 让装载器重扫。
  *
@@ -150,6 +151,41 @@ function readProvenance(root: string): Provenance {
 
 function sha256Hex(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * 同一个 id 索引里最多两条(正式 + 预发布),**面板上只画一张卡** —— 挑哪一条看 BN 自己
+ * 在哪个渠道:
+ *
+ * - 稳定渠道只认正式那条(没有正式档就一张卡都不出:那个拓展现在只发了预发布);
+ * - 预发布渠道在两档里取**版本更高**的那条 —— 不是「有预发布就用预发布」。我们自己并索引
+ *   时会把比正式版旧的预发布删掉,但第三方源的索引不归我们管,信它一定干净的话,尝鲜的人
+ *   会被推荐一个比正式版还旧的版本。
+ *
+ * 挑出来的这一条是这张卡的全部依据:版本、状态、「有新版」、装的时候下哪个包。分两处挑会
+ * 画出一张写着 A 而按下去装 B 的卡。
+ */
+function pickForChannel(
+	entries: readonly MarketplaceEntry[],
+	prerelease: boolean,
+): MarketplaceEntry | undefined {
+	let best: MarketplaceEntry | undefined;
+	for (const entry of entries) {
+		if (entry.prerelease === true && !prerelease) continue;
+		if (!best || compareVersions(entry.version, best.version) > 0) best = entry;
+	}
+	return best;
+}
+
+/** 一个源里按 id 归拢的条目,保持索引里的先后。 */
+function groupById(index: MarketplaceIndex): Map<string, MarketplaceEntry[]> {
+	const byId = new Map<string, MarketplaceEntry[]>();
+	for (const entry of index.extensions) {
+		const list = byId.get(entry.id);
+		if (list) list.push(entry);
+		else byId.set(entry.id, [entry]);
+	}
+	return byId;
 }
 
 /** 字节数说成人话(一位小数的 MB)。 */
@@ -391,8 +427,9 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const extensions: MarketplaceEntryDTO[] = [];
 		for (const source of loaded) {
 			if (!source.index) continue;
-			for (const entry of source.index.extensions) {
-				if (entry.prerelease && !prerelease) continue;
+			for (const candidates of groupById(source.index).values()) {
+				const entry = pickForChannel(candidates, prerelease);
+				if (!entry) continue;
 				const { state, installed } = stateOf(
 					entry,
 					source.view.id,
@@ -434,7 +471,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				ok: false,
 				err: `源「${source.view.name}」现在不可用:${source.view.err ?? "索引没拿到"}`,
 			};
-		const entry = source.index.extensions.find((candidate) => candidate.id === id);
+		// 🔴 挑条目必须与 list() 用**同一把尺子**:索引里同一个 id 有两档,拿 find() 取第一条
+		// 的话,面板上那张卡写着 A、按下去装的是 B —— 而两边都全绿。
+		const candidates = source.index.extensions.filter((candidate) => candidate.id === id);
+		const entry = pickForChannel(candidates, deps.prerelease());
 		if (!entry) return { ok: false, err: `源「${source.view.name}」里没有 ${id}` };
 		if (entry.apiVersion !== hostApiVersion) {
 			return {
