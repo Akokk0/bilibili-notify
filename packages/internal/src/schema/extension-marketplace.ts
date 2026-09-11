@@ -3,6 +3,7 @@ import {
 	ExtensionIdSchema,
 	ExtensionVersionSchema,
 	extensionNamespaceOf,
+	IdSegmentSchema,
 } from "./extension-manifest";
 
 /**
@@ -18,12 +19,8 @@ import {
  */
 const HttpsUrl = z.string().url().startsWith("https://");
 
-/** 源的命名空间:与 id 的一段同一套规则。 */
-export const MarketplaceNamespaceSchema = z
-	.string()
-	.min(1)
-	.max(32)
-	.regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, "命名空间只能是小写字母、数字与连字符");
+/** 源的命名空间:就是 id 的那一段({@link IdSegmentSchema}),只是另加一条长度上限。 */
+export const MarketplaceNamespaceSchema = IdSegmentSchema.min(1).max(32);
 
 export const MarketplaceEntrySchema = z.object({
 	id: ExtensionIdSchema,

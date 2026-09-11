@@ -27,8 +27,18 @@ export type ExtensionProvides = z.infer<typeof ExtensionProvidesSchema>;
  * 一律**小写** —— 不是洁癖:macOS 与 Windows 的文件系统不分大小写,`Douyin` 与 `douyin`
  * 会落进同一个目录,而 URL 那一段是分的,两边对不上。
  */
-/** id 的一段:小写字母、数字、连字符,首尾必须是字母或数字。 */
-const ID_SEGMENT = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
+/**
+ * id 的一段:小写字母、数字、连字符,首尾必须是字母或数字。
+ *
+ * 导出的是**这一份**,不是抄一份 —— 市场索引的 `namespace`(ADR-0013)长的就是 id 的
+ * 一段:各写一份正则的话,哪天放宽一边,另一边会静默把合法的命名空间判成非法。
+ */
+export const ID_SEGMENT = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
+
+/** 光是「一段」的 schema;长度上限由用它的人各自加(id 是 64,命名空间是 32)。 */
+export const IdSegmentSchema = z
+	.string()
+	.regex(new RegExp(`^${ID_SEGMENT}$`), "只能是小写字母、数字与连字符,且首尾必须是字母或数字");
 
 /**
  * 形状是 `<名字>` 或 `<命名空间>.<名字>`(ADR-0013):**没有点的 id 保留给官方源**,第三方源
