@@ -1,4 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { loadSignedJson } from "../apps/server/src/update/signed-manifest.js";
 import { compareVersions } from "../apps/server/src/update/version-order.js";
@@ -6,7 +9,12 @@ import {
 	checkMarketplaceIndex,
 	MarketplaceIndexSchema,
 } from "../packages/internal/src/schema/extension-marketplace.ts";
-import { compareEntryVersions, mergeMarketplaceEntry } from "./marketplace-index.mjs";
+import {
+	compareEntryVersions,
+	ID_SEGMENT,
+	mergeMarketplaceEntry,
+	SEMVER,
+} from "./marketplace-index.mjs";
 import { signManifest } from "./sign-update-manifest.mjs";
 
 /**
@@ -175,5 +183,64 @@ describe("签出来的索引,客户端验得过、读得出、过得了官方源
 			version: "0.0.2",
 			notes: "第一版。",
 		});
+	});
+});
+
+/**
+ * tag 守卫(`.github/scripts/assert-extension-tag.sh`)里那两条 id / semver 正则是这边的
+ * **手抄**——它是 bash 的 `[[ =~ ]]`,import 不进来。松紧漂开的代价不对称:守卫**松**了,
+ * 包会先被传上一个不可变 release,然后在并索引这一步才炸,市场上那条还停在老版本;
+ * 守卫**紧**了,一个合法的 tag 打了等于没打,而错误信息说的是「id 不合规」。
+ *
+ * 所以这里去读 `.sh` 的原文,把两条 ERE 取出来当 JS 正则跑同一批样本 —— 改了任何一边、
+ * 或者把那两行挪走改名,这一段当场红。(同 `release-urls.test.mjs` 那几条跨文件核对。)
+ */
+describe("tag 守卫里那两条正则没跟这边漂开", () => {
+	const shell = readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), "..", ".github/scripts/assert-extension-tag.sh"),
+		"utf8",
+	);
+
+	/** 取 `[[ "$x" =~ <这里> ]]` 里的那一段。取不到就说明那行被改写了 —— 也该红。 */
+	const ereFor = (variable) => {
+		const found = shell.match(new RegExp(`\\[\\[ "\\$${variable}" =~ (\\S+) \\]\\]`));
+		if (!found) throw new Error(`assert-extension-tag.sh 里找不到对 $${variable} 的正则判断`);
+		return new RegExp(found[1]);
+	};
+
+	it("id:两边对同一批样本给同样的答案", () => {
+		const shellId = ereFor("id");
+		for (const sample of ["bridge", "a", "a-b", "x9-y", "a--b", "0"])
+			expect([sample, shellId.test(sample), ID_SEGMENT.test(sample)]).toEqual([sample, true, true]);
+		// 带命名空间的、大写的、两头挂连字符的都得一样地拒。
+		for (const sample of ["alice.douyin", "Bridge", "-a", "a-", "a_b", ""])
+			expect([sample, shellId.test(sample), ID_SEGMENT.test(sample)]).toEqual([
+				sample,
+				false,
+				false,
+			]);
+	});
+
+	it("version:两边对同一批样本给同样的答案", () => {
+		const shellVersion = ereFor("version");
+		for (const sample of ["0.0.1", "1.2.3", "10.20.30", "0.1.0-alpha.7"])
+			expect([sample, shellVersion.test(sample), SEMVER.test(sample)]).toEqual([
+				sample,
+				true,
+				true,
+			]);
+		for (const sample of ["v1.0.0", "1.0", "01.0.0", "1.0.0-", "1.0.0.0", "latest"])
+			expect([sample, shellVersion.test(sample), SEMVER.test(sample)]).toEqual([
+				sample,
+				false,
+				false,
+			]);
+	});
+
+	it("⚠️ 已知的一处不一样:build 元数据(`+…`)守卫不收,这边收", () => {
+		// 不是 bug 也不是巧合,是今天的事实:tag 里带 `+` 的版本根本进不到并索引这一步。
+		// 哪天要放开,两边一起改 —— 这一条会提醒还有另一半。
+		expect(ereFor("version").test("1.0.0+build.1")).toBe(false);
+		expect(SEMVER.test("1.0.0+build.1")).toBe(true);
 	});
 });

@@ -23,8 +23,14 @@ import { signManifest } from "./sign-update-manifest.mjs";
 
 export const OFFICIAL_INDEX_NAME = "BN 官方拓展";
 
-const ID_SEGMENT = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-const SEMVER =
+/**
+ * ⚠️ 这两条在 `.github/scripts/assert-extension-tag.sh` 里**还有一份手抄**(那是 bash 的
+ * `[[ =~ ]]`,进不来这边)。两把尺子松紧不一样的那天,tag 守卫放行的东西会在并索引这一步
+ * 才炸 —— 包已经传上去了,而索引没更新,市场上那条还是老版本。`marketplace-index.test.mjs`
+ * 里那一段拿 `.sh` 的原文逐个样本比对,漂了当场红。导出只是为了给那一段用。
+ */
+export const ID_SEGMENT = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+export const SEMVER =
 	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 function fail(msg) {
