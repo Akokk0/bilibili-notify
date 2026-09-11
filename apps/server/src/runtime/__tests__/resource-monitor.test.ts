@@ -169,6 +169,52 @@ describe("ResourceMonitor 采样", () => {
 		fire(2000);
 		expect(seen.mock.calls[1]?.[0]).toMatchObject({ memUsed: 1200 * MB, procCpu: 0.8 });
 	});
+
+	/**
+	 * 🔴 **两个口径不许混着报。**
+	 *
+	 * cgroup 读得到、但**没设内存上限**(`memory.max` 是 `max`,`docker run` 不加 `-m` 就是
+	 * 这样,而那是绝大多数自建实例)时:总量退回宿主机的 8G,已用却还照着容器的
+	 * `memory.current` 报 900M —— 分子是这个容器、分母是整台机器,面板上那个百分比什么
+	 * 都不是。要么两边都按宿主机,要么两边都按容器;没有上限就只能是前者。
+	 */
+	it("cgroup 里但没设内存上限:总量与已用都按宿主机算,不许一半容器一半宿主机", () => {
+		const { ctx, fire } = makeCtx();
+		const { readers } = makeReaders({
+			// 有 memory.current,没有 memory.max —— 那一格解出来就是 null。
+			cgroup: () => ({ memLimit: null, memUsed: 900 * MB, cpuQuota: null }),
+		});
+		const monitor = startResourceMonitor({ serviceCtx: ctx, readers });
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		expect(monitor.hydrate().static).toMatchObject({ memTotal: 8 * GB, memSource: "host" });
+		fire(2000);
+		// 宿主机口径 = total - free = 8G - 3G。
+		expect(seen.mock.calls[0]?.[0]).toMatchObject({ memUsed: 5 * GB });
+	});
+
+	/**
+	 * 🔴 `os.cpus()` 回空数组是真事(容器里挂了 /proc、某些 ARM 内核、Node 的已知返回)。
+	 * 那时 `cpuBudget` 是 0,本体 CPU 就成了 `除以 0` —— 面板收到 `Infinity`,JSON 里是
+	 * `null`,而堆 / 内存那些正常数字跟着这一帧一起变得不可信。
+	 */
+	it("宿主机报不出核数:本体 CPU 不许算成 Infinity", () => {
+		const { ctx, fire } = makeCtx();
+		const { readers, advance } = makeReaders({ hostCores: () => 0 });
+		const monitor = startResourceMonitor({ serviceCtx: ctx, readers });
+		const seen = vi.fn();
+		monitor.subscribe(seen);
+
+		// 至少得有一个核的分母,否则算出来的东西没有意义。
+		expect(monitor.hydrate().static.cpuBudget).toBeGreaterThan(0);
+
+		fire(2000);
+		advance(2000, { cpuMicros: 1_600_000, hostIdle: 1400, hostTotal: 3000 });
+		fire(2000);
+		const procCpu = seen.mock.calls[1]?.[0]?.procCpu;
+		expect(Number.isFinite(procCpu)).toBe(true);
+	});
 });
 
 describe("ResourceMonitor 内存自检日志", () => {

@@ -135,13 +135,23 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 	const hostCores = r.hostCores();
 	const cg = r.cgroup();
 	const hostTotal = r.hostMem().total;
-	const memTotal = cg.memLimit === null ? hostTotal : Math.min(cg.memLimit, hostTotal);
+	/**
+	 * 内存这一格是**容器口径还是宿主机口径** —— 总量与已用必须同出一处。
+	 *
+	 * cgroup 读得到、却没设上限(`memory.max` 是 `max`,`docker run` 不加 `-m` 就是这样)时,
+	 * 总量只能退回宿主机;那时已用也必须跟着退,否则分子是这个容器的 `memory.current`、
+	 * 分母是整台机器,面板上那个百分比什么都不是。
+	 */
+	const memFromCgroup = cg.memLimit !== null;
+	const memTotal = memFromCgroup ? Math.min(cg.memLimit ?? hostTotal, hostTotal) : hostTotal;
 	const staticInfo: ResourceStatic = {
 		cpuModel: r.cpuModel(),
 		hostCores,
-		cpuBudget: cg.cpuQuota ?? hostCores,
+		// `cpus()` 回空数组是真事(容器里挂了 /proc、某些内核)——- 0 会让本体 CPU 变成
+		// `除以 0` = Infinity,而那一帧里的堆 / 内存全跟着不可信。宁可按一个核算。
+		cpuBudget: cg.cpuQuota ?? (hostCores > 0 ? hostCores : 1),
 		memTotal,
-		memSource: cg.memLimit === null ? "host" : "cgroup",
+		memSource: memFromCgroup ? "cgroup" : "host",
 		heapLimit: r.heapLimit(),
 	};
 
@@ -207,7 +217,8 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 		const mem = r.memoryUsage();
 		const hm = r.hostMem();
 		// 容器里已用量看 cgroup 的 memory.current(宿主机的 free 是整台机器的,不是这个容器的)。
-		const memUsed = r.cgroup().memUsed ?? hm.total - hm.free;
+		// ⚠️ **只在总量也来自 cgroup 时才用它**:没设上限时总量是宿主机的,两边口径得一致。
+		const memUsed = (memFromCgroup ? r.cgroup().memUsed : null) ?? hm.total - hm.free;
 		const browserState = updateBrowser(at);
 		const sample: ResourceSample = {
 			ts: at,
