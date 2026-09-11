@@ -90,12 +90,21 @@ function renderPage(opts: { bots?: unknown; connections?: unknown[] } = {}) {
 		return [];
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const invalidate = vi.spyOn(qc, "invalidateQueries");
+	render(
 		<PlatformMetaProvider value={buildPlatformTable([BRIDGE])}>
 			<QueryClientProvider client={qc}>
 				<Targets />
 			</QueryClientProvider>
 		</PlatformMetaProvider>,
+	);
+	return { qc, invalidate };
+}
+
+/** 这一发失效碰过 `["extension-bots", …]` 没有(整个前缀或某个拓展都算)。 */
+function invalidatedBots(invalidate: { mock: { calls: unknown[][] } }): boolean {
+	return invalidate.mock.calls.some(
+		(args) => (args[0] as { queryKey?: unknown[] } | undefined)?.queryKey?.[0] === "extension-bots",
 	);
 }
 
@@ -247,5 +256,68 @@ describe("新建连接里的拓展那一档", () => {
 		const dialog2 = await screen.findByRole("dialog");
 		expect(await within(dialog2).findByText(/现在绑着的那个/)).toBeTruthy();
 		expect(dialog2.textContent).toMatch(/不在线/);
+	});
+
+	/**
+	 * 🔴 **改连接时不许换平台。** 连接的平台是底下那些推送目标的平台,而目标不会跟着改 ——
+	 * 挑一个别的平台的 bot,那些目标就原地变成「telegram 的地址挂在 onebot 连接上」,
+	 * 服务端那头会拒,面板这头却一路绿灯。要换 bot 换到别的平台去,那是另一条连接。
+	 */
+	it("改连接时别的平台的 bot 挑不动,并说清换平台要重建连接", async () => {
+		renderPage({
+			bots: { bots: [BOTS[0], { ...BOTS[1], boundTo: EXISTING_ID }] },
+			connections: [EXISTING],
+		});
+		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
+		const dialog = await screen.findByRole("dialog");
+		// 现在绑的是 telegram 的小电视;阿库娅是 onebot
+		const other = (await within(dialog).findByRole("button", {
+			name: /阿库娅/,
+		})) as HTMLButtonElement;
+		expect(other.disabled).toBe(true);
+		expect(other.textContent).toMatch(/换平台要重建连接/);
+		// 同平台的那个(它自己)照样挑得动
+		expect(
+			(within(dialog).getByRole("button", { name: /小电视/ }) as HTMLButtonElement).disabled,
+		).toBe(false);
+	});
+
+	/** 新建时没有「底下已挂的目标」这回事 —— 那一档不该拦。 */
+	it("新建连接时各平台的 bot 都挑得动", async () => {
+		const dialog = await openNewConnection();
+		expect(
+			((await within(dialog).findByRole("button", { name: /阿库娅/ })) as HTMLButtonElement)
+				.disabled,
+		).toBe(false);
+		expect(
+			(within(dialog).getByRole("button", { name: /小电视/ }) as HTMLButtonElement).disabled,
+		).toBe(false);
+	});
+});
+
+/**
+ * 🔴 bot 名单有 5 秒 `staleTime`。存 / 删一条拓展连接之后名单里的 `boundTo` 就变了,不失效
+ * 那条键的话,5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
+ * bot 建出两条连接,每条推一遍。
+ */
+describe("连接动过之后的 bot 名单", () => {
+	it("存下一条拓展连接就把 bot 名单作废", async () => {
+		const { invalidate } = renderPage();
+		fireEvent.click((await screen.findAllByRole("button", { name: /\+ 新建/ }))[0] as HTMLElement);
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(await within(dialog).findByRole("button", { name: /机器人框架桥接/ }));
+		fireEvent.click(await within(dialog).findByRole("button", { name: /小电视/ }));
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		await waitFor(() => expect(invalidatedBots(invalidate)).toBe(true));
+	});
+
+	it("删掉一条拓展连接也把 bot 名单作废 —— 那个 bot 该重新挑得动", async () => {
+		const { invalidate } = renderPage({ connections: [EXISTING] });
+		fireEvent.click((await screen.findAllByRole("button", { name: "删除" }))[0] as HTMLElement);
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(within(dialog).getByRole("button", { name: "确认移除" }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalled());
+		await waitFor(() => expect(invalidatedBots(invalidate)).toBe(true));
 	});
 });

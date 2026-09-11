@@ -553,13 +553,20 @@ function ExtensionBotPicker({
 			{list.map((bot) => {
 				const active = isChosen(bot);
 				const taken = bot.boundTo !== undefined && bot.boundTo !== value.id;
+				/*
+				 * 🔴 **改连接时不许换平台。** 连接的平台就是底下那些推送目标的平台,而目标
+				 * 不会跟着改 —— 换过去之后它们原地变成「telegram 的地址挂在 onebot 连接上」。
+				 * 服务端那头会拒,面板这头却一路绿灯(类型、渲染、保存全绿),主人只看到
+				 * 一句莫名其妙的失败。要换到别的平台去,那是**另一条连接**。
+				 */
+				const wrongPlatform = editing && value.platform !== "" && bot.platform !== value.platform;
 				const botTint = platformTint(bot.platform);
 				return (
 					<button
 						// config 才是它的身份(拓展自己定的),名单里没有别的稳定键。
 						key={JSON.stringify(bot.config)}
 						type="button"
-						disabled={taken}
+						disabled={taken || wrongPlatform}
 						onClick={() => {
 							if (active) return;
 							onChange({
@@ -571,7 +578,7 @@ function ExtensionBotPicker({
 						data-bn={active ? "option option-active" : "option"}
 						className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
 							active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
-						} ${taken ? "cursor-not-allowed opacity-50" : ""}`}
+						} ${taken || wrongPlatform ? "cursor-not-allowed opacity-50" : ""}`}
 						style={{ "--bn-tint": botTint } as CSSProperties}
 					>
 						{bot.icon ? (
@@ -595,6 +602,9 @@ function ExtensionBotPicker({
 							</span>
 						) : taken ? (
 							<span className="text-bn-xs text-bn-text-tertiary">已加过</span>
+						) : wrongPlatform ? (
+							// 说清是「不能这么换」,不是「这个 bot 坏了」—— 出路在另一条连接上。
+							<span className="shrink-0 text-bn-xs text-bn-text-tertiary">换平台要重建连接</span>
 						) : null}
 					</button>
 				);
@@ -1510,6 +1520,10 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
+			// 🔴 bot 名单里的 `boundTo` 跟着连接走,而那条查询有 5 秒 staleTime:不作废它的话,
+			// 5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
+			// bot 建出两条连接,每条推一遍。整个前缀一起失效:哪个拓展的名单变了这里说不准。
+			qc.invalidateQueries({ queryKey: ["extension-bots"] });
 			showToast(connectionDraft?.mode === "add" ? "已新建连接" : "连接已保存");
 			setConnectionDraft(null);
 		},
@@ -1529,6 +1543,8 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
+			// 删掉一条,它绑着的那个 bot 该重新挑得动 —— 同上,名单得当场作废。
+			qc.invalidateQueries({ queryKey: ["extension-bots"] });
 			showToast("已移除连接");
 			setConfirmDelete(null);
 		},
