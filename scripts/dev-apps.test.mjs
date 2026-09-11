@@ -48,7 +48,19 @@ describe("dev-apps supervisor", () => {
 			expect.objectContaining({
 				name: "apps/server dev",
 				command: "vp",
-				args: ["exec", "tsx", "watch", "--tsconfig", "tsconfig.dev.json", "src/index.ts"],
+				// 三路输出共用一个终端:server 重跑不许清屏(否则 Vite+ 的地址一起被擦掉),
+				// 也不许因为拓展产物重写而重跑(那是 devtools 热重载的活,重跑会断直播间)。
+				args: [
+					"exec",
+					"tsx",
+					"watch",
+					"--clear-screen=false",
+					"--ignore",
+					"../../extensions/**",
+					"--tsconfig",
+					"tsconfig.dev.json",
+					"src/index.ts",
+				],
 				cwd: "/repo/apps/server",
 			}),
 			expect.objectContaining({

@@ -15,7 +15,23 @@ export function createDevProcessSpecs(root = repoRoot) {
 		{
 			name: "apps/server dev",
 			command: "vp",
-			args: ["exec", "tsx", "watch", "--tsconfig", "tsconfig.dev.json", "src/index.ts"],
+			// 🔴 两个开关都是「三路输出共用一个终端」逼出来的:
+			// - `--clear-screen=false`:tsx 默认每次重跑先清整个终端,Vite+ 的地址、拓展打包
+			//   的状态会一起被擦掉。
+			// - `--ignore ../../extensions/**`:装载器 import 过的拓展产物 tsx 也盯着,打包器
+			//   起步那一下重写 dist 就让 server 整个重启一次(断直播间、重连一遍)。拓展改了
+			//   由 devtools 自己热重载,不归 tsx 管。
+			args: [
+				"exec",
+				"tsx",
+				"watch",
+				"--clear-screen=false",
+				"--ignore",
+				"../../extensions/**",
+				"--tsconfig",
+				"tsconfig.dev.json",
+				"src/index.ts",
+			],
 			cwd: resolve(root, "apps/server"),
 		},
 		{
