@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BridgeBot, BridgeInboundFrame } from "../contract.js";
+import type { BridgeBot, BridgeInboundFrame, BridgeInboundMessage } from "../contract.js";
 import { routeBridgeInbound } from "../inbound.js";
 
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -43,7 +43,13 @@ function privateFrame(over: Partial<BridgeInboundFrame> = {}): BridgeInboundFram
 	};
 }
 
-function groupFrame(over: Partial<BridgeInboundFrame> = {}): BridgeInboundFrame {
+type GroupMessage = Extract<BridgeInboundMessage, { scope: "group" }>;
+
+/** `message` 是**合并**进来的(改一格不必重写整条消息),别的格照旧整个换掉。 */
+function groupFrame(
+	over: Omit<Partial<BridgeInboundFrame>, "message"> & { message?: Partial<GroupMessage> } = {},
+): BridgeInboundFrame {
+	const { message, ...rest } = over;
 	return {
 		type: "inbound",
 		botId: "b1",
@@ -53,8 +59,9 @@ function groupFrame(over: Partial<BridgeInboundFrame> = {}): BridgeInboundFrame 
 			groupId: "-100",
 			userId: "u1",
 			text: "看看 https://www.bilibili.com/video/BV1xx",
+			...message,
 		},
-		...over,
+		...rest,
 	};
 }
 
@@ -98,9 +105,6 @@ describe("routeBridgeInbound", () => {
 		routeBridgeInbound(
 			groupFrame({
 				message: {
-					scope: "group",
-					groupId: "-100",
-					userId: "u1",
 					text: "",
 					cardLinks: ["https://b23.tv/aaa"],
 					miniAppCardLinks: ["https://b23.tv/bbb"],
@@ -120,15 +124,7 @@ describe("routeBridgeInbound", () => {
 	it("只报一格 → 另一格是空数组,不是 undefined", () => {
 		const s = sinks();
 		routeBridgeInbound(
-			groupFrame({
-				message: {
-					scope: "group",
-					groupId: "-100",
-					userId: "u1",
-					text: "",
-					miniAppCardLinks: ["https://b23.tv/bbb"],
-				},
-			}),
+			groupFrame({ message: { text: "", miniAppCardLinks: ["https://b23.tv/bbb"] } }),
 			source,
 			s,
 		);

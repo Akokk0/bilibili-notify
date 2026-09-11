@@ -45,6 +45,16 @@ function helloFrame(over: Record<string, unknown> = {}) {
 	};
 }
 
+/** 群那一支的入站帧。`message` 是**合并**进来的 —— 各条只写自己那一格。 */
+function groupInbound(message: Record<string, unknown> = {}) {
+	return {
+		type: "inbound",
+		botId: "b1",
+		platform: "onebot",
+		message: { scope: "group", groupId: "g1", userId: "u1", text: "", ...message },
+	};
+}
+
 describe("parseBridgeFrame", () => {
 	it("认得握手帧 —— bots 与能力表原样带出来", () => {
 		const parsed = parseBridgeFrame(helloFrame());
@@ -128,31 +138,19 @@ describe("parseBridgeFrame", () => {
 	 * 就得连得住;把可选写成必填的话,症状是所有老桥握手完第一条群消息就被 4003 踢掉。
 	 */
 	it("群帧带上 1.4 那两格链接 → 原样解出来;不带也照样合法", () => {
-		const withLinks = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: {
-				scope: "group",
-				groupId: "g1",
-				userId: "u1",
-				text: "",
+		const withLinks = parseBridgeFrame(
+			groupInbound({
 				cardLinks: ["https://b23.tv/aaa"],
 				miniAppCardLinks: ["https://b23.tv/bbb"],
-			},
-		});
+			}),
+		);
 		expect(withLinks.ok).toBe(true);
 		if (!withLinks.ok || withLinks.frame.type !== "inbound") return;
 		if (withLinks.frame.message.scope !== "group") return;
 		expect(withLinks.frame.message.cardLinks).toEqual(["https://b23.tv/aaa"]);
 		expect(withLinks.frame.message.miniAppCardLinks).toEqual(["https://b23.tv/bbb"]);
 
-		const without = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: { scope: "group", groupId: "g1", userId: "u1", text: "https://b23.tv/x" },
-		});
+		const without = parseBridgeFrame(groupInbound({ text: "https://b23.tv/x" }));
 		expect(without.ok).toBe(true);
 		if (!without.ok || without.frame.type !== "inbound") return;
 		if (without.frame.message.scope !== "group") return;
@@ -160,60 +158,49 @@ describe("parseBridgeFrame", () => {
 	});
 
 	it("那两格不是字符串数组 → invalid,消息里点得出是哪一格", () => {
-		const parsed = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: {
-				scope: "group",
-				groupId: "g1",
-				userId: "u1",
-				text: "",
-				cardLinks: "https://b23.tv/aaa",
-			},
-		});
+		const parsed = parseBridgeFrame(groupInbound({ cardLinks: "https://b23.tv/aaa" }));
 		expect(parsed).toMatchObject({ ok: false, reason: "invalid" });
 		if (parsed.ok || parsed.reason !== "invalid") return;
 		expect(parsed.message).toContain("cardLinks");
 	});
 
 	/**
-	 * 上限是真的门,不是注释。没有它,一条入站帧能驮上来一兆的链接(整帧上限就是 1 MB),
+	 * 上限是真的门,不是注释:没有它,一条入站帧能驮上来一兆的链接(整帧上限就是 1 MB),
 	 * 而下游链接解析要逐条过正则 —— 这是个不花钱的放大器。
+	 *
+	 * 🔴 但门的处置是**截断,不是拒帧**:超了照样有一个安全的解释(「就是前 32 条」),
+	 * 而拒帧会让 server 回 close `4003` —— 插件侧把它当终局永不重连,一张卡里 URL 多了
+	 * 几条就把整条桥永久打死。
 	 */
-	it("条数 / 单条长度超上限 → invalid", () => {
-		const many = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: {
-				scope: "group",
-				groupId: "g1",
-				userId: "u1",
-				text: "",
+	it("条数超上限 → 帧照收,截到上限那么多", () => {
+		const many = parseBridgeFrame(
+			groupInbound({
 				cardLinks: Array.from(
-					{ length: BRIDGE_INBOUND_LINKS_MAX + 1 },
+					{ length: BRIDGE_INBOUND_LINKS_MAX + 5 },
 					(_, i) => `https://b23.tv/${i}`,
 				),
-			},
-		});
-		expect(many).toMatchObject({ ok: false, reason: "invalid" });
+			}),
+		);
+		expect(many.ok).toBe(true);
+		if (!many.ok || many.frame.type !== "inbound") return;
+		if (many.frame.message.scope !== "group") return;
+		expect(many.frame.message.cardLinks).toHaveLength(BRIDGE_INBOUND_LINKS_MAX);
+		expect(many.frame.message.cardLinks?.[0]).toBe("https://b23.tv/0");
+	});
 
-		const long = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: {
-				scope: "group",
-				groupId: "g1",
-				userId: "u1",
-				text: "",
-				miniAppCardLinks: [`https://b23.tv/${"x".repeat(BRIDGE_INBOUND_LINK_MAX_CHARS)}`],
-			},
-		});
-		expect(long).toMatchObject({ ok: false, reason: "invalid" });
-		if (long.ok || long.reason !== "invalid") return;
-		expect(long.message).toContain("miniAppCardLinks");
+	it("单条超长 → 帧照收,只把那一条丢掉", () => {
+		const long = parseBridgeFrame(
+			groupInbound({
+				miniAppCardLinks: [
+					`https://b23.tv/${"x".repeat(BRIDGE_INBOUND_LINK_MAX_CHARS)}`,
+					"https://b23.tv/ok",
+				],
+			}),
+		);
+		expect(long.ok).toBe(true);
+		if (!long.ok || long.frame.type !== "inbound") return;
+		if (long.frame.message.scope !== "group") return;
+		expect(long.frame.message.miniAppCardLinks).toEqual(["https://b23.tv/ok"]);
 	});
 
 	/**

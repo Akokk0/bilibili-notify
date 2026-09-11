@@ -72,14 +72,23 @@ const BotsFrameSchema = z.object({
  * 逐条过正则:一个不花钱的放大器。
  *
  * 数字取得宽松是刻意的:一张真卡里顶多几条链接,32 条 × 2048 字够任何正常的卡用,
- * 撞得到这道门的只会是 bug 或者恶意。所以超了按**畸形帧**拒(§11:认识的 type 形状不对)。
+ * 撞得到这道门的只会是 bug 或者恶意。
+ *
+ * 🔴 超了**截断**(单条超长的丢掉、总数截到上限),**不按畸形帧拒**:这里存在一个安全的
+ * 解释 ——「这条消息里的卡链接就是前 32 条」,而畸形留给形状真的不对的(§11:认识的 type
+ * 形状不对)。代价不对称是关键:拒帧会让 server 回 close `4003`,而插件侧把 4003 当终局
+ * 永不重连 —— 一张卡里 URL 多了几条就把整条桥永久打死,而这道门本来只是防放大器。
  */
 export const BRIDGE_INBOUND_LINKS_MAX = 32;
 export const BRIDGE_INBOUND_LINK_MAX_CHARS = 2048;
 
 const InboundLinksSchema = z
-	.array(z.string().min(1).max(BRIDGE_INBOUND_LINK_MAX_CHARS))
-	.max(BRIDGE_INBOUND_LINKS_MAX)
+	.array(z.string().min(1))
+	.transform((links) =>
+		links
+			.filter((link) => link.length <= BRIDGE_INBOUND_LINK_MAX_CHARS)
+			.slice(0, BRIDGE_INBOUND_LINKS_MAX),
+	)
 	.optional();
 
 const InboundMessageSchema = z.discriminatedUnion("scope", [
