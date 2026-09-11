@@ -63,13 +63,13 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		return opts.store.getTargets().find((t) => t.id === targetId);
 	}
 
-	function findConnectionFor(target: PushTarget): Connection | undefined {
-		return opts.store.getConnections().find((a) => a.id === target.connectionId);
+	function findConnection(connectionId: string): Connection | undefined {
+		return opts.store.getConnections().find((a) => a.id === connectionId);
 	}
 
 	/** 配置里的那条连接 + 它所属平台的实现;缺一个就没法问它任何事。 */
 	function routeOf(connectionId: string) {
-		const connection = opts.store.getConnections().find((a) => a.id === connectionId);
+		const connection = findConnection(connectionId);
 		if (!connection) return undefined;
 		const platformAdapter = adapterFor(connection);
 		return platformAdapter ? { connection, platformAdapter } : undefined;
@@ -89,7 +89,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		isAvailable(targetId: string): boolean {
 			const target = findTarget(targetId);
 			if (!target) return false;
-			const connection = findConnectionFor(target);
+			const connection = findConnection(target.connectionId);
 			if (!connection) return false;
 			const platformAdapter = adapterFor(connection);
 			if (!platformAdapter) return false;
@@ -117,7 +117,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		},
 
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
-			const connection = opts.store.getConnections().find((a) => a.id === connectionId);
+			const connection = findConnection(connectionId);
 			if (!connection) {
 				return { ok: false, latencyMs: 0, err: "connection not found" };
 			}
@@ -142,7 +142,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		if (!target) {
 			return { ok: false, latencyMs: 0, err: "target not found" };
 		}
-		const connection = findConnectionFor(target);
+		const connection = findConnection(target.connectionId);
 		if (!connection) {
 			const result: DeliveryResult = {
 				ok: false,
