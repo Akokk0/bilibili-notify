@@ -258,15 +258,17 @@ describe("拓展市场", () => {
 });
 
 describe("源", () => {
-	it("弹窗列官方(不可删)与第三方(可删);加一个源要先看见风险提示,存的是整份名单", async () => {
+	it("弹窗列官方(不可删)与第三方(可删,名字是索引报的);加源只填地址、先看见风险提示,存的是整份名单", async () => {
 		renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: /源/ }));
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByText("BN 官方拓展")).toBeTruthy();
+		// 名字从市场那一口(索引里的 name)来,不是用户起的。
+		expect(within(dialog).getByText("alice")).toBeTruthy();
+		expect(within(dialog).queryByLabelText("源的名字")).toBeNull();
 		expect(within(dialog).getByText("https://alice.example/m.json")).toBeTruthy();
 		expect(within(dialog).getByText(/不审核/)).toBeTruthy();
 
-		await userEvent.type(within(dialog).getByLabelText("源的名字"), "bob");
 		await userEvent.type(
 			within(dialog).getByLabelText("索引地址"),
 			"https://bob.example/marketplace.json",
@@ -275,21 +277,21 @@ describe("源", () => {
 		await waitFor(() => expect(apiPatchMock).toHaveBeenCalledOnce());
 		const [path, body] = apiPatchMock.mock.calls[0] as [
 			string,
-			{ marketplace: { sources: { id: string; name: string; url: string }[] } },
+			{ marketplace: { sources: { id: string; name?: string; url: string }[] } },
 		];
 		expect(path).toBe("/api/globals");
-		expect(body.marketplace.sources.map((s) => [s.name, s.url])).toEqual([
-			["alice", "https://alice.example/m.json"],
-			["bob", "https://bob.example/marketplace.json"],
+		expect(body.marketplace.sources.map((s) => s.url)).toEqual([
+			"https://alice.example/m.json",
+			"https://bob.example/marketplace.json",
 		]);
 		expect(body.marketplace.sources[1]?.id).toBeTruthy();
+		expect(body.marketplace.sources[1]?.name).toBeUndefined();
 	});
 
 	it("http 地址不收;删掉一个源存的是剩下的名单", async () => {
 		renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: /源/ }));
 		const dialog = await screen.findByRole("dialog");
-		await userEvent.type(within(dialog).getByLabelText("源的名字"), "bob");
 		await userEvent.type(within(dialog).getByLabelText("索引地址"), "http://bob.example/m.json");
 		await userEvent.click(within(dialog).getByRole("button", { name: "加进来" }));
 		expect(await within(dialog).findByText(/必须是 https/)).toBeTruthy();

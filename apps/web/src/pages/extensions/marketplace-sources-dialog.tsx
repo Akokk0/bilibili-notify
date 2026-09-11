@@ -1,6 +1,7 @@
 /**
  * 「源」弹窗:列官方源(内置,不能删)与主人自己加的第三方源,能加能删。
  *
+ * 加源**只填地址**:索引自己带 `name`,拿到之后市场那一口报的就是它,拿到之前用域名顶着。
  * 名单整份写回 `globals.marketplace.sources`(补丁对数组是整个换掉的)。第三方源不签名 ——
  * 谁控制了那个地址谁就能换内容,所以**添加那一刻**要把这句话说出来;装每一个第三方条目时
  * 还会再确认一次,那是给手滑的人看的,这里是给不知道自己在干什么的人看的。
@@ -24,7 +25,8 @@ import { api } from "../../services/api";
 
 interface SourceRow {
 	id: string;
-	name: string;
+	/** 可选:索引自己带名字,加源时只填地址。 */
+	name?: string;
 	url: string;
 }
 
@@ -38,11 +40,19 @@ function newId(): string {
 		: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function hostOf(url: string): string {
+	try {
+		return new URL(url).host;
+	} catch {
+		return url;
+	}
+}
+
 export function MarketplaceSourcesDialog({
 	status,
 	onClose,
 }: {
-	/** 市场那一口报的各源状态(拿到了没、为什么没)。 */
+	/** 市场那一口报的各源状态(拿到了没、叫什么、为什么没)。 */
 	status: readonly MarketplaceSourceDTO[];
 	onClose: () => void;
 }) {
@@ -52,7 +62,6 @@ export function MarketplaceSourcesDialog({
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const sources = sourcesOf(globals.data);
-	const [name, setName] = useState("");
 	const [url, setUrl] = useState("");
 	const [problem, setProblem] = useState<string | null>(null);
 
@@ -67,16 +76,23 @@ export function MarketplaceSourcesDialog({
 
 	const official = status.find((s) => s.official);
 	const statusOf = (id: string) => status.find((s) => s.id === id);
+	/** 行上印的名字:市场那一口报的(索引里的)优先;还没拿到就用域名顶着。 */
+	const nameOf = (source: SourceRow) =>
+		statusOf(source.id)?.name ?? source.name ?? hostOf(source.url);
 
 	const add = () => {
-		const trimmedName = name.trim();
-		const trimmedUrl = url.trim();
-		if (!trimmedName) return setProblem("给这个源起个名字");
-		if (!/^https:\/\/[^\s/]+/.test(trimmedUrl)) return setProblem("索引地址必须是 https:// 开头");
-		if (sources.some((s) => s.url === trimmedUrl)) return setProblem("这个地址已经加过了");
+		const trimmed = url.trim();
+		if (!/^https:\/\/[^\s/]+/.test(trimmed)) {
+			setProblem("索引地址必须是 https:// 开头");
+			return;
+		}
+		if (sources.some((s) => s.url === trimmed)) {
+			setProblem("这个地址已经加过了");
+			return;
+		}
 		setProblem(null);
-		save.mutate([...sources, { id: newId(), name: trimmedName, url: trimmedUrl }]);
-		setName("");
+		// 名字不用起:索引自己带,拿到之后市场那一口报的就是它。
+		save.mutate([...sources, { id: newId(), url: trimmed }]);
 		setUrl("");
 	};
 
@@ -111,7 +127,7 @@ export function MarketplaceSourcesDialog({
 								<StatusDot kind={st ? (st.ok ? "ok" : "err") : "pending"} />
 								<div className="flex min-w-0 flex-1 flex-col">
 									<span className="text-bn-sm font-bold text-bn-text-primary">
-										{source.name}
+										{nameOf(source)}
 										{st?.namespace ? (
 											<span className="ml-1.5 font-mono text-bn-2xs font-normal text-bn-text-tertiary">
 												{st.namespace}.*
@@ -127,7 +143,7 @@ export function MarketplaceSourcesDialog({
 								</div>
 								<IconButton
 									icon={<Icon.trash size={13} />}
-									label={`删掉 ${source.name}`}
+									label={`删掉 ${nameOf(source)}`}
 									size="sm"
 									tone="danger"
 									onClick={() => save.mutate(sources.filter((s) => s.id !== source.id))}
@@ -143,14 +159,6 @@ export function MarketplaceSourcesDialog({
 						BN 不审核第三方源里的东西:装它们等于让那个源的作者在 BN 进程里跑代码。只加信得过的。
 					</WarnNote>
 					<div className="flex flex-col gap-2 sm:flex-row">
-						<TInput
-							ariaLabel="源的名字"
-							value={name}
-							onChange={setName}
-							placeholder="名字"
-							width={140}
-							full={false}
-						/>
 						<TInput
 							ariaLabel="索引地址"
 							value={url}

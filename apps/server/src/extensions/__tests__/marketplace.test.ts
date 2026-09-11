@@ -113,7 +113,7 @@ function third(over: Record<string, unknown> = {}) {
 
 interface HarnessOptions {
 	installed?: { id: string; version?: string }[];
-	sources?: { id: string; name: string; url: string }[];
+	sources?: { id: string; name?: string; url: string }[];
 	prerelease?: boolean;
 	noOfficial?: boolean;
 	mirrors?: string[];
@@ -243,15 +243,17 @@ describe("list():官方源", () => {
 });
 
 describe("list():第三方源", () => {
-	it("裸 JSON,不走镜像;条目标非官方、带源名;命名空间不对整个源拒", async () => {
+	it("裸 JSON,不走镜像;源名取索引自己报的;命名空间不对整个源拒", async () => {
 		const fetchMock = serve({ [THIRD_URL]: JSON.stringify(third()) });
 		const view = await harness({
 			noOfficial: true,
 			mirrors: ["https://mirror.example"],
-			sources: [{ id: "s1", name: "alice", url: THIRD_URL }],
+			// 用户加源只填地址,没起名。
+			sources: [{ id: "s1", url: THIRD_URL }],
 		}).marketplace.list();
 		expect(view.sources).toEqual([
 			expect.objectContaining({
+				name: "alice 的拓展",
 				id: "s1",
 				official: false,
 				ok: true,
@@ -274,9 +276,14 @@ describe("list():第三方源", () => {
 		});
 		const bad = await harness({
 			noOfficial: true,
-			sources: [{ id: "s1", name: "alice", url: THIRD_URL }],
+			sources: [{ id: "s1", url: THIRD_URL }],
 		}).marketplace.list({ refresh: true });
-		expect(bad.sources[0]).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+		// 索引拒收时名字还没有,拿域名顶着 —— 别让错误行上写一个 uuid。
+		expect(bad.sources[0]).toMatchObject({
+			name: "alice.example",
+			ok: false,
+			err: expect.stringContaining("bridge"),
+		});
 		expect(bad.extensions).toEqual([]);
 	});
 

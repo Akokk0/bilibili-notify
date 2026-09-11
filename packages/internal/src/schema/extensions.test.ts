@@ -80,11 +80,10 @@ describe("globals.marketplace", () => {
 		expect(GlobalConfigSchema.parse(g).marketplace).toEqual({ sources: [] });
 	});
 
-	it("源 = id + 名字 + https 地址;http 与空名字拒,封顶 20 条", () => {
+	it("源 = id + https 地址(名字可选,索引自己带);http 拒,封顶 20 条", () => {
 		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
 		const src = (over: Record<string, unknown> = {}) => ({
 			id: "s1",
-			name: "alice 的拓展",
 			url: "https://alice.example/bn/marketplace.json",
 			...over,
 		});

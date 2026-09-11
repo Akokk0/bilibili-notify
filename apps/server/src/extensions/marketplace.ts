@@ -194,11 +194,21 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		return { view: { ...base, name: fetched.value.name, ok: true }, index: fetched.value };
 	}
 
+	/** 索引拿到之前叫什么:用户没起名(通常没有),就拿域名顶着。 */
+	function placeholderName(source: MarketplaceSource): string {
+		if (source.name) return source.name;
+		try {
+			return new URL(source.url).host;
+		} catch {
+			return source.url;
+		}
+	}
+
 	async function loadThirdParty(
 		source: MarketplaceSource,
 		taken: Map<string, string>,
 	): Promise<LoadedSource> {
-		const base = { id: source.id, name: source.name, official: false, url: source.url };
+		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
 		const fetched = await fetchThroughMirrors<MarketplaceIndex, string>({
 			url: source.url,
 			mirrors: [""],
@@ -223,20 +233,22 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			const err = fetched.reason === "all-mirrors-failed" ? "拿不到这个源的索引" : fetched.reason;
 			return { view: { ...base, ok: false, err } };
 		}
+		// 名字以索引自己报的为准 —— 用户加源时只填了地址。
+		const named = { ...base, name: fetched.value.name };
 		const ns = fetched.value.namespace as string;
 		const holder = taken.get(ns);
 		if (holder !== undefined) {
 			return {
 				view: {
-					...base,
+					...named,
 					namespace: ns,
 					ok: false,
 					err: `命名空间「${ns}」已经被源「${holder}」用了`,
 				},
 			};
 		}
-		taken.set(ns, source.name);
-		return { view: { ...base, namespace: ns, ok: true }, index: fetched.value };
+		taken.set(ns, named.name);
+		return { view: { ...named, namespace: ns, ok: true }, index: fetched.value };
 	}
 
 	async function loadAll(refresh: boolean): Promise<LoadedSource[]> {

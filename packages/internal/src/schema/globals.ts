@@ -214,9 +214,13 @@ export const DEFAULT_UPDATE_SETTINGS: UpdateSettings = {
  * 第三方源 —— 一个 https 地址指向一份 `marketplace.json`。
  */
 export const MarketplaceSourceSchema = z.object({
-	/** 本地身份(uuid);已装拓展记「从哪个源装的」靠它,改名不影响。 */
+	/** 本地身份(uuid);已装拓展记「从哪个源装的」靠它。 */
 	id: z.string().min(1).max(64),
-	name: z.string().min(1).max(40),
+	/**
+	 * 可选:索引自己带 `name`,拿到之后以它为准;这里只在索引还没拿到 / 拿不到时顶一下。
+	 * 用户加源时**只填地址**,不用起名。
+	 */
+	name: z.string().min(1).max(40).optional(),
 	url: z.string().url().regex(MIRROR_PREFIX_RE, "源地址必须是 https:// 开头"),
 });
 export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
