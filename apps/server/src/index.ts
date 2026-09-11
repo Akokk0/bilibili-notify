@@ -30,6 +30,7 @@ import {
 	type LoadedExtensions,
 	loadExtensions,
 } from "./extensions/loader.js";
+import { createMarketplace } from "./extensions/marketplace.js";
 import { createExtensionMounts } from "./extensions/mount.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
@@ -68,6 +69,7 @@ import { createStatusCommand } from "./runtime/status-command.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createUpdateService } from "./update/service.js";
 import {
+	EXTENSION_MARKETPLACE_URL,
 	RELEASES_PAGE_URL,
 	TRUSTED_UPDATE_KEYS,
 	UPDATE_MANIFEST_URLS,
@@ -289,6 +291,26 @@ export async function startStandaloneServer(
 				process.exit(0);
 			}
 		};
+		// 拓展市场(ADR-0013):官方源与自主升级共用同一对信任公钥与同一份加速前缀;没有公钥的
+		// 构建(fork 出去自己构建的)就没有官方源,第三方源照用。
+		const marketplace = createMarketplace({
+			root: extensionsRootIn(bootstrap.dataDir),
+			official:
+				TRUSTED_UPDATE_KEYS.length > 0
+					? { url: EXTENSION_MARKETPLACE_URL, trustedKeys: TRUSTED_UPDATE_KEYS }
+					: undefined,
+			sources: () => runtime.configStore.getGlobals().marketplace.sources,
+			mirrors: () => runtime.configStore.getGlobals().update.mirrors,
+			prerelease: () => runtime.configStore.getGlobals().update.channel === "prerelease",
+			installed: () =>
+				loadedExtensions
+					?.list()
+					.map((entry) => ({ id: entry.id, version: entry.manifest?.version })) ?? [],
+			rescan: async () => {
+				await loadedExtensions?.rescan();
+			},
+			logger: log,
+		});
 		const updateService = createUpdateService({
 			currentVersion: payloadVersion,
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
@@ -861,6 +883,7 @@ export async function startStandaloneServer(
 					},
 					restartAbility,
 				},
+				marketplace,
 			},
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。

@@ -45,6 +45,13 @@ export const UPDATE_MANIFEST_URLS = {
 } as const;
 
 /**
+ * 拓展市场官方索引的固定地址(ADR-0013)。**单独一个滚动 release**(`extension-marketplace`),
+ * 与本体清单分开:任何一方发坏了都不牵连另一方,两条发布流水线也不用排同一把锁。同域
+ * 同路径前缀,所以主人填的那条加速前缀照样管得住它。
+ */
+export const EXTENSION_MARKETPLACE_URL = `${RELEASE_DOWNLOAD_BASE}/download/extension-marketplace/marketplace.json`;
+
+/**
  * 连清单都拿不到时,唯一还能给用户的落脚点。
  *
  * 「下不动就通知 + 给个链接让他自己去下」是设计里的兜底出口 —— 那条链接必须在任何

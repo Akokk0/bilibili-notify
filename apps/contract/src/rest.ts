@@ -166,6 +166,73 @@ export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];
 }
 
+// ---- /api/ext/marketplace(ADR-0013)--------------------------------------------
+
+/** 一个源:内置的官方源(`id: "official"`)或主人自己加的第三方源。 */
+export interface MarketplaceSourceDTO {
+	id: string;
+	name: string;
+	official: boolean;
+	/** 第三方源的地址;官方源不下发(它是内置常量)。 */
+	url?: string;
+	/** 第三方源声明的命名空间;它列的每个 id 都在这底下。 */
+	namespace?: string;
+	/** 索引拿到了、验过了。不 ok 时 `err` 是那句要原样给主人看的原因。 */
+	ok: boolean;
+	err?: string;
+}
+
+/**
+ * 一条条目在**这台机器上**的状态 —— 面板上那颗钮画什么全看它:
+ * - `installable`:没装,能装;
+ * - `installed`:从这个源装的,就是这一版;
+ * - `updatable`:从这个源装的,索引里有更新的版本;
+ * - `installed-elsewhere`:装着,但不是从这个源装的(手放的 / devtools 链的 / 别的源)—— 不提示更新;
+ * - `incompatible`:它要的宿主契约版本对不上,先升级 BN;
+ * - `revoked`:装着的那一版被这个源撤回了(或索引里这一版本身就在撤回名单上)。
+ */
+export type MarketplaceEntryState =
+	| "installable"
+	| "installed"
+	| "updatable"
+	| "installed-elsewhere"
+	| "incompatible"
+	| "revoked";
+
+export interface MarketplaceEntryDTO {
+	/** 来自哪个源(`MarketplaceSourceDTO.id`)。 */
+	source: string;
+	official: boolean;
+	id: string;
+	name: string;
+	description: string;
+	/** 索引里列的(最新)版本。 */
+	version: string;
+	apiVersion: number;
+	prerelease: boolean;
+	notes?: string;
+	releaseUrl?: string;
+	/** 包多大(字节)。 */
+	size: number;
+	/** 这台机器上装着的那份(没装就没有)。`source` 缺 = 不是从市场装的。 */
+	installed?: { version?: string; source?: string };
+	state: MarketplaceEntryState;
+}
+
+export interface MarketplaceResponse {
+	/** 这个构建有没有官方源(fork 出去没有信任公钥的构建没有)。 */
+	available: boolean;
+	sources: MarketplaceSourceDTO[];
+	extensions: MarketplaceEntryDTO[];
+	/** 索引是什么时候拉的(epoch 毫秒)。 */
+	fetchedAt: number;
+}
+
+export interface MarketplaceInstallRequest {
+	source: string;
+	id: string;
+}
+
 // ---- /api/subs ------------------------------------------------------------
 
 /**

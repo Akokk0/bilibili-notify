@@ -1,5 +1,5 @@
 import { createPublicKey, verify as cryptoVerify } from "node:crypto";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 
 /**
  * 升级清单的**唯一**信任入口。
@@ -16,7 +16,7 @@ import { z } from "zod";
  * 未知字段会被**丢弃而不是拒绝** —— 老客户端拿到带新字段的清单必须照样能读,
  * 否则我们一加字段,存量安装就集体失去升级能力。
  */
-const ManifestSchema = z.object({
+export const ManifestSchema = z.object({
 	version: z.string(),
 	/**
 	 * 这一版的载荷:去哪下、多大、校验和是多少。**必填** —— 一份不说载荷在哪的
@@ -94,6 +94,25 @@ export function loadSignedManifest(
 	signatureBase64: string,
 	trustedKeysBase64: readonly string[],
 ): LoadManifestResult {
+	const loaded = loadSignedJson(bytes, signatureBase64, trustedKeysBase64, ManifestSchema);
+	return loaded.ok ? { ok: true, manifest: loaded.value } : loaded;
+}
+
+export type LoadSignedJsonResult<T> =
+	| { ok: true; value: T }
+	| { ok: false; reason: "bad-signature" | "malformed" };
+
+/**
+ * 同一扇门的通用形态:验签 + 按给定 schema 读。升级清单与拓展市场的官方索引都从这儿过 ——
+ * 签的都是我们那对密钥,「验签与解析合成一步、没有已解析未验证的中间态」那条纪律对两者
+ * 一样成立。
+ */
+export function loadSignedJson<T>(
+	bytes: Uint8Array,
+	signatureBase64: string,
+	trustedKeysBase64: readonly string[],
+	schema: ZodType<T>,
+): LoadSignedJsonResult<T> {
 	const signature = Buffer.from(signatureBase64, "base64");
 
 	const verified = trustedKeysBase64.some((keyBase64) =>
@@ -122,8 +141,8 @@ export function loadSignedManifest(
 	// 验签只证明「这是我们签的、没被改过」,不证明内容是对的。我们自己签错一次
 	// 东西,下游就会拿着一份 version 缺失的清单去比版本 —— NapCat 更新完显示
 	// 0.0.0 就是这一类。
-	const shaped = ManifestSchema.safeParse(parsed);
+	const shaped = schema.safeParse(parsed);
 	if (!shaped.success) return { ok: false, reason: "malformed" };
 
-	return { ok: true, manifest: shaped.data };
+	return { ok: true, value: shaped.data };
 }

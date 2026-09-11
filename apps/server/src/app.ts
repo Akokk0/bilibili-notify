@@ -19,6 +19,7 @@ import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
+import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
@@ -93,6 +94,8 @@ export interface CreateAppOptions {
 			rescan: () => Promise<void>;
 			restartAbility: RestartAbility;
 		};
+		/** 拓展市场(ADR-0013)。没接 → 那两口 404。 */
+		marketplace?: Marketplace;
 	};
 	/**
 	 * Configured dashboard credentials. When provided, every request under
@@ -362,6 +365,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			bots: (id) => options.extensions?.bots(id),
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,
+			marketplace: options.extensions?.marketplace,
 		}),
 	);
 	app.route(

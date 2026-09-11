@@ -14,6 +14,7 @@ import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
+import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
 import { createExtensionsRoute } from "../extensions.js";
 
 let installRoot: string;
@@ -29,6 +30,7 @@ function boot(
 		bots?: Record<string, unknown[]>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
+		marketplace?: { list: ReturnType<typeof vi.fn>; install: ReturnType<typeof vi.fn> };
 	} = {},
 ) {
 	const store = {
@@ -53,6 +55,7 @@ function boot(
 					? { can: false, reason: "source-run" }
 					: { can: true, how: "container" },
 		},
+		marketplace: over.marketplace as never,
 	});
 }
 
@@ -370,5 +373,92 @@ describe("POST /api/ext/install", () => {
 		const res = await upload(boot(), form(undefined));
 		expect(res.status).toBe(400);
 		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("file");
+	});
+});
+
+/**
+ * 拓展市场(ADR-0013)的两口:列索引、按 source + id 装。逻辑全在 `extensions/marketplace.ts`,
+ * 这里只钉 wire:参数怎么传、结果怎么翻成 HTTP、装完的回答与上传装包**同一个形状**(面板
+ * 复用同一段「装完那句话」)。
+ */
+describe("GET /marketplace + POST /marketplace/install", () => {
+	function market() {
+		return {
+			list: vi.fn(async () => ({ available: true, sources: [], extensions: [], fetchedAt: 1 })),
+			install: vi.fn(
+				async (): Promise<MarketplaceInstallOutcome> => ({
+					ok: true,
+					id: "bridge",
+					name: "桥",
+					version: "0.0.2",
+					needsRestart: true,
+				}),
+			),
+		};
+	}
+
+	it("没接市场的构建 → 404", async () => {
+		const app = boot();
+		expect((await app.request("/marketplace")).status).toBe(404);
+		expect(
+			(
+				await app.request("/marketplace/install", {
+					method: "POST",
+					body: "{}",
+					headers: { "content-type": "application/json" },
+				})
+			).status,
+		).toBe(404);
+	});
+
+	it("GET 原样下发 list();?refresh=1 无视缓存", async () => {
+		const m = market();
+		const app = boot({ marketplace: m });
+		const res = await app.request("/marketplace");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ available: true, fetchedAt: 1 });
+		expect(m.list).toHaveBeenLastCalledWith({ refresh: false });
+		await app.request("/marketplace?refresh=1");
+		expect(m.list).toHaveBeenLastCalledWith({ refresh: true });
+	});
+
+	it("POST 装:回答与上传装包同一个形状(含这台机器的重启能力)", async () => {
+		const m = market();
+		const app = boot({ marketplace: m });
+		const res = await app.request("/marketplace/install", {
+			method: "POST",
+			body: JSON.stringify({ source: "official", id: "bridge" }),
+			headers: { "content-type": "application/json" },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as ExtensionInstallResponse;
+		expect(body).toEqual({
+			id: "bridge",
+			name: "桥",
+			version: "0.0.2",
+			needsRestart: true,
+			restart: { can: true, how: "container" },
+		});
+		expect(m.install).toHaveBeenCalledWith("official", "bridge");
+	});
+
+	it("POST 装不了 → 400,原因原样;缺参数 → 400", async () => {
+		const m = market();
+		m.install.mockResolvedValueOnce({ ok: false, err: "下载到的包校验和与索引写的对不上" });
+		const app = boot({ marketplace: m });
+		const res = await app.request("/marketplace/install", {
+			method: "POST",
+			body: JSON.stringify({ source: "official", id: "bridge" }),
+			headers: { "content-type": "application/json" },
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ errors: ["下载到的包校验和与索引写的对不上"] });
+		const bad = await app.request("/marketplace/install", {
+			method: "POST",
+			body: JSON.stringify({ id: "bridge" }),
+			headers: { "content-type": "application/json" },
+		});
+		expect(bad.status).toBe(400);
+		expect(m.install).toHaveBeenCalledTimes(1);
 	});
 });

@@ -5,10 +5,12 @@ import type {
 	ExtensionDescriptorDTO,
 	ExtensionDTO,
 	ExtensionInstallResponse,
+	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
 import { isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import {
 	installExtensionPackage,
@@ -16,7 +18,13 @@ import {
 	openExtensionPackage,
 } from "../extensions/install.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import type { Marketplace } from "../extensions/marketplace.js";
 import { uploadBodyLimit } from "./upload-limit.js";
+
+const MarketplaceInstallRequestSchema = z.object({
+	source: z.string().min(1),
+	id: z.string().min(1),
+});
 
 export interface ExtensionsRouteOptions {
 	store: ConfigStore;
@@ -52,6 +60,11 @@ export interface ExtensionsRouteOptions {
 	 *
 	 * 省略 → `POST /install` 回 404(装载器没接上来的构建里,装了也没人加载)。
 	 */
+	/**
+	 * 拓展市场(ADR-0013):列索引、按源装。逻辑在 `extensions/marketplace.ts`,这里只做 wire。
+	 * 省略 → 两口都 404(没接市场的构建)。
+	 */
+	marketplace?: Marketplace;
 	install?: {
 		/** 装载根 —— `<dataDir>/extensions/`。 */
 		root: string;
@@ -151,6 +164,34 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 现在能借来当连接的 bot —— 推送目标页「新建连接」挑的那一排。404 与空名单分开:
 	 * 前者是「问不到」(没跑 / 这种推送源没有 bot 这回事),后者是「一个都没连着」。
 	 */
+	// 市场那两口要排在 `/:id/*` 前面 —— 路由按注册顺序匹配。
+	app.get("/marketplace", async (c) => {
+		const marketplace = opts.marketplace;
+		if (!marketplace) return c.json({ ok: false, err: "not found" }, 404);
+		const refresh = c.req.query("refresh") === "1";
+		const body: MarketplaceResponse = await marketplace.list({ refresh });
+		return c.json(body);
+	});
+
+	/** 装完的回答与上传装包**同一个形状**:面板复用同一段「装完那句话」与重启按钮。 */
+	app.post("/marketplace/install", async (c) => {
+		const marketplace = opts.marketplace;
+		const install = opts.install;
+		if (!marketplace || !install) return c.json({ ok: false, err: "not found" }, 404);
+		const parsed = MarketplaceInstallRequestSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) return c.json({ errors: ["要给 source 与 id"] }, 400);
+		const outcome = await marketplace.install(parsed.data.source, parsed.data.id);
+		if (!outcome.ok) return c.json({ errors: [outcome.err] }, 400);
+		const answer: ExtensionInstallResponse = {
+			id: outcome.id,
+			name: outcome.name,
+			version: outcome.version,
+			needsRestart: outcome.needsRestart,
+			restart: install.restartAbility,
+		};
+		return c.json(answer);
+	});
+
 	app.get("/:id/bots", (c) => {
 		const bots = opts.bots(c.req.param("id"));
 		if (bots === undefined) return c.json({ ok: false, err: "not found" }, 404);
