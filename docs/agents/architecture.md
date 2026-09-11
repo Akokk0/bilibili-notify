@@ -135,7 +135,7 @@ src/
 - **两个 URL 前缀,分开它们的是鉴权域**:`/ext/<id>/*`(拓展自己的 HTTP 与 WS,**刻意在
   dashboard 鉴权之外** —— 对家手里只有 URL、没有会话)与 `/api/ext`(清单(含 descriptor 与
   config 字段表)、`/api/ext/<id>/status` 面板数据、`/api/ext/<id>/bots` 现在能借来当连接的 bot,吃
-  dashboard 会话鉴权)。代码与配置面一律写全称(`globals.extensions` / `loadExtensions`)。
+  dashboard 会话鉴权;`/api/ext/marketplace` 拓展市场的索引与从市场装,见 `extension-marketplace.md`)。代码与配置面一律写全称(`globals.extensions` / `loadExtensions`)。
 - **推送源的分发键由宿主按拓展 id 填**,拓展自报的那份会被覆盖 —— 否则一个拓展声明
   `"onebot"` 就能把内置连接的推送整个截走。
 - **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**

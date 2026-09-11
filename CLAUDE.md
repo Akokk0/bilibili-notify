@@ -64,6 +64,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 - `commands.md` —— 独立端私聊指令:入站链路、指令表、参数模型、可配置项;末尾是群里视频链接自动出卡片的「链接解析」
 - `self-update.md` —— 应用内自主升级:载荷布局、`boot.mjs` 选版、双密钥与渠道入口、撤回与自愈
 - `devtools.md` —— 开发版专属的 devtools(左下角药丸 + 底边面板):造状态 / 造事件的注册表、每种注入套在哪个边界上、真机验过什么
+- `extension-marketplace.md` —— 拓展市场:官方索引怎么签、怎么发(`ext/<id>@<ver>` tag),第三方怎么自己开一个源,id 的命名空间规矩
 
 ## Agent skills
 

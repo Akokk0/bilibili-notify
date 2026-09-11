@@ -1,0 +1,50 @@
+# ADR-0013:拓展市场 —— 一个签名的官方源,加用户自己加的源
+
+- **状态**:2026-09-11 `/grill-me` 四轮 19 条拍板,同日落地(schema / server / web / 发布流水线 / 文档),**未 push、未发版、真机未验**;第一份官方索引要主人打 `ext/bridge@0.0.1` tag 才会出现
+- **影响面**:`packages/internal/src/schema/extension-marketplace.ts`(新)、`extension-manifest.ts`(id 放开命名空间)、`globals.ts`(`marketplace.sources`)、`apps/server/src/extensions/marketplace.ts`(新)、`apps/server/src/update/`(签名验证泛化)、`apps/web` 拓展页、`scripts/marketplace-index.mjs` / `pack-extension.mjs`、`.github/workflows/extension-release.yml`
+- **依赖**:ADR-0005(签名镜像链、信任公钥、加速前缀、新鲜度)、ADR-0012(拓展包的形状、上传装包那段落地逻辑、装载根)
+- **取代**:ADR-0012 决策 34 里「日后从签名镜像下载」那句预告 —— 现在有了
+
+## 背景
+
+本体一个拓展都不带(ADR-0012 决策 34),而装拓展只有两条路:面板传一个 zip、或者自己把目录放进 `<dataDir>/extensions/`。两条都要先从别处拿到包 —— 「别处」今天不存在。主人提议照自主升级那套开一个「类似 update channel 的东西」:仓库的 release 上挂一份签过名的索引,BN 自己去拉、去装。
+
+拷问下来的分歧只在两处:官方之外的拓展怎么进来(经我们手 vs 用户自己加源),以及同名的拓展怎么不撞(装时拼命名空间 vs 烧进 id)。
+
+## 决策
+
+### 形态
+
+1. **叫「拓展市场」**,面向用户;代码、路由、文件名一律 `marketplace`(`/api/ext/marketplace`、`marketplace.json`)。不叫 `market`(软件语境里不成词)也不叫 `catalog`(一义两词,违反 ADR-0012 决策 23)。文件名与 Claude Code 的 `marketplace.json` 撞名是故意的:写过那份的人一眼认得。
+2. **一个内置的官方源 + 用户自己加的源。** 官方源的索引由我们签(与自主升级同一对 Ed25519 公钥,`TRUSTED_UPDATE_KEYS`),走同一份加速前缀、同一条新鲜度规矩(`issuedAt` 只增不减,防加速站回放旧索引)。用户自加的源是一个 `https://` 地址指向一份 `marketplace.json`,**不签名、不走镜像**;下载只对索引里的 sha256 —— 防的是下载途中被换包,不是防作者。
+   - 被否:**策展制**(第三方也经我们的索引发)。理由:我们不想经手别人的东西;Claude Code 的 marketplace 就是「谁都能开一个源」,用户加一个地址就能装,作者只要托管一份索引 + 几个 zip。
+   - 代价照认:谁控制了那个地址谁就能换内容。所以**风险提示打两处**:添加源时一次(「BN 不审核这个源里的东西」,给不知道自己在干什么的人看)、装每个第三方条目时再确认一次(给知道但手滑的人看)。官方条目一键装。
+3. **官方索引单开一个滚动 release `extension-marketplace`**(不挂在 `update-channel` 上):任何一方发坏了都不牵连另一方,两条流水线各有各的并发锁。同域同路径前缀,一条加速前缀照样管住四样(本体清单、本体载荷、拓展索引、拓展包)。
+4. **每个拓展版本一个不可变 release**,tag `ext/<id>@<version>`,zip 挂上面;索引条目写 URL + sha256 + size,客户端不拼地址(沿用 ADR-0005 那条铁律)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红 —— 拓展是独立发布物,清单里的版本就该是真的,不像本体那样按 tag 临时改元数据。
+5. **一份索引,不分渠道**:条目带 `prerelease: true` 标记,BN 自己的更新渠道是预发布时才显示。拆两份文件只多一次 `--clobber` 失同步的机会。
+6. **每个 id 只列最新那一版**:「有没有新版」就是一次版本比较,索引永远很小;老版本靠发布页手动下。
+
+### 身份
+
+7. **命名空间烧进 id**:第三方源发的拓展 id 是 `<命名空间>.<名字>`,**没有点的 id 保留给官方源**。id 在 BN 里是落盘的键(连接的 `extensionId`、设置槽、目录名),它必须与用户怎么称呼那个源无关 —— 否则把源删掉换个名字再加,已装的拓展与它的连接就对不上了。
+   - 被否:Claude Code 的做法(`name@marketplace`,命名空间是用户本地给市场起的名、装时才拼)。它没这个问题是因为它的插件不被别的数据引用;而且 BN 一个 id 只装一份就够,不需要「同一个插件从两个市场各装一份」。
+   - 从 Claude Code 照抄三条:源的命名空间在本地**唯一**(撞了拒收,不顶掉 —— 顶掉会静默换掉一个源)、**官方保留**(第三方索引列一个 `bridge` 整个源拒)、界面写成「来自 alice」。
+8. **第三方索引必须声明 `namespace`,列的每个 id 都得在它自己的命名空间里**;官方索引的条目不带命名空间、必须有 `issuedAt`。两种源同一个 schema,规矩在 `checkMarketplaceIndex` 一处。
+9. **兼容性只看 `apiVersion`**(对上装载器的 `EXTENSION_API_VERSION`,对不上标灰「要先升级 BN」)。契约版本发布前钉在 1,发布之后契约真改了才升;`minHostVersion` 不加,今天没有例子。
+
+### 装与更新
+
+10. **server 拉、server 装**:公钥、镜像、落盘都在 server;`GET /api/ext/marketplace` 交已验过的索引 + 每条在这台机器上的状态,`POST /api/ext/marketplace/install { source, id }` 下载 → 校 sha256 → 走上传装包那**同一段**落地逻辑 → 记来源 → `rescan()`。打开拓展页才拉,缓存 5 分钟,不定时轮询。
+11. **来源记在 `<dataDir>/extensions/.marketplace.json`**(id → 从哪个源装的哪一版,外加官方索引见过的最大 `issuedAt`)。它是系统状态不是用户配置,所以不进 globals。「有新版」只认原来源;手放的、devtools 链的、别的源装的没有来源记录 → 标「不是从这里装的」,不提示更新。要换源装同一个 id 先卸掉(今天没有卸载入口,那是另一件事)。
+12. **只手动更新**:已装卡片上「有新版 vX」徽章 + 更新钮,覆盖已跑着的那份沿用今天的 `needsRestart` 逻辑;不进更新通知卡、不自动装 —— 拓展在 BN 进程里跑代码,自动换代码要单独拷问。
+13. **撤回**:索引带 `revoked: ["id@version"]`。V1 只做「撤回的版本不再提供下载、装着那版的卡片标红一句」;一键停用留到有例子再说。
+14. **界面**:拓展页上多一节「拓展市场」(条目卡、每条按状态画钮);标题旁一颗「源」钮开小弹窗管源(官方不可删);装包弹窗里的 ①② 留作后备。不单独开页。
+15. **开发版照拉照装**(它只落 `<dataDir>/extensions/`,不动本体;devtools 软链进来的那条已有「拒绝覆盖工作树」的保护)。fork 出去没有信任公钥的构建**没有官方源**,页面说清楚,第三方源照用。
+16. **索引的 `notes` 从 `extensions/<id>/CHANGELOG.md` 该版本段的概述抽**(同本体 CHANGELOG 的规矩、同一个脚本),没有就红。
+
+## 后果
+
+- 签名验证与拉取从「升级清单专用」泛化成「任意签名 JSON」(`loadSignedJson` / `fetchSignedJson`),升级那半边只是它的一个 wrapper。
+- `ExtensionIdSchema` 多认一个点;所有拿 id 当键的地方一行没动。
+- 第一份官方索引要主人打 `ext/bridge@0.0.1` tag(`extension-release.yml`)才会出现;在那之前市场那一节只会说「拿不到官方索引」。**真机一次都没验**。
+- 没做、明知的:卸载入口;撤回后一键停用;第三方索引的「更多信息」字段(owner 只存不画)。

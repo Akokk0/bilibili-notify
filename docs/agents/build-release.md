@@ -74,6 +74,10 @@ GitHub Release 的正文由 `create-standalone-github-release.sh` 拼(desktop-re
 
 两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
 
+拓展与本体分开发布(ADR-0013):
+
+- `.github/workflows/extension-release.yml` —— tag `ext/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,只装 `extension.json` + `index.mjs`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_UPDATE_SIGNING_KEY`)、覆盖到滚动 tag `extension-marketplace` 上的 `marketplace.json`。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
+
 不由 tag 触发、只手动跑的还有一条:
 
 - `.github/workflows/revoke-update.yml` —— **撤回一个已经发出去的坏版本**。重签渠道清单把它列进 `revoked`,并把用户指向该在的那一版。与 `update-payload` 共用一个 concurrency 组(两者都在改 `update-channel` 上那两份清单)。默认 dry-run,不跑门禁。用法见 [self-update.md](./self-update.md)。
