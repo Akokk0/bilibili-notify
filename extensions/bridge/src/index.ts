@@ -68,9 +68,31 @@ export function activate(ctx: ExtensionContext): void {
 	const connections = (): readonly ExtensionConnectionView<BridgeConnectionConfig>[] =>
 		source?.connections() ?? [];
 
-	/** 这条接入上的这个 bot 绑成了哪条连接 —— 入站归属靠它。没绑就是没有。 */
+	/**
+	 * 这条接入上的这个 bot 绑成了哪条连接。**停用的也算绑过** —— 面板要据此标「已加过」,
+	 * 不然同一个 bot 会被再加一条连接出来。「收不收它的消息」是另一问,见 `onInbound`。
+	 */
+	const boundConnection = (
+		linkId: string,
+		botId: string,
+	): ExtensionConnectionView<BridgeConnectionConfig> | undefined =>
+		connections().find((c) => c.config.link === linkId && c.config.botId === botId);
+
+	/** 这条接入上的这个 bot 绑成了哪条连接 —— 面板那一格「已加过」。没绑就是没有。 */
 	const connectionFor = (linkId: string, botId: string): string | undefined =>
-		connections().find((c) => c.config.link === linkId && c.config.botId === botId)?.id;
+		boundConnection(linkId, botId)?.id;
+
+	/**
+	 * 「这个 bot 自报的平台跟名单里的对不上」只说一次。每条入站消息都会走一遍那道比对,
+	 * 记一行的话一个嘴碎的群能把日志刷穿;而这是**桥的 bug**,说一次就够查了。
+	 */
+	const platformMismatches = new Set<string>();
+	function warnPlatformMismatch(botId: string, declared: string, actual: string): void {
+		const key = `${botId}:${declared}→${actual}`;
+		if (platformMismatches.has(key)) return;
+		platformMismatches.add(key);
+		ctx.logger.warn(`${botId} 的入站帧自报 ${declared},但名单里它是 ${actual} —— 按名单算`);
+	}
 
 	const server = createBridgeServer({
 		logger: ctx.logger,
@@ -86,12 +108,33 @@ export function activate(ctx: ExtensionContext): void {
 		onInbound: (session, frame) => {
 			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
 			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
-			const connectionId = connectionFor(session.linkId, frame.botId);
-			if (!connectionId) {
+			const bound = boundConnection(session.linkId, frame.botId);
+			if (!bound) {
 				ctx.logger.debug(`${session.linkId} 上的 ${frame.botId} 没绑成连接,这条消息不收`);
 				return;
 			}
-			routeBridgeInbound(frame, { connectionId, bots: session.bots }, ctx.inbound);
+			// 停用的连接**进也不收**:只拦出的那一半的话,指令照跑、链接照解析、图照渲染,
+			// 一路走到要发回去那步才失败。停用的意思是「这个 bot 现在跟 BN 没关系」。
+			if (!bound.enabled) {
+				ctx.logger.debug(`连接「${bound.name}」已停用,${frame.botId} 这条消息不收`);
+				return;
+			}
+			routeBridgeInbound(
+				frame,
+				{
+					connectionId: bound.id,
+					bots: session.bots,
+					onPlatformMismatch: (declared, actual) =>
+						warnPlatformMismatch(frame.botId, declared, actual),
+				},
+				ctx.inbound,
+			);
+		},
+		onBots: (linkId, bots) => {
+			// 名单是**会再变的**:插件探完能力会重发一份带答案的快照,bot 上下线也会。不喊
+			// 这一声的话面板上那张能力矩阵永远停在握手那一份 —— 探测结果要切一次页才看得见。
+			ctx.logger.debug(`${linkId} 报了 ${bots.length} 个 bot`);
+			ctx.statusChanged();
 		},
 		onSessionChange: (linkId, connected) => {
 			ctx.logger.info(`${linkId} ${connected ? "已连接" : "已断开"}`);

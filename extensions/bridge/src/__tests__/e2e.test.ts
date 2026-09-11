@@ -97,6 +97,8 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 	let pushSource: PushExtensionDef<unknown> | undefined;
 	let statusOf: (() => unknown) | undefined;
 	let statusChanges = 0;
+	/** 喂回核心的入站消息 —— 「该不该收」那道闸只在这儿看得出来。 */
+	const inboundCalls: { route: "private" | "group"; msg: unknown }[] = [];
 
 	function track(timer: NodeJS.Timeout): Disposable {
 		timers.push(timer);
@@ -149,7 +151,10 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 				onConnectionsChanged: () => ({ dispose() {} }),
 			};
 		},
-		inbound: { private() {}, group() {} },
+		inbound: {
+			private: (msg) => inboundCalls.push({ route: "private", msg }),
+			group: (msg) => inboundCalls.push({ route: "group", msg }),
+		},
 		onUpgrade(handler) {
 			upgradeHandler = handler;
 		},
@@ -181,6 +186,7 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		},
 		status: () => statusOf?.(),
 		statusChanges: () => statusChanges,
+		inbound: () => inboundCalls,
 		async dispose() {
 			for (const fn of [...hooks].reverse()) await fn();
 			for (const timer of timers) clearTimeout(timer);
@@ -240,10 +246,13 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	let port: number;
 	let host: ReturnType<typeof hostFor>;
 	let client: ReturnType<typeof peer> | undefined;
+	/** 宿主交下来的连接名单 —— 用例可以就地把那条连接停用掉。 */
+	let connections: Connection[];
 
 	beforeEach(async () => {
 		httpServer = createServer();
-		host = hostFor(httpServer, () => [CONNECTION]);
+		connections = [CONNECTION];
+		host = hostFor(httpServer, () => connections);
 		activate(host.ctx);
 		await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
 		port = (httpServer.address() as AddressInfo).port;
@@ -365,14 +374,80 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	it("statusChanged:握完手喊一声,断开再喊一声 —— 面板不用切页就刷新", async () => {
 		expect(host.statusChanges()).toBe(0);
 		await handshake();
-		expect(host.statusChanges()).toBe(1);
+		const shook = host.statusChanges();
+		expect(shook).toBeGreaterThanOrEqual(1);
 		client?.dispose();
 		const deadline = Date.now() + 2_000;
-		while (host.statusChanges() < 2 && Date.now() < deadline) {
+		while (host.statusChanges() <= shook && Date.now() < deadline) {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
-		expect(host.statusChanges()).toBe(2);
+		expect(host.statusChanges()).toBeGreaterThan(shook);
 		expect(host.status()).toMatchObject({ sessions: [{ linkId: LINK_ID, connected: false }] });
+	});
+
+	/**
+	 * 🔴 **bot 名单是会再变的**:插件探完能力会重发一份带答案的快照,bot 上下线也会。
+	 * 只在握手那一下喊 `statusChanged()` 的话,面板上那张能力矩阵永远停在握手那一份 ——
+	 * 探测结果要等主人切一次页才看得见,而这正是「面板说不支持、其实支持」的来路。
+	 */
+	it("bots 快照又来一份 → 再喊一声 statusChanged,能力矩阵跟着换", async () => {
+		await handshake();
+		const before = host.statusChanges();
+		client?.send({
+			type: "bots",
+			bots: [
+				{
+					botId: BOT_ID,
+					platform: "telegram",
+					icon: BOT_ICON,
+					capabilities: { miniAppCard: "supported" },
+				},
+			],
+		});
+		await expectEventually(() => expect(host.statusChanges()).toBeGreaterThan(before));
+		expect(host.status()).toMatchObject({
+			sessions: [
+				{
+					bots: [
+						expect.objectContaining({
+							capabilities: expect.objectContaining({ miniAppCard: "supported" }),
+						}),
+					],
+				},
+			],
+		});
+	});
+
+	// ---- 入站归属 ------------------------------------------------------------
+
+	it("桥驮上来的消息归那条绑好的连接,喂回核心时带着两坐标", async () => {
+		await handshake();
+		client?.send({
+			type: "inbound",
+			botId: BOT_ID,
+			platform: "telegram",
+			message: { scope: "private", userId: "u1", text: "/status" },
+		});
+		await expectEventually(() => expect(host.inbound()).toHaveLength(1));
+		expect(host.inbound()[0]).toMatchObject({ route: "private", msg: { userId: "u1" } });
+	});
+
+	/**
+	 * 🔴 **停用的连接不收入站**。只看「绑没绑成连接」的话,停用只拦得住**出**的那一半:
+	 * 指令照跑、链接照解析、图照渲染,一路走到要发回去那一步才失败。主人把一条连接停用
+	 * 的意思是「这个 bot 现在跟 BN 没关系」,而不是「它说的话照听、只是不回」。
+	 */
+	it("绑的那条连接停用了 → 驮上来的消息**一条都不收**", async () => {
+		await handshake();
+		connections = [{ ...CONNECTION, enabled: false }];
+		client?.send({
+			type: "inbound",
+			botId: BOT_ID,
+			platform: "telegram",
+			message: { scope: "private", userId: "u1", text: "/status" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		expect(host.inbound()).toEqual([]);
 	});
 
 	it("publishStatus:握过手之后,面板拿得到会话与 bot 名单", async () => {

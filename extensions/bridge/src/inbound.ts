@@ -19,6 +19,11 @@ import type { BridgeBot, BridgeInboundFrame } from "./contract.js";
 export interface BridgeInboundSource {
 	connectionId: string;
 	bots: readonly BridgeBot[];
+	/**
+	 * 帧里自报的 platform 与名单里那个 bot 的对不上时叫一声(先自报的、后名单的)。
+	 * **去重归调用方** —— 这一层每条消息都会经过,叫一声不等于每条都记一行。
+	 */
+	onPlatformMismatch?(declared: string, actual: string): void;
 }
 
 /**
@@ -27,13 +32,24 @@ export interface BridgeInboundSource {
  * `selfId` 从 bot 名单里查:链接解析那道「机器人自己贴的链接不解析」的闸全靠它。
  * **查不到也照走** —— 名单是全量快照,新上线的 bot 可能比它的第一条消息晚到;为这个
  * 丢消息,代价比多解析一条自己发的链接大得多(而协议本来就要求桥别回传自己的消息)。
+ *
+ * 🔴 `platform` 同样**认名单不认帧**:它是主人身份比对(平台 + 地址 + bot 三坐标)与
+ * 逐群策略的键,让一条入站帧自报等于让对面挑拿哪把钥匙开门。名单里查不到那个 bot 时才
+ * 退回帧里自报的那个 —— 那时没有更好的答案,而丢掉整条消息更糟。
  */
 export function routeBridgeInbound(
 	frame: BridgeInboundFrame,
 	source: BridgeInboundSource,
 	inbound: ExtensionContext["inbound"],
 ): void {
-	const meta: InboundMeta = { connectionId: source.connectionId, platform: frame.platform };
+	const bot = source.bots.find((candidate) => candidate.botId === frame.botId);
+	if (bot && bot.platform !== frame.platform) {
+		source.onPlatformMismatch?.(frame.platform, bot.platform);
+	}
+	const meta: InboundMeta = {
+		connectionId: source.connectionId,
+		platform: bot?.platform ?? frame.platform,
+	};
 	if (frame.message.scope === "private") {
 		inbound.private({ userId: frame.message.userId, text: frame.message.text }, meta);
 		return;
@@ -43,7 +59,7 @@ export function routeBridgeInbound(
 			groupId: frame.message.groupId,
 			userId: frame.message.userId,
 			text: frame.message.text,
-			selfId: source.bots.find((bot) => bot.botId === frame.botId)?.selfId,
+			selfId: bot?.selfId,
 			// 协议要求桥把分享卡 / 小程序卡里的链接**拼进正文**再发上来(§5.3),所以这两格
 			// 恒空:它们是 OneBot 那种「原始帧里另有一段 json」的产物,桥那侧没有原始帧。
 			cardLinks: [],
