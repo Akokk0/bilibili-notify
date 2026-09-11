@@ -163,6 +163,65 @@ describe("dev-apps supervisor", () => {
 		expect(children.map((child) => child.signals)).toEqual([["SIGINT"], ["SIGINT"]]);
 	});
 
+	/**
+	 * 直接子进程只是 `vp exec` 那层壳,它一收到 SIGINT 就退了;真正的 tsx / server 在它下面、
+	 * 同一个进程组里,还在走优雅退出。壳一退就返回,等于把 8 秒宽限期扔了 —— 组里剩下的
+	 * 谁卡住了都没人管,主人 Ctrl-C 之后 server 照跑(2026-09-11 真撞过)。
+	 */
+	it("有意停止后,子进程壳退了但进程组还有人 → 等到组空才返回,不补 SIGKILL", async () => {
+		const { children, spawnProcess } = createFakeSpawn();
+		let polls = 0;
+		const probeGroupAlive = vi.fn(() => polls++ < 3);
+		const run = runDevAppsNoWait({
+			root: "/repo",
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 1_000,
+			groupPollMs: 1,
+			probeGroupAlive,
+		});
+		process.emit("SIGINT");
+		await expect(run).resolves.toBe(0);
+		expect(probeGroupAlive).toHaveBeenCalled();
+		expect(polls).toBeGreaterThanOrEqual(3);
+		for (const child of children) expect(child.signals).not.toContain("SIGKILL");
+	});
+
+	it("宽限期过了进程组还有人 → SIGKILL 整组,再返回", async () => {
+		const { children, spawnProcess } = createFakeSpawn();
+		// 组一直「有人」,直到有人对它下 SIGKILL。
+		const probeGroupAlive = vi.fn((child) => !child.signals.includes("SIGKILL"));
+		const run = runDevAppsNoWait({
+			root: "/repo",
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 30,
+			groupPollMs: 1,
+			probeGroupAlive,
+		});
+		process.emit("SIGINT");
+		await expect(run).resolves.toBe(0);
+		for (const child of children) expect(child.signals).toEqual(["SIGINT", "SIGKILL"]);
+	});
+
+	it("终端被关(SIGHUP)也走同一套停止流程,不把整棵树留成孤儿", async () => {
+		const { children, spawnProcess } = createFakeSpawn();
+		const run = runDevAppsNoWait({
+			root: "/repo",
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 100,
+			groupPollMs: 1,
+			probeGroupAlive: () => false,
+		});
+		process.emit("SIGHUP");
+		await expect(run).resolves.toBe(0);
+		expect(children.map((child) => child.signals)).toEqual([["SIGTERM"], ["SIGTERM"]]);
+	});
+
 	it("子进程非 0 退出时停止另一个 dev 子进程并保留退出码", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
 		const run = runDevAppsNoWait({

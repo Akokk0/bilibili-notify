@@ -142,6 +142,9 @@ export async function runDevApps({
 	readyUrl = backendReadyUrl,
 	readyTimeoutMs = backendReadyTimeoutMs,
 	readyIntervalMs = backendReadyIntervalMs,
+	groupPollMs = 100,
+	probeGroupAlive = (child) => isProcessGroupAlive(child, processPlatform),
+	sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
 } = {}) {
 	const specs = createDevProcessSpecs(root);
 	const children = [];
@@ -149,24 +152,43 @@ export async function runDevApps({
 	let requestedExitCode = 0;
 	let settled = 0;
 	let forceTimer;
+	let forced = false;
 	const statuses = new Map();
 
 	return await new Promise((resolveRun) => {
 		const cleanup = () => {
 			process.off("SIGINT", onSigint);
 			process.off("SIGTERM", onSigterm);
+			process.off("SIGHUP", onSighup);
 			if (forceTimer) clearTimeout(forceTimer);
+		};
+
+		const exitCodeNow = () => {
+			if (intentionalStop) return requestedExitCode;
+			const failed = [...statuses.values()].find((status) => !isCleanStatus(status, false));
+			return failed ? statusToExitCode(failed) : 0;
+		};
+
+		// 🔴 直接子进程只是 `vp exec` 那层壳,它一收到信号就退;真正的 tsx / server / vite 在它
+		// 下面,**同一个进程组里**,还在走优雅退出。壳退了就返回,等于把宽限期扔了 —— 组里谁
+		// 卡住了都没人管,主人 Ctrl-C 之后 server 照跑。所以直接子进程全退之后,还要等每个
+		// 进程组真的空了;宽限期到了还有人,整组 SIGKILL。
+		const drainGroups = async () => {
+			const alive = () => children.filter(({ child }) => probeGroupAlive(child));
+			while (alive().length > 0 && !forced) await sleep(groupPollMs);
+			if (!forced) return;
+			// 已经下过 SIGKILL —— 再给一个宽限期让内核收尸,之后不再等(不能让停机挂死)。
+			const deadline = Date.now() + graceMs;
+			while (alive().length > 0 && Date.now() < deadline) await sleep(groupPollMs);
 		};
 
 		const finishIfDone = () => {
 			if (settled < children.length) return;
-			cleanup();
-			if (intentionalStop) {
-				resolveRun(requestedExitCode);
-				return;
-			}
-			const failed = [...statuses.values()].find((status) => !isCleanStatus(status, false));
-			resolveRun(failed ? statusToExitCode(failed) : 0);
+			const exitCode = exitCodeNow();
+			void drainGroups().then(() => {
+				cleanup();
+				resolveRun(exitCode);
+			});
 		};
 
 		const stopAll = (reason, exitCode, signal = "SIGINT") => {
@@ -177,6 +199,7 @@ export async function runDevApps({
 			if (!forceTimer) {
 				forceTimer = setTimeout(() => {
 					log(`[dev:apps] dev servers did not exit within ${graceMs}ms; force killing…`);
+					forced = true;
 					for (const { child } of children) sendSignal(child, "SIGKILL", processPlatform);
 				}, graceMs);
 				forceTimer.unref?.();
@@ -185,8 +208,11 @@ export async function runDevApps({
 
 		const onSigint = () => stopAll("received SIGINT", 0, "SIGINT");
 		const onSigterm = () => stopAll("received SIGTERM", 0, "SIGTERM");
+		// 终端被关掉时 shell 发的是 SIGHUP;不接的话 runner 当场死、整棵树留成孤儿。
+		const onSighup = () => stopAll("received SIGHUP", 0, "SIGTERM");
 		process.on("SIGINT", onSigint);
 		process.on("SIGTERM", onSigterm);
+		process.on("SIGHUP", onSighup);
 
 		const startProcess = (spec) => {
 			if (intentionalStop) return undefined;
@@ -243,9 +269,13 @@ export async function runDevApps({
 	});
 }
 
+/**
+ * 信号打给**整个进程组**,不只打给直接子进程:子进程是 `detached` 起的,自己就是组长,
+ * 它退了组还可能在(tsx / server 都在它底下)。所以这里**不**按「子进程已退出」短路。
+ */
 function sendSignal(child, signal, processPlatform = platform) {
-	if (child.exitCode !== null || child.signalCode !== null) return;
 	if (processPlatform === "win32" && child.pid) {
+		if (child.exitCode !== null || child.signalCode !== null) return;
 		killWindowsProcessTree(child.pid);
 		return;
 	}
@@ -257,11 +287,25 @@ function sendSignal(child, signal, processPlatform = platform) {
 		process.kill(-child.pid, signal);
 	} catch (err) {
 		if (err?.code === "ESRCH") return;
+		if (child.exitCode !== null || child.signalCode !== null) return;
 		try {
 			child.kill(signal);
 		} catch (fallbackErr) {
 			if (fallbackErr?.code !== "ESRCH") throw fallbackErr;
 		}
+	}
+}
+
+/** 这个子进程的进程组里还有没有活人 —— `kill(-pgid, 0)` 只探不打。 */
+export function isProcessGroupAlive(child, processPlatform = platform) {
+	// Windows 没有进程组,taskkill /T 已经把整棵树带走了。
+	if (processPlatform === "win32" || !child.pid) return false;
+	try {
+		process.kill(-child.pid, 0);
+		return true;
+	} catch (err) {
+		// EPERM = 组里有人、只是不归我们管;当活着算。
+		return err?.code === "EPERM";
 	}
 }
 
@@ -272,5 +316,7 @@ function killWindowsProcessTree(pid) {
 }
 
 if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
+	// 终端没了之后往 stdout / stderr 写会 EIO;不接住的话 runner 会在收摊半路上炸掉。
+	for (const stream of [process.stdout, process.stderr]) stream.on("error", () => {});
 	process.exitCode = await runDevApps();
 }
