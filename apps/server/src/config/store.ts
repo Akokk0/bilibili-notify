@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
 	CONFIG_SCHEMA_VERSION,
@@ -240,7 +240,7 @@ async function readJsonOrInit<T>(
 
 async function fileExists(absPath: string): Promise<boolean> {
 	try {
-		await readFile(absPath, "utf8");
+		await stat(absPath);
 		return true;
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
@@ -457,17 +457,6 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
 }
 
 /**
- * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
- *
- * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
- * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
- *
- * 🔴 **拓展那一支同样比平台。** 它曾经没有 `platform`(那时一条连接是「一条驮着 N 个
- * 平台的桥接入」,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的
- * bot」(决策 45)之后它有了,面板建目标时也正是从连接上抄的这一格 —— 早退留着,就等于
- * 「目标写着 onebot、连接却是 telegram」能存下去,而错要到发第一条推送时才现形。
- */
-/**
  * 「这条连接不存在」那一句。
  *
  * 🔴 **它是被别的模块读的**(路由拿它把错分成 404 还是 400),所以不能只是一句文案:
@@ -483,6 +472,17 @@ export function isConnectionNotFound(err: unknown): boolean {
 	return issues?.message === CONNECTION_NOT_FOUND;
 }
 
+/**
+ * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
+ *
+ * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
+ * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
+ *
+ * 🔴 **拓展那一支同样比平台。** 它曾经没有 `platform`(那时一条连接是「一条驮着 N 个
+ * 平台的桥接入」,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的
+ * bot」(决策 45)之后它有了,面板建目标时也正是从连接上抄的这一格 —— 早退留着,就等于
+ * 「目标写着 onebot、连接却是 telegram」能存下去,而错要到发第一条推送时才现形。
+ */
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
 	const owner = connections.find((a) => a.id === target.connectionId);
 	if (!owner) {
@@ -1294,6 +1294,32 @@ class NodeConfigStore implements ConfigStore {
 		return removed;
 	}
 
+	/**
+	 * 一条连接落盘之后的**连带账**:托管的 webhook 目标跟着同步、目标换 id 时订阅里的
+	 * 引用跟着改写,最后按「这一轮到底动了哪几个分区」发事件。
+	 *
+	 * upsert 与 patch 共用这一份 —— 两处各抄一遍的话,加一个连带分区时总会漏掉一边,
+	 * 而症状是「改连接时同步了、打补丁时没同步」这种只有真机才露馅的分叉。
+	 */
+	private async syncWebhookSideEffects(connection: Connection): Promise<void> {
+		let targetAliases = new Map<string, string>();
+		const targetsChanged = isWebhookConnection(connection)
+			? await this.runScoped("targets", async () => {
+					const synced = syncManagedWebhookTarget(connection, this.targets);
+					targetAliases = synced.aliases;
+					if (!synced.changed) return false;
+					await atomicWriteJson(this.path("targets"), synced.next);
+					this.targets = synced.next;
+					this.touch("targets");
+					return true;
+				})
+			: false;
+		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
+		this.bus.emit("config-changed", "connections");
+		if (targetsChanged) this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+	}
+
 	async upsertConnection(connection: Connection): Promise<void> {
 		const saved = await this.runScoped("connections", async () => {
 			const parsed = ConnectionSchema.safeParse(connection);
@@ -1308,22 +1334,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("connections");
 			return parsed.data;
 		});
-		let targetAliases = new Map<string, string>();
-		const targetsChanged = isWebhookConnection(saved)
-			? await this.runScoped("targets", async () => {
-					const synced = syncManagedWebhookTarget(saved, this.targets);
-					targetAliases = synced.aliases;
-					if (!synced.changed) return false;
-					await atomicWriteJson(this.path("targets"), synced.next);
-					this.targets = synced.next;
-					this.touch("targets");
-					return true;
-				})
-			: false;
-		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "connections");
-		if (targetsChanged) this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		await this.syncWebhookSideEffects(saved);
 	}
 
 	async patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection> {
@@ -1350,22 +1361,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("connections");
 			return parsed.data;
 		});
-		let targetAliases = new Map<string, string>();
-		const targetsChanged = isWebhookConnection(result)
-			? await this.runScoped("targets", async () => {
-					const synced = syncManagedWebhookTarget(result, this.targets);
-					targetAliases = synced.aliases;
-					if (!synced.changed) return false;
-					await atomicWriteJson(this.path("targets"), synced.next);
-					this.targets = synced.next;
-					this.touch("targets");
-					return true;
-				})
-			: false;
-		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "connections");
-		if (targetsChanged) this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		await this.syncWebhookSideEffects(result);
 		return deepClone(result);
 	}
 
@@ -1430,7 +1426,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
-			this.assertConnectionMatches(parsed.data);
+			assertTargetOwner(parsed.data, this.connections);
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
 			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
@@ -1489,7 +1485,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
-			this.assertConnectionMatches(parsed.data);
+			assertTargetOwner(parsed.data, this.connections);
 			const next = [...this.targets];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("targets"), next);
@@ -1520,10 +1516,6 @@ class NodeConfigStore implements ConfigStore {
 		});
 		this.bus.emit("config-changed", "targets");
 		return deepClone(result);
-	}
-
-	private assertConnectionMatches(target: PushTarget): void {
-		assertTargetOwner(target, this.connections);
 	}
 
 	async deleteTarget(id: string): Promise<boolean> {
