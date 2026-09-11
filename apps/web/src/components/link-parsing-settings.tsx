@@ -56,15 +56,21 @@ export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
 const INHERIT = "inherit" as const;
 
 /**
- * 能列进例外表的目标:群类,且平台收得到入站消息(webhook 只出不进,配了也没用)。
+ * 能列进例外表的目标:群类,且这条路上收得到入站消息(webhook 只出不进,配了也没用)。
  *
- * **问的是 `platformCanReceiveReply`,不是自己拿词表 `includes` 一遍** —— 这里原先是那份
- * 词表的第三个消费方,而另外两个走的是这个谓词。接桥之后「收不收得到」要由能力位回答、
- * 不再看平台名,那时只有谓词那一处改;各写各的话,这张表会继续按平台名筛,把桥驮进来的
- * 群整批漏掉,而且不报错。
+ * **直连问的是 `platformCanReceiveReply`,不是自己拿词表 `includes` 一遍** —— 这里原先是
+ * 那份词表的第三个消费方,而另外两个走的是这个谓词。
+ *
+ * 🔴 **拓展借来的连接不走那个谓词**:一条拓展连接就是一个借来的 bot(ADR-0012 决策 45),
+ * 它的 `platform` 是从 bot 身上抄来的**开放字符串**(telegram / discord / 自定义…),
+ * `PLATFORM_REGISTRY` 里根本没有它,于是 `inbound` 恒为 undefined、整批群被这张表漏掉 ——
+ * 而运行时照样解析它们发的链接,配不上的那几群就永远调不了。判据只能是「这条连接是拓展
+ * 借来的」。
  */
-function isGroupCandidate(t: PushTarget): boolean {
-	return t.scope === "group" && platformCanReceiveReply(t.platform);
+function isGroupCandidate(t: PushTarget, connections: readonly Connection[]): boolean {
+	if (t.scope !== "group") return false;
+	if (connections.find((c) => c.id === t.connectionId)?.kind === "extension") return true;
+	return platformCanReceiveReply(t.platform);
 }
 
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
@@ -99,7 +105,7 @@ export function LinkParsingSettings({
 	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkParsing;
-	const candidates = targets.filter(isGroupCandidate);
+	const candidates = targets.filter((t) => isGroupCandidate(t, connections));
 	// 两格都调回「跟默认」时草稿里留下的是个空对象(删除哨兵把字段删掉,不删这一格),
 	// 它已经不是例外了 —— 数键会让卡上多出一条根本不存在的例外,直到存盘重拉才消失。
 	const overrides = Object.values(cfg.groups).filter(

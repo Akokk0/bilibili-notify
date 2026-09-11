@@ -190,6 +190,66 @@ describe("LinkParsingSettings", () => {
 			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
 		});
 
+		/**
+		 * 🔴 桥借来的平台(telegram / discord …)是**握手时才知道的开放字符串**,平台注册表
+		 * 里压根没有它 —— 按注册表筛,这些群整批被漏掉,而运行时照样会解析它们发的链接。
+		 * 判据只能是「这条连接是拓展借来的」。
+		 */
+		it("拓展连接底下的群也算候选 —— 它的平台不在注册表里,但链接照样会被解析", () => {
+			const EXT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+			renderCard(
+				draftWith(),
+				vi.fn(),
+				[target(T_A, "电报群", { connectionId: EXT, platform: "telegram" } as never)],
+				{
+					connections: [
+						{
+							id: EXT,
+							name: "小电视",
+							kind: "extension",
+							extensionId: "bridge",
+							platform: "telegram",
+							enabled: true,
+							config: {},
+						} as unknown as Connection,
+					],
+				},
+			);
+			openGroups();
+			expect(screen.getByRole("group", { name: "电报群" })).toBeTruthy();
+		});
+
+		it("拓展连接上的**私聊**目标还是不列 —— 例外表讲的只是群", () => {
+			const EXT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+			renderCard(
+				draftWith(),
+				vi.fn(),
+				[
+					target(T_A, "电报群", { connectionId: EXT, platform: "telegram" } as never),
+					target(T_PRIVATE, "电报私聊", {
+						connectionId: EXT,
+						platform: "telegram",
+						scope: "private",
+					} as never),
+				],
+				{
+					connections: [
+						{
+							id: EXT,
+							name: "小电视",
+							kind: "extension",
+							extensionId: "bridge",
+							platform: "telegram",
+							enabled: true,
+							config: {},
+						} as unknown as Connection,
+					],
+				},
+			);
+			openGroups();
+			expect(screen.queryByRole("group", { name: "电报私聊" })).toBeNull();
+		});
+
 		it("只列群类且收得到入站消息的目标:私聊与 webhook 不出现,官机群算", () => {
 			renderCard(draftWith());
 			openGroups();
