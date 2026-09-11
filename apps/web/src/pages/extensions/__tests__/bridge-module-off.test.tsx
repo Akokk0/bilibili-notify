@@ -18,15 +18,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { renderPanel } from "./bridge-harness";
-
-const LINK = {
-	id: "c1",
-	name: "家里那台",
-	enabled: true,
-	token: "0123456789abcdef0123456789abcdef",
-	bridgeKind: "koishi",
-};
+import { LINK, renderPanel } from "./bridge-harness";
 
 // 关着的拓展没跑起来 —— `/status` 是 404(不给 status 就是那一档),与「崩了」一模一样
 function renderOff(enabled: boolean, links: unknown[] = [LINK]) {

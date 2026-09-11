@@ -6,6 +6,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import ExtensionDetail from "../ExtensionDetail";
+// 写回名单的读法只有一份 —— 那句 `as` 断言形状漂了不会红,所以不许再抄(见该文件)。
+import { savedLinks } from "../extensions/__tests__/bridge-harness";
 
 const { apiGetMock, apiPostMock, apiPatchMock, apiDeleteMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
@@ -42,24 +44,6 @@ const LISTED: ExtensionsResponse = {
 const LINKS = [
 	{ id: LINK_ID, name: "家里那台", enabled: true, token: OLD_TOKEN, bridgeKind: "koishi" },
 ];
-
-/** 写回去的那份名单 —— 接入名单整份写回 globals 的那一格。 */
-function savedLinks(): Array<{ id: string; name: string; token: string; bridgeKind: string }> {
-	const [url, body] = apiPatchMock.mock.calls[0] as [
-		string,
-		{
-			extensions: {
-				bridge: {
-					settings: {
-						links: Array<{ id: string; name: string; token: string; bridgeKind: string }>;
-					};
-				};
-			};
-		},
-	];
-	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
-	return body.extensions.bridge.settings.links;
-}
 
 /** 拓展没跑起来时这一口是 404 —— 接入照样得管得了。 */
 function mockApi(opts: { statusFails?: boolean } = {}) {

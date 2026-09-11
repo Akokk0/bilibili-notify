@@ -23,6 +23,58 @@ export function globalsWith(links: unknown[]) {
 	return { extensions: { bridge: { enabled: true, settings: { links } } } };
 }
 
+/** 名单里的一条 —— 只列这几处测试真读的那几格。 */
+export interface SavedLink {
+	id: string;
+	name: string;
+	bridgeKind: string;
+	token: string;
+	enabled: boolean;
+}
+
+/**
+ * 第 `call` 发写回里的那份接入名单 —— `globalsWith` 的**读**这一半。
+ *
+ * 🔴 里头那句 `as` 是个断言:名单换了位置(它已经换过一次,从连接表搬进拓展设置)时它
+ * 一个字都不会红,只会在下一行的 `undefined` 上炸得没头没脑。所以读法只留这一份,改一处
+ * 就是全部 —— 此前它在五个文件里各抄一份。
+ */
+export function savedLinks(call = 0): SavedLink[] {
+	const args = vi.mocked(api.patch).mock.calls[call];
+	if (!args) throw new Error(`没有第 ${call + 1} 发写回`);
+	const [url, body] = args as [
+		string,
+		{ extensions: { bridge: { settings: { links: SavedLink[] } } } },
+	];
+	// 写去别处的话名单一样读得出来,而那正是要红的时候。
+	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
+	const links = body.extensions?.bridge?.settings?.links;
+	// 形状漂了就在这里说清楚 —— 否则只是下一行的 `undefined` 上一句没头没脑的 TypeError。
+	if (!Array.isArray(links)) throw new Error(`写回里没有接入名单:${JSON.stringify(body)}`);
+	return links;
+}
+
+/** 这一摞测试共用的那把钥匙:32 位十六进制,与面板自己生成的同形。 */
+export const TOKEN = "0123456789abcdef0123456789abcdef";
+
+/** 一条接入的常态样子;要变哪一格就 `{ ...LINK, … }`。 */
+export const LINK = {
+	id: "c1",
+	name: "家里那台",
+	enabled: true,
+	token: TOKEN,
+	bridgeKind: "koishi",
+};
+
+/** 并排的第二条 —— 另一种桥、另一把钥匙,一屏两条时要分得出谁是谁。 */
+export const ASTRBOT_LINK = {
+	id: "c2",
+	name: "机房那台",
+	enabled: true,
+	token: "ffffffffffffffffffffffffffffffff",
+	bridgeKind: "astrbot",
+};
+
 export interface BridgePanelSetup {
 	/** 那份接入名单;`null` = 那一口读不到(401 / 服务端炸了 / 断网)。 */
 	links?: unknown[] | null;

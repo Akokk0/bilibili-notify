@@ -21,26 +21,11 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { renderPanel } from "./bridge-harness";
-
-const TOKEN = "0123456789abcdef0123456789abcdef";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-const LINK = {
-	id: "c1",
-	name: "家里那台",
-	enabled: true,
-	token: TOKEN,
-	bridgeKind: "koishi",
-};
+import { LINK, renderPanel, savedLinks, TOKEN } from "./bridge-harness";
 
 /** 那一发整份写回里,第一条接入的 token。 */
 function patchedToken(): string | undefined {
-	const [, body] = vi.mocked(api.patch).mock.calls[0] as [
-		string,
-		{ extensions: { bridge: { settings: { links: Array<{ token: string }> } } } },
-	];
-	return body.extensions.bridge.settings.links[0]?.token;
+	return savedLinks()[0]?.token;
 }
 
 /** 按下接入卡上那颗「重新生成」。 */

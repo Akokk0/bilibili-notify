@@ -21,18 +21,10 @@ vi.mock("../../../services/api", () => ({
 
 import { api } from "../../../services/api";
 import { maskToken } from "../bridge-panel";
-import { renderPanel } from "./bridge-harness";
+import { LINK as HOME, renderPanel, savedLinks, TOKEN } from "./bridge-harness";
 
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-const TOKEN = "0123456789abcdef0123456789abcdef";
-
-const LINK = {
-	id: "c1",
-	name: "koishi 那台",
-	enabled: true,
-	token: TOKEN,
-	bridgeKind: "koishi",
-};
+/** 这一页的接入叫 koishi 那台 —— 掩码那几条讲的是「两条接入分得出谁是谁」。 */
+const LINK = { ...HOME, name: "koishi 那台" };
 
 // 地址行住在详情页的头卡上,token 行在接入卡上 —— 两处的「复制」走的是同一件事
 function renderTokenRow(links: unknown[] = [LINK]) {
@@ -90,11 +82,7 @@ describe("token 那一行", () => {
 		const regenerate = screen.getByRole("button", { name: /重新生成/ });
 		await userEvent.click(regenerate);
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls[0] as [
-			string,
-			{ extensions: { bridge: { settings: { links: Array<{ token: string }> } } } },
-		];
-		expect(body.extensions.bridge.settings.links[0]?.token).toMatch(/^[0-9a-f]{32}$/);
+		expect(savedLinks()[0]?.token).toMatch(/^[0-9a-f]{32}$/);
 	});
 });
 

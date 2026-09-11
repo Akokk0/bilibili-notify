@@ -20,17 +20,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { renderPanel } from "./bridge-harness";
-
-const TOKEN = "0123456789abcdef0123456789abcdef";
-
-const LINK = {
-	id: "c1",
-	name: "家里那台",
-	enabled: true,
-	token: TOKEN,
-	bridgeKind: "koishi",
-};
+import { LINK, renderPanel, savedLinks, TOKEN } from "./bridge-harness";
 
 function renderMismatch(reportedKind: string) {
 	return renderPanel({
@@ -84,16 +74,7 @@ describe("桥自报的种类和这条接入对不上", () => {
 		await userEvent.click(await screen.findByRole("button", { name: /改成 AstrBot/ }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		// 接入住桥的设置里:整份名单写回,改的只有种类那一格。
-		const [url, body] = vi.mocked(api.patch).mock.calls[0] as [
-			string,
-			{
-				extensions: {
-					bridge: { settings: { links: { id: string; bridgeKind: string; token: string }[] } };
-				};
-			},
-		];
-		expect(url).toBe("/api/globals");
-		const links = body.extensions.bridge.settings.links;
+		const links = savedLinks();
 		expect(links).toHaveLength(1);
 		expect(links[0]).toMatchObject({ id: "c1", bridgeKind: "astrbot", token: TOKEN });
 	});

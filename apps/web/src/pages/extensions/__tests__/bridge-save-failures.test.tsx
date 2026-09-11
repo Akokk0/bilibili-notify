@@ -21,15 +21,8 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { renderPanel } from "./bridge-harness";
+import { LINK as HOME, renderPanel } from "./bridge-harness";
 
-const HOME = {
-	id: "c1",
-	name: "家里那台",
-	enabled: true,
-	token: "0123456789abcdef0123456789abcdef",
-	bridgeKind: "koishi",
-};
 const OFFICE = { ...HOME, id: "c2", name: "机房那台" };
 
 /** `links` 传 `null` = 那一口读不到(401 / 服务端炸了 / 断网)。 */

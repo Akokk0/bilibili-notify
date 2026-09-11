@@ -19,15 +19,9 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { renderPanel } from "./bridge-harness";
+import { LINK as HOME, renderPanel } from "./bridge-harness";
 
-const LINK = {
-	id: "c1",
-	name: "koishi 那台",
-	enabled: true,
-	token: "0123456789abcdef0123456789abcdef",
-	bridgeKind: "koishi",
-};
+const LINK = { ...HOME, name: "koishi 那台" };
 
 const STATUS = {
 	sessions: [

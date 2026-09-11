@@ -19,23 +19,7 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { renderPanel } from "./bridge-harness";
-
-const KOISHI = {
-	id: "c1",
-	name: "家里那台",
-	enabled: true,
-	token: "0123456789abcdef0123456789abcdef",
-	bridgeKind: "koishi",
-};
-
-const ASTRBOT = {
-	id: "c2",
-	name: "机房那台",
-	enabled: true,
-	token: "ffffffffffffffffffffffffffffffff",
-	bridgeKind: "astrbot",
-};
+import { ASTRBOT_LINK, LINK, renderPanel } from "./bridge-harness";
 
 /** 桥随 bot 报上来的平台图标(协议 §5.2)。 */
 const BRIDGE_ICON = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
@@ -73,7 +57,7 @@ const STATUS = {
 function renderMarks() {
 	// 与真页面同一张表:内置平台那份注册表,拓展一个都没装
 	return renderPanel({
-		links: [KOISHI, ASTRBOT],
+		links: [LINK, ASTRBOT_LINK],
 		status: STATUS,
 		platforms: buildPlatformTable([]),
 	});

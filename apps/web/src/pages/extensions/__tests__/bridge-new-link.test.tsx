@@ -17,7 +17,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { renderPanel } from "./bridge-harness";
+import { renderPanel, type SavedLink, savedLinks } from "./bridge-harness";
 
 async function openDialog() {
 	renderPanel();
@@ -37,18 +37,9 @@ function shownToken(dialog: HTMLElement): string {
 	return hit.trim();
 }
 
-/** 存下去的那条接入 —— 接入名单是整份写回 `globals.extensions.bridge.settings.links` 的,新的那条在末尾。 */
-function savedLink(): { token: string; bridgeKind: string; name: string } {
-	const [url, body] = vi.mocked(api.patch).mock.calls[0] as [
-		string,
-		{
-			extensions: {
-				bridge: { settings: { links: { token: string; bridgeKind: string; name: string }[] } };
-			};
-		},
-	];
-	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
-	const link = body.extensions.bridge.settings.links.at(-1);
+/** 存下去的那条接入 —— 接入名单是整份写回的,新的那条在末尾。 */
+function savedLink(): SavedLink {
+	const link = savedLinks().at(-1);
 	if (!link) throw new Error("名单里没有新的那条");
 	return link;
 }

@@ -18,24 +18,9 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { renderPanel } from "./bridge-harness";
+import { ASTRBOT_LINK, LINK, renderPanel } from "./bridge-harness";
 
-const LINKS = [
-	{
-		id: "c1",
-		name: "家里那台",
-		enabled: true,
-		token: "0123456789abcdef0123456789abcdef",
-		bridgeKind: "koishi",
-	},
-	{
-		id: "c2",
-		name: "机房那台",
-		enabled: true,
-		token: "ffffffffffffffffffffffffffffffff",
-		bridgeKind: "astrbot",
-	},
-];
+const LINKS = [LINK, ASTRBOT_LINK];
 
 function renderSince(connectedAt: number) {
 	return renderPanel({
