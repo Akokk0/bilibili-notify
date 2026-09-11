@@ -80,6 +80,11 @@ export interface CreateExtensionContextOptions {
 	adapters: AdapterRegistry;
 	/** 全部连接,**现读**。属于谁由宿主筛。 */
 	connections: () => readonly Connection[];
+	/**
+	 * 按 id 取**一条**连接。入站每条消息都要校验一次归属,而「全表」那口在宿主那头是
+	 * deepClone 整张表 —— 给了这口就只拷命中的那一条。不给就退回扫全表。
+	 */
+	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。⛔ 拿不到 bus —— 宿主替它订,只把结果转给它。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/** 它自己那份设置(`globals.extensions.<id>.settings`),**现读**、原样。 */
@@ -170,11 +175,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	/** 这条连接是不是它自己的 —— 是的话把连接交出来,入站那两道校验都要用。 */
 	function own(connectionId: string): Connection | undefined {
-		return opts
-			.connections()
-			.find(
-				(connection) => isExtensionConnection(connection, id) && connection.id === connectionId,
-			);
+		const hit = opts.connection
+			? opts.connection(connectionId)
+			: opts.connections().find((connection) => connection.id === connectionId);
+		return hit && isExtensionConnection(hit, id) ? hit : undefined;
 	}
 
 	/**

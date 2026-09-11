@@ -92,6 +92,8 @@ export interface ConfigStore {
 	getGlobals(): GlobalConfig;
 	getSubscriptions(): Subscription[];
 	getConnections(): Connection[];
+	/** 只拷命中的那一条 —— 入站热路径按 id 校验归属用,别拿 getConnections() 再 find。 */
+	getConnection(id: string): Connection | undefined;
 	getTargets(): PushTarget[];
 
 	getGlobalsMeta(): ConfigScopeMeta;
@@ -1163,6 +1165,11 @@ class NodeConfigStore implements ConfigStore {
 
 	getConnections(): Connection[] {
 		return deepClone(this.connections);
+	}
+
+	getConnection(id: string): Connection | undefined {
+		const hit = this.connections.find((connection) => connection.id === id);
+		return hit ? deepClone(hit) : undefined;
 	}
 
 	getTargets(): PushTarget[] {

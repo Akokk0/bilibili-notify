@@ -67,6 +67,9 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 	}> = [];
 	/** `settings()` 被问了几次 —— 宿主那头每问一次就 deepClone 一整份 globals。 */
 	let settingsReads = 0;
+	/** 全表 / 单条各被问了几次 —— 全表那口在宿主那头是 deepClone 整张连接表。 */
+	let connectionsReads = 0;
+	let connectionReads = 0;
 	const adapters = createAdapterRegistry();
 
 	const runtime = createExtensionContext({
@@ -74,7 +77,14 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 		host,
 		mounts: createExtensionMounts(),
 		adapters,
-		connections: () => connections,
+		connections: () => {
+			connectionsReads += 1;
+			return connections;
+		},
+		connection: (connectionId) => {
+			connectionReads += 1;
+			return connections.find((c) => c.id === connectionId);
+		},
 		onConnectionsChanged: (fn): Disposable => {
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
@@ -118,6 +128,8 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 		lines,
 		inboundSeen,
 		settingsReads: () => settingsReads,
+		connectionsReads: () => connectionsReads,
+		connectionReads: () => connectionReads,
 		setConnections(next: Connection[]) {
 			connections = next;
 			for (const fn of [...listeners]) fn();
@@ -282,6 +294,18 @@ describe("读到属于自己的连接", () => {
 
 describe("喂入站", () => {
 	const meta = (connectionId: string) => ({ connectionId, platform: "telegram" });
+
+	/**
+	 * 🔴 入站是每条消息一趟的热路径。宿主的「全表」那口每问一次就 deepClone 整张连接表,
+	 * 而校验归属只要那一条 —— 所以给了单条访问口就得走它,全表一次都不许问。
+	 */
+	it("校验归属走单条访问口,不问全表", () => {
+		const h = harness();
+		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		expect(h.inboundSeen).toHaveLength(1);
+		expect(h.connectionReads()).toBe(1);
+		expect(h.connectionsReads()).toBe(0);
+	});
 
 	it("私聊与群消息都送得到下一层", () => {
 		const h = harness();

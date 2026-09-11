@@ -20,6 +20,26 @@ export const ExtensionProvidesSchema = z.enum(EXTENSION_PROVIDES);
 export type ExtensionProvides = z.infer<typeof ExtensionProvidesSchema>;
 
 /**
+ * 一个拓展现在处于什么状态 —— 与主人按的那个开关是**两件事**:开关开着而它没跑,
+ * 恰恰是最需要看见的那一格。宿主的装载器产出它,面板契约原样转出,所以只在这儿写一份。
+ */
+export const EXTENSION_RUN_STATES = [
+	/** 跑着。 */
+	"running",
+	/** 主人把开关关了。没启用的拓展一行代码都不会被 import。 */
+	"disabled",
+	/** 连着加载失败,自动停用了。 */
+	"blocked",
+	/** 这一次加载炸了。 */
+	"failed",
+	/** 清单读不了 / 与目录对不上 / 缺入口。 */
+	"unreadable",
+	/** 给别的宿主契约版本写的。 */
+	"incompatible",
+] as const;
+export type ExtensionRunState = (typeof EXTENSION_RUN_STATES)[number];
+
+/**
  * 拓展 id —— 它同时是**三个地方的一段**:URL(`/ext/:id/*`)、装载目录
  * (`<dataDir>/extensions/<id>/`)、失败记账的键。所以「非空字符串」远远不够,而且必须
  * **在清单校验这一步**就拦住:放过去之后每一处都得自己防一遍,漏一处就是路径穿越。

@@ -9,6 +9,7 @@ import type {
 	CachedProfile,
 	ConnectionCapabilities,
 	ExtensionProvides,
+	ExtensionRunState,
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PlatformDescriptor,
@@ -52,13 +53,7 @@ export type ConnectionCapabilitiesMap = Record<string, Record<string, Connection
  *
  * 开关开着而它没跑,恰恰是最需要看见的那一格(连败自动停用、清单坏了、版本不合)。
  */
-export type ExtensionStateDTO =
-	| "running"
-	| "disabled"
-	| "blocked"
-	| "failed"
-	| "unreadable"
-	| "incompatible";
+export type ExtensionStateDTO = ExtensionRunState;
 
 /**
  * 拓展挂载点的前缀 —— `/ext/<id>/*`。

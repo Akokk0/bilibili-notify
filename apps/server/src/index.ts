@@ -807,6 +807,7 @@ export async function startStandaloneServer(
 			// 会在 `list()` 时现包(见 devtools/index.ts)。
 			adapters: adapterRegistry,
 			connections: () => runtime.configStore.getConnections(),
+			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
 			onConnectionsChanged: (fn) =>
 				runtime.bus.on("config-changed", (scope) => {

@@ -5,6 +5,7 @@ import type {
 	Connection,
 	Disposable,
 	ExtensionManifest,
+	ExtensionRunState,
 	InboundSinks,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -21,19 +22,8 @@ import type { ExtensionMounts } from "./mount.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 
 /** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
-export type ExtensionRunState =
-	/** 跑着。 */
-	| "running"
-	/** 主人把开关关了。**没启用的拓展一行代码都不会被 import。** */
-	| "disabled"
-	/** 连着加载失败,自动停用了(见 `load-ledger`)。 */
-	| "blocked"
-	/** 这一次加载炸了。 */
-	| "failed"
-	/** 清单读不了 / 与目录对不上 / 缺入口。 */
-	| "unreadable"
-	/** 给别的宿主契约版本写的。 */
-	| "incompatible";
+/** 六档状态的定义住 `@bilibili-notify/internal`(面板契约也从那儿转出,只写一份)。 */
+export type { ExtensionRunState };
 
 export interface ExtensionEntry {
 	id: string;
@@ -145,6 +135,8 @@ export interface LoadExtensionsOptions {
 	adapters: AdapterRegistry;
 	/** 全部连接,现读。属于谁由 ctx 那一层筛。 */
 	connections: () => readonly Connection[];
+	/** 按 id 取一条(入站热路径用),见 `ExtensionContextOptions.connection`。 */
+	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/** 某个拓展自己那份设置(`globals.extensions.<id>.settings`),现读、原样。 */
@@ -264,6 +256,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			mounts,
 			adapters: opts.adapters,
 			connections: opts.connections,
+			connection: opts.connection,
 			onConnectionsChanged: opts.onConnectionsChanged,
 			settings: () => opts.settings(dir.id),
 			onSettingsChanged: opts.onSettingsChanged,
