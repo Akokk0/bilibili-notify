@@ -2,7 +2,6 @@ import type {
 	ExtensionBotsResponse,
 	ExtensionBotView,
 	ExtensionDTO,
-	ExtensionsResponse,
 	QQDiscoveredEntry,
 	TestResponse,
 } from "@bilibili-notify/contract";
@@ -32,6 +31,7 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { useConnectionFace } from "../components/platform-meta";
 import { QQQrBindButton } from "../components/qq-qr-bind";
+import { useExtensions } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
 import {
 	type ConnectionField,
@@ -486,6 +486,77 @@ function ConnectionEditorModal({
 }
 
 /**
+ * 「一排里挑一个」的那种候选行:左边一枚脸、中间两行字、右边一句状态,选中的那条按平台
+ * 标识色染。这一页有三处(选连接 / 挑 bot / 现在绑着的那一条),此前各写各的。
+ *
+ * 🔴 **底与边只经 `--bn-tint` 一个 CSS 变量进来**,涂法在 `bn-tint-row` 那条 @utility 里 ——
+ * 选中态曾经只买到一半:两样都写在 `style` 里,而 inline 压过一切 author 样式,挂着
+ * `option-active` 也白挂,皮肤一个都盖不动。别把颜色搬回 `style`。
+ *
+ * `as="div"` 是那条「现在绑着的那个」—— 它不可点(名单里根本没有它),按钮语义会让读屏器
+ * 报一颗按不动的钮。
+ */
+function TintOptionRow({
+	tint,
+	active,
+	disabled,
+	icon,
+	title,
+	subtitle,
+	trailing,
+	onClick,
+	as = "button",
+}: {
+	/** 平台标识色 —— 走 `--bn-tint`,`bn-tint-row` 拿它算底与边。 */
+	tint: string;
+	active: boolean;
+	disabled?: boolean;
+	icon: ReactNode;
+	title: ReactNode;
+	subtitle: ReactNode;
+	/** 行尾那句话(「已选」/「已加过」/「换平台要重建连接」)。 */
+	trailing?: ReactNode;
+	onClick?: () => void;
+	as?: "button" | "div";
+}) {
+	const className = `flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
+		active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
+	} ${disabled ? "cursor-not-allowed opacity-50" : ""}`;
+	const style = { "--bn-tint": tint } as CSSProperties;
+	const body = (
+		<>
+			{icon}
+			<div className="min-w-0 flex-1">
+				<div className="truncate text-bn-sm font-semibold text-bn-text-primary">{title}</div>
+				<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">{subtitle}</div>
+			</div>
+			{trailing}
+		</>
+	);
+	// 候选行走 option;选中那档再加 option-active(与备份页的 ChoiceCard 同一种东西)。
+	const hook = active ? "option option-active" : "option";
+	if (as === "div") {
+		return (
+			<div data-bn={hook} className={className} style={style}>
+				{body}
+			</div>
+		);
+	}
+	return (
+		<button
+			type="button"
+			disabled={disabled}
+			onClick={onClick}
+			data-bn={hook}
+			className={className}
+			style={style}
+		>
+			{body}
+		</button>
+	);
+}
+
+/**
  * 「挑哪个 bot」那一节 —— 拓展连接就是一个 bot(ADR-0012 决策 45)。
  *
  * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经 `/api/ext/:id/bots` 交上来;
@@ -522,8 +593,6 @@ function ExtensionBotPicker({
 	if (bots.isError) {
 		return <HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>;
 	}
-	// 边色由 `bn-tint-row` 按 `--bn-tint` 算,与底下那排候选行同一套涂法。
-	const currentStyle = { "--bn-tint": platformTint(value.platform) } as CSSProperties;
 	if (list.length === 0 && !(editing && value.platform)) {
 		return (
 			<EmptyNote size="sm">
@@ -534,21 +603,14 @@ function ExtensionBotPicker({
 	return (
 		<div className="space-y-1.5">
 			{editing && value.platform && !currentListed ? (
-				<div
-					data-bn="option option-active"
-					className="flex w-full items-center gap-2 rounded-md border bn-tint-row px-2.5 py-2 text-left"
-					style={currentStyle}
-				>
-					<PlatformIcon platform={value.platform} size={16} />
-					<div className="min-w-0 flex-1">
-						<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-							现在绑着的那个
-						</div>
-						<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-							{value.platform} · 它这会儿不在线,名单里没有它
-						</div>
-					</div>
-				</div>
+				<TintOptionRow
+					as="div"
+					active
+					tint={platformTint(value.platform)}
+					icon={<PlatformIcon platform={value.platform} size={16} />}
+					title="现在绑着的那个"
+					subtitle={`${value.platform} · 它这会儿不在线,名单里没有它`}
+				/>
 			) : null}
 			{list.map((bot) => {
 				const active = isChosen(bot);
@@ -562,10 +624,11 @@ function ExtensionBotPicker({
 				const wrongPlatform = editing && value.platform !== "" && bot.platform !== value.platform;
 				const botTint = platformTint(bot.platform);
 				return (
-					<button
+					<TintOptionRow
 						// config 才是它的身份(拓展自己定的),名单里没有别的稳定键。
 						key={JSON.stringify(bot.config)}
-						type="button"
+						tint={botTint}
+						active={active}
 						disabled={taken || wrongPlatform}
 						onClick={() => {
 							if (active) return;
@@ -575,38 +638,30 @@ function ExtensionBotPicker({
 								enabled: value.enabled,
 							});
 						}}
-						data-bn={active ? "option option-active" : "option"}
-						className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
-							active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
-						} ${taken || wrongPlatform ? "cursor-not-allowed opacity-50" : ""}`}
-						style={{ "--bn-tint": botTint } as CSSProperties}
-					>
-						{bot.icon ? (
-							<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
-						) : (
-							<PlatformIcon platform={bot.platform} size={16} />
-						)}
-						<div className="min-w-0 flex-1">
-							<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-								{bot.name ?? bot.selfId ?? bot.platform}
-							</div>
-							<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
-								{[bot.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
-									.filter(Boolean)
-									.join(" · ")}
-							</div>
-						</div>
-						{active ? (
-							<span className="text-bn-xs font-bold" style={{ color: botTint }}>
-								已选
-							</span>
-						) : taken ? (
-							<span className="text-bn-xs text-bn-text-tertiary">已加过</span>
-						) : wrongPlatform ? (
-							// 说清是「不能这么换」,不是「这个 bot 坏了」—— 出路在另一条连接上。
-							<span className="shrink-0 text-bn-xs text-bn-text-tertiary">换平台要重建连接</span>
-						) : null}
-					</button>
+						icon={
+							bot.icon ? (
+								<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
+							) : (
+								<PlatformIcon platform={bot.platform} size={16} />
+							)
+						}
+						title={bot.name ?? bot.selfId ?? bot.platform}
+						subtitle={[bot.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
+							.filter(Boolean)
+							.join(" · ")}
+						trailing={
+							active ? (
+								<span className="text-bn-xs font-bold" style={{ color: botTint }}>
+									已选
+								</span>
+							) : taken ? (
+								<span className="text-bn-xs text-bn-text-tertiary">已加过</span>
+							) : wrongPlatform ? (
+								// 说清是「不能这么换」,不是「这个 bot 坏了」—— 出路在另一条连接上。
+								<span className="shrink-0 text-bn-xs text-bn-text-tertiary">换平台要重建连接</span>
+							) : null
+						}
+					/>
 				);
 			})}
 		</div>
@@ -840,7 +895,6 @@ function TargetEditorModal({
 	const face = useConnectionFace();
 	const connection = connections.find((a) => a.id === value.connectionId);
 	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
-	const invalidHint = undefined;
 	const tint = platformTint(value.platform || (connection ? face(connection) : ""));
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleConnections = connections.filter((a) => !isWebhookConnection(a));
@@ -867,40 +921,30 @@ function TargetEditorModal({
 								const active = value.connectionId === a.id;
 								const aTint = platformTint(face(a));
 								return (
-									<button
+									<TintOptionRow
 										key={a.id}
-										type="button"
+										tint={aTint}
+										active={active}
 										onClick={() => {
 											const next = makeEmptyTarget(a, value.name);
 											// preserve user-typed identity if any
 											onChange({ ...next, id: value.id, enabled: value.enabled });
 										}}
-										// 候选行走 option。选中态曾经**只买到一半** —— 底与边写在 `style`
-										// 里(平台 tint),inline 压过一切 author 样式,挂着 option-active
-										// 也白挂;未选中那一档更亏,两个静态 token 也一起锁在了 inline 上。
-										// 现在 inline 只剩 `--bn-tint` 一个值,涂法在 `bn-tint-row` 那条
-										// @utility 里,两态皮肤都盖得动。
-										data-bn={active ? "option option-active" : "option"}
-										className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
-											active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
-										}`}
-										style={{ "--bn-tint": aTint } as CSSProperties}
-									>
-										<PlatformIcon platform={face(a)} size={16} />
-										<div className="min-w-0 flex-1">
-											<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-												{a.name}
-											</div>
-											<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
+										icon={<PlatformIcon platform={face(a)} size={16} />}
+										title={a.name}
+										subtitle={
+											<>
 												{platformLabel(face(a))} · {connectionEndpointSummary(a, platformLabel)}
-											</div>
-										</div>
-										{active ? (
-											<span className="text-bn-xs font-bold" style={{ color: aTint }}>
-												已选
-											</span>
-										) : null}
-									</button>
+											</>
+										}
+										trailing={
+											active ? (
+												<span className="text-bn-xs font-bold" style={{ color: aTint }}>
+													已选
+												</span>
+											) : null
+										}
+									/>
 								);
 							})}
 						</div>
@@ -957,13 +1001,10 @@ function TargetEditorModal({
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 
 			<div className="mt-4 flex items-center justify-end gap-2">
-				{invalidHint ? (
-					<span className="mr-auto text-bn-xs text-bn-text-tertiary">{invalidHint}</span>
-				) : null}
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
 					取消
 				</Btn>
-				<Btn variant="primary" onClick={onSave} disabled={saving || !valid} title={invalidHint}>
+				<Btn variant="primary" onClick={onSave} disabled={saving || !valid}>
 					{saving ? "保存中…" : "保存"}
 				</Btn>
 			</div>
@@ -1432,12 +1473,8 @@ export default function Targets() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 跑着的推送源拓展是「新建连接」那一排的后几档。与拓展页共用同一个 key。
-	const extensionsQuery = useQuery({
-		queryKey: ["extensions"],
-		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
-		retry: false,
-	});
+	// 跑着的推送源拓展是「新建连接」那一排的后几档。与拓展页共用同一张表。
+	const extensionsQuery = useExtensions({ retry: false });
 	const pushExtensions = pushExtensionsOf(extensionsQuery.data?.extensions ?? []);
 
 	const [connectionDraft, setConnectionDraft] = useState<{
