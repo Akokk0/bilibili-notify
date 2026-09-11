@@ -11,7 +11,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -21,7 +21,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeAddressRow, BridgeConnections } from "../bridge-panel";
+import { BridgeAddressRow, BridgeConnections, maskToken } from "../bridge-panel";
 
 /** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
 function globalsWith(links: unknown[]) {
@@ -38,9 +38,9 @@ const LINK = {
 	bridgeKind: "koishi",
 };
 
-function renderPanel() {
+function renderPanel(links: unknown[] = [LINK]) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([LINK]);
+		if (path === "/api/globals") return globalsWith(links);
 		throw new Error("拓展没跑起来");
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -91,6 +91,43 @@ describe("token 那一行", () => {
 		const row = masked.closest("[data-token-row]");
 		expect(row).toBeTruthy();
 		expect(row?.querySelector("button[aria-label*='重新生成']")).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 **脱敏备份恢复回来的接入必然是空 token**:那条路把它抹掉了。此前这一格只画一句
+	 * 「重新生成一把」却没有那颗钮 —— 请人做一件他在这一页上做不到的事,而 `onRegenerate`
+	 * 就挂在旁边没人用。
+	 */
+	it("空 token 也给得出「重新生成」那颗钮 —— 一句话请人做的事得真的按得到", async () => {
+		renderPanel([{ ...LINK, token: "" }]);
+		expect(await screen.findByText(/还没有 token/)).toBeTruthy();
+		const regenerate = screen.getByRole("button", { name: /重新生成/ });
+		await userEvent.click(regenerate);
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		const [, body] = vi.mocked(api.patch).mock.calls[0] as [
+			string,
+			{ extensions: { bridge: { settings: { links: Array<{ token: string }> } } } },
+		];
+		expect(body.extensions.bridge.settings.links[0]?.token).toMatch(/^[0-9a-f]{32}$/);
+	});
+});
+
+/**
+ * 掩码的活是「屏幕上认得出是哪一把,但拿不到它」。头四尾四对**够长**的 token 成立,
+ * 对短的就是把全文原样印出来 —— 32 位是我们自己生成的长度,而手填 / 别处迁移来的不是。
+ */
+describe("maskToken", () => {
+	it("短 token 整段打点 —— 留下的明文必须比原文短", () => {
+		for (const token of ["a", "abcd", "ab12cd34"]) {
+			const masked = maskToken(token);
+			expect(masked.replace(/•/g, ""), token).toHaveLength(0);
+			expect(masked, token).not.toContain(token);
+		}
+	});
+
+	it("够长的仍留头尾各四位 —— 两条接入才分得出谁是谁", () => {
+		expect(maskToken(TOKEN)).toBe(`0123${"•".repeat(24)}cdef`);
+		expect(maskToken("abcd12345")).toBe(`abcd${"•".repeat(4)}2345`);
 	});
 });
 

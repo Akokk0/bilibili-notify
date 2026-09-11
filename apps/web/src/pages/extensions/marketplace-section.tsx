@@ -51,11 +51,17 @@ function errorsOf(err: unknown): string[] {
 /**
  * 从市场装一条。装完的回答与传包装**同一个形状**,所以「装完那句话」也共用同一块。
  * 装完拓展表与市场都重取:热装的那份已经在跑,市场那条的状态也该从「装」变成「已装」。
+ *
+ * 🔴 **「确认第三方」这一道住在这里,不住在某个按钮旁边**:装与更新是两颗不同的钮、
+ * 在两块不同的地方(市场那一节 / 已装卡片上),而它们落地的是同一件事 —— 把一份 BN
+ * 不担保的代码放进 BN 进程里跑。哪一颗钮自己接 `install.mutate`,哪一颗就绕过了这道门,
+ * 而且构建、类型、别的测试全绿:第三方源只要把版本号抬一格就能零确认装进新代码。
  */
 export function useMarketplaceInstall() {
 	const qc = useQueryClient();
 	const [done, setDone] = useState<ExtensionInstallResponse | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
+	const [confirming, setConfirming] = useState<MarketplaceEntryDTO | null>(null);
 	const install = useMutation({
 		mutationFn: (input: { source: string; id: string }) =>
 			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
@@ -70,7 +76,55 @@ export function useMarketplaceInstall() {
 		},
 		onError: (err) => setErrors(errorsOf(err)),
 	});
-	return { install, done, errors };
+	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
+	const start = (entry: MarketplaceEntryDTO) => {
+		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
+		else setConfirming(entry);
+	};
+	return {
+		install,
+		done,
+		errors,
+		start,
+		confirming,
+		confirm: () => {
+			if (!confirming) return;
+			install.mutate({ source: confirming.source, id: confirming.id });
+			setConfirming(null);
+		},
+		cancel: () => setConfirming(null),
+	};
+}
+
+export type MarketplaceInstaller = ReturnType<typeof useMarketplaceInstall>;
+
+/**
+ * 第三方那道确认框。摆在哪儿由**谁持有那份 installer** 决定:页面持有就页面画,
+ * 市场那一节自己起一份就它自己画 —— 两处都画会弹两个一模一样的弹窗。
+ *
+ * 两句话不重复:添加源那一次是给「不知道自己在干什么」的人看的,这一次是给「知道但
+ * 手滑」的人看的。
+ */
+export function MarketplaceInstallConfirm({ installer }: { installer: MarketplaceInstaller }) {
+	const market = useMarketplace();
+	const entry = installer.confirming;
+	if (!entry) return null;
+	const sourceName = market.data?.sources.find((s) => s.id === entry.source)?.name ?? entry.source;
+	const updating = entry.state === "updatable";
+	return (
+		<ConfirmDialog
+			danger
+			title={
+				updating
+					? `更新第三方拓展「${entry.name}」到 v${entry.version}?`
+					: `装第三方拓展「${entry.name}」?`
+			}
+			message={`它来自「${sourceName}」,不是 BN 发的:BN 只保证装到盘上的是那个源写的那个包,不审核它做什么 —— 装了它就在 BN 进程里跑代码。`}
+			confirmLabel={updating ? "照样更新" : "照样装"}
+			onCancel={installer.cancel}
+			onConfirm={installer.confirm}
+		/>
+	);
 }
 
 function EntryAction({
@@ -160,26 +214,22 @@ export function MarketplaceSection({
 	installer,
 }: {
 	/** 页面级那一份「从市场装」(已装卡片的更新钮也用它);不给就自己起一份。 */
-	installer?: ReturnType<typeof useMarketplaceInstall>;
+	installer?: MarketplaceInstaller;
 }) {
 	const qc = useQueryClient();
 	const market = useMarketplace();
 	const own = useMarketplaceInstall();
-	const { install, done, errors } = installer ?? own;
-	// 页面给了那一份,「装完那句话」与错误由页面画(已装卡片的更新钮也走它),这里别再画一遍。
-	const showOutcome = installer === undefined;
-	const [confirming, setConfirming] = useState<MarketplaceEntryDTO | null>(null);
+	const shop = installer ?? own;
+	const { install, done, errors, start } = shop;
+	// 页面给了那一份,「装完那句话」、错误与那道确认框都由页面画(已装卡片的更新钮也走它
+	// 同一份 state),这里别再画一遍 —— 两处都画就是两个一模一样的弹窗。
+	const owns = installer === undefined;
 	const [managingSources, setManagingSources] = useState(false);
 
 	const data = market.data;
 	const sourceName = (id: string) => data?.sources.find((s) => s.id === id)?.name ?? id;
 	const failed = data?.sources.filter((s) => !s.ok) ?? [];
 	const thirdPartyCount = data?.sources.filter((s) => !s.official).length ?? 0;
-
-	const start = (entry: MarketplaceEntryDTO) => {
-		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
-		else setConfirming(entry);
-	};
 
 	return (
 		<div className="flex flex-col gap-2.5">
@@ -226,7 +276,7 @@ export function MarketplaceSection({
 				</ErrorNote>
 			))}
 
-			{showOutcome && errors.length > 0 ? (
+			{owns && errors.length > 0 ? (
 				<ErrorNote size="sm">
 					<span className="font-semibold">装不了:</span>
 					<ul className="mt-1 ml-4 list-disc">
@@ -236,7 +286,7 @@ export function MarketplaceSection({
 					</ul>
 				</ErrorNote>
 			) : null}
-			{showOutcome ? <ExtensionInstallOutcome done={done} /> : null}
+			{owns ? <ExtensionInstallOutcome done={done} /> : null}
 
 			{data && data.extensions.length > 0 ? (
 				<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -258,19 +308,7 @@ export function MarketplaceSection({
 				<EmptyNote>市场里现在没有能装的拓展</EmptyNote>
 			) : null}
 
-			{confirming ? (
-				<ConfirmDialog
-					danger
-					title={`装第三方拓展「${confirming.name}」?`}
-					message={`它来自「${sourceName(confirming.source)}」,不是 BN 发的:BN 只保证装到盘上的是那个源写的那个包,不审核它做什么 —— 装了它就在 BN 进程里跑代码。`}
-					confirmLabel="照样装"
-					onCancel={() => setConfirming(null)}
-					onConfirm={() => {
-						install.mutate({ source: confirming.source, id: confirming.id });
-						setConfirming(null);
-					}}
-				/>
-			) : null}
+			{owns ? <MarketplaceInstallConfirm installer={shop} /> : null}
 			{managingSources ? (
 				<MarketplaceSourcesDialog
 					status={data?.sources ?? []}

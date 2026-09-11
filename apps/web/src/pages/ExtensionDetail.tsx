@@ -1,5 +1,5 @@
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { EmptyNote, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
+import { EmptyNote, ErrorNote, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../services/api";
@@ -7,7 +7,9 @@ import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
+	ExtensionToggleError,
 	PARAGRAPH_CLS,
+	reasonOf,
 	useExtensionToggle,
 } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
@@ -31,6 +33,20 @@ export default function ExtensionDetail() {
 	const toggle = useExtensionToggle();
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
+	/*
+	 * 🔴 **「读不到」不许画成「没这个」**:表读不出来时 `find` 也交出 undefined,而底下
+	 * 那句「没有装名叫 X 的拓展」是结论 —— 主人会照着它去重装一个其实好好装着的拓展。
+	 */
+	if (listed.isError) {
+		return (
+			<div className="bn-anim-page-in flex flex-col gap-3">
+				<ErrorNote>读不到装了哪些拓展:{reasonOf(listed.error)}</ErrorNote>
+				<Link to="/extensions" className="text-bn-sm text-bn-pink">
+					← 回拓展列表
+				</Link>
+			</div>
+		);
+	}
 
 	const ext = (listed.data?.extensions ?? []).find((candidate) => candidate.id === id);
 	if (!ext) {
@@ -72,6 +88,7 @@ export default function ExtensionDetail() {
 				}
 			>
 				<div className="flex flex-col gap-2.5">
+					<ExtensionToggleError toggle={toggle} />
 					<ExtensionStateDetail ext={ext} />
 					{isBridge ? (
 						<BridgeAddressRow extensionId={id} />

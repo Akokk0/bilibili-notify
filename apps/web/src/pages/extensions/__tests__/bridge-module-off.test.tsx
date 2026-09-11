@@ -34,9 +34,9 @@ const LINK = {
 	bridgeKind: "koishi",
 };
 
-function renderPanel(enabled: boolean) {
+function renderPanel(enabled: boolean, links: unknown[] = [LINK]) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([LINK]);
+		if (path === "/api/globals") return globalsWith(links);
 		// 关着的拓展没跑起来 —— `/status` 是 404,与「崩了」在这条路上一模一样
 		throw new Error("没跑起来");
 	});
@@ -79,6 +79,17 @@ describe("拓展被关着", () => {
 		// 关着的时候没有「没连上」这回事 —— 那是开着时才成立的判断
 		expect(screen.queryByText("没连上")).toBeNull();
 		expect(screen.queryByRole("button", { name: /新建接入/ })).toBeNull();
+	});
+
+	/**
+	 * 🔴 关着的时候那句「新建第一条接入」是**做不成的事**:建完也不会连上,拓展还关着。
+	 * 黄盒说「是你关的」、底下同时请人去新建,两句话互相打架。
+	 */
+	it("关着且一条接入都没有时,不请人去新建 —— 该做的是先把拓展打开", async () => {
+		renderPanel(false, []);
+		expect(await screen.findByText(/拓展关着/)).toBeTruthy();
+		expect(screen.queryByText(/还没有桥接入/)).toBeNull();
+		expect(screen.queryByRole("button", { name: /新建第一条接入/ })).toBeNull();
 	});
 
 	it("开着而 /status 还是拿不到 → 那才是「没跑起来」", async () => {

@@ -22,6 +22,7 @@ import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
+	MarketplaceInstallConfirm,
 	MarketplaceSection,
 	useMarketplace,
 	useMarketplaceInstall,
@@ -29,7 +30,9 @@ import {
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
+	ExtensionToggleError,
 	PARAGRAPH_CLS,
+	reasonOf,
 	useExtensionToggle,
 } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
@@ -199,6 +202,18 @@ export default function Extensions() {
 	);
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
+	/*
+	 * 🔴 **「读不到」不许画成「没有」**:表读不出来时下面两节会说「还没有推送源拓展 /
+	 * 还没有订阅源拓展」并顺带断言「现在能推的只有直连的那些目标」—— 两句都是假话,而且
+	 * 请主人去装一个他其实已经装了的东西。
+	 */
+	if (listed.isError) {
+		return (
+			<div className="bn-anim-page-in flex flex-col gap-3">
+				<ErrorNote>读不到装了哪些拓展:{reasonOf(listed.error)}</ErrorNote>
+			</div>
+		);
+	}
 
 	const extensions = listed.data?.extensions ?? [];
 	// 归不了口的那些(清单读不出来 / 版本不合 → 没有 provides)。它们**不许消失**:
@@ -216,9 +231,12 @@ export default function Extensions() {
 					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 					update={updates.get(ext.id)}
 					updating={installer.install.isPending}
+					// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
+					// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
+					// mutate 等于给第三方源开一条「抬个版本号即可零确认装新代码」的路。
 					onUpdate={() => {
 						const entry = updates.get(ext.id);
-						if (entry) installer.install.mutate({ source: entry.source, id: entry.id });
+						if (entry) installer.start(entry);
 					}}
 				/>
 			))}
@@ -245,6 +263,7 @@ export default function Extensions() {
 				</Btn>
 			</div>
 
+			<ExtensionToggleError toggle={toggle} />
 			{installer.errors.length > 0 ? (
 				<ErrorNote size="sm">更新不了:{installer.errors.join(";")}</ErrorNote>
 			) : null}
@@ -269,6 +288,8 @@ export default function Extensions() {
 
 			<MarketplaceSection installer={installer} />
 
+			{/* 第三方那道确认框:装与更新共用页面这一份 installer,所以由页面来画。 */}
+			<MarketplaceInstallConfirm installer={installer} />
 			{installing ? <ExtensionInstallDialog onClose={() => setInstalling(false)} /> : null}
 		</div>
 	);

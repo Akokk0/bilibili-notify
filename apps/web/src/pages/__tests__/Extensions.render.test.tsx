@@ -37,6 +37,49 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	dir: "/data/extensions/bridge",
 };
 
+/** 从第三方源装来的一条 —— 「更新」这条路上 BN 同样不担保它。 */
+const THIRD_PARTY: ExtensionsResponse["extensions"][number] = {
+	id: "alice.douyin",
+	name: "抖音订阅源(alice)",
+	version: "1.0.0",
+	provides: ["subscription"],
+	enabled: true,
+	state: "running",
+	dir: "/data/extensions/alice.douyin",
+};
+
+const THIRD_PARTY_ENTRY: MarketplaceResponse["extensions"][number] = {
+	source: "s1",
+	official: false,
+	id: "alice.douyin",
+	name: "抖音订阅源(alice)",
+	description: "",
+	version: "1.0.0",
+	apiVersion: 1,
+	prerelease: false,
+	size: 1,
+	installed: { version: "1.0.0", source: "s1" },
+	state: "installed",
+};
+
+function marketWith(entry: MarketplaceResponse["extensions"][number]): MarketplaceResponse {
+	return {
+		...MARKET,
+		sources: [
+			{ id: "official", name: "BN 官方拓展", official: true, ok: true },
+			{
+				id: "s1",
+				name: "alice",
+				official: false,
+				url: "https://alice.example/m.json",
+				namespace: "alice",
+				ok: true,
+			},
+		],
+		extensions: [entry],
+	};
+}
+
 const LISTED: ExtensionsResponse = {
 	extensions: [
 		BRIDGE,
@@ -243,6 +286,41 @@ describe("拓展页", () => {
 	});
 
 	/**
+	 * 🔴 拨不动的时候开关会自己弹回原位(它的值来自服务端那份表)—— 那是唯一的反馈,
+	 * 而它与「我点歪了」长得一模一样。原因就在响应里躺着,不说等于让人对着黑盒反复按。
+	 */
+	it("拨开关失败:把服务端那句话摆出来,不是开关自己弹回去就完事", async () => {
+		renderPage();
+		apiPatchMock.mockRejectedValue(new Error("配置文件是只读的"));
+		fireEvent.click(await screen.findByLabelText("机器人框架桥接"));
+		expect(await screen.findByText(/配置文件是只读的/)).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 **读不到 ≠ 一个都没装**。这一页读不出拓展表时此前画的是「还没有推送源拓展」
+	 * 加一句「现在能推的只有直连的那些目标」—— 全是假话,而且请主人去装一个他其实已经
+	 * 装了的东西。
+	 */
+	it("拓展表读不到时说读不到,不把空态当事实", async () => {
+		apiGetMock.mockImplementation(async (url: string) => {
+			if (url === "/api/connections") return [];
+			if (url.startsWith("/api/ext/marketplace")) return MARKET;
+			throw new Error("拓展表读不出来:500");
+		});
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<MemoryRouter>
+					<Extensions />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		expect(await screen.findByText(/拓展表读不出来/)).toBeTruthy();
+		expect(screen.queryByText(/还没有推送源拓展/)).toBeNull();
+		expect(screen.queryByText(/还没有订阅源拓展/)).toBeNull();
+	});
+
+	/**
 	 * 拓展只开两口(ADR-0012):推送源接进「推送目标」,订阅源接进「订阅 UP 主」。分组不是
 	 * 排版口味 —— 主人来这一页多半是**为了某一口**,而卡片上的机器词 `provides` 说不清
 	 * 它会出现在哪。
@@ -334,6 +412,40 @@ describe("已装卡片上的「有新版」", () => {
 		);
 		// 盖掉的是一份正在跑的:装完那句话要说清「得重启一次」。
 		expect(await screen.findByText(/换不掉/)).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 **更新走的必须是与「装」同一条路。** 第三方条目装之前要先确认(它在 BN 进程里跑
+	 * 代码,BN 不担保),而更新钮此前直接 `install.mutate` —— 于是任何第三方源只要把版本号
+	 * 抬一格,主人在已装卡片上按一下就零确认装进了新代码。
+	 */
+	it("第三方来源的更新也先确认 —— 取消就不发,确认才发", async () => {
+		renderPage(
+			{ extensions: [BRIDGE, THIRD_PARTY] },
+			CONNECTIONS,
+			STATUS,
+			marketWith({ ...THIRD_PARTY_ENTRY, version: "1.1.0", state: "updatable" }),
+		);
+		await screen.findAllByText(THIRD_PARTY.name);
+		const card = installedCardOf(THIRD_PARTY.name);
+		fireEvent.click(within(card).getByRole("button", { name: /更新/ }));
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText(/在 BN 进程里跑代码/)).toBeTruthy();
+		expect(apiPostMock).not.toHaveBeenCalled();
+
+		fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+		expect(apiPostMock).not.toHaveBeenCalled();
+
+		fireEvent.click(
+			within(installedCardOf(THIRD_PARTY.name)).getByRole("button", { name: /更新/ }),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: /照样/ }));
+		await waitFor(() =>
+			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
+				source: "s1",
+				id: "alice.douyin",
+			}),
+		);
 	});
 
 	it("市场那一节挂在页上;市场问不到时已装卡片照常、不出徽章", async () => {

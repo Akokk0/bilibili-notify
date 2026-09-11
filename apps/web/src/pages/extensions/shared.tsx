@@ -1,6 +1,6 @@
 import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { ErrorNote, Icon, WarnNote } from "@bilibili-notify/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type UseMutationResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { EXTENSION_STATE_META } from "./state-meta";
 
@@ -48,6 +48,11 @@ export function ExtensionStateDetail({ ext }: { ext: ExtensionDTO }) {
 	return null;
 }
 
+/** 「为什么没成」那句话。服务端的三种错误体已由 `ApiError` 归一成 message。 */
+export function reasonOf(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * 拨那个开关。
  *
@@ -65,4 +70,20 @@ export function useExtensionToggle() {
 			void qc.invalidateQueries({ queryKey: ["globals"] });
 		},
 	});
+}
+
+/**
+ * 拨不动的时候说一句。
+ *
+ * 🔴 开关的值来自服务端那份表,失败时它会**自己弹回原位** —— 那是唯一的反馈,而它与
+ * 「我点歪了」长得一模一样。原因就在那条响应里躺着(只读盘 / 401 / 配置被别处锁了),
+ * 不说等于让主人对着黑盒反复按。两页共用这一句,免得哪天只有一页说得出话。
+ */
+export function ExtensionToggleError({
+	toggle,
+}: {
+	toggle: UseMutationResult<unknown, Error, { id: string; enabled: boolean }, unknown>;
+}) {
+	if (!toggle.isError) return null;
+	return <ErrorNote size="sm">这个开关没拨动:{reasonOf(toggle.error)}</ErrorNote>;
 }

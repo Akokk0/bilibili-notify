@@ -3,6 +3,7 @@ import {
 	Btn,
 	ConfirmDialog,
 	EmptyNote,
+	ErrorNote,
 	GlassBox,
 	HintNote,
 	Icon,
@@ -30,6 +31,7 @@ import {
 	type CapabilityState,
 	useBridgeStatus,
 } from "./bridge-status";
+import { reasonOf } from "./shared";
 
 /**
  * 桥接拓展那一页的正文:接入的增删改 + 每条接入现在什么样。
@@ -297,8 +299,15 @@ function linksOf(settings: unknown): BridgeLink[] {
 	});
 }
 
-/** 屏幕上只留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏。 */
-function maskToken(token: string): string {
+/**
+ * 屏幕上只留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏。
+ *
+ * 🔴 **短的整段打点**:头四尾四加起来是八位,token 只有八位或更短时这两截拼起来就是
+ * 全文(四位的甚至原样印两遍)。我们自己生成的是 32 位,但手填的、从别处迁来的不是 ——
+ * 分不出谁是谁只是不方便,把钥匙印在屏幕上是把那条 WS 端点的唯一防线交出去。
+ */
+export function maskToken(token: string): string {
+	if (token.length <= 8) return "•".repeat(Math.max(4, token.length));
 	return `${token.slice(0, 4)}${"•".repeat(Math.max(4, token.length - 8))}${token.slice(-4)}`;
 }
 
@@ -388,12 +397,38 @@ function TokenRow({
 	token,
 	linkName,
 	onRegenerate,
+	busy,
 }: {
 	token: string;
 	linkName: string;
 	onRegenerate: () => void;
+	/** 上一发写回还在路上 —— 见 {@link LinkActions.busy}。 */
+	busy: boolean;
 }) {
-	if (!token) return <HintNote tone="danger">这条接入还没有 token,重新生成一把</HintNote>;
+	/*
+	 * 🔴 空 token 是**脱敏备份恢复回来**的常态(那条路把 token 抹掉了),不是稀罕情况。
+	 * 只说一句「重新生成一把」却不给那颗钮,等于请人做一件他在这一页上做不到的事 ——
+	 * 而钮要用的 `onRegenerate` 就挂在旁边。
+	 */
+	if (!token) {
+		return (
+			<div data-token-row className="flex flex-wrap items-center gap-2.5">
+				<HintNote tone="danger" className="min-w-0 flex-1">
+					这条接入还没有 token —— 脱敏备份恢复回来的就是这样,生成一把新的填进插件。
+				</HintNote>
+				<Btn
+					variant="danger-outline"
+					size="sm"
+					disabled={busy}
+					aria-label={`重新生成 ${linkName} 的 token`}
+					icon={<Icon.refresh size={13} />}
+					onClick={onRegenerate}
+				>
+					重新生成
+				</Btn>
+			</div>
+		);
+	}
 	return (
 		<div data-token-row className="flex flex-wrap items-center gap-2.5">
 			<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">token</span>
@@ -402,6 +437,7 @@ function TokenRow({
 			<Btn
 				variant="danger-outline"
 				size="sm"
+				disabled={busy}
 				aria-label={`重新生成 ${linkName} 的 token`}
 				icon={<Icon.refresh size={13} />}
 				onClick={onRegenerate}
@@ -458,6 +494,14 @@ interface LinkActions {
 	setKind(id: string, kind: string): void;
 	regenerate(id: string): void;
 	remove(id: string): void;
+	/**
+	 * 上一发写回还在路上。
+	 *
+	 * 🔴 名单是**整份写回**的,基线是渲染那一刻算出来的 —— 前一发没回来时点第二下,
+	 * 第二发带的名单里第一条还是旧值,两发都成功而第一下被静默抹掉。这一排钮因此串行:
+	 * 写回期间点不动。
+	 */
+	busy: boolean;
 }
 
 /** 卡上那句状态:点 + 字,颜色跟状态走。 */
@@ -572,6 +616,7 @@ function LinkCard({
 							<Btn
 								variant="outline"
 								size="sm"
+								disabled={actions.busy}
 								onClick={() => actions.setKind(link.id, reportedKind)}
 							>
 								改成 {kindLabel(reportedKind)}
@@ -580,6 +625,7 @@ function LinkCard({
 						<Btn
 							variant="outline"
 							size="sm"
+							disabled={actions.busy}
 							aria-label={`${paused ? "启用" : "停用"} ${link.name}`}
 							onClick={() => actions.setEnabled(link.id, paused)}
 						>
@@ -588,6 +634,7 @@ function LinkCard({
 						<Btn
 							variant="danger-outline"
 							size="sm"
+							disabled={actions.busy}
 							aria-label={`删除 ${link.name}`}
 							onClick={() => actions.remove(link.id)}
 						>
@@ -617,6 +664,7 @@ function LinkCard({
 					<TokenRow
 						token={link.token}
 						linkName={link.name}
+						busy={actions.busy}
 						onRegenerate={() => actions.regenerate(link.id)}
 					/>
 
@@ -738,10 +786,20 @@ function FieldLabel({ children }: { children: string }) {
  */
 function AddLinkDialog({
 	address,
+	error,
+	saving,
 	onCancel,
 	onCreate,
 }: {
 	address: string;
+	/**
+	 * 上一次「创建」没成的原因。
+	 *
+	 * 🔴 存不下去时弹窗**不关**(它只在成功那一路关),于是「创建」按下去毫无反应 ——
+	 * 与「我是不是没点到」一模一样。原因得摆在按得到它的那一屏上,不能摆在弹窗背后。
+	 */
+	error: string | null;
+	saving: boolean;
 	onCancel: () => void;
 	onCreate: (draft: { name: string; bridgeKind: string; token: string }) => void;
 }) {
@@ -860,6 +918,8 @@ function AddLinkDialog({
 					</span>
 				</HintNote>
 
+				{error ? <ErrorNote size="sm">建不了这条接入:{error}</ErrorNote> : null}
+
 				<div className="flex justify-end gap-2 pt-1">
 					<Btn variant="outline" size="md" onClick={onCancel}>
 						取消
@@ -867,10 +927,10 @@ function AddLinkDialog({
 					<Btn
 						variant="primary"
 						size="md"
-						disabled={!name.trim()}
+						disabled={saving || !name.trim()}
 						onClick={() => onCreate({ name: name.trim(), bridgeKind, token })}
 					>
-						创建
+						{saving ? "创建中…" : "创建"}
 					</Btn>
 				</div>
 			</div>
@@ -928,6 +988,16 @@ export function BridgeConnections({
 			refresh();
 		},
 	});
+	/**
+	 * 没写进去的原因。
+	 *
+	 * 🔴 这一节的每一次写(停用 / 换钥匙 / 改种类 / 新建 / 删除)都落在这一发上,而失败
+	 * 时界面**自己会退回原样** —— 开关弹回去、确认框留在原地、弹窗不关。三种症状看上去
+	 * 都是「点了没用」,而真正的原因(只读盘 / 401 / 配置被别处锁了)就在那条响应里。
+	 */
+	const saveError = save.isError ? reasonOf(save.error) : null;
+	// 写回期间这一排钮全部串行:见 {@link LinkActions.busy}。
+	const busy = save.isPending;
 	const update = (id: string, patch: Partial<BridgeLink>) =>
 		save.mutate(links.map((link) => (link.id === id ? { ...link, ...patch } : link)));
 
@@ -941,6 +1011,7 @@ export function BridgeConnections({
 		setKind: (id, kind) => update(id, { bridgeKind: kind }),
 		regenerate: (id) => update(id, { token: newBridgeToken() }),
 		remove: (id) => setRemoving(links.find((link) => link.id === id) ?? null),
+		busy,
 	};
 
 	return (
@@ -954,7 +1025,12 @@ export function BridgeConnections({
 					<Caption>桥接入</Caption>
 					<span className="h-px min-w-4 flex-1 bg-bn-border-subtle" />
 					<CapabilityLegend />
-					<Btn size="sm" icon={<Icon.plus size={13} />} onClick={() => setAdding(true)}>
+					<Btn
+						size="sm"
+						disabled={busy}
+						icon={<Icon.plus size={13} />}
+						onClick={() => setAdding(true)}
+					>
 						新建接入
 					</Btn>
 				</div>
@@ -969,7 +1045,20 @@ export function BridgeConnections({
 				</HintNote>
 			) : null}
 
-			{links.length === 0 ? <BridgeEmpty onAdd={() => setAdding(true)} /> : null}
+			{saveError ? <ErrorNote size="sm">这次没写进去:{saveError}</ErrorNote> : null}
+
+			{/*
+			 * 🔴 **「读不到」不许画成「没有」**:名单读不出来(401 / 服务端炸了 / 断网)时
+			 * `linksOf` 交出的也是空数组,而空态那一屏说的是「还没有桥接入」并请人建一条 ——
+			 * 全是假话,主人照着建完才发现原来那几条又回来了。
+			 *
+			 * 关着的那一屏也不请人新建:建完也不会连上,与黄盒那句「是你关的」自相矛盾。
+			 */}
+			{globals.isError ? (
+				<ErrorNote size="sm">读不到接入名单:{reasonOf(globals.error)}</ErrorNote>
+			) : enabled && !globals.isPending && links.length === 0 ? (
+				<BridgeEmpty onAdd={() => setAdding(true)} />
+			) : null}
 
 			{enabled
 				? links.map((link) => (
@@ -986,6 +1075,9 @@ export function BridgeConnections({
 			{adding ? (
 				<AddLinkDialog
 					address={address}
+					// 失败时弹窗不关 —— 那句原因得摆在这一屏上,摆在弹窗背后等于没说。
+					error={saveError}
+					saving={busy}
 					onCancel={() => setAdding(false)}
 					// token 由弹窗带过来 —— **屏幕上显示的就是存下去的那一把**。
 					onCreate={(draft) => save.mutate([...links, { id: newId(), enabled: true, ...draft }])}
@@ -995,10 +1087,23 @@ export function BridgeConnections({
 			{removing ? (
 				<ConfirmDialog
 					title="删掉这条接入?"
-					message={`「${removing.name}」删掉之后,那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。`}
-					confirmLabel="删除"
+					message={
+						<>
+							{`「${removing.name}」删掉之后,那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。`}
+							{/* 删不掉时框留在原地 —— 不说原因就是让人对着黑盒按第二下。 */}
+							{saveError ? (
+								<ErrorNote size="sm" className="mt-2.5">
+									删不掉:{saveError}
+								</ErrorNote>
+							) : null}
+						</>
+					}
+					confirmLabel={busy ? "删除中…" : "删除"}
 					danger
-					onConfirm={() => save.mutate(links.filter((link) => link.id !== removing.id))}
+					onConfirm={() => {
+						if (busy) return;
+						save.mutate(links.filter((link) => link.id !== removing.id));
+					}}
 					onCancel={() => setRemoving(null)}
 				/>
 			) : null}
