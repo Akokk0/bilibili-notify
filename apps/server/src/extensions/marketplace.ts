@@ -17,7 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { readJsonFile, writeJsonAtomic } from "../update/durable-json.js";
 import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
-import { fetchThroughMirrors } from "../update/fetch-through-mirrors.js";
+import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
 import {
 	installExtensionPackage,
@@ -175,15 +175,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 
 	let cache: { at: number; loaded: LoadedSource[] } | undefined;
 
-	function mirrorChain(): string[] {
-		return [...deps.mirrors().filter((m) => m.trim() !== ""), ""];
-	}
-
 	async function loadOfficial(official: MarketplaceOfficialSource): Promise<LoadedSource> {
 		const seenIssuedAt = readProvenance(deps.root).officialIssuedAt;
 		const fetched = await fetchSignedJson({
 			url: official.url,
-			mirrors: mirrorChain(),
+			mirrors: mirrorChain(deps.mirrors()),
 			trustedKeys: official.trustedKeys,
 			timeoutMs,
 			maxBytes: maxIndexBytes,
@@ -234,11 +230,16 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		}
 	}
 
-	async function loadThirdParty(
-		source: MarketplaceSource,
-		taken: Map<string, NamespaceHolder>,
-	): Promise<LoadedSource> {
-		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
+	/**
+	 * 一个第三方源这一趟拉到了什么 —— **只有网络那一半**。
+	 *
+	 * 命名空间的占位判断刻意不在这儿:那件事得按**配置顺序**算,而这些请求是一起发出去的,
+	 * 谁先回来归网络管。两件事混在一条函数里的话,并发一开,「谁占住了这个命名空间」就成了
+	 * 抽签。
+	 */
+	type ThirdPartyFetch = { ok: true; index: MarketplaceIndex } | { ok: false; err: string };
+
+	async function fetchThirdParty(source: MarketplaceSource): Promise<ThirdPartyFetch> {
 		const fetched = await fetchThroughMirrors<MarketplaceIndex, string>({
 			url: source.url,
 			mirrors: [""],
@@ -260,12 +261,29 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			},
 		});
 		if (!fetched.ok) {
-			const err = fetched.reason === "all-mirrors-failed" ? "拿不到这个源的索引" : fetched.reason;
-			return { view: { ...base, ok: false, err } };
+			return {
+				ok: false,
+				err: fetched.reason === "all-mirrors-failed" ? "拿不到这个源的索引" : fetched.reason,
+			};
 		}
+		return { ok: true, index: fetched.value };
+	}
+
+	/**
+	 * 命名空间仲裁 —— 拉到的那份配不配得上它声明的命名空间。**按配置顺序**一个个过,
+	 * 先配的源占着的,后配的抢不走(理由见 {@link Provenance.namespaces})。
+	 */
+	function admitThirdParty(
+		source: MarketplaceSource,
+		fetched: ThirdPartyFetch,
+		taken: Map<string, NamespaceHolder>,
+	): LoadedSource {
+		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
+		// 拉不到 / 不合规矩时索引里那个名字还没有,拿域名顶着 —— 别让错误行上写一个 uuid。
+		if (!fetched.ok) return { view: { ...base, ok: false, err: fetched.err } };
 		// 名字以索引自己报的为准 —— 用户加源时只填了地址。
-		const named = { ...base, name: fetched.value.name };
-		const ns = fetched.value.namespace as string;
+		const named = { ...base, name: fetched.index.name };
+		const ns = fetched.index.namespace as string;
 		const holder = taken.get(ns);
 		if (holder !== undefined && holder.sourceId !== source.id) {
 			return {
@@ -278,7 +296,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			};
 		}
 		taken.set(ns, { sourceId: source.id, name: named.name });
-		return { view: { ...named, namespace: ns, ok: true }, index: fetched.value };
+		return { view: { ...named, namespace: ns, ok: true }, index: fetched.index };
 	}
 
 	/**
@@ -313,11 +331,19 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 
 	async function loadAll(refresh: boolean): Promise<LoadedSource[]> {
 		if (!refresh && cache && now() - cache.at < cacheMs) return cache.loaded;
-		const loaded: LoadedSource[] = [];
-		if (deps.official) loaded.push(await loadOfficial(deps.official));
 		const sources = deps.sources();
+		// 🔴 **拉是并发的,认领是串行的。** 逐个 await 的话,一个卡住的源(超时一次就是十秒)
+		// 会把排在它后面的每一个源都推后,而源与源之间没有任何依赖。认领反过来:命名空间
+		// 必须按**配置顺序**判,不能按「谁先回来」判 —— 那等于让网络快慢决定谁占得住,而
+		// 占着的那个命名空间底下挂着主人已经装好的一堆拓展。
+		const [official, fetched] = await Promise.all([
+			deps.official ? loadOfficial(deps.official) : undefined,
+			Promise.all(sources.map(async (source) => [source, await fetchThirdParty(source)] as const)),
+		]);
 		const taken = seedTaken(sources);
-		for (const source of sources) loaded.push(await loadThirdParty(source, taken));
+		const loaded: LoadedSource[] = [];
+		if (official) loaded.push(official);
+		for (const [source, one] of fetched) loaded.push(admitThirdParty(source, one, taken));
 		rememberNamespaces(sources, taken);
 		cache = { at: now(), loaded };
 		return loaded;
@@ -325,17 +351,19 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 
 	function stateOf(
 		entry: MarketplaceEntry,
-		source: LoadedSource,
+		sourceId: string,
+		index: MarketplaceIndex,
 		provenance: Provenance,
+		/** 盘上装着的,按 id 索引。一份,不是每条条目现算一遍。 */
+		installedOnDisk: Map<string, { id: string; version?: string }>,
 	): { state: MarketplaceEntryState; installed?: MarketplaceEntryDTO["installed"] } {
-		const onDisk = deps.installed().find((candidate) => candidate.id === entry.id);
+		const onDisk = installedOnDisk.get(entry.id);
 		const record = provenance.installed[entry.id];
-		const index = source.index as MarketplaceIndex;
 		if (onDisk) {
 			// 来源记录说的是「哪一版从哪儿装的」;盘上那份要是被别的路盖掉了(手放 / 上传),
 			// 版本对不上,来源记录就不作数 —— 更新只认原来源,而原来源已经不是它了。
 			const fromHere =
-				record?.source === source.view.id &&
+				record?.source === sourceId &&
 				(onDisk.version === undefined || onDisk.version === record.version);
 			const installed = { version: onDisk.version, source: fromHere ? record.source : undefined };
 			if (!fromHere) return { state: "installed-elsewhere", installed };
@@ -357,13 +385,21 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 
 	function toView(loaded: LoadedSource[]): MarketplaceResponse {
 		const provenance = readProvenance(deps.root);
+		// 装载器那份名单问一次就够:每条条目各问一遍等于把整张表扫成 O(条目 × 装着的)。
+		const installedOnDisk = new Map(deps.installed().map((one) => [one.id, one]));
 		const prerelease = deps.prerelease();
 		const extensions: MarketplaceEntryDTO[] = [];
 		for (const source of loaded) {
 			if (!source.index) continue;
 			for (const entry of source.index.extensions) {
 				if (entry.prerelease && !prerelease) continue;
-				const { state, installed } = stateOf(entry, source, provenance);
+				const { state, installed } = stateOf(
+					entry,
+					source.view.id,
+					source.index,
+					provenance,
+					installedOnDisk,
+				);
 				extensions.push({
 					source: source.view.id,
 					official: source.view.official,
@@ -422,7 +458,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const downloaded = await fetchThroughMirrors<Uint8Array, "checksum">({
 			url: entry.package.url,
 			// 只有官方源的包在 GitHub 上,加速前缀才拼得出东西。
-			mirrors: source.view.official ? mirrorChain() : [""],
+			mirrors: source.view.official ? mirrorChain(deps.mirrors()) : [""],
 			timeoutMs: downloadTimeoutMs,
 			maxBytes: Math.min(entry.package.size, MAX_EXTENSION_PACKAGE_BYTES),
 			accept: (bytes) =>

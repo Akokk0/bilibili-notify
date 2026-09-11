@@ -8,7 +8,7 @@ import type {
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import { decideUpdate } from "./decide-update.js";
 import { fetchSignedManifest } from "./fetch-signed-manifest.js";
-import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
+import { fetchThroughMirrors, mirrorChain } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
 import { readSeenIssuedAt, rememberIssuedAt } from "./manifest-freshness.js";
 import { pruneOldVersions, removeVersionDir } from "./prune-versions.js";
@@ -214,11 +214,6 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return status();
 	}
 
-	/** 顺序即优先级:用户填的加速前缀先试,**直连永远垫底但永远在**。 */
-	function mirrorChain(settings: UpdateSettings): string[] {
-		return [...settings.mirrors.filter((m) => m.trim() !== ""), ""];
-	}
-
 	async function installFrom(manifest: Manifest, mirrors: string[]): Promise<UpdateStatus> {
 		state = {
 			phase: "downloading",
@@ -387,7 +382,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 	async function runCheck(): Promise<UpdateStatus> {
 		const settings = readSettings();
-		const mirrors = mirrorChain(settings);
+		const mirrors = mirrorChain(settings.mirrors);
 		const { channel } = settings;
 		const fetched = await fetchManifest(channel, mirrors);
 		if (!fetched.ok) {
@@ -472,7 +467,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				if (pending === null || pending.channel !== settings.channel) return runCheck();
 				// 已经装好的就别再下一遍 —— 「下载」按了两次不该变成两次 7MB。
 				if (alreadyOnDisk(pending.manifest)) return status();
-				return startDownload(pending.manifest, mirrorChain(settings));
+				return startDownload(pending.manifest, mirrorChain(settings.mirrors));
 			});
 		},
 

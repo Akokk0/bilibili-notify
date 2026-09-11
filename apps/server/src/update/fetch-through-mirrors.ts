@@ -1,3 +1,16 @@
+/**
+ * 主人填的加速前缀 → 这一次要按顺序试的候选站。
+ *
+ * **顺序即优先级**:填的前缀先试,**直连永远垫底但永远在**(空串 = 不加前缀)。空白
+ * 的那几行是人手填出来的,一律丢掉 —— 拼出来的会是一条 `/https://…` 的废地址。
+ *
+ * 自主升级与拓展市场共用这一条:两处各写一份的话,哪天改了顺序(比如直连提前)只会
+ * 改到一边,而症状是「更新走加速、装拓展不走」这种没人讲得清的差别。
+ */
+export function mirrorChain(mirrors: readonly string[]): string[] {
+	return [...mirrors.filter((m) => m.trim() !== ""), ""];
+}
+
 /** 拿到字节之后的验收:成就带着解出来的值走,不成就带着理由换下一个候选。 */
 export type Acceptance<T, R extends string> = { ok: true; value: T } | { ok: false; reason: R };
 
