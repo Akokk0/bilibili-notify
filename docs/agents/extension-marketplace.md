@@ -44,7 +44,9 @@
 
 1. 改 `extensions/<id>/extension.json` 的 `version`,在 `extensions/<id>/CHANGELOG.md` 加 `## [x.y.z] — 日期` 一段,标题下第一段是概述(≤ 120 字,会进索引的 `notes`)。
 2. 提交、push 到 dev。
-3. 打 tag `ext/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(只装 `extension.json` + `index.mjs`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
+3. 打 tag `ext/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(只装 `extension.json` + `index.mjs`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
+
+   并索引这一步上钉着三条「只许往前走」,踩了当场红而不是发出一份坏索引:**只有滚动 release 还不存在**才算第一次发(5xx / 限流 / token 权限掉了一律红 —— 当成「还没有索引」会把整份索引连 `revoked` 名单一起覆盖成只含这一条);`issuedAt` 必须比当前那份大(不传就取 `max(现在, 当前 + 1)`,手传的不够大就红),误传毫秒(≥ `1e11`)拒 —— 发出去会把客户端永久钉死在这一份上;同 id 的版本不许降回去(重跑旧 tag),**等于**放行(重发同一版)。
 4. 手动 dry-run:Actions 里跑 `extension release`,填 id 与 version,`dry_run` 勾着 —— 构建、打包、签索引都跑,只不上传。
 
 撤回一版:暂时手动 —— 拿当前索引本体跑 `node scripts/marketplace-index.mjs --entry <最新那条> --current current.json --revoke <id>@<版本>`,再用 `publish-extension-marketplace.sh` 发。（撤回 workflow 是后话。）
@@ -60,9 +62,11 @@
 
 ## 装了之后
 
-- `<dataDir>/extensions/.marketplace.json` 记着每个 id 从哪个源装的哪一版;「有新版」只认原来源。手放的 / devtools 链的没有记录,不提示更新。
+- `<dataDir>/extensions/.marketplace.json` 记着每个 id 从哪个源装的哪一版、官方索引见过的最大 `issuedAt`,以及**每个源上次报的命名空间**(`namespaces`)。「有新版」只认原来源;手放的 / devtools 链的没有记录,不提示更新。
+- 命名空间的占位是**记在盘上**的:拉索引之前就按配置顺序占好,先配的源这一趟超时也不会让后配的源抢走它的命名空间(那个源装着的拓展 id 全在那底下)。源删掉了占位才还回去。
 - 更新 = 从市场再装一次;盖掉一份正在跑的要重启一次(同上传装包)。
-- 契约不合(`apiVersion` 对不上)的条目标灰「先升级 BN」;撤回的标红。
+- 契约不合(`apiVersion` 对不上)的条目标灰「先升级 BN」;撤回的标红。**索引里那个新版自己装不了的(被撤回 / 要更高一格的契约)不画「有新版」** —— 画出来的钮就得按得动。
+- 下载上限按索引写的 `size` 收;`size` 本身超过本机上限(10 MB)时直接说是上限,不报「下不下来」。
 
 ## 代码位置
 

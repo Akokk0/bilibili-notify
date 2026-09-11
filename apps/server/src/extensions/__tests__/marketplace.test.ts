@@ -8,6 +8,7 @@
  */
 
 import { createHash, sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -204,6 +205,25 @@ describe("list():官方源", () => {
 		expect(provenance.officialIssuedAt).toBe(200);
 	});
 
+	it("拉索引那一趟里落的安装记录不被旧快照抹掉(读-改-写之间不能有 await)", async () => {
+		serve({
+			[OFFICIAL_URL]: () => {
+				// 索引还在路上时,别处(装一个拓展)往同一份来源记录上记了账。
+				writeFileSync(
+					join(root, MARKETPLACE_PROVENANCE_FILE),
+					JSON.stringify({
+						installed: { bridge: { source: "official", version: "0.0.2", installedAt: 1 } },
+					}),
+				);
+				return new Response(envelope(key.privateKey, official()));
+			},
+		});
+		await harness().marketplace.list();
+		const provenance = JSON.parse(await readFile(join(root, MARKETPLACE_PROVENANCE_FILE), "utf8"));
+		expect(provenance.installed.bridge).toMatchObject({ source: "official", version: "0.0.2" });
+		expect(provenance.officialIssuedAt).toBe(1_760_000_000);
+	});
+
 	it("官方索引走加速镜像:先试镜像前缀,再直连", async () => {
 		const fetchMock = serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()) });
 		await harness({ mirrors: ["https://mirror.example"] }).marketplace.list();
@@ -306,6 +326,46 @@ describe("list():第三方源", () => {
 		});
 		expect(view.extensions.map((e) => e.source)).toEqual(["s1"]);
 	});
+
+	it("先配的源这趟没拉到,后配的源也抢不走它占着的命名空间", async () => {
+		const BOB = "https://bob.example/m.json";
+		const sources = [
+			{ id: "s1", name: "alice", url: THIRD_URL },
+			{ id: "s2", name: "bob", url: BOB },
+		];
+		serve({ [THIRD_URL]: JSON.stringify(third()), [BOB]: JSON.stringify(third({ name: "bob" })) });
+		expect(
+			(await harness({ noOfficial: true, sources }).marketplace.list()).sources.map((s) => s.ok),
+		).toEqual([true, false]);
+
+		// 第二趟 alice 那头超时/挂了。bob 照发同一个命名空间 —— 占位还在,抢不走。
+		serve({ [BOB]: JSON.stringify(third({ name: "bob" })) });
+		const view = await harness({ noOfficial: true, sources }).marketplace.list();
+		expect(view.sources[0]).toMatchObject({ id: "s1", ok: false });
+		expect(view.sources[1]).toMatchObject({
+			id: "s2",
+			ok: false,
+			err: expect.stringContaining("alice"),
+		});
+		expect(view.extensions).toEqual([]);
+	});
+
+	it("源被删掉了,它占着的命名空间就还回去", async () => {
+		const BOB = "https://bob.example/m.json";
+		serve({ [THIRD_URL]: JSON.stringify(third()) });
+		await harness({
+			noOfficial: true,
+			sources: [{ id: "s1", name: "alice", url: THIRD_URL }],
+		}).marketplace.list();
+
+		serve({ [BOB]: JSON.stringify(third({ name: "bob" })) });
+		const view = await harness({
+			noOfficial: true,
+			sources: [{ id: "s2", name: "bob", url: BOB }],
+		}).marketplace.list();
+		expect(view.sources[0]).toMatchObject({ id: "s2", ok: true, namespace: "alice" });
+		expect(view.extensions).toHaveLength(1);
+	});
 });
 
 describe("list():已装的怎么标", () => {
@@ -337,6 +397,39 @@ describe("list():已装的怎么标", () => {
 		});
 		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
 			state: "revoked",
+		});
+	});
+
+	it("索引里那个新版自己装不了(被撤回 / 契约升了一格)→ 不画「有新版」", async () => {
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
+		const h = harness();
+		await h.marketplace.install("official", "bridge");
+		h.setInstalled([{ id: "bridge", version: "0.0.2" }]);
+
+		// 新版被撤回:装着那版没事,但那颗更新钮点下去必失败(install() 会拒)。
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ revoked: ["bridge@0.0.3"], extensions: [entry("bridge", "0.0.3", bridgeZip)] }),
+			),
+		});
+		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
+			state: "installed",
+		});
+
+		// 新版要更高一格的宿主契约:同样点不动,得先升级 BN。
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [
+						entry("bridge", "0.0.3", bridgeZip, { apiVersion: EXTENSION_API_VERSION + 1 }),
+					],
+				}),
+			),
+		});
+		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
+			state: "installed",
 		});
 	});
 
@@ -421,6 +514,39 @@ describe("install()", () => {
 			ok: false,
 			err: expect.stringContaining("升级"),
 		});
+	});
+
+	it("索引写的包超过本机上限 → 说清是上限,别报成「下不下来」", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [
+						entry("bridge", "0.0.2", bridgeZip, {
+							package: {
+								url: ZIP_URL,
+								sha256: sha256(bridgeZip),
+								size: 20 * 1024 * 1024,
+							},
+						}),
+					],
+				}),
+			),
+			[ZIP_URL]: bridgeZip,
+		});
+		const outcome = await harness().marketplace.install("official", "bridge");
+		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("上限") });
+	});
+
+	it("下载上限按索引写的 size 收,不是 10MB 硬顶 —— 发来的比写的大就当场停", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(key.privateKey, official()),
+			// 索引写的是 bridgeZip 那几百字节,这头却灌 64KB。
+			[ZIP_URL]: new Uint8Array(64 * 1024),
+		});
+		const outcome = await harness().marketplace.install("official", "bridge");
+		// 读到索引写的那个数就断了,拿不到完整字节 —— 而不是「收完 64KB 再说校验和不对」。
+		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("下不下来") });
 	});
 
 	it("第三方源的包不走镜像,官方的走", async () => {

@@ -97,6 +97,18 @@ interface Provenance {
 	/** 官方索引见过的最大 `issuedAt` —— 比它旧的一律不收(加速站会回放旧的)。 */
 	officialIssuedAt?: number;
 	installed: Record<string, ProvenanceRecord>;
+	/**
+	 * 每个第三方源上次报的命名空间(源 id → 命名空间)。占位是**记在盘上**的:命名空间
+	 * 撞了要拒后面那个,而「后面」得按配置顺序算,不能按「谁这一趟先拉到」算 —— 先配的
+	 * 源某次超时,后配的源就抢到了它的命名空间,而它装着的拓展 id 全在那个命名空间下。
+	 */
+	namespaces: Record<string, string>;
+}
+
+/** 命名空间的占位:谁占着(源 id)、面板上写谁的名字。 */
+interface NamespaceHolder {
+	sourceId: string;
+	name: string;
 }
 
 interface LoadedSource {
@@ -123,14 +135,26 @@ function readProvenance(root: string): Provenance {
 			}
 		}
 	}
+	const namespaces: Record<string, string> = {};
+	if (raw && typeof raw === "object" && raw.namespaces && typeof raw.namespaces === "object") {
+		for (const [sourceId, ns] of Object.entries(raw.namespaces)) {
+			if (typeof ns === "string" && ns !== "") namespaces[sourceId] = ns;
+		}
+	}
 	return {
 		officialIssuedAt: typeof raw?.officialIssuedAt === "number" ? raw.officialIssuedAt : undefined,
 		installed,
+		namespaces,
 	};
 }
 
 function sha256Hex(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
+}
+
+/** 字节数说成人话(一位小数的 MB)。 */
+function mib(bytes: number): string {
+	return (bytes / 1024 / 1024).toFixed(1);
 }
 
 /** 索引拿不到 / 验不过时给主人看的那句 —— 四种原因四句话,别混成「连接出错」。 */
@@ -156,14 +180,14 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	}
 
 	async function loadOfficial(official: MarketplaceOfficialSource): Promise<LoadedSource> {
-		const provenance = readProvenance(deps.root);
+		const seenIssuedAt = readProvenance(deps.root).officialIssuedAt;
 		const fetched = await fetchSignedJson({
 			url: official.url,
 			mirrors: mirrorChain(),
 			trustedKeys: official.trustedKeys,
 			timeoutMs,
 			maxBytes: maxIndexBytes,
-			minIssuedAt: provenance.officialIssuedAt,
+			minIssuedAt: seenIssuedAt,
 			schema: MarketplaceIndexSchema,
 			issuedAtOf: (index) => index.issuedAt,
 		});
@@ -185,11 +209,17 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			};
 		}
 		const issuedAt = fetched.value.issuedAt;
-		if (issuedAt !== undefined && (provenance.officialIssuedAt ?? 0) < issuedAt) {
-			writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, {
-				...provenance,
-				officialIssuedAt: issuedAt,
-			});
+		if (issuedAt !== undefined) {
+			// 现读现写:拉索引是一趟网络往返,这中间别处(装一个拓展)可能已经往同一份来源
+			// 记录上记过账了。拿 await 之前那份快照整份写回去等于把它抹掉 —— 读-改-写之间
+			// 不许有 await。
+			const current = readProvenance(deps.root);
+			if ((current.officialIssuedAt ?? 0) < issuedAt) {
+				writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, {
+					...current,
+					officialIssuedAt: issuedAt,
+				});
+			}
 		}
 		return { view: { ...base, name: fetched.value.name, ok: true }, index: fetched.value };
 	}
@@ -206,7 +236,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 
 	async function loadThirdParty(
 		source: MarketplaceSource,
-		taken: Map<string, string>,
+		taken: Map<string, NamespaceHolder>,
 	): Promise<LoadedSource> {
 		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
 		const fetched = await fetchThroughMirrors<MarketplaceIndex, string>({
@@ -237,26 +267,58 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const named = { ...base, name: fetched.value.name };
 		const ns = fetched.value.namespace as string;
 		const holder = taken.get(ns);
-		if (holder !== undefined) {
+		if (holder !== undefined && holder.sourceId !== source.id) {
 			return {
 				view: {
 					...named,
 					namespace: ns,
 					ok: false,
-					err: `命名空间「${ns}」已经被源「${holder}」用了`,
+					err: `命名空间「${ns}」已经被源「${holder.name}」用了`,
 				},
 			};
 		}
-		taken.set(ns, named.name);
+		taken.set(ns, { sourceId: source.id, name: named.name });
 		return { view: { ...named, namespace: ns, ok: true }, index: fetched.value };
+	}
+
+	/**
+	 * 按**配置顺序**把上次记下的命名空间先占上 —— 拉索引之前就占好,这一趟谁拉失败都不
+	 * 影响谁占着什么。之后拉到的以拉到的为准(源换了命名空间是它自己的事)。
+	 */
+	function seedTaken(sources: readonly MarketplaceSource[]): Map<string, NamespaceHolder> {
+		const remembered = readProvenance(deps.root).namespaces;
+		const taken = new Map<string, NamespaceHolder>();
+		for (const source of sources) {
+			const ns = remembered[source.id];
+			if (ns === undefined || taken.has(ns)) continue;
+			taken.set(ns, { sourceId: source.id, name: placeholderName(source) });
+		}
+		return taken;
+	}
+
+	/** 占位落盘。只留**还配着**的源 —— 源删掉了它占的命名空间就得还回去。 */
+	function rememberNamespaces(
+		sources: readonly MarketplaceSource[],
+		taken: Map<string, NamespaceHolder>,
+	): void {
+		const next: Record<string, string> = {};
+		for (const [ns, holder] of taken) {
+			if (sources.some((source) => source.id === holder.sourceId)) next[holder.sourceId] = ns;
+		}
+		// 读-改-写之间没有 await:上面那一串拉取早就跑完了。
+		const current = readProvenance(deps.root);
+		if (JSON.stringify(current.namespaces) === JSON.stringify(next)) return;
+		writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, { ...current, namespaces: next });
 	}
 
 	async function loadAll(refresh: boolean): Promise<LoadedSource[]> {
 		if (!refresh && cache && now() - cache.at < cacheMs) return cache.loaded;
 		const loaded: LoadedSource[] = [];
 		if (deps.official) loaded.push(await loadOfficial(deps.official));
-		const taken = new Map<string, string>();
-		for (const source of deps.sources()) loaded.push(await loadThirdParty(source, taken));
+		const sources = deps.sources();
+		const taken = seedTaken(sources);
+		for (const source of sources) loaded.push(await loadThirdParty(source, taken));
+		rememberNamespaces(sources, taken);
 		cache = { at: now(), loaded };
 		return loaded;
 	}
@@ -279,10 +341,14 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			if (!fromHere) return { state: "installed-elsewhere", installed };
 			if (isMarketplaceRevoked(index, entry.id, record.version))
 				return { state: "revoked", installed };
-			return {
-				state: compareVersions(entry.version, record.version) > 0 ? "updatable" : "installed",
-				installed,
-			};
+			// 「有新版」那颗钮画出来就得按得动:索引里那个新版自己装不了的两种情形
+			// (它被撤回了、它要更高一格的宿主契约),install() 会当场拒 —— 别画出来
+			// 让主人点一次再吃一句错。压回 installed:装着那版好好的。
+			const newer = compareVersions(entry.version, record.version) > 0;
+			const installable =
+				!isMarketplaceRevoked(index, entry.id, entry.version) &&
+				entry.apiVersion === hostApiVersion;
+			return { state: newer && installable ? "updatable" : "installed", installed };
 		}
 		if (isMarketplaceRevoked(index, entry.id, entry.version)) return { state: "revoked" };
 		if (entry.apiVersion !== hostApiVersion) return { state: "incompatible" };
@@ -343,13 +409,22 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		if (isMarketplaceRevoked(source.index, entry.id, entry.version)) {
 			return { ok: false, err: `${entry.name} ${entry.version} 已被这个源撤回` };
 		}
+		// 索引自己写了包有多大,那就是这一次的上限 —— 拿 10MB 硬顶当上限等于允许对面
+		// 灌到 10MB 才停,而我们本来就知道该收多少。超过本机上限的得说清是上限:
+		// 报「下不下来」会把主人支去查网络。
+		if (entry.package.size > MAX_EXTENSION_PACKAGE_BYTES) {
+			return {
+				ok: false,
+				err: `索引写的 ${entry.name} 包有 ${mib(entry.package.size)} MB,超过本机上限 ${mib(MAX_EXTENSION_PACKAGE_BYTES)} MB`,
+			};
+		}
 
 		const downloaded = await fetchThroughMirrors<Uint8Array, "checksum">({
 			url: entry.package.url,
 			// 只有官方源的包在 GitHub 上,加速前缀才拼得出东西。
 			mirrors: source.view.official ? mirrorChain() : [""],
 			timeoutMs: downloadTimeoutMs,
-			maxBytes: MAX_EXTENSION_PACKAGE_BYTES,
+			maxBytes: Math.min(entry.package.size, MAX_EXTENSION_PACKAGE_BYTES),
 			accept: (bytes) =>
 				bytes.byteLength === entry.package.size && sha256Hex(bytes) === entry.package.sha256
 					? { ok: true, value: bytes }
