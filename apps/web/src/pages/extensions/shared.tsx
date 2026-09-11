@@ -37,6 +37,21 @@ export function ExtensionIcon({ svg, size = 17 }: { svg?: string; size?: number 
 export const PARAGRAPH_CLS = "text-bn-xs leading-[1.65] text-bn-text-secondary text-pretty";
 
 /**
+ * 一节的标题行左半那个小标题(列表页的「推送源 / 订阅源」、详情页的「桥接入」)。
+ *
+ * 旁边那条发丝线**不归它** —— 两处的标题行余下部分并不一样(详情页那一行还塞着图例与
+ * 「新建接入」),摆法留给摆放处。
+ *
+ * ⚠️ 市场那一节的小标题是**另一档**(uppercase + 更宽的字距),别顺手并进来:并了它就
+ * 当场变样。
+ */
+export function SectionCaption({ children }: { children: string }) {
+	return (
+		<span className="text-bn-xs font-bold tracking-[0.04em] text-bn-text-tertiary">{children}</span>
+	);
+}
+
+/**
  * 「为什么没跑起来」。分红黄两档不是口味:清单坏了 / 加载炸了要主人去动手,而连败自动
  * 停用与版本不合是「换一版就好」,同一个红盒会让前者被当成后者放着不管。
  */

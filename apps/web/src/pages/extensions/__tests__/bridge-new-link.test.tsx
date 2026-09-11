@@ -7,8 +7,7 @@
  * 一对,少一样连不上。所以新建这一刻要把它们摆在一起、都能复制。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -18,25 +17,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
-
-function renderPanel() {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([]);
-		throw new Error("拓展没跑起来");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
-}
+import { renderPanel } from "./bridge-harness";
 
 async function openDialog() {
 	renderPanel();

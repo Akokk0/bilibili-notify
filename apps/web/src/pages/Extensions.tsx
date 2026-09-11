@@ -1,8 +1,4 @@
-import type {
-	ExtensionDTO,
-	ExtensionsResponse,
-	MarketplaceEntryDTO,
-} from "@bilibili-notify/contract";
+import type { ExtensionDTO, MarketplaceEntryDTO } from "@bilibili-notify/contract";
 import {
 	Btn,
 	EmptyNote,
@@ -17,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
@@ -33,6 +30,7 @@ import {
 	ExtensionToggleError,
 	PARAGRAPH_CLS,
 	reasonOf,
+	SectionCaption,
 	useExtensionToggle,
 } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
@@ -76,7 +74,7 @@ const SECTIONS: ReadonlyArray<{ code: Provides; label: string; empty: string }> 
 function SectionHead({ label }: { label: string }) {
 	return (
 		<div className="flex items-center gap-2">
-			<span className="text-bn-xs font-bold tracking-[0.04em] text-bn-text-tertiary">{label}</span>
+			<SectionCaption>{label}</SectionCaption>
 			<span className="h-px flex-1 bg-bn-border-subtle" />
 		</div>
 	);
@@ -87,14 +85,23 @@ function SectionHead({ label }: { label: string }) {
  * 那一口的拓展都有连接,按 `provides` 判就够,不必认得是谁;别的连接(直连的 OneBot)不算数。
  * 0 也要报 —— 那正是「装好了但还没接上」。桥的接入(token 那条)不在这儿数,它在详情页。
  */
-function ConnectionCount({ ext, rows }: { ext: ExtensionDTO; rows: ConnectionRow[] }) {
-	const mine = rows.filter((row) => row.kind === "extension" && row.extensionId === ext.id);
+function ConnectionCount({ count }: { count: number }) {
 	return (
 		<div className="flex items-baseline gap-[5px]">
-			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{mine.length}</span>
+			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{count}</span>
 			<span className="text-bn-xs text-bn-text-tertiary">条连接</span>
 		</div>
 	);
+}
+
+/** 整张连接表数一遍:谁名下几条。逐卡各扫一遍全表的话,装了 N 个拓展就扫 N 遍。 */
+function countByExtension(rows: readonly ConnectionRow[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		if (row.kind !== "extension" || row.extensionId === undefined) continue;
+		counts.set(row.extensionId, (counts.get(row.extensionId) ?? 0) + 1);
+	}
+	return counts;
 }
 
 /**
@@ -119,14 +126,15 @@ function BridgeLiveCount({ ext }: { ext: ExtensionDTO }) {
 
 function ExtensionCard({
 	ext,
-	rows,
+	count,
 	onToggle,
 	update,
 	onUpdate,
 	updating,
 }: {
 	ext: ExtensionDTO;
-	rows: ConnectionRow[];
+	/** 从它借来的 bot 建了几条连接。 */
+	count: number;
 	onToggle: (enabled: boolean) => void;
 	/** 市场里这条有更新的那一版(ADR-0013)。没有就不画。 */
 	update?: MarketplaceEntryDTO;
@@ -160,7 +168,7 @@ function ExtensionCard({
 				) : null}
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
-						<ConnectionCount ext={ext} rows={rows} />
+						<ConnectionCount count={count} />
 						{ext.id === "bridge" ? <BridgeLiveCount ext={ext} /> : null}
 					</div>
 				) : null}
@@ -180,10 +188,7 @@ function ExtensionCard({
 }
 
 export default function Extensions() {
-	const listed = useQuery({
-		queryKey: ["extensions"],
-		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
-	});
+	const listed = useExtensions();
 	// 连接表 —— 只为卡片上那句「N 条连接」。**与拓展表分开取**:拓展没跑起来时它照样在,
 	// 而「配了但那个拓展没起来」正是最该看见的一种。
 	const connections = useQuery({
@@ -219,7 +224,7 @@ export default function Extensions() {
 	// 归不了口的那些(清单读不出来 / 版本不合 → 没有 provides)。它们**不许消失**:
 	// 消失的东西没法排查,而这一页正是主人来看「它怎么了」的地方。
 	const homeless = extensions.filter((ext) => (ext.provides ?? []).length === 0);
-	const rows = connections.data ?? [];
+	const counts = countByExtension(connections.data ?? []);
 
 	const grid = (items: ExtensionDTO[]) => (
 		<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -227,7 +232,7 @@ export default function Extensions() {
 				<ExtensionCard
 					key={ext.id}
 					ext={ext}
-					rows={rows}
+					count={counts.get(ext.id) ?? 0}
 					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 					update={updates.get(ext.id)}
 					updating={installer.install.isPending}
@@ -264,8 +269,16 @@ export default function Extensions() {
 			</div>
 
 			<ExtensionToggleError toggle={toggle} />
+			{/*
+			 * 这一发既接已装卡片上的「更新」,也接市场那一节的「装」—— 说哪一句得看**刚才
+			 * 那一下是哪一件事**。一律印「更新不了」的话,从市场装一个新的失败了,主人会
+			 * 去找一个他根本没装过的旧版本。
+			 */}
 			{installer.errors.length > 0 ? (
-				<ErrorNote size="sm">更新不了:{installer.errors.join(";")}</ErrorNote>
+				<ErrorNote size="sm">
+					{installer.action === "update" ? "更新不了:" : "装不了:"}
+					{installer.errors.join(";")}
+				</ErrorNote>
 			) : null}
 			<ExtensionInstallOutcome done={installer.done} />
 

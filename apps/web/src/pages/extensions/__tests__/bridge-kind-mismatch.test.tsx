@@ -10,8 +10,7 @@
  * 那个,于是这个错被悄悄抹平,主人永远看不见。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -21,12 +20,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
@@ -38,32 +32,23 @@ const LINK = {
 	bridgeKind: "koishi",
 };
 
-function renderPanel(reportedKind: string) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([LINK]);
-		if (path.startsWith("/api/ext/")) {
-			return {
-				sessions: [
-					{
-						linkId: "c1",
-						connected: true,
-						kind: reportedKind,
-						name: "机房那台",
-						version: "0.2.1",
-						connectedAt: Date.now() - 60_000,
-						bots: [],
-					},
-				],
-			};
-		}
-		throw new Error("没有这个口");
+function renderMismatch(reportedKind: string) {
+	return renderPanel({
+		links: [LINK],
+		status: {
+			sessions: [
+				{
+					linkId: "c1",
+					connected: true,
+					kind: reportedKind,
+					name: "机房那台",
+					version: "0.2.1",
+					connectedAt: Date.now() - 60_000,
+					bots: [],
+				},
+			],
+		},
 	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
 }
 
 beforeEach(() => {
@@ -77,7 +62,7 @@ afterEach(() => {
 
 describe("桥自报的种类和这条接入对不上", () => {
 	it("说出来 —— 不是画成一切正常的「已连接」", async () => {
-		renderPanel("astrbot");
+		renderMismatch("astrbot");
 		expect(await screen.findByText(/连上了,但对不上/)).toBeTruthy();
 	});
 
@@ -86,7 +71,7 @@ describe("桥自报的种类和这条接入对不上", () => {
 	 * 而真正要改的只是面板上这一格叫什么。
 	 */
 	it("同时讲清楚:收发照常,要改的只是这一格", async () => {
-		renderPanel("astrbot");
+		renderMismatch("astrbot");
 		await screen.findByText(/连上了,但对不上/);
 		const note = document.querySelector("[data-kind-mismatch-note]");
 		expect(note?.textContent).toMatch(/收发照常/);
@@ -95,7 +80,7 @@ describe("桥自报的种类和这条接入对不上", () => {
 	});
 
 	it("给一颗就地改过来的钮,按下去只改种类那一格、不碰 token", async () => {
-		renderPanel("astrbot");
+		renderMismatch("astrbot");
 		await userEvent.click(await screen.findByRole("button", { name: /改成 AstrBot/ }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		// 接入住桥的设置里:整份名单写回,改的只有种类那一格。
@@ -114,7 +99,7 @@ describe("桥自报的种类和这条接入对不上", () => {
 	});
 
 	it("对得上的时候什么都不说 —— 别把正常态也画成警告", async () => {
-		renderPanel("koishi");
+		renderMismatch("koishi");
 		await screen.findByText("家里那台");
 		expect(screen.queryByText(/对不上/)).toBeNull();
 		expect(screen.queryByRole("button", { name: /改成/ })).toBeNull();

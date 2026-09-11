@@ -11,8 +11,7 @@
  * ③ 图例**必须在场** —— 没有图例,主人只能靠猜每个记号是什么意思,今天就是这么猜错的。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -20,13 +19,7 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const LINK = {
 	id: "c1",
@@ -65,18 +58,8 @@ const STATUS = {
 	],
 };
 
-function renderPanel() {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([LINK]);
-		if (path.startsWith("/api/ext/")) return STATUS;
-		throw new Error("没有这个口");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
+function renderCaps() {
+	return renderPanel({ links: [LINK], status: STATUS });
 }
 
 afterEach(() => {
@@ -94,7 +77,7 @@ function markOf(label: string): Element {
 
 describe("能力三态怎么画", () => {
 	it("「不支持」不许画成删除线 —— 那是「坏了」的意思,不是「没有这项」", async () => {
-		renderPanel();
+		renderCaps();
 		await screen.findByText("阿库娅");
 		for (const label of ["分享卡链接", "markdown"]) {
 			const chip = screen.getByTitle(new RegExp(`^${label}:不支持`));
@@ -104,7 +87,7 @@ describe("能力三态怎么画", () => {
 	});
 
 	it("三态的记号两两不同 —— 合并任意两档,「不支持」与「还不知道」就没区别了", async () => {
-		renderPanel();
+		renderCaps();
 		await screen.findByText("阿库娅");
 		const marks = [
 			markOf("@全体").className, // supported
@@ -115,7 +98,7 @@ describe("能力三态怎么画", () => {
 	});
 
 	it("图例在场 —— 三个记号各配一句话,不用猜", async () => {
-		renderPanel();
+		renderCaps();
 		const legend = await screen.findByRole("list", { name: "能力图例" });
 		for (const text of ["支持", "不支持", "还不知道"]) {
 			expect(

@@ -31,7 +31,7 @@ import {
 	type CapabilityState,
 	useBridgeStatus,
 } from "./bridge-status";
-import { reasonOf } from "./shared";
+import { reasonOf, SectionCaption } from "./shared";
 
 /**
  * 桥接拓展那一页的正文:接入的增删改 + 每条接入现在什么样。
@@ -82,6 +82,13 @@ const MUTED_TINT: CSSProperties = {
 	color: "var(--color-bn-inactive)",
 };
 
+/** 三档尺寸各自的形状:方块大小 / 圆角 / 字号。尺寸是**几何量**,不进皮肤词表。 */
+const KIND_MARK_SHAPE: Record<26 | 28 | 32, string> = {
+	26: "size-[26px] rounded-md text-bn-xs",
+	28: "size-7 rounded-md text-bn-sm",
+	32: "size-8 rounded-bn-sm text-bn-base",
+};
+
 /**
  * 「哪一种」那枚方块:灰底,里面是 logo 或两个字母。接入卡左上(32)、bot 行(26)、
  * 新建弹窗里的选项(28)三处同一件,尺寸不同。
@@ -108,13 +115,7 @@ function KindMark({
 	glyph?: ReactNode;
 	style?: CSSProperties;
 }) {
-	const shape =
-		size === 32
-			? "size-8 rounded-bn-sm text-bn-base"
-			: size === 28
-				? "size-7 rounded-md text-bn-sm"
-				: "size-[26px] rounded-md text-bn-xs";
-	const className = `grid shrink-0 place-items-center font-bold lowercase ${shape}`;
+	const className = `grid shrink-0 place-items-center font-bold lowercase ${KIND_MARK_SHAPE[size]}`;
 	const tint = style ?? MUTED_TINT;
 	// logo 占方块的六成出头 —— 与 GlassBox 图标芯片里 17/32 那个比例一档
 	const inner = Math.round(size * 0.62);
@@ -164,13 +165,6 @@ function MonoChip({ children, className }: { children: string; className?: strin
 		>
 			{children}
 		</span>
-	);
-}
-
-/** 一节的标题行左半:小标题 + 发丝线。 */
-function Caption({ children }: { children: string }) {
-	return (
-		<span className="text-bn-xs font-bold tracking-[0.04em] text-bn-text-tertiary">{children}</span>
 	);
 }
 
@@ -324,39 +318,41 @@ function bnBridgeAddress(extensionId: string): string {
 }
 
 /**
- * 「复制」那一颗,只有图标。
+ * 「复制」那一颗。两档外壳同一件事:`iconOnly` 是塞在一行字里的方钮(地址行、弹窗里
+ * 那两格),不填是接入卡 token 行上那颗带字的。
  *
  * 🔴 走 `copyToClipboard` 而不是裸 `navigator.clipboard`:BN 常经
  * `http://<内网 IP>:8787` 打开,那是**非安全上下文**,`navigator.clipboard` 根本不存在 ——
- * 裸写法在那里按下去静默无事,而这一页恰恰最常从内网 IP 打开。
+ * 裸写法在那里按下去静默无事,而这一页恰恰最常从内网 IP 打开。两档各写一份的话,
+ * 这条只会被记起一半。
  */
-function CopyIconButton({ label, text }: { label: string; text: string }) {
+function CopyControl({
+	label,
+	text,
+	iconOnly = false,
+}: {
+	label: string;
+	text: string;
+	iconOnly?: boolean;
+}) {
 	const [copied, setCopied] = useState(false);
+	const icon = copied ? <Icon.check size={13} /> : <Icon.copy size={13} />;
+	const copy = () => {
+		void copyToClipboard(text).then(setCopied);
+	};
+	// 图标钮没文字,「已复制」只能进 label;带字那颗的 label 得稳住(读屏器按它找钮)。
+	if (iconOnly) {
+		return (
+			<IconButton
+				label={copied ? `${label}(已复制)` : label}
+				icon={icon}
+				size="sm"
+				onClick={copy}
+			/>
+		);
+	}
 	return (
-		<IconButton
-			label={copied ? `${label}(已复制)` : label}
-			icon={copied ? <Icon.check size={13} /> : <Icon.copy size={13} />}
-			size="sm"
-			onClick={() => {
-				void copyToClipboard(text).then(setCopied);
-			}}
-		/>
-	);
-}
-
-/** 带字的那一颗(接入卡 token 行上的「复制」)。 */
-function CopyButton({ label, text }: { label: string; text: string }) {
-	const [copied, setCopied] = useState(false);
-	return (
-		<Btn
-			variant="ghost"
-			size="sm"
-			aria-label={label}
-			icon={copied ? <Icon.check size={13} /> : <Icon.copy size={13} />}
-			onClick={() => {
-				void copyToClipboard(text).then(setCopied);
-			}}
-		>
+		<Btn variant="ghost" size="sm" aria-label={label} icon={icon} onClick={copy}>
 			{copied ? "已复制" : "复制"}
 		</Btn>
 	);
@@ -375,7 +371,7 @@ export function BridgeAddressRow({ extensionId }: { extensionId: string }) {
 			<div className="flex items-center gap-[7px] text-bn-xs text-bn-text-secondary">
 				<span className="text-bn-text-tertiary">BN 地址</span>
 				<MonoChip>{address}</MonoChip>
-				<CopyIconButton label="复制 BN 地址" text={address} />
+				<CopyControl iconOnly label="复制 BN 地址" text={address} />
 			</div>
 			<span className="h-4 w-px bg-bn-border-subtle" />
 			<span className="text-bn-xs text-bn-text-tertiary">
@@ -433,7 +429,7 @@ function TokenRow({
 		<div data-token-row className="flex flex-wrap items-center gap-2.5">
 			<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">token</span>
 			<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">{maskToken(token)}</MonoChip>
-			<CopyButton label={`复制 ${linkName} 的 token`} text={token} />
+			<CopyControl label={`复制 ${linkName} 的 token`} text={token} />
 			<Btn
 				variant="danger-outline"
 				size="sm"
@@ -903,12 +899,12 @@ function AddLinkDialog({
 							<MonoChip className="min-w-0 flex-1 truncate text-bn-text-primary">
 								{address}
 							</MonoChip>
-							<CopyIconButton label="复制 BN 地址" text={address} />
+							<CopyControl iconOnly label="复制 BN 地址" text={address} />
 						</div>
 						<div className="flex items-center gap-2.5">
 							<span className="w-14 shrink-0 text-bn-2xs">token</span>
 							<MonoChip className="min-w-0 flex-1 truncate text-bn-text-primary">{token}</MonoChip>
-							<CopyIconButton label="复制 token" text={token} />
+							<CopyControl iconOnly label="复制 token" text={token} />
 						</div>
 					</div>
 					<span className="text-bn-2xs leading-[1.7]">
@@ -1022,7 +1018,7 @@ export function BridgeConnections({
 			 */}
 			{enabled && links.length > 0 ? (
 				<div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-					<Caption>桥接入</Caption>
+					<SectionCaption>桥接入</SectionCaption>
 					<span className="h-px min-w-4 flex-1 bg-bn-border-subtle" />
 					<CapabilityLegend />
 					<Btn

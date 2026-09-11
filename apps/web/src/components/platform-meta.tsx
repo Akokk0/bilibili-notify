@@ -14,13 +14,12 @@
  * 类型、测试、门禁全绿,只有真机上眼睛看得出来。
  */
 
-import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionDTO } from "@bilibili-notify/contract";
 import type { Connection } from "@bilibili-notify/internal";
 import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
 import { type PlatformMeta, PlatformMetaProvider, usePlatformMeta } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
-import { api } from "../services/api";
+import { useExtensions } from "../hooks/useExtensions";
 
 const BUILT_IN: Record<string, PlatformMeta> = Object.fromEntries(
 	Object.entries(PLATFORM_REGISTRY).map(([platform, meta]) => [
@@ -66,13 +65,9 @@ export function useConnectionFace(): (connection: Connection) => string {
 }
 
 export function PlatformMetaRoot({ children }: { children: ReactNode }) {
-	// 与拓展页共用同一个 key:那一页刷新之后,推送目标卡上的脸跟着换。
+	// 与拓展页共用同一张表:那一页刷新之后,推送目标卡上的脸跟着换。
 	// 没登录 / 老服务端拿不到就退回内置那份 —— 那时也没有拓展卡片要画。
-	const listed = useQuery({
-		queryKey: ["extensions"],
-		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
-		retry: false,
-	});
+	const listed = useExtensions({ retry: false });
 	const lookup = useMemo(
 		() => buildPlatformTable(listed.data?.extensions ?? []),
 		[listed.data?.extensions],

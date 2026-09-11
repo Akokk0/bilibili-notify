@@ -10,8 +10,7 @@
  * 各写了一份裸 `navigator.clipboard?.writeText` —— 按下去什么都不发生,也不报错。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -21,13 +20,10 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeAddressRow, BridgeConnections, maskToken } from "../bridge-panel";
+import { maskToken } from "../bridge-panel";
+import { renderPanel } from "./bridge-harness";
 
 /** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
-
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 const LINK = {
@@ -38,19 +34,9 @@ const LINK = {
 	bridgeKind: "koishi",
 };
 
-function renderPanel(links: unknown[] = [LINK]) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith(links);
-		throw new Error("拓展没跑起来");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	// 地址行住在详情页的头卡上,token 行在接入卡上 —— 两处的「复制」走的是同一件事
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeAddressRow extensionId="bridge" />
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
+// 地址行住在详情页的头卡上,token 行在接入卡上 —— 两处的「复制」走的是同一件事
+function renderTokenRow(links: unknown[] = [LINK]) {
+	return renderPanel({ links, withAddressRow: true });
 }
 
 /** 装一个非安全上下文:没有 `navigator.clipboard`,只有老式 `execCommand`。 */
@@ -79,14 +65,14 @@ afterEach(() => {
 
 describe("token 那一行", () => {
 	it("掩码留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏", async () => {
-		renderPanel();
+		renderTokenRow();
 		const masked = await screen.findByText(/^0123.*cdef$/);
 		expect(masked.textContent).not.toContain(TOKEN);
 		expect(document.body.textContent).not.toContain(TOKEN);
 	});
 
 	it("「重新生成」就在 token 这一行 —— 它讲的是 token,不该散在卡片标题栏", async () => {
-		renderPanel();
+		renderTokenRow();
 		const masked = await screen.findByText(/^0123.*cdef$/);
 		const row = masked.closest("[data-token-row]");
 		expect(row).toBeTruthy();
@@ -99,7 +85,7 @@ describe("token 那一行", () => {
 	 * 就挂在旁边没人用。
 	 */
 	it("空 token 也给得出「重新生成」那颗钮 —— 一句话请人做的事得真的按得到", async () => {
-		renderPanel([{ ...LINK, token: "" }]);
+		renderTokenRow([{ ...LINK, token: "" }]);
 		expect(await screen.findByText(/还没有 token/)).toBeTruthy();
 		const regenerate = screen.getByRole("button", { name: /重新生成/ });
 		await userEvent.click(regenerate);
@@ -138,14 +124,14 @@ describe("非安全上下文里的复制", () => {
 	 */
 	it("没有 navigator.clipboard 时,复制 token 也要真的复制到", async () => {
 		const execCommand = pretendInsecureContext();
-		renderPanel();
+		renderTokenRow();
 		await userEvent.click(await screen.findByRole("button", { name: /复制.*token/ }));
 		expect(execCommand).toHaveBeenCalledWith("copy");
 	});
 
 	it("BN 地址同理 —— 抄错地址与抄错 token 一样连不上", async () => {
 		const execCommand = pretendInsecureContext();
-		renderPanel();
+		renderTokenRow();
 		await userEvent.click(await screen.findByRole("button", { name: /复制 BN 地址/ }));
 		expect(execCommand).toHaveBeenCalledWith("copy");
 	});

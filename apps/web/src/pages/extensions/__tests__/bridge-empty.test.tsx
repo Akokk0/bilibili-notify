@@ -9,8 +9,7 @@
  * (「现在接着几条 / 几个 bot 在线」那一行在**列表页**的卡上,守卫在 Extensions.render 里。)
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -18,30 +17,7 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
-
-function renderPanel(links: unknown[], status: unknown) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith(links);
-		if (path.startsWith("/api/ext/")) {
-			if (status === undefined) throw new Error("拓展没跑起来");
-			return status;
-		}
-		throw new Error("没有这个口");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
-}
+import { renderPanel } from "./bridge-harness";
 
 afterEach(() => {
 	cleanup();
@@ -50,7 +26,7 @@ afterEach(() => {
 
 describe("一条接入都没有", () => {
 	it("讲的是接下来干什么,不是「这里是空的」", async () => {
-		renderPanel([], undefined);
+		renderPanel();
 		const empty = await screen.findByText(/还没有桥接入/);
 		const box = empty.closest("[data-bridge-empty]");
 		expect(box).toBeTruthy();
@@ -61,7 +37,7 @@ describe("一条接入都没有", () => {
 	});
 
 	it("就地给一颗开工的钮", async () => {
-		renderPanel([], undefined);
+		renderPanel();
 		const box = (await screen.findByText(/还没有桥接入/)).closest("[data-bridge-empty]");
 		expect(box?.querySelector("button")).toBeTruthy();
 	});

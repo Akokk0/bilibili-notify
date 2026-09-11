@@ -1,8 +1,6 @@
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { EmptyNote, ErrorNote, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { api } from "../services/api";
+import { useExtensions } from "../hooks/useExtensions";
 import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
 import {
 	ExtensionIcon,
@@ -26,10 +24,7 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  */
 export default function ExtensionDetail() {
 	const { id = "" } = useParams<{ id: string }>();
-	const listed = useQuery({
-		queryKey: ["extensions"],
-		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
-	});
+	const listed = useExtensions();
 	const toggle = useExtensionToggle();
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;

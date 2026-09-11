@@ -10,9 +10,7 @@
  * 桥那一级排最前:桥后面挂着什么平台是**运行时才知道**的开放词表,BN 认得的只是一小撮。
  */
 
-import { PlatformMetaProvider } from "@bilibili-notify/ui";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { buildPlatformTable } from "../../../components/platform-meta";
 
@@ -21,13 +19,7 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const KOISHI = {
 	id: "c1",
@@ -78,21 +70,13 @@ const STATUS = {
 	],
 };
 
-function renderPanel() {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith([KOISHI, ASTRBOT]);
-		if (path.startsWith("/api/ext/")) return STATUS;
-		throw new Error("没有这个口");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderMarks() {
 	// 与真页面同一张表:内置平台那份注册表,拓展一个都没装
-	return render(
-		<PlatformMetaProvider value={buildPlatformTable([])}>
-			<QueryClientProvider client={qc}>
-				<BridgeConnections extensionId="bridge" enabled />
-			</QueryClientProvider>
-		</PlatformMetaProvider>,
-	);
+	return renderPanel({
+		links: [KOISHI, ASTRBOT],
+		status: STATUS,
+		platforms: buildPlatformTable([]),
+	});
 }
 
 function botMark(name: string): Element {
@@ -112,14 +96,14 @@ describe("接入卡的方块", () => {
 	 * 摆在会话元信息里,而「我给这条配的是什么」此前只在**没连上**时才印得出来。
 	 */
 	it("两条接入各带一枚认得出种类的方块,连着的那条也有", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("家里那台");
 		expect(screen.getByLabelText("koishi 接入")).toBeTruthy();
 		expect(screen.getByLabelText("astrbot 接入")).toBeTruthy();
 	});
 
 	it("方块里是那种桥自己的 logo,不是两个字母", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("家里那台");
 		for (const kind of ["koishi", "astrbot"]) {
 			const img = screen.getByLabelText(`${kind} 接入`).querySelector("img");
@@ -130,13 +114,13 @@ describe("接入卡的方块", () => {
 
 describe("bot 行的平台方块", () => {
 	it("桥给了图标就画桥给的 —— 哪怕 BN 自己也认得这个平台", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("阿库娅");
 		expect(botMark("阿库娅").querySelector("img")?.getAttribute("src")).toBe(BRIDGE_ICON);
 	});
 
 	it("桥没给、BN 认得 → 画 BN 自己那枚", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("备用机");
 		const mark = botMark("备用机");
 		expect(mark.querySelector("img")).toBeNull();
@@ -144,7 +128,7 @@ describe("bot 行的平台方块", () => {
 	});
 
 	it("桥没给、BN 只有短名没图标 → 还是两个字母,不画方章套方块", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("通用机");
 		const mark = botMark("通用机");
 		expect(mark.querySelector("img, svg")).toBeNull();
@@ -152,7 +136,7 @@ describe("bot 行的平台方块", () => {
 	});
 
 	it("谁都不认得 → 平台名头两个字母,任何平台都画得出来", async () => {
-		renderPanel();
+		renderMarks();
 		await screen.findByText("小电视");
 		const mark = botMark("小电视");
 		expect(mark.querySelector("img, svg")).toBeNull();

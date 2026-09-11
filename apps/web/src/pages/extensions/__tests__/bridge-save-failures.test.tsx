@@ -11,8 +11,7 @@
  * 于是前一发的改动被按回去 —— 两下都成功、结果只剩后一下,而且没有任何地方会报错。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -22,11 +21,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const HOME = {
 	id: "c1",
@@ -37,21 +32,9 @@ const HOME = {
 };
 const OFFICE = { ...HOME, id: "c2", name: "机房那台" };
 
-/** `globals` 传 `null` = 那一口读不到(401 / 服务端炸了 / 断网)。 */
-function renderPanel(links: unknown[] | null = [HOME], enabled = true) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") {
-			if (links === null) throw new Error("配置读不出来:500");
-			return globalsWith(links);
-		}
-		throw new Error("拓展没跑起来");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled={enabled} />
-		</QueryClientProvider>,
-	);
+/** `links` 传 `null` = 那一口读不到(401 / 服务端炸了 / 断网)。 */
+function renderLinks(links: unknown[] | null = [HOME]) {
+	return renderPanel({ links });
 }
 
 afterEach(() => {
@@ -62,14 +45,14 @@ afterEach(() => {
 describe("写不进去的时候", () => {
 	it("停用失败:把服务端那句话摆出来,不让开关自己弹回去就完事", async () => {
 		vi.mocked(api.patch).mockRejectedValue(new Error("配置文件是只读的"));
-		renderPanel();
+		renderLinks();
 		await userEvent.click(await screen.findByRole("button", { name: "停用 家里那台" }));
 		expect(await screen.findByText(/配置文件是只读的/)).toBeTruthy();
 	});
 
 	it("删除失败:原因就摆在确认框里 —— 框不关、不说话等于让人对着黑盒按第二下", async () => {
 		vi.mocked(api.patch).mockRejectedValue(new Error("配置文件是只读的"));
-		renderPanel();
+		renderLinks();
 		await userEvent.click(await screen.findByRole("button", { name: "删除 家里那台" }));
 		const dialog = await screen.findByRole("dialog");
 		await userEvent.click(within(dialog).getByRole("button", { name: "删除" }));
@@ -78,7 +61,7 @@ describe("写不进去的时候", () => {
 
 	it("新建失败:弹窗里说清为什么,别只是「创建」按下去毫无反应", async () => {
 		vi.mocked(api.patch).mockRejectedValue(new Error("配置文件是只读的"));
-		renderPanel([]);
+		renderLinks([]);
 		await userEvent.click(await screen.findByRole("button", { name: /新建第一条接入/ }));
 		const dialog = await screen.findByRole("dialog");
 		await userEvent.type(within(dialog).getByLabelText("接入名字"), "新的那台");
@@ -94,7 +77,7 @@ describe("一发还在路上", () => {
 	 */
 	it("那排钮在写回完成前点不动 —— 后一发会把前一发按回去", async () => {
 		vi.mocked(api.patch).mockReturnValue(new Promise(() => {}));
-		renderPanel([HOME, OFFICE]);
+		renderLinks([HOME, OFFICE]);
 		await userEvent.click(await screen.findByRole("button", { name: "停用 家里那台" }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
 
@@ -111,7 +94,7 @@ describe("接入名单读不到", () => {
 	 * 建完发现原来那几条又回来了(或者压根存不进去)。
 	 */
 	it("说的是读不到与那句原因,不是「还没有桥接入」", async () => {
-		renderPanel(null);
+		renderLinks(null);
 		expect(await screen.findByText(/配置读不出来/)).toBeTruthy();
 		expect(screen.queryByText(/还没有桥接入/)).toBeNull();
 		expect(screen.queryByRole("button", { name: /新建第一条接入/ })).toBeNull();

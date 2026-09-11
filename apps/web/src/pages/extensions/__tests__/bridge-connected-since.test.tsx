@@ -10,8 +10,7 @@
  * 「它一直好好的」,那正是主人查桥的时候要问的第一件事。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -19,13 +18,7 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const LINKS = [
 	{
@@ -44,33 +37,24 @@ const LINKS = [
 	},
 ];
 
-function renderPanel(connectedAt: number) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith(LINKS);
-		if (path.startsWith("/api/ext/")) {
-			return {
-				sessions: [
-					{
-						linkId: "c1",
-						connected: true,
-						kind: "koishi",
-						name: "客厅那台",
-						version: "0.1.0",
-						connectedAt,
-						bots: [],
-					},
-					{ linkId: "c2", connected: false, bots: [] },
-				],
-			};
-		}
-		throw new Error("没有这个口");
+function renderSince(connectedAt: number) {
+	return renderPanel({
+		links: LINKS,
+		status: {
+			sessions: [
+				{
+					linkId: "c1",
+					connected: true,
+					kind: "koishi",
+					name: "客厅那台",
+					version: "0.1.0",
+					connectedAt,
+					bots: [],
+				},
+				{ linkId: "c2", connected: false, bots: [] },
+			],
+		},
 	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled />
-		</QueryClientProvider>,
-	);
 }
 
 afterEach(() => {
@@ -80,19 +64,19 @@ afterEach(() => {
 
 describe("连上多久了", () => {
 	it("连着的那条印得出「多久前连上」", async () => {
-		renderPanel(Date.now() - 12 * 60_000);
+		renderSince(Date.now() - 12 * 60_000);
 		await screen.findByText("家里那台");
 		expect(screen.getByText(/12 分钟前连上/)).toBeTruthy();
 	});
 
 	it("刚重连过的说「刚刚」—— 那是「它刚断过」的信号,不该跟「连了三天」长一个样", async () => {
-		renderPanel(Date.now() - 5_000);
+		renderSince(Date.now() - 5_000);
 		await screen.findByText("家里那台");
 		expect(screen.getByText(/刚刚连上/)).toBeTruthy();
 	});
 
 	it("没连上的那条不说这句 —— 它压根没有「连上的那一刻」", async () => {
-		renderPanel(Date.now() - 12 * 60_000);
+		renderSince(Date.now() - 12 * 60_000);
 		const card = (await screen.findByText("机房那台")).closest("[data-link-card]");
 		expect(card).toBeTruthy();
 		if (!card) throw new Error("没有这张卡");

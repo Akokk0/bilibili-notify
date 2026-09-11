@@ -9,8 +9,7 @@
  * **那个字符串今天不存在**(全仓查过),所以只写查得到的:配置全留、重开会自己连回来。
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -19,12 +18,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { api } from "../../../services/api";
-import { BridgeConnections } from "../bridge-panel";
-
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里。 */
-function globalsWith(links: unknown[]) {
-	return { extensions: { bridge: { enabled: true, settings: { links } } } };
-}
+import { renderPanel } from "./bridge-harness";
 
 const LINK = {
 	id: "c1",
@@ -34,18 +28,9 @@ const LINK = {
 	bridgeKind: "koishi",
 };
 
-function renderPanel(enabled: boolean, links: unknown[] = [LINK]) {
-	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/globals") return globalsWith(links);
-		// 关着的拓展没跑起来 —— `/status` 是 404,与「崩了」在这条路上一模一样
-		throw new Error("没跑起来");
-	});
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<BridgeConnections extensionId="bridge" enabled={enabled} />
-		</QueryClientProvider>,
-	);
+// 关着的拓展没跑起来 —— `/status` 是 404(不给 status 就是那一档),与「崩了」一模一样
+function renderOff(enabled: boolean, links: unknown[] = [LINK]) {
+	return renderPanel({ links, enabled });
 }
 
 afterEach(() => {
@@ -55,7 +40,7 @@ afterEach(() => {
 
 describe("拓展被关着", () => {
 	it("说的是「是你关的」,不是「它没跑起来」", async () => {
-		renderPanel(false);
+		renderOff(false);
 		const lead = await screen.findByText(/拓展关着,桥都被断开了/);
 		const note = lead.closest('[data-bn~="note"]');
 		expect(note?.textContent).toMatch(/配置一样不动/);
@@ -65,13 +50,13 @@ describe("拓展被关着", () => {
 	});
 
 	it("关着就不去问状态 —— 问了也是 404,还会闪一下「没跑起来」", async () => {
-		renderPanel(false);
+		renderOff(false);
 		await screen.findByText(/拓展关着/);
 		expect(api.get).not.toHaveBeenCalledWith("/api/ext/bridge/status");
 	});
 
 	it("接入压暗成一行一条,说「已随拓展断开」—— 不是一张张还在等连接的卡", async () => {
-		renderPanel(false);
+		renderOff(false);
 		expect(await screen.findByText("家里那台")).toBeTruthy();
 		const list = document.querySelector("[data-links-dimmed]");
 		expect(list).toBeTruthy();
@@ -86,14 +71,14 @@ describe("拓展被关着", () => {
 	 * 黄盒说「是你关的」、底下同时请人去新建,两句话互相打架。
 	 */
 	it("关着且一条接入都没有时,不请人去新建 —— 该做的是先把拓展打开", async () => {
-		renderPanel(false, []);
+		renderOff(false, []);
 		expect(await screen.findByText(/拓展关着/)).toBeTruthy();
 		expect(screen.queryByText(/还没有桥接入/)).toBeNull();
 		expect(screen.queryByRole("button", { name: /新建第一条接入/ })).toBeNull();
 	});
 
 	it("开着而 /status 还是拿不到 → 那才是「没跑起来」", async () => {
-		renderPanel(true);
+		renderOff(true);
 		expect(await screen.findByText(/没跑起来/)).toBeTruthy();
 		expect(screen.queryByText(/拓展关着,桥都被断开了/)).toBeNull();
 		expect(document.querySelector("[data-links-dimmed]")).toBeNull();
