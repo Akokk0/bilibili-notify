@@ -148,17 +148,7 @@ function fakeAdapter(): PlatformAdapter {
 }
 
 function descriptor(): ExtensionDescriptor {
-	return {
-		label: "桥接",
-		shortLabel: "桥",
-		tint: "#a855f7",
-		// 拓展连接是借来的 bot,它名下的目标全是会话形态(ADR-0012 决策 45)。
-		targetKind: "session",
-		scopes: ["private", "group"],
-		addressNouns: {},
-		inbound: true,
-		atAll: false,
-	};
+	return { label: "桥接", shortLabel: "桥", tint: "#a855f7" };
 }
 
 function def() {
@@ -246,31 +236,6 @@ describe("注册推送源", () => {
 		const bare = harness();
 		bare.ctx.registerPushSource(def());
 		expect(bare.runtime.bots()).toBeUndefined();
-	});
-
-	/**
-	 * 🔴 **`targetKind` 只有 `"session"` 那一档。**
-	 *
-	 * 契约里已经收窄成 `"session"`,但第三方拓展是打成 JS 来的 —— 类型一个字都拦不住它。
-	 * 放过去的话面板照 endpoint 那一族画,而主人建目标时会被宿主用一句和拓展毫不相干的
-	 * 错误(「webhook target is managed by its connection」)拒掉:endpoint 目标是 webhook
-	 * 连接的派生物,拓展连接没有那条路。所以注册那一刻就拒,并且把原因点到那一格上。
-	 */
-	it("🔴 descriptor 写 endpoint → 整次注册被拒,原因点名 targetKind", () => {
-		const h = harness();
-		// 绕过类型 —— 验的正是「类型拦不住的那种拓展」撞上运行时那道。
-		const endpointish = {
-			...def(),
-			descriptor: { ...descriptor(), targetKind: "endpoint" } as unknown as ExtensionDescriptor,
-		};
-		expect(() => h.ctx.registerPushSource(endpointish)).toThrow(/targetKind/);
-		// 拒了就是整次都没生效:出口没进矩阵,面板也拿不到那份 descriptor。
-		expect(h.adapters.list()).toEqual([]);
-		expect(h.runtime.descriptor()).toBeUndefined();
-
-		// 而 "session" 照常。
-		h.ctx.registerPushSource(def());
-		expect(h.adapters.list()).toHaveLength(1);
 	});
 
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {

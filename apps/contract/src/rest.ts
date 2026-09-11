@@ -4,9 +4,11 @@
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
-// 只取类型:根入口驮着 zod 与整个域模型,`import type` 编译期就擦掉(与下面 internal 的根同理)。
-import type { ExtensionDescriptor } from "@bilibili-notify/extension";
-import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension/wire";
+import type {
+	ExtensionBotView,
+	ExtensionConfigField,
+	ExtensionDescriptor,
+} from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
 	ConnectionCapabilities,
@@ -111,9 +113,8 @@ export interface ExtensionDTO {
 /**
  * 拓展**自己报**的那份面板元信息(短名 / 标识色 / 目标形态 / 会话种类…)。
  *
- * 就是拓展契约里的 `ExtensionDescriptor`(`PlatformDescriptor` 少掉 `connectors`、`targetKind`
- * 只剩 `"session"`,ADR-0012 决策 27 / 46)—— **直接引用,不另抄一份**:抄的那份与契约漂开时
- * 两边各自都合法,没有门会红。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
+ * 就是拓展契约里的 `ExtensionDescriptor`(三格:全名 / 短名 / 颜色,ADR-0012 决策 46)——
+ * **直接引用,不另抄一份**:抄的那份与契约漂开时两边各自都合法,没有门会红。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
  * 副本会跟拓展自己报的悄悄漂开,而门禁一片绿。
  */
 export type ExtensionDescriptorDTO = ExtensionDescriptor;

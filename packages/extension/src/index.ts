@@ -52,10 +52,10 @@ export type {
 } from "@bilibili-notify/internal";
 
 /**
- * 面板也要认的那两个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**
+ * 面板也要认的那几个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**
  * —— 拓展照旧只认这一扇门,不必知道有过这么一次拆分。
  */
-export type { ExtensionBotView, ExtensionConfigField } from "./wire";
+export type { ExtensionBotView, ExtensionConfigField, ExtensionDescriptor } from "./wire";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -66,10 +66,9 @@ import type {
 	InboundPrivateMessage,
 	Logger,
 	PlatformAdapter,
-	PlatformDescriptor,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { ExtensionBotView, ExtensionConfigField } from "./wire";
+import type { ExtensionBotView, ExtensionConfigField, ExtensionDescriptor } from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -95,31 +94,6 @@ export interface ExtensionUpgrade {
 }
 
 export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
-
-/**
- * 拓展交给面板的元信息 —— **就是 `PlatformDescriptor`,少掉 `connectors` 那一格、
- * `targetKind` 那一格只剩一个值**。
- *
- * 少掉 `connectors` 是因为「怎么连」在拓展这一支根本不存在(连接上没有 `connector`,
- * 见 ADR-0012 决策 27),而 `connectors` 的用处是「新建连接时默认选哪一档」。
- */
-export type ExtensionDescriptor = Omit<PlatformDescriptor, "connectors" | "targetKind"> & {
-	/**
-	 * 它名下的推送目标是哪一支形态 —— **拓展这一支只有 `"session"`**。
-	 *
-	 * 一条拓展连接就是一个借来的 bot(ADR-0012 决策 45),bot 名下的目标全是会话形态:
-	 * 一个群、一个人。`"endpoint"` 那一族(webhook)在宿主里是**连接自动派生**出来的,
-	 * 外部不许凭空建 —— 拓展连接没有那条派生路。写 `"endpoint"` 的后果是面板照 endpoint
-	 * 那一族画,而主人建目标时被宿主用一句和拓展毫不相干的错误拒掉。
-	 *
-	 * ⚠️ 类型拦不住打成 JS 的第三方拓展,所以宿主在 `registerPushSource` 那一刻还会再查
-	 * 一次,不是这个值就拒掉整次注册。
-	 *
-	 * 真有 endpoint 形态的拓展那天再放宽 —— **放宽是兼容的**(今天的拓展一个字都不用改),
-	 * 反过来不行(契约的宽度不可逆,决策 13)。
-	 */
-	targetKind: "session";
-};
 
 /**
  * 一个推送源 —— 决策 7 那三样已有名字的东西装在一起,**一次交齐**。

@@ -45,6 +45,22 @@ interface ExtensionConfigFieldBase {
  * 连接的 `platform` —— 宿主看不懂 config(那归拓展自己那份 zod),只负责原样存回。
  * `platform` 是开放词表;`icon` 是 data URL(与桥协议 §5.2 同一种)。
  */
+/**
+ * 拓展交给面板的元信息 —— 面板把它当一个「平台」画:新建连接那一排的名字、连接卡上的
+ * 短名与颜色。**就这三格**(ADR-0012 决策 46):作用域、地址名词、能不能 @全体这些都是
+ * **bot 所在平台**的事(一条拓展连接就是一个借来的 bot,决策 45),从 bot 报的 `platform`
+ * 查注册表,不从这儿来。曾经整份照抄 `PlatformDescriptor`,八格里六格没有任何人读,还留过
+ * 一个 `targetKind: "endpoint"` 的空口子 —— 契约的宽度不可逆(决策 13),真要加格再加。
+ */
+export interface ExtensionDescriptor {
+	/** 全名:新建连接那一排、「经 xxx 借来的」那句。 */
+	label: string;
+	/** 短名:连接卡上那个方章。 */
+	shortLabel: string;
+	/** 方章的底色。 */
+	tint: string;
+}
+
 export interface ExtensionBotView<TConfig = unknown> {
 	/** 绑上这个 bot 的连接该存的 config。拓展自己认得就行。 */
 	config: TConfig;

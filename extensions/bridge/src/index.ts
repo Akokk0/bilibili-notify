@@ -36,19 +36,14 @@ import { createBridgeServer } from "./server.js";
 import { type BridgeLink, BridgeSettingsSchema } from "./settings.js";
 import { resolveBridgeToken } from "./tokens.js";
 
-/** 面板上这一档叫什么、什么颜色。少掉 `connectors` 那一格 —— 拓展连接没有「怎么连」。 */
+/**
+ * 面板上这一档叫什么、什么颜色 —— 就这三格。作用域、能不能 @全体之类是 **bot 所在平台**
+ * 的事(一条连接就是一个借来的 bot),bot 在握手时自己报。
+ */
 const DESCRIPTOR = {
 	label: "机器人框架桥接",
 	shortLabel: "桥接",
 	tint: "#a855f7",
-	targetKind: "session",
-	scopes: ["private", "group"],
-	addressNouns: {},
-	// 桥驮上来的消息 BN 真的收得到 —— 入站那一路就是它接的。
-	inbound: true,
-	// 能不能 @全体是 **per-bot** 的(一条连接底下可能同时挂着 QQ 与 telegram),
-	// 每个 bot 在握手时自己报;这一格是「这个平台整体上行不行」,给保守的那一侧。
-	atAll: false,
 } as const;
 
 export function activate(ctx: ExtensionContext): void {

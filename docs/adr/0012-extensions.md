@@ -170,6 +170,7 @@ BN 的功能面在变宽:接一个新聊天平台要改核心词表、发一次�
     - 列表卡那句「N 条接入」改成「N 条连接」(宿主认得的是连接;接入是桥私有的,在详情页数)。
 
 46. **`ExtensionDescriptor.targetKind` 收窄到 `"session"`。**(2026-09-11,发版前审查;主人拍板。)决策 45 之后一条拓展连接就是一个 bot,目标全是 session 形态;endpoint 形态的目标在宿主里是「webhook 连接自动派生、外部不许凭空建」,拓展连接没有那条派生路。契约里留着 `"endpoint"` 等于一个能过类型、面板照画、建目标时才被一句和拓展无关的错误拒掉的空口子。收窄对今天所有拓展兼容(桥与假桥都写的 `session`),契约主版本仍是 1;真有 endpoint 形态的拓展时再放宽,放宽也是兼容的。运行时在 `registerPushSource` 对一遍,第三方 JS 不受类型约束。
+    🔗 **2026-09-12 改:整格收成 `{ label, shortLabel, tint }`,`targetKind` 在契约里不再存在。** simplify 的层级审查查到面板从拓展 descriptor 只读短名与颜色(新建连接那一排读全名),`scopes` / `addressNouns` / `inbound` / `atAll` / `targetKind` 没有任何生产代码读 —— 决策 45 之后这些都是 bot 所在平台的事,从 bot 报的 `platform` 查注册表。于是上面那道运行时守卫和 contract 里的第二份类型一起消失;类型搬进零依赖的 `@bilibili-notify/extension/wire`,contract 照它自己的规矩从子入口进。
 
 ## 明确不做(拷问中被否决的)
 

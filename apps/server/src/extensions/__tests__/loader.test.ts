@@ -263,8 +263,7 @@ describe("拓展声明的密钥字段", () => {
 				activate(ctx: ExtensionContext) {
 					ctx.registerPushSource({
 						adapter: { platforms: [], isAvailable: () => true } as never,
-						// `targetKind` 是注册时**真会被查**的那一格(只许 `"session"`),别的没人看。
-						descriptor: { targetKind: "session" } as never,
+						descriptor: { label: "拓展", shortLabel: "拓", tint: "#000000" },
 						configSchema: z.object({ botKey: z.string(), note: z.string().optional() }),
 						configFields: [
 							{ kind: "text", code: "botKey", label: "密钥", secret: true },

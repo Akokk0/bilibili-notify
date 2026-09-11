@@ -34,11 +34,6 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 		label: "机器人框架桥接",
 		shortLabel: "桥接",
 		tint: "#a855f7",
-		targetKind: "session",
-		scopes: ["private", "group"],
-		addressNouns: {},
-		inbound: true,
-		atAll: false,
 	},
 	// 桥的字段表是空的:连接是挑出来的,没有一栏是人填的。
 	configFields: [],

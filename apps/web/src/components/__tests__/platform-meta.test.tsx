@@ -33,11 +33,6 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 		label: "机器人框架桥接",
 		shortLabel: "桥接",
 		tint: "#a855f7",
-		targetKind: "session",
-		scopes: ["private", "group"],
-		addressNouns: {},
-		inbound: true,
-		atAll: false,
 	},
 };
 
