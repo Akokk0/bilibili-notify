@@ -34,6 +34,13 @@ const GB = 1024 * MB;
 const BN_CPU_TONE = "var(--color-bn-blue)";
 const BN_MEM_TONE = "var(--color-bn-pink)";
 const REST_TONE = "var(--color-bn-inactive)";
+/**
+ * 「总量量到了,但分不出谁占的」那一档 —— 比「其他」更淡的一圈。
+ *
+ * 🔴 **不能拿 `REST_TONE` 顶替**:那一档是一句断言(「这些不是我们占的」),整圈涂成它
+ * 等于白纸黑字写着「这台机器忙成这样,一点都不是我们」—— 排查时最会把人带偏的一句话。
+ */
+const UNKNOWN_TONE = "var(--color-bn-text-disabled)";
 
 /** 字节转人话。GB 起保留一位小数,MB 取整 —— 卡上那一列不该跳字宽。 */
 function bytes(n: number | null): string {
@@ -94,20 +101,27 @@ function Gauge({
 	title: string;
 	/** 环心那个数,也是两段之和。null = 这一帧还算不出来。 */
 	total: number | null;
-	/** 本体那一段;null 时整圈按「其他」画。 */
+	/**
+	 * 本体那一段。
+	 *
+	 * 🔴 `null` 是「**量不到**」,不是 0(首帧没有上一次可比、cgroup 里读不到核数)。
+	 * 当成 0 画的话本体那段消失、整圈剩下「其他」—— 一句彻头彻尾的假话,而文件头第一条
+	 * 要求就是「量不到就说量不到」。这时候只画一整圈「分不出谁占的」。
+	 */
 	bn: number | null;
 	bnTone: string;
 	caption: string;
 	detail: ReactNode;
 }) {
-	const bnValue = bn ?? 0;
 	const segments =
 		total === null
 			? []
-			: [
-					{ value: bnValue, color: bnTone },
-					{ value: restOf(total, bnValue), color: REST_TONE },
-				];
+			: bn === null
+				? [{ value: total, color: UNKNOWN_TONE }]
+				: [
+						{ value: bn, color: bnTone },
+						{ value: restOf(total, bn), color: REST_TONE },
+					];
 	return (
 		<div className="flex flex-col items-center gap-1.5">
 			<Donut
@@ -124,11 +138,18 @@ function Gauge({
 					</div>
 				}
 			/>
+			{/*
+			 * 底下这行是环上那段的**色标**。本体量不到时环上没有那一段,色标也就跟着退到
+			 * 「分不出」那一档 —— 指着一个环上并不存在的颜色说「本体」同样是在说假话。
+			 */}
 			<span
 				className="inline-flex items-center gap-1 text-bn-xs font-bold"
-				style={{ color: bnTone }}
+				style={{ color: bn === null ? UNKNOWN_TONE : bnTone }}
 			>
-				<span className="block h-2 w-2 rounded-sm" style={{ background: bnTone }} />
+				<span
+					className="block h-2 w-2 rounded-sm"
+					style={{ background: bn === null ? UNKNOWN_TONE : bnTone }}
+				/>
 				{detail}
 			</span>
 		</div>

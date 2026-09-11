@@ -53,15 +53,23 @@ function renderCard(
 
 /** 读出某个环画了几段、每段多长(占整圈的比例)。 */
 function segmentsOf(title: string): number[] {
+	return arcsOf(title).map((a) => a.len);
+}
+
+/** 同上,但连每段涂的什么色一起读 —— 「这一段说的是谁」全在颜色上。 */
+function arcsOf(title: string): Array<{ len: number; color: string }> {
 	const svg = screen.getByTitle(title).closest("svg");
 	if (!svg) throw new Error(`没找到 ${title} 那个环`);
 	// 第一个 circle 是灰轨道。
 	return [...svg.querySelectorAll("circle")].slice(1).map((el) => {
 		const [drawn, whole] = (el.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
 		if (!whole) throw new Error("没有整周长");
-		return (drawn ?? 0) / whole;
+		return { len: (drawn ?? 0) / whole, color: el.getAttribute("stroke") ?? "" };
 	});
 }
+
+/** 「其他」那一档的灰 —— 它是一句断言(「这些不是我们占的」),不是随手挑的颜色。 */
+const REST_TONE = "var(--color-bn-inactive)";
 
 afterEach(cleanup);
 
@@ -149,6 +157,22 @@ describe("SystemResourceCard", () => {
 		expect(screen.getByText(/本体 —/)).toBeTruthy();
 		// 而且一段弧都不画 —— 画一整圈灰的等于说「全被别人占了」。
 		expect(segmentsOf("CPU 占用")).toHaveLength(0);
+	});
+
+	/**
+	 * 🔴 **量不到不是 0。** `procCpu` 读不出来(首帧、或 cgroup 里拿不到核数)时,本体那段
+	 * 被当成 0 画,整圈于是涂成「其他」—— 屏幕上白纸黑字写着「这台机器忙成这样,一点都
+	 * 不是我们」。那正是排查时最会把人带偏的一句话,而文件头第一条要求就是「量不到就说
+	 * 量不到」。
+	 */
+	it("总量有、本体量不到:整圈不许涂成「其他」,那是一句假话", () => {
+		renderCard({ history: [sample({ hostCpu: 0.61, procCpu: null })] });
+		// 底下那句照旧说「—」
+		expect(screen.getByText(/本体 —/)).toBeTruthy();
+		// 环心还是总占用 —— 这一格是量到了的
+		expect(screen.getByText("61%")).toBeTruthy();
+		const arcs = arcsOf("CPU 占用");
+		expect(arcs.every((a) => a.color !== REST_TONE)).toBe(true);
 	});
 
 	it("浏览器那一行:四种状态四句话,不是「有 / 没有」", () => {
