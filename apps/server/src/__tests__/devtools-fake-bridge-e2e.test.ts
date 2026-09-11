@@ -15,6 +15,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import WebSocket from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
@@ -35,6 +36,47 @@ async function findFreePort(): Promise<number> {
 			probe.close(() => resolve(port));
 		});
 	});
+}
+
+interface StateFrame {
+	type?: string;
+	event?: string;
+	data?: unknown;
+}
+
+/** 面板那条 WS:订 `state` 频道,把收到的帧攒着。 */
+async function stateSubscriber(port: number) {
+	const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+	const frames: StateFrame[] = [];
+	const waiters: (() => void)[] = [];
+	socket.on("message", (raw) => {
+		frames.push(JSON.parse(raw.toString("utf8")) as StateFrame);
+		for (const wake of waiters.splice(0)) wake();
+	});
+	await new Promise<void>((resolve, reject) => {
+		socket.once("open", () => resolve());
+		socket.once("error", reject);
+	});
+	socket.send(JSON.stringify({ type: "subscribe", channels: ["state"] }));
+	return {
+		async waitFor(pred: (frame: StateFrame) => boolean, timeoutMs: number): Promise<StateFrame> {
+			const deadline = Date.now() + timeoutMs;
+			for (;;) {
+				const hit = frames.find(pred);
+				if (hit) return hit;
+				if (Date.now() > deadline) {
+					throw new Error(`没等到那一帧;收到过:${JSON.stringify(frames.map((f) => f.event))}`);
+				}
+				await new Promise<void>((resolve) => {
+					waiters.push(resolve);
+					setTimeout(resolve, 50);
+				});
+			}
+		},
+		close() {
+			socket.close();
+		},
+	};
 }
 
 describe("devtools 的假桥 → 真桥", () => {
@@ -159,6 +201,23 @@ describe("devtools 的假桥 → 真桥", () => {
 			await new Promise((resolve) => setTimeout(resolve, 20));
 		}
 		expect(sessions[0]?.connected).toBe(false);
+	});
+
+	/**
+	 * 🔴 「桥握完手 → 面板当场变绿」整条接线:桥 `ctx.statusChanged()` → 宿主 bus
+	 * `extension-status-changed` → WS `state` 频道一帧 `extension-changed`。零件各自的测试
+	 * 证明不了它们真的接上了 —— index.ts 那一行漏接,四层全绿而面板照旧要切页。
+	 */
+	it("桥握完手 → state 频道推一帧 extension-changed(面板据此重取,不用切页)", async () => {
+		const panel = await stateSubscriber(port);
+		try {
+			await runScenario("bridge.connect");
+			const frame = await panel.waitFor((f) => f.event === "extension-changed", 3_000);
+			expect(frame.type).toBe("state");
+			expect(frame.data).toEqual({ id: "bridge" });
+		} finally {
+			panel.close();
+		}
 	});
 
 	/** 桥驮上来的私聊 —— 真入站链路,核心那条「私聊指令」场景够不着桥。 */

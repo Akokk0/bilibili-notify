@@ -93,8 +93,11 @@ export function activate(ctx: ExtensionContext): void {
 			}
 			routeBridgeInbound(frame, { connectionId, bots: session.bots }, ctx.inbound);
 		},
-		onSessionChange: (linkId, connected) =>
-			ctx.logger.info(`${linkId} ${connected ? "已连接" : "已断开"}`),
+		onSessionChange: (linkId, connected) => {
+			ctx.logger.info(`${linkId} ${connected ? "已连接" : "已断开"}`);
+			// 面板那张卡要当场变绿 / 变灰,不能等主人切页。
+			ctx.statusChanged();
+		},
 	});
 	ctx.onDispose(() => server.dispose());
 	ctx.onUpgrade(server.upgrade);

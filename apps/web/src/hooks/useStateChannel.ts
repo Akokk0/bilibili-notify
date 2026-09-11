@@ -10,6 +10,9 @@ import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
  *     重连唯一的"赶上 missed change"机制(WS 不重放历史事件)。
  *   - `config-changed`(运行时配置写入):按 scope 精准 invalidate 单一 query。
  *
+ *   - `extension-changed`(拓展喊 `ctx.statusChanged`):按 id 失效 ["extension-status", id] 与
+ *     ["extension-bots", id] —— 桥那头握完手,拓展页与连接编辑器当场刷新,不用切页。
+ *
  * Server scopes (`config-changed.scope`):
  *   - "subscriptions" → invalidate ["subscriptions"]
  *   - "targets"       → invalidate ["targets"]
@@ -25,6 +28,17 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: ["globals"] });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
+		// 断线期间连上 / 断开的桥没有帧会重放,重连时整个前缀一起失效。
+		qc.invalidateQueries({ queryKey: ["extension-status"] });
+		qc.invalidateQueries({ queryKey: ["extension-bots"] });
+		return;
+	}
+	// 拓展喊了「面板数据变了」:只失效那个拓展的 status 与 bot 名单,让页面自己重取。
+	if (env.event === "extension-changed") {
+		const id = (env.data as { id?: unknown } | undefined)?.id;
+		if (typeof id !== "string" || id === "") return;
+		qc.invalidateQueries({ queryKey: ["extension-status", id] });
+		qc.invalidateQueries({ queryKey: ["extension-bots", id] });
 		return;
 	}
 	if (env.event !== "config-changed") return;

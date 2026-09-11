@@ -284,6 +284,13 @@ export interface ExtensionContext {
 	 */
 	publishStatus(fn: () => unknown): void;
 	/**
+	 * 交上去的那份数据**变了**,喊一声。`publishStatus` 是现取的,盲点在「什么时候该再取」:
+	 * 桥那头刚握完手,面板上那张卡还灰着,得切一下页才刷新。宿主把这一声推到面板(WS
+	 * `state` 频道),面板当场重取 `/api/ext/<id>/status` 与 bot 名单。什么算「变了」由
+	 * 拓展自己定 —— 桥:一条接入连上 / 断开。
+	 */
+	statusChanged(): void;
+	/**
 	 * 自己的持久设置(见 {@link ExtensionSettings})。交一份 zod 进来,拿回一个现读的把手。
 	 * 可以叫多次,每次都是同一份数据的一个视图。
 	 */

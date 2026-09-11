@@ -39,6 +39,7 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 }
 
 function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) {
+	let statusChanges = 0;
 	const lines: string[] = [];
 	const logger: Logger = {
 		info: (m) => lines.push(`info ${m}`),
@@ -71,6 +72,9 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 			return { dispose: () => listeners.delete(fn) };
 		},
 		settings: () => settings,
+		onStatusChanged: () => {
+			statusChanges += 1;
+		},
 		onSettingsChanged: (fn): Disposable => {
 			settingsListeners.add(fn);
 			return { dispose: () => settingsListeners.delete(fn) };
@@ -85,6 +89,7 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 	});
 
 	return {
+		statusChanges: () => statusChanges,
 		runtime,
 		ctx: runtime.ctx,
 		adapters,
@@ -284,6 +289,25 @@ describe("给面板看的数据", () => {
 		h.ctx.publishStatus(() => ({ n: ++n }));
 		expect(h.runtime.status()).toEqual({ n: 1 });
 		expect(h.runtime.status()).toEqual({ n: 2 });
+	});
+
+	/**
+	 * 现取的数据有个盲点:**什么时候该再取一次**面板不知道。桥那头 koishi 已经握完手,
+	 * 面板上那张卡还灰着,得切一下页才刷新。所以拓展要能喊一声「变了」,宿主把这声推到面板。
+	 */
+	it("statusChanged 转给宿主 —— 面板据此当场重取,不用切页", () => {
+		const h = harness();
+		h.ctx.statusChanged();
+		h.ctx.statusChanged();
+		expect(h.statusChanges()).toBe(2);
+	});
+
+	it("卸载之后 statusChanged 被拒绝并留一行", async () => {
+		const h = harness();
+		await h.runtime.dispose();
+		h.ctx.statusChanged();
+		expect(h.statusChanges()).toBe(0);
+		expect(h.lines.some((l) => l.startsWith("warn") && l.includes("statusChanged"))).toBe(true);
 	});
 });
 

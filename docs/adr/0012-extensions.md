@@ -138,6 +138,7 @@ BN 的功能面在变宽:接一个新聊天平台要改核心词表、发一次�
 36. **面板要的数据走 `ctx.publishStatus(() => json)`,宿主在 `/api/ext/:id/status` 下发** —— 走 `/api/*` 才吃得到 dashboard 会话鉴权。放进 `/ext/<id>/*` 是个安全洞:那条路**刻意在鉴权外**(对家手里只有 URL、没有会话),会话列表与 bot 名单会跟着公开。
     **形状第一版不约束**(任意 JSON,现取不缓存):面板那一页还没写,而**抽象要两个例子**。
     契约跟着归位:`apps/contract/src/bridge.ts` **整块搬进 `extensions/bridge/`**,核心里一格 bridge 的字都不留 —— 可验证形式是搬完之后 `grep -ri bridge apps/contract packages/` 为空。
+    🔗 **2026-09-11 补一格 `ctx.statusChanged()`**:现取的盲点是「什么时候该再取」—— 桥那头握完手,面板上那张卡还灰着,得切页才刷新。拓展喊一声,宿主转成 bus `extension-status-changed`(只带 id)→ WS `state` 频道 `extension-changed` 帧 → 面板按 id 失效 status 与 bot 名单的缓存。什么算「变了」由拓展定;数据本身不上 bus、不进帧。
 37. **验证:本仓写一个 e2e 桥客户端夹具**(纯 Node + `ws`,真 upgrade → `hello` → `welcome` → `bots` → `send` → `result`,外加真 GET 一次取图 URL)。现有测试全在各自搭的零件上跑,**没有任何一条**证明「真客户端带真 token 连上来能收下一条推送并回执」,而搬家动的正是装配的每一根线。夹具同时是**协议文档的可执行版本**。
     真插件那侧另算,**证明不了真框架的怪癖**,写进「仍未决」不假装验过。
 38. **URL 面一律 `ext`,代码与配置面一律全称。** 对外 `/ext/<id>/*`(WS 与 HTTP **同一个路径空间**,scheme 不同而已),面板 `/api/ext`、`/api/ext/:id/status`;代码里 `globals.extensions` / `ExtensionDTO` / `loadExtensions` 不动。

@@ -792,6 +792,8 @@ export async function startStandaloneServer(
 				runtime.bus.on("config-changed", (scope) => {
 					if (scope === "globals") fn();
 				}),
+			// 拓展喊「面板数据变了」→ bus → WS `state` 频道 → 面板按 id 失效缓存(不用切页)。
+			onStatusChanged: (id) => runtime.bus.emit("extension-status-changed", id),
 			inbound: {
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),

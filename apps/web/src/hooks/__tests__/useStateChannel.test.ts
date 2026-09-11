@@ -46,10 +46,32 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
-	it("hydrate:同步 invalidate 三个 query", () => {
+	it("hydrate:同步 invalidate 三个 query,外加拓展的 status / bots(断线期间连上的桥要赶上)", () => {
 		handleStateEnvelope(env({ type: "state", event: "hydrate" }), sc.qc);
 		const keys = keysOf(sc.invalidate);
-		expect(keys).toEqual([["globals"], ["subscriptions"], ["targets"]]);
+		expect(keys).toEqual([
+			["globals"],
+			["subscriptions"],
+			["targets"],
+			["extension-status"],
+			["extension-bots"],
+		]);
+	});
+
+	it("extension-changed:只失效那个拓展的 status 与 bots", () => {
+		handleStateEnvelope(
+			env({ type: "state", event: "extension-changed", data: { id: "bridge" } }),
+			sc.qc,
+		);
+		expect(keysOf(sc.invalidate)).toEqual([
+			["extension-status", "bridge"],
+			["extension-bots", "bridge"],
+		]);
+	});
+
+	it("extension-changed 没带 id:不动", () => {
+		handleStateEnvelope(env({ type: "state", event: "extension-changed", data: {} }), sc.qc);
+		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
 	it("config-changed scope=globals:仅 invalidate [globals]", () => {

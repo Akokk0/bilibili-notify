@@ -86,6 +86,8 @@ export interface CreateExtensionContextOptions {
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
+	/** 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。 */
+	onStatusChanged?: () => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -274,6 +276,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return;
 			}
 			statusOf = fn;
+		},
+		statusChanged() {
+			if (disposed) {
+				refuse("statusChanged");
+				return;
+			}
+			opts.onStatusChanged?.();
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			return {

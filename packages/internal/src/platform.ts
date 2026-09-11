@@ -58,6 +58,11 @@ export interface BiliEvents {
 	ready: () => void;
 	"config-changed": (scope: ConfigScope) => void;
 	/**
+	 * 某个拓展喊了「面板数据变了」(`ctx.statusChanged`)。载荷只有拓展 id:面板按 id 失效
+	 * `/api/ext/<id>/status` 与 bot 名单的缓存、自己去取,数据本身不上 bus。
+	 */
+	"extension-status-changed": (id: string) => void;
+	/**
 	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
 	 * 无需前端再二次 fetch detail。

@@ -146,6 +146,8 @@ export interface LoadExtensionsOptions {
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
+	/** 某个拓展喊了「面板数据变了」(`ctx.statusChanged`);宿主把它推到面板。 */
+	onStatusChanged?: (id: string) => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -243,6 +245,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			onConnectionsChanged: opts.onConnectionsChanged,
 			settings: () => opts.settings(dir.id),
 			onSettingsChanged: opts.onSettingsChanged,
+			onStatusChanged: () => opts.onStatusChanged?.(dir.id),
 			inbound: opts.inbound,
 			upgrades: opts.upgrades,
 			hostVersion: opts.hostVersion,

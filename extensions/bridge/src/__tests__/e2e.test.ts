@@ -96,6 +96,7 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 	let adapter: PlatformAdapter | undefined;
 	let pushSource: PushExtensionDef<unknown> | undefined;
 	let statusOf: (() => unknown) | undefined;
+	let statusChanges = 0;
 
 	function track(timer: NodeJS.Timeout): Disposable {
 		timers.push(timer);
@@ -155,6 +156,9 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		publishStatus(fn) {
 			statusOf = fn;
 		},
+		statusChanged() {
+			statusChanges += 1;
+		},
 		// 设置也按真宿主的做法:拿拓展交的那份 zod 解,变更通知这里不需要。
 		settings: (schema) => ({
 			get: () => schema.parse(SETTINGS),
@@ -176,6 +180,7 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 			return adapter;
 		},
 		status: () => statusOf?.(),
+		statusChanges: () => statusChanges,
 		async dispose() {
 			for (const fn of [...hooks].reverse()) await fn();
 			for (const timer of timers) clearTimeout(timer);
@@ -355,6 +360,19 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 				boundTo: CONNECTION_ID,
 			}),
 		]);
+	});
+
+	it("statusChanged:握完手喊一声,断开再喊一声 —— 面板不用切页就刷新", async () => {
+		expect(host.statusChanges()).toBe(0);
+		await handshake();
+		expect(host.statusChanges()).toBe(1);
+		client?.dispose();
+		const deadline = Date.now() + 2_000;
+		while (host.statusChanges() < 2 && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(host.statusChanges()).toBe(2);
+		expect(host.status()).toMatchObject({ sessions: [{ linkId: LINK_ID, connected: false }] });
 	});
 
 	it("publishStatus:握过手之后,面板拿得到会话与 bot 名单", async () => {

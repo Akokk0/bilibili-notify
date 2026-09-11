@@ -21,6 +21,7 @@
 | `live-viewers-changed` | `room-session` 每 uid 2s 节流的 `WATCHED_CHANGE` 帧 `(uid, viewers)` |
 | `fans-refreshed` | 独立端 `FansPoller` 每个 tick 的完整 `FansRefreshEntry[]` 快照 |
 | `ready` | 业务核心完全启动 |
+| `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |
 
 ## MessageBus 语义
 
@@ -39,7 +40,7 @@
 | `auth` | `login-status-report` | `useAuthChannel` → 扫码 / 登录状态 |
 | `push-events` | `history-recorded` / `history-updated` / `live-state-changed` / `live-viewers-changed` / `fans-refreshed` | `usePushEventsChannel` → tanstack-query `setQueryData` 补丁(recorded 头插 + 日桶 +1,无目标行不计;updated 按 id 换行、不插) |
 | `log` | `engine-error` + 每条 `logger.<level>`(在单一 fan-out 点脱敏,同时归档进 LogStore jsonl) | `useAlertChannel`(engine-error → AlertShell)+ `useLogChannel`(全量流 → Logs tab) |
-| `state` | 运行时健康快照 | `useStateChannel` |
+| `state` | `hydrate`(订阅 / 重连时)+ `config-changed`(只带 scope)+ `extension-changed`(只带拓展 id) | `useStateChannel` → 按 scope / 按拓展 id invalidate tanstack-query 缓存 |
 | `resources` | `ResourceMonitor` 每 2 秒一份系统资源样本(宿主机 / 本体 / 浏览器子树) | `useResourcesChannel` → 概览页「系统资源」卡 |
 
 ## 推送历史的行模型

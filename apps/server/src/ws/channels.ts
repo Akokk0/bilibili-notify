@@ -186,6 +186,17 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	subs.push(
 		deps.bus.on("config-changed", (scope) => deps.publish(buildConfigChangedEnvelope(scope))),
 	);
+	// 拓展喊「面板数据变了」:只带 id,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存。
+	subs.push(
+		deps.bus.on("extension-status-changed", (id) =>
+			deps.publish({
+				type: "state",
+				event: "extension-changed",
+				ts: new Date().toISOString(),
+				data: { id },
+			}),
+		),
+	);
 
 	return {
 		dispose() {
