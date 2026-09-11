@@ -4,7 +4,7 @@
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
-import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension";
+import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
 	ConnectionCapabilities,
@@ -47,7 +47,6 @@ export type ConnectionCapabilitiesMap = Record<string, Record<string, Connection
 
 // ---- /api/extensions ------------------------------------------------------
 
-/** 一个拓展模块在拓展页上的样子。模块是**编进产物**的,所以没有「装没装」,只有开没开。 */
 /**
  * 一个拓展现在处于什么状态 —— 与主人按的那个开关是**两件事**。
  *
@@ -114,28 +113,6 @@ export interface ExtensionDTO {
 }
 
 /**
- * 拓展 config 里的一栏 —— **可序列化的字段描述**,面板照它画控件(ADR-0012 决策 33)。
- *
- * 它与拓展交的那份 zod 是**两份声明**:这份给人填(标签、控件、提示),那份给机器校验
- * (类型、必填、跨字段规则)。加载时逐格对表,对不上拒绝加载。
- *
- * 没有 `set` 那种回调:整条描述要能过 JSON 送到面板,而**值怎么落**是固定的 ——
- * `config[code] = v`。所以第一版 config 必须是**扁平的一层键值**;跨字段联动表达不了,
- * 那是认下的代价。
- */
-/**
- * 拓展的配置字段表 —— 本体住 `@bilibili-notify/extension`(拓展要用它声明自己的表单),
- * 这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
- */
-export type { ExtensionConfigField } from "@bilibili-notify/extension";
-
-/**
- * `POST /api/ext/install` 装完之后的回话。
- *
- * ⛔ 面板上**没有**常驻的「重启」按钮(ADR-0005 决策 22)—— 要不要给那颗按钮,由这份回话
- * 说了算:只有刚做完一件确实需要重启的事,才就地提示一次。
- */
-/**
  * 拓展**自己报**的那份面板元信息(短名 / 标识色 / 目标形态 / 会话种类…)。
  *
  * 就是 `PlatformDescriptor` 少掉 `connectors` 那一格 —— 「怎么连」在拓展这一支不存在
@@ -144,11 +121,17 @@ export type { ExtensionConfigField } from "@bilibili-notify/extension";
  */
 export type ExtensionDescriptorDTO = Omit<PlatformDescriptor, "connectors">;
 
-/** `GET /api/ext/:id/bots/:connectionId` —— 这条连接上现在能把目标绑上去的 bot。 */
+/** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
 export interface ExtensionBotsResponse {
 	bots: readonly ExtensionBotView[];
 }
 
+/**
+ * `POST /api/ext/install` 装完之后的回话。
+ *
+ * ⛔ 面板上**没有**常驻的「重启」按钮(ADR-0005 决策 22)—— 要不要给那颗按钮,由这份回话
+ * 说了算:只有刚做完一件确实需要重启的事,才就地提示一次。
+ */
 export interface ExtensionInstallResponse {
 	id: string;
 	name: string;

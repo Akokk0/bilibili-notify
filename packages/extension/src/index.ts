@@ -23,10 +23,6 @@
  */
 
 /**
- * 推送源契约 —— 一个出口长什么样。核心的 onebot / 官机 / webhook 与每个推送拓展实现的
- * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
- */
-/**
  * 实现推送源用得着的域类型 —— `send` / `probe` / `reconcile` 的签名就是拿它们拼的。
  *
  * ⛔ 域模型的其余部分(globals / subscriptions / 订阅与推送的落盘形状……)**刻意不转** ——
@@ -44,12 +40,22 @@ export type {
 	Logger,
 	NotificationPayload,
 	PayloadSegment,
+	/**
+	 * 推送源契约 —— 一个出口长什么样。核心的 onebot / 官机 / webhook 与每个推送拓展实现的
+	 * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
+	 */
 	PlatformAdapter,
 	PlatformDialect,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
 } from "@bilibili-notify/internal";
+
+/**
+ * 面板也要认的那两个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**
+ * —— 拓展照旧只认这一扇门,不必知道有过这么一次拆分。
+ */
+export type { ExtensionBotView, ExtensionConfigField } from "./wire";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -63,34 +69,7 @@ import type {
 	PlatformDescriptor,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-
-/**
- * 面板照它画一栏配置。与拓展交的那份 zod 是**两份声明**,注册那一刻逐格对表
- * (ADR-0012 决策 19 / 33):字段表给人填(label / 控件),schema 给机器校验(类型 / 必填)。
- *
- * 🔴 `secret: true` 同时是**备份脱敏的依据**。脱敏本来靠一份键名黑名单,而拓展的 config
- * 键名归拓展自己起 —— 不声明的话,那个 token 会原样躺在主人发出去求助的备份文件里。
- */
-export type ExtensionConfigField = ExtensionConfigFieldBase &
-	(
-		| {
-				kind: "text";
-				placeholder?: string;
-				mono?: boolean;
-				secret?: boolean;
-		  }
-		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
-		| { kind: "toggle" }
-		| { kind: "select"; options: readonly { value: string; label: string }[] }
-	);
-
-interface ExtensionConfigFieldBase {
-	/** config 里的键名。**同时是这一栏的身份** —— 值就落在 `config[code]`。 */
-	code: string;
-	label: string;
-	hint?: string;
-	required?: boolean;
-}
+import type { ExtensionBotView, ExtensionConfigField } from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -154,26 +133,6 @@ export interface PushExtensionDef<TConfig> {
 	 * 才知道的),所以宿主拿这一格列给主人挑,而不是让主人手敲一个 id。
 	 */
 	listBots?: () => readonly ExtensionBotView<TConfig>[];
-}
-
-/**
- * 一个能借来当连接的 bot。
- *
- * 面板新建连接时列给主人挑,挑中的那个**整个 `config` 原样落进连接**、`platform` 落进
- * 连接的 `platform` —— 宿主看不懂 config(那归拓展自己那份 zod),只负责原样存回。
- * `platform` 是开放词表;`icon` 是 data URL(与桥协议 §5.2 同一种)。
- */
-export interface ExtensionBotView<TConfig = unknown> {
-	/** 绑上这个 bot 的连接该存的 config。拓展自己认得就行。 */
-	config: TConfig;
-	platform: string;
-	name?: string;
-	selfId?: string;
-	icon?: string;
-	/** 经由谁借来的(桥:那条接入的名字)—— 两条桥各驮一个同名 bot 时分得开。 */
-	via?: string;
-	/** 已经被哪条连接绑着 —— 面板标「已加过」,同一个 bot 别建两条连接。 */
-	boundTo?: string;
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */

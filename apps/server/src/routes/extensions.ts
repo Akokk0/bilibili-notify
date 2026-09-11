@@ -56,15 +56,15 @@ export interface ExtensionsRouteOptions {
 	 */
 	settle?: () => Promise<void>;
 	/**
-	 * 面板上传装拓展要的三样。闸与拆包在 `extensions/install.ts`,这里只做 wire。
-	 *
-	 * 省略 → `POST /install` 回 404(装载器没接上来的构建里,装了也没人加载)。
-	 */
-	/**
 	 * 拓展市场(ADR-0013):列索引、按源装。逻辑在 `extensions/marketplace.ts`,这里只做 wire。
 	 * 省略 → 两口都 404(没接市场的构建)。
 	 */
 	marketplace?: Marketplace;
+	/**
+	 * 面板上传装拓展要的三样。闸与拆包在 `extensions/install.ts`,这里只做 wire。
+	 *
+	 * 省略 → `POST /install` 回 404(装载器没接上来的构建里,装了也没人加载)。
+	 */
 	install?: {
 		/** 装载根 —— `<dataDir>/extensions/`。 */
 		root: string;
@@ -160,10 +160,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		return c.json(answer);
 	});
 
-	/**
-	 * 现在能借来当连接的 bot —— 推送目标页「新建连接」挑的那一排。404 与空名单分开:
-	 * 前者是「问不到」(没跑 / 这种推送源没有 bot 这回事),后者是「一个都没连着」。
-	 */
 	// 市场那两口要排在 `/:id/*` 前面 —— 路由按注册顺序匹配。
 	app.get("/marketplace", async (c) => {
 		const marketplace = opts.marketplace;
@@ -192,6 +188,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		return c.json(answer);
 	});
 
+	/**
+	 * 现在能借来当连接的 bot —— 推送目标页「新建连接」挑的那一排。404 与空名单分开:
+	 * 前者是「问不到」(没跑 / 这种推送源没有 bot 这回事),后者是「一个都没连着」。
+	 */
 	app.get("/:id/bots", (c) => {
 		const bots = opts.bots(c.req.param("id"));
 		if (bots === undefined) return c.json({ ok: false, err: "not found" }, 404);
