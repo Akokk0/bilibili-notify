@@ -10,6 +10,7 @@ import type { SkinManifest } from "@bilibili-notify/contract";
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { strFromU8, unzipSync } from "fflate";
 import { parseAssetNames } from "../runtime/asset-labels.js";
+import { isJunkZipEntry } from "../zip-junk.js";
 import { ASSET_NAMES_FILE } from "./asset-names.js";
 import { stripDecorationResidue } from "./css-sanitizer.js";
 import {
@@ -60,12 +61,6 @@ export type OpenSkinPackageResult =
 	  }
 	| { ok: false; errors: string[] };
 
-function isJunk(name: string): boolean {
-	return (
-		name.endsWith("/") || name.startsWith("__MACOSX/") || name.split("/").pop() === ".DS_Store"
-	);
-}
-
 /** manifest 各处引用的图片集合(整页壁纸 + chat 壁纸)。zip 校验与编辑保存共用一把尺。 */
 export function referencedImages(manifest: SkinManifest): Set<string> {
 	const referenced = new Set<string>();
@@ -105,7 +100,7 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	try {
 		entries = unzipSync(buf, {
 			filter: (f) => {
-				if (isJunk(f.name)) return false;
+				if (isJunkZipEntry(f.name)) return false;
 				count += 1;
 				claimedTotal += f.originalSize;
 				if (count > MAX_PACKAGE_FILES) {

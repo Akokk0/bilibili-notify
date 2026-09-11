@@ -21,6 +21,7 @@ import {
 	ExtensionManifestSchema,
 } from "@bilibili-notify/internal";
 import { strFromU8, unzipSync } from "fflate";
+import { isJunkZipEntry } from "../zip-junk.js";
 import { EXTENSION_ENTRY_FILE, EXTENSION_MANIFEST_FILE } from "./discover.js";
 
 /** 清单顶天几百字节,给到 512KB 是留给 icon 那段 SVG(它自己的上限是 64KB)。 */
@@ -31,6 +32,13 @@ const MAX_CODE_BYTES = 8 * 1024 * 1024;
 export const MAX_EXTENSION_PACKAGE_BYTES = 10 * 1024 * 1024;
 /** 白名单之外的文件一律拒,所以这道只防「拿几万个空条目撑爆解压」。 */
 const MAX_PACKAGE_FILES = 64;
+/**
+ * 解压后的**总量**上限 —— 合法的包就是「清单 + 一个入口」,两条单文件上限加起来正好是它。
+ *
+ * 🔴 光有单文件那条拦不住:白名单是**解压之后**才对的,那会儿 64 个各 8MB 的条目已经
+ * 全解进内存了(镜像的堆只有 512MB)。皮肤包那头同一个位置有同一道闸,理由也一样。
+ */
+const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES;
 
 export interface OpenedExtensionPackage {
 	/** 装到哪个目录名下 —— **清单说了算**,不看 zip 里的路径。 */
@@ -44,12 +52,6 @@ export interface OpenedExtensionPackage {
 export type OpenExtensionPackageResult =
 	| { ok: true; pkg: OpenedExtensionPackage }
 	| { ok: false; errors: string[] };
-
-function isJunk(name: string): boolean {
-	return (
-		name.endsWith("/") || name.startsWith("__MACOSX/") || name.split("/").pop() === ".DS_Store"
-	);
-}
 
 /**
  * 剥掉「把目录整个拖进压缩软件」多出来的那一层。
@@ -68,11 +70,13 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	let entries: Record<string, Uint8Array>;
 	let precheck: string | null = null;
 	let count = 0;
+	let claimedTotal = 0;
 	try {
 		entries = unzipSync(buf, {
 			filter: (f) => {
-				if (isJunk(f.name)) return false;
+				if (isJunkZipEntry(f.name)) return false;
 				count += 1;
+				claimedTotal += f.originalSize;
 				if (count > MAX_PACKAGE_FILES) {
 					precheck = `包里的文件太多(上限 ${MAX_PACKAGE_FILES} 个)`;
 					return false;
@@ -82,6 +86,11 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 				// 拦住撒谎的头,拆出来之后再按各自的顶细量。
 				if (f.originalSize > MAX_CODE_BYTES) {
 					precheck = `${f.name} 过大(声明的解压大小 ${Math.round(f.originalSize / 1024 / 1024)}MB,上限 ${Math.round(MAX_CODE_BYTES / 1024 / 1024)}MB)`;
+					return false;
+				}
+				// 每个都合规、加起来不合规:说清是**总量**,别让主人去挨个文件找那个大的。
+				if (claimedTotal > MAX_PACKAGE_TOTAL_BYTES) {
+					precheck = `包解压后总量过大(声明的总解压大小 ${Math.round(claimedTotal / 1024 / 1024)}MB,上限 ${(MAX_PACKAGE_TOTAL_BYTES / 1024 / 1024).toFixed(1)}MB)`;
 					return false;
 				}
 				return true;

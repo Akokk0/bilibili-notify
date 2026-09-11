@@ -169,6 +169,23 @@ describe("拆包", () => {
 		}
 	});
 
+	/**
+	 * 🔴 单文件那道闸拦不住「**很多个**各自合规的条目」:白名单是解压**之后**才对的,到那
+	 * 会儿几十个 7MB 的条目早已经解进内存了(镜像的堆只有 512MB)。总量得在同一道 filter 里
+	 * 拦,而且那句话要说清是**总量** —— 报「某某过大」会让主人去一个个文件里找那个大的。
+	 */
+	it("每个条目都不超单文件上限、加起来却几百 MB → 按**总量**拦下", () => {
+		const files: Record<string, string> = { ...GOOD };
+		for (let i = 0; i < 8; i += 1) files[`chunk${i}.mjs`] = "//";
+		let zip = pack(files);
+		for (let i = 0; i < 8; i += 1) {
+			zip = forgeUncompressedSize(zip, `chunk${i}.mjs`, 7 * 1024 * 1024);
+		}
+		const opened = openExtensionPackage(zip);
+		expect(opened.ok).toBe(false);
+		if (!opened.ok) expect(opened.errors.join()).toContain("总量");
+	});
+
 	it("压根不是 zip → 一句人话,别把 fflate 的异常摊出去", () => {
 		const opened = openExtensionPackage(strToU8("这不是 zip"));
 		expect(opened.ok).toBe(false);
