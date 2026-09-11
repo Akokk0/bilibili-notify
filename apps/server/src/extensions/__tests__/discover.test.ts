@@ -203,6 +203,18 @@ describe("discoverExtensions", () => {
 		}
 	});
 
+	/**
+	 * 🔴 安装的暂存目录 `.staging-<id>-xxxx` 就建在装载根里;进程在 rename 之前被杀,它就带着
+	 * 一份合法清单留在盘上 —— 清单 id 与目录名对不上,每次开机多一张删不掉的 unreadable 卡。
+	 * 点开头的目录一律不当拓展看。
+	 */
+	it("点开头的目录不进表 —— 那是装到一半留下的暂存,不是拓展", async () => {
+		await plant("bridge", manifest());
+		await plant(".staging-bridge-abc123", manifest());
+		const found = await discoverExtensions(root);
+		expect(found.map((e) => e.id)).toEqual(["bridge"]);
+	});
+
 	it("目录压根不存在 → 空表,不是错误(头一次开机就是这样)", async () => {
 		expect(await discoverExtensions(join(root, "nope"))).toEqual([]);
 	});

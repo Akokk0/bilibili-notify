@@ -77,6 +77,13 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 					precheck = `包里的文件太多(上限 ${MAX_PACKAGE_FILES} 个)`;
 					return false;
 				}
+				// 🔴 压缩炸弹:fflate 按 zip 头**声明**的解压大小先分配内存,再解压。上限得在这儿拦 ——
+				// 解压完再量,一个 300KB 的包已经解出了 300MB。清单与入口各有各的顶,先按最宽的那档
+				// 拦住撒谎的头,拆出来之后再按各自的顶细量。
+				if (f.originalSize > MAX_CODE_BYTES) {
+					precheck = `${f.name} 过大(声明的解压大小 ${Math.round(f.originalSize / 1024 / 1024)}MB,上限 ${Math.round(MAX_CODE_BYTES / 1024 / 1024)}MB)`;
+					return false;
+				}
 				return true;
 			},
 		});
@@ -170,7 +177,26 @@ export interface InstallExtensionPackageResult {
  * 一个「清单是新的、代码是旧的」的拓展,而那正是最难查的一种状态。同一个道理,覆盖时
  * 先把旧目录整个删掉 —— 留着上一版的残余文件,下一次谁也说不清跑的是哪一份。
  */
+/**
+ * 同一个装载根上的安装**排队**:路由层没有锁,两个标签页同时点「装」,各自 mkdtemp → rm →
+ * rename 交错起来,第二个 rename 会撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。
+ */
+const installQueues = new Map<string, Promise<unknown>>();
+
 export async function installExtensionPackage(
+	input: InstallExtensionPackageInput,
+): Promise<InstallExtensionPackageResult> {
+	const previous = installQueues.get(input.root) ?? Promise.resolve();
+	const run = previous.catch(() => undefined).then(() => installExtensionPackageUnlocked(input));
+	installQueues.set(input.root, run);
+	try {
+		return await run;
+	} finally {
+		if (installQueues.get(input.root) === run) installQueues.delete(input.root);
+	}
+}
+
+async function installExtensionPackageUnlocked(
 	input: InstallExtensionPackageInput,
 ): Promise<InstallExtensionPackageResult> {
 	const { root, pkg } = input;

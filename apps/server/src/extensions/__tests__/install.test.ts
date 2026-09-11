@@ -48,6 +48,38 @@ function pack(files: Record<string, string>, prefix = ""): Uint8Array {
 
 const GOOD = { "extension.json": manifest(), "index.mjs": "export function activate() {}" };
 
+/**
+ * 把 zip 里某个条目**声明**的解压大小改成 `size`(本地头 + 中央目录两处),压缩数据不动 ——
+ * 模拟一个撒谎的包。zip 结构里的偏移是定死的:本地头签名后 22 字节、中央目录签名后 24 字节。
+ */
+function forgeUncompressedSize(zip: Uint8Array, name: string, size: number): Uint8Array {
+	const out = new Uint8Array(zip);
+	const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+	const nameBytes = strToU8(name);
+	const matches = (at: number) => {
+		for (let i = 0; i < nameBytes.length; i += 1) if (out[at + i] !== nameBytes[i]) return false;
+		return true;
+	};
+	for (let i = 0; i + 4 <= out.length; i += 1) {
+		const sig = view.getUint32(i, true);
+		if (
+			sig === 0x04034b50 &&
+			view.getUint16(i + 26, true) === nameBytes.length &&
+			matches(i + 30)
+		) {
+			view.setUint32(i + 22, size, true);
+		}
+		if (
+			sig === 0x02014b50 &&
+			view.getUint16(i + 28, true) === nameBytes.length &&
+			matches(i + 46)
+		) {
+			view.setUint32(i + 24, size, true);
+		}
+	}
+	return out;
+}
+
 beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "bn-ext-install-"));
 });
@@ -123,6 +155,20 @@ describe("拆包", () => {
 		if (!opened.ok) expect(opened.errors.join()).toContain("过大");
 	});
 
+	/**
+	 * 🔴 压缩炸弹:zip 头里**声明**的解压大小是解压前就能读到的,而 fflate 按它先分配内存。
+	 * 上限要在解压**之前**拦,否则一个 300KB 的包能解出 300MB —— 镜像的堆只有 512MB。
+	 */
+	it("zip 头声明的解压大小超上限 → 解压前就拒,说的是「过大」而不是「不是 zip」", () => {
+		const forged = forgeUncompressedSize(pack(GOOD), "index.mjs", 2 ** 31);
+		const opened = openExtensionPackage(forged);
+		expect(opened.ok).toBe(false);
+		if (!opened.ok) {
+			expect(opened.errors.join()).toContain("过大");
+			expect(opened.errors.join()).not.toContain("zip");
+		}
+	});
+
 	it("压根不是 zip → 一句人话,别把 fflate 的异常摊出去", () => {
 		const opened = openExtensionPackage(strToU8("这不是 zip"));
 		expect(opened.ok).toBe(false);
@@ -182,6 +228,29 @@ describe("落盘", () => {
 		await installExtensionPackage({ root, pkg });
 		const { readdir } = await import("node:fs/promises");
 		expect(await readdir(root)).toEqual(["bridge"]);
+	});
+
+	/**
+	 * 🔴 两个标签页同时点「装」:路由层没有锁。各自 mkdtemp → 各自 rm → 各自 rename,交错起来
+	 * 第二个 rename 撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。同 id 的安装必须排队。
+	 */
+	it("同一个 id 并发装两次 → 排队,两次都成,盘上只剩最后落的那一份", async () => {
+		const a = openExtensionPackage(pack(GOOD));
+		const b = openExtensionPackage(
+			pack({ ...GOOD, "extension.json": manifest({ version: "1.0.1" }) }),
+		);
+		if (!a.ok || !b.ok) throw new Error("fixture");
+		const [first, second] = await Promise.all([
+			installExtensionPackage({ root, pkg: a.pkg }),
+			installExtensionPackage({ root, pkg: b.pkg }),
+		]);
+		expect(first.replaced).toBe(false);
+		expect(second.replaced).toBe(true);
+		const { readdir } = await import("node:fs/promises");
+		expect(await readdir(root)).toEqual(["bridge"]);
+		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
+			"1.0.1",
+		);
 	});
 
 	it("装载根还不存在时自己建 —— 头一次装本来就没有它", async () => {

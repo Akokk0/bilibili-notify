@@ -206,8 +206,12 @@ export async function discoverExtensions(
 	// `isDirectory()` 是 false。只认目录的话,软链进来的拓展**一声不响地不出现**。
 	// 开发版就是这么装的(devtools 把仓里的 `dist` 链进来),下载装的将来也可能是链。
 	// 链到文件 / 断链的那些照旧走 `readExtensionDir`:读不到清单 = 不是拓展目录,跳过。
+	// 点开头的一律不看:安装的暂存目录 `.staging-<id>-xxxx` 就建在这个根里,进程在 rename 之前
+	// 被杀,它就带着一份合法清单留在盘上 —— 当成拓展读出来是一张删不掉的 unreadable 卡。
 	const dirs = entries
-		.filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+		.filter(
+			(entry) => (entry.isDirectory() || entry.isSymbolicLink()) && !entry.name.startsWith("."),
+		)
 		.map((entry) => entry.name);
 	const reads = await Promise.all(
 		dirs.map((name) => readExtensionDir(join(root, name), { hostApiVersion })),
