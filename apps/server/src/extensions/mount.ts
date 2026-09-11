@@ -1,6 +1,7 @@
 import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 import { Hono } from "hono";
+import { createClaimTable } from "./claim-table.js";
 
 export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 /**
@@ -35,7 +36,7 @@ export function extensionMountPrefix(id: string): string {
  * 而不是去覆写框架的注册方法(那是拿框架内部结构换便利,一次升级就炸)。
  */
 export function createExtensionMounts(): ExtensionMounts {
-	const table = new Map<string, ExtensionFetchHandler>();
+	const table = createClaimTable<ExtensionFetchHandler>((id) => `extension ${id} already mounted`);
 	const route = new Hono();
 
 	route.all("/:id{[^/]+}/*", (c) => dispatch(c.req.raw, c.req.param("id")));
@@ -63,15 +64,8 @@ export function createExtensionMounts(): ExtensionMounts {
 	return {
 		route,
 		mount(id, handler) {
-			if (table.has(id)) throw new Error(`extension ${id} already mounted`);
-			table.set(id, handler);
-			return {
-				prefix: extensionMountPrefix(id),
-				dispose() {
-					// 只删自己那一行:重挂过之后 dispose 一个旧 handle 不该把新主人踢掉。
-					if (table.get(id) === handler) table.delete(id);
-				},
-			};
+			const claimed = table.claim(id, handler);
+			return { prefix: extensionMountPrefix(id), dispose: claimed.dispose };
 		},
 	};
 }

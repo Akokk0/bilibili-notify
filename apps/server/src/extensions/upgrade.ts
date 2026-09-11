@@ -2,6 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 import type { Disposable } from "@bilibili-notify/internal";
+import { createClaimTable } from "./claim-table.js";
 import { EXTENSION_MOUNT_PREFIX, extensionMountPrefix } from "./mount.js";
 
 export type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
@@ -18,14 +19,20 @@ export interface ExtensionUpgrades {
 	attach(httpServer: HttpServer): void;
 }
 
-/** `/ext/<id>/...` → `id`;不在这个前缀底下就是 `null`。 */
-function extensionIdOf(url: string): string | null {
-	const path = url.split("?")[0] ?? "";
-	if (!path.startsWith(`${EXTENSION_MOUNT_PREFIX}/`)) return null;
+/**
+ * `/ext/<id>/...` → 这条 upgrade 归谁(`id`),以及**剥掉前缀**之后那一段(至少是 `/`)。
+ * 不在这个前缀底下就是 `null`。
+ *
+ * 两样一起给:分两处各切一次的话,「前缀到哪儿为止」就有了两份写法,而它们只会在
+ * 某种边角 URL 上才分道扬镳。
+ */
+function extensionIdOf(url: string): { id: string; path: string } | null {
+	const full = url.split("?")[0] ?? "";
+	if (!full.startsWith(`${EXTENSION_MOUNT_PREFIX}/`)) return null;
 	// 精确到一段:`/ext/bridgefoo` 不是 `bridge` 的。
-	const rest = path.slice(EXTENSION_MOUNT_PREFIX.length + 1);
-	const id = rest.split("/")[0] ?? "";
-	return id.length > 0 ? id : null;
+	const id = full.slice(EXTENSION_MOUNT_PREFIX.length + 1).split("/")[0] ?? "";
+	if (id.length === 0) return null;
+	return { id, path: full.slice(extensionMountPrefix(id).length) || "/" };
 }
 
 function reject(socket: Duplex): void {
@@ -48,36 +55,27 @@ function reject(socket: Duplex): void {
  * 桥的 401(token 不对,别重连)与 503(眼下不收,退避重连)是**协议语义**,宿主不该懂。
  */
 export function createExtensionUpgrades(): ExtensionUpgrades {
-	const table = new Map<string, ExtensionUpgradeHandler>();
+	const table = createClaimTable<ExtensionUpgradeHandler>(
+		(id) => `extension ${id} already claimed its upgrade path`,
+	);
 	let attached: HttpServer | undefined;
 
 	const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-		const id = extensionIdOf(req.url ?? "");
+		const claim = extensionIdOf(req.url ?? "");
 		// 🔴 不是 `/ext/*` 的**什么都不做**(不是 destroy):面板那条 `/ws` 也挂在同一台
 		// server 上,得留给它自己的处理器。
-		if (id === null) return;
-		const handler = table.get(id);
+		if (claim === null) return;
+		const handler = table.get(claim.id);
 		if (!handler) {
 			// 落在我们的前缀里却没人认领 —— 明确回绝,别把连接吊死在那儿。
 			reject(socket);
 			return;
 		}
-		const prefix = extensionMountPrefix(id);
-		const path = (req.url ?? "").split("?")[0]?.slice(prefix.length) || "/";
-		handler({ req, socket, head, path });
+		handler({ req, socket, head, path: claim.path });
 	};
 
 	return {
-		register(id, handler) {
-			if (table.has(id)) throw new Error(`extension ${id} already claimed its upgrade path`);
-			table.set(id, handler);
-			return {
-				dispose() {
-					// 只删自己那一行:重挂过之后 dispose 一个旧把手不该把新主人踢掉。
-					if (table.get(id) === handler) table.delete(id);
-				},
-			};
-		},
+		register: (id, handler) => table.claim(id, handler),
 		attach(httpServer) {
 			attached?.off("upgrade", onUpgrade);
 			attached = httpServer;
