@@ -59,6 +59,10 @@ async function stateSubscriber(port: number) {
 	});
 	socket.send(JSON.stringify({ type: "subscribe", channels: ["state"] }));
 	return {
+		/** 收到过几帧这样的。**接线的算术**靠它:少接一处,数就对不上。 */
+		count(pred: (frame: StateFrame) => boolean): number {
+			return frames.filter(pred).length;
+		},
 		async waitFor(pred: (frame: StateFrame) => boolean, timeoutMs: number): Promise<StateFrame> {
 			const deadline = Date.now() + timeoutMs;
 			for (;;) {
@@ -157,6 +161,32 @@ describe("devtools 的假桥 → 真桥", () => {
 		return (await res.json()) as Record<string, unknown>;
 	}
 
+	/** 帧是异步到达的(WS → 端点 → publishStatus),所以状态接口要等,不能只读一次。 */
+	async function statusUntil(
+		pred: (snapshot: Record<string, unknown>) => boolean,
+		timeoutMs = 2_000,
+	): Promise<Record<string, unknown>> {
+		const deadline = Date.now() + timeoutMs;
+		let last: Record<string, unknown> = {};
+		while (Date.now() < deadline) {
+			last = await status();
+			if (pred(last)) return last;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		throw new Error(`状态一直没变成要的样子;最后一次是:${JSON.stringify(last)}`);
+	}
+
+	/**
+	 * 第二份名单快照(插件探完能力那份)到了没有。握手那份一格能力都不报,归一化之后
+	 * 六项全是 `unknown`;出现任何一个真答案,就说明第二份已经落地了。
+	 */
+	function probedCapabilities(snapshot: Record<string, unknown>): boolean {
+		const sessions = snapshot.sessions as
+			| { bots?: { capabilities?: Record<string, string> }[] }[]
+			| undefined;
+		return Object.values(sessions?.[0]?.bots?.[0]?.capabilities ?? {}).includes("supported");
+	}
+
 	it("按一下场景 → 真桥那头真的多了一条握过手的会话,bot 名单与能力表都在", async () => {
 		// 按之前:配着一条接入,但没人连 —— 拓展页上那张卡是灰的。
 		expect(status()).resolves.toMatchObject({ sessions: [{ connected: false }] });
@@ -167,11 +197,12 @@ describe("devtools 的假桥 → 真桥", () => {
 		expect(body.summary).toContain("家里那台 koishi");
 		expect(body.active.map((a) => a.scenarioId)).toContain("bridge.connect");
 
-		const after = (await status()) as {
+		// 🔴 能力**在第二份快照里**(握手那份是「还没探」的样子),所以得等它到。
+		const after = (await statusUntil(probedCapabilities)) as {
 			sessions: {
 				connected: boolean;
 				kind?: string;
-				bots: { platform: string; capabilities: Record<string, string> }[];
+				bots: { platform: string; icon?: string; capabilities: Record<string, string> }[];
 			}[];
 		};
 		const session = after.sessions[0];
@@ -179,6 +210,9 @@ describe("devtools 的假桥 → 真桥", () => {
 		expect(session?.kind).toBe("koishi");
 		expect(session?.bots).toHaveLength(1);
 		expect(session?.bots[0]?.platform).toBe("telegram");
+		// 🔴 平台图标一路走到状态接口:桥只收 data URL,http 地址会在归一化那关被丢掉,
+		// 所以「有」本身就证明了假桥造的那枚是合法的。
+		expect(session?.bots[0]?.icon).toMatch(/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/);
 		// 🔴 三态齐全:桥把没报的补成 unknown,面板据此分「不支持」与「还不知道」。
 		expect(new Set(Object.values(session?.bots[0]?.capabilities ?? {}))).toEqual(
 			new Set(["supported", "unsupported", "unknown"]),
@@ -215,6 +249,26 @@ describe("devtools 的假桥 → 真桥", () => {
 			const frame = await panel.waitFor((f) => f.event === "extension-changed", 3_000);
 			expect(frame.type).toBe("state");
 			expect(frame.data).toEqual({ id: "bridge" });
+		} finally {
+			panel.close();
+		}
+	});
+
+	/**
+	 * 🔴 **名单再来一份,面板也得知道**。插件探完能力会重推一份全量快照(bot 上下线同理),
+	 * 而桥只在「连上 / 断开」喊 `statusChanged()` 的话,面板上那张能力矩阵永远停在握手那份 ——
+	 * 状态接口里查得到真答案,屏幕上却是一片「还不知道」,直到主人切一次页。
+	 *
+	 * 数得清是因为这条链上没有任何合并:握手喊两声(会话 + 握手那份名单),第二份快照再喊
+	 * 一声 —— 所以**三帧**。少接一处,这个数就对不上。
+	 */
+	it("插件探完能力重推名单 → state 频道再推一帧 extension-changed(一共三帧)", async () => {
+		const panel = await stateSubscriber(port);
+		try {
+			await runScenario("bridge.connect");
+			await statusUntil(probedCapabilities);
+			await panel.waitFor((f) => f.event === "extension-changed", 3_000);
+			expect(panel.count((f) => f.event === "extension-changed")).toBe(3);
 		} finally {
 			panel.close();
 		}

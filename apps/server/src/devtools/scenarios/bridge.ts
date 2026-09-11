@@ -92,6 +92,25 @@ const SCOPES = [
 
 const DEFAULT_GROUP_TEXT = "看看这个 https://www.bilibili.com/video/BV1GJ411x7h7";
 
+/** 假 bot 自己的号 —— 面板上那一行显示它,归一化那头拿它当「这是机器人自己」的判据。 */
+const FAKE_BOT_SELF_ID = "900400001";
+
+/**
+ * 没配主人时,群消息编的那个发信人。
+ *
+ * 🔴 **不许等于 {@link FAKE_BOT_SELF_ID}**:链接解析有一道「机器人自己贴的链接不解析」的闸,
+ * 撞上了整条消息会被静默吃掉 —— 场景报「已驮上去」,面板上什么都不发生,日志里一个字都没有。
+ */
+const DEFAULT_GROUP_SENDER = "800100002";
+
+/**
+ * 假 bot 的平台图标(协议 1.2)。只能是 `data:image/…;base64,` 的 data URL —— BN 不收
+ * http 地址,面板每次打开都去对家点一次名不是图标该有的本事。一枚紫色的小方块就够:
+ * 要看的是「图标这条路通不通」,不是好不好看。
+ */
+const FAKE_BOT_ICON =
+	"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iI2E4NTVmNyIvPjxwYXRoIGQ9Ik01IDRoNGEyLjUgMi41IDAgMCAxIDAgNUg1eiIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik01IDloNC41YTIuNSAyLjUgMCAwIDEgMCA1SDV6IiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIuNzUiLz48L3N2Zz4=";
+
 function text(value: string | number | undefined, fallback: string): string {
 	return typeof value === "string" && value !== "" ? value : fallback;
 }
@@ -186,15 +205,21 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			if (!address) throw new DevParamError("HTTP 服务还没起来,等一下再按");
 
 			const platform = text(params.platform, "onebot");
+			// 握手那份名单是「还没探能力」的样子 —— 真插件也是这个次序:先报名单,探完
+			// (小程序卡那格是唯一探得出来的)再推一份带答案的全量快照。
 			const bots: FakeBridgeBot[] = [
 				{
 					botId: "fake-bot-1",
 					platform,
 					name: "假 bot",
-					selfId: "900400001",
-					capabilities: capabilitiesOf(String(params.caps ?? "mixed")),
+					selfId: FAKE_BOT_SELF_ID,
+					icon: FAKE_BOT_ICON,
 				},
 			];
+			const probed: FakeBridgeBot[] = bots.map((bot) => ({
+				...bot,
+				capabilities: capabilitiesOf(String(params.caps ?? "mixed")),
+			}));
 			const fail = text(params.fail, "");
 			receipt = fail === "" ? { ok: true } : { ok: false, err: fail };
 
@@ -217,10 +242,14 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 				// 401 / 404 / 503 的分档在这句话里 —— 它是主人手里唯一的线索。
 				throw new DevParamError(`连不上:${(err as Error).message}`);
 			}
-			live = { bridge, connectionName: link.name, bots };
+			// 握完手才推带能力那份 —— 面板上于是看得见「矩阵从一片『还不知道』换成真答案」
+			// 那一跳,而那一跳靠的是拓展喊 `statusChanged()`,不是主人切页重取。
+			bridge.pushBots(probed);
+			live = { bridge, connectionName: link.name, bots: probed };
 			return {
 				summary:
-					`已假装一条桥连上 ${link.name},报了 1 个 ${platform} 的 bot。` +
+					`已假装一条桥连上 ${link.name},报了 1 个 ${platform} 的 bot(带平台图标);` +
+					`能力表跟着握手后的第二份名单快照报上来,跟真插件探完能力一个次序。` +
 					(fail === "" ? "推过来的都回成功。" : `推过来的都回失败:${fail}。`),
 			};
 		},
@@ -255,9 +284,13 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			if (scope === "group") {
 				if (given === "") throw new DevParamError("群消息得给一个群号");
 				const body = text(params.text, DEFAULT_GROUP_TEXT);
-				const userId = master?.address ?? "900400001";
+				const userId = master?.address ?? DEFAULT_GROUP_SENDER;
 				live.bridge.sendInbound({ scope: "group", groupId: given, userId, text: body });
-				return { summary: `已让假桥驮上来一条群 ${given} 的消息:「${body}」,回卡回到那个群。` };
+				// 发信人写进摘要:群里那条是谁说的决定了链接解析认不认它(自己贴的不解析),
+				// 不说的话「驮上去了却什么都没发生」查不出是这个原因。
+				return {
+					summary: `已让假桥驮上来一条群 ${given} 的消息(发信人 ${userId}):「${body}」,回卡回到那个群。`,
+				};
 			}
 			const userId = given !== "" ? given : master?.address;
 			if (!userId) {

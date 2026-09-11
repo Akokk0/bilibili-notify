@@ -132,6 +132,19 @@ describe("握手", () => {
 		});
 	});
 
+	/**
+	 * 🔴 图标是 1.2 加的一格,只认 `data:image/…;base64,` 的 data URL。假桥造不出它的话,
+	 * 「bot 行左边那枚方块」这条路在真机之前一次都走不到。
+	 */
+	it("bot 的平台图标一起报上去 —— 面板那枚方块的料就在这一格", async () => {
+		const icon = `data:image/png;base64,${"A".repeat(16)}`;
+		bridge = fake({ bots: [{ botId: "bot-1", platform: "telegram", icon }] });
+		await bridge.ready();
+
+		const reported = frames[0]?.bots as { icon?: string }[] | undefined;
+		expect(reported?.[0]?.icon).toBe(icon);
+	});
+
 	/** 场景要拿这句话往面板上贴 —— 「转了半天没反应」是最没用的一种失败。 */
 	it("upgrade 被拒 → ready() 带着状态码炸出来", async () => {
 		refuse = 401;
@@ -203,6 +216,28 @@ describe("连着的时候", () => {
 			platform: "telegram",
 			message: { scope: "private", userId: "10086", text: "帮助" },
 		});
+	});
+
+	/**
+	 * 🔴 **握完手之后名单还会再来一份**:真插件探完能力(小程序卡那一格是唯一探得出来的)
+	 * 就重推一份全量快照。假桥没有这个口的话,「能力矩阵会不会跟着换」在真机之前钉不住。
+	 */
+	it("握完手再推一份全量名单 —— 真插件探完能力就是这么做的", async () => {
+		bridge = fake();
+		await bridge.ready();
+
+		bridge.pushBots([
+			{ botId: "bot-1", platform: "telegram", capabilities: { miniAppCard: "supported" } },
+		]);
+		expect(await nextFrame("bots")).toEqual({
+			type: "bots",
+			bots: [{ botId: "bot-1", platform: "telegram", capabilities: { miniAppCard: "supported" } }],
+		});
+	});
+
+	it("还没握上手就推名单 → 明说没推上去(别假装成功)", () => {
+		bridge = fake();
+		expect(() => bridge?.pushBots([{ botId: "bot-1", platform: "telegram" }])).toThrow(/没连上/);
 	});
 
 	/** 🔴 还没握完手就驮 → 说清楚这条没发出去,别扔个 readyState 出来、把消息悄悄丢了。 */

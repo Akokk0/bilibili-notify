@@ -27,6 +27,11 @@ export interface FakeBridgeBot {
 	platform: string;
 	name?: string;
 	selfId?: string;
+	/**
+	 * 平台图标(协议 1.2)。只认 `data:image/…;base64,` 的 data URL —— 面板拿它画 bot 行
+	 * 左边那枚方块,不给就退回首字母。造得出它,那条路才在真机之前走得到一次。
+	 */
+	icon?: string;
 	capabilities?: Record<string, string>;
 }
 
@@ -56,6 +61,11 @@ export interface FakeBridgeOptions {
 export interface FakeBridge {
 	/** 握完手才 resolve;连不上 / 被拒 / 半路断了都 reject,理由能直接贴到面板上。 */
 	ready(): Promise<void>;
+	/**
+	 * 再推一份**全量**bot 名单 —— 真插件探完能力(小程序卡那格)、bot 上下线时就是这么做的。
+	 * 握手那一份是「还没探」的样子,这一份才带答案。
+	 */
+	pushBots(bots: FakeBridgeBot[]): void;
 	sendInbound(message: FakeBridgeInbound, botId?: string): void;
 	/** 握过手没有 —— 场景的「当前生效」看它。 */
 	connected(): boolean;
@@ -197,6 +207,12 @@ export function createFakeBridge(opts: FakeBridgeOptions): FakeBridge {
 	return {
 		ready: () => ready,
 		connected: () => shook,
+		pushBots(bots) {
+			// 名单是全量快照,整份换掉。没握上手就推 = 那份名单谁也没收到,别假装成功。
+			if (!shook || !send({ type: "bots", bots })) {
+				throw new Error("假桥还没连上,这份名单没推上去");
+			}
+		},
 		sendInbound(message, botId) {
 			const bot = botId === undefined ? opts.bots[0] : opts.bots.find((b) => b.botId === botId);
 			if (!bot) throw new Error(`名单里没有 ${botId ?? "任何 bot"}`);

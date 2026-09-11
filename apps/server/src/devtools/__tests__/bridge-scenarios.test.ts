@@ -32,11 +32,14 @@ const LINK = {
 	enabled: true,
 };
 
-function scenarios() {
+/** `master: null` = 系统页没配主人。**别用 `undefined`** —— 显式传它会触发默认参数。 */
+function scenarios(
+	master: { platform: string; address: string } | null = { platform: "bridge", address: "10086" },
+) {
 	return bridgeScenarios({
 		settings: () => settings,
 		address: () => `127.0.0.1:${port}`,
-		commands: () => ({ prefix: "/", master: { platform: "bridge", address: "10086" } }),
+		commands: () => ({ prefix: "/", master: master ?? undefined }),
 	});
 }
 
@@ -119,12 +122,29 @@ describe("假装一条桥连上来", () => {
 		expect(from("bridge.connect").active?.()).toBeNull();
 	});
 
-	/** 能力矩阵那三态是最难在真环境里凑齐的,所以给一档专门凑齐它。 */
-	it("能力表按档报:三态齐全 / 全支持 / 全不支持", async () => {
+	/**
+	 * 能力矩阵那三态是最难在真环境里凑齐的,所以给一档专门凑齐它。
+	 *
+	 * 🔴 **能力跟着握手后的第二份快照来**,不在 hello 里 —— 真插件就是这个次序(先报名单,
+	 * 探完小程序卡那格再重推一份带答案的)。这条顺带钉住了那一跳:握手那份是「还不知道」。
+	 */
+	it("能力表随第二份名单快照报上来(握手那份还没探);三态齐全 / 全支持 / 全不支持", async () => {
 		await from("bridge.connect").run({ caps: "mixed" });
 		const hello = await nextFrame("hello");
-		const caps = (hello.bots as { capabilities: Record<string, string> }[])[0]?.capabilities ?? {};
+		expect((hello.bots as { capabilities?: unknown }[])[0]?.capabilities).toBeUndefined();
+
+		const snapshot = await nextFrame("bots");
+		const caps =
+			(snapshot.bots as { capabilities: Record<string, string> }[])[0]?.capabilities ?? {};
 		expect(new Set(Object.values(caps))).toEqual(new Set(["supported", "unsupported", "unknown"]));
+	});
+
+	/** 面板拿它画 bot 行左边那枚方块 —— 不给的话那条路在真机之前一次都走不到。 */
+	it("bot 带着平台图标报上来,而且是 data URL(BN 不收 http 地址)", async () => {
+		await from("bridge.connect").run({});
+		const hello = await nextFrame("hello");
+		const icon = (hello.bots as { icon?: string }[])[0]?.icon ?? "";
+		expect(icon).toMatch(/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/);
 	});
 
 	it("没有桥接入 → 说清楚要先去建一条,别默默连一条空的", async () => {
@@ -169,6 +189,25 @@ describe("桥驮一条消息上来", () => {
 		expect(await nextFrame("inbound")).toMatchObject({
 			message: { scope: "group", groupId: "g-42", userId: "10086" },
 		});
+	});
+
+	/**
+	 * 🔴 **默认发信人不许正好是那个假 bot 自己**。没配主人时群消息得自己编一个号,而它
+	 * 从前编的恰好等于假 bot 的 `selfId` —— 于是链接解析那道「机器人自己贴的链接不解析」
+	 * 的闸把整条消息静默吃掉,场景报「已驮上去」、面板上什么都不发生,而**没有任何一行日志**。
+	 */
+	it("群消息:没配主人时编的发信人**不是假 bot 自己**,而且摘要里说清是谁", async () => {
+		group = scenarios(null);
+		await from("bridge.connect").run({});
+		const hello = await nextFrame("hello");
+		const selfId = (hello.bots as { selfId?: string }[])[0]?.selfId;
+		expect(selfId).toBeTruthy();
+
+		const out = await from("bridge.inbound").run({ scope: "group", from: "g-42" });
+		const inbound = await nextFrame("inbound");
+		const userId = (inbound.message as { userId: string }).userId;
+		expect(userId).not.toBe(selfId);
+		expect(out.summary).toContain(userId);
 	});
 
 	it("还没假装连上就驮 → 说清楚先按上面那条", () => {
