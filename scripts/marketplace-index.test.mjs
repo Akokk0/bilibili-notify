@@ -1,11 +1,12 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vite-plus/test";
 import { loadSignedJson } from "../apps/server/src/update/signed-manifest.js";
+import { compareVersions } from "../apps/server/src/update/version-order.js";
 import {
 	checkMarketplaceIndex,
 	MarketplaceIndexSchema,
 } from "../packages/internal/src/schema/extension-marketplace.ts";
-import { mergeMarketplaceEntry } from "./marketplace-index.mjs";
+import { compareEntryVersions, mergeMarketplaceEntry } from "./marketplace-index.mjs";
 import { signManifest } from "./sign-update-manifest.mjs";
 
 /**
@@ -89,6 +90,68 @@ describe("mergeMarketplaceEntry", () => {
 		expect("notes" in only).toBe(false);
 		expect("releaseUrl" in only).toBe(false);
 		expect(only.description).toBe("");
+	});
+});
+
+describe("issuedAt 与版本只许往前走", () => {
+	it("手传的 issuedAt 不比当前那份新 → 当场红(runner 时钟回拨 / 手抖)", () => {
+		const current = mergeMarketplaceEntry(undefined, entry(), { issuedAt: 100 });
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.0.3" }), { issuedAt: 100 }),
+		).toThrow(/issuedAt/);
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.0.3" }), { issuedAt: 99 }),
+		).toThrow(/issuedAt/);
+	});
+
+	it("不传就取 max(现在, 当前 + 1) —— 时钟回拨也不会发出一份客户端会判 stale 的索引", () => {
+		const current = mergeMarketplaceEntry(undefined, entry(), { issuedAt: 9_000_000_000 });
+		const next = mergeMarketplaceEntry(current, entry({ version: "0.0.3" }));
+		expect(next.issuedAt).toBe(9_000_000_001);
+		const first = mergeMarketplaceEntry(undefined, entry());
+		expect(first.issuedAt).toBeGreaterThan(1_700_000_000);
+		expect(first.issuedAt).toBeLessThan(1e11);
+	});
+
+	it("issuedAt 误传毫秒 → 拒(发出去就把客户端永久钉死在这一份上)", () => {
+		expect(() =>
+			mergeMarketplaceEntry(undefined, entry(), { issuedAt: 1_760_000_000_000 }),
+		).toThrow(/秒/);
+	});
+
+	it("同 id 的版本不许降回去(重跑一个旧 tag);重发同一版放行", () => {
+		const current = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), {
+			issuedAt: 100,
+		});
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.0.1" }), { issuedAt: 101 }),
+		).toThrow(/0\.0\.1/);
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ version: "0.0.2-alpha.1" }), { issuedAt: 101 }),
+		).toThrow(/0\.0\.2-alpha\.1/);
+		expect(
+			mergeMarketplaceEntry(current, entry({ version: "0.0.2" }), { issuedAt: 101 }).extensions[0]
+				.version,
+		).toBe("0.0.2");
+	});
+
+	it("并索引用的那把版本尺子与客户端的是同一把(手抄了一份,别让它漂)", () => {
+		const pairs = [
+			["0.9.0", "0.10.0"],
+			["0.0.2", "0.0.2"],
+			["1.0.0", "1.0.0-alpha.1"],
+			["1.0.0-alpha.9", "1.0.0-alpha.10"],
+			["1.0.0-alpha", "1.0.0-alpha.1"],
+			["1.0.0-beta", "1.0.0-alpha"],
+			["2.0.0", "10.0.0"],
+		];
+		for (const [a, b] of pairs) {
+			expect([a, b, Math.sign(compareEntryVersions(a, b))]).toEqual([
+				a,
+				b,
+				Math.sign(compareVersions(a, b)),
+			]);
+		}
 	});
 });
 
