@@ -5,12 +5,12 @@
 // 用法:node scripts/pack-extension.mjs --id bridge --out dist/bridge-0.0.2.zip
 // stdout 打一行 JSON:{ "path", "sha256", "size", "version" }
 
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zipSync } from "fflate";
 import { readArg, requireArg } from "./cli-args.mjs";
+import { extensionAssetName } from "./release-urls.mjs";
+import { digestOf, EXTENSION_ZIP_EPOCH, reproducibleZip } from "./reproducible-zip.mjs";
 
 export const EXTENSION_PACKAGE_FILES = ["extension.json", "index.mjs"];
 
@@ -23,8 +23,8 @@ export function packExtension(files) {
 		entries[name] = bytes;
 	}
 	// 固定时间戳:同样的产物打出同样的字节,sha256 才复现得了。
-	const zip = zipSync(entries, { level: 9, mtime: new Date("2000-01-01T00:00:00Z") });
-	return { zip, sha256: createHash("sha256").update(zip).digest("hex"), size: zip.byteLength };
+	const zip = reproducibleZip(entries, EXTENSION_ZIP_EPOCH);
+	return { zip, ...digestOf(zip) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -36,7 +36,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	const manifest = JSON.parse(Buffer.from(files["extension.json"]).toString("utf8"));
 	if (manifest.id !== id) throw new Error(`清单里的 id 是 ${manifest.id},要打的是 ${id}`);
 	const { zip, sha256, size } = packExtension(files);
-	const out = resolve(readArg("out", join("dist", `${id}-${manifest.version}.zip`)));
+	const out = resolve(readArg("out", join("dist", extensionAssetName(id, manifest.version))));
 	await mkdir(dirname(out), { recursive: true });
 	await writeFile(out, zip);
 	process.stdout.write(

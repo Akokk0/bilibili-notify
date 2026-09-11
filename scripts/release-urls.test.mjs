@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { payloadAssetName, payloadUrl, releaseUrl } from "./release-urls.mjs";
+import {
+	extensionAssetName,
+	extensionPackageUrl,
+	extensionReleaseUrl,
+	extensionTag,
+	payloadAssetName,
+	payloadUrl,
+	releaseUrl,
+} from "./release-urls.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
@@ -45,5 +53,35 @@ describe("拼出来的地址", () => {
 		expect(releaseUrl("Akokk0/bilibili-notify", "0.9.0")).toBe(
 			"https://github.com/Akokk0/bilibili-notify/releases/tag/v0.9.0",
 		);
+	});
+
+	it("拓展的 tag 带 `/` 与 `@`,进 URL 要整段转义;`gh` 那头要的是原样", () => {
+		expect(extensionTag("bridge", "0.0.2")).toBe("ext/bridge@0.0.2");
+		expect(extensionAssetName("bridge", "0.0.2")).toBe("bridge-0.0.2.zip");
+		expect(extensionPackageUrl("o/r", "bridge", "0.0.2")).toBe(
+			"https://github.com/o/r/releases/download/ext%2Fbridge%400.0.2/bridge-0.0.2.zip",
+		);
+		expect(extensionReleaseUrl("o/r", "bridge", "0.0.2")).toBe(
+			"https://github.com/o/r/releases/tag/ext%2Fbridge%400.0.2",
+		);
+	});
+});
+
+/** 同上一段的理由:拓展那条链也是「发布那天」与「客户端下载那天」隔开的。 */
+describe("拓展包的名字只有一份声明", () => {
+	const shellVar = (name) => `$\{${name}}`;
+	const wf = () => read(".github/workflows/extension-release.yml");
+
+	it("workflow 不再自己拼资产名与下载地址", () => {
+		expect(wf()).not.toContain("releases/download");
+		expect(wf()).not.toContain(extensionAssetName(shellVar("ID"), shellVar("VERSION")));
+	});
+
+	it("`gh release create` 用的 tag 与声明的是同一个形状", () => {
+		expect(wf()).toContain(`tag="${extensionTag(shellVar("ID"), shellVar("VERSION"))}"`);
+	});
+
+	it("打包脚本的默认输出名也来自这份声明", () => {
+		expect(read("scripts/pack-extension.mjs")).toContain("extensionAssetName");
 	});
 });

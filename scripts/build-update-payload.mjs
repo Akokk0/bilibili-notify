@@ -13,19 +13,15 @@
 //   node scripts/build-update-payload.mjs --out dist/payload.zip \
 //        [--server-dist apps/server/dist] [--web-dist apps/web/dist]
 
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zipSync } from "fflate";
 import { readArg } from "./cli-args.mjs";
+import { digestOf, PAYLOAD_ZIP_EPOCH, reproducibleZip } from "./reproducible-zip.mjs";
 import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-/** zip 格式能表示的最早时间。固定它 = 同样的输入打出同样的字节。 */
-const ZIP_EPOCH = new Date("1980-01-01T00:00:00Z");
 
 /** zip 里一律 posix 分隔符 —— Windows 上打的包不能只有 Windows 解得开。 */
 function toZipPath(baseDir, absPath, prefix) {
@@ -71,13 +67,12 @@ export async function buildUpdatePayload({ serverDist, webDist, outFile }) {
 
 	// mtime 固定:同样的输入要打出同样的包。否则每次构建 sha256 都变,「这两个包
 	// 是不是同一个东西」就再也答不上来了。zip 的时间戳从 1980 起,给不了 epoch 0。
-	const zipped = zipSync(files, { level: 9, mtime: ZIP_EPOCH });
+	const zipped = reproducibleZip(files, PAYLOAD_ZIP_EPOCH);
 	await mkdir(dirname(outFile), { recursive: true });
 	await writeFile(outFile, zipped);
 
 	return {
-		sha256: createHash("sha256").update(zipped).digest("hex"),
-		size: zipped.byteLength,
+		...digestOf(zipped),
 		entries: Object.keys(files).sort(),
 		outFile,
 	};

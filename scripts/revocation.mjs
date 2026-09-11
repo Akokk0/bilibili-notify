@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseList, readArg, requireArg } from "./cli-args.mjs";
 import { payloadUrl, releaseUrl } from "./release-urls.mjs";
+import { digestOf } from "./reproducible-zip.mjs";
 
 /**
  * 撤回一个坏版本的两件事:**定规矩**和**取数**。
@@ -81,8 +81,7 @@ export function planRevocation({ repo, target, revoked, channel }) {
 export async function fetchPayloadDigest(url, fetchImpl = fetch) {
 	const res = await fetchImpl(url);
 	if (!res.ok) throw new Error(`取不到载荷 ${url}:HTTP ${res.status}`);
-	const bytes = new Uint8Array(await res.arrayBuffer());
-	return { sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.byteLength };
+	return digestOf(new Uint8Array(await res.arrayBuffer()));
 }
 
 // CLI:把「该指向哪份包」解析成一组具体参数,交给 workflow 喂给 sign-update-manifest。
