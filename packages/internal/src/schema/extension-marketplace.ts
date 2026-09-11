@@ -64,6 +64,17 @@ export type MarketplaceIndex = z.infer<typeof MarketplaceIndexSchema>;
 export type MarketplaceIndexCheck = { ok: true } | { ok: false; err: string };
 
 /**
+ * 这条条目归哪一档:按 `prerelease` 的真假分,`false` 与不写是同一档。
+ *
+ * 「哪一档」是挑条目的判据(宿主按渠道挑、脚本按档替换),所以只在这儿写一遍 —— 旁边
+ * `version-order.ts` 有个按版本号里有没有 `-` 判的 `isPrerelease`,别拿它替这个:两把尺子
+ * 各改一把,症状是校验当正式档收下的条目、面板当预发布藏起来。
+ */
+export function isPrereleaseEntry(entry: { prerelease?: boolean }): boolean {
+	return entry.prerelease === true;
+}
+
+/**
  * 解析得过之后再对一遍**这个源有没有资格发这些 id**:
  * - 官方源:条目 id 不带命名空间(没有点的 id 就是官方的),且必须有 `issuedAt`;
  * - 第三方源:必须声明 `namespace`,每个条目都得在自己的命名空间里 —— 列一个 `bridge`
@@ -77,10 +88,10 @@ export function checkMarketplaceIndex(
 ): MarketplaceIndexCheck {
 	const seen = new Set<string>();
 	for (const entry of index.extensions) {
-		const pre = entry.prerelease === true;
-		const key = `${entry.id}@${pre ? "pre" : "stable"}`;
-		if (seen.has(key))
-			return { ok: false, err: `索引里 ${entry.id} 的${pre ? "预发布" : "正式"}版列了两遍` };
+		const tier = isPrereleaseEntry(entry) ? "预发布" : "正式";
+		// 键别写成 `id@x`,那是 revoked 里 `id@version` 的样子。
+		const key = `${tier} ${entry.id}`;
+		if (seen.has(key)) return { ok: false, err: `索引里 ${entry.id} 的${tier}版列了两遍` };
 		seen.add(key);
 	}
 	if (opts.official) {

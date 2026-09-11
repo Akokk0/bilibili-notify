@@ -36,6 +36,10 @@ function index(over: Record<string, unknown> = {}) {
 	return { name: "BN 官方拓展", issuedAt: 1_760_000_000, extensions: [entry()], ...over };
 }
 
+/** 一份只换 `extensions` 的官方索引,过 schema 再过资格检查。 */
+const check = (extensions: unknown[]) =>
+	checkMarketplaceIndex(MarketplaceIndexSchema.parse(index({ extensions })), { official: true });
+
 describe("MarketplaceIndexSchema", () => {
 	it("官方那份解析得过;description / notes / prerelease / revoked 可缺", () => {
 		const parsed = MarketplaceIndexSchema.parse(
@@ -126,47 +130,22 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 	});
 
 	it("同一个 id 一条正式 + 一条预发布 → 放行(两个渠道各留最新那一版)", () => {
-		expect(
-			checkMarketplaceIndex(
-				MarketplaceIndexSchema.parse(
-					index({
-						extensions: [entry(), entry({ version: "0.1.0-alpha.1", prerelease: true })],
-					}),
-				),
-				{ official: true },
-			),
-		).toEqual({ ok: true });
+		expect(check([entry(), entry({ version: "0.1.0-alpha.1", prerelease: true })])).toEqual({
+			ok: true,
+		});
 	});
 
 	it("同一个 id 同一档列两遍 → 拒(那一档的「最新版」就没法唯一)", () => {
-		expect(
-			checkMarketplaceIndex(
-				MarketplaceIndexSchema.parse(index({ extensions: [entry(), entry({ version: "0.0.3" })] })),
-				{ official: true },
-			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+		const twice = { ok: false, err: expect.stringContaining("列了两遍") };
+		expect(check([entry(), entry({ version: "0.0.3" })])).toMatchObject(twice);
 		// `prerelease: false` 与不写是同一档 —— 按字段的真假分档,不是按「写没写」。
+		expect(check([entry(), entry({ version: "0.0.3", prerelease: false })])).toMatchObject(twice);
 		expect(
-			checkMarketplaceIndex(
-				MarketplaceIndexSchema.parse(
-					index({ extensions: [entry(), entry({ version: "0.0.3", prerelease: false })] }),
-				),
-				{ official: true },
-			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
-		expect(
-			checkMarketplaceIndex(
-				MarketplaceIndexSchema.parse(
-					index({
-						extensions: [
-							entry({ version: "0.1.0-alpha.1", prerelease: true }),
-							entry({ version: "0.1.0-alpha.2", prerelease: true }),
-						],
-					}),
-				),
-				{ official: true },
-			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+			check([
+				entry({ version: "0.1.0-alpha.1", prerelease: true }),
+				entry({ version: "0.1.0-alpha.2", prerelease: true }),
+			]),
+		).toMatchObject(twice);
 	});
 });
 

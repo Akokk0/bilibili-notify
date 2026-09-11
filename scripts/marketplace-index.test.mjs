@@ -143,82 +143,70 @@ describe("issuedAt 与版本只许往前走", () => {
 		).toBe("0.0.2");
 	});
 
+	/** 预发布档的一条。 */
+	const alpha = (version) => entry({ version, prerelease: true });
+	/** 依次并进去,issuedAt 自动往前走(这几条测的不是 issuedAt)。 */
+	const merged = (...list) =>
+		list.reduce((cur, e, i) => mergeMarketplaceEntry(cur, e, { issuedAt: i + 1 }), undefined);
+	/** 索引里每条的 [版本, 是否预发布]。 */
+	const tiers = (index) => index.extensions.map((e) => [e.version, e.prerelease === true]);
+
 	it("预发布并进去不碰正式档 —— 打一个 alpha tag 不该让稳定渠道看不见这个拓展", () => {
-		const current = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), { issuedAt: 1 });
-		const next = mergeMarketplaceEntry(
-			current,
-			entry({ version: "0.1.0-alpha.1", prerelease: true }),
-			{ issuedAt: 2 },
-		);
-		expect(next.extensions.map((e) => [e.id, e.version, e.prerelease === true])).toEqual([
-			["bridge", "0.0.2", false],
-			["bridge", "0.1.0-alpha.1", true],
+		const next = merged(entry({ version: "0.0.2" }), alpha("0.1.0-alpha.1"));
+		expect(tiers(next)).toEqual([
+			["0.0.2", false],
+			["0.1.0-alpha.1", true],
 		]);
 		// 再发一版预发布只换预发布那一条。
-		const again = mergeMarketplaceEntry(
-			next,
-			entry({ version: "0.1.0-alpha.2", prerelease: true }),
-			{ issuedAt: 3 },
-		);
-		expect(again.extensions.map((e) => e.version)).toEqual(["0.0.2", "0.1.0-alpha.2"]);
+		expect(tiers(mergeMarketplaceEntry(next, alpha("0.1.0-alpha.2"), { issuedAt: 3 }))).toEqual([
+			["0.0.2", false],
+			["0.1.0-alpha.2", true],
+		]);
 	});
 
 	it("正式版并进去,比它旧的预发布档一并删掉;比它新的留着", () => {
-		const base = mergeMarketplaceEntry(undefined, entry({ version: "0.0.2" }), { issuedAt: 1 });
-		const withAlpha = mergeMarketplaceEntry(
-			base,
-			entry({ version: "0.1.0-alpha.1", prerelease: true }),
-			{ issuedAt: 2 },
-		);
 		// 0.1.0 正式发了,0.1.0-alpha.1 比它旧,留着只会让预发布渠道看见一个更旧的版本。
-		const released = mergeMarketplaceEntry(withAlpha, entry({ version: "0.1.0" }), { issuedAt: 3 });
-		expect(released.extensions.map((e) => [e.version, e.prerelease === true])).toEqual([
-			["0.1.0", false],
-		]);
-		// 下一轮的 alpha 比正式版新,发一个补丁正式版不该把它抹掉。
-		const nextAlpha = mergeMarketplaceEntry(
-			released,
-			entry({ version: "0.2.0-alpha.1", prerelease: true }),
-			{ issuedAt: 4 },
+		const released = merged(
+			entry({ version: "0.0.2" }),
+			alpha("0.1.0-alpha.1"),
+			entry({ version: "0.1.0" }),
 		);
-		const patched = mergeMarketplaceEntry(nextAlpha, entry({ version: "0.1.1" }), { issuedAt: 5 });
-		expect(patched.extensions.map((e) => [e.version, e.prerelease === true])).toEqual([
+		expect(tiers(released)).toEqual([["0.1.0", false]]);
+		// 下一轮的 alpha 比正式版新,发一个补丁正式版不该把它抹掉。
+		const patched = merged(
+			entry({ version: "0.1.0" }),
+			alpha("0.2.0-alpha.1"),
+			entry({ version: "0.1.1" }),
+		);
+		expect(tiers(patched)).toEqual([
 			["0.1.1", false],
 			["0.2.0-alpha.1", true],
 		]);
 	});
 
 	it("预发布不许比同档旧(重跑旧 tag);等于放行", () => {
-		const current = mergeMarketplaceEntry(
-			mergeMarketplaceEntry(undefined, entry({ version: "0.1.0" }), { issuedAt: 1 }),
-			entry({ version: "0.2.0-alpha.2", prerelease: true }),
-			{ issuedAt: 2 },
+		const current = merged(entry({ version: "0.1.0" }), alpha("0.2.0-alpha.2"));
+		expect(() => mergeMarketplaceEntry(current, alpha("0.2.0-alpha.1"), { issuedAt: 3 })).toThrow(
+			/0\.2\.0-alpha\.1/,
 		);
-		expect(() =>
-			mergeMarketplaceEntry(current, entry({ version: "0.2.0-alpha.1", prerelease: true }), {
-				issuedAt: 3,
-			}),
-		).toThrow(/0\.2\.0-alpha\.1/);
 		expect(
-			mergeMarketplaceEntry(current, entry({ version: "0.2.0-alpha.2", prerelease: true }), {
-				issuedAt: 3,
-			}).extensions.map((e) => e.version),
+			mergeMarketplaceEntry(current, alpha("0.2.0-alpha.2"), { issuedAt: 3 }).extensions.map(
+				(e) => e.version,
+			),
 		).toEqual(["0.1.0", "0.2.0-alpha.2"]);
 	});
 
 	it("预发布比正式档还旧 → 拒(发进去也没人看得见)", () => {
 		// 预发布档这会儿是空的,所以拦住它的只可能是「比正式档旧」那一条。
-		const current = mergeMarketplaceEntry(undefined, entry({ version: "0.1.0" }), { issuedAt: 1 });
-		expect(() =>
-			mergeMarketplaceEntry(current, entry({ version: "0.0.9-alpha.1", prerelease: true }), {
-				issuedAt: 2,
-			}),
-		).toThrow(/正式版 0\.1\.0/);
+		const current = merged(entry({ version: "0.1.0" }));
+		expect(() => mergeMarketplaceEntry(current, alpha("0.0.9-alpha.1"), { issuedAt: 2 })).toThrow(
+			/正式版 0\.1\.0/,
+		);
 		// 正式版之后的预发布照收。
 		expect(
-			mergeMarketplaceEntry(current, entry({ version: "0.1.1-alpha.1", prerelease: true }), {
-				issuedAt: 2,
-			}).extensions.map((e) => e.version),
+			mergeMarketplaceEntry(current, alpha("0.1.1-alpha.1"), { issuedAt: 2 }).extensions.map(
+				(e) => e.version,
+			),
 		).toEqual(["0.1.0", "0.1.1-alpha.1"]);
 	});
 

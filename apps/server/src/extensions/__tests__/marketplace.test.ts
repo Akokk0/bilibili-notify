@@ -60,14 +60,20 @@ function pack(id: string, version: string): Uint8Array {
 	});
 }
 
-function entry(id: string, version: string, zip: Uint8Array, over: Record<string, unknown> = {}) {
+function entry(
+	id: string,
+	version: string,
+	zip: Uint8Array,
+	over: Record<string, unknown> = {},
+	url = ZIP_URL,
+) {
 	return {
 		id,
 		name: `拓展 ${id}`,
 		description: "一句话",
 		version,
 		apiVersion: EXTENSION_API_VERSION,
-		package: { url: ZIP_URL, sha256: sha256(zip), size: zip.byteLength },
+		package: { url, sha256: sha256(zip), size: zip.byteLength },
 		releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/x",
 		...over,
 	};
@@ -91,21 +97,14 @@ let root: string;
 const key = makeKey();
 const bridgeZip = pack("bridge", "0.0.2");
 const douyinZip = pack("alice.douyin", "1.0.0");
-/** 预发布那一档的包。同一个版本要拿同一份字节 —— 索引里写的 sha256 得对得上发出去的那份。 */
-const alphaZips = new Map<string, Uint8Array>();
-function alphaZip(version: string): Uint8Array {
-	const made = alphaZips.get(version) ?? pack("bridge", version);
-	alphaZips.set(version, made);
-	return made;
-}
+// 预发布那一档的包与正式那档一样打成模块级常量:同一个版本要拿同一份字节(fflate 不给
+// mtime 就按当前时间打,两次打包字节可能不同),索引里写的 sha256 得对得上发出去的那份。
+const alphaZip = pack("bridge", "0.1.0-alpha.1");
+const oldAlphaZip = pack("bridge", "0.0.1-alpha.1");
 
 /** bridge 的**预发布**那一档。包与正式那档不是同一个,地址也不是。 */
-function alphaEntry(version: string) {
-	const zip = alphaZip(version);
-	return entry("bridge", version, zip, {
-		prerelease: true,
-		package: { url: ALPHA_ZIP_URL, sha256: sha256(zip), size: zip.byteLength },
-	});
+function alphaEntry(version: string, zip: Uint8Array) {
+	return entry("bridge", version, zip, { prerelease: true }, ALPHA_ZIP_URL);
 }
 
 function official(over: Record<string, unknown> = {}) {
@@ -394,7 +393,7 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 	/** 正式 0.0.2 + 预发布 0.1.0-alpha.1。 */
 	function bothChannels(over: Record<string, unknown> = {}) {
 		return official({
-			extensions: [entry("bridge", "0.0.2", bridgeZip), alphaEntry("0.1.0-alpha.1")],
+			extensions: [entry("bridge", "0.0.2", bridgeZip), alphaEntry("0.1.0-alpha.1", alphaZip)],
 			...over,
 		});
 	}
@@ -415,7 +414,10 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
 				official({
-					extensions: [entry("bridge", "0.0.2", bridgeZip), alphaEntry("0.0.1-alpha.1")],
+					extensions: [
+						entry("bridge", "0.0.2", bridgeZip),
+						alphaEntry("0.0.1-alpha.1", oldAlphaZip),
+					],
 				}),
 			),
 		});
@@ -438,7 +440,7 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 		serve({
 			[OFFICIAL_URL]: envelope(key.privateKey, bothChannels()),
 			[ZIP_URL]: bridgeZip,
-			[ALPHA_ZIP_URL]: alphaZip("0.1.0-alpha.1"),
+			[ALPHA_ZIP_URL]: alphaZip,
 		});
 		expect(
 			await harness({ prerelease: true }).marketplace.install("official", "bridge"),

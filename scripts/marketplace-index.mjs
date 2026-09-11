@@ -66,10 +66,10 @@ export function assertEntryShape(e) {
 	return e;
 }
 
-/** 这条条目归哪一档。按 `prerelease` 的真假分,不按版本号里有没有 `-`。 */
-function channelOf(e) {
-	return e.prerelease === true ? "pre" : "stable";
-}
+/** 这条条目是不是预发布档。按 `prerelease` 的真假分(客户端 `isPrereleaseEntry` 同一句)。 */
+const isPre = (e) => e.prerelease === true;
+/** 给人看的档名。 */
+const tierName = (e) => (isPre(e) ? "预发布" : "正式");
 
 export function assertIndexShape(index) {
 	if (typeof index.name !== "string" || index.name === "") fail("name 必须是非空字符串");
@@ -81,10 +81,9 @@ export function assertIndexShape(index) {
 	const seen = new Set();
 	for (const e of index.extensions) {
 		assertEntryShape(e);
-		const key = channelOf(e);
-		if (seen.has(`${e.id}@${key}`))
-			fail(`${e.id} 的${key === "pre" ? "预发布" : "正式"}版列了两遍`);
-		seen.add(`${e.id}@${key}`);
+		const key = `${tierName(e)} ${e.id}`;
+		if (seen.has(key)) fail(`${e.id} 的${tierName(e)}版列了两遍`);
+		seen.add(key);
 	}
 	if (index.revoked !== undefined) {
 		if (
@@ -199,31 +198,25 @@ function cleanEntry(e) {
  */
 export function mergeMarketplaceEntry(current, entry, opts = {}) {
 	const fresh = cleanEntry(assertEntryShape(entry));
-	const channel = channelOf(fresh);
 	const sameId = (current?.extensions ?? []).filter((e) => e.id === fresh.id);
-	const previous = sameId.find((e) => channelOf(e) === channel);
+	// 每档至多一条,所以同 id 顶多两条:同档那条被换掉,另一档那条看情况留。
+	const previous = sameId.find((e) => isPre(e) === isPre(fresh));
+	const other = sameId.find((e) => isPre(e) !== isPre(fresh));
 	if (previous && compareEntryVersions(fresh.version, previous.version) < 0)
 		fail(
-			`${fresh.id}:要并进去的 ${fresh.version} 比索引里已经有的${channel === "pre" ? "预发布" : "正式"}版 ${previous.version} 旧 —— 是不是重跑了一个旧 tag`,
+			`${fresh.id}:要并进去的 ${fresh.version} 比索引里已经有的${tierName(fresh)}版 ${previous.version} 旧 —— 是不是重跑了一个旧 tag`,
 		);
-	const stable = sameId.find((e) => channelOf(e) === "stable");
-	if (channel === "pre" && stable && compareEntryVersions(fresh.version, stable.version) < 0)
+	if (isPre(fresh) && other && compareEntryVersions(fresh.version, other.version) < 0)
 		fail(
-			`${fresh.id}:预发布 ${fresh.version} 比索引里的正式版 ${stable.version} 还旧 —— 发进去也没人看得见`,
+			`${fresh.id}:预发布 ${fresh.version} 比索引里的正式版 ${other.version} 还旧 —— 发进去也没人看得见`,
 		);
-	const kept = sameId.filter((e) => {
-		if (channelOf(e) === channel) return false;
-		// 正式版发出去了,比它旧的预发布档就没有意义了。
-		return channel === "stable" ? compareEntryVersions(e.version, fresh.version) > 0 : true;
-	});
+	// 正式版发出去了,比它旧的预发布档就没有意义了;并进预发布则不碰正式档。
+	const keepOther =
+		other !== undefined && (isPre(fresh) || compareEntryVersions(other.version, fresh.version) > 0);
 	const rest = (current?.extensions ?? []).filter((e) => e.id !== fresh.id);
-	const extensions = [...rest, ...kept, fresh]
+	const extensions = [...rest, ...(keepOther ? [other] : []), fresh]
 		.map(cleanEntry)
-		.sort(
-			(a, b) =>
-				a.id.localeCompare(b.id) ||
-				(channelOf(a) === "stable" ? 0 : 1) - (channelOf(b) === "stable" ? 0 : 1),
-		);
+		.sort((a, b) => a.id.localeCompare(b.id) || Number(isPre(a)) - Number(isPre(b)));
 	const revoked = [...new Set([...(current?.revoked ?? []), ...(opts.revoke ?? [])])];
 	const index = {
 		name: current?.name ?? OFFICIAL_INDEX_NAME,
