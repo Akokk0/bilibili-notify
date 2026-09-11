@@ -18,8 +18,11 @@ export interface CapabilityScenarioDeps {
 	 * 平台方言 —— 用来回答「哪些平台有能力这回事」。给**没包装过**的那份:能力注入的
 	 * 装饰器今天会把没有能力概念的 adapter 原样交回(见 `capability-injection.ts`),
 	 * 但那是它的实现细节;这里问的是方言本身有没有能力这回事,该问方言本人。
+	 *
+	 * **现取** —— 拓展是后加载的,拨一下开关就会来去(ADR-0012 决策 29);建表那一刻
+	 * 取一次的话,拓展带来的方言在这张表里永远不存在。
 	 */
-	dialects: readonly PlatformDialect[];
+	dialects: () => readonly PlatformDialect[];
 }
 
 const STATES = [
@@ -72,7 +75,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			{ key: "reason", label: "不支持的理由", kind: "text", default: DEFAULT_REASON },
 		],
 		run(params) {
-			const capable = capablePlatforms(deps.dialects);
+			const capable = capablePlatforms(deps.dialects());
 			const connections = deps.connections();
 			const wanted = params.connection;
 			const connection =

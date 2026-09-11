@@ -1,4 +1,4 @@
-import { readdirSync, watch as watchDir } from "node:fs";
+import { existsSync, readdirSync, watch as watchDir } from "node:fs";
 import { access, lstat, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
@@ -42,13 +42,7 @@ function repoExtensionIds(repoDir: string): string[] {
 		return readdirSync(repoDir, { withFileTypes: true })
 			.filter((entry) => entry.isDirectory())
 			.map((entry) => entry.name)
-			.filter((name) => {
-				try {
-					return readdirSync(join(repoDir, name)).includes(EXTENSION_MANIFEST_FILE);
-				} catch {
-					return false;
-				}
-			})
+			.filter((name) => existsSync(join(repoDir, name, EXTENSION_MANIFEST_FILE)))
 			.sort();
 	} catch {
 		return [];
@@ -161,6 +155,14 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 	];
 }
 
+/** 「改完自动重载」眼下那一轮的状态。`stop` 建好 watcher 之后才填得上,所以是可变的。 */
+interface WatchState {
+	id: string;
+	stop: () => void;
+	reloads: number;
+	failure?: string;
+}
+
 /**
  * 「改完自动重载」—— 把上面那一下也去掉。
  *
@@ -176,7 +178,7 @@ function watchScenario(
 	installedAt: (id: string) => string,
 ): DevScenarioDef {
 	/** 眼下盯着的那一个。同时只盯一个 —— 面板上「当前生效」也只该有一格。 */
-	let live: { id: string; stop: () => void; reloads: number; failure?: string } | undefined;
+	let live: WatchState | undefined;
 
 	function stop(): void {
 		live?.stop();
@@ -198,12 +200,7 @@ function watchScenario(
 			if (!dir) throw new DevParamError(`${id} 还没装进来 —— 先按「装一个仓里的拓展」`);
 
 			stop();
-			const state = { id, stop: () => {}, reloads: 0 } as {
-				id: string;
-				stop: () => void;
-				reloads: number;
-				failure?: string;
-			};
+			const state: WatchState = { id, stop: () => {}, reloads: 0 };
 			// 一次重建会连着来好几发事件(写文件、改名),攒一下只重载一次。
 			let pending: NodeJS.Timeout | undefined;
 			const watcher = watchDir(dir, (_event, name) => {

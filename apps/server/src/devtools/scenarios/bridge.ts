@@ -50,31 +50,20 @@ const CAP_PRESETS = [
 	{ value: "none", label: "全都不支持" },
 ] as const;
 
+/** 六项能力的名字(见协议 §7)。加一项只改这里,`all` / `none` 跟着长。 */
+const CAPS = ["atAll", "inbound", "forward", "miniAppCard", "shareCardLinks", "markdown"] as const;
+
+function everyCap(state: string): Record<string, string> {
+	return Object.fromEntries(CAPS.map((cap) => [cap, state]));
+}
+
 /**
  * 六项能力(见协议 §7)。`mixed` 那一档**刻意把三态凑齐**:「还不知道」在真环境里最难
- * 凑出来,而它恰恰是面板上最容易被误读成「不支持」的一格。
+ * 凑出来,而它恰恰是面板上最容易被误读成「不支持」的一格 —— 所以只有它逐项写死。
  */
 function capabilitiesOf(preset: string): Record<string, string> {
-	if (preset === "all") {
-		return {
-			atAll: "supported",
-			inbound: "supported",
-			forward: "supported",
-			miniAppCard: "supported",
-			shareCardLinks: "supported",
-			markdown: "supported",
-		};
-	}
-	if (preset === "none") {
-		return {
-			atAll: "unsupported",
-			inbound: "unsupported",
-			forward: "unsupported",
-			miniAppCard: "unsupported",
-			shareCardLinks: "unsupported",
-			markdown: "unsupported",
-		};
-	}
+	if (preset === "all") return everyCap("supported");
+	if (preset === "none") return everyCap("unsupported");
 	return {
 		atAll: "supported",
 		inbound: "supported",

@@ -195,7 +195,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		capabilityScenario({
 			injector: caps,
 			connections: input.connectionConfigs,
-			dialects: input.adapters.list(),
+			dialects: () => input.adapters.list(),
 		}),
 		...extensionScenarios({
 			repoDir: input.extensions.repoDir,

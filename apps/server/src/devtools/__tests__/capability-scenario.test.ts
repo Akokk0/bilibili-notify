@@ -61,7 +61,7 @@ function setup() {
 	const ob = injector.wrap(obDialect);
 	const wh = injector.wrap(whDialect);
 	const reg = createDevRegistry([
-		capabilityScenario({ injector, connections: () => [OB, WH], dialects }),
+		capabilityScenario({ injector, connections: () => [OB, WH], dialects: () => dialects }),
 	]);
 	return { reg, ob, wh };
 }
@@ -115,7 +115,7 @@ describe("connection.capability", () => {
 		const qq: PlatformAdapter = { ...onebot(), platforms: ["qq-official"] };
 		const conn = { ...OB, id: "ad-qq", name: "官机", platform: "qq-official" } as Connection;
 		const reg = createDevRegistry([
-			capabilityScenario({ injector, connections: () => [conn], dialects: [qq] }),
+			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),
 		]);
 		const wrapped = injector.wrap(qq);
 		await reg.run("connection.capability", { state: "supported" });
