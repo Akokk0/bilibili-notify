@@ -218,9 +218,12 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
-			// 不打网络:桥是**自己连过来的**,接入连着、bot 在名单上就是通。
+			// 名单上通了才打网络:真打一趟 ping → pong,面板上那个「N ms」是到插件的往返,
+			// 不是「查了一下名单」的 0ms。
 			const located = locate(connection);
-			return { ok: located.ok, latencyMs: 0, err: located.ok ? undefined : located.err };
+			if (!located.ok) return { ok: false, latencyMs: 0, err: located.err };
+			const outcome = await server.ping(located.link.id);
+			return { ok: outcome.ok, latencyMs: outcome.latencyMs, err: outcome.err };
 		},
 
 		async send(

@@ -524,6 +524,49 @@ describe("/bridge 端点", () => {
 		expect(p.socket.readyState).toBe(WebSocket.OPEN);
 	});
 
+	// ---- 探活:面板那颗「测试」按钮 -------------------------------------------
+
+	/**
+	 * 「上次测试 OK · 0ms」是假的:老 probe 只查名单不打网络。真值得是一趟 ping → pong
+	 * 的往返;协议 1.3 给 `ping` 加可选 `id`、`pong` 原样回,同一条 socket 上心跳的 pong
+	 * 与探活的 pong 才分得开。
+	 */
+	it("ping():带 id 的 ping,桥回带 id 的 pong → 报的是这一趟的往返时长", async () => {
+		await boot({ heartbeatIntervalMs: 0 });
+		const p = await handshaken();
+		p.socket.on("message", (raw) => {
+			const frame = JSON.parse(raw.toString("utf8")) as { type?: string; id?: string };
+			if (frame.type === "ping" && frame.id) {
+				setTimeout(() => p.send({ type: "pong", id: frame.id }), 30);
+			}
+		});
+		const outcome = await server.ping(CONNECTION_ID);
+		expect(outcome).toMatchObject({ ok: true });
+		expect(outcome.latencyMs).toBeGreaterThanOrEqual(25);
+	});
+
+	it("ping():1.2 的老桥回的 pong 不带 id → 也认(最早那趟 ping 收下它)", async () => {
+		await boot({ heartbeatIntervalMs: 0 });
+		const p = await handshaken();
+		p.socket.on("message", (raw) => {
+			const frame = JSON.parse(raw.toString("utf8")) as { type?: string };
+			if (frame.type === "ping") p.send({ type: "pong" });
+		});
+		expect(await server.ping(CONNECTION_ID)).toMatchObject({ ok: true });
+	});
+
+	it("ping():桥不回 → 超时报错,不挂死", async () => {
+		await boot({ heartbeatIntervalMs: 0, pingTimeoutMs: 40 });
+		await handshaken();
+		const outcome = await server.ping(CONNECTION_ID);
+		expect(outcome.ok).toBe(false);
+		expect(outcome.err).toMatch(/pong/);
+	});
+
+	it("ping():桥没连着 → 直接不通", async () => {
+		expect(await server.ping("nobody")).toMatchObject({ ok: false });
+	});
+
 	it("心跳:不回 pong → 踢掉,会话清干净", async () => {
 		await boot({ heartbeatIntervalMs: 30, heartbeatTimeoutMs: 60 });
 		const p = await handshaken();

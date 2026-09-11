@@ -44,7 +44,7 @@ export interface BridgeProtocolVersion {
  * 谁大谁小都不管。所以:加可选字段 / 加新帧类型 → 只升 minor;改已有字段的含义或
  * 删字段 → 升 major(那会把所有旧插件挡在门外,是刻意的)。
  */
-export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 2 };
+export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 3 };
 
 /** 桥的种类。**BN 侧处理完全相同**,这一格只用来显示与排障。 */
 export const BRIDGE_KINDS = ["koishi", "astrbot"] as const;
@@ -260,6 +260,8 @@ export interface BridgeResultFrame {
 
 export interface BridgePongFrame {
 	type: "pong";
+	/** 1.3 起:回的是哪一趟 `ping`(原样抄 `ping.id`)。老桥不带,BN 就按先来后到认。 */
+	id?: string;
 }
 
 export type BridgeToServerFrame =
@@ -322,6 +324,11 @@ export interface BridgeSendFrame {
 
 export interface BridgePingFrame {
 	type: "ping";
+	/**
+	 * 1.3 起可选:探活(面板那颗「测试」)要量**这一趟**的往返,同一条 socket 上心跳的
+	 * pong 与探活的 pong 才分得开。心跳 ping 不带。
+	 */
+	id?: string;
 }
 
 /** 出错但还不至于断连(比如一条 `send` 引用了不存在的 bot)。断连一律走 close code。 */

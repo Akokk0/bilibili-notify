@@ -112,6 +112,7 @@ function session(
 interface Harness {
 	adapter: ReturnType<typeof createBridgeAdapter>;
 	send: ReturnType<typeof vi.fn>;
+	ping: ReturnType<typeof vi.fn>;
 	disconnect: ReturnType<typeof vi.fn>;
 	published: { mime: string; bytes: number }[];
 	lastRequest(): BridgeSendRequest;
@@ -129,11 +130,17 @@ function harness(live: BridgeSession | null = session()): Harness {
 		err: undefined as string | undefined,
 	}));
 	const disconnect = vi.fn();
+	const ping = vi.fn(async (_id: string) => ({
+		ok: true,
+		latencyMs: 42,
+		err: undefined as string | undefined,
+	}));
 	const published: { mime: string; bytes: number }[] = [];
 	const server = {
 		getSession: (id: string) => (id === LINK_ID ? (live ?? undefined) : undefined),
 		listSessions: () => (live ? [live] : []),
 		send,
+		ping,
 		disconnect,
 		sessionCount: live ? 1 : 0,
 		dispose() {},
@@ -153,6 +160,7 @@ function harness(live: BridgeSession | null = session()): Harness {
 		},
 	});
 	return {
+		ping,
 		adapter,
 		send,
 		disconnect,
@@ -382,9 +390,26 @@ describe("桥 adapter", () => {
 
 	// ---- 探测 --------------------------------------------------------------
 
-	it("probe:接入连着、bot 在名单上就是通;没连上是不通 —— 不打网络,桥是自己连过来的", async () => {
-		expect((await harness().adapter.probe(connection())).ok).toBe(true);
-		expect((await harness(null).adapter.probe(connection())).ok).toBe(false);
+	it("probe:接入连着、bot 在名单上 → 真打一趟 ping,延迟是往返的那个数", async () => {
+		const h = harness();
+		expect(await h.adapter.probe(connection())).toEqual({
+			ok: true,
+			latencyMs: 42,
+			err: undefined,
+		});
+		expect(h.ping).toHaveBeenCalledWith(LINK_ID);
+	});
+
+	it("probe:ping 没回来 → 不通,原因照抄", async () => {
+		const h = harness();
+		h.ping.mockResolvedValueOnce({ ok: false, latencyMs: 0, err: "桥 5000ms 内没回 pong" });
+		expect(await h.adapter.probe(connection())).toMatchObject({ ok: false, err: /pong/ });
+	});
+
+	it("probe:没连上是不通,而且不打 ping —— 没有 socket 可打", async () => {
+		const h = harness(null);
+		expect((await h.adapter.probe(connection())).ok).toBe(false);
+		expect(h.ping).not.toHaveBeenCalled();
 	});
 
 	// ---- 能力 --------------------------------------------------------------

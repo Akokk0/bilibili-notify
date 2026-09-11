@@ -94,7 +94,7 @@ const ResultFrameSchema = z.object({
 	err: z.string().optional(),
 });
 
-const PongFrameSchema = z.object({ type: z.literal("pong") });
+const PongFrameSchema = z.object({ type: z.literal("pong"), id: z.string().min(1).optional() });
 
 const BridgeFrameSchema = z.discriminatedUnion("type", [
 	HelloFrameSchema,

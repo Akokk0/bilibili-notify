@@ -167,7 +167,8 @@ export function createFakeBridge(opts: FakeBridgeOptions): FakeBridge {
 				settle = undefined;
 				break;
 			case "ping":
-				send({ type: "pong" });
+				// 1.3:带 id 的是面板在探活,原样回 —— 假桥也得让「测试」量出个真数。
+				send(typeof frame.id === "string" ? { type: "pong", id: frame.id } : { type: "pong" });
 				break;
 			case "send":
 				// 取图是异步的,但**回执一定发得出去**(下载失败也回),所以没人等这条 promise

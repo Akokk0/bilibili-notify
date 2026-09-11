@@ -65,6 +65,8 @@ export const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
  * 推送有时效,吊着不如早点告诉用户失败。
  */
 export const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
+/** 探活等 pong 的上限。比 send 短得多:量的是往返,5 秒还没回来这条桥就不算「通」。 */
+export const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
 
 export interface BridgeServerOptions {
 	logger: Logger;
@@ -83,6 +85,7 @@ export interface BridgeServerOptions {
 	heartbeatIntervalMs?: number;
 	heartbeatTimeoutMs?: number;
 	sendTimeoutMs?: number;
+	pingTimeoutMs?: number;
 	/**
 	 * 现在收不收这条接入。**现读** —— 折的是两个开关:桥接模块的总开关(`globals.extensions`)
 	 * 与这条接入自己的 `enabled`。
@@ -140,6 +143,13 @@ export interface BridgeSendOutcome {
 	err?: string;
 }
 
+/** 一趟探活的结果。`latencyMs` 是 ping → pong 的真实往返;不通时为 0。**永远不抛**。 */
+export interface BridgePingOutcome {
+	ok: boolean;
+	latencyMs: number;
+	err?: string;
+}
+
 export interface BridgeServer extends Disposable {
 	/**
 	 * 认领一条 `/ext/<id>` 底下的 WS upgrade —— 交给 `ctx.onUpgrade()`。
@@ -159,6 +169,12 @@ export interface BridgeServer extends Disposable {
 	 * 在飞),不是 adapter 的 —— adapter 只负责把 payload 译成 {@link BridgeSendRequest}。
 	 */
 	send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
+	/**
+	 * 打一趟 ping、等它的 pong,报真实往返时长 —— 面板那颗「测试」按钮量的就是它。
+	 * 1.3 的桥按 id 配对;老桥的 pong 不带 id,按先来后到认(心跳的 pong 也可能被认走,
+	 * 那一趟读数偏小,但不会错到「通 / 不通」上)。
+	 */
+	ping(linkId: string): Promise<BridgePingOutcome>;
 	/** 吊销 token / 删接入 / 关模块 —— 按给的 close code 把那条桥踢下线。 */
 	disconnect(linkId: string, code: BridgeCloseCode): void;
 }
@@ -181,10 +197,18 @@ interface BridgeConn {
 	bots: BridgeBot[];
 	/** 这条 socket 上还没回执的 `send`。断线时全部就地失败。 */
 	pending: Map<string, PendingSend>;
+	/** 这条 socket 上还没回 pong 的探活 ping,按发出顺序排。断线时全部就地失败。 */
+	pendingPings: PendingPing[];
 }
 
 interface PendingSend {
 	settle(outcome: BridgeSendOutcome): void;
+	timer: NodeJS.Timeout;
+}
+
+interface PendingPing {
+	id: string;
+	settle(outcome: BridgePingOutcome): void;
 	timer: NodeJS.Timeout;
 }
 
@@ -251,6 +275,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS;
 	const heartbeatTimeoutMs = opts.heartbeatTimeoutMs ?? DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS;
 	const sendTimeoutMs = opts.sendTimeoutMs ?? DEFAULT_BRIDGE_SEND_TIMEOUT_MS;
+	const pingTimeoutMs = opts.pingTimeoutMs ?? DEFAULT_BRIDGE_PING_TIMEOUT_MS;
 
 	const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_BRIDGE_FRAME_BYTES });
 	/** 所有还连着的 socket,含没握完手的。 */
@@ -278,6 +303,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	 */
 	function failPending(conn: BridgeConn, err: string): void {
 		for (const entry of [...conn.pending.values()]) entry.settle({ ok: false, err });
+		for (const entry of [...conn.pendingPings]) entry.settle({ ok: false, latencyMs: 0, err });
 	}
 
 	/**
@@ -423,8 +449,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				entry.settle({ ok: frame.ok, err: frame.err });
 				break;
 			}
-			case "pong":
+			case "pong": {
+				// 带 id 的按 id 认;不带的(1.2 老桥、或心跳的回声)给最早那趟探活。
+				const entry = frame.id
+					? conn.pendingPings.find((candidate) => candidate.id === frame.id)
+					: conn.pendingPings[0];
+				entry?.settle({ ok: true, latencyMs: 0 });
 				break;
+			}
 		}
 	}
 
@@ -462,6 +494,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			lastSeenAt: now,
 			bots: [],
 			pending: new Map(),
+			pendingPings: [],
 		};
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
@@ -569,6 +602,31 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		});
 	}
 
+	function ping(linkId: string): Promise<BridgePingOutcome> {
+		const conn = sessions.get(linkId);
+		if (!conn) return Promise.resolve({ ok: false, latencyMs: 0, err: "桥没连着" });
+		const id = randomUUID();
+		const t0 = Date.now();
+		return new Promise<BridgePingOutcome>((resolve) => {
+			// 与 send 同一套「只结算一次」:pong、超时、断线三路谁先到谁算。
+			const settle = (outcome: BridgePingOutcome): void => {
+				const at = conn.pendingPings.findIndex((candidate) => candidate.id === id);
+				if (at < 0) return;
+				const [entry] = conn.pendingPings.splice(at, 1);
+				if (entry) clearTimeout(entry.timer);
+				resolve(outcome.ok ? { ok: true, latencyMs: Date.now() - t0 } : outcome);
+			};
+			const timer = setTimeout(
+				() => settle({ ok: false, latencyMs: 0, err: `桥 ${pingTimeoutMs}ms 内没回 pong` }),
+				pingTimeoutMs,
+			);
+			conn.pendingPings.push({ id, settle, timer });
+			if (!sendFrame(conn, { type: "ping", id })) {
+				settle({ ok: false, latencyMs: 0, err: "桥没连着" });
+			}
+		});
+	}
+
 	function snapshot(conn: BridgeConn): BridgeSession | undefined {
 		if (!conn.hello) return undefined;
 		return {
@@ -587,6 +645,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		upgrade: onUpgrade,
 		dispose,
 		send,
+		ping,
 		get sessionCount() {
 			return sessions.size;
 		},
