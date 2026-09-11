@@ -46,16 +46,25 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
-	it("hydrate:同步 invalidate 三个 query,外加拓展的 status / bots(断线期间连上的桥要赶上)", () => {
+	/**
+	 * 🔴 hydrate 是 WS 重连之后**唯一**的「赶上错过的变化」机制(不重放历史帧)。清单漏一
+	 * 张表,那张表就一直停在断线那一刻:拓展页的装 / 卸 / 开关、连接表的增删,都得靠切页
+	 * 或刷新才回来,而界面看上去一切正常。
+	 */
+	it("hydrate:每一张会被服务端改的表都在清单里 —— 漏一张就停在断线那一刻", () => {
 		handleStateEnvelope(env({ type: "state", event: "hydrate" }), sc.qc);
-		const keys = keysOf(sc.invalidate);
-		expect(keys).toEqual([
-			["globals"],
-			["subscriptions"],
-			["targets"],
-			["extension-status"],
-			["extension-bots"],
-		]);
+		const keys = keysOf(sc.invalidate).map((k) => k[0]);
+		expect(new Set(keys)).toEqual(
+			new Set([
+				"globals",
+				"subscriptions",
+				"targets",
+				"connections",
+				"extensions",
+				"extension-status",
+				"extension-bots",
+			]),
+		);
 	});
 
 	it("extension-changed:只失效那个拓展的 status 与 bots", () => {
@@ -96,6 +105,19 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			sc.qc,
 		);
 		expect(keysOf(sc.invalidate)).toEqual([["targets"]]);
+	});
+
+	/**
+	 * 🔴 服务端**真的会发**这一档(`config/store.ts` 三处 `emit("config-changed", "connections")`)
+	 * —— 建 / 改 / 删连接各一处。前端整条没人接,于是别处(另一个标签页、私聊指令、拓展
+	 * 热装卸连带的清理)改了连接,这一页要等 staleTime 过去或切页才知道。
+	 */
+	it("config-changed scope=connections:仅 invalidate [connections]", () => {
+		handleStateEnvelope(
+			env({ type: "state", event: "config-changed", data: { scope: "connections" } }),
+			sc.qc,
+		);
+		expect(keysOf(sc.invalidate)).toEqual([["connections"]]);
 	});
 
 	it("config-changed scope=secrets:不 invalidate(前端无对应 query)", () => {
