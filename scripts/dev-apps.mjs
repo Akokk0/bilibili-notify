@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { argv, env, platform } from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -55,17 +55,14 @@ export function createDevProcessSpecs(root = repoRoot) {
 
 /** 仓里哪些目录是拓展 —— **有清单才算**(`node_modules`、临时目录都会落在那底下)。 */
 function repoExtensionIds(root) {
+	const extensionsDir = resolve(root, "extensions");
 	try {
-		return readdirSync(resolve(root, "extensions"), { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
+		return readdirSync(extensionsDir, { withFileTypes: true })
+			.filter(
+				(entry) =>
+					entry.isDirectory() && existsSync(join(extensionsDir, entry.name, "extension.json")),
+			)
 			.map((entry) => entry.name)
-			.filter((name) => {
-				try {
-					return readdirSync(join(resolve(root, "extensions"), name)).includes("extension.json");
-				} catch {
-					return false;
-				}
-			})
 			.sort();
 	} catch {
 		return [];
@@ -200,12 +197,13 @@ export async function runDevApps({
 		// 卡住了都没人管,主人 Ctrl-C 之后 server 照跑。所以直接子进程全退之后,还要等每个
 		// 进程组真的空了;宽限期到了还有人,整组 SIGKILL。
 		const drainGroups = async () => {
-			const alive = () => children.filter(({ child }) => probeGroupAlive(child));
-			while (alive().length > 0 && !forced) await sleep(groupPollMs);
+			// 「还有没有人」是个是非题 —— 每 100ms 建一张幸存者名单再数长度,只是为了扔掉它。
+			const anyAlive = () => children.some(({ child }) => probeGroupAlive(child));
+			while (anyAlive() && !forced) await sleep(groupPollMs);
 			if (!forced) return;
 			// 已经下过 SIGKILL —— 再给一个宽限期让内核收尸,之后不再等(不能让停机挂死)。
 			const deadline = Date.now() + graceMs;
-			while (alive().length > 0 && Date.now() < deadline) await sleep(groupPollMs);
+			while (anyAlive() && Date.now() < deadline) await sleep(groupPollMs);
 		};
 
 		const finishIfDone = () => {
