@@ -60,10 +60,12 @@ export function routeBridgeInbound(
 			userId: frame.message.userId,
 			text: frame.message.text,
 			selfId: bot?.selfId,
-			// 协议要求桥把分享卡 / 小程序卡里的链接**拼进正文**再发上来(§5.3),所以这两格
-			// 恒空:它们是 OneBot 那种「原始帧里另有一段 json」的产物,桥那侧没有原始帧。
-			cardLinks: [],
-			miniAppCardLinks: [],
+			// 协议 1.4 起桥把分享卡里的链接单独放两格(§5.3),这里原样转交 —— 尤其是
+			// `miniAppCardLinks` 那一格必须独立活到链接解析那儿:它刻意不读那一格(群里
+			// 已经有一张能点开播放的卡了),混进 `cardLinks` 就等于 BN 对着一张卡再回一张。
+			// 老桥(1.3)不报这两格,把链接拼在 `text` 里照旧收 —— 缺省与「这条没有卡」同义。
+			cardLinks: frame.message.cardLinks ?? [],
+			miniAppCardLinks: frame.message.miniAppCardLinks ?? [],
 		},
 		meta,
 	);

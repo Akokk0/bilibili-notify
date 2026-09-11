@@ -71,7 +71,7 @@ describe("routeBridgeInbound", () => {
 		expect(s.group).not.toHaveBeenCalled();
 	});
 
-	it("群消息走链接那一路,分享卡两格是空的 —— 桥把卡里的链接拼进正文再发上来", () => {
+	it("群消息走链接那一路;桥没报卡链接时两格是空数组", () => {
 		const s = sinks();
 		routeBridgeInbound(groupFrame(), source, s);
 		expect(s.group).toHaveBeenCalledWith(
@@ -86,6 +86,56 @@ describe("routeBridgeInbound", () => {
 			{ connectionId: CONNECTION_ID, platform: "telegram" },
 		);
 		expect(s.private).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 🔴 **两格分开原样交出去**(协议 1.4)。合成一格的话小程序卡就跟普通分享卡一样了 ——
+	 * 链接解析刻意不读 `miniAppCardLinks`(群里已经有一张能点开播放的卡),混进 `cardLinks`
+	 * 的症状是主人转一张 B 站小程序卡、BN 紧跟着再回一张。
+	 */
+	it("桥报了卡链接 → 两格原样交给群那一路,小程序卡的不混进 cardLinks", () => {
+		const s = sinks();
+		routeBridgeInbound(
+			groupFrame({
+				message: {
+					scope: "group",
+					groupId: "-100",
+					userId: "u1",
+					text: "",
+					cardLinks: ["https://b23.tv/aaa"],
+					miniAppCardLinks: ["https://b23.tv/bbb"],
+				},
+			}),
+			source,
+			s,
+		);
+		expect(s.group.mock.calls[0]?.[0]).toMatchObject({
+			text: "",
+			cardLinks: ["https://b23.tv/aaa"],
+			miniAppCardLinks: ["https://b23.tv/bbb"],
+		});
+	});
+
+	/** 一格报了、另一格没报也是常事(一条只有普通分享卡的消息)。 */
+	it("只报一格 → 另一格是空数组,不是 undefined", () => {
+		const s = sinks();
+		routeBridgeInbound(
+			groupFrame({
+				message: {
+					scope: "group",
+					groupId: "-100",
+					userId: "u1",
+					text: "",
+					miniAppCardLinks: ["https://b23.tv/bbb"],
+				},
+			}),
+			source,
+			s,
+		);
+		expect(s.group.mock.calls[0]?.[0]).toMatchObject({
+			cardLinks: [],
+			miniAppCardLinks: ["https://b23.tv/bbb"],
+		});
 	});
 
 	it("selfId 从 bot 名单里查 —— 「机器人自己贴的链接不解析」那道闸全靠它", () => {

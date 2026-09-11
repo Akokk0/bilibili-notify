@@ -44,7 +44,7 @@ export interface BridgeProtocolVersion {
  * 谁大谁小都不管。所以:加可选字段 / 加新帧类型 → 只升 minor;改已有字段的含义或
  * 删字段 → 升 major(那会把所有旧插件挡在门外,是刻意的)。
  */
-export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 3 };
+export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 4 };
 
 /** 桥的种类。**BN 侧处理完全相同**,这一格只用来显示与排障。 */
 export const BRIDGE_KINDS = ["koishi", "astrbot"] as const;
@@ -237,6 +237,22 @@ export type BridgeInboundMessage =
 			/** 发言者。跨平台不同命名空间,别拿去跟别的平台的主人身份比。 */
 			userId: string;
 			text: string;
+			/**
+			 * 1.4 起:分享卡(json / xml 段)里解出来的链接,与正文**分开**放。
+			 *
+			 * 🔴 从前协议只有 `text` 一格,于是要求桥「把卡里的链接拼进正文」—— 那等于告诉 BN
+			 * 「这是用户敲的一条普通链接」。老桥(1.3)照旧那么发,BN 这头照收:缺这两格
+			 * 与「桥这条消息里没有卡」是同一个意思。
+			 */
+			cardLinks?: string[];
+			/**
+			 * 1.4 起:**B 站小程序卡**(`app` = `com.tencent.miniapp_01`)里的链接。
+			 *
+			 * 单放一格是因为 BN 对它的态度不一样:群里已经有一张能点开播放的卡了,再回一张
+			 * 都是重复,所以链接解析**刻意不读这一格**。混进 {@link cardLinks} 的症状是主人转
+			 * 一张 B 站小程序卡、BN 紧跟着再回一张。
+			 */
+			miniAppCardLinks?: string[];
 	  };
 
 /**

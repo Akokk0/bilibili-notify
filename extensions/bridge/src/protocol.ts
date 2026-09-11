@@ -66,6 +66,22 @@ const BotsFrameSchema = z.object({
 	bots: z.array(BotSchema),
 });
 
+/**
+ * 入站那两格链接的上限(协议 1.4)。**是门,不是注释** —— 没有它,一条 `inbound` 帧能驮
+ * 上来近一兆的链接(整帧上限 `MAX_BRIDGE_FRAME_BYTES` 就是 1 MB),而下游链接解析要
+ * 逐条过正则:一个不花钱的放大器。
+ *
+ * 数字取得宽松是刻意的:一张真卡里顶多几条链接,32 条 × 2048 字够任何正常的卡用,
+ * 撞得到这道门的只会是 bug 或者恶意。所以超了按**畸形帧**拒(§11:认识的 type 形状不对)。
+ */
+export const BRIDGE_INBOUND_LINKS_MAX = 32;
+export const BRIDGE_INBOUND_LINK_MAX_CHARS = 2048;
+
+const InboundLinksSchema = z
+	.array(z.string().min(1).max(BRIDGE_INBOUND_LINK_MAX_CHARS))
+	.max(BRIDGE_INBOUND_LINKS_MAX)
+	.optional();
+
 const InboundMessageSchema = z.discriminatedUnion("scope", [
 	z.object({
 		scope: z.literal("private"),
@@ -77,6 +93,10 @@ const InboundMessageSchema = z.discriminatedUnion("scope", [
 		groupId: z.string().min(1),
 		userId: z.string().min(1),
 		text: z.string(),
+		// 1.4 起的两格分享卡链接。**可选**:老桥(1.3)一格都不报,而 major 相同就得连得住 ——
+		// 写成必填的话,症状是所有老桥握完手、第一条群消息就被 4003 踢掉。
+		cardLinks: InboundLinksSchema,
+		miniAppCardLinks: InboundLinksSchema,
 	}),
 ]);
 

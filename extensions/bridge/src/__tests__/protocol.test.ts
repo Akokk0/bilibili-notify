@@ -20,6 +20,8 @@ import {
 	type BridgeMessageKind,
 } from "../contract.js";
 import {
+	BRIDGE_INBOUND_LINK_MAX_CHARS,
+	BRIDGE_INBOUND_LINKS_MAX,
 	isBridgeProtocolCompatible,
 	normalizeBridgeBotIcon,
 	normalizeBridgeCapabilities,
@@ -119,6 +121,115 @@ describe("parseBridgeFrame", () => {
 		expect(group.ok).toBe(true);
 		if (!group.ok || group.frame.type !== "inbound") return;
 		expect(group.frame.message.scope).toBe("group");
+	});
+
+	/**
+	 * 1.4 起群那一支多了两格链接。**缺省要合法** —— 老桥(1.3)一格都不报,而 major 相同
+	 * 就得连得住;把可选写成必填的话,症状是所有老桥握手完第一条群消息就被 4003 踢掉。
+	 */
+	it("群帧带上 1.4 那两格链接 → 原样解出来;不带也照样合法", () => {
+		const withLinks = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: {
+				scope: "group",
+				groupId: "g1",
+				userId: "u1",
+				text: "",
+				cardLinks: ["https://b23.tv/aaa"],
+				miniAppCardLinks: ["https://b23.tv/bbb"],
+			},
+		});
+		expect(withLinks.ok).toBe(true);
+		if (!withLinks.ok || withLinks.frame.type !== "inbound") return;
+		if (withLinks.frame.message.scope !== "group") return;
+		expect(withLinks.frame.message.cardLinks).toEqual(["https://b23.tv/aaa"]);
+		expect(withLinks.frame.message.miniAppCardLinks).toEqual(["https://b23.tv/bbb"]);
+
+		const without = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: { scope: "group", groupId: "g1", userId: "u1", text: "https://b23.tv/x" },
+		});
+		expect(without.ok).toBe(true);
+		if (!without.ok || without.frame.type !== "inbound") return;
+		if (without.frame.message.scope !== "group") return;
+		expect(without.frame.message.cardLinks).toBeUndefined();
+	});
+
+	it("那两格不是字符串数组 → invalid,消息里点得出是哪一格", () => {
+		const parsed = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: {
+				scope: "group",
+				groupId: "g1",
+				userId: "u1",
+				text: "",
+				cardLinks: "https://b23.tv/aaa",
+			},
+		});
+		expect(parsed).toMatchObject({ ok: false, reason: "invalid" });
+		if (parsed.ok || parsed.reason !== "invalid") return;
+		expect(parsed.message).toContain("cardLinks");
+	});
+
+	/**
+	 * 上限是真的门,不是注释。没有它,一条入站帧能驮上来一兆的链接(整帧上限就是 1 MB),
+	 * 而下游链接解析要逐条过正则 —— 这是个不花钱的放大器。
+	 */
+	it("条数 / 单条长度超上限 → invalid", () => {
+		const many = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: {
+				scope: "group",
+				groupId: "g1",
+				userId: "u1",
+				text: "",
+				cardLinks: Array.from(
+					{ length: BRIDGE_INBOUND_LINKS_MAX + 1 },
+					(_, i) => `https://b23.tv/${i}`,
+				),
+			},
+		});
+		expect(many).toMatchObject({ ok: false, reason: "invalid" });
+
+		const long = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: {
+				scope: "group",
+				groupId: "g1",
+				userId: "u1",
+				text: "",
+				miniAppCardLinks: [`https://b23.tv/${"x".repeat(BRIDGE_INBOUND_LINK_MAX_CHARS)}`],
+			},
+		});
+		expect(long).toMatchObject({ ok: false, reason: "invalid" });
+		if (long.ok || long.reason !== "invalid") return;
+		expect(long.message).toContain("miniAppCardLinks");
+	});
+
+	/**
+	 * 私聊那一支**没有**这两格:BN 的私聊入口只有指令,指令不认链接。多报的字段照演进纪律
+	 * 静默丢掉(不是拒帧),所以这里钉的是「丢掉了」而不是「拒了」。
+	 */
+	it("私聊帧带链接格 → 不拒,但也不带进来(私聊只有指令)", () => {
+		const parsed = parseBridgeFrame({
+			type: "inbound",
+			botId: "b1",
+			platform: "onebot",
+			message: { scope: "private", userId: "u1", text: "x", cardLinks: ["https://b23.tv/a"] },
+		});
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok || parsed.frame.type !== "inbound") return;
+		expect(parsed.frame.message).toEqual({ scope: "private", userId: "u1", text: "x" });
 	});
 
 	it("入站帧的 scope 不认识 → invalid(别静默当私聊)", () => {
