@@ -1,10 +1,16 @@
-import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionDTO,
+	ExtensionsResponse,
+	MarketplaceEntryDTO,
+} from "@bilibili-notify/contract";
 import {
 	Btn,
 	EmptyNote,
+	ErrorNote,
 	GlassBox,
 	Icon,
 	LoadingBlock,
+	Pill,
 	StatusDot,
 	Toggle,
 } from "@bilibili-notify/ui";
@@ -14,6 +20,12 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
+import { ExtensionInstallOutcome } from "./extensions/install-outcome";
+import {
+	MarketplaceSection,
+	useMarketplace,
+	useMarketplaceInstall,
+} from "./extensions/marketplace-section";
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
@@ -106,10 +118,17 @@ function ExtensionCard({
 	ext,
 	rows,
 	onToggle,
+	update,
+	onUpdate,
+	updating,
 }: {
 	ext: ExtensionDTO;
 	rows: ConnectionRow[];
 	onToggle: (enabled: boolean) => void;
+	/** 市场里这条有更新的那一版(ADR-0013)。没有就不画。 */
+	update?: MarketplaceEntryDTO;
+	onUpdate?: () => void;
+	updating?: boolean;
 }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	const pushes = (ext.provides ?? []).includes("push");
@@ -126,6 +145,16 @@ function ExtensionCard({
 			<div className="flex h-full flex-col gap-3">
 				{ext.description ? <p className={PARAGRAPH_CLS}>{ext.description}</p> : null}
 				<ExtensionStateDetail ext={ext} />
+				{update ? (
+					<div className="flex items-center gap-2">
+						<Pill subtle size="sm">
+							有新版 v{update.version}
+						</Pill>
+						<Btn variant="outline" size="sm" disabled={updating} onClick={onUpdate}>
+							更新
+						</Btn>
+					</div>
+				) : null}
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
 						<ConnectionCount ext={ext} rows={rows} />
@@ -160,6 +189,14 @@ export default function Extensions() {
 	});
 	const toggle = useExtensionToggle();
 	const [installing, setInstalling] = useState(false);
+	// 市场(ADR-0013):已装卡片上的「有新版」从这儿来;装从市场装的那一套与下面那一节共用。
+	const market = useMarketplace();
+	const installer = useMarketplaceInstall();
+	const updates = new Map(
+		(market.data?.extensions ?? [])
+			.filter((entry) => entry.state === "updatable")
+			.map((entry) => [entry.id, entry] as const),
+	);
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 
@@ -177,6 +214,12 @@ export default function Extensions() {
 					ext={ext}
 					rows={rows}
 					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
+					update={updates.get(ext.id)}
+					updating={installer.install.isPending}
+					onUpdate={() => {
+						const entry = updates.get(ext.id);
+						if (entry) installer.install.mutate({ source: entry.source, id: entry.id });
+					}}
 				/>
 			))}
 		</div>
@@ -202,6 +245,11 @@ export default function Extensions() {
 				</Btn>
 			</div>
 
+			{installer.errors.length > 0 ? (
+				<ErrorNote size="sm">更新不了:{installer.errors.join(";")}</ErrorNote>
+			) : null}
+			<ExtensionInstallOutcome done={installer.done} />
+
 			{SECTIONS.map((section) => {
 				const mine = extensions.filter((ext) => (ext.provides ?? []).includes(section.code));
 				return (
@@ -218,6 +266,8 @@ export default function Extensions() {
 					{grid(homeless)}
 				</div>
 			) : null}
+
+			<MarketplaceSection installer={installer} />
 
 			{installing ? <ExtensionInstallDialog onClose={() => setInstalling(false)} /> : null}
 		</div>

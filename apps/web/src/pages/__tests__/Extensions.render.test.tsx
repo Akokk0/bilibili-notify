@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionsResponse, MarketplaceResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Extensions from "../Extensions";
 
-const { apiGetMock, apiPatchMock } = vi.hoisted(() => ({
+const { apiGetMock, apiPatchMock, apiPostMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
 	apiPatchMock: vi.fn(),
+	apiPostMock: vi.fn(),
 }));
 
 vi.mock("../../services/api", () => ({
 	api: {
 		get: apiGetMock as unknown as (url: string) => Promise<unknown>,
 		patch: apiPatchMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
+		post: apiPostMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
 	},
+	ApiError: class ApiError extends Error {},
 }));
+
+/** 市场那一口的默认回答:官方源在、什么都没列 —— 单独一条用例才往里放条目。 */
+const MARKET: MarketplaceResponse = { available: true, fetchedAt: 1, sources: [], extensions: [] };
 
 const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	id: "bridge",
@@ -77,9 +83,11 @@ function renderPage(
 	listed: ExtensionsResponse = LISTED,
 	connections: unknown = CONNECTIONS,
 	status: unknown = STATUS,
+	market: MarketplaceResponse = MARKET,
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/connections") return connections;
+		if (url.startsWith("/api/ext/marketplace")) return market;
 		if (url.startsWith("/api/ext/")) {
 			if (status === null) throw new Error("拓展没跑起来");
 			return status;
@@ -262,5 +270,76 @@ describe("拓展页", () => {
 		expect(container.querySelector('[data-testid="bridge-icon"]')).toBeTruthy();
 		// 抖音那条没有 icon —— 它得有个占位,而不是一个空方块。
 		expect(container.querySelectorAll('[data-bn-ext-icon="fallback"]')).toHaveLength(1);
+	});
+});
+
+/**
+ * 市场说「有新版」的那张已装卡片:徽章 + 更新钮就在卡上,不用主人滚到市场那一节去找;
+ * 按下去走的是市场那一口(同一个 source + id),不是传包。
+ */
+describe("已装卡片上的「有新版」", () => {
+	/** 已装的那张卡:市场那一节也会列同名条目,所以从开关(它只在已装卡上)往上找。 */
+	function installedCardOf(name: string): HTMLElement {
+		const card = screen.getByRole("button", { name }).closest(".bn-glass");
+		if (!card) throw new Error(`「${name}」不在一张已装卡上`);
+		return card as HTMLElement;
+	}
+
+	afterEach(() => {
+		cleanup();
+	});
+
+	beforeEach(() => {
+		apiGetMock.mockReset();
+		apiPatchMock.mockReset();
+		apiPostMock.mockReset();
+		apiPostMock.mockResolvedValue({
+			id: "bridge",
+			name: "机器人框架桥接",
+			version: "1.1.0",
+			needsRestart: true,
+			restart: { can: true, how: "container" },
+		});
+	});
+
+	it("市场里这条是 updatable → 卡上出徽章与更新钮;按下去 POST 市场那一口", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...MARKET,
+			sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
+			extensions: [
+				{
+					source: "official",
+					official: true,
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "",
+					version: "1.1.0",
+					apiVersion: 1,
+					prerelease: false,
+					size: 1,
+					installed: { version: "1.0.0", source: "official" },
+					state: "updatable",
+				},
+			],
+		});
+		await screen.findAllByText("机器人框架桥接");
+		const card = installedCardOf("机器人框架桥接");
+		expect(await within(card).findByText(/有新版 v1\.1\.0/)).toBeTruthy();
+		fireEvent.click(within(card).getByRole("button", { name: /更新/ }));
+		await waitFor(() =>
+			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
+				source: "official",
+				id: "bridge",
+			}),
+		);
+		// 盖掉的是一份正在跑的:装完那句话要说清「得重启一次」。
+		expect(await screen.findByText(/换不掉/)).toBeTruthy();
+	});
+
+	it("市场那一节挂在页上;市场问不到时已装卡片照常、不出徽章", async () => {
+		renderPage();
+		expect(await screen.findByText("拓展市场")).toBeTruthy();
+		await screen.findAllByText("机器人框架桥接");
+		expect(within(installedCardOf("机器人框架桥接")).queryByText(/有新版/)).toBeNull();
 	});
 });
