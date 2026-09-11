@@ -500,6 +500,29 @@ interface PluginCell {
 	logLevelSource: "global" | "module";
 }
 
+/**
+ * 每格读哪个覆盖键。
+ *
+ * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logLevels.core` 走
+ * (`runtime/engines.ts`),而引擎之外的每一条日志(push / sink / master 私聊 /
+ * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
+ *
+ * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。
+ * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
+ * 六天后服务端把基础 logger 接到 `logLevels.core` 上就不成立了,而没有任何东西
+ * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
+ */
+const OVERRIDE_KEY: Record<ModuleCellId, "core" | "dynamic" | "live" | "image" | "ai"> = {
+	api: "core",
+	storage: "core",
+	subscription: "core",
+	push: "core",
+	dynamic: "dynamic",
+	live: "live",
+	image: "image",
+	ai: "ai",
+};
+
 function pickLogTone(level: string | undefined): { fg: string; bg: string } {
 	const key: LogLevel = level === "error" || level === "debug" || level === "warn" ? level : "info";
 	return { fg: LOG_LEVEL_TONE[key], bg: logLevelTint(key) };
@@ -584,28 +607,6 @@ export function SystemHealthCard({
 	imageEnabled: boolean;
 	aiEnabled: boolean;
 }) {
-	/**
-	 * 每格读哪个覆盖键。
-	 *
-	 * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logLevels.core` 走
-	 * (`runtime/engines.ts`),而引擎之外的每一条日志(push / sink / master 私聊 /
-	 * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
-	 *
-	 * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。
-	 * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
-	 * 六天后服务端把基础 logger 接到 `logLevels.core` 上就不成立了,而没有任何东西
-	 * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
-	 */
-	const OVERRIDE_KEY: Record<ModuleCellId, "core" | "dynamic" | "live" | "image" | "ai"> = {
-		api: "core",
-		storage: "core",
-		subscription: "core",
-		push: "core",
-		dynamic: "dynamic",
-		live: "live",
-		image: "image",
-		ai: "ai",
-	};
 	const effectiveLevel = (
 		id: ModuleCellId,
 	): { level: string | undefined; source: "global" | "module" } => {
@@ -652,6 +653,8 @@ export function SystemHealthCard({
 	// 直接算成要显示的那句话:`newer` 非 null 蕴含 `update` 在,但 TS narrow 不出来,
 	// 留着中间量就得在每个用处再守一次 `update`。
 	const updateLabel = reachable && update && newerVersionOf(update) ? phaseLabel(update) : null;
+	// 副标题里那枚全局等级徽章的两个色 —— 同一帧算一次就够。
+	const globalTone = pickLogTone(logLevel);
 
 	return (
 		<GlassBox
@@ -669,10 +672,7 @@ export function SystemHealthCard({
 					<span>日志</span>
 					<span
 						className="inline-block rounded-md px-1.5 py-px text-bn-2xs font-bold"
-						style={{
-							background: pickLogTone(logLevel).bg,
-							color: pickLogTone(logLevel).fg,
-						}}
+						style={{ background: globalTone.bg, color: globalTone.fg }}
 						// 光一个「WARN」没有上下文,读屏器与鼠标悬停都得知道它说的是哪一档。
 						title="全局日志等级"
 					>

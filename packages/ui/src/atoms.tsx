@@ -1222,10 +1222,9 @@ export function PlatformIcon({
 	 */
 	tone?: string;
 }) {
-	const lookup = usePlatformMeta();
-	const tint = usePlatformTint();
-	const meta = lookup(platform);
-	const color = tone ?? tint(platform);
+	const meta = usePlatformMeta()(platform);
+	// 兜底与 {@link usePlatformTint} 一字不差 —— 那边也是「表里没有就是认不出」这一档灰。
+	const color = tone ?? meta?.tint ?? "var(--color-bn-inactive)";
 	const I = meta?.icon ? Icon[meta.icon as IconName] : null;
 	if (I) return <I size={size} style={{ color }} />;
 	if (meta?.svg) {

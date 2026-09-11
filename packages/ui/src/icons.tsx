@@ -260,10 +260,6 @@ export const Icon = {
 			<path d="M16 15h.01" />
 		</>,
 	),
-	/** 文件夹 —— 「这东西在盘上的哪个目录」。 */
-	folder: stroke(
-		<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />,
-	),
 	scissors: stroke(
 		<>
 			<circle cx="6" cy="6" r="3" />

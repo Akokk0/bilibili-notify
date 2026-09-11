@@ -368,12 +368,6 @@ function webhookFields(
 }
 
 /**
- * 这条连接的配置该摆哪几栏。
- *
- * 桥接入眼下给空表 —— 它的参数(BN 地址 + token)在拓展页那侧填,不走这张连接表单。
- * 认不出的也给空表:页面那一侧不用再写一句兜底。
- */
-/**
  * 拓展连接的表单:拓展交上来的字段表(`ExtensionDTO.configFields`,ADR-0012 决策 33)
  * 一栏翻一栏。字段身份带着拓展 id(`ext.<id>.<code>`),与内置平台的字段不撞。
  * 值就落在 `config[code]`,这一层不认得任何具体拓展。
@@ -438,6 +432,12 @@ export function extensionConnectionFields(
 	});
 }
 
+/**
+ * 这条连接的配置该摆哪几栏。
+ *
+ * 桥接入眼下给空表 —— 它的参数(BN 地址 + token)在拓展页那侧填,不走这张连接表单。
+ * 认不出的也给空表:页面那一侧不用再写一句兜底。
+ */
 export function connectionFields(connection: Connection): ConnectionField[] {
 	if (connection.kind !== "direct") return [];
 	if (connection.platform === "onebot") return onebotFields(connection);

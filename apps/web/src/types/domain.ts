@@ -156,15 +156,6 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
 // ---- Factories --------------------------------------------------------
 
 /**
- * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `connectionId` 都是 `z.uuid()` 严格
- * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 连接 / 目标的 POST 全 400。
- *
- * 刻意**不用** `crypto.randomUUID()` —— 它只在 **secure context**(HTTPS 或
- * localhost)可用;独立端 docker 部署常经 `http://<内网IP>:8787` 访问 = 非 secure
- * context,该方法直接是 `undefined`。`crypto.getRandomValues()` 不受 secure context
- * 限制(所有现代浏览器恒有),用它手搓 v4 UUID,任何部署形态下都产出合法格式。
- */
-/**
  * 一条挂在某个拓展名下的连接 —— **就是主人挑中的那个 bot**(ADR-0012 决策 45)。拓展在
  * `listBots` 里交出来的 config 原样存进连接,平台从 bot 上抄;这里不认得任何具体拓展。
  * 显示名默认用 bot 的名字,主人没填的话。
@@ -204,6 +195,15 @@ export function makeExtensionConnectionDraft(
 	};
 }
 
+/**
+ * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `connectionId` 都是 `z.uuid()` 严格
+ * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 连接 / 目标的 POST 全 400。
+ *
+ * 刻意**不用** `crypto.randomUUID()` —— 它只在 **secure context**(HTTPS 或
+ * localhost)可用;独立端 docker 部署常经 `http://<内网IP>:8787` 访问 = 非 secure
+ * context,该方法直接是 `undefined`。`crypto.getRandomValues()` 不受 secure context
+ * 限制(所有现代浏览器恒有),用它手搓 v4 UUID,任何部署形态下都产出合法格式。
+ */
 export function newId(): string {
 	const bytes = new Uint8Array(16);
 	crypto.getRandomValues(bytes);

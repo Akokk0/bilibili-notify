@@ -179,6 +179,8 @@ export function SystemResourceCard({
 	const heapRatio = ready ? latest.heapUsed / statics.heapLimit : null;
 	// 浏览器是我们起的子进程,它占的内存算我们头上 —— 拆开写在小字里。
 	const bnMemBytes = ready ? latest.rss + (latest.browserRss ?? 0) : null;
+	// 环上那一段与它底下那句小字讲的是同一个数,同一帧算一次。
+	const bnCpu = ready ? bnCpuOfHost(latest, statics) : null;
 	const memTotal = statics?.memTotal ?? 0;
 
 	return (
@@ -213,10 +215,10 @@ export function SystemResourceCard({
 						<Gauge
 							title="CPU 占用"
 							total={latest.hostCpu}
-							bn={bnCpuOfHost(latest, statics)}
+							bn={bnCpu}
 							bnTone={BN_CPU_TONE}
 							caption="CPU"
-							detail={`本体 ${percent(bnCpuOfHost(latest, statics))}`}
+							detail={`本体 ${percent(bnCpu)}`}
 						/>
 						<Gauge
 							title="内存占用"
