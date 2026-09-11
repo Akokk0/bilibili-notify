@@ -954,6 +954,8 @@ export function BridgeConnections({
 	const qc = useQueryClient();
 	const [adding, setAdding] = useState(false);
 	const [removing, setRemoving] = useState<BridgeLink | null>(null);
+	/** 正等着确认换钥匙的那条 —— 见底下那个确认框。 */
+	const [regenerating, setRegenerating] = useState<BridgeLink | null>(null);
 	const address = bnBridgeAddress(extensionId);
 
 	// 接入名单住桥自己的设置里(`globals.extensions.<id>.settings`)。与拓展表分开取:
@@ -981,6 +983,7 @@ export function BridgeConnections({
 		onSuccess: () => {
 			setAdding(false);
 			setRemoving(null);
+			setRegenerating(null);
 			refresh();
 		},
 	});
@@ -1005,7 +1008,22 @@ export function BridgeConnections({
 		setEnabled: (id, enabled) => update(id, { enabled }),
 		// 「对不上」那一档唯一的出口:把配置里的种类改成桥自报的那一种。**token 原样带着**。
 		setKind: (id, kind) => update(id, { bridgeKind: kind }),
-		regenerate: (id) => update(id, { token: newBridgeToken() }),
+		/*
+		 * 换钥匙撤不回,所以**有钥匙可换的时候先问一句**:服务端现读,下一次连接就按新的判,
+		 * 正连着的那条当场掉线 —— 而要它连回来,得有人去那一头的插件设置里把新 token 填一遍。
+		 * 同一张卡上的「删除」早就有确认框,而这一颗的代价与它同档,还就挨着它。
+		 *
+		 * 空 token 那一颗**不问**:没有连着的桥可踢,也没有旧钥匙可作废(脱敏备份恢复回来的
+		 * 常态就是空的),它恰恰是最该顺手按下去的那一颗。
+		 */
+		regenerate: (id) => {
+			const link = links.find((item) => item.id === id);
+			if (link?.token) {
+				setRegenerating(link);
+				return;
+			}
+			update(id, { token: newBridgeToken() });
+		},
 		remove: (id) => setRemoving(links.find((link) => link.id === id) ?? null),
 		busy,
 	};
@@ -1101,6 +1119,30 @@ export function BridgeConnections({
 						save.mutate(links.filter((link) => link.id !== removing.id));
 					}}
 					onCancel={() => setRemoving(null)}
+				/>
+			) : null}
+
+			{regenerating ? (
+				<ConfirmDialog
+					title="重新生成 token?"
+					message={
+						<>
+							{`「${regenerating.name}」的旧 token 立刻作废:正用着它连着的桥会当场掉线,要它连回来,得把新的那把按「复制」取走、重新填进那一头的插件设置里。`}
+							{/* 换不成时框留在原地 —— 与删除那条同一个道理:不说原因就是让人对着黑盒按第二下。 */}
+							{saveError ? (
+								<ErrorNote size="sm" className="mt-2.5">
+									换不了钥匙:{saveError}
+								</ErrorNote>
+							) : null}
+						</>
+					}
+					confirmLabel={busy ? "重新生成中…" : "重新生成"}
+					danger
+					onConfirm={() => {
+						if (busy) return;
+						update(regenerating.id, { token: newBridgeToken() });
+					}}
+					onCancel={() => setRegenerating(null)}
 				/>
 			) : null}
 		</>

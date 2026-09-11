@@ -148,9 +148,13 @@ describe("桥接接入的增删改", () => {
 	});
 
 	/** 重新生成 = 换一把新钥匙。发出去的必须**不是**旧那把,否则这个动作等于没做。 */
-	it("重新生成 token:发出去的是一把新的", async () => {
+	/** 换钥匙会把正连着的桥踢下线,所以有旧钥匙时先问一句(`bridge-regenerate-token.test.tsx` 管那道门)。 */
+	it("重新生成 token:确认之后发出去的是一把新的", async () => {
 		renderDetail();
 		fireEvent.click(await screen.findByLabelText("重新生成 家里那台 的 token"));
+		expect(apiPatchMock).not.toHaveBeenCalled();
+		// 卡上那颗叫「重新生成 家里那台 的 token」,弹窗里那颗就叫「重新生成」
+		fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
 		await waitFor(() => expect(apiPatchMock).toHaveBeenCalled());
 		const [link] = savedLinks();
 		expect(link?.token).toMatch(/^[0-9a-f]{32}$/);
