@@ -63,15 +63,19 @@ export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
 				{/*
 				 * 开发版走的还是**上面第②条**,只是那几下由 devtools 代劳(决策 35)——
 				 * 不说的话下一个人会以为仓里那个目录还会被自动扫到(2026-09-10 起不会了)。
+				 * 只在开发构建里渲染:正式版没有 devtools,这段话对用户是指向不存在的东西的谜语。
+				 * `import.meta.env.DEV` 是编译期常量,生产构建里这一枝整个折掉。
 				 */}
-				<HintNote className="leading-[1.7]">
-					开发版不用自己动手:左下角 devtools 的
-					<strong className="text-bn-text-secondary">「拓展」</strong>那一组能把仓里构建好的{" "}
-					<span className="font-mono">dist</span> 装进来(软链,
-					<strong className="text-bn-text-secondary">装完当场就出现在列表里</strong>),
-					还能在改完代码之后<strong className="text-bn-text-secondary">重载</strong>
-					—— 换代码不必重启整个 server。
-				</HintNote>
+				{import.meta.env.DEV ? (
+					<HintNote className="leading-[1.7]">
+						开发版不用自己动手:左下角 devtools 的
+						<strong className="text-bn-text-secondary">「拓展」</strong>那一组能把仓里构建好的{" "}
+						<span className="font-mono">dist</span> 装进来(软链,
+						<strong className="text-bn-text-secondary">装完当场就出现在列表里</strong>),
+						还能在改完代码之后<strong className="text-bn-text-secondary">重载</strong>
+						—— 换代码不必重启整个 server。
+					</HintNote>
+				) : null}
 
 				<div className="flex justify-end pt-1">
 					<Btn variant="outline" size="md" onClick={onClose}>

@@ -86,7 +86,8 @@ export function ExtensionInstallSlot({
 				uploading={install.isPending}
 				uploadingLabel="正在装…"
 				onFile={(file) => file && install.mutate(file)}
-				className="flex flex-col justify-center gap-1 px-4 py-5 text-center"
+				// 圆角与 AddCard 同一档:它是一整块「空位」,不是行内那颗药丸。
+				className="flex flex-col justify-center gap-1 rounded-xl px-4 py-5 text-center"
 			>
 				<span className="text-bn-sm font-bold text-bn-text-secondary">传一个拓展包</span>
 				<span className="text-bn-2xs text-bn-text-tertiary">
