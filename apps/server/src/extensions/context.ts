@@ -168,42 +168,67 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		return views;
 	}
 
-	/** 这条连接是不是它自己的 —— 入站那道归属校验用。 */
-	function owns(connectionId: string): boolean {
+	/** 这条连接是不是它自己的 —— 是的话把连接交出来,入站那两道校验都要用。 */
+	function own(connectionId: string): Connection | undefined {
 		return opts
 			.connections()
-			.some(
+			.find(
 				(connection) => isExtensionConnection(connection, id) && connection.id === connectionId,
 			);
 	}
 
 	/**
-	 * 设置的解析结果按**原始值的身份**缓存:globals 每落一次盘就是一个新对象,同一个对象
-	 * 再问一次不必再解一遍 —— 更要紧的是坏形状那一行**只记一次**,握手一次问一次不该刷屏。
+	 * 设置的解析结果缓存到**下一次 globals 落盘**为止。
+	 *
+	 * 🔴 缓存不能挂在「原始值的身份」上:宿主那头是 `getGlobals().extensions[id]?.settings`,
+	 * 而 `getGlobals()` 每次都 deepClone —— 键永远是个新对象,缓存永远不命中。代价有二:
+	 * 每问一次设置就克隆一整份 globals 再 parse 一遍(桥每握一次手问一次),以及下面那句
+	 * 「坏形状只记一次」实际上每次都记。作废的信号用现成的那条:globals 落盘了。
 	 */
-	const settingsCache = new WeakMap<object, Map<ZodType, unknown>>();
+	let settingsCache = new Map<ZodType, unknown>();
 	function readSettings<T>(schema: ZodType<T>): T | undefined {
+		if (settingsCache.has(schema)) return settingsCache.get(schema) as T | undefined;
 		const raw = opts.settings();
-		if (raw === undefined || raw === null) return undefined;
-		const cacheable = typeof raw === "object";
-		const bucket = cacheable ? settingsCache.get(raw as object) : undefined;
-		if (bucket?.has(schema)) return bucket.get(schema) as T | undefined;
-		const parsed = schema.safeParse(raw);
-		if (!parsed.success) logger.warn(`设置的形状不对,按没有算:${parsed.error.message}`);
-		const value = parsed.success ? parsed.data : undefined;
-		if (cacheable) {
-			const map = bucket ?? new Map<ZodType, unknown>();
-			map.set(schema, value);
-			settingsCache.set(raw as object, map);
+		const parsed = raw === undefined || raw === null ? undefined : schema.safeParse(raw);
+		if (parsed && !parsed.success) {
+			logger.warn(`设置的形状不对,按没有算:${parsed.error.message}`);
 		}
+		const value = parsed?.success ? parsed.data : undefined;
+		settingsCache.set(schema, value);
 		return value;
 	}
 
+	/**
+	 * 「我这一格动了」的扇出。
+	 *
+	 * 🔴 **去重游标只此一个,而且只在这里推**。从前是每个订阅者各自比一次同一个闭包变量:
+	 * 第一个订阅者把游标推到最新,轮到第二个时「和上次一样」—— 于是**第二个订阅者永远
+	 * 收不到**。宿主的通知是「globals 落盘了」,内容变没变是 ctx 的判断,判一次就够。
+	 */
+	const settingsListeners = new Set<() => void>();
 	/** 上一次看见的设置(序列化),用来判「这次 globals 落盘动的是不是我这一格」。 */
 	let lastSettingsSeen = JSON.stringify(opts.settings() ?? null);
+	registered.add(
+		opts.onSettingsChanged(() => {
+			// 先作废缓存:落盘了就当它变了,下一次问再解一遍(代价是一次 parse)。
+			settingsCache = new Map();
+			const now = JSON.stringify(opts.settings() ?? null);
+			if (now === lastSettingsSeen) return;
+			lastSettingsSeen = now;
+			for (const fn of [...settingsListeners]) fn();
+		}),
+	);
 
-	function feed(route: "private" | "group", meta: InboundMeta, deliver: () => void): void {
-		if (!owns(meta.connectionId)) {
+	/** 报错 / 作恶各记一行就够 —— 每条连接一次,不然一条帧刷一行。 */
+	const platformMismatchLogged = new Set<string>();
+
+	function feed(
+		route: "private" | "group",
+		meta: InboundMeta,
+		deliver: (meta: InboundMeta) => void,
+	): void {
+		const connection = own(meta.connectionId);
+		if (!connection) {
 			// 冒充别人的连接 —— 丢掉。主人身份比对走「平台 + 地址 + bot」三坐标,放过去
 			// 就等于让一个拓展替别人说话。
 			logger.warn(
@@ -211,7 +236,21 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			);
 			return;
 		}
-		deliver();
+		// 🔴 **平台以连接上那一格为准。** 它是主人身份比对的另一半(`inboundIdentity` →
+		// `sameChatIdentity`,「绝不能跨平台比对」那条纪律就靠它),而拓展自报的那一格我们
+		// 没有任何办法核。连接现在**有** platform(决策 45,面板建目标时也从这儿抄),宿主
+		// 自己答得出来 —— 于是桥那边报错一格(或者作恶)也顶不成别的平台。
+		if (meta.platform !== connection.platform) {
+			if (!platformMismatchLogged.has(connection.id)) {
+				platformMismatchLogged.add(connection.id);
+				logger.warn(
+					`连接 ${connection.id} 报的平台是 ${meta.platform},与它自己那一格 ${connection.platform} 对不上;按连接算`,
+				);
+			}
+			deliver({ ...meta, platform: connection.platform });
+			return;
+		}
+		deliver(meta);
 	}
 
 	const ctx: ExtensionContext = {
@@ -260,8 +299,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		inbound: {
 			private: (msg, meta) =>
-				feed("private", meta, () => opts.inbound.onInboundPrivate?.(msg, meta)),
-			group: (msg, meta) => feed("group", meta, () => opts.inbound.onInboundGroup?.(msg, meta)),
+				feed("private", meta, (checked) => opts.inbound.onInboundPrivate?.(msg, checked)),
+			group: (msg, meta) =>
+				feed("group", meta, (checked) => opts.inbound.onInboundGroup?.(msg, checked)),
 		},
 		onUpgrade(handler) {
 			if (disposed) {
@@ -289,14 +329,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				get: () => readSettings(schema),
 				onChange: (fn: () => void) => {
 					if (disposed) return refuse("settings.onChange");
-					return track(
-						opts.onSettingsChanged(() => {
-							const now = JSON.stringify(opts.settings() ?? null);
-							if (now === lastSettingsSeen) return;
-							lastSettingsSeen = now;
-							fn();
-						}),
-					);
+					// 每个订阅者只往扇出名单里加一格 —— 「内容变没变」在上面那一处判过了。
+					settingsListeners.add(fn);
+					return track({ dispose: () => settingsListeners.delete(fn) });
 				},
 			};
 		},

@@ -33,6 +33,8 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 		enabled: true,
 		kind: "extension",
 		extensionId: "bridge",
+		// 一条连接 = 一个借来的 bot,平台是它的身份轴之一(ADR-0012 决策 45)。
+		platform: "onebot",
 		config: { token: "t0ken", bridgeKind: "koishi" },
 		...over,
 	} as Connection;
@@ -58,7 +60,13 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 	let settings: unknown = opts.settings;
 	const listeners = new Set<() => void>();
 	const settingsListeners = new Set<() => void>();
-	const inboundSeen: Array<{ route: "private" | "group"; connectionId: string }> = [];
+	const inboundSeen: Array<{
+		route: "private" | "group";
+		connectionId: string;
+		platform: string;
+	}> = [];
+	/** `settings()` 被问了几次 —— 宿主那头每问一次就 deepClone 一整份 globals。 */
+	let settingsReads = 0;
 	const adapters = createAdapterRegistry();
 
 	const runtime = createExtensionContext({
@@ -71,7 +79,13 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
 		},
-		settings: () => settings,
+		// ⚠️ 与生产同形状:宿主那头是 `getGlobals().extensions[id]?.settings`,而 `getGlobals()`
+		// **每次都 deepClone**,所以每问一次拿到的都是一个新对象。直接把闭包变量交出去的话,
+		// 「按原始值的身份缓存」这种写法在测试里恒命中、在真机上恒不命中。
+		settings: () => {
+			settingsReads += 1;
+			return structuredClone(settings);
+		},
 		onStatusChanged: () => {
 			statusChanges += 1;
 		},
@@ -82,9 +96,17 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 		upgrades: createExtensionUpgrades(),
 		inbound: {
 			onInboundPrivate: (_msg, meta) =>
-				inboundSeen.push({ route: "private", connectionId: meta.connectionId }),
+				inboundSeen.push({
+					route: "private",
+					connectionId: meta.connectionId,
+					platform: meta.platform,
+				}),
 			onInboundGroup: (_msg, meta) =>
-				inboundSeen.push({ route: "group", connectionId: meta.connectionId }),
+				inboundSeen.push({
+					route: "group",
+					connectionId: meta.connectionId,
+					platform: meta.platform,
+				}),
 		},
 	});
 
@@ -95,6 +117,7 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 		adapters,
 		lines,
 		inboundSeen,
+		settingsReads: () => settingsReads,
 		setConnections(next: Connection[]) {
 			connections = next;
 			for (const fn of [...listeners]) fn();
@@ -268,9 +291,28 @@ describe("喂入站", () => {
 			meta("c1"),
 		);
 		expect(h.inboundSeen).toEqual([
-			{ route: "private", connectionId: "c1" },
-			{ route: "group", connectionId: "c1" },
+			{ route: "private", connectionId: "c1", platform: "onebot" },
+			{ route: "group", connectionId: "c1", platform: "onebot" },
 		]);
+	});
+
+	/**
+	 * 🔴 **平台以连接上那一格为准,拓展报的说了不算。**
+	 *
+	 * `meta.platform` 是主人身份比对的一半(`inboundIdentity` → `sameChatIdentity`,那条
+	 * 「绝不能跨平台比对」的纪律就靠它)。归属只校验了 `connectionId`,平台却照抄拓展报的 ——
+	 * 于是桥那边报错一格(或者作恶)就能让一条 telegram 私聊顶着 onebot 的平台进来,和主人
+	 * 的 QQ 号比对上。连接现在**有** platform(决策 45),宿主自己答得出来,不必信它。
+	 */
+	it("🔴 拓展报的平台与连接对不上 → 以连接为准,并且每条连接只记一行", () => {
+		const h = harness();
+		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		expect(h.inboundSeen).toEqual([
+			{ route: "private", connectionId: "c1", platform: "onebot" },
+			{ route: "private", connectionId: "c1", platform: "onebot" },
+		]);
+		expect(h.lines.filter((l) => l.includes("平台"))).toHaveLength(1);
 	});
 
 	it("🔴 冒充别人的连接 → 丢掉并留一行", () => {
@@ -381,6 +423,45 @@ describe("读自己的设置", () => {
 		expect(settings.get()?.links).toHaveLength(0);
 		h.setSettings({ links: [{ id: "a", token: "t" }] });
 		expect(settings.get()?.links).toHaveLength(1);
+	});
+
+	/**
+	 * 🔴 **同一份 globals 连问两次只解析一次。**
+	 *
+	 * 缓存从前挂在「原始值的身份」上(WeakMap 的键),而宿主那头每问一次 `settings()` 都是
+	 * `getGlobals()` 现 deepClone 出来的**新对象** —— 键永远不同,缓存永远不命中。代价有二:
+	 * 每次 `get()` 都克隆一整份 globals 再 parse 一遍,以及下面那条「坏形状只记一次」实际上
+	 * 每次都记(桥每握一次手就刷一行)。
+	 */
+	it("同一份 globals 连问两次:只去问宿主一次", () => {
+		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		const settings = h.ctx.settings(LINKS);
+		// ctx 建起来时自己读过一次(去重游标的基线),从那之后开始数。
+		const before = h.settingsReads();
+		settings.get();
+		settings.get();
+		settings.get();
+		expect(h.settingsReads() - before).toBe(1);
+
+		// 落了一次盘 = 缓存作废,下一次问是真去问的(落盘那一下自己也要读一次去比内容)。
+		h.setSettings({ links: [] });
+		const afterWrite = h.settingsReads();
+		settings.get();
+		settings.get();
+		expect(h.settingsReads() - afterWrite).toBe(1);
+	});
+
+	/**
+	 * 🔴 去重游标从前是整个 ctx 一个闭包变量,而每个订阅者各自比一次 —— 第一个订阅者把
+	 * 游标推到最新,轮到第二个时 `now === lastSettingsSeen`,于是**第二个订阅者永远收不到**。
+	 */
+	it("两个订阅者都要收到", () => {
+		const h = harness({ settings: { links: [] } });
+		const seen: string[] = [];
+		h.ctx.settings(LINKS).onChange(() => seen.push("a"));
+		h.ctx.settings(LINKS).onChange(() => seen.push("b"));
+		h.setSettings({ links: [{ id: "a", token: "t" }] });
+		expect(seen).toEqual(["a", "b"]);
 	});
 
 	it("变更通知只在**内容真的变了**时叫 —— globals 别处动一下不该踢一遍所有桥;卸载后不再叫", async () => {
