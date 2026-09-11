@@ -5,8 +5,8 @@
  * 并跟着它一起发版(ADR-0012 决策 36)。核心不该认识任何一个拓展的协议。
  *
  * 只放两端共同消费的**纯类型与纯常量**,而且一律只从**零依赖的子入口**进 —— internal 的
- * `constants`、拓展那一面的 `@bilibili-notify/extension/wire`。两个包的**根**入口绝不碰:
- * 它们牵着 zod 与整个域模型,而这边要的只是几个形状。这么定的好处在两头:web 端
+ * `constants`、拓展那一面的 `@bilibili-notify/extension/wire`。两个包的**根**入口只许
+ * `import type`(编译期擦掉),**值**绝不从根进:它们牵着 zod 与整个域模型,而这边要的只是几个形状。这么定的好处在两头:web 端
  * `import type` 零成本,server 端可放心 import 值(CHANNELS / LOG_LEVELS)。校验逻辑
  * (zod schema)是服务端职责,留在 apps/server 各自模块里,用这里的类型做注解防漂移。
  */
