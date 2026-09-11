@@ -25,6 +25,14 @@ const TOKEN = "good-token";
 
 const SILENT = { info() {}, warn() {}, error() {}, debug() {} };
 
+/** 宿主那面的定时器口(`ctx.setInterval`)—— 真定时器,外加一个摘得掉的把手。 */
+const HOST_TIMERS = {
+	setInterval(fn: () => void, ms: number) {
+		const handle = setInterval(fn, ms);
+		return { dispose: () => clearInterval(handle) };
+	},
+};
+
 /**
  * 把桥接上一台真 HTTP server —— **宿主做的就是这件事**:按 `/ext/<id>` 前缀挑出属于它的
  * upgrade,剥掉前缀,把剩下那一段连同三样原料交过来(见 `extensions/upgrade.ts`)。
@@ -214,6 +222,9 @@ describe("/bridge 端点", () => {
 		server?.dispose();
 		server = createBridgeServer({
 			logger: SILENT,
+			// 宿主那面的 `setInterval`:真定时器 + 一个摘得掉的把手,这一层要的就这么多。
+			// 心跳与看门狗的用例量的是真实时间,所以不能换成攒回调的假的。
+			ctx: HOST_TIMERS,
 			serverVersion: "9.9.9",
 			resolveToken: (token) => (token === TOKEN ? CONNECTION_ID : null),
 			inbound: () => ({ private: true, group: "with-links" }),

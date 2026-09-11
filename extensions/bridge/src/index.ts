@@ -69,18 +69,17 @@ export function activate(ctx: ExtensionContext): void {
 		source?.connections() ?? [];
 
 	/**
-	 * 这条接入上的这个 bot 绑成了哪条连接。**停用的也算绑过** —— 面板要据此标「已加过」,
-	 * 不然同一个 bot 会被再加一条连接出来。「收不收它的消息」是另一问,见 `onInbound`。
+	 * 这条接入上的这个 bot 绑成了哪条连接。**停用的也算绑过** —— 「绑没绑过」与「收不收它的
+	 * 消息」是两问,后者在 `onInbound` 里按 `enabled` 再判一次。
+	 *
+	 * 这是**逐帧**那一路(每条入站消息一次);面板那一排(`listBots`)一次要问一整份名单,
+	 * 所以它自己建一张查表,别改成叫这个。
 	 */
 	const boundConnection = (
 		linkId: string,
 		botId: string,
 	): ExtensionConnectionView<BridgeConnectionConfig> | undefined =>
 		connections().find((c) => c.config.link === linkId && c.config.botId === botId);
-
-	/** 这条接入上的这个 bot 绑成了哪条连接 —— 面板那一格「已加过」。没绑就是没有。 */
-	const connectionFor = (linkId: string, botId: string): string | undefined =>
-		boundConnection(linkId, botId)?.id;
 
 	/**
 	 * 「这个 bot 自报的平台跟名单里的对不上」只说一次。每条入站消息都会走一遍那道比对,
@@ -96,6 +95,8 @@ export function activate(ctx: ExtensionContext): void {
 
 	const server = createBridgeServer({
 		logger: ctx.logger,
+		// 心跳与看门狗那两只定时器从 ctx 走 —— 裸 `setInterval` 是禁止的(决策 11)。
+		ctx,
 		serverVersion: ctx.hostVersion,
 		resolveToken: (token) => resolveBridgeToken(links(), token),
 		// 认得这个 token 不等于现在收它:这条接入停用了回 503(退避重连),而不是 401
@@ -153,8 +154,14 @@ export function activate(ctx: ExtensionContext): void {
 		configFields: BRIDGE_CONFIG_FIELDS,
 		// 推送目标页「新建连接」挑的那一排:每条**连着**的接入驮着的每个 bot。config 就是
 		// 那条连接要存的东西;`boundTo` 让面板标出「已加过」。
-		listBots: () =>
-			links().flatMap((link) => {
+		listBots: () => {
+			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
+			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
+			// 拿冒号拼会和 `telegram:12345` 这种撞上。
+			const boundTo = new Map(
+				connections().map((c) => [`${c.config.link}\0${c.config.botId}`, c.id]),
+			);
+			return links().flatMap((link) => {
 				const session = server.getSession(link.id);
 				if (!session) return [];
 				return session.bots.map((bot) => ({
@@ -164,9 +171,10 @@ export function activate(ctx: ExtensionContext): void {
 					selfId: bot.selfId,
 					icon: bot.icon,
 					via: link.name,
-					boundTo: connectionFor(link.id, bot.botId),
+					boundTo: boundTo.get(`${link.id}\0${bot.botId}`),
 				}));
-			}),
+			});
+		},
 	});
 	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时叫 reconcile,而
 	// 桥的对账看的是接入名单(现读),那个参数它用不着 —— 给空表就是这个意思。

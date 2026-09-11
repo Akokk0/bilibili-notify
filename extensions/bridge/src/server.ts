@@ -24,6 +24,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type {
 	Disposable,
+	ExtensionContext,
 	ExtensionUpgrade,
 	ExtensionUpgradeHandler,
 	Logger,
@@ -70,6 +71,12 @@ export const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
 
 export interface BridgeServerOptions {
 	logger: Logger;
+	/**
+	 * 心跳与看门狗那两只定时器从这儿走。**裸 `setInterval` 是禁止的**(ADR-0012 决策 11:
+	 * 那是「卸载得干净」的唯一承重条件)—— 留一条旁路的话,把桥的开关关掉之后面板写着
+	 * 「已停用」,而心跳还在照打。同 `blob.ts`。
+	 */
+	ctx: Pick<ExtensionContext, "setInterval">;
 	/**
 	 * token → 这是哪条桥接入(连接 id)。认不出回 `null` → upgrade 401。
 	 *
@@ -197,20 +204,60 @@ interface BridgeConn {
 	hello?: { kind: BridgeKind; name?: string; version?: string };
 	bots: BridgeBot[];
 	/** 这条 socket 上还没回执的 `send`。断线时全部就地失败。 */
-	pending: Map<string, PendingSend>;
-	/** 这条 socket 上还没回 pong 的探活 ping,按发出顺序排。断线时全部就地失败。 */
-	pendingPings: PendingPing[];
+	pending: PendingTable<BridgeSendOutcome>;
+	/** 这条 socket 上还没回 pong 的探活 ping。断线时全部就地失败。 */
+	pendingPings: PendingTable<BridgePingOutcome>;
 }
 
-interface PendingSend {
-	settle(outcome: BridgeSendOutcome): void;
-	timer: NodeJS.Timeout;
+/**
+ * 一条 socket 上**在飞**的那些请求 —— `send` 与探活 `ping` 各一张。
+ *
+ * 两者只有「结果长什么样」不同,配对与结算的规矩是同一套:**id 认领,超时 / 回执 / 断线
+ * 三路谁先到谁算,只结算一次**。分开手写过一次,代价是那三路里漏掉哪一路都不会有人发现
+ * —— 症状是一条推送永远悬着(上层的 await 不回来),而日志里什么都没有。
+ */
+interface PendingTable<T> {
+	/**
+	 * 起一趟,回「结算它」那个口。登记在**发帧之前** —— 回执比 `send()` 返回还快是真会
+	 * 发生的(同进程的假桥、本机 socket),那时表里得已经有这一格。
+	 */
+	start(
+		id: string,
+		timeoutMs: number,
+		onTimeout: T,
+		resolve: (outcome: T) => void,
+	): (outcome: T) => void;
+	/** 回执到了。表里没有这一格(超时之后才回来、或者对面自己编的 id)回 `false`。 */
+	settle(id: string, outcome: T): boolean;
+	/** 断线 —— 在飞的全部就地失败。 */
+	failAll(outcome: T): void;
 }
 
-interface PendingPing {
-	id: string;
-	settle(outcome: BridgePingOutcome): void;
-	timer: NodeJS.Timeout;
+function pendingTable<T>(): PendingTable<T> {
+	const entries = new Map<string, { settle(outcome: T): void; timer: NodeJS.Timeout }>();
+	return {
+		start(id, timeoutMs, onTimeout, resolve) {
+			// 只结算一次:后到的那几路看见表里没有这一格就散了。
+			const settle = (outcome: T): void => {
+				const entry = entries.get(id);
+				if (!entry) return;
+				clearTimeout(entry.timer);
+				entries.delete(id);
+				resolve(outcome);
+			};
+			entries.set(id, { settle, timer: setTimeout(() => settle(onTimeout), timeoutMs) });
+			return settle;
+		},
+		settle(id, outcome) {
+			const entry = entries.get(id);
+			if (!entry) return false;
+			entry.settle(outcome);
+			return true;
+		},
+		failAll(outcome) {
+			for (const entry of [...entries.values()]) entry.settle(outcome);
+		},
+	};
 }
 
 function toBot(wire: BridgeBotWire): BridgeBot {
@@ -303,8 +350,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	 * 三小时前的「正在直播」比不推更糟。
 	 */
 	function failPending(conn: BridgeConn, err: string): void {
-		for (const entry of [...conn.pending.values()]) entry.settle({ ok: false, err });
-		for (const entry of [...conn.pendingPings]) entry.settle({ ok: false, latencyMs: 0, err });
+		conn.pending.failAll({ ok: false, err });
+		conn.pendingPings.failAll({ ok: false, latencyMs: 0, err });
 	}
 
 	/**
@@ -452,24 +499,18 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				break;
 			}
 			case "result": {
-				const entry = conn.pending.get(frame.id);
-				if (!entry) {
-					// 超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
-					// 断连不合适;而已经结算过的那条投递也不该被翻案。
+				// 结算不了的:超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
+				// 断连不合适;而已经结算过的那条投递也不该被翻案。
+				if (!conn.pending.settle(frame.id, { ok: frame.ok, err: frame.err }))
 					log.debug(`bridge ${conn.linkId} sent a result for an unknown id`);
-					break;
-				}
-				entry.settle({ ok: frame.ok, err: frame.err });
 				break;
 			}
 			case "pong": {
 				// 🔴 不带 id 的 pong(1.2 的老桥)**只当「还活着」**:上面那句 `lastSeenAt` 已经
-				// 记过了,看门狗满足。拿它去结算最早那趟探活的话,面板那颗「测试」的读数就是
+				// 记过了,看门狗满足。拿它去结算任何一趟探活的话,面板那颗「测试」的读数就是
 				// 偷来的 —— 宁可让那趟探活如实超时,也别报一个不知道量的是谁的数。
 				if (!frame.id) break;
-				conn.pendingPings
-					.find((candidate) => candidate.id === frame.id)
-					?.settle({ ok: true, latencyMs: 0 });
+				conn.pendingPings.settle(frame.id, { ok: true, latencyMs: 0 });
 				break;
 			}
 		}
@@ -508,8 +549,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
-			pending: new Map(),
-			pendingPings: [],
+			pending: pendingTable<BridgeSendOutcome>(),
+			pendingPings: pendingTable<BridgePingOutcome>(),
 		};
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
@@ -553,36 +594,39 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	};
 	// ---------------- 心跳 -----------------------------------------------------
 
-	let heartbeatHandle: NodeJS.Timeout | undefined;
+	/** 两只都从 `ctx` 走(见 {@link BridgeServerOptions.ctx}),收摊时一起摘。 */
+	const timers: Disposable[] = [];
 	if (heartbeatIntervalMs > 0) {
-		heartbeatHandle = setInterval(() => {
-			// 心跳的 ping **也带 id**:不带的话桥回的 pong 也不带,而那个回声正好会掉进
-			// 面板那趟探活的坑里(读数被偷)。这里没人等这个 id 回来 —— 看门狗看的是
-			// 「最近说过话」,不是「回过这一发」。
-			for (const conn of [...conns]) {
-				if (conn.hello) sendFrame(conn, { type: "ping", id: randomUUID() });
-			}
-		}, heartbeatIntervalMs);
+		timers.push(
+			opts.ctx.setInterval(() => {
+				// 心跳的 ping **也带 id**:不带的话桥回的 pong 也不带,而那个回声正好会掉进
+				// 面板那趟探活的坑里(读数被偷)。这里没人等这个 id 回来 —— 看门狗看的是
+				// 「最近说过话」,不是「回过这一发」。
+				for (const conn of [...conns]) {
+					if (conn.hello) sendFrame(conn, { type: "ping", id: randomUUID() });
+				}
+			}, heartbeatIntervalMs),
+		);
 	}
 
-	let watchdogHandle: NodeJS.Timeout | undefined;
 	if (heartbeatTimeoutMs > 0) {
-		watchdogHandle = setInterval(
-			() => {
-				const cutoff = Date.now() - heartbeatTimeoutMs;
-				for (const conn of [...conns]) {
-					if (conn.lastSeenAt < cutoff) terminate(conn, "went quiet");
-				}
-			},
-			Math.max(20, Math.floor(heartbeatTimeoutMs / 2)),
+		timers.push(
+			opts.ctx.setInterval(
+				() => {
+					const cutoff = Date.now() - heartbeatTimeoutMs;
+					for (const conn of [...conns]) {
+						if (conn.lastSeenAt < cutoff) terminate(conn, "went quiet");
+					}
+				},
+				Math.max(20, Math.floor(heartbeatTimeoutMs / 2)),
+			),
 		);
 	}
 
 	// ---------------- 对外 -----------------------------------------------------
 
 	const dispose = (): void => {
-		if (heartbeatHandle) clearInterval(heartbeatHandle);
-		if (watchdogHandle) clearInterval(watchdogHandle);
+		for (const timer of timers) timer.dispose();
 		// upgrade 那一路不用摘 —— 它挂在 ctx 上,`dispose()` 之后宿主根本不会再叫过来。
 		// 1001 = Going Away,**两种收摊都是真话**:BN 关机,或者主人把桥拓展的开关关了
 		// (热卸载,ADR-0012 决策 10)。桥分不出这两者 —— ctx 只说「收摊」,不说为什么,
@@ -600,20 +644,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		if (!conn) return Promise.resolve({ ok: false, err: "桥没连着" });
 		const id = randomUUID();
 		return new Promise<BridgeSendOutcome>((resolve) => {
-			// 只结算一次:超时、回执、断线三路都可能先到,后到的那些看见 pending 里
-			// 没有这一格就散了。
-			const settle = (outcome: BridgeSendOutcome): void => {
-				const entry = conn.pending.get(id);
-				if (!entry) return;
-				clearTimeout(entry.timer);
-				conn.pending.delete(id);
-				resolve(outcome);
-			};
-			const timer = setTimeout(
-				() => settle({ ok: false, err: `桥 ${sendTimeoutMs}ms 内没给回执` }),
+			const settle = conn.pending.start(
+				id,
 				sendTimeoutMs,
+				{ ok: false, err: `桥 ${sendTimeoutMs}ms 内没给回执` },
+				resolve,
 			);
-			conn.pending.set(id, { settle, timer });
 			if (!sendFrame(conn, { type: "send", id, ...request })) {
 				settle({ ok: false, err: "桥没连着" });
 			}
@@ -626,19 +662,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		const id = randomUUID();
 		const t0 = Date.now();
 		return new Promise<BridgePingOutcome>((resolve) => {
-			// 与 send 同一套「只结算一次」:pong、超时、断线三路谁先到谁算。
-			const settle = (outcome: BridgePingOutcome): void => {
-				const at = conn.pendingPings.findIndex((candidate) => candidate.id === id);
-				if (at < 0) return;
-				const [entry] = conn.pendingPings.splice(at, 1);
-				if (entry) clearTimeout(entry.timer);
-				resolve(outcome.ok ? { ok: true, latencyMs: Date.now() - t0 } : outcome);
-			};
-			const timer = setTimeout(
-				() => settle({ ok: false, latencyMs: 0, err: `桥 ${pingTimeoutMs}ms 内没回 pong` }),
+			// 往返时长在**结算那一刻**才算得出来,所以套在 resolve 外面;不通的那几路
+			// 把自己的 `latencyMs: 0` 原样带出去。
+			const settle = conn.pendingPings.start(
+				id,
 				pingTimeoutMs,
+				{ ok: false, latencyMs: 0, err: `桥 ${pingTimeoutMs}ms 内没回 pong` },
+				(outcome) => resolve(outcome.ok ? { ok: true, latencyMs: Date.now() - t0 } : outcome),
 			);
-			conn.pendingPings.push({ id, settle, timer });
 			if (!sendFrame(conn, { type: "ping", id })) {
 				settle({ ok: false, latencyMs: 0, err: "桥没连着" });
 			}
