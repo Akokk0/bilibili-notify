@@ -161,8 +161,13 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 	/**
 	 * 上一轮对账时每条桥接入的 token。**只为了发现「token 被重新生成了」** —— 会话本身
 	 * 不带 token,而重新生成 token 却踢不掉旧连接的话,那个动作就等于没做。
+	 *
+	 * 🔴 **建 adapter 这一刻就用当前名单打底**,不能等第一次 `reconcile()`:宿主开机那趟
+	 * 对账跑在拓展装载**之前**,桥根本没机会先对一次账。空表起步的话 `before === undefined`
+	 * 会把「重启之后第一次重新生成 token」当成新接入静默放过 —— 旧会话拿着已经作废的
+	 * token 继续收推送,而面板上一切正常。
 	 */
-	const lastTokens = new Map<string, string>();
+	const lastTokens = new Map<string, string>(opts.links().map((link) => [link.id, link.token]));
 
 	/**
 	 * 「这条连接现在通到哪个 bot」—— `isAvailable` / `send` / `probe` / `capabilities` 共用

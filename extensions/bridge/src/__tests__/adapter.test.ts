@@ -462,6 +462,19 @@ describe("桥 adapter", () => {
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
+	/**
+	 * 🔴 **重启之后第一次换 token 也得踢**。上一轮快照是**建 adapter 那一刻**打的底,不是
+	 * 「第一次 reconcile 跑完」—— 宿主开机那趟 reconcile 跑在拓展装载**之前**,所以桥根本
+	 * 没机会先对一次账。空表打底的话 `before === undefined`,重启后第一次「重新生成 token」
+	 * 静默放过,旧会话拿着作废的 token 继续收推送。
+	 */
+	it("**开机后第一次就换 token → 照样踢下线**(上一轮快照在建 adapter 时就打好底)", () => {
+		const h = harness();
+		h.setLinks([link({ token: "新的" })]);
+		h.adapter.reconcile?.([]);
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
+	});
+
 	it("什么都没变 → 不动它(reconcile 每次配置变更都会跑)", () => {
 		const h = harness();
 		h.adapter.reconcile?.([]);
