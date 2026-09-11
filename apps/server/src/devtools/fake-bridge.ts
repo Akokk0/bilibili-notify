@@ -8,9 +8,10 @@
  *
  * 🔴 **这里的帧是照着 `extensions/bridge/PROTOCOL.md` 手写的。** 桥是拓展,核心 import
  * 不到它(那条边两个方向都不该有),所以协议知识在这儿有第二份 —— 主人 2026-09-10 拍板
- * 认下这笔(ADR-0012 决策 42)。手写的东西会漂,所以配了两道:`__tests__/fake-bridge.test.ts`
- * 钉帧的形状,`src/__tests__/devtools-fake-bridge-e2e.test.ts` 把**真桥**装进装载根、让
- * 它俩真的说一次话 —— 协议真变了,后者会红。
+ * 认下这笔(ADR-0012 决策 42)。手写的东西会漂,所以配了三道:`__tests__/fake-bridge.test.ts`
+ * 钉帧的形状,`__tests__/fake-bridge-protocol-version.test.ts` 钉版本号与桥的 `contract.ts`
+ * 对得上(握手只看 `major`,minor 漂了没人会发现),`src/__tests__/devtools-fake-bridge-e2e.test.ts`
+ * 把**真桥**装进装载根、让它俩真的说一次话 —— 协议真变了,后者会红。
  *
  * ⛔ **不做退避重连**(协议 §12 那条对真插件才成立):假桥跑在 BN 自己进程里,BN 没了它
  * 也没了,重连没有对象。断了就是断了,场景那头如实显示。
@@ -18,8 +19,14 @@
 
 import { WebSocket } from "ws";
 
-/** 协议版本。判定只看 `major`,所以这一格跟着桥走,minor 差多少都不影响握手。 */
-const PROTOCOL = { major: 1, minor: 1 } as const;
+/**
+ * 协议版本。**与桥的 `contract.ts` 里那个 `BRIDGE_PROTOCOL_VERSION` 同步** ——
+ * `__tests__/fake-bridge-protocol-version.test.ts` 钉着,漂了当场红。
+ *
+ * 光靠握手发现不了漂:判定只看 `major`,minor 停在几年前照样连得上,于是假桥会一直
+ * 冒充一个老桥、而新加的那几格永远走不到。
+ */
+export const PROTOCOL = { major: 1, minor: 4 } as const;
 
 /** 桥借给 BN 的一个 bot。能力表**键值都开放** —— 桥少报的按 `unknown` 算,由 BN 归一。 */
 export interface FakeBridgeBot {
@@ -38,7 +45,19 @@ export interface FakeBridgeBot {
 /** 一条入站消息。`scope` 只有两支 —— 频道消息由桥自己归到 `group`。 */
 export type FakeBridgeInbound =
 	| { scope: "private"; userId: string; text: string }
-	| { scope: "group"; groupId: string; userId: string; text: string };
+	| {
+			scope: "group";
+			groupId: string;
+			userId: string;
+			text: string;
+			/**
+			 * 分享卡里解出来的链接(协议 1.4,群那一支才有)。两格**都可选** —— 不给就不出现在
+			 * 帧里,那正是老桥(1.3)的样子;`miniAppCardLinks` 单放一格是因为链接解析刻意不读
+			 * 它(群里已经有一张能点开播放的卡了)。
+			 */
+			cardLinks?: string[];
+			miniAppCardLinks?: string[];
+	  };
 
 export interface FakeBridgeReceipt {
 	ok: boolean;
@@ -66,6 +85,7 @@ export interface FakeBridge {
 	 * 握手那一份是「还没探」的样子,这一份才带答案。
 	 */
 	pushBots(bots: FakeBridgeBot[]): void;
+	/** `message` **原样进帧** —— 1.4 那两格链接给了就带上,没给就不出现(与老桥同形)。 */
 	sendInbound(message: FakeBridgeInbound, botId?: string): void;
 	/** 握过手没有 —— 场景的「当前生效」看它。 */
 	connected(): boolean;

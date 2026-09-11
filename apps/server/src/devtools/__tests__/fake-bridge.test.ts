@@ -10,7 +10,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
-import { createFakeBridge, type FakeBridge } from "../fake-bridge.js";
+import { createFakeBridge, type FakeBridge, PROTOCOL } from "../fake-bridge.js";
 
 const TOKEN = "fake-bridge-token";
 
@@ -119,7 +119,9 @@ describe("握手", () => {
 
 		expect(frames[0]).toEqual({
 			type: "hello",
-			protocol: { major: 1, minor: 1 },
+			// 版本从假桥那一格来,这里不抄字面值 —— 抄了就是「每次改版本顺手改测试」,
+			// 而版本该跟桥的 contract.ts 对齐,那件事由 fake-bridge-protocol-version.test.ts 钉。
+			protocol: { ...PROTOCOL },
 			bridge: { kind: "koishi", name: "假桥" },
 			bots: [
 				{
@@ -215,6 +217,46 @@ describe("连着的时候", () => {
 			botId: "bot-1",
 			platform: "telegram",
 			message: { scope: "private", userId: "10086", text: "帮助" },
+		});
+	});
+
+	/**
+	 * 分享卡里的链接是 1.4 那两格(协议 §5.3)。假桥报不出它们的话,「群里转一张卡」那条
+	 * 路在真机之前一次都走不到 —— 而两格**分开**正是小程序卡不被回一张重复卡的原因。
+	 */
+	it("群那一支带上 1.4 的两格卡链接 → 原样进帧", async () => {
+		bridge = fake();
+		await bridge.ready();
+
+		bridge.sendInbound({
+			scope: "group",
+			groupId: "g1",
+			userId: "10086",
+			text: "",
+			cardLinks: ["https://b23.tv/aaa"],
+			miniAppCardLinks: ["https://b23.tv/bbb"],
+		});
+		expect((await nextFrame("inbound")).message).toEqual({
+			scope: "group",
+			groupId: "g1",
+			userId: "10086",
+			text: "",
+			cardLinks: ["https://b23.tv/aaa"],
+			miniAppCardLinks: ["https://b23.tv/bbb"],
+		});
+	});
+
+	/** 不给就**不出现在帧里** —— 那正是老桥(1.3)的样子,BN 那头得照收。 */
+	it("群那一支不给卡链接 → 帧里连这两格都没有", async () => {
+		bridge = fake();
+		await bridge.ready();
+
+		bridge.sendInbound({ scope: "group", groupId: "g1", userId: "10086", text: "看看 b23.tv/x" });
+		expect((await nextFrame("inbound")).message).toEqual({
+			scope: "group",
+			groupId: "g1",
+			userId: "10086",
+			text: "看看 b23.tv/x",
 		});
 	});
 
