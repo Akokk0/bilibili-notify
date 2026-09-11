@@ -155,6 +155,10 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			sections = opts.envelope.sections;
 		}
 
+		// 盘上那份连接表 —— 迁移的补位与 planImport 的「现状」都读它。取两次拿到的是两份
+		// 深拷贝,而中间没有任何写入:一次取完共用,省掉一次整表克隆。
+		const currentConnections = deps.configStore.getConnections();
+
 		// 形状迁移 —— 与启动路径同一个纯函数。备份的明文段是**原样带过来的**,没过任何
 		// schema,所以一份三个月前导出的备份和一份三个月前的磁盘状态是同一个形状问题。
 		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
@@ -165,7 +169,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				// 就整份落成 `generic`,落地时被 `assertTargetOwner` 判「平台对不上」,整份
 				// 恢复被拒(托管目标的归一化排在那道校验之后,救不回来)。备份没带的那一段,
 				// 拿**现在盘上那份**补位。
-				connections: sections.connections ?? deps.configStore.getConnections(),
+				connections: sections.connections ?? currentConnections,
 				targets: sections.targets,
 			});
 			sections = {
@@ -178,7 +182,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const current = {
 			globals: deps.configStore.getGlobals(),
 			subscriptions: deps.configStore.getSubscriptions(),
-			connections: deps.configStore.getConnections(),
+			connections: currentConnections,
 			targets: deps.configStore.getTargets(),
 		};
 		const plan = planImport(current, sections, opts.mode);
