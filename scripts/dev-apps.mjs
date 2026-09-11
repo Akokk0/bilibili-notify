@@ -97,6 +97,13 @@ export function buildWindowsTreeKillArgs(pid) {
 	return ["taskkill", ["/pid", String(pid), "/T", "/F"]];
 }
 
+/**
+ * 轮询到后端可连接为止。
+ *
+ * 🔴 `signal` 是**停机口**:后端起步的那 20 秒里按 Ctrl-C,子进程收到信号就退了,而这个
+ * 轮询还在自己的 setTimeout 上睡着 —— runner 早已 resolve,node 的事件循环却被那串定时器
+ * 吊着,终端要一直挂到 deadline 才回来。所以每一轮开头、以及睡觉那一下,都要认这个信号。
+ */
 export async function waitForHttpReachable(
 	url,
 	{
@@ -104,18 +111,22 @@ export async function waitForHttpReachable(
 		intervalMs = backendReadyIntervalMs,
 		fetchImpl = globalThis.fetch,
 		sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+		signal,
 	} = {},
 ) {
 	if (typeof fetchImpl !== "function") throw new Error("global fetch is not available");
 	const deadline = Date.now() + timeoutMs;
 	let lastError;
 	while (Date.now() <= deadline) {
+		if (signal?.aborted) throw new Error(`停止等待 ${url}(收到停机信号)`);
 		try {
 			const controller = new AbortController();
 			const timer = setTimeout(() => controller.abort(), Math.min(intervalMs, 1_000));
 			timer.unref?.();
 			try {
-				await fetchImpl(url, { method: "GET", signal: controller.signal });
+				// 手里这一发也跟着停机信号走,不然最多还要等它自己那一秒。
+				const tries = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+				await fetchImpl(url, { method: "GET", signal: tries });
 			} finally {
 				clearTimeout(timer);
 			}
@@ -123,12 +134,25 @@ export async function waitForHttpReachable(
 		} catch (err) {
 			lastError = err;
 			if (Date.now() >= deadline) break;
-			await sleep(intervalMs);
+			await raceAbort(sleep(intervalMs), signal);
 		}
 	}
 	const detail =
 		lastError instanceof Error ? `: ${lastError.message}` : lastError ? `: ${lastError}` : "";
 	throw new Error(`timed out waiting for ${url}${detail}`);
+}
+
+/** 等 `promise`,但停机信号一来就不等了(下一轮开头会把这件事变成一次 throw)。 */
+function raceAbort(promise, signal) {
+	if (!signal || signal.aborted) return promise;
+	let onAbort;
+	const aborted = new Promise((resolveAbort) => {
+		onAbort = () => resolveAbort();
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+	return Promise.race([promise, aborted]).finally(() =>
+		signal.removeEventListener("abort", onAbort),
+	);
 }
 
 export async function runDevApps({
@@ -148,6 +172,8 @@ export async function runDevApps({
 } = {}) {
 	const specs = createDevProcessSpecs(root);
 	const children = [];
+	/** 停机信号 —— 起步那段等后端的轮询靠它当场收手,见 `waitForHttpReachable`。 */
+	const stopProbe = new AbortController();
 	let intentionalStop = false;
 	let requestedExitCode = 0;
 	let settled = 0;
@@ -194,6 +220,8 @@ export async function runDevApps({
 		const stopAll = (reason, exitCode, signal = "SIGINT") => {
 			if (!intentionalStop) log(`[dev:apps] ${reason}; stopping dev servers…`);
 			intentionalStop = true;
+			// 还在等后端的话,当场把轮询叫停:不然它的定时器会把进程吊到 deadline。
+			stopProbe.abort();
 			requestedExitCode = exitCode;
 			for (const { child } of children) sendSignal(child, signal, processPlatform);
 			if (!forceTimer) {
@@ -252,6 +280,7 @@ export async function runDevApps({
 					await waitForBackendReady(readyUrl, {
 						timeoutMs: readyTimeoutMs,
 						intervalMs: readyIntervalMs,
+						signal: stopProbe.signal,
 					});
 					if (!intentionalStop) log("[dev:apps] backend ready; starting web dev server…");
 				} catch (err) {

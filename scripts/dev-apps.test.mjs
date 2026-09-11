@@ -123,6 +123,8 @@ describe("dev-apps supervisor", () => {
 		expect(waitForBackendReady).toHaveBeenCalledWith("http://127.0.0.1:8787/api/health", {
 			timeoutMs: 20_000,
 			intervalMs: 200,
+			// 停机信号:起步那 20 秒里按 Ctrl-C,轮询要当场收手。
+			signal: expect.any(AbortSignal),
 		});
 		markReady();
 		await new Promise((r) => setImmediate(r));
@@ -238,6 +240,61 @@ describe("dev-apps supervisor", () => {
 
 		await expect(run).resolves.toBe(7);
 		expect(children[1].signals).toEqual(["SIGINT"]);
+	});
+
+	/**
+	 * 🔴 **探活要能被叫停。**
+	 *
+	 * 后端起步的 20 秒里按 Ctrl-C:子进程收到信号退了,而这个轮询还在自己的 setTimeout 上
+	 * 睡着 —— runner 早就 resolve 了,node 的事件循环却被那串定时器吊着,终端要一直挂到
+	 * 探活的 deadline 才回来。
+	 */
+	it("探活收到停机信号 → 当场收手,不等到 deadline", async () => {
+		const controller = new AbortController();
+		const fetchImpl = vi.fn(async () => {
+			throw new Error("ECONNREFUSED");
+		});
+		// 第一轮还没连上,睡的那一下里主人按了 Ctrl-C。
+		const sleep = vi.fn(async () => controller.abort());
+
+		await expect(
+			waitForHttpReachable("http://127.0.0.1:8787/api/health", {
+				fetchImpl,
+				sleep,
+				intervalMs: 5,
+				// 生产是 20 秒;这里短一点,回归时这条不至于自己先卡 20 秒再红。
+				timeoutMs: 1_000,
+				signal: controller.signal,
+			}),
+		).rejects.toThrow(/停/);
+		// 没有第二次重试 —— 没这条的话它会一路重试到 deadline。
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	/**
+	 * 🔴 这条钉的是**接线**:上面那条证明探活认停机信号,但证明不了 runner 真的把信号递了
+	 * 进去、并且在停机时真的拉了它。剪断这一头,两个零件各自的测试照样全绿。
+	 */
+	it("SIGINT 时把停机信号递给探活", async () => {
+		const { spawnProcess } = createFakeSpawn();
+		let probeOptions;
+		const run = runDevApps({
+			root: "/repo",
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 10,
+			// 永远不 resolve —— 模拟「后端还没起来」那 20 秒。
+			waitForBackendReady: (_url, options) => {
+				probeOptions = options;
+				return new Promise(() => {});
+			},
+		});
+
+		expect(probeOptions?.signal?.aborted).toBe(false);
+		process.emit("SIGINT");
+		expect(probeOptions?.signal?.aborted).toBe(true);
+		await expect(run).resolves.toBe(0);
 	});
 
 	it("waitForHttpReachable 在 HTTP 可达后返回", async () => {
