@@ -29,12 +29,6 @@ export interface WebhookAdapterOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-/**
- * 这个 adapter 驮的四个平台。它们共用一条 webhook 连法,差别只在**报文方言** ——
- * 所以是一个 adapter 的四个分支,不是四个 adapter。
- */
-type WebhookProvider = WebhookPlatform;
-
 interface WebhookHttpRequest {
 	url: string;
 	headers: Record<string, string>;
@@ -114,8 +108,14 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	};
 }
 
+/**
+ * 一次 webhook 投递的 URL / 头 / 体。
+ *
+ * 这个 adapter 驮的四个平台共用一条 webhook 连法,差别只在**报文方言** —— 所以是这一个
+ * 函数的四个分支,不是四个 adapter。
+ */
 function buildWebhookRequest(
-	provider: WebhookProvider,
+	provider: WebhookPlatform,
 	cfg: WebhookConnectionConfig,
 	target: PushTarget,
 	payload: NotificationPayload,
@@ -233,7 +233,7 @@ function signFeishu(
 }
 
 function parseBusinessResponse(
-	provider: Exclude<WebhookProvider, "generic">,
+	provider: Exclude<WebhookPlatform, "generic">,
 	text: string,
 ): string | null {
 	let body: unknown;
@@ -290,7 +290,7 @@ function codeLabel(value: unknown): string | null {
 	return null;
 }
 
-function providerLabel(provider: Exclude<WebhookProvider, "generic">): string {
+function providerLabel(provider: Exclude<WebhookPlatform, "generic">): string {
 	switch (provider) {
 		case "dingtalk":
 			return "DingTalk";

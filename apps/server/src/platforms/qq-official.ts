@@ -2,6 +2,7 @@ import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	DeliveryResult,
+	DirectConnection,
 	Disposable,
 	InboundGroupMessage,
 	InboundMeta,
@@ -1025,6 +1026,12 @@ function isConnectable(cfg: QQOfficialConnectionConfig): boolean {
 }
 
 /**
+ * 这个 adapter 认的那一档连接 —— `isConnectionOn(c, "qq-official")` 收窄之后的形状,
+ * `config` 跟着窄。内部那些 helper 一律收它:「这是条官机连接」只在几个入口各判一次。
+ */
+type QQOfficialConnection = Extract<DirectConnection, { platform: "qq-official" }>;
+
+/**
  * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
  * 进 registry)+ 一个 token 管理器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
  * send 把 NotificationPayload 译成有序片段逐条 REST 发(频道 multipart file_image;群/C2C
@@ -1046,8 +1053,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 
-	function makeLive(connection: Connection): QQLive {
-		const cfg = connection.config as QQOfficialConnectionConfig;
+	function makeLive(connection: QQOfficialConnection): QQLive {
+		const cfg = connection.config;
 		const tm = makeTokenManager(cfg);
 		const base = qqApiBase(cfg.sandbox);
 		const logReconnectsBox = { value: cfg.logReconnects };
@@ -1082,12 +1089,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 
 	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
-	function tokenManagerFor(connection: Connection): QQTokenManager {
+	function tokenManagerFor(connection: QQOfficialConnection): QQTokenManager {
 		const l = live.get(connection.id);
 		if (l) return l.tm;
 		let tm = tokenOnly.get(connection.id);
 		if (!tm) {
-			tm = makeTokenManager(connection.config as QQOfficialConnectionConfig);
+			tm = makeTokenManager(connection.config);
 			tokenOnly.set(connection.id, tm);
 		}
 		return tm;
@@ -1116,7 +1123,6 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		part: QQSendPart,
 	): Promise<{ status: number; body: unknown } | { err: string }> {
 		if (scope === "channel") {
-			const channelId = address;
 			if (part.kind === "text") {
 				return qqPostJson(base, headers, messagesPath, { content: part.text });
 			}
@@ -1126,11 +1132,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					image: part.url,
 				});
 			}
-			return qqPostChannelForm(base, headers, channelId, part.caption ?? " ", part.buffer);
+			return qqPostChannelForm(base, headers, address, part.caption ?? " ", part.buffer);
 		}
 		// group / private:文本直发;图片两步上传→media。
 		const gScope = scope === "group" ? "group" : "private";
-		const openid = address;
 		if (part.kind === "text") {
 			return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content: part.text }));
 		}
@@ -1138,7 +1143,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			part.kind === "image-buffer"
 				? buildQQFileUpload(part.buffer)
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
-		const up = await qqUploadMedia(base, headers, gScope, openid, upload);
+		const up = await qqUploadMedia(base, headers, gScope, address, upload);
 		if (!up.ok) return { err: up.err };
 		const content =
 			part.kind === "image-buffer" || part.kind === "image-url" ? part.caption : undefined;
@@ -1153,27 +1158,24 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				return false;
 			}
 			if (!connection.enabled || !target.enabled) return false;
-			return isConnectable(connection.config as QQOfficialConnectionConfig);
+			return isConnectable(connection.config);
 		},
 
 		reconcile(connections: readonly Connection[]): void {
 			if (disposed) return;
-			const desired = new Map<string, Connection>();
+			const desired = new Map<string, QQOfficialConnection>();
 			for (const a of connections) {
 				if (!isConnectionOn(a, "qq-official") || !a.enabled) continue;
 				// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
 				// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
 				// config 一变 reconcile 自然会把它接上。
-				if (!isConnectable(a.config as QQOfficialConnectionConfig)) continue;
+				if (!isConnectable(a.config)) continue;
 				desired.set(a.id, a);
 			}
 			// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
 			for (const [id, l] of live) {
 				const want = desired.get(id);
-				if (
-					!want ||
-					qqConnectionFingerprint(want.config as QQOfficialConnectionConfig) !== l.fingerprint
-				) {
+				if (!want || qqConnectionFingerprint(want.config) !== l.fingerprint) {
 					l.conn.close();
 					l.tm.dispose();
 					live.delete(id);
@@ -1189,8 +1191,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
 			for (const [id, l] of live) {
 				const want = desired.get(id);
-				if (want)
-					l.logReconnectsBox.value = (want.config as QQOfficialConnectionConfig).logReconnects;
+				if (want) l.logReconnectsBox.value = want.config.logReconnects;
 			}
 			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
 			// desired 的连接都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
@@ -1219,7 +1220,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// 造成"报错但其实能通"的假阴性;②读缓存布尔值不含任何网络往返,延迟恒为 0ms。
 			// 命中只读的 /gateway 端点(不发消息,符合"系统不要主动测试"发消息的既有约束),
 			// 换真实的可达性 + 延迟。
-			const cfg = connection.config as QQOfficialConnectionConfig;
+			const cfg = connection.config;
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
@@ -1265,7 +1266,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if ("err" in endpoint) return { ok: false, latencyMs: 0, err: endpoint.err };
 
 			const t0 = Date.now();
-			const cfg = connection.config as QQOfficialConnectionConfig;
+			const cfg = connection.config;
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
