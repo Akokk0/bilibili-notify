@@ -280,6 +280,17 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
+			// 🔴 **目标形态只有 `"session"` 那一档。** 契约里就是这么写的,但拓展是打成 JS 来的
+			// —— 类型一个字都拦不住它。放过去的症状不在这里:面板照 endpoint 那一族画,而主人
+			// 建目标时被 `config/store.ts` 的 `upsertTarget` 用一句「webhook target is managed by
+			// its connection」拒掉 —— 一句和拓展毫不相干的话。endpoint 目标是 webhook 连接的
+			// 派生物,拓展连接没有那条派生路(ADR-0012 决策 45:一条拓展连接就是一个借来的 bot)。
+			if (def.descriptor.targetKind !== "session") {
+				throw new Error(
+					`extension ${id}: descriptor.targetKind 只能是 "session"(收到 ${JSON.stringify(def.descriptor.targetKind)})` +
+						" —— 拓展连接是一个借来的 bot,它名下的推送目标都是会话形态;endpoint 形态的目标由 webhook 连接自动派生,拓展没有那条路",
+				);
+			}
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields, {

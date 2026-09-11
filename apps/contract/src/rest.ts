@@ -111,10 +111,13 @@ export interface ExtensionDTO {
  * 拓展**自己报**的那份面板元信息(短名 / 标识色 / 目标形态 / 会话种类…)。
  *
  * 就是 `PlatformDescriptor` 少掉 `connectors` 那一格 —— 「怎么连」在拓展这一支不存在
- * (ADR-0012 决策 27)。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
+ * (ADR-0012 决策 27)—— 而 `targetKind` 只剩 `"session"`(决策 46)。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
  * 副本会跟拓展自己报的悄悄漂开,而门禁一片绿。
  */
-export type ExtensionDescriptorDTO = Omit<PlatformDescriptor, "connectors">;
+export type ExtensionDescriptorDTO = Omit<PlatformDescriptor, "connectors" | "targetKind"> & {
+	/** 拓展这一支只有会话形态(ADR-0012 决策 46),与 `@bilibili-notify/extension` 的 `ExtensionDescriptor` 同形。 */
+	targetKind: "session";
+};
 
 /** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
 export interface ExtensionBotsResponse {
