@@ -67,7 +67,7 @@
 ## 后果
 
 - 协议契约住 `apps/contract`,于是那个包**同时驮着两条 wire**:server↔web 与 server↔桥插件。zod 校验是服务端的事,contract 只放纯类型与常量。
-- 桥连接**没有 `platform`** —— 它后面挂着哪些平台是握手时报的运行时知识。这条直接催生了 ADR-0011 里 `kind` 那根正交轴。
+- 桥连接**没有 `platform`** —— 它后面挂着哪些平台是握手时报的运行时知识。这条直接催生了 ADR-0011 里 `kind` 那根正交轴。(🔗 2026-09-11 ADR-0012 决策 45:「没有单一平台」的那个东西改叫**接入**、住桥自己的设置;**连接**变成一个 bot,有 `platform`。)
 - **能力那张两级表(连接 × 平台)粒度不够** —— 协议一开始就是 per-bot,而 BN 内部的 `connectionCapabilities(id)` 与契约的 `ConnectionCapabilitiesMap` 都是 per-connection。这一格**至今没扩**,现状是桥的 adapter **刻意不实现 `capabilities`**(跨 bot 合并出来的答案对谁都不对)。代价:桥后面的群进不了面板上「逐群例外」那张选择器。
 
 ### 插件那一侧

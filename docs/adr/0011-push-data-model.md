@@ -21,7 +21,8 @@
 1. **连接与目标各长出一根 `kind` 轴**,判别子从 `platform` 换成 `kind`:
    - `Connection`:`{kind:"direct", platform, connector, config}` | `{kind:"bridge", connector:"bridge", config:{token, bridgeKind}}`
    - `PushTarget`:`{kind:"session", platform, botId?, scope, address, parentAddress?}` | `{kind:"endpoint", platform, managedBy:"connection"}`
-2. 🔴 **桥那一支没有 `platform`**。不给它塞一个可选的 —— 那只会让全仓读点静默变 `undefined`;少那一格,读它的地方就会**编译不过**,而那份编译错清单正是「哪些地方假定了连接就是一个平台」。
+2. 🔴 ~~**桥那一支没有 `platform`**~~。不给它塞一个可选的 —— 那只会让全仓读点静默变 `undefined`;少那一格,读它的地方就会**编译不过**,而那份编译错清单正是「哪些地方假定了连接就是一个平台」。
+   🔗 **2026-09-11 被 ADR-0012 决策 45 推翻**:拓展连接改成「一个 bot」,**有** `platform`(开放词表);`PushTarget` 上的 `botId?` 随之拆掉。
 3. **两侧的词表开放度相反**:`connection.platform` 闭集(每一档都要配齐 config schema + adapter + 面板控件),**`target.platform` 开放**(桥驮来的枚举不了)。因此 `PushTargetPlatform` **必须拆成两个类型** —— 继续共用等于用一个类型把开、闭两套词表糊在一起。
 4. **每平台一套的 session 字段收成一格 `address`**(+ 可选 `parentAddress`),且**必填**(旧模型是 optional,那是个洞)。
 5. 出站 webhook 的 `provider` **升格成 platform**:`feishu` / `dingtalk` / `wecom` / `generic`(generic 是承认的疤,面板显示「未指明的 HTTP 端点」)。
