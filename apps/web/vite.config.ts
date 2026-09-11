@@ -49,7 +49,9 @@ export default defineConfig({
 			// 地址算成 `ws://<当前页面 host>/ext/<id>`(生产同源,算得对),主人照抄下来会打到
 			// Vite 自己身上,只得到一句「WebSocket was closed before the connection was
 			// established」。`ws: true` 一条同时管那条长连接与取图口那些普通 HTTP。
-			"/ext": { target: "http://127.0.0.1:8787", ws: true },
+			// 🔴 写成正则、带上斜杠:裸的 `"/ext"` 是前缀匹配,会把 SPA 自己的 `/extensions` 页也
+			// 转给 server —— 停在拓展页时一次整页重载就是一句 `{"error":"not_found"}`。
+			"^/ext/": { target: "http://127.0.0.1:8787", ws: true },
 		},
 	},
 });

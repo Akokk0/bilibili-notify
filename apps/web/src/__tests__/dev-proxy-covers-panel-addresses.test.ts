@@ -23,8 +23,15 @@ function proxyTable(): Record<string, unknown> {
 
 describe("开发代理", () => {
 	it("拓展挂载点要转过去,而且要开 ws —— 桥那条长连接走的就是它", () => {
-		const entry = proxyTable()[EXTENSION_MOUNT_PREFIX] as { target?: string; ws?: boolean };
-		expect(entry, `代理表里没有 ${EXTENSION_MOUNT_PREFIX}`).toBeTruthy();
+		// 键是正则(`^/ext/`)而不是裸前缀:裸前缀会把 SPA 的 `/extensions` 页也吞掉(见 vite-proxy.test)。
+		// 所以按「能不能匹配到桥的地址」找那一条,不按字面键找。
+		const table = proxyTable();
+		const address = `${EXTENSION_MOUNT_PREFIX}/bridge`;
+		const key = Object.keys(table).find((k) =>
+			k.startsWith("^") ? new RegExp(k).test(address) : address.startsWith(k),
+		);
+		expect(key, `代理表里没有一条转 ${address}`).toBeTruthy();
+		const entry = table[key as string] as { target?: string; ws?: boolean };
 		expect(entry.ws).toBe(true);
 		// 取图口(`/ext/<id>/blob/<id>`)是普通 HTTP,与 WS 同一个前缀、同一条代理。
 		expect(entry.target).toContain("8787");
