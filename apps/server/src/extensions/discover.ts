@@ -40,6 +40,18 @@ export const EXTENSION_MANIFEST_FILE = "extension.json";
 export const EXTENSION_ENTRY_FILE = "index.mjs";
 
 /**
+ * 拓展**给人看的**那两份,都是可选的。
+ *
+ * 它们和上面两个的区别是**没有任何代码路径会碰它们** —— 装载器不读、`import` 不到,
+ * 只有面板拿去渲染。所以它们进白名单不等于放宽了「装载目录里能跑什么」。
+ *
+ * 名字固定、不进清单:清单里声明「我有 README」而磁盘上没有,就凭空多出一种要处理的态,
+ * 而这两个名字本来就是所有人都在用的那两个。
+ */
+export const EXTENSION_README_FILE = "README.md";
+export const EXTENSION_CHANGELOG_FILE = "CHANGELOG.md";
+
+/**
  * 看完一个拓展目录之后的结论 —— **在 import 任何一行拓展代码之前**就能得出。
  *
  * `id` 一律取**目录名**,不取清单里那一格:装载目录是 `<根>/<id>/`、挂载点是

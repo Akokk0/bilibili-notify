@@ -21,7 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
-import { strToU8, zipSync } from "fflate";
+import { strFromU8, strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { installExtensionPackage, openExtensionPackage } from "../install.js";
 
@@ -118,6 +118,28 @@ describe("拆包", () => {
 		expect(opened.errors.join()).toContain("sneaky.mjs");
 	});
 
+	/**
+	 * 🔴 文档进白名单、`sneaky.mjs` 照旧拒 —— 两条并存才是这道闸的意思:放行的判据不是
+	 * 「看着无害」,而是**它会不会被 import**。README / CHANGELOG 是给人看的,落进装载目录
+	 * 也没有任何一条代码路径会碰它们;而多一个 `.mjs` 就是多一条我们没看过的代码路径。
+	 *
+	 * 装完能在面板里读到它俩,靠的就是这两份跟着包进装载目录 —— 拿不到就只能去仓库翻,
+	 * 而第三方拓展的仓库在哪、还在不在,我们都不知道。
+	 */
+	it("带 README.md / CHANGELOG.md → 收下,两份原样交出来", () => {
+		const opened = openExtensionPackage(
+			pack({
+				...GOOD,
+				"README.md": "# 桥接\n\n借 koishi 的 bot。",
+				"CHANGELOG.md": "## [0.0.1]",
+			}),
+		);
+		expect(opened.ok).toBe(true);
+		if (!opened.ok) return;
+		expect(strFromU8(opened.pkg.docs.readme as Uint8Array)).toContain("借 koishi 的 bot");
+		expect(strFromU8(opened.pkg.docs.changelog as Uint8Array)).toContain("[0.0.1]");
+	});
+
 	it("缺入口 / 缺清单 → 各说各的", () => {
 		const noCode = openExtensionPackage(pack({ "extension.json": manifest() }));
 		expect(noCode.ok).toBe(false);
@@ -199,6 +221,34 @@ describe("落盘", () => {
 		if (!opened.ok) throw new Error(opened.errors.join());
 		return opened;
 	}
+
+	async function openWithDocs(): Promise<
+		Extract<ReturnType<typeof openExtensionPackage>, { ok: true }>
+	> {
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "README.md": "# 桥接", "CHANGELOG.md": "## [1.0.0]" }),
+		);
+		if (!opened.ok) throw new Error(opened.errors.join());
+		return opened;
+	}
+
+	/**
+	 * 文档得**跟着包落盘** —— 面板读的是装载目录里那一份。不落盘的话装完就没了,
+	 * 而第三方拓展的仓库在哪、还在不在,我们一概不知,没有第二个地方能补。
+	 */
+	it("包里带文档 → 两份跟着落进装载目录", async () => {
+		const { pkg } = await openWithDocs();
+		await installExtensionPackage({ root, pkg });
+		expect(await readFile(join(root, "bridge", "README.md"), "utf8")).toContain("桥接");
+		expect(await readFile(join(root, "bridge", "CHANGELOG.md"), "utf8")).toContain("[1.0.0]");
+	});
+
+	/** 没写文档不是装不了的理由,更不该在目录里留两个空文件。 */
+	it("包里没带文档 → 目录里就没有这两个文件", async () => {
+		const { pkg } = await open();
+		await installExtensionPackage({ root, pkg });
+		await expect(readFile(join(root, "bridge", "README.md"), "utf8")).rejects.toThrow();
+	});
 
 	it("新装 → 目录长在装载根里,两个文件都在", async () => {
 		const { pkg } = await open();

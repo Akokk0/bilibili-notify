@@ -22,7 +22,12 @@ import {
 } from "@bilibili-notify/internal";
 import { strFromU8, unzipSync } from "fflate";
 import { isJunkZipEntry } from "../zip-junk.js";
-import { EXTENSION_ENTRY_FILE, EXTENSION_MANIFEST_FILE } from "./discover.js";
+import {
+	EXTENSION_CHANGELOG_FILE,
+	EXTENSION_ENTRY_FILE,
+	EXTENSION_MANIFEST_FILE,
+	EXTENSION_README_FILE,
+} from "./discover.js";
 
 /** 清单顶天几百字节,给到 512KB 是留给 icon 那段 SVG(它自己的上限是 64KB)。 */
 const MAX_MANIFEST_BYTES = 512 * 1024;
@@ -38,7 +43,9 @@ const MAX_PACKAGE_FILES = 64;
  * 🔴 光有单文件那条拦不住:白名单是**解压之后**才对的,那会儿 64 个各 8MB 的条目已经
  * 全解进内存了(镜像的堆只有 512MB)。皮肤包那头同一个位置有同一道闸,理由也一样。
  */
-const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES;
+/** 一份文档的上限。README 写成长篇也到不了这儿,而它是要整份读进内存渲染的。 */
+const MAX_DOC_BYTES = 512 * 1024;
+const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES + 2 * MAX_DOC_BYTES;
 
 export interface OpenedExtensionPackage {
 	/** 装到哪个目录名下 —— **清单说了算**,不看 zip 里的路径。 */
@@ -47,6 +54,8 @@ export interface OpenedExtensionPackage {
 	/** 清单原文。落盘写回去的是**这一份字节**,不是重新序列化的(键序会变)。 */
 	manifestBytes: Uint8Array;
 	entry: Uint8Array;
+	/** 给人看的那两份,**两份都可选** —— 没写 README 不是装不了的理由。 */
+	docs: { readme?: Uint8Array; changelog?: Uint8Array };
 }
 
 export type OpenExtensionPackageResult =
@@ -113,6 +122,7 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	const errors: string[] = [];
 	let manifestBytes: Uint8Array | undefined;
 	let entry: Uint8Array | undefined;
+	const docs: { readme?: Uint8Array; changelog?: Uint8Array } = {};
 	for (const [name, data] of Object.entries(entries)) {
 		const inner = name.startsWith(prefix) ? name.slice(prefix.length) : name;
 		if (inner === EXTENSION_MANIFEST_FILE) {
@@ -124,9 +134,18 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 					`${EXTENSION_ENTRY_FILE} 过大(上限 ${Math.round(MAX_CODE_BYTES / 1024 / 1024)}MB)`,
 				);
 			} else entry = data;
+		} else if (inner === EXTENSION_README_FILE || inner === EXTENSION_CHANGELOG_FILE) {
+			// 文档:收下,但**一样封顶**。没有代码路径会碰它们,面板却要整份读进来渲染。
+			if (data.byteLength > MAX_DOC_BYTES) {
+				errors.push(`${inner} 过大(上限 ${Math.round(MAX_DOC_BYTES / 1024)}KB)`);
+			} else if (inner === EXTENSION_README_FILE) docs.readme = data;
+			else docs.changelog = data;
 		} else {
 			// 白名单:落进装载目录的每一个文件都在一个会被 import 的目录里。
-			errors.push(`${name}:拓展包里只能有 ${EXTENSION_MANIFEST_FILE} 与 ${EXTENSION_ENTRY_FILE}`);
+			errors.push(
+				`${name}:拓展包里只能有 ${EXTENSION_MANIFEST_FILE}、${EXTENSION_ENTRY_FILE}` +
+					`,外加可选的 ${EXTENSION_README_FILE} 与 ${EXTENSION_CHANGELOG_FILE}`,
+			);
 		}
 	}
 	if (!manifestBytes && errors.length === 0) errors.push(`包里少了 ${EXTENSION_MANIFEST_FILE}`);
@@ -164,7 +183,7 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 
 	return {
 		ok: true,
-		pkg: { id: parsed.data.id, manifest: parsed.data, manifestBytes, entry },
+		pkg: { id: parsed.data.id, manifest: parsed.data, manifestBytes, entry, docs },
 	};
 }
 
@@ -261,6 +280,12 @@ async function installExtensionPackageUnlocked(
 	try {
 		await writeFile(join(staging, EXTENSION_MANIFEST_FILE), pkg.manifestBytes);
 		await writeFile(join(staging, EXTENSION_ENTRY_FILE), pkg.entry);
+		// 没带就**一个文件都不建** —— 空的 README.md 和没有 README 在面板上是两回事:
+		// 前者会画出一块空白,后者整块不画。
+		if (pkg.docs.readme) await writeFile(join(staging, EXTENSION_README_FILE), pkg.docs.readme);
+		if (pkg.docs.changelog) {
+			await writeFile(join(staging, EXTENSION_CHANGELOG_FILE), pkg.docs.changelog);
+		}
 		// rename 到一个已存在的目录在各平台上表现不一,一律先删。这一步之后到 rename 之间
 		// 断电会留下「没装上」—— 那是三种结局里最好说清的一种。
 		if (existing) await rm(at, { recursive: true, force: true });
