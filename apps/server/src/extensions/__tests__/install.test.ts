@@ -267,7 +267,9 @@ describe("落盘", () => {
 	it("包里没带文档 → 目录里就没有这两个文件", async () => {
 		const { pkg } = await open();
 		await installExtensionPackage({ root, pkg });
+		// 两个都要断 —— 只断 README 的话,把 CHANGELOG 改成无条件写空文件这条照样绿。
 		await expect(readFile(join(root, "bridge", "README.md"), "utf8")).rejects.toThrow();
+		await expect(readFile(join(root, "bridge", "CHANGELOG.md"), "utf8")).rejects.toThrow();
 	});
 
 	it("新装 → 目录长在装载根里,两个文件都在", async () => {

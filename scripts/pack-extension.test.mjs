@@ -45,9 +45,39 @@ describe("packExtension", () => {
 		if (!opened.ok) return;
 		expect(strFromU8(opened.pkg.docs.readme)).toContain("机器人框架桥接");
 		expect(strFromU8(opened.pkg.docs.changelog)).toContain("[0.0.2]");
-		// 带了文档,sha256 照样得可复现 —— 索引里钉的就是它。
-		expect(packExtension({ ...files, "README.md": strToU8("# 机器人框架桥接") }).sha256).toBe(
-			packExtension({ ...files, "README.md": strToU8("# 机器人框架桥接") }).sha256,
+	});
+
+	/**
+	 * 🔴 **同一进程里把同样的输入打两次,只证明了 `packExtension` 是个纯函数。**
+	 *
+	 * 索引里钉的 sha256 要在**别的机器、别的时刻、别的键序**下也对得上,而那三样这里一样
+	 * 都量不到:把固定时间戳换成 `new Date()`(DOS 时间 2 秒精度,同一次调用里当然相等),
+	 * 或者把文档的固定顺序换成「按调用方给的键序」,原先那条都照样绿。下面两条各钉一头。
+	 */
+	it("键序不影响字节 —— 调用方怎么摆都打出同一份包", () => {
+		const a = packExtension({
+			"README.md": strToU8("# 说明"),
+			"CHANGELOG.md": strToU8("## [0.0.2]"),
+			...files,
+		});
+		const b = packExtension({
+			...files,
+			"CHANGELOG.md": strToU8("## [0.0.2]"),
+			"README.md": strToU8("# 说明"),
+		});
+		expect(a.sha256).toBe(b.sha256);
+	});
+
+	/**
+	 * 时间戳钉死:摘要写成字面量,换成 `new Date()` 当场红。
+	 *
+	 * 拿字面量而不是现算 —— 现算等于拿实现复述实现。四个时区(UTC / 东八 / 西五 / +14)
+	 * 实跑过同一个值,`reproducible-zip.mjs` 的 `asLocalFields` 正是为此存在的。
+	 * 夹具内容变了这条也会红:那时候把新值填回来就是,别改成现算。
+	 */
+	it("同样的输入永远打出同样的字节", () => {
+		expect(packExtension(files).sha256).toBe(
+			"27e8fb908b65be4444514fe29a1f62a9c9cb880aba573d56d2358a87d2a736da",
 		);
 	});
 
