@@ -139,6 +139,17 @@ export interface ExtensionInstallResponse {
 	 * 要重启一次才会换成新的。全新装进来的是热的 —— `false`。
 	 */
 	needsRestart: boolean;
+	/**
+	 * 装完这一刻它的开关是开是关。
+	 *
+	 * **头一回装进来的一律是关的** —— `enabled` 缺失即关(`isExtensionEnabled` 只认
+	 * `=== true`),开关是用户按的,不该因为装了一下就自己开起来。重装一份从前开过的
+	 * 则仍是开的(配置里那一格不随目录删掉)。
+	 *
+	 * 装完那句话要照这一格说:一律说「已经在跑」的话,主人转头在卡片上看到「已停用」,
+	 * 两句话当场打架。
+	 */
+	enabled: boolean;
 	/** 需要重启时,这台机器上按下去回不回得来。判据见 ADR-0005 决策 22。 */
 	restart: RestartAbility;
 }

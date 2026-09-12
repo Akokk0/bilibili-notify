@@ -47,9 +47,11 @@ export function ExtensionInstallOutcome({
 	return (
 		<>
 			{done && !done.needsRestart ? (
-				<HintNote tone="success">
+				<HintNote tone={done.enabled ? "success" : "neutral"}>
 					<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
-					装好了,已经在跑 —— 开关在它自己那张卡上。
+					{done.enabled
+						? "装好了,已经在跑 —— 开关在它自己那张卡上。"
+						: "装好了,还关着 —— 到它那张卡上把开关拨开才会跑。"}
 				</HintNote>
 			) : null}
 
@@ -57,7 +59,7 @@ export function ExtensionInstallOutcome({
 				<HintNote tone="neutral" className="flex flex-wrap items-center gap-2">
 					<span>
 						<strong className="text-bn-text-secondary">{done.name}</strong> 换成了 {done.version}
-						,但它的旧代码已经在这个进程里跑着、换不掉 ——{" "}
+						,但这个进程早就认下了旧的那一份、换不掉 ——{" "}
 						<strong className="text-bn-text-secondary">重启一次</strong>才会用上新的。
 						{done.restart.can ? "" : ` ${whyNoButton(done.restart.reason)}`}
 					</span>

@@ -361,6 +361,26 @@ describe("POST /api/ext/install", () => {
 		expect(body.restart).toEqual({ can: false, reason: "source-run" });
 	});
 
+	/**
+	 * 🔴 **装这个动作不碰开关**:头一回装进来的一律是关着的(`enabled` 缺失即关)。
+	 * 面板那句「装完那句话」照这一格说 —— 一律说「已经在跑」的话,主人转头在卡片上
+	 * 看到「已停用」,两句话当场打架。
+	 */
+	it("头一回装进来 → 回答里的开关是关着的", async () => {
+		const body = (await (await upload(boot(), form(pack()))).json()) as ExtensionInstallResponse;
+
+		expect(body.enabled).toBe(false);
+	});
+
+	/** 重装一份从前开过的:配置里那一格不随目录删掉,它是真在跑,就得照说。 */
+	it("配置里本来就开着 → 回答里的开关是开着的", async () => {
+		const body = (await (
+			await upload(boot({ enabled: true }), form(pack()))
+		).json()) as ExtensionInstallResponse;
+
+		expect(body.enabled).toBe(true);
+	});
+
 	it("包不合规 → 400,拆包那几句原样送到面板上,而且一个字节都没落盘", async () => {
 		const res = await upload(boot(), form(new Blob([strToU8("这不是 zip")])));
 
@@ -437,6 +457,7 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 			name: "桥",
 			version: "0.0.2",
 			needsRestart: true,
+			enabled: false,
 			restart: { can: true, how: "container" },
 		});
 		expect(m.install).toHaveBeenCalledWith("official", "bridge");

@@ -38,6 +38,7 @@ const OK: ExtensionInstallResponse = {
 	name: "机器人框架桥接",
 	version: "1.1.0",
 	needsRestart: false,
+	enabled: false,
 	restart: { can: true, how: "container" },
 };
 
@@ -70,7 +71,7 @@ afterEach(() => {
 });
 
 describe("传包装拓展", () => {
-	it("挑一个 zip → 发上去,热装好了就说它已经在跑,不提重启", async () => {
+	it("挑一个 zip → 发上去,包确实交上去了,不提重启", async () => {
 		vi.mocked(api.upload).mockResolvedValue(OK);
 		const { container } = renderSlot();
 
@@ -80,8 +81,38 @@ describe("传包装拓展", () => {
 		const [path, form] = vi.mocked(api.upload).mock.calls[0] as [string, FormData];
 		expect(path).toBe("/api/ext/install");
 		expect((form.get("file") as File).name).toBe("bridge.zip");
-		expect(await screen.findByText(/已经在跑|装好了/)).toBeTruthy();
+		expect(await screen.findByText(/装好了/)).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /重启/ })).toBeNull();
+	});
+
+	/**
+	 * 🔴 **头一回装进来的拓展开关是关着的**(`enabled` 缺失即关,`isExtensionEnabled`
+	 * 只认 `=== true`),而这句话从前一律说「已经在跑」—— 主人转头在卡片上看到
+	 * 「已停用」,两句话直接打架。原先那条断言写成 `/已经在跑|装好了/`,两种说法
+	 * 都能过,所以它从来不会红。
+	 */
+	it("头一回装进来(开关还关着)→ 不许说在跑,要指路去拨开关", async () => {
+		vi.mocked(api.upload).mockResolvedValue(OK);
+		const { container } = renderSlot();
+
+		await pick(container);
+
+		const note = await screen.findByText(/装好了/);
+		expect(note.textContent).toMatch(/还关着/);
+		expect(note.textContent).toMatch(/拨开/);
+		expect(note.textContent).not.toMatch(/已经在跑/);
+	});
+
+	/** 重装一份从前开过的(配置里 `enabled` 还留着)→ 它是真在跑,那就照说。 */
+	it("装完开关就是开的 → 说它已经在跑", async () => {
+		vi.mocked(api.upload).mockResolvedValue({ ...OK, enabled: true });
+		const { container } = renderSlot();
+
+		await pick(container);
+
+		const note = await screen.findByText(/装好了/);
+		expect(note.textContent).toMatch(/已经在跑/);
+		expect(note.textContent).not.toMatch(/还关着/);
 	});
 
 	it("盖掉一份已经装着的 → 说得清「得重启一次」,并就地给那一颗按钮", async () => {
