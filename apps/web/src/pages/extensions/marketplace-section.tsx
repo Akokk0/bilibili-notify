@@ -138,8 +138,14 @@ function EntryAction({
 	switch (entry.state) {
 		case "installable":
 			return (
-				<Btn variant="primary" size="sm" disabled={busy} onClick={onInstall}>
-					装
+				<Btn
+					variant="primary"
+					size="sm"
+					disabled={busy}
+					icon={<Icon.download size={13} />}
+					onClick={onInstall}
+				>
+					安装
 				</Btn>
 			);
 		case "updatable":

@@ -206,7 +206,7 @@ describe("拓展市场", () => {
 		renderSection();
 		const bridge = await cardOf("机器人框架桥接");
 		expect(within(bridge).getByText("官方")).toBeTruthy();
-		expect(within(bridge).getByRole("button", { name: "装" })).toBeTruthy();
+		expect(within(bridge).getByRole("button", { name: "安装" })).toBeTruthy();
 
 		const foo = await cardOf("Foo");
 		expect(within(foo).getByRole("button", { name: /更新到 v0\.2\.0/ })).toBeTruthy();
@@ -225,7 +225,7 @@ describe("拓展市场", () => {
 	it("官方条目一键装:POST source+id,装完那句话与传包装的同一段,列表与市场都重取", async () => {
 		renderSection();
 		await userEvent.click(
-			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "装" }),
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
 		);
 		await waitFor(() =>
 			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
@@ -238,13 +238,13 @@ describe("拓展市场", () => {
 
 	it("第三方条目装之前先确认 —— 取消就不发,确认才发", async () => {
 		renderSection();
-		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "装" }));
+		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "安装" }));
 		const confirm = await screen.findByRole("dialog");
 		expect(within(confirm).getByText(/在 BN 进程里跑代码/)).toBeTruthy();
 		await userEvent.click(within(confirm).getByRole("button", { name: "取消" }));
 		expect(apiPostMock).not.toHaveBeenCalled();
 
-		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "装" }));
+		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "安装" }));
 		await userEvent.click(await screen.findByRole("button", { name: /照样装/ }));
 		await waitFor(() =>
 			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
@@ -261,7 +261,7 @@ describe("拓展市场", () => {
 		);
 		renderSection();
 		await userEvent.click(
-			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "装" }),
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
 		);
 		expect(await screen.findByText(/校验和/)).toBeTruthy();
 	});
@@ -277,7 +277,7 @@ describe("拓展市场", () => {
 
 		renderSection();
 		await userEvent.click(
-			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "装" }),
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
 		);
 		expect(await screen.findByText(/装不了:下不动/)).toBeTruthy();
 		cleanup();
