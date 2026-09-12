@@ -11,8 +11,9 @@ import { DOC_MARKDOWN_COMPONENTS } from "./doc-markdown";
  *
  * 两条底线,各有一条测试盯着:
  *
- * - **链接只认 http / https**(`safeHref`,与 AI 聊天同一把尺子)。不安全的协议不给
- *   href、退成纯文字 —— 留一个没有 href 的 `<a>` 是个假的可点物件。
+ * - **链接只认绝对的 http / https**。协议白名单交给 `safeHref`(与 AI 聊天同一把尺子),
+ *   「必须是绝对地址」是这里额外加的 —— 相对路径脱离了源仓就拼不出来。两种都不给 href、
+ *   退成纯文字 —— 留一个没有 href 的 `<a>` 是个假的可点物件。
  * - **绝不引 `rehype-raw`**。裸 HTML 当字面文本。AstrBot 那头开了 `markdown-it` 的
  *   `html: true`,于是需要一长串 DOMPurify 白名单,即便如此也修过两个 README XSS。
  *   不开这扇门,攻击面小一个数量级;代价只是少数 README 的 `<details>` 折叠会退成纯文本。
@@ -32,11 +33,31 @@ function absoluteHttps(src: string | undefined): string | undefined {
 	}
 }
 
+/**
+ * 链接也要**绝对**地址,和图片一把尺子。
+ *
+ * `safeHref` **刻意**放行相对地址(AI 聊天那条路的前提是「它跳不出本站」),但这里的前提
+ * 相反:`[协议](./PROTOCOL.md)` 这种第三方 README 里最常见的写法,那个文件根本不在包里 ——
+ * 点下去跳到 `<面板>/extensions/PROTOCOL.md`,界面写着「没有装名叫 PROTOCOL.md 的拓展」,
+ * 看起来像 BN 自己坏了。`//evil.com` 那一档顺带也拦住了:长在面板里的钓鱼链接更容易被信。
+ *
+ * 拦在这一格而不去改那把共用的尺子 —— 变的是前提,不是尺子。协议白名单仍旧交给它。
+ */
+function absoluteSafeHref(href: string | undefined): string | undefined {
+	if (!href) return undefined;
+	try {
+		new URL(href); // 不给 base 解析不出来 = 相对 / 协议相对,这里拼不出地址
+	} catch {
+		return undefined;
+	}
+	return safeHref(href);
+}
+
 export const UNTRUSTED_MARKDOWN_COMPONENTS: Components = {
 	...DOC_MARKDOWN_COMPONENTS,
 
 	a: ({ href, children }) => {
-		const safe = safeHref(href);
+		const safe = absoluteSafeHref(href);
 		if (!safe) return <>{children}</>;
 		return (
 			<a

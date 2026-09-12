@@ -52,6 +52,25 @@ describe("不受信 markdown", () => {
 		expect(c.textContent).toContain("流程图");
 	});
 
+	/**
+	 * 🔴 **相对链接在这里是条活的死链,得和相对路径的图片一把尺子。**
+	 *
+	 * 第三方 README 里 `[协议](./PROTOCOL.md)` 是最常见的写法,而那个文件根本不在包里 ——
+	 * 面板上点下去会跳到 `<面板>/extensions/PROTOCOL.md`,界面写着「没有装名叫
+	 * PROTOCOL.md 的拓展」,看起来像 BN 自己坏了。`safeHref` 那把尺子**刻意**放行相对
+	 * 地址(AI 聊天那条路的前提是「跳不出本站」),所以拦在这一格,不去动那把共用的尺子。
+	 */
+	it("相对链接不给 href —— 那个文件不在包里,拼不出地址", () => {
+		const c = md("[看协议](./PROTOCOL.md)");
+		expect(c.textContent).toContain("看协议");
+		expect(c.querySelector("a")).toBeNull();
+	});
+
+	/** `//evil.com` 会被解析成 `https://evil.com`:长在面板里的钓鱼链接比外站的更容易被信。 */
+	it("协议相对的链接也不给 href", () => {
+		expect(md("[官方文档](//evil.example/x)").querySelector("a")).toBeNull();
+	});
+
 	/** 🔴 引了 `rehype-raw` 这条就会红 —— 那个插件会把下面这段变成真节点。 */
 	it("裸 HTML 当字面文本,不变成节点", () => {
 		const c = md('<img src=x onerror="alert(1)"> 后面还有字');
