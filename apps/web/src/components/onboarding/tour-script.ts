@@ -105,7 +105,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 抵达 /targets 即流转 —— 灯与文案永远同步
 			advanceOnRoute: true,
 			title: "先选一条接入路线",
-			body: "BN 有三类连接:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
+			body: "BN 的连接分几路:「QQ 官方机器人」「OneBot(NapCat 等协议端)」,以及飞书 / 钉钉 / 企业微信的群机器人和「未指明的 HTTP 端点」。能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
