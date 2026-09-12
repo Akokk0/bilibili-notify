@@ -39,7 +39,7 @@ export const MAX_EXTENSION_PACKAGE_BYTES = 10 * 1024 * 1024;
 /** 白名单之外的文件一律拒,所以这道只防「拿几万个空条目撑爆解压」。 */
 const MAX_PACKAGE_FILES = 64;
 /**
- * 解压后的**总量**上限 —— 合法的包就是「清单 + 一个入口」,两条单文件上限加起来正好是它。
+ * 解压后的**总量**上限 —— 合法的包就那四个名字,四条单文件上限加起来正好是它。
  *
  * 🔴 光有单文件那条拦不住:白名单是**解压之后**才对的,那会儿 64 个各 8MB 的条目已经
  * 全解进内存了(镜像的堆只有 512MB)。皮肤包那头同一个位置有同一道闸,理由也一样。
@@ -134,11 +134,15 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 				);
 			} else entry = data;
 		} else if (inner === EXTENSION_README_FILE || inner === EXTENSION_CHANGELOG_FILE) {
-			// 文档:收下,但**一样封顶**。没有代码路径会碰它们,面板却要整份读进来渲染。
-			if (data.byteLength > EXTENSION_DOC_MAX_BYTES) {
-				errors.push(`${inner} 过大(上限 ${Math.round(EXTENSION_DOC_MAX_BYTES / 1024)}KB)`);
-			} else if (inner === EXTENSION_README_FILE) docs.readme = data;
-			else docs.changelog = data;
+			/*
+			 * 文档一样封顶(面板要整份读进来渲染),但超了**只丢这一份,不拒整个包** ——
+			 * 它是纯装饰,没有任何代码路径会碰它;因为它太大就让一个功能完好的拓展装不上,
+			 * 代价完全不对等。读回那头(`docs.ts`)本来就把「超上限」当「没有」,两端对得上。
+			 */
+			if (data.byteLength <= EXTENSION_DOC_MAX_BYTES) {
+				if (inner === EXTENSION_README_FILE) docs.readme = data;
+				else docs.changelog = data;
+			}
 		} else {
 			// 白名单:落进装载目录的每一个文件都在一个会被 import 的目录里。
 			errors.push(

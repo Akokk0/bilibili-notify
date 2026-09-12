@@ -29,7 +29,7 @@ export function extensionsRootIn(dataDir: string): string {
 	return resolve(dataDir, "extensions");
 }
 
-/** 拓展包里那两个文件的名字 —— 拓展包 = 清单 + 代码(ADR-0012 决策 8)。 */
+/** 拓展包里**必需**那两个文件的名字 —— 清单 + 代码(ADR-0012 决策 8)。 */
 export const EXTENSION_MANIFEST_FILE = "extension.json";
 /**
  * 入口**只此一个**。
@@ -53,6 +53,9 @@ export const EXTENSION_CHANGELOG_FILE = "CHANGELOG.md";
 /**
  * 一份文档的上限。拆包那道闸与面板这头的读**共用它** —— 两处各写一个数的话,
  * 装得进去却读不出来(或者反过来)只会在真机上露馅。
+ *
+ * 打包那头(`scripts/pack-extension.mjs`)是 .mjs、进不来,只能另写一份同样的数;
+ * 那边的 `pack-extension.test.mjs` 拿两头对着钉,漂了就红。
  */
 export const EXTENSION_DOC_MAX_BYTES = 512 * 1024;
 

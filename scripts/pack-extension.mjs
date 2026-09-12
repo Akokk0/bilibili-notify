@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// 把一个拓展的构建产物打成**拓展包**(zip:extension.json + index.mjs,只此两个文件 ——
-// 装载那头的白名单就这两样,多放一个都会被拒),并算出索引要的 sha256 与大小。
+// 把一个拓展的构建产物打成**拓展包**(zip),并算出索引要的 sha256 与大小。
+//
+// 包里只有四个名字,与装载那头的白名单逐字一致:必需的 extension.json + index.mjs,
+// 外加可选的 README.md / CHANGELOG.md(判据是「**这个文件会不会被 import**」——
+// 文档不会,所以进得来)。这四个之外多放一个都会被拒。
 //
 // 用法:node scripts/pack-extension.mjs --id bridge --out dist/bridge-0.0.2.zip
 // stdout 打一行 JSON:{ "path", "sha256", "size", "version" }
@@ -18,6 +21,14 @@ export const EXTENSION_PACKAGE_FILES = ["extension.json", "index.mjs"];
  * 这边就得多打一个,否则官方拓展发出去了市场上却没有说明。
  */
 export const EXTENSION_PACKAGE_DOC_FILES = ["README.md", "CHANGELOG.md"];
+/**
+ * 一份文档的上限,**与装载那头(`apps/server/src/extensions/discover.ts`)是同一个数**。
+ *
+ * 🔴 这道闸必须在**打包**这头,光靠拆包那头拦不住要命的那条路:release 是不可变的,
+ * 一旦带着超大文档发出去、sha256 进了签名索引,此后每个用户点安装都得到「包拆不开」,
+ * 只能升版号重发。两头各写一份数会漂,所以 `pack-extension.test.mjs` 拿它们对着钉。
+ */
+export const EXTENSION_DOC_MAX_BYTES = 512 * 1024;
 
 /** @param {Record<string, Uint8Array>} files */
 export function packExtension(files) {
@@ -29,7 +40,14 @@ export function packExtension(files) {
 	}
 	// 可选的按**固定顺序**追加:条目顺序会进 zip 的字节,而 sha256 是索引里钉着的。
 	for (const name of EXTENSION_PACKAGE_DOC_FILES) {
-		if (files[name]) entries[name] = files[name];
+		const bytes = files[name];
+		if (!bytes) continue;
+		if (bytes.byteLength > EXTENSION_DOC_MAX_BYTES) {
+			throw new Error(
+				`${name} 太大了(${bytes.byteLength} 字节,上限 ${EXTENSION_DOC_MAX_BYTES})—— 装载那头会拒,发出去就是个谁都装不上的包`,
+			);
+		}
+		entries[name] = bytes;
 	}
 	// 固定时间戳:同样的产物打出同样的字节,sha256 才复现得了。
 	const zip = reproducibleZip(entries, EXTENSION_ZIP_EPOCH);

@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
 import { strFromU8, strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { EXTENSION_DOC_MAX_BYTES } from "../discover.js";
 import { installExtensionPackage, openExtensionPackage } from "../install.js";
 
 let root: string;
@@ -138,6 +139,25 @@ describe("拆包", () => {
 		if (!opened.ok) return;
 		expect(strFromU8(opened.pkg.docs.readme as Uint8Array)).toContain("借 koishi 的 bot");
 		expect(strFromU8(opened.pkg.docs.changelog as Uint8Array)).toContain("[0.0.1]");
+	});
+
+	/**
+	 * 🔴 **文档超上限不该把整个拓展挡在门外。** 它是一份纯装饰、没有任何代码路径会碰的
+	 * 文件 —— 因为它太大就让一个功能完好的拓展装不上,代价完全不对等,而且错误还会包成
+	 * 「包拆不开」。丢掉那一份、照常装,与读回那头(`docs.ts` 把「读不到 / 不是文件 /
+	 * 超上限」一律当「没有」)是同一个路子,两端对得上。
+	 *
+	 * 发布链上走不到这里 —— `scripts/pack-extension.mjs` 在打包那一步就拒了。
+	 */
+	it("文档超上限 → 丢掉那一份,拓展照样装得上", () => {
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "README.md": "x".repeat(EXTENSION_DOC_MAX_BYTES + 1) }),
+		);
+		expect(opened.ok).toBe(true);
+		if (!opened.ok) return;
+		expect(opened.pkg.docs.readme).toBeUndefined();
+		// 另一份没超,照样收 —— 别因为一份坏了就把两份都扔了。
+		expect(opened.pkg.manifest.id).toBe("bridge");
 	});
 
 	it("缺入口 / 缺清单 → 各说各的", () => {
