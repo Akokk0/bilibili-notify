@@ -46,7 +46,7 @@
 
 1. 改 `extensions/<id>/extension.json` 的 `version`,在 `extensions/<id>/CHANGELOG.md` 加 `## [x.y.z] — 日期` 一段,标题下第一段是概述(≤ 120 字,会进索引的 `notes`)。
 2. 提交、push 到 dev。
-3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(只装 `extension.json` + `index.mjs`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
+3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
 
    并索引这一步上钉着三条「只许往前走」,踩了当场红而不是发出一份坏索引:**只有滚动 release 还不存在**才算第一次发(5xx / 限流 / token 权限掉了一律红 —— 当成「还没有索引」会把整份索引连 `revoked` 名单一起覆盖成只含这一条);`issuedAt` 必须比当前那份大(不传就取 `max(现在, 当前 + 1)`,手传的不够大就红),误传毫秒(≥ `1e11`)拒 —— 发出去会把客户端永久钉死在这一份上;**同 id 同档**的版本不许降回去(重跑旧 tag),**等于**放行(重发同一版),预发布比同 id 的正式档还旧也拒(发进去也没人看得见)。并进一个正式版时,比它旧的预发布档会**一并删掉**;比它新的(下一轮的 alpha)留着。
 4. 手动 dry-run:Actions 里跑 `extension release`,填 id 与 version,`dry_run` 勾着 —— 构建、打包、签索引都跑,只不上传。
@@ -57,7 +57,7 @@
 
 作者要做的只有两件事,任何 https 静态托管都行(GitHub Release / Pages / 对象存储):
 
-1. 把拓展包(`vp pack` 出来的 `dist/`,打成只含 `extension.json` + `index.mjs` 的 zip)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。
+1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这四个名字之外的文件装载那头一律拒收。
 2. 放一份 `marketplace.json`(上面那个形状,`namespace` 写你的命名空间),`package.url` 指向那个 zip。
 
 用户在 BN 拓展页 →「源」→ 填 `marketplace.json` 的地址(名字不用起,索引自己带)。BN 不审核源里的东西,装之前会再提醒一次。同一个命名空间在一台 BN 上只能由一个源占;想冒充官方(列一个不带点的 id)整个源会被拒。
