@@ -2,6 +2,7 @@ import { memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { safeHref } from "../../utils/safe-href";
 
 /**
  * 女仆回复的 Markdown 渲染。
@@ -25,34 +26,6 @@ import remarkGfm from "remark-gfm";
  * 高亮要拖进 shiki / highlight.js 那一级的依赖,而女仆聊天里出现代码的概率极低。
  * 代码块只给等宽字体 + 底色 + 横向滚动。
  */
-
-/**
- * 放行的协议。其余(`javascript:` / `data:` / `vbscript:` / `mailto:` …)一律掐掉。
- *
- * 白名单而不是黑名单:黑名单要穷举所有能跑脚本的协议,漏一个就是个洞。这里连
- * `mailto:` 也不给 —— 这个场景下它几乎不会出现,而每多一个放行项都是一条要单独
- * 想清楚的路。
- */
-const SAFE_PROTOCOLS = ["http:", "https:"];
-
-/**
- * 只让安全协议落成可点的 href。
- *
- * 拿 `URL` 真解析而不是用正则筛前缀:`java\nscript:` 这类带控制字符 / 大小写混写 /
- * 百分号编码的花样能绕过朴素的字符串判断,而浏览器照样认。解析不出来的相对地址
- * 原样放行(它跳不出本站)。
- */
-export function safeHref(href: string | undefined): string | undefined {
-	if (!href) return undefined;
-	let url: URL;
-	try {
-		url = new URL(href, "https://placeholder.invalid/");
-	} catch {
-		return undefined; // 连解析都失败 → 不给它 href
-	}
-	if (!SAFE_PROTOCOLS.includes(url.protocol)) return undefined;
-	return href;
-}
 
 /**
  * 组件映射。字号 / 行高沿用消息流正文那一档(15px / 1.78),让 Markdown 块混在
@@ -174,3 +147,6 @@ export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string 
 		</ReactMarkdown>
 	);
 });
+
+/** 搬去了 `utils/safe-href` —— 这里转出去,免得动一圈调用方。 */
+export { safeHref };
