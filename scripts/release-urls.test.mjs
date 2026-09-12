@@ -71,6 +71,11 @@ describe("拼出来的地址", () => {
 describe("拓展包的名字只有一份声明", () => {
 	const shellVar = (name) => `$\{${name}}`;
 	const wf = () => read(".github/workflows/extension-release.yml");
+	const assertTag = () => read(".github/scripts/assert-extension-tag.sh");
+	// tag 的前缀(含斜杠)从声明里现切,别手写 —— 手写的字面量只会复述现状,
+	// `extensionTag()` 改成别的形状它照样绿。
+	const prefix = `${extensionTag("x", "1.0.0").split("/")[0]}/`;
+	const count = (haystack, needle) => haystack.split(needle).length - 1;
 
 	it("workflow 不再自己拼资产名与下载地址", () => {
 		expect(wf()).not.toContain("releases/download");
@@ -79,6 +84,24 @@ describe("拓展包的名字只有一份声明", () => {
 
 	it("`gh release create` 用的 tag 与声明的是同一个形状", () => {
 		expect(wf()).toContain(`tag="${extensionTag(shellVar("ID"), shellVar("VERSION"))}"`);
+		// 标题就是那个 tag 变量本身,别再拼第二遍。
+		expect(wf()).toContain('--title "$tag"');
+	});
+
+	// 下面三条盯的是「发不出去、但也不红」那一类:tag 形状改了却漏改某处判据,打了 tag
+	// 要么一条 run 都不起(触发器不认这个形状),要么 run 起来 job 全 skip(if 不认)——
+	// 发版的人看到的是「没动静」或「绿色带跳过」,两种都不是失败信号。
+	it("打这个形状的 tag 起得来这条流水线", () => {
+		expect(wf()).toContain(`- "${prefix}*@*"`);
+	});
+
+	it("流水线里认这个前缀的 ref 判断一处不少 —— 漏一处就有 job 静默跳过", () => {
+		expect(count(wf(), `'refs/tags/${prefix}'`)).toBe(3);
+	});
+
+	it("tag 守卫脚本认的形状与它剥掉的前缀也来自这份声明", () => {
+		expect(assertTag()).toContain(`${prefix}*@*`);
+		expect(assertTag()).toContain(`#${prefix}`);
 	});
 
 	it("打包脚本的默认输出名也来自这份声明", () => {
