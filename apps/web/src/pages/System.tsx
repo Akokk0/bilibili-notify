@@ -7,11 +7,13 @@ import {
 	Icon,
 	LoadingBlock,
 	ModalShell,
+	SectionNav,
 	StatusDot,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
 import { CommandsSettings } from "../components/commands-settings";
 import {
@@ -24,6 +26,7 @@ import {
 } from "../components/forms";
 import { LinkParsingSettings } from "../components/link-parsing-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
+import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
@@ -89,7 +92,34 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 	);
 }
 
-// ── System settings (app + master) ──────────────────────────────────────────
+/**
+ * 系统页的五格 —— 按「用户什么时候会来找它」分,不按代码结构分。
+ *
+ * 十节挤在一页太长(主人 2026-09-12 提的),走 `SectionNav`:xl+ 左竖栏、窄视口
+ * 顶部 chip 条,与 Rules / Targets / Ai / Cards 同一件组件。
+ */
+const SYSTEM_SECTIONS = [
+	{ id: "account", label: "账号", desc: "B 站登录 · 主人账号", glyph: Icon.user },
+	{ id: "runtime", label: "运行", desc: "后端参数 · 浏览器来源", glyph: Icon.sliders },
+	{ id: "messaging", label: "消息", desc: "私聊指令 · 链接解析", glyph: Icon.chat },
+	{ id: "appearance", label: "外观", desc: "皮肤", glyph: Icon.palette },
+	{ id: "maintenance", label: "维护", desc: "备份 · 更新 · 新手指引", glyph: Icon.wrench },
+] as const;
+
+type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"];
+
+/**
+ * 页外深链落在哪一格。
+ *
+ * `/system#update` 有三个来路(概览卡的 `Link` + 两个 toast 的「去更新」)。分格
+ * 之后光滚是不够的 —— 不先选中那一格,更新那节根本不在 DOM 里,`scrollIntoView`
+ * 滚个空。这张表就是那条接线,`System.rail.test.tsx` 钉着。
+ */
+const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
+	[UPDATE_SECTION_HASH]: "maintenance",
+};
+
+// ── System settings (app) ───────────────────────────────────────────────────
 
 /**
  * Per-module log overrides shown in 系统 Tab. image / ai already have their own
@@ -153,15 +183,12 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 
 function SystemSettingsSection({
 	draft,
-	targets,
 	onPatch,
 }: {
 	draft: GlobalConfig;
-	targets: PushTarget[];
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const app = draft.app;
-	const master = draft.master;
 
 	const setApp = <K extends keyof AppConfig>(key: K, v: AppConfig[K]) => {
 		onPatch({ app: { [key]: v } as Partial<AppConfig> });
@@ -174,20 +201,13 @@ function SystemSettingsSection({
 		onPatch({ app: { logLevels: { [id]: value === null ? null : NUM_TO_LOG[value] } } });
 	}
 
-	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
-	const masterStatus = !master.targetId
-		? "未配置 · 出错时不会私聊提醒"
-		: masterTarget
-			? `→ ${masterTarget.name}`
-			: "目标已删除,请重新选择";
-
 	return (
 		<GlassBox
 			title="Core · 应用"
-			subtitle="后端运行参数 + Master 主人账号 · globals.app / globals.master"
+			subtitle="后端运行参数 · globals.app"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.sliders size={14} />}
-			badge="app + master"
+			badge="app"
 		>
 			<Field code="app.dynamicCron">
 				<TInput value={app.dynamicCron} onChange={(v) => setApp("dynamicCron", v)} mono />
@@ -260,24 +280,52 @@ function SystemSettingsSection({
 					ariaLabel="内存自检打印"
 				/>
 			</Field>
+		</GlassBox>
+	);
+}
 
-			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-linear-to-br from-bn-pink/8 to-transparent p-3">
-				<div className="mb-1.5 flex items-center justify-between">
-					<span className="text-bn-sm font-bold text-bn-text-primary">主人账号 · master</span>
-					<span className="text-bn-2xs text-bn-text-tertiary">插件遇错误会私聊报告给这个目标</span>
-				</div>
-				<Field code="master.targetId">
-					<TSelect
-						value={master.targetId ?? ""}
-						onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
-						options={[
-							{ value: "", label: "未配置" },
-							...targets.map((t) => ({ value: t.id, label: t.name })),
-						]}
-					/>
-				</Field>
-				<div className="mt-1.5 text-bn-xs text-bn-text-secondary">{masterStatus}</div>
-			</div>
+/**
+ * 主人账号 —— 出错时私聊报告给谁。
+ *
+ * 从「Core · 应用」里拆出来单独一张卡:分区导航下它归**账号**那一格(用户找它时
+ * 想的是「谁收报错」,不是「后端跑什么参数」),而 app.* 归运行那一格。
+ */
+function MasterSection({
+	draft,
+	targets,
+	onPatch,
+}: {
+	draft: GlobalConfig;
+	targets: PushTarget[];
+	onPatch: (delta: GlobalConfigPatch) => void;
+}) {
+	const master = draft.master;
+	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
+	const masterStatus = !master.targetId
+		? "未配置 · 出错时不会私聊提醒"
+		: masterTarget
+			? `→ ${masterTarget.name}`
+			: "目标已删除,请重新选择";
+
+	return (
+		<GlassBox
+			title="主人账号 · master"
+			subtitle="插件遇错误会私聊报告给这个目标 · globals.master"
+			accent="var(--color-bn-pink)"
+			icon={<Icon.user size={14} />}
+			badge="master"
+		>
+			<Field code="master.targetId">
+				<TSelect
+					value={master.targetId ?? ""}
+					onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
+					options={[
+						{ value: "", label: "未配置" },
+						...targets.map((t) => ({ value: t.id, label: t.name })),
+					]}
+				/>
+			</Field>
+			<div className="mt-1.5 text-bn-xs text-bn-text-secondary">{masterStatus}</div>
 		</GlassBox>
 	);
 }
@@ -287,6 +335,19 @@ export default function System() {
 	const cookiesRefreshedAt = useAuthStore((s) => s.cookiesRefreshedAt);
 	const qc = useQueryClient();
 	const [actionError, setActionError] = useState<string | null>(null);
+
+	const location = useLocation();
+	const [section, setSection] = useState<SystemSectionId>(
+		() => HASH_SECTION[location.hash] ?? "account",
+	);
+	// 带 hash 进来时先落到对应那一格。`location.key` 一起听:已经停在系统页的人
+	// 再点一次「去更新」,hash 没变但那是一次新的导航,也该回到维护格 —— 同
+	// update-section 里那条滚动 effect 的理由。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 是刻意的重触发条件
+	useEffect(() => {
+		const wanted = HASH_SECTION[location.hash];
+		if (wanted) setSection(wanted);
+	}, [location.hash, location.key]);
 
 	const status: BiliLoginStatusValue = snapshot?.status ?? BiliLoginStatus.LOADING_LOGIN_INFO;
 	const msg = snapshot?.msg ?? "";
@@ -400,136 +461,172 @@ export default function System() {
 	});
 
 	return (
-		<div className="bn-anim-page-in space-y-5">
-			<GlassBox
-				title="账号 · auth"
-				subtitle="B 站账号登录 + Cookie / 会话 · 扫码后实时生效"
-				accent={STATUS_ACCENT[status]}
-				icon={<Icon.user size={14} />}
-				badge={STATUS_LABELS[status]}
-			>
-				{loggedIn ? (
-					<div className="flex items-center gap-3.5">
-						<Avatar
-							name={accountName ?? "B"}
-							color={STATUS_ACCENT[BiliLoginStatus.LOGGED_IN]}
-							size={48}
-							url={accountFace}
-						/>
-						<div className="min-w-0 flex-1">
-							<div className="truncate text-bn-md font-bold text-bn-text-primary">
-								{accountName ?? "已登录账号"}
-							</div>
-							<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-								业务核心可正常拉取动态 / 直播 / WBI 签名
-							</div>
-							{cookiesRefreshedAt ? (
-								<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">
-									最近 Cookie 刷新：{new Date(cookiesRefreshedAt).toLocaleString()}
+		// 两栏骨架一律走 `xl:grid-bn-rail`,别手写栏宽 —— 栏宽在 --bn-rail-width,皮肤能调。
+		<div className="bn-anim-page-in grid gap-4 xl:grid-bn-rail">
+			<SectionNav
+				heading="系统"
+				items={SYSTEM_SECTIONS.map(({ id, label, desc, glyph: Glyph }) => ({
+					id,
+					label,
+					desc,
+					icon: <Glyph size={14} />,
+				}))}
+				activeId={section}
+				onPick={(id) => setSection(id as SystemSectionId)}
+			/>
+
+			<div className="min-w-0 space-y-5">
+				{/* 配置读不下来是整页的事,不是某一格的事 —— 摆在格子外头,停在哪一格都看得见。 */}
+				{globalsQuery.error ? (
+					<ErrorNote>
+						拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
+					</ErrorNote>
+				) : !draft && globalsQuery.isLoading ? (
+					<LoadingBlock label="正在读取系统配置" />
+				) : null}
+
+				{section === "account" ? (
+					<>
+						<GlassBox
+							title="账号 · auth"
+							subtitle="B 站账号登录 + Cookie / 会话 · 扫码后实时生效"
+							accent={STATUS_ACCENT[status]}
+							icon={<Icon.user size={14} />}
+							badge={STATUS_LABELS[status]}
+						>
+							{loggedIn ? (
+								<div className="flex items-center gap-3.5">
+									<Avatar
+										name={accountName ?? "B"}
+										color={STATUS_ACCENT[BiliLoginStatus.LOGGED_IN]}
+										size={48}
+										url={accountFace}
+									/>
+									<div className="min-w-0 flex-1">
+										<div className="truncate text-bn-md font-bold text-bn-text-primary">
+											{accountName ?? "已登录账号"}
+										</div>
+										<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
+											业务核心可正常拉取动态 / 直播 / WBI 签名
+										</div>
+										{cookiesRefreshedAt ? (
+											<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">
+												最近 Cookie 刷新：{new Date(cookiesRefreshedAt).toLocaleString()}
+											</div>
+										) : null}
+									</div>
 								</div>
+							) : isQrPhase ? null : (
+								// 扫码阶段整块不渲染:状态与进度都在弹窗里(badge 也还挂着),这里再写
+								// 一遍纯属重复,还把卡片撑开一截。
+								<div className="text-bn-sm text-bn-text-secondary">
+									{status === BiliLoginStatus.NOT_LOGIN
+										? "尚未登录 B 站账号,点下方「发起扫码登录」开始。"
+										: STATUS_LABELS[status]}
+								</div>
+							)}
+
+							{extraMsg && !isQrPhase ? (
+								<div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div>
 							) : null}
-						</div>
-					</div>
-				) : isQrPhase ? null : (
-					// 扫码阶段整块不渲染:状态与进度都在弹窗里(badge 也还挂着),这里再写
-					// 一遍纯属重复,还把卡片撑开一截。
-					<div className="text-bn-sm text-bn-text-secondary">
-						{status === BiliLoginStatus.NOT_LOGIN
-							? "尚未登录 B 站账号,点下方「发起扫码登录」开始。"
-							: STATUS_LABELS[status]}
-					</div>
-				)}
 
-				{extraMsg && !isQrPhase ? (
-					<div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div>
+							{status === BiliLoginStatus.LOGIN_FAILED ? (
+								<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>
+							) : null}
+							{actionError ? (
+								<ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote>
+							) : null}
+
+							<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
+								<Btn
+									data-tour="bili-login"
+									variant="primary"
+									disabled={startQr.isPending || loggedIn}
+									onClick={() => {
+										if (isQrPhase) setQrDismissed(false);
+										else startQr.mutate();
+									}}
+								>
+									{startQr.isPending ? "处理中…" : isQrPhase ? "继续扫码" : "发起扫码登录"}
+								</Btn>
+								<Btn
+									variant="outline"
+									disabled={refresh.isPending || !loggedIn}
+									onClick={() => refresh.mutate()}
+								>
+									{refresh.isPending ? "处理中…" : "刷新 Cookie"}
+								</Btn>
+								<Btn
+									variant="danger"
+									disabled={logout.isPending || !loggedIn}
+									onClick={() => logout.mutate()}
+								>
+									{logout.isPending ? "处理中…" : "退出登录"}
+								</Btn>
+								<Btn variant="danger" disabled={reset.isPending} onClick={() => reset.mutate()}>
+									{reset.isPending ? "处理中…" : "重置密钥与 Cookie"}
+								</Btn>
+							</div>
+						</GlassBox>
+
+						{/* 二维码弹窗:不撑开页面布局;导览聚光灯经 bili-login-qr 锚点转移到这里 */}
+						{isQrPhase && !qrDismissed ? (
+							<ModalShell onCancel={() => setQrDismissed(true)} width={360} title="扫码登录 B 站">
+								<QrCard data={snapshot?.data} msg={msg} />
+							</ModalShell>
+						) : null}
+
+						{draft ? (
+							<MasterSection draft={draft} targets={targetsQuery.data ?? []} onPatch={patchDraft} />
+						) : null}
+
+						<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
+							<summary className="cursor-pointer font-medium text-bn-text-primary">
+								原始登录快照
+							</summary>
+							<pre className="mt-2 overflow-auto leading-relaxed">
+								{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}
+							</pre>
+						</details>
+					</>
 				) : null}
 
-				{status === BiliLoginStatus.LOGIN_FAILED ? (
-					<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>
+				{section === "runtime" ? (
+					<>
+						{draft ? <SystemSettingsSection draft={draft} onPatch={patchDraft} /> : null}
+
+						<BrowserSourceSettings />
+					</>
 				) : null}
-				{actionError ? <ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote> : null}
 
-				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
-					<Btn
-						data-tour="bili-login"
-						variant="primary"
-						disabled={startQr.isPending || loggedIn}
-						onClick={() => {
-							if (isQrPhase) setQrDismissed(false);
-							else startQr.mutate();
-						}}
-					>
-						{startQr.isPending ? "处理中…" : isQrPhase ? "继续扫码" : "发起扫码登录"}
-					</Btn>
-					<Btn
-						variant="outline"
-						disabled={refresh.isPending || !loggedIn}
-						onClick={() => refresh.mutate()}
-					>
-						{refresh.isPending ? "处理中…" : "刷新 Cookie"}
-					</Btn>
-					<Btn
-						variant="danger"
-						disabled={logout.isPending || !loggedIn}
-						onClick={() => logout.mutate()}
-					>
-						{logout.isPending ? "处理中…" : "退出登录"}
-					</Btn>
-					<Btn variant="danger" disabled={reset.isPending} onClick={() => reset.mutate()}>
-						{reset.isPending ? "处理中…" : "重置密钥与 Cookie"}
-					</Btn>
-				</div>
-			</GlassBox>
+				{section === "messaging" ? (
+					<>
+						{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
-			{/* 二维码弹窗:不撑开页面布局;导览聚光灯经 bili-login-qr 锚点转移到这里 */}
-			{isQrPhase && !qrDismissed ? (
-				<ModalShell onCancel={() => setQrDismissed(true)} width={360} title="扫码登录 B 站">
-					<QrCard data={snapshot?.data} msg={msg} />
-				</ModalShell>
-			) : null}
+						{draft ? (
+							<LinkParsingSettings
+								draft={draft}
+								onPatch={patchDraft}
+								targets={targetsQuery.data ?? []}
+								connections={connectionsQuery.data ?? []}
+								capabilities={capabilitiesQuery.data ?? {}}
+							/>
+						) : null}
+					</>
+				) : null}
 
-			{draft ? (
-				<SystemSettingsSection
-					draft={draft}
-					targets={targetsQuery.data ?? []}
-					onPatch={patchDraft}
-				/>
-			) : globalsQuery.isLoading ? (
-				<LoadingBlock label="正在读取系统配置" />
-			) : globalsQuery.error ? (
-				<ErrorNote>
-					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
-				</ErrorNote>
-			) : null}
+				{section === "appearance" ? <SkinSection /> : null}
 
-			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
+				{section === "maintenance" ? (
+					<>
+						<BackupSection />
 
-			{draft ? (
-				<LinkParsingSettings
-					draft={draft}
-					onPatch={patchDraft}
-					targets={targetsQuery.data ?? []}
-					connections={connectionsQuery.data ?? []}
-					capabilities={capabilitiesQuery.data ?? {}}
-				/>
-			) : null}
+						<UpdateSection />
 
-			<BrowserSourceSettings />
-
-			<SkinSection />
-
-			<BackupSection />
-
-			<UpdateSection />
-
-			<OnboardingReopenSection />
-
-			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
-				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>
-				<pre className="mt-2 overflow-auto leading-relaxed">
-					{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}
-				</pre>
-			</details>
+						<OnboardingReopenSection />
+					</>
+				) : null}
+			</div>
 		</div>
 	);
 }
