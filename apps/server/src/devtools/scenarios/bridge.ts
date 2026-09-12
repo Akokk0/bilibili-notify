@@ -243,7 +243,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			};
 		},
 		active() {
-			if (!live || !live.bridge.connected()) return null;
+			if (!live?.bridge.connected()) return null;
 			return {
 				scenarioId: "bridge.connect",
 				label: `假桥 → ${live.connectionName}(${live.bots.length} 个 bot)`,
@@ -264,7 +264,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			{ key: "text", label: "正文", kind: "text", default: "" },
 		],
 		run(params) {
-			if (!live || !live.bridge.connected()) {
+			if (!live?.bridge.connected()) {
 				throw new DevParamError("假桥还没连上 —— 先按「假装一条桥连上来」");
 			}
 			const master = deps.commands().master;
