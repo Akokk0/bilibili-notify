@@ -63,6 +63,31 @@ describe("装完那句话后面的文档入口", () => {
 		expect(screen.queryByRole("link")).toBeNull();
 	});
 
+	/**
+	 * 🔴 **这一条挡的是「读完更新日志回来,重启钮没了」。**
+	 *
+	 * 那句话整块住在调用方的一个局部 `useState` 里,路由一跳就卸载;而那颗重启钮
+	 * **只在这里、只在这一刻出现**(ADR-0005 决策 22),面板上没有第二个重启入口。
+	 * 同一块提示里挂一条会离开本页的链接,等于给了人一条把唯一出路点没的路 ——
+	 * 回来只能进容器手动重启,或者把包重传一遍。所以它必须另开一页。
+	 */
+	it("要重启时,文档链接另开一页 —— 别把唯一那颗重启钮点没了", () => {
+		show({ needsRestart: true, docs: { readme: true, changelog: true } });
+		expect(screen.getByRole("link", { name: /看看更新了什么/ }).getAttribute("target")).toBe(
+			"_blank",
+		);
+		expect(screen.getByRole("button", { name: "重启一次" })).toBeTruthy();
+	});
+
+	/** 主次不能颠倒:先看见要做的那件事,再看见可以顺便读的那份。 */
+	it("要重启时,重启钮排在文档链接前面", () => {
+		show({ needsRestart: true, docs: { readme: false, changelog: true } });
+		const btn = screen.getByRole("button", { name: "重启一次" });
+		const link = screen.getByRole("link", { name: /看看更新了什么/ });
+		// DOCUMENT_POSITION_FOLLOWING:link 排在 btn 之后。
+		expect(btn.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
 	it("包里两份都没有 → 一颗钮都不挂", () => {
 		show({ needsRestart: false, docs: { readme: false, changelog: false } });
 		expect(screen.queryByRole("link")).toBeNull();

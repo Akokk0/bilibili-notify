@@ -48,9 +48,17 @@ function docsLabel(done: ExtensionInstallResponse): string | null {
 function DocsLink({ done }: { done: ExtensionInstallResponse }) {
 	const label = docsLabel(done);
 	if (!label) return null;
+	/*
+	 * 🔴 **待重启那一档必须另开一页。** 这块提示整个住在调用方的一个局部 `useState` 里,
+	 * 路由一跳就卸载;而那颗重启钮**只在这里、只在这一刻出现**(ADR-0005 决策 22),面板上
+	 * 没有第二个重启入口。就地跳走再回来,人就只剩「进容器手动重启」或者「把包重传一遍」
+	 * 这两条路了。新装那一档没有待办事项,丢了也不可惜,就地跳更顺手。
+	 */
+	const keepThisPage = done.needsRestart;
 	return (
 		<Link
 			to={`/extensions/${done.id}`}
+			{...(keepThisPage ? { target: "_blank", rel: "noopener" } : {})}
 			className="shrink-0 font-bold text-bn-pink underline decoration-from-font underline-offset-2"
 		>
 			{label}
@@ -101,7 +109,6 @@ export function ExtensionInstallOutcome({
 						<strong className="text-bn-text-secondary">重启一次</strong>才会用上新的。
 						{done.restart.can ? "" : ` ${whyNoButton(done.restart.reason)}`}
 					</span>
-					<DocsLink done={done} />
 					{done.restart.can ? (
 						<Btn
 							variant="outline"
@@ -112,6 +119,8 @@ export function ExtensionInstallOutcome({
 							重启一次
 						</Btn>
 					) : null}
+					{/* 排在钮之后:先看见要做的那件事,再看见可以顺便读的那份。 */}
+					<DocsLink done={done} />
 				</HintNote>
 			) : null}
 
