@@ -1018,8 +1018,12 @@ class NodeConfigStore implements ConfigStore {
 			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`、目标没有 `kind`,schema 会当场
 			// 拒,开机就起不来。判据是数据形状不是版本号,且迁移幂等,所以「上次写到一半掉电」
 			// 重来一遍无害;两个分区一起判,只有都迁完才算新形状。
-			// 回退到旧载荷是安全的:这两层都是非 strict 的 z.object,旧 schema 会把不认识的键
-			// strip 掉照常加载;它写回去的没有新字段,下次再被这里迁一遍。
+			// 🔴 **回退到旧载荷不安全** —— strip 掉不认识的键并不会把**缺失的必填键**变出来。
+			// 迁移后的 targets 没有 v1 必需的 `adapterId` / `session`,0.10.x 读到直接抛
+			// `targets.json[N] failed schema validation`、起不来;而 webhook 目标的平台已经是
+			// feishu / dingtalk / wecom / generic,旧版词表里没有,会先被 `isKnownPlatform`
+			// **静默丢弃**。要回退得先把 `targets.json.bak` 覆盖回去(所以那份 .bak 不能省)。
+			// connections 那一侧确实安全:adapters.json 原地留着,旧版读的正是它。
 			const migrated = migrateConfigSections({ connections: connectionsRaw, targets: value });
 			if (legacyOnly || migrated.changed.connections || migrated.changed.targets) {
 				this.serviceCtx.logger.info(
