@@ -1,16 +1,16 @@
 # 机器人框架桥接
 
-把 **koishi / AstrBot 里已经配好的 bot 借给 bilibili-notify 用**。
+把 **koishi 里已经配好的 bot 借给 bilibili-notify 用**（AstrBot 那一档面板上选得到，但插件还在写）。
 
-BN 自己只认识 QQ 官方机器人、OneBot 和几种群机器人 webhook。Telegram、Discord、KOOK 这些平台，koishi 和 AstrBot 早就有人写好适配器了 —— 这个拓展不再各写一份，而是**把那些 bot 借过来当推送目标**。
+BN 自己只认识 QQ 官方机器人、OneBot 和几种群机器人 webhook。Telegram、Discord、KOOK 这些平台，koishi 早就有人写好适配器了 —— 这个拓展不再各写一份，而是**把那些 bot 借过来当推送目标**。
 
 借来的 bot 走的是和直连完全同一条路：推送照发，私聊指令、群里贴链接自动出卡也都照常。
 
 ## 怎么用
 
 1. **在这一页把开关拨开**（拓展装完默认是关着的）。
-2. **建一条「接入」** —— 填个名字、挑 koishi 还是 AstrBot，拿到一段 **BN 地址**和一条 **token**。
-3. **去那台 koishi / AstrBot 装插件**，把地址和 token 填进去。koishi 那侧的插件已发 npm：
+2. **建一条「接入」** —— 填个名字、挑框架种类，拿到一段 **BN 地址**和一条 **token**。**现在挑 koishi**：AstrBot 那一档也选得到，但那侧的插件还没写出来，选了只会拿到一段没处填的 token。
+3. **去那台 koishi 装插件**，把地址和 token 填进去。插件已发 npm：
 
    ```
    koishi-plugin-bilibili-notify-bridge
@@ -39,7 +39,7 @@ token 只在新建那一刻给全文，之后只显示头尾；忘了就重新�
 
 ## 写自己的桥
 
-线上协议写在 [`PROTOCOL.md`](./PROTOCOL.md)：帧、握手、close code、能力表，以及一份最小实现清单。BN 只认识「桥」这一档，桥后面挂着什么，是握手时你告诉它的。
+线上协议写在 [`PROTOCOL.md`](https://github.com/Akokk0/bilibili-notify/blob/main/extensions/bridge/PROTOCOL.md)：帧、握手、close code、能力表，以及一份最小实现清单。BN 只认识「桥」这一档，桥后面挂着什么，是握手时你告诉它的。
 
 ---
 

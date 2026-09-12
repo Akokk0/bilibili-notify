@@ -1,10 +1,8 @@
 # Changelog · 机器人框架桥接
 
-拓展 `bridge` 的版本历史。它随 `extension/bridge@<VERSION>` git tag 单独发布,与独立端本体
-的版本无关;发出去的包出现在拓展市场的官方索引里。
-
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/);每段标题下的第一段
-是**概述**,会被抽进索引的 `notes`,市场那张卡上念的就是这句(≤ 120 字)。
+[//]: # (⚠️ 下面三行是给维护者看的,写成 markdown 的「链接定义」所以渲染时什么都不出 —— 这份 CHANGELOG 会原样画进面板的「更新日志」卡,而那副渲染器不引 rehype-raw、把裸 HTML 当字面文本,HTML 注释会连着尖括号一起被用户看见。)
+[//]: # (拓展 bridge 的版本历史。它随 extension/bridge@<VERSION> git tag 单独发布,与独立端本体的版本无关;发出去的包出现在拓展市场的官方索引里。)
+[//]: # (格式参考 Keep a Changelog https://keepachangelog.com/zh-CN/1.1.0/ ;每段标题下的第一段是概述,会被抽进索引的 notes,市场那张卡上念的就是这句,上限 120 字。)
 
 ---
 
