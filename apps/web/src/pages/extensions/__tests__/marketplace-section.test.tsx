@@ -202,24 +202,34 @@ afterEach(() => {
 });
 
 describe("拓展市场", () => {
-	it("每种状态各画各的:装 / 更新 / 已装 / 别处装的 / 要升级 BN / 已撤回;官方与来源标清", async () => {
+	it("没装的各画各的:装 / 要升级 BN / 已撤回;官方与来源标清", async () => {
 		renderSection();
 		const bridge = await cardOf("机器人框架桥接");
 		expect(within(bridge).getByText("官方")).toBeTruthy();
 		expect(within(bridge).getByRole("button", { name: "安装" })).toBeTruthy();
 
-		const foo = await cardOf("Foo");
-		expect(within(foo).getByRole("button", { name: /更新到 v0\.2\.0/ })).toBeTruthy();
-		expect(within(foo).getByText(/已装 v0\.1\.0/)).toBeTruthy();
-
 		expect(within(await cardOf("Bar")).getByText(/先升级 BN/)).toBeTruthy();
 		expect(within(await cardOf("Bar")).queryByRole("button")).toBeNull();
-		expect(within(await cardOf("Baz")).getByText(/不是从这里装的/)).toBeTruthy();
 		expect(within(await cardOf("Qux")).getByText(/已被撤回/)).toBeTruthy();
 
 		const douyin = await cardOf("抖音订阅");
 		expect(within(douyin).getByText("来自 alice")).toBeTruthy();
 		expect(within(douyin).queryByText("官方")).toBeNull();
+	});
+
+	/**
+	 * 🔴 **装了的不在市场里露面**。它已经在上面那一排「已装」的卡里了,同一件东西画两遍
+	 * 会让人以为装了两份。更新也没丢:「有新版 vX」+「更新」钮长在已装那张卡上
+	 * (`Extensions.tsx`),数据同样来自这份索引。
+	 */
+	it.each([
+		["已装的", "Foo"],
+		["别处装的", "Baz"],
+	])("%s不出现在市场里", async (_label, name) => {
+		renderSection();
+		// 等市场画完再断言「没有」—— 没等的话空 DOM 也会让它过。
+		await cardOf("机器人框架桥接");
+		expect(screen.queryByText(name)).toBeNull();
 	});
 
 	it("官方条目一键装:POST source+id,装完那句话与传包装的同一段,列表与市场都重取", async () => {
@@ -271,7 +281,8 @@ describe("拓展市场", () => {
 	 * 一个**没装过**的拓展失败了,主人会去找一个根本不存在的旧版本;反过来一律说「装不了」,
 	 * 更新失败时又会让人以为已装的那份也没了。
 	 */
-	it("失败那句话跟着刚才那一下走:装说「装不了」,更新说「更新不了」", async () => {
+	/** 「更新不了」那一半搬去了 `Extensions.render.test.tsx` —— 更新钮现在只长在已装卡上。 */
+	it("装砸了说「装不了」", async () => {
 		const { ApiError } = await import("../../../services/api");
 		apiPostMock.mockRejectedValue(new ApiError(400, { errors: ["下不动"] }, "400"));
 
@@ -280,11 +291,6 @@ describe("拓展市场", () => {
 			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
 		);
 		expect(await screen.findByText(/装不了:下不动/)).toBeTruthy();
-		cleanup();
-
-		renderSection();
-		await userEvent.click(within(await cardOf("Foo")).getByRole("button", { name: /更新到/ }));
-		expect(await screen.findByText(/更新不了:下不动/)).toBeTruthy();
 	});
 
 	it("源拿不到 → 那句原因原样摆出来;没有官方源的构建说清楚、还能加源", async () => {

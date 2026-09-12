@@ -415,6 +415,41 @@ describe("已装卡片上的「有新版」", () => {
 	});
 
 	/**
+	 * 🔴 **失败那句话要跟着刚才那一下走**:更新砸了却被告知「装不了」,主人会去找一个他
+	 * 根本没装过的东西;反过来也一样。措辞由 `entry.state` 决定,而更新钮只长在已装卡上
+	 * —— 所以这条守卫住在这一页,不在市场那一节。
+	 */
+	it("更新砸了说「更新不了」,不是「装不了」", async () => {
+		apiPostMock.mockRejectedValue(new Error("下不动"));
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...MARKET,
+			sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
+			extensions: [
+				{
+					source: "official",
+					official: true,
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "",
+					version: "1.1.0",
+					apiVersion: 1,
+					prerelease: false,
+					size: 1,
+					installed: { version: "1.0.0", source: "official" },
+					state: "updatable",
+				},
+			],
+		});
+
+		await screen.findAllByText("机器人框架桥接");
+		fireEvent.click(
+			within(installedCardOf("机器人框架桥接")).getByRole("button", { name: /更新/ }),
+		);
+
+		expect(await screen.findByText(/更新不了:下不动/)).toBeTruthy();
+	});
+
+	/**
 	 * 🔴 **更新走的必须是与「装」同一条路。** 第三方条目装之前要先确认(它在 BN 进程里跑
 	 * 代码,BN 不担保),而更新钮此前直接 `install.mutate` —— 于是任何第三方源只要把版本号
 	 * 抬一格,主人在已装卡片上按一下就零确认装进了新代码。

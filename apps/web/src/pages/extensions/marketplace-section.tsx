@@ -23,7 +23,6 @@ import {
 	Icon,
 	IconButton,
 	LoadingBlock,
-	Pill,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -126,6 +125,19 @@ export function MarketplaceInstallConfirm({ installer }: { installer: Marketplac
 	);
 }
 
+/**
+ * 装了的不在市场里露面 —— 它已经在上面那一排卡里了,同一件东西同时摆在两处,看起来像装了两份
+ * (主人 2026-09-12 指出)。
+ *
+ * 🔴 **更新入口不在这儿丢**:「有新版 vX」+「更新」钮长在**已装那张卡**上(`Extensions.tsx`),
+ * 吃的同样是这份索引里 `updatable` 那一档。所以把可更新的也滤掉,并不会让人更新不了。
+ */
+const INSTALLED_STATES: ReadonlySet<MarketplaceEntryDTO["state"]> = new Set([
+	"installed",
+	"updatable",
+	"installed-elsewhere",
+]);
+
 function EntryAction({
 	entry,
 	busy,
@@ -148,29 +160,12 @@ function EntryAction({
 					安装
 				</Btn>
 			);
-		case "updatable":
-			return (
-				<>
-					<span className="text-bn-2xs text-bn-text-tertiary">
-						已装 v{entry.installed?.version}
-					</span>
-					<Btn variant="primary" size="sm" disabled={busy} onClick={onInstall}>
-						更新到 v{entry.version}
-					</Btn>
-				</>
-			);
+		// 这三档走不到这里 —— 已装的在上面被滤掉了(见 INSTALLED_STATES)。留着空分支是为了
+		// 让这个 switch 仍然穷尽:以后加新 state 时 TS 才拦得住漏画。
 		case "installed":
-			return (
-				<Pill subtle size="sm" color="var(--color-bn-success)">
-					已装
-				</Pill>
-			);
+		case "updatable":
 		case "installed-elsewhere":
-			return (
-				<span className="text-bn-2xs text-bn-text-tertiary">
-					已装 v{entry.installed?.version ?? "?"},不是从这里装的 —— 不提示更新
-				</span>
-			);
+			return null;
 		case "incompatible":
 			return (
 				<span className="text-bn-2xs text-bn-text-tertiary">
@@ -236,6 +231,7 @@ export function MarketplaceSection({
 	const sourceName = (id: string) => data?.sources.find((s) => s.id === id)?.name ?? id;
 	const failed = data?.sources.filter((s) => !s.ok) ?? [];
 	const thirdPartyCount = data?.sources.filter((s) => !s.official).length ?? 0;
+	const shown = (data?.extensions ?? []).filter((entry) => !INSTALLED_STATES.has(entry.state));
 
 	return (
 		<div className="flex flex-col gap-2.5">
@@ -282,9 +278,9 @@ export function MarketplaceSection({
 				</ErrorNote>
 			))}
 
-			{data && data.extensions.length > 0 ? (
+			{shown.length > 0 ? (
 				<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
-					{data.extensions.map((entry) => (
+					{shown.map((entry) => (
 						<EntryCard
 							key={`${entry.source}/${entry.id}`}
 							entry={entry}
@@ -296,10 +292,13 @@ export function MarketplaceSection({
 				</div>
 			) : null}
 			{data &&
-			data.extensions.length === 0 &&
+			shown.length === 0 &&
 			failed.length === 0 &&
 			(data.available || thirdPartyCount > 0) ? (
-				<EmptyNote>市场里现在没有能装的拓展</EmptyNote>
+				// 「都装上了」与「源里本来就是空的」是两件事,别合成一句 —— 前者是好消息。
+				<EmptyNote>
+					{data.extensions.length > 0 ? "市场里的拓展都装上了" : "市场里现在没有能装的拓展"}
+				</EmptyNote>
 			) : null}
 
 			{managingSources ? (
