@@ -13,6 +13,11 @@ import { extensionAssetName } from "./release-urls.mjs";
 import { digestOf, EXTENSION_ZIP_EPOCH, reproducibleZip } from "./reproducible-zip.mjs";
 
 export const EXTENSION_PACKAGE_FILES = ["extension.json", "index.mjs"];
+/**
+ * 给人看的那两份,**两份都可选**。名字与装载那头的白名单是同一套 —— 那边多认一个名字,
+ * 这边就得多打一个,否则官方拓展发出去了市场上却没有说明。
+ */
+export const EXTENSION_PACKAGE_DOC_FILES = ["README.md", "CHANGELOG.md"];
 
 /** @param {Record<string, Uint8Array>} files */
 export function packExtension(files) {
@@ -22,6 +27,10 @@ export function packExtension(files) {
 		if (!bytes) throw new Error(`拓展包缺 ${name}`);
 		entries[name] = bytes;
 	}
+	// 可选的按**固定顺序**追加:条目顺序会进 zip 的字节,而 sha256 是索引里钉着的。
+	for (const name of EXTENSION_PACKAGE_DOC_FILES) {
+		if (files[name]) entries[name] = files[name];
+	}
 	// 固定时间戳:同样的产物打出同样的字节,sha256 才复现得了。
 	const zip = reproducibleZip(entries, EXTENSION_ZIP_EPOCH);
 	return { zip, ...digestOf(zip) };
@@ -30,9 +39,18 @@ export function packExtension(files) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	const id = requireArg("id");
 	const dist = resolve(readArg("dist", join("extensions", id, "dist")));
+	// 文档是**源码**不是产物,所以从拓展目录读,不从 dist 读。
+	const src = resolve(readArg("src", join("extensions", id)));
 	const files = {};
 	for (const name of EXTENSION_PACKAGE_FILES)
 		files[name] = new Uint8Array(await readFile(join(dist, name)));
+	for (const name of EXTENSION_PACKAGE_DOC_FILES) {
+		try {
+			files[name] = new Uint8Array(await readFile(join(src, name)));
+		} catch {
+			// 没写就是没写 —— 不是打不了包的理由。
+		}
+	}
 	const manifest = JSON.parse(Buffer.from(files["extension.json"]).toString("utf8"));
 	if (manifest.id !== id) throw new Error(`清单里的 id 是 ${manifest.id},要打的是 ${id}`);
 	const { zip, sha256, size } = packExtension(files);

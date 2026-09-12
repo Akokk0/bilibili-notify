@@ -1,4 +1,4 @@
-import { strToU8 } from "fflate";
+import { strFromU8, strToU8 } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
 import { openExtensionPackage } from "../apps/server/src/extensions/install.js";
 import { packExtension } from "./pack-extension.mjs";
@@ -27,6 +27,33 @@ describe("packExtension", () => {
 		const opened = openExtensionPackage(a.zip);
 		expect(opened.ok).toBe(true);
 		if (opened.ok) expect(opened.pkg.manifest.version).toBe("0.0.2");
+	});
+
+	/**
+	 * 文档跟着包走 —— 官方拓展发出去那一刻就得带上,不然市场上装下来还是没有说明。
+	 * 两份都可选:不带照样打得出来。
+	 */
+	it("带上 README / CHANGELOG 就打进包,装载那头拆得出来", () => {
+		const withDocs = packExtension({
+			...files,
+			"README.md": strToU8("# 机器人框架桥接"),
+			"CHANGELOG.md": strToU8("## [0.0.2]"),
+		});
+		const opened = openExtensionPackage(withDocs.zip);
+		expect(opened.ok).toBe(true);
+		if (!opened.ok) return;
+		expect(strFromU8(opened.pkg.docs.readme)).toContain("机器人框架桥接");
+		expect(strFromU8(opened.pkg.docs.changelog)).toContain("[0.0.2]");
+		// 带了文档,sha256 照样得可复现 —— 索引里钉的就是它。
+		expect(packExtension({ ...files, "README.md": strToU8("# 机器人框架桥接") }).sha256).toBe(
+			packExtension({ ...files, "README.md": strToU8("# 机器人框架桥接") }).sha256,
+		);
+	});
+
+	it("不带文档也打得出来 —— 文档是可选的", () => {
+		const opened = openExtensionPackage(packExtension(files).zip);
+		expect(opened.ok).toBe(true);
+		if (opened.ok) expect(opened.pkg.docs.readme).toBeUndefined();
 	});
 
 	it("缺一个文件就拒", () => {
