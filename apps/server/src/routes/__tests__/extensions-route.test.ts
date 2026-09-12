@@ -634,4 +634,57 @@ describe("拓展自己的文档", () => {
 		expect(body.readme).toContain("借 koishi 的 bot");
 		expect(body.changelog).toContain("[0.0.1]");
 	});
+
+	/**
+	 * 🔴 **这条是挡住路径穿越的唯一那扇门。** 读回那头是直白的 `join(root, id)`,落盘那侧
+	 * 对 `..` 的检查在这条路上一点忙都帮不上 —— 校验一撤,下面这个请求就会 200 着把装载根
+	 * 外面那份文件整份交出去(实测过)。所以不能只断状态码,得连内容一起断。
+	 */
+	it("id 不合法 → 400,装载根外面那份文件一个字都出不来", async () => {
+		const sibling = join(installRoot, "..", "bn-ext-route-sibling");
+		await mkdir(sibling, { recursive: true });
+		await writeFile(join(sibling, "README.md"), "SIBLING-SECRET");
+		try {
+			const res = await boot().request("/..%2Fbn-ext-route-sibling/docs");
+
+			expect(res.status).toBe(400);
+			expect(await res.text()).not.toContain("SIBLING-SECRET");
+		} finally {
+			await rm(sibling, { recursive: true, force: true });
+		}
+	});
+
+	/** 「没装这个」与「装了但没写」是两回事 —— 面板正是靠这两档分开的。 */
+	it("没装这个拓展 → 404", async () => {
+		expect((await boot().request("/nobody/docs")).status).toBe(404);
+	});
+
+	it("装了但两份都没写 → 200,交一个空的回去(不是 404)", async () => {
+		await writeDocs("bridge", {});
+
+		const res = await boot().request("/bridge/docs");
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({});
+	});
+
+	/** 没接装载器的构建(没有装载根)读不了文档,但得说清是为什么,别装作没这个拓展。 */
+	it("这个构建没接装载器 → 404,并说清原因", async () => {
+		const app = createExtensionsRoute({
+			store: {
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getConnections: () => [],
+			} as unknown as ConfigStore,
+			extensions: () => [],
+			status: () => undefined,
+			descriptor: () => undefined,
+			configFields: () => undefined,
+			bots: () => undefined,
+		});
+
+		const res = await app.request("/bridge/docs");
+
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("装载器");
+	});
 });
