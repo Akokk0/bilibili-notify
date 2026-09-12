@@ -100,8 +100,23 @@ export function InstallFlight({
 		let cancelled = false;
 		let raf = 0;
 		let ball: HTMLDivElement | null = null;
+		/**
+		 * 被藏起来的落点卡。
+		 *
+		 * 🔴 **藏了必须还**:球还在飞、卡已经站在那儿的话,传送的因果就反了(主人指出)。所以
+		 * 一找到落点就把它藏掉,落地才展开。但这也是这段代码**唯一会留下永久损伤**的地方 ——
+		 * 飞到一半被拆(切页、马上再装一个)而没还原,那张卡就隐形到下次刷新,而且门禁全绿。
+		 * 还原因此写在**收摊与清理两条路**上,不是只写在顺利那一条。
+		 */
+		let hidden: HTMLElement | null = null;
+		const reveal = () => {
+			if (!hidden) return;
+			hidden.style.opacity = "";
+			hidden = null;
+		};
 		const finish = () => {
 			if (cancelled) return;
+			reveal();
 			ball?.remove();
 			ball = null;
 			doneRef.current();
@@ -119,6 +134,10 @@ export function InstallFlight({
 				return;
 			}
 			// 先把落点带进视野,再量它 —— 量完才滚的话,量到的是滚动前那个位置。
+			// 一看见就藏 —— 早一帧藏,就少一帧「球还没到、卡已经在了」。位置照样占着,
+			// 所以下面滚动与量位置都不受影响。
+			hidden = landing;
+			landing.style.opacity = "0";
 			// `?.` 不是摆设:jsdom 里没有这个方法,而这段代码在测试里要跑得过去。
 			landing.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
 			raf = requestAnimationFrame(() => {
@@ -159,6 +178,8 @@ export function InstallFlight({
 
 			anim.onfinish = () => {
 				if (cancelled) return;
+				// 先把内联的 opacity:0 撤掉再演展开 —— 不撤的话动画放完会落回那个 0,卡当场隐形。
+				reveal();
 				// 落地:球散掉的同时,真卡从小长回原尺寸 —— 两段重叠才像「展开」,不像两件事。
 				ball?.animate(
 					[
@@ -189,6 +210,8 @@ export function InstallFlight({
 			cancelled = true;
 			cancelAnimationFrame(raf);
 			ball?.remove();
+			// 顺利那条路走的是 finish();这一条是「飞到一半被拆」,卡也得还回来。
+			reveal();
 		};
 	}, [flight]);
 
