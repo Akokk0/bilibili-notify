@@ -23,11 +23,13 @@ import {
 	Icon,
 	IconButton,
 	LoadingBlock,
+	Spinner,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../services/api";
 import { errorsOf } from "./install-errors";
+import type { InstallFlight } from "./install-flight";
 import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
 export function useMarketplace() {
@@ -58,6 +60,12 @@ export function useMarketplaceInstall() {
 	 * 他根本没装过的旧版本。这一格只为那句话存在。
 	 */
 	const [action, setAction] = useState<"install" | "update">("install");
+	/*
+	 * 起飞位置要在**点下去那一刻**量:装成之后市场那张卡当场消失(已装的不在市场里露面),
+	 * 那时再量就没得量了。装成才把它变成一次传送交出去,失败不飞。
+	 */
+	const from = useRef<DOMRect | null>(null);
+	const [flight, setFlight] = useState<InstallFlight | null>(null);
 	const install = useMutation({
 		mutationFn: (input: { source: string; id: string }) =>
 			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
@@ -67,14 +75,17 @@ export function useMarketplaceInstall() {
 		},
 		onSuccess: (res) => {
 			setDone(res);
+			if (from.current) setFlight({ id: res.id, from: from.current });
+			from.current = null;
 			void qc.invalidateQueries({ queryKey: ["extensions"] });
 			void qc.invalidateQueries({ queryKey: ["marketplace"] });
 		},
 		onError: (err) => setErrors(errorsOf(err)),
 	});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
-	const start = (entry: MarketplaceEntryDTO) => {
+	const start = (entry: MarketplaceEntryDTO, fromRect?: DOMRect) => {
 		setAction(entry.state === "updatable" ? "update" : "install");
+		from.current = fromRect ?? null;
 		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
 		else setConfirming(entry);
 	};
@@ -84,6 +95,9 @@ export function useMarketplaceInstall() {
 		errors,
 		action,
 		start,
+		/** 装成那一下的传送:从市场那张卡飞到它在上面那一排里的新位置。演完由页面清掉。 */
+		flight,
+		clearFlight: () => setFlight(null),
 		confirming,
 		confirm: () => {
 			if (!confirming) return;
@@ -141,10 +155,13 @@ const INSTALLED_STATES: ReadonlySet<MarketplaceEntryDTO["state"]> = new Set([
 function EntryAction({
 	entry,
 	busy,
+	installing,
 	onInstall,
 }: {
 	entry: MarketplaceEntryDTO;
 	busy: boolean;
+	/** 正在装的是**这一条**。`busy` 是「有别的在装、先别点」,两件事。 */
+	installing: boolean;
 	onInstall: () => void;
 }) {
 	switch (entry.state) {
@@ -157,7 +174,7 @@ function EntryAction({
 					icon={<Icon.download size={13} />}
 					onClick={onInstall}
 				>
-					安装
+					{installing ? "装着…" : "安装"}
 				</Btn>
 			);
 		// 这三档走不到这里 —— 已装的在上面被滤掉了(见 INSTALLED_STATES)。留着空分支是为了
@@ -181,32 +198,56 @@ function EntryCard({
 	entry,
 	sourceName,
 	busy,
+	installing,
 	onInstall,
 }: {
 	entry: MarketplaceEntryDTO;
 	sourceName: string;
 	busy: boolean;
-	onInstall: () => void;
+	installing: boolean;
+	/** 收的是**这张卡当时在屏幕上的位置** —— 装成之后它就没了,那时再量来不及。 */
+	onInstall: (from: DOMRect) => void;
 }) {
+	const box = useRef<HTMLDivElement>(null);
 	return (
-		<GlassBox
-			className="h-full"
-			title={entry.name}
-			subtitle={`v${entry.version}${entry.prerelease ? " · 预发布" : ""}`}
-			badge={entry.official ? "官方" : `来自 ${sourceName}`}
-			accent={entry.official ? "var(--color-bn-pink)" : "var(--color-bn-text-tertiary)"}
-			icon={<Icon.extension size={18} />}
-		>
-			<div className="flex h-full flex-col gap-2.5">
-				{entry.description ? (
-					<p className="text-bn-sm leading-[1.6] text-bn-text-secondary">{entry.description}</p>
-				) : null}
-				{entry.notes ? <p className="text-bn-2xs text-bn-text-tertiary">{entry.notes}</p> : null}
-				<div className="mt-auto flex items-center justify-end gap-2.5 pt-0.5">
-					<EntryAction entry={entry} busy={busy} onInstall={onInstall} />
+		<div ref={box} className="relative h-full">
+			{/*
+			 * 「正在装」那一圈 —— 转圈只用库里那件(`Spinner`),页面不许自己写 animate-spin
+			 * (`library-reuse-conformance` 拦着)。画在**卡上**而不是按钮里:那颗钮是粉实心的,
+			 * 粉环摆上去糊成一片;而且按传送的比喻,该转的本来就是卡自己。
+			 */}
+			{installing ? (
+				<div className="pointer-events-none absolute inset-0 z-bn-raised grid place-items-center rounded-bn-card bg-bn-surface/55">
+					<Spinner size={44} thickness={3} />
 				</div>
-			</div>
-		</GlassBox>
+			) : null}
+			<GlassBox
+				className="h-full"
+				title={entry.name}
+				subtitle={`v${entry.version}${entry.prerelease ? " · 预发布" : ""}`}
+				badge={entry.official ? "官方" : `来自 ${sourceName}`}
+				accent={entry.official ? "var(--color-bn-pink)" : "var(--color-bn-text-tertiary)"}
+				icon={<Icon.extension size={18} />}
+			>
+				<div className="flex h-full flex-col gap-2.5">
+					{entry.description ? (
+						<p className="text-bn-sm leading-[1.6] text-bn-text-secondary">{entry.description}</p>
+					) : null}
+					{entry.notes ? <p className="text-bn-2xs text-bn-text-tertiary">{entry.notes}</p> : null}
+					<div className="mt-auto flex items-center justify-end gap-2.5 pt-0.5">
+						<EntryAction
+							entry={entry}
+							busy={busy}
+							installing={installing}
+							onInstall={() => {
+								const rect = box.current?.getBoundingClientRect();
+								if (rect) onInstall(rect);
+							}}
+						/>
+					</div>
+				</div>
+			</GlassBox>
+		</div>
 	);
 }
 
@@ -286,7 +327,8 @@ export function MarketplaceSection({
 							entry={entry}
 							sourceName={sourceName(entry.source)}
 							busy={install.isPending}
-							onInstall={() => start(entry)}
+							installing={install.isPending && install.variables?.id === entry.id}
+							onInstall={(from) => start(entry, from)}
 						/>
 					))}
 				</div>

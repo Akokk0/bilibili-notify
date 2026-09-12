@@ -17,6 +17,7 @@ import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
+import { EXT_CARD_ANCHOR, InstallFlight } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
 	MarketplaceInstallConfirm,
@@ -253,22 +254,25 @@ export default function Extensions() {
 	const grid = (items: ExtensionDTO[]) => (
 		<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
 			{items.map((ext) => (
-				<ExtensionCard
-					key={ext.id}
-					ext={ext}
-					count={counts.get(ext.id) ?? 0}
-					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
-					update={updates.get(ext.id)}
-					elsewhere={elsewhere.get(ext.id)}
-					updating={installer.install.isPending}
-					// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
-					// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
-					// mutate 等于给第三方源开一条「抬个版本号即可零确认装新代码」的路。
-					onUpdate={() => {
-						const entry = updates.get(ext.id);
-						if (entry) installer.start(entry);
-					}}
-				/>
+				// 传送的落点靠这个属性找(`install-flight.tsx`)。包一层是因为 GlassBox 不透传
+				// data-*,而动画要量的正是这张卡在屏幕上的位置。
+				<div key={ext.id} className="h-full" {...{ [EXT_CARD_ANCHOR]: ext.id }}>
+					<ExtensionCard
+						ext={ext}
+						count={counts.get(ext.id) ?? 0}
+						onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
+						update={updates.get(ext.id)}
+						elsewhere={elsewhere.get(ext.id)}
+						updating={installer.install.isPending}
+						// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
+						// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
+						// mutate 等于给第三方源开一条「抬个版本号即可零确认装新代码」的路。
+						onUpdate={() => {
+							const entry = updates.get(ext.id);
+							if (entry) installer.start(entry);
+						}}
+					/>
+				</div>
 			))}
 		</div>
 	);
@@ -328,6 +332,9 @@ export default function Extensions() {
 
 			{/* 第三方那道确认框:装与更新共用页面这一份 installer,所以由页面来画。 */}
 			<MarketplaceInstallConfirm installer={installer} />
+
+			{/* 装成之后那一下传送 —— 演完它自己叫停,失败 / 减少动态时当场收摊。 */}
+			<InstallFlight flight={installer.flight} onDone={installer.clearFlight} />
 			{installing ? <ExtensionInstallDialog onClose={() => setInstalling(false)} /> : null}
 		</div>
 	);
