@@ -5,7 +5,7 @@
  * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
@@ -575,5 +575,33 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		});
 		expect(bad.status).toBe(400);
 		expect(m.install).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("拓展自己的文档", () => {
+	async function writeDocs(id: string, docs: Record<string, string>): Promise<void> {
+		await mkdir(join(installRoot, id), { recursive: true });
+		for (const [name, text] of Object.entries(docs)) {
+			await writeFile(join(installRoot, id, name), text);
+		}
+	}
+
+	/**
+	 * 🔴 **读的是磁盘,不是活着的那个实例。** 关着的、甚至加载失败的拓展照样交得出说明 ——
+	 * 而那恰恰是人最想读它的时候(「这到底是干嘛的」「为什么起不来」)。挂 `/api/*` 下,
+	 * 与 `/:id/status` 同一道会话鉴权;`/ext/<id>/*` 是刻意在鉴权外的,不能挂那儿。
+	 */
+	it("拓展关着 → README 与 CHANGELOG 照样读得到", async () => {
+		await writeDocs("bridge", {
+			"README.md": "# 桥接\n\n借 koishi 的 bot。",
+			"CHANGELOG.md": "## [0.0.1]",
+		});
+
+		const res = await boot({ enabled: false, entries: [] }).request("/bridge/docs");
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { readme?: string; changelog?: string };
+		expect(body.readme).toContain("借 koishi 的 bot");
+		expect(body.changelog).toContain("[0.0.1]");
 	});
 });

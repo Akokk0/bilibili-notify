@@ -50,6 +50,11 @@ export const EXTENSION_ENTRY_FILE = "index.mjs";
  */
 export const EXTENSION_README_FILE = "README.md";
 export const EXTENSION_CHANGELOG_FILE = "CHANGELOG.md";
+/**
+ * 一份文档的上限。拆包那道闸与面板这头的读**共用它** —— 两处各写一个数的话,
+ * 装得进去却读不出来(或者反过来)只会在真机上露馅。
+ */
+export const EXTENSION_DOC_MAX_BYTES = 512 * 1024;
 
 /**
  * 看完一个拓展目录之后的结论 —— **在 import 任何一行拓展代码之前**就能得出。

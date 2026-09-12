@@ -12,6 +12,7 @@ import { ExtensionIdSchema, isExtensionEnabled } from "@bilibili-notify/internal
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
+import { readExtensionDocs } from "../extensions/docs.js";
 import {
 	installExtensionPackage,
 	MAX_EXTENSION_PACKAGE_BYTES,
@@ -255,6 +256,23 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
 	 * 面板要能分开说。
 	 */
+	/**
+	 * 拓展自己带的 README / CHANGELOG。
+	 *
+	 * 🔴 **读磁盘,不读活着的实例** —— 与隔壁 `/:id/status` 正相反。关着的、加载失败的
+	 * 拓展照样交得出说明,而那正是人最想读它的时候。所以这条不碰 `opts.extensions()`。
+	 */
+	app.get("/:id/docs", async (c) => {
+		const install = opts.install;
+		if (!install) return c.json({ errors: ["这个构建没接装载器,读不到拓展的文档"] }, 404);
+		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		if (!parsed.success) return c.json({ errors: ["拓展 id 不合法"] }, 400);
+		const docs = await readExtensionDocs({ root: install.root, id: parsed.data });
+		// 没装 → 404;装了但两份都没写 → 200 加两个空格子,面板据此整块不画。
+		if (!docs) return c.json({ errors: [`没有装名叫 ${parsed.data} 的拓展`] }, 404);
+		return c.json(docs);
+	});
+
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

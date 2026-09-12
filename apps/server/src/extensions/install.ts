@@ -24,6 +24,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { isJunkZipEntry } from "../zip-junk.js";
 import {
 	EXTENSION_CHANGELOG_FILE,
+	EXTENSION_DOC_MAX_BYTES,
 	EXTENSION_ENTRY_FILE,
 	EXTENSION_MANIFEST_FILE,
 	EXTENSION_README_FILE,
@@ -43,9 +44,7 @@ const MAX_PACKAGE_FILES = 64;
  * 🔴 光有单文件那条拦不住:白名单是**解压之后**才对的,那会儿 64 个各 8MB 的条目已经
  * 全解进内存了(镜像的堆只有 512MB)。皮肤包那头同一个位置有同一道闸,理由也一样。
  */
-/** 一份文档的上限。README 写成长篇也到不了这儿,而它是要整份读进内存渲染的。 */
-const MAX_DOC_BYTES = 512 * 1024;
-const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES + 2 * MAX_DOC_BYTES;
+const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES + 2 * EXTENSION_DOC_MAX_BYTES;
 
 export interface OpenedExtensionPackage {
 	/** 装到哪个目录名下 —— **清单说了算**,不看 zip 里的路径。 */
@@ -136,8 +135,8 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 			} else entry = data;
 		} else if (inner === EXTENSION_README_FILE || inner === EXTENSION_CHANGELOG_FILE) {
 			// 文档:收下,但**一样封顶**。没有代码路径会碰它们,面板却要整份读进来渲染。
-			if (data.byteLength > MAX_DOC_BYTES) {
-				errors.push(`${inner} 过大(上限 ${Math.round(MAX_DOC_BYTES / 1024)}KB)`);
+			if (data.byteLength > EXTENSION_DOC_MAX_BYTES) {
+				errors.push(`${inner} 过大(上限 ${Math.round(EXTENSION_DOC_MAX_BYTES / 1024)}KB)`);
 			} else if (inner === EXTENSION_README_FILE) docs.readme = data;
 			else docs.changelog = data;
 		} else {
