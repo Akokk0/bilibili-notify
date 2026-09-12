@@ -1,6 +1,18 @@
-import { EmptyNote, ErrorNote, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
-import { Link, useParams } from "react-router-dom";
+import {
+	Btn,
+	ConfirmDialog,
+	EmptyNote,
+	ErrorNote,
+	GlassBox,
+	Icon,
+	LoadingBlock,
+	Toggle,
+} from "@bilibili-notify/ui";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
+import { api } from "../services/api";
 import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
 import {
 	ExtensionIcon,
@@ -26,6 +38,23 @@ export default function ExtensionDetail() {
 	const { id = "" } = useParams<{ id: string }>();
 	const listed = useExtensions();
 	const toggle = useExtensionToggle();
+	const navigate = useNavigate();
+	const qc = useQueryClient();
+	const [confirming, setConfirming] = useState(false);
+
+	/**
+	 * 删完**离开这一页** —— 留在原地的话它立刻变成「没有装名叫 X 的拓展」,看起来像出了错。
+	 *
+	 * 失败时框留在原地并把服务端那句话原样摆出来:「还有 N 条连接在用它」是用户唯一能
+	 * 照着做的线索,换成自编的「删除失败」等于让人对着黑盒按第二下。
+	 */
+	const remove = useMutation({
+		mutationFn: () => api.delete<{ ok: true }>(`/api/ext/${id}`),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: ["extensions"] });
+			navigate("/extensions");
+		},
+	});
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 	/*
@@ -94,9 +123,50 @@ export default function ExtensionDetail() {
 						</p>
 					)}
 				</div>
+
+				{/* 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。 */}
+				<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3">
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。
+					</span>
+					<Btn
+						variant="danger-outline"
+						size="sm"
+						icon={<Icon.trash size={13} />}
+						onClick={() => setConfirming(true)}
+					>
+						删除拓展
+					</Btn>
+				</div>
 			</GlassBox>
 
 			{isBridge ? <BridgeConnections extensionId={id} enabled={ext.enabled} /> : null}
+
+			{confirming ? (
+				<ConfirmDialog
+					title={`删掉「${ext.name}」?`}
+					message={
+						<>
+							<p className={PARAGRAPH_CLS}>
+								盘上那份会被抹掉,<strong>删掉它的设置也会一起没</strong>
+								{isBridge ? "(桥的话就是所有接入与 token,koishi 那侧要重填一遍)" : ""}
+								。随时能从拓展市场再装回来。
+							</p>
+							{remove.isError ? (
+								<ErrorNote size="sm" className="mt-2.5">
+									{reasonOf(remove.error)}
+								</ErrorNote>
+							) : null}
+						</>
+					}
+					confirmLabel={remove.isPending ? "正在删…" : "删掉它"}
+					danger
+					onConfirm={() => {
+						if (!remove.isPending) remove.mutate();
+					}}
+					onCancel={() => setConfirming(false)}
+				/>
+			) : null}
 		</div>
 	);
 }

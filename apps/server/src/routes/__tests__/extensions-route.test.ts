@@ -5,7 +5,7 @@
  * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
@@ -19,10 +19,12 @@ import { createExtensionsRoute } from "../extensions.js";
 
 let installRoot: string;
 let rescan: ReturnType<typeof vi.fn<() => Promise<void>>>;
+let patchGlobals: ReturnType<typeof vi.fn>;
 
 function boot(
 	over: {
 		enabled?: boolean;
+		connections?: unknown[];
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
 		descriptor?: Record<string, unknown>;
@@ -36,7 +38,8 @@ function boot(
 	const store = {
 		getGlobals: () =>
 			({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
-		getConnections: () => [],
+		getConnections: () => over.connections ?? [],
+		patchGlobals,
 	} as unknown as ConfigStore;
 	const entries = over.entries ?? [];
 	return createExtensionsRoute({
@@ -91,6 +94,7 @@ function form(file: Blob | undefined): FormData {
 beforeEach(async () => {
 	installRoot = await mkdtemp(join(tmpdir(), "bn-ext-route-"));
 	rescan = vi.fn(async () => {});
+	patchGlobals = vi.fn(async () => ({}) as GlobalConfig);
 });
 
 afterEach(async () => {
@@ -401,6 +405,96 @@ describe("POST /api/ext/install", () => {
  * 这里只钉 wire:参数怎么传、结果怎么翻成 HTTP、装完的回答与上传装包**同一个形状**(面板
  * 复用同一段「装完那句话」)。
  */
+describe("DELETE /api/ext/:id", () => {
+	/** 装一份在盘上,好让删有东西可删。 */
+	async function installed(): Promise<void> {
+		const { mkdir } = await import("node:fs/promises");
+		await mkdir(join(installRoot, "bridge"), { recursive: true });
+		await writeFile(join(installRoot, "bridge", "index.mjs"), "export function activate() {}");
+	}
+
+	/**
+	 * 🔴 **配置那一格必须跟着删**。装载器注释写得很清楚:盘上没了而 `ready` 里还留着
+	 * 一格的话,下一次 `sync()` 会把它从 ESM 模块缓存里装回来 —— 留配置等于留一个
+	 * 诈尸的口子。而且桥的接入里存的是长期 token,那是凭据。
+	 */
+	it("删掉 → 目录没了,配置里那一格也清了,并当场重扫", async () => {
+		await installed();
+
+		const res = await boot().request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(200);
+		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).toBeNull();
+		expect(patchGlobals).toHaveBeenCalledWith({ extensions: { bridge: null } });
+		expect(rescan).toHaveBeenCalled();
+	});
+
+	/**
+	 * 🔴 推送目标是用户亲手配的。连带删掉太狠,留着悬空又会让推送静默失败 —— 所以
+	 * 拦住,并说清楚还有几条、去哪删。
+	 */
+	it("还有连接在用它 → 拦住,一个字节都不动", async () => {
+		await installed();
+		const app = boot({
+			connections: [
+				{ id: "c1", kind: "extension", extensionId: "bridge" },
+				{ id: "c2", kind: "extension", extensionId: "bridge" },
+				{ id: "c3", kind: "onebot" },
+			],
+		});
+
+		const res = await app.request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("2");
+		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).not.toBeNull();
+		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+
+	/** 别家拓展的连接不算数 —— 拦的是**指着这一个**的那些。 */
+	it("别的拓展的连接不挡路", async () => {
+		await installed();
+		const app = boot({ connections: [{ id: "c1", kind: "extension", extensionId: "douyin" }] });
+
+		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(200);
+	});
+
+	/**
+	 * 🔴 开发版里装载根下那条 `bridge` 是 devtools **软链**进来的仓库工作树。
+	 * 顺着删下去就是删主人的源码 —— 同传包装那头,认出软链就拒。
+	 */
+	it("软链(devtools 链进来的工作树)→ 拒,并说清去哪卸", async () => {
+		const { symlink, mkdir } = await import("node:fs/promises");
+		const target = join(installRoot, "__worktree");
+		await mkdir(target, { recursive: true });
+		await symlink(target, join(installRoot, "bridge"));
+
+		const res = await boot().request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("devtools");
+		// 软链的落点还在 —— 没顺着删下去。
+		expect(await lstat(target).catch(() => null)).not.toBeNull();
+		// 🔴 拒了就什么都别动:先清配置再抹盘的话,这条路上配置已经没了而拓展还在。
+		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+
+	/** 面板上的列表可能是上一秒的。盘上早就没了也当删成功,别让人对着一个删不掉的幽灵。 */
+	it("盘上本来就没有 → 照样把配置清掉,回 200", async () => {
+		const res = await boot().request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(200);
+		expect(patchGlobals).toHaveBeenCalledWith({ extensions: { bridge: null } });
+	});
+
+	it("id 不合法 → 400,不碰盘", async () => {
+		const res = await boot().request("/..%2F..%2Fetc", { method: "DELETE" });
+
+		expect(res.status).toBe(400);
+		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+});
+
 describe("GET /marketplace + POST /marketplace/install", () => {
 	function market() {
 		return {

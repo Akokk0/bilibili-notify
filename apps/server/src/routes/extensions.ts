@@ -8,7 +8,7 @@ import type {
 	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
-import { isExtensionEnabled } from "@bilibili-notify/internal";
+import { ExtensionIdSchema, isExtensionEnabled } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
@@ -16,6 +16,7 @@ import {
 	installExtensionPackage,
 	MAX_EXTENSION_PACKAGE_BYTES,
 	openExtensionPackage,
+	uninstallExtension,
 } from "../extensions/install.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
@@ -160,6 +161,52 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			restart: install.restartAbility,
 		};
 		return c.json(answer);
+	});
+
+	/**
+	 * 卸掉一个拓展:抹掉盘上那份 + **清掉配置里那一格**,然后重扫。不必重启。
+	 *
+	 * 🔴 **配置必须跟着清**。装载器注释写着:盘上没了而 `ready` 里还留一格的话,下一次
+	 * `sync()` 会把它从 ESM 模块缓存里装回来。而且桥的接入里躺着长期 token,那是凭据,
+	 * 删了拓展还留着说不过去 —— 代价是重装之后接入要重建,koishi 那侧也得重填一遍。
+	 *
+	 * 🔴 **还有连接指着它就不删**。推送目标是用户亲手配的:连带删掉太狠,留着悬空则让
+	 * 推送静默失败。拦住并说清还有几条,由用户自己去推送目标页处置。
+	 *
+	 * 顺序是「先抹盘、再清配置、最后重扫」:抹盘是唯一会被拒的一步(软链),放在最前面
+	 * 才能保证「被拒 = 什么都没动」。中间那一瞬「盘上没了但配置还在」不碰得着 ——
+	 * 没有任何东西会在这两步之间触发 `sync()`。
+	 */
+	app.delete("/:id", async (c) => {
+		const install = opts.install;
+		if (!install) return c.json({ errors: ["这个构建没接装载器,删不了"] }, 404);
+
+		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		if (!parsed.success) return c.json({ errors: ["拓展 id 不合法"] }, 400);
+		const id = parsed.data;
+
+		const inUse = opts.store
+			.getConnections()
+			.filter((conn) => conn.kind === "extension" && conn.extensionId === id);
+		if (inUse.length > 0) {
+			return c.json(
+				{
+					errors: [
+						`还有 ${inUse.length} 条连接在用它 —— 先去推送目标页把它们删掉,再回来卸这个拓展`,
+					],
+				},
+				409,
+			);
+		}
+
+		// 抹盘在前:它是**唯一会被拒**的一步(软链)。反过来先清配置的话,被拒的那条路上
+		// 配置已经没了而拓展还在盘上跑着 —— 界面与实际当场对不上。
+		const removed = await uninstallExtension({ root: install.root, id });
+		if (!removed.ok) return c.json({ errors: [removed.err] }, 400);
+
+		await opts.store.patchGlobals({ extensions: { [id]: null } } as never);
+		await install.rescan();
+		return c.json({ ok: true });
 	});
 
 	// 市场那两口要排在 `/:id/*` 前面 —— 路由按注册顺序匹配。

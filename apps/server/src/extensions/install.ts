@@ -192,6 +192,43 @@ export interface InstallExtensionPackageResult {
  */
 const installQueues = new Map<string, Promise<unknown>>();
 
+export interface UninstallExtensionInput {
+	/** 装载根(`<dataDir>/extensions`)。 */
+	root: string;
+	/** 拓展 id。调用方**必须**先按 `ExtensionIdSchema` 验过 —— 它同时是目录名。 */
+	id: string;
+}
+
+export type UninstallExtensionResult =
+	/** `removed: false` = 盘上本来就没有。面板上的列表可能是上一秒的,这不算错。 */
+	{ ok: true; removed: boolean } | { ok: false; err: string };
+
+/**
+ * 把一个拓展从装载根上抹掉。
+ *
+ * 🔴 **软链一律拒**,不顺着删下去:开发版里那条是 devtools 链进来的**仓库工作树**,
+ * 顺着删就是删主人的源码。同 {@link installExtensionPackage} 那头的判据。
+ *
+ * 收摊(停掉正在跑的那份、清掉装载器的三张表)不在这里 —— 那是 `rescan()` 的活:
+ * 它发现 id 从盘上消失就会自己做完,所以删完调一次即可,不必重启。
+ */
+export async function uninstallExtension({
+	root,
+	id,
+}: UninstallExtensionInput): Promise<UninstallExtensionResult> {
+	const at = join(root, id);
+	const existing = await lstat(at).catch(() => undefined);
+	if (!existing) return { ok: true, removed: false };
+	if (existing.isSymbolicLink()) {
+		return {
+			ok: false,
+			err: `${id} 现在是一条软链(开发版 devtools 装的)—— 在 devtools 里卸掉它,别从这里删`,
+		};
+	}
+	await rm(at, { recursive: true, force: true });
+	return { ok: true, removed: true };
+}
+
 export async function installExtensionPackage(
 	input: InstallExtensionPackageInput,
 ): Promise<InstallExtensionPackageResult> {
