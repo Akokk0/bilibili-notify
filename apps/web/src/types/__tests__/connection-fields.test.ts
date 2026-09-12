@@ -37,7 +37,7 @@ const HIDDEN: Record<string, string> = {
 
 function codesOf(connection: Connection): string[] {
 	return connectionFields(connection)
-		.map((f) => (f.kind === "qq-bind" ? "" : f.code))
+		.map((f) => (f.kind === "qq-bind" || f.kind === "ws-reverse-address" ? "" : f.code))
 		.filter(Boolean)
 		.map((code) => code.replace(/^config\./, ""));
 }

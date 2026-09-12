@@ -51,6 +51,7 @@ import {
 	type PushTarget,
 	type PushTargetScope,
 } from "../types/domain";
+import { copyToClipboard } from "../utils/clipboard";
 
 /**
  * Targets page — two-layer "connection → target" model.
@@ -712,6 +713,9 @@ function ConnectionConfigFields({
 	return (
 		<>
 			{fields.map((field) => {
+				if (field.kind === "ws-reverse-address") {
+					return <ReverseWsAddressRow key="ws-reverse-address" port={field.port} />;
+				}
 				if (field.kind === "qq-bind") {
 					return (
 						/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
@@ -744,13 +748,50 @@ function ConnectionConfigFields({
 	);
 }
 
+/**
+ * 反向 WS:把 bot 该连的那条地址印出来(issue #49)。
+ *
+ * 🔴 **主机名按浏览器地址栏现算,端口取这一栏填的那个** —— 不是主端口。服务端算不了这件事,
+ * 它只知道自己绑在哪个口上,不知道别人从哪儿访问得到它(同桥接那条 BN 地址)。
+ *
+ * 🔴 **路径随便填这句必须写出来**:监听那头 `WebSocketServer({ port })` 不带 `path`,
+ * 什么路径都收。不写的话,从 koishi 过来的人会以为这里少了一栏。
+ */
+function ReverseWsAddressRow({ port }: { port: number }) {
+	const [copied, setCopied] = useState(false);
+	const address = `ws://${window.location.hostname}:${port}/onebot`;
+	return (
+		<div data-code="config.reverseAddress" className={`flex flex-col gap-1.5 ${FIELD_ROW_CHROME}`}>
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="text-bn-sm font-bold text-bn-text-primary">bot 那头填这个</span>
+				<code className="min-w-0 flex-1 truncate rounded-bn-sm bg-bn-surface-muted px-2 py-1 font-mono text-bn-xs text-bn-text-secondary">
+					{address}
+				</code>
+				<Btn
+					variant="outline"
+					size="sm"
+					onClick={() => {
+						void copyToClipboard(address).then(setCopied);
+					}}
+				>
+					{copied ? "已复制" : "复制"}
+				</Btn>
+			</div>
+			<span className="text-bn-xs text-bn-text-secondary">
+				末尾的<strong>路径随便填</strong>(`/onebot` 只是个例子,不填也行)。这是{" "}
+				<strong>bot 那台机器</strong>要访问得到的地址 —— BN 在 NAS / 容器里时别照抄 `127.0.0.1`。
+			</span>
+		</div>
+	);
+}
+
 /** 一栏的控件 —— 只认 kind,不认平台。 */
 function ConnectionFieldControl({
 	field,
 	tint,
 	onChange,
 }: {
-	field: Exclude<ConnectionField, { kind: "qq-bind" }>;
+	field: Exclude<ConnectionField, { kind: "qq-bind" | "ws-reverse-address" }>;
 	tint: string;
 	onChange: (next: Connection) => void;
 }) {

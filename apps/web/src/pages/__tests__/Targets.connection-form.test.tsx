@@ -107,6 +107,24 @@ describe("OneBot 连接", () => {
 		expect(codes).not.toContain("config.headers");
 	});
 
+	/**
+	 * 🔴 **地址要印出来**(issue #49)。反向 WS 是 bot 主动连进来,那条地址只活在用户脑子里:
+	 * 面板从前只让填一个端口号,于是从 koishi 转过来的人(那边的默认推荐是
+	 * `ws://127.0.0.1:5140/onebot`)以为路径没地方写,只好另开一个服务端改走正向 WS。
+	 * 路径其实一直是自由的 —— `WebSocketServer({ port })` 不带 `path`,什么路径都收。
+	 */
+	it("反向 WS 把 bot 该连的完整地址印出来,并说明路径随便填", async () => {
+		const dialog = await openNewConnection();
+		click(dialog, "反向 WS");
+
+		const row = dialog.querySelector('[data-code="config.reverseAddress"]') as HTMLElement;
+		expect(row).not.toBeNull();
+		// 主机取浏览器地址栏那一个,端口取这一栏填的那个(不是主端口)。
+		expect(row.textContent).toContain(`ws://${window.location.hostname}:9797/onebot`);
+		expect(row.textContent).toMatch(/路径/);
+		expect(within(row).getByRole("button", { name: /复制/ })).toBeTruthy();
+	});
+
 	it("超时那一栏的标签随连法变 —— HTTP 是请求超时,WS 是等 echo 的响应超时", async () => {
 		const dialog = await openNewConnection();
 		expect(within(dialog).getByText("请求超时")).toBeTruthy();

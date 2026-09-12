@@ -195,6 +195,8 @@ B 站 cookie 与 AI apiKey 存在 `<dataDir>/secrets/`,AES-256-GCM 加密。密�
 - **HTTP** —— 填 bot 的 HTTP API `baseUrl`,如 `http://napcat:3000`。
 - **正向 WS** —— 填 bot 的 WS 地址,如 `ws://napcat:3001`。
 - **反向 WS** —— 填一个监听端口,bot 主动连入;该端口需在 compose `ports:` 额外映射。
+  面板会把 bot 那头该填的完整地址印出来(形如 `ws://<BN 主机>:<端口>/onebot`)—— **末尾的路径随便填**,
+  不填也行,从 koishi 转过来的人照抄 `/onebot` 即可。
 
 `docker-compose.example.yaml` 含注释掉的 NapCat 边车段落。
 

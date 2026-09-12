@@ -75,6 +75,19 @@ export type ConnectionField =
 			value: Record<string, string>;
 			set: (v: Record<string, string>) => Connection;
 	  })
+	/**
+	 * 反向 WS 那条「bot 该连哪儿」—— 不是一栏字段,是一行印出来的地址加一颗复制钮。
+	 *
+	 * 🔴 **非印不可**(issue #49):反向 WS 是 bot 主动连进来,这条地址从前只活在我们脑子里,
+	 * 面板只让填一个端口号。从 koishi 转过来的人(那边默认推荐 `ws://127.0.0.1:5140/onebot`)
+	 * 因此以为路径没地方写,只好在 bot 那侧另开一个服务端改走正向 WS —— 而路径其实一直
+	 * 是自由的:监听那头 `WebSocketServer({ port })` 不带 `path`,什么路径都收。
+	 */
+	| {
+			kind: "ws-reverse-address";
+			/** 这条连接监听的那个端口。主机名由面板按浏览器地址栏现算 —— 服务端不知道自己被怎么访问。 */
+			port: number;
+	  }
 	/** 官机的扫码建号行 —— 不是一栏字段,是一整行说明加一颗按钮。 */
 	| {
 			kind: "qq-bind";
@@ -152,6 +165,7 @@ function onebotFields(
 			value: cfg.port,
 			set: (v) => setCfg({ ...cfg, port: v }),
 		});
+		fields.push({ kind: "ws-reverse-address", port: cfg.port });
 	}
 
 	fields.push({
