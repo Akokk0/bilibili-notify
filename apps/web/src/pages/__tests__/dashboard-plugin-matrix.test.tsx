@@ -94,11 +94,63 @@ describe("模块矩阵的日志等级", () => {
 		expect(screen.getAllByTitle("按模块覆盖")).toHaveLength(1);
 	});
 
-	it("全局那档写在卡头副标题上,与核心 / 面板版本并排", () => {
+	it("全局那档写在左边的事实列里,与核心 / 面板版本并排", () => {
 		renderCard({ logLevel: "warn" });
 		const badge = screen.getByTitle("全局日志等级");
 		expect(badge.textContent).toBe("WARN");
-		// 而且是在卡头上,不是混在某一条模块里 —— 那样就成了第九个模块的等级。
+		// 而且不混在某一条模块里 —— 那样就成了第九个模块的等级。
 		expect(badge.closest("[data-module]")).toBeNull();
+	});
+});
+
+describe("就绪数", () => {
+	it("八个都亮着就是 8 / 8", () => {
+		renderCard();
+		expect(screen.getByTitle("就绪的模块数").textContent).toBe("8 / 8");
+		expect(screen.getByText("模块全部就绪")).toBeTruthy();
+	});
+
+	it("关着的引擎不算就绪,数字跟着状态点走", () => {
+		render(
+			<MemoryRouter initialEntries={["/"]}>
+				<SystemHealthCard
+					health={{ status: "ok", version: "0.9.0", uptime: 1, startedAt: "2026-09-07T00:00:00Z" }}
+					reachable
+					logLevel="debug"
+					logLevels={undefined}
+					loggedIn
+					subCount={1}
+					targetCount={3}
+					dynamicEnabled
+					liveEnabled={false}
+					imageEnabled={false}
+					aiEnabled
+				/>
+			</MemoryRouter>,
+		);
+		expect(screen.getByTitle("就绪的模块数").textContent).toBe("6 / 8");
+		expect(screen.getByText("2 个模块未启用")).toBeTruthy();
+	});
+
+	it("失联时不报数 —— 拿最后一次的快照说「8 个就绪」是在撒谎", () => {
+		render(
+			<MemoryRouter initialEntries={["/"]}>
+				<SystemHealthCard
+					health={{ status: "ok", version: "0.9.0", uptime: 1, startedAt: "2026-09-07T00:00:00Z" }}
+					reachable={false}
+					logLevel="debug"
+					logLevels={undefined}
+					loggedIn
+					subCount={1}
+					targetCount={3}
+					dynamicEnabled
+					liveEnabled
+					imageEnabled
+					aiEnabled
+				/>
+			</MemoryRouter>,
+		);
+		expect(screen.getByTitle("就绪的模块数").textContent).toBe("— / 8");
+		expect(screen.getByText("后端失联,状态未知")).toBeTruthy();
 	});
 });
