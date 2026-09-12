@@ -5,7 +5,7 @@
  * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
@@ -606,6 +606,35 @@ describe("装完那一刻就说清有没有文档", () => {
 		const body = (await res.json()) as ExtensionInstallResponse;
 		expect(body.docs).toEqual({ readme: true, changelog: false });
 	});
+
+	/**
+	 * 🔴 **两头得用同一把尺子。** 面板那头 `trim()` 过才画,只有空白的一份它整块不画;
+	 * 服务端这头要是只看「文件在不在」,就会挂出一颗「看看说明」,人点进去什么都没有 ——
+	 * 正是这一格存在的理由(别让界面猜)反过来咬自己。
+	 */
+	it("README 只有空白 → 说没有,别挂一颗点进去什么都没有的钮", async () => {
+		const zip = zipSync({
+			"extension.json": strToU8(
+				JSON.stringify({
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "测试用",
+					version: "1.1.0",
+					apiVersion: EXTENSION_API_VERSION,
+					provides: ["push"],
+				}),
+			),
+			"index.mjs": strToU8("export function activate() {}"),
+			"README.md": strToU8("   \n\n\t\n"),
+		});
+		const res = await upload(boot(), form(new Blob([zip])));
+
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as ExtensionInstallResponse).docs).toEqual({
+			readme: false,
+			changelog: false,
+		});
+	});
 });
 
 describe("拓展自己的文档", () => {
@@ -651,6 +680,26 @@ describe("拓展自己的文档", () => {
 			expect(await res.text()).not.toContain("SIBLING-SECRET");
 		} finally {
 			await rm(sibling, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * 文档本身是条软链 → 不读。拆包那条路建不出软链(落盘只写四个常量文件名),所以这只可能
+	 * 来自手放的目录 —— 但 `install.ts` 对同一个目录就是 `lstat` + 拒软链的,同类判据不该
+	 * 两副面孔。目录那一层照旧跟随:devtools 把仓里的 dist 软链进装载根,全靠它。
+	 */
+	it("README 是条软链 → 不读它", async () => {
+		const outside = join(installRoot, "..", "bn-ext-route-outside.md");
+		await writeFile(outside, "OUTSIDE-SECRET");
+		await mkdir(join(installRoot, "bridge"), { recursive: true });
+		await symlink(outside, join(installRoot, "bridge", "README.md"));
+		try {
+			const res = await boot().request("/bridge/docs");
+
+			expect(res.status).toBe(200);
+			expect(await res.text()).not.toContain("OUTSIDE-SECRET");
+		} finally {
+			await rm(outside, { force: true });
 		}
 	});
 

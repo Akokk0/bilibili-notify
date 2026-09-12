@@ -44,8 +44,10 @@ function sha256(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 
-function pack(id: string, version: string): Uint8Array {
+function pack(id: string, version: string, docs: Record<string, string> = {}): Uint8Array {
+	const extra = Object.fromEntries(Object.entries(docs).map(([k, v]) => [k, strToU8(v)]));
 	return zipSync({
+		...extra,
 		"extension.json": strToU8(
 			JSON.stringify({
 				id,
@@ -530,6 +532,26 @@ describe("list():已装的怎么标", () => {
 });
 
 describe("install()", () => {
+	/**
+	 * 🔴 从市场装完那句话后面要不要挂「看看说明」,凭的就是这一格。只断「没有文档 → 两格
+	 * 都是 false」的话,把这段推导写死成 false 也照样绿 —— 而那正是「装了个带 README 的
+	 * 拓展,那颗钮永远不出现」这个回归的样子。
+	 */
+	it("包里带 README → outcome 里说有", async () => {
+		const withDocs = pack("bridge", "0.0.2", { "README.md": "# 桥接" });
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ extensions: [entry("bridge", "0.0.2", withDocs)] }),
+			),
+			[ZIP_URL]: withDocs,
+		});
+
+		const outcome = await harness().marketplace.install("official", "bridge");
+
+		expect(outcome).toMatchObject({ ok: true, docs: { readme: true, changelog: false } });
+	});
+
 	it("下载 → 对 sha256 → 落盘 → 记来源 → 重扫;新装的不用重启", async () => {
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
 		const h = harness();

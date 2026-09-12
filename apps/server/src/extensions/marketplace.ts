@@ -21,6 +21,7 @@ import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
 import {
+	docsPresence,
 	installExtensionPackage,
 	MAX_EXTENSION_PACKAGE_BYTES,
 	openExtensionPackage,
@@ -543,10 +544,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			name: opened.pkg.manifest.name,
 			version: entry.version,
 			needsRestart: replaced,
-			docs: {
-				readme: opened.pkg.docs.readme !== undefined,
-				changelog: opened.pkg.docs.changelog !== undefined,
-			},
+			docs: docsPresence(opened.pkg.docs),
 		};
 	}
 

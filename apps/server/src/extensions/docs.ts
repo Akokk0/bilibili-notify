@@ -8,7 +8,7 @@
  * 两份都可能没有,**没有不是错**:第三方拓展不写 README 是它的自由,面板那头整块不画。
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { lstat, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	EXTENSION_CHANGELOG_FILE,
@@ -21,10 +21,16 @@ export interface ExtensionDocs {
 	changelog?: string;
 }
 
-/** 读一份。读不到、不是文件、超上限 —— 三种都当「没有」,面板不需要分。 */
+/**
+ * 读一份。读不到、不是文件、超上限 —— 三种都当「没有」,面板不需要分。
+ *
+ * 🔴 文件那一层用 `lstat`**不跟软链**:`install.ts` 对同一个目录就是 `lstat` + 拒软链的,
+ * 同类判据不该两副面孔。目录那一层照旧 `stat`(在下面)—— devtools 把仓里的 dist 软链进
+ * 装载根,开发时读得到说明全靠它跟随。
+ */
 async function readDoc(path: string): Promise<string | undefined> {
 	try {
-		const info = await stat(path);
+		const info = await lstat(path);
 		if (!info.isFile() || info.size > EXTENSION_DOC_MAX_BYTES) return undefined;
 		return await readFile(path, "utf8");
 	} catch {

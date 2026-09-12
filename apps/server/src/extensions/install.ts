@@ -57,6 +57,22 @@ export interface OpenedExtensionPackage {
 	docs: { readme?: Uint8Array; changelog?: Uint8Array };
 }
 
+/**
+ * 「这两份文档值不值得给人看」—— 装完那句话后面要不要挂「看看说明」凭的就是它。
+ *
+ * 🔴 **只有空白等于没有**,判据要和面板那头的 `trim()` 一模一样:那头只有空白就整块不画,
+ * 这头要是只看「文件在不在」,就会挂出一颗点进去什么都没有的钮 —— 正是这一格存在的理由
+ * (别让界面自己猜)反过来咬自己。上传与从市场装两条路共用这一个,别各写各的。
+ */
+export function docsPresence(docs: OpenedExtensionPackage["docs"]): {
+	readme: boolean;
+	changelog: boolean;
+} {
+	const has = (bytes: Uint8Array | undefined): boolean =>
+		bytes !== undefined && new TextDecoder().decode(bytes).trim().length > 0;
+	return { readme: has(docs.readme), changelog: has(docs.changelog) };
+}
+
 export type OpenExtensionPackageResult =
 	| { ok: true; pkg: OpenedExtensionPackage }
 	| { ok: false; errors: string[] };

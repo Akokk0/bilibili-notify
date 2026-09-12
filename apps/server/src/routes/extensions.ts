@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import {
+	docsPresence,
 	installExtensionPackage,
 	MAX_EXTENSION_PACKAGE_BYTES,
 	openExtensionPackage,
@@ -157,10 +158,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			name: opened.pkg.manifest.name,
 			version: opened.pkg.manifest.version,
 			needsRestart: replaced,
-			docs: {
-				readme: opened.pkg.docs.readme !== undefined,
-				changelog: opened.pkg.docs.changelog !== undefined,
-			},
+			docs: docsPresence(opened.pkg.docs),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
 			restart: install.restartAbility,
