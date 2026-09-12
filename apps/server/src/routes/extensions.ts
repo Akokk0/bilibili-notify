@@ -255,11 +255,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	});
 
 	/**
-	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
-	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
-	 * 面板要能分开说。
-	 */
-	/**
 	 * 拓展自己带的 README / CHANGELOG。
 	 *
 	 * 🔴 **读磁盘,不读活着的实例** —— 与隔壁 `/:id/status` 正相反。关着的、加载失败的
@@ -276,6 +271,11 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		return c.json(docs);
 	});
 
+	/**
+	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
+	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
+	 * 面板要能分开说。
+	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

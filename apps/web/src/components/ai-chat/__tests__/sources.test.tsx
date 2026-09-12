@@ -18,7 +18,6 @@ import { toolLabel } from "../tools";
 // (useChatMarkdown 是 messages.tsx 自己的 hook,mock 的是它 import 的懒 chunk。)
 vi.mock("../markdown", () => ({
 	ChatMarkdown: ({ text }: { text: string }) => <span>{text}</span>,
-	safeHref: (href: string | undefined) => href,
 }));
 
 afterEach(cleanup);

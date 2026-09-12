@@ -156,7 +156,12 @@ export interface ExtensionInstallResponse {
 	 * 这个包里带没带那两份说明 —— **拆包时就知道**,所以直接说,别让界面去猜或者再拉一次。
 	 * 装完那句话后面要不要挂一句「看看说明 / 看看更新了什么」,凭的就是这一格。
 	 */
-	docs: { readme: boolean; changelog: boolean };
+	/**
+	 * 🔴 **可选**:这个 app 能应用内自更新,面板与服务端在那几秒里版本可能对不上,老服务端
+	 * 的回应里压根没有这一格。写成必填的话,下一个人照契约写 `done.docs.readme` 会一路绿到
+	 * 用户那里当场 TypeError —— 少一颗钮是小事,把整块「装好了」炸掉是大事。
+	 */
+	docs?: { readme: boolean; changelog: boolean };
 }
 
 export interface ExtensionsResponse {

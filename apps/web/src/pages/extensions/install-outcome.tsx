@@ -34,10 +34,10 @@ function whyNoButton(reason: "source-run" | "unsupervised"): string {
  * 刚盖掉一份跑着的,最想知道的是「这次改了啥」,那是 CHANGELOG 不是 README。
  */
 function docsLabel(done: ExtensionInstallResponse): string | null {
-	// 🔴 `?.` 不是摆设:这个 app 能应用内自更新,面板与服务端在那几秒里版本可能对不上。
-	// 少一格就把整块「装好了」炸掉,代价远大于少一颗钮。缺了当没有,与 `isExtensionEnabled`
-	// 那条「缺失 = 关着」同一个路子。
-	const docs = done.docs as ExtensionInstallResponse["docs"] | undefined;
+	// 🔴 契约里这一格是**可选**的:应用内自更新那几秒,面板与服务端的版本可能对不上,
+	// 老服务端的回应里没有它。缺了当没有,与 `isExtensionEnabled` 那条「缺失 = 关着」
+	// 同一个路子 —— 少一颗钮是小事,把整块「装好了」炸掉是大事。
+	const docs = done.docs;
 	if (!docs) return null;
 	if (done.needsRestart && docs.changelog) return "看看更新了什么";
 	if (docs.readme) return "看看说明";

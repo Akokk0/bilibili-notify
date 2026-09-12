@@ -149,4 +149,3 @@ export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string 
 });
 
 /** 搬去了 `utils/safe-href` —— 这里转出去,免得动一圈调用方。 */
-export { safeHref };
