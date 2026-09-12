@@ -46,7 +46,7 @@
 
 1. 改 `extensions/<id>/extension.json` 的 `version`,在 `extensions/<id>/CHANGELOG.md` 加 `## [x.y.z] — 日期` 一段,标题下第一段是概述(≤ 120 字,会进索引的 `notes`)。
 2. 提交、push 到 dev。
-3. 打 tag `ext/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(只装 `extension.json` + `index.mjs`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
+3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(只装 `extension.json` + `index.mjs`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
 
    并索引这一步上钉着三条「只许往前走」,踩了当场红而不是发出一份坏索引:**只有滚动 release 还不存在**才算第一次发(5xx / 限流 / token 权限掉了一律红 —— 当成「还没有索引」会把整份索引连 `revoked` 名单一起覆盖成只含这一条);`issuedAt` 必须比当前那份大(不传就取 `max(现在, 当前 + 1)`,手传的不够大就红),误传毫秒(≥ `1e11`)拒 —— 发出去会把客户端永久钉死在这一份上;**同 id 同档**的版本不许降回去(重跑旧 tag),**等于**放行(重发同一版),预发布比同 id 的正式档还旧也拒(发进去也没人看得见)。并进一个正式版时,比它旧的预发布档会**一并删掉**;比它新的(下一轮的 alpha)留着。
 4. 手动 dry-run:Actions 里跑 `extension release`,填 id 与 version,`dry_run` 勾着 —— 构建、打包、签索引都跑,只不上传。

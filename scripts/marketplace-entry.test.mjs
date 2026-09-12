@@ -37,10 +37,10 @@ describe("marketplaceEntryOf", () => {
 	it("tag 里的 `/` 与 `@` 整段转义 —— 不转的话那条下载链接指着 404", () => {
 		const entry = marketplaceEntryOf(manifest, release);
 		expect(entry.package.url).toBe(
-			"https://github.com/Akokk0/bilibili-notify/releases/download/ext%2Fbridge%400.0.2/bridge-0.0.2.zip",
+			"https://github.com/Akokk0/bilibili-notify/releases/download/extension%2Fbridge%400.0.2/bridge-0.0.2.zip",
 		);
 		expect(entry.releaseUrl).toBe(
-			"https://github.com/Akokk0/bilibili-notify/releases/tag/ext%2Fbridge%400.0.2",
+			"https://github.com/Akokk0/bilibili-notify/releases/tag/extension%2Fbridge%400.0.2",
 		);
 	});
 

@@ -1,6 +1,6 @@
 # Changelog · 机器人框架桥接
 
-拓展 `bridge` 的版本历史。它随 `ext/bridge@<VERSION>` git tag 单独发布,与独立端本体
+拓展 `bridge` 的版本历史。它随 `extension/bridge@<VERSION>` git tag 单独发布,与独立端本体
 的版本无关;发出去的包出现在拓展市场的官方索引里。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/);每段标题下的第一段

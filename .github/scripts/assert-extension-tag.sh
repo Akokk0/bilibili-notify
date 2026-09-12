@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 拓展发布的 tag 守卫:ref 必须是 `ext/<id>@<version>`,而且 <version> 得与
+# 拓展发布的 tag 守卫:ref 必须是 `extension/<id>@<version>`,而且 <version> 得与
 # extensions/<id>/extension.json 里写的一致 —— 拓展是独立发布物,清单里的版本就该是真的,
 # 不像本体那样按 tag 临时改元数据。手动 dry-run 时从 EXT_ID / EXT_VERSION env 来。
 #
@@ -12,11 +12,11 @@ id="${EXT_ID:-}"
 version="${EXT_VERSION:-}"
 if [ -z "$id" ] || [ -z "$version" ]; then
 	ref="${GITHUB_REF_NAME:?GITHUB_REF_NAME 或 EXT_ID+EXT_VERSION 必填}"
-	if [[ "$ref" != ext/*@* ]]; then
-		echo "::error::tag '$ref' 不是拓展发布 tag,要的形状是 ext/<id>@<version>"
+	if [[ "$ref" != extension/*@* ]]; then
+		echo "::error::tag '$ref' 不是拓展发布 tag,要的形状是 extension/<id>@<version>"
 		exit 1
 	fi
-	rest="${ref#ext/}"
+	rest="${ref#extension/}"
 	id="${rest%%@*}"
 	version="${rest#*@}"
 fi

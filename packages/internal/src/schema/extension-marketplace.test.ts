@@ -22,11 +22,11 @@ function entry(over: Record<string, unknown> = {}) {
 		version: "0.0.2",
 		apiVersion: 1,
 		package: {
-			url: "https://github.com/Akokk0/bilibili-notify/releases/download/ext%2Fbridge%400.0.2/bridge-0.0.2.zip",
+			url: "https://github.com/Akokk0/bilibili-notify/releases/download/extension%2Fbridge%400.0.2/bridge-0.0.2.zip",
 			sha256: "a".repeat(64),
 			size: 123456,
 		},
-		releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/ext%2Fbridge%400.0.2",
+		releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/extension%2Fbridge%400.0.2",
 		notes: "第一版。",
 		...over,
 	};

@@ -1,6 +1,6 @@
 name: bilibili-notify — extension release
 
-# 发一个拓展(ADR-0013):tag `ext/<id>@<version>` 触发 —— 构建那个拓展、打成拓展包、
+# 发一个拓展(ADR-0013):tag `extension/<id>@<version>` 触发 —— 构建那个拓展、打成拓展包、
 # 挂到一个**不可变**的 release(同名 tag)上,然后把这一条并进官方索引、重签、覆盖到滚动的
 # `extension-marketplace` release 上。拓展与本体分开发布,所以这条流水线与 update-payload
 # 各管各的 release,不排同一把锁。
@@ -11,7 +11,7 @@ name: bilibili-notify — extension release
 on:
   push:
     tags:
-      - "ext/*@*"
+      - "extension/*@*"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -37,14 +37,14 @@ env:
 
 jobs:
   gate:
-    if: startsWith(github.ref, 'refs/tags/ext/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    if: startsWith(github.ref, 'refs/tags/extension/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     uses: ./.github/workflows/gate.yml
 
   publish:
     name: Build + publish extension
     needs: [gate]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/ext/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    if: startsWith(github.ref, 'refs/tags/extension/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
 
     steps:
       - name: Checkout
@@ -61,7 +61,7 @@ jobs:
         run: bash .github/scripts/assert-extension-tag.sh
 
       - name: Assert release commit is on dev
-        if: startsWith(github.ref, 'refs/tags/ext/')
+        if: startsWith(github.ref, 'refs/tags/extension/')
         run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node
@@ -136,11 +136,11 @@ jobs:
           NOTES: ${{ steps.notes.outputs.value }}
         run: |
           set -euo pipefail
-          tag="ext/${ID}@${VERSION}"
+          tag="extension/${ID}@${VERSION}"
           if ! gh release view "$tag" >/dev/null 2>&1; then
             extra=()
             if [ "$PRERELEASE" = "true" ]; then extra+=(--prerelease); fi
-            gh release create "$tag" --title "${ID} ${VERSION}" --notes "$NOTES" --latest=false "${extra[@]}"
+            gh release create "$tag" --title "$tag" --notes "$NOTES" --latest=false "${extra[@]}"
           fi
           gh release upload "$tag" "${{ steps.pkg.outputs.path }}" --clobber
 

@@ -39,13 +39,17 @@ export function extensionAssetName(id, version) {
 }
 
 /**
- * 那个**不可变** release 的 tag。`ext/<id>@<version>` —— 斜杠与 `@` 都在里头,所以
- * 拼进 URL 时必须整段转义(见下面两条),而 `gh release create` 要的是没转义的原样。
+ * 那个**不可变** release 的 tag。`extension/<id>@<version>` —— 斜杠与 `@` 都在里头,
+ * 所以拼进 URL 时必须整段转义(见下面两条),而 `gh release create` 要的是没转义的原样。
+ *
+ * ⚠️ **别把它跟 URL 面那个 `ext` 拉平**(ADR-0012 决策 38:对外路径一律 `/ext/<id>`)。
+ * 那是面板与桥拨的地址,天天出现在配置里,短一点是对的;这个是 GitHub 发布页上给**素不
+ * 相识的人**看的一行字,和 `v0.11.0` 并排列着 —— 那儿写全称才看得懂这是个拓展。
  *
  * @param {string} id @param {string} version
  */
 export function extensionTag(id, version) {
-	return `ext/${id}@${version}`;
+	return `extension/${id}@${version}`;
 }
 
 /** @param {string} repo `owner/name` @param {string} id @param {string} version */

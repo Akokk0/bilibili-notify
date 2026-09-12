@@ -76,7 +76,7 @@ GitHub Release 的正文由 `create-standalone-github-release.sh` 拼(desktop-re
 
 拓展与本体分开发布(ADR-0013):
 
-- `.github/workflows/extension-release.yml` —— tag `ext/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,只装 `extension.json` + `index.mjs`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_UPDATE_SIGNING_KEY`)、覆盖到滚动 tag `extension-marketplace` 上的 `marketplace.json`。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
+- `.github/workflows/extension-release.yml` —— tag `extension/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,只装 `extension.json` + `index.mjs`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_UPDATE_SIGNING_KEY`)、覆盖到滚动 tag `extension-marketplace` 上的 `marketplace.json`。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
 
 不由 tag 触发、只手动跑的还有一条:
 

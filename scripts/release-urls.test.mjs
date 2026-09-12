@@ -56,13 +56,13 @@ describe("拼出来的地址", () => {
 	});
 
 	it("拓展的 tag 带 `/` 与 `@`,进 URL 要整段转义;`gh` 那头要的是原样", () => {
-		expect(extensionTag("bridge", "0.0.2")).toBe("ext/bridge@0.0.2");
+		expect(extensionTag("bridge", "0.0.2")).toBe("extension/bridge@0.0.2");
 		expect(extensionAssetName("bridge", "0.0.2")).toBe("bridge-0.0.2.zip");
 		expect(extensionPackageUrl("o/r", "bridge", "0.0.2")).toBe(
-			"https://github.com/o/r/releases/download/ext%2Fbridge%400.0.2/bridge-0.0.2.zip",
+			"https://github.com/o/r/releases/download/extension%2Fbridge%400.0.2/bridge-0.0.2.zip",
 		);
 		expect(extensionReleaseUrl("o/r", "bridge", "0.0.2")).toBe(
-			"https://github.com/o/r/releases/tag/ext%2Fbridge%400.0.2",
+			"https://github.com/o/r/releases/tag/extension%2Fbridge%400.0.2",
 		);
 	});
 });

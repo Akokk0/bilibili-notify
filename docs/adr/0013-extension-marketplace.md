@@ -1,6 +1,6 @@
 # ADR-0013:拓展市场 —— 一个签名的官方源,加用户自己加的源
 
-- **状态**:2026-09-11 `/grill-me` 四轮 19 条拍板,同日落地(schema / server / web / 发布流水线 / 文档),**未 push、未发版、真机未验**;第一份官方索引要主人打 `ext/bridge@0.0.1` tag 才会出现
+- **状态**:2026-09-11 `/grill-me` 四轮 19 条拍板,同日落地(schema / server / web / 发布流水线 / 文档),**未 push、未发版、真机未验**;第一份官方索引要主人打 `extension/bridge@0.0.1` tag 才会出现
 - **影响面**:`packages/internal/src/schema/extension-marketplace.ts`(新)、`extension-manifest.ts`(id 放开命名空间)、`globals.ts`(`marketplace.sources`)、`apps/server/src/extensions/marketplace.ts`(新)、`apps/server/src/update/`(签名验证泛化)、`apps/web` 拓展页、`scripts/marketplace-index.mjs` / `pack-extension.mjs`、`.github/workflows/extension-release.yml`
 - **依赖**:ADR-0005(签名镜像链、信任公钥、加速前缀、新鲜度)、ADR-0012(拓展包的形状、上传装包那段落地逻辑、装载根)
 - **取代**:ADR-0012 决策 34 里「日后从签名镜像下载」那句预告 —— 现在有了
@@ -20,7 +20,7 @@
    - 被否:**策展制**(第三方也经我们的索引发)。理由:我们不想经手别人的东西;Claude Code 的 marketplace 就是「谁都能开一个源」,用户加一个地址就能装,作者只要托管一份索引 + 几个 zip。
    - 代价照认:谁控制了那个地址谁就能换内容。所以**风险提示打两处**:添加源时一次(「BN 不审核这个源里的东西」,给不知道自己在干什么的人看)、装每个第三方条目时再确认一次(给知道但手滑的人看)。官方条目一键装。
 3. **官方索引单开一个滚动 release `extension-marketplace`**(不挂在 `update-channel` 上):任何一方发坏了都不牵连另一方,两条流水线各有各的并发锁。同域同路径前缀,一条加速前缀照样管住四样(本体清单、本体载荷、拓展索引、拓展包)。
-4. **每个拓展版本一个不可变 release**,tag `ext/<id>@<version>`,zip 挂上面;索引条目写 URL + sha256 + size,客户端不拼地址(沿用 ADR-0005 那条铁律)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红 —— 拓展是独立发布物,清单里的版本就该是真的,不像本体那样按 tag 临时改元数据。
+4. **每个拓展版本一个不可变 release**,tag `extension/<id>@<version>`,zip 挂上面;索引条目写 URL + sha256 + size,客户端不拼地址(沿用 ADR-0005 那条铁律)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红 —— 拓展是独立发布物,清单里的版本就该是真的,不像本体那样按 tag 临时改元数据。
 5. **一份索引,不分渠道**:条目带 `prerelease: true` 标记,BN 自己的更新渠道是预发布时才显示。拆两份文件只多一次 `--clobber` 失同步的机会。
 6. **每个 id 只列最新那一版**:「有没有新版」就是一次版本比较,索引永远很小;老版本靠发布页手动下。
     🔗 **2026-09-11 改:同 id 各留一条正式 + 一条预发布。** 发版前审查发现:只留一条时打 alpha tag 会把正式版从索引抹掉,稳定渠道(跳过 `prerelease` 条目)在下个正式版之前**看不到这个拓展**、已装的被标「从别处装的」。合并脚本改成按「同 id 同档」替换,比新正式版还旧的预发布一并清掉;宿主每 id 仍只出**一张卡**,稳定渠道取正式档、预发布渠道取两档里版本高的。顺带:`+build` 版本号 tag 守卫与合并脚本**两边都拒**(此前守卫拒、脚本收,只有一条测试钉着差异;build 元数据不参与排序,与「等于即可复现重发」那条前提打架)。
@@ -47,5 +47,5 @@
 
 - 签名验证与拉取从「升级清单专用」泛化成「任意签名 JSON」(`loadSignedJson` / `fetchSignedJson`),升级那半边只是它的一个 wrapper。
 - `ExtensionIdSchema` 多认一个点;所有拿 id 当键的地方一行没动。
-- 第一份官方索引要主人打 `ext/bridge@0.0.1` tag(`extension-release.yml`)才会出现;在那之前市场那一节只会说「拿不到官方索引」。**真机一次都没验**。
+- 第一份官方索引要主人打 `extension/bridge@0.0.1` tag(`extension-release.yml`)才会出现;在那之前市场那一节只会说「拿不到官方索引」。**真机一次都没验**。
 - 没做、明知的:卸载入口;撤回后一键停用;第三方索引的「更多信息」字段(owner 只存不画)。
