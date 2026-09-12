@@ -158,6 +158,20 @@ export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];
 }
 
+/**
+ * `GET /api/ext/:id/docs` —— 拓展自己带的那两份说明。
+ *
+ * **两格都可选**:没写不是错,面板据此整块不画(空的 README 和没有 README 在屏幕上是
+ * 两回事)。拓展没装才是 404。
+ *
+ * 这条读的是**装载目录里的文件**,与拓展跑没跑起来无关 —— 关着的、加载失败的照样给得
+ * 出来,而那正是人最想读它的时候。
+ */
+export interface ExtensionDocsResponse {
+	readme?: string;
+	changelog?: string;
+}
+
 // ---- /api/ext/marketplace(ADR-0013)--------------------------------------------
 
 /** 一个源:内置的官方源(`id: "official"`)或主人自己加的第三方源。 */

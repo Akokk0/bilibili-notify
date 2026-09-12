@@ -14,6 +14,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
+import { ExtensionDocs } from "./extensions/docs-panel";
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
@@ -141,6 +142,9 @@ export default function ExtensionDetail() {
 			</GlassBox>
 
 			{isBridge ? <BridgeConnections extensionId={id} enabled={ext.enabled} /> : null}
+
+			{/* 说明摆在最底下:来这一页多半是为了管连接,别让一页 README 把工作区挤下去。 */}
+			<ExtensionDocs extensionId={id} />
 
 			{confirming ? (
 				<ConfirmDialog
