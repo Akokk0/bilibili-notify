@@ -415,6 +415,41 @@ describe("已装卡片上的「有新版」", () => {
 	});
 
 	/**
+	 * 🔴 市场里也有这个 id、但装着的这份不是从那儿来的(手动传包装的最常见)。这句话此前
+	 * 只在市场那一节印,而已装的现在不在市场里露面了 —— 不搬过来的话,主人永远不会知道
+	 * 市场里还有一份、也不会知道为什么这张卡上从来不提示更新。
+	 */
+	it("市场里也有、但装的不是那一份 → 卡上说清楚,并说明为什么不提示更新", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...MARKET,
+			sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
+			extensions: [
+				{
+					source: "official",
+					official: true,
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "",
+					version: "1.1.0",
+					apiVersion: 1,
+					prerelease: false,
+					size: 1,
+					installed: { version: "1.0.0", source: "手动" },
+					state: "installed-elsewhere",
+				},
+			],
+		});
+
+		await screen.findAllByText("机器人框架桥接");
+		const card = installedCardOf("机器人框架桥接");
+		const note = await within(card).findByText(/不是从那儿装的/);
+		expect(note.textContent).toMatch(/v1\.1\.0/);
+		expect(note.textContent).toMatch(/BN 官方拓展/);
+		// 这一档不是「有新版」—— 别画成更新,不然按下去等于换了一份来路不同的代码。
+		expect(within(card).queryByRole("button", { name: /更新/ })).toBeNull();
+	});
+
+	/**
 	 * 🔴 **失败那句话要跟着刚才那一下走**:更新砸了却被告知「装不了」,主人会去找一个他
 	 * 根本没装过的东西;反过来也一样。措辞由 `entry.state` 决定,而更新钮只长在已装卡上
 	 * —— 所以这条守卫住在这一页,不在市场那一节。

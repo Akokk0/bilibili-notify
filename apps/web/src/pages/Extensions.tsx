@@ -131,6 +131,7 @@ function ExtensionCard({
 	update,
 	onUpdate,
 	updating,
+	elsewhere,
 }: {
 	ext: ExtensionDTO;
 	/** 从它借来的 bot 建了几条连接。 */
@@ -140,6 +141,14 @@ function ExtensionCard({
 	update?: MarketplaceEntryDTO;
 	onUpdate?: () => void;
 	updating?: boolean;
+	/**
+	 * 市场里也有这个 id,但装着的这份不是从那儿来的(手动传包装的最常见)。
+	 *
+	 * 🔴 **这句话只能在这里说**:已装的拓展不在市场那一节露面了,而这一档偏偏既不提示
+	 * 更新、又确实有另一份可拿 —— 不说的话,主人既不知道市场里有,也不知道这张卡为什么
+	 * 从来不提示更新。**不许画成「更新」钮**:按下去等于换成一份来路不同的代码。
+	 */
+	elsewhere?: { entry: MarketplaceEntryDTO; sourceName: string };
 }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	const pushes = (ext.provides ?? []).includes("push");
@@ -165,6 +174,12 @@ function ExtensionCard({
 							更新
 						</Btn>
 					</div>
+				) : null}
+				{elsewhere ? (
+					<p className="text-bn-2xs text-bn-text-tertiary">
+						{elsewhere.sourceName}里也有 v{elsewhere.entry.version},但你这份不是从那儿装的 ——
+						不提示更新
+					</p>
 				) : null}
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
@@ -205,6 +220,15 @@ export default function Extensions() {
 			.filter((entry) => entry.state === "updatable")
 			.map((entry) => [entry.id, entry] as const),
 	);
+	// 同一份索引里的另一档:装着的这份来路与市场那条对不上。市场那一节不画已装的了,
+	// 这句话的唯一去处就是卡片。
+	const sourceNameOf = (id: string) =>
+		market.data?.sources.find((source) => source.id === id)?.name ?? id;
+	const elsewhere = new Map(
+		(market.data?.extensions ?? [])
+			.filter((entry) => entry.state === "installed-elsewhere")
+			.map((entry) => [entry.id, { entry, sourceName: sourceNameOf(entry.source) }] as const),
+	);
 
 	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
 	/*
@@ -235,6 +259,7 @@ export default function Extensions() {
 					count={counts.get(ext.id) ?? 0}
 					onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 					update={updates.get(ext.id)}
+					elsewhere={elsewhere.get(ext.id)}
 					updating={installer.install.isPending}
 					// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
 					// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
