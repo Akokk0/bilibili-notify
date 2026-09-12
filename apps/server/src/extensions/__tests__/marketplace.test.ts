@@ -540,6 +540,7 @@ describe("install()", () => {
 			name: "拓展 bridge",
 			version: "0.0.2",
 			needsRestart: false,
+			docs: { readme: false, changelog: false },
 		});
 		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
 			"0.0.2",

@@ -81,7 +81,15 @@ export interface MarketplaceDeps {
 }
 
 export type MarketplaceInstallOutcome =
-	| { ok: true; id: string; name: string; version: string; needsRestart: boolean }
+	| {
+			ok: true;
+			id: string;
+			name: string;
+			version: string;
+			needsRestart: boolean;
+			/** 包里带没带那两份说明 —— 拆包时就知道,一路带回给面板。 */
+			docs: { readme: boolean; changelog: boolean };
+	  }
 	| { ok: false; err: string };
 
 export interface Marketplace {
@@ -535,6 +543,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			name: opened.pkg.manifest.name,
 			version: entry.version,
 			needsRestart: replaced,
+			docs: {
+				readme: opened.pkg.docs.readme !== undefined,
+				changelog: opened.pkg.docs.changelog !== undefined,
+			},
 		};
 	}
 

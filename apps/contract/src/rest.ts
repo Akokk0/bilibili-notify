@@ -152,6 +152,11 @@ export interface ExtensionInstallResponse {
 	enabled: boolean;
 	/** 需要重启时,这台机器上按下去回不回得来。判据见 ADR-0005 决策 22。 */
 	restart: RestartAbility;
+	/**
+	 * 这个包里带没带那两份说明 —— **拆包时就知道**,所以直接说,别让界面去猜或者再拉一次。
+	 * 装完那句话后面要不要挂一句「看看说明 / 看看更新了什么」,凭的就是这一格。
+	 */
+	docs: { readme: boolean; changelog: boolean };
 }
 
 export interface ExtensionsResponse {

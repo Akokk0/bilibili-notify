@@ -157,6 +157,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			name: opened.pkg.manifest.name,
 			version: opened.pkg.manifest.version,
 			needsRestart: replaced,
+			docs: {
+				readme: opened.pkg.docs.readme !== undefined,
+				changelog: opened.pkg.docs.changelog !== undefined,
+			},
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
 			restart: install.restartAbility,
@@ -233,6 +237,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			name: outcome.name,
 			version: outcome.version,
 			needsRestart: outcome.needsRestart,
+			docs: outcome.docs,
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),
 			restart: install.restartAbility,

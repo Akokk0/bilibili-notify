@@ -12,6 +12,7 @@
 import type { ExtensionInstallResponse, RestartResponse } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, HintNote, LoadingBlock } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
 	DEFAULT_RESTART_WAIT,
 	type RestartWait,
@@ -24,6 +25,37 @@ function whyNoButton(reason: "source-run" | "unsupervised"): string {
 	return reason === "source-run"
 		? "开发版是 tsx 直跑的:进程退了 tsx watch 只等文件变,没人把它拉起来 —— 随便改一行代码存一下,那本来就是一次重启。"
 		: "这个进程退了没人拉(既没跑在桌面外壳里,也不在容器里)—— 自己在终端里停掉再起一次。";
+}
+
+/**
+ * 装完这一刻该把人往哪儿引。**凭的是服务端拆包时答好的 `done.docs`,不猜** —— 挂一颗
+ * 「看看说明」点进去却什么都没有,比不挂更糟。
+ *
+ * 刚盖掉一份跑着的,最想知道的是「这次改了啥」,那是 CHANGELOG 不是 README。
+ */
+function docsLabel(done: ExtensionInstallResponse): string | null {
+	// 🔴 `?.` 不是摆设:这个 app 能应用内自更新,面板与服务端在那几秒里版本可能对不上。
+	// 少一格就把整块「装好了」炸掉,代价远大于少一颗钮。缺了当没有,与 `isExtensionEnabled`
+	// 那条「缺失 = 关着」同一个路子。
+	const docs = done.docs as ExtensionInstallResponse["docs"] | undefined;
+	if (!docs) return null;
+	if (done.needsRestart && docs.changelog) return "看看更新了什么";
+	if (docs.readme) return "看看说明";
+	if (docs.changelog) return "看看更新日志";
+	return null;
+}
+
+function DocsLink({ done }: { done: ExtensionInstallResponse }) {
+	const label = docsLabel(done);
+	if (!label) return null;
+	return (
+		<Link
+			to={`/extensions/${done.id}`}
+			className="shrink-0 font-bold text-bn-pink underline decoration-from-font underline-offset-2"
+		>
+			{label}
+		</Link>
+	);
 }
 
 export interface ExtensionInstallOutcomeProps {
@@ -47,11 +79,17 @@ export function ExtensionInstallOutcome({
 	return (
 		<>
 			{done && !done.needsRestart ? (
-				<HintNote tone={done.enabled ? "success" : "neutral"}>
-					<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
-					{done.enabled
-						? "装好了,已经在跑 —— 开关在它自己那张卡上。"
-						: "装好了,还关着 —— 到它那张卡上把开关拨开才会跑。"}
+				<HintNote
+					tone={done.enabled ? "success" : "neutral"}
+					className="flex flex-wrap items-center gap-x-2 gap-y-1"
+				>
+					<span>
+						<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
+						{done.enabled
+							? "装好了,已经在跑 —— 开关在它自己那张卡上。"
+							: "装好了,还关着 —— 到它那张卡上把开关拨开才会跑。"}
+					</span>
+					<DocsLink done={done} />
 				</HintNote>
 			) : null}
 
@@ -63,6 +101,7 @@ export function ExtensionInstallOutcome({
 						<strong className="text-bn-text-secondary">重启一次</strong>才会用上新的。
 						{done.restart.can ? "" : ` ${whyNoButton(done.restart.reason)}`}
 					</span>
+					<DocsLink done={done} />
 					{done.restart.can ? (
 						<Btn
 							variant="outline"

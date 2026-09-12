@@ -506,6 +506,7 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 					name: "桥",
 					version: "0.0.2",
 					needsRestart: true,
+					docs: { readme: true, changelog: false },
 				}),
 			),
 		};
@@ -551,6 +552,7 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 			name: "桥",
 			version: "0.0.2",
 			needsRestart: true,
+			docs: { readme: true, changelog: false },
 			enabled: false,
 			restart: { can: true, how: "container" },
 		});
@@ -575,6 +577,34 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		});
 		expect(bad.status).toBe(400);
 		expect(m.install).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("装完那一刻就说清有没有文档", () => {
+	/**
+	 * 🔴 服务端**拆包时就知道**包里有没有那两份 —— 让界面去猜(或者先装完再拉一次)只会
+	 * 多一条会说谎的路。装完那句话后面要不要挂「看看说明」,凭的就是这一格。
+	 */
+	it("包里带 README → 回应里说有;没带 CHANGELOG → 说没有", async () => {
+		const zip = zipSync({
+			"extension.json": strToU8(
+				JSON.stringify({
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "测试用",
+					version: "1.1.0",
+					apiVersion: EXTENSION_API_VERSION,
+					provides: ["push"],
+				}),
+			),
+			"index.mjs": strToU8("export function activate() {}"),
+			"README.md": strToU8("# 桥接"),
+		});
+		const res = await upload(boot(), form(new Blob([zip])));
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as ExtensionInstallResponse;
+		expect(body.docs).toEqual({ readme: true, changelog: false });
 	});
 });
 

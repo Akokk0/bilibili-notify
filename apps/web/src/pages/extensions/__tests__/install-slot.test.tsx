@@ -38,6 +38,7 @@ const OK: ExtensionInstallResponse = {
 	name: "机器人框架桥接",
 	version: "1.1.0",
 	needsRestart: false,
+	docs: { readme: false, changelog: false },
 	enabled: false,
 	restart: { can: true, how: "container" },
 };
