@@ -1,0 +1,23 @@
+name: bilibili-notify — issue triage
+
+# 新开的 issue 自动打 `needs-triage`:流转标签(needs-triage / needs-info / ready-for-agent /
+# ready-for-human / wontfix)的规矩是**每条 issue 恒有且只有一个**,靠人记第一条就会漏。
+# 之后由维护者(或 triage skill)换成别的流转标签。标签词表见 docs/agents/triage-labels.md。
+#
+# `issues` 事件只认**默认分支**上的 workflow 文件,所以这份要在 main 上才生效。
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add needs-triage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --add-label needs-triage

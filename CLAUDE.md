@@ -69,5 +69,5 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 ## Agent skills
 
 - **Issue tracker** —— GitHub Issues `Akokk0/bilibili-notify`,经 `gh` CLI;外部 PR 不作为 triage 来源。见 `docs/agents/issue-tracker.md`。
-- **Triage labels** —— 词表 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`;目前仓库只有 `wontfix`,其余首次用前需 `gh label create`。见 `docs/agents/triage-labels.md`。
+- **Triage labels** —— 三轴:流转 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`(每条 issue 恒有且只有一个,新开自动打 `needs-triage`)、类型(GitHub 默认)、模块 `area:*`。标签都已建好,词表见 `docs/agents/triage-labels.md`。
 - **Domain docs** —— 单 context 仓库,`CONTEXT.md` + `docs/adr/` 在仓库根(由 `/grill-with-docs` 按需创建)。见 `docs/agents/domain.md`。
