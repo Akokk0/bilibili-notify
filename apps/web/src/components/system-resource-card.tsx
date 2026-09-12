@@ -1,5 +1,5 @@
 import type { ResourceSample, ResourceStatic } from "@bilibili-notify/contract";
-import { Donut, ErrorNote, GlassPanel, LoadingBlock, Pill } from "@bilibili-notify/ui";
+import { Donut, ErrorNote, GlassPanel, Icon, LoadingBlock, Pill } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
 import type { ResourcesState } from "../hooks/useResourcesChannel";
@@ -188,6 +188,7 @@ export function SystemResourceCard({
 			title="系统资源"
 			subtitle="实时刷新 · 每 2 秒"
 			accent={SECTION_ACCENT.system}
+			icon={<Icon.pulse width={15} height={15} />}
 			right={
 				reachable ? (
 					ready ? (

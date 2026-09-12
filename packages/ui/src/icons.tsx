@@ -345,6 +345,17 @@ export const Icon = {
 			<path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" />
 		</>,
 	),
+	// 柱状图:三根柱子 + 底线。给「趋势 / 分布」那类卡头 —— bell 说的是推送本身,
+	// 这枚说的是把推送按天数出来的那张图。
+	chart: stroke(
+		<>
+			<path d="M3 20h18" />
+			<path d="M6 20v-6M12 20V5M18 20v-10" />
+		</>,
+	),
+	// 脉搏线:资源监控那张卡。与 gear(设置)/ wrench(devtools)语义不同 —— 它不是
+	// 「去调什么」,是「盯着读数」。
+	pulse: stroke(<path d="M3 12h4l3-7 4 14 3-7h4" />),
 } as const;
 
 export type IconName = keyof typeof Icon;

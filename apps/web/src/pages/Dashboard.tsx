@@ -112,6 +112,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 	return (
 		<GlassPanel
 			accent="var(--color-bn-pink)"
+			icon={<Icon.live width={15} height={15} />}
 			title="正在直播"
 			subtitle="实时刷新"
 			right={
@@ -209,7 +210,12 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 	}, [daily]);
 	const total = daily.reduce((sum, day) => sum + day.total, 0);
 	return (
-		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="var(--color-bn-blue)">
+		<GlassPanel
+			title="本周推送趋势"
+			subtitle="按推送类型分布"
+			accent="var(--color-bn-blue)"
+			icon={<Icon.chart width={15} height={15} />}
+		>
 			{/* TimelinePanel 6 条 history × 单行 ~50px + padding ≈ 320px;StatsBar 抬高
 			    到 280 让同行 TrendPanel 视觉对齐,不至于半空。 */}
 			{/* 柱子与下面的图例走同一份家族色 —— 此前柱子在库里写死,和图例只是碰巧同色。 */}
@@ -286,6 +292,9 @@ function TimelinePanel({
 		<GlassPanel
 			title="最近推送活动"
 			subtitle="时间轴视图"
+			// 与 KPI 行的「今日推送」同一抹紫 —— 讲的是同一件事(发出去的推送)。
+			accent="var(--color-bn-purple)"
+			icon={<Icon.bell width={15} height={15} />}
 			right={
 				<Link to="/history">
 					<Btn size="sm" variant="ghost">
@@ -432,6 +441,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 			title="粉丝数变化"
 			subtitle="自订阅起点 / 近 24h / 近 7d"
 			accent="var(--color-bn-pink)"
+			icon={<Icon.heart width={15} height={15} />}
 			right={
 				<Pill color="var(--color-bn-pink)" size="sm">
 					● {entries.length} 位订阅
