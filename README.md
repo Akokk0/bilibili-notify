@@ -30,7 +30,8 @@
 - **AI**:OpenAI 兼容接口,动态锐评 + 直播总结,人格库可 per-UP 指定;主模型不支持看图也能配一个视觉子模型代读。另带聊天界面(连续对话、贴图、Markdown 排版)
 - **数据统计**:涨粉 / 投稿 / 动态 / 直播活动留档,对比表、热力图、雷达图、单 UP 钻取;可让 AI 据此写周报或单人锐评并推成卡片
 - **卡片渲染**:Vue + UnoCSS + Puppeteer SSR 出图,配色 / 背景图 / 字体可自定义(还能直接上传字体文件),实时预览
-- **多推送目标**:OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)/ Webhook / Web 通知中心
+- **多推送目标**:OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)/ Webhook / Web 通知中心;装上桥接拓展还能直接借用 koishi 里已经配好的 bot
+- **拓展**:装进来才有的外挂模块,面板内置市场一键装,开关一拨当场生效。第一个拓展是**机器人框架桥接** —— 把你 koishi 里那些 bot 借过来发推送,于是 Telegram / Discord / KOOK 这些平台不必由 BN 各写一份适配(koishi 侧插件:[koishi-plugin-bilibili-notify-bridge](https://www.npmjs.com/package/koishi-plugin-bilibili-notify-bridge))
 - **per-UP 定制**:特性开关 / 路由 / 过滤 / 模板 / AI / 卡片样式全部 inherit-or-override
 - **其它**:推送历史(按日 jsonl)、扫码登录、Cookie 自动续期、应用内自主升级
 
@@ -113,11 +114,12 @@ full 镜像内置 chromium,出图峰值不低,建议宿主可用内存 ≥ 1GB;�
 ## 仓库结构
 
 ```
-packages/   平台中立业务核心(@bilibili-notify/*)
-apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳(Docker / 桌面应用)
+packages/     平台中立业务核心(@bilibili-notify/*)
+apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳(Docker / 桌面应用)
+extensions/   拓展 —— 装进来才有,不编在主程序里
 ```
 
-单 pnpm workspace、单 lockfile;`apps/server` 通过 `workspace:*` 消费业务核心。Koishi 插件与 AstrBot 插件已暂停更新,源码与维护版发布在 `koishi-astrbot-maintenance` 分支;后续会以薄适配插件的形式把独立端桥接进这两个宿主。
+单 pnpm workspace、单 lockfile;`apps/server` 通过 `workspace:*` 消费业务核心。老的 Koishi 插件与 AstrBot 插件已暂停更新,源码与维护版留在 `koishi-astrbot-maintenance` 分支。桥接现在由**拓展**接手:独立端开一扇 WS 门,koishi 那侧装一个薄插件把 bot 借过来 —— 见上面「功能」里的拓展一档,用法在[部署与配置文档](./apps/README.md)。
 
 ## 开发
 
