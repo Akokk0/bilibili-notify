@@ -38,5 +38,25 @@ export function digestOf(bytes) {
  * @returns {Uint8Array}
  */
 export function reproducibleZip(files, epoch) {
-	return zipSync(files, { level: 9, mtime: epoch });
+	return zipSync(files, { level: 9, mtime: asLocalFields(epoch) });
+}
+
+/**
+ * fflate 把 mtime 写成 DOS 时间用的是 `getFullYear()` / `getHours()` 这一族**本地时区**
+ * 取值 —— 直接把 UTC 的 epoch 递过去,东八区的开发机写 08:00、UTC 的 CI 写 00:00、西半球
+ * 的机器上 1980-01-01T00:00Z 还是 1979 年,DOS 年份直接写成负数。同样的输入在不同时区打出
+ * 不同的字节,「可复现」就成了空话。这里造一个**本地分量等于 epoch 的 UTC 分量**的 Date,
+ * fflate 读到的每一格就都与时区无关了。
+ *
+ * @param {Date} epoch
+ */
+function asLocalFields(epoch) {
+	return new Date(
+		epoch.getUTCFullYear(),
+		epoch.getUTCMonth(),
+		epoch.getUTCDate(),
+		epoch.getUTCHours(),
+		epoch.getUTCMinutes(),
+		epoch.getUTCSeconds(),
+	);
 }
