@@ -15,17 +15,28 @@ import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
 const { FakeApiError } = vi.hoisted(() => {
-	class FakeApiError extends Error {}
+	class FakeApiError extends Error {
+		constructor(
+			readonly status: number,
+			message: string,
+		) {
+			super(message);
+		}
+	}
 	return { FakeApiError };
 });
 
-const { docs } = vi.hoisted(() => ({ docs: { value: {} as Record<string, unknown> } }));
+/** `value` 摆成 Error 就让这一发请求失败 —— 错误态和正常态共用这一个开关。 */
+const { docs } = vi.hoisted(() => ({ docs: { value: {} as Record<string, unknown> | Error } }));
 
 vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url.endsWith("/docs")) return docs.value;
+			if (url.endsWith("/docs")) {
+				if (docs.value instanceof Error) throw docs.value;
+				return docs.value;
+			}
 			return {
 				extensions: [
 					{
@@ -91,6 +102,38 @@ describe("详情页上的拓展文档", () => {
 	});
 });
 
+describe("读不到文档的时候", () => {
+	afterEach(() => {
+		cleanup();
+		vi.clearAllMocks();
+	});
+
+	/**
+	 * 🔴 装完那句话挂的「看看说明」凭的是服务端拆包时答好的 `docs.readme` —— 人点进来
+	 * 却什么都没有的话,得到的结论是「说好有说明的,结果没有」,而真相可能只是这一刻
+	 * 服务端在重启。仓里的规矩:失败的原因不许吞,更不许连那句话都不说。
+	 */
+	it("读挂了 → 把服务端那句话原样摆出来,还给一颗重试", async () => {
+		docs.value = new FakeApiError(500, "上游炸了:ECONNRESET");
+		renderDetail();
+		expect(await screen.findByText(/ECONNRESET/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+	});
+
+	/**
+	 * 404 是**例外,它不是失败**:老服务端压根没有这条路由(应用内自更新那几秒,面板可能
+	 * 比服务端新一版),或者这个拓展刚被删掉。两种都该安静。
+	 */
+	it("404 → 安静地整块不画,别摆一句吓人的错", async () => {
+		docs.value = new FakeApiError(404, "没有这条路由");
+		renderDetail();
+		// ⚠️ 得**等着看它会不会冒出来**。第一版拿「`api.get` 被调过」当信号,那一刻请求
+		// 才刚发出去、错误还没传到渲染,断言在什么都没发生的时候就通过了 —— 把 404 那条
+		// 分支整个删掉它照样绿。`findByText` 会一直等到超时,这才是真的在守。
+		await expect(screen.findByText(/读不到这个拓展的说明/)).rejects.toThrow();
+	});
+});
+
 /**
  * 🔴 **这一组必须挂在详情页上,不能自己 new 一个 `<ReactMarkdown>` 来测。**
  *
@@ -124,6 +167,18 @@ describe("详情页画第三方内容时走的是受限渲染", () => {
 		// 只问「这段字在不在一个 <a> 里」—— 页面上本来就有面包屑等别的链接,
 		// 拿 `document.querySelector("a")` 问会把它们一起抓进来。
 		expect(text.closest("a")).toBeNull();
+	});
+
+	/**
+	 * 表格是第三方 README 里最常见的结构(能力对照、平台支持),没有 GFM 就会逐行画成
+	 * 字面的 `| a | b |`。而 `doc-markdown.tsx` 那副里 `table` / `th` / `td` 三格本来
+	 * 就写好了 —— 不挂 GFM 的话它们在这条路上永远不可达,是三段死代码。
+	 */
+	it("README 里的表格画成真表格", async () => {
+		docs.value = { readme: "| 平台 | 支持 |\n| --- | --- |\n| Telegram | 有 |" };
+		renderDetail();
+		expect(await screen.findByText("Telegram")).toBeTruthy();
+		expect(document.querySelector("table")).not.toBeNull();
 	});
 
 	/** 相对路径脱离了源仓就拼不出地址,画出去是碎图、而且照样往面板自己身上发一次请求。 */

@@ -9,14 +9,22 @@ import ExtensionDetail from "../ExtensionDetail";
 // 写回名单的读法只有一份 —— 那句 `as` 断言形状漂了不会红,所以不许再抄(见该文件)。
 import { savedLinks } from "../extensions/__tests__/bridge-harness";
 
-const { apiGetMock, apiPostMock, apiPatchMock, apiDeleteMock } = vi.hoisted(() => ({
-	apiGetMock: vi.fn(),
-	apiPostMock: vi.fn(),
-	apiPatchMock: vi.fn(),
-	apiDeleteMock: vi.fn(),
-}));
+const { apiGetMock, apiPostMock, apiPatchMock, apiDeleteMock, FakeApiError } = vi.hoisted(() => {
+	// 这一页底下挂着 `<ExtensionDocs>`,它按 `err instanceof ApiError && err.status === 404`
+	// 分「老服务端没这条路由」和「真读挂了」—— mock 里少了这一格,`instanceof undefined`
+	// 当场抛,整页渲染不出来。假 api 要把真 api 导出的东西都摆齐。
+	class FakeApiError extends Error {}
+	return {
+		apiGetMock: vi.fn(),
+		apiPostMock: vi.fn(),
+		apiPatchMock: vi.fn(),
+		apiDeleteMock: vi.fn(),
+		FakeApiError,
+	};
+});
 
 vi.mock("../../services/api", () => ({
+	ApiError: FakeApiError,
 	api: {
 		get: apiGetMock as unknown as (url: string) => Promise<unknown>,
 		post: apiPostMock as unknown as (url: string, body?: unknown) => Promise<unknown>,

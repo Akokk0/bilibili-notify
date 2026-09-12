@@ -40,7 +40,11 @@ const HEAVY = /^(?:react-markdown|remark-[\w-]+)$/;
  * 允许**持有** react-markdown 运行时 import 的模块(相对 `apps/web/src`)。
  * 它们各自是一个懒加载边界后面的东西;边界在不在,由上面那条可达性测试管。
  */
-const HEAVY_HOLDERS = ["components/ai-chat/markdown.tsx", "pages/guide/guide-markdown.tsx"];
+const HEAVY_HOLDERS = [
+	"components/ai-chat/markdown.tsx",
+	"pages/guide/guide-markdown.tsx",
+	"pages/extensions/docs-markdown.tsx",
+];
 
 /** 爬静态图时不当模块看的后缀(样式、原文、图片…)。 */
 const NON_JS = /\.(?:css|md|json|svg|png|jpe?g|webp|txt|ya?ml)(?:\?.*)?$/;
