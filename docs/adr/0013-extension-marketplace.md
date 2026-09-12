@@ -1,6 +1,6 @@
 # ADR-0013:拓展市场 —— 一个签名的官方源,加用户自己加的源
 
-- **状态**:2026-09-11 `/grill-me` 四轮 19 条拍板,同日落地(schema / server / web / 发布流水线 / 文档),**未 push、未发版、真机未验**;第一份官方索引要主人打 `extension/bridge@0.0.1` tag 才会出现
+- **状态**:2026-09-11 `/grill-me` 四轮 19 条拍板,同日落地(schema / server / web / 发布流水线 / 文档)**并已 push**。发布流水线当天以旧形状的 tag(`ext/<id>@<version>`)**全程跑通并当场验实**,包括「斜杠 tag 的下载 URL 编码 GitHub 认」这条结论;那个 tag 与 release 随后撤回了,要重打 `extension/bridge@0.0.1` 才会有第一份官方索引。面板上那一节真机未验
 - **影响面**:`packages/internal/src/schema/extension-marketplace.ts`(新)、`extension-manifest.ts`(id 放开命名空间)、`globals.ts`(`marketplace.sources`)、`apps/server/src/extensions/marketplace.ts`(新)、`apps/server/src/update/`(签名验证泛化)、`apps/web` 拓展页、`scripts/marketplace-index.mjs` / `pack-extension.mjs`、`.github/workflows/extension-release.yml`
 - **依赖**:ADR-0005(签名镜像链、信任公钥、加速前缀、新鲜度)、ADR-0012(拓展包的形状、上传装包那段落地逻辑、装载根)
 - **取代**:ADR-0012 决策 34 里「日后从签名镜像下载」那句预告 —— 现在有了
@@ -47,5 +47,5 @@
 
 - 签名验证与拉取从「升级清单专用」泛化成「任意签名 JSON」(`loadSignedJson` / `fetchSignedJson`),升级那半边只是它的一个 wrapper。
 - `ExtensionIdSchema` 多认一个点;所有拿 id 当键的地方一行没动。
-- 第一份官方索引要主人打 `extension/bridge@0.0.1` tag(`extension-release.yml`)才会出现;在那之前市场那一节只会说「拿不到官方索引」。**真机一次都没验**。
+- 第一份官方索引要打 `extension/bridge@0.0.1` tag(`extension-release.yml`)才会出现;在那之前市场那一节只会说「拿不到官方索引」。**流水线那半边已经跑通验实过**(见状态行),没验的是面板上那一节。
 - 没做、明知的:卸载入口;撤回后一键停用;第三方索引的「更多信息」字段(owner 只存不画)。
