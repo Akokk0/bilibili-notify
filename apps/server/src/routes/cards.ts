@@ -580,6 +580,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 预览得跟出图用同一款字体,否则「预览好看、推出去变样」。悬空 id 由
 			// resolveFontFace 兜成空串,渲染器据此回落家族名。
 			fontAsset: style.fontAsset,
+			// 旋钮覆盖:SC / 上舰的预览走渲染器这条路,不给就只有另外两种卡的预览跟着
+			// 旋钮变 —— 「预览好看、推出去变样」的同一个坑,换个卡种再踩一次。
+			cardSkinKnobs: opts.deps.store.getGlobals().defaults.cardSkinKnobs,
 		};
 		if (!imageRenderer || imageRendererPuppeteer !== currentPuppeteer) {
 			imageRenderer = new ImageRenderer({

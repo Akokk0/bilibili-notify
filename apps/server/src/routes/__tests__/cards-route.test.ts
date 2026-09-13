@@ -964,6 +964,38 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		spy.mockRestore();
 	});
 
+	/**
+	 * **旋钮要到得了 SC / 上舰的预览**(ADR-0014 决策 16 的 🔗)。这两种卡的预览走
+	 * `ImageRenderer`,另两种走 SSR 那条 —— 只接一条的话就是「改了颜色,直播卡预览变了、
+	 * SC 卡没变」。验红:把 `getImageRenderer` 的 config 里那句 `cardSkinKnobs` 删掉。
+	 */
+	it("SC 预览:旋钮覆盖从配置进了渲染器的 config", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const update = vi.spyOn(ImageRenderer.prototype, "updateConfig");
+		const deps = makeDeps() as unknown as { store: { getGlobals: () => unknown } };
+		deps.store.getGlobals = () => ({
+			defaults: {
+				cardSkin: "knobby",
+				cardSkinKnobs: { knobby: { accent: "#00f0ff" } },
+			},
+		});
+		const app = createCardsRoute({
+			deps: deps as unknown as RouteDeps,
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const body = { kind: "sc" as const, style: STYLE, content: { price: 30 }, fallback: true };
+		// 第一趟构造渲染器,第二趟才走 updateConfig —— 两趟都发,拿得到那份 config。
+		expect((await postPreview(app, body)).status).toBe(200);
+		expect((await postPreview(app, body)).status).toBe(200);
+		const cfg = update.mock.calls.at(-1)?.[0] as { cardSkinKnobs?: Record<string, unknown> };
+		expect(cfg?.cardSkinKnobs).toEqual({ knobby: { accent: "#00f0ff" } });
+		spy.mockRestore();
+		update.mockRestore();
+	});
+
 	it("guard:uname=登录账号(fallback:true 的 per-UP 风格请求)", async () => {
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateGuardCard")
