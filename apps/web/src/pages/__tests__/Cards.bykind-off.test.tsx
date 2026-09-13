@@ -34,7 +34,7 @@ import { api } from "../../services/api";
 /** 全局已经开着 live 的单独样式 —— 也就是用户「保存过一次」之后的状态。 */
 function globalsWithLiveOverride(): GlobalConfig {
 	const defaults = makeDefaults() as unknown as Record<string, unknown>;
-	defaults.cardStyleByKind = { live: { cardColorStart: "#abcdef" } };
+	defaults.cardStyleByKind = { live: { font: "Live Sans" } };
 	return { app: {}, master: {}, defaults } as unknown as GlobalConfig;
 }
 
@@ -150,8 +150,8 @@ describe("关掉「单独样式」", () => {
 			...makeEmptySubscription("123456"),
 			overrides: {
 				cardStyleByKind: {
-					live: { cardColorStart: "#live" },
-					sc: { cardColorStart: "#sc" },
+					live: { font: "Live Sans" },
+					sc: { font: "SC Sans" },
 				},
 			},
 		};
@@ -185,6 +185,6 @@ describe("关掉「单独样式」", () => {
 		expect(byKind).not.toBeNull();
 		expect((byKind as Record<string, unknown>).live).toBeNull();
 		// 没动的那类必须原样留着。
-		expect((byKind as Record<string, unknown>).sc).toEqual({ cardColorStart: "#sc" });
+		expect((byKind as Record<string, unknown>).sc).toEqual({ font: "SC Sans" });
 	});
 });

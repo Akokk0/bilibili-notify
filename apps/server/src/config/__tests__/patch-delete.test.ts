@@ -65,8 +65,8 @@ describe("patchGlobals 的删除语义", () => {
 		await store.patchGlobals({
 			defaults: {
 				cardStyleByKind: {
-					live: { cardColorStart: "#live" },
-					sc: { cardColorStart: "#sc" },
+					live: { glassOpacity: 0.1 },
+					sc: { glassOpacity: 0.2 },
 				},
 			},
 		});
@@ -78,7 +78,7 @@ describe("patchGlobals 的删除语义", () => {
 				cardStyleByKind: {
 					live: null,
 					dynamic: null,
-					sc: { cardColorStart: "#sc" },
+					sc: { glassOpacity: 0.2 },
 					guard: null,
 				},
 			},
@@ -86,17 +86,17 @@ describe("patchGlobals 的删除语义", () => {
 
 		const byKind = store.getGlobals().defaults.cardStyleByKind;
 		expect(byKind?.live).toBeUndefined();
-		expect(byKind?.sc).toEqual({ cardColorStart: "#sc" });
+		expect(byKind?.sc).toEqual({ glassOpacity: 0.2 });
 	});
 
 	it("键不出现 = 不改 —— 这正是「关不掉」的成因,钉住它免得被当成删除", async () => {
 		await store.patchGlobals({
-			defaults: { cardStyleByKind: { live: { cardColorStart: "#live" } } },
+			defaults: { cardStyleByKind: { live: { glassOpacity: 0.1 } } },
 		});
 		// 老前端的下发形状:live 被 delete 掉,于是整个 map 是空的。
 		await store.patchGlobals({ defaults: { cardStyleByKind: {} } });
 		expect(store.getGlobals().defaults.cardStyleByKind?.live).toEqual({
-			cardColorStart: "#live",
+			glassOpacity: 0.1,
 		});
 	});
 

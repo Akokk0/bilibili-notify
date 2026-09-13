@@ -49,10 +49,10 @@ describe("removeAssetFromStyle", () => {
 	});
 	it("缺省字段保持缺省(不凭空造数组),其余键原样保留", () => {
 		const out = removeAssetFromStyle(
-			{ cardColorStart: "#f00", liveCoverImages: ["g", "c"] },
+			{ font: "F0 Sans", liveCoverImages: ["g", "c"] },
 			"g",
 		) as Record<string, unknown>;
-		expect(out).toEqual({ cardColorStart: "#f00", liveCoverImages: ["c"] });
+		expect(out).toEqual({ font: "F0 Sans", liveCoverImages: ["c"] });
 		expect("backgroundImages" in out).toBe(false);
 	});
 	it("未引用时返回等值对象", () => {
@@ -67,16 +67,16 @@ describe("removeAssetFromByKind", () => {
 		expect(
 			removeAssetFromByKind(
 				{
-					live: { liveCoverImages: ["g"], cardColorStart: "#f00" },
+					live: { liveCoverImages: ["g"], font: "F0 Sans" },
 					dynamic: { backgroundImages: ["g", "r"] },
-					sc: { cardColorEnd: "#00f" },
+					sc: { fontAsset: "sc.woff2" },
 				},
 				"g",
 			),
 		).toEqual({
-			live: { liveCoverImages: [], cardColorStart: "#f00" },
+			live: { liveCoverImages: [], font: "F0 Sans" },
 			dynamic: { backgroundImages: ["r"] },
-			sc: { cardColorEnd: "#00f" },
+			sc: { fontAsset: "sc.woff2" },
 		});
 	});
 });

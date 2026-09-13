@@ -99,7 +99,7 @@ describe("删盘之后的悬空清扫", () => {
 	});
 
 	it("压根没选字体的样式 → 原样返回,不平白多出一个 fontAsset 键", () => {
-		const style: { cardColorStart: string; fontAsset?: string } = { cardColorStart: "#fff" };
+		const style: { glassOpacity: number; fontAsset?: string } = { glassOpacity: 0.5 };
 		const got = removeFontFromStyle(style, UPLOADED);
 		expect(got).toEqual(style);
 		expect("fontAsset" in got).toBe(false);

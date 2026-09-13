@@ -274,13 +274,20 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	const card = (): CardSkinCard =>
 		liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })]);
 
-	it("四个变量注在外框的 inline style 上,值与外框自己画的一致", async () => {
+	it("玻璃那两个变量注在外框的 inline style 上,值与外框自己画的一致", async () => {
 		const { doc } = await render(card());
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
-		expect(style).toContain("--bn-card-color-start:#e0c3fc");
-		expect(style).toContain("--bn-card-color-end:#8ec5fc");
 		expect(style).toContain("--bn-card-glass-opacity:0.82");
 		expect(style).toContain("--bn-card-glass-blur:10px");
+	});
+
+	// 决策 15 的 🔗:渐变起 / 止色退出变量表,外框上一个字都不该再注 —— 注了的话皮肤
+	// 作者会以为 `var(--bn-card-color-start)` 还能用,写出「本机好看、换台机器变色」的皮肤。
+	it("渐变起 / 止色不再注成变量", async () => {
+		const { doc } = await render(card());
+		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
+		expect(style).not.toContain("--bn-card-color-start");
+		expect(style).not.toContain("--bn-card-color-end");
 	});
 
 	it("皮肤路径的外框不再自画底色 —— 底色由皮肤 CSS 的 frame 规则写(决策 15 的 🔗)", async () => {

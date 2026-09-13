@@ -380,8 +380,6 @@ export const FIELD_LABELS = {
 	},
 
 	// ── 卡片样式 ──────────────────────────────────────────────────────────
-	cardColorStart: { label: "渐变起始", section: "cardStyle" },
-	cardColorEnd: { label: "渐变结束", section: "cardStyle" },
 	font: {
 		label: "字体",
 		hint: "字体家族名。渲染那台机器没装这个字体时自动回退到内置兜底链(Microsoft YaHei / Noto Sans CJK / sans-serif)。想用别的字体就把文件传上来。",

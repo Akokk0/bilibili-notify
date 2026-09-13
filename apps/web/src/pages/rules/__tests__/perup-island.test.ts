@@ -57,10 +57,10 @@ describe("projectPerUpIsland — schedule/templates/ai 保 nested", () => {
 describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () => {
 	it("cardStyle 不再投影 —— 卡片覆盖已迁到 /cards,改它不进 Rules per-UP 灵动岛", () => {
 		const codes = diffCodes(
-			{ cardStyle: { cardColorStart: "#111111" } },
-			{ cardStyle: { cardColorStart: "#222222" } },
+			{ cardStyle: { font: "One Sans" } },
+			{ cardStyle: { font: "Two Sans" } },
 		);
-		expect(codes).not.toContain("cardColorStart");
+		expect(codes).not.toContain("font");
 		expect(codes).toEqual([]);
 	});
 

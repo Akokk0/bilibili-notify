@@ -352,8 +352,8 @@ export const DEFAULT_AI = {
 
 export const DEFAULT_CARD_STYLE = {
 	enabled: true,
-	cardColorStart: "#e0c3fc",
-	cardColorEnd: "#8ec5fc",
+	// 渐变起 / 止色已退役(ADR-0014 决策 15 的 🔗)—— 出厂色住在
+	// `card-skin.ts` 的 `DEFAULT_CARD_GRADIENT`,由默认皮肤的外框 CSS 画出来。
 	font: "PingFang SC, sans-serif",
 	// 数据区三项默认全显示 = 复刻现状(简介显隐已交由版式 desc 块)。
 	showPopularity: true,

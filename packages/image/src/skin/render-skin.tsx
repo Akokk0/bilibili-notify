@@ -219,26 +219,21 @@ function renderCustomHtml(
  * 用户在面板里调的那几样 → 根块上的 CSS 自定义属性(ADR-0014 决策 15、16)。
  * 值从**同一份 props** 算,所以 `var(--bn-card-glass-opacity)` 与外框自己画的白纱恒等。
  * 字体不在 props 里(它经 `renderCard` 的 `font` 进来),所以不写 `--bn-card-font`。
+ *
+ * 渐变起 / 止色**不在这里注**(决策 15 的 🔗):底色归皮肤自己的外框 CSS,
+ * props 里那两个颜色字段只剩模板路径(基准快照)在用。
  */
 function frameVariables(kind: CardSkinKind, props: unknown): string {
 	const p = props as {
-		cardColorStart?: string;
-		cardColorEnd?: string;
-		colorStart?: string;
-		colorEnd?: string;
 		bgColor?: readonly [string, string];
 		backgroundImage?: string;
 		glassOpacity?: number;
 		glassClear?: boolean;
 	};
-	const start = p.cardColorStart ?? p.colorStart ?? p.bgColor?.[0] ?? "";
-	const end = p.cardColorEnd ?? p.colorEnd ?? p.bgColor?.[1] ?? "";
 	const opacity = p.glassClear ? 0 : (p.glassOpacity ?? GLASS_OPACITY_BASE[kind]);
 	const blur = p.glassClear ? 0 : 10;
 	const V = CARD_SKIN_VARIABLES;
-	let out =
-		`${V.colorStart.css}:${start};${V.colorEnd.css}:${end};` +
-		`${V.glassOpacity.css}:${opacity};${V.glassBlur.css}:${blur}px;`;
+	let out = `${V.glassOpacity.css}:${opacity};${V.glassBlur.css}:${blur}px;`;
 	// 档位色(SC 按价位、上舰按舰长等级)只有那两种卡的 props 才带;皮肤 CSS 用它按档变色。
 	if (p.bgColor) out += `${V.tierColor.css}:${p.bgColor[0]};${V.tierColorEnd.css}:${p.bgColor[1]};`;
 	// 用户背景图**有才注**:没注时皮肤 CSS 里 `var(--bn-card-bg-image, <渐变>)` 的兜底才生效。

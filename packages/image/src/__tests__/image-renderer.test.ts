@@ -43,8 +43,6 @@ function makeRenderer(
 		serviceCtx: ctx,
 		puppeteer,
 		config: {
-			cardColorStart: "#000000",
-			cardColorEnd: "#ffffff",
 			font: "sans-serif",
 			showPopularity: true,
 			showArea: true,
@@ -528,8 +526,6 @@ describe("ImageRenderer — IM2 远端图大小上限", () => {
 
 describe("ImageRenderer.updateConfig", () => {
 	const BASE: ImageRendererConfig = {
-		cardColorStart: "#000000",
-		cardColorEnd: "#ffffff",
 		font: "sans-serif",
 		showPopularity: true,
 		showArea: true,
@@ -549,7 +545,7 @@ describe("ImageRenderer.updateConfig", () => {
 
 	it("配置实际变化 → 记录一次", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
-		r.updateConfig({ ...BASE, cardColorStart: "#111111" });
+		r.updateConfig({ ...BASE, font: "serif" });
 		expect(info).toHaveBeenCalledTimes(1);
 	});
 
@@ -560,14 +556,13 @@ describe("ImageRenderer.updateConfig", () => {
 		expect(info).not.toHaveBeenCalled();
 	});
 
-	it("回归:只改 glassOpacity(渐变色未变)→ 日志报实际改的字段,不误报渐变色", () => {
+	it("回归:只改 glassOpacity(字体未变)→ 日志只报实际改的那项", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
 		r.updateConfig({ ...BASE, glassOpacity: 0.5 });
 		expect(info).toHaveBeenCalledTimes(1);
 		const [msg] = info.mock.calls[0] as [string];
 		expect(msg).toContain("glassOpacity");
-		expect(msg).not.toContain("cardColorStart");
-		expect(msg).not.toContain("cardColorEnd");
+		expect(msg).not.toContain("font=");
 	});
 });
 
@@ -627,8 +622,6 @@ function makeLoggingRenderer(
 }
 
 const BASE_CONFIG: ImageRendererConfig = {
-	cardColorStart: "#000000",
-	cardColorEnd: "#ffffff",
 	font: "sans-serif",
 	showPopularity: true,
 	showArea: true,

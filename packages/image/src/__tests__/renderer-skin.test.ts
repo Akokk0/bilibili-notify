@@ -16,6 +16,7 @@
 import type { CardSkinKind, CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_LIMITS,
+	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
@@ -40,8 +41,6 @@ const SERVICE_CTX: ServiceContext = {
 };
 
 const BASE_CONFIG: ImageRendererConfig = {
-	cardColorStart: "#e0c3fc",
-	cardColorEnd: "#8ec5fc",
 	font: "PingFang SC, sans-serif",
 	showPopularity: true,
 	showArea: true,
@@ -144,8 +143,8 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 				showPopularity: true,
 				showArea: true,
 				showFans: true,
-				cardColorStart: BASE_CONFIG.cardColorStart,
-				cardColorEnd: BASE_CONFIG.cardColorEnd,
+				cardColorStart: DEFAULT_CARD_GRADIENT[0],
+				cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 				data: LIVE_ROOM,
 				username: "示例UP",
 				userface: "http://i0.hdslb.com/bfs/face/f.jpg",

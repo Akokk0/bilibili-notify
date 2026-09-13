@@ -331,3 +331,158 @@ describe("收尾", () => {
 		expect(rebornStore.list().filter((s) => !s.builtin)).toHaveLength(1);
 	});
 });
+
+/**
+ * 退役的渐变起 / 止色(`cardStyle.cardColorStart / cardColorEnd`,ADR-0014 决策 15 的 🔗)。
+ *
+ * 与版式同一条迁移、同一套皮肤:改过颜色的存量用户升级时把那对色折进派生皮肤的**外框
+ * CSS**,颜色等于出厂 / 等于全局的不派生,迁完两个键从所有位置消失。
+ */
+describe("退役的渐变色", () => {
+	const FACTORY = { start: "#e0c3fc", end: "#8ec5fc" };
+	const MINE = { start: "#ff0000", end: "#00ff00" };
+
+	/** 某套皮肤某种卡的外框 CSS。 */
+	const frameCss = (skinId: string, kind: "live" | "dynamic" | "roastBoard" | "sc"): string =>
+		store.get(skinId)?.cards[kind]?.css ?? "";
+
+	const gradientOf = (css: string): string[] =>
+		[...css.matchAll(/linear-gradient\(to right bottom,([^,]+),([^)]+)\)/g)].flatMap(
+			(m) => [m[1], m[2]] as string[],
+		);
+
+	async function setGlobalColors(start: string, end: string): Promise<void> {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: {
+				...g.defaults,
+				cardStyle: { ...g.defaults.cardStyle, cardColorStart: start, cardColorEnd: end },
+			},
+		});
+	}
+
+	it("全局改过颜色(版式没动)→ 派生一套皮肤,五种吃用户色的卡外框换成那对色", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true });
+		const id = config.getGlobals().defaults.cardSkin;
+		expect(id).not.toBe(DEFAULT_CARD_SKIN_ID);
+		expect(gradientOf(frameCss(id, "live"))).toEqual([MINE.start, MINE.end]);
+		expect(gradientOf(frameCss(id, "dynamic"))).toEqual([MINE.start, MINE.end]);
+		expect(gradientOf(frameCss(id, "roastBoard"))).toEqual([MINE.start, MINE.end]);
+		// SC 的底色按价位档走,与用户颜色无关 —— 档位变量原样留着。
+		expect(frameCss(id, "sc")).toContain("--bn-card-tier-color");
+		expect(frameCss(id, "sc")).not.toContain(MINE.start);
+	});
+
+	it("颜色就是出厂值 → 一套皮肤都不折(但两个旧键照样收走)", async () => {
+		await setGlobalColors(FACTORY.start, FACTORY.end);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 0, global: false });
+		expect(config.getGlobals().defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+		expect(await rawState("globals.json")).not.toContain("cardColorStart");
+	});
+
+	it("按卡种的颜色(cardStyleByKind.live)只改那一种卡,其余卡吃全局那份", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: {
+				...g.defaults,
+				cardStyleByKind: { live: { cardColorStart: "#111111", cardColorEnd: "#222222" } },
+			},
+		});
+		await migrateCardLayoutsToSkins({ store, config });
+
+		const id = config.getGlobals().defaults.cardSkin;
+		expect(gradientOf(frameCss(id, "live"))).toEqual(["#111111", "#222222"]);
+		expect(gradientOf(frameCss(id, "dynamic"))).toEqual([MINE.start, MINE.end]);
+	});
+
+	it("per-UP 改过颜色 → 给他单折一套「专用」,全局那套不受影响", async () => {
+		const sub = await addSub("111", "阿夸", {
+			cardStyle: { cardColorStart: "#abcdef", cardColorEnd: "#fedcba" },
+		} as SubscriptionOverrides);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ subscriptions: 1 });
+		expect(installedNames()).toEqual(["阿夸 专用"]);
+		const skinId = subById(sub).overrides.cardSkin as string;
+		expect(skinId).toBeDefined();
+		expect(gradientOf(frameCss(skinId, "live"))).toEqual(["#abcdef", "#fedcba"]);
+		expect(config.getGlobals().defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+	});
+
+	it("per-UP 的颜色其实等于全局生效值 → 不派生,跟随全局那套", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const sub = await addSub("111", "阿夸", {
+			cardStyle: { cardColorStart: MINE.start, cardColorEnd: MINE.end },
+		} as SubscriptionOverrides);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true, subscriptions: 0 });
+		expect(installedNames()).toEqual(["自定义(迁移自旧版式)"]);
+		expect(subById(sub).overrides.cardSkin).toBeUndefined();
+		// 跟随全局归跟随全局,那两个退役的键照样得从他的覆盖里消失。
+		expect(subById(sub).overrides.cardStyle?.cardColorStart).toBeUndefined();
+	});
+
+	it("版式与颜色一起改过 → **只派一套**皮肤,两样都折进去", async () => {
+		await setGlobalLayout(customLayout());
+		await setGlobalColors(MINE.start, MINE.end);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true });
+		expect(installedNames()).toEqual(["自定义(迁移自旧版式)"]);
+		const id = config.getGlobals().defaults.cardSkin;
+		expect(store.get(id)?.cards.live?.blocks.map((b) => b.id)).not.toContain("cover");
+		expect(gradientOf(frameCss(id, "live"))).toEqual([MINE.start, MINE.end]);
+	});
+
+	it("迁完四个位置的两个键全没了(全局 / per-kind / per-UP / per-UP per-kind)", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: {
+				...g.defaults,
+				cardStyle: { ...g.defaults.cardStyle, cardColorStart: MINE.start, cardColorEnd: MINE.end },
+				cardStyleByKind: { live: { cardColorStart: "#111111" } },
+			},
+		});
+		await addSub("111", "阿夸", {
+			cardStyle: { cardColorStart: "#abcdef" },
+			cardStyleByKind: { dynamic: { cardColorEnd: "#fedcba" } },
+		} as SubscriptionOverrides);
+		await migrateCardLayoutsToSkins({ store, config });
+
+		for (const file of ["globals.json", "subscriptions.json"]) {
+			const raw = await rawState(file);
+			expect(raw).not.toContain("cardColorStart");
+			expect(raw).not.toContain("cardColorEnd");
+		}
+	});
+
+	it("跑两遍 —— 只有颜色的存量实例第二遍一个字节都不写", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const sub = await addSub("111", "阿夸", {
+			cardStyle: { cardColorStart: "#abcdef" },
+		} as SubscriptionOverrides);
+		await migrateCardLayoutsToSkins({ store, config });
+
+		const names = installedNames();
+		const rawGlobals = await rawState("globals.json");
+		const rawSubs = await rawState("subscriptions.json");
+
+		const second = await migrateCardLayoutsToSkins({ store, config });
+		expect(second).toEqual({ created: 0, global: false, subscriptions: 0 });
+		expect(installedNames()).toEqual(names);
+		expect(await rawState("globals.json")).toBe(rawGlobals);
+		expect(await rawState("subscriptions.json")).toBe(rawSubs);
+		expect(subById(sub).overrides.cardSkin).toBeTruthy();
+	});
+});

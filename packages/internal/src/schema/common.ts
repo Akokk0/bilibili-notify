@@ -594,8 +594,17 @@ const CardStyleObjectSchema = z.object({
 	 * 是否注入决定能不能渲染,这个 flag 是 *用户意图* 层。
 	 */
 	enabled: z.boolean().default(true),
-	cardColorStart: z.string(),
-	cardColorEnd: z.string(),
+	/**
+	 * **退役字段**(ADR-0014 决策 15 的 🔗):卡片渐变的起 / 止色归皮肤自己的 CSS,不再是
+	 * 用户配置项、也不再是皮肤变量。留着只为**开机迁移读一次**(存量自定义色派生成皮肤,
+	 * 见 `apps/server/src/card-skins/migrate-layouts.ts`),迁完这两个键就地删掉、不再写回 ——
+	 * 与 `cardLayout` 同一套路(`.optional()` 让键删得掉,「键还在不在」就是「迁过没有」)。
+	 *
+	 * ⛔ 新代码不许读这两个字段。出图的渐变在皮肤的外框 CSS 里。
+	 */
+	cardColorStart: z.string().optional(),
+	/** 退役字段,见上面 `cardColorStart`。 */
+	cardColorEnd: z.string().optional(),
 	/**
 	 * 字体家族名。`packages/image` 的 `renderCard` 在它后面追加
 	 * `"Microsoft YaHei","Source Han Sans","Noto Sans CJK",sans-serif` 兜底链,
@@ -626,8 +635,8 @@ const CardStyleObjectSchema = z.object({
 	/** 数据区:显示粉丝数据(直播中=当前粉丝数,下播=累计观看人数,下播态=粉丝数变化)。 */
 	showFans: z.boolean().default(true),
 	/**
-	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用 `cardColorStart→cardColorEnd`
-	 * 渐变;长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
+	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用皮肤外框 CSS 里那条渐变;
+	 * 长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
 	 * 服务端从列表里挑一张解析成 data URL 内联(packages/image 仍只认单图)。旧的单值
 	 * `backgroundImage` 经下方 preprocess 自动迁移成本列表。
 	 */
@@ -681,7 +690,7 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
 // ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有 8 个带 default 的字段,per-UP 只覆盖一个字段(如 cardColorStart)时,partial 会把
+// 有 8 个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
 // enabled:true / font / showPopularity / showArea / showFans / backgroundImages:[] /
 // liveCoverImages:[] / glassClear:false 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
 // 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的

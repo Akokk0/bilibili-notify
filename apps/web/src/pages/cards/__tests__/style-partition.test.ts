@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-	colorOnly,
-	hasColorOverride,
+	appearanceOnly,
+	hasAppearanceOverride,
 	omitCover,
 	omitShow,
 	pickCover,
@@ -9,9 +9,8 @@ import {
 } from "../style-partition";
 
 const FULL = {
-	cardColorStart: "#111",
-	cardColorEnd: "#222",
-	font: "f",
+	font: "Full Sans",
+	fontAsset: "full.woff2",
 	glassClear: true,
 	showPopularity: false,
 	showArea: true,
@@ -37,22 +36,21 @@ describe("style-partition 字段族拣取", () => {
 		expect(noCover.showArea).toBe(true);
 	});
 
-	it("colorOnly 同时剥掉 show 与封面,只留颜色/玻璃/背景/字体", () => {
-		const c = colorOnly(FULL);
+	it("appearanceOnly 同时剥掉 show 与封面,只留字体/玻璃/背景图", () => {
+		const c = appearanceOnly(FULL);
 		expect(c).toEqual({
-			cardColorStart: "#111",
-			cardColorEnd: "#222",
-			font: "f",
+			font: "Full Sans",
+			fontAsset: "full.woff2",
 			glassClear: true,
 			backgroundImages: ["bg1"],
 		});
 	});
 
-	it("hasColorOverride:纯封面覆盖或纯 show 覆盖都不算颜色覆盖", () => {
-		expect(hasColorOverride({ liveCoverImages: ["a"] })).toBe(false);
-		expect(hasColorOverride({ showFans: false })).toBe(false);
-		expect(hasColorOverride({ showFans: false, liveCoverImages: ["a"] })).toBe(false);
-		expect(hasColorOverride({ cardColorStart: "#f00" })).toBe(true);
-		expect(hasColorOverride(undefined)).toBe(false);
+	it("hasAppearanceOverride:纯封面覆盖或纯 show 覆盖都不算外观覆盖", () => {
+		expect(hasAppearanceOverride({ liveCoverImages: ["a"] })).toBe(false);
+		expect(hasAppearanceOverride({ showFans: false })).toBe(false);
+		expect(hasAppearanceOverride({ showFans: false, liveCoverImages: ["a"] })).toBe(false);
+		expect(hasAppearanceOverride({ font: "F0 Sans" })).toBe(true);
+		expect(hasAppearanceOverride(undefined)).toBe(false);
 	});
 });

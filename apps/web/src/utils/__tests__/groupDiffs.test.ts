@@ -12,7 +12,7 @@ const D = (code: string, oldV: unknown = 0, newV: unknown = 1): FieldDiff => ({
 describe("sectionOf", () => {
 	it("已知 code → 字典里的 section", () => {
 		expect(sectionOf("ai.apiKey")).toBe("ai");
-		expect(sectionOf("cardColorStart")).toBe("cardStyle");
+		expect(sectionOf("font")).toBe("cardStyle");
 		expect(sectionOf("app.logLevel")).toBe("logging");
 	});
 
@@ -40,7 +40,7 @@ describe("groupDiffsBySection", () => {
 
 	it("多 section → 按 SECTION_ORDER 顺序(general/master/ai/persona/cardStyle/.../other)", () => {
 		const out = groupDiffsBySection([
-			D("cardColorStart"),
+			D("font"),
 			D("ai.apiKey"),
 			D("blockKeywords"),
 			D("app.dynamicCron"),
@@ -67,7 +67,7 @@ describe("groupDiffsBySection", () => {
 			D("master.targetId"),
 			D("ai.apiKey"),
 			D("persona.name"),
-			D("cardColorStart"),
+			D("font"),
 			D("showFans"),
 			D("roomId"),
 			D("blockKeywords"),

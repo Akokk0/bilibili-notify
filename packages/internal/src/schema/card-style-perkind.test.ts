@@ -10,7 +10,7 @@ describe("resolveCardStyleForKind", () => {
 	it("falls back to the global base style when nothing is per-kind", () => {
 		const s = resolveCardStyleForKind(defaults, null, "live");
 		expect(s.backgroundImages).toEqual(defaults.cardStyle.backgroundImages);
-		expect(s.cardColorStart).toBe(defaults.cardStyle.cardColorStart);
+		expect(s.font).toBe(defaults.cardStyle.font);
 	});
 
 	it("applies a global per-kind override only to that kind", () => {
@@ -31,8 +31,8 @@ describe("resolveCardStyleForKind", () => {
 	});
 
 	it("per-UP base override beats the global per-kind override (precedence chain)", () => {
-		const d = { ...defaults, cardStyleByKind: { live: { cardColorStart: "#globalkind" } } };
-		const ov: SubscriptionOverrides = { cardStyle: { cardColorStart: "#upbase" } };
-		expect(resolveCardStyleForKind(d, ov, "live").cardColorStart).toBe("#upbase");
+		const d = { ...defaults, cardStyleByKind: { live: { font: "GlobalKind Sans" } } };
+		const ov: SubscriptionOverrides = { cardStyle: { font: "UpBase Sans" } };
+		expect(resolveCardStyleForKind(d, ov, "live").font).toBe("UpBase Sans");
 	});
 });

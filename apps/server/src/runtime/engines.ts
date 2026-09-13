@@ -394,8 +394,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			serviceCtx: imageCtx,
 			puppeteer: pup,
 			config: {
-				cardColorStart: cs.cardColorStart,
-				cardColorEnd: cs.cardColorEnd,
 				font: cs.font,
 				showPopularity: cs.showPopularity,
 				showArea: cs.showArea,
@@ -842,8 +840,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				if (cardStyleChanged && imageRenderer) {
 					const cs = g.defaults.cardStyle;
 					imageRenderer.updateConfig({
-						cardColorStart: cs.cardColorStart,
-						cardColorEnd: cs.cardColorEnd,
 						font: cs.font,
 						showPopularity: cs.showPopularity,
 						showArea: cs.showArea,
@@ -1301,8 +1297,6 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
  * 会把背景抹空而非回退全局,故只设颜色/玻璃的 per-UP 覆盖必须让背景透传 undefined。
  */
 function cardStyleToColorOptions(s: {
-	cardColorStart?: string;
-	cardColorEnd?: string;
 	glassOpacity?: number;
 	glassClear?: boolean;
 	backgroundImages?: string[];
@@ -1315,8 +1309,6 @@ function cardStyleToColorOptions(s: {
 }): LiveSubView["customCardStyle"] {
 	return {
 		enable: true,
-		cardColorStart: s.cardColorStart,
-		cardColorEnd: s.cardColorEnd,
 		glassOpacity: s.glassOpacity,
 		glassClear: s.glassClear,
 		// 字体两项此前整个漏在这里:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、

@@ -23,8 +23,11 @@ import {
 	type CardSkinBlock,
 	type CardSkinCard,
 	type CardSkinColumn,
+	type CardSkinKind,
 	type CardSkinManifest,
+	cardSkinFrameBgRule,
 	DEFAULT_CARD_SKIN,
+	DEFAULT_FRAME_BG_RULE,
 } from "./card-skin";
 
 /** 竖栈卡里块的通栏跨度。 */
@@ -291,6 +294,68 @@ function guardCard(layout: GuardLayout, base: CardSkinCard): CardSkinCard {
 	};
 }
 
+// ── 退役的渐变色 → 外框 CSS ───────────────────────────────────────────────────
+
+/** 一对渐变端点色。 */
+export interface CardSkinGradient {
+	start: string;
+	end: string;
+}
+
+/**
+ * 存量用户改过的渐变色(退役中的 `cardStyle.cardColorStart / cardColorEnd`)。
+ *
+ * - `base`:所有吃用户色的卡种的默认。对应 `globals.defaults.cardStyle` 那一份。
+ * - `byKind`:某个卡种另有一份(`cardStyleByKind.<kind>` 或 per-UP 覆盖算出来的)。
+ *   只有 **live / dynamic / roastBoard / roastSolo / wordcloud** 吃用户色;SC 按价位档、
+ *   上舰按舰长等级(`--bn-card-tier-color`),给它们写颜色没有意义,这里直接忽略。
+ *
+ * 两处都不传(或整个参数不传)= 颜色就是出厂色,外框 CSS 一字不动。
+ */
+export interface CardSkinColors {
+	base?: CardSkinGradient;
+	byKind?: Partial<Record<CardSkinKind, CardSkinGradient>>;
+}
+
+/** 吃用户渐变色的卡种。sc / guard 不在其中(它们的底色按档位走)。 */
+const USER_GRADIENT_KINDS = [
+	"live",
+	"dynamic",
+	"roastBoard",
+	"roastSolo",
+	"wordcloud",
+] as const satisfies readonly CardSkinKind[];
+
+type UserGradientKind = (typeof USER_GRADIENT_KINDS)[number];
+
+const isUserGradientKind = (k: CardSkinKind): k is UserGradientKind =>
+	(USER_GRADIENT_KINDS as readonly CardSkinKind[]).includes(k);
+
+/**
+ * 把一张卡外框 CSS 里那条「用户渐变」规则**换成**指定的两端色。
+ *
+ * 换而不是加:`background` 写两遍只有后一条生效,追加等于赌规则顺序。认不出默认那条规则
+ * (`base` 不是出厂皮肤)时原样返回 —— 不知道该换哪条就什么都别动,宁可颜色没迁进去,
+ * 也不在别人的皮肤里塞一条来历不明的 background。
+ */
+function withGradient(
+	css: string | undefined,
+	c: CardSkinGradient | undefined,
+): string | undefined {
+	if (!c) return css;
+	const next = cardSkinFrameBgRule(c.start, c.end);
+	if (css === undefined) return next;
+	return css.includes(DEFAULT_FRAME_BG_RULE) ? css.replace(DEFAULT_FRAME_BG_RULE, next) : css;
+}
+
+/** 这张卡该用哪对色:卡种自己那份优先,否则全局那份。 */
+function gradientFor(
+	colors: CardSkinColors | undefined,
+	kind: UserGradientKind,
+): CardSkinGradient | undefined {
+	return colors?.byKind?.[kind] ?? colors?.base;
+}
+
 /**
  * 把一份 v7 版式折成一份皮肤。
  *
@@ -299,15 +364,24 @@ function guardCard(layout: GuardLayout, base: CardSkinCard): CardSkinCard {
  *
  * `toggles` 是直播卡数据区那三个显隐开关(`cardStyle.show*`)。不传 = 三个都开 = 数据区
  * 照旧用 `data` 复合块;关过任何一个的存量用户,折出来的是用原子块拼的同一副样子。
+ *
+ * `colors` 是退役中的渐变起 / 止色(`cardStyle.cardColorStart / cardColorEnd`)。传了就把
+ * 对应卡种外框 CSS 里那条渐变规则换掉 —— **只认 `base` 是出厂皮肤的情形**(迁移就是这么调的);
+ * 形状见 {@link CardSkinColors}。
  */
 export function cardLayoutToSkin(
 	layout: CardLayout,
 	base: CardSkinManifest = DEFAULT_CARD_SKIN,
 	toggles?: LiveDataToggles,
+	colors?: CardSkinColors,
 ): CardSkinManifest {
-	const cardOf = (kind: keyof CardSkinManifest["cards"]): CardSkinCard =>
+	const cardOf = (kind: keyof CardSkinManifest["cards"]): CardSkinCard => {
 		// biome-ignore lint/style/noNonNullAssertion: 出厂默认皮肤七种卡齐全,是最后一道回落
-		base.cards[kind] ?? DEFAULT_CARD_SKIN.cards[kind]!;
+		const card = base.cards[kind] ?? DEFAULT_CARD_SKIN.cards[kind]!;
+		const g = isUserGradientKind(kind) ? gradientFor(colors, kind) : undefined;
+		const css = withGradient(card.css, g);
+		return css === card.css ? card : { ...card, css };
+	};
 	return {
 		...base,
 		cards: {

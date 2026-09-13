@@ -2,6 +2,15 @@ import { GuardLevel } from "@bilibili-notify/blive";
 
 // ── 颜色数据 ──────────────────────────────────────────────────────────────────
 
+/**
+ * 出厂渐变(起色, 止色)。**单一事实源在 `@bilibili-notify/internal`** —— 默认皮肤的外框
+ * CSS 就是用它画的,这里只是给模板路径(基准快照)的 props 取值用。
+ *
+ * 用户配置里的 `cardColorStart` / `cardColorEnd` 已退役(ADR-0014 决策 15 的 🔗):
+ * 出图的渐变来自皮肤的外框 CSS,渲染器不再从 config 读颜色。
+ */
+export { DEFAULT_CARD_GRADIENT } from "@bilibili-notify/internal";
+
 export const BG_COLORS: Record<GuardLevel, [string, string]> = {
 	[GuardLevel.None]: ["#4ebcec", "#F9CCDF"],
 	[GuardLevel.Captain]: ["#4ebcec", "#b494e5"],

@@ -69,11 +69,8 @@ describe("CardStyle 字体资产", () => {
 
 	it("覆盖维度里**不带默认值** —— 注进一个默认就等于「这一项我覆盖了」", () => {
 		// 与 font / backgroundImages 同一条纪律:partial 若保留 `.default()`,
-		// per-UP 只改一个颜色也会连带把字体判成「已覆盖」,盖掉全局设的那款。
-		const parsed = CardStylePartialSchema.parse({ cardColorStart: "#fff" }) as Record<
-			string,
-			unknown
-		>;
+		// per-UP 只改一项也会连带把字体判成「已覆盖」,盖掉全局设的那款。
+		const parsed = CardStylePartialSchema.parse({ glassOpacity: 0.5 }) as Record<string, unknown>;
 		expect("fontAsset" in parsed).toBe(false);
 	});
 });

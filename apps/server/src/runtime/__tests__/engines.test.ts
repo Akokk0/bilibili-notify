@@ -797,15 +797,15 @@ describe("createEngines — AI 热重载三态", () => {
 });
 
 describe("createEngines — image 配色热更", () => {
-	it("puppeteer 在位:globals 变更 → imageRenderer.updateConfig 带新配色", () => {
+	it("puppeteer 在位:globals 变更 → imageRenderer.updateConfig 带新样式", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.cardColorStart = "#123456";
+			g.defaults.cardStyle.glassOpacity = 0.42;
 		});
 		c.bus.emit("config-changed", "globals");
 		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(last.cardColorStart).toBe("#123456");
+		expect(last.glassOpacity).toBe(0.42);
 		// cardStyle 变更不在 app section → 不扇出重设 UA(仅 boot 1 次)。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
@@ -1167,11 +1167,11 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 		expect(resolveDynamicCardStyle(g.defaults, null)).toEqual({ enable: false });
 	});
 
-	it("全局给「动态」调了配色 → 全局作用域(null)也解析出完整样式", () => {
+	it("全局给「动态」调了样式 → 全局作用域(null)也解析出完整样式", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { dynamic: { cardColorStart: "#abcdef" } } as any;
+		g.defaults.cardStyleByKind = { dynamic: { glassOpacity: 0.42 } } as any;
 		const style = resolveDynamicCardStyle(g.defaults, null);
-		expect(style).toMatchObject({ enable: true, cardColorStart: "#abcdef" });
+		expect(style).toMatchObject({ enable: true, glassOpacity: 0.42 });
 		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
 		const subRt = { get: () => undefined } as any;
@@ -1181,10 +1181,10 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
-		sub.overrides.cardStyle = { cardColorEnd: "#000001" } as any;
+		sub.overrides.cardStyle = { glassOpacity: 0.25 } as any;
 		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
 			enable: true,
-			cardColorEnd: "#000001",
+			glassOpacity: 0.25,
 		});
 	});
 });
@@ -1292,10 +1292,10 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyleByKind = { dynamic: { cardColorStart: "#abcdef" } } as any;
+			g.defaults.cardStyleByKind = { dynamic: { glassOpacity: 0.42 } } as any;
 		});
 		c.bus.emit("config-changed", "globals");
-		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ cardColorStart: "#abcdef" });
+		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ glassOpacity: 0.42 });
 	});
 });
 

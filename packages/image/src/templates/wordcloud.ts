@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderCard } from "../render";
+import { DEFAULT_CARD_GRADIENT } from "../styles";
 import { WordCloudCard } from "./wordcloud-card";
 
 /**
@@ -87,8 +88,8 @@ export async function buildWordCloudHtml(
 	words: Array<[string, number]>,
 	dirname: string,
 	masterAvatarUrl?: string,
-	colorStart = "#e0c3fc",
-	colorEnd = "#8ec5fc",
+	colorStart: string = DEFAULT_CARD_GRADIENT[0],
+	colorEnd: string = DEFAULT_CARD_GRADIENT[1],
 	font = "sans-serif",
 	/** 主人自带字体的 `@font-face` 规则(有就跟着一起进 CSS)。 */
 	fontFace?: string,

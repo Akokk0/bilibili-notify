@@ -29,19 +29,21 @@ describe("formatDiffValue", () => {
 		expect(formatDiffValue("app.userAgent", "")).toEqual({ display: '""' });
 	});
 
+	// 判据是 **code 名里带 color**,不是某一个具体字段 —— 卡片渐变色退役后(ADR-0014
+	// 决策 15 的 🔗)面板里暂时没有颜色字段了,这条规则仍留着给将来的颜色字段用。
 	it("color 字段 + 合法 hex → 带 swatch", () => {
-		expect(formatDiffValue("cardColorStart", "#a29bfe")).toEqual({
+		expect(formatDiffValue("someColorStart", "#a29bfe")).toEqual({
 			display: "#a29bfe",
 			swatch: "#a29bfe",
 		});
-		expect(formatDiffValue("cardColorEnd", "#abc")).toEqual({
+		expect(formatDiffValue("someColorEnd", "#abc")).toEqual({
 			display: "#abc",
 			swatch: "#abc",
 		});
 	});
 
 	it("color 字段 + 非 hex → 无 swatch", () => {
-		expect(formatDiffValue("cardColorStart", "linear-gradient(...)")).toEqual({
+		expect(formatDiffValue("someColorStart", "linear-gradient(...)")).toEqual({
 			display: "linear-gradient(...)",
 		});
 	});

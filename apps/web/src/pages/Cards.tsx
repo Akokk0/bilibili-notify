@@ -40,7 +40,6 @@ import {
 	type LogLevelValue,
 	Picker,
 	TArea,
-	TColor,
 	TInput,
 	TSelect,
 } from "../components/forms";
@@ -68,8 +67,8 @@ import {
 import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
 import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
 import {
-	colorOnly,
-	hasColorOverride,
+	appearanceOnly,
+	hasAppearanceOverride,
 	hasCoverOverride,
 	hasShowOverride,
 	isEmptyObj,
@@ -149,7 +148,7 @@ function PreviewImage({
 	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
 	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
 	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
-	// 后一次变更只触发一次 refetch。TColor / TArea / 拖拽编辑器的高频 onChange 同样收敛。
+	// 后一次变更只触发一次 refetch。TArea / 图廊等控件的高频 onChange 同样收敛。
 	const spec = useMemo(
 		() => ({ kind, style, content, fallback }),
 		[kind, style, content, fallback],
@@ -370,12 +369,6 @@ export function CardStyleFields({
 	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) => onChange({ ...style, [k]: v });
 	return (
 		<>
-			<Field code="cardColorStart">
-				<TColor value={style.cardColorStart} onChange={(v) => set("cardColorStart", v)} />
-			</Field>
-			<Field code="cardColorEnd">
-				<TColor value={style.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
-			</Field>
 			<Field code="font" full>
 				<FontPicker
 					value={{ font: style.font, fontAsset: style.fontAsset }}
@@ -1084,7 +1077,7 @@ export default function Cards() {
 	const effStyleFor = (sk: StyleKind): CardStyle => {
 		// 全局 per-kind 只贡献颜色族(show 只认基准 gStyle;封面只认基准/per-UP kind 层);
 		// per-UP per-kind 的 show / 封面是该 UP 的独立覆盖,整份 spread 保留。
-		const gEff: CardStyle = { ...gStyle, ...colorOnly(gByKind[sk]) };
+		const gEff: CardStyle = { ...gStyle, ...appearanceOnly(gByKind[sk]) };
 		if (isGlobalScope) return gEff;
 		// 基准层不持有封面(savePerUp 剥离,不落盘):封面继承链 = per-UP kind 层 > 全局基准。
 		const base = puStyle ? { ...puStyle, liveCoverImages: gStyle.liveCoverImages } : gEff;
@@ -1109,7 +1102,7 @@ export default function Cards() {
 	// (全局 per-kind 的 show 字段同样剥掉,数据区继承值取自基准)。
 	const puBaseStyle: CardStyle = puStyle
 		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
-		: { ...gStyle, ...colorOnly(gByKind[styleKind]) };
+		: { ...gStyle, ...appearanceOnly(gByKind[styleKind]) };
 	const effStyle: CardStyle = effStyleFor(styleKind);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
@@ -1249,8 +1242,9 @@ export default function Cards() {
 									onChange={(on) =>
 										setGByKind((bk) => {
 											const next = { ...bk };
-											// 颜色覆盖只含颜色族(show 归 gStyle 基准、封面归独立区块),colorOnly 防携带。
-											if (on) next[styleKind] = colorOnly(resolveKindStyle(gStyle, bk, styleKind));
+											// 外观覆盖只含外观族(show 归 gStyle 基准、封面归独立区块),appearanceOnly 防携带。
+											if (on)
+												next[styleKind] = appearanceOnly(resolveKindStyle(gStyle, bk, styleKind));
 											else delete next[styleKind];
 											return next;
 										})
@@ -1261,7 +1255,7 @@ export default function Cards() {
 							{gByKind[styleKind] ? (
 								<CardStyleFields
 									style={resolveKindStyle(gStyle, gByKind, styleKind)}
-									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: colorOnly(n) }))}
+									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: appearanceOnly(n) }))}
 									onAssetDeleted={sweepDeletedAsset}
 								/>
 							) : (
@@ -1275,18 +1269,18 @@ export default function Cards() {
 							subtitle="开 = 该 UP 的此卡片用自己的渐变 / 字体 / 玻璃片 / 背景;关 = 跟随该 UP 基准（基准未覆盖则继承全局）"
 							accent={KIND_LABELS[kind].tone}
 							icon={<KindIcon size={14} />}
-							badge={hasColorOverride(puByKind[styleKind]) ? "单独设置" : "跟随基准"}
+							badge={hasAppearanceOverride(puByKind[styleKind]) ? "单独设置" : "跟随基准"}
 							right={
 								<Toggle
-									value={hasColorOverride(puByKind[styleKind])}
+									value={hasAppearanceOverride(puByKind[styleKind])}
 									onChange={(on) =>
 										setPuByKind((bk) => {
 											const next = { ...bk };
 											// 颜色/数据区(show)/封面三族同住该 kind 的 partial 但字段不相交:
-											// 打开取颜色快照(colorOnly)并保留已有 show 与封面覆盖;关闭只去颜色、留两族。
+											// 打开取外观快照(appearanceOnly)并保留已有 show 与封面覆盖;关闭只去外观、留两族。
 											if (on) {
 												next[styleKind] = {
-													...colorOnly(puBaseStyle),
+													...appearanceOnly(puBaseStyle),
 													...pickShow(bk[styleKind]),
 													...pickCover(bk[styleKind]),
 												};
@@ -1301,14 +1295,14 @@ export default function Cards() {
 								/>
 							}
 						>
-							{hasColorOverride(puByKind[styleKind]) ? (
+							{hasAppearanceOverride(puByKind[styleKind]) ? (
 								<CardStyleFields
 									style={{ ...puBaseStyle, ...puByKind[styleKind] }}
 									onChange={(n) =>
 										setPuByKind((bk) => ({
 											...bk,
 											[styleKind]: {
-												...colorOnly(n),
+												...appearanceOnly(n),
 												...pickShow(bk[styleKind]),
 												...pickCover(bk[styleKind]),
 											},
@@ -1498,10 +1492,7 @@ export default function Cards() {
 							{/* Effective style readout */}
 							<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-bn-2xs text-bn-text-tertiary">
 								<span>
-									cardColorStart: <b className="text-bn-text-primary">{effStyle.cardColorStart}</b>
-								</span>
-								<span>
-									cardColorEnd: <b className="text-bn-text-primary">{effStyle.cardColorEnd}</b>
+									font: <b className="text-bn-text-primary">{effStyle.font}</b>
 								</span>
 								<span className="italic text-bn-text-secondary">
 									{isGlobalScope

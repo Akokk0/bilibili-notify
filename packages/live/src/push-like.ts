@@ -77,8 +77,6 @@ export function wantsLiveEndExtras(sub: SubItemView): boolean {
 /** Sub-level customisation blocks copied from `@bilibili-notify/push`. */
 export interface CustomCardStyleLike {
 	enable: boolean;
-	cardColorStart?: string;
-	cardColorEnd?: string;
 	/** 玻璃片(内容层)透明度 0..1;透传给 generate* 的 colorOptions。 */
 	glassOpacity?: number;
 	/** 完全透明:内容层透明 + 无模糊;透传给 generate* 的 colorOptions。 */

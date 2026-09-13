@@ -241,3 +241,58 @@ describe("旧版式 → 卡片皮肤 — 上舰卡", () => {
 		expect(blocks[3].css).toBe(`[data-bn="self"]{padding:8px 16px 12px;align-self:end;${MIRROR}}`);
 	});
 });
+
+/**
+ * 退役的渐变起 / 止色(ADR-0014 决策 15 的 🔗)。存量用户改过的颜色升级时折进派生皮肤的
+ * **外框 CSS**,而不是留成变量 —— 这几条钉的是「换掉那条规则,不是再加一条」。
+ */
+describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
+	const G = { start: "#ff0000", end: "#00ff00" };
+	const RULE = (s: string, e: string) =>
+		`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${s},${e}))}`;
+
+	it("不传 colors → 外框 CSS 一字不动", () => {
+		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards.live?.css).toBe(
+			DEFAULT_CARD_SKIN.cards.live?.css,
+		);
+	});
+
+	it("全局一份颜色 → 五种吃用户色的卡外框渐变都换掉", () => {
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
+		for (const kind of ["live", "dynamic", "roastBoard", "roastSolo", "wordcloud"] as const) {
+			expect(skin.cards[kind]?.css).toBe(RULE(G.start, G.end));
+		}
+	});
+
+	it("SC / 上舰不吃用户色 —— 档位色那条规则原样留着", () => {
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
+		expect(skin.cards.sc?.css).toBe(DEFAULT_CARD_SKIN.cards.sc?.css);
+		expect(skin.cards.guard?.css).toBe(DEFAULT_CARD_SKIN.cards.guard?.css);
+	});
+
+	it("按卡种给的颜色压过全局那份,其余卡种仍用全局那份", () => {
+		const kindG = { start: "#111111", end: "#222222" };
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, {
+			base: G,
+			byKind: { live: kindG },
+		});
+		expect(skin.cards.live?.css).toBe(RULE(kindG.start, kindG.end));
+		expect(skin.cards.dynamic?.css).toBe(RULE(G.start, G.end));
+	});
+
+	it("**换掉**默认那条规则而不是追加 —— 整段 CSS 里只有一条 frame background", () => {
+		const css = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G }).cards.live
+			?.css;
+		expect(css?.match(/\[data-bn="frame"\]\{background:/g)?.length).toBe(1);
+		expect(css).not.toContain("#e0c3fc");
+	});
+
+	it("上舰卡那条「档位渐变 + 玻璃层高度」的复合 CSS 不被颜色改动波及", () => {
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, {
+			base: G,
+			byKind: { guard: G },
+		});
+		expect(skin.cards.guard?.css).toContain('[data-bn="glass"]{height:190px');
+		expect(skin.cards.guard?.css).not.toContain(G.start);
+	});
+});

@@ -114,8 +114,6 @@ export interface SubItemView {
 	dynamic?: boolean;
 	customCardStyle?: {
 		enable?: boolean;
-		cardColorStart?: string;
-		cardColorEnd?: string;
 		/** 玻璃片(内容层)透明度 0..1;透传给 generateDynamicCard 的 colorOptions。 */
 		glassOpacity?: number;
 		/** 完全透明:内容层透明 + 无模糊;透传给 generateDynamicCard 的 colorOptions。 */

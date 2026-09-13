@@ -36,15 +36,11 @@ describe("PerUpCoverSection", () => {
 	it("打开覆盖开关 → 快照全局封面列表,并保留 partial 里已有的颜色键", () => {
 		const onChange = vi.fn();
 		renderWithQuery(
-			<PerUpCoverSection
-				base={["g1", "g2"]}
-				value={{ cardColorStart: "#f00" }}
-				onChange={onChange}
-			/>,
+			<PerUpCoverSection base={["g1", "g2"]} value={{ font: "F0 Sans" }} onChange={onChange} />,
 		);
 		fireEvent.click(screen.getByRole("button"));
 		expect(onChange).toHaveBeenCalledWith({
-			cardColorStart: "#f00",
+			font: "F0 Sans",
 			liveCoverImages: ["g1", "g2"],
 		});
 	});
@@ -54,12 +50,12 @@ describe("PerUpCoverSection", () => {
 		const { unmount } = renderWithQuery(
 			<PerUpCoverSection
 				base={[]}
-				value={{ cardColorStart: "#f00", liveCoverImages: ["c1"] }}
+				value={{ font: "F0 Sans", liveCoverImages: ["c1"] }}
 				onChange={onChange}
 			/>,
 		);
 		fireEvent.click(screen.getByRole("button"));
-		expect(onChange).toHaveBeenCalledWith({ cardColorStart: "#f00" });
+		expect(onChange).toHaveBeenCalledWith({ font: "F0 Sans" });
 		unmount();
 
 		const onChange2 = vi.fn();

@@ -25,7 +25,7 @@ import {
 	renderCardWithSkin,
 	skinAssetRefs,
 } from "./skin/render-skin";
-import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
+import { BG_COLORS, DEFAULT_CARD_GRADIENT, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode } from "./templates/dynamic-content";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
@@ -49,7 +49,14 @@ import type { CardColorOptions, Dynamic, LiveData } from "./types";
  */
 export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** 锐评卡的**业务**入参 —— 配色部分由渲染器从全局 `cardStyle` 填,调用方不用管。 */
+/**
+ * 模板路径(基准快照)的 props 仍要一对渐变色 —— 但那已经**不是用户配置**了
+ * (ADR-0014 决策 15 的 🔗:渐变归皮肤的外框 CSS)。出图走的皮肤路径根本不读这两个字段,
+ * 这里给的是出厂色常量,只为让模板那条路的 props 类型有值可填。
+ */
+const TEMPLATE_GRADIENT = DEFAULT_CARD_GRADIENT;
+
+/** 锐评卡的**业务**入参 —— 玻璃 / 背景图由渲染器从全局 `cardStyle` 填,颜色给出厂常量。 */
 type RoastStyleKeys =
 	| "cardColorStart"
 	| "cardColorEnd"
@@ -99,10 +106,6 @@ function fmtOptional(v: number | boolean | undefined): string {
  * host is responsible for setting the logger level externally.
  */
 export interface ImageRendererConfig {
-	/** 卡片渐变背景起始颜色（十六进制）。 */
-	cardColorStart: string;
-	/** 卡片渐变背景结束颜色（十六进制）。 */
-	cardColorEnd: string;
 	/** 玻璃片(内容层)透明度 0..1 的全局默认;未设时各卡走自身基线(live/dyn 0.82、sc/guard 0.75)。 */
 	glassOpacity?: number;
 	/** 完全透明:内容层透明 + 无模糊的全局默认(优先于 glassOpacity)。 */
@@ -265,16 +268,9 @@ export class ImageRenderer {
 		this.config = config;
 		// 仅在配置**实际变化**时记录 —— 预览每次渲染(尤其切卡片类型时样式没变)都会
 		// updateConfig,无脑打 info 会刷屏并让人误以为「已保存」。重复传入相同配置则静默。
-		// 日志内容只列**真正变化**的字段(此前无脑打印 cardColorStart/cardColorEnd,
-		// 改玻璃片透明度这类字段时看起来像"渐变色又被打印了一遍",容易被误读成
-		// 没热更新到实际改的项)。
+		// 日志内容只列**真正变化**的字段(此前无脑打印一整份配置,改玻璃片透明度这类字段时
+		// 看起来像"别的项又被打印了一遍",容易被误读成没热更新到实际改的项)。
 		const diffs: string[] = [];
-		if (prev.cardColorStart !== config.cardColorStart) {
-			diffs.push(`cardColorStart=${config.cardColorStart}`);
-		}
-		if (prev.cardColorEnd !== config.cardColorEnd) {
-			diffs.push(`cardColorEnd=${config.cardColorEnd}`);
-		}
 		if (prev.font !== config.font) diffs.push(`font=${config.font}`);
 		if (prev.fontAsset !== config.fontAsset) {
 			diffs.push(`fontAsset=${config.fontAsset ? "(自带字体)" : "(无)"}`);
@@ -520,8 +516,6 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
-		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
-			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
 		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		// 背景图与直播封面(独立端专属)两次独立解析(各自 resolveAsset → 读盘),互不依赖 ——
@@ -549,8 +543,8 @@ export class ImageRenderer {
 				showPopularity: colorOptions.showPopularity ?? this.config.showPopularity,
 				showArea: colorOptions.showArea ?? this.config.showArea,
 				showFans: colorOptions.showFans ?? this.config.showFans,
-				cardColorStart,
-				cardColorEnd,
+				cardColorStart: TEMPLATE_GRADIENT[0],
+				cardColorEnd: TEMPLATE_GRADIENT[1],
 				glassOpacity,
 				glassClear,
 				backgroundImage,
@@ -713,8 +707,6 @@ export class ImageRenderer {
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
-			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
 		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
@@ -739,8 +731,8 @@ export class ImageRenderer {
 			raw: data,
 			priority: options?.priority,
 			props: {
-				cardColorStart,
-				cardColorEnd,
+				cardColorStart: TEMPLATE_GRADIENT[0],
+				cardColorEnd: TEMPLATE_GRADIENT[1],
 				glassOpacity,
 				glassClear,
 				backgroundImage,
@@ -780,8 +772,8 @@ export class ImageRenderer {
 			props: {
 				masterName,
 				masterAvatarUrl,
-				colorStart: this.config.cardColorStart,
-				colorEnd: this.config.cardColorEnd,
+				colorStart: TEMPLATE_GRADIENT[0],
+				colorEnd: TEMPLATE_GRADIENT[1],
 			},
 		})
 			.then((buf) => {
@@ -816,8 +808,8 @@ export class ImageRenderer {
 			font: await this.resolveFont(),
 			props: {
 				...data,
-				cardColorStart: this.config.cardColorStart,
-				cardColorEnd: this.config.cardColorEnd,
+				cardColorStart: TEMPLATE_GRADIENT[0],
+				cardColorEnd: TEMPLATE_GRADIENT[1],
 				glassOpacity: this.config.glassOpacity,
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
@@ -846,8 +838,8 @@ export class ImageRenderer {
 			font: await this.resolveFont(),
 			props: {
 				...data,
-				cardColorStart: this.config.cardColorStart,
-				cardColorEnd: this.config.cardColorEnd,
+				cardColorStart: TEMPLATE_GRADIENT[0],
+				cardColorEnd: TEMPLATE_GRADIENT[1],
 				glassOpacity: this.config.glassOpacity,
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),

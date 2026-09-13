@@ -40,6 +40,7 @@ import {
 	CardSkinIdSchema,
 	type CardSkinKind,
 	type CardSkinManifest,
+	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
 	type GlobalConfig,
 	type NotificationPayload,
@@ -121,8 +122,6 @@ export interface CardsRouteOptions {
 }
 
 const StyleSchema = z.object({
-	cardColorStart: z.string(),
-	cardColorEnd: z.string(),
 	font: z.string().optional(),
 	/** 主人自带字体的资产 id;设了优先于 `font`(预览与出图必须用同一款,否则「预览好看、推出去变样」)。 */
 	fontAsset: z.string().optional(),
@@ -557,8 +556,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	async function getImageRenderer(style: PreviewStyle): Promise<ImageRenderer | null> {
 		if (!currentPuppeteer) return null;
 		const config = {
-			cardColorStart: style.cardColorStart,
-			cardColorEnd: style.cardColorEnd,
 			font: style.font ?? "PingFang SC, sans-serif",
 			showPopularity: style.showPopularity ?? true,
 			showArea: style.showArea ?? true,
@@ -741,7 +738,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					renderer,
 					content.uid.trim(),
 					content.offset ?? 1,
-					style,
 					cardSkin,
 				);
 				return { buffer, mime: "image/jpeg" };
@@ -956,8 +952,6 @@ async function renderRealLive(
 		{}, // liveData — no danmaku context in preview, watched/liked left blank
 		2,
 		{
-			cardColorStart: style.cardColorStart,
-			cardColorEnd: style.cardColorEnd,
 			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
 			// B 站原始封面,即便后面还有张有效图。
@@ -972,7 +966,6 @@ async function renderRealDynamic(
 	renderer: ImageRenderer,
 	uid: string,
 	offset: number,
-	style: PreviewStyle,
 	cardSkin?: string,
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
@@ -993,11 +986,7 @@ async function renderRealDynamic(
 	const item = items[idx];
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
-	return renderer.generateDynamicCard(item, {
-		cardColorStart: style.cardColorStart,
-		cardColorEnd: style.cardColorEnd,
-		cardSkin,
-	});
+	return renderer.generateDynamicCard(item, { cardSkin });
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────
@@ -1054,8 +1043,8 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 		showPopularity: style.showPopularity ?? true,
 		showArea: style.showArea ?? true,
 		showFans: style.showFans ?? true,
-		cardColorStart: style.cardColorStart,
-		cardColorEnd: style.cardColorEnd,
+		cardColorStart: DEFAULT_CARD_GRADIENT[0],
+		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 		glassOpacity: style.glassOpacity,
 		glassClear: style.glassClear,
 		data: {
@@ -1122,8 +1111,8 @@ function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
 		stats: undefined,
 	};
 	return {
-		cardColorStart: style.cardColorStart,
-		cardColorEnd: style.cardColorEnd,
+		cardColorStart: DEFAULT_CARD_GRADIENT[0],
+		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 		glassOpacity: style.glassOpacity,
 		glassClear: style.glassClear,
 		node: {

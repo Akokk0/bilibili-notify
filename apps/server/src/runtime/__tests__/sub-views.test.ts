@@ -58,9 +58,9 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
-	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 颜色,aiOverride/filter 仍 undefined", () => {
+	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 玻璃,aiOverride/filter 仍 undefined", () => {
 		const sub = makeSub({
-			cardStyle: { cardColorStart: "#aaa", cardColorEnd: "#bbb" },
+			cardStyle: { glassOpacity: 0.5, glassClear: true },
 		});
 		const view = buildDynamicSubsView(
 			fakeStore([sub]),
@@ -69,8 +69,8 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		);
 		expect(view["12345"]?.customCardStyle).toEqual({
 			enable: true,
-			cardColorStart: "#aaa",
-			cardColorEnd: "#bbb",
+			glassOpacity: 0.5,
+			glassClear: true,
 		});
 		expect(view["12345"]?.aiOverride).toBeUndefined();
 		expect(view["12345"]?.filter).toBeUndefined();
@@ -117,13 +117,13 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
-	it("改全局 globals.defaults.cardStyle 颜色 → 无 per-UP override 的 sub 的 customCardStyle 保持 enable:false(不会把全局值塞进去)", () => {
+	it("改全局 globals.defaults.cardStyle → 无 per-UP override 的 sub 的 customCardStyle 保持 enable:false(不会把全局值塞进去)", () => {
 		const sub = makeSub({});
 		const globals: GlobalConfig = makeDefaultGlobalConfig();
-		globals.defaults.cardStyle.cardColorStart = "#changed";
+		globals.defaults.cardStyle.glassOpacity = 0.42;
 		const view = buildDynamicSubsView(fakeStore([sub]), fakeRuntimeStore(), globals);
 		// 关键断言:全局值改了,但因为 sub 没 per-UP override,customCardStyle 仍是
-		// {enable:false},不带任何 cardColor 字段。下游 ImageRenderer 走 this.config
+		// {enable:false},不带任何样式字段。下游 ImageRenderer 走 this.config
 		// 兜底,this.config 已被 hot-reload 路径(imageRenderer.updateConfig)同步。
 		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
 	});
@@ -139,13 +139,13 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 
 	it("仅设 cardStyle override → customCardStyle.enable=true,aiOverride 仍 undefined", () => {
 		const sub = makeSub({
-			cardStyle: { cardColorStart: "#aaa", cardColorEnd: "#bbb" },
+			cardStyle: { glassOpacity: 0.5, glassClear: true },
 		});
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
 		expect(view.customCardStyle).toEqual({
 			enable: true,
-			cardColorStart: "#aaa",
-			cardColorEnd: "#bbb",
+			glassOpacity: 0.5,
+			glassClear: true,
 		});
 		expect(view.aiOverride).toBeUndefined();
 	});

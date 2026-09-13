@@ -30,7 +30,7 @@ import { api } from "../../services/api";
 const CUSTOMIZED: Subscription = {
 	...makeEmptySubscription("123456"),
 	overrides: {
-		cardStyle: { cardColorStart: "#123456" },
+		cardStyle: { font: "PerUP Sans" },
 		imageGroup: { enable: false },
 	},
 };
@@ -220,7 +220,7 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(Object.keys(overrides).sort()).toEqual(["cardSkin", "cardStyle", "cardStyleByKind"]);
 		expect(overrides.cardSkin).toBeNull();
 		expect(overrides.cardStyleByKind).toBeNull();
-		expect((overrides.cardStyle as { cardColorStart: string }).cardColorStart).toBe("#123456");
+		expect((overrides.cardStyle as { font: string }).font).toBe("PerUP Sans");
 	});
 
 	it("per-UP 已有按类型覆盖 → 保存原样下发 cardStyleByKind(不丢)", async () => {
@@ -229,7 +229,7 @@ describe("Cards per-UP 作用域接线", () => {
 		const byKindSub: Subscription = {
 			...makeEmptySubscription("654321"),
 			overrides: {
-				cardStyleByKind: { sc: { cardColorStart: "#abcdef" } },
+				cardStyleByKind: { sc: { font: "SC Sans" } },
 				imageGroup: { enable: false },
 			},
 		};
@@ -254,7 +254,7 @@ describe("Cards per-UP 作用域接线", () => {
 		// 有覆盖的类型原样带上,没覆盖过的**不**凭空发 null —— 删除哨兵只发给「基线
 		// 里有、草稿里没了」的键(见 buildPatch)。关掉已保存的类型会发 null,那条在
 		// Cards.bykind-off.test.tsx。
-		expect(overrides.cardStyleByKind).toEqual({ sc: { cardColorStart: "#abcdef" } });
+		expect(overrides.cardStyleByKind).toEqual({ sc: { font: "SC Sans" } });
 	});
 
 	it("per-UP 直播数据区覆盖 → 进生效样式 / 预览请求(showFans=false)", async () => {
@@ -292,7 +292,7 @@ describe("Cards per-UP 作用域接线", () => {
 		// 字段不相交(颜色 omitShow、数据区 pickShow)→ seed 同时含两类覆盖时往返保留。
 		const mixedSub: Subscription = {
 			...makeEmptySubscription("555666"),
-			overrides: { cardStyleByKind: { live: { cardColorStart: "#abc123", showFans: false } } },
+			overrides: { cardStyleByKind: { live: { font: "Abc Sans", showFans: false } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/subs")) return Promise.resolve([mixedSub]);
@@ -310,7 +310,7 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
 		const overrides = body.overrides as { cardStyleByKind?: { live?: Record<string, unknown> } };
-		expect(overrides.cardStyleByKind?.live).toEqual({ cardColorStart: "#abc123", showFans: false });
+		expect(overrides.cardStyleByKind?.live).toEqual({ font: "Abc Sans", showFans: false });
 	});
 
 	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {

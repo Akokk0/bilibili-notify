@@ -76,8 +76,6 @@ export function makeDefaults(): GlobalDefaults {
 		},
 		cardStyle: {
 			enabled: true,
-			cardColorStart: "#000000",
-			cardColorEnd: "#ffffff",
 			font: "",
 			showPopularity: true,
 			showArea: true,

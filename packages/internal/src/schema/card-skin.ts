@@ -321,11 +321,12 @@ export const CARD_SKIN_CSS_PROP_PREFIXES = [
 
 /**
  * 皮肤变量:用户在面板里调的那几样(`cardStyle`)按这些名字注进根块的 CSS 自定义属性,
- * 皮肤 CSS 里 `var(--bn-card-color-start)` 引用。**固定表**(ADR-0014 决策 16)。
+ * 皮肤 CSS 里 `var(--bn-card-glass-opacity)` 一类引用。**固定表**(ADR-0014 决策 16)。
+ *
+ * 渐变起 / 止色**不在表里**(决策 15 的 🔗):那两个色只喂外框底,皮肤在自己的 CSS 里
+ * 写一句 `linear-gradient(…)` 就够,留成变量反而让「皮肤想换个底」变成改不动的事。
  */
 export const CARD_SKIN_VARIABLES = {
-	colorStart: { css: "--bn-card-color-start", label: "渐变起色" },
-	colorEnd: { css: "--bn-card-color-end", label: "渐变止色" },
 	glassOpacity: { css: "--bn-card-glass-opacity", label: "玻璃白纱不透明度(0~1)" },
 	glassBlur: { css: "--bn-card-glass-blur", label: "玻璃模糊半径(px)" },
 	font: { css: "--bn-card-font", label: "字体栈" },
@@ -341,16 +342,34 @@ export const CARD_SKIN_VARIABLES = {
 } as const;
 
 /**
- * 默认皮肤各卡外框的底色规则(ADR-0014 决策 15 的 🔗:底色归皮肤 CSS,外框不再 inline)。
+ * **出厂渐变**:直播 / 动态 / 锐评两张 / 词云的外框底色。从前是 `cardStyle.cardColorStart /
+ * cardColorEnd` 两个用户配置项,现在写死在这儿、由默认皮肤的外框 CSS 画出来(ADR-0014
+ * 决策 15 的 🔗)。存量用户改过的颜色由开机迁移派生成一套皮肤,不从这条路走。
+ */
+export const DEFAULT_CARD_GRADIENT = ["#e0c3fc", "#8ec5fc"] as const;
+
+/**
+ * 一张卡外框的底色规则(ADR-0014 决策 15 的 🔗:底色归皮肤 CSS,外框不再 inline)。
  * 与旧 `frameBg` 同一条逻辑:有用户背景图就整张换成图(变量的值自带 `center / cover`,所以
  * 兜底的渐变**不能**再跟尺寸 —— 给渐变加 `center / cover` 会改变它的光栅抖动,像素门 14 张红),
  * 没有就画渐变。
- * 渐变两端今天仍从变量取(颜色退出变量表是一步半的下一片,那时这里改成写死的出厂色)。
+ *
+ * ⚠️ 生成的字面量必须是 css-tree `generate` 的规范形态(逗号后不留空格),默认皮肤要
+ * 一字不改地过清洗器那道门(`apps/server` 的 `default-skin-*.test.ts` 钉着)。
  */
-const FRAME_BG = (start: string, end: string): string =>
+export const cardSkinFrameBgRule = (start: string, end: string): string =>
 	`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${start},${end}))}`;
-const FRAME_BG_USER = FRAME_BG("var(--bn-card-color-start)", "var(--bn-card-color-end)");
-const FRAME_BG_TIER = FRAME_BG("var(--bn-card-tier-color)", "var(--bn-card-tier-color-end)");
+
+/** 默认皮肤里那条用户渐变规则。迁移换色时**替换**它,不另加一条(两条 background 会打架)。 */
+export const DEFAULT_FRAME_BG_RULE = cardSkinFrameBgRule(
+	DEFAULT_CARD_GRADIENT[0],
+	DEFAULT_CARD_GRADIENT[1],
+);
+const FRAME_BG_USER = DEFAULT_FRAME_BG_RULE;
+const FRAME_BG_TIER = cardSkinFrameBgRule(
+	"var(--bn-card-tier-color)",
+	"var(--bn-card-tier-color-end)",
+);
 export type CardSkinVariable = keyof typeof CARD_SKIN_VARIABLES;
 
 // ---- 数据契约 ----------------------------------------------------------------
@@ -593,8 +612,7 @@ export type CardSkinCard = z.infer<typeof CardSkinCardSchema>;
 /** 皮肤自带的变量默认值(用户面板里改的覆盖它)。`backgroundImage` 是包内资产名。 */
 export const CardSkinVariableDefaultsSchema = z
 	.object({
-		colorStart: z.string().max(64).optional(),
-		colorEnd: z.string().max(64).optional(),
+		// 渐变起 / 止色已退役(决策 15 的 🔗):皮肤想要什么底自己在外框 CSS 里写。
 		glassOpacity: z.number().min(0).max(1).optional(),
 		glassClear: z.boolean().optional(),
 		font: z.string().max(200).optional(),

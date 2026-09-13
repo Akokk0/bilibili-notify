@@ -607,7 +607,7 @@ describe("cards route — enable-rendering", () => {
 });
 
 describe("cards route — 热切换后预览渲染器随之失效重建", () => {
-	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+	const STYLE = { font: "PingFang SC, sans-serif" };
 
 	function depsWithEnginesAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
 		return {
@@ -723,7 +723,7 @@ describe("cards route — resolveRoomIdFromUid (uid → 房间号)", () => {
 });
 
 describe("cards route — /preview live-by-uid fallback", () => {
-	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+	const STYLE = { font: "PingFang SC, sans-serif" };
 
 	function postPreview(app: ReturnType<typeof createCardsRoute>, body: unknown) {
 		return app.request("/preview", {
@@ -909,7 +909,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 });
 
 describe("cards route — /preview sc/guard 发送者取登录账号", () => {
-	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+	const STYLE = { font: "PingFang SC, sans-serif" };
 
 	function loggedInApi(): BilibiliAPI {
 		return {
@@ -1065,7 +1065,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 // ── 预览也走皮肤(ADR-0014 决策 15 / 22) ──────────────────────────────────────
 
 describe("cards route — /preview 走皮肤", () => {
-	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+	const STYLE = { font: "PingFang SC, sans-serif" };
 
 	/** 一套认得出来的皮肤:直播卡只有一个自定义块,里头写死一句标记。 */
 	const MARKED: CardSkinManifest = {
