@@ -28,7 +28,6 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
-	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -249,6 +248,8 @@ function setup(opts?: {
 	connections?: Connection[];
 	/** 平台实现(探测 / 能力都问它)。 */
 	platformAdapters?: PlatformAdapter[];
+	/** 卡片皮肤那三口(接线层给的);不给 = 这台机器只有内置默认皮肤。 */
+	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
@@ -279,6 +280,7 @@ function setup(opts?: {
 		bus,
 		adapters: createAdapterRegistry(opts?.platformAdapters ?? []),
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
+		...(opts?.cardSkins ? { cardSkins: opts.cardSkins } : {}),
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
 }
@@ -414,6 +416,21 @@ describe("createEngines — boot wiring", () => {
 		active = c;
 		expect(H.image).toHaveLength(1);
 		expect(H.image[0].start).toHaveBeenCalledTimes(1);
+	});
+
+	// 「接线要有自己的守卫」:三口各自都有测试,证明不了 engines 真的把它们接上了 ——
+	// 漏接的症状是静默的(出图永远用内置默认皮肤,类型 / 测试 / 构建全绿)。
+	it("卡片皮肤那三口原样接到 ImageRenderer 上", () => {
+		const get = vi.fn(() => undefined);
+		const asset = vi.fn(async () => undefined);
+		const onFallback = vi.fn();
+		const c = setup({ puppeteer: true, cardSkins: { get, asset, onFallback } });
+		active = c;
+		const o = H.image[0].opts;
+		// 验红:把 engines.ts 里那三行 `resolveCardSkin: opts.cardSkins?.get` 删掉,这三条红。
+		expect(o.resolveCardSkin).toBe(get);
+		expect(o.resolveCardSkinAsset).toBe(asset);
+		expect(o.onCardSkinFallback).toBe(onFallback);
 	});
 
 	it("直播消息模板无开关:boot 时 live 引擎 config 始终带全局模板(回归 liveMsgEnabled 移除)", () => {
@@ -680,23 +697,21 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
 	});
 
-	it("回归:只改全局 cardLayout(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(此前 layoutChanged 未接入热更 gate,保存版式后预览生效但实际推送仍用旧版式)", () => {
+	it("回归:只改全局 cardSkin(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(热更 gate 漏掉它的话,换了皮肤要重启才生效)", () => {
 		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
 		const c = setup({ subs: [sub] });
 		active = c;
 		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
 		patchGlobals(c, (g) => {
-			const block = g.defaults.cardLayout.live[0];
-			expect(block).toBeDefined();
-			if (block) block.visible = false;
+			g.defaults.cardSkin = "skin-abc";
 		});
 		c.bus.emit("config-changed", "globals");
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
-		expect(liveOps[0].changes[0].cardLayout.live[0].visible).toBe(false);
+		expect(liveOps[0].changes[0].cardSkin).toBe("skin-abc");
 
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
@@ -944,33 +959,31 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
 	});
 
-	it("add op 携带 per-UP cardLayout(live 全量描述符 / dynamic 切片)", () => {
+	it("add op 携带 per-UP cardSkin(两个引擎各拿一份)", () => {
 		const sub = makeSub("800", true);
-		// per-UP 整份覆盖:把 live 的 cover 块关掉。
-		sub.overrides.cardLayout = {
-			...DEFAULT_CARD_LAYOUT,
-			live: DEFAULT_CARD_LAYOUT.live.map((b) => (b.id === "cover" ? { ...b, visible: false } : b)),
-		};
+		// per-UP 指了自己那套皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖)。
+		sub.overrides.cardSkin = "k9zzz-0badf00d";
 		const c = setup({ subs: [sub] });
 		active = c;
 		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
 
-		// live add op 带整份 cardLayout,cover 关闭被透传。
 		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
-		expect(liveView.cardLayout.live.find((b: { id: string }) => b.id === "cover")?.visible).toBe(
-			false,
-		);
-
-		// dynamic add op 带 dynamic 切片(本例未改动,等于默认版式:含分割线与 additional 块)。
+		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
 		const dynView = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
-		expect(dynView.dynamicLayout?.map((b: { id: string }) => b.id)).toEqual([
-			"header",
-			"divider-1",
-			"content",
-			"additional",
-			"divider-2",
-			"stats",
-		]);
+		expect(dynView.cardSkin).toBe("k9zzz-0badf00d");
+	});
+
+	it("没有 per-UP 皮肤 → 两个引擎都拿全局那套", () => {
+		const sub = makeSub("801", true);
+		const c = setup({ subs: [sub] });
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.cardSkin = "k1aaa-11111111";
+		});
+		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+
+		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
+		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 	});
 
 	it("禁用订阅 add:dynamic add op 仍下发但 dynamic:false(engine applyOps 的 !op.sub.dynamic 拦截)", () => {
@@ -1186,11 +1199,10 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 			defaults: { parse: true, form: "image" },
 			groups: {},
 		});
-		expect(c.runtime.linkCardPresentation().layout).toEqual(
-			c.configStore.getGlobals().defaults.cardLayout.dynamic,
+		expect(c.runtime.linkCardPresentation().cardSkin).toBe(
+			c.configStore.getGlobals().defaults.cardSkin,
 		);
 
-		const layout = [{ id: "content", type: "content", visible: true }];
 		patchGlobals(c, (g) => {
 			g.linkParsing = {
 				enabled: true,
@@ -1198,7 +1210,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				defaults: { parse: true, form: "image" },
 				groups: {},
 			};
-			g.defaults.cardLayout.dynamic = layout as any;
+			g.defaults.cardSkin = "skin-link";
 		});
 		c.bus.emit("config-changed", "globals");
 
@@ -1208,7 +1220,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 			defaults: { parse: true, form: "image" },
 			groups: {},
 		});
-		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
+		expect(c.runtime.linkCardPresentation().cardSkin).toBe("skin-link");
 	});
 
 	// 例外引用的是目标:目标或连接停用、删掉都会改变答案,所以逐群表要跟着

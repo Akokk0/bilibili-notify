@@ -962,12 +962,12 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "wordcloud",
 		group: "词云卡",
 		kind: "wordcloud",
-		label: "wordcloud：卡壳本体(buildWordCloudHtml 在这份 HTML 上再追加词云脚本)",
-		// `generateWordCloudImg` 不直接调 renderCard,而是经 `buildWordCloudHtml`:
-		// 后者先 `renderCard(WordCloudCard, …, { title: "弹幕词云", htmlWidth: 720 })`
-		// 出这份 HTML,再把两段 static/*.js 与一段初始化脚本塞进 `</body>` 前。
-		// 模板重构影响的只有这一半,所以基准钉这一半;那两段脚本是原样读盘拼进去的,
-		// 与模板无关(且体量上百 KB,钉进快照只会淹掉真正要比对的部分)。
+		label: "wordcloud：卡壳本体(画词脚本另行追加在这份 HTML 上)",
+		// 词云出图是**两半**:这份 HTML(卡壳 + 一个空画布 `#wordCloudCanvas`)+ 塞在
+		// `</body>` 前的画词脚本(`wordCloudInitScript`,两段 static/*.js 原样读盘拼进去)。
+		// 基准只钉前一半:后一半与模板无关,且体量上百 KB,钉进快照只会淹掉真正要比对的部分。
+		// ⚠️ 卡壳这一半今天由**皮肤**装配(`generateWordCloudImg` → `renderCardWithSkin`);
+		// 这里走的是旧模板那条路,它现在的身份就是「标尺」(见 `templates/block-layout.tsx`)。
 		build: async () => ({
 			component: WordCloudCard,
 			props: {

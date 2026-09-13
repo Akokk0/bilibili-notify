@@ -15,7 +15,6 @@ import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import type { InboundGroupMessage } from "@bilibili-notify/internal";
 import {
-	type CardBlock,
 	type ConnectionCapabilities,
 	type DeliveryResult,
 	extractVideoLinks,
@@ -60,7 +59,8 @@ export interface InboundLinkMessage extends InboundGroupMessage {
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
 export interface LinkCardPresentation {
 	colors?: CardColorOptions;
-	layout?: CardBlock[];
+	/** 用哪套卡片皮肤(ADR-0014)。链接卡没有 UP 可言,吃的是全局那套。 */
+	cardSkin?: string;
 }
 
 export interface LinkParserOptions {
@@ -82,12 +82,11 @@ export interface LinkParserOptions {
 		generateDynamicCard(
 			data: Dynamic,
 			colors?: CardColorOptions,
-			layout?: CardBlock[],
 			options?: { priority?: RenderPriority },
 		): Promise<Buffer>;
 	} | null;
 	/**
-	 * 这张卡怎么画:配色(含图廊轮到的那张背景)+ 版式。**每张卡取一次**,由引擎按推送
+	 * 这张卡怎么画:配色(含图廊轮到的那张背景)+ 皮肤。**每张卡取一次**,由引擎按推送
 	 * 动态卡在没有 per-UP 覆盖时的同一条规则算出来 —— 链接解析没有 UP 可言,吃的就是
 	 * 全局那份。各算一份的话,主人在卡片页给「动态」调的样式只有推送卡认。
 	 */
@@ -215,10 +214,12 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		if (!renderer) return;
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
-		const { colors, layout } = opts.presentation();
-		const buffer = await renderer.generateDynamicCard(videoToDynamic(info), colors, layout, {
-			priority: "low",
-		});
+		const { colors, cardSkin } = opts.presentation();
+		const buffer = await renderer.generateDynamicCard(
+			videoToDynamic(info),
+			{ ...colors, cardSkin },
+			{ priority: "low" },
+		);
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
 			opts.logger.warn(`[link] 视频卡片发送失败 group=${dest.groupId} ${info.bvid}: ${result.err}`);

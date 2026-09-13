@@ -55,6 +55,17 @@ describe("WordcloudGenerator — getImageRenderer provider 模式", () => {
 		expect(r.generateWordCloudImg).toHaveBeenCalledTimes(1); // 没新增
 	});
 
+	// 词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)—— 但外框也得是主人选的那套。
+	it("皮肤 id 透传给 generateWordCloudImg", async () => {
+		const r = fakeRenderer();
+		const wc = new WordcloudGenerator({ getImageRenderer: () => r, logger: fakeLogger() });
+		await wc.generate(buildWords(60), "M", undefined, "k6eee-cafed00d");
+		// 验红:把 wordcloud-generator.ts 里那个 `{ cardSkin }` 换成不传,这条红。
+		const calls = (r.generateWordCloudImg as unknown as { mock: { calls: unknown[][] } }).mock
+			.calls;
+		expect(calls[0]?.[3]).toEqual({ cardSkin: "k6eee-cafed00d" });
+	});
+
 	it("isImageEnabled() 返回 false → 即便 provider 有渲染器也跳过", async () => {
 		const r = fakeRenderer();
 		const wc = new WordcloudGenerator({

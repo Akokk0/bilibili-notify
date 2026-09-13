@@ -1,5 +1,4 @@
 import { resolveActivePersona, resolveAIProfile } from "../constants";
-import { type CardLayout, normalizeCardLayout } from "./card-layout";
 import type {
 	AIPersona,
 	AISettings,
@@ -45,7 +44,6 @@ export interface EffectiveSubscription {
 	templates: TemplateBundle;
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
-	cardLayout: CardLayout;
 	/** 生效的卡片皮肤 id(per-UP 指了就用它,否则全局)。 */
 	cardSkin: string;
 	messageLayout: MessageLayout;
@@ -175,12 +173,8 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		templates: merge(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
-		// 卡片版式整份覆盖:有 per-UP override 则用它(并 normalize 做向前兼容),
-		// 否则继承全局。数组型描述符不走 merge() 的浅合并。
-		cardLayout: ov.cardLayout
-			? normalizeCardLayout(ov.cardLayout, defaults.cardLayout)
-			: defaults.cardLayout,
-		// 皮肤是整份引用,没有合并可言:指了就是它。
+		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——
+		// 出图只认皮肤,而那个键只剩开机迁移会读一次(ADR-0014 决策 15)。
 		cardSkin: ov.cardSkin ?? defaults.cardSkin,
 		// 消息版式同 cardLayout:per-UP 整份覆盖(带 normalize 向前兼容),否则继承全局。
 		messageLayout: ov.messageLayout

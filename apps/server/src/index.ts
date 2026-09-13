@@ -20,6 +20,10 @@ import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
+import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
+import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
+import { migrateCardLayoutsToSkins } from "./card-skins/migrate-layouts.js";
+import { CardSkinStore } from "./card-skins/store.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
@@ -110,6 +114,7 @@ export async function startStandaloneServer(
 	let puppeteer: StandalonePuppeteer | null = null;
 	let subBinding: ReturnType<typeof bindSubscriptionStore> | undefined;
 	let engines: ReturnType<typeof createEngines> | undefined;
+	let cardSkinStore: CardSkinStore | undefined;
 	let wsTicketStore: ReturnType<typeof createWsTicketStore> | null | undefined;
 	let server: ServerType | undefined;
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
@@ -417,6 +422,32 @@ export async function startStandaloneServer(
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? adapterRegistry;
+
+		// ---------- 卡片皮肤库(ADR-0014)----------
+		// **全进程唯一一家店**:出图(engines 的 ImageRenderer)、面板的皮肤库路由、卡片
+		// 预览三处问的都是它。各建一家的话,面板装了新皮肤而推送还在用开机那一刻的索引,
+		// 症状还是静默的(装包成功、出图不变)。
+		//
+		// 顺序是:`configStore.load()`(上面早就跑过)→ 建店 + `init()` 读盘 → 跑旧版式
+		// 迁移 → 才把 `get` 交给引擎。迁移会往店里装皮肤、往配置里写 `cardSkin` 指针,
+		// 所以它必须排在「谁去读那个指针」之前。
+		cardSkinStore = new CardSkinStore({ dir: join(bootstrap.dataDir, "card-skins") });
+		await cardSkinStore.init();
+		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
+		try {
+			await migrateCardLayoutsToSkins({
+				store: cardSkinStore,
+				config: runtime.configStore,
+				logger: { info: (m) => log.info(m), warn: (m) => log.warn(m) },
+			});
+		} catch (err) {
+			// 迁移挂了不该拦住启动:旧版式出图早已不读,最坏的结果是这台机器还用着默认皮肤,
+			// 而主人一眼就能在卡片页看出来并自己选一套。静默吞掉才是真的糟。
+			log.error(`[card-skin] 旧版式迁移失败(不影响启动,卡片将用默认皮肤): ${String(err)}`);
+		}
+		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
+		const skins = cardSkinStore;
+
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
@@ -431,6 +462,11 @@ export async function startStandaloneServer(
 			bus: runtime.bus,
 			adapters,
 			puppeteer,
+			cardSkins: {
+				get: (id) => skins.get(id) ?? undefined,
+				asset: (skinId, name) => readCardSkinAssetDataUrl(skins, skinId, name),
+				onFallback: (info) => cardSkinFallbacks.record(info),
+			},
 		});
 		runtime.attachEngines(engines);
 
@@ -852,6 +888,7 @@ export async function startStandaloneServer(
 			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
 			api: devtools?.api ?? authSystem.api,
 			backupService,
+			cardSkins: { store: skins, fallbacks: () => cardSkinFallbacks.list() },
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,

@@ -11,7 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardKind, CardLayout, MessageKindLayout } from "@bilibili-notify/internal";
+import type { CardKind, MessageKindLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
@@ -212,10 +212,11 @@ export interface SubItemView {
 	 */
 	wordcloudStopWords?: string;
 	/**
-	 * 该 UP 解析后的卡片版式描述符(块顺序 / 显隐;guard 含 badgeSide)。adapter 已折算好
-	 * (per-UP 整份覆盖 ?? 全局)。各 generate* 渲染时取对应卡片的切片;undefined = 走默认版式。
+	 * 该 UP 生效的**卡片皮肤 id**(ADR-0014)。宿主折叠 `eff.cardSkin`(per-UP 指了就是它,
+	 * 否则全局)后填入;undefined = 内置默认皮肤。各 generate* 原样透传 —— 版式住皮肤包里,
+	 * 不再逐块下发。
 	 */
-	cardLayout?: CardLayout;
+	cardSkin?: string;
 	/**
 	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.live` 后填入。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响
@@ -254,7 +255,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "liveEndGraceMinutes"
 		| "aiOverride"
 		| "wordcloudStopWords"
-		| "cardLayout"
+		| "cardSkin"
 		| "messageLayout"
 	>
 >;

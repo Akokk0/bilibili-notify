@@ -221,19 +221,77 @@ describe("per-UP 版式", () => {
 	});
 });
 
+/**
+ * 三个显隐开关(`cardStyle.showPopularity / showArea / showFans`)是**退役中**的:它们画在
+ * 「直播数据」一个复合块里面,块级的 `showIf` 管不到块内一行,所以关过开关的存量用户得折成
+ * 用原子块拼出来的派生皮肤(ADR-0014 决策 16 的 🔗)。这一组钉的就是那一跳。
+ */
+describe("三个显隐开关", () => {
+	/** 复合数据块换成原子块之后,live 卡里该出现哪些块。 */
+	const liveBlockIds = (skinId: string): string[] =>
+		store.get(skinId)?.cards.live?.blocks.map((b) => b.id) ?? [];
+
+	it("关过开关 → 派生皮肤的直播卡用原子块拼,关掉的那件压根不生成", async () => {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			// 版式没动过,动的只有开关 —— 光这一样就足以让他成为「存量用户」。
+			defaults: {
+				...g.defaults,
+				cardLayout: DEFAULT_CARD_LAYOUT,
+				cardStyle: { ...g.defaults.cardStyle, showArea: false },
+			},
+		});
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true });
+		const id = config.getGlobals().defaults.cardSkin;
+		const ids = liveBlockIds(id);
+		// 验红:把 installSkin 里 cardLayoutToSkin 的第三个参数(toggles)拿掉,这三条全红 ——
+		// 复合块 `data` 会原样留着,而它恒画三项,主人关掉的分区又回来了。
+		expect(ids).toContain("popularity");
+		expect(ids).toContain("fans");
+		expect(ids).not.toContain("area");
+		expect(ids).not.toContain("data");
+	});
+
+	it("三个都开 → 照旧用复合块,什么都不折(但旧键照样收走)", async () => {
+		// 旧键摆上去才算「存量实例」—— 不摆的话迁移一开头就返回了,这条会为了错误的理由变绿。
+		await setGlobalLayout(DEFAULT_CARD_LAYOUT);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+		expect(result).toMatchObject({ created: 0, global: false });
+		expect(config.getGlobals().defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+		expect(config.getGlobals().defaults.cardLayout).toBeUndefined();
+	});
+
+	it("per-UP 单独关过开关(版式没动)→ 给他单折一套,不跟着全局那套走", async () => {
+		await setGlobalLayout(DEFAULT_CARD_LAYOUT);
+		const sub = await addSub("111", "阿夸", {
+			cardStyle: { showFans: false },
+		} as SubscriptionOverrides);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ subscriptions: 1 });
+		const skinId = subById(sub).overrides.cardSkin;
+		expect(skinId).toBeDefined();
+		// 验红:把 per-UP 那份 toggles 换成 globalToggles,这条红 —— 他的粉丝行会回来。
+		expect(liveBlockIds(skinId as string)).not.toContain("fans");
+		expect(installedNames()).toEqual(["阿夸 专用"]);
+	});
+});
+
 describe("收尾", () => {
-	it("迁完订阅里不再有 cardLayout,全局那份回到出厂版式", async () => {
+	it("迁完两侧的 cardLayout 都真的没了(它现在是 optional,删得掉)", async () => {
 		await setGlobalLayout(customLayout());
 		await addSub("111", "阿夸", { cardLayout: otherLayout() });
 		await migrateCardLayoutsToSkins({ store, config });
 
-		// 订阅那侧 `overrides.cardLayout` 是 optional,删掉就是真的没了。
+		// 两侧都是 `.optional()`,删掉就是真的没了 —— 这正是「跑过没有」的判据
+		// (键还在 = 还没迁),所以它必须从盘上消失,不能被 zod 的 default 补回来。
 		expect(await rawState("subscriptions.json")).not.toContain("cardLayout");
-		// 全局那侧 `.default(DEFAULT_CARD_LAYOUT)` 会把键补回来(见 migrate-layouts.ts 文件头),
-		// 所以「删掉」等价于回到出厂版式 —— 值必须是默认那份,不能还是主人改过的。
-		expect(config.getGlobals().defaults.cardLayout).toEqual(DEFAULT_CARD_LAYOUT);
+		expect(config.getGlobals().defaults.cardLayout).toBeUndefined();
 		const globals = JSON.parse(await rawState("globals.json"));
-		expect(globals.defaults.cardLayout).toEqual(DEFAULT_CARD_LAYOUT);
+		expect(Object.hasOwn(globals.defaults, "cardLayout")).toBe(false);
 	});
 
 	it("跑两遍 —— 第二遍零变化,不会再折一套出来", async () => {

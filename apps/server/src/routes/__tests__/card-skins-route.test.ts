@@ -18,6 +18,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CardSkinFallback } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -65,6 +66,8 @@ let patchGlobals: ReturnType<typeof vi.fn>;
 /** 面板上「全局在用哪套」的活值 —— patchGlobals 写它,GET / 读它。 */
 let active: string;
 let subs: SubStub[];
+/** 出图回落的账本(真实的那一份由 index.ts 建,这里直接摆一份现成的)。 */
+let fallbacks: CardSkinFallback[];
 
 function mount(): void {
 	patchGlobals = vi.fn(async (patch: any) => {
@@ -80,7 +83,7 @@ function mount(): void {
 			})),
 		patchGlobals,
 	} as unknown as ConfigStore;
-	app = createCardSkinsRoute({ store, config });
+	app = createCardSkinsRoute({ store, config, fallbacks: () => fallbacks });
 }
 
 beforeEach(async () => {
@@ -88,6 +91,7 @@ beforeEach(async () => {
 	store = new CardSkinStore({ dir });
 	active = DEFAULT_CARD_SKIN_ID;
 	subs = [];
+	fallbacks = [];
 	mount();
 });
 
@@ -116,6 +120,18 @@ describe("GET / —— 皮肤库列表", () => {
 		expect(body.skins.map((s: any) => s.id)).toContain(id);
 		expect(body.skins.find((s: any) => s.id === id).builtin).toBe(false);
 		expect(body.active).toBe(id);
+	});
+
+	// ADR-0014 决策 19:出图回落必须**可见**。仓里没有现成的面板告警通道,所以它随皮肤库
+	// 列表一起下发 —— 掉了这一口,用户换的皮肤没生效而面板上一个字都不说。
+	it("出图回落过的记录跟着列表一起下发", async () => {
+		expect(((await (await app.request("/")).json()) as any).fallbacks).toEqual([]);
+
+		fallbacks = [
+			{ skinId: "k1abc-deadbeef", kind: "live", reason: "渲染失败(boom)", at: 1700, count: 3 },
+		];
+		// 验红:把路由里那句 `fallbacks: deps.fallbacks?.() ?? []` 删掉,这条红。
+		expect(((await (await app.request("/")).json()) as any).fallbacks).toEqual(fallbacks);
 	});
 });
 

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
+	CardSkinFallback,
 	ExtensionBotView,
 	ExtensionConfigField,
 	ExtensionDescriptorDTO,
@@ -71,6 +72,18 @@ export interface CreateAppOptions {
 	api?: BilibiliAPI | null;
 	/** Optional backup/restore service; when present /api/backup/* is mounted. */
 	backupService?: BackupService;
+	/**
+	 * 卡片皮肤库(ADR-0014)。**由 `index.ts` 建好传进来**,不在这里 `new` ——
+	 * 出图那头(engines 的 ImageRenderer)问的必须是同一家店,各建一家的话面板装了新皮肤、
+	 * 推送还在用开机那一刻的索引,而且症状是静默的(装包成功、出图不变)。
+	 *
+	 * 不给 = 皮肤库那几口按空库工作,出图只有内置默认皮肤。
+	 */
+	cardSkins?: {
+		store: CardSkinStore;
+		/** 出图回落的账本;列表接口带上它(决策 19 的「回落必须可见」)。 */
+		fallbacks?: () => CardSkinFallback[];
+	};
 	/**
 	 * 开机装载起来的拓展。在 `index.ts` 组装(那里才知道 `<dataDir>`)。
 	 *
@@ -381,12 +394,16 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// 卡片皮肤库(ADR-0014)。目录叫 `card-skins`,与隔壁 dashboard 皮肤的 `skins` 分开
 	// ——两种包长得像(都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
 	// 读盘推迟到首个请求(createApp 是同步装配),凭据记在店上,见 `ensureReady`。
+	const cardSkinStore =
+		options.cardSkins?.store ??
+		new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") });
 	app.route(
 		"/api/card-skins",
 		createCardSkinsRoute({
-			store: new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") }),
+			store: cardSkinStore,
 			config: deps.store,
 			logger: runtime.serviceCtx.logger,
+			fallbacks: options.cardSkins?.fallbacks,
 		}),
 	);
 	app.route(
@@ -399,6 +416,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			onPuppeteerEnabled: options.onPuppeteerEnabled,
 			chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,
 			initialChromeSource: options.chromeSource,
+			// 预览自己建一个 ImageRenderer(样式烤进 config),皮肤得问同一家店 ——
+			// 否则「预览是这套皮肤、推出去是另一副样子」。
+			cardSkins: cardSkinStore,
 		}),
 	);
 	if (options.authSystem) {

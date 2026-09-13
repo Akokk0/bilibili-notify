@@ -28,27 +28,19 @@ const WORD_COLORS = [
 	"#a29bfe",
 ];
 
-export async function buildWordCloudHtml(
-	masterName: string,
-	words: Array<[string, number]>,
-	dirname: string,
-	masterAvatarUrl?: string,
-	colorStart = "#e0c3fc",
-	colorEnd = "#8ec5fc",
-	font = "sans-serif",
-	/** 主人自带字体的 `@font-face` 规则(有就跟着一起进 CSS)。 */
-	fontFace?: string,
-): Promise<string> {
+/**
+ * 词云画布的**脚本注入**——「`#wordCloudCanvas` 这个空画布 → 真的画上词」的那一半。
+ *
+ * 单独抽出来是因为**画布那半已经归皮肤了**(ADR-0014:词云卡整张正文是一个内置块,
+ * 皮肤只管外框)。皮肤路径出的 HTML 里照样有 `#wordCloudCanvas`,要的正是同一段脚本;
+ * 各拼一份的话,哪天改了取色或自适应参数,只会有一条路跟着变。
+ *
+ * 产物必须塞在 `</body>` 之前 —— 脚本里 `getElementById` 立刻就找画布。
+ */
+export function wordCloudInitScript(words: Array<[string, number]>, dirname: string): string {
 	const wordcloudJS = readFileSync(resolve(dirname, "static/wordcloud2.min.js"), "utf-8");
 	const renderFunc = readFileSync(resolve(dirname, "static/render.js"), "utf-8");
-
-	const html = await renderCard(
-		WordCloudCard,
-		{ masterName, masterAvatarUrl, colorStart, colorEnd },
-		{ title: "弹幕词云", font, fontFace, htmlWidth: 720 },
-	);
-
-	const initScript = `
+	return `
 		<script>${wordcloudJS}</script>
 		<script>${renderFunc}</script>
 		<script>
@@ -79,6 +71,32 @@ export async function buildWordCloudHtml(
 			});
 		</script>
 	`;
+}
 
-	return html.replace("</body>", `${initScript}</body>`);
+/** 词云的脚本必须塞在这之前。两条路(模板 / 皮肤)共用同一个落点。 */
+export function injectWordCloudScript(html: string, script: string): string {
+	return html.replace("</body>", `${script}</body>`);
+}
+
+/**
+ * **旧路径**(模板直出),只剩基准快照与块测试在用 —— 出图已改走皮肤
+ * (`ImageRenderer#generateWordCloudImg` → `renderCardWithSkin` + {@link wordCloudInitScript})。
+ */
+export async function buildWordCloudHtml(
+	masterName: string,
+	words: Array<[string, number]>,
+	dirname: string,
+	masterAvatarUrl?: string,
+	colorStart = "#e0c3fc",
+	colorEnd = "#8ec5fc",
+	font = "sans-serif",
+	/** 主人自带字体的 `@font-face` 规则(有就跟着一起进 CSS)。 */
+	fontFace?: string,
+): Promise<string> {
+	const html = await renderCard(
+		WordCloudCard,
+		{ masterName, masterAvatarUrl, colorStart, colorEnd },
+		{ title: "弹幕词云", font, fontFace, htmlWidth: 720 },
+	);
+	return injectWordCloudScript(html, wordCloudInitScript(words, dirname));
 }

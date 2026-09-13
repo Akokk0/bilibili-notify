@@ -124,14 +124,18 @@ export async function buildRoastPayload(
 	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
 	if (!imageWanted || !renderer) return { mode: "text", payload: { kind: "text", text }, text };
 
+	// 锐评卡与词云卡同源:不属于任何单个 UP,吃的是全局那套皮肤(ADR-0014)。
+	const cardSkin = deps.store.getGlobals().defaults.cardSkin;
 	try {
 		const buffer =
 			opts.kind === "board"
 				? await renderer.generateRoastBoardCard(
 						boardCardData(opts.result as BoardLike, opts.days, upMeta),
+						{ cardSkin },
 					)
 				: await renderer.generateRoastSoloCard(
 						soloCardData(opts.result as SoloLike, opts.days, upMeta),
+						{ cardSkin },
 					);
 		// caption 不是装饰:图挂了 / 客户端不展图时,那段文字是唯一还读得到的东西。
 		return {

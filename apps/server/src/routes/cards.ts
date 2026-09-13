@@ -27,26 +27,28 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import {
-	type Component,
-	DynamicCard,
+	cardOfManifest,
 	type DynamicCardProps,
 	h,
 	ImageRenderer,
-	LiveCard,
 	type LiveCardProps,
-	renderCard,
+	renderCardWithSkin,
+	skinAssetRefs,
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
-	type CardBlock,
-	type CardLayout,
-	CardLayoutSchema,
+	CardSkinIdSchema,
+	type CardSkinKind,
+	type CardSkinManifest,
+	DEFAULT_CARD_SKIN,
 	type GlobalConfig,
 	type NotificationPayload,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
+import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
 import {
 	deleteCardBg,
@@ -111,6 +113,11 @@ export interface CardsRouteOptions {
 	 * 热启用成功后回调,通知 index.ts 更新全局 puppeteer 引用(供进程退出时 dispose)。
 	 */
 	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
+	/**
+	 * 卡片皮肤库(ADR-0014)。预览两条路都要它:走 ImageRenderer 的那条把它接成渲染器的
+	 * 皮肤解析口,虚构 mock 那条直接拿清单调 `renderCardWithSkin`。不给 = 只有内置默认皮肤。
+	 */
+	cardSkins?: CardSkinStore;
 }
 
 const StyleSchema = z.object({
@@ -152,8 +159,8 @@ const PreviewRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
 	content: ContentSchema,
-	/** 编辑器持有的整份版式草稿;renderPreviewCard 按 kind 取切片。缺省 = 默认版式。 */
-	layout: CardLayoutSchema.optional(),
+	/** 预览用哪套皮肤(ADR-0014);缺省 = 全局在用的那套。 */
+	cardSkin: CardSkinIdSchema.optional(),
 	/**
 	 * 真实拉取失败时是否自动回退示例数据。per-UP 作用域自动用该 UP 真实数据预览,失败
 	 * (未开播 / 无动态 / 网络)应静默回退;全局显式输入失败则照常报错告知用户。
@@ -182,7 +189,7 @@ const TestPushRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
 	content: ContentSchema,
-	layout: CardLayoutSchema.optional(),
+	cardSkin: CardSkinIdSchema.optional(),
 	fallback: z.boolean().optional(),
 });
 
@@ -507,6 +514,41 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return opts.deps.runtime.loadFontFace(id);
 	};
 
+	/**
+	 * 预览用哪套皮肤的清单。请求没指就是全局在用的那套;店里取不到(皮肤被删了)就退回
+	 * 内置默认 —— 预览不该因为指了个不存在的 id 而报错,它本来就是「看看长什么样」。
+	 */
+	async function previewManifest(id?: string): Promise<CardSkinManifest> {
+		const store = opts.cardSkins;
+		if (!store) return DEFAULT_CARD_SKIN;
+		await store.ensureReady();
+		const wanted = id || opts.deps.store.getGlobals().defaults.cardSkin;
+		return store.get(wanted) ?? DEFAULT_CARD_SKIN;
+	}
+
+	/**
+	 * 这张卡要用的包内资产预取成表(渲染器那头的查表是同步的,见 `skinAssetRefs`)。
+	 * 与 `ImageRenderer#prefetchSkinAssets` 同一套做法,只是这条路不经渲染器。
+	 */
+	async function previewSkinAssets(
+		id: string | undefined,
+		manifest: CardSkinManifest,
+		kind: CardSkinKind,
+	): Promise<Map<string, string>> {
+		const out = new Map<string, string>();
+		const store = opts.cardSkins;
+		if (!store) return out;
+		const skinId = id || opts.deps.store.getGlobals().defaults.cardSkin;
+		const refs = skinAssetRefs(cardOfManifest(manifest, kind));
+		await Promise.all(
+			refs.map(async (name) => {
+				const url = await readCardSkinAssetDataUrl(store, skinId, name);
+				if (url) out.set(name, url);
+			}),
+		);
+		return out;
+	}
+
 	let imageRenderer: ImageRenderer | null = null;
 	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
@@ -541,6 +583,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
 				// 字体 id → 拼好的 @font-face(读 <dataDir>/assets/font)。
 				resolveFontFace: loadFontFace,
+				// 皮肤:与推送出图问的是同一家店(app.ts 传进来的那一个实例)。
+				resolveCardSkin: (id) => opts.cardSkins?.get(id) ?? undefined,
+				resolveCardSkinAsset: async (skinId, name) =>
+					opts.cardSkins ? await readCardSkinAssetDataUrl(opts.cardSkins, skinId, name) : undefined,
 				// 预览:每来一次请求就热更一次样式,打 info 会刷屏且像"已保存"。真正生效的
 				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
 				quietConfigUpdates: true,
@@ -618,7 +664,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		kind: PreviewKind,
 		style: PreviewStyle,
 		content: PreviewContent,
-		layout?: CardLayout,
+		cardSkin?: string,
 		fallback = false,
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
@@ -639,9 +685,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
 				},
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故 colorOptions 留空。
-				{},
-				layout?.sc,
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
+				{ cardSkin },
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -656,9 +701,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateGuardCard(
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
 				{ masterAvatarUrl: master.face, masterName: master.name },
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故 colorOptions 留空。
-				{},
-				layout?.guard,
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
+				{ cardSkin },
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -679,7 +723,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					roomId,
 					style,
 					opts.deps.store.bootstrap.dataDir,
-					layout?.live,
+					cardSkin,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -698,7 +742,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					content.uid.trim(),
 					content.offset ?? 1,
 					style,
-					layout?.dynamic,
+					cardSkin,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -722,21 +766,27 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				: Promise.resolve(""),
 			loadFontFace(style.fontAsset ?? ""),
 		]);
-		const { component, props, title, htmlWidth } = buildPreviewSpec(
-			kind,
-			style,
-			layout,
-			bgDataUrl,
-			coverDataUrl,
-		);
+		const spec = buildPreviewSpec(kind, style, bgDataUrl, coverDataUrl);
+		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
+		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
+		const manifest = await previewManifest(cardSkin);
+		const assets = await previewSkinAssets(cardSkin, manifest, spec.kind);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
-		const html = await renderCard(component, props, {
-			title,
-			font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
-			fontFace: fontFace || undefined,
-			htmlWidth,
-		});
+		const html =
+			spec.kind === "live"
+				? await renderCardWithSkin("live", spec.props, manifest, {
+						title: spec.title,
+						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
+						fontFace: fontFace || undefined,
+						resolveAsset: (name) => assets.get(name),
+					})
+				: await renderCardWithSkin("dynamic", spec.props, manifest, {
+						title: spec.title,
+						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
+						fontFace: fontFace || undefined,
+						resolveAsset: (name) => assets.get(name),
+					});
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };
 	}
@@ -756,9 +806,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				503,
 			);
 		}
-		const { kind, style, content, layout, fallback } = parsed.data;
+		const { kind, style, content, cardSkin, fallback } = parsed.data;
 		try {
-			const { buffer, mime } = await renderPreviewCard(kind, style, content, layout, fallback);
+			const { buffer, mime } = await renderPreviewCard(kind, style, content, cardSkin, fallback);
 			return c.json<PreviewResponse>({
 				ok: true,
 				dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
@@ -778,7 +828,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
 		}
-		const { targetId, kind, style, content, layout, fallback } = parsed.data;
+		const { targetId, kind, style, content, cardSkin, fallback } = parsed.data;
 
 		if (!currentPuppeteer) {
 			return c.json<TestPushResponse>(
@@ -800,7 +850,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		let card: { buffer: Buffer; mime: string };
 		try {
-			card = await renderPreviewCard(kind, style, content, layout, fallback);
+			card = await renderPreviewCard(kind, style, content, cardSkin, fallback);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
@@ -870,7 +920,7 @@ async function renderRealLive(
 	roomId: string,
 	style: PreviewStyle,
 	dataDir: string,
-	layout?: CardBlock[],
+	cardSkin?: string,
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
 
@@ -912,8 +962,8 @@ async function renderRealLive(
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
 			// B 站原始封面,即便后面还有张有效图。
 			liveCoverImage: await firstExistingCardBg(dataDir, style.liveCoverImages),
+			cardSkin,
 		},
-		layout,
 	);
 }
 
@@ -923,7 +973,7 @@ async function renderRealDynamic(
 	uid: string,
 	offset: number,
 	style: PreviewStyle,
-	layout?: CardBlock[],
+	cardSkin?: string,
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 
@@ -943,29 +993,26 @@ async function renderRealDynamic(
 	const item = items[idx];
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
-	return renderer.generateDynamicCard(
-		item,
-		{
-			cardColorStart: style.cardColorStart,
-			cardColorEnd: style.cardColorEnd,
-		},
-		layout,
-	);
+	return renderer.generateDynamicCard(item, {
+		cardColorStart: style.cardColorStart,
+		cardColorEnd: style.cardColorEnd,
+		cardSkin,
+	});
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────
 
-interface PreviewSpec {
-	component: Component;
-	props: Record<string, unknown>;
-	title: string;
-	htmlWidth: number;
-}
+/**
+ * 虚构 mock 那条路要画的东西。**卡宽不在这儿** —— 它由皮肤(`card.width`)定,
+ * `renderCardWithSkin` 自己取,这里再写一个 600 就是第二个事实源。
+ */
+type PreviewSpec =
+	| { kind: "live"; props: LiveCardProps; title: string }
+	| { kind: "dynamic"; props: DynamicCardProps; title: string };
 
 function buildPreviewSpec(
 	kind: "live" | "dyn",
 	style: PreviewStyle,
-	layout?: CardLayout,
 	/** 已解析的背景图 data URL(mock SSR 路径不经 generate*,需在此注入)。 */
 	bgDataUrl?: string,
 	/** 已解析的直播封面 data URL(仅 live 卡消费,语义同上)。 */
@@ -974,22 +1021,19 @@ function buildPreviewSpec(
 	const backgroundImage = bgDataUrl || undefined;
 	if (kind === "live") {
 		return {
-			component: LiveCard,
+			kind: "live",
 			props: {
 				...buildLivePreviewProps(style),
-				layout: layout?.live,
 				backgroundImage,
 				coverOverride: coverDataUrl || undefined,
 			},
 			title: "卡片预览 · 直播",
-			htmlWidth: 600,
 		};
 	}
 	return {
-		component: DynamicCard,
-		props: { ...buildDynamicPreviewProps(style), layout: layout?.dynamic, backgroundImage },
+		kind: "dynamic",
+		props: { ...buildDynamicPreviewProps(style), backgroundImage },
 		title: "卡片预览 · 动态",
-		htmlWidth: 600,
 	};
 }
 

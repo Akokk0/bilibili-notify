@@ -53,7 +53,9 @@ function makeCtx() {
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
 	};
-	const sendLiveNotifyCard = vi.fn(async (_params: { pushId?: string; liveType: LiveType }) => {});
+	const sendLiveNotifyCard = vi.fn(
+		async (_params: { pushId?: string; liveType: LiveType; cardSkin?: string }) => {},
+	);
 	const broadcastToTargets = vi.fn(
 		async (_uid: string, _content: unknown, _type: LivePushType, _opts?: unknown) => {},
 	);
@@ -130,6 +132,18 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 			[LivePushType.WordCloudAndLiveSummary, { pushId: card?.pushId, role: "extra" }],
 			[LivePushType.LiveSummary, { pushId: card?.pushId, role: "extra" }],
 		]);
+	});
+
+	// 三处 sendLiveNotifyCard(开播 / 直播中 / 下播)都得把 sub 的皮肤递出去;漏一处的
+	// 症状是「那一类推送不跟着皮肤走」,而且全绿(那个参数是可选的)。
+	it("下播卡把 per-UP 皮肤 id 一起交给 sendLiveNotifyCard", async () => {
+		const { ctx, sendLiveNotifyCard } = makeCtx();
+		const sub = makeSub();
+		(sub as SubItemView).cardSkin = "k4ddd-0ddba11";
+		await liveSession(ctx, sub).handleLiveEnd("ws");
+		// 验红:把 room-session-base.ts 里那句 `cardSkin: this.sub.cardSkin` 删掉,这条红。
+		const card = sendLiveNotifyCard.mock.calls[0]?.[0] as { cardSkin?: string } | undefined;
+		expect(card?.cardSkin).toBe("k4ddd-0ddba11");
 	});
 
 	it("两场下播各自一个 pushId", async () => {

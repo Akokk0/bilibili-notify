@@ -26,11 +26,13 @@ type Msg = { kind: "message"; segs: Seg[] };
 function makeCtx(opts?: { renderFail?: boolean }) {
 	const broadcastToTargets = vi.fn(async (..._args: unknown[]) => {});
 	const broadcastSequenceToTargets = vi.fn(async (..._args: unknown[]) => {});
+	// 参数签名照抄 `ImageRenderer#generateLiveCard`,不写成零参 —— 零参的 mock 让
+	// `mock.calls[0][5]` 在类型上成了「长度 0 的元组」,断言第 6 个参数根本编译不过。
 	const generateLiveCard = opts?.renderFail
-		? vi.fn(async () => {
+		? vi.fn(async (..._args: unknown[]): Promise<Buffer> => {
 				throw new Error("boom");
 			})
-		: vi.fn(async () => Buffer.from("img"));
+		: vi.fn(async (..._args: unknown[]) => Buffer.from("img"));
 	const ctx = {
 		logger: silentLogger,
 		isDisposed: () => false,
@@ -97,6 +99,15 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(content.segs[1]?.text).toBe(`开播文案\n${LINK}`);
+	});
+
+	// 皮肤 id 要一路走到 generateLiveCard 的 colorOptions:断在这一跳的话,主人给这位
+	// UP 选的皮肤只有预览认,推出去还是默认那副样子,而且全绿。
+	it("皮肤 id 透传给 generateLiveCard(样式没启用也照带)", async () => {
+		const { ctx, generateLiveCard } = makeCtx();
+		await send(ctx, baseParams({ cardSkin: "k4ddd-0ddba11" }));
+		// 验红:把 room-helpers.ts 里那句 `cardSkin` 删掉,这条红。
+		expect(generateLiveCard.mock.calls[0]?.[5]).toEqual({ cardSkin: "k4ddd-0ddba11" });
 	});
 
 	it("分条符切两条 → broadcastSequenceToTargets,一次收齐、顺序正确", async () => {

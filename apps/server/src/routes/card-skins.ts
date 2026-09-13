@@ -16,6 +16,7 @@
 
 import type {
 	CardSkinDuplicateResponse,
+	CardSkinFallback,
 	CardSkinInstallResponse,
 	CardSkinInUseResponse,
 	CardSkinListResponse,
@@ -58,6 +59,11 @@ export function createCardSkinsRoute(deps: {
 	config: ConfigStore;
 	/** 开机读盘跳过了哪些目录 —— 只打一次,别让皮肤悄悄消失。 */
 	logger?: { warn: (msg: string) => void };
+	/**
+	 * 出图回落的账本(`card-skins/fallbacks.ts`)。列表里带上它,面板才看得见
+	 * 「皮肤 XX 渲染失败已回落」——ADR-0014 决策 19 的「回落必须可见」。没接 = 空。
+	 */
+	fallbacks?: () => CardSkinFallback[];
 }): Hono {
 	const { store, config } = deps;
 	const app = new Hono();
@@ -78,6 +84,7 @@ export function createCardSkinsRoute(deps: {
 		const body: CardSkinListResponse = {
 			skins: store.list(),
 			active: config.getGlobals().defaults.cardSkin,
+			fallbacks: deps.fallbacks?.() ?? [],
 		};
 		return c.json(body);
 	});

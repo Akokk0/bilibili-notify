@@ -35,8 +35,9 @@ import {
 } from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
-	CardBlock,
 	CardKind,
+	CardSkinKind,
+	CardSkinManifest,
 	ConnectionCapabilities,
 	Disposable,
 	FeatureKey,
@@ -133,9 +134,9 @@ export interface EnginesRuntime extends Disposable {
 	linkPolicyFor(key: string): LinkParsingPolicy;
 	/**
 	 * 链接卡的呈现 = 推送的动态卡在没有 per-UP 覆盖时的呈现:全局「动态」样式(含图廊
-	 * 轮换,**每调一次推进一次游标**)+ 全局版式。每张卡调一次,别攥着。
+	 * 轮换,**每调一次推进一次游标**)+ 全局那套皮肤。每张卡调一次,别攥着。
 	 */
-	linkCardPresentation(): { colors: CardColorOptions | undefined; layout: CardBlock[] | undefined };
+	linkCardPresentation(): { colors: CardColorOptions | undefined; cardSkin: string };
 	/**
 	 * Out-of-band reachability probe for `/api/connections/:id/test`. 顺路把还没探出来的平台
 	 * 能力再探一次(与定时健康探测同一条路)。
@@ -206,6 +207,18 @@ export interface CreateEnginesOptions {
 	 * 原样交给 `BilibiliPush.quietHoursNow`。
 	 */
 	quietHoursNow?: () => Date;
+	/**
+	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
+	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
+	 */
+	cardSkins?: {
+		/** 皮肤 id → 清单;取不到 → 渲染器回落默认皮肤。 */
+		get: (id: string) => CardSkinManifest | undefined;
+		/** 包内资产名 → data URL。 */
+		asset: (skinId: string, name: string) => Promise<string | undefined>;
+		/** 出图回落了。宿主负责去重与「怎么让主人看见」。 */
+		onFallback: (info: { skinId: string; kind: CardSkinKind; reason: string }) => void;
+	};
 }
 
 export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
@@ -394,6 +407,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
 			resolveFontFace: loadFontFace,
+			// 皮肤库那三口(接线层给);没给就是「只有内置默认皮肤」。
+			resolveCardSkin: opts.cardSkins?.get,
+			resolveCardSkinAsset: opts.cardSkins?.asset,
+			onCardSkinFallback: opts.cardSkins?.onFallback,
 		});
 		renderer.start();
 		return renderer;
@@ -737,7 +754,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 群里每句带链接的话都要读开关,而 `globals()` 是整份深拷贝,不该按条付这个钱。
 	const linkCardViewOf = (g: GlobalConfig) => ({
 		config: g.linkParsing,
-		layout: g.defaults.cardLayout.dynamic,
+		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
+		cardSkin: g.defaults.cardSkin,
 		style: resolveDynamicCardStyle(g.defaults, null),
 		defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 	});
@@ -797,7 +815,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
 				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
 				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
-				const layoutChanged = !eq(prev.defaults.cardLayout, g.defaults.cardLayout);
+				// 皮肤换了 = 出图整个换一副样子,与旧的「版式变了」同一档热更需求:两个引擎的
+				// per-sub 快照都得刷,否则要等重启才生效(ADR-0014 决策 15 起版式住皮肤里)。
+				const skinChanged = prev.defaults.cardSkin !== g.defaults.cardSkin;
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
 				// `app` 是一个 section,但里面装着三件互不相干的事(日志等级 / User-Agent /
@@ -906,7 +926,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					filtersChanged ||
 					templatesChanged ||
 					featuresChanged ||
-					layoutChanged ||
+					skinChanged ||
 					messageLayoutChanged
 				) {
 					const refreshOps = subscriptionOpsToLive(
@@ -924,7 +944,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 全局默认版式变化不会自动传播 —— 借道 applyOps 的 update 分支强制刷新每个已跟踪
 				// UID 的完整 SubItemView(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
 				// 已跟踪 UID 不会被当成新订阅重推旧动态,见 dynamic-engine.ts stillSubscribed 注释)。
-				if (layoutChanged || messageLayoutChanged) {
+				if (skinChanged || messageLayoutChanged) {
 					dynamic.applyOps(
 						subscriptionOpsToDynamic(
 							opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
@@ -1035,7 +1055,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				pick: pickExistingCardBg,
 				scopeKey: "global:dynamic",
 			}),
-			layout: linkCard.layout,
+			cardSkin: linkCard.cardSkin,
 		}),
 		getModuleStatus: (): ModuleStatus => {
 			const g = globals();
@@ -1424,8 +1444,8 @@ export function buildDynamicSubViewSingle(
 		imageGroupForward: sub.overrides.imageGroup?.forward,
 		customDynamicTemplate: sub.overrides.templates?.dynamic,
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
-		// per-UP 解析后的动态卡版式切片(eff = 整份覆盖 ?? 全局)。全局默认版式即复刻现状。
-		dynamicLayout: eff.cardLayout.dynamic,
+		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
+		cardSkin: eff.cardSkin,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
 		messageLayout: eff.messageLayout.dynamic,
 	};
@@ -1521,9 +1541,9 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
 		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
 		wordcloudStopWords: eff.templates.wordcloudStopWords,
-		// per-UP 解析后的卡片版式(eff = per-UP 整份覆盖 ?? 全局)。room-session 渲染
-		// live/sc/guard 时取对应切片透传给 generate*;全局默认版式即复刻现状。
-		cardLayout: eff.cardLayout,
+		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。room-session
+		// 渲染 live/sc/guard/词云时原样透传给 generate*。
+		cardSkin: eff.cardSkin,
 		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
 		messageLayout: eff.messageLayout.live,
 		customSpecialDanmakuUsers:
@@ -1641,7 +1661,7 @@ function subscriptionOpsToLive(
 						customLiveSummary: view.customLiveSummary,
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
-						cardLayout: view.cardLayout,
+						cardSkin: view.cardSkin,
 						messageLayout: view.messageLayout,
 					},
 				],

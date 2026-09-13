@@ -120,4 +120,11 @@ export type CardColorOptions = {
 	showArea?: boolean;
 	/** 直播卡数据区:显示粉丝数据;缺省时回退渲染器全局 config。 */
 	showFans?: boolean;
+	/**
+	 * 用哪套**卡片皮肤**(ADR-0014):皮肤 id,缺省 / 空串 = 内置默认皮肤。
+	 *
+	 * 取代了从前逐张卡传进来的 `layout` 切片 —— 版式现在住在皮肤包里,调用方只报一个
+	 * 引用。宿主解析不出这个 id(皮肤被删了)时渲染器回落默认皮肤并报告警,不拒发。
+	 */
+	cardSkin?: string;
 };

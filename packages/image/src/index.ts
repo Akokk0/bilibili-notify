@@ -50,13 +50,21 @@ export {
 	type CardDataValue,
 	readCardField,
 } from "./skin/card-data";
-// 皮肤渲染器(ADR-0014 决策 18):皮肤 JSON + props → VNode + 要拼进 `renderCard` 的那段 CSS。
+// 皮肤渲染器(ADR-0014 决策 18):皮肤 JSON + props → VNode / 完整 HTML。
+// **出图的主入口是 `renderCardWithSkin`** —— 推送(ImageRenderer)与面板预览共用它。
 export {
 	BLOCKED_IMG_PLACEHOLDER,
+	cardOfManifest,
+	renderCardWithSkin,
 	renderSkinnedCard,
+	type SkinCardHtmlOptions,
 	type SkinRenderOptions,
 	type SkinRenderResult,
+	skinAssetRefs,
 } from "./skin/render-skin";
+// ⚠️ 下面这一组是**旧路径**:「一种卡一个模板组件 + `CardBlock[]` 竖栈版式」。出图早已
+// 不走它们(ADR-0014 决策 15 起一律按皮肤装配),留着只为基准快照与块测试拿它当标尺 ——
+// 别拿它们写新代码,新的出图口子一律走 `renderCardWithSkin`。
 export { DynamicCard, type DynamicCardProps, type DynamicNode } from "./templates/dynamic-card";
 export { GuardCard, type GuardCardProps } from "./templates/guard-card";
 export { LiveCard, type LiveCardProps } from "./templates/live-card";

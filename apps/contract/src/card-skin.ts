@@ -11,7 +11,7 @@
  * 两色之分,`active` 是单个 id),以及 **`builtin` 那份列得出但改不了删不了**(决策 5)。
  */
 
-import type { CardSkinManifest } from "@bilibili-notify/internal";
+import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/internal";
 
 export type { CardSkinManifest };
 
@@ -39,6 +39,22 @@ export interface CardSkinSummary {
 export interface CardSkinListResponse {
 	skins: CardSkinSummary[];
 	active: string;
+	/**
+	 * 这次运行里出图**回落过**默认皮肤的记录(ADR-0014 决策 19「回落必须可见」)。
+	 * 最近的在前、封顶 20 条、不落盘。空数组 = 一次都没回落过。
+	 */
+	fallbacks: CardSkinFallback[];
+}
+
+/** 一条回落记录。同一套皮肤 + 同一种卡 + 同一个原因只占一条,`count` 说它发生了几次。 */
+export interface CardSkinFallback {
+	skinId: string;
+	kind: CardSkinKind;
+	/** 人话原因:「皮肤不存在」「渲染失败(…)」「卡片高度 5200 超过上限 4000」。 */
+	reason: string;
+	/** 最近一次发生的时刻(ms)。 */
+	at: number;
+	count: number;
 }
 
 /** GET /api/card-skins/:id —— `assets` 是包内资产清单(`assets/<名>`),编辑器背景图那一栏的可选项。 */

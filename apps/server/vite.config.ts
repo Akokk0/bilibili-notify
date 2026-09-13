@@ -59,6 +59,10 @@ export default defineConfig({
 							/^cron(\/|$)/,
 							/^css-tree(\/|$)/,
 							/^fflate(\/|$)/,
+							// 卡片皮肤自定义块的 HTML 清洗器(parse5 + 它唯一的依赖 entities):纯 JS、
+							// dist 里无 __dirname / require.resolve / readFileSync,内联安全(2026-09-13 核过)。
+							/^parse5(\/|$)/,
+							/^entities(\/|$)/,
 							/^pino(\/|$)/,
 							/^pino-pretty(\/|$)/,
 							/^puppeteer-core(\/|$)/,

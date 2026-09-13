@@ -2,32 +2,33 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GuardLevel } from "@bilibili-notify/blive";
 import {
-	type CardBlock,
+	CARD_SKIN_LIMITS,
+	type CardSkinCard,
+	type CardSkinKind,
+	type CardSkinManifest,
 	createSerialGate,
+	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
-	type GuardLayout,
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
+import type { CardPropsByKind } from "./blocks/frames";
 import { numberToStr } from "./format";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
-import { renderCard, USER_FONT_FAMILY } from "./render";
-import { BLOCKED_IMG_PLACEHOLDER as BLOCKED_IMG_GIF } from "./skin/render-skin";
-import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import { DynamicCard } from "./templates/dynamic-card";
-import { buildDynamicNode } from "./templates/dynamic-content";
-import { GuardCard } from "./templates/guard-card";
-import { LiveCard } from "./templates/live-card";
+import { USER_FONT_FAMILY } from "./render";
 import {
-	RoastBoardCard,
-	type RoastBoardCardProps,
-	RoastSoloCard,
-	type RoastSoloCardProps,
-} from "./templates/roast-card";
-import { SCCard } from "./templates/sc-card";
-import { buildWordCloudHtml } from "./templates/wordcloud";
+	BLOCKED_IMG_PLACEHOLDER as BLOCKED_IMG_GIF,
+	cardOfManifest,
+	renderCardWithSkin,
+	skinAssetRefs,
+} from "./skin/render-skin";
+import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
+import { buildDynamicNode } from "./templates/dynamic-content";
+import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
+import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
 
 /**
@@ -150,6 +151,25 @@ export interface ImageRendererOptions {
 	 * 像"已经保存了"。降到 debug 后排障仍拿得到,平时不冒充保存。
 	 */
 	quietConfigUpdates?: boolean;
+	/**
+	 * 皮肤 id → 那份清单(宿主注入,读 `<dataDir>/card-skins/`)。**同步**:出图是逐张卡
+	 * 的热路径,而宿主那头本来就把索引攥在内存里。取不到 → 回落默认皮肤并报
+	 * {@link ImageRendererOptions.onCardSkinFallback}。不注入 = 只有内置默认皮肤。
+	 */
+	resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
+	/**
+	 * 皮肤包内资产名(`assets/<名>`)→ data URL(宿主注入,读盘)。取不到回 undefined,
+	 * 渲染器用透明占位。与 {@link resolveAsset} 不同的是它按**皮肤**分格 —— 两套皮肤各带
+	 * 一张 `assets/bg.png` 是完全正常的事。
+	 */
+	resolveCardSkinAsset?: (skinId: string, name: string) => Promise<string | undefined>;
+	/**
+	 * 出图回落了(ADR-0014 决策 19「回落必须可见」)。宿主拿它亮面板告警 —— 用户换了皮肤
+	 * 却看不出没生效,只会以为是自己没保存。
+	 *
+	 * **去重归宿主**:同一套皮肤每张卡都会回落一次,渲染器这一层不认识「同一个原因」。
+	 */
+	onCardSkinFallback?: (info: { skinId: string; kind: CardSkinKind; reason: string }) => void;
 }
 
 export class ImageRenderer {
@@ -160,6 +180,16 @@ export class ImageRenderer {
 	private readonly resolveAsset: (id: string) => Promise<string>;
 	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
+	private readonly resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
+	private readonly resolveCardSkinAsset?: (
+		skinId: string,
+		name: string,
+	) => Promise<string | undefined>;
+	private readonly onCardSkinFallback?: (info: {
+		skinId: string;
+		kind: CardSkinKind;
+		reason: string;
+	}) => void;
 
 	/**
 	 * 自带字体的解析结果缓存 —— **只留一款,且留的是拼好的那条规则**。
@@ -215,6 +245,9 @@ export class ImageRenderer {
 		this.resolveAsset = opts.resolveAsset;
 		this.resolveFontFace = opts.resolveFontFace;
 		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
+		this.resolveCardSkin = opts.resolveCardSkin;
+		this.resolveCardSkinAsset = opts.resolveCardSkinAsset;
+		this.onCardSkinFallback = opts.onCardSkinFallback;
 		this.logger = opts.serviceCtx.logger;
 	}
 
@@ -359,6 +392,116 @@ export class ImageRenderer {
 		}
 	}
 
+	// ── 皮肤(ADR-0014) ─────────────────────────────────────────────────────────
+
+	/** 这张卡用哪套皮肤;缺省 / 空串 = 内置默认。 */
+	private skinIdOf(opts?: { cardSkin?: string }): string {
+		return opts?.cardSkin || DEFAULT_CARD_SKIN_ID;
+	}
+
+	/**
+	 * 这张卡要用的**包内资产**预取成表。
+	 *
+	 * 渲染器里的资产查表是**同步**的(替换发生在一次字符串替换的回调里),而宿主读盘是
+	 * 异步的 —— 所以先按 `skinAssetRefs` 列出名单一次性取完,再把表交给渲染器。取不到的
+	 * 不进表(渲染器那头用透明占位),一张取不到不该拖垮整张卡。
+	 */
+	private async prefetchSkinAssets(
+		skinId: string,
+		card: CardSkinCard,
+	): Promise<Map<string, string>> {
+		const out = new Map<string, string>();
+		const resolve = this.resolveCardSkinAsset;
+		if (!resolve) return out;
+		const refs = skinAssetRefs(card);
+		if (refs.length === 0) return out;
+		await Promise.all(
+			refs.map(async (name) => {
+				try {
+					const url = await resolve(skinId, name);
+					if (url) out.set(name, url);
+				} catch (e) {
+					this.logger.warn(`[card-skin] 皮肤「${skinId}」的资产 ${name} 取不到:${e}`);
+				}
+			}),
+		);
+		return out;
+	}
+
+	/**
+	 * **一切出图的唯一入口**(ADR-0014 决策 18 / 19)。皮肤 JSON + 这张卡的 props →
+	 * HTML → 截图。
+	 *
+	 * 三道回落,顺序是刻意的:
+	 *
+	 * 1. **皮肤不在 / 没有这种卡** → 默认皮肤(渲染都还没开始,最便宜的一道);
+	 * 2. **渲染抛错** → 默认皮肤重画一次。推送不能因为换皮肤而丢,所以这里吞掉的是
+	 *    皮肤的错,不是渲染管线的错 —— 默认皮肤也抛就照抛出去,由推送那侧降级成文字;
+	 * 3. **卡片太高**(`CARD_SKIN_LIMITS.maxHeight`)→ 默认皮肤重画。默认皮肤也超
+	 *    **照发**:那时长的是内容,不是皮肤。
+	 *
+	 * 三道都经 {@link ImageRendererOptions.onCardSkinFallback} 报给宿主;**id 本来就是
+	 * 默认皮肤时不算回落**,不报(没换过皮肤的人不该收到「皮肤回落」的告警)。
+	 */
+	private async renderWithSkin<K extends CardSkinKind>(args: {
+		kind: K;
+		props: CardPropsByKind[K];
+		/** `<title>`;截图里看不见,排障时看得见。 */
+		title: string;
+		skinId: string;
+		font: { font: string; fontFace?: string };
+		/** 仅 dynamic 卡:原始动态(契约里视频 / 图廊那两组字段从它取)。 */
+		raw?: Dynamic;
+		priority?: RenderPriority;
+		/** 截图前要等的页内条件(词云等画完)。 */
+		waitFor?: string;
+		/** HTML 出来之后再动一刀(词云往 `</body>` 前塞画词脚本)。 */
+		postProcess?: (html: string) => string;
+	}): Promise<Buffer> {
+		const { kind, props, title, font } = args;
+		const max = CARD_SKIN_LIMITS.maxHeight;
+
+		const once = async (
+			id: string,
+			manifest: CardSkinManifest,
+		): Promise<{ buffer: Buffer; height: number }> => {
+			const assets = await this.prefetchSkinAssets(id, cardOfManifest(manifest, kind));
+			let html = await renderCardWithSkin(kind, props, manifest, {
+				title,
+				font: font.font,
+				fontFace: font.fontFace,
+				raw: args.raw,
+				resolveAsset: (name) => assets.get(name),
+			});
+			if (args.postProcess) html = args.postProcess(html);
+			return await withRetry(() => this.renderHtml(html, args.waitFor, args.priority));
+		};
+
+		const fallback = async (from: string, reason: string): Promise<Buffer> => {
+			// 只报事实,去重与「怎么让主人看见」归宿主 —— 同一套坏皮肤每张卡都会走到这儿。
+			this.onCardSkinFallback?.({ skinId: from, kind, reason });
+			this.logger.debug(`[card-skin] 皮肤「${from}」的 ${kind} 卡${reason},回落默认皮肤`);
+			return (await once(DEFAULT_CARD_SKIN_ID, DEFAULT_CARD_SKIN)).buffer;
+		};
+
+		const id = args.skinId;
+		const isDefault = id === DEFAULT_CARD_SKIN_ID;
+		// 默认皮肤是代码里的常量,宿主没注入解析口时它仍然在。
+		const manifest = this.resolveCardSkin?.(id) ?? (isDefault ? DEFAULT_CARD_SKIN : undefined);
+		if (!manifest) return await fallback(id, "皮肤不存在");
+		if (!manifest.cards[kind] && !isDefault) return await fallback(id, "皮肤没有这种卡");
+
+		try {
+			const { buffer, height } = await once(id, manifest);
+			if (isDefault || height <= max) return buffer;
+			return await fallback(id, `卡片高度 ${Math.round(height)} 超过上限 ${max}`);
+		} catch (e) {
+			// 默认皮肤自己画不出来 = 渲染管线的问题,往外抛(推送那侧本来就有降级兜底)。
+			if (isDefault) throw e;
+			return await fallback(id, `渲染失败(${e instanceof Error ? e.message : String(e)})`);
+		}
+	}
+
 	// ── 图片生成公共方法 ──────────────────────────────────────────────────────────
 
 	async generateLiveCard(
@@ -369,8 +512,6 @@ export class ImageRenderer {
 		liveData: LiveData,
 		liveStatus: number,
 		colorOptions: CardColorOptions = {},
-		/** live 版式描述符;缺省 = 默认版式(复刻现状)。 */
-		layout?: CardBlock[],
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
@@ -394,9 +535,12 @@ export class ImageRenderer {
 		// 统一映射：直播中=1，已下播=2，其他=0
 		const cardBadgeStatus = liveStatus === 3 ? 2 : liveStatus >= 2 ? 1 : liveStatus;
 
-		const html = await renderCard(
-			LiveCard,
-			{
+		return this.renderWithSkin({
+			kind: "live",
+			title: "直播通知",
+			skinId: this.skinIdOf(colorOptions),
+			font: await this.resolveFont(colorOptions),
+			props: {
 				showPopularity: colorOptions.showPopularity ?? this.config.showPopularity,
 				showArea: colorOptions.showArea ?? this.config.showArea,
 				showFans: colorOptions.showFans ?? this.config.showFans,
@@ -432,12 +576,8 @@ export class ImageRenderer {
 					if (n > 0) return n >= 10_000 ? `+${(n / 10_000).toFixed(1)}万` : `+${n}`;
 					return n <= -10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toString();
 				})(),
-				layout,
 			},
-			{ title: "直播通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 600 },
-		);
-
-		return withRetry(() => this.renderHtml(html))
+		})
 			.then((buf) => {
 				this.logger.debug(`[live] 直播卡片渲染完成：${username}（${Date.now() - t0}ms）`);
 				return buf;
@@ -460,8 +600,6 @@ export class ImageRenderer {
 		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
-		/** guard 受限 2D 版式;缺省 = 默认版式(复刻现状)。 */
-		layout?: GuardLayout,
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
@@ -472,9 +610,13 @@ export class ImageRenderer {
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
-		const html = await renderCard(
-			GuardCard,
-			{
+
+		return this.renderWithSkin({
+			kind: "guard",
+			title: "上舰通知",
+			skinId: this.skinIdOf(colorOptions),
+			font: await this.resolveFont(colorOptions),
+			props: {
 				captainImgUrl,
 				guardLevel,
 				uname,
@@ -483,15 +625,11 @@ export class ImageRenderer {
 				masterAvatarUrl,
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
-				layout,
 				glassOpacity,
 				glassClear,
 				backgroundImage,
 			},
-			{ title: "上舰通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 430 },
-		);
-
-		return withRetry(() => this.renderHtml(html))
+		})
 			.then((buf) => {
 				this.logger.debug(`[guard] 上舰卡片渲染完成：${uname}（${Date.now() - t0}ms）`);
 				return buf;
@@ -522,8 +660,6 @@ export class ImageRenderer {
 		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
-		/** sc 版式描述符;缺省 = 默认版式(复刻现状)。 */
-		layout?: CardBlock[],
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[sc] 开始渲染 SC 卡片：${senderName} → ${masterName}（¥${price}）`);
@@ -537,9 +673,12 @@ export class ImageRenderer {
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
 
-		const html = await renderCard(
-			SCCard,
-			{
+		return this.renderWithSkin({
+			kind: "sc",
+			title: "醒目留言通知",
+			skinId: this.skinIdOf(colorOptions),
+			font: await this.resolveFont(colorOptions),
+			props: {
 				senderFace,
 				senderName,
 				masterName,
@@ -548,15 +687,11 @@ export class ImageRenderer {
 				price,
 				duration: levelInfo.duration,
 				bgColor,
-				layout,
 				glassOpacity,
 				glassClear,
 				backgroundImage,
 			},
-			{ title: "醒目留言通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 290 },
-		);
-
-		return withRetry(() => this.renderHtml(html))
+		})
 			.then((buf) => {
 				this.logger.debug(`[sc] SC 卡片渲染完成：${senderName}（${Date.now() - t0}ms）`);
 				return buf;
@@ -569,8 +704,6 @@ export class ImageRenderer {
 	async generateDynamicCard(
 		data: Dynamic,
 		colorOptions: CardColorOptions = {},
-		/** dynamic 版式描述符;缺省 = 默认版式(复刻现状)。 */
-		layout?: CardBlock[],
 		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
@@ -591,21 +724,24 @@ export class ImageRenderer {
 			num: (n) => numberToStr(n),
 		});
 
-		const html = await renderCard(
-			DynamicCard,
-			{
+		return this.renderWithSkin({
+			kind: "dynamic",
+			title: "动态通知",
+			skinId: this.skinIdOf(colorOptions),
+			font: await this.resolveFont(colorOptions),
+			// 契约里视频 / 图廊那两组字段(`{video.title}`、`{pics.count}`…)从原始动态取,
+			// props 里的 `node` 已经是画好的结构树,取不回那些值。
+			raw: data,
+			priority: options?.priority,
+			props: {
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
 				glassClear,
 				backgroundImage,
 				node,
-				layout,
 			},
-			{ title: "动态通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 600 },
-		);
-
-		return withRetry(() => this.renderHtml(html, undefined, options?.priority))
+		})
 			.then((buf) => {
 				this.logger.debug(
 					`[dynamic] 动态卡片渲染完成：${moduleAuthor.name}（${Date.now() - t0}ms）`,
@@ -621,21 +757,28 @@ export class ImageRenderer {
 		words: Array<[string, number]>,
 		masterName: string,
 		masterAvatarUrl?: string,
+		/** 用哪套皮肤;词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
+		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
-		const { font, fontFace } = await this.resolveFont();
-		const html = await buildWordCloudHtml(
-			masterName,
-			words,
-			ASSET_DIR,
-			masterAvatarUrl,
-			this.config.cardColorStart,
-			this.config.cardColorEnd,
-			font,
-			fontFace,
-		);
-		return withRetry(() => this.renderHtml(html, "window.wordcloudDone === true"))
+		// 画布(`#wordCloudCanvas`)在内置块里,皮肤路径出的 HTML 照样有它 —— 画词的脚本
+		// 原样注进 `</body>` 之前,与模板路径同一段(`wordCloudInitScript`)。
+		const script = wordCloudInitScript(words, ASSET_DIR);
+		return this.renderWithSkin({
+			kind: "wordcloud",
+			title: "弹幕词云",
+			skinId: this.skinIdOf(opts),
+			font: await this.resolveFont(),
+			waitFor: "window.wordcloudDone === true",
+			postProcess: (html) => injectWordCloudScript(html, script),
+			props: {
+				masterName,
+				masterAvatarUrl,
+				colorStart: this.config.cardColorStart,
+				colorEnd: this.config.cardColorEnd,
+			},
+		})
 			.then((buf) => {
 				this.logger.debug(`[wordcloud] 词云卡片渲染完成：${masterName}（${Date.now() - t0}ms）`);
 				return buf;
@@ -654,12 +797,19 @@ export class ImageRenderer {
 		return this.resolveBg(this.config.backgroundImage);
 	}
 
-	async generateRoastBoardCard(data: RoastBoardData): Promise<Buffer> {
+	async generateRoastBoardCard(
+		data: RoastBoardData,
+		/** 用哪套皮肤;榜单整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
+		opts: { cardSkin?: string } = {},
+	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[roast] 开始渲染周报卡片：近 ${data.days} 天`);
-		const html = await renderCard(
-			RoastBoardCard,
-			{
+		return this.renderWithSkin({
+			kind: "roastBoard",
+			title: "UP 主周报",
+			skinId: this.skinIdOf(opts),
+			font: await this.resolveFont(),
+			props: {
 				...data,
 				cardColorStart: this.config.cardColorStart,
 				cardColorEnd: this.config.cardColorEnd,
@@ -667,9 +817,7 @@ export class ImageRenderer {
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
-			{ title: "UP 主周报", ...(await this.resolveFont()), htmlWidth: 600 },
-		);
-		return withRetry(() => this.renderHtml(html))
+		})
 			.then((buf) => {
 				this.logger.debug(`[roast] 周报卡片渲染完成（${Date.now() - t0}ms）`);
 				return buf;
@@ -679,12 +827,19 @@ export class ImageRenderer {
 			});
 	}
 
-	async generateRoastSoloCard(data: RoastSoloData): Promise<Buffer> {
+	async generateRoastSoloCard(
+		data: RoastSoloData,
+		/** 用哪套皮肤;单人锐评整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
+		opts: { cardSkin?: string } = {},
+	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.up.name}`);
-		const html = await renderCard(
-			RoastSoloCard,
-			{
+		return this.renderWithSkin({
+			kind: "roastSolo",
+			title: "UP 主锐评",
+			skinId: this.skinIdOf(opts),
+			font: await this.resolveFont(),
+			props: {
 				...data,
 				cardColorStart: this.config.cardColorStart,
 				cardColorEnd: this.config.cardColorEnd,
@@ -692,9 +847,7 @@ export class ImageRenderer {
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
-			{ title: "UP 主锐评", ...(await this.resolveFont()), htmlWidth: 430 },
-		);
-		return withRetry(() => this.renderHtml(html))
+		})
 			.then((buf) => {
 				this.logger.debug(`[roast] 单人锐评卡片渲染完成：${data.up.name}（${Date.now() - t0}ms）`);
 				return buf;
@@ -997,11 +1150,16 @@ export class ImageRenderer {
 		return dom.serialize();
 	}
 
+	/**
+	 * 回的是 `{ buffer, height }` 而不是光一个 buffer:**卡片最大高度那道闸要的正是这个数**
+	 * (ADR-0014 决策 19),而它只有在这儿(截图前量 `html` 的 boundingBox)拿得到 ——
+	 * 出了这个函数就只剩一团 JPEG 字节,再想知道多高就得把图解码回来。
+	 */
 	private async doRender(
 		html: string,
 		waitForCondition?: string,
 		priority: RenderPriority = "normal",
-	): Promise<Buffer> {
+	): Promise<{ buffer: Buffer; height: number }> {
 		// 先 inline 远程图片（耗时操作），再获取 page，避免 page 在空闲期间被回收
 		const inlinedHtml = await this.inlineRemoteImages(html);
 		const page = await this.puppeteer.page({ priority });
@@ -1033,7 +1191,10 @@ export class ImageRenderer {
 			try {
 				const raw = await Promise.race([screenshotPromise, timeoutPromise]);
 				await elementHandle.dispose();
-				return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+				return {
+					buffer: Buffer.isBuffer(raw) ? raw : Buffer.from(raw),
+					height: boundingBox.height,
+				};
 			} finally {
 				if (timeoutId !== undefined) clearTimeout(timeoutId);
 			}
@@ -1047,7 +1208,7 @@ export class ImageRenderer {
 		html: string,
 		waitForCondition?: string,
 		priority: RenderPriority = "normal",
-	): Promise<Buffer> {
+	): Promise<{ buffer: Buffer; height: number }> {
 		const release = await this.renderGate.acquire({ priority });
 		try {
 			return await this.doRender(html, waitForCondition, priority);

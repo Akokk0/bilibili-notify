@@ -10,7 +10,6 @@
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import type {
-	CardBlock,
 	ConnectionCapabilities,
 	DeliveryResult,
 	LinkParsingConfig,
@@ -67,11 +66,8 @@ async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise
 	await parser.handleMessage({ platform: "onebot", connectionId: ADAPTER, ...msg });
 }
 
-/** 主人在版式编辑器里改过的动态卡版式 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
-const LAYOUT: CardBlock[] = [
-	{ id: "content", type: "content", visible: true },
-	{ id: "header", type: "header", visible: true, marginTop: 12 },
-];
+/** 主人在卡片页选的那套皮肤 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
+const SKIN = "skin-from-panel";
 /** 卡片页里给「动态」这一类调的配色(含图廊轮到的那张背景)—— 同样两种卡都得吃。 */
 const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "bg-7" };
 
@@ -96,12 +92,8 @@ function makeParser(
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generateDynamicCard = vi.fn(
-		async (
-			_data: Dynamic,
-			_colors?: CardColorOptions,
-			_layout?: CardBlock[],
-			_options?: { priority?: RenderPriority },
-		) => Buffer.from("png-bytes"),
+		async (_data: Dynamic, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
+			Buffer.from("png-bytes"),
 	);
 	const sent: { dest: LinkReplyDestination; payload: NotificationPayload }[] = [];
 	const send = vi.fn(
@@ -124,7 +116,7 @@ function makeParser(
 		config: readConfig,
 		api: { getVideoInfo, resolveShortLink },
 		renderer,
-		presentation: () => ({ colors: COLORS, layout: LAYOUT }),
+		presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
 		send,
 		now: () => now,
 		policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
@@ -181,12 +173,11 @@ describe("createLinkParser", () => {
 			like: { count: 3000 },
 		});
 		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
-		// 版式不传的话渲染器退回出厂版式、主人在编辑器里排的顺序就丢了。
-		expect(h.generateDynamicCard.mock.calls[0]?.[1]).toBe(COLORS);
-		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toBe(LAYOUT);
+		// 皮肤不传的话渲染器退回内置默认皮肤、主人选的那套排版就丢了。
+		expect(h.generateDynamicCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
 		// 低优先级:群里谁都能触发的卡,不能排在开播 / 动态卡前面 —— 让路这件事由渲染
 		// 队列按车道做,不靠这里数自己发了几张。
-		expect(h.generateDynamicCard.mock.calls[0]?.[3]).toEqual({ priority: "low" });
+		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toEqual({ priority: "low" });
 
 		expect(h.sent).toEqual([
 			{

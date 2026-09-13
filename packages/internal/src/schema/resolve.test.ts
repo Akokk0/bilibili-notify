@@ -224,13 +224,10 @@ describe("resolve()", () => {
 		expect(resolve(sub, globals.defaults).cardSkin).toBe("k2xyz-cafebabe");
 	});
 
-	it("inherits global cardLayout when no per-UP override", () => {
-		const globals = makeDefaultGlobalConfig();
-		const eff = resolve(SUB_BASE, globals.defaults);
-		expect(eff.cardLayout).toEqual(globals.defaults.cardLayout);
-	});
-
-	it("replaces cardLayout wholesale on per-UP override and normalizes it", () => {
+	// ADR-0014 决策 15:版式住皮肤包里,`cardLayout` 已从折叠结果里退役 —— 出图只认
+	// `cardSkin`,那个旧键只剩开机迁移会读一次。留一条守卫钉住「它不再折进来」:
+	// 漏删的话引擎会拿到一份永远等于出厂默认的死数据,而误用它的代码全绿。
+	it("does not surface the retired cardLayout — layouts live in the skin now", () => {
 		const globals = makeDefaultGlobalConfig();
 		const sub: Subscription = {
 			...SUB_BASE,
@@ -245,11 +242,7 @@ describe("resolve()", () => {
 			},
 		};
 		const eff = resolve(sub, globals.defaults);
-		// 整份覆盖:override 的 live 顺序生效
-		expect(eff.cardLayout.live.slice(0, 2).map((b) => b.id)).toEqual(["title", "cover"]);
-		expect(eff.cardLayout.live.find((b) => b.id === "cover")?.visible).toBe(false);
-		// normalize:缺失的已知块仍被追加(向前兼容;data 为合并后的数据区块)
-		expect(eff.cardLayout.live.map((b) => b.id)).toContain("data");
+		expect(Object.hasOwn(eff, "cardLayout")).toBe(false);
 	});
 
 	it("inherits global messageLayout when no per-UP override", () => {

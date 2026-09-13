@@ -1,5 +1,18 @@
 /** @jsxImportSource vue */
 
+/**
+ * ⚠️ **旧路径,只供基准比对。**
+ *
+ * 这份(以及 `templates/*-card.tsx` 那几个整卡组件)是 ADR-0014 之前的装配方式:
+ * `CardBlock[]` 一维竖栈 + 上舰卡的受限 2D。**出图已经不走它了** —— 一切生产出图都经
+ * `skin/render-skin.tsx` 的 `renderCardWithSkin`(皮肤 JSON → 12 列网格)。
+ *
+ * 留着的唯一理由是它是**标尺**:`__tests__/card-baseline.test.ts` 的 23 份基准快照与
+ * `skin/__tests__/skin-gate.test.ts` 的验收门 A 都拿「模板画出来的块内层」与「皮肤画出来
+ * 的块内层」逐字节对比(ADR-0014 决策 24 的自动门)。别拿它写新代码,也别往它上面加特性 ——
+ * 加了就没有标尺了。
+ */
+
 import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 

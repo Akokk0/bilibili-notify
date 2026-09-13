@@ -288,7 +288,8 @@ export class RoomContext extends RoomContextBase {
 		liveRoomInfo: LiveRoomInfo["data"];
 		master: MasterInfo;
 		cardStyle: SubItemView["customCardStyle"];
-		cardLayout?: SubItemView["cardLayout"];
+		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */
+		cardSkin?: string;
 		uid: string;
 		notifyMsg: string;
 		messageLayout: MessageKindLayout;
@@ -296,7 +297,7 @@ export class RoomContext extends RoomContextBase {
 		/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,词云 / 总结才能追加到同一行。 */
 		pushId?: string;
 	}): Promise<void> {
-		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardLayout, uid, notifyMsg } =
+		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardSkin, uid, notifyMsg } =
 			params;
 		const layout = params.messageLayout;
 		// 版式里 card 块隐藏 → 连图片渲染都跳过(白渲染更亏)。
@@ -311,8 +312,8 @@ export class RoomContext extends RoomContextBase {
 					master.userface,
 					liveData,
 					liveType,
-					cardStyle?.enable ? cardStyle : undefined,
-					cardLayout?.live,
+					// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与它无关,恒要带上。
+					{ ...(cardStyle?.enable ? cardStyle : undefined), cardSkin },
 				);
 			} catch (e) {
 				this.logger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);

@@ -9,7 +9,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardBlock, ForwardImage, MessageKindLayout } from "@bilibili-notify/internal";
+import type { ForwardImage, MessageKindLayout } from "@bilibili-notify/internal";
 import type { DynamicFilterConfig } from "./types";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
@@ -160,10 +160,11 @@ export interface SubItemView {
 	 */
 	customVideoTemplate?: string;
 	/**
-	 * Per-UP 动态卡片版式(块顺序 / 显隐)。adapter 折叠 `cardLayout.dynamic` 后填入;
-	 * undefined = 走默认版式(复刻现状)。dynamic-engine 渲染时透传给 generateDynamicCard。
+	 * Per-UP 生效的**卡片皮肤 id**(ADR-0014)。宿主折叠 `eff.cardSkin` 后填入;
+	 * undefined = 内置默认皮肤。dynamic-engine 渲染时透传给 generateDynamicCard 的
+	 * colorOptions —— 版式住皮肤包里,不再逐块下发。
 	 */
-	dynamicLayout?: CardBlock[];
+	cardSkin?: string;
 	/**
 	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.dynamic` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染

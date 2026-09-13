@@ -180,6 +180,21 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		expect(sumArg).toEqual([["精彩", 5]]);
 	});
 
+	// 「接线要有自己的守卫」:WordcloudGenerator 自己那条 cardSkin 的测试证明不了
+	// room-session-base 真的把 sub 的皮肤递了进去 —— 那个参数是可选的,漏掉照样全绿。
+	it("per-UP 皮肤 id 递给词云生成器(第四参)", async () => {
+		const { ctx } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: true,
+			sortedWords: [["精彩", 5]],
+		});
+		const sub = makeSub();
+		sub.cardSkin = "k6eee-cafed00d";
+		await new TestSession(ctx, sub).runDispatch();
+		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(call[3]).toBe("k6eee-cafed00d");
+	});
+
 	it("无 per-UP 停用词时 sortedWords 原样透传", async () => {
 		const { ctx } = makeCtx({
 			wantWordcloud: true,

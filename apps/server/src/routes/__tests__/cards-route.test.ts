@@ -3,7 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ImageRenderer } from "@bilibili-notify/image";
+import {
+	type CardSkinManifest,
+	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid, testPushCaption } from "../cards.js";
@@ -1053,5 +1059,155 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		expect(getMyselfInfoCached).toHaveBeenCalledTimes(2); // 确实重试了第二次(并失败)
 		spy.mockRestore();
 		vi.useRealTimers();
+	});
+});
+
+// ── 预览也走皮肤(ADR-0014 决策 15 / 22) ──────────────────────────────────────
+
+describe("cards route — /preview 走皮肤", () => {
+	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+
+	/** 一套认得出来的皮肤:直播卡只有一个自定义块,里头写死一句标记。 */
+	const MARKED: CardSkinManifest = {
+		...DEFAULT_CARD_SKIN,
+		name: "带标记的",
+		cards: {
+			...DEFAULT_CARD_SKIN.cards,
+			live: {
+				width: 640,
+				blocks: [
+					{
+						id: "mark",
+						kind: "custom",
+						grid: { row: 1, column: 1, span: 12 },
+						html: "<p>SKIN-MARK-{up.name}</p>",
+					},
+				],
+			},
+		},
+	};
+
+	/** 店的替身:只有出图那三口(读盘细节归 store 自己的测试)。 */
+	function skinStore(byId: Record<string, CardSkinManifest>): CardSkinStore {
+		return {
+			ensureReady: async () => {},
+			get: (id: string) => byId[id] ?? null,
+			readAsset: async () => null,
+		} as unknown as CardSkinStore;
+	}
+
+	/** 能把灌进去的 HTML 留下来的假 puppeteer。 */
+	function capturingPuppeteer() {
+		const captured: string[] = [];
+		const page = {
+			setContent: vi.fn(async (html: string) => {
+				captured.push(html);
+			}),
+			$: vi.fn(async () => ({
+				boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+				dispose: async () => {},
+			})),
+			screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
+			close: vi.fn(async () => {}),
+		};
+		return { captured, pup: { page: vi.fn(async () => page) } as unknown as StandalonePuppeteer };
+	}
+
+	function globalsDeps(activeSkin: string): RouteDeps {
+		const d = makeDeps() as unknown as {
+			store: { getGlobals?: () => unknown };
+		};
+		d.store.getGlobals = () => ({ defaults: { cardSkin: activeSkin } });
+		return d as unknown as RouteDeps;
+	}
+
+	function postPreview(app: ReturnType<typeof createCardsRoute>, body: unknown) {
+		return app.request("/preview", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("虚构 mock 那条路按请求里的皮肤画,宽度也跟着皮肤走", async () => {
+		const { captured, pup } = capturingPuppeteer();
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: pup,
+			api: null,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, { kind: "live", style: STYLE, cardSkin: "marked" });
+		expect(res.status).toBe(200);
+		// 验红:把 renderPreviewCard 里那条 renderCardWithSkin 换回 renderCard(LiveCard, …),
+		// 这两条都红 —— 预览会永远画出厂那副样子,而主人在编辑器里改的东西一个都看不到。
+		expect(captured[0]).toContain("SKIN-MARK-");
+		expect(captured[0]).toContain("width: 640px");
+	});
+
+	it("请求没指皮肤 → 用全局在用的那套", async () => {
+		const { captured, pup } = capturingPuppeteer();
+		const app = createCardsRoute({
+			deps: globalsDeps("marked"),
+			puppeteer: pup,
+			api: null,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		expect((await postPreview(app, { kind: "live", style: STYLE })).status).toBe(200);
+		// 验红:把 previewManifest 里的 `|| ...defaults.cardSkin` 去掉,这条红。
+		expect(captured[0]).toContain("SKIN-MARK-");
+	});
+
+	it("真实拉取那条路把皮肤 id 交给 generateLiveCard 的 colorOptions", async () => {
+		const api = {
+			getLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
+			getMasterInfo: vi.fn(async () => ({
+				code: 0,
+				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+			})),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateLiveCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: makeFakePuppeteer(),
+			api,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, {
+			kind: "live",
+			style: STYLE,
+			content: { roomId: "778899" },
+			cardSkin: "marked",
+		});
+		expect(res.status).toBe(200);
+		// 验红:把 renderRealLive 里那句 `cardSkin` 删掉,这条红。
+		const colorOptions = spy.mock.calls[0]?.[5] as { cardSkin?: string } | undefined;
+		expect(colorOptions?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
+	it("SC / 上舰同样带着皮肤 id", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: makeFakePuppeteer(),
+			api: null,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { price: 30 },
+			cardSkin: "marked",
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
+		expect(colorOptions?.cardSkin).toBe("marked");
+		spy.mockRestore();
 	});
 });

@@ -26,7 +26,9 @@ import {
 	type CardSkinBlock,
 	type CardSkinCard,
 	type CardSkinKind,
+	type CardSkinManifest,
 	DEFAULT_CARD_LAYOUT,
+	DEFAULT_CARD_SKIN,
 	DIVIDER_TYPE,
 } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
@@ -38,6 +40,7 @@ import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
 import { SC_BLOCKS } from "../blocks/sc";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
+import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { Dynamic } from "../types";
 import { buildCardData, type CardData, readCardField } from "./card-data";
@@ -342,4 +345,81 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		extra?: FrameExtra,
 	) => VNode;
 	return { vnode: frame(o.props, children, extra), css: parts.join("\n") };
+}
+
+// ── 一整张卡的 HTML ──────────────────────────────────────────────────────────
+
+/** 这份清单里该卡种的条目;没有就回落出厂默认皮肤的同一种卡。 */
+export function cardOfManifest(manifest: CardSkinManifest, kind: CardSkinKind): CardSkinCard {
+	// biome-ignore lint/style/noNonNullAssertion: 出厂默认皮肤七种卡齐全,是最后一道回落
+	return manifest.cards[kind] ?? DEFAULT_CARD_SKIN.cards[kind]!;
+}
+
+export interface SkinCardHtmlOptions {
+	/** `<title>`(截图不显示,排障时看得见)。 */
+	title?: string;
+	/** CSS 家族名;自带字体时传 `USER_FONT_FAMILY`。 */
+	font?: string;
+	/** 一整条 `@font-face`(宿主解析出来的)。 */
+	fontFace?: string;
+	/** 仅 dynamic 卡:原始动态,视频 / 图廊那两组契约字段从它取。 */
+	raw?: Dynamic;
+	/** 包内资产名 → data URL。**同步**:调用方须先把该皮肤用到的资产预取成表。 */
+	resolveAsset?: (name: string) => string | undefined;
+}
+
+/**
+ * 一份皮肤 + 一张卡的 props → **完整 HTML**。
+ *
+ * 出图(`ImageRenderer`)与预览路由(`routes/cards.ts` 那条绕开渲染器的 SSR 路)共用
+ * 这一处 —— 两边各拼一份的话,必然出现「预览是这套皮肤、推出去是另一副样子」,而两边
+ * 都说不出哪儿错了(字体那条链就这么漏过一次)。
+ *
+ * 卡宽取皮肤定的 `card.width`,不再是写死的 600 / 430 / 290 / 720。
+ */
+export async function renderCardWithSkin<K extends CardSkinKind>(
+	kind: K,
+	props: CardPropsByKind[K],
+	manifest: CardSkinManifest,
+	options: SkinCardHtmlOptions = {},
+): Promise<string> {
+	const card = cardOfManifest(manifest, kind);
+	const { vnode, css } = renderSkinnedCard({
+		kind,
+		card,
+		props,
+		raw: options.raw,
+		resolveAsset: options.resolveAsset,
+	});
+	return await renderCard(
+		{ render: (): VNode => vnode },
+		{},
+		{
+			title: options.title,
+			font: options.font,
+			fontFace: options.fontFace,
+			htmlWidth: card.width,
+			extraCss: css,
+		},
+	);
+}
+
+// ── 包内资产的引用面 ─────────────────────────────────────────────────────────
+
+/** 自定义块里 `src="asset:<名>"` 的那一种引用。 */
+const ASSET_REF_RE = /src="asset:([^"]*)"/g;
+
+/**
+ * 这张卡会用到哪些**包内资产**(名字,即 `asset:` 后面那截)。
+ *
+ * 渲染器的 `resolveAsset` 是**同步**的(替换发生在字符串替换的回调里),而宿主读盘是
+ * 异步的 —— 所以调用方得先按这份名单把资产预取成表,再给一个同步的查表函数。
+ */
+export function skinAssetRefs(card: CardSkinCard): string[] {
+	const names = new Set<string>();
+	for (const block of card.blocks) {
+		if (block.kind !== "custom") continue;
+		for (const m of block.html.matchAll(ASSET_REF_RE)) names.add(m[1]);
+	}
+	return [...names];
 }

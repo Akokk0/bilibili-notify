@@ -6,7 +6,7 @@ import { allTemplateFingerprints } from "../template-defaults";
 // 更新」那套),从这里(带 zod)拿会把 zod 拽进浏览器 bundle。同 BUILTIN_AI_PRESETS。
 export { DEFAULT_TEMPLATES } from "../constants";
 
-import { CardLayoutSchema, DEFAULT_CARD_LAYOUT } from "./card-layout";
+import { CardLayoutSchema } from "./card-layout";
 import { CardSkinIdSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
@@ -126,9 +126,16 @@ export const GlobalDefaultsSchema = z.object({
 	// 按卡片类型的样式覆盖(渐变/字体/玻璃片/背景图);缺该字段的老 globals.json 自动补 {}
 	// (= 所有卡片跟随 cardStyle 基准,复刻现状)。生效解析见 resolveCardStyleForKind。
 	cardStyleByKind: CardStyleByKindSchema.default({}),
-	// `.default(DEFAULT_CARD_LAYOUT)` 让缺 cardLayout 字段的老 globals.json(在加该
-	// 字段前持久化的)load 时自动补全为默认版式,与 imageGroup 同源的迁移友好策略。
-	cardLayout: CardLayoutSchema.default(DEFAULT_CARD_LAYOUT),
+	/**
+	 * **退役中的旧版式**(ADR-0014 决策 15:皮肤包吞掉 `cardLayout`)。出图早已不读它,
+	 * 留着只为开机那一趟一次性迁移(`apps/server/src/card-skins/migrate-layouts.ts`)。
+	 *
+	 * `.optional()` 而**不是** `.default(DEFAULT_CARD_LAYOUT)`:迁移跑完要把这个键
+	 * 真的删掉,而带 `.default` 的键 zod 每次 parse 都补回来 —— 删不掉,迁移就只能拿
+	 * 「值等不等于出厂版式」当「跑过没有」的判据,于是主人哪天把版式改回默认又会被当成
+	 * 存量用户重折一套。改成可选之后判据就一条:**键还在 = 还没迁**。
+	 */
+	cardLayout: CardLayoutSchema.optional(),
 	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
 	// 本身住皮肤包里,不再住配置 —— 上面的 cardLayout 只为一次性迁移而保留读取。
 	cardSkin: CardSkinIdSchema.default(DEFAULT_CARD_SKIN_ID),

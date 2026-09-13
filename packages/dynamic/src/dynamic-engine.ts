@@ -880,8 +880,13 @@ export class DynamicEngine {
 						// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
 						buffer = await this.image.generateDynamicCard(
 							item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
-							this.pickDynamicColorOptions(uid, sub?.customCardStyle),
-							sub?.dynamicLayout,
+							// 样式覆盖没启用时 pickDynamicColorOptions 回 undefined(= 吃渲染器的
+							// 全局配置);皮肤 id 与它无关,恒要带上 —— 两件事混在一个对象里传,
+							// 展开的顺序决定了「没启用」不会把一份禁用的样式漏出去。
+							{
+								...this.pickDynamicColorOptions(uid, sub?.customCardStyle),
+								cardSkin: sub?.cardSkin,
+							},
 						);
 					}
 				} catch (e) {

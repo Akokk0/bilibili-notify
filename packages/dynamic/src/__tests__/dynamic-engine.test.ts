@@ -825,6 +825,18 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(segments[0]?.type).toBe("image");
 	});
 
+	// per-UP 的皮肤 id 要一路走到 generateDynamicCard —— 断在哪一跳都是
+	// 「选得动、存得住、就是不生效」那一族,而且全绿。
+	it("per-UP 皮肤 id 进 colorOptions;样式没启用时也只多这一个键", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
+		await detect(b.engine);
+		// 验红:把 dynamic-engine.ts 里那句 `cardSkin: sub?.cardSkin` 删掉,这条红。
+		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
+	});
+
 	it("有 image + 有 AI → 段含 image + AI 点评文本", async () => {
 		const b = makeEngine({ withImage: true, withAi: true });
 		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));

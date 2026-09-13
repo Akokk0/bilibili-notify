@@ -205,6 +205,19 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 	});
 
+	// per-UP 的皮肤 id 要一路走到 generate* —— 断在哪一跳都是「选得动、存得住、就是不生效」。
+	it("per-UP 皮肤 id 透传给 generateSCCard(样式没启用也照带)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee" }),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		// 验红:把 room-session.ts 里那句 `cardSkin: this.sub.cardSkin` 删掉,这条红。
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k7xxx-c0ffee" });
+	});
+
 	it("有 per-kind sc 样式 → generateSCCard 收到 sc 专属 colorOptions(而非基准)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
@@ -243,12 +256,14 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "base-bg" });
 	});
 
-	it("基准与 per-kind 都未启用 → generateSCCard 第二参为 undefined(走渲染器全局兜底)", async () => {
+	// 样式没启用 = 一个样式字段都不许递出去(渲染器按「缺省 → 吃全局 config」判,递一份
+	// 禁用的样式过去就等于把它启用了)。皮肤 id 不是样式,它恒在 —— 出图总得知道画哪一套。
+	it("基准与 per-kind 都未启用 → generateSCCard 只收到皮肤 id,一个样式字段都没有", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toBeUndefined();
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
 	it("per-kind sc 配多图 → 连续 SC 推送经 pickBackground 逐张轮换背景", async () => {
@@ -382,6 +397,17 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.generateGuardCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+	});
+
+	it("per-UP 皮肤 id 透传给 generateGuardCard", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveGuardBuy: true, minGuardLevel: 3, cardSkin: "k8yyy-facade" }),
+		) as AnySession;
+		await s.onGuardBuy(guardBody);
+		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ cardSkin: "k8yyy-facade" });
 	});
 
 	it("有 per-kind guard 样式 → generateGuardCard 收到 guard 专属 colorOptions", async () => {
