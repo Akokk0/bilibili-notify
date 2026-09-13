@@ -87,6 +87,10 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 1,
 		why: "玻璃透明度滑杆(type=range)。同上 —— 滑轨不是输入面,套上边框底色就散架。",
 	},
+	"apps/web/src/pages/cards/CardSkinKnobs.tsx": {
+		count: 1,
+		why: "数值旋钮的滑杆(type=range)。同 Cards 的玻璃透明度那根 —— 滑轨不是输入面。这一节其余控件都是挂好了的 T 系列(TColor / TSelect)与 Toggle。",
+	},
 	"packages/ui/src/atoms.tsx": {
 		count: 1,
 		why: "Input 原语的内层 <input>。边框与底色在外层那个 div 上,挂点也在那儿;内层再挂一次,皮肤的边框底色会套两层。",

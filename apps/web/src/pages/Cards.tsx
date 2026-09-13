@@ -54,11 +54,14 @@ import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
+import { walkTreeDiff } from "../utils/walkTreeDiff";
+import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
 import { CardSkinPicker, CardSkinSection } from "./cards/CardSkinSection";
 import { FontPicker } from "./cards/FontPicker";
 import { removeFontFromByKind, removeFontFromStyle } from "./cards/font-ops";
 import { GalleryPicker } from "./cards/GalleryPicker";
 import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
+import type { CardSkinKnobsBySkin } from "./cards/knob-ops";
 import {
 	type CardStyleByKind,
 	resolveKindStyle,
@@ -801,6 +804,8 @@ export default function Cards() {
 	const [gStyle, setGStyle] = useState<CardStyle | null>(null);
 	// 按卡片类型的样式覆盖(全局)。空 = 各类型跟随 gStyle 基准。
 	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
+	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局唯一,不分卡种也不分 UP。
+	const [gSkinKnobs, setGSkinKnobs] = useState<CardSkinKnobsBySkin>({});
 	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
 
 	// per-UP 覆盖草稿(undefined = 继承全局)
@@ -849,6 +854,7 @@ export default function Cards() {
 		if (globalsQuery.data) {
 			setGStyle(globalsQuery.data.defaults.cardStyle);
 			setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
+			setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
 	}, [globalsQuery.data]);
@@ -884,6 +890,7 @@ export default function Cards() {
 		mutationFn: async (payload: {
 			cardStyle: CardStyle;
 			cardStyleByKind: CardStyleByKind;
+			cardSkinKnobs: CardSkinKnobsBySkin;
 			imageLogLevel: ImageLogLevel;
 		}) => {
 			// 只挑本页真正编辑的 scope 做 diff —— 下发全量会让服务端的 enable-check
@@ -899,6 +906,10 @@ export default function Cards() {
 						defaults: {
 							cardStyle: payload.cardStyle,
 							cardStyleByKind: payload.cardStyleByKind,
+							// 「还原」一枚旋钮是把键删掉,而删除只有走 buildPatch 的 diff 才发得出去
+							// (草稿里没了 + 基线里有 → 显式 null)。手写 payload 的话那个键只是
+							// 「不出现」= 服务端读作「别动」,于是还原永远不生效。
+							cardSkinKnobs: payload.cardSkinKnobs,
 						},
 					},
 					{
@@ -906,12 +917,25 @@ export default function Cards() {
 						defaults: {
 							cardStyle: base?.defaults.cardStyle,
 							cardStyleByKind: base?.defaults.cardStyleByKind ?? {},
+							cardSkinKnobs: base?.defaults.cardSkinKnobs ?? {},
 						},
 					},
 				),
 			);
+			// 旋钮变没变要在这儿算:这是**保存前**那份基线,onSuccess 里 globals 已经在重取了。
+			return {
+				knobsChanged:
+					walkTreeDiff(base?.defaults.cardSkinKnobs ?? {}, payload.cardSkinKnobs).length > 0,
+			};
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		onSuccess: (res) => {
+			void qc.invalidateQueries({ queryKey: ["globals"] });
+			// 旋钮**不进预览 spec** —— 服务端出图时自己从 globals 里读那一层。于是拧完保存,
+			// `["card-preview", spec]` 这个 key 一个字都没变,react-query 端出来的还是保存前
+			// 那张图,看着就是「拧了没反应」。别的卡片设置没这个毛病:它们本来就在 spec 里,
+			// 编辑当场就重画了。按需作废 —— 无条件作废等于每次保存白跑一遍 puppeteer。
+			if (res.knobsChanged) void qc.invalidateQueries({ queryKey: ["card-preview"] });
+		},
 	});
 
 	// per-UP 保存:只下发卡片两片(缺席键 = 不改其它 slice;null = 清除)。
@@ -997,14 +1021,16 @@ export default function Cards() {
 		return {
 			...gStyle,
 			cardStyleByKind: gByKind,
+			cardSkinKnobs: gSkinKnobs,
 			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [gStyle, gByKind, imageLogLevel]);
+	}, [gStyle, gByKind, gSkinKnobs, imageLogLevel]);
 	const globalIslandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
 			cardStyleByKind: globalsQuery.data.defaults.cardStyleByKind ?? {},
+			cardSkinKnobs: globalsQuery.data.defaults.cardSkinKnobs ?? {},
 			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
 	}, [globalsQuery.data]);
@@ -1048,6 +1074,7 @@ export default function Cards() {
 					await saveGlobal.mutateAsync({
 						cardStyle: gStyle,
 						cardStyleByKind: gByKind,
+						cardSkinKnobs: gSkinKnobs,
 						imageLogLevel,
 					});
 			} else if (focusedSub) {
@@ -1059,6 +1086,7 @@ export default function Cards() {
 				if (!globalsQuery.data) return;
 				setGStyle(globalsQuery.data.defaults.cardStyle);
 				setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
+				setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
 				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 			} else {
 				setPuStyle(seededPuStyle);
@@ -1321,7 +1349,12 @@ export default function Cards() {
 					    那一节连同它的数据模型一起退役了(ADR-0014 决策 15 / 20)。 */}
 					{isGlobalTab &&
 						(isGlobalScope ? (
-							<CardSkinSection />
+							<>
+								<CardSkinSection />
+								{/* 旋钮值住全局配置、按皮肤 id 分层(不分卡种也不分 UP),所以只在全局作用域出现
+								    —— per-UP 那边挑的是「用哪套皮肤」,不是拧这套皮肤的钮。 */}
+								<CardSkinKnobsSection value={gSkinKnobs} onChange={setGSkinKnobs} />
+							</>
 						) : (
 							<GlassBox
 								title="卡片皮肤"

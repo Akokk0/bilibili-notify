@@ -14,11 +14,7 @@
  * 落地时整行按钮重排。
  */
 
-import type {
-	CardSkinDuplicateResponse,
-	CardSkinListResponse,
-	CardSkinSummary,
-} from "@bilibili-notify/contract";
+import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
 import {
 	Btn,
 	ConfirmDialog,
@@ -31,25 +27,16 @@ import {
 	Pill,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { Field, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
+import { CARD_SKINS_KEY, useCardSkinList } from "./card-skins-query";
 
 /** 装包响应(POST /api/card-skins)。 */
 interface UploadResult {
 	id: string;
 	warnings: string[];
-}
-
-/** 皮肤库列表的 react-query 键 —— 库一节与 per-UP 下拉共用同一份缓存。 */
-const CARD_SKINS_KEY = ["card-skins"] as const;
-
-function useCardSkinList() {
-	return useQuery({
-		queryKey: CARD_SKINS_KEY,
-		queryFn: () => api.get<CardSkinListResponse>("/api/card-skins"),
-	});
 }
 
 /**
