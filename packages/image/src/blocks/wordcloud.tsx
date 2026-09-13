@@ -9,6 +9,20 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.wordcloud`,一个不多一个不少
  * (`__tests__/card-blocks.test.ts` 对表钉着)。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**写到 class 上 —— 皮肤 CSS 的 `!important` 被清洗器摘掉,
+ * inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-ink` | 主文字色(主播名) | 头部的名字 span |
+ * | `--bn-ink-faint` | 最弱的文字色(副标题) | 头部的副标题 span |
+ * | `--bn-divider-color` | 分割线色 | 分割线自己 |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
 import { Fragment, h, type VNode } from "vue";
@@ -32,17 +46,23 @@ export function wordCloudBodyChildren(p: WordCloudCardProps): VNode[] {
 				/>
 			)}
 			<div class="flex flex-col gap-[2px] min-w-0">
-				<span class="text-[16px] font-bold leading-none" style="color: #18191C;">
+				<span
+					class="text-[16px] font-bold leading-none [color:var(--bn-ink)]"
+					style="--bn-ink: #18191C;"
+				>
 					{p.masterName}
 				</span>
-				<span class="text-[12px]" style="color: #999;">
+				<span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
 					本场直播弹幕词云
 				</span>
 			</div>
 		</div>,
 
 		/* ── 分隔线 ── */
-		<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />,
+		<div
+			class="[background:var(--bn-divider-color)]"
+			style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"
+		/>,
 
 		/* ── 词云画布 ── */
 		<div class="px-[16px] pt-[12px] pb-[14px]">

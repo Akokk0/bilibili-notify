@@ -165,12 +165,14 @@ describe("块库 — 原子块与复合块同形", () => {
 
 /**
  * `live` 的 popularity / area / fans 与上面九条的差别:它们在复合块里靠**根**(那句
- * `px-4 flex flex-col gap-1 text-[13px]` + `color:#666`)拿到字号、颜色与左右内边距,
- * 单独摆时没有那个根,所以每件自带一份(`DATA_ATOM_CLASS`)。因此不能像上面那样直接
- * 逐字比 —— 这里分成两半钉:
+ * `px-4 flex flex-col gap-1 text-[13px]` + `--bn-ink-soft:#666`)拿到字号、颜色与左右
+ * 内边距,单独摆时没有那个根,所以每件自带一份(`DATA_ATOM_CLASS` / `DATA_ATOM_STYLE`)。
+ * 因此不能像上面那样直接逐字比 —— 这里分成两半钉:
  *
  * 一、**剥掉 class / style 之后**逐字出现在复合块里(标签与文案没漂);
- * 二、带上来的观感三句(`px-4` / `text-[13px]` / `color: #666;`)一句不少。
+ * 二、带上来的观感一句不少 —— 字号 / 内边距,外加颜色的**两半**:属性在 class 上
+ *    (`[color:var(--bn-ink-soft)]`)、值在 inline 变量里(`--bn-ink-soft: #666;`)。
+ *    两半各钉一条:少了 class 那半颜色染不动,少了 inline 那半颜色直接没了。
  *
  * 少钉哪一半都有洞:只钉一,观感掉了不会红(像素门才照得出);只钉二,文案改了不会红。
  */
@@ -197,7 +199,12 @@ describe("块库 — live 数据区的原子块(自带复合块根上的观感)"
 
 		it(`live.${atom}:把复合块根上那几句观感带在自己身上`, async () => {
 			const atomHtml = await renderBlock(LIVE_BLOCKS[atom], LIVE_PROPS);
-			for (const look of ["px-4", "text-[13px]", "color: #666;"]) {
+			for (const look of [
+				"px-4",
+				"text-[13px]",
+				"[color:var(--bn-ink-soft)]",
+				"--bn-ink-soft: #666;",
+			]) {
 				expect(atomHtml, look).toContain(look);
 			}
 		});

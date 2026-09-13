@@ -13,6 +13,20 @@
  *
  * 挂点集合由 `__tests__/card-hooks.test.ts` 两头钉着:块里出现的挂点必须都在目录里,目录里
  * 声明的挂点也必须真被挂上。
+ *
+ * **这里暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗,与 `blocks/dynamic.tsx` 同一张表):颜色的
+ * **值**留在 inline 的 `--bn-*` 自定义属性里,颜色**属性**写到 class 上 —— 皮肤 CSS 的
+ * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-accent` | 强调色(充电专属块是 B 站粉,正文里的话题行是 B 站蓝) | 充电专属占位的标题 |
+ * | `--bn-ink-faint` | 最弱的文字色 | 充电专属占位的说明行 |
+ * | `--bn-inset-bg` | 淡底内嵌块的背景 | 主视频卡的外壳 |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
 import type { VNode } from "vue";
@@ -211,10 +225,10 @@ function buildChargeOnlyBody(author: Dynamic["modules"]["module_author"]) {
 	return (
 		<div class="flex flex-col items-center justify-center gap-[8px] py-[20px] text-center">
 			{badge?.icon ? <img class="w-[28px] h-[28px]" src={badge.icon} alt="" /> : null}
-			<div class="text-[14px] font-bold" style="color: #FB7299;">
+			<div class="text-[14px] font-bold [color:var(--bn-accent)]" style="--bn-accent: #FB7299;">
 				{badge?.text || "充电专属内容"}
 			</div>
-			<div class="text-[12px]" style="color: #999;">
+			<div class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
 				为 {author.name} 充电即可查看完整内容
 			</div>
 		</div>
@@ -561,8 +575,8 @@ function buildVideoContent(archive: {
 	return (
 		<div
 			data-bn="video"
-			class="rounded-lg overflow-hidden mt-1"
-			style="background: rgba(0,0,0,0.04); max-width: 600px;"
+			class="rounded-lg overflow-hidden mt-1 [background:var(--bn-inset-bg)]"
+			style="--bn-inset-bg: rgba(0,0,0,0.04); max-width: 600px;"
 		>
 			{/* 封面整块铺在最上面 —— 与直播卡同一个骨架:先给一张图,文字压在下面。 */}
 			<div class="relative w-full">

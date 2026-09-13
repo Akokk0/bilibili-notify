@@ -14,6 +14,23 @@
  * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
  * `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`;原子块的挂点是 `self`,所以不挂
  * (`__tests__/card-hooks.test.ts` 两头钉着)。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**(`color` / `background*`)写到 class 上 —— 皮肤 CSS 的
+ * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-card-tier-color` | 价位档位色的起色(`bgColor[0]`) | `divider` 块根(= 线自己)、`amount` 块根、`name` 名牌胶囊 |
+ * | `--bn-card-tier-color-end` | 价位档位色的止色(`bgColor[1]`) | `amount` 块根 |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
+ *
+ * 名牌胶囊的变量刻意挂在**胶囊自己**身上而不是 `sender` 块根:`name` 原子块就是这颗胶囊,
+ * 两边必须逐字同形(`__tests__/card-blocks.test.ts` 的「原子块与复合块同形」钉着),
+ * 变量提到复合块根上原子块就没人给它值了。
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -41,8 +58,8 @@ const avatar: BlockRenderer<SCCardProps> = (p) => (
 /** 发送者名(原子块):sender 复合块里的那个名牌胶囊。 */
 const name: BlockRenderer<SCCardProps> = (p) => (
 	<div
-		class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px]"
-		style={{ backgroundColor: p.bgColor[0] }}
+		class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px] [background-color:var(--bn-card-tier-color)]"
+		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
 		{p.senderName}
 	</div>
@@ -55,26 +72,28 @@ const name: BlockRenderer<SCCardProps> = (p) => (
 export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 	[DIVIDER_TYPE]: (p) => (
 		<div
-			class="w-full h-px"
-			style={{
-				background: `linear-gradient(to right, transparent, ${p.bgColor[0]}, transparent)`,
-			}}
+			class="w-full h-px [background:linear-gradient(to_right,transparent,var(--bn-card-tier-color),transparent)]"
+			style={{ "--bn-card-tier-color": p.bgColor[0] }}
 		/>
 	),
 
 	amount: (p) => (
-		<div class="text-center">
+		<div
+			class="text-center"
+			style={{
+				"--bn-card-tier-color": p.bgColor[0],
+				"--bn-card-tier-color-end": p.bgColor[1],
+			}}
+		>
 			<div
 				data-bn="price"
-				class="text-[36px] font-bold bg-clip-text text-transparent"
-				style={{ backgroundImage: `linear-gradient(135deg, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
+				class="text-[36px] font-bold bg-clip-text text-transparent [background-image:linear-gradient(135deg,var(--bn-card-tier-color),var(--bn-card-tier-color-end))]"
 			>
 				¥{p.price}
 			</div>
 			<div
 				data-bn="duration"
-				class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold"
-				style={{ backgroundColor: p.bgColor[0] }}
+				class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold [background-color:var(--bn-card-tier-color)]"
 			>
 				{SVG_DURATION}
 				<span>{p.duration}</span>
@@ -89,8 +108,8 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 			</div>
 			<div
 				data-bn="name"
-				class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px]"
-				style={{ backgroundColor: p.bgColor[0] }}
+				class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px] [background-color:var(--bn-card-tier-color)]"
+				style={{ "--bn-card-tier-color": p.bgColor[0] }}
 			>
 				{p.senderName}
 			</div>

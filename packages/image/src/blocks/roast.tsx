@@ -10,6 +10,26 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.roastBoard` / `.roastSolo`,一个不多一个不少
  * (`__tests__/card-blocks.test.ts` 对表钉着)。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**(`color` / `background`)写到 class 上 —— 皮肤 CSS 的
+ * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-ink` | 正文墨色(标题 / 名字 / 结论) | 每个用到它的元素自己 |
+ * | `--bn-ink-soft` | 次级墨色(副标题 / 小标签 / 点评) | 每个用到它的元素自己 |
+ * | `--bn-row-color` | 这一行 / 这一栏的强调色(UP 自己的色、鸽王 / 勤奋 UP 的档色) | 每个用到它的元素自己 |
+ * | `--bn-divider-color` | 分割线色 | `Divider()` |
+ * | `--bn-inset-bg` | 淡底小块的背景(鸽王 / 勤奋 UP 那两张小卡) | 小卡自己 |
+ * | `--bn-track-bg` | 评分条的槽底 | 槽自己 |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
+ *
+ * 两张锐评卡整张就是**一个** Fragment 块(没有块根元素可挂),而 `--bn-row-color` 本来就
+ * 逐行不同 —— 所以这三个变量一律由用到它的元素自己 inline,不往上提。
  */
 
 import { SVG_CHART_BARS, SVG_FEATHER, SVG_TROPHY } from "../icons";
@@ -34,8 +54,12 @@ function UpAvatar(p: { up: RoastCardUp; size: number }) {
 	}
 	return (
 		<div
-			class="flex shrink-0 items-center justify-center rounded-full font-bold text-white"
-			style={{ ...box, background: p.up.color, fontSize: `${Math.round(p.size * 0.44)}px` }}
+			class="flex shrink-0 items-center justify-center rounded-full font-bold text-white [background:var(--bn-row-color)]"
+			style={{
+				...box,
+				"--bn-row-color": p.up.color,
+				fontSize: `${Math.round(p.size * 0.44)}px`,
+			}}
 		>
 			{[...p.up.name][0] ?? "?"}
 		</div>
@@ -43,7 +67,12 @@ function UpAvatar(p: { up: RoastCardUp; size: number }) {
 }
 
 function Divider() {
-	return <div class="mx-[16px] h-px" style="background: rgba(0,0,0,0.07);" />;
+	return (
+		<div
+			class="mx-[16px] h-px [background:var(--bn-divider-color)]"
+			style="--bn-divider-color: rgba(0,0,0,0.07);"
+		/>
+	);
 }
 
 /**
@@ -57,22 +86,25 @@ function ScoreRow(p: { up: RoastCardUp; score: number; autoName?: boolean }) {
 	return (
 		<div class="flex items-center gap-[8px]">
 			<span
-				class={`${p.autoName ? "max-w-[46%]" : "w-[120px]"} shrink-0 truncate text-[12px] font-semibold`}
-				style={{ color: INK }}
+				class={`${p.autoName ? "max-w-[46%]" : "w-[120px]"} shrink-0 truncate text-[12px] font-semibold [color:var(--bn-ink)]`}
+				style={{ "--bn-ink": INK }}
 				title={p.up.name}
 			>
 				{p.up.name}
 			</span>
 			<div
-				class="h-[10px] flex-1 overflow-hidden rounded-full"
-				style="background: rgba(0,0,0,0.06);"
+				class="h-[10px] flex-1 overflow-hidden rounded-full [background:var(--bn-track-bg)]"
+				style="--bn-track-bg: rgba(0,0,0,0.06);"
 			>
 				<div
-					class="h-full rounded-full"
-					style={{ width: barWidth(p.score), background: p.up.color }}
+					class="h-full rounded-full [background:var(--bn-row-color)]"
+					style={{ width: barWidth(p.score), "--bn-row-color": p.up.color }}
 				/>
 			</div>
-			<span class="w-[26px] shrink-0 text-right text-[12px] font-bold" style={{ color: INK_SOFT }}>
+			<span
+				class="w-[26px] shrink-0 text-right text-[12px] font-bold [color:var(--bn-ink-soft)]"
+				style={{ "--bn-ink-soft": INK_SOFT }}
+			>
 				{Math.round(p.score)}
 			</span>
 		</div>
@@ -88,21 +120,30 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 				[SVG_TROPHY, "勤奋 UP", p.diligent, "#2AC864"],
 			] as const
 		).map(([icon, label, who, tone]) => (
-			<div class="flex-1 rounded-[10px] p-[10px]" style="background: rgba(0,0,0,0.035);">
+			<div
+				class="flex-1 rounded-[10px] p-[10px] [background:var(--bn-inset-bg)]"
+				style="--bn-inset-bg: rgba(0,0,0,0.035);"
+			>
 				<div
-					class="mb-[7px] flex items-center gap-[5px] text-[11px] font-bold"
-					style={{ color: tone }}
+					class="mb-[7px] flex items-center gap-[5px] text-[11px] font-bold [color:var(--bn-row-color)]"
+					style={{ "--bn-row-color": tone }}
 				>
 					{icon}
 					<span>{label}</span>
 				</div>
 				<div class="mb-[6px] flex items-center gap-[8px]">
 					<UpAvatar up={who} size={26} />
-					<span class="truncate text-[14px] font-bold" style={{ color: INK }}>
+					<span
+						class="truncate text-[14px] font-bold [color:var(--bn-ink)]"
+						style={{ "--bn-ink": INK }}
+					>
 						{who.name}
 					</span>
 				</div>
-				<div class="text-[11.5px] leading-[1.55]" style={{ color: INK_SOFT }}>
+				<div
+					class="text-[11.5px] leading-[1.55] [color:var(--bn-ink-soft)]"
+					style={{ "--bn-ink-soft": INK_SOFT }}
+				>
 					{who.reason}
 				</div>
 			</div>
@@ -113,13 +154,16 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 				{/* items-center 而非 baseline:图标没有基线可对,baseline 会把它按底边墩下去。 */}
 				<div class="flex items-center justify-between px-[16px] pt-[14px] pb-[11px]">
 					<span
-						class="flex items-center gap-[7px] text-[17px] font-bold leading-none"
-						style={{ color: INK }}
+						class="flex items-center gap-[7px] text-[17px] font-bold leading-none [color:var(--bn-ink)]"
+						style={{ "--bn-ink": INK }}
 					>
 						{SVG_CHART_BARS}
 						<span>UP 主周报</span>
 					</span>
-					<span class="text-[12px]" style={{ color: INK_SOFT }}>
+					<span
+						class="text-[12px] [color:var(--bn-ink-soft)]"
+						style={{ "--bn-ink-soft": INK_SOFT }}
+					>
 						近 {p.days} 天 · 智能女仆锐评
 					</span>
 				</div>
@@ -131,21 +175,29 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 					<>
 						<Divider />
 						<div class="px-[16px] py-[12px]">
-							<div class="mb-[8px] text-[11px] font-bold" style={{ color: INK_SOFT }}>
+							<div
+								class="mb-[8px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
+								style={{ "--bn-ink-soft": INK_SOFT }}
+							>
 								逐位锐评
 							</div>
 							<div class="flex flex-col gap-[6px]">
 								{p.roast.map((r) => (
 									<div class="flex gap-[7px] text-[12px] leading-[1.6]">
 										<span
-											class="mt-[6px] h-[6px] w-[6px] shrink-0 rounded-full"
-											style={{ background: r.color }}
+											class="mt-[6px] h-[6px] w-[6px] shrink-0 rounded-full [background:var(--bn-row-color)]"
+											style={{ "--bn-row-color": r.color }}
 										/>
 										<div>
-											<span class="font-bold" style={{ color: INK }}>
+											<span class="font-bold [color:var(--bn-ink)]" style={{ "--bn-ink": INK }}>
 												{r.name}
 											</span>{" "}
-											<span style={{ color: INK_SOFT }}>{r.comment}</span>
+											<span
+												class="[color:var(--bn-ink-soft)]"
+												style={{ "--bn-ink-soft": INK_SOFT }}
+											>
+												{r.comment}
+											</span>
 										</div>
 									</div>
 								))}
@@ -158,7 +210,10 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 					<>
 						<Divider />
 						<div class="px-[16px] pt-[12px] pb-[14px]">
-							<div class="mb-[9px] text-[11px] font-bold" style={{ color: INK_SOFT }}>
+							<div
+								class="mb-[9px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
+								style={{ "--bn-ink-soft": INK_SOFT }}
+							>
 								综合勤奋度评分 · 0–100
 							</div>
 							<div class="flex flex-col gap-[7px]">
@@ -183,10 +238,16 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 			<div class="flex items-center gap-[14px] px-[16px] pt-[14px] pb-[11px]">
 				<UpAvatar up={p.up} size={40} />
 				<div class="flex min-w-0 flex-col gap-[4px]">
-					<span class="truncate text-[16px] font-bold leading-none" style={{ color: INK }}>
+					<span
+						class="truncate text-[16px] font-bold leading-none [color:var(--bn-ink)]"
+						style={{ "--bn-ink": INK }}
+					>
 						{p.up.name}
 					</span>
-					<span class="text-[11.5px]" style={{ color: INK_SOFT }}>
+					<span
+						class="text-[11.5px] [color:var(--bn-ink-soft)]"
+						style={{ "--bn-ink-soft": INK_SOFT }}
+					>
 						近 {p.days} 天 · 智能女仆锐评
 					</span>
 				</div>
@@ -194,14 +255,20 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 			<Divider />
 
 			<div class="px-[16px] py-[13px]">
-				<div class="text-[13.5px] leading-[1.65] font-semibold" style={{ color: INK }}>
+				<div
+					class="text-[13.5px] leading-[1.65] font-semibold [color:var(--bn-ink)]"
+					style={{ "--bn-ink": INK }}
+				>
 					{p.verdict}
 				</div>
 			</div>
 			<Divider />
 
 			<div class="px-[16px] py-[12px]">
-				<div class="mb-[8px] text-[11px] font-bold" style={{ color: INK_SOFT }}>
+				<div
+					class="mb-[8px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
+					style={{ "--bn-ink-soft": INK_SOFT }}
+				>
 					综合勤奋度 · 0–100
 				</div>
 				<ScoreRow up={p.up} score={p.score} autoName />
@@ -218,12 +285,14 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 						{p.highlights.map((hl) => (
 							<div class="flex items-start gap-[8px] text-[12px] leading-[1.6]">
 								<span
-									class="mt-[1px] shrink-0 rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold text-white"
-									style={{ background: p.up.color }}
+									class="mt-[1px] shrink-0 rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold text-white [background:var(--bn-row-color)]"
+									style={{ "--bn-row-color": p.up.color }}
 								>
 									{hl.label}
 								</span>
-								<span style={{ color: INK_SOFT }}>{hl.comment}</span>
+								<span class="[color:var(--bn-ink-soft)]" style={{ "--bn-ink-soft": INK_SOFT }}>
+									{hl.comment}
+								</span>
 							</div>
 						))}
 					</div>

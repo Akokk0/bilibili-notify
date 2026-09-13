@@ -14,6 +14,22 @@
  * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
  * `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`;原子块的挂点是 `self`,所以不挂
  * (`__tests__/card-hooks.test.ts` 两头钉着)。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**(`color` / `background*`)写到 class 上 —— 皮肤 CSS 的
+ * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `name` / `text` 块根 |
+ * | `--bn-divider-color` | 分割线色 = 档位色 + `33` 透明度 | `divider` 块根(= 分割线自己) |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
+ *
+ * 分割线单开一个变量而不是复用档位色:它的值是**运行期拼出来的**(`${档位色}33`),
+ * CSS 里没有「给一个 hex 追加 alpha」的写法,`color-mix` 又要过一趟色彩空间换算(会动像素)。
  */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
@@ -47,7 +63,10 @@ const avatar: BlockRenderer<GuardCardProps> = (p) => (
  */
 export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 	[DIVIDER_TYPE]: (p) => (
-		<div class="my-[6px]" style={{ height: "1px", background: `${p.bgColor[0]}33` }} />
+		<div
+			class="my-[6px] [background:var(--bn-divider-color)]"
+			style={{ height: "1px", "--bn-divider-color": `${p.bgColor[0]}33` }}
+		/>
 	),
 
 	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。
@@ -62,22 +81,23 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 	name: (p) => {
 		const badgeLeft = isBadgeLeft(p);
 		return (
-			<div class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}>
+			<div
+				class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}
+				style={{ "--bn-card-tier-color": p.bgColor[0] }}
+			>
 				<div data-bn="avatar" class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
 				</div>
 				<div class={`flex flex-col gap-[7px] mt-[10px] ${badgeLeft ? "items-end" : "items-start"}`}>
 					<div
 						data-bn="name"
-						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
-						style={{ backgroundColor: p.bgColor[0] }}
+						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
 					>
 						<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
 					</div>
 					<div
 						data-bn="master"
-						class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden"
-						style={{ backgroundColor: p.bgColor[0] }}
+						class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
 					>
 						<div
 							data-bn="masterAvatar"
@@ -99,7 +119,10 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 	text: (p) => {
 		const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
 		return desc ? (
-			<div class="text-[16px] font-bold italic whitespace-pre-line" style={{ color: p.bgColor[0] }}>
+			<div
+				class="text-[16px] font-bold italic whitespace-pre-line [color:var(--bn-card-tier-color)]"
+				style={{ "--bn-card-tier-color": p.bgColor[0] }}
+			>
 				{desc}
 			</div>
 		) : null;

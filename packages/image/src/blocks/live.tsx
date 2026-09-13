@@ -20,6 +20,22 @@
  * `CARD_SKIN_BUILTIN_BLOCKS.live[<块>].hooks`,是对外 API,皮肤 CSS 直接按它选中部件。
  * 原子块自己就是那一件,它的挂点是 `self`,所以**不挂**内部挂点(`__tests__/card-hooks.test.ts`
  * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**写到 class 上 —— 皮肤 CSS 的 `!important` 被清洗器摘掉,
+ * inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-live-status-color` | 直播状态角标的底色(直播中粉 / 已下播·未开播灰) | `cover` 块里的 `status` 角标 |
+ * | `--bn-ink` | 主文字色(主播名 / 标题) | `name` 原子块、`header` 里的名字 span、`title` 块根 |
+ * | `--bn-ink-soft` | 次级文字色(数据区) | `data` 块根、`popularity` / `area` / `fans` 原子块 |
+ * | `--bn-ink-faint` | 最弱的文字色(开播时间 / 简介) | `time` 原子块、`header` 里的时间 span、`desc` 块根 |
+ * | `--bn-divider-color` | 分割线色 | `divider` 块根(= 分割线自己) |
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -52,14 +68,14 @@ const avatar: BlockRenderer<LiveCardProps> = (p) => (
 
 /** 主播名(原子块):header 复合块里的那个 span。 */
 const name: BlockRenderer<LiveCardProps> = (p) => (
-	<span class="text-[16px] font-bold leading-none" style="color: #18191C;">
+	<span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">
 		{p.username}
 	</span>
 );
 
 /** 开播时间(原子块):header 复合块里的那个 span。 */
 const time: BlockRenderer<LiveCardProps> = (p) => (
-	<span class="text-[12px]" style="color: #999;">
+	<span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
 		{p.liveTime}
 	</span>
 );
@@ -74,8 +90,8 @@ const time: BlockRenderer<LiveCardProps> = (p) => (
  * flex item 本就被块化了(行盒按自己的 13px 算);原子块的 wrapper 是普通块容器,span 若
  * 还留在行内,行盒会被 wrapper 继承来的基准字号撑高。
  */
-const DATA_ATOM_CLASS = "block px-4 text-[13px]";
-const DATA_ATOM_STYLE = "color: #666;";
+const DATA_ATOM_CLASS = "block px-4 text-[13px] [color:var(--bn-ink-soft)]";
+const DATA_ATOM_STYLE = "--bn-ink-soft: #666;";
 
 /**
  * 人气 / 点赞(原子块):data 复合块顶行左边那个 span。
@@ -115,7 +131,12 @@ const fans: BlockRenderer<LiveCardProps> = (p) => {
  * 统一加),无数据时返回 null 自动收起。divider 是可重复的分割线块。
  */
 export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
-	[DIVIDER_TYPE]: () => <div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />,
+	[DIVIDER_TYPE]: () => (
+		<div
+			class="[background:var(--bn-divider-color)]"
+			style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"
+		/>
+	),
 
 	cover: (p) => {
 		const status = statusLabel(p);
@@ -131,9 +152,9 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 					{/* 直播状态角标，叠在封面右上角 */}
 					<div
 						data-bn="status"
-						class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold"
+						class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]"
 						style={{
-							backgroundColor: status.bg,
+							"--bn-live-status-color": status.bg,
 							height: "24px",
 							lineHeight: "1",
 							paddingTop: "1px",
@@ -155,10 +176,18 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 				alt="主播头像"
 			/>
 			<div class="flex flex-col gap-0.5 min-w-0">
-				<span data-bn="name" class="text-[16px] font-bold leading-none" style="color: #18191C;">
+				<span
+					data-bn="name"
+					class="text-[16px] font-bold leading-none [color:var(--bn-ink)]"
+					style="--bn-ink: #18191C;"
+				>
 					{p.username}
 				</span>
-				<span data-bn="time" class="text-[12px]" style="color: #999;">
+				<span
+					data-bn="time"
+					class="text-[12px] [color:var(--bn-ink-faint)]"
+					style="--bn-ink-faint: #999;"
+				>
 					{p.liveTime}
 				</span>
 			</div>
@@ -166,7 +195,10 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 	),
 
 	title: (p) => (
-		<div class="px-4 text-[17px] font-bold leading-snug" style="color: #18191C;">
+		<div
+			class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]"
+			style="--bn-ink: #18191C;"
+		>
 			{p.data.title}
 		</div>
 	),
@@ -178,7 +210,10 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		const hasTopRow = p.showPopularity || p.showArea;
 		if (!hasTopRow && !fans) return null;
 		return (
-			<div class="px-4 flex flex-col gap-1 text-[13px]" style="color: #666;">
+			<div
+				class="px-4 flex flex-col gap-1 text-[13px] [color:var(--bn-ink-soft)]"
+				style="--bn-ink-soft: #666;"
+			>
 				{hasTopRow ? (
 					<div data-bn="row" class="flex justify-between">
 						<span data-bn="popularity">{p.showPopularity ? statsLeft(p) : ""}</span>
@@ -194,7 +229,10 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 	// B 站 `room_info.description` 是富文本(可能含 <p>/<br> 等标签,或 entity-encoded
 	// 形式);简介区域只展示纯文本,这里统一剥成 plain text。
 	desc: (p) => (
-		<div class="px-4 text-[13px] leading-normal" style="color: #999;">
+		<div
+			class="px-4 text-[13px] leading-normal [color:var(--bn-ink-faint)]"
+			style="--bn-ink-faint: #999;"
+		>
 			{htmlToPlain(p.data.description) || "这个主播很懒，什么简介都没写"}
 		</div>
 	),

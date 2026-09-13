@@ -16,6 +16,29 @@
  * content 块的正文是 VNode 插槽(`node.body`),**不给它包一层壳** —— `body` 挂点挂在
  * `rich-text.tsx` 的富文本根 div 上;图廊 / 视频卡 / 附加卡的挂点同理住在
  * `templates/dynamic-content.tsx` 里那几个 builder 上。两头由 `__tests__/card-hooks.test.ts` 钉着。
+ *
+ * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
+ * 自定义属性里,颜色**属性**写到 class 上 —— 皮肤 CSS 的 `!important` 被清洗器摘掉,
+ * inline 声明永远压不过,写成 class 皮肤才染得动。
+ *
+ * | 变量 | 含义 | 挂在哪 |
+ * | --- | --- | --- |
+ * | `--bn-up-name-color` | UP 主名的颜色(大会员粉 / 常规墨色,运行期二选一) | `name` 原子块根、`header` 里的名字 span |
+ * | `--bn-ink-faint` | 最弱的文字色(发布时间 / 互动数) | `time` 原子块、`header` 里的时间 span、`stats` 块根 |
+ * | `--bn-accent` | 强调色(话题与转发 inset 左边框是 B 站蓝;充电专属占位是 B 站粉) | `content` 里的话题行与转发 inset、`templates/dynamic-content.tsx` 的充电专属占位 |
+ * | `--bn-divider-color` | 分割线色 | `divider` 块根(= 分割线自己) |
+ * | `--bn-inset-bg` | 淡底内嵌块的背景 | 转发 inset 自己、`templates/dynamic-content.tsx` 的主视频卡外壳 |
+ *
+ * `content` 块的正文由 `templates/dynamic-content.tsx` 与 `rich-text.tsx` 画,那两处的颜色
+ * 同规矩、同一张变量表;`--bn-ink-faint` 在那边也用着。
+ *
+ * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
+ * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
+ * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
+ *
+ * 转发 inset 的 `border-left` 拆成了 `border-left-width` / `border-left-style` 留 inline、
+ * 颜色走 class:简写 `border-left: 5px solid` 会把 `border-left-color` 也写成 inline 的
+ * `currentColor`,inline 恒赢 class,颜色那半就永远染不动了。
  */
 
 import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -66,8 +89,8 @@ const avatar: BlockRenderer<DynamicBlockProps> = ({ node }) => (
 /** UP 主名(原子块):header 复合块里的那个 span(含类型标签后缀与大会员粉名)。 */
 const name: BlockRenderer<DynamicBlockProps> = ({ node }) => (
 	<span
-		class="text-[17px] font-bold leading-none"
-		style={{ color: node.upIsVip ? "#FB7299" : "#18191C" }}
+		class="text-[17px] font-bold leading-none [color:var(--bn-up-name-color)]"
+		style={{ "--bn-up-name-color": node.upIsVip ? "#FB7299" : "#18191C" }}
 	>
 		{node.upName}
 		{node.headerLabel ? ` ${node.headerLabel}` : ""}
@@ -76,7 +99,7 @@ const name: BlockRenderer<DynamicBlockProps> = ({ node }) => (
 
 /** 发布时间(原子块):header 复合块里的那个 span。 */
 const time: BlockRenderer<DynamicBlockProps> = ({ node }) => (
-	<span class="text-[12px]" style="color: #999;">
+	<span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
 		{node.pubTime}
 	</span>
 );
@@ -86,7 +109,12 @@ const time: BlockRenderer<DynamicBlockProps> = ({ node }) => (
  * 统一加),无数据时返回 null 自动收起。
  */
 export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = {
-	[DIVIDER_TYPE]: () => <div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />,
+	[DIVIDER_TYPE]: () => (
+		<div
+			class="[background:var(--bn-divider-color)]"
+			style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"
+		/>
+	),
 
 	header: ({ node }) => (
 		<div class="flex items-center gap-[12px] px-[16px]">
@@ -99,13 +127,17 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 			<div class="flex flex-col gap-[3px]">
 				<span
 					data-bn="name"
-					class="text-[17px] font-bold leading-none"
-					style={{ color: node.upIsVip ? "#FB7299" : "#18191C" }}
+					class="text-[17px] font-bold leading-none [color:var(--bn-up-name-color)]"
+					style={{ "--bn-up-name-color": node.upIsVip ? "#FB7299" : "#18191C" }}
 				>
 					{node.upName}
 					{node.headerLabel ? ` ${node.headerLabel}` : ""}
 				</span>
-				<span data-bn="time" class="text-[12px]" style="color: #999;">
+				<span
+					data-bn="time"
+					class="text-[12px] [color:var(--bn-ink-faint)]"
+					style="--bn-ink-faint: #999;"
+				>
 					{node.pubTime}
 				</span>
 			</div>
@@ -117,8 +149,8 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 			{node.topic ? (
 				<div
 					data-bn="topic"
-					class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold"
-					style="color: #00AEEC;"
+					class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold [color:var(--bn-accent)]"
+					style="--bn-accent: #00AEEC;"
 				>
 					{SVG_TOPIC}
 					{node.topic}
@@ -132,8 +164,8 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 				// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
 				<div
 					data-bn="forward"
-					class="rounded-[8px] mt-2 pt-[12px] pb-[12px]"
-					style="background: rgba(0,0,0,0.04); border-left: 5px solid #00AEEC; zoom: 0.85;"
+					class="rounded-[8px] mt-2 pt-[12px] pb-[12px] [background:var(--bn-inset-bg)] [border-left-color:var(--bn-accent)]"
+					style="--bn-inset-bg: rgba(0,0,0,0.04); --bn-accent: #00AEEC; border-left-width: 5px; border-left-style: solid; zoom: 0.85;"
 				>
 					{renderBlocks(layout, dynamicNodeBuilders(node.forward, layout))}
 				</div>
@@ -146,7 +178,10 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 
 	stats: ({ node }) =>
 		node.stats ? (
-			<div class="flex justify-around px-[16px]" style="color: #999;">
+			<div
+				class="flex justify-around px-[16px] [color:var(--bn-ink-faint)]"
+				style="--bn-ink-faint: #999;"
+			>
 				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
 					{ICON_FORWARD}
 					<span>{node.stats.forward}</span>
