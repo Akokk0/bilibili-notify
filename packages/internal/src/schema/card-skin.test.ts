@@ -34,6 +34,10 @@ function minimal(over: Partial<CardSkinManifest> = {}): unknown {
 	};
 }
 
+/** n 个等分列 / n 个定宽列 —— `columns` 的用例全靠这两个拼。 */
+const FR = (n: number, fr = 1) => Array.from({ length: n }, () => ({ fr }));
+const PX = (n: number, px: number) => Array.from({ length: n }, () => ({ px }));
+
 function ok(raw: unknown): CardSkinManifest {
 	const r = parseCardSkin(raw);
 	if (!r.ok) throw new Error(r.errors.join("\n"));
@@ -220,6 +224,55 @@ describe("parseCardSkin", () => {
 			},
 		});
 		expect(ok(good).cards.live?.blocks[0].showIf).toBe("live.hasCover");
+	});
+
+	it("columns:恰好 12 项,等分与定宽混着写", () => {
+		const columns = [...FR(8), ...PX(4, 43.75)];
+		const m = ok(minimal({ cards: { live: { width: 600, columns, blocks: [] } } }));
+		expect(m.cards.live?.columns).toHaveLength(CARD_SKIN_LIMITS.columns);
+		expect(m.cards.live?.columns?.[7]).toEqual({ fr: 1 });
+		expect(m.cards.live?.columns?.[11]).toEqual({ px: 43.75 });
+	});
+
+	it("columns 少一项 / 多一项都拒收(列数是固定的)", () => {
+		expect(
+			errorsOf(minimal({ cards: { live: { width: 600, columns: FR(11), blocks: [] } } })),
+		).toMatch(/columns/);
+		expect(
+			errorsOf(minimal({ cards: { live: { width: 600, columns: FR(13), blocks: [] } } })),
+		).toMatch(/columns/);
+	});
+
+	it("定宽列合计吃满卡宽 → 拒收(等分列没地方站)", () => {
+		const full = minimal({ cards: { live: { width: 600, columns: PX(12, 50), blocks: [] } } });
+		expect(errorsOf(full)).toMatch(/卡宽/);
+		// 差 1px 就过:门槛是「≥ 卡宽」,不是「快满了」。
+		const spare = minimal({
+			cards: { live: { width: 600, columns: [...PX(11, 50), ...FR(1)], blocks: [] } },
+		});
+		expect(ok(spare).cards.live?.columns).toHaveLength(CARD_SKIN_LIMITS.columns);
+	});
+
+	it("一列只准 fr 或 px,形状不对拒收", () => {
+		const both = Array.from({ length: 12 }, () => ({ fr: 1, px: 10 }));
+		expect(
+			errorsOf(minimal({ cards: { live: { width: 600, columns: both, blocks: [] } } })),
+		).toMatch(/columns/);
+		const neither = Array.from({ length: 12 }, () => ({ width: 10 })) as never;
+		expect(
+			errorsOf(minimal({ cards: { live: { width: 600, columns: neither, blocks: [] } } })),
+		).toMatch(/columns/);
+		// px 最多两位小数(徽章的 43.75 是极限),fr 只认整数。
+		expect(
+			errorsOf(minimal({ cards: { live: { width: 600, columns: PX(12, 10.125), blocks: [] } } })),
+		).toMatch(/columns/);
+		expect(
+			errorsOf(
+				minimal({
+					cards: { live: { width: 600, columns: Array(12).fill({ fr: 1.5 }), blocks: [] } },
+				}),
+			),
+		).toMatch(/columns/);
 	});
 
 	it("块数有上限", () => {

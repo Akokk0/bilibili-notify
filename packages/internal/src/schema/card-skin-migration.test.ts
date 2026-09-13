@@ -84,6 +84,35 @@ describe("旧版式 → 卡片皮肤 — 上舰卡", () => {
 		expect(blocks[2].grid).toEqual({ row: 1, column: 9, span: 4, rowSpan: 2 });
 	});
 
+	it("徽章那 4 列是定宽的,合起来正好 175px(徽章图的边长)", () => {
+		const columns = cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards.guard?.columns ?? [];
+		expect(columns).toHaveLength(12);
+		expect(columns.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => ({ fr: 1 })));
+		const badge = columns.slice(8);
+		expect(badge.every((c) => "px" in c)).toBe(true);
+		expect(badge.reduce((s, c) => s + ("px" in c ? c.px : 0), 0)).toBe(175);
+	});
+
+	it("徽章在左:定宽的那 4 列跟着挪到最前", () => {
+		const guard = { badgeSide: "left" as const, blocks: DEFAULT_CARD_LAYOUT.guard.blocks };
+		const columns = cardLayoutToSkin(layoutWith({ guard })).cards.guard?.columns ?? [];
+		expect(columns.slice(0, 4).every((c) => "px" in c)).toBe(true);
+		expect(columns.slice(4)).toEqual(Array.from({ length: 8 }, () => ({ fr: 1 })));
+	});
+
+	it("内容块补回原内容列的内边距:左右恒 16,上下 12 只落在首 / 末块", () => {
+		const blocks = blocksOf(DEFAULT_CARD_LAYOUT, "guard");
+		expect(blocks[0].css).toBe('[data-bn="self"]{padding:12px 16px 0px;align-self:start}');
+		expect(blocks[1].css).toBe('[data-bn="self"]{padding:0px 16px 12px;align-self:end}');
+	});
+
+	it("徽章那一格占满卡高、内部垂直居中、贴第一行的顶", () => {
+		const blocks = blocksOf(DEFAULT_CARD_LAYOUT, "guard");
+		expect(blocks[2].css).toBe(
+			'[data-bn="self"]{height:190px;display:flex;align-items:center;align-self:start}',
+		);
+	});
+
 	it("徽章在左:徽章 1-4 列排在最前、内容 5-12 列并右对齐", () => {
 		const guard = {
 			badgeSide: "left" as const,
@@ -97,12 +126,13 @@ describe("旧版式 → 卡片皮肤 — 上舰卡", () => {
 		expect(blocks.map((b) => b.id)).toEqual(["badge", "text", "divider-1", "name"]);
 		expect(blocks[0].grid).toEqual({ row: 1, column: 1, span: 4, rowSpan: 3 });
 		expect(blocks[1].grid).toEqual({ row: 1, column: 5, span: 8 });
-		// 首块只加镜像、不加上边距;后面的块两样都有。
+		// 首块的上边距被 12px 的容器内边距顶掉、贴顶;中间块只有自己的上边距;
+		// 末块两样都有(自己的 8px + 容器的 12px)并贴底。三块都带镜像。
+		const MIRROR = "display:flex;flex-direction:column;align-items:flex-end;text-align:right";
 		expect(blocks[1].css).toBe(
-			'[data-bn="self"]{display:flex;flex-direction:column;align-items:flex-end;text-align:right}',
+			`[data-bn="self"]{padding:12px 16px 0px;align-self:start;${MIRROR}}`,
 		);
-		expect(blocks[3].css).toBe(
-			'[data-bn="self"]{padding-top:8px;display:flex;flex-direction:column;align-items:flex-end;text-align:right}',
-		);
+		expect(blocks[2].css).toBe(`[data-bn="self"]{padding:8px 16px 0px;${MIRROR}}`);
+		expect(blocks[3].css).toBe(`[data-bn="self"]{padding:8px 16px 12px;align-self:end;${MIRROR}}`);
 	});
 });

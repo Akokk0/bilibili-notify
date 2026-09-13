@@ -86,6 +86,21 @@ describe("皮肤渲染器 — 块的 wrapper", () => {
 		expect(style).toContain("grid-template-columns:repeat(12, minmax(0, 1fr))");
 		expect(style).toContain("gap:8px 4px");
 	});
+
+	it("皮肤写了 columns 就逐列拼:定宽列原样、等分列走 minmax(0, nfr)", async () => {
+		const columns: CardSkinCard["columns"] = [
+			{ fr: 2 },
+			...Array.from({ length: 7 }, () => ({ fr: 1 }) as const),
+			...Array.from({ length: 4 }, () => ({ px: 43.75 }) as const),
+		];
+		const { doc } = await render(
+			liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })], { columns }),
+		);
+		const style = doc.querySelector("[data-bn~='glass']")?.getAttribute("style") ?? "";
+		expect(style).toContain(
+			`grid-template-columns:minmax(0, 2fr) ${"minmax(0, 1fr) ".repeat(7)}43.75px 43.75px 43.75px 43.75px;`,
+		);
+	});
 });
 
 describe("皮肤渲染器 — showIf", () => {

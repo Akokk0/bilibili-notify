@@ -137,6 +137,17 @@ describe("卡片皮肤验收门 A — 块内层与基准逐字节", () => {
 	}
 });
 
+/**
+ * 网格声明的列数。`repeat(n, …)` 读 n,逐列写法(上舰卡那种混了定宽列的)数条目 ——
+ * 数出来必须恒是 12:块的 `column` / `span` 都按 12 列算,少一列整张卡就错位。
+ */
+function columnCount(style: string): number {
+	const tracks = /grid-template-columns:([^;]+)/.exec(style)?.[1] ?? "";
+	const repeat = /^repeat\((\d+),/.exec(tracks);
+	if (repeat) return Number(repeat[1]);
+	return (tracks.match(/minmax\([^)]*\)|[\d.]+px|[\d.]+fr/g) ?? []).length;
+}
+
 describe("卡片皮肤验收门 B — 结构", () => {
 	for (const fixture of CARD_FIXTURES) {
 		it(`${fixture.name}:玻璃层是 12 列网格,每块都有 bn-blk- 的 class`, async () => {
@@ -144,7 +155,7 @@ describe("卡片皮肤验收门 B — 结构", () => {
 			const glass = glassOf(await renderViaSkin(fixture, input));
 			const style = glass.getAttribute("style") ?? "";
 			expect(style).toContain("display:grid");
-			expect(style).toContain("grid-template-columns:repeat(12,");
+			expect(columnCount(style)).toBe(12);
 			const wrappers = [...glass.children];
 			expect(wrappers.length).toBeGreaterThan(0);
 			for (const el of wrappers) {

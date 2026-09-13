@@ -222,6 +222,16 @@ function gridStyle(block: CardSkinBlock, row: number): string {
 }
 
 /**
+ * 网格的列宽。皮肤不写 `columns` 就是 12 等分;写了就逐列拼 —— 等分列走
+ * `minmax(0, nfr)`(与缺省那句同形:不加 `minmax(0, …)` 的话超宽内容会把列撑爆),
+ * 定宽列原样写 px(上舰卡的徽章是 175px 的方图,等分列落不到这个数)。
+ */
+function templateColumns(card: CardSkinCard): string {
+	if (!card.columns) return `repeat(${CARD_SKIN_LIMITS.columns}, minmax(0, 1fr))`;
+	return card.columns.map((c) => ("px" in c ? `${c.px}px` : `minmax(0, ${c.fr}fr)`)).join(" ");
+}
+
+/**
  * 一个块的 wrapper。自定义块把清洗过的 HTML 经 `innerHTML` 铺进去;内置块把块的内层
  * VNode 原样放进来 —— 内层一个字节都不碰,皮肤只能从 wrapper 与 CSS 这两面改它。
  */
@@ -323,9 +333,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 	const gap = `${card.gap?.row ?? 0}px ${card.gap?.column ?? 0}px`;
 	const extra: FrameExtra = {
 		frame: frameVariables(kind, o.props),
-		glass:
-			`display:grid;grid-template-columns:repeat(${CARD_SKIN_LIMITS.columns}, minmax(0, 1fr));` +
-			`width:100%;gap:${gap};`,
+		glass: `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`,
 		width: card.width,
 	};
 	const frame = FRAMES[kind] as (

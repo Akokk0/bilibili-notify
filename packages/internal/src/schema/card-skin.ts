@@ -419,6 +419,23 @@ const GridSchema = z.object({
 	rowSpan: z.number().int().min(1).max(CARD_SKIN_LIMITS.maxRows).optional(),
 });
 
+/**
+ * 一列的宽度。缺省(整份 `columns` 不写)= 12 列全 `{ fr: 1 }`,也就是 12 等分。
+ *
+ * 定宽列(`px`)是为**定尺寸的图**留的:上舰卡的徽章是 175px 的方图,12 等分里落不到
+ * 整数列(400 / 12 × 4 = 133.33),只有定宽列能把它复刻到像素(ADR-0014 决策 13)。
+ * 两位小数是必要的 —— 175 / 4 = 43.75。
+ */
+const CardSkinColumnSchema = z.union([
+	z.object({ fr: z.number().int().min(1).max(CARD_SKIN_LIMITS.columns) }).strict(),
+	z
+		.object({
+			px: z.number().min(1).max(CARD_SKIN_LIMITS.width.max).multipleOf(0.01, "px 列最多两位小数"),
+		})
+		.strict(),
+]);
+export type CardSkinColumn = z.infer<typeof CardSkinColumnSchema>;
+
 const BLOCK_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 const cssField = z
@@ -477,6 +494,14 @@ export const CardSkinCardSchema = z
 					.max(CARD_SKIN_LIMITS.gap.max)
 					.optional(),
 			})
+			.optional(),
+		/**
+		 * 12 列各自的宽度。不写 = 12 等分;写就得**恰好 12 项**(列数是固定的,块的
+		 * `column` / `span` 都按它算)。
+		 */
+		columns: z
+			.array(CardSkinColumnSchema)
+			.length(CARD_SKIN_LIMITS.columns, `columns 必须恰好 ${CARD_SKIN_LIMITS.columns} 项`)
 			.optional(),
 		/** 根块两层的 CSS(选择器只准 `[data-bn="frame"]` / `[data-bn="glass"]`)。 */
 		css: cssField,
@@ -538,6 +563,16 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	for (const kind of CARD_SKIN_KINDS) {
 		const card = m.cards[kind];
 		if (!card) continue;
+		// 定宽列吃光卡宽 → fr 列全塌成 0,块要么互相叠、要么整列看不见。宁可拒收:
+		// 这种包在编辑器里也画不出人想要的样子,进门再报比进门前报难查得多。
+		if (card.columns) {
+			const px = card.columns.reduce((sum, c) => sum + ("px" in c ? c.px : 0), 0);
+			if (px >= card.width) {
+				errors.push(
+					`cards.${kind}.columns: 定宽列合计 ${px}px 不小于卡宽 ${card.width}px,等分列没地方站`,
+				);
+			}
+		}
 		const ids = new Set<string>();
 		const fields = new Set(CARD_SKIN_FIELDS[kind].map((x) => x.path));
 		const catalogue = CARD_SKIN_BUILTIN_BLOCKS[kind];
@@ -598,6 +633,10 @@ const stack = (
  *
  * 上舰卡是今天唯一的二维版式:内容列(姓名 / 文字)在左八列、徽章在右四列跨两行,
  * 玻璃层固定高、两行上下分布(`align-content:space-between` 复刻原来的 `justify-between`)。
+ * 徽章那四列是**定宽**的 —— 原来的徽章图就是 175px 见方,12 等分给不出这个数;内容块
+ * 再补回原来内容列的内边距(`px-[16px] py-[12px]`),两处合起来才做到与旧版式逐像素相同。
+ * 首 / 末块的 `align-self` 是把原来 `justify-between` 的「首块贴顶、末块贴底」钉死:
+ * 徽章那一格占满卡高,会把两行撑开,不钉的话块会跟着行一起被挪。
  */
 export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
@@ -633,15 +672,32 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		guard: {
 			width: 430,
+			columns: [
+				...Array.from({ length: 8 }, () => ({ fr: 1 })),
+				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
+			],
 			css: '[data-bn="glass"]{height:190px;align-content:space-between}',
 			blocks: [
-				{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 1, span: 8 } },
-				{ id: "text", kind: "builtin", builtin: "text", grid: { row: 2, column: 1, span: 8 } },
+				{
+					id: "name",
+					kind: "builtin",
+					builtin: "name",
+					grid: { row: 1, column: 1, span: 8 },
+					css: '[data-bn="self"]{padding:12px 16px 0px;align-self:start}',
+				},
+				{
+					id: "text",
+					kind: "builtin",
+					builtin: "text",
+					grid: { row: 2, column: 1, span: 8 },
+					css: '[data-bn="self"]{padding:0px 16px 12px;align-self:end}',
+				},
 				{
 					id: "badge",
 					kind: "builtin",
 					builtin: "badge",
 					grid: { row: 1, column: 9, span: 4, rowSpan: 2 },
+					css: '[data-bn="self"]{height:190px;display:flex;align-items:center;align-self:start}',
 				},
 			],
 		},
