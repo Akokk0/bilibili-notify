@@ -10,7 +10,7 @@ import type {
 	PushTarget,
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
-import type { ConfigStore } from "../config/store.js";
+import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "../platforms/dispatch.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
 
@@ -119,7 +119,7 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
 			const connection = findConnection(connectionId);
 			if (!connection) {
-				return { ok: false, latencyMs: 0, err: "connection not found" };
+				return { ok: false, latencyMs: 0, err: CONNECTION_NOT_FOUND };
 			}
 			const platformAdapter = adapterFor(connection);
 			if (!platformAdapter) {
