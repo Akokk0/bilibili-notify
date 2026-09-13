@@ -367,11 +367,23 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	const card = (): CardSkinCard =>
 		liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })]);
 
-	it("玻璃那两个变量注在外框的 inline style 上,值与外框自己画的一致", async () => {
+	/**
+	 * 玻璃两项已退成默认皮肤的旋钮(2026-09-14):**用户没调过就一个字都不注**,
+	 * 各卡的白纱靠皮肤 CSS 里自己的兜底。注了就只能注一个数,三档基线当场塌成一档。
+	 */
+	it("用户没调过玻璃 → 外框上不注玻璃变量", async () => {
 		const { doc } = await render(card());
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
-		expect(style).toContain("--bn-card-glass-opacity:0.82");
-		expect(style).toContain("--bn-card-glass-blur:10px");
+		expect(style).not.toContain("--bn-knob-glass-opacity");
+		expect(style).not.toContain("--bn-knob-glass-blur");
+		expect(style).not.toContain("--bn-card-glass");
+	});
+
+	it("用户调过白纱 → 注成旋钮变量(模糊没动就不注)", async () => {
+		const { doc } = await render(card(), { props: { ...liveProps, glassOpacity: 0.4 } });
+		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
+		expect(style).toContain("--bn-knob-glass-opacity:0.4");
+		expect(style).not.toContain("--bn-knob-glass-blur");
 	});
 
 	// 决策 15 的 🔗:渐变起 / 止色退出变量表,外框上一个字都不该再注 —— 注了的话皮肤
@@ -440,8 +452,8 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	it("完全透明:白纱与模糊都归零", async () => {
 		const { doc } = await render(card(), { props: { ...liveProps, glassClear: true } });
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
-		expect(style).toContain("--bn-card-glass-opacity:0");
-		expect(style).toContain("--bn-card-glass-blur:0px");
+		expect(style).toContain("--bn-knob-glass-opacity:0;");
+		expect(style).toContain("--bn-knob-glass-blur:0px");
 	});
 });
 

@@ -325,16 +325,47 @@ describe("DEFAULT_CARD_SKIN", () => {
 		}
 	});
 
-	it("七种卡的玻璃层白纱 / 模糊都由皮肤 CSS 写(glass 规则吃玻璃变量),外框不 inline", () => {
+	/**
+	 * 玻璃两项 2026-09-14 从固定变量表退成**默认皮肤自己的旋钮**,于是「没拧过」时的
+	 * 白纱靠的是各卡 CSS 里那个兜底。**逐卡钉死兜底值**:从前三档由变量注入、CSS 共用
+	 * 一句,现在写成同一个数也编译得过、门也绿,只有像素门会红 —— 那太晚了。
+	 */
+	it("七种卡的玻璃层吃旋钮变量,兜底值就是各卡原来的白纱基线", () => {
+		const BASELINE: Record<string, string> = {
+			live: ".82",
+			dynamic: ".82",
+			sc: ".75",
+			guard: ".75",
+			roastBoard: ".86",
+			roastSolo: ".86",
+			wordcloud: ".82",
+		};
 		for (const kind of CARD_SKIN_KINDS) {
 			const css = DEFAULT_CARD_SKIN.cards[kind]?.css ?? "";
-			expect(css).toMatch(
-				/\[data-bn="glass"\]\{[^}]*background:rgba\(255,255,255,var\(--bn-card-glass-opacity\)\)/,
+			expect(css, kind).toContain(
+				`background:rgba(255,255,255,var(--bn-knob-glass-opacity,${BASELINE[kind]}))`,
 			);
-			expect(css).toMatch(
-				/\[data-bn="glass"\]\{[^}]*backdrop-filter:blur\(var\(--bn-card-glass-blur\)\)/,
-			);
+			expect(css, kind).toContain("backdrop-filter:blur(var(--bn-knob-glass-blur,10px))");
 		}
+	});
+
+	/**
+	 * 旋钮变量名是对外 API,而默认皮肤的 CSS 是**手写字面量**(不经 `cardSkinKnobVar`)——
+	 * 两处各写一份就是它破的方式:改了 key、CSS 里那句还指着旧名,拧了没反应而门全绿。
+	 */
+	it("默认皮肤 CSS 里引用的每个旋钮变量,都真在 knobs 里声明过", () => {
+		const declared = new Set((DEFAULT_CARD_SKIN.knobs ?? []).map((k) => cardSkinKnobVar(k.key)));
+		expect(declared.size).toBeGreaterThan(0);
+		const used = new Set<string>();
+		for (const kind of CARD_SKIN_KINDS) {
+			for (const m of (DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").matchAll(
+				/var\((--bn-knob-[a-z0-9-]+)/g,
+			)) {
+				used.add(m[1] as string);
+			}
+		}
+		expect(used.size).toBeGreaterThan(0);
+		for (const v of used) expect(declared, v).toContain(v);
 	});
 
 	it("七种卡都在,id 是保留字", () => {

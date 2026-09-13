@@ -320,15 +320,18 @@ export const CARD_SKIN_CSS_PROP_PREFIXES = [
 // ---- 变量 -------------------------------------------------------------------
 
 /**
- * 皮肤变量:用户在面板里调的那几样(`cardStyle`)按这些名字注进根块的 CSS 自定义属性,
- * 皮肤 CSS 里 `var(--bn-card-glass-opacity)` 一类引用。**固定表**(ADR-0014 决策 16)。
+ * 皮肤变量:**固定表**(ADR-0014 决策 16),注进根块的 CSS 自定义属性。
  *
- * 渐变起 / 止色**不在表里**(决策 15 的 🔗):那两个色只喂外框底,皮肤在自己的 CSS 里
- * 写一句 `linear-gradient(…)` 就够,留成变量反而让「皮肤想换个底」变成改不动的事。
+ * 表里只剩两类:**用户的资产**(字体、背景图 —— 换皮肤它们还跟着人走)与**数据**
+ * (SC / 上舰的档位色)。可调的观感一律归旋钮({@link CARD_SKIN_KNOB_LIMITS}),由皮肤
+ * 自己声明 —— 2026-09-14 主人推翻「皮肤不带自定义旋钮」之后,玻璃白纱 / 模糊这两项
+ * 也从这张表退成了默认皮肤自己的旋钮:赛博朋克那类没有玻璃层的皮肤,不该在面板上
+ * 挂两根拧了没反应的滑杆。
+ *
+ * 渐变起 / 止色**不在表里**(决策 15 的 🔗):那两个色只喂外框底,归皮肤 CSS 自己写;
+ * 默认皮肤把它俩做成了旋钮,所以用户照样调得动。
  */
 export const CARD_SKIN_VARIABLES = {
-	glassOpacity: { css: "--bn-card-glass-opacity", label: "玻璃白纱不透明度(0~1)" },
-	glassBlur: { css: "--bn-card-glass-blur", label: "玻璃模糊半径(px)" },
 	font: { css: "--bn-card-font", label: "字体栈" },
 	/** 用户设了背景图才注(值是 `url("data:…")`);皮肤 CSS 用 `var(--bn-card-bg-image, <渐变>)` 兜底。 */
 	bgImage: {
@@ -339,6 +342,17 @@ export const CARD_SKIN_VARIABLES = {
 	/** SC 按价位、上舰按舰长等级的档位色,只这两种卡有。 */
 	tierColor: { css: "--bn-card-tier-color", label: "档位色(SC / 上舰)" },
 	tierColorEnd: { css: "--bn-card-tier-color-end", label: "档位色止色(SC / 上舰)" },
+} as const;
+
+/**
+ * 默认皮肤自己声明的那四枚旋钮的 key。**对外 API**:第三方皮肤想复刻默认皮肤的可调项
+ * 就照抄这几个名字,存量用户的旋钮覆盖也按这几个键存。
+ */
+export const DEFAULT_SKIN_KNOB_KEYS = {
+	gradientStart: "gradient-start",
+	gradientEnd: "gradient-end",
+	glassOpacity: "glass-opacity",
+	glassBlur: "glass-blur",
 } as const;
 
 /**
@@ -362,25 +376,31 @@ export const cardSkinFrameBgRule = (start: string, end: string): string =>
 
 /** 默认皮肤里那条用户渐变规则。迁移换色时**替换**它,不另加一条(两条 background 会打架)。 */
 export const DEFAULT_FRAME_BG_RULE = cardSkinFrameBgRule(
-	DEFAULT_CARD_GRADIENT[0],
-	DEFAULT_CARD_GRADIENT[1],
+	`var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.gradientStart},${DEFAULT_CARD_GRADIENT[0]})`,
+	`var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.gradientEnd},${DEFAULT_CARD_GRADIENT[1]})`,
 );
 const FRAME_BG_USER = DEFAULT_FRAME_BG_RULE;
 
 /**
  * 默认皮肤各卡玻璃层的规则(外框在皮肤路径不再 inline 白纱,见 `blocks/frames.tsx` 的
- * `ownGlass`)。白纱与模糊吃外框上注的两枚玻璃变量;其余(阴影 / 内边距 / 最小宽)是各卡
- * 原来 inline 的那几句,逐值照抄。写成 css-tree `generate` 的规范形态(`.12` 不写 `0.12`),
+ * `ownGlass`)。白纱与模糊吃两枚**旋钮**变量;其余(阴影 / 内边距 / 最小宽)是各卡原来
+ * inline 的那几句,逐值照抄。写成 css-tree `generate` 的规范形态(`.12` 不写 `0.12`),
  * 装包门那条「默认皮肤一字不改地过门」钉着。
+ *
+ * ⚠️ **兜底值按卡种各写各的**,不能共用一个数:白纱基线本来就是三档(直播 / 动态 /
+ * 词云 .82、SC / 上舰 .75、锐评两张 .86)。从前三档由变量注入,CSS 里共用一句;现在
+ * 「没拧过就不注」,三档全靠这里的兜底 —— 写成同一个数,五张卡的像素当场变。
  */
-const GLASS_BASE =
-	"background:rgba(255,255,255,var(--bn-card-glass-opacity));backdrop-filter:blur(var(--bn-card-glass-blur))";
+const glassBase = (opacity: string): string =>
+	`background:rgba(255,255,255,var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.glassOpacity},${opacity}));backdrop-filter:blur(var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.glassBlur},10px))`;
 const GLASS_SHADOW = "box-shadow:0 4px 16px rgba(0,0,0,.12)";
-const GLASS_LIVE = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW};min-width:360px;padding-top:14px;padding-bottom:10px}`;
-const GLASS_DYNAMIC = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW};padding-top:14px;padding-bottom:12px}`;
+const GLASS_LIVE = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};min-width:360px;padding-top:14px;padding-bottom:10px}`;
+const GLASS_DYNAMIC = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};padding-top:14px;padding-bottom:12px}`;
 /** SC / 上舰的阴影在 class 上(`shadow-[…]`),这里只管白纱与模糊。 */
-const GLASS_PLAIN = `[data-bn="glass"]{${GLASS_BASE}}`;
-const GLASS_ROAST = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW}}`;
+const GLASS_PLAIN = `[data-bn="glass"]{${glassBase(".75")}}`;
+const GLASS_ROAST = `[data-bn="glass"]{${glassBase(".86")};${GLASS_SHADOW}}`;
+/** 词云与锐评两张共用版式,白纱基线却是 .82 那一档 —— 规则同形、兜底不同。 */
+const GLASS_WORDCLOUD = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW}}`;
 const FRAME_BG_TIER = cardSkinFrameBgRule(
 	"var(--bn-card-tier-color)",
 	"var(--bn-card-tier-color-end)",
@@ -994,6 +1014,43 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	dataVersion: CARD_DATA_VERSION,
 	name: "默认",
 	description: "Bilibili-Notify 出厂的卡片外观。",
+	/**
+	 * 出厂那四枚旋钮。`default` 只是面板控件的起始位置,**不注入** —— 玻璃白纱那枚的
+	 * 各卡兜底写在 CSS 里({@link glassBase}),一注就把三档基线塌成一档。
+	 */
+	knobs: [
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.gradientStart,
+			label: "背景渐变起色",
+			type: "color",
+			default: DEFAULT_CARD_GRADIENT[0],
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.gradientEnd,
+			label: "背景渐变止色",
+			type: "color",
+			default: DEFAULT_CARD_GRADIENT[1],
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.glassOpacity,
+			label: "玻璃白纱",
+			type: "number",
+			default: 0.82,
+			min: 0,
+			max: 1,
+			step: 0.01,
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.glassBlur,
+			label: "玻璃模糊",
+			type: "number",
+			default: 10,
+			min: 0,
+			max: 40,
+			step: 1,
+			unit: "px",
+		},
+	],
 	cards: {
 		live: {
 			width: 600,
@@ -1030,7 +1087,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				...Array.from({ length: 8 }, () => ({ fr: 1 })),
 				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
 			],
-			css: `${FRAME_BG_TIER}[data-bn="glass"]{${GLASS_BASE};height:190px;align-content:space-between}`,
+			css: `${FRAME_BG_TIER}[data-bn="glass"]{${glassBase(".75")};height:190px;align-content:space-between}`,
 			blocks: [
 				{
 					id: "name",
@@ -1057,6 +1114,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		roastBoard: { width: 600, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
 		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
-		wordcloud: { width: 720, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
+		wordcloud: { width: 720, css: `${FRAME_BG_USER}${GLASS_WORDCLOUD}`, blocks: stack([["body"]]) },
 	},
 };
