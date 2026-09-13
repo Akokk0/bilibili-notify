@@ -135,7 +135,7 @@ describe("没有存量版式", () => {
 	it("出厂默认版式不生成任何皮肤,配置一个字节都不动", async () => {
 		const before = await rawState("globals.json");
 		const result = await migrateCardLayoutsToSkins({ store, config });
-		expect(result).toEqual({ created: 0, global: false, subscriptions: 0 });
+		expect(result).toEqual({ created: 0, global: false, subscriptions: 0, globalKnobs: false });
 		expect(installedNames()).toEqual([]);
 		expect(config.getGlobals().defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
 		expect(await rawState("globals.json")).toBe(before);
@@ -306,7 +306,7 @@ describe("收尾", () => {
 		const rawSubs = await rawState("subscriptions.json");
 
 		const second = await migrateCardLayoutsToSkins({ store, config });
-		expect(second).toEqual({ created: 0, global: false, subscriptions: 0 });
+		expect(second).toEqual({ created: 0, global: false, subscriptions: 0, globalKnobs: false });
 		expect(installedNames()).toEqual(names);
 		expect(config.getGlobals().defaults.cardSkin).toBe(activeSkin);
 		expect(subById(sub).overrides.cardSkin).toBe(subSkin);
@@ -327,7 +327,7 @@ describe("收尾", () => {
 		const rebornStore = new CardSkinStore({ dir: join(dataDir, "card-skins") });
 		const again = await migrateCardLayoutsToSkins({ store: rebornStore, config: reborn });
 
-		expect(again).toEqual({ created: 0, global: false, subscriptions: 0 });
+		expect(again).toEqual({ created: 0, global: false, subscriptions: 0, globalKnobs: false });
 		expect(rebornStore.list().filter((s) => !s.builtin)).toHaveLength(1);
 	});
 });
@@ -346,9 +346,14 @@ describe("退役的渐变色", () => {
 	const frameCss = (skinId: string, kind: "live" | "dynamic" | "roastBoard" | "sc"): string =>
 		store.get(skinId)?.cards[kind]?.css ?? "";
 
+	/**
+	 * 外框渐变那两端的色。2026-09-14 起它们住在**旋钮的兜底位**里
+	 * (`var(--bn-knob-gradient-start,<色>)`)—— 派生皮肤带着渐变旋钮的声明,写死字面量
+	 * 的话面板上的取色器就拧不动了。
+	 */
 	const gradientOf = (css: string): string[] =>
-		[...css.matchAll(/linear-gradient\(to right bottom,([^,]+),([^)]+)\)/g)].flatMap(
-			(m) => [m[1], m[2]] as string[],
+		[...css.matchAll(/var\(--bn-knob-gradient-(?:start|end),([^)]+)\)/g)].map(
+			(m) => m[1] as string,
 		);
 
 	async function setGlobalColors(start: string, end: string): Promise<void> {
@@ -362,16 +367,43 @@ describe("退役的渐变色", () => {
 		});
 	}
 
-	it("全局改过颜色(版式没动)→ 派生一套皮肤,五种吃用户色的卡外框换成那对色", async () => {
+	/**
+	 * 2026-09-14 主人拍板改的那条:**只**改过颜色的人不该被派一套皮肤 —— 两个色落成
+	 * 默认皮肤的旋钮覆盖,人留在默认皮肤上,以后跟着出厂外观一起升级。
+	 */
+	it("全局只改过颜色(版式没动)→ 不派皮肤,颜色落成默认皮肤的旋钮覆盖", async () => {
 		await setGlobalColors(MINE.start, MINE.end);
 		const result = await migrateCardLayoutsToSkins({ store, config });
 
-		expect(result).toMatchObject({ created: 1, global: true });
+		expect(result).toMatchObject({ created: 0, global: false, globalKnobs: true });
+		expect(installedNames()).toEqual([]);
+		const g = config.getGlobals().defaults;
+		expect(g.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+		expect(g.cardSkinKnobs[DEFAULT_CARD_SKIN_ID]).toEqual({
+			"gradient-start": MINE.start,
+			"gradient-end": MINE.end,
+		});
+		// 旧键照样收走。
+		expect(await rawState("globals.json")).not.toContain("cardColorStart");
+	});
+
+	it("按卡种另给一份颜色 → 走不了旋钮那条路(旋钮全局一份),照旧派生皮肤", async () => {
+		await setGlobalColors(MINE.start, MINE.end);
+		const g0 = config.getGlobals();
+		await config.setGlobals({
+			...g0,
+			defaults: {
+				...g0.defaults,
+				cardStyleByKind: { live: { cardColorStart: "#111111", cardColorEnd: "#222222" } },
+			},
+		});
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true, globalKnobs: false });
 		const id = config.getGlobals().defaults.cardSkin;
 		expect(id).not.toBe(DEFAULT_CARD_SKIN_ID);
-		expect(gradientOf(frameCss(id, "live"))).toEqual([MINE.start, MINE.end]);
+		expect(gradientOf(frameCss(id, "live"))).toEqual(["#111111", "#222222"]);
 		expect(gradientOf(frameCss(id, "dynamic"))).toEqual([MINE.start, MINE.end]);
-		expect(gradientOf(frameCss(id, "roastBoard"))).toEqual([MINE.start, MINE.end]);
 		// SC 的底色按价位档走,与用户颜色无关 —— 档位变量原样留着。
 		expect(frameCss(id, "sc")).toContain("--bn-card-tier-color");
 		expect(frameCss(id, "sc")).not.toContain(MINE.start);
@@ -424,8 +456,10 @@ describe("退役的渐变色", () => {
 		} as SubscriptionOverrides);
 		const result = await migrateCardLayoutsToSkins({ store, config });
 
-		expect(result).toMatchObject({ created: 1, global: true, subscriptions: 0 });
-		expect(installedNames()).toEqual(["自定义(迁移自旧版式)"]);
+		// 全局那份只改过颜色 → 走旋钮那条路,一套皮肤都不折;这位 UP 的颜色与全局一样,
+		// 自然也不用折。
+		expect(result).toMatchObject({ created: 0, global: false, globalKnobs: true });
+		expect(installedNames()).toEqual([]);
 		expect(subById(sub).overrides.cardSkin).toBeUndefined();
 		// 跟随全局归跟随全局,那两个退役的键照样得从他的覆盖里消失。
 		expect(subById(sub).overrides.cardStyle?.cardColorStart).toBeUndefined();
@@ -479,7 +513,7 @@ describe("退役的渐变色", () => {
 		const rawSubs = await rawState("subscriptions.json");
 
 		const second = await migrateCardLayoutsToSkins({ store, config });
-		expect(second).toEqual({ created: 0, global: false, subscriptions: 0 });
+		expect(second).toEqual({ created: 0, global: false, subscriptions: 0, globalKnobs: false });
 		expect(installedNames()).toEqual(names);
 		expect(await rawState("globals.json")).toBe(rawGlobals);
 		expect(await rawState("subscriptions.json")).toBe(rawSubs);

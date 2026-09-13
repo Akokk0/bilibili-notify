@@ -28,6 +28,7 @@ import {
 	cardSkinFrameBgRule,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_FRAME_BG_RULE,
+	DEFAULT_SKIN_KNOB_KEYS,
 } from "./card-skin";
 
 /** 竖栈卡里块的通栏跨度。 */
@@ -337,15 +338,40 @@ const isUserGradientKind = (k: CardSkinKind): k is UserGradientKind =>
  * 换而不是加:`background` 写两遍只有后一条生效,追加等于赌规则顺序。认不出默认那条规则
  * (`base` 不是出厂皮肤)时原样返回 —— 不知道该换哪条就什么都别动,宁可颜色没迁进去,
  * 也不在别人的皮肤里塞一条来历不明的 background。
+ *
+ * 换进去的**仍是旋钮形态**(2026-09-14):派生皮肤是从默认皮肤克隆的,连那两枚渐变旋钮的
+ * 声明一起带走了 —— 把颜色写死成字面量的话,面板上那两个取色器就成了拧不动的摆设。
+ * 存量颜色进的是**兜底位**,用户没拧过看到的就是他原来的色,拧了照样生效。
  */
 function withGradient(
 	css: string | undefined,
 	c: CardSkinGradient | undefined,
 ): string | undefined {
 	if (!c) return css;
-	const next = cardSkinFrameBgRule(c.start, c.end);
+	const next = cardSkinFrameBgRule(
+		`var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.gradientStart},${c.start})`,
+		`var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.gradientEnd},${c.end})`,
+	);
 	if (css === undefined) return next;
 	return css.includes(DEFAULT_FRAME_BG_RULE) ? css.replace(DEFAULT_FRAME_BG_RULE, next) : css;
+}
+
+/**
+ * 派生皮肤里那两枚渐变旋钮的**起始位置**跟着存量颜色走 —— 面板打开时取色器显示的
+ * 该是主人原来那两个色,不是出厂色。只动 `default`,不碰声明的其余部分。
+ */
+function knobsWithGradientDefaults(
+	knobs: CardSkinManifest["knobs"],
+	base: CardSkinGradient | undefined,
+): CardSkinManifest["knobs"] {
+	if (!knobs || !base) return knobs;
+	const K = DEFAULT_SKIN_KNOB_KEYS;
+	return knobs.map((k) => {
+		if (k.type !== "color") return k;
+		if (k.key === K.gradientStart) return { ...k, default: base.start };
+		if (k.key === K.gradientEnd) return { ...k, default: base.end };
+		return k;
+	});
 }
 
 /** 这张卡该用哪对色:卡种自己那份优先,否则全局那份。 */
@@ -382,8 +408,10 @@ export function cardLayoutToSkin(
 		const css = withGradient(card.css, g);
 		return css === card.css ? card : { ...card, css };
 	};
+	const knobs = knobsWithGradientDefaults(base.knobs, colors?.base);
 	return {
 		...base,
+		...(knobs ? { knobs } : {}),
 		cards: {
 			...base.cards,
 			live: liveCard(layout.live, cardOf("live"), toggles),

@@ -36,7 +36,13 @@
  *
  * `cardStyle.cardColorStart / cardColorEnd` 同样退役(决策 15 的 🔗):颜色归皮肤自己的外框
  * CSS。改过颜色的存量用户与改过版式的走**同一条迁移、同一套皮肤**(第四个参数 `colors`),
- * 颜色等于出厂值 / 等于全局生效值的不派生。这两个键与 `cardLayout` 一样是「跑过没有」的判据,
+ * 颜色等于出厂值 / 等于全局生效值的不派生。
+ *
+ * **例外(2026-09-14,决策 16 的 🔗)**:全局**只**改过颜色(版式与三个开关都是出厂的、
+ * 也没有按卡种另给一份)的那位,不派皮肤 —— 两个色写进默认皮肤的**旋钮覆盖**
+ * (`globals.defaults.cardSkinKnobs.default`),人留在默认皮肤上,以后跟着出厂外观一起
+ * 升级。走不了这条路的是有 per-kind / per-UP 颜色差异的人:旋钮全局一份,分不出卡种也
+ * 分不出 UP,他们照旧派生皮肤(派生皮肤的渐变旋钮仍然拧得动,存量色进的是兜底位)。这两个键与 `cardLayout` 一样是「跑过没有」的判据,
  * 所以触发条件是「有旧 `cardLayout` **或** 任何一处 `cardStyle` 还带着这两个键」,迁完从
  * **四个位置**删干净:全局 `cardStyle`、全局 `cardStyleByKind.<kind>`、每个订阅的
  * `overrides.cardStyle` 与 `overrides.cardStyleByKind.<kind>`。
@@ -59,6 +65,7 @@ import {
 	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_CARD_SKIN_ID,
+	DEFAULT_SKIN_KNOB_KEYS,
 	type GlobalConfig,
 	type GlobalDefaults,
 	type LiveDataToggles,
@@ -82,6 +89,8 @@ export interface CardLayoutMigrationResult {
 	global: boolean;
 	/** 有几个订阅从「自带版式」改成了「指一套皮肤」。 */
 	subscriptions: number;
+	/** 全局那对颜色落成了默认皮肤的**旋钮覆盖**(而不是折出一套皮肤)。 */
+	globalKnobs: boolean;
 }
 
 /**
@@ -98,7 +107,12 @@ export async function migrateCardLayoutsToSkins(deps: {
 
 	const globals = config.getGlobals();
 	const legacyGlobal = globals.defaults.cardLayout;
-	const result: CardLayoutMigrationResult = { created: 0, global: false, subscriptions: 0 };
+	const result: CardLayoutMigrationResult = {
+		created: 0,
+		global: false,
+		subscriptions: 0,
+		globalKnobs: false,
+	};
 
 	// 键不在 = 迁过了(或全新安装)。两组退役的键(版式 / 颜色)任何一处还在都算存量 ——
 	// 颜色可以在没有旧版式的机器上单独存在(只改过配色的用户),不能只看 `cardLayout`。
@@ -130,10 +144,21 @@ export async function migrateCardLayoutsToSkins(deps: {
 
 	let globalSkinId = globals.defaults.cardSkin;
 	const globalSig = signature([globalLayout, globalToggles, globalColors]);
+	const factorySig = signature([DEFAULT_CARD_LAYOUT, ALL_ON, undefined]);
+	/**
+	 * **只有颜色变过**(版式与三个开关都是出厂的,而且没有按卡种另给一份)——
+	 * 这种人不该被派一套皮肤(2026-09-14 主人拍板):颜色落成默认皮肤的**旋钮覆盖**,
+	 * 他留在默认皮肤上,以后跟着出厂外观一起升级。有 `byKind` 差异的走不了这条路 ——
+	 * 旋钮是全局一份,分不出卡种。
+	 */
+	const colorOnly =
+		globalColors !== undefined &&
+		globalColors.byKind === undefined &&
+		globalColors.base !== undefined &&
+		signature([globalLayout, globalToggles, undefined]) === factorySig;
 	// 已经指着一套非默认皮肤 = 主人自己选过,别拿旧版式盖掉他的选择。
 	const migrateGlobal =
-		globalSkinId === DEFAULT_CARD_SKIN_ID &&
-		globalSig !== signature([DEFAULT_CARD_LAYOUT, ALL_ON, undefined]);
+		globalSkinId === DEFAULT_CARD_SKIN_ID && !colorOnly && globalSig !== factorySig;
 	if (migrateGlobal) {
 		globalSkinId = await installSkin(
 			store,
@@ -196,6 +221,24 @@ export async function migrateCardLayoutsToSkins(deps: {
 		result.subscriptions += 1;
 	}
 
+	/**
+	 * 只改过颜色的那条路:把两个色写进默认皮肤的旋钮覆盖。**合并不覆盖** —— 面板上
+	 * 可能已经有别的旋钮值了(虽然这一趟通常是首次升级,但迁移得幂等到不吃掉别人的键)。
+	 */
+	let nextKnobs = globals.defaults.cardSkinKnobs;
+	if (colorOnly && globalSkinId === DEFAULT_CARD_SKIN_ID && globalColors?.base) {
+		const K = DEFAULT_SKIN_KNOB_KEYS;
+		nextKnobs = {
+			...nextKnobs,
+			[DEFAULT_CARD_SKIN_ID]: {
+				...nextKnobs?.[DEFAULT_CARD_SKIN_ID],
+				[K.gradientStart]: globalColors.base.start,
+				[K.gradientEnd]: globalColors.base.end,
+			},
+		};
+		result.globalKnobs = true;
+	}
+
 	// 旧键就地丢掉 —— **哪怕什么皮肤都没折**:键留着下次开机还会再跑一趟。
 	// 整体替换而不是一串 patch:两个分区要么一起成要么一起不动,半新半旧的配置会让
 	// 订阅指着一套并不存在的皮肤。
@@ -207,6 +250,7 @@ export async function migrateCardLayoutsToSkins(deps: {
 			cardStyle: stripColors(defaults.cardStyle),
 			cardStyleByKind: stripColorsByKind(defaults.cardStyleByKind) ?? {},
 			cardSkin: globalSkinId,
+			cardSkinKnobs: nextKnobs ?? {},
 		},
 	};
 	await config.replaceSections({
@@ -215,7 +259,8 @@ export async function migrateCardLayoutsToSkins(deps: {
 	});
 	logger?.info(
 		`[card-skin] 旧版式迁移完成:新增 ${result.created} 套皮肤` +
-			`(全局 ${result.global ? "1" : "0"} 套,${result.subscriptions} 个订阅改指皮肤)`,
+			`(全局 ${result.global ? "1" : "0"} 套,${result.subscriptions} 个订阅改指皮肤` +
+			`${result.globalKnobs ? ",全局配色落成默认皮肤的旋钮" : ""})`,
 	);
 	return result;
 }

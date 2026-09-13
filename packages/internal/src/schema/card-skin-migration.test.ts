@@ -250,11 +250,14 @@ describe("旧版式 → 卡片皮肤 — 上舰卡", () => {
 /**
  * 退役的渐变起 / 止色(ADR-0014 决策 15 的 🔗)。存量用户改过的颜色升级时折进派生皮肤的
  * **外框 CSS**,而不是留成变量 —— 这几条钉的是「换掉那条规则,不是再加一条」。
+ *
+ * 2026-09-14 起换进去的是**旋钮的兜底位**而不是字面色:派生皮肤是从默认皮肤克隆的,
+ * 那两枚渐变旋钮的声明一起带走了,写死字面量的话面板上的取色器就拧不动了。
  */
 describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	const G = { start: "#ff0000", end: "#00ff00" };
 	const RULE = (s: string, e: string) =>
-		`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${s},${e}))}`;
+		`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,var(--bn-knob-gradient-start,${s}),var(--bn-knob-gradient-end,${e})))}`;
 	/** 默认那张卡的整段 css,只把出厂 frame 规则换成给定的那条(玻璃层等其余规则原样跟着)。 */
 	const withRule = (kind: keyof CardSkinManifest["cards"], rule: string): string =>
 		(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").replace(DEFAULT_FRAME_BG_RULE, rule);
@@ -270,6 +273,24 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 		for (const kind of ["live", "dynamic", "roastBoard", "roastSolo", "wordcloud"] as const) {
 			expect(skin.cards[kind]?.css).toBe(withRule(kind, RULE(G.start, G.end)));
 		}
+	});
+
+	/**
+	 * 派生皮肤把默认皮肤那四枚旋钮**整套带走**,而且渐变那两枚的起始位置换成主人原来
+	 * 那两个色 —— 否则面板打开显示的是出厂色,与他卡片上看到的对不上。
+	 */
+	it("派生皮肤带着旋钮声明,渐变那两枚的起始位置跟着存量颜色走", () => {
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
+		const byKey = new Map((skin.knobs ?? []).map((k) => [k.key, k]));
+		expect(byKey.size).toBe((DEFAULT_CARD_SKIN.knobs ?? []).length);
+		expect(byKey.get("gradient-start")?.default).toBe(G.start);
+		expect(byKey.get("gradient-end")?.default).toBe(G.end);
+		// 玻璃那两枚不受颜色影响,原样。
+		expect(byKey.get("glass-opacity")?.default).toBe(0.82);
+	});
+
+	it("不传 colors → 旋钮声明原样(连引用都不换)", () => {
+		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).knobs).toBe(DEFAULT_CARD_SKIN.knobs);
 	});
 
 	it("SC / 上舰不吃用户色 —— 档位色那条规则原样留着", () => {

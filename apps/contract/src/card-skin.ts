@@ -11,9 +11,9 @@
  * 两色之分,`active` 是单个 id),以及 **`builtin` 那份列得出但改不了删不了**(决策 5)。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/internal";
+import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/internal";
 
-export type { CardSkinManifest };
+export type { CardSkinKnob, CardSkinManifest };
 
 /**
  * 皮肤库列表里的一行。**服务端 `CardSkinStore.list()` 实现的就是这个类型** ——
@@ -28,6 +28,11 @@ export interface CardSkinSummary {
 	builtin: boolean;
 	/** `card-skin.json` 的 mtime(ms);内置那份不落盘,恒 0。 */
 	updatedAt: number;
+	/**
+	 * 这套皮肤自己声明的旋钮(ADR-0014 决策 16 的 🔗)。面板照它生成控件,所以列表这一趟
+	 * 就带上 —— 每套最多 16 枚,比再跑一趟清单便宜。没声明的皮肤不带这个键。
+	 */
+	knobs?: CardSkinKnob[];
 }
 
 /**

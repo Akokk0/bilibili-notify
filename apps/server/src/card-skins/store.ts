@@ -316,6 +316,7 @@ function summary(
 		...(m.description !== undefined ? { description: m.description } : {}),
 		builtin,
 		updatedAt,
+		...(m.knobs?.length ? { knobs: m.knobs } : {}),
 	};
 }
 
