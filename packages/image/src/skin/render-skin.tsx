@@ -227,6 +227,7 @@ function frameVariables(kind: CardSkinKind, props: unknown): string {
 		colorStart?: string;
 		colorEnd?: string;
 		bgColor?: readonly [string, string];
+		backgroundImage?: string;
 		glassOpacity?: number;
 		glassClear?: boolean;
 	};
@@ -235,10 +236,16 @@ function frameVariables(kind: CardSkinKind, props: unknown): string {
 	const opacity = p.glassClear ? 0 : (p.glassOpacity ?? GLASS_OPACITY_BASE[kind]);
 	const blur = p.glassClear ? 0 : 10;
 	const V = CARD_SKIN_VARIABLES;
-	return (
+	let out =
 		`${V.colorStart.css}:${start};${V.colorEnd.css}:${end};` +
-		`${V.glassOpacity.css}:${opacity};${V.glassBlur.css}:${blur}px;`
-	);
+		`${V.glassOpacity.css}:${opacity};${V.glassBlur.css}:${blur}px;`;
+	// 档位色(SC 按价位、上舰按舰长等级)只有那两种卡的 props 才带;皮肤 CSS 用它按档变色。
+	if (p.bgColor) out += `${V.tierColor.css}:${p.bgColor[0]};${V.tierColorEnd.css}:${p.bgColor[1]};`;
+	// 用户背景图**有才注**:没注时皮肤 CSS 里 `var(--bn-card-bg-image, <渐变>)` 的兜底才生效。
+	// 值是**完整的一层**(含 `center / cover`),皮肤写 `background:var(--bn-card-bg-image,<渐变>)`
+	// 或把它叠进层列表都行;尺寸不能挪到皮肤 CSS 那头去写 —— 渐变一带尺寸就换了光栅抖动。
+	if (p.backgroundImage) out += `${V.bgImage.css}:url("${p.backgroundImage}") center / cover;`;
+	return out;
 }
 
 // ── 块 ────────────────────────────────────────────────────────────────────────

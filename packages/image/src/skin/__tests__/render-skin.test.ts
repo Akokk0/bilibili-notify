@@ -283,6 +283,50 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 		expect(style).toContain("--bn-card-glass-blur:10px");
 	});
 
+	it("皮肤路径的外框不再自画底色 —— 底色由皮肤 CSS 的 frame 规则写(决策 15 的 🔗)", async () => {
+		const { doc } = await render(card());
+		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
+		expect(style).not.toMatch(/(^|;)background:/);
+	});
+
+	it("用户背景图注成 --bn-card-bg-image(皮肤自己决定叠还是换)", async () => {
+		const { doc } = await render(card(), {
+			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" },
+		});
+		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
+		expect(style).toContain('--bn-card-bg-image:url("data:image/png;base64,AAAA") center / cover');
+		expect(style).not.toMatch(/(^|;)background:/);
+	});
+
+	it("没有背景图就不注 --bn-card-bg-image(让 var() 的兜底生效)", async () => {
+		const { doc } = await render(card());
+		expect(doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "").not.toContain(
+			"--bn-card-bg-image",
+		);
+	});
+
+	it("SC / 上舰的档位色注成 --bn-card-tier-color / -end", async () => {
+		const fixture = CARD_FIXTURES.find((f) => f.name === "sc-high");
+		if (!fixture) throw new Error("夹具表里没有 sc-high");
+		const props = (await fixture.build()).props as unknown as SkinRenderOptions<"sc">["props"];
+		const { vnode } = renderSkinnedCard({
+			kind: "sc",
+			card: {
+				width: 290,
+				blocks: [
+					{ id: "a", kind: "builtin", builtin: "amount", grid: { row: 1, column: 1, span: 12 } },
+				],
+			},
+			props,
+		});
+		const html = await renderToString(createSSRApp({ render: () => vnode }));
+		const style =
+			new JSDOM(html).window.document.querySelector("[data-bn~='frame']")?.getAttribute("style") ??
+			"";
+		expect(style).toContain(`--bn-card-tier-color:${props.bgColor[0]}`);
+		expect(style).toContain(`--bn-card-tier-color-end:${props.bgColor[1]}`);
+	});
+
 	it("完全透明:白纱与模糊都归零", async () => {
 		const { doc } = await render(card(), { props: { ...liveProps, glassClear: true } });
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";

@@ -313,6 +313,14 @@ describe("DEFAULT_CARD_SKIN", () => {
 		expect(m.name).toBeTruthy();
 	});
 
+	it("七种卡的外框底色都由皮肤 CSS 写(frame 规则),不靠外框自画", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			expect(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").toMatch(
+				/\[data-bn="frame"\]\{[^}]*background:var\(--bn-card-bg-image,/,
+			);
+		}
+	});
+
 	it("七种卡都在,id 是保留字", () => {
 		for (const kind of CARD_SKIN_KINDS) expect(DEFAULT_CARD_SKIN.cards[kind], kind).toBeDefined();
 		expect(DEFAULT_CARD_SKIN_ID).toBe("default");

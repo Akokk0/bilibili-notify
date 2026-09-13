@@ -14,7 +14,8 @@
  *
  * `extra` 是**皮肤路径专用**的附加:
  * - `glass` 把玻璃层变成 12 列网格容器(模板路径不传 → 玻璃层与今天一模一样);
- * - `frame` 往外层注皮肤变量(`--bn-card-*`);
+ * - `frame` 往外层注皮肤变量(`--bn-card-*`);**且皮肤路径的外层不再 inline 底色**
+ *   (见 `ownBg`),底色由皮肤 CSS 的 frame 规则写;
  * - `width` 只有锐评两张卡用得上(它们的宽度写在外框 inline style 里,不像别的卡靠
  *   `renderCard` 的 htmlWidth)。
  *
@@ -62,6 +63,18 @@ function frameBg(backgroundImage: string | undefined, start: string, end: string
 		: `linear-gradient(to right bottom, ${start}, ${end})`;
 }
 
+/**
+ * 外框 inline 里的 `background` —— **只有模板路径(`extra` 缺席)才自画**。
+ *
+ * 皮肤路径的底色归皮肤自己的 CSS(ADR-0014 决策 15 的 🔗:渐变不再是变量,默认皮肤在
+ * `[data-bn="frame"]` 规则里写它,用户背景图以 `--bn-card-bg-image` 注入、由皮肤决定叠还是
+ * 换);外框若还 inline 一份,清洗器又一律摘 `!important`,皮肤永远压不过它。模板路径只剩
+ * 基准快照在用,那边照旧自画,基准逐字节不变。
+ */
+function ownBg(extra: FrameExtra | undefined, bg: () => string): { background?: string } {
+	return extra ? {} : { background: bg() };
+}
+
 /** 玻璃层的白纱与模糊。`glassClear` 优先:白层透明 + 无模糊(0 透明度仍保留磨砂)。 */
 function glassOf(
 	p: { glassOpacity?: number; glassClear?: boolean },
@@ -88,7 +101,7 @@ function roastFrame(
 			style={[
 				{
 					width: `${extra?.width ?? defaultWidth}px`,
-					background: frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd),
+					...ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
 				},
 				extra?.frame,
 			]}
@@ -124,7 +137,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				data-bn="frame"
 				class="h-auto p-3.75"
 				style={[
-					{ background: frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd) },
+					ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
 					extra?.frame,
 				]}
 			>
@@ -149,7 +162,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				class="h-auto p-[15px]"
 				style={[
 					{
-						background: frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd),
+						...ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
 						minWidth: "380px",
 					},
 					extra?.frame,
@@ -175,7 +188,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				data-bn="frame"
 				class="flex justify-center items-center w-[290px] p-[15px]"
 				style={[
-					{ background: frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1]) },
+					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
 					extra?.frame,
 				]}
 			>
@@ -203,7 +216,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				data-bn="frame"
 				class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
 				style={[
-					{ background: frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1]) },
+					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
 					extra?.frame,
 				]}
 			>
@@ -232,7 +245,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			data-bn="frame"
 			class="h-auto p-[15px]"
 			style={[
-				{ background: `linear-gradient(to right bottom, ${p.colorStart}, ${p.colorEnd})` },
+				ownBg(extra, () => `linear-gradient(to right bottom, ${p.colorStart}, ${p.colorEnd})`),
 				extra?.frame,
 			]}
 		>

@@ -329,7 +329,28 @@ export const CARD_SKIN_VARIABLES = {
 	glassOpacity: { css: "--bn-card-glass-opacity", label: "玻璃白纱不透明度(0~1)" },
 	glassBlur: { css: "--bn-card-glass-blur", label: "玻璃模糊半径(px)" },
 	font: { css: "--bn-card-font", label: "字体栈" },
+	/** 用户设了背景图才注(值是 `url("data:…")`);皮肤 CSS 用 `var(--bn-card-bg-image, <渐变>)` 兜底。 */
+	bgImage: {
+		css: "--bn-card-bg-image",
+		label:
+			"用户背景图(有才注;值是完整的一层 `url(…) center / cover`,可直接叠进 background 的层列表)",
+	},
+	/** SC 按价位、上舰按舰长等级的档位色,只这两种卡有。 */
+	tierColor: { css: "--bn-card-tier-color", label: "档位色(SC / 上舰)" },
+	tierColorEnd: { css: "--bn-card-tier-color-end", label: "档位色止色(SC / 上舰)" },
 } as const;
+
+/**
+ * 默认皮肤各卡外框的底色规则(ADR-0014 决策 15 的 🔗:底色归皮肤 CSS,外框不再 inline)。
+ * 与旧 `frameBg` 同一条逻辑:有用户背景图就整张换成图(变量的值自带 `center / cover`,所以
+ * 兜底的渐变**不能**再跟尺寸 —— 给渐变加 `center / cover` 会改变它的光栅抖动,像素门 14 张红),
+ * 没有就画渐变。
+ * 渐变两端今天仍从变量取(颜色退出变量表是一步半的下一片,那时这里改成写死的出厂色)。
+ */
+const FRAME_BG = (start: string, end: string): string =>
+	`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${start},${end}))}`;
+const FRAME_BG_USER = FRAME_BG("var(--bn-card-color-start)", "var(--bn-card-color-end)");
+const FRAME_BG_TIER = FRAME_BG("var(--bn-card-tier-color)", "var(--bn-card-tier-color-end)");
 export type CardSkinVariable = keyof typeof CARD_SKIN_VARIABLES;
 
 // ---- 数据契约 ----------------------------------------------------------------
@@ -731,6 +752,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	cards: {
 		live: {
 			width: 600,
+			css: FRAME_BG_USER,
 			blocks: stack([
 				["cover"],
 				["header", 14],
@@ -742,6 +764,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		dynamic: {
 			width: 600,
+			css: FRAME_BG_USER,
 			blocks: stack([
 				["header"],
 				["divider", 12, "divider-1"],
@@ -753,6 +776,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		sc: {
 			width: 290,
+			css: FRAME_BG_TIER,
 			blocks: stack([["amount"], ["divider", 15, "divider-1"], ["sender", 12], ["message", 12]]),
 		},
 		guard: {
@@ -761,7 +785,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				...Array.from({ length: 8 }, () => ({ fr: 1 })),
 				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
 			],
-			css: '[data-bn="glass"]{height:190px;align-content:space-between}',
+			css: `${FRAME_BG_TIER}[data-bn="glass"]{height:190px;align-content:space-between}`,
 			blocks: [
 				{
 					id: "name",
@@ -786,8 +810,8 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				},
 			],
 		},
-		roastBoard: { width: 600, blocks: stack([["body"]]) },
-		roastSolo: { width: 430, blocks: stack([["body"]]) },
-		wordcloud: { width: 720, blocks: stack([["body"]]) },
+		roastBoard: { width: 600, css: FRAME_BG_USER, blocks: stack([["body"]]) },
+		roastSolo: { width: 430, css: FRAME_BG_USER, blocks: stack([["body"]]) },
+		wordcloud: { width: 720, css: FRAME_BG_USER, blocks: stack([["body"]]) },
 	},
 };
