@@ -42,7 +42,7 @@ interface UserCardData {
 /**
  * 面板里的一行 —— ⠿ 拖动排序 + 勾选显隐。
  *
- * `useSortable` 必须 per-item,所以单抽一个组件(同 `cards/BlockListEditor`)。
+ * `useSortable` 必须 per-item,所以单抽一个组件(同 `rules/MessageLayoutEditor`)。
  * 拖拽手柄只绑在 ⠿ 上,勾选框照常点得动。
  */
 function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; locked: boolean }) {
@@ -103,7 +103,7 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	const ref = useRef<HTMLDivElement>(null);
 
 	// pointer 拖拽设 4px 启动阈值,免得点一下手柄被误判成拖拽;键盘可达走 KeyboardSensor。
-	// 与 cards/BlockListEditor 同一套参数。
+	// 与 rules/MessageLayoutEditor 同一套参数。
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
 		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),

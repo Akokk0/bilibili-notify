@@ -399,12 +399,14 @@ export const FIELD_LABELS = {
 	glassClear: { label: "完全透明", section: "cardStyle" },
 	backgroundImages: { label: "自定义背景图", section: "cardStyle" },
 	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
-	// 卡片版式(灵动岛 diff 码 —— walkTreeDiff 把每张卡的块数组当叶子整体比较)。
-	"cardLayout.live": { label: "直播卡版式", section: "cardStyle" },
-	"cardLayout.dynamic": { label: "动态卡版式", section: "cardStyle" },
-	"cardLayout.sc": { label: "SC 卡版式", section: "cardStyle" },
-	"cardLayout.guard.badgeSide": { label: "上舰卡徽章位置", section: "cardStyle" },
-	"cardLayout.guard.blocks": { label: "上舰卡版式", section: "cardStyle" },
+	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档
+	// 由皮肤库当场启用(PUT /api/card-skins/active),不走草稿;这个 code 只给 per-UP
+	// 的「这个 UP 用哪套」——「跟随全局」= 把 overrides.cardSkin 整个键清掉。
+	cardSkin: {
+		label: "卡片皮肤",
+		hint: "这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在皮肤库「复制一份」再改。",
+		section: "cardStyle",
+	},
 
 	// ── 卡片预览(Cards 页样本数据,不真正写回 globals) ───────────────────
 	roomId: {

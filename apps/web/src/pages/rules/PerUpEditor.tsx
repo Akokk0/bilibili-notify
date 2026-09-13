@@ -72,7 +72,7 @@ import {
 
 /**
  * Override 切片名;Rules.tsx 用它判定 sub 是否"已定制"。
- * cardStyle / cardLayout 不在此列 —— 卡片相关覆盖已统一迁到 /cards 页编辑,
+ * cardStyle / cardSkin 不在此列 —— 卡片相关覆盖已统一迁到 /cards 页编辑,
  * 由 Cards 自管 tab 与计数,Rules 不再surface 卡片定制。
  */
 export const perUpOverrideKeys = [

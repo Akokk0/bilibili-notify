@@ -6,7 +6,7 @@
  * 对齐规则与全局灵动岛(Rules.tsx 的 islandDraft/islandBaseline)一致:
  * - **code 无前缀的 slice 打平**(filters / imageGroup):字段直接作为顶层 key
  *   (blockKeywords / enable …)。
- * - cardStyle / cardLayout 不在此投影 —— 卡片覆盖已迁到 /cards 页,由 Cards 的
+ * - cardStyle / cardSkin 不在此投影 —— 卡片覆盖已迁到 /cards 页,由 Cards 的
  *   灵动岛(pageKey "cards")独立跟踪。
  * - **code 带前缀的 slice 保 nested**(schedule / templates / ai):整段挂在
  *   对应 key 下,walkTreeDiff 递归出 `schedule.X` / `templates.X` / `ai.X`。

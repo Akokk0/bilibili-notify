@@ -16,7 +16,7 @@ export const PART_LABELS: Record<string, string> = {
 	[MESSAGE_SPLIT_TYPE]: "分条符",
 };
 
-/** 把 from 处的块移动到 to(dnd 拖拽落点语义,与 cards/layout-ops 同款);越界原样返回。 */
+/** 把 from 处的块移动到 to(dnd 拖拽落点语义);越界原样返回。 */
 export function moveBlock(
 	blocks: MessageBlockFull[],
 	from: number,

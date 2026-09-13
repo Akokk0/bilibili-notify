@@ -1,5 +1,5 @@
 /**
- * dnd-kit 可排序行的公共壳 —— `cards/BlockListEditor` 与 `rules/MessageLayoutEditor`
+ * dnd-kit 可排序行的公共壳 —— `rules/MessageLayoutEditor` 与顶栏标签条
  * 曾各抄一份:useSortable 的七字段解构、拖拽态 className、⠿ 手柄、行尾固定宽槽
  * 逐字符相同,两处的 JSDoc 连「useSortable 必须 per-item,故抽成组件」这句话都
  * 抄了同一份。useSortable 必须 per-item,所以壳子是组件而不是 hook;行内容

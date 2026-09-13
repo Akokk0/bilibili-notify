@@ -9,7 +9,7 @@
  *
  * 旧镜像时代的 `*Full` / `*Override` 命名以别名保留,消费者无需改动:
  * `XxxFull` = internal 的全量类型,`XxxOverride` = internal 的 `XxxPartial`
- * (cardLayout / messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
+ * (messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
 import type { ExtensionBotView, SubscriptionDTO } from "@bilibili-notify/contract";
@@ -60,9 +60,6 @@ export type Subscription = SubscriptionDTO;
 
 export type {
 	AIOverride,
-	CardBlock as CardBlockFull,
-	// per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
-	CardLayout as CardLayoutFull,
 	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
 	Connection,
 	ConnectionPlatform,
@@ -72,7 +69,7 @@ export type {
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
-	// per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。
+	// per-UP 消息版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
 	MessageLayout as MessageLayoutOverride,
 	OnebotConnectionConfig,
 	OnebotTransport,

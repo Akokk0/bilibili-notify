@@ -1,6 +1,6 @@
 /**
  * 消息版式编辑器 —— 编辑单一推送类型(动态 / 开播)的 MessageKindLayout:
- * @dnd-kit 拖拽重排(与 cards/BlockListEditor 同款交互:拖动实时让位、手柄仅 ⠿)/
+ * @dnd-kit 拖拽重排(拖动实时让位、手柄仅 ⠿)/
  * 内容块显隐 / 分条符增删 / 分隔符,附「每条消息装什么」的实时预览。
  * 文本模板编辑区经 `textSlot` 内嵌在「文本」块行内(随块拖动、块隐藏即收起;
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。

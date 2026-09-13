@@ -7,10 +7,14 @@
  * the base style (shared by all cards) + image log level and the right column shows
  * a four-card 全家福 (each kind rendered with its own effective style); to tune one
  * kind you open its tab. On a kind tab the middle column holds that kind's 单独样式
- * override, background gallery, 卡片版式 editor and 测试推送 + preview-content form,
- * and the right column is the single live puppeteer preview. In the global scope
- * these bind to GlobalConfig.defaults.{cardStyle,cardStyleByKind,cardLayout}; per-UP
- * they bind to that subscription's overrides, gated by 「覆盖全局」 toggles.
+ * override, background gallery and 测试推送 + preview-content form, and the right
+ * column is the single live puppeteer preview. In the global scope these bind to
+ * GlobalConfig.defaults.{cardStyle,cardStyleByKind}; per-UP they bind to that
+ * subscription's overrides, gated by 「覆盖全局」 toggles.
+ *
+ * 排版归卡片皮肤(ADR-0014):「全局」tab 上的皮肤库是整套外观的入口,per-UP 只挑一套
+ * (`overrides.cardSkin`)。旧的一维版式编辑器连同它的配置字段已随决策 15 整个退役 ——
+ * 面板里现在搜不到它,那个键只剩服务端一次性迁移时读一遍。
  */
 
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
@@ -49,9 +53,9 @@ import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
+import type { PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
-import { CardLayoutEditor } from "./cards/CardLayoutEditor";
+import { CardSkinPicker, CardSkinSection } from "./cards/CardSkinSection";
 import { FontPicker } from "./cards/FontPicker";
 import { removeFontFromByKind, removeFontFromStyle } from "./cards/font-ops";
 import { GalleryPicker } from "./cards/GalleryPicker";
@@ -78,7 +82,7 @@ import {
 } from "./cards/style-partition";
 import { displayName } from "./up/helpers";
 
-/** 本页预览 kind("dyn")↔ 样式/版式键("dynamic")的映射。 */
+/** 本页预览 kind("dyn")↔ 样式键("dynamic")的映射。 */
 function toStyleKind(kind: CardKind): StyleKind {
 	return kind === "dyn" ? "dynamic" : kind;
 }
@@ -124,7 +128,6 @@ function PreviewImage({
 	kind,
 	style,
 	content,
-	layout,
 	fallback,
 	frame = true,
 }: {
@@ -132,20 +135,24 @@ function PreviewImage({
 	style: CardStyle;
 	/** 已按 kind 选好的内容载荷(全局 = 可编辑 mock;per-UP = 该 UP 真实数据 id)。 */
 	content: Record<string, unknown>;
-	layout: CardLayoutFull | null;
 	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
 	fallback: boolean;
 	/** 带边框大容器(单卡预览)。false = 裸图缩放填满父格(全家福格子复用)。 */
 	frame?: boolean;
 }) {
-	// 把整份请求(kind/style/content/layout/fallback)合成一个 spec 做**单一**防抖。
+	// **过渡**(ADR-0014 第一步):`/api/cards/preview` 的 spec 仍收一个可选 `layout`,
+	// 而服务端出图那头还没切到皮肤。面板这边已经没有版式模型了,索性一个字也不传 ——
+	// 那个字段是 optional,服务端照旧用出厂版式渲染。等渲染器换成皮肤驱动之后,这里
+	// 改成传当前生效的皮肤 id(全局 / per-UP 各一份),这条注释一起删。
+	//
+	// 把整份请求(kind/style/content/fallback)合成一个 spec 做**单一**防抖。
 	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
 	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
 	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
 	// 后一次变更只触发一次 refetch。TColor / TArea / 拖拽编辑器的高频 onChange 同样收敛。
 	const spec = useMemo(
-		() => ({ kind, style, content, layout: layout ?? undefined, fallback }),
-		[kind, style, content, layout, fallback],
+		() => ({ kind, style, content, fallback }),
+		[kind, style, content, fallback],
 	);
 	const [debouncedSpec, setDebouncedSpec] = useState(spec);
 	useEffect(() => {
@@ -227,7 +234,6 @@ function TestPushCard({
 	kind,
 	style,
 	pushContent,
-	layout,
 	fallback,
 	mockContent,
 	setMockContent,
@@ -238,7 +244,6 @@ function TestPushCard({
 	style: CardStyle;
 	/** 已解析的预览/推送内容载荷(全局 = mock;per-UP = 该 UP 真实数据 id)。 */
 	pushContent: Record<string, unknown>;
-	layout: CardLayoutFull | null;
 	fallback: boolean;
 	/** 可编辑的 mock 内容状态(供上半内容编辑)。 */
 	mockContent: PreviewContent;
@@ -263,12 +268,12 @@ function TestPushCard({
 
 	const push = useMutation({
 		mutationFn: async () => {
+			// 同 PreviewImage 的过渡注释:版式已归皮肤,这一轮一个字也不传 layout。
 			const res = await api.post<TestPushResponse>("/api/cards/test-push", {
 				targetId,
 				kind,
 				style,
 				content: pushContent,
-				layout: layout ?? undefined,
 				fallback,
 			});
 			if (!res.ok) throw new ApiError(500, res, res.err ?? "推送失败");
@@ -772,14 +777,14 @@ function cardOverrideCount(sub: Subscription): number {
 	return (
 		(sub.overrides.cardStyle ? 1 : 0) +
 		(hasCardStyleByKind(sub) ? 1 : 0) +
-		(sub.overrides.cardLayout ? 1 : 0)
+		(sub.overrides.cardSkin ? 1 : 0)
 	);
 }
 function hasCardCustomization(sub: Subscription): boolean {
 	return (
 		sub.overrides.cardStyle !== undefined ||
 		hasCardStyleByKind(sub) ||
-		sub.overrides.cardLayout !== undefined
+		sub.overrides.cardSkin !== undefined
 	);
 }
 
@@ -803,14 +808,14 @@ export default function Cards() {
 	const [gStyle, setGStyle] = useState<CardStyle | null>(null);
 	// 按卡片类型的样式覆盖(全局)。空 = 各类型跟随 gStyle 基准。
 	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
-	const [gLayout, setGLayout] = useState<CardLayoutFull | null>(null);
 	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
 
 	// per-UP 覆盖草稿(undefined = 继承全局)
 	const [puStyle, setPuStyle] = useState<CardStyle | undefined>(undefined);
 	// 按卡片类型的样式覆盖(per-UP)。空 = 各类型跟随该 UP 基准(puStyle ?? 全局)。
 	const [puByKind, setPuByKind] = useState<CardStyleByKind>({});
-	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
+	// 该 UP 单独指定的卡片皮肤;undefined = 跟随全局(保存时把这个键整个清掉)。
+	const [puSkin, setPuSkin] = useState<string | undefined>(undefined);
 
 	// 删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
 	// 基准 / per-UP per-kind 的背景图 + 直播封面 + 字体)。picker 自身的 onChange 只清它
@@ -846,13 +851,11 @@ export default function Cards() {
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
 	const serverGlobalStyle = globalsQuery.data?.defaults.cardStyle;
-	const serverGlobalLayout = globalsQuery.data?.defaults.cardLayout;
 
 	useEffect(() => {
 		if (globalsQuery.data) {
 			setGStyle(globalsQuery.data.defaults.cardStyle);
 			setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
-			setGLayout(globalsQuery.data.defaults.cardLayout);
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
 	}, [globalsQuery.data]);
@@ -863,7 +866,7 @@ export default function Cards() {
 		if (!focusedSub?.overrides.cardStyle || !serverGlobalStyle) return undefined;
 		return { ...serverGlobalStyle, ...focusedSub.overrides.cardStyle };
 	}, [focusedSub?.overrides.cardStyle, serverGlobalStyle]);
-	const seededPuLayout = focusedSub?.overrides.cardLayout;
+	const seededPuSkin = focusedSub?.overrides.cardSkin;
 	// per-UP 按类型覆盖的存储值;空对象 = 无覆盖(与 gByKind seed 一致,直接取原始 partial)。
 	const seededPuByKind = useMemo<CardStyleByKind>(
 		() => focusedSub?.overrides.cardStyleByKind ?? {},
@@ -874,8 +877,8 @@ export default function Cards() {
 	useEffect(() => {
 		setPuStyle(seededPuStyle);
 		setPuByKind(seededPuByKind);
-		setPuLayout(seededPuLayout);
-	}, [seededPuStyle, seededPuByKind, seededPuLayout]);
+		setPuSkin(seededPuSkin);
+	}, [seededPuStyle, seededPuByKind, seededPuSkin]);
 
 	// 选中的 UP 从订阅列表消失 → 回退全局。
 	useEffect(() => {
@@ -888,7 +891,6 @@ export default function Cards() {
 		mutationFn: async (payload: {
 			cardStyle: CardStyle;
 			cardStyleByKind: CardStyleByKind;
-			cardLayout: CardLayoutFull;
 			imageLogLevel: ImageLogLevel;
 		}) => {
 			// 只挑本页真正编辑的 scope 做 diff —— 下发全量会让服务端的 enable-check
@@ -904,7 +906,6 @@ export default function Cards() {
 						defaults: {
 							cardStyle: payload.cardStyle,
 							cardStyleByKind: payload.cardStyleByKind,
-							cardLayout: payload.cardLayout,
 						},
 					},
 					{
@@ -912,7 +913,6 @@ export default function Cards() {
 						defaults: {
 							cardStyle: base?.defaults.cardStyle,
 							cardStyleByKind: base?.defaults.cardStyleByKind ?? {},
-							cardLayout: base?.defaults.cardLayout,
 						},
 					},
 				),
@@ -936,7 +936,10 @@ export default function Cards() {
 						Object.keys(puByKind).length > 0
 							? buildPatch(puByKind, sub.overrides.cardStyleByKind ?? {})
 							: null,
-					cardLayout: puLayout ?? null,
+					// 「跟随全局」= 把这个键清掉。undefined 在 JSON 里根本表达不出来(见
+					// api.patch 的 nullifyUndefined),必须落成显式 null 才是删除哨兵 ——
+					// 否则键消失 = 服务端读作「不改」,选回「跟随全局」永远生效不了。
+					cardSkin: puSkin ?? null,
 				},
 			});
 		},
@@ -946,7 +949,7 @@ export default function Cards() {
 	const removeCardCustomization = useMutation({
 		mutationFn: async (sub: Subscription) =>
 			api.patch<Subscription>(`/api/subs/${sub.id}`, {
-				overrides: { cardStyle: null, cardStyleByKind: null, cardLayout: null },
+				overrides: { cardStyle: null, cardStyleByKind: null, cardSkin: null },
 			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -993,35 +996,36 @@ export default function Cards() {
 	}
 
 	// 灵动岛:单一 hook 按作用域切换,杜绝双挂载抢单槽竞态。
+	//
+	// 全局那份**不含** cardSkin:换全局皮肤是皮肤库里点一下就生效(PUT /active 直改
+	// globals),不是草稿 —— 塞进来只会让灵动岛拿一个永远不脏的键去 diff。
 	const globalIslandDraft = useMemo(() => {
 		if (gStyle === null) return null;
 		return {
 			...gStyle,
 			cardStyleByKind: gByKind,
-			cardLayout: gLayout,
 			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [gStyle, gByKind, gLayout, imageLogLevel]);
+	}, [gStyle, gByKind, imageLogLevel]);
 	const globalIslandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
 			cardStyleByKind: globalsQuery.data.defaults.cardStyleByKind ?? {},
-			cardLayout: globalsQuery.data.defaults.cardLayout,
 			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
 	}, [globalsQuery.data]);
 	const perUpIslandDraft = useMemo(
-		() => ({ ...(puStyle ?? {}), cardStyleByKind: puByKind, cardLayout: puLayout ?? null }),
-		[puStyle, puByKind, puLayout],
+		() => ({ ...(puStyle ?? {}), cardStyleByKind: puByKind, cardSkin: puSkin ?? null }),
+		[puStyle, puByKind, puSkin],
 	);
 	const perUpIslandBaseline = useMemo(
 		() => ({
 			...(seededPuStyle ?? {}),
 			cardStyleByKind: seededPuByKind,
-			cardLayout: seededPuLayout ?? null,
+			cardSkin: seededPuSkin ?? null,
 		}),
-		[seededPuStyle, seededPuByKind, seededPuLayout],
+		[seededPuStyle, seededPuByKind, seededPuSkin],
 	);
 
 	// 预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,后端解析房间号
@@ -1047,11 +1051,10 @@ export default function Cards() {
 		baseline: isGlobalScope ? globalIslandBaseline : perUpIslandBaseline,
 		onSave: async () => {
 			if (isGlobalScope) {
-				if (gStyle !== null && gLayout !== null)
+				if (gStyle !== null)
 					await saveGlobal.mutateAsync({
 						cardStyle: gStyle,
 						cardStyleByKind: gByKind,
-						cardLayout: gLayout,
 						imageLogLevel,
 					});
 			} else if (focusedSub) {
@@ -1063,12 +1066,11 @@ export default function Cards() {
 				if (!globalsQuery.data) return;
 				setGStyle(globalsQuery.data.defaults.cardStyle);
 				setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
-				setGLayout(globalsQuery.data.defaults.cardLayout);
 				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 			} else {
 				setPuStyle(seededPuStyle);
 				setPuByKind(seededPuByKind);
-				setPuLayout(seededPuLayout);
+				setPuSkin(seededPuSkin);
 			}
 		},
 	});
@@ -1109,7 +1111,6 @@ export default function Cards() {
 		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
 		: { ...gStyle, ...colorOnly(gByKind[styleKind]) };
 	const effStyle: CardStyle = effStyleFor(styleKind);
-	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
 
@@ -1154,7 +1155,7 @@ export default function Cards() {
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
 				overridesCountFor={cardOverrideCount}
-				globalHint="此处为全部 UP 的默认卡片样式与版式"
+				globalHint="此处为全部 UP 的默认卡片样式与皮肤"
 				perUpHint={(sub) =>
 					sub ? (
 						<>
@@ -1165,7 +1166,7 @@ export default function Cards() {
 			/>
 
 			<div className="grid gap-3.5 xl:grid-cols-[220px_380px_minmax(0,1fr)]">
-				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 / 版式 + 预览的卡片种类 */}
+				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 + 预览的卡片种类 */}
 				<SectionNav
 					heading="卡片样式"
 					items={[
@@ -1321,6 +1322,24 @@ export default function Cards() {
 						</GlassBox>
 					)}
 
+					{/* 卡片皮肤 —— 仅「全局」tab。皮肤是**整套外观**(七种卡一起换),不分卡种,
+					    所以它不该出现在类型 tab 上;旧的「卡片版式」一节正是按卡种各一份,
+					    那一节连同它的数据模型一起退役了(ADR-0014 决策 15 / 20)。 */}
+					{isGlobalTab &&
+						(isGlobalScope ? (
+							<CardSkinSection />
+						) : (
+							<GlassBox
+								title="卡片皮肤"
+								subtitle="这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在全局皮肤库「复制一份」再改"
+								accent="var(--color-bn-purple)"
+								icon={<Icon.palette size={14} />}
+								badge={puSkin ? "单独指定" : "跟随全局"}
+							>
+								<CardSkinPicker value={puSkin} onChange={setPuSkin} />
+							</GlassBox>
+						))}
+
 					{/* 数据区显示项 —— 仅「直播开播」tab(数据区是直播卡专属:人气/分区/粉丝)。
 					    全局作用域改 gStyle(走全局 image config);per-UP 可单独覆盖(经 colorOptions 透传)。 */}
 					{!isGlobalTab &&
@@ -1389,45 +1408,12 @@ export default function Cards() {
 							/>
 						))}
 
-					{/* 卡片版式 —— 仅「类型」tab(全局 tab 只调全局样式,不碰具体卡片版式)。 */}
-					{!isGlobalTab &&
-						(isGlobalScope ? (
-							gLayout ? (
-								<GlassBox
-									title="卡片版式"
-									subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
-									accent={KIND_LABELS[kind].tone}
-									icon={<KindIcon size={14} />}
-									badge="cardLayout"
-								>
-									<CardLayoutEditor kind={kind} layout={gLayout} onChange={setGLayout} />
-								</GlassBox>
-							) : null
-						) : (
-							<OverrideBox
-								title="卡片版式覆盖"
-								subtitle="开 = 该 UP 用自定义版式(整份复制全局后编辑);关 = 继承全局版式"
-								accent={KIND_LABELS[kind].tone}
-								icon={<KindIcon size={14} />}
-								enabled={puLayout !== undefined}
-								onToggle={(on) =>
-									setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
-								}
-								inheritNote="该 UP 继承全局卡片版式"
-							>
-								{puLayout ? (
-									<CardLayoutEditor kind={kind} layout={puLayout} onChange={setPuLayout} />
-								) : null}
-							</OverrideBox>
-						))}
-
 					{/* 测试推送 + 预览内容编辑 —— 仅「类型」tab(全局只看四卡全家福,不带测试推送)。 */}
 					{!isGlobalTab && (
 						<TestPushCard
 							kind={kind}
 							style={effStyle}
 							pushContent={previewContent}
-							layout={effLayout}
 							fallback={previewFallback}
 							mockContent={content}
 							setMockContent={setContent}
@@ -1474,7 +1460,6 @@ export default function Cards() {
 														kind={fk}
 														style={style}
 														content={fcontent}
-														layout={effLayout}
 														fallback={previewFallback}
 														frame={false}
 													/>
@@ -1507,7 +1492,6 @@ export default function Cards() {
 								kind={kind}
 								style={effStyle}
 								content={previewContent}
-								layout={effLayout}
 								fallback={previewFallback}
 							/>
 
@@ -1538,7 +1522,7 @@ export default function Cards() {
 					message={
 						<>
 							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
-							的卡片样式与版式覆盖,该 UP 之后跟随全局卡片设置。此操作不可撤销。
+							的卡片样式与皮肤覆盖,该 UP 之后跟随全局卡片设置。此操作不可撤销。
 						</>
 					}
 					confirmLabel="移除"

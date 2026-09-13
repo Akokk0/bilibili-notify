@@ -3,7 +3,7 @@
 /**
  * DragHandle —— dnd-kit 可排序行的 ⠿ 手柄。
  *
- * 抄了三遍(cards/BlockListEditor → rules/MessageLayoutEditor → header 的
+ * 抄了三遍(退役的卡片版式编辑器 → rules/MessageLayoutEditor → header 的
  * 标签页排序面板,一路 copy-forward),第三份还顺手把字号从 15px 改成 14px、
  * 多加了 px-0.5,没留下理由。这里钉的是三份共同的那些**不能丢**的东西:
  * `touch-none`(丢了触屏上一拖就变成滚页)、activator ref(丢了整行都成手柄,

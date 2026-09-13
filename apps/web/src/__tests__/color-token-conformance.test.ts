@@ -8,7 +8,7 @@
  * 直接编译成空。于是 `bg-bn-accent`(一个从不存在的 token)会让按钮**没有背景色**,
  * 配上 `text-white` 就是白字白底、彻底隐形;而 typecheck 管不着(那是字符串)、Biome
  * 管不着、组件测试只查 role/文本也管不着 —— **整套门禁全绿,按钮却看不见**。只能靠
- * 肉眼发现,这正是 `bn-accent` 在 Targets / BlockListEditor / MessageLayoutEditor
+ * 肉眼发现,这正是 `bn-accent` 在 Targets / MessageLayoutEditor
  * 里死了 6 处(拖拽高亮边框根本不显示)却一直没人察觉的原因。
  *
  * 只管**颜色类**前缀:`rounded-bn-card`(--radius-bn-*)、`shadow-bn-elev`
