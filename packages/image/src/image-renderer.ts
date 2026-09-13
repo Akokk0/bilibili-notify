@@ -5,6 +5,7 @@ import {
 	CARD_SKIN_LIMITS,
 	type CardSkinCard,
 	type CardSkinKind,
+	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	createSerialGate,
 	DEFAULT_CARD_SKIN,
@@ -126,6 +127,11 @@ export interface ImageRendererConfig {
 	showArea: boolean;
 	/** 直播卡数据区:显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化,按直播态)。 */
 	showFans: boolean;
+	/**
+	 * 用户拧过的皮肤旋钮,**按皮肤 id** 分开(ADR-0014 决策 16 的 🔗)。回落到默认皮肤时
+	 * 自动取默认皮肤那份 —— 一套坏皮肤的配色不该跟着回落画到默认皮肤上。
+	 */
+	cardSkinKnobs?: Readonly<Record<string, CardSkinKnobOverrides>>;
 }
 
 export interface ImageRendererOptions {
@@ -473,6 +479,7 @@ export class ImageRenderer {
 				fontFace: font.fontFace,
 				raw: args.raw,
 				resolveAsset: (name) => assets.get(name),
+				knobValues: this.config.cardSkinKnobs?.[id],
 			});
 			if (args.postProcess) html = args.postProcess(html);
 			return await withRetry(() => this.renderHtml(html, args.waitFor, args.priority));

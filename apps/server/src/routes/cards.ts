@@ -39,6 +39,7 @@ import {
 import {
 	CardSkinIdSchema,
 	type CardSkinKind,
+	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
@@ -526,6 +527,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 
 	/**
+	 * 预览要用的那份**旋钮覆盖**:按皮肤 id 从配置里取(存覆盖不存值,没拧过就没有键)。
+	 * 与出图那条路同源 —— 两边各取一份的话,预览与推出去的卡会在配色上悄悄分家。
+	 */
+	function previewKnobValues(id?: string): CardSkinKnobOverrides | undefined {
+		const g = opts.deps.store.getGlobals();
+		return g.defaults.cardSkinKnobs?.[id || g.defaults.cardSkin];
+	}
+
+	/**
 	 * 这张卡要用的包内资产预取成表(渲染器那头的查表是同步的,见 `skinAssetRefs`)。
 	 * 与 `ImageRenderer#prefetchSkinAssets` 同一套做法,只是这条路不经渲染器。
 	 */
@@ -776,12 +786,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
+						knobValues: previewKnobValues(cardSkin),
 					})
 				: await renderCardWithSkin("dynamic", spec.props, manifest, {
 						title: spec.title,
 						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
+						knobValues: previewKnobValues(cardSkin),
 					});
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };

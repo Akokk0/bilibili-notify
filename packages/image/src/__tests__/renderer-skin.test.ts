@@ -188,6 +188,68 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 	});
 });
 
+/**
+ * **旋钮那条线**(ADR-0014 决策 16 的 🔗,2026-09-14)。皮肤的声明住 manifest 里、用户的
+ * 值住渲染器 config 里,两头在 `renderWithSkin` 那一处碰面 —— 零件各自的单元测试全绿
+ * 也证明不了它们真接上了(「接线要有自己的守卫」)。验红:把 `renderCardWithSkin` 里
+ * 那句 `knobs: manifest.knobs` 或 `knobValues: this.config.cardSkinKnobs?.[id]` 任意
+ * 一句掐掉,这一组红。
+ */
+describe("ImageRenderer 皮肤旋钮", () => {
+	const KNOB_SKIN: CardSkinManifest = {
+		...DEFAULT_CARD_SKIN,
+		name: "带旋钮的皮肤",
+		knobs: [{ key: "accent", label: "主色", type: "color", default: "#fb7299" }],
+	};
+	const withSkin = (knobs?: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+		makeHarness({
+			config: { ...BASE_CONFIG, ...(knobs ? { cardSkinKnobs: knobs } : {}) },
+			resolveCardSkin: (id) => (id === "knobby" ? KNOB_SKIN : undefined),
+		});
+
+	it("用户拧过的值从 config 一路到出图的 HTML", async () => {
+		const h = withSkin({ knobby: { accent: "#00f0ff" } });
+		await liveCard(h.renderer, "knobby");
+		expect(h.captured[0] ?? "").toContain("--bn-knob-accent:#00f0ff");
+		expect(h.fallbacks).toEqual([]);
+	});
+
+	it("没拧过 → HTML 里没有旋钮变量(皮肤 CSS 的兜底管事)", async () => {
+		const h = withSkin();
+		await liveCard(h.renderer, "knobby");
+		expect(h.captured[0] ?? "").not.toContain("--bn-knob-accent");
+	});
+
+	/** 覆盖按皮肤 id 分开存,所以另一套皮肤的配色不该画到这套上。 */
+	it("取的是这套皮肤自己那份覆盖,别的皮肤那份不串门", async () => {
+		const h = withSkin({ other: { accent: "#00f0ff" } });
+		await liveCard(h.renderer, "knobby");
+		expect(h.captured[0] ?? "").not.toContain("--bn-knob-accent");
+	});
+
+	/**
+	 * 回落到默认皮肤时取的是**默认皮肤**那份覆盖 —— 一套坏皮肤的配色跟着回落画到默认
+	 * 皮肤上,用户看到的是一张既不是 A 也不是 B 的卡。
+	 */
+	it("回落到默认皮肤时,用的是默认皮肤自己那份覆盖", async () => {
+		const h = makeHarness({
+			config: {
+				...BASE_CONFIG,
+				cardSkinKnobs: {
+					knobby: { accent: "#00f0ff" },
+					[DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#123456" },
+				},
+			},
+			resolveCardSkin: () => undefined,
+		});
+		await liveCard(h.renderer, "knobby");
+		const html = h.captured[0] ?? "";
+		expect(html).toContain("--bn-knob-gradient-start:#123456");
+		expect(html).not.toContain("--bn-knob-accent");
+		expect(h.fallbacks.map((f) => f.reason)).toEqual(["皮肤不存在"]);
+	});
+});
+
 // ── ② 回落 ───────────────────────────────────────────────────────────────────
 
 describe("ImageRenderer 皮肤回落", () => {

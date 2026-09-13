@@ -402,6 +402,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				glassClear: cs.glassClear,
 				backgroundImage: cs.backgroundImages[0] ?? "",
 				fontAsset: cs.fontAsset,
+				cardSkinKnobs: globals().defaults.cardSkinKnobs,
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
 			resolveFontFace: loadFontFace,
@@ -816,6 +817,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 皮肤换了 = 出图整个换一副样子,与旧的「版式变了」同一档热更需求:两个引擎的
 				// per-sub 快照都得刷,否则要等重启才生效(ADR-0014 决策 15 起版式住皮肤里)。
 				const skinChanged = prev.defaults.cardSkin !== g.defaults.cardSkin;
+				// 旋钮拧一格与换皮肤同一档:出图立刻变个样。只喂渲染器的 config(旋钮不
+				// 参与 per-sub 快照 —— 它按皮肤 id 存,全局一份)。
+				const skinKnobsChanged = !eq(prev.defaults.cardSkinKnobs, g.defaults.cardSkinKnobs);
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
 				// `app` 是一个 section,但里面装着三件互不相干的事(日志等级 / User-Agent /
@@ -837,7 +841,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					opts.loginFlow.setHealthCheckMs(g.app.healthCheckMinutes * 60_000);
 				}
 				// ImageRenderer 配色 / 字体 / 显示项热更(仅在已构造时有意义)。
-				if (cardStyleChanged && imageRenderer) {
+				if ((cardStyleChanged || skinKnobsChanged) && imageRenderer) {
 					const cs = g.defaults.cardStyle;
 					imageRenderer.updateConfig({
 						font: cs.font,
@@ -848,6 +852,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						glassClear: cs.glassClear,
 						backgroundImage: cs.backgroundImages[0] ?? "",
 						fontAsset: cs.fontAsset,
+						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
 				}
 				// dynamicConfig() 的完整输入集:app.dynamicCron + defaults.{filters,

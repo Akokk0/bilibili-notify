@@ -426,6 +426,8 @@ export interface SkinCardHtmlOptions {
 	raw?: Dynamic;
 	/** 包内资产名 → data URL。**同步**:调用方须先把该皮肤用到的资产预取成表。 */
 	resolveAsset?: (name: string) => string | undefined;
+	/** 用户为**这套**皮肤拧过的旋钮值(宿主按皮肤 id 取好再传)。 */
+	knobValues?: CardSkinKnobOverrides;
 }
 
 /**
@@ -451,6 +453,8 @@ export async function renderCardWithSkin<K extends CardSkinKind>(
 		raw: options.raw,
 		resolveAsset: options.resolveAsset,
 		fonts: manifest.fonts,
+		knobs: manifest.knobs,
+		knobValues: options.knobValues,
 	});
 	return await renderCard(
 		{ render: (): VNode => vnode },

@@ -7,7 +7,7 @@ import { allTemplateFingerprints } from "../template-defaults";
 export { DEFAULT_TEMPLATES } from "../constants";
 
 import { CardLayoutSchema } from "./card-layout";
-import { CardSkinIdSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
+import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
 	AISettingsSchema,
@@ -139,6 +139,15 @@ export const GlobalDefaultsSchema = z.object({
 	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
 	// 本身住皮肤包里,不再住配置 —— 上面的 cardLayout 只为一次性迁移而保留读取。
 	cardSkin: CardSkinIdSchema.default(DEFAULT_CARD_SKIN_ID),
+	/**
+	 * 用户拧过的**皮肤旋钮**,按皮肤 id 分开存(ADR-0014 决策 16 的 🔗,2026-09-14)。
+	 *
+	 * 按 id 存是为了「换回来还在」:一套皮肤调好的配色,换去别的皮肤再换回来不该清零。
+	 * **存覆盖不存值** —— 没拧过的键根本不在表里,渲染时让皮肤 CSS 自己的兜底生效
+	 * (默认皮肤的玻璃白纱三档基线就靠这个活着)。不分卡种:皮肤想让两种卡不同色,
+	 * 自己声明两枚旋钮。
+	 */
+	cardSkinKnobs: z.record(CardSkinIdSchema, CardSkinKnobOverridesSchema).default({}),
 	// 消息版式(发送侧结构):与 cardLayout 同款迁移友好策略,缺字段的老 globals.json
 	// load 时自动补默认(= 复刻现状:卡片+文本+链接合并一条)。
 	messageLayout: MessageLayoutSchema.default(DEFAULT_MESSAGE_LAYOUT),

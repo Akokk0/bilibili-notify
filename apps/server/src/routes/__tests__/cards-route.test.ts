@@ -17,6 +17,12 @@ import type { RouteDeps } from "../types.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/**
+ * 预览路由要从配置里取「这套皮肤的旋钮覆盖」,所以每个 store 替身都得有 `getGlobals`。
+ * 空 defaults = 没换过皮肤、一个旋钮都没拧过。
+ */
+const EMPTY_GLOBALS = { defaults: { cardSkin: "default", cardSkinKnobs: {} } };
+
 function depsWithDataDir(dataDir: string): RouteDeps {
 	return {
 		runtime: {
@@ -24,7 +30,7 @@ function depsWithDataDir(dataDir: string): RouteDeps {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
-		store: { bootstrap: { dataDir } },
+		store: { bootstrap: { dataDir }, getGlobals: () => EMPTY_GLOBALS },
 	} as unknown as RouteDeps;
 }
 
@@ -37,7 +43,10 @@ function makeDeps(): RouteDeps {
 		},
 		// 这些用例只打 /detect-chrome 与 /preview(无背景图),dataDir 从不真正落 fs。
 		// 用 OS 临时目录下的不存在子目录(跨平台:不硬编码 POSIX /tmp,无真实路径/密钥)。
-		store: { bootstrap: { dataDir: join(tmpdir(), "bn-test-cards-route-no-such-dir") } },
+		store: {
+			bootstrap: { dataDir: join(tmpdir(), "bn-test-cards-route-no-such-dir") },
+			getGlobals: () => EMPTY_GLOBALS,
+		},
 	} as unknown as RouteDeps;
 }
 
@@ -93,6 +102,8 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				bootstrap: { dataDir: opts.dataDir },
 				getGlobals: () => ({
 					defaults: {
+						cardSkin: "default",
+						cardSkinKnobs: {},
 						cardStyle: {
 							backgroundImages: opts.globalBg ?? [],
 							liveCoverImages: opts.globalCover ?? [],
@@ -617,7 +628,10 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 				},
 				engines: { enableImageRendering: vi.fn(() => false), swapImageRendering },
 			},
-			store: { bootstrap: { dataDir: join(tmpdir(), "bn-test-hotswap-no-such-dir") } },
+			store: {
+				bootstrap: { dataDir: join(tmpdir(), "bn-test-hotswap-no-such-dir") },
+				getGlobals: () => EMPTY_GLOBALS,
+			},
 		} as unknown as RouteDeps;
 	}
 
