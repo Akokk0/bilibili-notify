@@ -16,6 +16,7 @@
  * 表单),这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
  */
 export type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension/wire";
+export * from "./card-skin";
 export * from "./devtools";
 export * from "./maid-skill";
 export * from "./resources";

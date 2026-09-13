@@ -17,6 +17,7 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
+import { CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
@@ -26,6 +27,7 @@ import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
+import { createCardSkinsRoute } from "./routes/card-skins.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCommandsRoute } from "./routes/commands.js";
 import { createConnectionsRoute } from "./routes/connections.js";
@@ -374,6 +376,17 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			skinStore,
 			// 热读:engines 是后挂的,ai-edit 每次现取,不做快照。
 			commentary: () => runtime.engines?.commentary ?? null,
+		}),
+	);
+	// 卡片皮肤库(ADR-0014)。目录叫 `card-skins`,与隔壁 dashboard 皮肤的 `skins` 分开
+	// ——两种包长得像(都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
+	// 读盘推迟到首个请求(createApp 是同步装配),凭据记在店上,见 `ensureReady`。
+	app.route(
+		"/api/card-skins",
+		createCardSkinsRoute({
+			store: new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") }),
+			config: deps.store,
+			logger: runtime.serviceCtx.logger,
 		}),
 	);
 	app.route(

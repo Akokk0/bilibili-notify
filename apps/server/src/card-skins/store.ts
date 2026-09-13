@@ -17,6 +17,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { CardSkinSummary } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
@@ -32,16 +33,14 @@ import {
 	parseCardSkinPackage,
 } from "./package.js";
 
-/** 面板列表要的那几样。`builtin` = 内置只读那份(改不了、删不了,只能复制)。 */
-export interface CardSkinSummary {
-	id: string;
-	name: string;
-	author?: string;
-	description?: string;
-	builtin: boolean;
-	/** `card-skin.json` 的 mtime(ms);内置那份不落盘,恒 0。 */
-	updatedAt: number;
-}
+/**
+ * 面板列表要的那几样(`builtin` = 内置只读那份,改不了删不了只能复制)。
+ *
+ * **形状住契约里**(`apps/contract`)—— 列表直接就是 `GET /api/card-skins` 的 wire,
+ * 两边各写一份的话,加个字段总会漏掉一边,而漏掉的那边是静默的(TS 结构类型不会红)。
+ * 这里原样转出去,店里的调用方不必绕道 contract。
+ */
+export type { CardSkinSummary };
 
 /**
  * 装包 / 保存被拒。**逐条错误单独带着**(不是拼成一句话):路由要把它们原样列给主人,
@@ -70,9 +69,22 @@ export class CardSkinStore {
 	/** id → 盘上那份;盘是唯一权威,这里只是读缓存。内置那份**不在**里面。 */
 	private index = new Map<string, IndexEntry>();
 	private initWarnings: string[] = [];
+	/** {@link ensureReady} 的一次性凭据 —— init 只该真的跑一遍。 */
+	private ready?: Promise<void>;
 
 	constructor(opts: { dir: string }) {
 		this.dir = opts.dir;
+	}
+
+	/**
+	 * 确保索引已从盘上重建过,幂等。
+	 *
+	 * `createApp` 是**同步**装配,读盘只能推迟到首个请求(与 dashboard 皮肤库同款)。
+	 * 记在店上而不是路由上:将来出图那头也要问这家店要皮肤,那条路进不了 HTTP 中间件。
+	 */
+	async ensureReady(): Promise<void> {
+		this.ready ??= this.init();
+		await this.ready;
 	}
 
 	/**

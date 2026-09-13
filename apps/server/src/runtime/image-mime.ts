@@ -15,10 +15,17 @@ export const MIME_TO_EXT: Record<string, string> = {
 	"image/webp": "webp",
 };
 
-/** 回读时扩展名 → content-type。 */
+/**
+ * 回读时扩展名 → content-type。
+ *
+ * `gif` **只在这一侧**:站内三条上传路都不收它(所以不在 `MIME_TO_EXT` 里),但卡片皮肤包
+ * 里可以带(`CARD_SKIN_IMAGE_RE` 认它)—— 回读那口查不到表就发 `application/octet-stream`,
+ * 而浏览器不会拿它当图画。
+ */
 export const EXT_TO_MIME: Record<string, string> = {
 	png: "image/png",
 	jpg: "image/jpeg",
 	jpeg: "image/jpeg",
 	webp: "image/webp",
+	gif: "image/gif",
 };
