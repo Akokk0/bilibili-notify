@@ -1,5 +1,6 @@
 /** @jsxImportSource vue */
 
+import { FRAMES } from "../blocks/frames";
 import { wordCloudBodyChildren } from "../blocks/wordcloud";
 
 export type WordCloudCardProps = {
@@ -9,19 +10,13 @@ export type WordCloudCardProps = {
 	colorEnd: string;
 };
 
-/** 正文块住在 `blocks/wordcloud.tsx`(皮肤按块装配的同一份);这里只剩外框。 */
+/**
+ * 正文块住在 `blocks/wordcloud.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
+ * 这里只剩「把正文装进外框」。
+ *
+ * 铺的是 `wordCloudBodyChildren` 那**三个同级孩子**而不是 `WORDCLOUD_BLOCKS.body` 的
+ * Fragment:Vue SSR 给每个 Fragment 插锚点注释,多套一层就凭空多两条(见块库里的说明)。
+ */
 export function WordCloudCard(p: WordCloudCardProps) {
-	return (
-		<div
-			class="h-auto p-[15px]"
-			style={{ background: `linear-gradient(to right bottom, ${p.colorStart}, ${p.colorEnd})` }}
-		>
-			<div
-				class="overflow-hidden rounded-[12px]"
-				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);"
-			>
-				{wordCloudBodyChildren(p)}
-			</div>
-		</div>
-	);
+	return FRAMES.wordcloud(p, wordCloudBodyChildren(p));
 }

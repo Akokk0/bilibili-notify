@@ -127,9 +127,14 @@ export async function renderCard(
 		 * 解析成 data URL 内联,与背景图同一条路:`packages/image` 不碰文件系统)。
 		 */
 		fontFace?: string;
+		/**
+		 * 追加在 UnoCSS 之后的样式表 —— 卡片皮肤(ADR-0014)翻译好的那段。**排在最后**
+		 * 是刻意的:皮肤要能盖掉块自带的 Uno 类,同等特异度下后写的赢。
+		 */
+		extraCss?: string;
 	} = {},
 ): Promise<string> {
-	const { title = "通知", font = "sans-serif", htmlWidth, fontFace } = options;
+	const { title = "通知", font = "sans-serif", htmlWidth, fontFace, extraCss } = options;
 
 	const uno = await getUno();
 	const app = createSSRApp({ render: () => h(component, props) });
@@ -148,7 +153,7 @@ export async function renderCard(
 			<head>
 				<meta charset="utf-8">
 				<title>${title}</title>
-				<style>${fontFace ?? ""}${baseCSS}${css}</style>
+				<style>${fontFace ?? ""}${baseCSS}${css}${extraCss ?? ""}</style>
 			</head>
 			<body>${body}</body>
 		</html>

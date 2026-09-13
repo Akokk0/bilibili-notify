@@ -7,6 +7,13 @@ export type { Component, VNode } from "vue";
 export { h } from "vue";
 // 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
 export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
+// 卡片外框(根块):模板路径与皮肤路径共用的那两层壳。
+export {
+	type CardPropsByKind,
+	FRAMES,
+	type FrameExtra,
+	type FrameRenderer,
+} from "./blocks/frames";
 export { GUARD_BLOCKS } from "./blocks/guard";
 export { LIVE_BLOCKS } from "./blocks/live";
 export { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "./blocks/roast";
@@ -43,6 +50,13 @@ export {
 	type CardDataValue,
 	readCardField,
 } from "./skin/card-data";
+// 皮肤渲染器(ADR-0014 决策 18):皮肤 JSON + props → VNode + 要拼进 `renderCard` 的那段 CSS。
+export {
+	BLOCKED_IMG_PLACEHOLDER,
+	renderSkinnedCard,
+	type SkinRenderOptions,
+	type SkinRenderResult,
+} from "./skin/render-skin";
 export { DynamicCard, type DynamicCardProps, type DynamicNode } from "./templates/dynamic-card";
 export { GuardCard, type GuardCardProps } from "./templates/guard-card";
 export { LiveCard, type LiveCardProps } from "./templates/live-card";

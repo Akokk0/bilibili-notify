@@ -14,6 +14,7 @@ import { DateTime } from "luxon";
 import { numberToStr } from "./format";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { renderCard, USER_FONT_FAMILY } from "./render";
+import { BLOCKED_IMG_PLACEHOLDER as BLOCKED_IMG_GIF } from "./skin/render-skin";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { DynamicCard } from "./templates/dynamic-card";
 import { buildDynamicNode } from "./templates/dynamic-content";
@@ -191,9 +192,12 @@ export class ImageRenderer {
 		"bilivideo.com",
 		"bilivideo.cn",
 	] as const;
-	/** 1x1 透明 GIF —— 被拦截的远端图替换成它,保证最终 HTML 无任何外部引用可被 puppeteer 再抓。 */
-	private static readonly BLOCKED_IMG_PLACEHOLDER =
-		"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+	/**
+	 * 1x1 透明 GIF —— 被拦截的远端图替换成它,保证最终 HTML 无任何外部引用可被 puppeteer 再抓。
+	 * 与皮肤渲染器「取不到包内资产」时用的是**同一串**(那边是 `skin/render-skin.tsx` 的
+	 * `BLOCKED_IMG_PLACEHOLDER`),各写一份迟早漂移。
+	 */
+	private static readonly BLOCKED_IMG_PLACEHOLDER = BLOCKED_IMG_GIF;
 	/** IM2:单张远端图字节上限,防超大图全量入内存 + base64 膨胀驻留 cache → OOM。 */
 	private readonly MAX_REMOTE_IMG_BYTES = 8 * 1024 * 1024;
 

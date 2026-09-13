@@ -18,6 +18,8 @@
  * 缺字体时直接是豆腐块。推送的纯文字消息不受此限(那边由 IM 客户端画)。
  */
 
+import type { VNode } from "vue";
+import { FRAMES } from "../blocks/frames";
 import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
 
 export type RoastCardUp = {
@@ -58,53 +60,18 @@ export type RoastSoloCardProps = {
 	backgroundImage?: string;
 };
 
-type FrameStyle = {
-	cardColorStart: string;
-	cardColorEnd: string;
-	glassOpacity?: number;
-	glassClear?: boolean;
-	backgroundImage?: string;
-};
-
 /**
- * 外框 + 玻璃片。两张卡唯一共用的结构。
+ * 正文块住在 `blocks/roast.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
+ * 这里只剩「把正文块装进外框」。
  *
- * 写成**普通函数**而不是组件,是因为 Vue 的函数式组件把 children 送进 slots 而
+ * 外框写成**普通函数**而不是组件,是因为 Vue 的函数式组件把 children 送进 slots 而
  * 不是 props —— 写成 `<CardFrame>…</CardFrame>` 时 `p.children` 恒为 undefined,
  * 卡片会渲染出一个完全空的外框(而且构建全绿,只在看图时才发现)。
  */
-function cardFrame(p: FrameStyle & { width: number }, children: unknown) {
-	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.86);
-	const blur = p.glassClear ? 0 : 10;
-	return (
-		<div
-			class="p-[15px]"
-			style={{
-				width: `${p.width}px`,
-				background: p.backgroundImage
-					? `url("${p.backgroundImage}") center / cover`
-					: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`,
-			}}
-		>
-			<div
-				class="overflow-hidden rounded-[12px]"
-				style={{
-					background: `rgba(255,255,255,${glass})`,
-					backdropFilter: `blur(${blur}px)`,
-					boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-				}}
-			>
-				{children}
-			</div>
-		</div>
-	);
-}
-
-/** 正文块住在 `blocks/roast.tsx`(皮肤按块装配的同一份);这里只剩外框。 */
 export function RoastBoardCard(p: RoastBoardCardProps) {
-	return cardFrame({ ...p, width: 600 }, [ROAST_BOARD_BLOCKS.body(p)]);
+	return FRAMES.roastBoard(p, [ROAST_BOARD_BLOCKS.body(p) as VNode]);
 }
 
 export function RoastSoloCard(p: RoastSoloCardProps) {
-	return cardFrame({ ...p, width: 430 }, [ROAST_SOLO_BLOCKS.body(p)]);
+	return FRAMES.roastSolo(p, [ROAST_SOLO_BLOCKS.body(p) as VNode]);
 }

@@ -2,6 +2,8 @@
 
 import type { GuardLevel } from "@bilibili-notify/blive";
 import { DEFAULT_CARD_LAYOUT, type GuardLayout } from "@bilibili-notify/internal";
+import type { VNode } from "vue";
+import { FRAMES } from "../blocks/frames";
 import { GUARD_BLOCKS } from "../blocks/guard";
 import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
@@ -30,11 +32,10 @@ export type GuardCardProps = {
 
 export function GuardCard(p: GuardCardProps) {
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.guard;
-	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
-	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);
-	const blur = p.glassClear ? 0 : 10;
 
-	// 各块的 JSX 住在 `blocks/guard.tsx`(皮肤按块装配的同一份);这里只剩外框与两块的定位。
+	// 各块的 JSX 住在 `blocks/guard.tsx`、外框(到玻璃层为止)住在 `blocks/frames.tsx` ——
+	// 皮肤路径共用的同两份;玻璃层里这个「内容列 + 徽章」的二分结构是**旧版式专属**的
+	// (受限 2D),所以留在这里当 children 传进去,不进 FRAMES。
 	const builders = bindBlocks(GUARD_BLOCKS, p);
 	const badgeLeft = layout.badgeSide === "left";
 
@@ -50,26 +51,8 @@ export function GuardCard(p: GuardCardProps) {
 	);
 
 	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位(自带 data-block,不经 renderBlocks)。
-	const badge = GUARD_BLOCKS.badge(p);
+	// 它恒有内容(等级图是必给的),`BlockRenderer` 的可空签名在这条路上用不上。
+	const badge = GUARD_BLOCKS.badge(p) as VNode;
 
-	return (
-		<div
-			class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
-			style={{
-				background: p.backgroundImage
-					? `url("${p.backgroundImage}") center / cover`
-					: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})`,
-			}}
-		>
-			<div
-				class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
-				style={{
-					background: `rgba(255,255,255,${glass})`,
-					backdropFilter: `blur(${blur}px)`,
-				}}
-			>
-				{layout.badgeSide === "left" ? [badge, content] : [content, badge]}
-			</div>
-		</div>
-	);
+	return FRAMES.guard(p, layout.badgeSide === "left" ? [badge, content] : [content, badge]);
 }

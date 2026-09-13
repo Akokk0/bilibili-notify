@@ -1,5 +1,6 @@
 /** @jsxImportSource vue */
 import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { FRAMES } from "../blocks/frames";
 import { SC_BLOCKS } from "../blocks/sc";
 import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
@@ -27,31 +28,8 @@ export type SCCardProps = {
 };
 
 export function SCCard(p: SCCardProps) {
-	// 各块的 JSX 住在 `blocks/sc.tsx`(皮肤按块装配的同一份);这里只剩外框。
+	// 各块的 JSX 住在 `blocks/sc.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
+	// 这里只剩「把块按旧版式装进外框」。
 	const builders = bindBlocks(SC_BLOCKS, p);
-
-	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
-	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);
-	const blur = p.glassClear ? 0 : 10;
-
-	return (
-		<div
-			class="flex justify-center items-center w-[290px] p-[15px]"
-			style={{
-				background: p.backgroundImage
-					? `url("${p.backgroundImage}") center / cover`
-					: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})`,
-			}}
-		>
-			<div
-				class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
-				style={{
-					background: `rgba(255,255,255,${glass})`,
-					backdropFilter: `blur(${blur}px)`,
-				}}
-			>
-				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full")}
-			</div>
-		</div>
-	);
+	return FRAMES.sc(p, renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full"));
 }

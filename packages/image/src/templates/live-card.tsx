@@ -1,6 +1,7 @@
 /** @jsxImportSource vue */
 
 import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { FRAMES } from "../blocks/frames";
 import { LIVE_BLOCKS } from "../blocks/live";
 import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
@@ -43,24 +44,8 @@ export type LiveCardProps = {
 };
 
 export function LiveCard(p: LiveCardProps) {
-	// 各块的 JSX 住在 `blocks/live.tsx`(皮肤按块装配的同一份);这里只剩外框。
+	// 各块的 JSX 住在 `blocks/live.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
+	// 这里只剩「把块按旧版式装进外框」。
 	const builders = bindBlocks(LIVE_BLOCKS, p);
-
-	const frameBg = p.backgroundImage
-		? `url("${p.backgroundImage}") center / cover`
-		: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`;
-	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
-	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.82);
-	const blur = p.glassClear ? 0 : 10;
-
-	return (
-		<div class="h-auto p-3.75" style={{ background: frameBg }}>
-			<div
-				class="overflow-hidden rounded-xl"
-				style={`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`}
-			>
-				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders)}
-			</div>
-		</div>
-	);
+	return FRAMES.live(p, renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders));
 }

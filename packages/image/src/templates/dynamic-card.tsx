@@ -1,6 +1,7 @@
 /** @jsxImportSource vue */
 import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
 import { dynamicNodeBuilders } from "../blocks/dynamic";
+import { FRAMES } from "../blocks/frames";
 import { renderBlocks } from "./block-layout";
 import type { DynamicNode } from "./dynamic-content";
 
@@ -25,23 +26,11 @@ export type DynamicCardProps = {
 	backgroundImage?: string;
 };
 
-/** 各块的 JSX 住在 `blocks/dynamic.tsx`(皮肤按块装配的同一份);这里只剩外框。 */
+/**
+ * 各块的 JSX 住在 `blocks/dynamic.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
+ * 这里只剩「把块按旧版式装进外框」。
+ */
 export function DynamicCard(p: DynamicCardProps) {
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.dynamic;
-	const frameBg = p.backgroundImage
-		? `url("${p.backgroundImage}") center / cover`
-		: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`;
-	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
-	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.82);
-	const blur = p.glassClear ? 0 : 10;
-	return (
-		<div class="h-auto p-[15px]" style={{ background: frameBg, minWidth: "380px" }}>
-			<div
-				class="w-full overflow-hidden rounded-[12px]"
-				style={`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;`}
-			>
-				{renderBlocks(layout, dynamicNodeBuilders(p.node, layout))}
-			</div>
-		</div>
-	);
+	return FRAMES.dynamic(p, renderBlocks(layout, dynamicNodeBuilders(p.node, layout)));
 }

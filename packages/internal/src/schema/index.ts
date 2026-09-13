@@ -1,5 +1,6 @@
 export * from "./card-layout";
 export * from "./card-skin";
+export * from "./card-skin-migration";
 export * from "./commands";
 export * from "./common";
 export * from "./extension-manifest";
