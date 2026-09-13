@@ -9,6 +9,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { api } from "../../services/api";
@@ -99,6 +100,54 @@ describe("详情页上的拓展文档", () => {
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/docs"));
 		expect(screen.queryByText("说明")).toBeNull();
 		expect(screen.queryByText("更新日志")).toBeNull();
+	});
+});
+
+/**
+ * 两份文档**分 tab**,不再一上一下摞着。
+ *
+ * 摞着的毛病:说明动辄一整页,更新日志被挤到视野外,人得先滚过整份 README 才看得见
+ * 「这版改了啥」—— 而更新完点进来的人要的正是后者。
+ *
+ * 顶部横条不走左侧竖栏:只有两项,左栏要为两个词让掉一整条宽度,而正文是 markdown、
+ * 最吃宽度的恰是表格;何况站里的左栏(`SectionNav`)是**页面级**分区导航,摆进详情页
+ * 底部的一个 section 会读成「这是整页的导航」。
+ */
+describe("说明与更新日志分 tab", () => {
+	afterEach(() => {
+		cleanup();
+		vi.clearAllMocks();
+	});
+
+	it("两份都有 → 出 tab 条,默认停在说明,更新日志的正文还没画", async () => {
+		docs.value = { readme: "# 桥接\n\n借 koishi 的 bot。", changelog: "## [0.0.1]\n\n第一版。" };
+		renderDetail();
+
+		expect(await screen.findByText(/借 koishi 的 bot/)).toBeTruthy();
+		expect(screen.getByRole("tab", { name: /说明/ })).toBeTruthy();
+		expect(screen.getByRole("tab", { name: /更新日志/ })).toBeTruthy();
+		expect(screen.queryByText(/第一版/)).toBeNull();
+	});
+
+	it("点「更新日志」→ 换成它,说明退下去", async () => {
+		docs.value = { readme: "# 桥接\n\n借 koishi 的 bot。", changelog: "## [0.0.1]\n\n第一版。" };
+		renderDetail();
+		await screen.findByText(/借 koishi 的 bot/);
+
+		await userEvent.click(screen.getByRole("tab", { name: /更新日志/ }));
+
+		expect(await screen.findByText(/第一版/)).toBeTruthy();
+		expect(screen.queryByText(/借 koishi 的 bot/)).toBeNull();
+	});
+
+	/** 一个 tab 是噪音 —— 没得选的时候就别摆一排让人以为还有别的。 */
+	it("只有一份 → 不出 tab 条,标题直接是那一份的名字", async () => {
+		docs.value = { changelog: "## [0.0.1]\n\n第一版。" };
+		renderDetail();
+
+		expect(await screen.findByText(/第一版/)).toBeTruthy();
+		expect(screen.queryByRole("tab")).toBeNull();
+		expect(screen.getByText("更新日志")).toBeTruthy();
 	});
 });
 
