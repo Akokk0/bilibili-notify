@@ -191,6 +191,109 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	wordcloud: { body: { label: "弹幕词云", hooks: {} } },
 };
 
+// ---- CSS 属性白名单 -----------------------------------------------------------
+
+/**
+ * 卡片皮肤 CSS 的属性白名单。与 dashboard 皮肤那份(`apps/contract` 的
+ * `SKIN_CSS_EXACT_PROPS`)**刻意不同**:那边的信条是「布局归宿主、皮肤只管观感」,
+ * 这边正好相反 —— 卡片皮肤要管的就是布局(ADR-0014 决策 6、13),块间距、对齐、字号
+ * 都得写得进去。出图是一张静态 PNG,没有点击面,dashboard 那几条「看不见却点得到」
+ * 的顾虑在这里不成立。取网 / 执行面(`url()` / `@import` / 脚本)照旧不放行,那是清洗器
+ * 的值级规矩,与名单无关。
+ */
+export const CARD_SKIN_CSS_EXACT_PROPS = [
+	// 观感(与 dashboard 同)
+	"background",
+	"color",
+	"opacity",
+	"box-shadow",
+	"text-shadow",
+	"filter",
+	"backdrop-filter",
+	"-webkit-backdrop-filter",
+	"mix-blend-mode",
+	"image-rendering",
+	"clip-path",
+	"transform",
+	"transform-origin",
+	"rotate",
+	"scale",
+	"translate",
+	"border",
+	"outline",
+	"border-radius",
+	"content",
+	// 盒与定位
+	"inset",
+	"top",
+	"right",
+	"bottom",
+	"left",
+	"width",
+	"height",
+	"min-width",
+	"min-height",
+	"max-width",
+	"max-height",
+	"position",
+	"z-index",
+	"padding",
+	"margin",
+	"box-sizing",
+	"overflow",
+	"aspect-ratio",
+	"object-fit",
+	"object-position",
+	"visibility",
+	"display",
+	// 排布(块内部的 flex,以及块在网格里的对齐)
+	"gap",
+	"row-gap",
+	"column-gap",
+	"flex",
+	"flex-direction",
+	"flex-wrap",
+	"flex-grow",
+	"flex-shrink",
+	"flex-basis",
+	"order",
+	"align-items",
+	"align-self",
+	"align-content",
+	"justify-items",
+	"justify-self",
+	"justify-content",
+	// 文字
+	"font",
+	"font-size",
+	"font-weight",
+	"font-style",
+	"font-family",
+	"line-height",
+	"letter-spacing",
+	"text-align",
+	"text-decoration",
+	"text-transform",
+	"text-overflow",
+	"white-space",
+	"word-break",
+	"overflow-wrap",
+	"vertical-align",
+] as const;
+
+/** 前缀放行:`padding-top`、`margin-left`、`border-top-left-radius`、`background-size`…… */
+export const CARD_SKIN_CSS_PROP_PREFIXES = [
+	"background-",
+	"border-",
+	"outline-",
+	"padding-",
+	"margin-",
+	"font-",
+	"text-",
+	"overflow-",
+	"place-",
+] as const;
+
 // ---- 变量 -------------------------------------------------------------------
 
 /**

@@ -36,8 +36,9 @@ describe("挂点按块收窄", () => {
 		expect(css).toContain('[data-bn="self"]');
 		expect(css).toContain('[data-bn="avatar"]{border-radius:999px}');
 		expect(css).toContain('[data-bn="self"] [data-bn="name"]');
-		// padding-* 不在视觉白名单里 —— 只剩 border-radius 那一条。
-		expect(warnings.some((w) => w.includes("padding-top"))).toBe(true);
+		// 卡片皮肤管的就是布局:padding-* 在卡片这份白名单里(dashboard 那份没有)。
+		expect(css).toContain("padding-top:12px");
+		expect(warnings.some((w) => w.includes("padding-top"))).toBe(false);
 	});
 
 	/**
@@ -188,7 +189,7 @@ describe("声明白名单", () => {
 
 	it("白名单外的属性逐条丢弃", () => {
 		const { css, warnings } = ok(
-			`[data-bn="self"]{display:none;pointer-events:none;visibility:hidden;color:#fff}`,
+			`[data-bn="self"]{pointer-events:none;cursor:pointer;grid-template-columns:1fr;color:#fff}`,
 			"header",
 		);
 		expect(css).toBe('[data-bn="self"]{color:#fff}');
@@ -196,7 +197,7 @@ describe("声明白名单", () => {
 	});
 });
 
-describe("position 只归伪元素", () => {
+describe("position 的值域", () => {
 	it("伪元素放行,且值域限 static/relative/absolute", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]::before{content:"";position:absolute;inset:0}
@@ -208,11 +209,10 @@ describe("position 只归伪元素", () => {
 		expect(warnings).toHaveLength(1);
 	});
 
-	it("宿主(非伪元素)写 position 一律丢弃", () => {
+	it("宿主(非伪元素)写 position 也放行 —— 与 dashboard 相反,卡片没有布局可被顶掉", () => {
 		const { css, warnings } = ok(`[data-bn="self"]{position:relative;border-width:1px}`, "header");
-		expect(css).not.toContain("position");
-		expect(css).toContain("border-width:1px");
-		expect(warnings.join()).toContain("position");
+		expect(css).toBe('[data-bn="self"]{position:relative;border-width:1px}');
+		expect(warnings).toEqual([]);
 	});
 });
 
@@ -253,5 +253,50 @@ describe("体积闸", () => {
 	it("空串 / 全被丢弃 → ok 且产物为空串", () => {
 		expect(ok("", "header").css).toBe("");
 		expect(ok("div{color:red}", "header").css).toBe("");
+	});
+});
+
+describe("卡片自己的属性白名单(布局归皮肤)", () => {
+	it("间距 / 对齐 / 文字属性放行,dashboard 的观感属性照样放行", () => {
+		const { css, warnings } = ok(
+			`[data-bn="self"]{padding:4px 16px;margin-top:8px;gap:6px;display:flex;align-items:center;justify-self:end;font-size:13px;line-height:1.4;text-align:right;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.2)}`,
+			"header",
+		);
+		for (const p of [
+			"padding:4px 16px",
+			"margin-top:8px",
+			"gap:6px",
+			"display:flex",
+			"align-items:center",
+			"justify-self:end",
+			"font-size:13px",
+			"line-height:1.4",
+			"text-align:right",
+			"white-space:nowrap",
+			"box-shadow:",
+		]) {
+			expect(css, p).toContain(p);
+		}
+		expect(warnings).toEqual([]);
+	});
+
+	it("宿主上的 position 放行(角标 / 水印靠它),值域仍只有 static / relative / absolute", () => {
+		const { css, warnings } = ok(
+			'[data-bn="self"]{position:relative}[data-bn="avatar"]{position:absolute;top:0}[data-bn="name"]{position:sticky}',
+			"header",
+		);
+		expect(css).toContain('[data-bn="self"]{position:relative}');
+		expect(css).toContain("position:absolute;top:0");
+		expect(css).not.toContain("sticky");
+		expect(warnings.some((w) => w.includes("position"))).toBe(true);
+	});
+
+	it("点击面那几样仍然进不来:pointer-events / cursor / user-select", () => {
+		const { css, warnings } = ok(
+			'[data-bn="self"]{pointer-events:none;cursor:pointer;user-select:none;padding:1px}',
+			"header",
+		);
+		expect(css).toBe('[data-bn="self"]{padding:1px}');
+		expect(warnings).toHaveLength(3);
 	});
 });

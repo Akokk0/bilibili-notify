@@ -18,6 +18,8 @@
 
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_CSS_EXACT_PROPS,
+	CARD_SKIN_CSS_PROP_PREFIXES,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
@@ -36,7 +38,19 @@ const CARD_SCOPE = {
 	allowKeyframes: false,
 	maxBytes: CARD_SKIN_LIMITS.maxCssBytes,
 	hostOpacityFloor: null,
+	props: {
+		exact: new Set<string>(CARD_SKIN_CSS_EXACT_PROPS),
+		prefixes: CARD_SKIN_CSS_PROP_PREFIXES,
+	},
+	hostPosition: true,
 } satisfies Omit<ScopedCssOptions, "hooks">;
+
+/** 自定义块 `style=""` 属性用的声明级规格(与块级同一份名单)。 */
+export const CARD_DECL_OPTIONS = {
+	hostOpacityFloor: CARD_SCOPE.hostOpacityFloor,
+	props: CARD_SCOPE.props,
+	hostPosition: CARD_SCOPE.hostPosition,
+} as const;
 
 /** 根块(卡片外框)的两层挂点:外层渐变 / 背景图,内层玻璃。 */
 const FRAME_HOOKS: ReadonlySet<string> = new Set(Object.keys(CARD_SKIN_FRAME_HOOKS));

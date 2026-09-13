@@ -33,6 +33,7 @@ import {
 	type Token,
 } from "parse5";
 import { sanitizeDeclarationList } from "../skins/scoped-css.js";
+import { CARD_DECL_OPTIONS } from "./css-sanitizer.js";
 
 /** 标签白名单:排版壳 + 行内强调 + 换行 + 图。列表 / 标题 / 表格在卡片上没有用武之地。 */
 const ALLOWED_TAGS = new Set([
@@ -184,7 +185,7 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 		}
 		// style:交给 CSS 那一层的声明级过滤 —— 同一份属性白名单、`url()` 拒、
 		// `position` 拒(内联样式没有伪元素,「装饰」那一档整个不适用)。
-		const cleaned = sanitizeDeclarationList(attr.value, { hostOpacityFloor: null });
+		const cleaned = sanitizeDeclarationList(attr.value, CARD_DECL_OPTIONS);
 		if (!cleaned) {
 			ctx.warnings.push(`<${tag}> 的 style 解析不动,整个属性丢弃`);
 			continue;

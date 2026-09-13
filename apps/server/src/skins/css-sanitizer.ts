@@ -15,7 +15,12 @@
  *   一样让按钮隐形,而那是主题系统的固有能力,拦不掉也不该拦。装皮肤 = 信任那套皮肤。
  */
 
-import { SKIN_CSS_HOOK_MAP, SKIN_LIMITS } from "@bilibili-notify/contract";
+import {
+	SKIN_CSS_EXACT_PROPS,
+	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_PROP_PREFIXES,
+	SKIN_LIMITS,
+} from "@bilibili-notify/contract";
 import type { CssNode, List, ListItem } from "css-tree";
 // 走自包含 dist bundle,不走默认入口:理由见 scoped-css.ts 顶部。
 import { generate, parse } from "css-tree/dist/csstree.esm";
@@ -50,6 +55,8 @@ const DASHBOARD_SCOPE: ScopedCssOptions = {
 	allowKeyframes: true,
 	maxBytes: MAX_SKIN_CSS_BYTES,
 	hostOpacityFloor: HOST_OPACITY_FLOOR,
+	props: { exact: new Set<string>(SKIN_CSS_EXACT_PROPS), prefixes: SKIN_CSS_PROP_PREFIXES },
+	hostPosition: false,
 };
 
 export function sanitizeSkinCss(input: string): SanitizeCssResult {

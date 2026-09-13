@@ -112,14 +112,17 @@ describe("style 交给 CSS 那一层的声明级过滤", () => {
 		expect(warnings.join()).toContain("url");
 	});
 
-	it("position 丢掉 —— 自定义块不许从网格里挣出去", () => {
-		const { html, warnings } = ok('<div style="position:absolute;top:0;color:#fff">x</div>');
-		expect(html).not.toContain("position");
+	it("position 与布局属性放行(卡片皮肤管的就是布局),sticky / fixed 仍不行", () => {
+		const { html, warnings } = ok(
+			'<div style="position:absolute;top:0;padding:4px;color:#fff">x</div><b style="position:fixed">y</b>',
+		);
+		expect(html).toContain("position:absolute;top:0;padding:4px;color:#fff");
+		expect(html).not.toContain("fixed");
 		expect(warnings.join()).toContain("position");
 	});
 
 	it("白名单外的属性丢掉;全丢光则整个 style 不落盘", () => {
-		const { html } = ok('<div style="display:none;visibility:hidden">x</div>');
+		const { html } = ok('<div style="pointer-events:none;cursor:pointer">x</div>');
 		expect(html).toBe("<div>x</div>");
 	});
 });

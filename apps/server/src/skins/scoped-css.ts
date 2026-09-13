@@ -23,7 +23,6 @@
  * 且保留 hook 形式不翻译(翻译在注入 / 渲染层做,内部选择器重构不固化进存量皮肤)。
  */
 
-import { SKIN_CSS_EXACT_PROPS, SKIN_CSS_PROP_PREFIXES } from "@bilibili-notify/contract";
 import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tree";
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
@@ -64,6 +63,17 @@ export interface ScopedCssOptions {
 	 * 隐形,而那是主题系统的固有能力,拦不掉也不该拦。装皮肤 = 信任那套皮肤。
 	 */
 	hostOpacityFloor: number | null;
+	/**
+	 * 属性白名单:精确名 + 前缀。dashboard 与卡片各一份(前者「布局归宿主」,后者
+	 * 「皮肤就是管布局的」),名单本身住各自的契约,这里只查表。
+	 */
+	props: { exact: ReadonlySet<string>; prefixes: readonly string[] };
+	/**
+	 * 宿主(非伪元素)上放不放行 `position`。dashboard 不放(顶栏靠 sticky 吸顶,被顶掉
+	 * 就散架);卡片放 —— 块里的角标、水印本来就靠它,出图没有布局可被顶掉。
+	 * 值域(static / relative / absolute)两边同规。
+	 */
+	hostPosition: boolean;
 }
 
 const PSEUDO_CLASSES = new Set([
@@ -78,12 +88,6 @@ const PSEUDO_CLASSES = new Set([
 	"nth-of-type",
 ]);
 const PSEUDO_ELEMENTS = new Set(["before", "after"]);
-
-/**
- * 属性白名单查表用的 Set —— 名单本身在契约里({@link SKIN_CSS_EXACT_PROPS}),
- * 两份造皮肤的提示词照同一份数据生成说明。这里只是把它转成 O(1) 的形状。
- */
-const EXACT_PROPS = new Set<string>(SKIN_CSS_EXACT_PROPS);
 
 /** 值里的取网/执行面函数 —— 出现即丢该声明。 */
 const FORBIDDEN_VALUE = ["url(", "image-set(", "element(", "expression(", "src("];
@@ -112,9 +116,12 @@ export interface DeclScope {
 	keyframes: boolean;
 }
 
-function isAllowedProp(prop: string): boolean {
+/** 声明级过滤要看的那几格 options。 */
+export type DeclOptions = Pick<ScopedCssOptions, "hostOpacityFloor" | "props" | "hostPosition">;
+
+function isAllowedProp(prop: string, props: ScopedCssOptions["props"]): boolean {
 	const p = prop.toLowerCase();
-	return EXACT_PROPS.has(p) || SKIN_CSS_PROP_PREFIXES.some((prefix) => p.startsWith(prefix));
+	return props.exact.has(p) || props.prefixes.some((prefix) => p.startsWith(prefix));
 }
 
 function valueOfAttr(value: CssNode | null): string | null {
@@ -208,7 +215,7 @@ function isAllowedSelector(selector: CssNode, hooks: ReadonlySet<string>): boole
 export function rejectDeclaration(
 	decl: Declaration,
 	scope: DeclScope,
-	opts: Pick<ScopedCssOptions, "hostOpacityFloor">,
+	opts: DeclOptions,
 ): string | null {
 	const prop = decl.property.toLowerCase();
 	// **谁算「装饰」,只准有这一处口径**(下方 position/opacity 那几支同用;来历见
@@ -219,7 +226,7 @@ export function rejectDeclaration(
 	// 是清洗时补进产物 —— 于是存盘/导出的 CSS 里躺着一句白名单外的声明,下一轮清洗
 	// 对着自己上一轮的笔迹刷「已丢弃」(2026-08-25 主人导入自家导出的包,12 条)。
 	// 不落盘,警告才永远指向作者真写了的东西。
-	if (!isAllowedProp(prop)) return `属性 ${prop} 不在白名单`;
+	if (!isAllowedProp(prop, opts.props)) return `属性 ${prop} 不在白名单`;
 	const value = generate(decl.value).toLowerCase();
 	// 反斜杠 = CSS 转义,而转义在 tokenizer 里**先于**ident 判定解开:`\75 rl(` 到
 	// 浏览器手上就是 `url(`,下面那圈子串匹配一个字都看不见。白名单里没有哪个属性
@@ -257,7 +264,7 @@ export function rejectDeclaration(
 		}
 	}
 	if (prop === "position") {
-		if (!decoration) {
+		if (!decoration && !opts.hostPosition) {
 			return scope.keyframes
 				? `position 不准写进 @keyframes —— 那段动画挂得到宿主身上,会顶掉它的布局`
 				: `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
@@ -431,7 +438,7 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
  */
 export function sanitizeDeclarationList(
 	input: string,
-	opts: Pick<ScopedCssOptions, "hostOpacityFloor">,
+	opts: DeclOptions,
 ): { css: string; warnings: string[] } | null {
 	let ast: CssNode;
 	try {
