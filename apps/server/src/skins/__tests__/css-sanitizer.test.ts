@@ -54,6 +54,22 @@ describe("选择器白名单", () => {
 		expect(warnings).toHaveLength(5);
 	});
 
+	it("挂了 hook 也不行:同一段里掺了 class / 标签 / id → 整条丢弃", () => {
+		// 上面那条测的全是「一个挂点都没有」的选择器,前一道闸就收了;这条钉的是穿过
+		// 那道闸之后的分支 —— 段里有挂点、但同段还掺着别的件。2026-09-13 卡片皮肤那
+		// 一支验红时发现这一支此前没有守卫(实现是对的,只是没人钉)。
+		for (const evil of [
+			'[data-bn="glass"].bn-glass{color:red}',
+			'div[data-bn="glass"]{color:red}',
+			'#root[data-bn="glass"]{color:red}',
+			'[data-bn="glass"][class~="x"]{color:red}',
+		]) {
+			const { css, warnings } = ok(evil);
+			expect(css, evil).toBe("");
+			expect(warnings.join(), evil).toContain("不在 hook 白名单");
+		}
+	});
+
 	it("多选择器逗号列表:只要有一个非法就整条丢弃(不做部分保留)", () => {
 		const { css, warnings } = ok(`[data-bn="glass"], div { opacity: 0.9; }`);
 		expect(css).not.toContain("opacity");
