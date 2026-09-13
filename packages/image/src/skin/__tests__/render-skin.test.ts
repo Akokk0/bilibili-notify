@@ -290,6 +290,16 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 		expect(style).not.toContain("--bn-card-color-end");
 	});
 
+	it("皮肤路径的玻璃层不再 inline 白纱 / 模糊 / 阴影 / 内边距 —— 全由皮肤 CSS 的 glass 规则写", async () => {
+		const { doc } = await render(card());
+		const style = doc.querySelector("[data-bn~='glass']")?.getAttribute("style") ?? "";
+		for (const prop of ["background", "backdrop-filter", "box-shadow", "padding", "min-width"]) {
+			expect(style).not.toContain(`${prop}:`);
+		}
+		// 网格那几句还在(它们是皮肤路径自己注的)。
+		expect(style).toContain("display:grid");
+	});
+
 	it("皮肤路径的外框不再自画底色 —— 底色由皮肤 CSS 的 frame 规则写(决策 15 的 🔗)", async () => {
 		const { doc } = await render(card());
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";

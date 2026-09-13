@@ -172,7 +172,7 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 		// 出厂默认皮肤的 guard 卡带一句 `[data-bn="glass"]{height:190px;…}`;渲染器把它
 		// 翻成 `~=` 形式(单图图廊那种双挂点容器要靠它才选得中)。
 		// 验红:把 renderCardWithSkin 的 extraCss 那一路掐掉,这条红。
-		expect(h.captured[0]).toContain('[data-bn~="glass"]{height:190px');
+		expect(h.captured[0]).toMatch(/\[data-bn~="glass"\]\{[^}]*height:190px/);
 	});
 
 	it("宽度取皮肤定的 card.width,不是写死的 600", async () => {

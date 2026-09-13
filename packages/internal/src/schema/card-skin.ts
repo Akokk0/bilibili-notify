@@ -366,6 +366,21 @@ export const DEFAULT_FRAME_BG_RULE = cardSkinFrameBgRule(
 	DEFAULT_CARD_GRADIENT[1],
 );
 const FRAME_BG_USER = DEFAULT_FRAME_BG_RULE;
+
+/**
+ * 默认皮肤各卡玻璃层的规则(外框在皮肤路径不再 inline 白纱,见 `blocks/frames.tsx` 的
+ * `ownGlass`)。白纱与模糊吃外框上注的两枚玻璃变量;其余(阴影 / 内边距 / 最小宽)是各卡
+ * 原来 inline 的那几句,逐值照抄。写成 css-tree `generate` 的规范形态(`.12` 不写 `0.12`),
+ * 装包门那条「默认皮肤一字不改地过门」钉着。
+ */
+const GLASS_BASE =
+	"background:rgba(255,255,255,var(--bn-card-glass-opacity));backdrop-filter:blur(var(--bn-card-glass-blur))";
+const GLASS_SHADOW = "box-shadow:0 4px 16px rgba(0,0,0,.12)";
+const GLASS_LIVE = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW};min-width:360px;padding-top:14px;padding-bottom:10px}`;
+const GLASS_DYNAMIC = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW};padding-top:14px;padding-bottom:12px}`;
+/** SC / 上舰的阴影在 class 上(`shadow-[…]`),这里只管白纱与模糊。 */
+const GLASS_PLAIN = `[data-bn="glass"]{${GLASS_BASE}}`;
+const GLASS_ROAST = `[data-bn="glass"]{${GLASS_BASE};${GLASS_SHADOW}}`;
 const FRAME_BG_TIER = cardSkinFrameBgRule(
 	"var(--bn-card-tier-color)",
 	"var(--bn-card-tier-color-end)",
@@ -770,7 +785,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	cards: {
 		live: {
 			width: 600,
-			css: FRAME_BG_USER,
+			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
 			blocks: stack([
 				["cover"],
 				["header", 14],
@@ -782,7 +797,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		dynamic: {
 			width: 600,
-			css: FRAME_BG_USER,
+			css: `${FRAME_BG_USER}${GLASS_DYNAMIC}`,
 			blocks: stack([
 				["header"],
 				["divider", 12, "divider-1"],
@@ -794,7 +809,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		sc: {
 			width: 290,
-			css: FRAME_BG_TIER,
+			css: `${FRAME_BG_TIER}${GLASS_PLAIN}`,
 			blocks: stack([["amount"], ["divider", 15, "divider-1"], ["sender", 12], ["message", 12]]),
 		},
 		guard: {
@@ -803,7 +818,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				...Array.from({ length: 8 }, () => ({ fr: 1 })),
 				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
 			],
-			css: `${FRAME_BG_TIER}[data-bn="glass"]{height:190px;align-content:space-between}`,
+			css: `${FRAME_BG_TIER}[data-bn="glass"]{${GLASS_BASE};height:190px;align-content:space-between}`,
 			blocks: [
 				{
 					id: "name",
@@ -828,8 +843,8 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				},
 			],
 		},
-		roastBoard: { width: 600, css: FRAME_BG_USER, blocks: stack([["body"]]) },
-		roastSolo: { width: 430, css: FRAME_BG_USER, blocks: stack([["body"]]) },
-		wordcloud: { width: 720, css: FRAME_BG_USER, blocks: stack([["body"]]) },
+		roastBoard: { width: 600, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
+		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
+		wordcloud: { width: 720, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
 	},
 };

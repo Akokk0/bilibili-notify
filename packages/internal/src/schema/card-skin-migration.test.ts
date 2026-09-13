@@ -10,7 +10,12 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { type CardBlock, type CardLayout, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "./card-layout";
-import { type CardSkinBlock, DEFAULT_CARD_SKIN } from "./card-skin";
+import {
+	type CardSkinBlock,
+	type CardSkinManifest,
+	DEFAULT_CARD_SKIN,
+	DEFAULT_FRAME_BG_RULE,
+} from "./card-skin";
 import { cardLayoutToSkin } from "./card-skin-migration";
 
 /** 一份 v7 版式:除了指定的卡种,其余照出厂默认。 */
@@ -250,6 +255,9 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	const G = { start: "#ff0000", end: "#00ff00" };
 	const RULE = (s: string, e: string) =>
 		`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${s},${e}))}`;
+	/** 默认那张卡的整段 css,只把出厂 frame 规则换成给定的那条(玻璃层等其余规则原样跟着)。 */
+	const withRule = (kind: keyof CardSkinManifest["cards"], rule: string): string =>
+		(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").replace(DEFAULT_FRAME_BG_RULE, rule);
 
 	it("不传 colors → 外框 CSS 一字不动", () => {
 		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards.live?.css).toBe(
@@ -260,7 +268,7 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	it("全局一份颜色 → 五种吃用户色的卡外框渐变都换掉", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
 		for (const kind of ["live", "dynamic", "roastBoard", "roastSolo", "wordcloud"] as const) {
-			expect(skin.cards[kind]?.css).toBe(RULE(G.start, G.end));
+			expect(skin.cards[kind]?.css).toBe(withRule(kind, RULE(G.start, G.end)));
 		}
 	});
 
@@ -276,8 +284,8 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 			base: G,
 			byKind: { live: kindG },
 		});
-		expect(skin.cards.live?.css).toBe(RULE(kindG.start, kindG.end));
-		expect(skin.cards.dynamic?.css).toBe(RULE(G.start, G.end));
+		expect(skin.cards.live?.css).toBe(withRule("live", RULE(kindG.start, kindG.end)));
+		expect(skin.cards.dynamic?.css).toBe(withRule("dynamic", RULE(G.start, G.end)));
 	});
 
 	it("**换掉**默认那条规则而不是追加 —— 整段 CSS 里只有一条 frame background", () => {
@@ -292,7 +300,7 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 			base: G,
 			byKind: { guard: G },
 		});
-		expect(skin.cards.guard?.css).toContain('[data-bn="glass"]{height:190px');
+		expect(skin.cards.guard?.css).toMatch(/\[data-bn="glass"\]\{[^}]*height:190px/);
 		expect(skin.cards.guard?.css).not.toContain(G.start);
 	});
 });

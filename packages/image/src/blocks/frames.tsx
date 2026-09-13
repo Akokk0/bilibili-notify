@@ -15,7 +15,8 @@
  * `extra` 是**皮肤路径专用**的附加:
  * - `glass` 把玻璃层变成 12 列网格容器(模板路径不传 → 玻璃层与今天一模一样);
  * - `frame` 往外层注皮肤变量(`--bn-card-*`);**且皮肤路径的外层不再 inline 底色**
- *   (见 `ownBg`),底色由皮肤 CSS 的 frame 规则写;
+ *   (见 `ownBg`),底色由皮肤 CSS 的 frame 规则写;玻璃层同理(见 `ownGlass`),白纱 /
+ *   模糊 / 阴影 / 内边距由皮肤 CSS 的 glass 规则写;
  * - `width` 只有锐评两张卡用得上(它们的宽度写在外框 inline style 里,不像别的卡靠
  *   `renderCard` 的 htmlWidth)。
  *
@@ -75,6 +76,24 @@ function ownBg(extra: FrameExtra | undefined, bg: () => string): { background?: 
 	return extra ? {} : { background: bg() };
 }
 
+/**
+ * 玻璃层 inline 里的白纱 / 模糊 / 阴影 / 内边距 —— 同样**只有模板路径才自画**。
+ *
+ * 皮肤路径归默认皮肤的 `[data-bn="glass"]` 规则(吃外框上注的 `--bn-card-glass-opacity` /
+ * `--bn-card-glass-blur`),一套皮肤想把玻璃整个关掉、改内边距,写 CSS 就压得过;留在
+ * inline 的话皮肤永远压不过(清洗器摘 `!important`)。对象形态与字符串形态各一个入口,
+ * 因为六种外框两种写法都有,而两种写法在模板路径的序列化结果必须逐字节不变。
+ */
+function ownGlass<T extends Record<string, string>>(
+	extra: FrameExtra | undefined,
+	decls: T,
+): T | Record<string, never> {
+	return extra ? {} : decls;
+}
+function ownGlassText(extra: FrameExtra | undefined, text: string): string {
+	return extra ? "" : text;
+}
+
 /** 玻璃层的白纱与模糊。`glassClear` 优先:白层透明 + 无模糊(0 透明度仍保留磨砂)。 */
 function glassOf(
 	p: { glassOpacity?: number; glassClear?: boolean },
@@ -110,11 +129,11 @@ function roastFrame(
 				data-bn="glass"
 				class="overflow-hidden rounded-[12px]"
 				style={[
-					{
+					ownGlass(extra, {
 						background: `rgba(255,255,255,${glass})`,
 						backdropFilter: `blur(${blur}px)`,
 						boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-					},
+					}),
 					extra?.glass,
 				]}
 			>
@@ -144,9 +163,10 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				<div
 					data-bn="glass"
 					class="overflow-hidden rounded-xl"
-					style={`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;${
-						extra?.glass ?? ""
-					}`}
+					style={`${ownGlassText(
+						extra,
+						`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`,
+					)}${extra?.glass ?? ""}`}
 				>
 					{children}
 				</div>
@@ -171,9 +191,10 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				<div
 					data-bn="glass"
 					class="w-full overflow-hidden rounded-[12px]"
-					style={`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;${
-						extra?.glass ?? ""
-					}`}
+					style={`${ownGlassText(
+						extra,
+						`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;`,
+					)}${extra?.glass ?? ""}`}
 				>
 					{children}
 				</div>
@@ -196,10 +217,10 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 					data-bn="glass"
 					class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
 					style={[
-						{
+						ownGlass(extra, {
 							background: `rgba(255,255,255,${glass})`,
 							backdropFilter: `blur(${blur}px)`,
-						},
+						}),
 						extra?.glass,
 					]}
 				>
@@ -224,10 +245,10 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 					data-bn="glass"
 					class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
 					style={[
-						{
+						ownGlass(extra, {
 							background: `rgba(255,255,255,${glass})`,
 							backdropFilter: `blur(${blur}px)`,
-						},
+						}),
 						extra?.glass,
 					]}
 				>
@@ -252,9 +273,10 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			<div
 				data-bn="glass"
 				class="overflow-hidden rounded-[12px]"
-				style={`background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);${
-					extra?.glass ?? ""
-				}`}
+				style={`${ownGlassText(
+					extra,
+					"background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);",
+				)}${extra?.glass ?? ""}`}
 			>
 				{children}
 			</div>

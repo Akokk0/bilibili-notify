@@ -321,6 +321,18 @@ describe("DEFAULT_CARD_SKIN", () => {
 		}
 	});
 
+	it("七种卡的玻璃层白纱 / 模糊都由皮肤 CSS 写(glass 规则吃玻璃变量),外框不 inline", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			const css = DEFAULT_CARD_SKIN.cards[kind]?.css ?? "";
+			expect(css).toMatch(
+				/\[data-bn="glass"\]\{[^}]*background:rgba\(255,255,255,var\(--bn-card-glass-opacity\)\)/,
+			);
+			expect(css).toMatch(
+				/\[data-bn="glass"\]\{[^}]*backdrop-filter:blur\(var\(--bn-card-glass-blur\)\)/,
+			);
+		}
+	});
+
 	it("七种卡都在,id 是保留字", () => {
 		for (const kind of CARD_SKIN_KINDS) expect(DEFAULT_CARD_SKIN.cards[kind], kind).toBeDefined();
 		expect(DEFAULT_CARD_SKIN_ID).toBe("default");
