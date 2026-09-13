@@ -1,18 +1,24 @@
 /**
- * **按挂点收窄的 CSS 清洗核心** —— 白名单制(只放行认识的选择器/属性/at-rule,不是过滤
- * 坏的),用 css-tree 真 parser 走 AST。
+ * **按挂点收窄的 CSS 清洗核心** —— 用 css-tree 真 parser 走 AST。
  *
  * 这一份是**共用件**:dashboard 皮肤(`skins/css-sanitizer.ts`)与卡片皮肤
  * (`card-skins/css-sanitizer.ts`)是同一套方言的两个作用域,差别只在
- * {@link ScopedCssOptions} 那几格 —— 认哪些挂点、放不放行 `@keyframes`、上限多少、
- * 宿主的 opacity 有没有下限。红线(选择器每段都得挂 hook、属性白名单、`url()` 与转义
- * 一律拒、`position` 只归伪元素、`!important` 一律摘)**两边同一份实现**,不许各抄一遍
- * —— 抄第二遍就是它破的方式(见下面 `decoration` 那段的来历)。
+ * {@link ScopedCssOptions} 那几格 —— 认哪些挂点、选择器与属性各走哪档策略、放不放行
+ * `@keyframes`、上限多少、宿主的 opacity 有没有下限。真红线(值里的取网写法与转义一律
+ * 拒、`position` 的值域、`!important` 一律摘)**两边同一份实现**,不许各抄一遍 ——
+ * 抄第二遍就是它破的方式(见下面 `decoration` 那段的来历)。
  *
- * 红线明细(dashboard 那边二轮 grilling 定案,卡片皮肤照搬):
- * - 选择器只准 `[data-bn="<hook>"]`(hook ∈ `opts.hooks`)+ 伪类/伪元素/组合器
- * - 声明只放行视觉属性;position 禁 fixed/sticky;伪元素 content 只准空串/none;
- *   pointer-events / display / visibility 不开
+ * **两档策略**(ADR-0014 决策 11 / 13 的 🔗,2026-09-13「开放重写」):
+ * - 选择器:`hooked`(dashboard)每段都得挂着挂点;`free`(卡片)其余的段随便写,
+ *   清洗时把不以挂点起头的那条补上一个后代前缀 —— 作用域照样收得住,而「换个头像圆角」
+ *   之外的花活不用再追着 CSS 新特性补洞。
+ * - 属性:白名单(dashboard,「布局归宿主」)与黑名单(卡片,出图是静态 PNG,没有
+ *   点击面,dashboard 那几条 UI 欺骗的顾虑整个不成立)。
+ *
+ * 红线明细:
+ * - `hooked` 档的选择器只准 `[data-bn="<hook>"]`(hook ∈ `opts.hooks`)+ 伪类/伪元素/
+ *   组合器;`free` 档里 `[data-bn=…]` 仍只认**精确等号**且按表对挂点(挂点是稳定 API)
+ * - position 禁 fixed/sticky;伪元素 content 只准空串/none
  * - 值里任何取网函数(url/image-set/element/src)→ 丢弃该声明;**值里出现反斜杠
  *   一律丢弃** —— 转义在 tokenizer 里先于 ident 判定解开,`\75 rl(` 就是 `url(`
  * - `@keyframes` 放行时名必须 `skin-` 前缀(不撞内置 bn-* 动画);`@media` 递归清洗;
@@ -23,17 +29,64 @@
  * 且保留 hook 形式不翻译(翻译在注入 / 渲染层做,内部选择器重构不固化进存量皮肤)。
  */
 
-import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tree";
+import type {
+	Atrule,
+	AttributeSelector,
+	CssNode,
+	Declaration,
+	List,
+	ListItem,
+	Rule,
+} from "css-tree";
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
 // (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
-import { generate, parse } from "css-tree/dist/csstree.esm";
+import { generate, parse, walk } from "css-tree/dist/csstree.esm";
 
 export type SanitizeCssResult =
 	| { ok: true; css: string; warnings: string[] }
 	| { ok: false; errors: string[] };
 
-/** 一个作用域的全部可调项。默认值一个都没有 —— 每个调用点都得自己想清楚。 */
+/**
+ * 属性策略 —— 白名单与黑名单两种形态,不是「白名单 + 几个例外」。
+ *
+ * - `{ exact, prefixes }`:dashboard 那一档。信条是「布局归宿主、皮肤只管观感」,
+ *   名单外的一律拒。
+ * - `{ deny }`:卡片那一档(ADR-0014 决策 13 的 🔗)。出图是静态 PNG,没有点击面,
+ *   「看不见却点得到」那一类顾虑整个不成立;真正危险的只有**值**里的取网 / 执行写法,
+ *   而那一层(`FORBIDDEN_VALUE` + 反斜杠)与名单无关、一条不松。所以名单只列属性名
+ *   本身就是执行面的那几个。
+ *
+ * 两种形态都只管属性**名**。`position` 的值域、`content` 的值域、`!important` 的摘除
+ * 是另一码事,两档同规。
+ */
+export type CssPropPolicy =
+	| { exact: ReadonlySet<string>; prefixes: readonly string[] }
+	| { deny: ReadonlySet<string> };
+
+/**
+ * 选择器策略。
+ *
+ * - `hooked`:每个复合段都得挂着挂点(来历见 {@link isAllowedSelector} 上方那两桩审计)。
+ * - `free`:挂点之外的段随便写(class / 标签 / 属性 / 伪类 / `:is` `:has` `:not` /
+ *   伪元素),清洗时保证**每条复杂选择器都以挂点起头** —— 不以 `leadHooks` 里的挂点
+ *   起头的,前面补一个 `[data-bn="<fallbackHook>"] ` 后代前缀。作用域是靠这个前缀收住
+ *   的,不是靠逐段问挂点,所以 `:has()` / 属性选择器再花也越不出块去。
+ *
+ * `free` 档里 `[data-bn=…]` 的写法仍然只认**精确等号**且按 `opts.hooks` 对表:挂点是
+ * 稳定 API,`~=` / `^=` / `*=` 能一把网住一串挂点,放行等于对表那道闸不存在。
+ */
+export type SelectorPolicy =
+	| { mode: "hooked" }
+	| {
+			mode: "free";
+			/** 可以直接打头的挂点(块 = `self`;根 = `frame` / `glass`)。 */
+			leadHooks: ReadonlySet<string>;
+			/** 缺前缀时补哪一个(块 = `self`;根 = `frame`)。 */
+			fallbackHook: string;
+	  };
+
+/** 一个作用域的全部可调项。只有 {@link ScopedCssOptions.selectors} 有默认值。 */
 export interface ScopedCssOptions {
 	/**
 	 * 允许出现在 `[data-bn="…"]` 里的挂点名。挂点名是**对外 API**(皮肤会写死它们),
@@ -64,16 +117,28 @@ export interface ScopedCssOptions {
 	 */
 	hostOpacityFloor: number | null;
 	/**
-	 * 属性白名单:精确名 + 前缀。dashboard 与卡片各一份(前者「布局归宿主」,后者
-	 * 「皮肤就是管布局的」),名单本身住各自的契约,这里只查表。
+	 * 属性策略({@link CssPropPolicy})。dashboard 走白名单、卡片走黑名单;名单本身住
+	 * 各自的契约 / 清洗层,这里只查表。
 	 */
-	props: { exact: ReadonlySet<string>; prefixes: readonly string[] };
+	props: CssPropPolicy;
+	/**
+	 * 选择器策略({@link SelectorPolicy})。**缺省 = `hooked`** —— 这一格是后加的
+	 * (ADR-0014 的「开放重写」),默认值就是加它之前的行为,dashboard 那一档因此
+	 * 一个字都不用改。新作用域一律显式写出来。
+	 */
+	selectors?: SelectorPolicy;
 	/**
 	 * 宿主(非伪元素)上放不放行 `position`。dashboard 不放(顶栏靠 sticky 吸顶,被顶掉
 	 * 就散架);卡片放 —— 块里的角标、水印本来就靠它,出图没有布局可被顶掉。
 	 * 值域(static / relative / absolute)两边同规。
 	 */
 	hostPosition: boolean;
+	/**
+	 * `content` 放不放行**字符串字面量**。dashboard 不放(界面是活的,伪元素上写一句
+	 * 「已登录」就是伪造界面文案);卡片放 —— 出图上没有可以被冒充的界面,而 `content:"▶"`
+	 * 这种装饰正是自定义皮肤要用的。空串 / none 两边都准;`attr()` / `url()` 两边都拒。
+	 */
+	contentStrings?: boolean;
 }
 
 const PSEUDO_CLASSES = new Set([
@@ -117,10 +182,14 @@ export interface DeclScope {
 }
 
 /** 声明级过滤要看的那几格 options。 */
-export type DeclOptions = Pick<ScopedCssOptions, "hostOpacityFloor" | "props" | "hostPosition">;
+export type DeclOptions = Pick<
+	ScopedCssOptions,
+	"hostOpacityFloor" | "props" | "hostPosition" | "contentStrings"
+>;
 
-function isAllowedProp(prop: string, props: ScopedCssOptions["props"]): boolean {
+function isAllowedProp(prop: string, props: CssPropPolicy): boolean {
 	const p = prop.toLowerCase();
+	if ("deny" in props) return !props.deny.has(p);
 	return props.exact.has(p) || props.prefixes.some((prefix) => p.startsWith(prefix));
 }
 
@@ -206,6 +275,105 @@ function isAllowedSelector(selector: CssNode, hooks: ReadonlySet<string>): boole
 }
 
 /**
+ * 这个属性选择器瞄的是 `data-bn` 吗。
+ *
+ * 属性名要小写着问:HTML 文档里属性名大小写不敏感,`[DATA-BN="price"]` 命中的是同一个
+ * 属性。带命名空间的写法(`*|data-bn`)也得认下来 —— 它同样命中真属性,漏掉就等于给
+ * 「按块对表」开了一道后门。
+ */
+function isHookAttr(node: AttributeSelector): boolean {
+	const name = node.name.name.toLowerCase();
+	return name === "data-bn" || name.endsWith("|data-bn");
+}
+
+/**
+ * `free` 档的校验(只读,不改 AST);返回 null = 放行,字符串 = 丢弃原因。
+ *
+ * 自由的是**挂点之外**的段。`[data-bn=…]` 本身仍是稳定 API,两件事一件都不松:
+ *
+ * - **只认精确等号**。`~=` 在多挂点容器(图廊那个挂 `"pics pic"` 的)上一把网住一串,
+ *   `^=` / `*=` 更是通配 —— 放行的话下面那句「按表对挂点」形同虚设。裸 `[data-bn]`
+ *   同理(它命中每一个带挂点的元素)。
+ * - **按 `hooks` 对表**。表是「这个块内部有什么」,不是「全仓所有挂点」。
+ *
+ * 藏在函数式伪类里的也要问 —— 所以走 css-tree 的 `walk` 而不是只扫顶层 children:
+ * `:has([data-bn="price"])` 一样摸得到别的块。解析器认不出来的那一截会落成 `Raw`,
+ * 里头夹着 `data-bn` 就判不了它是哪种写法、指哪个挂点 —— 判不了的一律拒。
+ */
+function checkFreeSelector(selector: CssNode, hooks: ReadonlySet<string>): string | null {
+	if (selector.type !== "Selector") return "不是一条选择器";
+	if (selector.children.isEmpty) return "空选择器";
+	const reasons: string[] = [];
+	// 起头的挂点后面紧跟兄弟组合器(`+` / `~`)= 选的是**块的兄弟**,也就是别的块 ——
+	// 前缀收住的只有后代方向,这一支得单独拒。(挂点起头但走后代 / 子代的照旧。)
+	const first = selector.children.first;
+	const second = first === null ? null : selector.children.toArray()[1];
+	if (
+		first !== null &&
+		first.type === "AttributeSelector" &&
+		isHookAttr(first) &&
+		second !== undefined &&
+		second !== null &&
+		second.type === "Combinator" &&
+		(second.name === "+" || second.name === "~")
+	) {
+		reasons.push("里挂点后面紧跟兄弟组合器,会选到别的块");
+	}
+	walk(selector, (node: CssNode) => {
+		if (node.type === "Raw") {
+			if (node.value.includes("data-bn")) reasons.push("里有解析不动的 data-bn 片段");
+			return;
+		}
+		if (node.type !== "AttributeSelector" || !isHookAttr(node)) return;
+		if (node.matcher !== "=") {
+			reasons.push(`里的 data-bn 只认精确等号(写的是 ${node.matcher ?? "裸属性"})`);
+			return;
+		}
+		const hook = valueOfAttr(node.value);
+		if (hook === null || !hooks.has(hook)) {
+			reasons.push(`里的挂点「${hook ?? ""}」不在这个块的挂点表里`);
+		}
+	});
+	return reasons[0] ?? null;
+}
+
+/**
+ * `free` 档的归一:让这条复杂选择器以挂点起头。就地改 AST。
+ *
+ * 判据是**第一个节点**就是 `[data-bn="<leadHooks 里的某个>"]`,不是「字符串以它开头」,
+ * 也不是「这一支里有它」:`div[data-bn="self"]` 是一个复合段(块自己还得是 div),
+ * `.x [data-bn="self"]` 瞄的是块里的另一个东西 —— 两者都不是「块自己打头」,都该补前缀。
+ * 补上去的前缀是后代组合器,所以补错也只会让选择器更窄,越不出块去。
+ *
+ * 存盘形态因此永远只有 `[data-bn="…"]` 这一种写法(css-tree `generate` 的产物),
+ * 渲染器那边的翻译(`packages/image/src/skin/render-skin.tsx`)靠的正是这一点。
+ */
+function prefixFreeSelector(
+	selector: CssNode,
+	policy: Extract<SelectorPolicy, { mode: "free" }>,
+): void {
+	if (selector.type !== "Selector") return;
+	const first = selector.children.first;
+	if (
+		first !== null &&
+		first.type === "AttributeSelector" &&
+		isHookAttr(first) &&
+		first.matcher === "=" &&
+		policy.leadHooks.has(valueOfAttr(first.value) ?? "")
+	) {
+		return;
+	}
+	selector.children.prependData({ type: "Combinator", name: " " });
+	selector.children.prependData({
+		type: "AttributeSelector",
+		name: { type: "Identifier", name: "data-bn" },
+		matcher: "=",
+		value: { type: "String", value: policy.fallbackHook },
+		flags: null,
+	});
+}
+
+/**
  * 声明级过滤;返回 null = 放行,字符串 = 丢弃原因。
  *
  * `scope.pseudo` = 这条规则瞄的是伪元素,`scope.keyframes` = 它在 @keyframes 里。
@@ -226,7 +394,9 @@ export function rejectDeclaration(
 	// 是清洗时补进产物 —— 于是存盘/导出的 CSS 里躺着一句白名单外的声明,下一轮清洗
 	// 对着自己上一轮的笔迹刷「已丢弃」(2026-08-25 主人导入自家导出的包,12 条)。
 	// 不落盘,警告才永远指向作者真写了的东西。
-	if (!isAllowedProp(prop, opts.props)) return `属性 ${prop} 不在白名单`;
+	if (!isAllowedProp(prop, opts.props)) {
+		return "deny" in opts.props ? `属性 ${prop} 在黑名单(执行面)` : `属性 ${prop} 不在白名单`;
+	}
 	const value = generate(decl.value).toLowerCase();
 	// 反斜杠 = CSS 转义,而转义在 tokenizer 里**先于**ident 判定解开:`\75 rl(` 到
 	// 浏览器手上就是 `url(`,下面那圈子串匹配一个字都看不见。白名单里没有哪个属性
@@ -273,7 +443,12 @@ export function rejectDeclaration(
 	}
 	if (prop === "content") {
 		const v = value.trim();
-		if (v !== `""` && v !== `''` && v !== "none") return `content 只准空串或 none`;
+		if (v === `""` || v === `''` || v === "none") return null;
+		if (!opts.contentStrings) return `content 只准空串或 none`;
+		// 卡片那档:字符串字面量 / normal。反斜杠转义在上面已一律拒掉,所以字面量里藏不了
+		// `\75 rl(`;`attr()` / `url()` / 计数器不放行 —— 静态出图用不上,值级过滤也不必为它们开口。
+		const isString = /^(?:"[^"\\]*"|'[^'\\]*')$/.test(v);
+		if (!isString && v !== "normal") return `content 只准字符串字面量、none 或 normal`;
 	}
 	return null;
 }
@@ -355,13 +530,42 @@ function filterRuleList(
 		if (node.type === "Rule") {
 			const prelude = node.prelude;
 			const selectorText = generate(prelude);
-			if (
-				prelude.type !== "SelectorList" ||
-				!everyChild(prelude.children, (sel) => isAllowedSelector(sel, opts.hooks))
-			) {
-				warnings.push(`选择器「${selectorText}」不在 hook 白名单,整条丢弃`);
+			const policy: SelectorPolicy = opts.selectors ?? { mode: "hooked" };
+			// 解析不出选择器列表(prelude 落成 Raw)—— 两档都丢,但话得分开说:`hooked`
+			// 那一档的措辞一个字都不能动 —— 它原来与下面那条合在同一个 if 里,而 dashboard
+			// 的警告文案是存量皮肤的作者见过的。
+			if (prelude.type !== "SelectorList") {
+				warnings.push(
+					policy.mode === "hooked"
+						? `选择器「${selectorText}」不在 hook 白名单,整条丢弃`
+						: `选择器「${selectorText}」解析不动,整条丢弃`,
+				);
 				drop.push(item);
 				return;
+			}
+			if (policy.mode === "hooked") {
+				if (!everyChild(prelude.children, (sel) => isAllowedSelector(sel, opts.hooks))) {
+					warnings.push(`选择器「${selectorText}」不在 hook 白名单,整条丢弃`);
+					drop.push(item);
+					return;
+				}
+			} else {
+				// 先把整个逗号列表验完再动 AST:一支不合格整条就没了,没必要留下改了一半
+				// 的前缀(而且警告要指着**作者写的**那串,不是归一后的产物)。
+				const bad: string[] = [];
+				prelude.children.forEach((sel: CssNode) => {
+					if (bad.length > 0) return;
+					const reason = checkFreeSelector(sel, opts.hooks);
+					if (reason !== null) bad.push(reason);
+				});
+				if (bad.length > 0) {
+					warnings.push(`选择器「${selectorText}」${bad[0]},整条丢弃`);
+					drop.push(item);
+					return;
+				}
+				prelude.children.forEach((sel: CssNode) => {
+					prefixFreeSelector(sel, policy);
+				});
 			}
 			// 逗号列表里**每一支**都瞄伪元素才算装饰规则。混着写的
 			// (`[data-bn="glass"],[data-bn="glass"]::before`)按宿主算 —— 否则那两句
@@ -421,8 +625,9 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
 	filterRuleList(ast, warnings, opts);
 	const css = generate(ast);
 	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);存盘的
-	// 是产物。清洗如今只删不加(硬规矩不落盘),产物不会比原文长 —— 这道闸于是
-	// 只防御「未来某个变换会膨胀」,常态下入口过了这里必过。
+	// 是产物。`free` 档的选择器归一是**会加字节**的(每条缺前缀的规则多一个
+	// `[data-bn="self"] `),所以这道闸不是摆设:贴着上限写的 CSS 归一之后可能真的
+	// 越线,报的也正是存盘那份的大小。
 	if (Buffer.byteLength(css, "utf8") > opts.maxBytes) {
 		return { ok: false, errors: [`清洗后的 CSS 超过 ${opts.maxBytes / 1024}KB 上限`] };
 	}

@@ -131,7 +131,7 @@ describe("install", () => {
 					cards: {
 						live: {
 							width: 600,
-							css: '[data-bn="glass"]{border-radius:12px}.evil{color:red}',
+							css: '[data-bn="glass"]{border-radius:12px}[data-bn="evilhook"]{color:red}',
 							blocks: [
 								{
 									id: "note",
@@ -233,7 +233,7 @@ describe("exportZip", () => {
 });
 
 describe("save(编辑器保存)", () => {
-	it("走的是同一道清洗:`.evil` 与 <script> 进不了盘", async () => {
+	it("走的是同一道清洗:越界挂点与 <script> 进不了盘", async () => {
 		const { id } = await store.install(pack());
 		const { warnings } = await store.save(
 			id,
@@ -241,7 +241,7 @@ describe("save(编辑器保存)", () => {
 				cards: {
 					live: {
 						width: 600,
-						css: '[data-bn="glass"]{border-radius:20px}.evil{color:red}',
+						css: '[data-bn="glass"]{border-radius:20px}[data-bn="evilhook"]{color:red}',
 						blocks: [
 							{
 								id: "note",

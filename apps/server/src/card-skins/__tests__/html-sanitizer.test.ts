@@ -61,6 +61,86 @@ describe("标签白名单", () => {
 		const { html } = ok("<div>a</div><svg><text>b</text></svg>");
 		expect(html).toBe("<div>a</div>");
 	});
+
+	/**
+	 * 内联 svg 是「开放重写」里**单列最后一片、可砍**的那一片(ADR-0014 决策 11 的 🔗)——
+	 * 这一轮没做,所以它连同事件属性一起整段丢。事件属性这一条不看标签:`onload` 挂在
+	 * 哪里都是给 `--no-sandbox` 的 puppeteer 开门。
+	 */
+	it("<svg onload=…> 连壳带事件属性整段丢 —— svg 这轮不做", () => {
+		const { html, warnings } = ok(
+			'<p>留下</p><svg onload="fetch(\'https://evil.example\')"><circle r="4"></circle></svg>',
+		);
+		expect(html).toBe("<p>留下</p>");
+		expect(html).not.toContain("onload");
+		expect(html).not.toContain("evil.example");
+		expect(warnings.join()).toContain("svg");
+	});
+
+	/**
+	 * 放宽的是**排版语义**那一批(ADR-0014 决策 11 的 🔗:列表 / 标题 / 表格 / 分节 /
+	 * 引用 / 代码…)。地板没动:脚本、外链、内嵌文档、表单、音视频一个都不进来。
+	 */
+	it("排版语义标签整批保留:标题 / 列表 / 表格 / 分节 / 引用 / 代码 / 行内标注", () => {
+		const input =
+			"<section><header><h1>标题一</h1><h2>标题二</h2><h3>三</h3><h4>四</h4><h5>五</h5><h6>六</h6></header>" +
+			"<article><ul><li>甲</li></ul><ol><li>乙</li></ol><hr>" +
+			"<table><thead><tr><th>列</th></tr></thead><tbody><tr><td>格</td></tr></tbody></table>" +
+			"<blockquote><p>引</p></blockquote><pre><code>code()</code></pre>" +
+			'<figure><img src="asset:bg.png"><figcaption>图注</figcaption></figure>' +
+			"<p><sup>上</sup><sub>下</sub><mark>标</mark><del>删</del><ins>增</ins><time>09-13</time><abbr>缩</abbr></p>" +
+			"</article><footer>脚</footer></section>";
+		const { html, warnings } = ok(input);
+		for (const tag of [
+			"section",
+			"header",
+			"h1",
+			"h6",
+			"article",
+			"ul",
+			"ol",
+			"li",
+			"hr",
+			"table",
+			"thead",
+			"tbody",
+			"tr",
+			"th",
+			"td",
+			"blockquote",
+			"pre",
+			"code",
+			"figure",
+			"figcaption",
+			"sup",
+			"sub",
+			"mark",
+			"del",
+			"ins",
+			"time",
+			"abbr",
+			"footer",
+		]) {
+			expect(html, tag).toContain(`<${tag}`);
+		}
+		expect(warnings).toEqual([]);
+	});
+
+	it("地板没松:style / link / form / video / audio / embed 连子树一起丢", () => {
+		for (const [evil, needle] of [
+			["<style>.x{color:red}</style>", "style"],
+			['<link rel="stylesheet" href="https://evil.example/x.css">', "link"],
+			['<form action="https://evil.example"><input></form>', "form"],
+			['<video src="https://evil.example/x.mp4"></video>', "video"],
+			['<audio src="https://evil.example/x.mp3"></audio>', "audio"],
+			['<embed src="https://evil.example/x.swf">', "embed"],
+		] as const) {
+			const { html, warnings } = ok(`<div>留下</div>${evil}`);
+			expect(html, evil).toBe("<div>留下</div>");
+			expect(html, evil).not.toContain("evil.example");
+			expect(warnings.join(), evil).toContain(needle);
+		}
+	});
 });
 
 describe("属性白名单", () => {
@@ -85,6 +165,32 @@ describe("属性白名单", () => {
 		expect(html).not.toContain("srcset");
 		expect(html).not.toContain("evil.example");
 		expect(warnings.join()).toContain("srcset");
+	});
+
+	/**
+	 * `colspan` / `rowspan` 是**只给 td / th** 的两格,而且只准正整数:`colspan="0"`
+	 * 在 HTML 里有「铺满整列组」的特殊含义,负数 / 非数字浏览器各有各的容错 ——
+	 * 一张画出来的表跟作者以为的不是一回事,不如整格丢掉。
+	 */
+	it("td / th 的 colspan / rowspan 放行,值只准正整数", () => {
+		const { html } = ok('<table><tr><td colspan="2" rowspan="3">格</td></tr></table>');
+		expect(html).toContain('colspan="2"');
+		expect(html).toContain('rowspan="3"');
+	});
+
+	it("colspan 不是正整数 → 丢掉这一格属性,单元格本身照留", () => {
+		for (const bad of ['colspan="x"', 'colspan="0"', 'colspan="-1"', 'colspan="2.5"']) {
+			const { html, warnings } = ok(`<table><tr><td ${bad}>格</td></tr></table>`);
+			expect(html, bad).toContain("<td>格</td>");
+			expect(html, bad).not.toContain("colspan");
+			expect(warnings.join(), bad).toContain("colspan");
+		}
+	});
+
+	it("colspan 只属于 td / th —— 写在 div 上照丢", () => {
+		const { html, warnings } = ok('<div colspan="2">x</div>');
+		expect(html).toBe("<div>x</div>");
+		expect(warnings.join()).toContain("colspan");
 	});
 
 	it("class 只准 [A-Za-z0-9_-] 的 token;掺了别的整个属性丢", () => {
@@ -121,9 +227,26 @@ describe("style 交给 CSS 那一层的声明级过滤", () => {
 		expect(warnings.join()).toContain("position");
 	});
 
-	it("白名单外的属性丢掉;全丢光则整个 style 不落盘", () => {
-		const { html } = ok('<div style="pointer-events:none;cursor:pointer">x</div>');
+	it("黑名单上的执行面属性丢掉;全丢光则整个 style 不落盘", () => {
+		const { html, warnings } = ok(
+			'<div style="behavior:url(x.htc);-moz-binding:url(x.xml)">x</div>',
+		);
 		expect(html).toBe("<div>x</div>");
+		expect(warnings.join()).toContain("behavior");
+	});
+
+	/**
+	 * `style=""` 与块级 CSS 是**同一份规格**({@link CARD_DECL_OPTIONS}),所以属性从
+	 * 白名单改黑名单这件事必须在这一层也看得见 —— 两边各写一份名单就是它破的方式。
+	 */
+	it("属性黑名单化在 style 里同样生效:pointer-events / cursor / mask-image 现在落盘", () => {
+		const { html, warnings } = ok(
+			'<div style="pointer-events:none;cursor:pointer;mask-image:linear-gradient(#000,transparent)">x</div>',
+		);
+		expect(html).toContain("pointer-events:none");
+		expect(html).toContain("cursor:pointer");
+		expect(html).toContain("mask-image:");
+		expect(warnings).toEqual([]);
 	});
 });
 

@@ -1,5 +1,7 @@
 /**
- * **自定义块的 HTML 清洗层**(ADR-0014 决策 11 / 12)。
+ * **自定义块的 HTML 清洗层**(ADR-0014 决策 11 / 12,2026-09-13「开放重写」那一版:
+ * 标签白名单放宽到排版语义标签全集,见 {@link ALLOWED_TAGS};`style=""` 照旧走
+ * 声明级过滤,而那一层的属性策略同日改成了黑名单)。
  *
  * 自定义块的内容是一个**受限 HTML 子集**:标签白名单 + 属性白名单 + `{a.b.c}` 占位符。
  * 清洗的做法是**按白名单重建节点树** —— 用 parse5 把输入解析成 fragment,再往一棵新的
@@ -35,8 +37,28 @@ import {
 import { sanitizeDeclarationList } from "../skins/scoped-css.js";
 import { CARD_DECL_OPTIONS } from "./css-sanitizer.js";
 
-/** 标签白名单:排版壳 + 行内强调 + 换行 + 图。列表 / 标题 / 表格在卡片上没有用武之地。 */
+/**
+ * 标签白名单 —— **排版语义标签全集**(ADR-0014 决策 11 的 🔗,2026-09-13「开放重写」)。
+ *
+ * 原来只有 12 个(排版壳 + 行内强调 + 换行 + 图),理由是「标题 / 列表 / 引用在卡片上
+ * 没有用武之地」;主人推翻了那条判断 —— 卡片渲染是用户体验感知最大的那一面,能写什么
+ * 不该由我们替作者猜。放宽的这一批全是**排版语义**:标题、列表、表格、分节、引用、代码、
+ * 行内标注,一个都不带行为。
+ *
+ * 🔴 **不放**的那几类,理由各自不同、一条都没松:
+ * - `script` / `style` / `link`:直接是执行面与外联取网面。
+ * - `a`:出图是 PNG,链接点不了;但它是**分享出去的**皮肤包里最顺手的钓鱼面。
+ * - `iframe` / `object` / `embed`:内嵌文档,等于把别人的页面拉进我们的浏览器。
+ * - `form` 族(`form` / `input` / `button` / `select` / `textarea`):静态图上没有意义,
+ *   却带一身提交与自动聚焦的行为。
+ * - `video` / `audio`:取网面,且截图里只会留个空框。
+ * - `svg`:**这轮不做**(单列最后一片、可砍)。属性面大,按白名单重建节点树的成本最高;
+ *   做的话得连 `xlink:href` / `filter` / `foreignObject` 一起想清楚。
+ *
+ * 名单是**白名单**,所以上面这些不是靠「记得拦」活着的 —— 没写进来的一律连子树丢。
+ */
 const ALLOWED_TAGS = new Set([
+	// 排版壳与行内强调(原来那 12 个)
 	"div",
 	"span",
 	"p",
@@ -49,12 +71,69 @@ const ALLOWED_TAGS = new Set([
 	"small",
 	"br",
 	"img",
+	// 标题
+	"h1",
+	"h2",
+	"h3",
+	"h4",
+	"h5",
+	"h6",
+	// 列表与分隔
+	"ul",
+	"ol",
+	"li",
+	"hr",
+	// 表格
+	"table",
+	"thead",
+	"tbody",
+	"tr",
+	"th",
+	"td",
+	// 分节与图注
+	"section",
+	"header",
+	"footer",
+	"article",
+	"figure",
+	"figcaption",
+	// 引用与代码
+	"blockquote",
+	"code",
+	"pre",
+	// 行内标注
+	"sup",
+	"sub",
+	"mark",
+	"del",
+	"ins",
+	"time",
+	"abbr",
 ]);
 
 /** 所有标签共用的属性。`id` 不在里面 —— 卡片 DOM 的 id 归渲染器,皮肤不许占坑。 */
 const COMMON_ATTRS = new Set(["class", "style"]);
 /** `img` 额外多的两个。`srcset` / `loading` / `crossorigin` 一律不给。 */
 const IMG_ATTRS = new Set(["src", "alt"]);
+/** `td` / `th` 额外多的两个。值域见 {@link SPAN_RE}。 */
+const CELL_ATTRS = new Set(["colspan", "rowspan"]);
+/**
+ * 每个标签独有的那几格属性。名单是**按标签查**的,不是「有这个属性名就行」——
+ * `<div colspan="2">` 一样得丢,不然属性白名单就从「这个标签能有什么」松成「全集」。
+ */
+const EXTRA_ATTRS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+	["img", IMG_ATTRS],
+	["td", CELL_ATTRS],
+	["th", CELL_ATTRS],
+]);
+
+/**
+ * `colspan` / `rowspan` 的值:**正整数**,没有前导零之外的花样。
+ *
+ * `0` 在 HTML 里有「铺满整个列组」的特殊含义,负数与小数各家容错不同 —— 画出来的表
+ * 跟作者以为的不是一回事,不如整格丢掉,让它退回普通单元格。
+ */
+const SPAN_RE = /^[1-9][0-9]*$/;
 
 /** class 的每个 token。`{` `.` `:` 都进不来,所以占位符写进 class 会让整个属性被丢。 */
 const CLASS_TOKEN_RE = /^[A-Za-z0-9_-]+$/;
@@ -140,7 +219,7 @@ function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string }
 /** 过滤一个元素的属性;返回 null = 这个元素整个丢掉。 */
 function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 	const tag = el.tagName;
-	const allowed = tag === "img" ? IMG_ATTRS : null;
+	const allowed = EXTRA_ATTRS.get(tag) ?? null;
 	/** `src` 先判:它不合格时整个 `<img>` 就没了,后面的属性连看都不用看。 */
 	let srcValue: string | null = null;
 	if (tag === "img") {
@@ -163,6 +242,14 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 		// 有命名空间的属性(`xlink:href` 那一类)连名字都对不上白名单,顺带被这一问拦下。
 		if (!COMMON_ATTRS.has(name) && !(allowed?.has(name) ?? false)) {
 			ctx.warnings.push(`<${tag}> 的属性 ${name} 不在白名单,已丢弃`);
+			continue;
+		}
+		if (name === "colspan" || name === "rowspan") {
+			if (!SPAN_RE.test(attr.value.trim())) {
+				ctx.warnings.push(`<${tag}> 的 ${name}「${attr.value}」不是正整数,已丢弃`);
+				continue;
+			}
+			out.push({ name, value: attr.value.trim() });
 			continue;
 		}
 		if (name === "src") {

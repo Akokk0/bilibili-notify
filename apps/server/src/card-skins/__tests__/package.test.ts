@@ -226,9 +226,9 @@ describe("checkCardSkinPackage:清单层", () => {
 	/**
 	 * 这条是这一组的主角:**存盘的是洗过的产物**。
 	 *
-	 * 装一个同时带 `.evil{}`(一段挂点都没挂的选择器,命中卡上每个元素)与 `<script>`
-	 * 的包 —— 产物里两样都不许剩,而且得有 warning 说出去,否则作者只会看见「装上了、
-	 * 没生效」。
+	 * 装一个同时带 `[data-bn="evilhook"]{}`(表上没有的挂点 —— 自 2026-09-13「开放重写」
+	 * 起,自由的是挂点**之外**的段,挂点本身仍按块对表)与 `<script>` 的包 —— 产物里
+	 * 两样都不许剩,而且得有 warning 说出去,否则作者只会看见「装上了、没生效」。
 	 */
 	it("CSS 与 HTML 的清洗产物写回 manifest,并各自留下 warning", () => {
 		const r = open(
@@ -237,14 +237,14 @@ describe("checkCardSkinPackage:清单层", () => {
 					cards: {
 						live: {
 							width: 600,
-							css: '[data-bn="glass"]{border-radius:12px}.evil{color:red}',
+							css: '[data-bn="glass"]{border-radius:12px}[data-bn="evilhook"]{color:red}',
 							blocks: [
 								{
 									id: "cover",
 									kind: "builtin",
 									builtin: "cover",
 									grid: { row: 1, column: 1, span: 12 },
-									css: '[data-bn="image"]{border-radius:8px}.evil{color:red}',
+									css: '[data-bn="image"]{border-radius:8px}[data-bn="evilhook"]{color:red}',
 								},
 								{
 									id: "note",
@@ -263,7 +263,9 @@ describe("checkCardSkinPackage:清单层", () => {
 		const card = r.manifest.cards.live;
 		expect(card?.css).toBe('[data-bn="glass"]{border-radius:12px}');
 		const [cover, note] = card?.blocks ?? [];
-		expect(cover?.css).toBe('[data-bn="image"]{border-radius:8px}');
+		// 块级 CSS 的产物带着归一后的 self 前缀(2026-09-13「开放重写」):`image` 是
+		// 块内部的挂点、不能打头,清洗时补 `[data-bn="self"] ` 把它关回块里。
+		expect(cover?.css).toBe('[data-bn="self"] [data-bn="image"]{border-radius:8px}');
 		expect(note?.kind === "custom" ? note.html : "").toBe('<div class="note">{up.name}</div>');
 		expect(JSON.stringify(r.manifest)).not.toContain("evil");
 		expect(JSON.stringify(r.manifest)).not.toContain("script");
@@ -277,14 +279,14 @@ describe("checkCardSkinPackage:清单层", () => {
 				cards: {
 					live: {
 						width: 600,
-						css: ".evil{color:red}",
+						css: '[data-bn="evilhook"]{color:red}',
 						blocks: [
 							{
 								id: "cover",
 								kind: "builtin",
 								builtin: "cover",
 								grid: { row: 1, column: 1, span: 12 },
-								css: ".evil{color:red}",
+								css: '[data-bn="evilhook"]{color:red}',
 							},
 						],
 					},
