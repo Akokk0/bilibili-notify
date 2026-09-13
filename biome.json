@@ -10,6 +10,7 @@
 			"!**/*.svg",
 			"!**/src/static",
 			"!**/.interface",
+			"!**/__snapshots__",
 			"!.bn-design",
 			"!.claude",
 			"!data",
