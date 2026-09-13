@@ -127,6 +127,12 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "主播名", atom: true, hooks: {} },
 		time: { label: "开播时间", atom: true, hooks: {} },
+		// 数据区的三件(ADR-0014 决策 16 的 🔗):`showPopularity` / `showArea` / `showFans`
+		// 三个显隐开关管的是**复合块内部的一行**,块级的 `showIf` 够不着 —— 所以不留开关,
+		// 把那三件也拆成原子块,用户想少显示哪件就把哪块从版式里删掉。
+		popularity: { label: "人气 / 点赞", atom: true, hooks: {} },
+		area: { label: "分区", atom: true, hooks: {} },
+		fans: { label: "粉丝行", atom: true, hooks: {} },
 	},
 	dynamic: {
 		header: { label: "头部信息", hooks: AUTHOR_HOOKS },

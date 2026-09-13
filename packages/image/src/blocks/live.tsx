@@ -8,6 +8,11 @@
  * (avatar / name / time)是**新抠**的:从 header 里取出头像 img / 名字 span / 时间 span,
  * 保持它们在复合块里的 class 与 style,让皮肤能把三件分开摆。
  *
+ * 数据区那三件(popularity / area / fans)同理从 `data` 里抠出来,只是**多带上复合块根上
+ * 那几句观感**(`px-4` / 13px / `#666`)—— 见 `DATA_ATOM_CLASS` 的说明。它们取代原来的
+ * `showPopularity` / `showArea` / `showFans` 三个开关(ADR-0014 决策 16 的 🔗):块级的
+ * `showIf` 管不到复合块内部的一行,所以改成「想少显示哪件就删哪块」。
+ *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.live`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  *
@@ -58,6 +63,52 @@ const time: BlockRenderer<LiveCardProps> = (p) => (
 		{p.liveTime}
 	</span>
 );
+
+/**
+ * 数据区三件(人气 / 分区 / 粉丝)单独摆时自带的观感。
+ *
+ * 复合块 `data` 把 `px-4`、13px 与 `#666` 写在**根上**,里头三件靠继承拿到;拆成原子块后
+ * 没有那个根替它们撑着,所以每件自己带上 —— 不带的话它们会掉回卡片的基准字号与深色。
+ *
+ * `block` 不是多加的一样,而是复刻复合块里的既有行为:顶行是 `flex`,那两个 span 作为
+ * flex item 本就被块化了(行盒按自己的 13px 算);原子块的 wrapper 是普通块容器,span 若
+ * 还留在行内,行盒会被 wrapper 继承来的基准字号撑高。
+ */
+const DATA_ATOM_CLASS = "block px-4 text-[13px]";
+const DATA_ATOM_STYLE = "color: #666;";
+
+/**
+ * 人气 / 点赞(原子块):data 复合块顶行左边那个 span。
+ *
+ * 与复合块同一条判据:`showPopularity` 为真时那个 span 恒画(`statsLeft` 带「人气：」
+ * 前缀,永远不是空串),所以这里也不写「没内容收起」——写了也是一条永远走不到的分支。
+ */
+const popularity: BlockRenderer<LiveCardProps> = (p) => (
+	<span class={DATA_ATOM_CLASS} style={DATA_ATOM_STYLE}>
+		{statsLeft(p)}
+	</span>
+);
+
+/** 分区(原子块):data 复合块顶行右边那个 span。文案同样恒有前缀,不会空。 */
+const area: BlockRenderer<LiveCardProps> = (p) => (
+	<span class={DATA_ATOM_CLASS} style={DATA_ATOM_STYLE}>
+		{`分区：${p.data.area_name}`}
+	</span>
+);
+
+/**
+ * 粉丝行(原子块):data 复合块第二行那个 div。三态各有各的文案,某态没有就收起 ——
+ * 与复合块里 `{fans ? <div …> : null}` 同一条判据。
+ */
+const fans: BlockRenderer<LiveCardProps> = (p) => {
+	const text = followerText(p);
+	if (!text) return null;
+	return (
+		<div class={DATA_ATOM_CLASS} style={DATA_ATOM_STYLE}>
+			{text}
+		</div>
+	);
+};
 
 /**
  * live 卡的块表。每块返回内层 VNode(无 `data-block` —— 由 `renderBlocks` 的 wrapper
@@ -151,4 +202,7 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 	avatar,
 	name,
 	time,
+	popularity,
+	area,
+	fans,
 };

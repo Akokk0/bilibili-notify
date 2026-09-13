@@ -4,7 +4,8 @@
  * 头一条是整份迁移的**判据**:出厂默认版式折出来的那份卡,必须与出厂默认皮肤一字不差。
  * 两边任何一边改了(块顺序、间距、上舰卡的列宽)而另一边没跟上,它当场红 —— 这也是
  * 「升级后用户零感知」的依据。其余几条钉的是版式里那些**用户改得动**的维度:隐藏块不
- * 占行、分割线保留原 id、上舰卡的徽章侧。
+ * 占行、分割线保留原 id、上舰卡的徽章侧,以及直播卡数据区那三个显隐开关折成的原子块组
+ * (ADR-0014 决策 16 的 🔗 —— 那三个开关退役,关过的存量用户折成用原子块拼的派生皮肤)。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -73,6 +74,110 @@ describe("旧版式 → 卡片皮肤 — 竖栈卡", () => {
 			"divider-1",
 			"divider-2",
 		]);
+	});
+});
+
+describe("旧版式 → 卡片皮肤 — 直播卡数据区的三个显隐开关", () => {
+	const ALL_ON = { showPopularity: true, showArea: true, showFans: true };
+
+	/** 折一份默认版式的 live 卡块序列(带开关)。 */
+	const liveBlocks = (toggles: typeof ALL_ON): CardSkinBlock[] =>
+		cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, toggles).cards.live?.blocks ?? [];
+
+	/** 只留数据区那几块(前面的 cover / header / title / divider 与后面的 desc 不看)。 */
+	const atomsOf = (toggles: typeof ALL_ON): CardSkinBlock[] =>
+		liveBlocks(toggles).filter((b) => ["popularity", "area", "fans"].includes(builtinOf(b)));
+
+	it("三个都开:与不传开关逐字相同(数据区还是那个复合块)", () => {
+		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, ALL_ON)).toEqual(
+			cardLayoutToSkin(DEFAULT_CARD_LAYOUT),
+		);
+	});
+
+	it("关掉粉丝:顶行两件各占半边,人气在左、分区在右", () => {
+		const atoms = atomsOf({ ...ALL_ON, showFans: false });
+		expect(atoms.map(builtinOf)).toEqual(["popularity", "area"]);
+		expect(atoms[0].grid).toEqual({ row: 5, column: 1, span: 6 });
+		expect(atoms[1].grid).toEqual({ row: 5, column: 7, span: 6 });
+		expect(atoms[1].css).toBe('[data-bn="self"]{padding-top:10px;text-align:right}');
+	});
+
+	it("关掉分区:人气独占顶行 12 列,粉丝行跟在下一行", () => {
+		const atoms = atomsOf({ ...ALL_ON, showArea: false });
+		expect(atoms.map(builtinOf)).toEqual(["popularity", "fans"]);
+		expect(atoms[0].grid).toEqual({ row: 5, column: 1, span: 12 });
+		expect(atoms[1].grid).toEqual({ row: 6, column: 1, span: 12 });
+	});
+
+	it("关掉人气:分区独占顶行 12 列,但仍然靠右", () => {
+		const atoms = atomsOf({ ...ALL_ON, showPopularity: false });
+		expect(atoms.map(builtinOf)).toEqual(["area", "fans"]);
+		expect(atoms[0].grid).toEqual({ row: 5, column: 1, span: 12 });
+		expect(atoms[0].css).toBe('[data-bn="self"]{padding-top:10px;text-align:right}');
+	});
+
+	it("只剩人气 / 只剩分区 / 只剩粉丝:各自通栏独占一行", () => {
+		for (const only of ["popularity", "area", "fans"] as const) {
+			const toggles = {
+				showPopularity: only === "popularity",
+				showArea: only === "area",
+				showFans: only === "fans",
+			};
+			const atoms = atomsOf(toggles);
+			expect(atoms.map(builtinOf), only).toEqual([only]);
+			expect(atoms[0].grid, only).toEqual({ row: 5, column: 1, span: 12 });
+		}
+	});
+
+	it("三件全关:整组不生成,后面的块也不留空行", () => {
+		const blocks = liveBlocks({ showPopularity: false, showArea: false, showFans: false });
+		expect(blocks.map(builtinOf)).toEqual(["cover", "header", "title", DIVIDER_TYPE, "desc"]);
+		expect(blocks.map((b) => b.grid.row)).toEqual([1, 2, 3, 4, 5]);
+	});
+
+	it("data 块的 marginTop 落到该组第一行;顶行整个关掉时落到粉丝行", () => {
+		const withTopRow = atomsOf({ ...ALL_ON, showArea: false });
+		// 顶行在 → 10px 落在顶行那件,粉丝行只有复刻 gap-1 的 4px。
+		expect(withTopRow[0].css).toBe('[data-bn="self"]{padding-top:10px}');
+		expect(withTopRow[1].css).toBe('[data-bn="self"]{padding-top:4px}');
+		const fansOnly = atomsOf({ showPopularity: false, showArea: false, showFans: true });
+		expect(fansOnly[0].css).toBe('[data-bn="self"]{padding-top:10px}');
+	});
+
+	it("数据区展开成两行时,它后面的块跟着往下挪一行", () => {
+		const blocks = liveBlocks({ ...ALL_ON, showArea: false });
+		expect(blocks.map(builtinOf)).toEqual([
+			"cover",
+			"header",
+			"title",
+			DIVIDER_TYPE,
+			"popularity",
+			"fans",
+			"desc",
+		]);
+		expect(blocks.map((b) => b.grid.row)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+	});
+
+	it("数据区是首块时,它的 marginTop 照样被丢掉", () => {
+		const live: CardBlock[] = [
+			{ id: "data", type: "data", visible: true, marginTop: 30 },
+			...DEFAULT_CARD_LAYOUT.live.filter((b) => b.type !== "data"),
+		];
+		const blocks =
+			cardLayoutToSkin(layoutWith({ live }), undefined, { ...ALL_ON, showFans: false }).cards.live
+				?.blocks ?? [];
+		expect(blocks[0].css).toBeUndefined();
+		expect(blocks[1].css).toBe('[data-bn="self"]{text-align:right}');
+	});
+
+	it("隐藏掉的 data 块不会因为开关而复活", () => {
+		const live: CardBlock[] = DEFAULT_CARD_LAYOUT.live.map((b) =>
+			b.type === "data" ? { ...b, visible: false } : b,
+		);
+		const blocks =
+			cardLayoutToSkin(layoutWith({ live }), undefined, { ...ALL_ON, showFans: false }).cards.live
+				?.blocks ?? [];
+		expect(blocks.map(builtinOf)).toEqual(["cover", "header", "title", DIVIDER_TYPE, "desc"]);
 	});
 });
 

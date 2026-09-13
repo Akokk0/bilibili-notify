@@ -160,3 +160,52 @@ describe("块库 — 原子块与复合块同形", () => {
 		expect(html).toContain(`src="${GUARD_PROPS.face}"`);
 	});
 });
+
+// ── 三、数据区那三件:同形,但**多带**复合块根上的观感 ──────────────────────────
+
+/**
+ * `live` 的 popularity / area / fans 与上面九条的差别:它们在复合块里靠**根**(那句
+ * `px-4 flex flex-col gap-1 text-[13px]` + `color:#666`)拿到字号、颜色与左右内边距,
+ * 单独摆时没有那个根,所以每件自带一份(`DATA_ATOM_CLASS`)。因此不能像上面那样直接
+ * 逐字比 —— 这里分成两半钉:
+ *
+ * 一、**剥掉 class / style 之后**逐字出现在复合块里(标签与文案没漂);
+ * 二、带上来的观感三句(`px-4` / `text-[13px]` / `color: #666;`)一句不少。
+ *
+ * 少钉哪一半都有洞:只钉一,观感掉了不会红(像素门才照得出);只钉二,文案改了不会红。
+ */
+describe("块库 — live 数据区的原子块(自带复合块根上的观感)", () => {
+	/** 剥掉整个 class / style 属性 —— 原子块是单个元素,全局剥等于只剥它的根。 */
+	const stripLook = (html: string): string => html.replace(/ (?:class|style)="[^"]*"/g, "");
+
+	/** [原子块, 期望的元素标签]。 */
+	const CASES: Array<[string, string]> = [
+		["popularity", "span"],
+		["area", "span"],
+		["fans", "div"],
+	];
+
+	for (const [atom, tag] of CASES) {
+		it(`live.${atom}:剥掉观感后逐字出现在 live.data 里`, async () => {
+			const atomHtml = await renderBlock(LIVE_BLOCKS[atom], LIVE_PROPS);
+			const compositeHtml = await renderBlock(LIVE_BLOCKS.data, LIVE_PROPS);
+			expect(atomHtml.startsWith(`<${tag} `)).toBe(true);
+			// 原子块的挂点是 `self`,内部一个 data-bn 都不该有。
+			expect(atomHtml).not.toContain("data-bn");
+			expect(stripCardHooks(compositeHtml)).toContain(stripLook(atomHtml));
+		});
+
+		it(`live.${atom}:把复合块根上那几句观感带在自己身上`, async () => {
+			const atomHtml = await renderBlock(LIVE_BLOCKS[atom], LIVE_PROPS);
+			for (const look of ["px-4", "text-[13px]", "color: #666;"]) {
+				expect(atomHtml, look).toContain(look);
+			}
+		});
+	}
+
+	it("live.fans:该态没有粉丝文案时整块收起(与复合块同一条判据)", async () => {
+		// liveStatus 2 + watchedNum 仍是占位的 "API" → followerText 给空串。
+		const ended = { ...LIVE_PROPS, liveStatus: 2, watchedNum: "API" };
+		expect(LIVE_BLOCKS.fans(ended)).toBeNull();
+	});
+});
