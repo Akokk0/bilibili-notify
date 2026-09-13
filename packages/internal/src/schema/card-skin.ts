@@ -387,6 +387,197 @@ const FRAME_BG_TIER = cardSkinFrameBgRule(
 );
 export type CardSkinVariable = keyof typeof CARD_SKIN_VARIABLES;
 
+// ---- 旋钮 -------------------------------------------------------------------
+
+/**
+ * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14:主人推翻自己「被否:皮肤自定义
+ * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成
+ * `--bn-knob-<key>`,皮肤 CSS 里 `var(--bn-knob-<key>, <自己的默认>)` 引用。
+ *
+ * 固定变量表({@link CARD_SKIN_VARIABLES})管的是**用户的资产**(字体、背景图)与**数据**
+ * (档位色):皮肤换了它们还在。旋钮管的是**这套皮肤自己的调色板**:皮肤换了就换一套。
+ *
+ * 🔴 **`default` 不注入**。它只是面板控件的起始位置;用户没动过就什么都不注,皮肤 CSS 里
+ * 那个 `var(…, 兜底)` 的兜底生效(「存覆盖不存值」,决策 16 的第二个 🔗)。这条不是省事:
+ * 默认皮肤的玻璃白纱各卡基线不同(直播 .82 / SC .75 / 锐评 .86),注了就只能注一个数、
+ * 三档立刻塌成一档;不注,各卡 CSS 写各自的兜底,用户一拧才统一覆盖。
+ */
+export const CARD_SKIN_KNOB_LIMITS = {
+	/** 一套皮肤最多几枚旋钮(面板一屏能拧完的量)。 */
+	maxKnobs: 16,
+	/** 下拉最多几个候选。 */
+	maxOptions: 8,
+	/** 旋钮 / 候选的人话名长度。 */
+	label: { max: 24 },
+	/** key 长度(变量名要人能读)。 */
+	key: { max: 32 },
+	/** 下拉候选 / 开关两端那种字面量的长度。 */
+	value: { max: 80 },
+} as const;
+
+/** 旋钮的 CSS 变量名。**对外 API**,只增不改。 */
+export const cardSkinKnobVar = (key: string): string => `--bn-knob-${key}`;
+
+/**
+ * key:小写字母起头的 kebab。它直接拼进变量名,所以大写(CSS 自定义属性大小写敏感,
+ * 面板与 CSS 各写一种就永远对不上)、下划线、非 ASCII 都不收。
+ */
+const KNOB_KEY_RE = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * 颜色:hex(3/4/6/8 位)、`rgb` 族函数、或一个纯字母的命名色。
+ * 别的形状(尤其带函数名的)一律不认 —— 见下面 {@link KNOB_VALUE_DENY} 的理由。
+ */
+const KNOB_COLOR_RE =
+	/^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]{3,20}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/-]+\))$/;
+
+/**
+ * 下拉候选 / 开关两端的字面量。允许的字符集**不含** `;` `{` `}` `:` `"` `'` 与反斜杠:
+ * 值最后注成 `--bn-knob-x:<值>`,一个 `;` 就是一条凭空多出来的声明,一个 `}` 就是
+ * 跳出这条规则、接着写任意选择器。反斜杠是 CSS 转义,在 tokenizer 里**先于** ident
+ * 判定解开(`\75 rl(` 到浏览器手上就是 `url(`),所以整类拒掉,与清洗器那头同口径。
+ */
+const KNOB_VALUE_RE = /^[A-Za-z0-9#%.,()/ _-]+$/;
+
+/**
+ * 值里不准出现的函数。`url(` / `image-set(` / `src(` 是取网面;`element(` / `expression(`
+ * 是执行面;`attr(` 能把 DOM 上别处的字符串读进来;`var(` 挡的是自引用套娃
+ * (`--bn-knob-a:var(--bn-knob-b)`)—— 与 `apps/server` 清洗器的 `FORBIDDEN_VALUE` 同源,
+ * 多挡后两个。
+ */
+const KNOB_VALUE_DENY = ["url(", "image-set(", "element(", "expression(", "src(", "attr(", "var("];
+
+/** 一个字面量能不能进(下拉候选 / 开关两端)。返回原因或 null。 */
+function knobValueReason(raw: string): string | null {
+	if (raw.length === 0 || raw.length > CARD_SKIN_KNOB_LIMITS.value.max) {
+		return `值长度要在 1~${CARD_SKIN_KNOB_LIMITS.value.max} 之间`;
+	}
+	if (!KNOB_VALUE_RE.test(raw)) return "值含分号 / 大括号 / 引号 / 反斜杠这类能越出声明的字符";
+	const flat = raw.toLowerCase().replace(/\s+/g, "");
+	for (const bad of KNOB_VALUE_DENY) {
+		if (flat.includes(bad)) return `值含 ${bad.slice(0, -1)}()`;
+	}
+	return null;
+}
+
+const knobValue = z.string().refine((v) => knobValueReason(v) === null, {
+	error: (iss) => knobValueReason(iss.input as string) ?? "值不合法",
+});
+const knobKey = z
+	.string()
+	.max(CARD_SKIN_KNOB_LIMITS.key.max)
+	.regex(KNOB_KEY_RE, "旋钮 key 只准小写字母起头的 kebab(如 accent / glass-opacity)");
+const knobLabel = z.string().min(1).max(CARD_SKIN_KNOB_LIMITS.label.max);
+
+/** 数值旋钮的单位。固定几种 —— 单位直接拼在数字后面进 CSS,不能是自由文本。 */
+export const CARD_SKIN_KNOB_UNITS = ["px", "%", "em", "rem", "deg", "s", "ms"] as const;
+export type CardSkinKnobUnit = (typeof CARD_SKIN_KNOB_UNITS)[number];
+
+export const CardSkinKnobSchema = z.discriminatedUnion("type", [
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("color"),
+			default: z.string().regex(KNOB_COLOR_RE, "颜色只准 hex、rgb / hsl 族函数或命名色"),
+		})
+		.strict(),
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("number"),
+			default: z.number().finite(),
+			min: z.number().finite(),
+			max: z.number().finite(),
+			step: z.number().positive().optional(),
+			/** 不写 = 无单位(如玻璃不透明度这种纯比例)。 */
+			unit: z.enum(CARD_SKIN_KNOB_UNITS).optional(),
+		})
+		.strict(),
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("select"),
+			default: knobValue,
+			options: z
+				.array(z.object({ value: knobValue, label: knobLabel }).strict())
+				.min(1, "下拉至少要有一个候选")
+				.max(
+					CARD_SKIN_KNOB_LIMITS.maxOptions,
+					`下拉最多 ${CARD_SKIN_KNOB_LIMITS.maxOptions} 个候选`,
+				),
+		})
+		.strict(),
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("switch"),
+			default: z.boolean(),
+			/** 开 / 关各自对应的 CSS 字面量(如 `block` / `none`)。 */
+			on: knobValue,
+			off: knobValue,
+		})
+		.strict(),
+]);
+export type CardSkinKnob = z.infer<typeof CardSkinKnobSchema>;
+
+/** 用户拧出来的那一个值。按皮肤 id 存(ADR-0014 决策 16 的 🔗:换皮肤各留各的)。 */
+export const CardSkinKnobValueSchema = z.union([
+	z.string().max(CARD_SKIN_KNOB_LIMITS.value.max),
+	z.number(),
+	z.boolean(),
+]);
+export type CardSkinKnobValue = z.infer<typeof CardSkinKnobValueSchema>;
+
+/** 一套皮肤的旋钮覆盖:key → 值。没拧过的 key 不在里面(存覆盖不存值)。 */
+export const CardSkinKnobOverridesSchema = z.record(knobKey, CardSkinKnobValueSchema);
+export type CardSkinKnobOverrides = z.infer<typeof CardSkinKnobOverridesSchema>;
+
+/**
+ * 一个旋钮值的 **CSS 字面量**,不合法给 null(= 不注入)。
+ *
+ * 这是注入前的最后一道闸:存储里的覆盖值可能被手改过,也可能是旧包换了旋钮类型之后
+ * 留下的残值。宁可不注(皮肤 CSS 的兜底生效),也不能把一个没验过的字符串写进 CSS。
+ */
+export function cardSkinKnobCss(knob: CardSkinKnob, value: unknown): string | null {
+	switch (knob.type) {
+		case "color":
+			return typeof value === "string" && KNOB_COLOR_RE.test(value) ? value : null;
+		case "number": {
+			if (typeof value !== "number" || !Number.isFinite(value)) return null;
+			if (value < knob.min || value > knob.max) return null;
+			return `${value}${knob.unit ?? ""}`;
+		}
+		case "select":
+			return typeof value === "string" && knob.options.some((o) => o.value === value)
+				? value
+				: null;
+		case "switch":
+			return typeof value === "boolean" ? (value ? knob.on : knob.off) : null;
+	}
+}
+
+/**
+ * 皮肤声明的旋钮 + 用户覆盖 → 注在外框上的那串自定义属性。
+ * 没覆盖的旋钮**不出现**(`default` 不注入,见 {@link CARD_SKIN_KNOB_LIMITS} 的说明)。
+ */
+export function cardSkinKnobDeclarations(
+	knobs: readonly CardSkinKnob[] | undefined,
+	overrides: CardSkinKnobOverrides | undefined,
+): string {
+	if (!knobs?.length || !overrides) return "";
+	let out = "";
+	for (const knob of knobs) {
+		if (!(knob.key in overrides)) continue;
+		const css = cardSkinKnobCss(knob, overrides[knob.key]);
+		if (css !== null) out += `${cardSkinKnobVar(knob.key)}:${css};`;
+	}
+	return out;
+}
+
 // ---- 数据契约 ----------------------------------------------------------------
 
 export type CardSkinFieldType = "text" | "number" | "bool" | "image";
@@ -663,6 +854,11 @@ export const CardSkinManifestSchema = z
 		name: z.string().min(CARD_SKIN_LIMITS.name.min).max(CARD_SKIN_LIMITS.name.max),
 		author: z.string().max(CARD_SKIN_LIMITS.author.max).optional(),
 		description: z.string().max(CARD_SKIN_LIMITS.description.max).optional(),
+		/** 这套皮肤自己的旋钮(面板照它生成控件)。 */
+		knobs: z
+			.array(CardSkinKnobSchema)
+			.max(CARD_SKIN_KNOB_LIMITS.maxKnobs, `knobs 最多 ${CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚`)
+			.optional(),
 		variables: CardSkinVariableDefaultsSchema.optional(),
 		/** 按卡种的变量默认值,叠在上面那份之上。 */
 		variablesByKind: z.partialRecord(CardSkinKindSchema, CardSkinVariableDefaultsSchema).optional(),
@@ -698,6 +894,22 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	m.fonts?.forEach((f, i) => {
 		if (families.has(f.family)) errors.push(`fonts[${i}]: 字体名「${f.family}」重复`);
 		families.add(f.family);
+	});
+	const knobKeys = new Set<string>();
+	m.knobs?.forEach((k, i) => {
+		const at = `knobs[${i}]`;
+		// 两枚同 key 的旋钮注的是同一个变量:面板画两个控件,拧哪个都被另一个盖掉。
+		if (knobKeys.has(k.key)) errors.push(`${at}: 旋钮 key「${k.key}」重复`);
+		knobKeys.add(k.key);
+		if (k.type === "number") {
+			if (k.min > k.max) errors.push(`${at}: min ${k.min} 大于 max ${k.max}`);
+			else if (k.default < k.min || k.default > k.max) {
+				errors.push(`${at}: 默认值 ${k.default} 不在 ${k.min}~${k.max} 之间`);
+			}
+		}
+		if (k.type === "select" && !k.options.some((o) => o.value === k.default)) {
+			errors.push(`${at}: 默认值「${k.default}」不在候选里`);
+		}
 	});
 	for (const kind of CARD_SKIN_KINDS) {
 		const card = m.cards[kind];

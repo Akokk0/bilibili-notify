@@ -9,9 +9,13 @@ import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_KINDS,
+	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
+	type CardSkinKnob,
 	type CardSkinManifest,
+	cardSkinKnobCss,
+	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 	parseCardSkin,
@@ -437,5 +441,232 @@ describe("资产变量与皮肤字体(ADR-0014 决策 13 的 🔗)", () => {
 			asset: "asset:assets/a.ttf",
 		}));
 		expect(parseCardSkin(minimal({ fonts: many })).ok).toBe(false);
+	});
+});
+
+/**
+ * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14 主人推翻「被否:皮肤自定义旋钮」)。
+ *
+ * 判据仍是「把实现改坏能红」。这一层的危险面只有一处:旋钮的值最后会注成
+ * `--bn-knob-x:<值>`,而 CSS 自定义属性的值几乎是自由文本 —— 一个 `url(` 或一个 `;`
+ * 就是一次取网 / 一条凭空多出来的声明。所以值域在**声明这一步**就钉死,注入那头再验一遍。
+ */
+describe("皮肤自定义旋钮", () => {
+	const knob = (over: Record<string, unknown> = {}): unknown => ({
+		key: "accent",
+		label: "主色",
+		type: "color",
+		default: "#fb7299",
+		...over,
+	});
+	const withKnobs = (knobs: unknown[]): unknown => minimal({ knobs } as never);
+
+	it("四种类型都进得去:颜色 / 数值 / 下拉 / 开关", () => {
+		const res = parseCardSkin(
+			withKnobs([
+				knob(),
+				{ key: "radius", label: "圆角", type: "number", default: 12, min: 0, max: 48, unit: "px" },
+				{
+					key: "density",
+					label: "疏密",
+					type: "select",
+					default: "cozy",
+					options: [
+						{ value: "cozy", label: "宽松" },
+						{ value: "tight", label: "紧凑" },
+					],
+				},
+				{ key: "shadow", label: "阴影", type: "switch", default: true, on: "block", off: "none" },
+			]),
+		);
+		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	});
+
+	it("变量名由 key 派生,与资产变量 / 卡片变量不撞", () => {
+		expect(cardSkinKnobVar("accent")).toBe("--bn-knob-accent");
+		expect(cardSkinKnobVar("glass-opacity")).toBe("--bn-knob-glass-opacity");
+	});
+
+	it("key 只准小写字母起头的 kebab;大写 / 下划线 / 中文都拒", () => {
+		for (const bad of ["Accent", "accent_1", "主色", "1accent", "-accent", ""]) {
+			const res = parseCardSkin(withKnobs([knob({ key: bad })]));
+			expect(res.ok, bad).toBe(false);
+		}
+	});
+
+	it("key 重复拒 —— 两个旋钮注同一个变量,后一个静默吃掉前一个", () => {
+		const res = parseCardSkin(withKnobs([knob(), knob({ label: "另一个" })]));
+		expect(res.ok).toBe(false);
+		if (!res.ok) expect(res.errors.join()).toContain("accent");
+	});
+
+	it("旋钮数量与 label 长度有上限", () => {
+		const many = Array.from({ length: CARD_SKIN_KNOB_LIMITS.maxKnobs + 1 }, (_, i) =>
+			knob({ key: `k${i}` }),
+		);
+		expect(parseCardSkin(withKnobs(many)).ok).toBe(false);
+		expect(
+			parseCardSkin(withKnobs([knob({ label: "一".repeat(CARD_SKIN_KNOB_LIMITS.label.max + 1) })]))
+				.ok,
+		).toBe(false);
+	});
+
+	/**
+	 * 这几条是**注入面**的闸,不是挑剔:`;` 能在一条自定义属性里塞进第二条声明,
+	 * `url(` 是取网,反斜杠在 tokenizer 里先于 ident 解开(`\75 rl(` 就是 `url(`)。
+	 */
+	it("颜色只准 hex / rgb 族 / 命名色;函数与转义一律拒", () => {
+		for (const good of [
+			"#fff",
+			"#fb7299",
+			"#fb729980",
+			"rgb(251,114,153)",
+			"rgba(0,0,0,.5)",
+			"transparent",
+		]) {
+			expect(parseCardSkin(withKnobs([knob({ default: good })])).ok, good).toBe(true);
+		}
+		for (const bad of [
+			'url("https://evil.example/x.png")',
+			"url(x.png)",
+			"image-set(x.png)",
+			"var(--bn-card-font)",
+			"#fff;background:url(x)",
+			"\\75 rl(x)",
+			"#fff}[data-bn=frame]{background:red",
+		]) {
+			expect(parseCardSkin(withKnobs([knob({ default: bad })])).ok, bad).toBe(false);
+		}
+	});
+
+	it("下拉的候选值走同一套值域;分号 / 大括号 / url() 拒", () => {
+		const sel = (value: string): unknown => ({
+			key: "density",
+			label: "疏密",
+			type: "select",
+			default: value,
+			options: [{ value, label: "一档" }],
+		});
+		expect(parseCardSkin(withKnobs([sel("linear-gradient(#fff,#000)")])).ok).toBe(true);
+		for (const bad of ["url(x.png)", "red;background:url(x)", "red}[data-bn=frame]{color:red"]) {
+			expect(parseCardSkin(withKnobs([sel(bad)])).ok, bad).toBe(false);
+		}
+	});
+
+	it("下拉的默认值必须是候选之一,候选数有上下限", () => {
+		const base = {
+			key: "density",
+			label: "疏密",
+			type: "select",
+			options: [
+				{ value: "cozy", label: "宽松" },
+				{ value: "tight", label: "紧凑" },
+			],
+		};
+		expect(parseCardSkin(withKnobs([{ ...base, default: "cozy" }])).ok).toBe(true);
+		expect(parseCardSkin(withKnobs([{ ...base, default: "roomy" }])).ok).toBe(false);
+		expect(parseCardSkin(withKnobs([{ ...base, default: "cozy", options: [] }])).ok).toBe(false);
+		const many = Array.from({ length: CARD_SKIN_KNOB_LIMITS.maxOptions + 1 }, (_, i) => ({
+			value: `v${i}`,
+			label: `第 ${i}`,
+		}));
+		expect(parseCardSkin(withKnobs([{ ...base, default: "v0", options: many }])).ok).toBe(false);
+	});
+
+	it("数值的默认值要落在 min / max 之间,单位是固定几种", () => {
+		const num = (over: Record<string, unknown>): unknown => ({
+			key: "radius",
+			label: "圆角",
+			type: "number",
+			default: 12,
+			min: 0,
+			max: 48,
+			...over,
+		});
+		expect(parseCardSkin(withKnobs([num({ unit: "px" })])).ok).toBe(true);
+		expect(parseCardSkin(withKnobs([num({ default: 99 })])).ok).toBe(false);
+		expect(parseCardSkin(withKnobs([num({ min: 50 })])).ok).toBe(false);
+		expect(parseCardSkin(withKnobs([num({ unit: "秒" })])).ok).toBe(false);
+		expect(parseCardSkin(withKnobs([num({ unit: "url(" })])).ok).toBe(false);
+	});
+
+	it("开关的两个值走同一套值域", () => {
+		const sw = (over: Record<string, unknown>): unknown => ({
+			key: "shadow",
+			label: "阴影",
+			type: "switch",
+			default: true,
+			on: "block",
+			off: "none",
+			...over,
+		});
+		expect(parseCardSkin(withKnobs([sw({})])).ok).toBe(true);
+		expect(parseCardSkin(withKnobs([sw({ on: "url(x)" })])).ok).toBe(false);
+		expect(parseCardSkin(withKnobs([sw({ off: "none;color:red" })])).ok).toBe(false);
+	});
+
+	/**
+	 * `cardSkinKnobCss` 是**注入前的最后一道闸**:存储里的覆盖值若被手改成脏值(或旧包
+	 * 换了旋钮类型),这里返回 null = 不注入,而不是把脏值写进 CSS。把它改成直通,
+	 * 下面每条都会红。
+	 */
+	describe("值 → CSS 字面量", () => {
+		const color: CardSkinKnob = { key: "accent", label: "主色", type: "color", default: "#fb7299" };
+		const radius: CardSkinKnob = {
+			key: "radius",
+			label: "圆角",
+			type: "number",
+			default: 12,
+			min: 0,
+			max: 48,
+			unit: "px",
+		};
+		const ratio: CardSkinKnob = {
+			key: "ratio",
+			label: "比例",
+			type: "number",
+			default: 0.8,
+			min: 0,
+			max: 1,
+		};
+		const density: CardSkinKnob = {
+			key: "density",
+			label: "疏密",
+			type: "select",
+			default: "cozy",
+			options: [
+				{ value: "cozy", label: "宽松" },
+				{ value: "tight", label: "紧凑" },
+			],
+		};
+		const shadow: CardSkinKnob = {
+			key: "shadow",
+			label: "阴影",
+			type: "switch",
+			default: true,
+			on: "block",
+			off: "none",
+		};
+
+		it("各类型产出各自的字面量", () => {
+			expect(cardSkinKnobCss(color, "#00f0ff")).toBe("#00f0ff");
+			expect(cardSkinKnobCss(radius, 20)).toBe("20px");
+			expect(cardSkinKnobCss(ratio, 0.35)).toBe("0.35");
+			expect(cardSkinKnobCss(density, "tight")).toBe("tight");
+			expect(cardSkinKnobCss(shadow, true)).toBe("block");
+			expect(cardSkinKnobCss(shadow, false)).toBe("none");
+		});
+
+		it("脏值一律 null(不注入),不是兜个默认值", () => {
+			expect(cardSkinKnobCss(color, "url(https://evil.example/x.png)")).toBeNull();
+			expect(cardSkinKnobCss(color, "#fff;background:url(x)")).toBeNull();
+			expect(cardSkinKnobCss(color, 12)).toBeNull();
+			expect(cardSkinKnobCss(radius, 99)).toBeNull();
+			expect(cardSkinKnobCss(radius, "20px")).toBeNull();
+			expect(cardSkinKnobCss(radius, Number.NaN)).toBeNull();
+			expect(cardSkinKnobCss(density, "roomy")).toBeNull();
+			expect(cardSkinKnobCss(shadow, "block")).toBeNull();
+			expect(cardSkinKnobCss(color, undefined)).toBeNull();
+		});
 	});
 });
