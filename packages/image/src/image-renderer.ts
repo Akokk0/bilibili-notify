@@ -409,11 +409,12 @@ export class ImageRenderer {
 	private async prefetchSkinAssets(
 		skinId: string,
 		card: CardSkinCard,
+		fonts?: CardSkinManifest["fonts"],
 	): Promise<Map<string, string>> {
 		const out = new Map<string, string>();
 		const resolve = this.resolveCardSkinAsset;
 		if (!resolve) return out;
-		const refs = skinAssetRefs(card);
+		const refs = skinAssetRefs(card, fonts);
 		if (refs.length === 0) return out;
 		await Promise.all(
 			refs.map(async (name) => {
@@ -465,7 +466,11 @@ export class ImageRenderer {
 			id: string,
 			manifest: CardSkinManifest,
 		): Promise<{ buffer: Buffer; height: number }> => {
-			const assets = await this.prefetchSkinAssets(id, cardOfManifest(manifest, kind));
+			const assets = await this.prefetchSkinAssets(
+				id,
+				cardOfManifest(manifest, kind),
+				manifest.fonts,
+			);
 			let html = await renderCardWithSkin(kind, props, manifest, {
 				title,
 				font: font.font,

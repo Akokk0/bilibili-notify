@@ -66,6 +66,10 @@ export const CARD_SKIN_LIMITS = {
 	/** 包内资产数量与单个体积(与 dashboard 皮肤同量级)。 */
 	maxAssets: 12,
 	maxAssetBytes: 5 * 1024 * 1024,
+	/** 根 / 块各自那张「资产变量表」最多几项(ADR-0014 决策 13 的 🔗:`--bn-asset-<名>`)。 */
+	maxAssetVars: 8,
+	/** 皮肤级 `fonts` 最多几款。 */
+	maxFonts: 4,
 	/**
 	 * 出图后的卡片最大高度 px(ADR-0014 决策 19「卡片有最大高度,超了算失败」)。
 	 *
@@ -457,6 +461,36 @@ export type CardSkinColumn = z.infer<typeof CardSkinColumnSchema>;
 
 const BLOCK_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
+/**
+ * 包内资产的引用:`asset:assets/<文件>`。形状与 server 落盘的名字同构(一级 `assets/`、
+ * 小写、无 `..`);扩展名白名单与「包里真有没有」归 server 装包那道门,这里只把路径穿越
+ * 与外网写法挡在 schema 层。
+ */
+const ASSET_REF_RE = /^asset:assets\/[a-z0-9._-]+$/;
+const assetRef = z
+	.string()
+	.regex(ASSET_REF_RE, "资产引用只认 asset:assets/<文件> 形式")
+	.refine((v) => !v.includes(".."), "资产引用不许带 ..");
+
+/** CSS 变量名(`--bn-asset-<名>` 的那截 `<名>`)。 */
+const ASSET_VAR_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * 资产变量表:变量名 → 包内资产。渲染器把每项注成该元素上的 `--bn-asset-<名>`(值是
+ * data URL),作者在 CSS 里 `var(--bn-asset-<名>)` 自己用 —— 这是 `url()` 一律拒收之下
+ * 资产进 CSS 的**唯一**一条路(ADR-0014 决策 13 的 🔗)。
+ */
+const AssetVarsSchema = z
+	.record(
+		z.string().regex(ASSET_VAR_RE, "资产变量名只准小写字母、数字、连字符,32 字以内"),
+		assetRef,
+	)
+	.refine(
+		(m) => Object.keys(m).length <= CARD_SKIN_LIMITS.maxAssetVars,
+		`一张 assets 表最多 ${CARD_SKIN_LIMITS.maxAssetVars} 项`,
+	);
+export type CardSkinAssetVars = z.infer<typeof AssetVarsSchema>;
+
 const cssField = z
 	.string()
 	.max(CARD_SKIN_LIMITS.maxCssBytes, `css 超过 ${CARD_SKIN_LIMITS.maxCssBytes / 1024}KB`)
@@ -468,6 +502,8 @@ const BlockBaseSchema = z.object({
 	/** 字段路径,真值才画;字段必须在该卡种的 `CARD_SKIN_FIELDS` 里(装包时对表)。 */
 	showIf: z.string().regex(FIELD_PATH_RE, "showIf 只认 a.b.c 形式的字段路径").optional(),
 	css: cssField,
+	/** 这个块的资产变量(注在 wrapper 上)。 */
+	assets: AssetVarsSchema.optional(),
 });
 
 /**
@@ -522,8 +558,10 @@ export const CardSkinCardSchema = z
 			.array(CardSkinColumnSchema)
 			.length(CARD_SKIN_LIMITS.columns, `columns 必须恰好 ${CARD_SKIN_LIMITS.columns} 项`)
 			.optional(),
-		/** 根块两层的 CSS(选择器只准 `[data-bn="frame"]` / `[data-bn="glass"]`)。 */
+		/** 根块两层的 CSS(清洗后每条选择器以 `[data-bn="frame"]` / `[data-bn="glass"]` 起头)。 */
 		css: cssField,
+		/** 这张卡外框的资产变量(注在 frame 上)。 */
+		assets: AssetVarsSchema.optional(),
 		blocks: z
 			.array(CardSkinBlockSchema)
 			.max(CARD_SKIN_LIMITS.maxBlocks, `一张卡最多 ${CARD_SKIN_LIMITS.maxBlocks} 块`),
@@ -544,6 +582,24 @@ export const CardSkinVariableDefaultsSchema = z
 	.strict();
 export type CardSkinVariableDefaults = z.infer<typeof CardSkinVariableDefaultsSchema>;
 
+/** CSS `font-family` 名:能不加引号地出现在 `@font-face` 与 `font-family` 里的那种。 */
+const FONT_FAMILY_RE = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/;
+
+/**
+ * 皮肤自带的字体:渲染器按每项注一条 `@font-face{font-family:<family>;src:url(<data URL>)}`,
+ * 皮肤 CSS 里直接写 `font-family:<family>`。`url()` 在皮肤 CSS 里一律拒收,字体只能从这条
+ * 结构化的路进。
+ */
+export const CardSkinFontSchema = z
+	.object({
+		family: z
+			.string()
+			.regex(FONT_FAMILY_RE, "字体名只准字母、数字、空格、下划线、连字符,60 字以内"),
+		asset: assetRef,
+	})
+	.strict();
+export type CardSkinFont = z.infer<typeof CardSkinFontSchema>;
+
 export const CardSkinManifestSchema = z
 	.object({
 		schemaVersion: z.literal(CARD_SKIN_SCHEMA_VERSION, {
@@ -556,6 +612,11 @@ export const CardSkinManifestSchema = z
 		variables: CardSkinVariableDefaultsSchema.optional(),
 		/** 按卡种的变量默认值,叠在上面那份之上。 */
 		variablesByKind: z.partialRecord(CardSkinKindSchema, CardSkinVariableDefaultsSchema).optional(),
+		/** 皮肤自带的字体(family 全表唯一,装包时对包内资产)。 */
+		fonts: z
+			.array(CardSkinFontSchema)
+			.max(CARD_SKIN_LIMITS.maxFonts, `fonts 最多 ${CARD_SKIN_LIMITS.maxFonts} 款`)
+			.optional(),
 		cards: z.partialRecord(CardSkinKindSchema, CardSkinCardSchema),
 	})
 	.strict();
@@ -579,6 +640,11 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	}
 	const m = parsed.data;
 	const errors: string[] = [];
+	const families = new Set<string>();
+	m.fonts?.forEach((f, i) => {
+		if (families.has(f.family)) errors.push(`fonts[${i}]: 字体名「${f.family}」重复`);
+		families.add(f.family);
+	});
 	for (const kind of CARD_SKIN_KINDS) {
 		const card = m.cards[kind];
 		if (!card) continue;

@@ -327,3 +327,95 @@ describe("DEFAULT_CARD_SKIN", () => {
 		expect(names("sc")).toEqual(DEFAULT_CARD_LAYOUT.sc.map((b) => b.type));
 	});
 });
+
+describe("资产变量与皮肤字体(ADR-0014 决策 13 的 🔗)", () => {
+	const live = (over: Record<string, unknown>) =>
+		minimal({
+			cards: {
+				live: {
+					width: 600,
+					blocks: [
+						{
+							id: "cover",
+							kind: "builtin",
+							builtin: "cover",
+							grid: { row: 1, column: 1, span: 12 },
+						},
+					],
+					...over,
+				},
+			},
+		} as Partial<CardSkinManifest>);
+
+	it("根与块各带一张 assets 表:变量名 → asset:assets/<文件>", () => {
+		const r = parseCardSkin(
+			live({
+				assets: { hud: "asset:assets/hud.png" },
+				blocks: [
+					{
+						id: "cover",
+						kind: "builtin",
+						builtin: "cover",
+						grid: { row: 1, column: 1, span: 12 },
+						assets: { tex: "asset:assets/tex.webp" },
+					},
+				],
+			}),
+		);
+		expect(r.ok).toBe(true);
+	});
+
+	it.each([
+		["变量名带大写", { Hud: "asset:assets/hud.png" }],
+		["变量名以数字起头", { "1x": "asset:assets/hud.png" }],
+		["值不带 asset: 前缀", { hud: "assets/hud.png" }],
+		["值指向包外", { hud: "asset:../etc/passwd" }],
+		["值带 http", { hud: "asset:http://x/y.png" }],
+	])("assets 表形状不对(%s)→ 拒收", (_label, assets) => {
+		expect(parseCardSkin(live({ assets })).ok).toBe(false);
+	});
+
+	it("一张 assets 表最多 maxAssetVars 项", () => {
+		const ok = Object.fromEntries(
+			Array.from({ length: CARD_SKIN_LIMITS.maxAssetVars }, (_, i) => [
+				`a${i}`,
+				"asset:assets/a.png",
+			]),
+		);
+		expect(parseCardSkin(live({ assets: ok })).ok).toBe(true);
+		const over = { ...ok, more: "asset:assets/a.png" };
+		expect(parseCardSkin(live({ assets: over })).ok).toBe(false);
+	});
+
+	it("皮肤级 fonts:family + asset,family 只准字母数字空格连字符", () => {
+		expect(
+			parseCardSkin(
+				minimal({ fonts: [{ family: "Orbitron Bold", asset: "asset:assets/orbitron.woff2" }] }),
+			).ok,
+		).toBe(true);
+		expect(
+			parseCardSkin(minimal({ fonts: [{ family: 'Bad"Name', asset: "asset:assets/a.ttf" }] })).ok,
+		).toBe(false);
+		expect(parseCardSkin(minimal({ fonts: [{ family: "A", asset: "assets/a.ttf" }] })).ok).toBe(
+			false,
+		);
+	});
+
+	it("fonts:family 不许重复,数量有上限", () => {
+		const dup = parseCardSkin(
+			minimal({
+				fonts: [
+					{ family: "A", asset: "asset:assets/a.ttf" },
+					{ family: "A", asset: "asset:assets/b.ttf" },
+				],
+			}),
+		);
+		expect(dup.ok).toBe(false);
+		if (!dup.ok) expect(dup.errors.join()).toContain("A");
+		const many = Array.from({ length: CARD_SKIN_LIMITS.maxFonts + 1 }, (_, i) => ({
+			family: `F${i}`,
+			asset: "asset:assets/a.ttf",
+		}));
+		expect(parseCardSkin(minimal({ fonts: many })).ok).toBe(false);
+	});
+});

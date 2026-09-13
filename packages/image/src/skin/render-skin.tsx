@@ -18,6 +18,7 @@
  * - **取不到的字段一律空串**,绝不让 `undefined` 或原样的 `{a.b}` 进图里。
  */
 
+import type { CardSkinAssetVars, CardSkinFont } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_LIMITS,
@@ -84,6 +85,8 @@ export interface SkinRenderOptions<K extends CardSkinKind = CardSkinKind> {
 	raw?: Dynamic;
 	/** 包内资产名 → data URL(宿主注入)。缺省或回 undefined → 用透明占位 GIF。 */
 	resolveAsset?: (name: string) => string | undefined;
+	/** 皮肤自带的字体(清单级),每款注一条 `@font-face`;解析不出资产的那款跳过。 */
+	fonts?: readonly CardSkinFont[];
 }
 
 export interface SkinRenderResult {
@@ -115,11 +118,52 @@ function blockClass(id: string): string {
 /** 皮肤 CSS 里的挂点选择器。清洗器的产物只有 `[data-bn="x"]` 这一种写法(css-tree generate)。 */
 const HOOK_SELECTOR_RE = /\[data-bn="([^"]*)"\]/g;
 
-/** 块级 CSS:`self` → 该块的 class;其余挂点 → 该块内带这个挂点的元素。 */
+/**
+ * 块级 CSS:`self` → 该块的 class;其余挂点只把 `=` 换成 `~=`。
+ *
+ * 前缀**不在这里补**:清洗器已把每条选择器归一成以 `[data-bn="self"]` 起头(ADR-0014
+ * 决策 13 的 🔗),挂点永远出现在它后面;这里若再给挂点补 `.bn-blk-x `,就成了
+ * `.bn-blk-x .bn-blk-x [data-bn~=…]`,一条都选不中。
+ */
 function translateBlockCss(css: string, cls: string): string {
 	return css.replace(HOOK_SELECTOR_RE, (_m, hook: string) =>
-		hook === CARD_SKIN_SELF_HOOK ? `.${cls}` : `.${cls} [data-bn~="${hook}"]`,
+		hook === CARD_SKIN_SELF_HOOK ? `.${cls}` : `[data-bn~="${hook}"]`,
 	);
+}
+
+/** `asset:assets/x.png` → `assets/x.png`(与自定义块 `src` 那条路同一个前缀)。 */
+const ASSET_PREFIX = "asset:";
+
+/**
+ * 一张资产变量表 → 一串 inline 声明 `--bn-asset-<名>:url("<data URL>");`。
+ * 解析不出的资产**不注**:留一个指向空串的 `url("")` 会让浏览器去请求文档自身,而作者
+ * 在 CSS 里写的 `var(--bn-asset-x, none)` 兜底反倒失效。
+ */
+function assetVarsStyle(
+	vars: CardSkinAssetVars | undefined,
+	resolveAsset: SkinRenderOptions["resolveAsset"],
+): string {
+	if (!vars) return "";
+	let out = "";
+	for (const [name, ref] of Object.entries(vars)) {
+		const url = resolveAsset?.(ref.slice(ASSET_PREFIX.length));
+		if (url) out += `--bn-asset-${name}:url("${url}");`;
+	}
+	return out;
+}
+
+/** 皮肤字体 → 一串 `@font-face`(每款一条;资产解析不出的跳过)。 */
+function fontFaces(
+	fonts: readonly CardSkinFont[] | undefined,
+	resolveAsset: SkinRenderOptions["resolveAsset"],
+): string {
+	if (!fonts) return "";
+	let out = "";
+	for (const f of fonts) {
+		const url = resolveAsset?.(f.asset.slice(ASSET_PREFIX.length));
+		if (url) out += `@font-face{font-family:"${f.family}";src:url("${url}")}`;
+	}
+	return out;
 }
 
 /** 根级 CSS:`frame` / `glass` 本就挂在 DOM 上,只把 `=` 换成 `~=`。 */
@@ -326,16 +370,21 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 
 	// ④ 铺 wrapper + 翻译 CSS。
 	const parts: string[] = [];
+	const faces = fontFaces(o.fonts, o.resolveAsset);
+	if (faces) parts.push(faces);
 	if (card.css) parts.push(translateRootCss(card.css));
 	const children = placed.map((item) => {
 		const cls = blockClass(item.block.id);
 		if (item.block.css) parts.push(translateBlockCss(item.block.css, cls));
-		return wrapBlock(item, cls, gridStyle(item.block, rowMap.get(item.block.grid.row) ?? 1));
+		const vars = assetVarsStyle(item.block.assets, o.resolveAsset);
+		const grid = gridStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
+		const style = vars ? `${grid};${vars}` : grid;
+		return wrapBlock(item, cls, style);
 	});
 
 	const gap = `${card.gap?.row ?? 0}px ${card.gap?.column ?? 0}px`;
 	const extra: FrameExtra = {
-		frame: frameVariables(kind, o.props),
+		frame: frameVariables(kind, o.props) + assetVarsStyle(card.assets, o.resolveAsset),
 		glass: `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`,
 		width: card.width,
 	};
@@ -390,6 +439,7 @@ export async function renderCardWithSkin<K extends CardSkinKind>(
 		props,
 		raw: options.raw,
 		resolveAsset: options.resolveAsset,
+		fonts: manifest.fonts,
 	});
 	return await renderCard(
 		{ render: (): VNode => vnode },
@@ -415,11 +465,17 @@ const ASSET_REF_RE = /src="asset:([^"]*)"/g;
  * 渲染器的 `resolveAsset` 是**同步**的(替换发生在字符串替换的回调里),而宿主读盘是
  * 异步的 —— 所以调用方得先按这份名单把资产预取成表,再给一个同步的查表函数。
  */
-export function skinAssetRefs(card: CardSkinCard): string[] {
+export function skinAssetRefs(card: CardSkinCard, fonts?: readonly CardSkinFont[]): string[] {
 	const names = new Set<string>();
+	const addVars = (vars: CardSkinAssetVars | undefined): void => {
+		for (const ref of Object.values(vars ?? {})) names.add(ref.slice(ASSET_PREFIX.length));
+	};
+	addVars(card.assets);
 	for (const block of card.blocks) {
+		addVars(block.assets);
 		if (block.kind !== "custom") continue;
 		for (const m of block.html.matchAll(ASSET_REF_RE)) names.add(m[1]);
 	}
+	for (const f of fonts ?? []) names.add(f.asset.slice(ASSET_PREFIX.length));
 	return [...names];
 }

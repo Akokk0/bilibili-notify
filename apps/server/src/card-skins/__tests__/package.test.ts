@@ -410,3 +410,83 @@ describe("checkCardSkinPackage:清单层", () => {
 		expect(JSON.stringify(raw)).toBe(before);
 	});
 });
+
+describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决策 13 的 🔗)", () => {
+	const withAssets = (over: Record<string, unknown>) =>
+		manifest({
+			cards: {
+				live: {
+					width: 600,
+					blocks: [
+						{
+							id: "cover",
+							kind: "builtin",
+							builtin: "cover",
+							grid: { row: 1, column: 1, span: 12 },
+						},
+					],
+					...over,
+				},
+			},
+		});
+
+	it("根 / 块的 assets 表指向包里真有的资产 → ok", () => {
+		const r = open(
+			pack({
+				[CARD_SKIN_MANIFEST_FILE]: withAssets({
+					assets: { hud: "asset:assets/hud.png" },
+					blocks: [
+						{
+							id: "cover",
+							kind: "builtin",
+							builtin: "cover",
+							grid: { row: 1, column: 1, span: 12 },
+							assets: { tex: "asset:assets/hud.png" },
+						},
+					],
+				}),
+				"assets/hud.png": PNG,
+			}),
+		);
+		expect(r.ok).toBe(true);
+	});
+
+	it("assets 表指了包里没有的资产 → 拒,错误里点名变量与文件", () => {
+		const r = open(
+			pack({ [CARD_SKIN_MANIFEST_FILE]: withAssets({ assets: { hud: "asset:assets/nope.png" } }) }),
+		);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.errors.join()).toMatch(/assets\.hud.*assets\/nope\.png/);
+	});
+
+	it("fonts 指向包里的字体 → ok;指向不存在的 / 指向图片 → 拒", () => {
+		const good = open(
+			pack({
+				[CARD_SKIN_MANIFEST_FILE]: manifest({
+					fonts: [{ family: "Orbitron", asset: "asset:assets/orb.woff2" }],
+				}),
+				"assets/orb.woff2": WOFF2,
+			}),
+		);
+		expect(good.ok).toBe(true);
+		const missing = open(
+			pack({
+				[CARD_SKIN_MANIFEST_FILE]: manifest({
+					fonts: [{ family: "Orbitron", asset: "asset:assets/orb.woff2" }],
+				}),
+			}),
+		);
+		expect(missing.ok).toBe(false);
+		if (!missing.ok) expect(missing.errors.join()).toMatch(/fonts\[0\].*orb\.woff2/);
+		const notFont = open(
+			pack({
+				[CARD_SKIN_MANIFEST_FILE]: manifest({
+					fonts: [{ family: "Orbitron", asset: "asset:assets/hud.png" }],
+				}),
+				"assets/hud.png": PNG,
+			}),
+		);
+		expect(notFont.ok).toBe(false);
+		if (!notFont.ok) expect(notFont.errors.join()).toContain("不是字体");
+	});
+});

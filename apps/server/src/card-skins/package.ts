@@ -199,6 +199,28 @@ export function checkCardSkinPackage(
 		});
 	}
 
+	for (const kind of CARD_SKIN_KINDS) {
+		const card = manifest.cards[kind];
+		if (!card) continue;
+		checkAssetVars(card.assets, `cards.${kind}.assets`, assetNames, errors);
+		card.blocks.forEach((block, i) => {
+			checkAssetVars(
+				block.assets,
+				`cards.${kind}.blocks[${i}]「${block.id}」.assets`,
+				assetNames,
+				errors,
+			);
+		});
+	}
+	manifest.fonts?.forEach((font, i) => {
+		const name = font.asset.slice(ASSET_REF_PREFIX.length);
+		if (!assetNames.has(name)) {
+			errors.push(`fonts[${i}]「${font.family}」: 指了「${name}」,但包里没有这份资产`);
+		} else if (!CARD_SKIN_FONT_RE.test(name)) {
+			errors.push(`fonts[${i}]「${font.family}」:「${name}」不是字体`);
+		}
+	});
+
 	checkBackgroundImage(manifest.variables, "variables", assetNames, errors);
 	for (const kind of CARD_SKIN_KINDS) {
 		checkBackgroundImage(
@@ -210,6 +232,25 @@ export function checkCardSkinPackage(
 	}
 
 	return errors.length > 0 ? { ok: false, errors } : { ok: true, manifest, warnings };
+}
+
+/** 清单里资产引用的前缀(`asset:assets/<文件>`),与 schema 的 `ASSET_REF_RE` 同构。 */
+const ASSET_REF_PREFIX = "asset:";
+
+/**
+ * 根 / 块的资产变量表:每项都得指向包里真有的资产(图片或字体都行 —— 变量的值只是一个
+ * data URL,作者拿它去 `background` 还是别处,不归这道门管)。
+ */
+function checkAssetVars(
+	vars: Record<string, string> | undefined,
+	at: string,
+	assetNames: ReadonlySet<string>,
+	errors: string[],
+): void {
+	for (const [key, ref] of Object.entries(vars ?? {})) {
+		const name = ref.slice(ASSET_REF_PREFIX.length);
+		if (!assetNames.has(name)) errors.push(`${at}.${key}: 指了「${name}」,但包里没有这份资产`);
+	}
 }
 
 /**

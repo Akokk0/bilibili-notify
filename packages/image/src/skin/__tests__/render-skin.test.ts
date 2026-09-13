@@ -230,13 +230,19 @@ describe("皮肤渲染器 — CSS 翻译", () => {
 					"hd",
 					"header",
 					{ row: 1, column: 1, span: 12 },
-					{ css: '[data-bn="self"]{padding-top:4px}[data-bn="avatar"]{border-radius:0}' },
+					{
+						// 清洗器的产物:每条选择器都以 self 起头(挂点在它后面),其余段随便写。
+						css: '[data-bn="self"]{padding-top:4px}[data-bn="self"] [data-bn="avatar"]{border-radius:0}[data-bn="self"] .hud > span{color:red}',
+					},
 				),
 			]),
 		);
 		expect(css).toContain(".bn-blk-hd{padding-top:4px}");
 		// `~=` 不是 `=`:图廊的单图容器挂的是 "pics pic" 双挂点,`=` 选不中。
+		// 挂点前面**不再**补 `.bn-blk-hd `:前缀由清洗器归一进 self,翻译只换写法。
 		expect(css).toContain('.bn-blk-hd [data-bn~="avatar"]{border-radius:0}');
+		expect(css).not.toContain(".bn-blk-hd .bn-blk-hd");
+		expect(css).toContain(".bn-blk-hd .hud > span{color:red}");
 	});
 
 	it("根级:frame / glass 原样落在 DOM 上的挂点(只换成 ~=)", async () => {
@@ -301,5 +307,90 @@ describe("皮肤渲染器 — 整张一个块的卡种", () => {
 		const doc = new JSDOM(html).window.document;
 		expect(labels(doc)).toEqual(["body"]);
 		expect(doc.querySelector("#wordCloudCanvas")).not.toBeNull();
+	});
+});
+
+describe("皮肤渲染器 — 资产变量与皮肤字体(ADR-0014 决策 13 的 🔗)", () => {
+	const DATA = "data:image/png;base64,AAAA";
+	const resolveAsset = (name: string) => (name === "assets/tex.png" ? DATA : undefined);
+
+	it("块的 assets 表注成 wrapper 上的 --bn-asset-<名>,值是 data URL", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin(
+					"t",
+					"title",
+					{ row: 1, column: 1, span: 12 },
+					{ assets: { tex: "asset:assets/tex.png" } },
+				),
+			]),
+			{ resolveAsset },
+		);
+		const style = doc.querySelector(".bn-blk-t")?.getAttribute("style") ?? "";
+		expect(style).toContain(`--bn-asset-tex:url("${DATA}")`);
+	});
+
+	it("解析不出的资产不注变量(不留一个指向空的 url)", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin(
+					"t",
+					"title",
+					{ row: 1, column: 1, span: 12 },
+					{ assets: { nope: "asset:assets/nope.png" } },
+				),
+			]),
+			{ resolveAsset },
+		);
+		expect(doc.querySelector(".bn-blk-t")?.getAttribute("style") ?? "").not.toContain(
+			"--bn-asset-nope",
+		);
+	});
+
+	it("根的 assets 表注在 frame 上", async () => {
+		const { doc } = await render(
+			liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })], {
+				assets: { hud: "asset:assets/tex.png" },
+			}),
+			{ resolveAsset },
+		);
+		const style = doc.querySelector('[data-bn~="frame"]')?.getAttribute("style") ?? "";
+		expect(style).toContain(`--bn-asset-hud:url("${DATA}")`);
+	});
+
+	it("皮肤字体注成 @font-face;解析不出的那款跳过", async () => {
+		const FONT = "data:font/woff2;base64,BBBB";
+		const { css } = await render(
+			liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })]),
+			{
+				fonts: [
+					{ family: "Orbitron", asset: "asset:assets/orb.woff2" },
+					{ family: "Ghost", asset: "asset:assets/ghost.woff2" },
+				],
+				resolveAsset: (name) => (name === "assets/orb.woff2" ? FONT : undefined),
+			},
+		);
+		expect(css).toContain(`@font-face{font-family:"Orbitron";src:url("${FONT}")}`);
+		expect(css).not.toContain("Ghost");
+	});
+
+	it("skinAssetRefs 把 html 的 src、根与块的 assets 表、皮肤字体一起列出", async () => {
+		const { skinAssetRefs } = await import("../render-skin");
+		const card = liveCard(
+			[
+				custom("c", '<img src="asset:assets/pic.png">'),
+				builtin(
+					"t",
+					"title",
+					{ row: 2, column: 1, span: 12 },
+					{ assets: { tex: "asset:assets/tex.png" } },
+				),
+			],
+			{ assets: { hud: "asset:assets/hud.png" } },
+		);
+		const refs = skinAssetRefs(card, [{ family: "Orbitron", asset: "asset:assets/orb.woff2" }]);
+		expect(refs.sort()).toEqual(
+			["assets/hud.png", "assets/orb.woff2", "assets/pic.png", "assets/tex.png"].sort(),
+		);
 	});
 });

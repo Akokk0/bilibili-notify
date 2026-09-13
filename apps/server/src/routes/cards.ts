@@ -539,7 +539,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const store = opts.cardSkins;
 		if (!store) return out;
 		const skinId = id || opts.deps.store.getGlobals().defaults.cardSkin;
-		const refs = skinAssetRefs(cardOfManifest(manifest, kind));
+		const refs = skinAssetRefs(cardOfManifest(manifest, kind), manifest.fonts);
 		await Promise.all(
 			refs.map(async (name) => {
 				const url = await readCardSkinAssetDataUrl(store, skinId, name);
