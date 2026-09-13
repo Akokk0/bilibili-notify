@@ -466,6 +466,15 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 /** 默认皮肤的 id,保留字;内置只读,要改先复制一份。 */
 export const DEFAULT_CARD_SKIN_ID = "default";
 
+/**
+ * 皮肤 id:`default` 是内置那份,其余由 server 的皮肤库生成(时间戳 36 进制 + 随机 hex,
+ * 与 dashboard 皮肤同款)。它是落盘目录名与配置里的引用键,所以在 schema 这一步就把
+ * 路径穿越那类字符挡在门外。
+ */
+export const CardSkinIdSchema = z
+	.string()
+	.regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "皮肤 id 只准小写字母、数字、连字符");
+
 type B = CardSkinBlock;
 const stack = (
 	blocks: Array<[builtin: string, paddingTop?: number, id?: string]>,

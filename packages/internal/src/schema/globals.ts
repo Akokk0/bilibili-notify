@@ -7,6 +7,7 @@ import { allTemplateFingerprints } from "../template-defaults";
 export { DEFAULT_TEMPLATES } from "../constants";
 
 import { CardLayoutSchema, DEFAULT_CARD_LAYOUT } from "./card-layout";
+import { CardSkinIdSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
 	AISettingsSchema,
@@ -128,6 +129,9 @@ export const GlobalDefaultsSchema = z.object({
 	// `.default(DEFAULT_CARD_LAYOUT)` 让缺 cardLayout 字段的老 globals.json(在加该
 	// 字段前持久化的)load 时自动补全为默认版式,与 imageGroup 同源的迁移友好策略。
 	cardLayout: CardLayoutSchema.default(DEFAULT_CARD_LAYOUT),
+	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
+	// 本身住皮肤包里,不再住配置 —— 上面的 cardLayout 只为一次性迁移而保留读取。
+	cardSkin: CardSkinIdSchema.default(DEFAULT_CARD_SKIN_ID),
 	// 消息版式(发送侧结构):与 cardLayout 同款迁移友好策略,缺字段的老 globals.json
 	// load 时自动补默认(= 复刻现状:卡片+文本+链接合并一条)。
 	messageLayout: MessageLayoutSchema.default(DEFAULT_MESSAGE_LAYOUT),

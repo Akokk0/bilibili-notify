@@ -20,6 +20,7 @@ export function makeDefaults(): GlobalDefaults {
 	return {
 		features: { ...DEFAULT_FEATURE_FLAGS },
 		cardStyleByKind: {},
+		cardSkin: "default",
 		filters: {
 			blockForward: false,
 			blockArticle: false,

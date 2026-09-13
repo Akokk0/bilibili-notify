@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveAIProfile } from "../constants";
 import { DEFAULT_CARD_LAYOUT } from "./card-layout";
+import { DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { makeDefaultGlobalConfig } from "./globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "./message-layout";
 import { resolve } from "./resolve";
@@ -204,6 +205,23 @@ describe("resolve()", () => {
 		// 两者能同时存在;现在挑一份就是挑一份,不该被看不见的旧字段改写。
 		expect(eff.ai.persona).toEqual(presetPersona);
 		expect(eff.ai.dynamicPrompt).toBe("P 模板");
+	});
+
+	it("inherits the global card skin when the UP has no override", () => {
+		const globals = makeDefaultGlobalConfig();
+		expect(globals.defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+		const eff = resolve(SUB_BASE, globals.defaults);
+		expect(eff.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+	});
+
+	it("a per-UP card skin replaces the global one outright", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.cardSkin = "k1abc-deadbeef";
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: { ...SUB_BASE.overrides, cardSkin: "k2xyz-cafebabe" },
+		};
+		expect(resolve(sub, globals.defaults).cardSkin).toBe("k2xyz-cafebabe");
 	});
 
 	it("inherits global cardLayout when no per-UP override", () => {

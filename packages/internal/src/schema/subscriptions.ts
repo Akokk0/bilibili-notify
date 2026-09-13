@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CardLayoutSchema } from "./card-layout";
+import { CardSkinIdSchema } from "./card-skin";
 import {
 	CardStyleByKindSchema,
 	CardStylePartialSchema,
@@ -174,6 +175,9 @@ export const SubscriptionOverridesSchema = z.object({
 	// 卡片版式是数组型描述符,不走 partial 浅合并 —— per-UP 一旦自定义即「整份覆盖」
 	// (fork 全局版式后随便改),故用完整 CardLayoutSchema 而非 partial。
 	cardLayout: CardLayoutSchema.optional(),
+	// 这个 UP 单独用哪套卡片皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖,不再
+	// 有版式补丁)。缺 = 跟全局。
+	cardSkin: CardSkinIdSchema.optional(),
 	// 消息版式同 cardLayout:数组型描述符,per-UP 一旦自定义即整份覆盖。
 	messageLayout: MessageLayoutSchema.optional(),
 	imageGroup: ImageGroupSettingsPartialSchema.optional(),

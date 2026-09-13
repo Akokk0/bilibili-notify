@@ -46,6 +46,8 @@ export interface EffectiveSubscription {
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
 	cardLayout: CardLayout;
+	/** 生效的卡片皮肤 id(per-UP 指了就用它,否则全局)。 */
+	cardSkin: string;
 	messageLayout: MessageLayout;
 	imageGroup: ImageGroupSettings;
 }
@@ -178,6 +180,8 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		cardLayout: ov.cardLayout
 			? normalizeCardLayout(ov.cardLayout, defaults.cardLayout)
 			: defaults.cardLayout,
+		// 皮肤是整份引用,没有合并可言:指了就是它。
+		cardSkin: ov.cardSkin ?? defaults.cardSkin,
 		// 消息版式同 cardLayout:per-UP 整份覆盖(带 normalize 向前兼容),否则继承全局。
 		messageLayout: ov.messageLayout
 			? normalizeMessageLayout(ov.messageLayout, defaults.messageLayout)
