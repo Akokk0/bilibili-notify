@@ -1,0 +1,329 @@
+/**
+ * 卡片皮肤库(ADR-0014 决策 2 / 5)。盘上形状 `<dir>/<id>/{card-skin.json, assets/*}`,
+ * 与 dashboard 皮肤库(`skins/store.ts`)同规:写入一律 tmp → rename(目录级原子),
+ * `init()` 全量读盘重建索引,资产路径永远经白名单正则再拼接,杜绝路径穿越。
+ *
+ * 三处与 dashboard 刻意不同:
+ *
+ * - **内置那份是索引外的第八套**:`default` 不落盘(它是代码里的 `DEFAULT_CARD_SKIN`),
+ *   `list()` 把它摆在首位、`get()` 认得它、`duplicate()` 复制得了它 —— 那正是「要改先
+ *   复制一份」的入口(决策 5)。删 / 存它一律抛错。
+ * - **`remove()` 不认识的 id 抛错**,不是静默返回:调用方(路由)得能把「没这套皮肤」
+ *   与「删好了」分开回给主人。
+ * - **这一层不管「谁在用这套皮肤」**:启用指针住在配置里(`globals` / per-UP),删一套
+ *   正被用着的皮肤是路由要拦的事,不是店里的事。
+ */
+
+import { randomBytes } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+	CARD_SKIN_LIMITS,
+	type CardSkinManifest,
+	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
+	parseCardSkin,
+} from "@bilibili-notify/internal";
+import { strToU8, zipSync } from "fflate";
+import {
+	CARD_SKIN_MANIFEST_FILE,
+	checkCardSkinPackage,
+	isCardSkinAssetName,
+	parseCardSkinPackage,
+} from "./package.js";
+
+/** 面板列表要的那几样。`builtin` = 内置只读那份(改不了、删不了,只能复制)。 */
+export interface CardSkinSummary {
+	id: string;
+	name: string;
+	author?: string;
+	description?: string;
+	builtin: boolean;
+	/** `card-skin.json` 的 mtime(ms);内置那份不落盘,恒 0。 */
+	updatedAt: number;
+}
+
+/**
+ * 装包 / 保存被拒。**逐条错误单独带着**(不是拼成一句话):路由要把它们原样列给主人,
+ * 而「哪一块的哪一段不合格」正是作者唯一能据以动手的信息。
+ */
+export class CardSkinPackageError extends Error {
+	readonly errors: string[];
+	constructor(errors: string[]) {
+		super(errors.join("；"));
+		this.name = "CardSkinPackageError";
+		this.errors = errors;
+	}
+}
+
+interface IndexEntry {
+	manifest: CardSkinManifest;
+	updatedAt: number;
+}
+
+const ASSET_DIR = "assets";
+/** `assets/` 前缀的长度 —— 包内名字 → 盘上文件名只差这一截。 */
+const ASSET_PREFIX_LEN = `${ASSET_DIR}/`.length;
+
+export class CardSkinStore {
+	private readonly dir: string;
+	/** id → 盘上那份;盘是唯一权威,这里只是读缓存。内置那份**不在**里面。 */
+	private index = new Map<string, IndexEntry>();
+	private initWarnings: string[] = [];
+
+	constructor(opts: { dir: string }) {
+		this.dir = opts.dir;
+	}
+
+	/**
+	 * 读盘重建索引。**一份坏皮肤不许拖死启动** —— 读不动 / 形状不对的目录跳过并记一条
+	 * warning,既不进索引也不动它(交给人查,别静默删数据)。
+	 */
+	async init(): Promise<void> {
+		await mkdir(this.dir, { recursive: true });
+		this.index.clear();
+		this.initWarnings = [];
+		for (const entry of await readdir(this.dir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			// 写到一半的临时目录与删到一半的残骸不是皮肤,静默跳过。
+			if (entry.name.endsWith(".tmp") || entry.name.endsWith(".deleting")) continue;
+			if (entry.name === DEFAULT_CARD_SKIN_ID) {
+				this.initWarnings.push(
+					`${DEFAULT_CARD_SKIN_ID}: 这个 id 是内置皮肤的保留字,盘上这份目录不会被加载`,
+				);
+				continue;
+			}
+			const loaded = await this.readFromDisk(entry.name);
+			if ("error" in loaded) {
+				this.initWarnings.push(`${entry.name}: ${loaded.error}`);
+				continue;
+			}
+			this.index.set(entry.name, loaded.entry);
+		}
+	}
+
+	/** `init()` 跳过了哪些目录、为什么。路由 / 启动日志拿它告诉主人,别让皮肤悄悄消失。 */
+	warnings(): string[] {
+		return [...this.initWarnings];
+	}
+
+	/** 内置那份在首位,其余按最近改动排。 */
+	list(): CardSkinSummary[] {
+		const rest = [...this.index.entries()]
+			.map(([id, e]) => summary(id, e.manifest, false, e.updatedAt))
+			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+		return [summary(DEFAULT_CARD_SKIN_ID, DEFAULT_CARD_SKIN, true, 0), ...rest];
+	}
+
+	/**
+	 * 一套皮肤的清单;不存在 → null。
+	 *
+	 * **每次给一份拷贝**:内置那份是模块级常量,调用方顺手改一笔就污染了整个进程
+	 * (出图那头拿到的就是被改过的默认皮肤);存量那份跟着同一条纪律,免得两种来路
+	 * 两种语义。
+	 */
+	get(id: string): CardSkinManifest | null {
+		if (id === DEFAULT_CARD_SKIN_ID) return structuredClone(DEFAULT_CARD_SKIN);
+		const entry = this.index.get(id);
+		return entry ? structuredClone(entry.manifest) : null;
+	}
+
+	has(id: string): boolean {
+		return id === DEFAULT_CARD_SKIN_ID || this.index.has(id);
+	}
+
+	/** 装一个 zip 包:摊开 → 验+洗 → 落盘。任何一步不过一律抛 {@link CardSkinPackageError}。 */
+	async install(zip: Uint8Array): Promise<{ id: string; warnings: string[] }> {
+		const opened = parseCardSkinPackage(zip);
+		if (!opened.ok) throw new CardSkinPackageError(opened.errors);
+		const checked = checkCardSkinPackage(opened.manifestRaw, new Set(opened.assets.keys()));
+		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+		const id = newId();
+		// 落盘的是**洗过的**那份 —— 出图那头不该再洗一遍,也不该有机会读到原文。
+		await this.writePackage(id, checked.manifest, opened.assets);
+		return { id, warnings: checked.warnings };
+	}
+
+	/**
+	 * 复制一份(含资产)。内置那份也复制得了 —— 这就是「要改先复制」的那个入口。
+	 *
+	 * 新名字缺省「<原名> 副本」,超 schema 的名字上限就截断:复制一份不该因为名字长了
+	 * 而失败,而存进去一个 schema 不认的名字更糟 —— 要到下一次保存才炸。
+	 */
+	async duplicate(id: string, name?: string): Promise<{ id: string }> {
+		const source = this.get(id);
+		if (!source) throw new Error(`皮肤不存在: ${id}`);
+		const manifest: CardSkinManifest = {
+			...source,
+			name: (name ?? `${source.name} 副本`).slice(0, CARD_SKIN_LIMITS.name.max),
+		};
+		const assets = new Map<string, Uint8Array>();
+		for (const assetName of await this.listAssets(id)) {
+			const bytes = await this.readAsset(id, assetName);
+			if (bytes) assets.set(assetName, bytes);
+		}
+		const newid = newId();
+		await this.writePackage(newid, manifest, assets);
+		return { id: newid };
+	}
+
+	/** 删一套。内置那份删不掉;不认识的 id 抛错(调用方得分得清「没这套」与「删好了」)。 */
+	async remove(id: string): Promise<void> {
+		if (id === DEFAULT_CARD_SKIN_ID) {
+			throw new Error("内置的默认皮肤删不掉 —— 想改它请先「复制一份」");
+		}
+		// 不认识的 id 一律不动手:路由把 `:id` 原样交进来,而这里干的是 rm -rf
+		// (dashboard 那头 2026-08-19 实测过 `%2e%2e%2f` 能穿出皮肤目录)。
+		if (!this.index.has(id)) throw new Error(`皮肤不存在: ${id}`);
+		// 先 rename 再删:rm -rf 中途断电会留下半套皮肤,而下一次 init 照样把它读进索引;
+		// 改名之后那半套叫 `<id>.deleting`,init 一眼认得出不是皮肤。
+		const graveyard = join(this.dir, `${id}.deleting`);
+		await rm(graveyard, { recursive: true, force: true });
+		await rename(join(this.dir, id), graveyard);
+		this.index.delete(id);
+		await rm(graveyard, { recursive: true, force: true });
+	}
+
+	/** 打回一个标准包(manifest + 全部资产),和装包收的是同一种 zip(往返闭环)。 */
+	async exportZip(id: string): Promise<Uint8Array> {
+		const manifest = this.get(id);
+		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+		const files: Record<string, Uint8Array> = {
+			[CARD_SKIN_MANIFEST_FILE]: strToU8(serialize(manifest)),
+		};
+		// 各张资产之间没有先后关系,一张最大 5MB、最多 12 张 —— 串行读等于把几十次
+		// 系统调用排成一条队,而主人在等一个 zip。
+		const assets = await Promise.all(
+			(await this.listAssets(id)).map(
+				async (name) => [name, await this.readAsset(id, name)] as const,
+			),
+		);
+		for (const [name, bytes] of assets) {
+			if (bytes) files[name] = bytes;
+		}
+		return zipSync(files);
+	}
+
+	/** 这套皮肤盘上有哪些资产(`assets/<名>` 形式,与清单里的引用同构)。 */
+	async listAssets(id: string): Promise<string[]> {
+		if (!this.index.has(id)) return [];
+		let names: string[];
+		try {
+			names = await readdir(join(this.dir, id, ASSET_DIR));
+		} catch {
+			return [];
+		}
+		return names.map((n) => `${ASSET_DIR}/${n}`).filter(isCardSkinAssetName);
+	}
+
+	/** 读一份资产;名字不合白名单、皮肤不存在、文件不在 → null(三条都不抛)。 */
+	async readAsset(id: string, name: string): Promise<Uint8Array | null> {
+		if (!this.index.has(id)) return null;
+		if (!isCardSkinAssetName(name)) return null;
+		try {
+			return new Uint8Array(
+				await readFile(join(this.dir, id, ASSET_DIR, name.slice(ASSET_PREFIX_LEN))),
+			);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * 编辑器保存:走**与装包同一道**验+洗,只是资产清单来自盘上。
+	 *
+	 * 内置那份存不了(它没有落盘的身子);清洗产物照旧写回,所以盘上永远是洗过的。
+	 */
+	async save(id: string, manifestRaw: unknown): Promise<{ warnings: string[] }> {
+		if (id === DEFAULT_CARD_SKIN_ID) {
+			throw new Error("内置的默认皮肤改不了 —— 想改它请先「复制一份」");
+		}
+		const current = this.index.get(id);
+		if (!current) throw new Error(`皮肤不存在: ${id}`);
+		const checked = checkCardSkinPackage(manifestRaw, new Set(await this.listAssets(id)));
+		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+		const path = join(this.dir, id, CARD_SKIN_MANIFEST_FILE);
+		await writeAtomic(path, serialize(checked.manifest));
+		this.index.set(id, { manifest: checked.manifest, updatedAt: await mtime(path) });
+		return { warnings: checked.warnings };
+	}
+
+	/** 整套皮肤落盘:先写 `<id>.tmp` 再整目录 rename —— 断电不会留下半套。 */
+	private async writePackage(
+		id: string,
+		manifest: CardSkinManifest,
+		assets: ReadonlyMap<string, Uint8Array>,
+	): Promise<void> {
+		const tmpDir = join(this.dir, `${id}.tmp`);
+		await rm(tmpDir, { recursive: true, force: true });
+		await mkdir(join(tmpDir, ASSET_DIR), { recursive: true });
+		await writeFile(join(tmpDir, CARD_SKIN_MANIFEST_FILE), serialize(manifest));
+		for (const [name, data] of assets) {
+			// 白名单再过一遍:名字要拼进磁盘路径,而这一步离「谁检查过它」已经隔了几层。
+			if (!isCardSkinAssetName(name)) continue;
+			await writeFile(join(tmpDir, ASSET_DIR, name.slice(ASSET_PREFIX_LEN)), data);
+		}
+		await rename(tmpDir, join(this.dir, id));
+		this.index.set(id, {
+			manifest,
+			updatedAt: await mtime(join(this.dir, id, CARD_SKIN_MANIFEST_FILE)),
+		});
+	}
+
+	/** 读一个目录;读不动 / 形状不对 → 说清原因,由调用方决定怎么处置。 */
+	private async readFromDisk(id: string): Promise<{ entry: IndexEntry } | { error: string }> {
+		const path = join(this.dir, id, CARD_SKIN_MANIFEST_FILE);
+		let raw: unknown;
+		try {
+			raw = JSON.parse(await readFile(path, "utf8"));
+		} catch {
+			return { error: `${CARD_SKIN_MANIFEST_FILE} 读不出来或不是合法 JSON,跳过` };
+		}
+		// 只问形状,不重洗:落盘那一刻洗过了。形状不对的多半是手改坏的,跳过并说清。
+		const parsed = parseCardSkin(raw);
+		if (!parsed.ok) return { error: `清单不合格式(${parsed.errors[0] ?? "未知原因"}),跳过` };
+		return { entry: { manifest: parsed.manifest, updatedAt: await mtime(path) } };
+	}
+}
+
+/** 皮肤 id:时间戳 36 进制 + 随机 hex,与 dashboard 皮肤同款(`CardSkinIdSchema` 认得)。 */
+function newId(): string {
+	return `${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
+}
+
+function summary(
+	id: string,
+	m: CardSkinManifest,
+	builtin: boolean,
+	updatedAt: number,
+): CardSkinSummary {
+	return {
+		id,
+		name: m.name,
+		...(m.author !== undefined ? { author: m.author } : {}),
+		...(m.description !== undefined ? { description: m.description } : {}),
+		builtin,
+		updatedAt,
+	};
+}
+
+/** 盘上那份清单的字面:带缩进,主人 / 第三方是要手看手改它的。 */
+function serialize(manifest: CardSkinManifest): string {
+	return JSON.stringify(manifest, null, "\t");
+}
+
+/** 清单的 mtime(ms);读不到就退回当下 —— 时间戳不值得让一次保存失败。 */
+async function mtime(path: string): Promise<number> {
+	try {
+		return (await stat(path)).mtimeMs;
+	} catch {
+		return Date.now();
+	}
+}
+
+/** 先写 `.tmp` 再 rename —— 文件级原子,断电 / 崩溃不会留下半截 JSON。 */
+async function writeAtomic(path: string, data: string): Promise<void> {
+	const tmp = `${path}.tmp`;
+	await writeFile(tmp, data);
+	await rename(tmp, path);
+}
