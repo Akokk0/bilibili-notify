@@ -10,6 +10,11 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.live`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
+ *
+ * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9):挂点名取自
+ * `CARD_SKIN_BUILTIN_BLOCKS.live[<块>].hooks`,是对外 API,皮肤 CSS 直接按它选中部件。
+ * 原子块自己就是那一件,它的挂点是 `self`,所以**不挂**内部挂点(`__tests__/card-hooks.test.ts`
+ * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -67,12 +72,14 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 			<div class="px-4">
 				<div class="relative w-full">
 					<img
+						data-bn="image"
 						class="block w-full rounded-lg"
 						src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
 						alt="封面"
 					/>
 					{/* 直播状态角标，叠在封面右上角 */}
 					<div
+						data-bn="status"
 						class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold"
 						style={{
 							backgroundColor: status.bg,
@@ -90,12 +97,17 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 
 	header: (p) => (
 		<div class="flex items-center gap-2.5 px-4">
-			<img class="w-11 h-11 rounded-full object-cover shrink-0" src={p.userface} alt="主播头像" />
+			<img
+				data-bn="avatar"
+				class="w-11 h-11 rounded-full object-cover shrink-0"
+				src={p.userface}
+				alt="主播头像"
+			/>
 			<div class="flex flex-col gap-0.5 min-w-0">
-				<span class="text-[16px] font-bold leading-none" style="color: #18191C;">
+				<span data-bn="name" class="text-[16px] font-bold leading-none" style="color: #18191C;">
 					{p.username}
 				</span>
-				<span class="text-[12px]" style="color: #999;">
+				<span data-bn="time" class="text-[12px]" style="color: #999;">
 					{p.liveTime}
 				</span>
 			</div>
@@ -117,12 +129,12 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		return (
 			<div class="px-4 flex flex-col gap-1 text-[13px]" style="color: #666;">
 				{hasTopRow ? (
-					<div class="flex justify-between">
-						<span>{p.showPopularity ? statsLeft(p) : ""}</span>
-						<span>{p.showArea ? `分区：${p.data.area_name}` : ""}</span>
+					<div data-bn="row" class="flex justify-between">
+						<span data-bn="popularity">{p.showPopularity ? statsLeft(p) : ""}</span>
+						<span data-bn="area">{p.showArea ? `分区：${p.data.area_name}` : ""}</span>
 					</div>
 				) : null}
-				{fans ? <div>{fans}</div> : null}
+				{fans ? <div data-bn="fans">{fans}</div> : null}
 			</div>
 		);
 	},

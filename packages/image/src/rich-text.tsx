@@ -1,4 +1,13 @@
 /** @jsxImportSource vue */
+
+/**
+ * 动态正文的富文本渲染。
+ *
+ * 这两个根 div 是卡片皮肤 `dynamic.content` 的 `body` 挂点(ADR-0014 决策 9)所在:
+ * content 块里的 `{node.body}` 是 VNode 插槽,**不给它包一层壳**(包了就往输出里塞一个
+ * 今天没有的元素),挂点因此下沉到正文自己的根元素上。普通正文与专栏各有一个根,两个都挂。
+ */
+
 import { SVG_LOTTERY_INLINE, SVG_VIDEO_INLINE } from "./icons";
 import type { RichTextNode } from "./types";
 
@@ -89,7 +98,7 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 	}
 
 	return (
-		<div class="text-[16px] text-[#18191C] leading-[1.6] break-words">
+		<div data-bn="body" class="text-[16px] text-[#18191C] leading-[1.6] break-words">
 			{title && <h1 class="text-[18px] font-bold mb-2">{title}</h1>}
 			{segs.map((seg, i) => {
 				if (seg.kind === "emoji")
@@ -162,5 +171,11 @@ function parseRichTextArticle(rt: RichTextNode, title?: string) {
 
 	const fullHtml = `${title ? `<h1 style="font-size:18px;font-weight:bold;margin-bottom:8px">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? '<span style="color:#999">...（全文过长，已省略）</span>' : ""}`;
 
-	return <div class="text-[15px] text-[#18191C] leading-[1.6] break-words" innerHTML={fullHtml} />;
+	return (
+		<div
+			data-bn="body"
+			class="text-[15px] text-[#18191C] leading-[1.6] break-words"
+			innerHTML={fullHtml}
+		/>
+	);
 }

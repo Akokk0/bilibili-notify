@@ -1,4 +1,20 @@
 /** @jsxImportSource vue */
+
+/**
+ * 一条动态的「呈现态」构建器。
+ *
+ * 这里画出来的东西最终落在卡片皮肤的两个块里(ADR-0014 决策 9),所以部件上挂着那两个块的
+ * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`):
+ * - `node.body` 进 `content` 块 —— 图廊(`pics` / `pic`)、主视频卡(`video` / `videoCover`
+ *   / `videoTitle`);正文本身的 `body` 挂在 `rich-text.tsx` 的根 div 上。
+ * - `node.additional` 进 `additional` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
+ *   按钮(`button`)。`cover` 一律挂在**封面 img** 上(与 `videoCover` 同口径),不挂外面那层定
+ *   宽框:框是版式,图才是「封面」。
+ *
+ * 挂点集合由 `__tests__/card-hooks.test.ts` 两头钉着:块里出现的挂点必须都在目录里,目录里
+ * 声明的挂点也必须真被挂上。
+ */
+
 import type { VNode } from "vue";
 import { SVG_BELL, SVG_DANMAKU, SVG_GOODS, SVG_LOTTERY, SVG_VIEW } from "../icons";
 import { parseRichText } from "../rich-text";
@@ -267,7 +283,8 @@ function buildPicsContent(pics: DynamicPic[]) {
 				</div>
 			) : null;
 		return (
-			<div class="relative overflow-hidden rounded-lg" style="max-width: 600px;">
+			// 单图时整个图廊就是那一格,两个挂点落在同一个元素上。
+			<div data-bn="pics pic" class="relative overflow-hidden rounded-lg" style="max-width: 600px;">
 				{isSuperLong ? (
 					<div class="relative" style="height: 400px; overflow: hidden;">
 						<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
@@ -303,7 +320,7 @@ function buildPicsContent(pics: DynamicPic[]) {
 		? "relative w-[calc(50%-4px)] aspect-square shrink-0"
 		: "relative w-[calc(33.33%-6px)] aspect-square shrink-0";
 	return (
-		<div class="flex flex-wrap gap-[8px]" style="max-width: 600px;">
+		<div data-bn="pics" class="flex flex-wrap gap-[8px]" style="max-width: 600px;">
 			{shown.map((p, i) => {
 				const isLong = p.height > p.width * 2;
 				const badge = picBadgeText(p, isLong);
@@ -311,7 +328,7 @@ function buildPicsContent(pics: DynamicPic[]) {
 				// 三列也就散了。
 				const more = overflow > 0 && i === shown.length - 1 ? overflow : 0;
 				return (
-					<div key={i} class={containerClass}>
+					<div key={i} data-bn="pic" class={containerClass}>
 						<img
 							class={`w-full h-full object-cover ${isLong ? "object-top" : ""} rounded`}
 							src={p.url}
@@ -367,7 +384,10 @@ function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 function buildReserveAdditional(reserve: any) {
 	const isEnded = reserve.button.uncheck.text === "已结束";
 	return (
-		<div class="flex justify-between items-center gap-[10px] bg-black/4 rounded-lg p-[10px]">
+		<div
+			data-bn="card"
+			class="flex justify-between items-center gap-[10px] bg-black/4 rounded-lg p-[10px]"
+		>
 			<div class="flex-1 min-w-0">
 				<div class="text-[14px] font-bold text-[#18191C] mb-1">{reserve.title}</div>
 				<div class="flex gap-2 text-[12px] text-[#999]">
@@ -382,6 +402,7 @@ function buildReserveAdditional(reserve: any) {
 				)}
 			</div>
 			<div
+				data-bn="button"
 				class={`shrink-0 inline-flex items-center gap-1 px-3 py-[6px] rounded-[6px] text-[12px] font-bold leading-none ${
 					isEnded ? "bg-[#f5f5f5] text-[#999]" : "bg-[#FB7299] text-white"
 				}`}
@@ -402,11 +423,16 @@ function buildGoodsAdditional(goods: any) {
 				{SVG_GOODS}
 				{goods.head_text}
 			</div>
-			<div class="bg-black/4 rounded-lg p-[10px]">
+			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				{isSingle ? (
 					<div class="flex gap-[10px] items-center">
 						<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
-							<img class="w-full h-full object-cover" src={goods.items[0].cover} alt="" />
+							<img
+								data-bn="cover"
+								class="w-full h-full object-cover"
+								src={goods.items[0].cover}
+								alt=""
+							/>
 						</div>
 						<div class="flex-1 min-w-0">
 							<div class="text-[13px] text-[#18191C] line-clamp-2 mb-[6px]">
@@ -417,7 +443,10 @@ function buildGoodsAdditional(goods: any) {
 								<span class="text-[12px] text-[#999]">起</span>
 							</div>
 						</div>
-						<div class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none">
+						<div
+							data-bn="button"
+							class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none"
+						>
 							{goods.items[0].jump_desc || "去看看"}
 						</div>
 					</div>
@@ -426,7 +455,7 @@ function buildGoodsAdditional(goods: any) {
 						{/* biome-ignore lint/suspicious/noExplicitAny: Bilibili goods API returns untyped items */}
 						{goods.items.map((item: any, i: number) => (
 							<div key={i} class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden bg-black/8">
-								<img class="w-full h-full object-cover" src={item.cover} alt="" />
+								<img data-bn="cover" class="w-full h-full object-cover" src={item.cover} alt="" />
 							</div>
 						))}
 					</div>
@@ -443,10 +472,10 @@ function buildCommonAdditional(common: any) {
 	return (
 		<div>
 			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{common.head_text}</div>
-			<div class="bg-black/4 rounded-lg p-[10px]">
+			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				<div class="flex gap-[10px] items-center">
 					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
-						<img class="w-full h-full object-cover" src={common.cover} alt="" />
+						<img data-bn="cover" class="w-full h-full object-cover" src={common.cover} alt="" />
 					</div>
 					<div class="flex-1 min-w-0">
 						<div class="text-[13px] font-bold text-[#18191C] mb-[4px]">{common.title}</div>
@@ -463,7 +492,10 @@ function buildCommonAdditional(common: any) {
 						{common.desc2 && <div class="text-[12px] text-[#999] truncate">{common.desc2}</div>}
 					</div>
 					{common.button?.jump_style?.text && (
-						<div class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none">
+						<div
+							data-bn="button"
+							class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none"
+						>
 							{common.button.jump_style.text}
 						</div>
 					)}
@@ -489,10 +521,10 @@ function buildUgcAdditional(ugc: any) {
 			{ugc.head_text && (
 				<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{ugc.head_text}</div>
 			)}
-			<div class="bg-black/4 rounded-lg p-[10px]">
+			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				<div class="flex gap-[10px] items-center">
 					<div class="relative w-[140px] h-[80px] shrink-0 rounded-md overflow-hidden bg-black/8">
-						<img class="w-full h-full object-cover block" src={ugc.cover} alt="" />
+						<img data-bn="cover" class="w-full h-full object-cover block" src={ugc.cover} alt="" />
 						{/*
 						 * 角标衬一层深色底,不是只给文字加 text-shadow —— 封面右下角是什么颜色
 						 * 完全由 UP 决定,遇上亮底(放射光、白背景)白字加弱阴影就糊没了。
@@ -528,12 +560,13 @@ function buildVideoContent(archive: {
 }) {
 	return (
 		<div
+			data-bn="video"
 			class="rounded-lg overflow-hidden mt-1"
 			style="background: rgba(0,0,0,0.04); max-width: 600px;"
 		>
 			{/* 封面整块铺在最上面 —— 与直播卡同一个骨架:先给一张图,文字压在下面。 */}
 			<div class="relative w-full">
-				<img class="w-full h-auto block" src={archive.cover} alt="" />
+				<img data-bn="videoCover" class="w-full h-auto block" src={archive.cover} alt="" />
 				{/*
 				 * 时长角标自己衬一层深色底,不再靠「整张封面压暗 20% + 白字阴影」。封面现在是
 				 * 主体,压暗会让整张图发灰;而封面右下角是什么颜色完全由 UP 决定,亮底上的白字
@@ -546,7 +579,9 @@ function buildVideoContent(archive: {
 				) : null}
 			</div>
 			<div class="p-[12px]">
-				<div class="text-[16px] font-bold text-[#18191C] line-clamp-2">{archive.title}</div>
+				<div data-bn="videoTitle" class="text-[16px] font-bold text-[#18191C] line-clamp-2">
+					{archive.title}
+				</div>
 				{/* 简介常为空串,空就整行不渲染,免得标题与播放数之间多出一条空白。 */}
 				{archive.desc ? (
 					<div class="mt-[6px] text-[12px] text-[#999] line-clamp-2">{archive.desc}</div>

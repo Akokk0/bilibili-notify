@@ -12,6 +12,8 @@
  * - **已格式化的文本直接给**(「1.2 万」「已开播 1 小时」),占位符不带过滤器。
  */
 
+import type { GuardLevel } from "@bilibili-notify/blive";
+import { GUARD_DESC } from "../blocks/guard";
 import { htmlToPlain } from "../html-to-plain";
 import { getSCLevel } from "../styles";
 import type { DynamicCardProps } from "../templates/dynamic-card";
@@ -164,15 +166,9 @@ function scData(p: SCCardProps): CardData {
 
 const GUARD_LEVEL_NAMES: Record<number, string> = { 1: "总督", 2: "提督", 3: "舰长" };
 
-/**
- * 文字信息那句。与 `blocks/guard.tsx` 的 `GUARD_DESC` 逐字同源 —— 那份是块库私有的,
- * 两边改一处就会漂;块库定稿后应收成一处共享常量。
- */
+/** 文字信息那句 —— 与文字块同一份 `GUARD_DESC`,不认识的等级给空串。 */
 function guardText(level: number, uname: string, masterName: string): string {
-	if (level === 1) return `"${uname}"上任\n"${masterName}"大航海舰队总督！`;
-	if (level === 2) return `"${uname}"就任\n"${masterName}"大航海舰队提督！`;
-	if (level === 3) return `"${uname}号"加入\n"${masterName}"大航海舰队！`;
-	return "";
+	return GUARD_DESC[level as GuardLevel]?.(uname, masterName) ?? "";
 }
 
 function guardData(p: GuardCardProps): CardData {

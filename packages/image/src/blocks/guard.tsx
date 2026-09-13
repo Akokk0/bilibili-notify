@@ -10,6 +10,10 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.guard`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
+ *
+ * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
+ * `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`;原子块的挂点是 `self`,所以不挂
+ * (`__tests__/card-hooks.test.ts` 两头钉着)。
  */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
@@ -17,7 +21,8 @@ import { DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { GuardCardProps } from "../templates/guard-card";
 import type { BlockRenderer } from "./types";
 
-const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
+/** 「文字信息」那句,按舰长等级。块库与数据契约(`skin/card-data.ts`)共用这一份。 */
+export const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
 	0: () => "",
 	1: (uname, masterName) => `"${uname}"上任\n"${masterName}"大航海舰队总督！`,
 	2: (uname, masterName) => `"${uname}"就任\n"${masterName}"大航海舰队提督！`,
@@ -58,25 +63,31 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 		const badgeLeft = isBadgeLeft(p);
 		return (
 			<div class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}>
-				<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
+				<div data-bn="avatar" class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
 				</div>
 				<div class={`flex flex-col gap-[7px] mt-[10px] ${badgeLeft ? "items-end" : "items-start"}`}>
 					<div
+						data-bn="name"
 						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
 						style={{ backgroundColor: p.bgColor[0] }}
 					>
 						<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
 					</div>
 					<div
+						data-bn="master"
 						class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden"
 						style={{ backgroundColor: p.bgColor[0] }}
 					>
 						<div
+							data-bn="masterAvatar"
 							class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0"
 							style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
 						/>
-						<span class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]">
+						<span
+							data-bn="masterName"
+							class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]"
+						>
 							{p.isAdmin ? "房管" : p.masterName}
 						</span>
 					</div>

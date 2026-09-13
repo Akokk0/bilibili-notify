@@ -10,14 +10,40 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
+ *
+ * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
+ * `CARD_SKIN_BUILTIN_BLOCKS.dynamic[<块>].hooks`;原子块的挂点是 `self`,所以不挂。
+ * content 块的正文是 VNode 插槽(`node.body`),**不给它包一层壳** —— `body` 挂点挂在
+ * `rich-text.tsx` 的富文本根 div 上;图廊 / 视频卡 / 附加卡的挂点同理住在
+ * `templates/dynamic-content.tsx` 里那几个 builder 上。两头由 `__tests__/card-hooks.test.ts` 钉着。
  */
 
 import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
-import type { VNode } from "vue";
+import { h, type VNode } from "vue";
 import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
 import { renderBlocks } from "../templates/block-layout";
 import type { DynamicNode } from "../templates/dynamic-content";
 import { type BlockRenderer, bindBlocks } from "./types";
+
+/**
+ * 给 `icons.tsx` 里那几个**预求值的 VNode 常量**挂上 `icon` 挂点。
+ *
+ * 不能在图标外面包一层 `<span data-bn="icon">` —— 那会往输出里塞一个今天没有的元素,
+ * 基准快照(剥掉挂点后逐字节)当场红,布局也跟着变;也不能改常量本身,它们在别处(富文本、
+ * 附加卡)复用,而那些地方没有 `icon` 挂点。所以照原样重建一个同类型同 children 的 VNode,
+ * props 里多一条 `data-bn`,原常量分毫不动。
+ *
+ * ⚠️ 别改回 `cloneVNode`:它走 `mergeProps`,而 `mergeProps` 会把**每个** `style`(包括
+ * 没被覆盖的那一份)过一遍 `normalizeStyle` —— 图标的 `style` 是字符串,被解析成对象再
+ * 序列化就多出一个结尾分号(`flex-shrink:0` → `flex-shrink:0;`),基准当场红。`h()` 只在
+ * style 是对象时才规范化,字符串原样带过去。
+ */
+const withIconHook = (icon: VNode): VNode =>
+	h(icon.type as string, { ...icon.props, "data-bn": "icon" }, icon.children as VNode[]);
+
+const ICON_FORWARD = withIconHook(SVG_FORWARD);
+const ICON_COMMENT = withIconHook(SVG_COMMENT);
+const ICON_LIKE = withIconHook(SVG_LIKE);
 
 /**
  * 动态块吃的 props:一个 DynamicNode + 整卡版式。版式要跟着进来,是因为 content 块内嵌
@@ -65,19 +91,21 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	header: ({ node }) => (
 		<div class="flex items-center gap-[12px] px-[16px]">
 			<img
+				data-bn="avatar"
 				class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
 				src={node.avatarUrl}
 				alt="头像"
 			/>
 			<div class="flex flex-col gap-[3px]">
 				<span
+					data-bn="name"
 					class="text-[17px] font-bold leading-none"
 					style={{ color: node.upIsVip ? "#FB7299" : "#18191C" }}
 				>
 					{node.upName}
 					{node.headerLabel ? ` ${node.headerLabel}` : ""}
 				</span>
-				<span class="text-[12px]" style="color: #999;">
+				<span data-bn="time" class="text-[12px]" style="color: #999;">
 					{node.pubTime}
 				</span>
 			</div>
@@ -88,6 +116,7 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 		<div class="px-[16px]">
 			{node.topic ? (
 				<div
+					data-bn="topic"
 					class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold"
 					style="color: #00AEEC;"
 				>
@@ -102,6 +131,7 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 				// zoom 把内部子树整体等比缩小(Chromium 原生支持、会正常重排) —— 内层走同一套
 				// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
 				<div
+					data-bn="forward"
 					class="rounded-[8px] mt-2 pt-[12px] pb-[12px]"
 					style="background: rgba(0,0,0,0.04); border-left: 5px solid #00AEEC; zoom: 0.85;"
 				>
@@ -117,16 +147,16 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	stats: ({ node }) =>
 		node.stats ? (
 			<div class="flex justify-around px-[16px]" style="color: #999;">
-				<div class="flex items-center gap-[6px] text-[13px]">
-					{SVG_FORWARD}
+				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
+					{ICON_FORWARD}
 					<span>{node.stats.forward}</span>
 				</div>
-				<div class="flex items-center gap-[6px] text-[13px]">
-					{SVG_COMMENT}
+				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
+					{ICON_COMMENT}
 					<span>{node.stats.comment}</span>
 				</div>
-				<div class="flex items-center gap-[6px] text-[13px]">
-					{SVG_LIKE}
+				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
+					{ICON_LIKE}
 					<span>{node.stats.like}</span>
 				</div>
 			</div>

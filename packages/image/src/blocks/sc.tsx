@@ -10,6 +10,10 @@
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.sc`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
+ *
+ * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
+ * `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`;原子块的挂点是 `self`,所以不挂
+ * (`__tests__/card-hooks.test.ts` 两头钉着)。
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -61,12 +65,14 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 	amount: (p) => (
 		<div class="text-center">
 			<div
+				data-bn="price"
 				class="text-[36px] font-bold bg-clip-text text-transparent"
 				style={{ backgroundImage: `linear-gradient(135deg, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 			>
 				¥{p.price}
 			</div>
 			<div
+				data-bn="duration"
 				class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold"
 				style={{ backgroundColor: p.bgColor[0] }}
 			>
@@ -78,25 +84,27 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 
 	sender: (p) => (
 		<div class="flex flex-col items-center gap-2">
-			<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
+			<div data-bn="avatar" class="w-[70px] h-[70px] overflow-hidden rounded-full">
 				<img class="w-full h-full rounded-full object-cover" src={p.senderFace} alt="发送者头像" />
 			</div>
 			<div
+				data-bn="name"
 				class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px]"
 				style={{ backgroundColor: p.bgColor[0] }}
 			>
 				{p.senderName}
 			</div>
-			<div class="flex items-center gap-[5px] text-[12px] text-[#666]">
+			<div data-bn="to" class="flex items-center gap-[5px] text-[12px] text-[#666]">
 				<span class="mr-[3px]">SC to</span>
 				<div class="flex items-center gap-[2px]">
 					{p.masterAvatarUrl && (
 						<div
+							data-bn="masterAvatar"
 							class="w-[18px] h-[18px] rounded-full border border-black/10 bg-cover bg-center"
 							style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
 						/>
 					)}
-					<span>{p.masterName}</span>
+					<span data-bn="masterName">{p.masterName}</span>
 				</div>
 			</div>
 		</div>
@@ -108,6 +116,7 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 			<div class="w-full text-center">
 				<div class="px-3 py-[10px] bg-white/50 rounded-lg">
 					<div
+						data-bn="text"
 						class="text-[13px] text-[#333] leading-[1.6] break-words whitespace-pre-wrap"
 						innerHTML={escapedText}
 					/>

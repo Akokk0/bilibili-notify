@@ -8,6 +8,10 @@
  * 二、**原子块确实是从复合块里抠出来的**:原子块今天没有任何模板用到(默认皮肤只排复合块),
  * 所以基准快照照不到它们 —— 这里钉的是「原子块渲染出的那段 HTML,逐字出现在对应复合块
  * 渲染出的 HTML 里」。class 或 style 一旦漂移(哪怕只在一边改),这条立刻红。
+ *
+ * 比之前先把复合块那边的挂点属性(`data-bn="…"`)剥掉:复合块里的部件挂着 `avatar` /
+ * `name` 之类的挂点,原子块**不挂**(它自己就是那一件,挂点是 `self`,见 ADR-0014 决策 9),
+ * 两边因此本就差这一个属性。原子块那边不剥,反而正面钉住「它一个内部挂点都没有」。
  */
 
 import {
@@ -28,6 +32,7 @@ import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import type { GuardCardProps } from "../templates/guard-card";
 import type { LiveCardProps } from "../templates/live-card";
 import type { SCCardProps } from "../templates/sc-card";
+import { stripCardHooks } from "./fixtures/card-fixtures";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -143,7 +148,9 @@ describe("块库 — 原子块与复合块同形", () => {
 			const atomHtml = await renderBlock(table[atom], props);
 			const compositeHtml = await renderBlock(table[composite], props);
 			expect(atomHtml.startsWith(`<${tag} `)).toBe(true);
-			expect(compositeHtml).toContain(atomHtml);
+			// 原子块的挂点是 `self`,内部一个 data-bn 都不该有。
+			expect(atomHtml).not.toContain("data-bn");
+			expect(stripCardHooks(compositeHtml)).toContain(atomHtml);
 		});
 	}
 
