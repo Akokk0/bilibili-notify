@@ -231,7 +231,46 @@ export function checkCardSkinPackage(
 		);
 	}
 
+	warnings.push(...checkKnobUsage(manifest));
+
 	return errors.length > 0 ? { ok: false, errors } : { ok: true, manifest, warnings };
+}
+
+/** 皮肤 CSS 里对旋钮变量的引用:`var(--bn-knob-<key>` 那一截。 */
+const KNOB_VAR_RE = /var\(--bn-knob-([a-z][a-z0-9-]*)/g;
+
+/**
+ * 旋钮声明与 CSS 里的引用**对一次表**。两边都只出 warning,不拦包:
+ *
+ * - **用了没声明**:那个变量永远不会被注入(注入面只认声明),兜底照画得出来 —— 只是
+ *   面板上没有对应的控件,作者以为可调的东西其实拧不动。
+ * - **声明了没人用**:面板上多一根拧了没反应的滑杆。
+ *
+ * 清洗过的 CSS 才对表(此时挂点与声明都已归一成 css-tree 的规范形态),所以这一步排在
+ * 逐卡清洗之后。
+ */
+function checkKnobUsage(manifest: CardSkinManifest): string[] {
+	const declared = new Set((manifest.knobs ?? []).map((k) => k.key));
+	const used = new Set<string>();
+	for (const kind of CARD_SKIN_KINDS) {
+		const card = manifest.cards[kind];
+		if (!card) continue;
+		for (const css of [card.css, ...card.blocks.map((b) => b.css)]) {
+			for (const m of (css ?? "").matchAll(KNOB_VAR_RE)) used.add(m[1] as string);
+		}
+	}
+	const out: string[] = [];
+	for (const key of used) {
+		if (!declared.has(key)) {
+			out.push(`css 里用了 var(--bn-knob-${key}),但 knobs 里没声明它 —— 面板上没有这个控件`);
+		}
+	}
+	for (const key of declared) {
+		if (!used.has(key)) {
+			out.push(`knobs 声明了「${key}」,但没有一处 css 用 var(--bn-knob-${key}) —— 拧了不会有反应`);
+		}
+	}
+	return out;
 }
 
 /** 清单里资产引用的前缀(`asset:assets/<文件>`),与 schema 的 `ASSET_REF_RE` 同构。 */

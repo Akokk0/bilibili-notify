@@ -492,3 +492,70 @@ describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决
 		if (!notFont.ok) expect(notFont.errors.join()).toContain("不是字体");
 	});
 });
+
+/**
+ * **旋钮声明与 CSS 引用对表**(ADR-0014 决策 16 的 🔗,2026-09-14)。两边都只出 warning ——
+ * 拧不动的旋钮画不坏卡,但作者一定想知道。判据是「把对表删掉,这几条红」。
+ */
+describe("旋钮声明与 css 引用对表", () => {
+	const withKnobs = (knobs: unknown, css: string): unknown => ({
+		schemaVersion: 1,
+		dataVersion: 1,
+		name: "旋钮皮肤",
+		knobs,
+		cards: {
+			live: {
+				width: 600,
+				css,
+				blocks: [
+					{ id: "t", kind: "builtin", builtin: "title", grid: { row: 1, column: 1, span: 12 } },
+				],
+			},
+		},
+	});
+	const ACCENT = [{ key: "accent", label: "主色", type: "color", default: "#fb7299" }];
+
+	it("声明了、也用了 → 一句 warning 都没有", () => {
+		const res = checkCardSkinPackage(
+			withKnobs(ACCENT, '[data-bn="frame"]{color:var(--bn-knob-accent,#fb7299)}'),
+			new Set(),
+		);
+		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+		if (!res.ok) throw new Error("unreachable");
+		expect(res.warnings.filter((w) => w.includes("knob"))).toEqual([]);
+	});
+
+	it("css 用了但没声明 → warning(那个变量永远不会被注入)", () => {
+		const res = checkCardSkinPackage(
+			withKnobs(undefined, '[data-bn="frame"]{color:var(--bn-knob-accent,#fb7299)}'),
+			new Set(),
+		);
+		expect(res.ok).toBe(true);
+		if (!res.ok) throw new Error("unreachable");
+		expect(res.warnings.join()).toContain("没声明");
+	});
+
+	it("声明了但没人用 → warning(面板上多一根拧不动的滑杆)", () => {
+		const res = checkCardSkinPackage(
+			withKnobs(ACCENT, '[data-bn="frame"]{color:#fb7299}'),
+			new Set(),
+		);
+		expect(res.ok).toBe(true);
+		if (!res.ok) throw new Error("unreachable");
+		expect(res.warnings.join()).toContain("不会有反应");
+	});
+
+	it("块级 css 里的引用也算数", () => {
+		const m = withKnobs(ACCENT, '[data-bn="frame"]{color:#fb7299}') as {
+			cards: { live: { blocks: Array<Record<string, unknown>> } };
+		};
+		m.cards.live.blocks[0] = {
+			...(m.cards.live.blocks[0] as Record<string, unknown>),
+			css: '[data-bn="self"]{color:var(--bn-knob-accent,#fb7299)}',
+		};
+		const res = checkCardSkinPackage(m, new Set());
+		expect(res.ok).toBe(true);
+		if (!res.ok) throw new Error("unreachable");
+		expect(res.warnings.filter((w) => w.includes("knob"))).toEqual([]);
+	});
+});
