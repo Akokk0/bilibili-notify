@@ -3,7 +3,8 @@
  * 标签白名单放宽到排版语义标签全集,见 {@link ALLOWED_TAGS};`style=""` 照旧走
  * 声明级过滤,而那一层的属性策略同日改成了黑名单)。
  *
- * 自定义块的内容是一个**受限 HTML 子集**:标签白名单 + 属性白名单 + `{a.b.c}` 占位符。
+ * 自定义块的内容是一个**受限 HTML 子集**:标签白名单 + 属性白名单 + `{a.b.c}` 占位符;
+ * 内联 svg 走第二张白名单({@link SVG_TAGS} / {@link SVG_ATTRS}),按命名空间分表。
  * 清洗的做法是**按白名单重建节点树** —— 用 parse5 把输入解析成 fragment,再往一棵新的
  * fragment 里逐个搬认识的节点;不在名单里的标签**连整个子树一起丢**,不在名单里的属性
  * 丢掉。**不是正则过滤**:正则挡不住 `<img src=x onerror=alert(1)//>`、`<svg/onload=…>`
@@ -52,8 +53,8 @@ import { CARD_DECL_OPTIONS } from "./css-sanitizer.js";
  * - `form` 族(`form` / `input` / `button` / `select` / `textarea`):静态图上没有意义,
  *   却带一身提交与自动聚焦的行为。
  * - `video` / `audio`:取网面,且截图里只会留个空框。
- * - `svg`:**这轮不做**(单列最后一片、可砍)。属性面大,按白名单重建节点树的成本最高;
- *   做的话得连 `xlink:href` / `filter` / `foreignObject` 一起想清楚。
+ * - `svg`:**不在这张表里,但不是拒** —— 它是另一个命名空间,走 {@link SVG_TAGS} 那张
+ *   自己的白名单(2026-09-14 补的最后一片)。
  *
  * 名单是**白名单**,所以上面这些不是靠「记得拦」活着的 —— 没写进来的一律连子树丢。
  */
@@ -110,6 +111,257 @@ const ALLOWED_TAGS = new Set([
 	"time",
 	"abbr",
 ]);
+
+/**
+ * 内联 svg 的标签白名单(ADR-0014 决策 11 的 🔗,2026-09-14)。**按命名空间查**:HTML 标签
+ * 在 svg 里出现(`<svg><b>`)parse5 会把它建成 SVG 命名空间的 `b`,对不上这张表就丢;
+ * 反过来 `<svg>` 之外的 `<path>` 是 HTML 命名空间的未知标签,对不上 {@link ALLOWED_TAGS}
+ * 也丢 —— 两张表互不串门。
+ *
+ * 收的是**画静态图要用的全部**:容器、形状、文字、渐变 / 图案、裁剪 / 蒙版 / 标记、
+ * 滤镜整套(霓虹辉光就靠 `feGaussianBlur` + `feMerge`)。
+ *
+ * 🔴 **不放**的:
+ * - `script` / `style` / `a`:与 HTML 那边同一条理由。
+ * - `foreignObject`:把 HTML 再塞回 svg 的门 —— 放了它,HTML 那张白名单就得在这里再守一遍。
+ * - `image` / `feImage`:svg 里的取图面(`href` 指外部文档)。要放图用 HTML 的 `<img>`。
+ * - `animate` / `animateMotion` / `animateTransform` / `set` / `mpath`:能在渲染期把
+ *   `href` 这类属性改成别的值(`<set attributeName="href" to="…">`),等于绕过属性闸;
+ *   出图是一帧,动画本来也没意义。
+ * - `use` 留下,但它的 `href` 只准 `#片段`(见 {@link FRAGMENT_REF_RE})。
+ */
+const SVG_TAGS = new Set([
+	// 容器与结构
+	"svg",
+	"g",
+	"defs",
+	"symbol",
+	"use",
+	"title",
+	"desc",
+	// 形状
+	"path",
+	"rect",
+	"circle",
+	"ellipse",
+	"line",
+	"polyline",
+	"polygon",
+	// 文字
+	"text",
+	"tspan",
+	"textPath",
+	// 渐变与图案
+	"linearGradient",
+	"radialGradient",
+	"stop",
+	"pattern",
+	// 裁剪 / 蒙版 / 标记
+	"clipPath",
+	"mask",
+	"marker",
+	// 滤镜
+	"filter",
+	"feBlend",
+	"feColorMatrix",
+	"feComponentTransfer",
+	"feFuncR",
+	"feFuncG",
+	"feFuncB",
+	"feFuncA",
+	"feComposite",
+	"feConvolveMatrix",
+	"feDiffuseLighting",
+	"feDisplacementMap",
+	"feDistantLight",
+	"feDropShadow",
+	"feFlood",
+	"feGaussianBlur",
+	"feMerge",
+	"feMergeNode",
+	"feMorphology",
+	"feOffset",
+	"fePointLight",
+	"feSpecularLighting",
+	"feSpotLight",
+	"feTile",
+	"feTurbulence",
+]);
+
+/**
+ * svg 元素共用的一张属性白名单:几何 + 表现 + 文字 + 渐变 / 图案 + 裁剪 / 蒙版 / 标记 +
+ * 滤镜原语的参数。**不按标签分**(与 HTML 那边不同):svg 的属性面上百个,按标签分表
+ * 只换来「`<rect>` 上写 `cx` 会被丢」这种作者自己就能看出来的错,不换来安全 ——
+ * 危险面只在三处:`href`(取网)、`url()`(表现属性里指外部文档)、事件属性,前两处
+ * 各有专门的闸,第三处 `on*` 根本不在表里。
+ *
+ * `class` / `style` / `id` / `href` 不在这里,各走各的检查。
+ */
+const SVG_ATTRS = new Set([
+	// 视口 / 几何 / 变换
+	"viewBox",
+	"width",
+	"height",
+	"x",
+	"y",
+	"preserveAspectRatio",
+	"transform",
+	"transform-origin",
+	"d",
+	"cx",
+	"cy",
+	"r",
+	"rx",
+	"ry",
+	"x1",
+	"y1",
+	"x2",
+	"y2",
+	"points",
+	"pathLength",
+	// 表现
+	"opacity",
+	"visibility",
+	"display",
+	"overflow",
+	"fill",
+	"fill-opacity",
+	"fill-rule",
+	"stroke",
+	"stroke-width",
+	"stroke-opacity",
+	"stroke-linecap",
+	"stroke-linejoin",
+	"stroke-miterlimit",
+	"stroke-dasharray",
+	"stroke-dashoffset",
+	"color",
+	"paint-order",
+	"vector-effect",
+	"shape-rendering",
+	"mix-blend-mode",
+	"isolation",
+	"color-interpolation",
+	"color-interpolation-filters",
+	// 文字
+	"font-family",
+	"font-size",
+	"font-weight",
+	"font-style",
+	"font-variant",
+	"letter-spacing",
+	"word-spacing",
+	"text-anchor",
+	"dominant-baseline",
+	"alignment-baseline",
+	"baseline-shift",
+	"text-decoration",
+	"text-rendering",
+	"writing-mode",
+	"dx",
+	"dy",
+	"rotate",
+	"textLength",
+	"lengthAdjust",
+	"startOffset",
+	"method",
+	"spacing",
+	"side",
+	// 渐变 / 图案
+	"gradientUnits",
+	"gradientTransform",
+	"spreadMethod",
+	"offset",
+	"stop-color",
+	"stop-opacity",
+	"fx",
+	"fy",
+	"fr",
+	"patternUnits",
+	"patternContentUnits",
+	"patternTransform",
+	// 裁剪 / 蒙版 / 标记
+	"clip-path",
+	"clip-rule",
+	"clipPathUnits",
+	"mask",
+	"maskUnits",
+	"maskContentUnits",
+	"marker-start",
+	"marker-mid",
+	"marker-end",
+	"markerWidth",
+	"markerHeight",
+	"markerUnits",
+	"refX",
+	"refY",
+	"orient",
+	// 滤镜
+	"filter",
+	"filterUnits",
+	"primitiveUnits",
+	"in",
+	"in2",
+	"result",
+	"stdDeviation",
+	"edgeMode",
+	"mode",
+	"type",
+	"values",
+	"tableValues",
+	"slope",
+	"intercept",
+	"amplitude",
+	"exponent",
+	"k1",
+	"k2",
+	"k3",
+	"k4",
+	"operator",
+	"radius",
+	"flood-color",
+	"flood-opacity",
+	"lighting-color",
+	"surfaceScale",
+	"specularConstant",
+	"specularExponent",
+	"diffuseConstant",
+	"kernelMatrix",
+	"order",
+	"divisor",
+	"bias",
+	"targetX",
+	"targetY",
+	"kernelUnitLength",
+	"azimuth",
+	"elevation",
+	"pointsAtX",
+	"pointsAtY",
+	"pointsAtZ",
+	"limitingConeAngle",
+	"z",
+	"scale",
+	"xChannelSelector",
+	"yChannelSelector",
+	"baseFrequency",
+	"numOctaves",
+	"seed",
+	"stitchTiles",
+]);
+
+/**
+ * svg 元素的 `id`:渐变 / 裁剪 / 滤镜都靠 `url(#id)` 引用,没有 id 这些东西就画不出来,
+ * 所以 svg 这边放行(HTML 那边照旧不给)。形状限死成 CSS 标识符的保守子集。
+ *
+ * ⚠️ id 在整张卡的 DOM 里是同一个命名空间:两个自定义块都写 `id="g"`,浏览器只认第一个。
+ * 清洗器一次只看一个块,查不了跨块重名 —— 作者自己给 id 起个带前缀的名字。
+ */
+const SVG_ID_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
+/** `href` 在 svg 里唯一放行的形状:同文档的片段引用。`#` 后面必须是一个 {@link SVG_ID_RE}。 */
+const FRAGMENT_REF_RE = /^#([A-Za-z][A-Za-z0-9_-]*)$/;
+/** 表现属性里出现了 `url(` 时,整个值必须恰好是一个片段引用。 */
+const URL_FRAGMENT_RE = /^url\(\s*#([A-Za-z][A-Za-z0-9_-]*)\s*\)$/;
+const HAS_URL_RE = /url\s*\(/i;
 
 /** 所有标签共用的属性。`id` 不在里面 —— 卡片 DOM 的 id 归渲染器,皮肤不许占坑。 */
 const COMMON_ATTRS = new Set(["class", "style"]);
@@ -216,7 +468,97 @@ function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string }
 	return { value };
 }
 
-/** 过滤一个元素的属性;返回 null = 这个元素整个丢掉。 */
+/** `class`:HTML 与 svg 同一条规矩。返回 null = 丢掉这个属性(warning 已记)。 */
+function cleanClass(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
+	const tokens = value.split(/\s+/).filter((t) => t !== "");
+	if (tokens.length === 0 || !tokens.every((t) => CLASS_TOKEN_RE.test(t))) {
+		ctx.warnings.push(`<${tag}> 的 class「${value}」含不合法的 token,整个属性丢弃`);
+		return null;
+	}
+	return { name: "class", value: tokens.join(" ") };
+}
+
+/**
+ * `style`:交给 CSS 那一层的声明级过滤 —— 同一份属性黑名单、`url()` 拒、`position` 只准
+ * static / relative / absolute(内联样式没有伪元素,「装饰」那一档整个不适用)。
+ * svg 元素同一条:`style="fill:url(#g)"` 会被拒,要用属性写 `fill="url(#g)"`。
+ */
+function cleanStyle(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
+	const cleaned = sanitizeDeclarationList(value, CARD_DECL_OPTIONS);
+	if (!cleaned) {
+		ctx.warnings.push(`<${tag}> 的 style 解析不动,整个属性丢弃`);
+		return null;
+	}
+	for (const w of cleaned.warnings) ctx.warnings.push(`<${tag}> 的 style: ${w}`);
+	if (cleaned.css.trim() === "") return null;
+	return { name: "style", value: cleaned.css };
+}
+
+/**
+ * svg 元素的属性。三道闸各管一处危险面:
+ * - `href`(含 `xlink:href`,归一成 `href`)只准 `#片段`;
+ * - 表现属性里出现 `url(` 时整个值必须恰好是 `url(#id)`;
+ * - 带命名空间前缀的其它属性(`xml:space` / `xmlns:xlink`)与不在 {@link SVG_ATTRS} 的一律丢。
+ */
+function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
+	const tag = el.tagName;
+	const out: Token.Attribute[] = [];
+	let hasHref = false;
+	for (const attr of el.attrs) {
+		const name = attr.name;
+		// parse5 把 `xlink:href` 存成 name="href" + prefix="xlink";别的前缀一律不认。
+		if (attr.prefix !== undefined && !(attr.prefix === "xlink" && name === "href")) {
+			ctx.warnings.push(`<${tag}> 的属性 ${attr.prefix}:${name} 不在白名单,已丢弃`);
+			continue;
+		}
+		if (name === "href") {
+			const value = attr.value.trim();
+			if (!FRAGMENT_REF_RE.test(value)) {
+				ctx.warnings.push(`<${tag}> 的 href「${attr.value}」不是 #片段引用,已丢弃`);
+				continue;
+			}
+			if (hasHref) continue;
+			hasHref = true;
+			out.push({ name: "href", value });
+			continue;
+		}
+		if (name === "id") {
+			if (!SVG_ID_RE.test(attr.value)) {
+				ctx.warnings.push(`<${tag}> 的 id「${attr.value}」不是合法标识符,已丢弃`);
+				continue;
+			}
+			out.push({ name, value: attr.value });
+			continue;
+		}
+		if (name === "class") {
+			const cleaned = cleanClass(tag, attr.value, ctx);
+			if (cleaned) out.push(cleaned);
+			continue;
+		}
+		if (name === "style") {
+			const cleaned = cleanStyle(tag, attr.value, ctx);
+			if (cleaned) out.push(cleaned);
+			continue;
+		}
+		if (!SVG_ATTRS.has(name)) {
+			ctx.warnings.push(`<${tag}> 的属性 ${name} 不在白名单,已丢弃`);
+			continue;
+		}
+		if (HAS_URL_RE.test(attr.value)) {
+			const m = URL_FRAGMENT_RE.exec(attr.value.trim());
+			if (!m) {
+				ctx.warnings.push(`<${tag}> 的 ${name}「${attr.value}」里的 url() 只准指向 #片段,已丢弃`);
+				continue;
+			}
+			out.push({ name, value: `url(#${m[1]})` });
+			continue;
+		}
+		out.push({ name, value: attr.value });
+	}
+	return out;
+}
+
+/** 过滤一个 HTML 元素的属性;返回 null = 这个元素整个丢掉。 */
 function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 	const tag = el.tagName;
 	const allowed = EXTRA_ATTRS.get(tag) ?? null;
@@ -262,24 +604,12 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 			continue;
 		}
 		if (name === "class") {
-			const tokens = attr.value.split(/\s+/).filter((t) => t !== "");
-			if (tokens.length === 0 || !tokens.every((t) => CLASS_TOKEN_RE.test(t))) {
-				ctx.warnings.push(`<${tag}> 的 class「${attr.value}」含不合法的 token,整个属性丢弃`);
-				continue;
-			}
-			out.push({ name, value: tokens.join(" ") });
+			const cleaned = cleanClass(tag, attr.value, ctx);
+			if (cleaned) out.push(cleaned);
 			continue;
 		}
-		// style:交给 CSS 那一层的声明级过滤 —— 同一份属性白名单、`url()` 拒、
-		// `position` 拒(内联样式没有伪元素,「装饰」那一档整个不适用)。
-		const cleaned = sanitizeDeclarationList(attr.value, CARD_DECL_OPTIONS);
-		if (!cleaned) {
-			ctx.warnings.push(`<${tag}> 的 style 解析不动,整个属性丢弃`);
-			continue;
-		}
-		for (const w of cleaned.warnings) ctx.warnings.push(`<${tag}> 的 style: ${w}`);
-		if (cleaned.css.trim() === "") continue;
-		out.push({ name, value: cleaned.css });
+		const cleaned = cleanStyle(tag, attr.value, ctx);
+		if (cleaned) out.push(cleaned);
 	}
 	return out;
 }
@@ -295,7 +625,15 @@ function rebuild(nodes: readonly ChildNode[], parent: ParentNode, ctx: Ctx): voi
 		// 注释 / doctype:静默丢弃(不是威胁,也没有保留的理由)。
 		if (!defaultTreeAdapter.isElementNode(node)) continue;
 		const tag = node.tagName;
-		if (node.namespaceURI !== htmlNs.NS.HTML || !ALLOWED_TAGS.has(tag)) {
+		const ns = node.namespaceURI;
+		// 两张白名单按命名空间各查各的;MathML 这种第三个命名空间没有表,整个丢。
+		if (ns === htmlNs.NS.SVG && SVG_TAGS.has(tag)) {
+			const el = defaultTreeAdapter.createElement(tag, ns, filterSvgAttrs(node, ctx));
+			defaultTreeAdapter.appendChild(parent, el);
+			rebuild(node.childNodes, el, ctx);
+			continue;
+		}
+		if (ns !== htmlNs.NS.HTML || !ALLOWED_TAGS.has(tag)) {
 			ctx.warnings.push(`<${tag}> 不在标签白名单,连同里面的内容一起丢弃`);
 			continue;
 		}

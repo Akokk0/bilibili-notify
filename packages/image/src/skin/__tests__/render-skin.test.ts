@@ -220,6 +220,23 @@ describe("皮肤渲染器 — 自定义块的占位符", () => {
 		);
 		expect(html).toContain('src="http://i0.hdslb.com/bfs/x.jpg"');
 	});
+
+	/**
+	 * 内联 svg(2026-09-14 补的那一片)在渲染器这头**不需要任何特殊处理**:清洗过的
+	 * 节点树经 innerHTML 原样铺进去,`<text>` 里的占位符走同一条替换。这条钉的是
+	 * 「原样」—— 大小写敏感的 `linearGradient` / `viewBox` 与 `url(#g)` 引用一个都不许被
+	 * 渲染链路(Vue SSR / 模板字符串替换)动过,否则浏览器画不出来。
+	 */
+	it("内联 svg 原样铺进去,text 里的占位符照替换", async () => {
+		const svg =
+			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">{up.name}</text></svg>';
+		const { html } = await render(liveCard([custom("c", svg)]), {
+			props: { ...liveProps, username: "霓虹<up>" },
+		});
+		expect(html).toContain(
+			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">霓虹&lt;up&gt;</text></svg>',
+		);
+	});
 });
 
 describe("皮肤渲染器 — CSS 翻译", () => {

