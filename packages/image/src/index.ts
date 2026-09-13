@@ -36,6 +36,13 @@ export type {
 // `buildFontFace` / `USER_FONT_FAMILY` 给绕开 ImageRenderer 直接调 renderCard 的那条
 // 预览路径用 —— 两边必须拼出同一条 @font-face,否则「预览是这款、推出去是另一款」。
 export { buildFontFace, renderCard, USER_FONT_FAMILY } from "./render";
+// 卡片皮肤的对外数据契约(ADR-0014 决策 14):内部 props → `CARD_SKIN_FIELDS` 那张表。
+export {
+	buildCardData,
+	type CardData,
+	type CardDataValue,
+	readCardField,
+} from "./skin/card-data";
 export { DynamicCard, type DynamicCardProps, type DynamicNode } from "./templates/dynamic-card";
 export { GuardCard, type GuardCardProps } from "./templates/guard-card";
 export { LiveCard, type LiveCardProps } from "./templates/live-card";
