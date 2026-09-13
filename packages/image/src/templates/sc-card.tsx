@@ -1,7 +1,7 @@
 /** @jsxImportSource vue */
-import { type CardBlock, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
-import type { VNode } from "vue";
-import { SVG_DURATION } from "../icons";
+import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { SC_BLOCKS } from "../blocks/sc";
+import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
 
 export type SCCardProps = {
@@ -27,84 +27,8 @@ export type SCCardProps = {
 };
 
 export function SCCard(p: SCCardProps) {
-	const escapedText = p.text
-		?.trim()
-		?.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\n/g, "<br>");
-
-	// 各块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
-	// divider 是 sc 专属的渐变分割线(可重复)。
-	const builders: Record<string, () => VNode | null> = {
-		[DIVIDER_TYPE]: () => (
-			<div
-				class="w-full h-px"
-				style={{
-					background: `linear-gradient(to right, transparent, ${p.bgColor[0]}, transparent)`,
-				}}
-			/>
-		),
-		amount: () => (
-			<div class="text-center">
-				<div
-					class="text-[36px] font-bold bg-clip-text text-transparent"
-					style={{ backgroundImage: `linear-gradient(135deg, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
-				>
-					¥{p.price}
-				</div>
-				<div
-					class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold"
-					style={{ backgroundColor: p.bgColor[0] }}
-				>
-					{SVG_DURATION}
-					<span>{p.duration}</span>
-				</div>
-			</div>
-		),
-
-		sender: () => (
-			<div class="flex flex-col items-center gap-2">
-				<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
-					<img
-						class="w-full h-full rounded-full object-cover"
-						src={p.senderFace}
-						alt="发送者头像"
-					/>
-				</div>
-				<div
-					class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px]"
-					style={{ backgroundColor: p.bgColor[0] }}
-				>
-					{p.senderName}
-				</div>
-				<div class="flex items-center gap-[5px] text-[12px] text-[#666]">
-					<span class="mr-[3px]">SC to</span>
-					<div class="flex items-center gap-[2px]">
-						{p.masterAvatarUrl && (
-							<div
-								class="w-[18px] h-[18px] rounded-full border border-black/10 bg-cover bg-center"
-								style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
-							/>
-						)}
-						<span>{p.masterName}</span>
-					</div>
-				</div>
-			</div>
-		),
-
-		message: () =>
-			escapedText ? (
-				<div class="w-full text-center">
-					<div class="px-3 py-[10px] bg-white/50 rounded-lg">
-						<div
-							class="text-[13px] text-[#333] leading-[1.6] break-words whitespace-pre-wrap"
-							innerHTML={escapedText}
-						/>
-					</div>
-				</div>
-			) : null,
-	};
+	// 各块的 JSX 住在 `blocks/sc.tsx`(皮肤按块装配的同一份);这里只剩外框。
+	const builders = bindBlocks(SC_BLOCKS, p);
 
 	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
 	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);

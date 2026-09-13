@@ -1,8 +1,9 @@
 /** @jsxImportSource vue */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
-import { DEFAULT_CARD_LAYOUT, DIVIDER_TYPE, type GuardLayout } from "@bilibili-notify/internal";
-import type { VNode } from "vue";
+import { DEFAULT_CARD_LAYOUT, type GuardLayout } from "@bilibili-notify/internal";
+import { GUARD_BLOCKS } from "../blocks/guard";
+import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
 
 export type GuardCardProps = {
@@ -27,65 +28,15 @@ export type GuardCardProps = {
 	backgroundImage?: string;
 };
 
-const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
-	0: () => "",
-	1: (uname, masterName) => `"${uname}"上任\n"${masterName}"大航海舰队总督！`,
-	2: (uname, masterName) => `"${uname}"就任\n"${masterName}"大航海舰队提督！`,
-	3: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
-};
-
 export function GuardCard(p: GuardCardProps) {
-	const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.guard;
-	// 徽章靠左 → 内容在右,整列镜像右对齐(文字右对齐、姓名行头像移到外侧右边)。
-	const badgeLeft = layout.badgeSide === "left";
 	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
 	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);
 	const blur = p.glassClear ? 0 : 10;
 
-	// 内容列块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
-	const builders: Record<string, () => VNode | null> = {
-		[DIVIDER_TYPE]: () => (
-			<div class="my-[6px]" style={{ height: "1px", background: `${p.bgColor[0]}33` }} />
-		),
-		name: () => (
-			<div class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}>
-				<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
-					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
-				</div>
-				<div class={`flex flex-col gap-[7px] mt-[10px] ${badgeLeft ? "items-end" : "items-start"}`}>
-					<div
-						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
-						style={{ backgroundColor: p.bgColor[0] }}
-					>
-						<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
-					</div>
-					<div
-						class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden"
-						style={{ backgroundColor: p.bgColor[0] }}
-					>
-						<div
-							class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0"
-							style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
-						/>
-						<span class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]">
-							{p.isAdmin ? "房管" : p.masterName}
-						</span>
-					</div>
-				</div>
-			</div>
-		),
-
-		text: () =>
-			desc ? (
-				<div
-					class="text-[16px] font-bold italic whitespace-pre-line"
-					style={{ color: p.bgColor[0] }}
-				>
-					{desc}
-				</div>
-			) : null,
-	};
+	// 各块的 JSX 住在 `blocks/guard.tsx`(皮肤按块装配的同一份);这里只剩外框与两块的定位。
+	const builders = bindBlocks(GUARD_BLOCKS, p);
+	const badgeLeft = layout.badgeSide === "left";
 
 	// 内容列:name/text(可插分割线)按 layout.blocks 上下排;badge 在左时整列右对齐。
 	const content = (
@@ -98,14 +49,8 @@ export function GuardCard(p: GuardCardProps) {
 		</div>
 	);
 
-	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。
-	const badge = (
-		<div
-			data-block="badge"
-			class="w-[175px] h-[175px] bg-cover bg-center shrink-0"
-			style={{ backgroundImage: `url("${p.captainImgUrl}")` }}
-		/>
-	);
+	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位(自带 data-block,不经 renderBlocks)。
+	const badge = GUARD_BLOCKS.badge(p);
 
 	return (
 		<div

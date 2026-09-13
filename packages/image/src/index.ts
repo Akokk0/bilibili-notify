@@ -5,6 +5,14 @@ export type { Component, VNode } from "vue";
 // consumer's tree creates mismatched VNode / Component types — TS rejects the
 // argument because the two `Component` types are unrelated nominally.
 export { h } from "vue";
+// 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
+export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
+export { GUARD_BLOCKS } from "./blocks/guard";
+export { LIVE_BLOCKS } from "./blocks/live";
+export { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "./blocks/roast";
+export { SC_BLOCKS } from "./blocks/sc";
+export type { BlockRenderer } from "./blocks/types";
+export { WORDCLOUD_BLOCKS } from "./blocks/wordcloud";
 export { numberToStr } from "./format";
 export {
 	ImageRenderer,

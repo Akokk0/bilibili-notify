@@ -16,8 +16,9 @@
  * 于是这里只做一件事:**认下现状,别再漂**。清单是双向的 —— 加新值要在这里登记,
  * 删到没人用也要从这里删掉,免得清单自己变成第二个垃圾场。
  *
- * 将来真要归并,先看这三处半档:`11.5` ×2 与 `13.5` ×1,全在 `roast-card.tsx` 一个
- * 文件里,而同一个文件也在用 11 和 13。那是最像「随手写的」的三处,也是最划算的起点。
+ * 将来真要归并,先看这三处半档:`11.5` ×2 与 `13.5` ×1,全在锐评卡的正文块
+ * (`blocks/roast.tsx`,ADR-0014 拆块前住在 `templates/roast-card.tsx`)一个文件里,
+ * 而同一个文件也在用 11 和 13。那是最像「随手写的」的三处,也是最划算的起点。
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -76,6 +77,6 @@ describe("出图字号冻结", () => {
 			.flatMap(([px, files]) => files.map((f) => `${px}px ${f}`));
 		// 归并的起点就是它们,所以数量只许减不许增。
 		expect(halves.length).toBeLessThanOrEqual(3);
-		expect([...new Set(halves.map((h) => h.split(" ")[1]))]).toEqual(["templates/roast-card.tsx"]);
+		expect([...new Set(halves.map((h) => h.split(" ")[1]))]).toEqual(["blocks/roast.tsx"]);
 	});
 });

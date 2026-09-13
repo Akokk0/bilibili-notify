@@ -1,0 +1,155 @@
+/**
+ * 块库(`src/blocks/`)的两条契约。
+ *
+ * 一、**目录对表**:每种卡的块表键名必须与 `CARD_SKIN_BUILTIN_BLOCKS` 一字不差 —— 块名是
+ * 对外 API(皮肤包会写死它们),多一个是「目录里没有、皮肤引用不到的死块」,少一个是
+ * 「皮肤引用得到、渲染器画不出的空块」,两种都只会在装皮肤时才暴露。
+ *
+ * 二、**原子块确实是从复合块里抠出来的**:原子块今天没有任何模板用到(默认皮肤只排复合块),
+ * 所以基准快照照不到它们 —— 这里钉的是「原子块渲染出的那段 HTML,逐字出现在对应复合块
+ * 渲染出的 HTML 里」。class 或 style 一旦漂移(哪怕只在一边改),这条立刻红。
+ */
+
+import {
+	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_KINDS,
+	DEFAULT_CARD_LAYOUT,
+} from "@bilibili-notify/internal";
+import { renderToString } from "@vue/server-renderer";
+import { describe, expect, it } from "vite-plus/test";
+import { createSSRApp, h, type VNode } from "vue";
+import { DYNAMIC_BLOCKS, type DynamicBlockProps } from "../blocks/dynamic";
+import { GUARD_BLOCKS } from "../blocks/guard";
+import { LIVE_BLOCKS } from "../blocks/live";
+import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
+import { SC_BLOCKS } from "../blocks/sc";
+import type { BlockRenderer } from "../blocks/types";
+import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
+import type { GuardCardProps } from "../templates/guard-card";
+import type { LiveCardProps } from "../templates/live-card";
+import type { SCCardProps } from "../templates/sc-card";
+
+// ── 夹具 ──────────────────────────────────────────────────────────────────────
+
+const LIVE_PROPS: LiveCardProps = {
+	showPopularity: true,
+	showArea: true,
+	showFans: true,
+	cardColorStart: "#e0c3fc",
+	cardColorEnd: "#8ec5fc",
+	data: {
+		title: "周年庆典特别直播",
+		area_name: "虚拟主播",
+		user_cover: "http://i0.hdslb.com/bfs/live/cover0001.jpg",
+		keyframe: "http://i0.hdslb.com/bfs/live-key-frame/kf0001.jpg",
+		description: "<p>每晚八点开播</p>",
+	},
+	username: "示例主播",
+	userface: "http://i0.hdslb.com/bfs/face/face0001.jpg",
+	titleStatus: "直播中",
+	liveTime: "已开播 1 小时",
+	liveStatus: 1,
+	cover: true,
+	onlineNum: "1.2 万",
+	likedNum: "3456",
+	watchedNum: "2.3 万",
+	fansNum: "12.3 万",
+	fansChanged: "+128",
+};
+
+const DYNAMIC_PROPS: DynamicBlockProps = {
+	node: {
+		avatarUrl: "http://i0.hdslb.com/bfs/face/face0002.jpg",
+		upName: "示例 UP 主",
+		upIsVip: true,
+		pubTime: "3 分钟前",
+		headerLabel: "投稿了视频",
+		body: h("div", null, "正文"),
+	},
+	layout: DEFAULT_CARD_LAYOUT.dynamic,
+};
+
+const SC_PROPS: SCCardProps = {
+	senderFace: "http://i0.hdslb.com/bfs/face/face0003.jpg",
+	senderName: "热心观众",
+	masterName: "示例主播",
+	masterAvatarUrl: "http://i0.hdslb.com/bfs/face/face0001.jpg",
+	text: "主播加油！",
+	price: 30,
+	duration: "2 分钟",
+	bgColor: ["#E2B52B", "#F5E7B3"],
+};
+
+const GUARD_PROPS: GuardCardProps = {
+	captainImgUrl: "https://s1.hdslb.com/bfs/static/captain.png",
+	guardLevel: 3,
+	uname: "热心观众",
+	face: "http://i0.hdslb.com/bfs/face/face0003.jpg",
+	isAdmin: 0,
+	masterAvatarUrl: "http://i0.hdslb.com/bfs/face/face0001.jpg",
+	masterName: "示例主播",
+	bgColor: ["#4B79E4", "#7CA0F0"],
+};
+
+/** 把一个块渲染成 HTML 片段(不套外框、不加 wrapper),用来做逐字比对。 */
+async function renderBlock<P>(block: BlockRenderer<P> | undefined, props: P): Promise<string> {
+	expect(block).toBeTypeOf("function");
+	const vnode = (block as BlockRenderer<P>)(props);
+	expect(vnode).not.toBeNull();
+	return await renderToString(createSSRApp({ render: () => vnode as VNode }));
+}
+
+// ── 一、目录对表 ──────────────────────────────────────────────────────────────
+
+const TABLES: Record<string, Record<string, BlockRenderer<never>>> = {
+	live: LIVE_BLOCKS,
+	dynamic: DYNAMIC_BLOCKS,
+	sc: SC_BLOCKS,
+	guard: GUARD_BLOCKS,
+	roastBoard: ROAST_BOARD_BLOCKS,
+	roastSolo: ROAST_SOLO_BLOCKS,
+	wordcloud: WORDCLOUD_BLOCKS,
+} as unknown as Record<string, Record<string, BlockRenderer<never>>>;
+
+describe("块库 — 键名与内置块目录对表", () => {
+	for (const kind of CARD_SKIN_KINDS) {
+		it(`${kind}:块表键名 = CARD_SKIN_BUILTIN_BLOCKS.${kind} 的键集`, () => {
+			expect(Object.keys(TABLES[kind]).sort()).toEqual(
+				Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind]).sort(),
+			);
+		});
+	}
+});
+
+// ── 二、原子块是从复合块里抠出来的 ────────────────────────────────────────────
+
+describe("块库 — 原子块与复合块同形", () => {
+	/** 原子块:[卡种, 复合块, 原子块, props, 期望的元素标签]。 */
+	const CASES: Array<[string, string, string, unknown, string]> = [
+		["live", "header", "avatar", LIVE_PROPS, "img"],
+		["live", "header", "name", LIVE_PROPS, "span"],
+		["live", "header", "time", LIVE_PROPS, "span"],
+		["dynamic", "header", "avatar", DYNAMIC_PROPS, "img"],
+		["dynamic", "header", "name", DYNAMIC_PROPS, "span"],
+		["dynamic", "header", "time", DYNAMIC_PROPS, "span"],
+		["sc", "sender", "avatar", SC_PROPS, "div"],
+		["sc", "sender", "name", SC_PROPS, "div"],
+		["guard", "name", "avatar", GUARD_PROPS, "div"],
+	];
+
+	for (const [kind, composite, atom, props, tag] of CASES) {
+		it(`${kind}.${atom}:逐字出现在 ${kind}.${composite} 里`, async () => {
+			const table = TABLES[kind] as Record<string, BlockRenderer<unknown>>;
+			const atomHtml = await renderBlock(table[atom], props);
+			const compositeHtml = await renderBlock(table[composite], props);
+			expect(atomHtml.startsWith(`<${tag} `)).toBe(true);
+			expect(compositeHtml).toContain(atomHtml);
+		});
+	}
+
+	it("guard.avatar 带着复合块里的定宽圆框(光有 img 不算)", async () => {
+		const html = await renderBlock(GUARD_BLOCKS.avatar, GUARD_PROPS);
+		expect(html).toContain('class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0"');
+		expect(html).toContain(`src="${GUARD_PROPS.face}"`);
+	});
+});
