@@ -27,7 +27,10 @@ import {
 	type CardSkinBlock,
 	type CardSkinCard,
 	type CardSkinKind,
+	type CardSkinKnob,
+	type CardSkinKnobOverrides,
 	type CardSkinManifest,
+	cardSkinKnobDeclarations,
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_CARD_SKIN,
 	DIVIDER_TYPE,
@@ -87,6 +90,10 @@ export interface SkinRenderOptions<K extends CardSkinKind = CardSkinKind> {
 	resolveAsset?: (name: string) => string | undefined;
 	/** 皮肤自带的字体(清单级),每款注一条 `@font-face`;解析不出资产的那款跳过。 */
 	fonts?: readonly CardSkinFont[];
+	/** 皮肤声明的旋钮(清单级)。注入面只认这张表,存储里多出来的 key 一概不认。 */
+	knobs?: readonly CardSkinKnob[];
+	/** 用户拧过的旋钮值(按皮肤 id 存的那一份)。没拧过的 key 不在里面。 */
+	knobValues?: CardSkinKnobOverrides;
 }
 
 export interface SkinRenderResult {
@@ -386,7 +393,10 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 
 	const gap = `${card.gap?.row ?? 0}px ${card.gap?.column ?? 0}px`;
 	const extra: FrameExtra = {
-		frame: frameVariables(kind, o.props) + assetVarsStyle(card.assets, o.resolveAsset),
+		frame:
+			frameVariables(kind, o.props) +
+			cardSkinKnobDeclarations(o.knobs, o.knobValues) +
+			assetVarsStyle(card.assets, o.resolveAsset),
 		glass: `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`,
 		width: card.width,
 	};

@@ -10,7 +10,7 @@
  * 与真实形状漂移的假数据。
  */
 
-import { type CardSkinCard, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { type CardSkinCard, type CardSkinKnob, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
@@ -236,6 +236,82 @@ describe("皮肤渲染器 — 自定义块的占位符", () => {
 		expect(html).toContain(
 			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">霓虹&lt;up&gt;</text></svg>',
 		);
+	});
+});
+
+/**
+ * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14)。渲染器这头只做一件事:
+ * 把**用户拧过的**旋钮注成外框上的 `--bn-knob-<key>`。
+ *
+ * 「没拧过就不注」是这一片的要害,不是省字节:默认皮肤的玻璃白纱各卡基线不同
+ * (直播 .82 / SC .75 / 锐评 .86),一注就只能注一个数、三档当场塌成一档。不注的时候
+ * 皮肤 CSS 里 `var(--bn-knob-glass-opacity,.75)` 的兜底生效,像素一个都不动。
+ */
+describe("皮肤渲染器 — 皮肤旋钮", () => {
+	const card = (): CardSkinCard =>
+		liveCard([builtin("t", "title", { row: 1, column: 1, span: 12 })]);
+	const KNOBS: readonly CardSkinKnob[] = [
+		{ key: "accent", label: "主色", type: "color", default: "#fb7299" },
+		{ key: "radius", label: "圆角", type: "number", default: 12, min: 0, max: 48, unit: "px" },
+		{ key: "glass-opacity", label: "白纱", type: "number", default: 0.82, min: 0, max: 1 },
+		{ key: "shadow", label: "阴影", type: "switch", default: true, on: "block", off: "none" },
+	];
+	const frameStyle = (doc: Document): string =>
+		doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
+
+	it("拧过的旋钮注成 --bn-knob-<key>", async () => {
+		const { doc } = await render(card(), {
+			knobs: KNOBS,
+			knobValues: { accent: "#00f0ff", radius: 20, shadow: false },
+		});
+		const style = frameStyle(doc);
+		expect(style).toContain("--bn-knob-accent:#00f0ff");
+		expect(style).toContain("--bn-knob-radius:20px");
+		expect(style).toContain("--bn-knob-shadow:none");
+	});
+
+	it("没拧过的旋钮一个字都不注 —— 声明里的默认值不进 CSS", async () => {
+		const { doc } = await render(card(), { knobs: KNOBS, knobValues: { accent: "#00f0ff" } });
+		const style = frameStyle(doc);
+		expect(style).toContain("--bn-knob-accent");
+		expect(style).not.toContain("--bn-knob-radius");
+		expect(style).not.toContain("--bn-knob-glass-opacity");
+		expect(style).not.toContain("--bn-knob-shadow");
+	});
+
+	it("皮肤没声明旋钮 / 用户没拧过 → 外框上没有 knob 变量", async () => {
+		expect(frameStyle((await render(card())).doc)).not.toContain("--bn-knob-");
+		expect(frameStyle((await render(card(), { knobs: KNOBS })).doc)).not.toContain("--bn-knob-");
+	});
+
+	/**
+	 * 存储里的值可能被手改,也可能是旧包换了旋钮类型留下的残值。这一条钉「脏值不注」——
+	 * 注进去的话,`--bn-knob-x:red;background:url(…)` 就是一次凭空多出来的取网。
+	 */
+	it("脏值 / 越界 / 对不上类型的值一律不注,合法的那些照注", async () => {
+		const { doc } = await render(card(), {
+			knobs: KNOBS,
+			knobValues: {
+				accent: "url(https://evil.example/x.png)",
+				radius: 999,
+				shadow: "block",
+				"glass-opacity": 0.5,
+			},
+		});
+		const style = frameStyle(doc);
+		expect(style).not.toContain("evil.example");
+		expect(style).not.toContain("--bn-knob-accent");
+		expect(style).not.toContain("--bn-knob-radius");
+		expect(style).not.toContain("--bn-knob-shadow");
+		expect(style).toContain("--bn-knob-glass-opacity:0.5");
+	});
+
+	it("声明里没有的 key 就算存了覆盖也不注 —— 注入面只认声明", async () => {
+		const { doc } = await render(card(), {
+			knobs: KNOBS,
+			knobValues: { "not-declared": "red" },
+		});
+		expect(frameStyle(doc)).not.toContain("--bn-knob-not-declared");
 	});
 });
 
