@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
 /**
- * 拓展详情页上那块「说明 / 更新日志」。
+ * 拓展详情页的**页面级 tab**:配置 / 说明 / 更新日志。
  *
- * 两件事值得钉:① 有就画、**没有就整块不画**(空盒子比没有更难看,也让人以为加载坏了);
- * ② 内容是第三方写的,走 `UNTRUSTED_MARKDOWN_COMPONENTS` 那副受限渲染,不是文档那副。
+ * 文档曾经是直接摞在配置下面的,而说明动辄一整页 —— 于是更新日志被挤出视野,配置区也被
+ * 一堵正文压着。三档并列之后每一档都从页面顶上开始。
+ *
+ * 值得钉的:① **默认停在配置** —— 点进来八成是来管接入的,不是来读说明的;② 没有的那档
+ * 不摆(第三方不写 README 是它的自由),只剩一档时整条 tab 都不出现;③ 文档是第三方写的,
+ * 走 `UNTRUSTED_MARKDOWN_COMPONENTS` 那副受限渲染,不是站内文档那副。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -80,74 +84,84 @@ describe("详情页上的拓展文档", () => {
 		vi.clearAllMocks();
 	});
 
-	it("有 README → 画出来", async () => {
+	it("有 README → 切过去画得出来", async () => {
 		docs.value = { readme: "# 桥接\n\n把 koishi 的 bot 借过来。" };
 		renderDetail();
+		await openTab(/说明/);
 		expect(await screen.findByText(/把 koishi 的 bot 借过来/)).toBeTruthy();
 	});
 
-	it("有 CHANGELOG → 也看得到", async () => {
+	it("有 CHANGELOG → 也切得过去", async () => {
 		docs.value = { changelog: "## [0.0.1]\n\n第一版。" };
 		renderDetail();
+		await openTab(/更新日志/);
 		expect(await screen.findByText(/第一版/)).toBeTruthy();
 	});
 
-	/** 🔴 两份都没有就**整块不画** —— 空盒子会让人以为是加载坏了。 */
-	it("两份都没有 → 连标题都不出现", async () => {
+	/**
+	 * 🔴 **「回上一级」得看得出来是能点的。** 那一格一直是粉色可点的,但只有颜色没有动作
+	 * 提示 —— 主人反馈普通用户根本不知道点「拓展」两个字能返回。加一枚左箭头,一眼就是
+	 * 「往回走」;那句话与这一页空态 / 错误态里的「回拓展列表」是同一个词。
+	 */
+	it("面包屑那一格有返回指示,并且真能回列表", async () => {
 		docs.value = {};
 		renderDetail();
-		// 等这一条本身就够了 —— 名字在面包屑与标题里各有一份,拿它当信号会撞上两个节点。
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/docs"));
-		expect(screen.queryByText("说明")).toBeNull();
-		expect(screen.queryByText("更新日志")).toBeNull();
+
+		const back = await screen.findByRole("link", { name: /返回|回拓展/ });
+		expect(back.getAttribute("href")).toBe("/extensions");
 	});
 });
 
-/**
- * 两份文档**分 tab**,不再一上一下摞着。
- *
- * 摞着的毛病:说明动辄一整页,更新日志被挤到视野外,人得先滚过整份 README 才看得见
- * 「这版改了啥」—— 而更新完点进来的人要的正是后者。
- *
- * 顶部横条不走左侧竖栏:只有两项,左栏要为两个词让掉一整条宽度,而正文是 markdown、
- * 最吃宽度的恰是表格;何况站里的左栏(`SectionNav`)是**页面级**分区导航,摆进详情页
- * 底部的一个 section 会读成「这是整页的导航」。
- */
-describe("说明与更新日志分 tab", () => {
+/** 点进某一档文档 —— 默认停在配置,所以每条读文档的用例都要先切过去。 */
+async function openTab(name: RegExp): Promise<void> {
+	await userEvent.click(await screen.findByRole("tab", { name }));
+}
+
+describe("配置 / 说明 / 更新日志三档 tab", () => {
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
 	});
 
-	it("两份都有 → 出 tab 条,默认停在说明,更新日志的正文还没画", async () => {
+	/** 🔴 来这一页八成是来管接入的 —— 拿一整页 README 迎面糊上去是本末倒置。 */
+	it("默认停在配置,说明的正文还没画", async () => {
 		docs.value = { readme: "# 桥接\n\n借 koishi 的 bot。", changelog: "## [0.0.1]\n\n第一版。" };
 		renderDetail();
 
-		expect(await screen.findByText(/借 koishi 的 bot/)).toBeTruthy();
-		expect(screen.getByRole("tab", { name: /说明/ })).toBeTruthy();
-		expect(screen.getByRole("tab", { name: /更新日志/ })).toBeTruthy();
+		const config = await screen.findByRole("tab", { name: /配置/ });
+		expect(config.getAttribute("aria-selected")).toBe("true");
+		expect(screen.queryByText(/借 koishi 的 bot/)).toBeNull();
 		expect(screen.queryByText(/第一版/)).toBeNull();
 	});
 
-	it("点「更新日志」→ 换成它,说明退下去", async () => {
+	it("点「说明」→ 画 README;再点「更新日志」→ 换成它", async () => {
 		docs.value = { readme: "# 桥接\n\n借 koishi 的 bot。", changelog: "## [0.0.1]\n\n第一版。" };
 		renderDetail();
-		await screen.findByText(/借 koishi 的 bot/);
 
-		await userEvent.click(screen.getByRole("tab", { name: /更新日志/ }));
+		await openTab(/说明/);
+		expect(await screen.findByText(/借 koishi 的 bot/)).toBeTruthy();
 
+		await openTab(/更新日志/);
 		expect(await screen.findByText(/第一版/)).toBeTruthy();
 		expect(screen.queryByText(/借 koishi 的 bot/)).toBeNull();
 	});
 
-	/** 一个 tab 是噪音 —— 没得选的时候就别摆一排让人以为还有别的。 */
-	it("只有一份 → 不出 tab 条,标题直接是那一份的名字", async () => {
+	/** 没写 README 就别摆一档点进去是空的。 */
+	it("只带 CHANGELOG → 没有「说明」那一档", async () => {
 		docs.value = { changelog: "## [0.0.1]\n\n第一版。" };
 		renderDetail();
 
-		expect(await screen.findByText(/第一版/)).toBeTruthy();
+		expect(await screen.findByRole("tab", { name: /更新日志/ })).toBeTruthy();
+		expect(screen.queryByRole("tab", { name: /说明/ })).toBeNull();
+	});
+
+	/** 一条只有一个按钮的 tab 条是噪音 —— 让人以为还有别的可点。 */
+	it("两份文档都没有 → 整条 tab 都不出现,配置直接摊开", async () => {
+		docs.value = {};
+		renderDetail();
+
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/docs"));
 		expect(screen.queryByRole("tab")).toBeNull();
-		expect(screen.getByText("更新日志")).toBeTruthy();
 	});
 });
 
@@ -203,6 +217,7 @@ describe("详情页画第三方内容时走的是受限渲染", () => {
 	it("README 里的裸 HTML 当字面文本,不变成节点", async () => {
 		docs.value = { readme: '<img src=x onerror="alert(1)"> 后面还有字' };
 		renderDetail();
+		await openTab(/说明/);
 		const para = await screen.findByText(/后面还有字/);
 		expect(para.querySelector("img")).toBeNull();
 		// 那段 HTML 得**原样念得出来**,否则它可能是被整段吞了而不是被转义了。
@@ -212,6 +227,7 @@ describe("详情页画第三方内容时走的是受限渲染", () => {
 	it("README 里的 `javascript:` 链接不给 href —— 连 `<a>` 都不留", async () => {
 		docs.value = { readme: "[点我](javascript:alert(1))" };
 		renderDetail();
+		await openTab(/说明/);
 		const text = await screen.findByText(/点我/);
 		// 只问「这段字在不在一个 <a> 里」—— 页面上本来就有面包屑等别的链接,
 		// 拿 `document.querySelector("a")` 问会把它们一起抓进来。
@@ -226,6 +242,7 @@ describe("详情页画第三方内容时走的是受限渲染", () => {
 	it("README 里的表格画成真表格", async () => {
 		docs.value = { readme: "| 平台 | 支持 |\n| --- | --- |\n| Telegram | 有 |" };
 		renderDetail();
+		await openTab(/说明/);
 		expect(await screen.findByText("Telegram")).toBeTruthy();
 		expect(document.querySelector("table")).not.toBeNull();
 	});
@@ -234,6 +251,7 @@ describe("详情页画第三方内容时走的是受限渲染", () => {
 	it("README 里的相对路径图片退成占位,不渲染成 img", async () => {
 		docs.value = { readme: "![流程图](docs/flow.png)" };
 		renderDetail();
+		await openTab(/说明/);
 		// 占位是**看得见的字**;真画成 img 的话 alt 不算文本,这一句就找不着。
 		const placeholder = await screen.findByText(/流程图 —— 见源站/);
 		expect(placeholder.querySelector("img")).toBeNull();
