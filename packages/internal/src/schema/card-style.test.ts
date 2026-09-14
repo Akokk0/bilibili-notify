@@ -3,9 +3,12 @@ import { CardStylePartialSchema, CardStyleSchema } from "./common";
 import { DEFAULT_CARD_STYLE } from "./globals";
 
 describe("CardStyle background / glass knobs", () => {
-	it("defaults backgroundImages to [] (gradient) and leaves glassOpacity unset", () => {
+	// 背景图与玻璃都退役了(2026-09-14 / 决策 16):**出厂那份一个键都不写**。
+	// 键在不在是开机迁移的判据 —— 补一个默认值回来,迁移就永远判不出「搬过没有」。
+	it("leaves the retired background / glass keys unset on a fresh install", () => {
 		const parsed = CardStyleSchema.parse(DEFAULT_CARD_STYLE);
-		expect(parsed.backgroundImages).toEqual([]);
+		expect(parsed.backgroundImages).toBeUndefined();
+		expect(parsed.font).toBeUndefined();
 		expect(parsed.glassOpacity).toBeUndefined();
 	});
 
@@ -20,7 +23,8 @@ describe("CardStyle background / glass knobs", () => {
 	});
 
 	// 旧 globals.json 形态:带单值 `backgroundImage`、没有 `backgroundImages`。
-	const { backgroundImages: _omit, ...LEGACY_BASE } = DEFAULT_CARD_STYLE;
+	// 出厂那份 2026-09-14 起本来就不带背景图那一项(退役成皮肤旋钮),直接拿来当底。
+	const LEGACY_BASE = DEFAULT_CARD_STYLE;
 
 	it("migrates a legacy single backgroundImage into the list", () => {
 		const parsed = CardStyleSchema.parse({ ...LEGACY_BASE, backgroundImage: "card-bg/abc.png" });

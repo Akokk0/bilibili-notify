@@ -54,6 +54,7 @@
 
 import {
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_UPLOAD_PREFIX,
 	type CardKind,
 	type CardLayout,
 	type CardSkinColors,
@@ -250,6 +251,22 @@ export async function migrateCardLayoutsToSkins(deps: {
 		result.globalKnobs = true;
 	}
 
+	/**
+	 * 字体与背景图那两枚**单走一条路**:它们落在**默认皮肤**那一层,而不是「这个人当下
+	 * 用的那套」(2026-09-14 主人拍板)。理由是死键 —— 主人可能早就换了一套自己装的皮肤,
+	 * 而那套皮肤根本不声明这两枚旋钮,写进去谁也读不到;默认皮肤一定声明,换回去就还在。
+	 * 刚在上面折出来的派生皮肤也声明着同两枚(它抄的就是默认那份),所以那种情况两边都写
+	 * —— 不写的话,迁移当场就把主人正在看的壁纸弄没了。
+	 */
+	const assetKnobs = assetKnobsOf(globals.defaults.cardStyle);
+	if (assetKnobs) {
+		const targets = new Set([DEFAULT_CARD_SKIN_ID, ...(result.global ? [globalSkinId] : [])]);
+		for (const target of targets) {
+			nextKnobs = { ...nextKnobs, [target]: { ...nextKnobs?.[target], ...assetKnobs } };
+		}
+		result.globalKnobs = true;
+	}
+
 	// 旧键就地丢掉 —— **哪怕什么皮肤都没折**:键留着下次开机还会再跑一趟。
 	// 整体替换而不是一串 patch:两个分区要么一起成要么一起不动,半新半旧的配置会让
 	// 订阅指着一套并不存在的皮肤。
@@ -387,11 +404,38 @@ function glassKnobsOf(style: CardStylePartial): CardSkinKnobOverrides | undefine
 	return undefined;
 }
 
+/**
+ * 退役的字体与背景图 → 旋钮覆盖(2026-09-14 主人拍板)。
+ *
+ * **文件优先于家族名** —— 与从前渲染那头同一条规矩(`fontAsset` 设了就压过 `font`)。
+ * 家族名哪怕等于旧的出厂值也照搬:那个值在 macOS 上挑到的是苹方,而新的兜底链里没有它,
+ * 不搬的话主人的卡会换个字体(「迁移的头等目标是外观不变」)。
+ */
+function assetKnobsOf(style: CardStylePartial): CardSkinKnobOverrides | undefined {
+	const K = DEFAULT_SKIN_KNOB_KEYS;
+	const out: CardSkinKnobOverrides = {};
+	if (style.fontAsset) out[K.font] = `${CARD_SKIN_UPLOAD_PREFIX}${style.fontAsset}`;
+	else if (style.font) out[K.font] = style.font;
+	if (style.backgroundImages && style.backgroundImages.length > 0) {
+		out[K.wallpaper] = [...style.backgroundImages];
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** 这一份样式还带着退役的字体 / 背景图键吗。 */
+function hasRetiredAssets(style: CardStylePartial | undefined): boolean {
+	return (
+		style?.font !== undefined ||
+		style?.fontAsset !== undefined ||
+		style?.backgroundImages !== undefined
+	);
+}
+
 // ── 摘键 ─────────────────────────────────────────────────────────────────────
 
-/** 这一份样式(或它的 partial)还带着任何退役的样式键吗(颜色 / 玻璃)。 */
+/** 这一份样式(或它的 partial)还带着任何退役的样式键吗(颜色 / 玻璃 / 字体与背景图)。 */
 function hasRetiredStyle(style: CardStylePartial | undefined): boolean {
-	return hasRetiredColors(style) || hasRetiredGlass(style);
+	return hasRetiredColors(style) || hasRetiredGlass(style) || hasRetiredAssets(style);
 }
 
 /** 按卡种那张表里有没有哪一格还带着退役的样式键。 */
@@ -399,7 +443,7 @@ function hasRetiredStyleByKind(byKind: CardStyleByKind | undefined): boolean {
 	return Object.values(byKind ?? {}).some((s) => hasRetiredStyle(s));
 }
 
-/** 摘掉一份样式里那四个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
+/** 摘掉一份样式里那七个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
 function stripRetiredStyle<T extends CardStylePartial>(style: T): T {
 	if (!hasRetiredStyle(style)) return style;
 	const {
@@ -407,6 +451,9 @@ function stripRetiredStyle<T extends CardStylePartial>(style: T): T {
 		cardColorEnd: _e,
 		glassOpacity: _go,
 		glassClear: _gc,
+		font: _f,
+		fontAsset: _fa,
+		backgroundImages: _bg,
 		...rest
 	} = style;
 	return rest as T;

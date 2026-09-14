@@ -363,13 +363,12 @@ export const DEFAULT_CARD_STYLE = {
 	enabled: true,
 	// 渐变起 / 止色已退役(ADR-0014 决策 15 的 🔗)—— 出厂色住在
 	// `card-skin.ts` 的 `DEFAULT_CARD_GRADIENT`,由默认皮肤的外框 CSS 画出来。
-	font: "PingFang SC, sans-serif",
+	// 字体与背景图已退役(2026-09-14,同玻璃那次):两项都归**皮肤自己的旋钮**,新装的机器
+	// 一个键都不写 —— 写了的话开机迁移永远判不出「搬过没有」,每次开机都要白搬一趟。
 	// 数据区三项默认全显示 = 复刻现状(简介显隐已交由版式 desc 块)。
 	showPopularity: true,
 	showArea: true,
 	showFans: true,
-	// 空列表 = 沿用皮肤自己的外框背景(玻璃与渐变都归皮肤旋钮,见 CardStyleSchema 的退役字段)。
-	backgroundImages: [] as string[],
 } as const;
 
 /** 工厂:创建一份完整的默认 GlobalConfig(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */

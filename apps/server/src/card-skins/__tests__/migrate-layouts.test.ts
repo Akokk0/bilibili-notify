@@ -522,6 +522,80 @@ describe("退役的渐变色", () => {
 });
 
 /**
+ * 字体与背景图退役成旋钮(2026-09-14 主人拍板)。
+ *
+ * 与玻璃那组同一套路,但**落点不同**:这两枚落在**默认皮肤**那一层,而不是「这个人当下
+ * 用的那套」—— 主人可能早换了一套自己装的皮肤,那套不声明这两枚旋钮,写进去就是死键。
+ * 刚折出来的派生皮肤声明着同两枚(抄的默认那份),所以那种情况两边都写:不写的话,迁移
+ * 当场就把主人正在看的壁纸弄没了。
+ */
+describe("退役的字体与背景图", () => {
+	const knobsOf = (skinId: string): Record<string, unknown> =>
+		config.getGlobals().defaults.cardSkinKnobs[skinId] ?? {};
+
+	async function setStyle(patch: Record<string, unknown>): Promise<void> {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: { ...g.defaults, cardStyle: { ...g.defaults.cardStyle, ...patch } },
+		});
+	}
+
+	it("家族名 → 字体旋钮;背景图那一串原样搬(多张照旧轮换)", async () => {
+		await setStyle({ font: "Noto Sans CJK SC", backgroundImages: ["bg1", "bg2"] });
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 0, global: false, globalKnobs: true });
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({
+			font: "Noto Sans CJK SC",
+			wallpaper: ["bg1", "bg2"],
+		});
+		// 键得从盘上消失。家族名本身还在 —— 它现在是旋钮的值,所以只能问 cardStyle 那一头。
+		expect(await rawState("globals.json")).not.toContain("backgroundImages");
+		expect(config.getGlobals().defaults.cardStyle.font).toBeUndefined();
+	});
+
+	it("传过字体文件的 → 写成 upload:<id>,并且压过家族名(与出图那头同一条优先级)", async () => {
+		await setStyle({ font: "Noto Sans CJK SC", fontAsset: "f1" });
+		await migrateCardLayoutsToSkins({ store, config });
+
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({ font: "upload:f1" });
+		expect(await rawState("globals.json")).not.toContain("fontAsset");
+	});
+
+	it("版式也改过 → 默认皮肤与刚折出来那套**都**写(正在看的那套不能空着)", async () => {
+		await setGlobalLayout(customLayout());
+		await setStyle({ backgroundImages: ["bg1"] });
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result.global).toBe(true);
+		const derived = config.getGlobals().defaults.cardSkin;
+		expect(derived).not.toBe(DEFAULT_CARD_SKIN_ID);
+		expect(knobsOf(derived)).toMatchObject({ wallpaper: ["bg1"] });
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({ wallpaper: ["bg1"] });
+	});
+
+	it("per-UP 的字体 / 背景图直接丢:不派生、不落旋钮,键照样收走", async () => {
+		const sub = await addSub("42", "阿伟", {
+			cardStyle: { font: "UP Sans", backgroundImages: ["up-bg"] },
+		});
+		await migrateCardLayoutsToSkins({ store, config });
+
+		expect(installedNames()).toEqual([]);
+		expect(subById(sub).overrides.cardStyle?.font).toBeUndefined();
+		expect(subById(sub).overrides.cardStyle?.backgroundImages).toBeUndefined();
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({});
+	});
+
+	it("一个键都没有的新机器:什么都不写", async () => {
+		const before = await rawState("globals.json");
+		const result = await migrateCardLayoutsToSkins({ store, config });
+		expect(result.globalKnobs).toBe(false);
+		expect(await rawState("globals.json")).toBe(before);
+	});
+});
+
+/**
  * 玻璃片退役成旋钮(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板)。
  *
  * 与渐变色那组同一套路 —— 但**代价更大且是主人明说认下的**:玻璃原来能按 UP / 按卡种
