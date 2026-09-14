@@ -188,3 +188,103 @@ describe("皮肤预览栏", () => {
 		expect(screen.getByText("丢掉了 1 条 url() 声明")).toBeTruthy();
 	});
 });
+
+/**
+ * 「最终效果」(ADR-0014 决策 22 的后半句)。实时预览是**看的人的浏览器**画的,推出去那张
+ * 是 **server 上的 Chrome** 画的,字体渲染像素级对不上 —— 这颗按钮是作者唯一能看到真相的
+ * 地方。
+ *
+ * 钉四条:① 没配 Chrome 时**禁掉并说清楚该去配什么**(不说的话主人只会觉得按钮坏了);
+ * ② 截完切过去看的是那张图,不是 iframe;③ **草稿改了要说这张过期了** —— 悄悄挂着一张
+ * 旧图,作者会拿它当「改完的样子」;④ 超过最大高度要说出来(出图那头会静默回落默认皮肤)。
+ */
+describe("皮肤预览栏 · 最终效果", () => {
+	const SHOT = {
+		ok: true,
+		dataUrl: "data:image/jpeg;base64,ZmFrZQ==",
+		width: 600,
+		height: 400,
+		overHeight: false,
+		warnings: [] as string[],
+		scene: "streaming",
+	};
+
+	/** 预览走 `/preview`、截图走 `/skin-shot` —— 同一个 `api.post`,按 url 分流。 */
+	function mockBoth(shot: Record<string, unknown> = SHOT): void {
+		vi.mocked(api.post).mockImplementation(async (url: string) =>
+			url.endsWith("/skin-shot") ? shot : OK,
+		);
+	}
+
+	const shotBtn = () => screen.getByRole("button", { name: /最终效果/ }) as HTMLButtonElement;
+
+	it("没配 Chrome → 钮禁着,并且说出该去配什么", async () => {
+		mockBoth();
+		vi.mocked(api.get).mockResolvedValue({ enabled: false, source: null, persistable: false });
+		renderPane();
+		await tick();
+
+		expect(shotBtn().disabled).toBe(true);
+		expect(screen.getByText(/BN_CHROME_PATH/)).toBeTruthy();
+	});
+
+	it("配了 Chrome → 按一下截一张,显示的是图不是 iframe", async () => {
+		mockBoth();
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		renderPane();
+		await tick();
+
+		expect(shotBtn().disabled).toBe(false);
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+
+		const img = document.querySelector("img") as HTMLImageElement | null;
+		expect(img?.getAttribute("src")).toBe(SHOT.dataUrl);
+		expect(frame()).toBeNull();
+
+		const [url, body] = vi.mocked(api.post).mock.calls.at(-1) as [string, Record<string, unknown>];
+		expect(url).toBe("/api/cards/skin-shot");
+		expect(body).toMatchObject({ skinId: "neon", kind: "live", scene: "streaming" });
+	});
+
+	it("草稿改了 → 那张图当场标成过期,别让人拿它当改完的样子", async () => {
+		mockBoth();
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		const { rerender } = renderPane({ v: 1 });
+		await tick();
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+		expect(screen.queryByText(/这张是上一版/)).toBeNull();
+
+		rerender(
+			<QueryClientProvider client={new QueryClient()}>
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 2 }}
+					boxWidth={600}
+				/>
+			</QueryClientProvider>,
+		);
+		await tick();
+		expect(screen.getByText(/这张是上一版/)).toBeTruthy();
+	});
+
+	it("超过最大高度 → 照样给看,但把「出图时会回落默认皮肤」说出来", async () => {
+		mockBoth({ ...SHOT, height: 9999, overHeight: true });
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		renderPane();
+		await tick();
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+
+		expect(screen.getByText(/回落/)).toBeTruthy();
+	});
+});

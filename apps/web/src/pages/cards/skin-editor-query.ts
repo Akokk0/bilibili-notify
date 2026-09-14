@@ -11,6 +11,7 @@ import type {
 	CardSkinManifestResponse,
 	CardSkinPreviewResponse,
 	CardSkinSaveResponse,
+	CardSkinShotResponse,
 } from "@bilibili-notify/contract";
 import type { CardSkinKind } from "@bilibili-notify/internal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -47,6 +48,37 @@ export function useSaveCardSkin(id: string) {
 			void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
 			void qc.invalidateQueries({ queryKey: cardSkinManifestKey(id) });
 		},
+	});
+}
+
+/**
+ * **有没有 Chrome**(`GET /api/cards/render-source`)。「最终效果」得靠它 —— 没有就把钮
+ * 禁掉并说清楚该去配什么,而不是让主人按下去吃一个 503。
+ *
+ * 与系统页「卡片渲染浏览器」那一区问的是同一个端点,但那边是直接 `api.get`、不走
+ * react-query,所以两处**没有**共用缓存。这里不去追它:配 Chrome 的入口在另一页,
+ * 主人配完再回编辑器就是一次重新挂载(`refetchOnMount` 默认开着),当场就是新的。
+ */
+export const RENDER_SOURCE_KEY = ["cards", "render-source"] as const;
+
+export function useRenderSource() {
+	return useQuery({
+		queryKey: RENDER_SOURCE_KEY,
+		queryFn: () => api.get<{ enabled: boolean }>("/api/cards/render-source"),
+		staleTime: 30_000,
+	});
+}
+
+/**
+ * 草稿 → **一张真图**(`POST /api/cards/skin-shot`)。与实时预览同源(server 那头共用
+ * 「清单 → HTML」那一步),差别只在这张是 server 上的 Chrome 画的。
+ *
+ * 同 `usePreviewCardSkin` 不进缓存:键就是整份清单,存下来只会把内存填满而命中率是零。
+ */
+export function useShotCardSkin() {
+	return useMutation({
+		mutationFn: (v: { skinId: string; kind: CardSkinKind; scene?: string; manifest: unknown }) =>
+			api.post<CardSkinShotResponse>("/api/cards/skin-shot", v),
 	});
 }
 
