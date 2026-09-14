@@ -19,6 +19,7 @@ import {
 	addBlock,
 	addCustomBlock,
 	addKnob,
+	addKnobOption,
 	adoptCard,
 	blockOf,
 	canAddBlock,
@@ -30,6 +31,7 @@ import {
 	knobsError,
 	removeBlock,
 	removeKnob,
+	removeKnobOption,
 	setBlockCss,
 	setBlockGrid,
 	setBlockHtml,
@@ -39,6 +41,9 @@ import {
 	setFrameCss,
 	setKnobDecl,
 	setKnobDefault,
+	setKnobNumber,
+	setKnobOption,
+	setKnobSwitch,
 	setKnobType,
 	setSkinMeta,
 	skinMetaError,
@@ -561,5 +566,134 @@ describe("knobsError", () => {
 	it("label 空了 → 也拦(面板上会画出一个没名字的控件)", () => {
 		const m = withKnobs({ key: "accent", label: "  ", type: "color", default: "#000000" });
 		expect(knobsError(m)).toContain("名字");
+	});
+});
+
+/**
+ * 三档的附加字段:数值的取值域与单位、下拉的候选表、开关两端的字面量。不补这些,那三档
+ * 在编辑器里就是「声明得出、调不了」—— 加一枚数值旋钮永远是 0~100 无单位。
+ *
+ * 钉的仍是「存不下去」:改窄取值域会把起手位置甩到域外、删候选会把起手位置删成悬空。
+ * 两样都**不偷偷改起手位置** —— 那是主人自己摆的,冲掉了他不会知道。当场说。
+ */
+describe("旋钮的附加字段", () => {
+	const oneKnob = (knob: unknown) =>
+		({ ...manifest(), knobs: [knob] }) as unknown as CardSkinManifest;
+	/** 第一枚旋钮的候选表。夹具只放一枚,取不到就是用例自己写错了。 */
+	const optionsOf = (m: CardSkinManifest): Array<{ value: string; label: string }> => {
+		const knob = m.knobs?.[0];
+		if (knob === undefined || knob.type !== "select") throw new Error("第一枚不是下拉旋钮");
+		return knob.options;
+	};
+	const num = () =>
+		oneKnob({ key: "blur", label: "糊化", type: "number", default: 8, min: 0, max: 40 });
+	const sel = () =>
+		oneKnob({
+			key: "corner",
+			label: "圆角",
+			type: "select",
+			default: "12px",
+			options: [{ value: "12px", label: "圆" }],
+		});
+
+	it("数值:取值域与步长各改各的", () => {
+		const after = setKnobNumber(num(), "blur", { min: 2, max: 24, step: 0.5 });
+		expect(after.knobs?.[0]).toMatchObject({ min: 2, max: 24, step: 0.5, default: 8 });
+	});
+
+	it("数值:步长清零 / 单位选「无」都是**删键** —— optional 的键留个 0 在清单里是噪音", () => {
+		const withExtras = setKnobNumber(num(), "blur", { step: 2, unit: "px" });
+		expect(withExtras.knobs?.[0]).toMatchObject({ step: 2, unit: "px" });
+
+		const cleared = setKnobNumber(withExtras, "blur", { step: 0, unit: "" });
+		expect("step" in (cleared.knobs?.[0] ?? {})).toBe(false);
+		expect("unit" in (cleared.knobs?.[0] ?? {})).toBe(false);
+	});
+
+	it("开关:两端的字面量各改各的", () => {
+		const m = oneKnob({
+			key: "badge",
+			label: "徽章",
+			type: "switch",
+			default: true,
+			on: "block",
+			off: "none",
+		});
+		expect(setKnobSwitch(m, "badge", { on: "flex" }).knobs?.[0]).toMatchObject({
+			on: "flex",
+			off: "none",
+		});
+	});
+
+	it("下拉:加一个候选,值不撞已有的", () => {
+		const after = addKnobOption(sel(), "corner");
+		const options = optionsOf(after);
+		expect(options).toHaveLength(2);
+		expect(new Set(options.map((o) => o.value)).size).toBe(2);
+	});
+
+	it("下拉:加满 8 个就加不动了", () => {
+		let m = sel();
+		for (let i = 1; i < CARD_SKIN_KNOB_LIMITS.maxOptions; i++) m = addKnobOption(m, "corner");
+		expect(optionsOf(m)).toHaveLength(CARD_SKIN_KNOB_LIMITS.maxOptions);
+		// 加不动时**整份原样返回**:回一份内容相同的新清单会让脏标凭空亮起来。
+		expect(addKnobOption(m, "corner")).toBe(m);
+	});
+
+	it("下拉:改一个候选的值 / 人话名,删一个候选", () => {
+		const two = addKnobOption(sel(), "corner");
+		const edited = setKnobOption(two, "corner", 1, { value: "0px", label: "直角" });
+		expect(optionsOf(edited)[1]).toEqual({ value: "0px", label: "直角" });
+		const dropped = removeKnobOption(edited, "corner", 0);
+		expect(optionsOf(dropped)).toEqual([{ value: "0px", label: "直角" }]);
+	});
+
+	it("下拉:最后一个候选删不掉 —— 空候选表存不下去", () => {
+		const m = sel();
+		expect(removeKnobOption(m, "corner", 0)).toBe(m);
+	});
+});
+
+describe("knobsError 也管这三档", () => {
+	const oneKnob = (knob: unknown) =>
+		({ ...manifest(), knobs: [knob] }) as unknown as CardSkinManifest;
+
+	it("数值:min 大于 max", () => {
+		const m = oneKnob({ key: "blur", label: "糊化", type: "number", default: 8, min: 40, max: 0 });
+		expect(knobsError(m)).toContain("糊化");
+	});
+
+	it("数值:改窄取值域把起手位置甩出去了 → 说清楚,不偷偷把它夹回来", () => {
+		const m = setKnobNumber(
+			oneKnob({ key: "blur", label: "糊化", type: "number", default: 30, min: 0, max: 40 }),
+			"blur",
+			{ max: 24 },
+		);
+		// 起手位置原样留着 —— 主人自己摆的,冲掉了他不会知道。
+		expect(m.knobs?.[0]).toMatchObject({ default: 30 });
+		expect(knobsError(m)).toContain("30");
+	});
+
+	it("下拉:起手位置不在候选里", () => {
+		const m = oneKnob({
+			key: "corner",
+			label: "圆角",
+			type: "select",
+			default: "99px",
+			options: [{ value: "12px", label: "圆" }],
+		});
+		expect(knobsError(m)).toContain("圆角");
+	});
+
+	it("下拉 / 开关:字面量带 `;` 或 `}` → 拦下来(那是凭空多出来的 CSS 声明)", () => {
+		const m = oneKnob({
+			key: "badge",
+			label: "徽章",
+			type: "switch",
+			default: true,
+			on: "block;color:red",
+			off: "none",
+		});
+		expect(knobsError(m)).toContain("徽章");
 	});
 });

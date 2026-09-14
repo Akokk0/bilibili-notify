@@ -247,3 +247,111 @@ describe("编辑器 · 旋钮声明的接线", () => {
 		expect(screen.queryByRole("button", { name: /添加旋钮/ })).toBeNull();
 	});
 });
+
+/**
+ * 三档自己那几项的接线。这一段最像成功的失败形态是**改得动、存不出去**:数值那一行的
+ * 取值域框敲得动,而 `PUT` 里还是 0~100。
+ */
+describe("编辑器 · 三档附加字段的接线", () => {
+	const numberKnob = [{ key: "blur", label: "糊化", type: "number", default: 8, min: 0, max: 40 }];
+	const selectKnob = [
+		{
+			key: "corner",
+			label: "圆角",
+			type: "select",
+			default: "12px",
+			options: [{ value: "12px", label: "圆" }],
+		},
+	];
+	const switchKnob = [
+		{ key: "badge", label: "徽章", type: "switch", default: true, on: "block", off: "none" },
+	];
+
+	it("数值:取值域 / 步长 / 单位都存得出去", async () => {
+		mockApi({ knobs: numberKnob });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		fireEvent.change(screen.getByLabelText("取值上限"), { target: { value: "24" } });
+		fireEvent.change(screen.getByLabelText("步长"), { target: { value: "2" } });
+		fireEvent.change(screen.getByLabelText("单位"), { target: { value: "px" } });
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedKnobs()[0]).toMatchObject({ min: 0, max: 24, step: 2, unit: "px" });
+	});
+
+	it("数值:单位选回「无单位」→ 键删掉,不是存个空串", async () => {
+		mockApi({ knobs: [{ ...numberKnob[0], unit: "px" }] });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		fireEvent.change(screen.getByLabelText("单位"), { target: { value: "" } });
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect("unit" in (savedKnobs()[0] ?? {})).toBe(false);
+	});
+
+	it("开关:两端的字面量存得出去", async () => {
+		mockApi({ knobs: switchKnob });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		fireEvent.change(screen.getByLabelText("开的时候注什么"), { target: { value: "flex" } });
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedKnobs()[0]).toMatchObject({ on: "flex", off: "none" });
+	});
+
+	it("下拉:加一个候选、把它设成起手位置 —— 两样都存得出去", async () => {
+		mockApi({ knobs: selectKnob });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		fireEvent.click(screen.getByRole("button", { name: /添加候选/ }));
+		fireEvent.change(screen.getAllByLabelText("候选注什么")[1] as HTMLInputElement, {
+			target: { value: "0px" },
+		});
+		fireEvent.click(screen.getAllByRole("button", { name: "起手" })[1] as HTMLElement);
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedKnobs()[0]).toMatchObject({
+			default: "0px",
+			options: [
+				{ value: "12px", label: "圆" },
+				{ value: "0px", label: "候选 2" },
+			],
+		});
+	});
+
+	it("下拉:起手位置被改得不在候选里 → 保存钮变灰并说清楚", async () => {
+		mockApi({ knobs: selectKnob });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		// 只有一个候选时它就是起手位置;把它的值改掉,起手位置立刻悬空。
+		fireEvent.change(screen.getByLabelText("候选注什么"), { target: { value: "0px" } });
+
+		expect((saveBtn() as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.getByText(/不在候选里/)).toBeTruthy();
+	});
+
+	it("下拉:只剩一个候选时删不掉 —— 那颗钮压根不出现", async () => {
+		mockApi({ knobs: selectKnob });
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		expect(screen.queryByRole("button", { name: /删掉这个候选/ })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /添加候选/ }));
+		expect(screen.getAllByRole("button", { name: /删掉这个候选/ })).toHaveLength(2);
+	});
+});

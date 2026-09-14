@@ -10,6 +10,7 @@ import type { CardSkinColumn } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_KNOB_KEY_RE,
 	CARD_SKIN_KNOB_LIMITS,
+	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
 } from "@bilibili-notify/internal/constants";
 
@@ -519,16 +520,24 @@ export function setKnobDefault(
 	);
 }
 
+/**
+ * 换掉其中一枚。**空操作原样返回** —— 回一份内容相同的新清单的话,脏标只看引用,
+ * 主人会看到「有未保存的改动」凭空亮起来(比如点了最后一个候选的删除钮,而那一下按设计
+ * 什么都没发生)。
+ */
 function mapKnob(
 	manifest: CardSkinManifest,
 	key: string,
 	fn: (knob: Knob) => Knob,
 ): CardSkinManifest {
 	const knobs = knobsOf(manifest);
-	if (!knobs.some((k) => k.key === key)) return manifest;
+	const at = knobs.findIndex((k) => k.key === key);
+	if (at === -1) return manifest;
+	const next = fn(knobs[at] as Knob);
+	if (next === knobs[at]) return manifest;
 	return withKnobs(
 		manifest,
-		knobs.map((k) => (k.key === key ? fn(k) : k)),
+		knobs.map((k, i) => (i === at ? next : k)),
 	);
 }
 
@@ -548,6 +557,148 @@ export function knobsError(manifest: CardSkinManifest): string | null {
 		if (knob.label.length > CARD_SKIN_KNOB_LIMITS.label.max) {
 			return `旋钮「${knob.key}」的名字最多 ${CARD_SKIN_KNOB_LIMITS.label.max} 个字`;
 		}
+		const shape = knobShapeError(knob);
+		if (shape !== null) return `旋钮「${knob.label || knob.key}」${shape}`;
 	}
 	return null;
+}
+
+/**
+ * 各档自己那几项的规矩。**起手位置越界不偷偷夹回来** —— 那是主人自己摆的位置,改窄取值域
+ * 顺手把它冲掉,他不会知道;当场说,他改哪一头由他定。
+ */
+function knobShapeError(knob: Knob): string | null {
+	switch (knob.type) {
+		case "number": {
+			if (knob.min > knob.max) return `的取值域反了:下限 ${knob.min} 比上限 ${knob.max} 还大`;
+			if (knob.default < knob.min || knob.default > knob.max) {
+				return `的起手位置 ${knob.default} 不在 ${knob.min}~${knob.max} 之间`;
+			}
+			return null;
+		}
+		case "select": {
+			if (knob.options.length === 0) return "至少要有一个候选";
+			if (knob.options.length > CARD_SKIN_KNOB_LIMITS.maxOptions) {
+				return `最多 ${CARD_SKIN_KNOB_LIMITS.maxOptions} 个候选`;
+			}
+			for (const o of knob.options) {
+				const bad = knobLiteralError(o.value);
+				if (bad !== null) return `的候选「${o.value}」${bad}`;
+				if (o.label.trim() === "") return `有个候选没名字`;
+			}
+			if (!knob.options.some((o) => o.value === knob.default)) {
+				return `的起手位置「${knob.default}」不在候选里`;
+			}
+			return null;
+		}
+		case "switch": {
+			for (const [side, value] of [
+				["开", knob.on],
+				["关", knob.off],
+			] as const) {
+				const bad = knobLiteralError(value);
+				if (bad !== null) return `的「${side}」${bad}`;
+			}
+			return null;
+		}
+		default:
+			return null;
+	}
+}
+
+/**
+ * 候选 / 开关两端那种**注进 CSS 的字面量**。值最后落成 `--bn-knob-x:<值>`,一个 `;` 就是
+ * 一条凭空多出来的声明、一个 `}` 就是提前收尾 —— 与契约那头同一张字符表(装包门会再判一次,
+ * 这里只是提前把话说明白)。
+ */
+function knobLiteralError(value: string): string | null {
+	if (value.length === 0) return "不能是空的";
+	if (value.length > CARD_SKIN_KNOB_LIMITS.value.max) {
+		return `最多 ${CARD_SKIN_KNOB_LIMITS.value.max} 个字`;
+	}
+	const bad = [...`;{}:"'\\`].find((c) => value.includes(c));
+	return bad === undefined ? null : `里不能有 \`${bad}\``;
+}
+
+/** 数值旋钮的取值域与单位。`step: 0` / `unit: ""` = 删键(两项都是 optional)。 */
+export function setKnobNumber(
+	manifest: CardSkinManifest,
+	key: string,
+	patch: { min?: number; max?: number; step?: number; unit?: string },
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) => {
+		if (k.type !== "number") return k;
+		const next = { ...k };
+		if (patch.min !== undefined) next.min = patch.min;
+		if (patch.max !== undefined) next.max = patch.max;
+		if (patch.step !== undefined) {
+			if (patch.step > 0) next.step = patch.step;
+			else delete next.step;
+		}
+		if (patch.unit !== undefined) {
+			const unit = CARD_SKIN_KNOB_UNITS.find((u) => u === patch.unit);
+			if (unit) next.unit = unit;
+			else delete next.unit;
+		}
+		return next;
+	});
+}
+
+/** 开关两端各自注进 CSS 的字面量(如 `block` / `none`)。 */
+export function setKnobSwitch(
+	manifest: CardSkinManifest,
+	key: string,
+	patch: { on?: string; off?: string },
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) =>
+		k.type === "switch"
+			? {
+					...k,
+					...(patch.on !== undefined ? { on: patch.on } : {}),
+					...(patch.off !== undefined ? { off: patch.off } : {}),
+				}
+			: k,
+	);
+}
+
+type KnobOption = Extract<Knob, { type: "select" }>["options"][number];
+
+/** 加一个候选。加满 {@link CARD_SKIN_KNOB_LIMITS.maxOptions} 原样返回。 */
+export function addKnobOption(manifest: CardSkinManifest, key: string): CardSkinManifest {
+	return mapKnob(manifest, key, (k) => {
+		if (k.type !== "select" || k.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions) return k;
+		const used = new Set(k.options.map((o) => o.value));
+		let value = "option";
+		for (let n = 2; used.has(value); n++) value = `option-${n}`;
+		return { ...k, options: [...k.options, { value, label: `候选 ${k.options.length + 1}` }] };
+	});
+}
+
+export function setKnobOption(
+	manifest: CardSkinManifest,
+	key: string,
+	index: number,
+	patch: Partial<KnobOption>,
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) =>
+		k.type !== "select" || k.options[index] === undefined
+			? k
+			: { ...k, options: k.options.map((o, i) => (i === index ? { ...o, ...patch } : o)) },
+	);
+}
+
+/**
+ * 删一个候选。**最后一个删不掉** —— 空候选表存不下去(装包门:「下拉至少要有一个候选」),
+ * 让它删成空的话,主人看到的是保存时一句莫名其妙的报错。
+ */
+export function removeKnobOption(
+	manifest: CardSkinManifest,
+	key: string,
+	index: number,
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) =>
+		k.type !== "select" || k.options.length <= 1 || k.options[index] === undefined
+			? k
+			: { ...k, options: k.options.filter((_, i) => i !== index) },
+	);
 }

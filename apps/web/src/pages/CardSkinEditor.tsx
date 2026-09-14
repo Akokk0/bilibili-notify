@@ -38,12 +38,14 @@ import {
 	addBlock,
 	addCustomBlock,
 	addKnob,
+	addKnobOption,
 	adoptCard,
 	cardOf,
 	dropCard,
 	knobsError,
 	removeBlock,
 	removeKnob,
+	removeKnobOption,
 	setBlockCss,
 	setBlockGrid,
 	setBlockHtml,
@@ -53,6 +55,9 @@ import {
 	setFrameCss,
 	setKnobDecl,
 	setKnobDefault,
+	setKnobNumber,
+	setKnobOption,
+	setKnobSwitch,
 	setKnobType,
 	setSkinMeta,
 	skinMetaError,
@@ -339,6 +344,16 @@ export default function CardSkinEditor() {
 													setDraft((d) => (d === null ? d : setKnobType(d, key, type))),
 												onDefault: (key, value) =>
 													setDraft((d) => (d === null ? d : setKnobDefault(d, key, value))),
+												onNumber: (key, patch) =>
+													setDraft((d) => (d === null ? d : setKnobNumber(d, key, patch))),
+												onSwitch: (key, patch) =>
+													setDraft((d) => (d === null ? d : setKnobSwitch(d, key, patch))),
+												onOptionAdd: (key) =>
+													setDraft((d) => (d === null ? d : addKnobOption(d, key))),
+												onOption: (key, index, patch) =>
+													setDraft((d) => (d === null ? d : setKnobOption(d, key, index, patch))),
+												onOptionRemove: (key, index) =>
+													setDraft((d) => (d === null ? d : removeKnobOption(d, key, index))),
 											}
 								}
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}

@@ -16,6 +16,7 @@ import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KNOB_LIMITS,
+	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
 } from "@bilibili-notify/internal/constants";
@@ -28,6 +29,7 @@ import {
 	Pill,
 	Section,
 	Toggle,
+	ToneChip,
 } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { Picker, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
@@ -650,6 +652,17 @@ export type KnobHandlers = {
 	onDecl: (key: string, patch: { key?: string; label?: string }) => void;
 	onType: (key: string, type: CardSkinKnob["type"]) => void;
 	onDefault: (key: string, value: string | number | boolean) => void;
+	/** 数值那一档自己的取值域与单位。 */
+	onNumber: (
+		key: string,
+		patch: { min?: number; max?: number; step?: number; unit?: string },
+	) => void;
+	/** 开关两端注进 CSS 的字面量。 */
+	onSwitch: (key: string, patch: { on?: string; off?: string }) => void;
+	/** 下拉候选表的增 / 改 / 删。 */
+	onOptionAdd: (key: string) => void;
+	onOption: (key: string, index: number, patch: { value?: string; label?: string }) => void;
+	onOptionRemove: (key: string, index: number) => void;
 };
 
 /** 六档在下拉里的人话名。顺序照的是「多数皮肤先要哪一档」。 */
@@ -772,7 +785,140 @@ function KnobRow({
 				/>
 				<KnobDefault knob={knob} onKnobs={onKnobs} />
 			</div>
+
+			<KnobExtras knob={knob} onKnobs={onKnobs} />
 		</fieldset>
+	);
+}
+
+/**
+ * 三档自己那几项:数值的取值域 / 步长 / 单位、开关两端的字面量、下拉的候选表。
+ * 其余三档(颜色 / 字体 / 图)没有附加字段,这里什么都不画。
+ */
+function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
+	const ro = onKnobs === undefined;
+	if (knob.type === "number") {
+		return (
+			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+				<span className="text-bn-2xs text-bn-text-tertiary">范围</span>
+				<TNum
+					value={knob.min}
+					onChange={(v) => onKnobs?.onNumber(knob.key, { min: v })}
+					disabled={ro}
+					ariaLabel="取值下限"
+					width={68}
+					step={knob.step}
+				/>
+				<span className="text-bn-2xs text-bn-text-tertiary">~</span>
+				<TNum
+					value={knob.max}
+					onChange={(v) => onKnobs?.onNumber(knob.key, { max: v })}
+					disabled={ro}
+					ariaLabel="取值上限"
+					width={68}
+					step={knob.step}
+				/>
+				<span className="text-bn-2xs text-bn-text-tertiary">步长</span>
+				<TNum
+					value={knob.step ?? 0}
+					onChange={(v) => onKnobs?.onNumber(knob.key, { step: v })}
+					disabled={ro}
+					ariaLabel="步长"
+					width={68}
+					step={0.01}
+					min={0}
+				/>
+				<TSelect
+					value={knob.unit ?? ""}
+					onChange={(u) => onKnobs?.onNumber(knob.key, { unit: u })}
+					options={[
+						{ value: "", label: "无单位" },
+						...CARD_SKIN_KNOB_UNITS.map((u) => ({ value: u, label: u })),
+					]}
+					disabled={ro}
+					ariaLabel="单位"
+					full={false}
+				/>
+			</div>
+		);
+	}
+	if (knob.type === "switch") {
+		return (
+			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+				<span className="text-bn-2xs text-bn-text-tertiary">开</span>
+				<TInput
+					value={knob.on}
+					onChange={(v) => onKnobs?.onSwitch(knob.key, { on: v })}
+					disabled={ro}
+					mono
+					ariaLabel="开的时候注什么"
+					placeholder="block"
+				/>
+				<span className="text-bn-2xs text-bn-text-tertiary">关</span>
+				<TInput
+					value={knob.off}
+					onChange={(v) => onKnobs?.onSwitch(knob.key, { off: v })}
+					disabled={ro}
+					mono
+					ariaLabel="关的时候注什么"
+					placeholder="none"
+				/>
+			</div>
+		);
+	}
+	if (knob.type !== "select") return null;
+	return (
+		<div className="flex min-w-0 flex-col gap-1.5">
+			{knob.options.map((option, i) => (
+				// 候选没有稳定 id,值又是边敲边变的 —— 用下标当 key。这一串只增删末尾与中间,
+				// 不重排,下标做 key 不会错位。
+				// biome-ignore lint/suspicious/noArrayIndexKey: 见上
+				<div key={i} className="flex min-w-0 items-center gap-1.5">
+					{/* 起手位置就是「选中哪一个候选」—— 走库里那件「一排里选一个」的胶囊,
+					    而不是裸 `<input type="radio">`:原生单选圈没有输入面可挂皮肤挂点,
+					    装了皮肤的真机上它会是这一行里唯一没跟着变的东西。 */}
+					<ToneChip
+						tone="var(--color-bn-pink)"
+						active={knob.default === option.value}
+						disabled={ro}
+						onClick={() => onKnobs?.onDefault(knob.key, option.value)}
+					>
+						起手
+					</ToneChip>
+					<TInput
+						value={option.value}
+						onChange={(v) => onKnobs?.onOption(knob.key, i, { value: v })}
+						disabled={ro}
+						mono
+						ariaLabel="候选注什么"
+						placeholder="12px"
+					/>
+					<TInput
+						value={option.label}
+						onChange={(v) => onKnobs?.onOption(knob.key, i, { label: v })}
+						disabled={ro}
+						ariaLabel="候选叫什么"
+						placeholder="圆"
+					/>
+					{ro || knob.options.length <= 1 ? null : (
+						<Btn
+							size="sm"
+							variant="ghost"
+							title="删掉这个候选"
+							onClick={() => onKnobs.onOptionRemove(knob.key, i)}
+						>
+							<Icon.trash size={12} />
+							<span className="sr-only">删掉这个候选</span>
+						</Btn>
+					)}
+				</div>
+			))}
+			{ro || knob.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions ? null : (
+				<Btn size="sm" variant="ghost" onClick={() => onKnobs.onOptionAdd(knob.key)}>
+					<Icon.plus size={12} /> 添加候选
+				</Btn>
+			)}
+		</div>
 	);
 }
 
