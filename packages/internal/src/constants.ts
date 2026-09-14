@@ -1151,3 +1151,16 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
 	roastSolo: [{ id: "default", label: "单人锐评" }],
 	wordcloud: [{ id: "default", label: "词云" }],
 };
+
+/**
+ * 请求里那个场景名 → 真正要用的场景。**认不出就回落到第一个**,不报错:场景名从 URL /
+ * 请求体来,面板换过一版、链接被人存过书签都会送来旧名字,为这个给张错误页不值。
+ *
+ * 收成一处是因为有**两个**调用方(出图端挑示例数据、预览路由回报「实际用了哪个」),
+ * 各写一遍 `find ?? 第一个` 的话,哪天回落规则改了就只改得动其中一边。
+ */
+export function resolvePreviewScene(kind: CardSkinKind, scene?: string): PreviewScene {
+	const scenes = CARD_PREVIEW_SCENES[kind];
+	// biome-ignore lint/style/noNonNullAssertion: 表里每种卡都至少一个场景,有测试钉着
+	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
+}

@@ -19,7 +19,7 @@
  */
 
 import { GuardLevel } from "@bilibili-notify/blive";
-import { CARD_PREVIEW_SCENES, type CardSkinKind } from "@bilibili-notify/internal";
+import { type CardSkinKind, resolvePreviewScene } from "@bilibili-notify/internal";
 import type { CardPropsByKind } from "../blocks/frames";
 import { numberToStr } from "../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
@@ -322,7 +322,6 @@ const SAMPLES: {
  * 返回值直接喂 `renderCardWithSkin(kind, props, manifest, …)`。
  */
 export async function sampleCardProps(kind: CardSkinKind, scene?: string): Promise<unknown> {
-	const scenes = CARD_PREVIEW_SCENES[kind];
-	const picked = scenes.find((s) => s.id === scene) ?? scenes[0];
+	const picked = resolvePreviewScene(kind, scene);
 	return await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
 }

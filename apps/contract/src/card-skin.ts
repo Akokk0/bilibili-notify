@@ -89,6 +89,35 @@ export interface CardSkinSaveResponse {
 	warnings: string[];
 }
 
+/**
+ * POST /api/card-skins/:id/preview —— 编辑器的实时预览(ADR-0014 决策 22)。
+ *
+ * **回的是 HTML 不是截图**:编辑器把它塞进不给 `allow-scripts` 的 sandbox iframe 里画,
+ * 于是没装 Chrome 也能编皮肤。像素级与截图有细微差(iframe 是浏览器渲染、截图是 server
+ * 上的 Chrome),所以「最终效果」那颗按钮仍然走 `POST /api/cards/preview`。
+ *
+ * 草稿**过的是与保存同一道装包门**:预览要显示的是「存下去之后长什么样」,而不是草稿
+ * 原样 —— 两边各走各的,作者就会看着一个能用的预览、存出一套被清洗器削过的皮肤。
+ */
+export interface CardSkinPreviewRequest {
+	kind: CardSkinKind;
+	/** 场景 id(`CARD_PREVIEW_SCENES`);缺省 / 不认识 = 该卡种的第一个。 */
+	scene?: string;
+	/** 正在编辑的**草稿**清单(还没存盘)。 */
+	manifest: unknown;
+}
+
+/** POST /api/card-skins/:id/preview 的回值。装包门拒了就是 400 + `errors`。 */
+export interface CardSkinPreviewResponse {
+	html: string;
+	/** 卡宽(px),面板按它摆 iframe。 */
+	width: number;
+	/** 清洗时丢掉了什么 —— 与保存那条同源,作者边编边看得见。 */
+	warnings: string[];
+	/** 真正用上的场景 id(请求没传 / 传了不认识时,这里说的是回落到了哪一个)。 */
+	scene: string;
+}
+
 /** PUT /api/card-skins/active —— 改 `globals.defaults.cardSkin`。 */
 export interface CardSkinActiveRequest {
 	id: string;

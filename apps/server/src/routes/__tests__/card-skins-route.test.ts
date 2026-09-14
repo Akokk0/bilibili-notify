@@ -19,7 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CardSkinFallback } from "@bilibili-notify/contract";
-import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
+import { DEFAULT_CARD_SKIN, DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
@@ -234,6 +234,80 @@ describe("POST /:id/duplicate —— 复制一份", () => {
 
 		expect(knobs[id]).toBeUndefined();
 		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 编辑器的实时预览(ADR-0014 决策 22)。钉四条,各对应一个静默失败:
+ *
+ * ① **回的是 HTML 不是图** —— 走截图就等于没装 Chrome 编不了皮肤,而决策 22 的全部意义
+ *    就在这儿;② **草稿过的是与保存同一道装包门** —— 两边各走各的,作者会看着一个能用的
+ *    预览、存出一套被清洗器削过的皮肤;③ **装包拒了要把原因列出来**,不是回一张空白卡;
+ *    ④ **回报真正用了哪个场景** —— 请求里那个名字可能是旧的,面板得知道自己落在了哪儿。
+ */
+describe("POST /:id/preview —— 编辑器的实时预览", () => {
+	const draft = () => structuredClone(DEFAULT_CARD_SKIN) as Record<string, unknown>;
+
+	async function preview(body: unknown, id = DEFAULT_CARD_SKIN_ID) {
+		const res = await app.request(`/${id}/preview`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		return { res, json: (await res.json()) as any };
+	}
+
+	it("回一整份 HTML,带卡宽与真正用上的场景", async () => {
+		const { res, json } = await preview({ kind: "live", manifest: draft() });
+		expect(res.status).toBe(200);
+		expect(json.html).toContain("<html");
+		expect(json.html).toContain('data-bn="frame"');
+		expect(json.width).toBe(DEFAULT_CARD_SKIN.cards.live?.width);
+		expect(json.scene).toBe("streaming");
+		expect(json.warnings).toEqual([]);
+	});
+
+	it("认不出的场景名 → 回落到第一个,并且如实报出落在了哪儿", async () => {
+		const { json } = await preview({ kind: "live", scene: "早就没有的名字", manifest: draft() });
+		expect(json.scene).toBe("streaming");
+	});
+
+	it("换个场景 → 画出来的是另一张(否则那排按钮等于没接)", async () => {
+		const a = await preview({ kind: "live", scene: "streaming", manifest: draft() });
+		const b = await preview({ kind: "live", scene: "ended", manifest: draft() });
+		expect(b.json.scene).toBe("ended");
+		expect(b.json.html).not.toBe(a.json.html);
+	});
+
+	/**
+	 * 预览显示的必须是「存下去之后长什么样」。草稿里写一条清洗器会削掉的 CSS,预览就该
+	 * 跟着没有它 —— 而不是本地看着好好的、存完变样。
+	 */
+	it("草稿过的是与保存同一道装包门:被清洗的东西预览里也没有", async () => {
+		const d = draft();
+		(d.cards as any).live.css = '[data-bn="frame"]{background:url(https://evil.example/x.png)}';
+		const { res, json } = await preview({ kind: "live", manifest: d });
+		expect(res.status).toBe(200);
+		expect(json.html).not.toContain("evil.example");
+		// 削掉了什么要当场告诉作者,别让他以为自己写的那条生效了。
+		expect(json.warnings.length).toBeGreaterThan(0);
+	});
+
+	it("装包拒了 → 400 + 原因逐条列出来,不是一张空白卡", async () => {
+		const { res, json } = await preview({ kind: "live", manifest: { schemaVersion: 1 } });
+		expect(res.status).toBe(400);
+		expect(Array.isArray(json.errors)).toBe(true);
+		expect(json.errors.length).toBeGreaterThan(0);
+	});
+
+	it("卡种不认识 / 请求体不成形 → 400", async () => {
+		expect((await preview({ kind: "nope", manifest: draft() })).res.status).toBe(400);
+		expect((await preview({ manifest: draft() })).res.status).toBe(400);
+	});
+
+	it("皮肤不存在 → 404", async () => {
+		const { res } = await preview({ kind: "live", manifest: draft() }, "nope-1234");
+		expect(res.status).toBe(404);
 	});
 });
 

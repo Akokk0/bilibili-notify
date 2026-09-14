@@ -30,13 +30,14 @@ import {
 	CARD_SKIN_KINDS,
 	type CardSkinKind,
 	type PreviewScene,
+	resolvePreviewScene,
 } from "../constants.js";
 
 export type { CardSkinKind, PreviewScene };
 // 七种卡与预览场景表**住零依赖的 `constants.ts`**:面板(apps/web)要拿它们画那排卡种
 // tab 与场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
 // (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端照旧从根入口拿。
-export { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS };
+export { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, resolvePreviewScene };
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
 
 // ---- 上限 -------------------------------------------------------------------

@@ -21,11 +21,25 @@ import type {
 	CardSkinInUseResponse,
 	CardSkinListResponse,
 	CardSkinManifestResponse,
+	CardSkinPreviewResponse,
 	CardSkinSaveResponse,
 } from "@bilibili-notify/contract";
-import { CardSkinIdSchema, DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
+import {
+	cardOfManifest,
+	renderCardWithSkin,
+	sampleCardProps,
+	skinAssetRefs,
+} from "@bilibili-notify/image";
+import {
+	CardSkinIdSchema,
+	CardSkinKindSchema,
+	DEFAULT_CARD_SKIN_ID,
+	resolvePreviewScene,
+} from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
-import { MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
+import { z } from "zod";
+import { readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
+import { checkCardSkinPackage, MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
 import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js";
 import type { ConfigStore } from "../config/store.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
@@ -39,6 +53,13 @@ import { uploadBodyLimit } from "./upload-limit.js";
  * 实体化进堆,而镜像里 old-space 只有 512MB)。真正的 zip-bomb 两道闸在 package.ts。
  */
 const MAX_CARD_SKIN_ZIP_BYTES = MAX_CARD_SKIN_TOTAL_BYTES;
+
+/** 预览请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套,比 zod 这层严得多。 */
+const PreviewBodySchema = z.object({
+	kind: CardSkinKindSchema,
+	scene: z.string().max(40).optional(),
+	manifest: z.unknown(),
+});
 
 /** 「这个 id 没有皮肤」。装包 / 保存两条路的成功体带着 `warnings`,失败体就得带 `errors`。 */
 function notFound(c: Context, shape: "err" | "errors" = "err") {
@@ -218,6 +239,61 @@ export function createCardSkinsRoute(deps: {
 			if (e instanceof CardSkinPackageError) return c.json({ ok: false, errors: e.errors }, 400);
 			throw e;
 		}
+	});
+
+	/**
+	 * 编辑器的实时预览(决策 22):草稿清单 + 出厂示例数据 → **一整份 HTML**。
+	 *
+	 * 回 HTML 不回图,是为了「没装 Chrome 也能编皮肤」—— 走截图的话这一条当场没了。
+	 * 像素级与截图仍有细微差(这边是看的人的浏览器在画,那边是 server 上的 Chrome),
+	 * 所以面板上「最终效果」那颗按钮还得留着。
+	 *
+	 * **草稿走的是与保存同一道装包门**:预览要显示的是「存下去之后长什么样」。两边各走
+	 * 各的话,作者会看着一个能用的预览、存出一套被清洗器削过的皮肤,而两边都说不出哪儿
+	 * 错了 —— `warnings` 跟着一起回,削掉了什么当场就看得见。
+	 */
+	app.post("/:id/preview", async (c) => {
+		const id = c.req.param("id");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		// 资产(图 / 字体)仍住在**已存盘**那套皮肤的目录里 —— 草稿只带清单,引用的是名字。
+		if (!store.has(id)) return notFound(c, "errors");
+		const parsed = PreviewBodySchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) {
+			return c.json({ ok: false, errors: ["请求体要 { kind, scene?, manifest }"] }, 400);
+		}
+		const { kind, scene, manifest: raw } = parsed.data;
+
+		const checked = checkCardSkinPackage(raw, new Set(await store.listAssets(id)));
+		if (!checked.ok) return c.json({ ok: false, errors: checked.errors }, 400);
+		const manifest = checked.manifest;
+
+		const card = cardOfManifest(manifest, kind);
+		// 渲染器那头的 `resolveAsset` 是**同步**的(替换发生在字符串替换的回调里),所以
+		// 先按引用名单把资产预取成表 —— 与出图那条路同一套路。
+		const assets = new Map<string, string>();
+		await Promise.all(
+			skinAssetRefs(card, manifest.fonts).map(async (name) => {
+				const url = await readCardSkinAssetDataUrl(store, id, name);
+				if (url) assets.set(name, url);
+			}),
+		);
+
+		const picked = resolvePreviewScene(kind, scene);
+		// 刻意**不掺用户自己的配置**(全局字体 / 旋钮):编辑器看的是**这套皮肤**长什么样,
+		// 掺进去就成了「同一套皮肤在不同人眼里不一样」,作者照着调反而调歪。
+		const html = await renderCardWithSkin(
+			kind,
+			(await sampleCardProps(kind, picked.id)) as never,
+			manifest,
+			{ title: `皮肤预览 · ${kind}`, resolveAsset: (name) => assets.get(name) },
+		);
+		const body: CardSkinPreviewResponse = {
+			html,
+			width: card.width,
+			warnings: checked.warnings,
+			scene: picked.id,
+		};
+		return c.json(body);
 	});
 
 	app.get("/:id/assets/:name", async (c) => {
