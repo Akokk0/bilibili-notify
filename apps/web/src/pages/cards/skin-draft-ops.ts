@@ -198,12 +198,19 @@ export function removeBlock(
 
 /**
  * 改卡片外框的几个数。`gap` 写 0 **把键删掉** —— 出图时 `gap?.row ?? 0`,0 与不写同义,
- * 留一个 0 在清单里只是 diff 里的噪音(同 `rowSpan` 为 1 时的处理)。
+ * 留一个 0 在清单里只是 diff 里的噪音(同 `rowSpan` 为 1 时的处理)。 出血同一条规矩:写 0
+ * 就整份删掉。
  */
 export function setFrame(
 	manifest: CardSkinManifest,
 	kind: CardSkinKind,
-	patch: { width?: number; gapRow?: number; gapColumn?: number },
+	patch: {
+		width?: number;
+		gapRow?: number;
+		gapColumn?: number;
+		bleedSize?: number;
+		bleedColor?: string;
+	},
 ): CardSkinManifest {
 	const card = manifest.cards[kind];
 	if (!card) return manifest;
@@ -218,6 +225,19 @@ export function setFrame(
 		if (column > 0) gap.column = column;
 		if (Object.keys(gap).length > 0) next.gap = gap;
 		else delete next.gap;
+	}
+	if (patch.bleedSize !== undefined || patch.bleedColor !== undefined) {
+		const size = clampInt(patch.bleedSize ?? card.bleed?.size ?? 0, L.bleed.min, L.bleed.max);
+		// 单改色而这张卡还没有出血:什么都不做。凭空造一圈出来不是主人按那个色块的意思。
+		if (size > 0) {
+			next.bleed = {
+				size,
+				// schema 里 size 与 color 是一套,给了宽度就得连色一起落。出厂黑是**刻意挑
+				// 一个一眼就看得见的** —— 预览是实时的,色不对当场能改;挑白的话与那个
+				// 「卡外一圈白边」的老毛病长得一模一样,反而会被当成 bug。
+				color: patch.bleedColor ?? card.bleed?.color ?? "#000000",
+			};
+		} else delete next.bleed;
 	}
 	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
 }

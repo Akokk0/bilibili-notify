@@ -49,7 +49,15 @@ import {
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Grid = Card["blocks"][number]["grid"];
 /** 外框那几个数。`gap` 在清单里是个对象,控件上是两个独立的框,所以拍平成两项。 */
-export type FramePatch = { width?: number; gapRow?: number; gapColumn?: number };
+export type FramePatch = {
+	width?: number;
+	gapRow?: number;
+	gapColumn?: number;
+	/** 出血 px(每边)。写 0 = 整份删掉。 */
+	bleedSize?: number;
+	/** 出血那圈的底色。这张卡还没有出血时单给它不生效。 */
+	bleedColor?: string;
+};
 
 export function SkinInspector({
 	manifest,
@@ -284,7 +292,28 @@ function FrameInspector({
 						lim={CARD_SKIN_LIMITS.gap}
 						onChange={(gapColumn) => onFrame({ gapColumn })}
 					/>
+					<GridNum
+						label="出血"
+						value={card.bleed?.size ?? 0}
+						lim={CARD_SKIN_LIMITS.bleed}
+						onChange={(bleedSize) => onFrame({ bleedSize })}
+					/>
+					{/* 色只在真有出血时才给 —— 没有那圈的时候摆一个色块,拧了没反应。 */}
+					{card.bleed ? (
+						<div className="flex flex-col gap-1">
+							<span className="text-bn-2xs text-bn-text-secondary">出血色</span>
+							<TColor
+								value={card.bleed.color}
+								onChange={(bleedColor) => onFrame({ bleedColor })}
+								ariaLabel="出血色"
+							/>
+						</div>
+					) : null}
 				</div>
+				<HintNote className="mx-2.5 mb-2.5">
+					卡外留给辉光的余量。出图截的是卡的外接矩形,而阴影 / 辉光画在卡外面的那一圈 不占位置 ——
+					不留出血,外框上的辉光在推出去的图里等于没写。
+				</HintNote>
 			</Section>
 
 			<Section label="列定义">

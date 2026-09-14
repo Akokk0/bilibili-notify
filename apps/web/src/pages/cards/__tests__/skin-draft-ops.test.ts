@@ -237,6 +237,34 @@ describe("setFrame", () => {
 		expect("gap" in (cardOf(back, "live") as object)).toBe(false);
 	});
 
+	it("出血:给了宽度就连色一起落进清单(schema 里两个是一套)", () => {
+		const m = setFrame(manifest(), "live", { bleedSize: 24 });
+		expect(cardOf(m, "live")?.bleed).toEqual({ size: 24, color: "#000000" });
+	});
+
+	it("出血写 0 = 把键删掉 —— 与间距同一条规矩", () => {
+		const on = setFrame(manifest(), "live", { bleedSize: 24, bleedColor: "#07091a" });
+		expect(cardOf(on, "live")?.bleed).toEqual({ size: 24, color: "#07091a" });
+		const off = setFrame(on, "live", { bleedSize: 0 });
+		expect("bleed" in (cardOf(off, "live") as object)).toBe(false);
+	});
+
+	it("只改色时宽度原样留着", () => {
+		const on = setFrame(manifest(), "live", { bleedSize: 18, bleedColor: "#07091a" });
+		const recolored = setFrame(on, "live", { bleedColor: "#ff0080" });
+		expect(cardOf(recolored, "live")?.bleed).toEqual({ size: 18, color: "#ff0080" });
+	});
+
+	it("没有出血时单改色不凭空造一圈出来", () => {
+		const m = setFrame(manifest(), "live", { bleedColor: "#ff0080" });
+		expect(cardOf(m, "live")?.bleed).toBeUndefined();
+	});
+
+	it("出血也夹在门里", () => {
+		const over = setFrame(manifest(), "live", { bleedSize: 9999 });
+		expect(cardOf(over, "live")?.bleed?.size).toBe(CARD_SKIN_LIMITS.bleed.max);
+	});
+
 	it("只改行距时列距原样留着", () => {
 		const both = setFrame(manifest(), "live", { gapRow: 8, gapColumn: 6 });
 		const after = setFrame(both, "live", { gapRow: 10 });
