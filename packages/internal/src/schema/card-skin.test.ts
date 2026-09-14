@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
+	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_KINDS,
@@ -737,5 +738,41 @@ describe("皮肤自定义旋钮", () => {
 			expect(cardSkinKnobCss(shadow, "block")).toBeNull();
 			expect(cardSkinKnobCss(color, undefined)).toBeNull();
 		});
+	});
+});
+
+/**
+ * 预览场景表。它是**契约常量**:面板照它画那排场景按钮、把 id 发回来,出图端
+ * (`packages/image` 的 `preview/sample-cards.ts`)照同一张表挑示例数据 —— 少一种卡,
+ * 那种卡的预览面板就是空的;id 撞车,两个按钮指同一份数据而用户看不出区别。
+ */
+describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
+	it("七种卡一种不少,每种至少一个场景", () => {
+		expect(Object.keys(CARD_PREVIEW_SCENES).sort()).toEqual([...CARD_SKIN_KINDS].sort());
+		for (const kind of CARD_SKIN_KINDS) {
+			expect(CARD_PREVIEW_SCENES[kind].length).toBeGreaterThan(0);
+		}
+	});
+
+	it("同一种卡里场景 id 不重复", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			const ids = CARD_PREVIEW_SCENES[kind].map((s) => s.id);
+			expect(new Set(ids).size).toBe(ids.length);
+		}
+	});
+
+	it("id 是小写 kebab(要进 URL / 请求体),label 非空", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			for (const scene of CARD_PREVIEW_SCENES[kind]) {
+				expect(scene.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+				expect(scene.label.trim()).not.toBe("");
+			}
+		}
+	});
+
+	// 默认落在「直播中」是拍板过的(设计稿按 开播 / 直播中 / 下播 排,默认却要落在中间那张);
+	// 数组第一项即默认,所以顺序本身是决策,不是排版。
+	it("直播卡三态齐全,且默认(第一项)是直播中", () => {
+		expect(CARD_PREVIEW_SCENES.live.map((s) => s.id)).toEqual(["streaming", "start", "ended"]);
 	});
 });

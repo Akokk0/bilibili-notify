@@ -1095,3 +1095,59 @@ export function isExtensionConnection(
 	if (connection.kind !== "extension") return false;
 	return extensionId === undefined || connection.extensionId === extensionId;
 }
+
+// ---- 卡片皮肤(ADR-0014)的零依赖词表 ----------------------------------------
+
+/**
+ * 七种卡。前四种有块可排;后三种(AI 周报榜单 / 单人锐评 / 弹幕词云)各自整张是**一个固定
+ * 内置块**,皮肤只管外框(ADR-0014 决策 3)。
+ */
+export const CARD_SKIN_KINDS = [
+	"live",
+	"dynamic",
+	"sc",
+	"guard",
+	"roastBoard",
+	"roastSolo",
+	"wordcloud",
+] as const;
+export type CardSkinKind = (typeof CARD_SKIN_KINDS)[number];
+
+// ---- 预览场景 ---------------------------------------------------------------
+
+/**
+ * 编辑器实时预览里,一种卡可选的「场景」—— 同一张卡在不同状态下长得不一样(直播卡的
+ * 开播 / 直播中 / 下播),皮肤得挨个看过才知道有没有写塌。
+ */
+export interface PreviewScene {
+	/** 稳定的机器名,进 URL / 请求体。小写 kebab。 */
+	id: string;
+	/** 面板上显示的中文短名,如「直播中」。 */
+	label: string;
+}
+
+/**
+ * 每种卡可选的场景,**第一项是默认**(没带 scene、或带了不认识的名字都落回它);面板照
+ * 数组顺序显示。
+ *
+ * 住在 internal 而不是 `packages/image`,是依赖方向定的:面板(`apps/web`)要拿这张表画
+ * 那排场景按钮,它经 `apps/contract` 借类型,而 contract 只准从 internal 借、`packages/*`
+ * 又不许反向依赖 contract —— 只有 internal 这一份是出图端与面板都够得着的。所以它和
+ * `CARD_SKIN_FIELDS` 是同一类东西:**契约常量**。场景对应的示例 props 是另一回事,那是
+ * 出图端的活,住在 `packages/image` 的 `preview/sample-cards.ts`,面板一个字都不碰。
+ */
+export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly PreviewScene[]>> = {
+	// 直播卡三态各画各的(角标、时间行、粉丝行都不同);设计稿上按 开播 / 直播中 / 下播
+	// 排,但默认要落在「直播中」—— 那是最常被看到的一张,所以它排数组第一位。
+	live: [
+		{ id: "streaming", label: "直播中" },
+		{ id: "start", label: "开播" },
+		{ id: "ended", label: "下播" },
+	],
+	dynamic: [{ id: "default", label: "动态" }],
+	sc: [{ id: "default", label: "醒目留言" }],
+	guard: [{ id: "default", label: "上舰" }],
+	roastBoard: [{ id: "default", label: "锐评榜单" }],
+	roastSolo: [{ id: "default", label: "单人锐评" }],
+	wordcloud: [{ id: "default", label: "词云" }],
+};

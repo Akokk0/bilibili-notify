@@ -28,6 +28,9 @@ export {
 	type RoastBoardData,
 	type RoastSoloData,
 } from "./image-renderer";
+// 出厂示例卡片数据 —— 皮肤编辑器的实时预览拿它当「假数据」出图(ADR-0014 决策 22)。
+// 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
+export { sampleCardProps } from "./preview/sample-cards";
 export type {
 	BoundingBox,
 	ElementHandleLike,

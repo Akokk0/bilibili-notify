@@ -25,20 +25,18 @@ export const CARD_DATA_VERSION = 1;
 
 // ---- 卡种 -------------------------------------------------------------------
 
-/**
- * 七种卡。前四种有块可排;后三种(AI 周报榜单 / 单人锐评 / 弹幕词云)各自整张是**一个固定
- * 内置块**,皮肤只管外框(ADR-0014 决策 3)。
- */
-export const CARD_SKIN_KINDS = [
-	"live",
-	"dynamic",
-	"sc",
-	"guard",
-	"roastBoard",
-	"roastSolo",
-	"wordcloud",
-] as const;
-export type CardSkinKind = (typeof CARD_SKIN_KINDS)[number];
+import {
+	CARD_PREVIEW_SCENES,
+	CARD_SKIN_KINDS,
+	type CardSkinKind,
+	type PreviewScene,
+} from "../constants.js";
+
+export type { CardSkinKind, PreviewScene };
+// 七种卡与预览场景表**住零依赖的 `constants.ts`**:面板(apps/web)要拿它们画那排卡种
+// tab 与场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
+// (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端照旧从根入口拿。
+export { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS };
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
 
 // ---- 上限 -------------------------------------------------------------------
