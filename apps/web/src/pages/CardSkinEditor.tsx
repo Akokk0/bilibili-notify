@@ -31,6 +31,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCardSkinList } from "./cards/card-skins-query";
+import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
@@ -186,7 +187,7 @@ export default function CardSkinEditor() {
 							accent="var(--color-bn-purple)"
 							icon={<Icon.eye size={14} />}
 						>
-							<Pane />
+							<SkinPreviewPane skinId={id} kind={kind} scene={scene} manifest={draft} />
 						</GlassBox>
 						<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
 							<Pane />

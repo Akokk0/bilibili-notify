@@ -7,7 +7,12 @@
  * 要,而且一次只看一套。共用一个 key 的话打开编辑器就会把列表那份挤掉。
  */
 
-import type { CardSkinManifestResponse, CardSkinSaveResponse } from "@bilibili-notify/contract";
+import type {
+	CardSkinManifestResponse,
+	CardSkinPreviewResponse,
+	CardSkinSaveResponse,
+} from "@bilibili-notify/contract";
+import type { CardSkinKind } from "@bilibili-notify/internal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { CARD_SKINS_KEY } from "./card-skins-query";
@@ -37,5 +42,18 @@ export function useSaveCardSkin(id: string) {
 			void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
 			void qc.invalidateQueries({ queryKey: cardSkinManifestKey(id) });
 		},
+	});
+}
+
+/**
+ * 草稿 → 一整份 HTML(`POST /api/card-skins/:id/preview`)。
+ *
+ * **不进 react-query 缓存**:草稿每敲一个字都是新的,缓存键就是整份清单,存下来只会把
+ * 内存填满而命中率是零。改成 mutation —— 「这一版草稿画一次」本来就是个动作。
+ */
+export function usePreviewCardSkin(id: string) {
+	return useMutation({
+		mutationFn: (v: { kind: CardSkinKind; scene?: string; manifest: unknown }) =>
+			api.post<CardSkinPreviewResponse>(`/api/card-skins/${id}/preview`, v),
 	});
 }
