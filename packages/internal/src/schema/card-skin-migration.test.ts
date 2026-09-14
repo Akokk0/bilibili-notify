@@ -260,7 +260,7 @@ describe("旧版式 → 卡片皮肤 — 上舰卡", () => {
 describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	const G = { start: "#ff0000", end: "#00ff00" };
 	const RULE = (s: string, e: string) =>
-		`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,var(--bn-knob-gradient-start,${s}),var(--bn-knob-gradient-end,${e})))}`;
+		`[data-bn="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,${s}),var(--bn-knob-gradient-end,${e})));font-family:var(--bn-knob-font,inherit)}`;
 	/** 默认那张卡的整段 css,只把出厂 frame 规则换成给定的那条(玻璃层等其余规则原样跟着)。 */
 	const withRule = (kind: keyof CardSkinManifest["cards"], rule: string): string =>
 		(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").replace(DEFAULT_FRAME_BG_RULE, rule);

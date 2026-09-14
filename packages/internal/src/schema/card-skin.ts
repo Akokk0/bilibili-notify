@@ -202,6 +202,13 @@ export const DEFAULT_SKIN_KNOB_KEYS = {
 	gradientEnd: "gradient-end",
 	glassOpacity: "glass-opacity",
 	glassBlur: "glass-blur",
+	/**
+	 * 字体与壁纸(2026-09-14 主人拍板)。从前是 `cardStyle.font` / `backgroundImages` 那两项
+	 * **全局**设置,而用了皮肤多半不生效 —— 皮肤自己写一句 `font-family`、自己画一层背景,
+	 * 面板上那两个控件就成了摆设,却照样让人调。退成旋钮之后:皮肤声明了才有得调。
+	 */
+	font: "font",
+	wallpaper: "wallpaper",
 } as const;
 
 /**
@@ -213,15 +220,19 @@ export const DEFAULT_CARD_GRADIENT = ["#e0c3fc", "#8ec5fc"] as const;
 
 /**
  * 一张卡外框的底色规则(ADR-0014 决策 15 的 🔗:底色归皮肤 CSS,外框不再 inline)。
- * 与旧 `frameBg` 同一条逻辑:有用户背景图就整张换成图(变量的值自带 `center / cover`,所以
+ * 与旧 `frameBg` 同一条逻辑:有背景图就整张换成图(变量的值自带 `center / cover`,所以
  * 兜底的渐变**不能**再跟尺寸 —— 给渐变加 `center / cover` 会改变它的光栅抖动,像素门 14 张红),
- * 没有就画渐变。
+ * 没有就画渐变。图与字体都吃**旋钮**变量(2026-09-14):`--bn-card-bg-image` 那条老路
+ * 随 `cardStyle.backgroundImages` 一起退役,详见 {@link CARD_SKIN_VARIABLES}。
+ *
+ * 字体那句的兜底是 `inherit` —— 没拧过时与「这条规则不存在」等价(照旧继承页面那层
+ * `font-family`),像素上一模一样。
  *
  * ⚠️ 生成的字面量必须是 css-tree `generate` 的规范形态(逗号后不留空格),默认皮肤要
  * 一字不改地过清洗器那道门(`apps/server` 的 `default-skin-*.test.ts` 钉着)。
  */
 export const cardSkinFrameBgRule = (start: string, end: string): string =>
-	`[data-bn="frame"]{background:var(--bn-card-bg-image,linear-gradient(to right bottom,${start},${end}))}`;
+	`[data-bn="frame"]{background:var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.wallpaper},linear-gradient(to right bottom,${start},${end}));font-family:var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.font},inherit)}`;
 
 /** 默认皮肤里那条用户渐变规则。迁移换色时**替换**它,不另加一条(两条 background 会打架)。 */
 export const DEFAULT_FRAME_BG_RULE = cardSkinFrameBgRule(
@@ -862,6 +873,11 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			step: 1,
 			unit: "px",
 		},
+		// 起手位置是空 = 跟着渲染那台机器的兜底链走(从前那句「默认(交给渲染那台机器)」)。
+		{ key: DEFAULT_SKIN_KNOB_KEYS.font, label: "字体", type: "font", default: "" },
+		// 图片旋钮没有 default:主人自己的图,皮肤起不出默认值来 —— 没选时外框那条规则里
+		// 的渐变兜底顶上。
+		{ key: DEFAULT_SKIN_KNOB_KEYS.wallpaper, label: "卡片背景图", type: "image" },
 	],
 	cards: {
 		live: {
