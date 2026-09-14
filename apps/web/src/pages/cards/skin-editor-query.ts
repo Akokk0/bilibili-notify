@@ -20,10 +20,15 @@ import { CARD_SKINS_KEY } from "./card-skins-query";
 /** 某一套皮肤完整清单的 react-query 键。 */
 export const cardSkinManifestKey = (id: string) => ["card-skin-manifest", id] as const;
 
-export function useCardSkinManifest(id: string) {
+/**
+ * 某一套皮肤的完整清单。`enabled` 是给**出厂那份**留的口:接管一种卡时要抄它,而多数
+ * 时候用不上 —— 每开一次编辑器都白打一趟不值当。
+ */
+export function useCardSkinManifest(id: string, enabled = true) {
 	return useQuery({
 		queryKey: cardSkinManifestKey(id),
 		queryFn: () => api.get<CardSkinManifestResponse>(`/api/card-skins/${id}`),
+		enabled,
 		// 清单是编辑器的**正本**:窗口切回来时重拉会把主人正在编的草稿基线换掉,
 		// 「有没有未保存的改动」当场算错。只在进页面时拉一次。
 		refetchOnWindowFocus: false,

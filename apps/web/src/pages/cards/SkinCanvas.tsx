@@ -33,6 +33,8 @@ export function SkinCanvas({
 	onSelect,
 	onAdd,
 	onAddCustom,
+	onAdopt,
+	adoptBusy,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -43,6 +45,10 @@ export function SkinCanvas({
 	onAdd?: (builtin: string) => void;
 	/** 添一个自定义块(HTML 自己写)。与 `onAdd` 同进同出。 */
 	onAddCustom?: () => void;
+	/** 接管这种卡(把出厂那张抄进这套皮肤)。**不给 = 只读**。 */
+	onAdopt?: () => void;
+	/** 出厂皮肤还没读到 —— 接管要抄的就是它,没到手就先禁着。 */
+	adoptBusy?: boolean;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -50,9 +56,14 @@ export function SkinCanvas({
 
 	if (!card) {
 		return (
-			<EmptyNote>
-				这套皮肤没有定义这种卡 —— 出图时它跟着内置默认皮肤走。想改它,先在检查器里「接管这种卡」。
-			</EmptyNote>
+			<div className="flex flex-col items-start gap-2.5">
+				<EmptyNote>这套皮肤没有定义这种卡 —— 出图时它跟着内置默认皮肤走。</EmptyNote>
+				{onAdopt ? (
+					<Btn size="sm" variant="outline" disabled={adoptBusy} onClick={onAdopt}>
+						{adoptBusy ? "正在读出厂皮肤…" : "接管这种卡"}
+					</Btn>
+				) : null}
+			</div>
 		);
 	}
 

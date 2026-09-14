@@ -41,13 +41,38 @@ function mockApi(builtin = false): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url === "/api/card-skins") {
 			return Promise.resolve({
-				skins: [{ id: "neon", name: "霓虹", builtin, updatedAt: 0, knobs: [] }],
+				skins: [
+					{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
+					{ id: "neon", name: "霓虹", builtin, updatedAt: 0, knobs: [] },
+				],
 				active: "neon",
 				fallbacks: [],
 			});
 		}
 		if (url === "/api/card-skins/neon") {
 			return Promise.resolve({ manifest: structuredClone(MANIFEST) });
+		}
+		// 出厂那份:接管一种卡时抄的就是它。
+		if (url === "/api/card-skins/default") {
+			return Promise.resolve({
+				manifest: {
+					schemaVersion: 1,
+					name: "默认",
+					cards: {
+						sc: {
+							width: 430,
+							blocks: [
+								{
+									id: "amount",
+									kind: "builtin",
+									builtin: "amount",
+									grid: { row: 1, column: 1, span: 12 },
+								},
+							],
+						},
+					},
+				},
+			});
 		}
 		return Promise.resolve({});
 	});
@@ -135,6 +160,23 @@ describe("编辑器 · 增删块的接线", () => {
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
 		expect(savedBlocks().at(-1)).toMatchObject({ kind: "custom", html: "<div>{up.name}</div>" });
+	});
+
+	it("接管一种卡:抄出厂那份,存出去的清单里真的多了这张卡", async () => {
+		mockApi();
+		renderEditor();
+		await screen.findByText("封面图");
+
+		// 这套皮肤只定义了直播卡,切到 SC 卡是空的。
+		fireEvent.click(screen.getByRole("button", { name: /SC/ }));
+		fireEvent.click(await screen.findByText(/接管这种卡/));
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		const body = vi.mocked(api.put).mock.calls.at(-1)?.[1] as {
+			cards: { sc?: { blocks: unknown[] } };
+		};
+		expect(body.cards.sc?.blocks).toHaveLength(1);
 	});
 
 	it("内置皮肤是只读的 —— 增删的口一个都不给", async () => {

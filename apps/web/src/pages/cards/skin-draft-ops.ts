@@ -334,3 +334,31 @@ export function setBlockHtml(
 	const blocks = card.blocks.map((b) => (b.id === blockId ? { ...b, html } : b));
 	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
+
+/**
+ * 接管一种卡:把出厂默认那张**整份抄进来**,作者在它的基础上改。
+ *
+ * 抄的必须是深拷贝 —— 源是 react-query 缓存里出厂皮肤的那一份,共用同一批块对象的话,
+ * 在这套皮肤里挪一格会顺手改掉缓存里的出厂皮肤(下一次接管抄到的就是改过的)。
+ *
+ * 已经定义了这种卡就不动它:接管只对空着的卡种开口,覆盖是另一件事(那是「恢复出厂」)。
+ */
+export function adoptCard(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	source: Card,
+): CardSkinManifest {
+	if (manifest.cards[kind]) return manifest;
+	return {
+		...manifest,
+		cards: { ...manifest.cards, [kind]: structuredClone(source) },
+	};
+}
+
+/** 交还一种卡:整张从清单里删掉,出图时它跟着出厂默认走。 */
+export function dropCard(manifest: CardSkinManifest, kind: CardSkinKind): CardSkinManifest {
+	if (!manifest.cards[kind]) return manifest;
+	const cards = { ...manifest.cards };
+	delete cards[kind];
+	return { ...manifest, cards };
+}

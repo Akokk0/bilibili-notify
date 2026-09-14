@@ -50,6 +50,7 @@ export function SkinInspector({
 	onFrameCss,
 	onColumns,
 	onRemove,
+	onDropCard,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
@@ -66,6 +67,8 @@ export function SkinInspector({
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
 	/** 删掉这个块。**不给 = 这套皮肤只读**,连删除钮都不该出现。 */
 	onRemove?: (blockId: string) => void;
+	/** 交还整张卡(删掉这种卡的定义,出图跟着出厂默认)。与 `onRemove` 同进同出。 */
+	onDropCard?: () => void;
 }) {
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
@@ -77,7 +80,13 @@ export function SkinInspector({
 	if (selection.kind === "frame") {
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
 		return (
-			<FrameInspector card={card} onFrame={onFrame} onColumns={onColumns} onFrameCss={onFrameCss} />
+			<FrameInspector
+				card={card}
+				onFrame={onFrame}
+				onColumns={onColumns}
+				onFrameCss={onFrameCss}
+				onDropCard={onDropCard}
+			/>
 		);
 	}
 
@@ -199,12 +208,15 @@ function FrameInspector({
 	onFrame,
 	onColumns,
 	onFrameCss,
+	onDropCard,
 }: {
 	card: Card;
 	onFrame: (patch: FramePatch) => void;
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
 	onFrameCss: (css: string) => void;
+	onDropCard?: () => void;
 }) {
+	const [dropping, setDropping] = useState(false);
 	const custom = card.columns !== undefined;
 	const cols = columnsOf(card);
 	// 切到定宽时先填「这一列现在多宽」,而不是一个 1px —— 从当前的样子微调是常态。
@@ -274,6 +286,33 @@ function FrameInspector({
 				value={card.css ?? ""}
 				onChange={onFrameCss}
 			/>
+
+			{onDropCard ? (
+				<div className="flex justify-end">
+					<Btn
+						size="sm"
+						variant="danger-outline"
+						icon={<Icon.trash size={12} />}
+						onClick={() => setDropping(true)}
+					>
+						交还给默认皮肤
+					</Btn>
+				</div>
+			) : null}
+
+			{dropping && onDropCard ? (
+				<ConfirmDialog
+					title="把这种卡交还给出厂默认?"
+					message="这张卡的块、位置与 CSS 会整份从这套皮肤里去掉,出图时它跟着出厂默认走。想再改回来得重新接管一次。"
+					confirmLabel="交还"
+					danger
+					onConfirm={() => {
+						setDropping(false);
+						onDropCard();
+					}}
+					onCancel={() => setDropping(false)}
+				/>
+			) : null}
 		</div>
 	);
 }

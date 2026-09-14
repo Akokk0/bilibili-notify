@@ -18,11 +18,13 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	addBlock,
 	addCustomBlock,
+	adoptCard,
 	blockOf,
 	canAddBlock,
 	cardOf,
 	clampInt,
 	columnsOf,
+	dropCard,
 	gridLimits,
 	removeBlock,
 	setBlockCss,
@@ -337,5 +339,32 @@ describe("addCustomBlock / setBlockHtml", () => {
 			"<div>{up.name}</div>",
 		);
 		expect(setBlockHtml(edited, "live", "title", "<div>x</div>")).toBe(edited);
+	});
+});
+
+describe("adoptCard / dropCard", () => {
+	const source = () => cardOf(manifest(), "live") as NonNullable<ReturnType<typeof cardOf>>;
+
+	it("接管:把出厂那张卡整份抄进来,而且连块都是新的一份(不是同一批对象)", () => {
+		const src = source();
+		const after = adoptCard(manifest(), "sc", src);
+		expect(cardOf(after, "sc")?.blocks).toHaveLength(2);
+		// 钉的是**引用**:源是 react-query 缓存里出厂皮肤的那一份,共用同一批块对象的话,
+		// 哪天有人写了个就地改的 op,改的就是缓存里的出厂皮肤。
+		expect(cardOf(after, "sc")).not.toBe(src);
+		expect(cardOf(after, "sc")?.blocks[0]).not.toBe(src.blocks[0]);
+	});
+
+	it("已经有这种卡就不动它 —— 接管只对空着的卡种开口", () => {
+		const before = manifest();
+		expect(adoptCard(before, "live", source())).toBe(before);
+	});
+
+	it("交还:整张卡从清单里消失(出图时跟着出厂默认)", () => {
+		const before = manifest();
+		const after = dropCard(before, "live");
+		expect("live" in after.cards).toBe(false);
+		expect(dropCard(after, "live")).toBe(after);
+		expect(JSON.stringify(before)).toBe(JSON.stringify(manifest()));
 	});
 });

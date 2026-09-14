@@ -518,3 +518,64 @@ describe("检查器 · 自定义块的内容", () => {
 		expect(screen.queryByLabelText("这个块的 HTML")).toBeNull();
 	});
 });
+
+describe("接管 / 交还一种卡", () => {
+	it("皮肤没定义这种卡 → 画布上就给一颗「接管」钮,不用去别处找", () => {
+		const onAdopt = vi.fn();
+		render(
+			<SkinCanvas
+				kind="sc"
+				card={undefined}
+				selection={null}
+				onSelect={vi.fn()}
+				onAdopt={onAdopt}
+			/>,
+		);
+		fireEvent.click(screen.getByText(/接管这种卡/));
+		expect(onAdopt).toHaveBeenCalled();
+	});
+
+	it("出厂皮肤还没读到时那颗钮禁着 —— 接管要抄的就是它", () => {
+		render(
+			<SkinCanvas
+				kind="sc"
+				card={undefined}
+				selection={null}
+				onSelect={vi.fn()}
+				onAdopt={vi.fn()}
+				adoptBusy
+			/>,
+		);
+		expect((screen.getByText(/出厂皮肤/).closest("button") as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+	});
+
+	it("只读的皮肤不给接管的口", () => {
+		render(<SkinCanvas kind="sc" card={undefined} selection={null} onSelect={vi.fn()} />);
+		expect(screen.queryByText(/接管这种卡/)).toBeNull();
+	});
+
+	it("交还要先问一句 —— 整张卡的活儿一次没了", () => {
+		const onDropCard = vi.fn();
+		render(
+			<SkinInspector
+				manifest={manifest()}
+				kind="live"
+				selection={{ kind: "frame" }}
+				onGrid={vi.fn()}
+				onCss={vi.fn()}
+				onHtml={vi.fn()}
+				onShowIf={vi.fn()}
+				onFrame={vi.fn()}
+				onFrameCss={vi.fn()}
+				onColumns={vi.fn()}
+				onDropCard={onDropCard}
+			/>,
+		);
+		fireEvent.click(screen.getByText(/交还给默认/));
+		expect(onDropCard).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByText("交还"));
+		expect(onDropCard).toHaveBeenCalled();
+	});
+});

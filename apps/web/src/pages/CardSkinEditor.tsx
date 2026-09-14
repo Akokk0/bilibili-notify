@@ -37,7 +37,9 @@ import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import {
 	addBlock,
 	addCustomBlock,
+	adoptCard,
 	cardOf,
+	dropCard,
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
@@ -97,6 +99,12 @@ export default function CardSkinEditor() {
 	const readOnly = listQuery.data?.skins.find((s) => s.id === id)?.builtin === true;
 	const inUse = listQuery.data?.active === id;
 	const scenes = CARD_PREVIEW_SCENES[kind];
+
+	// 接管一种卡要抄出厂那份。**哪套是出厂的问列表要**(同 `readOnly` 的道理:服务端才是
+	// 权威),而且只在真缺这种卡时才去拉 —— 平时白打一趟。
+	const factoryId = listQuery.data?.skins.find((s) => s.builtin)?.id ?? "";
+	const missingCard = draft !== null && draft.cards[kind] === undefined;
+	const factory = useCardSkinManifest(factoryId, !readOnly && missingCard && factoryId !== "");
 
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
@@ -210,6 +218,18 @@ export default function CardSkinEditor() {
 								selection={selection}
 								onSelect={setSelection}
 								// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
+								onAdopt={
+									readOnly
+										? undefined
+										: () => {
+												const source = factory.data?.manifest.cards[kind];
+												if (draft === null || !source) return;
+												setDraft(adoptCard(draft, kind, source));
+												// 接管完先停在外框上:接下来多半是改卡宽 / 间距,而不是某一个块。
+												setSelection({ kind: "frame" });
+											}
+								}
+								adoptBusy={factory.data === undefined}
 								onAdd={
 									readOnly
 										? undefined
@@ -255,6 +275,14 @@ export default function CardSkinEditor() {
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
 								onColumns={(columns) =>
 									setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))
+								}
+								onDropCard={
+									readOnly
+										? undefined
+										: () => {
+												setDraft((d) => (d === null ? d : dropCard(d, kind)));
+												setSelection(null);
+											}
 								}
 								onRemove={
 									readOnly
