@@ -18,7 +18,6 @@ import {
 	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
-	type CardSkinVariableDefaults,
 	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { strFromU8 } from "fflate";
@@ -221,17 +220,8 @@ export function checkCardSkinPackage(
 		}
 	});
 
-	checkBackgroundImage(manifest.variables, "variables", assetNames, errors);
-	for (const kind of CARD_SKIN_KINDS) {
-		checkBackgroundImage(
-			manifest.variablesByKind?.[kind],
-			`variablesByKind.${kind}`,
-			assetNames,
-			errors,
-		);
-	}
-
 	warnings.push(...checkKnobUsage(manifest));
+	warnings.push(...dropRetiredVariables(manifest));
 
 	return errors.length > 0 ? { ok: false, errors } : { ok: true, manifest, warnings };
 }
@@ -293,25 +283,28 @@ function checkAssetVars(
 }
 
 /**
- * 背景图必须是包里真有的**图片**。
+ * **丢掉退役的 `variables` / `variablesByKind`**(2026-09-14 主人拍板)。
  *
- * 收下一个盘上没有的名字,症状是本仓库反复复发的那类「选得动、存得住、就是不生效」:
- * 编辑器里明明写着背景图,出的图却是光板 —— 而出图那一步不会、也不该为此报错。
- * 指到字体上同理(那更像是复制粘贴串行),一并拦在门口。
+ * 它是旋钮出现之前那套「皮肤给默认值、面板覆盖它」的设计,而它的四个字段
+ * (`glassOpacity` / `glassClear` / `font` / `backgroundImage`)今天全都成了旋钮 —— 留着
+ * 就是同一件事两个入口,正是「用了皮肤这里设置什么都不管用」那个抱怨换个地方再来一遍。
+ *
+ * 它**从来没被接进渲染**(`packages/image` 一次都没读过),所以这不是迁移:洗掉它,出的图
+ * 一个像素都不变。也正因此不必替作者把值折进旋钮 —— 那个值本来就没生效,而「写进外框 CSS
+ * 还是声明成旋钮」是作者的取舍,替他选反而选错。
+ *
+ * 就地改 `manifest`:调用方拿到的就是清洗产物,落盘的是这一份。
  */
-function checkBackgroundImage(
-	vars: CardSkinVariableDefaults | undefined,
-	at: string,
-	assetNames: ReadonlySet<string>,
-	errors: string[],
-): void {
-	const name = vars?.backgroundImage;
-	if (name === undefined) return;
-	if (!assetNames.has(name)) {
-		errors.push(`${at}.backgroundImage: 指了「${name}」,但包里没有这份资产`);
-		return;
+function dropRetiredVariables(manifest: CardSkinManifest): string[] {
+	const had: string[] = [];
+	const m = manifest as CardSkinManifest & Record<string, unknown>;
+	for (const key of ["variables", "variablesByKind"] as const) {
+		if (m[key] === undefined) continue;
+		delete m[key];
+		had.push(key);
 	}
-	if (!CARD_SKIN_IMAGE_RE.test(name)) {
-		errors.push(`${at}.backgroundImage:「${name}」不是图片`);
-	}
+	if (had.length === 0) return [];
+	return [
+		`${had.join(" / ")} 已退役,这一项被丢掉了 —— 玻璃 / 字体 / 背景图改由**旋钮**声明(面板照声明生成控件),固定不给调的写进外框 CSS 即可`,
+	];
 }

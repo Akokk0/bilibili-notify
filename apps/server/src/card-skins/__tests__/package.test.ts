@@ -351,35 +351,9 @@ describe("checkCardSkinPackage:清单层", () => {
 		expect(dropped.warnings.join()).toContain("assets/logo.png");
 	});
 
-	it("backgroundImage 指向包里没有的资产 → 拒(全局与按卡种两处都拦)", () => {
-		const missing = checkCardSkinPackage(
-			manifest({ variables: { backgroundImage: "assets/bg.png" } }),
-			new Set(),
-		);
-		expect(missing.ok).toBe(false);
-		if (!missing.ok) expect(missing.errors.join()).toContain("assets/bg.png");
-
-		const perKind = checkCardSkinPackage(
-			manifest({ variablesByKind: { live: { backgroundImage: "assets/bg.png" } } }),
-			new Set(),
-		);
-		expect(perKind.ok).toBe(false);
-		if (!perKind.ok) expect(perKind.errors.join()).toContain("variablesByKind.live");
-
-		const present = checkCardSkinPackage(
-			manifest({ variables: { backgroundImage: "assets/bg.png" } }),
-			new Set(["assets/bg.png"]),
-		);
-		expect(present.ok).toBe(true);
-	});
-
-	it("backgroundImage 指到字体上 → 拒(更像是复制粘贴串了行)", () => {
-		const r = checkCardSkinPackage(
-			manifest({ variables: { backgroundImage: "assets/font-a1.woff2" } }),
-			new Set(["assets/font-a1.woff2"]),
-		);
-		expect(r.ok).toBe(false);
-	});
+	// 「backgroundImage 指错」那两条已随 `variables` 一起退役(2026-09-14 主人拍板):整项
+	// 都不读了,没有「指错」可言。它的守卫搬到下面「退役的 variables」那一节 —— 钉的换成
+	// 「指着不存在的资产也不再是错」,免得这条路以后被人当成还在。
 
 	it("默认皮肤一字不改地过门 —— 它是格式够不够用的验收门(ADR-0014 决策 5)", () => {
 		const raw = structuredClone(DEFAULT_CARD_SKIN);
@@ -557,5 +531,69 @@ describe("旋钮声明与 css 引用对表", () => {
 		expect(res.ok).toBe(true);
 		if (!res.ok) throw new Error("unreachable");
 		expect(res.warnings.filter((w) => w.includes("knob"))).toEqual([]);
+	});
+});
+
+/**
+ * **`variables` / `variablesByKind` 已退役**(2026-09-14 主人拍板)。
+ *
+ * 它是旋钮出现**之前**的设计(皮肤给默认值、面板覆盖它),而它的四个字段 ——
+ * `glassOpacity` / `glassClear` / `font` / `backgroundImage` —— 今天全都成了旋钮:皮肤声明
+ * 控件、`default` 只是起手位置、不注入。留着就是同一件事两个入口。
+ *
+ * 关键在于它**从来没有被接进渲染**(`packages/image` 里一次都没读过),所以退役不是迁移 ——
+ * 洗掉它,出的图一个像素都不变。
+ *
+ * 走「留字段 + 清洗时丢弃」而不是直接从 schema 删:清单是 `.strict()` 的,删了字段之后
+ * 老皮肤会以 `Unrecognized key: "variables"` **装不进来也存不下去**。
+ */
+describe("退役的 variables", () => {
+	const withVars = (extra: Record<string, unknown>) => ({
+		schemaVersion: 1,
+		dataVersion: 1,
+		name: "老皮肤",
+		cards: {},
+		...extra,
+	});
+
+	it("老包照样装得进来 —— 别把主人已经装着的皮肤挡在门外", () => {
+		const res = checkCardSkinPackage(
+			withVars({ variables: { glassClear: true, font: "Menlo" } }),
+			new Set(),
+		);
+		expect(res.ok).toBe(true);
+	});
+
+	it("但清洗产物里没有它了 —— 盘上不该再留一份没人读的设置", () => {
+		const res = checkCardSkinPackage(
+			withVars({
+				variables: { glassClear: true, font: "Menlo" },
+				variablesByKind: { live: { glassOpacity: 0.5 } },
+			}),
+			new Set(),
+		);
+		if (!res.ok) throw new Error(res.errors.join("；"));
+		expect("variables" in res.manifest).toBe(false);
+		expect("variablesByKind" in res.manifest).toBe(false);
+	});
+
+	it("洗掉了要说一句 —— 作者写了它,得知道为什么没了", () => {
+		const res = checkCardSkinPackage(withVars({ variables: { font: "Menlo" } }), new Set());
+		if (!res.ok) throw new Error(res.errors.join("；"));
+		expect(res.warnings.join("\n")).toContain("variables");
+	});
+
+	it("没写过它的包,warnings 里一个字都不多", () => {
+		const res = checkCardSkinPackage(withVars({}), new Set());
+		if (!res.ok) throw new Error(res.errors.join("；"));
+		expect(res.warnings.filter((w) => w.includes("variables"))).toEqual([]);
+	});
+
+	it("它指着一份不存在的资产也不再是错 —— 整项都不读了,没有「指错」可言", () => {
+		const res = checkCardSkinPackage(
+			withVars({ variables: { backgroundImage: "assets/nope.png" } }),
+			new Set(),
+		);
+		expect(res.ok).toBe(true);
 	});
 });

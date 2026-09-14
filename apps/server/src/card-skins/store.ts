@@ -435,11 +435,6 @@ function assetUsers(manifest: CardSkinManifest | null, name: string): string[] {
 			}
 		}
 	}
-	if (inVars(manifest.variables as Record<string, string> | undefined)) users.push("皮肤变量表");
-	for (const [kind, vars] of Object.entries(manifest.variablesByKind ?? {})) {
-		if (inVars(vars as Record<string, string> | undefined)) users.push(`${kind} 卡的变量表`);
-	}
-
 	// 兜底:上面一条都没认出来,但整份清单里确实有这个引用。
 	if (users.length === 0 && JSON.stringify(manifest).includes(ref)) {
 		users.push("清单里还有地方引用着");

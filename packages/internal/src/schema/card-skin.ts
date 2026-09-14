@@ -625,7 +625,20 @@ export const CardSkinCardSchema = z
 	.strict();
 export type CardSkinCard = z.infer<typeof CardSkinCardSchema>;
 
-/** 皮肤自带的变量默认值(用户面板里改的覆盖它)。`backgroundImage` 是包内资产名。 */
+/**
+ * 🪦 **已退役**(2026-09-14 主人拍板)。皮肤自带的变量默认值 —— 旋钮出现**之前**那套
+ * 「皮肤给默认值、面板覆盖它」的设计。
+ *
+ * 它的四个字段今天全都是旋钮({@link DEFAULT_SKIN_KNOB_KEYS}):旋钮把同一件事做得更干净
+ * —— 皮肤声明控件、`default` 只是面板的起手位置、**不注入**,真默认值是皮肤 CSS 里
+ * `var(--bn-knob-<key>, 兜底)` 的那个兜底。留着就是同一件事两个入口。
+ *
+ * 它**从来没被接进渲染**(`packages/image` 一次都没读过),所以退役不是迁移:装包 / 保存时
+ * 由 `dropRetiredVariables` 丢掉,出的图一个像素都不变。
+ *
+ * 字段**留着不删**:清单是 `.strict()` 的,删了之后已经装着这一项的老皮肤会以
+ * `Unrecognized key: "variables"` 装不进来也存不下去。
+ */
 export const CardSkinVariableDefaultsSchema = z
 	.object({
 		// 渐变起 / 止色已退役(决策 15 的 🔗):皮肤想要什么底自己在外框 CSS 里写。
@@ -669,8 +682,9 @@ export const CardSkinManifestSchema = z
 			.array(CardSkinKnobSchema)
 			.max(CARD_SKIN_KNOB_LIMITS.maxKnobs, `knobs 最多 ${CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚`)
 			.optional(),
+		/** 🪦 已退役,只为让老皮肤装得进来而保留;装包 / 保存时丢弃。见 {@link CardSkinVariableDefaultsSchema}。 */
 		variables: CardSkinVariableDefaultsSchema.optional(),
-		/** 按卡种的变量默认值,叠在上面那份之上。 */
+		/** 🪦 同上。 */
 		variablesByKind: z.partialRecord(CardSkinKindSchema, CardSkinVariableDefaultsSchema).optional(),
 		/** 皮肤自带的字体(family 全表唯一,装包时对包内资产)。 */
 		fonts: z

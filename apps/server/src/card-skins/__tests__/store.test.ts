@@ -267,12 +267,17 @@ describe("save(编辑器保存)", () => {
 
 	it("资产清单来自盘上:引用盘上真有的图 → 过;引用没有的 → 拒", async () => {
 		const { id } = await store.install(pack(manifest(), { "assets/bg.png": PNG }));
-		await expect(
-			store.save(id, manifest({ variables: { backgroundImage: "assets/bg.png" } })),
-		).resolves.toMatchObject({ warnings: [] });
-		await expect(
-			store.save(id, manifest({ variables: { backgroundImage: "assets/nope.png" } })),
-		).rejects.toBeInstanceOf(CardSkinPackageError);
+		const withAsset = (name: string) => {
+			const m = manifest();
+			(m.cards as { live: Record<string, unknown> }).live.assets = { bg: `asset:${name}` };
+			return m;
+		};
+		await expect(store.save(id, withAsset("assets/bg.png"))).resolves.toMatchObject({
+			warnings: [],
+		});
+		await expect(store.save(id, withAsset("assets/nope.png"))).rejects.toBeInstanceOf(
+			CardSkinPackageError,
+		);
 	});
 
 	it("形状不对 → 抛 CardSkinPackageError,盘上那份原封不动", async () => {
