@@ -11,7 +11,11 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_CARD_SKIN, DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
+import {
+	CARD_SKIN_LIMITS,
+	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
+} from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { CARD_SKIN_MANIFEST_FILE } from "../package.js";
@@ -346,5 +350,95 @@ describe("readAsset", () => {
 		expect(await store.readAsset(id, "assets/nope.png")).toBeNull();
 		expect(await store.readAsset("没有这套", "assets/bg.png")).toBeNull();
 		expect(await store.readAsset(DEFAULT_CARD_SKIN_ID, "assets/bg.png")).toBeNull();
+	});
+});
+
+/**
+ * **往一套已存盘的皮肤里加 / 删资产**。在这之前资产只能随 zip 装包进来 —— 于是编辑器里
+ * 「皮肤自带字体」永远指不到任何东西(清单里的 `asset:assets/<文件>` 必须是包内文件)。
+ *
+ * 加进来的那道闸得**与装包门同一把尺**:名字白名单(它要拼进磁盘路径)、单份体积、份数
+ * 上限。少一条就是「装包进不来的东西,换个门能进」。
+ *
+ * 删那道闸是另一件事:清单还引用着就不许删 —— 删了之后这套皮肤连自己都存不下去
+ * (下次保存装包门判「指了…,但包里没有这份资产」),而主人只会看到一句莫名其妙的报错。
+ */
+describe("addAsset / removeAsset —— 编辑器往皮肤里加文件", () => {
+	const TTF = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00]);
+
+	async function withSkin(fn: (s: CardSkinStore, id: string) => Promise<void>): Promise<void> {
+		const { id } = await store.install(pack({ ...manifest(), name: "霓虹" }));
+		await fn(store, id);
+	}
+
+	it("加一份字体 → 回它在清单里该写的名字,而且列得出来、读得回来", async () => {
+		await withSkin(async (store, id) => {
+			const { name } = await store.addAsset(id, "Song.TTF", TTF);
+			expect(name).toBe("assets/song.ttf");
+			expect(await store.listAssets(id)).toContain("assets/song.ttf");
+			expect(await store.readAsset(id, "assets/song.ttf")).toEqual(TTF);
+		});
+	});
+
+	it("后缀不在白名单里 → 拒(装包门进不来的东西,这条门也别放进来)", async () => {
+		await withSkin(async (store, id) => {
+			await expect(store.addAsset(id, "evil.svg", TTF)).rejects.toThrow();
+			await expect(store.addAsset(id, "evil.js", TTF)).rejects.toThrow();
+		});
+	});
+
+	it("名字带路径 → 拒(它要拼进磁盘路径)", async () => {
+		await withSkin(async (store, id) => {
+			await expect(store.addAsset(id, "../../etc/passwd.ttf", TTF)).rejects.toThrow();
+			await expect(store.addAsset(id, "sub/dir/a.ttf", TTF)).rejects.toThrow();
+		});
+	});
+
+	it("同名的已经有了 → 拒并说清楚(悄悄覆盖会把别处正用着的那份换掉)", async () => {
+		await withSkin(async (store, id) => {
+			await store.addAsset(id, "song.ttf", TTF);
+			await expect(store.addAsset(id, "song.ttf", TTF)).rejects.toThrow(/已经有/);
+		});
+	});
+
+	it("超过单份体积 / 份数上限 → 拒", async () => {
+		await withSkin(async (store, id) => {
+			const huge = new Uint8Array(CARD_SKIN_LIMITS.maxAssetBytes + 1);
+			await expect(store.addAsset(id, "big.ttf", huge)).rejects.toThrow();
+
+			for (let i = 0; i < CARD_SKIN_LIMITS.maxAssets; i++) {
+				await store.addAsset(id, `f${i}.ttf`, TTF);
+			}
+			await expect(store.addAsset(id, "one-more.ttf", TTF)).rejects.toThrow(/上限/);
+		});
+	});
+
+	it("删一份 → 真的没了", async () => {
+		await withSkin(async (store, id) => {
+			await store.addAsset(id, "song.ttf", TTF);
+			await store.removeAsset(id, "assets/song.ttf");
+			expect(await store.listAssets(id)).not.toContain("assets/song.ttf");
+		});
+	});
+
+	it("清单还引用着 → 不许删,并说出是谁在引用", async () => {
+		await withSkin(async (store, id) => {
+			await store.addAsset(id, "song.ttf", TTF);
+			await store.save(id, {
+				...manifest(),
+				name: "霓虹",
+				fonts: [{ family: "Song", asset: "asset:assets/song.ttf" }],
+			});
+			await expect(store.removeAsset(id, "assets/song.ttf")).rejects.toThrow(/Song/);
+			// 拒了就得真没删掉 —— 半途而废比不做更糟。
+			expect(await store.listAssets(id)).toContain("assets/song.ttf");
+		});
+	});
+
+	it("内置那份加不了也删不了(它没有落盘的身子)", async () => {
+		await withSkin(async (store) => {
+			await expect(store.addAsset(DEFAULT_CARD_SKIN_ID, "a.ttf", TTF)).rejects.toThrow();
+			await expect(store.removeAsset(DEFAULT_CARD_SKIN_ID, "assets/a.ttf")).rejects.toThrow();
+		});
 	});
 });

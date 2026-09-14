@@ -228,6 +228,73 @@ export class CardSkinStore {
 		return names.map((n) => `${ASSET_DIR}/${n}`).filter(isCardSkinAssetName);
 	}
 
+	/**
+	 * 往一套已存盘的皮肤里**加一份资产**。在这之前资产只能随 zip 装包进来 —— 于是编辑器里
+	 * 「皮肤自带字体」永远指不到东西(清单里的 `asset:assets/<文件>` 必须是包内文件)。
+	 *
+	 * 闸与装包门**同一把尺**:名字白名单(它要拼进磁盘路径)、单份体积、份数上限。少一条
+	 * 就成了「装包进不来的东西,换个门能进」。
+	 *
+	 * **同名不覆盖**:悄悄换掉的那份可能正被清单引用着(字体的 family 没变、字变了),
+	 * 而主人没有任何提示。拒掉,让他先删。
+	 */
+	async addAsset(id: string, filename: string, bytes: Uint8Array): Promise<{ name: string }> {
+		if (id === DEFAULT_CARD_SKIN_ID) {
+			throw new CardSkinPackageError(["内置的默认皮肤加不了资产 —— 想改它请先「复制一份」"]);
+		}
+		if (!this.index.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+
+		// **只小写,不剥路径**。白名单正则不收 `/` 也不收 `..`,带路径的名字到这儿会被明着
+		// 拒掉 —— 而先剥成 basename 的话,`../../etc/passwd.ttf` 会变成一份叫 passwd.ttf 的
+		// 资产悄悄躺进去:安全(落点没变),但多了一条静默的归一化路径,以后没人说得清哪条
+		// 名字是怎么变成盘上那个的。小写是唯一的例外(正则只收小写,而这一步改不了落点)。
+		const base = filename.toLowerCase();
+		const name = `${ASSET_DIR}/${base}`;
+		if (!isCardSkinAssetName(name)) {
+			throw new CardSkinPackageError([
+				`「${base}」不能作为皮肤资产 —— 只收 png / jpg / webp / gif 与 woff2 / woff / ttf / otf,名字只准小写字母、数字、\`.\` \`_\` \`-\``,
+			]);
+		}
+		if (bytes.byteLength > CARD_SKIN_LIMITS.maxAssetBytes) {
+			const mb = Math.round(CARD_SKIN_LIMITS.maxAssetBytes / 1024 / 1024);
+			throw new CardSkinPackageError([`「${base}」太大了 —— 单份上限 ${mb}MB`]);
+		}
+		const existing = await this.listAssets(id);
+		if (existing.includes(name)) {
+			throw new CardSkinPackageError([`已经有一份叫「${base}」的了 —— 先删掉那份再传`]);
+		}
+		if (existing.length >= CARD_SKIN_LIMITS.maxAssets) {
+			throw new CardSkinPackageError([
+				`这套皮肤已经 ${existing.length} 份资产,上限 ${CARD_SKIN_LIMITS.maxAssets} 份 —— 删掉用不上的再传`,
+			]);
+		}
+
+		const dir = join(this.dir, id, ASSET_DIR);
+		await mkdir(dir, { recursive: true });
+		await writeFile(join(dir, base), bytes);
+		return { name };
+	}
+
+	/**
+	 * 删一份资产。**清单还引用着就不许删** —— 删了这套皮肤连自己都存不下去(下次保存装包门
+	 * 判「指了…,但包里没有这份资产」),而主人看到的只是一句莫名其妙的报错。
+	 */
+	async removeAsset(id: string, name: string): Promise<void> {
+		if (id === DEFAULT_CARD_SKIN_ID) {
+			throw new CardSkinPackageError(["内置的默认皮肤没有落盘的资产"]);
+		}
+		if (!this.index.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+		if (!isCardSkinAssetName(name)) throw new CardSkinPackageError(["资产名不合法"]);
+
+		const users = assetUsers(this.get(id), name);
+		if (users.length > 0) {
+			throw new CardSkinPackageError([
+				`「${name}」还被用着(${users.join("、")})—— 先在编辑器里换掉再删`,
+			]);
+		}
+		await rm(join(this.dir, id, ASSET_DIR, name.slice(ASSET_PREFIX_LEN)), { force: true });
+	}
+
 	/** 读一份资产;名字不合白名单、皮肤不存在、文件不在 → null(三条都不抛)。 */
 	async readAsset(id: string, name: string): Promise<Uint8Array | null> {
 		if (!this.index.has(id)) return null;
@@ -339,4 +406,43 @@ async function writeAtomic(path: string, data: string): Promise<void> {
 	const tmp = `${path}.tmp`;
 	await writeFile(tmp, data);
 	await rename(tmp, path);
+}
+
+/**
+ * 清单里**谁在用**这份资产,回的是人话(「字体 Song」「直播卡的块 cover」)。
+ *
+ * 结构化地走一遍是为了说得出是谁;末尾还兜一句**整份 JSON 里搜一次** —— 清单以后多长
+ * 一个能引用资产的字段时,这条兜底照样拦得住,而结构化那半会漏。漏一处的后果是删掉之后
+ * 这套皮肤连自己都存不下去,所以宁可多一句「清单里还有地方引用着」。
+ */
+function assetUsers(manifest: CardSkinManifest | null, name: string): string[] {
+	if (!manifest) return [];
+	const ref = `asset:${name}`;
+	const users: string[] = [];
+
+	for (const f of manifest.fonts ?? []) {
+		if (f.asset === ref) users.push(`字体 ${f.family}`);
+	}
+	const inVars = (vars: Record<string, string> | undefined): boolean =>
+		Object.values(vars ?? {}).includes(ref);
+	for (const [kind, card] of Object.entries(manifest.cards)) {
+		if (!card) continue;
+		if (inVars(card.assets)) users.push(`${kind} 卡的资产变量`);
+		for (const block of card.blocks) {
+			if (inVars(block.assets)) users.push(`${kind} 卡的块「${block.id}」`);
+			else if (block.kind === "custom" && block.html.includes(ref)) {
+				users.push(`${kind} 卡的块「${block.id}」的 HTML`);
+			}
+		}
+	}
+	if (inVars(manifest.variables as Record<string, string> | undefined)) users.push("皮肤变量表");
+	for (const [kind, vars] of Object.entries(manifest.variablesByKind ?? {})) {
+		if (inVars(vars as Record<string, string> | undefined)) users.push(`${kind} 卡的变量表`);
+	}
+
+	// 兜底:上面一条都没认出来,但整份清单里确实有这个引用。
+	if (users.length === 0 && JSON.stringify(manifest).includes(ref)) {
+		users.push("清单里还有地方引用着");
+	}
+	return users;
 }

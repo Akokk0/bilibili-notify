@@ -506,3 +506,83 @@ describe("PUT /active —— 全局换皮肤", () => {
 		expect(patchGlobals).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * 资产的增 / 列 / 删。资产从前只能随 zip 装包进来 —— 编辑器里想给皮肤配一款自带字体,
+ * 没有任何一条路把那个文件送进去。
+ *
+ * 路由这一层只钉「wire 对不对」(闸都在店里,那边已经钉过):传上去回的是**清单里该写的
+ * 那个名字**(作者要照它写 `asset:assets/<文件>`)、拒了要 400 + 原因逐条、还被引用着要 409。
+ */
+describe("资产:POST /:id/assets · GET /:id/assets · DELETE /:id/assets/:name", () => {
+	const TTF = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00]);
+
+	async function install(): Promise<string> {
+		const fd = new FormData();
+		fd.append("file", new File([pack()], "skin.zip", { type: "application/zip" }));
+		const res = await app.request("/", { method: "POST", body: fd });
+		return ((await res.json()) as { id: string }).id;
+	}
+
+	async function upload(id: string, filename: string, bytes = TTF) {
+		const fd = new FormData();
+		fd.append("file", new File([bytes], filename));
+		const res = await app.request(`/${id}/assets`, { method: "POST", body: fd });
+		return { res, json: (await res.json()) as { name?: string; errors?: string[] } };
+	}
+
+	it("传一份字体 → 201,回的是清单里该写的那个名字", async () => {
+		const id = await install();
+		const { res, json } = await upload(id, "Song.TTF");
+		expect(res.status).toBe(201);
+		expect(json.name).toBe("assets/song.ttf");
+
+		const listed = await app.request(`/${id}/assets`);
+		expect(((await listed.json()) as { assets: string[] }).assets).toContain("assets/song.ttf");
+	});
+
+	it("店里拒了 → 400 + 原因逐条(不是一句「上传失败」)", async () => {
+		const id = await install();
+		const { res, json } = await upload(id, "evil.svg");
+		expect(res.status).toBe(400);
+		expect(json.errors?.length).toBeGreaterThan(0);
+	});
+
+	it("缺文件 → 400", async () => {
+		const id = await install();
+		const res = await app.request(`/${id}/assets`, { method: "POST", body: new FormData() });
+		expect(res.status).toBe(400);
+	});
+
+	it("删一份 → 真的没了", async () => {
+		const id = await install();
+		await upload(id, "song.ttf");
+		const res = await app.request(`/${id}/assets/assets%2Fsong.ttf`, { method: "DELETE" });
+		expect(res.status).toBe(200);
+		const listed = await app.request(`/${id}/assets`);
+		expect(((await listed.json()) as { assets: string[] }).assets).toEqual([]);
+	});
+
+	it("清单还引用着 → 409,并说出是谁在引用", async () => {
+		const id = await install();
+		await upload(id, "song.ttf");
+		await app.request(`/${id}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				...manifest(),
+				fonts: [{ family: "Song", asset: "asset:assets/song.ttf" }],
+			}),
+		});
+		const res = await app.request(`/${id}/assets/assets%2Fsong.ttf`, { method: "DELETE" });
+		expect(res.status).toBe(409);
+		expect(JSON.stringify(await res.json())).toContain("Song");
+	});
+
+	it("皮肤 id 不合法 → 400;形状对但没这套 → 404(两者要分得开)", async () => {
+		expect((await app.request("/NOPE/assets")).status).toBe(400);
+		expect(
+			(await app.request("/nope-1234/assets", { method: "POST", body: new FormData() })).status,
+		).toBe(404);
+	});
+});

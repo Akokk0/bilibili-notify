@@ -25,6 +25,7 @@ import type {
 	CardSkinSaveResponse,
 } from "@bilibili-notify/contract";
 import {
+	CARD_SKIN_LIMITS,
 	CardSkinIdSchema,
 	CardSkinKindSchema,
 	DEFAULT_CARD_SKIN_ID,
@@ -267,6 +268,68 @@ export function createCardSkinsRoute(deps: {
 			scene: out.scene,
 		};
 		return c.json(body);
+	});
+
+	/**
+	 * 这套皮肤盘上有哪些资产。编辑器照它画「自带字体」那张表的候选 —— 清单里的
+	 * `asset:assets/<文件>` 只能指包内文件,候选表就是这一份。
+	 */
+	app.get("/:id/assets", async (c) => {
+		const id = c.req.param("id");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (!store.has(id)) return notFound(c, "errors");
+		return c.json({ assets: await store.listAssets(id) });
+	});
+
+	/**
+	 * 往一套已存盘的皮肤里传一份资产(图或字体)。**闸全在店里** —— 名字白名单、单份体积、
+	 * 份数上限与装包门同一把尺,这儿只做 wire。
+	 *
+	 * 回的是**清单里该写的那个名字**(`assets/<文件>`):作者要照它写 `asset:assets/<文件>`,
+	 * 而落盘时名字被小写过,回一句「传好了」他就得自己猜。
+	 */
+	app.post(
+		"/:id/assets",
+		uploadBodyLimit(CARD_SKIN_LIMITS.maxAssetBytes, "皮肤资产"),
+		async (c) => {
+			const id = c.req.param("id");
+			if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+			if (!store.has(id)) return notFound(c, "errors");
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File)) {
+				return c.json({ ok: false, errors: ["缺少文件(multipart 字段 file)"] }, 400);
+			}
+			try {
+				const added = await store.addAsset(id, file.name, new Uint8Array(await file.arrayBuffer()));
+				return c.json(added, 201);
+			} catch (e) {
+				if (e instanceof CardSkinPackageError) return c.json({ ok: false, errors: e.errors }, 400);
+				throw e;
+			}
+		},
+	);
+
+	/**
+	 * 删一份资产。**清单还引用着 → 409 并把用家列出来**(同「删皮肤先问谁在用」那条):
+	 * 删了之后这套皮肤连自己都存不下去,而主人看到的只会是下次保存时一句莫名其妙的报错。
+	 */
+	app.delete("/:id/assets/:name", async (c) => {
+		const id = c.req.param("id");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (!store.has(id)) return notFound(c, "errors");
+		try {
+			await store.removeAsset(id, c.req.param("name"));
+			return c.json({ ok: true });
+		} catch (e) {
+			if (e instanceof CardSkinPackageError) {
+				// 「还被用着」与「名字不合法」都从店里抛同一种错,按话分档:前者是 409
+				// (状态冲突,换掉引用就能删),后者是 400。
+				const inUse = e.errors.some((x) => x.includes("还被用着"));
+				return c.json({ ok: false, errors: e.errors }, inUse ? 409 : 400);
+			}
+			throw e;
+		}
 	});
 
 	app.get("/:id/assets/:name", async (c) => {
