@@ -40,6 +40,7 @@ import {
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockShowIf,
 	setColumns,
 	setFrame,
 	setFrameCss,
@@ -229,6 +230,9 @@ export default function CardSkinEditor() {
 								selection={selection}
 								onGrid={(blockId, patch) =>
 									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+								}
+								onShowIf={(blockId, path) =>
+									setDraft((d) => (d === null ? d : setBlockShowIf(d, kind, blockId, path)))
 								}
 								onCss={(blockId, css) =>
 									setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))

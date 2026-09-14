@@ -262,3 +262,25 @@ export function setFrameCss(
 	else next.css = css;
 	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
 }
+
+/**
+ * 改一个块的 `showIf`(字段为真才画)。`undefined` = 总是显示,把键删掉 —— 空串在装包门
+ * 那头过不了字段路径的形状。
+ */
+export function setBlockShowIf(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+	showIf: string | undefined,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
+	const blocks = card.blocks.map((b) => {
+		if (b.id !== blockId) return b;
+		const next = { ...b };
+		if (showIf === undefined || showIf === "") delete next.showIf;
+		else next.showIf = showIf;
+		return next;
+	});
+	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+}

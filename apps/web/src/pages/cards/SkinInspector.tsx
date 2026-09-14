@@ -1,9 +1,9 @@
 /**
  * 编辑器的检查器(ADR-0014 决策 20 / 21)—— 画布上选中什么,这里就编什么。
  *
- * 这一版只有**位置**那一节(行 / 起始列 / 跨列 / 跨行)。内容、样式旋钮、高级 CSS、
- * showIf 各自成片挨着往里填;先把「选中 → 改 → 预览跟着动」这条回路打通,它是后面每一
- * 片都要挂上去的那根梁。
+ * 选中一个块时:位置(行 / 起始列 / 跨列 / 跨行)、显示条件、这个块的 CSS,末尾是删除;
+ * 选中卡片外框时:卡宽、行列间距、12 列的列定义、外框的 CSS。还欠的是**样式旋钮**
+ * (把常用属性做成控件,与下面那个 CSS 框共用同一份状态)与自定义块的 HTML。
  *
  * 数字框**不拒越界只夹回边界**(见 `skin-draft-ops.ts` 的 `clampInt`):这几个框是边敲
  * 边过的,拒了的话想敲两位数就永远敲不出第一位。
@@ -13,6 +13,7 @@ import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
@@ -28,7 +29,7 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Picker, TArea, TNum } from "../../components/forms";
+import { Picker, TArea, TNum, TSelect } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
 import { blockOf, cardOf, columnsOf, gridLimits } from "./skin-draft-ops";
 
@@ -43,6 +44,7 @@ export function SkinInspector({
 	selection,
 	onGrid,
 	onCss,
+	onShowIf,
 	onFrame,
 	onFrameCss,
 	onColumns,
@@ -53,6 +55,8 @@ export function SkinInspector({
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
 	onCss: (blockId: string, css: string) => void;
+	/** 改显示条件;`undefined` = 总是显示。 */
+	onShowIf: (blockId: string, path: string | undefined) => void;
 	onFrame: (patch: FramePatch) => void;
 	onFrameCss: (css: string) => void;
 	/** 改 12 列的宽度;`undefined` = 回到 12 等分(把 `columns` 整份删掉)。 */
@@ -123,6 +127,21 @@ export function SkinInspector({
 						lim={lim.rowSpan}
 						onChange={(rowSpan) => onGrid(block.id, { rowSpan })}
 					/>
+				</div>
+			</Section>
+
+			<Section label="显示条件">
+				<div className="flex flex-col gap-1.5 p-2.5">
+					<TSelect
+						value={block.showIf ?? ""}
+						onChange={(path) => onShowIf(block.id, path === "" ? undefined : path)}
+						options={showIfOptions(kind)}
+						ariaLabel="显示条件"
+						full
+					/>
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						字段为真才画这一块。候选只列这种卡承诺的字段 —— 别的卡的字段写进去,装包门那头直接拒。
+					</span>
 				</div>
 			</Section>
 
@@ -234,8 +253,8 @@ function FrameInspector({
 						))
 					) : (
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							12 等分。定宽列是给**定尺寸的图**留的 —— 上舰卡那枚 175px 的方徽章在 12 等分里
-							落不到整数列,只有定宽列能复刻到像素。
+							12 等分。定宽列是给定尺寸的图留的 —— 上舰卡那枚 175px 的方徽章在 12 等分里落不到
+							整数列,只有定宽列能复刻到像素。
 						</span>
 					)}
 				</div>
@@ -250,6 +269,23 @@ function FrameInspector({
 			/>
 		</div>
 	);
+}
+
+/**
+ * 显示条件的候选:**这种卡**的字段契约。`bool` 排前面 —— `is*` / `has*` 本来就是为
+ * `showIf` 立的;其余字段也收(真值才画,空字符串是假),只是在人话名前标一句「非空时」,
+ * 免得作者以为选了「主播名」就是「等于某个名字」。
+ */
+function showIfOptions(kind: CardSkinKind): Array<{ value: string; label: string }> {
+	const fields = CARD_SKIN_FIELDS[kind];
+	const order = [...fields].sort((a, b) => Number(b.type === "bool") - Number(a.type === "bool"));
+	return [
+		{ value: "", label: "总是显示" },
+		...order.map((f) => ({
+			value: f.path,
+			label: f.type === "bool" ? `${f.label}(${f.path})` : `非空时:${f.label}(${f.path})`,
+		})),
+	];
 }
 
 /**

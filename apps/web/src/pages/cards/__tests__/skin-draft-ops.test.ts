@@ -26,6 +26,7 @@ import {
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockShowIf,
 	setColumns,
 	setFrame,
 	setFrameCss,
@@ -288,5 +289,23 @@ describe("setBlockCss / setFrameCss", () => {
 		expect(setBlockCss(before, "live", "没这个块", CSS)).toBe(before);
 		expect(setBlockCss(before, "sc", "title", CSS)).toBe(before);
 		expect(setFrameCss(before, "sc", CSS)).toBe(before);
+	});
+});
+
+describe("setBlockShowIf", () => {
+	it("选一个字段就写进去,选「总是显示」把键删掉", () => {
+		const gated = setBlockShowIf(manifest(), "live", "title", "live.isStreaming");
+		expect(blockOf(cardOf(gated, "live"), "title")?.showIf).toBe("live.isStreaming");
+		const always = setBlockShowIf(gated, "live", "title", undefined);
+		expect("showIf" in (blockOf(cardOf(always, "live"), "title") as object)).toBe(false);
+	});
+
+	it("回的是新清单,原件一个字节都没动;对不上的块 / 卡原样返回", () => {
+		const before = manifest();
+		const snapshot = JSON.stringify(before);
+		expect(setBlockShowIf(before, "live", "title", "live.isEnded")).not.toBe(before);
+		expect(JSON.stringify(before)).toBe(snapshot);
+		expect(setBlockShowIf(before, "live", "没这个块", "live.isEnded")).toBe(before);
+		expect(setBlockShowIf(before, "sc", "title", "live.isEnded")).toBe(before);
 	});
 });

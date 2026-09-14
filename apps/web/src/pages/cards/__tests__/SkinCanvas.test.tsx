@@ -22,6 +22,7 @@ import {
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockShowIf,
 	setColumns,
 	setFrame,
 	setFrameCss,
@@ -95,6 +96,13 @@ function Harness({
 				onGrid={(id, patch) =>
 					setDraft((d) => {
 						const next = setBlockGrid(d, "live", id, patch);
+						onDraft?.(next);
+						return next;
+					})
+				}
+				onShowIf={(id, path) =>
+					setDraft((d) => {
+						const next = setBlockShowIf(d, "live", id, path);
 						onDraft?.(next);
 						return next;
 					})
@@ -389,5 +397,43 @@ describe("检查器 · CSS", () => {
 		});
 
 		expect(screen.getByText(/存不下去/)).toBeTruthy();
+	});
+});
+
+describe("检查器 · 显示条件", () => {
+	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
+		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
+
+	it("候选来自这种卡的字段契约,选一个就写进草稿", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(blockBtn("封面图"));
+
+		fireEvent.change(screen.getByLabelText("显示条件"), {
+			target: { value: "live.isStreaming" },
+		});
+
+		expect(cardOf(lastDraft(onDraft), "live")?.blocks[0]?.showIf).toBe("live.isStreaming");
+	});
+
+	it("回到「总是显示」→ 键从清单里消失(空串在装包门那头过不了字段路径)", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(blockBtn("主播名"));
+
+		fireEvent.change(screen.getByLabelText("显示条件"), { target: { value: "" } });
+
+		const block = cardOf(lastDraft(onDraft), "live")?.blocks.find((b) => b.id === "name");
+		expect("showIf" in (block as object)).toBe(false);
+	});
+
+	it("别的卡种的字段不出现在候选里 —— 写进去装包门会拒", () => {
+		render(<Harness />);
+		fireEvent.click(blockBtn("封面图"));
+
+		const select = screen.getByLabelText("显示条件") as HTMLSelectElement;
+		const values = Array.from(select.options).map((o) => o.value);
+		expect(values).toContain("live.isEnded");
+		expect(values.some((v) => v.startsWith("sc."))).toBe(false);
 	});
 });
