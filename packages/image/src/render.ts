@@ -70,7 +70,8 @@ const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
 ]);
 
 /** 缺字体时的兜底链,恒挂在最后 —— 少了它缺字形会渲染成一排方块。 */
-const FALLBACK_FAMILIES = '"Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif';
+export const FALLBACK_FAMILIES =
+	'"Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif';
 
 /**
  * 主人自带字体在 CSS 里的家族名。

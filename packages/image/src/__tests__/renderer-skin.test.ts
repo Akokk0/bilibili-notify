@@ -115,6 +115,17 @@ function liveCard(renderer: ImageRenderer, cardSkin?: string): Promise<Buffer> {
 	);
 }
 
+/**
+ * 根块(外框)那条 inline style 的**解码后**值。
+ *
+ * 直接在生 HTML 上 `toContain` 会栽:变量值里的引号在属性里是 `&quot;`
+ * (`url("data:…")`、`"bn-user-font"` 都带引号),读 DOM 拿到的才是浏览器真看见的那串。
+ */
+function frameStyle(html: string): string {
+	const doc = new JSDOM(html).window.document;
+	return doc.querySelector('[data-bn~="frame"]')?.getAttribute("style") ?? "";
+}
+
 /** 一份 HTML 里 `[data-block]` 按文档序的块名。 */
 function blockLabels(html: string): string[] {
 	const doc = new JSDOM(html).window.document;
@@ -212,6 +223,47 @@ describe("ImageRenderer 皮肤旋钮", () => {
 		await liveCard(h.renderer, "knobby");
 		expect(h.captured[0] ?? "").toContain("--bn-knob-accent:#00f0ff");
 		expect(h.fallbacks).toEqual([]);
+	});
+
+	/**
+	 * 字体 / 图两档(2026-09-14 主人拍板)。它们与别的旋钮不同:值是主人资产库里的一个
+	 * id,**得读盘**才能用 —— 解析器住 `skin/knob-assets.ts`(自己有单元测试),这里钉的
+	 * 是渲染器有没有真把它接上。验红:把 `renderWithSkin` 里那句
+	 * `knobAssets: await this.resolveKnobAssets(...)` 掐掉,这两条红。
+	 */
+	describe("字体 / 图两档要读盘", () => {
+		const ASSET_SKIN: CardSkinManifest = {
+			...DEFAULT_CARD_SKIN,
+			name: "带字体与壁纸的皮肤",
+			knobs: [
+				{ key: "font", label: "字体", type: "font", default: "" },
+				{ key: "wallpaper", label: "壁纸", type: "image" },
+			],
+		};
+		const withAssets = (knobs: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+			makeHarness({
+				config: { ...BASE_CONFIG, cardSkinKnobs: knobs },
+				resolveCardSkin: (id) => (id === "assetty" ? ASSET_SKIN : undefined),
+				resolveAsset: async (id) => `data:image/png;base64,${id}`,
+				resolveFontFace: async (id) => `@font-face{font-family:"bn-user-font";src:url("${id}")}`,
+			});
+
+		it("主人传的字体文件 → `@font-face` 与变量都进了 HTML", async () => {
+			const h = withAssets({ assetty: { font: "upload:f1" } });
+			await liveCard(h.renderer, "assetty");
+			const html = h.captured[0] ?? "";
+			expect(html).toContain("@font-face");
+			expect(frameStyle(html)).toContain('--bn-knob-font:"bn-user-font"');
+			expect(h.fallbacks).toEqual([]);
+		});
+
+		it("壁纸 → 解析成 data URL 注进变量(自带 center / cover)", async () => {
+			const h = withAssets({ assetty: { wallpaper: ["bg1"] } });
+			await liveCard(h.renderer, "assetty");
+			expect(frameStyle(h.captured[0] ?? "")).toContain(
+				'--bn-knob-wallpaper:url("data:image/png;base64,bg1") center / cover',
+			);
+		});
 	});
 
 	it("没拧过 → HTML 里没有旋钮变量(皮肤 CSS 的兜底管事)", async () => {

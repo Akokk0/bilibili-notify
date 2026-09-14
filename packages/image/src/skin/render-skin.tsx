@@ -48,6 +48,7 @@ import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { Dynamic } from "../types";
 import { buildCardData, type CardData, readCardField } from "./card-data";
+import type { ResolvedKnobAssets } from "./knob-assets";
 
 /**
  * 1×1 透明 GIF —— 取不到的包内资产退成它(与远端图被拦时同一串,见 `image-renderer.ts`)。
@@ -83,6 +84,11 @@ export interface SkinRenderOptions<K extends CardSkinKind = CardSkinKind> {
 	knobs?: readonly CardSkinKnob[];
 	/** 用户拧过的旋钮值(按皮肤 id 存的那一份)。没拧过的 key 不在里面。 */
 	knobValues?: CardSkinKnobOverrides;
+	/**
+	 * 宿主已经解析好的那两档旋钮(字体文件 / 图):额外的 `@font-face` 与要注在根块上的
+	 * 变量。**在这儿注不在 `knobValues` 里注** —— 它们要读盘,而这条路径是同步的。
+	 */
+	knobAssets?: ResolvedKnobAssets;
 }
 
 export interface SkinRenderResult {
@@ -365,7 +371,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 
 	// ④ 铺 wrapper + 翻译 CSS。
 	const parts: string[] = [];
-	const faces = fontFaces(o.fonts, o.resolveAsset);
+	const faces = fontFaces(o.fonts, o.resolveAsset) + (o.knobAssets?.fontFaces ?? "");
 	if (faces) parts.push(faces);
 	if (card.css) parts.push(translateRootCss(card.css));
 	const children = placed.map((item) => {
@@ -382,6 +388,9 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		frame:
 			frameVariables(o.props) +
 			cardSkinKnobDeclarations(o.knobs, o.knobValues) +
+			// 宿主解析出来的那两档排在后面:同一个 key 时以读盘拿到的为准(纯字面量那条
+			// 路径对它们一律回 null,本来也注不出东西来)。
+			(o.knobAssets?.vars ?? "") +
 			assetVarsStyle(card.assets, o.resolveAsset),
 		glass: `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`,
 		width: card.width,
@@ -415,6 +424,8 @@ export interface SkinCardHtmlOptions {
 	resolveAsset?: (name: string) => string | undefined;
 	/** 用户为**这套**皮肤拧过的旋钮值(宿主按皮肤 id 取好再传)。 */
 	knobValues?: CardSkinKnobOverrides;
+	/** 字体 / 图两档旋钮的解析结果(见 {@link resolveKnobAssets})。 */
+	knobAssets?: ResolvedKnobAssets;
 }
 
 /**
@@ -442,6 +453,7 @@ export async function renderCardWithSkin<K extends CardSkinKind>(
 		fonts: manifest.fonts,
 		knobs: manifest.knobs,
 		knobValues: options.knobValues,
+		knobAssets: options.knobAssets,
 	});
 	return await renderCard(
 		{ render: (): VNode => vnode },

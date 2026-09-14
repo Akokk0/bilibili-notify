@@ -20,6 +20,7 @@ import type { CardPropsByKind } from "./blocks/frames";
 import { numberToStr } from "./format";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
+import { type ResolvedKnobAssets, resolveKnobAssets } from "./skin/knob-assets";
 import {
 	BLOCKED_IMG_PLACEHOLDER as BLOCKED_IMG_GIF,
 	cardOfManifest,
@@ -182,6 +183,8 @@ export class ImageRenderer {
 	private readonly serviceCtx: ServiceContext;
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
+	/** 图片旋钮的轮换游标:`<皮肤 id>:<旋钮 key>` → 已经出过几张。 */
+	private readonly knobImageCursor = new Map<string, number>();
 	private readonly resolveAsset: (id: string) => Promise<string>;
 	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
@@ -344,6 +347,29 @@ export class ImageRenderer {
 		return { font: USER_FONT_FAMILY, fontFace: this.fontCache.fontFace };
 	}
 
+	/**
+	 * 字体 / 图两档旋钮 → 额外的 `@font-face` 与根块变量(见 `skin/knob-assets.ts`)。
+	 *
+	 * 多张图**每次推送轮换**:游标按「皮肤 + 旋钮」记在渲染器上。从前那份轮换记在推送侧
+	 * (每个房间自己一份),而旋钮值住全局配置、推送侧根本不认得它 —— 记在这里是唯一
+	 * 摸得着那个「第几次」的地方。跨订阅共用一个游标只是让它转起来,不承诺公平。
+	 */
+	private async resolveKnobAssets(
+		skinId: string,
+		knobs: CardSkinManifest["knobs"],
+		overrides: CardSkinKnobOverrides | undefined,
+	): Promise<ResolvedKnobAssets> {
+		return await resolveKnobAssets(knobs, overrides, {
+			image: (assetId) => this.resolveAsset(assetId),
+			fontFace: (assetId) => this.resolveFontFace(assetId),
+			pick: (count, key) => {
+				const at = this.knobImageCursor.get(`${skinId}:${key}`) ?? 0;
+				this.knobImageCursor.set(`${skinId}:${key}`, at + 1);
+				return at % count;
+			},
+		});
+	}
+
 	async getTimeDifference(dateString: string): Promise<string> {
 		const apiDateTime = DateTime.fromFormat(dateString, "yyyy-MM-dd HH:mm:ss", {
 			zone: "UTC+8",
@@ -462,13 +488,15 @@ export class ImageRenderer {
 				cardOfManifest(manifest, kind),
 				manifest.fonts,
 			);
+			const knobValues = this.config.cardSkinKnobs?.[id];
 			let html = await renderCardWithSkin(kind, props, manifest, {
 				title,
 				font: font.font,
 				fontFace: font.fontFace,
 				raw: args.raw,
 				resolveAsset: (name) => assets.get(name),
-				knobValues: this.config.cardSkinKnobs?.[id],
+				knobValues,
+				knobAssets: await this.resolveKnobAssets(id, manifest.knobs, knobValues),
 			});
 			if (args.postProcess) html = args.postProcess(html);
 			return await withRetry(() => this.renderHtml(html, args.waitFor, args.priority));
