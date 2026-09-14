@@ -362,3 +362,47 @@ export function dropCard(manifest: CardSkinManifest, kind: CardSkinKind): CardSk
 	delete cards[kind];
 	return { ...manifest, cards };
 }
+
+/** 皮肤级元信息的补丁。没给的键不动 —— 三个框各自独立地改。 */
+export type SkinMetaPatch = { name?: string; author?: string; description?: string };
+
+/**
+ * 改皮肤的名字 / 作者 / 说明。
+ *
+ * 作者与说明是可选的,**留空删键**(理由同 {@link setBlockCss}:存个空串,皮肤库那行
+ * 就画出一个空作者,看着像坏了)。名字不一样 —— 它是必填的,但空的照样落进草稿:在这儿
+ * 偷偷保留旧名的话,主人看到的是一个「怎么删都弹回去」的框。拦在 {@link skinMetaError}。
+ */
+export function setSkinMeta(manifest: CardSkinManifest, patch: SkinMetaPatch): CardSkinManifest {
+	const next: CardSkinManifest = { ...manifest };
+	if (patch.name !== undefined) next.name = patch.name;
+	for (const key of ["author", "description"] as const) {
+		const v = patch[key];
+		if (v === undefined) continue;
+		if (v.trim() === "") delete next[key];
+		else next[key] = v;
+	}
+	return next;
+}
+
+/**
+ * 这份草稿存不存得下去 —— 保存钮照它变灰。回 `null` = 没问题。
+ *
+ * 不让主人按下去吃一个 400:装包门那头只回一句「name: 太短」,而皮肤里带名字的东西有
+ * 好几样(块有 id、字体有 family),主人根本不知道说的是哪一个。
+ */
+export function skinMetaError(manifest: CardSkinManifest): string | null {
+	const L = CARD_SKIN_LIMITS;
+	if (manifest.name.trim().length < L.name.min) return "皮肤得有个名字";
+	// 三个框都**不设 `maxLength`**:截断等于悄悄吞掉按键(同 `clampInt` 那条「夹不是拒」
+	// 的反面 —— 那边夹的是数,这边吞的是字)。敲得进去,存不下去当场说。
+	const over: Array<[string, string, number]> = [
+		["皮肤名", manifest.name, L.name.max],
+		["作者", manifest.author ?? "", L.author.max],
+		["说明", manifest.description ?? "", L.description.max],
+	];
+	for (const [label, value, max] of over) {
+		if (value.length > max) return `${label}最多 ${max} 个字,现在是 ${value.length}`;
+	}
+	return null;
+}

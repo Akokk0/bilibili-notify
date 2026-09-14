@@ -48,6 +48,8 @@ import {
 	setColumns,
 	setFrame,
 	setFrameCss,
+	setSkinMeta,
+	skinMetaError,
 } from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
@@ -115,6 +117,8 @@ export default function CardSkinEditor() {
 	// 预览那一栏的宽度**跟着卡宽走**,不再钉死 400 —— 640 宽的卡挤在 400 里右半张就没了。
 	// 它挤的是画布的宽度(画布是 12 列等宽格子,窄一点照样读得懂;预览窄一点就是另一张卡)。
 	const previewCol = Math.min(Math.max(cardOf(draft, kind)?.width ?? 600, 320), PREVIEW_COL_MAX);
+	// 存不下去的草稿不许按保存:装包门那头只回一句「name: 太短」,主人根本不知道说的是哪个名字。
+	const metaError = draft === null ? null : skinMetaError(draft);
 
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
@@ -143,9 +147,21 @@ export default function CardSkinEditor() {
 					</Btn>
 					<span className="h-5.5 w-px bg-bn-border" />
 					<div className="flex min-w-0 items-center gap-2">
-						<span className="truncate font-semibold text-bn-md text-bn-text-primary">
+						{/* 皮肤名就是**皮肤这一档的入口** —— 名字 / 作者 / 说明不属于任何一种卡,
+						    塞进卡种 tab 那条里反而找不着;点自己的名字改自己是最短的那条路。 */}
+						<button
+							type="button"
+							disabled={draft === null}
+							onClick={() => setSelection({ kind: "skin" })}
+							data-bn="chip"
+							className={`truncate rounded-sm px-1.5 py-0.5 font-semibold text-bn-md transition ${
+								selection?.kind === "skin"
+									? "bg-bn-pink/10 text-bn-pink"
+									: "text-bn-text-primary hover:text-bn-pink"
+							}`}
+						>
 							{draft?.name ?? "载入中…"}
-						</span>
+						</button>
 						{inUse ? (
 							<Pill subtle color="var(--color-bn-pink)">
 								使用中
@@ -207,7 +223,7 @@ export default function CardSkinEditor() {
 					<Btn
 						size="sm"
 						variant="primary"
-						disabled={!dirty || readOnly || save.isPending}
+						disabled={!dirty || readOnly || save.isPending || metaError !== null}
 						onClick={() => draft && save.mutate(draft)}
 					>
 						{save.isPending ? "保存中…" : "保存"}
@@ -298,6 +314,11 @@ export default function CardSkinEditor() {
 									setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))
 								}
 								onFrameCss={(css) => setDraft((d) => (d === null ? d : setFrameCss(d, kind, css)))}
+								onMeta={
+									readOnly
+										? undefined
+										: (patch) => setDraft((d) => (d === null ? d : setSkinMeta(d, patch)))
+								}
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
 								onColumns={(columns) =>
 									setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))

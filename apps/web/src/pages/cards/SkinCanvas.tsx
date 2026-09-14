@@ -20,8 +20,17 @@ import { canAddBlock, columnsOf } from "./skin-draft-ops";
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
 
-/** 画布上选中的东西:某个块,或者卡片外框(它不是块,但也能选)。 */
-export type SkinSelection = { kind: "block"; id: string } | { kind: "frame" } | null;
+/**
+ * 画布上选中的东西:某个块,或者卡片外框(它不是块,但也能选)。
+ *
+ * 另有**皮肤这一档**(`skin`:名字 / 作者 / 说明)。它不属于任何一种卡,所以入口不在画布
+ * 上,在头部那行皮肤名 —— 但选中状态是同一份,检查器才不会同时画两样东西。
+ */
+export type SkinSelection =
+	| { kind: "block"; id: string }
+	| { kind: "frame" }
+	| { kind: "skin" }
+	| null;
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];

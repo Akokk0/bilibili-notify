@@ -34,6 +34,8 @@ import {
 	setColumns,
 	setFrame,
 	setFrameCss,
+	setSkinMeta,
+	skinMetaError,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -366,5 +368,70 @@ describe("adoptCard / dropCard", () => {
 		expect("live" in after.cards).toBe(false);
 		expect(dropCard(after, "live")).toBe(after);
 		expect(JSON.stringify(before)).toBe(JSON.stringify(manifest()));
+	});
+});
+
+/**
+ * 皮肤级的元信息(名字 / 作者 / 说明)。装皮肤时定下的名字从前**再也改不了** ——
+ * 编辑器与皮肤库都没有入口。
+ *
+ * 钉三条静默失败:① 可选的两项留空要**删键**(留个空串,皮肤库那行就显示一个空作者 /
+ * 空说明,看着像坏了);② 名字留空**照样存进草稿**,让上层当场说「皮肤得有个名字」——
+ * 悄悄保留旧名的话,主人会看到一个「怎么删都弹回去」的框;③ patch 语义,没给的键不动。
+ */
+describe("setSkinMeta", () => {
+	it("改名回一份新的,原件一个字没动", () => {
+		const before = manifest();
+		const after = setSkinMeta(before, { name: "青柠" });
+		expect(after.name).toBe("青柠");
+		expect(before.name).toBe("测试皮肤");
+		expect(after).not.toBe(before);
+	});
+
+	it("作者 / 说明留空 → 删键(不是存个空串)", () => {
+		const withMeta = setSkinMeta(manifest(), { author: "伦伦酱", description: "试的" });
+		expect(withMeta.author).toBe("伦伦酱");
+		expect(withMeta.description).toBe("试的");
+
+		const cleared = setSkinMeta(withMeta, { author: "  ", description: "" });
+		expect("author" in cleared).toBe(false);
+		expect("description" in cleared).toBe(false);
+	});
+
+	it("名字留空照样落进草稿 —— 拦是上层的事,不在这儿偷偷弹回去", () => {
+		expect(setSkinMeta(manifest(), { name: "" }).name).toBe("");
+	});
+
+	it("没给的键不动", () => {
+		const withAuthor = setSkinMeta(manifest(), { author: "伦伦酱" });
+		const renamed = setSkinMeta(withAuthor, { name: "青柠" });
+		expect(renamed.author).toBe("伦伦酱");
+		expect(renamed.cards.live?.blocks).toHaveLength(2);
+	});
+});
+
+/**
+ * 存不存得下去 —— 保存钮照它变灰。**不能让主人按下去吃一个 400**:装包门那头只会回
+ * 一句「name: 太短」,而主人根本不知道是哪儿的名字(块也有 id、字体也有 family)。
+ */
+describe("skinMetaError", () => {
+	it("名字空了 / 全是空格 → 说出是哪儿不对", () => {
+		expect(skinMetaError(setSkinMeta(manifest(), { name: "" }))).toBe("皮肤得有个名字");
+		expect(skinMetaError(setSkinMeta(manifest(), { name: "   " }))).toBe("皮肤得有个名字");
+	});
+
+	it.each([
+		["name", "皮肤名", CARD_SKIN_LIMITS.name.max],
+		["author", "作者", CARD_SKIN_LIMITS.author.max],
+		["description", "说明", CARD_SKIN_LIMITS.description.max],
+	])("%s 超上限 → 说出是哪一项、超了多少(三个框都不截断)", (key, label, max) => {
+		const long = "绫".repeat(max + 1);
+		const err = skinMetaError(setSkinMeta(manifest(), { [key]: long }));
+		expect(err).toContain(label);
+		expect(err).toContain(String(max));
+	});
+
+	it("正常的皮肤没有错", () => {
+		expect(skinMetaError(manifest())).toBeNull();
 	});
 });

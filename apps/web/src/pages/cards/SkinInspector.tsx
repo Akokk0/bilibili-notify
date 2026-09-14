@@ -29,9 +29,16 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Picker, TArea, TNum, TSelect } from "../../components/forms";
+import { Picker, TArea, TInput, TNum, TSelect } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
-import { blockOf, cardOf, columnsOf, gridLimits } from "./skin-draft-ops";
+import {
+	blockOf,
+	cardOf,
+	columnsOf,
+	gridLimits,
+	type SkinMetaPatch,
+	skinMetaError,
+} from "./skin-draft-ops";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Grid = Card["blocks"][number]["grid"];
@@ -51,6 +58,7 @@ export function SkinInspector({
 	onColumns,
 	onRemove,
 	onDropCard,
+	onMeta,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
@@ -69,13 +77,22 @@ export function SkinInspector({
 	onRemove?: (blockId: string) => void;
 	/** 交还整张卡(删掉这种卡的定义,出图跟着出厂默认)。与 `onRemove` 同进同出。 */
 	onDropCard?: () => void;
+	/** 改皮肤级的元信息(名字 / 作者 / 说明)。**不给 = 这套皮肤只读**,三个框都退成只读。 */
+	onMeta?: (patch: SkinMetaPatch) => void;
 }) {
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
 	const card = cardOf(manifest, kind);
 
 	if (selection === null) {
-		return <EmptyNote size="sm">在左边画布上点一个块,或者点最底下那条「卡片外框」。</EmptyNote>;
+		return (
+			<EmptyNote size="sm">
+				在左边画布上点一个块,或者点最底下那条「卡片外框」;改皮肤本身的名字点头部那行。
+			</EmptyNote>
+		);
+	}
+	if (selection.kind === "skin") {
+		return <SkinMetaInspector manifest={manifest} onMeta={onMeta} />;
 	}
 	if (selection.kind === "frame") {
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
@@ -557,6 +574,62 @@ function GridNum({
 				onChange={onChange}
 				ariaLabel={`${label}(${lim.min}–${lim.max})`}
 			/>
+		</div>
+	);
+}
+
+/**
+ * 皮肤这一档 —— 名字 / 作者 / 说明。
+ *
+ * 名字是必填的(装包门那头 `name.min = 1`),但空的照样让它敲进去:在这儿弹回旧名的话,
+ * 主人看到的是一个「怎么删都删不掉」的框。空了就在下面说清楚,保存钮同时变灰
+ * (见 {@link skinMetaError})。作者与说明是可选的,清空即删键。
+ */
+function SkinMetaInspector({
+	manifest,
+	onMeta,
+}: {
+	manifest: CardSkinManifest | null;
+	onMeta?: (patch: SkinMetaPatch) => void;
+}) {
+	if (!manifest) return <EmptyNote size="sm">清单还没读到。</EmptyNote>;
+	const err = skinMetaError(manifest);
+	// 只读皮肤:框仍然画出来(内容本身是主人要看的),走库里的 `disabled` 只读态。
+	const ro = onMeta === undefined;
+	return (
+		<div className="flex flex-col gap-3.5">
+			<Section label="皮肤">
+				<div className="flex flex-col gap-2.5 p-2.5">
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						这三项写在清单头上,皮肤库那一行与导出的包照它显示。
+					</span>
+					<TInput
+						value={manifest.name}
+						onChange={(v) => onMeta?.({ name: v })}
+						disabled={ro}
+						ariaLabel="皮肤名"
+						placeholder="霓虹"
+					/>
+					{err ? <ErrorNote size="sm">{err}</ErrorNote> : null}
+
+					<TInput
+						value={manifest.author ?? ""}
+						onChange={(v) => onMeta?.({ author: v })}
+						disabled={ro}
+						ariaLabel="作者"
+						placeholder="谁做的(可以不填)"
+					/>
+
+					<TArea
+						value={manifest.description ?? ""}
+						onChange={(v) => onMeta?.({ description: v })}
+						disabled={ro}
+						rows={3}
+						ariaLabel="说明"
+						placeholder="一句话说说这套皮肤(可以不填)"
+					/>
+				</div>
+			</Section>
 		</div>
 	);
 }
