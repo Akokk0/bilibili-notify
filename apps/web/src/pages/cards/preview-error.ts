@@ -27,3 +27,17 @@ export function previewErrorHint(status: number | undefined): string | null {
 	if (status === undefined || status !== OFFLINE_STATUS) return null;
 	return "卡片渲染较慢，若经反向代理访问，请把读超时调到 120s 以上；也可能是服务端刚重启（内存不足时会被系统杀掉）。";
 }
+
+/**
+ * 服务端拒收时那串**逐条**原因(装包门 / 资产闸都回 `{ ok:false, errors:[…] }`)。
+ *
+ * `api` 那层把 4xx 的响应体挂在 error 上,这里把它捞出来 —— 捞不到就退回 message,
+ * 至少还有一句话。**自编一句「失败了」等于把线索吞掉**:装包门那串正是主人照着改的东西。
+ */
+export function serverErrors(err: unknown): string[] {
+	if (!err) return [];
+	const body = (err as { body?: { errors?: unknown; err?: unknown } }).body;
+	if (Array.isArray(body?.errors)) return body.errors.map(String);
+	if (typeof body?.err === "string") return [body.err];
+	return [String((err as Error).message)];
+}

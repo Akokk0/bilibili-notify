@@ -25,6 +25,7 @@ import {
 	ConfirmDialog,
 	EmptyNote,
 	ErrorNote,
+	HintNote,
 	Icon,
 	Pill,
 	Section,
@@ -38,6 +39,7 @@ import {
 	blockOf,
 	cardOf,
 	columnsOf,
+	fontsError,
 	gridLimits,
 	knobsError,
 	type SkinMetaPatch,
@@ -64,6 +66,8 @@ export function SkinInspector({
 	onDropCard,
 	onMeta,
 	onKnobs,
+	onAssets,
+	assets,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
@@ -86,6 +90,10 @@ export function SkinInspector({
 	onMeta?: (patch: SkinMetaPatch) => void;
 	/** 旋钮声明的增删改。与 `onMeta` 同进同出(同一套「只读」判据)。 */
 	onKnobs?: KnobHandlers;
+	/** 资产与自带字体。同上。 */
+	onAssets?: AssetHandlers;
+	/** 这套皮肤盘上有哪些资产 —— 字体那张表照它画候选。 */
+	assets?: { names: string[]; pending: boolean; uploadError?: string | null };
 }) {
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
@@ -99,7 +107,15 @@ export function SkinInspector({
 		);
 	}
 	if (selection.kind === "skin") {
-		return <SkinMetaInspector manifest={manifest} onMeta={onMeta} onKnobs={onKnobs} />;
+		return (
+			<SkinMetaInspector
+				manifest={manifest}
+				onMeta={onMeta}
+				onKnobs={onKnobs}
+				onAssets={onAssets}
+				assets={assets}
+			/>
+		);
 	}
 	if (selection.kind === "frame") {
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
@@ -596,10 +612,14 @@ function SkinMetaInspector({
 	manifest,
 	onMeta,
 	onKnobs,
+	onAssets,
+	assets,
 }: {
 	manifest: CardSkinManifest | null;
 	onMeta?: (patch: SkinMetaPatch) => void;
 	onKnobs?: KnobHandlers;
+	onAssets?: AssetHandlers;
+	assets?: { names: string[]; pending: boolean; uploadError?: string | null };
 }) {
 	if (!manifest) return <EmptyNote size="sm">清单还没读到。</EmptyNote>;
 	const err = skinMetaError(manifest);
@@ -641,6 +661,14 @@ function SkinMetaInspector({
 			</Section>
 
 			<KnobSection manifest={manifest} onKnobs={onKnobs} />
+
+			<AssetSection
+				manifest={manifest}
+				assets={assets?.names ?? []}
+				assetsPending={assets?.pending ?? false}
+				uploadError={assets?.uploadError}
+				on={onAssets}
+			/>
 		</div>
 	);
 }
@@ -964,4 +992,164 @@ function KnobDefault({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHand
 				</span>
 			);
 	}
+}
+
+/** 资产与自带字体那两节要的口。**整份不给 = 只读**(同 `onKnobs` 的判据)。 */
+export type AssetHandlers = {
+	onUpload: (file: File) => void;
+	onDeleteAsset: (name: string) => void;
+	onAddFont: () => void;
+	onFont: (index: number, patch: { family?: string; asset?: string }) => void;
+	onRemoveFont: (index: number) => void;
+};
+
+/**
+ * 皮肤自己的**资产**与**自带字体**。
+ *
+ * 两节挨着摆是因为它们是同一件事的两半:清单里的 `asset:assets/<文件>` 只能指**包内**
+ * 文件,所以「配一款自带字体」的第一步永远是把文件传进这套皮肤。传到主人自己的字体库里
+ * 是不行的 —— 导出的 zip 里没有那份文件,别人装上就是回落字体,而这边一切正常。
+ */
+function AssetSection({
+	manifest,
+	assets,
+	assetsPending,
+	on,
+	uploadError,
+}: {
+	manifest: CardSkinManifest;
+	assets: string[];
+	assetsPending: boolean;
+	on?: AssetHandlers;
+	/** 传失败的原因(体积 / 后缀 / 重名),原样摆出来 —— 自编一句「上传失败」等于把线索吞掉。 */
+	uploadError?: string | null;
+}) {
+	const fonts = manifest.fonts ?? [];
+	const fontAssets = assets.filter((a) => /\.(woff2|woff|ttf|otf)$/.test(a));
+	const err = fontsError(manifest, assets);
+	return (
+		<>
+			<Section label="资产">
+				<div className="flex flex-col gap-2 p-2.5">
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						图与字体文件住在这套皮肤自己的包里,导出的 zip 会带着它们。在块的 CSS / HTML 里用{" "}
+						<code className="font-mono">asset:&lt;名字&gt;</code> 引用。
+					</span>
+
+					{assetsPending ? (
+						<span className="text-bn-2xs text-bn-text-tertiary">正在读…</span>
+					) : assets.length === 0 ? (
+						<EmptyNote size="sm">这套皮肤还没有自带任何文件。</EmptyNote>
+					) : (
+						assets.map((name) => (
+							<div key={name} className="flex min-w-0 items-center gap-1.5">
+								<span className="min-w-0 flex-1 truncate font-mono text-bn-2xs text-bn-text-secondary">
+									{name}
+								</span>
+								{on ? (
+									<Btn
+										size="sm"
+										variant="ghost"
+										title="删掉这份资产"
+										onClick={() => on.onDeleteAsset(name)}
+									>
+										<Icon.trash size={12} />
+										<span className="sr-only">删掉这份资产</span>
+									</Btn>
+								) : null}
+							</div>
+						))
+					)}
+
+					{on ? (
+						<label className="flex items-center gap-2 text-bn-2xs text-bn-text-tertiary">
+							<span>传一份</span>
+							<input
+								type="file"
+								accept=".png,.jpg,.jpeg,.webp,.gif,.woff2,.woff,.ttf,.otf"
+								aria-label="传一份资产"
+								className="sr-only"
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									// 传完把 input 清空:同一个文件再传一次也要触发 change(重名会被拒,
+									// 但「删了再传回来」是真实路径)。
+									e.target.value = "";
+									if (file) on.onUpload(file);
+								}}
+							/>
+							<Btn size="sm" variant="outline" onClick={(e) => pickFile(e.currentTarget)}>
+								<Icon.plus size={12} /> 选个文件
+							</Btn>
+						</label>
+					) : null}
+
+					{uploadError ? <ErrorNote size="sm">{uploadError}</ErrorNote> : null}
+				</div>
+			</Section>
+
+			<Section label="自带字体">
+				<div className="flex flex-col gap-2 p-2.5">
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						每一行注一条 <code className="font-mono">@font-face</code>,块的 CSS 里直接写{" "}
+						<code className="font-mono">font-family:&lt;字体名&gt;</code>。
+					</span>
+
+					{fonts.map((font, i) => (
+						// 字体行没有稳定 id(family 边敲边变),只增删末尾不重排,下标做 key 不会错位。
+						// biome-ignore lint/suspicious/noArrayIndexKey: 见上
+						<div key={i} className="flex min-w-0 items-center gap-1.5">
+							<TInput
+								value={font.family}
+								onChange={(v) => on?.onFont(i, { family: v })}
+								disabled={on === undefined}
+								ariaLabel="字体名"
+								placeholder="Song"
+							/>
+							<TSelect
+								value={font.asset}
+								onChange={(v) => on?.onFont(i, { asset: v })}
+								options={[
+									{ value: "", label: "选一份…" },
+									...fontAssets.map((a) => ({ value: `asset:${a}`, label: a })),
+								]}
+								disabled={on === undefined}
+								ariaLabel="用哪份资产"
+							/>
+							{on ? (
+								<Btn
+									size="sm"
+									variant="ghost"
+									title="删掉这一行"
+									onClick={() => on.onRemoveFont(i)}
+								>
+									<Icon.trash size={12} />
+									<span className="sr-only">删掉这一行</span>
+								</Btn>
+							) : null}
+						</div>
+					))}
+
+					{fonts.length > 0 && fontAssets.length === 0 ? (
+						<HintNote>先在上面传一份字体文件(woff2 / woff / ttf / otf),这里才选得到。</HintNote>
+					) : null}
+					{err ? <ErrorNote size="sm">{err}</ErrorNote> : null}
+
+					{on === undefined ? null : fonts.length >= CARD_SKIN_LIMITS.maxFonts ? (
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							已经 {CARD_SKIN_LIMITS.maxFonts} 款,加不下了。
+						</span>
+					) : (
+						<Btn size="sm" variant="outline" onClick={on.onAddFont}>
+							<Icon.plus size={12} /> 添加字体
+						</Btn>
+					)}
+				</div>
+			</Section>
+		</>
+	);
+}
+
+/** 「选个文件」那颗钮点到的是同一个 `<label>` 里那个藏起来的 `<input type="file">`。 */
+function pickFile(btn: HTMLElement): void {
+	btn.closest("label")?.querySelector("input")?.click();
 }

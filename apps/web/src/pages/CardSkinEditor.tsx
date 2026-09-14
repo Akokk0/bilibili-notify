@@ -31,19 +31,23 @@ import {
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCardSkinList } from "./cards/card-skins-query";
+import { serverErrors } from "./cards/preview-error";
 import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
 import { SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import {
 	addBlock,
 	addCustomBlock,
+	addFont,
 	addKnob,
 	addKnobOption,
 	adoptCard,
 	cardOf,
 	dropCard,
+	fontsError,
 	knobsError,
 	removeBlock,
+	removeFont,
 	removeKnob,
 	removeKnobOption,
 	setBlockCss,
@@ -51,6 +55,7 @@ import {
 	setBlockHtml,
 	setBlockShowIf,
 	setColumns,
+	setFont,
 	setFrame,
 	setFrameCss,
 	setKnobDecl,
@@ -62,7 +67,13 @@ import {
 	setSkinMeta,
 	skinMetaError,
 } from "./cards/skin-draft-ops";
-import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
+import {
+	useCardSkinAssets,
+	useCardSkinManifest,
+	useDeleteCardSkinAsset,
+	useSaveCardSkin,
+	useUploadCardSkinAsset,
+} from "./cards/skin-editor-query";
 
 /**
  * 预览那一栏最宽到哪儿。卡宽上限是 1200,真按它给就把画布挤没了 —— 超过这个数的卡
@@ -123,6 +134,9 @@ export default function CardSkinEditor() {
 	// 权威),而且只在真缺这种卡时才去拉 —— 平时白打一趟。
 	const factoryId = listQuery.data?.skins.find((s) => s.builtin)?.id ?? "";
 	const missingCard = draft !== null && draft.cards[kind] === undefined;
+	const assetsQuery = useCardSkinAssets(id);
+	const upload = useUploadCardSkinAsset(id);
+	const removeAsset = useDeleteCardSkinAsset(id);
 	const factory = useCardSkinManifest(factoryId, !readOnly && missingCard && factoryId !== "");
 
 	// 预览那一栏的宽度**跟着卡宽走**,不再钉死 400 —— 640 宽的卡挤在 400 里右半张就没了。
@@ -130,7 +144,12 @@ export default function CardSkinEditor() {
 	const previewCol = Math.min(Math.max(cardOf(draft, kind)?.width ?? 600, 320), PREVIEW_COL_MAX);
 	// 存不下去的草稿不许按保存:装包门那头只回一句「name: 太短」或「knobs[3]: …」,
 	// 序号对不上界面上第几行,主人根本不知道说的是哪一个。
-	const draftError = draft === null ? null : (skinMetaError(draft) ?? knobsError(draft));
+	const draftError =
+		draft === null
+			? null
+			: (skinMetaError(draft) ??
+				knobsError(draft) ??
+				fontsError(draft, assetsQuery.data?.assets ?? []));
 
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
@@ -354,6 +373,24 @@ export default function CardSkinEditor() {
 													setDraft((d) => (d === null ? d : setKnobOption(d, key, index, patch))),
 												onOptionRemove: (key, index) =>
 													setDraft((d) => (d === null ? d : removeKnobOption(d, key, index))),
+											}
+								}
+								assets={{
+									names: assetsQuery.data?.assets ?? [],
+									pending: assetsQuery.isPending,
+									uploadError: serverErrors(upload.error).join(";") || null,
+								}}
+								onAssets={
+									readOnly
+										? undefined
+										: {
+												onUpload: (file) => upload.mutate(file),
+												onDeleteAsset: (name) => removeAsset.mutate(name),
+												onAddFont: () => setDraft((d) => (d === null ? d : addFont(d))),
+												onFont: (index, patch) =>
+													setDraft((d) => (d === null ? d : setFont(d, index, patch))),
+												onRemoveFont: (index) =>
+													setDraft((d) => (d === null ? d : removeFont(d, index))),
 											}
 								}
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}

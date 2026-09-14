@@ -51,6 +51,43 @@ export function useSaveCardSkin(id: string) {
 	});
 }
 
+/** 某一套皮肤盘上有哪些资产。字体那张表照它画候选。 */
+export const cardSkinAssetsKey = (id: string) => ["card-skin-assets", id] as const;
+
+export function useCardSkinAssets(id: string) {
+	return useQuery({
+		queryKey: cardSkinAssetsKey(id),
+		queryFn: () => api.get<{ assets: string[] }>(`/api/card-skins/${id}/assets`),
+	});
+}
+
+/**
+ * 往**这套皮肤**里传一份资产。传的是皮肤目录那条路由,不是主人自己的字体 / 图库 ——
+ * 清单里的 `asset:assets/<文件>` 只能指包内文件,指到别处的话导出的 zip 里没有它,
+ * 别人装上是回落字体。
+ */
+export function useUploadCardSkinAsset(id: string) {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (file: File) => {
+			const form = new FormData();
+			form.append("file", file);
+			return api.upload<{ name: string }>(`/api/card-skins/${id}/assets`, form);
+		},
+		// 传完候选表当场要有它 —— 不作废的话作者得刷新页面才选得到,看着像没传上去。
+		onSuccess: () => void qc.invalidateQueries({ queryKey: cardSkinAssetsKey(id) }),
+	});
+}
+
+export function useDeleteCardSkinAsset(id: string) {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (name: string) =>
+			api.delete<{ ok: boolean }>(`/api/card-skins/${id}/assets/${encodeURIComponent(name)}`),
+		onSuccess: () => void qc.invalidateQueries({ queryKey: cardSkinAssetsKey(id) }),
+	});
+}
+
 /**
  * **有没有 Chrome**(`GET /api/cards/render-source`)。「最终效果」得靠它 —— 没有就把钮
  * 禁掉并说清楚该去配什么,而不是让主人按下去吃一个 503。

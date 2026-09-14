@@ -18,6 +18,7 @@ import type { CardSkinShotResponse } from "@bilibili-notify/contract";
 import type { CardSkinKind } from "@bilibili-notify/internal";
 import { Btn, ErrorNote, HintNote, LoadingBlock, WarnNote } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { serverErrors } from "./preview-error";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
 
 /** 防抖窗口。改一个旋钮到看见新图之间的等待,与「别把 server 打满」之间的折中。 */
@@ -81,7 +82,7 @@ export function SkinPreviewPane({
 	}, [kind, scene, manifest]);
 
 	/** 装包门拒了:`errors` 是逐条原因,原样列出来 —— 自编一句「预览失败」等于把线索吞掉。 */
-	const errors = errorsOf(preview.error);
+	const errors = serverErrors(preview.error);
 	/** 画出来多宽、缩多少。卡比这一栏窄时就按卡宽画,不拉伸(拉伸出来的不是那张卡)。 */
 	const shown = Math.min(width, Math.max(boxWidth, 1));
 	const scale = shown / width;
@@ -214,15 +215,4 @@ export function SkinPreviewPane({
 			</HintNote>
 		</div>
 	);
-}
-
-/**
- * 装包门那串 `errors`。`api` 那层把 4xx 的响应体挂在 error 上,这里把它捞出来 ——
- * 捞不到就退回 message(至少还有一句话,而不是一片空白)。
- */
-function errorsOf(err: unknown): string[] {
-	if (!err) return [];
-	const body = (err as { body?: { errors?: unknown } }).body;
-	if (Array.isArray(body?.errors)) return body.errors.map(String);
-	return [String((err as Error).message)];
 }

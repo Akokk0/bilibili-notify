@@ -702,3 +702,69 @@ export function removeKnobOption(
 			: { ...k, options: k.options.filter((_, i) => i !== index) },
 	);
 }
+
+// ---- 皮肤自带字体 -----------------------------------------------------------
+//
+// 清单里的 `asset:assets/<文件>` 只能指**包内**文件 —— 所以自带字体的前提是先把文件传进
+// 这套皮肤(`POST /api/card-skins/:id/assets`)。指到主人自己的字体库是不行的:导出的 zip
+// 里没有那份文件,别人装上就是回落字体。
+
+type Font = NonNullable<CardSkinManifest["fonts"]>[number];
+
+const fontsOf = (manifest: CardSkinManifest): Font[] => manifest.fonts ?? [];
+
+/** 回一份换了字体表的清单。空表**删键**,同 {@link setSkinMeta} 那几项。 */
+function withFonts(manifest: CardSkinManifest, fonts: Font[]): CardSkinManifest {
+	const next: CardSkinManifest = { ...manifest };
+	if (fonts.length === 0) delete next.fonts;
+	else next.fonts = fonts;
+	return next;
+}
+
+/** 起一行空的。装满 {@link CARD_SKIN_LIMITS.maxFonts} 回原件(空操作不换引用)。 */
+export function addFont(manifest: CardSkinManifest): CardSkinManifest {
+	const fonts = fontsOf(manifest);
+	if (fonts.length >= CARD_SKIN_LIMITS.maxFonts) return manifest;
+	return withFonts(manifest, [...fonts, { family: "", asset: "" } as Font]);
+}
+
+export function removeFont(manifest: CardSkinManifest, index: number): CardSkinManifest {
+	const fonts = fontsOf(manifest);
+	if (fonts[index] === undefined) return manifest;
+	return withFonts(
+		manifest,
+		fonts.filter((_, i) => i !== index),
+	);
+}
+
+export function setFont(
+	manifest: CardSkinManifest,
+	index: number,
+	patch: { family?: string; asset?: string },
+): CardSkinManifest {
+	const fonts = fontsOf(manifest);
+	if (fonts[index] === undefined) return manifest;
+	return withFonts(
+		manifest,
+		fonts.map((f, i) => (i === index ? ({ ...f, ...patch } as Font) : f)),
+	);
+}
+
+/**
+ * 字体表存不存得下去。装包门那头回的是 `fonts[1]「」: 指了「…」,但包里没有这份资产` ——
+ * 这里提前说人话,而且**指到还没传上去的文件**是最常见的那一种(先写 family、忘了传文件)。
+ */
+export function fontsError(manifest: CardSkinManifest, assets: readonly string[]): string | null {
+	const families = new Set<string>();
+	for (const f of fontsOf(manifest)) {
+		if (f.family.trim() === "") return "有一行字体还没起名字";
+		if (families.has(f.family)) return `字体名「${f.family}」重复了`;
+		families.add(f.family);
+		if (f.asset === "") return `字体「${f.family}」还没选用哪份资产`;
+		const name = f.asset.replace(/^asset:/, "");
+		if (!assets.includes(name)) {
+			return `字体「${f.family}」指着「${name}」,但这套皮肤里没有这份资产`;
+		}
+	}
+	return null;
+}

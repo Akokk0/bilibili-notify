@@ -16,12 +16,12 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../services/api", () => ({
-	api: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
+	api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), upload: vi.fn() },
 	ApiError: class extends Error {},
 }));
 
@@ -353,5 +353,108 @@ describe("编辑器 · 三档附加字段的接线", () => {
 		expect(screen.queryByRole("button", { name: /删掉这个候选/ })).toBeNull();
 		fireEvent.click(screen.getByRole("button", { name: /添加候选/ }));
 		expect(screen.getAllByRole("button", { name: /删掉这个候选/ })).toHaveLength(2);
+	});
+});
+
+/**
+ * 皮肤的**资产**与**自带字体**。清单里的 `asset:assets/<文件>` 只能指包内文件 —— 这两节
+ * 是把文件送进包里、再让字体指到它的唯一一条路。
+ *
+ * 钉四条:① 传上去之后候选表里**当场有它**(不刷新就选不到 = 这根线等于没接);② 字体
+ * 那张表的 family 与指向都存得出去;③ 传的是**皮肤目录**那条路由,不是主人自己的字体库
+ * (指错了地方,导出的 zip 里就没有这份字体,别人装上是回落字体);④ 只读皮肤上传不了。
+ */
+describe("编辑器 · 皮肤资产与自带字体", () => {
+	/** `GET /:id/assets` 的活值 —— 传完要重拉,这里模拟服务端那份在变。 */
+	let assets: string[] = [];
+
+	function mockWithAssets(builtin = false): void {
+		assets = [];
+		vi.mocked(api.get).mockImplementation(async (url: string) => {
+			if (url === "/api/card-skins") {
+				return {
+					skins: [
+						{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
+						{ id: "neon", name: "霓虹", builtin, updatedAt: 0, knobs: [] },
+					],
+					active: "neon",
+					fallbacks: [],
+				};
+			}
+			if (url === "/api/card-skins/neon") return { manifest: structuredClone(MANIFEST) };
+			if (url === "/api/card-skins/neon/assets") return { assets: [...assets] };
+			if (url === "/api/cards/render-source") return { enabled: true };
+			return {};
+		});
+		vi.mocked(api.post).mockResolvedValue({
+			html: "<html><body></body></html>",
+			width: 600,
+			warnings: [],
+			scene: "streaming",
+		});
+		vi.mocked(api.put).mockResolvedValue({ ok: true, warnings: [] });
+		vi.mocked(api.upload).mockImplementation(async () => {
+			assets.push("assets/song.ttf");
+			return { name: "assets/song.ttf" };
+		});
+	}
+
+	const pick = (file: File) =>
+		fireEvent.change(screen.getByLabelText("传一份资产"), { target: { files: [file] } });
+
+	it("传一份字体 → 走皮肤目录那条路由,传完候选表里当场有它", async () => {
+		mockWithAssets();
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		await act(async () => {
+			pick(new File([new Uint8Array([1])], "song.ttf"));
+		});
+
+		expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe("/api/card-skins/neon/assets");
+		expect(await screen.findByText("assets/song.ttf")).toBeTruthy();
+	});
+
+	it("自带字体:起一行、填 family、指到那份资产 —— 三样都存得出去", async () => {
+		mockWithAssets();
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+		await act(async () => {
+			pick(new File([new Uint8Array([1])], "song.ttf"));
+		});
+		await screen.findByText("assets/song.ttf");
+
+		fireEvent.click(screen.getByRole("button", { name: /添加字体/ }));
+		fireEvent.change(screen.getByLabelText("字体名"), { target: { value: "Song" } });
+		fireEvent.change(screen.getByLabelText("用哪份资产"), {
+			target: { value: "asset:assets/song.ttf" },
+		});
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		const body = saved() as unknown as { fonts?: Array<Record<string, unknown>> };
+		expect(body.fonts).toEqual([{ family: "Song", asset: "asset:assets/song.ttf" }]);
+	});
+
+	it("一份资产都没有 → 字体那张表说清楚要先传,而不是给一个空下拉", async () => {
+		mockWithAssets();
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		fireEvent.click(screen.getByRole("button", { name: /添加字体/ }));
+		expect(screen.getByText(/先在上面传一份字体文件/)).toBeTruthy();
+	});
+
+	it("内置皮肤是只读的 —— 传不了也加不了", async () => {
+		mockWithAssets(true);
+		renderEditor();
+		await screen.findByText("封面图");
+		await openSkinTab();
+
+		expect(screen.queryByLabelText("传一份资产")).toBeNull();
+		expect(screen.queryByRole("button", { name: /添加字体/ })).toBeNull();
 	});
 });

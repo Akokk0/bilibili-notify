@@ -18,6 +18,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	addBlock,
 	addCustomBlock,
+	addFont,
 	addKnob,
 	addKnobOption,
 	adoptCard,
@@ -27,9 +28,11 @@ import {
 	clampInt,
 	columnsOf,
 	dropCard,
+	fontsError,
 	gridLimits,
 	knobsError,
 	removeBlock,
+	removeFont,
 	removeKnob,
 	removeKnobOption,
 	setBlockCss,
@@ -37,6 +40,7 @@ import {
 	setBlockHtml,
 	setBlockShowIf,
 	setColumns,
+	setFont,
 	setFrame,
 	setFrameCss,
 	setKnobDecl,
@@ -695,5 +699,51 @@ describe("knobsError 也管这三档", () => {
 			off: "none",
 		});
 		expect(knobsError(m)).toContain("徽章");
+	});
+});
+
+/**
+ * 皮肤自带字体。清单里的 `asset:assets/<文件>` 只能指**包内**文件 —— 指到别处的话导出的
+ * zip 里没有那份文件,别人装上是回落字体,而门禁与本机全绿。
+ */
+describe("自带字体", () => {
+	const withFonts = (...fonts: unknown[]) =>
+		({ ...manifest(), fonts }) as unknown as CardSkinManifest;
+
+	it("加一行 / 改 / 删;删空了整个 fonts 键也没了", () => {
+		const one = addFont(manifest());
+		expect(one.fonts).toHaveLength(1);
+		const filled = setFont(setFont(one, 0, { family: "Song" }), 0, {
+			asset: "asset:assets/song.ttf",
+		});
+		expect(filled.fonts?.[0]).toEqual({ family: "Song", asset: "asset:assets/song.ttf" });
+		expect("fonts" in removeFont(filled, 0)).toBe(false);
+	});
+
+	it("加满上限就加不动了,而且原样返回(空操作不该让草稿变脏)", () => {
+		let m = manifest();
+		for (let i = 0; i < CARD_SKIN_LIMITS.maxFonts; i++) m = addFont(m);
+		expect(m.fonts).toHaveLength(CARD_SKIN_LIMITS.maxFonts);
+		expect(addFont(m)).toBe(m);
+	});
+
+	it("指着一份还没传上去的资产 → 说清楚(最常见的那一种:先写名字、忘了传文件)", () => {
+		const m = withFonts({ family: "Song", asset: "asset:assets/song.ttf" });
+		expect(fontsError(m, [])).toContain("没有这份资产");
+		expect(fontsError(m, ["assets/song.ttf"])).toBeNull();
+	});
+
+	it("名字空了 / 重了 / 没选资产,各说各的", () => {
+		expect(fontsError(withFonts({ family: " ", asset: "" }), [])).toContain("名字");
+		expect(fontsError(withFonts({ family: "Song", asset: "" }), [])).toContain("哪份资产");
+		expect(
+			fontsError(
+				withFonts(
+					{ family: "Song", asset: "asset:assets/a.ttf" },
+					{ family: "Song", asset: "asset:assets/b.ttf" },
+				),
+				["assets/a.ttf", "assets/b.ttf"],
+			),
+		).toContain("重复");
 	});
 });
