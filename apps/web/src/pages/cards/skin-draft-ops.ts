@@ -226,3 +226,39 @@ function normalizeColumn(c: CardSkinColumn): CardSkinColumn {
 	}
 	return { fr: clampInt(c.fr, 1, CARD_SKIN_LIMITS.columns) };
 }
+
+/**
+ * 改一个块的 CSS。**只剩空白就把键删掉** —— 装包门那头洗空的 CSS 也是当「没写」处理
+ * (不留空串字段),草稿这边留个空串,存一趟回来键就没了,脏标当场又亮起来。
+ */
+export function setBlockCss(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+	css: string,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
+	const blocks = card.blocks.map((b) => {
+		if (b.id !== blockId) return b;
+		const next = { ...b };
+		if (css.trim() === "") delete next.css;
+		else next.css = css;
+		return next;
+	});
+	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+}
+
+/** 改卡片外框的 CSS(根块两层)。空白同样删键,理由见 {@link setBlockCss}。 */
+export function setFrameCss(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	css: string,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card) return manifest;
+	const next: Card = { ...card };
+	if (css.trim() === "") delete next.css;
+	else next.css = css;
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+}

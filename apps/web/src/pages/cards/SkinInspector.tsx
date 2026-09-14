@@ -11,10 +11,24 @@
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
-import { Btn, ConfirmDialog, EmptyNote, Icon, Pill, Section, Toggle } from "@bilibili-notify/ui";
+import {
+	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_FRAME_HOOKS,
+	CARD_SKIN_LIMITS,
+	CARD_SKIN_SELF_HOOK,
+} from "@bilibili-notify/internal/constants";
+import {
+	Btn,
+	ConfirmDialog,
+	EmptyNote,
+	ErrorNote,
+	Icon,
+	Pill,
+	Section,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Picker, TNum } from "../../components/forms";
+import { Picker, TArea, TNum } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
 import { blockOf, cardOf, columnsOf, gridLimits } from "./skin-draft-ops";
 
@@ -28,7 +42,9 @@ export function SkinInspector({
 	kind,
 	selection,
 	onGrid,
+	onCss,
 	onFrame,
+	onFrameCss,
 	onColumns,
 	onRemove,
 }: {
@@ -36,7 +52,9 @@ export function SkinInspector({
 	kind: CardSkinKind;
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
+	onCss: (blockId: string, css: string) => void;
 	onFrame: (patch: FramePatch) => void;
+	onFrameCss: (css: string) => void;
 	/** 改 12 列的宽度;`undefined` = 回到 12 等分(把 `columns` 整份删掉)。 */
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
 	/** 删掉这个块。**不给 = 这套皮肤只读**,连删除钮都不该出现。 */
@@ -51,7 +69,9 @@ export function SkinInspector({
 	}
 	if (selection.kind === "frame") {
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
-		return <FrameInspector card={card} onFrame={onFrame} onColumns={onColumns} />;
+		return (
+			<FrameInspector card={card} onFrame={onFrame} onColumns={onColumns} onFrameCss={onFrameCss} />
+		);
 	}
 
 	const block = blockOf(card, selection.id);
@@ -106,6 +126,14 @@ export function SkinInspector({
 				</div>
 			</Section>
 
+			<CssSection
+				label="这个块的 CSS"
+				hooksLabel="这个块的挂点"
+				hooks={blockHooks(kind, block)}
+				value={block.css ?? ""}
+				onChange={(css) => onCss(block.id, css)}
+			/>
+
 			{onRemove ? (
 				<div className="flex justify-end">
 					<Btn
@@ -144,10 +172,12 @@ function FrameInspector({
 	card,
 	onFrame,
 	onColumns,
+	onFrameCss,
 }: {
 	card: Card;
 	onFrame: (patch: FramePatch) => void;
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
+	onFrameCss: (css: string) => void;
 }) {
 	const custom = card.columns !== undefined;
 	const cols = columnsOf(card);
@@ -210,8 +240,103 @@ function FrameInspector({
 					)}
 				</div>
 			</Section>
+
+			<CssSection
+				label="外框的 CSS"
+				hooksLabel="外框的挂点"
+				hooks={Object.entries(CARD_SKIN_FRAME_HOOKS)}
+				value={card.css ?? ""}
+				onChange={onFrameCss}
+			/>
 		</div>
 	);
+}
+
+/**
+ * 这个块的 CSS 能挂哪些选择器:`self`(整块)+ 内置块内部那几个部件。自定义块只有
+ * `self` —— 里面的 HTML 是作者自己写的,挂点也就该由他自己在 HTML 里定。
+ */
+function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[string, string]> {
+	const meta =
+		block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind]?.[block.builtin] : undefined;
+	return [[CARD_SKIN_SELF_HOOK, "整块"], ...Object.entries(meta?.hooks ?? {})];
+}
+
+/**
+ * CSS 那一节:挂点清单 + 一个纯文本框。
+ *
+ * **先有文本框,再谈旋钮**(「编辑器 = 能力全集」):白名单里七十来条属性,能变成控件的
+ * 只是其中一小把,少了这个框,作者就有一半的能力够不着。清洗与「削掉了什么」归 server
+ * ——预览那栏已经把 warnings 逐条列出来了,这里只拦一条前端自己就能判的:超上限。
+ *
+ * 挂点列出来还能点一下补进去:挂点名是**对外 API**,而记不住名字是写卡片皮肤的第一道坎。
+ */
+function CssSection({
+	label,
+	hooksLabel,
+	hooks,
+	value,
+	onChange,
+}: {
+	label: string;
+	hooksLabel: string;
+	hooks: Array<[string, string]>;
+	value: string;
+	onChange: (css: string) => void;
+}) {
+	const over = value.length > CARD_SKIN_LIMITS.maxCssBytes;
+	return (
+		<Section label="CSS">
+			<div className="flex flex-col gap-2 p-2.5">
+				{/* `<fieldset>` 只为给这排钮一个名字(同列定义那处)。 */}
+				<fieldset aria-label={hooksLabel} className="flex min-w-0 flex-wrap gap-1">
+					{hooks.map(([name, human]) => (
+						<button
+							key={name}
+							type="button"
+							data-bn="chip"
+							title={`[data-bn="${name}"] —— ${human}`}
+							onClick={() => onChange(appendRule(value, name))}
+							className="flex items-center gap-1 rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+						>
+							<span>{shortLabel(human)}</span>
+							<span className="font-mono text-bn-text-tertiary">{name}</span>
+						</button>
+					))}
+				</fieldset>
+
+				<TArea
+					value={value}
+					onChange={onChange}
+					rows={8}
+					mono
+					ariaLabel={label}
+					placeholder={'[data-bn="self"]{padding:12px 16px}'}
+				/>
+
+				{over ? (
+					<ErrorNote size="sm">
+						{value.length} 字,超过上限 {CARD_SKIN_LIMITS.maxCssBytes} —— 这样存不下去。
+					</ErrorNote>
+				) : (
+					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
+						{value.length} / {CARD_SKIN_LIMITS.maxCssBytes}
+					</span>
+				)}
+			</div>
+		</Section>
+	);
+}
+
+/** 在末尾补一条空规则。已有内容时另起一行,不打断作者手里那一条。 */
+function appendRule(css: string, hook: string): string {
+	const rule = `[data-bn="${hook}"]{}`;
+	return css.trim() === "" ? rule : `${css.replace(/\s+$/, "")}\n${rule}`;
+}
+
+/** 挂点的人话名摆在胶囊上时只取括号前那截 —— 「外框(渐变 / 背景图那一层)」太长。 */
+function shortLabel(human: string): string {
+	return human.split("(")[0]?.trim() || human;
 }
 
 /** 一列:列号 + 单位(份 / px)+ 数。 */

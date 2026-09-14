@@ -38,9 +38,11 @@ import {
 	addBlock,
 	cardOf,
 	removeBlock,
+	setBlockCss,
 	setBlockGrid,
 	setColumns,
 	setFrame,
+	setFrameCss,
 } from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
@@ -228,6 +230,10 @@ export default function CardSkinEditor() {
 								onGrid={(blockId, patch) =>
 									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
 								}
+								onCss={(blockId, css) =>
+									setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))
+								}
+								onFrameCss={(css) => setDraft((d) => (d === null ? d : setFrameCss(d, kind, css)))}
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
 								onColumns={(columns) =>
 									setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))

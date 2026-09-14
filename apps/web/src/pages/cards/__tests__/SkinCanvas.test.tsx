@@ -10,6 +10,7 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -19,9 +20,11 @@ import {
 	addBlock,
 	cardOf,
 	removeBlock,
+	setBlockCss,
 	setBlockGrid,
 	setColumns,
 	setFrame,
+	setFrameCss,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -92,6 +95,20 @@ function Harness({
 				onGrid={(id, patch) =>
 					setDraft((d) => {
 						const next = setBlockGrid(d, "live", id, patch);
+						onDraft?.(next);
+						return next;
+					})
+				}
+				onCss={(id, css) =>
+					setDraft((d) => {
+						const next = setBlockCss(d, "live", id, css);
+						onDraft?.(next);
+						return next;
+					})
+				}
+				onFrameCss={(css) =>
+					setDraft((d) => {
+						const next = setFrameCss(d, "live", css);
 						onDraft?.(next);
 						return next;
 					})
@@ -319,5 +336,58 @@ describe("检查器 · 卡片外框", () => {
 		fireEvent.click(screen.getByLabelText("自定义列宽"));
 
 		expect("columns" in (cardOf(lastDraft(onDraft), "live") as object)).toBe(false);
+	});
+});
+
+describe("检查器 · CSS", () => {
+	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
+		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
+
+	it("敲块 CSS → 回到草稿", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(blockBtn("封面图"));
+
+		fireEvent.change(screen.getByLabelText("这个块的 CSS"), {
+			target: { value: '[data-bn="self"]{padding:8px}' },
+		});
+
+		expect(cardOf(lastDraft(onDraft), "live")?.blocks[0]?.css).toBe(
+			'[data-bn="self"]{padding:8px}',
+		);
+	});
+
+	it("挂点是对外 API,列出来还能点一下补进去 —— 名字记不住是写皮肤第一道坎", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(blockBtn("封面图"));
+
+		// 封面块内部有「封面」与「状态角标」两个挂点。
+		fireEvent.click(within(screen.getByLabelText("这个块的挂点")).getByText("封面"));
+
+		expect(cardOf(lastDraft(onDraft), "live")?.blocks[0]?.css).toContain('[data-bn="image"]');
+	});
+
+	it("外框的两层挂点摆在外框那一节", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(screen.getByText("卡片外框"));
+
+		fireEvent.change(screen.getByLabelText("外框的 CSS"), {
+			target: { value: '[data-bn="glass"]{border-radius:20px}' },
+		});
+
+		expect(cardOf(lastDraft(onDraft), "live")?.css).toBe('[data-bn="glass"]{border-radius:20px}');
+	});
+
+	it("超了上限当场说 —— 不然是存的时候才被装包门拒", () => {
+		render(<Harness />);
+		fireEvent.click(blockBtn("封面图"));
+
+		fireEvent.change(screen.getByLabelText("这个块的 CSS"), {
+			target: { value: "a".repeat(CARD_SKIN_LIMITS.maxCssBytes + 1) },
+		});
+
+		expect(screen.getByText(/存不下去/)).toBeTruthy();
 	});
 });

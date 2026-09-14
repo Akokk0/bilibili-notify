@@ -24,9 +24,11 @@ import {
 	columnsOf,
 	gridLimits,
 	removeBlock,
+	setBlockCss,
 	setBlockGrid,
 	setColumns,
 	setFrame,
+	setFrameCss,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -259,5 +261,32 @@ describe("columnsOf / setColumns", () => {
 		)?.columns;
 		expect(cols?.[0]).toEqual({ px: 43.76 });
 		expect(cols?.[1]).toEqual({ fr: CARD_SKIN_LIMITS.columns });
+	});
+});
+
+describe("setBlockCss / setFrameCss", () => {
+	const CSS = '[data-bn="self"]{color:red}';
+
+	it("写进去的就是那一份;清空 = 把键删掉(清洗器那头也把洗空的当没写)", () => {
+		const withCss = setBlockCss(manifest(), "live", "title", CSS);
+		expect(blockOf(cardOf(withCss, "live"), "title")?.css).toBe(CSS);
+		const cleared = setBlockCss(withCss, "live", "title", "   ");
+		expect("css" in (blockOf(cardOf(cleared, "live"), "title") as object)).toBe(false);
+	});
+
+	it("外框 CSS 同理", () => {
+		const withCss = setFrameCss(manifest(), "live", CSS);
+		expect(cardOf(withCss, "live")?.css).toBe(CSS);
+		expect("css" in (cardOf(setFrameCss(withCss, "live", ""), "live") as object)).toBe(false);
+	});
+
+	it("回的是新清单,原件一个字节都没动;对不上的块 / 卡原样返回", () => {
+		const before = manifest();
+		const snapshot = JSON.stringify(before);
+		expect(setBlockCss(before, "live", "title", CSS)).not.toBe(before);
+		expect(JSON.stringify(before)).toBe(snapshot);
+		expect(setBlockCss(before, "live", "没这个块", CSS)).toBe(before);
+		expect(setBlockCss(before, "sc", "title", CSS)).toBe(before);
+		expect(setFrameCss(before, "sc", CSS)).toBe(before);
 	});
 });
