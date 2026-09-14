@@ -546,15 +546,8 @@ describe("皮肤自定义旋钮", () => {
 	 * 这几条是**注入面**的闸,不是挑剔:`;` 能在一条自定义属性里塞进第二条声明,
 	 * `url(` 是取网,反斜杠在 tokenizer 里先于 ident 解开(`\75 rl(` 就是 `url(`)。
 	 */
-	it("颜色只准 hex / rgb 族 / 命名色;函数与转义一律拒", () => {
-		for (const good of [
-			"#fff",
-			"#fb7299",
-			"#fb729980",
-			"rgb(251,114,153)",
-			"rgba(0,0,0,.5)",
-			"transparent",
-		]) {
+	it("颜色只准 3 位 / 6 位 hex;函数与转义一律拒", () => {
+		for (const good of ["#fff", "#fb7299"]) {
 			expect(parseCardSkin(withKnobs([knob({ default: good })])).ok, good).toBe(true);
 		}
 		for (const bad of [
@@ -686,6 +679,51 @@ describe("皮肤自定义旋钮", () => {
 			expect(cardSkinKnobCss(density, "tight")).toBe("tight");
 			expect(cardSkinKnobCss(shadow, true)).toBe("block");
 			expect(cardSkinKnobCss(shadow, false)).toBe("none");
+		});
+
+		/**
+		 * 2026-09-14 主人拍板收紧成 hex-only:面板的取色器(`TColor`)只认 `#rgb` / `#rrggbb`,
+		 * 契约从前还收命名色与 `rgb()` 族 —— 皮肤把 default 写成 `tomato`,文本框就以「格式
+		 * 不对」的样子摆着。收紧之后作者**装包当场就报错**,比默默显示怪样早得多。
+		 * 半透明不靠 8 位 hex,走 `color-mix(in srgb,var(--bn-knob-x) 35%,transparent)`。
+		 */
+		it("颜色只认 hex —— 命名色与 rgb() 族装包就拒", () => {
+			const named: CardSkinKnob = {
+				key: "accent",
+				label: "主色",
+				type: "color",
+				default: "tomato",
+			};
+			expect(parseCardSkin(withKnobs([named])).ok).toBe(false);
+			const fn: CardSkinKnob = {
+				key: "accent",
+				label: "主色",
+				type: "color",
+				default: "rgb(251,114,153)",
+			};
+			expect(parseCardSkin(withKnobs([fn])).ok).toBe(false);
+			// 带透明度的 8 位 hex 也不收:面板那个文本框读不了,半透明走 color-mix。
+			const alpha: CardSkinKnob = {
+				key: "accent",
+				label: "主色",
+				type: "color",
+				default: "#fb729980",
+			};
+			expect(parseCardSkin(withKnobs([alpha])).ok).toBe(false);
+			// 三位与六位照收。
+			for (const good of ["#fff", "#FB7299"]) {
+				expect(
+					parseCardSkin(withKnobs([{ key: "accent", label: "主色", type: "color", default: good }]))
+						.ok,
+					good,
+				).toBe(true);
+			}
+		});
+
+		it("用户拧出来的值同样只认 hex —— 命名色不注入", () => {
+			expect(cardSkinKnobCss(color, "tomato")).toBeNull();
+			expect(cardSkinKnobCss(color, "rgb(1,2,3)")).toBeNull();
+			expect(cardSkinKnobCss(color, "#fb7299")).toBe("#fb7299");
 		});
 
 		it("脏值一律 null(不注入),不是兜个默认值", () => {

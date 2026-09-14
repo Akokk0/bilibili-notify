@@ -445,11 +445,18 @@ export const cardSkinKnobVar = (key: string): string => `--bn-knob-${key}`;
 const KNOB_KEY_RE = /^[a-z][a-z0-9-]*$/;
 
 /**
- * 颜色:hex(3/4/6/8 位)、`rgb` 族函数、或一个纯字母的命名色。
- * 别的形状(尤其带函数名的)一律不认 —— 见下面 {@link KNOB_VALUE_DENY} 的理由。
+ * 颜色:**只认 3 位 / 6 位 hex**(2026-09-14 主人拍板收紧)。
+ *
+ * 判据是**与面板对齐**:取色器 `TColor` 只吐 `#rgb` / `#rrggbb`,契约从前还收命名色与
+ * `rgb()` 族 —— 皮肤把 default 写成 `tomato` 时,面板的文本框就以「格式不对」的样子摆着
+ * (点一下色块能换成 hex,功能是通的,但看上去像坏了)。收紧之后作者**装包当场报错**,
+ * 比默默显示怪样早得多;另一条路(面板造一张命名色翻译表)得跟着 CSS 规范走,是长期负担。
+ *
+ * 带透明度的 8 位 hex 一并不收 —— 面板那个文本框同样读不了。半透明走
+ * `color-mix(in srgb,var(--bn-knob-x,#hex) 35%,transparent)`:它过得了清洗器且零告警,
+ * 是这套旋钮里派生半透明色的唯一做法(`rgba()` 读不了变量)。
  */
-const KNOB_COLOR_RE =
-	/^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]{3,20}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/-]+\))$/;
+const KNOB_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 /**
  * 下拉候选 / 开关两端的字面量。允许的字符集**不含** `;` `{` `}` `:` `"` `'` 与反斜杠:
@@ -499,7 +506,7 @@ export const CardSkinKnobSchema = z.discriminatedUnion("type", [
 			key: knobKey,
 			label: knobLabel,
 			type: z.literal("color"),
-			default: z.string().regex(KNOB_COLOR_RE, "颜色只准 hex、rgb / hsl 族函数或命名色"),
+			default: z.string().regex(KNOB_COLOR_RE, "颜色只准 3 位 / 6 位 hex(半透明走 color-mix)"),
 		})
 		.strict(),
 	z

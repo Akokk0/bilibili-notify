@@ -360,16 +360,27 @@ function withGradient(
  * 派生皮肤里那两枚渐变旋钮的**起始位置**跟着存量颜色走 —— 面板打开时取色器显示的
  * 该是主人原来那两个色,不是出厂色。只动 `default`,不碰声明的其余部分。
  */
+/**
+ * 存量颜色能不能当颜色旋钮的默认值。契约 2026-09-14 收紧成 hex-only,而
+ * `cardStyle.cardColorStart` 是个**没有格式约束**的字符串(面板的取色器只吐 hex,手改
+ * 配置或走 API 灌进来的可以是任何东西)。塞进去过不了装包门,而装包门正在开机迁移的
+ * 必经之路上 —— 一炸就是起不来,与上面「名字太长」同一类防守。
+ */
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 function knobsWithGradientDefaults(
 	knobs: CardSkinManifest["knobs"],
 	base: CardSkinGradient | undefined,
 ): CardSkinManifest["knobs"] {
 	if (!knobs || !base) return knobs;
 	const K = DEFAULT_SKIN_KNOB_KEYS;
+	// 拿不了的色就把起始位置留在出厂值。**CSS 那头照旧用主人的色** —— 卡片外观不变是
+	// 迁移的头等目标,这里让步的只是面板上取色器的起始位置。
+	const pick = (v: string, fallback: string): string => (HEX_COLOR_RE.test(v) ? v : fallback);
 	return knobs.map((k) => {
 		if (k.type !== "color") return k;
-		if (k.key === K.gradientStart) return { ...k, default: base.start };
-		if (k.key === K.gradientEnd) return { ...k, default: base.end };
+		if (k.key === K.gradientStart) return { ...k, default: pick(base.start, k.default) };
+		if (k.key === K.gradientEnd) return { ...k, default: pick(base.end, k.default) };
 		return k;
 	});
 }

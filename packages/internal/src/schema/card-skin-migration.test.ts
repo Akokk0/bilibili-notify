@@ -13,6 +13,8 @@ import { type CardBlock, type CardLayout, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } fr
 import {
 	type CardSkinBlock,
 	type CardSkinManifest,
+	CardSkinManifestSchema,
+	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_FRAME_BG_RULE,
 } from "./card-skin";
@@ -287,6 +289,24 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 		expect(byKey.get("gradient-end")?.default).toBe(G.end);
 		// 玻璃那两枚不受颜色影响,原样。
 		expect(byKey.get("glass-opacity")?.default).toBe(0.82);
+	});
+
+	/**
+	 * 颜色旋钮 2026-09-14 收紧成 hex-only,而存量 `cardColorStart` 是个没有格式约束的
+	 * 字符串(面板的取色器只吐 hex,但手改配置 / 走 API 灌进来的可以是任何东西)。
+	 * 把它原样塞进旋钮声明的话,派生皮肤会**过不了装包门** —— 而那是开机迁移的必经之路,
+	 * 一炸就是起不来。所以:CSS 里照旧用主人的色(卡片外观不变,这是迁移的头等目标),
+	 * 只有旋钮那个起始位置退回出厂色。
+	 */
+	it("存量颜色不是 hex → CSS 照旧用它,旋钮的起始位置退回出厂色(装包门过得去)", () => {
+		const weird = { start: "tomato", end: "rgb(1,2,3)" };
+		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: weird });
+		expect(skin.cards.live?.css).toBe(withRule("live", RULE(weird.start, weird.end)));
+		const byKey = new Map((skin.knobs ?? []).map((k) => [k.key, k]));
+		expect(byKey.get("gradient-start")?.default).toBe(DEFAULT_CARD_GRADIENT[0]);
+		expect(byKey.get("gradient-end")?.default).toBe(DEFAULT_CARD_GRADIENT[1]);
+		// 真正的判据:这份清单本身过得了 schema。
+		expect(CardSkinManifestSchema.safeParse(skin).success).toBe(true);
 	});
 
 	it("不传 colors → 旋钮声明原样(连引用都不换)", () => {
