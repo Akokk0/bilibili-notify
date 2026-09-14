@@ -34,7 +34,7 @@ import { useCardSkinList } from "./cards/card-skins-query";
 import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
 import { SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
-import { cardOf, setBlockGrid } from "./cards/skin-draft-ops";
+import { addBlock, cardOf, removeBlock, setBlockGrid } from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
@@ -182,7 +182,7 @@ export default function CardSkinEditor() {
 					<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_400px_320px]">
 						<GlassBox
 							title={`网格画布 · ${KIND_META[kind].label}卡`}
-							subtitle="拖块改行 / 列,拉左右边改跨列;这里的行等高只是示意,真卡里行高随内容撑"
+							subtitle="点一个块,在右边的检查器里改它的位置;这里的行等高只是示意,真卡里行高随内容撑"
 							icon={<Icon.square size={14} />}
 						>
 							<SkinCanvas
@@ -190,6 +190,19 @@ export default function CardSkinEditor() {
 								card={cardOf(draft, kind)}
 								selection={selection}
 								onSelect={setSelection}
+								// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
+								onAdd={
+									readOnly
+										? undefined
+										: (builtin) => {
+												if (draft === null) return;
+												const added = addBlock(draft, kind, builtin);
+												if (!added) return;
+												setDraft(added.manifest);
+												// 加完立刻选中:新块落在最底下整宽一行,十次有九次下一步就是把它挪窄。
+												setSelection({ kind: "block", id: added.blockId });
+											}
+								}
 							/>
 						</GlassBox>
 						<GlassBox
@@ -207,6 +220,15 @@ export default function CardSkinEditor() {
 								selection={selection}
 								onGrid={(blockId, patch) =>
 									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+								}
+								onRemove={
+									readOnly
+										? undefined
+										: (blockId) => {
+												setDraft((d) => (d === null ? d : removeBlock(d, kind, blockId)));
+												// 选中得跟着撤,不然检查器对着一个已经没了的块。
+												setSelection(null);
+											}
 								}
 							/>
 						</GlassBox>

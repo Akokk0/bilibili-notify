@@ -10,12 +10,12 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SkinCanvas, type SkinSelection } from "../SkinCanvas";
 import { SkinInspector } from "../SkinInspector";
-import { cardOf, setBlockGrid } from "../skin-draft-ops";
+import { addBlock, cardOf, removeBlock, setBlockGrid } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
 	({
@@ -45,8 +45,18 @@ const manifest = (): CardSkinManifest =>
 		},
 	}) as unknown as CardSkinManifest;
 
-/** 画布 + 检查器接在一份真草稿上 —— 这条回路正是要钉的东西。 */
-function Harness({ onDraft }: { onDraft?: (m: CardSkinManifest) => void }) {
+/**
+ * 画布 + 检查器接在一份真草稿上 —— 这条回路正是要钉的东西。接线与 `CardSkinEditor`
+ * 那头同形:增删块都是「换草稿 + 顺手把选中挪到该在的地方」。
+ */
+function Harness({
+	onDraft,
+	readOnly,
+}: {
+	onDraft?: (m: CardSkinManifest) => void;
+	/** 只读时不给增删的口 —— 内置皮肤那档,控件根本不该出现。 */
+	readOnly?: boolean;
+}) {
 	const [draft, setDraft] = useState<CardSkinManifest>(manifest());
 	const [selection, setSelection] = useState<SkinSelection>(null);
 	return (
@@ -56,6 +66,17 @@ function Harness({ onDraft }: { onDraft?: (m: CardSkinManifest) => void }) {
 				card={cardOf(draft, "live")}
 				selection={selection}
 				onSelect={setSelection}
+				onAdd={
+					readOnly
+						? undefined
+						: (builtin) => {
+								const added = addBlock(draft, "live", builtin);
+								if (!added) return;
+								setDraft(added.manifest);
+								onDraft?.(added.manifest);
+								setSelection({ kind: "block", id: added.blockId });
+							}
+				}
 			/>
 			<SkinInspector
 				manifest={draft}
@@ -68,10 +89,25 @@ function Harness({ onDraft }: { onDraft?: (m: CardSkinManifest) => void }) {
 						return next;
 					})
 				}
+				onRemove={
+					readOnly
+						? undefined
+						: (id) => {
+								setDraft((d) => {
+									const next = removeBlock(d, "live", id);
+									onDraft?.(next);
+									return next;
+								});
+								setSelection(null);
+							}
+				}
 			/>
 		</div>
 	);
 }
+
+/** 目录面板。画布上也有同名的块,查目录里那枚得先圈住它。 */
+const catalogue = (): HTMLElement => screen.getByRole("group", { name: "可以添加的块" });
 
 const blockBtn = (label: string): HTMLElement => {
 	const el = screen.getByText(label).closest("button");
@@ -137,5 +173,58 @@ describe("检查器 · 位置", () => {
 	it("没选中任何东西 → 检查器请人去点一个,而不是空着", () => {
 		render(<Harness />);
 		expect(screen.getByText(/在左边画布上点一个块/)).toBeTruthy();
+	});
+});
+
+describe("添加块 / 删块", () => {
+	it("添加块 → 目录列出这种卡的内置块,点一个就落在最底下那一行并被选中", () => {
+		render(<Harness />);
+		expect(screen.queryByText("简介")).toBeNull();
+
+		fireEvent.click(screen.getByText(/添加块/));
+		fireEvent.click(within(catalogue()).getByRole("button", { name: /简介/ }));
+
+		// 已有三块占到 r3,新块落在 r4、整宽(画布多一列行号,所以 CSS 上是 2 起跨 12)。
+		expect(blockBtn("简介").style.gridRow).toBe("4 / span 1");
+		expect(blockBtn("简介").style.gridColumn).toBe("2 / span 12");
+		// 加完立刻选中 —— 不选中的话主人得自己再去画布上找那一格才能接着摆。
+		expect(blockBtn("简介").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByLabelText(/起始列/)).toBeTruthy();
+	});
+
+	it("目录里已经摆上去的块标一句「已有」—— 重复摆封面几乎总是手滑", () => {
+		render(<Harness />);
+		fireEvent.click(screen.getByText(/添加块/));
+		const cover = within(catalogue()).getByRole("button", { name: /封面图/ });
+		expect(cover.textContent).toContain("已有");
+	});
+
+	it("删块:画布上那格没了,检查器也不再对着它", () => {
+		render(<Harness />);
+		fireEvent.click(blockBtn("主播名"));
+		fireEvent.click(screen.getByText(/删除这个块/));
+
+		expect(screen.queryByText("主播名")).toBeNull();
+		expect(screen.queryByLabelText(/起始列/)).toBeNull();
+		// 剩下的块一个没少。
+		expect(blockBtn("封面图")).toBeTruthy();
+	});
+
+	it("带内容的块要先问一句 —— 自定义块的 html 删了就找不回来", () => {
+		render(<Harness />);
+		fireEvent.click(blockBtn("自定义块"));
+		fireEvent.click(screen.getByText(/删除这个块/));
+
+		// 还在:问完才删。(画布上一处、检查器的徽章一处,所以数个数。)
+		expect(screen.getAllByText("自定义块").length).toBeGreaterThan(0);
+		fireEvent.click(screen.getByText("删掉"));
+		expect(screen.queryAllByText("自定义块")).toHaveLength(0);
+	});
+
+	it("只读的皮肤不给增删的口", () => {
+		render(<Harness readOnly />);
+		expect(screen.queryByText(/添加块/)).toBeNull();
+		fireEvent.click(blockBtn("主播名"));
+		expect(screen.queryByText(/删除这个块/)).toBeNull();
 	});
 });

@@ -10,7 +10,8 @@
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
-import { EmptyNote, Pill, Section } from "@bilibili-notify/ui";
+import { Btn, ConfirmDialog, EmptyNote, Icon, Pill, Section } from "@bilibili-notify/ui";
+import { useState } from "react";
 import { TNum } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
 import { blockOf, cardOf, gridLimits } from "./skin-draft-ops";
@@ -23,12 +24,17 @@ export function SkinInspector({
 	kind,
 	selection,
 	onGrid,
+	onRemove,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
+	/** 删掉这个块。**不给 = 这套皮肤只读**,连删除钮都不该出现。 */
+	onRemove?: (blockId: string) => void;
 }) {
+	// 「这块带着内容,真删?」那个弹窗开没开。
+	const [confirming, setConfirming] = useState(false);
 	const card = cardOf(manifest, kind);
 
 	if (selection === null) {
@@ -49,6 +55,13 @@ export function SkinInspector({
 	}
 
 	const lim = gridLimits(block.grid);
+	// 自己带内容的块删了就找不回来:自定义块的 HTML、块 CSS、资产变量都不在目录里,
+	// 而内置块从「添加块」里原样再摆一个就是了 —— 所以只对前者拦一道。
+	const carriesWork =
+		block.kind === "custom" ||
+		(block.css ?? "") !== "" ||
+		Object.keys(block.assets ?? {}).length > 0;
+
 	return (
 		<div className="flex flex-col gap-3.5">
 			<div className="flex items-center gap-1.5">
@@ -86,6 +99,33 @@ export function SkinInspector({
 					/>
 				</div>
 			</Section>
+
+			{onRemove ? (
+				<div className="flex justify-end">
+					<Btn
+						size="sm"
+						variant="danger-outline"
+						icon={<Icon.trash size={12} />}
+						onClick={() => (carriesWork ? setConfirming(true) : onRemove(block.id))}
+					>
+						删除这个块
+					</Btn>
+				</div>
+			) : null}
+
+			{confirming && onRemove ? (
+				<ConfirmDialog
+					title="删掉这个块?"
+					message="它自己带着内容(自定义 HTML / 块 CSS / 资产变量),删了找不回来 —— 内置块能从「添加块」里原样再摆一个,这些不能。"
+					confirmLabel="删掉"
+					danger
+					onConfirm={() => {
+						setConfirming(false);
+						onRemove(block.id);
+					}}
+					onCancel={() => setConfirming(false)}
+				/>
+			) : null}
 		</div>
 	);
 }

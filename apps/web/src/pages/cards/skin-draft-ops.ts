@@ -72,3 +72,89 @@ export function setBlockGrid(
 	});
 	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
+
+/** 这张卡还加得下块吗。皮肤没定义这种卡(`undefined`)与块数到顶都算加不下。 */
+export function canAddBlock(card: Card | undefined): boolean {
+	return card !== undefined && card.blocks.length < CARD_SKIN_LIMITS.maxBlocks;
+}
+
+/**
+ * 往卡里添一个内置块:落在**最后一行的下一行、整宽 12 列**。
+ *
+ * 这个落点是唯一不会与既有块打架的起手式 —— 往中间塞要么盖住别人、要么得把后面整体
+ * 挪一行,而「先落在最底下、再拖到想要的位置」是所有版式工具的通用手势。画布上那条
+ * 「空行」画的就是它。
+ *
+ * 回 `null` 的两种情形:这套皮肤没定义这种卡、块数到顶。**新 id 与新清单一起回** ——
+ * 调用方要拿它立刻选中新块,让它自己再算一次就有算出第二个答案的机会。
+ */
+export function addBlock(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	builtin: string,
+): { manifest: CardSkinManifest; blockId: string } | null {
+	const card = manifest.cards[kind];
+	if (!card || !canAddBlock(card)) return null;
+	const blockId = nextBlockId(card, builtin);
+	const lastRow = card.blocks.reduce(
+		(m, b) => Math.max(m, b.grid.row + (b.grid.rowSpan ?? 1) - 1),
+		0,
+	);
+	const block = {
+		id: blockId,
+		kind: "builtin",
+		builtin,
+		grid: { row: lastRow + 1, column: 1, span: CARD_SKIN_LIMITS.columns },
+	} as Block;
+	return {
+		manifest: {
+			...manifest,
+			cards: { ...manifest.cards, [kind]: { ...card, blocks: [...card.blocks, block] } },
+		},
+		blockId,
+	};
+}
+
+/**
+ * 给新块起一个这张卡里没人用的 id。
+ *
+ * 内置块名今天都合规,但 id 是**存进皮肤包**的东西,而门在 schema 那头
+ * (`^[a-z][a-z0-9-]{0,31}$`)—— 靠「目录里恰好都是小写」撑着,等于把一条门规矩
+ * 寄存在别处的数据上。撞名也得让开:两个同 id 的块在装包门那里直接判「重复」。
+ */
+function nextBlockId(card: Card, base: string): string {
+	const clean =
+		base
+			.toLowerCase()
+			.replace(/[^a-z0-9-]/g, "-")
+			.replace(/^[^a-z]+/, "")
+			.slice(0, 32) || "block";
+	const taken = new Set(card.blocks.map((b) => b.id));
+	if (!taken.has(clean)) return clean;
+	// 候选比块数多(块数已被 `canAddBlock` 挡在上限以下),所以一定能挑出一个。
+	for (let n = 2; ; n += 1) {
+		const suffix = `-${n}`;
+		const next = `${clean.slice(0, 32 - suffix.length)}${suffix}`;
+		if (!taken.has(next)) return next;
+	}
+}
+
+/**
+ * 从卡里删掉一个块。**不回收行号** —— 删掉中间那行后把后面整体上移,会把主人手摆好的
+ * 位置全冲掉;空出来的行在出图时高度是 0,留着不碍事。
+ */
+export function removeBlock(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
+	return {
+		...manifest,
+		cards: {
+			...manifest.cards,
+			[kind]: { ...card, blocks: card.blocks.filter((b) => b.id !== blockId) },
+		},
+	};
+}

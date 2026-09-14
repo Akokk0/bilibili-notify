@@ -11,8 +11,11 @@
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
-import { EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
+import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
+import { useState } from "react";
+import { canAddBlock } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -28,13 +31,20 @@ export function SkinCanvas({
 	card,
 	selection,
 	onSelect,
+	onAdd,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
 	card: Card | undefined;
 	selection: SkinSelection;
 	onSelect: (next: SkinSelection) => void;
+	/** 添一个内置块。**不给 = 这套皮肤只读**,连「添加块」都不该出现。 */
+	onAdd?: (builtin: string) => void;
 }) {
+	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
+	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
+	const [picking, setPicking] = useState(false);
+
 	if (!card) {
 		return (
 			<EmptyNote>
@@ -91,13 +101,25 @@ export function SkinCanvas({
 					/>
 				))}
 
-				<div
-					className="flex items-center justify-center rounded-bn-sm border border-bn-inactive/50 border-dashed text-bn-text-tertiary text-bn-xs"
-					style={{ gridColumn: `2 / span ${cols}`, gridRow: lastRow + 1 }}
-				>
-					空行 —— 用「添加块」往这儿放
-				</div>
+				<EmptyRow
+					cols={cols}
+					row={lastRow + 1}
+					picking={picking}
+					full={!canAddBlock(card)}
+					onToggle={onAdd ? () => setPicking((p) => !p) : undefined}
+				/>
 			</div>
+
+			{picking && onAdd ? (
+				<BlockCatalogue
+					kind={kind}
+					used={new Set(card.blocks.flatMap((b) => (b.kind === "builtin" ? [b.builtin] : [])))}
+					onPick={(builtin) => {
+						onAdd(builtin);
+						setPicking(false);
+					}}
+				/>
+			) : null}
 
 			{/* 卡片外框不是块,但也能选中(宽度 / 行列间距 / 列定义 / 外框 CSS 都在它身上)。 */}
 			<button
@@ -117,6 +139,93 @@ export function SkinCanvas({
 				</span>
 			</button>
 		</div>
+	);
+}
+
+/**
+ * 最后一行底下那条空行 —— 它既是「网格到这儿为止」的示意,也是**新块的落点**
+ * (`addBlock` 就把块放这一行),所以「添加块」这个钮就长在它身上,而不是摆到远处的
+ * 工具条上。只读时它退回一条不可点的虚线。
+ */
+function EmptyRow({
+	cols,
+	row,
+	picking,
+	full,
+	onToggle,
+}: {
+	cols: number;
+	row: number;
+	picking: boolean;
+	/** 块数到顶了。话要说全:光把钮禁掉,主人只会以为界面坏了。 */
+	full: boolean;
+	onToggle?: () => void;
+}) {
+	const style = { gridColumn: `2 / span ${cols}`, gridRow: row };
+	if (!onToggle || full) {
+		return (
+			<div
+				className="flex items-center justify-center rounded-bn-sm border border-bn-inactive/50 border-dashed text-bn-text-tertiary text-bn-xs"
+				style={style}
+			>
+				{full ? `这张卡已经 ${CARD_SKIN_LIMITS.maxBlocks} 块,加不下了` : "空行"}
+			</div>
+		);
+	}
+	return (
+		<AddButton block style={style} aria-expanded={picking} onClick={onToggle}>
+			<Icon.plus size={12} /> 添加块
+		</AddButton>
+	);
+}
+
+/**
+ * 能往这张卡里添的内置块目录。分两档摆:**复合块**是今天模板里那一段原样搬,
+ * **原子块**是从复合块里抠出来的单件(决策 8)—— 分档是为了让「我要的是整块头部
+ * 还是只要头像」一眼能挑。
+ *
+ * 已经摆上去的照列不禁用:分割线本来就要摆好几条。只标一句「已有」,因为重复摆一张
+ * 封面几乎总是手滑。
+ */
+function BlockCatalogue({
+	kind,
+	used,
+	onPick,
+}: {
+	kind: CardSkinKind;
+	used: Set<string>;
+	onPick: (builtin: string) => void;
+}) {
+	const entries = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]);
+	const groups: Array<[label: string, items: Array<[string, CardSkinBuiltinBlock]>]> = [
+		["复合块", entries.filter(([, m]) => m.atom !== true)],
+		["原子块", entries.filter(([, m]) => m.atom === true)],
+	];
+	return (
+		// `<fieldset>` 而不是 `<div role="group">`:同一个语义(读屏器都念「分组」),但原生
+		// 元素不用手写 role —— biome 的 useSemanticElements 钉着这条。
+		<fieldset
+			aria-label="可以添加的块"
+			className="mt-2.5 flex min-w-0 flex-col gap-2 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2.5"
+		>
+			{groups.map(([label, items]) =>
+				items.length === 0 ? null : (
+					<div key={label} className="flex flex-col gap-1.5">
+						<span className="text-bn-2xs text-bn-text-tertiary">{label}</span>
+						<div className="flex flex-wrap gap-1.5">
+							{items.map(([name, meta]) => (
+								<Btn key={name} size="sm" variant="outline" onClick={() => onPick(name)}>
+									{meta.label}
+									{used.has(name) ? (
+										<span className="text-bn-2xs text-bn-text-tertiary">已有</span>
+									) : null}
+								</Btn>
+							))}
+						</div>
+					</div>
+				),
+			)}
+		</fieldset>
 	);
 }
 

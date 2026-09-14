@@ -6,11 +6,25 @@
  * (数字框边敲边过,拒了就永远敲不出两位数);③ **`span` 跟着起始列收** —— 不收的话清洗器
  * 那头直接判越界,主人看到的是「保存失败」而不是「刚才那一下把它挤出去了」;④ **`rowSpan`
  * 为 1 时不写进去**(缺省就是 1,写进去只是 diff 里一行噪音)。
+ *
+ * 增删块另钉两条:⑤ **新块的 id 与既有的撞了要让开** —— 撞了不换名的话装包门直接判
+ * 「块 id 重复」,而主人看到的是保存时一句莫名其妙的报错;⑥ **删块不回收行号** ——
+ * 回收等于把主人手摆好的位置全冲掉。
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
-import { blockOf, cardOf, clampInt, gridLimits, setBlockGrid } from "../skin-draft-ops";
+import {
+	addBlock,
+	blockOf,
+	canAddBlock,
+	cardOf,
+	clampInt,
+	gridLimits,
+	removeBlock,
+	setBlockGrid,
+} from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
 	({
@@ -102,5 +116,79 @@ describe("setBlockGrid", () => {
 		const before = manifest();
 		const after = setBlockGrid(before, "live", "没这个块", { row: 2 });
 		expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+	});
+});
+
+describe("addBlock", () => {
+	it("新块落在最后一行的下一行、整宽 —— 「空行往这儿放」那句话的兑现", () => {
+		const added = addBlock(manifest(), "live", "desc");
+		if (!added) throw new Error("这张卡还加得下,不该回 null");
+		expect(gridOf(added.manifest, added.blockId)).toEqual({ row: 3, column: 1, span: 12 });
+	});
+
+	it("id 与既有块撞了就带后缀 —— 撞了不换名的话装包门直接判「块 id 重复」", () => {
+		const once = addBlock(manifest(), "live", "title");
+		if (!once) throw new Error("加得下");
+		expect(once.blockId).toBe("title-2");
+		const twice = addBlock(once.manifest, "live", "title");
+		expect(twice?.blockId).toBe("title-3");
+	});
+
+	it("回的是新清单,原件一个字节都没动", () => {
+		const before = manifest();
+		const snapshot = JSON.stringify(before);
+		const added = addBlock(before, "live", "desc");
+		expect(JSON.stringify(before)).toBe(snapshot);
+		expect(added?.manifest).not.toBe(before);
+	});
+
+	it("一块都没有的卡 → 落在第 1 行", () => {
+		const empty = manifest();
+		(empty.cards.live as { blocks: unknown[] }).blocks = [];
+		expect(
+			gridOf(addBlock(empty, "live", "cover")?.manifest as CardSkinManifest, "cover").row,
+		).toBe(1);
+	});
+
+	it("满了就加不进去 —— canAddBlock 与 addBlock 说的是同一句话", () => {
+		const full = manifest();
+		(full.cards.live as { blocks: unknown[] }).blocks = Array.from(
+			{ length: CARD_SKIN_LIMITS.maxBlocks },
+			(_, i) => ({
+				id: `b${i}`,
+				kind: "builtin",
+				builtin: "divider",
+				grid: { row: i + 1, column: 1, span: 12 },
+			}),
+		);
+		expect(canAddBlock(cardOf(full, "live"))).toBe(false);
+		expect(addBlock(full, "live", "desc")).toBe(null);
+	});
+
+	it("这套皮肤没定义这种卡 → 回 null(别凭空造一张出来)", () => {
+		expect(addBlock(manifest(), "sc", "amount")).toBe(null);
+		expect(canAddBlock(cardOf(manifest(), "sc"))).toBe(false);
+	});
+});
+
+describe("removeBlock", () => {
+	it("删掉选中那块,其余原样带着走", () => {
+		const after = removeBlock(manifest(), "live", "title");
+		expect(cardOf(after, "live")?.blocks.map((b) => b.id)).toEqual(["cover"]);
+		expect(gridOf(after, "cover")).toEqual({ row: 1, column: 1, span: 12 });
+	});
+
+	it("回的是新清单,原件一个字节都没动", () => {
+		const before = manifest();
+		const snapshot = JSON.stringify(before);
+		const after = removeBlock(before, "live", "title");
+		expect(JSON.stringify(before)).toBe(snapshot);
+		expect(after).not.toBe(before);
+	});
+
+	it("id 对不上 / 没这种卡 → 原样返回", () => {
+		const before = manifest();
+		expect(removeBlock(before, "live", "没这个块")).toBe(before);
+		expect(removeBlock(before, "sc", "amount")).toBe(before);
 	});
 });
