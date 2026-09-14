@@ -22,6 +22,7 @@ import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Btn,
 	ConfirmDialog,
+	EmptyNote,
 	GlassBox,
 	HintNote,
 	Icon,
@@ -37,7 +38,6 @@ import { ChromeAutoDetect } from "../components/chrome-autodetect";
 import { Field, Picker, TArea, TInput, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
-import { OverrideBox } from "../components/override-box";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { GUARD_LEVELS } from "../config/guard-levels";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -49,28 +49,19 @@ import type { CardStyle, GlobalConfig } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
 import { CardSkinPicker, CardSkinSection } from "./cards/CardSkinSection";
-import { FontPicker } from "./cards/FontPicker";
 import { removeFontFromByKind, removeFontFromStyle } from "./cards/font-ops";
 import { GalleryPicker } from "./cards/GalleryPicker";
 import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
 import type { CardSkinKnobsBySkin } from "./cards/knob-ops";
-import {
-	type CardStyleByKind,
-	resolveKindStyle,
-	type CardKind as StyleKind,
-} from "./cards/perkind";
+import type { CardStyleByKind, CardKind as StyleKind } from "./cards/perkind";
 import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
 import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
 import {
-	appearanceOnly,
-	hasAppearanceOverride,
 	hasCoverOverride,
 	hasShowOverride,
 	isEmptyObj,
 	omitCover,
 	omitShow,
-	pickCover,
-	pickShow,
 	type ShowKey,
 	type StylePartial,
 } from "./cards/style-partition";
@@ -330,42 +321,6 @@ function TestPushCard({
 
 // 背景图选择改用图廊多选组件 GalleryPicker(支持上传 / 删盘 / 轮换序);缩略图 hook
 // 抽到 ./cards/useAssetObjectUrl 与之共享。
-
-/**
- * 卡片样式表单字段(字体 / 隐藏项 / 背景图)—— 全局默认与 per-UP
- * 覆盖复用同一组控件。插件总开关 enabled 是基础设施级、全局唯一,不在此组件内。
- * image 的日志等级同理,且已整体搬去系统页那格「按模块覆盖」与另外四个模块同住。
- */
-export function CardStyleFields({
-	style,
-	onChange,
-	onAssetDeleted,
-}: {
-	style: CardStyle;
-	onChange: (next: CardStyle) => void;
-	/** 背景图删盘回调,透传给 GalleryPicker(Cards 页借它清扫其他样式草稿)。 */
-	onAssetDeleted?: (id: string) => void;
-}) {
-	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) => onChange({ ...style, [k]: v });
-	return (
-		<>
-			<Field code="font" full>
-				<FontPicker
-					value={{ font: style.font, fontAsset: style.fontAsset }}
-					onChange={(next) => onChange({ ...style, font: next.font, fontAsset: next.fontAsset })}
-					onAssetDeleted={onAssetDeleted}
-				/>
-			</Field>
-			<Field code="backgroundImages" full>
-				<GalleryPicker
-					value={style.backgroundImages}
-					onChange={(next) => set("backgroundImages", next)}
-					onAssetDeleted={onAssetDeleted}
-				/>
-			</Field>
-		</>
-	);
-}
 
 /**
  * 直播卡「数据区」显示开关(人气·点赞 / 分区 / 粉丝数据)—— 仅直播卡用,控制数据区内部
@@ -1029,9 +984,10 @@ export default function Cards() {
 	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
 	// 类型覆盖(puStyle 覆盖基准时整份替换;否则继承全局该类型生效值)。
 	const effStyleFor = (sk: StyleKind): CardStyle => {
-		// 全局 per-kind 只贡献颜色族(show 只认基准 gStyle;封面只认基准/per-UP kind 层);
-		// per-UP per-kind 的 show / 封面是该 UP 的独立覆盖,整份 spread 保留。
-		const gEff: CardStyle = { ...gStyle, ...appearanceOnly(gByKind[sk]) };
+		// 全局 per-kind 现在**什么都不贡献**:它从前只贡献外观那一族(字体 / 背景),而那两项
+		// 2026-09-14 退役成了皮肤旋钮;show 只认基准 gStyle,封面只认基准 / per-UP kind 层。
+		// per-UP per-kind 的 show / 封面仍是该 UP 的独立覆盖,整份 spread 保留。
+		const gEff: CardStyle = { ...gStyle };
 		if (isGlobalScope) return gEff;
 		// 基准层不持有封面(savePerUp 剥离,不落盘):封面继承链 = per-UP kind 层 > 全局基准。
 		const base = puStyle ? { ...puStyle, liveCoverImages: gStyle.liveCoverImages } : gEff;
@@ -1056,10 +1012,8 @@ export default function Cards() {
 	// (全局 per-kind 的 show 字段同样剥掉,数据区继承值取自基准)。
 	const puBaseStyle: CardStyle = puStyle
 		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
-		: { ...gStyle, ...appearanceOnly(gByKind[styleKind]) };
+		: { ...gStyle };
 	const effStyle: CardStyle = effStyleFor(styleKind);
-
-	const KindIcon = Icon[KIND_LABELS[kind].icon];
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -1139,129 +1093,15 @@ export default function Cards() {
 
 				{/* LEFT: style config */}
 				<div className="flex flex-col gap-3">
-					{isGlobalTab ? (
-						isGlobalScope ? (
-							// 「全局」tab:基准通用样式(所有卡片默认共用)。
-							<GlassBox
-								title="卡片渲染样式 · 全局通用"
-								subtitle="image plugin · 所有卡片的基准字体 / 显隐项 / 背景;各类型可在对应标签单独覆盖"
-								accent="var(--color-bn-purple)"
-								icon={<Icon.edit size={14} />}
-								badge="cardStyle"
-							>
-								<CardStyleFields
-									style={gStyle}
-									onChange={(n) => setGStyle(n)}
-									onAssetDeleted={sweepDeletedAsset}
-								/>
-							</GlassBox>
-						) : (
-							// 「全局」tab · per-UP:该 UP 的样式覆盖(一套管该 UP 全部卡片)。
-							<OverrideBox
-								title="卡片样式覆盖"
-								subtitle="开 = 该 UP 用自定义字体 / 显隐项 / 背景;关 = 继承全局样式"
-								accent="var(--color-bn-purple)"
-								icon={<Icon.edit size={14} />}
-								enabled={puStyle !== undefined}
-								onToggle={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
-								inheritNote="该 UP 继承全局卡片样式"
-							>
-								{puStyle ? (
-									<CardStyleFields
-										style={puStyle}
-										onChange={(n) => setPuStyle(n)}
-										onAssetDeleted={sweepDeletedAsset}
-									/>
-								) : null}
-							</OverrideBox>
-						)
-					) : isGlobalScope ? (
-						// 类型 tab · 全局作用域:该卡片单独样式开关,打开才展开覆盖。
-						<GlassBox
-							title={`${KIND_LABELS[kind].label} · 单独样式`}
-							subtitle="开 = 该卡片用自己的字体 / 显隐项 / 背景;关 = 跟随「全局」"
-							accent={KIND_LABELS[kind].tone}
-							icon={<KindIcon size={14} />}
-							badge={gByKind[styleKind] ? "单独设置" : "跟随全局"}
-							right={
-								<Toggle
-									value={gByKind[styleKind] !== undefined}
-									onChange={(on) =>
-										setGByKind((bk) => {
-											const next = { ...bk };
-											// 外观覆盖只含外观族(show 归 gStyle 基准、封面归独立区块),appearanceOnly 防携带。
-											if (on)
-												next[styleKind] = appearanceOnly(resolveKindStyle(gStyle, bk, styleKind));
-											else delete next[styleKind];
-											return next;
-										})
-									}
-								/>
-							}
-						>
-							{gByKind[styleKind] ? (
-								<CardStyleFields
-									style={resolveKindStyle(gStyle, gByKind, styleKind)}
-									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: appearanceOnly(n) }))}
-									onAssetDeleted={sweepDeletedAsset}
-								/>
-							) : (
-								<InheritNote>该卡片跟随「全局」通用样式</InheritNote>
-							)}
-						</GlassBox>
-					) : (
-						// 类型 tab · per-UP:该 UP 此卡片单独样式开关,打开才展开覆盖(叠在该 UP 基准之上)。
-						<GlassBox
-							title={`${KIND_LABELS[kind].label} · 单独样式`}
-							subtitle="开 = 该 UP 的此卡片用自己的字体 / 显隐项 / 背景;关 = 跟随该 UP 基准（基准未覆盖则继承全局）"
-							accent={KIND_LABELS[kind].tone}
-							icon={<KindIcon size={14} />}
-							badge={hasAppearanceOverride(puByKind[styleKind]) ? "单独设置" : "跟随基准"}
-							right={
-								<Toggle
-									value={hasAppearanceOverride(puByKind[styleKind])}
-									onChange={(on) =>
-										setPuByKind((bk) => {
-											const next = { ...bk };
-											// 颜色/数据区(show)/封面三族同住该 kind 的 partial 但字段不相交:
-											// 打开取外观快照(appearanceOnly)并保留已有 show 与封面覆盖;关闭只去外观、留两族。
-											if (on) {
-												next[styleKind] = {
-													...appearanceOnly(puBaseStyle),
-													...pickShow(bk[styleKind]),
-													...pickCover(bk[styleKind]),
-												};
-											} else {
-												const keep = { ...pickShow(bk[styleKind]), ...pickCover(bk[styleKind]) };
-												if (isEmptyObj(keep)) delete next[styleKind];
-												else next[styleKind] = keep;
-											}
-											return next;
-										})
-									}
-								/>
-							}
-						>
-							{hasAppearanceOverride(puByKind[styleKind]) ? (
-								<CardStyleFields
-									style={{ ...puBaseStyle, ...puByKind[styleKind] }}
-									onChange={(n) =>
-										setPuByKind((bk) => ({
-											...bk,
-											[styleKind]: {
-												...appearanceOnly(n),
-												...pickShow(bk[styleKind]),
-												...pickCover(bk[styleKind]),
-											},
-										}))
-									}
-									onAssetDeleted={sweepDeletedAsset}
-								/>
-							) : (
-								<InheritNote>该卡片跟随该 UP 的基准样式</InheritNote>
-							)}
-						</GlassBox>
-					)}
+					{/* 字体与背景图 2026-09-14 退役成**皮肤自己的旋钮**(主人拍板):它们在皮肤底下
+					    多半不生效 —— 皮肤写一句 `font-family`、自己画一层背景就盖掉了,而面板照样
+					    让人调。四个「外观」盒(全局 / per-UP / 两处按卡种)编的都是这两项,一起撤掉;
+					    剩下的数据区开关与直播封面不是外观,各有各的盒子。 */}
+					{!isGlobalTab && kind !== "live" ? (
+						<EmptyNote>
+							这种卡的排版与观感现在整个归皮肤管 —— 去下面的皮肤库挑一套,或者「复制一份」再改。
+						</EmptyNote>
+					) : null}
 
 					{/* 卡片皮肤 —— 仅「全局」tab。皮肤是**整套外观**(七种卡一起换),不分卡种,
 					    所以它不该出现在类型 tab 上;旧的「卡片版式」一节正是按卡种各一份,

@@ -116,8 +116,11 @@ export interface ImageRendererConfig {
 	 * 悬空时静静回落 `font`。
 	 */
 	fontAsset?: string;
-	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
-	font: string;
+	/**
+	 * CSS font-family。**退役中**(2026-09-14):字体归皮肤自己的旋钮,独立端不再喂这一项;
+	 * 不给就只剩 `renderCard` 那条兜底链 —— 与从前那句「默认(交给渲染那台机器)」同义。
+	 */
+	font?: string;
 	/** 直播卡数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
 	showPopularity: boolean;
 	/** 直播卡数据区:显示分区。 */
@@ -334,7 +337,7 @@ export class ImageRenderer {
 	private async resolveFont(
 		colorOptions: CardColorOptions = {},
 	): Promise<{ font: string; fontFace?: string }> {
-		const font = colorOptions.font ?? this.config.font;
+		const font = colorOptions.font ?? this.config.font ?? "";
 		const assetId = colorOptions.fontAsset ?? this.config.fontAsset;
 		if (!assetId) return { font };
 

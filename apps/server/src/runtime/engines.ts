@@ -394,12 +394,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			serviceCtx: imageCtx,
 			puppeteer: pup,
 			config: {
-				font: cs.font,
+				// 字体与背景图 2026-09-14 退役成皮肤旋钮:值住 `cardSkinKnobs`,由渲染器自己
+				// 读盘解析(见 `skin/knob-assets.ts`)。这里不再喂那两样。
 				showPopularity: cs.showPopularity,
 				showArea: cs.showArea,
 				showFans: cs.showFans,
-				backgroundImage: cs.backgroundImages[0] ?? "",
-				fontAsset: cs.fontAsset,
 				cardSkinKnobs: globals().defaults.cardSkinKnobs,
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
@@ -842,12 +841,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				if ((cardStyleChanged || skinKnobsChanged) && imageRenderer) {
 					const cs = g.defaults.cardStyle;
 					imageRenderer.updateConfig({
-						font: cs.font,
 						showPopularity: cs.showPopularity,
 						showArea: cs.showArea,
 						showFans: cs.showFans,
-						backgroundImage: cs.backgroundImages[0] ?? "",
-						fontAsset: cs.fontAsset,
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
 				}

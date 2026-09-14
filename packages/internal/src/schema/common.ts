@@ -606,6 +606,12 @@ const CardStyleObjectSchema = z.object({
 	/** 退役字段,见上面 `cardColorStart`。 */
 	cardColorEnd: z.string().optional(),
 	/**
+	 * **退役字段**(2026-09-14 主人拍板,同玻璃那次):字体归**皮肤自己的旋钮**。
+	 * 理由是它在皮肤底下多半不生效 —— 皮肤只要写一句 `font-family` 就盖掉了它,而面板
+	 * 照样让人选(赛博朋克那套正是如此)。开机迁移把它搬进 `cardSkinKnobs` 的默认皮肤那层。
+	 * ⛔ 新代码不许读它。`.optional()` 而不是从前的 `.default(...)` —— 带默认值的话键永远
+	 * 在,迁移就永远判不出「搬过没有」,每次开机都要白搬一趟。
+	 *
 	 * 字体家族名。`packages/image` 的 `renderCard` 在它后面追加
 	 * `"Microsoft YaHei","Source Han Sans","Noto Sans CJK",sans-serif` 兜底链,
 	 * 缺字体不会渲染崩。`.default(...)` 让缺该字段的老 globals.json 加载时自动补全。
@@ -614,8 +620,10 @@ const CardStyleObjectSchema = z.object({
 	 * 逗号列表只会来自老配置与「手填(高级)」那一档,`cssFontFamily` 会逐项处理。
 	 * 想用主人自己的字体文件走下面的 `fontAsset`,它优先。
 	 */
-	font: z.string().default("PingFang SC, sans-serif"),
+	font: z.string().optional(),
 	/**
+	 * **退役字段**(同上面的 `font`):搬进字体旋钮时写成 `upload:<id>`。⛔ 新代码不许读它。
+	 *
 	 * 主人上传的字体文件资产 id(与卡片背景图同一套「落盘 + id 引用 +
 	 * 渲染期解析成 data URL」形态)。
 	 *
@@ -635,12 +643,15 @@ const CardStyleObjectSchema = z.object({
 	/** 数据区:显示粉丝数据(直播中=当前粉丝数,下播=累计观看人数,下播态=粉丝数变化)。 */
 	showFans: z.boolean().default(true),
 	/**
+	 * **退役字段**(同上面的 `font`):背景图归**皮肤自己的旋钮**(`image` 档,值就是这一串
+	 * id,多张照旧轮换)。⛔ 新代码不许读它。
+	 *
 	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用皮肤外框 CSS 里那条渐变;
 	 * 长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
 	 * 服务端从列表里挑一张解析成 data URL 内联(packages/image 仍只认单图)。旧的单值
 	 * `backgroundImage` 经下方 preprocess 自动迁移成本列表。
 	 */
-	backgroundImages: z.array(z.string()).default([]),
+	backgroundImages: z.array(z.string()).optional(),
 	/**
 	 * 直播卡自定义封面图资产 id **列表**(独立端专属,复用卡片背景同一图廊)。空列表
 	 * (默认)= 沿用 B 站房间封面 / 关键帧;长度 1 = 固定单张;长度 >1 = 每次推送顺序

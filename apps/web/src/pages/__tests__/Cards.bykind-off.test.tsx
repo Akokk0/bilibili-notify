@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * 回归测试 —— 关掉某个卡片类型的「单独样式」,必须真的关得掉。
+ * 回归测试 —— 关掉某个卡种的覆盖,必须真的关得掉。
  *
- * 复现路径(用户报告):图片渲染 → 直播卡片 tab → 打开「单独样式」→ 保存 →
+ * 复现路径(用户报告):图片渲染 → 直播卡片 tab → 打开覆盖 → 保存 →
  * 再关掉 → 保存 → 刷新回来开关又是开的。
  *
  * 根因不在开关本身,在**下发方式**。PATCH 走 JSON Merge Patch 语义:键消失 =
@@ -11,8 +11,8 @@
  * `delete` 过的 map 整个回传时,「关掉 live」在网络上等于什么都没说 —— 请求成功、
  * 后端原样保留旧覆盖,于是「关不掉」。
  *
- * per-UP 那侧只在**全部**关掉时才下发 `null` 清整片,所以「开了两类、关掉其中
- * 一类」同样关不掉,一并钉在这里。
+ * per-UP 那侧只在**全部**关掉时才下发 `null` 清整片。2026-09-14 之后 per-kind 覆盖只剩
+ * 直播那一格(封面与数据区),所以「关掉最后一格」走的正是清整片那条路。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -31,13 +31,6 @@ vi.mock("../../services/api", () => ({
 }));
 
 import { api } from "../../services/api";
-
-/** 全局已经开着 live 的单独样式 —— 也就是用户「保存过一次」之后的状态。 */
-function globalsWithLiveOverride(): GlobalConfig {
-	const defaults = makeDefaults() as unknown as Record<string, unknown>;
-	defaults.cardStyleByKind = { live: { font: "Live Sans" } };
-	return { app: {}, master: {}, defaults } as unknown as GlobalConfig;
-}
 
 function resetStore(): void {
 	useDraftStore.setState({
@@ -88,51 +81,17 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("关掉「单独样式」", () => {
-	it("全局:关掉直播卡的单独样式 → PATCH 里该类型显式为 null(否则后端当没说)", async () => {
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			return Promise.resolve(globalsWithLiveOverride());
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-
-		// 切到直播卡片 tab,开关此时应是开的(全局已有 live 覆盖)。
-		pickKindTab("开播 / 直播中 / 下播");
-		const toggle = await waitFor(() => toggleOf("直播开播 · 单独样式"));
-		expect(screen.getByText("单独设置")).toBeTruthy();
-
-		fireEvent.click(toggle); // 关掉
-		await waitFor(() => expect(screen.getByText("跟随全局")).toBeTruthy());
-
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-
-		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
-			string,
-			{ defaults: { cardStyleByKind: Record<string, unknown> } },
-		];
-		expect(url).toBe("/api/globals");
-		// 键必须在,且为 null。少了这个键,后端 deepMerge 会原样留着旧覆盖。
-		expect(body.defaults.cardStyleByKind).toHaveProperty("live");
-		expect(body.defaults.cardStyleByKind.live).toBeNull();
-	});
-
-	// image 的日志等级曾经也在这一页上,与 cardStyleByKind 共用同一个保存函数、栽的
-	// 也是同一个坑。控件已整体搬去系统页那格「按模块覆盖」,那条守卫跟着搬进了
-	// System.module-log-levels(五个模块共用一条路径,不再只钉 image 一个)。
-
-	it("per-UP:开了两类只关掉一类 → 被关的那类也得是 null", async () => {
+describe("关掉某个卡种的覆盖", () => {
+	/**
+	 * 2026-09-14 起「单独样式」那四个盒子没了 —— 它们编的是字体与背景图,而这两项退役成了
+	 * 皮肤旋钮。于是**全局**那层 `cardStyleByKind` 再没有写入方,那一条用例跟着撤掉;
+	 * per-UP 这层还剩直播封面(与数据区开关)在写,「关掉 → 得发显式 null」那个坑仍在这条
+	 * 路径上,守卫留在这里。
+	 */
+	it("per-UP:关掉直播封面覆盖 → PATCH 里那一格显式为 null(否则后端当没说)", async () => {
 		const sub: Subscription = {
 			...makeEmptySubscription("123456"),
-			overrides: {
-				cardStyleByKind: {
-					live: { font: "Live Sans" },
-					sc: { font: "SC Sans" },
-				},
-			},
+			overrides: { cardStyleByKind: { live: { liveCoverImages: ["img1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/subs")) return Promise.resolve([sub]);
@@ -150,8 +109,7 @@ describe("关掉「单独样式」", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 
 		pickKindTab("开播 / 直播中 / 下播");
-		const toggle = await waitFor(() => toggleOf("直播开播 · 单独样式"));
-		fireEvent.click(toggle);
+		fireEvent.click(await waitFor(() => toggleOf("直播封面")));
 
 		useDraftStore.getState().current?.onSave();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
@@ -160,10 +118,9 @@ describe("关掉「单独样式」", () => {
 			string,
 			{ overrides: { cardStyleByKind: Record<string, unknown> | null } },
 		];
-		const byKind = body.overrides.cardStyleByKind;
-		expect(byKind).not.toBeNull();
-		expect((byKind as Record<string, unknown>).live).toBeNull();
-		// 没动的那类必须原样留着。
-		expect((byKind as Record<string, unknown>).sc).toEqual({ font: "SC Sans" });
+		// 键必须在,且为 null。**键消失 = 「这个字段不改」**,后端 deepMerge 会原样留着旧覆盖
+		// —— 那正是「关不掉」那个 bug 的形状。这里关掉的是唯一那一格,所以清的是整片。
+		expect(body.overrides).toHaveProperty("cardStyleByKind");
+		expect(body.overrides.cardStyleByKind).toBeNull();
 	});
 });
