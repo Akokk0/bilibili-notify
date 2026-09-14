@@ -10,9 +10,11 @@ import type { CardSkinKnob } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	type CardSkinKnobsBySkin,
+	fontChoiceOfKnobValue,
 	isKnobTweaked,
 	knobSliderStep,
 	knobValue,
+	knobValueOfFontChoice,
 	resetKnobOverride,
 	setKnobOverride,
 } from "../knob-ops";
@@ -136,5 +138,43 @@ describe("resetKnobOverride", () => {
 		const before: CardSkinKnobsBySkin = { neon: { a: 1 } };
 		expect(resetKnobOverride(before, "neon", "zzz")).toBe(before);
 		expect(resetKnobOverride(before, "default", "a")).toBe(before);
+	});
+});
+
+describe("字体旋钮的值 ⇄ 字体选择器(2026-09-14 主人拍板:字体归皮肤旋钮)", () => {
+	it("三档来回都对得上:跟随兜底链 / 主人传的文件 / 家族名", () => {
+		expect(fontChoiceOfKnobValue("")).toEqual({ font: "" });
+		expect(fontChoiceOfKnobValue("upload:f1")).toEqual({ font: "", fontAsset: "f1" });
+		expect(fontChoiceOfKnobValue("Menlo")).toEqual({ font: "Menlo" });
+
+		expect(knobValueOfFontChoice({ font: "" })).toBe("");
+		expect(knobValueOfFontChoice({ font: "", fontAsset: "f1" })).toBe("upload:f1");
+		expect(knobValueOfFontChoice({ font: "Menlo" })).toBe("Menlo");
+	});
+
+	it("文件优先于家族名 —— 与从前 cardStyle 那对字段同一条规矩", () => {
+		expect(knobValueOfFontChoice({ font: "Menlo", fontAsset: "f1" })).toBe("upload:f1");
+	});
+
+	it("残值(存量手改过 / 皮肤换过这枚旋钮的类型)退回「跟随兜底链」", () => {
+		expect(fontChoiceOfKnobValue(42)).toEqual({ font: "" });
+		expect(fontChoiceOfKnobValue(["a"])).toEqual({ font: "" });
+	});
+});
+
+describe("knobValue 认得新两档", () => {
+	const font: CardSkinKnob = { key: "font", label: "字体", type: "font", default: "Menlo" };
+	const image: CardSkinKnob = { key: "wallpaper", label: "壁纸", type: "image" };
+
+	it("字体没拧过显示声明的起手位置,拧过显示拧的那个", () => {
+		expect(knobValue(font, undefined)).toBe("Menlo");
+		expect(knobValue(font, { font: "upload:f1" })).toBe("upload:f1");
+		expect(knobValue(font, { font: 7 as never })).toBe("Menlo");
+	});
+
+	it("图没有起手位置 —— 没拧过就是一张都没选", () => {
+		expect(knobValue(image, undefined)).toEqual([]);
+		expect(knobValue(image, { wallpaper: ["a1", "a2"] })).toEqual(["a1", "a2"]);
+		expect(knobValue(image, { wallpaper: "a1" as never })).toEqual([]);
 	});
 });

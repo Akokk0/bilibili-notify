@@ -12,7 +12,7 @@
 
 import type { CardSkinKnob } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinKnobsSection } from "../CardSkinKnobs";
 import type { CardSkinKnobsBySkin } from "../knob-ops";
@@ -46,6 +46,12 @@ const KNOBS: CardSkinKnob[] = [
 		],
 	},
 	{ key: "show-badge", label: "显示徽章", type: "switch", default: true, on: "block", off: "none" },
+];
+
+/** 2026-09-14 主人拍板加的两档:字体与图从全局设置退成皮肤自己的旋钮。 */
+const ASSET_KNOBS: CardSkinKnob[] = [
+	{ key: "font", label: "字体", type: "font", default: "" },
+	{ key: "wallpaper", label: "壁纸", type: "image" },
 ];
 
 function listWith(knobs?: CardSkinKnob[]) {
@@ -88,6 +94,20 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("CardSkinKnobsSection", () => {
+	it("字体 / 图两档画的是现成的那两个选择器 —— 上传、图廊、失效提示都在里面", async () => {
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/cards/")) return Promise.resolve({ fonts: [], images: [] });
+			return Promise.resolve(listWith(ASSET_KNOBS));
+		});
+		const { container } = renderKnobs({});
+		await screen.findByText("字体");
+
+		// 字体那行是字体选择器(它的第一档);图那行是图廊(它的上传口)。
+		// 画错一种,主人就只能对着一个文本框手敲资产 id。
+		expect(within(rowOf(container, "font")).getByText(/默认/)).toBeTruthy();
+		expect(within(rowOf(container, "wallpaper")).getByText(/上传/)).toBeTruthy();
+	});
+
 	it("当前皮肤没声明旋钮 → 不画控件,但明说一句这套皮肤没有可调项", async () => {
 		vi.mocked(api.get).mockResolvedValue(listWith(undefined));
 		const { container } = renderKnobs({});

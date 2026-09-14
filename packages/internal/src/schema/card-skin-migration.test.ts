@@ -12,6 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { type CardBlock, type CardLayout, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "./card-layout";
 import {
 	type CardSkinBlock,
+	type CardSkinKnob,
 	type CardSkinManifest,
 	CardSkinManifestSchema,
 	DEFAULT_CARD_GRADIENT,
@@ -281,14 +282,21 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	 * 派生皮肤把默认皮肤那四枚旋钮**整套带走**,而且渐变那两枚的起始位置换成主人原来
 	 * 那两个色 —— 否则面板打开显示的是出厂色,与他卡片上看到的对不上。
 	 */
+	/**
+	 * 取一枚旋钮声明的起手位置。**图片旋钮没有 `default`**(图是主人自己的东西,皮肤起不出
+	 * 默认值来),所以这张联合类型上不能直接点 `.default`。
+	 */
+	const defaultOf = (k: CardSkinKnob | undefined): unknown =>
+		k && "default" in k ? k.default : undefined;
+
 	it("派生皮肤带着旋钮声明,渐变那两枚的起始位置跟着存量颜色走", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
 		const byKey = new Map((skin.knobs ?? []).map((k) => [k.key, k]));
 		expect(byKey.size).toBe((DEFAULT_CARD_SKIN.knobs ?? []).length);
-		expect(byKey.get("gradient-start")?.default).toBe(G.start);
-		expect(byKey.get("gradient-end")?.default).toBe(G.end);
+		expect(defaultOf(byKey.get("gradient-start"))).toBe(G.start);
+		expect(defaultOf(byKey.get("gradient-end"))).toBe(G.end);
 		// 玻璃那两枚不受颜色影响,原样。
-		expect(byKey.get("glass-opacity")?.default).toBe(0.82);
+		expect(defaultOf(byKey.get("glass-opacity"))).toBe(0.82);
 	});
 
 	/**
@@ -303,8 +311,8 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: weird });
 		expect(skin.cards.live?.css).toBe(withRule("live", RULE(weird.start, weird.end)));
 		const byKey = new Map((skin.knobs ?? []).map((k) => [k.key, k]));
-		expect(byKey.get("gradient-start")?.default).toBe(DEFAULT_CARD_GRADIENT[0]);
-		expect(byKey.get("gradient-end")?.default).toBe(DEFAULT_CARD_GRADIENT[1]);
+		expect(defaultOf(byKey.get("gradient-start"))).toBe(DEFAULT_CARD_GRADIENT[0]);
+		expect(defaultOf(byKey.get("gradient-end"))).toBe(DEFAULT_CARD_GRADIENT[1]);
 		// 真正的判据:这份清单本身过得了 schema。
 		expect(CardSkinManifestSchema.safeParse(skin).success).toBe(true);
 	});

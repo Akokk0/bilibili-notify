@@ -12,7 +12,15 @@
  */
 
 import type { CardSkinKnob } from "@bilibili-notify/contract";
+// 值走**零依赖子路径**:从 internal 根入口取值会把 zod 拽进前端 bundle
+// (`internal-entry-conformance.test.ts` 钉着这条)。
+import {
+	CARD_SKIN_UPLOAD_PREFIX,
+	parseCardSkinFontKnobValue,
+	parseCardSkinImageKnobValue,
+} from "@bilibili-notify/internal/constants";
 import type { GlobalConfig } from "../../types/globals";
+import type { FontChoice } from "./font-ops";
 
 /** 全表:皮肤 id → 该套皮肤拧过的键。形状从配置类型里取,免得两边各写一份会漂。 */
 export type CardSkinKnobsBySkin = GlobalConfig["defaults"]["cardSkinKnobs"];
@@ -38,7 +46,6 @@ export function knobValue(
 	overrides: CardSkinKnobOverrides | undefined,
 ): CardSkinKnobValue {
 	const raw = overrides?.[knob.key];
-	if (raw === undefined) return knob.default;
 	switch (knob.type) {
 		case "color":
 			return typeof raw === "string" ? raw : knob.default;
@@ -52,7 +59,30 @@ export function knobValue(
 				: knob.default;
 		case "switch":
 			return typeof raw === "boolean" ? raw : knob.default;
+		case "font":
+			return typeof raw === "string" ? raw : knob.default;
+		// 图没有 `default`(皮肤起不出主人自己的图),所以「没拧过」就是一张都没选。
+		case "image":
+			return parseCardSkinImageKnobValue(raw) ?? [];
 	}
+}
+
+/**
+ * 字体旋钮的值 ⇄ 字体选择器那对字段(`FontChoice`)。
+ *
+ * 选择器是现成的(上传、图廊、手填、失效提示全在里面),旋钮只要把它那对字段与自己
+ * 那**一个字符串**来回翻一下:文件走 `upload:<id>`,别的就是家族名。**文件优先于家族名**,
+ * 与从前 `cardStyle.font` / `fontAsset` 同一条规矩。
+ */
+export function fontChoiceOfKnobValue(value: unknown): FontChoice {
+	const parsed = parseCardSkinFontKnobValue(value);
+	if (parsed === null) return { font: "" };
+	return "upload" in parsed ? { font: "", fontAsset: parsed.upload } : { font: parsed.family };
+}
+
+export function knobValueOfFontChoice(choice: FontChoice): string {
+	if (choice.fontAsset) return `${CARD_SKIN_UPLOAD_PREFIX}${choice.fontAsset}`;
+	return choice.font ?? "";
 }
 
 /**

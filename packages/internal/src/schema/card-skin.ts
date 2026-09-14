@@ -33,12 +33,15 @@ import {
 	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
+	CARD_SKIN_UPLOAD_PREFIX,
 	type CardSkinBuiltinBlock,
 	type CardSkinField,
 	type CardSkinFieldType,
 	type CardSkinFrameHook,
 	type CardSkinKind,
 	type PreviewScene,
+	parseCardSkinFontKnobValue,
+	parseCardSkinImageKnobValue,
 	resolvePreviewScene,
 } from "../constants.js";
 
@@ -279,6 +282,8 @@ export const CARD_SKIN_KNOB_LIMITS = {
 	key: { max: 32 },
 	/** 下拉候选 / 开关两端那种字面量的长度。 */
 	value: { max: 80 },
+	/** 一枚图片旋钮最多选几张(多张按推送轮换)。与皮肤包内资产同量级。 */
+	maxImages: 12,
 } as const;
 
 /** 旋钮的 CSS 变量名。**对外 API**,只增不改。 */
@@ -394,6 +399,39 @@ export const CardSkinKnobSchema = z.discriminatedUnion("type", [
 			off: knobValue,
 		})
 		.strict(),
+	/**
+	 * 字体(2026-09-14 主人拍板):从前是 `cardStyle.font` / `fontAsset` 那一对全局设置,
+	 * 而**用了皮肤就多半不生效** —— 皮肤只要自己写一句 `font-family`,面板上选的字体就被
+	 * 盖掉,而面板照样让人选(赛博朋克那套正是如此)。改成旋钮之后,这一档由皮肤决定给不给:
+	 * 不声明 = 面板上根本没有这个控件,不骗人。
+	 *
+	 * 值不是 CSS 字面量(见 {@link parseCardSkinFontKnobValue}):可能是主人传上来的字体
+	 * **文件**,得由宿主读盘拼成 `@font-face` 才用得上。
+	 */
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("font"),
+			/** 面板的起手位置:一个家族名(皮肤自带的那几款写这儿),空串 = 跟着兜底链。 */
+			default: z.string().max(CARD_SKIN_KNOB_LIMITS.value.max),
+		})
+		.strict(),
+	/**
+	 * 图(同上):从前的 `cardStyle.backgroundImages`。值是**主人资产库里的一串 id**,
+	 * 多张按推送轮换 —— 与从前那个背景图库一字不差,只是这回由皮肤声明要不要这一档。
+	 *
+	 * **没有 `default`**:图是主人自己的东西,皮肤起不出一个默认值来。皮肤想自带一张,
+	 * 写在自己的 CSS 里当 `var(--bn-knob-<key>, …)` 的兜底 —— 那本来就是所有旋钮的真默认值
+	 * 所在(`default` 从来只是面板的起手位置,不注入)。
+	 */
+	z
+		.object({
+			key: knobKey,
+			label: knobLabel,
+			type: z.literal("image"),
+		})
+		.strict(),
 ]);
 export type CardSkinKnob = z.infer<typeof CardSkinKnobSchema>;
 
@@ -402,6 +440,8 @@ export const CardSkinKnobValueSchema = z.union([
 	z.string().max(CARD_SKIN_KNOB_LIMITS.value.max),
 	z.number(),
 	z.boolean(),
+	/** 图片旋钮那一串资产 id。 */
+	z.array(z.string().max(CARD_SKIN_KNOB_LIMITS.value.max)).max(CARD_SKIN_KNOB_LIMITS.maxImages),
 ]);
 export type CardSkinKnobValue = z.infer<typeof CardSkinKnobValueSchema>;
 
@@ -430,8 +470,18 @@ export function cardSkinKnobCss(knob: CardSkinKnob, value: unknown): string | nu
 				: null;
 		case "switch":
 			return typeof value === "boolean" ? (value ? knob.on : knob.off) : null;
+		// 字体与图**不是纯 CSS 字面量**:一个是主人传的字体文件(要拼 `@font-face`),
+		// 一个是资产 id(要读盘变成 data URL)。两档都由宿主解析完再自己注变量 ——
+		// 这里回 null,免得把一个资产 id 原样写进 CSS。
+		case "font":
+		case "image":
+			return null;
 	}
 }
+
+// 这两个解析器与那个前缀住零依赖的 `constants.ts`(理由同块目录:面板要拿它们把旋钮值
+// 与字体 / 图廊选择器来回翻,而从根入口取值会把 zod 拽进前端 bundle)。原样再导出。
+export { CARD_SKIN_UPLOAD_PREFIX, parseCardSkinFontKnobValue, parseCardSkinImageKnobValue };
 
 /**
  * 皮肤声明的旋钮 + 用户覆盖 → 注在外框上的那串自定义属性。

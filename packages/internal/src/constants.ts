@@ -1323,6 +1323,40 @@ export const CARD_SKIN_FRAME_HOOKS = {
 } as const;
 export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
 
+/** 主人自己传上来的资产在旋钮值里的前缀。**对外 API**,只增不改。 */
+export const CARD_SKIN_UPLOAD_PREFIX = "upload:";
+
+/**
+ * 字体旋钮的值 → 宿主要做什么。
+ *
+ * - `upload:<资产 id>` —— 主人传的字体文件,宿主读盘拼 `@font-face`(与 `cardStyle.fontAsset`
+ *   从前同一条路);
+ * - 别的非空字符串 —— 一个家族名(系统字体、手填的、或者皮肤自带的那几款);
+ * - 空串 / 别的类型 —— 没什么要注的(跟着兜底链走)。
+ */
+export function parseCardSkinFontKnobValue(
+	value: unknown,
+): { upload: string } | { family: string } | null {
+	if (typeof value !== "string" || value === "") return null;
+	if (value.startsWith(CARD_SKIN_UPLOAD_PREFIX)) {
+		const id = value.slice(CARD_SKIN_UPLOAD_PREFIX.length);
+		return id === "" ? null : { upload: id };
+	}
+	return { family: value };
+}
+
+/**
+ * 图片旋钮的值 → 一串资产 id(多张按推送轮换)。空列表与「没拧过」同义,回 null。
+ *
+ * 混进来的空串 / 非字符串**剔掉**而不是整条作废:存量里被手改过的值不该让一整张卡的
+ * 背景凭空消失。
+ */
+export function parseCardSkinImageKnobValue(value: unknown): string[] | null {
+	if (!Array.isArray(value)) return null;
+	const ids = value.filter((v): v is string => typeof v === "string" && v !== "");
+	return ids.length > 0 ? ids : null;
+}
+
 /** 一个内置块的目录条目:人话名 + 它内部可分别挂 CSS 的部件。 */
 export interface CardSkinBuiltinBlock {
 	label: string;

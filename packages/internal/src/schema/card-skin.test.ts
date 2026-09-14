@@ -14,12 +14,16 @@ import {
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
 	type CardSkinKnob,
+	CardSkinKnobValueSchema,
 	type CardSkinManifest,
 	cardSkinKnobCss,
+	cardSkinKnobDeclarations,
 	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 	parseCardSkin,
+	parseCardSkinFontKnobValue,
+	parseCardSkinImageKnobValue,
 } from "./card-skin";
 
 function minimal(over: Partial<CardSkinManifest> = {}): unknown {
@@ -512,6 +516,54 @@ describe("皮肤自定义旋钮", () => {
 			]),
 		);
 		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	});
+
+	it("字体与图两档也进得去 —— 主人的字体 / 壁纸从此由皮肤决定给不给(2026-09-14 拍板)", () => {
+		const res = parseCardSkin(
+			withKnobs([
+				{ key: "font", label: "字体", type: "font", default: "" },
+				{ key: "wallpaper", label: "壁纸", type: "image" },
+			]),
+		);
+		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	});
+
+	it("图片旋钮没有 default —— 图是主人自己的东西,皮肤起不出默认值来", () => {
+		const res = parseCardSkin(
+			withKnobs([{ key: "wallpaper", label: "壁纸", type: "image", default: "" }]),
+		);
+		expect(res.ok).toBe(false);
+	});
+
+	it("这两档不是纯 CSS 字面量 —— 一律不自己注,值要宿主读盘解析", () => {
+		const font: CardSkinKnob = { key: "font", label: "字体", type: "font", default: "" };
+		const image: CardSkinKnob = { key: "wallpaper", label: "壁纸", type: "image" };
+		expect(cardSkinKnobCss(font, "Menlo")).toBe(null);
+		expect(cardSkinKnobCss(image, ["a1"])).toBe(null);
+		// 更要紧的是别漏进那串变量里:漏了就是把一个资产 id 原样写进 CSS。
+		expect(cardSkinKnobDeclarations([font, image], { font: "Menlo", wallpaper: ["a1"] })).toBe("");
+	});
+
+	it("字体旋钮的值:`upload:` 是主人传的文件,别的就是家族名", () => {
+		expect(parseCardSkinFontKnobValue("upload:f_123")).toEqual({ upload: "f_123" });
+		expect(parseCardSkinFontKnobValue("Menlo")).toEqual({ family: "Menlo" });
+		// 空 = 跟着兜底链走,没什么要注的;非字符串是存量里被手改过的残值。
+		expect(parseCardSkinFontKnobValue("")).toBe(null);
+		expect(parseCardSkinFontKnobValue("upload:")).toBe(null);
+		expect(parseCardSkinFontKnobValue(42)).toBe(null);
+	});
+
+	it("图片旋钮的值是一串资产 id(多张按推送轮换,与从前的背景图库同义)", () => {
+		expect(parseCardSkinImageKnobValue(["a1", "a2"])).toEqual(["a1", "a2"]);
+		// 空列表 = 未选,与没拧过同义;混进来的空串 / 非字符串剔掉,别让它变成一次读盘失败。
+		expect(parseCardSkinImageKnobValue([])).toBe(null);
+		expect(parseCardSkinImageKnobValue(["a1", "", 7])).toEqual(["a1"]);
+		expect(parseCardSkinImageKnobValue("a1")).toBe(null);
+	});
+
+	it("覆盖值收得下一串字符串 —— 图片旋钮存的就是那一串", () => {
+		expect(CardSkinKnobValueSchema.safeParse(["a1", "a2"]).success).toBe(true);
+		expect(CardSkinKnobValueSchema.safeParse([1, 2]).success).toBe(false);
 	});
 
 	it("变量名由 key 派生,与资产变量 / 卡片变量不撞", () => {

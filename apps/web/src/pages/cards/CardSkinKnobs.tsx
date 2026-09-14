@@ -18,13 +18,17 @@ import type { CardSkinKnob } from "@bilibili-notify/contract";
 import { Btn, GlassBox, HintNote, Icon, Toggle } from "@bilibili-notify/ui";
 import { FIELD_ROW_CHROME, TColor, TSelect } from "../../components/forms";
 import { useCardSkinList } from "./card-skins-query";
+import { FontPicker } from "./FontPicker";
+import { GalleryPicker } from "./GalleryPicker";
 import {
 	type CardSkinKnobOverrides,
 	type CardSkinKnobsBySkin,
 	type CardSkinKnobValue,
+	fontChoiceOfKnobValue,
 	isKnobTweaked,
 	knobSliderStep,
 	knobValue,
+	knobValueOfFontChoice,
 	resetKnobOverride,
 	setKnobOverride,
 } from "./knob-ops";
@@ -135,7 +139,13 @@ function KnobRow({
 					--bn-knob-{knob.key}
 				</code>
 			</div>
-			<div className="flex min-w-0 flex-1 items-center gap-3">
+			{/* 字体与图那两档是整块的选择器(图廊 + 上传 + 失效提示),比一行控件高得多 ——
+			    跟着行居中会把标签甩到中间去,所以这两档顶对齐。 */}
+			<div
+				className={`flex min-w-0 flex-1 gap-3 ${
+					knob.type === "font" || knob.type === "image" ? "items-start" : "items-center"
+				}`}
+			>
 				<KnobControl knob={knob} current={current} onSet={onSet} />
 			</div>
 		</div>
@@ -197,6 +207,27 @@ function KnobControl({
 						{current === true ? knob.on : knob.off}
 					</code>
 				</>
+			);
+		// 字体与图**借现成的那两个选择器**:上传、图廊、「这款已失效」的提示全在里面,
+		// 而它们此前伺候的正是 `cardStyle.font` / `backgroundImages` —— 同一件事,换了个家。
+		case "font":
+			return (
+				<div className="min-w-0 flex-1">
+					<FontPicker
+						value={fontChoiceOfKnobValue(current)}
+						onChange={(next) => onSet(knobValueOfFontChoice(next))}
+					/>
+				</div>
+			);
+		case "image":
+			return (
+				<div className="min-w-0 flex-1">
+					<GalleryPicker
+						value={Array.isArray(current) ? current : []}
+						onChange={onSet}
+						emptyHint="未选择(这一档由皮肤自己的兜底画)"
+					/>
+				</div>
 			);
 	}
 }
