@@ -34,15 +34,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ChromeAutoDetect } from "../components/chrome-autodetect";
-import {
-	Field,
-	LogLevelPicker,
-	type LogLevelValue,
-	Picker,
-	TArea,
-	TInput,
-	TSelect,
-} from "../components/forms";
+import { Field, Picker, TArea, TInput, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
 import { OverrideBox } from "../components/override-box";
@@ -53,7 +45,7 @@ import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { PushTarget, Subscription } from "../types/domain";
-import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
+import type { CardStyle, GlobalConfig } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
 import { CardSkinPicker, CardSkinSection } from "./cards/CardSkinSection";
@@ -339,25 +331,10 @@ function TestPushCard({
 // 背景图选择改用图廊多选组件 GalleryPicker(支持上传 / 删盘 / 轮换序);缩略图 hook
 // 抽到 ./cards/useAssetObjectUrl 与之共享。
 
-// Server-side override is `LogLevel` strings; the LogLevelPicker speaks 1|2|3
-// numeric. `null` ↔ "" (no override; fall back to app.logLevel).
-type ImageLogLevel = LogLevel | "";
-const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
-const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = {
-	1: "error",
-	2: "warn",
-	3: "info",
-	4: "debug",
-};
-const toPickerValue = (v: ImageLogLevel): LogLevelValue | null =>
-	v === "" ? null : LOG_LEVEL_TO_NUM[v];
-const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
-	v === null ? "" : NUM_TO_LOG_LEVEL[v];
-
 /**
  * 卡片样式表单字段(字体 / 隐藏项 / 背景图)—— 全局默认与 per-UP
- * 覆盖复用同一组控件。插件总开关 enabled 与 image 日志等级是基础设施级、全局唯一,
- * 不在此组件内。
+ * 覆盖复用同一组控件。插件总开关 enabled 是基础设施级、全局唯一,不在此组件内。
+ * image 的日志等级同理,且已整体搬去系统页那格「按模块覆盖」与另外四个模块同住。
  */
 export function CardStyleFields({
 	style,
@@ -765,7 +742,6 @@ export default function Cards() {
 	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
 	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局唯一,不分卡种也不分 UP。
 	const [gSkinKnobs, setGSkinKnobs] = useState<CardSkinKnobsBySkin>({});
-	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
 
 	// per-UP 覆盖草稿(undefined = 继承全局)
 	const [puStyle, setPuStyle] = useState<CardStyle | undefined>(undefined);
@@ -814,7 +790,6 @@ export default function Cards() {
 			setGStyle(globalsQuery.data.defaults.cardStyle);
 			setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
 			setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
-			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
 	}, [globalsQuery.data]);
 
@@ -850,18 +825,15 @@ export default function Cards() {
 			cardStyle: CardStyle;
 			cardStyleByKind: CardStyleByKind;
 			cardSkinKnobs: CardSkinKnobsBySkin;
-			imageLogLevel: ImageLogLevel;
 		}) => {
 			// 只挑本页真正编辑的 scope 做 diff —— 下发全量会让服务端的 enable-check
 			// 每次保存都跑一遍 puppeteer 启动 + chat.completions 探针。草稿里消失的键
-			// (关掉的 per-kind 样式、退回跟随全局的日志等级)由 buildPatch 自动变成
-			// 显式 null,不必再逐个记着手写。
+			// (关掉的 per-kind 样式)由 buildPatch 自动变成显式 null,不必再逐个记着手写。
 			const base = globalsQuery.data;
 			await api.patch<GlobalConfig>(
 				"/api/globals",
 				buildPatch(
 					{
-						app: { logLevels: { image: payload.imageLogLevel || undefined } },
 						defaults: {
 							cardStyle: payload.cardStyle,
 							cardStyleByKind: payload.cardStyleByKind,
@@ -872,7 +844,6 @@ export default function Cards() {
 						},
 					},
 					{
-						app: { logLevels: { image: base?.app.logLevels?.image } },
 						defaults: {
 							cardStyle: base?.defaults.cardStyle,
 							cardStyleByKind: base?.defaults.cardStyleByKind ?? {},
@@ -981,16 +952,14 @@ export default function Cards() {
 			...gStyle,
 			cardStyleByKind: gByKind,
 			cardSkinKnobs: gSkinKnobs,
-			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [gStyle, gByKind, gSkinKnobs, imageLogLevel]);
+	}, [gStyle, gByKind, gSkinKnobs]);
 	const globalIslandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
 			cardStyleByKind: globalsQuery.data.defaults.cardStyleByKind ?? {},
 			cardSkinKnobs: globalsQuery.data.defaults.cardSkinKnobs ?? {},
-			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
 	}, [globalsQuery.data]);
 	const perUpIslandDraft = useMemo(
@@ -1034,7 +1003,6 @@ export default function Cards() {
 						cardStyle: gStyle,
 						cardStyleByKind: gByKind,
 						cardSkinKnobs: gSkinKnobs,
-						imageLogLevel,
 					});
 			} else if (focusedSub) {
 				await savePerUp.mutateAsync(focusedSub);
@@ -1046,7 +1014,6 @@ export default function Cards() {
 				setGStyle(globalsQuery.data.defaults.cardStyle);
 				setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
 				setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
-				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 			} else {
 				setPuStyle(seededPuStyle);
 				setPuByKind(seededPuByKind);
@@ -1174,7 +1141,7 @@ export default function Cards() {
 				<div className="flex flex-col gap-3">
 					{isGlobalTab ? (
 						isGlobalScope ? (
-							// 「全局」tab:基准通用样式(所有卡片默认共用)+ 日志等级。
+							// 「全局」tab:基准通用样式(所有卡片默认共用)。
 							<GlassBox
 								title="卡片渲染样式 · 全局通用"
 								subtitle="image plugin · 所有卡片的基准字体 / 显隐项 / 背景;各类型可在对应标签单独覆盖"
@@ -1187,13 +1154,6 @@ export default function Cards() {
 									onChange={(n) => setGStyle(n)}
 									onAssetDeleted={sweepDeletedAsset}
 								/>
-								<Field code="app.logLevels.image" full>
-									<LogLevelPicker
-										value={toPickerValue(imageLogLevel)}
-										onChange={(v) => setImageLogLevel(fromPickerValue(v))}
-										allowInherit
-									/>
-								</Field>
 							</GlassBox>
 						) : (
 							// 「全局」tab · per-UP:该 UP 的样式覆盖(一套管该 UP 全部卡片)。

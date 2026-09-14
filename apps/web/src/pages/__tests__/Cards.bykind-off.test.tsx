@@ -120,34 +120,9 @@ describe("关掉「单独样式」", () => {
 		expect(body.defaults.cardStyleByKind.live).toBeNull();
 	});
 
-	it("同一根因:把图片日志等级调回「跟随全局」也得显式 null", async () => {
-		// 与 cardStyleByKind 同一个坑,就在同一个保存函数里:靠「把键过滤掉」来清除
-		// 覆盖,在 PATCH 里等于什么都没说,日志等级同样清不掉。
-		const globals = {
-			app: { logLevels: { image: "debug" } },
-			master: {},
-			defaults: makeDefaults(),
-		} as unknown as GlobalConfig;
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			return Promise.resolve(globals);
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-
-		fireEvent.click(await screen.findByText("跟随全局"));
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
-			string,
-			{ app: { logLevels: Record<string, unknown> } },
-		];
-		expect(body.app.logLevels).toHaveProperty("image");
-		expect(body.app.logLevels.image).toBeNull();
-	});
+	// image 的日志等级曾经也在这一页上,与 cardStyleByKind 共用同一个保存函数、栽的
+	// 也是同一个坑。控件已整体搬去系统页那格「按模块覆盖」,那条守卫跟着搬进了
+	// System.module-log-levels(五个模块共用一条路径,不再只钉 image 一个)。
 
 	it("per-UP:开了两类只关掉一类 → 被关的那类也得是 null", async () => {
 		const sub: Subscription = {

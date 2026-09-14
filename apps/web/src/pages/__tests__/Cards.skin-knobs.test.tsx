@@ -10,7 +10,8 @@
  *
  * - 拧一枚 → `defaults.cardSkinKnobs` 里出现它;
  * - 还原 → 那一层是显式 `null`(键消失 = 服务端读作「别动」,还原就永远不生效 ——
- *   同一个坑在 `cardStyleByKind` 与日志等级上各栽过一次,见 Cards.bykind-off)。
+ *   同一个坑在 `cardStyleByKind` 上栽过一次见 Cards.bykind-off,在按模块日志等级上
+ *   栽过一次见 System.module-log-levels)。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -152,8 +153,8 @@ describe("皮肤旋钮接进卡片页的保存路径", () => {
 		const { invalidate } = renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 
-		// 只改日志等级(它在 spec 之外,但跟卡片长相无关),旋钮一枚没碰。
-		fireEvent.click(await screen.findByText("跟随全局"));
+		// 旋钮一枚没碰就保存 —— 作废与否只该由旋钮那一片说了算,别的什么都不算。
+		await waitFor(() => expect(document.querySelector('[data-knob="glass-opacity"]')).toBeTruthy());
 		await saveAndRead();
 		expect(previewInvalidated(invalidate)).toBe(false);
 	});

@@ -88,18 +88,8 @@ export const FIELD_LABELS = {
 		hint: "留「跟随全局」即用 app.logLevel；保存后会立即推到对应模块的 pino 实例,无需重启",
 		section: "logging",
 	},
-	"app.logLevels.ai": {
-		label: "日志等级",
-		hint: "只影响 ai 模块;选「跟随全局」时与 app.logLevel 同步。保存后立即生效,无需重启。",
-		section: "logging",
-	},
-	"app.logLevels.image": {
-		label: "日志等级",
-		hint: "只影响 image 模块;选「跟随全局」时与 app.logLevel 同步。保存后立即生效,无需重启。",
-		section: "logging",
-	},
-	// 以下 3 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改 core/dynamic/live
-	// 时 walkTreeDiff 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="app.logLevels">)。
+	// 以下 5 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
+	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="app.logLevels">)。
 	"app.logLevels.core": {
 		label: "日志等级",
 		hint: "只影响 core 模块",
@@ -113,6 +103,16 @@ export const FIELD_LABELS = {
 	"app.logLevels.live": {
 		label: "日志等级",
 		hint: "只影响 live 模块",
+		section: "logging",
+	},
+	"app.logLevels.image": {
+		label: "日志等级",
+		hint: "只影响 image 模块",
+		section: "logging",
+	},
+	"app.logLevels.ai": {
+		label: "日志等级",
+		hint: "只影响 ai 模块",
 		section: "logging",
 	},
 	"app.userAgent": {

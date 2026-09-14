@@ -14,8 +14,8 @@
  *   不再像旧界面那样把预设复制进 `ai.persona`(点着看看就覆盖掉主人手写的全局
  *   人格)。要套用到全局有单独的「设为默认」按钮。
  *
- * 页面级的两项(总开关、日志等级)不属于任何一家或任何一份人格,分别放在头图与
- * 底部,不进 Tab。
+ * 总开关不属于任何一家或任何一份人格,放在头图上,不进 Tab。(曾经并排摆在底部的
+ * 日志等级已整体搬去系统页那格「按模块覆盖」,与另外四个模块同住。)
  *
  * 存盘走 PATCH /api/globals { defaults: { ai: ... } }。
  */
@@ -47,15 +47,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import {
-	Field,
-	LogLevelPicker,
-	type LogLevelValue,
-	Picker,
-	TArea,
-	TInput,
-	TNum,
-} from "../components/forms";
+import { Field, Picker, TArea, TInput, TNum } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
@@ -63,7 +55,7 @@ import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
-import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
+import type { AIPersona, AISettings, GlobalConfig } from "../types/globals";
 import { MaidSkills } from "./ai/MaidSkills";
 import {
 	addPersona,
@@ -88,21 +80,6 @@ import {
 } from "./ai/model-ops";
 import { personaIconKey } from "./ai/persona-icons";
 import { AiTestPanel } from "./ai/TestPanel";
-
-// 日志等级绑定到 `app.logLevels.ai` (per-module override),不再压全局 `app.logLevel`。
-// `null` 表示「跟随全局」(没有 override)。
-type AiLogLevel = LogLevel | "";
-const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
-const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = {
-	1: "error",
-	2: "warn",
-	3: "info",
-	4: "debug",
-};
-const toPickerValue = (v: AiLogLevel): LogLevelValue | null =>
-	v === "" ? null : LOG_LEVEL_TO_NUM[v];
-const fromPickerValue = (v: LogLevelValue | null): AiLogLevel =>
-	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
 type TopTab = "global" | "model" | "persona" | "skills";
 
@@ -155,7 +132,7 @@ function packProviders(ai: AISettings, keys: readonly string[]): Record<string, 
  * - 连接 / 参数:`<Field code={`ai.providers.${家}.apiKey`}>` → `ai.providers` 下逐家
  * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层
  */
-function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: readonly string[]) {
+function packIsland(ai: AISettings, providerKeys: readonly string[]) {
 	const {
 		dynamicPrompt,
 		liveSummaryPrompt,
@@ -190,7 +167,6 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
 		persona,
 		presets,
 		enabled,
-		app: { logLevels: { ai: levelOverride === "" ? null : levelOverride } },
 	};
 }
 
@@ -215,7 +191,6 @@ export default function Ai() {
 	});
 
 	const [draft, setDraft] = useState<AISettings | null>(null);
-	const [aiLogLevel, setAiLogLevel] = useState<AiLogLevel>("");
 	const [tab, setTab] = useState<TopTab>("global");
 	// 左栏选中的那份人格。存左栏 id 而不是 presets 下标 —— 下标会在删除时整体前移,
 	// 指向另一份人格。空串交给 resolvePersonaRailId 收敛到第一份。
@@ -231,29 +206,18 @@ export default function Ai() {
 	useEffect(() => {
 		if (globalsQuery.data) {
 			setDraft(globalsQuery.data.defaults.ai);
-			setAiLogLevel(globalsQuery.data.app.logLevels?.ai ?? "");
 		}
 	}, [globalsQuery.data]);
 
 	const save = useMutation({
-		mutationFn: async (payload: { ai: AISettings; aiLogLevel: AiLogLevel }) => {
-			// 只挑本页编辑的 scope 做 diff:草稿里消失的键(退回「跟随全局」的日志等级、
-			// 被删掉的服务商桶)由 buildPatch 变成显式 null,服务端 deepMerge 据此删键。
-			// 手写 payload 时这些消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」
-			// → 删了却没真删。
+		mutationFn: async (payload: { ai: AISettings }) => {
+			// 只挑本页编辑的 scope 做 diff:草稿里消失的键(被删掉的服务商桶)由
+			// buildPatch 变成显式 null,服务端 deepMerge 据此删键。手写 payload 时这些
+			// 消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」→ 删了却没真删。
 			const base = globalsQuery.data;
 			return await api.patch<GlobalConfig>(
 				"/api/globals",
-				buildPatch(
-					{
-						app: { logLevels: { ai: payload.aiLogLevel || undefined } },
-						defaults: { ai: payload.ai },
-					},
-					{
-						app: { logLevels: { ai: base?.app.logLevels?.ai } },
-						defaults: { ai: base?.defaults.ai },
-					},
-				),
+				buildPatch({ defaults: { ai: payload.ai } }, { defaults: { ai: base?.defaults.ai } }),
 			);
 		},
 		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
@@ -266,7 +230,6 @@ export default function Ai() {
 		// (顺手改了 model / 人格反而正常 —— 那些字段不脱敏,数据变了引用就变了。)
 		onSuccess: (next) => {
 			setDraft(next.defaults.ai);
-			setAiLogLevel(next.app.logLevels?.ai ?? "");
 			qc.invalidateQueries({ queryKey: ["globals"] });
 		},
 	});
@@ -279,16 +242,12 @@ export default function Ai() {
 		return [...keys];
 	}, [draft, globalsQuery.data]);
 	const islandDraft = useMemo(
-		() => (draft === null ? null : packIsland(draft, aiLogLevel, providerKeys)),
-		[draft, aiLogLevel, providerKeys],
+		() => (draft === null ? null : packIsland(draft, providerKeys)),
+		[draft, providerKeys],
 	);
 	const islandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
-		return packIsland(
-			globalsQuery.data.defaults.ai,
-			(globalsQuery.data.app.logLevels?.ai ?? "") as AiLogLevel,
-			providerKeys,
-		);
+		return packIsland(globalsQuery.data.defaults.ai, providerKeys);
 	}, [globalsQuery.data, providerKeys]);
 
 	useDirtyDraft({
@@ -297,13 +256,10 @@ export default function Ai() {
 		draft: islandDraft,
 		baseline: islandBaseline,
 		onSave: async () => {
-			if (draft !== null) await save.mutateAsync({ ai: draft, aiLogLevel });
+			if (draft !== null) await save.mutateAsync({ ai: draft });
 		},
 		onDiscard: () => {
-			if (globalsQuery.data) {
-				setDraft(globalsQuery.data.defaults.ai);
-				setAiLogLevel(globalsQuery.data.app.logLevels?.ai ?? "");
-			}
+			if (globalsQuery.data) setDraft(globalsQuery.data.defaults.ai);
 		},
 	});
 
@@ -616,23 +572,6 @@ export default function Ai() {
 							这里只决定<strong>用哪一份</strong>，不改它的内容 —— 内容在「女仆性格」那个 Tab
 							里编辑。 换来换去都不会动到主人手写的那份「默认」
 						</FieldNote>
-					</GlassBox>
-
-					{/* 日志等级是整个 AI 子系统的,不属于某一家服务商也不属于某一份人格。 */}
-					<GlassBox
-						title="诊断 · logging"
-						subtitle="只影响日志详略，不影响生成 · app.logLevels.ai"
-						accent={SECTION_ACCENT.diagnostic}
-						icon={<Icon.list size={14} />}
-						badge="logging"
-					>
-						<Field code="app.logLevels.ai" full>
-							<LogLevelPicker
-								value={toPickerValue(aiLogLevel)}
-								onChange={(v) => setAiLogLevel(fromPickerValue(v))}
-								allowInherit
-							/>
-						</Field>
 					</GlassBox>
 
 					{/* 试一句 —— 调完模型与人格,当场就能问她一句看看效果。 */}

@@ -28,6 +28,7 @@ import { LinkParsingSettings } from "../components/link-parsing-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
+import { AI_PURPLE } from "../config/colors";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -122,13 +123,14 @@ const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
 // ── System settings (app) ───────────────────────────────────────────────────
 
 /**
- * Per-module log overrides shown in 系统 Tab. image / ai already have their own
- * pickers in the Cards / 智能女仆 tabs, so we keep this list to the三个 the
- * user explicitly asked for (core / dynamic / live). image / ai overrides in
- * `app.logLevels` are preserved untouched on writes.
+ * `app.logLevels` 里的按模块覆盖 —— **五个模块全在这一格里设**。
+ *
+ * image / ai 从前各自躺在「图片渲染」与「智能女仆」页的底部:同一个键分三处编辑,
+ * 要调日志得先猜它归哪一页,而那两页的存盘各自还得为这一个键单独带上 `app` 这半片
+ * 补丁。日志是运维口的东西,与那两页在管的「画成什么样 / 用哪家模型」不是一回事。
  */
 const SYSTEM_MODULES: ReadonlyArray<{
-	id: "core" | "dynamic" | "live";
+	id: "core" | "dynamic" | "live" | "image" | "ai";
 	label: string;
 	tone: string;
 }> = [
@@ -138,7 +140,13 @@ const SYSTEM_MODULES: ReadonlyArray<{
 	{ id: "core", label: "core 核心", tone: SECTION_ACCENT.system },
 	{ id: "dynamic", label: "dynamic 动态", tone: PUSH_TONE.dynamic },
 	{ id: "live", label: "live 直播", tone: PUSH_TONE.live },
+	// 后两格同理不新造色:image 借版式那一族的紫,ai 借它全站通用的 `AI_PURPLE`
+	// —— 两抹紫差着一个色相档,并排看得出是两个模块。
+	{ id: "image", label: "image 出图", tone: SECTION_ACCENT.message },
+	{ id: "ai", label: "ai 女仆", tone: AI_PURPLE },
 ];
+
+type SystemModuleId = (typeof SYSTEM_MODULES)[number]["id"];
 
 const LOG_LEVEL_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
 const NUM_TO_LOG: Record<LogLevelValue, LogLevel> = {
@@ -194,10 +202,10 @@ function SystemSettingsSection({
 		onPatch({ app: { [key]: v } as Partial<AppConfig> });
 	};
 
-	// 只动 `app.logLevels[id]` 这一个键,别的模块(image / ai 在各自页面设)不受影响。
+	// 只动 `app.logLevels[id]` 这一个键,同格里别的模块不受影响(五个模块都在这一格里设)。
 	// 退回「跟随全局」发显式 null —— 从前是「拷一份、删掉该键、整份回传」,而整份
 	// 回传走合并,被删的键当场合回来:同时有两个以上模块覆盖时就删不掉了。
-	function setModuleLevel(id: "core" | "dynamic" | "live", value: LogLevelValue | null): void {
+	function setModuleLevel(id: SystemModuleId, value: LogLevelValue | null): void {
 		onPatch({ app: { logLevels: { [id]: value === null ? null : NUM_TO_LOG[value] } } });
 	}
 

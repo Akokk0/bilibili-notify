@@ -513,11 +513,12 @@ describe("全局配置 Tab", () => {
 		await screen.findByText("全局人格 · persona");
 	}
 
-	it("日志等级与「试一句」都在这里 —— 它们不属于某一家服务商也不属于某一份性格", async () => {
+	it("「试一句」在这里 —— 它不属于某一家服务商也不属于某一份性格", async () => {
 		mount(globalsWith(() => {}));
 		await gotoGlobal();
-		expect(screen.getByText("跟随全局")).toBeTruthy();
-		expect(screen.getByText("诊断 · logging")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "试一句" })).toBeTruthy();
+		// 日志等级曾与它并排摆在这一节底下,现已整体搬去系统页那格「按模块覆盖」。
+		expect(screen.queryByText("诊断 · logging")).toBeNull();
 	});
 
 	/** 选择器里当前被按下的那一项的文字。 */
