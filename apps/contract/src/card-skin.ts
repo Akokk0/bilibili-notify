@@ -13,7 +13,7 @@
 
 import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/internal";
 
-export type { CardSkinKnob, CardSkinManifest };
+export type { CardSkinKind, CardSkinKnob, CardSkinManifest };
 
 /**
  * 皮肤库列表里的一行。**服务端 `CardSkinStore.list()` 实现的就是这个类型** ——

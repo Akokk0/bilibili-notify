@@ -31,7 +31,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCardSkinList } from "./cards/card-skins-query";
+import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
+import { SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
+import { cardOf, setBlockGrid } from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
@@ -55,6 +58,7 @@ export default function CardSkinEditor() {
 	/** 正在编的那份草稿。`null` = 清单还没到。 */
 	const [draft, setDraft] = useState<CardSkinManifest | null>(null);
 	const [kind, setKind] = useState<CardSkinKind>("live");
+	const [selection, setSelection] = useState<SkinSelection>(null);
 	const [scene, setScene] = useState<string>(CARD_PREVIEW_SCENES.live[0]?.id ?? "");
 
 	const baseline = manifestQuery.data?.manifest;
@@ -68,6 +72,8 @@ export default function CardSkinEditor() {
 	// 默认场景,而面板上那排按钮却一个都不高亮,看起来像坏了。
 	useEffect(() => {
 		setScene(CARD_PREVIEW_SCENES[kind][0]?.id ?? "");
+		// 换了卡种,上一张卡的选中就没意义了 —— 留着的话检查器会对着一个不存在的块。
+		setSelection(null);
 	}, [kind]);
 
 	const dirty = useMemo(
@@ -179,7 +185,12 @@ export default function CardSkinEditor() {
 							subtitle="拖块改行 / 列,拉左右边改跨列;这里的行等高只是示意,真卡里行高随内容撑"
 							icon={<Icon.square size={14} />}
 						>
-							<Pane />
+							<SkinCanvas
+								kind={kind}
+								card={cardOf(draft, kind)}
+								selection={selection}
+								onSelect={setSelection}
+							/>
 						</GlassBox>
 						<GlassBox
 							title="实时预览"
@@ -190,7 +201,14 @@ export default function CardSkinEditor() {
 							<SkinPreviewPane skinId={id} kind={kind} scene={scene} manifest={draft} />
 						</GlassBox>
 						<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
-							<Pane />
+							<SkinInspector
+								manifest={draft}
+								kind={kind}
+								selection={selection}
+								onGrid={(blockId, patch) =>
+									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+								}
+							/>
 						</GlassBox>
 					</div>
 				)}
@@ -205,11 +223,6 @@ export default function CardSkinEditor() {
 			</div>
 		</div>
 	);
-}
-
-/** 三栏各自的内容挨着往里填,这一版先占位 —— 空着比先摆个假的诚实。 */
-function Pane() {
-	return <div className="py-6 text-center text-bn-text-tertiary text-bn-xs">这一栏还没做</div>;
 }
 
 /** 草稿与基线一不一样。清单是纯 JSON(schema 只收 JSON 值),序列化比对够用。 */

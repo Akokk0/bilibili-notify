@@ -1164,3 +1164,158 @@ export function resolvePreviewScene(kind: CardSkinKind, scene?: string): Preview
 	// biome-ignore lint/style/noNonNullAssertion: 表里每种卡都至少一个场景,有测试钉着
 	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
 }
+
+// ---- 上限 -------------------------------------------------------------------
+
+/** 取值域的唯一事实源:server 的清洗 / 装包与 web 的编辑器都从这里读。 */
+export const CARD_SKIN_LIMITS = {
+	/** 网格列数,固定(CSS grid 惯例,2 / 3 / 4 等分都整除)。 */
+	columns: 12,
+	/** 卡宽 px。下限要装得下上舰卡的徽章 + 两行字,上限是截图与群里看图的常识。 */
+	width: { min: 240, max: 1200 },
+	/** 行 / 列间距 px。 */
+	gap: { min: 0, max: 64 },
+	/** 一张卡最多几个块。 */
+	maxBlocks: 40,
+	/** 网格最多几行(块的 row 上限)。 */
+	maxRows: 60,
+	/** 每块 CSS 的字节上限(含根块)。 */
+	maxCssBytes: 16 * 1024,
+	/** 每个自定义块 HTML 的字节上限。 */
+	maxHtmlBytes: 8 * 1024,
+	/** 包名 / 作者 / 描述的长度。 */
+	name: { min: 1, max: 40 },
+	author: { max: 40 },
+	description: { max: 200 },
+	/** 包内资产数量与单个体积(与 dashboard 皮肤同量级)。 */
+	maxAssets: 12,
+	maxAssetBytes: 5 * 1024 * 1024,
+	/** 根 / 块各自那张「资产变量表」最多几项(ADR-0014 决策 13 的 🔗:`--bn-asset-<名>`)。 */
+	maxAssetVars: 8,
+	/** 皮肤级 `fonts` 最多几款。 */
+	maxFonts: 4,
+	/**
+	 * 出图后的卡片最大高度 px(ADR-0014 决策 19「卡片有最大高度,超了算失败」)。
+	 *
+	 * 4000 是从**两头**夹出来的:今天最高的一张真卡是九图动态(600 宽 × 约 1800 高),
+	 * 留一倍余量让长图文动态不误伤;另一头,截图是 `page.screenshot` 一次性出一张 JPEG,
+	 * 600 × 4000 已是 240 万像素、几兆内存,而镜像里 V8 的 old-space 只有 512MB ——
+	 * 再往上一个数量级(一条 `height:100vh` 写错的皮肤 CSS 就能做到)会把浏览器和
+	 * 本进程一起拖垮,而症状只是「推送莫名其妙停了」。
+	 *
+	 * 超限只回落默认皮肤重画一次,**不拒发**:内容本来就长的时候默认皮肤也会超,那是
+	 * 内容的问题不是皮肤的,照发。
+	 */
+	maxHeight: 4000,
+} as const;
+
+/** 一个内置块的目录条目:人话名 + 它内部可分别挂 CSS 的部件。 */
+export interface CardSkinBuiltinBlock {
+	label: string;
+	/** 是复合块(头像 + 名字 + 时间捆一起)还是原子块(只画一样)。编辑器分组用。 */
+	atom?: true;
+	/** 内部挂点 → 人话名。皮肤写 `[data-bn="avatar"]`。 */
+	hooks: Record<string, string>;
+}
+
+const AUTHOR_HOOKS = {
+	avatar: "头像",
+	name: "名字",
+	time: "时间",
+} as const;
+
+/** 四种可编辑卡共用的分割线。 */
+const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: {} };
+
+/**
+ * 内置块目录:每种卡有哪些块、每块内部有哪些挂点。**块名与挂点名是对外 API。**
+ *
+ * 复合块的渲染逻辑就是今天模板里那一段,原样搬;原子块是从复合块里抠出来的单件,
+ * 让皮肤能把头像和名字分开摆(ADR-0014 决策 8)。
+ */
+export const CARD_SKIN_BUILTIN_BLOCKS: Record<
+	CardSkinKind,
+	Record<string, CardSkinBuiltinBlock>
+> = {
+	live: {
+		cover: { label: "封面图", hooks: { image: "封面", status: "状态角标" } },
+		header: { label: "主播信息", hooks: AUTHOR_HOOKS },
+		title: { label: "直播标题", hooks: {} },
+		data: {
+			label: "直播数据",
+			hooks: { row: "顶行", popularity: "人气 / 点赞", area: "分区", fans: "粉丝行" },
+		},
+		desc: { label: "简介", hooks: {} },
+		divider: DIVIDER_BLOCK,
+		avatar: { label: "头像", atom: true, hooks: {} },
+		name: { label: "主播名", atom: true, hooks: {} },
+		time: { label: "开播时间", atom: true, hooks: {} },
+		// 数据区的三件(ADR-0014 决策 16 的 🔗):`showPopularity` / `showArea` / `showFans`
+		// 三个显隐开关管的是**复合块内部的一行**,块级的 `showIf` 够不着 —— 所以不留开关,
+		// 把那三件也拆成原子块,用户想少显示哪件就把哪块从版式里删掉。
+		popularity: { label: "人气 / 点赞", atom: true, hooks: {} },
+		area: { label: "分区", atom: true, hooks: {} },
+		fans: { label: "粉丝行", atom: true, hooks: {} },
+	},
+	dynamic: {
+		header: { label: "头部信息", hooks: AUTHOR_HOOKS },
+		content: {
+			label: "动态正文",
+			hooks: {
+				topic: "话题行",
+				body: "正文",
+				pics: "图廊",
+				pic: "图廊里的一张图",
+				video: "视频卡",
+				videoCover: "视频封面",
+				videoTitle: "视频标题",
+				forward: "转发的原动态",
+			},
+		},
+		additional: {
+			label: "附加内容",
+			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
+		},
+		stats: { label: "转发 / 评论 / 点赞", hooks: { item: "单项", icon: "图标" } },
+		divider: DIVIDER_BLOCK,
+		avatar: { label: "头像", atom: true, hooks: {} },
+		name: { label: "UP 主名", atom: true, hooks: {} },
+		time: { label: "发布时间", atom: true, hooks: {} },
+	},
+	sc: {
+		amount: { label: "金额", hooks: { price: "金额数字", duration: "时长胶囊" } },
+		sender: {
+			label: "发送者",
+			hooks: {
+				avatar: "发送者头像",
+				name: "发送者名牌",
+				to: "「SC to」那一行",
+				masterAvatar: "主播小头像",
+				masterName: "主播名",
+			},
+		},
+		message: { label: "留言", hooks: { text: "留言文本" } },
+		divider: DIVIDER_BLOCK,
+		avatar: { label: "发送者头像", atom: true, hooks: {} },
+		name: { label: "发送者名", atom: true, hooks: {} },
+	},
+	guard: {
+		badge: { label: "舰长徽章", atom: true, hooks: {} },
+		name: {
+			label: "姓名",
+			hooks: {
+				avatar: "头像",
+				name: "用户名胶囊",
+				master: "主播胶囊",
+				masterAvatar: "主播小头像",
+				masterName: "主播名",
+			},
+		},
+		text: { label: "文字信息", hooks: {} },
+		divider: DIVIDER_BLOCK,
+		avatar: { label: "头像", atom: true, hooks: {} },
+	},
+	roastBoard: { body: { label: "周报榜单", hooks: {} } },
+	roastSolo: { body: { label: "单人锐评", hooks: {} } },
+	wordcloud: { body: { label: "弹幕词云", hooks: {} } },
+};
