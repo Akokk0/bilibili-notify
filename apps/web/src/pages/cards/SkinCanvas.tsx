@@ -32,6 +32,7 @@ export function SkinCanvas({
 	selection,
 	onSelect,
 	onAdd,
+	onAddCustom,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -40,6 +41,8 @@ export function SkinCanvas({
 	onSelect: (next: SkinSelection) => void;
 	/** 添一个内置块。**不给 = 这套皮肤只读**,连「添加块」都不该出现。 */
 	onAdd?: (builtin: string) => void;
+	/** 添一个自定义块(HTML 自己写)。与 `onAdd` 同进同出。 */
+	onAddCustom?: () => void;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -113,6 +116,14 @@ export function SkinCanvas({
 						onAdd(builtin);
 						setPicking(false);
 					}}
+					onPickCustom={
+						onAddCustom
+							? () => {
+									onAddCustom();
+									setPicking(false);
+								}
+							: undefined
+					}
 				/>
 			) : null}
 
@@ -204,10 +215,12 @@ function BlockCatalogue({
 	kind,
 	used,
 	onPick,
+	onPickCustom,
 }: {
 	kind: CardSkinKind;
 	used: Set<string>;
 	onPick: (builtin: string) => void;
+	onPickCustom?: () => void;
 }) {
 	const entries = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]);
 	const groups: Array<[label: string, items: Array<[string, CardSkinBuiltinBlock]>]> = [
@@ -238,6 +251,19 @@ function BlockCatalogue({
 					</div>
 				),
 			)}
+			{onPickCustom ? (
+				<div className="flex flex-col gap-1.5">
+					<span className="text-bn-2xs text-bn-text-tertiary">自己写</span>
+					<div className="flex flex-wrap items-center gap-1.5">
+						<Btn size="sm" variant="outline" onClick={onPickCustom}>
+							自定义块
+						</Btn>
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							一段自己写的 HTML,字段用 {"{up.name}"} 这样的占位符引。
+						</span>
+					</div>
+				</div>
+			) : null}
 		</fieldset>
 	);
 }

@@ -77,9 +77,11 @@ function renderEditor() {
 }
 
 /** 最近一次 `PUT` 出去的那份清单里,直播卡的块表。 */
-const savedBlocks = (): Array<{ id: string; builtin?: string }> => {
+const savedBlocks = (): Array<{ id: string; kind: string; builtin?: string; html?: string }> => {
 	const body = vi.mocked(api.put).mock.calls.at(-1)?.[1] as {
-		cards: { live: { blocks: Array<{ id: string; builtin?: string }> } };
+		cards: {
+			live: { blocks: Array<{ id: string; kind: string; builtin?: string; html?: string }> };
+		};
 	};
 	return body.cards.live.blocks;
 };
@@ -116,6 +118,23 @@ describe("编辑器 · 增删块的接线", () => {
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
 		expect(savedBlocks()).toEqual([]);
+	});
+
+	it("自定义块也走同一根线 —— 存出去的清单里带着它的 HTML", async () => {
+		mockApi();
+		renderEditor();
+		await screen.findByText("封面图");
+
+		fireEvent.click(screen.getByText(/添加块/));
+		const catalogue = screen.getByRole("group", { name: "可以添加的块" });
+		fireEvent.click(within(catalogue).getByRole("button", { name: /自定义块/ }));
+		fireEvent.change(screen.getByLabelText("这个块的 HTML"), {
+			target: { value: "<div>{up.name}</div>" },
+		});
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedBlocks().at(-1)).toMatchObject({ kind: "custom", html: "<div>{up.name}</div>" });
 	});
 
 	it("内置皮肤是只读的 —— 增删的口一个都不给", async () => {

@@ -44,6 +44,7 @@ export function SkinInspector({
 	selection,
 	onGrid,
 	onCss,
+	onHtml,
 	onShowIf,
 	onFrame,
 	onFrameCss,
@@ -55,6 +56,8 @@ export function SkinInspector({
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
 	onCss: (blockId: string, css: string) => void;
+	/** 改自定义块的 HTML。内置块没有内容可改,这个口对它不生效。 */
+	onHtml: (blockId: string, html: string) => void;
 	/** 改显示条件;`undefined` = 总是显示。 */
 	onShowIf: (blockId: string, path: string | undefined) => void;
 	onFrame: (patch: FramePatch) => void;
@@ -129,6 +132,10 @@ export function SkinInspector({
 					/>
 				</div>
 			</Section>
+
+			{block.kind === "custom" ? (
+				<HtmlSection kind={kind} value={block.html} onChange={(html) => onHtml(block.id, html)} />
+			) : null}
 
 			<Section label="显示条件">
 				<div className="flex flex-col gap-1.5 p-2.5">
@@ -269,6 +276,78 @@ function FrameInspector({
 			/>
 		</div>
 	);
+}
+
+/**
+ * 自定义块的内容那一节:能引用的字段 + 一个纯文本框。
+ *
+ * 字段点一下补进去,`image` 类型补的是一整个 `<img src="{…}">` —— 占位符只有坐在 `src`
+ * 上才是图,单写一个 `{up.face}` 出来的是一串 URL 文本(清洗器认的就是这条规矩)。
+ */
+function HtmlSection({
+	kind,
+	value,
+	onChange,
+}: {
+	kind: CardSkinKind;
+	value: string;
+	onChange: (html: string) => void;
+}) {
+	const over = value.length > CARD_SKIN_LIMITS.maxHtmlBytes;
+	const empty = value.trim() === "";
+	return (
+		<Section label="内容">
+			<div className="flex flex-col gap-2 p-2.5">
+				<fieldset
+					aria-label="这种卡能引用的字段"
+					className="flex max-h-28 min-w-0 flex-wrap gap-1 overflow-y-auto"
+				>
+					{CARD_SKIN_FIELDS[kind].map((f) => (
+						<button
+							key={f.path}
+							type="button"
+							data-bn="chip"
+							title={`{${f.path}} —— ${f.label}`}
+							onClick={() => onChange(appendField(value, f.path, f.type === "image"))}
+							className="flex items-center gap-1 rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+						>
+							<span>{f.label}</span>
+							<span className="font-mono text-bn-text-tertiary">{f.type}</span>
+						</button>
+					))}
+				</fieldset>
+
+				<TArea
+					value={value}
+					onChange={onChange}
+					rows={6}
+					mono
+					ariaLabel="这个块的 HTML"
+					placeholder="<div>{up.name}</div>"
+				/>
+
+				{empty ? (
+					<ErrorNote size="sm">
+						空的自定义块存不下去 —— 装包门判的是「清洗后什么都不剩」。
+					</ErrorNote>
+				) : over ? (
+					<ErrorNote size="sm">
+						{value.length} 字,超过上限 {CARD_SKIN_LIMITS.maxHtmlBytes} —— 这样存不下去。
+					</ErrorNote>
+				) : (
+					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
+						{value.length} / {CARD_SKIN_LIMITS.maxHtmlBytes}
+					</span>
+				)}
+			</div>
+		</Section>
+	);
+}
+
+/** 在末尾补一个字段占位符。图片字段补整个 `<img>`。 */
+function appendField(html: string, path: string, image: boolean): string {
+	const piece = image ? `<img src="{${path}}">` : `{${path}}`;
+	return html.trim() === "" ? piece : `${html.replace(/\s+$/, "")}${piece}`;
 }
 
 /**

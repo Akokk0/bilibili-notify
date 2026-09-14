@@ -36,10 +36,12 @@ import { SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import {
 	addBlock,
+	addCustomBlock,
 	cardOf,
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockHtml,
 	setBlockShowIf,
 	setColumns,
 	setFrame,
@@ -95,6 +97,13 @@ export default function CardSkinEditor() {
 	const readOnly = listQuery.data?.skins.find((s) => s.id === id)?.builtin === true;
 	const inUse = listQuery.data?.active === id;
 	const scenes = CARD_PREVIEW_SCENES[kind];
+
+	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
+	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
+		if (!added) return;
+		setDraft(added.manifest);
+		setSelection({ kind: "block", id: added.blockId });
+	};
 
 	return (
 		<div
@@ -206,12 +215,14 @@ export default function CardSkinEditor() {
 										? undefined
 										: (builtin) => {
 												if (draft === null) return;
-												const added = addBlock(draft, kind, builtin);
-												if (!added) return;
-												setDraft(added.manifest);
 												// 加完立刻选中:新块落在最底下整宽一行,十次有九次下一步就是把它挪窄。
-												setSelection({ kind: "block", id: added.blockId });
+												landBlock(addBlock(draft, kind, builtin));
 											}
+								}
+								onAddCustom={
+									readOnly
+										? undefined
+										: () => draft !== null && landBlock(addCustomBlock(draft, kind))
 								}
 							/>
 						</GlassBox>
@@ -233,6 +244,9 @@ export default function CardSkinEditor() {
 								}
 								onShowIf={(blockId, path) =>
 									setDraft((d) => (d === null ? d : setBlockShowIf(d, kind, blockId, path)))
+								}
+								onHtml={(blockId, html) =>
+									setDraft((d) => (d === null ? d : setBlockHtml(d, kind, blockId, html)))
 								}
 								onCss={(blockId, css) =>
 									setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))

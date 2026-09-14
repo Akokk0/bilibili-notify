@@ -18,10 +18,12 @@ import { SkinCanvas, type SkinSelection } from "../SkinCanvas";
 import { SkinInspector } from "../SkinInspector";
 import {
 	addBlock,
+	addCustomBlock,
 	cardOf,
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockHtml,
 	setBlockShowIf,
 	setColumns,
 	setFrame,
@@ -88,6 +90,17 @@ function Harness({
 								setSelection({ kind: "block", id: added.blockId });
 							}
 				}
+				onAddCustom={
+					readOnly
+						? undefined
+						: () => {
+								const added = addCustomBlock(draft, "live");
+								if (!added) return;
+								setDraft(added.manifest);
+								onDraft?.(added.manifest);
+								setSelection({ kind: "block", id: added.blockId });
+							}
+				}
 			/>
 			<SkinInspector
 				manifest={draft}
@@ -96,6 +109,13 @@ function Harness({
 				onGrid={(id, patch) =>
 					setDraft((d) => {
 						const next = setBlockGrid(d, "live", id, patch);
+						onDraft?.(next);
+						return next;
+					})
+				}
+				onHtml={(id, html) =>
+					setDraft((d) => {
+						const next = setBlockHtml(d, "live", id, html);
 						onDraft?.(next);
 						return next;
 					})
@@ -435,5 +455,66 @@ describe("检查器 · 显示条件", () => {
 		const values = Array.from(select.options).map((o) => o.value);
 		expect(values).toContain("live.isEnded");
 		expect(values.some((v) => v.startsWith("sc."))).toBe(false);
+	});
+});
+
+/** 草稿里最后那个块的 HTML(自定义块总是加在最后)。 */
+const lastHtml = (m: CardSkinManifest): string =>
+	(cardOf(m, "live")?.blocks.at(-1) as { html?: string } | undefined)?.html ?? "";
+
+describe("检查器 · 自定义块的内容", () => {
+	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
+		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
+
+	/** 从目录里添一个自定义块,回它的 id。 */
+	function addCustom(): void {
+		fireEvent.click(screen.getByText(/添加块/));
+		fireEvent.click(within(catalogue()).getByRole("button", { name: /自定义块/ }));
+	}
+
+	it("目录里能添自定义块,添完就选中、内容框跟着出来", () => {
+		render(<Harness />);
+		addCustom();
+		expect(screen.getByLabelText("这个块的 HTML")).toBeTruthy();
+	});
+
+	it("改内容 → 回到草稿", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		addCustom();
+
+		fireEvent.change(screen.getByLabelText("这个块的 HTML"), {
+			target: { value: "<div>{up.name}</div>" },
+		});
+
+		expect(lastHtml(lastDraft(onDraft))).toBe("<div>{up.name}</div>");
+	});
+
+	it("字段点一下补进去;图片字段补的是一整个 img —— 占位符只能坐在 src 上", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		addCustom();
+		const fields = screen.getByLabelText("这种卡能引用的字段");
+
+		fireEvent.click(within(fields).getByText("主播名"));
+		expect(lastHtml(lastDraft(onDraft))).toContain("{up.name}");
+
+		fireEvent.click(within(fields).getByText("主播头像"));
+		expect(lastHtml(lastDraft(onDraft))).toContain('<img src="{up.face}">');
+	});
+
+	it("清空内容当场说一句 —— 装包门那头判的是「清洗后什么都不剩」", () => {
+		render(<Harness />);
+		addCustom();
+
+		fireEvent.change(screen.getByLabelText("这个块的 HTML"), { target: { value: "  " } });
+
+		expect(screen.getByText(/什么都不剩/)).toBeTruthy();
+	});
+
+	it("内置块没有内容框 —— 它画的是模板里那一段", () => {
+		render(<Harness />);
+		fireEvent.click(blockBtn("封面图"));
+		expect(screen.queryByLabelText("这个块的 HTML")).toBeNull();
 	});
 });

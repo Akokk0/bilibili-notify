@@ -17,6 +17,7 @@ import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	addBlock,
+	addCustomBlock,
 	blockOf,
 	canAddBlock,
 	cardOf,
@@ -26,6 +27,7 @@ import {
 	removeBlock,
 	setBlockCss,
 	setBlockGrid,
+	setBlockHtml,
 	setBlockShowIf,
 	setColumns,
 	setFrame,
@@ -307,5 +309,33 @@ describe("setBlockShowIf", () => {
 		expect(JSON.stringify(before)).toBe(snapshot);
 		expect(setBlockShowIf(before, "live", "没这个块", "live.isEnded")).toBe(before);
 		expect(setBlockShowIf(before, "sc", "title", "live.isEnded")).toBe(before);
+	});
+});
+
+describe("addCustomBlock / setBlockHtml", () => {
+	it("自定义块也落在最底下那一行,自带一段能看见的起手 HTML", () => {
+		const added = addCustomBlock(manifest(), "live");
+		if (!added) throw new Error("加得下");
+		const block = blockOf(cardOf(added.manifest, "live"), added.blockId);
+		expect(block?.kind).toBe("custom");
+		expect((block as { html: string }).html.trim()).not.toBe("");
+		expect(gridOf(added.manifest, added.blockId)).toEqual({ row: 3, column: 1, span: 12 });
+	});
+
+	it("第二个自定义块换个 id —— 撞名在装包门那头是「块 id 重复」", () => {
+		const one = addCustomBlock(manifest(), "live");
+		if (!one) throw new Error("加得下");
+		const two = addCustomBlock(one.manifest, "live");
+		expect(two?.blockId).not.toBe(one.blockId);
+	});
+
+	it("改 HTML → 写进那一块;内置块没有 html 可改,原样返回", () => {
+		const one = addCustomBlock(manifest(), "live");
+		if (!one) throw new Error("加得下");
+		const edited = setBlockHtml(one.manifest, "live", one.blockId, "<div>{up.name}</div>");
+		expect((blockOf(cardOf(edited, "live"), one.blockId) as { html: string }).html).toBe(
+			"<div>{up.name}</div>",
+		);
+		expect(setBlockHtml(edited, "live", "title", "<div>x</div>")).toBe(edited);
 	});
 });

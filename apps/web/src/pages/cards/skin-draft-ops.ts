@@ -12,6 +12,8 @@ import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];
 type Grid = Block["grid"];
+/** 加完一个块:新清单 + 新块的 id(调用方要拿它立刻选中)。 */
+type AddedBlock = { manifest: CardSkinManifest; blockId: string };
 
 /** 这张卡的块表。皮肤没定义这种卡时是 `undefined`(出图跟着出厂默认)。 */
 export function cardOf(manifest: CardSkinManifest | null, kind: CardSkinKind): Card | undefined {
@@ -93,20 +95,49 @@ export function addBlock(
 	manifest: CardSkinManifest,
 	kind: CardSkinKind,
 	builtin: string,
-): { manifest: CardSkinManifest; blockId: string } | null {
+): AddedBlock | null {
+	return appendBlock(manifest, kind, builtin, (id, grid) => ({
+		id,
+		kind: "builtin",
+		builtin,
+		grid,
+	}));
+}
+
+/**
+ * 添一个**自定义块** —— 里面的 HTML 由作者自己写(受限子集,清洗在 server)。
+ *
+ * 起手那段 HTML 刻意不带占位符:占位符是**按卡种**承诺的,写死一个 `{up.name}` 在词云卡
+ * 里就是一条「契约里没有这个字段」的装包错误,而块刚建出来就红着,人会以为是自己点坏了。
+ */
+export function addCustomBlock(manifest: CardSkinManifest, kind: CardSkinKind): AddedBlock | null {
+	return appendBlock(manifest, kind, "custom", (id, grid) => ({
+		id,
+		kind: "custom",
+		html: "<div>新的自定义块</div>",
+		grid,
+	}));
+}
+
+/** 新块落在**最后一行的下一行、整宽**,理由见 {@link addBlock}。 */
+function appendBlock(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	idBase: string,
+	make: (id: string, grid: Grid) => unknown,
+): AddedBlock | null {
 	const card = manifest.cards[kind];
 	if (!card || !canAddBlock(card)) return null;
-	const blockId = nextBlockId(card, builtin);
+	const blockId = nextBlockId(card, idBase);
 	const lastRow = card.blocks.reduce(
 		(m, b) => Math.max(m, b.grid.row + (b.grid.rowSpan ?? 1) - 1),
 		0,
 	);
-	const block = {
-		id: blockId,
-		kind: "builtin",
-		builtin,
-		grid: { row: lastRow + 1, column: 1, span: CARD_SKIN_LIMITS.columns },
-	} as Block;
+	const block = make(blockId, {
+		row: lastRow + 1,
+		column: 1,
+		span: CARD_SKIN_LIMITS.columns,
+	}) as Block;
 	return {
 		manifest: {
 			...manifest,
@@ -282,5 +313,24 @@ export function setBlockShowIf(
 		else next.showIf = showIf;
 		return next;
 	});
+	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+}
+
+/**
+ * 改一个**自定义块**的 HTML。内置块没有 html 可改(内容是模板里那一段),原样返回。
+ *
+ * 空串照写不误:装包门那头会判「清洗后这个块什么都不剩」,而检查器在框底下就先说了这句
+ * —— 边删边改的中途状态不该被控件自己拦掉。
+ */
+export function setBlockHtml(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+	html: string,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	const target = card?.blocks.find((b) => b.id === blockId);
+	if (!card || target?.kind !== "custom") return manifest;
+	const blocks = card.blocks.map((b) => (b.id === blockId ? { ...b, html } : b));
 	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
