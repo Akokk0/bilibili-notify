@@ -206,6 +206,58 @@ describe("Cards per-UP 作用域接线", () => {
 		);
 	});
 
+	/**
+	 * **皮肤要跟着请求走**(ADR-0014)。服务端对「没指皮肤」的解释是「全局在用的那套」,
+	 * 所以全局作用域一个字都不用传;但 per-UP 单独指了一套时不传就永远看不到它 ——
+	 * 选择器上写着「单独指定」、预览里却是全局那张,两边对不上。
+	 */
+	it("per-UP 指了皮肤 → 预览请求带上它", async () => {
+		const skinned: Subscription = {
+			...makeEmptySubscription("123456"),
+			overrides: { cardSkin: "aurora" },
+		};
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve([skinned]);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+			return Promise.resolve(GLOBALS);
+		});
+
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { cardSkin?: string };
+					return url === "/api/cards/preview" && b?.cardSkin === "aurora";
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
+
+	it("全局作用域不传皮肤 —— 缺省只归服务端解释,面板别再抄一份", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		await waitFor(
+			() => {
+				expect(
+					vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/cards/preview").length,
+				).toBeGreaterThan(0);
+			},
+			{ timeout: 2000 },
+		);
+		const withSkin = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+			const b = body as { cardSkin?: string };
+			return url === "/api/cards/preview" && b?.cardSkin !== undefined;
+		});
+		expect(withSkin).toBeFalsy();
+	});
+
 	it("per-UP 保存 → 只 PATCH cardStyle + cardSkin(cardSkin 未覆盖 = null)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));

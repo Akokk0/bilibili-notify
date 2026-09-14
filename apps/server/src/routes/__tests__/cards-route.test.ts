@@ -1222,7 +1222,7 @@ describe("cards route — /preview 走皮肤", () => {
 			cardSkins: skinStore({ marked: MARKED }),
 		});
 		expect((await postPreview(app, { kind: "live", style: STYLE })).status).toBe(200);
-		// 验红:把 previewManifest 里的 `|| ...defaults.cardSkin` 去掉,这条红。
+		// 验红:把 `previewSkinId` 里的 `|| ...defaults.cardSkin` 去掉,这条红。
 		expect(captured[0]).toContain("SKIN-MARK-");
 	});
 
@@ -1275,6 +1275,66 @@ describe("cards route — /preview 走皮肤", () => {
 		});
 		expect(res.status).toBe(200);
 		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
+		expect(colorOptions?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
+	/**
+	 * **「不指皮肤」只有一个意思:用全局在用的那套。**
+	 *
+	 * 这条路以前有两个缺省各说各话 —— 虚构 mock 那条自己回 globals 取,走渲染器的那条
+	 * (SC / 上舰 / 真实拉取)落进 `skinIdOf` 的内置默认。于是同一屏里直播卡是新皮肤、
+	 * SC 卡是出厂样子,而两边都说不出哪儿错了。
+	 */
+	it("请求没指皮肤 → SC 也用全局在用的那套", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps("marked"),
+			puppeteer: makeFakePuppeteer(),
+			api: null,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { price: 30 },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		// 验红:把 renderPreviewCard 开头那句 `cardSkin || …defaults.cardSkin` 改回直接用
+		// 入参,这条红 —— 主人装了皮肤,SC 预览却还是出厂那副样子。
+		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
+		expect(colorOptions?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
+	it("请求没指皮肤 → 真实拉取那条也用全局在用的那套", async () => {
+		const api = {
+			getLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
+			getMasterInfo: vi.fn(async () => ({
+				code: 0,
+				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+			})),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateLiveCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps("marked"),
+			puppeteer: makeFakePuppeteer(),
+			api,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, {
+			kind: "live",
+			style: STYLE,
+			content: { roomId: "778899" },
+		});
+		expect(res.status).toBe(200);
+		// 同上:填了房间号就回出厂皮肤,正是主人报的「填了数据又回到原皮」。
+		const colorOptions = spy.mock.calls[0]?.[5] as { cardSkin?: string } | undefined;
 		expect(colorOptions?.cardSkin).toBe("marked");
 		spy.mockRestore();
 	});

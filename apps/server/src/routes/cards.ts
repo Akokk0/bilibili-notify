@@ -560,24 +560,35 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	};
 
 	/**
-	 * 预览用哪套皮肤的清单。请求没指就是全局在用的那套;店里取不到(皮肤被删了)就退回
-	 * 内置默认 —— 预览不该因为指了个不存在的 id 而报错,它本来就是「看看长什么样」。
+	 * **预览用哪套皮肤 —— 唯一那处解析。**
+	 *
+	 * 「请求没指皮肤」只有一个意思:用全局在用的那套。这里之前是三处各兜一次缺省,而
+	 * 走渲染器的那条(SC / 上舰 / 真实拉取)压根没兜,落进渲染器自己的内置默认 —— 于是
+	 * 同一屏里直播卡是新皮肤、SC 卡是出厂样子(2026-09-14 主人报的那一组现象)。缺省
+	 * 只准有一个,就在这儿。
 	 */
-	async function previewManifest(id?: string): Promise<CardSkinManifest> {
+	function previewSkinId(id?: string): string {
+		return id || opts.deps.store.getGlobals().defaults.cardSkin;
+	}
+
+	/**
+	 * 预览用哪套皮肤的清单。id 由 {@link previewSkinId} 解析好再进来;店里取不到
+	 * (皮肤被删了)就退回内置默认 —— 预览不该因为指了个不存在的 id 而报错,它本来就是
+	 * 「看看长什么样」。
+	 */
+	async function previewManifest(skinId: string): Promise<CardSkinManifest> {
 		const store = opts.cardSkins;
 		if (!store) return DEFAULT_CARD_SKIN;
 		await store.ensureReady();
-		const wanted = id || opts.deps.store.getGlobals().defaults.cardSkin;
-		return store.get(wanted) ?? DEFAULT_CARD_SKIN;
+		return store.get(skinId) ?? DEFAULT_CARD_SKIN;
 	}
 
 	/**
 	 * 预览要用的那份**旋钮覆盖**:按皮肤 id 从配置里取(存覆盖不存值,没拧过就没有键)。
 	 * 与出图那条路同源 —— 两边各取一份的话,预览与推出去的卡会在配色上悄悄分家。
 	 */
-	function previewKnobValues(id?: string): CardSkinKnobOverrides | undefined {
-		const g = opts.deps.store.getGlobals();
-		return g.defaults.cardSkinKnobs?.[id || g.defaults.cardSkin];
+	function previewKnobValues(skinId: string): CardSkinKnobOverrides | undefined {
+		return opts.deps.store.getGlobals().defaults.cardSkinKnobs?.[skinId];
 	}
 
 	/**
@@ -585,14 +596,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	 * 与 `ImageRenderer#prefetchSkinAssets` 同一套做法,只是这条路不经渲染器。
 	 */
 	async function previewSkinAssets(
-		id: string | undefined,
+		skinId: string,
 		manifest: CardSkinManifest,
 		kind: CardSkinKind,
 	): Promise<Map<string, string>> {
 		const out = new Map<string, string>();
 		const store = opts.cardSkins;
 		if (!store) return out;
-		const skinId = id || opts.deps.store.getGlobals().defaults.cardSkin;
 		const refs = skinAssetRefs(cardOfManifest(manifest, kind), manifest.fonts);
 		await Promise.all(
 			refs.map(async (name) => {
@@ -736,6 +746,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
+		// 下面四条出图路子(SC / 上舰 / 真实拉取 / 虚构 mock)都吃这一个 id。
+		const skinId = previewSkinId(cardSkin);
 
 		if (kind === "sc") {
 			const renderer = await getImageRenderer(style);
@@ -753,7 +765,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					price: content?.price ?? 30,
 				},
 				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
-				{ cardSkin },
+				{ cardSkin: skinId },
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -769,7 +781,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
 				{ masterAvatarUrl: master.face, masterName: master.name },
 				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
-				{ cardSkin },
+				{ cardSkin: skinId },
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -790,7 +802,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					roomId,
 					style,
 					opts.deps.store.bootstrap.dataDir,
-					cardSkin,
+					skinId,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -808,7 +820,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					renderer,
 					content.uid.trim(),
 					content.offset ?? 1,
-					cardSkin,
+					skinId,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -835,8 +847,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const spec = buildPreviewSpec(kind, style, bgDataUrl, coverDataUrl);
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
-		const manifest = await previewManifest(cardSkin);
-		const assets = await previewSkinAssets(cardSkin, manifest, spec.kind);
+		const manifest = await previewManifest(skinId);
+		const assets = await previewSkinAssets(skinId, manifest, spec.kind);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
 		const html =
@@ -846,14 +858,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
-						knobValues: previewKnobValues(cardSkin),
+						knobValues: previewKnobValues(skinId),
 					})
 				: await renderCardWithSkin("dynamic", spec.props, manifest, {
 						title: spec.title,
 						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
-						knobValues: previewKnobValues(cardSkin),
+						knobValues: previewKnobValues(skinId),
 					});
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };

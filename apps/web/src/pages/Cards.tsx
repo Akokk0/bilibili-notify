@@ -114,6 +114,7 @@ function PreviewImage({
 	style,
 	content,
 	fallback,
+	cardSkin,
 	frame = true,
 }: {
 	kind: CardKind;
@@ -122,22 +123,22 @@ function PreviewImage({
 	content: Record<string, unknown>;
 	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
 	fallback: boolean;
+	/**
+	 * 这张卡用哪套皮肤。**不传 = 全局在用的那套**(服务端那边就是这么解释的);只有
+	 * per-UP 单独指了一套时才填,否则「单独指定」的选择器与预览里的卡对不上。
+	 */
+	cardSkin?: string;
 	/** 带边框大容器(单卡预览)。false = 裸图缩放填满父格(全家福格子复用)。 */
 	frame?: boolean;
 }) {
-	// **过渡**(ADR-0014 第一步):`/api/cards/preview` 的 spec 仍收一个可选 `layout`,
-	// 而服务端出图那头还没切到皮肤。面板这边已经没有版式模型了,索性一个字也不传 ——
-	// 那个字段是 optional,服务端照旧用出厂版式渲染。等渲染器换成皮肤驱动之后,这里
-	// 改成传当前生效的皮肤 id(全局 / per-UP 各一份),这条注释一起删。
-	//
-	// 把整份请求(kind/style/content/fallback)合成一个 spec 做**单一**防抖。
+	// 把整份请求(kind/style/content/fallback/cardSkin)合成一个 spec 做**单一**防抖。
 	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
 	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
 	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
 	// 后一次变更只触发一次 refetch。TArea / 图廊等控件的高频 onChange 同样收敛。
 	const spec = useMemo(
-		() => ({ kind, style, content, fallback }),
-		[kind, style, content, fallback],
+		() => ({ kind, style, content, fallback, cardSkin }),
+		[kind, style, content, fallback, cardSkin],
 	);
 	const [debouncedSpec, setDebouncedSpec] = useState(spec);
 	useEffect(() => {
@@ -1014,6 +1015,12 @@ export default function Cards() {
 		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
 		: { ...gStyle };
 	const effStyle: CardStyle = effStyleFor(styleKind);
+	/**
+	 * 预览要用哪套皮肤。全局作用域**一个字都不传** —— 「不指皮肤 = 全局在用的那套」
+	 * 是服务端那一处的解释,面板再抄一份就是第二个缺省,迟早分家。per-UP 传的是**草稿**
+	 * 那个值(`puSkin`),这样选择器里刚点的那套立刻就能在预览里看到,不必先保存。
+	 */
+	const previewSkin = isGlobalScope ? undefined : puSkin;
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -1247,6 +1254,7 @@ export default function Cards() {
 														style={style}
 														content={fcontent}
 														fallback={previewFallback}
+														cardSkin={previewSkin}
 														frame={false}
 													/>
 												</div>
@@ -1279,6 +1287,7 @@ export default function Cards() {
 								style={effStyle}
 								content={previewContent}
 								fallback={previewFallback}
+								cardSkin={previewSkin}
 							/>
 
 							{/* Effective style readout */}
