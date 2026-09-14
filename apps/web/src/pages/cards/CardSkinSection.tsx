@@ -30,6 +30,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
 import { CARD_SKINS_KEY, useCardSkinList } from "./card-skins-query";
@@ -96,6 +97,7 @@ function downloadSkin(skin: CardSkinSummary): void {
 
 export function CardSkinSection() {
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 	const [error, setError] = useState<string | null>(null);
 	const [warnings, setWarnings] = useState<string[]>([]);
 	const [confirmRemove, setConfirmRemove] = useState<CardSkinSummary | null>(null);
@@ -121,12 +123,21 @@ export function CardSkinSection() {
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
+	/**
+	 * 复制一份。`andThen` 是「复制完拿新 id 干什么」(**别叫 `then`** —— 带 `then` 的对象
+	 * 是 thenable,被 await 到就会当 promise 解开)。内置那档的按钮写的是「复制并编辑」
+	 * (决策 5:内置改不了,要改先派生一份),点了就该直接落进编辑器,让主人少走一步
+	 * 「回列表里找那份刚出现的副本」。
+	 */
 	const duplicate = useMutation({
-		mutationFn: (id: string) =>
-			api.post<CardSkinDuplicateResponse>(`/api/card-skins/${id}/duplicate`, {}),
-		onSuccess: () => {
+		mutationFn: async (v: { id: string; andThen?: (newId: string) => void }) => {
+			const r = await api.post<CardSkinDuplicateResponse>(`/api/card-skins/${v.id}/duplicate`, {});
+			return { r, andThen: v.andThen };
+		},
+		onSuccess: ({ r, andThen }) => {
 			setError(null);
 			refresh();
+			andThen?.(r.id);
 		},
 		onError: (e) => setError(String((e as Error).message)),
 	});
@@ -249,7 +260,15 @@ export function CardSkinSection() {
 							inUse={skin.id === active}
 							busy={busy}
 							onActivate={() => activate.mutate(skin.id)}
-							onDuplicate={() => duplicate.mutate(skin.id)}
+							onDuplicate={() => duplicate.mutate({ id: skin.id })}
+							onEdit={() =>
+								skin.builtin
+									? duplicate.mutate({
+											id: skin.id,
+											andThen: (newId: string) => navigate(`/cards/skins/${newId}`),
+										})
+									: navigate(`/cards/skins/${skin.id}`)
+							}
 							onExport={() => downloadSkin(skin)}
 							onRemove={() => setConfirmRemove(skin)}
 						/>
@@ -284,6 +303,7 @@ function CardSkinRow(props: {
 	busy: boolean;
 	onActivate: () => void;
 	onDuplicate: () => void;
+	onEdit: () => void;
 	onExport: () => void;
 	onRemove: () => void;
 }) {
@@ -314,9 +334,9 @@ function CardSkinRow(props: {
 				>
 					{props.inUse ? "已启用" : "启用"}
 				</Btn>
-				{/* 编辑器是 ADR-0014 节奏的第二步 —— 位置先占着,免得那时整行按钮重排。 */}
-				<Btn size="sm" variant="ghost" disabled title="全屏编辑器还没做,下一步才有">
-					编辑
+				{/* 内置那份改不了(决策 5),所以它这颗写的是「复制并编辑」:点了先派生再进编辑器。 */}
+				<Btn size="sm" variant="ghost" onClick={props.onEdit} disabled={props.busy}>
+					{skin.builtin ? "复制并编辑" : "编辑"}
 				</Btn>
 				<Btn size="sm" variant="ghost" onClick={props.onDuplicate} disabled={props.busy}>
 					复制一份

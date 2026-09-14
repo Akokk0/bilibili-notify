@@ -11,6 +11,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -59,12 +60,15 @@ function resetStore(): void {
 	});
 }
 
+// 皮肤库那节的「编辑」钮要跳编辑器路由,所以这一页现在吃 router context。
 function renderCards() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
-		<QueryClientProvider client={qc}>
-			<Cards />
-		</QueryClientProvider>,
+		<MemoryRouter>
+			<QueryClientProvider client={qc}>
+				<Cards />
+			</QueryClientProvider>
+		</MemoryRouter>,
 	);
 }
 

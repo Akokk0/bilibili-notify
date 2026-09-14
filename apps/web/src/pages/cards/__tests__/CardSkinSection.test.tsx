@@ -13,6 +13,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinSection } from "../CardSkinSection";
 
@@ -60,10 +61,13 @@ const LIST = {
 
 function renderSection() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	// 「编辑」那颗钮要跳路由,所以这一节现在吃 router context。
 	return render(
-		<QueryClientProvider client={qc}>
-			<CardSkinSection />
-		</QueryClientProvider>,
+		<MemoryRouter>
+			<QueryClientProvider client={qc}>
+				<CardSkinSection />
+			</QueryClientProvider>
+		</MemoryRouter>,
 	);
 }
 

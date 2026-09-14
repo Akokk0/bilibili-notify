@@ -15,6 +15,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import type { GlobalConfig } from "../../types/globals";
@@ -65,15 +66,18 @@ function mockApi(knobs: Record<string, Record<string, unknown>>): void {
 	});
 }
 
+// 皮肤库那节的「编辑」钮要跳编辑器路由,所以这一页现在吃 router context。
 function renderCards() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	return {
 		invalidate,
 		...render(
-			<QueryClientProvider client={qc}>
-				<Cards />
-			</QueryClientProvider>,
+			<MemoryRouter>
+				<QueryClientProvider client={qc}>
+					<Cards />
+				</QueryClientProvider>
+			</MemoryRouter>,
 		),
 	};
 }
