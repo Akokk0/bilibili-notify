@@ -648,16 +648,23 @@ const CardStyleObjectSchema = z.object({
 	 */
 	liveCoverImages: z.array(z.string()).default([]),
 	/**
-	 * 玻璃片(卡片内容层)透明度,0..1。**可选**:未设(默认)时各卡沿用各自内置基线
-	 * (live/dynamic 0.82、sc/guard 0.75),保证「默认复刻现状」;设了值才统一覆盖所有卡。
-	 * 0 = 透明但仍带磨砂模糊;「完全透明无模糊」走 `glassClear`(与本字段二选一)。
+	 * **退役字段**(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板):玻璃片归**皮肤自己的旋钮**
+	 * (默认皮肤声明 `glass-opacity` / `glass-blur` 两枚),不再是用户配置项。留着只为
+	 * **开机迁移读一次**(值搬进 `globals.defaults.cardSkinKnobs`,见
+	 * `apps/server/src/card-skins/migrate-layouts.ts`),迁完就地删掉、不再写回。
+	 *
+	 * 认下的代价:玻璃从前能按卡种 / 按 UP 分别覆盖,旋钮只有「每套皮肤一份」,那两层
+	 * **直接丢**(给每个调过玻璃的人派一套派生皮肤代价太大)。想给某位 UP 单独调,走
+	 * 决策 17 那条路:复制一套皮肤挂给他,拧那套的旋钮。
+	 *
+	 * ⛔ 新代码不许读这两个字段。出图的玻璃在皮肤的块 CSS 里。
 	 */
 	glassOpacity: z.number().min(0).max(1).optional(),
 	/**
-	 * 完全透明:内容层透明 + **去掉毛玻璃模糊**,底图完全清晰透出。与 `glassOpacity` 二选一
-	 * (UI 互斥);为 true 时优先,glassOpacity 被忽略。默认 false(复刻现状)。
+	 * 退役字段,见上面 `glassOpacity`。`.optional()` 而不是从前的 `.default(false)` ——
+	 * 与 `cardLayout` 同一套路,键删得掉,「键还在不在」才当得了「迁过没有」的判据。
 	 */
-	glassClear: z.boolean().default(false),
+	glassClear: z.boolean().optional(),
 });
 
 /**
@@ -690,12 +697,13 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
 // ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有 8 个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
+// 有 7 个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
 // enabled:true / font / showPopularity / showArea / showFans / backgroundImages:[] /
-// liveCoverImages:[] / glassClear:false 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
+// liveCoverImages:[] 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
 // 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的
 // true 悄悄翻开。故这 7 个在 override 维度必须是「无默认的纯可选」,与全局
 // CardStyleObjectSchema(带 .default 供 globals.json 缺字段回填)分开。
+// (`glassClear` 从前也在这张单子上,2026-09-14 退役后它自己就是 optional 了。)
 export const CardStylePartialSchema = z.preprocess(
 	migrateCardStyle,
 	CardStyleObjectSchema.partial().extend({
@@ -706,7 +714,6 @@ export const CardStylePartialSchema = z.preprocess(
 		showFans: z.boolean().optional(),
 		backgroundImages: z.array(z.string()).optional(),
 		liveCoverImages: z.array(z.string()).optional(),
-		glassClear: z.boolean().optional(),
 	}),
 );
 export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;

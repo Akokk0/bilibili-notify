@@ -59,6 +59,7 @@ import {
 	type CardSkinColors,
 	type CardSkinGradient,
 	type CardSkinKind,
+	type CardSkinKnobOverrides,
 	type CardStyleByKind,
 	type CardStylePartial,
 	cardLayoutToSkin,
@@ -114,19 +115,20 @@ export async function migrateCardLayoutsToSkins(deps: {
 		globalKnobs: false,
 	};
 
-	// 键不在 = 迁过了(或全新安装)。两组退役的键(版式 / 颜色)任何一处还在都算存量 ——
-	// 颜色可以在没有旧版式的机器上单独存在(只改过配色的用户),不能只看 `cardLayout`。
+	// 键不在 = 迁过了(或全新安装)。三组退役的键(版式 / 颜色 / 玻璃)任何一处还在都算存量
+	// —— 颜色与玻璃都可以在没有旧版式的机器上单独存在(只改过配色 / 只拉过白纱的用户),
+	// 不能只看 `cardLayout`。
 	const hasLegacy =
 		legacyGlobal !== undefined ||
-		hasRetiredColors(globals.defaults.cardStyle) ||
-		hasRetiredColorsByKind(globals.defaults.cardStyleByKind) ||
+		hasRetiredStyle(globals.defaults.cardStyle) ||
+		hasRetiredStyleByKind(globals.defaults.cardStyleByKind) ||
 		config
 			.getSubscriptions()
 			.some(
 				(s) =>
 					s.overrides.cardLayout !== undefined ||
-					hasRetiredColors(s.overrides.cardStyle) ||
-					hasRetiredColorsByKind(s.overrides.cardStyleByKind),
+					hasRetiredStyle(s.overrides.cardStyle) ||
+					hasRetiredStyleByKind(s.overrides.cardStyleByKind),
 			);
 	if (!hasLegacy) return result;
 	// 「有旧键但值就是出厂版式」也算存量:键要删,只是不用折皮肤。
@@ -222,19 +224,28 @@ export async function migrateCardLayoutsToSkins(deps: {
 	}
 
 	/**
-	 * 只改过颜色的那条路:把两个色写进默认皮肤的旋钮覆盖。**合并不覆盖** —— 面板上
-	 * 可能已经有别的旋钮值了(虽然这一趟通常是首次升级,但迁移得幂等到不吃掉别人的键)。
+	 * 退役配置里能搬进旋钮的那些,落到**这个人最终用的那套皮肤**上(默认皮肤,或上面刚
+	 * 折出来的派生皮肤)。两样来源:
+	 *
+	 * - **颜色** —— 只走「只改过颜色」那条路(其余情况颜色已经烧进派生皮肤的外框 CSS 了)。
+	 * - **玻璃** —— 恒搬。它退役成默认皮肤自带的两枚旋钮(决策 16 的 🔗),而派生皮肤也
+	 *   声明着同两枚,所以不分那两条路。
+	 *
+	 * **合并不覆盖**:面板上可能已经有别的旋钮值了(这一趟通常是首次升级,但迁移得幂等
+	 * 到不吃掉别人的键)。
 	 */
 	let nextKnobs = globals.defaults.cardSkinKnobs;
+	const knobPatch: CardSkinKnobOverrides = {};
 	if (colorOnly && globalSkinId === DEFAULT_CARD_SKIN_ID && globalColors?.base) {
 		const K = DEFAULT_SKIN_KNOB_KEYS;
+		knobPatch[K.gradientStart] = globalColors.base.start;
+		knobPatch[K.gradientEnd] = globalColors.base.end;
+	}
+	Object.assign(knobPatch, glassKnobsOf(globals.defaults.cardStyle) ?? {});
+	if (Object.keys(knobPatch).length > 0) {
 		nextKnobs = {
 			...nextKnobs,
-			[DEFAULT_CARD_SKIN_ID]: {
-				...nextKnobs?.[DEFAULT_CARD_SKIN_ID],
-				[K.gradientStart]: globalColors.base.start,
-				[K.gradientEnd]: globalColors.base.end,
-			},
+			[globalSkinId]: { ...nextKnobs?.[globalSkinId], ...knobPatch },
 		};
 		result.globalKnobs = true;
 	}
@@ -247,8 +258,8 @@ export async function migrateCardLayoutsToSkins(deps: {
 		...globals,
 		defaults: {
 			...defaults,
-			cardStyle: stripColors(defaults.cardStyle),
-			cardStyleByKind: stripColorsByKind(defaults.cardStyleByKind) ?? {},
+			cardStyle: stripRetiredStyle(defaults.cardStyle),
+			cardStyleByKind: stripRetiredStyleByKind(defaults.cardStyleByKind) ?? {},
 			cardSkin: globalSkinId,
 			cardSkinKnobs: nextKnobs ?? {},
 		},
@@ -260,7 +271,7 @@ export async function migrateCardLayoutsToSkins(deps: {
 	logger?.info(
 		`[card-skin] 旧版式迁移完成:新增 ${result.created} 套皮肤` +
 			`(全局 ${result.global ? "1" : "0"} 套,${result.subscriptions} 个订阅改指皮肤` +
-			`${result.globalKnobs ? ",全局配色落成默认皮肤的旋钮" : ""})`,
+			`${result.globalKnobs ? ",全局配色 / 玻璃落成皮肤旋钮" : ""})`,
 	);
 	return result;
 }
@@ -311,11 +322,6 @@ function hasRetiredColors(style: CardStylePartial | undefined): boolean {
 	return style?.cardColorStart !== undefined || style?.cardColorEnd !== undefined;
 }
 
-/** 按卡种那张表里有没有哪一格还带着颜色键。 */
-function hasRetiredColorsByKind(byKind: CardStyleByKind | undefined): boolean {
-	return Object.values(byKind ?? {}).some((s) => hasRetiredColors(s));
-}
-
 /** 一份样式里那对颜色;缺的补出厂色 —— 「没设过」与「设成出厂色」在出图上本就一样。 */
 function gradientOf(style: CardStylePartial): CardSkinGradient {
 	return {
@@ -357,10 +363,52 @@ function colorsOf(
 	return hasKind ? { base, byKind } : { base };
 }
 
-/** 摘掉一份样式里那两个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
-function stripColors<T extends CardStylePartial>(style: T): T {
-	if (!hasRetiredColors(style)) return style;
-	const { cardColorStart: _s, cardColorEnd: _e, ...rest } = style;
+// ── 退役的玻璃片 ─────────────────────────────────────────────────────────────
+
+/**
+ * 这一份样式还带着玻璃那两个退役的键吗。`glassClear` 连 `false` 也算 —— 它从前是
+ * `.default(false)`,几乎每份存量 globals.json 上都有一个,那也是要收走的残渣。
+ */
+function hasRetiredGlass(style: CardStylePartial | undefined): boolean {
+	return style?.glassOpacity !== undefined || style?.glassClear !== undefined;
+}
+
+/**
+ * 全局那份玻璃 → 旋钮覆盖。**这里的换算与出图时那条一模一样**(从前 `render-skin.tsx`
+ * 的 `frameVariables` 把 props 上的玻璃翻成同两枚变量):「完全透明」压过白纱,并且把
+ * 模糊也一起摁到 0;只调过白纱时模糊不写,让皮肤 CSS 里的兜底继续生效。
+ *
+ * 没设过就返回 `undefined` —— 「没拧过」在旋钮那边的形状是**键不在表里**,不是写个默认值。
+ */
+function glassKnobsOf(style: CardStylePartial): CardSkinKnobOverrides | undefined {
+	const K = DEFAULT_SKIN_KNOB_KEYS;
+	if (style.glassClear) return { [K.glassOpacity]: 0, [K.glassBlur]: 0 };
+	if (style.glassOpacity !== undefined) return { [K.glassOpacity]: style.glassOpacity };
+	return undefined;
+}
+
+// ── 摘键 ─────────────────────────────────────────────────────────────────────
+
+/** 这一份样式(或它的 partial)还带着任何退役的样式键吗(颜色 / 玻璃)。 */
+function hasRetiredStyle(style: CardStylePartial | undefined): boolean {
+	return hasRetiredColors(style) || hasRetiredGlass(style);
+}
+
+/** 按卡种那张表里有没有哪一格还带着退役的样式键。 */
+function hasRetiredStyleByKind(byKind: CardStyleByKind | undefined): boolean {
+	return Object.values(byKind ?? {}).some((s) => hasRetiredStyle(s));
+}
+
+/** 摘掉一份样式里那四个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
+function stripRetiredStyle<T extends CardStylePartial>(style: T): T {
+	if (!hasRetiredStyle(style)) return style;
+	const {
+		cardColorStart: _s,
+		cardColorEnd: _e,
+		glassOpacity: _go,
+		glassClear: _gc,
+		...rest
+	} = style;
 	return rest as T;
 }
 
@@ -368,23 +416,26 @@ function stripColors<T extends CardStylePartial>(style: T): T {
  * 按卡种那张表逐格摘键。摘完空掉的那一格整个丢掉(空覆盖是 no-op,留着只是残渣),
  * 整张表都空了返回 `undefined`。没东西可摘就返回原引用。
  */
-function stripColorsByKind(byKind: CardStyleByKind | undefined): CardStyleByKind | undefined {
-	if (byKind === undefined || !hasRetiredColorsByKind(byKind)) return byKind;
+function stripRetiredStyleByKind(byKind: CardStyleByKind | undefined): CardStyleByKind | undefined {
+	if (byKind === undefined || !hasRetiredStyleByKind(byKind)) return byKind;
 	const out: CardStyleByKind = {};
 	for (const [kind, style] of Object.entries(byKind) as Array<[CardKind, CardStylePartial]>) {
-		const next = stripColors(style);
+		const next = stripRetiredStyle(style);
 		if (Object.keys(next).length > 0) out[kind] = next;
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
- * 一位 UP 的覆盖里所有退役键(`cardLayout` + 两处颜色)一起摘掉。什么都不用摘时返回
+ * 一位 UP 的覆盖里所有退役键(`cardLayout` + 颜色 + 玻璃)一起摘掉。什么都不用摘时返回
  * **原引用** —— 上面靠 `!==` 判这条订阅要不要重写。
+ *
+ * per-UP 的玻璃**只摘不补**:旋钮是「每套皮肤一份」,分不出 UP,给每个调过玻璃的人派
+ * 一套派生皮肤代价太大(2026-09-14 主人拍板直接丢)。摘完他跟着所在皮肤的玻璃走。
  */
 function stripRetiredKeys(ov: SubscriptionOverrides): SubscriptionOverrides {
-	const style = ov.cardStyle === undefined ? undefined : stripColors(ov.cardStyle);
-	const byKind = stripColorsByKind(ov.cardStyleByKind);
+	const style = ov.cardStyle === undefined ? undefined : stripRetiredStyle(ov.cardStyle);
+	const byKind = stripRetiredStyleByKind(ov.cardStyleByKind);
 	if (ov.cardLayout === undefined && style === ov.cardStyle && byKind === ov.cardStyleByKind) {
 		return ov;
 	}

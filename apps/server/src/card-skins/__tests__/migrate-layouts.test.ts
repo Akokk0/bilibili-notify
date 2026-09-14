@@ -520,3 +520,107 @@ describe("退役的渐变色", () => {
 		expect(subById(sub).overrides.cardSkin).toBeTruthy();
 	});
 });
+
+/**
+ * 玻璃片退役成旋钮(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板)。
+ *
+ * 与渐变色那组同一套路 —— 但**代价更大且是主人明说认下的**:玻璃原来能按 UP / 按卡种
+ * 分别覆盖,旋钮只有「每套皮肤一份」,所以那两层覆盖**直接丢**,不给它们派生皮肤
+ * (主人原话:「per-UP / per-kind 直接丢吧,这要派生太难了」)。这一组钉的就是「全局那份
+ * 搬进旋钮、另外两层只收键不补偿」。
+ */
+describe("退役的玻璃片", () => {
+	async function setGlobalGlass(patch: {
+		glassOpacity?: number;
+		glassClear?: boolean;
+	}): Promise<void> {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: { ...g.defaults, cardStyle: { ...g.defaults.cardStyle, ...patch } },
+		});
+	}
+
+	const knobsOf = (skinId: string): Record<string, unknown> =>
+		config.getGlobals().defaults.cardSkinKnobs[skinId] ?? {};
+
+	it("全局调过白纱 → 不派皮肤,落成当前皮肤的旋钮覆盖", async () => {
+		await setGlobalGlass({ glassOpacity: 0.45 });
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 0, global: false, globalKnobs: true });
+		expect(installedNames()).toEqual([]);
+		expect(config.getGlobals().defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({ "glass-opacity": 0.45 });
+		expect(await rawState("globals.json")).not.toContain("glassOpacity");
+	});
+
+	it("全局开过「完全透明」→ 白纱与模糊两枚旋钮一起归零", async () => {
+		await setGlobalGlass({ glassClear: true });
+		await migrateCardLayoutsToSkins({ store, config });
+
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({ "glass-opacity": 0, "glass-blur": 0 });
+		expect(await rawState("globals.json")).not.toContain("glassClear");
+	});
+
+	it("「完全透明」压过白纱 —— 与出图时同一条优先级", async () => {
+		await setGlobalGlass({ glassOpacity: 0.45, glassClear: true });
+		await migrateCardLayoutsToSkins({ store, config });
+
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({ "glass-opacity": 0, "glass-blur": 0 });
+	});
+
+	it("版式也改过 → 玻璃落在派生出来的那套皮肤上,不是默认皮肤", async () => {
+		await setGlobalLayout(customLayout());
+		await setGlobalGlass({ glassOpacity: 0.6 });
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 1, global: true, globalKnobs: true });
+		const derived = config.getGlobals().defaults.cardSkin;
+		expect(derived).not.toBe(DEFAULT_CARD_SKIN_ID);
+		expect(knobsOf(derived)).toEqual({ "glass-opacity": 0.6 });
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({});
+	});
+
+	it("per-UP / per-kind 的玻璃直接丢:不派生、不落旋钮,键照样收走", async () => {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: { ...g.defaults, cardStyleByKind: { live: { glassOpacity: 0.3 } } },
+		});
+		const sub = await addSub("111", "阿夸", {
+			cardStyle: { glassClear: true },
+			cardStyleByKind: { dynamic: { glassOpacity: 0.2 } },
+		} as SubscriptionOverrides);
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		expect(result).toMatchObject({ created: 0, subscriptions: 0 });
+		expect(installedNames()).toEqual([]);
+		expect(subById(sub).overrides.cardSkin).toBeUndefined();
+		// 全局那份没设过 → 旋钮也不该凭空多出来。
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({});
+		for (const file of ["globals.json", "subscriptions.json"]) {
+			const raw = await rawState(file);
+			expect(raw).not.toContain("glassOpacity");
+			expect(raw).not.toContain("glassClear");
+		}
+	});
+
+	it("只剩 glassClear:false 这种历史残留 → 键收走,旋钮一个都不写", async () => {
+		await setGlobalGlass({ glassClear: false });
+		await migrateCardLayoutsToSkins({ store, config });
+
+		expect(knobsOf(DEFAULT_CARD_SKIN_ID)).toEqual({});
+		expect(await rawState("globals.json")).not.toContain("glassClear");
+	});
+
+	it("跑两遍 —— 只改过玻璃的存量实例第二遍一个字节都不写", async () => {
+		await setGlobalGlass({ glassOpacity: 0.45 });
+		await migrateCardLayoutsToSkins({ store, config });
+		const rawGlobals = await rawState("globals.json");
+
+		const second = await migrateCardLayoutsToSkins({ store, config });
+		expect(second).toEqual({ created: 0, global: false, subscriptions: 0, globalKnobs: false });
+		expect(await rawState("globals.json")).toBe(rawGlobals);
+	});
+});

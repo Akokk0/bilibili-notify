@@ -413,7 +413,7 @@ export function CardStyleFields({
 					<div className="flex items-center gap-2 text-bn-xs text-bn-text-secondary">
 						<Toggle
 							size="sm"
-							value={style.glassClear}
+							value={style.glassClear ?? false}
 							onChange={(on) => onChange({ ...style, glassClear: on, glassOpacity: undefined })}
 						/>
 						完全透明（去磨砂模糊）
