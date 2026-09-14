@@ -90,6 +90,8 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		globalKindBg?: string[];
 		/** 全局直播封面列表(liveCoverImages)—— 验证删除引用检查覆盖封面引用。 */
 		globalCover?: string[];
+		/** 皮肤旋钮那一层(2026-09-14 起背景图的正主)。 */
+		knobs?: Record<string, Record<string, unknown>>;
 		subs?: Array<{ uid: string; bg?: string[]; kindBg?: string[]; cover?: string[] }>;
 	}): RouteDeps {
 		return {
@@ -103,7 +105,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				getGlobals: () => ({
 					defaults: {
 						cardSkin: "default",
-						cardSkinKnobs: {},
+						cardSkinKnobs: opts.knobs ?? {},
 						cardStyle: {
 							backgroundImages: opts.globalBg ?? [],
 							liveCoverImages: opts.globalCover ?? [],
@@ -192,6 +194,26 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			expect(res.status).toBe(409);
 			expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: false });
 			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除被**皮肤旋钮**引用的背景图 → 409,referencedBy 指出是哪套皮肤", async () => {
+		// 2026-09-14 起壁纸的正主是旋钮。漏掉这一处是静默的:删得掉、请求成功,皮肤清单里
+		// 留着一个指向空气的 id,出图静静回落渐变。
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-knob-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, knobs: { neon: { wallpaper: [id] } } }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy?: string[] };
+			expect(json.referencedBy?.some((s) => s.includes("neon"))).toBe(true);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

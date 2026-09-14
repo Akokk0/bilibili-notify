@@ -37,6 +37,7 @@ import {
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
+	CARD_SKIN_UPLOAD_PREFIX,
 	CardSkinIdSchema,
 	type CardSkinKind,
 	type CardSkinKnobOverrides,
@@ -211,9 +212,14 @@ export function testPushCaption(kind: PreviewKind): string {
 }
 
 /**
- * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。基准
- * `cardStyle.backgroundImages` 与**各卡片类型** `cardStyleByKind[*].backgroundImages`(per-kind)
- * 都算,全局默认 + 各 UP 覆盖两层都扫。返回空数组 = 没人用,可安全删盘。
+ * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。
+ *
+ * 三处都算:**皮肤旋钮**(2026-09-14 起背景图的正主 —— 每套皮肤一份,值是一串 id)、
+ * 直播封面(`liveCoverImages`,与背景图共用同一图廊),以及退役中的 `backgroundImages`
+ * (存量机器上开机迁移之前还在)。返回空数组 = 没人用,可安全删盘。
+ *
+ * ⚠️ 漏掉旋钮那一处的后果是**静默的**:删得掉、请求成功,而那套皮肤的清单里留着一个
+ * 指向空气的 id,出图时静静回落渐变 —— 主人只会觉得「壁纸自己没了」。
  */
 function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
 	// 背景图与直播封面共用同一图廊 —— 两类引用都算(删掉被封面引用的图同样会坏渲染)。
@@ -226,6 +232,13 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
 	): boolean => (byKind ? Object.values(byKind).some(inStyle) : false);
 
 	const refs: string[] = [];
+	// 旋钮值是「一串 id」(图片旋钮)—— 不认旋钮声明,直接按形状扫:这里没有皮肤清单,
+	// 而「哪个 key 是图片旋钮」只有清单知道。多扫一个同形状的值也只是多拦一次删除。
+	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
+		if (Object.values(overrides ?? {}).some((v) => Array.isArray(v) && v.includes(id))) {
+			refs.push(`皮肤「${skinId}」`);
+		}
+	}
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
 		refs.push("全局默认");
 	}
@@ -243,11 +256,23 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
  * 那一层的配置删完就成了悬空引用,出图静静落回兜底字体,而设置页还显示着它的名字。
  */
 function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
+	// 字体的正主同样是旋钮(值写成 `upload:<id>`);`fontAsset` 是退役中的那条老路。
+	const refs: string[] = [];
+	const asKnob = `${CARD_SKIN_UPLOAD_PREFIX}${id}`;
+	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
+		if (Object.values(overrides ?? {}).some((v) => v === asKnob)) refs.push(`皮肤「${skinId}」`);
+	}
 	const inStyle = (style?: { fontAsset?: string }): boolean => style?.fontAsset === id;
 	const inByKind = (byKind?: Record<string, { fontAsset?: string }>): boolean =>
 		byKind ? Object.values(byKind).some(inStyle) : false;
 
-	const refs: string[] = [];
+	// 旋钮值是「一串 id」(图片旋钮)—— 不认旋钮声明,直接按形状扫:这里没有皮肤清单,
+	// 而「哪个 key 是图片旋钮」只有清单知道。多扫一个同形状的值也只是多拦一次删除。
+	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
+		if (Object.values(overrides ?? {}).some((v) => Array.isArray(v) && v.includes(id))) {
+			refs.push(`皮肤「${skinId}」`);
+		}
+	}
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
 		refs.push("全局默认");
 	}
