@@ -28,11 +28,14 @@ export const CARD_DATA_VERSION = 1;
 import {
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
 	type CardSkinBuiltinBlock,
+	type CardSkinField,
+	type CardSkinFieldType,
 	type CardSkinFrameHook,
 	type CardSkinKind,
 	type PreviewScene,
@@ -450,101 +453,10 @@ export function cardSkinKnobDeclarations(
 
 // ---- 数据契约 ----------------------------------------------------------------
 
-export type CardSkinFieldType = "text" | "number" | "bool" | "image";
-
-/** 一个对外字段:路径、类型、人话名。`image` 类型才准出现在 `<img src="{…}">` 里。 */
-export interface CardSkinField {
-	path: string;
-	type: CardSkinFieldType;
-	label: string;
-}
-
-const f = (path: string, type: CardSkinFieldType, label: string): CardSkinField => ({
-	path,
-	type,
-	label,
-});
-
-const AUTHOR_FIELDS = (who: string) => [
-	f("up.name", "text", `${who}名`),
-	f("up.face", "image", `${who}头像`),
-];
-
-/**
- * 每种卡对外承诺的字段(ADR-0014 决策 14)。**只增不删不改名。**
- * 已格式化的文本(「1.2 万」「已开播 1 小时」)直接给,占位符不带过滤器。
- * `is*` / `has*` 一律 bool,是 `showIf` 的目标。
- */
-export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = {
-	live: [
-		...AUTHOR_FIELDS("主播"),
-		f("live.title", "text", "直播标题"),
-		f("live.area", "text", "分区"),
-		f("live.time", "text", "开播时长 / 下播时间那句"),
-		f("live.description", "text", "房间简介(纯文本)"),
-		f("live.cover", "image", "封面(生效的那张)"),
-		f("live.hasCover", "bool", "有没有封面"),
-		f("live.isStreaming", "bool", "正在直播"),
-		f("live.isEnded", "bool", "已下播"),
-		f("stats.popularity", "text", "人气(直播中)/ 点赞(下播)"),
-		f("stats.area", "text", "分区(同 live.area,给数据行用)"),
-		f("stats.fans", "text", "粉丝数(直播中)/ 累计观看(下播)"),
-		f("stats.fansChanged", "text", "粉丝变化(下播才有)"),
-		f("stats.hasFansChanged", "bool", "有没有粉丝变化"),
-	],
-	dynamic: [
-		...AUTHOR_FIELDS("UP 主"),
-		f("up.isVip", "bool", "是大会员"),
-		f("dynamic.type", "text", "动态类型(DYNAMIC_TYPE_*)"),
-		f("dynamic.action", "text", "「投稿了视频」这类动作标签"),
-		f("dynamic.time", "text", "发布时间"),
-		f("dynamic.topic", "text", "话题"),
-		f("dynamic.hasTopic", "bool", "有没有话题"),
-		f("dynamic.isForward", "bool", "是转发"),
-		f("dynamic.hasAdditional", "bool", "有没有附加内容(预约 / 商品…)"),
-		f("dynamic.hasVideo", "bool", "带视频卡"),
-		f("dynamic.hasPics", "bool", "带图"),
-		f("video.title", "text", "视频标题"),
-		f("video.cover", "image", "视频封面"),
-		f("video.duration", "text", "视频时长"),
-		f("video.views", "text", "播放量"),
-		f("video.danmaku", "text", "弹幕数"),
-		f("pics.count", "number", "图片张数"),
-		f("pics.first", "image", "第一张图"),
-		f("stats.forward", "text", "转发数"),
-		f("stats.comment", "text", "评论数"),
-		f("stats.like", "text", "点赞数"),
-	],
-	sc: [
-		f("sender.name", "text", "发送者名"),
-		f("sender.face", "image", "发送者头像"),
-		f("master.name", "text", "主播名"),
-		f("master.face", "image", "主播头像"),
-		f("sc.price", "text", "金额(带货币符号)"),
-		f("sc.priceValue", "number", "金额数字"),
-		f("sc.duration", "text", "留言时长"),
-		f("sc.level", "number", "价位档(0~5)"),
-		f("sc.text", "text", "留言"),
-	],
-	guard: [
-		f("user.name", "text", "上舰用户名"),
-		f("user.face", "image", "上舰用户头像"),
-		f("user.isAdmin", "bool", "是房管"),
-		f("master.name", "text", "主播名"),
-		f("master.face", "image", "主播头像"),
-		f("guard.level", "number", "舰长等级(1 总督 / 2 提督 / 3 舰长)"),
-		f("guard.levelName", "text", "舰长 / 提督 / 总督"),
-		f("guard.badge", "image", "徽章图"),
-		f("guard.text", "text", "文字信息那句"),
-	],
-	roastBoard: [f("master.name", "text", "主播名"), f("report.days", "number", "统计天数")],
-	roastSolo: [
-		f("up.name", "text", "UP 主名"),
-		f("up.face", "image", "UP 主头像"),
-		f("report.days", "number", "统计天数"),
-	],
-	wordcloud: [f("master.name", "text", "主播名"), f("master.face", "image", "主播头像")],
-};
+export type { CardSkinField, CardSkinFieldType };
+// 字段表住零依赖的 `constants.ts`(理由同块目录与挂点:编辑器要照它画 `showIf` 的候选
+// 与自定义块里能写的占位符)。这里原样再导出。
+export { CARD_SKIN_FIELDS };
 
 const FIELD_PATH_RE = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
 
