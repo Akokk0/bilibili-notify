@@ -1,16 +1,13 @@
 /**
- * **直播卡数据区:两条路画出同样的三件**(ADR-0014 决策 16 的 🔗)。
+ * **直播卡数据区:显隐由块序列表达**(ADR-0014 决策 16 的 🔗)。
  *
  * 人气 / 分区 / 粉丝原先由 `cardStyle` 的三个开关(进模板成 `showPopularity` /
- * `showArea` / `showFans` 三个 props)控制显隐,现在拆成了三个原子块 —— 旧路径靠**开关**
- * 收起,皮肤路径靠**迁移时不生成那一块**收起。两种表达必须给出同一张卡:
+ * `showArea` / `showFans` 三个 props)控制显隐。三个开关已经退役 —— 块级的 `showIf`
+ * 管不到复合块内部的一行,所以它们拆成了三个**原子块**,「想少显示哪件」= 皮肤里没有
+ * 那一块。开机迁移把存量用户关过的开关折进块序列(`cardLayoutToSkin(…, toggles)`)。
  *
- * - **旧路径**:模板 + 三个开关按用户的原样传;
- * - **皮肤路径**:`cardLayoutToSkin(…, toggles)` 把开关折进块序列,渲染时三个开关一律
- *   传 `true`(显隐已经由「有没有这块」表达了,再让开关插一手就是两套真值源)。
- *
- * 这条钉的是「同一组开关下,两条路的数据区文案出现与否一致」。它同时是那条接线的守卫:
- * 皮肤路径要真的找得到 `popularity` / `area` / `fans` 三个块渲染器 —— 找不到的话
+ * 这条钉的是「折出来的块序列,画出来就是那几件」。它同时是那条接线的守卫:皮肤路径要
+ * 真的找得到 `popularity` / `area` / `fans` 三个块渲染器 —— 找不到的话
  * `renderSkinnedCard` 会把整块当「没数据」悄悄收起,类型与别的测试全绿,只有这条会红。
  *
  * 像素级的一致(位置、行距、右对齐)不在这里钉:那是一次性本机像素门的事,这条只管
@@ -22,7 +19,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import { LiveCard, type LiveCardProps } from "../../templates/live-card";
+import type { LiveCardProps } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
 interface Toggles {
@@ -62,23 +59,24 @@ function probe(rendered: string): Toggles {
 	};
 }
 
-describe("直播卡数据区 — 旧路径(开关)与皮肤路径(原子块)显隐一致", () => {
+describe("直播卡数据区 — 折出来的块序列画出那几件", () => {
 	for (const toggles of COMBOS) {
-		it(`${label(toggles)}:两条路出现的文案与开关一致`, async () => {
+		it(`${label(toggles)}:出现的文案与折块时那组开关一致`, async () => {
 			const props = await liveProps();
-
-			// 旧路径:开关照用户的原样传。
-			const viaTemplate = await html(LiveCard({ ...props, ...toggles }));
-
-			// 皮肤路径:显隐已折进块序列,开关一律真。
 			const card = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, toggles).cards.live;
 			if (!card) throw new Error("折不出 live 卡");
-			const viaSkin = await html(
-				renderSkinnedCard({ kind: "live", card, props: { ...props, ...ALL_ON } }).vnode,
-			);
-
-			expect(probe(viaTemplate), "旧路径").toEqual(toggles);
-			expect(probe(viaSkin), "皮肤路径").toEqual(toggles);
+			const viaSkin = await html(renderSkinnedCard({ kind: "live", card, props }).vnode);
+			expect(probe(viaSkin)).toEqual(toggles);
 		});
 	}
+
+	it("三件都要 → 走的是复合块,而复合块恒画三件", async () => {
+		const props = await liveProps();
+		const card = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, ALL_ON).cards.live;
+		if (!card) throw new Error("折不出 live 卡");
+		// 验红:给 `blocks/live.tsx` 的 data 块加回任何一个「某件不画」的条件,这条红。
+		expect(probe(await html(renderSkinnedCard({ kind: "live", card, props }).vnode))).toEqual(
+			ALL_ON,
+		);
+	});
 });

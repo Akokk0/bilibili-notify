@@ -801,43 +801,35 @@ describe("createEngines — image 配色热更", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.showArea = false;
+			g.defaults.cardStyle.backgroundImages = ["bg-1"];
 		});
 		c.bus.emit("config-changed", "globals");
-		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(last.showArea).toBe(false);
+		expect(H.image[0].updateConfig).toHaveBeenCalled();
 		// cardStyle 变更不在 app section → 不扇出重设 UA(仅 boot 1 次)。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
 	/**
-	 * 字体那一项 2026-09-14 退役成皮肤旋钮,不再从 cardStyle 透给渲染器 —— 所以这里改钉
-	 * **旋钮值**那条热更(拧一枚旋钮要当场生效,与从前改字体一样),外加数据区三个开关。
+	 * 字体那一项 2026-09-14 退役成皮肤旋钮,数据区那三个开关同日一起退役 —— 从 cardStyle
+	 * 透给渲染器的东西就此空了,所以这里钉的是**旋钮值**那条热更:拧一枚旋钮要当场生效,
+	 * 与从前改字体一样。
 	 */
-	it("数据区 show 开关与旋钮值改完直透 ImageRenderer 同名字段(全链路不桥接)", () => {
+	it("旋钮值改完直透 ImageRenderer 同名字段(全链路不桥接)", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
-		// boot 时构造的 ImageRenderer 已收到 default(数据区三项全开);字体不在里面了。
+		// boot 时构造的 ImageRenderer 一个退役字段都不带:字体与数据区三开关都不在里面了。
 		const bootConfig = H.image[0].opts.config;
-		expect(bootConfig).toMatchObject({
-			showPopularity: true,
-			showArea: true,
-			showFans: true,
-		});
 		expect(bootConfig.font).toBeUndefined();
+		expect(bootConfig.showPopularity).toBeUndefined();
+		expect(bootConfig.showArea).toBeUndefined();
+		expect(bootConfig.showFans).toBeUndefined();
 
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.showPopularity = false;
-			g.defaults.cardStyle.showArea = false;
-			g.defaults.cardStyle.showFans = false;
 			g.defaults.cardSkinKnobs = { default: { font: "Noto Sans CJK SC" } };
 		});
 		c.bus.emit("config-changed", "globals");
 		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(last).toMatchObject({
-			showPopularity: false,
-			showArea: false,
-			showFans: false,
 			cardSkinKnobs: { default: { font: "Noto Sans CJK SC" } },
 		});
 	});

@@ -42,9 +42,6 @@ const SERVICE_CTX: ServiceContext = {
 
 const BASE_CONFIG: ImageRendererConfig = {
 	font: "PingFang SC, sans-serif",
-	showPopularity: true,
-	showArea: true,
-	showFans: true,
 };
 
 /** B 站直播接口那一小撮渲染真会读的字段。 */
@@ -151,9 +148,6 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 		const viaTemplate = await renderCard(
 			LiveCard,
 			{
-				showPopularity: true,
-				showArea: true,
-				showFans: true,
 				cardColorStart: DEFAULT_CARD_GRADIENT[0],
 				cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 				data: LIVE_ROOM,

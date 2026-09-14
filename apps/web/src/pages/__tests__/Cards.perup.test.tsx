@@ -117,44 +117,6 @@ describe("Cards per-UP 作用域接线", () => {
 		);
 	});
 
-	it("全局直播数据只认基准:残留的全局 per-kind show 不泄漏到预览", async () => {
-		// 基准关粉丝;全局 per-kind live 残留 showFans=true(旧配置/历史快照)→ 应被忽略。
-		const defaults = makeDefaults() as unknown as {
-			cardStyle: { showFans: boolean };
-			cardStyleByKind?: unknown;
-		};
-		defaults.cardStyle.showFans = false;
-		defaults.cardStyleByKind = { live: { showFans: true } };
-		const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(globals);
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-
-		// 全家福 live 预览取基准 showFans=false(剥掉全局 per-kind 的 show)。
-		await waitFor(
-			() => {
-				const ok = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { kind?: string; style?: { showFans?: boolean } };
-					return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === false;
-				});
-				expect(ok).toBeTruthy();
-			},
-			{ timeout: 2000 },
-		);
-		// 反向:不应有 live 预览带 showFans=true(证明 per-kind 残留没泄漏)。
-		const leaked = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-			const b = body as { kind?: string; style?: { showFans?: boolean } };
-			return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === true;
-		});
-		expect(leaked).toBeFalsy();
-	});
-
 	it("点已定制 UP 的 tab → 灵动岛切到 pageKey 'cards-perup'", async () => {
 		renderCards();
 		// 等全局先就位,确保 subs 已加载、tab 已渲染。
@@ -313,42 +275,12 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(overrides.cardStyleByKind).toEqual({ sc: { font: "SC Sans" } });
 	});
 
-	it("per-UP 直播数据区覆盖 → 进生效样式 / 预览请求(showFans=false)", async () => {
-		const dataSub: Subscription = {
-			...makeEmptySubscription("777888"),
-			overrides: { cardStyleByKind: { live: { showFans: false } } },
-		};
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([dataSub]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(GLOBALS);
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-		fireEvent.click(await screen.findByText("UID 777888"));
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
-		// 切到「直播开播」类型 tab(单卡预览用 effStyle = 基准 + 该 UP live 覆盖)。
-		fireEvent.click(screen.getAllByRole("button", { name: "直播开播" })[0]);
-
-		await waitFor(
-			() => {
-				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { kind?: string; style?: { showFans?: boolean } };
-					return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === false;
-				});
-				expect(call).toBeTruthy();
-			},
-			{ timeout: 2000 },
-		);
-	});
-
-	it("per-UP live 颜色 + 数据区共存于 cardStyleByKind.live,保存两者都不丢", async () => {
-		// 字段不相交(颜色 omitShow、数据区 pickShow)→ seed 同时含两类覆盖时往返保留。
+	it("per-UP live 外观 + 封面共存于 cardStyleByKind.live,保存两者都不丢", async () => {
+		// 字段不相交(外观 omitCover、封面 pickCover)→ seed 同时含两类覆盖时往返保留。
+		// 从前的第三族「数据区 show」2026-09-14 随三个开关一起退役。
 		const mixedSub: Subscription = {
 			...makeEmptySubscription("555666"),
-			overrides: { cardStyleByKind: { live: { font: "Abc Sans", showFans: false } } },
+			overrides: { cardStyleByKind: { live: { font: "Abc Sans", liveCoverImages: ["c1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/subs")) return Promise.resolve([mixedSub]);
@@ -366,7 +298,10 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
 		const overrides = body.overrides as { cardStyleByKind?: { live?: Record<string, unknown> } };
-		expect(overrides.cardStyleByKind?.live).toEqual({ font: "Abc Sans", showFans: false });
+		expect(overrides.cardStyleByKind?.live).toEqual({
+			font: "Abc Sans",
+			liveCoverImages: ["c1"],
+		});
 	});
 
 	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {

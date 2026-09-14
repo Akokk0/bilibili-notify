@@ -77,9 +77,6 @@ export function makeDefaults(): GlobalDefaults {
 		cardStyle: {
 			enabled: true,
 			font: "",
-			showPopularity: true,
-			showArea: true,
-			showFans: true,
 			backgroundImages: [],
 			liveCoverImages: [],
 			glassClear: false,

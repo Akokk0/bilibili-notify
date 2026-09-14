@@ -79,16 +79,29 @@ describe("CardStyle 字体资产", () => {
 	});
 });
 
-describe("CardStyle data-section show flags", () => {
-	it("defaults the three data-section flags to true (replays current behavior)", () => {
-		const parsed = CardStyleSchema.parse(DEFAULT_CARD_STYLE);
-		expect(parsed.showPopularity).toBe(true);
+describe("CardStyle data-section show flags(🪦 已退役,只为装得进老配置)", () => {
+	it("新装的机器一个 show 键都不写 —— 写了开机迁移就判不出「搬过没有」", () => {
+		const parsed = CardStyleSchema.parse(DEFAULT_CARD_STYLE) as Record<string, unknown>;
+		// 验红:把三个字段改回 `.default(true)`,这条红。
+		expect("showPopularity" in parsed).toBe(false);
+		expect("showArea" in parsed).toBe(false);
+		expect("showFans" in parsed).toBe(false);
+	});
+
+	it("存量配置里的 show 键照旧收得下 —— 开机迁移要照它折块序列", () => {
+		const parsed = CardStyleSchema.parse({
+			...DEFAULT_CARD_STYLE,
+			showPopularity: false,
+			showArea: true,
+			showFans: false,
+		});
+		expect(parsed.showPopularity).toBe(false);
 		expect(parsed.showArea).toBe(true);
-		expect(parsed.showFans).toBe(true);
+		expect(parsed.showFans).toBe(false);
 	});
 
 	// 旧 globals.json 形态:带废弃的 hideDesc / hideFollower,且没有新的 show* 字段。
-	const { showPopularity: _p, showArea: _a, showFans: _f, ...LEGACY_STYLE } = DEFAULT_CARD_STYLE;
+	const LEGACY_STYLE = DEFAULT_CARD_STYLE;
 
 	it("drops the legacy hideDesc / hideFollower flags", () => {
 		const parsed = CardStyleSchema.parse({
@@ -100,12 +113,15 @@ describe("CardStyle data-section show flags", () => {
 		expect(parsed.hideFollower).toBeUndefined();
 	});
 
+	// `hideFollower` → `showFans` 这条链**退役之后仍然要留着**:老用户「藏起粉丝数据」
+	// 的意图先落成 `showFans=false`,再由开机迁移折成「皮肤里没有 fans 块」。断在哪一段
+	// 都等于替他把那一件重新显示出来。
 	it("migrates legacy hideFollower=true into showFans=false (preserves hidden intent)", () => {
 		const parsed = CardStyleSchema.parse({ ...LEGACY_STYLE, hideFollower: true });
 		expect(parsed.showFans).toBe(false);
-		// 其它两项不受影响,仍走默认显示
-		expect(parsed.showPopularity).toBe(true);
-		expect(parsed.showArea).toBe(true);
+		// 其它两项没设过就仍然没有键(显不显示归皮肤的块序列)。
+		expect(parsed.showPopularity).toBeUndefined();
+		expect(parsed.showArea).toBeUndefined();
 	});
 
 	it("lets an explicit showFans win over a legacy hideFollower", () => {

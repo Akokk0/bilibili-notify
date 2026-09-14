@@ -9,9 +9,9 @@
  * 保持它们在复合块里的 class 与 style,让皮肤能把三件分开摆。
  *
  * 数据区那三件(popularity / area / fans)同理从 `data` 里抠出来,只是**多带上复合块根上
- * 那几句观感**(`px-4` / 13px / `#666`)—— 见 `DATA_ATOM_CLASS` 的说明。它们取代原来的
- * `showPopularity` / `showArea` / `showFans` 三个开关(ADR-0014 决策 16 的 🔗):块级的
- * `showIf` 管不到复合块内部的一行,所以改成「想少显示哪件就删哪块」。
+ * 那几句观感**(`px-4` / 13px / `#666`)—— 见 `DATA_ATOM_CLASS` 的说明。它们**取代了**原来的
+ * `showPopularity` / `showArea` / `showFans` 三个开关(ADR-0014 决策 16 的 🔗,开关已退役):
+ * 块级的 `showIf` 管不到复合块内部的一行,所以改成「想少显示哪件就删哪块」。
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.live`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
@@ -96,8 +96,8 @@ const DATA_ATOM_STYLE = "--bn-ink-soft: #666;";
 /**
  * 人气 / 点赞(原子块):data 复合块顶行左边那个 span。
  *
- * 与复合块同一条判据:`showPopularity` 为真时那个 span 恒画(`statsLeft` 带「人气：」
- * 前缀,永远不是空串),所以这里也不写「没内容收起」——写了也是一条永远走不到的分支。
+ * 与复合块同一条判据:那个 span 恒画(`statsLeft` 带「人气：」前缀,永远不是空串),
+ * 所以这里也不写「没内容收起」——写了也是一条永远走不到的分支。
  */
 const popularity: BlockRenderer<LiveCardProps> = (p) => (
 	<span class={DATA_ATOM_CLASS} style={DATA_ATOM_STYLE}>
@@ -203,23 +203,21 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		</div>
 	),
 
-	// 数据区(原 stats + follower 合并):人气·点赞 / 分区 / 粉丝数据,各由 show* 开关控制。
-	// 三项全关或全无数据 → 返回 null,块自动收起。
+	// 数据区(原 stats + follower 合并):人气·点赞 / 分区 / 粉丝数据。**三件恒画** ——
+	// 从前的 `showPopularity` / `showArea` / `showFans` 已退役(ADR-0014 决策 16 的 🔗):
+	// 块级的 `showIf` 管不到复合块内部的一行,所以「想少显示哪件」改成在皮肤里删掉对应的
+	// 原子块。复合块自己不再挑,只按**有没有数据**收起粉丝那一行。
 	data: (p) => {
-		const fans = p.showFans ? followerText(p) : "";
-		const hasTopRow = p.showPopularity || p.showArea;
-		if (!hasTopRow && !fans) return null;
+		const fans = followerText(p);
 		return (
 			<div
 				class="px-4 flex flex-col gap-1 text-[13px] [color:var(--bn-ink-soft)]"
 				style="--bn-ink-soft: #666;"
 			>
-				{hasTopRow ? (
-					<div data-bn="row" class="flex justify-between">
-						<span data-bn="popularity">{p.showPopularity ? statsLeft(p) : ""}</span>
-						<span data-bn="area">{p.showArea ? `分区：${p.data.area_name}` : ""}</span>
-					</div>
-				) : null}
+				<div data-bn="row" class="flex justify-between">
+					<span data-bn="popularity">{statsLeft(p)}</span>
+					<span data-bn="area">{`分区：${p.data.area_name}`}</span>
+				</div>
 				{fans ? <div data-bn="fans">{fans}</div> : null}
 			</div>
 		);

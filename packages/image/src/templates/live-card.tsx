@@ -7,12 +7,6 @@ import { bindBlocks } from "../blocks/types";
 import { renderBlocks } from "./block-layout";
 
 export type LiveCardProps = {
-	/** 数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
-	showPopularity: boolean;
-	/** 数据区:显示分区。 */
-	showArea: boolean;
-	/** 数据区:显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化,按直播态)。 */
-	showFans: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型

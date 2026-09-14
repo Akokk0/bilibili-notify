@@ -134,9 +134,6 @@ const StyleSchema = z.object({
 	font: z.string().optional(),
 	/** 主人自带字体的资产 id;设了优先于 `font`(预览与出图必须用同一款,否则「预览好看、推出去变样」)。 */
 	fontAsset: z.string().optional(),
-	showPopularity: z.boolean().optional(),
-	showArea: z.boolean().optional(),
-	showFans: z.boolean().optional(),
 	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
 	backgroundImages: z.array(z.string()).optional(),
 	/** 直播封面资产 id 列表(空 = B 站封面;>1 = 轮换,预览端取首张)。仅 live 卡。 */
@@ -622,9 +619,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!currentPuppeteer) return null;
 		const config = {
 			font: style.font ?? "PingFang SC, sans-serif",
-			showPopularity: style.showPopularity ?? true,
-			showArea: style.showArea ?? true,
-			showFans: style.showFans ?? true,
 			// 跳过悬空引用(文件已删的 id),取第一张盘上存在的图 —— 否则解析失败静默回退渐变。
 			backgroundImage: await firstExistingCardBg(
 				opts.deps.store.bootstrap.dataDir,
@@ -844,7 +838,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				: Promise.resolve(""),
 			loadFontFace(style.fontAsset ?? ""),
 		]);
-		const spec = buildPreviewSpec(kind, style, bgDataUrl, coverDataUrl);
+		const spec = buildPreviewSpec(kind, bgDataUrl, coverDataUrl);
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
@@ -1129,7 +1123,6 @@ type PreviewSpec =
 
 function buildPreviewSpec(
 	kind: "live" | "dyn",
-	style: PreviewStyle,
 	/** 已解析的背景图 data URL(mock SSR 路径不经 generate*,需在此注入)。 */
 	bgDataUrl?: string,
 	/** 已解析的直播封面 data URL(仅 live 卡消费,语义同上)。 */
@@ -1140,7 +1133,7 @@ function buildPreviewSpec(
 		return {
 			kind: "live",
 			props: {
-				...buildLivePreviewProps(style),
+				...buildLivePreviewProps(),
 				backgroundImage,
 				coverOverride: coverDataUrl || undefined,
 			},
@@ -1166,11 +1159,8 @@ const SVG_AVATAR_BLUE =
 const SVG_AVATAR_FAN =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23fdcb6e'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='28' text-anchor='middle' dominant-baseline='middle'%3E粉%3C/text%3E%3C/svg%3E";
 
-function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
+function buildLivePreviewProps(): LiveCardProps {
 	return {
-		showPopularity: style.showPopularity ?? true,
-		showArea: style.showArea ?? true,
-		showFans: style.showFans ?? true,
 		cardColorStart: DEFAULT_CARD_GRADIENT[0],
 		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 		data: {

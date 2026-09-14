@@ -157,13 +157,19 @@ const liveInput = (
 	});
 };
 
-/** live-minimal 的版式:块顺序打乱、简介整块隐藏。 */
+/**
+ * live-minimal 的版式:块顺序打乱、数据区与简介两块整块隐藏。
+ *
+ * 数据区从前是靠 `showPopularity` / `showArea` / `showFans` 三个开关全关收起的;那三个
+ * 开关 2026-09-14 退役(ADR-0014 决策 16 的 🔗),「不要这一块」改由版式表达 —— 画出来
+ * 的卡一字不差,所以这份字节基准照旧钉着同一张卡。
+ */
 const LIVE_CUSTOM_LAYOUT: CardBlock[] = [
 	{ id: "header", type: "header", visible: true },
 	{ id: "divider-1", type: DIVIDER_TYPE, visible: true, marginTop: 10 },
 	{ id: "title", type: "title", visible: true, marginTop: 12 },
 	{ id: "cover", type: "cover", visible: true, marginTop: 12 },
-	{ id: "data", type: "data", visible: true, marginTop: 10 },
+	{ id: "data", type: "data", visible: false, marginTop: 10 },
 	{ id: "desc", type: "desc", visible: false, marginTop: 16 },
 ];
 
@@ -774,11 +780,8 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "live-minimal",
 		group: "直播卡",
 		kind: "live",
-		label: "live-minimal：三个开关全关(数据区整块收起) + 关键帧封面 + 背景图 + 改过顺序的版式",
+		label: "live-minimal：数据区整块收起 + 关键帧封面 + 背景图 + 改过顺序的版式",
 		build: liveInput({
-			showPopularity: false,
-			showArea: false,
-			showFans: false,
 			titleStatus: "正在直播",
 			liveTime: "直播时长：2小时13分",
 			liveStatus: 2,

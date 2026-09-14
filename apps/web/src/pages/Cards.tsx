@@ -58,11 +58,8 @@ import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
 import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
 import {
 	hasCoverOverride,
-	hasShowOverride,
 	isEmptyObj,
 	omitCover,
-	omitShow,
-	type ShowKey,
 	type StylePartial,
 } from "./cards/style-partition";
 import { displayName } from "./up/helpers";
@@ -324,33 +321,6 @@ function TestPushCard({
 // 抽到 ./cards/useAssetObjectUrl 与之共享。
 
 /**
- * 直播卡「数据区」显示开关(人气·点赞 / 分区 / 粉丝数据)—— 仅直播卡用,控制数据区内部
- * 显示哪几项。绑定基准 CardStyle 的 show* 字段(全局作用域;数据区走全局 image config)。
- */
-function DataSectionFields({
-	style,
-	onChange,
-}: {
-	style: CardStyle;
-	onChange: (next: CardStyle) => void;
-}) {
-	const row = (code: "showPopularity" | "showArea" | "showFans") => (
-		<Field code={code} key={code}>
-			<div className="flex h-7.5 items-center">
-				<Toggle value={style[code]} onChange={(v) => onChange({ ...style, [code]: v })} />
-			</div>
-		</Field>
-	);
-	return (
-		<>
-			{row("showPopularity")}
-			{row("showArea")}
-			{row("showFans")}
-		</>
-	);
-}
-
-/**
  * per-UP 直播封面:对该 UP 单独选封面图(替换 B 站房间封面/关键帧)。封面字段存进
  * `cardStyleByKind.live` 的 partial —— 与颜色覆盖 / 数据区 show **字段不相交**,三套
  * 开关互不覆盖(pickCover/omitCover)。未覆盖时跟随全局封面(基准层不持有封面)。
@@ -404,68 +374,6 @@ export function PerUpCoverSection({
 						? `跟随全局封面(${base.length} 张)`
 						: "跟随全局(未设置,使用 B 站房间封面)"}
 				</InheritNote>
-			)}
-		</GlassBox>
-	);
-}
-
-/**
- * per-UP 数据区:对该 UP 单独设置直播卡数据区显示项。show 字段存进 `cardStyleByKind.live`
- * 的 partial —— 与该 kind 的颜色覆盖字段**不相交**(颜色卡 omitShow、数据卡 pickShow),
- * 故两套开关互不覆盖。未覆盖时跟随该 UP 基准 / 全局。
- */
-function PerUpDataSection({
-	base,
-	value,
-	onChange,
-}: {
-	/** 该 UP「live」的基准生效样式(继承值来源)。 */
-	base: CardStyle;
-	/** `cardStyleByKind.live` 的当前 partial(可能同时含颜色覆盖)。 */
-	value: StylePartial | undefined;
-	/** 写回 `cardStyleByKind.live`(undefined = 删除该 kind)。 */
-	onChange: (next: StylePartial | undefined) => void;
-}) {
-	const active = hasShowOverride(value);
-	const eff = (k: ShowKey): boolean => value?.[k] ?? base[k];
-	const toggleOverride = (on: boolean) => {
-		if (on) {
-			onChange({
-				...(value ?? {}),
-				showPopularity: base.showPopularity,
-				showArea: base.showArea,
-				showFans: base.showFans,
-			});
-		} else {
-			const rest = omitShow(value);
-			onChange(isEmptyObj(rest) ? undefined : rest);
-		}
-	};
-	const setFlag = (k: ShowKey, v: boolean) => onChange({ ...(value ?? {}), [k]: v });
-	const row = (k: ShowKey) => (
-		<Field code={k} key={k}>
-			<div className="flex h-7.5 items-center">
-				<Toggle value={eff(k)} onChange={(v) => setFlag(k, v)} />
-			</div>
-		</Field>
-	);
-	return (
-		<GlassBox
-			title="直播数据"
-			subtitle="开 = 该 UP 单独设置直播数据显示项(人气·点赞 / 分区 / 粉丝数据);关 = 跟随全局 / 基准"
-			accent={KIND_LABELS.live.tone}
-			icon={<Icon.live size={14} />}
-			badge={active ? "单独设置" : "跟随"}
-			right={<Toggle value={active} onChange={toggleOverride} />}
-		>
-			{active ? (
-				<>
-					{row("showPopularity")}
-					{row("showArea")}
-					{row("showFans")}
-				</>
-			) : (
-				<InheritNote>该 UP 数据区跟随全局 / 基准</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -1009,11 +917,6 @@ export default function Cards() {
 		content: contentFor(fk),
 	}));
 
-	// 类型 tab 单卡生效值。per-UP 编辑「单独样式」/「数据区」用的基准 = puStyle ?? 全局该类型生效值
-	// (全局 per-kind 的 show 字段同样剥掉,数据区继承值取自基准)。
-	const puBaseStyle: CardStyle = puStyle
-		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
-		: { ...gStyle };
 	const effStyle: CardStyle = effStyleFor(styleKind);
 	/**
 	 * 预览要用哪套皮肤。全局作用域**一个字都不传** —— 「不指皮肤 = 全局在用的那套」
@@ -1133,38 +1036,9 @@ export default function Cards() {
 							</GlassBox>
 						))}
 
-					{/* 数据区显示项 —— 仅「直播开播」tab(数据区是直播卡专属:人气/分区/粉丝)。
-					    全局作用域改 gStyle(走全局 image config);per-UP 可单独覆盖(经 colorOptions 透传)。 */}
-					{!isGlobalTab &&
-						kind === "live" &&
-						(isGlobalScope ? (
-							<GlassBox
-								title="直播数据"
-								subtitle="直播卡数据显示项 —— 人气·点赞 / 分区 / 粉丝数据;关掉某项即从卡片隐藏"
-								accent={KIND_LABELS.live.tone}
-								icon={<Icon.live size={14} />}
-								badge="cardData"
-							>
-								<DataSectionFields style={gStyle} onChange={(n) => setGStyle(n)} />
-							</GlassBox>
-						) : (
-							<PerUpDataSection
-								base={puBaseStyle}
-								value={puByKind.live}
-								onChange={(next) =>
-									setPuByKind((bk) => {
-										const nb = { ...bk };
-										if (next) nb.live = next;
-										else delete nb.live;
-										return nb;
-									})
-								}
-							/>
-						))}
-
 					{/* 直播封面 —— 仅「直播开播」tab。全局作用域改 gStyle 基准(engines 的全局默认
 					    封面即读它);per-UP 单独覆盖走 cardStyleByKind.live 的 liveCoverImages 单字段,
-					    与「单独样式」(颜色)/「直播数据」(show)互不牵动。 */}
+					    与「单独样式」(颜色)互不牵动。 */}
 					{!isGlobalTab &&
 						kind === "live" &&
 						(isGlobalScope ? (

@@ -8,8 +8,8 @@ describe("formatDiffValue", () => {
 	});
 
 	it("boolean → 开启 / 关闭", () => {
-		expect(formatDiffValue("showFans", true)).toEqual({ display: "开启" });
-		expect(formatDiffValue("showFans", false)).toEqual({ display: "关闭" });
+		expect(formatDiffValue("commands.enabled", true)).toEqual({ display: "开启" });
+		expect(formatDiffValue("commands.enabled", false)).toEqual({ display: "关闭" });
 	});
 
 	it("number → 字符串", () => {

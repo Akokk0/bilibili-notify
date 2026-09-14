@@ -37,9 +37,6 @@ import { stripCardHooks } from "./fixtures/card-fixtures";
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
 const LIVE_PROPS: LiveCardProps = {
-	showPopularity: true,
-	showArea: true,
-	showFans: true,
 	cardColorStart: "#e0c3fc",
 	cardColorEnd: "#8ec5fc",
 	data: {

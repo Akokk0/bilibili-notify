@@ -68,7 +68,7 @@ describe("groupDiffsBySection", () => {
 			D("ai.apiKey"),
 			D("persona.name"),
 			D("font"),
-			D("showFans"),
+			D("liveCoverImages"),
 			D("roomId"),
 			D("blockKeywords"),
 			D("templates.liveStart"),

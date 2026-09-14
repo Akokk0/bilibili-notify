@@ -116,9 +116,9 @@ export async function migrateCardLayoutsToSkins(deps: {
 		globalKnobs: false,
 	};
 
-	// 键不在 = 迁过了(或全新安装)。三组退役的键(版式 / 颜色 / 玻璃)任何一处还在都算存量
-	// —— 颜色与玻璃都可以在没有旧版式的机器上单独存在(只改过配色 / 只拉过白纱的用户),
-	// 不能只看 `cardLayout`。
+	// 键不在 = 迁过了(或全新安装)。四组退役的键(版式 / 颜色 / 玻璃 / 数据区三开关)任何
+	// 一处还在都算存量 —— 后三组都可以在没有旧版式的机器上单独存在(只改过配色 / 只拉过
+	// 白纱 / 只关过一个数据项的用户),不能只看 `cardLayout`。
 	const hasLegacy =
 		legacyGlobal !== undefined ||
 		hasRetiredStyle(globals.defaults.cardStyle) ||
@@ -323,12 +323,16 @@ async function installSkin(
 /** 三个开关都开 = 数据区照旧用复合块,折出来与旧默认皮肤一字不差。 */
 const ALL_ON: LiveDataToggles = { showPopularity: true, showArea: true, showFans: true };
 
-/** 从一份 `cardStyle` 里抠出那三个退役中的显隐开关。 */
-function togglesOf(style: LiveDataToggles): LiveDataToggles {
+/**
+ * 从一份 `cardStyle` 里抠出那三个**已退役**的显隐开关(2026-09-14 起 schema 上是
+ * `.optional()`)。**没有键 = 显示** —— 出厂三件全在,「没设过」与「设成 true」在出图上
+ * 从来是一回事,折块序列时也必须是一回事,否则没碰过开关的人会被迁成一张空数据区。
+ */
+function togglesOf(style: Partial<LiveDataToggles>): LiveDataToggles {
 	return {
-		showPopularity: style.showPopularity,
-		showArea: style.showArea,
-		showFans: style.showFans,
+		showPopularity: style.showPopularity ?? true,
+		showArea: style.showArea ?? true,
+		showFans: style.showFans ?? true,
 	};
 }
 
@@ -422,6 +426,15 @@ function assetKnobsOf(style: CardStylePartial): CardSkinKnobOverrides | undefine
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** 这一份样式还带着数据区那三个退役的显隐开关吗。 */
+function hasRetiredToggles(style: CardStylePartial | undefined): boolean {
+	return (
+		style?.showPopularity !== undefined ||
+		style?.showArea !== undefined ||
+		style?.showFans !== undefined
+	);
+}
+
 /** 这一份样式还带着退役的字体 / 背景图键吗。 */
 function hasRetiredAssets(style: CardStylePartial | undefined): boolean {
 	return (
@@ -433,9 +446,17 @@ function hasRetiredAssets(style: CardStylePartial | undefined): boolean {
 
 // ── 摘键 ─────────────────────────────────────────────────────────────────────
 
-/** 这一份样式(或它的 partial)还带着任何退役的样式键吗(颜色 / 玻璃 / 字体与背景图)。 */
+/**
+ * 这一份样式(或它的 partial)还带着任何退役的样式键吗(颜色 / 玻璃 / 字体与背景图 /
+ * 数据区三开关)。
+ */
 function hasRetiredStyle(style: CardStylePartial | undefined): boolean {
-	return hasRetiredColors(style) || hasRetiredGlass(style) || hasRetiredAssets(style);
+	return (
+		hasRetiredColors(style) ||
+		hasRetiredGlass(style) ||
+		hasRetiredAssets(style) ||
+		hasRetiredToggles(style)
+	);
 }
 
 /** 按卡种那张表里有没有哪一格还带着退役的样式键。 */
@@ -443,7 +464,7 @@ function hasRetiredStyleByKind(byKind: CardStyleByKind | undefined): boolean {
 	return Object.values(byKind ?? {}).some((s) => hasRetiredStyle(s));
 }
 
-/** 摘掉一份样式里那七个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
+/** 摘掉一份样式里那十个退役的键;没有就返回原引用(调用方靠引用判「动没动」)。 */
 function stripRetiredStyle<T extends CardStylePartial>(style: T): T {
 	if (!hasRetiredStyle(style)) return style;
 	const {
@@ -454,6 +475,9 @@ function stripRetiredStyle<T extends CardStylePartial>(style: T): T {
 		font: _f,
 		fontAsset: _fa,
 		backgroundImages: _bg,
+		showPopularity: _sp,
+		showArea: _sa,
+		showFans: _sf,
 		...rest
 	} = style;
 	return rest as T;

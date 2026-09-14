@@ -255,6 +255,22 @@ describe("三个显隐开关", () => {
 		expect(ids).not.toContain("data");
 	});
 
+	it("只关过开关、连 cardLayout 都没有 → 照样算存量,该折还得折", async () => {
+		// 2026-09-14 三个开关退役之后,它们自己就是一组「还没迁」的旧键:一台只关过分区、
+		// 版式与颜色都没碰过的机器,光凭 `cardLayout` 判不出来,会被整条跳过。
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: { ...g.defaults, cardStyle: { ...g.defaults.cardStyle, showArea: false } },
+		});
+		const result = await migrateCardLayoutsToSkins({ store, config });
+
+		// 验红:把 `hasRetiredStyle` 里的 `hasRetiredToggles` 那一档拿掉,这条红 —— 迁移一开头
+		// 就返回,主人关掉的分区在换皮肤之后原样回来。
+		expect(result).toMatchObject({ created: 1, global: true });
+		expect(liveBlockIds(config.getGlobals().defaults.cardSkin)).not.toContain("area");
+	});
+
 	it("三个都开 → 照旧用复合块,什么都不折(但旧键照样收走)", async () => {
 		// 旧键摆上去才算「存量实例」—— 不摆的话迁移一开头就返回了,这条会为了错误的理由变绿。
 		await setGlobalLayout(DEFAULT_CARD_LAYOUT);
@@ -292,6 +308,29 @@ describe("收尾", () => {
 		expect(config.getGlobals().defaults.cardLayout).toBeUndefined();
 		const globals = JSON.parse(await rawState("globals.json"));
 		expect(Object.hasOwn(globals.defaults, "cardLayout")).toBe(false);
+	});
+
+	it("迁完三个 show 键也真的没了 —— 「键还在 = 还没迁」", async () => {
+		const g = config.getGlobals();
+		await config.setGlobals({
+			...g,
+			defaults: {
+				...g.defaults,
+				cardStyle: { ...g.defaults.cardStyle, showPopularity: false, showFans: false },
+			},
+		});
+		await addSub("111", "阿夸", {
+			cardStyle: { showArea: false },
+		} as SubscriptionOverrides);
+		await migrateCardLayoutsToSkins({ store, config });
+
+		// 与 cardLayout 同一条纪律:三个字段都是 `.optional()`,删掉就是真的没了。留一个
+		// 在盘上,下次开机又会被当成「还没迁」重跑一遍。
+		const globals = JSON.parse(await rawState("globals.json"));
+		for (const k of ["showPopularity", "showArea", "showFans"]) {
+			expect(Object.hasOwn(globals.defaults.cardStyle, k)).toBe(false);
+		}
+		expect(await rawState("subscriptions.json")).not.toContain("showArea");
 	});
 
 	it("跑两遍 —— 第二遍零变化,不会再折一套出来", async () => {

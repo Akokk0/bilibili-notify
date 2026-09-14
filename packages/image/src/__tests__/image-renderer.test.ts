@@ -44,9 +44,6 @@ function makeRenderer(
 		puppeteer,
 		config: {
 			font: "sans-serif",
-			showPopularity: true,
-			showArea: true,
-			showFans: true,
 			...config,
 		},
 		// 宿主必注入的两个解析回调;缺省解析成空串(= 资产不存在),用例按需覆盖。
@@ -527,9 +524,6 @@ describe("ImageRenderer — IM2 远端图大小上限", () => {
 describe("ImageRenderer.updateConfig", () => {
 	const BASE: ImageRendererConfig = {
 		font: "sans-serif",
-		showPopularity: true,
-		showArea: true,
-		showFans: true,
 	};
 
 	function makeWithSpyLogger(config: ImageRendererConfig) {
@@ -556,12 +550,12 @@ describe("ImageRenderer.updateConfig", () => {
 		expect(info).not.toHaveBeenCalled();
 	});
 
-	it("回归:只改 showArea(字体未变)→ 日志只报实际改的那项", () => {
+	it("回归:只改背景图(字体未变)→ 日志只报实际改的那项", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
-		r.updateConfig({ ...BASE, showArea: false });
+		r.updateConfig({ ...BASE, backgroundImage: "bg-1" });
 		expect(info).toHaveBeenCalledTimes(1);
 		const [msg] = info.mock.calls[0] as [string];
-		expect(msg).toContain("showArea");
+		expect(msg).toContain("backgroundImage");
 		expect(msg).not.toContain("font=");
 	});
 });
@@ -618,9 +612,6 @@ function makeLoggingRenderer(
 
 const BASE_CONFIG: ImageRendererConfig = {
 	font: "sans-serif",
-	showPopularity: true,
-	showArea: true,
-	showFans: true,
 };
 
 /**

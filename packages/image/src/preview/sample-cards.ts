@@ -101,9 +101,6 @@ const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 
 function liveSample(scene: string): SampleProps<"live"> {
 	return {
-		showPopularity: true,
-		showArea: true,
-		showFans: true,
 		data: {
 			title: "【示例】周年庆典特别直播，今晚不见不散！",
 			area_name: "虚拟主播",

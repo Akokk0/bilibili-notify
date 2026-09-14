@@ -100,12 +100,6 @@ export interface CustomCardStyleLike {
 	font?: string;
 	/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
 	fontAsset?: string;
-	/** 直播卡数据区:显示人气 / 点赞;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */
-	showPopularity?: boolean;
-	/** 直播卡数据区:显示分区;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */
-	showArea?: boolean;
-	/** 直播卡数据区:显示粉丝数据;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */
-	showFans?: boolean;
 }
 
 /**

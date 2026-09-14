@@ -632,16 +632,18 @@ const CardStyleObjectSchema = z.object({
 	 */
 	fontAsset: z.string().optional(),
 	/**
-	 * 直播卡「数据区」各项显示开关(仅直播卡用;其它卡类型忽略)。数据区由原 `stats`(人气·
-	 * 点赞 + 分区)与 `follower`(粉丝数据)两块合并而来,这三个开关控制其内部具体显示哪几项。
-	 * 默认全开 = 复刻现状。简介(desc)显隐已交由版式 desc 块的 visible,故移除旧 `hideDesc`。
+	 * 🪦 **退役字段**(2026-09-14,ADR-0014 决策 16 的 🔗)。直播卡数据区那三件
+	 * (人气·点赞 / 分区 / 粉丝数据)已经拆成三个**原子块**,「想少显示哪件」= 皮肤里
+	 * 没有那一块 —— 块级的 `showIf` 管不到复合块内部的一行,所以开关这条路走不通。
+	 *
+	 * 三个键留在 schema 里**只是为了让存量配置装得进来**(`.strict()` 对未知键是整份
+	 * 拒收,删了老 `globals.json` 会以 `Unrecognized key` 起不来);`.default(true)`
+	 * 也一并改成 `.optional()`,键才删得掉 —— 「键还在 = 还没迁」是开机迁移的判据。
+	 * ⛔ 新代码不许读它们:面板、渲染器 props 与渲染器 config 都已经没有这三项了。
 	 */
-	/** 数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
-	showPopularity: z.boolean().default(true),
-	/** 数据区:显示分区。 */
-	showArea: z.boolean().default(true),
-	/** 数据区:显示粉丝数据(直播中=当前粉丝数,下播=累计观看人数,下播态=粉丝数变化)。 */
-	showFans: z.boolean().default(true),
+	showPopularity: z.boolean().optional(),
+	showArea: z.boolean().optional(),
+	showFans: z.boolean().optional(),
 	/**
 	 * **退役字段**(同上面的 `font`):背景图归**皮肤自己的旋钮**(`image` 档,值就是这一串
 	 * id,多张照旧轮换)。⛔ 新代码不许读它。

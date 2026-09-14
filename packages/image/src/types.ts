@@ -108,12 +108,6 @@ export type CardColorOptions = {
 	fontAsset?: string;
 	/** 直播卡自定义封面资产 id(或已解析 URL);缺省时用 B 站房间封面/关键帧。仅 live 卡消费。 */
 	liveCoverImage?: string;
-	/** 直播卡数据区:显示人气 / 点赞;缺省时回退渲染器全局 config。 */
-	showPopularity?: boolean;
-	/** 直播卡数据区:显示分区;缺省时回退渲染器全局 config。 */
-	showArea?: boolean;
-	/** 直播卡数据区:显示粉丝数据;缺省时回退渲染器全局 config。 */
-	showFans?: boolean;
 	/**
 	 * 用哪套**卡片皮肤**(ADR-0014):皮肤 id,缺省 / 空串 = 内置默认皮肤。
 	 *

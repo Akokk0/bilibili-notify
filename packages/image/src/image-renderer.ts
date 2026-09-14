@@ -121,12 +121,6 @@ export interface ImageRendererConfig {
 	 * 不给就只剩 `renderCard` 那条兜底链 —— 与从前那句「默认(交给渲染那台机器)」同义。
 	 */
 	font?: string;
-	/** 直播卡数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
-	showPopularity: boolean;
-	/** 直播卡数据区:显示分区。 */
-	showArea: boolean;
-	/** 直播卡数据区:显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化,按直播态)。 */
-	showFans: boolean;
 	/**
 	 * 用户拧过的皮肤旋钮,**按皮肤 id** 分开(ADR-0014 决策 16 的 🔗)。回落到默认皮肤时
 	 * 自动取默认皮肤那份 —— 一套坏皮肤的配色不该跟着回落画到默认皮肤上。
@@ -285,11 +279,6 @@ export class ImageRenderer {
 			// 换了一款就把缓存里那份几十兆的 base64 放掉,别攥着已经不用的字体。
 			this.fontCache = null;
 		}
-		if (prev.showPopularity !== config.showPopularity) {
-			diffs.push(`showPopularity=${config.showPopularity}`);
-		}
-		if (prev.showArea !== config.showArea) diffs.push(`showArea=${config.showArea}`);
-		if (prev.showFans !== config.showFans) diffs.push(`showFans=${config.showFans}`);
 		if (prev.backgroundImage !== config.backgroundImage) {
 			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
 		}
@@ -565,9 +554,6 @@ export class ImageRenderer {
 			skinId: this.skinIdOf(colorOptions),
 			font: await this.resolveFont(colorOptions),
 			props: {
-				showPopularity: colorOptions.showPopularity ?? this.config.showPopularity,
-				showArea: colorOptions.showArea ?? this.config.showArea,
-				showFans: colorOptions.showFans ?? this.config.showFans,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
 				backgroundImage,

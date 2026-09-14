@@ -109,38 +109,23 @@ describe("LiveCard layout", () => {
 	});
 });
 
-// 数据区(data 块)内部三项由 show* 开关控制 —— 这是内容契约(某项在/不在),非样式。
-describe("LiveCard data section show flags", () => {
-	it("shows popularity / area / fans by default (live status)", async () => {
+// 数据区(data 块)**恒画三件**(ADR-0014 决策 16 的 🔗):`showPopularity` / `showArea` /
+// `showFans` 三个开关已退役 —— 块级的 `showIf` 管不到复合块内部的一行,所以「想少显示
+// 哪件」改成在皮肤里删掉对应的原子块。这条钉的就是「复合块自己不再挑」。
+describe("LiveCard data section", () => {
+	it("人气 / 分区 / 粉丝三件恒画", async () => {
 		const html = await renderLive();
 		expect(html).toContain("人气：");
 		expect(html).toContain("分区：");
 		expect(html).toContain("当前粉丝数：");
 	});
 
-	it("hides popularity when showPopularity is false", async () => {
-		const html = await renderLive({ showPopularity: false });
-		expect(html).not.toContain("人气：");
-		// 其它两项仍在
-		expect(html).toContain("分区：");
-		expect(html).toContain("当前粉丝数：");
-	});
-
-	it("hides area when showArea is false", async () => {
-		const html = await renderLive({ showArea: false });
-		expect(html).not.toContain("分区：");
-		expect(html).toContain("人气：");
-	});
-
-	it("hides fans data when showFans is false", async () => {
-		const html = await renderLive({ showFans: false });
+	it("粉丝那行没数据时才收起 —— 收起的判据是数据,不是开关", async () => {
+		const html = await renderLive({ fansNum: "", fansChanged: "" });
 		expect(html).not.toContain("当前粉丝数：");
+		// 顶行那两件照画。
 		expect(html).toContain("人气：");
-	});
-
-	it("collapses the whole data block when all three are off", async () => {
-		const html = await renderLive({ showPopularity: false, showArea: false, showFans: false });
-		expect(blockOrder(html)).not.toContain("data");
+		expect(html).toContain("分区：");
 	});
 });
 

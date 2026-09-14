@@ -34,9 +34,6 @@ import { buildCardData, type CardData, type CardDataValue, readCardField } from 
 
 function liveProps(over: Partial<LiveCardProps> = {}): LiveCardProps {
 	return {
-		showPopularity: true,
-		showArea: true,
-		showFans: true,
 		cardColorStart: "#fff",
 		cardColorEnd: "#000",
 		data: {
@@ -65,9 +62,6 @@ function liveProps(over: Partial<LiveCardProps> = {}): LiveCardProps {
 /** 什么都没有的直播卡:接口只回了个空壳,开关全关。 */
 function emptyLiveProps(): LiveCardProps {
 	return {
-		showPopularity: false,
-		showArea: false,
-		showFans: false,
 		cardColorStart: "",
 		cardColorEnd: "",
 		data: {},
