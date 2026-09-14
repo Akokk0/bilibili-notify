@@ -28,7 +28,7 @@ import {
 	Pill,
 	StatusDot,
 } from "@bilibili-notify/ui";
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCardSkinList } from "./cards/card-skins-query";
 import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
@@ -50,6 +50,12 @@ import {
 	setFrameCss,
 } from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
+
+/**
+ * 预览那一栏最宽到哪儿。卡宽上限是 1200,真按它给就把画布挤没了 —— 超过这个数的卡
+ * 由预览栏自己缩着画(缩放比例它会明说)。
+ */
+const PREVIEW_COL_MAX = 720;
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
 const KIND_META: Record<CardSkinKind, { label: string; icon: keyof typeof Icon }> = {
@@ -106,6 +112,10 @@ export default function CardSkinEditor() {
 	const missingCard = draft !== null && draft.cards[kind] === undefined;
 	const factory = useCardSkinManifest(factoryId, !readOnly && missingCard && factoryId !== "");
 
+	// 预览那一栏的宽度**跟着卡宽走**,不再钉死 400 —— 640 宽的卡挤在 400 里右半张就没了。
+	// 它挤的是画布的宽度(画布是 12 列等宽格子,窄一点照样读得懂;预览窄一点就是另一张卡)。
+	const previewCol = Math.min(Math.max(cardOf(draft, kind)?.width ?? 600, 320), PREVIEW_COL_MAX);
+
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
 		if (!added) return;
@@ -124,28 +134,33 @@ export default function CardSkinEditor() {
 				data-bn="glass-strong"
 				className="bn-glass-strong flex h-14 shrink-0 items-center gap-3 px-7"
 			>
-				<Btn size="sm" variant="ghost" onClick={() => navigate("/cards")}>
-					<Icon.arrowLeft size={14} /> 返回卡片页
-				</Btn>
-				<span className="h-5.5 w-px bg-bn-border" />
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate font-semibold text-bn-md text-bn-text-primary">
-						{draft?.name ?? "载入中…"}
-					</span>
-					{inUse ? (
-						<Pill subtle color="var(--color-bn-pink)">
-							使用中
-						</Pill>
-					) : null}
-					{dirty ? (
-						<span className="flex items-center gap-1.5 text-bn-text-tertiary text-bn-xs">
-							<StatusDot kind="warn" size="sm" />
-							有未保存的改动
+				{/* 左右两栏都 `flex-1`:剩下的宽度两边**平分**,中间那条卡种 tab 才真的落在页面
+				    正中。只给中间 `flex-1` 的话,它的中心跟着两侧内容宽度漂 —— 直播卡有场景选择器
+				    时看着是正的,切到没有场景的卡种就整条往右偏。 */}
+				<div className="flex min-w-0 flex-1 items-center gap-3">
+					<Btn size="sm" variant="ghost" onClick={() => navigate("/cards")}>
+						<Icon.arrowLeft size={14} /> 返回卡片页
+					</Btn>
+					<span className="h-5.5 w-px bg-bn-border" />
+					<div className="flex min-w-0 items-center gap-2">
+						<span className="truncate font-semibold text-bn-md text-bn-text-primary">
+							{draft?.name ?? "载入中…"}
 						</span>
-					) : null}
+						{inUse ? (
+							<Pill subtle color="var(--color-bn-pink)">
+								使用中
+							</Pill>
+						) : null}
+						{dirty ? (
+							<span className="flex items-center gap-1.5 text-bn-text-tertiary text-bn-xs">
+								<StatusDot kind="warn" size="sm" />
+								有未保存的改动
+							</span>
+						) : null}
+					</div>
 				</div>
 
-				<div className="flex flex-1 justify-center">
+				<div className="shrink-0">
 					<div className="flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-1">
 						{CARD_SKIN_KINDS.map((k) => {
 							const meta = KIND_META[k];
@@ -178,7 +193,7 @@ export default function CardSkinEditor() {
 					</div>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="flex flex-1 items-center justify-end gap-2">
 					{scenes.length > 1 ? (
 						<>
 							<span className="text-bn-text-tertiary text-bn-xs">场景</span>
@@ -206,7 +221,12 @@ export default function CardSkinEditor() {
 				) : manifestQuery.isError ? (
 					<ErrorNote>读不到这套皮肤:{String((manifestQuery.error as Error).message)}</ErrorNote>
 				) : (
-					<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_400px_320px]">
+					<div
+						className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_var(--bn-preview-col)_320px]"
+						// 走 CSS 变量而不是直接写 `gridTemplateColumns`:模板那串还得留在类里,
+						// 它只在 xl 以上生效(窄屏是单列),写成内联样式会把窄屏那档也一起盖掉。
+						style={{ "--bn-preview-col": `${previewCol}px` } as CSSProperties}
+					>
 						<GlassBox
 							title={`网格画布 · ${KIND_META[kind].label}卡`}
 							subtitle="点一个块,在右边的检查器里改它的位置;这里的行等高只是示意,真卡里行高随内容撑"
@@ -252,7 +272,13 @@ export default function CardSkinEditor() {
 							accent="var(--color-bn-purple)"
 							icon={<Icon.eye size={14} />}
 						>
-							<SkinPreviewPane skinId={id} kind={kind} scene={scene} manifest={draft} />
+							<SkinPreviewPane
+								skinId={id}
+								kind={kind}
+								scene={scene}
+								manifest={draft}
+								boxWidth={previewCol}
+							/>
 						</GlassBox>
 						<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
 							<SkinInspector
