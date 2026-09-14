@@ -25,7 +25,11 @@
  */
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
+import type {
+	CardSkinShotResponse,
+	PreviewResponse,
+	TestPushResponse,
+} from "@bilibili-notify/contract";
 import {
 	cardOfManifest,
 	type DynamicCardProps,
@@ -37,9 +41,11 @@ import {
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
+	CARD_SKIN_LIMITS,
 	CARD_SKIN_UPLOAD_PREFIX,
 	CardSkinIdSchema,
 	type CardSkinKind,
+	CardSkinKindSchema,
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	DEFAULT_CARD_GRADIENT,
@@ -51,6 +57,7 @@ import {
 import { Hono } from "hono";
 import { z } from "zod";
 import { readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
+import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
 import {
@@ -283,6 +290,21 @@ function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: st
 	}
 	return refs;
 }
+
+/**
+ * 没配 Chrome 时那句话。**两处 503 共用一份** —— 说的是同一件事,分成两份写迟早会漂,
+ * 而这句正是主人照着去修的那条路径(「失败的原因不许吞」)。
+ */
+const NO_CHROME_HINT =
+	"puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）或 BN_CHROME_ENDPOINT（远程浏览器端点），或 yaml 的 chromePath / chromeEndpoint 字段";
+
+/** 「最终效果」的请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套。 */
+const SkinShotRequestSchema = z.object({
+	skinId: CardSkinIdSchema,
+	kind: CardSkinKindSchema,
+	scene: z.string().max(40).optional(),
+	manifest: z.unknown(),
+});
 
 export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const app = new Hono();
@@ -629,6 +651,20 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return imageRenderer;
 	}
 
+	/**
+	 * 只要**截图管线**(串行闸 + 页池),不碰 config —— 皮肤的「最终效果」喂的是现成 HTML,
+	 * 配置对它没有影响,而 `getImageRenderer(style)` 会热更 config:拿它去截图会把并发的
+	 * `/preview` 刚设好的样式冲掉(「预览好看、推出去变样」的同一族)。
+	 *
+	 * 仍复用同一个实例 —— 闸是实例私有的,另起一个等于两条并发的 Chrome 渲染。
+	 */
+	async function getScreenshotRenderer(): Promise<ImageRenderer | null> {
+		if (!currentPuppeteer) return null;
+		if (imageRenderer && imageRendererPuppeteer === currentPuppeteer) return imageRenderer;
+		// 还没建过:照常建一个(config 随下一次 `/preview` 热更)。
+		return await getImageRenderer({});
+	}
+
 	// Cached snapshot of the logged-in B站 account. Used as the SENDER on
 	// SC / Guard preview cards (the SC payer / new captain), not the
 	// receiver — the receiver is the subscribed UP, which on preview stays
@@ -830,13 +866,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			return c.json<PreviewResponse>({ ok: false, err: "invalid_request" }, 400);
 		}
 		if (!currentPuppeteer) {
-			return c.json<PreviewResponse>(
-				{
-					ok: false,
-					err: "puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）或 BN_CHROME_ENDPOINT（远程浏览器端点），或 yaml 的 chromePath / chromeEndpoint 字段",
-				},
-				503,
-			);
+			return c.json<PreviewResponse>({ ok: false, err: NO_CHROME_HINT }, 503);
 		}
 		const { kind, style, content, cardSkin, fallback } = parsed.data;
 		try {
@@ -849,6 +879,56 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] preview render failed (${kind}): ${msg}`);
 			return c.json<PreviewResponse>({ ok: false, err: msg }, 500);
+		}
+	});
+
+	/**
+	 * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」(ADR-0014 决策 22)。
+	 *
+	 * 实时预览回 HTML 由**看的人的浏览器**画,推出去那张是 **server 上的 Chrome** 画的,
+	 * 字体渲染像素级对不上;这颗按钮补的正是那一刀。落在这条路由(而不是 `card-skins`)是
+	 * 因为握着 Chrome 的是这儿 —— 而「清单 → HTML」那一步两边**共用同一个件**,预览与
+	 * 截图因此结构性地同源。
+	 */
+	app.post("/skin-shot", async (c) => {
+		const parsed = SkinShotRequestSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) {
+			return c.json<CardSkinShotResponse>(
+				{ ok: false, err: "请求体要 { skinId, kind, scene?, manifest }" },
+				400,
+			);
+		}
+		if (!opts.cardSkins)
+			return c.json<CardSkinShotResponse>({ ok: false, err: "皮肤库未就绪" }, 503);
+		const renderer = await getScreenshotRenderer();
+		if (!renderer) return c.json<CardSkinShotResponse>({ ok: false, err: NO_CHROME_HINT }, 503);
+
+		const { skinId, kind, scene, manifest } = parsed.data;
+		const out = await renderSkinPreviewHtml({
+			store: opts.cardSkins,
+			skinId,
+			kind,
+			scene,
+			manifest,
+		});
+		if (!out.ok) return c.json<CardSkinShotResponse>({ ok: false, errors: out.errors }, 400);
+
+		try {
+			const { buffer, height } = await renderer.screenshotHtml(out.html);
+			return c.json<CardSkinShotResponse>({
+				ok: true,
+				dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
+				width: out.width,
+				height,
+				// 超了出图那头会**静默**回落默认皮肤(决策 19);作者只有在这儿能提前知道。
+				overHeight: height > CARD_SKIN_LIMITS.maxHeight,
+				warnings: out.warnings,
+				scene: out.scene,
+			});
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			log.warn(`[cards] skin-shot render failed (${kind}): ${msg}`);
+			return c.json<CardSkinShotResponse>({ ok: false, err: msg }, 500);
 		}
 	});
 

@@ -118,6 +118,27 @@ export interface CardSkinPreviewResponse {
 	scene: string;
 }
 
+/**
+ * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」。
+ *
+ * 与实时预览**同源**(共用「清单 → HTML」那一步),差别只在这张是 server 上的 Chrome 画的。
+ * 没配 Chrome 时是 503 + `err`,面板照它把按钮禁掉并说清楚该去配什么。
+ */
+export type CardSkinShotResponse =
+	| {
+			ok: true;
+			/** `data:image/jpeg;base64,…`。 */
+			dataUrl: string;
+			width: number;
+			/** 截出来的真实高度(px)。 */
+			height: number;
+			/** 超过卡片最大高度 —— 出图那头会静默回落默认皮肤,这里得说出来。 */
+			overHeight: boolean;
+			warnings: string[];
+			scene: string;
+	  }
+	| { ok: false; err?: string; errors?: string[] };
+
 /** PUT /api/card-skins/active —— 改 `globals.defaults.cardSkin`。 */
 export interface CardSkinActiveRequest {
 	id: string;

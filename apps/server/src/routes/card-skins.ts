@@ -25,21 +25,14 @@ import type {
 	CardSkinSaveResponse,
 } from "@bilibili-notify/contract";
 import {
-	cardOfManifest,
-	renderCardWithSkin,
-	sampleCardProps,
-	skinAssetRefs,
-} from "@bilibili-notify/image";
-import {
 	CardSkinIdSchema,
 	CardSkinKindSchema,
 	DEFAULT_CARD_SKIN_ID,
-	resolvePreviewScene,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
-import { checkCardSkinPackage, MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
+import { MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
+import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js";
 import type { ConfigStore } from "../config/store.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
@@ -263,35 +256,15 @@ export function createCardSkinsRoute(deps: {
 		}
 		const { kind, scene, manifest: raw } = parsed.data;
 
-		const checked = checkCardSkinPackage(raw, new Set(await store.listAssets(id)));
-		if (!checked.ok) return c.json({ ok: false, errors: checked.errors }, 400);
-		const manifest = checked.manifest;
-
-		const card = cardOfManifest(manifest, kind);
-		// 渲染器那头的 `resolveAsset` 是**同步**的(替换发生在字符串替换的回调里),所以
-		// 先按引用名单把资产预取成表 —— 与出图那条路同一套路。
-		const assets = new Map<string, string>();
-		await Promise.all(
-			skinAssetRefs(card, manifest.fonts).map(async (name) => {
-				const url = await readCardSkinAssetDataUrl(store, id, name);
-				if (url) assets.set(name, url);
-			}),
-		);
-
-		const picked = resolvePreviewScene(kind, scene);
-		// 刻意**不掺用户自己的配置**(全局字体 / 旋钮):编辑器看的是**这套皮肤**长什么样,
-		// 掺进去就成了「同一套皮肤在不同人眼里不一样」,作者照着调反而调歪。
-		const html = await renderCardWithSkin(
-			kind,
-			(await sampleCardProps(kind, picked.id)) as never,
-			manifest,
-			{ title: `皮肤预览 · ${kind}`, resolveAsset: (name) => assets.get(name) },
-		);
+		// 「清单 → HTML」那一步与「最终效果」截图共用(见 `card-skins/preview-html.ts`):
+		// 两边必须同源,否则预览能用而截图不一样,谁也说不出哪儿错了。
+		const out = await renderSkinPreviewHtml({ store, skinId: id, kind, scene, manifest: raw });
+		if (!out.ok) return c.json({ ok: false, errors: out.errors }, 400);
 		const body: CardSkinPreviewResponse = {
-			html,
-			width: card.width,
-			warnings: checked.warnings,
-			scene: picked.id,
+			html: out.html,
+			width: out.width,
+			warnings: out.warnings,
+			scene: out.scene,
 		};
 		return c.json(body);
 	});

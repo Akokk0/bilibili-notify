@@ -9,7 +9,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { CardSkinStore } from "../../card-skins/store.js";
+import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid, testPushCaption } from "../cards.js";
@@ -1277,5 +1277,102 @@ describe("cards route — /preview 走皮肤", () => {
 		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
 		expect(colorOptions?.cardSkin).toBe("marked");
 		spy.mockRestore();
+	});
+});
+
+/**
+ * `POST /skin-shot` —— 编辑器那颗「最终效果」(ADR-0014 决策 22)。
+ *
+ * 实时预览回的是 HTML,由**看的人的浏览器**画;推出去那张是 **server 上的 Chrome** 画的,
+ * 字体渲染像素级对不上。这个端点补的正是那一刀。
+ *
+ * 钉三条:① **与实时预览同源** —— 两边各走各的话,作者会看着一个能用的预览、截出一张
+ * 不一样的图,而两边都说不出哪儿错了;② 没配 Chrome 回 **503 带办法**,不是一句「失败了」
+ * (编辑器照它把按钮禁掉并说清楚);③ 回**高度**,超上限要如实说 —— 出图那头超了会静默
+ * 回落默认皮肤(决策 19),而编辑器是作者唯一能提前知道的地方。
+ */
+describe("cards route — POST /skin-shot 最终效果", () => {
+	const draft = () => structuredClone(DEFAULT_CARD_SKIN) as Record<string, unknown>;
+
+	type ShotJson = {
+		ok: boolean;
+		dataUrl?: string;
+		width?: number;
+		height?: number;
+		overHeight?: boolean;
+		scene?: string;
+		err?: string;
+		errors?: string[];
+	};
+
+	async function shot(body: unknown, puppeteer: StandalonePuppeteer | null) {
+		const dir = join(tmpdir(), "bn-test-skin-shot-no-such-dir");
+		const app = createCardsRoute({
+			deps: depsWithDataDir(dir),
+			puppeteer,
+			api: null,
+			cardSkins: new CardSkinStore({ dir: join(dir, "card-skins") }),
+		});
+		const res = await app.request("/skin-shot", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		return { res, json: (await res.json()) as ShotJson };
+	}
+
+	it("截出一张图,回 dataUrl + 卡宽 + 高度", async () => {
+		const { res, json } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
+			makeFakePuppeteer(),
+		);
+		expect(res.status).toBe(200);
+		expect(json.ok).toBe(true);
+		expect(json.dataUrl?.startsWith("data:image/jpeg;base64,")).toBe(true);
+		expect(json.width).toBe(DEFAULT_CARD_SKIN.cards.live?.width);
+		expect(json.height).toBe(400);
+		expect(json.scene).toBe("streaming");
+	});
+
+	it("没配 Chrome → 503,并且把该怎么办说出来", async () => {
+		const { res, json } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
+			null,
+		);
+		expect(res.status).toBe(503);
+		expect(json.ok).toBe(false);
+		expect(json.err).toContain("BN_CHROME_PATH");
+	});
+
+	it("草稿过的是与实时预览同一道装包门 —— 拒了就 400 逐条列原因", async () => {
+		const { res, json } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: { schemaVersion: 1 } },
+			makeFakePuppeteer(),
+		);
+		expect(res.status).toBe(400);
+		expect(Array.isArray(json.errors)).toBe(true);
+		expect(json.errors?.length).toBeGreaterThan(0);
+	});
+
+	it("超过最大高度 → 照样回图,但把话说明白(出图那头会静默回落默认皮肤)", async () => {
+		const tall = makeFakePuppeteer();
+		vi.mocked(tall.page).mockResolvedValue({
+			setContent: vi.fn(async () => {}),
+			$: vi.fn(async () => ({
+				boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 9999 }),
+				dispose: async () => {},
+			})),
+			screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
+			close: vi.fn(async () => {}),
+		} as never);
+
+		const { res, json } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
+			tall,
+		);
+		expect(res.status).toBe(200);
+		expect(json.ok).toBe(true);
+		expect(json.height).toBe(9999);
+		expect(json.overHeight).toBe(true);
 	});
 });

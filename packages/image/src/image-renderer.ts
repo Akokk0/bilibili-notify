@@ -1207,6 +1207,22 @@ export class ImageRenderer {
 		}
 	}
 
+	/**
+	 * 把一份**现成的 HTML** 截成图 —— 编辑器的「最终效果」走这条(ADR-0014 决策 22)。
+	 *
+	 * 走的是与出图同一个实例:串行闸是**实例私有**的,另起一个渲染器等于放两条并发的
+	 * Chrome 渲染出去。这条不碰 `config` —— HTML 已经画好了,配置对它没有任何影响。
+	 *
+	 * 回 `height` 是为了让编辑器能提前说「这张超过最大高度」:出图那头超了会**静默**回落
+	 * 默认皮肤(决策 19),而编辑器是作者唯一能在发出去之前知道的地方。
+	 */
+	async screenshotHtml(
+		html: string,
+		opts: { priority?: RenderPriority } = {},
+	): Promise<{ buffer: Buffer; height: number }> {
+		return await this.renderHtml(html, undefined, opts.priority ?? "normal");
+	}
+
 	/** 将渲染任务加入串行队列;一个任务抛错不影响后面的(release 在 finally 里)。 */
 	private async renderHtml(
 		html: string,
