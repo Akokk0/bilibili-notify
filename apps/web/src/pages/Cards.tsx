@@ -355,7 +355,7 @@ const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
 	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
 /**
- * 卡片样式表单字段(渐变 / 字体 / 隐藏项 / 玻璃片 / 背景图)—— 全局默认与 per-UP
+ * 卡片样式表单字段(字体 / 隐藏项 / 背景图)—— 全局默认与 per-UP
  * 覆盖复用同一组控件。插件总开关 enabled 与 image 日志等级是基础设施级、全局唯一,
  * 不在此组件内。
  */
@@ -378,47 +378,6 @@ export function CardStyleFields({
 					onChange={(next) => onChange({ ...style, font: next.font, fontAsset: next.fontAsset })}
 					onAssetDeleted={onAssetDeleted}
 				/>
-			</Field>
-			<Field code="glassOpacity" full>
-				<div className="flex flex-col gap-2">
-					<div className="flex h-7.5 items-center gap-3">
-						<Toggle
-							value={style.glassOpacity !== undefined}
-							onChange={(on) =>
-								onChange({ ...style, glassOpacity: on ? 0.82 : undefined, glassClear: false })
-							}
-						/>
-						{style.glassOpacity !== undefined ? (
-							<>
-								<input
-									type="range"
-									min={0}
-									max={1}
-									step={0.05}
-									value={style.glassOpacity}
-									onChange={(e) => set("glassOpacity", Number(e.target.value))}
-									className="flex-1 accent-bn-pink"
-								/>
-								<span className="w-9 shrink-0 text-right font-mono text-bn-xs text-bn-text-secondary">
-									{style.glassOpacity.toFixed(2)}
-								</span>
-							</>
-						) : (
-							<span className="text-bn-xs text-bn-text-tertiary">
-								{style.glassClear ? "已开启完全透明" : "默认（各卡内置基线）"}
-							</span>
-						)}
-					</div>
-					{/* 子选项:完全透明(去磨砂模糊),与上方透明度二选一。 */}
-					<div className="flex items-center gap-2 text-bn-xs text-bn-text-secondary">
-						<Toggle
-							size="sm"
-							value={style.glassClear ?? false}
-							onChange={(on) => onChange({ ...style, glassClear: on, glassOpacity: undefined })}
-						/>
-						完全透明（去磨砂模糊）
-					</div>
-				</div>
 			</Field>
 			<Field code="backgroundImages" full>
 				<GalleryPicker
@@ -1218,7 +1177,7 @@ export default function Cards() {
 							// 「全局」tab:基准通用样式(所有卡片默认共用)+ 日志等级。
 							<GlassBox
 								title="卡片渲染样式 · 全局通用"
-								subtitle="image plugin · 所有卡片的基准渐变 / 字体 / 玻璃片 / 背景;各类型可在对应标签单独覆盖"
+								subtitle="image plugin · 所有卡片的基准字体 / 显隐项 / 背景;各类型可在对应标签单独覆盖"
 								accent="var(--color-bn-purple)"
 								icon={<Icon.edit size={14} />}
 								badge="cardStyle"
@@ -1240,7 +1199,7 @@ export default function Cards() {
 							// 「全局」tab · per-UP:该 UP 的样式覆盖(一套管该 UP 全部卡片)。
 							<OverrideBox
 								title="卡片样式覆盖"
-								subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
+								subtitle="开 = 该 UP 用自定义字体 / 显隐项 / 背景;关 = 继承全局样式"
 								accent="var(--color-bn-purple)"
 								icon={<Icon.edit size={14} />}
 								enabled={puStyle !== undefined}
@@ -1260,7 +1219,7 @@ export default function Cards() {
 						// 类型 tab · 全局作用域:该卡片单独样式开关,打开才展开覆盖。
 						<GlassBox
 							title={`${KIND_LABELS[kind].label} · 单独样式`}
-							subtitle="开 = 该卡片用自己的渐变 / 字体 / 玻璃片 / 背景;关 = 跟随「全局」"
+							subtitle="开 = 该卡片用自己的字体 / 显隐项 / 背景;关 = 跟随「全局」"
 							accent={KIND_LABELS[kind].tone}
 							icon={<KindIcon size={14} />}
 							badge={gByKind[styleKind] ? "单独设置" : "跟随全局"}
@@ -1294,7 +1253,7 @@ export default function Cards() {
 						// 类型 tab · per-UP:该 UP 此卡片单独样式开关,打开才展开覆盖(叠在该 UP 基准之上)。
 						<GlassBox
 							title={`${KIND_LABELS[kind].label} · 单独样式`}
-							subtitle="开 = 该 UP 的此卡片用自己的渐变 / 字体 / 玻璃片 / 背景;关 = 跟随该 UP 基准（基准未覆盖则继承全局）"
+							subtitle="开 = 该 UP 的此卡片用自己的字体 / 显隐项 / 背景;关 = 跟随该 UP 基准（基准未覆盖则继承全局）"
 							accent={KIND_LABELS[kind].tone}
 							icon={<KindIcon size={14} />}
 							badge={hasAppearanceOverride(puByKind[styleKind]) ? "单独设置" : "跟随基准"}

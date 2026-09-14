@@ -393,8 +393,6 @@ export const FIELD_LABELS = {
 	showPopularity: { label: "人气 / 点赞", section: "cardStyle" },
 	showArea: { label: "直播分区", section: "cardStyle" },
 	showFans: { label: "粉丝数据", section: "cardStyle" },
-	glassOpacity: { label: "玻璃片透明度", section: "cardStyle" },
-	glassClear: { label: "完全透明", section: "cardStyle" },
 	backgroundImages: { label: "自定义背景图", section: "cardStyle" },
 	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档

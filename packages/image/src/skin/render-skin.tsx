@@ -31,10 +31,8 @@ import {
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	cardSkinKnobDeclarations,
-	cardSkinKnobVar,
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_CARD_SKIN,
-	DEFAULT_SKIN_KNOB_KEYS,
 	DIVIDER_TYPE,
 } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
@@ -218,28 +216,17 @@ function renderCustomHtml(
  * 字体不在 props 里(它经 `renderCard` 的 `font` 进来),所以不写 `--bn-card-font`。
  *
  * 渐变起 / 止色**不在这里注**(决策 15 的 🔗):底色归皮肤自己的外框 CSS,
- * props 里那两个颜色字段只剩模板路径(基准快照)在用。
- *
- * 🚧 **玻璃那两项是过渡态**(2026-09-14 旋钮落地):它们已经从固定变量表退成**默认皮肤
- * 自己的旋钮**,但用户的值这一版还存在 `cardStyle` 里,所以这里把它翻成旋钮变量 ——
- * 拧过才注,没拧过让皮肤 CSS 里各卡自己的兜底生效(三档基线就是靠那个兜底活着)。
- * 存储搬进 `cardSkinKnobs` 之后,这一段连同 props 上那两个字段一起删。
+ * props 里那两个颜色字段只剩模板路径(基准快照)在用。**玻璃同理**(决策 16 的 🔗,
+ * 2026-09-14):它退役成皮肤自己的旋钮,值从 `cardSkinKnobs` 经 `knobValues` 进来,
+ * 不再从 props 翻译。
  */
 function frameVariables(props: unknown): string {
 	const p = props as {
 		bgColor?: readonly [string, string];
 		backgroundImage?: string;
-		glassOpacity?: number;
-		glassClear?: boolean;
 	};
 	const V = CARD_SKIN_VARIABLES;
-	const K = DEFAULT_SKIN_KNOB_KEYS;
 	let out = "";
-	if (p.glassClear) {
-		out += `${cardSkinKnobVar(K.glassOpacity)}:0;${cardSkinKnobVar(K.glassBlur)}:0px;`;
-	} else if (p.glassOpacity !== undefined) {
-		out += `${cardSkinKnobVar(K.glassOpacity)}:${p.glassOpacity};`;
-	}
 	// 档位色(SC 按价位、上舰按舰长等级)只有那两种卡的 props 才带;皮肤 CSS 用它按档变色。
 	if (p.bgColor) out += `${V.tierColor.css}:${p.bgColor[0]};${V.tierColorEnd.css}:${p.bgColor[1]};`;
 	// 用户背景图**有才注**:没注时皮肤 CSS 里 `var(--bn-card-bg-image, <渐变>)` 的兜底才生效。

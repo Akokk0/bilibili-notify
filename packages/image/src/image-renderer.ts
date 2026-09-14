@@ -57,7 +57,12 @@ export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
  */
 const TEMPLATE_GRADIENT = DEFAULT_CARD_GRADIENT;
 
-/** 锐评卡的**业务**入参 —— 玻璃 / 背景图由渲染器从全局 `cardStyle` 填,颜色给出厂常量。 */
+/**
+ * 锐评卡的**业务**入参 —— 背景图由渲染器从全局 `cardStyle` 填,颜色给出厂常量。
+ *
+ * 玻璃那两个键留在这张单子上只为**摘干净**:2026-09-14 玻璃退役成皮肤旋钮之后渲染器
+ * 不再填它们,模板签名上那两项也就只剩基准快照在喂(见 `types.ts` 的同名字段)。
+ */
 type RoastStyleKeys =
 	| "cardColorStart"
 	| "cardColorEnd"
@@ -96,21 +101,12 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 	throw lastError;
 }
 
-/** 可选配置项的日志值:未设置 = 回到各卡内置基线,打成「(默认)」而非裸 `undefined`。 */
-function fmtOptional(v: number | boolean | undefined): string {
-	return v === undefined ? "(默认)" : String(v);
-}
-
 /**
  * Runtime configuration for {@link ImageRenderer}. The standalone runtime fills it
  * from its own config store. The `logLevel` field is intentionally dropped — the
  * host is responsible for setting the logger level externally.
  */
 export interface ImageRendererConfig {
-	/** 玻璃片(内容层)透明度 0..1 的全局默认;未设时各卡走自身基线(live/dyn 0.82、sc/guard 0.75)。 */
-	glassOpacity?: number;
-	/** 完全透明:内容层透明 + 无模糊的全局默认(优先于 glassOpacity)。 */
-	glassClear?: boolean;
 	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
 	backgroundImage?: string;
 	/**
@@ -288,13 +284,6 @@ export class ImageRenderer {
 		}
 		if (prev.showArea !== config.showArea) diffs.push(`showArea=${config.showArea}`);
 		if (prev.showFans !== config.showFans) diffs.push(`showFans=${config.showFans}`);
-		// 可选字段被清空 = 回到「各卡内置基线」,打成 (默认);裸 `undefined` 读不出这层含义。
-		if (prev.glassOpacity !== config.glassOpacity) {
-			diffs.push(`glassOpacity=${fmtOptional(config.glassOpacity)}`);
-		}
-		if (prev.glassClear !== config.glassClear) {
-			diffs.push(`glassClear=${fmtOptional(config.glassClear)}`);
-		}
 		if (prev.backgroundImage !== config.backgroundImage) {
 			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
 		}
@@ -523,8 +512,6 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
-		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
-		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		// 背景图与直播封面(独立端专属)两次独立解析(各自 resolveAsset → 读盘),互不依赖 ——
 		// 并发发起,省掉一次串行 I/O 往返。封面解析为 "" 时模板回退
 		// API 封面/关键帧,特性自动无感。
@@ -552,8 +539,6 @@ export class ImageRenderer {
 				showFans: colorOptions.showFans ?? this.config.showFans,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				glassOpacity,
-				glassClear,
 				backgroundImage,
 				data,
 				username,
@@ -602,7 +587,7 @@ export class ImageRenderer {
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
 		/**
-		 * per-call 样式覆盖;只取 glass / backgroundImage(上舰卡 bgColor 由舰长等级决定,
+		 * per-call 样式覆盖;只取 backgroundImage(上舰卡 bgColor 由舰长等级决定,
 		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
@@ -611,8 +596,6 @@ export class ImageRenderer {
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
 		this.logger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
 		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
-		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
-		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
@@ -631,8 +614,6 @@ export class ImageRenderer {
 				masterAvatarUrl,
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
-				glassOpacity,
-				glassClear,
 				backgroundImage,
 			},
 		})
@@ -662,7 +643,7 @@ export class ImageRenderer {
 			masterAvatarUrl?: string;
 		},
 		/**
-		 * per-call 样式覆盖;只取 glass / backgroundImage(SC 卡 bgColor 由价格档位决定,
+		 * per-call 样式覆盖;只取 backgroundImage(SC 卡 bgColor 由价格档位决定,
 		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
@@ -673,8 +654,6 @@ export class ImageRenderer {
 		const levelIndex = getSCLevel(battery);
 		const bgColor = SC_COLORS[levelIndex];
 		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
-		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
-		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
@@ -693,8 +672,6 @@ export class ImageRenderer {
 				price,
 				duration: levelInfo.duration,
 				bgColor,
-				glassOpacity,
-				glassClear,
 				backgroundImage,
 			},
 		})
@@ -714,8 +691,6 @@ export class ImageRenderer {
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
-		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
@@ -740,8 +715,6 @@ export class ImageRenderer {
 			props: {
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				glassOpacity,
-				glassClear,
 				backgroundImage,
 				node,
 			},
@@ -817,8 +790,6 @@ export class ImageRenderer {
 				...data,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				glassOpacity: this.config.glassOpacity,
-				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
 		})
@@ -847,8 +818,6 @@ export class ImageRenderer {
 				...data,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				glassOpacity: this.config.glassOpacity,
-				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
 		})

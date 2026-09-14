@@ -398,8 +398,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				showPopularity: cs.showPopularity,
 				showArea: cs.showArea,
 				showFans: cs.showFans,
-				glassOpacity: cs.glassOpacity,
-				glassClear: cs.glassClear,
 				backgroundImage: cs.backgroundImages[0] ?? "",
 				fontAsset: cs.fontAsset,
 				cardSkinKnobs: globals().defaults.cardSkinKnobs,
@@ -848,8 +846,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						showPopularity: cs.showPopularity,
 						showArea: cs.showArea,
 						showFans: cs.showFans,
-						glassOpacity: cs.glassOpacity,
-						glassClear: cs.glassClear,
 						backgroundImage: cs.backgroundImages[0] ?? "",
 						fontAsset: cs.fontAsset,
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
@@ -1299,11 +1295,9 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
  *
  * 无背景图时 `backgroundImage` 留 undefined(**不是** `""`)—— generate* 用
  * `colorOptions.backgroundImage ?? this.config.backgroundImage` 兜底,`""` 非 nullish
- * 会把背景抹空而非回退全局,故只设颜色/玻璃的 per-UP 覆盖必须让背景透传 undefined。
+ * 会把背景抹空而非回退全局,故只设字体之类的 per-UP 覆盖必须让背景透传 undefined。
  */
 function cardStyleToColorOptions(s: {
-	glassOpacity?: number;
-	glassClear?: boolean;
 	backgroundImages?: string[];
 	liveCoverImages?: string[];
 	font?: string;
@@ -1314,8 +1308,6 @@ function cardStyleToColorOptions(s: {
 }): LiveSubView["customCardStyle"] {
 	return {
 		enable: true,
-		glassOpacity: s.glassOpacity,
-		glassClear: s.glassClear,
 		// 字体两项此前整个漏在这里:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、
 		// resolve 也算得出,就是没人映射进 colorOptions —— 渲染器收不到,选了等于没选。
 		font: s.font,

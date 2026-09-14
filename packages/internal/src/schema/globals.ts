@@ -368,7 +368,7 @@ export const DEFAULT_CARD_STYLE = {
 	showPopularity: true,
 	showArea: true,
 	showFans: true,
-	// 空列表 = 沿用渐变背景;glassOpacity 留空 = 各卡用内置基线(见 CardStyleSchema)。
+	// 空列表 = 沿用皮肤自己的外框背景(玻璃与渐变都归皮肤旋钮,见 CardStyleSchema 的退役字段)。
 	backgroundImages: [] as string[],
 } as const;
 

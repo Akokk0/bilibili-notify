@@ -556,12 +556,12 @@ describe("ImageRenderer.updateConfig", () => {
 		expect(info).not.toHaveBeenCalled();
 	});
 
-	it("回归:只改 glassOpacity(字体未变)→ 日志只报实际改的那项", () => {
+	it("回归:只改 showArea(字体未变)→ 日志只报实际改的那项", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
-		r.updateConfig({ ...BASE, glassOpacity: 0.5 });
+		r.updateConfig({ ...BASE, showArea: false });
 		expect(info).toHaveBeenCalledTimes(1);
 		const [msg] = info.mock.calls[0] as [string];
-		expect(msg).toContain("glassOpacity");
+		expect(msg).toContain("showArea");
 		expect(msg).not.toContain("font=");
 	});
 });
@@ -601,12 +601,7 @@ describe("ImageRenderer.pruneImageCache", () => {
 	});
 });
 
-/**
- * updateConfig 的热更日志:可选字段被清除时(玻璃片透明度关掉 → undefined),
- * 不能把裸 `undefined` 插进日志 —— 主人看到的是「glassOpacity=undefined」,读不出
- * 「回到各卡内置基线」这个真实含义。backgroundImage 早就打成 (set)/(none),这两个
- * 可选字段照做。
- */
+/** 把 info 日志收进数组的渲染器 —— 热更日志那几条共用。 */
 function makeLoggingRenderer(
 	infos: string[],
 	config: Partial<ImageRendererConfig> = {},
@@ -628,38 +623,6 @@ const BASE_CONFIG: ImageRendererConfig = {
 	showFans: true,
 };
 
-describe("ImageRenderer.updateConfig 热更日志", () => {
-	it("清除玻璃片透明度打印「默认」而不是裸 undefined", () => {
-		const infos: string[] = [];
-		const r = makeLoggingRenderer(infos, { glassOpacity: 0.82 });
-
-		r.updateConfig({ ...BASE_CONFIG, glassOpacity: undefined });
-
-		expect(infos).toHaveLength(1);
-		expect(infos[0]).toContain("glassOpacity=(默认)");
-		expect(infos[0]).not.toContain("undefined");
-	});
-
-	it("清除完全透明开关同样不打印裸 undefined", () => {
-		const infos: string[] = [];
-		const r = makeLoggingRenderer(infos, { glassClear: true });
-
-		r.updateConfig({ ...BASE_CONFIG, glassClear: undefined });
-
-		expect(infos[0]).toContain("glassClear=(默认)");
-		expect(infos[0]).not.toContain("undefined");
-	});
-
-	it("设了值仍然照常打印实际值", () => {
-		const infos: string[] = [];
-		const r = makeLoggingRenderer(infos, {});
-
-		r.updateConfig({ ...BASE_CONFIG, glassOpacity: 0.5 });
-
-		expect(infos[0]).toContain("glassOpacity=0.5");
-	});
-});
-
 /**
  * 预览渲染器(routes/cards.ts)每收到一次预览请求就 updateConfig 一遍 —— 主人在
  * Cards 页拖一格滑块就是一条 INFO「配置已更新」,既刷屏又像是"已经保存了",而真正
@@ -670,7 +633,7 @@ describe("ImageRenderer.updateConfig 预览实例静默", () => {
 	it("quietConfigUpdates 时热更日志走 debug、不打 info", () => {
 		const infos: string[] = [];
 		const debugs: string[] = [];
-		const r = makeRenderer({ glassOpacity: 0.82 }, { quietConfigUpdates: true }) as AnyRenderer;
+		const r = makeRenderer({ font: "sans-serif" }, { quietConfigUpdates: true }) as AnyRenderer;
 		r.logger = {
 			debug: (m: string) => debugs.push(m),
 			info: (m: string) => infos.push(m),
@@ -678,19 +641,19 @@ describe("ImageRenderer.updateConfig 预览实例静默", () => {
 			error() {},
 		};
 
-		(r as ImageRenderer).updateConfig({ ...BASE_CONFIG, glassOpacity: 0.4 });
+		(r as ImageRenderer).updateConfig({ ...BASE_CONFIG, font: "serif" });
 
 		expect(infos).toHaveLength(0);
-		expect(debugs[0]).toContain("glassOpacity=0.4");
+		expect(debugs[0]).toContain("font=serif");
 	});
 
 	it("默认(推送渲染器)仍然打 info —— 那才是真的生效了", () => {
 		const infos: string[] = [];
-		const r = makeLoggingRenderer(infos, { glassOpacity: 0.82 });
+		const r = makeLoggingRenderer(infos, { font: "sans-serif" });
 
-		r.updateConfig({ ...BASE_CONFIG, glassOpacity: 0.4 });
+		r.updateConfig({ ...BASE_CONFIG, font: "serif" });
 
-		expect(infos[0]).toContain("glassOpacity=0.4");
+		expect(infos[0]).toContain("font=serif");
 	});
 });
 

@@ -83,13 +83,9 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 1,
 		why: "导航显隐菜单里的原生 checkbox。input 挂点是给「有边框的文字输入面」的,拿它去改一个原生勾选框(圆角 / 底色 / 内边距)只会画坏。CheckRow 也同样不挂。",
 	},
-	"apps/web/src/pages/Cards.tsx": {
-		count: 1,
-		why: "玻璃透明度滑杆(type=range)。同上 —— 滑轨不是输入面,套上边框底色就散架。",
-	},
 	"apps/web/src/pages/cards/CardSkinKnobs.tsx": {
 		count: 1,
-		why: "数值旋钮的滑杆(type=range)。同 Cards 的玻璃透明度那根 —— 滑轨不是输入面。这一节其余控件都是挂好了的 T 系列(TColor / TSelect)与 Toggle。",
+		why: "数值旋钮的滑杆(type=range)。滑轨不是输入面,套上边框底色就散架。这一节其余控件都是挂好了的 T 系列(TColor / TSelect)与 Toggle。",
 	},
 	"packages/ui/src/atoms.tsx": {
 		count: 1,
@@ -97,7 +93,7 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 	},
 	"apps/web/src/pages/skins/SkinEditor.tsx": {
 		count: 1,
-		why: "圆角 / 透明度那几根滑杆(type=range)。同 Cards —— 滑轨不是输入面。这里其余 10 个已挂:曾经整块留白当「写坏的皮肤还能改回来」的逃生舱,但皮肤页本来就挂着 glass 与 btn,玻璃卡、按钮、页面底、导航全都改得动,逃生舱早不存在了 —— 只剩输入框不挂,换来的仅仅是装了皮肤后这一页和全站长得不一样。",
+		why: "圆角 / 透明度那几根滑杆(type=range)。同上 —— 滑轨不是输入面。这里其余 10 个已挂:曾经整块留白当「写坏的皮肤还能改回来」的逃生舱,但皮肤页本来就挂着 glass 与 btn,玻璃卡、按钮、页面底、导航全都改得动,逃生舱早不存在了 —— 只剩输入框不挂,换来的仅仅是装了皮肤后这一页和全站长得不一样。",
 	},
 };
 

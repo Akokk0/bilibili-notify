@@ -228,7 +228,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				minScPrice: 30,
 				customCardStyle: { enable: true, backgroundImage: "base-bg" },
 				customCardStyleByKind: {
-					sc: { enable: true, backgroundImage: "sc-bg", glassOpacity: 0.5 },
+					sc: { enable: true, backgroundImage: "sc-bg" },
 				},
 			}),
 		) as AnySession;
@@ -237,7 +237,6 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		// 第二参 = colorOptions(sc 专属覆盖基准)。
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({
 			backgroundImage: "sc-bg",
-			glassOpacity: 0.5,
 		});
 	});
 
@@ -423,7 +422,7 @@ describe("RoomSession.onGuardBuy", () => {
 				liveGuardBuy: true,
 				customCardStyle: { enable: true, backgroundImage: "base-bg" },
 				customCardStyleByKind: {
-					guard: { enable: true, backgroundImage: "guard-bg", glassClear: true },
+					guard: { enable: true, backgroundImage: "guard-bg" },
 				},
 			}),
 		) as AnySession;
@@ -431,7 +430,6 @@ describe("RoomSession.onGuardBuy", () => {
 		// 第三参 = colorOptions(guard 专属);第四参为版式。
 		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({
 			backgroundImage: "guard-bg",
-			glassClear: true,
 		});
 	});
 });

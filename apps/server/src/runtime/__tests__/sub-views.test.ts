@@ -58,9 +58,9 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
-	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 玻璃,aiOverride/filter 仍 undefined", () => {
+	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 字体,aiOverride/filter 仍 undefined", () => {
 		const sub = makeSub({
-			cardStyle: { glassOpacity: 0.5, glassClear: true },
+			cardStyle: { font: "Comic Sans MS" },
 		});
 		const view = buildDynamicSubsView(
 			fakeStore([sub]),
@@ -69,8 +69,7 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		);
 		expect(view["12345"]?.customCardStyle).toEqual({
 			enable: true,
-			glassOpacity: 0.5,
-			glassClear: true,
+			font: "Comic Sans MS",
 		});
 		expect(view["12345"]?.aiOverride).toBeUndefined();
 		expect(view["12345"]?.filter).toBeUndefined();
@@ -120,7 +119,7 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 	it("改全局 globals.defaults.cardStyle → 无 per-UP override 的 sub 的 customCardStyle 保持 enable:false(不会把全局值塞进去)", () => {
 		const sub = makeSub({});
 		const globals: GlobalConfig = makeDefaultGlobalConfig();
-		globals.defaults.cardStyle.glassOpacity = 0.42;
+		globals.defaults.cardStyle.font = "Comic Sans MS";
 		const view = buildDynamicSubsView(fakeStore([sub]), fakeRuntimeStore(), globals);
 		// 关键断言:全局值改了,但因为 sub 没 per-UP override,customCardStyle 仍是
 		// {enable:false},不带任何样式字段。下游 ImageRenderer 走 this.config
@@ -139,13 +138,12 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 
 	it("仅设 cardStyle override → customCardStyle.enable=true,aiOverride 仍 undefined", () => {
 		const sub = makeSub({
-			cardStyle: { glassOpacity: 0.5, glassClear: true },
+			cardStyle: { font: "Comic Sans MS" },
 		});
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
 		expect(view.customCardStyle).toEqual({
 			enable: true,
-			glassOpacity: 0.5,
-			glassClear: true,
+			font: "Comic Sans MS",
 		});
 		expect(view.aiOverride).toBeUndefined();
 	});

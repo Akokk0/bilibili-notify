@@ -129,8 +129,6 @@ const StyleSchema = z.object({
 	showPopularity: z.boolean().optional(),
 	showArea: z.boolean().optional(),
 	showFans: z.boolean().optional(),
-	glassOpacity: z.number().min(0).max(1).optional(),
-	glassClear: z.boolean().optional(),
 	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
 	backgroundImages: z.array(z.string()).optional(),
 	/** 直播封面资产 id 列表(空 = B 站封面;>1 = 轮换,预览端取首张)。仅 live 卡。 */
@@ -570,8 +568,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			showPopularity: style.showPopularity ?? true,
 			showArea: style.showArea ?? true,
 			showFans: style.showFans ?? true,
-			glassOpacity: style.glassOpacity,
-			glassClear: style.glassClear,
 			// 跳过悬空引用(文件已删的 id),取第一张盘上存在的图 —— 否则解析失败静默回退渐变。
 			backgroundImage: await firstExistingCardBg(
 				opts.deps.store.bootstrap.dataDir,
@@ -1036,7 +1032,7 @@ function buildPreviewSpec(
 	}
 	return {
 		kind: "dynamic",
-		props: { ...buildDynamicPreviewProps(style), backgroundImage },
+		props: { ...buildDynamicPreviewProps(), backgroundImage },
 		title: "卡片预览 · 动态",
 	};
 }
@@ -1060,8 +1056,6 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 		showFans: style.showFans ?? true,
 		cardColorStart: DEFAULT_CARD_GRADIENT[0],
 		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
-		glassOpacity: style.glassOpacity,
-		glassClear: style.glassClear,
 		data: {
 			user_cover: SVG_COVER,
 			keyframe: "",
@@ -1084,7 +1078,7 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 	};
 }
 
-function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
+function buildDynamicPreviewProps(): DynamicCardProps {
 	const body = h(
 		"div",
 		{
@@ -1128,8 +1122,6 @@ function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
 	return {
 		cardColorStart: DEFAULT_CARD_GRADIENT[0],
 		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
-		glassOpacity: style.glassOpacity,
-		glassClear: style.glassClear,
 		node: {
 			avatarUrl: SVG_AVATAR_BLUE,
 			upName: "示例 UP 主",

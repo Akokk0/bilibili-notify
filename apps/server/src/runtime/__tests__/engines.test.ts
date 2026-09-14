@@ -801,11 +801,11 @@ describe("createEngines — image 配色热更", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.glassOpacity = 0.42;
+			g.defaults.cardStyle.font = "Comic Sans MS";
 		});
 		c.bus.emit("config-changed", "globals");
 		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(last.glassOpacity).toBe(0.42);
+		expect(last.font).toBe("Comic Sans MS");
 		// cardStyle 变更不在 app section → 不扇出重设 UA(仅 boot 1 次)。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
@@ -1169,9 +1169,9 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 
 	it("全局给「动态」调了样式 → 全局作用域(null)也解析出完整样式", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { dynamic: { glassOpacity: 0.42 } } as any;
+		g.defaults.cardStyleByKind = { dynamic: { font: "Comic Sans MS" } } as any;
 		const style = resolveDynamicCardStyle(g.defaults, null);
-		expect(style).toMatchObject({ enable: true, glassOpacity: 0.42 });
+		expect(style).toMatchObject({ enable: true, font: "Comic Sans MS" });
 		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
 		const subRt = { get: () => undefined } as any;
@@ -1181,10 +1181,10 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
-		sub.overrides.cardStyle = { glassOpacity: 0.25 } as any;
+		sub.overrides.cardStyle = { font: "Comic Sans MS" } as any;
 		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
 			enable: true,
-			glassOpacity: 0.25,
+			font: "Comic Sans MS",
 		});
 	});
 });
@@ -1292,10 +1292,10 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyleByKind = { dynamic: { glassOpacity: 0.42 } } as any;
+			g.defaults.cardStyleByKind = { dynamic: { font: "Comic Sans MS" } } as any;
 		});
 		c.bus.emit("config-changed", "globals");
-		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ glassOpacity: 0.42 });
+		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ font: "Comic Sans MS" });
 	});
 });
 

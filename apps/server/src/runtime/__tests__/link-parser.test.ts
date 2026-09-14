@@ -69,7 +69,7 @@ async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise
 /** 主人在卡片页选的那套皮肤 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
 const SKIN = "skin-from-panel";
 /** 卡片页里给「动态」这一类调的配色(含图廊轮到的那张背景)—— 同样两种卡都得吃。 */
-const COLORS: CardColorOptions = { glassOpacity: 0.5, backgroundImage: "bg-7" };
+const COLORS: CardColorOptions = { font: "Comic Sans MS", backgroundImage: "bg-7" };
 
 function makeParser(
 	over: Partial<LinkParsingConfig> = {},
