@@ -28,9 +28,12 @@ export const CARD_DATA_VERSION = 1;
 import {
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_SELF_HOOK,
 	type CardSkinBuiltinBlock,
+	type CardSkinFrameHook,
 	type CardSkinKind,
 	type PreviewScene,
 	resolvePreviewScene,
@@ -49,21 +52,10 @@ export { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS };
 
 // ---- 挂点 -------------------------------------------------------------------
 
-/**
- * 每块 CSS 里指「块自己」的挂点。皮肤写 `[data-bn="self"]`,渲染器把它翻成该块的真实
- * 选择器 —— 与 dashboard 皮肤同一套「按 hook 存盘、注入时翻译」的哲学。
- */
-export const CARD_SKIN_SELF_HOOK = "self";
-
-/**
- * 根块(卡片外框)的两层挂点。外层是渐变 / 背景图那层(带 15px 内边距),内层是玻璃层
- * (圆角 / 阴影 / 白纱 / 模糊)。块都画在玻璃层里。
- */
-export const CARD_SKIN_FRAME_HOOKS = {
-	frame: "外框(渐变 / 背景图那一层)",
-	glass: "玻璃层(圆角、阴影、白纱、模糊)",
-} as const;
-export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
+export type { CardSkinFrameHook };
+// 挂点名住零依赖的 `constants.ts`(理由同块目录:编辑器要照它们给作者列「这块能挂哪些
+// 选择器」,而从根入口取值会把 zod 拽进前端 bundle)。这里原样再导出。
+export { CARD_SKIN_FRAME_HOOKS, CARD_SKIN_SELF_HOOK };
 
 // ---- CSS 属性白名单 -----------------------------------------------------------
 

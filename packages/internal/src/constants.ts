@@ -1209,6 +1209,22 @@ export const CARD_SKIN_LIMITS = {
 	maxHeight: 4000,
 } as const;
 
+/**
+ * 每块 CSS 里指「块自己」的挂点。皮肤写 `[data-bn="self"]`,渲染器把它翻成该块的真实
+ * 选择器 —— 与 dashboard 皮肤同一套「按 hook 存盘、注入时翻译」的哲学。
+ */
+export const CARD_SKIN_SELF_HOOK = "self";
+
+/**
+ * 根块(卡片外框)的两层挂点。外层是渐变 / 背景图那层(带 15px 内边距),内层是玻璃层
+ * (圆角 / 阴影 / 白纱 / 模糊)。块都画在玻璃层里。
+ */
+export const CARD_SKIN_FRAME_HOOKS = {
+	frame: "外框(渐变 / 背景图那一层)",
+	glass: "玻璃层(圆角、阴影、白纱、模糊)",
+} as const;
+export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
+
 /** 一个内置块的目录条目:人话名 + 它内部可分别挂 CSS 的部件。 */
 export interface CardSkinBuiltinBlock {
 	label: string;
