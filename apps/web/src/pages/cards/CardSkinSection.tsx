@@ -15,6 +15,7 @@
  */
 
 import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
+import type { CardSkinKind } from "@bilibili-notify/internal";
 import {
 	Btn,
 	ConfirmDialog,
@@ -32,6 +33,36 @@ import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { Field, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
 import { CARD_SKINS_KEY, useCardSkinList } from "./card-skins-query";
+
+/** 七种卡在回落告警里怎么称呼。 */
+const KIND_LABEL: Record<CardSkinKind, string> = {
+	live: "直播",
+	dynamic: "动态",
+	sc: "SC",
+	guard: "上舰",
+	roastBoard: "锐评榜单",
+	roastSolo: "单人锐评",
+	wordcloud: "词云",
+};
+
+/**
+ * 回落告警里那套皮肤的名字。**账本记的是 id**(渲染器那头拿不到名字,也不该为了一句
+ * 告警去查库),所以这里回头对一遍;对不上就把 id 原样摆出来 —— 皮肤可能已经被删了,
+ * 而「哪一套」正是主人唯一能照着去查的线索。
+ */
+function skinName(skins: readonly CardSkinSummary[], id: string): string {
+	return skins.find((s) => s.id === id)?.name ?? `皮肤 ${id}`;
+}
+
+/** 回落时刻:同一天只报时分,跨天带上月日 —— 「上周那条」和「刚刚那条」要一眼分得开。 */
+function formatAt(at: number): string {
+	const d = new Date(at);
+	const now = new Date();
+	const sameDay = d.toDateString() === now.toDateString();
+	const hh = String(d.getHours()).padStart(2, "0");
+	const mm = String(d.getMinutes()).padStart(2, "0");
+	return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+}
 
 /** 装包响应(POST /api/card-skins)。 */
 interface UploadResult {
@@ -131,6 +162,19 @@ export function CardSkinSection() {
 		if (file) upload.mutate(file);
 	}
 
+	/**
+	 * 出图回落的账本(ADR-0014 决策 19「回落必须可见」)。
+	 *
+	 * **刻意不做 toast**:回落发生在推送的那一刻,主人多半不在面板前;等他下次打开卡片页
+	 * 才看得见,所以这块要一直留在页面上,直到他自己说「知道了」。
+	 */
+	const fallbacks = listQuery.data?.fallbacks ?? [];
+	const dismissFallbacks = useMutation({
+		mutationFn: () => api.delete<{ ok: boolean }>("/api/card-skins/fallbacks"),
+		onSuccess: refresh,
+		onError: (e) => setError(String((e as Error).message)),
+	});
+
 	const busy = activate.isPending || duplicate.isPending || remove.isPending;
 
 	return (
@@ -161,6 +205,29 @@ export function CardSkinSection() {
 			}
 		>
 			{error ? <ErrorNote className="mb-3">操作失败：{error}</ErrorNote> : null}
+			{fallbacks.length > 0 ? (
+				<WarnNote className="mb-3 leading-5">
+					<div className="flex items-start gap-3">
+						<div className="min-w-0 flex-1 space-y-0.5">
+							<div className="font-semibold">有卡片没能按皮肤画出来,已回落内置默认皮肤</div>
+							{fallbacks.map((f) => (
+								<div key={`${f.skinId} ${f.kind} ${f.reason}`}>
+									{skinName(skins, f.skinId)} 的{KIND_LABEL[f.kind]}卡{f.reason}
+									{f.count > 1 ? `(${f.count} 次)` : ""} · {formatAt(f.at)}
+								</div>
+							))}
+						</div>
+						<Btn
+							size="sm"
+							variant="ghost"
+							onClick={() => dismissFallbacks.mutate()}
+							disabled={dismissFallbacks.isPending}
+						>
+							知道了
+						</Btn>
+					</div>
+				</WarnNote>
+			) : null}
 			{warnings.length > 0 ? (
 				<WarnNote className="mb-3 leading-5">
 					{warnings.map((w) => (

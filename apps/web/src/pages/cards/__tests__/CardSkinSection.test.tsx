@@ -88,6 +88,51 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+/**
+ * 出图回落的账本(决策 19「回落必须可见」)。刻意不做 toast —— 回落发生在推送那一刻,
+ * 主人多半不在面板前。这两条钉的是:**列得出来**(账本下发了却没人画,等于决策 19 没做),
+ * 以及**「知道了」真的打到服务端**(只在前端藏起来的话,刷一下页面它又回来了)。
+ */
+describe("卡片皮肤库 · 回落告警", () => {
+	const WITH_FALLBACK = {
+		...LIST,
+		fallbacks: [
+			{ skinId: "aurora", kind: "live", reason: "渲染失败(超时)", at: 1_757_000_000_000, count: 3 },
+		],
+	};
+
+	it("账本非空 → 把「哪套皮肤、哪种卡、为什么」摆出来,皮肤名按 id 对回去", async () => {
+		vi.mocked(api.get).mockResolvedValue(WITH_FALLBACK);
+		renderSection();
+		const note = await screen.findByText(/有卡片没能按皮肤画出来/);
+		// WarnNote 自带 `data-bn="note note-warn"` —— 爬到它那层才是整块告警,
+		// 爬一层只会停在标题那个 div 上。
+		const box = note.closest('[data-bn~="note"]');
+		if (!box) throw new Error("告警盒没渲染");
+		expect(within(box as HTMLElement).getByText(/极光 的直播卡渲染失败\(超时\)/)).toBeTruthy();
+		// 账本记的是 id,面板要回头对成名字 —— 对不上才退回 id。
+		expect(box.textContent).not.toContain("aurora");
+		expect(box.textContent).toContain("3 次");
+	});
+
+	it("点「知道了」打 DELETE /api/card-skins/fallbacks 并重取列表", async () => {
+		vi.mocked(api.get).mockResolvedValue(WITH_FALLBACK);
+		renderSection();
+		const before = vi.mocked(api.get).mock.calls.length;
+		fireEvent.click(await screen.findByText("知道了"));
+		await waitFor(() =>
+			expect(vi.mocked(api.delete)).toHaveBeenCalledWith("/api/card-skins/fallbacks"),
+		);
+		await waitFor(() => expect(vi.mocked(api.get).mock.calls.length).toBeGreaterThan(before));
+	});
+
+	it("账本空 → 一个字都不画", async () => {
+		renderSection();
+		await screen.findByText("极光");
+		expect(screen.queryByText(/有卡片没能按皮肤画出来/)).toBeNull();
+	});
+});
+
 describe("卡片皮肤库", () => {
 	it("内置那份排首位,「使用中」跟着 active 走", async () => {
 		renderSection();
