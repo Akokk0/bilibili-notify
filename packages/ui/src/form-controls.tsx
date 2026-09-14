@@ -130,6 +130,8 @@ export interface TNumProps extends Labelled {
 	step?: number;
 	suffix?: string;
 	width?: number;
+	/** 只读态,同 {@link TInputProps.disabled}。 */
+	disabled?: boolean;
 }
 
 export function TNum({
@@ -140,6 +142,7 @@ export function TNum({
 	step = 1,
 	suffix,
 	width = 80,
+	disabled,
 	ariaLabel,
 }: TNumProps) {
 	return (
@@ -151,9 +154,10 @@ export function TNum({
 				min={min}
 				max={max}
 				step={step}
+				disabled={disabled}
 				aria-label={ariaLabel}
 				data-bn={INPUT_HOOK}
-				className={`${INPUT_BASE} text-left font-mono`}
+				className={`${INPUT_BASE} text-left font-mono ${DISABLED_FIELD}`}
 				style={{ width }}
 			/>
 			{suffix ? <span className="text-bn-xs text-bn-text-secondary">{suffix}</span> : null}
@@ -201,14 +205,16 @@ export function TSelect<T extends string = string>({
 	);
 }
 
-export interface TColorProps {
+export interface TColorProps extends Labelled {
 	value: string;
 	onChange: (next: string) => void;
+	/** 只读态,同 {@link TInputProps.disabled}。两个原生 input 都要跟着禁。 */
+	disabled?: boolean;
 }
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-export function TColor({ value, onChange }: TColorProps) {
+export function TColor({ value, onChange, disabled, ariaLabel }: TColorProps) {
 	const [hex, setHex] = useState(value);
 	// keep the text input in sync when the color picker (or external resets)
 	// pushes a new value down.
@@ -227,8 +233,10 @@ export function TColor({ value, onChange }: TColorProps) {
 					setHex(e.target.value);
 					onChange(e.target.value);
 				}}
+				disabled={disabled}
+				aria-label={ariaLabel === undefined ? undefined : `${ariaLabel}(取色器)`}
 				data-bn={INPUT_HOOK}
-				className="h-7.5 w-9 cursor-pointer rounded-md border border-bn-border bg-bn-field p-0"
+				className={`h-7.5 w-9 cursor-pointer rounded-md border border-bn-border bg-bn-field p-0 ${DISABLED_FIELD}`}
 			/>
 			<input
 				type="text"
@@ -244,11 +252,13 @@ export function TColor({ value, onChange }: TColorProps) {
 				}}
 				placeholder="#rrggbb"
 				spellCheck={false}
+				disabled={disabled}
+				aria-label={ariaLabel}
 				className={`w-22 rounded-md border bg-bn-field px-2 py-1 font-mono text-bn-xs outline-none transition-colors ${
 					valid
 						? "border-bn-border text-bn-text-primary focus:border-bn-pink"
 						: "border-bn-danger-border text-bn-danger-text focus:border-bn-danger-text"
-				}`}
+				} ${DISABLED_FIELD}`}
 			/>
 		</div>
 	);

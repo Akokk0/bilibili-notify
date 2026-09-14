@@ -5,9 +5,13 @@
  * 两边都察觉不到,界面上看着值变了、预览一动不动(正是「拧了没反应」那一类)。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import {
+	CARD_SKIN_KNOB_KEY_RE,
+	CARD_SKIN_KNOB_LIMITS,
+	CARD_SKIN_LIMITS,
+} from "@bilibili-notify/internal/constants";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];
@@ -403,6 +407,147 @@ export function skinMetaError(manifest: CardSkinManifest): string | null {
 	];
 	for (const [label, value, max] of over) {
 		if (value.length > max) return `${label}最多 ${max} 个字,现在是 ${value.length}`;
+	}
+	return null;
+}
+
+// ---- 旋钮声明 ---------------------------------------------------------------
+//
+// 皮肤声明几枚旋钮,卡片页那个旋钮区就照声明画几个控件(ADR-0014 决策 16)。编辑器从前
+// 一枚都编不了 —— 自制皮肤的旋钮区于是永远是空的,只有出厂那套有。
+
+/** 加完一枚旋钮:新清单 + 新旋钮的 key(调用方要拿它立刻选中)。 */
+type AddedKnob = { manifest: CardSkinManifest; key: string };
+
+type Knob = CardSkinKnob;
+type KnobType = Knob["type"];
+
+/**
+ * 各档的**出厂形状**。改档时整份换成这里的 —— 只改 `type` 不换值的话,
+ * 「颜色 → 数值」留下的 `default: "#e0c3fc"` 当场违约,而主人只看见保存失败。
+ *
+ * `image` 连 `default` 都没有(图是主人自己的东西,皮肤起不出默认值),而清单是 `strict`
+ * 的:多带一个键就整份拒收。
+ */
+const KNOB_SHAPES: { [T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "label" | "type"> } =
+	{
+		color: { default: "#ffffff" },
+		number: { default: 0, min: 0, max: 100 },
+		select: { default: "none", options: [{ value: "none", label: "候选一" }] },
+		switch: { default: false, on: "block", off: "none" },
+		font: { default: "" },
+		image: {},
+	};
+
+const knobsOf = (manifest: CardSkinManifest): Knob[] => manifest.knobs ?? [];
+
+/** 回一份换了旋钮表的清单。空表**删键** —— 清单里留个空数组只是噪音。 */
+function withKnobs(manifest: CardSkinManifest, knobs: Knob[]): CardSkinManifest {
+	const next: CardSkinManifest = { ...manifest };
+	if (knobs.length === 0) delete next.knobs;
+	else next.knobs = knobs;
+	return next;
+}
+
+/** 加一枚颜色旋钮(六档里最常用的那个起手)。加满 {@link CARD_SKIN_KNOB_LIMITS.maxKnobs} 回 `null`。 */
+export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
+	const knobs = knobsOf(manifest);
+	if (knobs.length >= CARD_SKIN_KNOB_LIMITS.maxKnobs) return null;
+	const key = nextKnobKey(knobs, "knob");
+	return {
+		manifest: withKnobs(manifest, [
+			...knobs,
+			{ key, label: "新旋钮", type: "color", ...KNOB_SHAPES.color },
+		]),
+		key,
+	};
+}
+
+/** 让开已经占着的 key。同 {@link nextBlockId}:撞了不换名的话装包门直接判重复。 */
+function nextKnobKey(knobs: Knob[], base: string): string {
+	const used = new Set(knobs.map((k) => k.key));
+	if (!used.has(base)) return base;
+	for (let n = 2; ; n++) {
+		const candidate = `${base}-${n}`;
+		if (!used.has(candidate)) return candidate;
+	}
+}
+
+export function removeKnob(manifest: CardSkinManifest, key: string): CardSkinManifest {
+	const knobs = knobsOf(manifest);
+	if (!knobs.some((k) => k.key === key)) return manifest;
+	return withKnobs(
+		manifest,
+		knobs.filter((k) => k.key !== key),
+	);
+}
+
+/** 改一枚旋钮的 key / 人话名。都**照敲的存**,合不合法交给 {@link knobsError} 当场说。 */
+export function setKnobDecl(
+	manifest: CardSkinManifest,
+	key: string,
+	patch: { key?: string; label?: string },
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) => ({
+		...k,
+		...(patch.key !== undefined ? { key: patch.key } : {}),
+		...(patch.label !== undefined ? { label: patch.label } : {}),
+	}));
+}
+
+/** 改档。key 与人话名留着,其余整份换成那一档的出厂形状(理由见 {@link KNOB_SHAPES})。 */
+export function setKnobType(
+	manifest: CardSkinManifest,
+	key: string,
+	type: KnobType,
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) =>
+		k.type === type
+			? k
+			: ({ key: k.key, label: k.label, type, ...KNOB_SHAPES[type] } as unknown as Knob),
+	);
+}
+
+/** 改起手位置。各档的 `default` 类型不同(颜色是 hex、数值是数、开关是布尔)。 */
+export function setKnobDefault(
+	manifest: CardSkinManifest,
+	key: string,
+	value: string | number | boolean,
+): CardSkinManifest {
+	return mapKnob(manifest, key, (k) =>
+		k.type === "image" ? k : ({ ...k, default: value } as unknown as Knob),
+	);
+}
+
+function mapKnob(
+	manifest: CardSkinManifest,
+	key: string,
+	fn: (knob: Knob) => Knob,
+): CardSkinManifest {
+	const knobs = knobsOf(manifest);
+	if (!knobs.some((k) => k.key === key)) return manifest;
+	return withKnobs(
+		manifest,
+		knobs.map((k) => (k.key === key ? fn(k) : k)),
+	);
+}
+
+/**
+ * 这套旋钮声明存不存得下去。装包门那头回的是 `knobs[3]: 旋钮 key「accent」重复` ——
+ * 那个 3 对不上界面上第几行(主人得自己数),而且要按保存才看得见。这里提前说人话。
+ */
+export function knobsError(manifest: CardSkinManifest): string | null {
+	const seen = new Set<string>();
+	for (const knob of knobsOf(manifest)) {
+		if (!CARD_SKIN_KNOB_KEY_RE.test(knob.key) || knob.key.length > CARD_SKIN_KNOB_LIMITS.key.max) {
+			return `旋钮 key「${knob.key}」不合法 —— 只准小写字母起头的 kebab(如 accent / glass-opacity)`;
+		}
+		if (seen.has(knob.key)) return `旋钮 key「${knob.key}」重复了 —— 两枚注的是同一个变量`;
+		seen.add(knob.key);
+		if (knob.label.trim() === "") return `旋钮「${knob.key}」得有个名字`;
+		if (knob.label.length > CARD_SKIN_KNOB_LIMITS.label.max) {
+			return `旋钮「${knob.key}」的名字最多 ${CARD_SKIN_KNOB_LIMITS.label.max} 个字`;
+		}
 	}
 	return null;
 }

@@ -9,12 +9,13 @@
  * 边过的,拒了的话想敲两位数就永远敲不出第一位。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
+	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
 } from "@bilibili-notify/internal/constants";
@@ -29,13 +30,14 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Picker, TArea, TInput, TNum, TSelect } from "../../components/forms";
+import { Picker, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
 import {
 	blockOf,
 	cardOf,
 	columnsOf,
 	gridLimits,
+	knobsError,
 	type SkinMetaPatch,
 	skinMetaError,
 } from "./skin-draft-ops";
@@ -59,6 +61,7 @@ export function SkinInspector({
 	onRemove,
 	onDropCard,
 	onMeta,
+	onKnobs,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
@@ -79,6 +82,8 @@ export function SkinInspector({
 	onDropCard?: () => void;
 	/** 改皮肤级的元信息(名字 / 作者 / 说明)。**不给 = 这套皮肤只读**,三个框都退成只读。 */
 	onMeta?: (patch: SkinMetaPatch) => void;
+	/** 旋钮声明的增删改。与 `onMeta` 同进同出(同一套「只读」判据)。 */
+	onKnobs?: KnobHandlers;
 }) {
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
@@ -92,7 +97,7 @@ export function SkinInspector({
 		);
 	}
 	if (selection.kind === "skin") {
-		return <SkinMetaInspector manifest={manifest} onMeta={onMeta} />;
+		return <SkinMetaInspector manifest={manifest} onMeta={onMeta} onKnobs={onKnobs} />;
 	}
 	if (selection.kind === "frame") {
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
@@ -588,9 +593,11 @@ function GridNum({
 function SkinMetaInspector({
 	manifest,
 	onMeta,
+	onKnobs,
 }: {
 	manifest: CardSkinManifest | null;
 	onMeta?: (patch: SkinMetaPatch) => void;
+	onKnobs?: KnobHandlers;
 }) {
 	if (!manifest) return <EmptyNote size="sm">清单还没读到。</EmptyNote>;
 	const err = skinMetaError(manifest);
@@ -630,6 +637,185 @@ function SkinMetaInspector({
 					/>
 				</div>
 			</Section>
+
+			<KnobSection manifest={manifest} onKnobs={onKnobs} />
 		</div>
 	);
+}
+
+/** 旋钮那一节要的四个口。**整份不给 = 这套皮肤只读**(同 `onRemove` 的判据)。 */
+export type KnobHandlers = {
+	onAdd: () => void;
+	onRemove: (key: string) => void;
+	onDecl: (key: string, patch: { key?: string; label?: string }) => void;
+	onType: (key: string, type: CardSkinKnob["type"]) => void;
+	onDefault: (key: string, value: string | number | boolean) => void;
+};
+
+/** 六档在下拉里的人话名。顺序照的是「多数皮肤先要哪一档」。 */
+const KNOB_TYPE_LABELS: Array<[CardSkinKnob["type"], string]> = [
+	["color", "颜色"],
+	["number", "数值"],
+	["select", "下拉"],
+	["switch", "开关"],
+	["font", "字体"],
+	["image", "图"],
+];
+
+/**
+ * 皮肤自己的旋钮声明 —— 卡片页那个旋钮区照它画控件(ADR-0014 决策 16)。
+ *
+ * 每枚一行:key、人话名、档位,以及**起手位置**。起手位置写的是面板控件停在哪儿,
+ * 它**不注入** —— 真正的默认值是皮肤 CSS 里 `var(--bn-knob-<key>, 兜底)` 的那个兜底,
+ * 这条得在界面上说出来,否则作者会把它当默认值用,而换皮肤的人什么都看不到变化。
+ */
+function KnobSection({
+	manifest,
+	onKnobs,
+}: {
+	manifest: CardSkinManifest;
+	onKnobs?: KnobHandlers;
+}) {
+	const knobs = manifest.knobs ?? [];
+	const err = knobsError(manifest);
+	const full = knobs.length >= CARD_SKIN_KNOB_LIMITS.maxKnobs;
+	return (
+		<Section label="旋钮">
+			<div className="flex flex-col gap-2.5 p-2.5">
+				<span className="text-bn-2xs text-bn-text-tertiary">
+					声明几枚,卡片页的「皮肤旋钮」就画几个控件;拧出来的值注成{" "}
+					<code className="font-mono">--bn-knob-&lt;key&gt;</code>,在这套皮肤的 CSS 里用{" "}
+					<code className="font-mono">var(--bn-knob-&lt;key&gt;, 兜底)</code> 引用。
+					<strong>起手位置不注入</strong> —— 那个兜底才是真默认值。
+				</span>
+
+				{knobs.length === 0 ? (
+					<EmptyNote size="sm">还没有旋钮 —— 这套皮肤在卡片页上没有任何可拧的东西。</EmptyNote>
+				) : (
+					knobs.map((knob, i) => (
+						<KnobRow key={knob.key || `#${i}`} index={i} knob={knob} onKnobs={onKnobs} />
+					))
+				)}
+
+				{err ? <ErrorNote size="sm">{err}</ErrorNote> : null}
+
+				{onKnobs === undefined ? null : full ? (
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						已经 {CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚,加不下了。
+					</span>
+				) : (
+					<Btn size="sm" variant="outline" onClick={onKnobs.onAdd}>
+						<Icon.plus size={12} /> 添加旋钮
+					</Btn>
+				)}
+			</div>
+		</Section>
+	);
+}
+
+/**
+ * 一枚旋钮。包一层 `<fieldset>` 是为了让读屏器念得出「第几枚」—— 三个框的名字在每一行
+ * 里都一样,不分组的话念出来是一串同名控件。
+ */
+function KnobRow({
+	index,
+	knob,
+	onKnobs,
+}: {
+	index: number;
+	knob: CardSkinKnob;
+	onKnobs?: KnobHandlers;
+}) {
+	const ro = onKnobs === undefined;
+	return (
+		<fieldset
+			aria-label={`第 ${index + 1} 枚旋钮`}
+			className="flex min-w-0 flex-col gap-1.5 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2"
+		>
+			<div className="flex min-w-0 items-center gap-1.5">
+				<TInput
+					value={knob.key}
+					onChange={(v) => onKnobs?.onDecl(knob.key, { key: v })}
+					disabled={ro}
+					mono
+					ariaLabel="旋钮 key"
+					placeholder="accent"
+				/>
+				<TInput
+					value={knob.label}
+					onChange={(v) => onKnobs?.onDecl(knob.key, { label: v })}
+					disabled={ro}
+					ariaLabel="旋钮名字"
+					placeholder="主色"
+				/>
+				{ro ? null : (
+					<Btn
+						size="sm"
+						variant="ghost"
+						title="删掉这枚旋钮"
+						onClick={() => onKnobs.onRemove(knob.key)}
+					>
+						<Icon.trash size={13} />
+						<span className="sr-only">删掉这枚旋钮</span>
+					</Btn>
+				)}
+			</div>
+
+			<div className="flex min-w-0 items-center gap-1.5">
+				<TSelect
+					value={knob.type}
+					onChange={(t) => onKnobs?.onType(knob.key, t as CardSkinKnob["type"])}
+					options={KNOB_TYPE_LABELS.map(([value, label]) => ({ value, label }))}
+					disabled={ro}
+					ariaLabel="旋钮档位"
+					full={false}
+				/>
+				<KnobDefault knob={knob} onKnobs={onKnobs} />
+			</div>
+		</fieldset>
+	);
+}
+
+/**
+ * 起手位置 —— 按档位换控件。`select` 的起手位置与候选表绑在一起(选的就是候选之一),
+ * `image` 压根没有(图是主人自己的东西,皮肤起不出默认值),两档都不在这儿画。
+ */
+function KnobDefault({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
+	const ro = onKnobs === undefined;
+	const set = (v: string | number | boolean) => onKnobs?.onDefault(knob.key, v);
+	switch (knob.type) {
+		case "color":
+			return <TColor value={knob.default} onChange={set} disabled={ro} ariaLabel="起手位置" />;
+		case "number":
+			return (
+				<TNum
+					value={knob.default}
+					onChange={set}
+					disabled={ro}
+					ariaLabel="起手位置"
+					width={80}
+					step={knob.step}
+				/>
+			);
+		case "switch":
+			return (
+				<Toggle value={knob.default} onChange={set} disabled={ro} size="sm" ariaLabel="起手位置" />
+			);
+		case "font":
+			return (
+				<TInput
+					value={knob.default}
+					onChange={set}
+					disabled={ro}
+					ariaLabel="起手位置"
+					placeholder="留空 = 跟着兜底链"
+				/>
+			);
+		default:
+			return (
+				<span className="text-bn-2xs text-bn-text-tertiary">
+					{knob.type === "image" ? "图没有起手位置" : "起手位置在候选表里选"}
+				</span>
+			);
+	}
 }

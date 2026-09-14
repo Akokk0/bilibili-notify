@@ -37,10 +37,13 @@ import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import {
 	addBlock,
 	addCustomBlock,
+	addKnob,
 	adoptCard,
 	cardOf,
 	dropCard,
+	knobsError,
 	removeBlock,
+	removeKnob,
 	setBlockCss,
 	setBlockGrid,
 	setBlockHtml,
@@ -48,6 +51,9 @@ import {
 	setColumns,
 	setFrame,
 	setFrameCss,
+	setKnobDecl,
+	setKnobDefault,
+	setKnobType,
 	setSkinMeta,
 	skinMetaError,
 } from "./cards/skin-draft-ops";
@@ -117,8 +123,9 @@ export default function CardSkinEditor() {
 	// 预览那一栏的宽度**跟着卡宽走**,不再钉死 400 —— 640 宽的卡挤在 400 里右半张就没了。
 	// 它挤的是画布的宽度(画布是 12 列等宽格子,窄一点照样读得懂;预览窄一点就是另一张卡)。
 	const previewCol = Math.min(Math.max(cardOf(draft, kind)?.width ?? 600, 320), PREVIEW_COL_MAX);
-	// 存不下去的草稿不许按保存:装包门那头只回一句「name: 太短」,主人根本不知道说的是哪个名字。
-	const metaError = draft === null ? null : skinMetaError(draft);
+	// 存不下去的草稿不许按保存:装包门那头只回一句「name: 太短」或「knobs[3]: …」,
+	// 序号对不上界面上第几行,主人根本不知道说的是哪一个。
+	const draftError = draft === null ? null : (skinMetaError(draft) ?? knobsError(draft));
 
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
@@ -223,7 +230,7 @@ export default function CardSkinEditor() {
 					<Btn
 						size="sm"
 						variant="primary"
-						disabled={!dirty || readOnly || save.isPending || metaError !== null}
+						disabled={!dirty || readOnly || save.isPending || draftError !== null}
 						onClick={() => draft && save.mutate(draft)}
 					>
 						{save.isPending ? "保存中…" : "保存"}
@@ -318,6 +325,21 @@ export default function CardSkinEditor() {
 									readOnly
 										? undefined
 										: (patch) => setDraft((d) => (d === null ? d : setSkinMeta(d, patch)))
+								}
+								onKnobs={
+									readOnly
+										? undefined
+										: {
+												onAdd: () =>
+													setDraft((d) => (d === null ? d : (addKnob(d)?.manifest ?? d))),
+												onRemove: (key) => setDraft((d) => (d === null ? d : removeKnob(d, key))),
+												onDecl: (key, patch) =>
+													setDraft((d) => (d === null ? d : setKnobDecl(d, key, patch))),
+												onType: (key, type) =>
+													setDraft((d) => (d === null ? d : setKnobType(d, key, type))),
+												onDefault: (key, value) =>
+													setDraft((d) => (d === null ? d : setKnobDefault(d, key, value))),
+											}
 								}
 								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
 								onColumns={(columns) =>

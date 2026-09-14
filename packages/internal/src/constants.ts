@@ -1165,6 +1165,44 @@ export function resolvePreviewScene(kind: CardSkinKind, scene?: string): Preview
 	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
 }
 
+/**
+ * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14:主人推翻自己「被否:皮肤自定义
+ * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成
+ * `--bn-knob-<key>`,皮肤 CSS 里 `var(--bn-knob-<key>, <自己的默认>)` 引用。
+ *
+ * 固定变量表({@link CARD_SKIN_VARIABLES})管的是**用户的资产**(字体、背景图)与**数据**
+ * (档位色):皮肤换了它们还在。旋钮管的是**这套皮肤自己的调色板**:皮肤换了就换一套。
+ *
+ * 🔴 **`default` 不注入**。它只是面板控件的起始位置;用户没动过就什么都不注,皮肤 CSS 里
+ * 那个 `var(…, 兜底)` 的兜底生效(「存覆盖不存值」,决策 16 的第二个 🔗)。这条不是省事:
+ * 默认皮肤的玻璃白纱各卡基线不同(直播 .82 / SC .75 / 锐评 .86),注了就只能注一个数、
+ * 三档立刻塌成一档;不注,各卡 CSS 写各自的兜底,用户一拧才统一覆盖。
+ */
+export const CARD_SKIN_KNOB_LIMITS = {
+	/** 一套皮肤最多几枚旋钮(面板一屏能拧完的量)。 */
+	maxKnobs: 16,
+	/** 下拉最多几个候选。 */
+	maxOptions: 8,
+	/** 旋钮 / 候选的人话名长度。 */
+	label: { max: 24 },
+	/** key 长度(变量名要人能读)。 */
+	key: { max: 32 },
+	/** 下拉候选 / 开关两端那种字面量的长度。 */
+	value: { max: 80 },
+	/** 一枚图片旋钮最多选几张(多张按推送轮换)。与皮肤包内资产同量级。 */
+	maxImages: 12,
+} as const;
+
+/**
+ * key:小写字母起头的 kebab。它直接拼进变量名,所以大写(CSS 自定义属性大小写敏感,
+ * 面板与 CSS 各写一种就永远对不上)、下划线、非 ASCII 都不收。
+ */
+export const CARD_SKIN_KNOB_KEY_RE = /^[a-z][a-z0-9-]*$/;
+
+/** 数值旋钮的单位。固定几种 —— 单位直接拼在数字后面进 CSS,不能是自由文本。 */
+export const CARD_SKIN_KNOB_UNITS = ["px", "%", "em", "rem", "deg", "s", "ms"] as const;
+export type CardSkinKnobUnit = (typeof CARD_SKIN_KNOB_UNITS)[number];
+
 // ---- 上限 -------------------------------------------------------------------
 
 /** 取值域的唯一事实源:server 的清洗 / 装包与 web 的编辑器都从这里读。 */

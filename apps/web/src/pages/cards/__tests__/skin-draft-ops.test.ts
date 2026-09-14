@@ -13,11 +13,12 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_KNOB_LIMITS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	addBlock,
 	addCustomBlock,
+	addKnob,
 	adoptCard,
 	blockOf,
 	canAddBlock,
@@ -26,7 +27,9 @@ import {
 	columnsOf,
 	dropCard,
 	gridLimits,
+	knobsError,
 	removeBlock,
+	removeKnob,
 	setBlockCss,
 	setBlockGrid,
 	setBlockHtml,
@@ -34,6 +37,9 @@ import {
 	setColumns,
 	setFrame,
 	setFrameCss,
+	setKnobDecl,
+	setKnobDefault,
+	setKnobType,
 	setSkinMeta,
 	skinMetaError,
 } from "../skin-draft-ops";
@@ -433,5 +439,127 @@ describe("skinMetaError", () => {
 
 	it("正常的皮肤没有错", () => {
 		expect(skinMetaError(manifest())).toBeNull();
+	});
+});
+
+/**
+ * 旋钮声明 —— 皮肤自己决定给面板几个控件(ADR-0014 决策 16)。编辑器从前一枚都编不了,
+ * 于是**自制皮肤的旋钮区永远是空的**,只有出厂那套有旋钮。
+ *
+ * 钉的都是「存不下去」那一类静默失败:① 改档得把值**整个重建**成那一档的合法形状 ——
+ * 从颜色改成数值,`default` 还是 `"#e0c3fc"` 的话装包门当场拒,而主人只看见保存失败;
+ * ② 新旋钮的 key 撞了要让开(同块 id 那条);③ key 非法 / 撞了 / label 空了要当场说,
+ * 而不是等装包门回一句 `knobs[3]: …`。
+ */
+describe("旋钮声明", () => {
+	const withKnobs = (...knobs: unknown[]) =>
+		({ ...manifest(), knobs }) as unknown as CardSkinManifest;
+
+	it("加一枚:落在末尾,给一个不撞的 key,并把它回给调用方去选中", () => {
+		const first = addKnob(manifest());
+		expect(first?.manifest.knobs).toHaveLength(1);
+		expect(first?.key).toMatch(/^[a-z][a-z0-9-]*$/);
+
+		const second = addKnob(first?.manifest as CardSkinManifest);
+		const keys = second?.manifest.knobs?.map((k) => k.key);
+		expect(new Set(keys).size).toBe(2);
+	});
+
+	it("加满 16 枚就加不动了(装包门的上限,不是我编的)", () => {
+		let m = manifest();
+		for (let i = 0; i < CARD_SKIN_KNOB_LIMITS.maxKnobs; i++) {
+			m = (addKnob(m) as { manifest: CardSkinManifest }).manifest;
+		}
+		expect(m.knobs).toHaveLength(CARD_SKIN_KNOB_LIMITS.maxKnobs);
+		expect(addKnob(m)).toBeNull();
+	});
+
+	it("删最后一枚 → 整个 knobs 键删掉(别在清单里留个空数组)", () => {
+		const one = addKnob(manifest()) as { manifest: CardSkinManifest; key: string };
+		expect("knobs" in removeKnob(one.manifest, one.key)).toBe(false);
+	});
+
+	it.each([
+		["number", { default: 0, min: 0, max: 100 }],
+		["switch", { default: false, on: "block", off: "none" }],
+		["font", { default: "" }],
+	] as const)("改档到 %s:值整个重建成那一档的形状,key 与 label 留着", (type, shape) => {
+		const m = withKnobs({ key: "accent", label: "主色", type: "color", default: "#e0c3fc" });
+		const after = setKnobType(m, "accent", type);
+		expect(after.knobs?.[0]).toEqual({ key: "accent", label: "主色", type, ...shape });
+	});
+
+	it("改成当前这一档 = 什么都不动 —— 否则点一下现在选着的档位就把值冲掉了", () => {
+		const m = withKnobs({ key: "accent", label: "主色", type: "color", default: "#e0c3fc" });
+		expect(setKnobType(m, "accent", "color").knobs?.[0]).toMatchObject({ default: "#e0c3fc" });
+	});
+
+	it("改档到 image:连 default 都不该留 —— 图没有默认值(装包门是 strict 的)", () => {
+		const m = withKnobs({ key: "wall", label: "壁纸", type: "color", default: "#e0c3fc" });
+		expect(setKnobType(m, "wall", "image").knobs?.[0]).toEqual({
+			key: "wall",
+			label: "壁纸",
+			type: "image",
+		});
+	});
+
+	it("改档到 select:带一个能用的候选 —— 空候选表存不下去", () => {
+		const m = withKnobs({ key: "corner", label: "圆角", type: "color", default: "#e0c3fc" });
+		const knob = setKnobType(m, "corner", "select").knobs?.[0] as {
+			options: Array<{ value: string; label: string }>;
+			default: string;
+		};
+		expect(knob.options.length).toBeGreaterThan(0);
+		expect(knob.options.some((o) => o.value === knob.default)).toBe(true);
+	});
+
+	it("改 key / label / default 各改各的,不动别枚", () => {
+		const m = withKnobs(
+			{ key: "a", label: "甲", type: "color", default: "#000000" },
+			{ key: "b", label: "乙", type: "color", default: "#ffffff" },
+		);
+		const renamed = setKnobDecl(m, "a", { key: "accent" });
+		expect(renamed.knobs?.map((k) => k.key)).toEqual(["accent", "b"]);
+
+		const relabelled = setKnobDecl(renamed, "accent", { label: "主色" });
+		expect(relabelled.knobs?.[0]).toMatchObject({ key: "accent", label: "主色" });
+
+		const recoloured = setKnobDefault(relabelled, "accent", "#123456");
+		expect(recoloured.knobs?.[0]).toMatchObject({ default: "#123456" });
+		expect(recoloured.knobs?.[1]).toMatchObject({ key: "b", default: "#ffffff" });
+	});
+});
+
+/**
+ * 旋钮声明存不存得下去。装包门那头回的是 `knobs[3]: 旋钮 key「…」重复` —— 序号对不上
+ * 界面上第几行,主人得自己数。这里提前说人话。
+ */
+describe("knobsError", () => {
+	const withKnobs = (...knobs: unknown[]) =>
+		({ ...manifest(), knobs }) as unknown as CardSkinManifest;
+
+	it("没有旋钮 → 没有错", () => {
+		expect(knobsError(manifest())).toBeNull();
+	});
+
+	it("key 撞了 → 说出是哪个 key", () => {
+		const m = withKnobs(
+			{ key: "accent", label: "甲", type: "color", default: "#000000" },
+			{ key: "accent", label: "乙", type: "color", default: "#ffffff" },
+		);
+		expect(knobsError(m)).toContain("accent");
+	});
+
+	it.each([["Accent"], ["1accent"], ["accent_2"], [""]])(
+		"key「%s」不合法 → 说清楚要什么形状",
+		(key) => {
+			const m = withKnobs({ key, label: "甲", type: "color", default: "#000000" });
+			expect(knobsError(m)).toContain("kebab");
+		},
+	);
+
+	it("label 空了 → 也拦(面板上会画出一个没名字的控件)", () => {
+		const m = withKnobs({ key: "accent", label: "  ", type: "color", default: "#000000" });
+		expect(knobsError(m)).toContain("名字");
 	});
 });
