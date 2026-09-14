@@ -35,7 +35,7 @@ import {
 	DEFAULT_CARD_SKIN,
 	DIVIDER_TYPE,
 } from "@bilibili-notify/internal";
-import type { VNode } from "vue";
+import { h, type VNode } from "vue";
 import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
 import { type CardPropsByKind, FRAMES, type FrameExtra } from "../blocks/frames";
 import { GUARD_BLOCKS } from "../blocks/guard";
@@ -455,14 +455,36 @@ export async function renderCardWithSkin<K extends CardSkinKind>(
 		knobValues: options.knobValues,
 		knobAssets: options.knobAssets,
 	});
+	// **出血**:卡外那圈只为辉光存在的余量(ADR-0014 决策 19 的 🔗)。
+	//
+	// 做成外框**外面**一层壳,而不是给 `html` 加内边距 —— 外壳里有
+	// `* { box-sizing: border-box }`,`html` 一旦既定宽又带 padding,那 padding 是
+	// **从里面吃掉**的,卡当场被挤窄(600 → 544)。所以 `htmlWidth` 也要把两边的量加回去。
+	//
+	// 壳的样式走 inline 而不是进 `extraCss`:这两个数是渲染器按清单算出来的,不经皮肤 CSS
+	// 那道清洗门,inline 就不必在门上再开一个「只有我们自己能用」的选择器。
+	// 顺带,预览路由与出图共用这个函数,壳做在 HTML 里,编辑器里看到的辉光与推出去的那张
+	// 自动对齐 —— 这正是这条特性要解决的那件事。
+	const bleed = card.bleed && card.bleed.size > 0 ? card.bleed : undefined;
+	const framed = bleed
+		? h(
+				"div",
+				{
+					"data-bn": "bleed",
+					style: `padding:${bleed.size}px;background:${bleed.color}`,
+				},
+				[vnode],
+			)
+		: vnode;
+
 	return await renderCard(
-		{ render: (): VNode => vnode },
+		{ render: (): VNode => framed },
 		{},
 		{
 			title: options.title,
 			font: options.font,
 			fontFace: options.fontFace,
-			htmlWidth: card.width,
+			htmlWidth: card.width + (bleed ? bleed.size * 2 : 0),
 			extraCss: css,
 		},
 	);

@@ -927,7 +927,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				width: out.width,
 				height,
 				// 超了出图那头会**静默**回落默认皮肤(决策 19);作者只有在这儿能提前知道。
-				overHeight: height > CARD_SKIN_LIMITS.maxHeight,
+				// 减掉上下两道出血 —— 出图那头的闸也这么算,两把尺子不一样的话,编辑器
+				// 会为一张其实发得出去的卡报警(反过来更糟:说没事,推的时候静默回落)。
+				overHeight: height - out.bleed * 2 > CARD_SKIN_LIMITS.maxHeight,
 				warnings: out.warnings,
 				scene: out.scene,
 			});

@@ -343,6 +343,52 @@ describe("ImageRenderer 皮肤回落", () => {
 		]);
 	});
 
+	it("出血不占高度额度 —— 闸拦的是内容太长,不是皮肤自己选的那圈余量", async () => {
+		const BLEED = 28;
+		const skin = {
+			...DEFAULT_CARD_SKIN,
+			cards: {
+				...DEFAULT_CARD_SKIN.cards,
+				live: { ...DEFAULT_CARD_SKIN.cards.live, bleed: { size: BLEED, color: "#07091a" } },
+			},
+		} as typeof DEFAULT_CARD_SKIN;
+		// 图高 = 卡高 + 上下两道出血。卡刚好卡在上限上,不该被拦。
+		const h = makeHarness(
+			{ resolveCardSkin: (id) => (id === "glow" ? skin : undefined) },
+			CARD_SKIN_LIMITS.maxHeight + BLEED * 2,
+		);
+		await liveCard(h.renderer, "glow");
+
+		// 验红:把减出血那一步去掉,这两条立刻红(图高比上限大 56)。
+		expect(h.fallbacks).toEqual([]);
+		expect(h.captured).toHaveLength(1);
+	});
+
+	it("超高的判定与报出来的数都按**卡**算,出血不算在里面", async () => {
+		const BLEED = 28;
+		const over = 200;
+		const skin = {
+			...DEFAULT_CARD_SKIN,
+			cards: {
+				...DEFAULT_CARD_SKIN.cards,
+				live: { ...DEFAULT_CARD_SKIN.cards.live, bleed: { size: BLEED, color: "#07091a" } },
+			},
+		} as typeof DEFAULT_CARD_SKIN;
+		const h = makeHarness(
+			{ resolveCardSkin: (id) => (id === "glow" ? skin : undefined) },
+			CARD_SKIN_LIMITS.maxHeight + over + BLEED * 2,
+		);
+		await liveCard(h.renderer, "glow");
+
+		expect(h.fallbacks).toEqual([
+			{
+				skinId: "glow",
+				kind: "live",
+				reason: `卡片高度 ${CARD_SKIN_LIMITS.maxHeight + over} 超过上限 ${CARD_SKIN_LIMITS.maxHeight}`,
+			},
+		]);
+	});
+
 	it("默认皮肤自己就超高 → 照发,不报回落(那是内容长,不是皮肤的错)", async () => {
 		const h = makeHarness({}, CARD_SKIN_LIMITS.maxHeight + 1000);
 		await liveCard(h.renderer);

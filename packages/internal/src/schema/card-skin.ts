@@ -587,9 +587,32 @@ export type CardSkinBlock = z.infer<typeof CardSkinBlockSchema>;
 export type CardSkinBuiltinBlockRef = z.infer<typeof BuiltinBlockSchema>;
 export type CardSkinCustomBlock = z.infer<typeof CustomBlockSchema>;
 
+/**
+ * **出血** —— 卡片四周那圈只为辉光存在的余量(2026-09-14 主人拍板)。
+ *
+ * 出图截的是 `html` 的 boundingBox,而 `box-shadow` / `filter` 的辉光**不参与布局**,
+ * 画在卡外就被裁掉 —— 皮肤里那句 `box-shadow:0 0 28px …` 在成品里等于没写。留出这圈,
+ * 辉光才有地方落。
+ *
+ * `size` 与 `color` **绑在一起必填**:出血那圈得有颜色,而 JPEG 没有 alpha —— 不给色
+ * 就是一圈白边,暗色皮肤上比没有辉光更难看。色只收 hex,与旋钮的颜色档同一把尺子
+ * ({@link KNOB_COLOR_RE}),不收 `var()` —— 这一句是渲染器拼出来的,不过清洗器那道门。
+ *
+ * **整个字段可以不写,不写就是没有出血**:存量皮肤与默认皮肤出的图逐字节不变。
+ */
+const CardSkinBleedSchema = z
+	.object({
+		size: z.number().int().min(CARD_SKIN_LIMITS.bleed.min).max(CARD_SKIN_LIMITS.bleed.max),
+		color: z.string().regex(KNOB_COLOR_RE, "出血色只收 #rgb / #rrggbb"),
+	})
+	.strict();
+export type CardSkinBleed = z.infer<typeof CardSkinBleedSchema>;
+
 export const CardSkinCardSchema = z
 	.object({
 		width: z.number().int().min(CARD_SKIN_LIMITS.width.min).max(CARD_SKIN_LIMITS.width.max),
+		/** 卡片四周留给辉光的余量。不写 = 没有出血,见 {@link CardSkinBleedSchema}。 */
+		bleed: CardSkinBleedSchema.optional(),
 		gap: z
 			.object({
 				row: z

@@ -17,7 +17,12 @@ import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
 import type { LiveCardProps } from "../../templates/live-card";
-import { BLOCKED_IMG_PLACEHOLDER, renderSkinnedCard, type SkinRenderOptions } from "../render-skin";
+import {
+	BLOCKED_IMG_PLACEHOLDER,
+	renderCardWithSkin,
+	renderSkinnedCard,
+	type SkinRenderOptions,
+} from "../render-skin";
 
 /** live-streaming 那份 props(直播中、封面 / 分区 / 人气 / 粉丝全开、无粉丝变化)。 */
 let liveProps: LiveCardProps;
@@ -545,5 +550,50 @@ describe("皮肤渲染器 — 资产变量与皮肤字体(ADR-0014 决策 13 的
 		expect(refs.sort()).toEqual(
 			["assets/hud.png", "assets/orb.woff2", "assets/pic.png", "assets/tex.png"].sort(),
 		);
+	});
+});
+
+describe("皮肤渲染器 — 出血(辉光的那圈余量)", () => {
+	/** 一份只有 live 一种卡的清单,好让 `renderCardWithSkin` 吃得下。 */
+	const manifestWith = (card: CardSkinCard) =>
+		({ ...DEFAULT_CARD_SKIN, cards: { ...DEFAULT_CARD_SKIN.cards, live: card } }) as never;
+
+	const fullHtml = async (over: Partial<CardSkinCard> = {}) =>
+		await renderCardWithSkin(
+			"live",
+			liveProps as never,
+			manifestWith(liveCard([builtin("cover", "cover", { row: 1, column: 1, span: 12 })], over)),
+		);
+
+	it("不写出血 = 页面一个字节都不多 —— 存量皮肤出的图不变", async () => {
+		const html = await fullHtml();
+		expect(html).not.toContain('data-bn="bleed"');
+		expect(html).toMatch(/html\s*\{\s*width:\s*600px/);
+	});
+
+	it("写了出血:html 宽 = 卡宽 + 两边的量,卡自己还是 600", async () => {
+		const html = await fullHtml({ bleed: { size: 28, color: "#07091a" } });
+		// 656 而不是 600 —— 外壳里 `* { box-sizing: border-box }`,html 宽度若不把出血
+		// 算进去,padding 会**从里面吃掉** 56px,卡当场被挤成 544。这一条就是那道守卫。
+		expect(html).toMatch(/html\s*\{\s*width:\s*656px/);
+		const doc = new JSDOM(html).window.document;
+		const bleed = doc.querySelector('[data-bn="bleed"]');
+		expect(bleed).not.toBeNull();
+		expect(bleed?.getAttribute("style")).toContain("padding:28px");
+		expect(bleed?.getAttribute("style")).toContain("#07091a");
+	});
+
+	it("出血在外框**外面**,不是里面 —— 在里面的话辉光照样被裁", async () => {
+		const html = await fullHtml({ bleed: { size: 12, color: "#123456" } });
+		const doc = new JSDOM(html).window.document;
+		const frame = doc.querySelector('[data-bn="frame"]');
+		expect(frame?.closest('[data-bn="bleed"]')).not.toBeNull();
+		expect(doc.querySelector('[data-bn="bleed"] [data-bn="bleed"]')).toBeNull();
+	});
+
+	it("出血 0 与不写同义 —— 不留一层没用的壳", async () => {
+		const html = await fullHtml({ bleed: { size: 0, color: "#07091a" } });
+		expect(html).not.toContain('data-bn="bleed"');
+		expect(html).toMatch(/html\s*\{\s*width:\s*600px/);
 	});
 });

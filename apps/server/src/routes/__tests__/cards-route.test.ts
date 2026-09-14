@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ImageRenderer } from "@bilibili-notify/image";
 import {
+	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
@@ -1433,6 +1434,37 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		expect(res.status).toBe(400);
 		expect(Array.isArray(json.errors)).toBe(true);
 		expect(json.errors?.length).toBeGreaterThan(0);
+	});
+
+	it("出血不算进超高的判定 —— 与出图那头同一把尺子", async () => {
+		const BLEED = 30;
+		const d = draft() as Record<string, unknown>;
+		const cards = d.cards as Record<string, Record<string, unknown>>;
+		cards.live = { ...cards.live, bleed: { size: BLEED, color: "#07091a" } };
+		// 图高 = 上限 + 上下两道出血,卡本身刚好卡在上限上,不该报超。
+		const p = makeFakePuppeteer();
+		vi.mocked(p.page).mockResolvedValue({
+			setContent: vi.fn(async () => {}),
+			$: vi.fn(async () => ({
+				boundingBox: async () => ({
+					x: 0,
+					y: 0,
+					width: 660,
+					height: CARD_SKIN_LIMITS.maxHeight + BLEED * 2,
+				}),
+				dispose: async () => {},
+			})),
+			screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
+			close: vi.fn(async () => {}),
+		} as never);
+
+		const { res, json } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: d },
+			p,
+		);
+		expect(res.status).toBe(200);
+		// 验红:把减出血那一步去掉,这条立刻红。
+		expect(json.overHeight).toBe(false);
 	});
 
 	it("超过最大高度 → 照样回图,但把话说明白(出图那头会静默回落默认皮肤)", async () => {

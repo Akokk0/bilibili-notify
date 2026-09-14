@@ -510,8 +510,13 @@ export class ImageRenderer {
 
 		try {
 			const { buffer, height } = await once(id, manifest);
-			if (isDefault || height <= max) return buffer;
-			return await fallback(id, `卡片高度 ${Math.round(height)} 超过上限 ${max}`);
+			// 量出来的是**整张图**的高,而图 = 卡 + 上下两道出血。闸拦的是「内容太长」,
+			// 出血是皮肤自己选的常数,不该从这张卡的额度里扣 —— 报出来的那个数同理,
+			// 说「卡片高度」就得是卡的高度。
+			const bleed = cardOfManifest(manifest, kind).bleed?.size ?? 0;
+			const cardHeight = height - bleed * 2;
+			if (isDefault || cardHeight <= max) return buffer;
+			return await fallback(id, `卡片高度 ${Math.round(cardHeight)} 超过上限 ${max}`);
 		} catch (e) {
 			// 默认皮肤自己画不出来 = 渲染管线的问题,往外抛(推送那侧本来就有降级兜底)。
 			if (isDefault) throw e;

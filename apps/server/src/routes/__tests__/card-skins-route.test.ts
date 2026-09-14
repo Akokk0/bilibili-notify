@@ -257,6 +257,18 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 		return { res, json: (await res.json()) as any };
 	}
 
+	it("写了出血:回的宽度是**整张图**的宽,不是卡宽", async () => {
+		// 面板拿这个数去定 iframe 的宽。回卡宽的话,出血那一圈会在编辑器里被切掉 ——
+		// 而出血存在的全部意义就是让辉光在成品里看得见,预览再切一次等于原地复发。
+		const d = draft();
+		const cards = d.cards as Record<string, Record<string, unknown>>;
+		cards.live = { ...cards.live, bleed: { size: 24, color: "#07091a" } };
+		const { res, json } = await preview({ kind: "live", manifest: d });
+		expect(res.status).toBe(200);
+		expect(json.width).toBe((DEFAULT_CARD_SKIN.cards.live?.width ?? 0) + 48);
+		expect(json.html).toContain('data-bn="bleed"');
+	});
+
 	it("回一整份 HTML,带卡宽与真正用上的场景", async () => {
 		const { res, json } = await preview({ kind: "live", manifest: draft() });
 		expect(res.status).toBe(200);

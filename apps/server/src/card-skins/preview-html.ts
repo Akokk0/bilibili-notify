@@ -22,7 +22,7 @@ import { checkCardSkinPackage } from "./package.js";
 import type { CardSkinStore } from "./store.js";
 
 export type SkinPreviewHtml =
-	| { ok: true; html: string; width: number; warnings: string[]; scene: string }
+	| { ok: true; html: string; width: number; bleed: number; warnings: string[]; scene: string }
 	| { ok: false; errors: string[] };
 
 export async function renderSkinPreviewHtml(args: {
@@ -75,7 +75,12 @@ export async function renderSkinPreviewHtml(args: {
 	return {
 		ok: true,
 		html: args.transparentPage ? withPreviewPageCss(html) : html,
-		width: card.width,
+		// **整张图**的宽,不是卡宽 —— 写了出血的皮肤,图比卡宽两道出血。面板拿这个数
+		// 定 iframe / 截图的宽度,给卡宽的话出血那圈会在编辑器里被切掉,而出血存在的
+		// 全部意义就是让辉光在成品里看得见。
+		width: card.width + (card.bleed?.size ?? 0) * 2,
+		/** 这张卡的出血 px(每边)。调用方判「超高」时要把上下两道减掉。 */
+		bleed: card.bleed?.size ?? 0,
 		warnings: checked.warnings,
 		scene: picked.id,
 	};

@@ -295,6 +295,74 @@ describe("parseCardSkin", () => {
 	});
 });
 
+describe("出血(辉光的那圈余量)", () => {
+	it("不写 = 没有出血 —— 存量皮肤一个字节都不用改", () => {
+		expect(ok(minimal()).cards.live?.bleed).toBeUndefined();
+	});
+
+	it("认 size + color", () => {
+		const card = ok(
+			minimal({
+				cards: {
+					live: {
+						...(minimal() as { cards: { live: object } }).cards.live,
+						bleed: { size: 28, color: "#07091a" },
+					},
+				},
+			} as never),
+		).cards.live;
+		expect(card?.bleed).toEqual({ size: 28, color: "#07091a" });
+	});
+
+	it("size 与 color 是一套,缺一不可 —— 缺色会在出图上变成一圈白边", () => {
+		const withBleed = (bleed: unknown) =>
+			errorsOf(
+				minimal({
+					cards: {
+						live: { ...(minimal() as { cards: { live: object } }).cards.live, bleed },
+					},
+				} as never),
+			);
+		expect(withBleed({ size: 28 })).toMatch(/color/);
+		expect(withBleed({ color: "#07091a" })).toMatch(/size/);
+	});
+
+	it("size 越界拒收", () => {
+		const sized = (size: number) =>
+			parseCardSkin(
+				minimal({
+					cards: {
+						live: {
+							...(minimal() as { cards: { live: object } }).cards.live,
+							bleed: { size, color: "#07091a" },
+						},
+					},
+				} as never),
+			).ok;
+		expect(sized(CARD_SKIN_LIMITS.bleed.max)).toBe(true);
+		expect(sized(CARD_SKIN_LIMITS.bleed.max + 1)).toBe(false);
+		expect(sized(-1)).toBe(false);
+	});
+
+	it("color 只收 hex —— 和旋钮的颜色档同一把尺子", () => {
+		const colored = (color: string) =>
+			parseCardSkin(
+				minimal({
+					cards: {
+						live: {
+							...(minimal() as { cards: { live: object } }).cards.live,
+							bleed: { size: 8, color },
+						},
+					},
+				} as never),
+			).ok;
+		expect(colored("#07091a")).toBe(true);
+		expect(colored("#fff")).toBe(true);
+		expect(colored("red")).toBe(false);
+		expect(colored("var(--bn-knob-neon)")).toBe(false);
+	});
+});
+
 describe("目录与契约的一致性", () => {
 	it("每种卡都有块目录与字段表", () => {
 		for (const kind of CARD_SKIN_KINDS) {
