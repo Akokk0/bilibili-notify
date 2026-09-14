@@ -42,11 +42,17 @@ const OK = {
 	scene: "streaming",
 };
 
-function renderPane(manifest: unknown = { v: 1 }) {
+function renderPane(manifest: unknown = { v: 1 }, boxWidth = 600) {
 	const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<SkinPreviewPane skinId="neon" kind="live" scene="streaming" manifest={manifest} />
+			<SkinPreviewPane
+				skinId="neon"
+				kind="live"
+				scene="streaming"
+				manifest={manifest}
+				boxWidth={boxWidth}
+			/>
 		</QueryClientProvider>,
 	);
 }
@@ -113,11 +119,37 @@ describe("皮肤预览栏", () => {
 		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 		view.rerender(
 			<QueryClientProvider client={qc}>
-				<SkinPreviewPane skinId="neon" kind="live" scene="streaming" manifest={{ v: 2 }} />
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 2 }}
+					boxWidth={600}
+				/>
 			</QueryClientProvider>,
 		);
 		await tick();
 		expect(vi.mocked(api.post).mock.calls.length).toBeGreaterThan(1);
+	});
+
+	it("这一栏比卡窄 → 整张按比例缩,iframe 里仍按卡的真实宽度排版", async () => {
+		// 出图回的卡宽是 600(见 OK),栏只给 300。
+		renderPane({ v: 1 }, 300);
+		await tick();
+
+		const el = frame() as HTMLIFrameElement;
+		expect(el.style.width).toBe("600px");
+		expect(el.style.transform).toBe("scale(0.5)");
+		expect(screen.getByText(/50% 缩放/)).toBeTruthy();
+	});
+
+	it("栏比卡宽 → 就按卡宽画,不拉伸(拉伸出来的不是那张卡)", async () => {
+		renderPane({ v: 1 }, 900);
+		await tick();
+
+		const el = frame() as HTMLIFrameElement;
+		expect(el.style.width).toBe("600px");
+		expect(el.style.transform).toBe("");
 	});
 
 	it("装包门拒了 → 原因逐条列出来,并且上一张图还留着", async () => {
@@ -131,7 +163,13 @@ describe("皮肤预览栏", () => {
 		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>
-				<SkinPreviewPane skinId="neon" kind="live" scene="streaming" manifest={{ v: 9 }} />
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 9 }}
+					boxWidth={600}
+				/>
 			</QueryClientProvider>,
 		);
 		// 失败那条比成功多绕一轮:react-query 要先把 rejection 记进 mutation 状态。

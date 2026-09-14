@@ -22,17 +22,26 @@ import { usePreviewCardSkin } from "./skin-editor-query";
 /** 防抖窗口。改一个旋钮到看见新图之间的等待,与「别把 server 打满」之间的折中。 */
 const DEBOUNCE_MS = 400;
 
+/** 预览窗口的可视高度 px。卡比它高时在 iframe 里自己滚 —— 隔离的 iframe 量不到内容高度。 */
+const VIEW_H = 560;
+
 export function SkinPreviewPane({
 	skinId,
 	kind,
 	scene,
 	manifest,
+	boxWidth,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
 	scene: string;
 	/** 当前草稿。`null` = 清单还没到。 */
 	manifest: unknown;
+	/**
+	 * 这一栏能用的宽度 px。卡比它宽时**整张按比例缩**给看 —— 硬挤会把右半张切掉
+	 * (600 宽的栏里塞 640 的卡就是这样),而缩放至少比例是对的。
+	 */
+	boxWidth: number;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	/** 上一张画成功的图。重画期间**不撤掉** —— 闪白比慢半拍难受。 */
@@ -62,6 +71,9 @@ export function SkinPreviewPane({
 
 	/** 装包门拒了:`errors` 是逐条原因,原样列出来 —— 自编一句「预览失败」等于把线索吞掉。 */
 	const errors = errorsOf(preview.error);
+	/** 画出来多宽、缩多少。卡比这一栏窄时就按卡宽画,不拉伸(拉伸出来的不是那张卡)。 */
+	const shown = Math.min(width, Math.max(boxWidth, 1));
+	const scale = shown / width;
 
 	return (
 		<div className="flex flex-col items-center gap-2">
@@ -70,20 +82,34 @@ export function SkinPreviewPane({
 					<LoadingBlock label="正在画第一张预览…" variant="inset" />
 				)
 			) : (
-				<div
-					// 底走 token 不写死白:皮肤能重绘这一层,而半透明的卡会把它透出来。
-					className="overflow-hidden rounded-bn-sm bg-bn-surface shadow-sm"
-					style={{ width: "100%", maxWidth: width }}
-				>
-					<iframe
-						// `srcDoc` + 空 sandbox:不给脚本、不给同源(见文件头)。
-						srcDoc={html}
-						sandbox=""
-						title="皮肤预览"
-						className="block w-full border-0"
-						style={{ aspectRatio: "auto", height: 520 }}
-					/>
-				</div>
+				<>
+					<div
+						// 底走 token 不写死白:皮肤能重绘这一层,而半透明的卡会把它透出来。
+						className="overflow-hidden rounded-bn-sm bg-bn-surface shadow-sm"
+						style={{ width: shown, height: VIEW_H }}
+					>
+						<iframe
+							// `srcDoc` + 空 sandbox:不给脚本、不给同源(见文件头)。
+							srcDoc={html}
+							sandbox=""
+							title="皮肤预览"
+							className="block border-0"
+							// iframe 里按**卡的真实宽度**排版,再整张缩 —— 直接把 iframe 调窄等于让
+							// 皮肤在一个它没见过的宽度上重新排,看到的就不是那张卡了。
+							style={{
+								width,
+								height: Math.round(VIEW_H / scale),
+								transform: scale < 1 ? `scale(${scale})` : undefined,
+								transformOrigin: "top left",
+							}}
+						/>
+					</div>
+					{scale < 1 ? (
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							卡宽 {width},这一栏放不下,按 {Math.round(scale * 100)}% 缩放显示
+						</span>
+					) : null}
+				</>
 			)}
 
 			{errors.length > 0 ? (
