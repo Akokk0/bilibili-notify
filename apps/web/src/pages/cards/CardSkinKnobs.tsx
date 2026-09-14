@@ -4,8 +4,9 @@
  *
  * 与隔壁固定变量(字体 / 背景图)那几栏刻意不同的两处,都来自那条决策:
  *
- * - **控件由皮肤说了算**:声明几枚就画几枚、按声明顺序、一枚都没声明就整块不渲染。
- *   赛博朋克那类没有玻璃层的皮肤不该在面板上挂两根拧了没反应的滑杆。
+ * - **控件由皮肤说了算**:声明几枚就画几枚、按声明顺序。赛博朋克那类没有玻璃层的皮肤
+ *   不该在面板上挂两根拧了没反应的滑杆 —— 但**一枚都没声明时要明说一句**,不能整块消失:
+ *   2026-09-14 主人真机上正是栽在这儿,一块凭空不见和「面板还是旧的」长得一模一样。
  * - **存覆盖不存值**:没拧过的键根本不落盘,控件只是拿 `default` 当起始位置摆着;
  *   「还原」删的是键,不是写回 default(理由见 `knob-ops.ts` 文件头)。
  *
@@ -42,8 +43,9 @@ export function CardSkinKnobsSection({
 	// 摆在卡片页整页里,它一炸整页跟着白屏(隔壁皮肤库那节的 `?? []` 是同一个道理)。
 	const knobs = listQuery.data?.skins?.find((s) => s.id === active)?.knobs;
 
-	// 这套皮肤没声明旋钮 → 整块不渲染。摆一个空壳等于告诉主人「这里本该有东西」。
-	if (active === "" || knobs === undefined || knobs.length === 0) return null;
+	// 列表还没到(或拉挂了)→ 什么都不画。这会儿还不知道该说什么,先闪一句「没有可调项」
+	// 比不画更糟。
+	if (active === "") return null;
 
 	const overrides: CardSkinKnobOverrides | undefined = value[active];
 	const tweaked = overrides === undefined ? 0 : Object.keys(overrides).length;
@@ -54,20 +56,35 @@ export function CardSkinKnobsSection({
 			subtitle="这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底"
 			accent="var(--color-bn-purple)"
 			icon={<Icon.sliders size={14} />}
-			badge={tweaked > 0 ? `已调 ${tweaked} 项` : "出厂值"}
+			badge={
+				knobs === undefined || knobs.length === 0
+					? "无"
+					: tweaked > 0
+						? `已调 ${tweaked} 项`
+						: "出厂值"
+			}
 		>
-			{knobs.map((knob) => (
-				<KnobRow
-					key={knob.key}
-					knob={knob}
-					overrides={overrides}
-					onSet={(next) => onChange(setKnobOverride(value, active, knob.key, next))}
-					onReset={() => onChange(resetKnobOverride(value, active, knob.key))}
-				/>
-			))}
-			<HintNote className="mt-3">
-				旋钮按皮肤分开存,换皮肤再换回来设置还在;「还原」是把这个键删掉,不是写回默认值。
-			</HintNote>
+			{knobs === undefined || knobs.length === 0 ? (
+				<HintNote>
+					这套皮肤没有提供可调项。可调项由皮肤自己声明 ——
+					旧版本导出的皮肤包里没有这一段,换一套皮肤(或让作者重新导出)就能在这里看到旋钮。
+				</HintNote>
+			) : (
+				<>
+					{knobs.map((knob) => (
+						<KnobRow
+							key={knob.key}
+							knob={knob}
+							overrides={overrides}
+							onSet={(next) => onChange(setKnobOverride(value, active, knob.key, next))}
+							onReset={() => onChange(resetKnobOverride(value, active, knob.key))}
+						/>
+					))}
+					<HintNote className="mt-3">
+						旋钮按皮肤分开存,换皮肤再换回来设置还在;「还原」是把这个键删掉,不是写回默认值。
+					</HintNote>
+				</>
+			)}
 		</GlassBox>
 	);
 }

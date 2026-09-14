@@ -88,13 +88,25 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("CardSkinKnobsSection", () => {
-	it("当前皮肤没声明旋钮 → 整块不渲染", async () => {
+	it("当前皮肤没声明旋钮 → 不画控件,但明说一句这套皮肤没有可调项", async () => {
 		vi.mocked(api.get).mockResolvedValue(listWith(undefined));
 		const { container } = renderKnobs({});
-		// 等列表真的到位,再断言「什么都没有」—— 不等的话这条在拉取中也会绿(假绿)。
-		await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalled());
-		await expect(screen.findByText("皮肤旋钮")).rejects.toThrow();
+		// 主人 2026-09-14 真机上就栽在这里:从前整块不渲染,看上去和「面板是旧的」一模一样。
+		expect(await screen.findByText(/这套皮肤没有提供可调项/)).toBeTruthy();
 		expect(container.querySelector("[data-knob]")).toBeNull();
+	});
+
+	it("皮肤列表还没到 → 什么都不画(别先闪一句「没有可调项」)", async () => {
+		let resolve: ((v: unknown) => void) | undefined;
+		vi.mocked(api.get).mockReturnValue(
+			new Promise((r) => {
+				resolve = r;
+			}),
+		);
+		const { container } = renderKnobs({});
+		await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalled());
+		expect(container.textContent).toBe("");
+		resolve?.(listWith(KNOBS));
 	});
 
 	it("按声明顺序逐枚生成控件,四种类型各画各的", async () => {
