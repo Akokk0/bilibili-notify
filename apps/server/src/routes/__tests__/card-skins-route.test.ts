@@ -267,6 +267,24 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 		expect(json.warnings).toEqual([]);
 	});
 
+	/**
+	 * 这条回的 HTML 是**塞进 iframe** 看的,所以按 iframe 收拾过两处:页面底透明(视口按
+	 * 固定高度开,卡比它矮时露出来的那片默认白底不属于这张卡 —— 真出图按 boundingBox
+	 * 裁,那片底不进图),以及卡片在视口里垂直居中(外面那层读不到卡有多高:隔离的
+	 * iframe,而且不给脚本,所以居中只能由文档自己做)。
+	 *
+	 * ⛔ 截图那条不开 —— JPEG 没有 alpha,透明会压成黑,圆角外多一圈黑边。
+	 */
+	it("按 iframe 收拾过:配色方案 + 页面底透明 + 卡片垂直居中", async () => {
+		const { json } = await preview({ kind: "live", manifest: draft() });
+		// 验红:把路由里那句 `transparentPage: true` 去掉,这三条红。
+		expect(json.html).toContain("background:transparent");
+		expect(json.html).toContain("align-content:center");
+		// 少了这一句,另外两句白写:面板是暗色,而这份文档不声明就是 light,Chrome 对
+		// 「配色方案与父不同」的文档强制画不透明 canvas —— 透明照样生效,画面上还是白。
+		expect(json.html).toContain("color-scheme:light dark");
+	});
+
 	it("认不出的场景名 → 回落到第一个,并且如实报出落在了哪儿", async () => {
 		const { json } = await preview({ kind: "live", scene: "早就没有的名字", manifest: draft() });
 		expect(json.scene).toBe("streaming");

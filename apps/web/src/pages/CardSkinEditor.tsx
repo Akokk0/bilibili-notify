@@ -81,9 +81,6 @@ import {
  */
 const PREVIEW_COL_MAX = 720;
 
-/** 预览那块底板的内边距 px(左右各一份)。栏宽要把它算进去,否则卡贴着栏边。 */
-const PREVIEW_PAD = 16;
-
 /**
  * 检查器那一栏 px。320 装不下旋钮那几行(键 / 名字 / 类型 / 控件挤在一排,长一点的
  * 字段名当场被切),2026-09-14 加到 380。
@@ -277,163 +274,156 @@ export default function CardSkinEditor() {
 				) : manifestQuery.isError ? (
 					<ErrorNote>读不到这套皮肤:{String((manifestQuery.error as Error).message)}</ErrorNote>
 				) : (
-					<div
-						// **画布居中**(2026-09-14 主人拍板,PS 式):真正在操作的那一栏拿弹性宽度,
-						// 两侧是「看的」与「调的」—— 预览宽度本来就跟着卡宽走(固定),让它吃弹性列
-						// 只会在两边空出一大片留白,而 12 列的画布反倒被压窄。
-						className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[var(--bn-preview-col)_minmax(0,1fr)_var(--bn-inspector-col)]"
-						// 走 CSS 变量而不是直接写 `gridTemplateColumns`:模板那串还得留在类里,
-						// 它只在 xl 以上生效(窄屏是单列),写成内联样式会把窄屏那档也一起盖掉。
-						style={
-							{
-								// 卡宽 + 左右留白:卡是摆在一块底板上的,不是贴着栏边(见 SkinPreviewPane)。
-								"--bn-preview-col": `${previewCol + PREVIEW_PAD * 2}px`,
-								"--bn-inspector-col": `${INSPECTOR_COL}px`,
-							} as CSSProperties
-						}
-					>
-						<GlassBox
-							title="实时预览"
-							subtitle="server 出 HTML、浏览器画;字体渲染与截图有细微差,像素级以「最终效果」为准"
-							accent="var(--color-bn-purple)"
-							icon={<Icon.eye size={14} />}
+					// **按占比分,不按内容分**(2026-09-14 主人拍板):预览 1/3,画布与检查器合占
+					// 2/3。从前预览列是「卡宽」这个固定数,换一张 640 宽的卡整页就重新排一次;
+					// 占比是稳的,而卡放不下时预览自己会按比例缩(那本来就是它的活)。
+					<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+						{/* 预览这一栏自己出小卡 + 底下那块线框(卡片单独一块地方),所以这儿不再包
+						    GlassBox —— 包了就成了「卡片框套在说明框里面」。 */}
+						<SkinPreviewPane
+							skinId={id}
+							kind={kind}
+							scene={scene}
+							manifest={draft}
+							boxWidth={previewCol}
+						/>
+						{/* 画布 + 检查器合占那 2/3:检查器固定 380(旋钮那几行再窄就开始切字),
+						    剩下的全归 12 列的画布。 */}
+						<div
+							className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_var(--bn-inspector-col)]"
+							style={{ "--bn-inspector-col": `${INSPECTOR_COL}px` } as CSSProperties}
 						>
-							<SkinPreviewPane
-								skinId={id}
-								kind={kind}
-								scene={scene}
-								manifest={draft}
-								boxWidth={previewCol}
-							/>
-						</GlassBox>
-						<GlassBox
-							title={`网格画布 · ${KIND_META[kind].label}卡`}
-							subtitle="点一个块,在右边的检查器里改它的位置;这里的行等高只是示意,真卡里行高随内容撑"
-							icon={<Icon.square size={14} />}
-						>
-							<SkinCanvas
-								kind={kind}
-								card={cardOf(draft, kind)}
-								selection={selection}
-								onSelect={setSelection}
-								// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
-								onAdopt={
-									readOnly
-										? undefined
-										: () => {
-												const source = factory.data?.manifest.cards[kind];
-												if (draft === null || !source) return;
-												setDraft(adoptCard(draft, kind, source));
-												// 接管完先停在外框上:接下来多半是改卡宽 / 间距,而不是某一个块。
-												setSelection({ kind: "frame" });
-											}
-								}
-								adoptBusy={factory.data === undefined}
-								onAdd={
-									readOnly
-										? undefined
-										: (builtin) => {
-												if (draft === null) return;
-												// 加完立刻选中:新块落在最底下整宽一行,十次有九次下一步就是把它挪窄。
-												landBlock(addBlock(draft, kind, builtin));
-											}
-								}
-								onAddCustom={
-									readOnly
-										? undefined
-										: () => draft !== null && landBlock(addCustomBlock(draft, kind))
-								}
-							/>
-						</GlassBox>
-						<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
-							<SkinInspector
-								manifest={draft}
-								kind={kind}
-								selection={selection}
-								onGrid={(blockId, patch) =>
-									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
-								}
-								onShowIf={(blockId, path) =>
-									setDraft((d) => (d === null ? d : setBlockShowIf(d, kind, blockId, path)))
-								}
-								onHtml={(blockId, html) =>
-									setDraft((d) => (d === null ? d : setBlockHtml(d, kind, blockId, html)))
-								}
-								onCss={(blockId, css) =>
-									setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))
-								}
-								onFrameCss={(css) => setDraft((d) => (d === null ? d : setFrameCss(d, kind, css)))}
-								onMeta={
-									readOnly
-										? undefined
-										: (patch) => setDraft((d) => (d === null ? d : setSkinMeta(d, patch)))
-								}
-								onKnobs={
-									readOnly
-										? undefined
-										: {
-												onAdd: () =>
-													setDraft((d) => (d === null ? d : (addKnob(d)?.manifest ?? d))),
-												onRemove: (key) => setDraft((d) => (d === null ? d : removeKnob(d, key))),
-												onDecl: (key, patch) =>
-													setDraft((d) => (d === null ? d : setKnobDecl(d, key, patch))),
-												onType: (key, type) =>
-													setDraft((d) => (d === null ? d : setKnobType(d, key, type))),
-												onDefault: (key, value) =>
-													setDraft((d) => (d === null ? d : setKnobDefault(d, key, value))),
-												onNumber: (key, patch) =>
-													setDraft((d) => (d === null ? d : setKnobNumber(d, key, patch))),
-												onSwitch: (key, patch) =>
-													setDraft((d) => (d === null ? d : setKnobSwitch(d, key, patch))),
-												onOptionAdd: (key) =>
-													setDraft((d) => (d === null ? d : addKnobOption(d, key))),
-												onOption: (key, index, patch) =>
-													setDraft((d) => (d === null ? d : setKnobOption(d, key, index, patch))),
-												onOptionRemove: (key, index) =>
-													setDraft((d) => (d === null ? d : removeKnobOption(d, key, index))),
-											}
-								}
-								assets={{
-									names: assetsQuery.data?.assets ?? [],
-									pending: assetsQuery.isPending,
-									uploadError: serverErrors(upload.error).join(";") || null,
-								}}
-								onAssets={
-									readOnly
-										? undefined
-										: {
-												onUpload: (file) => upload.mutate(file),
-												onDeleteAsset: (name) => removeAsset.mutate(name),
-												onAddFont: () => setDraft((d) => (d === null ? d : addFont(d))),
-												onFont: (index, patch) =>
-													setDraft((d) => (d === null ? d : setFont(d, index, patch))),
-												onRemoveFont: (index) =>
-													setDraft((d) => (d === null ? d : removeFont(d, index))),
-											}
-								}
-								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
-								onColumns={(columns) =>
-									setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))
-								}
-								onDropCard={
-									readOnly
-										? undefined
-										: () => {
-												setDraft((d) => (d === null ? d : dropCard(d, kind)));
-												setSelection(null);
-											}
-								}
-								onRemove={
-									readOnly
-										? undefined
-										: (blockId) => {
-												setDraft((d) => (d === null ? d : removeBlock(d, kind, blockId)));
-												// 选中得跟着撤,不然检查器对着一个已经没了的块。
-												setSelection(null);
-											}
-								}
-							/>
-						</GlassBox>
+							<GlassBox
+								title={`网格画布 · ${KIND_META[kind].label}卡`}
+								subtitle="点一个块,在右边的检查器里改它的位置;这里的行等高只是示意,真卡里行高随内容撑"
+								icon={<Icon.square size={14} />}
+							>
+								<SkinCanvas
+									kind={kind}
+									card={cardOf(draft, kind)}
+									selection={selection}
+									onSelect={setSelection}
+									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
+									onAdopt={
+										readOnly
+											? undefined
+											: () => {
+													const source = factory.data?.manifest.cards[kind];
+													if (draft === null || !source) return;
+													setDraft(adoptCard(draft, kind, source));
+													// 接管完先停在外框上:接下来多半是改卡宽 / 间距,而不是某一个块。
+													setSelection({ kind: "frame" });
+												}
+									}
+									adoptBusy={factory.data === undefined}
+									onAdd={
+										readOnly
+											? undefined
+											: (builtin) => {
+													if (draft === null) return;
+													// 加完立刻选中:新块落在最底下整宽一行,十次有九次下一步就是把它挪窄。
+													landBlock(addBlock(draft, kind, builtin));
+												}
+									}
+									onAddCustom={
+										readOnly
+											? undefined
+											: () => draft !== null && landBlock(addCustomBlock(draft, kind))
+									}
+								/>
+							</GlassBox>
+							<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
+								<SkinInspector
+									manifest={draft}
+									kind={kind}
+									selection={selection}
+									onGrid={(blockId, patch) =>
+										setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+									}
+									onShowIf={(blockId, path) =>
+										setDraft((d) => (d === null ? d : setBlockShowIf(d, kind, blockId, path)))
+									}
+									onHtml={(blockId, html) =>
+										setDraft((d) => (d === null ? d : setBlockHtml(d, kind, blockId, html)))
+									}
+									onCss={(blockId, css) =>
+										setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))
+									}
+									onFrameCss={(css) =>
+										setDraft((d) => (d === null ? d : setFrameCss(d, kind, css)))
+									}
+									onMeta={
+										readOnly
+											? undefined
+											: (patch) => setDraft((d) => (d === null ? d : setSkinMeta(d, patch)))
+									}
+									onKnobs={
+										readOnly
+											? undefined
+											: {
+													onAdd: () =>
+														setDraft((d) => (d === null ? d : (addKnob(d)?.manifest ?? d))),
+													onRemove: (key) => setDraft((d) => (d === null ? d : removeKnob(d, key))),
+													onDecl: (key, patch) =>
+														setDraft((d) => (d === null ? d : setKnobDecl(d, key, patch))),
+													onType: (key, type) =>
+														setDraft((d) => (d === null ? d : setKnobType(d, key, type))),
+													onDefault: (key, value) =>
+														setDraft((d) => (d === null ? d : setKnobDefault(d, key, value))),
+													onNumber: (key, patch) =>
+														setDraft((d) => (d === null ? d : setKnobNumber(d, key, patch))),
+													onSwitch: (key, patch) =>
+														setDraft((d) => (d === null ? d : setKnobSwitch(d, key, patch))),
+													onOptionAdd: (key) =>
+														setDraft((d) => (d === null ? d : addKnobOption(d, key))),
+													onOption: (key, index, patch) =>
+														setDraft((d) => (d === null ? d : setKnobOption(d, key, index, patch))),
+													onOptionRemove: (key, index) =>
+														setDraft((d) => (d === null ? d : removeKnobOption(d, key, index))),
+												}
+									}
+									assets={{
+										names: assetsQuery.data?.assets ?? [],
+										pending: assetsQuery.isPending,
+										uploadError: serverErrors(upload.error).join(";") || null,
+									}}
+									onAssets={
+										readOnly
+											? undefined
+											: {
+													onUpload: (file) => upload.mutate(file),
+													onDeleteAsset: (name) => removeAsset.mutate(name),
+													onAddFont: () => setDraft((d) => (d === null ? d : addFont(d))),
+													onFont: (index, patch) =>
+														setDraft((d) => (d === null ? d : setFont(d, index, patch))),
+													onRemoveFont: (index) =>
+														setDraft((d) => (d === null ? d : removeFont(d, index))),
+												}
+									}
+									onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
+									onColumns={(columns) =>
+										setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))
+									}
+									onDropCard={
+										readOnly
+											? undefined
+											: () => {
+													setDraft((d) => (d === null ? d : dropCard(d, kind)));
+													setSelection(null);
+												}
+									}
+									onRemove={
+										readOnly
+											? undefined
+											: (blockId) => {
+													setDraft((d) => (d === null ? d : removeBlock(d, kind, blockId)));
+													// 选中得跟着撤,不然检查器对着一个已经没了的块。
+													setSelection(null);
+												}
+									}
+								/>
+							</GlassBox>
+						</div>
 					</div>
 				)}
 				{readOnly ? (

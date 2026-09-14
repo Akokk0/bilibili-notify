@@ -51,9 +51,14 @@ function makeDeps(): RouteDeps {
 }
 
 /** 渲染 mock 路径用的假 puppeteer —— page().screenshot 直接吐一段假 PNG 字节。 */
+/** 灌进去的 HTML 留一份 —— 「喂给 Chrome 的到底是什么」只能从这儿看。 */
+const capturedHtml: string[] = [];
+
 function makeFakePuppeteer(): StandalonePuppeteer {
 	const fakePage = {
-		setContent: vi.fn(async () => {}),
+		setContent: vi.fn(async (html: string) => {
+			capturedHtml.push(html);
+		}),
 		$: vi.fn(async () => ({
 			boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
 			dispose: async () => {},
@@ -1392,6 +1397,22 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		expect(json.width).toBe(DEFAULT_CARD_SKIN.cards.live?.width);
 		expect(json.height).toBe(400);
 		expect(json.scene).toBe("streaming");
+	});
+
+	/**
+	 * ⛔ 截图这条**不能**跟实时预览一样把页面底摁成透明:截出来是 JPEG,没有 alpha,
+	 * 透明会被压成黑 —— 圆角外多一圈黑边,而这颗按钮的全部意义就是像素级可信。
+	 */
+	it("喂给 Chrome 的 HTML 不带透明底", async () => {
+		capturedHtml.length = 0;
+		const { res } = await shot(
+			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
+			makeFakePuppeteer(),
+		);
+		expect(res.status).toBe(200);
+		expect(capturedHtml.length).toBeGreaterThan(0);
+		// 验红:给 `/skin-shot` 那条也传 `transparentPage: true`,这条红。
+		expect(capturedHtml[0]).not.toContain("background:transparent");
 	});
 
 	it("没配 Chrome → 503,并且把该怎么办说出来", async () => {

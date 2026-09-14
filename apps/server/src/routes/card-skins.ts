@@ -259,7 +259,16 @@ export function createCardSkinsRoute(deps: {
 
 		// 「清单 → HTML」那一步与「最终效果」截图共用(见 `card-skins/preview-html.ts`):
 		// 两边必须同源,否则预览能用而截图不一样,谁也说不出哪儿错了。
-		const out = await renderSkinPreviewHtml({ store, skinId: id, kind, scene, manifest: raw });
+		const out = await renderSkinPreviewHtml({
+			store,
+			skinId: id,
+			kind,
+			scene,
+			manifest: raw,
+			// 这条回的 HTML 是塞进编辑器的 iframe 看的 —— 卡外那片默认白底不该在。
+			// 截图那条(`POST /api/cards/skin-shot`)不开,见 `transparentPage` 的说明。
+			transparentPage: true,
+		});
 		if (!out.ok) return c.json({ ok: false, errors: out.errors }, 400);
 		const body: CardSkinPreviewResponse = {
 			html: out.html,

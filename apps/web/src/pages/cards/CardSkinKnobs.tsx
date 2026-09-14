@@ -179,7 +179,9 @@ function KnobControl({
 						value={n}
 						onChange={(e) => onSet(Number(e.target.value))}
 						aria-label={knob.label}
-						className="flex-1 accent-bn-pink"
+						// `min-w-0`:range 有内在最小宽度,flex 项默认 `min-width:auto` 不肯收到
+						// 它以下 —— 380 的栏里滑杆就把右边那个读数挤出容器,「28px」被切成「28p」。
+						className="min-w-0 flex-1 accent-bn-pink"
 					/>
 					<span className="w-14 shrink-0 text-right font-mono text-bn-xs text-bn-text-secondary">
 						{n}
