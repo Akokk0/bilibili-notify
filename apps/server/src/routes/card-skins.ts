@@ -138,6 +138,13 @@ export function createCardSkinsRoute(deps: {
 			return c.json({ ok: false, err: "name 必须是文本" }, 400);
 		}
 		const res: CardSkinDuplicateResponse = await store.duplicate(id, name);
+		// 拧好的设置跟着走(2026-09-14 主人拍板):旋钮覆盖按皮肤 id 存,副本是新 id,不抄
+		// 一份的话「复制一份再改」会先把人拧好的配色清零。没拧过就什么都不写 —— 空覆盖是
+		// 残渣,且「键在不在」正是面板判「动没动过」的依据。
+		const srcKnobs = config.getGlobals().defaults.cardSkinKnobs?.[id];
+		if (srcKnobs && Object.keys(srcKnobs).length > 0) {
+			await config.patchGlobals({ defaults: { cardSkinKnobs: { [res.id]: { ...srcKnobs } } } });
+		}
 		return c.json(res, 201);
 	});
 

@@ -65,16 +65,21 @@ let app: ReturnType<typeof createCardSkinsRoute>;
 let patchGlobals: ReturnType<typeof vi.fn>;
 /** 面板上「全局在用哪套」的活值 —— patchGlobals 写它,GET / 读它。 */
 let active: string;
+/** 各套皮肤拧过的旋钮,按皮肤 id 分层(globals.defaults.cardSkinKnobs 的活值)。 */
+let knobs: Record<string, Record<string, unknown>>;
 let subs: SubStub[];
 /** 出图回落的账本(真实的那一份由 index.ts 建,这里直接摆一份现成的)。 */
 let fallbacks: CardSkinFallback[];
 
 function mount(): void {
 	patchGlobals = vi.fn(async (patch: any) => {
-		active = patch.defaults.cardSkin;
+		if (patch.defaults.cardSkin !== undefined) active = patch.defaults.cardSkin;
+		for (const [id, ov] of Object.entries(patch.defaults.cardSkinKnobs ?? {})) {
+			knobs[id] = ov as Record<string, unknown>;
+		}
 	});
 	const config = {
-		getGlobals: () => ({ defaults: { cardSkin: active } }),
+		getGlobals: () => ({ defaults: { cardSkin: active, cardSkinKnobs: knobs } }),
 		getSubscriptions: () =>
 			subs.map((s) => ({
 				uid: s.uid,
@@ -90,6 +95,7 @@ beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-card-skin-route-"));
 	store = new CardSkinStore({ dir });
 	active = DEFAULT_CARD_SKIN_ID;
+	knobs = {};
 	subs = [];
 	fallbacks = [];
 	mount();
@@ -198,6 +204,29 @@ describe("POST /:id/duplicate —— 复制一份", () => {
 	it("没这套 → 404", async () => {
 		const res = await app.request("/nope-1234/duplicate", { method: "POST" });
 		expect(res.status).toBe(404);
+	});
+
+	/**
+	 * 2026-09-14 主人拍板:复制**连我拧好的设置一起**带走。旋钮覆盖按皮肤 id 存,副本是
+	 * 新 id —— 不抄一份的话「复制一份再改」会先把人拧好的配色清零,等于让他重拧一遍。
+	 */
+	it("原皮肤拧过的旋钮跟着复制走,原来那套一个键都不动", async () => {
+		knobs[DEFAULT_CARD_SKIN_ID] = { "gradient-start": "#ff0000" };
+		const res = await app.request(`/${DEFAULT_CARD_SKIN_ID}/duplicate`, { method: "POST" });
+		const { id } = (await res.json()) as any;
+
+		expect(knobs[id]).toEqual({ "gradient-start": "#ff0000" });
+		expect(knobs[DEFAULT_CARD_SKIN_ID]).toEqual({ "gradient-start": "#ff0000" });
+		// 抄的是一份拷贝,不是同一个对象 —— 否则往后拧副本会连着改原皮肤。
+		expect(knobs[id]).not.toBe(knobs[DEFAULT_CARD_SKIN_ID]);
+	});
+
+	it("原皮肤没拧过 → 不白写一层空覆盖", async () => {
+		const res = await app.request(`/${DEFAULT_CARD_SKIN_ID}/duplicate`, { method: "POST" });
+		const { id } = (await res.json()) as any;
+
+		expect(knobs[id]).toBeUndefined();
+		expect(patchGlobals).not.toHaveBeenCalled();
 	});
 });
 
