@@ -83,6 +83,8 @@ export interface CreateAppOptions {
 		store: CardSkinStore;
 		/** 出图回落的账本;列表接口带上它(决策 19 的「回落必须可见」)。 */
 		fallbacks?: () => CardSkinFallback[];
+		/** 面板上那句「知道了」把账本翻篇。 */
+		clearFallbacks?: () => void;
 	};
 	/**
 	 * 开机装载起来的拓展。在 `index.ts` 组装(那里才知道 `<dataDir>`)。
@@ -404,6 +406,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			config: deps.store,
 			logger: runtime.serviceCtx.logger,
 			fallbacks: options.cardSkins?.fallbacks,
+			clearFallbacks: options.cardSkins?.clearFallbacks,
 		}),
 	);
 	app.route(

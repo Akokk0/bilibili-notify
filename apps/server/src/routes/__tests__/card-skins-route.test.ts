@@ -88,7 +88,14 @@ function mount(): void {
 			})),
 		patchGlobals,
 	} as unknown as ConfigStore;
-	app = createCardSkinsRoute({ store, config, fallbacks: () => fallbacks });
+	app = createCardSkinsRoute({
+		store,
+		config,
+		fallbacks: () => fallbacks,
+		clearFallbacks: () => {
+			fallbacks = [];
+		},
+	});
 }
 
 beforeEach(async () => {
@@ -227,6 +234,30 @@ describe("POST /:id/duplicate —— 复制一份", () => {
 
 		expect(knobs[id]).toBeUndefined();
 		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+});
+
+describe("DELETE /fallbacks —— 面板上那句「知道了」", () => {
+	/**
+	 * 路由注册顺序要紧:`/fallbacks` 得排在 `/:id` 前面,否则它会被当成一个皮肤 id
+	 * (而且 `CardSkinIdSchema` 认不出它,主人点「知道了」收到的是一句「id 不合法」)。
+	 */
+	it("清空账本,列表那一趟跟着变空", async () => {
+		fallbacks = [{ skinId: "x", kind: "live", reason: "渲染失败", at: 1, count: 2 }];
+		const res = await app.request("/fallbacks", { method: "DELETE" });
+		expect(res.status).toBe(200);
+		expect(((await (await app.request("/")).json()) as any).fallbacks).toEqual([]);
+	});
+
+	it("没接账本时也不炸 —— 宿主可以不给这一口", async () => {
+		const bare = createCardSkinsRoute({
+			store,
+			config: {
+				getGlobals: () => ({ defaults: { cardSkin: DEFAULT_CARD_SKIN_ID, cardSkinKnobs: {} } }),
+				getSubscriptions: () => [],
+			} as unknown as ConfigStore,
+		});
+		expect((await bare.request("/fallbacks", { method: "DELETE" })).status).toBe(200);
 	});
 });
 

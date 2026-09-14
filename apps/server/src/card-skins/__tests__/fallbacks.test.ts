@@ -47,6 +47,26 @@ describe("createCardSkinFallbackLog", () => {
 		expect(log.list().map((r) => r.reason)).toEqual(["b", "a"]);
 	});
 
+	/**
+	 * 面板上那句「知道了」。账本记的是内存里的一次性痕迹,主人看过之后再留着只会在
+	 * 下次打开卡片页时冒充新故障 —— 而真出事的话下一张卡立刻会把它记回来。
+	 */
+	it("清空之后账本是空的,但新的回落照样记得进来", () => {
+		const log = createCardSkinFallbackLog({ now: () => 1 });
+		log.record({ skinId: "a", kind: "live", reason: "渲染失败" });
+		log.record({ skinId: "b", kind: "sc", reason: "皮肤不存在" });
+		expect(log.list()).toHaveLength(2);
+
+		log.clear();
+		expect(log.list()).toEqual([]);
+
+		log.record({ skinId: "a", kind: "live", reason: "渲染失败" });
+		// 计数从 1 重新起 —— 清空是「这一页翻过去了」,不是「把计数藏起来」。
+		expect(log.list()).toEqual([
+			{ skinId: "a", kind: "live", reason: "渲染失败", at: 1, count: 1 },
+		]);
+	});
+
 	it("封顶之后挤掉最旧的那条,不会无界长", () => {
 		const { log, tick } = makeLog();
 		for (let i = 0; i < MAX_CARD_SKIN_FALLBACKS + 5; i++) {

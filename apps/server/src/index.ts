@@ -888,7 +888,11 @@ export async function startStandaloneServer(
 			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
 			api: devtools?.api ?? authSystem.api,
 			backupService,
-			cardSkins: { store: skins, fallbacks: () => cardSkinFallbacks.list() },
+			cardSkins: {
+				store: skins,
+				fallbacks: () => cardSkinFallbacks.list(),
+				clearFallbacks: () => cardSkinFallbacks.clear(),
+			},
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,

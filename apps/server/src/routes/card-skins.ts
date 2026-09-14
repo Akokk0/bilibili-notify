@@ -64,6 +64,8 @@ export function createCardSkinsRoute(deps: {
 	 * 「皮肤 XX 渲染失败已回落」——ADR-0014 决策 19 的「回落必须可见」。没接 = 空。
 	 */
 	fallbacks?: () => CardSkinFallback[];
+	/** 面板上那句「知道了」:账本是一次性痕迹,看过就该翻篇(见 `card-skins/fallbacks.ts`)。 */
+	clearFallbacks?: () => void;
 }): Hono {
 	const { store, config } = deps;
 	const app = new Hono();
@@ -146,6 +148,13 @@ export function createCardSkinsRoute(deps: {
 			await config.patchGlobals({ defaults: { cardSkinKnobs: { [res.id]: { ...srcKnobs } } } });
 		}
 		return c.json(res, 201);
+	});
+
+	// **注册在 `/:id` 之前**:排在后面的话 `/fallbacks` 会先被当成一个皮肤 id,主人点
+	// 「知道了」收到的是一句「id 不合法」。同 `PUT /active` 与 `PUT /:id` 那一对。
+	app.delete("/fallbacks", (c) => {
+		deps.clearFallbacks?.();
+		return c.json({ ok: true });
 	});
 
 	app.delete("/:id", async (c) => {
