@@ -15,7 +15,7 @@ import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { canAddBlock } from "./skin-draft-ops";
+import { canAddBlock, columnsOf } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -58,14 +58,12 @@ export function SkinCanvas({
 	const lastRow = blocks.reduce((m, b) => Math.max(m, b.grid.row + (b.grid.rowSpan ?? 1) - 1), 0);
 	const cols = CARD_SKIN_LIMITS.columns;
 	const rows = Array.from({ length: lastRow + 1 }, (_, i) => i + 1);
+	const template = templateOf(card);
 
 	return (
 		<div>
 			{/* 列号。与下面的块层共用同一套 `grid-template-columns`,列线才对得齐。 */}
-			<div
-				className="mb-1 grid gap-x-1.5"
-				style={{ gridTemplateColumns: `28px repeat(${cols}, minmax(0, 1fr))` }}
-			>
+			<div className="mb-1 grid gap-x-1.5" style={{ gridTemplateColumns: template }}>
 				<span />
 				{COLS.map((n) => (
 					<span key={`c${n}`} className="text-center font-mono text-bn-2xs text-bn-text-tertiary">
@@ -76,10 +74,7 @@ export function SkinCanvas({
 
 			<div
 				className="grid gap-x-1.5 gap-y-2"
-				style={{
-					gridTemplateColumns: `28px repeat(${cols}, minmax(0, 1fr))`,
-					gridAutoRows: "56px",
-				}}
+				style={{ gridTemplateColumns: template, gridAutoRows: "56px" }}
 			>
 				{rows.map((n) => (
 					<span
@@ -140,6 +135,24 @@ export function SkinCanvas({
 			</button>
 		</div>
 	);
+}
+
+/**
+ * 画布上 12 列各占多宽。**定宽列按它在卡宽里的占比换算成 fr** —— 画布宽度与卡宽不是
+ * 一回事,照抄 `px` 会让比例整个失真(430 宽的上舰卡摊在 700 宽的面板里,那四列定宽
+ * 会显得只有真实占比的六成)。换成占比就与容器宽度无关了。
+ */
+function templateOf(card: Card): string {
+	const cols = columnsOf(card);
+	const fixed = cols.reduce((s, c) => s + ("px" in c ? c.px : 0), 0);
+	const free = Math.max(0, card.width - fixed);
+	const frTotal = cols.reduce((s, c) => s + ("px" in c ? 0 : c.fr), 0);
+	const parts = cols.map((c) => {
+		const share = "px" in c ? c.px : frTotal > 0 ? (free * c.fr) / frTotal : 0;
+		// 0 会让那一列整个塌掉、块看不见;留 1 至少画得出来(这种包本来也过不了装包门)。
+		return `minmax(0, ${Math.max(share, 1).toFixed(3)}fr)`;
+	});
+	return `28px ${parts.join(" ")}`;
 }
 
 /**

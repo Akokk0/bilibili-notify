@@ -34,7 +34,14 @@ import { useCardSkinList } from "./cards/card-skins-query";
 import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
 import { SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
-import { addBlock, cardOf, removeBlock, setBlockGrid } from "./cards/skin-draft-ops";
+import {
+	addBlock,
+	cardOf,
+	removeBlock,
+	setBlockGrid,
+	setColumns,
+	setFrame,
+} from "./cards/skin-draft-ops";
 import { useCardSkinManifest, useSaveCardSkin } from "./cards/skin-editor-query";
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
@@ -220,6 +227,10 @@ export default function CardSkinEditor() {
 								selection={selection}
 								onGrid={(blockId, patch) =>
 									setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+								}
+								onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
+								onColumns={(columns) =>
+									setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))
 								}
 								onRemove={
 									readOnly

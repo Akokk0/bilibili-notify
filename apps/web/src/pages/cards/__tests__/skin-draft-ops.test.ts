@@ -21,9 +21,12 @@ import {
 	canAddBlock,
 	cardOf,
 	clampInt,
+	columnsOf,
 	gridLimits,
 	removeBlock,
 	setBlockGrid,
+	setColumns,
+	setFrame,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -190,5 +193,71 @@ describe("removeBlock", () => {
 		const before = manifest();
 		expect(removeBlock(before, "live", "没这个块")).toBe(before);
 		expect(removeBlock(before, "sc", "amount")).toBe(before);
+	});
+});
+
+describe("setFrame", () => {
+	it("卡宽夹在门里 —— 越界的数落进清单,主人看到的是保存时一句报错", () => {
+		expect(cardOf(setFrame(manifest(), "live", { width: 99 }), "live")?.width).toBe(
+			CARD_SKIN_LIMITS.width.min,
+		);
+		expect(cardOf(setFrame(manifest(), "live", { width: 9999 }), "live")?.width).toBe(
+			CARD_SKIN_LIMITS.width.max,
+		);
+	});
+
+	it("间距写 0 = 把键删掉 —— 0 与不写在出图上同义,留个 0 只是 diff 里的噪音", () => {
+		const withGap = setFrame(manifest(), "live", { gapRow: 12 });
+		expect(cardOf(withGap, "live")?.gap).toEqual({ row: 12 });
+		const back = setFrame(withGap, "live", { gapRow: 0 });
+		expect("gap" in (cardOf(back, "live") as object)).toBe(false);
+	});
+
+	it("只改行距时列距原样留着", () => {
+		const both = setFrame(manifest(), "live", { gapRow: 8, gapColumn: 6 });
+		const after = setFrame(both, "live", { gapRow: 10 });
+		expect(cardOf(after, "live")?.gap).toEqual({ row: 10, column: 6 });
+	});
+
+	it("回的是新清单,原件一个字节都没动;没这种卡就原样返回", () => {
+		const before = manifest();
+		const snapshot = JSON.stringify(before);
+		const after = setFrame(before, "live", { width: 500 });
+		expect(JSON.stringify(before)).toBe(snapshot);
+		expect(after).not.toBe(before);
+		expect(setFrame(before, "sc", { width: 500 })).toBe(before);
+	});
+});
+
+describe("columnsOf / setColumns", () => {
+	it("没写 columns 时算出来的是 12 等分 —— 编辑器照它画那 12 行", () => {
+		expect(columnsOf(cardOf(manifest(), "live"))).toEqual(
+			Array.from({ length: CARD_SKIN_LIMITS.columns }, () => ({ fr: 1 })),
+		);
+	});
+
+	it("传 undefined = 删掉整份 columns(回到 12 等分)", () => {
+		const custom = setColumns(manifest(), "live", [{ px: 40 }]);
+		expect(cardOf(custom, "live")?.columns).toHaveLength(CARD_SKIN_LIMITS.columns);
+		const back = setColumns(custom, "live", undefined);
+		expect("columns" in (cardOf(back, "live") as object)).toBe(false);
+	});
+
+	it("不足 12 项就补等分、超了就截断 —— 装包门只收恰好 12 项", () => {
+		const short = setColumns(manifest(), "live", [{ px: 40 }, { fr: 2 }]);
+		const cols = cardOf(short, "live")?.columns;
+		expect(cols).toHaveLength(CARD_SKIN_LIMITS.columns);
+		expect(cols?.[0]).toEqual({ px: 40 });
+		expect(cols?.[1]).toEqual({ fr: 2 });
+		expect(cols?.[11]).toEqual({ fr: 1 });
+	});
+
+	it("越界的列宽夹回门里,px 收到两位小数", () => {
+		const cols = cardOf(
+			setColumns(manifest(), "live", [{ px: 43.756 }, { fr: 99 }]),
+			"live",
+		)?.columns;
+		expect(cols?.[0]).toEqual({ px: 43.76 });
+		expect(cols?.[1]).toEqual({ fr: CARD_SKIN_LIMITS.columns });
 	});
 });

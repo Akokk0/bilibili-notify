@@ -15,7 +15,14 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SkinCanvas, type SkinSelection } from "../SkinCanvas";
 import { SkinInspector } from "../SkinInspector";
-import { addBlock, cardOf, removeBlock, setBlockGrid } from "../skin-draft-ops";
+import {
+	addBlock,
+	cardOf,
+	removeBlock,
+	setBlockGrid,
+	setColumns,
+	setFrame,
+} from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
 	({
@@ -89,6 +96,20 @@ function Harness({
 						return next;
 					})
 				}
+				onFrame={(patch) =>
+					setDraft((d) => {
+						const next = setFrame(d, "live", patch);
+						onDraft?.(next);
+						return next;
+					})
+				}
+				onColumns={(cols) =>
+					setDraft((d) => {
+						const next = setColumns(d, "live", cols);
+						onDraft?.(next);
+						return next;
+					})
+				}
 				onRemove={
 					readOnly
 						? undefined
@@ -145,7 +166,24 @@ describe("网格画布", () => {
 	it("卡片外框也能选中 —— 它不是块,但宽度 / 间距 / 外框 CSS 都在它身上", () => {
 		render(<Harness />);
 		fireEvent.click(screen.getByText("卡片外框"));
-		expect(screen.getByText(/卡片外框的宽度/)).toBeTruthy();
+		expect(screen.getByLabelText(/卡宽/)).toBeTruthy();
+	});
+
+	it("定宽列按占比画 —— 照抄 px 的话,430 宽的卡摊在面板里那几列比例就错了", () => {
+		// 400 宽 = 8 等分列分 300px(每列 37.5)+ 4 列定宽 25px。
+		const m = manifest();
+		const card = m.cards.live as { width: number; columns?: unknown };
+		card.width = 400;
+		card.columns = [
+			...Array.from({ length: 8 }, () => ({ fr: 1 })),
+			...Array.from({ length: 4 }, () => ({ px: 25 })),
+		];
+		const { container } = render(
+			<SkinCanvas kind="live" card={cardOf(m, "live")} selection={null} onSelect={vi.fn()} />,
+		);
+		const grid = container.querySelector("[style*='grid-template-columns']") as HTMLElement;
+		expect(grid.style.gridTemplateColumns).toContain("37.500fr");
+		expect(grid.style.gridTemplateColumns).toContain("25.000fr");
 	});
 
 	it("皮肤没定义这种卡 → 说清楚它跟着出厂默认,不是白屏", () => {
@@ -226,5 +264,60 @@ describe("添加块 / 删块", () => {
 		expect(screen.queryByText(/添加块/)).toBeNull();
 		fireEvent.click(blockBtn("主播名"));
 		expect(screen.queryByText(/删除这个块/)).toBeNull();
+	});
+});
+
+describe("检查器 · 卡片外框", () => {
+	/** 最近一次回到调用方的草稿。 */
+	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
+		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
+
+	it("改卡宽 → 改动真的回到草稿", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(screen.getByText("卡片外框"));
+
+		fireEvent.change(screen.getByLabelText(/卡宽/), { target: { value: "480" } });
+
+		expect(cardOf(lastDraft(onDraft), "live")?.width).toBe(480);
+		// 画布底下那行摘要跟着动 —— 检查器只更新自己的话,那行还停在老数。
+		expect(screen.getByText(/宽 480/)).toBeTruthy();
+	});
+
+	it("列宽默认 12 等分,打开「自定义列宽」才落进清单", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(screen.getByText("卡片外框"));
+		expect(screen.queryByLabelText("第 9 列的单位")).toBeNull();
+
+		fireEvent.click(screen.getByLabelText("自定义列宽"));
+
+		expect(cardOf(lastDraft(onDraft), "live")?.columns).toHaveLength(12);
+		expect(screen.getByLabelText("第 9 列的单位")).toBeTruthy();
+	});
+
+	it("把一列换成定宽 → 那一项是 px,其余仍是等分", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(screen.getByText("卡片外框"));
+		fireEvent.click(screen.getByLabelText("自定义列宽"));
+
+		// 第 9 列切到 px(上舰卡那枚 175px 徽章就是这么复刻的)。
+		fireEvent.click(within(screen.getByLabelText("第 9 列的单位")).getByText("px"));
+		fireEvent.change(screen.getByLabelText(/第 9 列的宽度/), { target: { value: "43.75" } });
+
+		const cols = cardOf(lastDraft(onDraft), "live")?.columns;
+		expect(cols?.[8]).toEqual({ px: 43.75 });
+		expect(cols?.[0]).toEqual({ fr: 1 });
+	});
+
+	it("关掉自定义 → 整份 columns 从清单里消失(回到 12 等分)", () => {
+		const onDraft = vi.fn();
+		render(<Harness onDraft={onDraft} />);
+		fireEvent.click(screen.getByText("卡片外框"));
+		fireEvent.click(screen.getByLabelText("自定义列宽"));
+		fireEvent.click(screen.getByLabelText("自定义列宽"));
+
+		expect("columns" in (cardOf(lastDraft(onDraft), "live") as object)).toBe(false);
 	});
 });

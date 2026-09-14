@@ -10,26 +10,35 @@
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
-import { Btn, ConfirmDialog, EmptyNote, Icon, Pill, Section } from "@bilibili-notify/ui";
+import type { CardSkinColumn } from "@bilibili-notify/internal";
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { Btn, ConfirmDialog, EmptyNote, Icon, Pill, Section, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { TNum } from "../../components/forms";
+import { Picker, TNum } from "../../components/forms";
 import type { SkinSelection } from "./SkinCanvas";
-import { blockOf, cardOf, gridLimits } from "./skin-draft-ops";
+import { blockOf, cardOf, columnsOf, gridLimits } from "./skin-draft-ops";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Grid = Card["blocks"][number]["grid"];
+/** 外框那几个数。`gap` 在清单里是个对象,控件上是两个独立的框,所以拍平成两项。 */
+export type FramePatch = { width?: number; gapRow?: number; gapColumn?: number };
 
 export function SkinInspector({
 	manifest,
 	kind,
 	selection,
 	onGrid,
+	onFrame,
+	onColumns,
 	onRemove,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
+	onFrame: (patch: FramePatch) => void;
+	/** 改 12 列的宽度;`undefined` = 回到 12 等分(把 `columns` 整份删掉)。 */
+	onColumns: (columns: CardSkinColumn[] | undefined) => void;
 	/** 删掉这个块。**不给 = 这套皮肤只读**,连删除钮都不该出现。 */
 	onRemove?: (blockId: string) => void;
 }) {
@@ -41,11 +50,8 @@ export function SkinInspector({
 		return <EmptyNote size="sm">在左边画布上点一个块,或者点最底下那条「卡片外框」。</EmptyNote>;
 	}
 	if (selection.kind === "frame") {
-		return (
-			<EmptyNote size="sm">
-				卡片外框的宽度 / 行列间距 / 列定义 / 外框 CSS 还没做 —— 下一片。
-			</EmptyNote>
-		);
+		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
+		return <FrameInspector card={card} onFrame={onFrame} onColumns={onColumns} />;
 	}
 
 	const block = blockOf(card, selection.id);
@@ -126,6 +132,125 @@ export function SkinInspector({
 					onCancel={() => setConfirming(false)}
 				/>
 			) : null}
+		</div>
+	);
+}
+
+/**
+ * 卡片外框那一节:宽度、行 / 列间距、12 列的列定义。**外框 CSS 不在这儿** —— 它与块的
+ * CSS 是同一件东西(同一个编辑器、同一套清洗规矩),跟着「高级 CSS」那一片一起做。
+ */
+function FrameInspector({
+	card,
+	onFrame,
+	onColumns,
+}: {
+	card: Card;
+	onFrame: (patch: FramePatch) => void;
+	onColumns: (columns: CardSkinColumn[] | undefined) => void;
+}) {
+	const custom = card.columns !== undefined;
+	const cols = columnsOf(card);
+	// 切到定宽时先填「这一列现在多宽」,而不是一个 1px —— 从当前的样子微调是常态。
+	const equalPx = Math.round((card.width / CARD_SKIN_LIMITS.columns) * 100) / 100;
+
+	return (
+		<div className="flex flex-col gap-3.5">
+			<Section label="卡片外框">
+				<div className="grid grid-cols-2 gap-x-2.5 gap-y-1.5 p-2.5">
+					<GridNum
+						label="卡宽"
+						value={card.width}
+						lim={CARD_SKIN_LIMITS.width}
+						onChange={(width) => onFrame({ width })}
+					/>
+					<GridNum
+						label="行间距"
+						value={card.gap?.row ?? 0}
+						lim={CARD_SKIN_LIMITS.gap}
+						onChange={(gapRow) => onFrame({ gapRow })}
+					/>
+					<GridNum
+						label="列间距"
+						value={card.gap?.column ?? 0}
+						lim={CARD_SKIN_LIMITS.gap}
+						onChange={(gapColumn) => onFrame({ gapColumn })}
+					/>
+				</div>
+			</Section>
+
+			<Section label="列定义">
+				<div className="flex flex-col gap-2 p-2.5">
+					<div className="flex items-center justify-between gap-2">
+						<span className="text-bn-2xs text-bn-text-secondary">自定义列宽</span>
+						<Toggle
+							size="sm"
+							value={custom}
+							ariaLabel="自定义列宽"
+							// 打开时把当前的 12 等分原样落进清单,主人在那个基础上改;关掉就整份删掉。
+							onChange={(on) => onColumns(on ? cols : undefined)}
+						/>
+					</div>
+					{custom ? (
+						cols.map((c, i) => (
+							<ColumnRow
+								// biome-ignore lint/suspicious/noArrayIndexKey: 列号就是身份,12 项不增不减
+								key={i}
+								n={i + 1}
+								value={c}
+								equalPx={equalPx}
+								onChange={(next) => onColumns(cols.map((old, j) => (j === i ? next : old)))}
+							/>
+						))
+					) : (
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							12 等分。定宽列是给**定尺寸的图**留的 —— 上舰卡那枚 175px 的方徽章在 12 等分里
+							落不到整数列,只有定宽列能复刻到像素。
+						</span>
+					)}
+				</div>
+			</Section>
+		</div>
+	);
+}
+
+/** 一列:列号 + 单位(份 / px)+ 数。 */
+function ColumnRow({
+	n,
+	value,
+	equalPx,
+	onChange,
+}: {
+	n: number;
+	value: CardSkinColumn;
+	equalPx: number;
+	onChange: (next: CardSkinColumn) => void;
+}) {
+	const px = "px" in value;
+	return (
+		<div className="flex items-center gap-1.5">
+			<span className="w-11 shrink-0 font-mono text-bn-2xs text-bn-text-tertiary">第 {n} 列</span>
+			{/* `<fieldset>` 只为给这组钮一个名字 —— 12 组「份 / px」长得一模一样,读屏器
+			    (和测试)得知道念的是哪一列。 */}
+			<fieldset aria-label={`第 ${n} 列的单位`} className="min-w-0">
+				<Picker
+					value={px ? "px" : "fr"}
+					onChange={(u) => onChange(u === "px" ? { px: equalPx } : { fr: 1 })}
+					options={[
+						{ value: "fr", label: "份" },
+						{ value: "px", label: "px" },
+					]}
+				/>
+			</fieldset>
+			<TNum
+				value={px ? value.px : value.fr}
+				min={px ? 1 : 1}
+				max={px ? CARD_SKIN_LIMITS.width.max : CARD_SKIN_LIMITS.columns}
+				step={px ? 0.01 : 1}
+				width={72}
+				ariaLabel={`第 ${n} 列的宽度`}
+				onChange={(v) => onChange(px ? { px: v } : { fr: v })}
+			/>
 		</div>
 	);
 }

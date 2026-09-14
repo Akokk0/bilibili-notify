@@ -6,6 +6,7 @@
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardSkinColumn } from "@bilibili-notify/internal";
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
@@ -157,4 +158,71 @@ export function removeBlock(
 			[kind]: { ...card, blocks: card.blocks.filter((b) => b.id !== blockId) },
 		},
 	};
+}
+
+/**
+ * 改卡片外框的几个数。`gap` 写 0 **把键删掉** —— 出图时 `gap?.row ?? 0`,0 与不写同义,
+ * 留一个 0 在清单里只是 diff 里的噪音(同 `rowSpan` 为 1 时的处理)。
+ */
+export function setFrame(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	patch: { width?: number; gapRow?: number; gapColumn?: number },
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card) return manifest;
+	const L = CARD_SKIN_LIMITS;
+	const next: Card = { ...card };
+	if (patch.width !== undefined) next.width = clampInt(patch.width, L.width.min, L.width.max);
+	if (patch.gapRow !== undefined || patch.gapColumn !== undefined) {
+		const row = clampInt(patch.gapRow ?? card.gap?.row ?? 0, L.gap.min, L.gap.max);
+		const column = clampInt(patch.gapColumn ?? card.gap?.column ?? 0, L.gap.min, L.gap.max);
+		const gap: NonNullable<Card["gap"]> = {};
+		if (row > 0) gap.row = row;
+		if (column > 0) gap.column = column;
+		if (Object.keys(gap).length > 0) next.gap = gap;
+		else delete next.gap;
+	}
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+}
+
+/**
+ * 这张卡 12 列各自多宽 —— 没写 `columns` 就是 12 等分。编辑器照它画那 12 行控件,
+ * 「没写」与「写了 12 个 fr:1」在出图上本来就是同一件事。
+ */
+export function columnsOf(card: Card | undefined): CardSkinColumn[] {
+	const fallback = Array.from({ length: CARD_SKIN_LIMITS.columns }, () => ({ fr: 1 }));
+	return card?.columns ? [...card.columns] : fallback;
+}
+
+/**
+ * 改 12 列的宽度。传 `undefined` 把整份 `columns` 删掉(回到 12 等分)。
+ *
+ * 长度**在这里补齐到恰好 12**:装包门只收 12 项,而少一项的症状是保存时一句
+ * 「columns 必须恰好 12 项」—— 面板上根本看不出是哪一步弄丢的。
+ */
+export function setColumns(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	columns: CardSkinColumn[] | undefined,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card) return manifest;
+	const next: Card = { ...card };
+	if (columns === undefined) delete next.columns;
+	else {
+		next.columns = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) =>
+			normalizeColumn(columns[i] ?? { fr: 1 }),
+		);
+	}
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+}
+
+/** 一列的宽度夹回门里。`px` 收两位小数 —— 175 / 4 = 43.75 是上舰卡徽章的真实数字。 */
+function normalizeColumn(c: CardSkinColumn): CardSkinColumn {
+	if ("px" in c) {
+		const px = Math.min(CARD_SKIN_LIMITS.width.max, Math.max(1, c.px));
+		return { px: Number.isFinite(px) ? Math.round(px * 100) / 100 : 1 };
+	}
+	return { fr: clampInt(c.fr, 1, CARD_SKIN_LIMITS.columns) };
 }
