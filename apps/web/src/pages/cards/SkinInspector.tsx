@@ -102,7 +102,7 @@ export function SkinInspector({
 	if (selection === null) {
 		return (
 			<EmptyNote size="sm">
-				在左边画布上点一个块,或者点最底下那条「卡片外框」;改皮肤本身的名字点头部那行。
+				在中间画布上点一个块,或者点最底下那条「卡片外框」;改皮肤本身的名字点头部那行。
 			</EmptyNote>
 		);
 	}
@@ -773,6 +773,9 @@ function KnobRow({
 			aria-label={`第 ${index + 1} 枚旋钮`}
 			className="flex min-w-0 flex-col gap-1.5 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2"
 		>
+			{/* key 与名字**各占一行**:检查器那一栏再宽也就 380,两个输入框挤一排时
+			    `gradient-start` 这种长度的 key 会被切成 `gradient-st…`,而 key 正是
+			    皮肤 CSS 里要照抄的那一串 —— 看不全等于抄不对。 */}
 			<div className="flex min-w-0 items-center gap-1.5">
 				<TInput
 					value={knob.key}
@@ -781,13 +784,6 @@ function KnobRow({
 					mono
 					ariaLabel="旋钮 key"
 					placeholder="accent"
-				/>
-				<TInput
-					value={knob.label}
-					onChange={(v) => onKnobs?.onDecl(knob.key, { label: v })}
-					disabled={ro}
-					ariaLabel="旋钮名字"
-					placeholder="主色"
 				/>
 				{ro ? null : (
 					<Btn
@@ -801,6 +797,13 @@ function KnobRow({
 					</Btn>
 				)}
 			</div>
+			<TInput
+				value={knob.label}
+				onChange={(v) => onKnobs?.onDecl(knob.key, { label: v })}
+				disabled={ro}
+				ariaLabel="旋钮名字"
+				placeholder="主色"
+			/>
 
 			<div className="flex min-w-0 items-center gap-1.5">
 				<TSelect

@@ -30,6 +30,20 @@ const VIEW_H = 560;
 /** 截成功那一支。失败那支只有 `err` / `errors`,没有图可摆。 */
 type ShotOk = Extract<CardSkinShotResponse, { ok: true }>;
 
+/**
+ * 卡片摆在一块**底板**上,不贴着栏边(2026-09-14 主人指着卡片页的全家福说「预览放框里」)。
+ *
+ * 底板走 `surface-muted`(那一族里的凹陷档):卡自己是 `surface`,两层差一档才看得出「这是
+ * 一张摆在台面上的卡」。半透明的皮肤会把底板透出来,所以这层不能写死白。
+ */
+function Stage({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="flex w-full justify-center rounded-bn-md bg-bn-surface-muted p-4">
+			{children}
+		</div>
+	);
+}
+
 export function SkinPreviewPane({
 	skinId,
 	kind,
@@ -124,20 +138,25 @@ export function SkinPreviewPane({
 			{noChrome ? (
 				<HintNote className="w-full">
 					没配渲染浏览器,截不了图 —— 去系统页的「卡片渲染浏览器」设一下,或者设环境变量
-					BN_CHROME_PATH / BN_CHROME_ENDPOINT。左边的实时预览不受影响。
+					BN_CHROME_PATH / BN_CHROME_ENDPOINT。上面的实时预览不受影响。
 				</HintNote>
 			) : null}
 
 			{snap !== null ? (
 				<>
-					<div
-						className="overflow-auto rounded-bn-sm bg-bn-surface shadow-sm"
-						style={{ width: Math.min(snap.res.width, Math.max(boxWidth, 1)), maxHeight: VIEW_H }}
-					>
-						{/* 截图就是一张 JPEG,按卡宽画、放不下时这一格自己滚 —— 缩放会让
-						    「像素级以最终效果为准」那句话当场失效。 */}
-						<img src={snap.res.dataUrl} alt="最终效果" style={{ width: snap.res.width }} />
-					</div>
+					<Stage>
+						<div
+							className="overflow-auto rounded-bn-sm bg-bn-surface shadow-md"
+							style={{
+								width: Math.min(snap.res.width, Math.max(boxWidth, 1)),
+								maxHeight: VIEW_H,
+							}}
+						>
+							{/* 截图就是一张 JPEG,按卡宽画、放不下时这一格自己滚 —— 缩放会让
+							    「像素级以最终效果为准」那句话当场失效。 */}
+							<img src={snap.res.dataUrl} alt="最终效果" style={{ width: snap.res.width }} />
+						</div>
+					</Stage>
 					<span className="text-bn-2xs text-bn-text-tertiary">
 						{snap.res.width} × {Math.round(snap.res.height)}
 					</span>
@@ -159,27 +178,29 @@ export function SkinPreviewPane({
 				)
 			) : (
 				<>
-					<div
-						// 底走 token 不写死白:皮肤能重绘这一层,而半透明的卡会把它透出来。
-						className="overflow-hidden rounded-bn-sm bg-bn-surface shadow-sm"
-						style={{ width: shown, height: VIEW_H }}
-					>
-						<iframe
-							// `srcDoc` + 空 sandbox:不给脚本、不给同源(见文件头)。
-							srcDoc={html}
-							sandbox=""
-							title="皮肤预览"
-							className="block border-0"
-							// iframe 里按**卡的真实宽度**排版,再整张缩 —— 直接把 iframe 调窄等于让
-							// 皮肤在一个它没见过的宽度上重新排,看到的就不是那张卡了。
-							style={{
-								width,
-								height: Math.round(VIEW_H / scale),
-								transform: scale < 1 ? `scale(${scale})` : undefined,
-								transformOrigin: "top left",
-							}}
-						/>
-					</div>
+					<Stage>
+						<div
+							// 底走 token 不写死白:皮肤能重绘这一层,而半透明的卡会把它透出来。
+							className="overflow-hidden rounded-bn-sm bg-bn-surface shadow-md"
+							style={{ width: shown, height: VIEW_H }}
+						>
+							<iframe
+								// `srcDoc` + 空 sandbox:不给脚本、不给同源(见文件头)。
+								srcDoc={html}
+								sandbox=""
+								title="皮肤预览"
+								className="block border-0"
+								// iframe 里按**卡的真实宽度**排版,再整张缩 —— 直接把 iframe 调窄等于让
+								// 皮肤在一个它没见过的宽度上重新排,看到的就不是那张卡了。
+								style={{
+									width,
+									height: Math.round(VIEW_H / scale),
+									transform: scale < 1 ? `scale(${scale})` : undefined,
+									transformOrigin: "top left",
+								}}
+							/>
+						</div>
+					</Stage>
 					{scale < 1 ? (
 						<span className="text-bn-2xs text-bn-text-tertiary">
 							卡宽 {width},这一栏放不下,按 {Math.round(scale * 100)}% 缩放显示
@@ -211,7 +232,7 @@ export function SkinPreviewPane({
 			) : null}
 
 			<HintNote className="w-full">
-				选中的块在预览里不画选框 —— 预览是隔离的 iframe,读不到里面的位置。要对位置看左边画布的行列。
+				选中的块在预览里不画选框 —— 预览是隔离的 iframe,读不到里面的位置。要对位置看中间画布的行列。
 			</HintNote>
 		</div>
 	);

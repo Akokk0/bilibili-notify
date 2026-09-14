@@ -255,7 +255,7 @@ describe("检查器 · 位置", () => {
 
 	it("没选中任何东西 → 检查器请人去点一个,而不是空着", () => {
 		render(<Harness />);
-		expect(screen.getByText(/在左边画布上点一个块/)).toBeTruthy();
+		expect(screen.getByText(/在中间画布上点一个块/)).toBeTruthy();
 	});
 });
 

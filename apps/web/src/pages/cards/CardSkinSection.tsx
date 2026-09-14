@@ -310,10 +310,19 @@ function CardSkinRow(props: {
 	const { skin } = props;
 	const desc = skinDesc(skin);
 	return (
-		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
-			<div className="min-w-0 flex-1">
+		// 名字与那排钮**上下两行**:这一节住在卡片页 380 宽的左栏里,五颗钮挤在同一排时会
+		// 把名字区压到零宽,「赛博朋克」四个字当场竖着排下来(2026-09-14 主人报的)。
+		<div
+			// 行内的钮都按这个属性找(测试如此,以后的「跳到这套皮肤」也如此)—— 靠 class
+			// 串定位的话,一次排版调整就能把找行的代码找断。
+			data-skin={skin.id}
+			className="flex flex-col gap-2 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5"
+		>
+			<div className="min-w-0">
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-bn-base font-semibold text-bn-text-primary">{skin.name}</span>
+					<span className="min-w-0 truncate text-bn-base font-semibold text-bn-text-primary">
+						{skin.name}
+					</span>
 					{skin.builtin ? (
 						<Pill subtle color="var(--color-bn-blue)">
 							内置
@@ -325,7 +334,7 @@ function CardSkinRow(props: {
 					<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">{desc}</div>
 				) : null}
 			</div>
-			<div className="flex shrink-0 items-center gap-1.5">
+			<div className="flex flex-wrap items-center gap-1.5">
 				<Btn
 					size="sm"
 					variant="ghost"

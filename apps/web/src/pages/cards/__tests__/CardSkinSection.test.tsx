@@ -71,10 +71,16 @@ function renderSection() {
 	);
 }
 
-/** 某套皮肤那一行(行内按钮都从这里面找,免得撞上别行的同名钮)。 */
+/**
+ * 某套皮肤那一行(行内按钮都从这里面找,免得撞上别行的同名钮)。
+ *
+ * 按 `data-skin` 找,**不按 class 串找** —— 从前这里写的是
+ * `closest("div.flex.items-center.gap-3")`,一次排版调整(把名字与那排钮改成上下两行)
+ * 就让五条用例一起红,而被测的行为一点没变。
+ */
 async function rowOf(name: string): Promise<HTMLElement> {
 	const label = await screen.findByText(name);
-	const row = label.closest("div.flex.items-center.gap-3");
+	const row = label.closest("[data-skin]");
 	if (!row) throw new Error(`row for ${name} not found`);
 	return row as HTMLElement;
 }

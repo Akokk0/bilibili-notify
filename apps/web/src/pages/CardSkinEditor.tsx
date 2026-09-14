@@ -81,6 +81,15 @@ import {
  */
 const PREVIEW_COL_MAX = 720;
 
+/** 预览那块底板的内边距 px(左右各一份)。栏宽要把它算进去,否则卡贴着栏边。 */
+const PREVIEW_PAD = 16;
+
+/**
+ * 检查器那一栏 px。320 装不下旋钮那几行(键 / 名字 / 类型 / 控件挤在一排,长一点的
+ * 字段名当场被切),2026-09-14 加到 380。
+ */
+const INSPECTOR_COL = 380;
+
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
 const KIND_META: Record<CardSkinKind, { label: string; icon: keyof typeof Icon }> = {
 	live: { label: "直播", icon: "live" },
@@ -269,11 +278,34 @@ export default function CardSkinEditor() {
 					<ErrorNote>读不到这套皮肤:{String((manifestQuery.error as Error).message)}</ErrorNote>
 				) : (
 					<div
-						className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_var(--bn-preview-col)_320px]"
+						// **画布居中**(2026-09-14 主人拍板,PS 式):真正在操作的那一栏拿弹性宽度,
+						// 两侧是「看的」与「调的」—— 预览宽度本来就跟着卡宽走(固定),让它吃弹性列
+						// 只会在两边空出一大片留白,而 12 列的画布反倒被压窄。
+						className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[var(--bn-preview-col)_minmax(0,1fr)_var(--bn-inspector-col)]"
 						// 走 CSS 变量而不是直接写 `gridTemplateColumns`:模板那串还得留在类里,
 						// 它只在 xl 以上生效(窄屏是单列),写成内联样式会把窄屏那档也一起盖掉。
-						style={{ "--bn-preview-col": `${previewCol}px` } as CSSProperties}
+						style={
+							{
+								// 卡宽 + 左右留白:卡是摆在一块底板上的,不是贴着栏边(见 SkinPreviewPane)。
+								"--bn-preview-col": `${previewCol + PREVIEW_PAD * 2}px`,
+								"--bn-inspector-col": `${INSPECTOR_COL}px`,
+							} as CSSProperties
+						}
 					>
+						<GlassBox
+							title="实时预览"
+							subtitle="server 出 HTML、浏览器画;字体渲染与截图有细微差,像素级以「最终效果」为准"
+							accent="var(--color-bn-purple)"
+							icon={<Icon.eye size={14} />}
+						>
+							<SkinPreviewPane
+								skinId={id}
+								kind={kind}
+								scene={scene}
+								manifest={draft}
+								boxWidth={previewCol}
+							/>
+						</GlassBox>
 						<GlassBox
 							title={`网格画布 · ${KIND_META[kind].label}卡`}
 							subtitle="点一个块,在右边的检查器里改它的位置;这里的行等高只是示意,真卡里行高随内容撑"
@@ -311,20 +343,6 @@ export default function CardSkinEditor() {
 										? undefined
 										: () => draft !== null && landBlock(addCustomBlock(draft, kind))
 								}
-							/>
-						</GlassBox>
-						<GlassBox
-							title="实时预览"
-							subtitle="server 出 HTML、浏览器画;字体渲染与截图有细微差,像素级以「最终效果」为准"
-							accent="var(--color-bn-purple)"
-							icon={<Icon.eye size={14} />}
-						>
-							<SkinPreviewPane
-								skinId={id}
-								kind={kind}
-								scene={scene}
-								manifest={draft}
-								boxWidth={previewCol}
 							/>
 						</GlassBox>
 						<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
