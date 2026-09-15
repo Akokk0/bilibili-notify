@@ -36,6 +36,48 @@ function mount(over: Record<string, unknown> = {}) {
 	return { onFrame };
 }
 
+describe("常用旋钮接在哪一层", () => {
+	/** 外框那一节读的必须是 `[data-bn="frame"]`,块那一节读的必须是 `[data-bn="self"]`。 */
+	function withCss(frameCss: string, selection: { kind: "frame" } | { kind: "block"; id: string }) {
+		const m = structuredClone(DEFAULT_CARD_SKIN) as unknown as {
+			cards: Record<string, Record<string, unknown>>;
+		};
+		m.cards.live = { ...m.cards.live, css: frameCss };
+		const onFrameCss = vi.fn();
+		render(
+			<SkinInspector
+				manifest={m as never}
+				kind="live"
+				selection={selection}
+				onGrid={vi.fn()}
+				onCss={vi.fn()}
+				onHtml={vi.fn()}
+				onShowIf={vi.fn()}
+				onFrame={vi.fn()}
+				onFrameCss={onFrameCss}
+				onColumns={vi.fn()}
+			/>,
+		);
+		return { onFrameCss };
+	}
+
+	it("外框那一节读的是 frame 那条规则 —— 传错挂点这条就红", () => {
+		withCss('[data-bn="frame"]{padding:20px}', { kind: "frame" });
+		expect((screen.getByLabelText("内边距") as HTMLInputElement).value).toBe("20");
+	});
+
+	it("外框上写的 self 规则不该被外框那一节读走", () => {
+		withCss('[data-bn="self"]{padding:20px}', { kind: "frame" });
+		expect((screen.getByLabelText("内边距") as HTMLInputElement).value).toBe("0");
+	});
+
+	it("拧外框的旋钮 → 走 onFrameCss 交回整段", () => {
+		const { onFrameCss } = withCss('[data-bn="frame"]{padding:20px}', { kind: "frame" });
+		fireEvent.change(screen.getByLabelText("内边距"), { target: { value: "24" } });
+		expect(onFrameCss).toHaveBeenCalledWith('[data-bn="frame"]{padding:24px}');
+	});
+});
+
 describe("卡片外框 — 出血", () => {
 	it("有一个数字控件,改了它把 bleedSize 发出去", () => {
 		const { onFrame } = mount();

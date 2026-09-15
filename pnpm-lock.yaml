@@ -386,6 +386,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.102.7
         version: 5.102.7(react@19.2.8)
+      css-tree:
+        specifier: ^3.2.1
+        version: 3.2.1(patch_hash=7bbaf7328d644be70c5f8c641ef205806f630e85b3207b14c863dfc359bb1ec7)
       fflate:
         specifier: 'catalog:'
         version: 0.8.3
@@ -432,6 +435,9 @@ importers:
       '@testing-library/user-event':
         specifier: 'catalog:'
         version: 14.6.1(@testing-library/dom@10.4.1)
+      '@types/css-tree':
+        specifier: ^3.2.0
+        version: 3.2.0
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18

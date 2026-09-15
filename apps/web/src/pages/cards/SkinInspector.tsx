@@ -34,6 +34,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { Picker, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
+import { CssKnobs } from "./CssKnobs";
 import type { SkinSelection } from "./SkinCanvas";
 import {
 	blockOf,
@@ -213,6 +214,7 @@ export function SkinInspector({
 				label="这个块的 CSS"
 				hooksLabel="这个块的挂点"
 				hooks={blockHooks(kind, block)}
+				hook="self"
 				value={block.css ?? ""}
 				onChange={(css) => onCss(block.id, css)}
 			/>
@@ -352,6 +354,7 @@ function FrameInspector({
 				label="外框的 CSS"
 				hooksLabel="外框的挂点"
 				hooks={Object.entries(CARD_SKIN_FRAME_HOOKS)}
+				hook="frame"
 				value={card.css ?? ""}
 				onChange={onFrameCss}
 			/>
@@ -498,12 +501,15 @@ function CssSection({
 	label,
 	hooksLabel,
 	hooks,
+	hook,
 	value,
 	onChange,
 }: {
 	label: string;
 	hooksLabel: string;
 	hooks: Array<[string, string]>;
+	/** 常用旋钮改哪一层:块是 `self`,外框是 `frame`(ADR-0014 决策 21)。 */
+	hook: string;
 	value: string;
 	onChange: (css: string) => void;
 }) {
@@ -527,6 +533,10 @@ function CssSection({
 						</button>
 					))}
 				</fieldset>
+
+				{/* 旋钮在上、文本框在下 —— **同一段 CSS 的两个视图**(决策 21):
+				    常用的那几条在上面点一点就改了,写不出来的照旧往下面敲。 */}
+				<CssKnobs css={value} hook={hook} onChange={onChange} />
 
 				<TArea
 					value={value}
