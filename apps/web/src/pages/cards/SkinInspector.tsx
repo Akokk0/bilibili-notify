@@ -489,6 +489,31 @@ function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[s
 }
 
 /**
+ * CSS 文本框旁边那个 **AI 入口**(ADR-0014 决策 23 的 🔗)。
+ *
+ * 这一步**只画位置**:接什么、怎么接(聊天?一键改写?)归第三步的拷问,现在预设任何一种
+ * 都是替那轮拍板。摆出来而不是等做完再加,是因为「这儿将来有人帮你写」本身就是信息 ——
+ * 不会写 CSS 的人看见框就走了,不会知道再等一轮就有救。
+ *
+ * 禁用的钮**必须自己说得出为什么** —— 一个没有来由的灰钮只会被当成坏了。
+ */
+function AiSlot() {
+	return (
+		<div className="flex justify-end">
+			<Btn
+				size="sm"
+				variant="ghost"
+				icon={<Icon.ai size={12} />}
+				disabled
+				title="下一轮才接上 —— 这一轮先把位置留出来"
+			>
+				请 AI 帮忙写
+			</Btn>
+		</div>
+	);
+}
+
+/**
  * CSS 那一节:挂点清单 + 一个纯文本框。
  *
  * **先有文本框,再谈旋钮**(「编辑器 = 能力全集」):白名单里七十来条属性,能变成控件的
@@ -537,6 +562,8 @@ function CssSection({
 				{/* 旋钮在上、文本框在下 —— **同一段 CSS 的两个视图**(决策 21):
 				    常用的那几条在上面点一点就改了,写不出来的照旧往下面敲。 */}
 				<CssKnobs css={value} hook={hook} onChange={onChange} />
+
+				<AiSlot />
 
 				<TArea
 					value={value}
