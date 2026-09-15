@@ -597,3 +597,64 @@ describe("退役的 variables", () => {
 		expect(res.ok).toBe(true);
 	});
 });
+
+/**
+ * **整张卡的 svg `id` 是一个命名空间**(ADR-0014 决策 11 的 🔗 记的那笔欠账)。
+ *
+ * 清洗器一次只看一个块,查不了跨块重名;而渲染出来的是**一份文档**,`url(#g)` 只认文档序
+ * 里的第一个 —— 两个块各写一个 `id="g"` 的渐变,第二个块会静静用上第一个块的那份。
+ * 汇总放在这一层:只有它同时看得见一张卡的所有块。
+ *
+ * 是 warning 不是 error:重名画出来的不是废卡,只是「不是你想要的那个渐变」,而拒整包会
+ * 让一套只是随手起名撞了的皮肤装不进来。
+ */
+describe("跨块的 svg id 重名", () => {
+	const withBlocks = (blocks: Array<Record<string, unknown>>) =>
+		open(
+			pack({
+				[CARD_SKIN_MANIFEST_FILE]: manifest({ cards: { live: { width: 600, blocks } } }),
+			}),
+		);
+
+	const svgBlock = (id: string, gradientId: string) => ({
+		id,
+		kind: "custom",
+		grid: { row: 1, column: 1, span: 12 },
+		html: `<svg viewBox="0 0 10 10"><defs><linearGradient id="${gradientId}"/></defs><rect fill="url(#${gradientId})"/></svg>`,
+	});
+
+	it("两个块撞同一个 id → 报出来,并且说得出是哪两个块", () => {
+		const r = withBlocks([svgBlock("a", "g"), svgBlock("b", "g")]);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		const hit = r.warnings.filter((w) => w.includes("「g」"));
+		expect(hit.length).toBe(1);
+		expect(hit[0]).toContain("a");
+		expect(hit[0]).toContain("b");
+	});
+
+	it("各起各的名字就不吭声", () => {
+		const r = withBlocks([svgBlock("a", "ga"), svgBlock("b", "gb")]);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings.filter((w) => w.includes("id"))).toEqual([]);
+	});
+
+	it("重名不拒包 —— 它是 warning", () => {
+		expect(withBlocks([svgBlock("a", "g"), svgBlock("b", "g")]).ok).toBe(true);
+	});
+
+	it("同一个块里自己撞自己也算 —— 命名空间是整张卡,不是每个块一份", () => {
+		const r = withBlocks([
+			{
+				id: "solo",
+				kind: "custom",
+				grid: { row: 1, column: 1, span: 12 },
+				html: '<svg viewBox="0 0 10 10"><linearGradient id="g"/><linearGradient id="g"/></svg>',
+			},
+		]);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings.filter((w) => w.includes("「g」")).length).toBe(1);
+	});
+});

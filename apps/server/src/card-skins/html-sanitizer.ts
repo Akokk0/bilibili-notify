@@ -404,7 +404,17 @@ export interface SanitizeCardHtmlOptions {
 }
 
 export type SanitizeCardHtmlResult =
-	| { ok: true; html: string; warnings: string[] }
+	| {
+			ok: true;
+			html: string;
+			warnings: string[];
+			/**
+			 * 留在产物里的 svg `id`,按出现顺序。清洗器一次只看一个块,**查不了跨块重名** ——
+			 * 而整张卡渲染出来是一份文档,`id` 是全卡一个命名空间。所以这里只负责如实报出来,
+			 * 汇总与判重归 package 那一层(只有它同时看得见一张卡的所有块)。
+			 */
+			ids: string[];
+	  }
 	| { ok: false; errors: string[] };
 
 type Element = DefaultTreeAdapterTypes.Element;
@@ -418,6 +428,8 @@ interface Ctx {
 	warnings: string[];
 	/** 指向不存在字段的占位符路径 —— 这是 error 面,攒齐一次报全。 */
 	unknownPaths: Set<string>;
+	/** 留下来的 svg `id`,按出现顺序(判重归 package 层,见 {@link SanitizeCardHtmlResult})。 */
+	ids: string[];
 }
 
 /**
@@ -535,6 +547,7 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 				ctx.warnings.push(`<${tag}> 的 id「${attr.value}」不是合法标识符,已丢弃`);
 				continue;
 			}
+			ctx.ids.push(attr.value);
 			out.push({ name, value: attr.value });
 			continue;
 		}
@@ -676,6 +689,7 @@ export function sanitizeCardBlockHtml(
 		fields: new Map(CARD_SKIN_FIELDS[opts.kind].map((f) => [f.path, f.type])),
 		warnings: [],
 		unknownPaths: new Set(),
+		ids: [],
 	};
 
 	const source = parseFragment(input);
@@ -695,5 +709,5 @@ export function sanitizeCardBlockHtml(
 	if (Buffer.byteLength(html, "utf8") > max) {
 		return { ok: false, errors: [`清洗后的 HTML 超过 ${max / 1024}KB 上限`] };
 	}
-	return { ok: true, html, warnings: ctx.warnings };
+	return { ok: true, html, warnings: ctx.warnings, ids: ctx.ids };
 }

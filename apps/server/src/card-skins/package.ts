@@ -172,6 +172,10 @@ export function checkCardSkinPackage(
 				else card.css = res.css;
 			}
 		}
+		// svg 的 `id` **整张卡是一个命名空间**:渲染出来是一份文档,`url(#g)` 只认文档序里
+		// 第一个。清洗器一次只看一个块,查不了这个,所以在这儿攒 —— 值是「哪些块用过它」,
+		// 同一个块用两次也会出现两次(命名空间是卡,不是块)。
+		const idUsers = new Map<string, string[]>();
 		card.blocks.forEach((block, i) => {
 			const at = `cards.${kind}.blocks[${i}]「${block.id}」`;
 			if (block.css !== undefined) {
@@ -194,8 +198,24 @@ export function checkCardSkinPackage(
 			} else {
 				warnings.push(...res.warnings.map((w) => `${at}.html: ${w}`));
 				block.html = res.html;
+				for (const id of res.ids) {
+					const users = idUsers.get(id);
+					if (users) users.push(block.id);
+					else idUsers.set(id, [block.id]);
+				}
 			}
 		});
+
+		// 重名只报 warning:画出来的不是废卡,只是「不是你想要的那个渐变」,而拒整包会让一套
+		// 只是随手起名撞了的皮肤装不进来。
+		for (const [id, users] of idUsers) {
+			if (users.length < 2) continue;
+			warnings.push(
+				`cards.${kind}: svg id「${id}」被用了 ${users.length} 次(${[...new Set(users)]
+					.map((u) => `「${u}」`)
+					.join("、")})—— 整张卡是一个 id 命名空间,url(#${id}) 只认文档里第一个,给它们各加个前缀`,
+			);
+		}
 	}
 
 	for (const kind of CARD_SKIN_KINDS) {
