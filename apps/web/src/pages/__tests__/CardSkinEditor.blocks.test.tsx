@@ -37,7 +37,7 @@ const MANIFEST = {
 	},
 };
 
-function mockApi(builtin = false): void {
+function mockApi(builtin = false, manifest: unknown = MANIFEST): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url === "/api/card-skins") {
 			return Promise.resolve({
@@ -50,7 +50,7 @@ function mockApi(builtin = false): void {
 			});
 		}
 		if (url === "/api/card-skins/neon") {
-			return Promise.resolve({ manifest: structuredClone(MANIFEST) });
+			return Promise.resolve({ manifest: structuredClone(manifest) });
 		}
 		// 出厂那份:接管一种卡时抄的就是它。
 		if (url === "/api/card-skins/default") {
@@ -186,5 +186,119 @@ describe("编辑器 · 增删块的接线", () => {
 
 		expect(screen.queryByText(/添加块/)).toBeNull();
 		expect(screen.queryByText(/删除这个块/)).toBeNull();
+	});
+});
+
+/**
+ * **放下一个块**那根线(主人 2026-09-15 报:「我明明是把块拖到对方上面,但是却被对方
+ * 覆盖了」)。
+ *
+ * 叠放次序不在 `grid` 里 —— 没写层次时它是**块在数组里的先后**,而拖动只改 `grid`。
+ * 于是画布这一口必须走 `dropBlockGrid` 而不是 `setBlockGrid`;两个口在 `skin-draft-ops`
+ * 的测试里各自绿,证明不了页面上接对了哪一个。这里只看**存出去的那份清单**里块的先后。
+ *
+ * 检查器那几个数字框反过来:它们不许改先后 —— 精确编辑不该有副作用,换层次有旋钮。
+ */
+describe("编辑器 · 放下一个块的接线", () => {
+	const TWO = {
+		schemaVersion: 1,
+		name: "霓虹",
+		cards: {
+			live: {
+				width: 600,
+				css: "",
+				blocks: [
+					{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 4 } },
+					{ id: "title", kind: "builtin", builtin: "title", grid: { row: 2, column: 1, span: 4 } },
+				],
+			},
+		},
+	};
+
+	const COL_W = 40;
+	const COL_X0 = 100;
+	const ROW_H = 56;
+	const ROW_PITCH = 64;
+	const colX = (n: number) => COL_X0 + (n - 1) * COL_W + COL_W / 2;
+	const rowY = (n: number) => (n - 1) * ROW_PITCH + ROW_H / 2;
+
+	beforeEach(() => {
+		// jsdom 没有布局:按画布标出来的 `data-canvas-track` 喂假矩形,别的一律零矩形。
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+			this: Element,
+		) {
+			const track = this.getAttribute("data-canvas-track");
+			const i = Number(this.getAttribute("data-canvas-index") ?? "0");
+			if (track === "column") {
+				const x = COL_X0 + (i - 1) * COL_W;
+				return {
+					x,
+					y: 0,
+					left: x,
+					right: x + COL_W,
+					top: 0,
+					bottom: 0,
+					width: COL_W,
+					height: 0,
+				} as DOMRect;
+			}
+			if (track === "row") {
+				const y = (i - 1) * ROW_PITCH;
+				return {
+					x: 0,
+					y,
+					left: 0,
+					right: 0,
+					top: y,
+					bottom: y + ROW_H,
+					width: 0,
+					height: ROW_H,
+				} as DOMRect;
+			}
+			return { x: 0, y: 0, left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
+		});
+	});
+	afterEach(() => vi.restoreAllMocks());
+
+	// `timeStamp` 是只读的,`fireEvent` 的 init 里传不进去,而它决定松手速度;起点不能用 0
+	// (React 写的是 `nativeEvent.timeStamp || Date.now()`,0 是 falsy)。
+	const T0 = 1000;
+	function pointer(el: Element, type: string, at: { x: number; y: number }, t: number) {
+		const e = new Event(type, { bubbles: true });
+		Object.assign(e, { pointerId: 1, clientX: at.x, clientY: at.y, button: 0 });
+		Object.defineProperty(e, "timeStamp", { value: t });
+		fireEvent(el, e);
+	}
+	function dragTo(el: Element, from: { x: number; y: number }, to: { x: number; y: number }) {
+		pointer(el, "pointerdown", from, T0);
+		pointer(el, "pointermove", to, T0 + 500);
+		pointer(el, "pointermove", to, T0 + 800);
+		pointer(el, "pointerup", to, T0 + 800);
+	}
+
+	it("把块拖到对方身上 → 存出去的清单里它排在对方**之后**(也就是压在上面)", async () => {
+		mockApi(false, TWO);
+		renderEditor();
+		const cover = await screen.findByRole("button", { name: /封面图/ });
+
+		dragTo(cover, { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedBlocks().map((b) => b.id)).toEqual(["title", "cover"]);
+	});
+
+	it("检查器里把「行」改成一样 → 位置变了,但块的先后**不许**动", async () => {
+		mockApi(false, TWO);
+		renderEditor();
+		fireEvent.click(await screen.findByRole("button", { name: /封面图/ }));
+
+		fireEvent.change(screen.getByRole("spinbutton", { name: /^行\(/ }), {
+			target: { value: "2" },
+		});
+		save();
+
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedBlocks().map((b) => b.id)).toEqual(["cover", "title"]);
 	});
 });

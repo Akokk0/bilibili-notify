@@ -121,6 +121,43 @@ export function overlappingBlocks(card: Card | undefined, blockId: string): stri
 }
 
 /**
+ * 画布**放下**一个块:改位置,顺手把它提到它压着的那些块之上。
+ *
+ * 与检查器那几个数字框(`setBlockGrid`)刻意**不是**同一个口。「把块拖到对方上面」这个
+ * 动作本身就带着「我要它在上面」的意思,而叠放次序不在 `grid` 里 —— 没写层次时它是
+ * **块在数组里的先后**。只改 `grid` 的话,拖上去的块照旧被对方盖住(2026-09-15 主人报的)。
+ * 数字框反过来:那是精确编辑,不该悄悄改块的先后,要换层次有「层次」那个旋钮。
+ *
+ * 提法分两步,都只做最小的那一下:
+ * - **层次只抬到与压着的那些块里最高的那个持平**,不凭空发明更高的一层 —— 于是永远撞
+ *   不到上限,也不会把一个没声明过层次的块推到别处去(谁都没写就一个字节都不写)。
+ * - **排到最后一个相交块之后**,不是甩到数组末尾:皮肤包是要被人读、被人 diff 的。
+ */
+export function dropBlockGrid(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+	patch: Partial<Grid>,
+): CardSkinManifest {
+	const moved = setBlockGrid(manifest, kind, blockId, patch);
+	const card = moved.cards[kind];
+	if (!card) return moved;
+	const under = new Set(overlappingBlocks(card, blockId));
+	if (under.size === 0) return moved;
+	const me = card.blocks.find((b) => b.id === blockId);
+	if (!me) return moved;
+
+	const top = card.blocks.reduce((m, b) => (under.has(b.id) ? Math.max(m, b.grid.z ?? 0) : m), 0);
+	const z = Math.max(me.grid.z ?? 0, top);
+	const raised = z > 0 ? { ...me, grid: { ...me.grid, z } } : me;
+
+	const rest = card.blocks.filter((b) => b.id !== blockId);
+	const last = rest.reduce((m, b, i) => (under.has(b.id) ? i : m), -1);
+	const blocks = [...rest.slice(0, last + 1), raised, ...rest.slice(last + 1)];
+	return { ...moved, cards: { ...moved.cards, [kind]: { ...card, blocks } } };
+}
+
+/**
  * 叠放的**方向** —— 与这个块占着同一片格子的块里,谁压在它上面、它又压着谁。
  *
  * 排序规矩**必须与渲染器一模一样**(`render-skin` 的 `gridStyle`):写了层次的按层次,

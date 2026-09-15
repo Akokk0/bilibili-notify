@@ -43,6 +43,7 @@ import {
 	addKnobOption,
 	adoptCard,
 	cardOf,
+	dropBlockGrid,
 	dropCard,
 	fontsError,
 	knobsError,
@@ -303,12 +304,14 @@ export default function CardSkinEditor() {
 									card={cardOf(draft, kind)}
 									selection={selection}
 									onSelect={setSelection}
-									// 拖块改行列 / 拉边改跨列,与检查器那几个数字框走同一个口。
+									// 拖块改行列 / 拉边改跨列。**与检查器那几个数字框刻意不是同一个口** ——
+									// 「放下」带着「我要它在这儿」的意思,叠上了就该在上面,而叠放次序不在
+									// `grid` 里(没写层次时是块的先后)。数字框是精确编辑,不改先后。
 									onGrid={
 										readOnly
 											? undefined
 											: (blockId, patch) =>
-													setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+													setDraft((d) => (d === null ? d : dropBlockGrid(d, kind, blockId, patch)))
 									}
 									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
 									onAdopt={

@@ -27,6 +27,7 @@ import {
 	cardOf,
 	clampInt,
 	columnsOf,
+	dropBlockGrid,
 	dropCard,
 	fontsError,
 	gridLimits,
@@ -858,6 +859,79 @@ describe("overlappingBlocks", () => {
 	it("卡没定义 / 块不在里头 → 空,别在这儿抛", () => {
 		expect(overlappingBlocks(undefined, "a")).toEqual([]);
 		expect(overlappingBlocks(card([at("a", 1, 1, 4)]), "没这个块")).toEqual([]);
+	});
+});
+
+/**
+ * 画布**放下**一个块(拖块身 / 拉边)——— 与检查器那几个数字框刻意**不是**同一个口:
+ * 放下带着「我把它摆到这儿」的意思,所以叠上了就该在上面;数字框是精确编辑,不该悄悄
+ * 改块的先后。
+ */
+describe("dropBlockGrid", () => {
+	const manifest = (blocks: Array<Record<string, unknown>>) =>
+		({
+			schemaVersion: 1,
+			name: "测试皮肤",
+			cards: { live: { width: 600, blocks } },
+		}) as never;
+	const at = (id: string, row: number, column: number, span: number, over = {}) => ({
+		id,
+		kind: "builtin",
+		builtin: "title",
+		grid: { row, column, span, ...over },
+	});
+	const ids = (m: CardSkinManifest) => cardOf(m, "live")?.blocks.map((b) => b.id);
+	const blockOf = (m: CardSkinManifest, id: string) =>
+		cardOf(m, "live")?.blocks.find((b) => b.id === id);
+
+	it("落到没人的地方 → 只改位置,块的先后一个字不动", () => {
+		const m = manifest([at("a", 1, 1, 4), at("b", 2, 1, 4)]);
+		const next = dropBlockGrid(m, "live", "a", { row: 3 });
+		expect(ids(next)).toEqual(["a", "b"]);
+		expect(blockOf(next, "a")?.grid.row).toBe(3);
+	});
+
+	it("落到别人身上 → 排到那块之后,于是压在它上面(主人 2026-09-15 报的那条)", () => {
+		const m = manifest([at("a", 1, 1, 12), at("b", 2, 1, 12)]);
+		const next = dropBlockGrid(m, "live", "a", { row: 2 });
+		expect(ids(next)).toEqual(["b", "a"]);
+	});
+
+	it("只排到**最后一个压着的块**之后,不是甩到数组末尾 —— diff 别无谓地变大", () => {
+		const m = manifest([at("a", 1, 1, 12), at("b", 1, 1, 12), at("c", 9, 1, 12)]);
+		const next = dropBlockGrid(m, "live", "a", { row: 1 });
+		expect(ids(next)).toEqual(["b", "a", "c"]);
+	});
+
+	it("对方写了层次 → 抬到与它**持平**,剩下的交给块的先后", () => {
+		const m = manifest([at("a", 1, 1, 12), at("b", 2, 1, 12, { z: 4 })]);
+		const next = dropBlockGrid(m, "live", "a", { row: 2 });
+		expect(blockOf(next, "a")?.grid.z).toBe(4);
+		expect(ids(next)).toEqual(["b", "a"]);
+	});
+
+	it("只抬到持平,不凭空发明更高的层 —— 所以永远撞不到上限", () => {
+		const m = manifest([at("a", 1, 1, 12), at("b", 2, 1, 12, { z: CARD_SKIN_LIMITS.layer.max })]);
+		const next = dropBlockGrid(m, "live", "a", { row: 2 });
+		expect(blockOf(next, "a")?.grid.z).toBe(CARD_SKIN_LIMITS.layer.max);
+	});
+
+	it("自己层次已经更高 → 不往下降", () => {
+		const m = manifest([at("a", 1, 1, 12, { z: 6 }), at("b", 2, 1, 12, { z: 2 })]);
+		const next = dropBlockGrid(m, "live", "a", { row: 2 });
+		expect(blockOf(next, "a")?.grid.z).toBe(6);
+	});
+
+	it("谁都没写层次就一个字节都不写 —— 0 的语义是没声明", () => {
+		const m = manifest([at("a", 1, 1, 12), at("b", 2, 1, 12)]);
+		const next = dropBlockGrid(m, "live", "a", { row: 2 });
+		expect(blockOf(next, "a")?.grid.z).toBeUndefined();
+	});
+
+	it("卡没定义 / 块不在里头 → 原样回,别在这儿抛", () => {
+		const m = manifest([at("a", 1, 1, 4)]);
+		expect(dropBlockGrid(m, "sc", "a", { row: 2 })).toBe(m);
+		expect(ids(dropBlockGrid(m, "live", "没这个块", { row: 2 }))).toEqual(["a"]);
 	});
 });
 
