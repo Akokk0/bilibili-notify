@@ -25,7 +25,7 @@ import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/int
 import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
 import { useCallback, useRef, useState } from "react";
 import { type GridPos, movedGrid, resizedGrid, type Track, trackAt } from "./canvas-drag";
-import { canAddBlock, columnsOf } from "./skin-draft-ops";
+import { canAddBlock, columnsOf, overlappingBlocks } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -147,6 +147,7 @@ export function SkinCanvas({
 						key={b.id}
 						kind={kind}
 						block={b}
+						overlaps={overlappingBlocks(card, b.id).length}
 						selected={selection?.kind === "block" && selection.id === b.id}
 						onSelect={() => onSelect({ kind: "block", id: b.id })}
 						drag={onGrid ? drag : undefined}
@@ -472,12 +473,15 @@ function ResizeHandle({
 function CanvasBlock({
 	kind,
 	block,
+	overlaps,
 	selected,
 	onSelect,
 	drag,
 }: {
 	kind: CardSkinKind;
 	block: Block;
+	/** 和几个块占着同一片格子。0 = 没叠。 */
+	overlaps: number;
 	selected: boolean;
 	onSelect: () => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
@@ -491,6 +495,7 @@ function CanvasBlock({
 	const { column, span } = shown;
 	const { row } = shown;
 	const rowSpan = block.grid.rowSpan;
+	const z = block.grid.z;
 
 	return (
 		<button
@@ -522,6 +527,12 @@ function CanvasBlock({
 				// 画布多出一列行号,所以 +1;`span` 直接就是皮肤 JSON 里那个数。
 				gridColumn: `${column + 1} / span ${span}`,
 				gridRow: `${row} / span ${rowSpan ?? 1}`,
+				// 层次照抄皮肤那个数,与渲染器同一条规矩(不写就不写)。
+				//
+				// ⚠️ 这不归「叠放层级分层表」管:那张表排的是**应用自己的浮层**(页头、遮罩、
+				// 弹窗),而这儿是**用户数据** —— 皮肤作者填的第几层,范围由 `layer` 上限锁着。
+				// 两套东西共用一个 CSS 属性,但不该共用一张表。
+				...(z ? { zIndex: z } : {}),
 			}}
 		>
 			{drag ? (
@@ -550,6 +561,11 @@ function CanvasBlock({
 			</span>
 			<span className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
 				{block.id} · {column}–{column + span - 1}
+				{z ? ` · z${z}` : ""}
+				{/* 叠了就说一句:下面那块被盖住了,不标出来没人知道它还在。**不是警告** ——
+				    重叠是特性(靠 showIf 互斥地占同一格也是正当用法),所以走的是中性的灰字,
+				    不是红条。 */}
+				{overlaps > 0 ? ` · 叠${overlaps}` : ""}
 			</span>
 		</button>
 	);

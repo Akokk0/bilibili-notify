@@ -597,3 +597,69 @@ describe("皮肤渲染器 — 出血(辉光的那圈余量)", () => {
 		expect(html).toMatch(/html\s*\{\s*width:\s*600px/);
 	});
 });
+
+/**
+ * **块的层次**(ADR-0014,2026-09-15 主人拍板「重叠是特性,补层次控制」)。
+ *
+ * 网格本来就允许两个块的列区间相交,缺的是「叠了谁在上面」—— 不写层次时那只看块在
+ * 数组里的先后。`grid.z` 把它变成一个说得出口的数。
+ *
+ * 两条不肯让步的:
+ * 1. **不写就一个字节都不多**。存量皮肤(含出厂默认)一个 `z` 都没有,多注一句 `z-index:0`
+ *    就是 23 份字节基准与像素门一起红,而外观根本没变。
+ * 2. **写了才压过手写的 CSS**。`[data-bn="self"]{z-index:5}` 一直是放行的;这个字段不写
+ *    就不碰它,写了由 inline 接管(inline 恒赢,清洗器又一律摘 `!important`)。
+ */
+describe("皮肤渲染器 — 块的层次", () => {
+	const at = (doc: Document, id: string) =>
+		doc.querySelector(`.bn-blk-${id}`)?.getAttribute("style") ?? "";
+
+	it("写了层次 → wrapper 上注 z-index", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin(
+					"t",
+					"title",
+					{ row: 1, column: 1, span: 6 },
+					{ grid: { row: 1, column: 1, span: 6, z: 3 } },
+				),
+			]),
+		);
+		expect(at(doc, "t")).toContain("z-index:3");
+	});
+
+	it("不写层次 → 样式里一个 z-index 都没有(存量皮肤出的图逐字节不变)", async () => {
+		const { doc } = await render(liveCard([builtin("t", "title", { row: 1, column: 1, span: 6 })]));
+		expect(at(doc, "t")).not.toContain("z-index");
+	});
+
+	it("层次 0 也不注 —— 面板把它调回 0 就是删键,等于「没声明」,交还给 CSS 与数组顺序", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin(
+					"t",
+					"title",
+					{ row: 1, column: 1, span: 6 },
+					{ grid: { row: 1, column: 1, span: 6, z: 0 } },
+				),
+			]),
+		);
+		expect(at(doc, "t")).not.toContain("z-index");
+	});
+
+	it("两个块占同一片格子时各注各的 —— 这才是「谁压谁」说得出口", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin(
+					"a",
+					"title",
+					{ row: 1, column: 1, span: 12 },
+					{ grid: { row: 1, column: 1, span: 12, z: 1 } },
+				),
+				custom("b", "<div>角标</div>", { row: 1, column: 9, span: 4 }),
+			]),
+		);
+		expect(at(doc, "a")).toContain("z-index:1");
+		expect(at(doc, "b")).not.toContain("z-index");
+	});
+});

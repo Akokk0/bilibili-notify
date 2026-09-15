@@ -43,6 +43,7 @@ import {
 	fontsError,
 	gridLimits,
 	knobsError,
+	overlappingBlocks,
 	type SkinMetaPatch,
 	skinMetaError,
 } from "./skin-draft-ops";
@@ -146,6 +147,7 @@ export function SkinInspector({
 	}
 
 	const lim = gridLimits(block.grid);
+	const overlapWith = overlappingBlocks(card, block.id);
 	// 自己带内容的块删了就找不回来:自定义块的 HTML、块 CSS、资产变量都不在目录里,
 	// 而内置块从「添加块」里原样再摆一个就是了 —— 所以只对前者拦一道。
 	const carriesWork =
@@ -188,7 +190,20 @@ export function SkinInspector({
 						lim={lim.rowSpan}
 						onChange={(rowSpan) => onGrid(block.id, { rowSpan })}
 					/>
+					<GridNum
+						label="层次"
+						value={block.grid.z ?? 0}
+						lim={lim.z}
+						onChange={(z) => onGrid(block.id, { z })}
+					/>
 				</div>
+				{/* 只在真叠上了才说这句:平时它是一句与你无关的话,叠上了它才是你要找的那句。 */}
+				{overlapWith.length > 0 ? (
+					<HintNote className="m-2.5 mt-0">
+						这个块与 {overlapWith.map((b) => `「${b}」`).join("、")} 占着同一片格子。层次大的画在
+						上面;都不写层次时,谁在下面看的是块的先后。
+					</HintNote>
+				) : null}
 			</Section>
 
 			{block.kind === "custom" ? (

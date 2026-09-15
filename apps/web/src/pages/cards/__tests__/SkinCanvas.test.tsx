@@ -579,3 +579,55 @@ describe("接管 / 交还一种卡", () => {
 		expect(onDropCard).toHaveBeenCalled();
 	});
 });
+
+/**
+ * **块的层次**(2026-09-15 主人拍板「重叠是特性,补层次控制」)。
+ *
+ * 画布的职责是**如实反映出图**,所以它必须按同一份层次叠 —— 编辑器里看到的顺序和推出去
+ * 的图对不上,比不给层次还糟。
+ */
+describe("画布 — 块的层次", () => {
+	const withBlocks = (blocks: Array<Record<string, unknown>>) => {
+		render(
+			<SkinCanvas
+				kind="live"
+				card={{ width: 600, blocks } as never}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
+		);
+	};
+
+	const chip = (name: RegExp) => screen.getByRole("button", { name });
+
+	it("层次落成 wrapper 的 z-index —— 画布与出图按同一个数叠", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+		]);
+		expect(chip(/UP 主名|name/).style.zIndex).toBe("2");
+	});
+
+	it("不写层次就不写 z-index —— 交还给块的先后(与渲染器同一条规矩)", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+		]);
+		expect(chip(/封面|cover/).style.zIndex).toBe("");
+	});
+
+	it("叠上了的块在画布上说得出来 —— 下面那块被盖住,不标一句没人知道它还在", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+		]);
+		expect(chip(/封面|cover/).textContent).toContain("叠");
+	});
+
+	it("同行不同列不算叠 —— 那是分栏,决策 6 要的就是它", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 4 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 5, span: 8 } },
+		]);
+		expect(chip(/封面|cover/).textContent).not.toContain("叠");
+	});
+});

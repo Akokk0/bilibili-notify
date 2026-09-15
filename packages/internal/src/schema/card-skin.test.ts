@@ -896,3 +896,63 @@ describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 		expect(CARD_PREVIEW_SCENES.live.map((s) => s.id)).toEqual(["streaming", "start", "ended"]);
 	});
 });
+
+/**
+ * **块的层次 `grid.z`**(2026-09-15 主人拍板「重叠是特性,补层次控制」)。
+ *
+ * 网格允许两个块的列区间相交 —— 那是 CSS Grid 的正常行为,也真有人要(角标压在封面上)。
+ * 缺的从来不是「能不能叠」,是**叠了谁在上面**:不写层次时那只看块在数组里的先后,
+ * 想调就得改块的顺序,而顺序同时还管着别的事(分割线的收拢、CSS 的先后)。
+ *
+ * ⚠️ 与「手写 `z-index`」的关系:块 CSS 里写 `[data-bn="self"]{z-index:5}` 一直是放行的
+ * (属性走黑名单)。所以这个字段**不写就不注**,老皮肤那条手写的路原样留着;写了才由
+ * inline 接管(inline 恒压过 CSS,清洗器又一律摘 `!important`)。
+ */
+describe("块的层次", () => {
+	const withZ = (z: unknown) =>
+		parseCardSkin({
+			schemaVersion: 1,
+			dataVersion: 1,
+			name: "t",
+			cards: {
+				live: {
+					width: 600,
+					blocks: [
+						{
+							id: "cover",
+							kind: "builtin",
+							builtin: "cover",
+							grid: { row: 1, column: 1, span: 12, ...(z === undefined ? {} : { z }) },
+						},
+					],
+				},
+			},
+		});
+
+	it("不写 —— 老皮肤原样装得进来", () => {
+		const r = withZ(undefined);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.manifest.cards.live?.blocks[0]?.grid.z).toBeUndefined();
+	});
+
+	it("0 到 9 都收", () => {
+		for (const z of [0, 1, 9]) {
+			const r = withZ(z);
+			expect(r.ok, `z=${z} 该收`).toBe(true);
+			if (r.ok) expect(r.manifest.cards.live?.blocks[0]?.grid.z).toBe(z);
+		}
+	});
+
+	it("超出上限不收", () => {
+		expect(withZ(10).ok).toBe(false);
+	});
+
+	it("**不给负数** —— 0 是地面,要沉底就把别的抬高", () => {
+		expect(withZ(-1).ok).toBe(false);
+	});
+
+	it("小数不收 —— 层次是第几层,不是多少层", () => {
+		expect(withZ(1.5).ok).toBe(false);
+	});
+});

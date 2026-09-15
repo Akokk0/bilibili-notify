@@ -47,6 +47,7 @@ export function gridLimits(grid: Grid): Record<keyof Grid, { min: number; max: n
 		column: { min: 1, max: cols },
 		span: { min: 1, max: cols - grid.column + 1 },
 		rowSpan: { min: 1, max: CARD_SKIN_LIMITS.maxRows },
+		z: { min: CARD_SKIN_LIMITS.layer.min, max: CARD_SKIN_LIMITS.layer.max },
 	};
 }
 
@@ -76,9 +77,47 @@ export function setBlockGrid(
 		// 也让 diff 里少一行噪音。
 		const rowSpan = clampInt(merged.rowSpan ?? 1, lim.rowSpan.min, lim.rowSpan.max);
 		if (rowSpan > 1) grid.rowSpan = rowSpan;
+		// 层次同理,而且多一条理由:**0 的语义是「没声明」**,而「没声明」是个有用的档 ——
+		// 块 CSS 里手写的 `z-index` 一直放行,调回 0 就是把这件事交还给它;写一个 `z: 0`
+		// 进去反而会由 inline 永久压住那条手写的路。
+		const z = clampInt(merged.z ?? 0, lim.z.min, lim.z.max);
+		if (z > 0) grid.z = z;
 		return { ...b, grid };
 	});
 	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+}
+
+/** 一个块占的行区间与列区间(都是闭区间)。 */
+function spanOf(grid: Grid): { r0: number; r1: number; c0: number; c1: number } {
+	return {
+		r0: grid.row,
+		r1: grid.row + (grid.rowSpan ?? 1) - 1,
+		c0: grid.column,
+		c1: grid.column + grid.span - 1,
+	};
+}
+
+/**
+ * 这个块和哪些块**占着同一片格子**(按块的先后回 id)。
+ *
+ * 判据是**行与列两个区间都相交** —— 同一行不同列是分栏,那正是决策 6 选网格换来的东西,
+ * 不算叠。紧挨着(1–4 与 5–8)也不算:它们没有共用的列。
+ *
+ * ⚠️ **这不是错误检查。** 靠 `showIf` 互斥地占同一格是合法技巧(有视频画视频卡、有图廊画
+ * 图廊,两个块摆同一处),而编辑器判不出运行时哪个为真。所以它只够说一句「你俩在同一片
+ * 格子上」,不出警告、不拦保存 —— 2026-09-15 主人拍板「重叠是特性」,配套的是层次,不是闸。
+ */
+export function overlappingBlocks(card: Card | undefined, blockId: string): string[] {
+	const me = card?.blocks.find((b) => b.id === blockId);
+	if (!card || !me) return [];
+	const a = spanOf(me.grid);
+	return card.blocks
+		.filter((b) => {
+			if (b.id === blockId) return false;
+			const o = spanOf(b.grid);
+			return a.r0 <= o.r1 && o.r0 <= a.r1 && a.c0 <= o.c1 && o.c0 <= a.c1;
+		})
+		.map((b) => b.id);
 }
 
 /** 这张卡还加得下块吗。皮肤没定义这种卡(`undefined`)与块数到顶都算加不下。 */

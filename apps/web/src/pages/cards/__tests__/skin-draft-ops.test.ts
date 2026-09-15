@@ -31,6 +31,7 @@ import {
 	fontsError,
 	gridLimits,
 	knobsError,
+	overlappingBlocks,
 	removeBlock,
 	removeFont,
 	removeKnob,
@@ -69,13 +70,14 @@ const manifest = (): CardSkinManifest =>
 		},
 	}) as unknown as CardSkinManifest;
 
+/**
+ * ⚠️ 形状**从真类型取**,别在这儿手抄一份 —— 抄的那份不会跟着 schema 走,给 grid 加一个
+ * 字段(2026-09-15 的层次 `z`)就会在这儿冒出一串「属性不存在」,而产物其实是新的。
+ */
+type BlockGrid = NonNullable<ReturnType<typeof blockOf>>["grid"];
+
 const gridOf = (m: CardSkinManifest, id: string) =>
-	blockOf(cardOf(m, "live"), id)?.grid as {
-		row: number;
-		column: number;
-		span: number;
-		rowSpan?: number;
-	};
+	blockOf(cardOf(m, "live"), id)?.grid as BlockGrid;
 
 describe("clampInt", () => {
 	it("越界夹回边界,不是拒", () => {
@@ -773,5 +775,87 @@ describe("自带字体", () => {
 				["assets/a.ttf", "assets/b.ttf"],
 			),
 		).toContain("重复");
+	});
+});
+
+/**
+ * **层次**(2026-09-15 主人拍板「重叠是特性,补层次控制」)。
+ *
+ * 与 `rowSpan` 同一套处置:**等于默认值就不落进清单**。理由多一条 —— 层次 0 的语义是
+ * 「没声明」,而「没声明」是个有用的档:块 CSS 里手写的 `z-index` 一直是放行的,把旋钮
+ * 调回 0 就是把这件事交还给它。写一个 `z: 0` 进去反而会永久压住那条手写的路。
+ */
+describe("setBlockGrid — 层次", () => {
+	it("拧上去就写进清单", () => {
+		expect(gridOf(setBlockGrid(manifest(), "live", "title", { z: 3 }), "title").z).toBe(3);
+	});
+
+	it("调回 0 = 删键,不是写一个 0 进去", () => {
+		const up = setBlockGrid(manifest(), "live", "title", { z: 3 });
+		const down = setBlockGrid(up, "live", "title", { z: 0 });
+		expect(gridOf(down, "title").z).toBeUndefined();
+		expect("z" in gridOf(down, "title")).toBe(false);
+	});
+
+	it("越界夹回边界", () => {
+		expect(gridOf(setBlockGrid(manifest(), "live", "title", { z: 99 }), "title").z).toBe(9);
+		expect(gridOf(setBlockGrid(manifest(), "live", "title", { z: -5 }), "title").z).toBeUndefined();
+	});
+
+	it("改位置不会把层次弄丢 —— 拖一下就掉一层是最难查的那种", () => {
+		const up = setBlockGrid(manifest(), "live", "title", { z: 2 });
+		expect(gridOf(setBlockGrid(up, "live", "title", { column: 4 }), "title").z).toBe(2);
+	});
+});
+
+/**
+ * **谁和谁占着同一片格子。**
+ *
+ * 判据是**行区间与列区间都相交** —— 同一行不同列是分栏(决策 6 要的那个),不算叠。
+ *
+ * ⚠️ 这不是错误检查:靠 `showIf` 互斥地占同一格是**合法技巧**(有视频画视频卡、有图廊
+ * 画图廊,两个块摆同一处),而编辑器判不出运行时哪个为真。所以它只用来在面板上说一句
+ * 「你俩在同一片格子上,层次大的在上面」,不出警告、不拦保存。
+ */
+describe("overlappingBlocks", () => {
+	const card = (blocks: Array<Record<string, unknown>>) => ({ width: 600, blocks }) as never;
+	const at = (id: string, row: number, column: number, span: number, over = {}) => ({
+		id,
+		kind: "builtin",
+		builtin: "title",
+		grid: { row, column, span, ...over },
+	});
+
+	it("同行、列区间相交 → 叠上了", () => {
+		const c = card([at("a", 1, 1, 8), at("b", 1, 6, 6)]);
+		expect(overlappingBlocks(c, "a")).toEqual(["b"]);
+		expect(overlappingBlocks(c, "b")).toEqual(["a"]);
+	});
+
+	it("**同行不同列 → 不算叠**,那是分栏(上舰卡的徽章就靠它)", () => {
+		expect(overlappingBlocks(card([at("a", 1, 1, 4), at("b", 1, 5, 8)]), "a")).toEqual([]);
+	});
+
+	it("紧挨着不算叠 —— 1–4 与 5–8 之间没有共用的列", () => {
+		expect(overlappingBlocks(card([at("a", 1, 1, 4), at("b", 1, 5, 4)]), "a")).toEqual([]);
+	});
+
+	it("不同行 → 不算叠,哪怕列整个重合", () => {
+		expect(overlappingBlocks(card([at("a", 1, 1, 12), at("b", 2, 1, 12)]), "a")).toEqual([]);
+	});
+
+	it("跨行的块与它盖住的那几行都算叠", () => {
+		const c = card([at("a", 1, 1, 6, { rowSpan: 3 }), at("b", 3, 1, 6)]);
+		expect(overlappingBlocks(c, "a")).toEqual(["b"]);
+	});
+
+	it("叠了好几个就都列出来,按块的先后", () => {
+		const c = card([at("a", 1, 1, 12), at("b", 1, 1, 3), at("c", 1, 10, 3)]);
+		expect(overlappingBlocks(c, "a")).toEqual(["b", "c"]);
+	});
+
+	it("卡没定义 / 块不在里头 → 空,别在这儿抛", () => {
+		expect(overlappingBlocks(undefined, "a")).toEqual([]);
+		expect(overlappingBlocks(card([at("a", 1, 1, 4)]), "没这个块")).toEqual([]);
 	});
 });

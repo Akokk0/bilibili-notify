@@ -277,10 +277,21 @@ interface PlacedBlock {
 	selfLabelled: boolean;
 }
 
-/** 块的 wrapper 样式:网格坐标(行号已压过)+ `min-width:0`(不写的话超宽内容会把这一列撑爆)。 */
+/**
+ * 块的 wrapper 样式:网格坐标(行号已压过)+ `min-width:0`(不写的话超宽内容会把这一列
+ * 撑爆)+ 可选的层次。
+ *
+ * **层次不写就一个字节都不注**(0 也不注):存量皮肤一个 `z` 都没有,多一句 `z-index:0`
+ * 就是 23 份字节基准与像素门一起红,而外观根本没变。而且「没声明」是个有用的档 ——
+ * 块 CSS 里手写的 `z-index` 一直是放行的,不声明就等于把这件事交还给它。
+ *
+ * grid item 的 `z-index` **不需要 `position`** 就生效(与 flex item 同,CSS Grid 规范里
+ * grid item 自成一个 painting 层级),所以这里只写一句就够。
+ */
 function gridStyle(block: CardSkinBlock, row: number): string {
-	const { column, span, rowSpan } = block.grid;
-	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0`;
+	const { column, span, rowSpan, z } = block.grid;
+	const layer = z ? `;z-index:${z}` : "";
+	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0${layer}`;
 }
 
 /**

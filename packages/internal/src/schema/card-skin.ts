@@ -496,6 +496,17 @@ const GridSchema = z.object({
 	span: z.number().int().min(1).max(CARD_SKIN_LIMITS.columns),
 	/** 跨几行,缺省 1(上舰卡的徽章要跨两行)。 */
 	rowSpan: z.number().int().min(1).max(CARD_SKIN_LIMITS.maxRows).optional(),
+	/**
+	 * **层次** —— 两个块的列区间相交时谁压在上面。缺省不写 = 跟数组先后走(CSS 的老规矩)。
+	 *
+	 * ⚠️ 与手写 `z-index` 并存:块 CSS 里写 `[data-bn="self"]{z-index:5}` 一直是放行的
+	 * (属性走黑名单)。**不写这个字段就一个字节都不注**,老皮肤那条路原样有效;写了才由
+	 * 渲染器注成 inline,而 inline 恒压过 CSS(清洗器一律摘 `!important`)。
+	 *
+	 * 之所以不把它做成第 8 枚常用旋钮、而是结构化字段:**画布要按它排**,而画布不解析
+	 * 块 CSS —— 留在 CSS 里的话,编辑器里看到的叠放顺序和出图对不上。
+	 */
+	z: z.number().int().min(CARD_SKIN_LIMITS.layer.min).max(CARD_SKIN_LIMITS.layer.max).optional(),
 });
 
 /**
