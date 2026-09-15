@@ -41,7 +41,7 @@ function liveCard(blocks: CardSkinCard["blocks"], over: Partial<CardSkinCard> = 
 const builtin = (
 	id: string,
 	name: string,
-	grid: { row: number; column: number; span: number },
+	grid: CardSkinCard["blocks"][number]["grid"],
 	over: Record<string, unknown> = {},
 ): CardSkinCard["blocks"][number] =>
 	({ id, kind: "builtin", builtin: name, grid, ...over }) as CardSkinCard["blocks"][number];
@@ -153,6 +153,19 @@ describe("皮肤渲染器 — 分割线的三条规矩", () => {
 		expect(doc.querySelectorAll(".bn-blk-d1")).toHaveLength(1);
 	});
 
+	it("悬空与否按行号算,不按数组先后", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin("d", "divider", { row: 2, column: 1, span: 12 }),
+				builtin("t", "title", { row: 1, column: 1, span: 12 }),
+				builtin("t2", "desc", { row: 3, column: 1, span: 12 }),
+			]),
+		);
+		// 分割线排在数组第一个,但它的行号在 title 之后 —— 不是「开头的分割线」,该留。
+		expect(labels(doc)).toEqual(["divider", "title", "desc"]);
+		expect(rows(doc)).toEqual(["2", "1", "3"]);
+	});
+
 	it("末尾的分割线弹出", async () => {
 		const { doc } = await render(
 			liveCard([
@@ -185,6 +198,40 @@ describe("皮肤渲染器 — 行压缩", () => {
 			]),
 		);
 		expect(rows(doc)).toEqual(["1", "1"]);
+	});
+
+	it("数组先后与行号不一致时,按行号排(编辑器里换行才看得见)", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin("a", "title", { row: 3, column: 1, span: 12 }),
+				builtin("b", "desc", { row: 1, column: 1, span: 12 }),
+			]),
+		);
+		// desc 的行号更小 → 画出来它在上面。DOM 先后照旧跟数组走(叠放的缺省档靠它),
+		// 位置整个由 grid-row 定:title 落第 2 行、desc 落第 1 行。
+		expect(labels(doc)).toEqual(["title", "desc"]);
+		expect(rows(doc)).toEqual(["2", "1"]);
+	});
+
+	it("跨行的块占掉的中间行不许被压掉(不然它会盖住下一块)", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin("a", "title", { row: 1, column: 1, span: 6, rowSpan: 3 }),
+				builtin("b", "desc", { row: 4, column: 1, span: 12 }),
+			]),
+		);
+		// 第 2、3 行没有块「起」在那儿,但 title 跨过去了 —— 压掉的话 desc 会落进 title 身上。
+		expect(rows(doc)).toEqual(["1", "4"]);
+	});
+
+	it("同一行内仍按数组先后(叠放的缺省档是数组顺序,排序不许把它打乱)", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin("a", "title", { row: 2, column: 1, span: 12 }),
+				builtin("b", "desc", { row: 2, column: 1, span: 12 }),
+			]),
+		);
+		expect(labels(doc)).toEqual(["title", "desc"]);
 	});
 });
 

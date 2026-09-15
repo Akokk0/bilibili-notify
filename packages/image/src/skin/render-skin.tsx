@@ -355,9 +355,9 @@ interface AssembleCtx {
  * 按皮肤把一张卡的块铺成网格的孩子(**不含外框**)。外层由 `renderSkinnedCard` 套外框,
  * 内层由转发框里那一层 div 套。
  *
- * 顺序是刻意的:先按 `showIf` 与「块自己有没有数据」筛,再按 `renderBlocks` 那三条规矩
- * 收分割线,最后才压行号 —— 反过来的话,被收起的块会在网格里留一行空白,而 `gap` 会把
- * 那行空白撑成看得见的缝。
+ * 顺序是刻意的:先按 `showIf` 与「块自己有没有数据」筛,再**按行号排**定视觉先后,然后
+ * 按 `renderBlocks` 那三条规矩收分割线,最后才压行号 —— 反过来的话,被收起的块会在网格
+ * 里留一行空白,而 `gap` 会把那行空白撑成看得见的缝。
  */
 function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): VNode[] {
 	const { kind, card } = ctx;
@@ -395,27 +395,50 @@ function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined)
 		});
 	}
 
-	// ② 收分割线:开头抑制、前一块不是内容块就抑制、末尾弹出(与 `renderBlocks` 同一套)。
-	const placed: PlacedBlock[] = [];
+	// ② 排出一份**视觉顺序**的视图:`grid.row` 才是「第几行」,数组先后只管同一行内的
+	// 左右。下面两步问的都是「画出来谁在谁上面」,得照这份视图走 —— 照数组走的话,编辑器
+	// 里把块拖到别的行,出图会一动不动(④ 按「出现顺序」重编行号,正好把换行抵消掉)。
+	// `sort` 稳定,同一行仍按数组先后。
+	const inOrder = [...kept].sort((a, b) => a.block.grid.row - b.block.grid.row);
+
+	// ③ 收分割线:开头抑制、前一块不是内容块就抑制、末尾弹出(与 `renderBlocks` 同一套)。
+	// 「前一块」「末尾」都按 ② 那份视觉顺序问。
+	const dropped = new Set<PlacedBlock>();
 	let lastWasContent = false;
-	for (const item of kept) {
+	let trailing: PlacedBlock | null = null;
+	for (const item of inOrder) {
 		if (item.isDivider) {
-			if (!lastWasContent) continue;
+			if (!lastWasContent) {
+				dropped.add(item);
+				continue;
+			}
 			lastWasContent = false;
+			trailing = item;
 		} else {
 			lastWasContent = true;
+			trailing = null;
 		}
-		placed.push(item);
 	}
-	if (placed.length > 0 && placed[placed.length - 1].isDivider) placed.pop();
+	if (trailing) dropped.add(trailing);
 
-	// ③ 压行:剩下的块按出现顺序把 row 重编成 1..n,免得被收起的块留下吃 gap 的空行。
+	// 出 DOM 的序**照旧是数组先后**:位置整个由 `grid-row` / `grid-column` 定,DOM 先后只
+	// 决定叠放的缺省档,而那一档的约定就是「跟数组先后走」(见 schema 里 `z` 那段);验收门
+	// A 也照这个序跟模板逐块比。
+	const placed = kept.filter((item) => !dropped.has(item));
+
+	// ④ 压行:把剩下的块**占到**的行按从小到大重编成 1..n,免得被收起的块留下吃 gap 的
+	// 空行。占到 ≠ 起在:跨行的块把中间那几行也占着,漏掉它们就会把下一块压进它身上。
+	// 一个块占的行因此恒是连着的一段,`rowSpan` 不用跟着改。
+	const occupied = new Set<number>();
+	for (const item of inOrder) {
+		if (dropped.has(item)) continue;
+		const { row, rowSpan } = item.block.grid;
+		for (let r = row; r < row + (rowSpan ?? 1); r++) occupied.add(r);
+	}
 	const rowMap = new Map<number, number>();
-	for (const { block } of placed) {
-		if (!rowMap.has(block.grid.row)) rowMap.set(block.grid.row, rowMap.size + 1);
-	}
+	for (const r of [...occupied].sort((a, b) => a - b)) rowMap.set(r, rowMap.size + 1);
 
-	// ④ 铺 wrapper。CSS 不在这儿拼:内外两层会走到这里两遍,拼在这儿就会按「谁先画完」
+	// ⑤ 铺 wrapper。CSS 不在这儿拼:内外两层会走到这里两遍,拼在这儿就会按「谁先画完」
 	// 排序,而且同一条规则出现两次。统一在 `renderSkinnedCard` 里按 `card.blocks` 的顺序拼。
 	return placed.map((item) => {
 		const cls = blockClass(item.block.id);
