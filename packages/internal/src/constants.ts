@@ -1245,9 +1245,12 @@ export const CARD_SKIN_LIMITS = {
 	 * 留负数只会让「默认 0」变成一个有上有下的中间层,平白多一种想不清楚的状态。
 	 */
 	layer: { min: 0, max: 9 },
-	/** 每块 CSS 的字节上限(含根块)。 */
+	/**
+	 * 每块 CSS 的字节上限(含根块)。**按 UTF-8 字节算**,量的人是
+	 * {@link cardSkinBytes} —— 三层(清洗器 / schema / 面板计数器)必须同一把尺。
+	 */
 	maxCssBytes: 16 * 1024,
-	/** 每个自定义块 HTML 的字节上限。 */
+	/** 每个自定义块 HTML 的字节上限(同上,UTF-8 字节)。 */
 	maxHtmlBytes: 8 * 1024,
 	/** 包名 / 作者 / 描述的长度。 */
 	name: { min: 1, max: 40 },
@@ -1274,6 +1277,21 @@ export const CARD_SKIN_LIMITS = {
 	 */
 	maxHeight: 4000,
 } as const;
+
+/**
+ * 皮肤里那几道体积闸量的**同一把尺**:UTF-8 字节。
+ *
+ * 三层都得用它 —— server 的清洗器、`CardSkinBlockSchema` 的长度闸、面板上那个
+ * 「3000 / 8192」计数器。用 `s.length` 量的是 UTF-16 单元数,一个汉字才记 1:
+ * 中文密集的自定义块会在面板上显示得好好的、也过得了 schema,存的时候被清洗器
+ * 退回来。挑字节当权威是因为存盘与 zip 预算算的本来就是字节。
+ *
+ * `TextEncoder` 浏览器与 Node 都有;server 那两处用的 `Buffer.byteLength(s, "utf8")`
+ * 结果相同,不必改回来。
+ */
+export function cardSkinBytes(s: string): number {
+	return new TextEncoder().encode(s).length;
+}
 
 // ---- 卡片皮肤的数据契约 ----------------------------------------------------------------
 

@@ -16,6 +16,7 @@ import {
 	type CardSkinKnob,
 	CardSkinKnobValueSchema,
 	type CardSkinManifest,
+	cardSkinBytes,
 	cardSkinKnobCss,
 	cardSkinKnobDeclarations,
 	cardSkinKnobVar,
@@ -172,6 +173,46 @@ describe("parseCardSkin", () => {
 							kind: "builtin",
 							builtin: "cover",
 							css: "a".repeat(CARD_SKIN_LIMITS.maxCssBytes + 1),
+							grid: { row: 1, column: 1, span: 12 },
+						},
+					],
+				},
+			},
+		});
+		expect(errorsOf(css)).toMatch(/css/);
+	});
+
+	it("html 与 css 的上限按 UTF-8 字节算 —— 一个汉字占 3 个", () => {
+		// 三层口径必须一致:清洗器量的是 UTF-8 字节,schema 若按 UTF-16 单元数放行,
+		// 中文密集的块就会「过得了 schema、存的时候被清洗器退回来」。
+		const cjkHtml = "字".repeat(3000);
+		expect(cjkHtml.length).toBeLessThan(CARD_SKIN_LIMITS.maxHtmlBytes);
+		expect(cardSkinBytes(cjkHtml)).toBeGreaterThan(CARD_SKIN_LIMITS.maxHtmlBytes);
+		const html = minimal({
+			cards: {
+				live: {
+					width: 600,
+					blocks: [
+						{ id: "c", kind: "custom", html: cjkHtml, grid: { row: 1, column: 1, span: 12 } },
+					],
+				},
+			},
+		});
+		expect(errorsOf(html)).toMatch(/html/);
+
+		const cjkCss = "字".repeat(6000);
+		expect(cjkCss.length).toBeLessThan(CARD_SKIN_LIMITS.maxCssBytes);
+		expect(cardSkinBytes(cjkCss)).toBeGreaterThan(CARD_SKIN_LIMITS.maxCssBytes);
+		const css = minimal({
+			cards: {
+				live: {
+					width: 600,
+					blocks: [
+						{
+							id: "b",
+							kind: "builtin",
+							builtin: "cover",
+							css: cjkCss,
 							grid: { row: 1, column: 1, span: 12 },
 						},
 					],

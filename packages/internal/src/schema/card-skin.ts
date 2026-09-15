@@ -43,6 +43,7 @@ import {
 	type CardSkinFrameHook,
 	type CardSkinKind,
 	type CardSkinKnobUnit,
+	cardSkinBytes,
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -58,7 +59,7 @@ export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
 
 export type { CardSkinBuiltinBlock };
 // 上限与内置块目录同样住 `constants.ts`(理由同上:编辑器要照它们画控件与块名)。
-export { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS };
+export { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS, cardSkinBytes };
 
 // ---- 挂点 -------------------------------------------------------------------
 
@@ -558,9 +559,15 @@ const AssetVarsSchema = z
 	);
 export type CardSkinAssetVars = z.infer<typeof AssetVarsSchema>;
 
+// 长度闸量 **UTF-8 字节**,不是 `.max()` 的 UTF-16 单元数 —— 后者一个汉字只记 1,
+// 而退这份包的清洗器量的是字节。两把尺不一样的话,中文密集的皮肤过得了这道门,
+// 存的时候才被清洗器退回来。
 const cssField = z
 	.string()
-	.max(CARD_SKIN_LIMITS.maxCssBytes, `css 超过 ${CARD_SKIN_LIMITS.maxCssBytes / 1024}KB`)
+	.refine(
+		(v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxCssBytes,
+		`css 超过 ${CARD_SKIN_LIMITS.maxCssBytes / 1024}KB`,
+	)
 	.optional();
 
 const BlockBaseSchema = z.object({
@@ -587,7 +594,10 @@ const CustomBlockSchema = BlockBaseSchema.extend({
 	/** 受限 HTML 子集(清洗在 server),文本里可写 `{a.b.c}` 占位符。 */
 	html: z
 		.string()
-		.max(CARD_SKIN_LIMITS.maxHtmlBytes, `html 超过 ${CARD_SKIN_LIMITS.maxHtmlBytes / 1024}KB`),
+		.refine(
+			(v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxHtmlBytes,
+			`html 超过 ${CARD_SKIN_LIMITS.maxHtmlBytes / 1024}KB`,
+		),
 }).strict();
 
 export const CardSkinBlockSchema = z.discriminatedUnion("kind", [

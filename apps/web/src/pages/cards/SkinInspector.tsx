@@ -19,6 +19,7 @@ import {
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
+	cardSkinBytes,
 } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
@@ -419,7 +420,10 @@ function HtmlSection({
 	value: string;
 	onChange: (html: string) => void;
 }) {
-	const over = value.length > CARD_SKIN_LIMITS.maxHtmlBytes;
+	// 量 **UTF-8 字节**,不是 `value.length` —— 退这份包的清洗器量的就是字节,
+	// 两把尺不一样的话面板会一路显示「没超」,存下去才被退回来(汉字占 3 个)。
+	const bytes = cardSkinBytes(value);
+	const over = bytes > CARD_SKIN_LIMITS.maxHtmlBytes;
 	const empty = value.trim() === "";
 	return (
 		<Section label="内容">
@@ -458,11 +462,11 @@ function HtmlSection({
 					</ErrorNote>
 				) : over ? (
 					<ErrorNote size="sm">
-						{value.length} 字,超过上限 {CARD_SKIN_LIMITS.maxHtmlBytes} —— 这样存不下去。
+						{bytes} 字节,超过上限 {CARD_SKIN_LIMITS.maxHtmlBytes} —— 这样存不下去。
 					</ErrorNote>
 				) : (
 					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
-						{value.length} / {CARD_SKIN_LIMITS.maxHtmlBytes}
+						{bytes} / {CARD_SKIN_LIMITS.maxHtmlBytes}
 					</span>
 				)}
 			</div>
@@ -553,7 +557,9 @@ function CssSection({
 	value: string;
 	onChange: (css: string) => void;
 }) {
-	const over = value.length > CARD_SKIN_LIMITS.maxCssBytes;
+	// 同上:计数器与那道闸必须是同一把尺(UTF-8 字节)。
+	const bytes = cardSkinBytes(value);
+	const over = bytes > CARD_SKIN_LIMITS.maxCssBytes;
 	return (
 		<Section label="CSS">
 			<div className="flex flex-col gap-2 p-2.5">
@@ -591,11 +597,11 @@ function CssSection({
 
 				{over ? (
 					<ErrorNote size="sm">
-						{value.length} 字,超过上限 {CARD_SKIN_LIMITS.maxCssBytes} —— 这样存不下去。
+						{bytes} 字节,超过上限 {CARD_SKIN_LIMITS.maxCssBytes} —— 这样存不下去。
 					</ErrorNote>
 				) : (
 					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
-						{value.length} / {CARD_SKIN_LIMITS.maxCssBytes}
+						{bytes} / {CARD_SKIN_LIMITS.maxCssBytes}
 					</span>
 				)}
 			</div>
