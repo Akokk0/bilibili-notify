@@ -21,11 +21,15 @@ export interface Track {
 	readonly end: number;
 }
 
-/** 块在网格里的位置 —— 这里只关心这三个数(`rowSpan` 拖不着,留给检查器)。 */
+/**
+ * 块在网格里的位置。拖拽只改前三个数 —— `rowSpan` 拖不着(留给检查器),但落点指示要画得
+ * 跟块一样高,所以它跟着一起带过来。
+ */
 export interface GridPos {
 	readonly row: number;
 	readonly column: number;
 	readonly span: number;
+	readonly rowSpan?: number;
 }
 
 /**
@@ -90,4 +94,90 @@ export function resizedGrid(
 	const rightEdge = grid.column + grid.span;
 	const start = clamp(column, 1, rightEdge - 1);
 	return { column: start, span: rightEdge - start };
+}
+
+// ── 松手之后 ──────────────────────────────────────────────────────────────────
+
+/**
+ * **动量投射** —— 以这个速度甩出去,最终会停在多远的地方(px)。
+ *
+ * 这是 Apple 在 *Designing Fluid Interfaces* 里给的那条**指数衰减**公式,不是教科书的
+ * `v²/(2a)`。两条曲线都"物理正确",但只有前者是 iOS 那个手感,而这件事要的全部就是手感。
+ *
+ * 用途:落点不按**松手时块在哪**算,按**甩出去会停到哪**算 —— 轻轻放下就落回原地,
+ * 用力一甩能多走几格。拿一个小输入,换一个大输出。
+ *
+ * @param velocity px/s
+ * @param decelerationRate 0.998 是正常滚动手感,0.99 收得更快
+ */
+export function project(velocity: number, decelerationRate = 0.998): number {
+	return ((velocity / 1000) * decelerationRate) / (1 - decelerationRate);
+}
+
+/** 松手那一刻的速度,px/s,两轴各算各的。 */
+export interface Velocity {
+	readonly x: number;
+	readonly y: number;
+}
+
+/**
+ * 指针轨迹的取样器 —— 松手时要把**手的速度**交给弹簧,拖与弹之间才没有接缝。
+ *
+ * **只看最后两个点是不行的**:手指常常在终点上停留一小会儿,那两帧的位移是 0,算出来的
+ * 速度也是 0 —— 明明甩出去了,却一点惯性都没有。所以取最近一段时间窗里的首尾之差。
+ *
+ * 两轴分开算(Apple:把 2D 拆成各自独立的 X / Y 弹簧)—— 合成一个 2D 速度会在两轴快慢
+ * 不同时失真。
+ */
+/**
+ * 速度封顶(px/s)。**不是为了测试,是真会炸**:两次指针事件相隔一毫秒、中间挪了两百像素
+ * 的话,算出来是二十万 px/s,投射出去块就飞到网格外面了。抖动、断帧、后台标签页切回来
+ * 都能造出这种一毫秒。3000 配着下面那档减速率,一次有力的甩大约多走五列 —— 够狠,但还
+ * 在这张网格上。
+ */
+const MAX_SPEED = 3000;
+
+const clampSpeed = (v: number) => Math.max(-MAX_SPEED, Math.min(MAX_SPEED, v));
+
+export function createVelocityTracker(windowMs = 100): {
+	add(x: number, y: number, t: number): void;
+	velocity(t: number): Velocity;
+} {
+	let points: Array<{ x: number; y: number; t: number }> = [];
+	const trim = (t: number) => {
+		// 留一个窗口外的点当"起点":全扔掉的话,窗口里只剩一个点就永远算不出速度。
+		const cut = points.findIndex((p) => p.t >= t - windowMs);
+		if (cut > 0) points = points.slice(cut - 1);
+	};
+	return {
+		add(x, y, t) {
+			points.push({ x, y, t });
+			trim(t);
+		},
+		velocity(t) {
+			trim(t);
+			const first = points[0];
+			const last = points[points.length - 1];
+			if (!first || !last) return { x: 0, y: 0 };
+			// 首尾同一时刻(或只有一个点)→ 没有可算的速度,别吐 NaN / Infinity。
+			const dt = last.t - first.t;
+			if (dt <= 0) return { x: 0, y: 0 };
+			return {
+				x: clampSpeed(((last.x - first.x) / dt) * 1000),
+				y: clampSpeed(((last.y - first.y) / dt) * 1000),
+			};
+		},
+	};
+}
+
+/**
+ * 系统里关了动效没有。**关了就一步到位**,不是把时长调短 —— 前庭敏感的人要的是「不要动」,
+ * 不是「动得快一点」。1:1 跟手那部分照旧:那是直接操作,不是动画。
+ *
+ * `matchMedia` 取不到时当**没关**(浏览器里它一定在;取不到的是测试环境这类没有它的地方,
+ * 那儿本来也不播动画)。
+ */
+export function prefersReducedMotion(): boolean {
+	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+	return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

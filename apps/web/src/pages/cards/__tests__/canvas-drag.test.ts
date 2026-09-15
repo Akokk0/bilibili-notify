@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { movedGrid, resizedGrid, trackAt } from "../canvas-drag";
+import { createVelocityTracker, movedGrid, project, resizedGrid, trackAt } from "../canvas-drag";
 
 /** 12 条等宽轨道,每条 40px,从 x=100 起;中间不留缝(画布真有 gap,但算法不该依赖它)。 */
 const TRACKS = Array.from({ length: 12 }, (_, i) => ({
@@ -92,5 +92,95 @@ describe("拉边 —— 改跨列", () => {
 
 	it("拉右边越过第 12 列就停住", () => {
 		expect(resizedGrid(grid, "right", 99)).toEqual({ column: 3, span: 10 });
+	});
+});
+
+/**
+ * **动量投射** —— 一甩手,块该停在哪儿。
+ *
+ * 这是 Apple 在 *Designing Fluid Interfaces* 里给的那条公式(指数衰减),**不是**教科书的
+ * `v²/(2a)`。两条曲线都"物理正确",但只有前者是 iOS 那个手感,而手感正是这件事的全部。
+ *
+ * 用途:落点不按**松手的位置**算,按**甩出去会停到的位置**算 —— 轻轻放下就落在原地,
+ * 用力一甩就多走几格。「拿一个小输入,换一个大输出」。
+ */
+describe("动量投射", () => {
+	it("不动就是不动", () => {
+		expect(project(0)).toBe(0);
+	});
+
+	it("越快投得越远", () => {
+		expect(project(2000)).toBeGreaterThan(project(500));
+	});
+
+	it("方向跟着速度走", () => {
+		expect(project(-1000)).toBe(-project(1000));
+	});
+
+	it("1000px/s 大致投出半个屏 —— 这是那条曲线的定标点", () => {
+		// (1000/1000) * 0.998 / (1 - 0.998) = 499
+		expect(Math.round(project(1000))).toBe(499);
+	});
+
+	it("减速率越大滑得越远(0.99 比 0.998 收得快)", () => {
+		expect(project(1000, 0.99)).toBeLessThan(project(1000, 0.998));
+	});
+});
+
+/**
+ * **松手速度**。
+ *
+ * 只看最后两个点是不行的:手指停在终点上那一小会儿,最后两帧的位移是 0,算出来的速度也是
+ * 0 —— 明明是甩出去的,却一点惯性都没有。所以取**最近一小段时间窗**里的位移 / 时间。
+ */
+describe("松手速度", () => {
+	it("匀速拖 → 速度就是那个速度", () => {
+		const t = createVelocityTracker();
+		t.add(0, 0, 0);
+		t.add(50, 0, 50);
+		t.add(100, 0, 100);
+		expect(Math.round(t.velocity(100).x)).toBe(1000);
+	});
+
+	it("**停在终点上不算停** —— 窗口外的老点不参与,窗口内的位移说了算", () => {
+		const t = createVelocityTracker(100);
+		t.add(0, 0, 0);
+		t.add(300, 0, 60); // 甩过来
+		t.add(300, 0, 100); // 手指停住 40ms
+		// 最后两点位移为 0,但窗口里确实走了 300px/100ms = 3000px/s 的量级
+		expect(t.velocity(100).x).toBeGreaterThan(1000);
+	});
+
+	it("停够久 → 真的归零(窗口里只剩不动的点)", () => {
+		const t = createVelocityTracker(100);
+		t.add(0, 0, 0);
+		t.add(300, 0, 60);
+		t.add(300, 0, 300);
+		expect(t.velocity(300).x).toBe(0);
+	});
+
+	it("**速度封顶** —— 两帧相隔一毫秒挪两百像素不该算成二十万 px/s,那会把块投射出网格", () => {
+		const t = createVelocityTracker();
+		t.add(0, 0, 0);
+		t.add(200, -200, 1);
+		const v = t.velocity(1);
+		expect(v.x).toBe(3000);
+		expect(v.y).toBe(-3000);
+	});
+
+	it("x 与 y 各算各的 —— 合成一个 2D 速度会在两轴快慢不同时失真", () => {
+		const t = createVelocityTracker();
+		t.add(0, 0, 0);
+		t.add(100, 20, 100);
+		const v = t.velocity(100);
+		expect(Math.round(v.x)).toBe(1000);
+		expect(Math.round(v.y)).toBe(200);
+	});
+
+	it("一个点都没有 / 只有一个点 → 零速度,别吐 NaN", () => {
+		const t = createVelocityTracker();
+		expect(t.velocity(0)).toEqual({ x: 0, y: 0 });
+		t.add(5, 5, 0);
+		expect(t.velocity(0)).toEqual({ x: 0, y: 0 });
 	});
 });

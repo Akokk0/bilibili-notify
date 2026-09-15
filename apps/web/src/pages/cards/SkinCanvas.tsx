@@ -23,8 +23,19 @@ import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
-import { useCallback, useRef, useState } from "react";
-import { type GridPos, movedGrid, resizedGrid, type Track, trackAt } from "./canvas-drag";
+import { animate, type MotionValue, motion, useMotionValue } from "motion/react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+	createVelocityTracker,
+	type GridPos,
+	movedGrid,
+	prefersReducedMotion,
+	project,
+	resizedGrid,
+	type Track,
+	trackAt,
+	type Velocity,
+} from "./canvas-drag";
 import { canAddBlock, columnsOf, overlappingBlocks } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
@@ -153,6 +164,20 @@ export function SkinCanvas({
 						drag={onGrid ? drag : undefined}
 					/>
 				))}
+
+				{/* **落点指示** —— 块 1:1 贴着手走,所以「会落到哪一格」得由另一样东西说。
+				    没有它,1:1 跟手就成了「不知道会落在哪」的乱飘。 */}
+				{drag.landing ? (
+					<div
+						data-testid="drop-hint"
+						aria-hidden="true"
+						className="pointer-events-none rounded-bn-sm border-2 border-bn-pink border-dashed bg-bn-pink/8"
+						style={{
+							gridColumn: `${drag.landing.column + 1} / span ${drag.landing.span}`,
+							gridRow: `${drag.landing.row} / span ${drag.landing.rowSpan ?? 1}`,
+						}}
+					/>
+				) : null}
 
 				<EmptyRow
 					cols={cols}
@@ -326,8 +351,12 @@ function BlockCatalogue({
 // ── 拖拽 ──────────────────────────────────────────────────────────────────────
 
 /** 一次拖拽的全程。`base` 是**按下那一刻**的位置 —— 每次移动都从它算起,不然偏移会累加。 */
+
 type DragMode = "move" | "left" | "right";
 
+/**
+ * 一次拖拽的全程。`base` 是**按下那一刻**的位置 —— 每次移动都从它算起,不然偏移会累加。
+ */
 interface DragState {
 	id: string;
 	mode: DragMode;
@@ -336,22 +365,48 @@ interface DragState {
 	grabOffset: number;
 	startX: number;
 	startY: number;
+	/** 按下那一刻块的 transform —— 打断一段回落时,新的拖拽要从**眼前这个位置**接着走。 */
+	baseX: number;
+	baseY: number;
 	/** 超过阈值才算「在拖」;没超过就是点一下,交给 onSelect。 */
 	moved: boolean;
-	grid: GridPos;
+	/** 松手会落到的格子(拉边时是改过跨列的那个)。落点指示画的就是它。 */
+	landing: GridPos;
 }
 
 /** 手指/鼠标抖这么几像素不算拖 —— 不留这道坎,点选会时不时变成把块挪走一格。 */
 const DRAG_THRESHOLD = 4;
+
+/**
+ * 回落的弹簧。Apple 那张表里「移动 / 重新定位」是 `damping 1.0 / response 0.4`,
+ * 翻到 Motion 就是 `bounce 0` + `duration 0.4`。
+ *
+ * **不给回弹**:过冲要留给手上真带了动量的动作(甩、扔)。块是被放下的,不是被扔出去的
+ * —— 一个轻轻放下却自己弹一下的块,读起来像是没放稳。
+ */
+const SETTLE = { type: "spring", bounce: 0, duration: 0.4 } as const;
+
+/**
+ * 投射用的减速率。Apple 给的 `0.998` 是**滚动**那个手感 —— 在长列表上对,在一张十二列的
+ * 网格上太滑了(1000px/s 就投出八列去)。`0.99` 收得快:同样的速度大约多走一列半,一次
+ * 有力的甩四五列,刚好是「用力扔得远一点」而不是「一撒手就飞到头」。
+ */
+const DECELERATION = 0.99;
 
 export interface CanvasDrag {
 	/** 画布根节点 —— 量尺(`[data-canvas-track]`)都在它底下。 */
 	rootRef: React.RefObject<HTMLDivElement | null>;
 	begin: (id: string, base: GridPos, mode: DragMode, e: React.PointerEvent) => void;
 	onPointerMove: (e: React.PointerEvent) => void;
-	onPointerUp: () => void;
-	/** 这个块正被拖着 → 画在这个位置(还没交回去)。 */
+	onPointerUp: (e: React.PointerEvent) => void;
+	/** 正在拖 / 正在回落的那个块 —— 只有它挂着 x / y 两个 MotionValue。 */
+	activeId: string | null;
+	x: MotionValue<number>;
+	y: MotionValue<number>;
+	/** 拉边时块**当场**改跨列(宽度由网格定,补间不了),这里回那个改过的位置。 */
 	previewOf: (id: string) => GridPos | undefined;
+	/** 松手会落到哪一格 —— 画那块落点指示用。移动中才有。 */
+	landing: GridPos | null;
 	/** 刚拖完。松手后浏览器还会补一记 click,那一记不该当成「选中」。 */
 	consumeClick: () => boolean;
 }
@@ -369,70 +424,172 @@ function tracksOf(root: HTMLElement | null, track: "column" | "row"): Track[] {
 	});
 }
 
+/**
+ * 拖拽的全部行为。
+ *
+ * **移动是 1:1 跟手的**(Apple:「触摸与内容要一起动」)—— 块跟着指针连续走,不再一格一格
+ * 跳;会落到哪一格由一块落点指示说,不靠块自己去对齐。一格一格跳正是上一版「生硬」的根子:
+ * 那等于每跨一格就打断一次动画,而 CSS 过渡是打断不了的,于是它既不跟手也没有惯性。
+ *
+ * **拉边仍是离散的**,而且是**当场**改:块的宽度由网格轨道定,transform 补不了宽度
+ * (拿 `scaleX` 顶会把字挤扁)。离散 + 即时读起来是「干脆」,不是生硬 —— 生硬的是有延迟
+ * 的离散。
+ *
+ * 松手交给弹簧,并把**手上的速度递过去**(Apple 说的那道接缝:拖与弹之间不该看得出接口),
+ * 落点还按**投射出去会停到哪**算,而不是松手时块在哪。
+ */
 function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 	const rootRef = useRef<HTMLDivElement>(null);
-	const [drag, setDrag] = useState<DragState | null>(null);
+	const x = useMotionValue(0);
+	const y = useMotionValue(0);
+	/**
+	 * **真值在 ref 里,state 只用来触发重画。**
+	 *
+	 * 一开始把这些写进 `setDrag(d => …)` 的 updater 里,踩了个不响的坑:那个回调跑在
+	 * render 阶段,不是事件处理里 —— 在它里头 `x.set()`、调 `onGrid` 都是在渲染中做副作用,
+	 * React 可以随时重跑它、也可以丢掉一次。表现是拖拽整个没反应,而代码看着完全正常。
+	 */
+	const dragRef = useRef<DragState | null>(null);
+	const [, bump] = useState(0);
+	const [settling, setSettling] = useState<string | null>(null);
 	const dragged = useRef(false);
+	const velocity = useRef(createVelocityTracker());
+	/** 松手那一刻块在屏幕上的位置 —— 提交之后要靠它把 transform 反推回来(FLIP)。 */
+	const releasedRect = useRef<DOMRect | null>(null);
+	const pending = useRef<{ id: string; v: Velocity } | null>(null);
+
+	const redraw = useCallback(() => bump((n) => n + 1), []);
 
 	const begin = useCallback(
 		(id: string, base: GridPos, mode: DragMode, e: React.PointerEvent) => {
 			if (!onGrid || e.button !== 0) return;
+			// 打断一段回落:停在眼前这个位置接着拖,别跳回目标值(Apple 的第三条,也是最
+			// 重要的那条 —— 动画要能被一把抓住)。
+			x.stop();
+			y.stop();
 			const at = trackAt(tracksOf(rootRef.current, "column"), e.clientX);
 			e.currentTarget.setPointerCapture?.(e.pointerId);
-			setDrag({
+			velocity.current = createVelocityTracker();
+			velocity.current.add(e.clientX, e.clientY, e.timeStamp);
+			setSettling(null);
+			dragRef.current = {
 				id,
 				mode,
 				base,
 				grabOffset: mode === "move" ? Math.max(0, at - base.column) : 0,
 				startX: e.clientX,
 				startY: e.clientY,
+				baseX: x.get(),
+				baseY: y.get(),
 				moved: false,
-				grid: base,
-			});
+				landing: base,
+			};
+			redraw();
 		},
-		[onGrid],
+		[onGrid, x, y, redraw],
 	);
 
-	const onPointerMove = useCallback((e: React.PointerEvent) => {
-		const { clientX, clientY } = e;
-		setDrag((d) => {
-			if (!d) return d;
-			const moved =
-				d.moved ||
-				Math.abs(clientX - d.startX) > DRAG_THRESHOLD ||
-				Math.abs(clientY - d.startY) > DRAG_THRESHOLD;
-			if (!moved) return d;
-			const column = trackAt(tracksOf(rootRef.current, "column"), clientX);
-			const row = trackAt(tracksOf(rootRef.current, "row"), clientY);
-			const grid =
-				d.mode === "move"
-					? { ...d.base, ...movedGrid(d.base, { column, row }, d.grabOffset) }
-					: { ...d.base, ...resizedGrid(d.base, d.mode, column) };
-			return { ...d, moved: true, grid };
-		});
-	}, []);
-
-	const onPointerUp = useCallback(() => {
-		setDrag((d) => {
-			if (d?.moved && onGrid) {
-				dragged.current = true;
-				onGrid(
-					d.id,
-					d.mode === "move"
-						? { row: d.grid.row, column: d.grid.column }
-						: { column: d.grid.column, span: d.grid.span },
-				);
+	const onPointerMove = useCallback(
+		(e: React.PointerEvent) => {
+			const d = dragRef.current;
+			if (!d) return;
+			const { clientX, clientY, timeStamp } = e;
+			velocity.current.add(clientX, clientY, timeStamp);
+			if (
+				!d.moved &&
+				Math.abs(clientX - d.startX) <= DRAG_THRESHOLD &&
+				Math.abs(clientY - d.startY) <= DRAG_THRESHOLD
+			) {
+				return;
 			}
-			return null;
-		});
-	}, [onGrid]);
+			const column = trackAt(tracksOf(rootRef.current, "column"), clientX);
+			if (d.mode === "move") {
+				// 1:1:块就贴在手上,不去对齐格子 —— 对齐这件事交给落点指示说。
+				x.set(d.baseX + clientX - d.startX);
+				y.set(d.baseY + clientY - d.startY);
+				const row = trackAt(tracksOf(rootRef.current, "row"), clientY);
+				d.landing = { ...d.base, ...movedGrid(d.base, { column, row }, d.grabOffset) };
+			} else {
+				d.landing = { ...d.base, ...resizedGrid(d.base, d.mode, column) };
+			}
+			d.moved = true;
+			redraw();
+		},
+		[x, y, redraw],
+	);
+
+	const onPointerUp = useCallback(
+		(e: React.PointerEvent) => {
+			const d = dragRef.current;
+			dragRef.current = null;
+			if (!d) return;
+			if (!d.moved || !onGrid) return redraw();
+			dragged.current = true;
+			if (d.mode !== "move") {
+				// 拉边已经当场改完了,这里只把它落到清单里,没有要弹的东西。
+				onGrid(d.id, { column: d.landing.column, span: d.landing.span });
+				return redraw();
+			}
+			// 落点按**甩出去会停到哪**算,不是松手时块在哪(Apple 的动量投射)。
+			const v = velocity.current.velocity(e.timeStamp);
+			const column = trackAt(
+				tracksOf(rootRef.current, "column"),
+				e.clientX + project(v.x, DECELERATION),
+			);
+			const row = trackAt(tracksOf(rootRef.current, "row"), e.clientY + project(v.y, DECELERATION));
+			releasedRect.current =
+				rootRef.current?.querySelector(`[data-block-id="${d.id}"]`)?.getBoundingClientRect() ??
+				null;
+			pending.current = { id: d.id, v };
+			setSettling(d.id);
+			onGrid(d.id, movedGrid(d.base, { column, row }, d.grabOffset));
+		},
+		[onGrid, redraw],
+	);
+
+	// 提交之后把 transform 反推回**松手那一刻的位置**,再让弹簧把它送到 0 —— 这样块是从
+	// 手底下接着走的,而不是先跳到新格子再动。速度原样递给弹簧,拖与弹之间才没有接缝。
+	useLayoutEffect(() => {
+		const job = pending.current;
+		const from = releasedRect.current;
+		if (!job || !from) return;
+		pending.current = null;
+		releasedRect.current = null;
+		const node = rootRef.current?.querySelector(`[data-block-id="${job.id}"]`);
+		if (!node) {
+			setSettling(null);
+			return;
+		}
+		const to = node.getBoundingClientRect();
+		// 反推:先无动画地回到眼前那个位置。
+		x.jump(from.left - to.left + x.get());
+		y.jump(from.top - to.top + y.get());
+		if (prefersReducedMotion()) {
+			x.jump(0);
+			y.jump(0);
+			setSettling(null);
+			return;
+		}
+		void Promise.all([
+			animate(x, 0, { ...SETTLE, velocity: job.v.x }),
+			animate(y, 0, { ...SETTLE, velocity: job.v.y }),
+		]).then(() => setSettling(null));
+	});
 
 	return {
 		rootRef,
 		begin,
 		onPointerMove,
 		onPointerUp,
-		previewOf: (id) => (drag?.id === id && drag.moved ? drag.grid : undefined),
+		activeId: dragRef.current?.id ?? settling,
+		x,
+		y,
+		previewOf: (id) => {
+			const d = dragRef.current;
+			return d?.id === id && d.moved && d.mode !== "move" ? d.landing : undefined;
+		},
+		landing:
+			dragRef.current?.moved && dragRef.current.mode === "move" ? dragRef.current.landing : null,
 		consumeClick: () => {
 			const was = dragged.current;
 			dragged.current = false;
@@ -441,10 +598,6 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 	};
 }
 
-/**
- * 拉边的把手。**对读屏器隐藏**:它是纯指针的便利,键盘那条路是检查器里的数字框 ——
- * 那儿一直在,而且比拖拽精确。给它一个够得着的宽度(10px)而不是 1px 的发丝线。
- */
 function ResizeHandle({
 	side,
 	blockId,
@@ -489,16 +642,20 @@ function CanvasBlock({
 }) {
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
 	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
-	// 正拖着的时候画在**预览位置**上,松手才交回去 —— 每动一格发一次的话,右边那张真预览
-	// 会被整趟拖拽按住不放地重画。
+	// 拉边是**当场**改的(块的宽度由网格轨道定,transform 补不了),所以拉边时格子就画在
+	// 改过的位置上;移动则相反 —— 块靠 transform 贴着手走,格子始终停在原处,会落到哪
+	// 由落点指示说。
 	const shown = drag?.previewOf(block.id) ?? block.grid;
 	const { column, span } = shown;
 	const { row } = shown;
 	const rowSpan = block.grid.rowSpan;
 	const z = block.grid.z;
+	// 正在拖 / 正在回落的那个块才挂 x / y —— 别的块一个 transform 都不该多出来。
+	const live = drag?.activeId === block.id;
 
 	return (
-		<button
+		<motion.button
+			data-block-id={block.id}
 			type="button"
 			onClick={() => {
 				// 松手后浏览器还会补一记 click —— 刚拖完的那一记不是「选中」。
@@ -527,6 +684,12 @@ function CanvasBlock({
 				// 画布多出一列行号,所以 +1;`span` 直接就是皮肤 JSON 里那个数。
 				gridColumn: `${column + 1} / span ${span}`,
 				gridRow: `${row} / span ${rowSpan ?? 1}`,
+				// 1:1 跟手与回落都走这两个 MotionValue。弹簧天生从**当前值**出发、能被一把
+				// 抓停,这正是 CSS 过渡给不了的 —— 上一版的生硬就出在那儿。
+				...(live ? { x: drag.x, y: drag.y } : {}),
+				// 拖着的块压在所有层次之上。用「层次上限 + 1」而不是写死一个数:它跟着
+				// `layer` 的上限走,将来上限改了这儿不用记得跟。
+				...(live ? { zIndex: CARD_SKIN_LIMITS.layer.max + 1 } : {}),
 				// 层次照抄皮肤那个数,与渲染器同一条规矩(不写就不写)。
 				//
 				// ⚠️ 这不归「叠放层级分层表」管:那张表排的是**应用自己的浮层**(页头、遮罩、
@@ -567,7 +730,7 @@ function CanvasBlock({
 				    不是红条。 */}
 				{overlaps > 0 ? ` · 叠${overlaps}` : ""}
 			</span>
-		</button>
+		</motion.button>
 	);
 }
 
