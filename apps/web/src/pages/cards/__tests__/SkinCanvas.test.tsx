@@ -631,3 +631,60 @@ describe("画布 — 块的层次", () => {
 		expect(chip(/封面|cover/).textContent).not.toContain("叠");
 	});
 });
+
+/**
+ * 空行在画布上留着(排版时好用),出图那头会被压掉 —— 两边就此对不上一件事,得说出来。
+ * 真要留白就摆一个空白块:块占着那一行,压行就不会把它收走(主人 2026-09-15 拍板)。
+ */
+describe("网格画布 — 空行", () => {
+	const withBlocks = (blocks: Array<Record<string, unknown>>) => {
+		render(
+			<SkinCanvas
+				kind="live"
+				card={{ width: 600, blocks } as never}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
+		);
+	};
+
+	const notes = () => screen.queryAllByTestId("empty-row-note");
+
+	it("中间的空行标一句「出图时收掉」,并给出留白的走法", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 4, column: 1, span: 12 } },
+		]);
+		expect(notes().map((n) => n.style.gridRow)).toEqual(["2", "3"]);
+		expect(notes()[0].textContent).toContain("出图时收掉");
+		expect(notes()[0].textContent).toContain("空白块");
+	});
+
+	it("有块的行不标", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 2, column: 1, span: 12 } },
+		]);
+		expect(notes()).toHaveLength(0);
+	});
+
+	it("跨行的块把中间行占着 —— 那几行不是空行", () => {
+		withBlocks([
+			{
+				id: "cover",
+				kind: "builtin",
+				builtin: "cover",
+				grid: { row: 1, column: 1, span: 12, rowSpan: 3 },
+			},
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 4, column: 1, span: 12 } },
+		]);
+		expect(notes()).toHaveLength(0);
+	});
+
+	it("最后那一行是「添加块」的落点,不算空行", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+		]);
+		expect(notes()).toHaveLength(0);
+	});
+});

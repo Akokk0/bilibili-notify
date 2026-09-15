@@ -224,6 +224,18 @@ describe("皮肤渲染器 — 行压缩", () => {
 		expect(rows(doc)).toEqual(["1", "4"]);
 	});
 
+	it("空白块占得住自己那一行(画布上「要留白就摆一个空白块」靠的就是它)", async () => {
+		const { doc } = await render(
+			liveCard([
+				builtin("a", "title", { row: 1, column: 1, span: 12 }),
+				custom("blank", "", { row: 2, column: 1, span: 12 }),
+				builtin("b", "desc", { row: 3, column: 1, span: 12 }),
+			]),
+		);
+		// 空的自定义块照样是块:压行不收它,下面那块也就不会被提上来。
+		expect(rows(doc)).toEqual(["1", "2", "3"]);
+	});
+
 	it("同一行内仍按数组先后(叠放的缺省档是数组顺序,排序不许把它打乱)", async () => {
 		const { doc } = await render(
 			liveCard([

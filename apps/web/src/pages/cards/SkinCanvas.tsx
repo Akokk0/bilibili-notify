@@ -153,6 +153,20 @@ export function SkinCanvas({
 					</span>
 				))}
 
+				{/* **空行的旁注** —— 空行在画布上留着(排版时好用),出图那头会被压掉。两边就此
+				    对不上一件事,不说出来只能靠撞见。真要留白就摆一个空白块:块占着那一行,
+				    压行就收不走它。 */}
+				{emptyRows(blocks, lastRow).map((n) => (
+					<div
+						key={`e${n}`}
+						data-testid="empty-row-note"
+						className="pointer-events-none flex items-center justify-center text-bn-2xs text-bn-text-tertiary"
+						style={{ gridColumn: `2 / span ${cols}`, gridRow: n }}
+					>
+						空行 · 出图时收掉,要留白就摆一个空白块
+					</div>
+				))}
+
 				{blocks.map((b) => (
 					<CanvasBlock
 						key={b.id}
@@ -226,6 +240,20 @@ export function SkinCanvas({
 			</button>
 		</div>
 	);
+}
+
+/**
+ * 1..`lastRow` 里**没有块占着**的行。占着 ≠ 起在:跨行的块把中间那几行也占着,漏掉它们
+ * 会把「被封面盖住的行」说成空行。最后那一行(`lastRow + 1`)是「添加块」的落点,不算。
+ *
+ * 与出图那头压行看的是同一件事(`render-skin` 的 ④),这边标出来的就是那边会收掉的。
+ */
+function emptyRows(blocks: Block[], lastRow: number): number[] {
+	const taken = new Set<number>();
+	for (const b of blocks) {
+		for (let r = b.grid.row; r < b.grid.row + (b.grid.rowSpan ?? 1); r++) taken.add(r);
+	}
+	return Array.from({ length: lastRow }, (_, i) => i + 1).filter((n) => !taken.has(n));
 }
 
 /**
