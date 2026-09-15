@@ -169,7 +169,10 @@ function parseRichTextArticle(rt: RichTextNode, title?: string) {
 		displayHtml = rawHtml.replace(/\n/g, "<br><br>");
 	}
 
-	const fullHtml = `${title ? `<h1 style="font-size:18px;font-weight:bold;margin-bottom:8px">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? '<span style="color:#999">...（全文过长，已省略）</span>' : ""}`;
+	// 标题与「已省略」那行走 **class 不走 inline**:这段是拼进 `innerHTML` 的,而 inline
+	// 皮肤永远压不过(清洗器一律摘 `!important`)。同一句灰字在上面非专栏那条路本来就是
+	// `text-[#999]`,两条路的可染性不该差一截。
+	const fullHtml = `${title ? `<h1 class="text-[18px] font-bold mb-[8px]">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? '<span class="text-[#999]">...（全文过长，已省略）</span>' : ""}`;
 
 	return (
 		<div

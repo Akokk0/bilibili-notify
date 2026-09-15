@@ -350,12 +350,15 @@ function buildPicsContent(pics: DynamicPic[]) {
 						/>
 						{more > 0 && (
 							// 遮罩压到 40% —— 再深就成了整格纯黑,九宫格里凭空多出一块深色补丁,
-							// 比它盖住的那张图还抢眼。压浅之后白字在亮图上会发虚,靠一层文字投影
-							// 兜住(写成 inline style:它是全卡唯一的一条,类名走 uno 有被 Fragment
-							// 锚点吞掉的风险,吞了就只剩一行虚字,而且构建全绿看不出来)。
+							// 比它盖住的那张图还抢眼。压浅之后白字在亮图上会发虚,靠一层文字投影兜住。
+							//
+							// 投影**属性写在 class 上、值留在 inline 的变量里**(与那 33 处颜色同一套,
+							// ADR-0014 决策 13 的 🔗):整条写成 inline 的话皮肤永远压不过它 —— 清洗器
+							// 一律摘 `!important`,而 inline 恒赢。类名里不写那串带逗号的值,是因为
+							// UnoCSS 的切词按分隔符走,`rgba(0,0,0,.55)` 进类名要赌它怎么切。
 							<div
-								class="absolute inset-0 flex items-center justify-center rounded bg-black/40 text-white text-[28px] font-bold leading-none"
-								style="text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);"
+								class="absolute inset-0 flex items-center justify-center rounded bg-black/40 text-white text-[28px] font-bold leading-none [text-shadow:var(--bn-pics-more-shadow)]"
+								style="--bn-pics-more-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);"
 							>
 								{`+${more}`}
 							</div>
