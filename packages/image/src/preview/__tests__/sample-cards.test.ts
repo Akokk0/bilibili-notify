@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { renderCardWithSkin } from "../../skin/render-skin";
-import { sampleCardProps } from "../sample-cards";
+import { sampleCard } from "../sample-cards";
 
 /** 卡外框的挂点(`data-bn="frame"`)—— 画出来的东西至少得有个外框。 */
 const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
@@ -21,12 +21,10 @@ const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
 async function render(kind: (typeof CARD_SKIN_KINDS)[number], scene?: string): Promise<string> {
 	// `as never`:出口刻意回 unknown(示例数据不是对外契约,别让调用方照它写类型),
 	// 这里替调用方把 props 递进去。
-	return renderCardWithSkin(
-		kind,
-		(await sampleCardProps(kind, scene)) as never,
-		DEFAULT_CARD_SKIN,
-		{},
-	);
+	const sample = await sampleCard(kind, scene);
+	return renderCardWithSkin(kind, sample.props as never, DEFAULT_CARD_SKIN, {
+		...(sample.raw ? { raw: sample.raw } : {}),
+	});
 }
 
 describe("出厂示例数据 — 七种卡都画得出来", () => {
@@ -79,5 +77,107 @@ describe("出厂示例数据 — 确定性", () => {
 	it("同样入参连画两次,产出逐字节相同", async () => {
 		const [a, b] = await Promise.all([render("live", "ended"), render("live", "ended")]);
 		expect(a).toBe(b);
+	});
+});
+
+/**
+ * **转发场面**(2026-09-15 加)。内层动态卡这一整层 —— 转发框、框里那张跟着皮肤走的卡 ——
+ * 在编辑器里原本一眼都看不到:动态卡只有一个场面,示例数据里没有转发。皮肤作者改不着自己
+ * 看不见的东西。
+ */
+describe("出厂示例数据 — 动态卡的转发场面", () => {
+	it("转发场面画得出转发框,投稿场面没有", async () => {
+		const [forward, av] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
+		expect(forward).toContain('data-bn="forward"');
+		expect(av).not.toContain('data-bn="forward"');
+	});
+
+	it("框里是另一整张卡 —— 块跟着同一份皮肤摆,不是写死的旧版式", async () => {
+		const html = await render("dynamic", "forward");
+		const inset = html.slice(html.indexOf('data-bn="forward"'));
+		// 内层的块与外层挂同一批 class(皮肤的块 id),所以一条 CSS 管两层。
+		expect(inset).toContain("bn-blk-");
+	});
+});
+
+/**
+ * **契约里那两组「要原始动态才取得到」的字段**(视频卡 / 图廊)。
+ *
+ * 它们在 `node` 里已经被画进正文的 VNode、拆不回来,只能从原始动态取 —— 所以渲染器收一个
+ * 可选的 `raw`。预览这条路**从来没传过它**:类型全绿、七种卡照样画得出来,只有皮肤作者写下
+ * `{video.title}` 才发现那儿永远是空的。这份钉的就是那根线。
+ */
+describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得到", () => {
+	/**
+	 * 一套两个块的皮肤:一个自定义块(里头就一个占位符)+ 正文块。
+	 * 正文块不能省 —— 转发框住在它里头,没有它就没有内层那张卡。
+	 */
+	const probeSkin = (html: string) =>
+		({
+			...DEFAULT_CARD_SKIN,
+			cards: {
+				...DEFAULT_CARD_SKIN.cards,
+				dynamic: {
+					width: 600,
+					blocks: [
+						{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
+						{
+							id: "content",
+							kind: "builtin",
+							builtin: "content",
+							grid: { row: 2, column: 1, span: 12 },
+						},
+					],
+				},
+			},
+		}) as never;
+
+	async function probe(scene: string | undefined, placeholder: string): Promise<string> {
+		const sample = await sampleCard("dynamic", scene);
+		return await renderCardWithSkin(
+			"dynamic",
+			sample.props as never,
+			probeSkin(`<div>${placeholder}</div>`),
+			{ ...(sample.raw ? { raw: sample.raw } : {}) },
+		);
+	}
+
+	// ⚠️ 前缀不是装饰:正文块自己也画视频标题,光找「示例视频」的话剪断 raw 照样绿。
+	it("{video.title} 在投稿场面取得到", async () => {
+		expect(await probe(undefined, "探针:{video.title}")).toContain("探针:【示例视频】");
+	});
+
+	it("showIf 的 dynamic.hasVideo 也随之为真", async () => {
+		const sample = await sampleCard("dynamic");
+		const html = await renderCardWithSkin(
+			"dynamic",
+			sample.props as never,
+			{
+				...DEFAULT_CARD_SKIN,
+				cards: {
+					...DEFAULT_CARD_SKIN.cards,
+					dynamic: {
+						width: 600,
+						blocks: [
+							{
+								id: "probe",
+								kind: "custom",
+								html: "<div>有视频</div>",
+								showIf: "dynamic.hasVideo",
+								grid: { row: 1, column: 1, span: 12 },
+							},
+						],
+					},
+				},
+			} as never,
+			{ ...(sample.raw ? { raw: sample.raw } : {}) },
+		);
+		expect(html).toContain("有视频");
+	});
+
+	it("转发场面里,内层那张卡取的是**原动态**的视频标题", async () => {
+		const html = await probe("forward", "探针:{video.title}");
+		const inset = html.slice(html.indexOf('data-bn="forward"'));
+		expect(inset).toContain("探针:【示例视频】");
 	});
 });

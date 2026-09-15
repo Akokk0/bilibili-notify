@@ -200,10 +200,66 @@ const SAMPLE_AV_DYNAMIC = {
 	},
 } as unknown as Dynamic;
 
-async function dynamicSample(): Promise<SampleProps<"dynamic">> {
+/**
+ * 转发场面的那条动态 —— 示例转发者转了上面那条投稿。
+ *
+ * 转发框里是**另一整张卡**(同一批块、同一份皮肤),而它在编辑器里原本一眼都看不到:
+ * 动态卡从前只有一个场面,示例数据里没有转发。`orig` 直接指上面那条,不另写一份 ——
+ * 两份示例迟早会漂,而「内层画的和外层是同一套东西」正是这个场面要给人看的。
+ */
+const SAMPLE_FORWARD_DYNAMIC = {
+	basic: { is_only_fans: false },
+	id_str: "1000000000000000002",
+	type: "DYNAMIC_TYPE_FORWARD",
+	visible: true,
+	modules: {
+		module_author: {
+			avatar: {},
+			face: SVG_AVATAR_BLUE,
+			face_nft: false,
+			following: true,
+			jump_url: "",
+			label: "",
+			mid: 4455,
+			name: "示例转发者",
+			pub_action: "",
+			pub_action_text: "",
+			pub_location_text: "IP属地：北京",
+			pub_time: "刚刚",
+			pub_ts: 1_800_000_000,
+			type: "AUTHOR_TYPE_NORMAL",
+			vip: { type: 0 },
+		},
+		module_dynamic: {
+			desc: {
+				text: "这是一段示例转发语。",
+				rich_text_nodes: [
+					{
+						type: "RICH_TEXT_NODE_TYPE_TEXT",
+						orig_text: "这是一段示例转发语，下面那张是被转发的原动态。",
+						text: "这是一段示例转发语，下面那张是被转发的原动态。",
+					},
+				] as RichTextNode,
+			},
+		},
+		module_stat: {
+			forward: { count: 12 },
+			comment: { count: 34 },
+			like: { count: 567 },
+		},
+	},
+	orig: SAMPLE_AV_DYNAMIC,
+} as unknown as Dynamic;
+
+const DYNAMIC_SCENES: Record<string, Dynamic> = {
+	default: SAMPLE_AV_DYNAMIC,
+	forward: SAMPLE_FORWARD_DYNAMIC,
+};
+
+async function dynamicSample(scene: string): Promise<SampleProps<"dynamic">> {
 	// 正文结构树由**真正的构建器**造(不是这儿手写一份):预览与真出图只要各拼各的,迟早
 	// 长成两副样子,而两边都说不出哪儿错了。
-	return { node: await buildDynamicNode(SAMPLE_AV_DYNAMIC, false, FMT) };
+	return { node: await buildDynamicNode(DYNAMIC_SCENES[scene] ?? SAMPLE_AV_DYNAMIC, false, FMT) };
 }
 
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
@@ -308,7 +364,7 @@ const SAMPLES: {
 };
 
 /**
- * 某种卡 + 某个场景的示例 props。`scene` 缺省或不认识 → 用该卡种的**第一个**场景
+ * 某种卡 + 某个场景的示例数据。`scene` 缺省或不认识 → 用该卡种的**第一个**场景
  * (不报错:场景名是从 URL / 请求体来的,面板换了一版、链接被人存过书签都会送来旧名字,
  * 为这个给用户一张错误页不值)。
  *
@@ -316,9 +372,18 @@ const SAMPLES: {
  * (预览路由)本来就在 async 里,所以这里跟着 async,而不是反过来去改那个出图共用的
  * 模板模块 —— 它在 23 张基准快照那条线上,少一个碰它的理由就少一分风险。
  *
- * 返回值直接喂 `renderCardWithSkin(kind, props, manifest, …)`。
+ * **`raw` 要跟着一起交出去**:契约里视频卡与图廊那两组字段在 `node` 里已经被画进正文的
+ * VNode、拆不回来,渲染器只能从原始动态取。它是可选参数,预览这条路从前一直没传 ——
+ * 类型全绿、七种卡照样画得出来,只有皮肤作者写下 `{video.title}` 才发现那儿永远是空的。
+ *
+ * 两样一起喂 `renderCardWithSkin(kind, props, manifest, { raw })`。
  */
-export async function sampleCardProps(kind: CardSkinKind, scene?: string): Promise<unknown> {
+export async function sampleCard(
+	kind: CardSkinKind,
+	scene?: string,
+): Promise<{ props: unknown; raw?: Dynamic }> {
 	const picked = resolvePreviewScene(kind, scene);
-	return await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
+	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
+	if (kind !== "dynamic") return { props };
+	return { props, raw: DYNAMIC_SCENES[picked.id] ?? SAMPLE_AV_DYNAMIC };
 }

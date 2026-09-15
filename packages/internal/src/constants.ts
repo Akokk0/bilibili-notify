@@ -1144,7 +1144,13 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
 		{ id: "start", label: "开播" },
 		{ id: "ended", label: "下播" },
 	],
-	dynamic: [{ id: "default", label: "动态" }],
+	// 转发单给一个场面:它里头是**另一整张卡**(转发框 + 跟着同一份皮肤摆的块),
+	// 不单列的话皮肤作者在面板上一眼都看不到这一层。id 留 `default`
+	// 不改 —— 存过书签 / 旧链接送来的还是它。
+	dynamic: [
+		{ id: "default", label: "投稿" },
+		{ id: "forward", label: "转发" },
+	],
 	sc: [{ id: "default", label: "醒目留言" }],
 	guard: [{ id: "default", label: "上舰" }],
 	roastBoard: [{ id: "default", label: "锐评榜单" }],

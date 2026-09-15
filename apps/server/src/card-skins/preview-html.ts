@@ -13,7 +13,7 @@
 import {
 	cardOfManifest,
 	renderCardWithSkin,
-	sampleCardProps,
+	sampleCard,
 	skinAssetRefs,
 } from "@bilibili-notify/image";
 import { type CardSkinKind, resolvePreviewScene } from "@bilibili-notify/internal";
@@ -66,12 +66,14 @@ export async function renderSkinPreviewHtml(args: {
 	const picked = resolvePreviewScene(kind, args.scene);
 	// 刻意**不掺用户自己的配置**(全局字体 / 旋钮):编辑器看的是**这套皮肤**长什么样,
 	// 掺进去就成了「同一套皮肤在不同人眼里不一样」,作者照着调反而调歪。
-	const html = await renderCardWithSkin(
-		kind,
-		(await sampleCardProps(kind, picked.id)) as never,
-		manifest,
-		{ title: `皮肤预览 · ${kind}`, resolveAsset: (name) => assets.get(name) },
-	);
+	// `raw` 只有动态卡有(视频卡 / 图廊那两组契约字段从它取),别的卡种是 undefined ——
+	// 原样递进去,渲染器自己认。
+	const sample = await sampleCard(kind, picked.id);
+	const html = await renderCardWithSkin(kind, sample.props as never, manifest, {
+		title: `皮肤预览 · ${kind}`,
+		resolveAsset: (name) => assets.get(name),
+		...(sample.raw ? { raw: sample.raw } : {}),
+	});
 	return {
 		ok: true,
 		html: args.transparentPage ? withPreviewPageCss(html) : html,
