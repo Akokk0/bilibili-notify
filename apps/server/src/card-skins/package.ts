@@ -305,6 +305,6 @@ function dropRetiredVariables(manifest: CardSkinManifest): string[] {
 	}
 	if (had.length === 0) return [];
 	return [
-		`${had.join(" / ")} 已退役,这一项被丢掉了 —— 玻璃 / 字体 / 背景图改由**旋钮**声明(面板照声明生成控件),固定不给调的写进外框 CSS 即可`,
+		`${had.join(" / ")} 已退役,这一项被丢掉了 —— 玻璃 / 字体 / 背景图改由旋钮声明(面板照声明生成控件),固定不给调的写进外框 CSS 即可`,
 	];
 }
