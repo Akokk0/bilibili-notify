@@ -10,6 +10,11 @@
  *   内层 HTML(剥掉 `data-bn`)两两相等。转发 inset 里递归装配出来的内层块也在序列里,
  *   照样比。整张是一个固定内置块的四种卡(两张锐评 / 词云 / ——)没有 `data-block`,改比
  *   玻璃层里那一层的**元素子节点**。
+ *
+ *   一处**刻意不比**:转发 inset(`[data-bn="forward"]`)**里面**那一层装配。inset 里是
+ *   另一张完整的卡,而「一张卡怎么装」正是两条路各行其是的地方 —— 模板路铺一维竖栈,皮肤路
+ *   铺网格(2026-09-15 起,内层跟着皮肤走)。所以取块内层时把 inset 的子树掏空:inset 自己
+ *   的标记照比,里头那些块**各自作为序列里的一项**照比,只有「谁把它们摆成什么形状」不比。
  * - **门 B(结构)**:玻璃层真的是网格容器,每个块 wrapper 都带 `bn-blk-` class。
  *
  * 门 A 红了**不许改基准、不许改夹具** —— 它红只有两种可能:皮肤渲染器把块装错了,或者
@@ -36,6 +41,7 @@ import {
 	type CardRenderInput,
 	stripCardHooks,
 } from "../../__tests__/fixtures/card-fixtures";
+import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
 import { renderCard } from "../../render";
 import { renderSkinnedCard } from "../render-skin";
 
@@ -96,13 +102,26 @@ function glassOf(html: string): Element {
 
 type BlockSlice = { label: string; inner: string };
 
-/** 一份 HTML 里所有 `[data-block]` 按文档序的块名 + 内层(剥掉挂点)。 */
+/**
+ * 一份 HTML 里所有 `[data-block]` 按文档序的块名 + 内层(剥掉挂点)。
+ *
+ * 取内层前先把转发 inset 的子树掏空 —— 见门 A 说明里「一处刻意不比」。掏的是**副本**,
+ * 原文档不动,所以 inset 里那些块照旧各自作为序列里的一项被比到。
+ *
+ * 认 inset 靠 class 不靠挂点:基准快照打在挂点之前,那份 HTML 里没有 `data-bn`。
+ */
 function blockSlices(html: string): BlockSlice[] {
 	const doc = new JSDOM(html).window.document;
-	return [...doc.querySelectorAll("[data-block]")].map((el) => ({
-		label: el.getAttribute("data-block") ?? "",
-		inner: stripCardHooks(el.innerHTML),
-	}));
+	return [...doc.querySelectorAll("[data-block]")].map((el) => {
+		const copy = el.cloneNode(true) as Element;
+		for (const node of copy.querySelectorAll("div")) {
+			if (node.getAttribute("class") === FORWARD_INSET_CLASS) node.replaceChildren();
+		}
+		return {
+			label: el.getAttribute("data-block") ?? "",
+			inner: stripCardHooks(copy.innerHTML),
+		};
+	});
 }
 
 /** 玻璃层里那一层的元素子节点(剥挂点)。SSR 的 Fragment 锚点注释不参与 —— 见门 A 的说明。 */

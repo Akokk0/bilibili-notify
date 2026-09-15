@@ -64,17 +64,28 @@ import { type BlockRenderer, bindBlocks } from "./types";
 const withIconHook = (icon: VNode): VNode =>
 	h(icon.type as string, { ...icon.props, "data-bn": "icon" }, icon.children as VNode[]);
 
+/**
+ * 转发框那层 div 的 class。**单点定义**:验收门(`skin/__tests__/skin-gate.test.ts`)要
+ * 按它认出这个框 —— 基准快照打在挂点之前,那份 HTML 里一个 `data-bn` 都没有,只剩 class
+ * 认得出来。两处各写一份的话,改了 class 门会为一个看不懂的理由红。
+ */
+export const FORWARD_INSET_CLASS =
+	"rounded-[8px] mt-2 pt-[12px] pb-[12px] [background:var(--bn-inset-bg)] [border-left-color:var(--bn-accent)]";
+
 const ICON_FORWARD = withIconHook(SVG_FORWARD);
 const ICON_COMMENT = withIconHook(SVG_COMMENT);
 const ICON_LIKE = withIconHook(SVG_LIKE);
 
 /**
- * 动态块吃的 props:一个 DynamicNode + 整卡版式。版式要跟着进来,是因为 content 块内嵌
- * 转发原动态时用**同一份 layout** 递归装配 —— 内部动态因此完全跟随用户的块顺序 / 显隐 / 边距。
+ * 动态块吃的 props:一个 DynamicNode + **内层卡怎么装**。
+ *
+ * 转发框里是另一张完整的卡,而「一张卡怎么装」这件事块库不该知道 —— 模板路按一维竖栈装、
+ * 皮肤路按网格装,两条路各自把自己的装配方式递进来。块只负责把结果放进转发框里。
+ * 内层因此永远与外层同一套装配:模板路跟同一份 layout,皮肤路跟同一份皮肤。
  */
 export type DynamicBlockProps = {
 	node: DynamicNode;
-	layout: CardBlock[];
+	renderForward: (node: DynamicNode) => VNode | VNode[];
 };
 
 /** 头像(原子块):header 复合块里的那个 img。 */
@@ -144,7 +155,7 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 		</div>
 	),
 
-	content: ({ node, layout }) => (
+	content: ({ node, renderForward }) => (
 		<div class="px-[16px]">
 			{node.topic ? (
 				<div
@@ -164,10 +175,10 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 				// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
 				<div
 					data-bn="forward"
-					class="rounded-[8px] mt-2 pt-[12px] pb-[12px] [background:var(--bn-inset-bg)] [border-left-color:var(--bn-accent)]"
+					class={FORWARD_INSET_CLASS}
 					style="--bn-inset-bg: rgba(0,0,0,0.04); --bn-accent: #00AEEC; border-left-width: 5px; border-left-style: solid; zoom: 0.85;"
 				>
-					{renderBlocks(layout, dynamicNodeBuilders(node.forward, layout))}
+					{renderForward(node.forward)}
 				</div>
 			) : null}
 		</div>
@@ -203,12 +214,16 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 };
 
 /**
- * 由一个 DynamicNode + 版式生成各块构建器(按块名)。content 块内嵌转发原动态时回头调它,
- * 就是那条递归 —— 所以它必须在 `DYNAMIC_BLOCKS` 之后用 `function` 声明(提升)。
+ * **模板路**:由一个 DynamicNode + 版式生成各块构建器(按块名)。转发框里的内层卡按
+ * 同一份 layout 再装一遍 —— 那条递归住在这里(所以它必须在 `DYNAMIC_BLOCKS` 之后用
+ * `function` 声明,靠提升)。皮肤路不经过这里,它自己往 `renderForward` 里递网格装配。
  */
 export function dynamicNodeBuilders(
 	node: DynamicNode,
 	layout: CardBlock[],
 ): Record<string, () => VNode | null> {
-	return bindBlocks(DYNAMIC_BLOCKS, { node, layout });
+	return bindBlocks(DYNAMIC_BLOCKS, {
+		node,
+		renderForward: (forward) => renderBlocks(layout, dynamicNodeBuilders(forward, layout)),
+	});
 }

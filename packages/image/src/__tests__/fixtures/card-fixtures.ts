@@ -22,10 +22,16 @@ import {
 	type GuardLayout,
 } from "@bilibili-notify/internal";
 import type { Component } from "vue";
+import { dynamicNodeBuilders } from "../../blocks/dynamic";
 import { numberToStr } from "../../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
+import { renderBlocks } from "../../templates/block-layout";
 import { DynamicCard } from "../../templates/dynamic-card";
-import { buildDynamicNode, type NodeFormatters } from "../../templates/dynamic-content";
+import {
+	buildDynamicNode,
+	type DynamicNode,
+	type NodeFormatters,
+} from "../../templates/dynamic-content";
 import { GuardCard } from "../../templates/guard-card";
 import { LiveCard } from "../../templates/live-card";
 import {
@@ -61,13 +67,15 @@ export interface CardFixture {
 
 /**
  * 把整卡入参翻成**块库**(`src/blocks/*`)直接吃的 props —— 同一份夹具走块级渲染那条路。
- * 除动态卡外,块库吃的就是卡片 props 本身;动态块还要整卡版式(content 块递归装配转发用)。
+ * 除动态卡外,块库吃的就是卡片 props 本身;动态块还要一个「内层卡怎么装」,这里给模板那条
+ * (一维竖栈),与基准快照同一条路。
  */
 export function blockPropsOf(kind: CardSkinKind, input: CardRenderInput): unknown {
 	if (kind !== "dynamic") return input.props;
+	const layout = (input.props.layout as CardBlock[] | undefined) ?? DEFAULT_CARD_LAYOUT.dynamic;
 	return {
 		node: input.props.node,
-		layout: (input.props.layout as CardBlock[] | undefined) ?? DEFAULT_CARD_LAYOUT.dynamic,
+		renderForward: (node: DynamicNode) => renderBlocks(layout, dynamicNodeBuilders(node, layout)),
 	};
 }
 

@@ -31,7 +31,6 @@ import {
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	cardSkinKnobDeclarations,
-	DEFAULT_CARD_LAYOUT,
 	DEFAULT_CARD_SKIN,
 	DIVIDER_TYPE,
 } from "@bilibili-notify/internal";
@@ -46,6 +45,7 @@ import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
+import type { DynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
 import { buildCardData, type CardData, readCardField } from "./card-data";
 import type { ResolvedKnobAssets } from "./knob-assets";
@@ -244,13 +244,27 @@ function frameVariables(props: unknown): string {
 
 // ── 块 ────────────────────────────────────────────────────────────────────────
 
-/** 块表吃的 props:除动态卡外就是卡片 props 本身。 */
-function blockPropsOf(o: SkinRenderOptions): unknown {
-	if (o.kind !== "dynamic") return o.props;
-	const p = o.props as DynamicCardProps;
-	// 转发 inset 里的内部动态仍按**旧版式**递归装配(`DYNAMIC_BLOCKS.content` 的那条递归)。
-	// 内部动态跟着皮肤走是编辑器那一步的事;今天先保持与模板同一份 layout,出图逐字节不变。
-	return { node: p.node, layout: p.layout ?? DEFAULT_CARD_LAYOUT.dynamic };
+/**
+ * 块表吃的 props:除动态卡外就是卡片 props 本身。
+ *
+ * 动态卡多一样 `renderForward` —— 转发框里是**另一张完整的卡**,按同一份皮肤再装一遍
+ * (数据换成内层那条动态)。这条递归以前走的是模板那条一维竖栈,而且因为全仓已经没人往
+ * props 里传 `layout`,实际是钉死在出厂默认版式上:换皮肤不跟,迁移过自己版式的也拿不回来。
+ */
+function blockPropsOf(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): unknown {
+	if (ctx.kind !== "dynamic") return props;
+	const p = props as DynamicCardProps;
+	return {
+		node: p.node,
+		renderForward: (node: DynamicNode): VNode =>
+			h(
+				"div",
+				{ style: gridStyleOf(ctx.card) },
+				// 内层的 `raw` 是外层那条动态的 `orig` —— 视频卡 / 图廊那两组契约字段从它取,
+				// 不接上的话内层的 `{video.title}` / `hasPics` 会凭空变空。
+				placeBlocks(ctx, { ...p, node }, raw?.orig),
+			),
+	};
 }
 
 /** 一个进了网格的块:块本身 + 它的内层 VNode(自定义块是一段 HTML)。 */
@@ -280,6 +294,15 @@ function templateColumns(card: CardSkinCard): string {
 }
 
 /**
+ * 网格容器那一句。外层落在玻璃层上,内层(转发框里那张卡)落在自己的一层 div 上 ——
+ * **同一个函数**吐给两处,两层的分栏才不会漂。
+ */
+function gridStyleOf(card: CardSkinCard): string {
+	const gap = `${card.gap?.row ?? 0}px ${card.gap?.column ?? 0}px`;
+	return `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`;
+}
+
+/**
  * 一个块的 wrapper。自定义块把清洗过的 HTML 经 `innerHTML` 铺进去;内置块把块的内层
  * VNode 原样放进来 —— 内层一个字节都不碰,皮肤只能从 wrapper 与 CSS 这两面改它。
  */
@@ -305,25 +328,37 @@ function wrapBlock(item: PlacedBlock, cls: string, style: string): VNode {
 }
 
 /**
- * 按皮肤装配一张卡。
+ * 一次装配从头到尾共用的东西。`used` 是**跨层**的:转发框里那张内层卡用的是同一批块、
+ * 同一批 class,所以同一段 CSS 只写一次,而内层独有的块(外层被 `showIf` 筛掉的那些)
+ * 也得记上 —— 漏了它的规则就只有内层没样式。
+ */
+interface AssembleCtx {
+	kind: CardSkinKind;
+	card: CardSkinCard;
+	resolveAsset?: (name: string) => string | undefined;
+	/** 真画出来过的块 id(内外两层合起来)。 */
+	used: Set<string>;
+}
+
+/**
+ * 按皮肤把一张卡的块铺成网格的孩子(**不含外框**)。外层由 `renderSkinnedCard` 套外框,
+ * 内层由转发框里那一层 div 套。
  *
  * 顺序是刻意的:先按 `showIf` 与「块自己有没有数据」筛,再按 `renderBlocks` 那三条规矩
  * 收分割线,最后才压行号 —— 反过来的话,被收起的块会在网格里留一行空白,而 `gap` 会把
  * 那行空白撑成看得见的缝。
  */
-export function renderSkinnedCard<K extends CardSkinKind>(
-	o: SkinRenderOptions<K>,
-): SkinRenderResult {
-	const { kind, card } = o;
-	// 契约数据只算一次:`showIf` 与所有自定义块的占位符共用它。(重载签名按 kind 分支,
-	// 这里 kind 是运行时值,按同一份实现的宽签名调。)
+function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): VNode[] {
+	const { kind, card } = ctx;
+	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
+	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
 	const data = (buildCardData as (k: CardSkinKind, p: unknown, raw?: Dynamic) => CardData)(
 		kind,
-		o.props,
-		o.raw,
+		props,
+		raw,
 	);
 	const table = BLOCK_TABLES[kind] as Record<string, BlockRenderer<unknown>>;
-	const props = blockPropsOf(o as SkinRenderOptions);
+	const blockProps = blockPropsOf(ctx, props, raw);
 
 	// ① 筛:showIf 为假、内置块没数据(返回 null)的整块不画。
 	const kept: PlacedBlock[] = [];
@@ -333,13 +368,13 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 			kept.push({
 				block,
 				inner: null,
-				html: renderCustomHtml(block.html, kind, data, o.resolveAsset),
+				html: renderCustomHtml(block.html, kind, data, ctx.resolveAsset),
 				isDivider: false,
 				selfLabelled: false,
 			});
 			continue;
 		}
-		const inner = table[block.builtin]?.(props);
+		const inner = table[block.builtin]?.(blockProps);
 		if (inner == null) continue;
 		kept.push({
 			block,
@@ -369,21 +404,38 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		if (!rowMap.has(block.grid.row)) rowMap.set(block.grid.row, rowMap.size + 1);
 	}
 
-	// ④ 铺 wrapper + 翻译 CSS。
-	const parts: string[] = [];
-	const faces = fontFaces(o.fonts, o.resolveAsset) + (o.knobAssets?.fontFaces ?? "");
-	if (faces) parts.push(faces);
-	if (card.css) parts.push(translateRootCss(card.css));
-	const children = placed.map((item) => {
+	// ④ 铺 wrapper。CSS 不在这儿拼:内外两层会走到这里两遍,拼在这儿就会按「谁先画完」
+	// 排序,而且同一条规则出现两次。统一在 `renderSkinnedCard` 里按 `card.blocks` 的顺序拼。
+	return placed.map((item) => {
 		const cls = blockClass(item.block.id);
-		if (item.block.css) parts.push(translateBlockCss(item.block.css, cls));
-		const vars = assetVarsStyle(item.block.assets, o.resolveAsset);
+		ctx.used.add(item.block.id);
+		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
 		const grid = gridStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
 		const style = vars ? `${grid};${vars}` : grid;
 		return wrapBlock(item, cls, style);
 	});
+}
 
-	const gap = `${card.gap?.row ?? 0}px ${card.gap?.column ?? 0}px`;
+/** 按皮肤装配一张卡:块铺成网格,外面套这张卡的外框。 */
+export function renderSkinnedCard<K extends CardSkinKind>(
+	o: SkinRenderOptions<K>,
+): SkinRenderResult {
+	const { kind, card } = o;
+	const ctx: AssembleCtx = { kind, card, resolveAsset: o.resolveAsset, used: new Set() };
+	const children = placeBlocks(ctx, o.props, o.raw);
+
+	// 翻译 CSS。按 `card.blocks` 的顺序走而不是按画出来的顺序 —— 内层先画完也不会把
+	// 它的规则插到前面去;真没画出来过的块照旧不留 CSS。
+	const parts: string[] = [];
+	const faces = fontFaces(o.fonts, o.resolveAsset) + (o.knobAssets?.fontFaces ?? "");
+	if (faces) parts.push(faces);
+	if (card.css) parts.push(translateRootCss(card.css));
+	for (const block of card.blocks) {
+		if (block.css && ctx.used.has(block.id)) {
+			parts.push(translateBlockCss(block.css, blockClass(block.id)));
+		}
+	}
+
 	const extra: FrameExtra = {
 		frame:
 			frameVariables(o.props) +
@@ -392,7 +444,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 			// 路径对它们一律回 null,本来也注不出东西来)。
 			(o.knobAssets?.vars ?? "") +
 			assetVarsStyle(card.assets, o.resolveAsset),
-		glass: `display:grid;grid-template-columns:${templateColumns(card)};width:100%;gap:${gap};`,
+		glass: gridStyleOf(card),
 		width: card.width,
 	};
 	const frame = FRAMES[kind] as (

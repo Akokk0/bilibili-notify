@@ -14,11 +14,7 @@
  * 两边因此本就差这一个属性。原子块那边不剥,反而正面钉住「它一个内部挂点都没有」。
  */
 
-import {
-	CARD_SKIN_BUILTIN_BLOCKS,
-	CARD_SKIN_KINDS,
-	DEFAULT_CARD_LAYOUT,
-} from "@bilibili-notify/internal";
+import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_KINDS } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h, type VNode } from "vue";
@@ -68,7 +64,10 @@ const DYNAMIC_PROPS: DynamicBlockProps = {
 		headerLabel: "投稿了视频",
 		body: h("div", null, "正文"),
 	},
-	layout: DEFAULT_CARD_LAYOUT.dynamic,
+	// 这份 node 没有 forward,转发框那条路走不到 —— 真走到了说明夹具变了,当场炸出来。
+	renderForward: () => {
+		throw new Error("这份夹具的动态不是转发");
+	},
 };
 
 const SC_PROPS: SCCardProps = {
