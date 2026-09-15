@@ -303,6 +303,13 @@ export default function CardSkinEditor() {
 									card={cardOf(draft, kind)}
 									selection={selection}
 									onSelect={setSelection}
+									// 拖块改行列 / 拉边改跨列,与检查器那几个数字框走同一个口。
+									onGrid={
+										readOnly
+											? undefined
+											: (blockId, patch) =>
+													setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
+									}
 									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
 									onAdopt={
 										readOnly

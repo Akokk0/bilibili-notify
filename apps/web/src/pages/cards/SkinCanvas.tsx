@@ -8,13 +8,23 @@
  *
  * 与皮肤 JSON 的对应是一比一的:一个块一格,`column` 是 1 起的列号,`span` 是跨几列。
  * 画布上多出来的那一列是行号,所以 CSS 里的 `grid-column` 要 +1。
+ *
+ * **块拖得动**(2026-09-14 主人要它进账):拖块身改行列,拉左右两边改跨列。几何算在
+ * `canvas-drag.ts`(纯函数,单独钉),这里只负责量轨道、收指针、拖完交一次 patch ——
+ * **拖的过程只改本地的预览位置,松手才 `onGrid`**:每动一格就发一次的话,右边那张真预览
+ * 会被整趟拖拽按住不放地重画。
+ *
+ * 拖拽是**指针专用**的:两个拉边把手对读屏器隐藏,键盘那条路仍是检查器里的数字框 ——
+ * 它一直在,而且比拖拽精确。`onGrid` 不给(只读皮肤)时把手整个不画:拖得动却存不下去
+ * 比拖不动更气人。
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { type GridPos, movedGrid, resizedGrid, type Track, trackAt } from "./canvas-drag";
 import { canAddBlock, columnsOf } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
@@ -35,11 +45,18 @@ export type SkinSelection =
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];
 
+/** 画布交回去的位置改动。与检查器那几个数字框走同一个口(`setBlockGrid`)。 */
+export type SkinCanvasGridHandler = (
+	blockId: string,
+	patch: { row?: number; column?: number; span?: number },
+) => void;
+
 export function SkinCanvas({
 	kind,
 	card,
 	selection,
 	onSelect,
+	onGrid,
 	onAdd,
 	onAddCustom,
 	onAdopt,
@@ -50,6 +67,8 @@ export function SkinCanvas({
 	card: Card | undefined;
 	selection: SkinSelection;
 	onSelect: (next: SkinSelection) => void;
+	/** 改一个块的位置。**不给 = 这套皮肤只读**,拖拽整个不装。 */
+	onGrid?: SkinCanvasGridHandler;
 	/** 添一个内置块。**不给 = 这套皮肤只读**,连「添加块」都不该出现。 */
 	onAdd?: (builtin: string) => void;
 	/** 添一个自定义块(HTML 自己写)。与 `onAdd` 同进同出。 */
@@ -62,6 +81,7 @@ export function SkinCanvas({
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
 	const [picking, setPicking] = useState(false);
+	const drag = useDrag(onGrid);
 
 	if (!card) {
 		return (
@@ -84,12 +104,20 @@ export function SkinCanvas({
 	const template = templateOf(card);
 
 	return (
-		<div>
+		<div ref={drag.rootRef}>
 			{/* 列号。与下面的块层共用同一套 `grid-template-columns`,列线才对得齐。 */}
 			<div className="mb-1 grid gap-x-1.5" style={{ gridTemplateColumns: template }}>
 				<span />
 				{COLS.map((n) => (
-					<span key={`c${n}`} className="text-center font-mono text-bn-2xs text-bn-text-tertiary">
+					// 这一排也是**量尺**:拖拽要知道每一列在屏幕上占哪一段,而列宽可以不等宽
+					// (皮肤能自定义列定义)。列号这排与块那层共用同一份 grid-template-columns,
+					// 量它就等于量块那层的列。
+					<span
+						key={`c${n}`}
+						data-canvas-track="column"
+						data-canvas-index={n}
+						className="text-center font-mono text-bn-2xs text-bn-text-tertiary"
+					>
 						{n}
 					</span>
 				))}
@@ -100,9 +128,14 @@ export function SkinCanvas({
 				style={{ gridTemplateColumns: template, gridAutoRows: "56px" }}
 			>
 				{rows.map((n) => (
+					// `flex items-center` 而不是 `self-center`:两者看着一样(字在行中间),但
+					// `self-center` 会让这个元素**缩到字那么高**,而它同时是行的量尺 —— 缩过
+					// 之后量出来的行带只有十来像素,拖拽就只在每行中间那一条窄缝里认得出行号。
 					<span
 						key={`r${n}`}
-						className="self-center font-mono text-bn-2xs text-bn-text-tertiary"
+						data-canvas-track="row"
+						data-canvas-index={n}
+						className="flex items-center font-mono text-bn-2xs text-bn-text-tertiary"
 						style={{ gridColumn: 1, gridRow: n }}
 					>
 						r{n}
@@ -116,6 +149,7 @@ export function SkinCanvas({
 						block={b}
 						selected={selection?.kind === "block" && selection.id === b.id}
 						onSelect={() => onSelect({ kind: "block", id: b.id })}
+						drag={onGrid ? drag : undefined}
 					/>
 				))}
 
@@ -288,28 +322,198 @@ function BlockCatalogue({
 	);
 }
 
+// ── 拖拽 ──────────────────────────────────────────────────────────────────────
+
+/** 一次拖拽的全程。`base` 是**按下那一刻**的位置 —— 每次移动都从它算起,不然偏移会累加。 */
+type DragMode = "move" | "left" | "right";
+
+interface DragState {
+	id: string;
+	mode: DragMode;
+	base: GridPos;
+	/** 按下时指针落在块内的第几格(0 起)。抓着块的右半边拖,块不该整个跳到指针左边去。 */
+	grabOffset: number;
+	startX: number;
+	startY: number;
+	/** 超过阈值才算「在拖」;没超过就是点一下,交给 onSelect。 */
+	moved: boolean;
+	grid: GridPos;
+}
+
+/** 手指/鼠标抖这么几像素不算拖 —— 不留这道坎,点选会时不时变成把块挪走一格。 */
+const DRAG_THRESHOLD = 4;
+
+export interface CanvasDrag {
+	/** 画布根节点 —— 量尺(`[data-canvas-track]`)都在它底下。 */
+	rootRef: React.RefObject<HTMLDivElement | null>;
+	begin: (id: string, base: GridPos, mode: DragMode, e: React.PointerEvent) => void;
+	onPointerMove: (e: React.PointerEvent) => void;
+	onPointerUp: () => void;
+	/** 这个块正被拖着 → 画在这个位置(还没交回去)。 */
+	previewOf: (id: string) => GridPos | undefined;
+	/** 刚拖完。松手后浏览器还会补一记 click,那一记不该当成「选中」。 */
+	consumeClick: () => boolean;
+}
+
+/**
+ * 量出一条轴上的轨道。**每次用时现量**:面板宽度可拉、列定义可改,存一份下来迟早是过期
+ * 的那份;而量一次是十来个 `getBoundingClientRect`,一趟拖拽里这点开销不值得换正确性。
+ */
+function tracksOf(root: HTMLElement | null, track: "column" | "row"): Track[] {
+	if (!root) return [];
+	// `querySelectorAll` 按文档序,列号那排就是 1…12、行号那列就是 r1…rN,顺序天然对。
+	return [...root.querySelectorAll<HTMLElement>(`[data-canvas-track="${track}"]`)].map((el) => {
+		const r = el.getBoundingClientRect();
+		return track === "column" ? { start: r.left, end: r.right } : { start: r.top, end: r.bottom };
+	});
+}
+
+function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
+	const rootRef = useRef<HTMLDivElement>(null);
+	const [drag, setDrag] = useState<DragState | null>(null);
+	const dragged = useRef(false);
+
+	const begin = useCallback(
+		(id: string, base: GridPos, mode: DragMode, e: React.PointerEvent) => {
+			if (!onGrid || e.button !== 0) return;
+			const at = trackAt(tracksOf(rootRef.current, "column"), e.clientX);
+			e.currentTarget.setPointerCapture?.(e.pointerId);
+			setDrag({
+				id,
+				mode,
+				base,
+				grabOffset: mode === "move" ? Math.max(0, at - base.column) : 0,
+				startX: e.clientX,
+				startY: e.clientY,
+				moved: false,
+				grid: base,
+			});
+		},
+		[onGrid],
+	);
+
+	const onPointerMove = useCallback((e: React.PointerEvent) => {
+		const { clientX, clientY } = e;
+		setDrag((d) => {
+			if (!d) return d;
+			const moved =
+				d.moved ||
+				Math.abs(clientX - d.startX) > DRAG_THRESHOLD ||
+				Math.abs(clientY - d.startY) > DRAG_THRESHOLD;
+			if (!moved) return d;
+			const column = trackAt(tracksOf(rootRef.current, "column"), clientX);
+			const row = trackAt(tracksOf(rootRef.current, "row"), clientY);
+			const grid =
+				d.mode === "move"
+					? { ...d.base, ...movedGrid(d.base, { column, row }, d.grabOffset) }
+					: { ...d.base, ...resizedGrid(d.base, d.mode, column) };
+			return { ...d, moved: true, grid };
+		});
+	}, []);
+
+	const onPointerUp = useCallback(() => {
+		setDrag((d) => {
+			if (d?.moved && onGrid) {
+				dragged.current = true;
+				onGrid(
+					d.id,
+					d.mode === "move"
+						? { row: d.grid.row, column: d.grid.column }
+						: { column: d.grid.column, span: d.grid.span },
+				);
+			}
+			return null;
+		});
+	}, [onGrid]);
+
+	return {
+		rootRef,
+		begin,
+		onPointerMove,
+		onPointerUp,
+		previewOf: (id) => (drag?.id === id && drag.moved ? drag.grid : undefined),
+		consumeClick: () => {
+			const was = dragged.current;
+			dragged.current = false;
+			return was;
+		},
+	};
+}
+
+/**
+ * 拉边的把手。**对读屏器隐藏**:它是纯指针的便利,键盘那条路是检查器里的数字框 ——
+ * 那儿一直在,而且比拖拽精确。给它一个够得着的宽度(10px)而不是 1px 的发丝线。
+ */
+function ResizeHandle({
+	side,
+	blockId,
+	onDown,
+}: {
+	side: "left" | "right";
+	blockId: string;
+	onDown: (e: React.PointerEvent) => void;
+}) {
+	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: 指针专用把手,键盘那条路在检查器
+		<span
+			aria-hidden="true"
+			data-testid={`resize-${side}-${blockId}`}
+			onPointerDown={(e) => {
+				// ⚠️ 必须拦下冒泡:不拦的话这一记会接着落到块身上,把刚开的「拉边」当场
+				// 覆盖成「移动」—— 表现是拉边完全没反应,而两边的代码看着都对。
+				e.stopPropagation();
+				onDown(e);
+			}}
+			className={`absolute inset-y-0 w-2.5 cursor-col-resize ${side === "left" ? "left-0" : "right-0"}`}
+		/>
+	);
+}
+
 function CanvasBlock({
 	kind,
 	block,
 	selected,
 	onSelect,
+	drag,
 }: {
 	kind: CardSkinKind;
 	block: Block;
 	selected: boolean;
 	onSelect: () => void;
+	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
+	drag?: CanvasDrag;
 }) {
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
 	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
-	const { column, span, row, rowSpan } = block.grid;
+	// 正拖着的时候画在**预览位置**上,松手才交回去 —— 每动一格发一次的话,右边那张真预览
+	// 会被整趟拖拽按住不放地重画。
+	const shown = drag?.previewOf(block.id) ?? block.grid;
+	const { column, span } = shown;
+	const { row } = shown;
+	const rowSpan = block.grid.rowSpan;
 
 	return (
 		<button
 			type="button"
-			onClick={onSelect}
+			onClick={() => {
+				// 松手后浏览器还会补一记 click —— 刚拖完的那一记不是「选中」。
+				if (drag?.consumeClick()) return;
+				onSelect();
+			}}
+			{...(drag
+				? {
+						onPointerDown: (e: React.PointerEvent) => drag.begin(block.id, block.grid, "move", e),
+						onPointerMove: drag.onPointerMove,
+						onPointerUp: drag.onPointerUp,
+						onPointerCancel: drag.onPointerUp,
+						onLostPointerCapture: drag.onPointerUp,
+					}
+				: {})}
 			aria-pressed={selected}
 			data-bn={selected ? "chip chip-active" : "chip"}
-			className={`flex flex-col justify-between overflow-hidden rounded-bn-sm border px-2.5 py-2 text-left transition ${
+			className={`relative flex flex-col justify-between overflow-hidden rounded-bn-sm border px-2.5 py-2 text-left transition ${
+				drag ? "cursor-grab touch-none active:cursor-grabbing" : ""
+			} ${
 				selected
 					? "border-bn-pink bg-bn-pink/6 ring-3 ring-bn-pink/18"
 					: "border-bn-border bg-bn-surface/90"
@@ -320,6 +524,20 @@ function CanvasBlock({
 				gridRow: `${row} / span ${rowSpan ?? 1}`,
 			}}
 		>
+			{drag ? (
+				<>
+					<ResizeHandle
+						side="left"
+						blockId={block.id}
+						onDown={(e) => drag.begin(block.id, block.grid, "left", e)}
+					/>
+					<ResizeHandle
+						side="right"
+						blockId={block.id}
+						onDown={(e) => drag.begin(block.id, block.grid, "right", e)}
+					/>
+				</>
+			) : null}
 			<span className="flex min-w-0 items-center gap-1.5">
 				<Icon.drag size={12} className="shrink-0 text-bn-text-tertiary" />
 				<span className="truncate font-semibold text-bn-sm text-bn-text-primary">{label}</span>
