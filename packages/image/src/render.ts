@@ -143,8 +143,23 @@ export async function renderCard(
 	const { css } = await uno.generate(classTokens(body), { preflights: true });
 
 	const families = [cssFontFamily(font), FALLBACK_FAMILIES].filter(Boolean).join(", ");
+	// 字体挂在 `html` 上而**不是** `*` 上(2026-09-15 修的回归)。`*` 是给每个元素各设一份,
+	// 于是谁也不从祖先继承 —— 皮肤(以及默认皮肤的字体旋钮)在外框上写的 `font-family`
+	// 一路到不了文字。挂在根上之后它成了继承的**起点**,中途任何一层都盖得住。
+	//
+	// 算出来的值不变:从前靠 `*` 直接拿到链的元素,现在照样继承到同一条链;本来就有自己
+	// 那份声明的(UnoCSS preflight 给 `code, kbd, samp, pre` 的等宽)两种写法下都赢,
+	// 别顺手给它们补 `inherit` —— 那才会真的改掉出的图。
+	//
+	// 选择器写成 `html:root` 这副怪样子是有原因的:UnoCSS 的 preflight 自己往
+	// `html, :host` 上写了一条 font-family,而这段 baseCSS 拼在 uno 产物**之前**,同
+	// 特异度就轮它赢。偏偏这条的特异度**两种实现算得不一样** —— 逐分支算 `html` 是
+	// (0,0,1),按整组取最大算(jsdom 就是)则是 `:host` 的 (0,1,0)。`html:root` 是
+	// (0,1,1),两种算法下都压得过,免得这条修法建在某一个实现的脾气上。
+	// 结果与从前一致:那时 `*` 直接落在每个元素上,preflight 的继承值本来就够不着。
 	const baseCSS = /* css */ `
-		* { margin: 0; padding: 0; box-sizing: border-box; font-family: ${families}; }
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		html:root { font-family: ${families}; }
 		html { width: ${htmlWidth ? `${htmlWidth}px` : "fit-content"}; height: auto; }
 	`;
 

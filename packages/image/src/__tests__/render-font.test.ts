@@ -13,6 +13,7 @@
  * 找一个叫「sans-serif」的字体文件。两种都得对。
  */
 
+import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
 import { renderCard } from "../render";
@@ -25,9 +26,9 @@ function cssOf(html: string): string {
 	return html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
 }
 
-/** `*{…}` 那条通配规则里的 font-family 声明值。 */
+/** 外壳里那条「字体从这儿起」的规则的声明值(2026-09-15 起挂在 `html:root`,从前是 `*`)。 */
 function familyDecl(css: string): string {
-	const m = css.match(/\*\s*\{[^}]*font-family:\s*([^;}]+)/);
+	const m = css.match(/html:root\s*\{[^}]*font-family:\s*([^;}]+)/);
 	return (m?.[1] ?? "").trim();
 }
 
@@ -86,5 +87,47 @@ describe("自带字体文件(@font-face)", () => {
 		// (@font-face 自己块里就有个 font-family),等于没测。
 		const css = cssOf(await render({ font: "bn-user-font", fontFace: FACE }));
 		expect(css.indexOf("@font-face")).toBeLessThan(css.indexOf("* {"));
+	});
+});
+
+/**
+ * **外壳的字体只准是「起点」,不能是「压在每个元素头上」。**
+ *
+ * 2026-09-15 抓到的回归:外壳那条 `*{…font-family}` 给**每个元素**直接设了字体,于是
+ * 谁也不从祖先继承 —— 皮肤在外框上写 `font-family` 一路到不了文字。本来只影响皮肤作者
+ * 自己写的那句,但 09-14 字体退役之后**默认皮肤的字体旋钮**也走这条路
+ * (`[data-bn="frame"]{font-family:var(--bn-knob-font,…)}`),于是面板上再没有任何入口
+ * 能改出图的字体了。
+ *
+ * 钉的是**算出来的值**而不是 CSS 文本:写成「外壳里必须有 html{font-family}」那种断言
+ * 是在复述现状,换个等价写法就假红,而真正坏掉的那天(有人把它改回 `*`)它照样绿。
+ */
+describe("字体是继承的起点,不是压在每个元素上", () => {
+	/** 一张最小的「外框套文字」,与真卡同形。 */
+	const Framed = () =>
+		h("div", { "data-bn": "frame" }, [h("span", { id: "t" }, "字"), h("code", { id: "c" }, "x")]);
+
+	const computed = async (extraCss: string | undefined, id: string): Promise<string> => {
+		const html = await renderCard(Framed, {}, { font: "Chain", ...(extraCss ? { extraCss } : {}) });
+		const dom = new JSDOM(html);
+		const el = dom.window.document.getElementById(id);
+		if (!el) throw new Error(`没有 #${id}`);
+		return dom.window.getComputedStyle(el).fontFamily;
+	};
+
+	it("外框上写的字体传得到里面的文字 —— 皮肤与字体旋钮全靠这一跳", async () => {
+		const got = await computed('[data-bn="frame"]{font-family:Probe}', "t");
+		expect(got).toContain("Probe");
+	});
+
+	it("没人覆盖时仍是那条兜底链 —— 起点还在,只是不再压着每个元素", async () => {
+		expect(await computed(undefined, "t")).toContain("Chain");
+	});
+
+	it("`<code>` 照旧走 UnoCSS preflight 的等宽 —— 这一档不受影响", async () => {
+		// 像素护栏。`code, kbd, samp, pre` 是 preflight 里的一条规则,特异度压得过 `*`
+		// 也压得过 `html` —— 两种写法下它都赢,所以这次改动碰不到它。写在这儿是因为
+		// 「顺手给这些元素补一句 inherit」是个很自然的念头,而那会真的改掉出的图。
+		expect(await computed(undefined, "c")).toContain("monospace");
 	});
 });
