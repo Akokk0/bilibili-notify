@@ -254,3 +254,23 @@ describe("只读的皮肤", () => {
 		expect(screen.queryByTestId("resize-right-cover")).toBeNull();
 	});
 });
+
+/**
+ * **1:1 的前提:transform 不许被 CSS 过渡。**
+ *
+ * 真机上「很不跟手」就栽在这儿:块的 `className` 里挂着一个裸的 `transition`,而 Tailwind
+ * 那个类**包含 `transform`**(默认 150ms)。于是 motion 每帧写进去的 translate 又被 CSS
+ * 平滑一次 —— 块永远在追一个 150ms 之前的位置。1:1 那段代码一个字没错,被一个类整个抵消。
+ *
+ * jsdom 不带真 CSS,`getComputedStyle` 问不出过渡属性,所以这里查的是**类名**。它钉的是
+ * 机制不是取值:Tailwind 里会把 transform 收进过渡的就这三个写法。
+ */
+describe("跟手的前提", () => {
+	it("块上不许有会过渡 transform 的类 —— 有一个,1:1 就白写了", () => {
+		mount();
+		const cls = blockEl().className.split(/\s+/);
+		for (const bad of ["transition", "transition-all", "transition-transform"]) {
+			expect(cls, `\`${bad}\` 会把 transform 也过渡掉`).not.toContain(bad);
+		}
+	});
+});

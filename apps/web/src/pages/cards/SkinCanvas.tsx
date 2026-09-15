@@ -372,6 +372,16 @@ interface DragState {
 	moved: boolean;
 	/** 松手会落到的格子(拉边时是改过跨列的那个)。落点指示画的就是它。 */
 	landing: GridPos;
+	/**
+	 * 按下那一刻量好的列 / 行轨道。**拖拽期间不再量第二次。**
+	 *
+	 * 原来是每次 `pointermove` 现量一遍,写在注释里的理由是「面板宽度可拉、列定义可改」——
+	 * 那个判断是错的:**一次拖拽当中这两样都不会变**,而代价是每帧二十多次
+	 * `getBoundingClientRect`,还夹在写完 transform 之后读,等于每帧强制两次同步布局。
+	 * 这是「不跟手」的第二个来源(第一个是块上那条裸 `transition`)。
+	 */
+	cols: Track[];
+	rows: Track[];
 }
 
 /** 手指/鼠标抖这么几像素不算拖 —— 不留这道坎,点选会时不时变成把块挪走一格。 */
@@ -467,7 +477,9 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 			// 重要的那条 —— 动画要能被一把抓住)。
 			x.stop();
 			y.stop();
-			const at = trackAt(tracksOf(rootRef.current, "column"), e.clientX);
+			const cols = tracksOf(rootRef.current, "column");
+			const rows = tracksOf(rootRef.current, "row");
+			const at = trackAt(cols, e.clientX);
 			e.currentTarget.setPointerCapture?.(e.pointerId);
 			velocity.current = createVelocityTracker();
 			velocity.current.add(e.clientX, e.clientY, e.timeStamp);
@@ -483,6 +495,8 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 				baseY: y.get(),
 				moved: false,
 				landing: base,
+				cols,
+				rows,
 			};
 			redraw();
 		},
@@ -502,18 +516,31 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 			) {
 				return;
 			}
-			const column = trackAt(tracksOf(rootRef.current, "column"), clientX);
+			// 1:1 那一半**先做,而且只碰 MotionValue** —— 它直接写 DOM,不经过 React。
+			// 下面那些是给落点指示用的,慢一帧也不影响跟手。
 			if (d.mode === "move") {
-				// 1:1:块就贴在手上,不去对齐格子 —— 对齐这件事交给落点指示说。
 				x.set(d.baseX + clientX - d.startX);
 				y.set(d.baseY + clientY - d.startY);
-				const row = trackAt(tracksOf(rootRef.current, "row"), clientY);
-				d.landing = { ...d.base, ...movedGrid(d.base, { column, row }, d.grabOffset) };
-			} else {
-				d.landing = { ...d.base, ...resizedGrid(d.base, d.mode, column) };
 			}
+			const column = trackAt(d.cols, clientX);
+			const next =
+				d.mode === "move"
+					? {
+							...d.base,
+							...movedGrid(d.base, { column, row: trackAt(d.rows, clientY) }, d.grabOffset),
+						}
+					: { ...d.base, ...resizedGrid(d.base, d.mode, column) };
+			// **落点没变就不重画。** 每帧一次 `setState` 会把整张画布(可能四十个块)重渲染一遍,
+			// 主线程被占满之后连 motion 的那一帧也跟着晚 —— 于是 1:1 写得再对也跟不上手。
+			// 跨格才重画,把每帧一次降成每格一次。
+			const same =
+				d.moved &&
+				next.row === d.landing.row &&
+				next.column === d.landing.column &&
+				next.span === d.landing.span;
+			d.landing = next;
 			d.moved = true;
-			redraw();
+			if (!same) redraw();
 		},
 		[x, y, redraw],
 	);
@@ -532,11 +559,8 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 			}
 			// 落点按**甩出去会停到哪**算,不是松手时块在哪(Apple 的动量投射)。
 			const v = velocity.current.velocity(e.timeStamp);
-			const column = trackAt(
-				tracksOf(rootRef.current, "column"),
-				e.clientX + project(v.x, DECELERATION),
-			);
-			const row = trackAt(tracksOf(rootRef.current, "row"), e.clientY + project(v.y, DECELERATION));
+			const column = trackAt(d.cols, e.clientX + project(v.x, DECELERATION));
+			const row = trackAt(d.rows, e.clientY + project(v.y, DECELERATION));
 			releasedRect.current =
 				rootRef.current?.querySelector(`[data-block-id="${d.id}"]`)?.getBoundingClientRect() ??
 				null;
@@ -673,7 +697,10 @@ function CanvasBlock({
 				: {})}
 			aria-pressed={selected}
 			data-bn={selected ? "chip chip-active" : "chip"}
-			className={`relative flex flex-col justify-between overflow-hidden rounded-bn-sm border px-2.5 py-2 text-left transition ${
+			// ⚠️ **过渡属性逐条列,绝不用裸 `transition`** —— Tailwind 那个类**含 `transform`**,
+			// 于是 motion 每帧写进去的 translate 又被 CSS 加上 150ms 过渡,块永远在追一个
+			// 150ms 之前的位置。1:1 的代码全对,被这一个类整个抵消掉,而且看不出来。
+			className={`relative flex flex-col justify-between overflow-hidden rounded-bn-sm border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 ${
 				drag ? "cursor-grab touch-none active:cursor-grabbing" : ""
 			} ${
 				selected
