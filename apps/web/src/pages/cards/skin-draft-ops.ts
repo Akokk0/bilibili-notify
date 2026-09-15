@@ -120,6 +120,34 @@ export function overlappingBlocks(card: Card | undefined, blockId: string): stri
 		.map((b) => b.id);
 }
 
+/**
+ * 叠放的**方向** —— 与这个块占着同一片格子的块里,谁压在它上面、它又压着谁。
+ *
+ * 排序规矩**必须与渲染器一模一样**(`render-skin` 的 `gridStyle`):写了层次的按层次,
+ * 没写就交还给数组先后(后来者在上,CSS 的老规矩)。两边对不上的话,画布画出来的深浅
+ * 与出图正好相反 —— 那比不画还坏。
+ *
+ * 「没写层次」不是「第 0 层」:0 的语义是没声明。所以这里不给缺省值凑数,而是把
+ * 「有没有写」并进同一把尺子 —— 写了的按数比,没写的一律退到数组先后那一档。
+ */
+export function stackingOf(
+	card: Card | undefined,
+	blockId: string,
+): { above: string[]; below: string[] } {
+	const above: string[] = [];
+	const below: string[] = [];
+	const me = card?.blocks.findIndex((b) => b.id === blockId) ?? -1;
+	if (!card || me < 0) return { above, below };
+	const mine = card.blocks[me];
+	for (const id of overlappingBlocks(card, blockId)) {
+		const i = card.blocks.findIndex((b) => b.id === id);
+		const other = card.blocks[i];
+		const dz = (other.grid.z ?? 0) - (mine.grid.z ?? 0);
+		(dz > 0 || (dz === 0 && i > me) ? above : below).push(id);
+	}
+	return { above, below };
+}
+
 /** 这张卡还加得下块吗。皮肤没定义这种卡(`undefined`)与块数到顶都算加不下。 */
 export function canAddBlock(card: Card | undefined): boolean {
 	return card !== undefined && card.blocks.length < CARD_SKIN_LIMITS.maxBlocks;

@@ -36,7 +36,7 @@ import {
 	trackAt,
 	type Velocity,
 } from "./canvas-drag";
-import { canAddBlock, columnsOf, overlappingBlocks } from "./skin-draft-ops";
+import { canAddBlock, columnsOf, stackingOf } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -52,6 +52,23 @@ export type SkinSelection =
 	| { kind: "frame" }
 	| { kind: "skin" }
 	| null;
+
+/**
+ * 叠起来时怎么错开。**横竖不是一回事**,两边能借的地方不一样。
+ *
+ * - **横向**:被压住的往左退,每层 8px、封两档。左边有 28px 的行号列可借,错得开;
+ *   露出来那条带子就是「底下还有一张卡」的主要读法。试过 3px —— 比圆角
+ *   (`--radius-bn-sm` ≈ 9.5px)还小,露出来那点全在圆角的弧里,看着像渲染毛刺。
+ * - **纵向**:整摞**居中放** —— 被压的往上 4px、压着别人的往下 4px,两层之间还是
+ *   8px 的落差,但谁都只占半个行距。上下总共就 8px 行距(`gap-y-2`),让被压的那块
+ *   独自往上错满 8px 会**恰好贴住上一行**(2026-09-15 主人:「整体往下挪一点」)。
+ *   两头都叠着的(三层中间那块)不动 —— 它本来就在摞的中间。
+ *
+ * 横向封顶两档:错位是纯视觉的、不改块真正的格子,错太多就成了「它在哪」的谎话。
+ */
+const STACK_OFFSET_X = 8;
+const STACK_SINK_Y = 4;
+const MAX_STACK_OFFSET_STEPS = 2;
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];
@@ -167,17 +184,20 @@ export function SkinCanvas({
 					</div>
 				))}
 
-				{blocks.map((b) => (
-					<CanvasBlock
-						key={b.id}
-						kind={kind}
-						block={b}
-						overlaps={overlappingBlocks(card, b.id).length}
-						selected={selection?.kind === "block" && selection.id === b.id}
-						onSelect={() => onSelect({ kind: "block", id: b.id })}
-						drag={onGrid ? drag : undefined}
-					/>
-				))}
+				{blocks.map((b) => {
+					const { above, below } = stackingOf(card, b.id);
+					return (
+						<CanvasBlock
+							key={b.id}
+							kind={kind}
+							block={b}
+							stack={{ above: above.length, below: below.length }}
+							selected={selection?.kind === "block" && selection.id === b.id}
+							onSelect={() => onSelect({ kind: "block", id: b.id })}
+							drag={onGrid ? drag : undefined}
+						/>
+					);
+				})}
 
 				{/* **落点指示** —— 块 1:1 贴着手走,所以「会落到哪一格」得由另一样东西说。
 				    没有它,1:1 跟手就成了「不知道会落在哪」的乱飘。 */}
@@ -678,15 +698,15 @@ function ResizeHandle({
 function CanvasBlock({
 	kind,
 	block,
-	overlaps,
+	stack,
 	selected,
 	onSelect,
 	drag,
 }: {
 	kind: CardSkinKind;
 	block: Block;
-	/** 和几个块占着同一片格子。0 = 没叠。 */
-	overlaps: number;
+	/** 叠放的方向:`above` 个块压在它上面,它压着 `below` 个。两个 0 = 没叠。 */
+	stack: { above: number; below: number };
 	selected: boolean;
 	onSelect: () => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
@@ -704,6 +724,8 @@ function CanvasBlock({
 	const z = block.grid.z;
 	// 正在拖 / 正在回落的那个块才挂 x / y —— 别的块一个 transform 都不该多出来。
 	const live = drag?.activeId === block.id;
+	const dx = -Math.min(stack.above, MAX_STACK_OFFSET_STEPS) * STACK_OFFSET_X;
+	const dy = (stack.below > 0 ? STACK_SINK_Y : 0) - (stack.above > 0 ? STACK_SINK_Y : 0);
 
 	return (
 		<motion.button
@@ -731,9 +753,17 @@ function CanvasBlock({
 			className={`relative flex flex-col justify-between overflow-hidden rounded-bn-sm border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 ${
 				drag ? "cursor-grab touch-none active:cursor-grabbing" : ""
 			} ${
+				// **压着别人的块浮起来** —— 影子走 `shadow-bn-elev` 那个 @utility,不写死值
+				// (shadow 族不进 @theme,换肤时靠变量活着;理由在 theme.css 那段注释里)。
+				stack.below > 0 ? "shadow-bn-elev" : ""
+			} ${
 				selected
 					? "border-bn-pink bg-bn-pink/6 ring-3 ring-bn-pink/18"
-					: "border-bn-border bg-bn-surface/90"
+					: // 压着别人时底换成**不透明**的:半透明叠半透明,底下那块的字会透上来
+						// (「别把半透明摞在半透明上」)。没压着谁的照旧留一点通透。
+						stack.below > 0
+						? "border-bn-border bg-bn-surface"
+						: "border-bn-border bg-bn-surface/90"
 			}`}
 			style={{
 				// 画布多出一列行号,所以 +1;`span` 直接就是皮肤 JSON 里那个数。
@@ -745,6 +775,12 @@ function CanvasBlock({
 				// 拖着的块压在所有层次之上。用「层次上限 + 1」而不是写死一个数:它跟着
 				// `layer` 的上限走,将来上限改了这儿不用记得跟。
 				...(live ? { zIndex: CARD_SKIN_LIMITS.layer.max + 1 } : {}),
+				// **被压住的块往左上错开一格。** 完全盖住时,这条露边是它在画布上唯一的
+				// 痕迹 —— 影子只说明「上面这块浮着」,说不出「底下还有一张」。挑左上是因为
+				// 影子往右下落,露边放在反方向才不会被影子吃掉;横竖各错多少见上面那段。
+				...(dx ? { left: dx } : {}),
+				...(dy ? { top: dy } : {}),
+
 				// 层次照抄皮肤那个数,与渲染器同一条规矩(不写就不写)。
 				//
 				// ⚠️ 这不归「叠放层级分层表」管:那张表排的是**应用自己的浮层**(页头、遮罩、
@@ -777,13 +813,12 @@ function CanvasBlock({
 					</Pill>
 				) : null}
 			</span>
+			{/* 这行只说**身份与几何**。叠没叠不写在这儿 —— 一个计数说不出谁在上、被盖的
+			    是谁,而那正是看的人要问的(主人 2026-09-15 指出「太粗糙」)。改由深浅说:
+			    压着别人的浮起来,被压住的往左上露一条边。 */}
 			<span className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
 				{block.id} · {column}–{column + span - 1}
 				{z ? ` · z${z}` : ""}
-				{/* 叠了就说一句:下面那块被盖住了,不标出来没人知道它还在。**不是警告** ——
-				    重叠是特性(靠 showIf 互斥地占同一格也是正当用法),所以走的是中性的灰字,
-				    不是红条。 */}
-				{overlaps > 0 ? ` · 叠${overlaps}` : ""}
 			</span>
 		</motion.button>
 	);

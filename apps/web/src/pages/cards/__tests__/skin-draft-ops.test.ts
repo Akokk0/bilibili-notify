@@ -52,6 +52,7 @@ import {
 	setKnobType,
 	setSkinMeta,
 	skinMetaError,
+	stackingOf,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -857,5 +858,57 @@ describe("overlappingBlocks", () => {
 	it("卡没定义 / 块不在里头 → 空,别在这儿抛", () => {
 		expect(overlappingBlocks(undefined, "a")).toEqual([]);
 		expect(overlappingBlocks(card([at("a", 1, 1, 4)]), "没这个块")).toEqual([]);
+	});
+});
+
+/**
+ * 叠放的**方向**。画布要按深浅把叠起来的块画出来(上层抬升、下层错位露边),
+ * 而「相交」本身不分上下 —— 排序规矩必须与渲染器一模一样:先比层次,层次一样退回
+ * 数组先后(后来者在上)。
+ */
+describe("stackingOf", () => {
+	const card = (blocks: Array<Record<string, unknown>>) => ({ width: 600, blocks }) as never;
+	const at = (id: string, row: number, column: number, span: number, over = {}) => ({
+		id,
+		kind: "builtin",
+		builtin: "title",
+		grid: { row, column, span, ...over },
+	});
+
+	it("没写层次 → 数组在后的压在上面(与渲染器同一条规矩)", () => {
+		const c = card([at("a", 1, 1, 12), at("b", 1, 3, 5)]);
+		expect(stackingOf(c, "a")).toEqual({ above: ["b"], below: [] });
+		expect(stackingOf(c, "b")).toEqual({ above: [], below: ["a"] });
+	});
+
+	it("写了层次就按层次,压得过数组先后", () => {
+		const c = card([at("a", 1, 1, 12, { z: 5 }), at("b", 1, 3, 5)]);
+		expect(stackingOf(c, "a")).toEqual({ above: [], below: ["b"] });
+		expect(stackingOf(c, "b")).toEqual({ above: ["a"], below: [] });
+	});
+
+	it("层次一样 → 退回数组先后", () => {
+		const c = card([at("a", 1, 1, 12, { z: 3 }), at("b", 1, 3, 5, { z: 3 })]);
+		expect(stackingOf(c, "a")).toEqual({ above: ["b"], below: [] });
+	});
+
+	it("不写层次 = 没声明,不是第 0 层 —— 写了 0 的与没写的照数组先后比", () => {
+		const c = card([at("a", 1, 1, 12), at("b", 1, 3, 5, { z: 1 })]);
+		expect(stackingOf(c, "a").above).toEqual(["b"]);
+	});
+
+	it("三个叠一起时,中间那块上下都有", () => {
+		const c = card([at("a", 1, 1, 12), at("b", 1, 1, 12), at("c", 1, 1, 12)]);
+		expect(stackingOf(c, "b")).toEqual({ above: ["c"], below: ["a"] });
+	});
+
+	it("不相交的块不参与 —— 同行不同列是分栏", () => {
+		const c = card([at("a", 1, 1, 4), at("b", 1, 5, 8)]);
+		expect(stackingOf(c, "a")).toEqual({ above: [], below: [] });
+	});
+
+	it("卡没定义 / 块不在里头 → 两边都空,别在这儿抛", () => {
+		expect(stackingOf(undefined, "a")).toEqual({ above: [], below: [] });
+		expect(stackingOf(card([at("a", 1, 1, 4)]), "没这个块")).toEqual({ above: [], below: [] });
 	});
 });

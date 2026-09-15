@@ -615,20 +615,72 @@ describe("画布 — 块的层次", () => {
 		expect(chip(/封面|cover/).style.zIndex).toBe("");
 	});
 
-	it("叠上了的块在画布上说得出来 —— 下面那块被盖住,不标一句没人知道它还在", () => {
+	it("叠了不写字 —— 深浅自己说(主人 2026-09-15 拍板,别再退回计数)", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
 			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
 		]);
-		expect(chip(/封面|cover/).textContent).toContain("叠");
+		expect(chip(/封面|cover/).textContent).not.toContain("叠");
+		expect(chip(/UP 主名|name/).textContent).not.toContain("叠");
 	});
 
-	it("同行不同列不算叠 —— 那是分栏,决策 6 要的就是它", () => {
+	it("压着别人的块抬起来 —— 走 shadow-bn-elev,不写死影子", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+		]);
+		expect(chip(/UP 主名|name/).className).toContain("shadow-bn-elev");
+		expect(chip(/封面|cover/).className).not.toContain("shadow-bn-elev");
+	});
+
+	it("被压住的块往左上错一点 —— 完全盖住时那条露边是它唯一的痕迹", () => {
+		withBlocks([
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 1, span: 12, z: 2 } },
+		]);
+		const under = chip(/封面|cover/);
+		// 整摞居中放:被压的往上 4、压着别人的往下 4 —— 两层之间还是 8px 的落差,
+		// 但谁都只占半个行距,不贴上一行也不贴下一行。
+		expect([under.style.top, under.style.left]).toEqual(["-4px", "-8px"]);
+		const over = chip(/UP 主名|name/);
+		expect([over.style.top, over.style.left]).toEqual(["4px", ""]);
+	});
+
+	it("压得越深往左错得越多,但到两档为止", () => {
+		// **五个**摞在同一格:最底下那块被压了 4 层,封顶才看得出来(三个块最深才 2 层,
+		// 那个例子离了封顶也不会坏)。
+		const stacked = (builtin: string) => ({
+			id: builtin,
+			kind: "builtin",
+			builtin,
+			grid: { row: 1, column: 1, span: 12 },
+		});
+		withBlocks(["cover", "name", "title", "desc", "popularity"].map(stacked));
+		expect(chip(/cover/).style.left).toBe("-16px");
+		expect(chip(/desc/).style.left).toBe("-8px");
+		expect(chip(/popularity/).style.left).toBe("");
+	});
+
+	it("纵向只有三档 —— 再深也不超出半个行距,两头都叠着的就不动", () => {
+		const stacked = (builtin: string) => ({
+			id: builtin,
+			kind: "builtin",
+			builtin,
+			grid: { row: 1, column: 1, span: 12 },
+		});
+		withBlocks(["cover", "name", "title", "desc", "popularity"].map(stacked));
+		expect(chip(/cover/).style.top).toBe("-4px");
+		expect(chip(/desc/).style.top).toBe("");
+		expect(chip(/popularity/).style.top).toBe("4px");
+	});
+
+	it("同行不同列不算叠 —— 那是分栏,决策 6 要的就是它;不抬也不错位", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 4 } },
 			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 5, span: 8 } },
 		]);
-		expect(chip(/封面|cover/).textContent).not.toContain("叠");
+		expect(chip(/封面|cover/).style.top).toBe("");
+		expect(chip(/UP 主名|name/).className).not.toContain("shadow-bn-elev");
 	});
 });
 
