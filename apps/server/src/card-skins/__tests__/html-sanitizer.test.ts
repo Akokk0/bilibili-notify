@@ -486,3 +486,38 @@ describe("内联 svg", () => {
 		expect(warnings).toEqual([]);
 	});
 });
+
+/**
+ * 命名空间声明(`xmlns` / `xmlns:xlink`)**静静丢掉,不出 warning**。
+ *
+ * 它们是每一份从设计工具复制出来的 svg 都带的两条,而在 HTML 里它们本来就不起作用 ——
+ * 解析器按标签名就把 `<svg>` 放进 svg 命名空间了。为它们各报一条警告,等于让每个作者
+ * 第一次贴 svg 就先吃两条看不懂的红字,然后学会不看警告栏 —— 而警告栏里真该看的是
+ * 「你那个 `<image>` 被丢了」。
+ */
+describe("svg 的命名空间声明", () => {
+	const svg = (inner: string) => sanitizeCardBlockHtml(inner, { kind: "dynamic", assets: ASSETS });
+
+	it("xmlns 丢掉但不吭声", () => {
+		const r = svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect/></svg>');
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.html).not.toContain("xmlns");
+		expect(r.warnings).toEqual([]);
+	});
+
+	it("xmlns:xlink 同理", () => {
+		const r = svg('<svg xmlns:xlink="http://www.w3.org/1999/xlink"><rect/></svg>');
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings).toEqual([]);
+	});
+
+	it("别的前缀照旧报,而且名字里不许多出一个冒号", () => {
+		const r = svg('<svg><rect xml:space="preserve"/></svg>');
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings.join()).toContain("xml:space");
+		expect(r.warnings.join()).not.toMatch(/属性 :/);
+	});
+});

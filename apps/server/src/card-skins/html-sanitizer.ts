@@ -506,9 +506,17 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 	let hasHref = false;
 	for (const attr of el.attrs) {
 		const name = attr.name;
+		// 命名空间声明**静静丢掉**:`xmlns` / `xmlns:xlink` 是每一份从设计工具复制出来的
+		// svg 都带的,而在 HTML 里它们本来就不起作用(解析器按标签名就把 `<svg>` 放进 svg
+		// 命名空间)。为它们各报一条,等于让作者第一次贴 svg 就先吃两条看不懂的红字,然后
+		// 学会不看警告栏 —— 而警告栏里真该看的是「你那个 `<image>` 被丢了」。
+		// parse5 把 `xmlns` 存成 name="xmlns" + prefix=""(空串,不是 undefined)。
+		if (name === "xmlns" || attr.prefix === "xmlns") continue;
 		// parse5 把 `xlink:href` 存成 name="href" + prefix="xlink";别的前缀一律不认。
 		if (attr.prefix !== undefined && !(attr.prefix === "xlink" && name === "href")) {
-			ctx.warnings.push(`<${tag}> 的属性 ${attr.prefix}:${name} 不在白名单,已丢弃`);
+			// 前缀是空串时别拼出一个 `:name` 来 —— 报出去的名字得是作者写的那个。
+			const shown = attr.prefix ? `${attr.prefix}:${name}` : name;
+			ctx.warnings.push(`<${tag}> 的属性 ${shown} 不在白名单,已丢弃`);
 			continue;
 		}
 		if (name === "href") {
