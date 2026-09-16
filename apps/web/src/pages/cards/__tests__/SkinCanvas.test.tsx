@@ -11,6 +11,7 @@
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -587,12 +588,15 @@ describe("接管 / 交还一种卡", () => {
  * 的图对不上,比不给层次还糟。
  */
 describe("画布 — 块的层次", () => {
-	const withBlocks = (blocks: Array<Record<string, unknown>>) => {
+	const withBlocks = (
+		blocks: Array<Record<string, unknown>>,
+		selection: SkinSelection | null = null,
+	) => {
 		render(
 			<SkinCanvas
 				kind="live"
 				card={{ width: 600, blocks } as never}
-				selection={null}
+				selection={selection}
 				onSelect={vi.fn()}
 			/>,
 		);
@@ -672,6 +676,27 @@ describe("画布 — 块的层次", () => {
 		expect(chip(/cover/).style.top).toBe("-4px");
 		expect(chip(/desc/).style.top).toBe("");
 		expect(chip(/popularity/).style.top).toBe("4px");
+	});
+
+	it("选中一个压着别人的块,底仍然不透明 —— 选中态不许自己去糊一层纱", () => {
+		withBlocks(
+			[
+				{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
+				{
+					id: "name",
+					kind: "builtin",
+					builtin: "name",
+					grid: { row: 1, column: 1, span: 12, z: 2 },
+				},
+			],
+			{ kind: "block", id: "name" },
+		);
+		const over = chip(/UP 主名|name/);
+		// 选中态**整句吃库里那句语汇**:它的粉调底是 color-mix 落在 surface 上出的
+		// **不透明**色。手抄 `bg-bn-pink/N` 那类纱,被压住那块的字会直接透上来,
+		// 两块的字叠在一起谁都读不了(2026-09-16 主人报的)。
+		expect(over.className).toContain(SELECTED_LANGUAGE);
+		expect(over.className).not.toMatch(/bg-bn-pink\/\d/);
 	});
 
 	it("同行不同列不算叠 —— 那是分栏,决策 6 要的就是它;不抬也不错位", () => {

@@ -22,7 +22,7 @@
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
-import { AddButton, Btn, EmptyNote, Icon, Pill } from "@bilibili-notify/ui";
+import { AddButton, Btn, EmptyNote, Icon, Pill, SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { animate, type MotionValue, motion, useMotionValue } from "motion/react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -758,7 +758,13 @@ function CanvasBlock({
 				stack.below > 0 ? "shadow-bn-elev" : ""
 			} ${
 				selected
-					? "border-bn-pink bg-bn-pink/6 ring-3 ring-bn-pink/18"
+					? // **整句吃库里那句选中语汇**,别手抄(`packages/ui/README.md` 明写)。
+						// 它的粉调底是 color-mix 落在 surface 上出的**不透明**色 —— 初版这儿
+						// 抄了个 `bg-bn-pink/6`,那是混 transparent 的纱:选中一个压着别人的块,
+						// 底下那块的字直接透上来、两块的字叠死(2026-09-16 主人报的)。同一个
+						// 雷 Subs 分组胶囊踩过,语汇常量就是为它立的。
+						// `ring` 是画布自己加的:块摆得密,选中的那个要一眼找得到。
+						`${SELECTED_LANGUAGE} ring-3 ring-bn-pink/18`
 					: // 压着别人时底换成**不透明**的:半透明叠半透明,底下那块的字会透上来
 						// (「别把半透明摞在半透明上」)。没压着谁的照旧留一点通透。
 						stack.below > 0
