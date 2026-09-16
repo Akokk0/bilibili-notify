@@ -8,7 +8,15 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { createVelocityTracker, movedGrid, project, resizedGrid, trackAt } from "../canvas-drag";
+import {
+	createVelocityTracker,
+	MAX_SOLID_STACK,
+	movedGrid,
+	project,
+	resizedGrid,
+	solidStackDepth,
+	trackAt,
+} from "../canvas-drag";
 
 /** 12 条等宽轨道,每条 40px,从 x=100 起;中间不留缝(画布真有 gap,但算法不该依赖它)。 */
 const TRACKS = Array.from({ length: 12 }, (_, i) => ({
@@ -182,5 +190,47 @@ describe("松手速度", () => {
 		expect(t.velocity(0)).toEqual({ x: 0, y: 0 });
 		t.add(5, 5, 0);
 		expect(t.velocity(0)).toEqual({ x: 0, y: 0 });
+	});
+});
+
+/**
+ * **三重闸**(2026-09-16 主人:「三重都还好,四重就乱掉了,限制最多三重」)。
+ *
+ * 只拦画布拖拽这一口 —— 检查器的数字框是精确编辑、皮肤包 schema 照旧放行,都由主人拍板。
+ * 数的是「**一定同时出现**的块」:写了 `showIf` 的不算,它们出图时可能互斥地占同一格,
+ * 而那是 ADR 明写的正当用法(有视频画视频卡、有图廊画图廊)。
+ */
+describe("拖拽的三重闸", () => {
+	const solid = (row: number, column: number, span: number) => ({
+		grid: { row, column, span },
+		solid: true,
+	});
+	const at = { row: 1, column: 1, span: 12 };
+
+	it("上限就是三 —— 别在两处各写一个数", () => {
+		expect(MAX_SOLID_STACK).toBe(3);
+	});
+
+	it("数的是同一片格子上一定出现的块,含自己", () => {
+		expect(solidStackDepth(at, true, [])).toBe(1);
+		expect(solidStackDepth(at, true, [solid(1, 1, 12)])).toBe(2);
+		expect(solidStackDepth(at, true, [solid(1, 1, 12), solid(1, 1, 12)])).toBe(3);
+		expect(solidStackDepth(at, true, [solid(1, 1, 12), solid(1, 1, 12), solid(1, 1, 12)])).toBe(4);
+	});
+
+	it("同行不同列不算叠 —— 那是分栏,与 overlappingBlocks 同一条判据", () => {
+		expect(solidStackDepth({ row: 1, column: 1, span: 4 }, true, [solid(1, 5, 8)])).toBe(1);
+	});
+
+	it("跨行块占到的每一行都算 —— 只看起点会漏掉被它盖住的那几行", () => {
+		const cover = { grid: { row: 1, column: 1, span: 12, rowSpan: 3 }, solid: true };
+		expect(solidStackDepth({ row: 2, column: 1, span: 12 }, true, [cover])).toBe(2);
+	});
+
+	it("写了 showIf 的一个都不数 —— 四种形态各摆一个块照旧摆得下", () => {
+		const cond = (row: number) => ({ grid: { row, column: 1, span: 12 }, solid: false });
+		expect(solidStackDepth(at, false, [cond(1), cond(1), cond(1)])).toBe(0);
+		// 自己是实心的,底下三个都带 showIf —— 只数自己这一个
+		expect(solidStackDepth(at, true, [cond(1), cond(1), cond(1)])).toBe(1);
 	});
 });

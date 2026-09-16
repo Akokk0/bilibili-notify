@@ -98,6 +98,19 @@ function spanOf(grid: Grid): { r0: number; r1: number; c0: number; c1: number } 
 }
 
 /**
+ * 两个格子**占着同一片地方**吗 —— 行与列两个区间都相交才算。
+ *
+ * 单独导出是因为**这条判据只准有一份**:画布拖拽的三重闸(`canvas-drag.ts`)问的是
+ * 「落到这儿会不会叠成第四层」,而 {@link overlappingBlocks} 问的是「现在谁跟谁叠着」。
+ * 两处要是各写一份,拦住的和画出来的就会是两回事。
+ */
+export function gridsOverlap(a: Grid, b: Grid): boolean {
+	const x = spanOf(a);
+	const y = spanOf(b);
+	return x.r0 <= y.r1 && y.r0 <= x.r1 && x.c0 <= y.c1 && y.c0 <= x.c1;
+}
+
+/**
  * 这个块和哪些块**占着同一片格子**(按块的先后回 id)。
  *
  * 判据是**行与列两个区间都相交** —— 同一行不同列是分栏,那正是决策 6 选网格换来的东西,
@@ -110,13 +123,8 @@ function spanOf(grid: Grid): { r0: number; r1: number; c0: number; c1: number } 
 export function overlappingBlocks(card: Card | undefined, blockId: string): string[] {
 	const me = card?.blocks.find((b) => b.id === blockId);
 	if (!card || !me) return [];
-	const a = spanOf(me.grid);
 	return card.blocks
-		.filter((b) => {
-			if (b.id === blockId) return false;
-			const o = spanOf(b.grid);
-			return a.r0 <= o.r1 && o.r0 <= a.r1 && a.c0 <= o.c1 && o.c0 <= a.c1;
-		})
+		.filter((b) => b.id !== blockId && gridsOverlap(me.grid, b.grid))
 		.map((b) => b.id);
 }
 

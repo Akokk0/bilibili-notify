@@ -28,10 +28,12 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import {
 	createVelocityTracker,
 	type GridPos,
+	MAX_SOLID_STACK,
 	movedGrid,
 	prefersReducedMotion,
 	project,
 	resizedGrid,
+	solidStackDepth,
 	type Track,
 	trackAt,
 	type Velocity,
@@ -109,7 +111,7 @@ export function SkinCanvas({
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
 	const [picking, setPicking] = useState(false);
-	const drag = useDrag(onGrid);
+	const drag = useDrag(onGrid, card?.blocks);
 
 	if (!card) {
 		return (
@@ -496,7 +498,11 @@ function tracksOf(root: HTMLElement | null, track: "column" | "row"): Track[] {
  * 松手交给弹簧,并把**手上的速度递过去**(Apple 说的那道接缝:拖与弹之间不该看得出接口),
  * 落点还按**投射出去会停到哪**算,而不是松手时块在哪。
  */
-function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
+/**
+ * `blocks` 只给**三重闸**用(2026-09-16):落点会让同一片格子上「一定同时出现」的块超过
+ * {@link MAX_SOLID_STACK} 就不接受,块停在最后一个合法位置 —— 与「顶到边就停住」同一条形状。
+ */
+function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Block[]): CanvasDrag {
 	const rootRef = useRef<HTMLDivElement>(null);
 	const x = useMotionValue(0);
 	const y = useMotionValue(0);
@@ -517,6 +523,20 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 	const pending = useRef<{ id: string; v: Velocity } | null>(null);
 
 	const redraw = useCallback(() => bump((n) => n + 1), []);
+
+	/**
+	 * 这个落点收不收。**预览与松手必须走同一个判据** —— 只拦预览的话,拖的时候看着被挡住,
+	 * 松手却飞过去叠成第四层了。
+	 */
+	const blocksRef = useRef(blocks);
+	blocksRef.current = blocks;
+	const accepts = useCallback((id: string, at: GridPos) => {
+		const all = blocksRef.current;
+		if (!all) return true;
+		const me = all.find((b) => b.id === id);
+		const peers = all.filter((b) => b.id !== id).map((b) => ({ grid: b.grid, solid: !b.showIf }));
+		return solidStackDepth(at, !me?.showIf, peers) <= MAX_SOLID_STACK;
+	}, []);
 
 	const begin = useCallback(
 		(id: string, base: GridPos, mode: DragMode, e: React.PointerEvent) => {
@@ -581,6 +601,11 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 			// **落点没变就不重画。** 每帧一次 `setState` 会把整张画布(可能四十个块)重渲染一遍,
 			// 主线程被占满之后连 motion 的那一帧也跟着晚 —— 于是 1:1 写得再对也跟不上手。
 			// 跨格才重画,把每帧一次降成每格一次。
+			// 三重闸:落不下去就**保持上一个合法落点**(块顶到边就停住,同一条形状)。
+			if (!accepts(d.id, next)) {
+				d.moved = true;
+				return;
+			}
 			const same =
 				d.moved &&
 				next.row === d.landing.row &&
@@ -590,7 +615,7 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 			d.moved = true;
 			if (!same) redraw();
 		},
-		[x, y, redraw],
+		[x, y, redraw, accepts],
 	);
 
 	const onPointerUp = useCallback(
@@ -614,9 +639,13 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined): CanvasDrag {
 				null;
 			pending.current = { id: d.id, v };
 			setSettling(d.id);
-			onGrid(d.id, movedGrid(d.base, { column, row }, d.grabOffset));
+			// 动量能把落点投到一格开外,所以**投完还要再过一次闸** —— 只拦拖的过程,
+			// 甩一下照样能叠成第四层。过不了就退回最后一个合法落点。
+			const thrown = { ...d.base, ...movedGrid(d.base, { column, row }, d.grabOffset) };
+			const to = accepts(d.id, thrown) ? thrown : d.landing;
+			onGrid(d.id, { row: to.row, column: to.column });
 		},
-		[onGrid, redraw],
+		[onGrid, redraw, accepts],
 	);
 
 	// 提交之后把 transform 反推回**松手那一刻的位置**,再让弹簧把它送到 0 —— 这样块是从

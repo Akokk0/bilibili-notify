@@ -14,6 +14,7 @@
  */
 
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { gridsOverlap } from "./skin-draft-ops";
 
 /** 一条网格轨道在屏幕上的范围(px);列用横向、行用纵向,同一套算法。 */
 export interface Track {
@@ -73,6 +74,47 @@ export function movedGrid(
 		row: clamp(at.row, 1, CARD_SKIN_LIMITS.maxRows),
 		column: clamp(at.column - grabOffset, 1, cols - grid.span + 1),
 	};
+}
+
+/** 三重闸看得见的那半:别的块占着哪儿,以及它**是不是一定会出现**。 */
+export interface StackPeer {
+	readonly grid: GridPos;
+	/** 写了 `showIf` 的块不算 —— 见 {@link solidStackDepth}。 */
+	readonly solid: boolean;
+}
+
+/**
+ * 同一片格子上**最多叠三层**(2026-09-16 主人:「三重都还好,四重就乱掉了」)。
+ *
+ * 这个数不是随便定的,它正是**画布画得清的层数**:横向错位每层 8px、封两档,于是三层的
+ * 左边缘是 -16 / -8 / 0 三档各不同;到第四层封顶生效,最上面两条露边**重合**,看着就是糊的。
+ *
+ * ⚠️ **这是画布拖拽的闸,不是数据契约。** 检查器的行列数字框是精确编辑(ADR 说过它不该
+ * 有副作用)、皮肤包 schema 也照旧放行 —— 手写的、别人分享的皮肤装得进来,装进来之后
+ * 画布上会是挤的,但出图那头四重一点问题都没有(层次照样表达得清)。三处分别拦不拦由
+ * 主人 2026-09-16 拍板。
+ */
+export const MAX_SOLID_STACK = 3;
+
+/**
+ * 落到 `at` 这个格子上,同一片地方会有几个**一定同时出现**的块(含自己)。
+ *
+ * **写了 `showIf` 的一个都不数。** 编辑器判不出运行时哪个为真,但判得出有没有写 ——
+ * 而「有视频画视频卡、有图廊画图廊,两个块摆同一处」是 ADR 明写的正当技巧:它们出图时
+ * 互斥,根本不叠。只按格子数的话,四种形态各摆一个块就被这道闸堵死了。
+ *
+ * 相交判据从 `skin-draft-ops` 借,**不在这儿另写一份**:那边的 `overlappingBlocks` 问的是
+ * 「现在谁跟谁叠着」(画布照它画深浅),这儿问的是「落过去会不会叠成第四层」。两份算法
+ * 只要有一点对不上,拦住的和画出来的就是两回事。
+ */
+export function solidStackDepth(
+	at: GridPos,
+	selfSolid: boolean,
+	peers: readonly StackPeer[],
+): number {
+	let n = selfSolid ? 1 : 0;
+	for (const p of peers) if (p.solid && gridsOverlap(at, p.grid)) n++;
+	return n;
 }
 
 /**
