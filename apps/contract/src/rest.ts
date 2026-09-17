@@ -11,6 +11,7 @@ import type {
 } from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
+	CardSkinKind,
 	ConnectionCapabilities,
 	ExtensionProvides,
 	ExtensionRunState,
@@ -584,6 +585,17 @@ export interface AiChatMessageDTO {
 	 * `/api/ai/assets/<id>` 显示缩略图。没带图就整个字段缺席。
 	 */
 	images?: string[];
+	/**
+	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤,按先后。消息末尾的预览块照它画
+	 * (ADR-0015 决策 20 的 🔗)。没碰过就整个字段缺席。
+	 */
+	cardSkins?: AiCardSkinTouchDTO[];
+}
+
+/** 一条回复碰过的一套卡片皮肤。`kinds` 是这条回复写过的卡种,按先后;只改了名字时为空。 */
+export interface AiCardSkinTouchDTO {
+	id: string;
+	kinds: CardSkinKind[];
 }
 
 /**
@@ -600,6 +612,13 @@ export interface AiChatMessageDTO {
  * 上下文与后半段的工具表对不上,主人也说不清自己在跟谁说话。
  */
 export type AiChatMode = "chat" | "skin";
+
+/**
+ * 皮肤工坊做的是哪种皮肤(ADR-0015 决策 11 / 12):`dashboard` = 面板皮肤(`create_skin`),
+ * `card` = 推送卡片皮肤({@link AI_CARD_WORKSHOP_TOOLS})。与 {@link AiChatMode} 同样开局即锁;
+ * 只在 `mode: "skin"` 时有意义,日常聊天里它恒为 `dashboard`、没人读。
+ */
+export type AiSkinTarget = "dashboard" | "card";
 
 /**
  * 「做一套皮肤」那把工具的名字 —— **三层共用的 wire 标识**,与 {@link AiChatMode}
@@ -639,6 +658,8 @@ export interface AiConversationMetaDTO {
 	 * 出现的形状,把「可能缺」写进来只会让边界另一侧再各判一遍。
 	 */
 	mode: AiChatMode;
+	/** 见 {@link AiSkinTarget}。与 `mode` 同理,缺省在读盘那一处补齐,wire 上永远带着。 */
+	skinTarget: AiSkinTarget;
 	/**
 	 * 带不带女仆人格。同 `mode`,缺省在读盘那一处补齐(老会话按 `true` 算,那正是
 	 * 它们一直以来的样子)。皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。

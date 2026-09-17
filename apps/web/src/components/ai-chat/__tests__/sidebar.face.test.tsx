@@ -31,6 +31,7 @@ function conv(over: Partial<AiConversationMetaDTO>): AiConversationMetaDTO {
 		updatedAt: AT,
 		messageCount: 2,
 		mode: "chat",
+		skinTarget: "dashboard",
 		persona: true,
 		...over,
 	};

@@ -204,6 +204,7 @@ describe("groupConversations", () => {
 		updatedAt,
 		messageCount: 2,
 		mode: "chat",
+		skinTarget: "dashboard",
 		persona: true,
 	});
 

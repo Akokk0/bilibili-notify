@@ -656,6 +656,7 @@ function toMeta(conv: Conversation): ConversationMeta {
 		autoTitled: conv.autoTitled,
 		mode: conv.mode,
 		persona: conv.persona,
+		skinTarget: conv.skinTarget,
 	};
 }
 

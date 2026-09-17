@@ -135,6 +135,7 @@ vi.mock("../../../services/aiChat", async (orig) => {
 						updatedAt: "2026-07-25T00:00:01.000Z",
 						messageCount: 2,
 						mode: "chat",
+						skinTarget: "dashboard",
 						persona: true,
 					},
 				};
@@ -471,6 +472,7 @@ describe("AiChatDock — 发送与流式渲染", () => {
 						updatedAt: "2026-07-25T00:00:03.000Z",
 						messageCount: 4,
 						mode: "chat",
+						skinTarget: "dashboard",
 						persona: true,
 					},
 				};
@@ -1022,6 +1024,7 @@ describe("AiChatDock — AI 起标题", () => {
 					updatedAt: "2026-07-25T00:00:03.000Z",
 					messageCount: 8,
 					mode: "chat",
+					skinTarget: "dashboard",
 					persona: true,
 					// 老文件里没有 autoTitled 这个字段。
 				},
@@ -1052,6 +1055,7 @@ describe("AiChatDock — AI 起标题", () => {
 				updatedAt: "2026-07-25T00:00:03.000Z",
 				messageCount: 4,
 				mode: "chat",
+				skinTarget: "dashboard",
 				persona: true,
 				// 第一轮已经起过名字了,服务端在这里回 true。
 				autoTitled: true,

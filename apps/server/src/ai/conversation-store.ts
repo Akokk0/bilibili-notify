@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AI_TOOL_CREATE_SKIN, type AiChatMode } from "@bilibili-notify/contract";
+import {
+	AI_CARD_WORKSHOP_TOOLS,
+	AI_TOOL_CREATE_SKIN,
+	type AiCardSkinTouchDTO,
+	type AiChatMode,
+	type AiSkinTarget,
+} from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 
 /**
@@ -54,7 +60,25 @@ export interface StoredMessage {
 	 * 每次打开这个会话都要连着几 MB 的 base64 一起扛。没带图就整个字段缺席。
 	 */
 	images?: string[];
+	/**
+	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤(预览块照它画)。没碰过就整个字段缺席。
+	 */
+	cardSkins?: AiCardSkinTouchDTO[];
 }
+
+/**
+ * 卡片工坊的账本(ADR-0015 决策 18 的 🔗):这场对话建过哪些皮肤、给哪些原件复制过副本。
+ *
+ * 不跟着消息走、**当场落盘**:等一轮成功才记的话,中途失败的那一轮会让下一句再复制一份。
+ */
+export interface CardSkinLedger {
+	/** 这场对话建出来的皮肤(含复制出来的副本),按先后。 */
+	owned: string[];
+	/** 原件 id → 副本 id。 */
+	forks: Record<string, string>;
+}
+
+export type CardSkinLedgerEntry = { owned: string } | { fork: { from: string; to: string } };
 
 /** 追加消息时的入参 —— id / ts 由 store 生成,调用方不许自己编。 */
 export interface NewMessage {
@@ -63,6 +87,7 @@ export interface NewMessage {
 	tools?: readonly StoredToolTrace[];
 	reasoning?: string;
 	images?: readonly string[];
+	cardSkins?: readonly AiCardSkinTouchDTO[];
 }
 
 export interface Conversation {
@@ -81,6 +106,10 @@ export interface Conversation {
 	mode: AiChatMode;
 	/** 带不带女仆人格;同样读时补默认(老会话 = true)。 */
 	persona: boolean;
+	/** 皮肤工坊做哪种皮肤(见 {@link AiSkinTarget});同样读时补默认。 */
+	skinTarget: AiSkinTarget;
+	/** 卡片工坊的账本;没记过就整个字段缺席。 */
+	cardSkinLedger?: CardSkinLedger;
 	/**
 	 * 标题是否已由 AI 起过。缺失(旧文件)按 false 算。
 	 *
@@ -102,6 +131,8 @@ export interface ConversationMeta {
 	mode: AiChatMode;
 	/** 见 {@link Conversation.persona}。 */
 	persona: boolean;
+	/** 见 {@link Conversation.skinTarget}。 */
+	skinTarget: AiSkinTarget;
 	/** 见 {@link Conversation.autoTitled}。前端拿它决定要不要去要一个标题。 */
 	autoTitled?: boolean;
 }
@@ -117,7 +148,11 @@ export interface ConversationStore {
 	 * 面孔在这一刻定死,之后没有任何接口能改它 —— 「锁定」不是界面上藏个按钮,
 	 * 是**根本没有那条路**。
 	 */
-	create(init?: { mode?: AiChatMode; persona?: boolean }): Promise<Conversation>;
+	create(init?: {
+		mode?: AiChatMode;
+		persona?: boolean;
+		skinTarget?: AiSkinTarget;
+	}): Promise<Conversation>;
 	/**
 	 * 追加消息并回写。返回更新后的会话;会话不存在返回 null(**不**凭空造一个 ——
 	 * 那会让「删掉的会话又冒出来」这种幽灵行为看着像正常功能)。
@@ -130,6 +165,11 @@ export interface ConversationStore {
 	 * 这个会话顶到侧栏最前,而主人明明正在聊别的。
 	 */
 	setTitle(id: string, title: string): Promise<Conversation | null>;
+	/**
+	 * 往卡片工坊的账本里记一笔,当场落盘。会话不存在返回 false(不凭空造一个)。
+	 * **不动 `updatedAt`** —— 同 {@link setTitle},这不算「聊过」。
+	 */
+	recordCardSkin(id: string, entry: CardSkinLedgerEntry): Promise<boolean>;
 	/** 删除一个会话。返回它此前是否存在。 */
 	remove(id: string): Promise<boolean>;
 	/**
@@ -165,8 +205,22 @@ export interface ConversationStoreOptions {
  * 这一层只补「文件里没写」的那种情况。
  */
 function inferMode(conv: Conversation): AiChatMode {
-	const workshop = conv.messages.some((m) => m.tools?.some((t) => t.name === AI_TOOL_CREATE_SKIN));
+	const workshop = conv.messages.some((m) =>
+		m.tools?.some((t) => t.name === AI_TOOL_CREATE_SKIN || CARD_TOOL_NAMES.has(t.name)),
+	);
 	return workshop ? "skin" : "chat";
+}
+
+/** 卡片工坊的工具名 —— 只有那一档挂得出来,见过就是结论。 */
+const CARD_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(AI_CARD_WORKSHOP_TOOLS));
+
+/**
+ * 老会话(文件里没有 `skinTarget`)做的是哪种皮肤 —— 同样按工具痕迹认(ADR-0015 决策 12)。
+ * 没有卡片工坊的痕迹就是 dashboard:这一格上线之前,工坊只做得了 dashboard 皮肤。
+ */
+function inferSkinTarget(conv: Conversation): AiSkinTarget {
+	const card = conv.messages.some((m) => m.tools?.some((t) => CARD_TOOL_NAMES.has(t.name)));
+	return card ? "card" : "dashboard";
 }
 
 /** 新会话的占位标题。首条用户消息落下来之前一直显示它。 */
@@ -217,6 +271,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				...parsed,
 				mode: parsed.mode ?? inferMode(parsed),
 				persona: parsed.persona ?? true,
+				skinTarget: parsed.skinTarget ?? inferSkinTarget(parsed),
 			};
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。
@@ -291,6 +346,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					messageCount: c.messages.length,
 					mode: c.mode,
 					persona: c.persona,
+					skinTarget: c.skinTarget,
 				}));
 		},
 
@@ -309,6 +365,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					messages: [],
 					mode: init?.mode ?? "chat",
 					persona: init?.persona ?? true,
+					skinTarget: init?.skinTarget ?? "dashboard",
 				};
 				await writeOne(conv);
 
@@ -373,6 +430,9 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 						...(m.tools?.length ? { tools: [...m.tools] } : {}),
 						...(m.reasoning ? { reasoning: m.reasoning } : {}),
 						...(m.images?.length ? { images: [...m.images] } : {}),
+						...(m.cardSkins?.length
+							? { cardSkins: m.cardSkins.map((t) => ({ id: t.id, kinds: [...t.kinds] })) }
+							: {}),
 					});
 				}
 
@@ -403,6 +463,24 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				// updatedAt 保持不动,理由见接口上的注释。
 				await writeOne(conv);
 				return conv;
+			});
+		},
+
+		recordCardSkin(id, entry) {
+			return serial(async () => {
+				const conv = await readOne(fileOf(id));
+				if (!conv) return false;
+				const ledger: CardSkinLedger = conv.cardSkinLedger ?? { owned: [], forks: {} };
+				if ("owned" in entry) {
+					if (!ledger.owned.includes(entry.owned)) ledger.owned.push(entry.owned);
+				} else {
+					ledger.forks[entry.fork.from] = entry.fork.to;
+					if (!ledger.owned.includes(entry.fork.to)) ledger.owned.push(entry.fork.to);
+				}
+				conv.cardSkinLedger = ledger;
+				// updatedAt 保持不动,理由见接口上的注释。
+				await writeOne(conv);
+				return true;
 			});
 		},
 

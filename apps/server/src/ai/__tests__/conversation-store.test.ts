@@ -628,3 +628,110 @@ describe("正在进行的那一轮不算空壳", () => {
 		other();
 	});
 });
+
+/**
+ * 皮肤工坊做哪种皮肤(ADR-0015 决策 11 / 12)与卡片工坊的账本(决策 18 的 🔗)。
+ */
+describe("卡片皮肤工坊", () => {
+	it("建的时候选了推送卡片 → 读回来、列表里都是 card", async () => {
+		const conv = await store.create({ mode: "skin", persona: false, skinTarget: "card" });
+		expect(conv.skinTarget).toBe("card");
+		await store.appendMessages(conv.id, [{ role: "user", content: "做套卡片" }]);
+		expect((await store.get(conv.id))?.skinTarget).toBe("card");
+		const [meta] = await store.list();
+		expect(meta?.skinTarget).toBe("card");
+	});
+
+	it("不给 = dashboard 皮肤", async () => {
+		const conv = await store.create({ mode: "skin", persona: false });
+		expect(conv.skinTarget).toBe("dashboard");
+	});
+
+	async function legacy(id: string, toolName: string): Promise<void> {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, `${id}.json`),
+			JSON.stringify({
+				id,
+				title: "老工坊",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				mode: "skin",
+				persona: false,
+				messages: [
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: toolName, args: {}, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+	}
+
+	it("文件里缺这一格 → 按工具痕迹认:有卡片工坊的工具就是 card,否则 dashboard", async () => {
+		await legacy("cardish", "write_card");
+		await legacy("dashish", "create_skin");
+		expect((await store.get("cardish"))?.skinTarget).toBe("card");
+		expect((await store.get("dashish"))?.skinTarget).toBe("dashboard");
+	});
+
+	it("连 mode 都没有的老文件,有卡片工坊的痕迹也认成工坊", async () => {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "nomode.json"),
+			JSON.stringify({
+				id: "nomode",
+				title: "x",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				messages: [
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: "set_block", args: {}, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+		const conv = await store.get("nomode");
+		expect(conv?.mode).toBe("skin");
+		expect(conv?.skinTarget).toBe("card");
+	});
+
+	it("账本当场落盘:建过的、复制过的都记下,不动 updatedAt", async () => {
+		const tick = useClock();
+		const conv = await store.create({ mode: "skin", persona: false, skinTarget: "card" });
+		tick();
+		expect(await store.recordCardSkin(conv.id, { owned: "a1" })).toBe(true);
+		expect(await store.recordCardSkin(conv.id, { fork: { from: "orig", to: "c1" } })).toBe(true);
+		const back = await store.get(conv.id);
+		expect(back?.cardSkinLedger).toEqual({ owned: ["a1", "c1"], forks: { orig: "c1" } });
+		expect(back?.updatedAt).toBe(conv.updatedAt);
+	});
+
+	it("账本:会话不在了 → false,不凭空造一个", async () => {
+		expect(await store.recordCardSkin("ghost", { owned: "a1" })).toBe(false);
+		expect(await store.get("ghost")).toBeNull();
+	});
+
+	it("回复碰过的皮肤跟着那条消息落盘;没碰就不写这个字段", async () => {
+		const conv = await store.create({ mode: "skin", persona: false, skinTarget: "card" });
+		await store.appendMessages(conv.id, [
+			{ role: "user", content: "做一套" },
+			{ role: "assistant", content: "好了", cardSkins: [{ id: "a1", kinds: ["live", "sc"] }] },
+			{ role: "assistant", content: "没动", cardSkins: [] },
+		]);
+		const [, done, idle] = (await store.get(conv.id))?.messages ?? [];
+		expect(done?.cardSkins).toEqual([{ id: "a1", kinds: ["live", "sc"] }]);
+		expect(idle && "cardSkins" in idle).toBe(false);
+	});
+});
