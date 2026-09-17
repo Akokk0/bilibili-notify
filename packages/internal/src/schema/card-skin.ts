@@ -73,8 +73,9 @@ export { CARD_SKIN_FRAME_HOOKS, CARD_SKIN_SELF_HOOK };
 /**
  * 皮肤变量:**固定表**(ADR-0014 决策 16),注进根块的 CSS 自定义属性。
  *
- * 表里只剩两类:**用户的资产**(字体、背景图 —— 换皮肤它们还跟着人走)与**数据**
- * (SC / 上舰的档位色)。可调的观感一律归旋钮({@link CARD_SKIN_KNOB_LIMITS}),由皮肤
+ * 表里只剩两类:**用户的资产**(按 UP 单设的背景图 —— 换皮肤它还跟着人走)与**数据**
+ * (SC / 上舰的档位色)。字体原先也在这张表里,但渲染器从没注过 `--bn-card-font`
+ * (字体经 `renderCard` 的 `font` 进来,皮肤要调字体走字体旋钮),那一项已删。可调的观感一律归旋钮({@link CARD_SKIN_KNOB_LIMITS}),由皮肤
  * 自己声明 —— 2026-09-14 主人推翻「皮肤不带自定义旋钮」之后,玻璃白纱 / 模糊这两项
  * 也从这张表退成了默认皮肤自己的旋钮:赛博朋克那类没有玻璃层的皮肤,不该在面板上
  * 挂两根拧了没反应的滑杆。
@@ -83,7 +84,6 @@ export { CARD_SKIN_FRAME_HOOKS, CARD_SKIN_SELF_HOOK };
  * 默认皮肤把它俩做成了旋钮,所以用户照样调得动。
  */
 export const CARD_SKIN_VARIABLES = {
-	font: { css: "--bn-card-font", label: "字体栈" },
 	/** 用户设了背景图才注(值是 `url("data:…")`);皮肤 CSS 用 `var(--bn-card-bg-image, <渐变>)` 兜底。 */
 	bgImage: {
 		css: "--bn-card-bg-image",

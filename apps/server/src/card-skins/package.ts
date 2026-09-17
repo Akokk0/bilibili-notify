@@ -35,7 +35,7 @@ export const CARD_SKIN_MANIFEST_FILE = "card-skin.json";
  * `src`,所以 `/` 与 `..` 连正则都进不来 —— 安全性由构造保证,不靠调用方记得检查。
  */
 export const CARD_SKIN_IMAGE_RE = /^assets\/[a-z0-9._-]+\.(png|jpe?g|webp|gif)$/;
-/** 包内字体。卡片皮肤能自带字(出图的 `--bn-card-font` 指得到它)。 */
+/** 包内字体。卡片皮肤能自带字(皮肤级 `fonts` 在出图时注成 `@font-face`)。 */
 export const CARD_SKIN_FONT_RE = /^assets\/[a-z0-9._-]+\.(woff2|woff|ttf|otf)$/;
 
 /** 这个名字能不能作为包内资产落盘 / 回读 —— 写盘、列清单、回读三道闸共用它。 */

@@ -1176,7 +1176,7 @@ export function resolvePreviewScene(kind: CardSkinKind, scene?: string): Preview
  * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成
  * `--bn-knob-<key>`,皮肤 CSS 里 `var(--bn-knob-<key>, <自己的默认>)` 引用。
  *
- * 固定变量表({@link CARD_SKIN_VARIABLES})管的是**用户的资产**(字体、背景图)与**数据**
+ * 固定变量表({@link CARD_SKIN_VARIABLES})管的是**用户的资产**(背景图)与**数据**
  * (档位色):皮肤换了它们还在。旋钮管的是**这套皮肤自己的调色板**:皮肤换了就换一套。
  *
  * 🔴 **`default` 不注入**。它只是面板控件的起始位置;用户没动过就什么都不注,皮肤 CSS 里
