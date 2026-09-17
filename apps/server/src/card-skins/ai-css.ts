@@ -56,18 +56,17 @@ export type CardCssAiResult =
 	| { ok: true; css: string; warnings: string[] }
 	| { ok: false; errors: string[] };
 
-/** 与框无关的那半:这张卡是什么、选择器怎么写、清洗器收什么。 */
-export function buildCardCssAiSystem(): string {
+/**
+ * 写卡片 CSS 的规矩 —— 选择器、属性与值、能用的变量。编辑器那口与工坊那口**共用这一段**
+ * (决策 25:规矩从清洗器真在执行的常量拼,两份提示词各抄一遍就会各漂各的)。
+ *
+ * `where` 说旋钮与包内图片的清单在哪:编辑器那口拼在用户消息里,工坊那口要模型自己去读。
+ */
+export function cardCssRules(where: string): string {
 	const vars = Object.values(CARD_SKIN_VARIABLES)
 		.map((v) => `  - \`${v.css}\`:${v.label}`)
 		.join("\n");
-	return `你给 B 站推送卡片的皮肤写 CSS,每次只写**一个框**:一个块的 CSS,或整张卡外框的 CSS。
-
-## 这张卡是什么
-- 卡片由服务端用 Chromium 渲染成一张**静态 PNG**:没有鼠标、没有动画。:hover、:focus、transition、animation 写了也画不出来,别写。
-- 卡片是网格排版,块在网格里的位置由编辑器定,不归这段 CSS 管;CSS 管的是这个框长什么样、里面怎么排。
-
-## 选择器
+	return `## 选择器
 - 块的 CSS 以 \`[data-bn="${CARD_SKIN_SELF_HOOK}"]\`(这块自己)或这块的内部挂点起头;外框的 CSS 以 ${Object.keys(
 		CARD_SKIN_FRAME_HOOKS,
 	)
@@ -83,14 +82,25 @@ export function buildCardCssAiSystem(): string {
 - 不准用反斜杠转义;\`!important\` 会被摘掉。
 - position 只能是 ${[...POSITION_VALUES].join(" / ")}。
 - at 规则只收 @media;@import、@font-face、@keyframes 都不收。
-- 整段不超过 ${CARD_SKIN_LIMITS.maxCssBytes} 字节(UTF-8)。
+- 每段 CSS 不超过 ${CARD_SKIN_LIMITS.maxCssBytes} 字节(UTF-8)。
 
 ## 能用的变量
-- **旋钮**:皮肤作者声明的可调项,只能引用、不能新增。写成 \`var(--bn-knob-<key>, <兜底值>)\`,兜底值必须写 —— 用户没拧过的旋钮不会注入。有哪几枚见用户消息。
+- **旋钮**:皮肤作者声明的可调项,只能引用、不能新增。写成 \`var(--bn-knob-<key>, <兜底值>)\`,兜底值必须写 —— 用户没拧过的旋钮不会注入。有哪几枚${where}。
 - 半透明色写 \`color-mix(in srgb, var(--bn-knob-x, #hex) 35%, transparent)\`,rgba() 读不了变量。
 - 宿主注入的变量:
 ${vars}
-- **包内图片**:\`var(--bn-asset-<名>)\`,值是一整层 url,可以直接放进 background;有哪些见用户消息。
+- **包内图片**:\`var(--bn-asset-<名>)\`,值是一整层 url,可以直接放进 background;有哪些${where}。`;
+}
+
+/** 与框无关的那半:这张卡是什么、选择器怎么写、清洗器收什么。 */
+export function buildCardCssAiSystem(): string {
+	return `你给 B 站推送卡片的皮肤写 CSS,每次只写**一个框**:一个块的 CSS,或整张卡外框的 CSS。
+
+## 这张卡是什么
+- 卡片由服务端用 Chromium 渲染成一张**静态 PNG**:没有鼠标、没有动画。:hover、:focus、transition、animation 写了也画不出来,别写。
+- 卡片是网格排版,块在网格里的位置由编辑器定,不归这段 CSS 管;CSS 管的是这个框长什么样、里面怎么排。
+
+${cardCssRules("见用户消息")}
 
 ## 输出
 - 只输出 CSS 本身:不要解释,不要代码块围栏。
@@ -170,16 +180,16 @@ export function prepareCardCssAi(
 	};
 }
 
-function blockLabel(kind: CardSkinKind, block: Block): string {
+export function blockLabel(kind: CardSkinKind, block: Block): string {
 	if (block.kind === "custom") return "自定义块";
 	return CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.label ?? block.builtin;
 }
 
-function hookLines(hooks: ReadonlyArray<readonly [string, string]>): string {
+export function hookLines(hooks: ReadonlyArray<readonly [string, string]>): string {
 	return hooks.map(([hook, label]) => `- \`[data-bn="${hook}"]\`:${label}`).join("\n");
 }
 
-function fenced(lang: string, body: string | undefined): string {
+export function fenced(lang: string, body: string | undefined): string {
 	return body?.trim() ? `\`\`\`${lang}\n${body}\n\`\`\`` : "(空)";
 }
 
@@ -225,7 +235,7 @@ function knobFallback(knob: CardSkinKnob): string {
 	}
 }
 
-function knobLines(knobs: readonly CardSkinKnob[]): string {
+export function knobLines(knobs: readonly CardSkinKnob[]): string {
 	if (knobs.length === 0) return "(这套皮肤没有声明旋钮)";
 	return knobs
 		.map(
