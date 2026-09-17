@@ -168,3 +168,48 @@ describe("create_skin 跑完 → 皮肤状态回灌", () => {
 		expect(skinGets()).toHaveLength(0);
 	});
 });
+
+/**
+ * 卡片工坊动了皮肤库 → 那份缓存过期(ADR-0015 决策 20 的 🔗)。回复下面的预览块与皮肤页
+ * 读的都是它;不过期的话,女仆说「改好了」而预览停在改之前。
+ */
+describe("卡片工坊的写工具跑完 → 卡片皮肤库缓存过期", () => {
+	async function sendWith(events: Array<Record<string, unknown>>) {
+		H.toolEvents = events;
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const spy = vi.spyOn(qc, "invalidateQueries");
+		useAiChatStore.setState({ rail: true, activeId: "c1" });
+		render(
+			<QueryClientProvider client={qc}>
+				<MemoryRouter initialEntries={["/chat"]}>
+					<ChatPage />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: "改一下" } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+		await screen.findByText("做好啦");
+		return spy.mock.calls.filter(
+			([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(["card-skins"]),
+		);
+	}
+
+	it("写成了 → 过期", async () => {
+		const calls = await sendWith([
+			{ phase: "start", id: "t1", name: "write_card", args: { skin: "s1", kind: "live" } },
+			{ phase: "end", id: "t1", ok: true },
+		]);
+		expect(calls).toHaveLength(1);
+	});
+
+	it("没写成、或只是读 → 不动", async () => {
+		const calls = await sendWith([
+			{ phase: "start", id: "t1", name: "set_block", args: { skin: "s1", block: "x" } },
+			{ phase: "end", id: "t1", ok: false },
+			{ phase: "start", id: "t2", name: "read_card", args: { skin: "s1", kind: "live" } },
+			{ phase: "end", id: "t2", ok: true },
+		]);
+		expect(calls).toHaveLength(0);
+	});
+});

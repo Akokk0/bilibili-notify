@@ -1,3 +1,4 @@
+import type { AiCardSkinTouchDTO } from "@bilibili-notify/contract";
 import { ErrorNote, Icon } from "@bilibili-notify/ui";
 import {
 	Fragment,
@@ -8,6 +9,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
+import { CardSkinPreviews } from "./card-skin-preview";
 import { describeTool } from "./tools";
 
 /**
@@ -209,6 +211,7 @@ export function MessageList({
 						tools={m.tools}
 						text={m.content}
 						reasoning={m.reasoning}
+						cardSkins={m.cardSkins}
 						// 刚交接的真身保持展开:它上一帧还以在途形态开着挂在同一个位置,
 						// 交接那一刻塌下去就是又一种「闪」。重开的老会话则默认折叠 ——
 						// 那时主人要看的是结论,草稿点开才看。
@@ -329,6 +332,7 @@ function AssistantTurn({
 	animClass,
 	tools,
 	text,
+	cardSkins,
 	reasoning,
 	reasoningLive,
 	reasoningOpen,
@@ -341,6 +345,8 @@ function AssistantTurn({
 	animClass: string;
 	tools?: readonly ToolChipData[];
 	text: string;
+	/** 卡片工坊里这一轮碰过的皮肤;落盘那一份才有(在途时还不知道碰了哪几套)。 */
+	cardSkins?: readonly AiCardSkinTouchDTO[];
 	/** 思考草稿。空 / 缺席 = 这一轮没思考,块整个不画。 */
 	reasoning?: string;
 	/** 还在想(正文一个字都没有)→ 标头是进行时「思考中…」。 */
@@ -398,6 +404,8 @@ function AssistantTurn({
 					{Markdown ? <Markdown text={text} /> : <p className="whitespace-pre-wrap">{text}</p>}
 				</div>
 			) : null}
+			{/* 卡片工坊的预览排在正文之后 —— 女仆先说做了什么,主人再往下看样子。 */}
+			{cardSkins?.length ? <CardSkinPreviews touches={cardSkins} /> : null}
 		</div>
 	);
 }
