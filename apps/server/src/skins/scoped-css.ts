@@ -154,10 +154,10 @@ const PSEUDO_CLASSES = new Set([
 ]);
 const PSEUDO_ELEMENTS = new Set(["before", "after"]);
 
-/** 值里的取网/执行面函数 —— 出现即丢该声明。 */
-const FORBIDDEN_VALUE = ["url(", "image-set(", "element(", "expression(", "src("];
+/** 值里的取网/执行面函数 —— 出现即丢该声明。卡片那口 AI 的提示词照这份讲。 */
+export const FORBIDDEN_VALUE = ["url(", "image-set(", "element(", "expression(", "src("];
 
-const POSITION_VALUES = new Set(["static", "relative", "absolute"]);
+export const POSITION_VALUES: ReadonlySet<string> = new Set(["static", "relative", "absolute"]);
 const KEYFRAMES_NAME_RE = /^skin-[a-z0-9_-]+$/i;
 
 /** 读得懂的字面透明度(`0.4` / `40%`);读不懂 → null。 */

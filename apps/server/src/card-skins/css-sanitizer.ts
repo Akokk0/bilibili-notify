@@ -56,7 +56,7 @@ export type { SanitizeCssResult } from "../skins/scoped-css.js";
  * **`-webkit-` 前缀的一律不列**:那是出图这个浏览器自己的东西,`-webkit-backdrop-filter`
  * / `-webkit-mask` 这类正是皮肤要用的。
  */
-const CARD_CSS_DENY_PROPS: ReadonlySet<string> = new Set([
+export const CARD_CSS_DENY_PROPS: ReadonlySet<string> = new Set([
 	"behavior",
 	"-ms-behavior",
 	"binding",
