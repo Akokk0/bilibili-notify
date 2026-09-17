@@ -1,6 +1,9 @@
 import {
+	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_HOOK_NOTES,
 	SKIN_LIMITS,
 	type SkinAiEditResponse,
+	type SkinCssHook,
 	type SkinDefaultResponse,
 	type SkinEffects,
 	type SkinManifest,
@@ -57,6 +60,9 @@ import {
  */
 const inputCls =
 	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink";
+
+/** 挂点名单跟着契约那张表走 —— 表里加一个,这里自动多一颗。 */
+const SKIN_CSS_HOOKS = Object.keys(SKIN_CSS_HOOK_MAP) as SkinCssHook[];
 
 /**
  * 值是**对象**的那些段 —— `patchSection` 只对它们成立。
@@ -761,8 +767,20 @@ export function SkinEditor(props: {
 				<Fold title="自定义 CSS">
 					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 						选择器只准 <code className="rounded-sm bg-bn-code-bg px-1">[data-bn="挂点"]</code>
-						(挂点见制作引导),属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。
+						,属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。可用的挂点(悬停看它管哪一块):
 					</p>
+					<ul aria-label="可用挂点" className="flex flex-wrap gap-1">
+						{SKIN_CSS_HOOKS.map((hook) => (
+							<li key={hook}>
+								<code
+									title={SKIN_CSS_HOOK_NOTES[hook]}
+									className="cursor-help rounded-sm bg-bn-code-bg px-1 font-mono text-bn-2xs text-bn-text-secondary"
+								>
+									{hook}
+								</code>
+							</li>
+						))}
+					</ul>
 					<FieldRow label="共用 CSS">
 						<textarea
 							data-bn="input"

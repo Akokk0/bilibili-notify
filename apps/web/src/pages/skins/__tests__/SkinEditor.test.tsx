@@ -6,7 +6,11 @@
  * 取消丢弃;有脏改动时取消要过确认框。
  */
 
-import type { SkinManifest } from "@bilibili-notify/contract";
+import {
+	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_HOOK_NOTES,
+	type SkinManifest,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -256,6 +260,20 @@ describe("SkinEditor", () => {
 		// 清空 = 字段消失
 		fireEvent.change(screen.getByLabelText("共用 CSS"), { target: { value: "" } });
 		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.css).toBeUndefined());
+	});
+
+	it("自定义 CSS 就地列出全部挂点,悬停给契约里那句说明", () => {
+		// 挂点清单从前只写在「复制提示词」那份文本里,那条路删掉之后,手写 CSS 的人
+		// 在界面上再也看不到一个挂点名。
+		renderEditor();
+		fireEvent.click(screen.getByText("自定义 CSS"));
+		const list = screen.getByRole("list", { name: "可用挂点" });
+		const items = within(list).getAllByRole("listitem");
+		expect(items.map((li) => li.textContent)).toEqual(Object.keys(SKIN_CSS_HOOK_MAP));
+		expect(within(list).getByText("nav-item-active")).toBeTruthy();
+		const glass = within(list).getByText("glass");
+		expect(glass.getAttribute("title")).toBe(SKIN_CSS_HOOK_NOTES.glass);
+		expect(screen.queryByText(/制作引导/)).toBeNull();
 	});
 
 	it("让女仆改:发 POST ai-edit 带当前 draft;返回的 manifest 直接进 draft 实时预览", async () => {
