@@ -13,6 +13,7 @@ import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
 	type AISettings,
 	AISettingsSchema,
+	type CardSkinKind,
 	type NotificationPayload,
 	providerMeta,
 	resolveAIProfile,
@@ -22,6 +23,13 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import {
+	buildCardWorkshopSystem,
+	CARD_WORKSHOP_MAX_TOOL_ROUNDS,
+	createCardWorkshopTools,
+	slimCardToolArgs,
+} from "../card-skins/chat-tools.js";
+import type { CardSkinStore } from "../card-skins/store.js";
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillEntry, MaidSkillStore } from "../maid-skills/store.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
@@ -72,9 +80,21 @@ export function createAiRoute(
 		 * 不给就当这个部署没装技能,聊天照旧。
 		 */
 		skillStore?: MaidSkillStore;
+		/**
+		 * 卡片皮肤库。给了才有卡片皮肤工坊(ADR-0015 决策 11) —— 与 `skinStore` 同理,
+		 * 写能力不该因为「某处装配忘了传」而以别的形式凭空出现。
+		 */
+		cardSkinStore?: CardSkinStore;
+		/**
+		 * 给卡片工坊的 `look_card` 截一张图(data URL);回 null = 服务端没装 Chrome。
+		 * 不给就当截不了(决策 19 的 🔗:看不见不报错)。
+		 */
+		cardSkinShot?: (skinId: string, kind: CardSkinKind) => Promise<string | null>;
 	},
 ): Hono {
 	const app = new Hono();
+	/** 卡片工坊的 system 只由常量拼成,拼一次就够。 */
+	const cardWorkshopSystem = buildCardWorkshopSystem();
 
 	app.post("/test-push", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;
@@ -366,13 +386,14 @@ export function createAiRoute(
 		 */
 		// 面孔归会话所有(见 newConversationSchema)—— 这一行是「锁定」的落点。
 		const skinMode = conv.mode === "skin";
-		if (skinMode && !opts?.skinStore) {
-			// 静默退回普通聊天的话,主人会在一个根本做不了皮肤的窗口里反复说
-			// 「做套皮肤」,而女仆一本正经地打太极。
+		const cardMode = skinMode && conv.skinTarget === "card";
+		if (skinMode && !(cardMode ? opts?.cardSkinStore : opts?.skinStore)) {
+			// 静默退回普通聊天(或另一种工坊)的话,主人会在一个根本做不了这种皮肤的
+			// 窗口里反复说「做套皮肤」,而女仆一本正经地打太极。
 			return c.json({ err: "皮肤工坊在这个部署里没有装配好,请改用聊天模式" }, 400);
 		}
 		const skinTools =
-			skinMode && opts?.skinStore
+			skinMode && !cardMode && opts?.skinStore
 				? createSkinChatTools({
 						skinStore: opts.skinStore,
 						// 热读同 ai-edit:engines 是后挂的,别做快照。
@@ -396,6 +417,42 @@ export function createAiRoute(
 							return null;
 						},
 					})
+				: undefined;
+
+		/**
+		 * 卡片皮肤工坊(ADR-0015 决策 11–23)。同样**每个请求现配**:「一轮两套」的预算
+		 * 活在工具的闭包里。账本读的是盘上那份,新记的**当场**写回 —— 这一轮后面失败了,
+		 * 下一句也不会把同一套再复制一份(决策 18 的 🔗)。
+		 */
+		const cardWorkshop =
+			cardMode && opts?.cardSkinStore
+				? createCardWorkshopTools({
+						store: opts.cardSkinStore,
+						ledger: conv.cardSkinLedger ?? { owned: [], forks: {} },
+						record: async (entry) => {
+							// 会话在这一轮里被删了就记不下 —— 这一轮末尾本来也会报「会话不存在」。
+							await store().recordCardSkin(conv.id, entry);
+						},
+						activeId: () => deps.store.getGlobals().defaults.cardSkin,
+						...(opts.cardSkinShot ? { shoot: opts.cardSkinShot } : {}),
+					})
+				: undefined;
+
+		/**
+		 * 工坊的整套装配 —— 工具、顶掉人格的 system、不带内置只读工具。两种工坊互斥,
+		 * 各自的 system 只跟着自己那把工具走;这里原先是日常聊天调用处的一个三元,
+		 * 只容得下一种工坊。
+		 */
+		const workshop = cardWorkshop
+			? {
+					extraTools: cardWorkshop.tools,
+					systemPrompt: cardWorkshopSystem,
+					builtinTools: false,
+					// 从零做一整套至少 8 把调用,默认的 8 轮正好卡死(决策 23 的 🔗)。
+					maxToolRounds: CARD_WORKSHOP_MAX_TOOL_ROUNDS,
+				}
+			: skinTools
+				? { extraTools: skinTools, systemPrompt: SKIN_MODE_SYSTEM_PROMPT, builtinTools: false }
 				: undefined;
 
 		/**
@@ -503,23 +560,12 @@ export function createAiRoute(
 								}
 							: {}),
 						/**
-						 * 工坊与技能是**互斥**的两套装配,而这里从前是各展开一个
-						 * `extraTools`,靠这两行的先后让工坊赢。真正保证互斥的是上面那句
-						 * `!skinMode && opts?.skillStore`(工坊里 skillTool 必为 null),
-						 * 所以顺序只是条冗余的保险 —— 但它不显眼:哪天上游那个条件松一松
-						 * (比如想让工坊也用技能),谁赢就由这两行的排列静默决定,而工坊的
-						 * systemPrompt 与 builtinTools 只挂在它自己那支上,顶掉就没了。
-						 * 写成一个三元,互斥这件事就在一处看得见。
+						 * 工坊与技能是**互斥**的两套装配。真正保证互斥的是上面那句
+						 * `!skinMode && opts?.skillStore`(工坊里 skillTool 必为 null);
+						 * 这里仍写成二选一,让互斥在一处看得见 —— 工坊的 system 与
+						 * builtinTools 只挂在它自己那支上,被顶掉就没了。
 						 */
-						...(skinTools
-							? {
-									extraTools: skinTools,
-									systemPrompt: SKIN_MODE_SYSTEM_PROMPT,
-									builtinTools: false,
-								}
-							: skillTool
-								? { extraTools: [skillTool] }
-								: {}),
+						...(workshop ?? (skillTool ? { extraTools: [skillTool] } : {})),
 						onDelta: (text) => {
 							// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 							// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
@@ -531,7 +577,12 @@ export function createAiRoute(
 							void sse.writeSSE({ event: "reasoning", data: JSON.stringify({ text }) });
 							reasoning += text;
 						},
-						onToolEvent: (ev) => {
+						onToolEvent: (raw) => {
+							// 卡片工坊的写工具入参动辄几 KB,上流与落盘都只留认得出是哪块的那几项。
+							const ev =
+								raw.phase === "start" && cardWorkshop
+									? { ...raw, args: slimCardToolArgs(raw.name, raw.args) }
+									: raw;
 							// 先转发再记账:实时那一份才是这个事件存在的理由,落盘是顺带。
 							void sse.writeSSE({ event: "tool", data: JSON.stringify(ev) });
 							if (ev.phase === "start") {
@@ -566,7 +617,14 @@ export function createAiRoute(
 					{ role: "user", content: message, images: resolved.map((r) => r.id) },
 					// reasoning 只作展示,store 会在空串时略去字段;历史回传给模型的
 					// 路径(上面的 history 拼装)读的是 content,思考永不回炉。
-					{ role: "assistant", content: reply, tools: traces, reasoning },
+					{
+						role: "assistant",
+						content: reply,
+						tools: traces,
+						reasoning,
+						// 这一轮碰过的卡片皮肤 —— 消息末尾的预览块照它画(决策 20 的 🔗)。
+						...(cardWorkshop ? { cardSkins: cardWorkshop.touched() } : {}),
+					},
 				]);
 				if (!updated) {
 					// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。
@@ -638,6 +696,8 @@ const ChatRequestSchema = z.object({
 const newConversationSchema = z.object({
 	mode: z.enum(["chat", "skin"]).optional(),
 	persona: z.boolean().optional(),
+	/** 工坊做哪种皮肤(ADR-0015 决策 11),与模式同样只在这一刻收。 */
+	skinTarget: z.enum(["dashboard", "card"]).optional(),
 });
 
 /**

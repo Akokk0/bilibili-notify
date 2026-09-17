@@ -537,6 +537,30 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 	};
 }
 
+// ---- 痕迹 -------------------------------------------------------------------
+
+/** 痕迹里只留认得出「动的是哪套、哪张、哪块」的那几项。 */
+const TRACE_ARG_KEYS = ["skin", "kind", "block", "name"] as const;
+const TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(T));
+
+/**
+ * 工具痕迹的入参瘦身:`blocks` / `css` / `html` 动辄几 KB,一整套做下来几十 KB,落进会话
+ * 文件、推上流、每次打开会话都扛着 —— 而界面上那枚小条只用得着「哪套哪张哪块」。
+ * 别的工具原样放过。
+ */
+export function slimCardToolArgs(
+	name: string,
+	args: Record<string, string>,
+): Record<string, string> {
+	if (!TOOL_NAMES.has(name)) return args;
+	const out: Record<string, string> = {};
+	for (const key of TRACE_ARG_KEYS) {
+		const v = args[key];
+		if (v !== undefined) out[key] = v;
+	}
+	return out;
+}
+
 // ---- 摘要 -------------------------------------------------------------------
 
 /** 一张卡的摘要(决策 14):不含块的 CSS / HTML 正文。 */
