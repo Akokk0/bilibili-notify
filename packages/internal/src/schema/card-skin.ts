@@ -30,6 +30,7 @@ import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
+	CARD_SKIN_KIND_NAMES,
 	CARD_SKIN_KINDS,
 	CARD_SKIN_KNOB_KEY_RE,
 	CARD_SKIN_KNOB_LIMITS,
@@ -54,7 +55,7 @@ export type { CardSkinKind, PreviewScene };
 // 七种卡与预览场景表**住零依赖的 `constants.ts`**:面板(apps/web)要拿它们画那排卡种
 // tab 与场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
 // (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端照旧从根入口拿。
-export { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, resolvePreviewScene };
+export { CARD_PREVIEW_SCENES, CARD_SKIN_KIND_NAMES, CARD_SKIN_KINDS, resolvePreviewScene };
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
 
 export type { CardSkinBuiltinBlock };

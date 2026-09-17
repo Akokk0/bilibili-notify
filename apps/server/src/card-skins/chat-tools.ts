@@ -22,6 +22,7 @@ import {
 	CARD_DATA_VERSION,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
+	CARD_SKIN_KIND_NAMES,
 	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
@@ -46,15 +47,7 @@ export const CARD_WORKSHOP_MAX_TOOL_ROUNDS = 24;
 /** 一轮最多碰几套(决策 23)。新建、复制都算碰;同一套里写多少次不限。 */
 const MAX_SKINS_PER_TURN = 2;
 
-const KIND_NAMES: Record<CardSkinKind, string> = {
-	live: "直播卡",
-	dynamic: "动态卡",
-	sc: "醒目留言卡",
-	guard: "上舰卡",
-	roastBoard: "锐评榜单卡",
-	roastSolo: "单人锐评卡",
-	wordcloud: "弹幕词云卡",
-};
+const KIND_NAMES = CARD_SKIN_KIND_NAMES;
 
 const FIELD_TYPE_NAMES: Record<CardSkinFieldType, string> = {
 	text: "文字",

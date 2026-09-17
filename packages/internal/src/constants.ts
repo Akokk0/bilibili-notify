@@ -1113,6 +1113,20 @@ export const CARD_SKIN_KINDS = [
 ] as const;
 export type CardSkinKind = (typeof CARD_SKIN_KINDS)[number];
 
+/**
+ * 七种卡的中文名。卡片工坊的提示词与聊天里的工具小条共用这一份 —— 各写一份的话,
+ * 加第八种卡时总有一边漏掉,而漏掉的那边是静默的。
+ */
+export const CARD_SKIN_KIND_NAMES: Readonly<Record<CardSkinKind, string>> = {
+	live: "直播卡",
+	dynamic: "动态卡",
+	sc: "醒目留言卡",
+	guard: "上舰卡",
+	roastBoard: "锐评榜单卡",
+	roastSolo: "单人锐评卡",
+	wordcloud: "弹幕词云卡",
+};
+
 // ---- 预览场景 ---------------------------------------------------------------
 
 /**
