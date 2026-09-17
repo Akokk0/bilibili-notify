@@ -3,10 +3,13 @@
 /**
  * 一条动态的「呈现态」构建器。
  *
- * 这里画出来的东西最终落在卡片皮肤的两个块里(ADR-0014 决策 9),所以部件上挂着那两个块的
+ * 这里画出来的东西最终落在卡片皮肤的块里(ADR-0014 决策 9),所以部件上挂着那些块的
  * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`):
- * - `node.body` 进 `content` 块 —— 图廊(`pics` / `pic`)、主视频卡(`video` / `videoCover`
+ * - `node.body` 进 `content` 复合块 —— 图廊(`pics` / `pic`)、主视频卡(`video` / `videoCover`
  *   / `videoTitle`);正文本身的 `body` 挂在 `rich-text.tsx` 的根 div 上。
+ * - `node.text` / `node.media` 是同一份正文**拆开的两半**(决策 8 的 2026-09-18 🔗),分别进
+ *   `text` / `media` 原子块:文字那半带着 `body` 挂点,媒体那半是视频卡或图廊本身,挂点与
+ *   `body` 里那份一模一样(同一个 builder 画的)。
  * - `node.additional` 进 `additional` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
  *   按钮(`button`)。`cover` 一律挂在**封面 img** 上(与 `videoCover` 同口径),不挂外面那层定
  *   宽框:框是版式,图才是「封面」。
@@ -66,6 +69,13 @@ export type NodeFormatters = {
  * 转发动态的内部原动态是 `forward`(同样是 DynamicNode),由卡片模版用**同一套版式**
  * 递归渲染。`body` 只含正文 + 主媒体(无附加内容、无转发框);`additional` 是拆出来的
  * 附加内容块(预约 / 商品 / 通用卡);`stats` 仅外层有(内部转发不展示互动数)。
+ *
+ * `text` + `media` 是 `body` 拆开的两半,给原子块分开摆。**三份各是各的 VNode 实例**,不从
+ * `body` 里摘:皮肤可以把 `content` 复合块与 `text` / `media` 原子块摆进同一张卡,而 Vue 文档
+ * 明说一棵组件树里的 vnode 必须各不相同(客户端挂载会往 vnode 上写 `el` / `component`,后一处
+ * 盖掉前一处)。出图走 SSR,实测共用今天也画得出来 —— 正因为画不出错,才要单独钉住
+ * (`__tests__/dynamic-content-parts.test.ts`)。代价是同一段正文多建一遍 VNode,纯内存对象,
+ * 不碰网络也不碰字体。
  */
 export type DynamicNode = {
 	avatarUrl: string;
@@ -75,7 +85,22 @@ export type DynamicNode = {
 	/** 作为内部转发渲染时,附在作者名后的类型标签(如「投稿了视频」)。 */
 	headerLabel?: string;
 	topic?: string;
+	/**
+	 * 正文 + 主媒体粘在一起的那份,进 `content` 复合块。**一个字节都不许变** —— 基准快照与
+	 * 皮肤验收门的块内层字节门钉着。
+	 */
 	body: VNode;
+	/**
+	 * 正文文字,进 `text` 原子块:desc / opus 摘要的富文本(专栏连标题),转发是转发语,充电专属
+	 * 是那块占位,渲染不了的是那句提示。一个字都没有(只发了图)时为空。
+	 */
+	text?: VNode | null;
+	/**
+	 * 主媒体,进 `media` 原子块:投稿视频的视频卡,或图文 / 专栏的图廊。没有就为空 —— 转发的
+	 * 原动态媒体在 `forward.media` 里,不往外层提。图廊**不带** `body` 里那层 `mt-[8px]`:那是
+	 * 「跟在文字后面」的间距,单独摆时由皮肤 CSS 管。
+	 */
+	media?: VNode | null;
 	additional?: VNode | null;
 	forward?: DynamicNode;
 	stats?: { forward: string; comment: string; like: string };
@@ -118,6 +143,7 @@ export async function buildDynamicNode(
 	// 提示而非空白——递归到内部转发(orig)时同样生效,无需额外处理。
 	if (isChargeOnlyLocked(dynamic)) {
 		node.body = buildChargeOnlyBody(author);
+		node.text = buildChargeOnlyBody(author);
 		return node;
 	}
 
@@ -127,15 +153,26 @@ export async function buildDynamicNode(
 		else node.pubTime += ` · ${text}`;
 	};
 
+	// 「我暂时无法渲染」那一类:正文只有一句提示,文字那份与正文是同一句 —— 收一个构建函数
+	// 调两遍,两份各是各的实例(见 DynamicNode 的说明),JSX 也只写一处。
+	const notice = (build: () => VNode) => {
+		node.body = build();
+		node.text = build();
+	};
+
 	switch (dynamic.type) {
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
 			node.body = buildBasicContent(dynamic, false);
+			node.text = buildBasicText(dynamic, false);
+			node.media = buildOpusPics(dynamic);
 			return node;
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
 			const selfContent = buildBasicContent(dynamic, false);
+			// 转发本身不带图(接口给的 major 是空的),这里照 body 的口径取,真有也不丢。
+			node.media = buildOpusPics(dynamic);
 			if (!dynamic.orig) {
 				node.body = (
 					<>
@@ -143,9 +180,17 @@ export async function buildDynamicNode(
 						<p>{upName}转发了一条动态，但原动态已不可见</p>
 					</>
 				);
+				// 没有转发框可装这句说明,它跟着转发语走 —— 只摆 text 原子块的皮肤也看得到。
+				node.text = (
+					<>
+						{buildBasicText(dynamic, false)}
+						<p>{upName}转发了一条动态，但原动态已不可见</p>
+					</>
+				);
 				return node;
 			}
 			node.body = selfContent;
+			node.text = buildBasicText(dynamic, false);
 			node.forward = await buildDynamicNode(dynamic.orig, true, fmt);
 			return node;
 		}
@@ -153,6 +198,9 @@ export async function buildDynamicNode(
 		case DYNAMIC_TYPE_AV: {
 			const selfContent = buildBasicContent(dynamic, false);
 			const archive = dynamic.modules.module_dynamic?.major?.archive;
+			node.text = buildBasicText(dynamic, false);
+			// 视频卡建两份:一份给 media,一份粘进 body —— 不共用实例(见 DynamicNode 的说明)。
+			node.media = archive ? buildVideoContent(archive) : null;
 			node.body = archive ? (
 				<>
 					{selfContent}
@@ -167,38 +215,40 @@ export async function buildDynamicNode(
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			node.body = buildBasicContent(dynamic, true);
+			node.text = buildBasicText(dynamic, true);
+			node.media = buildOpusPics(dynamic);
 			label("投稿了专栏");
 			return node;
 		}
 
 		case DYNAMIC_TYPE_LIVE:
-			node.body = <p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_MEDIALIST:
-			node.body = <p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_PGC:
-			node.body = <p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_MUSIC:
-			node.body = <p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_COMMON_SQUARE:
-			node.body = <p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_COURSES_SEASON:
-			node.body = <p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_UGC_SEASON:
-			node.body = <p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>;
+			notice(() => <p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_NONE:
-			node.body = <p>{upName}发布了一条无效动态</p>;
+			notice(() => <p>{upName}发布了一条无效动态</p>);
 			break;
 		case DYNAMIC_TYPE_LIVE_RCMD:
 			throw new Error("直播开播动态，不做处理");
 		default:
-			node.body = <p>{upName}发布了一条我无法识别的动态，请自行查看</p>;
+			notice(() => <p>{upName}发布了一条我无法识别的动态，请自行查看</p>);
 	}
 	// 「无法渲染」类动态没有可拆的附加内容,清掉以免空块占位。
 	node.additional = null;
@@ -237,6 +287,10 @@ function buildChargeOnlyBody(author: Dynamic["modules"]["module_author"]) {
 
 // ── 私有辅助函数 ──────────────────────────────────────────────────────────────
 
+/**
+ * `body` 的正文部分:desc 富文本、opus 摘要富文本(专栏带标题)、图廊。拆开的两半在
+ * `buildBasicText` / `buildOpusPics`,取数条件三处要一起改。
+ */
 function buildBasicContent(dynamic: Dynamic, isArticle: boolean) {
 	const mod = dynamic.modules.module_dynamic;
 	return (
@@ -249,6 +303,38 @@ function buildBasicContent(dynamic: Dynamic, isArticle: boolean) {
 			)}
 		</>
 	);
+}
+
+/**
+ * `buildBasicContent` 前两件(desc / opus 摘要)的**另一份新建**,给 `text` 原子块。取数条件与
+ * 那边逐条相同,改一边就得改另一边。两件都有时才包 Fragment,只有一件就直接给它 —— 少一对
+ * `<!--[-->` 锚点。
+ */
+function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
+	const mod = dynamic.modules.module_dynamic;
+	const desc =
+		mod?.desc?.rich_text_nodes && parseRichText(mod.desc.rich_text_nodes, undefined, isArticle);
+	const summary =
+		mod?.major?.opus?.summary?.rich_text_nodes &&
+		parseRichText(mod.major.opus.summary.rich_text_nodes, mod.major.opus.title, isArticle);
+	if (desc && summary) {
+		return (
+			<>
+				{desc}
+				{summary}
+			</>
+		);
+	}
+	return desc || summary || null;
+}
+
+/**
+ * `buildBasicContent` 第三件(图廊)的另一份新建,给 `media` 原子块 —— 不带那层 `mt-[8px]`。
+ * 空数组算没图:`body` 那边会画一个空的图廊壳,原子块这边收起更合适。
+ */
+function buildOpusPics(dynamic: Dynamic): VNode | null {
+	const pics = dynamic.modules.module_dynamic?.major?.opus?.pics;
+	return pics?.length ? buildPicsContent(pics) : null;
 }
 
 /** 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。 */
