@@ -4,15 +4,21 @@
  * 动态卡的块库。
  *
  * 复合块(header / content / additional / stats / divider)是从 `templates/dynamic-card.tsx`
- * **原样搬**进来的那几段 JSX —— class、inline style、文案一个字都没动;原子块
- * (avatar / name / time)是**新抠**的:从 header 里取出头像 img / 名字 span / 时间 span,
- * 保持它们在复合块里的 class 与 style,让皮肤能把三件分开摆。
+ * **原样搬**进来的那几段 JSX —— class、inline style、文案一个字都没动;原子块是**新抠**的,
+ * 保持它们在复合块里的 class 与 style,让皮肤能把各件分开摆:
+ * - avatar / name / time:header 里的头像 img / 名字 span / 时间 span;
+ * - topic / text / media / forward(2026-09-18,决策 8 的 🔗):content 里的话题行、正文文字、
+ *   视频卡或图廊、转发框。文字与媒体取呈现态里**另建的两份**(`node.text` / `node.media`),
+ *   不从 `node.body` 里摘;
+ * - forwardCount / commentCount / likeCount(同日):stats 里的三项,多带上复合块根上的颜色
+ *   (见 `STAT_ATOM_CLASS`)。
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  *
  * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
- * `CARD_SKIN_BUILTIN_BLOCKS.dynamic[<块>].hooks`;原子块的挂点是 `self`,所以不挂。
+ * `CARD_SKIN_BUILTIN_BLOCKS.dynamic[<块>].hooks`;原子块的**根**是 `self`,所以根上不挂,
+ * 但它里头带着的部件照挂(正文的 `body`、图廊的 `pics`、互动数的 `icon`)。
  * content 块的正文是 VNode 插槽(`node.body`),**不给它包一层壳** —— `body` 挂点挂在
  * `rich-text.tsx` 的富文本根 div 上;图廊 / 视频卡 / 附加卡的挂点同理住在
  * `templates/dynamic-content.tsx` 里那几个 builder 上。两头由 `__tests__/card-hooks.test.ts` 钉着。
@@ -24,10 +30,10 @@
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
  * | `--bn-up-name-color` | UP 主名的颜色(大会员粉 / 常规墨色,运行期二选一) | `name` 原子块根、`header` 里的名字 span |
- * | `--bn-ink-faint` | 最弱的文字色(发布时间 / 互动数) | `time` 原子块、`header` 里的时间 span、`stats` 块根 |
- * | `--bn-accent` | 强调色(话题与转发 inset 左边框是 B 站蓝;充电专属占位是 B 站粉) | `content` 里的话题行与转发 inset、`templates/dynamic-content.tsx` 的充电专属占位 |
+ * | `--bn-ink-faint` | 最弱的文字色(发布时间 / 互动数) | `time` 原子块、`header` 里的时间 span、`stats` 块根、三个互动数原子块 |
+ * | `--bn-accent` | 强调色(话题与转发 inset 左边框是 B 站蓝;充电专属占位是 B 站粉) | `content` 里的话题行与转发 inset、`topic` / `forward` 原子块、`templates/dynamic-content.tsx` 的充电专属占位 |
  * | `--bn-divider-color` | 分割线色 | `divider` 块根(= 分割线自己) |
- * | `--bn-inset-bg` | 淡底内嵌块的背景 | 转发 inset 自己、`templates/dynamic-content.tsx` 的主视频卡外壳 |
+ * | `--bn-inset-bg` | 淡底内嵌块的背景 | 转发 inset 自己(含 `forward` 原子块)、`templates/dynamic-content.tsx` 的主视频卡外壳 |
  *
  * `content` 块的正文由 `templates/dynamic-content.tsx` 与 `rich-text.tsx` 画,那两处的颜色
  * 同规矩、同一张变量表;`--bn-ink-faint` 在那边也用着。
@@ -72,6 +78,13 @@ const withIconHook = (icon: VNode): VNode =>
 export const FORWARD_INSET_CLASS =
 	"rounded-[8px] mt-2 pt-[12px] pb-[12px] [background:var(--bn-inset-bg)] [border-left-color:var(--bn-accent)]";
 
+/**
+ * 转发框那层 div 的 inline style。复合块 `content` 里的转发 inset 与原子块 `forward` 共用这一句
+ * —— 两处各抄一份的话,改了一处,单独摆的转发框就与复合块里的长得不一样了。
+ */
+const FORWARD_INSET_STYLE =
+	"--bn-inset-bg: rgba(0,0,0,0.04); --bn-accent: #00AEEC; border-left-width: 5px; border-left-style: solid; zoom: 0.85;";
+
 const ICON_FORWARD = withIconHook(SVG_FORWARD);
 const ICON_COMMENT = withIconHook(SVG_COMMENT);
 const ICON_LIKE = withIconHook(SVG_LIKE);
@@ -114,6 +127,68 @@ const time: BlockRenderer<DynamicBlockProps> = ({ node }) => (
 		{node.pubTime}
 	</span>
 );
+
+/** 话题(原子块):content 复合块里的话题行(图标 + 话题名)。没有话题就收起。 */
+const topic: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.topic ? (
+		<div
+			class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold [color:var(--bn-accent)]"
+			style="--bn-accent: #00AEEC;"
+		>
+			{SVG_TOPIC}
+			{node.topic}
+		</div>
+	) : null;
+
+/**
+ * 正文文字(原子块):`node.text`,即 content 复合块里 `node.body` 的文字那一半。不包壳 ——
+ * 与 content 同理,`body` 挂点在富文本自己的根上。一个字都没有就收起。
+ */
+const text: BlockRenderer<DynamicBlockProps> = ({ node }) => node.text ?? null;
+
+/**
+ * 视频卡 / 图廊(原子块):`node.media`,即 `node.body` 的媒体那一半,挂点在 builder 画的部件上。
+ * 没有就收起 —— 转发那条自己没有媒体,原动态的媒体归转发框里那张卡。
+ */
+const media: BlockRenderer<DynamicBlockProps> = ({ node }) => node.media ?? null;
+
+/**
+ * 转发框(原子块):content 复合块里的转发 inset。根**就是**转发框,所以不再挂 `forward` 挂点
+ * (那是复合块内部的部件名);框里那张卡照旧交给 `renderForward` 装。不是转发就收起。
+ */
+const forward: BlockRenderer<DynamicBlockProps> = ({ node, renderForward }) =>
+	node.forward ? (
+		<div class={FORWARD_INSET_CLASS} style={FORWARD_INSET_STYLE}>
+			{renderForward(node.forward)}
+		</div>
+	) : null;
+
+/**
+ * 互动数三件单独摆时自带的观感。
+ *
+ * 复合块 `stats` 把颜色(`[color:var(--bn-ink-faint)]` + `--bn-ink-faint: #999`)写在**根上**,
+ * 三项的数字与图标(`fill="currentColor"`)都靠继承拿到;拆成原子块后没有那个根,所以每件
+ * 自己带上 —— 不带的话它们会掉回卡片的深色。根上那句 `justify-around px-[16px]` 是「三项
+ * 怎么分一行」的排法,单独摆时归网格管,不带。
+ */
+const STAT_ATOM_CLASS = "flex items-center gap-[6px] text-[13px] [color:var(--bn-ink-faint)]";
+const STAT_ATOM_STYLE = "--bn-ink-faint: #999;";
+
+type DynamicStats = NonNullable<DynamicNode["stats"]>;
+
+/**
+ * 一项互动数(原子块):stats 复合块里的那一项(图标 + 数)。没有互动数就收起 —— 转发框里的
+ * 原动态本来就不带。
+ */
+const statAtom =
+	(icon: VNode, pick: (s: DynamicStats) => string): BlockRenderer<DynamicBlockProps> =>
+	({ node }) =>
+		node.stats ? (
+			<div class={STAT_ATOM_CLASS} style={STAT_ATOM_STYLE}>
+				{icon}
+				<span>{pick(node.stats)}</span>
+			</div>
+		) : null;
 
 /**
  * dynamic 卡的块表。每块返回内层 VNode(无 `data-block` —— 由 `renderBlocks` 的 wrapper
@@ -173,11 +248,7 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 				// 这样 renderBlocks 跳过内部首块上边距后,内容不会顶着 inset 顶部。
 				// zoom 把内部子树整体等比缩小(Chromium 原生支持、会正常重排) —— 内层走同一套
 				// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
-				<div
-					data-bn="forward"
-					class={FORWARD_INSET_CLASS}
-					style="--bn-inset-bg: rgba(0,0,0,0.04); --bn-accent: #00AEEC; border-left-width: 5px; border-left-style: solid; zoom: 0.85;"
-				>
+				<div data-bn="forward" class={FORWARD_INSET_CLASS} style={FORWARD_INSET_STYLE}>
 					{renderForward(node.forward)}
 				</div>
 			) : null}
@@ -211,6 +282,13 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	avatar,
 	name,
 	time,
+	topic,
+	text,
+	media,
+	forward,
+	forwardCount: statAtom(ICON_FORWARD, (s) => s.forward),
+	commentCount: statAtom(ICON_COMMENT, (s) => s.comment),
+	likeCount: statAtom(ICON_LIKE, (s) => s.like),
 };
 
 /**

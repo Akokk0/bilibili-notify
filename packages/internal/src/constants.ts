@@ -1466,7 +1466,12 @@ export interface CardSkinBuiltinBlock {
 	label: string;
 	/** 是复合块(头像 + 名字 + 时间捆一起)还是原子块(只画一样)。编辑器分组用。 */
 	atom?: true;
-	/** 内部挂点 → 人话名。皮肤写 `[data-bn="avatar"]`。 */
+	/**
+	 * 内部挂点 → 人话名。皮肤写 `[data-bn="avatar"]`。
+	 *
+	 * 原子块的**根**就是 `self`,根上不挂;但它里头带着的部件照挂、照声明 —— 正文文字里的
+	 * `body`、图廊里的 `pic`、互动数里的 `icon`。`atom` 只管编辑器分组,不代表「没有挂点」。
+	 */
 	hooks: Record<string, string>;
 }
 
@@ -1533,6 +1538,26 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "UP 主名", atom: true, hooks: {} },
 		time: { label: "发布时间", atom: true, hooks: {} },
+		// 2026-09-18 补的一批(决策 8 的 🔗):正文与互动数也拆开。文字与媒体是呈现态里分开的
+		// 两份(`DynamicNode.text` / `.media`),复合块 `content` 照旧画粘在一起的那份。
+		topic: { label: "话题", atom: true, hooks: {} },
+		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
+		media: {
+			label: "视频卡 / 图廊",
+			atom: true,
+			hooks: {
+				pics: "图廊",
+				pic: "图廊里的一张图",
+				video: "视频卡",
+				videoCover: "视频封面",
+				videoTitle: "视频标题",
+			},
+		},
+		// 根就是转发框;框里是一整张内层卡,那些部件归内层卡自己的块管,这里不声明。
+		forward: { label: "转发框", atom: true, hooks: {} },
+		forwardCount: { label: "转发数", atom: true, hooks: { icon: "图标" } },
+		commentCount: { label: "评论数", atom: true, hooks: { icon: "图标" } },
+		likeCount: { label: "点赞数", atom: true, hooks: { icon: "图标" } },
 	},
 	sc: {
 		amount: { label: "金额", hooks: { price: "金额数字", duration: "时长胶囊" } },
@@ -1550,6 +1575,13 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "发送者头像", atom: true, hooks: {} },
 		name: { label: "发送者名", atom: true, hooks: {} },
+		price: { label: "金额", atom: true, hooks: {} },
+		duration: { label: "时长胶囊", atom: true, hooks: {} },
+		to: {
+			label: "「SC to」那一行",
+			atom: true,
+			hooks: { masterAvatar: "主播小头像", masterName: "主播名" },
+		},
 	},
 	guard: {
 		badge: { label: "舰长徽章", atom: true, hooks: {} },
@@ -1566,6 +1598,12 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		text: { label: "文字信息", hooks: {} },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },
+		user: { label: "用户名胶囊", atom: true, hooks: {} },
+		master: {
+			label: "主播胶囊",
+			atom: true,
+			hooks: { masterAvatar: "主播小头像", masterName: "主播名" },
+		},
 	},
 	roastBoard: { body: { label: "周报榜单", hooks: {} } },
 	roastSolo: { body: { label: "单人锐评", hooks: {} } },

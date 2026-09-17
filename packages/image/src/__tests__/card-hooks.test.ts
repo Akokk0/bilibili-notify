@@ -15,8 +15,11 @@
  * 走的是**块级**渲染:同一份夹具(`fixtures/card-fixtures.ts`,与基准快照共用)翻成块库
  * 直接吃的 props,逐块单独渲染 —— 这样「块内层」是精确的,不必去整卡 HTML 里划范围。
  *
- * 原子块(live.avatar / sc.name / guard.avatar …)的挂点是 `self`,块自己就是那一件,所以
- * 它们的 hooks 是空表、内部一个挂点都不该挂;这条同样由方向一钉着。
+ * 原子块的**根**是 `self`(块自己就是那一件),根上不挂复合块里标它的那个名字;但它里头带着
+ * 的部件照挂、照声明(2026-09-18 起:`dynamic.text` 里的 `body`、`dynamic.media` 里的图廊与
+ * 视频卡、互动数里的 `icon`、主播胶囊里的小头像…)。只画一样、里头没有部件的原子块
+ * (live.avatar / sc.name / guard.avatar …)hooks 是空表、一个挂点都不该挂;两种都由这两个
+ * 方向钉着。
  */
 
 import {
@@ -56,13 +59,23 @@ const TABLES: Record<CardSkinKind, Record<string, BlockRenderer<never>>> = {
  */
 const OPAQUE_HOOKS: ReadonlySet<string> = new Set(["forward"]);
 
-/** 收集一段 HTML 里出现的 `data-bn` token(遇到不透明挂点就不再深入)。 */
-function collectHooks(html: string): string[] {
+/**
+ * 「根就是转发框」的块:与上面 `forward` 挂点同一个理由,里头是一整张内部动态卡。原子块
+ * `dynamic.forward` 的根**就是**那个框(它自己是 `self`,根上不挂 `forward`),没有挂点可认,
+ * 所以按块名认:只数根上的挂点(应当一个没有),不进子树。
+ */
+const OPAQUE_BLOCKS: ReadonlySet<string> = new Set(["dynamic.forward"]);
+
+/**
+ * 收集一段 HTML 里出现的 `data-bn` token(遇到不透明挂点就不再深入;`rootOnly` 时只看
+ * 顶层元素自己)。
+ */
+function collectHooks(html: string, rootOnly = false): string[] {
 	const found = new Set<string>();
 	const walk = (el: Element): void => {
 		const tokens = (el.getAttribute("data-bn") ?? "").split(/\s+/).filter(Boolean);
 		for (const t of tokens) found.add(t);
-		if (tokens.some((t) => OPAQUE_HOOKS.has(t))) return;
+		if (rootOnly || tokens.some((t) => OPAQUE_HOOKS.has(t))) return;
 		for (const child of Array.from(el.children)) walk(child);
 	};
 	for (const child of Array.from(JSDOM.fragment(html).children)) walk(child);
@@ -84,7 +97,8 @@ async function collect(kind: CardSkinKind): Promise<BlockHooks[]> {
 			const vnode = render(props);
 			if (vnode == null) continue;
 			const html = await renderToString(createSSRApp({ render: () => vnode as VNode }));
-			out.push({ fixture: fixture.name, block, hooks: collectHooks(html) });
+			const rootOnly = OPAQUE_BLOCKS.has(`${kind}.${block}`);
+			out.push({ fixture: fixture.name, block, hooks: collectHooks(html, rootOnly) });
 		}
 	}
 	return out;

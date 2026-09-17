@@ -5,15 +5,18 @@
  *
  * 复合块(badge / name / text / divider)是从 `templates/guard-card.tsx` **原样搬**进来的
  * 那几段 JSX —— class、inline style、文案一个字都没动(badge 今天不经 `renderBlocks`,所以
- * 它自带的 `data-block="badge"` 也照搬);原子块(avatar)是**新抠**的:从 name 里取出头像
- * 那一坨(定宽圆框 + img),保持它在复合块里的 class 与 style,让皮肤能单独摆头像。
+ * 它自带的 `data-block="badge"` 也照搬);原子块是**新抠**的,保持它们在复合块里的 class 与
+ * style,让皮肤能单独摆:
+ * - avatar:name 里的头像那一坨(定宽圆框 + img);
+ * - user / master(2026-09-18,决策 8 的 🔗):name 里的用户名胶囊与主播胶囊。档位色变量在
+ *   复合块里挂在 name **根上**,单独摆没有那个根,所以两颗胶囊各自带上(底色要用)。
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.guard`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  *
  * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
- * `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`;原子块的挂点是 `self`,所以不挂
- * (`__tests__/card-hooks.test.ts` 两头钉着)。
+ * `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`;原子块的**根**是 `self`,所以根上不挂,里头带着
+ * 的部件照挂(主播胶囊里的小头像与主播名;`__tests__/card-hooks.test.ts` 两头钉着)。
  *
  * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
  * 自定义属性里,颜色**属性**(`color` / `background*`)写到 class 上 —— 皮肤 CSS 的
@@ -21,7 +24,7 @@
  *
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
- * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `name` / `text` 块根 |
+ * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `name` / `text` 块根、`user` / `master` 原子块 |
  * | `--bn-divider-color` | 分割线色 = 档位色 + `33` 透明度 | `divider` 块根(= 分割线自己) |
  *
  * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
@@ -54,6 +57,36 @@ function isBadgeLeft(p: GuardCardProps): boolean {
 const avatar: BlockRenderer<GuardCardProps> = (p) => (
 	<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 		<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
+	</div>
+);
+
+/** 用户名胶囊(原子块):name 复合块里的那颗胶囊,自带档位色变量。 */
+const user: BlockRenderer<GuardCardProps> = (p) => (
+	<div
+		class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
+		style={{ "--bn-card-tier-color": p.bgColor[0] }}
+	>
+		<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
+	</div>
+);
+
+/** 主播胶囊(原子块):name 复合块里的那颗胶囊,自带档位色变量;小头像与主播名的挂点照挂。 */
+const master: BlockRenderer<GuardCardProps> = (p) => (
+	<div
+		class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
+		style={{ "--bn-card-tier-color": p.bgColor[0] }}
+	>
+		<div
+			data-bn="masterAvatar"
+			class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0"
+			style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
+		/>
+		<span
+			data-bn="masterName"
+			class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]"
+		>
+			{p.isAdmin ? "房管" : p.masterName}
+		</span>
 	</div>
 );
 
@@ -129,4 +162,6 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 	},
 
 	avatar,
+	user,
+	master,
 };

@@ -28,7 +28,7 @@ import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import type { GuardCardProps } from "../templates/guard-card";
 import type { LiveCardProps } from "../templates/live-card";
 import type { SCCardProps } from "../templates/sc-card";
-import { stripCardHooks } from "./fixtures/card-fixtures";
+import { blockPropsOf, CARD_FIXTURES, stripCardHooks } from "./fixtures/card-fixtures";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -211,4 +211,180 @@ describe("块库 — live 数据区的原子块(自带复合块根上的观感)"
 		const ended = { ...LIVE_PROPS, liveStatus: 2, watchedNum: "API" };
 		expect(LIVE_BLOCKS.fans(ended)).toBeNull();
 	});
+});
+
+// ── 四、2026-09-18 补的那批原子块(ADR-0014 决策 8 的 🔗) ─────────────────────
+
+/** 块名是对外 API(主人定的),一个字不许改;label 是编辑器里那颗按钮上的字。 */
+const SPLIT_ATOMS: Record<string, Record<string, string>> = {
+	dynamic: {
+		topic: "话题",
+		text: "正文文字",
+		media: "视频卡 / 图廊",
+		forward: "转发框",
+		forwardCount: "转发数",
+		commentCount: "评论数",
+		likeCount: "点赞数",
+	},
+	sc: { price: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
+	guard: { user: "用户名胶囊", master: "主播胶囊" },
+};
+
+describe("块库 — 2026-09-18 补的原子块在目录里", () => {
+	for (const [kind, atoms] of Object.entries(SPLIT_ATOMS)) {
+		for (const [name, label] of Object.entries(atoms)) {
+			it(`${kind}.${name}:原子块,叫「${label}」`, () => {
+				const entry = (CARD_SKIN_BUILTIN_BLOCKS as Record<string, Record<string, unknown>>)[kind][
+					name
+				];
+				expect(entry).toMatchObject({ label, atom: true });
+			});
+		}
+	}
+});
+
+/** 一份共享夹具(与基准 / 挂点对表同一份)翻成块库吃的 props。 */
+async function fixtureProps(name: string): Promise<unknown> {
+	const fixture = CARD_FIXTURES.find((f) => f.name === name);
+	if (!fixture) throw new Error(`夹具表里没有 ${name}`);
+	return blockPropsOf(fixture.kind, await fixture.build());
+}
+
+/** 一段 HTML 的根标签(第一个 `<…>`)。 */
+function rootTag(html: string): string {
+	const m = /^<[^>]*>/.exec(html);
+	if (!m) throw new Error(`不是以标签开头的 HTML:${html.slice(0, 80)}`);
+	return m[0];
+}
+
+/** 根标签上的 `data-bn`(没有就 null)。 */
+function rootHook(html: string): string | null {
+	return / data-bn="([^"]*)"/.exec(rootTag(html))?.[1] ?? null;
+}
+
+/**
+ * 这批原子块与上面第二节的差别:它们**里头带着部件挂点**(正文的 `body`、图廊的 `pics`、
+ * 小头像的 `masterAvatar`…),所以比的时候两边都剥挂点。
+ *
+ * 根上的挂点单独钉:话题 / 转发框 / 「SC to」那一行是从复合块里抠出来的那一件,复合块里标它
+ * 的名字(`topic` / `forward` / `to`)到了原子块里就是 `self`,根上不许再挂;正文文字与视频卡 /
+ * 图廊的根是 builder 画的部件本身,根上本来就带着部件挂点(`body` / `video` / `pics`),照挂。
+ */
+describe("块库 — 2026-09-18 补的原子块与复合块同形", () => {
+	/** [夹具, 卡种, 复合块, 原子块, 根上的挂点]。 */
+	const CASES: Array<[string, string, string, string, string | null]> = [
+		["dynamic-draw", "dynamic", "content", "topic", null],
+		["dynamic-draw", "dynamic", "content", "text", "body"],
+		["dynamic-av", "dynamic", "content", "text", "body"],
+		["dynamic-draw", "dynamic", "content", "media", "pics"],
+		["dynamic-draw-single", "dynamic", "content", "media", "pics pic"],
+		["dynamic-av", "dynamic", "content", "media", "video"],
+		["dynamic-forward", "dynamic", "content", "forward", null],
+		["sc-low", "sc", "sender", "to", null],
+	];
+
+	for (const [fixture, kind, composite, atom, hook] of CASES) {
+		it(`${kind}.${atom}(${fixture}):逐字出现在 ${kind}.${composite} 里,根上的挂点是 ${hook ?? "(无)"}`, async () => {
+			const props = await fixtureProps(fixture);
+			const table = TABLES[kind] as Record<string, BlockRenderer<unknown>>;
+			const atomHtml = await renderBlock(table[atom], props);
+			const compositeHtml = await renderBlock(table[composite], props);
+			expect(rootHook(atomHtml)).toBe(hook);
+			expect(stripCardHooks(compositeHtml)).toContain(stripCardHooks(atomHtml));
+		});
+	}
+});
+
+/**
+ * 另一半:复合块把颜色(或颜色变量)写在**根**上,里头那件靠继承拿到;单独摆时没有那个根,
+ * 所以原子块自己带上 —— 与 live 数据区那三件同一个道理。钉两半,少一半都有洞:
+ *
+ * 一、把带上来的那几句(根上加的 class token 与整条 style)去掉之后,逐字出现在复合块里;
+ * 二、带上来的那几句一句不少(变量名 + 值)。金额的两个变量缺一个,渐变裁字就整个透明。
+ */
+describe("块库 — 2026-09-18 补的原子块:自带复合块根上的观感", () => {
+	type LookCase = {
+		fixture: string;
+		kind: string;
+		composite: string;
+		atom: string;
+		/** 根上多加的 class token(没有就 null)。 */
+		addedClass: string | null;
+		/** 根上的 style 里必须有的几句(按 props 现算)。 */
+		style: (p: never) => string[];
+	};
+	const tier = (p: { bgColor: readonly string[] }) => [`--bn-card-tier-color:${p.bgColor[0]}`];
+	const inkFaint = () => ["--bn-ink-faint: #999"];
+	const CASES: LookCase[] = [
+		...["forwardCount", "commentCount", "likeCount"].map((atom) => ({
+			fixture: "dynamic-draw",
+			kind: "dynamic",
+			composite: "stats",
+			atom,
+			addedClass: "[color:var(--bn-ink-faint)]",
+			style: inkFaint,
+		})),
+		{
+			fixture: "sc-low",
+			kind: "sc",
+			composite: "amount",
+			atom: "price",
+			addedClass: null,
+			style: (p: { bgColor: readonly string[] }) => [
+				`--bn-card-tier-color:${p.bgColor[0]}`,
+				`--bn-card-tier-color-end:${p.bgColor[1]}`,
+			],
+		},
+		{
+			fixture: "sc-low",
+			kind: "sc",
+			composite: "amount",
+			atom: "duration",
+			addedClass: null,
+			style: tier,
+		},
+		{
+			fixture: "guard-captain",
+			kind: "guard",
+			composite: "name",
+			atom: "user",
+			addedClass: null,
+			style: tier,
+		},
+		{
+			fixture: "guard-captain",
+			kind: "guard",
+			composite: "name",
+			atom: "master",
+			addedClass: null,
+			style: tier,
+		},
+	];
+
+	for (const c of CASES) {
+		it(`${c.kind}.${c.atom}:去掉带上的观感后逐字出现在 ${c.kind}.${c.composite} 里`, async () => {
+			const props = await fixtureProps(c.fixture);
+			const table = TABLES[c.kind] as Record<string, BlockRenderer<unknown>>;
+			const atomHtml = await renderBlock(table[c.atom], props);
+			const compositeHtml = await renderBlock(table[c.composite], props);
+			const root = rootTag(atomHtml);
+			expect(rootHook(atomHtml)).toBeNull();
+			let bare = root.replace(/ style="[^"]*"/, "");
+			if (c.addedClass) {
+				expect(bare).toContain(` ${c.addedClass}"`);
+				bare = bare.replace(` ${c.addedClass}"`, '"');
+			}
+			const stripped = bare + atomHtml.slice(root.length);
+			expect(stripCardHooks(compositeHtml)).toContain(stripCardHooks(stripped));
+		});
+
+		it(`${c.kind}.${c.atom}:根上带着复合块根上的那几句`, async () => {
+			const props = await fixtureProps(c.fixture);
+			const table = TABLES[c.kind] as Record<string, BlockRenderer<unknown>>;
+			const root = rootTag(await renderBlock(table[c.atom], props));
+			const style = / style="([^"]*)"/.exec(root)?.[1] ?? "";
+			for (const decl of c.style(props as never)) expect(style, decl).toContain(decl);
+			if (c.addedClass) expect(root).toContain(c.addedClass);
+		});
+	}
 });
