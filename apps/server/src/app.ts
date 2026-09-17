@@ -8,6 +8,7 @@ import type {
 	ExtensionDescriptorDTO,
 	RestartAbility,
 } from "@bilibili-notify/contract";
+import type { CardSkinKind } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -362,7 +363,27 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		dir: joinPath(runtime.bootstrap.dataDir, "maid-skills"),
 	});
 	app.route("/api/maid-skills", createMaidSkillsRoute({ skillStore }));
-	app.route("/api/ai", createAiRoute(deps, { skinStore, skillStore }));
+	// 卡片皮肤库(ADR-0014)。目录叫 `card-skins`,与隔壁 dashboard 皮肤的 `skins` 分开
+	// ——两种包长得像(都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
+	// 读盘推迟到首个请求(createApp 是同步装配),凭据记在店上,见 `ensureReady`。
+	const cardSkinStore =
+		options.cardSkins?.store ??
+		new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") });
+	/**
+	 * 卡片工坊 `look_card` 的截图口。握着 Chrome 的是 `/api/cards`,而它装配在聊天路由之后 ——
+	 * 这里先放一个晚绑定的口子,卡片路由建好时把真的交进来(见 `onSkinShot`)。
+	 */
+	let shootCardSkin: ((skinId: string, kind: CardSkinKind) => Promise<string | null>) | null = null;
+	app.route(
+		"/api/ai",
+		createAiRoute(deps, {
+			skinStore,
+			skillStore,
+			// 与 `/api/card-skins` 同一家店:工坊做出来的皮肤,皮肤页当场就看得见。
+			cardSkinStore,
+			cardSkinShot: (skinId, kind) => shootCardSkin?.(skinId, kind) ?? Promise.resolve(null),
+		}),
+	);
 	app.route("/api/fans", createFansRoute(deps));
 	const statsRoute = createStatsRoute(deps, {
 		...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
@@ -393,12 +414,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			commentary: () => runtime.engines?.commentary ?? null,
 		}),
 	);
-	// 卡片皮肤库(ADR-0014)。目录叫 `card-skins`,与隔壁 dashboard 皮肤的 `skins` 分开
-	// ——两种包长得像(都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
-	// 读盘推迟到首个请求(createApp 是同步装配),凭据记在店上,见 `ensureReady`。
-	const cardSkinStore =
-		options.cardSkins?.store ??
-		new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") });
 	app.route(
 		"/api/card-skins",
 		createCardSkinsRoute({
@@ -424,6 +439,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			// 预览自己建一个 ImageRenderer(样式烤进 config),皮肤得问同一家店 ——
 			// 否则「预览是这套皮肤、推出去是另一副样子」。
 			cardSkins: cardSkinStore,
+			onSkinShot: (shoot) => {
+				shootCardSkin = shoot;
+			},
 		}),
 	);
 	if (options.authSystem) {

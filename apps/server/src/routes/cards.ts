@@ -128,6 +128,11 @@ export interface CardsRouteOptions {
 	 * 皮肤解析口,虚构 mock 那条直接拿清单调 `renderCardWithSkin`。不给 = 只有内置默认皮肤。
 	 */
 	cardSkins?: CardSkinStore;
+	/**
+	 * 把「截一张盘上皮肤」的口子交出去 —— 卡片工坊的 `look_card` 要用(ADR-0015 决策 19 的 🔗)。
+	 * 握着 Chrome 的是这条路由,截图口只能从这里借;交出去的是闭包,热启用换了 Chrome 照样用新的。
+	 */
+	onSkinShot?: (shoot: (skinId: string, kind: CardSkinKind) => Promise<string | null>) => void;
 }
 
 const StyleSchema = z.object({
@@ -668,6 +673,24 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 还没建过:照常建一个(config 随下一次 `/preview` 热更)。
 		return await getImageRenderer({});
 	}
+
+	/**
+	 * 截一张**盘上那份**皮肤(默认场景),回 data URL;没 Chrome 回 null。与「最终效果」同一条路
+	 * (清单 → HTML → 截图),只是清单取自皮肤库而不是草稿。
+	 */
+	async function shootSavedSkin(skinId: string, kind: CardSkinKind): Promise<string | null> {
+		const store = opts.cardSkins;
+		if (!store) return null;
+		const renderer = await getScreenshotRenderer();
+		if (!renderer) return null;
+		const manifest = store.get(skinId);
+		if (!manifest) throw new Error(`皮肤不存在: ${skinId}`);
+		const out = await renderSkinPreviewHtml({ store, skinId, kind, manifest });
+		if (!out.ok) throw new Error(out.errors.join("；"));
+		const { buffer } = await renderer.screenshotHtml(out.html);
+		return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+	}
+	opts.onSkinShot?.(shootSavedSkin);
 
 	// Cached snapshot of the logged-in B站 account. Used as the SENDER on
 	// SC / Guard preview cards (the SC payer / new captain), not the
