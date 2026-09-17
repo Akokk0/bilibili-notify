@@ -27,6 +27,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { serverErrors } from "./preview-error";
+import { SkinHtmlFrame } from "./SkinHtmlFrame";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
 
 /** 防抖窗口。改一个旋钮到看见新图之间的等待,与「别把 server 打满」之间的折中。 */
@@ -215,28 +216,13 @@ export function SkinPreviewPane({
 						<LoadingBlock label="正在画第一张预览…" variant="inset" />
 					)
 				) : (
-					<div
-						// 不给底色:预览那份 HTML 的页面底是透明的(卡外那片白不属于这张卡),
-						// 底板的颜色从卡后面透上来才对。
-						className="overflow-hidden rounded-bn-sm shadow-md"
-						style={{ width: shown, height: VIEW_H }}
-					>
-						<iframe
-							// `srcDoc` + 空 sandbox:不给脚本、不给同源(见文件头)。
-							srcDoc={html}
-							sandbox=""
-							title="皮肤预览"
-							className="block border-0"
-							// iframe 里按**卡的真实宽度**排版,再整张缩 —— 直接把 iframe 调窄等于让
-							// 皮肤在一个它没见过的宽度上重新排,看到的就不是那张卡了。
-							style={{
-								width,
-								height: Math.round(VIEW_H / scale),
-								transform: scale < 1 ? `scale(${scale})` : undefined,
-								transformOrigin: "top left",
-							}}
-						/>
-					</div>
+					<SkinHtmlFrame
+						html={html}
+						width={width}
+						usable={usable}
+						height={VIEW_H}
+						title="皮肤预览"
+					/>
 				)}
 			</div>
 
