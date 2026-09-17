@@ -475,9 +475,10 @@ describe("读", () => {
 		const foreign = await installForeign();
 		const out = await harness().text(T.readCard, { skin: foreign, kind: "sc" });
 		expect(out).toMatch(/默认/);
-		for (const id of Object.keys(CARD_SKIN_BUILTIN_BLOCKS.sc).slice(0, 1)) {
-			expect(out).toContain(id);
-		}
+		// 摘要里是出厂默认皮肤那张醒目留言卡的块(块怎么拆归默认皮肤,这里不抄名单)。
+		const blocks = DEFAULT_CARD_SKIN.cards.sc?.blocks ?? [];
+		expect(blocks.length).toBeGreaterThan(0);
+		for (const b of blocks) expect(out).toContain(b.id);
 	});
 
 	/**

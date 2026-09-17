@@ -8,8 +8,9 @@ import { z } from "zod";
  * 三条纪律:
  * - **挂点名、字段路径、变量名都是对外 API,只增不改不删**(第三方皮肤会写死它们)。
  * - 这层只量长度不看内容:CSS 与自定义 HTML 的清洗归 server 的清洗器,渲染器只吃洗过的。
- * - 默认皮肤(`DEFAULT_CARD_SKIN`)必须能用这套格式**复刻今天的外观** —— 它是格式够不够
- *   用的验收门,也是升级后用户零感知的依据。
+ * - 这套格式必须能**复刻拆成原子块之前的外观**(冻住的 `LEGACY_DEFAULT_CARD_SKIN`)—— 它是
+ *   格式够不够用的验收门,也是改过版式的存量用户迁移后零感知的依据。出厂默认皮肤
+ *   (`DEFAULT_CARD_SKIN`)2026-09-18 起改用原子块拼,外观允许几个像素的出入(决策 8 的 🔗)。
  */
 
 // ---- 版本 -------------------------------------------------------------------
@@ -875,10 +876,163 @@ export const LEGACY_DEFAULT_CARD_SKIN: CardSkinManifest = {
 };
 
 /**
+ * 一个内置块。id 默认就是块名;会出现两次的(分割线)与驼峰块名(id 只准小写 + 连字符)
+ * 另给。`css` 只写这一块自己的。
+ */
+const at = (
+	builtin: string,
+	grid: CardSkinBlock["grid"],
+	css?: string,
+	id: string = builtin,
+	/**
+	 * 块里部件的规则,接在 self 那条后面。写成清洗器的规范形(`[data-bn="self"] ` 起头)——
+	 * 默认皮肤要一字不改地过装包门。
+	 */
+	rules = "",
+): B => ({
+	id,
+	kind: "builtin",
+	builtin,
+	grid,
+	...(css || rules ? { css: `${css ? `[data-bn="self"]{${css}}` : ""}${rules}` } : {}),
+});
+
+/** 通栏一行。 */
+const full = (row: number) => ({ row, column: 1, span: CARD_SKIN_LIMITS.columns });
+
+/**
+ * 两侧各一列定宽、中间十列等分。左边那列就是**头像列**:宽度 = 左内边距 + 头像 + 头像与名字
+ * 的间距,名字从第 2 列起正好落在原来的位置。右边补一列同宽的,整张卡才左右对称 ——
+ * 动态卡的三个互动数各占四列,居中后仍落在卡的三等分附近。
+ */
+const avatarColumns = (px: number): CardSkinColumn[] => [
+	{ px },
+	...Array.from({ length: CARD_SKIN_LIMITS.columns - 2 }, () => ({ fr: 1 })),
+	{ px },
+];
+
+/** 块在格子里水平居中(块里是定宽的圆框 / 自带底色的胶囊,不居中就贴左)。 */
+const CENTER = "display:flex;justify-content:center";
+
+/**
+ * 头部三件(头像 img、名字 span、时间 span)都是**行内**元素。在复合块里它们是 flex 子项,
+ * 高度就是自己那一行;单独放进块的 wrapper(普通块容器)里,行盒会按继承来的字号撑高、
+ * img 底下还会多出基线那一截 —— 头部整体高出好几个像素。wrapper 做成 flex 把它们块化。
+ */
+const HEAD = "display:flex";
+
+/**
  * **出厂的卡片皮肤**(内置只读,id 见 {@link DEFAULT_CARD_SKIN_ID})。元信息、旋钮与外框 CSS
- * 与 {@link LEGACY_DEFAULT_CARD_SKIN} 同一份;块怎么拆、怎么摆归这里,与旧默认无关。
+ * 与 {@link LEGACY_DEFAULT_CARD_SKIN} 同一份;四种可编辑卡的块**用原子块拼**(ADR-0014
+ * 决策 8 的 2026-09-18 🔗):用户多半是复制默认皮肤再改,默认皮肤里拆得越细,能挪的就越多。
+ * 外观与拆之前允许有几个像素的出入(主人拍板),东西一件不少由 `default-skin-atoms.test.ts` 钉着。
+ *
+ * 间距的规矩与旧默认一样写在块的 `padding` 上,只有两处换了地方:
+ * - 动态卡的分割线**上下都留** 12px —— 分割线后面接哪一块(话题 / 正文 / 视频卡 / 互动数)
+ *   说不准,间距跟着线走,后面那块就不用管;
+ * - 头部的名字与时间靠 `align-self` 贴在头像两侧的中线上(旧的复合块是 flex 居中);
+ * - 视频卡 / 图廊那块只给图廊加上边距(挂点规则),与旧正文里的间距一致。
  */
 export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	...LEGACY_DEFAULT_CARD_SKIN,
-	cards: { ...LEGACY_DEFAULT_CARD_SKIN.cards },
+	cards: {
+		...LEGACY_DEFAULT_CARD_SKIN.cards,
+		live: {
+			width: 600,
+			// 16 + 44(头像)+ 10(间距)
+			columns: avatarColumns(70),
+			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
+			blocks: [
+				at("cover", full(1)),
+				at(
+					"avatar",
+					{ row: 2, column: 1, span: 1, rowSpan: 2 },
+					`${HEAD};padding:14px 0 0 16px;align-self:center`,
+				),
+				at("name", { row: 2, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
+				at("time", { row: 3, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
+				at("title", full(4), "padding-top:10px"),
+				at("divider", full(5), "padding-top:10px", "divider-1"),
+				at("popularity", { row: 6, column: 1, span: 6 }, "padding-top:10px"),
+				at("area", { row: 6, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
+				at("fans", full(7), "padding-top:4px"),
+				at("desc", full(8), "padding-top:16px"),
+			],
+		},
+		dynamic: {
+			width: 600,
+			// 16 + 52(头像)+ 12(间距)
+			columns: avatarColumns(80),
+			css: `${FRAME_BG_USER}${GLASS_DYNAMIC}`,
+			blocks: [
+				at(
+					"avatar",
+					{ row: 1, column: 1, span: 1, rowSpan: 2 },
+					`${HEAD};padding-left:16px;align-self:center`,
+				),
+				at("name", { row: 1, column: 2, span: 11 }, `${HEAD};align-self:end`),
+				at("time", { row: 2, column: 2, span: 11 }, `${HEAD};padding-top:3px;align-self:start`),
+				at("divider", full(3), "padding:12px 0", "divider-1"),
+				at("topic", full(4), "padding:0 16px"),
+				at("text", full(5), "padding:0 16px"),
+				// 图廊前那 8px 是旧正文里跟在文字后面的间距;视频卡自己带着间距,不再加。
+				at(
+					"media",
+					full(6),
+					"padding:0 16px",
+					"media",
+					'[data-bn="self"] [data-bn="pics"]{margin-top:8px}',
+				),
+				at("forward", full(7), "padding:0 16px"),
+				at("additional", full(8), "padding-top:12px"),
+				at("divider", full(9), "padding:12px 0", "divider-2"),
+				at("forwardCount", { row: 10, column: 1, span: 4 }, CENTER, "forward-count"),
+				at("commentCount", { row: 10, column: 5, span: 4 }, CENTER, "comment-count"),
+				at("likeCount", { row: 10, column: 9, span: 4 }, CENTER, "like-count"),
+			],
+		},
+		sc: {
+			width: 290,
+			css: `${FRAME_BG_TIER}${GLASS_PLAIN}`,
+			blocks: [
+				// 金额是渐变裁字:用 text-align 居中,渐变才与旧的一样铺满整行。
+				at("price", full(1), "text-align:center"),
+				at("duration", full(2), CENTER),
+				at("divider", full(3), "padding-top:15px", "divider-1"),
+				at("avatar", full(4), `padding-top:12px;${CENTER}`),
+				at("name", full(5), `padding-top:8px;${CENTER}`),
+				at("to", full(6), `padding-top:8px;${CENTER}`),
+				at("message", full(7), "padding-top:12px"),
+			],
+		},
+		guard: {
+			width: 430,
+			columns: [
+				...Array.from({ length: 8 }, () => ({ fr: 1 })),
+				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
+			],
+			// 两行胶囊 + 一行文字:前两行按内容高,最后一行吃掉剩下的卡高,文字贴底。
+			css: `${FRAME_BG_TIER}[data-bn="glass"]{${glassBase(".75")};height:190px;grid-template-rows:auto auto 1fr}`,
+			blocks: [
+				at(
+					"avatar",
+					{ row: 1, column: 1, span: 4, rowSpan: 2 },
+					"padding:12px 0 0 16px;align-self:start",
+				),
+				// 两颗胶囊贴着头像的中线上下排,各自收窄到内容宽(胶囊自带底色)。
+				at("user", { row: 1, column: 5, span: 4 }, "align-self:end;justify-self:start"),
+				at(
+					"master",
+					{ row: 2, column: 5, span: 4 },
+					"padding-top:7px;align-self:start;justify-self:start",
+				),
+				at("text", { row: 3, column: 1, span: 8 }, "padding:0px 16px 12px;align-self:end"),
+				at(
+					"badge",
+					{ row: 1, column: 9, span: 4, rowSpan: 3 },
+					"height:190px;display:flex;align-items:center;align-self:start",
+				),
+			],
+		},
+	},
 };

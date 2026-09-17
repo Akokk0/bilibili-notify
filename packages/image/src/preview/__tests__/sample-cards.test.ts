@@ -86,15 +86,18 @@ describe("出厂示例数据 — 确定性", () => {
  * 看不见的东西。
  */
 describe("出厂示例数据 — 动态卡的转发场面", () => {
+	// 出厂默认皮肤里转发框是原子块(`data-block="forward"`),不再是正文复合块里那个挂点。
 	it("转发场面画得出转发框,全字段场面没有", async () => {
 		const [forward, av] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
-		expect(forward).toContain('data-bn="forward"');
-		expect(av).not.toContain('data-bn="forward"');
+		expect(forward).toContain('data-block="forward"');
+		expect(av).not.toContain('data-block="forward"');
 	});
 
 	it("框里是另一整张卡 —— 块跟着同一份皮肤摆,不是写死的旧版式", async () => {
 		const html = await render("dynamic", "forward");
-		const inset = html.slice(html.indexOf('data-bn="forward"'));
+		const at = html.indexOf('data-block="forward"');
+		expect(at).toBeGreaterThan(-1);
+		const inset = html.slice(at);
 		// 内层的块与外层挂同一批 class(皮肤的块 id),所以一条 CSS 管两层。
 		expect(inset).toContain("bn-blk-");
 	});

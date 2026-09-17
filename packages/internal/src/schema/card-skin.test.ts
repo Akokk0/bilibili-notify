@@ -13,6 +13,7 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
+	type CardSkinKind,
 	type CardSkinKnob,
 	CardSkinKnobValueSchema,
 	type CardSkinManifest,
@@ -22,6 +23,7 @@ import {
 	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
+	LEGACY_DEFAULT_CARD_SKIN,
 	parseCardSkin,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -487,10 +489,39 @@ describe("DEFAULT_CARD_SKIN", () => {
 		expect(DEFAULT_CARD_SKIN_ID).toBe("default");
 	});
 
-	it("复刻现状:四种可编辑卡的内置块顺序与今天的 DEFAULT_CARD_LAYOUT 一致", async () => {
+	/**
+	 * 2026-09-18 起默认皮肤用原子块拼(ADR-0014 决策 8 的 🔗):用户多半是复制默认皮肤再改,
+	 * 默认皮肤里只有复合块的话,能挪的就只有整行。拆得开的复合块一个都不许留;拆不开的
+	 * (封面、标题、简介、附加内容、留言、文字信息)照用。
+	 */
+	it("四种可编辑卡不再用拆得开的复合块", () => {
+		const SPLITTABLE: Record<"live" | "dynamic" | "sc" | "guard", string[]> = {
+			live: ["header", "data"],
+			dynamic: ["header", "content", "stats"],
+			sc: ["amount", "sender"],
+			guard: ["name"],
+		};
+		for (const [kind, composites] of Object.entries(SPLITTABLE)) {
+			const used = (DEFAULT_CARD_SKIN.cards[kind as CardSkinKind]?.blocks ?? []).map((b) =>
+				b.kind === "builtin" ? b.builtin : b.kind,
+			);
+			expect(used.length, kind).toBeGreaterThan(0);
+			for (const c of composites) expect(used, `${kind}.${c}`).not.toContain(c);
+		}
+	});
+});
+
+describe("LEGACY_DEFAULT_CARD_SKIN", () => {
+	it("自己先过自己的门", () => {
+		expect(ok(LEGACY_DEFAULT_CARD_SKIN).name).toBeTruthy();
+	});
+
+	it("复刻拆之前的样子:四种可编辑卡的内置块顺序与 DEFAULT_CARD_LAYOUT 一致", async () => {
 		const { DEFAULT_CARD_LAYOUT } = await import("./card-layout");
 		const names = (kind: "live" | "dynamic" | "sc") =>
-			DEFAULT_CARD_SKIN.cards[kind]?.blocks.map((b) => (b.kind === "builtin" ? b.builtin : b.kind));
+			LEGACY_DEFAULT_CARD_SKIN.cards[kind]?.blocks.map((b) =>
+				b.kind === "builtin" ? b.builtin : b.kind,
+			);
 		expect(names("live")).toEqual(DEFAULT_CARD_LAYOUT.live.map((b) => b.type));
 		expect(names("dynamic")).toEqual(DEFAULT_CARD_LAYOUT.dynamic.map((b) => b.type));
 		expect(names("sc")).toEqual(DEFAULT_CARD_LAYOUT.sc.map((b) => b.type));

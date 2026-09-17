@@ -5,7 +5,7 @@
  * `skin/__tests__/render-skin.test.ts`),也不是「皮肤画的块与模板逐字节相同」(那归
  * `skin/__tests__/skin-gate.test.ts` 的验收门 A)。这里问的是四件别处问不到的事:
  *
- * 1. `generate*` 真的走皮肤那条路了吗(网格 wrapper + 挂点在,块序列与旧模板一致);
+ * 1. `generate*` 真的走皮肤那条路了吗(网格 wrapper + 挂点在,画的是出厂默认皮肤那一份);
  * 2. 皮肤取不到 / 画不出来 / 画得太高时,回落**发生了**而且**报出来了**;
  * 3. 皮肤里的自定义块与包内资产真的进了图;
  * 4. 用的本来就是默认皮肤时**不报**回落(没换过皮肤的人不该收到「皮肤回落」的告警)。
@@ -16,7 +16,6 @@
 import type { CardSkinKind, CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_LIMITS,
-	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
@@ -28,8 +27,6 @@ import {
 	type ImageRendererOptions,
 } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
-import { renderCard } from "../render";
-import { LiveCard } from "../templates/live-card";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -132,7 +129,7 @@ function blockLabels(html: string): string[] {
 // ── ① 走的是皮肤那条路 ────────────────────────────────────────────────────────
 
 describe("ImageRenderer 一律按皮肤出图", () => {
-	it("默认皮肤:出的 HTML 带网格 wrapper 与根块挂点,块序列与旧模板路径一致", async () => {
+	it("默认皮肤:出的 HTML 带网格 wrapper 与根块挂点,块序列就是出厂默认皮肤那一份", async () => {
 		const h = makeHarness();
 		await liveCard(h.renderer);
 		const html = h.captured[0] ?? "";
@@ -143,29 +140,14 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 		expect(html).toContain('data-bn="glass"');
 		expect(html).toContain("display:grid");
 
-		// 块序列必须与旧模板一字不差 —— 「升级后卡片不能变样」的那一半
-		// (另一半是块内层逐字节,归 skin-gate 的验收门 A)。
-		const viaTemplate = await renderCard(
-			LiveCard,
-			{
-				cardColorStart: DEFAULT_CARD_GRADIENT[0],
-				cardColorEnd: DEFAULT_CARD_GRADIENT[1],
-				data: LIVE_ROOM,
-				username: "示例UP",
-				userface: "http://i0.hdslb.com/bfs/face/f.jpg",
-				titleStatus: "开播啦",
-				liveTime: "开播时间：2026-09-13 20:00:00",
-				liveStatus: 1,
-				cover: true,
-				onlineNum: "1234",
-				likedNum: "0",
-				watchedNum: "1",
-				fansNum: "1",
-				fansChanged: "",
-			},
-			{ title: "直播通知", font: BASE_CONFIG.font, htmlWidth: 600 },
+		// 画的是**出厂默认皮肤**这一份(2026-09-18 起用原子块拼),不是冻住的旧默认 ——
+		// 与旧模板逐块相同那件事只对旧默认成立,归 skin-gate 的验收门 A。
+		// 验红:把渲染器的默认回落换成 LEGACY_DEFAULT_CARD_SKIN,这条红。
+		const expected = (DEFAULT_CARD_SKIN.cards.live?.blocks ?? []).map((b) =>
+			b.kind === "builtin" ? b.builtin : "custom",
 		);
-		expect(blockLabels(html)).toEqual(blockLabels(viaTemplate));
+		expect(expected).toContain("avatar");
+		expect(blockLabels(html)).toEqual(expected);
 	});
 
 	it("上舰卡:皮肤的根块 CSS 被翻成挂点选择器拼进样式表", async () => {

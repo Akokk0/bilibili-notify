@@ -32,7 +32,7 @@ function fixture(): CardSkinManifest {
 	if (!live) throw new Error("出厂皮肤没有直播卡");
 	live.css = '[data-bn="frame"]{padding:3px}/* FRAME_MARK */';
 	const byId = (id: string) => live.blocks.find((b) => b.id === id) as Block;
-	byId("header").css = '[data-bn="self"]{color:red}/* OTHER_BLOCK_MARK */';
+	byId("title").css = '[data-bn="self"]{color:red}/* OTHER_BLOCK_MARK */';
 	const cover = byId("cover");
 	cover.css = '[data-bn="self"]{border-radius:4px}/* TARGET_MARK */';
 	cover.assets = { hero: "asset:assets/hero.png" };
@@ -85,18 +85,14 @@ describe("提示词拼装", () => {
 		}
 		expect(user).toContain("TARGET_MARK");
 		expect(user).toContain("FRAME_MARK");
-		for (const id of [
-			"cover",
-			"header",
-			"title",
-			"divider-1",
-			"data",
-			"desc",
+		// 整卡轮廓:出厂皮肤直播卡的每一块(块怎么拆归默认皮肤,这里不抄名单)+ 夹具加的两块。
+		const ids = [
+			...(DEFAULT_CARD_SKIN.cards.live?.blocks ?? []).map((b) => b.id),
 			"note-a",
 			"note-b",
-		]) {
-			expect(user).toContain(id);
-		}
+		];
+		expect(ids).toContain("title");
+		for (const id of ids) expect(user).toContain(id);
 		// 轮廓里带着 showIf —— 「这块有时不出现」会影响怎么写间距。
 		expect(user).toContain("live.title");
 		// 旋钮只读:给变量名与兜底值,没拧过的旋钮不注入,兜底必须写。
