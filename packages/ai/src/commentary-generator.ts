@@ -185,8 +185,10 @@ interface CallToolOptions {
 		args: Record<string, string>,
 		/** 慢工具报进度的口子 —— 转发者不必接,接了就会变成 progress 事件。 */
 		onProgress?: (chars: number) => void,
-	) => Promise<string>;
+	) => Promise<string | ToolCallOutput>;
 	onToolEvent?: (ev: ToolTraceEvent) => void;
+	/** 这次调用的工具轮数上限;不给 = {@link MAX_TOOL_ROUNDS}。 */
+	maxRounds?: number;
 	/**
 	 * 联网搜索执行器。给了它,循环里名为 `web_search` 的调用就由生成器
 	 * **亲自执行**而不走 `onToolCall` —— 字符串通道带不动结构化的来源列表,
@@ -194,6 +196,18 @@ interface CallToolOptions {
 	 */
 	webSearch?: WebSearchExecutor;
 }
+
+/**
+ * 一次工具调用的产出:回给模型的文字,外加要在这一轮之后**补给模型看**的图。
+ * 图走哪条路见 {@link ExtraToolResult.images}。
+ */
+interface ToolCallOutput {
+	text: string;
+	images?: readonly string[];
+}
+
+/** 工具结果之后补的那条带图消息的开头。说清图从哪来,模型才不会当成主人新贴的。 */
+const TOOL_IMAGE_NOTE = "(以下是上面工具调用交回的图,不是主人贴的。)";
 
 /** 平台中立的人格配置。 */
 export interface PersonaConfig {
@@ -458,6 +472,13 @@ export interface ChatStatelessOptions {
 	 * 「读取技能」是白烧一轮。
 	 */
 	restrictTools?: readonly string[];
+	/**
+	 * 这次的工具轮数上限;不给 = {@link MAX_TOOL_ROUNDS}。
+	 *
+	 * 卡片皮肤工坊从零做一整套至少要 8 把工具调用(元信息一把、七种卡各一把),
+	 * 默认的闸正好卡死它(ADR-0015 决策 23 的 🔗)。其余路照旧用默认值。
+	 */
+	maxToolRounds?: number;
 	/**
 	 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
 	 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
@@ -1025,9 +1046,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 					toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
 					this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
 				}
-				return out.text;
+				return out.images?.length ? this.toolImagesFor(out.text, out.images) : out.text;
 			},
 			onToolEvent: opts?.onToolEvent,
+			...(opts?.maxToolRounds ? { maxRounds: opts.maxToolRounds } : {}),
 			...(searchExec ? { webSearch: searchExec } : {}),
 		};
 		const result = await this.callAPI(
@@ -1043,6 +1065,36 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		this.logger.debug(`[chat-stateless] 响应长度=${result.length}`);
 		return result;
+	}
+
+	/**
+	 * 注入工具交回的图 → 这一轮怎么让模型看见(ADR-0015 决策 19 的 🔗)。
+	 *
+	 * 三条路,顺序与聊天发图同一个口径:主模型自己看得见就把图原样交给工具环,由它补一条
+	 * 带图的消息;否则配了副模型就转成文字并进结果;两样都没有就说一句看不见。**看不见
+	 * 不是失败** —— 工具该做的事已经做完了,少的只是一张给模型自查的图。
+	 */
+	private async toolImagesFor(
+		text: string,
+		images: readonly string[],
+	): Promise<string | ToolCallOutput> {
+		if (this.mainModelCanSeeImages()) return { text, images };
+		const model = this.visionModel();
+		if (!model) {
+			return `${text}\n\n(这张图你看不见:当前模型不支持看图,也没配看图副模型。照实告诉主人,请主人自己看预览。)`;
+		}
+		const call = await this.makeVisionCaller();
+		const descriptions = await describeImages(images, {
+			call,
+			model,
+			contextText: text,
+			timeoutMs: VISION_TIMEOUT_MS,
+			onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
+		});
+		const block = renderImageDescriptions(descriptions);
+		return block
+			? `${text}\n\n${block}`
+			: `${text}\n\n(看图副模型这次没看成,图的样子不清楚。照实告诉主人,请主人自己看预览。)`;
 	}
 
 	/** 清除指定用户的对话历史 */
@@ -1644,7 +1696,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 本次 callAPI 已真正执行的搜索次数。计在调用局部而不是实例上 —— 并发的
 		// 两条生成各有各的预算,记在 this 上会互相吃额度。
 		const budget = { searchCalls: 0 };
-		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+		const maxRounds = toolOptions?.maxRounds ?? MAX_TOOL_ROUNDS;
+		for (let round = 0; round < maxRounds; round++) {
 			let message: OpenAI.ChatCompletionMessage;
 			try {
 				message = await fetchRoundRetrying();
@@ -1697,6 +1750,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${message.tool_calls.length} 个工具`);
 			if (!toolOptions) break;
 
+			/** 这一轮工具交回的图,等所有 tool 消息都回完再一次补上(每个 tool_call 得先有应答)。 */
+			const shown: string[] = [];
 			for (let i = 0; i < message.tool_calls.length; i++) {
 				const toolCall = message.tool_calls[i];
 				// SDK v5 起 `tool_calls` 是联合类型(function | custom)。我们从不声明
@@ -1726,7 +1781,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 				apiMessages.push({
 					role: "tool",
 					tool_call_id: toolCall.id,
-					content: result,
+					content: result.content,
+				});
+				if (result.images) shown.push(...result.images);
+			}
+			if (shown.length > 0) {
+				apiMessages.push({
+					role: "user",
+					content: [
+						{ type: "text", text: TOOL_IMAGE_NOTE },
+						...shown.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+					],
 				});
 			}
 		}
@@ -1837,7 +1902,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		};
 
 		const budget = { searchCalls: 0 };
-		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+		const maxRounds = toolOptions?.maxRounds ?? MAX_TOOL_ROUNDS;
+		for (let round = 0; round < maxRounds; round++) {
 			let items: unknown[];
 			try {
 				items = await fetchRound();
@@ -1868,6 +1934,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			}
 			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${calls.length} 个工具`);
 			if (!toolOptions) break;
+			const shown: string[] = [];
 			for (let i = 0; i < calls.length; i++) {
 				const call = calls[i];
 				const result = await this.execToolCall(
@@ -1877,7 +1944,21 @@ export class CommentaryGenerator implements CommentaryProvider {
 					toolOptions,
 					budget,
 				);
-				input.push({ type: "function_call_output", call_id: call.callId, output: result });
+				input.push({
+					type: "function_call_output",
+					call_id: call.callId,
+					output: result.content,
+				});
+				if (result.images) shown.push(...result.images);
+			}
+			if (shown.length > 0) {
+				input.push({
+					role: "user",
+					content: [
+						{ type: "input_text", text: TOOL_IMAGE_NOTE },
+						...shown.map((url) => ({ type: "input_image", image_url: url, detail: "auto" })),
+					],
+				});
 			}
 		}
 
@@ -1962,7 +2043,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		toolOptions: CallToolOptions,
 		/** 本次 callAPI 的搜索预算。对象引用共享 —— 多轮之间要接着数。 */
 		budget: { searchCalls: number },
-	): Promise<string> {
+	): Promise<{ content: string; images?: readonly string[] }> {
 		// 参数先解析出来给 start 用。解析失败不在这儿抛 —— 下面那段要靠
 		// `parseErr` 保持原有语义:参数坏了就**不执行**工具,只把错误当结果回去。
 		let args: Record<string, string> = {};
@@ -1971,9 +2052,18 @@ export class CommentaryGenerator implements CommentaryProvider {
 			// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
 			// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
 			// 订阅 key("12345")比对失配。逐值强制 String 归一。
+			// 对象 / 数组例外,原样回成 JSON:卡片工坊写一张卡的 `blocks` 是对象数组,
+			// `String(v)` 会把它压成一串 `[object Object]`,工具连原文都拿不回来。
 			const parsed = JSON.parse(rawArgs) as Record<string, unknown>;
 			args = Object.fromEntries(
-				Object.entries(parsed).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
+				Object.entries(parsed).map(([k, v]) => [
+					k,
+					typeof v === "string"
+						? v
+						: typeof v === "object" && v !== null
+							? JSON.stringify(v)
+							: String(v),
+				]),
 			);
 		} catch (e) {
 			parseErr = e as Error;
@@ -1984,6 +2074,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		toolOptions.onToolEvent?.({ phase: "start", id: traceId, name, args });
 
 		let result: string;
+		let images: readonly string[] | undefined;
 		let ok: boolean;
 		/** `web_search` 专属:搜到的来源,end 事件带给界面画「来源列表」。 */
 		let sources: WebSearchSourceRef[] | undefined;
@@ -2016,9 +2107,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 		} else if (toolOptions.onToolCall) {
 			try {
 				this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
-				result = await toolOptions.onToolCall(name, args, (chars) =>
+				const out = await toolOptions.onToolCall(name, args, (chars) =>
 					toolOptions.onToolEvent?.({ phase: "progress", id: traceId, chars }),
 				);
+				if (typeof out === "string") result = out;
+				else {
+					result = out.text;
+					images = out.images?.length ? out.images : undefined;
+				}
 				ok = true;
 			} catch (e) {
 				result = `工具执行失败: ${(e as Error).message}`;
@@ -2037,7 +2133,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(sources ? { sources } : {}),
 		});
 		this.logger.debug(`[tool] ${name} 结果长度=${result.length}`);
-		return result;
+		return images ? { content: result, images } : { content: result };
 	}
 }
 

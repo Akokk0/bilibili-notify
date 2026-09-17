@@ -232,3 +232,131 @@ describe("chatStatelessStream × 专职模式", () => {
 		expect(toolNames(0)).toContain("list_subscriptions");
 	});
 });
+
+/**
+ * 卡片皮肤工坊要的三样(ADR-0015 决策 13 / 19 / 23 的 🔗)。
+ *
+ * - 写一张卡的入参是**嵌套的**(`blocks` 是对象数组)。归一只该把数字 / 布尔变成字符串,
+ *   对象压成 `String(v)` 就是一串 `[object Object]`,工具连 JSON 都拿不回来。
+ * - 从零做一整套至少 8 把工具调用,而默认的轮数闸正好是 8 —— 工坊得能单独放宽。
+ * - `look_card` 截了图要交回给模型看,而 tool 消息只收文字。
+ */
+describe("chatStatelessStream × 卡片工坊的管道", () => {
+	it("入参里的对象 / 数组 → 交给工具的是 JSON 原文,不是 [object Object]", async () => {
+		const blocks = [{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1 } }];
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "x", blocks, width: 400, on: true })]))
+			.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		const tool = makeTool();
+		await makeGen().chatStatelessStream(HIST, { onDelta: () => {}, extraTools: [tool] });
+
+		const args = tool.execute.mock.calls[0]?.[0] as Record<string, string>;
+		expect(JSON.parse(args.blocks ?? "")).toEqual(blocks);
+		// 标量照旧归一成字符串(老工具靠这个比对 uid)。
+		expect(args.width).toBe("400");
+		expect(args.on).toBe("true");
+	});
+
+	/** 连着 `n` 轮都只调工具,第 n+1 轮才开口。 */
+	function toolRounds(n: number): void {
+		for (let i = 0; i < n; i++) {
+			oai.create.mockResolvedValueOnce(streamOf([callChunk({ brief: `第${i}轮` }, `call_${i}`)]));
+		}
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("一整套做完啦")]));
+	}
+
+	it("默认闸仍是 8 轮:第 9 轮才开口的话,回的是上限提示", async () => {
+		toolRounds(8);
+		const reply = await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			extraTools: [makeTool()],
+		});
+		expect(reply).toContain("上限");
+	});
+
+	it("maxToolRounds 放宽 → 工具轮多于 8 也收得到正文", async () => {
+		toolRounds(9);
+		const reply = await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			extraTools: [makeTool()],
+			maxToolRounds: 24,
+		});
+		expect(reply).toBe("一整套做完啦");
+	});
+
+	const SHOT = "data:image/jpeg;base64,U0hPVA==";
+	const lookTool = () =>
+		makeTool({ execute: vi.fn(async () => ({ text: "这是直播卡的截图", images: [SHOT] })) });
+
+	/** 主模型那几次请求里,带着这张截图的 user 消息(副模型那趟本来就带图,不算)。 */
+	function imageMessages(): Array<{ role: string; content: unknown }> {
+		const all = oai.create.mock.calls
+			.filter((c) => (c[0] as { model: string }).model !== "qwen-vl")
+			.flatMap((c) => (c[0] as CreateParams).messages ?? []);
+		return all.filter(
+			(m) =>
+				m.role === "user" &&
+				Array.isArray(m.content) &&
+				(m.content as Array<{ image_url?: { url: string } }>).some(
+					(p) => p.image_url?.url === SHOT,
+				),
+		);
+	}
+
+	it("工具交回图 + 主模型看得见 → 工具结果之后补一条带图的 user 消息", async () => {
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "看看" })]))
+			.mockResolvedValueOnce(streamOf([textChunk("看过了")]));
+		await makeGen({ enableVision: true }).chatStatelessStream(HIST, {
+			onDelta: () => {},
+			extraTools: [lookTool()],
+		});
+
+		const msgs = createParams(1).messages;
+		const toolAt = msgs.findIndex((m) => m.role === "tool");
+		const imageAt = msgs.findIndex((m) => imageMessages().includes(m));
+		expect(String(msgs[toolAt]?.content)).toContain("这是直播卡的截图");
+		expect(imageAt).toBeGreaterThan(toolAt);
+	});
+
+	it("主模型看不见、配了看图副模型 → 截图转成文字并进工具结果,图不下挂", async () => {
+		// 按模型分派:副模型那一趟插在主模型两趟之间,排队式的 Once 会被它抢走一个。
+		const main = [streamOf([callChunk({ brief: "看看" })]), streamOf([textChunk("看过了")])];
+		oai.create.mockImplementation(async (p: { model: string }) =>
+			p.model === "qwen-vl"
+				? { choices: [{ message: { role: "assistant", content: "粉色玻璃卡,标题压住了封面" } }] }
+				: main.shift(),
+		);
+		await makeGen({ vision: { model: "qwen-vl", baseURL: "", apiKey: "" } }).chatStatelessStream(
+			HIST,
+			{ onDelta: () => {}, extraTools: [lookTool()] },
+		);
+
+		const mainCalls = oai.create.mock.calls.filter(
+			(c) => (c[0] as { model: string }).model !== "qwen-vl",
+		);
+		const last = mainCalls.at(-1)?.[0] as CreateParams;
+		const toolMsg = last.messages.find((m) => m.role === "tool");
+		expect(String(toolMsg?.content)).toContain("这是直播卡的截图");
+		expect(String(toolMsg?.content)).toContain("标题压住了封面");
+		expect(imageMessages()).toHaveLength(0);
+	});
+
+	it("两样都没有 → 工具结果里说一句看不见,不报错、不下挂图", async () => {
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "看看" })]))
+			.mockResolvedValueOnce(streamOf([textChunk("看不见也回一句")]));
+		const events: Array<{ phase: string; ok?: boolean }> = [];
+		const reply = await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			onToolEvent: (ev) => events.push(ev),
+			extraTools: [lookTool()],
+		});
+
+		expect(reply).toBe("看不见也回一句");
+		expect(events.find((e) => e.phase === "end")?.ok).toBe(true);
+		const toolMsg = createParams(1).messages.find((m) => m.role === "tool");
+		expect(String(toolMsg?.content)).toMatch(/看不见/);
+		expect(imageMessages()).toHaveLength(0);
+	});
+});

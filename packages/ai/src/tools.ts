@@ -157,6 +157,15 @@ export interface ExtraToolResult {
 	 * 收窄只活这一次请求:工具表随请求现造,下一条用户消息拿回完整的那份。
 	 */
 	restrictTools?: readonly string[];
+	/**
+	 * 要交给模型**看**的图(data URL 或公网地址)。
+	 *
+	 * tool 消息只收文字,所以图不跟着结果走:主模型看得见图,就在这一轮的工具结果后面
+	 * 补一条带图的 user 消息;配了看图副模型,就转成文字并进结果;两样都没有,就在结果
+	 * 后面说一句看不见。**哪条路由 generator 定** —— 看图配置在它手上,工具不必知道。
+	 * 看不见不算失败(ADR-0015 决策 19)。
+	 */
+	images?: readonly string[];
 }
 
 export interface ExtraTool {
