@@ -247,7 +247,8 @@ export function checkCardSkinPackage(
 }
 
 /** 皮肤 CSS 里对旋钮变量的引用:`var(--bn-knob-<key>` 那一截。 */
-const KNOB_VAR_RE = /var\(--bn-knob-([a-z][a-z0-9-]*)/g;
+/** CSS 里一处旋钮引用,第一组是 key。卡片工坊的 `read_card` 也照它认(别另写一份)。 */
+export const KNOB_VAR_RE = /var\(--bn-knob-([a-z][a-z0-9-]*)/g;
 
 /**
  * 旋钮声明与 CSS 里的引用**对一次表**。两边都只出 warning,不拦包:

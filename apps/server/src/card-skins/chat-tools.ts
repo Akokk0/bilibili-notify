@@ -36,6 +36,7 @@ import {
 } from "@bilibili-notify/internal";
 import { blockLabel, cardCssRules, fenced, hookLines, knobLines } from "./ai-css.js";
 import { CARD_HTML_ALLOWED_TAGS } from "./html-sanitizer.js";
+import { KNOB_VAR_RE } from "./package.js";
 import { CardSkinPackageError, type CardSkinStore } from "./store.js";
 
 /**
@@ -235,7 +236,10 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			const card = manifest.cards[kind];
 			if (!card) {
 				const fallback = DEFAULT_CARD_SKIN.cards[kind];
-				return `${head}:这套没写这张卡,出图时用默认皮肤的。下面是默认皮肤这张卡的摘要,可以照着写:\n\n${fallback ? summarize(kind, fallback) : "(默认皮肤也没有这张)"}\n\n${knobs}`;
+				const borrowed = fallback
+					? undeclaredKnobs([fallback.css, ...fallback.blocks.map((b) => b.css)], manifest)
+					: [];
+				return `${head}:这套没写这张卡,出图时用默认皮肤的。下面是默认皮肤这张卡的摘要,可以照着写:\n\n${fallback ? summarize(kind, fallback) : "(默认皮肤也没有这张)"}${knobCopyNote(borrowed)}\n\n${knobs}`;
 			}
 			return `${head}:\n\n${summarize(kind, card)}\n\n${knobs}`;
 		},
@@ -264,7 +268,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			if (block.kind === "builtin") {
 				hooks.push(...Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.hooks ?? {}));
 			}
-			const from = card ? "" : "(这套没写这张卡,下面是默认皮肤的)";
+			const from = card
+				? ""
+				: `(这套没写这张卡,下面是默认皮肤的)${knobCopyNote(undeclaredKnobs([block.css], manifest))}`;
 			const parts = [
 				`「${manifest.name}」(id: ${id})${KIND_NAMES[kind]}里的「${blockLabel(kind, block)}」块(id: ${block.id})${from}`,
 				`挂点:\n${hookLines(hooks)}`,
@@ -590,6 +596,27 @@ function summarize(kind: CardSkinKind, card: Card): string {
 	lines.push(`- 块(按行排,共 ${card.blocks.length} 块):\n${blocks.join("\n") || "  (没有块)"}`);
 	lines.push(`要看某一块的 CSS / HTML 正文,用 ${T.readBlock}。`);
 	return lines.join("\n");
+}
+
+/** 这些 CSS 里引用了、这套皮肤却没声明的旋钮 key。 */
+function undeclaredKnobs(
+	css: ReadonlyArray<string | undefined>,
+	manifest: CardSkinManifest,
+): string[] {
+	const declared = new Set((manifest.knobs ?? []).map((k) => k.key));
+	const used = new Set<string>();
+	for (const c of css) for (const m of (c ?? "").matchAll(KNOB_VAR_RE)) used.add(m[1] as string);
+	return [...used].filter((k) => !declared.has(k));
+}
+
+/**
+ * 拿默认皮肤当参考时的那句提醒。默认皮肤的外框 CSS 引用着它自己的旋钮,原样抄进一套
+ * 没声明它们的皮肤,面板上拧不动、保存时还冒一排提醒 —— 而旋钮声明这轮不归 AI(决策 17)。
+ */
+function knobCopyNote(keys: readonly string[]): string {
+	if (keys.length === 0) return "";
+	const refs = keys.map((k) => `var(--bn-knob-${k})`).join("、");
+	return `\n\n⚠️ 默认皮肤的 CSS 里引用了它自己的旋钮(${refs}),这套皮肤没有声明这些旋钮 —— 照着写时把它们换成具体的值,别原样抄(你声明不了旋钮,抄过去面板上也拧不动)。`;
 }
 
 function bytes(s: string | undefined): number {

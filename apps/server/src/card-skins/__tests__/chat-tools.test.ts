@@ -21,6 +21,7 @@ import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KINDS,
+	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
@@ -477,6 +478,32 @@ describe("读", () => {
 		for (const id of Object.keys(CARD_SKIN_BUILTIN_BLOCKS.sc).slice(0, 1)) {
 			expect(out).toContain(id);
 		}
+	});
+
+	/**
+	 * 默认皮肤那张卡的外框 CSS 引用着它自己的旋钮。拿它当参考时不提醒的话,模型原样照抄,
+	 * 新皮肤里就是一串没声明的旋钮引用 —— 面板上拧不动,保存时还冒一排提醒(2026-09-17 真机)。
+	 */
+	it("read_card 退回默认皮肤那张时,点明其中的旋钮这套没有,叫它换成具体的值", async () => {
+		const foreign = await installForeign();
+		const out = await harness().text(T.readCard, { skin: foreign, kind: "sc" });
+		expect(out).toContain("var(--bn-knob-font");
+		expect(out).toMatch(/没有声明这些旋钮/);
+		expect(out).toMatch(/换成具体的值/);
+	});
+
+	it("这套自己声明了那些旋钮 → 退回默认皮肤时不提醒", async () => {
+		// 旋钮与默认皮肤同一套,只写了直播卡:读醒目留言卡会退回默认皮肤那张。
+		const manifest = {
+			...DEFAULT_CARD_SKIN,
+			name: "带旋钮的",
+			cards: { live: DEFAULT_CARD_SKIN.cards.live },
+		};
+		const zip = zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(manifest)) });
+		const { id } = await store.install(zip);
+		const out = await harness().text(T.readCard, { skin: id, kind: "sc" });
+		expect(out).toContain("var(--bn-knob-font");
+		expect(out).not.toMatch(/没有声明这些旋钮/);
 	});
 
 	it("read_block 给那一块的正文;读不改东西", async () => {
