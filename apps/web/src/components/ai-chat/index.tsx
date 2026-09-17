@@ -154,6 +154,12 @@ type SendVars = {
 	face: ChatFace;
 };
 
+/**
+ * 离底部多近还算「停在底部」px。留一点余量:触控板惯性、缩放取整都会差出几像素,
+ * 差一点就不跟了会让人以为贴底坏了。
+ */
+const STICK_SLACK_PX = 48;
+
 /** 技能还没拉到时的稳定空表 —— 每次渲染现造一个 `[]` 会让 Composer 白白重渲。 */
 const EMPTY_SKILLS: readonly MaidSkillDTO[] = [];
 
@@ -250,6 +256,19 @@ export function ChatPage() {
 	const [error, setError] = useState<string | null>(null);
 	const qc = useQueryClient();
 	const scrollRef = useRef<HTMLDivElement>(null);
+	/**
+	 * 主人是不是停在消息流底部。只有停在底部时,新长出来的内容才把视图往下带。
+	 *
+	 * 从前每来一片就无条件贴底:思考很长时,主人往上翻着读,下一片一到就被拽回底部,
+	 * 「内容一直在向下扯」(2026-09-17 真机反馈)。判据在**滚动的那一刻**记下,不在
+	 * 内容长高之后现算 —— 长高本身就会拉开与底部的距离,那时再算,永远算成「翻上去了」。
+	 */
+	const stickRef = useRef(true);
+	const onScroll = () => {
+		const el = scrollRef.current;
+		if (!el) return;
+		stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_SLACK_PX;
+	};
 
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
@@ -609,14 +628,21 @@ export function ChatPage() {
 		</div>
 	);
 
-	// 内容一长就贴底。依赖里带上 `pending.draft.length` 是要紧的:流式回复是逐字
-	// 长出来的,只盯消息数的话,整段生成过程中视图纹丝不动,新字全长在视野之外。
-	// 思考流同理 —— 它先于正文长出来,不跟着它滚,思考阶段就全长在视野之外。
+	// 换了一场对话 → 从底部看起。**要写在贴底那条 effect 前面**:同一次提交里 effect
+	// 按声明顺序跑,这一格得先归位,那条才会把新会话带到底。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activeId 只作触发条件
+	useEffect(() => {
+		stickRef.current = true;
+	}, [activeId]);
+
+	// 内容一长就贴底 —— **只在主人本来就停在底部时**(见 stickRef)。依赖里带上
+	// `pending.draft.length` 是要紧的:流式回复是逐字长出来的,只盯消息数的话,整段
+	// 生成过程中视图纹丝不动,新字全长在视野之外。思考流同理 —— 它先于正文长出来。
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 这几个值只作触发条件,不在函数体内读
 	useEffect(() => {
 		const el = scrollRef.current;
-		if (el) el.scrollTop = el.scrollHeight;
-	}, [busy, messages.length, pending?.draft.length, pending?.think.length]);
+		if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+	}, [activeId, busy, messages.length, pending?.draft.length, pending?.think.length]);
 
 	const submit = (text?: string) => {
 		const raw = text ?? input;
@@ -625,6 +651,8 @@ export function ChatPage() {
 		const outgoing = resolveOutgoing(raw, skills);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
 		if ((!outgoing.text && attachments.length === 0) || busy) return;
+		// 刚发出的这句和它的回复,主人一定要看 —— 翻到哪儿都先回到底部。
+		stickRef.current = true;
 		// 技能不再点名面孔(它声明不了模式,见 ADR-0001 决策 11),所以这一问永远
 		// 发去当下这场;进皮肤工坊的唯一入口是侧栏那颗「新建皮肤工坊」。
 		const reuse = activeId !== null;
@@ -775,7 +803,11 @@ export function ChatPage() {
 					</div>
 				) : (
 					<>
-						<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-2 pt-15.5">
+						<div
+							ref={scrollRef}
+							onScroll={onScroll}
+							className="flex-1 overflow-y-auto px-6 pb-2 pt-15.5"
+						>
 							<MessageList
 								messages={messages}
 								pending={pending}
