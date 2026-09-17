@@ -611,6 +611,22 @@ export type AiChatMode = "chat" | "skin";
  */
 export const AI_TOOL_CREATE_SKIN = "create_skin";
 
+/**
+ * 卡片皮肤工坊的工具名(ADR-0015 决策 13 / 14 与它们的 🔗)—— 与 {@link AI_TOOL_CREATE_SKIN}
+ * 同理是**三层共用的 wire 标识**:服务端拿它建工具、给老会话认「做的是哪种皮肤」,web 拿它
+ * 配中文标签、判断这轮跑完要不要刷新卡片皮肤库。
+ */
+export const AI_CARD_WORKSHOP_TOOLS = {
+	listSkins: "list_skins",
+	readCard: "read_card",
+	readBlock: "read_block",
+	lookCard: "look_card",
+	writeCard: "write_card",
+	setBlock: "set_block",
+	removeBlock: "remove_block",
+	setSkinMeta: "set_skin_meta",
+} as const;
+
 export interface AiConversationMetaDTO {
 	id: string;
 	title: string;

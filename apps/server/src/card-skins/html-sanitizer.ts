@@ -397,6 +397,9 @@ const WHOLE_PLACEHOLDER_RE = /^\{([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\}$/
 /** 包内资产的引用前缀。 */
 const ASSET_PREFIX = "asset:";
 
+/** 标签白名单的只读出口:卡片工坊的提示词照它列(ADR-0015 决策 25),不另抄一份。 */
+export const CARD_HTML_ALLOWED_TAGS: ReadonlySet<string> = ALLOWED_TAGS;
+
 export interface SanitizeCardHtmlOptions {
 	kind: CardSkinKind;
 	/** 包内资产名。`src="asset:<名>"` 必须落在这里面。 */

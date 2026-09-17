@@ -157,6 +157,18 @@ export class CardSkinStore {
 	}
 
 	/**
+	 * 从一份清单新建一套(没有资产)。卡片工坊「新做一套」走这条(ADR-0015 决策 13 的 🔗),
+	 * 与装包同一道验 + 洗。
+	 */
+	async create(manifestRaw: unknown): Promise<{ id: string; warnings: string[] }> {
+		const checked = checkCardSkinPackage(manifestRaw, new Set());
+		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+		const id = newId();
+		await this.writePackage(id, checked.manifest, new Map());
+		return { id, warnings: checked.warnings };
+	}
+
+	/**
 	 * 复制一份(含资产)。内置那份也复制得了 —— 这就是「要改先复制」的那个入口。
 	 *
 	 * 新名字缺省「<原名> 副本」,超 schema 的名字上限就截断:复制一份不该因为名字长了
