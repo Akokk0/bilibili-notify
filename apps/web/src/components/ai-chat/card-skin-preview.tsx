@@ -145,8 +145,15 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 						)}
 					</div>
 					{preview.data?.warnings.length ? (
+						// 标题不说「削掉了」:这里混着清洗器削掉的与装包时的提醒(用了没声明的
+						// 旋钮之类),后者什么都没删。每条自己会说清是哪一种。
 						<WarnNote size="sm" className="leading-5">
-							清洗器削掉了:{preview.data.warnings.join(";")}
+							<div className="space-y-0.5">
+								<div className="font-semibold">有几处要留意:</div>
+								{preview.data.warnings.map((w) => (
+									<div key={w}>{w}</div>
+								))}
+							</div>
 						</WarnNote>
 					) : null}
 				</>

@@ -23,6 +23,7 @@ const H = vi.hoisted(() => ({
 	skins: [] as Record<string, unknown>[],
 	previews: [] as Drawn[],
 	puts: [] as unknown[],
+	warnings: [] as string[],
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -37,7 +38,12 @@ vi.mock("../../../services/api", () => ({
 			const id = path.match(/^\/api\/card-skins\/([^/]+)\/preview$/)?.[1];
 			if (!id) throw new Error(`没安排的 POST ${path}`);
 			H.previews.push({ id, kind: body.kind });
-			return { html: `<p>${id}:${body.kind}</p>`, width: 600, warnings: [], scene: "default" };
+			return {
+				html: `<p>${id}:${body.kind}</p>`,
+				width: 600,
+				warnings: H.warnings,
+				scene: "default",
+			};
 		}),
 		put: vi.fn(async (path: string, body: { id: string }) => {
 			H.puts.push({ path, body });
@@ -63,6 +69,7 @@ beforeEach(() => {
 	H.skins = [skin("s1", "樱花粉"), skin("s2", "夜航灯")];
 	H.previews = [];
 	H.puts = [];
+	H.warnings = [];
 });
 afterEach(cleanup);
 
@@ -112,6 +119,22 @@ describe("预览块", () => {
 		const block = await screen.findByTestId("card-skin-preview");
 		expect(await within(block).findByText("正在用")).toBeTruthy();
 		expect(within(block).queryByRole("button", { name: "换上这套" })).toBeNull();
+	});
+
+	/**
+	 * 这些提示不全是「削掉了」:清洗器削掉的与装包时的提醒(用了没声明的旋钮之类)混在
+	 * 一起回来,后者什么都没删。标题说成「削掉了」会让主人以为少了东西(2026-09-17 真机)。
+	 */
+	it("提示逐条列出,标题不说成「削掉了」", async () => {
+		H.warnings = [
+			"css 里用了 var(--bn-knob-font),但 knobs 里没声明它 —— 面板上没有这个控件",
+			"cards.live.blocks[0].css: 丢掉了 behavior",
+		];
+		wrap(<CardSkinPreviews touches={[{ id: "s1", kinds: ["live"] }]} />);
+		const block = await screen.findByTestId("card-skin-preview");
+		expect(await within(block).findByText("有几处要留意:")).toBeTruthy();
+		for (const w of H.warnings) expect(within(block).getByText(w)).toBeTruthy();
+		expect(block.textContent).not.toMatch(/削掉/);
 	});
 
 	it("皮肤已经被删了 → 说一句,不去请求预览", async () => {

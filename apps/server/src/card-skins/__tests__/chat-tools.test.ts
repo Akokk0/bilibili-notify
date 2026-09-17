@@ -213,6 +213,20 @@ describe("新建与写卡", () => {
 		expect(out).toMatch(/behavior/);
 	});
 
+	it("只是提醒的那种(用了没声明的旋钮)不说成「削掉了」", async () => {
+		const h = harness();
+		const id = idIn(await h.text(T.setSkinMeta, { name: "樱花粉" }));
+		const out = await h.text(T.writeCard, {
+			skin: id,
+			kind: "live",
+			width: 600,
+			blocks: [{ ...COVER, css: '[data-bn="self"]{color:var(--bn-knob-accent, #f09)}' }],
+		});
+		expect(out).toMatch(/bn-knob-accent/);
+		expect(out).not.toMatch(/清洗器削掉了这些/);
+		expect(out).toMatch(/有的只是提醒/);
+	});
+
 	it("校验不过 → 失败,原因带回给模型,盘上不动", async () => {
 		const h = harness();
 		const id = idIn(await h.text(T.setSkinMeta, { name: "樱花粉" }));

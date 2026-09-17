@@ -178,7 +178,9 @@ export function SkinPreviewPane({
 					{warnings.length > 0 ? (
 						<WarnNote className="w-full leading-5" size="sm">
 							<div className="space-y-0.5">
-								<div className="font-semibold">存下去会被清洗掉这些:</div>
+								{/* 不全是「清洗掉」:还混着装包时的提醒(用了没声明的旋钮之类),
+								    那些什么都没删。每条自己会说清是哪一种。 */}
+								<div className="font-semibold">存下去时有几处要留意:</div>
 								{warnings.map((w) => (
 									<div key={w}>{w}</div>
 								))}

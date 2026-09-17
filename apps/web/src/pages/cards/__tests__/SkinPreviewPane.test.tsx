@@ -186,6 +186,8 @@ describe("皮肤预览栏", () => {
 		renderPane();
 		await tick();
 		expect(screen.getByText("丢掉了 1 条 url() 声明")).toBeTruthy();
+		// 这些不全是「清洗掉」的(还混着装包时的提醒),标题别说成全删了。
+		expect(screen.getByText("存下去时有几处要留意:")).toBeTruthy();
 	});
 });
 
