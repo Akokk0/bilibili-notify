@@ -745,7 +745,12 @@ const stack = (
 	}));
 
 /**
- * 复刻今天的外观:块顺序与块间距逐项照抄 `DEFAULT_CARD_LAYOUT`(`card-layout.ts`),
+ * **旧默认皮肤** —— 2026-09-18 默认皮肤拆成原子块之前的那份出厂皮肤,**原样冻住、不再改**
+ * (ADR-0014 决策 8 的 🔗)。它只有两个用处:迁移把旧版式折成派生皮肤时拿它当底子
+ * (`cardLayoutToSkin`),以及验收门拿它比对旧模板。新默认皮肤往后怎么改,改过版式的存量
+ * 用户折出来的皮肤都照旧与他们原来的卡一模一样 —— 这正是冻住它的理由。
+ *
+ * 复刻的是拆之前的外观:块顺序与块间距逐项照抄 `DEFAULT_CARD_LAYOUT`(`card-layout.ts`),
  * 外框参数走内置块自己的默认(与变量),所以 `css` 只写块间距。
  *
  * 上舰卡是今天唯一的二维版式:内容列(姓名 / 文字)在左八列、徽章在右四列跨两行,
@@ -755,7 +760,7 @@ const stack = (
  * 首 / 末块的 `align-self` 是把原来 `justify-between` 的「首块贴顶、末块贴底」钉死:
  * 徽章那一格占满卡高,会把两行撑开,不钉的话块会跟着行一起被挪。
  */
-export const DEFAULT_CARD_SKIN: CardSkinManifest = {
+export const LEGACY_DEFAULT_CARD_SKIN: CardSkinManifest = {
 	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
 	dataVersion: CARD_DATA_VERSION,
 	name: "默认",
@@ -867,4 +872,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
 		wordcloud: { width: 720, css: `${FRAME_BG_USER}${GLASS_WORDCLOUD}`, blocks: stack([["body"]]) },
 	},
+};
+
+/**
+ * **出厂的卡片皮肤**(内置只读,id 见 {@link DEFAULT_CARD_SKIN_ID})。元信息、旋钮与外框 CSS
+ * 与 {@link LEGACY_DEFAULT_CARD_SKIN} 同一份;块怎么拆、怎么摆归这里,与旧默认无关。
+ */
+export const DEFAULT_CARD_SKIN: CardSkinManifest = {
+	...LEGACY_DEFAULT_CARD_SKIN,
+	cards: { ...LEGACY_DEFAULT_CARD_SKIN.cards },
 };

@@ -12,9 +12,11 @@
  * - 直播卡数据区的三个显隐开关(`cardStyle.show*`)→ 关过任何一个的,`data` 复合块换成
  *   **原子块拼装**(见 `dataAtoms`);三个都开的照旧用复合块,折出来一字不差。
  *
- * **`cardLayoutToSkin(DEFAULT_CARD_LAYOUT)` 必须等于 `DEFAULT_CARD_SKIN`** —— 那是
- * 「默认皮肤 = 旧默认版式」的证明,也是这份迁移对不对的唯一客观判据
- * (`__tests__/card-skin-migration.test.ts` 钉着)。
+ * **`cardLayoutToSkin(DEFAULT_CARD_LAYOUT)` 必须等于 `LEGACY_DEFAULT_CARD_SKIN`** —— 那是
+ * 「旧默认皮肤 = 旧默认版式」的证明,也是这份迁移对不对的唯一客观判据
+ * (`card-skin-migration.test.ts` 钉着)。底子认的是**冻住的旧默认**,不是出厂默认皮肤:
+ * 出厂默认 2026-09-18 起拆成了原子块(ADR-0014 决策 8 的 🔗),拿它当底子的话,派生皮肤
+ * 会吃到为原子块写的列宽与 CSS,与存量用户原来的卡对不上。
  */
 
 import type { CardBlock, CardLayout, GuardLayout } from "./card-layout";
@@ -26,9 +28,9 @@ import {
 	type CardSkinKind,
 	type CardSkinManifest,
 	cardSkinFrameBgRule,
-	DEFAULT_CARD_SKIN,
 	DEFAULT_FRAME_BG_RULE,
 	DEFAULT_SKIN_KNOB_KEYS,
+	LEGACY_DEFAULT_CARD_SKIN,
 } from "./card-skin";
 
 /** 竖栈卡里块的通栏跨度。 */
@@ -397,7 +399,7 @@ function gradientFor(
  * 把一份 v7 版式折成一份皮肤。
  *
  * `base` 提供版式管不着的那些:卡宽、根块 CSS、间距,以及三张 AI 卡与词云(它们整张是一个
- * 固定内置块,没有版式可折,直接抄 base)。缺卡种的 base 回落出厂默认皮肤。
+ * 固定内置块,没有版式可折,直接抄 base)。不传就是冻住的旧默认皮肤,缺卡种的 base 也回落它。
  *
  * `toggles` 是直播卡数据区那三个显隐开关(`cardStyle.show*`)。不传 = 三个都开 = 数据区
  * 照旧用 `data` 复合块;关过任何一个的存量用户,折出来的是用原子块拼的同一副样子。
@@ -408,13 +410,13 @@ function gradientFor(
  */
 export function cardLayoutToSkin(
 	layout: CardLayout,
-	base: CardSkinManifest = DEFAULT_CARD_SKIN,
+	base: CardSkinManifest = LEGACY_DEFAULT_CARD_SKIN,
 	toggles?: LiveDataToggles,
 	colors?: CardSkinColors,
 ): CardSkinManifest {
 	const cardOf = (kind: keyof CardSkinManifest["cards"]): CardSkinCard => {
-		// biome-ignore lint/style/noNonNullAssertion: 出厂默认皮肤七种卡齐全,是最后一道回落
-		const card = base.cards[kind] ?? DEFAULT_CARD_SKIN.cards[kind]!;
+		// biome-ignore lint/style/noNonNullAssertion: 旧默认皮肤七种卡齐全,是最后一道回落
+		const card = base.cards[kind] ?? LEGACY_DEFAULT_CARD_SKIN.cards[kind]!;
 		const g = isUserGradientKind(kind) ? gradientFor(colors, kind) : undefined;
 		const css = withGradient(card.css, g);
 		return css === card.css ? card : { ...card, css };

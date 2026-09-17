@@ -29,8 +29,8 @@ import {
 	type CardSkinKind,
 	cardLayoutToSkin,
 	DEFAULT_CARD_LAYOUT,
-	DEFAULT_CARD_SKIN,
 	type GuardLayout,
+	LEGACY_DEFAULT_CARD_SKIN,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
@@ -62,13 +62,14 @@ function baselineHtml(name: string): string {
 
 /**
  * 这份夹具对应的皮肤条目。四种可排版的卡走**迁移**(夹具里传了什么版式就折什么,
- * 没传就折出厂默认)—— 这样门 A 比的才是「同一份版式,两条路」;其余卡种用默认皮肤。
+ * 没传就折出厂默认版式)—— 这样门 A 比的才是「同一份版式,两条路」;其余卡种用旧默认皮肤。
  */
 function skinCardOf(fixture: CardFixture, input: CardRenderInput): CardSkinCard {
 	const kind = fixture.kind;
 	if (SINGLE_BLOCK_KINDS.has(kind)) {
-		const card = DEFAULT_CARD_SKIN.cards[kind];
-		if (!card) throw new Error(`默认皮肤缺 ${kind} 卡`);
+		// 比的是**旧模板**,所以认冻住的旧默认皮肤,不认出厂默认(ADR-0014 决策 8 的 🔗)。
+		const card = LEGACY_DEFAULT_CARD_SKIN.cards[kind];
+		if (!card) throw new Error(`旧默认皮肤缺 ${kind} 卡`);
 		return card;
 	}
 	const layout = { ...DEFAULT_CARD_LAYOUT };

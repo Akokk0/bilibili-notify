@@ -16,8 +16,8 @@ import {
 	type CardSkinManifest,
 	CardSkinManifestSchema,
 	DEFAULT_CARD_GRADIENT,
-	DEFAULT_CARD_SKIN,
 	DEFAULT_FRAME_BG_RULE,
+	LEGACY_DEFAULT_CARD_SKIN,
 } from "./card-skin";
 import { cardLayoutToSkin } from "./card-skin-migration";
 
@@ -32,16 +32,18 @@ const blocksOf = (layout: CardLayout, kind: "live" | "dynamic" | "sc" | "guard")
 /** 折出来的块一律是内置块(自定义块只能由用户在编辑器里加)。 */
 const builtinOf = (b: CardSkinBlock): string => (b.kind === "builtin" ? b.builtin : "custom");
 
-describe("旧版式 → 卡片皮肤 — 默认版式折出来就是默认皮肤", () => {
-	it("cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards 与 DEFAULT_CARD_SKIN.cards 一字不差", () => {
-		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards).toEqual(DEFAULT_CARD_SKIN.cards);
+describe("旧版式 → 卡片皮肤 — 默认版式折出来就是冻住的旧默认皮肤", () => {
+	it("cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards 与 LEGACY_DEFAULT_CARD_SKIN.cards 一字不差", () => {
+		// 底子认旧默认不认出厂默认:出厂默认拆成了原子块(ADR-0014 决策 8 的 🔗),拿它当底子
+		// 的话,存量用户折出来的派生皮肤会吃到为原子块写的列宽与 CSS。
+		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards).toEqual(LEGACY_DEFAULT_CARD_SKIN.cards);
 	});
 
 	it("包元信息(版本 / 名字)照抄 base", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT);
-		expect(skin.schemaVersion).toBe(DEFAULT_CARD_SKIN.schemaVersion);
-		expect(skin.dataVersion).toBe(DEFAULT_CARD_SKIN.dataVersion);
-		expect(skin.name).toBe(DEFAULT_CARD_SKIN.name);
+		expect(skin.schemaVersion).toBe(LEGACY_DEFAULT_CARD_SKIN.schemaVersion);
+		expect(skin.dataVersion).toBe(LEGACY_DEFAULT_CARD_SKIN.dataVersion);
+		expect(skin.name).toBe(LEGACY_DEFAULT_CARD_SKIN.name);
 	});
 });
 
@@ -263,11 +265,11 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 		`[data-bn="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,${s}),var(--bn-knob-gradient-end,${e})));font-family:var(--bn-knob-font,inherit)}`;
 	/** 默认那张卡的整段 css,只把出厂 frame 规则换成给定的那条(玻璃层等其余规则原样跟着)。 */
 	const withRule = (kind: keyof CardSkinManifest["cards"], rule: string): string =>
-		(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").replace(DEFAULT_FRAME_BG_RULE, rule);
+		(LEGACY_DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").replace(DEFAULT_FRAME_BG_RULE, rule);
 
 	it("不传 colors → 外框 CSS 一字不动", () => {
 		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).cards.live?.css).toBe(
-			DEFAULT_CARD_SKIN.cards.live?.css,
+			LEGACY_DEFAULT_CARD_SKIN.cards.live?.css,
 		);
 	});
 
@@ -292,7 +294,7 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	it("派生皮肤带着旋钮声明,渐变那两枚的起始位置跟着存量颜色走", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
 		const byKey = new Map((skin.knobs ?? []).map((k) => [k.key, k]));
-		expect(byKey.size).toBe((DEFAULT_CARD_SKIN.knobs ?? []).length);
+		expect(byKey.size).toBe((LEGACY_DEFAULT_CARD_SKIN.knobs ?? []).length);
 		expect(defaultOf(byKey.get("gradient-start"))).toBe(G.start);
 		expect(defaultOf(byKey.get("gradient-end"))).toBe(G.end);
 		// 玻璃那两枚不受颜色影响,原样。
@@ -318,13 +320,13 @@ describe("旧版式 → 卡片皮肤 — 退役的渐变色", () => {
 	});
 
 	it("不传 colors → 旋钮声明原样(连引用都不换)", () => {
-		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).knobs).toBe(DEFAULT_CARD_SKIN.knobs);
+		expect(cardLayoutToSkin(DEFAULT_CARD_LAYOUT).knobs).toBe(LEGACY_DEFAULT_CARD_SKIN.knobs);
 	});
 
 	it("SC / 上舰不吃用户色 —— 档位色那条规则原样留着", () => {
 		const skin = cardLayoutToSkin(DEFAULT_CARD_LAYOUT, undefined, undefined, { base: G });
-		expect(skin.cards.sc?.css).toBe(DEFAULT_CARD_SKIN.cards.sc?.css);
-		expect(skin.cards.guard?.css).toBe(DEFAULT_CARD_SKIN.cards.guard?.css);
+		expect(skin.cards.sc?.css).toBe(LEGACY_DEFAULT_CARD_SKIN.cards.sc?.css);
+		expect(skin.cards.guard?.css).toBe(LEGACY_DEFAULT_CARD_SKIN.cards.guard?.css);
 	});
 
 	it("按卡种给的颜色压过全局那份,其余卡种仍用全局那份", () => {
