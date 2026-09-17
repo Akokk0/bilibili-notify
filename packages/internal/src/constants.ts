@@ -1162,11 +1162,13 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
 	// 「全字段」;id 留 `default` 不改 —— 存过书签 / 旧链接送来的还是它。
 	// 「视频投稿」是真机上 UP 发视频推过来的那张:只有头部、视频卡和互动数,没有正文、
 	// 话题、预约(群里贴视频链接出的卡也是这个形状)。
+	// 「图文」是带图的那一种:`pics.*` 契约字段与图廊的样式只有它看得到。
 	// 转发单给一个场面:它里头是**另一整张卡**(转发框 + 跟着同一份皮肤摆的块),
 	// 不单列的话皮肤作者在面板上一眼都看不到这一层。
 	dynamic: [
 		{ id: "default", label: "全字段" },
 		{ id: "video", label: "视频投稿" },
+		{ id: "draw", label: "图文" },
 		{ id: "forward", label: "转发" },
 	],
 	sc: [{ id: "default", label: "醒目留言" }],

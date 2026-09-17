@@ -164,6 +164,53 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 });
 
 /**
+ * **图文场面**(2026-09-17 加)。契约里的 `pics.*` 与 `dynamic.hasPics` 从前没有一个场面带图,
+ * 皮肤作者写了也看不到;图廊的样式(九宫格、长图角标)同样无处可看。给的是图廊最满的情况。
+ */
+describe("出厂示例数据 — 动态卡的图文场面", () => {
+	it("图廊铺满九格,没有视频卡", async () => {
+		const html = await render("dynamic", "draw");
+		expect(html.match(/data-bn="pic"/g)?.length).toBe(9);
+		expect(html).not.toContain("【示例视频】");
+	});
+
+	it("{pics.count} 是 9,{pics.first} 取得到第一张图", async () => {
+		const sample = await sampleCard("dynamic", "draw");
+		const html = await renderCardWithSkin(
+			"dynamic",
+			sample.props as never,
+			{
+				...DEFAULT_CARD_SKIN,
+				cards: {
+					...DEFAULT_CARD_SKIN.cards,
+					dynamic: {
+						width: 600,
+						blocks: [
+							{
+								id: "probe",
+								kind: "custom",
+								html: "<div>探针:{pics.count}|探针图:{pics.first}</div>",
+								grid: { row: 1, column: 1, span: 12 },
+							},
+						],
+					},
+				},
+			} as never,
+			{ ...(sample.raw ? { raw: sample.raw } : {}) },
+		);
+		expect(html).toContain("探针:9|");
+		expect(html).toContain("探针图:data:image/svg+xml");
+	});
+
+	it("真值:带图,没有视频卡", async () => {
+		expect(await truthy("draw", ["dynamic.hasPics", "dynamic.hasVideo"])).toEqual({
+			"dynamic.hasPics": true,
+			"dynamic.hasVideo": false,
+		});
+	});
+});
+
+/**
  * **契约里那两组「要原始动态才取得到」的字段**(视频卡 / 图廊)。
  *
  * 它们在 `node` 里已经被画进正文的 VNode、拆不回来,只能从原始动态取 —— 所以渲染器收一个

@@ -228,6 +228,59 @@ const SAMPLE_VIDEO_DYNAMIC = {
 } as unknown as Dynamic;
 
 /**
+ * 图文场面的九张占位图:编了号、两色相间,一眼看得出排列顺序。第 5 张是**长图**(高超过
+ * 宽的两倍),好让九宫格里那个「长图」角标也有地方露面 —— 皮肤作者要给它写样式。
+ */
+function samplePic(n: number, long: boolean): { url: string; width: number; height: number } {
+	const width = 400;
+	const height = long ? 1000 : 400;
+	const fill = n % 2 === 1 ? "%23FB7299" : "%2300AEEC";
+	return {
+		url: `data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${width} ${height}'%3E%3Crect width='${width}' height='${height}' fill='${fill}'/%3E%3Ctext x='50%25' y='50%25' fill='white' font-size='96' text-anchor='middle' dominant-baseline='middle'%3E${n}%3C/text%3E%3C/svg%3E`,
+		width,
+		height,
+	};
+}
+
+/**
+ * 「图文」场面 —— 一段正文 + 九张图(图廊最满的样子)。B 站现在给图文动态的形状是
+ * `major.opus`:正文在 `summary` 里、图在 `pics` 里,`desc` 为空;渲染器与契约的
+ * `pics.*` 都从这里取。
+ */
+const SAMPLE_DRAW_DYNAMIC = {
+	basic: { is_only_fans: false },
+	id_str: "1000000000000000004",
+	type: "DYNAMIC_TYPE_DRAW",
+	visible: true,
+	modules: {
+		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
+		module_dynamic: {
+			major: {
+				type: "MAJOR_TYPE_OPUS",
+				opus: {
+					summary: {
+						text: "这是一段示例图文正文。",
+						rich_text_nodes: [
+							{
+								type: "RICH_TEXT_NODE_TYPE_TEXT",
+								orig_text: "这是一段示例图文正文，下面是九张示例图，第 5 张是长图。",
+								text: "这是一段示例图文正文，下面是九张示例图，第 5 张是长图。",
+							},
+						] as RichTextNode,
+					},
+					pics: Array.from({ length: 9 }, (_, i) => samplePic(i + 1, i === 4)),
+				},
+			},
+		},
+		module_stat: {
+			forward: { count: 64 },
+			comment: { count: 128 },
+			like: { count: 2048 },
+		},
+	},
+} as unknown as Dynamic;
+
+/**
  * 转发场面的那条动态 —— 示例转发者转了上面那条投稿。
  *
  * 转发框里是**另一整张卡**(同一批块、同一份皮肤),而它在编辑器里原本一眼都看不到:
@@ -281,6 +334,7 @@ const SAMPLE_FORWARD_DYNAMIC = {
 const DYNAMIC_SCENES: Record<string, Dynamic> = {
 	default: SAMPLE_AV_DYNAMIC,
 	video: SAMPLE_VIDEO_DYNAMIC,
+	draw: SAMPLE_DRAW_DYNAMIC,
 	forward: SAMPLE_FORWARD_DYNAMIC,
 };
 
