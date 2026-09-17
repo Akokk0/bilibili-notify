@@ -19,7 +19,14 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import { aiConfig, fakeServiceCtx, streamOf, textChunk } from "./harness";
+import {
+	aiConfig,
+	fakeServiceCtx,
+	streamOf,
+	streamUntilAborted,
+	textChunk,
+	untilAborted,
+} from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -1627,6 +1634,79 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 		oai.create.mockResolvedValueOnce(streamOf([textChunk("{}")]));
 		await gen.generateRaw("S", "U");
 		expect(oai.ctorArgs.at(-1)).toMatchObject({ timeout: 300_000, maxRetries: 0 });
+	});
+
+	it("正文分片原样转出 —— 调用方要把字流到界面上", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk(".a{"), textChunk("color:red}")]));
+		const seen: string[] = [];
+		const out = await gen.generateRaw("S", "U", undefined, { onText: (t) => seen.push(t) });
+		expect(seen).toEqual([".a{", "color:red}"]);
+		expect(out).toBe(".a{color:red}");
+	});
+
+	describe("取消", () => {
+		/** 被取消的那种错:带 `cancelled` 记号,**不是**超时 —— 两者对调用方的意思不同。 */
+		const CANCELLED = { cancelled: true };
+
+		it("吐到一半被取消 → 抛取消,上游请求真被掐断", async () => {
+			const { gen } = makeGen();
+			const ctl = new AbortController();
+			let upstream: AbortSignal | undefined;
+			oai.create.mockImplementationOnce(async (_p: unknown, opts?: { signal?: AbortSignal }) => {
+				upstream = opts?.signal;
+				return streamUntilAborted(opts?.signal, [textChunk(".a{")]);
+			});
+			const run = gen.generateRaw("S", "U", undefined, {
+				onText: () => ctl.abort(),
+				signal: ctl.signal,
+			});
+			await expect(run).rejects.toMatchObject(CANCELLED);
+			await expect(run).rejects.not.toMatchObject({ timedOut: true });
+			expect(upstream?.aborted).toBe(true);
+		});
+
+		it("还没吐字就取消 → 不回落非流式再发一次", async () => {
+			// 流式没吐过字就失败,平时会悄悄换非流式重来 —— 用户点了「停」之后
+			// 再发一个请求,烧的是他自己的 key。
+			const { gen } = makeGen();
+			const ctl = new AbortController();
+			oai.create.mockImplementationOnce((_p: unknown, opts?: { signal?: AbortSignal }) => {
+				queueMicrotask(() => ctl.abort());
+				return untilAborted(opts?.signal);
+			});
+			oai.create.mockResolvedValue(msgResp("不该有这一次"));
+			await expect(
+				gen.generateRaw("S", "U", undefined, { signal: ctl.signal }),
+			).rejects.toMatchObject(CANCELLED);
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		});
+
+		it("方言参数被拒的降级重试也认取消", async () => {
+			// deepseek 默认发 thinking 方言,失败且没吐过字时会摘掉方言再发一次。
+			const { gen } = makeGen({ provider: "deepseek" });
+			const ctl = new AbortController();
+			oai.create.mockImplementationOnce((_p: unknown, opts?: { signal?: AbortSignal }) => {
+				queueMicrotask(() => ctl.abort());
+				return untilAborted(opts?.signal);
+			});
+			oai.create.mockResolvedValue(msgResp("不该有这一次"));
+			await expect(
+				gen.generateRaw("S", "U", undefined, { signal: ctl.signal }),
+			).rejects.toMatchObject(CANCELLED);
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		});
+
+		it("信号早就掐了 → 一个请求都不发", async () => {
+			const { gen } = makeGen();
+			const ctl = new AbortController();
+			ctl.abort();
+			oai.create.mockResolvedValue(streamOf([textChunk("x")]));
+			await expect(
+				gen.generateRaw("S", "U", undefined, { signal: ctl.signal }),
+			).rejects.toMatchObject(CANCELLED);
+			expect(oai.create).not.toHaveBeenCalled();
+		});
 	});
 
 	it("聊天 / 点评那档照旧 120s —— 放宽只给结构化生成", async () => {

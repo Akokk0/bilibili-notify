@@ -81,5 +81,34 @@ export function streamOf(chunks: readonly unknown[]): AsyncIterable<unknown> {
 	};
 }
 
+/**
+ * 等 `signal` 被掐才落地的那一下,落地时抛 SDK 取消时抛的那种错。
+ *
+ * 取消的测试要一个「一直不回、直到被掐」的上游:真 SDK 在请求被中止时拒掉的正是
+ * 这么一个 `AbortError`。信号已经掐过就当场拒。
+ */
+export function untilAborted(signal: AbortSignal | undefined): Promise<never> {
+	return new Promise((_, reject) => {
+		const fail = () =>
+			reject(Object.assign(new Error("Request was aborted."), { name: "AbortError" }));
+		if (!signal) return;
+		if (signal.aborted) fail();
+		else signal.addEventListener("abort", fail, { once: true });
+	});
+}
+
+/** 先吐完 `chunks`,然后挂住,直到 `signal` 被掐 —— 「吐到一半被取消」的上游。 */
+export function streamUntilAborted(
+	signal: AbortSignal | undefined,
+	chunks: readonly unknown[],
+): AsyncIterable<unknown> {
+	return {
+		async *[Symbol.asyncIterator]() {
+			for (const c of chunks) yield c;
+			await untilAborted(signal);
+		},
+	};
+}
+
 /** chat 风味里的一片正文。 */
 export const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] });

@@ -20,7 +20,7 @@ import type {
 	ToolTraceEvent,
 } from "../commentary-generator";
 import type { WebSearchResult } from "../web-search";
-import { makeGen as baseGen, streamOf } from "./harness";
+import { makeGen as baseGen, streamOf, untilAborted } from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -190,6 +190,21 @@ describe("responses 风味:流式分流与思考参数", () => {
 		expect(deltas).toEqual(["回落成功"]);
 		expect(params(0).stream).toBe(true);
 		expect(params(1).stream).toBeUndefined();
+	});
+
+	it("还没吐字就被取消 → 两条回落(非流式、摘掉 reasoning)都不再发", async () => {
+		const ctl = new AbortController();
+		const hang = (_p: Record<string, unknown>, opts?: { signal?: AbortSignal }) => {
+			queueMicrotask(() => ctl.abort());
+			return untilAborted(opts?.signal);
+		};
+		(oai.responsesCreate as ReturnType<typeof vi.fn>).mockImplementationOnce(hang);
+		oai.responsesCreate.mockResolvedValue({ output: [msgItem("不该有这一次")] });
+		const gen = makeGen({ enableThinking: true });
+		await expect(
+			gen.generateRaw("S", "U", undefined, { onText: () => {}, signal: ctl.signal }),
+		).rejects.toMatchObject({ cancelled: true });
+		expect(oai.responsesCreate).toHaveBeenCalledTimes(1);
 	});
 
 	it("reasoning 参数被拒且没吐过字 → 摘掉 reasoning 重试(额外参数保留)", async () => {

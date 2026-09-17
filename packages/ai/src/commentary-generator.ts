@@ -328,6 +328,16 @@ export interface CommentaryCallOverride {
 	 * 那边一慢就该早点让主人知道。
 	 */
 	timeoutMs?: number;
+	/**
+	 * 调用方的取消信号。掐了就断开到模型的请求,并抛带 `cancelled` 记号的错 ——
+	 * 不回落、不降级、不按限流重来:用户点了「停」之后再发一个请求,烧的是他自己的 key。
+	 */
+	signal?: AbortSignal;
+}
+
+/** 被调用方取消时抛的错。带记号是为了让外圈的 catch 认得出它、别再换个姿势重来。 */
+function cancelledError(): Error {
+	return Object.assign(new Error("已取消"), { cancelled: true });
 }
 
 /**
@@ -1091,6 +1101,12 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 长得一模一样。
 		 */
 		onProgress?: (chars: number) => void,
+		stream?: {
+			/** 正文分片原样转出 —— 要把字流到界面上的调用方用。 */
+			onText?: (text: string) => void;
+			/** 见 {@link CommentaryCallOverride.signal}。 */
+			signal?: AbortSignal;
+		},
 	): Promise<string> {
 		let chars = 0;
 		let reported = 0;
@@ -1101,8 +1117,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			[{ role: "user", content: user }],
 			undefined,
 			undefined,
-			{ timeoutMs: STRUCTURED_TIMEOUT_MS },
+			{ timeoutMs: STRUCTURED_TIMEOUT_MS, signal: stream?.signal },
 			(text) => {
+				stream?.onText?.(text);
 				chars += text.length;
 				if (chars - reported < PROGRESS_STEP_CHARS) return;
 				reported = chars;
@@ -1231,7 +1248,16 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 都归这儿:前者换参数照样被拒,后者换姿势照样慢。
 	 */
 	private static fatalOf(e: unknown): Error | null {
-		return CommentaryGenerator.rejectionOf(e) ?? CommentaryGenerator.timeoutOf(e);
+		return (
+			CommentaryGenerator.cancelledOf(e) ??
+			CommentaryGenerator.rejectionOf(e) ??
+			CommentaryGenerator.timeoutOf(e)
+		);
+	}
+
+	/** 调用方取消的 —— 认的是 {@link cancelledError} 打的记号,原样交回。 */
+	private static cancelledOf(e: unknown): Error | null {
+		return e instanceof Error && (e as { cancelled?: unknown }).cancelled === true ? e : null;
 	}
 
 	/**
@@ -1298,8 +1324,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	private async withStreamWatchdog<T>(
 		run: (signal: AbortSignal, beat: () => void) => Promise<T>,
+		external?: AbortSignal,
 	): Promise<T> {
 		const controller = new AbortController();
+		// 调用方的取消与看门狗掐的是**同一根线**,但抛出去的是两种错:见 catch。
+		const onExternal = () => controller.abort();
+		external?.addEventListener("abort", onExternal, { once: true });
+		if (external?.aborted) controller.abort();
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let started = false;
 		// 每来一片就重新计时。**任何**一片都算数(空 delta、思考、工具分片)——
@@ -1314,6 +1345,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		try {
 			return await run(controller.signal, beat);
 		} catch (e) {
+			if (external?.aborted) throw cancelledError();
 			// 是我们掐的,就说是我们掐的:SDK 抛出来的是一句 "Request was aborted.",
 			// 照抄给主人等于什么都没说。打上记号是为了别再被当成「换个姿势重来」
 			// 的理由 —— 卡住和超时同类。
@@ -1326,6 +1358,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		} finally {
 			// 正常收尾也要撤 —— 否则一次聊天漏一个定时器在外面。
 			if (timer) clearTimeout(timer);
+			external?.removeEventListener("abort", onExternal);
 		}
 	}
 
@@ -1334,14 +1367,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 		params: OpenAI.ChatCompletionCreateParamsStreaming,
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
+		external?: AbortSignal,
 	): Promise<OpenAI.ChatCompletionMessage> {
-		return this.withStreamWatchdog(async (signal, beat) =>
-			this.consumeChatStream(
-				await client.chat.completions.create(params, { signal }),
-				beat,
-				onDelta,
-				onReasoning,
-			),
+		return this.withStreamWatchdog(
+			async (signal, beat) =>
+				this.consumeChatStream(
+					await client.chat.completions.create(params, { signal }),
+					beat,
+					onDelta,
+					onReasoning,
+				),
+			external,
 		);
 	}
 
@@ -1417,6 +1453,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const temperature = override?.temperature ?? this.config.temperature;
 		if (!apiKey) throw new Error("AI apiKey 未配置");
 		if (!baseURL) throw new Error("AI baseURL 未配置");
+		const signal = override?.signal;
+		if (signal?.aborted) throw cancelledError();
+		/**
+		 * 非流式请求也带着取消信号。SDK 被掐时抛的是一句 "Request was aborted.",
+		 * 换成带记号的取消错,外圈那几条回落 / 降级才认得出、不再重发。
+		 */
+		const cancellable = <T>(run: (opts: { signal?: AbortSignal }) => Promise<T>): Promise<T> =>
+			run({ signal }).catch((e: unknown) => {
+				if (signal?.aborted) throw cancelledError();
+				throw e;
+			});
 
 		// flavor 必须打出来:两种风味成功时的其余日志一字不差,主人切了 responses
 		// 只能靠这里确认真的换了协议,否则「到底走没走新路」查无实据。
@@ -1492,6 +1539,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				override,
 				onDelta,
 				onReasoning,
+				cancellable,
 			});
 		}
 
@@ -1541,8 +1589,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 						{ ...base, stream: true } as OpenAI.ChatCompletionCreateParamsStreaming,
 						emit,
 						emitReasoning,
+						signal,
 					);
 				} catch (e) {
+					const cancelled = CommentaryGenerator.cancelledOf(e);
+					if (cancelled) throw cancelled;
 					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					// 账单 / 鉴权那一层的拒绝跟 stream 无关,回落也是白撞一次。
 					const rejection = CommentaryGenerator.fatalOf(e);
@@ -1550,7 +1601,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					this.logger.warn(`[api] 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
 				}
 			}
-			const res = await client.chat.completions.create(base);
+			const res = await cancellable((opts) => client.chat.completions.create(base, opts));
 			// AI1:兼容网关命中内容审查 / 上游异常时会返回空 choices。直接
 			// res.choices[0].message 会抛不可读的 "Cannot read properties of
 			// undefined";给出明确可诊断的错误,让调用方 catch 后回退纯文字。
@@ -1613,7 +1664,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 						`[api] 服务商方言参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
 					);
 					try {
-						const res = await client.chat.completions.create(makeParams(false));
+						const res = await cancellable((opts) =>
+							client.chat.completions.create(makeParams(false), opts),
+						);
 						const choice = res.choices?.[0];
 						if (!choice) {
 							throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
@@ -1697,6 +1750,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		override?: CommentaryCallOverride;
 		onDelta?: (text: string) => void;
 		onReasoning?: (text: string) => void;
+		/** 带取消信号发一次非流式请求,见 callAPI 里的同名闭包。 */
+		cancellable: <T>(run: (opts: { signal?: AbortSignal }) => Promise<T>) => Promise<T>;
 	}): Promise<string> {
 		const { client, model, temperature, toolOptions, override } = args;
 
@@ -1736,10 +1791,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		/** 非流式取一轮,思考与正文按「先想后说」补喂回调(与 chat 的回落路径同规矩)。 */
 		const createOnce = async (withReasoning: boolean): Promise<unknown[]> => {
-			const res = (await client.responses.create(
-				// SDK 的参数类型要求具名字段,而这里的请求体是动态拼的(方言 + 主人
-				// 的额外参数),经 unknown 过桥 —— 形状由 responses-api 的测试钉住。
-				makeParams(withReasoning) as unknown as Parameters<OpenAI["responses"]["create"]>[0],
+			const res = (await args.cancellable((opts) =>
+				client.responses.create(
+					// SDK 的参数类型要求具名字段,而这里的请求体是动态拼的(方言 + 主人
+					// 的额外参数),经 unknown 过桥 —— 形状由 responses-api 的测试钉住。
+					makeParams(withReasoning) as unknown as Parameters<OpenAI["responses"]["create"]>[0],
+					opts,
+				),
 			)) as { output?: unknown[] };
 			const items = res.output;
 			if (!Array.isArray(items)) {
@@ -1759,8 +1817,16 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const fetchRound = async (): Promise<unknown[]> => {
 			if (emit) {
 				try {
-					return await this.streamResponsesOnce(client, makeParams(true), emit, emitReasoning);
+					return await this.streamResponsesOnce(
+						client,
+						makeParams(true),
+						emit,
+						emitReasoning,
+						override?.signal,
+					);
 				} catch (e) {
+					const cancelled = CommentaryGenerator.cancelledOf(e);
+					if (cancelled) throw cancelled;
 					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					const rejection = CommentaryGenerator.fatalOf(e);
 					if (rejection) throw rejection;
@@ -1831,6 +1897,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		params: Record<string, unknown>,
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
+		external?: AbortSignal,
 	): Promise<unknown[]> {
 		return this.withStreamWatchdog(async (signal, beat) => {
 			const stream = (await client.responses.create(
@@ -1841,7 +1908,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				{ signal },
 			)) as unknown as AsyncIterable<Record<string, unknown>>;
 			return this.consumeResponsesStream(stream, beat, onDelta, onReasoning);
-		});
+		}, external);
 	}
 
 	private async consumeResponsesStream(
