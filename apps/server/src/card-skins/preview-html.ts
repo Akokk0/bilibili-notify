@@ -33,17 +33,16 @@ export async function renderSkinPreviewHtml(args: {
 	scene?: string;
 	manifest: unknown;
 	/**
-	 * 把这份 HTML 按**塞进 iframe 看**来收拾(编辑器的实时预览)。两件事:
+	 * 把这份 HTML 按**塞进 iframe 看**来收拾(编辑器的实时预览、聊天里的卡片预览):
+	 * **页面底透明**。面板量文档根的高度来定框高,量到了框与卡一样高;万一量不到,框退回
+	 * 固定视口,卡比它矮时下面露出来的那片默认白底**不属于这张卡**(真出图按卡的
+	 * boundingBox 裁,那片底根本不进图)。透明之后,框里卡外那一圈就是框自己的底。
 	 *
-	 * 1. **页面底透明** —— iframe 的视口按一个固定高度开,卡比它矮时下面露出来的那片
-	 *    默认白底**不属于这张卡**(真出图按卡的 boundingBox 裁,那片底根本不进图)。
-	 *    透明之后,框里卡外那一圈就是框自己的底。
-	 * 2. **卡片垂直居中** —— 卡摆在框的正中,与卡片页「卡片全家福」的格子同一个观感。
-	 *    只能在 iframe **里面**做:外面那层读不到卡有多高(隔离的 iframe,而且不给脚本),
-	 *    所以居中这件事必须由文档自己完成。
+	 * ⛔ **别给文档根加 `min-height:100vh`**(从前为了在固定视口里垂直居中加过):面板量的
+	 * 就是文档根,撑到视口高之后量到的是「卡高与视口取大」,短卡的框永远缩不回去。
 	 *
 	 * ⛔ 截图那条**不能**开:截出来是 JPEG,没有 alpha,透明会被压成黑 —— 圆角外会多一圈
-	 * 黑边,而「最终效果」这颗按钮的全部意义就是像素级可信;居中对它也没意义(按卡裁)。
+	 * 黑边,而「最终效果」这颗按钮的全部意义就是像素级可信。
 	 */
 	transparentPage?: boolean;
 }): Promise<SkinPreviewHtml> {
@@ -89,11 +88,11 @@ export async function renderSkinPreviewHtml(args: {
 }
 
 /**
- * 按「塞进 iframe 看」收拾这份 HTML:配色方案、透明底、垂直居中。插在 `<body>` **之前**、
+ * 按「塞进 iframe 看」收拾这份 HTML:配色方案、透明底。插在 `<body>` **之前**、
  * 也就是外壳那段 `<style>` 之后 —— 皮肤自己的 CSS 只作用在卡片根往里,够不到 `html` /
  * `body`,所以这几句不会跟任何皮肤打架。
  *
- * **`color-scheme` 是这里最要紧的一句,少了它另外两句白写。** Chrome 的规矩:一份文档的
+ * **`color-scheme` 是这里最要紧的一句,少了它透明那句白写。** Chrome 的规矩:一份文档的
  * used color-scheme 与**父文档**不同时,UA 必须给它画一个**不透明**的 canvas。面板开着
  * 暗色主题(`:root{color-scheme:dark}`),而这份 HTML 什么都没声明 = light,于是 Chrome
  * 直接铺一层白 —— `background:transparent` 照样生效(computed 就是 `rgba(0,0,0,0)`),
@@ -102,15 +101,11 @@ export async function renderSkinPreviewHtml(args: {
  * 跟着补一句 `color:#000`:开了 `light dark` 之后,**没写颜色**的元素(自定义块里可能有)
  * 在暗色下会被 UA 翻成白字,而截图那条走的是 light、UA 默认黑字 —— 两边就分家了。把继承
  * 起点钉死成 light 那一档,块自己写的颜色照旧压过它。
- *
- * 居中用 grid 的 `align-content` 而不是 flex:grid 单列的子项宽度默认 stretch,卡片照旧
- * 撑满 `html` 的宽度(那就是卡宽);换成 flex 的话子项会缩到内容宽,卡当场变窄。
  */
 function withPreviewPageCss(html: string): string {
 	return html.replace(
 		"<body>",
 		"<style>:root{color-scheme:light dark}" +
-			"html,body{background:transparent !important;color:#000}" +
-			"body{min-height:100vh;display:grid;align-content:center}</style><body>",
+			"html,body{background:transparent !important;color:#000}</style><body>",
 	);
 }

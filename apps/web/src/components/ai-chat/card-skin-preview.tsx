@@ -32,7 +32,7 @@ import { CARD_SKINS_KEY, useCardSkinList } from "../../pages/cards/card-skins-qu
 import { SkinHtmlFrame } from "../../pages/cards/SkinHtmlFrame";
 import { api } from "../../services/api";
 
-/** 预览视口高度 px。比编辑器的矮一截:这是消息流里的一块,不是工作台。 */
+/** 量到卡高之前预览框先占的高度 px。量到了框就跟着卡走(与编辑器同一个框)。 */
 const VIEW_H = 460;
 /** 量不到可用宽度时(首帧、jsdom 里没有 ResizeObserver)的兜底。 */
 const FALLBACK_WIDTH = 600;
@@ -133,7 +133,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 								html={preview.data.html}
 								width={preview.data.width}
 								usable={measured ?? FALLBACK_WIDTH}
-								height={VIEW_H}
+								fallbackHeight={VIEW_H}
 								title={`「${skin?.name ?? touch.id}」的${CARD_SKIN_KIND_NAMES[kind]}`}
 							/>
 						) : preview.isError ? (

@@ -3,8 +3,9 @@
 /**
  * 编辑器的实时预览栏(ADR-0014 决策 22)。
  *
- * 钉五条,各对应一个静默失败:① **iframe 不给脚本也不给同源** —— 皮肤里能写自定义
- * HTML/CSS,放开任一条就是让皮肤作者在主人面板里执行代码 / 读会话,而页面看上去一模一样;
+ * 钉五条,各对应一个静默失败:① **iframe 只给同源、不给脚本** —— 皮肤里能写自定义
+ * HTML/CSS,给了脚本就是让皮肤作者在主人面板里执行代码,而页面看上去一模一样(同源是为了
+ * 量卡高,见 `SkinHtmlFrame`);
  * ② **草稿变了要重画**(接线断了的话预览永远停在第一张,像「拧了没反应」);③ **防抖**
  * (每敲一个字打一趟 SSR,server 当场被打满,而本地开发根本看不出来);④ **重画期间旧图
  * 不撤**(闪白比慢半拍难受);⑤ **装包门拒了要把原因逐条列出来**,不是自编一句「预览失败」。
@@ -88,15 +89,14 @@ afterEach(() => {
 });
 
 describe("皮肤预览栏", () => {
-	it("iframe 的 sandbox 是空的 —— 既不给脚本也不给同源", async () => {
+	it("iframe 的 sandbox 只给同源 —— 不给脚本", async () => {
 		renderPane();
 		await tick();
 		const f = frame();
 		expect(f).not.toBeNull();
-		expect(f?.getAttribute("sandbox")).toBe("");
-		// 写死两条:将来有人「顺手」加一个 allow-* 时这条要红。
+		// 写死整串:将来有人「顺手」再加一个 allow-* 时这条要红。同源 + 脚本 = 沙箱作废。
+		expect(f?.getAttribute("sandbox")).toBe("allow-same-origin");
 		expect(f?.getAttribute("sandbox")).not.toContain("allow-scripts");
-		expect(f?.getAttribute("sandbox")).not.toContain("allow-same-origin");
 		expect(f?.getAttribute("srcdoc")).toContain("画好了");
 	});
 
@@ -249,6 +249,21 @@ describe("皮肤预览栏 · 最终效果", () => {
 		const [url, body] = vi.mocked(api.post).mock.calls.at(-1) as [string, Record<string, unknown>];
 		expect(url).toBe("/api/cards/skin-shot");
 		expect(body).toMatchObject({ skinId: "neon", kind: "live", scene: "streaming" });
+	});
+
+	it("长卡的截图整张摊开 → 不在一个限高的小窗里滚", async () => {
+		mockBoth({ ...SHOT, height: 1800 });
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		renderPane();
+		await tick();
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+
+		const img = document.querySelector("img") as HTMLImageElement;
+		expect(img.parentElement?.style.maxHeight).toBe("");
+		expect(img.parentElement?.className).not.toMatch(/overflow-(auto|y-)/);
 	});
 
 	it("草稿改了 → 那张图当场标成过期,别让人拿它当改完的样子", async () => {

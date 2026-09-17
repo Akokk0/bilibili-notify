@@ -5,10 +5,9 @@
  * 与真出图有细微差(这边是看的人的浏览器在画,那边是 server 上的 Chrome),换来的是
  * **没装 Chrome 也能编皮肤** —— 决策 22 的全部意义。
  *
- * **iframe 不给 `allow-scripts` 也不给 `allow-same-origin`**:皮肤里能写自定义 HTML 与
- * CSS,给了脚本就等于让皮肤作者在主人的面板里执行代码;给了同源就等于让它读会话。
- * 这条也是「画布只能是示意图、不能把选框叠在预览上」的根由 —— 父页面读不到 iframe 里
- * 每个块的位置。
+ * **iframe 只给 `allow-same-origin`、不给 `allow-scripts`**:皮肤里能写自定义 HTML 与
+ * CSS,给了脚本就等于让皮肤作者在主人的面板里执行代码。同源是为了量卡高、让框跟着卡
+ * 长(2026-09-17),规矩与理由都在 `SkinHtmlFrame` 的文件头。
  *
  * 草稿每敲一个字都重画太贵(一趟 SSR + UnoCSS),所以**防抖**;而「正在重画」不能把上一
  * 张图撤掉 —— 一边改一边闪白比慢半拍难受得多,所以旧图留着、只在角上标一句。
@@ -33,7 +32,7 @@ import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-edi
 /** 防抖窗口。改一个旋钮到看见新图之间的等待,与「别把 server 打满」之间的折中。 */
 const DEBOUNCE_MS = 400;
 
-/** 预览窗口的可视高度 px。卡比它高时在 iframe 里自己滚 —— 隔离的 iframe 量不到内容高度。 */
+/** 量到卡高之前(以及万一量不到时)预览框先占的高度 px。量到了框就跟着卡走。 */
 const VIEW_H = 560;
 
 /** 截成功那一支。失败那支只有 `err` / `errors`,没有图可摆。 */
@@ -189,8 +188,7 @@ export function SkinPreviewPane({
 					) : null}
 
 					<HintNote className="w-full">
-						选中的块在预览里不画选框 —— 预览是隔离的
-						iframe,读不到里面的位置。要对位置看中间画布的行列。
+						选中的块在预览里不画选框 —— 要对位置看中间画布的行列。
 					</HintNote>
 				</div>
 			</GlassBox>
@@ -206,11 +204,12 @@ export function SkinPreviewPane({
 			>
 				{snap !== null ? (
 					<div
-						className="overflow-auto rounded-bn-sm shadow-md"
-						style={{ width: Math.min(snap.res.width, usable), maxHeight: VIEW_H }}
+						className="overflow-x-auto rounded-bn-sm shadow-md"
+						style={{ width: Math.min(snap.res.width, usable) }}
 					>
-						{/* 截图就是一张 JPEG,按卡宽画、放不下时这一格自己滚 —— 缩放会让
-						    「像素级以最终效果为准」那句话当场失效。 */}
+						{/* 截图就是一张 JPEG,按卡宽画、整张摊开(不限高,与实时预览一样跟着
+						    卡长);宽放不下时这一格横着滚 —— 缩放会让「像素级以最终效果为准」
+						    那句话当场失效。 */}
 						<img src={snap.res.dataUrl} alt="最终效果" style={{ width: snap.res.width }} />
 					</div>
 				) : html === null ? (
@@ -222,7 +221,7 @@ export function SkinPreviewPane({
 						html={html}
 						width={width}
 						usable={usable}
-						height={VIEW_H}
+						fallbackHeight={VIEW_H}
 						title="皮肤预览"
 					/>
 				)}

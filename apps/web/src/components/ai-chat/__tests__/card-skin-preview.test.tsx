@@ -91,8 +91,8 @@ describe("预览块", () => {
 		expect(H.previews).toContainEqual({ id: "s1", kind: "sc" });
 		// 只改了名字的那套:没有写过的卡种,落在第一种。
 		expect(H.previews).toContainEqual({ id: "s2", kind: "live" });
-		// 画出来的就在沙箱里。
-		expect(frames()[0]?.getAttribute("sandbox")).toBe("");
+		// 画出来的就在沙箱里:只给同源(量卡高用),不给脚本。
+		expect(frames()[0]?.getAttribute("sandbox")).toBe("allow-same-origin");
 	});
 
 	it("切卡种 → 画那一种", async () => {

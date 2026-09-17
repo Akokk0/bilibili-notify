@@ -280,19 +280,21 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 	});
 
 	/**
-	 * 这条回的 HTML 是**塞进 iframe** 看的,所以按 iframe 收拾过两处:页面底透明(视口按
-	 * 固定高度开,卡比它矮时露出来的那片默认白底不属于这张卡 —— 真出图按 boundingBox
-	 * 裁,那片底不进图),以及卡片在视口里垂直居中(外面那层读不到卡有多高:隔离的
-	 * iframe,而且不给脚本,所以居中只能由文档自己做)。
+	 * 这条回的 HTML 是**塞进 iframe** 看的,所以按 iframe 收拾过:页面底透明(框量不到卡高
+	 * 时退回固定视口,卡比它矮时露出来的那片默认白底不属于这张卡 —— 真出图按 boundingBox
+	 * 裁,那片底不进图)。
+	 *
+	 * **文档不许把自己撑到视口高**(2026-09-17):面板量的是文档根的高度来定框高,根一旦
+	 * `min-height:100vh`,量到的就是「卡高与视口取大」,短卡的框永远缩不回去。
 	 *
 	 * ⛔ 截图那条不开 —— JPEG 没有 alpha,透明会压成黑,圆角外多一圈黑边。
 	 */
-	it("按 iframe 收拾过:配色方案 + 页面底透明 + 卡片垂直居中", async () => {
+	it("按 iframe 收拾过:配色方案 + 页面底透明;文档不撑到视口高", async () => {
 		const { json } = await preview({ kind: "live", manifest: draft() });
-		// 验红:把路由里那句 `transparentPage: true` 去掉,这三条红。
+		// 验红:把路由里那句 `transparentPage: true` 去掉,前两条红。
 		expect(json.html).toContain("background:transparent");
-		expect(json.html).toContain("align-content:center");
-		// 少了这一句,另外两句白写:面板是暗色,而这份文档不声明就是 light,Chrome 对
+		expect(json.html).not.toMatch(/100vh/);
+		// 少了这一句,透明那句白写:面板是暗色,而这份文档不声明就是 light,Chrome 对
 		// 「配色方案与父不同」的文档强制画不透明 canvas —— 透明照样生效,画面上还是白。
 		expect(json.html).toContain("color-scheme:light dark");
 	});
