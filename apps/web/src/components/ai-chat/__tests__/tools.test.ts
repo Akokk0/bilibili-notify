@@ -83,4 +83,17 @@ describe("工具名覆盖", () => {
 		const missing = injected.filter((n) => toolLabel(n, {}) === n);
 		expect(missing).toEqual([]);
 	});
+
+	it("卡片工坊的八把工具都配了中文名 —— 它们住在一张表里,上面那条按前缀扫不到", async () => {
+		const { AI_CARD_WORKSHOP_TOOLS } = await import("@bilibili-notify/contract");
+		const missing = Object.values(AI_CARD_WORKSHOP_TOOLS).filter((n) => toolLabel(n, {}) === n);
+		expect(missing).toEqual([]);
+	});
+
+	it("卡片工坊的小条写清动的是哪张卡", () => {
+		expect(toolLabel("write_card", { skin: "abc", kind: "live" })).toBe("写卡片「直播卡」");
+		expect(toolLabel("set_block", { skin: "abc", kind: "sc", block: "amount" })).toBe(
+			"改卡片的块「amount」",
+		);
+	});
 });

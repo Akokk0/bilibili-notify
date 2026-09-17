@@ -6,6 +6,7 @@ import type {
 	AiConversationMetaDTO,
 	AiConversationMetaResponse,
 	AiConversationResponse,
+	AiSkinTarget,
 } from "@bilibili-notify/contract";
 import { ApiError, api } from "./api";
 import { withDesktopTokenHeader } from "./desktop-token";
@@ -40,6 +41,7 @@ export function listConversations(): Promise<AiConversationListResponse> {
 export async function createConversation(init?: {
 	mode?: AiChatMode;
 	persona?: boolean;
+	skinTarget?: AiSkinTarget;
 }): Promise<AiConversationDTO> {
 	const res = await api.post<AiConversationResponse>("/api/ai/conversations", init ?? {});
 	return res.conversation;

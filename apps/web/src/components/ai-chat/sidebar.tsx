@@ -1,4 +1,4 @@
-import type { AiChatMode } from "@bilibili-notify/contract";
+import type { AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import { EmptyNote, Icon, IconButton } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
@@ -100,7 +100,11 @@ export function ChatSidebar(props: ChatSidebarProps) {
 										className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left text-bn-sm text-bn-text-tertiary"
 									>
 										<span className="min-w-0 flex-1 truncate">{c.title}</span>
-										<ConversationLabel mode={c.mode} persona={c.persona} />
+										<ConversationLabel
+											mode={c.mode}
+											persona={c.persona}
+											skinTarget={c.skinTarget}
+										/>
 									</button>
 									<IconButton
 										icon={<Icon.close size={13} />}
@@ -179,8 +183,17 @@ export function ChatSidebar(props: ChatSidebarProps) {
  *
  * 两个字段缺失都按默认算(老会话文件里没有它们),与服务端读盘时补的那套默认同口径。
  */
-function ConversationLabel({ mode, persona }: { mode: AiChatMode; persona: boolean }) {
-	const text = mode === "skin" ? "工坊" : persona ? null : "无人格";
+function ConversationLabel({
+	mode,
+	persona,
+	skinTarget,
+}: {
+	mode: AiChatMode;
+	persona: boolean;
+	skinTarget: AiSkinTarget;
+}) {
+	const text =
+		mode === "skin" ? (skinTarget === "card" ? "卡片工坊" : "工坊") : persona ? null : "无人格";
 	if (!text) return null;
 	return (
 		<span

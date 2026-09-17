@@ -85,6 +85,20 @@ describe("会话行的 label", () => {
 		expect(screen.getByText("工坊")).toBeTruthy();
 	});
 
+	it("卡片工坊的会话标成「卡片工坊」,与界面皮肤那种分得开", () => {
+		mount({
+			conversations: [
+				conv({ id: "c", title: "樱花粉卡片", mode: "skin", skinTarget: "card" }),
+				conv({ id: "d", title: "暗色面板", mode: "skin", skinTarget: "dashboard" }),
+			],
+		});
+		const label = (title: string) =>
+			(screen.getByText(title).closest("div") as HTMLElement).querySelector("[data-conv-label]")
+				?.textContent;
+		expect(label("樱花粉卡片")).toBe("卡片工坊");
+		expect(label("暗色面板")).toBe("工坊");
+	});
+
 	it("无人格的聊天会话也标出来", () => {
 		mount({ conversations: [conv({ id: "p", title: "正经问事", persona: false })] });
 		expect(screen.getByText("无人格")).toBeTruthy();

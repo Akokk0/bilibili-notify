@@ -6,13 +6,24 @@
  * 那边加一个,这边得跟着配一句(有一条测试盯着,漏了会红)。
  */
 
-import { AI_TOOL_CREATE_SKIN, AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
+import {
+	AI_TOOL_CREATE_SKIN,
+	AI_TOOL_LOAD_SKILL,
+	AI_CARD_WORKSHOP_TOOLS as CARD,
+} from "@bilibili-notify/contract";
+import { CARD_SKIN_KIND_NAMES } from "@bilibili-notify/internal/constants";
 
 /** 入参里挑哪几个键来补上下文,按顺序取第一个有值的。 */
 interface LabelSpec {
 	label: string;
 	arg?: readonly string[];
+	/** 入参原值 → 给人看的样子(卡种 `live` → 「直播卡」)。 */
+	show?: (value: string) => string;
 }
+
+/** 卡种名翻成中文;认不出就原样留着,别留一片空白。 */
+const kindName = (kind: string): string =>
+	(CARD_SKIN_KIND_NAMES as Readonly<Record<string, string>>)[kind] ?? kind;
 
 const TOOL_LABELS: Record<string, LabelSpec> = {
 	list_subscriptions: { label: "查看订阅列表" },
@@ -33,6 +44,15 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	// 痕迹是服务端手工补的)。名字一定要显示出来 —— 这枚胶囊存在的全部意义就是
 	// 交代「她为什么突然换了套说法」。
 	[AI_TOOL_LOAD_SKILL]: { label: "使用技能", arg: ["name"] },
+	// 卡片皮肤工坊。做一整套是十来次调用,小条得分得清「这一下在动哪张卡、哪一块」。
+	[CARD.listSkins]: { label: "查看卡片皮肤库" },
+	[CARD.readCard]: { label: "看卡片", arg: ["kind"], show: kindName },
+	[CARD.readBlock]: { label: "看卡片的块", arg: ["block"] },
+	[CARD.lookCard]: { label: "看一眼效果", arg: ["kind"], show: kindName },
+	[CARD.writeCard]: { label: "写卡片", arg: ["kind"], show: kindName },
+	[CARD.setBlock]: { label: "改卡片的块", arg: ["block"] },
+	[CARD.removeBlock]: { label: "删卡片的块", arg: ["block"] },
+	[CARD.setSkinMeta]: { label: "给卡片皮肤起名", arg: ["name"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },
@@ -92,6 +112,8 @@ export function describeTool(name: string, args: Record<string, string>): ToolDe
  * 唯一能核对「女仆理解对了没」的东西,只留十几个字等于没留。
  */
 export function toolArgText(name: string, args: Record<string, string>): string | null {
-	const raw = TOOL_LABELS[name]?.arg?.map((k) => args[k]?.trim()).find(Boolean);
-	return raw ? raw.replace(/\s+/g, " ") : null;
+	const spec = TOOL_LABELS[name];
+	const raw = spec?.arg?.map((k) => args[k]?.trim()).find(Boolean);
+	if (!raw) return null;
+	return (spec?.show ? spec.show(raw) : raw).replace(/\s+/g, " ");
 }

@@ -53,6 +53,7 @@ vi.mock("../../../services/aiChat", async (orig) => {
 				messages: [],
 				mode: init?.mode ?? "chat",
 				persona: init?.persona ?? true,
+				skinTarget: init?.skinTarget ?? "dashboard",
 			};
 		}),
 		retitleConversation: vi.fn(async (id: string) => ({
@@ -237,5 +238,54 @@ describe("两颗胶囊照旧", () => {
 
 		await waitFor(() => expect(H.lastFlags).not.toBeNull());
 		expect(H.lastFlags?.search).toBe(true);
+	});
+});
+
+/**
+ * 皮肤工坊做哪种皮肤(ADR-0015 决策 11 / 12):进了「新建皮肤工坊」之后在空态选一次,
+ * 形态照人格那一档 —— 同样开口即锁。
+ */
+describe("皮肤工坊做哪种:空态选一次", () => {
+	async function enterWorkshop() {
+		mountFresh();
+		await screen.findByLabelText("聊天输入");
+		fireEvent.click(screen.getByRole("button", { name: /新建皮肤工坊/ }));
+		await waitFor(() => expect(tab("界面皮肤")).not.toBeNull());
+	}
+
+	it("工坊空态摆着两段,默认停在界面皮肤", async () => {
+		await enterWorkshop();
+		expect(tab("界面皮肤")?.getAttribute("aria-selected")).toBe("true");
+		expect(tab("推送卡片")?.getAttribute("aria-selected")).toBe("false");
+	});
+
+	it("选了推送卡片 → 副标题换成卡片那句,第一句以 card 建起会话", async () => {
+		await enterWorkshop();
+		fireEvent.click(tab("推送卡片") as HTMLElement);
+		expect(await screen.findByText(/推送卡片想换成什么样/)).toBeTruthy();
+		await send("做一套樱花粉的");
+
+		await waitFor(() => expect(H.lastInit).toBeDefined());
+		expect(H.lastInit).toMatchObject({ mode: "skin", skinTarget: "card" });
+	});
+
+	it("不动它 → 仍以界面皮肤建起来", async () => {
+		await enterWorkshop();
+		await send("做套暗色的");
+		await waitFor(() => expect(H.lastInit).toBeDefined());
+		expect(H.lastInit).toMatchObject({ mode: "skin", skinTarget: "dashboard" });
+	});
+
+	it("日常聊天的空态不摆这一档", async () => {
+		mountFresh();
+		await screen.findByLabelText("聊天输入");
+		expect(tab("推送卡片")).toBeNull();
+	});
+
+	it("聊过之后不再出现;卡片工坊会话读回来还是卡片那副样子", async () => {
+		mountOngoing({ mode: "skin", persona: false, skinTarget: "card" });
+		await screen.findByText("在吗");
+		expect(tab("界面皮肤")).toBeNull();
+		expect(tab("推送卡片")).toBeNull();
 	});
 });
