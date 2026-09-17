@@ -1158,11 +1158,15 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
 		{ id: "start", label: "开播" },
 		{ id: "ended", label: "下播" },
 	],
+	// 默认那个堆满了字段(正文 + 视频卡 + 话题 + 预约),给写皮肤的人一次看全,所以叫
+	// 「全字段」;id 留 `default` 不改 —— 存过书签 / 旧链接送来的还是它。
+	// 「视频投稿」是真机上 UP 发视频推过来的那张:只有头部、视频卡和互动数,没有正文、
+	// 话题、预约(群里贴视频链接出的卡也是这个形状)。
 	// 转发单给一个场面:它里头是**另一整张卡**(转发框 + 跟着同一份皮肤摆的块),
-	// 不单列的话皮肤作者在面板上一眼都看不到这一层。id 留 `default`
-	// 不改 —— 存过书签 / 旧链接送来的还是它。
+	// 不单列的话皮肤作者在面板上一眼都看不到这一层。
 	dynamic: [
-		{ id: "default", label: "投稿" },
+		{ id: "default", label: "全字段" },
+		{ id: "video", label: "视频投稿" },
 		{ id: "forward", label: "转发" },
 	],
 	sc: [{ id: "default", label: "醒目留言" }],

@@ -936,6 +936,17 @@ describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 	it("直播卡三态齐全,且默认(第一项)是直播中", () => {
 		expect(CARD_PREVIEW_SCENES.live.map((s) => s.id)).toEqual(["streaming", "start", "ended"]);
 	});
+
+	// 默认那个堆满了字段(给写皮肤的人一次看全),所以叫「全字段」;真机上 UP 发视频推过来的
+	// 那张单列成「视频投稿」(2026-09-17 主人拍板)。默认的 id 仍是 `default` —— 存过的书签 /
+	// 旧链接送来的还是它。
+	it("动态卡:全字段(默认)/ 视频投稿 / 转发", () => {
+		expect(CARD_PREVIEW_SCENES.dynamic).toEqual([
+			{ id: "default", label: "全字段" },
+			{ id: "video", label: "视频投稿" },
+			{ id: "forward", label: "转发" },
+		]);
+	});
 });
 
 /**

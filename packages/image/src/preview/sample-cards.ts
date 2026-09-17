@@ -130,7 +130,23 @@ function liveSample(scene: string): SampleProps<"live"> {
  */
 const FMT: NodeFormatters = { time: () => "刚刚", num: (n: number) => numberToStr(n) };
 
-/** 视频投稿动态 —— 七种卡里字段最全的一条:正文 + 视频卡 + 话题 + 附加内容 + 互动数。 */
+/** 示例视频本身。「全字段」与「视频投稿」两个场面用的是同一个视频,只是外面那条动态不同。 */
+const SAMPLE_ARCHIVE = {
+	badge: { text: "投稿视频" },
+	cover: SVG_COVER,
+	duration_text: "16:07",
+	title: "【示例视频】这是一条用来预览卡片的示例投稿标题",
+	desc: "示例简介：这一行用来看视频小卡里的副标题。",
+	stat: { play: "1.8万", danmaku: "129" },
+	bvid: "",
+	jump_url: "",
+};
+
+/**
+ * 「全字段」场面(默认)—— 一条视频投稿动态,把能堆的都堆上:正文 + 视频卡 + 话题 + 附加
+ * 内容 + 互动数,七种卡里字段最全的一条。给写皮肤的人一次看全,**不是**真机上最常见的样子
+ * (那张见下面的 `SAMPLE_VIDEO_DYNAMIC`)。
+ */
 const SAMPLE_AV_DYNAMIC = {
 	basic: { is_only_fans: false },
 	id_str: "1000000000000000001",
@@ -167,19 +183,7 @@ const SAMPLE_AV_DYNAMIC = {
 					},
 				] as RichTextNode,
 			},
-			major: {
-				type: "MAJOR_TYPE_ARCHIVE",
-				archive: {
-					badge: { text: "投稿视频" },
-					cover: SVG_COVER,
-					duration_text: "16:07",
-					title: "【示例视频】这是一条用来预览卡片的示例投稿标题",
-					desc: "示例简介：这一行用来看视频小卡里的副标题。",
-					stat: { play: "1.8万", danmaku: "129" },
-					bvid: "",
-					jump_url: "",
-				},
-			},
+			major: { type: "MAJOR_TYPE_ARCHIVE", archive: SAMPLE_ARCHIVE },
 			// 附加内容块在默认皮肤里是独立一块,不给的话预览里整块是空的 —— 皮肤作者就看不到
 			// 自己给它写的样式。
 			additional: {
@@ -196,6 +200,29 @@ const SAMPLE_AV_DYNAMIC = {
 			forward: { count: 128 },
 			comment: { count: 456 },
 			like: { count: 7890 },
+		},
+	},
+} as unknown as Dynamic;
+
+/**
+ * 「视频投稿」场面 —— 真机上 UP 发视频推过来的那张:B 站给的这类动态通常**没有**动态正文、
+ * 话题与附加内容(视频的简介在视频卡里),只有作者、视频卡、互动数。与 `runtime/video-card.ts`
+ * 为链接解析拼出来的那条同一个形状。
+ */
+const SAMPLE_VIDEO_DYNAMIC = {
+	basic: { is_only_fans: false },
+	id_str: "1000000000000000003",
+	type: "DYNAMIC_TYPE_AV",
+	visible: true,
+	modules: {
+		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
+		module_dynamic: {
+			major: { type: "MAJOR_TYPE_ARCHIVE", archive: SAMPLE_ARCHIVE },
+		},
+		module_stat: {
+			forward: { count: 32 },
+			comment: { count: 214 },
+			like: { count: 3456 },
 		},
 	},
 } as unknown as Dynamic;
@@ -253,6 +280,7 @@ const SAMPLE_FORWARD_DYNAMIC = {
 
 const DYNAMIC_SCENES: Record<string, Dynamic> = {
 	default: SAMPLE_AV_DYNAMIC,
+	video: SAMPLE_VIDEO_DYNAMIC,
 	forward: SAMPLE_FORWARD_DYNAMIC,
 };
 
