@@ -407,6 +407,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			logger: runtime.serviceCtx.logger,
 			fallbacks: options.cardSkins?.fallbacks,
 			clearFallbacks: options.cardSkins?.clearFallbacks,
+			// 同 dashboard 皮肤库:热读,engines 是后挂的。
+			commentary: () => runtime.engines?.commentary ?? null,
 		}),
 	);
 	app.route(

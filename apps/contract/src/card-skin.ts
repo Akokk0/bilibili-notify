@@ -118,6 +118,39 @@ export interface CardSkinPreviewResponse {
 	scene: string;
 }
 
+/** 「请 AI 帮忙写」那句话的长度上限(字符)。面板的输入框与服务端的闸共用。 */
+export const CARD_SKIN_AI_INSTRUCTION_MAX = 2000;
+
+/**
+ * POST /api/card-skins/:id/ai-css —— CSS 框旁那颗「请 AI 帮忙写」(ADR-0015 决策 3–10)。
+ *
+ * 开流之前的拒绝(id 不对 / 默认皮肤 / 没配模型 / 草稿不合法 / 块不存在)回普通 JSON
+ * `{ ok: false, errors }`;都过了才开 SSE,事件见 {@link CardSkinAiCssEvent}。
+ * 用户点「停」就断开这条连接,服务端跟着掐断到模型的请求。
+ */
+export interface CardSkinAiCssRequest {
+	kind: CardSkinKind;
+	/** 写哪一块;不给 = 这种卡的外框。 */
+	blockId?: string;
+	instruction: string;
+	/** 正在编辑的**草稿**清单 —— AI 看的是用户眼前这份,不是盘上那份。 */
+	manifest: unknown;
+}
+
+/**
+ * 那条 SSE 上的事件。
+ *
+ * - `rule`:写完的一整条规则,按到达顺序拼起来就是框里的新内容;
+ * - `retry`:第一趟没过清洗器、要重来 —— 框退回动手前的原文,之后的 `rule` 从头拼;
+ * - `done`:框里该留的最终内容(模型原文,不是清洗后的版本)+ 清洗器削掉了什么;
+ * - `error`:两趟都没过,或生成本身失败了。框退回原文。
+ */
+export type CardSkinAiCssEvent =
+	| { event: "rule"; data: { text: string } }
+	| { event: "retry"; data: { errors: string[] } }
+	| { event: "done"; data: { css: string; warnings: string[] } }
+	| { event: "error"; data: { errors: string[] } };
+
 /**
  * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」。
  *

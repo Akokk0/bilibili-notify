@@ -14,24 +14,29 @@
  *   (`index.has` + 白名单正则),门口这一道让「id 写错了」与「没这套皮肤」分得开。
  */
 
-import type {
-	CardSkinDuplicateResponse,
-	CardSkinFallback,
-	CardSkinInstallResponse,
-	CardSkinInUseResponse,
-	CardSkinListResponse,
-	CardSkinManifestResponse,
-	CardSkinPreviewResponse,
-	CardSkinSaveResponse,
+import {
+	CARD_SKIN_AI_INSTRUCTION_MAX,
+	type CardSkinAiCssEvent,
+	type CardSkinDuplicateResponse,
+	type CardSkinFallback,
+	type CardSkinInstallResponse,
+	type CardSkinInUseResponse,
+	type CardSkinListResponse,
+	type CardSkinManifestResponse,
+	type CardSkinPreviewResponse,
+	type CardSkinSaveResponse,
 } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
 	CardSkinIdSchema,
 	CardSkinKindSchema,
 	DEFAULT_CARD_SKIN_ID,
+	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { buildCardCssAiSystem, prepareCardCssAi, runCardCssAiRound } from "../card-skins/ai-css.js";
 import { MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js";
@@ -54,6 +59,27 @@ const PreviewBodySchema = z.object({
 	scene: z.string().max(40).optional(),
 	manifest: z.unknown(),
 });
+
+/** 「请 AI 帮忙写」的请求体。草稿同预览那条,形状交给装包门去判。 */
+const AiCssBodySchema = z.object({
+	kind: CardSkinKindSchema,
+	blockId: z.string().max(64).optional(),
+	instruction: z.string().trim().min(1).max(CARD_SKIN_AI_INSTRUCTION_MAX),
+	manifest: z.unknown(),
+});
+
+/**
+ * 编辑器那口 AI 要的最小面;engines.commentary 的 `generateRaw` 即是。
+ * 第三个参数(字数进度)这条路用不着 —— 字本身就流到框里了。
+ */
+export interface CardCssAiEngine {
+	generateRaw(
+		system: string,
+		user: string,
+		onProgress: undefined,
+		stream: { onText: (text: string) => void; signal?: AbortSignal },
+	): Promise<string>;
+}
 
 /** 「这个 id 没有皮肤」。装包 / 保存两条路的成功体带着 `warnings`,失败体就得带 `errors`。 */
 function notFound(c: Context, shape: "err" | "errors" = "err") {
@@ -81,6 +107,8 @@ export function createCardSkinsRoute(deps: {
 	fallbacks?: () => CardSkinFallback[];
 	/** 面板上那句「知道了」:账本是一次性痕迹,看过就该翻篇(见 `card-skins/fallbacks.ts`)。 */
 	clearFallbacks?: () => void;
+	/** AI 引擎,**热读**:engines 是后挂的,每次现取。`null` = 没配模型。 */
+	commentary?: () => CardCssAiEngine | null;
 }): Hono {
 	const { store, config } = deps;
 	const app = new Hono();
@@ -277,6 +305,81 @@ export function createCardSkinsRoute(deps: {
 			scene: out.scene,
 		};
 		return c.json(body);
+	});
+
+	/**
+	 * CSS 框旁那颗「请 AI 帮忙写」(ADR-0015 决策 3–10)。
+	 *
+	 * 能拒的都在开流**之前**拒,回普通 JSON —— 开了流再报错,前端得在两种形状里分辨。
+	 * 默认皮肤也在这儿拒:它的草稿存不下来,「复制一份」复制的又是出厂那份,写了白烧 key。
+	 *
+	 * 客户端断开就是用户点了「停」:流的 `onAbort` 与请求自己的信号都接到同一个控制器上,
+	 * 到模型的请求跟着掐断(见 `generateRaw` 的 `signal`)。
+	 */
+	app.post("/:id/ai-css", async (c) => {
+		const id = c.req.param("id");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (id === DEFAULT_CARD_SKIN_ID) {
+			return c.json(
+				{ ok: false, errors: ["内置的默认皮肤改不了 —— 先「复制一份」再让 AI 写"] },
+				400,
+			);
+		}
+		if (!store.has(id)) return notFound(c, "errors");
+		const parsed = AiCssBodySchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) {
+			return c.json(
+				{
+					ok: false,
+					errors: [
+						`请求体要 { kind, blockId?, instruction(1~${CARD_SKIN_AI_INSTRUCTION_MAX} 字), manifest }`,
+					],
+				},
+				400,
+			);
+		}
+		const engine = deps.commentary?.() ?? null;
+		if (!engine) {
+			return c.json({ ok: false, errors: ["还没配好模型 —— 先到「智能女仆」页接好模型"] }, 503);
+		}
+		const draft = parseCardSkin(parsed.data.manifest);
+		if (!draft.ok) return c.json({ ok: false, errors: draft.errors }, 400);
+		const { kind, blockId, instruction } = parsed.data;
+		const prepared = prepareCardCssAi(draft.manifest, { kind, blockId });
+		if (!prepared.ok) return c.json({ ok: false, errors: [prepared.error] }, 400);
+
+		const abort = new AbortController();
+		const stop = () => abort.abort();
+		c.req.raw.signal.addEventListener("abort", stop, { once: true });
+
+		return streamSSE(c, async (sse) => {
+			sse.onAbort(stop);
+			const send = (e: CardSkinAiCssEvent) =>
+				sse.writeSSE({ event: e.event, data: JSON.stringify(e.data) });
+			try {
+				const res = await runCardCssAiRound({
+					generate: (system, user, stream) => engine.generateRaw(system, user, undefined, stream),
+					system: buildCardCssAiSystem(),
+					user: prepared.user(instruction),
+					sanitize: prepared.sanitize,
+					onRule: (text) => void send({ event: "rule", data: { text } }),
+					onRetry: (errors) => void send({ event: "retry", data: { errors } }),
+					signal: abort.signal,
+				});
+				await send(
+					res.ok
+						? { event: "done", data: { css: res.css, warnings: res.warnings } }
+						: { event: "error", data: { errors: res.errors } },
+				);
+			} catch (e) {
+				// 被掐的那一种没人在听了,不必再写。
+				if (abort.signal.aborted) return;
+				const reason = e instanceof Error ? e.message : String(e);
+				await send({ event: "error", data: { errors: [reason] } });
+			} finally {
+				c.req.raw.signal.removeEventListener("abort", stop);
+			}
+		});
 	});
 
 	/**
