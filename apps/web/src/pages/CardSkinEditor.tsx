@@ -16,7 +16,7 @@
 import type { CardSkinManifest } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import type { CardSkinKind, GlobalConfig } from "@bilibili-notify/internal";
 import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
@@ -28,12 +28,16 @@ import {
 	Pill,
 	StatusDot,
 } from "@bilibili-notify/ui";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { api } from "../services/api";
+import { streamCardSkinAiCss } from "../services/cardSkinAi";
+import { cardSkinAiReadiness } from "./cards/card-skin-ai";
 import { useCardSkinList } from "./cards/card-skins-query";
 import { serverErrors } from "./cards/preview-error";
 import { SkinCanvas, type SkinSelection } from "./cards/SkinCanvas";
-import { SkinInspector } from "./cards/SkinInspector";
+import { type InspectorAi, SkinInspector } from "./cards/SkinInspector";
 import { SkinPreviewPane } from "./cards/SkinPreviewPane";
 import {
 	addBlock,
@@ -145,6 +149,25 @@ export default function CardSkinEditor() {
 	const upload = useUploadCardSkinAsset(id);
 	const removeAsset = useDeleteCardSkinAsset(id);
 	const factory = useCardSkinManifest(factoryId, !readOnly && missingCard && factoryId !== "");
+
+	// CSS 框旁的「请女仆帮忙写」(ADR-0015 第二片)。发出去的是**这一刻的草稿**:AI 看的
+	// 该是用户眼前这份,不是盘上那份。草稿走 ref —— 流是异步的,闭包里那份早就旧了。
+	const globalsQuery = useQuery({
+		queryKey: ["globals"],
+		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+	});
+	const draftRef = useRef(draft);
+	draftRef.current = draft;
+	const ai: InspectorAi = {
+		readiness: cardSkinAiReadiness({ globals: globalsQuery.data, readOnly }),
+		run: (target, instruction, handlers, signal) =>
+			streamCardSkinAiCss(
+				id,
+				{ kind, ...target, instruction, manifest: draftRef.current },
+				handlers,
+				signal,
+			),
+	};
 
 	// 预览那一栏的宽度**跟着卡宽走**,不再钉死 400 —— 640 宽的卡挤在 400 里右半张就没了。
 	// 它挤的是画布的宽度(画布是 12 列等宽格子,窄一点照样读得懂;预览窄一点就是另一张卡)。
@@ -346,6 +369,7 @@ export default function CardSkinEditor() {
 								<SkinInspector
 									manifest={draft}
 									kind={kind}
+									ai={ai}
 									selection={selection}
 									onGrid={(blockId, patch) =>
 										setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))

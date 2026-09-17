@@ -1,5 +1,5 @@
 /**
- * `POST /api/card-skins/:id/ai-css` —— CSS 框旁那颗「请 AI 帮忙写」的 wire(ADR-0015 决策 3–10)。
+ * `POST /api/card-skins/:id/ai-css` —— CSS 框旁那颗「请女仆帮忙写」的 wire(ADR-0015 决策 3–10)。
  *
  * 提示词怎么拼、一轮怎么跑归 `card-skins/ai-css.ts`(那边有自己的测试);这一层钉的是:
  * - 开流**之前**把能拒的都拒掉(没配模型、默认皮肤、草稿不合法、块不存在),回普通 JSON;

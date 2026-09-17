@@ -1,5 +1,5 @@
 /**
- * CSS 框旁那颗「请 AI 帮忙写」按不按得动(ADR-0015 决策 10 与它的 🔗)。
+ * CSS 框旁那颗「请女仆帮忙写」按不按得动(ADR-0015 决策 10 与它的 🔗)。
  *
  * 判据与服务端建 AI 实例那一条同源(`runtime/engines.ts` 的 `!p.apiKey || !p.baseUrl`):
  * 当前实例的 key 与地址都填了。GET 回来的 key 是脱敏占位,但「非空 = 配了」照常成立。
@@ -21,7 +21,7 @@ export function cardSkinAiReadiness(input: {
 	if (input.readOnly) {
 		return {
 			ready: false,
-			reason: "内置的默认皮肤改不了 —— 先回卡片页「复制一份」,再请 AI 写",
+			reason: "内置的默认皮肤改不了 —— 先回卡片页「复制一份」,再请女仆写",
 		};
 	}
 	if (!input.globals) return { ready: false, reason: "正在读取模型配置…" };

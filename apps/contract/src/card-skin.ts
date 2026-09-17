@@ -118,11 +118,11 @@ export interface CardSkinPreviewResponse {
 	scene: string;
 }
 
-/** 「请 AI 帮忙写」那句话的长度上限(字符)。面板的输入框与服务端的闸共用。 */
+/** 「请女仆帮忙写」那句话的长度上限(字符)。面板的输入框与服务端的闸共用。 */
 export const CARD_SKIN_AI_INSTRUCTION_MAX = 2000;
 
 /**
- * POST /api/card-skins/:id/ai-css —— CSS 框旁那颗「请 AI 帮忙写」(ADR-0015 决策 3–10)。
+ * POST /api/card-skins/:id/ai-css —— CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)。
  *
  * 开流之前的拒绝(id 不对 / 默认皮肤 / 没配模型 / 草稿不合法 / 块不存在)回普通 JSON
  * `{ ok: false, errors }`;都过了才开 SSE,事件见 {@link CardSkinAiCssEvent}。

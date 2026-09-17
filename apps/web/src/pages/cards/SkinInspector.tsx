@@ -35,7 +35,10 @@ import {
 } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { Picker, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
+import type { CardSkinAiDone, CardSkinAiHandlers } from "../../services/cardSkinAi";
+import { type CssAiBinding, CssAiSlot } from "./CssAiSlot";
 import { CssKnobs } from "./CssKnobs";
+import type { CardSkinAiReadiness } from "./card-skin-ai";
 import type { SkinSelection } from "./SkinCanvas";
 import {
 	blockOf,
@@ -62,6 +65,32 @@ export type FramePatch = {
 	bleedColor?: string;
 };
 
+/**
+ * 「请女仆帮忙写」那一口(ADR-0015 决策 3–10)。`target` 由检查器按选中的框填:
+ * 给了 `blockId` 是那一块,没给是外框。
+ */
+export interface InspectorAi {
+	readiness: CardSkinAiReadiness;
+	run: (
+		target: { blockId?: string },
+		instruction: string,
+		handlers: CardSkinAiHandlers,
+		signal: AbortSignal,
+	) => Promise<CardSkinAiDone>;
+}
+
+/** 把「写哪个框」绑进去,CSS 那一节只管发话。 */
+function bindAi(
+	ai: InspectorAi | undefined,
+	target: { blockId?: string },
+): CssAiBinding | undefined {
+	if (!ai) return undefined;
+	return {
+		readiness: ai.readiness,
+		run: (instruction, handlers, signal) => ai.run(target, instruction, handlers, signal),
+	};
+}
+
 export function SkinInspector({
 	manifest,
 	kind,
@@ -79,6 +108,7 @@ export function SkinInspector({
 	onKnobs,
 	onAssets,
 	assets,
+	ai,
 }: {
 	manifest: CardSkinManifest | null;
 	kind: CardSkinKind;
@@ -105,6 +135,8 @@ export function SkinInspector({
 	onAssets?: AssetHandlers;
 	/** 这套皮肤盘上有哪些资产 —— 字体那张表照它画候选。 */
 	assets?: { names: string[]; pending: boolean; uploadError?: string | null };
+	/** CSS 框旁的「请女仆帮忙写」。不给就不摆那颗钮。 */
+	ai?: InspectorAi;
 }) {
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
@@ -137,6 +169,7 @@ export function SkinInspector({
 				onColumns={onColumns}
 				onFrameCss={onFrameCss}
 				onDropCard={onDropCard}
+				ai={ai}
 			/>
 		);
 	}
@@ -226,13 +259,17 @@ export function SkinInspector({
 				</div>
 			</Section>
 
+			{/* 按块 id 换实例:AI 写到一半换了选中的块,原来那一趟得跟着旧块一起卸掉 ——
+			    同一个实例留着的话,剩下的规则会写进新选中的那块。 */}
 			<CssSection
+				key={block.id}
 				label="这个块的 CSS"
 				hooksLabel="这个块的挂点"
 				hooks={blockHooks(kind, block)}
 				hook="self"
 				value={block.css ?? ""}
 				onChange={(css) => onCss(block.id, css)}
+				ai={bindAi(ai, { blockId: block.id })}
 			/>
 
 			{onRemove ? (
@@ -275,12 +312,14 @@ function FrameInspector({
 	onColumns,
 	onFrameCss,
 	onDropCard,
+	ai,
 }: {
 	card: Card;
 	onFrame: (patch: FramePatch) => void;
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
 	onFrameCss: (css: string) => void;
 	onDropCard?: () => void;
+	ai?: InspectorAi;
 }) {
 	const [dropping, setDropping] = useState(false);
 	const custom = card.columns !== undefined;
@@ -373,6 +412,7 @@ function FrameInspector({
 				hook="frame"
 				value={card.css ?? ""}
 				onChange={onFrameCss}
+				ai={bindAi(ai, {})}
 			/>
 
 			{onDropCard ? (
@@ -508,31 +548,6 @@ function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[s
 }
 
 /**
- * CSS 文本框旁边那个 **AI 入口**(ADR-0014 决策 23 的 🔗)。
- *
- * 这一步**只画位置**:接什么、怎么接(聊天?一键改写?)归第三步的拷问,现在预设任何一种
- * 都是替那轮拍板。摆出来而不是等做完再加,是因为「这儿将来有人帮你写」本身就是信息 ——
- * 不会写 CSS 的人看见框就走了,不会知道再等一轮就有救。
- *
- * 禁用的钮**必须自己说得出为什么** —— 一个没有来由的灰钮只会被当成坏了。
- */
-function AiSlot() {
-	return (
-		<div className="flex justify-end">
-			<Btn
-				size="sm"
-				variant="ghost"
-				icon={<Icon.ai size={12} />}
-				disabled
-				title="下一轮才接上 —— 这一轮先把位置留出来"
-			>
-				请 AI 帮忙写
-			</Btn>
-		</div>
-	);
-}
-
-/**
  * CSS 那一节:挂点清单 + 一个纯文本框。
  *
  * **先有文本框,再谈旋钮**(「编辑器 = 能力全集」):白名单里七十来条属性,能变成控件的
@@ -548,6 +563,7 @@ function CssSection({
 	hook,
 	value,
 	onChange,
+	ai,
 }: {
 	label: string;
 	hooksLabel: string;
@@ -556,6 +572,7 @@ function CssSection({
 	hook: string;
 	value: string;
 	onChange: (css: string) => void;
+	ai?: CssAiBinding;
 }) {
 	// 同上:计数器与那道闸必须是同一把尺(UTF-8 字节)。
 	const bytes = cardSkinBytes(value);
@@ -584,7 +601,7 @@ function CssSection({
 				    常用的那几条在上面点一点就改了,写不出来的照旧往下面敲。 */}
 				<CssKnobs css={value} hook={hook} onChange={onChange} />
 
-				<AiSlot />
+				{ai ? <CssAiSlot ai={ai} value={value} onChange={onChange} /> : null}
 
 				<TArea
 					value={value}

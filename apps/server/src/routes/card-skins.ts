@@ -60,7 +60,7 @@ const PreviewBodySchema = z.object({
 	manifest: z.unknown(),
 });
 
-/** 「请 AI 帮忙写」的请求体。草稿同预览那条,形状交给装包门去判。 */
+/** 「请女仆帮忙写」的请求体。草稿同预览那条,形状交给装包门去判。 */
 const AiCssBodySchema = z.object({
 	kind: CardSkinKindSchema,
 	blockId: z.string().max(64).optional(),
@@ -308,7 +308,7 @@ export function createCardSkinsRoute(deps: {
 	});
 
 	/**
-	 * CSS 框旁那颗「请 AI 帮忙写」(ADR-0015 决策 3–10)。
+	 * CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)。
 	 *
 	 * 能拒的都在开流**之前**拒,回普通 JSON —— 开了流再报错,前端得在两种形状里分辨。
 	 * 默认皮肤也在这儿拒:它的草稿存不下来,「复制一份」复制的又是出厂那份,写了白烧 key。
@@ -321,7 +321,7 @@ export function createCardSkinsRoute(deps: {
 		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
 		if (id === DEFAULT_CARD_SKIN_ID) {
 			return c.json(
-				{ ok: false, errors: ["内置的默认皮肤改不了 —— 先「复制一份」再让 AI 写"] },
+				{ ok: false, errors: ["内置的默认皮肤改不了 —— 先「复制一份」再请女仆写"] },
 				400,
 			);
 		}
