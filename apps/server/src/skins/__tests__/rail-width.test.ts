@@ -66,24 +66,25 @@ describe("皮肤的左栏宽度", () => {
 
 /**
  * 「编辑器 = 能力全集」是这套皮肤的硬性原则:契约里能配的,盘上就得有控件,
- * **两份** AI 提示词里也都得写 —— 否则那一项等于只有会手写 skin.json 的人够得着。
+ * AI 提示词里也得写 —— 否则那一项等于只有会手写 skin.json 的人够得着。
  *
  * 这组测试原本叫「栏宽在三处都露面」,一个字段一条手写用例。它漏掉了第四处
  * (web 那份「粘贴给任意 AI」的提示词),而 `railWidth` 恰恰就是从那儿漏出去的:
  * 服务端提示词里有,web 那份 0 次;`fonts.asset` 同样。手写用例只守得住写它那天
- * 想得起来的字段与去处,所以改成**遍历**。
+ * 想得起来的字段与去处,所以改成**遍历**。web 那份提示词后来随 ADR-0015 决策 27
+ * 删掉了,于是又回到三处。
  *
  * 表由 `satisfies Record<keyof SkinMode, ...>` 钉着:`SkinMode` 加一个字段而这张表
  * 没跟上,这个文件**直接编译不过** —— 比测试变红更早一步。
  */
-describe("每个模式字段都在四处露面", () => {
+describe("每个模式字段都在三处露面", () => {
 	const read = (rel: string) =>
 		readFileSync(join(dirname(fileURLToPath(import.meta.url)), rel), "utf8");
 
 	/**
 	 * 字段 → 在源码里的探针,就是字段名本身。
 	 *
-	 * 只问「**露没露面**」,不问措辞、也不问二级字段:四处的写法本来就不同(注入端
+	 * 只问「**露没露面**」,不问措辞、也不问二级字段:三处的写法本来就不同(注入端
 	 * 写 `mode.fonts?.body`、提示词写 `fonts.body`、编辑器是个控件),把探针定成
 	 * 具体措辞只会让这条守卫变脆,然后被人改宽或删掉。
 	 *
@@ -105,12 +106,11 @@ describe("每个模式字段都在四处露面", () => {
 		effects: "effects",
 	} satisfies Record<keyof SkinMode, string>;
 
-	/** 造皮肤的四条路。少一条,那条路上的 AI 与主人就够不着这个字段。 */
+	/** 造皮肤的三条路。少一条,那条路上的 AI 与主人就够不着这个字段。 */
 	const SURFACES: ReadonlyArray<{ what: string; rel: string }> = [
 		{ what: "注入端", rel: "../../../../web/src/services/skin.ts" },
 		{ what: "编辑器", rel: "../../../../web/src/pages/skins/SkinEditor.tsx" },
 		{ what: "服务端提示词", rel: "../ai-edit.ts" },
-		{ what: "粘贴给任意 AI 的提示词", rel: "../../../../web/src/services/skin-pack.ts" },
 	];
 
 	for (const { what, rel } of SURFACES) {
@@ -121,14 +121,10 @@ describe("每个模式字段都在四处露面", () => {
 		});
 	}
 
-	it("栏宽的取值域三处都读契约那张表,不硬编码", () => {
+	it("栏宽的取值域两处都读契约那张表,不硬编码", () => {
 		// 硬编码 160/320 会和契约悄悄分家 —— 放宽取值域时滑杆拉不到新范围,
 		// 而提示词还在教 AI 那个旧上限。
-		for (const rel of [
-			"../../../../web/src/pages/skins/SkinEditor.tsx",
-			"../ai-edit.ts",
-			"../../../../web/src/services/skin-pack.ts",
-		]) {
+		for (const rel of ["../../../../web/src/pages/skins/SkinEditor.tsx", "../ai-edit.ts"]) {
 			expect(read(rel), rel).toContain("SKIN_LIMITS.railWidth.min");
 		}
 	});

@@ -389,9 +389,6 @@ importers:
       css-tree:
         specifier: ^3.2.1
         version: 3.2.1(patch_hash=7bbaf7328d644be70c5f8c641ef205806f630e85b3207b14c863dfc359bb1ec7)
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
       motion:
         specifier: ^13.1.1
         version: 13.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

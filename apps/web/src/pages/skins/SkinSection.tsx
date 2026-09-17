@@ -12,7 +12,6 @@ import {
 	Icon,
 	ModalShell,
 	Pill,
-	TOAST_DURATION_MS,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,7 +19,6 @@ import { type ChangeEvent, useRef, useState } from "react";
 import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
 import { syncActiveSkinToStore } from "../../services/skin-active";
-import { buildSkinPrompt, makeSkinZip } from "../../services/skin-pack";
 import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
 import { MODE_LABEL } from "./skin-edit";
@@ -38,7 +36,7 @@ async function fetchManifest(id: string): Promise<SkinManifest> {
 }
 
 /**
- * 皮肤库 + 制作引导。列表操作(试穿/启用/删除)走服务端;试穿只写 store 的
+ * 皮肤库。列表操作(试穿/启用/删除)走服务端;试穿只写 store 的
  * preview(SkinRoot 负责真正注入),应用/取消由全局的 SkinPreviewBar 承接。
  */
 export function SkinSection() {
@@ -51,7 +49,6 @@ export function SkinSection() {
 		name: string;
 		modes: Array<"light" | "dark">;
 	} | null>(null);
-	const [guideOpen, setGuideOpen] = useState(false);
 	const [editing, setEditing] = useState<{
 		id: string;
 		manifest: SkinManifest;
@@ -163,15 +160,12 @@ export function SkinSection() {
 	return (
 		<GlassBox
 			title="界面皮肤 · skins"
-			subtitle="给面板换装 —— 上传皮肤包,或让任意 AI 帮你做一套"
+			subtitle="给面板换装 —— 上传皮肤包,或到女仆聊天侧栏点「新建皮肤工坊」让她做一套"
 			accent="var(--color-bn-purple)"
 			icon={<Icon.palette size={14} />}
 			badge={activeIds.light || activeIds.dark ? "已换装" : "原生外观"}
 			right={
 				<div className="flex items-center gap-2">
-					<Btn size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
-						制作皮肤
-					</Btn>
 					<Btn
 						size="sm"
 						onClick={() => uploadInputRef.current?.click()}
@@ -302,16 +296,6 @@ export function SkinSection() {
 				)
 			) : null}
 
-			{guideOpen ? (
-				<SkinGuideModal
-					onClose={(w) => {
-						setGuideOpen(false);
-						// 提示归本页显示 —— 弹窗当场就关了,搁在里面等于没写过。
-						if (w) setWarnings(w);
-					}}
-				/>
-			) : null}
-
 			{editing ? (
 				<SkinEditor
 					id={editing.id}
@@ -415,116 +399,5 @@ function SkinRow(props: {
 				</Btn>
 			</div>
 		</div>
-	);
-}
-
-/**
- * 制作引导:复制提示词 → 粘给任意 AI → 粘回 JSON(+可选壁纸)→ 前端组包上传。
- *
- * `onClose` 的入参 = 这次上传的提示(清洗层摘了什么、组包时发现了什么)。**提示不
- * 留在这儿显示** —— 传完就关窗,写在弹窗里的那块跟着卸载,主人一个字也看不到。
- */
-function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void }) {
-	const qc = useQueryClient();
-	const [json, setJson] = useState("");
-	const [wallpaper, setWallpaper] = useState<File | null>(null);
-	const [copied, setCopied] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	async function copyPrompt(): Promise<void> {
-		// 取一次 live 声明对象反复读 —— buildSkinPrompt 要读三十几个令牌,
-		// 每读一个都调一次 getComputedStyle 就是三十几次强制样式重算。
-		const cs = getComputedStyle(document.documentElement);
-		const readVar = (name: string) => cs.getPropertyValue(name);
-		await navigator.clipboard.writeText(buildSkinPrompt(readVar));
-		setCopied(true);
-		setTimeout(() => setCopied(false), TOAST_DURATION_MS);
-	}
-
-	const submit = useMutation({
-		mutationFn: async (input: { json: string; wallpaper: File | null }) => {
-			let wp: { ext: string; data: Uint8Array } | undefined;
-			if (input.wallpaper) {
-				const ext = input.wallpaper.name.split(".").pop()?.toLowerCase() ?? "";
-				if (!["webp", "jpg", "jpeg", "png"].includes(ext)) {
-					throw new Error("壁纸只支持 webp / jpg / png");
-				}
-				wp = { ext, data: new Uint8Array(await input.wallpaper.arrayBuffer()) };
-			}
-			const packed = makeSkinZip(input.json, wp);
-			if (!packed.ok) throw new Error(packed.error);
-			const form = new FormData();
-			form.set(
-				"file",
-				new File([packed.zip.slice().buffer as ArrayBuffer], "skin.zip", {
-					type: "application/zip",
-				}),
-			);
-			const res = await api.upload<UploadResult>("/api/skins", form);
-			return { res, packWarnings: packed.warnings };
-		},
-		onSuccess: async ({ res, packWarnings }) => {
-			setError(null);
-			void qc.invalidateQueries({ queryKey: ["skins"] });
-			const manifest = await fetchManifest(res.id);
-			useSkinStore.getState().setPreview({ id: res.id, manifest });
-			onClose([...packWarnings, ...res.warnings]);
-		},
-		onError: (e) => setError(String((e as Error).message)),
-	});
-
-	return (
-		// onCancel 被 ModalShell 拿去当遮罩的 onClick,裸传会把 MouseEvent 灌进 warnings。
-		<ModalShell onCancel={() => onClose()} width={520} title="制作皮肤">
-			<div className="space-y-3 text-bn-sm leading-6 text-bn-text-primary">
-				{/*
-				  这条路(找外部 AI + 粘 JSON)不再是唯一的了 —— 女仆自己就能做。
-				  但那个入口在聊天页,主人站在这个弹窗前是看不见的,所以在这儿指一下路。
-				*/}
-				<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted p-2.5 text-bn-text-secondary">
-					更省事的一条:点右下角的女仆胶囊进聊天页,在左边侧栏点「新建皮肤工坊」,直接说想要什么风格 ——
-					她会问清细节,自己生成好存进库,也能顺手替主人换上。想要某部作品的配色,顺手开着「联网搜索」,
-					她会先去查那部作品的代表色;想要壁纸,把图一起发给她就行(她自己找不了图)。做好的皮肤随时
-					能在「调整」里换图。下面这套是找外部 AI 做、再粘回来的路子。
-				</div>
-				<ol className="list-decimal space-y-1 pl-5">
-					<li>点「复制提示词」,粘给任意 AI(ChatGPT / Claude / 豆包都行)</li>
-					<li>把 AI 回复的 JSON 原样粘到下面的框里</li>
-					<li>想要壁纸就再选一张图,最后点「打包上传」—— 传完自动试穿</li>
-				</ol>
-				<div>
-					<Btn size="sm" variant="outline" onClick={() => void copyPrompt()}>
-						{copied ? "已复制 ✓" : "复制提示词"}
-					</Btn>
-				</div>
-				<textarea
-					data-bn="input"
-					value={json}
-					onChange={(e) => setJson(e.target.value)}
-					placeholder='把 AI 给的 skin.json 粘到这里,形如 {"schemaVersion":1,...}'
-					className="h-40 w-full resize-y rounded-lg border border-bn-border bg-bn-field p-2.5 font-mono text-bn-xs text-bn-text-primary outline-none focus:border-bn-pink"
-				/>
-				<label className="flex items-center gap-2 text-bn-sm text-bn-text-secondary">
-					<span className="shrink-0">壁纸(可选):</span>
-					<input
-						type="file"
-						accept=".webp,.jpg,.jpeg,.png,image/webp,image/jpeg,image/png"
-						onChange={(e) => setWallpaper(e.target.files?.[0] ?? null)}
-					/>
-				</label>
-				{error ? <ErrorNote>打包上传失败:{error}</ErrorNote> : null}
-				<div className="flex justify-end gap-2">
-					<Btn variant="outline" onClick={() => onClose()}>
-						取消
-					</Btn>
-					<Btn
-						onClick={() => submit.mutate({ json, wallpaper })}
-						disabled={submit.isPending || json.trim().length === 0}
-					>
-						{submit.isPending ? "上传中…" : "打包上传"}
-					</Btn>
-				</div>
-			</div>
-		</ModalShell>
 	);
 }

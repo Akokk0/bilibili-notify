@@ -23,8 +23,8 @@ describe("buildSkinAiSystemPrompt", () => {
 	 *
 	 * 亮色默认装曾把 secondary 配得比 tertiary 还淡(照抄设计稿),站内正文因此
 	 * 按 2.85:1 渲染 —— 那是人写的都会栽的坑,模型只会更容易栽。现存皮肤恰好
-	 * 都排对了,但那是运气不是保证。断言落在共用常量拼出的成品提示词上,
-	 * 两条造皮肤的路(这里与 web 的 buildSkinPrompt)各测各的,免得又漂开。
+	 * 都排对了,但那是运气不是保证。断言落在共用常量拼出的成品提示词上 ——
+	 * 常量改了措辞、而拼装这一步把那一行弄丢,这里才会红。
 	 */
 	it("教会 AI 文字四档的轻重顺序(secondary 恒重于 tertiary)", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);

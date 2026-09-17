@@ -3,7 +3,7 @@
 /**
  * 皮肤库 section 的行为:深浅两个换装 Picker(forms.tsx 的分段按钮组;
  * 各列具备该模式的皮肤+默认装,选中即 PUT 单槽)、试穿(只写 preview,注入由
- * SkinRoot 负责)、导出。上传/组包走 services 层已测的纯函数。
+ * SkinRoot 负责)、导出、直传 zip。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -91,33 +91,29 @@ describe("SkinSection", () => {
 		return screen.getByRole("group", { name });
 	}
 
-	it("制作引导先指路聊天页 —— 女仆自己会做,粘 JSON 那条路已经不是唯一的了", async () => {
+	it("做皮肤只指路到聊天里的皮肤工坊 —— 复制提示词给外部 AI 那条路已经没了", async () => {
 		renderSection();
 		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
-		fireEvent.click(screen.getByText("制作皮肤"));
-
-		await waitFor(() => expect(screen.getByText(/皮肤工坊/)).toBeTruthy());
-		// 外部 AI 那条路还在,只是退到了后面。
-		expect(screen.getByText("复制提示词")).toBeTruthy();
+		expect(screen.getByText(/新建皮肤工坊/)).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "制作皮肤" })).toBeNull();
+		expect(screen.queryByText(/任意 AI/)).toBeNull();
 	});
 
-	it("粘 JSON 传完 → 清洗层的提示落在皮肤库这一页上", async () => {
-		// 提示曾经画在弹窗里,而传完那一刻弹窗就关了 —— 那块跟着卸载,主人一个字
-		// 也看不到。「哪几句被摘了」正是这条路上最该让人看见的东西。
+	it("直传 zip → 清洗层的提示落在皮肤库这一页上,并当场试穿", async () => {
+		// 「哪几句被摘了」正是这条路上最该让人看见的东西。
 		H.uploadWarnings = ["属性 pointer-events 不在白名单"];
 		renderSection();
 		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
-		fireEvent.click(screen.getByText("制作皮肤"));
 
-		const ta = await screen.findByPlaceholderText(/skin\.json/);
-		fireEvent.change(ta, {
-			target: { value: '{"schemaVersion":1,"name":"手工","modes":{"light":{}}}' },
+		const zip = new File([new Uint8Array([0x50, 0x4b])], "sakura.zip", {
+			type: "application/zip",
 		});
-		fireEvent.click(screen.getByText("打包上传"));
+		fireEvent.change(screen.getByLabelText("选择皮肤包 zip 文件"), {
+			target: { files: [zip] },
+		});
 
 		await waitFor(() => expect(screen.getByText(/pointer-events/)).toBeTruthy());
-		// 窗确实关了 —— 提示不是靠「没关成」才看得见的。
-		expect(screen.queryByText("打包上传")).toBeNull();
+		await waitFor(() => expect(useSkinStore.getState().preview?.id).toBe("s1"));
 	});
 
 	it("列表:皮肤条目带模式/壁纸标签与导出入口;深浅两个 Picker 按钮组在场", async () => {
