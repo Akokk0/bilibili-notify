@@ -6,12 +6,17 @@
  */
 
 import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
-import type { CardSkinColumn } from "@bilibili-notify/internal";
+import type {
+	CardSkinBlockOverride,
+	CardSkinColumn,
+	CardSkinGrid,
+} from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_KNOB_KEY_RE,
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
+	effectiveGrid,
 } from "@bilibili-notify/internal/constants";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
@@ -899,4 +904,148 @@ export function fontsError(manifest: CardSkinManifest, assets: readonly string[]
 		}
 	}
 	return null;
+}
+
+// ── 形态覆盖(ADR-0014 决策 10 的 2026-09-18 🔗) ──────────────────────────────────
+
+/**
+ * 这一形态对这个块的改动。`variant` 为 `null`(base)或这一场没改过时是 `undefined`。
+ */
+export function variantOverrideOf(
+	card: Card | undefined,
+	variant: string | null,
+	blockId: string,
+): CardSkinBlockOverride | undefined {
+	if (!variant) return undefined;
+	return card?.variants?.[variant]?.blocks?.[blockId];
+}
+
+/**
+ * 这一形态改过哪几块,按 base 的块序排。画布拿它挂「本场改过」的标 —— 主人最容易犯的错
+ * 是「以为改了全部,其实只改了一场」,反过来也一样。
+ */
+export function variantTouched(card: Card | undefined, variant: string | null): string[] {
+	if (!card || !variant) return [];
+	const touched = card.variants?.[variant]?.blocks;
+	if (!touched) return [];
+	return card.blocks.filter((b) => touched[b.id] !== undefined).map((b) => b.id);
+}
+
+/** 把这张卡的覆盖表换成新的一份;换成空表就把 `variants` 整个删掉(diff 里少一行噪音)。 */
+function withVariants(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	card: Card,
+	variants: NonNullable<Card["variants"]>,
+): CardSkinManifest {
+	const next: Card = { ...card };
+	if (Object.keys(variants).length === 0) delete next.variants;
+	else next.variants = variants;
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+}
+
+/**
+ * 换掉一个块在某形态里的覆盖。`ov` 给 `undefined` = 撤掉它;撤空了连这一形态的壳一起收,
+ * 收空了连 `variants` 一起收 —— **与 base 等值的空壳留着是有害的**:主人此后改 base 会
+ * 发现这一场纹丝不动,而画布上那个标他早忘了。
+ */
+function setOverride(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	variant: string,
+	blockId: string,
+	ov: CardSkinBlockOverride | undefined,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card) return manifest;
+	const blocks = { ...(card.variants?.[variant]?.blocks ?? {}) };
+	if (ov === undefined) delete blocks[blockId];
+	else blocks[blockId] = ov;
+	const variants = { ...card.variants };
+	if (Object.keys(blocks).length === 0) delete variants[variant];
+	else variants[variant] = { ...variants[variant], blocks };
+	return withVariants(manifest, kind, card, variants);
+}
+
+/**
+ * 把位置的改动写进**这一形态**,而不是基础版式。
+ *
+ * 两条与 {@link setBlockGrid} 刻意不同的规矩:
+ * - **只留与 base 不同的那几个键**。全量重述的话,改 base 的列就到不了写过覆盖的形态,
+ *   而那正是「一份基础版式」的全部意义。
+ * - **合完与 base 一样就把覆盖撤掉** —— 拖回原位 = 没改过。
+ *
+ * 夹紧按**合并后**的格子算(覆盖只写了列时,跨列得跟着那一列收),与装包门那道判越界的
+ * 闸同一把尺子。
+ */
+export function setVariantGrid(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	variant: string,
+	blockId: string,
+	patch: Partial<CardSkinGrid>,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	const base = card?.blocks.find((b) => b.id === blockId);
+	if (!card || !base) return manifest;
+	const current = card.variants?.[variant]?.blocks?.[blockId];
+	const merged = effectiveGrid(base.grid, { ...current?.grid, ...patch });
+	const lim = gridLimits(merged);
+	const full: CardSkinGrid = {
+		row: clampInt(merged.row, lim.row.min, lim.row.max),
+		column: clampInt(merged.column, lim.column.min, lim.column.max),
+		span: clampInt(merged.span, lim.span.min, lim.span.max),
+		rowSpan: clampInt(merged.rowSpan ?? 1, lim.rowSpan.min, lim.rowSpan.max),
+		z: clampInt(merged.z ?? 0, lim.z.min, lim.z.max),
+	};
+	// 只留与 base 不同的键。`rowSpan` / `z` 的「没写」当 1 / 0 比 —— 与 `setBlockGrid`
+	// 同一条约定(写一个 1 或 0 进去与不写在出图上一样,不写更干净)。
+	const grid: Partial<CardSkinGrid> = {};
+	if (full.row !== base.grid.row) grid.row = full.row;
+	if (full.column !== base.grid.column) grid.column = full.column;
+	if (full.span !== base.grid.span) grid.span = full.span;
+	if ((full.rowSpan ?? 1) !== (base.grid.rowSpan ?? 1)) grid.rowSpan = full.rowSpan;
+	if ((full.z ?? 0) !== (base.grid.z ?? 0)) grid.z = full.z;
+
+	const next: CardSkinBlockOverride = { ...current };
+	if (Object.keys(grid).length === 0) delete next.grid;
+	else next.grid = grid;
+	return setOverride(
+		manifest,
+		kind,
+		variant,
+		blockId,
+		Object.keys(next).length === 0 ? undefined : next,
+	);
+}
+
+/** 这一形态画不画这个块。放回来 = 把 `hidden` 撤掉(位置那份覆盖留着)。 */
+export function setVariantHidden(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	variant: string,
+	blockId: string,
+	hidden: boolean,
+): CardSkinManifest {
+	const current = manifest.cards[kind]?.variants?.[variant]?.blocks?.[blockId];
+	const next: CardSkinBlockOverride = { ...current };
+	if (hidden) next.hidden = true;
+	else delete next.hidden;
+	return setOverride(
+		manifest,
+		kind,
+		variant,
+		blockId,
+		Object.keys(next).length === 0 ? undefined : next,
+	);
+}
+
+/** 撤掉这一块在这一形态里的全部改动 —— 回到跟基础版式一样。 */
+export function clearVariantBlock(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	variant: string,
+	blockId: string,
+): CardSkinManifest {
+	return setOverride(manifest, kind, variant, blockId, undefined);
 }
