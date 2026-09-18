@@ -140,6 +140,7 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 
 	cover: (p) => (
 		<img
+			data-bn="image"
 			class="block w-full rounded-lg"
 			src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
 			alt="封面"

@@ -1650,7 +1650,12 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 > = {
 	live: {
 		// 角标与封面**占同一片格子**、层次更高,不再嵌在封面里(决策 8 的 2026-09-18 🔗)。
-		cover: { label: "封面图", atom: true, hooks: {} },
+		// ⚠️ `image` 挂点是拆封面之前就有的**公开 API**,拆的时候连同 `<img>` 上那个
+		// `data-bn` 一起掉了一次(`5fa842ca`)—— 挂点名只增不改不删,而且没有它,皮肤连
+		// 「把封面压矮一点」都写不出来(`[data-bn="self"]` 是外面那层 div,在它上面写
+		// height 图会直接溢出去)。`status` 那个不补:角标已经是自己一块,写它自己的
+		// `[data-bn="self"]` 就行。
+		cover: { label: "封面图", atom: true, hooks: { image: "封面图片" } },
 		status: { label: "直播状态", atom: true, hooks: {} },
 		title: { label: "直播标题", atom: true, hooks: {} },
 		desc: { label: "简介", atom: true, hooks: {} },
