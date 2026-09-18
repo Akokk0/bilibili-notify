@@ -901,6 +901,16 @@ const at = (
 const full = (row: number) => ({ row, column: 1, span: CARD_SKIN_LIMITS.columns });
 
 /**
+ * 通栏、且**跨好几行**的高块(封面、图廊)。
+ *
+ * `rowSpan` 在这儿是块在网格里的**高度声明**(2026-09-18 主人拍板,ADR-0014 决策 6 的 🔗):
+ * 真卡的行由内容撑,跨行数只是把「这块大约有多高」写进数据 —— 按编辑器画布一行 56px
+ * 折算,封面 300 来像素就是 5 行。出图不受影响(中间那几行空着,高度是 0),画布却能照
+ * 着画出真实的比例,而且检查器、画布、JSON 三处说的是同一个数。后面的块行号顺着往后排。
+ */
+const tall = (row: number, rowSpan: number) => ({ ...full(row), rowSpan });
+
+/**
  * 两侧各一列定宽、中间十列等分。左边那列就是**头像列**:宽度 = 左内边距 + 头像 + 头像与名字
  * 的间距,名字从第 2 列起正好落在原来的位置。右边补一列同宽的,整张卡才左右对称 ——
  * 动态卡的三个互动数各占四列,居中后仍落在卡的三等分附近。
@@ -943,20 +953,21 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			columns: avatarColumns(70),
 			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
 			blocks: [
-				at("cover", full(1)),
+				// 600 宽的封面约 300px 高 → 5 行。
+				at("cover", tall(1, 5)),
 				at(
 					"avatar",
-					{ row: 2, column: 1, span: 1, rowSpan: 2 },
+					{ row: 6, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding:14px 0 0 16px;align-self:center`,
 				),
-				at("name", { row: 2, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
-				at("time", { row: 3, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
-				at("title", full(4), "padding-top:10px"),
-				at("divider", full(5), "padding-top:10px", "divider-1"),
-				at("popularity", { row: 6, column: 1, span: 6 }, "padding-top:10px"),
-				at("area", { row: 6, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
-				at("fans", full(7), "padding-top:4px"),
-				at("desc", full(8), "padding-top:16px"),
+				at("name", { row: 6, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
+				at("time", { row: 7, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
+				at("title", full(8), "padding-top:10px"),
+				at("divider", full(9), "padding-top:10px", "divider-1"),
+				at("popularity", { row: 10, column: 1, span: 6 }, "padding-top:10px"),
+				at("area", { row: 10, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
+				at("fans", full(11), "padding-top:4px"),
+				at("desc", full(12), "padding-top:16px"),
 			],
 		},
 		dynamic: {
@@ -976,19 +987,20 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("topic", full(4), "padding:0 16px"),
 				at("text", full(5), "padding:0 16px"),
 				// 图廊前那 8px 是旧正文里跟在文字后面的间距;视频卡自己带着间距,不再加。
+				// 九图图廊约 400px 高 → 7 行(视频卡矮一些,按最常见的图廊算)。
 				at(
 					"media",
-					full(6),
+					tall(6, 7),
 					"padding:0 16px",
 					"media",
 					'[data-bn="self"] [data-bn="pics"]{margin-top:8px}',
 				),
-				at("forward", full(7), "padding:0 16px"),
-				at("additional", full(8), "padding-top:12px"),
-				at("divider", full(9), "padding:12px 0", "divider-2"),
-				at("forwardCount", { row: 10, column: 1, span: 4 }, CENTER, "forward-count"),
-				at("commentCount", { row: 10, column: 5, span: 4 }, CENTER, "comment-count"),
-				at("likeCount", { row: 10, column: 9, span: 4 }, CENTER, "like-count"),
+				at("forward", full(13), "padding:0 16px"),
+				at("additional", full(14), "padding-top:12px"),
+				at("divider", full(15), "padding:12px 0", "divider-2"),
+				at("forwardCount", { row: 16, column: 1, span: 4 }, CENTER, "forward-count"),
+				at("commentCount", { row: 16, column: 5, span: 4 }, CENTER, "comment-count"),
+				at("likeCount", { row: 16, column: 9, span: 4 }, CENTER, "like-count"),
 			],
 		},
 		sc: {

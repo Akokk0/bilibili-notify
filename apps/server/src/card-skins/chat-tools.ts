@@ -750,7 +750,7 @@ export function buildCardWorkshopSystem(): string {
 ## 卡片是什么
 - 服务端用 Chromium 把卡片渲染成一张**静态图**:没有鼠标、没有动画,:hover、:focus、transition、animation 写了也画不出来。
 - 七种卡:${kinds}。其中 ${FIXED_KINDS.map((k) => `\`${k}\``).join("、")} 整张就是一个固定的内置块,只改外框和那一块的样子,别加别的块。
-- 每张卡是 ${L.columns} 列的网格。块用 grid 定位:row(第几行,从 1 起,最多 ${L.maxRows})、column(第几列,从 1 起)、span(跨几列,column + span - 1 不能超过 ${L.columns})、rowSpan(跨几行,可省)、z(层次 ${L.layer.min}~${L.layer.max},可省,大的压在上面)。
+- 每张卡是 ${L.columns} 列的网格。块用 grid 定位:row(第几行,从 1 起,最多 ${L.maxRows})、column(第几列,从 1 起)、span(跨几列,column + span - 1 不能超过 ${L.columns})、rowSpan(跨几行,可省;**高块要写**:封面 / 图廊这种一块顶好几行字的,按「块高 ÷ 56」写跨行数,出图不受影响,编辑器画布才画得出真实比例,后面的块行号顺着往后排)、z(层次 ${L.layer.min}~${L.layer.max},可省,大的压在上面)。
 - 卡宽 ${L.width.min}~${L.width.max}px;一张卡最多 ${L.maxBlocks} 块。columns 不写就是 ${L.columns} 等分,写就得恰好 ${L.columns} 项,每项 {"fr":n} 或 {"px":n}。
 - gap 是块之间的间距 {"row","column"},${L.gap.min}~${L.gap.max}px;bleed 是给辉光留的外圈 {"size","color"},两项都要写,size ${L.bleed.min}~${L.bleed.max}px,color 只收 hex(图没有透明,外圈要有底色)。
 
