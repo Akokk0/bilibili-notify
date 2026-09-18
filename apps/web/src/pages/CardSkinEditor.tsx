@@ -17,11 +17,7 @@ import type { CardSkinManifest } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
 import type { CardSkinKind, GlobalConfig } from "@bilibili-notify/internal";
-import {
-	CARD_PREVIEW_SCENES,
-	CARD_SKIN_KINDS,
-	CARD_SKIN_VARIANTS,
-} from "@bilibili-notify/internal/constants";
+import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ErrorNote,
@@ -50,6 +46,7 @@ import {
 	addKnob,
 	addKnobOption,
 	adoptCard,
+	blockInScene,
 	cardOf,
 	dropBlockGrid,
 	dropCard,
@@ -74,7 +71,6 @@ import {
 	setKnobSwitch,
 	setKnobType,
 	setSkinMeta,
-	setVariantGrid,
 	skinMetaError,
 } from "./cards/skin-draft-ops";
 import {
@@ -120,21 +116,10 @@ export default function CardSkinEditor() {
 	const [kind, setKind] = useState<CardSkinKind>("live");
 	const [selection, setSelection] = useState<SkinSelection>(null);
 	/**
-	 * 预览那一场画出来的块,连**它是哪种卡的**一起记:换卡种时新预览还没画好,拿上一种卡的
-	 * 单子去标,同名块(头像 / 名字在好几种卡里都有)会让画布短暂说错话。
+	 * 看的是哪一场。画布**只摆这一场会有的块**(ADR-0014 决策 10 的 2026-09-19 🔗),预览
+	 * 也照这一场出图;块的位置只有一份,场景只决定画布上露不露它。
 	 */
-	const [drawn, setDrawn] = useState<{ kind: CardSkinKind; ids: string[] | null } | null>(null);
 	const [scene, setScene] = useState<string>(CARD_PREVIEW_SCENES.live[0]?.id ?? "");
-	/**
-	 * 眼前这一场落在哪个**形态**(`null` = 只有基础版式),由预览那头回报
-	 * (ADR-0014 决策 10 的 2026-09-18 🔗)。
-	 */
-	const [variant, setVariant] = useState<string | null>(null);
-	/**
-	 * 改的是哪一层。**默认基础版式**(主人拍板):最容易犯的错是「以为改了全部,其实只改了
-	 * 一场」,所以要只改本场得先切一下。
-	 */
-	const [onlyThisCase, setOnlyThisCase] = useState(false);
 
 	const baseline = manifestQuery.data?.manifest;
 	// 清单到了(或存完换了一份)就重置草稿。比对的是**对象身份**:react-query 只在数据
@@ -149,17 +134,18 @@ export default function CardSkinEditor() {
 		setScene(CARD_PREVIEW_SCENES[kind][0]?.id ?? "");
 		// 换了卡种,上一张卡的选中就没意义了 —— 留着的话检查器会对着一个不存在的块。
 		setSelection(null);
-		// 形态也一样:上一种卡的那一档在这种卡上根本不存在,而新预览还没回来。留着的话
-		// 「只改本场」这一下会写进一份别的卡的覆盖里。
-		setVariant(null);
-		setOnlyThisCase(false);
 	}, [kind]);
 
-	// 这一场只有基础版式(醒目留言那种只有一副样子的卡)—— 开关没有意义,顺手收回,
-	// 免得它停在「只改本场」上而改动其实落进了 base。
-	useEffect(() => {
-		if (variant === null) setOnlyThisCase(false);
-	}, [variant]);
+	/**
+	 * 换一场。选中的块在新的那一场不露面(图廊在视频那场)就放掉选中 —— 留着的话检查器
+	 * 对着一个画布上找不到的块,改了位置也看不见动。
+	 */
+	const switchScene = (next: string) => {
+		setScene(next);
+		if (selection?.kind !== "block") return;
+		const block = cardOf(draft, kind)?.blocks.find((b) => b.id === selection.id);
+		if (block && !blockInScene(kind, block, next)) setSelection(null);
+	};
 
 	const dirty = useMemo(
 		() => draft !== null && baseline !== undefined && !sameManifest(draft, baseline),
@@ -170,8 +156,6 @@ export default function CardSkinEditor() {
 	const readOnly = listQuery.data?.skins.find((s) => s.id === id)?.builtin === true;
 	const inUse = listQuery.data?.active === id;
 	const scenes = CARD_PREVIEW_SCENES[kind];
-	/** 这一场那个形态的人话名;`null` = 这一场只有基础版式(开关就不该出现)。 */
-	const variantLabel = CARD_SKIN_VARIANTS[kind].find((v) => v.id === variant)?.label ?? null;
 
 	// 接管一种卡要抄出厂那份。**哪套是出厂的问列表要**(同 `readOnly` 的道理:服务端才是
 	// 权威),而且只在真缺这种卡时才去拉 —— 平时白打一趟。
@@ -308,23 +292,8 @@ export default function CardSkinEditor() {
 							<span className="text-bn-text-tertiary text-bn-xs">场景</span>
 							<Picker
 								value={scene}
-								onChange={setScene}
+								onChange={switchScene}
 								options={scenes.map((sc) => ({ value: sc.id, label: sc.label }))}
-							/>
-						</>
-					) : null}
-					{/* 「改哪一层」。**只在这一场真有形态时才出现** —— 只有一副样子的卡摆个
-					    永远选不动的开关,只会让人以为自己漏了什么。只读时不摆:改不了就没得选。 */}
-					{variantLabel !== null && !readOnly ? (
-						<>
-							<span className="text-bn-text-tertiary text-bn-xs">改</span>
-							<Picker
-								value={onlyThisCase ? "case" : "base"}
-								onChange={(v) => setOnlyThisCase(v === "case")}
-								options={[
-									{ value: "base", label: "基础版式" },
-									{ value: "case", label: `只改「${variantLabel}」` },
-								]}
 							/>
 						</>
 					) : null}
@@ -357,8 +326,6 @@ export default function CardSkinEditor() {
 							scene={scene}
 							manifest={draft}
 							boxWidth={previewCol}
-							onDrawn={(ids) => setDrawn({ kind, ids })}
-							onVariant={setVariant}
 						/>
 						{/* 画布 + 检查器合占那 2/3:检查器固定 380(旋钮那几行再窄就开始切字),
 						    剩下的全归 12 列的画布。 */}
@@ -368,7 +335,7 @@ export default function CardSkinEditor() {
 						>
 							<GlassBox
 								title={`网格画布 · ${KIND_META[kind].label}卡`}
-								subtitle="点一个块,在右边的检查器里改它的位置;封面这种单张图拉上下两条边就是改高度,别的块的高度由内容撑;标着「这一场不画」的块,左边那个场景下不出现"
+								subtitle="只摆左边那一场会有的块,别的场独有的块(图廊、视频那几块)切过去才露面;点一个块,在右边的检查器里改它的位置;封面这种单张图拉上下两条边就是改高度,别的块的高度由内容撑"
 								icon={<Icon.square size={14} />}
 							>
 								<SkinCanvas
@@ -376,24 +343,15 @@ export default function CardSkinEditor() {
 									card={cardOf(draft, kind)}
 									selection={selection}
 									onSelect={setSelection}
-									drawn={drawn?.kind === kind ? drawn.ids : null}
+									scene={scene}
 									// 拖块改行列 / 拉边改跨列。**与检查器那几个数字框刻意不是同一个口** ——
 									// 「放下」带着「我要它在这儿」的意思,叠上了就该在上面,而叠放次序不在
 									// `grid` 里(没写层次时是块的先后)。数字框是精确编辑,不改先后。
-									variant={variant}
-									editingVariant={onlyThisCase}
 									onGrid={
 										readOnly
 											? undefined
 											: (blockId, patch) =>
-													setDraft((d) => {
-														if (d === null) return d;
-														// 切了「只改本场」,同一下拖拽落进这一形态的覆盖;
-														// 否则照旧改基础版式。
-														return onlyThisCase && variant
-															? setVariantGrid(d, kind, variant, blockId, patch)
-															: dropBlockGrid(d, kind, blockId, patch);
-													})
+													setDraft((d) => (d === null ? d : dropBlockGrid(d, kind, blockId, patch)))
 									}
 									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
 									onAdopt={

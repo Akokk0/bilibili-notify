@@ -20,14 +20,21 @@
  * 拖拽是**指针专用**的:两个拉边把手对读屏器隐藏,键盘那条路仍是检查器里的数字框 ——
  * 它一直在,而且比拖拽精确。`onGrid` 不给(只读皮肤)时把手整个不画:拖得动却存不下去
  * 比拖不动更气人。
+ *
+ * **画布只摆这一场会有的块,而且和出图一样紧**(ADR-0014 决策 10 的 2026-09-19 🔗)。
+ * 哪些块属于哪一场由内置块目录说(`scenes`),图廊在视频那场**一点痕迹都不留** —— 没有灰壳、
+ * 没有「这一场不画」的标。整行没块的行也压掉(出图那头 ④ 压行用的是同一个 `rowMapOf`),
+ * 于是画布上的行号是**压后的**:块按压后行号落位、行轨道按压后行号量,拖完交出去之前
+ * 用 `realGridPatch` 换回真行号;行号列上印的仍是真行号,检查器里那个数字才对得上。
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
-import type { CardSkinBlockOverride, CardSkinBuiltinBlock } from "@bilibili-notify/internal";
+import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import {
+	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_LIMITS,
-	effectiveGrid,
+	rowMapOf,
 } from "@bilibili-notify/internal/constants";
 import { AddButton, Btn, EmptyNote, Icon, Pill, SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { animate, type MotionValue, motion, useMotionValue } from "motion/react";
@@ -39,6 +46,8 @@ import {
 	movedGrid,
 	prefersReducedMotion,
 	project,
+	realGridPatch,
+	realRowOf,
 	resizedGrid,
 	resizedRows,
 	rowAt,
@@ -47,7 +56,7 @@ import {
 	trackAt,
 	type Velocity,
 } from "./canvas-drag";
-import { canAddBlock, columnsOf, stackingOf } from "./skin-draft-ops";
+import { blockInScene, canAddBlock, columnsOf, stackingOf } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -104,9 +113,7 @@ export function SkinCanvas({
 	onAddCustom,
 	onAdopt,
 	adoptBusy,
-	drawn,
-	variant,
-	editingVariant,
+	scene,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -123,49 +130,41 @@ export function SkinCanvas({
 	onAdopt?: () => void;
 	/** 出厂皮肤还没读到 —— 接管要抄的就是它,没到手就先禁着。 */
 	adoptBusy?: boolean;
-	/**
-	 * 预览那一场**真画出来的块 id**(`drawn-blocks.ts` 从预览文档里数的)。不在这张单子上的
-	 * 块会被标一句「这一场不画」—— 但**照旧在原地、照旧选得中拖得动**:编辑器就是要让人改
-	 * 那些块,按场景把它们收走等于没法编辑。`undefined` / `null`(还没画好、或读不到)时
-	 * 一个都不标。
-	 */
-	drawn?: readonly string[] | null;
-	/**
-	 * 眼前这一场落在哪个**形态**(`null` / 不给 = 只有基础版式)。由预览那头回报
-	 * (ADR-0014 决策 10 的 2026-09-18 🔗)—— 照场景 id 猜的话两处迟早对不上。
-	 *
-	 * 只给这一个 = 画的仍是基础版式,只是在这一场改过的块上挂个标。
-	 */
-	variant?: string | null;
-	/**
-	 * 画的是不是**这一形态**那一层。`false`(默认)= 基础版式:拖什么动什么,改的也是
-	 * 那份基础版式。切成 `true` 之后画布先把这一形态的覆盖合进格子 —— 手上动的和拖完
-	 * 落进去的必须是同一个位置。
-	 */
-	editingVariant?: boolean;
+	/** 看的是哪一场(`CARD_PREVIEW_SCENES[kind]` 里的 id)。画布只摆这一场会有的块。 */
+	scene: string;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
 	const [picking, setPicking] = useState(false);
-	/** 这一形态改过哪几块(`undefined` = 这一场只有基础版式,或者压根没改过)。 */
-	const touched = variant ? card?.variants?.[variant]?.blocks : undefined;
 	/**
-	 * 画布这一层要画的块。改基础版式时就是 base 那份;切到「只改本场」时先把这一形态的
-	 * 格子合进来 —— **合的是同一条规则**(`effectiveGrid`),画布与出图各写一份的话,
-	 * 编辑器里摆的和真画出来的迟早是两回事。
-	 *
-	 * ⚠️ 藏起来的块**照旧留着**:画布就是让人把它放回来的地方,按 `hidden` 收走等于
-	 * 没法编辑。它在真卡上没画,`drawn` 那条路会把它标成「这一场不画」。
+	 * 这一场露面的块。**叠放、层数闸、压行都只看它们** —— 视频封面与图廊在默认皮里占着
+	 * 同一片行,拿整张卡去算的话,视频那场的封面会画成「压着别人」而底下其实什么都没有。
 	 */
-	const blocks = useMemo(() => {
-		const base = card?.blocks ?? [];
-		if (!editingVariant || !touched) return base;
-		return base.map((b) => {
-			const grid = touched[b.id]?.grid;
-			return grid ? { ...b, grid: effectiveGrid(b.grid, grid) } : b;
-		});
-	}, [card?.blocks, touched, editingVariant]);
-	const drag = useDrag(onGrid, blocks);
+	const visible = useMemo(
+		() => (card?.blocks ?? []).filter((b) => blockInScene(kind, b, scene)),
+		[card?.blocks, kind, scene],
+	);
+	const sceneCard = useMemo(
+		() => (card ? { ...card, blocks: visible } : undefined),
+		[card, visible],
+	);
+	/** 真行号 → 压后行号。整行没块的行不在表里,那就是被压掉的行(与出图 ④ 同一个函数)。 */
+	const rowMap = useMemo(() => rowMapOf(visible.map((b) => b.grid)), [visible]);
+	/** 按压后行号落位的块 —— 画布这一层画的、拖的都是它们。 */
+	const blocks = useMemo(
+		() =>
+			visible.map((b) => ({
+				...b,
+				grid: { ...b.grid, row: rowMap.get(b.grid.row) ?? b.grid.row },
+			})),
+		[visible, rowMap],
+	);
+	// 拖出来的是压后行号,存之前换回真行号。`onGrid` 不给时这儿也不给 —— 只读那条路照旧。
+	const onRealGrid = useMemo<SkinCanvasGridHandler | undefined>(
+		() => (onGrid ? (id, patch) => onGrid(id, realGridPatch(rowMap, patch)) : undefined),
+		[onGrid, rowMap],
+	);
+	const drag = useDrag(onRealGrid, blocks);
 
 	if (!card) {
 		return (
@@ -180,10 +179,8 @@ export function SkinCanvas({
 		);
 	}
 
-	// `null` = 还不知道这一场画了什么,那就谁都别标。
-	const drawnSet = drawn ? new Set(drawn) : null;
-	// 画到最后一个块所在的行,再留一行空的当「新起一行」的落点。
-	const lastRow = blocks.reduce((m, b) => Math.max(m, b.grid.row + (b.grid.rowSpan ?? 1) - 1), 0);
+	// 压后的行正好是 1..n,再留一行空的当「新起一行」的落点。
+	const lastRow = rowMap.size;
 	const cols = CARD_SKIN_LIMITS.columns;
 	const rows = Array.from({ length: lastRow + 1 }, (_, i) => i + 1);
 	const template = templateOf(card);
@@ -216,6 +213,8 @@ export function SkinCanvas({
 					// `flex items-center` 而不是 `self-center`:两者看着一样(字在行中间),但
 					// `self-center` 会让这个元素**缩到字那么高**,而它同时是行的量尺 —— 缩过
 					// 之后量出来的行带只有十来像素,拖拽就只在每行中间那一条窄缝里认得出行号。
+					// 轨道按**压后**行号编(拖拽算出来的就是它),印出来的是**真**行号(检查器
+					// 里那个数字对得上)。
 					<span
 						key={`r${n}`}
 						data-canvas-track="row"
@@ -223,26 +222,12 @@ export function SkinCanvas({
 						className="flex items-center font-mono text-bn-2xs text-bn-text-tertiary"
 						style={{ gridColumn: 1, gridRow: n }}
 					>
-						r{n}
+						r{realRowOf(rowMap, n)}
 					</span>
 				))}
 
-				{/* **空行的旁注** —— 空行在画布上留着(排版时好用),出图那头会被压掉。两边就此
-				    对不上一件事,不说出来只能靠撞见。真要留白就摆一个空白块:块占着那一行,
-				    压行就收不走它。 */}
-				{emptyRows(blocks, lastRow).map((n) => (
-					<div
-						key={`e${n}`}
-						data-testid="empty-row-note"
-						className="pointer-events-none flex items-center justify-center text-bn-2xs text-bn-text-tertiary"
-						style={{ gridColumn: `2 / span ${cols}`, gridRow: n }}
-					>
-						空行 · 出图时收掉,要留白就摆一个空白块
-					</div>
-				))}
-
 				{blocks.map((b) => {
-					const { below } = stackingOf(card, b.id);
+					const { below } = stackingOf(sceneCard, b.id);
 					return (
 						<CanvasBlock
 							key={b.id}
@@ -252,8 +237,6 @@ export function SkinCanvas({
 							selected={selection?.kind === "block" && selection.id === b.id}
 							onSelect={() => onSelect({ kind: "block", id: b.id })}
 							drag={onGrid ? drag : undefined}
-							unpainted={drawnSet !== null && !drawnSet.has(b.id)}
-							variantMark={variantMarkOf(touched?.[b.id])}
 						/>
 					);
 				})}
@@ -319,20 +302,6 @@ export function SkinCanvas({
 			</button>
 		</div>
 	);
-}
-
-/**
- * 1..`lastRow` 里**没有块占着**的行。占着 ≠ 起在:跨行的块把中间那几行也占着,漏掉它们
- * 会把「被封面盖住的行」说成空行。最后那一行(`lastRow + 1`)是「添加块」的落点,不算。
- *
- * 与出图那头压行看的是同一件事(`render-skin` 的 ④),这边标出来的就是那边会收掉的。
- */
-function emptyRows(blocks: Block[], lastRow: number): number[] {
-	const taken = new Set<number>();
-	for (const b of blocks) {
-		for (let r = b.grid.row; r < b.grid.row + (b.grid.rowSpan ?? 1); r++) taken.add(r);
-	}
-	return Array.from({ length: lastRow }, (_, i) => i + 1).filter((n) => !taken.has(n));
 }
 
 /**
@@ -426,14 +395,21 @@ function BlockCatalogue({
 					<div key={label} className="flex flex-col gap-1.5">
 						<span className="text-bn-2xs text-bn-text-tertiary">{label}</span>
 						<div className="flex flex-wrap gap-1.5">
-							{items.map(([name, meta]) => (
-								<Btn key={name} size="sm" variant="outline" onClick={() => onPick(name)}>
-									{meta.label}
-									{used.has(name) ? (
-										<span className="text-bn-2xs text-bn-text-tertiary">已有</span>
-									) : null}
-								</Btn>
-							))}
+							{items.map(([name, meta]) => {
+								const only = sceneMarkOf(kind, meta);
+								return (
+									<Btn key={name} size="sm" variant="outline" onClick={() => onPick(name)}>
+										{meta.label}
+										{/* 独有块在目录里也打标:加进来之后别的场看不见它,先说在前头。 */}
+										{only ? (
+											<span className="text-bn-2xs text-bn-text-tertiary">{only}</span>
+										) : null}
+										{used.has(name) ? (
+											<span className="text-bn-2xs text-bn-text-tertiary">已有</span>
+										) : null}
+									</Btn>
+								);
+							})}
 						</div>
 					</div>
 				),
@@ -815,8 +791,6 @@ function CanvasBlock({
 	selected,
 	onSelect,
 	drag,
-	unpainted,
-	variantMark,
 }: {
 	kind: CardSkinKind;
 	block: Block;
@@ -826,13 +800,10 @@ function CanvasBlock({
 	onSelect: () => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
 	drag?: CanvasDrag;
-	/** 这一场真卡上没画它(`showIf` 判假,或者这一场没数据)。只标出来,不禁用。 */
-	unpainted: boolean;
-	/** 这一块在这一形态里改过 —— 挂什么标(`null` = 没改过)。 */
-	variantMark?: string | null;
 }) {
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
 	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
+	const sceneMark = meta ? sceneMarkOf(kind, meta) : null;
 	// 拉边是**当场**改的(块的宽度由网格轨道定,transform 补不了),所以拉边时格子就画在
 	// 改过的位置上;移动则相反 —— 块靠 transform 贴着手走,格子始终停在原处,会落到哪
 	// 由落点指示说。
@@ -951,30 +922,18 @@ function CanvasBlock({
 			) : null}
 			<span className="flex min-w-0 items-center gap-1.5">
 				<Icon.drag size={12} className="shrink-0 text-bn-text-tertiary" />
-				{/* 这一场没画的块把名字降到 disabled 档。**刻意不动块底的透明度** —— 块底本来
-				    就是半透明的(`bg-bn-surface/90`),再叠一层 opacity,被它压着的块会透上来。 */}
-				<span
-					className={`truncate font-semibold text-bn-sm ${
-						unpainted ? "text-bn-text-disabled" : "text-bn-text-primary"
-					}`}
-				>
-					{label}
-				</span>
+				<span className="truncate font-semibold text-bn-sm text-bn-text-primary">{label}</span>
 				<BlockKindPill block={block} atom={meta?.atom === true} />
 				{block.showIf ? (
 					<Pill subtle color="var(--color-bn-warn)">
 						showIf
 					</Pill>
 				) : null}
-				{/* 不画的原因有两种(`showIf` 判假 / 这一场没数据),对看的人是同一件事,所以
-				    这句与上面那颗 showIf 徽章各说各的:一个说「它带着条件」,一个说「这一场的
-				    结果是不画」。 */}
-				{unpainted ? <Pill subtle>这一场不画</Pill> : null}
-				{/* 主人最容易犯的错是「以为改了全部,其实只改了一场」,反过来也一样 ——
-				    所以这个标**在两种模式下都挂**:改基础版式时它正好是那句提醒。 */}
-				{variantMark ? (
+				{/* 独有块挂一句「图文专属」:它只在这一场露面,换一场就整个不见 —— 得让人知道
+				    它不是没了,是不属于那一场。共有块什么都不挂。 */}
+				{sceneMark ? (
 					<Pill subtle color="var(--color-bn-purple)">
-						{variantMark}
+						{sceneMark}
 					</Pill>
 				) : null}
 			</span>
@@ -990,14 +949,16 @@ function CanvasBlock({
 }
 
 /**
- * 这一块在这一形态里改成了什么样,一句话。三档说的是三件不同的事 —— 并成一句「本场改过」
- * 的话,「这一场根本不画它」与「只是挪了个位置」在画布上长得一模一样。
+ * 独有块的标:「图文专属」。属于好几场的写成「视频 / 图文专属」;共有块(目录没标
+ * `scenes`)是 `null`。场名照 `CARD_PREVIEW_SCENES` 印,目录里指着不存在的场由 internal
+ * 那边的守卫拦,这儿不再报。
  */
-function variantMarkOf(ov: CardSkinBlockOverride | undefined): string | null {
-	if (!ov) return null;
-	if (ov.hidden) return "本场藏起来";
-	if (ov.grid) return ov.css ? "本场改过位置与样式" : "本场挪过位置";
-	return ov.css ? "本场改过样式" : null;
+function sceneMarkOf(kind: CardSkinKind, meta: CardSkinBuiltinBlock): string | null {
+	if (!meta.scenes) return null;
+	const labels = meta.scenes.map(
+		(id) => CARD_PREVIEW_SCENES[kind].find((sc) => sc.id === id)?.label ?? id,
+	);
+	return `${labels.join(" / ")}专属`;
 }
 
 /** 三档来历:复合内置块 / 原子内置块 / 自定义块。分档是为了让「这块能不能改内容」一眼看出来。 */

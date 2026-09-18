@@ -26,7 +26,6 @@ import {
 	canAddBlock,
 	cardOf,
 	clampInt,
-	clearVariantBlock,
 	columnsOf,
 	dropBlockGrid,
 	dropCard,
@@ -53,12 +52,8 @@ import {
 	setKnobSwitch,
 	setKnobType,
 	setSkinMeta,
-	setVariantGrid,
-	setVariantHidden,
 	skinMetaError,
 	stackingOf,
-	variantOverrideOf,
-	variantTouched,
 } from "../skin-draft-ops";
 
 const manifest = (): CardSkinManifest =>
@@ -989,157 +984,5 @@ describe("stackingOf", () => {
 	it("卡没定义 / 块不在里头 → 两边都空,别在这儿抛", () => {
 		expect(stackingOf(undefined, "a")).toEqual({ above: [], below: [] });
 		expect(stackingOf(card([at("a", 1, 1, 4)]), "没这个块")).toEqual({ above: [], below: [] });
-	});
-});
-
-/**
- * **写进形态覆盖**(ADR-0014 决策 10 的 2026-09-18 🔗)。编辑器默认改基础版式,切到
- * 「只改本场」之后同一个拖拽落进这几个函数。
- *
- * 三条硬规矩,各对应一个静默失败:
- * ① **覆盖只写改动了的那几个键** —— 全量重述的话,改 base 的列就到不了写过覆盖的形态,
- *    而那正是「一份基础版式」的全部意义;
- * ② **拖回跟 base 一样就把覆盖撤掉** —— 留着一份与 base 等值的覆盖,主人此后改 base
- *    会发现这一场纹丝不动,而画布上那个「本场改过」的标他早忘了;
- * ③ **夹紧按合并后的格子算** —— 覆盖只写了列,跨列得跟着那一列收,不然装包门退回来的
- *    是一句「保存失败」。
- */
-describe("形态覆盖 — 写进这一场", () => {
-	const dynamicManifest = (variants?: unknown): CardSkinManifest =>
-		({
-			schemaVersion: 1,
-			name: "测试皮肤",
-			cards: {
-				dynamic: {
-					width: 600,
-					blocks: [
-						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
-						{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
-					],
-					...(variants === undefined ? {} : { variants }),
-				},
-			},
-		}) as unknown as CardSkinManifest;
-
-	const ovOf = (m: CardSkinManifest, variant: string, id: string) =>
-		variantOverrideOf(cardOf(m, "dynamic"), variant, id);
-
-	it("回的是新清单,原件一个字节都没动", () => {
-		const before = dynamicManifest();
-		const after = setVariantGrid(before, "dynamic", "video", "text", { row: 5 });
-		expect(after).not.toBe(before);
-		expect(cardOf(before, "dynamic")?.variants).toBeUndefined();
-		expect(ovOf(after, "video", "text")?.grid).toEqual({ row: 5 });
-	});
-
-	// ① base 那份一个字节都不动:改的是覆盖,不是块本身。
-	it("base 的块原样不动", () => {
-		const after = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { row: 5 });
-		expect(blockOf(cardOf(after, "dynamic"), "text")?.grid).toEqual({
-			row: 1,
-			column: 1,
-			span: 12,
-		});
-	});
-
-	// ① 只写改动了的键 —— 这条是「一份基础版式 + 覆盖」与「每场一份完整版式」的分界。
-	it("只写改动了的那几个键,没碰的不落进覆盖", () => {
-		const after = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { column: 3 });
-		expect(ovOf(after, "video", "text")?.grid).toEqual({ column: 3, span: 10 });
-	});
-
-	// ③ 夹紧按合并后的格子算:从第 10 列起最多跨 3 列。
-	it("跨列跟着合并后的起始列收", () => {
-		const after = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { column: 10 });
-		expect(ovOf(after, "video", "text")?.grid?.span).toBe(3);
-	});
-
-	// ② 拖回原位 = 没改过。
-	it("改回与 base 一样时,整份覆盖撤掉", () => {
-		const moved = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { row: 5 });
-		const back = setVariantGrid(moved, "dynamic", "video", "text", { row: 1 });
-		expect(ovOf(back, "video", "text")).toBeUndefined();
-		// 连空壳都不留:`{ video: { blocks: {} } }` 在 diff 里是噪音。
-		expect(cardOf(back, "dynamic")?.variants).toBeUndefined();
-	});
-
-	it("藏起来 / 放回来", () => {
-		const hidden = setVariantHidden(dynamicManifest(), "dynamic", "video", "pics", true);
-		expect(ovOf(hidden, "video", "pics")?.hidden).toBe(true);
-		const shown = setVariantHidden(hidden, "dynamic", "video", "pics", false);
-		expect(ovOf(shown, "video", "pics")).toBeUndefined();
-	});
-
-	it("藏起来的块,位置那份覆盖还留着", () => {
-		const moved = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { row: 5 });
-		const hidden = setVariantHidden(moved, "dynamic", "video", "text", true);
-		expect(ovOf(hidden, "video", "text")).toEqual({ grid: { row: 5 }, hidden: true });
-	});
-
-	it("撤掉这一块在本场的全部改动", () => {
-		const moved = setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { row: 5 });
-		const both = setVariantHidden(moved, "dynamic", "video", "pics", true);
-		const cleared = clearVariantBlock(both, "dynamic", "video", "text");
-		expect(ovOf(cleared, "video", "text")).toBeUndefined();
-		expect(ovOf(cleared, "video", "pics")?.hidden).toBe(true);
-	});
-
-	// 画布拿它挂「本场改过」的标 —— 主人最容易犯的错是「以为改了全部,其实只改了一场」,
-	// 反过来也一样。
-	it("数得出这一场改过哪几块", () => {
-		const m = setVariantHidden(
-			setVariantGrid(dynamicManifest(), "dynamic", "video", "text", { row: 5 }),
-			"dynamic",
-			"pics",
-			"pics",
-			true,
-		);
-		expect(variantTouched(cardOf(m, "dynamic"), "video")).toEqual(["text"]);
-		expect(variantTouched(cardOf(m, "dynamic"), "pics")).toEqual(["pics"]);
-		expect(variantTouched(cardOf(m, "dynamic"), null)).toEqual([]);
-	});
-
-	it("皮肤没定义这种卡时原样回,不凭空造一张", () => {
-		const m = dynamicManifest();
-		expect(setVariantGrid(m, "live", "streaming", "text", { row: 2 })).toBe(m);
-	});
-});
-
-/**
- * **删块要把它在各形态里的覆盖一起收走。**
- *
- * 留着的话装包门当场退回「这张卡上没有叫「X」的块」—— 而那个 id 是主人刚删掉的东西,
- * 他看到的是一句指着不存在的块的报错,整套皮肤从此存不下去。
- */
-describe("removeBlock — 连同它在各形态里的覆盖", () => {
-	const withOverrides = (): CardSkinManifest =>
-		({
-			schemaVersion: 1,
-			name: "测试皮肤",
-			cards: {
-				dynamic: {
-					width: 600,
-					blocks: [
-						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
-						{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
-					],
-					variants: {
-						video: { blocks: { pics: { hidden: true }, text: { grid: { row: 3 } } } },
-						pics: { blocks: { pics: { grid: { row: 1 } } } },
-					},
-				},
-			},
-		}) as unknown as CardSkinManifest;
-
-	it("删掉的块在每一个形态里的覆盖都不留", () => {
-		const after = removeBlock(withOverrides(), "dynamic", "pics");
-		expect(variantOverrideOf(cardOf(after, "dynamic"), "video", "pics")).toBeUndefined();
-		// 只剩这一块覆盖的形态,整个形态的壳也收掉。
-		expect(cardOf(after, "dynamic")?.variants?.pics).toBeUndefined();
-	});
-
-	it("别的块的覆盖照旧留着", () => {
-		const after = removeBlock(withOverrides(), "dynamic", "pics");
-		expect(variantOverrideOf(cardOf(after, "dynamic"), "video", "text")?.grid).toEqual({ row: 3 });
 	});
 });

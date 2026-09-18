@@ -80,8 +80,8 @@ async function installForeign(): Promise<string> {
 						showIf: "live.isStreaming",
 					},
 				],
-				// 主人在编辑器里摆过的分场版式。AI 的工具面一个字都不认它 —— 正因为不认,
-				// 才更得原样留着。
+				// 🪦 已退役的形态覆盖(决策 10 的 2026-09-19 🔗)。存量皮肤里写着它,装包门
+				// 得收得下、并且当场丢掉 —— 下面「退役的 variants」那条钉着。
 				variants: { ended: { blocks: { note: { hidden: true } } } },
 			},
 		},
@@ -451,44 +451,27 @@ describe("资产不归 AI 管,但也不许被它弄丢", () => {
 });
 
 /**
- * **形态覆盖也不归 AI 管**(ADR-0014 决策 10 的 2026-09-18 🔗:第一版只写基础版式)。
- * 与资产同一条道理,而且更要紧:那是主人在编辑器里一格一格摆出来的分场版式,工具面
- * 连提都没提过它 —— 重写一次卡就悄悄没了,而门禁全绿。
+ * **退役的形态覆盖**(ADR-0014 决策 10 的 2026-09-19 🔗)。`variants` 那张表整层没了,但
+ * 存量皮肤里写着它 —— 清单是 `.strict()` 的,收不下的话那些皮肤连装都装不进来。
+ *
+ * 所以两件事都得钉:装得进来,而且**装进来那一刻就没了** —— 留着的话 AI 重写一次卡,
+ * 它要么被原样搬进新清单(一个没人认的字段),要么静默消失,两种都说不清。
  */
-describe("形态覆盖不归 AI 管,但也不许被它弄丢", () => {
-	it("重写整张卡:还在的块,它在各形态里的覆盖原样留着", async () => {
+describe("退役的 variants 不挡装包,也不留在盘上", () => {
+	it("带 variants 的老皮肤装得进来,装进来之后那张卡上没有它", async () => {
 		const foreign = await installForeign();
-		const h = harness();
-		await h.text(T.writeCard, {
-			skin: foreign,
-			kind: "live",
-			width: 600,
-			blocks: [
-				COVER,
-				{ id: "note", kind: "custom", html: "<b>x</b>", grid: { row: 2, column: 1, span: 12 } },
-			],
-		});
-		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
-		expect(card?.variants?.ended?.blocks?.note?.hidden).toBe(true);
+		const card = store.get(foreign)?.cards.live;
+		expect(card, "这套皮肤没装进来").toBeDefined();
+		expect(Object.hasOwn(card as object, "variants")).toBe(false);
 	});
 
-	// 留着悬空的覆盖,整套皮肤当场存不下去(装包门退回「这张卡上没有叫「note」的块」),
-	// 而那个 id 指着的东西刚被删掉。
-	it("重写整张卡:没写进来的块,它的覆盖跟着收走", async () => {
+	it("AI 重写整张卡之后照旧没有它", async () => {
 		const foreign = await installForeign();
 		const h = harness();
 		await h.text(T.writeCard, { skin: foreign, kind: "live", width: 600, blocks: [COVER] });
 		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
-		expect(card?.variants).toBeUndefined();
-	});
-
-	it("删块:它在各形态里的覆盖一起收走", async () => {
-		const foreign = await installForeign();
-		const h = harness();
-		await h.text(T.removeBlock, { skin: foreign, kind: "live", block: "note" });
-		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
-		expect(card?.blocks.some((b) => b.id === "note")).toBe(false);
-		expect(card?.variants).toBeUndefined();
+		expect(card, "这张卡没写出来").toBeDefined();
+		expect(Object.hasOwn(card as object, "variants")).toBe(false);
 	});
 });
 

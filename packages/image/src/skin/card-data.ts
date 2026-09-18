@@ -13,7 +13,6 @@
  */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
-import { CARD_SKIN_VARIANTS, type CardSkinKind } from "@bilibili-notify/internal";
 import { GUARD_DESC } from "../blocks/guard";
 import { htmlToPlain } from "../html-to-plain";
 import { getSCLevel } from "../styles";
@@ -265,37 +264,4 @@ export function readCardField(data: CardData, path: string): CardDataValue | und
 	const value = bucket[key];
 	const t = typeof value;
 	return t === "string" || t === "number" || t === "boolean" ? value : undefined;
-}
-
-/**
- * 这张卡是哪个**形态**(ADR-0014 决策 10 的 2026-09-18 🔗)——皮肤按形态存覆盖版式。
- * 一个判据都不中回 `null`,那就是 base(写在 `cards[kind]` 上的基础版式)。
- *
- * **先真者胜**,所以 {@link CARD_SKIN_VARIANTS} 里的顺序是决策不是排版:转发一条视频
- * 动态时 `isForward` 与 `hasVideo` 同时为真,而外层该画的是转发框。
- *
- * 判据读的是**契约数据**,与 `showIf` 同一份 —— 各算一遍的话,画布上标出来的和真画出来
- * 的迟早是两回事。
- */
-export function cardVariantOf(kind: CardSkinKind, data: CardData): string | null {
-	for (const variant of CARD_SKIN_VARIANTS[kind]) {
-		if (readCardField(data, variant.when)) return variant.id;
-	}
-	return null;
-}
-
-/**
- * 这份卡片 props 会画成哪个形态 —— **与装配时挑的是同一档**(`placeBlocks` 走的正是
- * 下面这两步)。给出图之外的地方用:编辑器要知道眼前这一场落在哪一档,好把改动写进
- * 对的那份覆盖。
- *
- * 各算一遍的话,面板会把改动写进一份根本没人用的覆盖里,而两边的门禁全绿。
- */
-export function cardVariantForProps(
-	kind: CardSkinKind,
-	props: unknown,
-	raw?: Dynamic,
-): string | null {
-	const build = buildCardData as (k: CardSkinKind, p: unknown, r?: Dynamic) => CardData;
-	return cardVariantOf(kind, build(kind, props, raw));
 }

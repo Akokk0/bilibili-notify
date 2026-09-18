@@ -66,7 +66,7 @@ const MASTER = { name: "示例 UP 主", face: SVG_AVATAR_BLUE } as const;
 // ── 直播卡 ────────────────────────────────────────────────────────────────────
 
 /**
- * 三个场景的差异全在这几项里(其余字段共用)。
+ * 两个场景的差异全在这几项里(其余字段共用)。
  *
  * `liveStatus` 是**卡上角标**用的那一档(1 = 直播中、2 = 已下播),不是 B 站接口原值 ——
  * `ImageRenderer.generateLiveCard` 会先把接口那套映射过来再传给卡片,示例数据照它的产物写。
@@ -82,13 +82,6 @@ const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 		liveStatus: 1,
 		onlineNum: numberToStr(123_456),
 		fansNum: numberToStr(88_800),
-	},
-	start: {
-		titleStatus: "开播啦",
-		liveTime: "开播时间：2026-09-13 20:00:00",
-		liveStatus: 1,
-		onlineNum: numberToStr(8_642),
-		fansNum: numberToStr(88_600),
 	},
 	ended: {
 		titleStatus: "下播啦",
@@ -130,7 +123,7 @@ function liveSample(scene: string): SampleProps<"live"> {
  */
 const FMT: NodeFormatters = { time: () => "刚刚", num: (n: number) => numberToStr(n) };
 
-/** 示例视频本身。「全字段」与「视频投稿」两个场面用的是同一个视频,只是外面那条动态不同。 */
+/** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
 const SAMPLE_ARCHIVE = {
 	badge: { text: "投稿视频" },
 	cover: SVG_COVER,
@@ -143,9 +136,12 @@ const SAMPLE_ARCHIVE = {
 };
 
 /**
- * 「全字段」场面(默认)—— 一条视频投稿动态,把能堆的都堆上:正文 + 视频卡 + 话题 + 附加
- * 内容 + 互动数,七种卡里字段最全的一条。给写皮肤的人一次看全,**不是**真机上最常见的样子
- * (那张见下面的 `SAMPLE_VIDEO_DYNAMIC`)。
+ * 字段最全的那条动态:正文 + 视频卡 + 话题 + 附加内容 + 互动数。
+ *
+ * **它自己不再是一个场面**(2026-09-19 拍板):四场按主媒体分,而它在出图端与「视频投稿」
+ * 是同一种卡。留着是因为另外两处照它长:**转发场面框里那条原动态**就是它(内层那张卡
+ * 一次把各块都占上,转发那一层才看得出内外同源),以及下面的 `SAMPLE_TEXT_DYNAMIC` ——
+ * 纯文字那条 = 它去掉 `major`。
  */
 const SAMPLE_AV_DYNAMIC = {
 	basic: { is_only_fans: false },
@@ -205,6 +201,31 @@ const SAMPLE_AV_DYNAMIC = {
 } as unknown as Dynamic;
 
 /**
+ * 「纯文字」场面(**默认**)—— 没有主媒体的那一条:正文 + 话题 + 附加内容 + 互动数。
+ * 它是底档 —— 正文、话题、附加内容这三块只有在这一场才一次看得全(视频那场三样都没有)。
+ *
+ * 除了 `major` 与动态类型,每一样都照 `SAMPLE_AV_DYNAMIC` 取:各写一份的话两条示例迟早
+ * 会漂,而「同一段正文在两种卡上长什么样」正是写皮肤的人要对着看的。
+ */
+const SAMPLE_TEXT_DYNAMIC = {
+	basic: { is_only_fans: false },
+	id_str: "1000000000000000005",
+	type: "DYNAMIC_TYPE_WORD",
+	visible: true,
+	modules: {
+		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
+		// `major` 整个不给 —— 纯文字动态没有主媒体,渲染器一路 `?.` 过去,视频五块与图廊
+		// 都取不到东西、整块不画。
+		module_dynamic: {
+			topic: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.topic,
+			desc: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.desc,
+			additional: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.additional,
+		},
+		module_stat: SAMPLE_AV_DYNAMIC.modules.module_stat,
+	},
+} as unknown as Dynamic;
+
+/**
  * 「视频投稿」场面 —— 真机上 UP 发视频推过来的那张:B 站给的这类动态通常**没有**动态正文、
  * 话题与附加内容(视频的简介在视频卡里),只有作者、视频卡、互动数。与 `runtime/video-card.ts`
  * 为链接解析拼出来的那条同一个形状。
@@ -243,7 +264,8 @@ function samplePic(n: number, long: boolean): { url: string; width: number; heig
 }
 
 /**
- * 「图文」场面 —— 一段正文 + 九张图(图廊最满的样子)。B 站现在给图文动态的形状是
+ * 「图文」场面(场景 id `pics`)—— 一段正文 + 九张图(图廊最满的样子)。B 站现在给图文动态
+ * 的形状是
  * `major.opus`:正文在 `summary` 里、图在 `pics` 里,`desc` 为空;渲染器与契约的
  * `pics.*` 都从这里取。
  */
@@ -284,8 +306,9 @@ const SAMPLE_DRAW_DYNAMIC = {
  * 转发场面的那条动态 —— 示例转发者转了上面那条投稿。
  *
  * 转发框里是**另一整张卡**(同一批块、同一份皮肤),而它在编辑器里原本一眼都看不到:
- * 动态卡从前只有一个场面,示例数据里没有转发。`orig` 直接指上面那条,不另写一份 ——
- * 两份示例迟早会漂,而「内层画的和外层是同一套东西」正是这个场面要给人看的。
+ * 动态卡从前只有一个场面,示例数据里没有转发。`orig` 直接指字段最全那条
+ * (`SAMPLE_AV_DYNAMIC`),不另写一份 —— 两份示例迟早会漂,而「内层画的和外层是同一套
+ * 东西」正是这个场面要给人看的,内层块占得越满越看得出来。
  */
 const SAMPLE_FORWARD_DYNAMIC = {
 	basic: { is_only_fans: false },
@@ -332,16 +355,16 @@ const SAMPLE_FORWARD_DYNAMIC = {
 } as unknown as Dynamic;
 
 const DYNAMIC_SCENES: Record<string, Dynamic> = {
-	default: SAMPLE_AV_DYNAMIC,
+	text: SAMPLE_TEXT_DYNAMIC,
 	video: SAMPLE_VIDEO_DYNAMIC,
-	draw: SAMPLE_DRAW_DYNAMIC,
+	pics: SAMPLE_DRAW_DYNAMIC,
 	forward: SAMPLE_FORWARD_DYNAMIC,
 };
 
 async function dynamicSample(scene: string): Promise<SampleProps<"dynamic">> {
 	// 正文结构树由**真正的构建器**造(不是这儿手写一份):预览与真出图只要各拼各的,迟早
 	// 长成两副样子,而两边都说不出哪儿错了。
-	return { node: await buildDynamicNode(DYNAMIC_SCENES[scene] ?? SAMPLE_AV_DYNAMIC, false, FMT) };
+	return { node: await buildDynamicNode(DYNAMIC_SCENES[scene] ?? SAMPLE_TEXT_DYNAMIC, false, FMT) };
 }
 
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
@@ -467,5 +490,5 @@ export async function sampleCard(
 	const picked = resolvePreviewScene(kind, scene);
 	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
 	if (kind !== "dynamic") return { props };
-	return { props, raw: DYNAMIC_SCENES[picked.id] ?? SAMPLE_AV_DYNAMIC };
+	return { props, raw: DYNAMIC_SCENES[picked.id] ?? SAMPLE_TEXT_DYNAMIC };
 }

@@ -13,7 +13,6 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
-	CARD_SKIN_VARIANTS,
 	type CardSkinCard,
 	type CardSkinKind,
 	type CardSkinKnob,
@@ -25,7 +24,6 @@ import {
 	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
-	effectiveCard,
 	parseCardSkin,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -413,6 +411,26 @@ describe("目录与契约的一致性", () => {
 		for (const kind of CARD_SKIN_KINDS) {
 			expect(Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind]).length, kind).toBeGreaterThan(0);
 			expect(CARD_SKIN_FIELDS[kind].length, kind).toBeGreaterThan(0);
+		}
+	});
+
+	/**
+	 * **块目录里的 `scenes` 得是这种卡真有的预览场景**(决策 10 的 2026-09-19 🔗)。
+	 *
+	 * 它是画布的白名单:切到哪一场就只摆这一场会有的块。写错一个字(`pic` / `draw` 这种
+	 * 手滑)不会有任何人报错 —— 那个块从此在**每一场**画布上都不出现,而出图照画,
+	 * 门禁全绿,只有在面板上找不着那块的人知道。
+	 */
+	it("块目录的 scenes 只列该卡种真有的场景 id", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			const ids = new Set(CARD_PREVIEW_SCENES[kind].map((s) => s.id));
+			for (const [name, block] of Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
+				for (const scene of block.scenes ?? []) {
+					expect(ids.has(scene), `${kind}.${name} 的 scenes 里「${scene}」不是这种卡的场景`).toBe(
+						true,
+					);
+				}
+			}
 		}
 	});
 
@@ -954,20 +972,23 @@ describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 		}
 	});
 
-	// 默认落在「直播中」是拍板过的(设计稿按 开播 / 直播中 / 下播 排,默认却要落在中间那张);
-	// 数组第一项即默认,所以顺序本身是决策,不是排版。
-	it("直播卡三态齐全,且默认(第一项)是直播中", () => {
-		expect(CARD_PREVIEW_SCENES.live.map((s) => s.id)).toEqual(["streaming", "start", "ended"]);
+	// 默认落在「直播中」是拍板过的;数组第一项即默认,所以顺序本身是决策,不是排版。
+	// 「开播」不单列(2026-09-19):它与直播中 `liveStatus` 都是 1,出图端分不开。
+	it("直播卡两态齐全,且默认(第一项)是直播中", () => {
+		expect(CARD_PREVIEW_SCENES.live).toEqual([
+			{ id: "streaming", label: "直播中" },
+			{ id: "ended", label: "下播" },
+		]);
 	});
 
-	// 默认那个堆满了字段(给写皮肤的人一次看全),所以叫「全字段」;真机上 UP 发视频推过来的
-	// 那张单列成「视频投稿」,带图的单列成「图文」(2026-09-17 主人拍板)。默认的 id 仍是
-	// `default` —— 存过的书签 / 旧链接送来的还是它。
-	it("动态卡:全字段(默认)/ 视频投稿 / 图文 / 转发", () => {
+	// 四场按**主媒体**分,每一场就是出图端分得出来的一种卡(2026-09-19 拍板)。从前的
+	// 「全字段」(视频 + 正文 + 话题)砍了 —— 它与「视频投稿」在出图端是同一种卡;纯文字
+	// 顶上来当默认,因为那是底档:正文、话题、附加内容都只在它那儿看得全。
+	it("动态卡:纯文字(默认)/ 视频投稿 / 图文 / 转发", () => {
 		expect(CARD_PREVIEW_SCENES.dynamic).toEqual([
-			{ id: "default", label: "全字段" },
+			{ id: "text", label: "纯文字" },
 			{ id: "video", label: "视频投稿" },
-			{ id: "draw", label: "图文" },
+			{ id: "pics", label: "图文" },
 			{ id: "forward", label: "转发" },
 		]);
 	});
@@ -1086,74 +1107,14 @@ describe("DEFAULT_CARD_SKIN — 覆盖层只占它真正占的那一小块", () 
 });
 
 /**
- * **形态表**(ADR-0014 决策 10 的 2026-09-18 🔗)—— 覆盖版式的键。
+ * **退役的形态覆盖**(ADR-0014 决策 10 的 2026-09-19 🔗)。`cards.<kind>.variants` 那张表
+ * 整层没了:出图端照数据画,没数据的块不画、整行空的行压掉,没有第二套版式。
  *
- * 形态是**真机分得出来**的那几种卡,不是预览场景:两张预览图可以落在同一个形态上
- * (动态卡的「全字段」与「视频投稿」同为 `DYNAMIC_TYPE_AV`,直播卡的「开播」与
- * 「直播中」`liveStatus` 都是 1),而按场景存覆盖的话,真机拿到一张卡选不出该用哪份。
- *
- * 判据一律是 `CARD_SKIN_FIELDS` 里**真有的 bool 字段** —— 与 `showIf` 读同一份
- * `CardData`。这条得有守卫:判据写错一个字(`hasVideos`)不会有任何人报错,只会让那个
- * 形态**永远匹配不上**,而覆盖静静地不生效。
+ * 但**存量皮肤里写着它**,而这张卡是 `.strict()` 的 —— 直接删字段的话,那些皮肤会以
+ * `Unrecognized key: "variants"` 装不进来也存不下去(与 `variables` 退役时同一条道理)。
+ * 所以入口留一个不看内容的口子,进门那一刻就丢掉。
  */
-describe("形态表 — CARD_SKIN_VARIANTS", () => {
-	it("七种卡一种不少;只有直播与动态分形态,别的只有 base", () => {
-		expect(Object.keys(CARD_SKIN_VARIANTS).sort()).toEqual([...CARD_SKIN_KINDS].sort());
-		const withVariants = CARD_SKIN_KINDS.filter((k) => CARD_SKIN_VARIANTS[k].length > 0);
-		expect([...withVariants].sort()).toEqual(["dynamic", "live"]);
-	});
-
-	it("id 是小写 kebab(要当 JSON 的键)、同一种卡里不重复,label 非空", () => {
-		for (const kind of CARD_SKIN_KINDS) {
-			const ids = CARD_SKIN_VARIANTS[kind].map((v) => v.id);
-			expect(new Set(ids).size).toBe(ids.length);
-			for (const v of CARD_SKIN_VARIANTS[kind]) {
-				expect(v.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
-				expect(v.label.trim()).not.toBe("");
-			}
-		}
-	});
-
-	it("判据一律是该卡种契约里真有的 bool 字段", () => {
-		for (const kind of CARD_SKIN_KINDS) {
-			const bools = new Map(CARD_SKIN_FIELDS[kind].map((f) => [f.path, f.type]));
-			for (const v of CARD_SKIN_VARIANTS[kind]) {
-				expect(bools.get(v.when), `${kind}.${v.id} 的判据「${v.when}」不在契约里`).toBe("bool");
-			}
-		}
-	});
-
-	// 直播卡的 `liveStatus` 到了 props 上只剩 0 / 1 / 2(`image-renderer.ts` 把 3 = 刚下播
-	// 归一成 2),所以这两档把真机上会推出去的卡全盖住了。
-	it("直播卡:直播中 / 下播", () => {
-		expect(CARD_SKIN_VARIANTS.live).toEqual([
-			{ id: "streaming", label: "直播中", when: "live.isStreaming" },
-			{ id: "ended", label: "下播", when: "live.isEnded" },
-		]);
-	});
-
-	// **顺序本身是决策**(主人拍板的判据顺序):转发要排在最前 —— 转发一条视频动态时
-	// `isForward` 与 `hasVideo` 同时为真,而外层该画的是转发框,不是视频卡。
-	it("动态卡判据按 转发 → 视频 → 图文 排", () => {
-		expect(CARD_SKIN_VARIANTS.dynamic).toEqual([
-			{ id: "forward", label: "转发", when: "dynamic.isForward" },
-			{ id: "video", label: "视频", when: "dynamic.hasVideo" },
-			{ id: "pics", label: "图文", when: "dynamic.hasPics" },
-		]);
-	});
-});
-
-/**
- * **形态覆盖**(ADR-0014 决策 10 的 2026-09-18 🔗)—— 一份基础版式 + 每个形态在它上面改
- * 几块。
- *
- * 两条硬规矩:
- * - **一条覆盖都不写 = 今天**。没有它,存量皮肤与默认皮肤出的图就得逐张重验。
- * - **⛔ 不许有只在某一形态才存在的块**。块一律先进 base,别的形态藏起来就行 —— 否则
- *   块表不再唯一,块 id 的唯一性、挂点对表、AI 工具面都要跟着分叉。
- */
-describe("形态覆盖 — variants", () => {
-	/** 两块的动态卡 + 一份形态覆盖。 */
+describe("退役的形态覆盖 — variants", () => {
 	function withVariants(variants: unknown): unknown {
 		return minimal({
 			cards: {
@@ -1161,7 +1122,6 @@ describe("形态覆盖 — variants", () => {
 					width: 600,
 					blocks: [
 						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
-						{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
 					],
 					variants,
 				},
@@ -1169,101 +1129,31 @@ describe("形态覆盖 — variants", () => {
 		} as unknown as Partial<CardSkinManifest>);
 	}
 
-	/** 上面那份夹具只写了 dynamic 一张卡;取不到就是夹具坏了,当场说清楚。 */
-	function dynamicOf(m: CardSkinManifest): CardSkinCard {
-		const card = m.cards.dynamic;
-		if (!card) throw new Error("夹具里没有 dynamic 卡");
-		return card;
-	}
-
-	it("合法的覆盖能进门", () => {
-		const m = ok(
-			withVariants({
-				video: { blocks: { pics: { hidden: true }, text: { grid: { row: 3 }, css: "" } } },
-			}),
-		);
-		expect(m.cards.dynamic?.variants?.video?.blocks?.pics?.hidden).toBe(true);
-	});
-
-	it("拒收这种卡没有的形态", () => {
-		expect(errorsOf(withVariants({ ended: { blocks: {} } }))).toContain(
-			"dynamic 卡没有叫「ended」的形态",
+	it("带 variants 的老皮肤照样装得进来", () => {
+		expect(parseCardSkin(withVariants({ video: { blocks: { text: { hidden: true } } } })).ok).toBe(
+			true,
 		);
 	});
 
-	// ⛔ 这一条是决策本身:块只准进 base。
-	it("拒收覆盖里不存在的块 —— 形态不许自带新块", () => {
-		expect(errorsOf(withVariants({ video: { blocks: { nope: { hidden: true } } } }))).toContain(
-			"这张卡上没有叫「nope」的块",
-		);
+	// 丢掉而不是留着:留在结果里的话,下游随手就能把它读回去,而这一层已经没人认它了。
+	it("装进来之后这张卡上没有 variants", () => {
+		const card = ok(withVariants({ video: { blocks: { text: { hidden: true } } } })).cards.dynamic;
+		expect(card).toBeDefined();
+		expect(Object.hasOwn(card as object, "variants")).toBe(false);
 	});
 
-	// 越界要按**合并后**的格子判:base 合法、覆盖把它推出去照样是坏版式,而它只在那一个
-	// 形态上炸 —— 进门时不拦,真机上撞见的人根本对不出是哪儿写错了。
-	it("按合并后的格子判越界", () => {
-		expect(
-			errorsOf(withVariants({ video: { blocks: { text: { grid: { column: 8 } } } } })),
-		).toContain("越过了");
-	});
-
-	describe("effectiveCard", () => {
-		const card = dynamicOf(
-			ok(
-				withVariants({
-					video: {
-						blocks: {
-							pics: { hidden: true },
-							text: { grid: { row: 5, z: 2 }, css: '[data-bn="self"]{color:red}' },
-						},
-					},
-				}),
-			),
-		);
-
-		// 引用相等,不是「内容一样」:存量皮肤那条路上一个对象都不该多造出来,
-		// 出图逐字节不变才有保证。
-		it("没有形态 / 没有覆盖时**原样**返回 base", () => {
-			expect(effectiveCard(card, null)).toBe(card);
-			expect(effectiveCard(card, "pics")).toBe(card);
-			const plain = dynamicOf(ok(withVariants(undefined)));
-			expect(effectiveCard(plain, "video")).toBe(plain);
-			// 覆盖表写了这一形态、里头却一块都没改(编辑器切过去又切回来会留下这种壳)。
-			const empty = dynamicOf(ok(withVariants({ video: { blocks: {} } })));
-			expect(effectiveCard(empty, "video")).toBe(empty);
-		});
-
-		it("只改写了的那几个键,没写的跟着 base 走", () => {
-			const text = effectiveCard(card, "video").blocks.find((b) => b.id === "text");
-			// 覆盖只写了 row 与 z:列与跨列仍是 base 的,于是改 base 的列,这个形态跟着动。
-			expect(text?.grid).toEqual({ row: 5, column: 1, span: 12, z: 2 });
-		});
-
-		it("藏起来的块整个不在结果里", () => {
-			expect(effectiveCard(card, "video").blocks.map((b) => b.id)).toEqual(["text"]);
-		});
-
-		// ⛔ 覆盖的 CSS **不归这里**:块的 class 只有一套,而转发卡的内外两层落在不同形态上
-		// —— 拼进块自己那段 CSS 的话,两层会抢同一条规则。它由渲染器单发一条、挂带形态后缀
-		// 的 class(见 `render-skin.tsx`)。这条钉的就是「这里不碰它」。
-		it("只覆盖了 CSS 的块,这张卡上一个字节都不动", () => {
-			const base = '[data-bn="self"]{color:blue}';
-			const dynamic = dynamicOf(
-				ok(withVariants({ video: { blocks: { text: { css: '[data-bn="self"]{color:red}' } } } })),
-			);
-			const blocks = dynamic.blocks.map((b) => (b.id === "text" ? { ...b, css: base } : b));
-			const card = { ...dynamic, blocks };
-			expect(effectiveCard(card, "video")).toBe(card);
-		});
-
-		it("base 那份一个字节都没被改过", () => {
-			effectiveCard(card, "video");
-			expect(card.blocks.map((b) => b.id)).toEqual(["text", "pics"]);
-			expect(card.blocks.find((b) => b.id === "text")?.grid).toEqual({
-				row: 1,
-				column: 1,
-				span: 12,
-			});
-		});
+	// 口子只对 `variants` 开 —— 别的错键照旧当场退回,不然笔误又变成静默剥掉。
+	it("别的未知键照旧拒收", () => {
+		const raw = minimal({
+			cards: {
+				dynamic: {
+					width: 600,
+					blocks: [],
+					varaints: {},
+				},
+			},
+		} as unknown as Partial<CardSkinManifest>);
+		expect(errorsOf(raw)).toMatch(/varaints/);
 	});
 });
 
@@ -1271,8 +1161,11 @@ describe("形态覆盖 — variants", () => {
  * **默认皮肤:视频那五块与图廊占同一片行**(决策 10 的 2026-09-18 🔗)。
  *
  * 从前是分开排行号的 —— 出图一样,但画布上看「视频投稿」那一场时,图廊那七行就是七行
- * 标着「这一场不画」的死地(2026-09-18 主人指出),反过来也一样。形态覆盖出现之后不必再
- * 拿行号凑合。
+ * 标着「这一场不画」的死地(2026-09-18 主人指出),反过来也一样。
+ *
+ * 互斥**由数据自己表达**:没视频的卡那五块取不到东西、整块不画,没图的卡图廊同理。
+ * 从前另写过一层形态覆盖把对方藏起来,2026-09-19 现查过它在这份默认皮上零作用,已整层
+ * 退役 —— 所以这里不再有「两个形态各把对方藏起来」那一条。
  */
 describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
 	const card = DEFAULT_CARD_SKIN.cards.dynamic;
@@ -1285,15 +1178,6 @@ describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
 
 	it("图廊与视频封面从同一行起", () => {
 		expect(rowOf("pics")).toBe(rowOf("video-cover"));
-	});
-
-	// 多数时候数据自己就分开了(没视频的卡那五块取不到东西、整块不画),但两样同时有的
-	// 动态是画得出来的 —— 判据按顺序先中视频,没有这两条覆盖,图廊会原样叠在封面上。
-	it("两个形态各把对方藏起来", () => {
-		expect(card?.variants?.video?.blocks?.pics?.hidden).toBe(true);
-		for (const id of [...VIDEO, "video-duration"]) {
-			expect(card?.variants?.pics?.blocks?.[id]?.hidden, `${id} 在图文那档没藏`).toBe(true);
-		}
 	});
 
 	// 让位让完还得有人接上:转发框与互动数得排在两组媒体**之后**,不然图文那一场里
@@ -1322,7 +1206,9 @@ describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
  *
  * 所以拦在这儿:叠在一起是**要么刻意、要么互斥**,两样都不是就是撞上了。
  * - **刻意**:其中一个写了 `z`(直播状态角标压封面、视频时长角标压封面);
- * - **互斥**:分属两个形态、各把对方藏起来(视频那五块与图廊)。
+ * - **互斥**:两块在块目录里标了互不相交的 `scenes`(视频那五块是 `video`、图廊是 `pics`),
+ *   于是真机上永远不会同时画出来。⚠️ `scenes` 只给编辑器用,出图端不读它 —— 互斥这件事
+ *   在出图那头是数据自己表达的(没视频的卡那五块取不到东西、整块不画)。
  */
 describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 	/** 两个格子占着同一片地方吗 —— 行与列两个区间都相交才算(与画布的 `gridsOverlap` 同形)。 */
@@ -1342,15 +1228,17 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 		const card = DEFAULT_CARD_SKIN.cards[kind];
 		if (!card) continue;
 		it(`${kind} 卡:叠在一起的块要么写了层次,要么互斥`, () => {
-			/** 这一对是不是分属两个形态、各把对方藏起来。 */
-			const exclusive = (a: string, b: string): boolean => {
-				const hides = (id: string) =>
-					Object.entries(card.variants ?? {})
-						.filter(([, ov]) => ov.blocks?.[id]?.hidden === true)
-						.map(([v]) => v);
-				const ha = hides(a);
-				const hb = hides(b);
-				return ha.some((v) => !hb.includes(v)) && hb.some((v) => !ha.includes(v));
+			/** 这一对属于互不相交的场,于是真机上永远不会同时画出来。 */
+			const exclusive = (a: CardSkinCard["blocks"][number], b: CardSkinCard["blocks"][number]) => {
+				const scenesOf = (x: typeof a) =>
+					x.kind === "builtin"
+						? (CARD_SKIN_BUILTIN_BLOCKS[kind] as Record<string, { scenes?: readonly string[] }>)[
+								x.builtin
+							]?.scenes
+						: undefined;
+				const sa = scenesOf(a);
+				const sb = scenesOf(b);
+				return Boolean(sa && sb && !sa.some((s) => sb.includes(s)));
 			};
 			const clashes: string[] = [];
 			for (let i = 0; i < card.blocks.length; i++) {
@@ -1359,7 +1247,7 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 					const b = card.blocks[j];
 					if (!a || !b || !overlap(a, b)) continue;
 					if (a.grid.z !== undefined || b.grid.z !== undefined) continue; // 刻意叠放
-					if (exclusive(a.id, b.id)) continue; // 互斥,谁画谁占
+					if (exclusive(a, b)) continue; // 互斥,谁画谁占
 					clashes.push(`${a.id} × ${b.id}`);
 				}
 			}

@@ -12,7 +12,6 @@
 
 import {
 	cardOfManifest,
-	cardVariantForProps,
 	renderCardWithSkin,
 	sampleCard,
 	skinAssetRefs,
@@ -30,12 +29,6 @@ export type SkinPreviewHtml =
 			bleed: number;
 			warnings: string[];
 			scene: string;
-			/**
-			 * 这一场落在哪个**形态**(`null` = base)。面板靠它画「只改本场」那个开关、
-			 * 把拖出来的改动写进对的那份覆盖 —— 照场景 id 自己猜的话两处迟早对不上,而且
-			 * 两张预览图本来就可能落在同一档(「全字段」与「视频投稿」都是视频)。
-			 */
-			variant: string | null;
 	  }
 	| { ok: false; errors: string[] };
 
@@ -98,8 +91,6 @@ export async function renderSkinPreviewHtml(args: {
 		bleed: card.bleed?.size ?? 0,
 		warnings: checked.warnings,
 		scene: picked.id,
-		// 与装配时挑的是**同一个函数、同一份数据**(见 `cardVariantForProps` 的注释)。
-		variant: cardVariantForProps(kind, sample.props, sample.raw),
 	};
 }
 

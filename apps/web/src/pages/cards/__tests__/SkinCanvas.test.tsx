@@ -10,7 +10,11 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
-import { CARD_SKIN_LIMITS, type CardSkinKind } from "@bilibili-notify/internal/constants";
+import {
+	CARD_PREVIEW_SCENES,
+	CARD_SKIN_LIMITS,
+	type CardSkinKind,
+} from "@bilibili-notify/internal/constants";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
@@ -104,6 +108,7 @@ function Harness({
 			<SkinCanvas
 				kind={kind}
 				card={cardOf(draft, kind)}
+				scene={CARD_PREVIEW_SCENES[kind][0]?.id ?? ""}
 				selection={selection}
 				onSelect={setSelection}
 				onAdd={
@@ -255,7 +260,13 @@ describe("网格画布", () => {
 			...Array.from({ length: 4 }, () => ({ px: 25 })),
 		];
 		const { container } = render(
-			<SkinCanvas kind="live" card={cardOf(m, "live")} selection={null} onSelect={vi.fn()} />,
+			<SkinCanvas
+				kind="live"
+				scene="streaming"
+				card={cardOf(m, "live")}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
 		);
 		const grid = container.querySelector("[style*='grid-template-columns']") as HTMLElement;
 		expect(grid.style.gridTemplateColumns).toContain("37.500fr");
@@ -263,7 +274,9 @@ describe("网格画布", () => {
 	});
 
 	it("皮肤没定义这种卡 → 说清楚它跟着出厂默认,不是白屏", () => {
-		render(<SkinCanvas kind="sc" card={undefined} selection={null} onSelect={vi.fn()} />);
+		render(
+			<SkinCanvas kind="sc" scene="default" card={undefined} selection={null} onSelect={vi.fn()} />,
+		);
 		expect(screen.getByText(/没有定义这种卡/)).toBeTruthy();
 	});
 });
@@ -556,6 +569,7 @@ describe("接管 / 交还一种卡", () => {
 		render(
 			<SkinCanvas
 				kind="sc"
+				scene="default"
 				card={undefined}
 				selection={null}
 				onSelect={vi.fn()}
@@ -570,6 +584,7 @@ describe("接管 / 交还一种卡", () => {
 		render(
 			<SkinCanvas
 				kind="sc"
+				scene="default"
 				card={undefined}
 				selection={null}
 				onSelect={vi.fn()}
@@ -583,7 +598,9 @@ describe("接管 / 交还一种卡", () => {
 	});
 
 	it("只读的皮肤不给接管的口", () => {
-		render(<SkinCanvas kind="sc" card={undefined} selection={null} onSelect={vi.fn()} />);
+		render(
+			<SkinCanvas kind="sc" scene="default" card={undefined} selection={null} onSelect={vi.fn()} />,
+		);
 		expect(screen.queryByText(/接管这种卡/)).toBeNull();
 	});
 
@@ -625,6 +642,7 @@ describe("画布 — 块的层次", () => {
 		render(
 			<SkinCanvas
 				kind="live"
+				scene="streaming"
 				card={{ width: 600, blocks } as never}
 				selection={selection}
 				onSelect={vi.fn()}
@@ -729,112 +747,103 @@ describe("画布 — 块的层次", () => {
 });
 
 /**
- * 空行在画布上留着(排版时好用),出图那头会被压掉 —— 两边就此对不上一件事,得说出来。
- * 真要留白就摆一个空白块:块占着那一行,压行就不会把它收走(主人 2026-09-15 拍板)。
+ * **画布只摆这一场会有的块,而且和出图一样紧**(ADR-0014 决策 10 的 2026-09-19 🔗)。
+ *
+ * 上一版靠预览框回报「这一场画了谁」再给没画的挂个「这一场不画」的灰壳,主人在面板上
+ * 看到的是一堆空块、点一下还乱跳。这一版**由目录说了算**:图廊只属图文,视频那场一点
+ * 痕迹都不留;整行没块的行也压掉 —— 画布上的行号是压后的,行号列印的仍是真行号。
  */
-describe("网格画布 — 空行", () => {
-	const withBlocks = (blocks: Array<Record<string, unknown>>) => {
+describe("网格画布 — 只摆这一场的块,和出图一样紧", () => {
+	const blocks = [
+		{ id: "avatar", kind: "builtin", builtin: "avatar", grid: { row: 1, column: 1, span: 3 } },
+		{
+			id: "video-cover",
+			kind: "builtin",
+			builtin: "videoCover",
+			grid: { row: 2, column: 1, span: 12, rowSpan: 3 },
+		},
+		{
+			id: "pics",
+			kind: "builtin",
+			builtin: "pics",
+			grid: { row: 2, column: 1, span: 12, rowSpan: 2 },
+		},
+		{ id: "like", kind: "builtin", builtin: "likeCount", grid: { row: 6, column: 1, span: 4 } },
+	];
+	const canvas = (scene: string, over: Record<string, unknown> = {}) =>
 		render(
 			<SkinCanvas
-				kind="live"
+				kind="dynamic"
 				card={{ width: 600, blocks } as never}
 				selection={null}
 				onSelect={vi.fn()}
+				scene={scene}
+				{...over}
 			/>,
 		);
-	};
+	const blockEl = (id: string) =>
+		document.querySelector(`[data-block-id="${id}"]`) as HTMLElement | null;
+	const rowLabels = () =>
+		Array.from(document.querySelectorAll('[data-canvas-track="row"]')).map((el) => el.textContent);
 
-	const notes = () => screen.queryAllByTestId("empty-row-note");
-
-	it("中间的空行标一句「出图时收掉」,并给出留白的走法", () => {
-		withBlocks([
-			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 4, column: 1, span: 12 } },
-		]);
-		expect(notes().map((n) => n.style.gridRow)).toEqual(["2", "3"]);
-		expect(notes()[0].textContent).toContain("出图时收掉");
-		expect(notes()[0].textContent).toContain("空白块");
+	it("视频那场:图廊一点痕迹都不留;图文那场反过来", () => {
+		canvas("video");
+		expect(blockEl("video-cover")).toBeTruthy();
+		expect(blockEl("pics")).toBeNull();
+		expect(document.body.textContent).not.toContain("这一场不画");
+		cleanup();
+		canvas("pics");
+		expect(blockEl("pics")).toBeTruthy();
+		expect(blockEl("video-cover")).toBeNull();
 	});
 
-	it("有块的行不标", () => {
-		withBlocks([
-			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 2, column: 1, span: 12 } },
-		]);
-		expect(notes()).toHaveLength(0);
-	});
-
-	it("跨行的块把中间行占着 —— 那几行不是空行", () => {
-		withBlocks([
-			{
-				id: "cover",
-				kind: "builtin",
-				builtin: "cover",
-				grid: { row: 1, column: 1, span: 12, rowSpan: 3 },
-			},
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 4, column: 1, span: 12 } },
-		]);
-		expect(notes()).toHaveLength(0);
-	});
-
-	it("最后那一行是「添加块」的落点,不算空行", () => {
-		withBlocks([
-			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-		]);
-		expect(notes()).toHaveLength(0);
-	});
-});
-
-/**
- * **画布跟着预览场景**(2026-09-18 主人反馈:各个场景画布都一样)。
- *
- * 画布画的是皮肤 JSON,而 JSON 只有一份;真卡却是分场景的 —— `showIf` 判假、或者内置块
- * 这一场没数据,整块就不画。不说出来,主人对着一堆块猜哪些这会儿有用。
- *
- * 钉的是**「标出来了」而不是「藏起来」**:不画的块照旧在原地、照旧选得中拖得动 ——
- * 编辑器就是要让人改那些块,按场景把它们收走等于没法编辑。
- */
-describe("SkinCanvas · 这一场画不画", () => {
-	const canvas = (drawn?: readonly string[] | null) =>
-		render(
-			<SkinCanvas
-				kind="live"
-				card={cardOf(manifest(), "live")}
-				selection={null}
-				onSelect={() => {}}
-				drawn={drawn}
-			/>,
-		);
-
-	const blockEl = (root: HTMLElement, id: string) =>
-		root.querySelector(`[data-block-id="${id}"]`) as HTMLElement;
-
-	it("这一场没画出来的块标出来,画了的不标", () => {
-		const view = canvas(["cover"]);
-		expect(blockEl(view.container, "name").textContent).toContain("这一场不画");
-		expect(blockEl(view.container, "cover").textContent).not.toContain("这一场不画");
-	});
-
-	it("不画的块照旧选得中 —— 编辑器就是要让人改它", () => {
-		const picked: string[] = [];
-		const view = render(
-			<SkinCanvas
-				kind="live"
-				card={cardOf(manifest(), "live")}
-				selection={null}
-				onSelect={(s) => picked.push(s?.kind === "block" ? s.id : "")}
-				drawn={["cover"]}
-			/>,
-		);
-		fireEvent.click(blockEl(view.container, "name"));
-		expect(picked).toEqual(["name"]);
-	});
-
-	it("还没画好 / 读不到 → 一个都不标,别把满屏都说成不出现", () => {
-		for (const drawn of [undefined, null]) {
-			const view = canvas(drawn);
-			expect(view.container.textContent).not.toContain("这一场不画");
+	it("共有块每一场都在", () => {
+		for (const scene of ["text", "video", "pics", "forward"]) {
+			canvas(scene);
+			expect(blockEl("avatar")).toBeTruthy();
+			expect(blockEl("like")).toBeTruthy();
 			cleanup();
 		}
+	});
+
+	it("独有块挂「图文专属」,共有块什么都不挂", () => {
+		canvas("pics");
+		expect(blockEl("pics")?.textContent).toContain("图文专属");
+		expect(blockEl("avatar")?.textContent).not.toContain("专属");
+	});
+
+	it("整行没块的行压掉:块按压后行号落位,行号列印真行号", () => {
+		// 图文那场真行 1、2–3、6 有块;4、5 空着 → 互动数落在画布第 4 行。
+		canvas("pics");
+		expect(blockEl("pics")?.style.gridRow).toBe("2 / span 2");
+		expect(blockEl("like")?.style.gridRow).toBe("4 / span 1");
+		// 最后一条是「添加块」的备用行:真第 7 行。
+		expect(rowLabels()).toEqual(["r1", "r2", "r3", "r6", "r7"]);
+		cleanup();
+		// 视频那场封面跨 3 行,把 2–4 都占了,只有第 5 行空 → 互动数落在画布第 5 行。
+		canvas("video");
+		expect(blockEl("like")?.style.gridRow).toBe("5 / span 1");
+		expect(rowLabels()).toEqual(["r1", "r2", "r3", "r4", "r6", "r7"]);
+	});
+
+	it("叠放只看这一场的块 —— 图廊在数组里排在封面后面、占同一片行,但图文那场它底下什么都没有", () => {
+		canvas("pics");
+		expect(blockEl("pics")?.className).not.toContain("shadow-bn-elev");
+		expect(blockEl("pics")?.style.left).toBe("");
+	});
+
+	it("加块目录里独有块也打标,共有块不打", () => {
+		canvas("text", { onAdd: vi.fn() });
+		fireEvent.click(screen.getByRole("button", { name: /添加块/ }));
+		const catalogue = screen.getByRole("group", { name: "可以添加的块" });
+		expect(within(catalogue).getByRole("button", { name: /图廊/ }).textContent).toContain(
+			"图文专属",
+		);
+		expect(within(catalogue).getByRole("button", { name: /视频封面/ }).textContent).toContain(
+			"视频投稿专属",
+		);
+		expect(within(catalogue).getByRole("button", { name: /^头像/ }).textContent).not.toContain(
+			"专属",
+		);
 	});
 });

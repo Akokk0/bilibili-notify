@@ -34,7 +34,7 @@ import {
 	cardSkinKnobDeclarations,
 	DEFAULT_CARD_SKIN,
 	DIVIDER_TYPE,
-	effectiveCard,
+	rowMapOf,
 } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
 import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
@@ -49,7 +49,7 @@ import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { DynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
-import { buildCardData, type CardData, cardVariantOf, readCardField } from "./card-data";
+import { buildCardData, type CardData, readCardField } from "./card-data";
 import type { ResolvedKnobAssets } from "./knob-assets";
 
 /**
@@ -356,19 +356,11 @@ function wrapBlock(item: PlacedBlock, cls: string, style: string): VNode {
  */
 interface AssembleCtx {
 	kind: CardSkinKind;
-	/** **基础版式**那张卡。每一层各自按自己的形态在它上面合出要画的那张。 */
+	/** 这张卡的版式。**只有这一份** —— 出图端没有形态,每一层拿的都是它。 */
 	card: CardSkinCard;
 	resolveAsset?: (name: string) => string | undefined;
 	/** 真画出来过的块 id(内外两层合起来)。 */
 	used: Set<string>;
-	/**
-	 * 形态覆盖的 CSS:**后缀 class → 那段 CSS**,按遇到的先后排。
-	 *
-	 * 不能拼进块自己那段:块的 class 只有一套,而转发卡的内外两层落在不同形态上
-	 * (外层恒是转发,框里那张按原动态判)—— 拼进去的话两层会抢同一条规则。挂后缀 class
-	 * 就各贴各的,同特异度靠源码顺序压 base(见 `renderSkinnedCard` 的拼接)。
-	 */
-	variantCss: Map<string, string>;
 }
 
 /**
@@ -380,7 +372,7 @@ interface AssembleCtx {
  * 里留一行空白,而 `gap` 会把那行空白撑成看得见的缝。
  */
 function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): VNode[] {
-	const { kind } = ctx;
+	const { kind, card } = ctx;
 	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
 	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
 	const data = (buildCardData as (k: CardSkinKind, p: unknown, raw?: Dynamic) => CardData)(
@@ -388,11 +380,6 @@ function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined)
 		props,
 		raw,
 	);
-	// **形态也每层各算一份**(ADR-0014 决策 10 的 2026-09-18 🔗):转发卡外层恒是转发那一档,
-	// 框里那张按原动态判 —— 它本来就拿原动态的数据画。没有覆盖时 `effectiveCard` 原样把
-	// base 还回来,存量皮肤那条路上一个对象都不多造。
-	const variant = cardVariantOf(kind, data);
-	const card = effectiveCard(ctx.card, variant);
 	const table = BLOCK_TABLES[kind] as Record<string, BlockRenderer<unknown>>;
 	const blockProps = blockPropsOf(ctx, props, raw);
 
@@ -451,30 +438,15 @@ function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined)
 	// A 也照这个序跟模板逐块比。
 	const placed = kept.filter((item) => !dropped.has(item));
 
-	// ④ 压行:把剩下的块**占到**的行按从小到大重编成 1..n,免得被收起的块留下吃 gap 的
-	// 空行。占到 ≠ 起在:跨行的块把中间那几行也占着,漏掉它们就会把下一块压进它身上。
-	// 一个块占的行因此恒是连着的一段,`rowSpan` 不用跟着改。
-	const occupied = new Set<number>();
-	for (const item of inOrder) {
-		if (dropped.has(item)) continue;
-		const { row, rowSpan } = item.block.grid;
-		for (let r = row; r < row + (rowSpan ?? 1); r++) occupied.add(r);
-	}
-	const rowMap = new Map<number, number>();
-	for (const r of [...occupied].sort((a, b) => a - b)) rowMap.set(r, rowMap.size + 1);
+	// ④ 压行:把剩下的块占到的行重编成 1..n,免得被收起的块留下吃 gap 的空行。算法住
+	// `@bilibili-notify/internal`,画布与这里共用同一份(见 `rowMapOf` 的注释)。
+	const rowMap = rowMapOf(placed.map((item) => item.block.grid));
 
 	// ⑤ 铺 wrapper。CSS 不在这儿拼:内外两层会走到这里两遍,拼在这儿就会按「谁先画完」
 	// 排序,而且同一条规则出现两次。统一在 `renderSkinnedCard` 里按 `card.blocks` 的顺序拼。
 	return placed.map((item) => {
 		const id = item.block.id;
-		let cls = blockClass(id);
-		// 这一形态给这块另写了 CSS —— 多挂一个后缀 class,规则单发一条(见 `variantCss`)。
-		const overrideCss = variant ? ctx.card.variants?.[variant]?.blocks?.[id]?.css : undefined;
-		if (overrideCss) {
-			const variantClass = `${cls}--${variant}`;
-			cls = `${cls} ${variantClass}`;
-			ctx.variantCss.set(variantClass, overrideCss);
-		}
+		const cls = blockClass(id);
 		ctx.used.add(id);
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
 		const grid = gridStyle(kind, item.block, rowMap.get(item.block.grid.row) ?? 1);
@@ -493,7 +465,6 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		card,
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
-		variantCss: new Map(),
 	};
 	const children = placeBlocks(ctx, o.props, o.raw);
 
@@ -507,11 +478,6 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		if (block.css && ctx.used.has(block.id)) {
 			parts.push(translateBlockCss(block.css, blockClass(block.id)));
 		}
-	}
-	// 形态覆盖的那几条**排在最后**:它们与 base 那条同特异度(都是单个 class),
-	// 后来居上靠的就是源码顺序。一条覆盖都没有时这个循环一个字节都不加。
-	for (const [variantClass, css] of ctx.variantCss) {
-		parts.push(translateBlockCss(css, variantClass));
 	}
 
 	const extra: FrameExtra = {

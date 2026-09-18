@@ -39,12 +39,12 @@ describe("出厂示例数据 — 七种卡都画得出来", () => {
 	}
 });
 
-describe("出厂示例数据 — 直播卡三个场景", () => {
-	it("三个场景都渲染得通,且两两不同", async () => {
+describe("出厂示例数据 — 直播卡的场景", () => {
+	it("每个场景都渲染得通,且两两不同", async () => {
 		const ids = CARD_PREVIEW_SCENES.live.map((s) => s.id);
 		const htmls = await Promise.all(ids.map((id) => render("live", id)));
 		for (const html of htmls) expect(html).toMatch(FRAME_HOOK);
-		// 两两不同:三个场景要是喂出同一份 props,场景等于没做 —— 而面板上三个按钮照样点得动。
+		// 两两不同:两个场景要是喂出同一份 props,场景等于没做 —— 而面板上两个按钮照样点得动。
 		expect(new Set(htmls).size).toBe(ids.length);
 	});
 });
@@ -88,10 +88,10 @@ describe("出厂示例数据 — 确定性", () => {
  */
 describe("出厂示例数据 — 动态卡的转发场面", () => {
 	// 出厂默认皮肤里转发框是原子块(`data-block="forward"`),不再是正文复合块里那个挂点。
-	it("转发场面画得出转发框,全字段场面没有", async () => {
-		const [forward, av] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
+	it("转发场面画得出转发框,纯文字场面没有", async () => {
+		const [forward, text] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
 		expect(forward).toContain('data-block="forward"');
-		expect(av).not.toContain('data-block="forward"');
+		expect(text).not.toContain('data-block="forward"');
 	});
 
 	it("框里是另一整张卡 —— 块跟着同一份皮肤摆,不是写死的旧版式", async () => {
@@ -135,16 +135,16 @@ async function truthy(scene: string, fields: readonly string[]): Promise<Record<
 }
 
 /**
- * **视频投稿场面**(2026-09-17 主人要的)。默认场面为了让写皮肤的人一次看全,正文、话题、
- * 预约全堆上了;真机上 UP 发视频推过来的那张没有这些 —— 只有头部、视频卡和互动数,群里贴
- * 视频链接出的卡也是这个形状。只看默认场面的话,皮肤作者不知道「没有正文」时卡长什么样。
+ * **视频投稿场面**(2026-09-17 主人要的)。真机上 UP 发视频推过来的那张:只有头部、视频卡
+ * 和互动数,没有正文、话题、预约(群里贴视频链接出的卡也是这个形状)。默认那一场是纯文字
+ * (正文 / 话题 / 预约都在那儿),只看它的话,皮肤作者不知道「只有视频」时卡长什么样。
  */
 describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 	it("有视频卡、头部带「投稿了视频」;没有正文、话题、预约", async () => {
 		const html = await render("dynamic", "video");
 		expect(html).toContain("【示例视频】");
 		expect(html).toContain("投稿了视频");
-		// 这三样默认场面里都有 —— 回落到默认场面的话这里红。
+		// 这三样纯文字那场都有 —— 回落到默认场面的话这里红。
 		expect(html).not.toContain("示例动态正文");
 		expect(html).not.toContain("示例话题");
 		expect(html).not.toContain("示例预约");
@@ -173,13 +173,13 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
  */
 describe("出厂示例数据 — 动态卡的图文场面", () => {
 	it("图廊铺满九格,没有视频卡", async () => {
-		const html = await render("dynamic", "draw");
+		const html = await render("dynamic", "pics");
 		expect(html.match(/data-bn="pic"/g)?.length).toBe(9);
 		expect(html).not.toContain("【示例视频】");
 	});
 
 	it("{pics.count} 是 9,{pics.first} 取得到第一张图", async () => {
-		const sample = await sampleCard("dynamic", "draw");
+		const sample = await sampleCard("dynamic", "pics");
 		const html = await renderCardWithSkin(
 			"dynamic",
 			sample.props as never,
@@ -207,7 +207,7 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 	});
 
 	it("真值:带图,没有视频卡", async () => {
-		expect(await truthy("draw", ["dynamic.hasPics", "dynamic.hasVideo"])).toEqual({
+		expect(await truthy("pics", ["dynamic.hasPics", "dynamic.hasVideo"])).toEqual({
 			"dynamic.hasPics": true,
 			"dynamic.hasVideo": false,
 		});
@@ -269,12 +269,12 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 	}
 
 	// ⚠️ 前缀不是装饰:正文块自己也画视频标题,光找「示例视频」的话剪断 raw 照样绿。
-	it("{video.title} 在全字段场面取得到", async () => {
-		expect(await probe(undefined, "探针:{video.title}")).toContain("探针:【示例视频】");
+	it("{video.title} 在视频投稿场面取得到", async () => {
+		expect(await probe("video", "探针:{video.title}")).toContain("探针:【示例视频】");
 	});
 
 	it("showIf 的 dynamic.hasVideo 也随之为真", async () => {
-		const sample = await sampleCard("dynamic");
+		const sample = await sampleCard("dynamic", "video");
 		const html = await renderCardWithSkin(
 			"dynamic",
 			sample.props as never,

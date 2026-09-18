@@ -7,13 +7,15 @@
  * 能逐条钉死,组件那半只剩一条细线(指针事件 → 调用这些函数 → 交回 patch),另有守卫。
  */
 
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_LIMITS, rowMapOf } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	createVelocityTracker,
 	MAX_SOLID_STACK,
 	movedGrid,
 	project,
+	realGridPatch,
+	realRowOf,
 	resizedGrid,
 	resizedRows,
 	rowAt,
@@ -293,5 +295,42 @@ describe("rowAt —— 出了画布底下还认得出第几行", () => {
 	it("一条都没有 / 只有一条也不炸", () => {
 		expect(rowAt([], 500)).toBe(1);
 		expect(rowAt([{ start: 0, end: 56 }], 500)).toBeGreaterThan(1);
+	});
+});
+
+/**
+ * **画布压掉了整行为空的行,拖出来的行号是压后的**(ADR-0014 决策 10 的 2026-09-19 🔗)。
+ * 存之前不换回真行号的话,「把互动数从真第 7 行往下挪一格」会被存成第 5 行 —— 界面上
+ * 看着落对了,再切一场回来它跑到了别的块身上。
+ */
+describe("压行换算 —— 画布行号 ↔ 真行号", () => {
+	// 真行 1、2–3(跨两行)、7 有块;4–6 整行空着,画布压掉 → 画布上是 1、2–3、4。
+	const map = () => rowMapOf([{ row: 1 }, { row: 2, rowSpan: 2 }, { row: 7 }]);
+
+	it("表里有的照查:画布第 4 行就是真第 7 行", () => {
+		expect(realRowOf(map(), 1)).toBe(1);
+		expect(realRowOf(map(), 3)).toBe(3);
+		expect(realRowOf(map(), 4)).toBe(7);
+	});
+
+	it("表外的按节距接着数:最后一块底下那条备用行是真第 8 行", () => {
+		expect(realRowOf(map(), 5)).toBe(8);
+		expect(realRowOf(map(), 7)).toBe(10);
+	});
+
+	it("这一场一块都没有 → 两套行号是一回事", () => {
+		expect(realRowOf(new Map(), 3)).toBe(3);
+	});
+
+	it("只挪位置:只换 row,跨行数原样 —— 块占的真行恒是连着的一段", () => {
+		expect(realGridPatch(map(), { row: 4, column: 2 })).toEqual({ row: 7, column: 2 });
+		expect(realGridPatch(map(), { column: 2, span: 3 })).toEqual({ column: 2, span: 3 });
+	});
+
+	it("拉上下两条边:顶与底各换各的,中间被压掉的空行归它", () => {
+		// 画布上从第 2 行拉到第 4 行(跨 3),真的是 2 到 7:跨 6。
+		expect(realGridPatch(map(), { row: 2, rowSpan: 3 })).toEqual({ row: 2, rowSpan: 6 });
+		// 没跨过压掉的行时数不变。
+		expect(realGridPatch(map(), { row: 2, rowSpan: 2 })).toEqual({ row: 2, rowSpan: 2 });
 	});
 });

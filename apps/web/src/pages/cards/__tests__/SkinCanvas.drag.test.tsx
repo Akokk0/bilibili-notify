@@ -84,6 +84,7 @@ function mount(over: Record<string, unknown> = {}) {
 	render(
 		<SkinCanvas
 			kind="live"
+			scene="streaming"
 			card={card as never}
 			selection={null}
 			onSelect={onSelect}
@@ -278,7 +279,15 @@ describe("拉边 —— 改跨行", () => {
 
 describe("只读的皮肤", () => {
 	it("不给 onGrid 就没有拖拽把手 —— 拖得动却存不下去比拖不动更气人", () => {
-		render(<SkinCanvas kind="live" card={card as never} selection={null} onSelect={vi.fn()} />);
+		render(
+			<SkinCanvas
+				kind="live"
+				scene="streaming"
+				card={card as never}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
+		);
 		expect(screen.queryByTestId("resize-right-cover")).toBeNull();
 		expect(screen.queryByTestId("resize-bottom-cover")).toBeNull();
 	});
@@ -385,6 +394,7 @@ describe("拉高的把手只给真拉得动的块", () => {
 		render(
 			<SkinCanvas
 				kind="live"
+				scene="streaming"
 				card={
 					{
 						width: 600,
@@ -407,5 +417,36 @@ describe("拉高的把手只给真拉得动的块", () => {
 		expect(h.left).toBeTruthy();
 		expect(h.top).toBeNull();
 		expect(h.bottom).toBeNull();
+	});
+});
+
+/**
+ * **压过行的画布上拖块,交出去的是真行号**(ADR-0014 决策 10 的 2026-09-19 🔗)。
+ * 换算是纯函数、单独钉过;这条钉的是接线 —— 画布要是忘了套那一层,拖到画布第 3 行
+ * 会被存成真第 3 行,而那一行在皮肤里其实是被压掉的空行。
+ */
+describe("压过行的画布 —— 拖完交出真行号", () => {
+	// 真行 1 与 5 有块,2–4 空着 → 画布上 name 在第 2 行、备用行是第 3 行(真第 6 行)。
+	const sparse = {
+		width: 600,
+		blocks: [
+			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 4 } },
+			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 5, column: 1, span: 4 } },
+		],
+	};
+
+	it("把封面拖到画布第 2 行 → 存的是真第 5 行;拖到备用行 → 真第 6 行", () => {
+		const { onGrid } = mount({ card: sparse });
+		dragFrom(blockEl(), { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });
+		expect(onGrid).toHaveBeenLastCalledWith("cover", { row: 5, column: 1 });
+		dragFrom(blockEl(), { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(3) });
+		expect(onGrid).toHaveBeenLastCalledWith("cover", { row: 6, column: 1 });
+	});
+
+	it("拉封面的底边到画布第 2 行 → 真的占到第 5 行(跨 5)", () => {
+		const { onGrid } = mount({ card: sparse });
+		const handle = screen.getByTestId("resize-bottom-cover");
+		dragFrom(handle, { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });
+		expect(onGrid).toHaveBeenLastCalledWith("cover", { row: 1, rowSpan: 5 });
 	});
 });

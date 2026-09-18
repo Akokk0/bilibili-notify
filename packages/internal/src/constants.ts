@@ -1131,7 +1131,8 @@ export const CARD_SKIN_KIND_NAMES: Readonly<Record<CardSkinKind, string>> = {
 
 /**
  * 编辑器实时预览里,一种卡可选的「场景」—— 同一张卡在不同状态下长得不一样(直播卡的
- * 开播 / 直播中 / 下播),皮肤得挨个看过才知道有没有写塌。
+ * 直播中 / 下播、动态卡的纯文字 / 视频投稿 / 图文 / 转发),皮肤得挨个看过才知道有没有
+ * 写塌。
  */
 export interface PreviewScene {
 	/** 稳定的机器名,进 URL / 请求体。小写 kebab。 */
@@ -1151,24 +1152,23 @@ export interface PreviewScene {
  * 出图端的活,住在 `packages/image` 的 `preview/sample-cards.ts`,面板一个字都不碰。
  */
 export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly PreviewScene[]>> = {
-	// 直播卡三态各画各的(角标、时间行、粉丝行都不同);设计稿上按 开播 / 直播中 / 下播
-	// 排,但默认要落在「直播中」—— 那是最常被看到的一张,所以它排数组第一位。
+	// 直播卡两态各画各的(角标、时间行、粉丝行都不同);默认落在「直播中」—— 那是最常被
+	// 看到的一张。「开播」不单列:它与直播中 `liveStatus` 都是 1,只差一句文案,出图端分不开,
+	// 留着就只能是别名(ADR-0014 决策 10 的 2026-09-19 🔗)。
 	live: [
 		{ id: "streaming", label: "直播中" },
-		{ id: "start", label: "开播" },
 		{ id: "ended", label: "下播" },
 	],
-	// 默认那个堆满了字段(正文 + 视频卡 + 话题 + 预约),给写皮肤的人一次看全,所以叫
-	// 「全字段」;id 留 `default` 不改 —— 存过书签 / 旧链接送来的还是它。
-	// 「视频投稿」是真机上 UP 发视频推过来的那张:只有头部、视频卡和互动数,没有正文、
-	// 话题、预约(群里贴视频链接出的卡也是这个形状)。
-	// 「图文」是带图的那一种:`pics.*` 契约字段与图廊的样式只有它看得到。
-	// 转发单给一个场面:它里头是**另一整张卡**(转发框 + 跟着同一份皮肤摆的块),
-	// 不单列的话皮肤作者在面板上一眼都看不到这一层。
+	// 四场按主媒体分,每一场就是出图端分得出来的一种卡:纯文字是底档(正文 + 话题 + 附加
+	// 内容都在这儿看);「视频投稿」是真机上 UP 发视频推过来的那张 —— 只有头部、视频五块和
+	// 互动数,没有正文、话题、附加内容(群里贴视频链接出的卡也是这个形状);「图文」是带图的
+	// 那一种,图廊只有它看得到;转发单给一场:它里头是**另一整张卡**(转发框 + 跟着同一份
+	// 皮肤摆的块),不单列的话皮肤作者在面板上一眼都看不到这一层。
+	// 从前的「全字段」(视频 + 正文 + 话题)砍了 —— 它在出图端与「视频投稿」是同一种卡。
 	dynamic: [
-		{ id: "default", label: "全字段" },
+		{ id: "text", label: "纯文字" },
 		{ id: "video", label: "视频投稿" },
-		{ id: "draw", label: "图文" },
+		{ id: "pics", label: "图文" },
 		{ id: "forward", label: "转发" },
 	],
 	sc: [{ id: "default", label: "醒目留言" }],
@@ -1191,63 +1191,9 @@ export function resolvePreviewScene(kind: CardSkinKind, scene?: string): Preview
 	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
 }
 
-// ---- 卡片形态 ---------------------------------------------------------------
-
-/**
- * 一种**形态** —— 同一种卡在真机上分得出来的几副样子(ADR-0014 决策 10 的 2026-09-18 🔗)。
- * 皮肤给每个形态存一份「在 base 上改了哪几块」的覆盖。
- */
-export interface CardSkinVariant {
-	/** 稳定的机器名,当皮肤 JSON 里那张覆盖表的键。小写 kebab。 */
-	id: string;
-	/** 面板上显示的中文短名。 */
-	label: string;
-	/**
-	 * 判据:`CARD_SKIN_FIELDS[kind]` 里的一个 **bool** 字段路径,为真就是这个形态。
-	 * 与 `showIf` 读同一份 `CardData` —— 两处各算一遍的话,画布标出来的和真画出来的
-	 * 迟早是两回事。
-	 */
-	when: string;
-}
-
-/**
- * 每种卡分得出来的形态,**按判据顺序排、先真者胜**;一个都不中就是 base(那张写在
- * `cards[kind]` 上的基础版式)。
- *
- * **形态不是预览场景。** 场景是给人看的几张图,形态是真机分得出来的几种卡 —— 两张预览图
- * 可以落在同一个形态上(动态卡的「全字段」与「视频投稿」同为 `DYNAMIC_TYPE_AV`,直播卡的
- * 「开播」与「直播中」`liveStatus` 都是 1)。按场景存覆盖的话,真机拿到一张卡选不出该用
- * 哪一份;按形态存就没有这个问题,而两张预览图落在同一个形态上本来就该长得一样。
- *
- * 判的是**数据**不是动态类型,所以专栏自动落进图文那一档(它的头图走的就是图廊);
- * 而转发框里那张内层卡**各判各的**(它本来就拿原动态的数据画)。
- *
- * 醒目留言 / 上舰 / 三张单块卡只有一种样子,表里空着 —— 它们只有 base。
- */
-export const CARD_SKIN_VARIANTS: Readonly<Record<CardSkinKind, readonly CardSkinVariant[]>> = {
-	// `liveStatus` 到了卡的 props 上只剩 0 / 1 / 2(`image-renderer.ts` 把 3 = 刚下播归一成
-	// 2 再传进来),所以这两档把真机上会推出去的卡全盖住了。
-	live: [
-		{ id: "streaming", label: "直播中", when: "live.isStreaming" },
-		{ id: "ended", label: "下播", when: "live.isEnded" },
-	],
-	// 转发排最前是刻意的:转发一条视频动态时 `isForward` 与 `hasVideo` 同时为真,而外层
-	// 该画的是转发框,不是视频卡。
-	dynamic: [
-		{ id: "forward", label: "转发", when: "dynamic.isForward" },
-		{ id: "video", label: "视频", when: "dynamic.hasVideo" },
-		{ id: "pics", label: "图文", when: "dynamic.hasPics" },
-	],
-	sc: [],
-	guard: [],
-	roastBoard: [],
-	roastSolo: [],
-	wordcloud: [],
-};
-
 /**
  * 块在网格里的位置(与 `CardSkinBlockSchema` 的 `grid` 同形)。声明在这里而不是 schema 里,
- * 是为了让**零依赖**的 {@link effectiveGrid} 也能用上 —— 画布经 `/constants` 子路径运行时
+ * 是为了让**零依赖**的 {@link rowMapOf} 也能用上 —— 画布经 `/constants` 子路径运行时
  * 消费它,不能把 zod 拖进前端 bundle(与 {@link AIProviderProfileShape} 同一条理由)。
  */
 export interface CardSkinGrid {
@@ -1259,83 +1205,23 @@ export interface CardSkinGrid {
 }
 
 /**
- * 某一形态里对**一个块**的改动。三样(格子 / 藏不藏 / CSS)都可以不写,不写就跟 base。
+ * **压行**:把一组块**占到**的行按从小到大重编成 1..n,回一张「真行号 → 压后行号」的表。
+ * 占到 ≠ 起在:跨行的块把中间那几行也占着,漏掉它们就会把下一块压进它身上;一个块占的
+ * 行因此恒是连着的一段,`rowSpan` 不用跟着改。整行没块的行不在表里 —— 那就是被压掉的行。
  *
- * ⛔ 这里**没有**加块的口子:块一律先进 base,别的形态 `hidden` 起来就行(决策 10 的 🔗)。
- * 否则块表不再唯一,块 id 的唯一性、挂点对表、AI 工具面都要跟着分叉。
+ * 出图端与画布**共用这一处**(ADR-0014 决策 10 的 2026-09-19 🔗「画布与出图一样紧」):
+ * 各写一遍的话,编辑器里看着紧贴的两块,真画出来中间多一条缝,或者反过来。
  */
-export interface CardSkinBlockOverride {
-	/**
-	 * **只写要改的那几个键**,没写的跟 base —— 于是改 base 的列,没写列的形态跟着动。
-	 * 全量重述的话,base 改一处就有一堆形态悄悄不跟了。
-	 *
-	 * ⚠️ 它只能**设**不能**清**:JSON 表达不出「把 base 的 z 拿掉」。要回到没有层次,
-	 * 写一个基准层号;要回到单行,写 `rowSpan: 1`。
-	 */
-	grid?: Partial<CardSkinGrid>;
-	/** 这一形态不画它。 */
-	hidden?: boolean;
-	/**
-	 * 这一形态**追加**的 CSS。不是替换 —— 替换语义下,base 改的那一句永远到不了写过覆盖
-	 * 的形态。渲染器把它单发一条规则、排在 base 那条后面(同特异度,后来居上)。
-	 *
-	 * ⚠️ 它**不能**被拼进块自己的 CSS:块的 class 只有一套,而转发卡的内外两层落在不同
-	 * 形态上(外层恒为转发,框里那张按原动态判)—— 拼进去的话,两层里同一个块会抢同一条
-	 * 规则。所以这条规则挂的是带形态后缀的 class,只贴在那一层的 wrapper 上。
-	 */
-	css?: string;
-}
-
-/** 一个形态改了哪几块,键是块 id。 */
-export interface CardSkinVariantOverride {
-	blocks?: Record<string, CardSkinBlockOverride>;
-}
-
-/**
- * 一张卡的形态覆盖表:形态 id → 改了哪几块。**一条都不写就等于今天** —— 存量皮肤与
- * 默认皮肤出的图逐字节不变。
- */
-export type CardSkinVariantOverrides = Record<string, CardSkinVariantOverride>;
-
-/**
- * base 的格子 + 这一形态的改动 → 实际的格子。没有改动时**原样返回**入参。
- *
- * 画布与出图端共用这一处:各写一遍的话,编辑器里摆的和真画出来的迟早是两回事。
- */
-export function effectiveGrid(grid: CardSkinGrid, ov?: Partial<CardSkinGrid>): CardSkinGrid {
-	if (!ov) return grid;
-	const merged: CardSkinGrid = { ...grid };
-	if (ov.row !== undefined) merged.row = ov.row;
-	if (ov.column !== undefined) merged.column = ov.column;
-	if (ov.span !== undefined) merged.span = ov.span;
-	if (ov.rowSpan !== undefined) merged.rowSpan = ov.rowSpan;
-	if (ov.z !== undefined) merged.z = ov.z;
-	return merged;
-}
-
-/**
- * 把覆盖表里指向**已经不存在的块**的条目摘掉。**删一个块、重写整张卡之后都得走一遍。**
- *
- * 留着的话装包门当场退回「这张卡上没有叫「X」的块」—— 而那个 id 指着的正是刚被删掉的
- * 东西,主人看到的是一句指着不存在的块的报错,整套皮肤从此存不下去。
- *
- * 摘空的形态连壳一起收,整张表空了回 `undefined`:与 base 等值的空壳留着只是 diff 里的
- * 噪音,还会让人以为这一场改过。
- */
-export function pruneCardVariants(
-	variants: CardSkinVariantOverrides | undefined,
-	keep: ReadonlySet<string>,
-): CardSkinVariantOverrides | undefined {
-	if (!variants) return undefined;
-	const out: CardSkinVariantOverrides = {};
-	for (const [id, ov] of Object.entries(variants)) {
-		const blocks: Record<string, CardSkinBlockOverride> = {};
-		for (const [blockId, block] of Object.entries(ov.blocks ?? {})) {
-			if (keep.has(blockId)) blocks[blockId] = block;
-		}
-		if (Object.keys(blocks).length > 0) out[id] = { ...ov, blocks };
+export function rowMapOf(
+	grids: Iterable<Pick<CardSkinGrid, "row" | "rowSpan">>,
+): Map<number, number> {
+	const occupied = new Set<number>();
+	for (const { row, rowSpan } of grids) {
+		for (let r = row; r < row + (rowSpan ?? 1); r++) occupied.add(r);
 	}
-	return Object.keys(out).length > 0 ? out : undefined;
+	const map = new Map<number, number>();
+	for (const r of [...occupied].sort((a, b) => a - b)) map.set(r, map.size + 1);
+	return map;
 }
 
 /**
@@ -1644,6 +1530,15 @@ export interface CardSkinBuiltinBlock {
 	 * 画布照它决定上下两条边画不画把手:拉得动的,拉完出图就真的跟着变。
 	 */
 	heightFromRows?: true;
+	/**
+	 * 这块**只属于这几场**(`CARD_PREVIEW_SCENES[kind]` 里的 id;ADR-0014 决策 10 的
+	 * 2026-09-19 🔗)。不写 = 共有块,每一场都有它。
+	 *
+	 * 只给编辑器用:画布切到哪一场就只摆这一场会有的块,加块目录上给独有块挂个小标。
+	 * **出图端不读它** —— 图廊在视频那场本来就没数据、整块不画,目录只是把这件事提前
+	 * 告诉画布。所以皮肤格式里没有任何场景名单:共有块改了处处改,没有「专属本场」。
+	 */
+	scenes?: readonly string[];
 }
 
 /**
@@ -1706,20 +1601,27 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
 		// 投稿视频那张卡拆成的五块。外面那圈灰底圆角容器不是块,是皮肤用 CSS 拼的 ——
 		// 三段文字各带一段灰底、首尾分担圆角(决策 8 的 2026-09-18 🔗)。
+		// 三组独有块各自只属于一场(`scenes`):画布切到别的场就不摆它们。
 		videoCover: {
 			label: "视频封面",
 			atom: true,
 			heightFromRows: true,
 			hooks: { image: "封面图片" },
+			scenes: ["video"],
 		},
-		videoDuration: { label: "视频时长", atom: true, hooks: {} },
-		videoTitle: { label: "视频标题", atom: true, hooks: {} },
-		videoDesc: { label: "视频简介", atom: true, hooks: {} },
-		videoStats: { label: "播放 · 弹幕数", atom: true, hooks: {} },
+		videoDuration: { label: "视频时长", atom: true, hooks: {}, scenes: ["video"] },
+		videoTitle: { label: "视频标题", atom: true, hooks: {}, scenes: ["video"] },
+		videoDesc: { label: "视频简介", atom: true, hooks: {}, scenes: ["video"] },
+		videoStats: { label: "播放 · 弹幕数", atom: true, hooks: {}, scenes: ["video"] },
 		// 图廊张数是动态的,拆不开,整块画。
-		pics: { label: "图廊", atom: true, hooks: { pics: "图廊", pic: "图廊里的一张图" } },
+		pics: {
+			label: "图廊",
+			atom: true,
+			hooks: { pics: "图廊", pic: "图廊里的一张图" },
+			scenes: ["pics"],
+		},
 		// 根就是转发框;框里是一整张内层卡,那些部件归内层卡自己的块管,这里不声明。
-		forward: { label: "转发框", atom: true, hooks: {} },
+		forward: { label: "转发框", atom: true, hooks: {}, scenes: ["forward"] },
 		forwardCount: { label: "转发数", atom: true, hooks: { icon: "图标" } },
 		commentCount: { label: "评论数", atom: true, hooks: { icon: "图标" } },
 		likeCount: { label: "点赞数", atom: true, hooks: { icon: "图标" } },

@@ -33,7 +33,6 @@ import {
 	type CardSkinManifest,
 	cardSkinBytes,
 	DEFAULT_CARD_SKIN,
-	pruneCardVariants,
 } from "@bilibili-notify/internal";
 import { blockLabel, cardCssRules, fenced, hookLines, knobLines } from "./ai-css.js";
 import { CARD_HTML_ALLOWED_TAGS } from "./html-sanitizer.js";
@@ -362,14 +361,6 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				css: args.css !== undefined ? args.css || undefined : old?.css,
 				assets: old?.assets,
 				blocks,
-				// 形态覆盖与资产同一条道理:工具面连提都没提过它,重写一次卡就悄悄没了
-				// (决策 10 的 🔗:第一版只写基础版式)。那是主人在编辑器里一格一格摆出来的
-				// 分场版式,更得原样留着 —— 只把指向这次没写进来的块的那几条摘掉,不然装包门
-				// 退回来的是一句指着不存在的块的报错。
-				variants: pruneCardVariants(
-					old?.variants,
-					new Set(blocks.map((b) => b.id).filter((id): id is string => typeof id === "string")),
-				),
 			});
 			const warnings = await save(target.id, withCard(target.manifest, kind, card));
 			touch(target.id, kind);
@@ -457,12 +448,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			const target = await writable(args.skin);
 			const card = cardOf(target.manifest, kind);
 			const blocks = card.blocks.filter((b) => b.id !== blockId);
-			// 覆盖跟着块走 —— 留着的话这套皮肤当场存不下去(装包门退回「这张卡上没有叫
-			// 「X」的块」),而那个 id 指着的正是刚删掉的东西。
-			const variants = pruneCardVariants(card.variants, new Set(blocks.map((b) => b.id)));
 			const warnings = await save(
 				target.id,
-				withCard(target.manifest, kind, compact({ ...card, blocks, variants })),
+				withCard(target.manifest, kind, compact({ ...card, blocks })),
 			);
 			touch(target.id, kind);
 			return `${target.note}删掉了「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`;

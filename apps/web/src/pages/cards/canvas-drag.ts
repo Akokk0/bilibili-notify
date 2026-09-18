@@ -272,3 +272,45 @@ export function prefersReducedMotion(): boolean {
 	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
 	return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+
+// ── 压行(画布与出图一样紧) ────────────────────────────────────────────────────
+
+/**
+ * 画布上第 `display` 行对应皮肤 JSON 里的真行号。`rowMap` 是 `rowMapOf` 回的那张
+ * 「真行号 → 压后行号」表(键按真行号升序)。
+ *
+ * 画布把整行没块的行压掉了(ADR-0014 决策 10 的 2026-09-19 🔗),所以拖出来的行号是
+ * **压后的**,存之前得换回去。表里有的照查;表外那几行(最后一块底下的备用行、拉高时
+ * 越过末行)**按节距接着往下数** —— 与拉高那条「越过最后一条之后按节距数」同一条规矩。
+ * 表是空的(这一场一块都没有)时两套行号本来就是一回事。
+ */
+/** 画布交回去的一份位置改动(与 `SkinCanvasGridHandler` 的 patch 同形)。 */
+export interface GridPatch {
+	row?: number;
+	column?: number;
+	span?: number;
+	rowSpan?: number;
+}
+
+export function realRowOf(rowMap: ReadonlyMap<number, number>, display: number): number {
+	const reals = [...rowMap.keys()];
+	if (display <= reals.length) return reals[display - 1] ?? display;
+	const last = reals[reals.length - 1] ?? 0;
+	return last + (display - reals.length);
+}
+
+/**
+ * 把画布(压后行号)里的一份位置改动换成真行号。
+ *
+ * 只挪位置时只换 `row`,跨行数原样 —— 块占的真行恒是连着的一段(压行只压整行为空的
+ * 行,块自己占着的行压不掉),按底边换算反而会把中间压掉的空行也算进去。拉上下两条边
+ * 时(`rowSpan` 在)顶与底各换各的:块从画布上第 2 行拉到第 3 行,而第 3 行其实是真的
+ * 第 7 行,那它就是真的占到了第 7 行,中间被压掉的那几行也归它。
+ */
+export function realGridPatch(rowMap: ReadonlyMap<number, number>, patch: GridPatch): GridPatch {
+	if (patch.row === undefined) return patch;
+	const row = realRowOf(rowMap, patch.row);
+	if (patch.rowSpan === undefined) return { ...patch, row };
+	const bottom = realRowOf(rowMap, patch.row + patch.rowSpan - 1);
+	return { ...patch, row, rowSpan: bottom - row + 1 };
+}
