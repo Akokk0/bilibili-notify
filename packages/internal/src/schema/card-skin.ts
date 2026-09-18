@@ -40,21 +40,34 @@ import {
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_UPLOAD_PREFIX,
 	CARD_SKIN_VARIANTS,
+	type CardSkinBlockOverride,
 	type CardSkinBuiltinBlock,
 	type CardSkinField,
 	type CardSkinFieldType,
 	type CardSkinFrameHook,
+	type CardSkinGrid,
 	type CardSkinKind,
 	type CardSkinKnobUnit,
 	type CardSkinVariant,
+	type CardSkinVariantOverride,
+	type CardSkinVariantOverrides,
 	cardSkinBytes,
+	effectiveGrid,
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 	resolvePreviewScene,
 } from "../constants.js";
 
-export type { CardSkinKind, CardSkinVariant, PreviewScene };
+export type {
+	CardSkinBlockOverride,
+	CardSkinGrid,
+	CardSkinKind,
+	CardSkinVariant,
+	CardSkinVariantOverride,
+	CardSkinVariantOverrides,
+	PreviewScene,
+};
 // 七种卡、预览场景表与**形态表**都住零依赖的 `constants.ts`:面板(apps/web)要拿它们画
 // 那排卡种 tab、那排场景按钮与「只改本场」那个切换开关,而从根入口取值会把 zod 整张
 // schema 图拽进前端 bundle(`internal-entry-conformance.test.ts` 钉着这条)。这里原样
@@ -64,6 +77,7 @@ export {
 	CARD_SKIN_KIND_NAMES,
 	CARD_SKIN_KINDS,
 	CARD_SKIN_VARIANTS,
+	effectiveGrid,
 	resolvePreviewScene,
 };
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
@@ -537,6 +551,42 @@ const CardSkinBleedSchema = z
 	.strict();
 export type CardSkinBleed = z.infer<typeof CardSkinBleedSchema>;
 
+/** 形态 id,与块 id 同一把尺(它也是 JSON 里的一个键)。 */
+const VARIANT_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * 形态覆盖里的格子:**每个键都是可选的**,只写要改的那几个(见
+ * {@link CardSkinBlockOverride.grid})。取值范围与 base 的格子同一把尺;「合起来越不越界」
+ * 归 {@link parseCardSkin} 按合并后的格子判 —— 这一层看不到 base。
+ */
+const GridOverrideSchema = z
+	.object({
+		row: z.number().int().min(1).max(CARD_SKIN_LIMITS.maxRows).optional(),
+		column: z.number().int().min(1).max(CARD_SKIN_LIMITS.columns).optional(),
+		span: z.number().int().min(1).max(CARD_SKIN_LIMITS.columns).optional(),
+		rowSpan: z.number().int().min(1).max(CARD_SKIN_LIMITS.maxRows).optional(),
+		z: z.number().int().min(CARD_SKIN_LIMITS.layer.min).max(CARD_SKIN_LIMITS.layer.max).optional(),
+	})
+	.strict();
+
+const BlockOverrideSchema = z
+	.object({
+		grid: GridOverrideSchema.optional(),
+		hidden: z.boolean().optional(),
+		css: cssField,
+	})
+	.strict();
+
+/**
+ * 一个形态的覆盖。`blocks` 的键必须是 base 里**真有**的块 id —— ⛔ 形态不许自带新块
+ * (决策 10 的 🔗),那一条归 {@link parseCardSkin} 对表。
+ */
+const VariantOverrideSchema = z
+	.object({
+		blocks: z.record(z.string().regex(BLOCK_ID_RE, "块 id 不合法"), BlockOverrideSchema).optional(),
+	})
+	.strict();
+
 export const CardSkinCardSchema = z
 	.object({
 		width: z.number().int().min(CARD_SKIN_LIMITS.width.min).max(CARD_SKIN_LIMITS.width.max),
@@ -573,9 +623,23 @@ export const CardSkinCardSchema = z
 		blocks: z
 			.array(CardSkinBlockSchema)
 			.max(CARD_SKIN_LIMITS.maxBlocks, `一张卡最多 ${CARD_SKIN_LIMITS.maxBlocks} 块`),
+		/**
+		 * **形态覆盖**:上面那份 `blocks` 是基础版式,这里按形态写「改了哪几块」
+		 * (决策 10 的 2026-09-18 🔗)。键是 {@link CARD_SKIN_VARIANTS} 里该卡种的形态 id。
+		 *
+		 * **整个字段可以不写,不写就是今天那样**:存量皮肤与默认皮肤出的图逐字节不变。
+		 */
+		variants: z
+			.record(z.string().regex(VARIANT_ID_RE, "形态 id 不合法"), VariantOverrideSchema)
+			.optional(),
 	})
 	.strict();
 export type CardSkinCard = z.infer<typeof CardSkinCardSchema>;
+
+// 形态覆盖那两层的形状声明在零依赖的 `constants.ts`(画布要在浏览器里用),这里钉住
+// zod 推出来的与它**同形** —— 两边各长各的,某天加个键就只有一边知道。
+const _variantsConform: CardSkinVariantOverrides | undefined = {} as CardSkinCard["variants"];
+void _variantsConform;
 
 /**
  * 🪦 **已退役**(2026-09-14 主人拍板)。皮肤自带的变量默认值 —— 旋钮出现**之前**那套
@@ -722,8 +786,80 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 				errors.push(`${at}.showIf: ${kind} 卡的契约里没有字段「${b.showIf}」`);
 			}
 		});
+		// 形态覆盖(决策 10 的 🔗)。两件事:形态得是这种卡真有的那几档,块得是 base 里
+		// 真有的那几块 —— 后者是决策本身(⛔ 形态不许自带新块)。
+		for (const [variantId, ov] of Object.entries(card.variants ?? {})) {
+			const at = `cards.${kind}.variants.${variantId}`;
+			if (!CARD_SKIN_VARIANTS[kind].some((v) => v.id === variantId)) {
+				errors.push(`${at}: ${kind} 卡没有叫「${variantId}」的形态`);
+				continue;
+			}
+			for (const [blockId, bo] of Object.entries(ov.blocks ?? {})) {
+				const base = card.blocks.find((b) => b.id === blockId);
+				if (!base) {
+					errors.push(
+						`${at}.blocks.${blockId}: 这张卡上没有叫「${blockId}」的块 —— 块一律先进基础版式,形态里只能藏或改`,
+					);
+					continue;
+				}
+				if (!bo.grid) continue;
+				// **按合并后的格子判**:base 合法、覆盖把它推出去照样是坏版式,而它只在那一个
+				// 形态上炸 —— 进门时不拦,真机上撞见的人根本对不出是哪儿写错了。
+				const g = effectiveGrid(base.grid, bo.grid);
+				if (g.column + g.span - 1 > CARD_SKIN_LIMITS.columns) {
+					errors.push(
+						`${at}.blocks.${blockId}.grid: 第 ${g.column} 列起跨 ${g.span} 列越过了 ${CARD_SKIN_LIMITS.columns} 列`,
+					);
+				}
+				if (g.row + (g.rowSpan ?? 1) - 1 > CARD_SKIN_LIMITS.maxRows) {
+					errors.push(`${at}.blocks.${blockId}.grid: 行数越过了 ${CARD_SKIN_LIMITS.maxRows}`);
+				}
+			}
+		}
 	}
 	return errors.length ? { ok: false, errors } : { ok: true, manifest: m };
+}
+
+/**
+ * base 的版式 + 这一形态的覆盖 → **真要画的那张卡**(ADR-0014 决策 10 的 2026-09-18 🔗)。
+ *
+ * 🔴 **没有覆盖时原样返回入参**(引用相等,不是「内容一样」)。存量皮肤、默认皮肤、以及
+ * 写了覆盖但这一形态没改过的卡,都走这条路 —— 出图逐字节不变才有保证。
+ *
+ * 管**格子**与**藏不藏**这两样:
+ * - 格子只合并写了的那几个键({@link effectiveGrid});
+ * - 藏起来的块整个不在结果里,与 `showIf` 判假同一个下场(后面的行号重排会把空行收掉)。
+ *
+ * ⛔ 第三样(覆盖的 CSS)**不在这里合**:块的 class 只有一套,而转发卡的内外两层落在
+ * 不同形态上 —— 拼进块自己那段 CSS 的话,两层会抢同一条规则。它由渲染器单发一条、挂带
+ * 形态后缀的 class(见 {@link CardSkinBlockOverride.css})。
+ */
+export function effectiveCard(card: CardSkinCard, variant: string | null): CardSkinCard {
+	const overrides = variant ? card.variants?.[variant]?.blocks : undefined;
+	if (!overrides) return card;
+	const blocks: CardSkinBlock[] = [];
+	let changed = false;
+	for (const block of card.blocks) {
+		const ov: CardSkinBlockOverride | undefined = overrides[block.id];
+		if (!ov) {
+			blocks.push(block);
+			continue;
+		}
+		if (ov.hidden) {
+			changed = true;
+			continue;
+		}
+		if (!ov.grid) {
+			// 只覆盖了 CSS —— 那一样归渲染器,这里这张卡一个字节都没变。
+			blocks.push(block);
+			continue;
+		}
+		changed = true;
+		const grid: CardSkinGrid = effectiveGrid(block.grid, ov.grid);
+		blocks.push({ ...block, grid });
+	}
+	// 覆盖表里写的块一个都没对上(比如 `blocks: {}`)—— 那也是「没改过」。
+	return changed ? { ...card, blocks } : card;
 }
 
 // ---- 默认皮肤 ----------------------------------------------------------------

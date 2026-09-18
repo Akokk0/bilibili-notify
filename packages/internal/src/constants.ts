@@ -1246,6 +1246,74 @@ export const CARD_SKIN_VARIANTS: Readonly<Record<CardSkinKind, readonly CardSkin
 };
 
 /**
+ * 块在网格里的位置(与 `CardSkinBlockSchema` 的 `grid` 同形)。声明在这里而不是 schema 里,
+ * 是为了让**零依赖**的 {@link effectiveGrid} 也能用上 —— 画布经 `/constants` 子路径运行时
+ * 消费它,不能把 zod 拖进前端 bundle(与 {@link AIProviderProfileShape} 同一条理由)。
+ */
+export interface CardSkinGrid {
+	row: number;
+	column: number;
+	span: number;
+	rowSpan?: number;
+	z?: number;
+}
+
+/**
+ * 某一形态里对**一个块**的改动。三样(格子 / 藏不藏 / CSS)都可以不写,不写就跟 base。
+ *
+ * ⛔ 这里**没有**加块的口子:块一律先进 base,别的形态 `hidden` 起来就行(决策 10 的 🔗)。
+ * 否则块表不再唯一,块 id 的唯一性、挂点对表、AI 工具面都要跟着分叉。
+ */
+export interface CardSkinBlockOverride {
+	/**
+	 * **只写要改的那几个键**,没写的跟 base —— 于是改 base 的列,没写列的形态跟着动。
+	 * 全量重述的话,base 改一处就有一堆形态悄悄不跟了。
+	 *
+	 * ⚠️ 它只能**设**不能**清**:JSON 表达不出「把 base 的 z 拿掉」。要回到没有层次,
+	 * 写一个基准层号;要回到单行,写 `rowSpan: 1`。
+	 */
+	grid?: Partial<CardSkinGrid>;
+	/** 这一形态不画它。 */
+	hidden?: boolean;
+	/**
+	 * 这一形态**追加**的 CSS。不是替换 —— 替换语义下,base 改的那一句永远到不了写过覆盖
+	 * 的形态。渲染器把它单发一条规则、排在 base 那条后面(同特异度,后来居上)。
+	 *
+	 * ⚠️ 它**不能**被拼进块自己的 CSS:块的 class 只有一套,而转发卡的内外两层落在不同
+	 * 形态上(外层恒为转发,框里那张按原动态判)—— 拼进去的话,两层里同一个块会抢同一条
+	 * 规则。所以这条规则挂的是带形态后缀的 class,只贴在那一层的 wrapper 上。
+	 */
+	css?: string;
+}
+
+/** 一个形态改了哪几块,键是块 id。 */
+export interface CardSkinVariantOverride {
+	blocks?: Record<string, CardSkinBlockOverride>;
+}
+
+/**
+ * 一张卡的形态覆盖表:形态 id → 改了哪几块。**一条都不写就等于今天** —— 存量皮肤与
+ * 默认皮肤出的图逐字节不变。
+ */
+export type CardSkinVariantOverrides = Record<string, CardSkinVariantOverride>;
+
+/**
+ * base 的格子 + 这一形态的改动 → 实际的格子。没有改动时**原样返回**入参。
+ *
+ * 画布与出图端共用这一处:各写一遍的话,编辑器里摆的和真画出来的迟早是两回事。
+ */
+export function effectiveGrid(grid: CardSkinGrid, ov?: Partial<CardSkinGrid>): CardSkinGrid {
+	if (!ov) return grid;
+	const merged: CardSkinGrid = { ...grid };
+	if (ov.row !== undefined) merged.row = ov.row;
+	if (ov.column !== undefined) merged.column = ov.column;
+	if (ov.span !== undefined) merged.span = ov.span;
+	if (ov.rowSpan !== undefined) merged.rowSpan = ov.rowSpan;
+	if (ov.z !== undefined) merged.z = ov.z;
+	return merged;
+}
+
+/**
  * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14:主人推翻自己「被否:皮肤自定义
  * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成
  * `--bn-knob-<key>`,皮肤 CSS 里 `var(--bn-knob-<key>, <自己的默认>)` 引用。

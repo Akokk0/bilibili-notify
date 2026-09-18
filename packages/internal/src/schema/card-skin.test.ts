@@ -14,6 +14,7 @@ import {
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
 	CARD_SKIN_VARIANTS,
+	type CardSkinCard,
 	type CardSkinKind,
 	type CardSkinKnob,
 	CardSkinKnobValueSchema,
@@ -24,6 +25,7 @@ import {
 	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
+	effectiveCard,
 	parseCardSkin,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -1138,5 +1140,129 @@ describe("形态表 — CARD_SKIN_VARIANTS", () => {
 			{ id: "video", label: "视频", when: "dynamic.hasVideo" },
 			{ id: "pics", label: "图文", when: "dynamic.hasPics" },
 		]);
+	});
+});
+
+/**
+ * **形态覆盖**(ADR-0014 决策 10 的 2026-09-18 🔗)—— 一份基础版式 + 每个形态在它上面改
+ * 几块。
+ *
+ * 两条硬规矩:
+ * - **一条覆盖都不写 = 今天**。没有它,存量皮肤与默认皮肤出的图就得逐张重验。
+ * - **⛔ 不许有只在某一形态才存在的块**。块一律先进 base,别的形态藏起来就行 —— 否则
+ *   块表不再唯一,块 id 的唯一性、挂点对表、AI 工具面都要跟着分叉。
+ */
+describe("形态覆盖 — variants", () => {
+	/** 两块的动态卡 + 一份形态覆盖。 */
+	function withVariants(variants: unknown): unknown {
+		return minimal({
+			cards: {
+				dynamic: {
+					width: 600,
+					blocks: [
+						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
+						{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
+					],
+					variants,
+				},
+			},
+		} as unknown as Partial<CardSkinManifest>);
+	}
+
+	/** 上面那份夹具只写了 dynamic 一张卡;取不到就是夹具坏了,当场说清楚。 */
+	function dynamicOf(m: CardSkinManifest): CardSkinCard {
+		const card = m.cards.dynamic;
+		if (!card) throw new Error("夹具里没有 dynamic 卡");
+		return card;
+	}
+
+	it("合法的覆盖能进门", () => {
+		const m = ok(
+			withVariants({
+				video: { blocks: { pics: { hidden: true }, text: { grid: { row: 3 }, css: "" } } },
+			}),
+		);
+		expect(m.cards.dynamic?.variants?.video?.blocks?.pics?.hidden).toBe(true);
+	});
+
+	it("拒收这种卡没有的形态", () => {
+		expect(errorsOf(withVariants({ ended: { blocks: {} } }))).toContain(
+			"dynamic 卡没有叫「ended」的形态",
+		);
+	});
+
+	// ⛔ 这一条是决策本身:块只准进 base。
+	it("拒收覆盖里不存在的块 —— 形态不许自带新块", () => {
+		expect(errorsOf(withVariants({ video: { blocks: { nope: { hidden: true } } } }))).toContain(
+			"这张卡上没有叫「nope」的块",
+		);
+	});
+
+	// 越界要按**合并后**的格子判:base 合法、覆盖把它推出去照样是坏版式,而它只在那一个
+	// 形态上炸 —— 进门时不拦,真机上撞见的人根本对不出是哪儿写错了。
+	it("按合并后的格子判越界", () => {
+		expect(
+			errorsOf(withVariants({ video: { blocks: { text: { grid: { column: 8 } } } } })),
+		).toContain("越过了");
+	});
+
+	describe("effectiveCard", () => {
+		const card = dynamicOf(
+			ok(
+				withVariants({
+					video: {
+						blocks: {
+							pics: { hidden: true },
+							text: { grid: { row: 5, z: 2 }, css: '[data-bn="self"]{color:red}' },
+						},
+					},
+				}),
+			),
+		);
+
+		// 引用相等,不是「内容一样」:存量皮肤那条路上一个对象都不该多造出来,
+		// 出图逐字节不变才有保证。
+		it("没有形态 / 没有覆盖时**原样**返回 base", () => {
+			expect(effectiveCard(card, null)).toBe(card);
+			expect(effectiveCard(card, "pics")).toBe(card);
+			const plain = dynamicOf(ok(withVariants(undefined)));
+			expect(effectiveCard(plain, "video")).toBe(plain);
+			// 覆盖表写了这一形态、里头却一块都没改(编辑器切过去又切回来会留下这种壳)。
+			const empty = dynamicOf(ok(withVariants({ video: { blocks: {} } })));
+			expect(effectiveCard(empty, "video")).toBe(empty);
+		});
+
+		it("只改写了的那几个键,没写的跟着 base 走", () => {
+			const text = effectiveCard(card, "video").blocks.find((b) => b.id === "text");
+			// 覆盖只写了 row 与 z:列与跨列仍是 base 的,于是改 base 的列,这个形态跟着动。
+			expect(text?.grid).toEqual({ row: 5, column: 1, span: 12, z: 2 });
+		});
+
+		it("藏起来的块整个不在结果里", () => {
+			expect(effectiveCard(card, "video").blocks.map((b) => b.id)).toEqual(["text"]);
+		});
+
+		// ⛔ 覆盖的 CSS **不归这里**:块的 class 只有一套,而转发卡的内外两层落在不同形态上
+		// —— 拼进块自己那段 CSS 的话,两层会抢同一条规则。它由渲染器单发一条、挂带形态后缀
+		// 的 class(见 `render-skin.tsx`)。这条钉的就是「这里不碰它」。
+		it("只覆盖了 CSS 的块,这张卡上一个字节都不动", () => {
+			const base = '[data-bn="self"]{color:blue}';
+			const dynamic = dynamicOf(
+				ok(withVariants({ video: { blocks: { text: { css: '[data-bn="self"]{color:red}' } } } })),
+			);
+			const blocks = dynamic.blocks.map((b) => (b.id === "text" ? { ...b, css: base } : b));
+			const card = { ...dynamic, blocks };
+			expect(effectiveCard(card, "video")).toBe(card);
+		});
+
+		it("base 那份一个字节都没被改过", () => {
+			effectiveCard(card, "video");
+			expect(card.blocks.map((b) => b.id)).toEqual(["text", "pics"]);
+			expect(card.blocks.find((b) => b.id === "text")?.grid).toEqual({
+				row: 1,
+				column: 1,
+				span: 12,
+			});
+		});
 	});
 });
