@@ -39,12 +39,14 @@ import {
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_UPLOAD_PREFIX,
+	CARD_SKIN_VARIANTS,
 	type CardSkinBuiltinBlock,
 	type CardSkinField,
 	type CardSkinFieldType,
 	type CardSkinFrameHook,
 	type CardSkinKind,
 	type CardSkinKnobUnit,
+	type CardSkinVariant,
 	cardSkinBytes,
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
@@ -52,11 +54,18 @@ import {
 	resolvePreviewScene,
 } from "../constants.js";
 
-export type { CardSkinKind, PreviewScene };
-// 七种卡与预览场景表**住零依赖的 `constants.ts`**:面板(apps/web)要拿它们画那排卡种
-// tab 与场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
-// (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端照旧从根入口拿。
-export { CARD_PREVIEW_SCENES, CARD_SKIN_KIND_NAMES, CARD_SKIN_KINDS, resolvePreviewScene };
+export type { CardSkinKind, CardSkinVariant, PreviewScene };
+// 七种卡、预览场景表与**形态表**都住零依赖的 `constants.ts`:面板(apps/web)要拿它们画
+// 那排卡种 tab、那排场景按钮与「只改本场」那个切换开关,而从根入口取值会把 zod 整张
+// schema 图拽进前端 bundle(`internal-entry-conformance.test.ts` 钉着这条)。这里原样
+// 再导出,后端与出图端照旧从根入口拿。
+export {
+	CARD_PREVIEW_SCENES,
+	CARD_SKIN_KIND_NAMES,
+	CARD_SKIN_KINDS,
+	CARD_SKIN_VARIANTS,
+	resolvePreviewScene,
+};
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
 
 export type { CardSkinBuiltinBlock };

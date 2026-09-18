@@ -1191,6 +1191,60 @@ export function resolvePreviewScene(kind: CardSkinKind, scene?: string): Preview
 	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
 }
 
+// ---- 卡片形态 ---------------------------------------------------------------
+
+/**
+ * 一种**形态** —— 同一种卡在真机上分得出来的几副样子(ADR-0014 决策 10 的 2026-09-18 🔗)。
+ * 皮肤给每个形态存一份「在 base 上改了哪几块」的覆盖。
+ */
+export interface CardSkinVariant {
+	/** 稳定的机器名,当皮肤 JSON 里那张覆盖表的键。小写 kebab。 */
+	id: string;
+	/** 面板上显示的中文短名。 */
+	label: string;
+	/**
+	 * 判据:`CARD_SKIN_FIELDS[kind]` 里的一个 **bool** 字段路径,为真就是这个形态。
+	 * 与 `showIf` 读同一份 `CardData` —— 两处各算一遍的话,画布标出来的和真画出来的
+	 * 迟早是两回事。
+	 */
+	when: string;
+}
+
+/**
+ * 每种卡分得出来的形态,**按判据顺序排、先真者胜**;一个都不中就是 base(那张写在
+ * `cards[kind]` 上的基础版式)。
+ *
+ * **形态不是预览场景。** 场景是给人看的几张图,形态是真机分得出来的几种卡 —— 两张预览图
+ * 可以落在同一个形态上(动态卡的「全字段」与「视频投稿」同为 `DYNAMIC_TYPE_AV`,直播卡的
+ * 「开播」与「直播中」`liveStatus` 都是 1)。按场景存覆盖的话,真机拿到一张卡选不出该用
+ * 哪一份;按形态存就没有这个问题,而两张预览图落在同一个形态上本来就该长得一样。
+ *
+ * 判的是**数据**不是动态类型,所以专栏自动落进图文那一档(它的头图走的就是图廊);
+ * 而转发框里那张内层卡**各判各的**(它本来就拿原动态的数据画)。
+ *
+ * 醒目留言 / 上舰 / 三张单块卡只有一种样子,表里空着 —— 它们只有 base。
+ */
+export const CARD_SKIN_VARIANTS: Readonly<Record<CardSkinKind, readonly CardSkinVariant[]>> = {
+	// `liveStatus` 到了卡的 props 上只剩 0 / 1 / 2(`image-renderer.ts` 把 3 = 刚下播归一成
+	// 2 再传进来),所以这两档把真机上会推出去的卡全盖住了。
+	live: [
+		{ id: "streaming", label: "直播中", when: "live.isStreaming" },
+		{ id: "ended", label: "下播", when: "live.isEnded" },
+	],
+	// 转发排最前是刻意的:转发一条视频动态时 `isForward` 与 `hasVideo` 同时为真,而外层
+	// 该画的是转发框,不是视频卡。
+	dynamic: [
+		{ id: "forward", label: "转发", when: "dynamic.isForward" },
+		{ id: "video", label: "视频", when: "dynamic.hasVideo" },
+		{ id: "pics", label: "图文", when: "dynamic.hasPics" },
+	],
+	sc: [],
+	guard: [],
+	roastBoard: [],
+	roastSolo: [],
+	wordcloud: [],
+};
+
 /**
  * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14:主人推翻自己「被否:皮肤自定义
  * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成

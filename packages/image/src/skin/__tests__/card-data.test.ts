@@ -28,7 +28,13 @@ import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/ro
 import type { SCCardProps } from "../../templates/sc-card";
 import type { WordCloudCardProps } from "../../templates/wordcloud-card";
 import type { Dynamic } from "../../types";
-import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
+import {
+	buildCardData,
+	type CardData,
+	type CardDataValue,
+	cardVariantOf,
+	readCardField,
+} from "../card-data";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -534,5 +540,65 @@ describe("readCardField", () => {
 		expect(readCardField(data, "up.constructor")).toBeUndefined();
 		expect(readCardField(data, "prototype.x")).toBeUndefined();
 		expect(readCardField(data, "up.toString")).toBeUndefined();
+	});
+});
+
+/**
+ * **这张卡是哪个形态**(ADR-0014 决策 10 的 2026-09-18 🔗)。皮肤按形态存覆盖版式,
+ * 所以这一步选错 = 整张卡摆错位置。
+ *
+ * 判据读的是**契约数据**而不是 props / 动态类型:与 `showIf` 同一份 `CardData`,
+ * 于是画布上标出来的和真画出来的不会是两回事。下面的用例一律从真 props 走
+ * `buildCardData` 进来 —— 手捏 `CardData` 的话,某天契约字段改了名,这里照绿。
+ */
+describe("形态判据 — cardVariantOf", () => {
+	it("直播中 / 下播各是一个形态", () => {
+		expect(cardVariantOf("live", buildCardData("live", liveProps({ liveStatus: 1 })))).toBe(
+			"streaming",
+		);
+		expect(cardVariantOf("live", buildCardData("live", liveProps({ liveStatus: 2 })))).toBe(
+			"ended",
+		);
+	});
+
+	// `liveStatus` 0(未直播)两个 is* 都为假 —— 回落 base,而不是硬塞进某一档。
+	it("两档都不中就回落 base(null)", () => {
+		expect(cardVariantOf("live", buildCardData("live", emptyLiveProps()))).toBeNull();
+	});
+
+	it("视频 / 图文按主媒体分", () => {
+		const video = buildCardData(
+			"dynamic",
+			dynamicProps(dynamicNode({ forward: undefined })),
+			rawDynamic({ archive: FULL_ARCHIVE }),
+		);
+		expect(cardVariantOf("dynamic", video)).toBe("video");
+
+		const pics = buildCardData(
+			"dynamic",
+			dynamicProps(dynamicNode({ forward: undefined })),
+			rawDynamic({ opus: { pics: FULL_PICS } }, "DYNAMIC_TYPE_DRAW"),
+		);
+		expect(cardVariantOf("dynamic", pics)).toBe("pics");
+	});
+
+	// 转发一条视频动态时 `isForward` 与 `hasVideo` **同时为真**。外层该画的是转发框,
+	// 所以判据顺序不是排版而是决策 —— 把 forward 挪到后面,这条当场红。
+	it("转发压过视频:两个都真时是转发", () => {
+		const data = buildCardData("dynamic", dynamicProps(), rawDynamic({ archive: FULL_ARCHIVE }));
+		expect(data.dynamic?.isForward).toBe(true);
+		expect(data.dynamic?.hasVideo).toBe(true);
+		expect(cardVariantOf("dynamic", data)).toBe("forward");
+	});
+
+	it("纯文字动态没有形态,走 base", () => {
+		const data = buildCardData("dynamic", dynamicProps(dynamicNode({ forward: undefined })));
+		expect(cardVariantOf("dynamic", data)).toBeNull();
+	});
+
+	it("表里没有形态的卡种恒 base", () => {
+		expect(cardVariantOf("sc", buildCardData("sc", scProps()))).toBeNull();
+		expect(cardVariantOf("guard", buildCardData("guard", guardProps()))).toBeNull();
+		expect(cardVariantOf("wordcloud", buildCardData("wordcloud", wordCloudProps()))).toBeNull();
 	});
 });

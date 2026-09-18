@@ -13,6 +13,7 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
+	CARD_SKIN_VARIANTS,
 	type CardSkinKind,
 	type CardSkinKnob,
 	CardSkinKnobValueSchema,
@@ -1080,4 +1081,62 @@ describe("DEFAULT_CARD_SKIN — 覆盖层只占它真正占的那一小块", () 
 			});
 		}
 	}
+});
+
+/**
+ * **形态表**(ADR-0014 决策 10 的 2026-09-18 🔗)—— 覆盖版式的键。
+ *
+ * 形态是**真机分得出来**的那几种卡,不是预览场景:两张预览图可以落在同一个形态上
+ * (动态卡的「全字段」与「视频投稿」同为 `DYNAMIC_TYPE_AV`,直播卡的「开播」与
+ * 「直播中」`liveStatus` 都是 1),而按场景存覆盖的话,真机拿到一张卡选不出该用哪份。
+ *
+ * 判据一律是 `CARD_SKIN_FIELDS` 里**真有的 bool 字段** —— 与 `showIf` 读同一份
+ * `CardData`。这条得有守卫:判据写错一个字(`hasVideos`)不会有任何人报错,只会让那个
+ * 形态**永远匹配不上**,而覆盖静静地不生效。
+ */
+describe("形态表 — CARD_SKIN_VARIANTS", () => {
+	it("七种卡一种不少;只有直播与动态分形态,别的只有 base", () => {
+		expect(Object.keys(CARD_SKIN_VARIANTS).sort()).toEqual([...CARD_SKIN_KINDS].sort());
+		const withVariants = CARD_SKIN_KINDS.filter((k) => CARD_SKIN_VARIANTS[k].length > 0);
+		expect([...withVariants].sort()).toEqual(["dynamic", "live"]);
+	});
+
+	it("id 是小写 kebab(要当 JSON 的键)、同一种卡里不重复,label 非空", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			const ids = CARD_SKIN_VARIANTS[kind].map((v) => v.id);
+			expect(new Set(ids).size).toBe(ids.length);
+			for (const v of CARD_SKIN_VARIANTS[kind]) {
+				expect(v.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+				expect(v.label.trim()).not.toBe("");
+			}
+		}
+	});
+
+	it("判据一律是该卡种契约里真有的 bool 字段", () => {
+		for (const kind of CARD_SKIN_KINDS) {
+			const bools = new Map(CARD_SKIN_FIELDS[kind].map((f) => [f.path, f.type]));
+			for (const v of CARD_SKIN_VARIANTS[kind]) {
+				expect(bools.get(v.when), `${kind}.${v.id} 的判据「${v.when}」不在契约里`).toBe("bool");
+			}
+		}
+	});
+
+	// 直播卡的 `liveStatus` 到了 props 上只剩 0 / 1 / 2(`image-renderer.ts` 把 3 = 刚下播
+	// 归一成 2),所以这两档把真机上会推出去的卡全盖住了。
+	it("直播卡:直播中 / 下播", () => {
+		expect(CARD_SKIN_VARIANTS.live).toEqual([
+			{ id: "streaming", label: "直播中", when: "live.isStreaming" },
+			{ id: "ended", label: "下播", when: "live.isEnded" },
+		]);
+	});
+
+	// **顺序本身是决策**(主人拍板的判据顺序):转发要排在最前 —— 转发一条视频动态时
+	// `isForward` 与 `hasVideo` 同时为真,而外层该画的是转发框,不是视频卡。
+	it("动态卡判据按 转发 → 视频 → 图文 排", () => {
+		expect(CARD_SKIN_VARIANTS.dynamic).toEqual([
+			{ id: "forward", label: "转发", when: "dynamic.isForward" },
+			{ id: "video", label: "视频", when: "dynamic.hasVideo" },
+			{ id: "pics", label: "图文", when: "dynamic.hasPics" },
+		]);
+	});
 });
