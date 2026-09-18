@@ -17,6 +17,7 @@ import {
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
 	effectiveGrid,
+	pruneCardVariants,
 } from "@bilibili-notify/internal/constants";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
@@ -304,13 +305,15 @@ export function removeBlock(
 ): CardSkinManifest {
 	const card = manifest.cards[kind];
 	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
-	return {
-		...manifest,
-		cards: {
-			...manifest.cards,
-			[kind]: { ...card, blocks: card.blocks.filter((b) => b.id !== blockId) },
-		},
-	};
+	// **覆盖跟着块走。**留着的话装包门当场退回「这张卡上没有叫「X」的块」—— 而那个 id 正是
+	// 主人刚删掉的东西,他看到的是一句指着不存在的块的报错,整套皮肤从此存不下去。
+	// 摘除那条规矩住 `constants.ts`,与服务端 AI 工具面那两处共用一份。
+	const blocks = card.blocks.filter((b) => b.id !== blockId);
+	const variants = pruneCardVariants(card.variants, new Set(blocks.map((b) => b.id)));
+	const next: Card = { ...card, blocks };
+	if (variants === undefined) delete next.variants;
+	else next.variants = variants;
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
 }
 
 /**

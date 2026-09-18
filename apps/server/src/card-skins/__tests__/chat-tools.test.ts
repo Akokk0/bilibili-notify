@@ -80,6 +80,9 @@ async function installForeign(): Promise<string> {
 						showIf: "live.isStreaming",
 					},
 				],
+				// 主人在编辑器里摆过的分场版式。AI 的工具面一个字都不认它 —— 正因为不认,
+				// 才更得原样留着。
+				variants: { ended: { blocks: { note: { hidden: true } } } },
 			},
 		},
 	};
@@ -444,6 +447,48 @@ describe("资产不归 AI 管,但也不许被它弄丢", () => {
 		expect(card?.assets).toEqual({ bg: "asset:assets/bg.png" });
 		expect(card?.blocks[0]?.assets).toEqual({ pic: "asset:assets/bg.png" });
 		expect(card?.blocks[1]?.assets).toBeUndefined();
+	});
+});
+
+/**
+ * **形态覆盖也不归 AI 管**(ADR-0014 决策 10 的 2026-09-18 🔗:第一版只写基础版式)。
+ * 与资产同一条道理,而且更要紧:那是主人在编辑器里一格一格摆出来的分场版式,工具面
+ * 连提都没提过它 —— 重写一次卡就悄悄没了,而门禁全绿。
+ */
+describe("形态覆盖不归 AI 管,但也不许被它弄丢", () => {
+	it("重写整张卡:还在的块,它在各形态里的覆盖原样留着", async () => {
+		const foreign = await installForeign();
+		const h = harness();
+		await h.text(T.writeCard, {
+			skin: foreign,
+			kind: "live",
+			width: 600,
+			blocks: [
+				COVER,
+				{ id: "note", kind: "custom", html: "<b>x</b>", grid: { row: 2, column: 1, span: 12 } },
+			],
+		});
+		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
+		expect(card?.variants?.ended?.blocks?.note?.hidden).toBe(true);
+	});
+
+	// 留着悬空的覆盖,整套皮肤当场存不下去(装包门退回「这张卡上没有叫「note」的块」),
+	// 而那个 id 指着的东西刚被删掉。
+	it("重写整张卡:没写进来的块,它的覆盖跟着收走", async () => {
+		const foreign = await installForeign();
+		const h = harness();
+		await h.text(T.writeCard, { skin: foreign, kind: "live", width: 600, blocks: [COVER] });
+		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
+		expect(card?.variants).toBeUndefined();
+	});
+
+	it("删块:它在各形态里的覆盖一起收走", async () => {
+		const foreign = await installForeign();
+		const h = harness();
+		await h.text(T.removeBlock, { skin: foreign, kind: "live", block: "note" });
+		const card = store.get(h.ledger.forks[foreign] as string)?.cards.live;
+		expect(card?.blocks.some((b) => b.id === "note")).toBe(false);
+		expect(card?.variants).toBeUndefined();
 	});
 });
 

@@ -1314,6 +1314,31 @@ export function effectiveGrid(grid: CardSkinGrid, ov?: Partial<CardSkinGrid>): C
 }
 
 /**
+ * 把覆盖表里指向**已经不存在的块**的条目摘掉。**删一个块、重写整张卡之后都得走一遍。**
+ *
+ * 留着的话装包门当场退回「这张卡上没有叫「X」的块」—— 而那个 id 指着的正是刚被删掉的
+ * 东西,主人看到的是一句指着不存在的块的报错,整套皮肤从此存不下去。
+ *
+ * 摘空的形态连壳一起收,整张表空了回 `undefined`:与 base 等值的空壳留着只是 diff 里的
+ * 噪音,还会让人以为这一场改过。
+ */
+export function pruneCardVariants(
+	variants: CardSkinVariantOverrides | undefined,
+	keep: ReadonlySet<string>,
+): CardSkinVariantOverrides | undefined {
+	if (!variants) return undefined;
+	const out: CardSkinVariantOverrides = {};
+	for (const [id, ov] of Object.entries(variants)) {
+		const blocks: Record<string, CardSkinBlockOverride> = {};
+		for (const [blockId, block] of Object.entries(ov.blocks ?? {})) {
+			if (keep.has(blockId)) blocks[blockId] = block;
+		}
+		if (Object.keys(blocks).length > 0) out[id] = { ...ov, blocks };
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
  * **皮肤自定义旋钮**(ADR-0014 决策 16 的 🔗,2026-09-14:主人推翻自己「被否:皮肤自定义
  * 旋钮」那一条)。皮肤声明几枚旋钮,面板照声明生成控件,用户拧出来的值注成
  * `--bn-knob-<key>`,皮肤 CSS 里 `var(--bn-knob-<key>, <自己的默认>)` 引用。

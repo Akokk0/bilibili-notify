@@ -1104,3 +1104,42 @@ describe("形态覆盖 — 写进这一场", () => {
 		expect(setVariantGrid(m, "live", "streaming", "text", { row: 2 })).toBe(m);
 	});
 });
+
+/**
+ * **删块要把它在各形态里的覆盖一起收走。**
+ *
+ * 留着的话装包门当场退回「这张卡上没有叫「X」的块」—— 而那个 id 是主人刚删掉的东西,
+ * 他看到的是一句指着不存在的块的报错,整套皮肤从此存不下去。
+ */
+describe("removeBlock — 连同它在各形态里的覆盖", () => {
+	const withOverrides = (): CardSkinManifest =>
+		({
+			schemaVersion: 1,
+			name: "测试皮肤",
+			cards: {
+				dynamic: {
+					width: 600,
+					blocks: [
+						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
+						{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
+					],
+					variants: {
+						video: { blocks: { pics: { hidden: true }, text: { grid: { row: 3 } } } },
+						pics: { blocks: { pics: { grid: { row: 1 } } } },
+					},
+				},
+			},
+		}) as unknown as CardSkinManifest;
+
+	it("删掉的块在每一个形态里的覆盖都不留", () => {
+		const after = removeBlock(withOverrides(), "dynamic", "pics");
+		expect(variantOverrideOf(cardOf(after, "dynamic"), "video", "pics")).toBeUndefined();
+		// 只剩这一块覆盖的形态,整个形态的壳也收掉。
+		expect(cardOf(after, "dynamic")?.variants?.pics).toBeUndefined();
+	});
+
+	it("别的块的覆盖照旧留着", () => {
+		const after = removeBlock(withOverrides(), "dynamic", "pics");
+		expect(variantOverrideOf(cardOf(after, "dynamic"), "video", "text")?.grid).toEqual({ row: 3 });
+	});
+});

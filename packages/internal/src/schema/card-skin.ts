@@ -56,6 +56,7 @@ import {
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
+	pruneCardVariants,
 	resolvePreviewScene,
 } from "../constants.js";
 
@@ -78,6 +79,7 @@ export {
 	CARD_SKIN_KINDS,
 	CARD_SKIN_VARIANTS,
 	effectiveGrid,
+	pruneCardVariants,
 	resolvePreviewScene,
 };
 export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
