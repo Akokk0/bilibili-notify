@@ -872,11 +872,14 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("cover", tall(1, 5), "padding:0 16px"),
 				// 角标与封面同占第 1 行、层次更高:靠上靠右收成内容宽,外边距把它推到从前
 				// `top-3 right-3` 的位置(右边那 28px = 封面的 16px 内边距 + 12px)。
+				// **列号收到它真正占的那两列**(本机量过:角标 501–557,第 11 列 472–515、
+				// 第 12 列 515–585)—— 出图一个像素都不差(右边缘由格子右沿定,而两种写法的
+				// 右沿是同一条),但画布只看 JSON,声明通栏它就画一整行。
 				// `HEAD`(flex)不能省 —— 角标是 inline-flex,块容器里会起一条线盒,行高的
 				// 半个 leading 把它往下压 1.5px(本机量过)。
 				at(
 					"status",
-					{ ...full(1), z: 1 },
+					{ row: 1, column: 11, span: 2, z: 1 },
 					`${HEAD};align-self:start;justify-self:end;margin:12px 28px 0 0`,
 				),
 				at(
@@ -923,9 +926,10 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"video-cover",
 				),
 				// 角标与封面同占那 6 行、层次更高,贴右下角(24px = 16px 内边距 + 8px)。
+				// 列号同样收到它真正占的那一列(本机量过:角标 519–561,第 12 列 505–585)。
 				at(
 					"videoDuration",
-					{ row: 6, column: 1, span: CARD_SKIN_LIMITS.columns, rowSpan: 6, z: 1 },
+					{ row: 6, column: 12, span: 1, rowSpan: 6, z: 1 },
 					`${HEAD};align-self:end;justify-self:end;margin:0 24px 8px 0`,
 					"video-duration",
 				),

@@ -1029,3 +1029,32 @@ describe("块的层次", () => {
 		expect(withZ(1.5).ok).toBe(false);
 	});
 });
+
+// ── 出厂默认皮肤:声明的格子要对得起画出来的样子 ────────────────────────────────
+
+/**
+ * **块自己缩小时,就不许再声明通栏。**
+ *
+ * 编辑器画布只看得见 JSON 里的格子 —— 一块声明 `1–12`,画布就画一整行。角标这种块靠
+ * `justify-self` 把自己收成内容宽、贴到某个角,通栏声明就成了**对画布撒的谎**:真卡上
+ * 右上角一小颗,画布上横贯整行(主人 2026-09-18 指着截图说「看着非常突兀」)。
+ *
+ * 所以带 `justify-self` 的块必须把**列号收到它真正占的那几列**,余下的偏移才交给
+ * `margin`。`justify-content` 不在此列 —— 那是「块本身通栏、内容在里头居中」,声明的
+ * 是实话。
+ *
+ * ⚠️ 这条**只有画布上看得出来**:出图一个像素都不差(`justify-self:end` 把右边缘钉死在
+ * 格子右沿,格子从第 1 列起还是第 11 列起都一样),像素门与字节门都不会红。
+ */
+describe("DEFAULT_CARD_SKIN — 自己缩小的块不占通栏", () => {
+	for (const kind of CARD_SKIN_KINDS) {
+		const card = DEFAULT_CARD_SKIN.cards[kind];
+		const shrinking = (card?.blocks ?? []).filter((b) => (b.css ?? "").includes("justify-self"));
+		if (shrinking.length === 0) continue;
+		for (const block of shrinking) {
+			it(`${kind}.${block.id}:贴角的块只占它真正占的那几列`, () => {
+				expect(block.grid.span).toBeLessThan(CARD_SKIN_LIMITS.columns);
+			});
+		}
+	}
+});
