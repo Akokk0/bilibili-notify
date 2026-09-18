@@ -56,6 +56,28 @@ export function trackAt(tracks: readonly Track[], pos: number): number {
 	return best;
 }
 
+/**
+ * 指针落在第几**行**。与 {@link trackAt} 只有一处不同:**越过最后一条之后接着往下数**。
+ *
+ * 画布的行是等高的(`gridAutoRows` 固定 56px + 一档行距),所以底下那片空白按同一个节距
+ * 推得出来。不推的话拉高一次只能加一行 —— 画布只在最后多画一条备用行,指针再往下就没有
+ * 轨道了,`trackAt` 只会一直回那条最后的。
+ *
+ * **列不能这么推**:列宽可以由皮肤自定义(上舰卡就有四列定宽的),等距这个前提不成立。
+ */
+export function rowAt(tracks: readonly Track[], y: number): number {
+	const last = tracks[tracks.length - 1];
+	if (!last || y < last.end) return trackAt(tracks, y);
+	const [first, second] = tracks;
+	// 两条轨道的起点之差才是**节距**(含行距);只有一条时退回它自己的高度。
+	const pitch = first && second ? second.start - first.start : last.end - last.start;
+	if (pitch <= 0) return tracks.length;
+	// 从最后一行的**中线**起按节距四舍五入:指针停在哪一行的中段就算哪一行,与
+	// `trackAt` 在轨道内的口径一致。
+	const center = (last.start + last.end) / 2;
+	return tracks.length + Math.max(0, Math.round((y - center) / pitch));
+}
+
 function clamp(v: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, v));
 }
@@ -138,6 +160,31 @@ export function resizedGrid(
 	const rightEdge = grid.column + grid.span;
 	const start = clamp(column, 1, rightEdge - 1);
 	return { column: start, span: rightEdge - start };
+}
+
+/**
+ * 拉高:下边跟着指针走(`row` 不动),上边跟着指针走而**下边钉住**。两头都至少留 1 行。
+ *
+ * 与 {@link resizedGrid} 是同一条形状的两个轴 —— 两份分开写是因为**边界不一样**:列的
+ * 上限是 12(`columns`),行的上限是 `maxRows`,而且行没有「起点 + 跨度不能越过总数」
+ * 之外的约束。合成一个带轴参数的函数只会让两条边界在同一个 `clamp` 里绕。
+ */
+export function resizedRows(
+	grid: GridPos,
+	edge: "top" | "bottom",
+	row: number,
+): { row: number; rowSpan: number } {
+	const max = CARD_SKIN_LIMITS.maxRows;
+	if (edge === "bottom") {
+		return {
+			row: grid.row,
+			rowSpan: clamp(row - grid.row + 1, 1, max - grid.row + 1),
+		};
+	}
+	// 下边界钉住:它是「最后一行的下一行」,所以新跨度 = 下边界 - 新起点。
+	const bottomEdge = grid.row + (grid.rowSpan ?? 1);
+	const start = clamp(row, 1, bottomEdge - 1);
+	return { row: start, rowSpan: bottomEdge - start };
 }
 
 // ── 松手之后 ──────────────────────────────────────────────────────────────────

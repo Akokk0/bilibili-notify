@@ -925,11 +925,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					`margin:4px 16px 0;${VIDEO_BG};${VIDEO_TOP_RADIUS};overflow:hidden`,
 					"video-cover",
 				),
-				// 角标与封面同占那 6 行、层次更高,贴右下角(24px = 16px 内边距 + 8px)。
-				// 列号同样收到它真正占的那一列(本机量过:角标 519–561,第 12 列 505–585)。
+				// 角标叠在封面右下角、层次更高(24px = 16px 内边距 + 8px)。格子收到它真正占的
+				// 那一小块:封面跨 6–11 行,角标只摆在**最后那一行**(第 11 行的下沿就是封面的
+				// 下沿,贴底的结果一模一样),列也只占第 12 列(本机量过:角标 519–561,
+				// 第 12 列 505–585)。
 				at(
 					"videoDuration",
-					{ row: 6, column: 12, span: 1, rowSpan: 6, z: 1 },
+					{ row: 11, column: 12, span: 1, z: 1 },
 					`${HEAD};align-self:end;justify-self:end;margin:0 24px 8px 0`,
 					"video-duration",
 				),

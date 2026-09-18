@@ -35,6 +35,8 @@ import {
 	prefersReducedMotion,
 	project,
 	resizedGrid,
+	resizedRows,
+	rowAt,
 	solidStackDepth,
 	type Track,
 	trackAt,
@@ -84,7 +86,7 @@ type Block = Card["blocks"][number];
 /** 画布交回去的位置改动。与检查器那几个数字框走同一个口(`setBlockGrid`)。 */
 export type SkinCanvasGridHandler = (
 	blockId: string,
-	patch: { row?: number; column?: number; span?: number },
+	patch: { row?: number; column?: number; span?: number; rowSpan?: number },
 ) => void;
 
 export function SkinCanvas({
@@ -419,7 +421,11 @@ function BlockCatalogue({
 
 /** 一次拖拽的全程。`base` 是**按下那一刻**的位置 —— 每次移动都从它算起,不然偏移会累加。 */
 
-type DragMode = "move" | "left" | "right";
+/** 拖块身,还是拉四条边中的一条。 */
+type DragMode = "move" | "left" | "right" | "top" | "bottom";
+
+/** 拉边的四个方向里,哪两个是改行的。 */
+const ROW_EDGES = new Set<DragMode>(["top", "bottom"]);
 
 /**
  * 一次拖拽的全程。`base` 是**按下那一刻**的位置 —— 每次移动都从它算起,不然偏移会累加。
@@ -607,14 +613,25 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Bl
 				x.set(d.baseX + clientX - d.startX);
 				y.set(d.baseY + clientY - d.startY);
 			}
-			const column = trackAt(d.cols, clientX);
 			const next =
 				d.mode === "move"
 					? {
 							...d.base,
-							...movedGrid(d.base, { column, row: trackAt(d.rows, clientY) }, d.grabOffset),
+							...movedGrid(
+								d.base,
+								{ column: trackAt(d.cols, clientX), row: trackAt(d.rows, clientY) },
+								d.grabOffset,
+							),
 						}
-					: { ...d.base, ...resizedGrid(d.base, d.mode, column) };
+					: ROW_EDGES.has(d.mode)
+						? {
+								...d.base,
+								...resizedRows(d.base, d.mode as "top" | "bottom", rowAt(d.rows, clientY)),
+							}
+						: {
+								...d.base,
+								...resizedGrid(d.base, d.mode as "left" | "right", trackAt(d.cols, clientX)),
+							};
 			// **落点没变就不重画。** 每帧一次 `setState` 会把整张画布(可能四十个块)重渲染一遍,
 			// 主线程被占满之后连 motion 的那一帧也跟着晚 —— 于是 1:1 写得再对也跟不上手。
 			// 跨格才重画,把每帧一次降成每格一次。
@@ -627,7 +644,8 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Bl
 				d.moved &&
 				next.row === d.landing.row &&
 				next.column === d.landing.column &&
-				next.span === d.landing.span;
+				next.span === d.landing.span &&
+				next.rowSpan === d.landing.rowSpan;
 			d.landing = next;
 			d.moved = true;
 			if (!same) redraw();
@@ -644,7 +662,14 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Bl
 			dragged.current = true;
 			if (d.mode !== "move") {
 				// 拉边已经当场改完了,这里只把它落到清单里,没有要弹的东西。
-				onGrid(d.id, { column: d.landing.column, span: d.landing.span });
+				// **只交它改动的那个轴** —— 把四个数一起交出去的话,拉一次宽会顺手把
+				// `rowSpan` 也写进 JSON(哪怕没动过),存量皮肤一拉边就多出一堆 `rowSpan: 1`。
+				onGrid(
+					d.id,
+					ROW_EDGES.has(d.mode)
+						? { row: d.landing.row, rowSpan: d.landing.rowSpan }
+						: { column: d.landing.column, span: d.landing.span },
+				);
 				return redraw();
 			}
 			// 落点按**甩出去会停到哪**算,不是松手时块在哪(Apple 的动量投射)。
@@ -721,7 +746,7 @@ function ResizeHandle({
 	blockId,
 	onDown,
 }: {
-	side: "left" | "right";
+	side: DragMode & ("left" | "right" | "top" | "bottom");
 	blockId: string;
 	onDown: (e: React.PointerEvent) => void;
 }) {
@@ -736,7 +761,11 @@ function ResizeHandle({
 				e.stopPropagation();
 				onDown(e);
 			}}
-			className={`absolute inset-y-0 w-2.5 cursor-col-resize ${side === "left" ? "left-0" : "right-0"}`}
+			className={`absolute ${
+				ROW_EDGES.has(side)
+					? `inset-x-0 h-2.5 cursor-row-resize ${side === "top" ? "top-0" : "bottom-0"}`
+					: `inset-y-0 w-2.5 cursor-col-resize ${side === "left" ? "left-0" : "right-0"}`
+			}`}
 		/>
 	);
 }
@@ -767,9 +796,8 @@ function CanvasBlock({
 	// 改过的位置上;移动则相反 —— 块靠 transform 贴着手走,格子始终停在原处,会落到哪
 	// 由落点指示说。
 	const shown = drag?.previewOf(block.id) ?? block.grid;
-	const { column, span } = shown;
-	const { row } = shown;
-	const rowSpan = block.grid.rowSpan;
+	const { column, span, row } = shown;
+	const rowSpan = shown.rowSpan;
 	const z = block.grid.z;
 	// 正在拖 / 正在回落的那个块才挂 x / y —— 别的块一个 transform 都不该多出来。
 	const live = drag?.activeId === block.id;
@@ -856,6 +884,18 @@ function CanvasBlock({
 						side="right"
 						blockId={block.id}
 						onDown={(e) => drag.begin(block.id, block.grid, "right", e)}
+					/>
+					{/* 纵向两条**画在角落之外**:四条边在角上重叠时,后挂的那条会盖住先挂的
+					    ——  左右两条先画,所以角上那 10×10 归左右,拉宽比拉高常用。 */}
+					<ResizeHandle
+						side="top"
+						blockId={block.id}
+						onDown={(e) => drag.begin(block.id, block.grid, "top", e)}
+					/>
+					<ResizeHandle
+						side="bottom"
+						blockId={block.id}
+						onDown={(e) => drag.begin(block.id, block.grid, "bottom", e)}
 					/>
 				</>
 			) : null}

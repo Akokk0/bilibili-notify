@@ -1058,3 +1058,26 @@ describe("DEFAULT_CARD_SKIN — 自己缩小的块不占通栏", () => {
 		}
 	}
 });
+
+/**
+ * **覆盖层把格子收到最小,横竖都是。** 写了 `z` 就是明说「我叠在别人身上」,而叠上去的
+ * 都是角标那种小东西:声明得越大,画布上盖住的就越多 —— 真卡上右下角一颗小标签,画布上
+ * 却是一个六行高的白框(主人 2026-09-18:「视频封面右下角的标签和直播封面的问题一样」)。
+ *
+ * 贴哪一边由 `align-self` / `justify-self` 说,剩下那几个像素由 `margin` 说 —— 格子只负责
+ * 圈出它真正占的那一小块。
+ *
+ * ⚠️ 只看 `align-self` 是不够的:上舰卡的徽章自己写着 `height:190px`、头像挨着上下两行
+ * 胶囊,它们贴着一头放**而且真的**占着那几行,声明的是实话。
+ */
+describe("DEFAULT_CARD_SKIN — 覆盖层只占它真正占的那一小块", () => {
+	for (const kind of CARD_SKIN_KINDS) {
+		const card = DEFAULT_CARD_SKIN.cards[kind];
+		for (const block of (card?.blocks ?? []).filter((b) => b.grid.z)) {
+			it(`${kind}.${block.id}:不通栏、不跨行`, () => {
+				expect(block.grid.span).toBeLessThan(CARD_SKIN_LIMITS.columns);
+				expect(block.grid.rowSpan ?? 1).toBe(1);
+			});
+		}
+	}
+});

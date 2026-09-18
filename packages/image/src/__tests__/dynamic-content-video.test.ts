@@ -110,11 +110,20 @@ describe("主视频卡 —— 封面作为主体", () => {
 		expect(html).not.toContain("inset-0 bg-black/20");
 	});
 
-	it("角标与封面同占那几行、层次更高 —— 叠在封面右下角,不是排在它下面", async () => {
+	it("角标落在封面占的那几行**之内**、层次更高 —— 叠在封面右下角,不是排在它下面", async () => {
 		const html = await videoCardHtml();
 		const cover = blockStyle(html, "video-cover");
 		const badge = blockStyle(html, "video-duration");
-		expect(badge.match(/grid-row:(\d+)/)?.[1]).toBe(cover.match(/grid-row:(\d+)/)?.[1]);
+		const span = (style: string) => {
+			const m = /grid-row:(\d+) \/ span (\d+)/.exec(style);
+			if (!m) throw new Error(`没有 grid-row:${style}`);
+			return { from: Number(m[1]), to: Number(m[1]) + Number(m[2]) - 1 };
+		};
+		const c = span(cover);
+		const b = span(badge);
+		// 角标只占一行(它就一颗小标签),而且是封面那几行里的**最后一行** —— 那一行的
+		// 下沿就是封面的下沿,`align-self:end` 贴上去正好在封面底部。
+		expect(b).toEqual({ from: c.to, to: c.to });
 		expect(badge).toContain("z-index:");
 		expect(cover).not.toContain("z-index:");
 	});

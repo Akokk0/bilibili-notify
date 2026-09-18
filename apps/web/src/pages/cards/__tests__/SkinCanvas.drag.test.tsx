@@ -248,10 +248,39 @@ describe("拉边 —— 改跨列", () => {
 	});
 });
 
+/**
+ * **拉高**(主人 2026-09-18:「每个块只能调节宽度无法直接拖动调节高度」)。与拉宽同一套
+ * 机制,只是换成行:下边跟着指针走(`row` 不动),上边跟着指针走而**下边钉住**。
+ *
+ * 改的是 `rowSpan` —— 它是块在网格里的**高度声明**(决策 6 的 2026-09-18 🔗),画布照它
+ * 画出真实比例,出图那头不受影响(被跨的那几行空着、高度是 0)。
+ */
+describe("拉边 —— 改跨行", () => {
+	it("拉下边到第 3 行 → rowSpan 变 3,起点不动", () => {
+		const { onGrid } = mount();
+		const handle = screen.getByTestId("resize-bottom-cover");
+		dragFrom(handle, { x: colX(2), y: rowY(1) }, { x: colX(2), y: rowY(3) });
+		expect(onGrid).toHaveBeenCalledWith("cover", { row: 1, rowSpan: 3 });
+	});
+
+	it("拉上边 → 起点跟着走,下边钉住", () => {
+		// 先把封面拉成占 1–3 行,再从上边收到第 2 行 → 占 2–3。
+		const tall = {
+			...card,
+			blocks: [{ ...card.blocks[0], grid: { row: 1, column: 1, span: 4, rowSpan: 3 } }],
+		};
+		const { onGrid } = mount({ card: tall as never });
+		const handle = screen.getByTestId("resize-top-cover");
+		dragFrom(handle, { x: colX(2), y: rowY(1) }, { x: colX(2), y: rowY(2) });
+		expect(onGrid).toHaveBeenCalledWith("cover", { row: 2, rowSpan: 2 });
+	});
+});
+
 describe("只读的皮肤", () => {
 	it("不给 onGrid 就没有拖拽把手 —— 拖得动却存不下去比拖不动更气人", () => {
 		render(<SkinCanvas kind="live" card={card as never} selection={null} onSelect={vi.fn()} />);
 		expect(screen.queryByTestId("resize-right-cover")).toBeNull();
+		expect(screen.queryByTestId("resize-bottom-cover")).toBeNull();
 	});
 });
 

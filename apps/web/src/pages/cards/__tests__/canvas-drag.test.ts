@@ -7,6 +7,7 @@
  * 能逐条钉死,组件那半只剩一条细线(指针事件 → 调用这些函数 → 交回 patch),另有守卫。
  */
 
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	createVelocityTracker,
@@ -14,6 +15,8 @@ import {
 	movedGrid,
 	project,
 	resizedGrid,
+	resizedRows,
+	rowAt,
 	solidStackDepth,
 	trackAt,
 } from "../canvas-drag";
@@ -233,5 +236,62 @@ describe("拖拽的叠放层数闸", () => {
 		expect(solidStackDepth(at, false, [cond(1), cond(1), cond(1)])).toBe(0);
 		// 自己是实心的,底下三个都带 showIf —— 只数自己这一个
 		expect(solidStackDepth(at, true, [cond(1), cond(1), cond(1)])).toBe(1);
+	});
+});
+
+/**
+ * **拉高**(主人 2026-09-18:「每个块只能调节宽度无法直接拖动调节高度」)。与拉宽同一条
+ * 形状,换成行:下边跟着指针走、上边跟着指针走而下边钉住。
+ */
+describe("resizedRows —— 拉高", () => {
+	const at = { row: 2, column: 1, span: 12, rowSpan: 3 };
+
+	it("拉下边:起点不动,跨度跟着走", () => {
+		expect(resizedRows(at, "bottom", 6)).toEqual({ row: 2, rowSpan: 5 });
+	});
+
+	it("拉下边收到起点以上也至少留一行", () => {
+		expect(resizedRows(at, "bottom", 1)).toEqual({ row: 2, rowSpan: 1 });
+	});
+
+	it("拉上边:下边界钉住(第 5 行的下沿),起点跟着走", () => {
+		expect(resizedRows(at, "top", 3)).toEqual({ row: 3, rowSpan: 2 });
+		expect(resizedRows(at, "top", 1)).toEqual({ row: 1, rowSpan: 4 });
+	});
+
+	it("拉上边越过下边界也至少留一行", () => {
+		expect(resizedRows(at, "top", 99)).toEqual({ row: 4, rowSpan: 1 });
+	});
+
+	it("跨度不越过总行数", () => {
+		expect(resizedRows(at, "bottom", 9999).rowSpan).toBe(CARD_SKIN_LIMITS.maxRows - 1);
+	});
+});
+
+/**
+ * **越过最后一条轨道之后接着往下数。** 不推的话拉高一次只能加一行 —— 画布只在最后多画
+ * 一条备用行,`trackAt` 越界后只会一直回那条最后的(把外推删掉,下面那两条当场红)。
+ */
+describe("rowAt —— 出了画布底下还认得出第几行", () => {
+	// 三行,每行 56 高、行距 8 → 节距 64。
+	const rows = [
+		{ start: 0, end: 56 },
+		{ start: 64, end: 120 },
+		{ start: 128, end: 184 },
+	];
+
+	it("在轨道里就是 trackAt 那一套", () => {
+		for (const y of [10, 70, 150]) expect(rowAt(rows, y)).toBe(trackAt(rows, y));
+	});
+
+	it("越过最后一条:按节距从最后一行的中线往下数", () => {
+		expect(rowAt(rows, 184)).toBe(3); // 刚出下沿,还算第 3 行
+		expect(rowAt(rows, 220)).toBe(4); // 第 4 行的中段
+		expect(rowAt(rows, 284)).toBe(5);
+	});
+
+	it("一条都没有 / 只有一条也不炸", () => {
+		expect(rowAt([], 500)).toBe(1);
+		expect(rowAt([{ start: 0, end: 56 }], 500)).toBeGreaterThan(1);
 	});
 });
