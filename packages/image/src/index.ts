@@ -52,6 +52,7 @@ export {
 	buildCardData,
 	type CardData,
 	type CardDataValue,
+	cardVariantForProps,
 	readCardField,
 } from "./skin/card-data";
 // 皮肤渲染器(ADR-0014 决策 18):皮肤 JSON + props → VNode / 完整 HTML。

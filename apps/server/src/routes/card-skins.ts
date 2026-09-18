@@ -303,6 +303,7 @@ export function createCardSkinsRoute(deps: {
 			width: out.width,
 			warnings: out.warnings,
 			scene: out.scene,
+			variant: out.variant,
 		};
 		return c.json(body);
 	});

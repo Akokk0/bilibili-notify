@@ -119,3 +119,86 @@ describe("实时预览 — 转发场面", () => {
 		expect(out.scene).toBe("default");
 	});
 });
+
+/**
+ * **这一场是哪个形态**(ADR-0014 决策 10 的 2026-09-18 🔗)。
+ *
+ * 面板要靠它画「只改本场」那个开关、把拖出来的改动写进对的那份覆盖。**必须由这一端算**:
+ * 面板照场景 id 自己猜的话,两处迟早对不上 —— 而且两张预览图本来就可能落在同一个形态上
+ * (「全字段」与「视频投稿」都是视频)。
+ */
+describe("实时预览 — 回报这一场落在哪个形态", () => {
+	async function variantOfScene(scene: string): Promise<string | null | undefined> {
+		const out = await renderSkinPreviewHtml({
+			store,
+			skinId: "default",
+			kind: "dynamic",
+			manifest: DEFAULT_CARD_SKIN,
+			scene,
+		});
+		if (!out.ok) throw new Error(out.errors.join(" / "));
+		return out.variant;
+	}
+
+	it("动态卡四场各自落在哪一档", async () => {
+		// 「全字段」与「视频投稿」都带视频卡 —— 同一个形态,这正是「按形态存、不按场景存」
+		// 的理由:真机拿到一张卡分不出它是哪一「场」。
+		expect(await variantOfScene("default")).toBe("video");
+		expect(await variantOfScene("video")).toBe("video");
+		expect(await variantOfScene("draw")).toBe("pics");
+		expect(await variantOfScene("forward")).toBe("forward");
+	});
+
+	it("只有一种样子的卡种回 null(只有 base)", async () => {
+		const out = await renderSkinPreviewHtml({
+			store,
+			skinId: "default",
+			kind: "sc",
+			manifest: DEFAULT_CARD_SKIN,
+		});
+		if (!out.ok) throw new Error(out.errors.join(" / "));
+		expect(out.variant).toBeNull();
+	});
+
+	// 接线守卫:回报的那一档得和**真画出来**的那一档是同一个。各算各的话,面板会把改动
+	// 写进一份根本没人用的覆盖里,而两边的门禁全绿。
+	it("回报的那一档,就是装配时真用上的那一档", async () => {
+		const marked = {
+			...DEFAULT_CARD_SKIN,
+			cards: {
+				...DEFAULT_CARD_SKIN.cards,
+				dynamic: {
+					...DEFAULT_CARD_SKIN.cards.dynamic,
+					// 三档各藏一个**四场都画得出来**的块(正文 / 话题在某些场面本来就没有,
+					// 藏了也看不出差别)。真用上哪档,HTML 里就少哪一块。
+					variants: {
+						video: { blocks: { name: { hidden: true } } },
+						pics: { blocks: { avatar: { hidden: true } } },
+						forward: { blocks: { time: { hidden: true } } },
+					},
+				},
+			},
+		};
+		const HIDDEN: Record<string, string> = { video: "name", pics: "avatar", forward: "time" };
+		/**
+		 * 这张卡上画了几个这个块 —— 转发卡内外两层各画一份,所以数个数而不是问有没有。
+		 * 带上收尾那个引号只数 `class="…"`:光数 `bn-blk-text` 会把 CSS 里那条
+		 * `.bn-blk-text{…}` 也数进来,块一收起规则也跟着没,一次掉两份。
+		 */
+		const count = (html: string, id: string): number => html.split(`bn-blk-${id}"`).length - 1;
+		for (const scene of ["default", "video", "draw", "forward"]) {
+			const args = { store, skinId: "default", kind: "dynamic" as const, scene };
+			const plain = await renderSkinPreviewHtml({ ...args, manifest: DEFAULT_CARD_SKIN });
+			const out = await renderSkinPreviewHtml({ ...args, manifest: marked });
+			if (!plain.ok || !out.ok) throw new Error("预览没画出来");
+			const gone = HIDDEN[out.variant ?? ""];
+			expect(gone, `${scene} 没落在任何一档`).toBeDefined();
+			// 转发那场:外层藏了时间,而框里那张是**视频**那一档,照画不误 —— 所以只能要求
+			// 少一份,不能要求一份都不剩。
+			expect(
+				count(out.html, gone ?? ""),
+				`${scene}:回报 ${out.variant},但 ${gone} 的份数没少`,
+			).toBe(count(plain.html, gone ?? "") - 1);
+		}
+	});
+});

@@ -283,3 +283,19 @@ export function cardVariantOf(kind: CardSkinKind, data: CardData): string | null
 	}
 	return null;
 }
+
+/**
+ * 这份卡片 props 会画成哪个形态 —— **与装配时挑的是同一档**(`placeBlocks` 走的正是
+ * 下面这两步)。给出图之外的地方用:编辑器要知道眼前这一场落在哪一档,好把改动写进
+ * 对的那份覆盖。
+ *
+ * 各算一遍的话,面板会把改动写进一份根本没人用的覆盖里,而两边的门禁全绿。
+ */
+export function cardVariantForProps(
+	kind: CardSkinKind,
+	props: unknown,
+	raw?: Dynamic,
+): string | null {
+	const build = buildCardData as (k: CardSkinKind, p: unknown, r?: Dynamic) => CardData;
+	return cardVariantOf(kind, build(kind, props, raw));
+}
