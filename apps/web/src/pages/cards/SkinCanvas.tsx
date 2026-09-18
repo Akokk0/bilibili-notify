@@ -5,8 +5,9 @@
  * sandbox iframe 且不给同源,父页面读不到里面每个块的位置,也就画不出「叠在真卡上的选框」。
  * 2026-09-17 为了让预览框跟着卡高,iframe 放开了同源(脚本仍不给),读位置从此**做得到**
  * 了,但画布要不要改成叠在真卡上是另一件事,没定。所以这里画的仍是**行列关系**:12 列
- * 等宽格子、行等高,块按 `grid.column` / `grid.span` 落位。真卡里行高随内容撑,这点在
- * 副标题里明说。
+ * 等宽格子、行等高,块按 `grid.column` / `grid.span` 落位。真卡里行高随内容撑 —— **只有
+ * 标了 `heightFromRows` 的块(封面这种单张图)例外**,它们的跨行就是真高度(2026-09-18
+ * 主人拍板),所以也只有它们画上下两条把手。这点在副标题里明说。
  *
  * 与皮肤 JSON 的对应是一比一的:一个块一格,`column` 是 1 起的列号,`span` 是跨几列。
  * 画布上多出来的那一列是行号,所以 CSS 里的 `grid-column` 要 +1。
@@ -209,7 +210,7 @@ export function SkinCanvas({
 
 			<div
 				className="grid gap-x-1.5 gap-y-2"
-				style={{ gridTemplateColumns: template, gridAutoRows: "56px" }}
+				style={{ gridTemplateColumns: template, gridAutoRows: `${CARD_SKIN_LIMITS.rowHeight}px` }}
 			>
 				{rows.map((n) => (
 					// `flex items-center` 而不是 `self-center`:两者看着一样(字在行中间),但
@@ -925,18 +926,27 @@ function CanvasBlock({
 						blockId={block.id}
 						onDown={(e) => drag.begin(block.id, block.grid, "right", e)}
 					/>
-					{/* 纵向两条**画在角落之外**:四条边在角上重叠时,后挂的那条会盖住先挂的
-					    ——  左右两条先画,所以角上那 10×10 归左右,拉宽比拉高常用。 */}
-					<ResizeHandle
-						side="top"
-						blockId={block.id}
-						onDown={(e) => drag.begin(block.id, block.grid, "top", e)}
-					/>
-					<ResizeHandle
-						side="bottom"
-						blockId={block.id}
-						onDown={(e) => drag.begin(block.id, block.grid, "bottom", e)}
-					/>
+					{/* 纵向两条**只画在「跨行是真高度」的块上**(封面这种单张图,2026-09-18
+					    主人拍板)。别的块的高度由内容撑 —— 标题一行还是三行由真实数据说了算
+					    —— 给个拉得动、拉完出图纹丝不动的把手,只会让人以为自己改坏了什么
+					    (主人 09-18 就是这么撞上的)。跨行那个数字在检查器里照旧改得动,
+					    它对这些块是一句给画布看的声明。
+					    另:纵向两条**画在角落之外** —— 四条边在角上重叠时后挂的会盖住先挂的,
+					    左右两条先画,所以角上那 10×10 归左右,拉宽比拉高常用。 */}
+					{meta?.heightFromRows ? (
+						<>
+							<ResizeHandle
+								side="top"
+								blockId={block.id}
+								onDown={(e) => drag.begin(block.id, block.grid, "top", e)}
+							/>
+							<ResizeHandle
+								side="bottom"
+								blockId={block.id}
+								onDown={(e) => drag.begin(block.id, block.grid, "bottom", e)}
+							/>
+						</>
+					) : null}
 				</>
 			) : null}
 			<span className="flex min-w-0 items-center gap-1.5">

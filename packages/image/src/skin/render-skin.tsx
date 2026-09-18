@@ -20,6 +20,7 @@
 
 import type { CardSkinAssetVars, CardSkinFont } from "@bilibili-notify/internal";
 import {
+	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
@@ -289,10 +290,19 @@ interface PlacedBlock {
  * grid item 的 `z-index` **不需要 `position`** 就生效(与 flex item 同,CSS Grid 规范里
  * grid item 自成一个 painting 层级),所以这里只写一句就够。
  */
-function gridStyle(block: CardSkinBlock, row: number): string {
+function gridStyle(kind: CardSkinKind, block: CardSkinBlock, row: number): string {
 	const { column, span, rowSpan, z } = block.grid;
 	const layer = z ? `;z-index:${z}` : "";
-	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0${layer}`;
+	// **「跨几行」对单张图的块是真高度**(2026-09-18 主人拍板)。行是隐式的、按内容撑,所以
+	// 别的块写了 `rowSpan` 也只是给画布看的一句声明;标了 `heightFromRows` 的块(两张封面)
+	// 才由这里注成真高度,图自己 `object-fit:cover` 填满。没写 `rowSpan` 就一个字节都不注 ——
+	// 存量皮肤那条路原样有效。
+	const sized =
+		rowSpan !== undefined &&
+		block.kind === "builtin" &&
+		CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.heightFromRows === true;
+	const height = sized ? `;height:${(rowSpan ?? 1) * CARD_SKIN_LIMITS.rowHeight}px` : "";
+	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0${height}${layer}`;
 }
 
 /**
@@ -467,7 +477,7 @@ function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined)
 		}
 		ctx.used.add(id);
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
-		const grid = gridStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
+		const grid = gridStyle(kind, item.block, rowMap.get(item.block.grid.row) ?? 1);
 		const style = vars ? `${grid};${vars}` : grid;
 		return wrapBlock(item, cls, style);
 	});

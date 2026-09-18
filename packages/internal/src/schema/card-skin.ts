@@ -1015,8 +1015,14 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			columns: avatarColumns(70),
 			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
 			blocks: [
-				// 600 宽的封面约 300px 高 → 5 行。
-				at("cover", tall(1, 5), "padding:0 16px"),
+				// **跨行在这块是真高度**(决策 6 的 2026-09-18 🔗):封面标了 `heightFromRows`,
+				// 6 行 = 336px,图按 `object-fit:cover` 填满。
+				//
+				// 原先写的是 5 行,而那是**低报**的 —— 568 宽(600 减两边 16px 内边距)的 16:9
+				// 封面自然高约 319.5px,画布上一直画矮了一行。高度变真之后取最接近的 6 行:
+				// 比从前高约 16px,而且从此**不管 B 站给的是什么比例都是这个高度**(4:3 那种
+				// 会被裁掉一截),换来的是卡片高度可预期。
+				at("cover", tall(1, 6), "padding:0 16px"),
 				// 角标与封面同占第 1 行、层次更高:靠上靠右收成内容宽,外边距把它推到从前
 				// `top-3 right-3` 的位置(右边那 28px = 封面的 16px 内边距 + 12px)。
 				// **列号收到它真正占的那两列**(本机量过:角标 501–557,第 11 列 472–515、
@@ -1029,19 +1035,23 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					{ row: 1, column: 11, span: 2, z: 1 },
 					`${HEAD};align-self:start;justify-self:end;margin:12px 28px 0 0`,
 				),
+				// ⚠️ 从第 7 行起 —— **封面占的是 r1–r6**(跨 6 行)。封面改行数时这一摞必须跟着推,
+				// 不然头像就落进封面的最后一行、半个身子压在图里(2026-09-18 栽过一次,主人指着
+				// 预览说「UP 主信息已经和封面嵌到一起了」)。「没有不小心叠上的块」那条守卫
+				// 现在钉着它。
 				at(
 					"avatar",
-					{ row: 6, column: 1, span: 1, rowSpan: 2 },
+					{ row: 7, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding:14px 0 0 16px;align-self:center`,
 				),
-				at("name", { row: 6, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
-				at("time", { row: 7, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
-				at("title", full(8), "padding-top:10px"),
-				at("divider", full(9), "padding-top:10px", "divider-1"),
-				at("popularity", { row: 10, column: 1, span: 6 }, "padding-top:10px"),
-				at("area", { row: 10, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
-				at("fans", full(11), "padding-top:4px"),
-				at("desc", full(12), "padding-top:16px"),
+				at("name", { row: 7, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
+				at("time", { row: 8, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
+				at("title", full(9), "padding-top:10px"),
+				at("divider", full(10), "padding-top:10px", "divider-1"),
+				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px"),
+				at("area", { row: 11, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
+				at("fans", full(12), "padding-top:4px"),
+				at("desc", full(13), "padding-top:16px"),
 			],
 		},
 		dynamic: {

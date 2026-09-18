@@ -368,7 +368,7 @@ export default function CardSkinEditor() {
 						>
 							<GlassBox
 								title={`网格画布 · ${KIND_META[kind].label}卡`}
-								subtitle="点一个块,在右边的检查器里改它的位置;行等高,封面这种高块靠「跨行」多占几行;标着「这一场不画」的块,左边那个场景下不出现"
+								subtitle="点一个块,在右边的检查器里改它的位置;封面这种单张图拉上下两条边就是改高度,别的块的高度由内容撑;标着「这一场不画」的块,左边那个场景下不出现"
 								icon={<Icon.square size={14} />}
 							>
 								<SkinCanvas

@@ -1310,3 +1310,60 @@ describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
 		}
 	});
 });
+
+/**
+ * **默认皮肤里不许有「不小心叠上了」的块**(2026-09-18 主人指着预览:「UP 主信息已经和
+ * 封面嵌到一起了」)。
+ *
+ * 起因:封面改成 6 行(高度变真)时,忘了把下面整摞往下推一行 —— 封面占 r1–r6,而头像 /
+ * 主播名就在 r6,两个块真的落在同一行上,头像半个身子压在封面里。**门禁全绿**:重叠在
+ * 这套格式里是合法的(角标压封面、图廊与视频互斥地占同一片行),schema 不该拦它,于是
+ * 只有真机上看得见。
+ *
+ * 所以拦在这儿:叠在一起是**要么刻意、要么互斥**,两样都不是就是撞上了。
+ * - **刻意**:其中一个写了 `z`(直播状态角标压封面、视频时长角标压封面);
+ * - **互斥**:分属两个形态、各把对方藏起来(视频那五块与图廊)。
+ */
+describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
+	/** 两个格子占着同一片地方吗 —— 行与列两个区间都相交才算(与画布的 `gridsOverlap` 同形)。 */
+	function overlap(a: CardSkinCard["blocks"][number], b: CardSkinCard["blocks"][number]): boolean {
+		const span = (g: (typeof a)["grid"]) => ({
+			r0: g.row,
+			r1: g.row + (g.rowSpan ?? 1) - 1,
+			c0: g.column,
+			c1: g.column + g.span - 1,
+		});
+		const x = span(a.grid);
+		const y = span(b.grid);
+		return x.r0 <= y.r1 && y.r0 <= x.r1 && x.c0 <= y.c1 && y.c0 <= x.c1;
+	}
+
+	for (const kind of CARD_SKIN_KINDS) {
+		const card = DEFAULT_CARD_SKIN.cards[kind];
+		if (!card) continue;
+		it(`${kind} 卡:叠在一起的块要么写了层次,要么互斥`, () => {
+			/** 这一对是不是分属两个形态、各把对方藏起来。 */
+			const exclusive = (a: string, b: string): boolean => {
+				const hides = (id: string) =>
+					Object.entries(card.variants ?? {})
+						.filter(([, ov]) => ov.blocks?.[id]?.hidden === true)
+						.map(([v]) => v);
+				const ha = hides(a);
+				const hb = hides(b);
+				return ha.some((v) => !hb.includes(v)) && hb.some((v) => !ha.includes(v));
+			};
+			const clashes: string[] = [];
+			for (let i = 0; i < card.blocks.length; i++) {
+				for (let j = i + 1; j < card.blocks.length; j++) {
+					const a = card.blocks[i];
+					const b = card.blocks[j];
+					if (!a || !b || !overlap(a, b)) continue;
+					if (a.grid.z !== undefined || b.grid.z !== undefined) continue; // 刻意叠放
+					if (exclusive(a.id, b.id)) continue; // 互斥,谁画谁占
+					clashes.push(`${a.id} × ${b.id}`);
+				}
+			}
+			expect(clashes).toEqual([]);
+		});
+	}
+});

@@ -156,7 +156,14 @@ const text: BlockRenderer<DynamicBlockProps> = ({ node }) => node.text ?? null;
  */
 const videoCover: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 	node.video ? (
-		<img data-bn="image" class="w-full h-auto block" src={node.video.cover} alt="" />
+		<img
+			data-bn="image"
+			// 见 `blocks/live.tsx` 的封面:皮肤声明了跨行时 wrapper 拿到真高度,图跟着填满、
+			// 按比例裁;没声明时 `h-full` 的百分比没有参照物,浏览器当 auto 办(零影响)。
+			class="w-full h-full object-cover block"
+			src={node.video.cover}
+			alt=""
+		/>
 	) : null;
 
 /**

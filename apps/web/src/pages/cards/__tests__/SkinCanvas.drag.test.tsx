@@ -357,3 +357,55 @@ describe("拖块身 —— 叠放层数闸", () => {
 		expect(onGrid).toHaveBeenCalledWith("cover", { row: 2, column: 1 });
 	});
 });
+
+/**
+ * **上下两条把手只画在「跨行是真高度」的块上**(2026-09-18 主人拍板)。
+ *
+ * 起因是主人把封面拉矮了、出图纹丝不动:出图那头的网格没有 `grid-template-rows`,行完全
+ * 按内容撑,所以 `rowSpan` 对多数块只是一句给画布看的声明。给一个拉得动、拉完什么都不变
+ * 的把手,只会让人以为自己改坏了什么 —— 拉得动的,拉完出图就得真的跟着变。
+ */
+describe("拉高的把手只给真拉得动的块", () => {
+	const handles = (id: string) => ({
+		top: document.querySelector(`[data-testid="resize-top-${id}"]`),
+		bottom: document.querySelector(`[data-testid="resize-bottom-${id}"]`),
+		left: document.querySelector(`[data-testid="resize-left-${id}"]`),
+	});
+
+	it("封面(单张图)四条边都有把手", () => {
+		mount();
+		const h = handles("cover");
+		expect(h.left).toBeTruthy();
+		expect(h.top).toBeTruthy();
+		expect(h.bottom).toBeTruthy();
+	});
+
+	it("文字块只有左右两条 —— 它的高度由内容撑,拉了也不会变", () => {
+		cleanup();
+		render(
+			<SkinCanvas
+				kind="live"
+				card={
+					{
+						width: 600,
+						blocks: [
+							{
+								id: "title",
+								kind: "builtin",
+								builtin: "title",
+								grid: { row: 1, column: 1, span: 4 },
+							},
+						],
+					} as never
+				}
+				selection={null}
+				onSelect={() => {}}
+				onGrid={() => {}}
+			/>,
+		);
+		const h = handles("title");
+		expect(h.left).toBeTruthy();
+		expect(h.top).toBeNull();
+		expect(h.bottom).toBeNull();
+	});
+});

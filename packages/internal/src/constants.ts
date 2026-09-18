@@ -1401,6 +1401,17 @@ export const CARD_SKIN_LIMITS = {
 	/** 网格最多几行(块的 row 上限)。 */
 	maxRows: 60,
 	/**
+	 * **一行多高** px。画布按它画格子,出图按它给「单张图」那类块算真高度
+	 * ({@link CardSkinBuiltinBlock.heightFromRows},2026-09-18 主人拍板)。
+	 *
+	 * 两边必须是同一个数:画布上量着 3 行摆好的封面,出图得也是那么高 —— 各写一份的话,
+	 * 编辑器里摆的和真画出来的迟早是两回事(这一摊已经栽过)。
+	 *
+	 * 56 是画布先定的:再矮,块名与那行 `id · 列区间` 的小字就挤不下了。它同时也就成了
+	 * 作者调图高的**步长**,粗是粗了点,但网格本来就是格子。
+	 */
+	rowHeight: 56,
+	/**
 	 * **层次** —— 两个块占同一片格子时谁压在上面(2026-09-15 主人拍板「重叠是特性」)。
 	 *
 	 * 网格允许两个块的列区间相交,那是 CSS Grid 的正常行为,也真有人要
@@ -1621,6 +1632,18 @@ export interface CardSkinBuiltinBlock {
 	 * `body`、图廊里的 `pic`、互动数里的 `icon`。`atom` 只管编辑器分组,不代表「没有挂点」。
 	 */
 	hooks: Record<string, string>;
+	/**
+	 * 这块画的是**一张有确定尺寸的图**,它的高度由 `grid.rowSpan` 说了算
+	 * (`rowSpan × ` {@link CARD_SKIN_LIMITS.rowHeight}),不由内容撑;图按
+	 * `object-fit:cover` 填满那块地方(按比例裁,不压扁)。2026-09-18 主人拍板。
+	 *
+	 * **只标单张图。**文字块的高度取决于真实数据(标题一行还是三行、简介几行),写死就是
+	 * 裁字或压到下一块身上 —— 那正是 ADR-0014 决策 6 否掉「绝对坐标排版」的理由;图廊
+	 * 同理,它多高取决于有几张图。没标的块 `rowSpan` 照旧只是给画布看的一句声明。
+	 *
+	 * 画布照它决定上下两条边画不画把手:拉得动的,拉完出图就真的跟着变。
+	 */
+	heightFromRows?: true;
 }
 
 /**
@@ -1655,7 +1678,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		// 「把封面压矮一点」都写不出来(`[data-bn="self"]` 是外面那层 div,在它上面写
 		// height 图会直接溢出去)。`status` 那个不补:角标已经是自己一块,写它自己的
 		// `[data-bn="self"]` 就行。
-		cover: { label: "封面图", atom: true, hooks: { image: "封面图片" } },
+		cover: { label: "封面图", atom: true, heightFromRows: true, hooks: { image: "封面图片" } },
 		status: { label: "直播状态", atom: true, hooks: {} },
 		title: { label: "直播标题", atom: true, hooks: {} },
 		desc: { label: "简介", atom: true, hooks: {} },
@@ -1683,7 +1706,12 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
 		// 投稿视频那张卡拆成的五块。外面那圈灰底圆角容器不是块,是皮肤用 CSS 拼的 ——
 		// 三段文字各带一段灰底、首尾分担圆角(决策 8 的 2026-09-18 🔗)。
-		videoCover: { label: "视频封面", atom: true, hooks: { image: "封面图片" } },
+		videoCover: {
+			label: "视频封面",
+			atom: true,
+			heightFromRows: true,
+			hooks: { image: "封面图片" },
+		},
 		videoDuration: { label: "视频时长", atom: true, hooks: {} },
 		videoTitle: { label: "视频标题", atom: true, hooks: {} },
 		videoDesc: { label: "视频简介", atom: true, hooks: {} },

@@ -141,7 +141,10 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 	cover: (p) => (
 		<img
 			data-bn="image"
-			class="block w-full rounded-lg"
+			// `h-full object-cover`:皮肤给这块声明了跨行时,wrapper 会拿到真高度
+			// (`heightFromRows`),图得跟着填满、按比例裁。没声明高度时 `height:100%` 的
+			// 百分比没有参照物,浏览器当 auto 办 —— 所以这两个 class 对老皮肤是零影响。
+			class="block w-full h-full object-cover rounded-lg"
 			src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
 			alt="封面"
 		/>

@@ -182,6 +182,10 @@ export function SkinInspector({
 
 	const lim = gridLimits(block.grid);
 	const overlapWith = overlappingBlocks(card, block.id);
+	/** 这块的「跨行」是真高度还是只给画布看的一句声明(2026-09-18 主人拍板)。 */
+	const sizedByRows =
+		block.kind === "builtin" &&
+		CARD_SKIN_BUILTIN_BLOCKS[kind]?.[block.builtin]?.heightFromRows === true;
 	// 自己带内容的块删了就找不回来:自定义块的 HTML、块 CSS、资产变量都不在目录里,
 	// 而内置块从「添加块」里原样再摆一个就是了 —— 所以只对前者拦一道。
 	const carriesWork =
@@ -231,6 +235,15 @@ export function SkinInspector({
 						onChange={(z) => onGrid(block.id, { z })}
 					/>
 				</div>
+				{/* **「跨行」对不同的块不是一件事**(2026-09-18 主人拍板),所以逐块说清楚:
+				    封面这种单张图,跨几行就是多高,拖得动也画得准;别的块的高度由内容撑
+				    (标题一行还是三行由真实数据说了算),跨行只是一句给画布看的声明。
+				    不说的话,主人会拖了没反应还以为是自己改坏了什么。 */}
+				<HintNote className="mx-2.5 mb-2.5" tone={sizedByRows ? "success" : "neutral"}>
+					{sizedByRows
+						? `跨行就是这块的高度 —— 每行 ${CARD_SKIN_LIMITS.rowHeight}px,图会按比例裁着填满。`
+						: "这块的高度由内容撑(字多就高),跨行只影响画布上它占几格;要改真高度请在下面的 CSS 里写。"}
+				</HintNote>
 				{/* 只在真叠上了才说这句:平时它是一句与你无关的话,叠上了它才是你要找的那句。 */}
 				{overlapWith.length > 0 ? (
 					<HintNote className="m-2.5 mt-0">
