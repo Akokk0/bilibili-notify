@@ -12,90 +12,14 @@
  */
 
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_KINDS } from "@bilibili-notify/internal";
-import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
-import { createSSRApp, h, type VNode } from "vue";
-import { DYNAMIC_BLOCKS, type DynamicBlockProps } from "../blocks/dynamic";
+import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
 import { GUARD_BLOCKS } from "../blocks/guard";
 import { LIVE_BLOCKS } from "../blocks/live";
 import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
 import { SC_BLOCKS } from "../blocks/sc";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
-import type { GuardCardProps } from "../templates/guard-card";
-import type { LiveCardProps } from "../templates/live-card";
-import type { SCCardProps } from "../templates/sc-card";
-import { blockPropsOf, CARD_FIXTURES } from "./fixtures/card-fixtures";
-
-// ── 夹具 ──────────────────────────────────────────────────────────────────────
-
-const _LIVE_PROPS: LiveCardProps = {
-	cardColorStart: "#e0c3fc",
-	cardColorEnd: "#8ec5fc",
-	data: {
-		title: "周年庆典特别直播",
-		area_name: "虚拟主播",
-		user_cover: "http://i0.hdslb.com/bfs/live/cover0001.jpg",
-		keyframe: "http://i0.hdslb.com/bfs/live-key-frame/kf0001.jpg",
-		description: "<p>每晚八点开播</p>",
-	},
-	username: "示例主播",
-	userface: "http://i0.hdslb.com/bfs/face/face0001.jpg",
-	titleStatus: "直播中",
-	liveTime: "已开播 1 小时",
-	liveStatus: 1,
-	cover: true,
-	onlineNum: "1.2 万",
-	likedNum: "3456",
-	watchedNum: "2.3 万",
-	fansNum: "12.3 万",
-	fansChanged: "+128",
-};
-
-const _DYNAMIC_PROPS: DynamicBlockProps = {
-	node: {
-		avatarUrl: "http://i0.hdslb.com/bfs/face/face0002.jpg",
-		upName: "示例 UP 主",
-		upIsVip: true,
-		pubTime: "3 分钟前",
-		headerLabel: "投稿了视频",
-		body: h("div", null, "正文"),
-	},
-	// 这份 node 没有 forward,转发框那条路走不到 —— 真走到了说明夹具变了,当场炸出来。
-	renderForward: () => {
-		throw new Error("这份夹具的动态不是转发");
-	},
-};
-
-const _SC_PROPS: SCCardProps = {
-	senderFace: "http://i0.hdslb.com/bfs/face/face0003.jpg",
-	senderName: "热心观众",
-	masterName: "示例主播",
-	masterAvatarUrl: "http://i0.hdslb.com/bfs/face/face0001.jpg",
-	text: "主播加油！",
-	price: 30,
-	duration: "2 分钟",
-	bgColor: ["#E2B52B", "#F5E7B3"],
-};
-
-const _GUARD_PROPS: GuardCardProps = {
-	captainImgUrl: "https://s1.hdslb.com/bfs/static/captain.png",
-	guardLevel: 3,
-	uname: "热心观众",
-	face: "http://i0.hdslb.com/bfs/face/face0003.jpg",
-	isAdmin: 0,
-	masterAvatarUrl: "http://i0.hdslb.com/bfs/face/face0001.jpg",
-	masterName: "示例主播",
-	bgColor: ["#4B79E4", "#7CA0F0"],
-};
-
-/** 把一个块渲染成 HTML 片段(不套外框、不加 wrapper),用来做逐字比对。 */
-async function _renderBlock<P>(block: BlockRenderer<P> | undefined, props: P): Promise<string> {
-	expect(block).toBeTypeOf("function");
-	const vnode = (block as BlockRenderer<P>)(props);
-	expect(vnode).not.toBeNull();
-	return await renderToString(createSSRApp({ render: () => vnode as VNode }));
-}
 
 // ── 一、目录对表 ──────────────────────────────────────────────────────────────
 
@@ -148,22 +72,3 @@ describe("块库 — 2026-09-18 补的原子块在目录里", () => {
 		}
 	}
 });
-
-/** 一份共享夹具(与基准 / 挂点对表同一份)翻成块库吃的 props。 */
-async function _fixtureProps(name: string): Promise<unknown> {
-	const fixture = CARD_FIXTURES.find((f) => f.name === name);
-	if (!fixture) throw new Error(`夹具表里没有 ${name}`);
-	return blockPropsOf(fixture.kind, await fixture.build());
-}
-
-/** 一段 HTML 的根标签(第一个 `<…>`)。 */
-function rootTag(html: string): string {
-	const m = /^<[^>]*>/.exec(html);
-	if (!m) throw new Error(`不是以标签开头的 HTML:${html.slice(0, 80)}`);
-	return m[0];
-}
-
-/** 根标签上的 `data-bn`(没有就 null)。 */
-function _rootHook(html: string): string | null {
-	return / data-bn="([^"]*)"/.exec(rootTag(html))?.[1] ?? null;
-}

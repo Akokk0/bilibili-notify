@@ -390,12 +390,6 @@ export const FIELD_LABELS = {
 		hint: "主人上传的字体文件。设了就优先于字体家族名;文件被删掉时静静回退,不会让出图崩。",
 		section: "cardStyle",
 	},
-	// 🪦 数据区那三件 2026-09-14 退役成原子块(ADR-0014 决策 16 的 🔗),面板上已经没有
-	// 控件。标签留着只为**开机迁移摘走它们之前**那一阵的备份 diff 还能读成人话 ——
-	// 与同样退役的 `font` / `fontAsset` / `backgroundImages` 同一条纪律。
-	showPopularity: { label: "人气 / 点赞", section: "cardStyle" },
-	showArea: { label: "直播分区", section: "cardStyle" },
-	showFans: { label: "粉丝数据", section: "cardStyle" },
 	backgroundImages: { label: "自定义背景图", section: "cardStyle" },
 	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档

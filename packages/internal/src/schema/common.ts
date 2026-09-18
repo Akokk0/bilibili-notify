@@ -595,16 +595,6 @@ const CardStyleObjectSchema = z.object({
 	 */
 	enabled: z.boolean().default(true),
 	/**
-	 * **退役字段**(ADR-0014 决策 15 的 🔗):卡片渐变的起 / 止色归皮肤自己的 CSS,不再是
-	 * 用户配置项、也不再是皮肤变量。留着只为**开机迁移读一次**(存量自定义色派生成皮肤,
-	 * 见 `apps/server/src/card-skins/migrate-layouts.ts`),迁完这两个键就地删掉、不再写回 ——
-	 * 与 `cardLayout` 同一套路(`.optional()` 让键删得掉,「键还在不在」就是「迁过没有」)。
-	 *
-	 * ⛔ 新代码不许读这两个字段。出图的渐变在皮肤的外框 CSS 里。
-	 */
-	cardColorStart: z.string().optional(),
-	/** 退役字段,见上面 `cardColorStart`。 */
-	cardColorEnd: z.string().optional(),
 	/**
 	 * **退役字段**(2026-09-14 主人拍板,同玻璃那次):字体归**皮肤自己的旋钮**。
 	 * 理由是它在皮肤底下多半不生效 —— 皮肤只要写一句 `font-family` 就盖掉了它,而面板
@@ -631,19 +621,6 @@ const CardStyleObjectSchema = z.object({
 	 * 已被删掉的资产时静静回落 `font` —— 与背景图同一条纪律,不让一次删除把出图弄崩。
 	 */
 	fontAsset: z.string().optional(),
-	/**
-	 * 🪦 **退役字段**(2026-09-14,ADR-0014 决策 16 的 🔗)。直播卡数据区那三件
-	 * (人气·点赞 / 分区 / 粉丝数据)已经拆成三个**原子块**,「想少显示哪件」= 皮肤里
-	 * 没有那一块 —— 块级的 `showIf` 管不到复合块内部的一行,所以开关这条路走不通。
-	 *
-	 * 三个键留在 schema 里**只是为了让存量配置装得进来**(`.strict()` 对未知键是整份
-	 * 拒收,删了老 `globals.json` 会以 `Unrecognized key` 起不来);`.default(true)`
-	 * 也一并改成 `.optional()`,键才删得掉 —— 「键还在 = 还没迁」是开机迁移的判据。
-	 * ⛔ 新代码不许读它们:面板、渲染器 props 与渲染器 config 都已经没有这三项了。
-	 */
-	showPopularity: z.boolean().optional(),
-	showArea: z.boolean().optional(),
-	showFans: z.boolean().optional(),
 	/**
 	 * **退役字段**(同上面的 `font`):背景图归**皮肤自己的旋钮**(`image` 档,值就是这一串
 	 * id,多张照旧轮换)。⛔ 新代码不许读它。
@@ -699,7 +676,6 @@ function migrateCardStyle(raw: unknown): unknown {
 			o.backgroundImages = typeof legacy === "string" && legacy ? [legacy] : [];
 		}
 	}
-	if (o.hideFollower === true && o.showFans === undefined) o.showFans = false;
 	delete o.hideDesc;
 	delete o.hideFollower;
 	return o;
@@ -710,9 +686,8 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
 // ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有 7 个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
-// enabled:true / font / showPopularity / showArea / showFans / backgroundImages:[] /
-// liveCoverImages:[] 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
+// 有几个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
+// enabled:true / font / backgroundImages:[] / liveCoverImages:[] 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
 // 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的
 // true 悄悄翻开。故这 7 个在 override 维度必须是「无默认的纯可选」,与全局
 // CardStyleObjectSchema(带 .default 供 globals.json 缺字段回填)分开。
@@ -722,9 +697,6 @@ export const CardStylePartialSchema = z.preprocess(
 	CardStyleObjectSchema.partial().extend({
 		enabled: z.boolean().optional(),
 		font: z.string().optional(),
-		showPopularity: z.boolean().optional(),
-		showArea: z.boolean().optional(),
-		showFans: z.boolean().optional(),
 		backgroundImages: z.array(z.string()).optional(),
 		liveCoverImages: z.array(z.string()).optional(),
 	}),

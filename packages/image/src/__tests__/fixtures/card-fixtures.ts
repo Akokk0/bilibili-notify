@@ -14,12 +14,7 @@
  * 不碰真实时钟 —— 所以入参是**异步工厂**(`build()`)而不是一份现成的常量。
  */
 
-import {
-	type CardBlock,
-	type CardSkinKind,
-	DIVIDER_TYPE,
-	type GuardLayout,
-} from "@bilibili-notify/internal";
+import type { CardSkinKind } from "@bilibili-notify/internal";
 import { numberToStr } from "../../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
 import { buildDynamicNode, type NodeFormatters } from "../../templates/dynamic-content";
@@ -130,7 +125,6 @@ function liveProps(over: Record<string, unknown> = {}): Record<string, unknown> 
 		watchedNum: "",
 		fansNum: numberToStr(88_800),
 		fansChanged: "",
-		layout: undefined,
 		...over,
 	};
 }
@@ -144,22 +138,6 @@ const liveInput = (
 		options: { title: "直播通知", font: FONT, htmlWidth: 600, ...(fontFace ? { fontFace } : {}) },
 	});
 };
-
-/**
- * live-minimal 的版式:块顺序打乱、数据区与简介两块整块隐藏。
- *
- * 数据区从前是靠 `showPopularity` / `showArea` / `showFans` 三个开关全关收起的;那三个
- * 开关 2026-09-14 退役(ADR-0014 决策 16 的 🔗),「不要这一块」改由版式表达 —— 画出来
- * 的卡一字不差,所以这份字节基准照旧钉着同一张卡。
- */
-const LIVE_CUSTOM_LAYOUT: CardBlock[] = [
-	{ id: "header", type: "header", visible: true },
-	{ id: "divider-1", type: DIVIDER_TYPE, visible: true, marginTop: 10 },
-	{ id: "title", type: "title", visible: true, marginTop: 12 },
-	{ id: "cover", type: "cover", visible: true, marginTop: 12 },
-	{ id: "data", type: "data", visible: false, marginTop: 10 },
-	{ id: "desc", type: "desc", visible: false, marginTop: 16 },
-];
 
 // ── 动态卡 ────────────────────────────────────────────────────────────────────
 
@@ -261,7 +239,6 @@ const dynamicInput = (
 			glassClear: false,
 			backgroundImage: "",
 			node: await buildDynamicNode(data, false, fmt),
-			layout: undefined,
 			...over,
 		},
 		options: { title: "动态通知", font: FONT, htmlWidth: 600 },
@@ -579,17 +556,6 @@ const UNRENDERABLE_DYNAMIC = dynamic("DYNAMIC_TYPE_MEDIALIST", {
 	additional: COMMON_GAME,
 });
 
-/** 动态卡自定义版式:头像行挪到最后、互动数隐藏、末尾留一条会被弹掉的分割线。 */
-const DYNAMIC_CUSTOM_LAYOUT: CardBlock[] = [
-	{ id: "content", type: "content", visible: true },
-	{ id: "divider-1", type: DIVIDER_TYPE, visible: true, marginTop: 12 },
-	{ id: "additional", type: "additional", visible: true, marginTop: 12 },
-	{ id: "divider-2", type: DIVIDER_TYPE, visible: true, marginTop: 12 },
-	{ id: "header", type: "header", visible: true, marginTop: 12 },
-	{ id: "stats", type: "stats", visible: false, marginTop: 12 },
-	{ id: "divider-3", type: DIVIDER_TYPE, visible: true, marginTop: 12 },
-];
-
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
 
 /** 照 `generateSCCard` 的拼法:价格 → 电池 → 档位 → 配色 / 时长。 */
@@ -604,7 +570,6 @@ function scProps(price: number, over: Record<string, unknown> = {}): Record<stri
 		price,
 		duration: Object.values(SC_LEVELS)[levelIndex].duration,
 		bgColor: SC_COLORS[levelIndex],
-		layout: undefined,
 		glassOpacity: undefined,
 		glassClear: false,
 		backgroundImage: "",
@@ -622,16 +587,6 @@ const scInput = (
 	});
 };
 
-/** sc 自定义版式:开头的分割线被抑制、末尾的被弹出,留言块因空文本收起。 */
-const SC_CUSTOM_LAYOUT: CardBlock[] = [
-	{ id: "divider-0", type: DIVIDER_TYPE, visible: true },
-	{ id: "sender", type: "sender", visible: true },
-	{ id: "divider-1", type: DIVIDER_TYPE, visible: true, marginTop: 15 },
-	{ id: "amount", type: "amount", visible: true, marginTop: 12 },
-	{ id: "message", type: "message", visible: true, marginTop: 12 },
-	{ id: "divider-2", type: DIVIDER_TYPE, visible: true, marginTop: 12 },
-];
-
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
 /** 照 `generateGuardCard` 的拼法组 props。 */
@@ -648,7 +603,6 @@ function guardProps(
 		masterAvatarUrl: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
 		masterName: "示例主播",
 		bgColor: BG_COLORS[guardLevel],
-		layout: undefined,
 		glassOpacity: undefined,
 		glassClear: false,
 		backgroundImage: "",
@@ -664,16 +618,6 @@ const guardInput = (
 		props: guardProps(guardLevel, over),
 		options: { title: "上舰通知", font: FONT, htmlWidth: 430 },
 	});
-};
-
-/** 徽章靠左 + 内容列改顺序 + 插一条分割线。 */
-const GUARD_LEFT_LAYOUT: GuardLayout = {
-	badgeSide: "left",
-	blocks: [
-		{ id: "text", type: "text", visible: true },
-		{ id: "divider-1", type: DIVIDER_TYPE, visible: true, marginTop: 8 },
-		{ id: "name", type: "name", visible: true, marginTop: 8 },
-	],
 };
 
 // ── 锐评卡 ────────────────────────────────────────────────────────────────────
@@ -773,7 +717,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			cover: false,
 			glassOpacity: 0.45,
 			backgroundImage: BG_IMAGE,
-			layout: LIVE_CUSTOM_LAYOUT,
 		}),
 	},
 	{
@@ -848,7 +791,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		kind: "dynamic",
 		label: "dynamic-custom-layout：改顺序 + 隐藏互动数 + 末尾分割线被弹掉 + 关联视频卡",
 		build: dynamicInput(CUSTOM_LAYOUT_DYNAMIC, {
-			layout: DYNAMIC_CUSTOM_LAYOUT,
 			glassOpacity: 0.6,
 			backgroundImage: BG_IMAGE,
 		}),
@@ -893,7 +835,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "醒目留言卡",
 		kind: "sc",
 		label: "sc-custom-layout：改顺序 + 空留言(块收起) + 首尾分割线的抑制与弹出 + 完全透明",
-		build: scInput(100, { text: "", layout: SC_CUSTOM_LAYOUT, glassClear: true }),
+		build: scInput(100, { text: "", glassClear: true }),
 	},
 
 	{
@@ -920,7 +862,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "上舰卡",
 		kind: "guard",
 		label: "guard-badge-left：提督(level 2)，徽章在左(整列镜像右对齐) + 内容列改顺序 + 分割线",
-		build: guardInput(2, { layout: GUARD_LEFT_LAYOUT, glassOpacity: 0.6 }),
+		build: guardInput(2, { glassOpacity: 0.6 }),
 	},
 
 	{

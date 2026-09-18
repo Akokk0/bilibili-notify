@@ -211,7 +211,7 @@ describe("per-UP filters/schedule override 不被全局默认污染", () => {
 // merge(defaults.cardStyle, ov.cardStyle) 会拿注入值盖掉全局自定义 —— 最严重:全局
 // enabled=false(关图片渲染)被翻回 true。与上面三个兄弟 schema 同源,此处锁住。
 describe("per-UP cardStyle override 不被全局默认污染", () => {
-	it("只覆盖 cardStyle.glassOpacity → 7 个带默认的字段仍 undefined", () => {
+	it("只覆盖 cardStyle.glassOpacity → 别的带默认字段仍 undefined", () => {
 		const parsed = SubscriptionSchema.parse({
 			...BASE,
 			overrides: { cardStyle: { glassOpacity: 0.5 } },
@@ -220,9 +220,6 @@ describe("per-UP cardStyle override 不被全局默认污染", () => {
 		expect(cs?.glassOpacity).toBe(0.5);
 		expect(cs?.enabled).toBeUndefined();
 		expect(cs?.font).toBeUndefined();
-		expect(cs?.showPopularity).toBeUndefined();
-		expect(cs?.showArea).toBeUndefined();
-		expect(cs?.showFans).toBeUndefined();
 		expect(cs?.backgroundImages).toBeUndefined();
 		expect(cs?.glassClear).toBeUndefined();
 		expect(Object.keys(cs ?? {})).toEqual(["glassOpacity"]);

@@ -7,7 +7,6 @@ import {
 	type Connection,
 	ConnectionPlatformSchema,
 	ConnectionSchema,
-	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
 	type Disposable,
 	deterministicUuid,
@@ -17,7 +16,6 @@ import {
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	migrateConfigSections,
-	normalizeCardLayout,
 	normalizeMessageLayout,
 	type PushTarget,
 	PushTargetSchema,
@@ -852,19 +850,12 @@ class NodeConfigStore implements ConfigStore {
 			// layout)。normalizeCardLayout 按版本门控,已是最新的版式原样通过。
 			// ⚠️ 旧版式已是可选键(ADR-0014 决策 15,迁移跑完就删掉):**键不在就别补回来**,
 			// 补一份等于把「已经迁过了」的记号抹掉,下次开机会再折一套派生皮肤。
-			// 消息版式同款对齐:未知块丢弃、缺失的内置块追加,老存档前向兼容。
+			// 消息版式:未知块丢弃、缺失的内置块追加,老存档前向兼容。(卡片版式那一份已随
+			// 旧版式整个退役 —— 见 ADR-0014 决策 17 的 2026-09-18 🔗。)
 			this.globals = {
 				...this.globals,
 				defaults: {
 					...this.globals.defaults,
-					...(this.globals.defaults.cardLayout
-						? {
-								cardLayout: normalizeCardLayout(
-									this.globals.defaults.cardLayout,
-									DEFAULT_CARD_LAYOUT,
-								),
-							}
-						: {}),
 					messageLayout: normalizeMessageLayout(
 						this.globals.defaults.messageLayout,
 						DEFAULT_MESSAGE_LAYOUT,

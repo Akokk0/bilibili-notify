@@ -36,7 +36,7 @@
  */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
-import { DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
+import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { GuardCardProps } from "../templates/guard-card";
 import type { BlockRenderer } from "./types";
 
@@ -47,11 +47,6 @@ export const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) 
 	2: (uname, masterName) => `"${uname}"就任\n"${masterName}"大航海舰队提督！`,
 	3: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
 };
-
-/** 徽章靠左 → 内容在右,整列镜像右对齐(文字右对齐、姓名行头像移到外侧右边)。 */
-function _isBadgeLeft(p: GuardCardProps): boolean {
-	return (p.layout ?? DEFAULT_CARD_LAYOUT.guard).badgeSide === "left";
-}
 
 /** 头像(原子块):name 复合块里的那个定宽圆框 + img。 */
 const avatar: BlockRenderer<GuardCardProps> = (p) => (

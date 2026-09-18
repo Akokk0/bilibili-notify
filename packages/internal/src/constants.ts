@@ -1475,6 +1475,13 @@ export interface CardSkinBuiltinBlock {
 	hooks: Record<string, string>;
 }
 
+/**
+ * 分割线块的块名。原来住在旧版式那份 schema 里(它退役了,见 ADR-0014 决策 17 的
+ * 2026-09-18 🔗),但渲染器要靠它认出分割线 —— 「开头的收起、悬空的收起、末尾的弹掉」
+ * 那套规矩就是按它判的。**单点定义**:块目录、皮肤渲染器、四份块库认的是同一个字符串。
+ */
+export const DIVIDER_TYPE = "divider";
+
 /** 四种可编辑卡共用的分割线。 */
 const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: {} };
 

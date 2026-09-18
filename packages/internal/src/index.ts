@@ -20,6 +20,7 @@ export {
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_ROAST_SCHEDULE,
+	DIVIDER_TYPE,
 	EMPTY_AI_PROVIDER_PROFILE,
 	INBOUND_CAPABLE_PLATFORMS,
 	inboundGapReason,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveAIProfile } from "../constants";
-import { DEFAULT_CARD_LAYOUT } from "./card-layout";
 import { DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { makeDefaultGlobalConfig } from "./globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "./message-layout";
@@ -222,27 +221,6 @@ describe("resolve()", () => {
 			overrides: { ...SUB_BASE.overrides, cardSkin: "k2xyz-cafebabe" },
 		};
 		expect(resolve(sub, globals.defaults).cardSkin).toBe("k2xyz-cafebabe");
-	});
-
-	// ADR-0014 决策 15:版式住皮肤包里,`cardLayout` 已从折叠结果里退役 —— 出图只认
-	// `cardSkin`,那个旧键只剩开机迁移会读一次。留一条守卫钉住「它不再折进来」:
-	// 漏删的话引擎会拿到一份永远等于出厂默认的死数据,而误用它的代码全绿。
-	it("does not surface the retired cardLayout — layouts live in the skin now", () => {
-		const globals = makeDefaultGlobalConfig();
-		const sub: Subscription = {
-			...SUB_BASE,
-			overrides: {
-				cardLayout: {
-					...DEFAULT_CARD_LAYOUT,
-					live: [
-						{ id: "title", type: "title", visible: true },
-						{ id: "cover", type: "cover", visible: false },
-					],
-				},
-			},
-		};
-		const eff = resolve(sub, globals.defaults);
-		expect(Object.hasOwn(eff, "cardLayout")).toBe(false);
 	});
 
 	it("inherits global messageLayout when no per-UP override", () => {
