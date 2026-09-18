@@ -83,12 +83,31 @@ export function skinCardOf(fixture: CardFixture): CardSkinCard {
 	return CUSTOM_CARDS[fixture.name]?.() ?? base(fixture.kind);
 }
 
+/** 一张皮肤卡 + 一份 props 出的完整 HTML(含皮肤那段 CSS)。 */
+async function render(
+	kind: CardSkinKind,
+	card: CardSkinCard,
+	props: unknown,
+	options: CardRenderInput["options"],
+): Promise<string> {
+	const out = renderSkinnedCard({ kind, card, props: props as never });
+	return await renderCard(
+		{ render: (): VNode => out.vnode },
+		{},
+		{ ...options, extraCss: out.css },
+	);
+}
+
 /** 同一份夹具走皮肤那条路出的完整 HTML。 */
 export async function renderViaSkin(fixture: CardFixture, input: CardRenderInput): Promise<string> {
-	const { vnode, css } = renderSkinnedCard({
-		kind: fixture.kind,
-		card: skinCardOf(fixture),
-		props: input.props as never,
-	});
-	return await renderCard({ render: (): VNode => vnode }, {}, { ...input.options, extraCss: css });
+	return await render(fixture.kind, skinCardOf(fixture), input.props, input.options);
+}
+
+/** 出厂默认皮肤画一张卡 —— 给不走夹具、只想看某种卡画出什么的测试用。 */
+export async function renderViaDefaultSkin(
+	kind: CardSkinKind,
+	props: unknown,
+	options: CardRenderInput["options"] = {},
+): Promise<string> {
+	return await render(kind, base(kind), props, options);
 }

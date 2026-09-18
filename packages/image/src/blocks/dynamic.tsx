@@ -47,12 +47,11 @@
  * `currentColor`,inline 恒赢 class,颜色那半就永远染不动了。
  */
 
-import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
+import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
 import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
-import { renderBlocks } from "../templates/block-layout";
 import type { DynamicNode } from "../templates/dynamic-content";
-import { type BlockRenderer, bindBlocks } from "./types";
+import type { BlockRenderer } from "./types";
 
 /**
  * 给 `icons.tsx` 里那几个**预求值的 VNode 常量**挂上 `icon` 挂点。
@@ -290,18 +289,3 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	commentCount: statAtom(ICON_COMMENT, (s) => s.comment),
 	likeCount: statAtom(ICON_LIKE, (s) => s.like),
 };
-
-/**
- * **模板路**:由一个 DynamicNode + 版式生成各块构建器(按块名)。转发框里的内层卡按
- * 同一份 layout 再装一遍 —— 那条递归住在这里(所以它必须在 `DYNAMIC_BLOCKS` 之后用
- * `function` 声明,靠提升)。皮肤路不经过这里,它自己往 `renderForward` 里递网格装配。
- */
-export function dynamicNodeBuilders(
-	node: DynamicNode,
-	layout: CardBlock[],
-): Record<string, () => VNode | null> {
-	return bindBlocks(DYNAMIC_BLOCKS, {
-		node,
-		renderForward: (forward) => renderBlocks(layout, dynamicNodeBuilders(forward, layout)),
-	});
-}

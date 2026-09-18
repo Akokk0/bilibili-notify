@@ -15,10 +15,9 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { renderCard } from "../render";
-import { DynamicCard } from "../templates/dynamic-card";
 import { buildDynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
+import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
 
@@ -182,8 +181,8 @@ describe("图廊 — 遮罩与角标的样式真的生成了", () => {
 			pic({ url: `https://i0.hdslb.com/bfs/new_dyn/p${i}.gif` }),
 		);
 		const node = await buildDynamicNode(drawDynamic(pics), false, fmt);
-		const html = await renderCard(
-			DynamicCard,
+		const html = await renderViaDefaultSkin(
+			"dynamic",
 			{ node, cardColorStart: "#A18CD1", cardColorEnd: "#FBC2EB" },
 			{ htmlWidth: 600 },
 		);

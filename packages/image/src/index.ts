@@ -65,12 +65,11 @@ export {
 	type SkinRenderResult,
 	skinAssetRefs,
 } from "./skin/render-skin";
-// ⚠️ 下面这一组是**旧路径**:「一种卡一个模板组件 + `CardBlock[]` 竖栈版式」。出图早已
-// 不走它们(ADR-0014 决策 15 起一律按皮肤装配),留着只为基准快照与块测试拿它当标尺 ——
-// 别拿它们写新代码,新的出图口子一律走 `renderCardWithSkin`。
-export { DynamicCard, type DynamicCardProps, type DynamicNode } from "./templates/dynamic-card";
-export { GuardCard, type GuardCardProps } from "./templates/guard-card";
-export { LiveCard, type LiveCardProps } from "./templates/live-card";
+// 四种可编辑卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
+// 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
+export type { DynamicCardProps, DynamicNode } from "./templates/dynamic-card";
+export type { GuardCardProps } from "./templates/guard-card";
+export type { LiveCardProps } from "./templates/live-card";
 export {
 	RoastBoardCard,
 	type RoastBoardCardProps,
@@ -78,7 +77,7 @@ export {
 	RoastSoloCard,
 	type RoastSoloCardProps,
 } from "./templates/roast-card";
-export { SCCard, type SCCardProps } from "./templates/sc-card";
+export type { SCCardProps } from "./templates/sc-card";
 export type {
 	CardColorOptions,
 	Dynamic,

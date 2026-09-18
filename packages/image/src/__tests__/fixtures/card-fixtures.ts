@@ -17,38 +17,20 @@
 import {
 	type CardBlock,
 	type CardSkinKind,
-	DEFAULT_CARD_LAYOUT,
 	DIVIDER_TYPE,
 	type GuardLayout,
 } from "@bilibili-notify/internal";
-import type { Component } from "vue";
-import { dynamicNodeBuilders } from "../../blocks/dynamic";
 import { numberToStr } from "../../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
-import { renderBlocks } from "../../templates/block-layout";
-import { DynamicCard } from "../../templates/dynamic-card";
-import {
-	buildDynamicNode,
-	type DynamicNode,
-	type NodeFormatters,
-} from "../../templates/dynamic-content";
-import { GuardCard } from "../../templates/guard-card";
-import { LiveCard } from "../../templates/live-card";
-import {
-	RoastBoardCard,
-	type RoastBoardCardProps,
-	RoastSoloCard,
-	type RoastSoloCardProps,
-} from "../../templates/roast-card";
-import { SCCard } from "../../templates/sc-card";
-import { WordCloudCard } from "../../templates/wordcloud-card";
+import { buildDynamicNode, type NodeFormatters } from "../../templates/dynamic-content";
+import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
 import type { Dynamic, RichTextNode } from "../../types";
 
 // ── 夹具表的形状 ──────────────────────────────────────────────────────────────
 
-/** `renderCard(component, props, options)` 的三个入参。 */
+/** 渲染一份夹具要的入参。整卡模板退役后没有 `component` 这一项了 —— 夹具走皮肤那条路
+ * (`fixtures/skin-render.ts`),卡怎么装由皮肤说了算。 */
 export interface CardRenderInput {
-	component: Component;
 	props: Record<string, unknown>;
 	options: { title?: string; font?: string; htmlWidth?: number; fontFace?: string };
 }
@@ -67,16 +49,15 @@ export interface CardFixture {
 
 /**
  * 把整卡入参翻成**块库**(`src/blocks/*`)直接吃的 props —— 同一份夹具走块级渲染那条路。
- * 除动态卡外,块库吃的就是卡片 props 本身;动态块还要一个「内层卡怎么装」,这里给模板那条
- * (一维竖栈),与基准快照同一条路。
+ * 除动态卡外,块库吃的就是卡片 props 本身;动态块还要一个「内层卡怎么装」。
+ *
+ * 这里给的是**空装配**:块级的对表只数「这一块自己画出什么」,转发框里那张内层卡怎么摆
+ * 是皮肤的事(整卡那条路由 `renderSkinnedCard` 自己往 `renderForward` 里递网格装配),
+ * 与块级对表无关。
  */
 export function blockPropsOf(kind: CardSkinKind, input: CardRenderInput): unknown {
 	if (kind !== "dynamic") return input.props;
-	const layout = (input.props.layout as CardBlock[] | undefined) ?? DEFAULT_CARD_LAYOUT.dynamic;
-	return {
-		node: input.props.node,
-		renderForward: (node: DynamicNode) => renderBlocks(layout, dynamicNodeBuilders(node, layout)),
-	};
+	return { node: input.props.node, renderForward: (): [] => [] };
 }
 
 /**
@@ -159,7 +140,6 @@ const liveInput = (
 	fontFace?: string,
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
-		component: LiveCard,
 		props: liveProps(over),
 		options: { title: "直播通知", font: FONT, htmlWidth: 600, ...(fontFace ? { fontFace } : {}) },
 	});
@@ -274,7 +254,6 @@ const dynamicInput = (
 	over: Record<string, unknown> = {},
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
-		component: DynamicCard,
 		props: {
 			cardColorStart: COLOR_START,
 			cardColorEnd: COLOR_END,
@@ -638,7 +617,6 @@ const scInput = (
 	over: Record<string, unknown> = {},
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
-		component: SCCard,
 		props: scProps(price, over),
 		options: { title: "醒目留言通知", font: FONT, htmlWidth: 290 },
 	});
@@ -683,7 +661,6 @@ const guardInput = (
 	over: Record<string, unknown> = {},
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
-		component: GuardCard,
 		props: guardProps(guardLevel, over),
 		options: { title: "上舰通知", font: FONT, htmlWidth: 430 },
 	});
@@ -952,7 +929,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		kind: "roastBoard",
 		label: "roast-board：周报榜单(鸽王 / 勤奋 UP / 逐位锐评 / 评分条，含无头像的首字母圆牌)",
 		build: async () => ({
-			component: RoastBoardCard,
 			props: { ...BOARD_PROPS },
 			options: { title: "UP 主周报", font: FONT, htmlWidth: 600 },
 		}),
@@ -963,7 +939,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		kind: "roastSolo",
 		label: "roast-solo：单人锐评(自适应名字列的评分条 + 亮点行 + 背景图)",
 		build: async () => ({
-			component: RoastSoloCard,
 			props: { ...SOLO_PROPS },
 			options: { title: "UP 主锐评", font: FONT, htmlWidth: 430 },
 		}),
@@ -980,7 +955,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		// ⚠️ 卡壳这一半今天由**皮肤**装配(`generateWordCloudImg` → `renderCardWithSkin`);
 		// 这里走的是旧模板那条路,它现在的身份就是「标尺」(见 `templates/block-layout.tsx`)。
 		build: async () => ({
-			component: WordCloudCard,
 			props: {
 				masterName: "示例主播",
 				masterAvatarUrl:

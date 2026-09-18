@@ -1,10 +1,8 @@
-/** @jsxImportSource vue */
-import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
-import { FRAMES } from "../blocks/frames";
-import { SC_BLOCKS } from "../blocks/sc";
-import { bindBlocks } from "../blocks/types";
-import { renderBlocks } from "./block-layout";
-
+/**
+ * 这种卡的 **props 契约**。整卡模板(把块按旧版式装进外框那一层)已退役 —— 出图七个入口
+ * 早就全走皮肤渲染器,模板只剩测试还在渲染(ADR-0014 决策 24 的 2026-09-18 🔗)。块渲染器
+ * 与外框吃的仍是这份 props,所以类型留在原地。
+ */
 export type SCCardProps = {
 	senderFace: string;
 	senderName: string;
@@ -14,11 +12,6 @@ export type SCCardProps = {
 	price: number;
 	duration: string;
 	bgColor: readonly [string, string];
-	/**
-	 * sc 版式描述符(块的顺序 + 显隐 + 边距 + 分割线)。缺省 = `DEFAULT_CARD_LAYOUT.sc`,
-	 * 复刻现状。块按 type 渲染;无留言文本时 message 块自动收起。
-	 */
-	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 sc 基线 0.75。 */
 	glassOpacity?: number;
 	/** 完全透明:白层透明 + 去掉毛玻璃模糊,底图完全清晰透出(优先于 glassOpacity)。 */
@@ -26,10 +19,3 @@ export type SCCardProps = {
 	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
 	backgroundImage?: string;
 };
-
-export function SCCard(p: SCCardProps) {
-	// 各块的 JSX 住在 `blocks/sc.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
-	// 这里只剩「把块按旧版式装进外框」。
-	const builders = bindBlocks(SC_BLOCKS, p);
-	return FRAMES.sc(p, renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full"));
-}

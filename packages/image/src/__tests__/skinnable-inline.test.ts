@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { renderCard } from "../render";
 import { CARD_FIXTURES } from "./fixtures/card-fixtures";
+import { renderViaSkin } from "./fixtures/skin-render";
 
 /** `<style>` 里那段 CSS —— 要看的是「规则生成了没有」,不是 HTML 里写了没有。 */
 function cssOf(html: string): string {
@@ -22,8 +22,7 @@ function cssOf(html: string): string {
 async function renderFixture(name: string): Promise<string> {
 	const fixture = CARD_FIXTURES.find((f) => f.name === name);
 	if (!fixture) throw new Error(`夹具表里没有 ${name}`);
-	const { component, props, options } = await fixture.build();
-	return await renderCard(component, props, options);
+	return await renderViaSkin(fixture, await fixture.build());
 }
 
 describe("九宫格 +N 那层的文字投影", () => {

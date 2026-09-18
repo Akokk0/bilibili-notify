@@ -9,10 +9,9 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { renderCard } from "../render";
-import { DynamicCard } from "../templates/dynamic-card";
 import { buildDynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
+import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
 
@@ -148,8 +147,8 @@ describe("buildAdditionalContent — 关联视频(ADDITIONAL_TYPE_UGC)", () => {
 			false,
 			fmt,
 		);
-		const html = await renderCard(
-			DynamicCard,
+		const html = await renderViaDefaultSkin(
+			"dynamic",
 			{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
 			{ htmlWidth: 600 },
 		);

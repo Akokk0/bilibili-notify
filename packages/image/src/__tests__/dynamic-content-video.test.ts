@@ -11,10 +11,9 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { renderCard } from "../render";
-import { DynamicCard } from "../templates/dynamic-card";
 import { buildDynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
+import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
 
@@ -121,8 +120,8 @@ describe("主视频卡 —— 封面作为主体", () => {
 	// 被吞的类名只要别处复用过就看不出问题,下面这几个是这张卡独有的。
 	it("这张卡独有的类名真的生成了 CSS 规则,没被 Fragment 锚点吞掉", async () => {
 		const node = await buildDynamicNode(makeVideoDynamic(), false, fmt);
-		const html = await renderCard(
-			DynamicCard,
+		const html = await renderViaDefaultSkin(
+			"dynamic",
 			{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
 			{ htmlWidth: 600 },
 		);
