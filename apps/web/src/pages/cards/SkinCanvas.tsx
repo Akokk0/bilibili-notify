@@ -58,21 +58,25 @@ export type SkinSelection =
 	| null;
 
 /**
- * 叠起来时怎么错开。**横竖不是一回事**,两边能借的地方不一样。
+ * 叠起来时怎么错开。**动的永远是上面那块**:往右下浮 8 / 4px,被压住的停在自己真正的
+ * 格子上,露出来的左边缘就是「底下还有一张卡」的读法。
  *
- * - **横向**:被压住的往左退,每层 8px、封两档。左边有 28px 的行号列可借,错得开;
- *   露出来那条带子就是「底下还有一张卡」的主要读法。试过 3px —— 比圆角
- *   (`--radius-bn-sm` ≈ 9.5px)还小,露出来那点全在圆角的弧里,看着像渲染毛刺。
- * - **纵向**:整摞**居中放** —— 被压的往上 4px、压着别人的往下 4px,两层之间还是
- *   8px 的落差,但谁都只占半个行距。上下总共就 8px 行距(`gap-y-2`),让被压的那块
- *   独自往上错满 8px 会**恰好贴住上一行**(2026-09-15 主人:「整体往下挪一点」)。
- *   两头都叠着的(三层中间那块)不动 —— 它本来就在摞的中间。
+ * 初版反过来 —— 让**被压住的往左退**,理由是左边有 28px 的行号列可借。但那只在摞正好
+ * 贴着第 1 列时成立:摞在中间时,退出去的那 8px 直接撞上左边的邻居
+ * (2026-09-18 主人指着截图:「重叠导致底下的和旁边的完全挨着了,应该整体向右移」)。
+ * 改成上面那块让开,相对旧版正好是整摞右移一格,而底下那块回到了它真正的位置。
  *
- * 横向封顶两档:错位是纯视觉的、不改块真正的格子,错太多就成了「它在哪」的谎话。
+ * 往**右下**而不是别的方向,是因为影子往右下落:上面那块顺着影子的方向浮,露边落在
+ * 反方向的左上,不会被影子吃掉。8px 也不能再小 —— 试过 3px,比圆角
+ * (`--radius-bn-sm` ≈ 9.5px)还小,露出来那点全在圆角的弧里,看着像渲染毛刺。
+ *
+ * **只有一档,三重及以上不表达**(2026-09-18 主人拍板:「场景太少,表达很难」)。拖拽
+ * 那道闸只放到两层({@link MAX_SOLID_STACK}),三层以上只可能是手写 / 别人分享的皮肤
+ * 装进来 —— 那时上面几块会重合在同一档上,画布不为它们另造读法。纵向同理只有一档:
+ * 上下总共就 8px 行距(`gap-y-2`),让开 4px 正好是半格,再多就贴住下一行了。
  */
 const STACK_OFFSET_X = 8;
 const STACK_SINK_Y = 4;
-const MAX_STACK_OFFSET_STEPS = 2;
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 type Block = Card["blocks"][number];
@@ -199,13 +203,13 @@ export function SkinCanvas({
 				))}
 
 				{blocks.map((b) => {
-					const { above, below } = stackingOf(card, b.id);
+					const { below } = stackingOf(card, b.id);
 					return (
 						<CanvasBlock
 							key={b.id}
 							kind={kind}
 							block={b}
-							stack={{ above: above.length, below: below.length }}
+							covers={below.length}
 							selected={selection?.kind === "block" && selection.id === b.id}
 							onSelect={() => onSelect({ kind: "block", id: b.id })}
 							drag={onGrid ? drag : undefined}
@@ -512,7 +516,7 @@ function tracksOf(root: HTMLElement | null, track: "column" | "row"): Track[] {
  * 落点还按**投射出去会停到哪**算,而不是松手时块在哪。
  */
 /**
- * `blocks` 只给**三重闸**用(2026-09-16):落点会让同一片格子上「一定同时出现」的块超过
+ * `blocks` 只给**叠放层数那道闸**用:落点会让同一片格子上「一定同时出现」的块超过
  * {@link MAX_SOLID_STACK} 就不接受,块停在最后一个合法位置 —— 与「顶到边就停住」同一条形状。
  */
 function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Block[]): CanvasDrag {
@@ -614,7 +618,7 @@ function useDrag(onGrid: SkinCanvasGridHandler | undefined, blocks?: readonly Bl
 			// **落点没变就不重画。** 每帧一次 `setState` 会把整张画布(可能四十个块)重渲染一遍,
 			// 主线程被占满之后连 motion 的那一帧也跟着晚 —— 于是 1:1 写得再对也跟不上手。
 			// 跨格才重画,把每帧一次降成每格一次。
-			// 三重闸:落不下去就**保持上一个合法落点**(块顶到边就停住,同一条形状)。
+			// 层数闸:落不下去就**保持上一个合法落点**(块顶到边就停住,同一条形状)。
 			if (!accepts(d.id, next)) {
 				d.moved = true;
 				return;
@@ -740,7 +744,7 @@ function ResizeHandle({
 function CanvasBlock({
 	kind,
 	block,
-	stack,
+	covers,
 	selected,
 	onSelect,
 	drag,
@@ -748,8 +752,8 @@ function CanvasBlock({
 }: {
 	kind: CardSkinKind;
 	block: Block;
-	/** 叠放的方向:`above` 个块压在它上面,它压着 `below` 个。两个 0 = 没叠。 */
-	stack: { above: number; below: number };
+	/** 它压着几个块。0 = 没压着谁(被别人压着不影响它怎么画,它停在自己的格子上)。 */
+	covers: number;
 	selected: boolean;
 	onSelect: () => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
@@ -769,8 +773,9 @@ function CanvasBlock({
 	const z = block.grid.z;
 	// 正在拖 / 正在回落的那个块才挂 x / y —— 别的块一个 transform 都不该多出来。
 	const live = drag?.activeId === block.id;
-	const dx = -Math.min(stack.above, MAX_STACK_OFFSET_STEPS) * STACK_OFFSET_X;
-	const dy = (stack.below > 0 ? STACK_SINK_Y : 0) - (stack.above > 0 ? STACK_SINK_Y : 0);
+	const floating = covers > 0;
+	const dx = floating ? STACK_OFFSET_X : 0;
+	const dy = floating ? STACK_SINK_Y : 0;
 
 	return (
 		<motion.button
@@ -800,7 +805,7 @@ function CanvasBlock({
 			} ${
 				// **压着别人的块浮起来** —— 影子走 `shadow-bn-elev` 那个 @utility,不写死值
 				// (shadow 族不进 @theme,换肤时靠变量活着;理由在 theme.css 那段注释里)。
-				stack.below > 0 ? "shadow-bn-elev" : ""
+				floating ? "shadow-bn-elev" : ""
 			} ${
 				selected
 					? // **整句吃库里那句选中语汇**,别手抄(`packages/ui/README.md` 明写)。
@@ -812,7 +817,7 @@ function CanvasBlock({
 						`${SELECTED_LANGUAGE} ring-3 ring-bn-pink/18`
 					: // 压着别人时底换成**不透明**的:半透明叠半透明,底下那块的字会透上来
 						// (「别把半透明摞在半透明上」)。没压着谁的照旧留一点通透。
-						stack.below > 0
+						floating
 						? "border-bn-border bg-bn-surface"
 						: "border-bn-border bg-bn-surface/90"
 			}`}
@@ -826,9 +831,9 @@ function CanvasBlock({
 				// 拖着的块压在所有层次之上。用「层次上限 + 1」而不是写死一个数:它跟着
 				// `layer` 的上限走,将来上限改了这儿不用记得跟。
 				...(live ? { zIndex: CARD_SKIN_LIMITS.layer.max + 1 } : {}),
-				// **被压住的块往左上错开一格。** 完全盖住时,这条露边是它在画布上唯一的
-				// 痕迹 —— 影子只说明「上面这块浮着」,说不出「底下还有一张」。挑左上是因为
-				// 影子往右下落,露边放在反方向才不会被影子吃掉;横竖各错多少见上面那段。
+				// **压着别人的块往右下让开一格。** 完全盖住时,露出来的那条左边缘是底下那块
+				// 在画布上唯一的痕迹 —— 影子只说明「上面这块浮着」,说不出「底下还有一张」。
+				// 为什么动上面那块而不是下面那块,见上面那段。
 				...(dx ? { left: dx } : {}),
 				...(dy ? { top: dy } : {}),
 

@@ -667,22 +667,23 @@ describe("画布 — 块的层次", () => {
 		expect(chip(/封面|cover/).className).not.toContain("shadow-bn-elev");
 	});
 
-	it("被压住的块往左上错一点 —— 完全盖住时那条露边是它唯一的痕迹", () => {
+	it("往右下浮的是**上面那块**,被压住的停在自己真正的格子上", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
 			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 1, span: 12, z: 2 } },
 		]);
+		// 被压住的不动 —— 它往左退的话会撞上左边的邻居(主人 2026-09-18 指着截图报的:
+		// 「重叠导致底下的和旁边的完全挨着了」)。
 		const under = chip(/封面|cover/);
-		// 整摞居中放:被压的往上 4、压着别人的往下 4 —— 两层之间还是 8px 的落差,
-		// 但谁都只占半个行距,不贴上一行也不贴下一行。
-		expect([under.style.top, under.style.left]).toEqual(["-4px", "-8px"]);
+		expect([under.style.top, under.style.left]).toEqual(["", ""]);
+		// 上面那块往右下让开一格,露出底下那块的左边缘 —— 完全盖住时那条露边是它唯一的痕迹。
 		const over = chip(/UP 主名|name/);
-		expect([over.style.top, over.style.left]).toEqual(["4px", ""]);
+		expect([over.style.top, over.style.left]).toEqual(["4px", "8px"]);
 	});
 
-	it("压得越深往左错得越多,但到两档为止", () => {
-		// **五个**摞在同一格:最底下那块被压了 4 层,封顶才看得出来(三个块最深才 2 层,
-		// 那个例子离了封顶也不会坏)。
+	it("再深也只有一档 —— 三重及以上不表达(主人 2026-09-18 拍板)", () => {
+		// 五个摞在同一格:拖拽已经拦到两层,这种只可能是手写 / 别人分享的皮肤装进来。
+		// 画布不为它们造第三档,谁压着人谁就让开那一格,仅此而已。
 		const stacked = (builtin: string) => ({
 			id: builtin,
 			kind: "builtin",
@@ -690,22 +691,10 @@ describe("画布 — 块的层次", () => {
 			grid: { row: 1, column: 1, span: 12 },
 		});
 		withBlocks(["cover", "name", "title", "desc", "popularity"].map(stacked));
-		expect(chip(/cover/).style.left).toBe("-16px");
-		expect(chip(/desc/).style.left).toBe("-8px");
-		expect(chip(/popularity/).style.left).toBe("");
-	});
-
-	it("纵向只有三档 —— 再深也不超出半个行距,两头都叠着的就不动", () => {
-		const stacked = (builtin: string) => ({
-			id: builtin,
-			kind: "builtin",
-			builtin,
-			grid: { row: 1, column: 1, span: 12 },
-		});
-		withBlocks(["cover", "name", "title", "desc", "popularity"].map(stacked));
-		expect(chip(/cover/).style.top).toBe("-4px");
-		expect(chip(/desc/).style.top).toBe("");
-		expect(chip(/popularity/).style.top).toBe("4px");
+		expect(chip(/cover/).style.left).toBe("");
+		for (const id of [/name/, /desc/, /popularity/]) {
+			expect(chip(id).style.left, String(id)).toBe("8px");
+		}
 	});
 
 	it("选中一个压着别人的块,底仍然不透明 —— 选中态不许自己去糊一层纱", () => {

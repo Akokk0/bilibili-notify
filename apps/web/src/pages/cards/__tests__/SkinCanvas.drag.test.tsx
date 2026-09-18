@@ -276,14 +276,15 @@ describe("跟手的前提", () => {
 });
 
 /**
- * **三重闸**(2026-09-16 主人:「三重都还好,四重就乱掉了,限制最多三重」)。
+ * **叠放层数的闸**(2026-09-18 主人:「三重及以上也删了,场景太少,表达很难」,推翻 09-16
+ * 那次的「三重都还好」)。
  *
  * 几何那半在 `canvas-drag.test.ts` 钉过;这份钉的是**闸真的接在拖拽这条线上** ——
  * 算得对但没人调,和没写一样(皮肤这一摊栽过的那族)。
  *
  * 只拦这一口:检查器的数字框与皮肤包 schema 都照旧放行(主人拍板)。
  */
-describe("拖块身 —— 三重闸", () => {
+describe("拖块身 —— 叠放层数闸", () => {
 	const filled = (id: string, showIf?: string) => ({
 		id,
 		kind: "builtin" as const,
@@ -300,17 +301,17 @@ describe("拖块身 —— 三重闸", () => {
 		],
 	});
 
-	it("那一格已经三重 → 停住,不让它叠成第四层", () => {
+	it("那一格已经两重 → 停住,不让它叠成第三层", () => {
 		const { onGrid } = mount({
-			card: withRow2(filled("name"), filled("title"), filled("desc")) as never,
+			card: withRow2(filled("name"), filled("title")) as never,
 		});
 		dragFrom(blockEl(), { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });
 		// 顶到边就停住,同一条形状 —— 交出去的仍是它出发的那一格。
 		expect(onGrid).toHaveBeenCalledWith("cover", { row: 1, column: 1 });
 	});
 
-	it("只有两重 → 照旧落得下去(闸别拦过头)", () => {
-		const { onGrid } = mount({ card: withRow2(filled("name"), filled("title")) as never });
+	it("只有一重 → 照旧落得下去(闸别拦过头)", () => {
+		const { onGrid } = mount({ card: withRow2(filled("name")) as never });
 		dragFrom(blockEl(), { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });
 		expect(onGrid).toHaveBeenCalledWith("cover", { row: 2, column: 1 });
 	});

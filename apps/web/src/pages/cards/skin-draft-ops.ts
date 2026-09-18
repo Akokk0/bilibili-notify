@@ -100,8 +100,8 @@ function spanOf(grid: Grid): { r0: number; r1: number; c0: number; c1: number } 
 /**
  * 两个格子**占着同一片地方**吗 —— 行与列两个区间都相交才算。
  *
- * 单独导出是因为**这条判据只准有一份**:画布拖拽的三重闸(`canvas-drag.ts`)问的是
- * 「落到这儿会不会叠成第四层」,而 {@link overlappingBlocks} 问的是「现在谁跟谁叠着」。
+ * 单独导出是因为**这条判据只准有一份**:画布拖拽那道闸(`canvas-drag.ts`)问的是
+ * 「落到这儿会不会叠成第三层」,而 {@link overlappingBlocks} 问的是「现在谁跟谁叠着」。
  * 两处要是各写一份,拦住的和画出来的就会是两回事。
  */
 export function gridsOverlap(a: Grid, b: Grid): boolean {
