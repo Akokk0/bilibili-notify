@@ -11,7 +11,7 @@
 
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
-import { createSSRApp, h, isVNode, type VNode } from "vue";
+import { createSSRApp, isVNode, type VNode } from "vue";
 import * as ICONS from "../icons";
 import { buildDynamicNode, type DynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
@@ -294,41 +294,20 @@ describe("buildDynamicNode —— 转发", () => {
 	});
 });
 
-describe("buildDynamicNode —— body 与 text / media 同时出现在一张卡里", () => {
-	it("同一棵树里同时画 body 与 text / media 不出错,两处内容都在", async () => {
-		for (const d of [
-			videoDynamic(),
-			dynamic("DYNAMIC_TYPE_DRAW", opus({ summary: "图文的正文", pics: pics(2) })),
-		]) {
-			const node = await buildDynamicNode(d, false, fmt);
-			const html = await renderToString(
-				createSSRApp({ render: () => h("div", [node.body, node.text, node.media]) }),
-			);
-			const count = (s: string) => html.split(s).length - 1;
-			// 每样东西恰好两份:body 里一份,拆开的那份一份。
-			expect(count('data-bn="body"'), d.type).toBe(2);
-			if (d.type === "DYNAMIC_TYPE_AV") {
-				expect(count("投稿时配的一段话")).toBe(2);
-				expect(count('data-bn="video"')).toBe(2);
-				expect(count(COVER)).toBe(2);
-			} else {
-				expect(count("图文的正文")).toBe(2);
-				expect(count('data-bn="pics"')).toBe(2);
-				expect(count(PIC)).toBe(4);
-			}
-		}
-	});
-
+describe("buildDynamicNode —— text 与 media 不共用 VNode 实例", () => {
 	/**
-	 * Vue 文档要求一棵组件树里的 vnode 各不相同 —— 客户端挂载时会往 vnode 上写 `el` / `component`,
-	 * 同一个实例出现在两处,后一处就把前一处的记录盖掉。出图走 SSR,实测共用一个实例今天也画
-	 * 得出来(所以上面那条画不红它),但那是没承诺过的行为,这里直接钉「不共用」。
+	 * Vue 文档要求一棵组件树里的 vnode 各不相同 —— 客户端挂载时会往 vnode 上写 `el` /
+	 * `component`,同一个实例出现在两处,后一处就把前一处的记录盖掉。出图走 SSR,实测共用
+	 * 一个实例今天也画得出来(所以没有哪条测试会因为共用而红),但那是没承诺过的行为。
 	 *
-	 * 唯一的例外是 `icons.tsx` 里那些**预求值的图标常量**:它们本来就是全模块共用的静态节点
-	 * (Vue 自己的编译器也这么提升静态节点),视频卡里的播放 / 弹幕图标在 body 与 media 里是
-	 * 同一个实例,那是设计如此。
+	 * 从前这里比的是 `body` 与拆出来的两半 —— `body` 已随 `content` 复合块退役(决策 8 的
+	 * 2026-09-18 🔗),现在比的是剩下的两半彼此:皮肤把正文文字与视频卡摆进同一张卡是
+	 * 常态(出厂默认皮肤就是这么摆的)。
+	 *
+	 * 唯一的例外是 `icons.tsx` 里那些**预求值的图标常量**:它们本来就是全模块共用的静态
+	 * 节点(Vue 自己的编译器也这么提升静态节点),那是设计如此。
 	 */
-	it("text / media 与 body 不共用任何 VNode 实例(图标常量除外)", async () => {
+	it("两半各是各的实例(图标常量除外)", async () => {
 		const shared = new Set<unknown>();
 		for (const icon of Object.values(ICONS)) collectVNodes(icon, shared);
 
@@ -346,11 +325,14 @@ describe("buildDynamicNode —— body 与 text / media 同时出现在一张卡
 		for (const d of cases) {
 			const outer = await buildDynamicNode(d, false, fmt);
 			for (const node of outer.forward ? [outer, outer.forward] : [outer]) {
-				const inBody = collectVNodes(node.body, new Set());
-				const parts = collectVNodes([node.text, node.media], new Set());
-				expect(parts.size, `${d.type} 的 text / media 应当画出点什么`).toBeGreaterThan(0);
-				const reused = [...parts].filter((v) => inBody.has(v) && !shared.has(v));
-				expect(reused, `${d.type} 的 text / media 与 body 共用了实例`).toEqual([]);
+				const inText = collectVNodes(node.text, new Set());
+				const inMedia = collectVNodes(node.media, new Set());
+				expect(
+					inText.size + inMedia.size,
+					`${d.type} 的 text / media 应当画出点什么`,
+				).toBeGreaterThan(0);
+				const reused = [...inMedia].filter((v) => inText.has(v) && !shared.has(v));
+				expect(reused, `${d.type} 的 text 与 media 共用了实例`).toEqual([]);
 			}
 		}
 	});

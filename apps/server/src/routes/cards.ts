@@ -1211,7 +1211,7 @@ function buildLivePreviewProps(): LiveCardProps {
 }
 
 function buildDynamicPreviewProps(): DynamicCardProps {
-	const body = h(
+	const text = h(
 		"div",
 		{
 			style: "font-size:14px;line-height:1.7;color:#444;white-space:pre-line;",
@@ -1243,7 +1243,7 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 		pubTime: "2026-05-08 10:30:00",
 		headerLabel: "投稿了视频",
 		topic: undefined,
-		body: h(
+		text: h(
 			"div",
 			{ style: "font-size:14px;line-height:1.7;color:#444;" },
 			"这是被转发的原动态正文 —— 内部也跟随同一套版式（块顺序 / 显隐 / 边距）。",
@@ -1260,7 +1260,7 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 			upIsVip: true,
 			pubTime: "2026-05-09 18:24:00",
 			topic: "示例话题",
-			body,
+			text,
 			additional,
 			forward,
 			stats: { forward: "1.2万", comment: "5,891", like: "8.7万" },

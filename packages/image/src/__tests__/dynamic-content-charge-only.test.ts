@@ -46,7 +46,7 @@ function textNodes(text: string): Dynamic["modules"]["module_dynamic"]["desc"] {
 }
 
 async function bodyHtml(node: Awaited<ReturnType<typeof buildDynamicNode>>): Promise<string> {
-	const app = createSSRApp({ render: () => h("div", [node.body]) });
+	const app = createSSRApp({ render: () => h("div", [node.text, node.media]) });
 	return renderToString(app);
 }
 

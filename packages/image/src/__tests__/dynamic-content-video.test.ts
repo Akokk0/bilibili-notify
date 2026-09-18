@@ -68,7 +68,7 @@ function makeVideoDynamic(over: Record<string, unknown> = {}): Dynamic {
 /** 只渲染正文(= 这条动态自己的字 + 主视频卡),不带卡框与头像行。 */
 async function videoBodyHtml(dynamic: Dynamic = makeVideoDynamic()): Promise<string> {
 	const node = await buildDynamicNode(dynamic, false, fmt);
-	const app = createSSRApp({ render: () => h("div", [node.body]) });
+	const app = createSSRApp({ render: () => h("div", [node.text, node.media]) });
 	return renderToString(app);
 }
 

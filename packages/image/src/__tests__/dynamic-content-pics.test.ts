@@ -60,7 +60,7 @@ function drawDynamic(pics: Pic[]): Dynamic {
 
 async function picsHtml(pics: Pic[]): Promise<string> {
 	const node = await buildDynamicNode(drawDynamic(pics), false, fmt);
-	const app = createSSRApp({ render: () => h("div", [node.body]) });
+	const app = createSSRApp({ render: () => h("div", [node.text, node.media]) });
 	return renderToString(app);
 }
 
