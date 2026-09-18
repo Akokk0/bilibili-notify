@@ -1266,3 +1266,47 @@ describe("形态覆盖 — variants", () => {
 		});
 	});
 });
+
+/**
+ * **默认皮肤:视频那五块与图廊占同一片行**(决策 10 的 2026-09-18 🔗)。
+ *
+ * 从前是分开排行号的 —— 出图一样,但画布上看「视频投稿」那一场时,图廊那七行就是七行
+ * 标着「这一场不画」的死地(2026-09-18 主人指出),反过来也一样。形态覆盖出现之后不必再
+ * 拿行号凑合。
+ */
+describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
+	const card = DEFAULT_CARD_SKIN.cards.dynamic;
+	const VIDEO = ["video-cover", "video-title", "video-desc", "video-stats"];
+	const rowOf = (id: string) => {
+		const block = card?.blocks.find((b) => b.id === id);
+		if (!block) throw new Error(`默认皮肤的动态卡没有「${id}」这一块`);
+		return block.grid.row;
+	};
+
+	it("图廊与视频封面从同一行起", () => {
+		expect(rowOf("pics")).toBe(rowOf("video-cover"));
+	});
+
+	// 多数时候数据自己就分开了(没视频的卡那五块取不到东西、整块不画),但两样同时有的
+	// 动态是画得出来的 —— 判据按顺序先中视频,没有这两条覆盖,图廊会原样叠在封面上。
+	it("两个形态各把对方藏起来", () => {
+		expect(card?.variants?.video?.blocks?.pics?.hidden).toBe(true);
+		for (const id of [...VIDEO, "video-duration"]) {
+			expect(card?.variants?.pics?.blocks?.[id]?.hidden, `${id} 在图文那档没藏`).toBe(true);
+		}
+	});
+
+	// 让位让完还得有人接上:转发框与互动数得排在两组媒体**之后**,不然图文那一场里
+	// 图廊会盖到互动数上。
+	it("转发框与互动数排在两组媒体之后", () => {
+		const mediaEnd = Math.max(
+			...[...VIDEO, "pics"].map((id) => {
+				const b = card?.blocks.find((x) => x.id === id);
+				return (b?.grid.row ?? 0) + ((b?.grid.rowSpan ?? 1) - 1);
+			}),
+		);
+		for (const id of ["forward", "additional", "divider-2", "like-count"]) {
+			expect(rowOf(id), `${id} 撞进了媒体那片行`).toBeGreaterThan(mediaEnd);
+		}
+	});
+});

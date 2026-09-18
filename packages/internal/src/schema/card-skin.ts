@@ -1088,17 +1088,38 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					`${VIDEO_INSET};padding:10px 12px 12px;${VIDEO_BOTTOM_RADIUS}`,
 					"video-stats",
 				),
-				// 图廊与视频互斥,谁画谁占这片位置(不画的块连同它的行一起被压掉)。分开排行号
-				// 而不是叠在同一行:出图一样,画布上却能一眼看出哪几块属于哪个场景。
+				// 图廊与视频互斥,**摆在同一片行**(决策 10 的 2026-09-18 🔗)。从前是分开排行号
+				// 的 —— 出图一样,但画布上看「视频投稿」那一场时,图廊那七行就是七行标着
+				// 「这一场不画」的死地,反过来也一样。形态覆盖出现之后不必再拿行号凑合:
+				// 两组占同一片地方,各自的形态把对方藏起来。
 				// 图廊前那 8px 是旧正文里跟在文字后面的间距。九图图廊约 400px 高 → 7 行。
-				at("pics", tall(15, 7), "padding:8px 16px 0"),
-				at("forward", full(22), "padding:0 16px"),
-				at("additional", full(23), "padding-top:12px"),
-				at("divider", full(24), "padding:12px 0", "divider-2"),
-				at("forwardCount", { row: 25, column: 1, span: 4 }, CENTER, "forward-count"),
-				at("commentCount", { row: 25, column: 5, span: 4 }, CENTER, "comment-count"),
-				at("likeCount", { row: 25, column: 9, span: 4 }, CENTER, "like-count"),
+				at("pics", tall(6, 7), "padding:8px 16px 0"),
+				at("forward", full(15), "padding:0 16px"),
+				at("additional", full(16), "padding-top:12px"),
+				at("divider", full(17), "padding:12px 0", "divider-2"),
+				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count"),
+				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count"),
+				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count"),
 			],
+			/**
+			 * 两组媒体占同一片行,所以**得有人让位**。
+			 *
+			 * 多数时候数据自己就分开了(没视频的卡,那五块取不到东西、整块不画),但两样
+			 * 同时有的动态是画得出来的 —— 判据按顺序先中视频,图廊就会原样叠在封面上。
+			 * 这两条覆盖把这件事写死。
+			 */
+			variants: {
+				video: { blocks: { pics: { hidden: true } } },
+				pics: {
+					blocks: {
+						"video-cover": { hidden: true },
+						"video-duration": { hidden: true },
+						"video-title": { hidden: true },
+						"video-desc": { hidden: true },
+						"video-stats": { hidden: true },
+					},
+				},
+			},
 		},
 		sc: {
 			width: 290,
