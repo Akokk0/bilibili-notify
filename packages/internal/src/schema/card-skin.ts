@@ -783,6 +783,17 @@ const avatarColumns = (px: number): CardSkinColumn[] => [
 const CENTER = "display:flex;justify-content:center";
 
 /**
+ * 视频卡那圈灰底圆角容器 —— **没有这个元素**,它是封面 + 标题 / 简介 / 播放数四块**各带一段
+ * 灰底**拼出来的(决策 8 的 2026-09-18 🔗:覆盖层与容器一律用网格 + CSS 表达,不造隐形底板块)。
+ * `margin:0 16px` 让灰底与封面同宽,块自己的 `padding` 再把文字往里缩 12px。
+ */
+const VIDEO_BG = "background:rgba(0,0,0,.04)";
+const VIDEO_INSET = `margin:0 16px;${VIDEO_BG}`;
+/** 首尾两块分担上下圆角(`rounded-lg` = .5rem = 8px)。 */
+const VIDEO_TOP_RADIUS = "border-radius:8px 8px 0 0";
+const VIDEO_BOTTOM_RADIUS = "border-radius:0 0 8px 8px";
+
+/**
  * 头部三件(头像 img、名字 span、时间 span)都是**行内**元素。在复合块里它们是 flex 子项,
  * 高度就是自己那一行;单独放进块的 wrapper(普通块容器)里,行盒会按继承来的字号撑高、
  * img 底下还会多出基线那一截 —— 头部整体高出好几个像素。wrapper 做成 flex 把它们块化。
@@ -799,7 +810,9 @@ const HEAD = "display:flex";
  * - 动态卡的分割线**上下都留** 12px —— 分割线后面接哪一块(话题 / 正文 / 视频卡 / 互动数)
  *   说不准,间距跟着线走,后面那块就不用管;
  * - 头部的名字与时间靠 `align-self` 贴在头像两侧的中线上(旧的复合块是 flex 居中);
- * - 视频卡 / 图廊那块只给图廊加上边距(挂点规则),与旧正文里的间距一致。
+ * - 投稿视频那张卡拆成五块之后,外面那圈灰底圆角容器由封面与三段文字**各带一段灰底**
+ *   拼出来(首尾分担圆角),间距也从容器的 `p-[12px]` 摊到各块的 `padding` 上;
+ * - 图廊那块的上边距(8px)是从前正文里跟在文字后面的那一段。
  */
 export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
@@ -897,21 +910,43 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("divider", full(3), "padding:12px 0", "divider-1"),
 				at("topic", full(4), "padding:0 16px"),
 				at("text", full(5), "padding:0 16px"),
-				// 图廊前那 8px 是旧正文里跟在文字后面的间距;视频卡自己带着间距,不再加。
-				// 九图图廊约 400px 高 → 7 行(视频卡矮一些,按最常见的图廊算)。
+				// ── 投稿视频那张卡:五块 + 一圈用 CSS 拼出来的灰底容器 ──────────────
+				// 容器不是块(不造隐形底板),而是三段文字**各带一段灰底**、首尾分担圆角;
+				// 封面上那 4px 是从前容器的 `mt-1`。568 宽的 16:9 封面约 320px 高 → 6 行。
+				// 灰底也垫在封面下面 —— 从前那圈容器就是这么包的,封面预取失败时露出来的是这层灰
+				// 而不是卡片背景。`overflow:hidden` 让圆角真的切到图上(圆角在 wrapper 上,
+				// 图是它的孩子)。上面那 4px 是从前容器的 `mt-1`,用 margin 让灰底跟着让出来。
 				at(
-					"media",
-					tall(6, 7),
-					"padding:0 16px",
-					"media",
-					'[data-bn="self"] [data-bn="pics"]{margin-top:8px}',
+					"videoCover",
+					tall(6, 6),
+					`margin:4px 16px 0;${VIDEO_BG};${VIDEO_TOP_RADIUS};overflow:hidden`,
+					"video-cover",
 				),
-				at("forward", full(13), "padding:0 16px"),
-				at("additional", full(14), "padding-top:12px"),
-				at("divider", full(15), "padding:12px 0", "divider-2"),
-				at("forwardCount", { row: 16, column: 1, span: 4 }, CENTER, "forward-count"),
-				at("commentCount", { row: 16, column: 5, span: 4 }, CENTER, "comment-count"),
-				at("likeCount", { row: 16, column: 9, span: 4 }, CENTER, "like-count"),
+				// 角标与封面同占那 6 行、层次更高,贴右下角(24px = 16px 内边距 + 8px)。
+				at(
+					"videoDuration",
+					{ row: 6, column: 1, span: CARD_SKIN_LIMITS.columns, rowSpan: 6, z: 1 },
+					`${HEAD};align-self:end;justify-self:end;margin:0 24px 8px 0`,
+					"video-duration",
+				),
+				at("videoTitle", full(12), `${VIDEO_INSET};padding:12px 12px 0`, "video-title"),
+				at("videoDesc", full(13), `${VIDEO_INSET};padding:6px 12px 0`, "video-desc"),
+				at(
+					"videoStats",
+					full(14),
+					`${VIDEO_INSET};padding:10px 12px 12px;${VIDEO_BOTTOM_RADIUS}`,
+					"video-stats",
+				),
+				// 图廊与视频互斥,谁画谁占这片位置(不画的块连同它的行一起被压掉)。分开排行号
+				// 而不是叠在同一行:出图一样,画布上却能一眼看出哪几块属于哪个场景。
+				// 图廊前那 8px 是旧正文里跟在文字后面的间距。九图图廊约 400px 高 → 7 行。
+				at("pics", tall(15, 7), "padding:8px 16px 0"),
+				at("forward", full(22), "padding:0 16px"),
+				at("additional", full(23), "padding-top:12px"),
+				at("divider", full(24), "padding:12px 0", "divider-2"),
+				at("forwardCount", { row: 25, column: 1, span: 4 }, CENTER, "forward-count"),
+				at("commentCount", { row: 25, column: 5, span: 4 }, CENTER, "comment-count"),
+				at("likeCount", { row: 25, column: 9, span: 4 }, CENTER, "like-count"),
 			],
 		},
 		sc: {

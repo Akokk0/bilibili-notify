@@ -1370,6 +1370,7 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("dynamic.hasVideo", "bool", "带视频卡"),
 		f("dynamic.hasPics", "bool", "带图"),
 		f("video.title", "text", "视频标题"),
+		f("video.desc", "text", "视频简介"),
 		f("video.cover", "image", "视频封面"),
 		f("video.duration", "text", "视频时长"),
 		f("video.views", "text", "播放量"),
@@ -1525,20 +1526,18 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "UP 主名", atom: true, hooks: {} },
 		time: { label: "发布时间", atom: true, hooks: {} },
-		// 文字与媒体是呈现态里分开的两份(`DynamicNode.text` / `.media`)。
+		// 文字与媒体是呈现态里分开的几份(`DynamicNode.text` / `.video` / `.pics`)。
 		topic: { label: "话题", atom: true, hooks: {} },
 		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
-		media: {
-			label: "视频卡 / 图廊",
-			atom: true,
-			hooks: {
-				pics: "图廊",
-				pic: "图廊里的一张图",
-				video: "视频卡",
-				videoCover: "视频封面",
-				videoTitle: "视频标题",
-			},
-		},
+		// 投稿视频那张卡拆成的五块。外面那圈灰底圆角容器不是块,是皮肤用 CSS 拼的 ——
+		// 三段文字各带一段灰底、首尾分担圆角(决策 8 的 2026-09-18 🔗)。
+		videoCover: { label: "视频封面", atom: true, hooks: { image: "封面图片" } },
+		videoDuration: { label: "视频时长", atom: true, hooks: {} },
+		videoTitle: { label: "视频标题", atom: true, hooks: {} },
+		videoDesc: { label: "视频简介", atom: true, hooks: {} },
+		videoStats: { label: "播放 · 弹幕数", atom: true, hooks: {} },
+		// 图廊张数是动态的,拆不开,整块画。
+		pics: { label: "图廊", atom: true, hooks: { pics: "图廊", pic: "图廊里的一张图" } },
 		// 根就是转发框;框里是一整张内层卡,那些部件归内层卡自己的块管,这里不声明。
 		forward: { label: "转发框", atom: true, hooks: {} },
 		forwardCount: { label: "转发数", atom: true, hooks: { icon: "图标" } },

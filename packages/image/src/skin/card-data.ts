@@ -121,6 +121,7 @@ function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
 		},
 		video: {
 			title: videoTitle,
+			desc: str(archive?.desc),
 			cover: str(archive?.cover),
 			duration: str(archive?.duration_text),
 			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),原样转文本,不做算术。

@@ -50,7 +50,12 @@ const SPLIT_ATOMS: Record<string, Record<string, string>> = {
 	dynamic: {
 		topic: "话题",
 		text: "正文文字",
-		media: "视频卡 / 图廊",
+		videoCover: "视频封面",
+		videoDuration: "视频时长",
+		videoTitle: "视频标题",
+		videoDesc: "视频简介",
+		videoStats: "播放 · 弹幕数",
+		pics: "图廊",
 		forward: "转发框",
 		forwardCount: "转发数",
 		commentCount: "评论数",

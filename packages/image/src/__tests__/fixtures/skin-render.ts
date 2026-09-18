@@ -50,7 +50,8 @@ const CUSTOM_CARDS: Record<string, () => CardSkinCard> = {
 	// 末尾摆一条分割线(该被弹掉),互动数整个不摆。
 	"dynamic-custom-layout": () => ({
 		...base("dynamic"),
-		blocks: pick("dynamic", ["name", "text", "media", "additional", "divider-2"]),
+		// 这条夹具是图文(DRAW),媒体那半是图廊 —— 摆 `pics`,视频那五块摆了也画不出东西。
+		blocks: pick("dynamic", ["name", "text", "pics", "additional", "divider-2"]),
 	}),
 	// 留言是空的 → 那一块收起,排在它后面的分割线就悬空在开头了,该被抑制。
 	"sc-custom-layout": () => ({

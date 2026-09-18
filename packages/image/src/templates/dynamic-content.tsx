@@ -31,7 +31,7 @@
  */
 
 import type { VNode } from "vue";
-import { SVG_BELL, SVG_DANMAKU, SVG_GOODS, SVG_LOTTERY, SVG_VIEW } from "../icons";
+import { SVG_BELL, SVG_GOODS, SVG_LOTTERY } from "../icons";
 import { parseRichText } from "../rich-text";
 import type { Dynamic } from "../types";
 
@@ -73,6 +73,16 @@ export type NodeFormatters = {
  * 两份仍**各是各的 VNode 实例**:Vue 文档明说一棵组件树里的 vnode 必须各不相同(客户端
  * 挂载会往 vnode 上写 `el` / `component`,后一处盖掉前一处),而皮肤可以把同一块摆两回。
  */
+/** 投稿视频那张卡的数据。播放 / 弹幕数接口可能已给成 "6.5万",原样转文本,不做算术。 */
+export type DynamicVideo = {
+	cover: string;
+	duration: string;
+	title: string;
+	desc: string;
+	views: string;
+	danmaku: string;
+};
+
 export type DynamicNode = {
 	avatarUrl: string;
 	upName: string;
@@ -87,11 +97,16 @@ export type DynamicNode = {
 	 */
 	text?: VNode | null;
 	/**
-	 * 主媒体,进 `media` 原子块:投稿视频的视频卡,或图文 / 专栏的图廊。没有就为空 —— 转发的
-	 * 原动态媒体在 `forward.media` 里,不往外层提。图廊**不带** `body` 里那层 `mt-[8px]`:那是
-	 * 「跟在文字后面」的间距,单独摆时由皮肤 CSS 管。
+	 * 投稿视频那张卡的**数据**,不是画好的 VNode —— 视频卡拆成了五块(封面 / 时长 / 标题 /
+	 * 简介 / 播放·弹幕数),每块自己取自己那一份(决策 8 的 2026-09-18 🔗)。不是投稿视频
+	 * 就为空;转发的原视频在 `forward.video` 里,不往外层提。
 	 */
-	media?: VNode | null;
+	video?: DynamicVideo | null;
+	/**
+	 * 图廊(图文 / 专栏)。张数是动态的,拆不开,所以仍是一整块画好的 VNode。**不带**
+	 * 「跟在文字后面」的那层间距,单独摆时由皮肤 CSS 管。
+	 */
+	pics?: VNode | null;
 	additional?: VNode | null;
 	forward?: DynamicNode;
 	stats?: { forward: string; comment: string; like: string };
@@ -151,13 +166,13 @@ export async function buildDynamicNode(
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
 			node.text = buildBasicText(dynamic, false);
-			node.media = buildOpusPics(dynamic);
+			node.pics = buildOpusPics(dynamic);
 			return node;
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
 			// 转发本身不带图(接口给的 major 是空的),照样取一遍,真有也不丢。
-			node.media = buildOpusPics(dynamic);
+			node.pics = buildOpusPics(dynamic);
 			if (!dynamic.orig) {
 				// 没有转发框可装这句说明,它跟着转发语走。
 				node.text = (
@@ -176,14 +191,14 @@ export async function buildDynamicNode(
 		case DYNAMIC_TYPE_AV: {
 			const archive = dynamic.modules.module_dynamic?.major?.archive;
 			node.text = buildBasicText(dynamic, false);
-			node.media = archive ? buildVideoContent(archive) : null;
+			node.video = archive ? videoOf(archive) : null;
 			if (archive?.badge.text === "投稿视频") label("投稿了视频");
 			return node;
 		}
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			node.text = buildBasicText(dynamic, true);
-			node.media = buildOpusPics(dynamic);
+			node.pics = buildOpusPics(dynamic);
 			label("投稿了专栏");
 			return node;
 		}
@@ -558,7 +573,7 @@ function buildCommonAdditional(common: any) {
 /**
  * 关联视频卡 —— 图文/文字动态正文下方挂的那条投稿。
  *
- * 与 DYNAMIC_TYPE_AV 的主视频卡(buildVideoContent)是两套数据:那边 `stat.play` /
+ * 与 DYNAMIC_TYPE_AV 的主视频卡(拆成了五个原子块)是两套数据:那边 `stat.play` /
  * `stat.danmaku` 是两个各自配图标的计数(接口给的是「6.5万」这种成品字符串;链接解析
  * 拼出来的动态也照这个样子给),这边 `desc_second` 已经是接口拼好的一整句(「2654观看
  * 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
@@ -601,52 +616,23 @@ function buildUgcAdditional(ugc: any) {
 	);
 }
 
-function buildVideoContent(archive: {
+/**
+ * 投稿视频那张卡的数据(决策 8 的 2026-09-18 🔗)。从前这里画的是一整张卡,现在只取数 ——
+ * 卡由 `blocks/dynamic.tsx` 的五个原子块各画一段、皮肤用网格与 CSS 拼回去。
+ */
+function videoOf(archive: {
 	cover: string;
 	duration_text: string;
 	title: string;
 	desc: string;
 	stat: { play: number | string; danmaku: number | string };
-}) {
-	return (
-		<div
-			data-bn="video"
-			class="rounded-lg overflow-hidden mt-1 [background:var(--bn-inset-bg)]"
-			style="--bn-inset-bg: rgba(0,0,0,0.04); max-width: 600px;"
-		>
-			{/* 封面整块铺在最上面 —— 与直播卡同一个骨架:先给一张图,文字压在下面。 */}
-			<div class="relative w-full">
-				<img data-bn="videoCover" class="w-full h-auto block" src={archive.cover} alt="" />
-				{/*
-				 * 时长角标自己衬一层深色底,不再靠「整张封面压暗 20% + 白字阴影」。封面现在是
-				 * 主体,压暗会让整张图发灰;而封面右下角是什么颜色完全由 UP 决定,亮底上的白字
-				 * 加弱阴影会糊没 —— 与关联视频小卡(buildUgcAdditional)同款处理。
-				 */}
-				{archive.duration_text ? (
-					<span class="absolute bottom-[8px] right-[8px] px-[6px] py-[2px] rounded-[4px] bg-black/60 text-white text-[12px] font-bold leading-[1.4]">
-						{archive.duration_text}
-					</span>
-				) : null}
-			</div>
-			<div class="p-[12px]">
-				<div data-bn="videoTitle" class="text-[16px] font-bold text-[#18191C] line-clamp-2">
-					{archive.title}
-				</div>
-				{/* 简介常为空串,空就整行不渲染,免得标题与播放数之间多出一条空白。 */}
-				{archive.desc ? (
-					<div class="mt-[6px] text-[12px] text-[#999] line-clamp-2">{archive.desc}</div>
-				) : null}
-				<div class="mt-[10px] flex gap-3 text-[12px] text-[#999] items-center">
-					<span class="flex items-center gap-[4px]">
-						{SVG_VIEW}
-						{archive.stat.play}
-					</span>
-					<span class="flex items-center gap-[4px]">
-						{SVG_DANMAKU}
-						{archive.stat.danmaku}
-					</span>
-				</div>
-			</div>
-		</div>
-	);
+}): DynamicVideo {
+	return {
+		cover: archive.cover,
+		duration: archive.duration_text,
+		title: archive.title,
+		desc: archive.desc,
+		views: String(archive.stat.play),
+		danmaku: String(archive.stat.danmaku),
+	};
 }

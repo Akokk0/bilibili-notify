@@ -235,14 +235,16 @@ describe("checkCardSkinPackage:清单层", () => {
 			pack({
 				[CARD_SKIN_MANIFEST_FILE]: manifest({
 					cards: {
-						live: {
+						// 用动态卡的视频封面照 —— 直播卡拆成原子块之后一个挂点都不剩了,
+						// 而这条要照的正是「块内部的挂点会被关回块里」(决策 8 的 2026-09-18 🔗)。
+						dynamic: {
 							width: 600,
 							css: '[data-bn="glass"]{border-radius:12px}[data-bn="evilhook"]{color:red}',
 							blocks: [
 								{
-									id: "cover",
+									id: "video-cover",
 									kind: "builtin",
-									builtin: "cover",
+									builtin: "videoCover",
 									grid: { row: 1, column: 1, span: 12 },
 									css: '[data-bn="image"]{border-radius:8px}[data-bn="evilhook"]{color:red}',
 								},
@@ -260,7 +262,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		const card = r.manifest.cards.live;
+		const card = r.manifest.cards.dynamic;
 		expect(card?.css).toBe('[data-bn="glass"]{border-radius:12px}');
 		const [cover, note] = card?.blocks ?? [];
 		// 块级 CSS 的产物带着归一后的 self 前缀(2026-09-13「开放重写」):`image` 是
@@ -269,7 +271,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		expect(note?.kind === "custom" ? note.html : "").toBe('<div class="note">{up.name}</div>');
 		expect(JSON.stringify(r.manifest)).not.toContain("evil");
 		expect(JSON.stringify(r.manifest)).not.toContain("script");
-		expect(r.warnings.join()).toContain("cards.live.css");
+		expect(r.warnings.join()).toContain("cards.dynamic.css");
 		expect(r.warnings.join()).toContain("script");
 	});
 

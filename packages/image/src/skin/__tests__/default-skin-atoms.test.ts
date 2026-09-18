@@ -36,7 +36,10 @@ describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
 		const inner = [...(inset?.querySelectorAll("[data-block]") ?? [])].map((e) =>
 			e.getAttribute("data-block"),
 		);
-		expect(inner).toEqual(expect.arrayContaining(["avatar", "name", "time", "media"]));
+		// 转发框里那条是视频投稿,所以视频卡那几块也在 —— 内层与外层同一份皮肤、同一套块。
+		expect(inner).toEqual(
+			expect.arrayContaining(["avatar", "name", "time", "videoCover", "videoTitle"]),
+		);
 		expect(inner).not.toContain("header");
 		expect(inner).not.toContain("content");
 	});

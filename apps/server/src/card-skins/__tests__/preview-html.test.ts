@@ -38,20 +38,26 @@ function skinWith(html: string): unknown {
 				width: 600,
 				blocks: [
 					{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
-					// 正文 / 媒体 / 转发框 —— 从前这三件都画在 `content` 复合块里,
+					// 正文 / 视频标题 / 图廊 / 转发框 —— 从前都画在 `content` 复合块里,
 					// 复合块退役后各是一块(ADR-0014 决策 8 的 2026-09-18 🔗)。
 					{ id: "text", kind: "builtin", builtin: "text", grid: { row: 2, column: 1, span: 12 } },
 					{
-						id: "media",
+						id: "video-title",
 						kind: "builtin",
-						builtin: "media",
+						builtin: "videoTitle",
 						grid: { row: 3, column: 1, span: 12 },
+					},
+					{
+						id: "pics",
+						kind: "builtin",
+						builtin: "pics",
+						grid: { row: 4, column: 1, span: 12 },
 					},
 					{
 						id: "forward",
 						kind: "builtin",
 						builtin: "forward",
-						grid: { row: 4, column: 1, span: 12 },
+						grid: { row: 5, column: 1, span: 12 },
 					},
 				],
 			},

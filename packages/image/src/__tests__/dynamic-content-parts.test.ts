@@ -1,12 +1,13 @@
 /**
- * 动态呈现态的「文字」「媒体」两个字段(ADR-0014 决策 8 的 2026-09-18 🔗)。
+ * 动态呈现态里正文拆开的那几份(ADR-0014 决策 8 的 2026-09-18 🔗)。
  *
- * `node.body` 是构建时就把正文文字与主媒体(视频卡 / 图廊)粘成的一个 VNode,进 `content`
- * 复合块;原子块要把这两样分开摆,所以呈现态另给两份:`text` 只装文字,`media` 只装视频卡
- * 或图廊。这里钉的是每类动态的两份各自装着什么、挂点跟着部件走、没有的那份是空的。
+ * 从前整段正文(文字 + 主媒体)是构建时粘成的一个 `body`,进 `content` 复合块。复合块退役
+ * 之后拆成三份:`text` 只装文字,`pics` 只装图廊,`video` 干脆不是 VNode 而是**一份数据**
+ * —— 视频卡拆成了五个原子块,各取各的那一项。这里钉的是每类动态的这几份各装着什么、
+ * 挂点跟着部件走、没有的那份是空的。
  *
- * `body` 一个字节不变**不在这里钉** —— 23 份基准快照(`card-baseline.test.ts`)与皮肤验收门
- * 的块内层字节门(`skin/__tests__/skin-gate.test.ts`)钉着,那两份全绿就是证明。
+ * 出图一个字节不变**不在这里钉** —— 23 份基准快照(`card-baseline.test.ts`)与皮肤验收门
+ * (`skin/__tests__/skin-gate.test.ts`)钉着,那两份全绿就是证明。
  */
 
 import { renderToString } from "@vue/server-renderer";
@@ -142,14 +143,18 @@ describe("buildDynamicNode —— 视频投稿", () => {
 		expect(html).not.toContain(COVER);
 	});
 
-	it("media 是视频卡本身,三个挂点都在,不带正文", async () => {
+	it("video 是那张卡的**数据**,不是画好的 VNode —— 卡由五个原子块各画一段", async () => {
 		const node = await buildDynamicNode(videoDynamic(), false, fmt);
-		const html = await htmlOf(present(node.media, "media"));
-		expect(html).toMatch(/^<div data-bn="video"/);
-		expect(html).toContain(COVER);
-		expect(html).toContain("视频标题在这里");
-		expect(hooksIn(html)).toEqual(new Set(["video", "videoCover", "videoTitle"]));
-		expect(html).not.toContain("投稿时配的一段话");
+		expect(node.video).toEqual({
+			cover: COVER,
+			duration: "03:21",
+			title: "视频标题在这里",
+			desc: "视频简介",
+			views: "1.2万",
+			danmaku: "34",
+		});
+		// 图廊那份是空的:投稿视频没有图廊。
+		expect(node.pics ?? null).toBeNull();
 	});
 });
 
@@ -164,9 +169,9 @@ describe("buildDynamicNode —— 图文", () => {
 		expect(html).not.toContain(PIC);
 	});
 
-	it("media 是图廊本身 —— 不带 body 里跟在文字后面的那层间距,挂点都在", async () => {
+	it("pics 是图廊本身 —— 不带跟在文字后面的那层间距,挂点都在", async () => {
 		const node = await buildDynamicNode(draw(), false, fmt);
-		const html = await htmlOf(present(node.media, "media"));
+		const html = await htmlOf(present(node.pics, "pics"));
 		// 根就是图廊:`mt-[8px]` 那层是「跟在文字后面」的间距,单独摆时归皮肤 CSS 管。
 		expect(html).toMatch(/^<div data-bn="pics"/);
 		expect(html).not.toContain("mt-[8px]");
@@ -182,12 +187,12 @@ describe("buildDynamicNode —— 图文", () => {
 			fmt,
 		);
 		expect(node.text ?? null).toBeNull();
-		expect(await htmlOf(present(node.media, "media"))).toMatch(/^<div data-bn="pics pic"/);
+		expect(await htmlOf(present(node.pics, "pics"))).toMatch(/^<div data-bn="pics pic"/);
 	});
 });
 
 describe("buildDynamicNode —— 纯文字", () => {
-	it("text 是正文,media 为空", async () => {
+	it("text 是正文,视频与图廊都为空", async () => {
 		const node = await buildDynamicNode(
 			dynamic("DYNAMIC_TYPE_WORD", { desc: richText("一条纯文字动态") }),
 			false,
@@ -196,7 +201,8 @@ describe("buildDynamicNode —— 纯文字", () => {
 		const html = await htmlOf(present(node.text, "text"));
 		expect(html).toContain("一条纯文字动态");
 		expect([...hooksIn(html)]).toEqual(["body"]);
-		expect(node.media ?? null).toBeNull();
+		expect(node.video ?? null).toBeNull();
+		expect(node.pics ?? null).toBeNull();
 	});
 });
 
@@ -217,9 +223,9 @@ describe("buildDynamicNode —— 专栏", () => {
 		expect(html).not.toContain(PIC);
 	});
 
-	it("media 是头图那格图廊", async () => {
+	it("pics 是头图那格图廊", async () => {
 		const node = await buildDynamicNode(article(), false, fmt);
-		const html = await htmlOf(present(node.media, "media"));
+		const html = await htmlOf(present(node.pics, "pics"));
 		// 单图时整个图廊就是那一格,两个挂点落在同一个元素上。
 		expect(html).toMatch(/^<div data-bn="pics pic"/);
 		expect(html).toContain(PIC);
@@ -228,7 +234,7 @@ describe("buildDynamicNode —— 专栏", () => {
 });
 
 describe("buildDynamicNode —— 充电专属占位", () => {
-	it("text 是那块占位,media 为空", async () => {
+	it("text 是那块占位,视频与图廊都为空", async () => {
 		// 未充电时接口把 module_dynamic 整体清空,不管外层 type 是什么都落到占位上。
 		const node = await buildDynamicNode(
 			dynamic("DYNAMIC_TYPE_AV", {}, { basic: { is_only_fans: true } }),
@@ -238,7 +244,8 @@ describe("buildDynamicNode —— 充电专属占位", () => {
 		const html = await htmlOf(present(node.text, "text"));
 		expect(html).toContain("充电专属内容");
 		expect(html).toContain("为 示例UP 充电即可查看完整内容");
-		expect(node.media ?? null).toBeNull();
+		expect(node.video ?? null).toBeNull();
+		expect(node.pics ?? null).toBeNull();
 	});
 });
 
@@ -248,7 +255,7 @@ describe("buildDynamicNode —— 渲染不了的动态", () => {
 		["DYNAMIC_TYPE_UGC_SEASON", "示例UP更新了合集，我暂时无法渲染，请自行查看"],
 		["DYNAMIC_TYPE_NONE", "示例UP发布了一条无效动态"],
 		["DYNAMIC_TYPE_SOMETHING_NEW", "示例UP发布了一条我无法识别的动态，请自行查看"],
-	])("%s → text 是那句提示,media 为空", async (type, notice) => {
+	])("%s → text 是那句提示,视频与图廊都为空", async (type, notice) => {
 		const node = await buildDynamicNode(
 			dynamic(type, { desc: richText("不该出现的正文") }),
 			false,
@@ -256,7 +263,8 @@ describe("buildDynamicNode —— 渲染不了的动态", () => {
 		);
 		const html = await htmlOf(present(node.text, "text"));
 		expect(html).toBe(`<p>${notice}</p>`);
-		expect(node.media ?? null).toBeNull();
+		expect(node.video ?? null).toBeNull();
+		expect(node.pics ?? null).toBeNull();
 	});
 });
 
@@ -264,23 +272,23 @@ describe("buildDynamicNode —— 转发", () => {
 	const forward = (orig?: Dynamic) =>
 		dynamic("DYNAMIC_TYPE_FORWARD", { desc: richText("转发时说的话") }, { orig });
 
-	it("外层 text 只是转发语,media 为空;原动态的文字与图各在 forward 自己那两份里", async () => {
+	it("外层 text 只是转发语,图廊为空;原动态的文字与图各在 forward 自己那两份里", async () => {
 		const orig = dynamic("DYNAMIC_TYPE_DRAW", opus({ summary: "原动态的正文", pics: pics(2) }));
 		const node = await buildDynamicNode(forward(orig), false, fmt);
 
 		const text = await htmlOf(present(node.text, "外层 text"));
 		expect(text).toContain("转发时说的话");
 		expect(text).not.toContain("原动态的正文");
-		expect(node.media ?? null).toBeNull();
+		expect(node.pics ?? null).toBeNull();
 
 		const inner = node.forward as DynamicNode;
 		expect(inner).toBeDefined();
 		const innerText = await htmlOf(present(inner.text, "原动态 text"));
 		expect(innerText).toContain("原动态的正文");
 		expect(innerText).not.toContain("转发时说的话");
-		const innerMedia = await htmlOf(present(inner.media, "原动态 media"));
-		expect(innerMedia).toMatch(/^<div data-bn="pics"/);
-		expect(innerMedia.match(/<img/g)).toHaveLength(2);
+		const innerPics = await htmlOf(present(inner.pics, "原动态 pics"));
+		expect(innerPics).toMatch(/^<div data-bn="pics"/);
+		expect(innerPics.match(/<img/g)).toHaveLength(2);
 	});
 
 	it("原动态不可见 → 那句说明跟着转发语进 text(没有转发框可以装它)", async () => {
@@ -290,11 +298,11 @@ describe("buildDynamicNode —— 转发", () => {
 		expect(text).toContain("转发时说的话");
 		expect(text).toContain("示例UP转发了一条动态，但原动态已不可见");
 		expect(text.indexOf("转发时说的话")).toBeLessThan(text.indexOf("原动态已不可见"));
-		expect(node.media ?? null).toBeNull();
+		expect(node.pics ?? null).toBeNull();
 	});
 });
 
-describe("buildDynamicNode —— text 与 media 不共用 VNode 实例", () => {
+describe("buildDynamicNode —— text 与 pics 不共用 VNode 实例", () => {
 	/**
 	 * Vue 文档要求一棵组件树里的 vnode 各不相同 —— 客户端挂载时会往 vnode 上写 `el` /
 	 * `component`,同一个实例出现在两处,后一处就把前一处的记录盖掉。出图走 SSR,实测共用
@@ -326,13 +334,13 @@ describe("buildDynamicNode —— text 与 media 不共用 VNode 实例", () => 
 			const outer = await buildDynamicNode(d, false, fmt);
 			for (const node of outer.forward ? [outer, outer.forward] : [outer]) {
 				const inText = collectVNodes(node.text, new Set());
-				const inMedia = collectVNodes(node.media, new Set());
+				const inPics = collectVNodes(node.pics, new Set());
 				expect(
-					inText.size + inMedia.size,
-					`${d.type} 的 text / media 应当画出点什么`,
+					inText.size + inPics.size + (node.video ? 1 : 0),
+					`${d.type} 的 text / pics / video 应当有点什么`,
 				).toBeGreaterThan(0);
-				const reused = [...inMedia].filter((v) => inText.has(v) && !shared.has(v));
-				expect(reused, `${d.type} 的 text 与 media 共用了实例`).toEqual([]);
+				const reused = [...inPics].filter((v) => inText.has(v) && !shared.has(v));
+				expect(reused, `${d.type} 的 text 与 pics 共用了实例`).toEqual([]);
 			}
 		}
 	});

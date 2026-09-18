@@ -77,12 +77,6 @@ describe("提示词拼装", () => {
 		const user = prepared({ kind: "live", blockId: "cover" }).user("圆角大一点");
 		expect(user).toContain("圆角大一点");
 		expect(user).toContain('[data-bn="self"]');
-		const coverHooks = Object.entries(CARD_SKIN_BUILTIN_BLOCKS.live.cover?.hooks ?? {});
-		expect(coverHooks.length).toBeGreaterThan(0);
-		for (const [hook, label] of coverHooks) {
-			expect(user).toContain(`[data-bn="${hook}"]`);
-			expect(user).toContain(label);
-		}
 		expect(user).toContain("TARGET_MARK");
 		expect(user).toContain("FRAME_MARK");
 		// 整卡轮廓:出厂皮肤直播卡的每一块(块怎么拆归默认皮肤,这里不抄名单)+ 夹具加的两块。
@@ -118,11 +112,25 @@ describe("提示词拼装", () => {
 		expect(user).not.toContain("TARGET_MARK");
 	});
 
+	/**
+	 * 挂点那两条拿**动态卡的附加内容**照 —— 直播卡拆成原子块之后一个挂点都不剩了
+	 * (决策 8 的 2026-09-18 🔗:封面就是一张图,状态角标自己是一块)。
+	 */
+	it("块的挂点连人话名一起递给模型 —— 名字记不住是写皮肤第一道坎", () => {
+		const user = prepared({ kind: "dynamic", blockId: "additional" }).user("圆角大一点");
+		const hooks = Object.entries(CARD_SKIN_BUILTIN_BLOCKS.dynamic.additional?.hooks ?? {});
+		expect(hooks.length).toBeGreaterThan(0);
+		for (const [hook, label] of hooks) {
+			expect(user).toContain(`[data-bn="${hook}"]`);
+			expect(user).toContain(label);
+		}
+	});
+
 	it("清洗用的是这个框自己那张挂点表", () => {
-		const cover = prepared({ kind: "live", blockId: "cover" });
-		const own = cover.sanitize('[data-bn="status"]{color:red}');
+		const additional = prepared({ kind: "dynamic", blockId: "additional" });
+		const own = additional.sanitize('[data-bn="button"]{color:red}');
 		expect(own).toMatchObject({ ok: true, warnings: [] });
-		const foreign = cover.sanitize('[data-bn="avatar"]{color:red}');
+		const foreign = additional.sanitize('[data-bn="avatar"]{color:red}');
 		expect(foreign.ok && foreign.warnings.length).toBeGreaterThan(0);
 		const frame = prepared({ kind: "live" }).sanitize('[data-bn="glass"]{color:red}');
 		expect(frame).toMatchObject({ ok: true, warnings: [] });

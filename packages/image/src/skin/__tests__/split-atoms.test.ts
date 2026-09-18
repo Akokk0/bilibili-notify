@@ -114,24 +114,48 @@ describe("动态卡 — text(正文文字)", () => {
 	});
 });
 
-describe("动态卡 — media(视频卡 / 图廊)", () => {
-	it("视频投稿:画的是视频卡本身,三个挂点都在,不带正文", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["media"]), "media");
-		expect(hooksOn(root)).toEqual(["video"]);
-		expect(hooksUnder(root)).toEqual(new Set(["video", "videoCover", "videoTitle"]));
-		expect(root.textContent).toContain(VIDEO_TITLE);
-		expect(root.textContent).not.toContain(AV_TEXT);
+describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
+	it("封面只是一张图,挂点在图上", async () => {
+		const root = soleRoot(await renderWith("dynamic", ["videoCover"]), "videoCover");
+		expect(root.tagName).toBe("IMG");
+		expect(hooksOn(root)).toEqual(["image"]);
+		expect(root.textContent).toBe("");
 	});
 
+	it("标题 / 简介 / 播放弹幕各画各的一段,谁都不带正文", async () => {
+		const html = await renderWith("dynamic", ["videoTitle", "videoDesc", "videoStats"]);
+		expect(soleRoot(html, "videoTitle").textContent).toBe(VIDEO_TITLE);
+		expect(soleRoot(html, "videoDesc").textContent).not.toContain(VIDEO_TITLE);
+		// 播放 · 弹幕数那块是两个计数,不含标题也不含正文。
+		expect(soleRoot(html, "videoStats").textContent).not.toContain(AV_TEXT);
+	});
+
+	it("时长角标不自带定位 —— 贴哪个角归皮肤说", async () => {
+		const root = soleRoot(await renderWith("dynamic", ["videoDuration"]), "videoDuration");
+		expect(root.getAttribute("class") ?? "").not.toMatch(/absolute|bottom-|right-/);
+	});
+
+	it("不是投稿视频 → 五块一起收起", async () => {
+		const ids = ["videoCover", "videoDuration", "videoTitle", "videoDesc", "videoStats"];
+		const html = await renderWith("dynamic", ids, "draw");
+		for (const id of ids) expect(blocksOf(html, id), id).toEqual([]);
+	});
+});
+
+describe("动态卡 — pics(图廊)", () => {
 	it("图文:画的是图廊本身(九格),不带正文后面那层间距", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["media"], "draw"), "media");
+		const root = soleRoot(await renderWith("dynamic", ["pics"], "draw"), "pics");
 		expect(hooksOn(root)).toEqual(["pics"]);
 		expect(root.querySelectorAll('[data-bn="pic"]')).toHaveLength(9);
 		expect(root.textContent).not.toContain("这是一段示例图文正文");
 	});
 
-	it("转发那条自己没有媒体 → 整块收起(原动态的媒体归转发框里那张卡)", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["media"], "forward"), "media")).toEqual([]);
+	it("视频投稿没有图廊 → 整块收起", async () => {
+		expect(blocksOf(await renderWith("dynamic", ["pics"]), "pics")).toEqual([]);
+	});
+
+	it("转发那条自己没有图 → 整块收起(原动态的图归转发框里那张卡)", async () => {
+		expect(blocksOf(await renderWith("dynamic", ["pics"], "forward"), "pics")).toEqual([]);
 	});
 });
 

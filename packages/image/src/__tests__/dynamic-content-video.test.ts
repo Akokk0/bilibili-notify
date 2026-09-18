@@ -8,9 +8,7 @@
  * 字号与间距属观感,留手动验证。
  */
 
-import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
-import { createSSRApp, h } from "vue";
 import { buildDynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
@@ -65,30 +63,46 @@ function makeVideoDynamic(over: Record<string, unknown> = {}): Dynamic {
 	};
 }
 
-/** 只渲染正文(= 这条动态自己的字 + 主视频卡),不带卡框与头像行。 */
-async function videoBodyHtml(dynamic: Dynamic = makeVideoDynamic()): Promise<string> {
+/**
+ * 整张动态卡(出厂默认皮肤)。视频卡从前是一整块画好的 VNode,现在是五个原子块 + 皮肤用
+ * 网格与 CSS 拼出来的容器(决策 8 的 2026-09-18 🔗)—— 「排成什么样」只有走皮肤才看得见。
+ */
+async function videoCardHtml(dynamic: Dynamic = makeVideoDynamic()): Promise<string> {
 	const node = await buildDynamicNode(dynamic, false, fmt);
-	const app = createSSRApp({ render: () => h("div", [node.text, node.media]) });
-	return renderToString(app);
+	return await renderViaDefaultSkin(
+		"dynamic",
+		{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
+		{ htmlWidth: 600 },
+	);
 }
 
-/** 包着封面图的那个元素的 class —— 封面是主体还是缩略图,全写在这一串里。 */
-function coverWrapperClass(html: string): string {
-	const m = html.match(new RegExp(`<div class="([^"]*)"[^>]*>\\s*<img[^>]*src="${COVER}"`));
-	if (!m) throw new Error(`没找到封面图的外层元素:\n${html}`);
+/** 封面 img 自己的 class —— 封面是主体还是缩略图,全写在这一串里。 */
+function coverImgClass(html: string): string {
+	const m = html.match(new RegExp(`<img[^>]*class="([^"]*)"[^>]*src="${COVER}"`));
+	if (!m) throw new Error(`没找到封面图:\n${html}`);
+	return m[1];
+}
+
+/** 那一块的 wrapper 的 style(网格坐标写在这儿)。 */
+function blockStyle(html: string, id: string): string {
+	const m = html.match(new RegExp(`class="bn-blk-${id}" style="([^"]*)"`));
+	if (!m) throw new Error(`这张卡上没有「${id}」这一块`);
 	return m[1];
 }
 
 describe("主视频卡 —— 封面作为主体", () => {
 	it("封面占满整块宽度,不再挤在左边那条固定宽的缩略图列里", async () => {
-		const cls = coverWrapperClass(await videoBodyHtml());
+		const html = await videoCardHtml();
+		const cls = coverImgClass(html);
 		expect(cls).toContain("w-full");
 		// 老版式是 `relative w-40 shrink-0`:一旦有人把缩略图列改回来,这里就红。
-		expect(cls, "封面容器不该再有宽度上限或收缩约束").not.toMatch(/\bw-\d|\bw-\[|shrink-0/);
+		expect(cls, "封面不该再有宽度上限或收缩约束").not.toMatch(/\bw-\d|\bw-\[|shrink-0/);
+		// 而且它在网格里是通栏的,不是挤在某几列里。
+		expect(blockStyle(html, "video-cover")).toContain("grid-column:1 / span 12");
 	});
 
 	it("时长角标自己衬一层深色底,封面不再整张压暗", async () => {
-		const html = await videoBodyHtml();
+		const html = await videoCardHtml();
 		expect(html).toContain("16:07");
 		// 封面右下角是什么颜色由 UP 决定,亮底上纯白字加阴影会糊没 —— 与关联视频小卡同款处理。
 		expect(html).toMatch(/<span class="[^"]*bg-black\/[^"]*"[^>]*>16:07<\/span>/);
@@ -96,8 +110,18 @@ describe("主视频卡 —— 封面作为主体", () => {
 		expect(html).not.toContain("inset-0 bg-black/20");
 	});
 
+	it("角标与封面同占那几行、层次更高 —— 叠在封面右下角,不是排在它下面", async () => {
+		const html = await videoCardHtml();
+		const cover = blockStyle(html, "video-cover");
+		const badge = blockStyle(html, "video-duration");
+		expect(badge.match(/grid-row:(\d+)/)?.[1]).toBe(cover.match(/grid-row:(\d+)/)?.[1]);
+		expect(badge).toContain("z-index:");
+		expect(cover).not.toContain("z-index:");
+	});
+
 	it("标题 / 简介 / 播放弹幕都排在封面下方", async () => {
-		const html = await videoBodyHtml();
+		// 只看 `<style>` 之后那截:整张卡的 CSS 里到处是数字,「129」在里头一搜一个准。
+		const html = (await videoCardHtml()).split("</style>")[1] ?? "";
 		const cover = html.indexOf(COVER);
 		expect(cover).toBeGreaterThanOrEqual(0);
 		for (const text of ["MC恐怖地图 毒药", "剪辑：@雲開七幺七", "1.8万", "129"]) {
@@ -105,28 +129,28 @@ describe("主视频卡 —— 封面作为主体", () => {
 		}
 	});
 
-	it("缺简介 / 缺时长时对应的元素整个收起,不留空块", async () => {
+	it("缺简介 / 缺时长时对应的块整个不出现,不留空块", async () => {
 		// 抓包里 desc 常是空串;首映等形态没有 duration_text。空着照画的话,标题与播放数
-		// 之间会多出一条空白行,封面上还会多出一块空的深色角标。
-		const html = await videoBodyHtml(makeVideoDynamic({ desc: "", duration_text: "" }));
+		// 之间会多出一条空白行,封面上还会多出一块空的深色角标 —— 而且那块还带着灰底。
+		const html = await videoCardHtml(makeVideoDynamic({ desc: "", duration_text: "" }));
 		expect(html).not.toContain("undefined");
-		expect(html, "有带 class 的空元素说明某一行空着也照画了").not.toMatch(
-			/<(div|span) class="[^"]*"><\/\1>/,
-		);
+		expect(html, "简介那一块不该出现").not.toContain("bn-blk-video-desc");
+		expect(html, "时长角标那一块不该出现").not.toContain("bn-blk-video-duration");
+		// 其余三块照旧。
+		for (const id of ["video-cover", "video-title", "video-stats"]) {
+			expect(html, `${id} 该照画`).toContain(`bn-blk-${id}`);
+		}
 	});
 
 	// 见 render-uno-scan.test.ts:Fragment 锚点 `<!--[-->` 里那个落单的 `[` 会一路吃到
-	// 后面第一个 `]`,把中途的类名并成无效 token,而主视频卡正好挂在一个 Fragment 里。
-	// 被吞的类名只要别处复用过就看不出问题,下面这几个是这张卡独有的。
+	// 后面第一个 `]`,把中途的类名并成无效 token。被吞的类名只要别处复用过就看不出问题,
+	// 下面这几个是这张卡独有的。
 	it("这张卡独有的类名真的生成了 CSS 规则,没被 Fragment 锚点吞掉", async () => {
-		const node = await buildDynamicNode(makeVideoDynamic(), false, fmt);
-		const html = await renderViaDefaultSkin(
-			"dynamic",
-			{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
-			{ htmlWidth: 600 },
-		);
+		const html = await videoCardHtml();
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
-		for (const cls of ["p-[12px]", "bottom-[8px]", "right-[8px]"]) {
+		// 只挑**不含小数点**的:下面那个转义只管方括号,`leading-[1.4]` 的点在 CSS 里也是
+		// 转义的(`.leading-\\[1\\.4\\]`),对不上。
+		for (const cls of ["px-[6px]", "rounded-[4px]", "gap-[4px]"]) {
 			const selector = `.${cls.replace(/[[\]]/g, (c) => `\\${c}`)}`;
 			expect(
 				css.includes(`${selector}{`) || css.includes(`${selector},`),

@@ -7,8 +7,9 @@
  * **原样搬**进来的那几段 JSX —— class、inline style、文案一个字都没动;原子块是**新抠**的,
  * 保持它们在复合块里的 class 与 style,让皮肤能把各件分开摆:
  * - avatar / name / time:header 里的头像 img / 名字 span / 时间 span;
- * - topic / text / media / forward(2026-09-18,决策 8 的 🔗):content 里的话题行、正文文字、
- *   视频卡或图廊、转发框。文字与媒体取呈现态里**另建的两份**(`node.text` / `node.media`),
+ * - topic / text / 视频五块 / pics / forward(2026-09-18,决策 8 的 🔗):话题行、正文文字、
+ *   投稿视频那张卡(封面 / 时长 / 标题 / 简介 / 播放·弹幕数)、图廊、转发框。文字与媒体
+ *   取呈现态里另给的那几份(`node.text` / `node.video` / `node.pics`),
  *   不从 `node.body` 里摘;
  * - forwardCount / commentCount / likeCount(同日):stats 里的三项,多带上复合块根上的颜色
  *   (见 `STAT_ATOM_CLASS`)。
@@ -49,7 +50,7 @@
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
-import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
+import { SVG_COMMENT, SVG_DANMAKU, SVG_FORWARD, SVG_LIKE, SVG_TOPIC, SVG_VIEW } from "../icons";
 import type { DynamicNode } from "../templates/dynamic-content";
 import type { BlockRenderer } from "./types";
 
@@ -146,10 +147,60 @@ const topic: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 const text: BlockRenderer<DynamicBlockProps> = ({ node }) => node.text ?? null;
 
 /**
- * 视频卡 / 图廊(原子块):`node.media`,即 `node.body` 的媒体那一半,挂点在 builder 画的部件上。
- * 没有就收起 —— 转发那条自己没有媒体,原动态的媒体归转发框里那张卡。
+ * 投稿视频那张卡的五块(决策 8 的 2026-09-18 🔗)。从前它们是 `media` 一整块里的部件 ——
+ * 整块挪、整块关,右下角的时长角标更是拆不出来。现在各是一块,JSX **逐字照搬**原来那张卡,
+ * 只把**排版**留给皮肤:外面那圈灰底圆角容器、封面上角标的定位、三段文字之间的间距,
+ * 统统由出厂默认皮肤的块 CSS 用网格拼回去(不造隐形底板块)。
+ *
+ * 没有投稿视频就各自收起 —— 转发那条自己没有视频,原视频归转发框里那张卡。
  */
-const media: BlockRenderer<DynamicBlockProps> = ({ node }) => node.media ?? null;
+const videoCover: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.video ? (
+		<img data-bn="image" class="w-full h-auto block" src={node.video.cover} alt="" />
+	) : null;
+
+/**
+ * 时长角标。自己衬一层深色底,不靠「整张封面压暗 + 白字阴影」—— 封面是主体,压暗会让整张图
+ * 发灰,而封面右下角是什么颜色完全由 UP 决定,亮底上的白字加弱阴影会糊没。
+ * 贴哪个角由皮肤说,所以这里**不写定位**。接口没给时长就收起(直播回放这类)。
+ */
+const videoDuration: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.video?.duration ? (
+		<span class="px-[6px] py-[2px] rounded-[4px] bg-black/60 text-white text-[12px] font-bold leading-[1.4]">
+			{node.video.duration}
+		</span>
+	) : null;
+
+const videoTitle: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.video ? (
+		<div class="text-[16px] font-bold text-[#18191C] line-clamp-2">{node.video.title}</div>
+	) : null;
+
+/** 简介常为空串 —— 空就整块收起,免得标题与播放数之间多出一条空白。 */
+const videoDesc: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.video?.desc ? (
+		<div class="text-[12px] text-[#999] line-clamp-2">{node.video.desc}</div>
+	) : null;
+
+const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.video ? (
+		<div class="flex gap-3 text-[12px] text-[#999] items-center">
+			<span class="flex items-center gap-[4px]">
+				{SVG_VIEW}
+				{node.video.views}
+			</span>
+			<span class="flex items-center gap-[4px]">
+				{SVG_DANMAKU}
+				{node.video.danmaku}
+			</span>
+		</div>
+	) : null;
+
+/**
+ * 图廊(原子块):`node.pics`。张数是动态的,拆不开,所以仍是 builder 画好的一整块,挂点
+ * (`pics` / `pic`)在它画的部件上。没有图就收起。
+ */
+const pics: BlockRenderer<DynamicBlockProps> = ({ node }) => node.pics ?? null;
 
 /**
  * 转发框(原子块):content 复合块里的转发 inset。根**就是**转发框,所以不再挂 `forward` 挂点
@@ -209,7 +260,12 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	time,
 	topic,
 	text,
-	media,
+	videoCover,
+	videoDuration,
+	videoTitle,
+	videoDesc,
+	videoStats,
+	pics,
 	forward,
 	forwardCount: statAtom(ICON_FORWARD, (s) => s.forward),
 	commentCount: statAtom(ICON_COMMENT, (s) => s.comment),
