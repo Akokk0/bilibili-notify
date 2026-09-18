@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
 import { renderCardWithSkin } from "../../skin/render-skin";
 import { sampleCard } from "../sample-cards";
 
@@ -222,8 +223,8 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
  */
 describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得到", () => {
 	/**
-	 * 一套两个块的皮肤:一个自定义块(里头就一个占位符)+ 正文块。
-	 * 正文块不能省 —— 转发框住在它里头,没有它就没有内层那张卡。
+	 * 一套皮肤:一个自定义块(里头就一个占位符)+ 正文 / 媒体 / 转发框三块。
+	 * 转发框那块不能省 —— 内层那张卡就画在它里头;媒体块也不能省,视频标题在它上面。
 	 */
 	const probeSkin = (html: string) =>
 		({
@@ -235,10 +236,22 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 					blocks: [
 						{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
 						{
-							id: "content",
+							id: "text",
 							kind: "builtin",
-							builtin: "content",
+							builtin: "text",
 							grid: { row: 2, column: 1, span: 12 },
+						},
+						{
+							id: "media",
+							kind: "builtin",
+							builtin: "media",
+							grid: { row: 3, column: 1, span: 12 },
+						},
+						{
+							id: "forward",
+							kind: "builtin",
+							builtin: "forward",
+							grid: { row: 4, column: 1, span: 12 },
 						},
 					],
 				},
@@ -290,7 +303,11 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 
 	it("转发场面里,内层那张卡取的是**原动态**的视频标题", async () => {
 		const html = await probe("forward", "探针:{video.title}");
-		const inset = html.slice(html.indexOf('data-bn="forward"'));
-		expect(inset).toContain("探针:【示例视频】");
+		// 转发框是 `forward` 原子块自己的根,挂点是 self —— 按它的 class 找。
+		// `indexOf` 找不到时是 -1,`slice(-1)` 只剩最后一个字符,失败会伪装成「内容不对」,
+		// 所以先断言真找着了。
+		const at = html.indexOf(FORWARD_INSET_CLASS);
+		expect(at, "这张卡上没有转发框").toBeGreaterThan(-1);
+		expect(html.slice(at)).toContain("探针:【示例视频】");
 	});
 });

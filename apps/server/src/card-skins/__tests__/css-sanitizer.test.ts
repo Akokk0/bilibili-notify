@@ -74,9 +74,9 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 		const { css } = ok(
 			`.hud > span:first-child{color:red}
 			div span em{color:red}
-			[data-bn="avatar"] img{border-radius:999px}
+			[data-bn="image"] img{border-radius:999px}
 			[data-bn="self"]:hover{color:red}`,
-			"header",
+			"cover",
 		);
 		expect(selectorLeads(css)).toEqual([
 			'[data-bn="self"]',
@@ -93,20 +93,20 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 	it("已经以 self 起头的一个字都不动 —— 伪元素 / 伪类照旧", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]::before{content:"";border-width:1px}[data-bn="self"]:hover{color:#fff}',
-			"header",
+			"cover",
 		);
 		expect(css).toContain('[data-bn="self"]::before{content:"";border-width:1px}');
 		expect(css).toContain('[data-bn="self"]:hover{color:#fff}');
 		expect(warnings).toEqual([]);
 	});
 
-	it('挂点起头的补成后代 —— [data-bn="avatar"] img → self 在前', () => {
-		const { css } = ok('[data-bn="avatar"] img{border-radius:999px}', "header");
-		expect(css).toBe('[data-bn="self"] [data-bn="avatar"] img{border-radius:999px}');
+	it('挂点起头的补成后代 —— [data-bn="image"] img → self 在前', () => {
+		const { css } = ok('[data-bn="image"] img{border-radius:999px}', "cover");
+		expect(css).toBe('[data-bn="self"] [data-bn="image"] img{border-radius:999px}');
 	});
 
 	it("逗号列表每一支各自归一,不是整条一起判", () => {
-		const { css } = ok('[data-bn="self"]:hover, .x{color:red}', "header");
+		const { css } = ok('[data-bn="self"]:hover, .x{color:red}', "cover");
 		expect(selectorLeads(css)).toEqual(['[data-bn="self"]', '[data-bn="self"]']);
 		expect(css).toContain('[data-bn="self"]:hover');
 		expect(css).toContain('[data-bn="self"] .x');
@@ -117,7 +117,7 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 			`.hud[data-kind="a"]:not(.off) > span::after{content:"";color:red}
 			:is(b, em) span{color:red}
 			.row:has(> img){border-width:1px}`,
-			"header",
+			"cover",
 		);
 		expect(selectorLeads(css)).toEqual([
 			'[data-bn="self"]',
@@ -131,8 +131,8 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 	});
 
 	it('产物里的挂点只有 [data-bn="…"] 一种写法 —— 渲染器的翻译靠它', () => {
-		const { css } = ok('[data-bn="avatar"]{border-radius:999px}', "header");
-		expect(css).toContain('[data-bn="avatar"]');
+		const { css } = ok('[data-bn="image"]{border-radius:999px}', "cover");
+		expect(css).toContain('[data-bn="image"]');
 		expect(css).not.toContain("data-bn~=");
 		expect(css).not.toContain("data-bn ");
 	});
@@ -142,11 +142,11 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 	it("self 与该块的内部挂点放行,产物保留 hook 形式(翻译是渲染器的事)", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{padding-top:12px;border-radius:8px}
-			[data-bn="self"] [data-bn="name"]{color:#fb7299}`,
-			"header",
+			[data-bn="self"] [data-bn="status"]{color:#fb7299}`,
+			"cover",
 		);
 		expect(css).toContain('[data-bn="self"]{padding-top:12px;border-radius:8px}');
-		expect(css).toContain('[data-bn="self"] [data-bn="name"]');
+		expect(css).toContain('[data-bn="self"] [data-bn="status"]');
 		expect(warnings).toEqual([]);
 	});
 
@@ -163,8 +163,8 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 	it("同卡别的块的挂点整条丢弃并告警", () => {
 		const { css, warnings } = ok(
 			`[data-bn="popularity"]{color:red}
-			[data-bn="avatar"]{border-width:2px}`,
-			"header",
+			[data-bn="image"]{border-width:2px}`,
+			"cover",
 		);
 		expect(css).not.toContain("popularity");
 		expect(css).toContain("border-width:2px");
@@ -174,8 +174,8 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 	it("别的卡种的挂点整条丢弃并告警", () => {
 		const { css, warnings } = ok(
 			`[data-bn="price"]{color:red}
-			[data-bn="avatar"]{border-width:2px}`,
-			"header",
+			[data-bn="image"]{border-width:2px}`,
+			"cover",
 		);
 		expect(css).not.toContain("price");
 		expect(css).toContain("border-width:2px");
@@ -185,27 +185,27 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 	it("藏在 :is() / :has() 里的越界挂点一样对表", () => {
 		const { css, warnings } = ok(
 			`.row:has([data-bn="price"]){color:red}
-			.row:is([data-bn="avatar"]){border-width:2px}`,
-			"header",
+			.row:is([data-bn="image"]){border-width:2px}`,
+			"cover",
 		);
 		expect(css).not.toContain("price");
 		expect(css).toContain("border-width:2px");
 		expect(warnings.join()).toContain("price");
 	});
 
-	it("同一个挂点名换个块就该放行 —— sc/amount 认识 price", () => {
-		const { css, warnings } = ok(`[data-bn="price"]{color:red}`, "amount", "sc");
-		expect(css).toBe('[data-bn="self"] [data-bn="price"]{color:red}');
+	it("同一个挂点名换个块就该放行 —— sc/to 认识 masterName", () => {
+		const { css, warnings } = ok(`[data-bn="masterName"]{color:red}`, "to", "sc");
+		expect(css).toBe('[data-bn="self"] [data-bn="masterName"]{color:red}');
 		expect(warnings).toEqual([]);
 	});
 
 	it("自定义块(没有 builtin)只有 self —— 内置块的挂点一个都不认", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{color:#111}
-			[data-bn="avatar"]{border-radius:999px}`,
+			[data-bn="image"]{border-radius:999px}`,
 		);
 		expect(css).toBe('[data-bn="self"]{color:#111}');
-		expect(warnings.join()).toContain("avatar");
+		expect(warnings.join()).toContain("image");
 	});
 
 	it("认不出的块名不静默 —— 只按 self 洗,并且说出来", () => {
@@ -227,7 +227,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 			"[data-bn]{color:red}",
 			'.x:has([data-bn~="avatar"]){color:red}',
 		]) {
-			const { css, warnings } = ok(evil, "header");
+			const { css, warnings } = ok(evil, "cover");
 			expect(css, evil).toBe("");
 			expect(warnings.join(), evil).toContain("data-bn");
 		}
@@ -244,7 +244,7 @@ describe("卡片这档与 dashboard 刻意不同的地方", () => {
 		const { css, warnings } = ok(
 			`@keyframes skin-float{from{transform:translateY(0)}to{transform:translateY(-8px)}}
 			[data-bn="self"]{border-width:1px}`,
-			"header",
+			"cover",
 		);
 		expect(css).not.toContain("@keyframes");
 		expect(css).not.toContain("skin-float");
@@ -256,7 +256,7 @@ describe("卡片这档与 dashboard 刻意不同的地方", () => {
 		const { css, warnings } = ok(
 			`@import "https://evil.example/x.css";
 			[data-bn="self"]{border-width:1px}`,
-			"header",
+			"cover",
 		);
 		expect(css).not.toContain("@import");
 		expect(css).not.toContain("evil.example");
@@ -278,7 +278,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 				grid-template-columns:1fr 2fr;
 				clip-path:polygon(0 0,100% 0,100% 80%,0 100%);
 			}`,
-			"header",
+			"cover",
 		);
 		for (const p of [
 			"mask-image:",
@@ -304,7 +304,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("var(--bn-asset-*) 放行,和渐变叠在一起也放行", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]{background:var(--bn-asset-hud),linear-gradient(#000,#fff)}',
-			"header",
+			"cover",
 		);
 		expect(css).toContain("var(--bn-asset-hud)");
 		expect(css).toContain("linear-gradient(");
@@ -314,7 +314,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("执行面黑名单:behavior / -moz-binding 逐条丢弃", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{behavior:url(x.htc);-moz-binding:url(x.xml);binding:url(x.xml);-ms-behavior:url(x.htc);color:#fff}`,
-			"header",
+			"cover",
 		);
 		expect(css).toBe('[data-bn="self"]{color:#fff}');
 		expect(warnings.join()).toContain("behavior");
@@ -328,7 +328,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 				background-image:image-set("x.png" 1x);
 				border-color:#123456;
 			}`,
-			"header",
+			"cover",
 		);
 		expect(css).not.toContain("url(");
 		expect(css).not.toContain("image-set");
@@ -339,7 +339,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("转义写的 url( 一样拦住 —— tokenizer 先解转义再判 ident", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{background:\\75 rl(https://evil.example/x.png)}`,
-			"header",
+			"cover",
 		);
 		expect(css).not.toContain("75 rl");
 		expect(warnings.join()).toContain("转义");
@@ -348,7 +348,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("expression( 丢弃 —— 老 IE 的执行面,值级过滤一条不松", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]{width:expression(alert(1));border-width:1px}',
-			"header",
+			"cover",
 		);
 		expect(css).toBe('[data-bn="self"]{border-width:1px}');
 		expect(warnings.join()).toContain("expression");
@@ -360,7 +360,7 @@ describe("position 的值域", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]::before{content:"";position:absolute;inset:0}
 			[data-bn="self"]::after{content:"";position:fixed}`,
-			"header",
+			"cover",
 		);
 		expect(css).toContain("position:absolute");
 		expect(css).not.toContain("position:fixed");
@@ -368,15 +368,15 @@ describe("position 的值域", () => {
 	});
 
 	it("宿主(非伪元素)写 position 也放行 —— 与 dashboard 相反,卡片没有布局可被顶掉", () => {
-		const { css, warnings } = ok(`[data-bn="self"]{position:relative;border-width:1px}`, "header");
+		const { css, warnings } = ok(`[data-bn="self"]{position:relative;border-width:1px}`, "cover");
 		expect(css).toBe('[data-bn="self"]{position:relative;border-width:1px}');
 		expect(warnings).toEqual([]);
 	});
 
 	it("fixed / sticky 仍然拒 —— 黑名单放开的是属性,不是这条值域", () => {
 		const { css, warnings } = ok(
-			'[data-bn="self"]{position:fixed}[data-bn="avatar"]{position:sticky}[data-bn="name"]{position:absolute;top:0}',
-			"header",
+			'[data-bn="self"]{position:fixed}[data-bn="image"]{position:sticky}[data-bn="status"]{position:absolute;top:0}',
+			"cover",
 		);
 		expect(css).not.toContain("fixed");
 		expect(css).not.toContain("sticky");
@@ -403,7 +403,7 @@ describe("根块(外框)只认两个挂点", () => {
 
 	it("self 与块的内部挂点在根块里不认识 —— 根块不是块", () => {
 		const { css, warnings } = okFrame(
-			'[data-bn="self"]{color:red}[data-bn="avatar"]{color:red}[data-bn="glass"]{border-width:1px}',
+			'[data-bn="self"]{color:red}[data-bn="image"]{color:red}[data-bn="glass"]{border-width:1px}',
 		);
 		expect(css).toBe('[data-bn="glass"]{border-width:1px}');
 		expect(warnings).toHaveLength(2);
@@ -414,7 +414,7 @@ describe("体积闸", () => {
 	it("超过 maxCssBytes → error", () => {
 		const big = '[data-bn="self"]{border-width:1px}'.repeat(600);
 		expect(Buffer.byteLength(big, "utf8")).toBeGreaterThan(CARD_SKIN_LIMITS.maxCssBytes);
-		expect(sanitizeCardBlockCss(big, { kind: "live", builtin: "header" }).ok).toBe(false);
+		expect(sanitizeCardBlockCss(big, { kind: "live", builtin: "cover" }).ok).toBe(false);
 		expect(sanitizeCardFrameCss(big).ok).toBe(false);
 	});
 
@@ -422,19 +422,19 @@ describe("体积闸", () => {
 		const big = `/* ${"皮肤注释".repeat(1500)} */\n[data-bn="self"]{color:red}`;
 		expect(big.length).toBeLessThan(CARD_SKIN_LIMITS.maxCssBytes);
 		expect(Buffer.byteLength(big, "utf8")).toBeGreaterThan(CARD_SKIN_LIMITS.maxCssBytes);
-		expect(sanitizeCardBlockCss(big, { kind: "live", builtin: "header" }).ok).toBe(false);
+		expect(sanitizeCardBlockCss(big, { kind: "live", builtin: "cover" }).ok).toBe(false);
 	});
 
 	it("空串 / 全被丢弃 → ok 且产物为空串", () => {
-		expect(ok("", "header").css).toBe("");
-		expect(ok('[data-bn="price"]{color:red}', "header").css).toBe("");
+		expect(ok("", "cover").css).toBe("");
+		expect(ok('[data-bn="price"]{color:red}', "cover").css).toBe("");
 	});
 });
 
 describe("自由选择器的两条补丁(主会话审 diff 加的)", () => {
 	it("起头挂点后面紧跟兄弟组合器 → 整条丢(会选到别的块)", () => {
 		for (const sel of ['[data-bn="self"] ~ .x', '[data-bn="self"] + div']) {
-			const r = sanitizeCardBlockCss(`${sel}{color:red}`, { kind: "live", builtin: "header" });
+			const r = sanitizeCardBlockCss(`${sel}{color:red}`, { kind: "live", builtin: "cover" });
 			expect(r.ok).toBe(true);
 			if (r.ok) {
 				expect(r.css).toBe("");
@@ -443,7 +443,7 @@ describe("自由选择器的两条补丁(主会话审 diff 加的)", () => {
 		}
 		// 后代 / 子代照旧;挂点不在头上的兄弟关系也照旧(那是块内部的兄弟)。
 		for (const sel of ['[data-bn="self"] > .x', '[data-bn="self"] .a ~ .b', ".a + .b"]) {
-			const r = sanitizeCardBlockCss(`${sel}{color:red}`, { kind: "live", builtin: "header" });
+			const r = sanitizeCardBlockCss(`${sel}{color:red}`, { kind: "live", builtin: "cover" });
 			expect(r.ok && r.css !== "").toBe(true);
 		}
 	});

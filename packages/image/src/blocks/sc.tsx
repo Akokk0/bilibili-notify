@@ -121,58 +121,6 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 		/>
 	),
 
-	amount: (p) => (
-		<div
-			class="text-center"
-			style={{
-				"--bn-card-tier-color": p.bgColor[0],
-				"--bn-card-tier-color-end": p.bgColor[1],
-			}}
-		>
-			<div
-				data-bn="price"
-				class="text-[36px] font-bold bg-clip-text text-transparent [background-image:linear-gradient(135deg,var(--bn-card-tier-color),var(--bn-card-tier-color-end))]"
-			>
-				¥{p.price}
-			</div>
-			<div
-				data-bn="duration"
-				class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold [background-color:var(--bn-card-tier-color)]"
-			>
-				{SVG_DURATION}
-				<span>{p.duration}</span>
-			</div>
-		</div>
-	),
-
-	sender: (p) => (
-		<div class="flex flex-col items-center gap-2">
-			<div data-bn="avatar" class="w-[70px] h-[70px] overflow-hidden rounded-full">
-				<img class="w-full h-full rounded-full object-cover" src={p.senderFace} alt="发送者头像" />
-			</div>
-			<div
-				data-bn="name"
-				class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px] [background-color:var(--bn-card-tier-color)]"
-				style={{ "--bn-card-tier-color": p.bgColor[0] }}
-			>
-				{p.senderName}
-			</div>
-			<div data-bn="to" class="flex items-center gap-[5px] text-[12px] text-[#666]">
-				<span class="mr-[3px]">SC to</span>
-				<div class="flex items-center gap-[2px]">
-					{p.masterAvatarUrl && (
-						<div
-							data-bn="masterAvatar"
-							class="w-[18px] h-[18px] rounded-full border border-black/10 bg-cover bg-center"
-							style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
-						/>
-					)}
-					<span data-bn="masterName">{p.masterName}</span>
-				</div>
-			</div>
-		</div>
-	),
-
 	message: (p) => {
 		const escapedText = escapeText(p);
 		return escapedText ? (

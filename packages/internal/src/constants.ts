@@ -1475,20 +1475,16 @@ export interface CardSkinBuiltinBlock {
 	hooks: Record<string, string>;
 }
 
-const AUTHOR_HOOKS = {
-	avatar: "头像",
-	name: "名字",
-	time: "时间",
-} as const;
-
 /** 四种可编辑卡共用的分割线。 */
 const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: {} };
 
 /**
  * 内置块目录:每种卡有哪些块、每块内部有哪些挂点。**块名与挂点名是对外 API。**
  *
- * 复合块的渲染逻辑就是今天模板里那一段,原样搬;原子块是从复合块里抠出来的单件,
- * 让皮肤能把头像和名字分开摆(ADR-0014 决策 8)。
+ * **只有原子块与天生拆不动的块**(ADR-0014 决策 8 的 2026-09-18 🔗):复合块整批退役了 ——
+ * 用户多是从默认皮肤复制一份再改,目录里留着「一块顶半张卡」的东西,能挪的就只有整行。
+ * 拆不动的四种仍是非原子:转发框(里面是整张内层卡)、图廊(图的张数是动态的)、附加内容
+ * (四种形态结构各异)、三种不可编辑卡的整卡块。
  */
 export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	CardSkinKind,
@@ -1496,50 +1492,28 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 > = {
 	live: {
 		cover: { label: "封面图", hooks: { image: "封面", status: "状态角标" } },
-		header: { label: "主播信息", hooks: AUTHOR_HOOKS },
 		title: { label: "直播标题", hooks: {} },
-		data: {
-			label: "直播数据",
-			hooks: { row: "顶行", popularity: "人气 / 点赞", area: "分区", fans: "粉丝行" },
-		},
 		desc: { label: "简介", hooks: {} },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "主播名", atom: true, hooks: {} },
 		time: { label: "开播时间", atom: true, hooks: {} },
-		// 数据区的三件(ADR-0014 决策 16 的 🔗):`showPopularity` / `showArea` / `showFans`
-		// 三个显隐开关管的是**复合块内部的一行**,块级的 `showIf` 够不着 —— 所以不留开关,
-		// 把那三件也拆成原子块,用户想少显示哪件就把哪块从版式里删掉。
+		// 数据区的三件(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
+		// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。
 		popularity: { label: "人气 / 点赞", atom: true, hooks: {} },
 		area: { label: "分区", atom: true, hooks: {} },
 		fans: { label: "粉丝行", atom: true, hooks: {} },
 	},
 	dynamic: {
-		header: { label: "头部信息", hooks: AUTHOR_HOOKS },
-		content: {
-			label: "动态正文",
-			hooks: {
-				topic: "话题行",
-				body: "正文",
-				pics: "图廊",
-				pic: "图廊里的一张图",
-				video: "视频卡",
-				videoCover: "视频封面",
-				videoTitle: "视频标题",
-				forward: "转发的原动态",
-			},
-		},
 		additional: {
 			label: "附加内容",
 			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
 		},
-		stats: { label: "转发 / 评论 / 点赞", hooks: { item: "单项", icon: "图标" } },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "UP 主名", atom: true, hooks: {} },
 		time: { label: "发布时间", atom: true, hooks: {} },
-		// 2026-09-18 补的一批(决策 8 的 🔗):正文与互动数也拆开。文字与媒体是呈现态里分开的
-		// 两份(`DynamicNode.text` / `.media`),复合块 `content` 照旧画粘在一起的那份。
+		// 文字与媒体是呈现态里分开的两份(`DynamicNode.text` / `.media`)。
 		topic: { label: "话题", atom: true, hooks: {} },
 		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
 		media: {
@@ -1560,17 +1534,6 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		likeCount: { label: "点赞数", atom: true, hooks: { icon: "图标" } },
 	},
 	sc: {
-		amount: { label: "金额", hooks: { price: "金额数字", duration: "时长胶囊" } },
-		sender: {
-			label: "发送者",
-			hooks: {
-				avatar: "发送者头像",
-				name: "发送者名牌",
-				to: "「SC to」那一行",
-				masterAvatar: "主播小头像",
-				masterName: "主播名",
-			},
-		},
 		message: { label: "留言", hooks: { text: "留言文本" } },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "发送者头像", atom: true, hooks: {} },
@@ -1585,16 +1548,6 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	},
 	guard: {
 		badge: { label: "舰长徽章", atom: true, hooks: {} },
-		name: {
-			label: "姓名",
-			hooks: {
-				avatar: "头像",
-				name: "用户名胶囊",
-				master: "主播胶囊",
-				masterAvatar: "主播小头像",
-				masterName: "主播名",
-			},
-		},
 		text: { label: "文字信息", hooks: {} },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },

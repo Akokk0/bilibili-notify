@@ -49,7 +49,7 @@ export const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) 
 };
 
 /** 徽章靠左 → 内容在右,整列镜像右对齐(文字右对齐、姓名行头像移到外侧右边)。 */
-function isBadgeLeft(p: GuardCardProps): boolean {
+function _isBadgeLeft(p: GuardCardProps): boolean {
 	return (p.layout ?? DEFAULT_CARD_LAYOUT.guard).badgeSide === "left";
 }
 
@@ -110,44 +110,6 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 			style={{ backgroundImage: `url("${p.captainImgUrl}")` }}
 		/>
 	),
-
-	name: (p) => {
-		const badgeLeft = isBadgeLeft(p);
-		return (
-			<div
-				class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}
-				style={{ "--bn-card-tier-color": p.bgColor[0] }}
-			>
-				<div data-bn="avatar" class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
-					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
-				</div>
-				<div class={`flex flex-col gap-[7px] mt-[10px] ${badgeLeft ? "items-end" : "items-start"}`}>
-					<div
-						data-bn="name"
-						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
-					>
-						<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
-					</div>
-					<div
-						data-bn="master"
-						class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
-					>
-						<div
-							data-bn="masterAvatar"
-							class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0"
-							style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
-						/>
-						<span
-							data-bn="masterName"
-							class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]"
-						>
-							{p.isAdmin ? "房管" : p.masterName}
-						</span>
-					</div>
-				</div>
-			</div>
-		);
-	},
 
 	text: (p) => {
 		const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";

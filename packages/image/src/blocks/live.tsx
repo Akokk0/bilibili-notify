@@ -167,33 +167,6 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		);
 	},
 
-	header: (p) => (
-		<div class="flex items-center gap-2.5 px-4">
-			<img
-				data-bn="avatar"
-				class="w-11 h-11 rounded-full object-cover shrink-0"
-				src={p.userface}
-				alt="主播头像"
-			/>
-			<div class="flex flex-col gap-0.5 min-w-0">
-				<span
-					data-bn="name"
-					class="text-[16px] font-bold leading-none [color:var(--bn-ink)]"
-					style="--bn-ink: #18191C;"
-				>
-					{p.username}
-				</span>
-				<span
-					data-bn="time"
-					class="text-[12px] [color:var(--bn-ink-faint)]"
-					style="--bn-ink-faint: #999;"
-				>
-					{p.liveTime}
-				</span>
-			</div>
-		</div>
-	),
-
 	title: (p) => (
 		<div
 			class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]"
@@ -203,29 +176,6 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		</div>
 	),
 
-	// 数据区(原 stats + follower 合并):人气·点赞 / 分区 / 粉丝数据。**三件恒画** ——
-	// 从前的 `showPopularity` / `showArea` / `showFans` 已退役(ADR-0014 决策 16 的 🔗):
-	// 块级的 `showIf` 管不到复合块内部的一行,所以「想少显示哪件」改成在皮肤里删掉对应的
-	// 原子块。复合块自己不再挑,只按**有没有数据**收起粉丝那一行。
-	data: (p) => {
-		const fans = followerText(p);
-		return (
-			<div
-				class="px-4 flex flex-col gap-1 text-[13px] [color:var(--bn-ink-soft)]"
-				style="--bn-ink-soft: #666;"
-			>
-				<div data-bn="row" class="flex justify-between">
-					<span data-bn="popularity">{statsLeft(p)}</span>
-					<span data-bn="area">{`分区：${p.data.area_name}`}</span>
-				</div>
-				{fans ? <div data-bn="fans">{fans}</div> : null}
-			</div>
-		);
-	},
-
-	// 简介:显隐由版式 desc 块的 visible 控制(renderBlocks 跳过不可见块),此处只管渲染。
-	// B 站 `room_info.description` 是富文本(可能含 <p>/<br> 等标签,或 entity-encoded
-	// 形式);简介区域只展示纯文本,这里统一剥成 plain text。
 	desc: (p) => (
 		<div
 			class="px-4 text-[13px] leading-normal [color:var(--bn-ink-faint)]"

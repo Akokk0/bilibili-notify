@@ -70,9 +70,9 @@ const withIconHook = (icon: VNode): VNode =>
 	h(icon.type as string, { ...icon.props, "data-bn": "icon" }, icon.children as VNode[]);
 
 /**
- * 转发框那层 div 的 class。**单点定义**:验收门(`skin/__tests__/skin-gate.test.ts`)要
- * 按它认出这个框 —— 基准快照打在挂点之前,那份 HTML 里一个 `data-bn` 都没有,只剩 class
- * 认得出来。两处各写一份的话,改了 class 门会为一个看不懂的理由红。
+ * 转发框那层 div 的 class。**单点定义**:好几处测试要按它认出这个框 —— 这一块是**原子块**,
+ * 它的挂点是 `self`,根上不挂 `data-bn="forward"`(那是复合块时代的内部部件名),所以只剩
+ * class 认得出来。两处各写一份的话,改了 class 门会为一个看不懂的理由红。
  */
 export const FORWARD_INSET_CLASS =
 	"rounded-[8px] mt-2 pt-[12px] pb-[12px] [background:var(--bn-inset-bg)] [border-left-color:var(--bn-accent)]";
@@ -201,82 +201,8 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 		/>
 	),
 
-	header: ({ node }) => (
-		<div class="flex items-center gap-[12px] px-[16px]">
-			<img
-				data-bn="avatar"
-				class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
-				src={node.avatarUrl}
-				alt="头像"
-			/>
-			<div class="flex flex-col gap-[3px]">
-				<span
-					data-bn="name"
-					class="text-[17px] font-bold leading-none [color:var(--bn-up-name-color)]"
-					style={{ "--bn-up-name-color": node.upIsVip ? "#FB7299" : "#18191C" }}
-				>
-					{node.upName}
-					{node.headerLabel ? ` ${node.headerLabel}` : ""}
-				</span>
-				<span
-					data-bn="time"
-					class="text-[12px] [color:var(--bn-ink-faint)]"
-					style="--bn-ink-faint: #999;"
-				>
-					{node.pubTime}
-				</span>
-			</div>
-		</div>
-	),
-
-	content: ({ node, renderForward }) => (
-		<div class="px-[16px]">
-			{node.topic ? (
-				<div
-					data-bn="topic"
-					class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold [color:var(--bn-accent)]"
-					style="--bn-accent: #00AEEC;"
-				>
-					{SVG_TOPIC}
-					{node.topic}
-				</div>
-			) : null}
-			{node.body}
-			{node.forward ? (
-				// 转发 inset 是内部动态的「框架」:像外层卡片容器一样提供固定的上下内边距,
-				// 这样 renderBlocks 跳过内部首块上边距后,内容不会顶着 inset 顶部。
-				// zoom 把内部子树整体等比缩小(Chromium 原生支持、会正常重排) —— 内层走同一套
-				// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
-				<div data-bn="forward" class={FORWARD_INSET_CLASS} style={FORWARD_INSET_STYLE}>
-					{renderForward(node.forward)}
-				</div>
-			) : null}
-		</div>
-	),
-
 	additional: ({ node }) =>
 		node.additional ? <div class="px-[16px]">{node.additional}</div> : null,
-
-	stats: ({ node }) =>
-		node.stats ? (
-			<div
-				class="flex justify-around px-[16px] [color:var(--bn-ink-faint)]"
-				style="--bn-ink-faint: #999;"
-			>
-				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
-					{ICON_FORWARD}
-					<span>{node.stats.forward}</span>
-				</div>
-				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
-					{ICON_COMMENT}
-					<span>{node.stats.comment}</span>
-				</div>
-				<div data-bn="item" class="flex items-center gap-[6px] text-[13px]">
-					{ICON_LIKE}
-					<span>{node.stats.like}</span>
-				</div>
-			</div>
-		) : null,
 
 	avatar,
 	name,

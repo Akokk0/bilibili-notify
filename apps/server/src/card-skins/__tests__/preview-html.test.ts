@@ -12,6 +12,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FORWARD_INSET_CLASS } from "@bilibili-notify/image";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { renderSkinPreviewHtml } from "../preview-html.js";
@@ -37,11 +38,20 @@ function skinWith(html: string): unknown {
 				width: 600,
 				blocks: [
 					{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
+					// 正文 / 媒体 / 转发框 —— 从前这三件都画在 `content` 复合块里,
+					// 复合块退役后各是一块(ADR-0014 决策 8 的 2026-09-18 🔗)。
+					{ id: "text", kind: "builtin", builtin: "text", grid: { row: 2, column: 1, span: 12 } },
 					{
-						id: "content",
+						id: "media",
 						kind: "builtin",
-						builtin: "content",
-						grid: { row: 2, column: 1, span: 12 },
+						builtin: "media",
+						grid: { row: 3, column: 1, span: 12 },
+					},
+					{
+						id: "forward",
+						kind: "builtin",
+						builtin: "forward",
+						grid: { row: 4, column: 1, span: 12 },
 					},
 				],
 			},
@@ -72,7 +82,9 @@ describe("实时预览 — 示例数据的原始动态真的递到了渲染器",
 
 	it("转发场面:内层那张卡取的是原动态的标题", async () => {
 		const html = await preview(skinWith(PROBE), "forward");
-		const inset = html.slice(html.indexOf('data-bn="forward"'));
+		const at = html.indexOf(FORWARD_INSET_CLASS);
+		expect(at, "这张卡上没有转发框").toBeGreaterThan(-1);
+		const inset = html.slice(at);
 		expect(inset).toContain("探针:【示例视频】");
 	});
 });
@@ -83,8 +95,9 @@ describe("实时预览 — 转发场面", () => {
 			preview(skinWith("<div>x</div>"), "forward"),
 			preview(skinWith("<div>x</div>")),
 		]);
-		expect(forward).toContain('data-bn="forward"');
-		expect(av).not.toContain('data-bn="forward"');
+		// 转发框是 `forward` 原子块自己的根,挂点是 self,所以认它的 class 不认挂点。
+		expect(forward).toContain(FORWARD_INSET_CLASS);
+		expect(av).not.toContain(FORWARD_INSET_CLASS);
 	});
 
 	it("回报的 scene 是真正用上的那个 —— 名字不认识时回落到第一个", async () => {

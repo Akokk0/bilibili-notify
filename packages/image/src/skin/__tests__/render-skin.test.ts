@@ -143,7 +143,7 @@ describe("皮肤渲染器 — 分割线的三条规矩", () => {
 				builtin("t", "title", { row: 2, column: 1, span: 12 }),
 				builtin("d1", "divider", { row: 3, column: 1, span: 12 }),
 				// data 块三个开关全开、但这份夹具没有粉丝变化 —— 它照画;换成 showIf 假的块来造悬空。
-				builtin("h", "header", { row: 4, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
+				builtin("h", "avatar", { row: 4, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
 				builtin("d2", "divider", { row: 5, column: 1, span: 12 }),
 				builtin("t2", "desc", { row: 6, column: 1, span: 12 }),
 			]),
@@ -182,7 +182,7 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 1, column: 1, span: 12 }),
-				builtin("b", "header", { row: 2, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
+				builtin("b", "avatar", { row: 2, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
 				builtin("c", "desc", { row: 3, column: 1, span: 12 }),
 			]),
 		);
@@ -385,7 +385,7 @@ describe("皮肤渲染器 — CSS 翻译", () => {
 			liveCard([
 				builtin(
 					"hd",
-					"header",
+					"avatar",
 					{ row: 1, column: 1, span: 12 },
 					{
 						// 清洗器的产物:每条选择器都以 self 起头(挂点在它后面),其余段随便写。
@@ -494,7 +494,7 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 			card: {
 				width: 290,
 				blocks: [
-					{ id: "a", kind: "builtin", builtin: "amount", grid: { row: 1, column: 1, span: 12 } },
+					{ id: "a", kind: "builtin", builtin: "price", grid: { row: 1, column: 1, span: 12 } },
 				],
 			},
 			props,
