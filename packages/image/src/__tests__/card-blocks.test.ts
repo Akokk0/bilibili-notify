@@ -72,3 +72,37 @@ describe("块库 — 2026-09-18 补的原子块在目录里", () => {
 		}
 	}
 });
+
+// ── 五、非原子块的**完整名单** ────────────────────────────────────────────────
+
+/**
+ * 目录里还剩哪些块不是原子块 —— 一份**闭集**,多一个少一个都红(ADR-0014 决策 8 的
+ * 2026-09-18 🔗)。「复合块整批退役」不是一次性的清理,是从今往后的规矩:新加的块默认
+ * 就该是原子的,要开例外得先改这份名单,顺带解释为什么它拆不动。
+ *
+ * ⚠️ 光靠 `atom` 的键数对不出问题:漏标一个块,编辑器只是把它归进「复合块」那一组,
+ * 出图一个像素都不差 —— 门禁全绿,只有主人打开编辑器才看得见。
+ */
+const NON_ATOM: Record<string, readonly string[]> = {
+	// 封面 = 图 + 绝对定位的状态角标,第二批拆成两块。
+	live: ["cover"],
+	// 预约 / 商品 / 通用 / 关联视频四种形态结构各异,字段也不在契约里 —— 主人拍板不拆。
+	dynamic: ["additional"],
+	sc: [],
+	guard: [],
+	// 三种不可编辑卡:一块就是一整张卡。
+	roastBoard: ["body"],
+	roastSolo: ["body"],
+	wordcloud: ["body"],
+};
+
+describe("块目录 — 非原子块只剩这些", () => {
+	for (const kind of CARD_SKIN_KINDS) {
+		it(`${kind}:${NON_ATOM[kind].length === 0 ? "全是原子块" : NON_ATOM[kind].join(" / ")}`, () => {
+			const left = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])
+				.filter(([, meta]) => meta.atom !== true)
+				.map(([name]) => name);
+			expect(left.sort()).toEqual([...NON_ATOM[kind]].sort());
+		});
+	}
+});

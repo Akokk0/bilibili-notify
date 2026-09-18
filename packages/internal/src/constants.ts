@@ -1490,8 +1490,12 @@ const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, ho
  *
  * **只有原子块与天生拆不动的块**(ADR-0014 决策 8 的 2026-09-18 🔗):复合块整批退役了 ——
  * 用户多是从默认皮肤复制一份再改,目录里留着「一块顶半张卡」的东西,能挪的就只有整行。
- * 拆不动的四种仍是非原子:转发框(里面是整张内层卡)、图廊(图的张数是动态的)、附加内容
- * (四种形态结构各异)、三种不可编辑卡的整卡块。
+ *
+ * `atom` 分的是**「这块画一样东西,还是捆了好几样」**,不是「能不能再拆」:转发框里确实
+ * 套着一整张内层卡、图廊里确实有好几张图,但搬动时它们各是一件,所以是原子块。剩下的
+ * 非原子块是一份**闭集**,由 `card-blocks.test.ts` 钉着:附加内容(预约 / 商品 / 通用 /
+ * 关联视频四种形态结构各异、字段不在契约里,主人拍板不拆)、三种不可编辑卡的整卡块,
+ * 外加还没拆的直播封面(图 + 状态角标,第二批拆成两块)。
  */
 export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	CardSkinKind,
@@ -1499,8 +1503,8 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 > = {
 	live: {
 		cover: { label: "封面图", hooks: { image: "封面", status: "状态角标" } },
-		title: { label: "直播标题", hooks: {} },
-		desc: { label: "简介", hooks: {} },
+		title: { label: "直播标题", atom: true, hooks: {} },
+		desc: { label: "简介", atom: true, hooks: {} },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },
 		name: { label: "主播名", atom: true, hooks: {} },
@@ -1541,7 +1545,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		likeCount: { label: "点赞数", atom: true, hooks: { icon: "图标" } },
 	},
 	sc: {
-		message: { label: "留言", hooks: { text: "留言文本" } },
+		message: { label: "留言", atom: true, hooks: { text: "留言文本" } },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "发送者头像", atom: true, hooks: {} },
 		name: { label: "发送者名", atom: true, hooks: {} },
@@ -1555,7 +1559,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	},
 	guard: {
 		badge: { label: "舰长徽章", atom: true, hooks: {} },
-		text: { label: "文字信息", hooks: {} },
+		text: { label: "文字信息", atom: true, hooks: {} },
 		divider: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: {} },
 		user: { label: "用户名胶囊", atom: true, hooks: {} },
