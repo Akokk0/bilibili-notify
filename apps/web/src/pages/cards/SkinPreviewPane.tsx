@@ -46,6 +46,7 @@ export function SkinPreviewPane({
 	manifest,
 	boxWidth,
 	onDrawn,
+	onVariant,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
@@ -64,6 +65,12 @@ export function SkinPreviewPane({
 	 * `null` —— 画布据此一个都不标,而不是停在上一场的单子上。
 	 */
 	onDrawn?: (drawn: string[] | null) => void;
+	/**
+	 * 这一场落在哪个**形态**(`null` = 只有基础版式),由服务端回报。画布拿它画「只改本场」
+	 * 那个开关、把拖出来的改动写进对的那份覆盖 —— 照场景 id 自己猜的话两处迟早对不上
+	 * (「全字段」与「视频投稿」本来就是同一档)。
+	 */
+	onVariant?: (variant: string | null) => void;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
@@ -80,6 +87,9 @@ export function SkinPreviewPane({
 	// mutate 的引用每次渲染都在变,进 deps 会让这条 effect 每帧重跑一遍防抖。
 	const run = useRef(preview.mutate);
 	run.current = preview.mutate;
+	// 同理:回调的引用每次渲染都在变,进 deps 会让防抖每帧重来一次。
+	const report = useRef(onVariant);
+	report.current = onVariant;
 
 	useEffect(() => {
 		if (manifest === null) return;
@@ -91,6 +101,7 @@ export function SkinPreviewPane({
 						setHtml(r.html);
 						setWidth(r.width);
 						setWarnings(r.warnings);
+						report.current?.(r.variant);
 					},
 				},
 			);

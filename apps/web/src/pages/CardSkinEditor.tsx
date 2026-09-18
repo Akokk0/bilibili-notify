@@ -17,7 +17,11 @@ import type { CardSkinManifest } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
 import type { CardSkinKind, GlobalConfig } from "@bilibili-notify/internal";
-import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS } from "@bilibili-notify/internal/constants";
+import {
+	CARD_PREVIEW_SCENES,
+	CARD_SKIN_KINDS,
+	CARD_SKIN_VARIANTS,
+} from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ErrorNote,
@@ -70,6 +74,7 @@ import {
 	setKnobSwitch,
 	setKnobType,
 	setSkinMeta,
+	setVariantGrid,
 	skinMetaError,
 } from "./cards/skin-draft-ops";
 import {
@@ -120,6 +125,16 @@ export default function CardSkinEditor() {
 	 */
 	const [drawn, setDrawn] = useState<{ kind: CardSkinKind; ids: string[] | null } | null>(null);
 	const [scene, setScene] = useState<string>(CARD_PREVIEW_SCENES.live[0]?.id ?? "");
+	/**
+	 * 眼前这一场落在哪个**形态**(`null` = 只有基础版式),由预览那头回报
+	 * (ADR-0014 决策 10 的 2026-09-18 🔗)。
+	 */
+	const [variant, setVariant] = useState<string | null>(null);
+	/**
+	 * 改的是哪一层。**默认基础版式**(主人拍板):最容易犯的错是「以为改了全部,其实只改了
+	 * 一场」,所以要只改本场得先切一下。
+	 */
+	const [onlyThisCase, setOnlyThisCase] = useState(false);
 
 	const baseline = manifestQuery.data?.manifest;
 	// 清单到了(或存完换了一份)就重置草稿。比对的是**对象身份**:react-query 只在数据
@@ -134,7 +149,17 @@ export default function CardSkinEditor() {
 		setScene(CARD_PREVIEW_SCENES[kind][0]?.id ?? "");
 		// 换了卡种,上一张卡的选中就没意义了 —— 留着的话检查器会对着一个不存在的块。
 		setSelection(null);
+		// 形态也一样:上一种卡的那一档在这种卡上根本不存在,而新预览还没回来。留着的话
+		// 「只改本场」这一下会写进一份别的卡的覆盖里。
+		setVariant(null);
+		setOnlyThisCase(false);
 	}, [kind]);
+
+	// 这一场只有基础版式(醒目留言那种只有一副样子的卡)—— 开关没有意义,顺手收回,
+	// 免得它停在「只改本场」上而改动其实落进了 base。
+	useEffect(() => {
+		if (variant === null) setOnlyThisCase(false);
+	}, [variant]);
 
 	const dirty = useMemo(
 		() => draft !== null && baseline !== undefined && !sameManifest(draft, baseline),
@@ -145,6 +170,8 @@ export default function CardSkinEditor() {
 	const readOnly = listQuery.data?.skins.find((s) => s.id === id)?.builtin === true;
 	const inUse = listQuery.data?.active === id;
 	const scenes = CARD_PREVIEW_SCENES[kind];
+	/** 这一场那个形态的人话名;`null` = 这一场只有基础版式(开关就不该出现)。 */
+	const variantLabel = CARD_SKIN_VARIANTS[kind].find((v) => v.id === variant)?.label ?? null;
 
 	// 接管一种卡要抄出厂那份。**哪套是出厂的问列表要**(同 `readOnly` 的道理:服务端才是
 	// 权威),而且只在真缺这种卡时才去拉 —— 平时白打一趟。
@@ -286,6 +313,21 @@ export default function CardSkinEditor() {
 							/>
 						</>
 					) : null}
+					{/* 「改哪一层」。**只在这一场真有形态时才出现** —— 只有一副样子的卡摆个
+					    永远选不动的开关,只会让人以为自己漏了什么。只读时不摆:改不了就没得选。 */}
+					{variantLabel !== null && !readOnly ? (
+						<>
+							<span className="text-bn-text-tertiary text-bn-xs">改</span>
+							<Picker
+								value={onlyThisCase ? "case" : "base"}
+								onChange={(v) => setOnlyThisCase(v === "case")}
+								options={[
+									{ value: "base", label: "基础版式" },
+									{ value: "case", label: `只改「${variantLabel}」` },
+								]}
+							/>
+						</>
+					) : null}
 					<Btn
 						size="sm"
 						variant="primary"
@@ -316,6 +358,7 @@ export default function CardSkinEditor() {
 							manifest={draft}
 							boxWidth={previewCol}
 							onDrawn={(ids) => setDrawn({ kind, ids })}
+							onVariant={setVariant}
 						/>
 						{/* 画布 + 检查器合占那 2/3:检查器固定 380(旋钮那几行再窄就开始切字),
 						    剩下的全归 12 列的画布。 */}
@@ -337,11 +380,20 @@ export default function CardSkinEditor() {
 									// 拖块改行列 / 拉边改跨列。**与检查器那几个数字框刻意不是同一个口** ——
 									// 「放下」带着「我要它在这儿」的意思,叠上了就该在上面,而叠放次序不在
 									// `grid` 里(没写层次时是块的先后)。数字框是精确编辑,不改先后。
+									variant={variant}
+									editingVariant={onlyThisCase}
 									onGrid={
 										readOnly
 											? undefined
 											: (blockId, patch) =>
-													setDraft((d) => (d === null ? d : dropBlockGrid(d, kind, blockId, patch)))
+													setDraft((d) => {
+														if (d === null) return d;
+														// 切了「只改本场」,同一下拖拽落进这一形态的覆盖;
+														// 否则照旧改基础版式。
+														return onlyThisCase && variant
+															? setVariantGrid(d, kind, variant, blockId, patch)
+															: dropBlockGrid(d, kind, blockId, patch);
+													})
 									}
 									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
 									onAdopt={

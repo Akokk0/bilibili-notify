@@ -22,11 +22,15 @@
  */
 
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
-import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
-import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import type { CardSkinBlockOverride, CardSkinBuiltinBlock } from "@bilibili-notify/internal";
+import {
+	CARD_SKIN_BUILTIN_BLOCKS,
+	CARD_SKIN_LIMITS,
+	effectiveGrid,
+} from "@bilibili-notify/internal/constants";
 import { AddButton, Btn, EmptyNote, Icon, Pill, SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { animate, type MotionValue, motion, useMotionValue } from "motion/react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
 	createVelocityTracker,
 	type GridPos,
@@ -100,6 +104,8 @@ export function SkinCanvas({
 	onAdopt,
 	adoptBusy,
 	drawn,
+	variant,
+	editingVariant,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -123,11 +129,42 @@ export function SkinCanvas({
 	 * 一个都不标。
 	 */
 	drawn?: readonly string[] | null;
+	/**
+	 * 眼前这一场落在哪个**形态**(`null` / 不给 = 只有基础版式)。由预览那头回报
+	 * (ADR-0014 决策 10 的 2026-09-18 🔗)—— 照场景 id 猜的话两处迟早对不上。
+	 *
+	 * 只给这一个 = 画的仍是基础版式,只是在这一场改过的块上挂个标。
+	 */
+	variant?: string | null;
+	/**
+	 * 画的是不是**这一形态**那一层。`false`(默认)= 基础版式:拖什么动什么,改的也是
+	 * 那份基础版式。切成 `true` 之后画布先把这一形态的覆盖合进格子 —— 手上动的和拖完
+	 * 落进去的必须是同一个位置。
+	 */
+	editingVariant?: boolean;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
 	const [picking, setPicking] = useState(false);
-	const drag = useDrag(onGrid, card?.blocks);
+	/** 这一形态改过哪几块(`undefined` = 这一场只有基础版式,或者压根没改过)。 */
+	const touched = variant ? card?.variants?.[variant]?.blocks : undefined;
+	/**
+	 * 画布这一层要画的块。改基础版式时就是 base 那份;切到「只改本场」时先把这一形态的
+	 * 格子合进来 —— **合的是同一条规则**(`effectiveGrid`),画布与出图各写一份的话,
+	 * 编辑器里摆的和真画出来的迟早是两回事。
+	 *
+	 * ⚠️ 藏起来的块**照旧留着**:画布就是让人把它放回来的地方,按 `hidden` 收走等于
+	 * 没法编辑。它在真卡上没画,`drawn` 那条路会把它标成「这一场不画」。
+	 */
+	const blocks = useMemo(() => {
+		const base = card?.blocks ?? [];
+		if (!editingVariant || !touched) return base;
+		return base.map((b) => {
+			const grid = touched[b.id]?.grid;
+			return grid ? { ...b, grid: effectiveGrid(b.grid, grid) } : b;
+		});
+	}, [card?.blocks, touched, editingVariant]);
+	const drag = useDrag(onGrid, blocks);
 
 	if (!card) {
 		return (
@@ -142,7 +179,6 @@ export function SkinCanvas({
 		);
 	}
 
-	const blocks = card.blocks;
 	// `null` = 还不知道这一场画了什么,那就谁都别标。
 	const drawnSet = drawn ? new Set(drawn) : null;
 	// 画到最后一个块所在的行,再留一行空的当「新起一行」的落点。
@@ -216,6 +252,7 @@ export function SkinCanvas({
 							onSelect={() => onSelect({ kind: "block", id: b.id })}
 							drag={onGrid ? drag : undefined}
 							unpainted={drawnSet !== null && !drawnSet.has(b.id)}
+							variantMark={variantMarkOf(touched?.[b.id])}
 						/>
 					);
 				})}
@@ -778,6 +815,7 @@ function CanvasBlock({
 	onSelect,
 	drag,
 	unpainted,
+	variantMark,
 }: {
 	kind: CardSkinKind;
 	block: Block;
@@ -789,6 +827,8 @@ function CanvasBlock({
 	drag?: CanvasDrag;
 	/** 这一场真卡上没画它(`showIf` 判假,或者这一场没数据)。只标出来,不禁用。 */
 	unpainted: boolean;
+	/** 这一块在这一形态里改过 —— 挂什么标(`null` = 没改过)。 */
+	variantMark?: string | null;
 }) {
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
 	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
@@ -920,6 +960,13 @@ function CanvasBlock({
 				    这句与上面那颗 showIf 徽章各说各的:一个说「它带着条件」,一个说「这一场的
 				    结果是不画」。 */}
 				{unpainted ? <Pill subtle>这一场不画</Pill> : null}
+				{/* 主人最容易犯的错是「以为改了全部,其实只改了一场」,反过来也一样 ——
+				    所以这个标**在两种模式下都挂**:改基础版式时它正好是那句提醒。 */}
+				{variantMark ? (
+					<Pill subtle color="var(--color-bn-purple)">
+						{variantMark}
+					</Pill>
+				) : null}
 			</span>
 			{/* 这行只说**身份与几何**。叠没叠不写在这儿 —— 一个计数说不出谁在上、被盖的
 			    是谁,而那正是看的人要问的(主人 2026-09-15 指出「太粗糙」)。改由深浅说:
@@ -930,6 +977,17 @@ function CanvasBlock({
 			</span>
 		</motion.button>
 	);
+}
+
+/**
+ * 这一块在这一形态里改成了什么样,一句话。三档说的是三件不同的事 —— 并成一句「本场改过」
+ * 的话,「这一场根本不画它」与「只是挪了个位置」在画布上长得一模一样。
+ */
+function variantMarkOf(ov: CardSkinBlockOverride | undefined): string | null {
+	if (!ov) return null;
+	if (ov.hidden) return "本场藏起来";
+	if (ov.grid) return ov.css ? "本场改过位置与样式" : "本场挪过位置";
+	return ov.css ? "本场改过样式" : null;
 }
 
 /** 三档来历:复合内置块 / 原子内置块 / 自定义块。分档是为了让「这块能不能改内容」一眼看出来。 */
