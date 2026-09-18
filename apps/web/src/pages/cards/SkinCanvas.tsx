@@ -93,6 +93,7 @@ export function SkinCanvas({
 	onAddCustom,
 	onAdopt,
 	adoptBusy,
+	drawn,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -109,6 +110,13 @@ export function SkinCanvas({
 	onAdopt?: () => void;
 	/** 出厂皮肤还没读到 —— 接管要抄的就是它,没到手就先禁着。 */
 	adoptBusy?: boolean;
+	/**
+	 * 预览那一场**真画出来的块 id**(`drawn-blocks.ts` 从预览文档里数的)。不在这张单子上的
+	 * 块会被标一句「这一场不画」—— 但**照旧在原地、照旧选得中拖得动**:编辑器就是要让人改
+	 * 那些块,按场景把它们收走等于没法编辑。`undefined` / `null`(还没画好、或读不到)时
+	 * 一个都不标。
+	 */
+	drawn?: readonly string[] | null;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -129,6 +137,8 @@ export function SkinCanvas({
 	}
 
 	const blocks = card.blocks;
+	// `null` = 还不知道这一场画了什么,那就谁都别标。
+	const drawnSet = drawn ? new Set(drawn) : null;
 	// 画到最后一个块所在的行,再留一行空的当「新起一行」的落点。
 	const lastRow = blocks.reduce((m, b) => Math.max(m, b.grid.row + (b.grid.rowSpan ?? 1) - 1), 0);
 	const cols = CARD_SKIN_LIMITS.columns;
@@ -199,6 +209,7 @@ export function SkinCanvas({
 							selected={selection?.kind === "block" && selection.id === b.id}
 							onSelect={() => onSelect({ kind: "block", id: b.id })}
 							drag={onGrid ? drag : undefined}
+							unpainted={drawnSet !== null && !drawnSet.has(b.id)}
 						/>
 					);
 				})}
@@ -733,6 +744,7 @@ function CanvasBlock({
 	selected,
 	onSelect,
 	drag,
+	unpainted,
 }: {
 	kind: CardSkinKind;
 	block: Block;
@@ -742,6 +754,8 @@ function CanvasBlock({
 	onSelect: () => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
 	drag?: CanvasDrag;
+	/** 这一场真卡上没画它(`showIf` 判假,或者这一场没数据)。只标出来,不禁用。 */
+	unpainted: boolean;
 }) {
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
 	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
@@ -842,13 +856,25 @@ function CanvasBlock({
 			) : null}
 			<span className="flex min-w-0 items-center gap-1.5">
 				<Icon.drag size={12} className="shrink-0 text-bn-text-tertiary" />
-				<span className="truncate font-semibold text-bn-sm text-bn-text-primary">{label}</span>
+				{/* 这一场没画的块把名字降到 disabled 档。**刻意不动块底的透明度** —— 块底本来
+				    就是半透明的(`bg-bn-surface/90`),再叠一层 opacity,被它压着的块会透上来。 */}
+				<span
+					className={`truncate font-semibold text-bn-sm ${
+						unpainted ? "text-bn-text-disabled" : "text-bn-text-primary"
+					}`}
+				>
+					{label}
+				</span>
 				<BlockKindPill block={block} atom={meta?.atom === true} />
 				{block.showIf ? (
 					<Pill subtle color="var(--color-bn-warn)">
 						showIf
 					</Pill>
 				) : null}
+				{/* 不画的原因有两种(`showIf` 判假 / 这一场没数据),对看的人是同一件事,所以
+				    这句与上面那颗 showIf 徽章各说各的:一个说「它带着条件」,一个说「这一场的
+				    结果是不画」。 */}
+				{unpainted ? <Pill subtle>这一场不画</Pill> : null}
 			</span>
 			{/* 这行只说**身份与几何**。叠没叠不写在这儿 —— 一个计数说不出谁在上、被盖的
 			    是谁,而那正是看的人要问的(主人 2026-09-15 指出「太粗糙」)。改由深浅说:

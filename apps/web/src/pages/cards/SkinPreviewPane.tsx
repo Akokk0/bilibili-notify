@@ -25,6 +25,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { drawnBlocks } from "./drawn-blocks";
 import { serverErrors } from "./preview-error";
 import { SkinHtmlFrame } from "./SkinHtmlFrame";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
@@ -44,6 +45,7 @@ export function SkinPreviewPane({
 	scene,
 	manifest,
 	boxWidth,
+	onDrawn,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
@@ -57,6 +59,11 @@ export function SkinPreviewPane({
 	 * 切掉,而缩放至少比例是对的。
 	 */
 	boxWidth: number;
+	/**
+	 * 真卡这一场**画出来的块 id**,画布拿它把没画的标出来(`drawn-blocks.ts`)。读不到时给
+	 * `null` —— 画布据此一个都不标,而不是停在上一场的单子上。
+	 */
+	onDrawn?: (drawn: string[] | null) => void;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
@@ -223,6 +230,7 @@ export function SkinPreviewPane({
 						usable={usable}
 						fallbackHeight={VIEW_H}
 						title="皮肤预览"
+						{...(onDrawn ? { onDocument: (doc) => onDrawn(drawnBlocks(doc)) } : {})}
 					/>
 				)}
 			</div>

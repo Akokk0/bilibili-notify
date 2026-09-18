@@ -114,6 +114,11 @@ export default function CardSkinEditor() {
 	const [draft, setDraft] = useState<CardSkinManifest | null>(null);
 	const [kind, setKind] = useState<CardSkinKind>("live");
 	const [selection, setSelection] = useState<SkinSelection>(null);
+	/**
+	 * 预览那一场画出来的块,连**它是哪种卡的**一起记:换卡种时新预览还没画好,拿上一种卡的
+	 * 单子去标,同名块(头像 / 名字在好几种卡里都有)会让画布短暂说错话。
+	 */
+	const [drawn, setDrawn] = useState<{ kind: CardSkinKind; ids: string[] | null } | null>(null);
 	const [scene, setScene] = useState<string>(CARD_PREVIEW_SCENES.live[0]?.id ?? "");
 
 	const baseline = manifestQuery.data?.manifest;
@@ -310,6 +315,7 @@ export default function CardSkinEditor() {
 							scene={scene}
 							manifest={draft}
 							boxWidth={previewCol}
+							onDrawn={(ids) => setDrawn({ kind, ids })}
 						/>
 						{/* 画布 + 检查器合占那 2/3:检查器固定 380(旋钮那几行再窄就开始切字),
 						    剩下的全归 12 列的画布。 */}
@@ -319,7 +325,7 @@ export default function CardSkinEditor() {
 						>
 							<GlassBox
 								title={`网格画布 · ${KIND_META[kind].label}卡`}
-								subtitle="点一个块,在右边的检查器里改它的位置;行等高,封面这种高块靠「跨行」多占几行;真卡里行高随内容撑"
+								subtitle="点一个块,在右边的检查器里改它的位置;行等高,封面这种高块靠「跨行」多占几行;标着「这一场不画」的块,左边那个场景下不出现"
 								icon={<Icon.square size={14} />}
 							>
 								<SkinCanvas
@@ -327,6 +333,7 @@ export default function CardSkinEditor() {
 									card={cardOf(draft, kind)}
 									selection={selection}
 									onSelect={setSelection}
+									drawn={drawn?.kind === kind ? drawn.ids : null}
 									// 拖块改行列 / 拉边改跨列。**与检查器那几个数字框刻意不是同一个口** ——
 									// 「放下」带着「我要它在这儿」的意思,叠上了就该在上面,而叠放次序不在
 									// `grid` 里(没写层次时是块的先后)。数字框是精确编辑,不改先后。

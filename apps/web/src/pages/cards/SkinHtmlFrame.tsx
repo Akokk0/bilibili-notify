@@ -44,6 +44,7 @@ export function SkinHtmlFrame({
 	usable,
 	fallbackHeight,
 	title,
+	onDocument,
 }: {
 	html: string;
 	/** 卡宽 px(服务端回的那个)。 */
@@ -53,6 +54,13 @@ export function SkinHtmlFrame({
 	/** 量到卡高之前(以及万一量不到时)的视口高度 px。 */
 	fallbackHeight: number;
 	title: string;
+	/**
+	 * 这一份画好了,把框里的文档交出去 —— 画布要知道这一场**真画出了哪些块**。
+	 *
+	 * 只在 `load` 那一刻交一次就够:块画不画由数据与 `showIf` 定,字体到齐只会改排版、
+	 * 不会让某一块凭空出现或消失。(将来要量高就另说 —— 那得跟着字体再量一遍。)
+	 */
+	onDocument?: (doc: Document) => void;
 }) {
 	const shown = Math.min(width, Math.max(usable, 1));
 	const scale = shown / width;
@@ -82,6 +90,8 @@ export function SkinHtmlFrame({
 
 	const onLoad = (doc: string, frame: HTMLIFrameElement) => {
 		setReady({ doc, height: contentHeight(frame) });
+		const now = frame.contentDocument;
+		if (now) onDocument?.(now);
 		frame.contentDocument?.fonts?.ready.then(() => {
 			const height = contentHeight(frame);
 			// 这时它可能已经被下一份顶掉了(框撤了就量不到),那就不关它的事了。

@@ -12,6 +12,8 @@
  *    与截图裁图量的是同一个元素。jsdom 不排版,文档由这里伪造。
  * 3. **sandbox 只给同源、不给脚本**。同源是为了量高;脚本一给,皮肤作者就能在主人面板里
  *    跑代码,而同源 + 脚本等于整个沙箱作废。
+ * 4. **画好了把文档交出去**(2026-09-18:画布要知道这一场真画出了哪些块)。只交 `load`
+ *    那一次 —— 块画不画由数据与 `showIf` 定,字体到齐只改排版、不会让谁凭空出现或消失。
  */
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
@@ -40,7 +42,7 @@ function loaded(
 	f: HTMLIFrameElement,
 	size: { height: number } | null,
 	fonts?: Promise<unknown>,
-): void {
+): unknown {
 	const doc =
 		size === null
 			? null
@@ -50,6 +52,7 @@ function loaded(
 				};
 	Object.defineProperty(f, "contentDocument", { configurable: true, get: () => doc });
 	fireEvent.load(f);
+	return doc;
 }
 
 afterEach(cleanup);
@@ -164,6 +167,44 @@ describe("SkinHtmlFrame · 高度", () => {
 		expect(box(view.container).style.height).toBe(`${FALLBACK}px`);
 		// 缩一半时,框里的视口是外框的两倍高,缩回来正好填满外框。
 		expect(f.style.height).toBe(`${FALLBACK * 2}px`);
+	});
+});
+
+describe("SkinHtmlFrame · 交出文档", () => {
+	const frameWith = (html: string, onDocument: (doc: Document) => void) => (
+		<SkinHtmlFrame
+			html={html}
+			width={600}
+			usable={600}
+			fallbackHeight={FALLBACK}
+			title="预览"
+			onDocument={onDocument}
+		/>
+	);
+
+	it("画好了 → 把框里的文档交出去", () => {
+		const got: unknown[] = [];
+		const view = render(frameWith("<p>直播卡</p>", (d) => got.push(d)));
+		const doc = loaded(iframes(view.container)[0] as HTMLIFrameElement, { height: 300 });
+		expect(got).toEqual([doc]);
+	});
+
+	it("换一份 HTML → 交的是新那份的文档", () => {
+		const got: unknown[] = [];
+		const view = render(frameWith("<p>直播卡</p>", (d) => got.push(d)));
+		loaded(iframes(view.container)[0] as HTMLIFrameElement, { height: 300 });
+		view.rerender(frameWith("<p>动态卡</p>", (d) => got.push(d)));
+		const next = withDoc(view.container, "<p>动态卡</p>");
+		const fresh = loaded(next, { height: 200 });
+		expect(got.at(-1)).toBe(fresh);
+		expect(got).toHaveLength(2);
+	});
+
+	it("读不到文档 → 什么都不交,画布一个块都不淡", () => {
+		const got: unknown[] = [];
+		const view = render(frameWith("<p>直播卡</p>", (d) => got.push(d)));
+		loaded(iframes(view.container)[0] as HTMLIFrameElement, null);
+		expect(got).toEqual([]);
 	});
 });
 

@@ -765,3 +765,57 @@ describe("网格画布 — 空行", () => {
 		expect(notes()).toHaveLength(0);
 	});
 });
+
+/**
+ * **画布跟着预览场景**(2026-09-18 主人反馈:各个场景画布都一样)。
+ *
+ * 画布画的是皮肤 JSON,而 JSON 只有一份;真卡却是分场景的 —— `showIf` 判假、或者内置块
+ * 这一场没数据,整块就不画。不说出来,主人对着一堆块猜哪些这会儿有用。
+ *
+ * 钉的是**「标出来了」而不是「藏起来」**:不画的块照旧在原地、照旧选得中拖得动 ——
+ * 编辑器就是要让人改那些块,按场景把它们收走等于没法编辑。
+ */
+describe("SkinCanvas · 这一场画不画", () => {
+	const canvas = (drawn?: readonly string[] | null) =>
+		render(
+			<SkinCanvas
+				kind="live"
+				card={cardOf(manifest(), "live")}
+				selection={null}
+				onSelect={() => {}}
+				drawn={drawn}
+			/>,
+		);
+
+	const blockEl = (root: HTMLElement, id: string) =>
+		root.querySelector(`[data-block-id="${id}"]`) as HTMLElement;
+
+	it("这一场没画出来的块标出来,画了的不标", () => {
+		const view = canvas(["cover"]);
+		expect(blockEl(view.container, "name").textContent).toContain("这一场不画");
+		expect(blockEl(view.container, "cover").textContent).not.toContain("这一场不画");
+	});
+
+	it("不画的块照旧选得中 —— 编辑器就是要让人改它", () => {
+		const picked: string[] = [];
+		const view = render(
+			<SkinCanvas
+				kind="live"
+				card={cardOf(manifest(), "live")}
+				selection={null}
+				onSelect={(s) => picked.push(s?.kind === "block" ? s.id : "")}
+				drawn={["cover"]}
+			/>,
+		);
+		fireEvent.click(blockEl(view.container, "name"));
+		expect(picked).toEqual(["name"]);
+	});
+
+	it("还没画好 / 读不到 → 一个都不标,别把满屏都说成不出现", () => {
+		for (const drawn of [undefined, null]) {
+			const view = canvas(drawn);
+			expect(view.container.textContent).not.toContain("这一场不画");
+			cleanup();
+		}
+	});
+});
