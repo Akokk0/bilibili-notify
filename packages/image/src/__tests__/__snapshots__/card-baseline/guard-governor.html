@@ -36,21 +36,14 @@
 .text-white{color:color-mix(in srgb, var(--colors-white) var(--un-text-opacity), transparent);}
 .font-bold{--un-font-weight:var(--fontWeight-bold);font-weight:var(--fontWeight-bold);}
 .mr-\[5px\]{margin-right:5px;}
-.mt-\[10px\]{margin-top:10px;}
 .p-\[15px\]{padding:15px;}
 .px-\[10px\]{padding-inline:10px;}
-.px-\[16px\]{padding-inline:16px;}
-.py-\[12px\]{padding-block:12px;}
 .rounded-\[10px\]{border-radius:10px;}
 .rounded-\[25px\]{border-radius:25px;}
 .rounded-full{border-radius:calc(infinity * 1px);}
 .flex{display:flex;}
-.flex-1{flex:1 1 0%;}
 .shrink-0{flex-shrink:0;}
-.flex-col{flex-direction:column;}
-.gap-\[10px\]{gap:10px;}
 .gap-\[5px\]{gap:5px;}
-.gap-\[7px\]{gap:7px;}
 .h-\[175px\]{height:175px;}
 .h-\[190px\]{height:190px;}
 .h-\[220px\]{height:220px;}
@@ -60,7 +53,6 @@
 .h-full{height:100%;}
 .max-w-\[100px\]{max-width:100px;}
 .max-w-\[85px\]{max-width:85px;}
-.min-w-0{min-width:calc(var(--spacing) * 0);}
 .w-\[175px\]{width:175px;}
 .w-\[25px\]{width:25px;}
 .w-\[400px\]{width:400px;}
@@ -73,19 +65,22 @@
 .shadow-\[0_4px_8px_0_rgba\(0\,0\,0\,0\.2\)\]{--un-shadow:0 4px 8px 0 var(--un-shadow-color, rgba(0, 0, 0, 0.2));box-shadow:var(--un-inset-shadow), var(--un-inset-ring-shadow), var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .\[background-color\:var\(--bn-card-tier-color\)\]{background-color:var(--bn-card-tier-color);}
 .\[color\:var\(--bn-card-tier-color\)\]{color:var(--bn-card-tier-color);}
-.items-start{align-items:flex-start;}
 .items-center{align-items:center;}
 .justify-center{justify-content:center;}
-.justify-between{justify-content:space-between;}
 .overflow-hidden{overflow:hidden;}
 .bg-cover{background-size:cover;}
 .bg-center{background-position:center;}
 .object-cover{object-fit:cover;}
 @supports (color: color-mix(in lab, red, red)){
 .text-white{color:color-mix(in oklab, var(--colors-white) var(--un-text-opacity), transparent);}
-}</style>
+}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-card-tier-color),var(--bn-card-tier-color-end)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.75));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));height:190px;grid-template-rows:auto auto 1fr}
+.bn-blk-avatar{padding:12px 0 0 16px;align-self:start}
+.bn-blk-user{align-self:end;justify-self:start}
+.bn-blk-master{padding-top:7px;align-self:start;justify-self:start}
+.bn-blk-text{padding:0px 16px 12px;align-self:end}
+.bn-blk-badge{height:190px;display:flex;align-items:center;align-self:start}</style>
 			</head>
-			<body><div class="flex justify-center items-center w-[430px] h-[220px] p-[15px]" style="background:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]" style="background:rgba(255,255,255,0);backdrop-filter:blur(0px);"><div class="flex-1 min-w-0 h-full flex flex-col justify-between px-[16px] py-[12px]"><div data-block="name" class="" style=""><div class="flex gap-[10px]" style="--bn-card-tier-color:#f2a053;"><div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0"><img class="w-full h-full rounded-full object-cover" src="http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg" alt="用户头像"></div><div class="flex flex-col gap-[7px] mt-[10px] items-start"><div class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]"><span class="max-w-[100px] truncate font-bold text-[12px] text-white">示例大哥</span></div><div class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]"><div class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0" style="background-image:url(&quot;http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg&quot;);"></div><span class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]">房管</span></div></div></div></div><div data-block="text" class="" style=""><div class="text-[16px] font-bold italic whitespace-pre-line [color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;">&quot;示例大哥&quot;上任
-&quot;示例主播&quot;大航海舰队总督！</div></div></div><div data-block="badge" class="w-[175px] h-[175px] bg-cover bg-center shrink-0" style="background-image:url(&quot;https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png&quot;);"></div></div></div></body>
+			<body><div data-bn="frame" class="flex justify-center items-center w-[430px] h-[220px] p-[15px]" style="--bn-card-tier-color:#f2a053;--bn-card-tier-color-end:#ef5f5f;--bn-card-bg-image:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div data-bn="glass" class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]" style="display:grid;grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 43.75px 43.75px 43.75px 43.75px;width:100%;gap:0px 0px;"><div data-block="avatar" class="bn-blk-avatar" style="grid-row:1 / span 2;grid-column:1 / span 4;min-width:0"><div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0"><img class="w-full h-full rounded-full object-cover" src="http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg" alt="用户头像"></div></div><div data-block="user" class="bn-blk-user" style="grid-row:1 / span 1;grid-column:5 / span 4;min-width:0"><div class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;"><span class="max-w-[100px] truncate font-bold text-[12px] text-white">示例大哥</span></div></div><div data-block="master" class="bn-blk-master" style="grid-row:2 / span 1;grid-column:5 / span 4;min-width:0"><div class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;"><div data-bn="masterAvatar" class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0" style="background-image:url(&quot;http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg&quot;);"></div><span data-bn="masterName" class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]">房管</span></div></div><div data-block="text" class="bn-blk-text" style="grid-row:3 / span 1;grid-column:1 / span 8;min-width:0"><div class="text-[16px] font-bold italic whitespace-pre-line [color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;">&quot;示例大哥&quot;上任
+&quot;示例主播&quot;大航海舰队总督！</div></div><div class="bn-blk-badge" style="grid-row:1 / span 3;grid-column:9 / span 4;min-width:0"><div data-block="badge" class="w-[175px] h-[175px] bg-cover bg-center shrink-0" style="background-image:url(&quot;https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png&quot;);"></div></div></div></div></body>
 		</html>
 	

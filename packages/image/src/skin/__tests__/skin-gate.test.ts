@@ -1,161 +1,29 @@
 /**
- * **卡片皮肤的验收门**(ADR-0014 决策 24 的自动门)。
+ * **卡片皮肤的结构门**(ADR-0014 决策 24 的自动门之一)。
  *
- * 拷问时定的验收标准是「默认皮肤画出的 HTML 与现状逐字节一致」,开工后改成两层 —— 网格
- * 容器与 `data-bn` 挂点都是新标记,整份字节不可能相同,但**块的内层**必须一个字节都没变。
- * 这份就是那层自动门(另一层是本机跑一次的像素比对):
+ * 钉一件事:皮肤路径画出来的**形状**对 —— 玻璃层真的是 12 列的网格容器,每个块的 wrapper
+ * 都带着 `bn-blk-` 的 class(皮肤自己的 CSS 就挂在它上面)。列数少一列整张卡就错位,而
+ * 那种错位在字节基准里只是「又变了一片」,看不出是结构塌了。
  *
- * - **门 A(块内层字节)**:同一份夹具,一边走模板(基准 = 开工前打的 23 份快照),一边走
- *   「旧版式折成皮肤 → 皮肤渲染器」。两边取 `[data-block]` 元素**按文档序**的序列,块名与
- *   内层 HTML(剥掉 `data-bn`)两两相等。转发 inset 里递归装配出来的内层块也在序列里,
- *   照样比。整张是一个固定内置块的四种卡(两张锐评 / 词云 / ——)没有 `data-block`,改比
- *   玻璃层里那一层的**元素子节点**。
- *
- *   一处**刻意不比**:转发 inset(`[data-bn="forward"]`)**里面**那一层装配。inset 里是
- *   另一张完整的卡,而「一张卡怎么装」正是两条路各行其是的地方 —— 模板路铺一维竖栈,皮肤路
- *   铺网格(2026-09-15 起,内层跟着皮肤走)。所以取块内层时把 inset 的子树掏空:inset 自己
- *   的标记照比,里头那些块**各自作为序列里的一项**照比,只有「谁把它们摆成什么形状」不比。
- * - **门 B(结构)**:玻璃层真的是网格容器,每个块 wrapper 都带 `bn-blk-` class。
- *
- * 门 A 红了**不许改基准、不许改夹具** —— 它红只有两种可能:皮肤渲染器把块装错了,或者
- * 那份版式折不进网格。两种都得报出来让人看,不是就地把标尺改短。
+ * 原来这份文件里还有一道**门 A**:同一份夹具,一边走旧模板(基准是开工前打的 23 份快照),
+ * 一边走「旧版式折成皮肤 → 皮肤渲染器」,两边的块内层逐字节比 —— 它证明的是两条路等价。
+ * 旧模板与那条折叠都已退役(决策 24 的 2026-09-18 🔗),门 A 随之合并进
+ * `__tests__/card-baseline.test.ts`:那份快照改钉皮肤路径的字节,换基准时两条路是绿的,
+ * 所以它继承了这道门的证明。
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import {
-	type CardBlock,
-	type CardSkinCard,
-	type CardSkinKind,
-	cardLayoutToSkin,
-	DEFAULT_CARD_LAYOUT,
-	type GuardLayout,
-	LEGACY_DEFAULT_CARD_SKIN,
-} from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
-import type { VNode } from "vue";
-import {
-	CARD_FIXTURES,
-	type CardFixture,
-	type CardRenderInput,
-	stripCardHooks,
-} from "../../__tests__/fixtures/card-fixtures";
-import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
-import { renderCard } from "../../render";
-import { renderSkinnedCard } from "../render-skin";
+import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
+import { renderViaSkin } from "../../__tests__/fixtures/skin-render";
 
-/** 整张是一个固定内置块的卡种:没有块序列可数,比玻璃层那一层。 */
-const SINGLE_BLOCK_KINDS: ReadonlySet<CardSkinKind> = new Set([
-	"roastBoard",
-	"roastSolo",
-	"wordcloud",
-]);
-
-const BASELINE_DIR = fileURLToPath(
-	new URL("../../__tests__/__snapshots__/card-baseline/", import.meta.url),
-);
-
-function baselineHtml(name: string): string {
-	return readFileSync(`${BASELINE_DIR}${name}.html`, "utf8");
-}
-
-/**
- * 这份夹具对应的皮肤条目。四种可排版的卡走**迁移**(夹具里传了什么版式就折什么,
- * 没传就折出厂默认版式)—— 这样门 A 比的才是「同一份版式,两条路」;其余卡种用旧默认皮肤。
- */
-function skinCardOf(fixture: CardFixture, input: CardRenderInput): CardSkinCard {
-	const kind = fixture.kind;
-	if (SINGLE_BLOCK_KINDS.has(kind)) {
-		// 比的是**旧模板**,所以认冻住的旧默认皮肤,不认出厂默认(ADR-0014 决策 8 的 🔗)。
-		const card = LEGACY_DEFAULT_CARD_SKIN.cards[kind];
-		if (!card) throw new Error(`旧默认皮肤缺 ${kind} 卡`);
-		return card;
-	}
-	const layout = { ...DEFAULT_CARD_LAYOUT };
-	if (kind === "guard") {
-		layout.guard = (input.props.layout as GuardLayout | undefined) ?? DEFAULT_CARD_LAYOUT.guard;
-	} else if (kind === "live" || kind === "dynamic" || kind === "sc") {
-		layout[kind] = (input.props.layout as CardBlock[] | undefined) ?? DEFAULT_CARD_LAYOUT[kind];
-	}
-	const card = cardLayoutToSkin(layout).cards[kind];
-	if (!card) throw new Error(`折不出 ${kind} 卡`);
-	return card;
-}
-
-/** 同一份夹具走皮肤那条路出的完整 HTML。 */
-async function renderViaSkin(fixture: CardFixture, input: CardRenderInput): Promise<string> {
-	const { vnode, css } = renderSkinnedCard({
-		kind: fixture.kind,
-		card: skinCardOf(fixture, input),
-		props: input.props as never,
-	});
-	return await renderCard({ render: (): VNode => vnode }, {}, { ...input.options, extraCss: css });
-}
-
-/** 外框 → 玻璃层。两条路的壳都是这两层,基准那边没有挂点可选,一律按位置取。 */
+/** 外框 → 玻璃层。壳恒是这两层,按位置取。 */
 function glassOf(html: string): Element {
 	const frame = new JSDOM(html).window.document.body.firstElementChild;
 	const glass = frame?.firstElementChild;
 	if (!glass) throw new Error("这份 HTML 里找不到「外框 > 玻璃层」两层");
 	return glass;
 }
-
-type BlockSlice = { label: string; inner: string };
-
-/**
- * 一份 HTML 里所有 `[data-block]` 按文档序的块名 + 内层(剥掉挂点)。
- *
- * 取内层前先把转发 inset 的子树掏空 —— 见门 A 说明里「一处刻意不比」。掏的是**副本**,
- * 原文档不动,所以 inset 里那些块照旧各自作为序列里的一项被比到。
- *
- * 认 inset 靠 class 不靠挂点:基准快照打在挂点之前,那份 HTML 里没有 `data-bn`。
- */
-function blockSlices(html: string): BlockSlice[] {
-	const doc = new JSDOM(html).window.document;
-	return [...doc.querySelectorAll("[data-block]")].map((el) => {
-		const copy = el.cloneNode(true) as Element;
-		for (const node of copy.querySelectorAll("div")) {
-			if (node.getAttribute("class") === FORWARD_INSET_CLASS) node.replaceChildren();
-		}
-		return {
-			label: el.getAttribute("data-block") ?? "",
-			inner: stripCardHooks(copy.innerHTML),
-		};
-	});
-}
-
-/** 玻璃层里那一层的元素子节点(剥挂点)。SSR 的 Fragment 锚点注释不参与 —— 见门 A 的说明。 */
-function childHtml(parent: Element): string[] {
-	return [...parent.children].map((el) => stripCardHooks(el.outerHTML));
-}
-
-describe("卡片皮肤验收门 A — 块内层与基准逐字节", () => {
-	for (const fixture of CARD_FIXTURES) {
-		it(`${fixture.name}:皮肤路径画出的块与模板基准一致`, async () => {
-			const input = await fixture.build();
-			const html = await renderViaSkin(fixture, input);
-			const base = baselineHtml(fixture.name);
-
-			if (SINGLE_BLOCK_KINDS.has(fixture.kind)) {
-				// 整张一个块:皮肤路径比基准多一层 wrapper,剥掉它再比玻璃层里的那几个孩子。
-				const wrappers = [...glassOf(html).children];
-				expect(wrappers).toHaveLength(1);
-				expect(childHtml(wrappers[0])).toEqual(childHtml(glassOf(base)));
-				return;
-			}
-
-			const mine = blockSlices(html);
-			const theirs = blockSlices(base);
-			expect(mine.map((b) => b.label)).toEqual(theirs.map((b) => b.label));
-			for (const [i, slice] of mine.entries()) {
-				expect(slice.inner, `${fixture.name} 第 ${i + 1} 块(${slice.label})的内层变了`).toBe(
-					theirs[i].inner,
-				);
-			}
-		});
-	}
-});
 
 /**
  * 网格声明的列数。`repeat(n, …)` 读 n,逐列写法(上舰卡那种混了定宽列的)数条目 ——

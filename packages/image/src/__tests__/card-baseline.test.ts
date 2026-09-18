@@ -1,35 +1,30 @@
 /**
- * 七种推送卡片的**现状快照**(模板重构的验收基准)。
+ * 七种推送卡片的**现状快照** —— 出图的自动基准门(ADR-0014 决策 24 的 2026-09-18 🔗)。
  *
- * 这份文件刻意钉的是 `renderCard()` 出的**完整 HTML 字节**(含 UnoCSS 生成的整段
- * CSS),与本包「只测块装配契约、不测 HTML / CSS 拼装」的惯例是直接冲突的 —— 冲突
- * 是**有意的,且只限模板重构期**:接下来要把各模板拆成块,验收标准就是「重构前后逐
- * 字节一致」,那就只有字节本身能当基准。重构落地后这份基准要么删掉、要么降级成几条
- * 结构断言;别把它当长期的版式测试用 —— 任何 restyle 都会让它整片变红,那正是它此刻
- * 该做的事。
+ * 钉的是**皮肤那条路**画出的完整 HTML 字节(含 UnoCSS 生成的整段 CSS)。从前这份基准钉的
+ * 是旧模板的输出,另有一道门比「旧版式折成皮肤」与旧模板两条路是否一致;旧模板与那条折叠
+ * 都已退役,两者合并成这一份:**出厂默认皮肤画出来的字节,钉住不许悄悄变**。换基准那一刻
+ * 两条路的一致性是绿的,所以这份快照继承了原来那道门的证明。
  *
- * **自此基准守的是「剥掉挂点属性后的字节」**:比较前先把 ` data-bn="…"` 整个抹掉
- * (`stripCardHooks`)。原因是 ADR-0014 决策 9 —— 皮肤要能单独选中复合块内部的部件
- * (头像 / 名字 / 封面 / 角标…),办法是给这些**已经存在的**元素加一个 `data-bn` 属性。
- * 那是**纯附加**的:不多一个元素、不动一个 class、不改一处 inline style,所以剥掉它
- * 之后必须与重构前逐字节相同。快照文件因此一份没重生成 —— 一旦某处挂点是靠「多包一层
- * span」实现的,剥完仍会多出那层壳,这里当场红,这正是它该做的事。挂点本身有没有挂对、
- * 有没有挂串块,归 `card-hooks.test.ts` 管。
+ * 与本包「只测块装配契约、不测 HTML / CSS 拼装」的惯例仍然冲突,冲突依旧是**有意的**:
+ * 任何改动只要动了出图,这里就整片红 —— 那正是它该做的事。红了**先看变化对不对**,确认
+ * 是想要的再 `-u` 重生成,别反过来把标尺改短。
  *
- * 夹具住在 `fixtures/card-fixtures.ts`(与挂点对表共用一份);夹具刻意铺开各模板的条件
- * 分支,让一次重构能一次照出问题。
+ * **挂点不再剥**(从前比的是重构前后,挂点是纯附加的所以要剥掉)。现在基准两边都是皮肤路径,
+ * `data-bn` 挂点是皮肤 CSS 的公开 API,掉了就该红。挂点有没有挂串块仍归 `card-hooks.test.ts`。
+ *
+ * 夹具住在 `fixtures/card-fixtures.ts`;其中四份专测「非默认版式也画得对」,各自配的皮肤卡
+ * 在 `fixtures/skin-render.ts`。
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { renderCard } from "../render";
 import { buildDynamicNode } from "../templates/dynamic-content";
-import { CARD_FIXTURES, LIVE_RCMD_DYNAMIC, stripCardHooks } from "./fixtures/card-fixtures";
+import { CARD_FIXTURES, LIVE_RCMD_DYNAMIC } from "./fixtures/card-fixtures";
+import { renderViaSkin } from "./fixtures/skin-render";
 
-/** 把一份渲染结果(剥掉挂点后)钉进 `__snapshots__/card-baseline/<名字>.html`。 */
+/** 把一份渲染结果钉进 `__snapshots__/card-baseline/<名字>.html`。 */
 async function snap(name: string, html: string): Promise<void> {
-	await expect(stripCardHooks(html)).toMatchFileSnapshot(
-		`./__snapshots__/card-baseline/${name}.html`,
-	);
+	await expect(html).toMatchFileSnapshot(`./__snapshots__/card-baseline/${name}.html`);
 }
 
 const GROUPS = [...new Set(CARD_FIXTURES.map((f) => f.group))];
@@ -38,8 +33,7 @@ for (const group of GROUPS) {
 	describe(`卡片渲染基准 — ${group}`, () => {
 		for (const fixture of CARD_FIXTURES.filter((f) => f.group === group)) {
 			it(fixture.label, async () => {
-				const { component, props, options } = await fixture.build();
-				await snap(fixture.name, await renderCard(component, props, options));
+				await snap(fixture.name, await renderViaSkin(fixture, await fixture.build()));
 			});
 		}
 	});

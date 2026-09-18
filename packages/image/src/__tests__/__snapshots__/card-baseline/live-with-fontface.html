@@ -34,16 +34,10 @@
 .rounded-full{border-radius:calc(infinity * 1px);}
 .rounded-lg{border-radius:var(--radius-lg);}
 .rounded-xl{border-radius:var(--radius-xl);}
-.flex{display:flex;}
 .inline-flex{display:inline-flex;}
 .shrink-0{flex-shrink:0;}
-.flex-col{flex-direction:column;}
-.gap-0\.5{gap:calc(var(--spacing) * 0.5);}
-.gap-1{gap:calc(var(--spacing) * 1);}
-.gap-2\.5{gap:calc(var(--spacing) * 2.5);}
 .h-11{height:calc(var(--spacing) * 11);}
 .h-auto{height:auto;}
-.min-w-0{min-width:calc(var(--spacing) * 0);}
 .w-11{width:calc(var(--spacing) * 11);}
 .w-full{width:100%;}
 .block{display:block;}
@@ -55,15 +49,23 @@
 .items-center{align-items:center;}
 .right-3{right:calc(var(--spacing) * 3);}
 .top-3{top:calc(var(--spacing) * 3);}
-.justify-between{justify-content:space-between;}
 .absolute{position:absolute;}
 .relative{position:relative;}
 .overflow-hidden{overflow:hidden;}
 .object-cover{object-fit:cover;}
 @supports (color: color-mix(in lab, red, red)){
 .text-white{color:color-mix(in oklab, var(--colors-white) var(--un-text-opacity), transparent);}
-}</style>
+}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,#e0c3fc),var(--bn-knob-gradient-end,#8ec5fc)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.82));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:360px;padding-top:14px;padding-bottom:10px}
+.bn-blk-avatar{display:flex;padding:14px 0 0 16px;align-self:center}
+.bn-blk-name{display:flex;padding-top:14px;align-self:end}
+.bn-blk-time{display:flex;padding-top:2px;align-self:start}
+.bn-blk-title{padding-top:10px}
+.bn-blk-divider-1{padding-top:10px}
+.bn-blk-popularity{padding-top:10px}
+.bn-blk-area{padding-top:10px;text-align:right}
+.bn-blk-fans{padding-top:4px}
+.bn-blk-desc{padding-top:16px}</style>
 			</head>
-			<body><div class="h-auto p-3.75" style="background:linear-gradient(to right bottom, #e0c3fc, #8ec5fc);"><div class="overflow-hidden rounded-xl" style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;"><div data-block="cover" class="" style=""><div class="px-4"><div class="relative w-full"><img class="block w-full rounded-lg" src="http://i0.hdslb.com/bfs/live/new_room_cover/0a1b2c3d4e5f60718293.jpg" alt="封面"><div class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]" style="--bn-live-status-color:#aaa;height:24px;line-height:1;padding-top:1px;">已下播</div></div></div></div><div data-block="header" class="" style="padding-top:14px;"><div class="flex items-center gap-2.5 px-4"><img class="w-11 h-11 rounded-full object-cover shrink-0" src="http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg" alt="主播头像"><div class="flex flex-col gap-0.5 min-w-0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span><span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">直播时长：2小时13分</span></div></div></div><div data-block="title" class="" style="padding-top:10px;"><div class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]" style="--bn-ink: #18191C;">【4K】周年庆典特别直播，今晚不见不散！</div></div><div data-block="divider" class="" style="padding-top:10px;"><div class="[background:var(--bn-divider-color)]" style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"></div></div><div data-block="data" class="" style="padding-top:10px;"><div class="px-4 flex flex-col gap-1 text-[13px] [color:var(--bn-ink-soft)]" style="--bn-ink-soft: #666;"><div class="flex justify-between"><span>人气：12.3万</span><span>分区：虚拟主播</span></div><div>累计观看人数：3.1万</div></div></div><div data-block="desc" class="" style="padding-top:16px;"><div class="px-4 text-[13px] leading-normal [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">每晚八点开播 &amp; 周末加场 联系方式见动态</div></div></div></div></body>
+			<body><div data-bn="frame" class="h-auto p-3.75" style=""><div data-bn="glass" class="overflow-hidden rounded-xl" style="display:grid;grid-template-columns:70px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 70px;width:100%;gap:0px 0px;"><div data-block="cover" class="bn-blk-cover" style="grid-row:1 / span 5;grid-column:1 / span 12;min-width:0"><div class="px-4"><div class="relative w-full"><img data-bn="image" class="block w-full rounded-lg" src="http://i0.hdslb.com/bfs/live/new_room_cover/0a1b2c3d4e5f60718293.jpg" alt="封面"><div data-bn="status" class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]" style="--bn-live-status-color:#aaa;height:24px;line-height:1;padding-top:1px;">已下播</div></div></div></div><div data-block="avatar" class="bn-blk-avatar" style="grid-row:6 / span 2;grid-column:1 / span 1;min-width:0"><img class="w-11 h-11 rounded-full object-cover shrink-0" src="http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg" alt="主播头像"></div><div data-block="name" class="bn-blk-name" style="grid-row:6 / span 1;grid-column:2 / span 11;min-width:0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span></div><div data-block="time" class="bn-blk-time" style="grid-row:7 / span 1;grid-column:2 / span 11;min-width:0"><span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">直播时长：2小时13分</span></div><div data-block="title" class="bn-blk-title" style="grid-row:8 / span 1;grid-column:1 / span 12;min-width:0"><div class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]" style="--bn-ink: #18191C;">【4K】周年庆典特别直播，今晚不见不散！</div></div><div data-block="divider" class="bn-blk-divider-1" style="grid-row:9 / span 1;grid-column:1 / span 12;min-width:0"><div class="[background:var(--bn-divider-color)]" style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"></div></div><div data-block="popularity" class="bn-blk-popularity" style="grid-row:10 / span 1;grid-column:1 / span 6;min-width:0"><span class="block px-4 text-[13px] [color:var(--bn-ink-soft)]" style="--bn-ink-soft: #666;">人气：12.3万</span></div><div data-block="area" class="bn-blk-area" style="grid-row:10 / span 1;grid-column:7 / span 6;min-width:0"><span class="block px-4 text-[13px] [color:var(--bn-ink-soft)]" style="--bn-ink-soft: #666;">分区：虚拟主播</span></div><div data-block="fans" class="bn-blk-fans" style="grid-row:11 / span 1;grid-column:1 / span 12;min-width:0"><div class="block px-4 text-[13px] [color:var(--bn-ink-soft)]" style="--bn-ink-soft: #666;">累计观看人数：3.1万</div></div><div data-block="desc" class="bn-blk-desc" style="grid-row:12 / span 1;grid-column:1 / span 12;min-width:0"><div class="px-4 text-[13px] leading-normal [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">每晚八点开播 &amp; 周末加场 联系方式见动态</div></div></div></div></body>
 		</html>
 	

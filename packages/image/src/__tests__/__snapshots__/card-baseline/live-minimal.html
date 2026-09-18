@@ -18,34 +18,26 @@
  *, ::after, ::before, ::backdrop, ::file-selector-button { box-sizing: border-box;  margin: 0;  padding: 0;  border: 0 solid;  }  html, :host { line-height: 1.5;  -webkit-text-size-adjust: 100%;  tab-size: 4;  font-family: var( --default-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji' );  font-feature-settings: var(--default-font-featureSettings, normal);  font-variation-settings: var(--default-font-variationSettings, normal);  -webkit-tap-highlight-color: transparent;  }  hr { height: 0;  color: inherit;  border-top-width: 1px;  }  abbr:where([title]) { -webkit-text-decoration: underline dotted; text-decoration: underline dotted; }  h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }  a { color: inherit; -webkit-text-decoration: inherit; text-decoration: inherit; }  b, strong { font-weight: bolder; }  code, kbd, samp, pre { font-family: var( --default-monoFont-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace );  font-feature-settings: var(--default-monoFont-featureSettings, normal);  font-variation-settings: var(--default-monoFont-variationSettings, normal);  font-size: 1em;  }  small { font-size: 80%; }  sub, sup { font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; } sub { bottom: -0.25em; } sup { top: -0.5em; }  table { text-indent: 0;  border-color: inherit;  border-collapse: collapse;  }  :-moz-focusring:where(:not(iframe)) { outline: auto; }  progress { vertical-align: baseline; }  summary { display: list-item; }  ol, ul, menu { list-style: none; }  img, svg, video, canvas, audio, iframe, embed, object { display: block;  vertical-align: middle;  }  img, video { max-width: 100%; height: auto; }  button, input, select, optgroup, textarea, ::file-selector-button { font: inherit;  font-feature-settings: inherit;  font-variation-settings: inherit;  letter-spacing: inherit;  color: inherit;  border-radius: 0;  background-color: transparent;  opacity: 1;  }  :where(select:is([multiple], [size])) optgroup { font-weight: bolder; }  :where(select:is([multiple], [size])) optgroup option { padding-inline-start: 20px; }  ::file-selector-button { margin-inline-end: 4px; }  ::placeholder { opacity: 1; }  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px)  { ::placeholder { color: color-mix(in oklab, currentcolor 50%, transparent); } }  textarea { resize: vertical; }  ::-webkit-search-decoration { -webkit-appearance: none; }  ::-webkit-date-and-time-value { min-height: 1lh;  text-align: inherit;  }  ::-webkit-datetime-edit { display: inline-flex; }  ::-webkit-datetime-edit-fields-wrapper { padding: 0; } ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field { padding-block: 0; }  ::-webkit-calendar-picker-indicator { line-height: 1; }  :-moz-ui-invalid { box-shadow: none; }  button, input:where([type='button'], [type='reset'], [type='submit']), ::file-selector-button { appearance: button; }  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button { height: auto; }  [hidden]:where(:not([hidden~='until-found'])) { display: none !important; }
 /* layer: default */
 .text-\[12px\]{font-size:12px;}
+.text-\[13px\]{font-size:13px;}
 .text-\[16px\]{font-size:16px;}
 .text-\[17px\]{font-size:17px;}
 .text-\[\#00AEEC\]{color:color-mix(in oklab, #00AEEC var(--un-text-opacity), transparent);}
 .text-\[\#FF6699\]{color:color-mix(in oklab, #FF6699 var(--un-text-opacity), transparent);}
 .text-white{color:color-mix(in srgb, var(--colors-white) var(--un-text-opacity), transparent);}
 .leading-none{--un-leading:var(--leading-none);line-height:var(--leading-none);}
+.leading-normal{--un-leading:var(--leading-normal);line-height:var(--leading-normal);}
 .leading-snug{--un-leading:var(--leading-snug);line-height:var(--leading-snug);}
 .font-bold{--un-font-weight:var(--fontWeight-bold);font-weight:var(--fontWeight-bold);}
 .p-3\.75{padding:calc(var(--spacing) * 3.75);}
 .px-2\.5{padding-inline:calc(var(--spacing) * 2.5);}
 .px-4{padding-inline:calc(var(--spacing) * 4);}
-.rounded-full{border-radius:calc(infinity * 1px);}
 .rounded-lg{border-radius:var(--radius-lg);}
 .rounded-xl{border-radius:var(--radius-xl);}
-.flex{display:flex;}
 .inline-flex{display:inline-flex;}
-.shrink-0{flex-shrink:0;}
-.flex-col{flex-direction:column;}
-.gap-0\.5{gap:calc(var(--spacing) * 0.5);}
-.gap-2\.5{gap:calc(var(--spacing) * 2.5);}
-.h-11{height:calc(var(--spacing) * 11);}
 .h-auto{height:auto;}
-.min-w-0{min-width:calc(var(--spacing) * 0);}
-.w-11{width:calc(var(--spacing) * 11);}
 .w-full{width:100%;}
 .block{display:block;}
 .\[background-color\:var\(--bn-live-status-color\)\]{background-color:var(--bn-live-status-color);}
-.\[background\:var\(--bn-divider-color\)\]{background:var(--bn-divider-color);}
 .\[color\:var\(--bn-ink-faint\)\]{color:var(--bn-ink-faint);}
 .\[color\:var\(--bn-ink\)\]{color:var(--bn-ink);}
 .items-center{align-items:center;}
@@ -54,11 +46,13 @@
 .absolute{position:absolute;}
 .relative{position:relative;}
 .overflow-hidden{overflow:hidden;}
-.object-cover{object-fit:cover;}
 @supports (color: color-mix(in lab, red, red)){
 .text-white{color:color-mix(in oklab, var(--colors-white) var(--un-text-opacity), transparent);}
-}</style>
+}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,#e0c3fc),var(--bn-knob-gradient-end,#8ec5fc)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.82));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:360px;padding-top:14px;padding-bottom:10px}
+.bn-blk-title{padding-top:10px}
+.bn-blk-name{display:flex;padding-top:14px;align-self:end}
+.bn-blk-desc{padding-top:16px}</style>
 			</head>
-			<body><div class="h-auto p-3.75" style="background:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div class="overflow-hidden rounded-xl" style="background: rgba(255,255,255,0.45); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;"><div data-block="header" class="" style=""><div class="flex items-center gap-2.5 px-4"><img class="w-11 h-11 rounded-full object-cover shrink-0" src="http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg" alt="主播头像"><div class="flex flex-col gap-0.5 min-w-0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span><span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">直播时长：2小时13分</span></div></div></div><div data-block="divider" class="" style="padding-top:10px;"><div class="[background:var(--bn-divider-color)]" style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"></div></div><div data-block="title" class="" style="padding-top:12px;"><div class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]" style="--bn-ink: #18191C;">【4K】周年庆典特别直播，今晚不见不散！</div></div><div data-block="cover" class="" style="padding-top:12px;"><div class="px-4"><div class="relative w-full"><img class="block w-full rounded-lg" src="http://i0.hdslb.com/bfs/live-key-frame/keyframe0102030405060708.jpg" alt="封面"><div class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]" style="--bn-live-status-color:#aaa;height:24px;line-height:1;padding-top:1px;">已下播</div></div></div></div></div></div></body>
+			<body><div data-bn="frame" class="h-auto p-3.75" style="--bn-card-bg-image:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div data-bn="glass" class="overflow-hidden rounded-xl" style="display:grid;grid-template-columns:70px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 70px;width:100%;gap:0px 0px;"><div data-block="title" class="bn-blk-title" style="grid-row:1 / span 1;grid-column:1 / span 12;min-width:0"><div class="px-4 text-[17px] font-bold leading-snug [color:var(--bn-ink)]" style="--bn-ink: #18191C;">【4K】周年庆典特别直播，今晚不见不散！</div></div><div data-block="cover" class="bn-blk-cover" style="grid-row:2 / span 1;grid-column:1 / span 12;min-width:0"><div class="px-4"><div class="relative w-full"><img data-bn="image" class="block w-full rounded-lg" src="http://i0.hdslb.com/bfs/live-key-frame/keyframe0102030405060708.jpg" alt="封面"><div data-bn="status" class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]" style="--bn-live-status-color:#aaa;height:24px;line-height:1;padding-top:1px;">已下播</div></div></div></div><div data-block="name" class="bn-blk-name" style="grid-row:3 / span 1;grid-column:1 / span 12;min-width:0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span></div><div data-block="desc" class="bn-blk-desc" style="grid-row:4 / span 1;grid-column:1 / span 12;min-width:0"><div class="px-4 text-[13px] leading-normal [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">每晚八点开播 &amp; 周末加场 联系方式见动态</div></div></div></div></body>
 		</html>
 	
