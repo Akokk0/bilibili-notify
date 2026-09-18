@@ -84,8 +84,7 @@ describe("块库 — 2026-09-18 补的原子块在目录里", () => {
  * 出图一个像素都不差 —— 门禁全绿,只有主人打开编辑器才看得见。
  */
 const NON_ATOM: Record<string, readonly string[]> = {
-	// 封面 = 图 + 绝对定位的状态角标,第二批拆成两块。
-	live: ["cover"],
+	live: [],
 	// 预约 / 商品 / 通用 / 关联视频四种形态结构各异,字段也不在契约里 —— 主人拍板不拆。
 	dynamic: ["additional"],
 	sc: [],

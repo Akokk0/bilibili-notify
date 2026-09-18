@@ -10,7 +10,7 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_LIMITS, type CardSkinKind } from "@bilibili-notify/internal/constants";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
@@ -56,6 +56,26 @@ const manifest = (): CardSkinManifest =>
 					},
 				],
 			},
+			// 直播卡已经全是原子块、一个挂点都没有了,所以「内置块徽章」与「挂点列表」
+			// 这两条改用动态卡的附加内容照 —— 它是主人拍板不拆的那几块之一。
+			dynamic: {
+				width: 600,
+				css: "",
+				blocks: [
+					{
+						id: "additional",
+						kind: "builtin",
+						builtin: "additional",
+						grid: { row: 1, column: 1, span: 12 },
+					},
+					{
+						id: "avatar",
+						kind: "builtin",
+						builtin: "avatar",
+						grid: { row: 2, column: 1, span: 3 },
+					},
+				],
+			},
 		},
 	}) as unknown as CardSkinManifest;
 
@@ -66,25 +86,31 @@ const manifest = (): CardSkinManifest =>
 function Harness({
 	onDraft,
 	readOnly,
+	kind = "live",
 }: {
 	onDraft?: (m: CardSkinManifest) => void;
 	/** 只读时不给增删的口 —— 内置皮肤那档,控件根本不该出现。 */
 	readOnly?: boolean;
+	/**
+	 * 画哪种卡。默认直播卡 —— 但直播卡拆完已经**一个复合块、一个挂点都不剩**了,
+	 * 所以「内置块徽章」「挂点列表」那两条要拿动态卡照(ADR-0014 决策 8 的 2026-09-18 🔗)。
+	 */
+	kind?: CardSkinKind;
 }) {
 	const [draft, setDraft] = useState<CardSkinManifest>(manifest());
 	const [selection, setSelection] = useState<SkinSelection>(null);
 	return (
 		<div>
 			<SkinCanvas
-				kind="live"
-				card={cardOf(draft, "live")}
+				kind={kind}
+				card={cardOf(draft, kind)}
 				selection={selection}
 				onSelect={setSelection}
 				onAdd={
 					readOnly
 						? undefined
 						: (builtin) => {
-								const added = addBlock(draft, "live", builtin);
+								const added = addBlock(draft, kind, builtin);
 								if (!added) return;
 								setDraft(added.manifest);
 								onDraft?.(added.manifest);
@@ -95,7 +121,7 @@ function Harness({
 					readOnly
 						? undefined
 						: () => {
-								const added = addCustomBlock(draft, "live");
+								const added = addCustomBlock(draft, kind);
 								if (!added) return;
 								setDraft(added.manifest);
 								onDraft?.(added.manifest);
@@ -105,53 +131,53 @@ function Harness({
 			/>
 			<SkinInspector
 				manifest={draft}
-				kind="live"
+				kind={kind}
 				selection={selection}
 				onGrid={(id, patch) =>
 					setDraft((d) => {
-						const next = setBlockGrid(d, "live", id, patch);
+						const next = setBlockGrid(d, kind, id, patch);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onHtml={(id, html) =>
 					setDraft((d) => {
-						const next = setBlockHtml(d, "live", id, html);
+						const next = setBlockHtml(d, kind, id, html);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onShowIf={(id, path) =>
 					setDraft((d) => {
-						const next = setBlockShowIf(d, "live", id, path);
+						const next = setBlockShowIf(d, kind, id, path);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onCss={(id, css) =>
 					setDraft((d) => {
-						const next = setBlockCss(d, "live", id, css);
+						const next = setBlockCss(d, kind, id, css);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onFrameCss={(css) =>
 					setDraft((d) => {
-						const next = setFrameCss(d, "live", css);
+						const next = setFrameCss(d, kind, css);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onFrame={(patch) =>
 					setDraft((d) => {
-						const next = setFrame(d, "live", patch);
+						const next = setFrame(d, kind, patch);
 						onDraft?.(next);
 						return next;
 					})
 				}
 				onColumns={(cols) =>
 					setDraft((d) => {
-						const next = setColumns(d, "live", cols);
+						const next = setColumns(d, kind, cols);
 						onDraft?.(next);
 						return next;
 					})
@@ -161,7 +187,7 @@ function Harness({
 						? undefined
 						: (id) => {
 								setDraft((d) => {
-									const next = removeBlock(d, "live", id);
+									const next = removeBlock(d, kind, id);
 									onDraft?.(next);
 									return next;
 								});
@@ -195,10 +221,14 @@ describe("网格画布", () => {
 
 	it("三档来历各挂各的徽章,showIf 也标出来", () => {
 		render(<Harness />);
-		expect(blockBtn("封面图").textContent).toContain("内置");
 		expect(blockBtn("主播名").textContent).toContain("原子");
 		expect(blockBtn("主播名").textContent).toContain("showIf");
 		expect(blockBtn("自定义块").textContent).toContain("自定义");
+		cleanup();
+
+		render(<Harness kind="dynamic" />);
+		expect(blockBtn("附加内容").textContent).toContain("内置");
+		expect(blockBtn("头像").textContent).toContain("原子");
 	});
 
 	it("点一下就选中(aria-pressed 是可查询的事实,不是一层 class)", () => {
@@ -388,13 +418,13 @@ describe("检查器 · CSS", () => {
 
 	it("挂点是对外 API,列出来还能点一下补进去 —— 名字记不住是写皮肤第一道坎", () => {
 		const onDraft = vi.fn();
-		render(<Harness onDraft={onDraft} />);
-		fireEvent.click(blockBtn("封面图"));
+		render(<Harness kind="dynamic" onDraft={onDraft} />);
+		fireEvent.click(blockBtn("附加内容"));
 
-		// 封面块内部有「封面」与「状态角标」两个挂点。
-		fireEvent.click(within(screen.getByLabelText("这个块的挂点")).getByText("封面"));
+		// 附加内容块内部有「附加卡」「附加卡封面」「按钮」三个挂点。
+		fireEvent.click(within(screen.getByLabelText("这个块的挂点")).getByText("附加卡"));
 
-		expect(cardOf(lastDraft(onDraft), "live")?.blocks[0]?.css).toContain('[data-bn="image"]');
+		expect(cardOf(lastDraft(onDraft), "dynamic")?.blocks[0]?.css).toContain('[data-bn="card"]');
 	});
 
 	it("外框的两层挂点摆在外框那一节", () => {

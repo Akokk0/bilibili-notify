@@ -41,7 +41,8 @@ function pick(kind: CardSkinKind, ids: readonly string[]): CardSkinBlock[] {
  * 开头的分割线要被抑制、末尾的要被弹掉、中间块收起后悬空的那条也要抑制。
  */
 const CUSTOM_CARDS: Record<string, () => CardSkinCard> = {
-	// 开头就摆一条分割线 —— 该被抑制;块序也打乱。
+	// 开头就摆一条分割线 —— 该被抑制;块序也打乱。**故意不摆 `status`**:直播状态角标
+	// 拆成独立的块之后就能单独关掉了(从前它长在封面块里,关不掉),这张卡顺便钉住这件事。
 	"live-minimal": () => ({
 		...base("live"),
 		blocks: pick("live", ["divider-1", "title", "cover", "name", "desc"]),

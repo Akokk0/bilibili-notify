@@ -27,7 +27,7 @@
  *
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
- * | `--bn-live-status-color` | 直播状态角标的底色(直播中粉 / 已下播·未开播灰) | `cover` 块里的 `status` 角标 |
+ * | `--bn-live-status-color` | 直播状态角标的底色(直播中粉 / 已下播·未开播灰) | `status` 原子块 |
  * | `--bn-ink` | 主文字色(主播名 / 标题) | `name` 原子块、`header` 里的名字 span、`title` 块根 |
  * | `--bn-ink-soft` | 次级文字色(数据区) | `data` 块根、`popularity` / `area` / `fans` 原子块 |
  * | `--bn-ink-faint` | 最弱的文字色(开播时间 / 简介) | `time` 原子块、`header` 里的时间 span、`desc` 块根 |
@@ -138,31 +138,30 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		/>
 	),
 
-	cover: (p) => {
+	cover: (p) => (
+		<img
+			class="block w-full rounded-lg"
+			src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
+			alt="封面"
+		/>
+	),
+
+	// 从前这颗角标是封面块里 `position:absolute` 的一个孩子。现在它自己是一块,与封面占
+	// 同一片格子、层次更高,贴哪个角由皮肤的 `align-self` / `justify-self` / `margin` 说 ——
+	// 所以这里**不写定位**,只画角标本身。
+	status: (p) => {
 		const status = statusLabel(p);
 		return (
-			<div class="px-4">
-				<div class="relative w-full">
-					<img
-						data-bn="image"
-						class="block w-full rounded-lg"
-						src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
-						alt="封面"
-					/>
-					{/* 直播状态角标，叠在封面右上角 */}
-					<div
-						data-bn="status"
-						class="absolute top-3 right-3 inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]"
-						style={{
-							"--bn-live-status-color": status.bg,
-							height: "24px",
-							lineHeight: "1",
-							paddingTop: "1px",
-						}}
-					>
-						{status.text}
-					</div>
-				</div>
+			<div
+				class="inline-flex items-center px-2.5 rounded-xl text-white text-[12px] font-bold [background-color:var(--bn-live-status-color)]"
+				style={{
+					"--bn-live-status-color": status.bg,
+					height: "24px",
+					lineHeight: "1",
+					paddingTop: "1px",
+				}}
+			>
+				{status.text}
 			</div>
 		);
 	},

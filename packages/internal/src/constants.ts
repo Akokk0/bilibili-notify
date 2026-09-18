@@ -1494,15 +1494,16 @@ const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, ho
  * `atom` 分的是**「这块画一样东西,还是捆了好几样」**,不是「能不能再拆」:转发框里确实
  * 套着一整张内层卡、图廊里确实有好几张图,但搬动时它们各是一件,所以是原子块。剩下的
  * 非原子块是一份**闭集**,由 `card-blocks.test.ts` 钉着:附加内容(预约 / 商品 / 通用 /
- * 关联视频四种形态结构各异、字段不在契约里,主人拍板不拆)、三种不可编辑卡的整卡块,
- * 外加还没拆的直播封面(图 + 状态角标,第二批拆成两块)。
+ * 关联视频四种形态结构各异、字段不在契约里,主人拍板不拆)与三种不可编辑卡的整卡块。
  */
 export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	CardSkinKind,
 	Record<string, CardSkinBuiltinBlock>
 > = {
 	live: {
-		cover: { label: "封面图", hooks: { image: "封面", status: "状态角标" } },
+		// 角标与封面**占同一片格子**、层次更高,不再嵌在封面里(决策 8 的 2026-09-18 🔗)。
+		cover: { label: "封面图", atom: true, hooks: {} },
+		status: { label: "直播状态", atom: true, hooks: {} },
 		title: { label: "直播标题", atom: true, hooks: {} },
 		desc: { label: "简介", atom: true, hooks: {} },
 		divider: DIVIDER_BLOCK,

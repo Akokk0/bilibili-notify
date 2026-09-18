@@ -856,7 +856,16 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
 			blocks: [
 				// 600 宽的封面约 300px 高 → 5 行。
-				at("cover", tall(1, 5)),
+				at("cover", tall(1, 5), "padding:0 16px"),
+				// 角标与封面同占第 1 行、层次更高:靠上靠右收成内容宽,外边距把它推到从前
+				// `top-3 right-3` 的位置(右边那 28px = 封面的 16px 内边距 + 12px)。
+				// `HEAD`(flex)不能省 —— 角标是 inline-flex,块容器里会起一条线盒,行高的
+				// 半个 leading 把它往下压 1.5px(本机量过)。
+				at(
+					"status",
+					{ ...full(1), z: 1 },
+					`${HEAD};align-self:start;justify-self:end;margin:12px 28px 0 0`,
+				),
 				at(
 					"avatar",
 					{ row: 6, column: 1, span: 1, rowSpan: 2 },
