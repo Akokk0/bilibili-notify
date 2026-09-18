@@ -23,7 +23,6 @@ import {
 	cardSkinKnobVar,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
-	LEGACY_DEFAULT_CARD_SKIN,
 	parseCardSkin,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -433,6 +432,13 @@ describe("DEFAULT_CARD_SKIN", () => {
 		expect(m.name).toBeTruthy();
 	});
 
+	// 锐评两张与词云原来长在旧默认皮肤上、由出厂默认展开继承,旧默认删掉时它们差点跟着
+	// 静默消失:这三种整张是一个固定内置块,没有原子块、也不在「拆得开的复合块」表里,
+	// 四种可编辑卡的门一条都照不到它们,出图时只会悄悄回落兜底 —— 真机才看得见。
+	it("七种卡一张都不少", () => {
+		expect(Object.keys(DEFAULT_CARD_SKIN.cards).sort()).toEqual([...CARD_SKIN_KINDS].sort());
+	});
+
 	it("七种卡的外框底色都由皮肤 CSS 写(frame 规则),不靠外框自画", () => {
 		for (const kind of CARD_SKIN_KINDS) {
 			expect(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").toMatch(
@@ -508,23 +514,6 @@ describe("DEFAULT_CARD_SKIN", () => {
 			expect(used.length, kind).toBeGreaterThan(0);
 			for (const c of composites) expect(used, `${kind}.${c}`).not.toContain(c);
 		}
-	});
-});
-
-describe("LEGACY_DEFAULT_CARD_SKIN", () => {
-	it("自己先过自己的门", () => {
-		expect(ok(LEGACY_DEFAULT_CARD_SKIN).name).toBeTruthy();
-	});
-
-	it("复刻拆之前的样子:四种可编辑卡的内置块顺序与 DEFAULT_CARD_LAYOUT 一致", async () => {
-		const { DEFAULT_CARD_LAYOUT } = await import("./card-layout");
-		const names = (kind: "live" | "dynamic" | "sc") =>
-			LEGACY_DEFAULT_CARD_SKIN.cards[kind]?.blocks.map((b) =>
-				b.kind === "builtin" ? b.builtin : b.kind,
-			);
-		expect(names("live")).toEqual(DEFAULT_CARD_LAYOUT.live.map((b) => b.type));
-		expect(names("dynamic")).toEqual(DEFAULT_CARD_LAYOUT.dynamic.map((b) => b.type));
-		expect(names("sc")).toEqual(DEFAULT_CARD_LAYOUT.sc.map((b) => b.type));
 	});
 });
 

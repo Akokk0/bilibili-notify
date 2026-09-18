@@ -8,7 +8,7 @@ import { z } from "zod";
  * 三条纪律:
  * - **挂点名、字段路径、变量名都是对外 API,只增不改不删**(第三方皮肤会写死它们)。
  * - 这层只量长度不看内容:CSS 与自定义 HTML 的清洗归 server 的清洗器,渲染器只吃洗过的。
- * - 这套格式必须能**复刻拆成原子块之前的外观**(冻住的 `LEGACY_DEFAULT_CARD_SKIN`)—— 它是
+ * - 这套格式必须能**复刻出厂那套外观**(`DEFAULT_CARD_SKIN`)—— 它是
  *   格式够不够用的验收门,也是改过版式的存量用户迁移后零感知的依据。出厂默认皮肤
  *   (`DEFAULT_CARD_SKIN`)2026-09-18 起改用原子块拼,外观允许几个像素的出入(决策 8 的 🔗)。
  */
@@ -732,149 +732,6 @@ export const CardSkinIdSchema = z
 	.regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "皮肤 id 只准小写字母、数字、连字符");
 
 type B = CardSkinBlock;
-const stack = (
-	blocks: Array<[builtin: string, paddingTop?: number, id?: string]>,
-	extra: Partial<Pick<CardSkinBuiltinBlockRef, "css">> = {},
-): B[] =>
-	blocks.map(([builtin, pt, id], i) => ({
-		id: id ?? builtin,
-		kind: "builtin",
-		builtin,
-		grid: { row: i + 1, column: 1, span: 12 },
-		...(pt !== undefined ? { css: `[data-bn="self"]{padding-top:${pt}px}` } : {}),
-		...extra,
-	}));
-
-/**
- * **旧默认皮肤** —— 2026-09-18 默认皮肤拆成原子块之前的那份出厂皮肤,**原样冻住、不再改**
- * (ADR-0014 决策 8 的 🔗)。原来的两个用处 —— 给迁移当折叠的底子、给验收门比对旧模板 ——
- * 都已随迁移与旧模板一起退役(决策 17 / 24 的 2026-09-18 🔗);**如今只剩一个**:出厂默认
- * 皮肤展开它,拿到元信息、旋钮,以及锐评两张与词云这三张单块卡的定义。那三张卡搬进出厂
- * 默认之后,这份就整个删掉。
- *
- * 复刻的是拆之前的外观:块顺序与块间距逐项照抄 `DEFAULT_CARD_LAYOUT`(`card-layout.ts`),
- * 外框参数走内置块自己的默认(与变量),所以 `css` 只写块间距。
- *
- * 上舰卡是今天唯一的二维版式:内容列(姓名 / 文字)在左八列、徽章在右四列跨两行,
- * 玻璃层固定高、两行上下分布(`align-content:space-between` 复刻原来的 `justify-between`)。
- * 徽章那四列是**定宽**的 —— 原来的徽章图就是 175px 见方,12 等分给不出这个数;内容块
- * 再补回原来内容列的内边距(`px-[16px] py-[12px]`),两处合起来才做到与旧版式逐像素相同。
- * 首 / 末块的 `align-self` 是把原来 `justify-between` 的「首块贴顶、末块贴底」钉死:
- * 徽章那一格占满卡高,会把两行撑开,不钉的话块会跟着行一起被挪。
- */
-export const LEGACY_DEFAULT_CARD_SKIN: CardSkinManifest = {
-	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
-	dataVersion: CARD_DATA_VERSION,
-	name: "默认",
-	description: "Bilibili-Notify 出厂的卡片外观。",
-	/**
-	 * 出厂那四枚旋钮。`default` 只是面板控件的起始位置,**不注入** —— 玻璃白纱那枚的
-	 * 各卡兜底写在 CSS 里({@link glassBase}),一注就把三档基线塌成一档。
-	 */
-	knobs: [
-		{
-			key: DEFAULT_SKIN_KNOB_KEYS.gradientStart,
-			label: "背景渐变起色",
-			type: "color",
-			default: DEFAULT_CARD_GRADIENT[0],
-		},
-		{
-			key: DEFAULT_SKIN_KNOB_KEYS.gradientEnd,
-			label: "背景渐变止色",
-			type: "color",
-			default: DEFAULT_CARD_GRADIENT[1],
-		},
-		{
-			key: DEFAULT_SKIN_KNOB_KEYS.glassOpacity,
-			label: "玻璃白纱",
-			type: "number",
-			default: 0.82,
-			min: 0,
-			max: 1,
-			step: 0.01,
-		},
-		{
-			key: DEFAULT_SKIN_KNOB_KEYS.glassBlur,
-			label: "玻璃模糊",
-			type: "number",
-			default: 10,
-			min: 0,
-			max: 40,
-			step: 1,
-			unit: "px",
-		},
-		// 起手位置是空 = 跟着渲染那台机器的兜底链走(从前那句「默认(交给渲染那台机器)」)。
-		{ key: DEFAULT_SKIN_KNOB_KEYS.font, label: "字体", type: "font", default: "" },
-		// 图片旋钮没有 default:主人自己的图,皮肤起不出默认值来 —— 没选时外框那条规则里
-		// 的渐变兜底顶上。
-		{ key: DEFAULT_SKIN_KNOB_KEYS.wallpaper, label: "卡片背景图", type: "image" },
-	],
-	cards: {
-		live: {
-			width: 600,
-			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
-			blocks: stack([
-				["cover"],
-				["header", 14],
-				["title", 10],
-				["divider", 10, "divider-1"],
-				["data", 10],
-				["desc", 16],
-			]),
-		},
-		dynamic: {
-			width: 600,
-			css: `${FRAME_BG_USER}${GLASS_DYNAMIC}`,
-			blocks: stack([
-				["header"],
-				["divider", 12, "divider-1"],
-				["content", 12],
-				["additional", 12],
-				["divider", 12, "divider-2"],
-				["stats", 12],
-			]),
-		},
-		sc: {
-			width: 290,
-			css: `${FRAME_BG_TIER}${GLASS_PLAIN}`,
-			blocks: stack([["amount"], ["divider", 15, "divider-1"], ["sender", 12], ["message", 12]]),
-		},
-		guard: {
-			width: 430,
-			columns: [
-				...Array.from({ length: 8 }, () => ({ fr: 1 })),
-				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
-			],
-			css: `${FRAME_BG_TIER}[data-bn="glass"]{${glassBase(".75")};height:190px;align-content:space-between}`,
-			blocks: [
-				{
-					id: "name",
-					kind: "builtin",
-					builtin: "name",
-					grid: { row: 1, column: 1, span: 8 },
-					css: '[data-bn="self"]{padding:12px 16px 0px;align-self:start}',
-				},
-				{
-					id: "text",
-					kind: "builtin",
-					builtin: "text",
-					grid: { row: 2, column: 1, span: 8 },
-					css: '[data-bn="self"]{padding:0px 16px 12px;align-self:end}',
-				},
-				{
-					id: "badge",
-					kind: "builtin",
-					builtin: "badge",
-					grid: { row: 1, column: 9, span: 4, rowSpan: 2 },
-					css: '[data-bn="self"]{height:190px;display:flex;align-items:center;align-self:start}',
-				},
-			],
-		},
-		roastBoard: { width: 600, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
-		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: stack([["body"]]) },
-		wordcloud: { width: 720, css: `${FRAME_BG_USER}${GLASS_WORDCLOUD}`, blocks: stack([["body"]]) },
-	},
-};
 
 /**
  * 一个内置块。id 默认就是块名;会出现两次的(分割线)与驼峰块名(id 只准小写 + 连字符)
@@ -934,7 +791,7 @@ const HEAD = "display:flex";
 
 /**
  * **出厂的卡片皮肤**(内置只读,id 见 {@link DEFAULT_CARD_SKIN_ID})。元信息、旋钮与外框 CSS
- * 与 {@link LEGACY_DEFAULT_CARD_SKIN} 同一份;四种可编辑卡的块**用原子块拼**(ADR-0014
+ * 四种可编辑卡的块**用原子块拼**(ADR-0014
  * 决策 8 的 2026-09-18 🔗):用户多半是复制默认皮肤再改,默认皮肤里拆得越细,能挪的就越多。
  * 外观与拆之前允许有几个像素的出入(主人拍板),东西一件不少由 `default-skin-atoms.test.ts` 钉着。
  *
@@ -945,9 +802,53 @@ const HEAD = "display:flex";
  * - 视频卡 / 图廊那块只给图廊加上边距(挂点规则),与旧正文里的间距一致。
  */
 export const DEFAULT_CARD_SKIN: CardSkinManifest = {
-	...LEGACY_DEFAULT_CARD_SKIN,
+	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
+	dataVersion: CARD_DATA_VERSION,
+	name: "默认",
+	description: "Bilibili-Notify 出厂的卡片外观。",
+	/**
+	 * 出厂那四枚旋钮。`default` 只是面板控件的起始位置,**不注入** —— 玻璃白纱那枚的
+	 * 各卡兜底写在 CSS 里({@link glassBase}),一注就把三档基线塌成一档。
+	 */
+	knobs: [
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.gradientStart,
+			label: "背景渐变起色",
+			type: "color",
+			default: DEFAULT_CARD_GRADIENT[0],
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.gradientEnd,
+			label: "背景渐变止色",
+			type: "color",
+			default: DEFAULT_CARD_GRADIENT[1],
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.glassOpacity,
+			label: "玻璃白纱",
+			type: "number",
+			default: 0.82,
+			min: 0,
+			max: 1,
+			step: 0.01,
+		},
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.glassBlur,
+			label: "玻璃模糊",
+			type: "number",
+			default: 10,
+			min: 0,
+			max: 40,
+			step: 1,
+			unit: "px",
+		},
+		// 起手位置是空 = 跟着渲染那台机器的兜底链走(从前那句「默认(交给渲染那台机器)」)。
+		{ key: DEFAULT_SKIN_KNOB_KEYS.font, label: "字体", type: "font", default: "" },
+		// 图片旋钮没有 default:主人自己的图,皮肤起不出默认值来 —— 没选时外框那条规则里
+		// 的渐变兜底顶上。
+		{ key: DEFAULT_SKIN_KNOB_KEYS.wallpaper, label: "卡片背景图", type: "image" },
+	],
 	cards: {
-		...LEGACY_DEFAULT_CARD_SKIN.cards,
 		live: {
 			width: 600,
 			// 16 + 44(头像)+ 10(间距)
@@ -1046,6 +947,20 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"height:190px;display:flex;align-items:center;align-self:start",
 				),
 			],
+		},
+		// 整张卡是一个固定内置块的三种:块模型进不去(词云是页面里跑画布脚本画的),
+		// 皮肤只管它们外面那层外框。原来这三张长在旧默认皮肤上,由这里展开继承;
+		// 旧默认已经删了(决策 17 / 24 的 2026-09-18 🔗),所以搬进来自己写。
+		roastBoard: {
+			width: 600,
+			css: `${FRAME_BG_USER}${GLASS_ROAST}`,
+			blocks: [at("body", full(1))],
+		},
+		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: [at("body", full(1))] },
+		wordcloud: {
+			width: 720,
+			css: `${FRAME_BG_USER}${GLASS_WORDCLOUD}`,
+			blocks: [at("body", full(1))],
 		},
 	},
 };

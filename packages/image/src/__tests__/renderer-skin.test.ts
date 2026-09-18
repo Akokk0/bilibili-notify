@@ -142,7 +142,7 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 
 		// 画的是**出厂默认皮肤**这一份(2026-09-18 起用原子块拼),不是冻住的旧默认 ——
 		// 与旧模板逐块相同那件事只对旧默认成立,归 skin-gate 的验收门 A。
-		// 验红:把渲染器的默认回落换成 LEGACY_DEFAULT_CARD_SKIN,这条红。
+		// 验红:把渲染器的默认回落换成任何一套别的皮肤(块序不同即可),这条红。
 		const expected = (DEFAULT_CARD_SKIN.cards.live?.blocks ?? []).map((b) =>
 			b.kind === "builtin" ? b.builtin : "custom",
 		);
