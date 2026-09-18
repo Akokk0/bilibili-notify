@@ -22,7 +22,6 @@ import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
-import { migrateCardLayoutsToSkins } from "./card-skins/migrate-layouts.js";
 import { CardSkinStore } from "./card-skins/store.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
@@ -428,23 +427,12 @@ export async function startStandaloneServer(
 		// 预览三处问的都是它。各建一家的话,面板装了新皮肤而推送还在用开机那一刻的索引,
 		// 症状还是静默的(装包成功、出图不变)。
 		//
-		// 顺序是:`configStore.load()`(上面早就跑过)→ 建店 + `init()` 读盘 → 跑旧版式
-		// 迁移 → 才把 `get` 交给引擎。迁移会往店里装皮肤、往配置里写 `cardSkin` 指针,
-		// 所以它必须排在「谁去读那个指针」之前。
+		// 顺序是:`configStore.load()`(上面早就跑过)→ 建店 + `init()` 读盘 → 才把 `get`
+		// 交给引擎。(开机一次性的「旧版式 → 皮肤」迁移已整个退役,见 ADR-0014 决策 17
+		// 的 2026-09-18 🔗:没选过皮肤的一律用出厂默认。)
 		cardSkinStore = new CardSkinStore({ dir: join(bootstrap.dataDir, "card-skins") });
 		await cardSkinStore.init();
 		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
-		try {
-			await migrateCardLayoutsToSkins({
-				store: cardSkinStore,
-				config: runtime.configStore,
-				logger: { info: (m) => log.info(m), warn: (m) => log.warn(m) },
-			});
-		} catch (err) {
-			// 迁移挂了不该拦住启动:旧版式出图早已不读,最坏的结果是这台机器还用着默认皮肤,
-			// 而主人一眼就能在卡片页看出来并自己选一套。静默吞掉才是真的糟。
-			log.error(`[card-skin] 旧版式迁移失败(不影响启动,卡片将用默认皮肤): ${String(err)}`);
-		}
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
 		const skins = cardSkinStore;
 
