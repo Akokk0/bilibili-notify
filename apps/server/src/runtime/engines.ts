@@ -438,7 +438,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const cursorFlushTimer = setInterval(flushCursors, 30_000);
 	cursorFlushTimer.unref?.();
 	// 轮换前过滤盘上已不存在的资产(配置里的悬空引用):死条目不占游标位、不会渲染成
-	// 渐变 / 原封面;全悬空返回 undefined → 推送点静态兜底。背景与直播封面同一选择器。
+	// 原封面;全悬空返回 undefined → 推送点静态兜底。今天只剩直播封面在轮 —— 卡片背景图
+	// 那条链 2026-09-20 删掉(背景图归皮肤的 `image` 旋钮)。
 	const pickExistingCardBg = makeExistingCardBgPicker(
 		opts.configStore.bootstrap.dataDir,
 		cardBgRotator.pick,
@@ -482,8 +483,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				whitelistRegex: f.whitelistRegex.join("|"),
 				whitelistKeywords: f.whitelistKeywords,
 			},
-			// 无 per-UP 背景覆盖的 UP 靠它轮换全局默认图廊(见 pickDynamicColorOptions)。
-			defaultBackgroundImages: globals().defaults.cardStyle.backgroundImages,
 		};
 	};
 
@@ -496,7 +495,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		ai: commentary ?? undefined,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
-		pickCardBackground: pickExistingCardBg,
 	});
 	dynamic.start();
 
@@ -552,8 +550,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				customLive: g.defaults.templates.liveOngoing,
 				customLiveEnd: g.defaults.templates.liveEnd,
 			},
-			// 无 per-UP / per-kind 背景覆盖的 UP 靠它轮换全局默认图廊(见 resolvedCardStyle)。
-			defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 resolvedCardStyle)。
 			defaultLiveCoverImages: g.defaults.cardStyle.liveCoverImages,
 		};
@@ -704,7 +700,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
 		cardSkin: g.defaults.cardSkin,
 		style: resolveDynamicCardStyle(g.defaults, null),
-		defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 	});
 	let linkCard = linkCardViewOf(initialGlobals);
 	// 逐群答案从默认行 + 例外 + 目标表 + 连接表算出来,三者任一变了都重算(见接口上的说明)。
@@ -796,7 +791,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					});
 				}
 				// dynamicConfig() 的完整输入集:app.dynamicCron + defaults.{filters,
-				// imageGroup,cardStyle.enabled/backgroundImages,ai.enabled,
+				// imageGroup,cardStyle.enabled,ai.enabled,
 				// templates.dynamic/dynamicVideo}。这道门必须**逐项覆盖**该集合 ——
 				// 少一项就是漏热更(用户以为保存生效了,其实要重启;`imageGroup` 就曾经
 				// 整个漏在门外),多一项则是无谓扇出(此前用整个 `appChanged` 当门,
@@ -987,15 +982,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
-			// 链接卡就是「全局那张动态卡」:全局配色、全局图廊,轮换位置也记在全局这把上
-			// (主人定的:它跟着全局走,不另起名字)。推送卡那边每位 UP 各记各的位置,
-			// 哪怕用的是全局图廊 —— 那是推送侧的既有做法,与这里无关。
-			colors: resolveDynamicColorOptions({
-				style: linkCard.style,
-				defaultBackgroundImages: linkCard.defaultBackgroundImages,
-				pick: pickExistingCardBg,
-				scopeKey: "global:dynamic",
-			}),
+			// 链接卡就是「全局那张动态卡」:吃全局那份动态样式(主人定的:它跟着全局走)。
+			colors: resolveDynamicColorOptions(linkCard.style),
 			cardSkin: linkCard.cardSkin,
 		}),
 		getModuleStatus: (): ModuleStatus => {
@@ -1320,15 +1308,17 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 
 /**
  * 把一份解析后的 CardStyle(或 per-UP 覆盖切片)映射成引擎消费的 colorOptions 形状
- * (`enable:true` + `backgroundImage` 取列表首张作为静态兜底,`backgroundImages`
- * 透传完整列表给推送点做「每次推送轮换」——见 `resolvedCardStyle` / `pickDynamicColorOptions`)。
+ * (`enable:true` + `liveCoverImage` 取列表首张作为静态兜底,`liveCoverImages` 透传完整
+ * 列表给推送点做「每次推送轮换」——见 `RoomSessionBase.resolvedCardStyle`)。
  *
- * 无背景图时 `backgroundImage` 留 undefined(**不是** `""`)—— generate* 用
- * `colorOptions.backgroundImage ?? this.config.backgroundImage` 兜底,`""` 非 nullish
- * 会把背景抹空而非回退全局,故只设字体之类的 per-UP 覆盖必须让背景透传 undefined。
+ * 无封面时 `liveCoverImage` 留 undefined(**不是** `""`)—— generate* 用
+ * `colorOptions.liveCoverImage` 兜底,`""` 非 nullish 会把封面抹空而非回退 B 站原图,
+ * 故只设字体之类的 per-UP 覆盖必须让封面透传 undefined。
+ *
+ * 从前这里还映射一对 `backgroundImage` / `backgroundImages`;整条链 2026-09-20 删掉
+ * (背景图归皮肤自己的 `image` 旋钮)。
  */
 function cardStyleToColorOptions(s: {
-	backgroundImages?: string[];
 	liveCoverImages?: string[];
 	font?: string;
 	fontAsset?: string;
@@ -1339,11 +1329,7 @@ function cardStyleToColorOptions(s: {
 		// resolve 也算得出,就是没人映射进 colorOptions —— 渲染器收不到,选了等于没选。
 		font: s.font,
 		fontAsset: s.fontAsset,
-		backgroundImage: s.backgroundImages?.[0],
-		// 完整列表透传给推送点;>1 张时「每次推送轮换」(见 RoomSession.resolvedCardStyle /
-		// DynamicEngine)。单图 / 缺省即用 backgroundImage,不轮换。
-		backgroundImages: s.backgroundImages,
-		// 直播封面同款语义(独立端专属,仅 live 卡消费)。
+		// 直播封面(独立端专属,仅 live 卡消费)。
 		liveCoverImage: s.liveCoverImages?.[0],
 		liveCoverImages: s.liveCoverImages,
 	};

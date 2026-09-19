@@ -211,7 +211,8 @@ function KnobControl({
 				</>
 			);
 		// 字体与图**借现成的那两个选择器**:上传、图廊、「这款已失效」的提示全在里面,
-		// 而它们此前伺候的正是 `cardStyle.font` / `backgroundImages` —— 同一件事,换了个家。
+		// 而它们此前伺候的正是 `cardStyle.font` / `backgroundImages`(后者那条链 2026-09-20
+		// 已整个删掉)—— 同一件事,换了个家。
 		case "font":
 			return (
 				<div className="min-w-0 flex-1">

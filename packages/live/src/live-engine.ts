@@ -57,11 +57,9 @@ export interface LiveEngineConfig {
 	 */
 	aiWebSearch?: boolean;
 	/**
-	 * 全局默认卡片背景图廊。live/sc/guard 无 per-UP / per-kind 覆盖时的轮换兜底
-	 * 列表(见 `ListenerManagerConfig.defaultBackgroundImages`)。
+	 * 全局默认直播封面列表(独立端专属)。该 UP 无 per-UP / per-kind 覆盖时
+	 * `resolvedCardStyle("live")` 拿它做「每次推送轮换」的兜底列表,仅 live 卡消费。
 	 */
-	defaultBackgroundImages?: string[];
-	/** 全局默认直播封面列表(独立端专属),语义同上,仅 live 卡消费。 */
 	defaultLiveCoverImages?: string[];
 }
 
@@ -318,7 +316,6 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		customLiveMsg: c.customLiveMsg,
 		liveSummaryDefault: c.liveSummaryDefault,
 		imageEnabled: c.imageEnabled,
-		defaultBackgroundImages: c.defaultBackgroundImages,
 		defaultLiveCoverImages: c.defaultLiveCoverImages,
 	};
 }

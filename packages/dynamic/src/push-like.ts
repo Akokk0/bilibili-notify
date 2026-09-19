@@ -114,13 +114,8 @@ export interface SubItemView {
 	dynamic?: boolean;
 	customCardStyle?: {
 		enable?: boolean;
-		/** 背景图资产 id;透传给 generateDynamicCard 的 colorOptions。 */
-		backgroundImage?: string;
-		/**
-		 * 解析后的**完整**背景图列表(>1 张时「每次推送轮换」)。adapter 填入;engine 据它
-		 * 经注入的 pickCardBackground 选下一张覆盖 backgroundImage。缺省 / ≤1 张 = 不轮换。
-		 */
-		backgroundImages?: string[];
+		// 🪦 `backgroundImage` / `backgroundImages` 2026-09-20 随整条链删掉 —— 背景图归皮肤
+		// 自己的 `image` 旋钮(`--bn-knob-wallpaper`),不再从样式覆盖里透传。
 		/**
 		 * 字体家族名;透传给 generateDynamicCard 的 colorOptions(缺省回退全局)。
 		 * 此前整条链都漏着,per-UP 换字体选了等于没选。
@@ -169,12 +164,6 @@ export interface SubItemView {
 
 export type SubscriptionsView = Record<string, SubItemView>;
 export type SubManagerView = Map<string, SubItemView>;
-
-/**
- * 背景图轮换选择器:给定 scopeKey(`uid:dynamic`)与完整图列表,返回本次该用的背景(并在
- * 实现内推进游标)。宿主注入(独立端 fs 持久化游标);返回 undefined = 不轮换。
- */
-export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
 /**
  * 宿主提供给 engine 的增量操作描述:独立端在 SubscriptionStore 写入后转译为

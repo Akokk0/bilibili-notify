@@ -91,14 +91,19 @@ describe("cards route — 图廊列表 GET /assets", () => {
 describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 	function depsWithStore(opts: {
 		dataDir: string;
-		globalBg?: string[];
-		/** 全局某 per-kind 样式(sc)的背景列表 —— 验证删除引用检查覆盖 cardStyleByKind。 */
-		globalKindBg?: string[];
+		/**
+		 * 存量配置里那个**退役的** `cardStyle.backgroundImages`。整条链 2026-09-20 删掉,
+		 * 但老 globals.json 里这个键还在(schema 不 strict,加载时被静静剥掉)—— 这里手工
+		 * 塞进来,就是为了钉「它不再算一条引用」。
+		 */
+		legacyBg?: string[];
+		/** 全局某 per-kind 样式(sc)的封面列表 —— 验证删除引用检查覆盖 cardStyleByKind。 */
+		globalKindCover?: string[];
 		/** 全局直播封面列表(liveCoverImages)—— 验证删除引用检查覆盖封面引用。 */
 		globalCover?: string[];
 		/** 皮肤旋钮那一层(2026-09-14 起背景图的正主)。 */
 		knobs?: Record<string, Record<string, unknown>>;
-		subs?: Array<{ uid: string; bg?: string[]; kindBg?: string[]; cover?: string[] }>;
+		subs?: Array<{ uid: string; legacyBg?: string[]; kindCover?: string[]; cover?: string[] }>;
 	}): RouteDeps {
 		return {
 			runtime: {
@@ -113,11 +118,11 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 						cardSkin: "default",
 						cardSkinKnobs: opts.knobs ?? {},
 						cardStyle: {
-							backgroundImages: opts.globalBg ?? [],
+							backgroundImages: opts.legacyBg ?? [],
 							liveCoverImages: opts.globalCover ?? [],
 						},
-						cardStyleByKind: opts.globalKindBg
-							? { sc: { backgroundImages: opts.globalKindBg } }
+						cardStyleByKind: opts.globalKindCover
+							? { sc: { liveCoverImages: opts.globalKindCover } }
 							: {},
 					},
 				}),
@@ -126,8 +131,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 						uid: s.uid,
 						overrides: {
 							cardStyle:
-								s.bg || s.cover ? { backgroundImages: s.bg, liveCoverImages: s.cover } : undefined,
-							cardStyleByKind: s.kindBg ? { guard: { backgroundImages: s.kindBg } } : undefined,
+								s.legacyBg || s.cover
+									? { backgroundImages: s.legacyBg, liveCoverImages: s.cover }
+									: undefined,
+							cardStyleByKind: s.kindCover
+								? { guard: { liveCoverImages: s.kindCover } }
+								: undefined,
 						},
 					})),
 			},
@@ -187,19 +196,31 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被全局引用的背景图 → 409 拦截,文件保留", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "bn-del-ref-"));
+	/**
+	 * ⚠️ **一处主人看得见的行为变化**(2026-09-20,`cardStyle.backgroundImages` 整条链删干净
+	 * 那次)。这条从前是反过来的:「删除被全局引用的背景图 → 409 拦截,文件保留」。
+	 *
+	 * 今天那个键只可能出现在**存量**配置里(schema 不 strict,加载时被静静剥掉),而它从
+	 * 2026-09-19 起已经画不出任何东西(背景图走皮肤的 `image` 旋钮 / `--bn-knob-wallpaper`)。
+	 * 再拿它拦删除,只会让主人删不掉一张早就不出现在任何卡上的图 —— 所以**放行**。
+	 * 判据:把 `cardBgReferences` 里那条 `backgroundImages` 判据加回去,这条红。
+	 */
+	it("只被退役的 backgroundImages 引用的图 → 200,删得掉(它已画不出任何东西)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-legacy-bg-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
 			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, globalBg: [id] }),
+				deps: depsWithStore({
+					dataDir: dir,
+					legacyBg: [id],
+					subs: [{ uid: "10086", legacyBg: [id] }],
+				}),
 				puppeteer: null,
 				api: null,
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(409);
-			expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: false });
-			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+			expect(res.status).toBe(200);
+			expect(await listCardBg(dir)).toEqual([]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -225,12 +246,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被某 UP 覆盖引用的背景图 → 409,referencedBy 指出该 UP", async () => {
+	it("删除被某 UP 覆盖引用的封面图 → 409,referencedBy 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-ref-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
 			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "10086", bg: [id] }] }),
+				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "10086", cover: [id] }] }),
 				puppeteer: null,
 				api: null,
 			});
@@ -243,12 +264,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除仅被全局 per-kind 样式引用的背景图 → 409(覆盖 cardStyleByKind)", async () => {
+	it("删除仅被全局 per-kind 样式引用的封面图 → 409(覆盖 cardStyleByKind)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
 			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, globalKindBg: [id] }),
+				deps: depsWithStore({ dataDir: dir, globalKindCover: [id] }),
 				puppeteer: null,
 				api: null,
 			});
@@ -260,12 +281,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除仅被某 UP 的 per-kind 样式引用的背景图 → 409,referencedBy 指出该 UP", async () => {
+	it("删除仅被某 UP 的 per-kind 样式引用的封面图 → 409,referencedBy 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
 			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "20020", kindBg: [id] }] }),
+				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "20020", kindCover: [id] }] }),
 				puppeteer: null,
 				api: null,
 			});
@@ -812,20 +833,15 @@ describe("cards route — /preview live-by-uid fallback", () => {
 	});
 
 	/**
-	 * **这一条原来钉的是「悬空首张被跳过、第二张内联进了 HTML」。** 内联那一半今天不成立了:
-	 * `cardStyle.backgroundImages` 2026-09-14 退役成皮肤自己的 `image` 旋钮,而 2026-09-19
-	 * 补上了 ADR-0014 决策 15 那条 🔗 的最后一步 —— `--bn-card-bg-image` **不再注**,
-	 * 所以这条退役字段的值端到端**到不了卡片**了(背景图走 `--bn-knob-wallpaper`)。
+	 * **这一条原来钉的是「悬空首张被跳过、第二张内联进了 HTML」。** 内联那一半 2026-09-19
+	 * 就不成立了(`--bn-card-bg-image` 不再注),2026-09-20 整条
+	 * `cardStyle.backgroundImages` 链连同 `StyleSchema` 里那个字段一起删掉 —— 所以现在
+	 * 请求体里写它等于**没写**:zod 把未知键剥掉,谁都读不到。
 	 *
-	 * 「跳过悬空、取第一张存在的」那半**逻辑还在、也还有测试**,在它自己的缝上:
-	 * `runtime/__tests__/card-assets.test.ts` 的 `firstExistingCardBg` 两条。这里改成钉
-	 * 新的事实,免得留一条为错误的理由绿着的测试。
-	 *
-	 * 🔴 **顺带记下**:`firstExistingCardBg` 的产物如今喂进一条走不通的链
-	 * (`routes/cards.ts` → ImageRenderer → props.backgroundImage → 无人读)。拆那条链
-	 * 与整卡模板退役(决策 24 的 2026-09-18 🔗)缠在一起,是另一件事。
+	 * 仍留一条**路由这一层**的守卫:请求体里塞一个存量前端会发来的 `backgroundImages`,
+	 * 画出来的 HTML 里不许出现任何图。判据:把那个字段加回 `StyleSchema` 并接回渲染,这条红。
 	 */
-	it("mock 预览:退役的 backgroundImages 到不了卡片(背景图走 wallpaper 旋钮)", async () => {
+	it("mock 预览:请求体里退役的 backgroundImages 到不了卡片(背景图走 wallpaper 旋钮)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-preview-ghost-bg-"));
 		try {
 			const real = await saveCardBg(dir, PNG, "image/png");

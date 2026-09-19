@@ -668,16 +668,11 @@ const CardStyleObjectSchema = z.object({
 	 * 已被删掉的资产时静静回落 `font` —— 与背景图同一条纪律,不让一次删除把出图弄崩。
 	 */
 	fontAsset: z.string().optional(),
-	/**
-	 * **退役字段**(同上面的 `font`):背景图归**皮肤自己的旋钮**(`image` 档,值就是这一串
-	 * id,多张照旧轮换)。⛔ 新代码不许读它。
-	 *
-	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用皮肤外框 CSS 里那条渐变;
-	 * 长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
-	 * 服务端从列表里挑一张解析成 data URL 内联(packages/image 仍只认单图)。旧的单值
-	 * `backgroundImage` 经下方 preprocess 自动迁移成本列表。
-	 */
-	backgroundImages: z.array(z.string()).optional(),
+	// 🪦 `backgroundImages`(以及更老的单值 `backgroundImage`)2026-09-20 整条链**删干净**。
+	// 背景图 2026-09-14 退役成皮肤自己的 `image` 旋钮(值走 `--bn-knob-wallpaper`),
+	// 2026-09-19 起全仓零条 CSS 再读 `--bn-card-bg-image` —— 字段留着只是喂一条谁都不读的
+	// 入参链。本 schema **不是 `.strict()`**,存量 globals.json / 订阅覆盖里的这两个键
+	// 解析时静静剥掉,不会像皮肤清单那样整份拒收。⛔ 别把它加回来。
 	/**
 	 * 直播卡自定义封面图资产 id **列表**(独立端专属,复用卡片背景同一图廊)。空列表
 	 * (默认)= 沿用 B 站房间封面 / 关键帧;长度 1 = 固定单张;长度 >1 = 每次推送顺序
@@ -706,24 +701,17 @@ const CardStyleObjectSchema = z.object({
 });
 
 /**
- * 前向迁移 CardStyle:
- * 1. 旧单值 `backgroundImage`(string)→ 新 `backgroundImages`(string[]):仅当未显式提供
- *    列表时生效,空串→空列表(渐变),非空→单元素列表;显式列表永远优先。
- * 2. 丢弃废弃的 `hideDesc` / `hideFollower`:显不显示哪一件如今归**皮肤的块序列**,当年接
- *    它们的 `showFans` 那一批已随旧版式整个退役(ADR-0014 决策 17 的 2026-09-18 🔗),
- *    没有新键接得住,所以这里**只剥键、不转译**。剥干净仍是必须的:留着会一路漏进别处
- *    (守卫在 `card-style.test.ts`)。
+ * 前向迁移 CardStyle:丢弃废弃的 `hideDesc` / `hideFollower`。显不显示哪一件如今归**皮肤的
+ * 块序列**,当年接它们的 `showFans` 那一批已随旧版式整个退役(ADR-0014 决策 17 的
+ * 2026-09-18 🔗),没有新键接得住,所以这里**只剥键、不转译**。剥干净仍是必须的:留着会
+ * 一路漏进别处(守卫在 `card-style.test.ts`)。
+ *
+ * 从前还有一步「旧单值 `backgroundImage` → `backgroundImages` 列表」,2026-09-20 随整条
+ * 背景图链一起删掉:两个键都没人读了,而本 schema 不是 `.strict()`,存量值自己会被剥掉。
  */
 function migrateCardStyle(raw: unknown): unknown {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
 	const o: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
-	if ("backgroundImage" in o) {
-		const legacy = o.backgroundImage;
-		delete o.backgroundImage;
-		if (o.backgroundImages === undefined) {
-			o.backgroundImages = typeof legacy === "string" && legacy ? [legacy] : [];
-		}
-	}
 	delete o.hideDesc;
 	delete o.hideFollower;
 	return o;
@@ -742,15 +730,15 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 // globals.json 缺字段回填)分开。
 //
 // 下面 `.extend()` 的单子从前是 7 个,今天**只有 enabled 与 liveCoverImages 两条是承重的**
-// ——`font` / `backgroundImages` 自己已经是 optional(留着是照着全局那张表逐条对,
-// 少一条就是下一个洞),`showPopularity` / `showArea` / `showFans` 随旧版式整个退役
-// (ADR-0014 决策 17 的 2026-09-18 🔗),`glassClear` 是 2026-09-14 那次退役的。
+// ——`font` 自己已经是 optional(留着是照着全局那张表逐条对,少一条就是下一个洞),
+// `showPopularity` / `showArea` / `showFans` 随旧版式整个退役(ADR-0014 决策 17 的
+// 2026-09-18 🔗),`glassClear` 是 2026-09-14 那次退役的,`backgroundImages` 2026-09-20
+// 整条链删掉。
 export const CardStylePartialSchema = z.preprocess(
 	migrateCardStyle,
 	CardStyleObjectSchema.partial().extend({
 		enabled: z.boolean().optional(),
 		font: z.string().optional(),
-		backgroundImages: z.array(z.string()).optional(),
 		liveCoverImages: z.array(z.string()).optional(),
 	}),
 );

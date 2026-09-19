@@ -4,58 +4,18 @@ import { resolveDynamicColorOptions } from "../card-style";
 /**
  * 动态卡 colorOptions 的解析规则从 DynamicEngine 里提出来了 —— 独立端的链接卡也要
  * 按同一条规则出图。这里只钉纯函数;引擎那侧的行为仍由 dynamic-engine.test 钉着。
+ *
+ * 从前这份还钉着「背景图每次推送轮换」的三条。整条 `cardStyle.backgroundImages` 链
+ * 2026-09-20 删掉(背景图归皮肤的 `image` 旋钮),剩下的就是一道 enable 闸。
  */
 describe("resolveDynamicColorOptions", () => {
-	const rotating = () => {
-		const cursors: Record<string, number> = {};
-		return (key: string, images: string[]) => {
-			const i = cursors[key] ?? 0;
-			cursors[key] = i + 1;
-			return images[i % images.length];
-		};
-	};
-
-	it("样式自带多图 → 每调一次轮一张,并强制 enable", () => {
-		const pick = rotating();
-		const picks = [0, 1, 2].map(
-			() =>
-				resolveDynamicColorOptions({
-					style: { enable: true, backgroundImages: ["a", "b"] },
-					defaultBackgroundImages: undefined,
-					pick,
-					scopeKey: "global:dynamic",
-				})?.backgroundImage,
-		);
-		expect(picks).toEqual(["a", "b", "a"]);
+	it("enable 的原样给出去", () => {
+		const style = { enable: true, font: "Comic Sans MS" };
+		expect(resolveDynamicColorOptions(style)).toBe(style);
 	});
 
-	it("样式没图、全局图廊多图 → 按全局图廊轮;enable:false 也照轮", () => {
-		const pick = rotating();
-		const out = resolveDynamicColorOptions({
-			style: { enable: false },
-			defaultBackgroundImages: ["x", "y"],
-			pick,
-			scopeKey: "k",
-		});
-		expect(out).toMatchObject({ enable: true, backgroundImage: "x" });
-	});
-
-	it("没什么可轮(单图 / 没选择器)→ enable 的原样给,不 enable 的 undefined", () => {
-		expect(
-			resolveDynamicColorOptions({
-				style: { enable: true, backgroundImage: "solo", backgroundImages: ["solo"] },
-				defaultBackgroundImages: ["x", "y"],
-				pick: () => "IGNORED",
-				scopeKey: "k",
-			}),
-		).toEqual({ enable: true, backgroundImage: "solo", backgroundImages: ["solo"] });
-		expect(
-			resolveDynamicColorOptions({
-				style: { enable: false },
-				defaultBackgroundImages: ["x", "y"],
-				pick: () => undefined,
-				scopeKey: "k",
-			}),
-		).toBeUndefined();
+	it("enable=false / 缺省 → undefined(调用点据此回退渲染器全局配置)", () => {
+		expect(resolveDynamicColorOptions({ enable: false, font: "X" })).toBeUndefined();
+		expect(resolveDynamicColorOptions(undefined)).toBeUndefined();
 	});
 });

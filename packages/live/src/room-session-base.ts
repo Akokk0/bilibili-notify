@@ -148,28 +148,20 @@ export abstract class RoomSessionBase {
 	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
 	 * 再据 enable 门控)。adapter 已把 per-kind 折算成完整样式,这里只做选取。
 	 *
-	 * 背景图「每次推送轮换」:优先用该样式自带的 `backgroundImages`;若该 UP / kind 没有
-	 * 任何覆盖(样式自带列表为空)→ 落回引擎级 `defaultBackgroundImages`(全局默认图廊)—
-	 * 否则这些 UP 会一直渲染渲染器内部缓存的静态首图,图廊配再多张也不轮换(回归 bug)。
-	 * 列表 >1 张时经注入的 `pickBackground`(按 `uid:kind` 独立游标)选下一张并强制
+	 * 直播封面「每次推送轮换」:优先用该样式自带的 `liveCoverImages`;若该 UP / kind 没有
+	 * 任何覆盖(样式自带列表为空)→ 落回引擎级 `defaultLiveCoverImages`(全局默认封面廊)。
+	 * 列表 >1 张时经注入的 `pickBackground`(游标键 `uid:live-cover`)选下一张并强制
 	 * `enable:true`,其余字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。
-	 * 选择器返回 undefined / 列表 ≤1 张 → 原样返回(用首图或渲染器静态兜底)。
+	 * 选择器返回 undefined / 列表 ≤1 张 → 原样返回(单张由 adapter 预填)。
 	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
+	 *
+	 * 从前这里还有一份同构的**卡片背景图**轮换(`backgroundImages` + `uid:kind` 游标)。
+	 * 整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉:背景图 2026-09-14 退役成皮肤
+	 * 自己的 `image` 旋钮,轮出来的那张从 2026-09-19 起已经喂不到任何 CSS。
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
 		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
 		let out = style;
-		const images =
-			style.backgroundImages && style.backgroundImages.length > 0
-				? style.backgroundImages
-				: this.ctx.config.defaultBackgroundImages;
-		if (images && images.length > 1) {
-			const picked = this.ctx.pickBackground(`${this.sub.uid}:${kind}`, images);
-			if (picked !== undefined) out = { ...out, enable: true, backgroundImage: picked };
-		}
-		// 直播封面轮换(独立端专属,仅 live 卡有封面):同一 rotator,key 维度独立
-		// (`uid:live-cover` vs 背景的 `uid:kind`),互不干扰。语义与背景完全同构:
-		// 样式自带列表优先,否则落回引擎级全局默认;>1 张才轮换,单张由 adapter 预填。
 		if (kind === "live") {
 			const covers =
 				style.liveCoverImages && style.liveCoverImages.length > 0

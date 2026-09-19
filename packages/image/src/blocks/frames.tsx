@@ -64,20 +64,25 @@ export interface CardPropsByKind {
 	wordcloud: WordCloudCardProps;
 }
 
-/** 外框自带的渐变 / 背景图那一句 —— 四种卡各自的 props 里颜色字段名不同,值算法相同。 */
-function frameBg(backgroundImage: string | undefined, start: string, end: string): string {
-	return backgroundImage
-		? `url("${backgroundImage}") center / cover`
-		: `linear-gradient(to right bottom, ${start}, ${end})`;
+/**
+ * 外框自带的渐变那一句 —— 四种卡各自的 props 里颜色字段名不同,值算法相同。
+ *
+ * 从前它还吃一个 `backgroundImage`(有图就整张换成图)。那条链 2026-09-20 整个删掉:
+ * 背景图 2026-09-14 退役成皮肤自己的 `image` 旋钮,由皮肤 CSS 的
+ * `var(--bn-knob-wallpaper, <渐变>)` 画 —— 而这里是**模板路径**,皮肤路径根本不走
+ * (见下面的 `ownBg`),所以留着也喂不到任何出图。
+ */
+function frameBg(start: string, end: string): string {
+	return `linear-gradient(to right bottom, ${start}, ${end})`;
 }
 
 /**
  * 外框 inline 里的 `background` —— **只有模板路径(`extra` 缺席)才自画**。
  *
  * 皮肤路径的底色归皮肤自己的 CSS(ADR-0014 决策 15 的 🔗:渐变不再是变量,默认皮肤在
- * `[data-bn="frame"]` 规则里写它,用户背景图以 `--bn-card-bg-image` 注入、由皮肤决定叠还是
- * 换);外框若还 inline 一份,清洗器又一律摘 `!important`,皮肤永远压不过它。模板路径只剩
- * 基准快照在用,那边照旧自画,基准逐字节不变。
+ * `[data-bn="frame"]` 规则里写它,用户背景图走 `--bn-knob-wallpaper` 那枚旋钮);外框若还
+ * inline 一份,清洗器又一律摘 `!important`,皮肤永远压不过它。模板路径只剩基准快照在用,
+ * 那边照旧自画,基准逐字节不变。
  */
 function ownBg(extra: FrameExtra | undefined, bg: () => string): { background?: string } {
 	return extra ? {} : { background: bg() };
@@ -126,7 +131,7 @@ function roastFrame(
 			style={[
 				{
 					width: `${extra?.width ?? defaultWidth}px`,
-					...ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
+					...ownBg(extra, () => frameBg(p.cardColorStart, p.cardColorEnd)),
 				},
 				extra?.frame,
 			]}
@@ -161,10 +166,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			<div
 				data-bn="frame"
 				class="h-auto"
-				style={[
-					ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
-					extra?.frame,
-				]}
+				style={[ownBg(extra, () => frameBg(p.cardColorStart, p.cardColorEnd)), extra?.frame]}
 			>
 				<div
 					data-bn="glass"
@@ -188,7 +190,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 				class="h-auto"
 				style={[
 					{
-						...ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
+						...ownBg(extra, () => frameBg(p.cardColorStart, p.cardColorEnd)),
 						minWidth: "380px",
 					},
 					extra?.frame,
@@ -214,10 +216,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			<div
 				data-bn="frame"
 				class="flex justify-center items-center"
-				style={[
-					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
-					extra?.frame,
-				]}
+				style={[ownBg(extra, () => frameBg(p.bgColor[0], p.bgColor[1])), extra?.frame]}
 			>
 				<div
 					data-bn="glass"
@@ -242,10 +241,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			<div
 				data-bn="frame"
 				class="flex justify-center items-center"
-				style={[
-					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
-					extra?.frame,
-				]}
+				style={[ownBg(extra, () => frameBg(p.bgColor[0], p.bgColor[1])), extra?.frame]}
 			>
 				<div
 					data-bn="glass"

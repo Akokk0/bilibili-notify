@@ -653,20 +653,18 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.videoTemplate).toBe("🎬 {name} {url}");
 	});
 
-	it("回归:改全局 cardStyle.backgroundImages → 两端 config 都带 defaultBackgroundImages(无覆盖的 UP 靠它轮换)", () => {
-		// 此前 dynamicConfig()/liveConfig() 都没有把全局默认图廊透传给引擎,
-		// 导致无 per-UP / per-kind 背景覆盖的 UP 永远只渲染渲染器内部缓存的
-		// 静态首图,图廊配再多张也不轮换。
+	it("回归:改全局 cardStyle.liveCoverImages → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
+		// 此前 liveConfig() 没有把全局默认封面廊透传给引擎,导致无 per-UP / per-kind
+		// 覆盖的 UP 永远只渲染第一张,封面配再多张也不轮换。
+		// (背景图从前有一条同构的 `defaultBackgroundImages`;整条链 2026-09-20 删掉。)
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.backgroundImages = ["a", "b"];
+			g.defaults.cardStyle.liveCoverImages = ["a", "b"];
 		});
 		c.bus.emit("config-changed", "globals");
-		const dynCfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
 		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(dynCfg.defaultBackgroundImages).toEqual(["a", "b"]);
-		expect(liveCfg.defaultBackgroundImages).toEqual(["a", "b"]);
+		expect(liveCfg.defaultLiveCoverImages).toEqual(["a", "b"]);
 	});
 
 	it("item 4 — 改 defaults.ai 不扇出重设 UA / level / healthCheck", () => {
@@ -801,7 +799,7 @@ describe("createEngines — image 配色热更", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.backgroundImages = ["bg-1"];
+			g.defaults.cardStyle.liveCoverImages = ["cover-1"];
 		});
 		c.bus.emit("config-changed", "globals");
 		expect(H.image[0].updateConfig).toHaveBeenCalled();

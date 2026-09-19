@@ -119,10 +119,11 @@ describe("RoastBoardCard", () => {
 		expect(html).toContain("党");
 	});
 
-	it("背景图存在时替换渐变外框", async () => {
-		const html = await renderBoard({ backgroundImage: "data:image/png;base64,AAAA" });
-		expect(html).toContain("data:image/png;base64,AAAA");
-		expect(html).not.toContain("linear-gradient(to right bottom");
+	// 从前这里还有一条「背景图存在时替换渐变外框」。卡片背景图那条链 2026-09-20 整个删掉
+	// (背景图归皮肤的 `image` 旋钮),模板外框只画渐变了。
+	it("外框画的是渐变", async () => {
+		const html = await renderBoard();
+		expect(html).toContain("linear-gradient(to right bottom");
 	});
 });
 

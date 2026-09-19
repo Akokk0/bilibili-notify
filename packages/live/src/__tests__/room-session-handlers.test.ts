@@ -229,18 +229,16 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({
 				superchat: true,
 				minScPrice: 30,
-				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyle: { enable: true, font: "Base Sans" },
 				customCardStyleByKind: {
-					sc: { enable: true, backgroundImage: "sc-bg" },
+					sc: { enable: true, font: "SC Sans" },
 				},
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSCCard).toHaveBeenCalledTimes(1);
 		// 第二参 = colorOptions(sc 专属覆盖基准)。
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({
-			backgroundImage: "sc-bg",
-		});
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ font: "SC Sans" });
 	});
 
 	it("无 per-kind sc 覆盖 → generateSCCard 回退到基准 customCardStyle", async () => {
@@ -251,11 +249,11 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({
 				superchat: true,
 				minScPrice: 30,
-				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyle: { enable: true, font: "Base Sans" },
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "base-bg" });
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
 	});
 
 	// 样式没启用 = 一个样式字段都不许递出去(渲染器按「缺省 → 吃全局 config」判,递一份
@@ -268,74 +266,9 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
-	it("per-kind sc 配多图 → 连续 SC 推送经 pickBackground 逐张轮换背景", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		// 注入按 scopeKey 计数的选择器,模拟「每次推送轮换」。
-		const cursors: Record<string, number> = {};
-		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
-		(ctx as any).pickBackground = (key: string, images: string[]): string => {
-			const i = cursors[key] ?? 0;
-			cursors[key] = i + 1;
-			return images[i % images.length] as string;
-		};
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				superchat: true,
-				minScPrice: 30,
-				customCardStyleByKind: { sc: { enable: true, backgroundImages: ["a", "b", "c"] } },
-			}),
-		) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		await s.onIncomeSuperChat(scBody);
-		await s.onIncomeSuperChat(scBody);
-		await s.onIncomeSuperChat(scBody);
-		const bgs = m.generateSCCard.mock.calls.map(
-			(c) => (c[1] as { backgroundImage?: string } | undefined)?.backgroundImage,
-		);
-		expect(bgs).toEqual(["a", "b", "c", "a"]);
-	});
-
-	it("per-kind sc 单图 → 不调 pickBackground,沿用该单图(engines 已填 backgroundImage)", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				superchat: true,
-				minScPrice: 30,
-				// engines 的 cardStyleToColorOptions 同时填单 backgroundImage 与列表。
-				customCardStyleByKind: {
-					sc: { enable: true, backgroundImage: "solo", backgroundImages: ["solo"] },
-				},
-			}),
-		) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		expect(ctx.pickBackground).not.toHaveBeenCalled();
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "solo" });
-	});
-
-	it("回归:基准与 per-kind 都无覆盖,但全局默认配了多图 → 仍按 defaultBackgroundImages 轮换(而非静默回退单图)", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const cursors: Record<string, number> = {};
-		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
-		(ctx as any).pickBackground = (key: string, images: string[]): string => {
-			const i = cursors[key] ?? 0;
-			cursors[key] = i + 1;
-			return images[i % images.length] as string;
-		};
-		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认多图
-		(ctx as any).config.defaultBackgroundImages = ["x", "y"];
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		await s.onIncomeSuperChat(scBody);
-		const bgs = m.generateSCCard.mock.calls.map(
-			(c) => (c[1] as { backgroundImage?: string } | undefined)?.backgroundImage,
-		);
-		expect(bgs).toEqual(["x", "y"]);
-	});
+	// 从前这里有三条「SC 卡背景图每次推送轮换」(per-kind 多图 / 单图不轮 / 落回全局默认
+	// 图廊)。整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉(背景图归皮肤的 `image`
+	// 旋钮),同构的**直播封面**轮换仍由下面的「resolvedCardStyle live 封面轮换」钉着。
 });
 
 // ---------------------------------------------------------------------------
@@ -423,17 +356,15 @@ describe("RoomSession.onGuardBuy", () => {
 			ctx,
 			makeSub({
 				liveGuardBuy: true,
-				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyle: { enable: true, font: "Base Sans" },
 				customCardStyleByKind: {
-					guard: { enable: true, backgroundImage: "guard-bg" },
+					guard: { enable: true, font: "Guard Sans" },
 				},
 			}),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		// 第三参 = colorOptions(guard 专属);第四参为版式。
-		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({
-			backgroundImage: "guard-bg",
-		});
+		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ font: "Guard Sans" });
 	});
 });
 
@@ -493,8 +424,8 @@ describe("RoomSession.onLiveStart", () => {
 		const s = new RoomSession(
 			ctx,
 			makeSub({
-				customCardStyle: { enable: true, backgroundImage: "base-bg" },
-				customCardStyleByKind: { live: { enable: true, backgroundImage: "live-bg" } },
+				customCardStyle: { enable: true, font: "Base Sans" },
+				customCardStyleByKind: { live: { enable: true, font: "Live Sans" } },
 			}),
 		) as AnySession;
 		s.useLiveRoomInfo = vi.fn(async () => {
@@ -514,7 +445,7 @@ describe("RoomSession.onLiveStart", () => {
 		s.armPeriodicTimer = vi.fn();
 		await s.onLiveStart();
 		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.cardStyle).toMatchObject({
-			backgroundImage: "live-bg",
+			font: "Live Sans",
 		});
 	});
 

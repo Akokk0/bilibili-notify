@@ -6,7 +6,6 @@ const base: CardStyle = {
 	enabled: true,
 	font: "Base Sans",
 	fontAsset: "base.woff2",
-	backgroundImages: [],
 	liveCoverImages: [],
 	glassClear: false,
 };
@@ -21,8 +20,8 @@ describe("resolveKindStyle", () => {
 		expect(s.fontAsset).toBe("base.woff2"); // 未覆盖字段继承基准
 	});
 	it("does not leak one kind's override to another", () => {
-		const byKind = { live: { backgroundImages: ["live.png"] } };
-		expect(resolveKindStyle(base, byKind, "dynamic").backgroundImages).toEqual([]);
+		const byKind = { live: { liveCoverImages: ["live.png"] } };
+		expect(resolveKindStyle(base, byKind, "dynamic").liveCoverImages).toEqual([]);
 	});
 });
 
@@ -33,8 +32,8 @@ describe("setKindField", () => {
 	});
 	it("merges with an existing override and does not mutate input", () => {
 		const input = { sc: { font: "SC Sans" } };
-		const next = setKindField(input, "sc", "backgroundImages", ["a.png"]);
-		expect(next.sc).toEqual({ font: "SC Sans", backgroundImages: ["a.png"] });
+		const next = setKindField(input, "sc", "liveCoverImages", ["a.png"]);
+		expect(next.sc).toEqual({ font: "SC Sans", liveCoverImages: ["a.png"] });
 		expect(input.sc).toEqual({ font: "SC Sans" }); // 原对象不变
 	});
 });

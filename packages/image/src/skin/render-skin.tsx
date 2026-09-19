@@ -229,10 +229,7 @@ function renderCustomHtml(
  * 不再从 props 翻译。
  */
 function frameVariables(props: unknown): string {
-	const p = props as {
-		bgColor?: readonly [string, string];
-		backgroundImage?: string;
-	};
+	const p = props as { bgColor?: readonly [string, string] };
 	const V = CARD_SKIN_VARIABLES;
 	let out = "";
 	// 档位色(SC 按价位、上舰按舰长等级)只有那两种卡的 props 才带;皮肤 CSS 用它按档变色。
@@ -242,10 +239,9 @@ function frameVariables(props: unknown): string {
 	// 背景图 2026-09-14 退役成皮肤自己的 `image` 旋钮,值走 `--bn-knob-wallpaper`
 	// (宿主经 `resolveKnobAssets` 读盘解析,见 `skin/knob-assets.ts`);全仓**零条 CSS**
 	// 再读 `--bn-card-bg-image`,默认外框读的是 `var(--bn-knob-wallpaper, <渐变>)`。
-	// 留着它只会骗人:2026-09-19 主人正是看见这个变量,才把「背景图旋钮不生效」错怪到
-	// 改名头上(真因是面板预览那条路没调 `resolveKnobAssets`,已修)。
-	// `p.backgroundImage` 那条入参链(模板 / ImageRenderer / engines)还在,拆它是另一件事
-	// —— 与整卡模板退役(决策 24 的 2026-09-18 🔗)缠在一起。
+	// 2026-09-20 连带把 `props.backgroundImage` 那条入参链(schema / engines / ImageRenderer /
+	// 模板)整条删掉 —— 留着只会骗人:2026-09-19 主人正是看见这个变量,才把「背景图旋钮
+	// 不生效」错怪到改名头上(真因是面板预览那条路没调 `resolveKnobAssets`,已修)。
 	return out;
 }
 

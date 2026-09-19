@@ -74,9 +74,6 @@ const FONT = "PingFang SC, sans-serif";
 const COLOR_START = "#e0c3fc";
 const COLOR_END = "#8ec5fc";
 
-/** 「自定义背景图已解析成 URL」那一支;真实形态是 data URL,这里用等价的远程 URL。 */
-const BG_IMAGE = "http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png";
-
 /** GUARD_LEVEL_IMG(image-renderer 私有,不为测试改导出,按现状抄一份)。 */
 const GUARD_IMG = {
 	1: "https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
@@ -111,7 +108,6 @@ function liveProps(over: Record<string, unknown> = {}): Record<string, unknown> 
 		cardColorEnd: COLOR_END,
 		glassOpacity: undefined,
 		glassClear: false,
-		backgroundImage: "",
 		data: liveRoom(),
 		username: "示例主播",
 		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
@@ -237,7 +233,6 @@ const dynamicInput = (
 			cardColorEnd: COLOR_END,
 			glassOpacity: undefined,
 			glassClear: false,
-			backgroundImage: "",
 			node: await buildDynamicNode(data, false, fmt),
 			...over,
 		},
@@ -572,7 +567,6 @@ function scProps(price: number, over: Record<string, unknown> = {}): Record<stri
 		bgColor: SC_COLORS[levelIndex],
 		glassOpacity: undefined,
 		glassClear: false,
-		backgroundImage: "",
 		...over,
 	};
 }
@@ -605,7 +599,6 @@ function guardProps(
 		bgColor: BG_COLORS[guardLevel],
 		glassOpacity: undefined,
 		glassClear: false,
-		backgroundImage: "",
 		...over,
 	};
 }
@@ -655,7 +648,6 @@ const BOARD_PROPS: RoastBoardCardProps = {
 	cardColorEnd: COLOR_END,
 	glassOpacity: undefined,
 	glassClear: false,
-	backgroundImage: "",
 };
 
 const SOLO_PROPS: RoastSoloCardProps = {
@@ -671,7 +663,6 @@ const SOLO_PROPS: RoastSoloCardProps = {
 	cardColorEnd: COLOR_END,
 	glassOpacity: undefined,
 	glassClear: false,
-	backgroundImage: BG_IMAGE,
 };
 
 // ── 夹具表 ────────────────────────────────────────────────────────────────────
@@ -709,14 +700,13 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "live-minimal",
 		group: "直播卡",
 		kind: "live",
-		label: "live-minimal：数据区整块收起 + 关键帧封面 + 背景图 + 改过顺序的版式",
+		label: "live-minimal：数据区整块收起 + 关键帧封面 + 改过顺序的版式",
 		build: liveInput({
 			titleStatus: "正在直播",
 			liveTime: "直播时长：2小时13分",
 			liveStatus: 2,
 			cover: false,
 			glassOpacity: 0.45,
-			backgroundImage: BG_IMAGE,
 		}),
 	},
 	{
@@ -790,10 +780,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "动态卡",
 		kind: "dynamic",
 		label: "dynamic-custom-layout：改顺序 + 隐藏互动数 + 末尾分割线被弹掉 + 关联视频卡",
-		build: dynamicInput(CUSTOM_LAYOUT_DYNAMIC, {
-			glassOpacity: 0.6,
-			backgroundImage: BG_IMAGE,
-		}),
+		build: dynamicInput(CUSTOM_LAYOUT_DYNAMIC, { glassOpacity: 0.6 }),
 	},
 	{
 		name: "dynamic-charge-only",
@@ -821,13 +808,12 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "sc-high",
 		group: "醒目留言卡",
 		kind: "sc",
-		label: "sc-high：最高档(¥2000 → Level6 配色)，无主播头像，背景图 + 自定义玻璃",
+		label: "sc-high：最高档(¥2000 → Level6 配色)，无主播头像，自定义玻璃",
 		build: scInput(2000, {
 			senderName: "示例大哥",
 			masterAvatarUrl: undefined,
 			text: "今晚这首点给所有还没下班的人",
 			glassOpacity: 0.5,
-			backgroundImage: BG_IMAGE,
 		}),
 	},
 	{
@@ -849,12 +835,11 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "guard-governor",
 		group: "上舰卡",
 		kind: "guard",
-		label: "guard-governor：总督(level 1)，房管(isAdmin=1)，背景图 + 完全透明",
+		label: "guard-governor：总督(level 1)，房管(isAdmin=1)，完全透明",
 		build: guardInput(1, {
 			uname: "示例大哥",
 			isAdmin: 1,
 			glassClear: true,
-			backgroundImage: BG_IMAGE,
 		}),
 	},
 	{

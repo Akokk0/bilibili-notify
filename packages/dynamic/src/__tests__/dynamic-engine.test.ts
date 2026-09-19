@@ -235,7 +235,6 @@ function makeEngine(
 		withImage?: boolean;
 		withAi?: boolean;
 		subs?: Record<string, SeedView> | null;
-		pickCardBackground?: import("../push-like").PickCardBackground;
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
@@ -271,7 +270,6 @@ function makeEngine(
 			...over.config,
 		},
 		getSubs: () => (over.subs ? viewsOf(over.subs) : null),
-		pickCardBackground: over.pickCardBackground ?? (() => undefined),
 	});
 	return {
 		engine,
@@ -1463,7 +1461,6 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 				filter: { enable: false },
 			},
 			getSubs: () => snap,
-			pickCardBackground: () => undefined,
 		});
 		engine.start();
 		expect(cronMock.instances).toHaveLength(0);
@@ -1718,71 +1715,9 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// 背景图轮换(每次推送轮换)
-// ---------------------------------------------------------------------------
-
-describe("DynamicEngine — 动态卡背景轮换", () => {
-	it("customCardStyle 多图 → pickDynamicColorOptions 经注入选择器逐张轮换", () => {
-		const cursors: Record<string, number> = {};
-		const b = makeEngine({
-			withImage: true,
-			pickCardBackground: (key, images) => {
-				const i = cursors[key] ?? 0;
-				cursors[key] = i + 1;
-				return images[i % images.length];
-			},
-		});
-		const style = { enable: true, backgroundImages: ["a", "b", "c"] };
-		const picks = [0, 1, 2, 3].map(
-			() => priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage,
-		);
-		expect(picks).toEqual(["a", "b", "c", "a"]);
-	});
-
-	it("单图 → 不轮换,原样沿用 backgroundImage", () => {
-		const b = makeEngine({ withImage: true, pickCardBackground: () => "ROTATED" });
-		const style = { enable: true, backgroundImage: "solo", backgroundImages: ["solo"] };
-		expect(priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage).toBe("solo");
-	});
-
-	it("enable=false / 缺省 → undefined(走渲染器全局兜底)", () => {
-		const b = makeEngine({ withImage: true, pickCardBackground: () => "X" });
-		expect(priv(b.engine).pickDynamicColorOptions("u1", { enable: false })).toBeUndefined();
-		expect(priv(b.engine).pickDynamicColorOptions("u1", undefined)).toBeUndefined();
-	});
-
-	it("选择器返回 undefined + 多图 → 不轮换,沿用 backgroundImage", () => {
-		const b = makeEngine({ withImage: true, pickCardBackground: () => undefined });
-		const style = { enable: true, backgroundImage: "first", backgroundImages: ["first", "second"] };
-		expect(priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage).toBe("first");
-	});
-
-	it("回归:该 UP 无背景覆盖,但全局默认图廊配了多图 → 仍按 defaultBackgroundImages 轮换", () => {
-		const cursors: Record<string, number> = {};
-		const b = makeEngine({
-			withImage: true,
-			config: { defaultBackgroundImages: ["x", "y"] },
-			pickCardBackground: (key, images) => {
-				const i = cursors[key] ?? 0;
-				cursors[key] = i + 1;
-				return images[i % images.length];
-			},
-		});
-		const picks = [0, 1].map(
-			() => priv(b.engine).pickDynamicColorOptions("u1", { enable: false })?.backgroundImage,
-		);
-		expect(picks).toEqual(["x", "y"]);
-		// 该 UP 自带背景(哪怕只设了一张)优先于全局默认,不落到 defaultBackgroundImages。
-		expect(
-			priv(b.engine).pickDynamicColorOptions("u1", {
-				enable: true,
-				backgroundImage: "own",
-				backgroundImages: ["own"],
-			})?.backgroundImage,
-		).toBe("own");
-	});
-});
+// 从前这里有一整块「动态卡背景轮换」(`pickDynamicColorOptions` + 注入的选择器 + 全局
+// 默认图廊兜底)。整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉(背景图归皮肤的
+// `image` 旋钮),剩下那道 enable 闸归 `card-style.test.ts`。
 
 // ---------------------------------------------------------------------------
 // H. 消息版式(messageLayout)— 发送侧结构自定义

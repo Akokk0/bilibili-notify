@@ -39,7 +39,6 @@ function makeDeps(opts: {
 			getGlobals: () => ({
 				defaults: {
 					cardStyle: {
-						backgroundImages: [],
 						liveCoverImages: [],
 						fontAsset: opts.globalFont,
 					},

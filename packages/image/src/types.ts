@@ -95,8 +95,8 @@ export type LiveData = {
 };
 
 export type CardColorOptions = {
-	/** 自定义背景图资产 id(或已解析 URL);缺省时走渐变。 */
-	backgroundImage?: string;
+	// 🪦 `backgroundImage` 2026-09-20 删掉:背景图 2026-09-14 退役成皮肤自己的 `image`
+	// 旋钮(`--bn-knob-wallpaper`),这一项从 2026-09-19 起已经喂不到任何 CSS。
 	/**
 	 * 字体家族名;缺省时回退渲染器全局 config。
 	 *

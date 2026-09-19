@@ -25,6 +25,4 @@ export type LiveCardProps = {
 	glassOpacity?: number;
 	/** 完全透明:白层透明 + 去掉毛玻璃模糊,底图完全清晰透出(优先于 glassOpacity)。 */
 	glassClear?: boolean;
-	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
-	backgroundImage?: string;
 };

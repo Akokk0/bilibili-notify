@@ -550,12 +550,12 @@ describe("ImageRenderer.updateConfig", () => {
 		expect(info).not.toHaveBeenCalled();
 	});
 
-	it("回归:只改背景图(字体未变)→ 日志只报实际改的那项", () => {
+	it("回归:只改自带字体(家族名未变)→ 日志只报实际改的那项", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
-		r.updateConfig({ ...BASE, backgroundImage: "bg-1" });
+		r.updateConfig({ ...BASE, fontAsset: "font-1" });
 		expect(info).toHaveBeenCalledTimes(1);
 		const [msg] = info.mock.calls[0] as [string];
-		expect(msg).toContain("backgroundImage");
+		expect(msg).toContain("fontAsset");
 		expect(msg).not.toContain("font=");
 	});
 });

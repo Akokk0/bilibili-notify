@@ -7,7 +7,6 @@ const FULL = {
 	font: "Full Sans",
 	fontAsset: "full.woff2",
 	glassClear: true,
-	backgroundImages: ["bg1"],
 	liveCoverImages: ["cover1", "cover2"],
 };
 
@@ -22,17 +21,12 @@ describe("style-partition 字段族拣取", () => {
 		const noCover = omitCover(FULL);
 		expect(noCover.liveCoverImages).toBeUndefined();
 		expect(noCover.font).toBe("Full Sans");
-		expect(noCover.backgroundImages).toEqual(["bg1"]);
+		expect(noCover.fontAsset).toBe("full.woff2");
 	});
 
-	it("appearanceOnly 剥掉封面,只留字体/玻璃/背景图", () => {
+	it("appearanceOnly 剥掉封面,只留字体/玻璃", () => {
 		const c = appearanceOnly(FULL);
-		expect(c).toEqual({
-			font: "Full Sans",
-			fontAsset: "full.woff2",
-			glassClear: true,
-			backgroundImages: ["bg1"],
-		});
+		expect(c).toEqual({ font: "Full Sans", fontAsset: "full.woff2", glassClear: true });
 	});
 
 	it("hasAppearanceOverride:纯封面覆盖不算外观覆盖", () => {

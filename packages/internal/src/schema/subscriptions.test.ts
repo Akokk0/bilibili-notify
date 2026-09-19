@@ -207,8 +207,8 @@ describe("per-UP filters/schedule override 不被全局默认污染", () => {
 
 // 回归:`.partial()` 不剥内层 `.default()`。CardStyleObjectSchema 今天还带 default 的
 // 只剩 **enabled 与 liveCoverImages 两个**(单子从前是 7 个,showPopularity / showArea /
-// showFans 已随旧版式退役 — ADR-0014 决策 17 的 2026-09-18 🔗;font 与 backgroundImages
-// 改成了纯 optional)。per-UP 只覆盖一个字段(如退役中的 glassOpacity)时若被注入这些默认
+// showFans 已随旧版式退役 — ADR-0014 决策 17 的 2026-09-18 🔗;font 改成了纯 optional,
+// 背景图那条链 2026-09-20 整个删掉)。per-UP 只覆盖一个字段(如退役中的 glassOpacity)时若被注入这些默认
 // 值,resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 会拿注入值盖掉全局自定义 ——
 // 最严重:全局 enabled=false(关图片渲染)被翻回 true。与上面三个兄弟 schema 同源,此处锁住。
 // **这条盯的是形状不是数字**:将来谁给某个字段补回 `.default(...)`,它必须还能红。
@@ -222,7 +222,6 @@ describe("per-UP cardStyle override 不被全局默认污染", () => {
 		expect(cs?.glassOpacity).toBe(0.5);
 		expect(cs?.enabled).toBeUndefined();
 		expect(cs?.font).toBeUndefined();
-		expect(cs?.backgroundImages).toBeUndefined();
 		expect(cs?.glassClear).toBeUndefined();
 		expect(Object.keys(cs ?? {})).toEqual(["glassOpacity"]);
 	});
@@ -235,16 +234,22 @@ describe("per-UP cardStyle override 不被全局默认污染", () => {
 		const cs = parsed.overrides.cardStyleByKind?.live;
 		expect(cs?.glassOpacity).toBe(0.25);
 		expect(cs?.enabled).toBeUndefined();
-		expect(cs?.backgroundImages).toBeUndefined();
 		expect(Object.keys(cs ?? {})).toEqual(["glassOpacity"]);
 	});
 
-	it("migrateCardStyle 仍生效:旧 backgroundImage(单值)→ backgroundImages 列表", () => {
+	// 背景图那两个键 2026-09-20 整条链删掉。per-UP 覆盖层也不是 `.strict()`,存量订阅里
+	// 带着它们照样装得进来 —— 键被静静剥掉,而不是整份拒收。
+	it("存量 per-UP 覆盖里的退役背景图键被静静剥掉,不拒收整份订阅", () => {
 		const parsed = SubscriptionSchema.parse({
 			...BASE,
-			overrides: { cardStyle: { backgroundImage: "bg.png" } as Record<string, unknown> },
+			overrides: {
+				cardStyle: { backgroundImage: "bg.png", backgroundImages: ["a.png"] } as Record<
+					string,
+					unknown
+				>,
+			},
 		});
-		expect(parsed.overrides.cardStyle?.backgroundImages).toEqual(["bg.png"]);
+		expect(Object.keys(parsed.overrides.cardStyle ?? {})).toEqual([]);
 	});
 
 	it("liveCoverImages:全局带默认空列表,per-UP 单字段覆盖不注入", () => {

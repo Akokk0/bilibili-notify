@@ -479,10 +479,14 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	 * 为什么值得单独钉一条「**不**注」:留着它不是白费几个字节,而是会骗人 —— 主人正是
 	 * 看见这个变量,才把「背景图旋钮不生效」错怪到改名头上(真因在面板预览那条路)。
 	 * 判据:把 `frameVariables` 里那句注入加回去,这条红。
+	 *
+	 * `backgroundImage` 这个 props 字段 2026-09-20 已随整条链删掉(所以这里要 cast 才塞得
+	 * 进去)。**塞一个仍是有意的**:这条守的是「外框不许读它」,而不是「类型里没有它」——
+	 * 类型删了不妨碍谁把那句 `p.backgroundImage` 写回来,写回来这条就红。
 	 */
 	it("退役的 cardStyle 背景图不再注进外框 —— 背景图走 wallpaper 旋钮", async () => {
 		const { doc } = await render(card(), {
-			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" },
+			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" } as LiveCardProps,
 		});
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
 		expect(style).not.toContain("--bn-card-bg-image");

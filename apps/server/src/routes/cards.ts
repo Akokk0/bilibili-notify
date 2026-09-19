@@ -140,8 +140,6 @@ const StyleSchema = z.object({
 	font: z.string().optional(),
 	/** 主人自带字体的资产 id;设了优先于 `font`(预览与出图必须用同一款,否则「预览好看、推出去变样」)。 */
 	fontAsset: z.string().optional(),
-	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
-	backgroundImages: z.array(z.string()).optional(),
 	/** 直播封面资产 id 列表(空 = B 站封面;>1 = 轮换,预览端取首张)。仅 live 卡。 */
 	liveCoverImages: z.array(z.string()).optional(),
 });
@@ -222,26 +220,26 @@ export function testPushCaption(kind: PreviewKind): string {
 }
 
 /**
- * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。
+ * 收集当前配置里仍引用某图 id 的作用域(人话标签),用于删除前拦截。
  *
- * 三处都算:**皮肤旋钮**(2026-09-14 起背景图的正主 —— 每套皮肤一份,值是一串 id)、
- * 直播封面(`liveCoverImages`,与背景图共用同一图廊),以及退役的 `backgroundImages`
- * (原本指望开机迁移把它搬进旋钮,那个迁移已于 2026-09-18 整个退役 —— 见 ADR-0014
- * 决策 17 的 🔗 —— 所以存量配置里这个键会一直留着,仍得当引用算)。返回空数组 = 没人用,
- * 可安全删盘。
+ * 两处算:**皮肤旋钮**(2026-09-14 起背景图的正主 —— 每套皮肤一份,值是一串 id)与
+ * 直播封面(`liveCoverImages`,与背景图共用同一图廊)。返回空数组 = 没人用,可安全删盘。
+ *
+ * ⚠️ **判据里去掉了退役的 `cardStyle.backgroundImages`(2026-09-20,整条链删干净那次)。**
+ * 这是一处**主人看得见**的行为变化:存量配置里那个键还在(schema 不 strict,加载时静静
+ * 剥掉),从前它算一条引用、会把删除拦下来;今天**只被它引用的图算「没人用」,删得掉**。
+ * 这是对的 —— 那个键从 2026-09-19 起已经画不出任何东西(背景图走 `--bn-knob-wallpaper`
+ * 旋钮),再拦着只会让主人删不掉一张早就不出现在任何卡上的图。**不是漏了。**
  *
  * ⚠️ 漏掉旋钮那一处的后果是**静默的**:删得掉、请求成功,而那套皮肤的清单里留着一个
  * 指向空气的 id,出图时静静回落渐变 —— 主人只会觉得「壁纸自己没了」。
  */
 function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
-	// 背景图与直播封面共用同一图廊 —— 两类引用都算(删掉被封面引用的图同样会坏渲染)。
-	const inStyle = (style?: { backgroundImages?: string[]; liveCoverImages?: string[] }): boolean =>
-		(style?.backgroundImages?.includes(id) ?? false) ||
-		(style?.liveCoverImages?.includes(id) ?? false);
+	const inStyle = (style?: { liveCoverImages?: string[] }): boolean =>
+		style?.liveCoverImages?.includes(id) ?? false;
 	// per-kind 是各类型对基准的覆盖层;任一类型引用即算被引用。
-	const inByKind = (
-		byKind?: Record<string, { backgroundImages?: string[]; liveCoverImages?: string[] }>,
-	): boolean => (byKind ? Object.values(byKind).some(inStyle) : false);
+	const inByKind = (byKind?: Record<string, { liveCoverImages?: string[] }>): boolean =>
+		byKind ? Object.values(byKind).some(inStyle) : false;
 
 	const refs: string[] = [];
 	// 旋钮值是「一串 id」(图片旋钮)—— 不认旋钮声明,直接按形状扫:这里没有皮肤清单,
@@ -429,7 +427,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		}
 	});
 
-	// 背景图上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进 cardStyle.backgroundImage。
+	// 图片上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进皮肤的图旋钮
+	// (或 `cardStyle.liveCoverImages`)。目录名 `card-bg` 是历史,今天这套图廊两家共用。
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
@@ -627,11 +626,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!currentPuppeteer) return null;
 		const config = {
 			font: style.font ?? "PingFang SC, sans-serif",
-			// 跳过悬空引用(文件已删的 id),取第一张盘上存在的图 —— 否则解析失败静默回退渐变。
-			backgroundImage: await firstExistingCardBg(
-				opts.deps.store.bootstrap.dataDir,
-				style.backgroundImages,
-			),
 			// 预览得跟出图用同一款字体,否则「预览好看、推出去变样」。悬空 id 由
 			// resolveFontFace 兜成空串,渲染器据此回落家族名。
 			fontAsset: style.fontAsset,
@@ -849,14 +843,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}
 		}
 		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
-		// (不经 ImageRenderer,未登录也能调色)。背景图/直播封面在此解析成 data URL 注入;
-		// 取「第一张盘上存在的图」,跳过悬空引用。
+		// (不经 ImageRenderer,未登录也能调色)。直播封面在此解析成 data URL 注入;
+		// 取「第一张盘上存在的图」,跳过悬空引用。卡片背景图不在这条路上了 —— 它归皮肤的
+		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
 		const dataDir = opts.deps.store.bootstrap.dataDir;
-		// 背景图、直播封面、自带字体互不依赖(各自独立的资产解析),并发发起省几次串行 I/O。
-		const [bgDataUrl, coverDataUrl, fontFace] = await Promise.all([
-			firstExistingCardBg(dataDir, style.backgroundImages).then((id) =>
-				readCardBgDataUrl(dataDir, id),
-			),
+		// 直播封面与自带字体互不依赖(各自独立的资产解析),并发发起省一次串行 I/O。
+		const [coverDataUrl, fontFace] = await Promise.all([
 			kind === "live"
 				? firstExistingCardBg(dataDir, style.liveCoverImages).then((id) =>
 						readCardBgDataUrl(dataDir, id),
@@ -864,7 +856,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				: Promise.resolve(""),
 			loadFontFace(style.fontAsset ?? ""),
 		]);
-		const spec = buildPreviewSpec(kind, bgDataUrl, coverDataUrl);
+		const spec = buildPreviewSpec(kind, coverDataUrl);
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
@@ -1162,28 +1154,17 @@ type PreviewSpec =
 
 function buildPreviewSpec(
 	kind: "live" | "dyn",
-	/** 已解析的背景图 data URL(mock SSR 路径不经 generate*,需在此注入)。 */
-	bgDataUrl?: string,
-	/** 已解析的直播封面 data URL(仅 live 卡消费,语义同上)。 */
+	/** 已解析的直播封面 data URL(mock SSR 路径不经 generate*,需在此注入;仅 live 卡消费)。 */
 	coverDataUrl?: string,
 ): PreviewSpec {
-	const backgroundImage = bgDataUrl || undefined;
 	if (kind === "live") {
 		return {
 			kind: "live",
-			props: {
-				...buildLivePreviewProps(),
-				backgroundImage,
-				coverOverride: coverDataUrl || undefined,
-			},
+			props: { ...buildLivePreviewProps(), coverOverride: coverDataUrl || undefined },
 			title: "卡片预览 · 直播",
 		};
 	}
-	return {
-		kind: "dynamic",
-		props: { ...buildDynamicPreviewProps(), backgroundImage },
-		title: "卡片预览 · 动态",
-	};
+	return { kind: "dynamic", props: buildDynamicPreviewProps(), title: "卡片预览 · 动态" };
 }
 
 const SVG_COVER =

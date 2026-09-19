@@ -1,6 +1,7 @@
 /**
- * 背景图廊选择的纯操作。`selected` = cardStyle.backgroundImages —— 选中顺序即轮换顺序
- * (空=渐变,1=单张,>1=每次推送顺序轮换)。全部不可变,供 GalleryPicker 与单测复用。
+ * 图廊选择的纯操作。`selected` 是一串资产 id —— 选中顺序即轮换顺序(空=不覆盖,1=单张,
+ * >1=每次推送顺序轮换)。今天两家在用:皮肤的 `image` 旋钮与 `cardStyle.liveCoverImages`。
+ * 全部不可变,供 GalleryPicker 与单测复用。
  */
 
 /** 切换某图的选中:未选则追加到末尾(进轮换序列),已选则移除。 */
@@ -22,20 +23,18 @@ export function moveSelected(selected: string[], from: number, to: number): stri
 	return next;
 }
 
-/** 背景图与直播封面两个图列表字段 —— 删盘清扫只碰这两个键。 */
+/** 样式对象里的图列表字段 —— 删盘清扫只碰它。(`backgroundImages` 那条链已删,见 ADR-0014。) */
 interface StyleWithImageLists {
-	backgroundImages?: string[];
 	liveCoverImages?: string[];
 }
 
 /**
- * 资产删盘后,把该 id 从样式对象的两类图列表里剔除(缺省字段保持缺省,其余键不动)。
+ * 资产删盘后,把该 id 从样式对象的图列表里剔除(缺省字段保持缺省,其余键不动)。
  * 图廊删除只会同步当前 picker 绑定的字段;页面上其他样式状态(全局基准 / per-kind /
  * per-UP)若还攥着这个 id,下次保存就会落盘成悬空引用 —— Cards 页删盘回调用它全量清扫。
  */
 export function removeAssetFromStyle<T extends StyleWithImageLists>(style: T, id: string): T {
 	const out = { ...style };
-	if (out.backgroundImages) out.backgroundImages = removeFromGallery(out.backgroundImages, id);
 	if (out.liveCoverImages) out.liveCoverImages = removeFromGallery(out.liveCoverImages, id);
 	return out;
 }

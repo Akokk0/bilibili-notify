@@ -1,7 +1,8 @@
 /**
- * 背景图廊选择器 —— 多选已上传的背景图(选中顺序 = 每次推送的轮换顺序),支持上传与删盘。
- * 取代旧的单图 BackgroundImagePicker。`value` = cardStyle.backgroundImages:空 = 渐变,
- * 1 = 单张,>1 = 轮换。删被引用的图被服务端 409 拦截,这里把 referencedBy 提示出来。
+ * 图廊选择器 —— 多选已上传的图(选中顺序 = 每次推送的轮换顺序),支持上传与删盘。
+ * 两家在用:皮肤的 `image` 旋钮(壁纸)与 `cardStyle.liveCoverImages`(直播封面)。
+ * `value` 是一串资产 id:空 = 不覆盖,1 = 单张,>1 = 轮换。删被引用的图被服务端 409
+ * 拦截,这里把 referencedBy 提示出来。
  */
 
 import { AddFileButton, Icon, IconButton } from "@bilibili-notify/ui";

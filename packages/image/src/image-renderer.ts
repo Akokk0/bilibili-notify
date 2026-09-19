@@ -59,17 +59,12 @@ export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_GRADIENT = DEFAULT_CARD_GRADIENT;
 
 /**
- * 锐评卡的**业务**入参 —— 背景图由渲染器从全局 `cardStyle` 填,颜色给出厂常量。
+ * 锐评卡的**业务**入参 —— 颜色给出厂常量。
  *
  * 玻璃那两个键留在这张单子上只为**摘干净**:2026-09-14 玻璃退役成皮肤旋钮之后渲染器
  * 不再填它们,模板签名上那两项也就只剩基准快照在喂(见 `types.ts` 的同名字段)。
  */
-type RoastStyleKeys =
-	| "cardColorStart"
-	| "cardColorEnd"
-	| "glassOpacity"
-	| "glassClear"
-	| "backgroundImage";
+type RoastStyleKeys = "cardColorStart" | "cardColorEnd" | "glassOpacity" | "glassClear";
 export type RoastBoardData = Omit<RoastBoardCardProps, RoastStyleKeys>;
 export type RoastSoloData = Omit<RoastSoloCardProps, RoastStyleKeys>;
 
@@ -108,8 +103,8 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
  * host is responsible for setting the logger level externally.
  */
 export interface ImageRendererConfig {
-	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
-	backgroundImage?: string;
+	// 🪦 `backgroundImage` 2026-09-20 删掉(整条 `cardStyle.backgroundImages` 链):背景图
+	// 归皮肤自己的 `image` 旋钮,值经 `cardSkinKnobs` → `resolveKnobAssets` 进来。
 	/**
 	 * 主人自带的字体文件资产 id(独立端专属);渲染期经 `resolveFontFace` 解析成一条
 	 * 现成的 `@font-face` 规则。设了就**优先于 `font`**;宿主没注入 resolver、或资产
@@ -279,9 +274,6 @@ export class ImageRenderer {
 			// 换了一款就把缓存里那份几十兆的 base64 放掉,别攥着已经不用的字体。
 			this.fontCache = null;
 		}
-		if (prev.backgroundImage !== config.backgroundImage) {
-			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
-		}
 		if (diffs.length === 0) return;
 		const line = `[image] 配置已更新: ${diffs.join(", ")}`;
 		if (this.quietConfigUpdates) this.logger.debug(line);
@@ -303,8 +295,11 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * 解析卡片背景图字段为可渲染 URL:空 → "";已是 data:/http URL → 透传(预览路由已解析);
+	 * 解析一个图片资产字段为可渲染 URL:空 → "";已是 data:/http URL → 透传(预览路由已解析);
 	 * 否则当资产 id,经注入的 resolveAsset 读盘解析成 data URL(解析不出来即 "")。
+	 *
+	 * 今天只剩**直播封面**(`liveCoverImage`)走它 —— 卡片背景图那条链 2026-09-20 整个删掉
+	 * (背景图归皮肤的 `image` 旋钮,走 `resolveKnobAssets`)。
 	 */
 	private async resolveBg(v?: string): Promise<string> {
 		if (!v) return "";
@@ -537,13 +532,9 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
-		// 背景图与直播封面(独立端专属)两次独立解析(各自 resolveAsset → 读盘),互不依赖 ——
-		// 并发发起,省掉一次串行 I/O 往返。封面解析为 "" 时模板回退
-		// API 封面/关键帧,特性自动无感。
-		const [backgroundImage, coverOverride] = await Promise.all([
-			this.resolveBg(colorOptions.backgroundImage ?? this.config.backgroundImage),
-			this.resolveBg(colorOptions.liveCoverImage),
-		]);
+		// 直播封面(独立端专属)解析成 data URL;解析为 "" 时模板回退 API 封面/关键帧,
+		// 特性自动无感。(从前这里还并发解析一份卡片背景图,那条链 2026-09-20 整个删掉。)
+		const coverOverride = await this.resolveBg(colorOptions.liveCoverImage);
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
@@ -561,7 +552,6 @@ export class ImageRenderer {
 			props: {
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				backgroundImage,
 				data,
 				username,
 				userface,
@@ -609,8 +599,8 @@ export class ImageRenderer {
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
 		/**
-		 * per-call 样式覆盖;只取 backgroundImage(上舰卡 bgColor 由舰长等级决定,
-		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
+		 * per-call 样式覆盖;上舰卡只取字体与皮肤(bgColor 由舰长等级决定,渐变色不适用)。
+		 * 缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
@@ -618,9 +608,6 @@ export class ImageRenderer {
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
 		this.logger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
 		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
-		const backgroundImage = await this.resolveBg(
-			colorOptions.backgroundImage ?? this.config.backgroundImage,
-		);
 
 		return this.renderWithSkin({
 			kind: "guard",
@@ -636,7 +623,6 @@ export class ImageRenderer {
 				masterAvatarUrl,
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
-				backgroundImage,
 			},
 		})
 			.then((buf) => {
@@ -665,8 +651,8 @@ export class ImageRenderer {
 			masterAvatarUrl?: string;
 		},
 		/**
-		 * per-call 样式覆盖;只取 backgroundImage(SC 卡 bgColor 由价格档位决定,
-		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
+		 * per-call 样式覆盖;SC 卡只取字体与皮肤(bgColor 由价格档位决定,渐变色不适用)。
+		 * 缺省 = 走渲染器全局 config(复刻现状)。
 		 */
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
@@ -676,9 +662,6 @@ export class ImageRenderer {
 		const levelIndex = getSCLevel(battery);
 		const bgColor = SC_COLORS[levelIndex];
 		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
-		const backgroundImage = await this.resolveBg(
-			colorOptions.backgroundImage ?? this.config.backgroundImage,
-		);
 
 		return this.renderWithSkin({
 			kind: "sc",
@@ -694,7 +677,6 @@ export class ImageRenderer {
 				price,
 				duration: levelInfo.duration,
 				bgColor,
-				backgroundImage,
 			},
 		})
 			.then((buf) => {
@@ -713,10 +695,6 @@ export class ImageRenderer {
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		const backgroundImage = await this.resolveBg(
-			colorOptions.backgroundImage ?? this.config.backgroundImage,
-		);
-
 		const moduleAuthor = data.modules.module_author;
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
 
@@ -737,7 +715,6 @@ export class ImageRenderer {
 			props: {
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				backgroundImage,
 				node,
 			},
 		})
@@ -787,15 +764,6 @@ export class ImageRenderer {
 			});
 	}
 
-	/**
-	 * 锐评卡的配色一律吃全局 `cardStyle`(与词云卡同源),**不接 per-kind 样式矩阵**:
-	 * `cardStyleByKind` 是「每位 UP × 每种卡」的二维覆盖,而榜单周报压根不属于任何
-	 * 单个 UP,那个维度对它没有意义。
-	 */
-	private roastStyle(): Promise<string> {
-		return this.resolveBg(this.config.backgroundImage);
-	}
-
 	async generateRoastBoardCard(
 		data: RoastBoardData,
 		/** 用哪套皮肤;榜单整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
@@ -812,7 +780,6 @@ export class ImageRenderer {
 				...data,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				backgroundImage: await this.roastStyle(),
 			},
 		})
 			.then((buf) => {
@@ -840,7 +807,6 @@ export class ImageRenderer {
 				...data,
 				cardColorStart: TEMPLATE_GRADIENT[0],
 				cardColorEnd: TEMPLATE_GRADIENT[1],
-				backgroundImage: await this.roastStyle(),
 			},
 		})
 			.then((buf) => {

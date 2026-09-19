@@ -39,43 +39,41 @@ describe("moveSelected", () => {
 	});
 });
 
-// ---- 删盘清扫:资产删除后从样式对象的两类图列表里剔除该 id(见 Cards 页 sweep) ----
+// ---- 删盘清扫:资产删除后从样式对象的图列表里剔除该 id(见 Cards 页 sweep) ----
 
 describe("removeAssetFromStyle", () => {
-	it("从 backgroundImages 与 liveCoverImages 同时剔除", () => {
-		expect(
-			removeAssetFromStyle({ backgroundImages: ["g", "r"], liveCoverImages: ["g"] }, "g"),
-		).toEqual({ backgroundImages: ["r"], liveCoverImages: [] });
+	it("从 liveCoverImages 里剔除", () => {
+		expect(removeAssetFromStyle({ liveCoverImages: ["g", "r"] }, "g")).toEqual({
+			liveCoverImages: ["r"],
+		});
 	});
 	it("缺省字段保持缺省(不凭空造数组),其余键原样保留", () => {
-		const out = removeAssetFromStyle(
-			{ font: "F0 Sans", liveCoverImages: ["g", "c"] },
-			"g",
-		) as Record<string, unknown>;
-		expect(out).toEqual({ font: "F0 Sans", liveCoverImages: ["c"] });
-		expect("backgroundImages" in out).toBe(false);
+		const style: { font: string; liveCoverImages?: string[] } = { font: "F0 Sans" };
+		const out = removeAssetFromStyle(style, "g") as Record<string, unknown>;
+		expect(out).toEqual({ font: "F0 Sans" });
+		expect("liveCoverImages" in out).toBe(false);
 	});
 	it("未引用时返回等值对象", () => {
-		expect(removeAssetFromStyle({ backgroundImages: ["a"] }, "x")).toEqual({
-			backgroundImages: ["a"],
+		expect(removeAssetFromStyle({ liveCoverImages: ["a"] }, "x")).toEqual({
+			liveCoverImages: ["a"],
 		});
 	});
 });
 
 describe("removeAssetFromByKind", () => {
-	it("逐 kind 清扫两类图列表,非列表键不动", () => {
+	it("逐 kind 清扫图列表,非列表键不动", () => {
 		expect(
 			removeAssetFromByKind(
 				{
 					live: { liveCoverImages: ["g"], font: "F0 Sans" },
-					dynamic: { backgroundImages: ["g", "r"] },
+					dynamic: { liveCoverImages: ["g", "r"] },
 					sc: { fontAsset: "sc.woff2" },
 				},
 				"g",
 			),
 		).toEqual({
 			live: { liveCoverImages: [], font: "F0 Sans" },
-			dynamic: { backgroundImages: ["r"] },
+			dynamic: { liveCoverImages: ["r"] },
 			sc: { fontAsset: "sc.woff2" },
 		});
 	});

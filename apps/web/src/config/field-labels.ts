@@ -390,7 +390,6 @@ export const FIELD_LABELS = {
 		hint: "主人上传的字体文件。设了就优先于字体家族名;文件被删掉时静静回退,不会让出图崩。",
 		section: "cardStyle",
 	},
-	backgroundImages: { label: "自定义背景图", section: "cardStyle" },
 	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档
 	// 由皮肤库当场启用(PUT /api/card-skins/active),不走草稿;这个 code 只给 per-UP

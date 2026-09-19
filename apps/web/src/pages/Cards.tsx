@@ -615,16 +615,14 @@ export default function Cards() {
 	const [puSkin, setPuSkin] = useState<string | undefined>(undefined);
 
 	// 删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
-	// 基准 / per-UP per-kind 的背景图 + 直播封面 + 字体)。picker 自身的 onChange 只清它
-	// 绑定的那一个字段;其余草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(背景图是
-	// 幽灵占轮换位,字体是出图静静回落兜底)。服务端 409 只拦「已保存配置」里的引用,
+	// 基准 / per-UP per-kind 的直播封面 + 字体)。picker 自身的 onChange 只清它绑定的
+	// 那一个字段;其余草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(封面是幽灵占
+	// 轮换位,字体是出图静静回落兜底)。服务端 409 只拦「已保存配置」里的引用,
 	// 未保存草稿只能靠这里。
 	//
 	// 图与字体两套清扫都跑:两类资产 id 各自随机 32 位 hex,撞不到一起,所以对另一类
 	// 是纯 no-op —— 比让两个 picker 各带一个回调简单,也不会漏。
-	const sweep = <
-		T extends { backgroundImages?: string[]; liveCoverImages?: string[]; fontAsset?: string },
-	>(
+	const sweep = <T extends { liveCoverImages?: string[]; fontAsset?: string }>(
 		s: T,
 		id: string,
 	): T => removeFontFromStyle(removeAssetFromStyle(s, id), id);
