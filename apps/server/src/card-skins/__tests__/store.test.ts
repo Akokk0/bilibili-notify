@@ -447,3 +447,40 @@ describe("addAsset / removeAsset —— 编辑器往皮肤里加文件", () => {
 		});
 	});
 });
+
+/**
+ * **两条「写进去之后重启还在不在」的守卫**(2026-09-19 审查)。
+ *
+ * 盘是唯一权威,所以这两条都不看内存里的索引,一律新建一家店重读一遍再问 —— 内存里
+ * 活着、重启就没了,正是这两个毛病最难发现的地方。
+ */
+describe("写路径:存进去的东西重启之后还得在", () => {
+	it("复制时给空名字按「没给」算 —— 从前它会写一份重启即消失的皮肤", async () => {
+		const { id } = await store.install(pack());
+		const source = store.get(id)?.name as string;
+
+		for (const asked of ["", "   ", "\t\n"]) {
+			const dup = await store.duplicate(id, asked);
+			expect(store.get(dup.id)?.name).toBe(`${source} 副本`);
+			// 盘上那份也得立得住:重开一家店读回来,它必须还在。
+			const reread = new CardSkinStore({ dir });
+			await reread.init();
+			expect(reread.has(dup.id)).toBe(true);
+			expect(reread.warnings().join()).not.toContain(dup.id);
+		}
+	});
+
+	/**
+	 * ⚠️ 这条钉的是**截断**,不是装包门。`duplicate` 现在也过 `checkCardSkinPackage` 了
+	 * (install / create / save 三条一直都过,只有它没过),但源清单本来就是洗过的,
+	 * **今天没有任何输入能让那道门红** —— 所以它是给「下一个往这儿写盘的人」留的,
+	 * 不是这条测试守得住的东西。别把这条改名成「守装包门」:它验不了那件事。
+	 */
+	it("名字超上限照旧截断 —— 不该因为名字长而复制失败", async () => {
+		const { id } = await store.install(pack());
+		const dup = await store.duplicate(id, "名".repeat(CARD_SKIN_LIMITS.name.max + 20));
+		const reread = new CardSkinStore({ dir });
+		await reread.init();
+		expect(reread.get(dup.id)?.name).toHaveLength(CARD_SKIN_LIMITS.name.max);
+	});
+});

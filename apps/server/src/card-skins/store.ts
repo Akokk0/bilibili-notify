@@ -173,21 +173,36 @@ export class CardSkinStore {
 	 *
 	 * 新名字缺省「<原名> 副本」,超 schema 的名字上限就截断:复制一份不该因为名字长了
 	 * 而失败,而存进去一个 schema 不认的名字更糟 —— 要到下一次保存才炸。
+	 *
+	 * ⚠️ **空名字按「没给」算,不是按「给了个空的」算。** `??` 只对 `null`/`undefined`
+	 * 让路,所以 `{"name":""}` 曾经一路穿到盘上:面板照常列出它、甚至设得成当前皮肤,
+	 * 而**重启之后** `parseCardSkin` 按 `name.min(1)` 拒收、那个目录只留一条警告被跳过
+	 * —— 皮肤静默消失,出图回落默认(2026-09-19 审查实测复现)。纯空白同理。
+	 *
+	 * 顺带补上这条路径**唯一缺的那道门**:install / create / save 三条都过
+	 * `checkCardSkinPackage`,只有复制没过。源清单本来就是洗过的,这一趟是幂等的;
+	 * 它挡的是「将来有人往这儿塞一个没洗过的清单」。
 	 */
 	async duplicate(id: string, name?: string): Promise<{ id: string }> {
 		const source = this.get(id);
 		if (!source) throw new Error(`皮肤不存在: ${id}`);
+		const asked = name?.trim();
 		const manifest: CardSkinManifest = {
 			...source,
-			name: (name ?? `${source.name} 副本`).slice(0, CARD_SKIN_LIMITS.name.max),
+			name: (asked === undefined || asked === "" ? `${source.name} 副本` : asked).slice(
+				0,
+				CARD_SKIN_LIMITS.name.max,
+			),
 		};
 		const assets = new Map<string, Uint8Array>();
 		for (const assetName of await this.listAssets(id)) {
 			const bytes = await this.readAsset(id, assetName);
 			if (bytes) assets.set(assetName, bytes);
 		}
+		const checked = checkCardSkinPackage(manifest, new Set(assets.keys()));
+		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
 		const newid = newId();
-		await this.writePackage(newid, manifest, assets);
+		await this.writePackage(newid, checked.manifest, assets);
 		return { id: newid };
 	}
 
