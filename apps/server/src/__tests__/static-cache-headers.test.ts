@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -39,7 +39,10 @@ describe("static cache headers", () => {
 	async function makeApp() {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, { staticDir });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			staticDir,
+		});
 		return { app, runtime };
 	}
 

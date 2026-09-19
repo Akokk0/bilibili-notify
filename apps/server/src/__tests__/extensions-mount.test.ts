@@ -13,7 +13,7 @@ import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
 import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createExtensionMounts } from "../extensions/mount.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -34,7 +34,9 @@ describe("拓展挂载点接线", () => {
 	it("没装拓展 → /ext/* 404", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 		expect((await app.request("/ext/bridge/x")).status).toBe(404);
 		await runtime.dispose();
 	});
@@ -45,6 +47,7 @@ describe("拓展挂载点接线", () => {
 		const mounts = createExtensionMounts();
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
 		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
 				mounts,
 				loaded: () => [],
@@ -65,6 +68,7 @@ describe("拓展挂载点接线", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
 				status: () => undefined,
 				descriptor: () => undefined,
@@ -111,6 +115,7 @@ describe("面板上传装拓展的接线", () => {
 		const rescan = vi.fn(async () => {});
 		const root = join(dataDir, "extensions");
 		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
 				mounts: createExtensionMounts(),
 				loaded: () => [],
@@ -153,7 +158,9 @@ describe("面板上传装拓展的接线", () => {
 	it("没接装载器的构建 → 404,而不是装进一个没人加载的目录", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 		const body = new FormData();
 		body.append("file", new File([new Uint8Array()], "x.zip"));
 		expect((await app.request("/api/ext/install", { method: "POST", body })).status).toBe(404);

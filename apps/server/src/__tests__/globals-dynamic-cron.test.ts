@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -36,7 +36,9 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const before = runtime.configStore.getGlobals().app.dynamicCron;
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals", {
 			method: "PATCH",
@@ -56,7 +58,9 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 	it("合法 cron 表达式 → 200,store 更新为新值", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals", {
 			method: "PATCH",
@@ -72,7 +76,9 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 	it("patch 不涉及 dynamicCron → 不校验,正常放行", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals", {
 			method: "PATCH",

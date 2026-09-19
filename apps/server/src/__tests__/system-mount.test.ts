@@ -9,7 +9,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -29,7 +29,9 @@ describe("/api/system 挂载", () => {
 	it("没给 → 404,那台机器上就当没有重启这回事", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 		expect((await app.request("/api/system/restart", { method: "POST" })).status).toBe(404);
 		await runtime.dispose();
 	});
@@ -39,6 +41,7 @@ describe("/api/system 挂载", () => {
 		await runtime.configStore.load();
 		const restart = vi.fn(async () => {});
 		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			system: {
 				ability: { can: true, how: "container" },
 				startedAt: "2026-09-10T00:00:00.000Z",

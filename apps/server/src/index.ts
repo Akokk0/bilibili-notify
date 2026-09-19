@@ -14,7 +14,7 @@ import {
 } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
-import { createApp } from "./app.js";
+import { createApp, createCardSkinStore } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
@@ -22,7 +22,7 @@ import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
-import { CardSkinStore } from "./card-skins/store.js";
+import type { CardSkinStore } from "./card-skins/store.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
@@ -437,7 +437,7 @@ export async function startStandaloneServer(
 		// 真正的代价不是那点 I/O:`init()` 开头一句 `index.clear()`,之后一串 await 才填满,
 		// 而出图那头 `get(id)` 是**同步**读同一个实例的索引 —— 这个窗口里撞上一次推送就回落
 		// 默认皮肤并记一笔 fallback(2026-09-19 审查)。
-		cardSkinStore = new CardSkinStore({ dir: join(bootstrap.dataDir, "card-skins") });
+		cardSkinStore = createCardSkinStore(bootstrap.dataDir);
 		await cardSkinStore.ensureReady();
 		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });

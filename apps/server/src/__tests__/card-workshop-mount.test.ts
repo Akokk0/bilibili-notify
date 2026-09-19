@@ -14,7 +14,7 @@ import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import type { EnginesRuntime } from "../runtime/engines.js";
@@ -52,7 +52,10 @@ describe("卡片皮肤工坊的装配接线", () => {
 		const runtime = createAppRuntime(bootstrap);
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({ defaults: { ai: { enabled: true } } });
-		const app = createApp(runtime, { puppeteer: fakePuppeteer() });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			puppeteer: fakePuppeteer(),
+		});
 
 		const seen: { look?: string | ExtraToolResult; made?: string } = {};
 		const chatStatelessStream = vi.fn(

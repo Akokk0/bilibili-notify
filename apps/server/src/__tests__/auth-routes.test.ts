@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BiliLoginStatus, type LoginSnapshot } from "@bilibili-notify/api";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { AuthSystem } from "../auth/index.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -80,7 +80,10 @@ describe("auth routes", () => {
 	}> {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, { authSystem: asAuthSystem(fake) });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			authSystem: asAuthSystem(fake),
+		});
 		return { app, runtime };
 	}
 
@@ -152,7 +155,10 @@ describe("auth routes", () => {
 			events.push("auth-lost");
 		});
 		const fake = makeFakeAuthSystem({ bus: runtime.bus });
-		const app = createApp(runtime, { authSystem: asAuthSystem(fake) });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			authSystem: asAuthSystem(fake),
+		});
 
 		const res = await app.request("/api/auth/cookies/reset", { method: "POST" });
 		expect(res.status).toBe(200);

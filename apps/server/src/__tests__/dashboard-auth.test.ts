@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import { createSessionCodec } from "../auth/session.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -34,7 +34,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const res = await app.request("/api/globals");
 		expect(res.status).toBe(401);
@@ -47,7 +51,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const res = await app.request("/api/globals", {
 			headers: { Cookie: `bn_session=${codec.sign()}` },
@@ -61,7 +69,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const res = await app.request("/api/globals", {
 			headers: {
@@ -76,7 +88,9 @@ describe("dashboard cookie auth", () => {
 	it("auth NOT configured: /api/globals is open (local dev / bare)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals");
 		expect(res.status).toBe(200);
@@ -87,7 +101,10 @@ describe("dashboard cookie auth", () => {
 	it("desktop token configured: /api/* requires the launcher token but /api/health stays probeable", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, { desktopToken: "desktop-secret" });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			desktopToken: "desktop-secret",
+		});
 
 		const health = await app.request("/api/health");
 		expect(health.status).toBe(200);
@@ -118,7 +135,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const noAuth = await app.request("/api/health");
 		expect(noAuth.status).toBe(401);
@@ -135,7 +156,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const login = await app.request("/api/session/login", {
 			method: "POST",
@@ -156,7 +181,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		for (const p of ["/api/sessionXYZ", "/api/session-foo", "/api/sessionsecret"]) {
 			const res = await app.request(p);
@@ -170,7 +199,11 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		const res = await app.request("/api/auth/ws-ticket", { method: "POST" });
 		expect(res.status).toBe(401);
@@ -183,7 +216,11 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const ttlMs = 10_000;
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS, ttlMs });
-		const app = createApp(runtime, { basicAuthCredentials: CREDS, sessionCodec: codec });
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: CREDS,
+			sessionCodec: codec,
+		});
 
 		// Issued ~60% of the TTL ago → still valid, but past half-life.
 		const aged = codec.sign(Date.now() - ttlMs * 0.6);
@@ -207,8 +244,18 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 
-		expect(() => createApp(runtime, { basicAuthCredentials: CREDS })).toThrow();
-		expect(() => createApp(runtime, { sessionCodec: codec })).toThrow();
+		expect(() =>
+			createApp(runtime, {
+				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				basicAuthCredentials: CREDS,
+			}),
+		).toThrow();
+		expect(() =>
+			createApp(runtime, {
+				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				sessionCodec: codec,
+			}),
+		).toThrow();
 
 		await runtime.dispose();
 	});

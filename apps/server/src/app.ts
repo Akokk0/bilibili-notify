@@ -74,17 +74,16 @@ export interface CreateAppOptions {
 	/** Optional backup/restore service; when present /api/backup/* is mounted. */
 	backupService?: BackupService;
 	/**
-	 * 卡片皮肤库(ADR-0014)。**由 `index.ts` 建好传进来**,不在这里 `new` ——
-	 * 出图那头(engines 的 ImageRenderer)问的必须是同一家店,各建一家的话面板装了新皮肤、
-	 * 推送还在用开机那一刻的索引,而且症状是静默的(装包成功、出图不变)。
+	 * 卡片皮肤库(ADR-0014)。**必填,而且必须与出图那头是同一家店** —— 面板、出图
+	 * (engines 的 ImageRenderer)、卡片预览三处问的都是它。
 	 *
-	 * ⚠️ **不给不是「按空库工作」**(这句从前写错了,2026-09-19 审查纠正):下面那个 `??`
-	 * 会自建一家**读同一个目录**的真店,面板照样装得进、列得出,而出图那头拿的仍是
-	 * `index.ts` 传给引擎的那一家 —— 正好是上面那段说绝不能发生的拓扑。生产侧 `index.ts`
-	 * 老老实实传了,所以今天没有真实故障;这个口子是留给仓外宿主与将来只打 HTTP 面的
-	 * 测试的坑。**要不要把它改成必填由主人定**(现有 3+ 份 mount 测试靠着这条回落)。
+	 * ⚠️ **从前它是可选的,缺省时自建一家读同一个目录的店** —— 那正是这段话说绝不能
+	 * 发生的拓扑:面板装得进、列得出,而出图那头拿的仍是宿主传给引擎的那一家,于是
+	 * 「装了新皮肤、推送不变」,**且症状完全静默**。生产侧一直传了,所以没出过真事故;
+	 * 2026-09-20 主人拍板改成必填,把那个口子焊死。没有店可传的宿主用
+	 * {@link createCardSkinStore} 按 `<dataDir>` 约定开一家。
 	 */
-	cardSkins?: {
+	cardSkins: {
 		store: CardSkinStore;
 		/** 出图回落的账本;列表接口带上它(决策 19 的「回落必须可见」)。 */
 		fallbacks?: () => CardSkinFallback[];
@@ -238,6 +237,20 @@ export interface CreateAppOptions {
 }
 
 /**
+ * 按约定开一家卡片皮肤店:`<dataDir>/card-skins`。**这个目录名只声明在这一处** ——
+ * 宿主与测试共用它,两边各抄一份字面量迟早会漂。
+ *
+ * 目录叫 `card-skins` 而不是 `skins`:与隔壁 dashboard 皮肤分开 —— 两种包长得像
+ * (都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
+ *
+ * ⚠️ 开一家**不等于**可以随手开:全进程只该有一家(见 `CreateAppOptions.cardSkins`)。
+ * 这个函数是给「还没有店的那个宿主」用的,不是给已经有店的调用方再开一家。
+ */
+export function createCardSkinStore(dataDir: string): CardSkinStore {
+	return new CardSkinStore({ dir: joinPath(dataDir, "card-skins") });
+}
+
+/**
  * Build the top-level Hono app. Stage 2.4 mounts:
  *   /api/health           — liveness (short)
  *   /api/health/details   — rich snapshot incl. config-scope meta
@@ -248,7 +261,7 @@ export interface CreateAppOptions {
  *
  * Sink wiring follows in 2.5+.
  */
-export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): Hono {
+export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono {
 	const app = new Hono();
 	const deps: RouteDeps = {
 		runtime,
@@ -367,12 +380,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		dir: joinPath(runtime.bootstrap.dataDir, "maid-skills"),
 	});
 	app.route("/api/maid-skills", createMaidSkillsRoute({ skillStore }));
-	// 卡片皮肤库(ADR-0014)。目录叫 `card-skins`,与隔壁 dashboard 皮肤的 `skins` 分开
-	// ——两种包长得像(都是 zip + 一份 JSON),混在一个目录里 init 会互相报「格式不对」。
-	// 读盘推迟到首个请求(createApp 是同步装配),凭据记在店上,见 `ensureReady`。
-	const cardSkinStore =
-		options.cardSkins?.store ??
-		new CardSkinStore({ dir: joinPath(runtime.bootstrap.dataDir, "card-skins") });
+	// 卡片皮肤库(ADR-0014)。**只用传进来的那一家**,这里不 `new`(理由见
+	// `CreateAppOptions.cardSkins`)。读盘推迟到首个请求(createApp 是同步装配),
+	// 凭据记在店上,见 `ensureReady`。
+	const cardSkinStore = options.cardSkins.store;
 	/**
 	 * 卡片工坊 `look_card` 的截图口。握着 Chrome 的是 `/api/cards`,而它装配在聊天路由之后 ——
 	 * 这里先放一个晚绑定的口子,卡片路由建好时把真的交进来(见 `onSkinShot`)。
@@ -424,8 +435,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			store: cardSkinStore,
 			config: deps.store,
 			logger: runtime.serviceCtx.logger,
-			fallbacks: options.cardSkins?.fallbacks,
-			clearFallbacks: options.cardSkins?.clearFallbacks,
+			fallbacks: options.cardSkins.fallbacks,
+			clearFallbacks: options.cardSkins.clearFallbacks,
 			// 同 dashboard 皮肤库:热读,engines 是后挂的。
 			commentary: () => runtime.engines?.commentary ?? null,
 		}),

@@ -19,7 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -47,7 +47,9 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.patchGlobals({
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-secret-real-key" } } } },
 		});
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals");
 		expect(res.status).toBe(200);
@@ -66,7 +68,9 @@ describe("globals apiKey redact — P0-3", () => {
 	it("a') 原 apiKey 为空时 GET 返回空字符串(不返回 redact 占位,前端能区分'未配置')", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const res = await app.request("/api/globals");
 		const body = (await res.json()) as {
@@ -84,7 +88,9 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.patchGlobals({
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-original-key" } } } },
 		});
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const patchRes = await app.request("/api/globals", {
 			method: "PATCH",
@@ -109,7 +115,9 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.patchGlobals({
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-old-key" } } } },
 		});
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const patchRes = await app.request("/api/globals", {
 			method: "PATCH",
@@ -143,7 +151,9 @@ describe("globals apiKey redact — P0-3", () => {
 				},
 			},
 		});
-		const app = createApp(runtime, {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+		});
 
 		const patchRes = await app.request("/api/globals", {
 			method: "PATCH",

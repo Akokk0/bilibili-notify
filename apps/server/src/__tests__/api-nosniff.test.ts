@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.js";
+import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -43,7 +43,13 @@ describe("API 响应带 nosniff", () => {
 	async function makeApp() {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		return { app: createApp(runtime, { staticDir }), runtime };
+		return {
+			app: createApp(runtime, {
+				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				staticDir,
+			}),
+			runtime,
+		};
 	}
 
 	it("发用户上传字节的那条路带 nosniff", async () => {
