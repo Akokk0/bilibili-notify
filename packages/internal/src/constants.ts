@@ -1659,15 +1659,16 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		},
 	},
 	guard: {
-		badge: { label: "舰长徽章", atom: true, hooks: {} },
-		text: { label: "文字信息", atom: true, hooks: {} },
+		badge: { label: "舰长徽章", atom: true, hooks: { image: "舰长徽章图" } },
+		text: { label: "文字信息", atom: true, hooks: { text: "文字" } },
 		divider: DIVIDER_BLOCK,
-		avatar: { label: "头像", atom: true, hooks: {} },
-		user: { label: "用户名胶囊", atom: true, hooks: {} },
+		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它。
+		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
+		user: { label: "用户名胶囊", atom: true, hooks: { pill: "胶囊", text: "文字" } },
 		master: {
 			label: "主播胶囊",
 			atom: true,
-			hooks: { masterAvatar: "主播小头像", masterName: "主播名" },
+			hooks: { pill: "胶囊", masterAvatar: "主播小头像", masterName: "主播名" },
 		},
 	},
 	roastBoard: { body: { label: "周报榜单", hooks: {} } },

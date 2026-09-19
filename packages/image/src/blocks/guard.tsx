@@ -3,36 +3,36 @@
 /**
  * 上舰卡的块库。
  *
- * 复合块(badge / name / text / divider)是从 `templates/guard-card.tsx` **原样搬**进来的
- * 那几段 JSX —— class、inline style、文案一个字都没动(badge 今天不经 `renderBlocks`,所以
- * 它自带的 `data-block="badge"` 也照搬);原子块是**新抠**的,保持它们在复合块里的 class 与
- * style,让皮肤能单独摆:
- * - avatar:name 里的头像那一坨(定宽圆框 + img);
- * - user / master(2026-09-18,决策 8 的 🔗):name 里的用户名胶囊与主播胶囊。档位色变量在
- *   复合块里挂在 name **根上**,单独摆没有那个根,所以两颗胶囊各自带上(底色要用)。
+ * 每块只画**结构**:元素、它们的嵌套、撑住布局的那几个 class(`flex` / `overflow-hidden` /
+ * `truncate` / `bg-cover` …)。它**长什么样**(字号、字色、圆角、胶囊底色与高度、头像与徽章
+ * 的尺寸)一概不在这里 —— 全写在出厂默认皮肤各块的 CSS 里(ADR-0014 决策 7 的 2026-09-19 🔗):
+ * 一份皮肤 JSON 就是卡片的全部样子,渲染器不留一层「默认外观」让皮肤去盖。
+ * `__tests__/blocks-bare.test.ts` 扫源码钉着这一点。
  *
- * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.guard`,一个不多一个不少(`__tests__/card-blocks.test.ts`
- * 对表钉着)。
+ * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
+ * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
+ * 之外的部件照挂(用户名胶囊里的 `text`、主播胶囊里的 `masterAvatar` / `masterName`)。名字
+ * 取自 `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`,是对外 API(`__tests__/card-hooks.test.ts`
+ * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
  *
- * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
- * `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`;原子块的**根**是 `self`,所以根上不挂,里头带着
- * 的部件照挂(主播胶囊里的小头像与主播名;`__tests__/card-hooks.test.ts` 两头钉着)。
+ * 两处要说明:
+ * - **头像**的根是那个把图裁圆的框,`image` 挂在**框**上,里头的 `<img>` 不挂 —— 圆与尺寸
+ *   写一处就够,img 只负责填满并按比例裁。
+ * - **徽章**不经 `renderBlocks` 的 wrapper 挂 `data-block`(它自带),所以它的根上同时有
+ *   `data-block="badge"` 与 `data-bn="image"`;wrapper 仍在,皮肤那条后代选择器照样选得中。
  *
- * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
- * 自定义属性里,颜色**属性**(`color` / `background*`)写到 class 上 —— 皮肤 CSS 的
- * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ * 留在 inline 的 CSS 变量都是**数据**不是外观,皮肤用 `var()` 引:
  *
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
- * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `name` / `text` 块根、`user` / `master` 原子块 |
- * | `--bn-divider-color` | 分割线色 = 档位色 + `33` 透明度 | `divider` 块根(= 分割线自己) |
- *
- * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
- * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
- * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
+ * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `user` / `master` 两颗胶囊、`text` |
+ * | `--bn-divider-color` | 分割线色 = 档位色 + `33` 透明度 | `divider`(= 线自己) |
  *
  * 分割线单开一个变量而不是复用档位色:它的值是**运行期拼出来的**(`${档位色}33`),
  * CSS 里没有「给一个 hex 追加 alpha」的写法,`color-mix` 又要过一趟色彩空间换算(会动像素)。
+ *
+ * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.guard`,一个不多一个不少(`__tests__/card-blocks.test.ts`
+ * 对表钉着)。
  */
 
 import type { GuardLevel } from "@bilibili-notify/blive";
@@ -48,38 +48,45 @@ export const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) 
 	3: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
 };
 
-/** 头像(原子块):name 复合块里的那个定宽圆框 + img。 */
+/**
+ * 头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
+ * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
+ */
 const avatar: BlockRenderer<GuardCardProps> = (p) => (
-	<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
-		<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
+	<div data-bn="image" class="overflow-hidden shrink-0">
+		<img class="w-full h-full object-cover" src={p.face} alt="用户头像" />
 	</div>
 );
 
-/** 用户名胶囊(原子块):name 复合块里的那颗胶囊,自带档位色变量。 */
+/** 用户名胶囊(原子块)。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
 const user: BlockRenderer<GuardCardProps> = (p) => (
 	<div
-		class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
+		data-bn="pill"
+		class="flex items-center overflow-hidden"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
-		<span class="max-w-[100px] truncate font-bold text-[12px] text-white">{p.uname}</span>
+		<span data-bn="text" class="truncate">
+			{p.uname}
+		</span>
 	</div>
 );
 
-/** 主播胶囊(原子块):name 复合块里的那颗胶囊,自带档位色变量;小头像与主播名的挂点照挂。 */
+/**
+ * 主播胶囊(原子块)。小头像的图是**数据**,走 inline 的 `background-image`;`bg-cover` /
+ * `bg-center` 是它的裁法与定位,不是样子。
+ */
 const master: BlockRenderer<GuardCardProps> = (p) => (
 	<div
-		class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]"
+		data-bn="pill"
+		class="flex items-center overflow-hidden"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
 		<div
 			data-bn="masterAvatar"
-			class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0"
+			class="bg-cover bg-center shrink-0"
 			style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
 		/>
-		<span
-			data-bn="masterName"
-			class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]"
-		>
+		<span data-bn="masterName" class="truncate">
 			{p.isAdmin ? "房管" : p.masterName}
 		</span>
 	</div>
@@ -95,11 +102,13 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 		<div data-bn="line" style={{ "--bn-divider-color": `${p.bgColor[0]}33` }} />
 	),
 
-	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。
+	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。图是数据(走 inline 的
+	// `background-image`),多大一张归皮肤的 `image` 规则。
 	badge: (p) => (
 		<div
 			data-block="badge"
-			class="w-[175px] h-[175px] bg-cover bg-center shrink-0"
+			data-bn="image"
+			class="bg-cover bg-center shrink-0"
 			style={{ backgroundImage: `url("${p.captainImgUrl}")` }}
 		/>
 	),
@@ -108,7 +117,8 @@ export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
 		const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
 		return desc ? (
 			<div
-				class="text-[16px] font-bold italic whitespace-pre-line [color:var(--bn-card-tier-color)]"
+				data-bn="text"
+				class="whitespace-pre-line"
 				style={{ "--bn-card-tier-color": p.bgColor[0] }}
 			>
 				{desc}

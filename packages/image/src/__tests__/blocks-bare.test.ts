@@ -21,7 +21,7 @@ import { describe, expect, it } from "vite-plus/test";
 const BLOCKS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "blocks");
 
 /** 已经搬空外观的块文件。 */
-const BARE_FILES = ["live.tsx", "dynamic.tsx", "sc.tsx"];
+const BARE_FILES = ["live.tsx", "dynamic.tsx", "sc.tsx", "guard.tsx"];
 
 /**
  * 长得像外观的 class token。列的是 UnoCSS 里会编成外观属性的那些前缀;结构类
@@ -43,6 +43,10 @@ const APPEARANCE = [
 	/^opacity-/,
 	/^(w|h)-\[/, // 定死的尺寸(`w-full` / `h-full` / `h-px` 不算)
 	/^(w|h)-\d/,
+	// 定死的上下限(`max-w-[100px]` 这类)。**只收任意值那一档** —— `min-w-0` 是网格 / flex
+	// 里「别把列撑爆」的结构写法,不是尺寸。
+	/^(max|min)-(w|h)-\[/,
+	/^(italic|not-italic)$/, // `font-style`,它不以 `font-` 打头
 	/^\[(color|background|background-color|border|box-shadow|font-size)[:\]]/,
 ];
 
@@ -95,5 +99,13 @@ describe("内置块只画结构 — 块文件里没有外观类", () => {
 		expect(
 			appearanceTokens('<div class="bg-cover bg-center bg-white/50 bg-black/60 bg-gradient-to-r">'),
 		).toEqual(["bg-white/50", "bg-black/60", "bg-gradient-to-r"]);
+	});
+
+	// 这两档是上舰卡那片补的:`max-w-[100px]` 不以 `w-` 打头、`italic` 不以 `font-` 打头,
+	// 旧的名单两个都漏。`min-w-0` 得继续放行(它是结构)。
+	it("认得出定死的上下限与斜体,但放过 min-w-0", () => {
+		expect(
+			appearanceTokens('<span class="max-w-[100px] min-w-0 truncate italic not-italic">'),
+		).toEqual(["max-w-[100px]", "italic", "not-italic"]);
 	});
 });

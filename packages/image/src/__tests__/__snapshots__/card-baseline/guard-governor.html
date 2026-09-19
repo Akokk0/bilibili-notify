@@ -28,59 +28,34 @@
 /* layer: base */
  *, ::after, ::before, ::backdrop, ::file-selector-button { box-sizing: border-box;  margin: 0;  padding: 0;  border: 0 solid;  }  html, :host { line-height: 1.5;  -webkit-text-size-adjust: 100%;  tab-size: 4;  font-family: var( --default-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji' );  font-feature-settings: var(--default-font-featureSettings, normal);  font-variation-settings: var(--default-font-variationSettings, normal);  -webkit-tap-highlight-color: transparent;  }  hr { height: 0;  color: inherit;  border-top-width: 1px;  }  abbr:where([title]) { -webkit-text-decoration: underline dotted; text-decoration: underline dotted; }  h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }  a { color: inherit; -webkit-text-decoration: inherit; text-decoration: inherit; }  b, strong { font-weight: bolder; }  code, kbd, samp, pre { font-family: var( --default-monoFont-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace );  font-feature-settings: var(--default-monoFont-featureSettings, normal);  font-variation-settings: var(--default-monoFont-variationSettings, normal);  font-size: 1em;  }  small { font-size: 80%; }  sub, sup { font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; } sub { bottom: -0.25em; } sup { top: -0.5em; }  table { text-indent: 0;  border-color: inherit;  border-collapse: collapse;  }  :-moz-focusring:where(:not(iframe)) { outline: auto; }  progress { vertical-align: baseline; }  summary { display: list-item; }  ol, ul, menu { list-style: none; }  img, svg, video, canvas, audio, iframe, embed, object { display: block;  vertical-align: middle;  }  img, video { max-width: 100%; height: auto; }  button, input, select, optgroup, textarea, ::file-selector-button { font: inherit;  font-feature-settings: inherit;  font-variation-settings: inherit;  letter-spacing: inherit;  color: inherit;  border-radius: 0;  background-color: transparent;  opacity: 1;  }  :where(select:is([multiple], [size])) optgroup { font-weight: bolder; }  :where(select:is([multiple], [size])) optgroup option { padding-inline-start: 20px; }  ::file-selector-button { margin-inline-end: 4px; }  ::placeholder { opacity: 1; }  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px)  { ::placeholder { color: color-mix(in oklab, currentcolor 50%, transparent); } }  textarea { resize: vertical; }  ::-webkit-search-decoration { -webkit-appearance: none; }  ::-webkit-date-and-time-value { min-height: 1lh;  text-align: inherit;  }  ::-webkit-datetime-edit { display: inline-flex; }  ::-webkit-datetime-edit-fields-wrapper { padding: 0; } ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field { padding-block: 0; }  ::-webkit-calendar-picker-indicator { line-height: 1; }  :-moz-ui-invalid { box-shadow: none; }  button, input:where([type='button'], [type='reset'], [type='submit']), ::file-selector-button { appearance: button; }  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button { height: auto; }  [hidden]:where(:not([hidden~='until-found'])) { display: none !important; }
 /* layer: default */
-.text-\[10px\]{font-size:10px;}
-.text-\[12px\]{font-size:12px;}
-.text-\[16px\]{font-size:16px;}
 .text-\[\#00AEEC\]{color:color-mix(in oklab, #00AEEC var(--un-text-opacity), transparent);}
 .text-\[\#FF6699\]{color:color-mix(in oklab, #FF6699 var(--un-text-opacity), transparent);}
-.text-white{color:color-mix(in srgb, var(--colors-white) var(--un-text-opacity), transparent);}
-.font-bold{--un-font-weight:var(--fontWeight-bold);font-weight:var(--fontWeight-bold);}
-.mr-\[5px\]{margin-right:5px;}
 .p-\[15px\]{padding:15px;}
-.px-\[10px\]{padding-inline:10px;}
 .rounded-\[10px\]{border-radius:10px;}
-.rounded-\[25px\]{border-radius:25px;}
-.rounded-full{border-radius:calc(infinity * 1px);}
 .flex{display:flex;}
 .shrink-0{flex-shrink:0;}
-.gap-\[5px\]{gap:5px;}
-.h-\[175px\]{height:175px;}
 .h-\[190px\]{height:190px;}
 .h-\[220px\]{height:220px;}
-.h-\[25px\]{height:25px;}
-.h-\[30px\]{height:30px;}
-.h-\[90px\]{height:90px;}
 .h-full{height:100%;}
-.max-w-\[100px\]{max-width:100px;}
-.max-w-\[85px\]{max-width:85px;}
-.w-\[175px\]{width:175px;}
-.w-\[25px\]{width:25px;}
 .w-\[400px\]{width:400px;}
 .w-\[430px\]{width:430px;}
-.w-\[90px\]{width:90px;}
 .w-full{width:100%;}
 .whitespace-pre-line{white-space:pre-line;}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.italic{font-style:italic;}
 .shadow-\[0_4px_8px_0_rgba\(0\,0\,0\,0\.2\)\]{--un-shadow:0 4px 8px 0 var(--un-shadow-color, rgba(0, 0, 0, 0.2));box-shadow:var(--un-inset-shadow), var(--un-inset-ring-shadow), var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
-.\[background-color\:var\(--bn-card-tier-color\)\]{background-color:var(--bn-card-tier-color);}
-.\[color\:var\(--bn-card-tier-color\)\]{color:var(--bn-card-tier-color);}
 .items-center{align-items:center;}
 .justify-center{justify-content:center;}
 .overflow-hidden{overflow:hidden;}
 .bg-cover{background-size:cover;}
 .bg-center{background-position:center;}
-.object-cover{object-fit:cover;}
-@supports (color: color-mix(in lab, red, red)){
-.text-white{color:color-mix(in oklab, var(--colors-white) var(--un-text-opacity), transparent);}
-}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-card-tier-color),var(--bn-card-tier-color-end)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.75));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));height:190px;grid-template-rows:auto auto 1fr}
-.bn-blk-avatar{padding:12px 0 0 16px;align-self:start}
-.bn-blk-user{align-self:end;justify-self:start}
-.bn-blk-master{padding-top:7px;align-self:start;justify-self:start}
-.bn-blk-text{padding:0px 16px 12px;align-self:end}
-.bn-blk-badge{height:190px;display:flex;align-items:center;align-self:start}</style>
+.object-cover{object-fit:cover;}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-card-tier-color),var(--bn-card-tier-color-end)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.75));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));height:190px;grid-template-rows:auto auto 1fr}
+.bn-blk-avatar{padding:12px 0 0 16px;align-self:start}.bn-blk-avatar [data-bn~="image"]{width:90px;height:90px;border-radius:9999px}
+.bn-blk-user{align-self:end;justify-self:start}.bn-blk-user [data-bn~="pill"]{height:30px;padding:0 10px;border-radius:25px;background-color:var(--bn-card-tier-color)}.bn-blk-user [data-bn~="text"]{max-width:100px;font-weight:700;font-size:12px;color:#fff}
+.bn-blk-master{padding-top:7px;align-self:start;justify-self:start}.bn-blk-master [data-bn~="pill"]{gap:5px;height:25px;border-radius:25px;background-color:var(--bn-card-tier-color)}.bn-blk-master [data-bn~="masterAvatar"]{width:25px;height:25px;border-radius:9999px}.bn-blk-master [data-bn~="masterName"]{max-width:85px;margin-right:5px;color:#fff;font-size:10px;font-weight:700}
+.bn-blk-text{padding:0px 16px 12px;align-self:end}.bn-blk-text [data-bn~="text"]{font-size:16px;font-weight:700;font-style:italic;color:var(--bn-card-tier-color)}
+.bn-blk-badge{height:190px;display:flex;align-items:center;align-self:start}.bn-blk-badge [data-bn~="image"]{width:175px;height:175px}</style>
 			</head>
-			<body><div data-bn="frame" class="flex justify-center items-center w-[430px] h-[220px] p-[15px]" style="--bn-card-tier-color:#f2a053;--bn-card-tier-color-end:#ef5f5f;--bn-card-bg-image:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div data-bn="glass" class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]" style="display:grid;grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 43.75px 43.75px 43.75px 43.75px;width:100%;gap:0px 0px;"><div data-block="avatar" class="bn-blk-avatar" style="grid-row:1 / span 2;grid-column:1 / span 4;min-width:0"><div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0"><img class="w-full h-full rounded-full object-cover" src="http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg" alt="用户头像"></div></div><div data-block="user" class="bn-blk-user" style="grid-row:1 / span 1;grid-column:5 / span 4;min-width:0"><div class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden [background-color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;"><span class="max-w-[100px] truncate font-bold text-[12px] text-white">示例大哥</span></div></div><div data-block="master" class="bn-blk-master" style="grid-row:2 / span 1;grid-column:5 / span 4;min-width:0"><div class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden [background-color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;"><div data-bn="masterAvatar" class="w-[25px] h-[25px] rounded-full bg-cover bg-center shrink-0" style="background-image:url(&quot;http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg&quot;);"></div><span data-bn="masterName" class="max-w-[85px] truncate text-white text-[10px] font-bold mr-[5px]">房管</span></div></div><div data-block="text" class="bn-blk-text" style="grid-row:3 / span 1;grid-column:1 / span 8;min-width:0"><div class="text-[16px] font-bold italic whitespace-pre-line [color:var(--bn-card-tier-color)]" style="--bn-card-tier-color:#f2a053;">&quot;示例大哥&quot;上任
-&quot;示例主播&quot;大航海舰队总督！</div></div><div class="bn-blk-badge" style="grid-row:1 / span 3;grid-column:9 / span 4;min-width:0"><div data-block="badge" class="w-[175px] h-[175px] bg-cover bg-center shrink-0" style="background-image:url(&quot;https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png&quot;);"></div></div></div></div></body>
+			<body><div data-bn="frame" class="flex justify-center items-center w-[430px] h-[220px] p-[15px]" style="--bn-card-tier-color:#f2a053;--bn-card-tier-color-end:#ef5f5f;--bn-card-bg-image:url(&quot;http://i0.hdslb.com/bfs/album/bn-custom-background-0001.png&quot;) center / cover;"><div data-bn="glass" class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]" style="display:grid;grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 43.75px 43.75px 43.75px 43.75px;width:100%;gap:0px 0px;"><div data-block="avatar" class="bn-blk-avatar" style="grid-row:1 / span 2;grid-column:1 / span 4;min-width:0"><div data-bn="image" class="overflow-hidden shrink-0"><img class="w-full h-full object-cover" src="http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg" alt="用户头像"></div></div><div data-block="user" class="bn-blk-user" style="grid-row:1 / span 1;grid-column:5 / span 4;min-width:0"><div data-bn="pill" class="flex items-center overflow-hidden" style="--bn-card-tier-color:#f2a053;"><span data-bn="text" class="truncate">示例大哥</span></div></div><div data-block="master" class="bn-blk-master" style="grid-row:2 / span 1;grid-column:5 / span 4;min-width:0"><div data-bn="pill" class="flex items-center overflow-hidden" style="--bn-card-tier-color:#f2a053;"><div data-bn="masterAvatar" class="bg-cover bg-center shrink-0" style="background-image:url(&quot;http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg&quot;);"></div><span data-bn="masterName" class="truncate">房管</span></div></div><div data-block="text" class="bn-blk-text" style="grid-row:3 / span 1;grid-column:1 / span 8;min-width:0"><div data-bn="text" class="whitespace-pre-line" style="--bn-card-tier-color:#f2a053;">&quot;示例大哥&quot;上任
+&quot;示例主播&quot;大航海舰队总督！</div></div><div class="bn-blk-badge" style="grid-row:1 / span 3;grid-column:9 / span 4;min-width:0"><div data-block="badge" data-bn="image" class="bg-cover bg-center shrink-0" style="background-image:url(&quot;https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png&quot;);"></div></div></div></div></body>
 		</html>
 	

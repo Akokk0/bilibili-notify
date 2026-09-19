@@ -248,14 +248,14 @@ describe("上舰卡 — user / master", () => {
 		const root = soleRoot(await renderWith("guard", ["user"]), "user");
 		expect(root.textContent).toBe("示例粉丝");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
-		expect(hooksUnder(root)).toEqual(new Set());
+		expect(hooksUnder(root)).toEqual(new Set(["pill", "text"]));
 	});
 
 	it("master:画的是主播胶囊,主播小头像与主播名的挂点都在", async () => {
 		const root = soleRoot(await renderWith("guard", ["master"]), "master");
 		expect(root.textContent).toBe("示例 UP 主");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
-		expect(hooksOn(root)).toEqual([]);
-		expect(hooksUnder(root)).toEqual(new Set(["masterAvatar", "masterName"]));
+		expect(hooksOn(root)).toEqual(["pill"]);
+		expect(hooksUnder(root)).toEqual(new Set(["pill", "masterAvatar", "masterName"]));
 	});
 });

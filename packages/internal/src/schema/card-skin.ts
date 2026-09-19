@@ -1189,23 +1189,46 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			// 两行胶囊 + 一行文字:前两行按内容高,最后一行吃掉剩下的卡高,文字贴底。
 			css: `${FRAME_BG_TIER}[data-bn="glass"]{${glassBase(".75")};height:190px;grid-template-rows:auto auto 1fr}`,
 			blocks: [
+				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
 					"avatar",
 					{ row: 1, column: 1, span: 4, rowSpan: 2 },
 					"padding:12px 0 0 16px;align-self:start",
+					undefined,
+					part("image", "width:90px;height:90px;border-radius:9999px"),
 				),
-				// 两颗胶囊贴着头像的中线上下排,各自收窄到内容宽(胶囊自带底色)。
-				at("user", { row: 1, column: 5, span: 4 }, "align-self:end;justify-self:start"),
+				// 两颗胶囊贴着头像的中线上下排,各自收窄到内容宽。底色是档位色(数据),
+				// 渲染器注在 `--bn-card-tier-color` 里;名字过长时靠 `max-width` + 截断收住。
+				at(
+					"user",
+					{ row: 1, column: 5, span: 4 },
+					"align-self:end;justify-self:start",
+					undefined,
+					`${part("pill", "height:30px;padding:0 10px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("text", "max-width:100px;font-weight:700;font-size:12px;color:#fff")}`,
+				),
 				at(
 					"master",
 					{ row: 2, column: 5, span: 4 },
 					"padding-top:7px;align-self:start;justify-self:start",
+					undefined,
+					`${part("pill", "gap:5px;height:25px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("masterAvatar", "width:25px;height:25px;border-radius:9999px")}${part("masterName", "max-width:85px;margin-right:5px;color:#fff;font-size:10px;font-weight:700")}`,
 				),
-				at("text", { row: 3, column: 1, span: 8 }, "padding:0px 16px 12px;align-self:end"),
+				at(
+					"text",
+					{ row: 3, column: 1, span: 8 },
+					"padding:0px 16px 12px;align-self:end",
+					undefined,
+					part(
+						"text",
+						"font-size:16px;font-weight:700;font-style:italic;color:var(--bn-card-tier-color)",
+					),
+				),
 				at(
 					"badge",
 					{ row: 1, column: 9, span: 4, rowSpan: 3 },
 					"height:190px;display:flex;align-items:center;align-self:start",
+					undefined,
+					part("image", "width:175px;height:175px"),
 				),
 			],
 		},
