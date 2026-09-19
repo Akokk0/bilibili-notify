@@ -483,4 +483,17 @@ describe("写路径:存进去的东西重启之后还得在", () => {
 		await reread.init();
 		expect(reread.get(dup.id)?.name).toHaveLength(CARD_SKIN_LIMITS.name.max);
 	});
+
+	it("init() 自己把 ensureReady 那把锁点上 —— 开机读过盘,首个请求不许在请求路径上重读", async () => {
+		let reread = 0;
+		const original = CardSkinStore.prototype.init;
+		// biome-ignore lint/suspicious/noExplicitAny: 只为数一数它有没有被再调一次
+		(store as any).init = function counted(this: CardSkinStore) {
+			reread += 1;
+			return original.call(this);
+		};
+		await store.ensureReady();
+		await store.ensureReady();
+		expect(reread).toBe(0);
+	});
 });

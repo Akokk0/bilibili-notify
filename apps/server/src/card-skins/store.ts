@@ -90,8 +90,21 @@ export class CardSkinStore {
 	/**
 	 * 读盘重建索引。**一份坏皮肤不许拖死启动** —— 读不动 / 形状不对的目录跳过并记一条
 	 * warning,既不进索引也不动它(交给人查,别静默删数据)。
+	 *
+	 * ⚠️ **它自己把 {@link ensureReady} 那把锁也点上。** 从前 `init()` 只读盘、不碰
+	 * `ready`,于是开机裸调它的调用方读完盘那把锁还空着,**首个请求会在请求路径上把整个
+	 * 皮肤目录再读一遍**。代价不是那点 I/O:重读开头一句 `index.clear()`,之后一串 await
+	 * 才填满,而出图那头 `get(id)` 是**同步**读同一个实例的索引 —— 这个窗口里撞上一次推送
+	 * 就静默回落默认皮肤并记一笔 fallback(2026-09-19 审查)。锁点在这儿而不是只改那个
+	 * 调用方,是因为下一个调用方不会知道要改。
 	 */
 	async init(): Promise<void> {
+		const run = this.readAll();
+		this.ready = run;
+		await run;
+	}
+
+	private async readAll(): Promise<void> {
 		await mkdir(this.dir, { recursive: true });
 		this.index.clear();
 		this.initWarnings = [];

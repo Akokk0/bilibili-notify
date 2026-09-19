@@ -430,8 +430,15 @@ export async function startStandaloneServer(
 		// 顺序是:`configStore.load()`(上面早就跑过)→ 建店 + `init()` 读盘 → 才把 `get`
 		// 交给引擎。(开机一次性的「旧版式 → 皮肤」迁移已整个退役,见 ADR-0014 决策 17
 		// 的 2026-09-18 🔗:没选过皮肤的一律用出厂默认。)
+		//
+		// ⚠️ 走 `ensureReady()` 而不是裸 `init()`:`ensureReady` 是 `this.ready ??= this.init()`,
+		// 而 `init()` 自己**不设** `this.ready` —— 裸调它开机是读了盘,但那把锁还空着,于是
+		// 首个 `/api/card-skins*` / 预览 / 工坊请求会在**请求路径上**把整个皮肤目录再读一遍。
+		// 真正的代价不是那点 I/O:`init()` 开头一句 `index.clear()`,之后一串 await 才填满,
+		// 而出图那头 `get(id)` 是**同步**读同一个实例的索引 —— 这个窗口里撞上一次推送就回落
+		// 默认皮肤并记一笔 fallback(2026-09-19 审查)。
 		cardSkinStore = new CardSkinStore({ dir: join(bootstrap.dataDir, "card-skins") });
-		await cardSkinStore.init();
+		await cardSkinStore.ensureReady();
 		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
 		const skins = cardSkinStore;
