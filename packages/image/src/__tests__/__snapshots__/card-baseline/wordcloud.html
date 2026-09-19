@@ -23,13 +23,11 @@
 .text-\[\#FF6699\]{color:color-mix(in oklab, #FF6699 var(--un-text-opacity), transparent);}
 .leading-none{--un-leading:var(--leading-none);line-height:var(--leading-none);}
 .font-bold{--un-font-weight:var(--fontWeight-bold);font-weight:var(--fontWeight-bold);}
-.p-\[15px\]{padding:15px;}
 .px-\[16px\]{padding-inline:16px;}
 .pb-\[10px\]{padding-bottom:10px;}
 .pb-\[14px\]{padding-bottom:14px;}
 .pt-\[12px\]{padding-top:12px;}
 .pt-\[14px\]{padding-top:14px;}
-.rounded-\[12px\]{border-radius:12px;}
 .rounded-full{border-radius:calc(infinity * 1px);}
 .flex{display:flex;}
 .shrink-0{flex-shrink:0;}
@@ -45,8 +43,8 @@
 .\[color\:var\(--bn-ink\)\]{color:var(--bn-ink);}
 .items-center{align-items:center;}
 .overflow-hidden{overflow:hidden;}
-.object-cover{object-fit:cover;}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,#e0c3fc),var(--bn-knob-gradient-end,#8ec5fc)));font-family:var(--bn-knob-font,inherit)}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.82));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));box-shadow:0 4px 16px rgba(0,0,0,.12)}</style>
+.object-cover{object-fit:cover;}[data-bn~="frame"]{background:var(--bn-knob-wallpaper,linear-gradient(to right bottom,var(--bn-knob-gradient-start,#e0c3fc),var(--bn-knob-gradient-end,#8ec5fc)));font-family:var(--bn-knob-font,inherit)}[data-bn~="frame"]{padding:15px}[data-bn~="glass"]{background:rgba(255,255,255,var(--bn-knob-glass-opacity,.82));backdrop-filter:blur(var(--bn-knob-glass-blur,10px));box-shadow:0 4px 16px rgba(0,0,0,.12);border-radius:12px}</style>
 			</head>
-			<body><div data-bn="frame" class="h-auto p-[15px]" style=""><div data-bn="glass" class="overflow-hidden rounded-[12px]" style="display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));width:100%;gap:0px 0px;"><div data-block="body" class="bn-blk-body" style="grid-row:1 / span 1;grid-column:1 / span 12;min-width:0"><!--[--><div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]"><img class="w-[44px] h-[44px] rounded-full object-cover shrink-0" src="http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg" alt="头像"><div class="flex flex-col gap-[2px] min-w-0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span><span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">本场直播弹幕词云</span></div></div><div class="[background:var(--bn-divider-color)]" style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"></div><div class="px-[16px] pt-[12px] pb-[14px]"><canvas id="wordCloudCanvas" style="width: 100%; height: 400px; display: block;"></canvas></div><!--]--></div></div></div></body>
+			<body><div data-bn="frame" class="h-auto" style=""><div data-bn="glass" class="overflow-hidden" style="display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));width:100%;gap:0px 0px;"><div data-block="body" class="bn-blk-body" style="grid-row:1 / span 1;grid-column:1 / span 12;min-width:0"><!--[--><div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]"><img class="w-[44px] h-[44px] rounded-full object-cover shrink-0" src="http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg" alt="头像"><div class="flex flex-col gap-[2px] min-w-0"><span class="text-[16px] font-bold leading-none [color:var(--bn-ink)]" style="--bn-ink: #18191C;">示例主播</span><span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">本场直播弹幕词云</span></div></div><div class="[background:var(--bn-divider-color)]" style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"></div><div class="px-[16px] pt-[12px] pb-[14px]"><canvas id="wordCloudCanvas" style="width: 100%; height: 400px; display: block;"></canvas></div><!--]--></div></div></div></body>
 		</html>
 	

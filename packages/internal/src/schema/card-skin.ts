@@ -155,6 +155,18 @@ export const DEFAULT_FRAME_BG_RULE = cardSkinFrameBgRule(
 const FRAME_BG_USER = DEFAULT_FRAME_BG_RULE;
 
 /**
+ * 外框那层的**尺寸与内边距** —— 2026-09-19 从 `blocks/frames.tsx` 的 class 上搬进来
+ * (ADR-0014 决策 7 的 🔗:外观整批住进默认皮肤)。
+ *
+ * **单开一条规则**接在底色那条后面,不并进 {@link cardSkinFrameBgRule}:那一条是「底色 +
+ * 字体」这一件事的单品,迁移换色时**整条替换**它,掺进内边距就会被一起换掉。
+ */
+const frameBox = (decls: string): string => `[data-bn="frame"]{${decls}}`;
+
+/** 七种外框有五种只是留一圈 15px 的边;SC 与上舰另带定死的卡宽卡高,各写各的。 */
+const FRAME_PAD = frameBox("padding:15px");
+
+/**
  * 默认皮肤各卡玻璃层的规则(外框在皮肤路径不再 inline 白纱,见 `blocks/frames.tsx` 的
  * `ownGlass`)。白纱与模糊吃两枚**旋钮**变量;其余(阴影 / 内边距 / 最小宽)是各卡原来
  * inline 的那几句,逐值照抄。写成 css-tree `generate` 的规范形态(`.12` 不写 `0.12`),
@@ -167,13 +179,20 @@ const FRAME_BG_USER = DEFAULT_FRAME_BG_RULE;
 const glassBase = (opacity: string): string =>
 	`background:rgba(255,255,255,var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.glassOpacity},${opacity}));backdrop-filter:blur(var(--bn-knob-${DEFAULT_SKIN_KNOB_KEYS.glassBlur},10px))`;
 const GLASS_SHADOW = "box-shadow:0 4px 16px rgba(0,0,0,.12)";
-const GLASS_LIVE = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};min-width:360px;padding-top:14px;padding-bottom:10px}`;
-const GLASS_DYNAMIC = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};padding-top:14px;padding-bottom:12px}`;
-/** SC / 上舰的阴影在 class 上(`shadow-[…]`),这里只管白纱与模糊。 */
-const GLASS_PLAIN = `[data-bn="glass"]{${glassBase(".75")}}`;
-const GLASS_ROAST = `[data-bn="glass"]{${glassBase(".86")};${GLASS_SHADOW}}`;
+/** 玻璃层的圆角:直播 / 动态 / 锐评两张 / 词云 12px,SC / 上舰 10px(它们自己写)。 */
+const GLASS_RADIUS = "border-radius:12px";
+/** SC / 上舰那圈更小更实的阴影(从前是玻璃层 class 上的 `shadow-[…]`)。 */
+const GLASS_TIER_SHADOW = "box-shadow:0 4px 8px 0 rgba(0,0,0,.2)";
+const GLASS_LIVE = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS};min-width:360px;padding-top:14px;padding-bottom:10px}`;
+const GLASS_DYNAMIC = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS};padding-top:14px;padding-bottom:12px}`;
+/**
+ * SC 的玻璃层。卡宽 260 = 外框 290 − 两边各 15 的边;皮肤路径的网格容器另有一句 inline
+ * 的 `width:100%`(`gridStyleOf`)盖在它上面,两条算出来是同一个数。
+ */
+const GLASS_SC = `[data-bn="glass"]{${glassBase(".75")};width:260px;padding:20px 16px;border-radius:10px;${GLASS_TIER_SHADOW}}`;
+const GLASS_ROAST = `[data-bn="glass"]{${glassBase(".86")};${GLASS_SHADOW};${GLASS_RADIUS}}`;
 /** 词云与锐评两张共用版式,白纱基线却是 .82 那一档 —— 规则同形、兜底不同。 */
-const GLASS_WORDCLOUD = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW}}`;
+const GLASS_WORDCLOUD = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS}}`;
 const FRAME_BG_TIER = cardSkinFrameBgRule(
 	"var(--bn-card-tier-color)",
 	"var(--bn-card-tier-color-end)",
@@ -915,7 +934,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			width: 600,
 			// 16 + 44(头像)+ 10(间距)
 			columns: avatarColumns(70),
-			css: `${FRAME_BG_USER}${GLASS_LIVE}`,
+			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_LIVE}`,
 			blocks: [
 				// **跨行在这块是真高度**(决策 6 的 2026-09-18 🔗):封面标了 `heightFromRows`,
 				// 6 行 = 336px,图按 `object-fit:cover` 填满。
@@ -1001,7 +1020,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			width: 600,
 			// 16 + 52(头像)+ 12(间距)
 			columns: avatarColumns(80),
-			css: `${FRAME_BG_USER}${GLASS_DYNAMIC}`,
+			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_DYNAMIC}`,
 			blocks: [
 				at(
 					"avatar",
@@ -1119,7 +1138,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		sc: {
 			width: 290,
-			css: `${FRAME_BG_TIER}${GLASS_PLAIN}`,
+			css: `${FRAME_BG_TIER}${frameBox("width:290px;padding:15px")}${GLASS_SC}`,
 			blocks: [
 				// 金额是渐变裁字:用 text-align 居中,渐变才与旧的一样铺满整行。字本身透明,
 				// 看见的是背景那道渐变被 `background-clip:text` 裁成字形 —— 两枚档位色是数据,
@@ -1187,7 +1206,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
 			],
 			// 两行胶囊 + 一行文字:前两行按内容高,最后一行吃掉剩下的卡高,文字贴底。
-			css: `${FRAME_BG_TIER}[data-bn="glass"]{${glassBase(".75")};height:190px;grid-template-rows:auto auto 1fr}`,
+			css: `${FRAME_BG_TIER}${frameBox("width:430px;height:220px;padding:15px")}[data-bn="glass"]{${glassBase(".75")};width:400px;height:190px;border-radius:10px;${GLASS_TIER_SHADOW};grid-template-rows:auto auto 1fr}`,
 			blocks: [
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
@@ -1237,13 +1256,17 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		// 旧默认已经删了(决策 17 / 24 的 2026-09-18 🔗),所以搬进来自己写。
 		roastBoard: {
 			width: 600,
-			css: `${FRAME_BG_USER}${GLASS_ROAST}`,
+			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_ROAST}`,
 			blocks: [at("body", full(1))],
 		},
-		roastSolo: { width: 430, css: `${FRAME_BG_USER}${GLASS_ROAST}`, blocks: [at("body", full(1))] },
+		roastSolo: {
+			width: 430,
+			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_ROAST}`,
+			blocks: [at("body", full(1))],
+		},
 		wordcloud: {
 			width: 720,
-			css: `${FRAME_BG_USER}${GLASS_WORDCLOUD}`,
+			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_WORDCLOUD}`,
 			blocks: [at("body", full(1))],
 		},
 	},

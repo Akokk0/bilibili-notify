@@ -4,9 +4,12 @@
  * 七种卡的**外框**(ADR-0014 决策 6 的「根块」)—— 玻璃层以外那一层 + 玻璃层本身。
  *
  * 块库把「卡片里画什么」拆成了块,这份把「卡片长什么样的壳」也拆出来:模板路径与皮肤路径
- * 从此共用同一个外框,不会出现「模板改了圆角、皮肤还是旧的」。里头的 JSX 是从
- * `templates/*.tsx` **原样搬**进来的,class、inline style、默认玻璃透明度一个字都没动 ——
- * 基准快照(`__tests__/card-baseline.test.ts`)逐字节钉着这一点。
+ * 从此共用同一个外框,不会出现「模板改了圆角、皮肤还是旧的」。
+ *
+ * 与块库同规矩(ADR-0014 决策 7 的 2026-09-19 🔗):**这里只画结构** —— 两层 div、它们的
+ * 嵌套、撑住布局的那几个 class(`h-auto` / `flex` / `w-full` / `overflow-hidden`)。卡宽卡高、
+ * 内边距、圆角、那圈阴影全写在出厂默认皮肤各卡的 `css` 里(`[data-bn="frame"]` 与
+ * `[data-bn="glass"]` 两条规则),`__tests__/blocks-bare.test.ts` 扫源码钉着。
  *
  * 两处**纯附加**:外层挂 `data-bn="frame"`、玻璃层挂 `data-bn="glass"`
  * (`CARD_SKIN_FRAME_HOOKS`,皮肤 CSS 的根级挂点)。基准比较前会剥掉 `data-bn`,所以
@@ -19,6 +22,10 @@
  *   模糊 / 阴影 / 内边距由皮肤 CSS 的 glass 规则写;
  * - `width` 只有锐评两张卡用得上(它们的宽度写在外框 inline style 里,不像别的卡靠
  *   `renderCard` 的 htmlWidth)。
+ *
+ * ⚠️ `ownBg` / `ownGlass` 那套兜底只补**底色与白纱**。外框的尺寸 / 内边距 / 圆角 / 阴影
+ * 2026-09-19 整批搬进了默认皮肤,模板路径(`extra` 缺席,今天只剩三处测试在走)拿不到它们
+ * —— 块里的外观那一批更是早就搬走了,那条路本来就只画得出裸骨架。
  *
  * inline style 一律用**数组形式**(`[对象, extra]`)或**字符串拼接**:`extra` 为
  * undefined 时 Vue 的 `normalizeStyle` 直接跳过它,序列化结果与今天逐字节相同。
@@ -116,7 +123,6 @@ function roastFrame(
 	return (
 		<div
 			data-bn="frame"
-			class="p-[15px]"
 			style={[
 				{
 					width: `${extra?.width ?? defaultWidth}px`,
@@ -127,7 +133,7 @@ function roastFrame(
 		>
 			<div
 				data-bn="glass"
-				class="overflow-hidden rounded-[12px]"
+				class="overflow-hidden"
 				style={[
 					ownGlass(extra, {
 						background: `rgba(255,255,255,${glass})`,
@@ -154,7 +160,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		return (
 			<div
 				data-bn="frame"
-				class="h-auto p-3.75"
+				class="h-auto"
 				style={[
 					ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
 					extra?.frame,
@@ -162,7 +168,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			>
 				<div
 					data-bn="glass"
-					class="overflow-hidden rounded-xl"
+					class="overflow-hidden"
 					style={`${ownGlassText(
 						extra,
 						`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`,
@@ -179,7 +185,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		return (
 			<div
 				data-bn="frame"
-				class="h-auto p-[15px]"
+				class="h-auto"
 				style={[
 					{
 						...ownBg(extra, () => frameBg(p.backgroundImage, p.cardColorStart, p.cardColorEnd)),
@@ -190,7 +196,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			>
 				<div
 					data-bn="glass"
-					class="w-full overflow-hidden rounded-[12px]"
+					class="w-full overflow-hidden"
 					style={`${ownGlassText(
 						extra,
 						`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;`,
@@ -207,7 +213,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		return (
 			<div
 				data-bn="frame"
-				class="flex justify-center items-center w-[290px] p-[15px]"
+				class="flex justify-center items-center"
 				style={[
 					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
 					extra?.frame,
@@ -215,7 +221,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			>
 				<div
 					data-bn="glass"
-					class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
+					class="flex flex-col items-center"
 					style={[
 						ownGlass(extra, {
 							background: `rgba(255,255,255,${glass})`,
@@ -235,7 +241,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		return (
 			<div
 				data-bn="frame"
-				class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
+				class="flex justify-center items-center"
 				style={[
 					ownBg(extra, () => frameBg(p.backgroundImage, p.bgColor[0], p.bgColor[1])),
 					extra?.frame,
@@ -243,7 +249,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 			>
 				<div
 					data-bn="glass"
-					class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
+					class="flex items-center"
 					style={[
 						ownGlass(extra, {
 							background: `rgba(255,255,255,${glass})`,
@@ -264,7 +270,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 	wordcloud: (p, children, extra) => (
 		<div
 			data-bn="frame"
-			class="h-auto p-[15px]"
+			class="h-auto"
 			style={[
 				ownBg(extra, () => `linear-gradient(to right bottom, ${p.colorStart}, ${p.colorEnd})`),
 				extra?.frame,
@@ -272,7 +278,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		>
 			<div
 				data-bn="glass"
-				class="overflow-hidden rounded-[12px]"
+				class="overflow-hidden"
 				style={`${ownGlassText(
 					extra,
 					"background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);",
