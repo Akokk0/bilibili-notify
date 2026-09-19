@@ -976,7 +976,11 @@ export default function Cards() {
 				}
 			/>
 
-			<div className="grid gap-3.5 xl:grid-cols-[220px_380px_minmax(0,1fr)]">
+			{/* 中间那栏 440 而不是 380(2026-09-19 主人:「又被挤占了」):旋钮那节的标签列吃掉
+			    160px,剩给控件的才是真正要摆字体选择器、图廊、滑杆的地方 —— 380 时它只有 180,
+			    上传按钮与它旁边那句说明挤成一团。预览那栏是 1fr 且卡片按 object-contain 缩放,
+			    让出这 60px 只是卡片画小一点。 */}
+			<div className="grid gap-3.5 xl:grid-cols-[220px_440px_minmax(0,1fr)]">
 				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 + 预览的卡片种类 */}
 				<SectionNav
 					heading="卡片样式"

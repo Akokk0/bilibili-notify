@@ -75,8 +75,12 @@ function Row({
 				aria-pressed={active}
 				className="flex min-w-0 flex-1 flex-col items-start text-left"
 			>
+				{/* `w-full` 不能省:外面那层是 `flex-col items-start`,交叉轴上的孩子按内容宽
+				    摆,而 `truncate` 的 `white-space:nowrap` 让内容宽等于整行文字 —— 于是
+				    长字体名不但不省略,还会顶到右边那颗删除钮底下(主人截图里 HYZhengYuan
+				    那行)。宽度钉成父级的,省略号才有机会出场。 */}
 				<span
-					className={`truncate text-bn-sm font-bold ${
+					className={`w-full truncate text-bn-sm font-bold ${
 						active ? "text-bn-pink" : "text-bn-text-primary"
 					}`}
 				>
@@ -202,12 +206,17 @@ export function FontPicker({
 				</HintNote>
 			) : null}
 
-			<div className="flex items-center gap-2">
+			{/* `flex-wrap` + 按钮 `shrink-0`(2026-09-19):这两件事缺一不可。旁边那句说明的
+			    自然宽约 450px,而这一栏只有两百来宽 —— 两个都可收缩时按 flex 的比例算,按钮
+			    分到的只剩十几 px,四个字竖着排一列(主人真机上逮到的)。`shrink-0` 让按钮永远
+			    是内容宽,`flex-wrap` 让说明在摆不下时整句换到下一行去铺开,而不是挤在按钮旁边
+			    的一条窄缝里。**光把栏加宽治不好**:按比例收缩下,栏加 60px 按钮也才涨 9px。 */}
+			<div className="flex flex-wrap items-center gap-2">
 				<AddFileButton
 					accept=".woff2,.woff,.ttf,.otf"
 					uploading={uploading}
 					onFile={onFile}
-					className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-bn-xs font-bold"
+					className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-bn-xs font-bold"
 				>
 					<Icon.plus size={13} />
 					上传字体
