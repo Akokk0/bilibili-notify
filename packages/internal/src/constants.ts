@@ -52,16 +52,22 @@ export type ExtraKey = (typeof EXTRA_KEYS)[number];
  * 在动态与开播下的出厂值本就不同(动态 OFF、开播 ON),走二维(`extras[附加项][主特性]`)
  * 的话还得再开一层「同一把键在不同特性下默认不同」。
  *
- * 表里只放代码真读的这三样。**排在本体前还是后、等不等它算完,归各自的发送路**
+ * `capability` 是这把附加项对**平台能力**的要求(ADR-0016 决策 4 的「有没有平台限制」):
+ * 填了就表示目标平台不报这项能力时这把附加项发不出去 —— 面板据此禁用它的开关,推送层
+ * 据此跳过。⚠️ 这是能力面,与配置面的三态无关:用户关不掉、也开不了它。不填 = 无限制,
+ * 词云 / 总结就是普通消息,哪个平台都发得出去。**别拿 `label` 去判这件事** —— 那是
+ * 显示文案,改一次措辞守卫就静默失效。
+ *
+ * 表里只放代码真读的这几样。**排在本体前还是后、等不等它算完,归各自的发送路**
  * (@全体 在推送层排本体前且不 await;词云 / 总结是直播引擎算完后另发的两次广播)——
  * 见 ADR-0016 决策 4。抄进这张表只会变成没人读的死数据。
  */
 export const PUSH_EXTRAS: Record<
 	ExtraKey,
-	{ feature: FeatureKey; label: string; default: boolean }
+	{ feature: FeatureKey; label: string; default: boolean; capability?: "atAll" }
 > = {
-	atAllDynamic: { feature: "dynamic", label: "@全体", default: false },
-	atAllLive: { feature: "live", label: "@全体", default: true },
+	atAllDynamic: { feature: "dynamic", label: "@全体", default: false, capability: "atAll" },
+	atAllLive: { feature: "live", label: "@全体", default: true, capability: "atAll" },
 	wordcloud: { feature: "liveEnd", label: "弹幕词云", default: true },
 	liveSummary: { feature: "liveEnd", label: "AI 总结", default: true },
 };
