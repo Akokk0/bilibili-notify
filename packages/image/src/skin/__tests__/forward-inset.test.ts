@@ -1,7 +1,7 @@
 /**
  * **转发框里那张内层卡跟着皮肤走**(ADR-0014「仍未决」里记的那条)。
  *
- * 一条转发动态在卡上是**两张卡套在一起**:外层是转发者,转发框(`[data-bn="forward"]`)
+ * 一条转发动态在卡上是**两张卡套在一起**:外层是转发者,转发框(`[data-bn="bubble"]`)
  * 里是原动态。外层早就按皮肤的网格装了,内层却一直走旧的一维竖栈 —— 而且因为全仓已经
  * 没人往 props 里传 `layout`,它实际是**钉死在出厂默认版式**上:换皮肤不跟,连迁移过自己
  * v7 版式的存量用户也拿不回来。
@@ -19,7 +19,6 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
 import type { DynamicCardProps } from "../../templates/dynamic-card";
 import { renderSkinnedCard } from "../render-skin";
 
@@ -52,19 +51,21 @@ async function render(blocks: CardSkinCard["blocks"]): Promise<Document> {
 	return new JSDOM(await renderToString(createSSRApp({ render: () => vnode }))).window.document;
 }
 
-/** 转发框里那一层的块名(按文档序)。 */
-function innerLabels(doc: Document): string[] {
-	const inset = doc.querySelector(`[class="${FORWARD_INSET_CLASS}"]`);
-	if (!inset) throw new Error("这张卡上没有转发框");
-	return [...inset.querySelectorAll("[data-block]")].map(
-		(el) => el.getAttribute("data-block") ?? "",
-	);
-}
-
+/**
+ * 这张卡上的转发框。`forward` 原子块的根**就是**那个框,它挂着自己的根挂点 `bubble`
+ * (框的样子写在默认皮肤这个挂点的规则里),所以按挂点认。
+ */
 function inner(doc: Document): Element {
-	const inset = doc.querySelector(`[class="${FORWARD_INSET_CLASS}"]`);
+	const inset = doc.querySelector('[data-bn="bubble"]');
 	if (!inset) throw new Error("这张卡上没有转发框");
 	return inset;
+}
+
+/** 转发框里那一层的块名(按文档序)。 */
+function innerLabels(doc: Document): string[] {
+	return [...inner(doc).querySelectorAll("[data-block]")].map(
+		(el) => el.getAttribute("data-block") ?? "",
+	);
 }
 
 describe("转发框里的内层卡 — 跟着皮肤走", () => {

@@ -103,9 +103,13 @@ describe("主视频卡 —— 封面作为主体", () => {
 
 	it("时长角标自己衬一层深色底,封面不再整张压暗", async () => {
 		const html = await videoCardHtml();
-		expect(html).toContain("16:07");
-		// 封面右下角是什么颜色由 UP 决定,亮底上纯白字加阴影会糊没 —— 与关联视频小卡同款处理。
-		expect(html).toMatch(/<span class="[^"]*bg-black\/[^"]*"[^>]*>16:07<\/span>/);
+		// 角标只画自己(渲染器一个 class 都不带),深色底与白字住在出厂默认皮肤这一块的
+		// `pill` 规则里(决策 7 的 2026-09-19 🔗)。封面右下角是什么颜色由 UP 决定,亮底上
+		// 纯白字加阴影会糊没 —— 与关联视频小卡同款处理。
+		expect(html).toContain('<span data-bn="pill">16:07</span>');
+		const pill = /\.bn-blk-video-duration \[data-bn~="pill"\]\{([^}]*)\}/.exec(html)?.[1] ?? "";
+		expect(pill, "默认皮肤没给时长角标写底色").toContain("background:rgba(0,0,0,.6)");
+		expect(pill).toContain("color:#fff");
 		// 主体封面整张压暗会让卡片发灰:角标既然自带底,这层遮罩就没有存在理由了。
 		expect(html).not.toContain("inset-0 bg-black/20");
 	});
@@ -157,9 +161,9 @@ describe("主视频卡 —— 封面作为主体", () => {
 	it("这张卡独有的类名真的生成了 CSS 规则,没被 Fragment 锚点吞掉", async () => {
 		const html = await videoCardHtml();
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
-		// 只挑**不含小数点**的:下面那个转义只管方括号,`leading-[1.4]` 的点在 CSS 里也是
-		// 转义的(`.leading-\\[1\\.4\\]`),对不上。
-		for (const cls of ["px-[6px]", "rounded-[4px]", "gap-[4px]"]) {
+		// 外观类整批搬进皮肤之后(决策 7 的 2026-09-19 🔗),这张卡自己剩下的只有结构类;
+		// `line-clamp-2` 是其中唯一只长在这张卡上的一个(标题与简介各一处)。
+		for (const cls of ["line-clamp-2"]) {
 			const selector = `.${cls.replace(/[[\]]/g, (c) => `\\${c}`)}`;
 			expect(
 				css.includes(`${selector}{`) || css.includes(`${selector},`),

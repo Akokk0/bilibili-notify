@@ -12,7 +12,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FORWARD_INSET_CLASS } from "@bilibili-notify/image";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { renderSkinPreviewHtml } from "../preview-html.js";
@@ -27,6 +26,9 @@ beforeEach(async () => {
 	await store.init();
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
+
+/** 转发框:`forward` 原子块自己的根,挂着根挂点 `bubble`。 */
+const FORWARD_BUBBLE = 'data-bn="bubble"';
 
 /** 一套动态卡皮肤:一个写着占位符的自定义块 + 正文块(转发框住在正文块里)。 */
 function skinWith(html: string): unknown {
@@ -89,7 +91,7 @@ describe("实时预览 — 示例数据的原始动态真的递到了渲染器",
 
 	it("转发场面:内层那张卡取的是原动态的标题", async () => {
 		const html = await preview(skinWith(PROBE), "forward");
-		const at = html.indexOf(FORWARD_INSET_CLASS);
+		const at = html.indexOf(FORWARD_BUBBLE);
 		expect(at, "这张卡上没有转发框").toBeGreaterThan(-1);
 		const inset = html.slice(at);
 		expect(inset).toContain("探针:【示例视频】");
@@ -102,9 +104,9 @@ describe("实时预览 — 转发场面", () => {
 			preview(skinWith("<div>x</div>"), "forward"),
 			preview(skinWith("<div>x</div>")),
 		]);
-		// 转发框是 `forward` 原子块自己的根,挂点是 self,所以认它的 class 不认挂点。
-		expect(forward).toContain(FORWARD_INSET_CLASS);
-		expect(text).not.toContain(FORWARD_INSET_CLASS);
+		// 转发框是 `forward` 原子块自己的根,挂着根挂点 `bubble`。
+		expect(forward).toContain(FORWARD_BUBBLE);
+		expect(text).not.toContain(FORWARD_BUBBLE);
 	});
 
 	it("回报的 scene 是真正用上的那个 —— 名字不认识时回落到第一个", async () => {

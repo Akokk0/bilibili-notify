@@ -61,8 +61,8 @@ const OPAQUE_HOOKS: ReadonlySet<string> = new Set(["forward"]);
 
 /**
  * 「根就是转发框」的块:与上面 `forward` 挂点同一个理由,里头是一整张内部动态卡。原子块
- * `dynamic.forward` 的根**就是**那个框(它自己是 `self`,根上不挂 `forward`),没有挂点可认,
- * 所以按块名认:只数根上的挂点(应当一个没有),不进子树。
+ * `dynamic.forward` 的根**就是**那个框,它挂的是自己的根挂点 `bubble`(不是 `forward` ——
+ * 那是复合块时代的内部部件名),所以按块名认:只数根上那一个挂点,不进子树。
  */
 const OPAQUE_BLOCKS: ReadonlySet<string> = new Set(["dynamic.forward"]);
 

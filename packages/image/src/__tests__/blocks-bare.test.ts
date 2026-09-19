@@ -21,7 +21,7 @@ import { describe, expect, it } from "vite-plus/test";
 const BLOCKS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "blocks");
 
 /** 已经搬空外观的块文件。 */
-const BARE_FILES = ["live.tsx"];
+const BARE_FILES = ["live.tsx", "dynamic.tsx"];
 
 /**
  * 长得像外观的 class token。列的是 UnoCSS 里会编成外观属性的那些前缀;结构类

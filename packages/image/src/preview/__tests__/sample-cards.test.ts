@@ -12,9 +12,11 @@
 import { readFileSync } from "node:fs";
 import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
 import { renderCardWithSkin } from "../../skin/render-skin";
 import { sampleCard } from "../sample-cards";
+
+/** 转发框:`forward` 原子块自己的根,挂着 `bubble`。 */
+const FORWARD_BUBBLE = 'data-bn="bubble"';
 
 /** 卡外框的挂点(`data-bn="frame"`)—— 画出来的东西至少得有个外框。 */
 const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
@@ -303,10 +305,10 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 
 	it("转发场面里,内层那张卡取的是**原动态**的视频标题", async () => {
 		const html = await probe("forward", "探针:{video.title}");
-		// 转发框是 `forward` 原子块自己的根,挂点是 self —— 按它的 class 找。
+		// 转发框是 `forward` 原子块自己的根,挂着根挂点 `bubble` —— 按它找。
 		// `indexOf` 找不到时是 -1,`slice(-1)` 只剩最后一个字符,失败会伪装成「内容不对」,
 		// 所以先断言真找着了。
-		const at = html.indexOf(FORWARD_INSET_CLASS);
+		const at = html.indexOf(FORWARD_BUBBLE);
 		expect(at, "这张卡上没有转发框").toBeGreaterThan(-1);
 		expect(html.slice(at)).toContain("探针:【示例视频】");
 	});

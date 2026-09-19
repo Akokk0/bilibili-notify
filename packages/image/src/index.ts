@@ -6,8 +6,7 @@ export type { Component, VNode } from "vue";
 // argument because the two `Component` types are unrelated nominally.
 export { h } from "vue";
 // 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
-// 转发框那层 div 的 class —— 它是原子块自己的根,挂点是 self,认框只能认 class。
-export { DYNAMIC_BLOCKS, type DynamicBlockProps, FORWARD_INSET_CLASS } from "./blocks/dynamic";
+export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
 // 卡片外框(根块):模板路径与皮肤路径共用的那两层壳。
 export {
 	type CardPropsByKind,

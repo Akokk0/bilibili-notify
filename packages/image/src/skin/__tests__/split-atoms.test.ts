@@ -15,7 +15,6 @@
 import { type CardSkinKind, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
-import { FORWARD_INSET_CLASS } from "../../blocks/dynamic";
 import { sampleCard } from "../../preview/sample-cards";
 import { renderCardWithSkin } from "../render-skin";
 
@@ -83,11 +82,11 @@ function hooksUnder(el: Element): Set<string> {
 }
 
 describe("动态卡 — topic(话题)", () => {
-	it("画的是话题那一行:图标 + 话题名,根上不挂挂点", async () => {
+	it("画的是话题那一行:图标 + 话题名,根挂着 text", async () => {
 		const root = soleRoot(await renderWith("dynamic", ["topic"]), "topic");
 		expect(root.textContent).toBe("示例话题");
 		expect(root.querySelector("svg")?.getAttribute("aria-label")).toBe("话题");
-		expect(hooksOn(root)).toEqual([]);
+		expect(hooksOn(root)).toEqual(["text"]);
 	});
 
 	it("没有话题的动态 → 整块收起", async () => {
@@ -130,8 +129,9 @@ describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 		expect(soleRoot(html, "videoStats").textContent).not.toContain(AV_TEXT);
 	});
 
-	it("时长角标不自带定位 —— 贴哪个角归皮肤说", async () => {
+	it("时长角标不自带定位 —— 贴哪个角归皮肤说,根挂着 pill", async () => {
 		const root = soleRoot(await renderWith("dynamic", ["videoDuration"], "video"), "videoDuration");
+		expect(hooksOn(root)).toEqual(["pill"]);
 		expect(root.getAttribute("class") ?? "").not.toMatch(/absolute|bottom-|right-/);
 	});
 
@@ -160,10 +160,11 @@ describe("动态卡 — pics(图廊)", () => {
 });
 
 describe("动态卡 — forward(转发框)", () => {
-	it("画的是转发框本身,根上不再挂 forward 挂点", async () => {
+	it("画的是转发框本身,根挂着 bubble(不是复合块时代的 forward)", async () => {
 		const root = soleRoot(await renderWith("dynamic", ["forward"], "forward"), "forward");
-		expect(root.getAttribute("class")).toBe(FORWARD_INSET_CLASS);
-		expect(hooksOn(root)).toEqual([]);
+		expect(root.tagName).toBe("DIV");
+		// 框的样子(灰底 / 圆角 / 左边那道蓝 / zoom)住在默认皮肤这个挂点的规则里,认框认它。
+		expect(hooksOn(root)).toEqual(["bubble"]);
 	});
 
 	it("框里是原动态那张卡,跟着同一份皮肤摆:外层的正文是转发语,框里的是原动态正文", async () => {
@@ -197,7 +198,7 @@ describe("动态卡 — 三个互动数", () => {
 			const icons = root.querySelectorAll('[data-bn="icon"]');
 			expect(icons).toHaveLength(1);
 			expect(icons[0].getAttribute("aria-label")).toBe(label);
-			expect(hooksOn(root)).toEqual([]);
+			expect(hooksOn(root)).toEqual(["text"]);
 		});
 
 		it(`${builtin}:转发框里的原动态没有互动数 → 框里那份收起,外层照画`, async () => {

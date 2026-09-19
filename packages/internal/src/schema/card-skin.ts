@@ -801,6 +801,9 @@ const SC_LINE = part(
 /** 直播卡数据区三件(人气 / 分区 / 粉丝)共用的文字样子。 */
 const DATA_TEXT = part("text", "padding:0 16px;font-size:13px;color:#666");
 
+/** 动态卡互动数三件(转发 / 评论 / 点赞)共用的文字样子 —— 图标跟着 `color` 走。 */
+const STAT_TEXT = part("text", "gap:6px;font-size:13px;color:#999");
+
 /** 通栏一行。 */
 const full = (row: number) => ({ row, column: 1, span: CARD_SKIN_LIMITS.columns });
 
@@ -1004,11 +1007,37 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"avatar",
 					{ row: 1, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding-left:16px;align-self:center`,
+					undefined,
+					part("image", "width:52px;height:52px;border-radius:9999px"),
 				),
-				at("name", { row: 1, column: 2, span: 11 }, `${HEAD};align-self:end`),
-				at("time", { row: 2, column: 2, span: 11 }, `${HEAD};padding-top:3px;align-self:start`),
+				// UP 主名的颜色是数据(大会员粉 / 常规墨色),渲染器注在 `--bn-up-name-color` 里。
+				at(
+					"name",
+					{ row: 1, column: 2, span: 11 },
+					`${HEAD};align-self:end`,
+					undefined,
+					part(
+						"text",
+						"font-size:17px;font-weight:700;line-height:1;color:var(--bn-up-name-color)",
+					),
+				),
+				at(
+					"time",
+					{ row: 2, column: 2, span: 11 },
+					`${HEAD};padding-top:3px;align-self:start`,
+					undefined,
+					part("text", "font-size:12px;color:#999"),
+				),
 				at("divider", full(3), "padding:12px 0", "divider-1", DIVIDER_LINE),
-				at("topic", full(4), "padding:0 16px"),
+				// 话题行:图标跟着 `color` 走(`fill="currentColor"`),所以只写一处颜色。
+				at(
+					"topic",
+					full(4),
+					"padding:0 16px",
+					undefined,
+					part("text", "gap:5px;margin-bottom:8px;font-size:13px;font-weight:700;color:#00AEEC"),
+				),
+				// 正文富文本整段留在渲染器(决策 7 正文「内置块渲染逻辑不动」),这块只排版。
 				at("text", full(5), "padding:0 16px"),
 				// ── 投稿视频那张卡:五块 + 一圈用 CSS 拼出来的灰底容器 ──────────────
 				// 容器不是块(不造隐形底板),而是三段文字**各带一段灰底**、首尾分担圆角;
@@ -1031,14 +1060,31 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					{ row: 11, column: 12, span: 1, z: 1 },
 					`${HEAD};align-self:end;justify-self:end;margin:0 24px 8px 0`,
 					"video-duration",
+					part(
+						"pill",
+						"padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;line-height:1.4",
+					),
 				),
-				at("videoTitle", full(12), `${VIDEO_INSET};padding:12px 12px 0`, "video-title"),
-				at("videoDesc", full(13), `${VIDEO_INSET};padding:6px 12px 0`, "video-desc"),
+				at(
+					"videoTitle",
+					full(12),
+					`${VIDEO_INSET};padding:12px 12px 0`,
+					"video-title",
+					part("text", "font-size:16px;font-weight:700;color:#18191C"),
+				),
+				at(
+					"videoDesc",
+					full(13),
+					`${VIDEO_INSET};padding:6px 12px 0`,
+					"video-desc",
+					part("text", "font-size:12px;color:#999"),
+				),
 				at(
 					"videoStats",
 					full(14),
 					`${VIDEO_INSET};padding:10px 12px 12px;${VIDEO_BOTTOM_RADIUS}`,
 					"video-stats",
+					`${part("text", "gap:12px;font-size:12px;color:#999")}${part("stat", "gap:4px")}`,
 				),
 				// 图廊与视频互斥,**摆在同一片行**(决策 10 的 2026-09-18 🔗)。分开排行号的话
 				// 出图一样,但画布上看「视频投稿」那一场时,图廊那七行就是七行标着「这一场
@@ -1050,12 +1096,25 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 知道两组各属哪一场,出图端不读它。
 				// 图廊前那 8px 是旧正文里跟在文字后面的间距。九图图廊约 400px 高 → 7 行。
 				at("pics", tall(6, 7), "padding:8px 16px 0"),
-				at("forward", full(15), "padding:0 16px"),
-				at("additional", full(16), "padding-top:12px"),
+				// 转发框整个缩到 85%(`zoom`)—— 框里是一整张内层卡,不缩的话两层同字号,
+				// 读不出谁是谁。左边那道蓝与灰底是它作为「引用」的标记。
+				at(
+					"forward",
+					full(15),
+					"padding:0 16px",
+					undefined,
+					part(
+						"bubble",
+						"margin-top:8px;padding:12px 0;border-radius:8px;background:rgba(0,0,0,.04);border-left:5px solid #00AEEC;zoom:.85",
+					),
+				),
+				// 附加卡自己带全套观感(builder 画的),这块只管把它摆进来:上面 12px、
+				// 两边 16px —— 那 16px 从前写在块里的一层壳上。
+				at("additional", full(16), "padding:12px 16px 0"),
 				at("divider", full(17), "padding:12px 0", "divider-2", DIVIDER_LINE),
-				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count"),
-				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count"),
-				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count"),
+				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count", STAT_TEXT),
+				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count", STAT_TEXT),
+				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count", STAT_TEXT),
 			],
 		},
 		sc: {
