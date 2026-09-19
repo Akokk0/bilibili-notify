@@ -765,8 +765,8 @@ export abstract class RoomSessionBase {
 		customLiveSummary: string,
 		pushId: string,
 	): Promise<void> {
-		const wantWordcloud = this.sub.liveEndExtras.wordcloud;
-		const wantSummary = this.sub.liveEndExtras.liveSummary;
+		const wantWordcloud = this.sub.extras.wordcloud;
+		const wantSummary = this.sub.extras.liveSummary;
 		if (!wantWordcloud && !wantSummary) return;
 
 		this.ctx.logger.debug(

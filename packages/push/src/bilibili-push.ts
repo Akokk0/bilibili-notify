@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
 	DeliveryResult,
 	Disposable,
+	ExtraKey,
 	FeatureKey,
 	GlobalDefaults,
 	Logger,
@@ -250,9 +251,9 @@ export class BilibiliPush {
 	 * 停用的既不发也不进可达性重试;一个候选都没有就是「无目标」,回调 `onSend` 落一行。
 	 *
 	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 且 `opts.allowAtAll !== false` 进入):
-	 * - 订阅级默认 `sub.atAllDefaults.X` 决定 inherit-state 的 target 是否 @
-	 * - per-target tristate Map `sub.atAll.X[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
-	 * - Map 里没有该 key → 走默认
+	 * - 全局 + per-UP 合并后的 `eff.features.extras.atAll<Scope>` 决定 inherit-state 的 target 是否 @
+	 * - per-target tristate Map `sub.extras.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
+	 * - Map 里没有该 key → 走上面那个默认
 	 * - 目标平台不支持 @全体(`platformSupportsAtAll`,今天只有 QQ 官方机器人)→ 一律不 @,
 	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
@@ -320,22 +321,23 @@ export class BilibiliPush {
 
 		// 默认(opts 不传 / allowAtAll 非显式 false)= 按 feature 决定,保持旧行为。
 		// 调用方显式传 false 时强制不 @全体(周期「正在直播」等非开播的 live 推送)。
-		const atAllScope =
+		const atAllKey: ExtraKey | null =
 			opts?.allowAtAll === false
 				? null
 				: feature === "dynamic"
-					? "dynamic"
+					? "atAllDynamic"
 					: feature === "live"
-						? "live"
+						? "atAllLive"
 						: null;
 
 		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
-		if (!atAllScope) {
+		if (!atAllKey) {
 			return this.sendBatch(targetIds, payloads, ctx);
 		}
 
-		const defaultOn = sub.atAllDefaults[atAllScope];
-		const overrides = sub.atAll[atAllScope];
+		// 默认取**折叠后**那一份(全局 + per-UP 覆盖已合并);per-target 三态表挂在订阅上。
+		const defaultOn = eff.features.extras[atAllKey];
+		const overrides = sub.extras[atAllKey];
 		const atAllTargets: string[] = [];
 		const plainTargets: string[] = [];
 		for (const id of targetIds) {

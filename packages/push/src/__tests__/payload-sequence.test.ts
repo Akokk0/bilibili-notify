@@ -24,7 +24,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, silentLogger } from "./helpers";
+import { pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;
@@ -91,7 +91,7 @@ const T2 = "22222222-2222-4222-8222-222222222222";
 function subWithTargets(targets: string[], atAllLiveDefault = false): Subscription {
 	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 	sub.routing.dynamic = [...targets];
-	sub.atAllDefaults.dynamic = atAllLiveDefault;
+	setExtraDefault(sub, "atAllDynamic", atAllLiveDefault);
 	return sub;
 }
 

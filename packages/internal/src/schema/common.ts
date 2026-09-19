@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATES, FEATURE_KEYS, LIVE_END_EXTRA_KEYS } from "../constants";
+import { DEFAULT_TEMPLATES, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
 
-export type { FeatureKey, LiveEndExtraKey, LiveEndExtras } from "../constants";
+export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
@@ -14,7 +14,7 @@ import {
 	WEB_SEARCH_BACKEND_IDS,
 } from "../constants";
 
-export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS, LIVE_END_EXTRA_KEYS } from "../constants";
+export { DEFAULT_FEATURE_FLAGS, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
 
 /** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
@@ -25,64 +25,110 @@ const UserRegexString = z.string().superRefine((src, ctx) => {
 /** 全部可订阅的特性键(键列表本体在 ../constants)。 */
 export const FeatureKeySchema = z.enum(FEATURE_KEYS);
 
-/** 下播的两个附加项(词云 / AI 总结)。没有自己的路由,只跟着下播的开关与目标走。 */
-export const LiveEndExtrasSchema = z.object({
-	wordcloud: z.boolean(),
-	liveSummary: z.boolean(),
-});
-
 /**
- * 老 features 的形状:词云 / 总结曾是两把独立的特性键(各有开关、各有路由),平铺在顶层。
- * 顶层还带着这两把键就是老数据 —— 新形状把它们收进 `liveEndExtras`,顶层不会再出现。
+ * 四把附加项的开关(ADR-0016)。键表与出厂值的本体在 `../constants` 的 `PUSH_EXTRAS` ——
+ * 这里只把它翻成 schema,加一把附加项不用改这儿。
+ *
+ * 四把都必填:这是**全局**那一层。per-UP 覆盖用它的 `.partial()`(见下面的
+ * `FeatureFlagsPartialSchema`)—— 那一层缺席才有「继承上一层」的意思,所以单键**不给
+ * 默认值**:给了的话 `.partial()` 出来的覆盖会被填满,把全局值一并盖掉。
  */
-function hasLegacyExtras(raw: object): raw is Record<string, unknown> {
-	return LIVE_END_EXTRA_KEYS.some((k) => k in raw);
+export const PushExtrasSchema = z.object(
+	Object.fromEntries(EXTRA_KEYS.map((k) => [k, z.boolean()])) as {
+		[K in (typeof EXTRA_KEYS)[number]]: z.ZodBoolean;
+	},
+);
+
+// ── 附加项的两代老数据 ───────────────────────────────────────────────────────
+//
+// 这两把键是**私有**的:导出去等于给「下播的两个附加项」这个已经退役的概念留一个对外
+// 名字,而它今天只剩认老数据这一个用处。@全体 那两把当年不住在 features 上(住在订阅的
+// `atAllDefaults`),它们的迁移在 subscriptions.ts。
+
+/** 第一代 / 第二代里住在 features 上的那两把附加项。 */
+const LEGACY_LIVE_END_EXTRA_KEYS = ["wordcloud", "liveSummary"] as const;
+
+function isPlainObject(raw: unknown): raw is Record<string, unknown> {
+	return typeof raw === "object" && raw !== null && !Array.isArray(raw);
 }
 
-function pickExtras(raw: Record<string, unknown>): Record<string, unknown> {
-	const extras: Record<string, unknown> = {};
-	for (const k of LIVE_END_EXTRA_KEYS) if (k in raw) extras[k] = raw[k];
-	return extras;
+/**
+ * **第一代**(0.10.0 之前)的形状:词云 / 总结各是一把独立的特性键(各有开关、各有路由),
+ * 平铺在 features 顶层。顶层还带着这两把键就是第一代。
+ */
+function hasLegacyTopLevelExtras(raw: Record<string, unknown>): boolean {
+	return LEGACY_LIVE_END_EXTRA_KEYS.some((k) => k in raw);
+}
+
+/** 两代老数据里这两把附加项**真写过**的值:顶层平铺的,以及 `liveEndExtras` 里的。 */
+function pickLegacyExtras(raw: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const k of LEGACY_LIVE_END_EXTRA_KEYS) if (k in raw) out[k] = raw[k];
+	const nested = raw.liveEndExtras;
+	if (isPlainObject(nested)) {
+		for (const k of LEGACY_LIVE_END_EXTRA_KEYS) if (k in nested) out[k] = nested[k];
+	}
+	return out;
 }
 
 function stripLegacyExtras(raw: Record<string, unknown>): Record<string, unknown> {
-	const { wordcloud: _w, liveSummary: _s, ...rest } = raw;
+	const { wordcloud: _w, liveSummary: _s, liveEndExtras: _n, ...rest } = raw;
 	return rest;
 }
 
 /**
- * 全局 features 的迁移:下播开关 = 旧下播 ∨ 词云 ∨ 总结,两个子项照旧值。
+ * 全局 features 的迁移 —— 认**两代**老数据:
  *
- * 只开了词云 / 总结、没开下播的人,迁完会多收一张下播卡 —— 「宁可多收一张卡,不能少掉
- * 一条推送」,CHANGELOG 有 ⚠️ 说明。新形状(已有 `liveEndExtras`)一律不动:关掉下播、
- * 子项留着开,下次加载不会被翻回来。
+ * - **第一代**(0.10.0 之前,顶层平铺):下播开关 = 旧下播 ∨ 词云 ∨ 总结,两把附加项照旧值。
+ *   只开了词云 / 总结、没开下播的人,迁完会多收一张下播卡 ——「宁可多收一张卡,不能少掉
+ *   一条推送」,CHANGELOG 有 ⚠️ 说明。
+ * - **第二代**(0.10.0 到 ADR-0016 之前,`liveEndExtras` 小对象):改个名搬进 `extras`,
+ *   下播开关**不动** —— 那一代的下播开关已经是新语义了。
+ *
+ * 两代都没有的那两把 @全体 补出厂默认:它们当年住在订阅的 `atAllDefaults` 上(per-UP 的值,
+ * 见 subscriptions.ts 的迁移),全局这一层是这次新长出来的,出厂值照 `PUSH_EXTRAS`。
+ *
+ * 新形状(已有 `extras`)一律不动:关掉下播、附加项留着开,下次加载不会被翻回来。
  */
 function migrateLegacyFeatureFlags(raw: unknown): unknown {
-	if (typeof raw !== "object" || raw === null || !hasLegacyExtras(raw)) return raw;
-	const legacy = LIVE_END_EXTRA_KEYS.map((k) => raw[k]);
-	return {
-		...stripLegacyExtras(raw),
-		liveEnd: raw.liveEnd === true || legacy.includes(true),
-		liveEndExtras: pickExtras(raw),
-	};
+	if (!isPlainObject(raw)) return raw;
+	const gen1 = hasLegacyTopLevelExtras(raw);
+	if (!gen1 && !("liveEndExtras" in raw)) return raw;
+	const picked = pickLegacyExtras(raw);
+	const extras: Record<string, unknown> = {};
+	for (const k of EXTRA_KEYS) extras[k] = k in picked ? picked[k] : PUSH_EXTRAS[k].default;
+	const out: Record<string, unknown> = { ...stripLegacyExtras(raw), extras };
+	if (gen1) {
+		out.liveEnd = raw.liveEnd === true || LEGACY_LIVE_END_EXTRA_KEYS.some((k) => raw[k] === true);
+	}
+	return out;
 }
 
 /**
- * per-UP 覆盖(partial)的迁移。覆盖是稀疏的,拿不到全局值,只能就地判:
+ * per-UP 覆盖(partial)的迁移。覆盖是稀疏的,拿不到全局值,只能就地判 —— 只对**第一代**
+ * (或 `force`)做下播开关的推断:
  * - 三者有一个显式 true → `liveEnd: true`(不管全局怎样,这位 UP 以前一定收得到东西)
  * - 三者都显式 false → `liveEnd: false`(以前什么都收不到,现在也是)
  * - 其余(有的关、有的没写)→ 不写 liveEnd,继承全局。全局迁完只会更宽,顶多多收一张卡
  *
- * 单看一份 partial,只有 `{ liveEnd: false }` 分不出新老;整条订阅能看 routing 的形状,
- * 认出是老的就传 `force` 让这份覆盖也按老规矩迁(见 subscriptions.ts)。
+ * 第二代只改名(`liveEndExtras` → `extras`),下播开关不碰。稀疏这一点也贯彻到附加项:
+ * 只搬老数据里真写过的那几把,没写过的**不补默认** —— 补了就等于凭空长出一份覆盖。
+ *
+ * 单看一份 partial,只有 `{ liveEnd: false }` 分不出第一代与新形状;整条订阅能看 routing
+ * 的形状,认出是第一代就传 `force` 让这份覆盖也按老规矩迁(见 subscriptions.ts)。
  */
 export function migrateLegacyFeatureFlagsPartial(raw: unknown, force = false): unknown {
-	if (typeof raw !== "object" || raw === null) return raw;
-	if (!force && !hasLegacyExtras(raw)) return raw;
-	const r = raw as Record<string, unknown>;
-	const trio = [r.liveEnd, ...LIVE_END_EXTRA_KEYS.map((k) => r[k])];
-	const { liveEnd: _l, ...rest } = stripLegacyExtras(r);
-	const out: Record<string, unknown> = { ...rest, liveEndExtras: pickExtras(r) };
+	if (!isPlainObject(raw)) return raw;
+	const gen1 = hasLegacyTopLevelExtras(raw);
+	if (!force && !gen1 && !("liveEndExtras" in raw)) return raw;
+	const already = isPlainObject(raw.extras) ? raw.extras : {};
+	const stripped = stripLegacyExtras(raw);
+	const extras = { ...already, ...pickLegacyExtras(raw) };
+	// 第二代只改名:`liveEnd` 已经是新语义,原样留着。
+	if (!gen1 && !force) return { ...stripped, extras };
+	const trio = [raw.liveEnd, ...LEGACY_LIVE_END_EXTRA_KEYS.map((k) => raw[k])];
+	const { liveEnd: _l, ...rest } = stripped;
+	const out: Record<string, unknown> = { ...rest, extras };
 	if (trio.includes(true)) out.liveEnd = true;
 	else if (trio.every((v) => v === false)) out.liveEnd = false;
 	return out;
@@ -96,12 +142,12 @@ const FeatureFlagsObjectSchema = z.object({
 	superchat: z.boolean(),
 	specialDanmaku: z.boolean(),
 	specialUserEnter: z.boolean(),
-	liveEndExtras: LiveEndExtrasSchema,
+	extras: PushExtrasSchema,
 });
 
 /**
- * 每个特性的开关 + 下播的两个附加项。使用显式 object 而非 z.record(boolean) 是为了让
- * inherit-merge 时类型保留键名。老形状(词云 / 总结平铺在顶层)在这里就地迁成新形状。
+ * 每个特性的开关 + 四个附加项。使用显式 object 而非 z.record(boolean) 是为了让
+ * inherit-merge 时类型保留键名。两代老形状在这里就地迁成新形状。
  */
 export const FeatureFlagsSchema = z.preprocess(migrateLegacyFeatureFlags, FeatureFlagsObjectSchema);
 export type FeatureFlags = z.infer<typeof FeatureFlagsObjectSchema>;
@@ -114,7 +160,7 @@ export const FeatureFlagsPartialSchema = z.preprocess(
 	// 包一层:zod 给 preprocess 传的第二个参数是 ctx,直接传函数会把它当成 `force`。
 	(raw) => migrateLegacyFeatureFlagsPartial(raw),
 	FeatureFlagsObjectSchema.partial().extend({
-		liveEndExtras: LiveEndExtrasSchema.partial().optional(),
+		extras: PushExtrasSchema.partial().optional(),
 	}),
 );
 export type FeatureFlagsPartial = z.infer<typeof FeatureFlagsPartialSchema>;

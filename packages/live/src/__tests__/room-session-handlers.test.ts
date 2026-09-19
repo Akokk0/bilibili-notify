@@ -38,7 +38,7 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		liveEndExtras: { wordcloud: false, liveSummary: false },
+		extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -169,7 +169,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(
 			ctx,
-			makeSub({ liveEnd: true, liveEndExtras: { wordcloud: true, liveSummary: false } }),
+			makeSub({
+				liveEnd: true,
+				extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false },
+			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.recordDanmaku).toHaveBeenCalledTimes(1);

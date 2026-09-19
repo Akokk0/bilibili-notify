@@ -11,7 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardKind, MessageKindLayout } from "@bilibili-notify/internal";
+import type { CardKind, ExtraKey, MessageKindLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
@@ -61,17 +61,15 @@ export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
 ];
 
 /**
- * 下播的两个附加项(词云 / AI 总结):像开播的 @全体,挂在下播下面,跟着下播的开关与目标走。
- * 卡片先发,它们算好后作为同一次推送的后续消息追加。
+ * 附加项的开关(ADR-0016):挂在某把主特性下面、与本体分开发的一条消息。引擎只关心下播
+ * 那两把(词云 / AI 总结)—— 卡片先发,它们算好后作为同一次推送的后续消息追加;@全体
+ * 那两把归推送层。发不发给谁也归推送层,引擎照渲照算。
  */
-export interface LiveEndExtrasLike {
-	wordcloud: boolean;
-	liveSummary: boolean;
-}
+export type PushExtrasLike = Record<ExtraKey, boolean>;
 
-/** 这位 UP 要不要采集弹幕:下播开着,且至少一个附加项开着。 */
+/** 这位 UP 要不要采集弹幕:下播开着,且下播那两个附加项至少一个开着。 */
 export function wantsLiveEndExtras(sub: SubItemView): boolean {
-	return sub.liveEnd && (sub.liveEndExtras.wordcloud || sub.liveEndExtras.liveSummary);
+	return sub.liveEnd && (sub.extras.wordcloud || sub.extras.liveSummary);
 }
 
 /** Sub-level customisation blocks copied from `@bilibili-notify/push`. */
@@ -157,8 +155,8 @@ export interface SubItemView {
 	liveEnd: boolean;
 	liveGuardBuy: boolean;
 	superchat: boolean;
-	/** 见 {@link LiveEndExtrasLike}。宿主折叠 `eff.features.liveEndExtras` 后填入。 */
-	liveEndExtras: LiveEndExtrasLike;
+	/** 见 {@link PushExtrasLike}。宿主折叠 `eff.features.extras` 后整份填入。 */
+	extras: PushExtrasLike;
 	target: SubItemTargetLike;
 	customCardStyle: CustomCardStyleLike;
 	/**
@@ -225,7 +223,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "liveEnd"
 		| "liveGuardBuy"
 		| "superchat"
-		| "liveEndExtras"
+		| "extras"
 		| "uname"
 		| "roomId"
 		| "customCardStyle"

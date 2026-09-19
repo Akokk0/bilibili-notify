@@ -8,7 +8,7 @@
  *   - 无订阅 / 无 routing 不调 sink
  *   - features=false 总开关短路(配 defaults provider 时)
  *   - quietHours 命中时不发
- *   - atAll 修饰仅作用于 dynamic / live,且按 atAllDefaults + tristate 覆写决定
+ *   - atAll 修饰仅作用于 dynamic / live,且按折叠后的 extras 默认 + tristate 覆写决定
  *   - onSend 回调每个 target 触发一次,target 字段填
  */
 
@@ -27,7 +27,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, silentLogger } from "./helpers";
+import { pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;
@@ -115,7 +115,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("routing 命中两个 target → sink.send 调两次", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1", "t2"];
-		sub.atAllDefaults.live = false; // 排除 @全体 路径的额外 send 调用,只验证路由
+		setExtraDefault(sub, "atAllLive", false); // 排除 @全体 路径的额外 send 调用,只验证路由
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -189,10 +189,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(calls.length).toBeGreaterThan(0);
 	});
 
-	it("atAllDefaults.dynamic=true → @全体单独一条 + 原 payload 两条独立消息", async () => {
+	it("extras.atAllDynamic 默认为 true → @全体单独一条 + 原 payload 两条独立消息", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
-		sub.atAllDefaults.dynamic = true;
+		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -215,8 +215,8 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("atAll tristate 覆写:per-target false 强 OFF + 顺序 plain → @全体 → 原 payload", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1", "t2"];
-		sub.atAllDefaults.live = true;
-		sub.atAll.live = { t1: false }; // 显式关 t1 的 @全体,t2 走 default=true
+		setExtraDefault(sub, "atAllLive", true);
+		sub.extras.atAllLive = { t1: false }; // 显式关 t1 的 @全体,t2 走 default=true
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -246,7 +246,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// 却一直显示为关、还写着「发送时会自动跳过」。
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
-		sub.atAllDefaults.live = true;
+		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink({ platform: "qq-official" });
 		const seen: PushSendInfo[] = [];
 		const push = new BilibiliPush({
@@ -265,11 +265,11 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["main"]);
 	});
 
-	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=live 且 atAllDefaults.live=true(本次 bug 修复:周期「正在直播」)", async () => {
+	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=live 且 extras.atAllLive 默认为 true(本次 bug 修复:周期「正在直播」)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1", "t2"];
-		sub.atAllDefaults.live = true;
-		sub.atAll.live = { t1: true }; // 即便 per-target 显式 true 也得被抑制
+		setExtraDefault(sub, "atAllLive", true);
+		sub.extras.atAllLive = { t1: true }; // 即便 per-target 显式 true 也得被抑制
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -292,7 +292,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		const mk = () => {
 			const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 			sub.routing.live = ["t1"];
-			sub.atAllDefaults.live = true;
+			setExtraDefault(sub, "atAllLive", true);
 			return sub;
 		};
 		const assertAtAllThenPayload = (calls: SendCall[]) => {
@@ -340,7 +340,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("@全体 单独一条 → composite [image,text] 原 payload 第二条(live)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
-		sub.atAllDefaults.live = true;
+		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -372,7 +372,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("@全体 单独一条对 dynamic 同样生效(共用 broadcastToFeature 分支)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
-		sub.atAllDefaults.dynamic = true;
+		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -400,7 +400,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("@全体 单独一条:image+caption / text-only 原 payload 都保持原样不变", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
-		sub.atAllDefaults.live = true;
+		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -438,7 +438,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// 合并转发节点跟外层独立 @全体 不冲突,一视同仁两条发出,@ 提醒在前。
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
-		sub.atAllDefaults.dynamic = true;
+		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -462,10 +462,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(calls[1].payload.kind).toBe("forward-images");
 	});
 
-	it("非 dynamic / live 的 feature 不进入 atAll 分支(superchat 即使 atAllDefaults=true)", async () => {
+	it("非 dynamic / live 的 feature 不进入 atAll 分支(superchat 即使 extras.atAllDynamic=true)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.superchat = ["t1"];
-		sub.atAllDefaults.dynamic = true; // 无效字段,不应影响 superchat
+		setExtraDefault(sub, "atAllDynamic", true); // 无效字段,不应影响 superchat
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -484,7 +484,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// @全体 best-effort 即发不 await,卡片不再被它拖住。
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
-		sub.atAllDefaults.live = true;
+		setExtraDefault(sub, "atAllLive", true);
 		const calls: SendCall[] = [];
 		const isAtAll = (p: NotificationPayload) =>
 			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";

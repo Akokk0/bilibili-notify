@@ -30,26 +30,28 @@ import {
 	DEFAULT_FEATURE_FLAGS,
 	DEFAULT_ROAST_SCHEDULE,
 	defaultConnectorFor,
+	EXTRA_KEYS,
+	type ExtraKey,
 	FEATURE_KEYS,
 	type FeatureKey,
 	isTargetPaused,
 	isWebhookConnection,
-	LIVE_END_EXTRA_KEYS,
-	type LiveEndExtraKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PLATFORM_REGISTRY,
+	PUSH_EXTRAS,
 } from "@bilibili-notify/internal/constants";
 
-export type { FeatureKey, LiveEndExtraKey };
+export type { ExtraKey, FeatureKey };
 export {
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
+	EXTRA_KEYS,
 	FEATURE_KEYS,
 	isTargetPaused,
 	isWebhookConnection,
-	LIVE_END_EXTRA_KEYS,
+	PUSH_EXTRAS,
 };
 
 /**
@@ -95,12 +97,6 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	superchat: "SC",
 	specialDanmaku: "特别弹幕",
 	specialUserEnter: "特别用户进房",
-};
-
-/** 下播的两个附加项(像开播的 @全体,挂在下播下面)。 */
-export const LIVE_END_EXTRA_LABELS: Record<LiveEndExtraKey, string> = {
-	wordcloud: "弹幕词云",
-	liveSummary: "AI 总结",
 };
 
 export function webhookUrlPlaceholder(platform: WebhookPlatform): string {
@@ -216,6 +212,13 @@ function emptyRouting(): Subscription["routing"] {
 	return out as Subscription["routing"];
 }
 
+/** 附加项的 per-目标 三态表:四把键各一张空表 = 每个目标都跟随上一层。 */
+function emptyExtras(): Subscription["extras"] {
+	const out: Partial<Subscription["extras"]> = {};
+	for (const k of EXTRA_KEYS) out[k] = {};
+	return out as Subscription["extras"];
+}
+
 export function makeEmptySubscription(uid: string): Subscription {
 	return {
 		id: newId(),
@@ -225,8 +228,7 @@ export function makeEmptySubscription(uid: string): Subscription {
 		notes: undefined,
 		cachedProfile: undefined,
 		routing: emptyRouting(),
-		atAllDefaults: { dynamic: false, live: true },
-		atAll: { dynamic: {}, live: {} },
+		extras: emptyExtras(),
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		// 与服务端的 makeEmptySubscription 保持一致。

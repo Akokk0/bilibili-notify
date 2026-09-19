@@ -30,7 +30,7 @@ function makeSub(): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		liveEndExtras: { wordcloud: false, liveSummary: false },
+		extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },

@@ -22,8 +22,8 @@ import type {
  * 全部可订阅的特性键 —— 每一把都是一类**能单独开关、能配路由**的推送。新增或删除会扩散到
  * FeatureFlags、SubscriptionRouting、Subscription.overrides。
  *
- * 词云与 AI 总结不在这里:它们是下播的两个附加项(见 {@link LIVE_END_EXTRA_KEYS}),
- * 跟着下播的开关与目标走,自己没有路由。
+ * 附加项(@全体 / 词云 / AI 总结)不在这里:它们各自挂在某把主特性下面(见
+ * {@link PUSH_EXTRAS}),跟着那把特性的开关与目标走,自己没有路由。
  */
 export const FEATURE_KEYS = [
 	"dynamic",
@@ -38,17 +38,39 @@ export const FEATURE_KEYS = [
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 /**
- * 下播推送的附加项:像开播的 @全体那样挂在下播下面 —— 下播关了它们一起关,下播推到
- * 哪儿它们就跟到哪儿。卡片本体先发,词云 / 总结算好了作为同一次推送的后续消息追加。
+ * 附加项的键。加一个附加项 = 这里加一行 + {@link PUSH_EXTRAS} 里加一行(ADR-0016 决策 1)。
  */
-export const LIVE_END_EXTRA_KEYS = ["wordcloud", "liveSummary"] as const;
+export const EXTRA_KEYS = ["atAllDynamic", "atAllLive", "wordcloud", "liveSummary"] as const;
 
-export type LiveEndExtraKey = (typeof LIVE_END_EXTRA_KEYS)[number];
+export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
-export type LiveEndExtras = Record<LiveEndExtraKey, boolean>;
+/**
+ * 附加项:挂在某个主特性下面、与本体分开发的一条消息(历史行里 `role: "extra"`)。ADR-0016。
+ *
+ * 主特性关了它们一起关,主特性推到哪儿它们就跟到哪儿(目标是主特性目标的子集)。
+ * 键是**一维**的 —— 每把键自己声明挂在哪把主特性下、面板上叫什么、出厂开不开。@全体
+ * 在动态与开播下的出厂值本就不同(动态 OFF、开播 ON),走二维(`extras[附加项][主特性]`)
+ * 的话还得再开一层「同一把键在不同特性下默认不同」。
+ *
+ * 表里只放代码真读的这三样。**排在本体前还是后、等不等它算完,归各自的发送路**
+ * (@全体 在推送层排本体前且不 await;词云 / 总结是直播引擎算完后另发的两次广播)——
+ * 见 ADR-0016 决策 4。抄进这张表只会变成没人读的死数据。
+ */
+export const PUSH_EXTRAS: Record<
+	ExtraKey,
+	{ feature: FeatureKey; label: string; default: boolean }
+> = {
+	atAllDynamic: { feature: "dynamic", label: "@全体", default: false },
+	atAllLive: { feature: "live", label: "@全体", default: true },
+	wordcloud: { feature: "liveEnd", label: "弹幕词云", default: true },
+	liveSummary: { feature: "liveEnd", label: "AI 总结", default: true },
+};
 
-/** 每个特性的开关 + 下播的两个附加项。schema 本体在 schema/common.ts(`FeatureFlagsSchema`)。 */
-export type FeatureFlagValues = Record<FeatureKey, boolean> & { liveEndExtras: LiveEndExtras };
+/** 四把附加项开关。全局一份、per-UP 一份 partial(schema 见 schema/common.ts)。 */
+export type PushExtras = Record<ExtraKey, boolean>;
+
+/** 每个特性的开关 + 四个附加项。schema 本体在 schema/common.ts(`FeatureFlagsSchema`)。 */
+export type FeatureFlagValues = Record<FeatureKey, boolean> & { extras: PushExtras };
 
 /** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */
 export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
@@ -59,7 +81,8 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	superchat: false,
 	specialDanmaku: false,
 	specialUserEnter: false,
-	liveEndExtras: { wordcloud: true, liveSummary: true },
+	// 出厂值只写在注册表里 —— 两处各抄一份迟早漂。
+	extras: Object.fromEntries(EXTRA_KEYS.map((k) => [k, PUSH_EXTRAS[k].default])) as PushExtras,
 };
 
 /**

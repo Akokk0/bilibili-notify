@@ -30,13 +30,13 @@ function targetFor(platform: PushTarget["platform"]): PushTarget {
 
 /**
  * routing 仅含 dynamic → 该 target「routing 不完整」= 自定义模式,矩阵直接展开(无需
- * 点击),dynamic 行下方挂出 per-target「+ @全体」开关。atAllDefaults.dynamic=true 让
+ * 点击),dynamic 行下方挂出 per-target「+ @全体」开关。per-UP 的 atAllDynamic=true 让
  * 「若平台支持则默认会 @全体」,以验证 QQ 官方仍被强制禁用。
  */
 function customSubFor(targetId: string): Subscription {
 	const sub = makeEmptySubscription("100");
 	sub.routing.dynamic = [targetId];
-	sub.atAllDefaults.dynamic = true;
+	sub.overrides = { features: { extras: { atAllDynamic: true } } };
 	return sub;
 }
 

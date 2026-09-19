@@ -10,6 +10,7 @@ import {
 	DEFAULT_MESSAGE_LAYOUT,
 	type Disposable,
 	deterministicUuid,
+	EXTRA_KEYS,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	isWebhookConnection,
@@ -614,25 +615,17 @@ function removeTargetIdsFromSubscriptions(
 			}
 		}
 
-		const atAll = {
-			dynamic: { ...sub.atAll.dynamic },
-			live: { ...sub.atAll.live },
-		};
-		for (const key of Object.keys(atAll.dynamic)) {
-			if (ids.has(key)) {
-				delete atAll.dynamic[key];
-				subChanged = true;
-			}
-		}
-		for (const key of Object.keys(atAll.live)) {
-			if (ids.has(key)) {
-				delete atAll.live[key];
-				subChanged = true;
-			}
+		// 附加项的 per-目标 三态表跟着 routing 一起清 —— schema 强制它的 key ⊆ 主特性目标。
+		const extras = { ...sub.extras };
+		for (const key of EXTRA_KEYS) {
+			const kept = Object.entries(extras[key]).filter(([id]) => !ids.has(id));
+			if (kept.length === Object.keys(extras[key]).length) continue;
+			extras[key] = Object.fromEntries(kept);
+			subChanged = true;
 		}
 		if (!subChanged) return sub;
 		changed = true;
-		return { ...sub, routing, atAll };
+		return { ...sub, routing, extras };
 	});
 	return { next, changed };
 }
@@ -661,22 +654,23 @@ function replaceTargetIdsInSubscriptions(
 			if (after.length !== before.length || subChanged) routing[key] = after;
 		}
 
-		const atAll = {
-			dynamic: { ...sub.atAll.dynamic },
-			live: { ...sub.atAll.live },
-		};
-		for (const group of [atAll.dynamic, atAll.live]) {
+		const extras = { ...sub.extras };
+		for (const key of EXTRA_KEYS) {
+			const group = { ...extras[key] };
+			let groupChanged = false;
 			for (const [from, to] of aliases) {
 				if (!(from in group)) continue;
 				const value = group[from];
 				if (!(to in group) && value !== undefined) group[to] = value;
 				delete group[from];
+				groupChanged = true;
 				subChanged = true;
 			}
+			if (groupChanged) extras[key] = group;
 		}
 		if (!subChanged) return sub;
 		changed = true;
-		return { ...sub, routing, atAll };
+		return { ...sub, routing, extras };
 	});
 	return { next, changed };
 }

@@ -21,8 +21,7 @@ const SUB = {
 	enabled: true,
 	groups: [],
 	routing: {},
-	atAllDefaults: { dynamic: false, live: true },
-	atAll: { dynamic: {}, live: {} },
+	extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
 	overrides: {},
 	specialUsers: [],
 };

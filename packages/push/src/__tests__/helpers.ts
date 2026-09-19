@@ -1,9 +1,11 @@
 import {
+	type ExtraKey,
 	FEATURE_KEYS,
 	type GlobalDefaults,
 	type Logger,
 	makeDefaultGlobalConfig,
 	type ServiceContext,
+	type Subscription,
 } from "@bilibili-notify/internal";
 
 /** 全部 noop 的 logger,各用例共用这一份。 */
@@ -47,4 +49,13 @@ export function pushBase(): Pick<
 > {
 	const defaults = loopbackDefaults();
 	return { serviceCtx: realTimerCtx(), defaults: () => defaults, muted: () => false };
+}
+
+/**
+ * per-UP 的附加项默认值(ADR-0016):它住在 features 覆盖的 `extras` 里,推送层读的是
+ * 全局 + per-UP 折叠后的那一份。用例写这一层,等于从前的 `sub.atAllDefaults.X = ...`。
+ */
+export function setExtraDefault(sub: Subscription, key: ExtraKey, on: boolean): void {
+	const features = sub.overrides.features ?? {};
+	sub.overrides.features = { ...features, extras: { ...features.extras, [key]: on } };
 }

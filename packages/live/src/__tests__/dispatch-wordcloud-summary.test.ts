@@ -3,13 +3,13 @@
  *
  * 历史:词云+总结曾合包成一次 broadcast(type=5),关词云开总结时总结跟着丢;拆开后
  * 词云走 WordCloudAndLiveSummary=5、总结走 LiveSummary=10。现在两者都是下播的附加项,
- * 由 `sub.liveEndExtras` 门控,用同一个 pushId、标 `role: "extra"` 追加。
+ * 由 `sub.extras` 那两把门控,用同一个 pushId、标 `role: "extra"` 追加。
  */
 
 import type { LiveEvent } from "@bilibili-notify/blive";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { LivePushType, type SubItemView } from "../push-like";
+import { LivePushType, type PushExtrasLike, type SubItemView } from "../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSessionBase } from "../room-session-base";
 
@@ -34,7 +34,12 @@ class TestSession extends RoomSessionBase {
 	}
 }
 
-function makeSub(extras = { wordcloud: true, liveSummary: true }): SubItemView {
+function makeSub(
+	extras: Pick<PushExtrasLike, "wordcloud" | "liveSummary"> = {
+		wordcloud: true,
+		liveSummary: true,
+	},
+): SubItemView {
 	return {
 		uid: "u1",
 		uname: "U1",
@@ -44,7 +49,7 @@ function makeSub(extras = { wordcloud: true, liveSummary: true }): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		liveEndExtras: extras,
+		extras: { atAllDynamic: false, atAllLive: true, ...extras },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },

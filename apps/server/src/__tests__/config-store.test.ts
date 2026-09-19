@@ -435,7 +435,7 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(0);
 	});
 
-	it("deleteTarget 级联清理订阅 routing / atAll 并保持 schema 自洽", async () => {
+	it("deleteTarget 级联清理订阅 routing / extras 并保持 schema 自洽", async () => {
 		const connection = makeOnebotConnection();
 		await store.upsertConnection(connection);
 		const target = {
@@ -462,10 +462,10 @@ describe("ConfigStore", () => {
 		await store.upsertTarget(keptTarget);
 		const sub = makeSampleSubscription("77777");
 		for (const k of FEATURE_KEYS) sub.routing[k] = [target.id, keptTarget.id];
-		sub.atAll.dynamic[target.id] = true;
-		sub.atAll.dynamic[keptTarget.id] = false;
-		sub.atAll.live[target.id] = false;
-		sub.atAll.live[keptTarget.id] = true;
+		sub.extras.atAllDynamic[target.id] = true;
+		sub.extras.atAllDynamic[keptTarget.id] = false;
+		sub.extras.atAllLive[target.id] = false;
+		sub.extras.atAllLive[keptTarget.id] = true;
 		await store.upsertSubscription(sub);
 		bus.events.length = 0;
 
@@ -478,8 +478,8 @@ describe("ConfigStore", () => {
 			expect(nextSub?.routing[k]).not.toContain(target.id);
 			expect(nextSub?.routing[k]).toContain(keptTarget.id);
 		}
-		expect(nextSub?.atAll.dynamic).toEqual({ [keptTarget.id]: false });
-		expect(nextSub?.atAll.live).toEqual({ [keptTarget.id]: true });
+		expect(nextSub?.extras.atAllDynamic).toEqual({ [keptTarget.id]: false });
+		expect(nextSub?.extras.atAllLive).toEqual({ [keptTarget.id]: true });
 		expect(SubscriptionSchema.safeParse(nextSub).success).toBe(true);
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
 		expect(scopes).toEqual(["targets", "subscriptions"]);
@@ -1013,7 +1013,7 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
-	it("deleteConnection(webhook) 级联删除托管 target 并清理订阅 routing / atAll", async () => {
+	it("deleteConnection(webhook) 级联删除托管 target 并清理订阅 routing / extras", async () => {
 		const connection = makeWebhookConnection();
 		await store.upsertConnection(connection);
 		const targetId = store.getTargets()[0]?.id;
@@ -1021,8 +1021,8 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("55555");
 		sub.routing.dynamic = [targetId as string];
 		sub.routing.live = [targetId as string];
-		sub.atAll.dynamic[targetId as string] = true;
-		sub.atAll.live[targetId as string] = true;
+		sub.extras.atAllDynamic[targetId as string] = true;
+		sub.extras.atAllLive[targetId as string] = true;
 		await store.upsertSubscription(sub);
 		bus.events.length = 0;
 
@@ -1032,8 +1032,8 @@ describe("ConfigStore", () => {
 		const nextSub = store.getSubscriptions()[0];
 		expect(nextSub?.routing.dynamic).toEqual([]);
 		expect(nextSub?.routing.live).toEqual([]);
-		expect(nextSub?.atAll.dynamic).toEqual({});
-		expect(nextSub?.atAll.live).toEqual({});
+		expect(nextSub?.extras.atAllDynamic).toEqual({});
+		expect(nextSub?.extras.atAllLive).toEqual({});
 		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
 		expect(scopes).toEqual(["connections", "targets", "subscriptions"]);
 	});
@@ -1153,7 +1153,7 @@ describe("ConfigStore", () => {
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("77777");
 		sub.routing.dynamic = [legacyId];
-		sub.atAll.dynamic[legacyId] = true;
+		sub.extras.atAllDynamic[legacyId] = true;
 		await store.upsertSubscription(sub);
 		await store.upsertConnection(connection);
 
@@ -1168,7 +1168,7 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()[0]?.id).toBe(managedId);
 		const nextSub = store.getSubscriptions().find((s) => s.id === sub.id);
 		expect(nextSub?.routing.dynamic).toEqual([managedId]);
-		expect(nextSub?.atAll.dynamic).toEqual({ [managedId as string]: true });
+		expect(nextSub?.extras.atAllDynamic).toEqual({ [managedId as string]: true });
 	});
 
 	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
@@ -1492,8 +1492,8 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("66666");
 		sub.routing.dynamic = [extra.id, primary.id];
 		sub.routing.live = [extra.id];
-		sub.atAll.dynamic[extra.id] = true;
-		sub.atAll.live[extra.id] = false;
+		sub.extras.atAllDynamic[extra.id] = true;
+		sub.extras.atAllLive[extra.id] = false;
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
@@ -1511,8 +1511,8 @@ describe("ConfigStore", () => {
 		const nextSub = store2.getSubscriptions()[0];
 		expect(nextSub?.routing.dynamic).toEqual([primary.id]);
 		expect(nextSub?.routing.live).toEqual([primary.id]);
-		expect(nextSub?.atAll.dynamic).toEqual({ [primary.id]: true });
-		expect(nextSub?.atAll.live).toEqual({ [primary.id]: false });
+		expect(nextSub?.extras.atAllDynamic).toEqual({ [primary.id]: true });
+		expect(nextSub?.extras.atAllLive).toEqual({ [primary.id]: false });
 		await rm(dir2, { recursive: true, force: true });
 	});
 

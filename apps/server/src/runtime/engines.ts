@@ -1439,8 +1439,8 @@ export function buildLiveSubViewSingle(
 		liveEnd: feat("liveEnd"),
 		liveGuardBuy: feat("liveGuardBuy"),
 		superchat: feat("superchat"),
-		// 下播的两个附加项(词云 / 总结)跟着下播的开关与目标走。
-		liveEndExtras: eff.features.liveEndExtras,
+		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
+		extras: eff.features.extras,
 		target: eff.routing,
 		// customCardStyle / aiOverride 只在真有 per-UP override 时生成(对齐 dynamic
 		// 端 buildDynamicSubsView 同名字段)。无 override → enable:false / undefined →
@@ -1597,7 +1597,7 @@ function subscriptionOpsToLive(
 						liveEnd: view.liveEnd,
 						liveGuardBuy: view.liveGuardBuy,
 						superchat: view.superchat,
-						liveEndExtras: view.liveEndExtras,
+						extras: view.extras,
 						minScPrice: view.minScPrice,
 						minGuardLevel: view.minGuardLevel,
 						pushTime: view.pushTime,

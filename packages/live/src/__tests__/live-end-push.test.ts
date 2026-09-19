@@ -29,7 +29,7 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		liveEndExtras: { wordcloud: true, liveSummary: true },
+		extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: true },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -171,7 +171,9 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		const { ctx, broadcastToTargets, wordcloud } = makeCtx();
 		await liveSession(
 			ctx,
-			makeSub({ liveEndExtras: { wordcloud: false, liveSummary: true } }),
+			makeSub({
+				extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: true },
+			}),
 		).handleLiveEnd("ws");
 		expect(wordcloud).not.toHaveBeenCalled();
 		expect(broadcastToTargets.mock.calls.map((c) => c[2])).toEqual([LivePushType.LiveSummary]);
@@ -181,7 +183,9 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		const { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary } = makeCtx();
 		await liveSession(
 			ctx,
-			makeSub({ liveEndExtras: { wordcloud: false, liveSummary: false } }),
+			makeSub({
+				extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false },
+			}),
 		).handleLiveEnd("ws");
 		expect(sendLiveNotifyCard).toHaveBeenCalledTimes(1);
 		expect(broadcastToTargets).not.toHaveBeenCalled();
@@ -272,12 +276,27 @@ describe("sendLiveNotifyCard — pushId 透传给推送层", () => {
 
 describe("wantsLiveEndExtras — 弹幕采集的门", () => {
 	it.each<[string, Partial<SubItemView>, boolean]>([
-		["下播开、词云开", { liveEndExtras: { wordcloud: true, liveSummary: false } }, true],
-		["下播开、只开总结", { liveEndExtras: { wordcloud: false, liveSummary: true } }, true],
-		["下播开、子项全关", { liveEndExtras: { wordcloud: false, liveSummary: false } }, false],
+		[
+			"下播开、词云开",
+			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false } },
+			true,
+		],
+		[
+			"下播开、只开总结",
+			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: true } },
+			true,
+		],
+		[
+			"下播开、子项全关",
+			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false } },
+			false,
+		],
 		[
 			"下播关、子项开着",
-			{ liveEnd: false, liveEndExtras: { wordcloud: true, liveSummary: true } },
+			{
+				liveEnd: false,
+				extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: true },
+			},
 			false,
 		],
 	])("%s", (_name, over, expected) => {

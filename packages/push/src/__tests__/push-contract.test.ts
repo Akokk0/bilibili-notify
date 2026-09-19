@@ -22,7 +22,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, silentLogger } from "./helpers";
+import { pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const T2 = "22222222-2222-4222-8222-222222222222";
@@ -86,7 +86,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 function subWith(targets: string[], atAll = false): Subscription {
 	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 	sub.routing.dynamic = [...targets];
-	sub.atAllDefaults.dynamic = atAll;
+	setExtraDefault(sub, "atAllDynamic", atAll);
 	return sub;
 }
 

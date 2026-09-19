@@ -4,12 +4,14 @@ import {
 	CardStyleByKindSchema,
 	CardStylePartialSchema,
 	ContentFiltersPartialSchema,
+	EXTRA_KEYS,
+	type ExtraKey,
 	FEATURE_KEYS,
 	FeatureFlagsPartialSchema,
 	type FeatureKey,
 	ImageGroupSettingsPartialSchema,
-	LIVE_END_EXTRA_KEYS,
 	migrateLegacyFeatureFlagsPartial,
+	PUSH_EXTRAS,
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
@@ -28,12 +30,17 @@ const SubscriptionRoutingObjectSchema = z.object(
 export type SubscriptionRouting = z.infer<typeof SubscriptionRoutingObjectSchema>;
 
 /**
- * 老 routing 的形状:词云 / 总结曾各有一份目标列表。迁成「下播目标 = 下播 ∪ 词云 ∪ 总结」
- * (保序:先下播、再词云、再总结;去重交给下面的 transform),老键不留。
- * 新形状(没这两把键)原样过。
+ * 第一代 routing 的形状:词云 / 总结曾各是一把特性键、各有一份目标列表。迁成
+ * 「下播目标 = 下播 ∪ 词云 ∪ 总结」(保序:先下播、再词云、再总结;去重交给下面的
+ * transform),老键不留。新形状(没这两把键)原样过。
+ *
+ * 键表私有:与 schema/common.ts 那份同理 —— 「下播的两个附加项」已经退役成 `extras` 里
+ * 的两行,这两个名字今天只剩认老数据这一个用处。
  */
+const LEGACY_ROUTING_KEYS = ["wordcloud", "liveSummary"] as const;
+
 function isLegacyRouting(raw: unknown): raw is Record<string, unknown> {
-	return typeof raw === "object" && raw !== null && LIVE_END_EXTRA_KEYS.some((k) => k in raw);
+	return typeof raw === "object" && raw !== null && LEGACY_ROUTING_KEYS.some((k) => k in raw);
 }
 
 function migrateLegacyRouting(raw: unknown): unknown {
@@ -43,24 +50,71 @@ function migrateLegacyRouting(raw: unknown): unknown {
 	return { ...rest, liveEnd: lists.flat() };
 }
 
+function isPlainObject(raw: unknown): raw is Record<string, unknown> {
+	return typeof raw === "object" && raw !== null && !Array.isArray(raw);
+}
+
+/** @全体 那两把附加项当年住在订阅上,按 scope 存 —— `atAll.<scope>` / `atAllDefaults.<scope>`。 */
+const LEGACY_AT_ALL_SCOPES = [
+	["dynamic", "atAllDynamic"],
+	["live", "atAllLive"],
+] as const satisfies ReadonlyArray<readonly [string, ExtraKey]>;
+
 /**
- * 整条老订阅的迁移。routing 自己认得出新老(见 {@link migrateLegacyRouting});
- * `overrides.features` 单看分不出 —— `{ liveEnd: false }` 在新老形状里长得一样,含义却不同:
- * 老的只关了下播卡(词云 / 总结照收),新的是整个下播都关。所以 routing 是老的就把这份
- * 覆盖也按老规矩迁(`force`),别让那位 UP 的词云 / 总结跟着没了。
+ * 整条老订阅的迁移,两件事:
+ *
+ * 1. **第一代的 features 覆盖**。routing 自己认得出新老(见 {@link migrateLegacyRouting});
+ *    `overrides.features` 单看分不出 —— `{ liveEnd: false }` 在第一代与新形状里长得一样,
+ *    含义却不同:第一代只关了下播卡(词云 / 总结照收),新的是整个下播都关。所以 routing
+ *    是第一代就把这份覆盖也按老规矩迁(`force`),别让那位 UP 的词云 / 总结跟着没了。
+ *
+ * 2. **@全体 并进附加项**(ADR-0016 决策 2)。`atAll.<scope>` 是 per-目标 三态表,1:1 搬到
+ *    `extras.atAll<Scope>`;`atAllDefaults.<scope>` 是 per-UP 的值,搬进 per-UP 覆盖层。
+ *    ⚠️ `atAllDefaults` 是必填带默认的,**老数据里人人都有** —— 等于出厂默认就不写,
+ *    否则每条订阅都会凭空长出一份无意义的 per-UP 覆盖。
+ *
+ * 新形状(没有 `atAll` / `atAllDefaults`)这两件事都不做。
  */
 function migrateLegacySubscription(raw: unknown): unknown {
-	if (typeof raw !== "object" || raw === null) return raw;
-	const sub = raw as Record<string, unknown>;
-	if (!isLegacyRouting(sub.routing)) return raw;
-	const overrides = sub.overrides;
-	if (typeof overrides !== "object" || overrides === null) return raw;
-	const features = (overrides as Record<string, unknown>).features;
-	if (features === undefined) return raw;
-	return {
-		...sub,
-		overrides: { ...overrides, features: migrateLegacyFeatureFlagsPartial(features, true) },
-	};
+	if (!isPlainObject(raw)) return raw;
+	const sub = raw;
+	const legacyRouting = isLegacyRouting(sub.routing);
+	const atAll = isPlainObject(sub.atAll) ? sub.atAll : undefined;
+	const atAllDefaults = isPlainObject(sub.atAllDefaults) ? sub.atAllDefaults : undefined;
+	if (!legacyRouting && !atAll && !atAllDefaults) return raw;
+
+	const overrides = isPlainObject(sub.overrides) ? sub.overrides : undefined;
+	// features 覆盖先就地归一(第一代要 force,第二代只改名),@全体 的默认值再往上加 ——
+	// 否则那个 preprocess 后跑,会拿老形状重算一遍 `extras` 把刚写进去的 @全体 抹掉。
+	let features =
+		overrides?.features === undefined
+			? undefined
+			: migrateLegacyFeatureFlagsPartial(overrides.features, legacyRouting);
+
+	const perUpDefaults: Record<string, unknown> = {};
+	for (const [scope, key] of LEGACY_AT_ALL_SCOPES) {
+		const value = atAllDefaults?.[scope];
+		if (typeof value !== "boolean" || value === PUSH_EXTRAS[key].default) continue;
+		perUpDefaults[key] = value;
+	}
+	if (Object.keys(perUpDefaults).length > 0) {
+		const base = isPlainObject(features) ? features : {};
+		const baseExtras = isPlainObject(base.extras) ? base.extras : {};
+		features = { ...base, extras: { ...baseExtras, ...perUpDefaults } };
+	}
+
+	const { atAll: _a, atAllDefaults: _d, ...rest } = sub;
+	const out: Record<string, unknown> = { ...rest };
+	if (features !== undefined) out.overrides = { ...(overrides ?? {}), features };
+
+	if (atAll) {
+		const extras = isPlainObject(sub.extras) ? { ...sub.extras } : {};
+		for (const [scope, key] of LEGACY_AT_ALL_SCOPES) {
+			if (scope in atAll) extras[key] = atAll[scope];
+		}
+		out.extras = extras;
+	}
+	return out;
 }
 
 /**
@@ -128,36 +182,31 @@ export const AIOverrideSchema = z.object({
 export type AIOverride = z.infer<typeof AIOverrideSchema>;
 
 /**
- * @全体 订阅级默认。每个 UP 主独立持有自己的「默认 @全体」策略,作用于 routing 里的所有 target
- * (除非该 target 在 `atAll` Map 中有显式 override)。
+ * 附加项的 **per-目标** 覆写表(ADR-0016 决策 2 的第三层)。每把附加项一张 Map,三态:
+ * - Map 里没有 key → inherit(走 per-UP / 全局那两层,即 `features.extras[key]`)
+ * - `extras.X[targetId] = true` → 强制 ON
+ * - `extras.X[targetId] = false` → 强制 OFF
  *
- * 默认值约定:开播默认 ON、动态默认 OFF (开播事件比较重要更值得 @,动态高频且日常)。
- */
-export const SubscriptionAtAllDefaultsSchema = z.object({
-	dynamic: z.boolean().default(false),
-	live: z.boolean().default(true),
-});
-export type SubscriptionAtAllDefaults = z.infer<typeof SubscriptionAtAllDefaultsSchema>;
-
-/**
- * @全体 per-target 覆写。tristate:
- * - Map 里没有 key → inherit(走 `atAllDefaults`)
- * - `atAll.X[targetId] = true` → 强制 ON
- * - `atAll.X[targetId] = false` → 强制 OFF
- *
- * 约束:Map 的 key 必须出现在 `routing[feature]` 列表里 ——「单独开 @」无意义。
+ * 约束:Map 的 key 必须出现在 `routing[PUSH_EXTRAS[key].feature]` 里 —— 能收附加项的,
+ * 必须先收得到本体(决策 3)。由 SubscriptionSchema 的 superRefine 强制,违反的旧数据
+ * parse 时报错。
  *
  * 作用范围:
- * - `atAll.dynamic`:过了过滤器的动态都 @ (任意动态类型)
- * - `atAll.live`:仅作用于 LivePushType.Live (开播),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
- *
- * SubscriptionSchema.refine() 强制 keys 子集约束;违反约束的旧数据 parse 时报错。
+ * - `atAllDynamic`:过了过滤器的动态都 @(任意动态类型)
+ * - `atAllLive`:仅作用于 LivePushType.Live(开播),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
+ * - `wordcloud` / `liveSummary`:下播那次推送的两条后续消息
  */
-export const SubscriptionAtAllSchema = z.object({
-	dynamic: z.record(z.uuid(), z.boolean()).default({}),
-	live: z.record(z.uuid(), z.boolean()).default({}),
-});
-export type SubscriptionAtAll = z.infer<typeof SubscriptionAtAllSchema>;
+export const SubscriptionExtrasSchema = z.object(
+	Object.fromEntries(EXTRA_KEYS.map((k) => [k, z.record(z.uuid(), z.boolean()).default({})])) as {
+		[K in ExtraKey]: z.ZodDefault<z.ZodRecord<z.ZodUUID, z.ZodBoolean>>;
+	},
+);
+export type SubscriptionExtras = z.infer<typeof SubscriptionExtrasSchema>;
+
+/** 一张全空的 per-目标 三态表:四把键各一个空 Map = 每个目标都跟随上一层。 */
+function emptyExtras(): SubscriptionExtras {
+	return Object.fromEntries(EXTRA_KEYS.map((k) => [k, {}])) as SubscriptionExtras;
+}
 
 /**
  * 单 UP 的覆盖配置；任意字段为 undefined 表示继承 GlobalConfig.defaults。
@@ -224,8 +273,7 @@ const SubscriptionObjectSchema = z
 		groups: z.array(z.string()).default([]),
 		notes: z.string().optional(),
 		routing: SubscriptionRoutingSchema,
-		atAllDefaults: SubscriptionAtAllDefaultsSchema.default({ dynamic: false, live: true }),
-		atAll: SubscriptionAtAllSchema.default({ dynamic: {}, live: {} }),
+		extras: SubscriptionExtrasSchema.default(emptyExtras),
 		overrides: SubscriptionOverridesSchema,
 		/**
 		 * 这位 UP 的单人锐评定时推送。
@@ -239,13 +287,18 @@ const SubscriptionObjectSchema = z
 		roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
-	.refine((s) => Object.keys(s.atAll.dynamic).every((t) => s.routing.dynamic.includes(t)), {
-		message: "atAll.dynamic keys must be a subset of routing.dynamic",
-		path: ["atAll", "dynamic"],
-	})
-	.refine((s) => Object.keys(s.atAll.live).every((t) => s.routing.live.includes(t)), {
-		message: "atAll.live keys must be a subset of routing.live",
-		path: ["atAll", "live"],
+	// 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
+	// 不用来这儿补一条 refine。
+	.superRefine((s, ctx) => {
+		for (const key of EXTRA_KEYS) {
+			const feature = PUSH_EXTRAS[key].feature;
+			if (Object.keys(s.extras[key]).every((t) => s.routing[feature].includes(t))) continue;
+			ctx.addIssue({
+				code: "custom",
+				message: `extras.${key} keys must be a subset of routing.${feature}`,
+				path: ["extras", key],
+			});
+		}
 	});
 export const SubscriptionSchema = z.preprocess(migrateLegacySubscription, SubscriptionObjectSchema);
 export type Subscription = z.infer<typeof SubscriptionObjectSchema>;
@@ -263,8 +316,7 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): Subscr
 		groups: [],
 		notes: undefined,
 		routing: emptyRouting,
-		atAllDefaults: { dynamic: false, live: true },
-		atAll: { dynamic: {}, live: {} },
+		extras: emptyExtras(),
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
