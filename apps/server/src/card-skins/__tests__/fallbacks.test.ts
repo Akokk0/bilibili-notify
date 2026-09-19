@@ -78,3 +78,40 @@ describe("createCardSkinFallbackLog", () => {
 		expect(log.list().map((r) => r.skinId)).not.toContain("s0");
 	});
 });
+
+/**
+ * **淘汰按「最久没再出现」,不是按「最先进来」**(2026-09-19 审查)。
+ *
+ * `record()` 命中 prev 时是**就地**刷 `at` / `count` 的,而 Map 的插入序不会因此移位 ——
+ * 淘汰又是照插入序挑第一个。于是「每条推送都在复发」的那条(`at` 最新、`count` 最高)
+ * 会被当成最旧的挤掉,面板上剩 19 条陈年旧账加一个新来的,**真正坏掉的那套皮肤反而
+ * 不见了** —— 与这本账存在的理由正好相反。
+ *
+ * 判据:把 `record()` 里命中 prev 时那两句 `seen.delete(key)` / `seen.set(key, prev)`
+ * 拆掉,这一条必须红。
+ */
+describe("封顶时挤掉谁", () => {
+	it("还在复发的那条不许被挤掉 —— 它是最该看的一条", () => {
+		const { log, tick } = makeLog();
+		// 第一个进来的,也是一直在复发的那个。
+		log.record({ skinId: "hot", kind: "live", reason: "皮肤不存在" });
+		for (let i = 0; i < MAX_CARD_SKIN_FALLBACKS - 1; i++) {
+			tick(1);
+			log.record({ skinId: `cold${i}`, kind: "live", reason: "皮肤不存在" });
+		}
+		// hot 一路在复发:`at` 最新、`count` 最高。
+		for (let i = 0; i < 50; i++) {
+			tick(1);
+			log.record({ skinId: "hot", kind: "live", reason: "皮肤不存在" });
+		}
+		expect(log.list()[0]).toMatchObject({ skinId: "hot", count: 51 });
+
+		// 再来一条新的 → 必须挤掉最久没再出现的那条(cold0),不是 hot。
+		tick(1);
+		log.record({ skinId: "新来的", kind: "live", reason: "皮肤不存在" });
+		const ids = log.list().map((f) => f.skinId);
+		expect(ids).toHaveLength(MAX_CARD_SKIN_FALLBACKS);
+		expect(ids).toContain("hot");
+		expect(ids).not.toContain("cold0");
+	});
+});
