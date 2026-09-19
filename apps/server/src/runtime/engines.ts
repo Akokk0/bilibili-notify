@@ -40,6 +40,7 @@ import type {
 	CardSkinManifest,
 	ConnectionCapabilities,
 	Disposable,
+	ExtraKey,
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
@@ -1168,6 +1169,25 @@ export function liveTypeToFeature(type: number): FeatureKey {
 }
 
 /**
+ * LivePushType → **附加项键**(管按目标收窄),ADR-0016 决策 5:紧挨着上面那张
+ * 「翻成哪把特性」的表产出,推送层据它在主特性的目标列表上再筛一道。
+ *
+ * 只有词云(5)与 AI 总结(10)两档是附加项;下播卡本体(9)必须留 `undefined` ——
+ * 它要是也带上键,整张卡就会被附加项的三态表收窄掉。@全体 不在这里:它是推送层
+ * 内部那条自己的分支(单独一条消息 + 平台能力判定),不经广播选项。
+ */
+export function liveTypeToExtra(type: number): ExtraKey | undefined {
+	switch (type) {
+		case 5:
+			return "wordcloud";
+		case 10:
+			return "liveSummary";
+		default:
+			return undefined;
+	}
+}
+
+/**
  * LivePushType → 推送类型(管历史怎么记)。与上面那张表只差一处:周期「正在直播」
  * 单列一类 —— 它跟开播共用开关与目标(所以 feature 是 live),历史上却是两种推送。
  * 其余每一档都由「特性 → 推送类型」定死,别在这儿再抄一张会飘的表。
@@ -1177,9 +1197,9 @@ export function liveTypeToPushKind(type: number): PushKind {
 }
 
 /**
- * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补两样引擎不知道
- * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "live",不显式抑制就每条都 @),
- * 以及历史里记成哪一类。
+ * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补三样引擎不知道
+ * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "live",不显式抑制就每条都 @)、
+ * 历史里记成哪一类,以及这是哪个附加项(有键推送层才按目标收窄)。
  */
 export function liveBroadcastOpts(
 	type: number,
@@ -1190,6 +1210,7 @@ export function liveBroadcastOpts(
 		role: o?.role,
 		allowAtAll: liveTypeAllowsAtAll(type),
 		kind: liveTypeToPushKind(type),
+		extra: liveTypeToExtra(type),
 	};
 }
 

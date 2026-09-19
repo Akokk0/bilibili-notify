@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { liveBroadcastOpts, liveTypeToFeature, liveTypeToPushKind } from "../runtime/engines";
+import {
+	liveBroadcastOpts,
+	liveTypeToExtra,
+	liveTypeToFeature,
+	liveTypeToPushKind,
+} from "../runtime/engines";
 
 describe("liveTypeToFeature", () => {
 	it("完整映射表:词云 / 总结归到 liveEnd", () => {
@@ -41,13 +46,29 @@ describe("liveTypeToPushKind", () => {
 	});
 });
 
+// ADR-0016 决策 5:附加项的键就是在这一步、紧挨着「翻成哪把特性」产出的 —— 推送层据它
+// 在主特性的目标列表上再筛一道。
+describe("liveTypeToExtra", () => {
+	it("词云(5)/ 总结(10)各是一把附加项键", () => {
+		expect(liveTypeToExtra(5)).toBe("wordcloud");
+		expect(liveTypeToExtra(10)).toBe("liveSummary");
+	});
+
+	it("其余一律没有 —— 尤其下播卡本体(9):它要是也带上键,整张卡会被附加项的三态表收窄掉", () => {
+		for (const t of [0, 3, 4, 6, 7, 8, 9, 999]) {
+			expect(liveTypeToExtra(t)).toBeUndefined();
+		}
+	});
+});
+
 describe("liveBroadcastOpts — 直播端一次广播交给推送层的选项", () => {
-	it("开播:允许 @全体、kind live、透传 pushId", () => {
+	it("开播:允许 @全体、kind live、透传 pushId,不是附加项", () => {
 		expect(liveBroadcastOpts(3, { pushId: "p1" })).toEqual({
 			pushId: "p1",
 			role: undefined,
 			allowAtAll: true,
 			kind: "live",
+			extra: undefined,
 		});
 	});
 
@@ -58,12 +79,33 @@ describe("liveBroadcastOpts — 直播端一次广播交给推送层的选项", 
 		});
 	});
 
-	it("词云:附加项照传、kind live-end、不 @全体", () => {
+	it("词云:附加项键照传、kind live-end、不 @全体", () => {
 		expect(liveBroadcastOpts(5, { pushId: "p1", role: "extra" })).toEqual({
 			pushId: "p1",
 			role: "extra",
 			allowAtAll: false,
 			kind: "live-end",
+			extra: "wordcloud",
+		});
+	});
+
+	it("AI 总结:换一把附加项键,其余与词云同", () => {
+		expect(liveBroadcastOpts(10, { pushId: "p1", role: "extra" })).toEqual({
+			pushId: "p1",
+			role: "extra",
+			allowAtAll: false,
+			kind: "live-end",
+			extra: "liveSummary",
+		});
+	});
+
+	it("下播卡本体:同一把特性、同一类历史,但**不带附加项键**", () => {
+		expect(liveBroadcastOpts(9, { pushId: "p1" })).toEqual({
+			pushId: "p1",
+			role: undefined,
+			allowAtAll: false,
+			kind: "live-end",
+			extra: undefined,
 		});
 	});
 });

@@ -91,8 +91,18 @@ export interface BroadcastOptions {
 	pushId?: string;
 	/** 显式 false 抑制 @全体(周期「正在直播」等非开播的 live 推送);不传 = 按 feature 决定。 */
 	allowAtAll?: boolean;
-	/** 这一段消息是本体还是附加项;缺省本体。@全体 不由它管,恒为附加项。 */
+	/**
+	 * 这一段消息是本体还是附加项;缺省跟着 {@link extra} 走(带了附加项键自然是附加项)。
+	 * @全体 不由它管,恒为附加项。
+	 */
 	role?: PushMessageRole;
+	/**
+	 * 这一段消息是**哪个**附加项(ADR-0016 决策 5)。带上它,目标列表就在主特性的基础上
+	 * 再按那把键的三态表筛一道 —— 谁没订这个附加项谁就收不到,本体照旧。
+	 *
+	 * @全体 不走这里:它有自己那条分支(单独一条消息 + 平台能力判定),见下面的 `atAllKey`。
+	 */
+	extra?: ExtraKey;
 	/**
 	 * 历史里记成哪一类推送。缺省按 feature 翻译;只有 `live` 那把键分不出开播与周期
 	 * 「正在直播」,调用方知道是哪种时显式传。
@@ -305,17 +315,31 @@ export class BilibiliPush {
 			feature,
 			kind: opts?.kind ?? featureToPushKind(feature),
 			pushId: opts?.pushId ?? randomUUID(),
-			role: opts?.role ?? "main",
+			role: opts?.role ?? (opts?.extra ? "extra" : "main"),
 		};
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
-		const targetIds = (sub.routing[feature] ?? []).filter((id) => this.sink.isEnabled(id));
-		if (targetIds.length === 0) {
+		const routed = (sub.routing[feature] ?? []).filter((id) => this.sink.isEnabled(id));
+		if (routed.length === 0) {
 			this.logger.debug(`[push] uid=${uid} feature=${feature} 无可用目标`);
 			this.onSend?.({
 				...ctx,
 				target: null,
 				messages: payloads.map((p) => ({ payload: p, role: ctx.role })),
 			});
+			return [];
+		}
+
+		// 附加项再按自己那张三态表筛一道(ADR-0016 决策 5):目标显式写了就听它的,没写就
+		// 跟随折叠后(全局 + per-UP)的默认 —— 与下面 @全体 那条分支同一句判定,四把键一视同仁。
+		// routing 查找全仓仍然只有上面那一处,这里只是在它的结果上再筛。
+		const extraKey = opts?.extra;
+		const targetIds = extraKey
+			? routed.filter((id) => sub.extras[extraKey][id] ?? eff.features.extras[extraKey])
+			: routed;
+		if (targetIds.length === 0) {
+			// 收窄成空**不是「无目标」**(决策 7):本体那一行已经在了、而且是「已送达」,
+			// 这个附加项只是谁都没订 —— 是配置意图不是故障,不落行、不弹卡、不记失败。
+			this.logger.debug(`[push] uid=${uid} feature=${feature} 附加项 ${extraKey} 无人订阅，跳过`);
 			return [];
 		}
 
