@@ -445,32 +445,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	);
 
 	// ---------- DynamicEngine ----------
-	const dynamicPushLike: DynamicPushLike = {
-		async broadcastDynamic(uid, segments, kind, o) {
-			const payload = pushSegmentsToPayload(segments);
-			// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
-			// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
-			await push.broadcastToFeature(
-				uid,
-				"dynamic",
-				payload,
-				broadcastOptsForDynamicKind(kind, o?.pushId),
-			);
-		},
-		async broadcastDynamicSequence(uid, messages, kind, o) {
-			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
-			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
-			const payloads = messages.map(pushSegmentsToPayload);
-			await push.broadcastToFeature(
-				uid,
-				"dynamic",
-				payloads,
-				broadcastOptsForDynamicKind(kind, o?.pushId),
-			);
-		},
-		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
-		sendErrorMsg: (text) => push.sendErrorMsg(text),
-	};
+	const dynamicPushLike = makeDynamicPushLike(push);
 
 	const dynamicConfig = (): DynamicEngineConfig => {
 		const f = globals().defaults.filters;
@@ -547,28 +522,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	runFollowSync("boot");
 
 	// ---------- LiveEngine ----------
-	const livePushLike: LivePushLike = {
-		async broadcastToTargets(uid, content, type, o) {
-			const payload = collapseSegments(segmentToPayload(content));
-			await push.broadcastToFeature(
-				uid,
-				liveTypeToFeature(type as number),
-				payload,
-				liveBroadcastOpts(type as number, o),
-			);
-		},
-		async broadcastSequenceToTargets(uid, contents, type, o) {
-			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
-			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
-			await push.broadcastToFeature(
-				uid,
-				liveTypeToFeature(type as number),
-				payloads,
-				liveBroadcastOpts(type as number, o),
-			);
-		},
-		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
-	};
+	const livePushLike = makeLivePushLike(push);
 
 	const liveConfig = (): LiveEngineConfig => {
 		const g = globals();
@@ -1140,6 +1094,72 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
 		}
 	}
 	return { kind: "composite", segments };
+}
+
+/**
+ * 引擎→推送层的两个适配器。**提成工厂是为了让这一跳自己有守卫** ——
+ * 它们原本编在 `createEngines` 里、测试够不着，于是把
+ * `liveBroadcastOpts(...)` 整个换掉也没一条测试会红（2026-09-19 剪线实测：219 个
+ * 文件全绿）。而那一句里揣着三样东西，掉了都是静默的：附加项的键（掉了按目标收窄
+ * 全失效）、`allowAtAll`（掉了「每条直播推送都 @全体」那个修过的 bug 直接回归）、
+ * `kind`（掉了历史把周期复推记成开播）。
+ */
+type PushForEngines = Pick<BilibiliPush, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
+
+/** 动态引擎那侧的 PushLike。 */
+export function makeDynamicPushLike(push: PushForEngines): DynamicPushLike {
+	return {
+		async broadcastDynamic(uid, segments, kind, o) {
+			const payload = pushSegmentsToPayload(segments);
+			// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
+			// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
+			await push.broadcastToFeature(
+				uid,
+				"dynamic",
+				payload,
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			);
+		},
+		async broadcastDynamicSequence(uid, messages, kind, o) {
+			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
+			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
+			const payloads = messages.map(pushSegmentsToPayload);
+			await push.broadcastToFeature(
+				uid,
+				"dynamic",
+				payloads,
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			);
+		},
+		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
+		sendErrorMsg: (text) => push.sendErrorMsg(text),
+	};
+}
+
+/** 直播引擎那侧的 PushLike。 */
+export function makeLivePushLike(push: PushForEngines): LivePushLike {
+	return {
+		async broadcastToTargets(uid, content, type, o) {
+			const payload = collapseSegments(segmentToPayload(content));
+			await push.broadcastToFeature(
+				uid,
+				liveTypeToFeature(type as number),
+				payload,
+				liveBroadcastOpts(type as number, o),
+			);
+		},
+		async broadcastSequenceToTargets(uid, contents, type, o) {
+			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
+			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
+			await push.broadcastToFeature(
+				uid,
+				liveTypeToFeature(type as number),
+				payloads,
+				liveBroadcastOpts(type as number, o),
+			);
+		},
+		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
+	};
 }
 
 /**
