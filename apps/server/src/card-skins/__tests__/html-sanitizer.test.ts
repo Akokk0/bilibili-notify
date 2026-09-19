@@ -521,3 +521,51 @@ describe("svg 的命名空间声明", () => {
 		expect(r.warnings.join()).not.toMatch(/属性 :/);
 	});
 });
+
+/**
+ * **占位符只有 `src` / `alt` 两档认**(ADR-0014 决策 12 原文:「其他属性不认占位符」)。
+ *
+ * 这一组钉的是**形状**,不是某条警告文案:产物里除 `src` / `alt` 外的任何属性值都不许
+ * 还留着 `{a.b}`。理由在 `rejectsPlaceholder` 的注释里 —— 替换发生在清洗**之后**、
+ * 是字符串级的、只做 HTML 转义,所以留在 `style` 里的占位符等于让 B 站来的原文直接当
+ * CSS 声明用(实测能 `position:absolute` 铺一层盖住整张卡);svg 的表现属性同形。
+ *
+ * 判据:把 `filterAttrs` / `filterSvgAttrs` 里那两句 `rejectsPlaceholder` 拆掉,这一组必须红。
+ */
+describe("属性里的占位符:只有 src / alt 认", () => {
+	/** 产物里所有属性值 —— 用来问「还有没有 `{a.b}` 漏在属性里」。 */
+	function attrValues(html: string): string[] {
+		return [...html.matchAll(/\s[\w:-]+="([^"]*)"/g)].map((m) => m[1] as string);
+	}
+
+	it("style 里的占位符整个属性丢掉 —— 不然直播标题就成了 CSS 声明", () => {
+		const { html, warnings } = ok('<div style="color:{live.title}">好</div>');
+		expect(html).not.toContain("{live.title}");
+		expect(html).toBe("<div>好</div>");
+		expect(warnings.join()).toContain("占位符");
+	});
+
+	it("混在正经声明里也一样 —— 是整个属性丢,不是只削那一条", () => {
+		const { html } = ok('<div style="font-weight:700;color:{live.title}">好</div>');
+		expect(attrValues(html).join()).not.toContain("{");
+	});
+
+	it('svg 的表现属性同形 —— <circle r="{live.title}"> 也得丢', () => {
+		const { html } = ok(
+			'<svg viewBox="0 0 2 2"><circle r="{live.title}" cx="1" cy="1"></circle></svg>',
+		);
+		expect(attrValues(html).join()).not.toContain("{live.title}");
+		expect(html).toContain('cx="1"');
+	});
+
+	it("src / alt 那两档照旧认 —— 别把正经用法一起堵了", () => {
+		const { html } = ok('<img src="{live.cover}" alt="{live.title} 的封面">');
+		expect(html).toContain('src="{live.cover}"');
+		expect(html).toContain("{live.title}");
+	});
+
+	it("`{ margin }` / `{1}` 这种不是占位符形状的花括号照字面留着", () => {
+		const { html } = ok('<div style="color:red" data-x="{1}">好</div>');
+		expect(html).toContain('style="color:red"');
+	});
+});

@@ -394,6 +394,35 @@ const CLASS_TOKEN_RE = /^[A-Za-z0-9_-]+$/;
 const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\}/g;
 /** `src` 那一档:**整个值**恰好是一个占位符才算数(ADR-0014 决策 12)。 */
 const WHOLE_PLACEHOLDER_RE = /^\{([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\}$/;
+/**
+ * 「这个属性值里有没有占位符」。**刻意不带 `g`** —— `PLACEHOLDER_RE` 带 `g`,而带 `g`
+ * 的正则 `.test()` 是有状态的(`lastIndex` 跨调用累积),隔一次就假阴性一次。
+ */
+const ANY_PLACEHOLDER_RE = /\{[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+\}/;
+
+/**
+ * **属性位置只有两档认占位符**(ADR-0014 决策 12 原文:「属性位置只准整个值是一个占位符、
+ * 且该字段在契约里是图片 URL 类型,**其他属性不认占位符**」):`src` 与文本类的 `alt`。
+ * 其余一律整个属性丢掉。返回 true = 已丢、已告警。
+ *
+ * 这条不是洁癖。占位符的替换发生在清洗**之后**,而且是**字符串级**的
+ * (`packages/image/src/skin/render-skin.tsx` 的 `renderCustomHtml`),只做 HTML 转义 ——
+ * 它不知道自己替的是文本位置还是属性位置。于是 `style="color:{live.title}"` 会让
+ * **直播间标题**(B 站来的第三方原文)直接当 CSS 声明用:一句
+ * `red;position:absolute;left:0;top:0;width:600px;height:400px;background:#000`
+ * 就铺一层不透明块盖住整张卡 —— 卡片外壳没有 positioned 祖先,包含块是 ICB,飞得出去。
+ * svg 的表现属性(`r` / `transform` / `fill` …)是同一个形状。六条声明一条都没过 CSS
+ * 清洗器,`scoped-css.ts` 文件头「存盘的永远是清洗后的 CSS」那条保证就此不成立
+ * (2026-09-19 审查实测)。
+ *
+ * 顺带治一个更常咬人的毛病:写进属性的占位符**拼错字段名是完全静默的** —— 同一个不存在
+ * 的字段写在文本里整包拒收(`checkPlaceholders`),写在 `style` 里连一条警告都没有。
+ */
+function rejectsPlaceholder(tag: string, name: string, value: string, ctx: Ctx): boolean {
+	if (!ANY_PLACEHOLDER_RE.test(value)) return false;
+	ctx.warnings.push(`<${tag}> 的属性 ${name} 里不认占位符(只有 src / alt 认),整个属性丢弃`);
+	return true;
+}
 /** 包内资产的引用前缀。 */
 const ASSET_PREFIX = "asset:";
 
@@ -534,6 +563,8 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 			ctx.warnings.push(`<${tag}> 的属性 ${shown} 不在白名单,已丢弃`);
 			continue;
 		}
+		// svg 这边一个认占位符的属性都没有(`src` / `alt` 都不在 SVG_ATTRS 里)。
+		if (rejectsPlaceholder(tag, name, attr.value, ctx)) continue;
 		if (name === "href") {
 			const value = attr.value.trim();
 			if (!FRAGMENT_REF_RE.test(value)) {
@@ -608,6 +639,9 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 		// 有命名空间的属性(`xlink:href` 那一类)连名字都对不上白名单,顺带被这一问拦下。
 		if (!COMMON_ATTRS.has(name) && !(allowed?.has(name) ?? false)) {
 			ctx.warnings.push(`<${tag}> 的属性 ${name} 不在白名单,已丢弃`);
+			continue;
+		}
+		if (name !== "src" && name !== "alt" && rejectsPlaceholder(tag, name, attr.value, ctx)) {
 			continue;
 		}
 		if (name === "colspan" || name === "rowspan") {
