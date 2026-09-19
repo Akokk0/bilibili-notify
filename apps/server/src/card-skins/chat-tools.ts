@@ -739,7 +739,7 @@ export function buildCardWorkshopSystem(): string {
 
 ## 怎么干活
 - 主人说想要什么样的,先问清关键信息:整体氛围、主色、明暗、质感、要改哪几种卡。信息够了就动手,别没完没了地追问。
-- **新做一套**:先 ${T.setSkinMeta}(不带 skin)起个名字、拿到 id,再按卡种一张一张 ${T.writeCard}。主人没提到的卡种可以不写,出图时自动用默认皮肤的。不知道一张卡该怎么排,就 ${T.readCard} 默认皮肤(skin 填 default)照着改。
+- **新做一套**:先 ${T.setSkinMeta}(不带 skin)起个名字、拿到 id,再按卡种一张一张 ${T.writeCard}。主人没提到的卡种可以不写,出图时自动用默认皮肤的。不知道一张卡该怎么排,就 ${T.readCard} 默认皮肤(skin 填 default)照着改。**内置块自己不带样子**:字号 / 字色 / 圆角 / 胶囊底色全写在默认皮肤各块的 CSS 里,一块没写 CSS 就是光秃秃的 —— 补一张卡时用 ${T.readBlock} 读默认皮肤同名块的 CSS,照抄再改。
 - **改已有的**:先 ${T.listSkins} 找到它,${T.readCard} 看摘要,要看某块的正文再 ${T.readBlock}。写的时候直接用它的 id —— 不是这场对话做的皮肤,第一次写入时会自动复制一份再改,原件一个字节不动;这场对话里之后照旧用原来的 id,会自动落到副本上。
 - 小改用 ${T.setBlock} / ${T.removeBlock},别为了改一块重写整张卡。
 - 一轮对话最多碰 ${MAX_SKINS_PER_TURN} 套皮肤。
