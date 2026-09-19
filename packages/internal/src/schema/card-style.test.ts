@@ -4,7 +4,9 @@ import { DEFAULT_CARD_STYLE } from "./globals";
 
 describe("CardStyle background / glass knobs", () => {
 	// 背景图与玻璃都退役了(2026-09-14 / 决策 16):**出厂那份一个键都不写**。
-	// 键在不在是开机迁移的判据 —— 补一个默认值回来,迁移就永远判不出「搬过没有」。
+	// 从前的理由是「键在不在是开机迁移的判据」,那个迁移已于 2026-09-18 整个退役
+	// (ADR-0014 决策 17 的 🔗);这条现在钉的是「退役字段不许靠默认值复活」——
+	// 补一个 `.default(...)` 回来,新装的机器就又带上一个谁都不该读的键。
 	it("leaves the retired background / glass keys unset on a fresh install", () => {
 		const parsed = CardStyleSchema.parse(DEFAULT_CARD_STYLE);
 		expect(parsed.backgroundImages).toBeUndefined();

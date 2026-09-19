@@ -172,7 +172,8 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
 		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——
-		// 出图只认皮肤,而那个键只剩开机迁移会读一次(ADR-0014 决策 15)。
+		// 出图只认皮肤,而那个键连同折它进来的开机迁移已一并删掉(ADR-0014 决策 17 的
+		// 2026-09-18 🔗:没选过皮肤的一律用出厂默认)。
 		cardSkin: ov.cardSkin ?? defaults.cardSkin,
 		// 消息版式同 cardLayout:per-UP 整份覆盖(带 normalize 向前兼容),否则继承全局。
 		messageLayout: ov.messageLayout

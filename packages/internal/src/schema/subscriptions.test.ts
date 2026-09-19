@@ -205,11 +205,13 @@ describe("per-UP filters/schedule override 不被全局默认污染", () => {
 	});
 });
 
-// 回归:CardStyleObjectSchema 有 7 个带 .default() 的字段(enabled/font/showPopularity/
-// showArea/showFans/backgroundImages/liveCoverImages),`.partial()` 同样不剥内层 default。
-// per-UP 只覆盖一个字段(如退役中的 glassOpacity)时若被注入这 7 个默认值,resolve() 的
-// merge(defaults.cardStyle, ov.cardStyle) 会拿注入值盖掉全局自定义 —— 最严重:全局
-// enabled=false(关图片渲染)被翻回 true。与上面三个兄弟 schema 同源,此处锁住。
+// 回归:`.partial()` 不剥内层 `.default()`。CardStyleObjectSchema 今天还带 default 的
+// 只剩 **enabled 与 liveCoverImages 两个**(单子从前是 7 个,showPopularity / showArea /
+// showFans 已随旧版式退役 — ADR-0014 决策 17 的 2026-09-18 🔗;font 与 backgroundImages
+// 改成了纯 optional)。per-UP 只覆盖一个字段(如退役中的 glassOpacity)时若被注入这些默认
+// 值,resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 会拿注入值盖掉全局自定义 ——
+// 最严重:全局 enabled=false(关图片渲染)被翻回 true。与上面三个兄弟 schema 同源,此处锁住。
+// **这条盯的是形状不是数字**:将来谁给某个字段补回 `.default(...)`,它必须还能红。
 describe("per-UP cardStyle override 不被全局默认污染", () => {
 	it("只覆盖 cardStyle.glassOpacity → 别的带默认字段仍 undefined", () => {
 		const parsed = SubscriptionSchema.parse({

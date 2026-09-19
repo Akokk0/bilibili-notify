@@ -641,12 +641,13 @@ const CardStyleObjectSchema = z.object({
 	 */
 	enabled: z.boolean().default(true),
 	/**
-	/**
 	 * **退役字段**(2026-09-14 主人拍板,同玻璃那次):字体归**皮肤自己的旋钮**。
 	 * 理由是它在皮肤底下多半不生效 —— 皮肤只要写一句 `font-family` 就盖掉了它,而面板
-	 * 照样让人选(赛博朋克那套正是如此)。开机迁移把它搬进 `cardSkinKnobs` 的默认皮肤那层。
-	 * ⛔ 新代码不许读它。`.optional()` 而不是从前的 `.default(...)` —— 带默认值的话键永远
-	 * 在,迁移就永远判不出「搬过没有」,每次开机都要白搬一趟。
+	 * 照样让人选(赛博朋克那套正是如此)。本来说好由开机迁移把它搬进 `cardSkinKnobs`,
+	 * 那个迁移已于 2026-09-18 整个退役(ADR-0014 决策 17 的 🔗):没人再搬它,存量值
+	 * 按定案直接作废 —— 升级上来的一律用出厂默认皮肤,想换字体请拧那套皮肤的字体旋钮。
+	 * ⛔ 新代码不许读它。保持 `.optional()`、不补回 `.default(...)`:退役字段不该由我们
+	 * 往新配置里写回去。
 	 *
 	 * 字体家族名。`packages/image` 的 `renderCard` 在它后面追加
 	 * `"Microsoft YaHei","Source Han Sans","Noto Sans CJK",sans-serif` 兜底链,
@@ -685,20 +686,21 @@ const CardStyleObjectSchema = z.object({
 	liveCoverImages: z.array(z.string()).default([]),
 	/**
 	 * **退役字段**(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板):玻璃片归**皮肤自己的旋钮**
-	 * (默认皮肤声明 `glass-opacity` / `glass-blur` 两枚),不再是用户配置项。留着只为
-	 * **开机迁移读一次**(值搬进 `globals.defaults.cardSkinKnobs`,见
-	 * `apps/server/src/card-skins/migrate-layouts.ts`),迁完就地删掉、不再写回。
+	 * (默认皮肤声明 `glass-opacity` / `glass-blur` 两枚),不再是用户配置项。本来说好由
+	 * 开机迁移把值搬进 `globals.defaults.cardSkinKnobs`,那个迁移已于 2026-09-18 整个退役
+	 * (ADR-0014 决策 17 的 🔗):没人再搬它,存量值按定案直接作废,升级上来的一律用出厂
+	 * 默认皮肤。
 	 *
-	 * 认下的代价:玻璃从前能按卡种 / 按 UP 分别覆盖,旋钮只有「每套皮肤一份」,那两层
-	 * **直接丢**(给每个调过玻璃的人派一套派生皮肤代价太大)。想给某位 UP 单独调,走
-	 * 决策 17 那条路:复制一套皮肤挂给他,拧那套的旋钮。
+	 * 于是当初认下的代价还要再大一档:玻璃从前能按卡种 / 按 UP 分别覆盖,如今连全局那一份
+	 * 都不搬了。想调玻璃就调皮肤 —— 给某位 UP 单独调的话,复制一套皮肤挂给他,拧那套的旋钮。
 	 *
 	 * ⛔ 新代码不许读这两个字段。出图的玻璃在皮肤的块 CSS 里。
 	 */
 	glassOpacity: z.number().min(0).max(1).optional(),
 	/**
-	 * 退役字段,见上面 `glassOpacity`。`.optional()` 而不是从前的 `.default(false)` ——
-	 * 与 `cardLayout` 同一套路,键删得掉,「键还在不在」才当得了「迁过没有」的判据。
+	 * 退役字段,见上面 `glassOpacity`。`.optional()` 而不是从前的 `.default(false)`:当初
+	 * 是为了让开机迁移判得出「搬过没有」,迁移 2026-09-18 退役(ADR-0014 决策 17 的 🔗)
+	 * 之后理由换成更简单的一条 —— 退役字段不该由我们往新配置里写回去。
 	 */
 	glassClear: z.boolean().optional(),
 });
@@ -707,10 +709,10 @@ const CardStyleObjectSchema = z.object({
  * 前向迁移 CardStyle:
  * 1. 旧单值 `backgroundImage`(string)→ 新 `backgroundImages`(string[]):仅当未显式提供
  *    列表时生效,空串→空列表(渐变),非空→单元素列表;显式列表永远优先。
- * 2. 旧 `hideFollower=true`(隐藏粉丝数据)→ 新 `showFans=false`:仅当未显式提供 `showFans`
- *    时生效,保留老用户「已隐藏粉丝数据」的意图。
- * 3. 丢弃废弃的 `hideDesc` / `hideFollower`:简介显隐改由版式 desc 块的 visible 控制,
- *    粉丝数据并入数据区 `showFans` 开关。
+ * 2. 丢弃废弃的 `hideDesc` / `hideFollower`:显不显示哪一件如今归**皮肤的块序列**,当年接
+ *    它们的 `showFans` 那一批已随旧版式整个退役(ADR-0014 决策 17 的 2026-09-18 🔗),
+ *    没有新键接得住,所以这里**只剥键、不转译**。剥干净仍是必须的:留着会一路漏进别处
+ *    (守卫在 `card-style.test.ts`)。
  */
 function migrateCardStyle(raw: unknown): unknown {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
@@ -732,12 +734,17 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
 // ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有几个带 default 的字段,per-UP 只覆盖一个字段(如 font)时,partial 会把
-// enabled:true / font / backgroundImages:[] / liveCoverImages:[] 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
-// 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的
-// true 悄悄翻开。故这 7 个在 override 维度必须是「无默认的纯可选」,与全局
-// CardStyleObjectSchema(带 .default 供 globals.json 缺字段回填)分开。
-// (`glassClear` 从前也在这张单子上,2026-09-14 退役后它自己就是 optional 了。)
+// 有带 default 的字段,per-UP 只覆盖一个字段(如 glassOpacity)时,partial 会把
+// `enabled:true` / `liveCoverImages:[]` 一并注入。resolve() 的
+// merge(defaults.cardStyle, ov.cardStyle) 视其为「已覆盖」而盖掉全局自定义值 ——
+// 最严重:全局 enabled=false(关图片渲染)被注入的 true 悄悄翻开。故它们在 override
+// 维度必须是「无默认的纯可选」,与全局 CardStyleObjectSchema(带 .default 供
+// globals.json 缺字段回填)分开。
+//
+// 下面 `.extend()` 的单子从前是 7 个,今天**只有 enabled 与 liveCoverImages 两条是承重的**
+// ——`font` / `backgroundImages` 自己已经是 optional(留着是照着全局那张表逐条对,
+// 少一条就是下一个洞),`showPopularity` / `showArea` / `showFans` 随旧版式整个退役
+// (ADR-0014 决策 17 的 2026-09-18 🔗),`glassClear` 是 2026-09-14 那次退役的。
 export const CardStylePartialSchema = z.preprocess(
 	migrateCardStyle,
 	CardStyleObjectSchema.partial().extend({

@@ -127,7 +127,8 @@ export const DEFAULT_SKIN_KNOB_KEYS = {
 /**
  * **出厂渐变**:直播 / 动态 / 锐评两张 / 词云的外框底色。从前是 `cardStyle.cardColorStart /
  * cardColorEnd` 两个用户配置项,现在写死在这儿、由默认皮肤的外框 CSS 画出来(ADR-0014
- * 决策 15 的 🔗)。存量用户改过的颜色由开机迁移派生成一套皮肤,不从这条路走。
+ * 决策 15 的 🔗)。存量用户改过的颜色**不会**派生成皮肤 —— 本该干这件事的开机迁移已于
+ * 2026-09-18 整个退役(ADR-0014 决策 17 的 🔗),升级上来的一律用出厂默认皮肤。
  */
 export const DEFAULT_CARD_GRADIENT = ["#e0c3fc", "#8ec5fc"] as const;
 
