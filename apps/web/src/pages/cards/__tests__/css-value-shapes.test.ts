@@ -24,10 +24,29 @@ describe("长度", () => {
 		expect(shapeOf("padding", "var(--bn-knob-pad)").kind).toBe("text");
 	});
 
-	it("format 出来的就是 CSS 里那个写法;0 不带单位", () => {
+	// 归 0 也把单位写出去(`0px`,不是 CSS 允许的那个省略写法 `0`)。省掉它在这一层是有害的:
+	// 控件没有自己的 state,每次渲染都从那段文本现推 shape,`0` 会被 `shapeOf` 推成
+	// `{ n: 0, unit: "" }` —— 单位下拉静默变「无」,作者下一次把数字调成 8,写出去的就是裸的
+	// `padding: 8`,非法长度、浏览器整条丢弃,而清洗器不查单位,所以它存得下、导得出、就是不生效。
+	it("format 出来的就是 CSS 里那个写法;0 也带单位", () => {
 		expect(formatShape({ kind: "length", n: 12, unit: "px" })).toBe("12px");
-		expect(formatShape({ kind: "length", n: 0, unit: "px" })).toBe("0");
+		expect(formatShape({ kind: "length", n: 0, unit: "px" })).toBe("0px");
 		expect(formatShape({ kind: "length", n: 1.5, unit: "" })).toBe("1.5");
+	});
+
+	it("归 0 再调回去,单位还在 —— 控件是从文本现推 shape 的", () => {
+		// 判据:把 formatShape 的 length 分支改回 `n === 0 && unit !== "" ? "0" : ...`,这条必须红。
+		// 模拟界面上那一跳:padding 12px --数字改成 0--> 写回文本 --重新 shapeOf--> 数字改成 8。
+		const start = shapeOf("padding", "12px");
+		expect(start).toEqual({ kind: "length", n: 12, unit: "px" });
+		if (start.kind !== "length") throw new Error("unreachable");
+
+		const zeroed = formatShape({ ...start, n: 0 });
+		const reread = shapeOf("padding", zeroed);
+		expect(reread).toEqual({ kind: "length", n: 0, unit: "px" });
+		if (reread.kind !== "length") throw new Error("unreachable");
+
+		expect(formatShape({ ...reread, n: 8 })).toBe("8px");
 	});
 });
 
@@ -121,6 +140,10 @@ describe("人话名", () => {
 	it("认得出的值 format 回去再认还是它(互逆)", () => {
 		for (const [prop, raw] of [
 			["padding", "12px"],
+			// 0 的样本一条都不能少:互逆在 0 上最容易断(那正是「0 不带单位」曾经栽的地方)。
+			["padding", "0px"],
+			["width", "0%"],
+			["line-height", "0"],
 			["color", "#abcdef"],
 			["text-align", "right"],
 			["border", "3px dotted #000000"],

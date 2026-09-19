@@ -303,7 +303,11 @@ export function formatShape(shape: Exclude<ValueShape, { kind: "text" }>): strin
 		case "color":
 			return shape.hex;
 		case "length":
-			return shape.n === 0 && shape.unit !== "" ? "0" : `${shape.n}${shape.unit}`;
+			// 0 也带单位(写 `0px`,不写 `0`)。控件没有自己的 state,每次渲染都从那段文本现推
+			// shape:这里省掉单位,下一轮 `shapeOf("padding", "0")` 就推成 `{ n: 0, unit: "" }`,
+			// 单位下拉静默变「无」,作者再把数字调回 8 写出来的是裸的 `padding: 8` —— 非法长度,
+			// 浏览器整条丢弃,而清洗器不查单位,于是这条声明存得下、导得出、就是不生效。
+			return `${shape.n}${shape.unit}`;
 		case "keyword":
 			return shape.keyword;
 		case "border":
