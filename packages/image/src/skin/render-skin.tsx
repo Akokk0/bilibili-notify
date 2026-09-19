@@ -237,10 +237,15 @@ function frameVariables(props: unknown): string {
 	let out = "";
 	// 档位色(SC 按价位、上舰按舰长等级)只有那两种卡的 props 才带;皮肤 CSS 用它按档变色。
 	if (p.bgColor) out += `${V.tierColor.css}:${p.bgColor[0]};${V.tierColorEnd.css}:${p.bgColor[1]};`;
-	// 用户背景图**有才注**:没注时皮肤 CSS 里 `var(--bn-card-bg-image, <渐变>)` 的兜底才生效。
-	// 值是**完整的一层**(含 `center / cover`),皮肤写 `background:var(--bn-card-bg-image,<渐变>)`
-	// 或把它叠进层列表都行;尺寸不能挪到皮肤 CSS 那头去写 —— 渐变一带尺寸就换了光栅抖动。
-	if (p.backgroundImage) out += `${V.bgImage.css}:url("${p.backgroundImage}") center / cover;`;
+	// ⛔ **`--bn-card-bg-image` 不再注**(2026-09-19 补上 ADR-0014 决策 15 那条 2026-09-14 🔗
+	// 的最后一步,原文:「旧皮肤里引用 `--bn-card-bg-image` 的那句**从此没人喂**」)。
+	// 背景图 2026-09-14 退役成皮肤自己的 `image` 旋钮,值走 `--bn-knob-wallpaper`
+	// (宿主经 `resolveKnobAssets` 读盘解析,见 `skin/knob-assets.ts`);全仓**零条 CSS**
+	// 再读 `--bn-card-bg-image`,默认外框读的是 `var(--bn-knob-wallpaper, <渐变>)`。
+	// 留着它只会骗人:2026-09-19 主人正是看见这个变量,才把「背景图旋钮不生效」错怪到
+	// 改名头上(真因是面板预览那条路没调 `resolveKnobAssets`,已修)。
+	// `p.backgroundImage` 那条入参链(模板 / ImageRenderer / engines)还在,拆它是另一件事
+	// —— 与整卡模板退役(决策 24 的 2026-09-18 🔗)缠在一起。
 	return out;
 }
 

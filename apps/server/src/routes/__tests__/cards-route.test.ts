@@ -811,7 +811,21 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
 	});
 
-	it("mock 预览:backgroundImages 首张悬空(文件已删)→ 跳过,用第一张盘上存在的图", async () => {
+	/**
+	 * **这一条原来钉的是「悬空首张被跳过、第二张内联进了 HTML」。** 内联那一半今天不成立了:
+	 * `cardStyle.backgroundImages` 2026-09-14 退役成皮肤自己的 `image` 旋钮,而 2026-09-19
+	 * 补上了 ADR-0014 决策 15 那条 🔗 的最后一步 —— `--bn-card-bg-image` **不再注**,
+	 * 所以这条退役字段的值端到端**到不了卡片**了(背景图走 `--bn-knob-wallpaper`)。
+	 *
+	 * 「跳过悬空、取第一张存在的」那半**逻辑还在、也还有测试**,在它自己的缝上:
+	 * `runtime/__tests__/card-assets.test.ts` 的 `firstExistingCardBg` 两条。这里改成钉
+	 * 新的事实,免得留一条为错误的理由绿着的测试。
+	 *
+	 * 🔴 **顺带记下**:`firstExistingCardBg` 的产物如今喂进一条走不通的链
+	 * (`routes/cards.ts` → ImageRenderer → props.backgroundImage → 无人读)。拆那条链
+	 * 与整卡模板退役(决策 24 的 2026-09-18 🔗)缠在一起,是另一件事。
+	 */
+	it("mock 预览:退役的 backgroundImages 到不了卡片(背景图走 wallpaper 旋钮)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-preview-ghost-bg-"));
 		try {
 			const real = await saveCardBg(dir, PNG, "image/png");
@@ -836,8 +850,9 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				style: { ...STYLE, backgroundImages: [ghost, real] },
 			});
 			expect(res.status).toBe(200);
-			// 悬空首张被跳过,第二张成功内联成 data URL;老行为是取 [0] 解析失败静默回退渐变。
-			expect(captured.html).toContain("data:image/png;base64,");
+			// 判据:把 `frameVariables` 里那句 `--bn-card-bg-image` 注入加回去,这条红。
+			expect(captured.html).not.toContain("--bn-card-bg-image");
+			expect(captured.html).not.toContain("data:image/png;base64,");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

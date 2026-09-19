@@ -469,20 +469,26 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 		expect(style).not.toMatch(/(^|;)background:/);
 	});
 
-	it("用户背景图注成 --bn-card-bg-image(皮肤自己决定叠还是换)", async () => {
+	/**
+	 * **这一条从前是反过来写的**(钉「用户背景图注成 `--bn-card-bg-image`」)。那是决策 15
+	 * 2026-09-13 设计稿阶段的形状;**2026-09-14 主人把背景图整个退役成皮肤自己的 `image`
+	 * 旋钮**之后,同一条 🔗 明写「旧皮肤里引用 `--bn-card-bg-image` 的那句**从此没人喂**」
+	 * —— 代码却一直还在喂,而全仓零条 CSS 读它(默认外框读的是
+	 * `var(--bn-knob-wallpaper, <渐变>)`)。2026-09-19 补上那最后一步。
+	 *
+	 * 为什么值得单独钉一条「**不**注」:留着它不是白费几个字节,而是会骗人 —— 主人正是
+	 * 看见这个变量,才把「背景图旋钮不生效」错怪到改名头上(真因在面板预览那条路)。
+	 * 判据:把 `frameVariables` 里那句注入加回去,这条红。
+	 */
+	it("退役的 cardStyle 背景图不再注进外框 —— 背景图走 wallpaper 旋钮", async () => {
 		const { doc } = await render(card(), {
 			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" },
 		});
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
-		expect(style).toContain('--bn-card-bg-image:url("data:image/png;base64,AAAA") center / cover');
+		expect(style).not.toContain("--bn-card-bg-image");
+		expect(style).not.toContain("data:image/png;base64,AAAA");
+		// 外框底色仍归皮肤 CSS 的 frame 规则写(决策 15 的 🔗),这一条顺带守着。
 		expect(style).not.toMatch(/(^|;)background:/);
-	});
-
-	it("没有背景图就不注 --bn-card-bg-image(让 var() 的兜底生效)", async () => {
-		const { doc } = await render(card());
-		expect(doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "").not.toContain(
-			"--bn-card-bg-image",
-		);
 	});
 
 	it("SC / 上舰的档位色注成 --bn-card-tier-color / -end", async () => {
