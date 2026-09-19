@@ -252,12 +252,7 @@ const statAtom =
  * 统一加),无数据时返回 null 自动收起。
  */
 export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = {
-	[DIVIDER_TYPE]: () => (
-		<div
-			class="[background:var(--bn-divider-color)]"
-			style="height: 1px; --bn-divider-color: rgba(0,0,0,0.06); margin: 0 16px;"
-		/>
-	),
+	[DIVIDER_TYPE]: () => <div data-bn="line" />,
 
 	additional: ({ node }) =>
 		node.additional ? <div class="px-[16px]">{node.additional}</div> : null,

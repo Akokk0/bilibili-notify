@@ -90,11 +90,9 @@ const master: BlockRenderer<GuardCardProps> = (p) => (
  * 常驻块,由模板按 `badgeSide` 直接定位(所以它自带 `data-block`)。
  */
 export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
+	// 线的颜色是数据(档位色加两成透明),注在 `--bn-divider-color` 里;粗细 / 上下留白归皮肤。
 	[DIVIDER_TYPE]: (p) => (
-		<div
-			class="my-[6px] [background:var(--bn-divider-color)]"
-			style={{ height: "1px", "--bn-divider-color": `${p.bgColor[0]}33` }}
-		/>
+		<div data-bn="line" style={{ "--bn-divider-color": `${p.bgColor[0]}33` }} />
 	),
 
 	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。

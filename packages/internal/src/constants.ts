@@ -1514,8 +1514,12 @@ export interface CardSkinBuiltinBlock {
 	/**
 	 * 内部挂点 → 人话名。皮肤写 `[data-bn="avatar"]`。
 	 *
-	 * 原子块的**根**就是 `self`,根上不挂;但它里头带着的部件照挂、照声明 —— 正文文字里的
-	 * `body`、图廊里的 `pic`、互动数里的 `icon`。`atom` 只管编辑器分组,不代表「没有挂点」。
+	 * `self` 是渲染器包在块外面那层 wrapper(网格里的格子),**不是块自己的根元素**。所以
+	 * 2026-09-19 起(ADR-0014 决策 7 的 🔗)原子块的根也挂一个:它长什么样(字号、字色、圆角、
+	 * 胶囊底色)全写在默认皮肤这个挂点的规则里,渲染器只留结构。根挂点的名字只有几个,按
+	 * 「它是什么」取:图 `image`、文字 `text`、胶囊 / 角标 `pill`、留言气泡 `bubble`、分割线
+	 * `line`;根之外的部件照旧各有各的名(正文文字里的 `body`、图廊里的 `pic`、互动数里的
+	 * `icon`)。`atom` 只管编辑器分组,不代表「没有挂点」。
 	 */
 	hooks: Record<string, string>;
 	/**
@@ -1549,7 +1553,7 @@ export interface CardSkinBuiltinBlock {
 export const DIVIDER_TYPE = "divider";
 
 /** 四种可编辑卡共用的分割线。 */
-const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: {} };
+const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: { line: "线" } };
 
 /**
  * 内置块目录:每种卡有哪些块、每块内部有哪些挂点。**块名与挂点名是对外 API。**
@@ -1571,21 +1575,20 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		// ⚠️ `image` 挂点是拆封面之前就有的**公开 API**,拆的时候连同 `<img>` 上那个
 		// `data-bn` 一起掉了一次(`5fa842ca`)—— 挂点名只增不改不删,而且没有它,皮肤连
 		// 「把封面压矮一点」都写不出来(`[data-bn="self"]` 是外面那层 div,在它上面写
-		// height 图会直接溢出去)。`status` 那个不补:角标已经是自己一块,写它自己的
-		// `[data-bn="self"]` 就行。
+		// height 图会直接溢出去)。
 		cover: { label: "封面图", atom: true, heightFromRows: true, hooks: { image: "封面图片" } },
-		status: { label: "直播状态", atom: true, hooks: {} },
-		title: { label: "直播标题", atom: true, hooks: {} },
-		desc: { label: "简介", atom: true, hooks: {} },
+		status: { label: "直播状态", atom: true, hooks: { pill: "胶囊" } },
+		title: { label: "直播标题", atom: true, hooks: { text: "文字" } },
+		desc: { label: "简介", atom: true, hooks: { text: "文字" } },
 		divider: DIVIDER_BLOCK,
-		avatar: { label: "头像", atom: true, hooks: {} },
-		name: { label: "主播名", atom: true, hooks: {} },
-		time: { label: "开播时间", atom: true, hooks: {} },
+		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
+		name: { label: "主播名", atom: true, hooks: { text: "文字" } },
+		time: { label: "开播时间", atom: true, hooks: { text: "文字" } },
 		// 数据区的三件(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
 		// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。
-		popularity: { label: "人气 / 点赞", atom: true, hooks: {} },
-		area: { label: "分区", atom: true, hooks: {} },
-		fans: { label: "粉丝行", atom: true, hooks: {} },
+		popularity: { label: "人气 / 点赞", atom: true, hooks: { text: "文字" } },
+		area: { label: "分区", atom: true, hooks: { text: "文字" } },
+		fans: { label: "粉丝行", atom: true, hooks: { text: "文字" } },
 	},
 	dynamic: {
 		additional: {

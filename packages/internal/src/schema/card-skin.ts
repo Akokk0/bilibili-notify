@@ -782,6 +782,25 @@ const at = (
 	...(css || rules ? { css: `${css ? `[data-bn="self"]{${css}}` : ""}${rules}` } : {}),
 });
 
+/**
+ * 块里一件部件(多半是块的根:`image` / `text` / `pill` / `line` …)的规则,接在 self 那条后面。
+ * 这些规则就是内置块**长什么样**的全部(ADR-0014 决策 7 的 2026-09-19 🔗):渲染器只画结构,
+ * 字号 / 字色 / 圆角 / 胶囊底色都在这里,一份皮肤 JSON 就是卡片的全部样子。
+ */
+const part = (hook: string, decls: string) => `[data-bn="self"] [data-bn="${hook}"]{${decls}}`;
+
+/** 分割线自己:1px 高、两边各留 16px、淡淡一条。四种卡同一条。 */
+const DIVIDER_LINE = part("line", "height:1px;margin:0 16px;background:rgba(0,0,0,.06)");
+
+/** 醒目留言卡的分割线:两头透明、中间档位色的一道渐变(档位色是数据,渲染器注在变量里)。 */
+const SC_LINE = part(
+	"line",
+	"height:1px;background:linear-gradient(to right,transparent,var(--bn-card-tier-color),transparent)",
+);
+
+/** 直播卡数据区三件(人气 / 分区 / 粉丝)共用的文字样子。 */
+const DATA_TEXT = part("text", "padding:0 16px;font-size:13px;color:#666");
+
 /** 通栏一行。 */
 const full = (row: number) => ({ row, column: 1, span: CARD_SKIN_LIMITS.columns });
 
@@ -902,7 +921,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 封面自然高约 319.5px,画布上一直画矮了一行。高度变真之后取最接近的 6 行:
 				// 比从前高约 16px,而且从此**不管 B 站给的是什么比例都是这个高度**(4:3 那种
 				// 会被裁掉一截),换来的是卡片高度可预期。
-				at("cover", tall(1, 6), "padding:0 16px"),
+				at("cover", tall(1, 6), "padding:0 16px", undefined, part("image", "border-radius:8px")),
 				// 角标与封面同占第 1 行、层次更高:靠上靠右收成内容宽,外边距把它推到从前
 				// `top-3 right-3` 的位置(右边那 28px = 封面的 16px 内边距 + 12px)。
 				// **列号收到它真正占的那两列**(本机量过:角标 501–557,第 11 列 472–515、
@@ -910,10 +929,16 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 右沿是同一条),但画布只看 JSON,声明通栏它就画一整行。
 				// `HEAD`(flex)不能省 —— 角标是 inline-flex,块容器里会起一条线盒,行高的
 				// 半个 leading 把它往下压 1.5px(本机量过)。
+				// 胶囊的底色是数据(直播中粉 / 下播灰),渲染器注在 `--bn-live-status-color` 里。
 				at(
 					"status",
 					{ row: 1, column: 11, span: 2, z: 1 },
 					`${HEAD};align-self:start;justify-self:end;margin:12px 28px 0 0`,
+					undefined,
+					part(
+						"pill",
+						"height:24px;padding:1px 10px 0;border-radius:12px;background-color:var(--bn-live-status-color);color:#fff;font-size:12px;font-weight:700;line-height:1",
+					),
 				),
 				// ⚠️ 从第 7 行起 —— **封面占的是 r1–r6**(跨 6 行)。封面改行数时这一摞必须跟着推,
 				// 不然头像就落进封面的最后一行、半个身子压在图里(2026-09-18 栽过一次,主人指着
@@ -923,15 +948,50 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"avatar",
 					{ row: 7, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding:14px 0 0 16px;align-self:center`,
+					undefined,
+					part("image", "width:44px;height:44px;border-radius:9999px"),
 				),
-				at("name", { row: 7, column: 2, span: 11 }, `${HEAD};padding-top:14px;align-self:end`),
-				at("time", { row: 8, column: 2, span: 11 }, `${HEAD};padding-top:2px;align-self:start`),
-				at("title", full(9), "padding-top:10px"),
-				at("divider", full(10), "padding-top:10px", "divider-1"),
-				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px"),
-				at("area", { row: 11, column: 7, span: 6 }, "padding-top:10px;text-align:right"),
-				at("fans", full(12), "padding-top:4px"),
-				at("desc", full(13), "padding-top:16px"),
+				at(
+					"name",
+					{ row: 7, column: 2, span: 11 },
+					`${HEAD};padding-top:14px;align-self:end`,
+					undefined,
+					part("text", "font-size:16px;font-weight:700;line-height:1;color:#18191C"),
+				),
+				at(
+					"time",
+					{ row: 8, column: 2, span: 11 },
+					`${HEAD};padding-top:2px;align-self:start`,
+					undefined,
+					part("text", "font-size:12px;color:#999"),
+				),
+				at(
+					"title",
+					full(9),
+					"padding-top:10px",
+					undefined,
+					part(
+						"text",
+						"padding:0 16px;font-size:17px;font-weight:700;line-height:1.375;color:#18191C",
+					),
+				),
+				at("divider", full(10), "padding-top:10px", "divider-1", DIVIDER_LINE),
+				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px", undefined, DATA_TEXT),
+				at(
+					"area",
+					{ row: 11, column: 7, span: 6 },
+					"padding-top:10px;text-align:right",
+					undefined,
+					DATA_TEXT,
+				),
+				at("fans", full(12), "padding-top:4px", undefined, DATA_TEXT),
+				at(
+					"desc",
+					full(13),
+					"padding-top:16px",
+					undefined,
+					part("text", "padding:0 16px;font-size:13px;line-height:1.5;color:#999"),
+				),
 			],
 		},
 		dynamic: {
@@ -947,7 +1007,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				),
 				at("name", { row: 1, column: 2, span: 11 }, `${HEAD};align-self:end`),
 				at("time", { row: 2, column: 2, span: 11 }, `${HEAD};padding-top:3px;align-self:start`),
-				at("divider", full(3), "padding:12px 0", "divider-1"),
+				at("divider", full(3), "padding:12px 0", "divider-1", DIVIDER_LINE),
 				at("topic", full(4), "padding:0 16px"),
 				at("text", full(5), "padding:0 16px"),
 				// ── 投稿视频那张卡:五块 + 一圈用 CSS 拼出来的灰底容器 ──────────────
@@ -992,7 +1052,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("pics", tall(6, 7), "padding:8px 16px 0"),
 				at("forward", full(15), "padding:0 16px"),
 				at("additional", full(16), "padding-top:12px"),
-				at("divider", full(17), "padding:12px 0", "divider-2"),
+				at("divider", full(17), "padding:12px 0", "divider-2", DIVIDER_LINE),
 				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count"),
 				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count"),
 				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count"),
@@ -1005,7 +1065,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 金额是渐变裁字:用 text-align 居中,渐变才与旧的一样铺满整行。
 				at("price", full(1), "text-align:center"),
 				at("duration", full(2), CENTER),
-				at("divider", full(3), "padding-top:15px", "divider-1"),
+				at("divider", full(3), "padding-top:15px", "divider-1", SC_LINE),
 				at("avatar", full(4), `padding-top:12px;${CENTER}`),
 				at("name", full(5), `padding-top:8px;${CENTER}`),
 				at("to", full(6), `padding-top:8px;${CENTER}`),

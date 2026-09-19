@@ -9,7 +9,7 @@
  * 解析一遍、逐条问它的第一个节点是不是挂点 —— 归一化拆掉就会红。
  */
 
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal";
+import { CARD_SKIN_LIMITS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import type { CssNode } from "css-tree";
 import { parse } from "css-tree/dist/csstree.esm";
 import { describe, expect, it } from "vite-plus/test";
@@ -464,4 +464,39 @@ describe("自由选择器的两条补丁(主会话审 diff 加的)", () => {
 		);
 		expect(bad.ok && bad.css).toBe("");
 	});
+});
+
+/**
+ * **出厂默认皮肤一字不改地过装包门**(ADR-0014 决策 7 的 2026-09-19 🔗)。
+ *
+ * 内置块的全部样子都写在默认皮肤各块的 CSS 里,它写的是清洗器的规范形(`self` 起头、
+ * 声明间无空格)。这条钉两件事:每块、每个外框的 CSS 清洗后**逐字相同**(不是「能过」——
+ * 规范形漂了、挂点写错了都会变),而且**零警告**(挂点不在该块目录里时清洗器只警告不报错,
+ * 那条规则会被静默丢掉,卡就光秃秃了)。
+ */
+describe("出厂默认皮肤 — 每段 CSS 都是清洗器的规范形", () => {
+	for (const [kind, card] of Object.entries(DEFAULT_CARD_SKIN.cards)) {
+		if (!card) continue;
+		it(`${kind}:外框 CSS 原样通过、零警告`, () => {
+			if (!card.css) return;
+			const res = sanitizeCardFrameCss(card.css);
+			expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+			if (!res.ok) throw new Error("unreachable");
+			expect(res.warnings).toEqual([]);
+			expect(res.css).toBe(card.css);
+		});
+		for (const block of card.blocks) {
+			if (!block.css) continue;
+			it(`${kind}.${block.id}:块 CSS 原样通过、零警告`, () => {
+				const res = sanitizeCardBlockCss(block.css ?? "", {
+					kind: kind as "dynamic",
+					builtin: block.kind === "builtin" ? block.builtin : undefined,
+				});
+				expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+				if (!res.ok) throw new Error("unreachable");
+				expect(res.warnings).toEqual([]);
+				expect(res.css).toBe(block.css);
+			});
+		}
+	}
 });

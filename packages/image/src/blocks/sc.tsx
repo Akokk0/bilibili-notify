@@ -114,11 +114,9 @@ const to: BlockRenderer<SCCardProps> = (p) => (
  * divider 是 sc 专属的渐变分割线(可重复)。
  */
 export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
+	// 渐变的中段是档位色(数据),注在 `--bn-card-tier-color` 里;渐变本身归皮肤的 `line` 规则。
 	[DIVIDER_TYPE]: (p) => (
-		<div
-			class="w-full h-px [background:linear-gradient(to_right,transparent,var(--bn-card-tier-color),transparent)]"
-			style={{ "--bn-card-tier-color": p.bgColor[0] }}
-		/>
+		<div data-bn="line" class="w-full" style={{ "--bn-card-tier-color": p.bgColor[0] }} />
 	),
 
 	message: (p) => {
