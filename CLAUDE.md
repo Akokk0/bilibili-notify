@@ -60,6 +60,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - `architecture.md` —— 包清单、独立端模块图、服务依赖图
 - `events.md` —— BiliEvents 契约、MessageBus 语义、WS channel 契约
+- `push.md` —— 推送链路:引擎 → 适配 → 路由与闸 → 发送 → 投递 → 历史;闸的顺序、附加项的「生产 vs 推送」、不走这条链的三条旁路
 - `build-release.md` —— 工具链、分支模型、Docker 镜像与 tag 方案、桌面产物布局
 - `commands.md` —— 独立端私聊指令:入站链路、指令表、参数模型、可配置项;末尾是群里视频链接自动出卡片的「链接解析」
 - `self-update.md` —— 应用内自主升级:载荷布局、`boot.mjs` 选版、双密钥与渠道入口、撤回与自愈
