@@ -1638,16 +1638,24 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		likeCount: { label: "点赞数", atom: true, hooks: { text: "文字", icon: "图标" } },
 	},
 	sc: {
-		message: { label: "留言", atom: true, hooks: { text: "留言文本" } },
+		// 留言的根是一层撑满格子的壳(居中靠块的 `self` 说),气泡与文字各一个挂点。
+		message: { label: "留言", atom: true, hooks: { bubble: "留言气泡", text: "留言文本" } },
 		divider: DIVIDER_BLOCK,
-		avatar: { label: "发送者头像", atom: true, hooks: {} },
-		name: { label: "发送者名", atom: true, hooks: {} },
-		price: { label: "金额", atom: true, hooks: {} },
-		duration: { label: "时长胶囊", atom: true, hooks: {} },
+		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它,里头的 img 填满即可。
+		avatar: { label: "发送者头像", atom: true, hooks: { image: "头像图片" } },
+		name: { label: "发送者名", atom: true, hooks: { pill: "胶囊" } },
+		price: { label: "金额", atom: true, hooks: { text: "文字" } },
+		duration: { label: "时长胶囊", atom: true, hooks: { pill: "胶囊" } },
 		to: {
 			label: "「SC to」那一行",
 			atom: true,
-			hooks: { masterAvatar: "主播小头像", masterName: "主播名" },
+			hooks: {
+				text: "文字",
+				label: "「SC to」三个字",
+				master: "主播那一组",
+				masterAvatar: "主播小头像",
+				masterName: "主播名",
+			},
 		},
 	},
 	guard: {

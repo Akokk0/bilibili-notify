@@ -3,37 +3,35 @@
 /**
  * SC(醒目留言)卡的块库。
  *
- * 复合块(amount / sender / message / divider)是从 `templates/sc-card.tsx` **原样搬**
- * 进来的那几段 JSX —— class、inline style、文案一个字都没动;原子块是**新抠**的,保持它们在
- * 复合块里的 class 与 style,让皮肤能把各件分开摆:
- * - avatar / name:sender 里的头像那一坨(定宽圆框 + img)与名牌胶囊;
- * - to(2026-09-18,决策 8 的 🔗):sender 里「SC to」那一行,主播小头像与主播名照挂;
- * - price / duration(同日):amount 里的金额数字与时长胶囊。档位色变量在复合块里挂在 amount
- *   **根上**,单独摆没有那个根,所以两件各自带上(金额是渐变裁字,缺一个变量字就透明了)。
+ * 每块只画**结构**:元素、它们的嵌套、撑住布局的那几个 class(`flex` / `w-full` /
+ * `overflow-hidden` / `bg-cover` …)。它**长什么样**(字号、字色、圆角、胶囊底色、头像尺寸、
+ * 留言气泡那层白纱)一概不在这里 —— 全写在出厂默认皮肤各块的 CSS 里(ADR-0014 决策 7 的
+ * 2026-09-19 🔗):一份皮肤 JSON 就是卡片的全部样子,渲染器不留一层「默认外观」让皮肤去盖。
+ * `__tests__/blocks-bare.test.ts` 扫源码钉着这一点。
  *
- * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.sc`,一个不多一个不少(`__tests__/card-blocks.test.ts`
- * 对表钉着)。
+ * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
+ * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
+ * 之外的部件照挂(留言的 `bubble` 与 `text`、「SC to」那行里的 `label` / `master` /
+ * `masterAvatar` / `masterName`)。名字取自 `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`,是对外
+ * API(`__tests__/card-hooks.test.ts` 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点
+ * 也必须真被挂上)。
  *
- * 复合块内部的部件挂 `data-bn="<挂点>"`(ADR-0014 决策 9),挂点名取自
- * `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`;原子块的**根**是 `self`,所以根上不挂,里头带着的
- * 部件照挂(`__tests__/card-hooks.test.ts` 两头钉着)。
+ * 两处例外要说明:
+ * - **头像**的根是那个把图裁圆的框,`image` 挂在**框**上,里头的 `<img>` 不挂 —— 圆与尺寸
+ *   写一处就够,img 只负责填满并按比例裁。
+ * - **留言**的根是一层撑满格子的壳,居中由块的 `self` 规则(`text-align`)说,所以壳上不挂;
+ *   气泡挂 `bubble`、文字挂 `text`。
  *
- * **这块暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗):颜色的**值**留在 inline 的 `--bn-*`
- * 自定义属性里,颜色**属性**(`color` / `background*`)写到 class 上 —— 皮肤 CSS 的
- * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
+ * 留在 inline 的 CSS 变量只有档位色 —— 它们是**数据**不是外观(由价位档算出来),皮肤在各自
+ * 的规则里用 `var()` 引:
  *
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
- * | `--bn-card-tier-color` | 价位档位色的起色(`bgColor[0]`) | `divider` 块根(= 线自己)、`amount` 块根、`name` 名牌胶囊、`price` / `duration` 原子块 |
- * | `--bn-card-tier-color-end` | 价位档位色的止色(`bgColor[1]`) | `amount` 块根、`price` 原子块 |
+ * | `--bn-card-tier-color` | 价位档位色的起色(`bgColor[0]`) | `divider`(= 线自己)、`name` 胶囊、`price`、`duration` |
+ * | `--bn-card-tier-color-end` | 价位档位色的止色(`bgColor[1]`) | `price`(金额是渐变裁字,缺一个字就透明了) |
  *
- * 写法用 UnoCSS 的**任意属性** `[color:var(--bn-x)]`,不用 `text-[var(--bn-x)]`:preset-wind4 的
- * 颜色工具类会编成 `color-mix(in oklab, … , transparent)`,那趟色彩空间往返**会动像素**
- * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
- *
- * 名牌胶囊的变量刻意挂在**胶囊自己**身上而不是 `sender` 块根:`name` 原子块就是这颗胶囊,
- * 两边必须逐字同形(`__tests__/card-blocks.test.ts` 的「原子块与复合块同形」钉着),
- * 变量提到复合块根上原子块就没人给它值了。
+ * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.sc`,一个不多一个不少(`__tests__/card-blocks.test.ts`
+ * 对表钉着)。
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
@@ -51,27 +49,30 @@ function escapeText(p: SCCardProps): string {
 		.replace(/\n/g, "<br>");
 }
 
-/** 发送者头像(原子块):sender 复合块里的那个定宽圆框 + img。 */
+/**
+ * 发送者头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
+ * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
+ */
 const avatar: BlockRenderer<SCCardProps> = (p) => (
-	<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
-		<img class="w-full h-full rounded-full object-cover" src={p.senderFace} alt="发送者头像" />
+	<div data-bn="image" class="overflow-hidden">
+		<img class="w-full h-full object-cover" src={p.senderFace} alt="发送者头像" />
 	</div>
 );
 
-/** 发送者名(原子块):sender 复合块里的那个名牌胶囊。 */
+/** 发送者名(原子块):那颗名牌胶囊。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
 const name: BlockRenderer<SCCardProps> = (p) => (
-	<div
-		class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px] [background-color:var(--bn-card-tier-color)]"
-		style={{ "--bn-card-tier-color": p.bgColor[0] }}
-	>
+	<div data-bn="pill" style={{ "--bn-card-tier-color": p.bgColor[0] }}>
 		{p.senderName}
 	</div>
 );
 
-/** 金额(原子块):amount 复合块里的金额数字,自带那两个档位色变量(渐变裁字要用)。 */
+/**
+ * 金额(原子块):那串数字。它是**渐变裁字**(皮肤那条规则里 `background-clip:text` +
+ * 透明字色),起止两枚档位色是数据,缺一枚字就整个透明了,所以两枚都留 inline。
+ */
 const price: BlockRenderer<SCCardProps> = (p) => (
 	<div
-		class="text-[36px] font-bold bg-clip-text text-transparent [background-image:linear-gradient(135deg,var(--bn-card-tier-color),var(--bn-card-tier-color-end))]"
+		data-bn="text"
 		style={{
 			"--bn-card-tier-color": p.bgColor[0],
 			"--bn-card-tier-color-end": p.bgColor[1],
@@ -81,10 +82,11 @@ const price: BlockRenderer<SCCardProps> = (p) => (
 	</div>
 );
 
-/** 时长胶囊(原子块):amount 复合块里的那颗胶囊,自带档位色变量(底色要用)。 */
+/** 时长胶囊(原子块):图标 + 时长。底色同样是档位色(数据)。 */
 const duration: BlockRenderer<SCCardProps> = (p) => (
 	<div
-		class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold [background-color:var(--bn-card-tier-color)]"
+		data-bn="pill"
+		class="inline-flex items-center"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
 		{SVG_DURATION}
@@ -92,15 +94,18 @@ const duration: BlockRenderer<SCCardProps> = (p) => (
 	</div>
 );
 
-/** 「SC to」那一行(原子块):sender 复合块里的那一行,主播小头像与主播名的挂点照挂。 */
+/**
+ * 「SC to」那一行(原子块):三个字 + 主播那一组(小头像 + 名字)。小头像的图是**数据**,
+ * 走 inline 的 `background-image`;`bg-cover` / `bg-center` 是它的裁法与定位,不是样子。
+ */
 const to: BlockRenderer<SCCardProps> = (p) => (
-	<div class="flex items-center gap-[5px] text-[12px] text-[#666]">
-		<span class="mr-[3px]">SC to</span>
-		<div class="flex items-center gap-[2px]">
+	<div data-bn="text" class="flex items-center">
+		<span data-bn="label">SC to</span>
+		<div data-bn="master" class="flex items-center">
 			{p.masterAvatarUrl && (
 				<div
 					data-bn="masterAvatar"
-					class="w-[18px] h-[18px] rounded-full border border-black/10 bg-cover bg-center"
+					class="bg-cover bg-center"
 					style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
 				/>
 			)}
@@ -119,16 +124,14 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 		<div data-bn="line" class="w-full" style={{ "--bn-card-tier-color": p.bgColor[0] }} />
 	),
 
+	// 外面那层壳只负责撑满格子:居中归这块 `self` 规则里的 `text-align`(块级根填满格子,
+	// 写在 wrapper 上继承下来一模一样),所以壳上不挂挂点。
 	message: (p) => {
 		const escapedText = escapeText(p);
 		return escapedText ? (
-			<div class="w-full text-center">
-				<div class="px-3 py-[10px] bg-white/50 rounded-lg">
-					<div
-						data-bn="text"
-						class="text-[13px] text-[#333] leading-[1.6] break-words whitespace-pre-wrap"
-						innerHTML={escapedText}
-					/>
+			<div class="w-full">
+				<div data-bn="bubble">
+					<div data-bn="text" class="break-words whitespace-pre-wrap" innerHTML={escapedText} />
 				</div>
 			</div>
 		) : null;

@@ -16,6 +16,10 @@
  * 于是这里只做一件事:**认下现状,别再漂**。清单是双向的 —— 加新值要在这里登记,
  * 删到没人用也要从这里删掉,免得清单自己变成第二个垃圾场。
  *
+ * 数两头:块文件里的 `text-[Npx]`,**以及出厂默认皮肤各块 CSS 里的 `font-size:Npx`** ——
+ * 内置块的外观 2026-09-19 起搬进了默认皮肤(决策 7 的 🔗),只数源码的话这份清单会跟着
+ * 搬家一格一格地空掉,而卡片上的字号一个没少。
+ *
  * 将来真要归并,先看这三处半档:`11.5` ×2 与 `13.5` ×1,全在锐评卡的正文块
  * (`blocks/roast.tsx`,ADR-0014 拆块前住在 `templates/roast-card.tsx`)一个文件里,
  * 而同一个文件也在用 11 和 13。那是最像「随手写的」的三处,也是最划算的起点。
@@ -24,9 +28,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** 出厂默认皮肤那一头在清单里的「文件名」。 */
+const SKIN = "(出厂默认皮肤)";
 
 /** 出图当前在用的字号,单位 px。加值删值都要动这里。 */
 const FROZEN = [10, 11, 11.5, 12, 13, 13.5, 14, 15, 16, 17, 18, 28, 36];
@@ -42,15 +50,31 @@ function sources(dir: string): string[] {
 	return acc;
 }
 
+/**
+ * 出厂默认皮肤各块的 CSS —— 2026-09-19 起内置块的字号住在这儿(ADR-0014 决策 7 的 🔗:
+ * 外观整批搬进默认皮肤)。**不把这一头算进来的话这份清单会随着搬家一格一格地空掉**,
+ * 而字号一个没少:搬走 `text-[36px]` 的那天,「36 没人用了」是假的。
+ */
+function skinCss(): string {
+	const out: string[] = [];
+	for (const card of Object.values(DEFAULT_CARD_SKIN.cards)) {
+		if (!card) continue;
+		if (card.css) out.push(card.css);
+		for (const block of card.blocks) if (block.css) out.push(block.css);
+	}
+	return out.join("\n");
+}
+
 function usedSizes(): Map<number, string[]> {
 	const hits = new Map<number, string[]>();
+	const add = (px: number, where: string) => hits.set(px, [...(hits.get(px) ?? []), where]);
 	for (const file of sources(SRC)) {
 		const src = readFileSync(file, "utf8");
 		for (const m of src.matchAll(/text-\[([0-9.]+)px\]/g)) {
-			const px = Number(m[1]);
-			hits.set(px, [...(hits.get(px) ?? []), file.slice(SRC.length + 1)]);
+			add(Number(m[1]), file.slice(SRC.length + 1));
 		}
 	}
+	for (const m of skinCss().matchAll(/font-size:([0-9.]+)px/g)) add(Number(m[1]), SKIN);
 	return hits;
 }
 

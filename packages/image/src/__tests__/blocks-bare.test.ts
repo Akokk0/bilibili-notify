@@ -21,7 +21,7 @@ import { describe, expect, it } from "vite-plus/test";
 const BLOCKS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "blocks");
 
 /** 已经搬空外观的块文件。 */
-const BARE_FILES = ["live.tsx", "dynamic.tsx"];
+const BARE_FILES = ["live.tsx", "dynamic.tsx", "sc.tsx"];
 
 /**
  * 长得像外观的 class token。列的是 UnoCSS 里会编成外观属性的那些前缀;结构类
@@ -57,8 +57,17 @@ function classTokens(source: string): string[] {
 	return out.filter(Boolean);
 }
 
+/**
+ * `bg-` 打头、但其实是**结构**的两个:`background-size:cover` 与 `background-position:center`。
+ * 它们是「一张数据来的背景图怎么裁、怎么摆」,与 `object-cover` 是同一件事的两种写法
+ * (图当背景铺时用这一对,当 `<img>` 时用那一个)—— 底色 / 渐变那类才是外观。
+ */
+const STRUCTURAL: ReadonlySet<string> = new Set(["bg-cover", "bg-center"]);
+
 export function appearanceTokens(source: string): string[] {
-	return classTokens(source).filter((t) => APPEARANCE.some((re) => re.test(t)));
+	return classTokens(source).filter(
+		(t) => !STRUCTURAL.has(t) && APPEARANCE.some((re) => re.test(t)),
+	);
 }
 
 describe("内置块只画结构 — 块文件里没有外观类", () => {
@@ -78,5 +87,13 @@ describe("内置块只画结构 — 块文件里没有外观类", () => {
 		expect(
 			appearanceTokens('<div class="flex items-center gap-x w-full min-w-0 truncate">'),
 		).toEqual(["gap-x"]);
+	});
+
+	// `STRUCTURAL` 是 `bg-` 那条规则上开的一个小口,开宽了(比如整条 `bg-` 都放行)守卫就
+	// 瞎了一半 —— 所以口子自己也要有守卫:放行的只有那两个,别的 `bg-` 照抓。
+	it("bg- 的口子只开给裁法与定位,底色 / 渐变照抓", () => {
+		expect(
+			appearanceTokens('<div class="bg-cover bg-center bg-white/50 bg-black/60 bg-gradient-to-r">'),
+		).toEqual(["bg-white/50", "bg-black/60", "bg-gradient-to-r"]);
 	});
 });

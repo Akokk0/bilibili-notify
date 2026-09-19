@@ -1121,14 +1121,63 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			width: 290,
 			css: `${FRAME_BG_TIER}${GLASS_PLAIN}`,
 			blocks: [
-				// 金额是渐变裁字:用 text-align 居中,渐变才与旧的一样铺满整行。
-				at("price", full(1), "text-align:center"),
-				at("duration", full(2), CENTER),
+				// 金额是渐变裁字:用 text-align 居中,渐变才与旧的一样铺满整行。字本身透明,
+				// 看见的是背景那道渐变被 `background-clip:text` 裁成字形 —— 两枚档位色是数据,
+				// 渲染器注在 `--bn-card-tier-color` / `--bn-card-tier-color-end` 里。
+				at(
+					"price",
+					full(1),
+					"text-align:center",
+					undefined,
+					part(
+						"text",
+						"font-size:36px;font-weight:700;color:transparent;-webkit-background-clip:text;background-clip:text;background-image:linear-gradient(135deg,var(--bn-card-tier-color),var(--bn-card-tier-color-end))",
+					),
+				),
+				at(
+					"duration",
+					full(2),
+					CENTER,
+					undefined,
+					part(
+						"pill",
+						"gap:4px;margin-top:5px;padding:4px 10px;border-radius:12px;background-color:var(--bn-card-tier-color);color:#fff;font-size:12px;font-weight:700",
+					),
+				),
 				at("divider", full(3), "padding-top:15px", "divider-1", SC_LINE),
-				at("avatar", full(4), `padding-top:12px;${CENTER}`),
-				at("name", full(5), `padding-top:8px;${CENTER}`),
-				at("to", full(6), `padding-top:8px;${CENTER}`),
-				at("message", full(7), "padding-top:12px"),
+				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
+				at(
+					"avatar",
+					full(4),
+					`padding-top:12px;${CENTER}`,
+					undefined,
+					part("image", "width:70px;height:70px;border-radius:9999px"),
+				),
+				at(
+					"name",
+					full(5),
+					`padding-top:8px;${CENTER}`,
+					undefined,
+					part(
+						"pill",
+						"padding:5px 14px;border-radius:15px;background-color:var(--bn-card-tier-color);color:#fff;font-weight:700;font-size:14px",
+					),
+				),
+				at(
+					"to",
+					full(6),
+					`padding-top:8px;${CENTER}`,
+					undefined,
+					`${part("text", "gap:5px;font-size:12px;color:#666")}${part("label", "margin-right:3px")}${part("master", "gap:2px")}${part("masterAvatar", "width:18px;height:18px;border-radius:9999px;border:1px solid rgba(0,0,0,.1)")}`,
+				),
+				// 留言整块居中:块的根是一层撑满格子的壳,`text-align` 写在格子上继承下去。
+				at(
+					"message",
+					full(7),
+					"padding-top:12px;text-align:center",
+					undefined,
+					`${part("bubble", "padding:10px 12px;background:rgba(255,255,255,.5);border-radius:8px")}${part("text", "font-size:13px;color:#333;line-height:1.6")}`,
+				),
 			],
 		},
 		guard: {

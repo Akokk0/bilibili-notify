@@ -219,7 +219,7 @@ describe("醒目留言卡 — price / duration / to", () => {
 		// 金额是渐变裁字:两个变量缺一个,字就是透明的 —— 复合块里它们挂在根上,单独摆没有那个根。
 		expect(style).toContain("--bn-card-tier-color:");
 		expect(style).toContain("--bn-card-tier-color-end:");
-		expect(hooksOn(root)).toEqual([]);
+		expect(hooksOn(root)).toEqual(["text"]);
 	});
 
 	it("duration:画的是时长胶囊(图标 + 时长),档位色变量跟着它自己走", async () => {
@@ -228,7 +228,7 @@ describe("醒目留言卡 — price / duration / to", () => {
 		expect(root.textContent?.trim()).not.toBe("");
 		expect(root.textContent).not.toContain("¥");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
-		expect(hooksOn(root)).toEqual([]);
+		expect(hooksOn(root)).toEqual(["pill"]);
 	});
 
 	it("to:画的是「SC to」那一行,主播小头像与主播名的挂点都在", async () => {
@@ -236,8 +236,10 @@ describe("醒目留言卡 — price / duration / to", () => {
 		expect(root.textContent).toContain("SC to");
 		expect(root.textContent).toContain("示例 UP 主");
 		expect(root.textContent).not.toContain("示例粉丝");
-		expect(hooksOn(root)).toEqual([]);
-		expect(hooksUnder(root)).toEqual(new Set(["masterAvatar", "masterName"]));
+		expect(hooksOn(root)).toEqual(["text"]);
+		expect(hooksUnder(root)).toEqual(
+			new Set(["text", "label", "master", "masterAvatar", "masterName"]),
+		);
 	});
 });
 
