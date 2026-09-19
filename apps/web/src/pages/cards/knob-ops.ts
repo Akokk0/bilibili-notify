@@ -40,6 +40,12 @@ export function isKnobTweaked(overrides: CardSkinKnobOverrides | undefined, key:
  * 「残值退回 default」是照着渲染器那头的 `cardSkinKnobCss` 抄的:它对同样这些值返回 null
  * = 不注入 = 皮肤 CSS 的兜底生效。面板要是照残值画控件,主人看到的就是一个「明明写着
  * 50px 卡片上却没有」的旋钮。残值怎么来的:手改过配置,或者皮肤升级换了这枚旋钮的类型。
+ *
+ * ⚠️ **`color` 是刻意的例外,别顺手「对齐」它。** 渲染器那头要 `#rgb` / `#rrggbb`
+ * (`KNOB_COLOR_RE`),这里只问是不是字符串 —— 于是 `tomato` 这种值会**原样摆出来**。
+ * 那是 2026-09-14 拍的板(见 `CardSkinKnobs.tsx` 里 `<TColor>` 上方那段):契约收紧成
+ * hex-only 之后,非 hex 的残值由取色器**红框红字**标成「格式不对」,点一下色块就换成 hex。
+ * 收紧这一行会把那个设计作废 —— 主人 2026-09-19 拍板「按明确决定走」,维持现状。
  */
 export function knobValue(
 	knob: CardSkinKnob,
