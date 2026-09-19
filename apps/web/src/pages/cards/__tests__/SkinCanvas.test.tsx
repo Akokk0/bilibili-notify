@@ -35,6 +35,9 @@ import {
 	setFrameCss,
 } from "../skin-draft-ops";
 
+/** CSS 那一节默认是结构视图,源码文本框得先切过去(ADR-0014 决策 21 的 2026-09-19 🔗)。 */
+const toSource = () => fireEvent.click(screen.getByRole("button", { name: "源码" }));
+
 const manifest = (): CardSkinManifest =>
 	({
 		schemaVersion: 1,
@@ -420,6 +423,7 @@ describe("检查器 · CSS", () => {
 		render(<Harness onDraft={onDraft} />);
 		fireEvent.click(blockBtn("封面图"));
 
+		toSource();
 		fireEvent.change(screen.getByLabelText("这个块的 CSS"), {
 			target: { value: '[data-bn="self"]{padding:8px}' },
 		});
@@ -445,6 +449,7 @@ describe("检查器 · CSS", () => {
 		render(<Harness onDraft={onDraft} />);
 		fireEvent.click(screen.getByText("卡片外框"));
 
+		toSource();
 		fireEvent.change(screen.getByLabelText("外框的 CSS"), {
 			target: { value: '[data-bn="glass"]{border-radius:20px}' },
 		});
@@ -456,6 +461,7 @@ describe("检查器 · CSS", () => {
 		render(<Harness />);
 		fireEvent.click(blockBtn("封面图"));
 
+		toSource();
 		fireEvent.change(screen.getByLabelText("这个块的 CSS"), {
 			target: { value: "a".repeat(CARD_SKIN_LIMITS.maxCssBytes + 1) },
 		});

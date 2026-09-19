@@ -66,9 +66,9 @@ describe("常用旋钮接在哪一层", () => {
 		expect((screen.getByLabelText("内边距") as HTMLInputElement).value).toBe("20");
 	});
 
-	it("外框上写的 self 规则不该被外框那一节读走", () => {
+	it("外框那段 CSS 里写了什么规则就列什么,选择器照原文显示、不按挂点筛", () => {
 		withCss('[data-bn="self"]{padding:20px}', { kind: "frame" });
-		expect((screen.getByLabelText("内边距") as HTMLInputElement).value).toBe("0");
+		expect((screen.getByLabelText(/的选择器$/) as HTMLInputElement).value).toBe('[data-bn="self"]');
 	});
 
 	it("拧外框的旋钮 → 走 onFrameCss 交回整段", () => {

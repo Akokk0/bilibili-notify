@@ -71,7 +71,11 @@ function Harness(props: { ai: InspectorAi; selection: SkinSelection }) {
 }
 
 const COVER: SkinSelection = { kind: "block", id: "cover" };
-const box = () => screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement;
+/** CSS 那一节默认是结构视图,源码文本框得先切过去。 */
+const box = () => {
+	fireEvent.click(screen.getByRole("button", { name: "源码" }));
+	return screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement;
+};
 const slot = () => screen.getByRole("button", { name: /请女仆帮忙写/ }) as HTMLButtonElement;
 
 async function ask(instruction = "圆角大一点") {

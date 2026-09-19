@@ -37,7 +37,7 @@ import { useState } from "react";
 import { Picker, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
 import type { CardSkinAiDone, CardSkinAiHandlers } from "../../services/cardSkinAi";
 import { type CssAiBinding, CssAiSlot } from "./CssAiSlot";
-import { CssKnobs } from "./CssKnobs";
+import { CssEditor } from "./CssEditor";
 import type { CardSkinAiReadiness } from "./card-skin-ai";
 import type { SkinSelection } from "./SkinCanvas";
 import {
@@ -279,7 +279,6 @@ export function SkinInspector({
 				label="这个块的 CSS"
 				hooksLabel="这个块的挂点"
 				hooks={blockHooks(kind, block)}
-				hook="self"
 				value={block.css ?? ""}
 				onChange={(css) => onCss(block.id, css)}
 				ai={bindAi(ai, { blockId: block.id })}
@@ -422,7 +421,6 @@ function FrameInspector({
 				label="外框的 CSS"
 				hooksLabel="外框的挂点"
 				hooks={Object.entries(CARD_SKIN_FRAME_HOOKS)}
-				hook="frame"
 				value={card.css ?? ""}
 				onChange={onFrameCss}
 				ai={bindAi(ai, {})}
@@ -561,19 +559,14 @@ function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[s
 }
 
 /**
- * CSS 那一节:挂点清单 + 一个纯文本框。
- *
- * **先有文本框,再谈旋钮**(「编辑器 = 能力全集」):白名单里七十来条属性,能变成控件的
- * 只是其中一小把,少了这个框,作者就有一半的能力够不着。清洗与「削掉了什么」归 server
- * ——预览那栏已经把 warnings 逐条列出来了,这里只拦一条前端自己就能判的:超上限。
- *
- * 挂点列出来还能点一下补进去:挂点名是**对外 API**,而记不住名字是写卡片皮肤的第一道坎。
+ * CSS 那一节:结构化编辑器(规则 → 声明,按值给控件)+ 源码切换(ADR-0014 决策 21 的
+ * 2026-09-19 🔗),外加女仆钮与字节计数。清洗与「削掉了什么」归 server —— 预览那栏已经把
+ * warnings 逐条列出来了,这里只拦一条前端自己就能判的:超上限。
  */
 function CssSection({
 	label,
 	hooksLabel,
 	hooks,
-	hook,
 	value,
 	onChange,
 	ai,
@@ -581,8 +574,6 @@ function CssSection({
 	label: string;
 	hooksLabel: string;
 	hooks: Array<[string, string]>;
-	/** 常用旋钮改哪一层:块是 `self`,外框是 `frame`(ADR-0014 决策 21)。 */
-	hook: string;
 	value: string;
 	onChange: (css: string) => void;
 	ai?: CssAiBinding;
@@ -593,34 +584,13 @@ function CssSection({
 	return (
 		<Section label="CSS">
 			<div className="flex flex-col gap-2 p-2.5">
-				{/* `<fieldset>` 只为给这排钮一个名字(同列定义那处)。 */}
-				<fieldset aria-label={hooksLabel} className="flex min-w-0 flex-wrap gap-1">
-					{hooks.map(([name, human]) => (
-						<button
-							key={name}
-							type="button"
-							data-bn="chip"
-							title={`[data-bn="${name}"] —— ${human}`}
-							onClick={() => onChange(appendRule(value, name))}
-							className="flex items-center gap-1 rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
-						>
-							<span>{shortLabel(human)}</span>
-							<span className="font-mono text-bn-text-tertiary">{name}</span>
-						</button>
-					))}
-				</fieldset>
-
-				{/* 旋钮在上、文本框在下 —— **同一段 CSS 的两个视图**(决策 21):
-				    常用的那几条在上面点一点就改了,写不出来的照旧往下面敲。 */}
-				<CssKnobs css={value} hook={hook} onChange={onChange} />
-
 				{ai ? <CssAiSlot ai={ai} value={value} onChange={onChange} /> : null}
 
-				<TArea
-					value={value}
+				<CssEditor
+					css={value}
+					hooks={hooks}
+					hooksLabel={hooksLabel}
 					onChange={onChange}
-					rows={8}
-					mono
 					ariaLabel={label}
 					placeholder={'[data-bn="self"]{padding:12px 16px}'}
 				/>
@@ -637,17 +607,6 @@ function CssSection({
 			</div>
 		</Section>
 	);
-}
-
-/** 在末尾补一条空规则。已有内容时另起一行,不打断作者手里那一条。 */
-function appendRule(css: string, hook: string): string {
-	const rule = `[data-bn="${hook}"]{}`;
-	return css.trim() === "" ? rule : `${css.replace(/\s+$/, "")}\n${rule}`;
-}
-
-/** 挂点的人话名摆在胶囊上时只取括号前那截 —— 「外框(渐变 / 背景图那一层)」太长。 */
-function shortLabel(human: string): string {
-	return human.split("(")[0]?.trim() || human;
 }
 
 /** 一列:列号 + 单位(份 / px)+ 数。 */

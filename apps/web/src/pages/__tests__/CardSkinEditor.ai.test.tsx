@@ -119,6 +119,7 @@ describe("编辑器 ·「请女仆帮忙写」的接线", () => {
 		renderEditor();
 		fireEvent.click(await screen.findByText("封面图"));
 		// 先手改一笔:发出去的必须是改过的草稿,不是盘上那份。
+		fireEvent.click(screen.getByRole("button", { name: "源码" }));
 		fireEvent.change(screen.getByLabelText("这个块的 CSS"), {
 			target: { value: '[data-bn="self"]{padding:9px}' },
 		});
@@ -137,7 +138,8 @@ describe("编辑器 ·「请女仆帮忙写」的接线", () => {
 		expect(body).toMatchObject({ kind: "live", blockId: "cover", instruction: "圆角大一点" });
 		const sent = body?.manifest as typeof MANIFEST;
 		expect(sent.cards.live.blocks[0]?.css).toBe('[data-bn="self"]{padding:9px}');
-		// 写完的内容回到了框里。
+		// 写完的内容回到了框里(CSS 那一节默认是结构视图,源码文本框得先切过去)。
+		fireEvent.click(screen.getByRole("button", { name: "源码" }));
 		await waitFor(() =>
 			expect((screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement).value).toBe(
 				'[data-bn="self"]{border-radius:16px}',

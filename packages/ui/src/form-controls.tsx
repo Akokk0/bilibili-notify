@@ -170,7 +170,7 @@ interface TSelectOption<T extends string = string> {
 	label: string;
 }
 
-export interface TSelectProps<T extends string = string> extends Labelled {
+export interface TSelectProps<T extends string = string> extends Labelled, Sized {
 	value: T;
 	onChange: (next: T) => void;
 	options: TSelectOption<T>[];
@@ -186,6 +186,7 @@ export function TSelect<T extends string = string>({
 	full,
 	disabled,
 	ariaLabel,
+	width,
 }: TSelectProps<T>) {
 	return (
 		<select
@@ -194,7 +195,10 @@ export function TSelect<T extends string = string>({
 			disabled={disabled}
 			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}
-			className={`${INPUT_BASE} min-w-40 ${full ? "w-full" : "w-auto"} ${DISABLED_FIELD}`}
+			// 给了 `width` 就不再垫那 160px 的最小宽 —— 单位选择器这种只装两三个字的,
+			// 垫满会把同一行的数字框挤到下一行去(同 `TNum` 的 `width` 一个道理)。
+			className={`${INPUT_BASE} ${width === undefined ? "min-w-40" : ""} ${full ? "w-full" : "w-auto"} ${DISABLED_FIELD}`}
+			style={width === undefined ? undefined : { width }}
 		>
 			{options.map((o) => (
 				<option key={o.value} value={o.value}>
