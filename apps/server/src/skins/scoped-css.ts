@@ -624,6 +624,23 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
 	const warnings: string[] = [];
 	filterRuleList(ast, warnings, opts);
 	const css = generate(ast);
+	// 🔴 **产物里不许有 `</`。** 这段 CSS 最终会被**字符串拼**进 `<style>…</style>`
+	// (卡片那档在 `packages/image/src/render.ts`),而 `<style>` 在 HTML 里是 RAWTEXT ——
+	// 里头唯一能终止它的就是 `</style`。逐条过滤看的是「这条声明 / 这条选择器合不合规」,
+	// 谁都没资格问「拼出去之后还是不是一个 style 元素」,所以这道闸只能长在产物上。
+	//
+	// 两条正经放行的写法都带得出去:`content:"…"` 的字符串字面量(卡片档
+	// `contentStrings:true`),以及自由档里挂点**之外**的属性选择器值(`checkFreeSelector`
+	// 只审 `data-bn` 那种)。2026-09-19 实测:两串都 `ok:true`、零警告,拼进文档后
+	// jsdom 解出一个真的 `<script>` 节点 —— 而出图跑的是 `--no-sandbox` 的 puppeteer,
+	// 且那页 JS 必须开着(`waitForCondition` 靠它),皮肤包又是拿来分享的。
+	//
+	// 拦 `</` 而不是 `<`:`@media (width < 600px)` 的范围写法里 `<` 后面跟的是空格或
+	// 数字,而 `</` 在 CSS 里没有任何正当含义。**整份拒收**而不是丢一条 —— 没有哪段
+	// 正经皮肤会不小心写出 `</`,报出来比静默削掉有用。
+	if (css.includes("</")) {
+		return { ok: false, errors: ["CSS 里不许出现 `</` —— 它能提前关掉 <style> 标签"] };
+	}
 	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);存盘的
 	// 是产物。`free` 档的选择器归一是**会加字节**的(每条缺前缀的规则多一个
 	// `[data-bn="self"] `),所以这道闸不是摆设:贴着上限写的 CSS 归一之后可能真的

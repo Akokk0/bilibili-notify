@@ -467,6 +467,56 @@ describe("自由选择器的两条补丁(主会话审 diff 加的)", () => {
 });
 
 /**
+ * **`</` 一律整份拒收** —— 卡片皮肤的 CSS 最终是被**字符串拼**进 `<style>…</style>`
+ * 的(`packages/image/src/render.ts`),而 `<style>` 在 HTML 里是 RAWTEXT:里头唯一
+ * 能终止它的就是 `</style`。清洗器从前对 `<` 一无所知,于是两条正经放行的写法都能
+ * 把它带出去 —— `content:"…"` 的字符串字面量(卡片这档 `contentStrings:true`),
+ * 和自由档里挂点**之外**的属性选择器值(`checkFreeSelector` 只审 `data-bn` 那种)。
+ * 带出去之后拼进文档,`</style>` 关掉样式表,后面那截就成了真的 `<script>` 节点
+ * (2026-09-19 实测:`scriptNodeCount: 1`,`window.PWNED=1` 跑在 `--no-sandbox` 的
+ * puppeteer 里,而出图那页 JS 必须开着 —— `waitForCondition` 就靠它)。
+ *
+ * 拦的是 `</` 而不是 `<`:`@media (width < 600px)` 的范围写法里 `<` 后面跟的是空格
+ * 或数字,而 `</` 在 CSS 里没有任何正当含义。判据按 `guards-pin-shape-not-property`:
+ * 把 `sanitizeScopedCss` 尾巴上那道闸删掉,这一组必须红。
+ */
+describe("`</` 逃逸:清洗器整份拒收", () => {
+	const ESCAPES = [
+		[
+			"content 字符串字面量",
+			'[data-bn="self"]::before{content:"</style><script>window.PWNED=1</script>"}',
+		],
+		["挂点之外的属性选择器值", '[title="</style><script>window.PWNED=1</script>"]{color:red}'],
+		[
+			"大小写混写也算 —— RAWTEXT 的终止符不区分大小写",
+			'[data-bn="self"]::after{content:"</StYlE>"}',
+		],
+	] as const;
+
+	for (const [name, css] of ESCAPES) {
+		it(`${name} → 整份 error,不是丢一条`, () => {
+			const r = sanitizeCardBlockCss(css, { kind: "live" });
+			expect(r.ok).toBe(false);
+			if (!r.ok) expect(r.errors.join()).toContain("</");
+		});
+	}
+
+	it("根块那档同样拒", () => {
+		const r = sanitizeCardFrameCss(
+			'[data-bn="frame"]::after{content:"</style><script>1</script>"}',
+		);
+		expect(r.ok).toBe(false);
+	});
+
+	it("正经的 `<` 不受连累 —— @media 的范围写法照样活", () => {
+		const r = sanitizeCardBlockCss('@media (width < 600px){[data-bn="self"]{color:red}}', {
+			kind: "live",
+		});
+		expect(r.ok).toBe(true);
+	});
+});
+
+/**
  * **出厂默认皮肤一字不改地过装包门**(ADR-0014 决策 7 的 2026-09-19 🔗)。
  *
  * 内置块的全部样子都写在默认皮肤各块的 CSS 里,它写的是清洗器的规范形(`self` 起头、

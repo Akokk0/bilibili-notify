@@ -94,6 +94,24 @@ export function buildFontFace(dataUrl: string): string {
 }
 
 /**
+ * `<style>` 在 HTML 里是 RAWTEXT:里头**唯一**能终止它的就是 `</style`。所以任何拼进
+ * 去的 CSS 只要带着 `</`,就能提前关掉样式表,后面那截照 HTML 解析 —— `<script>` 就
+ * 成了真的脚本节点,而出图跑的是 `--no-sandbox` 的 puppeteer、那页 JS 还必须开着
+ * (`waitForCondition` 靠它)。
+ *
+ * `extraCss` 今天来自卡片皮肤,上游(`apps/server` 的清洗器)已经整份拒掉 `</` 了。
+ * 这里再封一道,是因为**这个函数看不见那个承诺**:`renderCard` 是 `packages/image` 的
+ * 公共入口,谁都能喂它一段 CSS,而「拼出去之后还是不是一个 style 元素」只有拼的人
+ * 判得了(2026-09-19 审查)。
+ *
+ * 换成 `<\/` 而不是删掉:CSS 字符串字面量里 `\/` 就是 `/`,画出来一模一样,只是 HTML
+ * 解析器再也看不见那个终止符。不含 `</` 的 CSS 一个字节都不动,所以像素基准不受影响。
+ */
+function sealStyleBody(css: string): string {
+	return css.includes("</") ? css.replaceAll("</", "<\\/") : css;
+}
+
+/**
  * 配置里的字体值 → 合法的 `font-family` 声明值。
  *
  * 这里曾经是 `"${font}"` 一把梭,于是**整串**被套进一对引号。CSS 里带引号 =
@@ -169,7 +187,7 @@ export async function renderCard(
 			<head>
 				<meta charset="utf-8">
 				<title>${title}</title>
-				<style>${fontFace ?? ""}${baseCSS}${css}${extraCss ?? ""}</style>
+				<style>${sealStyleBody(`${fontFace ?? ""}${baseCSS}${css}${extraCss ?? ""}`)}</style>
 			</head>
 			<body>${body}</body>
 		</html>
