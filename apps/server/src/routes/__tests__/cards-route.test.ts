@@ -1504,3 +1504,123 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		expect(json.overHeight).toBe(true);
 	});
 });
+
+/**
+ * **图 / 字体这两档旋钮在预览里也得真的生效**(2026-09-19 审查)。
+ *
+ * 它们与别的旋钮不是一条路:值是资产库里的一个 id,要 await 读盘才变得成 CSS,所以
+ * `cardSkinKnobCss` 那条**同步**路径对它们恒回 null,得由宿主调 `resolveKnobAssets`
+ * 另外解析。只传 `knobValues` 的调用方于是会得到一个**静静半灵**的旋钮面板:颜色、
+ * 玻璃这些照常跟着变,唯独「卡片背景图」与「字体」什么也不做 —— 而推出去的卡是对的
+ * (ImageRenderer 那条路调了它)。「预览好看、推出去变样」的镜像版。
+ *
+ * 判据照 `wiring-needs-its-own-guard`:把 `renderPreviewCard` 里那两处 `knobAssets`
+ * 剪掉,这一组必须红。断言钉的是**变量真被注出来**,不是某个函数被调过。
+ */
+describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", () => {
+	function depsWithKnobs(dataDir: string, knobs: Record<string, unknown>): RouteDeps {
+		return {
+			runtime: {
+				serviceCtx: {
+					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+				},
+			},
+			store: {
+				bootstrap: { dataDir },
+				getGlobals: () => ({
+					defaults: {
+						cardSkin: DEFAULT_CARD_SKIN_ID,
+						cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: knobs },
+					},
+				}),
+			},
+		} as unknown as RouteDeps;
+	}
+
+	for (const kind of ["live", "dyn"] as const) {
+		it(`${kind} 卡:拧了「卡片背景图」→ --bn-knob-wallpaper 真的注进去了`, async () => {
+			const dir = await mkdtemp(join(tmpdir(), "bn-knob-preview-"));
+			try {
+				const assetId = await saveCardBg(dir, PNG, "image/png");
+				capturedHtml.length = 0;
+				const app = createCardsRoute({
+					deps: depsWithKnobs(dir, { wallpaper: [assetId] }),
+					puppeteer: makeFakePuppeteer(),
+					api: null,
+				});
+				const res = await app.request("/preview", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						kind,
+						style: {},
+						content: {},
+						cardSkin: DEFAULT_CARD_SKIN_ID,
+					}),
+				});
+				expect(res.status).toBe(200);
+				expect(capturedHtml.length).toBeGreaterThan(0);
+				const html = capturedHtml.join("");
+				// 外框 CSS 一直在读它(`var(--bn-knob-wallpaper, <渐变>)`),所以只断言「读了」
+				// 是复述现状 —— 要断言的是**喂进去的那一半**真的在。
+				// 变量注在根块的 `style="…"` 里,所以那对引号是 `&quot;`(2026-09-19 写这条时
+				// 先按 `"` 断言,红了才发现 —— 两种都认,免得下次换了注法又为错误的理由红)。
+				expect(html).toMatch(/--bn-knob-wallpaper:url\((?:"|&quot;)data:image\/png;base64,/);
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+	}
+
+	it("没拧过就不注 —— 皮肤自己写的兜底该活着", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-knob-preview-none-"));
+		try {
+			capturedHtml.length = 0;
+			const app = createCardsRoute({
+				deps: depsWithKnobs(dir, {}),
+				puppeteer: makeFakePuppeteer(),
+				api: null,
+			});
+			const res = await app.request("/preview", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					kind: "live",
+					style: {},
+					content: {},
+					cardSkin: DEFAULT_CARD_SKIN_ID,
+				}),
+			});
+			expect(res.status).toBe(200);
+			expect(capturedHtml.join("")).not.toContain("--bn-knob-wallpaper:");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('资产被删了就不注 —— 空 url("") 会把卡片当场刷白', async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-knob-preview-dangling-"));
+		try {
+			capturedHtml.length = 0;
+			const app = createCardsRoute({
+				deps: depsWithKnobs(dir, { wallpaper: ["没有这个资产"] }),
+				puppeteer: makeFakePuppeteer(),
+				api: null,
+			});
+			const res = await app.request("/preview", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					kind: "live",
+					style: {},
+					content: {},
+					cardSkin: DEFAULT_CARD_SKIN_ID,
+				}),
+			});
+			expect(res.status).toBe(200);
+			expect(capturedHtml.join("")).not.toContain("--bn-knob-wallpaper:");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});

@@ -53,6 +53,15 @@ export {
 	type CardDataValue,
 	readCardField,
 } from "./skin/card-data";
+// 字体 / 图两档旋钮的**宿主解析**(ADR-0014 决策 16 的 🔗):这两档的值是主人资产库里的
+// 一个 id,要 await 读盘才变得成 CSS,所以 `cardSkinKnobCss` 那条同步路径上做不了。
+// **凡是自己拼 `renderCardWithSkin` 入参的调用方都得调它** —— 只传 `knobValues` 的话,
+// 别的旋钮照常生效,而字体与背景图这两枚静静地什么也不做(2026-09-19 面板预览栽过)。
+export {
+	type KnobAssetResolvers,
+	type ResolvedKnobAssets,
+	resolveKnobAssets,
+} from "./skin/knob-assets";
 // 皮肤渲染器(ADR-0014 决策 18):皮肤 JSON + props → VNode / 完整 HTML。
 // **出图的主入口是 `renderCardWithSkin`** —— 推送(ImageRenderer)与面板预览共用它。
 export {

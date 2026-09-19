@@ -37,6 +37,7 @@ import {
 	ImageRenderer,
 	type LiveCardProps,
 	renderCardWithSkin,
+	resolveKnobAssets,
 	skinAssetRefs,
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
@@ -868,6 +869,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
 		const assets = await previewSkinAssets(skinId, manifest, spec.kind);
+		// 🔴 **`knobValues` 一个人不够。** 字体与图这两档旋钮的值是资产库里的一个 id,
+		// 要读盘才变得成 CSS,所以 `cardSkinKnobCss` 那条同步路径对它们恒回 null ——
+		// 少了这一句,主人在旋钮面板里选了「卡片背景图」,别的旋钮照常跟着变,唯独背景图
+		// 与字体**静静地什么也不做**,而推送出去的卡是对的(ImageRenderer 那条路调了它)。
+		// 「预览好看、推出去变样」的镜像版,2026-09-19 审查抓到。
+		const knobAssets = await resolveKnobAssets(manifest.knobs, previewKnobValues(skinId), {
+			image: (id) => readCardBgDataUrl(dataDir, id),
+			fontFace: loadFontFace,
+		});
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
 		const html =
@@ -878,6 +888,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
 						knobValues: previewKnobValues(skinId),
+						knobAssets,
 					})
 				: await renderCardWithSkin("dynamic", spec.props, manifest, {
 						title: spec.title,
@@ -885,6 +896,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						fontFace: fontFace || undefined,
 						resolveAsset: (name) => assets.get(name),
 						knobValues: previewKnobValues(skinId),
+						knobAssets,
 					});
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };
