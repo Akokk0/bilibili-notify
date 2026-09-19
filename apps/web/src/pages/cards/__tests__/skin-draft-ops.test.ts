@@ -131,6 +131,25 @@ describe("setBlockGrid", () => {
 		expect(gridOf(after, "title").span).toBe(12);
 	});
 
+	/**
+	 * 上面那条**离了保护也不会坏** —— `column` 没动,`span` 的上界还是 12,夹哪边都对。
+	 * 真正的坑在「列自己越界」那一支:`span.max = 12 - column + 1` 若拿**未夹的**列去算
+	 * 就会变成 0 甚至负数,而 `clampInt(v, 1, 0)` 返回的是 **0**(先抬到 min 再压到 max)。
+	 * 于是列被夹回 12、`span` 却成了 0,保存与预览一路被装包门顶回来。
+	 * 判据:把 `setBlockGrid` 里的「先夹列」那一步拆掉,下面三条必须红。
+	 */
+	it("列越界时 span 不许变成 0 或负数 —— 13 就够,不用 99", () => {
+		for (const [column, span] of [
+			[13, 1],
+			[14, 1],
+			[99, 1],
+		] as const) {
+			const after = setBlockGrid(manifest(), "live", "title", { column });
+			expect(gridOf(after, "title").column).toBe(12);
+			expect(gridOf(after, "title").span).toBe(span);
+		}
+	});
+
 	it("rowSpan 为 1 时不落进清单;大于 1 才写", () => {
 		const one = setBlockGrid(manifest(), "live", "title", { rowSpan: 1 });
 		expect("rowSpan" in gridOf(one, "title")).toBe(false);

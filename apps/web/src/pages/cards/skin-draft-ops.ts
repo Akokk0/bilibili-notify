@@ -68,10 +68,17 @@ export function setBlockGrid(
 	const blocks = card.blocks.map((b) => {
 		if (b.id !== blockId) return b;
 		const merged = { ...b.grid, ...patch };
-		const lim = gridLimits(merged);
+		// **列必须先夹,再拿夹过的列去算 `span` 的上界。** `gridLimits` 的 `span.max` 是
+		// `12 - column + 1`,拿未夹的列去算,手输一个 13 就让上界变成 0、14 变成 -1 ——
+		// 而 `clampInt` 在 `max < min` 时返回的是 **max**(先抬到 min 再压到 max),于是
+		// 草稿里躺着 `span: 0`,列却已经被夹回 12。此后每次保存与预览都被装包门判越界
+		// (schema 要求 `span ≥ 1`),而报错指着一个主人根本没碰过的字段。
+		// `column` 那档的取值域与 column 自己无关,所以第一次调用拿它来夹是安全的。
+		const column = clampInt(merged.column, gridLimits(merged).column.min, CARD_SKIN_LIMITS.columns);
+		const lim = gridLimits({ ...merged, column });
 		const grid: Grid = {
 			row: clampInt(merged.row, lim.row.min, lim.row.max),
-			column: clampInt(merged.column, lim.column.min, lim.column.max),
+			column,
 			span: clampInt(merged.span, lim.span.min, lim.span.max),
 		};
 		// `rowSpan` 缺省是 1,而「写一个 1 进去」与「不写」在出图上一样 —— 不写更干净,
