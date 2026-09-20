@@ -54,12 +54,17 @@ export interface FrameExtra {
 }
 
 /**
- * 一种卡的外框:吃该卡种的 props 与玻璃层里的孩子,画出**两层**壳。
+ * 一种卡的外框:吃玻璃层里的孩子与那两串 inline style,画出**两层**壳。
  *
- * `props` 今天七个外框一个都没读(外观整批归了皮肤 CSS),留在签名上是因为它是外框与块
- * 渲染器共用的那份形状 —— 哪天某种卡的**结构**又要看数据(比如按档位换嵌套),从这里拿。
+ * **不吃 props。** 从前带一个,七个外框一个都没读(外观整批归了皮肤 CSS),留着的理由写的是
+ * 「哪天某种卡的结构又要看数据,从这里拿」—— 而那个留着的钩子撑着调用处一句 `as`:
+ * `FRAMES[kind]` 在泛型卡种下签不齐,只能 cast 过去,于是**唯一那个调用点的类型检查是关着的**。
+ * 真到了「某种卡要读 props」那天,传错 props 的那一次会静默通过。
+ *
+ * 档位这件事今天已经有答案:`bgColor` 由 `frameVariables` 注成 `--bn-card-tier-color`,
+ * 皮肤 CSS 自己按变量变;结构要动那是块与网格的活,外框只有两层壳。
  */
-export type FrameRenderer<P> = (props: P, children: VNode | VNode[], extra: FrameExtra) => VNode;
+export type FrameRenderer = (children: VNode | VNode[], extra: FrameExtra) => VNode;
 
 /** 卡种 → 它的 props。皮肤渲染器吃的 props 与块库是同一份。 */
 export interface CardPropsByKind {
@@ -106,8 +111,8 @@ function roastFrame(children: VNode | VNode[], defaultWidth: number, extra: Fram
 /**
  * 七种卡的外框表。**玻璃层里铺什么由调用方决定** —— 皮肤渲染器铺的是网格里的块 wrapper。
  */
-export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } = {
-	live: (_p, children, extra) => (
+export const FRAMES: Record<CardSkinKind, FrameRenderer> = {
+	live: (children, extra) => (
 		<div data-bn="frame" class="h-auto" style={[extra.frame]}>
 			<div data-bn="glass" class="overflow-hidden" style={extra.glass ?? ""}>
 				{children}
@@ -115,7 +120,7 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		</div>
 	),
 
-	dynamic: (_p, children, extra) => (
+	dynamic: (children, extra) => (
 		<div data-bn="frame" class="h-auto" style={[{ minWidth: "380px" }, extra.frame]}>
 			<div data-bn="glass" class="w-full overflow-hidden" style={extra.glass ?? ""}>
 				{children}
@@ -123,13 +128,13 @@ export const FRAMES: { [K in CardSkinKind]: FrameRenderer<CardPropsByKind[K]> } 
 		</div>
 	),
 
-	sc: (_p, children, extra) => tierFrame(SC_GLASS_CLASS, children, extra),
-	guard: (_p, children, extra) => tierFrame(GUARD_GLASS_CLASS, children, extra),
+	sc: (children, extra) => tierFrame(SC_GLASS_CLASS, children, extra),
+	guard: (children, extra) => tierFrame(GUARD_GLASS_CLASS, children, extra),
 
-	roastBoard: (_p, children, extra) => roastFrame(children, 600, extra),
-	roastSolo: (_p, children, extra) => roastFrame(children, 430, extra),
+	roastBoard: (children, extra) => roastFrame(children, 600, extra),
+	roastSolo: (children, extra) => roastFrame(children, 430, extra),
 
-	wordcloud: (_p, children, extra) => (
+	wordcloud: (children, extra) => (
 		<div data-bn="frame" class="h-auto" style={[extra.frame]}>
 			<div data-bn="glass" class="overflow-hidden" style={extra.glass ?? ""}>
 				{children}

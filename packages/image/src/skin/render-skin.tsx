@@ -544,12 +544,9 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		glass: gridStyleOf(card),
 		width: card.width,
 	};
-	const frame = FRAMES[kind] as (
-		p: CardPropsByKind[K],
-		children: VNode | VNode[],
-		extra: FrameExtra,
-	) => VNode;
-	return { vnode: frame(o.props, children, extra), css: parts.join("\n") };
+	// 外框不吃 props(见 `FrameRenderer`)—— 于是 `FRAMES[kind]` 对每个卡种都是同一个
+	// 类型,这儿不必再 cast 一次。从前那句 `as` 是唯一调用点上一道关着的闸。
+	return { vnode: FRAMES[kind](children, extra), css: parts.join("\n") };
 }
 
 // ── 一整张卡的 HTML ──────────────────────────────────────────────────────────
