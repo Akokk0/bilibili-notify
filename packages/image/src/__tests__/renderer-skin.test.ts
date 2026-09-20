@@ -20,7 +20,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
 	type ImageRendererConfig,
@@ -128,6 +128,23 @@ function blockLabels(html: string): string[] {
 }
 
 // ── ① 走的是皮肤那条路 ────────────────────────────────────────────────────────
+
+/**
+ * 🔴 **这一份的超时放宽到 20 秒,别改回默认的 5 秒。**
+ *
+ * 2026-09-20 CI 上四条一起红,报的都是 `Test timed out in 5000ms` —— 而那个提交只动了
+ * `docs/adr/*.md`,`packages/image` 一个字节都没碰,本机整份跑完 3.3 秒、24 条全绿,重跑
+ * 一次就全过了。
+ *
+ * 真因是这一份的夹具里有个**真·2 MiB 的字符串**(`OVERSIZED`——要撞 CSS 自定义属性那道
+ * 2 MiB 上限才测得着「超限怎么办」,所以它**不能改小**),而几条用例还要拿它渲两遍(回落
+ * 那几条本来就画两次)。本机压着线过,CI 机器一忙就整批撞墙:同一份代码在这之前的两次 CI
+ * 都是绿的,跟提交改了什么毫无关系。
+ *
+ * 20 秒相对本机那 3.3 秒仍有**六倍余量** —— 它掩盖的只是机器的忙闲,真出现性能退化
+ * (比如有人让那 2 MiB 多走一遍正则)照样拦得住。
+ */
+vi.setConfig({ testTimeout: 20_000 });
 
 describe("ImageRenderer 一律按皮肤出图", () => {
 	it("默认皮肤:出的 HTML 带网格 wrapper 与根块挂点,块序列就是出厂默认皮肤那一份", async () => {
