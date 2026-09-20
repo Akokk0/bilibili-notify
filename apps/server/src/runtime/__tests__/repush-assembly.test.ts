@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { createAppRuntime } from "../bootstrap.js";
 
@@ -26,6 +26,7 @@ beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-asm-"));
 });
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await rm(dataDir, { recursive: true, force: true });
 });
 
@@ -84,5 +85,44 @@ describe("createAppRuntime", () => {
 		if (res.ok) throw new Error("本该拒");
 		expect(res.notFound).toBeUndefined();
 		expect(res.reason).toContain("路由");
+	});
+
+	/**
+	 * **闸读的是快照,不是每行现问一遍 ConfigStore。**
+	 *
+	 * 列表端点为**每一条** failed / partial 行各调一次 `canRepush`,而 ConfigStore 的
+	 * `getSubscriptions` / `getTargets` / `getConnections` 全是整份 `deepClone`
+	 * (structuredClone)。重推要解的场景(bot 离线一段时间)恰恰是一整页全红 —— 面板
+	 * 一次拿 200 行,现问就是 600 份订阅 / 目标 / 连接副本,订阅里还装着 per-UP 的
+	 * templates / cardStyle / extras。闸越往后加条件,每行付的钱越多。
+	 *
+	 * 把 `target-scope` 那张表换回「每次现问」这条就红(200 → 600 次)。
+	 */
+	it("200 行失败历史各问一次闸 → 三个 deepClone getter 各只被问一次", async () => {
+		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+		const entry = await runtime.historyStore.record({
+			pushId: randomUUID(),
+			kind: "dynamic",
+			uid: "u1",
+			subscriptionId: randomUUID(),
+			target: randomUUID(),
+			messages: [
+				{
+					payload: { kind: "text", text: "卡片" },
+					role: "main",
+					result: { ok: false, latencyMs: 1, err: "boom" },
+				},
+			],
+		});
+		// 快照是惰性的(createAppRuntime 跑在 configStore.load() 之前),所以装桩赶得及。
+		const subs = vi.spyOn(runtime.configStore, "getSubscriptions");
+		const targets = vi.spyOn(runtime.configStore, "getTargets");
+		const connections = vi.spyOn(runtime.configStore, "getConnections");
+		for (let i = 0; i < 200; i++) {
+			await runtime.repushRunner.canRepush({ ...entry, id: randomUUID() });
+		}
+		expect(subs).toHaveBeenCalledTimes(1);
+		expect(targets).toHaveBeenCalledTimes(1);
+		expect(connections).toHaveBeenCalledTimes(1);
 	});
 });

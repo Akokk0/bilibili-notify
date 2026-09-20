@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { buildFontFace } from "@bilibili-notify/image";
 import type { MessageBus } from "@bilibili-notify/internal";
-import { isTargetPaused } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import type { BootstrapConfig } from "../config/schema.js";
@@ -20,6 +19,7 @@ import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
+import { createTargetScope } from "./target-scope.js";
 
 export interface AppRuntime {
 	bootstrap: BootstrapConfig;
@@ -195,6 +195,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	let fansPoller: FansPollerHandle | null = null;
 
 	/**
+	 * 路由 + 目标启停的快照。列表端点要为**每一行**失败的历史问一次闸,而 ConfigStore 的
+	 * 三个 getter 全是整份深拷贝 —— 一页 200 行全红时那是 600 份副本。随 `config-changed`
+	 * 失效,惰性重建(为什么不能预建见 target-scope.ts 文件头)。
+	 */
+	const targetScope = createTargetScope({ configStore, bus });
+	serviceCtx.onDispose(() => targetScope.dispose());
+
+	/**
 	 * 重推的执行器。发送口**惰性**拿 `engines` —— 它是后挂的(见 AppRuntime 那段分期
 	 * 说明),而这里已经要把 runner 交出去了;那张「正在补哪几行」的表必须只有一份。
 	 *
@@ -208,12 +216,8 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 			if (!engines) return { ok: false, latencyMs: 0, err: "推送引擎还没起来，稍后再试" };
 			return engines.push.sendToTarget(targetId, payload, { routing });
 		},
-		routedTargets: (uid, feature) =>
-			configStore.getSubscriptions().find((s) => s.uid === uid)?.routing[feature] ?? [],
-		targetEnabled: (targetId) => {
-			const target = configStore.getTargets().find((t) => t.id === targetId);
-			return target ? !isTargetPaused(target, configStore.getConnections()) : false;
-		},
+		routedTargets: (uid, feature) => targetScope.routedTargets(uid, feature),
+		targetEnabled: (targetId) => targetScope.targetEnabled(targetId),
 		logger: serviceCtx.logger,
 	});
 

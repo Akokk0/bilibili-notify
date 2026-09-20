@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -189,6 +189,39 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	const open = new RecencyTable<HistoryEntry>(OPEN_ROWS_CAP);
 	/** 写串行化:同一次推送的两段(卡片、紧随其后的 @全体)不会同时建两行。 */
 	let tail: Promise<unknown> = Promise.resolve();
+	/**
+	 * **刚补完的那一行**,给 `appendToRow` 连着补下一条时当 base 用。
+	 *
+	 * 为什么要它:一次「重推全部」是 N 条消息 N 次 `appendToRow`,而每次都
+	 * `readJsonl(dayFile(ts))` —— 整份日文件读进来、**逐行**跑一遍
+	 * `HistoryEntrySchema` / `HistoryPatchSchema`。日文件是「一次推送 × 一个目标」一行,
+	 * 高推送量实例一天几千行,于是补一个 6 条的行就是 7 遍全份解析(`start()` 的
+	 * `findRow` 还占一遍)。同一个文件的 `readTailEntries` 早就为 `query()` 躲开过
+	 * 这笔钱,重推这条路又把它整个请了回来 —— 而且这几遍都排在写队列 `tail` 上,
+	 * 期间所有正常推送的落行都在后面等着。
+	 *
+	 * 🔴 **只在这份日文件自那以后一个字节都没被动过时才算数**:每次用之前 `stat` 一下
+	 * 对 size + mtime。`record` 往同一天追了一行、`deleteRange` 重写了这份、保留期把
+	 * 整份端了、测试直接往文件里写 —— 任何一种都对不上,当场回落到老老实实重读。
+	 * 只认**一行**(不是整份文件的解析结果),免得高推送量实例的一整天行都被它攥着不放。
+	 */
+	let hotRow: {
+		rowId: string;
+		path: string;
+		size: number;
+		mtimeMs: number;
+		entry: HistoryEntry;
+	} | null = null;
+
+	/** 文件的「有没有被动过」指纹;文件不在回 `null`(于是缓存一定作废)。 */
+	async function fileSig(path: string): Promise<{ size: number; mtimeMs: number } | null> {
+		try {
+			const st = await stat(path);
+			return { size: st.size, mtimeMs: st.mtimeMs };
+		} catch {
+			return null;
+		}
+	}
 
 	async function ensureDirs(): Promise<void> {
 		await mkdir(root, { recursive: true });
@@ -321,6 +354,47 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return parsed.data;
 	}
 
+	/**
+	 * 把一段**已经 reduce 好的**消息并进一行:算状态 → 写补丁行 → 更新内存表 → emit。
+	 *
+	 * 两条路共用这一份:`record` 的追加分支(同一次推送的后续几段落地)与人工重推的
+	 * `appendToRow`。它们真正不同的只有「base 从哪来」(内存 `open` 表 / 扫日文件)与
+	 * 「added 怎么造」(要不要盖 `retryOf`);剩下这一串**必须一个字不差地同步**,
+	 * 只改一边的话重推那条路就静默写出另一种行 —— 正是 ADR-0017 担心的那类静默。
+	 *
+	 * 🔴 `path` 由调用方给:补丁必须落进**原行那一天**的日文件。`parseLines` 的 `byId`
+	 * 是**单文件局部**的,跨了日文件就找不到亲、整条补丁被静默丢掉 —— 症状是「点了重推,
+	 * 消息真的发出去了,面板上却什么都没变」。
+	 *
+	 * 🔴 补丁行的**键序固定 `patch` 打头**:读侧靠行首一眼认出它、不必先 JSON.parse
+	 * (见 `isPatchLine`)。换个键序写出来的补丁行,写的时候不报错、读的时候没人认。
+	 *
+	 * `beforeEmit` 是给 `record` 那侧留的口:重推原件要在**面板收到这一行变了之前**
+	 * 落盘,否则面板回头问「这行还能补吗」时原件还没写出来。
+	 */
+	async function applyPatch(
+		base: HistoryEntry,
+		added: HistoryMessage[],
+		path: string,
+		beforeEmit?: (merged: HistoryEntry) => Promise<void>,
+	): Promise<HistoryEntry> {
+		const messages = [...base.messages, ...added];
+		const merged = validated({
+			...base,
+			status: computeStatus(base.targetId, messages),
+			messages,
+		});
+		const patch = { patch: merged.id, status: merged.status, messages: added };
+		await writeFile(path, `${JSON.stringify(patch)}\n`, { flag: "a", encoding: "utf8" });
+		// 这一行要是还在内存表里(刚推完就点了重推),把它也更新掉 —— 否则同一次推送
+		// 后面那几段(词云 / 总结)落地时会拿旧的算 offset 与状态。
+		const key = `${merged.pushId}|${merged.targetId ?? "-"}`;
+		if (open.get(key)) open.set(key, merged);
+		await beforeEmit?.(merged);
+		opts.bus.emit("history-updated", merged);
+		return merged;
+	}
+
 	async function recordSerialized(input: HistoryRecordInput): Promise<HistoryEntry> {
 		await ensureDirs();
 		const key = `${input.pushId}|${input.target ?? "-"}`;
@@ -354,23 +428,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			existing.messages.length,
 			existing.kind,
 		);
-		const messages = [...existing.messages, ...added];
-		const merged = validated({
-			...existing,
-			status: computeStatus(existing.targetId, messages),
-			messages,
-		});
-		// 补丁行:键序固定 `patch` 在前,读侧靠行首认出它、不必先 JSON.parse。
-		const patch = { patch: merged.id, status: merged.status, messages: added };
-		await writeFile(dayFile(existing.ts), `${JSON.stringify(patch)}\n`, {
-			flag: "a",
-			encoding: "utf8",
-		});
-		open.set(key, merged);
 		// 补丁写进**原行那一天**的文件,原件也跟着那一天走 —— 两边始终同一个日子。
-		await saveDraft(existing.id, existing.ts, input.messages, added, existing.targetId);
-		opts.bus.emit("history-updated", merged);
-		return merged;
+		return applyPatch(existing, added, dayFile(existing.ts), () =>
+			saveDraft(existing.id, existing.ts, input.messages, added, existing.targetId),
+		);
 	}
 
 	function record(input: HistoryRecordInput): Promise<HistoryEntry> {
@@ -390,29 +451,32 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	): Promise<HistoryEntry | null> {
 		if (messages.length === 0) return null;
 		await ensureDirs();
-		// 整份日文件读一遍。重推是低频的人工动作(一次点击),换来的是不依赖那张
-		// 重启即空的内存表 —— 而这条路径存在的理由正是「那张表里早没有这一行了」。
 		const path = dayFile(ts);
-		const base = (await readJsonl(path)).find((r) => r.id === rowId);
+		const sig = await fileSig(path);
+		// 连着补第二条起走这条:上一条刚写完的那一行还在手上,而这份文件自那以后没被
+		// 动过(见 `hotRow`)。对不上、或者文件压根不在(`sig` 为 null)就重读 ——
+		// 整份日文件读一遍、逐行 zod,换来的是不依赖那张重启即空的内存表,而这条路径
+		// 存在的理由正是「那张表里早没有这一行了」。
+		const reusable =
+			sig &&
+			hotRow &&
+			hotRow.rowId === rowId &&
+			hotRow.path === path &&
+			hotRow.size === sig.size &&
+			hotRow.mtimeMs === sig.mtimeMs
+				? hotRow.entry
+				: undefined;
+		const base = reusable ?? (await readJsonl(path)).find((r) => r.id === rowId);
 		if (!base) return null;
 		const reduced = await reduceAll(messages, base.id, base.messages.length, base.kind);
 		// 补进来的图跟着**整行**的序号往后排(`reduceAll` 的 offset),盖不掉原来那几张。
 		const added = reduced.map((m, i) => ({ ...m, retryOf: messages[i]?.retryOf ?? 0 }));
-		const all = [...base.messages, ...added];
-		const merged = validated({
-			...base,
-			status: computeStatus(base.targetId, all),
-			messages: all,
-		});
-		// 🔴 写进**原行那一天**的文件。`parseLines` 的 `byId` 是单文件局部的,跨了日
-		// 文件就找不到亲、整条补丁被静默丢掉 —— 消息真发出去了,面板上什么都不变。
-		const patch = { patch: merged.id, status: merged.status, messages: added };
-		await writeFile(path, `${JSON.stringify(patch)}\n`, { flag: "a", encoding: "utf8" });
-		// 这一行要是还在内存表里(刚推完就点了重推),把它也更新掉 —— 否则同一次推送
-		// 后面那几段(词云 / 总结)落地时会拿旧的算 offset 与状态。
-		const key = `${merged.pushId}|${merged.targetId ?? "-"}`;
-		if (open.get(key)) open.set(key, merged);
-		opts.bus.emit("history-updated", merged);
+		// 🔴 写进**原行那一天**的文件(`path` 就是 `dayFile(ts)`)—— 跨了日文件补丁会被
+		// 静默丢掉,见 `applyPatch` 的说明。
+		const merged = await applyPatch(base, added, path);
+		// 指纹得在**写完之后**取:这一趟自己写的那条补丁行不该让下一条判成「被别人动过」。
+		const after = await fileSig(path);
+		hotRow = after ? { rowId, path, ...after, entry: merged } : null;
 		return merged;
 	}
 
