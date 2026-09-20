@@ -323,18 +323,25 @@ function RepushBar({
 	counts: { total: number; missing: number } | null;
 	onClose: () => void;
 }) {
-	const repush = useMutation<HistoryRepushResponse, Error, "all" | "missing">({
-		mutationFn: (mode) =>
-			api.post<HistoryRepushResponse>(`/api/history/${entry.id}/repush`, { ts: entry.ts, mode }),
+	const repush = useMutation<{ count: number }, Error, "all" | "missing">({
+		mutationFn: async (mode) => {
+			const res = await api.post<HistoryRepushResponse>(`/api/history/${entry.id}/repush`, {
+				ts: entry.ts,
+				mode,
+			});
+			// 非 2xx 由 `api` 抛,走到这儿的只可能是 202 —— 判别联合让这件事在类型上也
+			// 成立,成功那支不必再判一次「count 会不会是 undefined」。
+			if (!res.ok) throw new Error(res.err);
+			return { count: res.count };
+		},
 	});
 	const n = (v: number | undefined) => (v === undefined ? "" : `（${v} 条）`);
-
 	// 服务端回的是「收下了」,消息一条都还没发出去 —— 所以说「去补」不说「补好了」。
 	// 真正的结果随后经 WS 一条条回来,这一行会自己变。
 	if (repush.isSuccess) {
 		return (
 			<div className="flex items-center gap-2 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38 text-bn-xs text-bn-text-secondary">
-				<span>女仆去补{n(repush.data.count)}啦，好了这一行会自己更新～ (｡･ω･｡)ﾉ</span>
+				<span>女仆去补（{repush.data.count} 条）啦，好了这一行会自己更新～ (｡･ω･｡)ﾉ</span>
 				<Btn size="sm" variant="ghost" onClick={onClose}>
 					知道啦
 				</Btn>

@@ -341,13 +341,11 @@ export interface HistoryRepushRequest {
 	mode: "all" | "missing";
 }
 
-export interface HistoryRepushResponse {
-	ok: boolean;
-	/** `ok` 时:这一趟要补几条。 */
-	count?: number;
-	/** 拒了的理由,**直接显示给用户**。 */
-	err?: string;
-}
+export type HistoryRepushResponse =
+	/** 收下了(202)。`count` = 这一趟要补几条 —— 回来时一条都还没发出去。 */
+	| { ok: true; count: number }
+	/** 拒了。`err` **直接显示给用户** —— 自编一句「重推失败」等于让人对着黑盒猜。 */
+	| { ok: false; err: string };
 
 export interface HistoryResponse {
 	entries: HistoryEntryView[];

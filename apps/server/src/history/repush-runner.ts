@@ -31,15 +31,16 @@ import type { HistoryStore } from "./store.js";
 /** 补哪些:`all` = 整行从头再发一遍(含已经送达的);`missing` = 只补没到的。 */
 export type RepushMode = "all" | "missing";
 
-export interface RepushStartResult {
-	ok: boolean;
-	/** `ok` 时:这一趟要补几条。 */
-	count?: number;
-	/** 拒了的理由,**给人看的**。 */
-	reason?: string;
-	/** 这一行压根不存在 —— 端点据此回 404 而不是 409。 */
-	notFound?: boolean;
-}
+/**
+ * 判别联合而不是「几个可选字段的袋子」:放行必有条数、拒绝必有理由,写成可选的话端点那头
+ * 收窄不到,只能在已经判过 `ok` 的分支里再判一次 `undefined`(而那个 `undefined` 是造不
+ * 出来的)。契约上的 `HistoryRepushResponse` 是同一个形状。
+ */
+export type RepushStartResult =
+	/** 收下了。`count` = 这一趟要补几条。 */
+	| { ok: true; count: number }
+	/** 拒了。`reason` 是**给人看的**那句;`notFound` = 这一行压根不存在,端点据此回 404。 */
+	| { ok: false; reason: string; notFound?: boolean };
 
 export interface RepushRunner {
 	/**

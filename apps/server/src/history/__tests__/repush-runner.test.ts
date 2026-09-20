@@ -84,6 +84,17 @@ afterEach(() => vi.restoreAllMocks());
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
+/** 放行了才有 `count`;顺带把拒绝的理由印进失败信息(比 `undefined` 好查)。 */
+function started(res: Awaited<ReturnType<RepushRunner["start"]>>): number {
+	if (!res.ok) throw new Error(`本该放行,却拒了:${res.reason}`);
+	return res.count;
+}
+/** 拒了才有 `reason`。 */
+function denied(res: Awaited<ReturnType<RepushRunner["start"]>>): string {
+	if (res.ok) throw new Error("本该拒,却放行了");
+	return res.reason;
+}
+
 /** 落一行:第一条成功、第二条失败、第三条因此从没发出去。 */
 async function seedPartial(): Promise<HistoryEntry> {
 	return history.record({
@@ -113,8 +124,7 @@ describe("start — 立刻回", () => {
 		const entry = await seedPartial();
 		gate = () => {};
 		const res = await runner.start(entry.id, entry.ts, "missing");
-		expect(res.ok).toBe(true);
-		expect(res.count).toBe(2);
+		expect(started(res)).toBe(2);
 		// 发送还没走完,可这一行已经在补了。
 		expect(sent).toHaveLength(0);
 		expect(runner.isRunning(entry.id)).toBe(true);
@@ -124,14 +134,14 @@ describe("start — 立刻回", () => {
 describe("补哪几条", () => {
 	it("missing:只补没到的两条,已经送达的那条一次都不重发", async () => {
 		const entry = await seedPartial();
-		expect((await runner.start(entry.id, entry.ts, "missing")).count).toBe(2);
+		expect(started(await runner.start(entry.id, entry.ts, "missing"))).toBe(2);
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["词云", "总结"]);
 	});
 
 	it("all:三条从头再发一遍,包括已经送达的那条", async () => {
 		const entry = await seedPartial();
-		expect((await runner.start(entry.id, entry.ts, "all")).count).toBe(3);
+		expect(started(await runner.start(entry.id, entry.ts, "all"))).toBe(3);
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["卡片", "词云", "总结"]);
 	});
@@ -223,8 +233,7 @@ describe("闸", () => {
 		gate = () => {};
 		await runner.start(entry.id, entry.ts, "missing");
 		const second = await runner.start(entry.id, entry.ts, "missing");
-		expect(second.ok).toBe(false);
-		expect(second.reason).toBeTruthy();
+		expect(denied(second)).toBeTruthy();
 		expect(sent).toHaveLength(0);
 	});
 
@@ -245,7 +254,7 @@ describe("闸", () => {
 	it("行压根不存在 → notFound(端点据此回 404,不是 409)", async () => {
 		const res = await runner.start(randomUUID(), "2026-09-20T00:00:00.000Z", "missing");
 		expect(res.ok).toBe(false);
-		expect(res.notFound).toBe(true);
+		expect(res.ok === false && res.notFound).toBe(true);
 	});
 
 	/**
@@ -256,8 +265,7 @@ describe("闸", () => {
 		const entry = await seedPartial();
 		await repush.drop(entry.id, entry.ts);
 		const res = await runner.start(entry.id, entry.ts, "missing");
-		expect(res.ok).toBe(false);
-		expect(res.reason).toBeTruthy();
+		expect(denied(res)).toBeTruthy();
 		expect(sent).toHaveLength(0);
 	});
 
