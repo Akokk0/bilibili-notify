@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_TEMPLATES, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
+import { isPlainObject } from "../util/plain-object";
 import { checkUserRegex } from "../util/regex-safety";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
@@ -47,10 +48,6 @@ export const PushExtrasSchema = z.object(
 
 /** 第一代 / 第二代里住在 features 上的那两把附加项。 */
 const LEGACY_LIVE_END_EXTRA_KEYS = ["wordcloud", "liveSummary"] as const;
-
-function isPlainObject(raw: unknown): raw is Record<string, unknown> {
-	return typeof raw === "object" && raw !== null && !Array.isArray(raw);
-}
 
 /**
  * **第一代**(0.10.0 之前)的形状:词云 / 总结各是一把独立的特性键(各有开关、各有路由),

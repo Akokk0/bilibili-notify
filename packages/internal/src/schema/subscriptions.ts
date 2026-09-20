@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPlainObject } from "../util/plain-object";
 import { CardSkinIdSchema } from "./card-skin";
 import {
 	CardStyleByKindSchema,
@@ -48,10 +49,6 @@ function migrateLegacyRouting(raw: unknown): unknown {
 	const { wordcloud, liveSummary, ...rest } = raw;
 	const lists = [rest.liveEnd, wordcloud, liveSummary].filter(Array.isArray);
 	return { ...rest, liveEnd: lists.flat() };
-}
-
-function isPlainObject(raw: unknown): raw is Record<string, unknown> {
-	return typeof raw === "object" && raw !== null && !Array.isArray(raw);
 }
 
 /** @全体 那两把附加项当年住在订阅上,按 scope 存 —— `atAll.<scope>` / `atAllDefaults.<scope>`。 */

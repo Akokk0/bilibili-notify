@@ -47,6 +47,7 @@ import {
 	type CardSkinKind,
 	type CardSkinKnobUnit,
 	cardSkinBytes,
+	DIVIDER_TYPE,
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -95,12 +96,6 @@ export { CARD_SKIN_FRAME_HOOKS, CARD_SKIN_SELF_HOOK };
  * 默认皮肤把它俩做成了旋钮,所以用户照样调得动。
  */
 export const CARD_SKIN_VARIABLES = {
-	/** 用户设了背景图才注(值是 `url("data:…")`);皮肤 CSS 用 `var(--bn-card-bg-image, <渐变>)` 兜底。 */
-	bgImage: {
-		css: "--bn-card-bg-image",
-		label:
-			"用户背景图(有才注;值是完整的一层 `url(…) center / cover`,可直接叠进 background 的层列表)",
-	},
 	/** SC 按价位、上舰按舰长等级的档位色,只这两种卡有。 */
 	tierColor: { css: "--bn-card-tier-color", label: "档位色(SC / 上舰)" },
 	tierColorEnd: { css: "--bn-card-tier-color-end", label: "档位色止色(SC / 上舰)" },
@@ -998,7 +993,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 						"padding:0 16px;font-size:17px;font-weight:700;line-height:1.375;color:#18191C",
 					),
 				),
-				at("divider", full(10), "padding-top:10px", "divider-1", DIVIDER_LINE),
+				at(DIVIDER_TYPE, full(10), "padding-top:10px", "divider-1", DIVIDER_LINE),
 				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px", undefined, DATA_TEXT),
 				at(
 					"area",
@@ -1048,7 +1043,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					undefined,
 					part("text", "font-size:12px;color:#999"),
 				),
-				at("divider", full(3), "padding:12px 0", "divider-1", DIVIDER_LINE),
+				at(DIVIDER_TYPE, full(3), "padding:12px 0", "divider-1", DIVIDER_LINE),
 				// 话题行:图标跟着 `color` 走(`fill="currentColor"`),所以只写一处颜色。
 				at(
 					"topic",
@@ -1131,7 +1126,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 附加卡自己带全套观感(builder 画的),这块只管把它摆进来:上面 12px、
 				// 两边 16px —— 那 16px 从前写在块里的一层壳上。
 				at("additional", full(16), "padding:12px 16px 0"),
-				at("divider", full(17), "padding:12px 0", "divider-2", DIVIDER_LINE),
+				at(DIVIDER_TYPE, full(17), "padding:12px 0", "divider-2", DIVIDER_LINE),
 				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count", STAT_TEXT),
 				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count", STAT_TEXT),
 				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count", STAT_TEXT),
@@ -1164,7 +1159,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 						"gap:4px;margin-top:5px;padding:4px 10px;border-radius:12px;background-color:var(--bn-card-tier-color);color:#fff;font-size:12px;font-weight:700",
 					),
 				),
-				at("divider", full(3), "padding-top:15px", "divider-1", SC_LINE),
+				at(DIVIDER_TYPE, full(3), "padding-top:15px", "divider-1", SC_LINE),
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
 					"avatar",

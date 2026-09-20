@@ -1382,8 +1382,10 @@ export const CARD_SKIN_LIMITS = {
  * `TextEncoder` 浏览器与 Node 都有;server 那两处用的 `Buffer.byteLength(s, "utf8")`
  * 结果相同,不必改回来。
  */
+const UTF8 = new TextEncoder();
+
 export function cardSkinBytes(s: string): number {
-	return new TextEncoder().encode(s).length;
+	return UTF8.encode(s).length;
 }
 
 // ---- 卡片皮肤的数据契约 ----------------------------------------------------------------
@@ -1609,7 +1611,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		status: { label: "直播状态", atom: true, hooks: { pill: "胶囊" } },
 		title: { label: "直播标题", atom: true, hooks: { text: "文字" } },
 		desc: { label: "简介", atom: true, hooks: { text: "文字" } },
-		divider: DIVIDER_BLOCK,
+		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
 		name: { label: "主播名", atom: true, hooks: { text: "文字" } },
 		time: { label: "开播时间", atom: true, hooks: { text: "文字" } },
@@ -1624,7 +1626,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 			label: "附加内容",
 			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
 		},
-		divider: DIVIDER_BLOCK,
+		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
 		name: { label: "UP 主名", atom: true, hooks: { text: "文字" } },
 		time: { label: "发布时间", atom: true, hooks: { text: "文字" } },
@@ -1669,7 +1671,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	sc: {
 		// 留言的根是一层撑满格子的壳(居中靠块的 `self` 说),气泡与文字各一个挂点。
 		message: { label: "留言", atom: true, hooks: { bubble: "留言气泡", text: "留言文本" } },
-		divider: DIVIDER_BLOCK,
+		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它,里头的 img 填满即可。
 		avatar: { label: "发送者头像", atom: true, hooks: { image: "头像图片" } },
 		name: { label: "发送者名", atom: true, hooks: { pill: "胶囊" } },
@@ -1690,7 +1692,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 	guard: {
 		badge: { label: "舰长徽章", atom: true, hooks: { image: "舰长徽章图" } },
 		text: { label: "文字信息", atom: true, hooks: { text: "文字" } },
-		divider: DIVIDER_BLOCK,
+		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它。
 		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
 		user: { label: "用户名胶囊", atom: true, hooks: { pill: "胶囊", text: "文字" } },
