@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
 	HistoryMessageRole,
@@ -113,6 +113,11 @@ export interface RepushStore {
 	 * —— 调用方据此把按钮灰掉并说明原因(决策 9),绝不交一份错位的原料出去。
 	 */
 	load(rowId: string, ts: string, expectLen: number): Promise<{ messages: RepushMessage[] } | null>;
+	/**
+	 * 这一行还有原件吗。**只看文件在不在** —— 面板要为每一行失败的问一次「按钮该不该
+	 * 灰」(决策 9),所以这一口不解析 json、更不把图读进内存。
+	 */
+	has(rowId: string, ts: string): Promise<boolean>;
 	/** 删掉这一行的原件与它自己写过的图。不存在不算错。 */
 	drop(rowId: string, ts: string): Promise<void>;
 	/** 保留期:端掉某一个 UTC 日的全部原件。 */
@@ -300,6 +305,14 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		}
 	}
 
+	async function has(rowId: string, ts: string): Promise<boolean> {
+		try {
+			return (await stat(draftPath(rowId, ts))).isFile();
+		} catch {
+			return false;
+		}
+	}
+
 	async function drop(rowId: string, ts: string): Promise<void> {
 		const draft = await readDraft(rowId, ts);
 		if (draft) {
@@ -323,7 +336,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		await rm(join(root, day), { recursive: true, force: true });
 	}
 
-	return { append, load, drop, dropDay };
+	return { append, load, has, drop, dropDay };
 }
 
 /** 盘上现有哪些日子的原件 —— 保留期拿它对表。 */

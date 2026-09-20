@@ -21,15 +21,19 @@ import type { RouteDeps } from "../types.js";
 let query: ReturnType<typeof vi.fn>;
 let aggregateDaily: ReturnType<typeof vi.fn>;
 let startRepush: ReturnType<typeof vi.fn>;
+let canRepush: ReturnType<typeof vi.fn>;
+/** `canRepush` 回什么:`null` = 能补,字符串 = 不能补的理由。 */
+let canRepushResult: string | null = null;
 
 function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
 	query = vi.fn(async () => []);
 	aggregateDaily = vi.fn(async () => []);
 	startRepush = vi.fn(async () => repushResult);
+	canRepush = vi.fn(async () => canRepushResult);
 	const deps = {
 		runtime: {
 			historyStore: { query, aggregateDaily, imageDir: () => join(tmpdir(), "bn-history-test") },
-			repushRunner: { start: startRepush, isRunning: () => false },
+			repushRunner: { start: startRepush, canRepush, isRunning: () => false },
 		},
 	} as unknown as RouteDeps;
 	return createHistoryRoute(deps);
@@ -227,5 +231,59 @@ describe("history route — POST /:id/repush", () => {
 		const res = await repush(app, body);
 		expect(res.status).toBe(400);
 		expect(startRepush).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * **按钮该不该灰,列表里就告诉面板**(ADR-0017 决策 9)。
+ *
+ * 只为失败 / 部分失败的行问 —— 一页两百行里失败的通常是个位数,而每问一次是一次
+ * `stat`。已送达与无目标的行不问也不带:它们本来就没有按钮。
+ *
+ * WS 推来的新行**刻意不带**这个字段(投影在另一层,拿不到 runner)。面板对缺省按
+ * 「能补」处理,而那恰好总是对的:一条刚刚失败的推送,它的原件必然还在。
+ */
+describe("history route — 列表带上「能不能补」", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		canRepushResult = null;
+	});
+
+	function rows(...statuses: string[]) {
+		return statuses.map((status, i) => ({
+			id: `id${i}`,
+			pushId: "p",
+			ts: TS,
+			kind: "dynamic",
+			uid: "u1",
+			subscriptionId: "s",
+			targetId: status === "no-targets" ? null : "t",
+			status,
+			messages: [],
+		}));
+	}
+
+	it("失败行带 repush(能补时是 null),别的行不带也不问", async () => {
+		const app = makeApp();
+		query.mockImplementation(async () => rows("failed", "partial", "delivered", "no-targets"));
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<{ status: string; repush?: unknown }>;
+		};
+		expect(body.entries.map((e) => "repush" in e)).toEqual([true, true, false, false]);
+		expect(body.entries[0]?.repush).toEqual({ can: true, total: 0, missing: 0 });
+		expect(canRepush).toHaveBeenCalledTimes(2);
+	});
+
+	it("不能补时带回那句原因", async () => {
+		const app = makeApp();
+		canRepushResult = "这个目标（或者它所在的连接）停用了，先启用再补";
+		query.mockImplementation(async () => rows("failed"));
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<{ repush?: unknown }>;
+		};
+		expect(body.entries[0]?.repush).toEqual({
+			can: false,
+			reason: "这个目标（或者它所在的连接）停用了，先启用再补",
+		});
 	});
 });

@@ -46,6 +46,14 @@ export interface RepushRunner {
 	 * 开始补一行。**立刻返回** —— 真正的发送在后台跑,进度经 `history-updated` 回面板。
 	 */
 	start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult>;
+	/**
+	 * 这一行**现在**能不能补 —— 回一句拒绝理由,`null` = 能。面板拿它决定按钮灰不灰
+	 * 并写上原因(决策 9:灰掉并说明,而不是藏起来 —— 藏掉的话主人要么以为这行没失败过,
+	 * 要么以为功能坏了)。
+	 *
+	 * 与 `start` 同一道闸,只多问一句「原件还在吗」;查的是文件在不在,不读图。
+	 */
+	canRepush(entry: HistoryEntry): Promise<string | null>;
 	/** 这一行正在补吗。闸与面板共用这一个答案。 */
 	isRunning(rowId: string): boolean;
 }
@@ -69,6 +77,9 @@ export interface CreateRepushRunnerOptions {
 	logger: Logger;
 }
 
+/** 原件不在了(保留期到了、或者当初就没写成)。两处都说这一句。 */
+const DRAFT_GONE = "这一行的原料已经不在了，女仆补不出原来那条 —— 只有保留期内的推送补得回来";
+
 export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunner {
 	/**
 	 * 正在补的行。挡在**服务端**而不是只靠前端的禁用态(决策 13)—— 两个标签页前端
@@ -76,27 +87,32 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	 */
 	const running = new Set<string>();
 
+	/** 闸那一半 —— `start` 与 `canRepush` 共用,免得两处各判各的、慢慢漂开。 */
+	function gate(entry: HistoryEntry): string | null {
+		return repushDenial({
+			entry,
+			routedTargets: opts.routedTargets(entry.uid, pushKindToFeature(entry.kind)),
+			targetEnabled: entry.targetId !== null && opts.targetEnabled(entry.targetId),
+			running: running.has(entry.id),
+		});
+	}
+
+	async function canRepush(entry: HistoryEntry): Promise<string | null> {
+		const denial = gate(entry);
+		if (denial) return denial;
+		return (await opts.repush.has(entry.id, entry.ts)) ? null : DRAFT_GONE;
+	}
+
 	async function start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult> {
 		const entry = await opts.history.findRow(rowId, ts);
 		if (!entry) return { ok: false, notFound: true, reason: "找不到这一行推送记录了" };
 
-		const feature = pushKindToFeature(entry.kind);
-		const denial = repushDenial({
-			entry,
-			routedTargets: opts.routedTargets(entry.uid, feature),
-			targetEnabled: entry.targetId !== null && opts.targetEnabled(entry.targetId),
-			running: running.has(rowId),
-		});
+		const denial = gate(entry);
 		if (denial) return { ok: false, reason: denial };
 
 		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
 		const draft = await opts.repush.load(rowId, ts, originalCount(entry.messages));
-		if (!draft) {
-			return {
-				ok: false,
-				reason: "这一行的原料已经不在了，女仆补不出原来那条 —— 只有保留期内的推送补得回来",
-			};
-		}
+		if (!draft) return { ok: false, reason: DRAFT_GONE };
 
 		const indices =
 			mode === "all" ? draft.messages.map((_, i) => i) : unsentIndices(entry.messages);
@@ -148,5 +164,5 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		if (latest?.status === "delivered") await opts.repush.drop(entry.id, ts);
 	}
 
-	return { start, isRunning: (rowId) => running.has(rowId) };
+	return { start, canRepush, isRunning: (rowId) => running.has(rowId) };
 }

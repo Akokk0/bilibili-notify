@@ -305,7 +305,28 @@ export interface HistoryEntryView {
 	/** 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。 */
 	unameSnapshot?: string;
 	uavatarSnapshot?: string;
+	/**
+	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没问过** —— 列表只为失败 / 部分失败
+	 * 的行问(每问一次是一次 stat),而 WS 推来的新行一律不带;面板对缺省按「能补」
+	 * 处理,那总是对的:一条刚刚失败的推送,它的原件必然还在。
+	 */
+	repush?: HistoryRepushInfo;
 }
+
+/**
+ * 能不能补,以及补几条。**条数由服务端算**(`originalCount` / `unsentIndices`,按身份号
+ * 而不是按消息条数)—— 面板自己再算一遍就是第二份实现,判定规则一改两边就漂。
+ */
+export type HistoryRepushInfo =
+	| {
+			can: true;
+			/** 整行**本来**有几条(重投不算)——「重推全部」发这么多。 */
+			total: number;
+			/** 还有几条没到 ——「只补没到的」发这么多。 */
+			missing: number;
+	  }
+	/** 不能补,**这就是原因**(面板把按钮灰掉并写上它,决策 9)。 */
+	| { can: false; reason: string };
 
 /**
  * `POST /api/history/:id/repush` 请求 —— 人工把一行没送到的推送补一遍。

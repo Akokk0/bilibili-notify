@@ -182,6 +182,41 @@ describe("结果写回历史", () => {
 	});
 });
 
+/**
+ * **按钮该不该灰**(决策 9)。面板为每一行失败的问一次 —— 所以这一口走的是
+ * `repush.has()`(只看文件在不在),不是 `load()`(那会把图全读进内存)。
+ *
+ * 「原件已经不在的行,按钮灰掉**并说明原因**」,不是把按钮藏掉:藏掉的话主人要么以为
+ * 这行没失败过,要么以为功能坏了。
+ */
+describe("canRepush — 给面板的预判", () => {
+	it("能补 → null", async () => {
+		const entry = await seedPartial();
+		expect(await runner.canRepush(entry)).toBeNull();
+	});
+
+	it("原件没了 → 说得出为什么", async () => {
+		const entry = await seedPartial();
+		await repush.drop(entry.id, entry.ts);
+		const reason = await runner.canRepush(entry);
+		expect(reason).toBeTruthy();
+		expect(reason).toContain("原料");
+	});
+
+	it("闸不让 → 说的是闸那一档的理由", async () => {
+		const entry = await seedPartial();
+		routed = [];
+		expect(await runner.canRepush(entry)).toContain("路由");
+	});
+
+	it("正在补 → 也算不能再按", async () => {
+		const entry = await seedPartial();
+		gate = () => {};
+		await runner.start(entry.id, entry.ts, "missing");
+		expect(await runner.canRepush(entry)).toBeTruthy();
+	});
+});
+
 describe("闸", () => {
 	it("这一行正在补 → 第二次直接拒,一条都不多发", async () => {
 		const entry = await seedPartial();

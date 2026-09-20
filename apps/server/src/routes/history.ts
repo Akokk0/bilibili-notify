@@ -9,6 +9,7 @@ import { type PushKind, PushKindSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
+import { originalCount, unsentIndices } from "../history/repush.js";
 import { toHistoryView } from "../history/view.js";
 import type { RouteDeps } from "./types.js";
 
@@ -64,7 +65,26 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			kind,
 			uid,
 		});
-		return c.json<HistoryResponse>({ entries: entries.map(toHistoryView) });
+		// 只为**失败 / 部分失败**的行问一句「按钮该不该灰」(决策 9)。一页两百行里
+		// 失败的通常是个位数,而每问一次是一次 stat;别的行本来就没有按钮,不问也不带。
+		const views = await Promise.all(
+			entries.map(async (e) => {
+				if (e.status !== "failed" && e.status !== "partial") return toHistoryView(e);
+				const reason = await deps.runtime.repushRunner.canRepush(e);
+				// 条数在这儿算完交出去 —— 面板自己再算一遍就是第二份实现,而身份号那套
+				// 判定(`retryOf ?? 下标`,每号取最后一次)一改两边就漂。
+				return toHistoryView(e, {
+					repush: reason
+						? { can: false, reason }
+						: {
+								can: true,
+								total: originalCount(e.messages),
+								missing: unsentIndices(e.messages).length,
+							},
+				});
+			}),
+		);
+		return c.json<HistoryResponse>({ entries: views });
 	});
 
 	// 按日聚合 —— 本周推送趋势 / 今日 KPI 的数据源。listing 端点的 limit 上限

@@ -238,6 +238,30 @@ describe("load — 对不上号就整份作废", () => {
 	});
 });
 
+describe("has — 只问在不在,不读图", () => {
+	it("存过就在,没存过就不在", async () => {
+		const id = randomUUID();
+		expect(await store.has(id, TS)).toBe(false);
+		await store.append(id, TS, [
+			{ payload: text("卡片"), role: "main", reduced: { kind: "text" } },
+		]);
+		expect(await store.has(id, TS)).toBe(true);
+	});
+
+	/**
+	 * 面板要为**每一行失败的**问一次「按钮该不该灰」(决策 9),所以这一口必须便宜:
+	 * 只看文件在不在,不解析 json、更不把图读进内存。
+	 */
+	it("drop 之后就不在了", async () => {
+		const id = randomUUID();
+		await store.append(id, TS, [
+			{ payload: text("卡片"), role: "main", reduced: { kind: "text" } },
+		]);
+		await store.drop(id, TS);
+		expect(await store.has(id, TS)).toBe(false);
+	});
+});
+
 describe("drop / dropDay — 收摊", () => {
 	it("drop 删掉这一行的原件与它自己写的图,别的行不动", async () => {
 		const a = randomUUID();
