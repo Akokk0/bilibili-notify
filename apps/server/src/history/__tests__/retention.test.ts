@@ -12,7 +12,7 @@
  * runOnce 经 ./store.js 的 listDayFiles/deleteDayFile 真实读写 tmpdir。
  */
 
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
@@ -122,6 +122,99 @@ describe("startHistoryRetention", () => {
 		start(0, undefined, createRepushStore({ dataDir, logger }));
 		await new Promise((r) => setTimeout(r, 20));
 		expect(await listRepushDays(dataDir)).toContain("2000-01-01");
+	});
+
+	/**
+	 * **日文件一删,它引用的图也得走。**
+	 *
+	 * 从前 `deleteDayFile` 只 `unlink` 那份 jsonl —— 图留在 `history/img/` 里,而**再没有
+	 * 任何人知道它们归谁**(文件名是 `<行 id>-<序号>`,行 id 不带日期,日文件没了就无从对表)。
+	 * 症状是盘上那个目录只涨不消:保留期 30 天,卡片图一张几百 KB,一年下来是实打实的几个 G,
+	 * 而面板上一张都看不到。
+	 *
+	 * 顺序是**先收集、再删 jsonl、最后删图**:中途崩了顶多剩几张孤儿图(和从前一样),
+	 * 而反过来会留下一份图全裂的历史。
+	 */
+	it("旧日文件里引用的图跟着一起清掉,今天的图不动", async () => {
+		await mkdir(join(dataDir, "history", "img"), { recursive: true });
+		const row = (id: string, ref: string, ts: string) =>
+			`${JSON.stringify({
+				id,
+				pushId: id,
+				ts,
+				kind: "dynamic",
+				uid: "u1",
+				subscriptionId: "11111111-1111-4111-8111-111111111111",
+				targetId: "22222222-2222-4222-8222-222222222222",
+				status: "delivered",
+				messages: [
+					{
+						payload: { kind: "image", text: "x", imageRef: ref },
+						role: "main",
+						result: { ok: true, latencyMs: 1 },
+					},
+				],
+			})}\n`;
+		const OLD_ID = "33333333-3333-4333-8333-333333333333";
+		const NEW_ID = "44444444-4444-4444-8444-444444444444";
+		await writeFile(
+			join(dataDir, "history", "2000-01-01.jsonl"),
+			row(OLD_ID, "old.png", "2000-01-01T00:00:00.000Z"),
+		);
+		await writeFile(
+			join(dataDir, "history", `${today}.jsonl`),
+			row(NEW_ID, "new.png", `${today}T00:00:00.000Z`),
+		);
+		await writeFile(join(dataDir, "history", "img", "old.png"), "旧图");
+		await writeFile(join(dataDir, "history", "img", "new.png"), "新图");
+
+		start(30);
+		await vi.waitFor(async () => {
+			const imgs = await readdir(join(dataDir, "history", "img"));
+			expect(imgs).not.toContain("old.png");
+			expect(imgs).toContain("new.png");
+		});
+	});
+
+	// 补丁行里的图也是这一天的 —— 它们跟本体行分在两条 jsonl 行上,漏掉就是半份孤儿。
+	it("补丁行引用的图也一起清掉", async () => {
+		await mkdir(join(dataDir, "history", "img"), { recursive: true });
+		const ID = "55555555-5555-4555-8555-555555555555";
+		const base = JSON.stringify({
+			id: ID,
+			pushId: ID,
+			ts: "2000-01-01T00:00:00.000Z",
+			kind: "dynamic",
+			uid: "u1",
+			subscriptionId: "11111111-1111-4111-8111-111111111111",
+			targetId: "22222222-2222-4222-8222-222222222222",
+			status: "delivered",
+			messages: [
+				{
+					payload: { kind: "text", text: "卡片" },
+					role: "main",
+					result: { ok: true, latencyMs: 1 },
+				},
+			],
+		});
+		const patch = JSON.stringify({
+			patch: ID,
+			status: "delivered",
+			messages: [
+				{
+					payload: { kind: "image", text: "词云", imageRef: "cloud.png" },
+					role: "extra",
+					result: { ok: true, latencyMs: 1 },
+				},
+			],
+		});
+		await writeFile(join(dataDir, "history", "2000-01-01.jsonl"), `${base}\n${patch}\n`);
+		await writeFile(join(dataDir, "history", "img", "cloud.png"), "词云图");
+
+		start(30);
+		await vi.waitFor(async () => {
+			expect(await readdir(join(dataDir, "history", "img"))).not.toContain("cloud.png");
+		});
 	});
 
 	it("返回值即 setInterval handle;按 intervalMs 注册", () => {

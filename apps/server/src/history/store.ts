@@ -757,7 +757,33 @@ export async function listDayFiles(dataDir: string): Promise<string[]> {
 	}
 }
 
-/** Internal helper used by retention.ts. */
+/**
+ * 端掉一整天的历史:那份 jsonl,以及**它引用的每一张图**。
+ *
+ * 图必须跟着走。文件名是 `<行 id>-<序号>`,行 id 不带日期 —— 日文件一删,就再没有任何
+ * 人知道那些图归谁、该不该留。从前这里只 unlink jsonl,于是 `history/img/` 只涨不消:
+ * 保留期 30 天,卡片图一张几百 KB,一年下来是实打实的几个 G,而面板上一张都看不到。
+ *
+ * 顺序是**先收集、再删 jsonl、最后删图**:中途崩了顶多剩几张孤儿图(与从前同样的下场),
+ * 反过来则会留下一份图全裂的历史。图删不掉不算失败 —— 它是附属物。
+ */
 export async function deleteDayFile(dataDir: string, fileName: string): Promise<void> {
-	await unlink(join(dataDir, "history", fileName));
+	const root = join(dataDir, "history");
+	const path = join(root, fileName);
+	const images = await collectImageRefs(path);
+	await unlink(path);
+	for (const name of images) await unlink(join(root, "img", name)).catch(() => {});
+}
+
+/** 一份日文件里所有消息引用过的图 —— 本体行与补丁行都要数进来。 */
+async function collectImageRefs(path: string): Promise<string[]> {
+	const out: string[] = [];
+	for (const line of await readRawLines(path)) {
+		const json = tryParse(line);
+		const messages = isPatchLine(line)
+			? HistoryPatchSchema.safeParse(json).data?.messages
+			: HistoryEntrySchema.safeParse(json).data?.messages;
+		for (const m of messages ?? []) if (m.payload.imageRef) out.push(m.payload.imageRef);
+	}
+	return out;
 }
