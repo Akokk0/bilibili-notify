@@ -34,7 +34,7 @@ import {
 	withCellDebug,
 } from "./cell-debug";
 import { serverErrors } from "./preview-error";
-import { SkinHtmlFrame } from "./SkinHtmlFrame";
+import { SkinHtmlFrame, useStageWidth } from "./SkinHtmlFrame";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
 
 /** 防抖窗口。改一个旋钮到看见新图之间的等待,与「别把 server 打满」之间的折中。 */
@@ -120,22 +120,8 @@ export function SkinPreviewPane({
 		return () => clearTimeout(timer);
 	}, [kind, scene, manifest]);
 
-	/**
-	 * 底板量出来的可用宽度。`contentRect` 已经扣掉内边距,正好是卡能占的那一段。
-	 * 量不到就退回 `boxWidth`(首帧、以及 jsdom 里根本没有 `ResizeObserver`)。
-	 */
-	const stageRef = useRef<HTMLDivElement>(null);
-	const [measured, setMeasured] = useState<number | null>(null);
-	useEffect(() => {
-		const el = stageRef.current;
-		if (!el || typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver((entries) => {
-			const w = entries[0]?.contentRect.width;
-			if (w && w > 0) setMeasured(w);
-		});
-		ro.observe(el);
-		return () => ro.disconnect();
-	}, []);
+	/** 量不到就退回 `boxWidth`(首帧、以及 jsdom 里根本没有 `ResizeObserver`)。 */
+	const [stageRef, measured] = useStageWidth();
 	const usable = Math.max(measured ?? boxWidth, 1);
 
 	/** 装包门拒了:`errors` 是逐条原因,原样列出来 —— 自编一句「预览失败」等于把线索吞掉。 */

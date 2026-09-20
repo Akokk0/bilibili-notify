@@ -31,7 +31,7 @@ export const LENGTH_UNITS: ReadonlyArray<{ value: string; label: string }> = [
 	{ value: "", label: "无" },
 ];
 
-const BORDER_STYLES: ReadonlyArray<{ value: string; label: string }> = [
+export const BORDER_STYLES: ReadonlyArray<{ value: string; label: string }> = [
 	{ value: "solid", label: "实线" },
 	{ value: "dashed", label: "虚线" },
 	{ value: "dotted", label: "点线" },

@@ -322,7 +322,7 @@ export function SkinCanvas({
 				data-bn="chip"
 				className={`mt-2.5 flex w-full items-center gap-2 rounded-bn-sm border border-dashed px-3 py-2 text-left transition ${
 					selection?.kind === "frame"
-						? "border-bn-pink bg-bn-pink/8 text-bn-pink"
+						? SELECTED_LANGUAGE
 						: "border-bn-inactive/50 text-bn-text-secondary"
 				}`}
 			>
@@ -523,8 +523,9 @@ export interface CanvasDrag {
 }
 
 /**
- * 量出一条轴上的轨道。**每次用时现量**:面板宽度可拉、列定义可改,存一份下来迟早是过期
- * 的那份;而量一次是十来个 `getBoundingClientRect`,一趟拖拽里这点开销不值得换正确性。
+ * 量出一条轴上的轨道。**按下时量一次**,一趟拖拽里不再量第二次 —— 面板宽度与列定义在
+ * 一次拖拽当中都不会变。原来写的是「每次用时现量」,那个判据是错的,理由与代价(每帧
+ * 二十多次 `getBoundingClientRect`,还夹在写完 transform 之后读)见 {@link DragState.cols}。
  */
 function tracksOf(root: HTMLElement | null, track: "column" | "row"): Track[] {
 	if (!root) return [];

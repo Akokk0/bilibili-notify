@@ -27,9 +27,9 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { CARD_SKINS_KEY, useCardSkinList } from "../../pages/cards/card-skins-query";
-import { SkinHtmlFrame } from "../../pages/cards/SkinHtmlFrame";
+import { SkinHtmlFrame, useStageWidth } from "../../pages/cards/SkinHtmlFrame";
 import { api } from "../../services/api";
 
 /** 量到卡高之前预览框先占的高度 px。量到了框就跟着卡走(与编辑器同一个框)。 */
@@ -76,18 +76,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 		},
 	});
 
-	const stageRef = useRef<HTMLDivElement>(null);
-	const [measured, setMeasured] = useState<number | null>(null);
-	useEffect(() => {
-		const el = stageRef.current;
-		if (!el || typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver((entries) => {
-			const w = entries[0]?.contentRect.width;
-			if (w && w > 0) setMeasured(w);
-		});
-		ro.observe(el);
-		return () => ro.disconnect();
-	}, []);
+	const [stageRef, measured] = useStageWidth();
 
 	const gone = list.isSuccess && skin === undefined;
 

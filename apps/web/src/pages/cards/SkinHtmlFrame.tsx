@@ -24,7 +24,32 @@
  * 外框的高度也在那一刻才换。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
+
+/**
+ * 量出底板给卡的那段可用宽度。`contentRect` 已经扣掉内边距,正好是卡能占的那一段。
+ *
+ * **两处预览共用**(编辑器右栏与聊天里那张小卡):两边量完都是喂给下面这个
+ * `SkinHtmlFrame` 的 `usable`,各写一份的话,缩放那条链哪天要改(加 debounce、
+ * 或改成量 borderBox)漏一处的症状是「聊天里的预览缩放不对」而编辑器里正常。
+ *
+ * 量不到就回 `null`(首帧、以及 jsdom 里根本没有 `ResizeObserver`),兜底多宽由调用方定。
+ */
+export function useStageWidth(): [RefObject<HTMLDivElement | null>, number | null] {
+	const ref = useRef<HTMLDivElement>(null);
+	const [measured, setMeasured] = useState<number | null>(null);
+	useEffect(() => {
+		const el = ref.current;
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver((entries) => {
+			const w = entries[0]?.contentRect.width;
+			if (w && w > 0) setMeasured(w);
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+	return [ref, measured];
+}
 
 /** 已经画好、正露着的那份。`height` 是量到的文档高度(框内 px),`null` = 没量到。 */
 interface Ready {

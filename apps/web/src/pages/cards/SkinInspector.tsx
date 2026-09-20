@@ -639,7 +639,7 @@ function ColumnRow({
 			</fieldset>
 			<TNum
 				value={px ? value.px : value.fr}
-				min={px ? 1 : 1}
+				min={1}
 				max={px ? CARD_SKIN_LIMITS.width.max : CARD_SKIN_LIMITS.columns}
 				step={px ? 0.01 : 1}
 				width={72}

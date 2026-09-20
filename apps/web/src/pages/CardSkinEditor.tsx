@@ -26,6 +26,7 @@ import {
 	LoadingBlock,
 	Picker,
 	Pill,
+	SELECTED_TINT_BG,
 	StatusDot,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -243,7 +244,7 @@ export default function CardSkinEditor() {
 							data-bn="chip"
 							className={`truncate rounded-sm px-1.5 py-0.5 font-semibold text-bn-md transition ${
 								selection?.kind === "skin"
-									? "bg-bn-pink/10 text-bn-pink"
+									? `${SELECTED_TINT_BG} text-bn-pink`
 									: "text-bn-text-primary hover:text-bn-pink"
 							}`}
 						>

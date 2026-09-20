@@ -30,7 +30,7 @@ import {
 	TNum,
 	TSelect,
 } from "@bilibili-notify/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	addDecl,
 	addRule,
@@ -43,6 +43,7 @@ import {
 	setSelector,
 } from "./css-rules";
 import {
+	BORDER_STYLES,
 	COMMON_PROPS,
 	formatShape,
 	LENGTH_UNITS,
@@ -75,7 +76,9 @@ export function CssEditor({
 	placeholder?: string;
 }) {
 	const [view, setView] = useState<View>("structure");
-	const rules = readRules(css);
+	// 指针在画布上每进出一个块,上头的 `hotCell` 就换一次 state —— 没有这个 memo,
+	// 那段一个字节都没变的 CSS(上限 16KB)会跟着被 css-tree 重新 parse 十几次。
+	const rules = useMemo(() => readRules(css), [css]);
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -349,13 +352,7 @@ function ValueControl({
 				<TSelect
 					value={shape.style}
 					onChange={(style) => onValue(formatShape({ ...shape, style }))}
-					options={[
-						{ value: "solid", label: "实线" },
-						{ value: "dashed", label: "虚线" },
-						{ value: "dotted", label: "点线" },
-						{ value: "double", label: "双线" },
-						{ value: "none", label: "无" },
-					]}
+					options={[...BORDER_STYLES]}
 					ariaLabel={`${label}样式`}
 					width={80}
 				/>

@@ -42,15 +42,8 @@ const PX_TRACK = /^([\d.]+)px$/;
  * - **不是纯 px** —— 说明拿到的不是计算值(jsdom 会把 `repeat(...)` 原样回给你)。
  */
 export function parseGridTracks(value: string): number[] | null {
-	const parts = value.trim().split(/\s+/).filter(Boolean);
-	if (parts.length !== CARD_SKIN_LIMITS.columns) return null;
-	const out: number[] = [];
-	for (const part of parts) {
-		const m = PX_TRACK.exec(part);
-		if (!m) return null;
-		out.push(Number(m[1]));
-	}
-	return out;
+	const out = parsePxList(value);
+	return out && out.length === CARD_SKIN_LIMITS.columns ? out : null;
 }
 
 /**
