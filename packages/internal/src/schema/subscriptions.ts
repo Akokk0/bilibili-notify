@@ -1,4 +1,7 @@
 import { z } from "zod";
+// `extrasRecord` 直接从零依赖的词表取:它是内部工具,没必要跟着 EXTRA_KEYS 那批
+// 一起经 ./common 重导出去撑大根入口的 API 面。
+import { extrasRecord } from "../constants";
 import { isPlainObject } from "../util/plain-object";
 import { CardSkinIdSchema } from "./card-skin";
 import {
@@ -194,15 +197,13 @@ export type AIOverride = z.infer<typeof AIOverrideSchema>;
  * - `wordcloud` / `liveSummary`:下播那次推送的两条后续消息
  */
 export const SubscriptionExtrasSchema = z.object(
-	Object.fromEntries(EXTRA_KEYS.map((k) => [k, z.record(z.uuid(), z.boolean()).default({})])) as {
-		[K in ExtraKey]: z.ZodDefault<z.ZodRecord<z.ZodUUID, z.ZodBoolean>>;
-	},
+	extrasRecord(() => z.record(z.uuid(), z.boolean()).default({})),
 );
 export type SubscriptionExtras = z.infer<typeof SubscriptionExtrasSchema>;
 
 /** 一张全空的 per-目标 三态表:四把键各一个空 Map = 每个目标都跟随上一层。 */
 function emptyExtras(): SubscriptionExtras {
-	return Object.fromEntries(EXTRA_KEYS.map((k) => [k, {}])) as SubscriptionExtras;
+	return extrasRecord(() => ({}));
 }
 
 /**

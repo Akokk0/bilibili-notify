@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATES, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
+import {
+	DEFAULT_TEMPLATES,
+	EXTRA_KEYS,
+	extrasRecord,
+	FEATURE_KEYS,
+	PUSH_EXTRAS,
+} from "../constants";
 import { isPlainObject } from "../util/plain-object";
 import { checkUserRegex } from "../util/regex-safety";
 
@@ -34,11 +40,7 @@ export const FeatureKeySchema = z.enum(FEATURE_KEYS);
  * `FeatureFlagsPartialSchema`)—— 那一层缺席才有「继承上一层」的意思,所以单键**不给
  * 默认值**:给了的话 `.partial()` 出来的覆盖会被填满,把全局值一并盖掉。
  */
-export const PushExtrasSchema = z.object(
-	Object.fromEntries(EXTRA_KEYS.map((k) => [k, z.boolean()])) as {
-		[K in (typeof EXTRA_KEYS)[number]]: z.ZodBoolean;
-	},
-);
+export const PushExtrasSchema = z.object(extrasRecord(() => z.boolean()));
 
 // ── 附加项的两代老数据 ───────────────────────────────────────────────────────
 //

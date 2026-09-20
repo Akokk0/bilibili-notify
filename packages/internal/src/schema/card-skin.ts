@@ -179,13 +179,26 @@ const GLASS_SHADOW = "box-shadow:0 4px 16px rgba(0,0,0,.12)";
 const GLASS_RADIUS = "border-radius:12px";
 /** SC / 上舰那圈更小更实的阴影(从前是玻璃层 class 上的 `shadow-[…]`)。 */
 const GLASS_TIER_SHADOW = "box-shadow:0 4px 8px 0 rgba(0,0,0,.2)";
+/**
+ * 档位卡(SC / 上舰)的玻璃层。两张共用同一条基线:白纱 .75、10px 圆角、
+ * {@link GLASS_TIER_SHADOW};各自不同的只有尺寸(`mid`)与上舰多出来的那句行模板(`tail`)。
+ *
+ * 上舰那条从前是整串内联在 `cards.guard.css` 里的 —— 基线在两个长得完全不同的地方各写
+ * 一份,调这一档时漏改一处,红的是像素门而不是逻辑门,查起来贵。
+ */
+const glassTier = (mid: string, tail = ""): string =>
+	`[data-bn="glass"]{${glassBase(".75")};${mid};border-radius:10px;${GLASS_TIER_SHADOW}${tail}}`;
 const GLASS_LIVE = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS};min-width:360px;padding-top:14px;padding-bottom:10px}`;
 const GLASS_DYNAMIC = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS};padding-top:14px;padding-bottom:12px}`;
 /**
  * SC 的玻璃层。卡宽 260 = 外框 290 − 两边各 15 的边;皮肤路径的网格容器另有一句 inline
  * 的 `width:100%`(`gridStyleOf`)盖在它上面,两条算出来是同一个数。
  */
-const GLASS_SC = `[data-bn="glass"]{${glassBase(".75")};width:260px;padding:20px 16px;border-radius:10px;${GLASS_TIER_SHADOW}}`;
+const GLASS_SC = glassTier("width:260px;padding:20px 16px");
+/**
+ * 上舰卡的玻璃层。两行胶囊 + 一行文字:前两行按内容高,最后一行吃掉剩下的卡高,文字贴底。
+ */
+const GLASS_GUARD = glassTier("width:400px;height:190px", ";grid-template-rows:auto auto 1fr");
 const GLASS_ROAST = `[data-bn="glass"]{${glassBase(".86")};${GLASS_SHADOW};${GLASS_RADIUS}}`;
 /** 词云与锐评两张共用版式,白纱基线却是 .82 那一档 —— 规则同形、兜底不同。 */
 const GLASS_WORDCLOUD = `[data-bn="glass"]{${glassBase(".82")};${GLASS_SHADOW};${GLASS_RADIUS}}`;
@@ -783,12 +796,17 @@ const at = (
 	builtin: string,
 	grid: CardSkinBlock["grid"],
 	css?: string,
-	id: string = builtin,
 	/**
 	 * 块里部件的规则,接在 self 那条后面。写成清洗器的规范形(`[data-bn="self"] ` 起头)——
 	 * 默认皮肤要一字不改地过装包门。
 	 */
 	rules = "",
+	/**
+	 * 自定义 id。**排在 `rules` 后面**是因为几乎每块都要 rules、几乎没块要自定义 id ——
+	 * 反过来的顺序逼着 26 处各摆一个 `undefined` 占位,读的时候得数逗号才知道末尾那串
+	 * 是什么。今天只剩投稿视频封面那一处要占位。
+	 */
+	id: string = builtin,
 ): B => ({
 	id,
 	kind: "builtin",
@@ -939,7 +957,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 封面自然高约 319.5px,画布上一直画矮了一行。高度变真之后取最接近的 6 行:
 				// 比从前高约 16px,而且从此**不管 B 站给的是什么比例都是这个高度**(4:3 那种
 				// 会被裁掉一截),换来的是卡片高度可预期。
-				at("cover", tall(1, 6), "padding:0 16px", undefined, part("image", "border-radius:8px")),
+				at("cover", tall(1, 6), "padding:0 16px", part("image", "border-radius:8px")),
 				// 角标与封面同占第 1 行、层次更高:靠上靠右收成内容宽,外边距把它推到从前
 				// `top-3 right-3` 的位置(右边那 28px = 封面的 16px 内边距 + 12px)。
 				// **列号收到它真正占的那两列**(本机量过:角标 501–557,第 11 列 472–515、
@@ -952,7 +970,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"status",
 					{ row: 1, column: 11, span: 2, z: 1 },
 					`${HEAD};align-self:start;justify-self:end;margin:12px 28px 0 0`,
-					undefined,
 					part(
 						"pill",
 						"height:24px;padding:1px 10px 0;border-radius:12px;background-color:var(--bn-live-status-color);color:#fff;font-size:12px;font-weight:700;line-height:1",
@@ -966,48 +983,37 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"avatar",
 					{ row: 7, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding:14px 0 0 16px;align-self:center`,
-					undefined,
 					part("image", "width:44px;height:44px;border-radius:9999px"),
 				),
 				at(
 					"name",
 					{ row: 7, column: 2, span: 11 },
 					`${HEAD};padding-top:14px;align-self:end`,
-					undefined,
 					part("text", "font-size:16px;font-weight:700;line-height:1;color:#18191C"),
 				),
 				at(
 					"time",
 					{ row: 8, column: 2, span: 11 },
 					`${HEAD};padding-top:2px;align-self:start`,
-					undefined,
 					part("text", "font-size:12px;color:#999"),
 				),
 				at(
 					"title",
 					full(9),
 					"padding-top:10px",
-					undefined,
 					part(
 						"text",
 						"padding:0 16px;font-size:17px;font-weight:700;line-height:1.375;color:#18191C",
 					),
 				),
-				at(DIVIDER_TYPE, full(10), "padding-top:10px", "divider-1", DIVIDER_LINE),
-				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px", undefined, DATA_TEXT),
-				at(
-					"area",
-					{ row: 11, column: 7, span: 6 },
-					"padding-top:10px;text-align:right",
-					undefined,
-					DATA_TEXT,
-				),
-				at("fans", full(12), "padding-top:4px", undefined, DATA_TEXT),
+				at(DIVIDER_TYPE, full(10), "padding-top:10px", DIVIDER_LINE, "divider-1"),
+				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
+				at("area", { row: 11, column: 7, span: 6 }, "padding-top:10px;text-align:right", DATA_TEXT),
+				at("fans", full(12), "padding-top:4px", DATA_TEXT),
 				at(
 					"desc",
 					full(13),
 					"padding-top:16px",
-					undefined,
 					part("text", "padding:0 16px;font-size:13px;line-height:1.5;color:#999"),
 				),
 			],
@@ -1022,7 +1028,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"avatar",
 					{ row: 1, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding-left:16px;align-self:center`,
-					undefined,
 					part("image", "width:52px;height:52px;border-radius:9999px"),
 				),
 				// UP 主名的颜色是数据(大会员粉 / 常规墨色),渲染器注在 `--bn-up-name-color` 里。
@@ -1030,7 +1035,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"name",
 					{ row: 1, column: 2, span: 11 },
 					`${HEAD};align-self:end`,
-					undefined,
 					part(
 						"text",
 						"font-size:17px;font-weight:700;line-height:1;color:var(--bn-up-name-color)",
@@ -1040,16 +1044,14 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"time",
 					{ row: 2, column: 2, span: 11 },
 					`${HEAD};padding-top:3px;align-self:start`,
-					undefined,
 					part("text", "font-size:12px;color:#999"),
 				),
-				at(DIVIDER_TYPE, full(3), "padding:12px 0", "divider-1", DIVIDER_LINE),
+				at(DIVIDER_TYPE, full(3), "padding:12px 0", DIVIDER_LINE, "divider-1"),
 				// 话题行:图标跟着 `color` 走(`fill="currentColor"`),所以只写一处颜色。
 				at(
 					"topic",
 					full(4),
 					"padding:0 16px",
-					undefined,
 					part("text", "gap:5px;margin-bottom:8px;font-size:13px;font-weight:700;color:#00AEEC"),
 				),
 				// 正文富文本整段留在渲染器(决策 7 正文「内置块渲染逻辑不动」),这块只排版。
@@ -1064,6 +1066,8 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"videoCover",
 					tall(6, 6),
 					`margin:4px 16px 0;${VIDEO_BG};${VIDEO_TOP_RADIUS};overflow:hidden`,
+					// 整份默认皮肤里唯一「有 id 没 rules」的块 —— 占位只剩这一处。
+					"",
 					"video-cover",
 				),
 				// 角标叠在封面右下角、层次更高(24px = 16px 内边距 + 8px)。格子收到它真正占的
@@ -1074,32 +1078,32 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"videoDuration",
 					{ row: 11, column: 12, span: 1, z: 1 },
 					`${HEAD};align-self:end;justify-self:end;margin:0 24px 8px 0`,
-					"video-duration",
 					part(
 						"pill",
 						"padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;line-height:1.4",
 					),
+					"video-duration",
 				),
 				at(
 					"videoTitle",
 					full(12),
 					`${VIDEO_INSET};padding:12px 12px 0`,
-					"video-title",
 					part("text", "font-size:16px;font-weight:700;color:#18191C"),
+					"video-title",
 				),
 				at(
 					"videoDesc",
 					full(13),
 					`${VIDEO_INSET};padding:6px 12px 0`,
-					"video-desc",
 					part("text", "font-size:12px;color:#999"),
+					"video-desc",
 				),
 				at(
 					"videoStats",
 					full(14),
 					`${VIDEO_INSET};padding:10px 12px 12px;${VIDEO_BOTTOM_RADIUS}`,
-					"video-stats",
 					`${part("text", "gap:12px;font-size:12px;color:#999")}${part("stat", "gap:4px")}`,
+					"video-stats",
 				),
 				// 图廊与视频互斥,**摆在同一片行**(决策 10 的 2026-09-18 🔗)。分开排行号的话
 				// 出图一样,但画布上看「视频投稿」那一场时,图廊那七行就是七行标着「这一场
@@ -1117,7 +1121,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"forward",
 					full(15),
 					"padding:0 16px",
-					undefined,
 					part(
 						"bubble",
 						"margin-top:8px;padding:12px 0;border-radius:8px;background:rgba(0,0,0,.04);border-left:5px solid #00AEEC;zoom:.85",
@@ -1126,10 +1129,10 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 附加卡自己带全套观感(builder 画的),这块只管把它摆进来:上面 12px、
 				// 两边 16px —— 那 16px 从前写在块里的一层壳上。
 				at("additional", full(16), "padding:12px 16px 0"),
-				at(DIVIDER_TYPE, full(17), "padding:12px 0", "divider-2", DIVIDER_LINE),
-				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, "forward-count", STAT_TEXT),
-				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, "comment-count", STAT_TEXT),
-				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, "like-count", STAT_TEXT),
+				at(DIVIDER_TYPE, full(17), "padding:12px 0", DIVIDER_LINE, "divider-2"),
+				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, STAT_TEXT, "forward-count"),
+				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, STAT_TEXT, "comment-count"),
+				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, STAT_TEXT, "like-count"),
 			],
 		},
 		sc: {
@@ -1143,7 +1146,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"price",
 					full(1),
 					"text-align:center",
-					undefined,
 					part(
 						"text",
 						"font-size:36px;font-weight:700;color:transparent;-webkit-background-clip:text;background-clip:text;background-image:linear-gradient(135deg,var(--bn-card-tier-color),var(--bn-card-tier-color-end))",
@@ -1153,26 +1155,23 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"duration",
 					full(2),
 					CENTER,
-					undefined,
 					part(
 						"pill",
 						"gap:4px;margin-top:5px;padding:4px 10px;border-radius:12px;background-color:var(--bn-card-tier-color);color:#fff;font-size:12px;font-weight:700",
 					),
 				),
-				at(DIVIDER_TYPE, full(3), "padding-top:15px", "divider-1", SC_LINE),
+				at(DIVIDER_TYPE, full(3), "padding-top:15px", SC_LINE, "divider-1"),
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
 					"avatar",
 					full(4),
 					`padding-top:12px;${CENTER}`,
-					undefined,
 					part("image", "width:70px;height:70px;border-radius:9999px"),
 				),
 				at(
 					"name",
 					full(5),
 					`padding-top:8px;${CENTER}`,
-					undefined,
 					part(
 						"pill",
 						"padding:5px 14px;border-radius:15px;background-color:var(--bn-card-tier-color);color:#fff;font-weight:700;font-size:14px",
@@ -1182,7 +1181,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"to",
 					full(6),
 					`padding-top:8px;${CENTER}`,
-					undefined,
 					`${part("text", "gap:5px;font-size:12px;color:#666")}${part("label", "margin-right:3px")}${part("master", "gap:2px")}${part("masterAvatar", "width:18px;height:18px;border-radius:9999px;border:1px solid rgba(0,0,0,.1)")}`,
 				),
 				// 留言整块居中:块的根是一层撑满格子的壳,`text-align` 写在格子上继承下去。
@@ -1190,7 +1188,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"message",
 					full(7),
 					"padding-top:12px;text-align:center",
-					undefined,
 					`${part("bubble", "padding:10px 12px;background:rgba(255,255,255,.5);border-radius:8px")}${part("text", "font-size:13px;color:#333;line-height:1.6")}`,
 				),
 			],
@@ -1201,15 +1198,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				...Array.from({ length: 8 }, () => ({ fr: 1 })),
 				...Array.from({ length: 4 }, () => ({ px: 43.75 })),
 			],
-			// 两行胶囊 + 一行文字:前两行按内容高,最后一行吃掉剩下的卡高,文字贴底。
-			css: `${FRAME_BG_TIER}${frameBox("width:430px;height:220px;padding:15px")}[data-bn="glass"]{${glassBase(".75")};width:400px;height:190px;border-radius:10px;${GLASS_TIER_SHADOW};grid-template-rows:auto auto 1fr}`,
+			css: `${FRAME_BG_TIER}${frameBox("width:430px;height:220px;padding:15px")}${GLASS_GUARD}`,
 			blocks: [
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
 					"avatar",
 					{ row: 1, column: 1, span: 4, rowSpan: 2 },
 					"padding:12px 0 0 16px;align-self:start",
-					undefined,
 					part("image", "width:90px;height:90px;border-radius:9999px"),
 				),
 				// 两颗胶囊贴着头像的中线上下排,各自收窄到内容宽。底色是档位色(数据),
@@ -1218,21 +1213,18 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"user",
 					{ row: 1, column: 5, span: 4 },
 					"align-self:end;justify-self:start",
-					undefined,
 					`${part("pill", "height:30px;padding:0 10px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("text", "max-width:100px;font-weight:700;font-size:12px;color:#fff")}`,
 				),
 				at(
 					"master",
 					{ row: 2, column: 5, span: 4 },
 					"padding-top:7px;align-self:start;justify-self:start",
-					undefined,
 					`${part("pill", "gap:5px;height:25px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("masterAvatar", "width:25px;height:25px;border-radius:9999px")}${part("masterName", "max-width:85px;margin-right:5px;color:#fff;font-size:10px;font-weight:700")}`,
 				),
 				at(
 					"text",
 					{ row: 3, column: 1, span: 8 },
 					"padding:0px 16px 12px;align-self:end",
-					undefined,
 					part(
 						"text",
 						"font-size:16px;font-weight:700;font-style:italic;color:var(--bn-card-tier-color)",
@@ -1242,7 +1234,6 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"badge",
 					{ row: 1, column: 9, span: 4, rowSpan: 3 },
 					"height:190px;display:flex;align-items:center;align-self:start",
-					undefined,
 					part("image", "width:175px;height:175px"),
 				),
 			],

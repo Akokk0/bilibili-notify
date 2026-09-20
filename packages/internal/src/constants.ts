@@ -45,6 +45,21 @@ export const EXTRA_KEYS = ["atAllDynamic", "atAllLive", "wordcloud", "liveSummar
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
 /**
+ * 按 {@link EXTRA_KEYS} 摊一张「每把附加项一格」的表 —— 出厂值、两张 schema、一张全空的
+ * per-目标表,四处共用这一份。
+ *
+ * 它存在只为收断言:`Object.fromEntries` 的返回类型永远是宽的(`{[k: string]: T}`),
+ * 所以从前四个调用点各自补一发 `as`,四种写法还各不相同;其中两处更把 zod 的内部类型
+ * (`ZodDefault<ZodRecord<ZodUUID, ZodBoolean>>`)抄进了断言里 —— 那串跟着 zod 升级一漂,
+ * 断言就会静默把错误的类型按住。收进泛型之后 `T` 由 `make` 的返回值推断,没有可抄错的东西。
+ *
+ * 住在零依赖的 constants 里:它是纯函数、一条依赖都不引入(见文件头那条硬规矩),
+ * 而消费它的 schema 侧都带 zod。
+ */
+export const extrasRecord = <T>(make: (k: ExtraKey) => T): Record<ExtraKey, T> =>
+	Object.fromEntries(EXTRA_KEYS.map((k) => [k, make(k)])) as Record<ExtraKey, T>;
+
+/**
  * 附加项:挂在某个主特性下面、与本体分开发的一条消息(历史行里 `role: "extra"`)。ADR-0016。
  *
  * 主特性关了它们一起关,主特性推到哪儿它们就跟到哪儿(目标是主特性目标的子集)。
@@ -88,7 +103,7 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	specialDanmaku: false,
 	specialUserEnter: false,
 	// 出厂值只写在注册表里 —— 两处各抄一份迟早漂。
-	extras: Object.fromEntries(EXTRA_KEYS.map((k) => [k, PUSH_EXTRAS[k].default])) as PushExtras,
+	extras: extrasRecord((k) => PUSH_EXTRAS[k].default),
 };
 
 /**
