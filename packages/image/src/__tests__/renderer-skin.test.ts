@@ -135,8 +135,8 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 		await liveCard(h.renderer);
 		const html = h.captured[0] ?? "";
 
-		// 网格 wrapper 是皮肤路径**独有**的标记:模板路径的块 wrapper 没有 class。
-		// 验红:把 generateLiveCard 改回 renderCard(LiveCard, …),这两条立刻红。
+		// 网格 wrapper + 根块挂点是皮肤渲染器**独有**的标记,裸铺块铺不出来。
+		// 验红:把 generateLiveCard 改回裸调 renderCard,这几条立刻红。
 		expect(html).toContain("bn-blk-cover");
 		expect(html).toContain('data-bn="glass"');
 		expect(html).toContain("display:grid");
@@ -471,6 +471,65 @@ describe("ImageRenderer 词云卡", () => {
 });
 
 /**
+ * **同一张壁纸不该每出一张卡就重读一遍盘。**
+ *
+ * `resolveAsset` 是宿主的 `readCardBgDataUrl`:一次 `readFile` + 一次 base64。主人那张
+ * 1.7MB 的壁纸 base64 之后是 2.3MB 的字符串 —— 每次推送白读一遍、白搓一遍,而资产 id
+ * 是上传时摇的随机名、**同一个 id 永远是同一份字节**(`apps/server` 的 `saveCardBg` 只
+ * 新建不覆盖),读第二遍拿到的一定还是那一份。
+ *
+ * 验红:把 `ImageRenderer#knobImage` 那句查表删掉(或让它恒不命中),这条当场红。
+ */
+describe("旋钮里的图:读一次盘就够了", () => {
+	function wallpaperHarness(onRead: () => void): Harness {
+		return makeHarness({
+			resolveAsset: async (id) => {
+				onRead();
+				return `data:image/png;base64,${id}`;
+			},
+			config: {
+				...BASE_CONFIG,
+				cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { wallpaper: ["bg1.png"] } },
+			},
+		});
+	}
+
+	it("连出两张卡,宿主的读盘只发生一次", async () => {
+		let reads = 0;
+		const h = wallpaperHarness(() => {
+			reads += 1;
+		});
+		await liveCard(h.renderer);
+		await liveCard(h.renderer);
+		expect(reads).toBe(1);
+		// 缓存命中那张注的必须还是同一串,不能只是「没读盘所以也没画」。
+		// (值里自带 `;`(`data:image/png;base64,…`),所以按引号切而不是按分号切。)
+		const wallpaperOf = (html: string) =>
+			/--bn-knob-wallpaper:url\("([^"]*)"\)/.exec(frameStyle(html))?.[1];
+		expect(wallpaperOf(h.captured[1] ?? "")).toBe(wallpaperOf(h.captured[0] ?? ""));
+		expect(wallpaperOf(h.captured[1] ?? "")).toBe("data:image/png;base64,bg1.png");
+	});
+
+	// 缓存的键必须是**资产 id**,不是旋钮名 —— 按旋钮名存的话换一张图照样命中旧的那串,
+	// 而上面那条「只读一次」照样绿。验红:把 `knobImage` 的键换成常量,这条红。
+	it("换成另一张图就重新读 —— 缓存认的是资产 id", async () => {
+		let reads = 0;
+		const h = wallpaperHarness(() => {
+			reads += 1;
+		});
+		await liveCard(h.renderer);
+		h.renderer.updateConfig({
+			...BASE_CONFIG,
+			cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { wallpaper: ["bg2.png"] } },
+		});
+		await liveCard(h.renderer);
+		// 读了两次 = 第二张真的去读了盘,而不是拿第一张的结果糊弄过去。
+		expect(reads).toBe(2);
+		expect(frameStyle(h.captured[1] ?? "")).toContain('url("data:image/png;base64,bg2.png")');
+	});
+});
+
+/**
  * **推送那条路也得把大图压进 2 MiB 预算。**
  *
  * Blink 对一条自定义属性的值封顶 `2,097,152` 字符,超了**整条声明在解析期就被丢掉**,
@@ -525,9 +584,10 @@ describe("旋钮里的大图:推送出图这条路", () => {
 		await liveCard(h.renderer);
 		const second = frameStyle(cards(h)[1] ?? "");
 		expect(second).toBe(first);
-		// 读盘每次都会发生(资产可能换了),但压只该发生一次 —— 缓存命中时压的那几个
-		// 浏览器页压根不开。验红:把 `knobImageFit` 那层缓存拆掉,这条红。
-		expect(reads).toBe(2);
+		// 读盘与压都只该发生一次 —— 缓存里存的是**最终**那一串,命中时既不读盘也不开压图
+		// 的浏览器页(读盘那一半另有专测,见「旋钮里的图:读一次盘就够了」)。
+		// 验红:把 `knobImageCache` 那层缓存拆掉,这条红。
+		expect(reads).toBe(1);
 		expect(second).toContain("data:image/webp;base64,");
 		// 第二次只该多开**一个**页(画卡片那一个);多出压图的那几页就是缓存没生效。
 		expect(h.captured.length - pagesAfterFirst).toBe(1);

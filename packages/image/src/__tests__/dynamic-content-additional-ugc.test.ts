@@ -147,11 +147,7 @@ describe("buildAdditionalContent — 关联视频(ADDITIONAL_TYPE_UGC)", () => {
 			false,
 			fmt,
 		);
-		const html = await renderViaDefaultSkin(
-			"dynamic",
-			{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
-			{ htmlWidth: 600 },
-		);
+		const html = await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
 		for (const cls of ["w-[140px]", "h-[80px]"]) {
 			// UnoCSS 输出里类名的方括号是反斜杠转义的:`w-[140px]` → `.w-\[140px\]{…}`。

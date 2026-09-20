@@ -70,10 +70,6 @@ export function stripCardHooks(html: string): string {
 /** 出厂默认字体(DEFAULT_CARD_STYLE.font)。全部快照固定用它,不传 fontFace。 */
 const FONT = "PingFang SC, sans-serif";
 
-/** 出厂默认渐变(DEFAULT_CARD_STYLE)。 */
-const COLOR_START = "#e0c3fc";
-const COLOR_END = "#8ec5fc";
-
 /** GUARD_LEVEL_IMG(image-renderer 私有,不为测试改导出,按现状抄一份)。 */
 const GUARD_IMG = {
 	1: "https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
@@ -104,10 +100,6 @@ function liveProps(over: Record<string, unknown> = {}): Record<string, unknown> 
 		showPopularity: true,
 		showArea: true,
 		showFans: true,
-		cardColorStart: COLOR_START,
-		cardColorEnd: COLOR_END,
-		glassOpacity: undefined,
-		glassClear: false,
 		data: liveRoom(),
 		username: "示例主播",
 		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
@@ -229,10 +221,6 @@ const dynamicInput = (
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
 		props: {
-			cardColorStart: COLOR_START,
-			cardColorEnd: COLOR_END,
-			glassOpacity: undefined,
-			glassClear: false,
 			node: await buildDynamicNode(data, false, fmt),
 			...over,
 		},
@@ -565,8 +553,6 @@ function scProps(price: number, over: Record<string, unknown> = {}): Record<stri
 		price,
 		duration: Object.values(SC_LEVELS)[levelIndex].duration,
 		bgColor: SC_COLORS[levelIndex],
-		glassOpacity: undefined,
-		glassClear: false,
 		...over,
 	};
 }
@@ -597,8 +583,6 @@ function guardProps(
 		masterAvatarUrl: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
 		masterName: "示例主播",
 		bgColor: BG_COLORS[guardLevel],
-		glassOpacity: undefined,
-		glassClear: false,
 		...over,
 	};
 }
@@ -644,10 +628,6 @@ const BOARD_PROPS: RoastBoardCardProps = {
 		{ ...roastUp("示例UP·乙", "#2ac864"), score: 96 },
 		{ ...roastUp("示例UP·丙", "#0984e3"), score: 0 },
 	],
-	cardColorStart: COLOR_START,
-	cardColorEnd: COLOR_END,
-	glassOpacity: undefined,
-	glassClear: false,
 };
 
 const SOLO_PROPS: RoastSoloCardProps = {
@@ -659,10 +639,6 @@ const SOLO_PROPS: RoastSoloCardProps = {
 		{ label: "涨粉", comment: "掉了两千，主要掉在周三那条动态之后。" },
 		{ label: "互动", comment: "评论区比视频热闹，值得一看。" },
 	],
-	cardColorStart: COLOR_START,
-	cardColorEnd: COLOR_END,
-	glassOpacity: undefined,
-	glassClear: false,
 };
 
 // ── 夹具表 ────────────────────────────────────────────────────────────────────
@@ -693,7 +669,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			likedNum: numberToStr(20_133),
 			fansNum: numberToStr(88_800),
 			fansChanged: "+1.2万",
-			glassClear: true,
 		}),
 	},
 	{
@@ -706,7 +681,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			liveTime: "直播时长：2小时13分",
 			liveStatus: 2,
 			cover: false,
-			glassOpacity: 0.45,
 		}),
 	},
 	{
@@ -780,7 +754,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "动态卡",
 		kind: "dynamic",
 		label: "dynamic-custom-layout：改顺序 + 隐藏互动数 + 末尾分割线被弹掉 + 关联视频卡",
-		build: dynamicInput(CUSTOM_LAYOUT_DYNAMIC, { glassOpacity: 0.6 }),
+		build: dynamicInput(CUSTOM_LAYOUT_DYNAMIC),
 	},
 	{
 		name: "dynamic-charge-only",
@@ -808,20 +782,19 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "sc-high",
 		group: "醒目留言卡",
 		kind: "sc",
-		label: "sc-high：最高档(¥2000 → Level6 配色)，无主播头像，自定义玻璃",
+		label: "sc-high：最高档(¥2000 → Level6 配色)，无主播头像",
 		build: scInput(2000, {
 			senderName: "示例大哥",
 			masterAvatarUrl: undefined,
 			text: "今晚这首点给所有还没下班的人",
-			glassOpacity: 0.5,
 		}),
 	},
 	{
 		name: "sc-custom-layout",
 		group: "醒目留言卡",
 		kind: "sc",
-		label: "sc-custom-layout：改顺序 + 空留言(块收起) + 首尾分割线的抑制与弹出 + 完全透明",
-		build: scInput(100, { text: "", glassClear: true }),
+		label: "sc-custom-layout：改顺序 + 空留言(块收起) + 首尾分割线的抑制与弹出",
+		build: scInput(100, { text: "" }),
 	},
 
 	{
@@ -835,11 +808,10 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "guard-governor",
 		group: "上舰卡",
 		kind: "guard",
-		label: "guard-governor：总督(level 1)，房管(isAdmin=1)，完全透明",
+		label: "guard-governor：总督(level 1)，房管(isAdmin=1)",
 		build: guardInput(1, {
 			uname: "示例大哥",
 			isAdmin: 1,
-			glassClear: true,
 		}),
 	},
 	{
@@ -847,7 +819,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "上舰卡",
 		kind: "guard",
 		label: "guard-badge-left：提督(level 2)，徽章在左(整列镜像右对齐) + 内容列改顺序 + 分割线",
-		build: guardInput(2, { glassOpacity: 0.6 }),
+		build: guardInput(2),
 	},
 
 	{
@@ -886,8 +858,6 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 				masterName: "示例主播",
 				masterAvatarUrl:
 					"http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
-				colorStart: COLOR_START,
-				colorEnd: COLOR_END,
 			},
 			options: { title: "弹幕词云", font: FONT, htmlWidth: 720 },
 		}),

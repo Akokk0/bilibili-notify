@@ -4,10 +4,9 @@
  * **皮肤渲染器**(ADR-0014 决策 18)—— 一份洗过的皮肤条目 + 一张卡的 props,装配成
  * 「外框 + 12 列网格 + 块」的 VNode,外加一段要拼在 UnoCSS 之后的 CSS。
  *
- * 与模板路径的分工:模板按**旧版式**(`CardBlock[]` 竖栈 / 上舰受限 2D)把块装进外框,
- * 这里按**皮肤**(网格坐标)装。两条路共用同一份块库(`blocks/*`)与同一份外框
- * (`blocks/frames.tsx`),所以「皮肤画出来的块」与「模板画出来的块」内层逐字节相同 ——
- * 这正是验收门 A(`__tests__/skin-gate.test.ts`)钉的东西。
+ * **出图只有这一条路**:从前旁边还有一条整卡模板(按旧版式竖栈 / 上舰受限 2D 装),
+ * 它 2026-09-18 退役、2026-09-20 连同外框里给它留的兜底一起删干净了(ADR-0014 决策 24
+ * 的 🔗)。块库(`blocks/*`)与外框(`blocks/frames.tsx`)如今只有这里在用。
  *
  * 四条纪律:
  * - **只吃洗过的皮肤**:CSS 与自定义 HTML 的清洗归 server 的清洗器(装包时做一次),
@@ -45,6 +44,7 @@ import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
 import { SC_BLOCKS } from "../blocks/sc";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
+import { escapeHtml } from "../html-escape";
 import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { DynamicNode } from "../templates/dynamic-content";
@@ -100,16 +100,6 @@ export interface SkinRenderResult {
 }
 
 // ── 小工具 ────────────────────────────────────────────────────────────────────
-
-/** 文本与属性值统一的 HTML 转义(属性位置也用它,所以引号必须转)。 */
-function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;");
-}
 
 /**
  * 块 id → wrapper 的 class。**同一个函数既生成 class 属性也生成 CSS 选择器**,所以
@@ -223,8 +213,9 @@ function renderCustomHtml(
  * 用户在面板里调的那几样 → 根块上的 CSS 自定义属性(ADR-0014 决策 15、16)。
  * 字体不在 props 里(它经 `renderCard` 的 `font` 进来),所以不写 `--bn-card-font`。
  *
- * 渐变起 / 止色**不在这里注**(决策 15 的 🔗):底色归皮肤自己的外框 CSS,
- * props 里那两个颜色字段只剩模板路径(基准快照)在用。**玻璃同理**(决策 16 的 🔗,
+ * 渐变起 / 止色**不在这里注**(决策 15 的 🔗):底色归皮肤自己的外框 CSS,props 上那两个
+ * 颜色字段 2026-09-20 起没有任何人读(只剩 `LiveCardProps` / `DynamicCardProps` 上两行墓碑,
+ * 等 `routes/cards.ts` 的预览 props 不再写它们就一起删)。**玻璃同理**(决策 16 的 🔗,
  * 2026-09-14):它退役成皮肤自己的旋钮,值从 `cardSkinKnobs` 经 `knobValues` 进来,
  * 不再从 props 翻译。
  */
@@ -556,7 +547,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 	const frame = FRAMES[kind] as (
 		p: CardPropsByKind[K],
 		children: VNode | VNode[],
-		extra?: FrameExtra,
+		extra: FrameExtra,
 	) => VNode;
 	return { vnode: frame(o.props, children, extra), css: parts.join("\n") };
 }

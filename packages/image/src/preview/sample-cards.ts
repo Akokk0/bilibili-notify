@@ -26,17 +26,8 @@ import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
 import { buildDynamicNode, type NodeFormatters } from "../templates/dynamic-content";
 import type { Dynamic, RichTextNode } from "../types";
 
-/**
- * 一份示例 props = 该卡种的真 props **减去已退役的字段**:玻璃两项(2026-09-14 退成皮肤
- * 旋钮)与渐变起 / 止色(决策 15 起皮肤路径压根不读,外框的底色归皮肤 CSS)。写进来等于
- * 复活一条死路 —— 照着示例数据写皮肤的人会以为这些字段还管用。
- *
- * 卡种之间字段名不同(词云叫 `colorStart`),一并摘掉。`Omit` 对不存在的键是空操作。
- */
-type SampleProps<K extends CardSkinKind> = Omit<
-	CardPropsByKind[K],
-	"cardColorStart" | "cardColorEnd" | "colorStart" | "colorEnd" | "glassOpacity" | "glassClear"
->;
+/** 一份示例 props 就是该卡种的真 props。 */
+type SampleProps<K extends CardSkinKind> = CardPropsByKind[K];
 
 // ── 占位图 ────────────────────────────────────────────────────────────────────
 //

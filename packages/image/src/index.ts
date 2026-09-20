@@ -7,7 +7,7 @@ export type { Component, VNode } from "vue";
 export { h } from "vue";
 // 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
 export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
-// 卡片外框(根块):模板路径与皮肤路径共用的那两层壳。
+// 卡片外框(根块):皮肤渲染器给每张卡套的那两层壳。
 export {
 	type CardPropsByKind,
 	FRAMES,
@@ -79,17 +79,15 @@ export {
 // 超上限的图压进预算 —— 用 Chrome 自己当编码器,不引新依赖。凡是自己拼
 // `resolveKnobAssets` 入参的调用方都该把它接上,否则大图照旧静默不出。
 export { shrinkImageForCssVar } from "./skin/shrink-image";
-// 四种可编辑卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
+// 七种卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
 // 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
 export type { DynamicCardProps, DynamicNode } from "./templates/dynamic-card";
 export type { GuardCardProps } from "./templates/guard-card";
 export type { LiveCardProps } from "./templates/live-card";
-export {
-	RoastBoardCard,
-	type RoastBoardCardProps,
-	type RoastCardUp,
-	RoastSoloCard,
-	type RoastSoloCardProps,
+export type {
+	RoastBoardCardProps,
+	RoastCardUp,
+	RoastSoloCardProps,
 } from "./templates/roast-card";
 export type { SCCardProps } from "./templates/sc-card";
 export type {

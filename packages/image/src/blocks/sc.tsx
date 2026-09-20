@@ -35,19 +35,10 @@
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
+import { escapeHtmlWithBreaks } from "../html-escape";
 import { SVG_DURATION } from "../icons";
 import type { SCCardProps } from "../templates/sc-card";
 import type { BlockRenderer } from "./types";
-
-/** 留言文本:B 站弹幕来的原文,手工转义后交给 `innerHTML` 以保留换行。 */
-function escapeText(p: SCCardProps): string {
-	return p.text
-		?.trim()
-		?.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\n/g, "<br>");
-}
 
 /**
  * 发送者头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
@@ -127,7 +118,7 @@ export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
 	// 外面那层壳只负责撑满格子:居中归这块 `self` 规则里的 `text-align`(块级根填满格子,
 	// 写在 wrapper 上继承下来一模一样),所以壳上不挂挂点。
 	message: (p) => {
-		const escapedText = escapeText(p);
+		const escapedText = escapeHtmlWithBreaks(p.text?.trim() ?? "");
 		return escapedText ? (
 			<div class="w-full">
 				<div data-bn="bubble">

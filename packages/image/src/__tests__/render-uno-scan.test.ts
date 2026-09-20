@@ -14,8 +14,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { renderCard } from "../render";
-import { RoastBoardCard, RoastSoloCard } from "../templates/roast-card";
+import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 /** 取 `<style>` 里的 CSS —— 断言要看的是「规则生成了没有」,不是 HTML 里写了没有。 */
 function cssOf(html: string): string {
@@ -35,12 +34,10 @@ function hasRule(css: string, cls: string): boolean {
 }
 
 function soloHtml(over: Record<string, unknown> = {}): Promise<string> {
-	return renderCard(
-		RoastSoloCard,
+	return renderViaDefaultSkin(
+		"roastSolo",
 		{
 			days: 30,
-			cardColorStart: "#A18CD1",
-			cardColorEnd: "#FBC2EB",
 			up: { name: "机智的党妹", color: "#bf7cff" },
 			verdict: "一个月就发一条",
 			score: 32,
@@ -71,12 +68,10 @@ describe("renderCard — HTML 正文不得吃掉 class", () => {
 	});
 
 	it("榜单周报卡:标题行靠 justify-between 把标题和副标题推开", async () => {
-		const html = await renderCard(
-			RoastBoardCard,
+		const html = await renderViaDefaultSkin(
+			"roastBoard",
 			{
 				days: 30,
-				cardColorStart: "#FF9A9E",
-				cardColorEnd: "#FAD0C4",
 				pigeon: { name: "甲", color: "#f00", reason: "鸽" },
 				diligent: { name: "乙", color: "#0f0", reason: "勤" },
 				roast: [],

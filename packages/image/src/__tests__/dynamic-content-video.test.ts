@@ -69,11 +69,7 @@ function makeVideoDynamic(over: Record<string, unknown> = {}): Dynamic {
  */
 async function videoCardHtml(dynamic: Dynamic = makeVideoDynamic()): Promise<string> {
 	const node = await buildDynamicNode(dynamic, false, fmt);
-	return await renderViaDefaultSkin(
-		"dynamic",
-		{ cardColorStart: "#000000", cardColorEnd: "#ffffff", node },
-		{ htmlWidth: 600 },
-	);
+	return await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
 }
 
 /** 封面 img 自己的 class —— 封面是主体还是缩略图,全写在这一串里。 */

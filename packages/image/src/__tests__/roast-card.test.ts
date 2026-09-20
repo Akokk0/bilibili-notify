@@ -3,17 +3,21 @@
  *
  * 这两张卡的正文**整段来自大模型**,UP 名字则来自 B 站。两者都不可信,而卡片
  * 渲染完就直接发到群里。所以测试重心是「脏输入不会破坏卡片」,而不是版式细节。
+ *
+ * 走的是**出厂默认皮肤**那条路(ADR-0014 决策 24 的 2026-09-18 🔗:整卡模板已退役,
+ * 出图七个入口全走皮肤渲染器)。断言一律落在 `<body>` 那一截上 —— 皮肤路径出的是
+ * 一整份 HTML,把 UnoCSS 与皮肤那两段 CSS 也算进来的话,「卡上有没有这个字」就
+ * 问不清楚了。
  */
 
-import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
-import { createSSRApp, h } from "vue";
-import {
-	RoastBoardCard,
-	type RoastBoardCardProps,
-	RoastSoloCard,
-	type RoastSoloCardProps,
-} from "../templates/roast-card";
+import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
+import { renderViaDefaultSkin } from "./fixtures/skin-render";
+
+/** 只取卡片本身那一截 —— `<style>` 里的 CSS 不是「卡上画了什么」。 */
+function bodyOf(html: string): string {
+	return html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>"));
+}
 
 const up = (name: string, over: Record<string, unknown> = {}) => ({
 	name,
@@ -25,8 +29,6 @@ const up = (name: string, over: Record<string, unknown> = {}) => ({
 function boardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProps {
 	return {
 		days: 30,
-		cardColorStart: "#FF9A9E",
-		cardColorEnd: "#FAD0C4",
 		pigeon: { ...up("机智的党妹"), reason: "一个月就发一条" },
 		diligent: { ...up("老番茄"), reason: "更新最勤" },
 		roast: [{ ...up("机智的党妹"), comment: "鸽子精本精" }],
@@ -41,8 +43,6 @@ function boardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProp
 function soloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
 	return {
 		days: 30,
-		cardColorStart: "#FF9A9E",
-		cardColorEnd: "#FAD0C4",
 		up: up("机智的党妹"),
 		verdict: "一个月就发一条,鸽子精本精",
 		score: 32,
@@ -51,12 +51,16 @@ function soloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
 	};
 }
 
-const renderBoard = (over: Partial<RoastBoardCardProps> = {}) =>
-	renderToString(createSSRApp({ render: () => h(RoastBoardCard, boardProps(over)) }));
-const renderSolo = (over: Partial<RoastSoloCardProps> = {}) =>
-	renderToString(createSSRApp({ render: () => h(RoastSoloCard, soloProps(over)) }));
+const boardHtml = (over: Partial<RoastBoardCardProps> = {}) =>
+	renderViaDefaultSkin("roastBoard", boardProps(over));
+const soloHtml = (over: Partial<RoastSoloCardProps> = {}) =>
+	renderViaDefaultSkin("roastSolo", soloProps(over));
 
-describe("RoastBoardCard", () => {
+const renderBoard = async (over: Partial<RoastBoardCardProps> = {}) =>
+	bodyOf(await boardHtml(over));
+const renderSolo = async (over: Partial<RoastSoloCardProps> = {}) => bodyOf(await soloHtml(over));
+
+describe("锐评榜单周报卡", () => {
 	it("鸽王 / 勤奋 UP / 锐评 / 评分都出现在卡上", async () => {
 		const html = await renderBoard();
 		expect(html).toContain("机智的党妹");
@@ -67,7 +71,7 @@ describe("RoastBoardCard", () => {
 	});
 
 	it("窗口天数标在卡上 —— 同一份榜单在 7 日和 30 日下含义完全不同", async () => {
-		expect(await renderBoard({ days: 7 })).toContain("7");
+		expect(await renderBoard({ days: 7 })).toContain("近 7 天");
 	});
 
 	it("模型给的文本一律转义,绝不能当 HTML 解释", async () => {
@@ -93,7 +97,7 @@ describe("RoastBoardCard", () => {
 	});
 
 	it("进度条宽度夹在 0..100 —— 越界的分数会把条画出卡片外", async () => {
-		// 解析层已经夹过一次,但模板是公开入口,自己也得站得住。
+		// 解析层已经夹过一次,但块是公开入口,自己也得站得住。
 		const html = await renderBoard({
 			scores: [
 				{ ...up("甲"), score: 999 },
@@ -120,14 +124,14 @@ describe("RoastBoardCard", () => {
 	});
 
 	// 从前这里还有一条「背景图存在时替换渐变外框」。卡片背景图那条链 2026-09-20 整个删掉
-	// (背景图归皮肤的 `image` 旋钮),模板外框只画渐变了。
+	// (背景图归皮肤的 `image` 旋钮),外框只画渐变了 —— 而渐变本身也早已归皮肤 CSS
+	// (决策 15 的 🔗),所以这条断言看的是**整份 HTML**里默认皮肤那段外框规则。
 	it("外框画的是渐变", async () => {
-		const html = await renderBoard();
-		expect(html).toContain("linear-gradient(to right bottom");
+		expect(await boardHtml()).toContain("linear-gradient(to right bottom");
 	});
 });
 
-describe("RoastSoloCard", () => {
+describe("单人锐评卡", () => {
 	it("名字 / 总评 / 评分 / 分维度点评都在", async () => {
 		const html = await renderSolo();
 		expect(html).toContain("机智的党妹");

@@ -54,6 +54,14 @@ export interface KnobAssetResolvers {
 	 * 编码器),而这个函数是纯的。不给就只报不压 —— 那张图照旧不出,但至少不再静默。
 	 */
 	shrinkImage?: (dataUrl: string, budgetChars: number, assetId: string) => Promise<string | null>;
+	/**
+	 * 这个资产**最终**注进 CSS 的是哪一串(原样 / 压过 / 空串 = 这张没画上去)。
+	 *
+	 * 给调用方做缓存用 —— 「读盘 + 按预算压」这一趟对同一个 id 永远得到同一个答案,而
+	 * 这个函数自己是纯的,存不了东西。**注意空串也会报**:注不出去也是个答案,不缓存的话
+	 * 每张卡都要为同一张废图再读一次盘、再白压一次。
+	 */
+	onImageResolved?: (assetId: string, url: string) => void;
 }
 
 export interface ResolvedKnobAssets {
@@ -111,6 +119,7 @@ export async function resolveKnobAssets(
 			const at = resolvers.pick ? clampIndex(resolvers.pick(ids.length, knob.key), ids.length) : 0;
 			const id = ids[at] as string;
 			const url = await fitUrl(await resolvers.image(id), resolvers, knob.key, id, warnings);
+			resolvers.onImageResolved?.(id, url);
 			if (url === "") continue;
 			// 值是**完整的一层**(自带 `center / cover`):尺寸不能挪到皮肤 CSS 那头去写 ——
 			// 渐变一带尺寸就换了光栅抖动(像素门 14 张红过),与 `--bn-card-bg-image` 同款。

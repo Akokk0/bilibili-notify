@@ -8,6 +8,7 @@
  * 今天没有的元素),挂点因此下沉到正文自己的根元素上。普通正文与专栏各有一个根,两个都挂。
  */
 
+import { escapeHtml } from "./html-escape";
 import { SVG_LOTTERY_INLINE, SVG_VIDEO_INLINE } from "./icons";
 import type { RichTextNode } from "./types";
 
@@ -23,18 +24,6 @@ const TYPE_LOTTERY = "RICH_TEXT_NODE_TYPE_LOTTERY";
 const TYPE_VOTE = "RICH_TEXT_NODE_TYPE_VOTE";
 const TYPE_OGV_SEASON = "RICH_TEXT_NODE_TYPE_OGV_SEASON";
 const TYPE_OGV_EP = "RICH_TEXT_NODE_TYPE_OGV_EP";
-
-/**
- * HTML 转义 —— 同时安全用于文本内容与双引号属性值上下文。
- * 对齐 SCCard 的转义策略;`"` 一并转义以覆盖 `src="…"` 属性场景。
- */
-function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
-}
 
 export function parseRichText(rt: RichTextNode, title?: string, isArticle = false) {
 	if (isArticle) {

@@ -1,22 +1,9 @@
-/** @jsxImportSource vue */
-
-import { FRAMES } from "../blocks/frames";
-import { wordCloudBodyChildren } from "../blocks/wordcloud";
-
+/**
+ * 这种卡的 **props 契约**。整卡模板(把块按旧版式装进外框那一层)已退役 —— 出图与测试
+ * 一律走皮肤渲染器,整卡模板一处都不剩了(ADR-0014 决策 24 的 2026-09-18 🔗)。块渲染器
+ * 与外框吃的仍是这份 props,所以类型留在原地。
+ */
 export type WordCloudCardProps = {
 	masterName: string;
 	masterAvatarUrl?: string;
-	colorStart: string;
-	colorEnd: string;
 };
-
-/**
- * 正文块住在 `blocks/wordcloud.tsx`、外框住在 `blocks/frames.tsx`(皮肤路径共用的同两份);
- * 这里只剩「把正文装进外框」。
- *
- * 铺的是 `wordCloudBodyChildren` 那**三个同级孩子**而不是 `WORDCLOUD_BLOCKS.body` 的
- * Fragment:Vue SSR 给每个 Fragment 插锚点注释,多套一层就凭空多两条(见块库里的说明)。
- */
-export function WordCloudCard(p: WordCloudCardProps) {
-	return FRAMES.wordcloud(p, wordCloudBodyChildren(p));
-}

@@ -28,7 +28,7 @@ import {
 	skinAssetRefs,
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
-import { BG_COLORS, DEFAULT_CARD_GRADIENT, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
+import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode } from "./templates/dynamic-content";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
@@ -52,22 +52,16 @@ import type { CardColorOptions, Dynamic, LiveData } from "./types";
  */
 export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 
-/**
- * 模板路径(基准快照)的 props 仍要一对渐变色 —— 但那已经**不是用户配置**了
- * (ADR-0014 决策 15 的 🔗:渐变归皮肤的外框 CSS)。出图走的皮肤路径根本不读这两个字段,
- * 这里给的是出厂色常量,只为让模板那条路的 props 类型有值可填。
- */
-const TEMPLATE_GRADIENT = DEFAULT_CARD_GRADIENT;
+/** 图旋钮的解析结果最多留几份。见 `ImageRenderer#rememberKnobImage`。 */
+const KNOB_IMAGE_CACHE_MAX = 4;
 
 /**
- * 锐评卡的**业务**入参 —— 颜色给出厂常量。
- *
- * 玻璃那两个键留在这张单子上只为**摘干净**:2026-09-14 玻璃退役成皮肤旋钮之后渲染器
- * 不再填它们,模板签名上那两项也就只剩基准快照在喂(见 `types.ts` 的同名字段)。
+ * 锐评卡的**业务**入参。渐变 / 玻璃那几项 2026-09-20 从 props 上整批删掉(外观归皮肤的
+ * 外框 CSS 与旋钮),所以这两个别名今天与 props 一字不差 —— 留着名字是因为它们是对外
+ * 导出的入参契约,调用方(`apps/server` 的周报投递)写的是这个名。
  */
-type RoastStyleKeys = "cardColorStart" | "cardColorEnd" | "glassOpacity" | "glassClear";
-export type RoastBoardData = Omit<RoastBoardCardProps, RoastStyleKeys>;
-export type RoastSoloData = Omit<RoastSoloCardProps, RoastStyleKeys>;
+export type RoastBoardData = RoastBoardCardProps;
+export type RoastSoloData = RoastSoloCardProps;
 
 const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
 	[GuardLevel.None]: "",
@@ -178,8 +172,11 @@ export class ImageRenderer {
 	private config: ImageRendererConfig;
 	/** 图片旋钮的轮换游标:`<皮肤 id>:<旋钮 key>` → 已经出过几张。 */
 	private readonly knobImageCursor = new Map<string, number>();
-	/** 资产 id → 压进预算之后的 data URL(空串 = 压不下去,别再白试)。见 {@link fitKnobImage}。 */
-	private readonly knobImageFit = new Map<string, string>();
+	/**
+	 * 资产 id → **最终注进 CSS 的那串**(空串 = 这张注不出去,别再白读白压)。
+	 * 见 {@link knobImage} / {@link rememberKnobImage}。
+	 */
+	private readonly knobImageCache = new Map<string, string>();
 	private readonly resolveAsset: (id: string) => Promise<string>;
 	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
@@ -350,9 +347,10 @@ export class ImageRenderer {
 		overrides: CardSkinKnobOverrides | undefined,
 	): Promise<ResolvedKnobAssets> {
 		const out = await resolveKnobAssets(knobs, overrides, {
-			image: (assetId) => this.resolveAsset(assetId),
+			image: (assetId) => this.knobImage(assetId),
 			fontFace: (assetId) => this.resolveFontFace(assetId),
-			shrinkImage: (url, budget, assetId) => this.fitKnobImage(url, budget, assetId),
+			shrinkImage: (url, budget) => shrinkImageForCssVar(this.puppeteer, url, budget),
+			onImageResolved: (assetId, url) => this.rememberKnobImage(assetId, url),
 			pick: (count, key) => {
 				const at = this.knobImageCursor.get(`${skinId}:${key}`) ?? 0;
 				this.knobImageCursor.set(`${skinId}:${key}`, at + 1);
@@ -366,19 +364,36 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * 超出 CSS 自定义属性 2 MiB 上限的图,压进预算(见 `skin/shrink-image.ts`)。
+	 * 图旋钮指着的那个资产 → data URL,**命中缓存就不读盘**。
 	 *
-	 * **按资产 id 缓存**:资产名是内容哈希,同一个 id 就是同一份字节,压出来的也一样;
-	 * 不缓存的话每一次推送都要为同一张图重开一个浏览器页解码 + 重编码。缓存住的是
-	 * 压完那份(几百 KB),不是原图。
+	 * 缓存里存的是「最终要注进 CSS 的那串」(见 {@link rememberKnobImage}),所以命中时
+	 * 连 `fitUrl` 那趟按预算压的判断都一并省了 —— 它对已经合规的串是空操作。
+	 *
+	 * **不需要作废**:id 是上传时摇的随机名,`saveCardBg` 只新建不覆盖,同一个 id 永远是
+	 * 同一份字节(图廊那条 `GET /asset/:id` 也照这条发 `Cache-Control: immutable`);换一张图
+	 * 就是换一个 id,自然不命中。而删图那头有引用闸 —— 还被旋钮指着的图删不掉(409),所以
+	 * 「id 还在、字节没了」只可能是有人手动动了数据目录。
 	 */
-	private async fitKnobImage(url: string, budget: number, assetId: string): Promise<string | null> {
-		const hit = this.knobImageFit.get(assetId);
-		if (hit !== undefined) return hit === "" ? null : hit;
-		const out = await shrinkImageForCssVar(this.puppeteer, url, budget);
-		// 压不下去也记一笔 —— 否则每张卡都要再白压四次。
-		this.knobImageFit.set(assetId, out ?? "");
-		return out;
+	private async knobImage(assetId: string): Promise<string> {
+		const hit = this.knobImageCache.get(assetId);
+		return hit !== undefined ? hit : await this.resolveAsset(assetId);
+	}
+
+	/**
+	 * 记住这个资产最终注出去的那串。**空串也记** —— 注不出去(悬空 / 压不进 2 MiB 上限)
+	 * 同样是个不会变的答案,不记的话每张卡都要为同一张废图再读一遍盘、再白压一次。
+	 *
+	 * 留几份就照 {@link fontCache} 的先例卡住:每份最多 `IMAGE_URL_BUDGET` 个字符
+	 * (约 2 MiB),而镜像里 V8 的 old-space 只有 512MB。多图轮换时留一份会次次落空,所以
+	 * 留一小撮、按插入顺序淘汰最旧的。
+	 */
+	private rememberKnobImage(assetId: string, url: string): void {
+		this.knobImageCache.delete(assetId);
+		this.knobImageCache.set(assetId, url);
+		for (const oldest of this.knobImageCache.keys()) {
+			if (this.knobImageCache.size <= KNOB_IMAGE_CACHE_MAX) break;
+			this.knobImageCache.delete(oldest);
+		}
 	}
 
 	async getTimeDifference(dateString: string): Promise<string> {
@@ -574,8 +589,6 @@ export class ImageRenderer {
 			skinId: this.skinIdOf(colorOptions),
 			font: await this.resolveFont(colorOptions),
 			props: {
-				cardColorStart: TEMPLATE_GRADIENT[0],
-				cardColorEnd: TEMPLATE_GRADIENT[1],
 				data,
 				username,
 				userface,
@@ -736,11 +749,7 @@ export class ImageRenderer {
 			// props 里的 `node` 已经是画好的结构树,取不回那些值。
 			raw: data,
 			priority: options?.priority,
-			props: {
-				cardColorStart: TEMPLATE_GRADIENT[0],
-				cardColorEnd: TEMPLATE_GRADIENT[1],
-				node,
-			},
+			props: { node },
 		})
 			.then((buf) => {
 				this.logger.debug(
@@ -763,7 +772,7 @@ export class ImageRenderer {
 		const t0 = Date.now();
 		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
 		// 画布(`#wordCloudCanvas`)在内置块里,皮肤路径出的 HTML 照样有它 —— 画词的脚本
-		// 原样注进 `</body>` 之前,与模板路径同一段(`wordCloudInitScript`)。
+		// 原样注进 `</body>` 之前(`wordCloudInitScript`,读盘拼脚本那一半单独住在那儿)。
 		const script = wordCloudInitScript(words, ASSET_DIR);
 		return this.renderWithSkin({
 			kind: "wordcloud",
@@ -772,12 +781,7 @@ export class ImageRenderer {
 			font: await this.resolveFont(),
 			waitFor: "window.wordcloudDone === true",
 			postProcess: (html) => injectWordCloudScript(html, script),
-			props: {
-				masterName,
-				masterAvatarUrl,
-				colorStart: TEMPLATE_GRADIENT[0],
-				colorEnd: TEMPLATE_GRADIENT[1],
-			},
+			props: { masterName, masterAvatarUrl },
 		})
 			.then((buf) => {
 				this.logger.debug(`[wordcloud] 词云卡片渲染完成：${masterName}（${Date.now() - t0}ms）`);
@@ -800,11 +804,7 @@ export class ImageRenderer {
 			title: "UP 主周报",
 			skinId: this.skinIdOf(opts),
 			font: await this.resolveFont(),
-			props: {
-				...data,
-				cardColorStart: TEMPLATE_GRADIENT[0],
-				cardColorEnd: TEMPLATE_GRADIENT[1],
-			},
+			props: { ...data },
 		})
 			.then((buf) => {
 				this.logger.debug(`[roast] 周报卡片渲染完成（${Date.now() - t0}ms）`);
@@ -827,11 +827,7 @@ export class ImageRenderer {
 			title: "UP 主锐评",
 			skinId: this.skinIdOf(opts),
 			font: await this.resolveFont(),
-			props: {
-				...data,
-				cardColorStart: TEMPLATE_GRADIENT[0],
-				cardColorEnd: TEMPLATE_GRADIENT[1],
-			},
+			props: { ...data },
 		})
 			.then((buf) => {
 				this.logger.debug(`[roast] 单人锐评卡片渲染完成：${data.up.name}（${Date.now() - t0}ms）`);

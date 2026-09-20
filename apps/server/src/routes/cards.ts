@@ -48,7 +48,6 @@ import {
 	CardSkinKindSchema,
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
-	DEFAULT_CARD_GRADIENT,
 	DEFAULT_CARD_SKIN,
 	type GlobalConfig,
 	type NotificationPayload,
@@ -1155,8 +1154,6 @@ const SVG_AVATAR_FAN =
 
 function buildLivePreviewProps(): LiveCardProps {
 	return {
-		cardColorStart: DEFAULT_CARD_GRADIENT[0],
-		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 		data: {
 			user_cover: SVG_COVER,
 			keyframe: "",
@@ -1221,8 +1218,6 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 		stats: undefined,
 	};
 	return {
-		cardColorStart: DEFAULT_CARD_GRADIENT[0],
-		cardColorEnd: DEFAULT_CARD_GRADIENT[1],
 		node: {
 			avatarUrl: SVG_AVATAR_BLUE,
 			upName: "示例 UP 主",

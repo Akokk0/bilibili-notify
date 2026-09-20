@@ -34,8 +34,6 @@ import { buildCardData, type CardData, type CardDataValue, readCardField } from 
 
 function liveProps(over: Partial<LiveCardProps> = {}): LiveCardProps {
 	return {
-		cardColorStart: "#fff",
-		cardColorEnd: "#000",
 		data: {
 			title: "今天也在打游戏",
 			area_name: "虚拟主播",
@@ -62,8 +60,6 @@ function liveProps(over: Partial<LiveCardProps> = {}): LiveCardProps {
 /** 什么都没有的直播卡:接口只回了个空壳,开关全关。 */
 function emptyLiveProps(): LiveCardProps {
 	return {
-		cardColorStart: "",
-		cardColorEnd: "",
 		data: {},
 		username: "",
 		userface: "",
@@ -120,8 +116,18 @@ const FULL_ARCHIVE = {
 
 const FULL_PICS = [{ url: "https://img/pic1.jpg" }, { url: "https://img/pic2.jpg" }];
 
+/** `buildDynamicNode` 从 {@link FULL_ARCHIVE} 抽出来挂在 node 上的那一份(见 `videoOf`)。 */
+const NODE_VIDEO = {
+	cover: "https://img/video-cover.jpg",
+	duration: "12:34",
+	title: "这是一期视频",
+	desc: "",
+	views: "6.5万",
+	danmaku: "1024",
+};
+
 function dynamicProps(node: DynamicNode = dynamicNode()): DynamicCardProps {
-	return { cardColorStart: "#fff", cardColorEnd: "#000", node };
+	return { node };
 }
 
 function scProps(over: Partial<SCCardProps> = {}): SCCardProps {
@@ -186,8 +192,6 @@ function roastBoardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCar
 		diligent: { ...ROAST_UP, reason: "很勤快" },
 		roast: [{ ...ROAST_UP, comment: "锐评" }],
 		scores: [{ ...ROAST_UP, score: 80 }],
-		cardColorStart: "#fff",
-		cardColorEnd: "#000",
 		...over,
 	};
 }
@@ -199,8 +203,6 @@ function roastSoloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardPr
 		verdict: "还行",
 		score: 60,
 		highlights: [{ label: "勤奋", comment: "尚可" }],
-		cardColorStart: "#fff",
-		cardColorEnd: "#000",
 		...over,
 	};
 }
@@ -209,8 +211,6 @@ function wordCloudProps(over: Partial<WordCloudCardProps> = {}): WordCloudCardPr
 	return {
 		masterName: "阿可",
 		masterAvatarUrl: "https://img/master.jpg",
-		colorStart: "#fff",
-		colorEnd: "#000",
 		...over,
 	};
 }
@@ -250,7 +250,7 @@ const EMPTY: Record<CardSkinKind, () => CardData> = {
 		buildCardData("roastBoard", roastBoardProps({ days: 0, roast: [], scores: [] })),
 	roastSolo: () =>
 		buildCardData("roastSolo", roastSoloProps({ days: 0, up: { name: "", color: "" } })),
-	wordcloud: () => buildCardData("wordcloud", { masterName: "", colorStart: "", colorEnd: "" }),
+	wordcloud: () => buildCardData("wordcloud", { masterName: "" }),
 };
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
@@ -416,10 +416,10 @@ describe("直播卡封面的几种来源", () => {
 });
 
 describe("动态卡的视频与图廊", () => {
-	it("有 raw:视频卡与图廊的字段都从原始动态取", () => {
+	it("视频那一组从 node 取、图廊那一组从原始动态取", () => {
 		const d = buildCardData(
 			"dynamic",
-			dynamicProps(),
+			dynamicProps(dynamicNode({ video: NODE_VIDEO })),
 			rawDynamic({ archive: FULL_ARCHIVE, opus: { pics: FULL_PICS } }),
 		);
 		expect(d.dynamic.type).toBe("DYNAMIC_TYPE_AV");
@@ -435,7 +435,7 @@ describe("动态卡的视频与图廊", () => {
 		expect(d.pics.first).toBe("https://img/pic1.jpg");
 	});
 
-	it("没有 raw:两组字段全空,两个 has* 为假,node 那边的字段照常", () => {
+	it("没有 raw、node 上也没有视频:两组字段全空,两个 has* 为假,node 那边的字段照常", () => {
 		const d = buildCardData("dynamic", dynamicProps());
 		expect(d.dynamic.type).toBe("");
 		expect(d.dynamic.hasVideo).toBe(false);
@@ -449,6 +449,26 @@ describe("动态卡的视频与图廊", () => {
 		expect(d.dynamic.action).toBe("投稿了视频");
 		expect(d.dynamic.isForward).toBe(true);
 		expect(d.stats.like).toBe("5.6万");
+	});
+
+	/**
+	 * 🔴 「有没有视频」这一条,**块与契约必须同一个判据**。
+	 *
+	 * 块画的判据是 `node.video` 在不在(`blocks/dynamic.tsx` 的五个视频块);契约这边从前
+	 * 自己去 raw 里刨了一遍 archive,再拿「标题非空」当判据 —— 一条没标题的投稿于是画出了
+	 * 封面,却告诉皮肤的 `showIf` 说没视频,皮肤要么摆出一块空的、要么把封面那格藏了。
+	 *
+	 * 验红:把 `hasVideo` 改回 `videoTitle !== ""`(或让 video 那一组回去读 raw),这条红。
+	 */
+	it("标题是空的投稿:hasVideo 仍为真 —— 判据是有没有这张卡,不是有没有标题", () => {
+		const d = buildCardData(
+			"dynamic",
+			dynamicProps(dynamicNode({ video: { ...NODE_VIDEO, title: "" } })),
+			rawDynamic({ archive: { ...FULL_ARCHIVE, title: "" } }),
+		);
+		expect(d.dynamic.hasVideo).toBe(true);
+		expect(d.video.title).toBe("");
+		expect(d.video.cover).toBe("https://img/video-cover.jpg");
 	});
 
 	it("有 raw 但不是视频动态:video 全空,图廊照取", () => {

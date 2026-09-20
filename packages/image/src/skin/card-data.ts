@@ -94,18 +94,22 @@ function liveData(p: LiveCardProps): CardData {
 // ── dynamic ──────────────────────────────────────────────────────────────────
 
 /**
- * 动态卡的数据有两个来源:`node`(已经装配好的呈现态结构树)给作者 / 时间 / 互动数,
- * `raw`(原始动态)给视频卡与图廊那两组 —— 它们在 node 里已经被画进 `body` 的 VNode 里,
- * 拆不回来了。没有 `raw` 时这两组一律空值(`hasVideo` / `hasPics` 随之为 false)。
+ * 动态卡的数据有两个来源。
+ *
+ * **视频那一组跟着块走**:`buildDynamicNode` 已经把投稿视频那六个字段抽成了 `node.video`
+ * (见 `templates/dynamic-content.tsx` 的 `videoOf`),五个视频块画的就是这一份。契约这边
+ * 也读它,而不是回头再从 `raw` 刨一遍 —— 各刨各的,判据迟早分叉(从前这里拿「标题非空」
+ * 当 `hasVideo`,而块看的是 `node.video` 在不在:一条没标题的投稿会画出封面,却告诉皮肤的
+ * `showIf` 说没视频)。
+ *
+ * **图廊那一组只有 `raw` 有**:张数是动态的,在 node 里已经被画进一整块 VNode,拆不回来。
+ * 动态类型(`dynamic.type`)同理。没有 `raw` 时这两项空着(`hasPics` 随之为 false)。
  */
 function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
 	const node = p.node;
-	const major = raw?.modules?.module_dynamic?.major;
-	// 视频卡的来源与 `templates/dynamic-content.tsx` 的 buildVideoContent 同一处。
-	const archive = major?.archive;
-	// 图廊的来源与同文件的 buildPicsContent 同一处。
-	const pics = major?.opus?.pics ?? [];
-	const videoTitle = str(archive?.title);
+	// 图廊的来源与 `templates/dynamic-content.tsx` 的 buildPicsContent 同一处。
+	const pics = raw?.modules?.module_dynamic?.major?.opus?.pics ?? [];
+	const video = node.video;
 	return {
 		up: { name: str(node.upName), face: str(node.avatarUrl), isVip: !!node.upIsVip },
 		dynamic: {
@@ -116,17 +120,17 @@ function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
 			hasTopic: !!node.topic,
 			isForward: !!node.forward,
 			hasAdditional: !!node.additional,
-			hasVideo: videoTitle !== "",
+			hasVideo: !!video,
 			hasPics: pics.length > 0,
 		},
 		video: {
-			title: videoTitle,
-			desc: str(archive?.desc),
-			cover: str(archive?.cover),
-			duration: str(archive?.duration_text),
-			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),原样转文本,不做算术。
-			views: str(archive?.stat?.play),
-			danmaku: str(archive?.stat?.danmaku),
+			title: str(video?.title),
+			desc: str(video?.desc),
+			cover: str(video?.cover),
+			duration: str(video?.duration),
+			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),`videoOf` 原样转了文本。
+			views: str(video?.views),
+			danmaku: str(video?.danmaku),
 		},
 		pics: { count: pics.length, first: str(pics[0]?.url) },
 		stats: {
