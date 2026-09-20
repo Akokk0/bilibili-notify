@@ -50,4 +50,38 @@ describe("createAppRuntime", () => {
 		const drafts = await readdir(join(dataDir, "history", "repush", entry.ts.slice(0, 10)));
 		expect(drafts).toContain(`${entry.id}.json`);
 	});
+
+	/**
+	 * **重推的 runner 接的是真东西。**
+	 *
+	 * 这一条走完:`findRow` 在真历史仓里找到了那一行,闸从真 ConfigStore 里读路由 ——
+	 * 而这个 dataDir 里一条订阅都没有,所以它据实拒绝,理由正是「路由里没有这个目标」。
+	 * 换掉任何一头(桩住的 store、写死的 routedTargets)这条都会变。
+	 *
+	 * ⚠️ **没钉到的那一跳**:`send` 里 `engines.push.sendToTarget` 那一句 —— 这里没有
+	 * 推送引擎(它是后挂的),造一套出来的代价远大于这条守卫的价值。runner 自己那份
+	 * 测试把发送语义全覆盖了,这里只证明它被装进了 runtime、接的是真配置。
+	 */
+	it("repushRunner 接的是真历史仓与真配置", async () => {
+		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+		const entry = await runtime.historyStore.record({
+			pushId: randomUUID(),
+			kind: "dynamic",
+			uid: "u1",
+			subscriptionId: randomUUID(),
+			target: randomUUID(),
+			messages: [
+				{
+					payload: { kind: "text", text: "卡片" },
+					role: "main",
+					result: { ok: false, latencyMs: 1, err: "boom" },
+				},
+			],
+		});
+		const res = await runtime.repushRunner.start(entry.id, entry.ts, "missing");
+		// 行找到了(不是 notFound),但这个 dataDir 里没有任何订阅 —— 闸据实拒绝。
+		expect(res.notFound).toBeUndefined();
+		expect(res.ok).toBe(false);
+		expect(res.reason).toContain("路由");
+	});
 });

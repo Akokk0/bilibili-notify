@@ -4,6 +4,12 @@
  * 报告 #P2:`limit=Number("abc")` → NaN 经 Math.min/max 透传成 limit=NaN
  * 静默喂给 query();`since` 非 ISO 直接透传致静默 no-op / 错误过滤。修复后
  * 非法 limit / since 显式 400,而非静默坏行为。
+ *
+ * 末尾还有 `POST /:id/repush`(ADR-0017):这一层只管**接住请求、把结果翻成状态码**,
+ * 判断全在 `RepushRunner` 里(它自己有一整份测试)。三个码各有各的意思:
+ * **202** 收下了、女仆去补(不是 200 —— 消息还没发出去,`sendToTarget` 光退避就可能
+ * 走 190s);**404** 没这一行;**409** 有这一行但现在不能补(全送到了 / 路由改了 /
+ * 目标停用 / 正在补 / 原件没了),理由原样交给面板显示。
  */
 
 import { tmpdir } from "node:os";
@@ -14,16 +20,30 @@ import type { RouteDeps } from "../types.js";
 
 let query: ReturnType<typeof vi.fn>;
 let aggregateDaily: ReturnType<typeof vi.fn>;
+let startRepush: ReturnType<typeof vi.fn>;
 
-function makeApp() {
+function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
 	query = vi.fn(async () => []);
 	aggregateDaily = vi.fn(async () => []);
+	startRepush = vi.fn(async () => repushResult);
 	const deps = {
 		runtime: {
 			historyStore: { query, aggregateDaily, imageDir: () => join(tmpdir(), "bn-history-test") },
+			repushRunner: { start: startRepush, isRunning: () => false },
 		},
 	} as unknown as RouteDeps;
 	return createHistoryRoute(deps);
+}
+
+const ROW = "11111111-1111-4111-8111-111111111111";
+const TS = "2026-09-20T08:00:00.000Z";
+
+function repush(app: ReturnType<typeof makeApp>, body: unknown) {
+	return app.request(`/${ROW}/repush`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
 }
 
 describe("history route — limit/since 校验 (P2-J)", () => {
@@ -151,5 +171,61 @@ describe("history /daily — 按日聚合(本周推送趋势数据源)", () => {
 		expect((await app.request("/daily?days=abc")).status).toBe(400);
 		expect((await app.request("/daily?tzOffset=abc")).status).toBe(400);
 		expect(aggregateDaily).not.toHaveBeenCalled();
+	});
+});
+
+describe("history route — POST /:id/repush", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	/**
+	 * 🔴 **202,不是 200。** 回来的时候消息一条都还没发出去 —— `sendToTarget` 光退避
+	 * 就可能走满 190s,一行补几条就是几倍。面板据此说「女仆去补了」而不是「补好了」,
+	 * 真正的结果随后经 `history-updated` 一条条回来。
+	 */
+	it("收下了 → 202,带这一趟要补几条", async () => {
+		const res = await repush(makeApp(), { ts: TS, mode: "missing" });
+		expect(res.status).toBe(202);
+		expect(await res.json()).toEqual({ ok: true, count: 2 });
+		expect(startRepush).toHaveBeenCalledWith(ROW, TS, "missing");
+	});
+
+	it("mode: all 照样透传", async () => {
+		await repush(makeApp(), { ts: TS, mode: "all" });
+		expect(startRepush).toHaveBeenCalledWith(ROW, TS, "all");
+	});
+
+	it("没这一行 → 404", async () => {
+		const res = await repush(makeApp({ ok: false, notFound: true, reason: "找不到" }), {
+			ts: TS,
+			mode: "missing",
+		});
+		expect(res.status).toBe(404);
+	});
+
+	/** 拒绝的理由**原样**交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。 */
+	it("有这一行但不能补 → 409,理由原样带回去", async () => {
+		const res = await repush(
+			makeApp({ ok: false, reason: "这个目标（或者它所在的连接）停用了，先启用再补" }),
+			{ ts: TS, mode: "missing" },
+		);
+		expect(res.status).toBe(409);
+		expect((await res.json()) as { err?: string }).toEqual({
+			ok: false,
+			err: "这个目标（或者它所在的连接）停用了，先启用再补",
+		});
+	});
+
+	it.each([
+		["mode 不认识", { ts: TS, mode: "everything" }],
+		["ts 不是时间", { ts: "notadate", mode: "missing" }],
+		["少了 ts", { mode: "missing" }],
+		["空 body", null],
+	])("%s → 400,一条都不发", async (_name, body) => {
+		const app = makeApp();
+		const res = await repush(app, body);
+		expect(res.status).toBe(400);
+		expect(startRepush).not.toHaveBeenCalled();
 	});
 });

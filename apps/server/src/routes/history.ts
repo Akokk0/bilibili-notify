@@ -1,16 +1,22 @@
 import { createReadStream, statSync } from "node:fs";
 import { join } from "node:path";
-import type { HistoryDailyResponse, HistoryResponse } from "@bilibili-notify/contract";
+import type {
+	HistoryDailyResponse,
+	HistoryRepushResponse,
+	HistoryResponse,
+} from "@bilibili-notify/contract";
 import { type PushKind, PushKindSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
+import { z } from "zod";
 import { toHistoryView } from "../history/view.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `GET /api/history`             — recent push events (most-recent-first)
- * `GET /api/history/daily`       — per-day counts over a trailing window
- * `GET /api/history/img/:name`   — static fileserver for entry-attached images
+ * `GET  /api/history`             — recent push events (most-recent-first)
+ * `GET  /api/history/daily`       — per-day counts over a trailing window
+ * `GET  /api/history/img/:name`   — static fileserver for entry-attached images
+ * `POST /api/history/:id/repush`  — 人工把一行没送到的推送补一遍(ADR-0017)
  *
  * Query parameters for the listing endpoint:
  *   - limit:  int        (default 100, capped 500)
@@ -112,8 +118,35 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		}
 	});
 
+	/**
+	 * 人工重推(ADR-0017)。判断全在 `RepushRunner` 里,这一层只把结果翻成状态码:
+	 *
+	 * - **202** 收下了,女仆去补。**不是 200** —— 回来的时候消息一条都还没发出去
+	 *   (发送层光退避就可能走满 190s,一行补几条就是几倍),真正的结果随后经 WS 的
+	 *   `history-updated` 一条条回来。
+	 * - **404** 没这一行。
+	 * - **409** 有这一行但现在不能补(全送到了 / 路由里去掉了 / 目标停用 / 正在补 /
+	 *   原件没了)。理由**原样**交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。
+	 */
+	app.post("/:id/repush", async (c) => {
+		const parsed = RepushSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) {
+			return c.json<HistoryRepushResponse>({ ok: false, err: "请求格式不正确" }, 400);
+		}
+		const { ts, mode } = parsed.data;
+		const res = await deps.runtime.repushRunner.start(c.req.param("id"), ts, mode);
+		if (res.ok) return c.json<HistoryRepushResponse>({ ok: true, count: res.count }, 202);
+		return c.json<HistoryRepushResponse>({ ok: false, err: res.reason }, res.notFound ? 404 : 409);
+	});
+
 	return app;
 }
+
+const RepushSchema = z.object({
+	/** 这一行的 `ts`,服务端拿它定位日文件。 */
+	ts: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "ts 必须是 ISO 时间戳"),
+	mode: z.enum(["all", "missing"]),
+});
 
 function extToMime(ext: string): string {
 	switch (ext) {

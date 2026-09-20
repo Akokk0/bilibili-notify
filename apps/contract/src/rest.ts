@@ -277,6 +277,11 @@ export interface HistoryMessageView {
 	role: HistoryMessageRole;
 	ok?: boolean;
 	err?: string;
+	/**
+	 * 这条是**哪一条的重投**(人工重推补的):值是被补的那条在本行 `messages` 里的下标。
+	 * 缺省 = 这条不是重投。面板拿它标「第 N 次尝试」。
+	 */
+	retryOf?: number;
 }
 
 /**
@@ -300,6 +305,27 @@ export interface HistoryEntryView {
 	/** 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。 */
 	unameSnapshot?: string;
 	uavatarSnapshot?: string;
+}
+
+/**
+ * `POST /api/history/:id/repush` 请求 —— 人工把一行没送到的推送补一遍。
+ *
+ * 回 **202** 表示「收下了」:消息一条都还没发出去(发送层光退避就可能走 190s),真正的
+ * 结果随后经 WS 的 `history-updated` 一条条回来。
+ */
+export interface HistoryRepushRequest {
+	/** 这一行的 `ts` —— 服务端拿它定位日文件。 */
+	ts: string;
+	/** `all` = 整行从头再发一遍(含已经送达的);`missing` = 只补没到的。 */
+	mode: "all" | "missing";
+}
+
+export interface HistoryRepushResponse {
+	ok: boolean;
+	/** `ok` 时:这一趟要补几条。 */
+	count?: number;
+	/** 拒了的理由,**直接显示给用户**。 */
+	err?: string;
 }
 
 export interface HistoryResponse {

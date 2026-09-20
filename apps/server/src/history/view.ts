@@ -19,6 +19,7 @@ export function toHistoryView(entry: HistoryEntry): HistoryEntryView {
 			text: m.payload.text,
 			imageRef: m.payload.imageRef,
 			role: m.role,
+			...(m.retryOf !== undefined ? { retryOf: m.retryOf } : {}),
 			...(m.result ? { ok: m.result.ok, err: m.result.err } : {}),
 		})),
 		unameSnapshot: entry.unameSnapshot,
