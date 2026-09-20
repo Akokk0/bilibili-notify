@@ -601,6 +601,33 @@ describe("提示词从契约常量拼", () => {
 		for (const tag of CARD_HTML_ALLOWED_TAGS) expect(system).toContain(tag);
 	});
 
+	/**
+	 * 🔴 **「跨行 = 真高度」只对标了 `heightFromRows` 的块成立**(ADR-0014 决策 6 的
+	 * 2026-09-18 🔗)。提示词从前写的是「出图不受影响」—— 那是那天更早的话,同日就被
+	 * 主人改判了,而提示词没跟上:女仆照它写,会以为给封面写 `rowSpan` 只是画布好看,
+	 * 实际出图的封面真会跟着变高。
+	 *
+	 * 钉的是**两头对表**,不是复述现状:目录里标了的块,提示词必须逐个点名;没标的块,
+	 * 不许被写进那份名单。哪天多标一块(比如图廊)而提示词没跟上,这条就红。
+	 */
+	it("跨行是真高度的那几块,提示词逐个点名 —— 且只点这几块", () => {
+		const marked: string[] = [];
+		const unmarked: string[] = [];
+		for (const kind of CARD_SKIN_KINDS) {
+			for (const [name, meta] of Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
+				(meta.heightFromRows === true ? marked : unmarked).push(`${kind}.${name}`);
+			}
+		}
+		expect(marked.length).toBeGreaterThan(0);
+		// 只看讲 rowSpan 的那一段 —— 名单落在「真高度」这三个字**之前**,从它往后切会漏掉。
+		const at = system.indexOf("rowSpan(跨几行");
+		expect(at).toBeGreaterThan(-1);
+		const para = system.slice(at, system.indexOf("、z(层次", at));
+		expect(para).toContain("真高度");
+		for (const id of marked) expect(para).toContain(id);
+		for (const id of unmarked) expect(para).not.toContain(id);
+	});
+
 	it("不带人格,也不许它自己换上", () => {
 		expect(system).not.toMatch(/主人的女仆|喵/);
 		expect(system).toMatch(/换上这套/);

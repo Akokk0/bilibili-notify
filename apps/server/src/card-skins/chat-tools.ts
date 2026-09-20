@@ -734,6 +734,15 @@ export function buildCardWorkshopSystem(): string {
 			`- ${kind}:${CARD_SKIN_FIELDS[kind].map((f) => `\`${f.path}\`(${f.label},${FIELD_TYPE_NAMES[f.type]})`).join("、")}`,
 	).join("\n");
 	const L = CARD_SKIN_LIMITS;
+	/**
+	 * 「跨行 = 真高度」的那几块(块目录里标了 `heightFromRows` 的)。**现算不手写** ——
+	 * 目录里多标一块而这句话没跟上,女仆就会拿错的规矩去写高度(有测试两头对表钉着)。
+	 */
+	const sizedBlocks = CARD_SKIN_KINDS.flatMap((kind) =>
+		Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])
+			.filter(([, meta]) => meta.heightFromRows === true)
+			.map(([name, meta]) => `\`${kind}.${name}\`(${meta.label})`),
+	).join("、");
 
 	return `你是「bilibili-notify」控制面板的卡片皮肤工坊助手,只负责一件事:帮主人做**推送卡片**的皮肤 —— B 站动态、直播这些消息推到群里时那张图长什么样。
 
@@ -753,7 +762,7 @@ export function buildCardWorkshopSystem(): string {
 ## 卡片是什么
 - 服务端用 Chromium 把卡片渲染成一张**静态图**:没有鼠标、没有动画,:hover、:focus、transition、animation 写了也画不出来。
 - 七种卡:${kinds}。其中 ${FIXED_KINDS.map((k) => `\`${k}\``).join("、")} 整张就是一个固定的内置块,只改外框和那一块的样子,别加别的块。
-- 每张卡是 ${L.columns} 列的网格。块用 grid 定位:row(第几行,从 1 起,最多 ${L.maxRows})、column(第几列,从 1 起)、span(跨几列,column + span - 1 不能超过 ${L.columns})、rowSpan(跨几行,可省;**高块要写**:封面 / 图廊这种一块顶好几行字的,按「块高 ÷ 56」写跨行数,出图不受影响,编辑器画布才画得出真实比例,后面的块行号顺着往后排)、z(层次 ${L.layer.min}~${L.layer.max},可省,大的压在上面)。**叠在别的块上**(直播状态角标、视频时长)的写法:与被叠的块同 row / rowSpan、z 更大,再用 CSS 的 align-self / justify-self / margin 贴到某个角 —— 不要为了当底板另开一个空块。
+- 每张卡是 ${L.columns} 列的网格。块用 grid 定位:row(第几行,从 1 起,最多 ${L.maxRows})、column(第几列,从 1 起)、span(跨几列,column + span - 1 不能超过 ${L.columns})、rowSpan(跨几行,可省;**高块要写**,后面的块行号顺着往后排。它对两种块的意思**不一样**:${sizedBlocks} 这几块是**真高度** —— 想要多高就写「高度 ÷ ${L.rowHeight}」,出图真会跟着变;**别的块**(文字、图廊这种高度由内容撑的)只是给编辑器画布看的一句声明,出图不受影响,按「块高 ÷ ${L.rowHeight}」估着写就行)、z(层次 ${L.layer.min}~${L.layer.max},可省,大的压在上面)。**叠在别的块上**(直播状态角标、视频时长)的写法:与被叠的块同 row / rowSpan、z 更大,再用 CSS 的 align-self / justify-self / margin 贴到某个角 —— 不要为了当底板另开一个空块。
 - 卡宽 ${L.width.min}~${L.width.max}px;一张卡最多 ${L.maxBlocks} 块。columns 不写就是 ${L.columns} 等分,写就得恰好 ${L.columns} 项,每项 {"fr":n} 或 {"px":n}。
 - gap 是块之间的间距 {"row","column"},${L.gap.min}~${L.gap.max}px;bleed 是给辉光留的外圈 {"size","color"},两项都要写,size ${L.bleed.min}~${L.bleed.max}px,color 只收 hex(图没有透明,外圈要有底色)。
 
