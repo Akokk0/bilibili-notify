@@ -110,6 +110,12 @@ function roastFrame(children: VNode | VNode[], defaultWidth: number, extra: Fram
 
 /**
  * 七种卡的外框表。**玻璃层里铺什么由调用方决定** —— 皮肤渲染器铺的是网格里的块 wrapper。
+ *
+ * ⛔ **`live` 与 `wordcloud` 今天逐字符相同,别合。** 2026-09-20 拍板过:它俩从前不一样
+ * (各自带 `ownBg` / `ownGlass` 兜底),这一轮外观整批归了皮肤 CSS、兜底删光,剩下的骨架
+ * 才重合 —— 是**删出来的结果**,不是有人决定过这两种卡该同形。合成一份等于替产品宣布
+ * 「开播卡和词云卡的壳从此永远一样」;哪天词云要换更宽的壳或加一圈出血,得先把合并拆
+ * 回来,而那时未必有人记得当初合并只是因为「那天它俩正好一样」。
  */
 export const FRAMES: Record<CardSkinKind, FrameRenderer> = {
 	live: (children, extra) => (
