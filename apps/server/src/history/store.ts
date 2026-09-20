@@ -111,15 +111,31 @@ function zeroCounts(): Record<PushKind, number> {
  * 四态的算法。本体 = 第一条 `role: "main"` 的消息:它没到就是失败;它到了、别的没到是
  * 部分失败(附加项,或本体的后续分条)。只有附加项先到的行(@全体 抢在卡片前面落地)
  * 暂按失败 / 已送达算,本体一到就重算。
+ *
+ * **每条消息的身份 = `retryOf ?? 它自己的下标`,每一号只认它最后那次尝试**
+ * (ADR-0017 决策 16)—— 人工重推把补发的消息追加进原行,一行里于是会有同一条消息的
+ * 好几次结果。🔴 **不能简化成「按 role 取最后一次」**:同一 role 下有多条时会把不同的
+ * 消息混成一个,补好了 extra1 整行就变绿,而 extra2 还躺着没送到。
+ *
+ * 老行没有 `retryOf`,每条自成一号,算出来与从前逐字节一样;盘上的老数据一条都不用迁移
+ * (`status` 是写入时算好存下的,读侧不重算)。
  */
 export function computeStatus(targetId: string | null, messages: HistoryMessage[]): PushStatus {
 	if (targetId === null) return "no-targets";
-	const results = messages.flatMap((m) => (m.result ? [m.result] : []));
-	// 一条结果都没有的有目标行 = 什么都没发出去,不是「全到了」——`[].every` 恒真,不挡住
-	// 它,一行没有结果的消息会顶着「已送达」进面板与今日 KPI。
-	if (results.length > 0 && results.every((r) => r.ok)) return "delivered";
-	const main = messages.find((m) => m.role === "main");
-	if (!main?.result?.ok) return "failed";
+	// 按序扫一遍,后来的盖掉先前的 —— 留下的就是每一号最后那次尝试。
+	const latest = new Map<number, HistoryMessage>();
+	for (const [i, m] of messages.entries()) latest.set(m.retryOf ?? i, m);
+	// 一号都没有的有目标行 = 什么都没发出去,不是「全到了」——`[].every` 恒真,不挡住
+	// 它,一行没有消息的行会顶着「已送达」进面板与今日 KPI。
+	//
+	// 判据是**每一号都有到了的结果**,不是「有结果的那些都到了」:决策 17 之后,那几条
+	// 因为前面失败而从没发出去的消息也会落进行里(没有 `result`)。只看有结果的那些,
+	// 一行「本体到了、后面两条压根没发」会被算成已送达。
+	if (latest.size > 0 && [...latest.values()].every((m) => m.result?.ok === true)) {
+		return "delivered";
+	}
+	const mainIdx = messages.findIndex((m) => m.role === "main");
+	if (mainIdx === -1 || latest.get(mainIdx)?.result?.ok !== true) return "failed";
 	return "partial";
 }
 

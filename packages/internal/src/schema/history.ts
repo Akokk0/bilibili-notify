@@ -83,6 +83,17 @@ export const HistoryMessageSchema = z.object({
 	payload: HistoryPayloadSchema,
 	role: HistoryMessageRoleSchema,
 	result: HistoryMessageResultSchema.optional(),
+	/**
+	 * 这条是**哪一条的重投**(ADR-0017 决策 15):值是被补的那条消息在本行 `messages`
+	 * 里的下标。人工重推追加进原行而不新开行,所以一行里会有同一条消息的好几次尝试;
+	 * 序号就是稳定身份 —— 消息只按序追加,从不重排、从不删除。
+	 *
+	 * 缺省 = 这条不是重投,它自己就是一号。**不给默认值 0**:0 是本体那一号的合法身份,
+	 * 填上去会让每条老消息都自称「我是第 0 条的重投」,整行的身份全塌成一个。
+	 *
+	 * 它同时是展开逐条时那个「第 N 次尝试」标记的来源,不用再开第二个字段。
+	 */
+	retryOf: z.number().int().nonnegative().optional(),
 });
 export type HistoryMessage = z.infer<typeof HistoryMessageSchema>;
 
