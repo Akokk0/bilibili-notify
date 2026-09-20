@@ -1,14 +1,16 @@
 import {
 	Avatar,
+	Btn,
 	DisclosurePill,
 	ErrorNote,
 	Icon,
+	IconButton,
 	Input,
 	LoadingBlock,
 	Picker,
 	Pill,
 } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
 	familyTone,
@@ -21,6 +23,7 @@ import { api } from "../services/api";
 import {
 	type HistoryEntryView,
 	type HistoryMessageView,
+	type HistoryRepushResponse,
 	type HistoryResponse,
 	historyQueryKey,
 } from "../services/dashboard";
@@ -221,6 +224,7 @@ function HistoryRow({
 	isLast: boolean;
 }) {
 	const [open, setOpen] = useState(false);
+	const [repushOpen, setRepushOpen] = useState(false);
 	const tone = familyTone(entry.kind);
 	const status = PUSH_STATUS_META[entry.status];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。
@@ -231,6 +235,12 @@ function HistoryRow({
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
 	const targetLabel = targetLabelOf(entry, target);
+	// 按钮长在 failed 与 partial 上(ADR-0017 决策 6)。**判据是行的状态,不是 `repush`
+	// 字段在不在** —— WS 推来的新行不带那个字段,可它恰恰是最该能补的那一种。
+	const canOfferRepush = entry.status === "failed" || entry.status === "partial";
+	// 不能补时按钮灰掉**并写上原因**,不是藏起来(决策 9)。字段缺省按「能补」处理。
+	const repushBlocked = entry.repush && !entry.repush.can ? entry.repush.reason : null;
+	const repushCounts = entry.repush?.can ? entry.repush : null;
 
 	return (
 		<div className={isLast ? "" : "border-b border-bn-border-subtle"}>
@@ -271,11 +281,100 @@ function HistoryRow({
 				<span className="truncate text-bn-xs text-bn-text-secondary" title={targetLabel}>
 					→ {targetLabel}
 				</span>
-				<Pill color={status.tone} subtle size="sm">
-					{status.label}
-				</Pill>
+				<div className="flex min-w-0 items-center gap-1">
+					<Pill color={status.tone} subtle size="sm">
+						{status.label}
+					</Pill>
+					{canOfferRepush ? (
+						<IconButton
+							size="sm"
+							icon={<Icon.refresh size={12} />}
+							label="补一次"
+							title={repushBlocked ?? "没送到的，让女仆再补一次"}
+							disabled={repushBlocked !== null}
+							ariaExpanded={repushOpen}
+							onClick={() => setRepushOpen((v) => !v)}
+						/>
+					) : null}
+				</div>
 			</div>
+			{repushOpen && canOfferRepush && repushBlocked === null ? (
+				<RepushBar entry={entry} counts={repushCounts} onClose={() => setRepushOpen(false)} />
+			) : null}
 			{open ? <MessageList entry={entry} /> : null}
+		</div>
+	);
+}
+
+/**
+ * **第二下**(ADR-0017 决策 8)。点了那颗钮之后在行下面展开的一条 —— 不是模态框:
+ * 一屏十几行,每行一个弹窗太重;但也不能点一下就发,误触的代价是群里多一条撤不回
+ * 的消息。
+ *
+ * `failed` 行只给一个选项:那一行本来就全没到,「整行重发」与「只补没到的」在这儿是
+ * 同一件事。条数是服务端按身份号算好交下来的,面板不自己算(自己算就是第二份实现)。
+ */
+function RepushBar({
+	entry,
+	counts,
+	onClose,
+}: {
+	entry: HistoryEntryView;
+	counts: { total: number; missing: number } | null;
+	onClose: () => void;
+}) {
+	const repush = useMutation<HistoryRepushResponse, Error, "all" | "missing">({
+		mutationFn: (mode) =>
+			api.post<HistoryRepushResponse>(`/api/history/${entry.id}/repush`, { ts: entry.ts, mode }),
+	});
+	const n = (v: number | undefined) => (v === undefined ? "" : `（${v} 条）`);
+
+	// 服务端回的是「收下了」,消息一条都还没发出去 —— 所以说「去补」不说「补好了」。
+	// 真正的结果随后经 WS 一条条回来,这一行会自己变。
+	if (repush.isSuccess) {
+		return (
+			<div className="flex items-center gap-2 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38 text-bn-xs text-bn-text-secondary">
+				<span>女仆去补{n(repush.data.count)}啦，好了这一行会自己更新～ (｡･ω･｡)ﾉ</span>
+				<Btn size="sm" variant="ghost" onClick={onClose}>
+					知道啦
+				</Btn>
+			</div>
+		);
+	}
+
+	const busy = repush.isPending;
+	return (
+		<div className="border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38">
+			<div className="flex flex-wrap items-center gap-2 text-bn-xs text-bn-text-secondary">
+				<span>{busy ? "女仆这就去～" : "要女仆补哪些呀？"}</span>
+				{entry.status === "failed" ? (
+					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
+						重新推送{n(counts?.total)}
+					</Btn>
+				) : (
+					<>
+						<Btn
+							size="sm"
+							variant="primary"
+							disabled={busy}
+							onClick={() => repush.mutate("missing")}
+						>
+							只补没到的{n(counts?.missing)}
+						</Btn>
+						<Btn size="sm" variant="outline" disabled={busy} onClick={() => repush.mutate("all")}>
+							整行重发{n(counts?.total)}
+						</Btn>
+					</>
+				)}
+				<Btn size="sm" variant="ghost" disabled={busy} onClick={onClose}>
+					先不用了
+				</Btn>
+			</div>
+			{repush.isError ? (
+				<ErrorNote size="sm" className="mt-1.5">
+					{repush.error.message}
+				</ErrorNote>
+			) : null}
 		</div>
 	);
 }

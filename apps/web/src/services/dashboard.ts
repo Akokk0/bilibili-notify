@@ -16,6 +16,8 @@ export type {
 	HistoryDailyResponse,
 	HistoryEntryView,
 	HistoryMessageView,
+	HistoryRepushInfo,
+	HistoryRepushResponse,
 	HistoryResponse,
 	LiveListenerSnapshot,
 	// `/api/logs` 归档行与 WS `log` 帧共用的行视图。
