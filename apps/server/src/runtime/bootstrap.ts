@@ -7,6 +7,7 @@ import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
 import { createFansStore, type FansStore } from "../fans/store.js";
+import { createRepushStore } from "../history/repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { createStatsRecorder } from "../stats/recorder.js";
@@ -136,10 +137,17 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		logger: serviceCtx.logger,
 	});
 	const configStore = createConfigStore({ bootstrap, bus, serviceCtx, secretStore });
+	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
+	// 它没有内部状态,retention 那边按同一个 `historyRetentionDays` 自己建一个来淘汰。
+	const repushStore = createRepushStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
 	const historyStore = createHistoryStore({
 		dataDir: bootstrap.dataDir,
 		bus,
 		logger: serviceCtx.logger,
+		repush: repushStore,
 	});
 	const fansStore = createFansStore({
 		dataDir: bootstrap.dataDir,

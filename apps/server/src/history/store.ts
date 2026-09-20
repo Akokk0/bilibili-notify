@@ -24,6 +24,7 @@ import {
 	PushKindSchema,
 } from "@bilibili-notify/internal";
 import { RecencyTable } from "../util/recency-table.js";
+import type { RepushStore } from "./repush-store.js";
 
 /**
  * 推送历史:jsonl-by-day 持久化 + bus 广播。
@@ -146,6 +147,11 @@ export interface CreateHistoryStoreOptions {
 	dataDir: string;
 	bus: MessageBus;
 	logger: Logger;
+	/**
+	 * 重推原件(ADR-0017)。给了就在每次落行 / 追加时留一份**没有损耗的**原料 ——
+	 * 那一刻是最后的机会,再往后历史里就只剩给人看的摘要了。不给 = 不留原件。
+	 */
+	repush?: RepushStore;
 }
 
 export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStore {
@@ -241,6 +247,39 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return out;
 	}
 
+	/**
+	 * 把这一段消息的**原样 payload** 留一份给重推(ADR-0017 决策 1)。
+	 *
+	 * 必须在这儿做:`reduceAll` 之后原样的那份就只剩这一处还握着了(历史行里是有损
+	 * 摘要)。两份按下标一一对应交出去,原件才对得上历史行的 `messages`。
+	 *
+	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。
+	 */
+	async function saveDraft(
+		rowId: string,
+		ts: string,
+		raw: HistoryRecordMessage[],
+		reduced: HistoryMessage[],
+		target: string | null,
+	): Promise<void> {
+		if (!opts.repush || target === null) return;
+		try {
+			await opts.repush.append(
+				rowId,
+				ts,
+				raw.map((m, i) => ({
+					payload: m.payload,
+					role: m.role,
+					// `reduceAll` 是按序逐条来的,下标对齐;真缺了一条宁可不留,也别错位。
+					reduced: reduced[i]?.payload ?? { kind: "text" },
+				})),
+			);
+		} catch (err) {
+			// 原件留不下只是「这一行将来重推不了」,不该连累这次推送的历史。
+			opts.logger.warn(`[history] 重推原件写入失败,这一行将来补不了:${rowId} — ${String(err)}`);
+		}
+	}
+
 	function validated(entry: HistoryEntry): HistoryEntry {
 		// Defensive validation — schema mismatches are programmer errors, but
 		// recording corrupt jsonl is worse than rejecting the write.
@@ -277,6 +316,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			});
 			await writeFile(dayFile(ts), `${JSON.stringify(entry)}\n`, { flag: "a", encoding: "utf8" });
 			open.set(key, entry);
+			await saveDraft(id, ts, input.messages, messages, input.target);
 			opts.bus.emit("history-recorded", entry);
 			return entry;
 		}
@@ -299,6 +339,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			encoding: "utf8",
 		});
 		open.set(key, merged);
+		// 补丁写进**原行那一天**的文件,原件也跟着那一天走 —— 两边始终同一个日子。
+		await saveDraft(existing.id, existing.ts, input.messages, added, existing.targetId);
 		opts.bus.emit("history-updated", merged);
 		return merged;
 	}
@@ -558,6 +600,9 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			if (doomed.size === 0) continue;
 			deleted += doomed.size;
 			open.deleteWhere((entry) => doomed.has(entry.id));
+			// 行没了,它的原件就是没人认领的孤儿 —— 而且是盘上一份谁都读不到的推送内容。
+			// 日文件名就是那一天,原件按同一个日子分目录。
+			for (const id of doomed) await opts.repush?.drop(id, file.slice(0, 10));
 			for (const name of images) {
 				// 图片是附属物:删不掉(早被清理器收走了)不算失败。
 				await unlink(join(imgRoot, name)).catch(() => {});
@@ -626,7 +671,7 @@ function isPatchLine(line: string): boolean {
 	return line.startsWith('{"patch":');
 }
 
-function mimeToExt(mime: string): string {
+export function mimeToExt(mime: string): string {
 	const m = mime.toLowerCase();
 	if (m.includes("png")) return "png";
 	if (m.includes("webp")) return "webp";

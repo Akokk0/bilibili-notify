@@ -7,6 +7,7 @@
  *   - 单个文件删除失败(如同名是目录)只 warn,不终止整轮,其它旧文件照删
  *   - 启动即跑一次 runOnce(无需等定时器)
  *   - 返回值即 serviceCtx.setInterval 的 handle
+ *   - **重推原件跟着同一个 cutoff 走**(ADR-0017 决策 4:一个数管两处)
  *
  * runOnce 经 ./store.js 的 listDayFiles/deleteDayFile 真实读写 tmpdir。
  */
@@ -16,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createRepushStore, listRepushDays, type RepushStore } from "../repush-store.js";
 import { startHistoryRetention } from "../retention.js";
 import { listDayFiles } from "../store.js";
 
@@ -43,13 +45,22 @@ function makeStore(historyRetentionDays: number) {
 	};
 }
 
-function start(days: number, intervalMs?: number) {
+function start(days: number, intervalMs?: number, repush?: RepushStore) {
 	return startHistoryRetention({
 		serviceCtx: { setInterval: setInterval_ } as never,
 		store: makeStore(days) as never,
 		logger,
 		intervalMs,
+		repush,
 	});
+}
+
+/** 造一份某一天的重推原件。 */
+async function seedDraft(day: string): Promise<void> {
+	const repush = createRepushStore({ dataDir, logger });
+	await repush.append(`row-${day}`, day, [
+		{ payload: { kind: "text", text: "x" }, role: "main", reduced: { kind: "text" } },
+	]);
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -88,6 +99,29 @@ describe("startHistoryRetention", () => {
 		});
 		expect(await listDayFiles(dataDir)).toContain("1999-01-01.jsonl"); // 目录删不掉,仍在
 		expect(logger.warn).toHaveBeenCalled();
+	});
+
+	/**
+	 * **一个数管两处**(ADR-0017 决策 4)。原件比历史活得久没有意义:行都不在了,
+	 * 按钮无从长出来,留下的只是盘上一份谁都读不到的推送内容。所以它跟着
+	 * `historyRetentionDays` 同一个 cutoff 走,不另开旋钮。
+	 */
+	it("旧日子的重推原件跟着日文件一起淘汰,今天的留着", async () => {
+		await seedDraft("2000-01-01");
+		await seedDraft(today);
+		start(30, undefined, createRepushStore({ dataDir, logger }));
+		await vi.waitFor(async () => {
+			const days = await listRepushDays(dataDir);
+			expect(days).not.toContain("2000-01-01");
+			expect(days).toContain(today);
+		});
+	});
+
+	it("days<=0:原件也整轮跳过", async () => {
+		await seedDraft("2000-01-01");
+		start(0, undefined, createRepushStore({ dataDir, logger }));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(await listRepushDays(dataDir)).toContain("2000-01-01");
 	});
 
 	it("返回值即 setInterval handle;按 intervalMs 注册", () => {
