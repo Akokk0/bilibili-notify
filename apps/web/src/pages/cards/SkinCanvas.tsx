@@ -56,7 +56,8 @@ import {
 	trackAt,
 	type Velocity,
 } from "./canvas-drag";
-import { blockInScene, canAddBlock, columnsOf, stackingOf } from "./skin-draft-ops";
+import { canvasTemplate } from "./canvas-tracks";
+import { blockInScene, canAddBlock, stackingOf } from "./skin-draft-ops";
 
 /** 列号 1…12。算一次就够 —— 列数是固定的(决策 6)。 */
 const COLS = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) => i + 1);
@@ -114,6 +115,7 @@ export function SkinCanvas({
 	onAdopt,
 	adoptBusy,
 	scene,
+	tracks,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -132,6 +134,12 @@ export function SkinCanvas({
 	adoptBusy?: boolean;
 	/** 看的是哪一场(`CARD_PREVIEW_SCENES[kind]` 里的 id)。画布只摆这一场会有的块。 */
 	scene: string;
+	/**
+	 * 预览框里**量到的**十二条轨道各多少像素(ADR-0018 决策 3)。给了就照它画,列线与
+	 * 真卡一模一样;`null` / 不给 → 退回按清单估(预览还没出来、只读态、jsdom 里都会走
+	 * 这条,理由与那 3 个百分点的偏差写在 `canvas-tracks.ts` 的文件头)。
+	 */
+	tracks?: readonly number[] | null;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -183,7 +191,7 @@ export function SkinCanvas({
 	const lastRow = rowMap.size;
 	const cols = CARD_SKIN_LIMITS.columns;
 	const rows = Array.from({ length: lastRow + 1 }, (_, i) => i + 1);
-	const template = templateOf(card);
+	const template = canvasTemplate(card, tracks);
 
 	return (
 		<div ref={drag.rootRef}>
@@ -302,24 +310,6 @@ export function SkinCanvas({
 			</button>
 		</div>
 	);
-}
-
-/**
- * 画布上 12 列各占多宽。**定宽列按它在卡宽里的占比换算成 fr** —— 画布宽度与卡宽不是
- * 一回事,照抄 `px` 会让比例整个失真(430 宽的上舰卡摊在 700 宽的面板里,那四列定宽
- * 会显得只有真实占比的六成)。换成占比就与容器宽度无关了。
- */
-function templateOf(card: Card): string {
-	const cols = columnsOf(card);
-	const fixed = cols.reduce((s, c) => s + ("px" in c ? c.px : 0), 0);
-	const free = Math.max(0, card.width - fixed);
-	const frTotal = cols.reduce((s, c) => s + ("px" in c ? 0 : c.fr), 0);
-	const parts = cols.map((c) => {
-		const share = "px" in c ? c.px : frTotal > 0 ? (free * c.fr) / frTotal : 0;
-		// 0 会让那一列整个塌掉、块看不见;留 1 至少画得出来(这种包本来也过不了装包门)。
-		return `minmax(0, ${Math.max(share, 1).toFixed(3)}fr)`;
-	});
-	return `28px ${parts.join(" ")}`;
 }
 
 /**

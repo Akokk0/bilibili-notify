@@ -25,6 +25,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { readGridTracks } from "./canvas-tracks";
 import { serverErrors } from "./preview-error";
 import { SkinHtmlFrame } from "./SkinHtmlFrame";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
@@ -44,6 +45,7 @@ export function SkinPreviewPane({
 	scene,
 	manifest,
 	boxWidth,
+	onTracks,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
@@ -57,6 +59,15 @@ export function SkinPreviewPane({
 	 * 切掉,而缩放至少比例是对的。
 	 */
 	boxWidth: number;
+	/**
+	 * 把预览框里**量到的**十二条轨道交出去(ADR-0018 决策 3)—— 画布拿它画列线,画出来的
+	 * 就与真卡一个比例。量不到(预览还没画完、jsdom 里没有布局引擎)交 `null`,画布退回
+	 * 按清单估。
+	 *
+	 * ⚠️ 这条线**断了是静默的**:画布照旧画得出来,只是列线又开始凭清单猜,而那个偏差
+	 * 只有拿尺子量才看得见。所以它自己有一条守卫(剪断必红),见测试。
+	 */
+	onTracks?: (tracks: number[] | null) => void;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
@@ -223,6 +234,9 @@ export function SkinPreviewPane({
 						usable={usable}
 						fallbackHeight={VIEW_H}
 						title="皮肤预览"
+						// 画好了就量一次列线交给画布。只在 `load` 那一刻量:轨道宽由卡宽与皮肤的
+						// 列定义定,字体到齐只会改行高。
+						onDocument={onTracks ? (doc) => onTracks(readGridTracks(doc)) : undefined}
 					/>
 				)}
 			</div>

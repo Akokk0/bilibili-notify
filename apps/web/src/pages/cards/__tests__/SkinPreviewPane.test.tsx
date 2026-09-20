@@ -305,3 +305,72 @@ describe("皮肤预览栏 · 最终效果", () => {
 		expect(screen.getByText(/回落/)).toBeTruthy();
 	});
 });
+
+/**
+ * **接线守卫**(ADR-0018 决策 3):预览框里量到的列线得真的送到画布手里。
+ *
+ * 这条线断了是**静默的** —— 画布照旧画得出来,只是列线又回去凭清单猜,而那 3 个百分点
+ * 的偏差只有拿尺子量才看得见。仓里这种形状踩过七次(零件各自绿、接线没接),所以判据只有
+ * 一条:**把 `onDocument` 那一口剪断,这一组必须红。**
+ *
+ * 量出来的值在 jsdom 里恒是 `null`(没有布局引擎,`grid-template-columns` 回的是作者写的
+ * 原文)。所以这里钉的是**这一口被调用了**、以及交出去的东西是量出来的那一份 —— 真值
+ * 对不对归 `canvas-tracks.test.ts`,几何对不对归本机那道门。
+ */
+describe("皮肤预览栏 · 把量到的列线交出去", () => {
+	function renderWithTracks(onTracks: (t: number[] | null) => void) {
+		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+		return render(
+			<QueryClientProvider client={qc}>
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 1 }}
+					boxWidth={600}
+					onTracks={onTracks}
+				/>
+			</QueryClientProvider>,
+		);
+	}
+
+	it("画好了 → 量一次并交出去", async () => {
+		const got: (number[] | null)[] = [];
+		renderWithTracks((t) => got.push(t));
+		await tick();
+		// ⚠️ 这里**不用**手动派发 `load`:jsdom 插进 iframe 之后自己会补一记。手动再发
+		// 一次就成了两条,而那第二条不是实现的行为、是我们自己造的。
+		expect(got.length).toBeGreaterThan(0);
+		// jsdom 量不出真轨道(没有布局引擎),交的是 null —— 要紧的是**这一口真的被调用了**。
+		// 量出来的数对不对归 `canvas-tracks.test.ts`,几何对不对归本机那道门。
+		expect(got.at(-1)).toBeNull();
+	});
+
+	// 「只量第一帧」是这条线最可能的坏法:换一套卡宽 / 列定义之后列线就该跟着变,而画布
+	// 会一直用开头那一份 —— 界面上什么都看不出来。
+	it("换一份预览 → 重量一次,不是只量开头那一帧", async () => {
+		const got: (number[] | null)[] = [];
+		const view = renderWithTracks((t) => got.push(t));
+		await tick();
+		const first = got.length;
+		expect(first).toBeGreaterThan(0);
+
+		vi.mocked(api.post).mockResolvedValue({ ...OK, html: OK.html.replace("画好了", "又画了一张") });
+		view.rerender(
+			<QueryClientProvider
+				client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}
+			>
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 2 }}
+					boxWidth={600}
+					onTracks={(t) => got.push(t)}
+				/>
+			</QueryClientProvider>,
+		);
+		await tick();
+		expect(got.length).toBeGreaterThan(first);
+	});
+});
