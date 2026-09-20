@@ -58,9 +58,11 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
-	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 字体,aiOverride/filter 仍 undefined", () => {
+	it("仅设 cardStyle override → customCardStyle.enable=true 且带 per-UP 直播封面,aiOverride/filter 仍 undefined", () => {
+		// 载体从 `font` 换成 `liveCoverImages`(2026-09-20):字体已不再往下喂,
+		// 拿它当「有内容的 override」会连着这条一起红。测的机制没变。
 		const sub = makeSub({
-			cardStyle: { font: "Comic Sans MS" },
+			cardStyle: { liveCoverImages: ["up-cover.png"] },
 		});
 		const view = buildDynamicSubsView(
 			fakeStore([sub]),
@@ -69,31 +71,35 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		);
 		expect(view["12345"]?.customCardStyle).toEqual({
 			enable: true,
-			font: "Comic Sans MS",
+			liveCoverImage: "up-cover.png",
+			liveCoverImages: ["up-cover.png"],
 		});
 		expect(view["12345"]?.aiOverride).toBeUndefined();
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
 	/**
-	 * 回归守卫 —— per-UP 字体一路传到渲染器。
+	 * 回归守卫 —— per-UP / per-kind 的老字体**不再**进出图链。
 	 *
-	 * 设置页从一开始就允许给单个 UP 另设字体,schema 存得下、resolve 也算得出,唯独
-	 * 这一步**没把它映射进 colorOptions**,于是渲染器压根收不到:选了等于没选,而界面
-	 * 上改得动也保存得下。字体选择器上线后这条更不能漏 —— 上传的字体走 `fontAsset`,
-	 * 同一条路。
+	 * ⚠️ 这条守卫 2026-09-20 整个翻了向,别照着旧版本改回去。字体退役成皮肤自己的
+	 * 旋钮之后,卡片页上那几栏入口也一并删了 —— 而这一步还在把盘上的老 `font` /
+	 * `fontAsset` 映射进 colorOptions,于是给某位 UP 单独设过字体的人**改不动它、
+	 * 它却还在生效**,面板上连看都看不到它。
+	 *
+	 * 从前这里钉的是反向的「选了等于没选」:入口还在时,收不到才是 bug;入口没了
+	 * 之后,继续读它才是。同一份字段,两个时期的正确答案正好相反。
 	 */
-	it("per-UP 单独换了字体 → 一路传下去(以前整个漏在外面,选了等于没选)", () => {
+	it("per-UP 的老字体不再传给渲染器(入口已删,字体归皮肤的字体旋钮管)", () => {
 		const sub = makeSub({ cardStyle: { font: "这位 UP 的字体" } });
 		const view = buildDynamicSubsView(
 			fakeStore([sub]),
 			fakeRuntimeStore(),
 			makeDefaultGlobalConfig(),
 		);
-		expect(view["12345"]?.customCardStyle?.font).toBe("这位 UP 的字体");
+		expect(view["12345"]?.customCardStyle?.font).toBeUndefined();
 	});
 
-	it("per-UP 选了自己上传的那款字体 → fontAsset 也跟着传下去", () => {
+	it("per-UP 上传过的那份字体文件也不再传下去", () => {
 		const id = `${"a".repeat(32)}.woff2`;
 		const sub = makeSub({ cardStyle: { fontAsset: id } });
 		const view = buildDynamicSubsView(
@@ -101,7 +107,7 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 			fakeRuntimeStore(),
 			makeDefaultGlobalConfig(),
 		);
-		expect(view["12345"]?.customCardStyle?.fontAsset).toBe(id);
+		expect(view["12345"]?.customCardStyle?.fontAsset).toBeUndefined();
 	});
 
 	it("仅设 ai override → aiOverride 有值(eff.ai 派生),customCardStyle/filter 不影响", () => {
@@ -138,12 +144,13 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 
 	it("仅设 cardStyle override → customCardStyle.enable=true,aiOverride 仍 undefined", () => {
 		const sub = makeSub({
-			cardStyle: { font: "Comic Sans MS" },
+			cardStyle: { liveCoverImages: ["up-cover.png"] },
 		});
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
 		expect(view.customCardStyle).toEqual({
 			enable: true,
-			font: "Comic Sans MS",
+			liveCoverImage: "up-cover.png",
+			liveCoverImages: ["up-cover.png"],
 		});
 		expect(view.aiOverride).toBeUndefined();
 	});
@@ -186,31 +193,39 @@ describe("per-kind 样式解析进视图", () => {
 		expect(view.customCardStyleByKind).toBeUndefined();
 	});
 
-	it("全局 cardStyleByKind.sc 设字体 → 仅 sc 条目 emit 完整样式,未覆盖的 live/guard 不 emit", () => {
+	it("全局 cardStyleByKind.sc 设了值 → 仅 sc 条目 emit 完整样式,未覆盖的 live/guard 不 emit", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { sc: { font: "SC Sans" } };
+		g.defaults.cardStyleByKind = { sc: { liveCoverImages: ["sc.png"] } };
 		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), g);
-		expect(view.customCardStyleByKind?.sc).toMatchObject({ enable: true, font: "SC Sans" });
+		expect(view.customCardStyleByKind?.sc).toMatchObject({
+			enable: true,
+			liveCoverImages: ["sc.png"],
+		});
 		expect(view.customCardStyleByKind?.live).toBeUndefined();
 		expect(view.customCardStyleByKind?.guard).toBeUndefined();
 	});
 
 	it("per-UP cardStyleByKind.guard 覆盖全局同 kind → guard 条目取 UP 值(解析优先级 UP 类型最高)", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { guard: { font: "Global Guard Sans" } };
+		g.defaults.cardStyleByKind = { guard: { liveCoverImages: ["global-guard.png"] } };
 		const view = buildLiveSubViewSingle(
-			makeSub({ cardStyleByKind: { guard: { font: "Up Guard Sans" } } }),
+			makeSub({ cardStyleByKind: { guard: { liveCoverImages: ["up-guard.png"] } } }),
 			fakeRuntimeStore(),
 			g,
 		);
-		expect(view.customCardStyleByKind?.guard).toMatchObject({ font: "Up Guard Sans" });
+		expect(view.customCardStyleByKind?.guard).toMatchObject({
+			liveCoverImages: ["up-guard.png"],
+		});
 	});
 
-	it("全局 cardStyleByKind.dynamic 设字体 → 无 per-UP override 的 sub 的 dynamic customCardStyle 也 enable:true 带该字体", () => {
+	it("全局 cardStyleByKind.dynamic 设了值 → 无 per-UP override 的 sub 的 dynamic customCardStyle 也 enable:true 带上它", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { dynamic: { font: "Dyn Sans" } };
+		g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } };
 		const view = buildDynamicSubsView(fakeStore([makeSub({})]), fakeRuntimeStore(), g);
-		expect(view["12345"]?.customCardStyle).toMatchObject({ enable: true, font: "Dyn Sans" });
+		expect(view["12345"]?.customCardStyle).toMatchObject({
+			enable: true,
+			liveCoverImages: ["dyn.png"],
+		});
 	});
 
 	it("dynamic 无 per-kind 覆盖 → 维持原行为(无 per-UP override = enable:false,不被 per-kind 改写)", () => {

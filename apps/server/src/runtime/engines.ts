@@ -1320,15 +1320,22 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
  */
 function cardStyleToColorOptions(s: {
 	liveCoverImages?: string[];
-	font?: string;
-	fontAsset?: string;
 }): LiveSubView["customCardStyle"] {
 	return {
 		enable: true,
-		// 字体两项此前整个漏在这里:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、
-		// resolve 也算得出,就是没人映射进 colorOptions —— 渲染器收不到,选了等于没选。
-		font: s.font,
-		fontAsset: s.fontAsset,
+		// 🪦 字体两项(`font` / `fontAsset`)2026-09-20 从这里摘掉。它们 09-14 退役成皮肤
+		// 自己的字体旋钮,卡片页上那几栏入口也一并删了 —— 而这一步还在读盘上的老值往下喂,
+		// 于是给某位 UP / 某类卡单独设过字体的人**改不动它、它却还在生效**,面板上连看都
+		// 看不到。全局那一份早就断了(见上面 createImageRenderer 那儿的注释),漏的是
+		// per-UP 与 per-kind 这两层。
+		//
+		// ⚠️ 这里从前写的是反向的注释(「此前整个漏在这里…选了等于没选」)。那句话在入口
+		// 还在的时候是对的:收不到才是 bug。入口没了之后,继续读它才是 bug。别照着旧版本
+		// 把这两行加回来 —— 守卫在 `__tests__/sub-views.test.ts`,它也跟着翻了向。
+		//
+		// 字段本身留在 schema 里(退役字段不删,`.strict()` 会让老配置装不进来),只是再没有
+		// 读者;想换字体请拧那套皮肤的字体旋钮。
+		//
 		// 直播封面(独立端专属,仅 live 卡消费)。
 		liveCoverImage: s.liveCoverImages?.[0],
 		liveCoverImages: s.liveCoverImages,

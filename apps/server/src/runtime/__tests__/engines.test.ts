@@ -1163,9 +1163,11 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 
 	it("全局给「动态」调了样式 → 全局作用域(null)也解析出完整样式", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.cardStyleByKind = { dynamic: { font: "Comic Sans MS" } } as any;
+		// 载体 2026-09-20 从 `font` 换成 `liveCoverImages`:字体已不再往下喂(见
+		// `cardStyleToColorOptions`),拿它当「有内容的样式」会连着这条一起红。测的是解析,不是字体。
+		g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } } as any;
 		const style = resolveDynamicCardStyle(g.defaults, null);
-		expect(style).toMatchObject({ enable: true, font: "Comic Sans MS" });
+		expect(style).toMatchObject({ enable: true, liveCoverImages: ["dyn.png"] });
 		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
 		const subRt = { get: () => undefined } as any;
@@ -1175,10 +1177,10 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
-		sub.overrides.cardStyle = { font: "Comic Sans MS" } as any;
+		sub.overrides.cardStyle = { liveCoverImages: ["up.png"] } as any;
 		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
 			enable: true,
-			font: "Comic Sans MS",
+			liveCoverImages: ["up.png"],
 		});
 	});
 });
@@ -1286,10 +1288,12 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyleByKind = { dynamic: { font: "Comic Sans MS" } } as any;
+			g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } } as any;
 		});
 		c.bus.emit("config-changed", "globals");
-		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ font: "Comic Sans MS" });
+		expect(c.runtime.linkCardPresentation().colors).toMatchObject({
+			liveCoverImages: ["dyn.png"],
+		});
 	});
 });
 
