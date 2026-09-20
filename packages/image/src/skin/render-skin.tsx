@@ -281,29 +281,71 @@ interface PlacedBlock {
 }
 
 /**
- * 块的 wrapper 样式:网格坐标(行号已压过)+ `min-width:0`(不写的话超宽内容会把这一列
- * 撑爆)+ 可选的层次。
+ * **格子层**的样式(ADR-0018):网格坐标(行号已压过)+ `min-width:0` + `display:grid`
+ * + 可选的层次与限高。
+ *
+ * 这一层的全部意义是「**画布画的那个矩形,DOM 里真有一个盒子与它同宽同高**」。所以它
+ * 只能由这里写,皮肤一个字都碰不到 —— 清洗器强制每条块 CSS 以 `[data-bn="self"]` 打头,
+ * 渲染器把 `self` 翻成 `.bn-blk-<id>`,而那个 class 挂在**内层**。class 一旦挪上来,
+ * 皮肤写一句 `justify-self:start` 就能把格子捏小,恒等当场没了。
+ *
+ * `display:grid` 不是装饰:内层得**仍然是 grid item**,皮肤写的 `justify-self` /
+ * `align-self` 才跟从前一样生效,而且参照系(这一格)与从前那个格子一样大 —— 观感一字不差。
+ * `min-width:0` 两层都要:外层那份挡的是「超宽内容把卡的列撑爆」,内层那份挡的是「内层
+ * 被自己的 min-content 撑得比格子宽」—— 从前那唯一一层 wrapper 挡的正是后者,少写一份
+ * 就是皮肤画的底色跟着内容变宽,像素当场红。
+ *
+ * 🔴 **`place-self:stretch` 与 `place-items:inherit` 这两句,少一句都会动像素**(2026-09-20
+ * 真机量出来的,当时 5 张卡红了):
+ *
+ * - `place-self:stretch` —— 外框那层写着 `align-items:center`(上舰卡的玻璃层就是),
+ *   格子层不显式 stretch 就会**缩成内容高再居中**,于是它不再等于格子,恒等当场失守。
+ *   实测:上舰卡的用户名胶囊从 `y=20`(贴行底)变成 `y=10`(整格居中)。
+ * - `place-items:inherit` —— 把外框那层的默认对齐**透给内层**。不写的话,**没有**自己
+ *   写 `align-self` 的块会从「跟着外框居中」变成「填满格子」,那是另一种像素差。
+ *   两句合起来才是「格子恒等于格子,而内层的行为与从前一字不差」。
  *
  * **层次不写就一个字节都不注**(0 也不注):存量皮肤一个 `z` 都没有,多一句 `z-index:0`
  * 就是 23 份字节基准与像素门一起红,而外观根本没变。而且「没声明」是个有用的档 ——
  * 块 CSS 里手写的 `z-index` 一直是放行的,不声明就等于把这件事交还给它。
  *
  * grid item 的 `z-index` **不需要 `position`** 就生效(与 flex item 同,CSS Grid 规范里
- * grid item 自成一个 painting 层级),所以这里只写一句就够。
+ * grid item 自成一个 painting 层级),所以这里只写一句就够。**它必须注在外层**:内层是
+ * 外层那个单格网格的 item,它的 `z-index` 只在外层内部排序,压不过隔壁块。
  */
-function gridStyle(kind: CardSkinKind, block: CardSkinBlock, row: number): string {
+function cellStyle(block: CardSkinBlock, row: number): string {
 	const { column, span, rowSpan, z } = block.grid;
 	const layer = z ? `;z-index:${z}` : "";
-	// **「跨几行」对单张图的块是真高度**(2026-09-18 主人拍板)。行是隐式的、按内容撑,所以
-	// 别的块写了 `rowSpan` 也只是给画布看的一句声明;标了 `heightFromRows` 的块(两张封面)
-	// 才由这里注成真高度,图自己 `object-fit:cover` 填满。没写 `rowSpan` 就一个字节都不注 ——
-	// 存量皮肤那条路原样有效。
+	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0;display:grid;place-self:stretch;place-items:inherit${layer}`;
+}
+
+/**
+ * 限高那一句(`heightFromRows`),注在**内层**。
+ *
+ * **「跨几行」对单张图的块是真高度**(2026-09-18 主人拍板)。行是隐式的、按内容撑,所以
+ * 别的块写了 `rowSpan` 也只是给画布看的一句声明;标了 `heightFromRows` 的块(两张封面)
+ * 才由这里注成真高度,图自己 `object-fit:cover` 填满。没写 `rowSpan` 就一个字节都不注 ——
+ * 存量皮肤那条路原样有效。
+ *
+ * 🔴 **它留在内层,不跟 `z` 一起搬去格子层**(2026-09-20 实测改判,ADR-0018 决策 2 原文
+ * 写的是「搬到外层」)。两条理由:
+ *
+ * - **搬上去会动像素**:内层是格子层那一格的 item,`stretch` 之后它的**外边距从高度里
+ *   扣**。动态卡封面实测 336 → 332,那一块占的五行跟着从 62.2344 矮到 61.4375,整张卡
+ *   短了 4px(设备像素 8px)。留在内层则与从前逐字节同形:高度写在带外边距的那一层上,
+ *   外边距在高度之外。
+ * - **它本来就不是格子的高度**:它是**块**声明自己多高,格子的高度归行轨道。格子层
+ *   `stretch` 到行,正好等于那块地 —— 混成一句反而两头都说不准。
+ *
+ * (`z` 不一样:内层的 `z-index` 只在自己那一格里排序,压不过隔壁块,所以它必须在外层。)
+ */
+function sizedHeight(kind: CardSkinKind, block: CardSkinBlock): string {
+	const { rowSpan } = block.grid;
 	const sized =
 		rowSpan !== undefined &&
 		block.kind === "builtin" &&
 		CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.heightFromRows === true;
-	const height = sized ? `;height:${(rowSpan ?? 1) * CARD_SKIN_LIMITS.rowHeight}px` : "";
-	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0${height}${layer}`;
+	return sized ? `;height:${(rowSpan ?? 1) * CARD_SKIN_LIMITS.rowHeight}px` : "";
 }
 
 /**
@@ -346,6 +388,22 @@ function wrapBlock(item: PlacedBlock, cls: string, style: string): VNode {
 	return (
 		<div data-block={label} class={cls} style={style}>
 			{item.inner}
+		</div>
+	);
+}
+
+/**
+ * 块外面那层**格子层**(ADR-0018)。`data-cell` 是块 id —— 画布按它找格子,本机那道
+ * 几何门也按它逐块比。
+ *
+ * 挂的是 `data-cell` 而不是 `data-block`:后者是挂点契约的一部分,而且 `guard.badge`
+ * 的块根自带一个,外层再挂就又是「一块两个 `[data-block]`」。换个名字,既有的验收门、
+ * 挂点对表、`selfLabelled` 那个特例全都一个字不用改。
+ */
+function wrapCell(id: string, style: string, inner: VNode): VNode {
+	return (
+		<div data-cell={id} style={style}>
+			{inner}
 		</div>
 	);
 }
@@ -445,14 +503,17 @@ function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined)
 
 	// ⑤ 铺 wrapper。CSS 不在这儿拼:内外两层会走到这里两遍,拼在这儿就会按「谁先画完」
 	// 排序,而且同一条规则出现两次。统一在 `renderSkinnedCard` 里按 `card.blocks` 的顺序拼。
+	// ⑤ 铺两层:外面一层格子(网格坐标住这儿,皮肤够不着),里面一层是皮肤的自留地
+	// (class、`data-block`、资产变量)。理由整段在 `cellStyle` 的注释里。
 	return placed.map((item) => {
 		const id = item.block.id;
 		const cls = blockClass(id);
 		ctx.used.add(id);
+		// 资产变量是给**皮肤 CSS** 用的,而皮肤写在内层 —— 跟 class 待在同一个元素上。
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
-		const grid = gridStyle(kind, item.block, rowMap.get(item.block.grid.row) ?? 1);
-		const style = vars ? `${grid};${vars}` : grid;
-		return wrapBlock(item, cls, style);
+		const inner = `min-width:0${sizedHeight(kind, item.block)}${vars ? `;${vars}` : ""}`;
+		const cell = cellStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
+		return wrapCell(id, cell, wrapBlock(item, cls, inner));
 	});
 }
 

@@ -41,7 +41,10 @@ async function styleOf(blocks: CardSkinCard["blocks"], id: string): Promise<stri
 	const { vnode } = renderSkinnedCard({ kind: "live", card: { width: 600, blocks }, props });
 	const doc = new JSDOM(await renderToString(createSSRApp({ render: () => vnode }))).window
 		.document;
-	return doc.querySelector(`.bn-blk-${id}`)?.getAttribute("style") ?? "";
+	// 高度在**内层**,网格坐标在外面那层格子上(ADR-0018)—— 这里两层拼起来一起问。
+	const cell = doc.querySelector(`[data-cell="${id}"]`)?.getAttribute("style") ?? "";
+	const inner = doc.querySelector(`.bn-blk-${id}`)?.getAttribute("style") ?? "";
+	return `${cell};${inner}`;
 }
 
 describe("跨行 = 真高度(只对单张图的块)", () => {

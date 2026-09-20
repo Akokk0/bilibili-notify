@@ -44,11 +44,19 @@ describe("卡片皮肤验收门 B — 结构", () => {
 			const style = glass.getAttribute("style") ?? "";
 			expect(style).toContain("display:grid");
 			expect(columnCount(style)).toBe(12);
-			const wrappers = [...glass.children];
-			expect(wrappers.length).toBeGreaterThan(0);
-			for (const el of wrappers) {
-				expect([...el.classList].some((c) => c.startsWith("bn-blk-"))).toBe(true);
-				expect(el.getAttribute("style") ?? "").toContain("grid-row:");
+			// 玻璃层的直接孩子是**格子层**(ADR-0018):网格坐标住它身上,而皮肤的
+			// `.bn-blk-<id>` 在它里面那一层 —— 这正是「画布画的矩形 = DOM 里一个真盒子」
+			// 靠的结构。格子层恰好一个孩子:多一个就说不清画布那个框对应哪一个。
+			const cells = [...glass.children];
+			expect(cells.length).toBeGreaterThan(0);
+			for (const cell of cells) {
+				expect(cell.hasAttribute("data-cell")).toBe(true);
+				expect(cell.getAttribute("style") ?? "").toContain("grid-row:");
+				expect(cell.children).toHaveLength(1);
+				const inner = cell.children[0];
+				expect([...inner.classList].some((c) => c.startsWith("bn-blk-"))).toBe(true);
+				// 坐标不许同时写在内层 —— 写了就等于皮肤那一层也在参与排版,恒等失守。
+				expect(inner.getAttribute("style") ?? "").not.toContain("grid-row:");
 			}
 		});
 	}

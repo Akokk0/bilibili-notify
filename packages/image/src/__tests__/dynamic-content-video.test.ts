@@ -83,9 +83,9 @@ function coverImgClass(html: string): string {
 	return m[1];
 }
 
-/** 那一块的 wrapper 的 style(网格坐标写在这儿)。 */
+/** 那一块的**格子层**的 style(网格坐标写在这儿,ADR-0018)。 */
 function blockStyle(html: string, id: string): string {
-	const m = html.match(new RegExp(`class="bn-blk-${id}" style="([^"]*)"`));
+	const m = html.match(new RegExp(`data-cell="${id}" style="([^"]*)"`));
 	if (!m) throw new Error(`这张卡上没有「${id}」这一块`);
 	return m[1];
 }

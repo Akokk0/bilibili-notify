@@ -27,14 +27,14 @@ beforeAll(async () => {
 	doc = new JSDOM(await renderViaDefaultSkin("live", built.props, built.options)).window.document;
 });
 
-/** 网格里那一块的 wrapper(`bn-blk-<id>`)。 */
+/** 网格里那一块的**格子层**(`[data-cell]`)—— 网格坐标住它身上(ADR-0018)。 */
 function blk(id: string): HTMLElement {
-	const el = doc.querySelector<HTMLElement>(`.bn-blk-${id}`);
+	const el = doc.querySelector<HTMLElement>(`[data-cell="${id}"]`);
 	if (!el) throw new Error(`默认直播皮肤上没有「${id}」这一块`);
 	return el;
 }
 
-/** wrapper 的 inline `grid-row` 起始行。 */
+/** 格子层的 inline `grid-row` 起始行。 */
 function rowOf(el: HTMLElement): string {
 	const m = /grid-row:(\d+)/.exec(el.getAttribute("style") ?? "");
 	if (!m) throw new Error(`这一块的 style 里没有 grid-row:${el.getAttribute("style")}`);

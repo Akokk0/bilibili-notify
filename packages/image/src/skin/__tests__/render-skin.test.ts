@@ -65,19 +65,22 @@ async function render(
 const labels = (doc: Document): string[] =>
 	[...doc.querySelectorAll("[data-block]")].map((el) => el.getAttribute("data-block") ?? "");
 
+// 行号住**格子层**(ADR-0018),不在皮肤那一层 —— 两层的分工整段在 `cell-layer.test.ts`。
 const rows = (doc: Document): string[] =>
-	[...doc.querySelectorAll("[class^='bn-blk-']")].map(
+	[...doc.querySelectorAll("[data-cell]")].map(
 		(el) => /grid-row:(\d+)/.exec(el.getAttribute("style") ?? "")?.[1] ?? "?",
 	);
 
 describe("皮肤渲染器 — 块的 wrapper", () => {
-	it("带 data-block、bn-blk-<id> 的 class、网格坐标与 min-width:0", async () => {
+	// 两层各挂什么、哪些声明住哪一层,整组钉在 `cell-layer.test.ts`(ADR-0018 的常驻门)。
+	// 这里只问内层:皮肤要用的那两样(`data-block` 与 class)在不在。
+	it("内层带 data-block 与 bn-blk-<id> 的 class", async () => {
 		const { doc } = await render(liveCard([builtin("t", "title", { row: 2, column: 3, span: 4 })]));
 		const el = doc.querySelector("[data-block='title']");
 		expect(el?.className).toBe("bn-blk-t");
-		// 行号被压成 1(第 2 行是唯一一行);列与跨度原样。
-		expect(el?.getAttribute("style")).toBe(
-			"grid-row:1 / span 1;grid-column:3 / span 4;min-width:0",
+		// 行号被压成 1(第 2 行是唯一一行);列与跨度原样 —— 都在外面那层格子上。
+		expect(doc.querySelector('[data-cell="t"]')?.getAttribute("style")).toBe(
+			"grid-row:1 / span 1;grid-column:3 / span 4;min-width:0;display:grid;place-self:stretch;place-items:inherit",
 		);
 	});
 
@@ -680,8 +683,9 @@ describe("皮肤渲染器 — 出血(辉光的那圈余量)", () => {
  *    就不碰它,写了由 inline 接管(inline 恒赢,清洗器又一律摘 `!important`)。
  */
 describe("皮肤渲染器 — 块的层次", () => {
+	// 层次住**格子层**:内层的 z-index 只在自己那一格里排序,压不过隔壁块(ADR-0018)。
 	const at = (doc: Document, id: string) =>
-		doc.querySelector(`.bn-blk-${id}`)?.getAttribute("style") ?? "";
+		doc.querySelector(`[data-cell="${id}"]`)?.getAttribute("style") ?? "";
 
 	it("写了层次 → wrapper 上注 z-index", async () => {
 		const { doc } = await render(
