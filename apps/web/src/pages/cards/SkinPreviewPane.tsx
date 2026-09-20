@@ -53,6 +53,7 @@ export function SkinPreviewPane({
 	manifest,
 	boxWidth,
 	onMetrics,
+	hotCell,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
@@ -75,6 +76,11 @@ export function SkinPreviewPane({
 	 * 只有拿尺子量才看得见。所以它自己有一条守卫(剪断必红),见测试。
 	 */
 	onMetrics?: (metrics: GridMetrics) => void;
+	/**
+	 * 画布指到的那个块(块 id;`null` = 指走了)。真卡里对应的格子会亮起来 —— 亮成什么样
+	 * 归注进去的那段调试 CSS,所以**调试关着时点了也没反应**,正是主人说的「打开格子显示后」。
+	 */
+	hotCell?: string | null;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
@@ -262,6 +268,7 @@ export function SkinPreviewPane({
 						title="皮肤预览"
 						// 画好了就量一次交给画布。只在 `load` 那一刻量 —— 与量卡高同一个时机。
 						onDocument={onMetrics ? (doc) => onMetrics(readGridMetrics(doc)) : undefined}
+						hotCell={hotCell}
 					/>
 				)}
 			</div>

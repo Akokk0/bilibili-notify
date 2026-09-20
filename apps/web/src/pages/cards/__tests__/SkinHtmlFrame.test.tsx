@@ -218,3 +218,75 @@ describe("SkinHtmlFrame · 沙箱", () => {
 		for (const f of all) expect(f.getAttribute("sandbox")).toBe("allow-same-origin");
 	});
 });
+
+/**
+ * **画布指哪一格,真卡就亮哪一格**(2026-09-20 主人要的)。
+ *
+ * 框里没有脚本(`allow-scripts` 永远不给),但**父页面**拿得到那份文档(同源),所以标记
+ * 由外面打:给当前露着的那份文档上那个 `[data-cell]` 挂一个 `data-cell-hot`,亮不亮的
+ * 样子归注进去的那段调试 CSS。
+ *
+ * 两条不肯让步的:**只有一个**格子带着标记(上一个要先摘掉,否则指过的格子会一路亮下去);
+ * 以及**换框要重挂**(换一份 HTML 就是换一个新框,旧框上的标记跟着旧框一起走了)。
+ */
+describe("SkinHtmlFrame · 点亮某一格", () => {
+	/** 造一份带三个格子的假文档。 */
+	function fakeDoc() {
+		const cells = ["a", "b", "c"].map((id) => {
+			const attrs = new Map<string, string>([["data-cell", id]]);
+			return {
+				getAttribute: (k: string) => attrs.get(k) ?? null,
+				setAttribute: (k: string, v: string) => attrs.set(k, v),
+				removeAttribute: (k: string) => attrs.delete(k),
+				hot: () => attrs.has("data-cell-hot"),
+			};
+		});
+		return {
+			documentElement: { getBoundingClientRect: () => ({ height: 300 }) },
+			querySelectorAll: () => cells,
+			cells,
+		};
+	}
+
+	const frameWith = (hotCell: string | null) => (
+		<SkinHtmlFrame
+			html="<p>卡</p>"
+			width={600}
+			usable={600}
+			fallbackHeight={FALLBACK}
+			title="预览"
+			hotCell={hotCell}
+		/>
+	);
+
+	it("给了 hotCell → 那一格被打上标记,别的一个都没有", () => {
+		const doc = fakeDoc();
+		const view = render(frameWith("b"));
+		const f = iframes(view.container)[0] as HTMLIFrameElement;
+		Object.defineProperty(f, "contentDocument", { configurable: true, get: () => doc });
+		fireEvent.load(f);
+		expect(doc.cells.map((c) => c.hot())).toEqual([false, true, false]);
+	});
+
+	it("换一格 → 上一格的标记摘掉", () => {
+		const doc = fakeDoc();
+		const view = render(frameWith("b"));
+		const f = iframes(view.container)[0] as HTMLIFrameElement;
+		Object.defineProperty(f, "contentDocument", { configurable: true, get: () => doc });
+		fireEvent.load(f);
+		view.rerender(frameWith("c"));
+		expect(doc.cells.map((c) => c.hot())).toEqual([false, false, true]);
+	});
+
+	it("指走了(null)→ 一个标记都不剩", () => {
+		const doc = fakeDoc();
+		const view = render(frameWith("b"));
+		const f = iframes(view.container)[0] as HTMLIFrameElement;
+		Object.defineProperty(f, "contentDocument", { configurable: true, get: () => doc });
+		fireEvent.load(f);
+		// ⚠️ 先证明它**真的被点亮过** —— 不然「一个都不剩」在还没实现时天然成立,是假绿。
+		expect(doc.cells.some((c) => c.hot())).toBe(true);
+		view.rerender(frameWith(null));
+		expect(doc.cells.some((c) => c.hot())).toBe(false);
+	});
+});

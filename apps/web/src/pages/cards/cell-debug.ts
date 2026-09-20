@@ -43,6 +43,14 @@ const HOVER_CSS =
 const ALL_CSS = "[data-cell]{outline:1px dashed rgba(56,132,255,.45);outline-offset:-1px}";
 
 /**
+ * **画布指哪一格,真卡就亮哪一格**。标记由**父页面**打(框里没有脚本,但同源读得到那份
+ * 文档),亮成什么样归这一条 —— 所以它只在调试开着时看得见,正是主人说的「打开格子显示后」。
+ * 与悬停那一档同款,人从画布看过来和从真卡看过去,认的是同一个视觉语言。
+ */
+const HOT_CSS =
+	"[data-cell][data-cell-hot]{outline:1px solid rgba(56,132,255,.9);outline-offset:-1px;background:rgba(56,132,255,.14)}";
+
+/**
  * 往一份预览 HTML 里追调试样式。`off` 原样返回(**同一个字符串**,不是复制)。
  *
  * 追在 `</body>` 之前;没有 `</body>` 就追在末尾 —— 出图的 HTML 理论上总有,但预览回来的
@@ -50,7 +58,7 @@ const ALL_CSS = "[data-cell]{outline:1px dashed rgba(56,132,255,.45);outline-off
  */
 export function withCellDebug(html: string, mode: CellDebugMode): string {
 	if (mode === "off") return html;
-	const style = `<style>${mode === "all" ? ALL_CSS : ""}${HOVER_CSS}</style>`;
+	const style = `<style>${mode === "all" ? ALL_CSS : ""}${HOT_CSS}${HOVER_CSS}</style>`;
 	const at = html.lastIndexOf("</body>");
 	return at === -1 ? html + style : html.slice(0, at) + style + html.slice(at);
 }

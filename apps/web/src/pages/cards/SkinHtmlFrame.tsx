@@ -45,6 +45,7 @@ export function SkinHtmlFrame({
 	fallbackHeight,
 	title,
 	onDocument,
+	hotCell,
 }: {
 	html: string;
 	/** 卡宽 px(服务端回的那个)。 */
@@ -61,6 +62,16 @@ export function SkinHtmlFrame({
 	 * 不会让某一块凭空出现或消失。(将来要量高就另说 —— 那得跟着字体再量一遍。)
 	 */
 	onDocument?: (doc: Document) => void;
+	/**
+	 * 把框里**这一格**点亮(块 id;`null` = 不点)。画布指到哪个块,真卡里那个格子就亮起来
+	 * (2026-09-20 主人要的)。
+	 *
+	 * 框里没有脚本(`allow-scripts` 永远不给),但**父页面**拿得到那份文档(同源是为了量卡高
+	 * 才开的,见文件头),所以标记由外面打:给那个 `[data-cell]` 挂一个 `data-cell-hot`。
+	 * **亮成什么样不在这儿** —— 归注进那份 HTML 的那段调试 CSS,于是调试关着时点了也没反应,
+	 * 正是想要的。
+	 */
+	hotCell?: string | null;
 }) {
 	const shown = Math.min(width, Math.max(usable, 1));
 	const scale = shown / width;
@@ -88,9 +99,16 @@ export function SkinHtmlFrame({
 		}
 	}, [ready, html]);
 
+	/**
+	 * 当前**露着**那个框的文档。点亮要往它身上打标记,而框是会换的(换一份 HTML 就换一个
+	 * 新框),所以记在 `load` 那一刻 —— 与交出文档、量卡高同一个时机。
+	 */
+	const liveDoc = useRef<Document | null>(null);
+
 	const onLoad = (doc: string, frame: HTMLIFrameElement) => {
 		setReady({ doc, height: contentHeight(frame) });
 		const now = frame.contentDocument;
+		liveDoc.current = now ?? null;
 		if (now) onDocument?.(now);
 		frame.contentDocument?.fonts?.ready.then(() => {
 			const height = contentHeight(frame);
@@ -99,6 +117,25 @@ export function SkinHtmlFrame({
 			setReady((r) => (r?.doc === doc && r.height !== height ? { doc, height } : r));
 		});
 	};
+
+	// 点亮那一格。**先把旧的全摘掉**:不摘的话指过的格子会一路亮下去。用遍历比对而不是
+	// 属性选择器 —— 块 id 里什么字符都可能有(见渲染器的 `blockClass`),拼选择器要转义,
+	// 而 `CSS.escape` 不是哪儿都有。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `ready` 不是多余的 —— 它是「换了一个框」的唯一信号,而 effect 读的是 ref(`liveDoc.current`),lint 看不见那条依赖。去掉它,换一份预览之后标记就不会重挂。
+	useEffect(() => {
+		// `undefined` = 调用方压根不用这个特性(聊天里那个预览块就是),那就**一下都不碰**
+		// 框里的文档;`null` = 用,只是这会儿没指着谁,要把旧标记摘干净。两者不是一回事。
+		if (hotCell === undefined) return;
+		const doc = liveDoc.current;
+		if (!doc) return;
+		for (const el of doc.querySelectorAll("[data-cell]")) {
+			if (hotCell !== null && el.getAttribute("data-cell") === hotCell) {
+				el.setAttribute("data-cell-hot", "");
+			} else {
+				el.removeAttribute("data-cell-hot");
+			}
+		}
+	}, [hotCell, ready]);
 
 	const docs = ready === null || ready.doc === html ? [html] : [ready.doc, html];
 	const viewport = ready?.height ?? Math.round(fallbackHeight / scale);

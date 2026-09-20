@@ -123,6 +123,8 @@ export default function CardSkinEditor() {
 	 * 住在这一层而不是画布自己去读:量的是**预览栏**那个 iframe,而两栏是兄弟。
 	 */
 	const [metrics, setMetrics] = useState<GridMetrics>({ columns: null, rows: null });
+	/** 画布上指针指着的那个块 —— 真卡里对应的格子跟着亮(要先打开预览栏那个「格子」开关)。 */
+	const [hotCell, setHotCell] = useState<string | null>(null);
 	/**
 	 * 看的是哪一场。画布**只摆这一场会有的块**(ADR-0014 决策 10 的 2026-09-19 🔗),预览
 	 * 也照这一场出图;块的位置只有一份,场景只决定画布上露不露它。
@@ -335,6 +337,7 @@ export default function CardSkinEditor() {
 							manifest={draft}
 							boxWidth={previewCol}
 							onMetrics={setMetrics}
+							hotCell={hotCell}
 						/>
 						{/* 画布 + 检查器合占那 2/3:检查器固定 380(旋钮那几行再窄就开始切字),
 						    剩下的全归 12 列的画布。 */}
@@ -355,6 +358,7 @@ export default function CardSkinEditor() {
 									scene={scene}
 									tracks={metrics.columns}
 									rowHeights={metrics.rows}
+									onHover={setHotCell}
 									// 拖块改行列 / 拉边改跨列。**与检查器那几个数字框刻意不是同一个口** ——
 									// 「放下」带着「我要它在这儿」的意思,叠上了就该在上面,而叠放次序不在
 									// `grid` 里(没写层次时是块的先后)。数字框是精确编辑,不改先后。

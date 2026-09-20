@@ -83,6 +83,18 @@ describe("withCellDebug — 开着的时候", () => {
 		expect(css).toContain(":hover");
 	});
 
+	/**
+	 * **画布指哪一格,真卡就亮哪一格**(2026-09-20 主人要的)。真卡里那个格子由外面打一个
+	 * `data-cell-hot` 标记,亮不亮的样子归这段 CSS —— 所以只有调试开着时才看得见,
+	 * 正是主人说的「打开格子显示后」。
+	 */
+	it("两档都带「点亮某一格」那条规则", () => {
+		for (const mode of on) {
+			const css = injected(withCellDebug(PAGE, mode));
+			expect(css).toContain("data-cell-hot");
+		}
+	});
+
 	it("all 那一档常显轮廓", () => {
 		const css = injected(withCellDebug(PAGE, "all"));
 		// 有一条不带 `:hover` 的规则在画轮廓。

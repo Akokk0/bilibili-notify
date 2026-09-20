@@ -117,6 +117,7 @@ export function SkinCanvas({
 	scene,
 	tracks,
 	rowHeights,
+	onHover,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -150,6 +151,11 @@ export function SkinCanvas({
 	 * 而且列稳行抖 —— 列宽只在改列定义 / 卡宽时变,行高改一个字就变,画布会跟着预览一路跳。
 	 */
 	rowHeights?: readonly number[] | null;
+	/**
+	 * 指针指到哪个块了(块 id;`null` = 指走了)。真卡那头会把对应的格子点亮 —— 画布这一侧
+	 * 只管报,点亮归预览框(它往框里那份文档上打标记,见 `SkinHtmlFrame` 的 `hotCell`)。
+	 */
+	onHover?: (blockId: string | null) => void;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -258,6 +264,7 @@ export function SkinCanvas({
 							key={b.id}
 							kind={kind}
 							block={b}
+							onHover={onHover}
 							covers={below.length}
 							selected={selection?.kind === "block" && selection.id === b.id}
 							onSelect={() => onSelect({ kind: "block", id: b.id })}
@@ -797,6 +804,7 @@ function CanvasBlock({
 	covers,
 	selected,
 	onSelect,
+	onHover,
 	drag,
 }: {
 	kind: CardSkinKind;
@@ -805,6 +813,8 @@ function CanvasBlock({
 	covers: number;
 	selected: boolean;
 	onSelect: () => void;
+	/** 指针进 / 出这一块。真卡那头按它点亮对应的格子。 */
+	onHover?: (blockId: string | null) => void;
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
 	drag?: CanvasDrag;
 }) {
@@ -833,6 +843,8 @@ function CanvasBlock({
 				if (drag?.consumeClick()) return;
 				onSelect();
 			}}
+			onPointerEnter={onHover ? () => onHover(block.id) : undefined}
+			onPointerLeave={onHover ? () => onHover(null) : undefined}
 			{...(drag
 				? {
 						onPointerDown: (e: React.PointerEvent) => drag.begin(block.id, block.grid, "move", e),

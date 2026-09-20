@@ -903,3 +903,49 @@ describe("网格画布 · 行高印在行号旁", () => {
 		expect(rowLabel(4)).toBe("r4");
 	});
 });
+
+/**
+ * **画布指哪一格,真卡就亮哪一格**(2026-09-20 主人要的)。画布这一侧只管报「指到谁了」,
+ * 点亮归预览框那边(它往框里那份文档上打标记)。
+ *
+ * 这条线也是**静默的**:不报的话画布照旧好使,只是真卡那头永远不亮。所以剪断必红。
+ */
+describe("网格画布 · 指到哪个块就报出来", () => {
+	const card = manifest().cards.live;
+
+	function paint(onHover: (id: string | null) => void) {
+		return render(
+			<SkinCanvas
+				kind="live"
+				card={card}
+				selection={null}
+				onSelect={() => {}}
+				scene={CARD_PREVIEW_SCENES.live[0]?.id ?? ""}
+				onHover={onHover}
+			/>,
+		);
+	}
+
+	const blockEl = (id: string): Element => {
+		const el = document.querySelector(`[data-block-id="${id}"]`);
+		if (!el) throw new Error(`画布上没有「${id}」这一块`);
+		return el;
+	};
+
+	it("指进一个块 → 报它的 id;指走 → 报 null", () => {
+		const got: (string | null)[] = [];
+		paint((id) => got.push(id));
+		fireEvent.pointerEnter(blockEl("cover"));
+		expect(got).toEqual(["cover"]);
+		fireEvent.pointerLeave(blockEl("cover"));
+		expect(got).toEqual(["cover", null]);
+	});
+
+	it("换一个块 → 报新的那个", () => {
+		const got: (string | null)[] = [];
+		paint((id) => got.push(id));
+		fireEvent.pointerEnter(blockEl("cover"));
+		fireEvent.pointerEnter(blockEl("notice"));
+		expect(got.at(-1)).toBe("notice");
+	});
+});
