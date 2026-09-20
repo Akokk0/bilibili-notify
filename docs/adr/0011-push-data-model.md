@@ -1,6 +1,6 @@
 # ADR-0011:推送数据模型 —— 平台是名词,连接器是动词
 
-- **状态**:**分期 ①②③ 已落地,未 push、未发版**(2026-09-08 经 `/grill-me` 多轮拷问定案;dev 上 49 个提交,四道门禁全绿)
+- **状态**:**分期 ①②③ 已落地**(2026-09-08 经 `/grill-me` 多轮拷问定案;dev 上 49 个提交,四道门禁全绿);**2026-09-13 随 v0.11.0 发布**
 - **记录方式**:⚠️ **事后追认** —— 据定案记录与已落地的实现整理,**非当时拷问的原文**。
 - **影响面**:`packages/internal/src/schema/targets.ts`、`packages/internal/src/constants.ts`、`apps/server/src/platforms/`、`apps/server/src/sink/multiplex.ts`、`apps/web/src/pages/Targets.tsx` 及其表单一族
 - **取代**:ADR-0009 原稿里的数据模型一节(`platform` → `{driver, platform?}`)
@@ -75,4 +75,3 @@
 
 - 分期 ④(重连 / 退避 / 心跳从两个千行文件合并成一份)**没做**。
 - B2 词汇收口(注释、测试名、`docs/agents/*`、README 与 docker-hub 两份人工同步的副本)**没做** —— 已并进 ADR-0012 的命名走查。
-- 49 个提交**未 push、未发版**,CHANGELOG 未写。

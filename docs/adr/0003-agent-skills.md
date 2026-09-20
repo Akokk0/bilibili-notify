@@ -1,6 +1,6 @@
 # ADR-0003:用户可写的 Agent Skill 取代写死的技能胶囊
 
-- **状态**:**已实现**(2026-08-20 经 `/grill-me` 拷问定案,同日落 dev:`8cff038` → `2d25c81` 七笔;**尚未发版、尚未真机验证**)
+- **状态**:**已实现**(2026-08-20 经 `/grill-me` 拷问定案,同日落 dev:`8cff038` → `2d25c81` 七笔;**2026-08-25 随 v0.7.0 发布**;尚未真机验证)
 - **影响面**:独立端 dashboard 的 AI 聊天(`apps/web/src/components/ai-chat/`、`apps/server/src/routes/ai.ts`、`packages/ai/src/commentary-generator.ts`)
 - **不影响**:群聊那条 AI 入口 —— 见「决策 · 边界」第 5 条
 
