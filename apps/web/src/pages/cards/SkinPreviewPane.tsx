@@ -22,10 +22,17 @@ import {
 	HintNote,
 	Icon,
 	LoadingBlock,
+	Picker,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { readGridTracks } from "./canvas-tracks";
+import {
+	CELL_DEBUG_LABELS,
+	CELL_DEBUG_MODES,
+	type CellDebugMode,
+	withCellDebug,
+} from "./cell-debug";
 import { serverErrors } from "./preview-error";
 import { SkinHtmlFrame } from "./SkinHtmlFrame";
 import { usePreviewCardSkin, useRenderSource, useShotCardSkin } from "./skin-editor-query";
@@ -81,6 +88,11 @@ export function SkinPreviewPane({
 	const [html, setHtml] = useState<string | null>(null);
 	const [width, setWidth] = useState(600);
 	const [warnings, setWarnings] = useState<string[]>([]);
+	/**
+	 * 格子的调试叠层开到哪一档(ADR-0018 决策 5)。默认关着 —— 常显会把卡看花,而这块地方
+	 * 平时是用来看卡好不好看的。
+	 */
+	const [cells, setCells] = useState<CellDebugMode>("off");
 	// mutate 的引用每次渲染都在变,进 deps 会让这条 effect 每帧重跑一遍防抖。
 	const run = useRef(preview.mutate);
 	run.current = preview.mutate;
@@ -167,6 +179,20 @@ export function SkinPreviewPane({
 						</div>
 					</div>
 
+					{/* 格子的调试叠层。摆在这儿而不是画布那边:看不见格子的是**真卡**,这个钮
+					    就该长在真卡旁边。截的那张「最终效果」是 server 出的图,描不上去 ——
+					    所以只在实时预览这一档给。 */}
+					{snap === null ? (
+						<div className="flex w-full items-center gap-2">
+							<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">格子</span>
+							<Picker
+								value={cells}
+								onChange={setCells}
+								options={CELL_DEBUG_MODES.map((m) => ({ value: m, label: CELL_DEBUG_LABELS[m] }))}
+							/>
+						</div>
+					) : null}
+
 					{noChrome ? (
 						<HintNote className="w-full">
 							没配渲染浏览器,截不了图 —— 去系统页的「卡片渲染浏览器」设一下,或者设环境变量
@@ -229,7 +255,7 @@ export function SkinPreviewPane({
 					)
 				) : (
 					<SkinHtmlFrame
-						html={html}
+						html={withCellDebug(html, cells)}
 						width={width}
 						usable={usable}
 						fallbackHeight={VIEW_H}
