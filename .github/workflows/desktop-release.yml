@@ -28,11 +28,13 @@ env:
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
-  # 发版门禁。下面的 matrix 里已经有 Rust 那一套(fmt / clippy / test / check),但
-  # **JS 侧一行没跑** —— Desktop 装的是 apps/server + apps/web 的产物,它们的 lint /
-  # typecheck / test 一次都没验过就打进安装包了。gate.yml 是门禁的唯一定义,补的就是这块。
+  # 发版门禁。Desktop 装的是 apps/server + apps/web 的产物 —— 不在这儿验一次,它们的
+  # lint / typecheck / test 一行没跑就进安装包了。gate.yml 是门禁的唯一定义。
   #
-  # 放前置 job 而不是塞进 matrix:三个平台各跑一遍同一份 JS 门禁毫无意义。
+  # 放前置 job 而不是塞进 matrix:两个平台各跑一遍同一份 JS 门禁毫无意义。
+  #
+  # (Rust 那一套 fmt / clippy / test / check 从前也在下面的 matrix 里,已搬去
+  #  `rust-check.yml`,理由见那儿与 matrix 里那段注释。)
   gate:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     uses: ./.github/workflows/gate.yml
@@ -81,23 +83,19 @@ jobs:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: bash .github/scripts/read-standalone-version.sh
 
-      - name: Install Rust lint components
-        run: rustup component add rustfmt clippy
-
-      - name: Prepare Desktop Rust check
-        run: vp run -F @bilibili-notify/desktop prepare-rust-check
-
-      - name: Check Desktop Rust format
-        run: vp run -F @bilibili-notify/desktop cargo:fmt
-
-      - name: Lint Desktop Rust
-        run: vp run -F @bilibili-notify/desktop cargo:clippy
-
-      - name: Test Desktop Rust
-        run: vp run -F @bilibili-notify/desktop cargo:test
-
-      - name: Check Desktop Rust compile
-        run: vp run -F @bilibili-notify/desktop cargo:check
+      # Rust 的质量门(fmt / clippy / test / check)**不在这儿** —— 搬去了
+      # `rust-check.yml`,只在 `apps/desktop/**` 真的动了时跑。从前每打一个 tag 都在
+      # 两个平台各跑一遍全量冷编(实测 251s,占这条流水线的 23.6%),而 tag 是从已经绿的
+      # dev 提交上打的,那一刻再验一次买不到新信息。这儿只管把已经对的东西编成安装包。
+      #
+      # 冷编 release 一趟 296s(win,mac 152s),而这棵依赖树几乎不动。key 带上
+      # matrix.id:两个平台的 target 目录不能混;与 rust-check 那边也不共享
+      # (那边是 debug profile,同一份缓存会互相盖)。
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: release-${{ matrix.id }}
 
       # 在 web build 之前就地生成 apps/web/public/sponsors.json,vite build 会把它复制进
       # dist(随后进 Tauri bundle)。不回写仓库。未配 AFDIAN secret 时脚本优雅跳过,名单空态。

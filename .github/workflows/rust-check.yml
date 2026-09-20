@@ -1,0 +1,73 @@
+name: Rust check
+
+# 桌面壳(`apps/desktop/src-tauri`)的 Rust 质量门:fmt → clippy → test → check。
+#
+# **从发版矩阵搬过来的。** 从前这四步住在 `desktop-release.yml` 里,于是每打一个 tag
+# 都要在两个平台上各跑一遍全量冷编 —— 实测 251s,占那条 17m45s 流水线的 23.6%,
+# 而 tag 是从**已经绿的 dev 提交**上打的,那一刻再验一次质量门买不到任何新信息。
+# 质量门属于「这段代码写得对不对」,发版属于「把已经对的东西打包出去」,分开。
+#
+# 只在桌面壳真的动了时跑(见 `paths`)。Rust 那棵树与 JS 侧零依赖,别处的改动
+# 编译结果一个字节都不会变 —— `apps/desktop/src-tauri` 半个月不动是常态。
+#
+# 🔴 **必须按平台跑,不能只留一个。** `main.rs` 里有 `cfg(target_os)` 分支
+# (unix 走 `nix`、macOS 走 `cocoa`/`objc`),单平台跑等于另一半根本没编译过。
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/rust-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/rust-check.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: rust-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Rust ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: mac-arm64
+            runner: macos-14
+          - id: win-x64
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # 走 vp 是为了让命令只有一份真相:`check:rust` 那串(prepare → fmt → clippy →
+      # test → check)定义在 `apps/desktop/package.json`,本机 `vp run -F ... check:rust`
+      # 跑的就是这一串。在这儿抄一遍 cargo 命令,迟早与本机那份飘。
+      - name: Setup Vite+ (vp) + Node + deps
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Install Rust lint components
+        run: rustup component add rustfmt clippy
+
+      # 冷编一次 251s,而这棵依赖树几乎不动 —— 缓存命中后只编改过的那几个 crate。
+      # key 里带上 id:两个平台的 target 目录不能混。
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.id }}
+
+      - name: Check Desktop Rust
+        run: vp run -F @bilibili-notify/desktop check:rust
