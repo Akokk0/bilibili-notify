@@ -10,14 +10,9 @@
  * `warnings` 一起回,作者边编边看得见。
  */
 
-import {
-	cardOfManifest,
-	renderCardWithSkin,
-	sampleCard,
-	skinAssetRefs,
-} from "@bilibili-notify/image";
+import { cardOfManifest, renderCardWithSkin, sampleCard } from "@bilibili-notify/image";
 import { type CardSkinKind, resolvePreviewScene } from "@bilibili-notify/internal";
-import { readCardSkinAssetDataUrl } from "./asset-url.js";
+import { prefetchCardSkinAssets } from "./asset-url.js";
 import { checkCardSkinPackage } from "./package.js";
 import type { CardSkinStore } from "./store.js";
 
@@ -59,15 +54,7 @@ export async function renderSkinPreviewHtml(args: {
 	const manifest = checked.manifest;
 
 	const card = cardOfManifest(manifest, kind);
-	// 渲染器那头的 `resolveAsset` 是**同步**的(替换发生在字符串替换的回调里),所以
-	// 先按引用名单把资产预取成表 —— 与出图那条路同一套路。
-	const assets = new Map<string, string>();
-	await Promise.all(
-		skinAssetRefs(card, manifest.fonts).map(async (name) => {
-			const url = await readCardSkinAssetDataUrl(store, skinId, name);
-			if (url) assets.set(name, url);
-		}),
-	);
+	const assets = await prefetchCardSkinAssets(store, skinId, manifest, kind);
 
 	const picked = resolvePreviewScene(kind, args.scene);
 	// 刻意**不掺用户自己的配置**(全局字体 / 旋钮):编辑器看的是**这套皮肤**长什么样,

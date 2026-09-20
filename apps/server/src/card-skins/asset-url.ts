@@ -12,6 +12,8 @@
  * 和缺图一模一样却更难查。
  */
 
+import { cardOfManifest, skinAssetRefs } from "@bilibili-notify/image";
+import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/internal";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
 import type { CardSkinStore } from "./store.js";
@@ -30,4 +32,31 @@ export async function readCardSkinAssetDataUrl(
 	const bytes = await store.readAsset(skinId, name);
 	if (!bytes) return undefined;
 	return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+/**
+ * 这张卡要用的**包内资产**预取成表。
+ *
+ * 渲染器那头的资产查表是**同步**的(替换发生在一次字符串替换的回调里),而读盘是异步的
+ * —— 所以先按 `skinAssetRefs` 列出名单一次性取完,再把表交给渲染器。取不到的不进表
+ * (渲染器那头用透明占位)。
+ *
+ * **服务端这两条路(编辑器预览 / 面板预览出图)共用这一份**:名单的口径哪天要变(比如多
+ * 认一档引用),漏改一处的症状是「预览有图、推出去没有」,而两边代码看着都对。出图那条
+ * 路在 `ImageRenderer#prefetchSkinAssets`,它读的是注入进来的 resolver,不走这里。
+ */
+export async function prefetchCardSkinAssets(
+	store: Pick<CardSkinStore, "readAsset" | "ensureReady">,
+	skinId: string,
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+): Promise<Map<string, string>> {
+	const out = new Map<string, string>();
+	await Promise.all(
+		skinAssetRefs(cardOfManifest(manifest, kind), manifest.fonts).map(async (name) => {
+			const url = await readCardSkinAssetDataUrl(store, skinId, name);
+			if (url) out.set(name, url);
+		}),
+	);
+	return out;
 }

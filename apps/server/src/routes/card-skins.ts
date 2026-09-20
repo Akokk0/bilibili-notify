@@ -112,6 +112,8 @@ export function createCardSkinsRoute(deps: {
 }): Hono {
 	const { store, config } = deps;
 	const app = new Hono();
+	/** CSS 助手的 system 只由常量拼成,拼一次就够(同 `routes/ai.ts` 的卡片工坊那份)。 */
+	const cssAiSystem = buildCardCssAiSystem();
 
 	// createApp 是同步装配,读盘重建索引推迟到首个请求(同 dashboard 皮肤库)。
 	// init 的 warnings 跟着这一次性凭据走:每次请求都刷一遍等于把日志淹了。
@@ -359,7 +361,7 @@ export function createCardSkinsRoute(deps: {
 			try {
 				const res = await runCardCssAiRound({
 					generate: (system, user, stream) => engine.generateRaw(system, user, undefined, stream),
-					system: buildCardCssAiSystem(),
+					system: cssAiSystem,
 					user: prepared.user(instruction),
 					sanitize: prepared.sanitize,
 					onRule: (text) => void send({ event: "rule", data: { text } }),

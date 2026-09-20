@@ -20,6 +20,7 @@ import { join } from "node:path";
 import type { CardSkinSummary } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
+	type CardSkinKind,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
@@ -207,10 +208,16 @@ export class CardSkinStore {
 				CARD_SKIN_LIMITS.name.max,
 			),
 		};
+		// 与 `exportZip` 同一个理由:各张资产之间没有先后关系,串行读等于把几十次系统
+		// 调用排成一条队,而主人在等这份副本。
+		const read = await Promise.all(
+			(await this.listAssets(id)).map(
+				async (name) => [name, await this.readAsset(id, name)] as const,
+			),
+		);
 		const assets = new Map<string, Uint8Array>();
-		for (const assetName of await this.listAssets(id)) {
-			const bytes = await this.readAsset(id, assetName);
-			if (bytes) assets.set(assetName, bytes);
+		for (const [name, bytes] of read) {
+			if (bytes) assets.set(name, bytes);
 		}
 		const checked = checkCardSkinPackage(manifest, new Set(assets.keys()));
 		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
@@ -424,6 +431,7 @@ function summary(
 		builtin,
 		updatedAt,
 		...(m.knobs?.length ? { knobs: m.knobs } : {}),
+		kinds: Object.keys(m.cards) as CardSkinKind[],
 	};
 }
 

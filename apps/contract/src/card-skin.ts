@@ -33,6 +33,11 @@ export interface CardSkinSummary {
 	 * 就带上 —— 每套最多 16 枚,比再跑一趟清单便宜。没声明的皮肤不带这个键。
 	 */
 	knobs?: CardSkinKnob[];
+	/**
+	 * 这套皮肤写了哪几种卡。同上那条理由:列表这一趟就带上 —— 否则问的人只能挨个去取
+	 * 整份清单(那是七张卡的 CSS 与 HTML,一份到 MB 级),只为读一串键名。
+	 */
+	kinds: CardSkinKind[];
 }
 
 /**

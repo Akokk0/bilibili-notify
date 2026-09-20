@@ -31,7 +31,6 @@ import type {
 	TestPushResponse,
 } from "@bilibili-notify/contract";
 import {
-	cardOfManifest,
 	type DynamicCardProps,
 	h,
 	ImageRenderer,
@@ -39,7 +38,6 @@ import {
 	renderCardWithSkin,
 	resolveKnobAssets,
 	shrinkImageForCssVar,
-	skinAssetRefs,
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
@@ -58,7 +56,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
+import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
@@ -277,13 +275,6 @@ function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: st
 	const inByKind = (byKind?: Record<string, { fontAsset?: string }>): boolean =>
 		byKind ? Object.values(byKind).some(inStyle) : false;
 
-	// 旋钮值是「一串 id」(图片旋钮)—— 不认旋钮声明,直接按形状扫:这里没有皮肤清单,
-	// 而「哪个 key 是图片旋钮」只有清单知道。多扫一个同形状的值也只是多拦一次删除。
-	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
-		if (Object.values(overrides ?? {}).some((v) => Array.isArray(v) && v.includes(id))) {
-			refs.push(`皮肤「${skinId}」`);
-		}
-	}
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
 		refs.push("全局默认");
 	}
@@ -596,28 +587,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return opts.deps.store.getGlobals().defaults.cardSkinKnobs?.[skinId];
 	}
 
-	/**
-	 * 这张卡要用的包内资产预取成表(渲染器那头的查表是同步的,见 `skinAssetRefs`)。
-	 * 与 `ImageRenderer#prefetchSkinAssets` 同一套做法,只是这条路不经渲染器。
-	 */
-	async function previewSkinAssets(
-		skinId: string,
-		manifest: CardSkinManifest,
-		kind: CardSkinKind,
-	): Promise<Map<string, string>> {
-		const out = new Map<string, string>();
-		const store = opts.cardSkins;
-		if (!store) return out;
-		const refs = skinAssetRefs(cardOfManifest(manifest, kind), manifest.fonts);
-		await Promise.all(
-			refs.map(async (name) => {
-				const url = await readCardSkinAssetDataUrl(store, skinId, name);
-				if (url) out.set(name, url);
-			}),
-		);
-		return out;
-	}
-
 	let imageRenderer: ImageRenderer | null = null;
 	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
@@ -861,13 +830,17 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
-		const assets = await previewSkinAssets(skinId, manifest, spec.kind);
+		// 与编辑器预览那条路共用同一份预取(`card-skins/asset-url.ts`)。
+		const assets = opts.cardSkins
+			? await prefetchCardSkinAssets(opts.cardSkins, skinId, manifest, spec.kind)
+			: new Map<string, string>();
 		// 🔴 **`knobValues` 一个人不够。** 字体与图这两档旋钮的值是资产库里的一个 id,
 		// 要读盘才变得成 CSS,所以 `cardSkinKnobCss` 那条同步路径对它们恒回 null ——
 		// 少了这一句,主人在旋钮面板里选了「卡片背景图」,别的旋钮照常跟着变,唯独背景图
 		// 与字体**静静地什么也不做**,而推送出去的卡是对的(ImageRenderer 那条路调了它)。
 		// 「预览好看、推出去变样」的镜像版,2026-09-19 审查抓到。
-		const knobAssets = await resolveKnobAssets(manifest.knobs, previewKnobValues(skinId), {
+		const knobValues = previewKnobValues(skinId);
+		const knobAssets = await resolveKnobAssets(manifest.knobs, knobValues, {
 			image: (id) => readCardBgDataUrl(dataDir, id),
 			fontFace: loadFontFace,
 			// 超出 CSS 自定义属性 2 MiB 上限的图要压一下,否则 Chrome 整条丢弃、
@@ -877,24 +850,20 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		for (const w of knobAssets.warnings) log.warn(`[card-skin] ${w}`);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
+		// 两支只差那个字面量(重载靠它收窄 props 的类型),选项一份就够 —— 分成两份写,
+		// 改一支漏一支的症状是「直播卡对、动态卡不对」,而两处代码看着都对。
+		const common = {
+			title: spec.title,
+			font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
+			fontFace: fontFace || undefined,
+			resolveAsset: (name: string) => assets.get(name),
+			knobValues,
+			knobAssets,
+		};
 		const html =
 			spec.kind === "live"
-				? await renderCardWithSkin("live", spec.props, manifest, {
-						title: spec.title,
-						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
-						fontFace: fontFace || undefined,
-						resolveAsset: (name) => assets.get(name),
-						knobValues: previewKnobValues(skinId),
-						knobAssets,
-					})
-				: await renderCardWithSkin("dynamic", spec.props, manifest, {
-						title: spec.title,
-						font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
-						fontFace: fontFace || undefined,
-						resolveAsset: (name) => assets.get(name),
-						knobValues: previewKnobValues(skinId),
-						knobAssets,
-					});
+				? await renderCardWithSkin("live", spec.props, manifest, common)
+				: await renderCardWithSkin("dynamic", spec.props, manifest, common);
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };
 	}

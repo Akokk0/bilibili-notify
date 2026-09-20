@@ -201,14 +201,18 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			await store.ensureReady();
 			const active = deps.activeId();
 			const copiedFrom = new Map([...forks].map(([from, to]) => [to, from]));
-			const lines = store.list().map((s) => {
-				const kinds = Object.keys(store.get(s.id)?.cards ?? {}) as CardSkinKind[];
+			// 卡种与名字都从这一趟列表里拿。挨个 `store.get()` 等于每行深拷贝一整份清单
+			// (七张卡的 CSS 与 HTML,到 MB 级),只为读一串键名。
+			const rows = store.list();
+			const nameById = new Map(rows.map((r) => [r.id, r.name]));
+			const lines = rows.map((s) => {
+				const kinds = s.kinds;
 				const source = copiedFrom.get(s.id);
 				const tags = [
 					s.builtin ? "内置" : null,
 					s.id === active ? "正在用" : null,
 					source !== undefined
-						? `这场对话从「${store.get(source)?.name ?? source}」复制出来改的`
+						? `这场对话从「${nameById.get(source) ?? source}」复制出来改的`
 						: owned.has(s.id)
 							? "这场对话做的"
 							: null,
