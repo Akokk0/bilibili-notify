@@ -158,8 +158,8 @@ export async function buildDynamicNode(
 	};
 
 	// 「我暂时无法渲染」那一类:正文只有一句提示。
-	const notice = (build: () => VNode) => {
-		node.text = build();
+	const notice = (v: VNode) => {
+		node.text = v;
 	};
 
 	switch (dynamic.type) {
@@ -204,33 +204,33 @@ export async function buildDynamicNode(
 		}
 
 		case DYNAMIC_TYPE_LIVE:
-			notice(() => <p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_MEDIALIST:
-			notice(() => <p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_PGC:
-			notice(() => <p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_MUSIC:
-			notice(() => <p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_COMMON_SQUARE:
-			notice(() => <p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_COURSES_SEASON:
-			notice(() => <p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_UGC_SEASON:
-			notice(() => <p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>);
+			notice(<p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>);
 			break;
 		case DYNAMIC_TYPE_NONE:
-			notice(() => <p>{upName}发布了一条无效动态</p>);
+			notice(<p>{upName}发布了一条无效动态</p>);
 			break;
 		case DYNAMIC_TYPE_LIVE_RCMD:
 			throw new Error("直播开播动态，不做处理");
 		default:
-			notice(() => <p>{upName}发布了一条我无法识别的动态，请自行查看</p>);
+			notice(<p>{upName}发布了一条我无法识别的动态，请自行查看</p>);
 	}
 	// 「无法渲染」类动态没有可拆的附加内容,清掉以免空块占位。
 	node.additional = null;

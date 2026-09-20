@@ -494,12 +494,12 @@ export class ImageRenderer {
 			id: string,
 			manifest: CardSkinManifest,
 		): Promise<{ buffer: Buffer; height: number }> => {
-			const assets = await this.prefetchSkinAssets(
-				id,
-				cardOfManifest(manifest, kind),
-				manifest.fonts,
-			);
 			const knobValues = this.config.cardSkinKnobs?.[id];
+			// 包内资产与旋钮资产之间零依赖 —— 并发发起,省掉一次串行 I/O 往返。
+			const [assets, knobAssets] = await Promise.all([
+				this.prefetchSkinAssets(id, cardOfManifest(manifest, kind), manifest.fonts),
+				this.resolveKnobAssets(id, manifest.knobs, knobValues),
+			]);
 			let html = await renderCardWithSkin(kind, props, manifest, {
 				title,
 				font: font.font,
@@ -507,7 +507,7 @@ export class ImageRenderer {
 				raw: args.raw,
 				resolveAsset: (name) => assets.get(name),
 				knobValues,
-				knobAssets: await this.resolveKnobAssets(id, manifest.knobs, knobValues),
+				knobAssets,
 			});
 			if (args.postProcess) html = args.postProcess(html);
 			return await withRetry(() => this.renderHtml(html, args.waitFor, args.priority));
