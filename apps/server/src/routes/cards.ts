@@ -259,28 +259,24 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
 }
 
 /**
- * 哪些地方还选着这款字体 —— 与 {@link cardBgReferences} 同一套四层扫描
- * (全局基准 / 全局 per-kind / UP 基准 / UP per-kind)。**四层都得查**:漏掉哪一层,
- * 那一层的配置删完就成了悬空引用,出图静静落回兜底字体,而设置页还显示着它的名字。
+ * 哪些皮肤的旋钮还选着这款字体。
+ *
+ * 🪦 2026-09-20 从四层收成一层。从前它还扫 `cardStyle.fontAsset` 的四个位置(全局基准 /
+ * 全局 per-kind / UP 基准 / UP per-kind),那在字体还由卡片页管的时候是对的。今天那条路
+ * **一个读者都没有**:全局那份在字体退役成旋钮时就断了,per-UP 与 per-kind 两层
+ * 2026-09-20 一并摘掉(见 `runtime/engines.ts` 的 `cardStyleToColorOptions`)。
+ *
+ * 继续扫它的后果是**凭一个不生效的引用拦住删除**:409 说「UP 12345 还在用」,而主人去
+ * 面板上找,既找不到那个设置(入口早删了)、那款字体也根本没出现在卡上 —— 「换掉再删」
+ * 这句指路指向一个不存在的地方。宁可让残留值随它去,也不留一个查不下去的 409。
+ *
+ * 与 {@link cardBgReferences} 不同:那边扫的 `liveCoverImages` 是**还活着**的字段。
  */
-function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
-	// 字体的正主同样是旋钮(值写成 `upload:<id>`);`fontAsset` 是退役中的那条老路。
+function fontAssetReferences(globals: GlobalConfig, id: string): string[] {
 	const refs: string[] = [];
 	const asKnob = `${CARD_SKIN_UPLOAD_PREFIX}${id}`;
 	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
 		if (Object.values(overrides ?? {}).some((v) => v === asKnob)) refs.push(`皮肤「${skinId}」`);
-	}
-	const inStyle = (style?: { fontAsset?: string }): boolean => style?.fontAsset === id;
-	const inByKind = (byKind?: Record<string, { fontAsset?: string }>): boolean =>
-		byKind ? Object.values(byKind).some(inStyle) : false;
-
-	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
-		refs.push("全局默认");
-	}
-	for (const s of subs) {
-		if (inStyle(s.overrides.cardStyle) || inByKind(s.overrides.cardStyleByKind)) {
-			refs.push(`UP ${s.uid}`);
-		}
 	}
 	return refs;
 }
@@ -517,14 +513,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.delete("/font-asset/:id", async (c) => {
 		const id = c.req.param("id");
 		if (!isValidFontAssetId(id)) return c.json({ ok: false, err: "无效的资产 id" }, 400);
-		const referencedBy = fontAssetReferences(
-			opts.deps.store.getGlobals(),
-			opts.deps.store.getSubscriptions(),
-			id,
-		);
+		const referencedBy = fontAssetReferences(opts.deps.store.getGlobals(), id);
 		if (referencedBy.length > 0) {
 			return c.json(
-				{ ok: false, err: "该字体仍被使用,请先在卡片设置里换掉再删除", referencedBy },
+				{ ok: false, err: "该字体仍被皮肤的字体旋钮选着,请先换掉再删除", referencedBy },
 				409,
 			);
 		}

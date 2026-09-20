@@ -5,6 +5,8 @@
  * - id 正则是防穿越的**唯一**闸门(dataDir 里躺着 `bn.config.yaml`,带 apiKey 与 cookie)。
  * - **还被引用着就不许删**,并指出是谁在用 —— 直接删掉的话那一处配置立刻变成悬空引用,
  *   出图静静回落到兜底字体,而设置页上还显示着这款字体的名字,查都没法查。
+ *   ⚠️ 2026-09-20 起「被引用」**只算皮肤的字体旋钮**:`cardStyle.fontAsset` 那条老路
+ *   已经没有读者,拿它拦删除等于凭一个不生效的引用把人挡在外面(详见下面删除那一节)。
  *
  * 字体特有的那条:列表要带**原始文件名**。背景图有缩略图可看,字体只有一串 hex ——
  * 名字丢了主人根本认不出哪个是哪个。
@@ -13,6 +15,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CARD_SKIN_UPLOAD_PREFIX } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
 import { createCardsRoute } from "../cards.js";
@@ -20,9 +23,18 @@ import type { RouteDeps } from "../types.js";
 
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]);
 
-/** 造一份 deps;`fontAsset` 系列参数用来摆出「这款字体正被某处引用」的局面。 */
+/**
+ * 造一份 deps。
+ *
+ * `knobFont` 摆的是**今天唯一算数**的那条引用:某套皮肤的字体旋钮选着它。
+ * `globalFont` / `globalKindFont` / `subs[].font` / `subs[].kindFont` 摆的是
+ * `cardStyle.fontAsset` 那条**已经退役**的老路上的残留值 —— 它们今天拦不住删除,
+ * 下面有一条用例专门钉这件事。
+ */
 function makeDeps(opts: {
 	dataDir: string;
+	/** 某套皮肤(`my-skin`)的字体旋钮选着这款字体。 */
+	knobFont?: string;
 	globalFont?: string;
 	/** 全局某 per-kind(sc)覆盖里选的字体。 */
 	globalKindFont?: string;
@@ -43,6 +55,9 @@ function makeDeps(opts: {
 						fontAsset: opts.globalFont,
 					},
 					cardStyleByKind: opts.globalKindFont ? { sc: { fontAsset: opts.globalKindFont } } : {},
+					cardSkinKnobs: opts.knobFont
+						? { "my-skin": { titleFont: `${CARD_SKIN_UPLOAD_PREFIX}${opts.knobFont}` } }
+						: {},
 				},
 			}),
 			getSubscriptions: () =>
@@ -199,49 +214,47 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 		});
 	});
 
-	it("全局默认还选着它 → 409 拦下,文件仍在", async () => {
+	it("某套皮肤的字体旋钮选着它 → 409 拦下并点名是哪套,文件仍在", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "在用.woff2");
-			const res = await route(makeDeps({ dataDir: dir, globalFont: id })).request(
+			const res = await route(makeDeps({ dataDir: dir, knobFont: id })).request(
 				`/font-asset/${id}`,
 				{ method: "DELETE" },
 			);
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { referencedBy: string[] };
-			expect(json.referencedBy).toContain("全局默认");
+			expect(json.referencedBy).toContain("皮肤「my-skin」");
 			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
 		});
 	});
 
-	it("某个 per-kind 覆盖选着它 → 同样 409(最容易漏的一层)", async () => {
+	/**
+	 * ⚠️ 这条 2026-09-20 整个翻了向,别照着旧版本改回去。
+	 *
+	 * 从前这儿是四条用例,分别钉 `cardStyle.fontAsset` 的全局基准 / 全局 per-kind /
+	 * UP 基准 / UP per-kind 四层「都得拦住」,注释还写着「最容易漏的一层」。字体还由
+	 * 卡片页管的时候那是对的。今天那条路一个读者都没有(见 `routes/cards.ts` 的
+	 * `fontAssetReferences`),再拦就是**凭一个不生效的引用拦住删除** —— 409 说某位 UP
+	 * 还在用,而主人去面板上既找不到那个设置、那款字体也根本没上过卡。
+	 *
+	 * 所以四层一次摆齐,断言的是**拦不住**。
+	 */
+	it("只有老 cardStyle 里的残留值选着它 → 照样删得掉(那条路已经没有读者)", async () => {
 		await withDir(async (dir) => {
-			const id = await saveFontAsset(dir, WOFF2, "sc 在用.woff2");
-			const res = await route(makeDeps({ dataDir: dir, globalKindFont: id })).request(
-				`/font-asset/${id}`,
-				{ method: "DELETE" },
-			);
-			expect(res.status).toBe(409);
-		});
-	});
-
-	it("某位 UP 单独选着它 → 409,并指出是哪位", async () => {
-		await withDir(async (dir) => {
-			const id = await saveFontAsset(dir, WOFF2, "某 UP 在用.woff2");
+			const id = await saveFontAsset(dir, WOFF2, "残留.woff2");
 			const res = await route(
-				makeDeps({ dataDir: dir, subs: [{ uid: "12345", font: id }] }),
+				makeDeps({
+					dataDir: dir,
+					globalFont: id,
+					globalKindFont: id,
+					subs: [
+						{ uid: "12345", font: id },
+						{ uid: "999", kindFont: id },
+					],
+				}),
 			).request(`/font-asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(409);
-			expect(((await res.json()) as { referencedBy: string[] }).referencedBy).toContain("UP 12345");
-		});
-	});
-
-	it("某位 UP 的 per-kind 覆盖选着它 → 409(第四层,同样别漏)", async () => {
-		await withDir(async (dir) => {
-			const id = await saveFontAsset(dir, WOFF2, "UP 的 guard 卡在用.woff2");
-			const res = await route(
-				makeDeps({ dataDir: dir, subs: [{ uid: "999", kindFont: id }] }),
-			).request(`/font-asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(409);
+			expect(res.status).toBe(200);
+			expect(await listFontAssets(dir)).toEqual([]);
 		});
 	});
 
