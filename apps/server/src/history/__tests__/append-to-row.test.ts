@@ -154,6 +154,23 @@ describe("appendToRow", () => {
 		expect(rows[0]?.status).toBe("delivered");
 	});
 
+	it("findRow:按 id 把那一行读回来(补丁已经并好)", async () => {
+		const entry = await store.record(input());
+		await store.appendToRow(entry.id, entry.ts, [
+			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+		]);
+		const found = await store.findRow(entry.id, entry.ts);
+		expect(found?.id).toBe(entry.id);
+		expect(found?.messages).toHaveLength(2);
+		expect(found?.status).toBe("delivered");
+	});
+
+	it("findRow:找不到 → null(端点据此回 404)", async () => {
+		const entry = await store.record(input());
+		expect(await store.findRow(randomUUID(), entry.ts)).toBeNull();
+		expect(await store.findRow(entry.id, "2020-01-01T00:00:00.000Z")).toBeNull();
+	});
+
 	it("行 id 找不到 → null,什么都不写", async () => {
 		const entry = await store.record(input());
 		const merged = await store.appendToRow(randomUUID(), entry.ts, [

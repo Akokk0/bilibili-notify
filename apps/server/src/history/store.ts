@@ -115,6 +115,12 @@ export interface HistoryStore {
 		ts: string,
 		messages: readonly HistoryRetryMessage[],
 	): Promise<HistoryEntry | null>;
+	/**
+	 * 按行 id 把一行读回来(补丁已经并好),找不到回 `null`。`ts` 用来定位日文件。
+	 *
+	 * 重推那条路要先看见这一行才判得了闸,端点也据此回 404。
+	 */
+	findRow(rowId: string, ts: string): Promise<HistoryEntry | null>;
 	query(opts: HistoryQuery): Promise<HistoryEntry[]>;
 	aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]>;
 	imageDir(): string;
@@ -372,6 +378,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		const job = tail.then(() => recordSerialized(input));
 		tail = job.catch(() => {});
 		return job;
+	}
+
+	async function findRow(rowId: string, ts: string): Promise<HistoryEntry | null> {
+		return (await readJsonl(dayFile(ts))).find((r) => r.id === rowId) ?? null;
 	}
 
 	async function appendToRowSerialized(
@@ -686,6 +696,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	return {
 		record,
 		appendToRow,
+		findRow,
 		query,
 		aggregateDaily,
 		imageDir: () => imgRoot,

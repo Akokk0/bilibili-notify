@@ -41,6 +41,35 @@ export function featureToPushKind(feature: FeatureKey): PushKind {
 }
 
 /**
+ * 推送类型 → 它归哪把特性键管 —— {@link featureToPushKind} 的反向。
+ *
+ * 一条历史行记的是 `PushKind`,而路由、闸、订阅里的开关认的是 `FeatureKey`;人工重推
+ * 要复检「这个目标还在不在这条路由里」,就得从行上那个 kind 翻回那把键。
+ *
+ * `live` 与 `live-ongoing` 并回同一把:开播与周期「正在直播」在历史上是两件事,在配置上
+ * 共用一把键和同一份目标(所以这个方向**不是**单射,翻不回「是开播还是复推」)。
+ */
+export function pushKindToFeature(kind: PushKind): FeatureKey {
+	switch (kind) {
+		case "dynamic":
+			return "dynamic";
+		case "live":
+		case "live-ongoing":
+			return "live";
+		case "live-end":
+			return "liveEnd";
+		case "guard":
+			return "liveGuardBuy";
+		case "sc":
+			return "superchat";
+		case "special-danmaku":
+			return "specialDanmaku";
+		case "special-enter":
+			return "specialUserEnter";
+	}
+}
+
+/**
  * 一行历史的四态:
  * - delivered:全部消息都到了
  * - partial:本体到了,附加项(@全体 / 图集 / 词云 / 总结)或本体的后续分条没到
