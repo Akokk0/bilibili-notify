@@ -780,7 +780,8 @@ function ResizeHandle({
 	onDown: (e: React.PointerEvent) => void;
 }) {
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: 指针专用把手,键盘那条路在检查器
+		// 指针专用把手 —— 键盘那条路在检查器里(那儿有数字框直接改跨列/跨行)。
+		// `aria-hidden` 让它对读屏器整个消失,a11y 那条规则因此不再拦它,不必再挂 ignore。
 		<span
 			aria-hidden="true"
 			data-testid={`resize-${side}-${blockId}`}

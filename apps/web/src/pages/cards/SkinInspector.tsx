@@ -22,12 +22,14 @@ import {
 	cardSkinBytes,
 } from "@bilibili-notify/internal/constants";
 import {
+	AddFileButton,
 	Btn,
 	ConfirmDialog,
 	EmptyNote,
 	ErrorNote,
 	HintNote,
 	Icon,
+	IconButton,
 	Pill,
 	Section,
 	Toggle,
@@ -39,6 +41,7 @@ import type { CardSkinAiDone, CardSkinAiHandlers } from "../../services/cardSkin
 import { type CssAiBinding, CssAiSlot } from "./CssAiSlot";
 import { CssEditor } from "./CssEditor";
 import type { CardSkinAiReadiness } from "./card-skin-ai";
+import { INSERT_CHIP } from "./css-value-shapes";
 import type { SkinSelection } from "./SkinCanvas";
 import {
 	blockOf,
@@ -490,7 +493,7 @@ function HtmlSection({
 							data-bn="chip"
 							title={`{${f.path}} —— ${f.label}`}
 							onClick={() => onChange(appendField(value, f.path, f.type === "image"))}
-							className="flex items-center gap-1 rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+							className={`flex items-center gap-1 ${INSERT_CHIP}`}
 						>
 							<span>{f.label}</span>
 							<span className="font-mono text-bn-text-tertiary">{f.type}</span>
@@ -862,15 +865,12 @@ function KnobRow({
 					placeholder="accent"
 				/>
 				{ro ? null : (
-					<Btn
+					<IconButton
 						size="sm"
-						variant="ghost"
-						title="删掉这枚旋钮"
+						label="删掉这枚旋钮"
+						icon={<Icon.trash size={12} />}
 						onClick={() => onKnobs.onRemove(knob.key)}
-					>
-						<Icon.trash size={13} />
-						<span className="sr-only">删掉这枚旋钮</span>
-					</Btn>
+					/>
 				)}
 			</div>
 			<TInput
@@ -1008,15 +1008,12 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 						placeholder="圆"
 					/>
 					{ro || knob.options.length <= 1 ? null : (
-						<Btn
+						<IconButton
 							size="sm"
-							variant="ghost"
-							title="删掉这个候选"
+							label="删掉这个候选"
+							icon={<Icon.trash size={12} />}
 							onClick={() => onKnobs.onOptionRemove(knob.key, i)}
-						>
-							<Icon.trash size={12} />
-							<span className="sr-only">删掉这个候选</span>
-						</Btn>
+						/>
 					)}
 				</div>
 			))}
@@ -1126,40 +1123,25 @@ function AssetSection({
 									{name}
 								</span>
 								{on ? (
-									<Btn
+									<IconButton
 										size="sm"
-										variant="ghost"
-										title="删掉这份资产"
+										label="删掉这份资产"
+										icon={<Icon.trash size={12} />}
 										onClick={() => on.onDeleteAsset(name)}
-									>
-										<Icon.trash size={12} />
-										<span className="sr-only">删掉这份资产</span>
-									</Btn>
+									/>
 								) : null}
 							</div>
 						))
 					)}
 
 					{on ? (
-						<label className="flex items-center gap-2 text-bn-2xs text-bn-text-tertiary">
-							<span>传一份</span>
-							<input
-								type="file"
-								accept=".png,.jpg,.jpeg,.webp,.gif,.woff2,.woff,.ttf,.otf"
-								aria-label="传一份资产"
-								className="sr-only"
-								onChange={(e) => {
-									const file = e.target.files?.[0];
-									// 传完把 input 清空:同一个文件再传一次也要触发 change(重名会被拒,
-									// 但「删了再传回来」是真实路径)。
-									e.target.value = "";
-									if (file) on.onUpload(file);
-								}}
-							/>
-							<Btn size="sm" variant="outline" onClick={(e) => pickFile(e.currentTarget)}>
-								<Icon.plus size={12} /> 选个文件
-							</Btn>
-						</label>
+						<AddFileButton
+							accept=".png,.jpg,.jpeg,.webp,.gif,.woff2,.woff,.ttf,.otf"
+							onFile={(file) => file && on.onUpload(file)}
+							className="flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-bn-2xs"
+						>
+							<Icon.plus size={12} /> 传一份资产
+						</AddFileButton>
 					) : null}
 
 					{uploadError ? <ErrorNote size="sm">{uploadError}</ErrorNote> : null}
@@ -1195,15 +1177,12 @@ function AssetSection({
 								ariaLabel="用哪份资产"
 							/>
 							{on ? (
-								<Btn
+								<IconButton
 									size="sm"
-									variant="ghost"
-									title="删掉这一行"
+									label="删掉这一行"
+									icon={<Icon.trash size={12} />}
 									onClick={() => on.onRemoveFont(i)}
-								>
-									<Icon.trash size={12} />
-									<span className="sr-only">删掉这一行</span>
-								</Btn>
+								/>
 							) : null}
 						</div>
 					))}
@@ -1226,9 +1205,4 @@ function AssetSection({
 			</Section>
 		</>
 	);
-}
-
-/** 「选个文件」那颗钮点到的是同一个 `<label>` 里那个藏起来的 `<input type="file">`。 */
-function pickFile(btn: HTMLElement): void {
-	btn.closest("label")?.querySelector("input")?.click();
 }

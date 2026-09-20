@@ -211,10 +211,14 @@ function indentOf(css: string, at: number): string {
 /**
  * 加一条声明,跟着这一块的写法走:多行块另起一行、缩进照最后一条声明,插在它那一行
  * (含行尾注释)之后;单行块紧贴最后一条补在后面。缺分号的先补上。
+ *
+ * **整段只 parse 一遍**:空的多行块那一支还要借别的规则的缩进,从前它自己再 parse 一次,
+ * 于是一次「加上」最多要把同一段 CSS(上限 16KB)解析三遍,而三遍的结果逐字节相同。
  */
 export function addDecl(css: string, ruleIndex: number, prop: string, value: string): string {
-	const rule = ruleAt(css, ruleIndex);
-	if (!rule) return css;
+	const rules = readRules(css);
+	const rule = rules?.[ruleIndex];
+	if (!rules || !rule) return css;
 	const { block, decls } = rule;
 	const inner = css.slice(block.start + 1, block.end - 1);
 	const multiline = inner.includes("\n");
@@ -232,7 +236,7 @@ export function addDecl(css: string, ruleIndex: number, prop: string, value: str
 
 	if (!last) {
 		// 空的多行块:缩进跟着别的规则走,没有别的就一个制表符。
-		const sibling = readRules(css)?.find((r) => r.decls.length > 0)?.decls[0];
+		const sibling = rules.find((r) => r.decls.length > 0)?.decls[0];
 		const indent = sibling ? indentOf(css, sibling.whole.start) : "\t";
 		return `${css.slice(0, block.start + 1)}\n${indent}${prop}: ${value};${css.slice(block.start + 1)}`;
 	}

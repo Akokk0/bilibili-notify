@@ -53,6 +53,43 @@ export function gridLimits(grid: Grid): Record<keyof Grid, { min: number; max: n
 }
 
 /**
+ * 换掉其中一张卡。**这套皮肤没定义这种卡就原样返回**(出图跟着出厂默认),`fn` 原样
+ * 把卡交回来也一样 —— 回一份内容相同的新清单的话,脏标只看引用,主人会看到「有未保存
+ * 的改动」凭空亮起来(同 {@link mapKnob} 那条)。
+ */
+function mapCard(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	fn: (card: Card) => Card,
+): CardSkinManifest {
+	const card = manifest.cards[kind];
+	if (!card) return manifest;
+	const next = fn(card);
+	if (next === card) return manifest;
+	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+}
+
+/**
+ * 换掉这张卡里的一个块。这张卡里没有这个块就原样返回,空操作同样不换引用
+ * (理由见 {@link mapCard})。
+ */
+function mapBlock(
+	manifest: CardSkinManifest,
+	kind: CardSkinKind,
+	blockId: string,
+	fn: (block: Block) => Block,
+): CardSkinManifest {
+	return mapCard(manifest, kind, (card) => {
+		const at = card.blocks.findIndex((b) => b.id === blockId);
+		const block = card.blocks[at];
+		if (block === undefined) return card;
+		const next = fn(block);
+		if (next === block) return card;
+		return { ...card, blocks: card.blocks.map((b, i) => (i === at ? next : b)) };
+	});
+}
+
+/**
  * 改一个块的位置。`span` 会跟着起始列收 —— 把块往右拖到第 10 列时,原来跨 12 列的
  * `span` 必须缩到 3,否则清洗器那头直接判它越界,主人看到的是一句「保存失败」而不是
  * 「刚才那一下把它挤出去了」。
@@ -63,10 +100,7 @@ export function setBlockGrid(
 	blockId: string,
 	patch: Partial<Grid>,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card) return manifest;
-	const blocks = card.blocks.map((b) => {
-		if (b.id !== blockId) return b;
+	return mapBlock(manifest, kind, blockId, (b) => {
 		const merged = { ...b.grid, ...patch };
 		// **列必须先夹,再拿夹过的列去算 `span` 的上界。** `gridLimits` 的 `span.max` 是
 		// `12 - column + 1`,拿未夹的列去算,手输一个 13 就让上界变成 0、14 变成 -1 ——
@@ -92,7 +126,6 @@ export function setBlockGrid(
 		if (z > 0) grid.z = z;
 		return { ...b, grid };
 	});
-	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
 
 /** 一个块占的行区间与列区间(都是闭区间)。 */
@@ -275,12 +308,29 @@ function appendBlock(
 		span: CARD_SKIN_LIMITS.columns,
 	}) as Block;
 	return {
-		manifest: {
-			...manifest,
-			cards: { ...manifest.cards, [kind]: { ...card, blocks: [...card.blocks, block] } },
-		},
+		manifest: mapCard(manifest, kind, (c) => ({ ...c, blocks: [...c.blocks, block] })),
 		blockId,
 	};
+}
+
+/**
+ * 取一个**没被占着**的名字:没人用就用 `base`,占了就一路试 `base-2` / `base-3`。
+ *
+ * 块 id、旋钮 key、下拉候选的值三处共用这一份 —— 三者写进去的都是 schema 有形状要求的
+ * 字段,撞名在装包门那头一律判「重复」,而从前三份各写各的、边界还各不相同。
+ *
+ * `maxLen` 是**连后缀在内**的上限(只有块 id 有:`^[a-z][a-z0-9-]{0,31}$`),截的是前半截
+ * 而不是后缀 —— 把 `-2` 截掉就白让了。洗非法字符那一步留在调用方(那条规矩也只有块 id 有)。
+ * 候选是无穷的,所以一定挑得出一个。
+ */
+function uniqueName(base: string, taken: ReadonlySet<string>, maxLen?: number): string {
+	if (!taken.has(base)) return base;
+	for (let n = 2; ; n += 1) {
+		const suffix = `-${n}`;
+		const head = maxLen === undefined ? base : base.slice(0, maxLen - suffix.length);
+		const next = `${head}${suffix}`;
+		if (!taken.has(next)) return next;
+	}
 }
 
 /**
@@ -288,7 +338,7 @@ function appendBlock(
  *
  * 内置块名不全合规(2026-09-18 起有驼峰的 `forwardCount` 这类),而 id 是**存进皮肤包**的
  * 东西,门在 schema 那头(`^[a-z][a-z0-9-]{0,31}$`)—— 所以这里先洗一遍,不靠目录里的
- * 名字恰好都是小写。撞名也得让开:两个同 id 的块在装包门那里直接判「重复」。
+ * 名字恰好都是小写。让开撞名那半归 {@link uniqueName}。
  */
 function nextBlockId(card: Card, base: string): string {
 	const clean =
@@ -297,14 +347,7 @@ function nextBlockId(card: Card, base: string): string {
 			.replace(/[^a-z0-9-]/g, "-")
 			.replace(/^[^a-z]+/, "")
 			.slice(0, 32) || "block";
-	const taken = new Set(card.blocks.map((b) => b.id));
-	if (!taken.has(clean)) return clean;
-	// 候选比块数多(块数已被 `canAddBlock` 挡在上限以下),所以一定能挑出一个。
-	for (let n = 2; ; n += 1) {
-		const suffix = `-${n}`;
-		const next = `${clean.slice(0, 32 - suffix.length)}${suffix}`;
-		if (!taken.has(next)) return next;
-	}
+	return uniqueName(clean, new Set(card.blocks.map((b) => b.id)), 32);
 }
 
 /**
@@ -316,10 +359,11 @@ export function removeBlock(
 	kind: CardSkinKind,
 	blockId: string,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
-	const blocks = card.blocks.filter((b) => b.id !== blockId);
-	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+	return mapCard(manifest, kind, (card) =>
+		card.blocks.some((b) => b.id === blockId)
+			? { ...card, blocks: card.blocks.filter((b) => b.id !== blockId) }
+			: card,
+	);
 }
 
 /**
@@ -338,34 +382,34 @@ export function setFrame(
 		bleedColor?: string;
 	},
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card) return manifest;
-	const L = CARD_SKIN_LIMITS;
-	const next: Card = { ...card };
-	if (patch.width !== undefined) next.width = clampInt(patch.width, L.width.min, L.width.max);
-	if (patch.gapRow !== undefined || patch.gapColumn !== undefined) {
-		const row = clampInt(patch.gapRow ?? card.gap?.row ?? 0, L.gap.min, L.gap.max);
-		const column = clampInt(patch.gapColumn ?? card.gap?.column ?? 0, L.gap.min, L.gap.max);
-		const gap: NonNullable<Card["gap"]> = {};
-		if (row > 0) gap.row = row;
-		if (column > 0) gap.column = column;
-		if (Object.keys(gap).length > 0) next.gap = gap;
-		else delete next.gap;
-	}
-	if (patch.bleedSize !== undefined || patch.bleedColor !== undefined) {
-		const size = clampInt(patch.bleedSize ?? card.bleed?.size ?? 0, L.bleed.min, L.bleed.max);
-		// 单改色而这张卡还没有出血:什么都不做。凭空造一圈出来不是主人按那个色块的意思。
-		if (size > 0) {
-			next.bleed = {
-				size,
-				// schema 里 size 与 color 是一套,给了宽度就得连色一起落。出厂黑是**刻意挑
-				// 一个一眼就看得见的** —— 预览是实时的,色不对当场能改;挑白的话与那个
-				// 「卡外一圈白边」的老毛病长得一模一样,反而会被当成 bug。
-				color: patch.bleedColor ?? card.bleed?.color ?? "#000000",
-			};
-		} else delete next.bleed;
-	}
-	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+	return mapCard(manifest, kind, (card) => {
+		const L = CARD_SKIN_LIMITS;
+		const next: Card = { ...card };
+		if (patch.width !== undefined) next.width = clampInt(patch.width, L.width.min, L.width.max);
+		if (patch.gapRow !== undefined || patch.gapColumn !== undefined) {
+			const row = clampInt(patch.gapRow ?? card.gap?.row ?? 0, L.gap.min, L.gap.max);
+			const column = clampInt(patch.gapColumn ?? card.gap?.column ?? 0, L.gap.min, L.gap.max);
+			const gap: NonNullable<Card["gap"]> = {};
+			if (row > 0) gap.row = row;
+			if (column > 0) gap.column = column;
+			if (Object.keys(gap).length > 0) next.gap = gap;
+			else delete next.gap;
+		}
+		if (patch.bleedSize !== undefined || patch.bleedColor !== undefined) {
+			const size = clampInt(patch.bleedSize ?? card.bleed?.size ?? 0, L.bleed.min, L.bleed.max);
+			// 单改色而这张卡还没有出血:什么都不做。凭空造一圈出来不是主人按那个色块的意思。
+			if (size > 0) {
+				next.bleed = {
+					size,
+					// schema 里 size 与 color 是一套,给了宽度就得连色一起落。出厂黑是**刻意挑
+					// 一个一眼就看得见的** —— 预览是实时的,色不对当场能改;挑白的话与那个
+					// 「卡外一圈白边」的老毛病长得一模一样,反而会被当成 bug。
+					color: patch.bleedColor ?? card.bleed?.color ?? "#000000",
+				};
+			} else delete next.bleed;
+		}
+		return next;
+	});
 }
 
 /**
@@ -388,16 +432,16 @@ export function setColumns(
 	kind: CardSkinKind,
 	columns: CardSkinColumn[] | undefined,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card) return manifest;
-	const next: Card = { ...card };
-	if (columns === undefined) delete next.columns;
-	else {
-		next.columns = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) =>
-			normalizeColumn(columns[i] ?? { fr: 1 }),
-		);
-	}
-	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+	return mapCard(manifest, kind, (card) => {
+		const next: Card = { ...card };
+		if (columns === undefined) delete next.columns;
+		else {
+			next.columns = Array.from({ length: CARD_SKIN_LIMITS.columns }, (_, i) =>
+				normalizeColumn(columns[i] ?? { fr: 1 }),
+			);
+		}
+		return next;
+	});
 }
 
 /** 一列的宽度夹回门里。`px` 收两位小数 —— 175 / 4 = 43.75 是上舰卡徽章的真实数字。 */
@@ -419,16 +463,12 @@ export function setBlockCss(
 	blockId: string,
 	css: string,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
-	const blocks = card.blocks.map((b) => {
-		if (b.id !== blockId) return b;
+	return mapBlock(manifest, kind, blockId, (b) => {
 		const next = { ...b };
 		if (css.trim() === "") delete next.css;
 		else next.css = css;
 		return next;
 	});
-	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
 
 /** 改卡片外框的 CSS(根块两层)。空白同样删键,理由见 {@link setBlockCss}。 */
@@ -437,12 +477,12 @@ export function setFrameCss(
 	kind: CardSkinKind,
 	css: string,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card) return manifest;
-	const next: Card = { ...card };
-	if (css.trim() === "") delete next.css;
-	else next.css = css;
-	return { ...manifest, cards: { ...manifest.cards, [kind]: next } };
+	return mapCard(manifest, kind, (card) => {
+		const next: Card = { ...card };
+		if (css.trim() === "") delete next.css;
+		else next.css = css;
+		return next;
+	});
 }
 
 /**
@@ -455,16 +495,12 @@ export function setBlockShowIf(
 	blockId: string,
 	showIf: string | undefined,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	if (!card?.blocks.some((b) => b.id === blockId)) return manifest;
-	const blocks = card.blocks.map((b) => {
-		if (b.id !== blockId) return b;
+	return mapBlock(manifest, kind, blockId, (b) => {
 		const next = { ...b };
 		if (showIf === undefined || showIf === "") delete next.showIf;
 		else next.showIf = showIf;
 		return next;
 	});
-	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
 }
 
 /**
@@ -479,11 +515,7 @@ export function setBlockHtml(
 	blockId: string,
 	html: string,
 ): CardSkinManifest {
-	const card = manifest.cards[kind];
-	const target = card?.blocks.find((b) => b.id === blockId);
-	if (!card || target?.kind !== "custom") return manifest;
-	const blocks = card.blocks.map((b) => (b.id === blockId ? { ...b, html } : b));
-	return { ...manifest, cards: { ...manifest.cards, [kind]: { ...card, blocks } } };
+	return mapBlock(manifest, kind, blockId, (b) => (b.kind === "custom" ? { ...b, html } : b));
 }
 
 /**
@@ -600,7 +632,8 @@ function withKnobs(manifest: CardSkinManifest, knobs: Knob[]): CardSkinManifest 
 export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
 	const knobs = knobsOf(manifest);
 	if (knobs.length >= CARD_SKIN_KNOB_LIMITS.maxKnobs) return null;
-	const key = nextKnobKey(knobs, "knob");
+	// 撞了不让开的话,两枚同 key 的旋钮注的是同一个变量,装包门直接判重复。
+	const key = uniqueName("knob", new Set(knobs.map((k) => k.key)));
 	return {
 		manifest: withKnobs(manifest, [
 			...knobs,
@@ -608,16 +641,6 @@ export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
 		]),
 		key,
 	};
-}
-
-/** 让开已经占着的 key。同 {@link nextBlockId}:撞了不换名的话装包门直接判重复。 */
-function nextKnobKey(knobs: Knob[], base: string): string {
-	const used = new Set(knobs.map((k) => k.key));
-	if (!used.has(base)) return base;
-	for (let n = 2; ; n++) {
-		const candidate = `${base}-${n}`;
-		if (!used.has(candidate)) return candidate;
-	}
 }
 
 export function removeKnob(manifest: CardSkinManifest, key: string): CardSkinManifest {
@@ -813,9 +836,8 @@ type KnobOption = Extract<Knob, { type: "select" }>["options"][number];
 export function addKnobOption(manifest: CardSkinManifest, key: string): CardSkinManifest {
 	return mapKnob(manifest, key, (k) => {
 		if (k.type !== "select" || k.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions) return k;
-		const used = new Set(k.options.map((o) => o.value));
-		let value = "option";
-		for (let n = 2; used.has(value); n++) value = `option-${n}`;
+		// 候选的值也得让开:两个同值的候选在装包门那里同样判重复。
+		const value = uniqueName("option", new Set(k.options.map((o) => o.value)));
 		return { ...k, options: [...k.options, { value, label: `候选 ${k.options.length + 1}` }] };
 	});
 }

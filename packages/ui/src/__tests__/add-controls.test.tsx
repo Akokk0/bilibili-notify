@@ -14,7 +14,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ArrayEditor } from "../form-controls";
-import { AddButton, AddCard } from "../index";
+import { AddButton, AddCard, AddFileButton } from "../index";
 
 afterEach(cleanup);
 
@@ -125,6 +125,76 @@ describe("AddCard", () => {
 		render(<AddCard label="x" hint="y" disabled onClick={onClick} />);
 		fireEvent.click(btn());
 		expect(onClick).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * **jsdom 里装不出「挑同一份文件第二次」这件事**,所以这里自己把浏览器那条规矩摆出来。
+ *
+ * 两处都指望不上:RTL 的 `fireEvent` 用 `defineProperty` 把 `files` 盖在元素上,而原生的
+ * `value` getter 读的是 jsdom 内部那份文件表 —— 于是不管组件重没重置 `value`,测出来的
+ * `input.value` 恒是空串、`fireEvent.change` 也照发不误。不装这一层的话,这条用例在修之前
+ * 就是绿的(「测试绿了,但不是因为你测的那件事」)。
+ *
+ * 装上之后 `value` 就是浏览器里那三条规矩:①「现在挑着哪份文件」;② 只准被设成空串
+ * (同 HTML 规范),而且**清了 `files` 跟着空**;③ 挑文件时**值没变就不发 change** ——
+ * 那正是「同一份文件传不了第二次」的成因。②也是一条真闸:先清再读,读到的就是空。
+ */
+function browserFilePicker(input: HTMLInputElement): (file: File) => void {
+	let picked = "";
+	const setFiles = (files: File[]) => {
+		Object.defineProperty(input, "files", { configurable: true, writable: true, value: files });
+	};
+	Object.defineProperty(input, "value", {
+		configurable: true,
+		get: () => picked,
+		set: (next: string) => {
+			if (next !== "") throw new Error("file input 的 value 只能被设成空串");
+			picked = "";
+			setFiles([]);
+		},
+	});
+	return (file) => {
+		// 值没变(同一份文件,上一次挑完没人清)—— 浏览器什么都不做。
+		if (picked === file.name) return;
+		picked = file.name;
+		setFiles([file]);
+		fireEvent.change(input, {});
+	};
+}
+
+describe("AddFileButton", () => {
+	it("同一份文件挑两次都报得上来 —— 传完把 input 的 value 清掉", () => {
+		const onFile = vi.fn();
+		render(
+			<AddFileButton accept=".zip" onFile={onFile}>
+				传一个包
+			</AddFileButton>,
+		);
+		const pick = browserFilePicker(screen.getByLabelText("传一个包") as HTMLInputElement);
+		const same = new File(["x"], "same.zip");
+
+		pick(same);
+		pick(same);
+
+		// 「删了再传回来」是真实路径:传上去被拒(重名 / 太大)之后原样再传一次也是。
+		expect(onFile).toHaveBeenCalledTimes(2);
+		expect(onFile).toHaveBeenNthCalledWith(2, same);
+	});
+
+	it("先把文件取出来再清 value —— 反过来的话清空会连 `files` 一起带走", () => {
+		const onFile = vi.fn();
+		render(
+			<AddFileButton accept=".zip" onFile={onFile}>
+				传一个包
+			</AddFileButton>,
+		);
+		const pick = browserFilePicker(screen.getByLabelText("传一个包") as HTMLInputElement);
+		const file = new File(["x"], "a.zip");
+
+		pick(file);
+
+		expect(onFile).toHaveBeenCalledWith(file);
 	});
 });
 

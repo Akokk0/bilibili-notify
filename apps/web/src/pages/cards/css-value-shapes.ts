@@ -31,6 +31,17 @@ export const LENGTH_UNITS: ReadonlyArray<{ value: string; label: string }> = [
 	{ value: "", label: "无" },
 ];
 
+/**
+ * 「点一下往框里填一段」那种小胶囊的说法 —— 挂点胶囊、属性候选、自定义块的字段胶囊,
+ * 三处说的是同一句话。写死三份的话,改一次配色就会漂出两种小胶囊并排摆着。
+ *
+ * **刻意不套 `ToneChip`**:那件自带 `data-bn="btn"`、说的是「一排里选一个」(选中态 +
+ * 实色边),悬停语义与这里的「按一下,内容进框」不是一回事 —— 换过去是换观感,不是复用。
+ * 布局(flex / gap)留在摆放处:胶囊里摆一格还是两格是位置,不算漂移。
+ */
+export const INSERT_CHIP =
+	"rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink";
+
 export const BORDER_STYLES: ReadonlyArray<{ value: string; label: string }> = [
 	{ value: "solid", label: "实线" },
 	{ value: "dashed", label: "虚线" },

@@ -460,6 +460,10 @@ export interface AddFileButtonProps {
  * 「点这里挑个文件上传」—— {@link AddButton} 的 file-input 变体:同一份虚线空位
  * 语汇,壳是 `<label>` 裹一个隐藏的 `<input type="file">`。收编前图库格与字体钮
  * 各手写一份,hover 组合逐字符相同。上传中把内容换成一句话,input 同时禁用。
+ *
+ * **交出去之后把 `value` 清空**:浏览器只在「挑的文件变了」时才发 change,不清的话同一
+ * 份文件挑第二次**点了没反应**(传上去被重名 / 体积拒掉、删了再传回来,都是真实路径)。
+ * 清空会连 `files` 一起清掉,所以**先把文件取出来再清**。
  */
 export function AddFileButton({
 	accept,
@@ -479,7 +483,11 @@ export function AddFileButton({
 				accept={accept}
 				className="sr-only"
 				disabled={uploading}
-				onChange={(e) => onFile(e.target.files?.[0] ?? undefined)}
+				onChange={(e) => {
+					const file = e.target.files?.[0] ?? undefined;
+					e.target.value = "";
+					onFile(file);
+				}}
 			/>
 		</label>
 	);

@@ -46,6 +46,7 @@ import {
 	BORDER_STYLES,
 	COMMON_PROPS,
 	formatShape,
+	INSERT_CHIP,
 	LENGTH_UNITS,
 	propLabel,
 	shapeOf,
@@ -165,7 +166,7 @@ function Structure({
 						data-bn="chip"
 						title={`[data-bn="${name}"] —— ${human}`}
 						onClick={() => onChange(addRule(css, `[data-bn="${name}"]`))}
-						className="flex items-center gap-1 rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+						className={`flex items-center gap-1 ${INSERT_CHIP}`}
 					>
 						<span>{shortLabel(human)}</span>
 						<span className="font-mono text-bn-text-tertiary">{name}</span>
@@ -477,7 +478,7 @@ function AddDeclRow({ onAdd }: { onAdd: (prop: string, value: string) => void })
 							type="button"
 							data-bn="chip"
 							onClick={() => setProp(p)}
-							className="rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+							className={INSERT_CHIP}
 						>
 							{propLabel(p)} <span className="font-mono text-bn-text-tertiary">{p}</span>
 						</button>

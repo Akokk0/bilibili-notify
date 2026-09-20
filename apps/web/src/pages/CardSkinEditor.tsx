@@ -208,6 +208,14 @@ export default function CardSkinEditor() {
 				knobsError(draft) ??
 				fontsError(draft, assetsQuery.data?.assets ?? []));
 
+	/**
+	 * 改草稿的那**唯一一口**。清单还没到(`draft === null`)时什么都不做 —— 这一句从前在
+	 * 每个口子里各抄一遍,二十几处里真正的差别(调的是哪个 op)反倒埋在那串括号中间,而
+	 * 新开一个口抄漏它就是一发运行时崩。
+	 */
+	const edit = (fn: (m: CardSkinManifest) => CardSkinManifest) =>
+		setDraft((d) => (d === null ? d : fn(d)));
+
 	/** 添块的收尾:换草稿 + 选中新块。两种添法(内置 / 自定义)只差前半句。 */
 	const landBlock = (added: { manifest: CardSkinManifest; blockId: string } | null) => {
 		if (!added) return;
@@ -366,8 +374,7 @@ export default function CardSkinEditor() {
 									onGrid={
 										readOnly
 											? undefined
-											: (blockId, patch) =>
-													setDraft((d) => (d === null ? d : dropBlockGrid(d, kind, blockId, patch)))
+											: (blockId, patch) => edit((d) => dropBlockGrid(d, kind, blockId, patch))
 									}
 									// 只读的皮肤连口都不给:钮禁着还留在那儿,主人只会一路点到保存那步才知道改不了。
 									onAdopt={
@@ -404,49 +411,28 @@ export default function CardSkinEditor() {
 									kind={kind}
 									ai={ai}
 									selection={selection}
-									onGrid={(blockId, patch) =>
-										setDraft((d) => (d === null ? d : setBlockGrid(d, kind, blockId, patch)))
-									}
-									onShowIf={(blockId, path) =>
-										setDraft((d) => (d === null ? d : setBlockShowIf(d, kind, blockId, path)))
-									}
-									onHtml={(blockId, html) =>
-										setDraft((d) => (d === null ? d : setBlockHtml(d, kind, blockId, html)))
-									}
-									onCss={(blockId, css) =>
-										setDraft((d) => (d === null ? d : setBlockCss(d, kind, blockId, css)))
-									}
-									onFrameCss={(css) =>
-										setDraft((d) => (d === null ? d : setFrameCss(d, kind, css)))
-									}
-									onMeta={
-										readOnly
-											? undefined
-											: (patch) => setDraft((d) => (d === null ? d : setSkinMeta(d, patch)))
-									}
+									onGrid={(blockId, patch) => edit((d) => setBlockGrid(d, kind, blockId, patch))}
+									onShowIf={(blockId, path) => edit((d) => setBlockShowIf(d, kind, blockId, path))}
+									onHtml={(blockId, html) => edit((d) => setBlockHtml(d, kind, blockId, html))}
+									onCss={(blockId, css) => edit((d) => setBlockCss(d, kind, blockId, css))}
+									onFrameCss={(css) => edit((d) => setFrameCss(d, kind, css))}
+									onMeta={readOnly ? undefined : (patch) => edit((d) => setSkinMeta(d, patch))}
 									onKnobs={
 										readOnly
 											? undefined
 											: {
-													onAdd: () =>
-														setDraft((d) => (d === null ? d : (addKnob(d)?.manifest ?? d))),
-													onRemove: (key) => setDraft((d) => (d === null ? d : removeKnob(d, key))),
-													onDecl: (key, patch) =>
-														setDraft((d) => (d === null ? d : setKnobDecl(d, key, patch))),
-													onType: (key, type) =>
-														setDraft((d) => (d === null ? d : setKnobType(d, key, type))),
-													onDefault: (key, value) =>
-														setDraft((d) => (d === null ? d : setKnobDefault(d, key, value))),
-													onNumber: (key, patch) =>
-														setDraft((d) => (d === null ? d : setKnobNumber(d, key, patch))),
-													onSwitch: (key, patch) =>
-														setDraft((d) => (d === null ? d : setKnobSwitch(d, key, patch))),
-													onOptionAdd: (key) =>
-														setDraft((d) => (d === null ? d : addKnobOption(d, key))),
+													onAdd: () => edit((d) => addKnob(d)?.manifest ?? d),
+													onRemove: (key) => edit((d) => removeKnob(d, key)),
+													onDecl: (key, patch) => edit((d) => setKnobDecl(d, key, patch)),
+													onType: (key, type) => edit((d) => setKnobType(d, key, type)),
+													onDefault: (key, value) => edit((d) => setKnobDefault(d, key, value)),
+													onNumber: (key, patch) => edit((d) => setKnobNumber(d, key, patch)),
+													onSwitch: (key, patch) => edit((d) => setKnobSwitch(d, key, patch)),
+													onOptionAdd: (key) => edit((d) => addKnobOption(d, key)),
 													onOption: (key, index, patch) =>
-														setDraft((d) => (d === null ? d : setKnobOption(d, key, index, patch))),
+														edit((d) => setKnobOption(d, key, index, patch)),
 													onOptionRemove: (key, index) =>
-														setDraft((d) => (d === null ? d : removeKnobOption(d, key, index))),
+														edit((d) => removeKnobOption(d, key, index)),
 												}
 									}
 									assets={{
@@ -460,22 +446,18 @@ export default function CardSkinEditor() {
 											: {
 													onUpload: (file) => upload.mutate(file),
 													onDeleteAsset: (name) => removeAsset.mutate(name),
-													onAddFont: () => setDraft((d) => (d === null ? d : addFont(d))),
-													onFont: (index, patch) =>
-														setDraft((d) => (d === null ? d : setFont(d, index, patch))),
-													onRemoveFont: (index) =>
-														setDraft((d) => (d === null ? d : removeFont(d, index))),
+													onAddFont: () => edit((d) => addFont(d)),
+													onFont: (index, patch) => edit((d) => setFont(d, index, patch)),
+													onRemoveFont: (index) => edit((d) => removeFont(d, index)),
 												}
 									}
-									onFrame={(patch) => setDraft((d) => (d === null ? d : setFrame(d, kind, patch)))}
-									onColumns={(columns) =>
-										setDraft((d) => (d === null ? d : setColumns(d, kind, columns)))
-									}
+									onFrame={(patch) => edit((d) => setFrame(d, kind, patch))}
+									onColumns={(columns) => edit((d) => setColumns(d, kind, columns))}
 									onDropCard={
 										readOnly
 											? undefined
 											: () => {
-													setDraft((d) => (d === null ? d : dropCard(d, kind)));
+													edit((d) => dropCard(d, kind));
 													setSelection(null);
 												}
 									}
@@ -483,7 +465,7 @@ export default function CardSkinEditor() {
 										readOnly
 											? undefined
 											: (blockId) => {
-													setDraft((d) => (d === null ? d : removeBlock(d, kind, blockId)));
+													edit((d) => removeBlock(d, kind, blockId));
 													// 选中得跟着撤,不然检查器对着一个已经没了的块。
 													setSelection(null);
 												}

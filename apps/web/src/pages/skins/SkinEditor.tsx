@@ -900,8 +900,10 @@ const WALLPAPER_FIT_OPTIONS = [
 /**
  * 传一份文件进来的那一行。图与字体两处只差三样:标签、`accept`、无障碍名。
  *
- * **不用 `packages/ui` 的 `AddFileButton`**:那件把 input 藏进虚线 `<label>` 里做
- * 「空位卡片」的样子,也不重置 `value` —— 这两行要的是抽屉里紧挨着下拉的一条窄行。
+ * **不用 `packages/ui` 的 `AddFileButton`**:那件把 input 藏进虚线 `<label>` 里,长的是
+ * 「空位卡片」的样子;这两行要的是抽屉里紧挨着下拉的一条窄行 —— 原生 input 连着它自己那颗
+ * `file:` 钮,一眼看得出挑没挑过文件。(「它不重置 `value`」曾是第二条理由,已经不成立:
+ * 那条现在长在 `AddFileButton` 本体里。)
  */
 function UploadRow(props: {
 	label: string;
