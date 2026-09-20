@@ -8,8 +8,14 @@ import type { HistoryEntry, HistoryMessage } from "@bilibili-notify/internal";
  * 「本来有几条」「还有哪几条没到」都得按身份号数,不能按 `messages.length` 数。
  */
 
-/** 每一号最后那次尝试。键 = 身份号(`retryOf ?? 下标`)。 */
-function latestByIdentity(messages: readonly HistoryMessage[]): Map<number, HistoryMessage> {
+/**
+ * 每一号最后那次尝试。键 = 身份号(`retryOf ?? 下标`)。
+ *
+ * 🔴 **只此一份**:`computeStatus` 判四态、`unsentIndices` 数「还差哪几条」,靠的是同一条
+ * 判定(决策 16 明写它不能退化成「按 role 取最后一次」)。分成两份的话,一处改了另一处
+ * 不改,面板上的条数与行的颜色会对不上 —— 而两边都不会红(状态是写入时算好存盘的)。
+ */
+export function latestByIdentity(messages: readonly HistoryMessage[]): Map<number, HistoryMessage> {
 	const latest = new Map<number, HistoryMessage>();
 	for (const [i, m] of messages.entries()) latest.set(m.retryOf ?? i, m);
 	return latest;

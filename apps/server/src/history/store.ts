@@ -24,6 +24,7 @@ import {
 	PushKindSchema,
 } from "@bilibili-notify/internal";
 import { RecencyTable } from "../util/recency-table.js";
+import { latestByIdentity } from "./repush.js";
 import type { RepushStore } from "./repush-store.js";
 
 /**
@@ -152,9 +153,7 @@ function zeroCounts(): Record<PushKind, number> {
  */
 export function computeStatus(targetId: string | null, messages: HistoryMessage[]): PushStatus {
 	if (targetId === null) return "no-targets";
-	// 按序扫一遍,后来的盖掉先前的 —— 留下的就是每一号最后那次尝试。
-	const latest = new Map<number, HistoryMessage>();
-	for (const [i, m] of messages.entries()) latest.set(m.retryOf ?? i, m);
+	const latest = latestByIdentity(messages);
 	// 一号都没有的有目标行 = 什么都没发出去,不是「全到了」——`[].every` 恒真,不挡住
 	// 它,一行没有消息的行会顶着「已送达」进面板与今日 KPI。
 	//
