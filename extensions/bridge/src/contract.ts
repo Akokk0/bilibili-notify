@@ -220,8 +220,8 @@ export interface BridgeHelloFrame {
  * bot 名单**全量快照**,不是增量。
  *
  * 只有一种帧、且幂等,是刻意的:koishi 有 `login-added/removed/updated` 三个事件、
- * AstrBot 没有插件钩子只能轮询 `get_insts()` —— 两边都能轻松产出一份快照,而增量帧
- * 要求两边对齐顺序与丢帧语义。协议只规定「桥必须推」,不规定它怎么察觉。
+ * AstrBot 只有加载那一半有钩子(卸载没有),得靠轮询 `get_insts()` 比对 —— 两边都能轻松
+ * 产出一份快照,而增量帧要求两边对齐顺序与丢帧语义。协议只规定「桥必须推」,不规定它怎么察觉。
  */
 export interface BridgeBotsFrame {
 	type: "bots";

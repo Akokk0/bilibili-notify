@@ -151,7 +151,9 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 **是快照，不是增量。** bot 名单一有变化就整份重发，`bots: []` 合法（宿主里一个 bot 都没有）。
 
 协议只规定「你必须推」，不规定你怎么察觉：koishi 有 `login-added` / `login-removed` /
-`login-updated` 三个事件；AstrBot 没有插件钩子，轮询 `get_insts()` 比较一下再发即可。
+`login-updated` 三个事件；AstrBot 只有**加载**那一半有钩子（`@filter.on_platform_loaded`），
+**卸载那一半没有** —— `terminate_platform()` 只是把实例从表里摘掉，不触发任何东西。所以在
+AstrBot 上轮询 `get_insts()` 比对仍是唯一**完整**的那条路，钩子拿来做即时触发就好。
 
 > `botId` 要**跨重启稳定**。BN 把它记在推送连接里（一条连接就是你的一个 bot），换了就等于
 > 用户配的连接指向了一个不存在的 bot（BN 不会删连接，只会标成不可用）。
