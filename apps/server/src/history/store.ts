@@ -59,6 +59,15 @@ export interface HistoryRecordInput {
 	uavatarSnapshot?: string;
 }
 
+/**
+ * 人工重推补进来的一条。`retryOf` **必填** —— 这条路径只服务重推,而一条没说清楚
+ * 「补的是第几条」的重投会让四态算错(每一号只认它最后那次尝试)。
+ */
+export interface HistoryRetryMessage extends HistoryRecordMessage {
+	/** 补的是行里第几条(那一条在 `messages` 里的下标)。 */
+	retryOf: number;
+}
+
 interface HistoryQuery {
 	limit?: number;
 	since?: string;
@@ -92,6 +101,20 @@ export interface HistoryStore {
 	 * 返回合并后的整行。
 	 */
 	record(input: HistoryRecordInput): Promise<HistoryEntry>;
+	/**
+	 * 往**一行已知 id 的行**里补几条消息(人工重推,ADR-0017)。找不到那一行、或者一条
+	 * 都不补,回 `null` 且什么都不写。
+	 *
+	 * 为什么不能走 `record`:那条路靠内存里那张 `open` 表找行(键 `pushId|targetId`、
+	 * 上限 2000 行、重启即空),服务的是「同一次推送的几段消息陆续落地」那几秒到几分钟。
+	 * 人工重推是隔了几小时、甚至重启过一次之后的事 —— 那时 `open` 里早没有这一行,
+	 * `record` 会建出第二行来,面板上于是出现两行同一次推送。
+	 */
+	appendToRow(
+		rowId: string,
+		ts: string,
+		messages: readonly HistoryRetryMessage[],
+	): Promise<HistoryEntry | null>;
 	query(opts: HistoryQuery): Promise<HistoryEntry[]>;
 	aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]>;
 	imageDir(): string;
@@ -234,7 +257,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	}
 
 	async function reduceAll(
-		messages: HistoryRecordMessage[],
+		messages: readonly HistoryRecordMessage[],
 		rowId: string,
 		offset: number,
 		kind: PushKind,
@@ -347,6 +370,49 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 
 	function record(input: HistoryRecordInput): Promise<HistoryEntry> {
 		const job = tail.then(() => recordSerialized(input));
+		tail = job.catch(() => {});
+		return job;
+	}
+
+	async function appendToRowSerialized(
+		rowId: string,
+		ts: string,
+		messages: readonly HistoryRetryMessage[],
+	): Promise<HistoryEntry | null> {
+		if (messages.length === 0) return null;
+		await ensureDirs();
+		// 整份日文件读一遍。重推是低频的人工动作(一次点击),换来的是不依赖那张
+		// 重启即空的内存表 —— 而这条路径存在的理由正是「那张表里早没有这一行了」。
+		const path = dayFile(ts);
+		const base = (await readJsonl(path)).find((r) => r.id === rowId);
+		if (!base) return null;
+		const reduced = await reduceAll(messages, base.id, base.messages.length, base.kind);
+		// 补进来的图跟着**整行**的序号往后排(`reduceAll` 的 offset),盖不掉原来那几张。
+		const added = reduced.map((m, i) => ({ ...m, retryOf: messages[i]?.retryOf ?? 0 }));
+		const all = [...base.messages, ...added];
+		const merged = validated({
+			...base,
+			status: computeStatus(base.targetId, all),
+			messages: all,
+		});
+		// 🔴 写进**原行那一天**的文件。`parseLines` 的 `byId` 是单文件局部的,跨了日
+		// 文件就找不到亲、整条补丁被静默丢掉 —— 消息真发出去了,面板上什么都不变。
+		const patch = { patch: merged.id, status: merged.status, messages: added };
+		await writeFile(path, `${JSON.stringify(patch)}\n`, { flag: "a", encoding: "utf8" });
+		// 这一行要是还在内存表里(刚推完就点了重推),把它也更新掉 —— 否则同一次推送
+		// 后面那几段(词云 / 总结)落地时会拿旧的算 offset 与状态。
+		const key = `${merged.pushId}|${merged.targetId ?? "-"}`;
+		if (open.get(key)) open.set(key, merged);
+		opts.bus.emit("history-updated", merged);
+		return merged;
+	}
+
+	function appendToRow(
+		rowId: string,
+		ts: string,
+		messages: readonly HistoryRetryMessage[],
+	): Promise<HistoryEntry | null> {
+		const job = tail.then(() => appendToRowSerialized(rowId, ts, messages));
 		tail = job.catch(() => {});
 		return job;
 	}
@@ -619,6 +685,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 
 	return {
 		record,
+		appendToRow,
 		query,
 		aggregateDaily,
 		imageDir: () => imgRoot,
