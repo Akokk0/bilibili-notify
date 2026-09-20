@@ -853,3 +853,53 @@ describe("网格画布 — 只摆这一场的块,和出图一样紧", () => {
 		);
 	});
 });
+
+/**
+ * **行高印在行号旁边**(2026-09-20 主人问「大家占的行都一样多,为什么容器高度不一致」)。
+ *
+ * 真因是行轨道 `auto`、高度由内容撑(实测 SC 卡七行:54/31/16/82/39/26/52.8,而画布按 56
+ * 等高画出来是 392 对真卡的 300.8)。**画布的行不改成按真高度画** —— 那版 2026-09-18 做过
+ * 又撤回(ADR-0014 决策 6 的 🔗),而且**列稳行抖**:列宽只在改列定义 / 卡宽时变,行高改一个
+ * 字就变,画布会跟着预览一路跳。改成把真高度**说出来**:数字跳一下不影响布局。
+ *
+ * 量不到就只印行号 —— 退回那条路必须一直活着(预览还没出来、只读态、jsdom 里都走它)。
+ */
+describe("网格画布 · 行高印在行号旁", () => {
+	const card = manifest().cards.live;
+
+	const paint = (rowHeights: readonly number[] | null) =>
+		render(
+			<SkinCanvas
+				kind="live"
+				card={card}
+				selection={null}
+				onSelect={() => {}}
+				scene={CARD_PREVIEW_SCENES.live[0]?.id ?? ""}
+				rowHeights={rowHeights}
+			/>,
+		);
+
+	/** 行号列里那一格的全部文字。 */
+	const rowLabel = (n: number): string =>
+		document.querySelector(`[data-canvas-track="row"][data-canvas-index="${n}"]`)?.textContent ??
+		"";
+
+	it("量到行高 → 行号底下印出来", () => {
+		paint([54, 31, 16]);
+		expect(rowLabel(1)).toContain("r1");
+		expect(rowLabel(1)).toContain("54");
+		expect(rowLabel(2)).toContain("31");
+	});
+
+	it("量不到 → 只印行号,一个数字都不多", () => {
+		paint(null);
+		expect(rowLabel(1)).toBe("r1");
+	});
+
+	// 画布最后多画一条空行当新块的落点,它在真卡里**没有对应的轨道** —— 印一个凭空的数字
+	// 比不印更糟。
+	it("最后那条空行没有对应轨道 → 不印高度", () => {
+		paint([54, 31, 16]);
+		expect(rowLabel(4)).toBe("r4");
+	});
+});

@@ -54,20 +54,54 @@ export function parseGridTracks(value: string): number[] | null {
 }
 
 /**
- * 从预览框里那份文档上量出十二条轨道 —— 这是本模块**唯一**碰 DOM 的一口,薄到三行,
- * 判形状那一半仍归上面那个纯函数。
+ * 一串纯 px → 数组。**不限条数** —— 行数由块决定,没有「必须几条」这回事。
+ * 不是纯 px(jsdom 会回作者写的原文)就回 `null`。
+ */
+function parsePxList(value: string): number[] | null {
+	const parts = value.trim().split(/\s+/).filter(Boolean);
+	if (!parts.length) return null;
+	const out: number[] = [];
+	for (const part of parts) {
+		const m = PX_TRACK.exec(part);
+		if (!m) return null;
+		out.push(Number(m[1]));
+	}
+	return out;
+}
+
+/** 量到的网格:十二条列轨道 + 若干条行轨道,各自量不到就是 `null`。 */
+export interface GridMetrics {
+	columns: number[] | null;
+	rows: number[] | null;
+}
+
+/**
+ * 从预览框里那份文档上量出网格 —— 这是本模块**唯一**碰 DOM 的一口,判形状那一半仍归
+ * 上面那两个纯函数。
  *
  * 量的是外层卡的玻璃层(`[data-bn~="glass"]`)。转发框里那层网格是个**没有挂点的**裸
  * div(见渲染器的 `blockPropsOf`),所以 `querySelector` 取第一个就是对的那个。
  *
- * jsdom 里回 `null`:那儿没有布局引擎,`grid-template-columns` 的计算值就是作者写的原文
- * (`repeat(12, …)`),过不了 `parseGridTracks` 那道形状闸 —— 画布于是退回估算,正是想要的。
+ * **列与行的规矩刻意不同**:列必须恰好十二条(条数不对就是量错了元素,见 `parseGridTracks`),
+ * 行几条都行。
+ *
+ * jsdom 里两样都回 `null`:那儿没有布局引擎,计算值就是作者写的原文(`repeat(12, …)`),
+ * 过不了形状闸 —— 画布于是退回估算、行高不印,正是想要的。
  */
-export function readGridTracks(doc: Document): number[] | null {
+export function readGridMetrics(doc: Document): GridMetrics {
 	const glass = doc.querySelector('[data-bn~="glass"]');
 	const view = doc.defaultView;
-	if (!glass || !view) return null;
-	return parseGridTracks(view.getComputedStyle(glass).gridTemplateColumns ?? "");
+	if (!glass || !view) return { columns: null, rows: null };
+	const cs = view.getComputedStyle(glass);
+	return {
+		columns: parseGridTracks(cs.gridTemplateColumns ?? ""),
+		rows: parsePxList(cs.gridTemplateRows ?? ""),
+	};
+}
+
+/** 只要列那一半。 */
+export function readGridTracks(doc: Document): number[] | null {
+	return readGridMetrics(doc).columns;
 }
 
 /** 按清单估:定宽列按它在卡宽里的占比折成 fr。真值量不到时才走这条(理由见文件头)。 */

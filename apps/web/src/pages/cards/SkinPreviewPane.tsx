@@ -26,7 +26,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
-import { readGridTracks } from "./canvas-tracks";
+import { type GridMetrics, readGridMetrics } from "./canvas-tracks";
 import {
 	CELL_DEBUG_LABELS,
 	CELL_DEBUG_MODES,
@@ -52,7 +52,7 @@ export function SkinPreviewPane({
 	scene,
 	manifest,
 	boxWidth,
-	onTracks,
+	onMetrics,
 }: {
 	skinId: string;
 	kind: CardSkinKind;
@@ -67,14 +67,14 @@ export function SkinPreviewPane({
 	 */
 	boxWidth: number;
 	/**
-	 * 把预览框里**量到的**十二条轨道交出去(ADR-0018 决策 3)—— 画布拿它画列线,画出来的
-	 * 就与真卡一个比例。量不到(预览还没画完、jsdom 里没有布局引擎)交 `null`,画布退回
-	 * 按清单估。
+	 * 把预览框里**量到的**网格交出去(ADR-0018 决策 3):十二条列轨道给画布画列线,
+	 * 每条行轨道多高给它印在行号旁。量不到(预览还没画完、jsdom 里没有布局引擎)各交
+	 * `null`,画布退回按清单估、行高不印。
 	 *
 	 * ⚠️ 这条线**断了是静默的**:画布照旧画得出来,只是列线又开始凭清单猜,而那个偏差
 	 * 只有拿尺子量才看得见。所以它自己有一条守卫(剪断必红),见测试。
 	 */
-	onTracks?: (tracks: number[] | null) => void;
+	onMetrics?: (metrics: GridMetrics) => void;
 }) {
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
@@ -260,9 +260,8 @@ export function SkinPreviewPane({
 						usable={usable}
 						fallbackHeight={VIEW_H}
 						title="皮肤预览"
-						// 画好了就量一次列线交给画布。只在 `load` 那一刻量:轨道宽由卡宽与皮肤的
-						// 列定义定,字体到齐只会改行高。
-						onDocument={onTracks ? (doc) => onTracks(readGridTracks(doc)) : undefined}
+						// 画好了就量一次交给画布。只在 `load` 那一刻量 —— 与量卡高同一个时机。
+						onDocument={onMetrics ? (doc) => onMetrics(readGridMetrics(doc)) : undefined}
 					/>
 				)}
 			</div>

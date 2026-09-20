@@ -116,6 +116,7 @@ export function SkinCanvas({
 	adoptBusy,
 	scene,
 	tracks,
+	rowHeights,
 }: {
 	kind: CardSkinKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
@@ -140,6 +141,15 @@ export function SkinCanvas({
 	 * 这条,理由与那 3 个百分点的偏差写在 `canvas-tracks.ts` 的文件头)。
 	 */
 	tracks?: readonly number[] | null;
+	/**
+	 * 预览框里**量到的**每一条行轨道多高 px(2026-09-20)。给了就印在行号底下 —— 画布的行
+	 * 是等高的示意,而真卡的行高由内容撑,两者差得很远(实测 SC 卡七行 54/31/16/82/39/26/52.8,
+	 * 画布按 56 等高画出来是 392 对真卡的 300.8)。
+	 *
+	 * **只印,不改画法。** 按真高度画那版 2026-09-18 做过又撤回(ADR-0014 决策 6 的 🔗);
+	 * 而且列稳行抖 —— 列宽只在改列定义 / 卡宽时变,行高改一个字就变,画布会跟着预览一路跳。
+	 */
+	rowHeights?: readonly number[] | null;
 }) {
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
@@ -227,10 +237,17 @@ export function SkinCanvas({
 						key={`r${n}`}
 						data-canvas-track="row"
 						data-canvas-index={n}
-						className="flex items-center font-mono text-bn-2xs text-bn-text-tertiary"
+						className="flex flex-col items-start justify-center font-mono text-bn-2xs text-bn-text-tertiary"
 						style={{ gridColumn: 1, gridRow: n }}
 					>
-						r{realRowOf(rowMap, n)}
+						<span>r{realRowOf(rowMap, n)}</span>
+						{/* 真卡里这一行多高。最后那条空行在真卡里**没有对应的轨道**,印一个凭空的
+						    数字比不印更糟,所以按下标取、取不到就不画。 */}
+						{rowHeights?.[n - 1] === undefined ? null : (
+							<span className="text-bn-text-disabled">
+								{Math.round(rowHeights[n - 1] as number)}
+							</span>
+						)}
 					</span>
 				))}
 

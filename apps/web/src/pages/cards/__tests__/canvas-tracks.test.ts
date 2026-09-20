@@ -19,7 +19,13 @@
 import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
-import { canvasTemplate, parseGridTracks, ROW_LABEL_COL, readGridTracks } from "../canvas-tracks";
+import {
+	canvasTemplate,
+	parseGridTracks,
+	ROW_LABEL_COL,
+	readGridMetrics,
+	readGridTracks,
+} from "../canvas-tracks";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
 
@@ -141,5 +147,56 @@ describe("readGridTracks — 从预览框那份文档上量", () => {
 	// jsdom 与「预览还没画完」都落在这一档:回的不是计算值,形状闸拦下来,画布退回估算。
 	it("回的不是计算值(jsdom 会原样吐作者写的那串)→ null", () => {
 		expect(readGridTracks(docWith("repeat(12, minmax(0, 1fr))"))).toBeNull();
+	});
+});
+
+/**
+ * **行高也要量**(2026-09-20 主人问「大家占的行都一样多,为什么容器高度不一致」)。
+ *
+ * 答案是行轨道是 `auto`、高度由内容撑;画布的行却是等高的示意。**不把画布的行改成按真高度
+ * 画**(那版 2026-09-18 做过又撤回,理由在 ADR-0014 决策 6 的 🔗;而且列稳行抖 —— 列宽只在
+ * 改列定义 / 卡宽时变,行高改一个字就变),而是**把真高度印在行号旁边**:数字跳一下不影响
+ * 布局,疑问当场答掉。
+ *
+ * 行与列的解析规矩**刻意不同**:列必须恰好十二条(条数不对就是量错了元素),行**几条都行**
+ * (行数由块决定,而且画布还多画一条空行当落点)。
+ */
+describe("readGridMetrics — 列与行一起量", () => {
+	function docWith(cols: string, rows: string): Document {
+		const doc = document.implementation.createHTMLDocument("t");
+		const el = doc.createElement("div");
+		el.setAttribute("data-bn", "glass");
+		doc.body.appendChild(el);
+		Object.defineProperty(doc, "defaultView", {
+			configurable: true,
+			value: {
+				getComputedStyle: () => ({ gridTemplateColumns: cols, gridTemplateRows: rows }),
+			} as unknown as Window,
+		});
+		return doc;
+	}
+
+	it("量到两样就都交出去", () => {
+		const m = readGridMetrics(
+			docWith(`${"30px ".repeat(8)}40px 40px 40px 40px`.trim(), "54px 31px 16px 82px"),
+		);
+		expect(m.columns).toHaveLength(12);
+		expect(m.rows).toEqual([54, 31, 16, 82]);
+	});
+
+	// 行数由块决定,没有「必须几条」这回事 —— 拿十二条那把尺去量行,一张卡都量不出来。
+	it("行不限条数,一条也算", () => {
+		expect(readGridMetrics(docWith("x", "88px")).rows).toEqual([88]);
+	});
+
+	it("行量不出来(jsdom 回的是原文)→ rows 是 null,列那一半照旧", () => {
+		const m = readGridMetrics(docWith(`${"30px ".repeat(8)}40px 40px 40px 40px`.trim(), "none"));
+		expect(m.rows).toBeNull();
+		expect(m.columns).toHaveLength(12);
+	});
+
+	it("没有玻璃层 → 两样都是 null", () => {
+		const doc = document.implementation.createHTMLDocument("t");
+		expect(readGridMetrics(doc)).toEqual({ columns: null, rows: null });
 	});
 });

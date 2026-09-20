@@ -318,7 +318,9 @@ describe("皮肤预览栏 · 最终效果", () => {
  * 对不对归 `canvas-tracks.test.ts`,几何对不对归本机那道门。
  */
 describe("皮肤预览栏 · 把量到的列线交出去", () => {
-	function renderWithTracks(onTracks: (t: number[] | null) => void) {
+	function renderWithTracks(
+		onMetrics: (m: { columns: number[] | null; rows: number[] | null }) => void,
+	) {
 		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 		return render(
 			<QueryClientProvider client={qc}>
@@ -328,7 +330,7 @@ describe("皮肤预览栏 · 把量到的列线交出去", () => {
 					scene="streaming"
 					manifest={{ v: 1 }}
 					boxWidth={600}
-					onTracks={onTracks}
+					onMetrics={onMetrics}
 				/>
 			</QueryClientProvider>,
 		);
@@ -336,7 +338,7 @@ describe("皮肤预览栏 · 把量到的列线交出去", () => {
 
 	it("画好了 → 量一次并交出去", async () => {
 		const got: (number[] | null)[] = [];
-		renderWithTracks((t) => got.push(t));
+		renderWithTracks((m) => got.push(m.columns));
 		await tick();
 		// ⚠️ 这里**不用**手动派发 `load`:jsdom 插进 iframe 之后自己会补一记。手动再发
 		// 一次就成了两条,而那第二条不是实现的行为、是我们自己造的。
@@ -350,7 +352,7 @@ describe("皮肤预览栏 · 把量到的列线交出去", () => {
 	// 会一直用开头那一份 —— 界面上什么都看不出来。
 	it("换一份预览 → 重量一次,不是只量开头那一帧", async () => {
 		const got: (number[] | null)[] = [];
-		const view = renderWithTracks((t) => got.push(t));
+		const view = renderWithTracks((m) => got.push(m.columns));
 		await tick();
 		const first = got.length;
 		expect(first).toBeGreaterThan(0);
@@ -366,7 +368,7 @@ describe("皮肤预览栏 · 把量到的列线交出去", () => {
 					scene="streaming"
 					manifest={{ v: 2 }}
 					boxWidth={600}
-					onTracks={(t) => got.push(t)}
+					onMetrics={(m) => got.push(m.columns)}
 				/>
 			</QueryClientProvider>,
 		);
