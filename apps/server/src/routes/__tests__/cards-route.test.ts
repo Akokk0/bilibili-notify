@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { ImageRenderer } from "@bilibili-notify/image";
+import { CSS_CUSTOM_PROPERTY_MAX_CHARS, ImageRenderer } from "@bilibili-notify/image";
 import {
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
@@ -1609,6 +1609,49 @@ describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", ()
 			});
 			expect(res.status).toBe(200);
 			expect(capturedHtml.join("")).not.toContain("--bn-knob-wallpaper:");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * **超过 CSS 自定义属性 2 MiB 上限的图要先压一下。** Blink 对一条自定义属性的值封顶
+	 * `2,097,152` 字符,超了**整条声明在解析期就被丢掉** —— 于是皮肤 CSS 里的
+	 * `var(--bn-knob-wallpaper, 渐变)` 判定「没设」、安安静静画兜底渐变。主人那张 1.7MB
+	 * 的背景图正是栽在这儿:HTML 那头一个字节不少,只有真 Chrome 的 `getComputedStyle`
+	 * 看得见它是空的(2026-09-20 真机量的)。
+	 *
+	 * 判据:把 `renderPreviewCard` 里那个 `shrinkImage` 拆掉,这一条必须红 —— 那时注进去的
+	 * 是原样的 png,长度越线,等于交给 Chrome 再丢一次。
+	 */
+	it("大图先压进 2 MiB 预算再注 —— 不然 Chrome 整条丢弃、预览画兜底", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-knob-preview-big-"));
+		try {
+			const big = new Uint8Array(1_600_000);
+			big.set(PNG, 0);
+			const assetId = await saveCardBg(dir, big, "image/png");
+			capturedHtml.length = 0;
+			const app = createCardsRoute({
+				deps: depsWithKnobs(dir, { wallpaper: [assetId] }),
+				puppeteer: makeFakePuppeteer(),
+				api: null,
+			});
+			const res = await app.request("/preview", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					kind: "live",
+					style: {},
+					content: {},
+					cardSkin: DEFAULT_CARD_SKIN_ID,
+				}),
+			});
+			expect(res.status).toBe(200);
+			const html = capturedHtml.join("");
+			expect(html).toMatch(/--bn-knob-wallpaper:url\((?:"|&quot;)data:image\/webp;base64,/);
+			const value = /--bn-knob-wallpaper:([^;]*)/.exec(html)?.[1] ?? "";
+			expect(value.length).toBeLessThanOrEqual(CSS_CUSTOM_PROPERTY_MAX_CHARS);
+			expect(html).not.toContain("--bn-knob-wallpaper:url(&quot;data:image/png");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

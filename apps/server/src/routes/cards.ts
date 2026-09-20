@@ -38,6 +38,7 @@ import {
 	type LiveCardProps,
 	renderCardWithSkin,
 	resolveKnobAssets,
+	shrinkImageForCssVar,
 	skinAssetRefs,
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
@@ -869,7 +870,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const knobAssets = await resolveKnobAssets(manifest.knobs, previewKnobValues(skinId), {
 			image: (id) => readCardBgDataUrl(dataDir, id),
 			fontFace: loadFontFace,
+			// 超出 CSS 自定义属性 2 MiB 上限的图要压一下,否则 Chrome 整条丢弃、
+			// 预览画兜底渐变 —— 而推送那头压了,两边就分家了。
+			shrinkImage: (url, budget) => shrinkImageForCssVar(puppeteer, url, budget),
 		});
+		for (const w of knobAssets.warnings) log.warn(`[card-skin] ${w}`);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
 		const html =

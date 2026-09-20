@@ -27,6 +27,7 @@ import {
 	renderCardWithSkin,
 	skinAssetRefs,
 } from "./skin/render-skin";
+import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, DEFAULT_CARD_GRADIENT, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode } from "./templates/dynamic-content";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
@@ -177,6 +178,8 @@ export class ImageRenderer {
 	private config: ImageRendererConfig;
 	/** 图片旋钮的轮换游标:`<皮肤 id>:<旋钮 key>` → 已经出过几张。 */
 	private readonly knobImageCursor = new Map<string, number>();
+	/** 资产 id → 压进预算之后的 data URL(空串 = 压不下去,别再白试)。见 {@link fitKnobImage}。 */
+	private readonly knobImageFit = new Map<string, string>();
 	private readonly resolveAsset: (id: string) => Promise<string>;
 	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
@@ -346,15 +349,36 @@ export class ImageRenderer {
 		knobs: CardSkinManifest["knobs"],
 		overrides: CardSkinKnobOverrides | undefined,
 	): Promise<ResolvedKnobAssets> {
-		return await resolveKnobAssets(knobs, overrides, {
+		const out = await resolveKnobAssets(knobs, overrides, {
 			image: (assetId) => this.resolveAsset(assetId),
 			fontFace: (assetId) => this.resolveFontFace(assetId),
+			shrinkImage: (url, budget, assetId) => this.fitKnobImage(url, budget, assetId),
 			pick: (count, key) => {
 				const at = this.knobImageCursor.get(`${skinId}:${key}`) ?? 0;
 				this.knobImageCursor.set(`${skinId}:${key}`, at + 1);
 				return at % count;
 			},
 		});
+		// **这一层的失败全是静默的**(图不出、字体回落),不说出来主人只能对着一张
+		// 少了背景的卡片猜。
+		for (const w of out.warnings) this.logger.warn(`[card-skin] ${w}`);
+		return out;
+	}
+
+	/**
+	 * 超出 CSS 自定义属性 2 MiB 上限的图,压进预算(见 `skin/shrink-image.ts`)。
+	 *
+	 * **按资产 id 缓存**:资产名是内容哈希,同一个 id 就是同一份字节,压出来的也一样;
+	 * 不缓存的话每一次推送都要为同一张图重开一个浏览器页解码 + 重编码。缓存住的是
+	 * 压完那份(几百 KB),不是原图。
+	 */
+	private async fitKnobImage(url: string, budget: number, assetId: string): Promise<string | null> {
+		const hit = this.knobImageFit.get(assetId);
+		if (hit !== undefined) return hit === "" ? null : hit;
+		const out = await shrinkImageForCssVar(this.puppeteer, url, budget);
+		// 压不下去也记一笔 —— 否则每张卡都要再白压四次。
+		this.knobImageFit.set(assetId, out ?? "");
+		return out;
 	}
 
 	async getTimeDifference(dateString: string): Promise<string> {

@@ -27,6 +27,7 @@ import {
 	type ImageRendererOptions,
 } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
+import { CSS_CUSTOM_PROPERTY_MAX_CHARS } from "../skin/knob-assets";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -466,5 +467,69 @@ describe("ImageRenderer 词云卡", () => {
 		expect(html).toContain("renderAutoFitWordCloud");
 		expect(html.indexOf("renderAutoFitWordCloud")).toBeLessThan(html.indexOf("</body>"));
 		expect(h.fallbacks).toEqual([]);
+	});
+});
+
+/**
+ * **推送那条路也得把大图压进 2 MiB 预算。**
+ *
+ * Blink 对一条自定义属性的值封顶 `2,097,152` 字符,超了**整条声明在解析期就被丢掉**,
+ * 于是皮肤 CSS 里的 `var(--bn-knob-wallpaper, 渐变)` 判定「没设」、安安静静画兜底
+ * (2026-09-20 真机量的:主人那张 1.7MB 的背景图 base64 之后 2,265,368 字符)。
+ *
+ * 预览那条有自己的守卫(`routes/__tests__/cards-route.test.ts`),**这一条守的是推送** ——
+ * 两根线各接各的,剪一根另一根不会红。判据:把 `ImageRenderer#resolveKnobAssets` 里那句
+ * `shrinkImage: … => this.fitKnobImage(…)` 拆掉,这两条必须红。
+ */
+describe("旋钮里的大图:推送出图这条路", () => {
+	/** base64 之后必定越过 2 MiB 的一张「图」。 */
+	const OVERSIZED = `data:image/png;base64,${"A".repeat(CSS_CUSTOM_PROPERTY_MAX_CHARS)}`;
+
+	function bigWallpaperHarness(resolveAsset: () => Promise<string>): Harness {
+		return makeHarness({
+			resolveAsset,
+			config: {
+				...BASE_CONFIG,
+				cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { wallpaper: ["big.png"] } },
+			},
+		});
+	}
+
+	/**
+	 * ⚠️ 压图**也走同一个假浏览器**,所以 `captured` 里混着压图那几页(一个 `<img>` 的
+	 * 空壳)。要的是卡片那几页 —— 按有没有外框挂点挑。
+	 */
+	const cards = (h: Harness): string[] => h.captured.filter((x) => x.includes('data-bn="frame"'));
+
+	it("压过之后才注,而且整条值落在上限之内", async () => {
+		const h = bigWallpaperHarness(async () => OVERSIZED);
+		await liveCard(h.renderer);
+		const style = frameStyle(cards(h)[0] ?? "");
+		expect(style).toContain('--bn-knob-wallpaper:url("data:image/webp;base64,');
+		const value = /--bn-knob-wallpaper:([^;]*)/.exec(style)?.[1] ?? "";
+		expect(value.length).toBeGreaterThan(0);
+		expect(value.length).toBeLessThanOrEqual(CSS_CUSTOM_PROPERTY_MAX_CHARS);
+		// 原样那份绝不该出现 —— 出现了就等于交给 Chrome 再丢一次。
+		expect(style).not.toContain("data:image/png");
+	});
+
+	it("同一张图只压一次 —— 每推一张卡重压一遍太贵(按资产 id 缓存)", async () => {
+		let reads = 0;
+		const h = bigWallpaperHarness(async () => {
+			reads += 1;
+			return OVERSIZED;
+		});
+		await liveCard(h.renderer);
+		const first = frameStyle(cards(h)[0] ?? "");
+		const pagesAfterFirst = h.captured.length;
+		await liveCard(h.renderer);
+		const second = frameStyle(cards(h)[1] ?? "");
+		expect(second).toBe(first);
+		// 读盘每次都会发生(资产可能换了),但压只该发生一次 —— 缓存命中时压的那几个
+		// 浏览器页压根不开。验红:把 `knobImageFit` 那层缓存拆掉,这条红。
+		expect(reads).toBe(2);
+		expect(second).toContain("data:image/webp;base64,");
+		// 第二次只该多开**一个**页(画卡片那一个);多出压图的那几页就是缓存没生效。
+		expect(h.captured.length - pagesAfterFirst).toBe(1);
 	});
 });

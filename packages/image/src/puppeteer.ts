@@ -37,6 +37,15 @@ export interface ScreenshotOptions {
 	quality?: number;
 	fullPage?: boolean;
 	clip?: ScreenshotClip;
+	/**
+	 * 不画默认那层白底,让截图带 alpha。⚠️ **`jpeg` 不支持**(它没有 alpha 通道),
+	 * 只有 `png` / `webp` 认。
+	 *
+	 * 压图那一档(`skin/shrink-image.ts`)靠它保住用户背景图的透明:不开的话透明处会
+	 * 落到页面底色,而皮肤如果把壁纸**叠**在渐变上(ADR-0014 决策 15 的 🔗 明说这是
+	 * 支持的用法),叠出来就是一块实心底而不是透出渐变。
+	 */
+	omitBackground?: boolean;
 }
 
 /** Element handle returned by {@link PageLike.$}. */

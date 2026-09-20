@@ -58,6 +58,8 @@ export {
 // **凡是自己拼 `renderCardWithSkin` 入参的调用方都得调它** —— 只传 `knobValues` 的话,
 // 别的旋钮照常生效,而字体与背景图这两枚静静地什么也不做(2026-09-19 面板预览栽过)。
 export {
+	CSS_CUSTOM_PROPERTY_MAX_CHARS,
+	IMAGE_URL_BUDGET,
 	type KnobAssetResolvers,
 	type ResolvedKnobAssets,
 	resolveKnobAssets,
@@ -74,6 +76,9 @@ export {
 	type SkinRenderResult,
 	skinAssetRefs,
 } from "./skin/render-skin";
+// 超上限的图压进预算 —— 用 Chrome 自己当编码器,不引新依赖。凡是自己拼
+// `resolveKnobAssets` 入参的调用方都该把它接上,否则大图照旧静默不出。
+export { shrinkImageForCssVar } from "./skin/shrink-image";
 // 四种可编辑卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
 // 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
 export type { DynamicCardProps, DynamicNode } from "./templates/dynamic-card";
