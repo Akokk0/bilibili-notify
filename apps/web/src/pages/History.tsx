@@ -355,8 +355,13 @@ function RepushBar({
 			<div className="flex flex-wrap items-center gap-2 text-bn-xs text-bn-text-secondary">
 				<span>{busy ? "女仆这就去～" : "要女仆补哪些呀？"}</span>
 				{entry.status === "failed" ? (
+					// 决策 8 只给这一行一颗钮,理由是「本来就全没到,两个选项是同一件事」——
+					// 可 `failed` 判的是**本体那一号**没 ok,不是全没到:@全体先落地且成功、
+					// 本体失败的行就是 failed,此时 total=2 而 missing=1。这颗钮发的是
+					// `missing`(把已经到了的 @全体再发一遍,群里就多 @ 一次全体,撤不回),
+					// 所以印的数也得是 missing —— 印 total 是当面说错话。
 					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
-						重新推送{n(counts?.total)}
+						重新推送{n(counts?.missing)}
 					</Btn>
 				) : (
 					<>

@@ -137,6 +137,23 @@ describe("两下完成", () => {
 		expect(screen.getByRole("button", { name: /重新推送.*3/ })).toBeTruthy();
 	});
 
+	/**
+	 * 🔴 决策 8 那句「`failed` 行本来就全没到,两个选项是同一件事」**有个前提不总成立**:
+	 * `failed` 的判据是「本体那一号没 ok」,不是「全没到」。@全体先落地且成功、本体失败的
+	 * 行就是 `failed`,而它 total=2、missing=1。
+	 *
+	 * 这颗钮**发的是 `missing`**(决不能是 `all` —— 把已经到了的 @全体再发一遍,群里就多
+	 * @ 一次全体,撤不回),所以印的数也必须是 missing。印 total 就是当面说错话。
+	 */
+	it("🔴 failed 行里有已经到了的消息 → 钮上印的是「要补几条」,不是整行几条", async () => {
+		mockApi([row({ status: "failed", repush: { can: true, total: 2, missing: 1 } })]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		await userEvent.click(repushButton());
+		expect(screen.getByRole("button", { name: /重新推送（1 条）/ })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /重新推送（2 条）/ })).toBeNull();
+	});
+
 	it("第二下才发,带的是这一行的 id、ts 与选的那档", async () => {
 		renderHistory();
 		await waitFor(() => expect(repushButton()).toBeTruthy());
