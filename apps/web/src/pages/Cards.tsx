@@ -602,7 +602,16 @@ export default function Cards() {
 
 	// 全局草稿
 	const [gStyle, setGStyle] = useState<CardStyle | null>(null);
-	// 按卡片类型的样式覆盖(全局)。空 = 各类型跟随 gStyle 基准。
+	/**
+	 * 按卡片类型的样式覆盖(全局)。**在全局这半边它只读不生效** —— 2026-09-14 起它编的
+	 * 字体与背景退役成了皮肤旋钮,全局 tab 上那四个「单独样式」盒子跟着撤了,于是再没有
+	 * 任何入口写它,`effStyleFor` 里它也一个字都不贡献。
+	 *
+	 * 留着它只为一件事:**认得住老数据**。seed 把老配置里那份读进来(下面那个 useEffect),
+	 * 保存时原样写回去(`onSave` 的 patch)—— 只此两处。别再让它进渲染判断:全家福上那颗
+	 * 「单独」药丸从前就是按它亮的,而旁边那张预览用的正是全局基准,主人没有任何一处
+	 * 点得进去看或改。per-UP 那层(`puByKind`)仍有入口、仍生效,与这条无关。
+	 */
 	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
 	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局唯一,不分卡种也不分 UP。
 	const [gSkinKnobs, setGSkinKnobs] = useState<CardSkinKnobsBySkin>({});
@@ -808,6 +817,9 @@ export default function Cards() {
 	//
 	// 全局那份**不含** cardSkin:换全局皮肤是皮肤库里点一下就生效(PUT /active 直改
 	// globals),不是草稿 —— 塞进来只会让灵动岛拿一个永远不脏的键去 diff。
+	//
+	// `cardStyleByKind` 在全局这半边只读不生效(见它 state 那处的注释),所以它在这儿
+	// 恒等于基线、永远不脏;留着是为了让草稿与 `onSave` 那份 patch 同形。
 	const globalIslandDraft = useMemo(() => {
 		if (gStyle === null) return null;
 		return {
@@ -861,6 +873,8 @@ export default function Cards() {
 		onSave: async () => {
 			if (isGlobalScope) {
 				if (gStyle !== null)
+					// `cardStyleByKind` 原样写回 —— 全局这半边它只读不生效(见 state 那处的注释),
+					// 但不写回去就等于替主人把老配置里的那几格删了。
 					await saveGlobal.mutateAsync({
 						cardStyle: gStyle,
 						cardStyleByKind: gByKind,
@@ -891,13 +905,12 @@ export default function Cards() {
 	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
 	// 类型覆盖(puStyle 覆盖基准时整份替换;否则继承全局该类型生效值)。
 	const effStyleFor = (sk: StyleKind): CardStyle => {
-		// 全局 per-kind 现在**什么都不贡献**:它从前只贡献外观那一族(字体 / 背景),而那两项
-		// 2026-09-14 退役成了皮肤旋钮;show 只认基准 gStyle,封面只认基准 / per-UP kind 层。
-		// per-UP per-kind 的 show / 封面仍是该 UP 的独立覆盖,整份 spread 保留。
-		const gEff: CardStyle = { ...gStyle };
-		if (isGlobalScope) return gEff;
+		// 全局 per-kind(`gByKind`)不进这条链:它现在什么都不贡献(见它 state 那处的注释)。
+		// show 只认基准 gStyle,封面只认基准 / per-UP kind 层;per-UP per-kind 的 show / 封面
+		// 仍是该 UP 的独立覆盖,整份 spread 保留。
+		if (isGlobalScope) return { ...gStyle };
 		// 基准层不持有封面(savePerUp 剥离,不落盘):封面继承链 = per-UP kind 层 > 全局基准。
-		const base = puStyle ? { ...puStyle, liveCoverImages: gStyle.liveCoverImages } : gEff;
+		const base = puStyle ? { ...puStyle, liveCoverImages: gStyle.liveCoverImages } : { ...gStyle };
 		return puByKind[sk] !== undefined ? { ...base, ...puByKind[sk] } : base;
 	};
 	// 按 kind 求预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,
@@ -1110,9 +1123,10 @@ export default function Cards() {
 								<div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
 									{familyPreviews.map(({ fk, style, content: fcontent }) => {
 										const FkIcon = Icon[KIND_LABELS[fk].icon];
-										// 该类型是否有「单独样式」覆盖(全局看 gByKind,per-UP 看 puByKind)→ 角标提示。
-										const overridden =
-											(isGlobalScope ? gByKind : puByKind)[toStyleKind(fk)] !== undefined;
+										// 该类型有没有「单独样式」覆盖 → 角标提示。**只在 per-UP 这半边判**:
+										// 全局的 `gByKind` 现在什么都不贡献(见它 state 那处的注释),按它亮就是
+										// 给一张正用着全局基准的预览挂一颗点不进去的药丸。
+										const overridden = !isGlobalScope && puByKind[toStyleKind(fk)] !== undefined;
 										return (
 											<div key={fk} className="flex min-h-0 flex-col gap-1">
 												<div className="flex items-center gap-1 text-bn-xs font-bold text-bn-text-tertiary">

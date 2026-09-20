@@ -124,3 +124,51 @@ describe("关掉某个卡种的覆盖", () => {
 		expect(body.overrides.cardStyleByKind).toBeNull();
 	});
 });
+
+/**
+ * 全家福上那颗「单独」药丸 —— 它说的是「这张卡在**这个作用域**里另有一份覆盖」。
+ *
+ * 2026-09-14 起全局 tab 上的「单独样式」四个盒子撤了(它们编的字体与背景退役成了皮肤
+ * 旋钮),于是**全局这半边再没有任何入口写 `cardStyleByKind`**,`effStyleFor` 里它也一个
+ * 字都不贡献。药丸却还照旧按它亮:老配置里留着那一格的实例,全家福上就挂一颗「单独」,
+ * 而旁边那张预览用的正是全局基准 —— 没有任何一处点得进去看或改。
+ *
+ * 字段本身留着(要认得住老数据),但它在全局这半边只剩「读进来、原样存回去」,不该再
+ * 出现在渲染判断里。
+ */
+describe("全家福上那颗「单独」药丸", () => {
+	/** 全局/per-UP 两种作用域共用的 api.get 安排。 */
+	function mockGet(subs: Subscription[], gByKind: Record<string, unknown>): void {
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve(subs);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			return Promise.resolve({
+				app: {},
+				master: {},
+				defaults: { ...makeDefaults(), cardStyleByKind: gByKind },
+			} as unknown as GlobalConfig);
+		});
+	}
+
+	it("🔴 全局作用域:老配置里 cardStyleByKind 有直播这一格,也不挂药丸", async () => {
+		mockGet([], { live: { liveCoverImages: ["img1"] } });
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		await screen.findByText("卡片全家福 · 实时反映全局配置");
+		expect(screen.queryByText("单独")).toBeNull();
+	});
+
+	// 反面:per-UP 这半边的覆盖仍有入口、仍生效,药丸照挂 —— 不是把药丸整个删掉。
+	it("per-UP 作用域:该 UP 的那一格有覆盖 → 药丸照挂", async () => {
+		const sub: Subscription = {
+			...makeEmptySubscription("123456"),
+			overrides: { cardStyleByKind: { live: { liveCoverImages: ["img1"] } } },
+		};
+		mockGet([sub], {});
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		expect(await screen.findByText("单独")).toBeTruthy();
+	});
+});

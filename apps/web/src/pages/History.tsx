@@ -391,31 +391,58 @@ function RepushBar({
 	);
 }
 
-/** 展开后的逐条明细:序号 / 本体还是附加项 / 文案 / 图缩略 / 这条的结果。 */
+/**
+ * 展开后的逐条明细:序号 / 本体还是附加项 / 文案 / 图缩略 / 这条的结果。
+ *
+ * **号不是数组下标,是 `retryOf ?? 下标`**(ADR-0017 决策 15 与「后果」那一节)。重推
+ * 是追加进原行的(决策 14),3 条的行补过之后展开是 6 条 —— 按位置印 1..6 的话,后三条
+ * 看上去就是三条凭空多出来的新消息,既看不出是谁的重投,也看不出前三条已经作废。
+ * 印它补的**那一号**、再标一句「女仆补的」,那份可追溯才落到界面上;`retryOf` 就是
+ * 这个标记的来源,不另开第二个字段。
+ *
+ * ⚠️ 「每一号只认它**最后那次**尝试」的判定**只在服务端有一份**(决策 16),面板不重做
+ * 一遍。「这条被顶掉了」用的是本地就看得见的那件事:**后面还有一条补这一号的**。
+ */
 function MessageList({ entry }: { entry: HistoryEntryView }) {
 	return (
 		<ol className="space-y-1.5 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2.5 pl-38">
-			{entry.messages.map((m, i) => (
-				<MessageItem
-					// biome-ignore lint/suspicious/noArrayIndexKey: 行内消息按序追加、从不重排删除,序号就是它的身份
-					key={`${entry.id}-${i}`}
-					index={i}
-					message={m}
-				/>
-			))}
+			{entry.messages.map((m, i) => {
+				const no = m.retryOf ?? i;
+				return (
+					<MessageItem
+						// biome-ignore lint/suspicious/noArrayIndexKey: 行内消息按序追加、从不重排删除,位置就是它在这一行里的身份
+						key={`${entry.id}-${i}`}
+						no={no}
+						message={m}
+						superseded={entry.messages.some((o, j) => j > i && o.retryOf === no)}
+					/>
+				);
+			})}
 		</ol>
 	);
 }
 
-function MessageItem({ index, message }: { index: number; message: HistoryMessageView }) {
+/**
+ * `no` = 这条顶的是哪一号(从 0 数,印出来 +1);`superseded` = 后面还有一条补这一号的,
+ * 也就是这条已经作废了 —— 压暗它,让「这条没成、下面那条是它的重投」一眼看得出来。
+ */
+function MessageItem({
+	no,
+	message,
+	superseded,
+}: {
+	no: number;
+	message: HistoryMessageView;
+	superseded: boolean;
+}) {
 	// 没有结果 = 没发出去(无目标那行的每一条都是这样);有结果就跟整行状态同一份词表。
 	const result =
 		message.ok === undefined
 			? { label: "未发送", tone: "var(--color-bn-inactive)" }
 			: PUSH_STATUS_META[message.ok ? "delivered" : "failed"];
 	return (
-		<li className="flex items-start gap-2.5 text-bn-xs">
-			<span className="w-4 shrink-0 tabular-nums text-bn-text-tertiary">{index + 1}</span>
+		<li className={`flex items-start gap-2.5 text-bn-xs${superseded ? " opacity-60" : ""}`}>
+			<span className="w-4 shrink-0 tabular-nums text-bn-text-tertiary">{no + 1}</span>
 			<span className="w-10 shrink-0 text-bn-text-tertiary">
 				{message.role === "main" ? "本体" : "附加"}
 			</span>
@@ -430,7 +457,16 @@ function MessageItem({ index, message }: { index: number; message: HistoryMessag
 			<span className="min-w-0 flex-1 break-words text-bn-text-secondary">
 				{message.text ?? <span className="text-bn-text-tertiary">（无内容）</span>}
 				{message.err ? <span className="ml-1.5 text-bn-danger">{message.err}</span> : null}
+				{superseded ? (
+					<span className="ml-1.5 text-bn-text-tertiary">女仆后来又补了一次～</span>
+				) : null}
 			</span>
+			{message.retryOf !== undefined ? (
+				// 这一条是女仆补的那次,不是当时发出去的那次。
+				<Pill subtle size="sm">
+					女仆补的
+				</Pill>
+			) : null}
 			<Pill color={result.tone} subtle size="sm">
 				{result.label}
 			</Pill>

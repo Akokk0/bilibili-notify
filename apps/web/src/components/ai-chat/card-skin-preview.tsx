@@ -26,9 +26,9 @@ import {
 	TabBar,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { CARD_SKINS_KEY, useCardSkinList } from "../../pages/cards/card-skins-query";
+import { useActivateCardSkin, useCardSkinList } from "../../pages/cards/card-skins-query";
 import { SkinHtmlFrame, useStageWidth } from "../../pages/cards/SkinHtmlFrame";
 import { api } from "../../services/api";
 
@@ -50,7 +50,6 @@ export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouc
 }
 
 function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
-	const qc = useQueryClient();
 	const list = useCardSkinList();
 	const skin = list.data?.skins.find((s) => s.id === touch.id);
 	const inUse = list.data?.active === touch.id;
@@ -67,14 +66,9 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 		enabled: skin !== undefined,
 	});
 
-	const activate = useMutation({
-		mutationFn: () => api.put<{ ok: boolean }>("/api/card-skins/active", { id: touch.id }),
-		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
-			// 启用指针住在 globals 里(同皮肤页那颗钮),读它的地方也得跟着重取。
-			void qc.invalidateQueries({ queryKey: ["globals"] });
-		},
-	});
+	// 同皮肤库那颗钮的**同一个** mutation(要作废哪几个 key 归它管)—— 这个动作在站里
+	// 有两处入口,两处各写各的话,漏掉的那一处症状是「换了皮肤,这里的预览还是旧的」。
+	const activate = useActivateCardSkin();
 
 	const [stageRef, measured] = useStageWidth();
 
@@ -104,7 +98,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 						size="sm"
 						variant="primary"
 						disabled={skin === undefined || activate.isPending}
-						onClick={() => activate.mutate()}
+						onClick={() => activate.mutate(touch.id)}
 					>
 						换上这套
 					</Btn>

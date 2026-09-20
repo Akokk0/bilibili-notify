@@ -19,7 +19,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
@@ -240,3 +240,87 @@ describe("补不了的行", () => {
 		expect(repushButton().hasAttribute("disabled")).toBe(false);
 	});
 });
+
+/**
+ * **补完之后那一行**(ADR-0017 决策 14 / 15 与「后果」那一节)。
+ *
+ * 重推是**追加进原行**(决策 14),所以 3 条的行「整行重发」之后展开是 6 条。后三条
+ * 要是只按数组下标印 1..6,看上去就是三条凭空多出来的新消息 —— 既看不出是谁的重投,
+ * 也看不出前三条已经作废,而 ADR 认下「行会变长、药丸上的数字会跳」换来的正是这份
+ * 可追溯。号的来源是 `retryOf`(决策 15:消息按序追加、从不重排,下标就是稳定身份),
+ * 「后果」那节明写它同时就是这个标记的来源,不另开字段。
+ *
+ * ⚠️ **「每一号只认它最后那次尝试」的判定只在服务端有一份**(决策 16)。面板只按每条
+ * 自己的 `retryOf` 画;「这条被顶掉了」用的是「后面还有一条补这一号的」这个本地可见的
+ * 事实,不在这儿再实现一套身份判定。
+ */
+describe("补完之后,展开逐条看得出谁补了谁", () => {
+	/** 一行 3 条(后两条没到)→「整行重发」补了两条回来。 */
+	const REPUSHED = row({
+		status: "delivered",
+		repush: undefined,
+		messages: [
+			{ text: "下播啦", role: "main", ok: true },
+			{ text: "词云图", role: "extra", ok: false, err: "boom" },
+			{ text: "直播总结", role: "extra", ok: false, err: "boom" },
+			{ text: "词云图", role: "extra", ok: true, retryOf: 1 },
+			{ text: "直播总结", role: "extra", ok: true, retryOf: 2 },
+		],
+	});
+
+	/**
+	 * 展开逐条,拿到那 5 个 `<li>`(这一页只有这一处列表)。
+	 *
+	 * ⚠️ 钮上写的是「**3 条**」不是 5:那颗药丸数的是「本来要发几条」(没有 `retryOf` 的
+	 * 那些,见 `utils/push-row.ts`),补进来的两条不算新的。数组里确实躺着 5 条,所以
+	 * 下面拿到的是 5 个 `<li>` —— 这两个数不一样是对的,它们说的不是同一件事。
+	 */
+	async function expand(): Promise<HTMLElement[]> {
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播啦")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: /3 条/ }));
+		return screen.getAllByRole("listitem");
+	}
+
+	/** 行首那一格印的号。 */
+	const noOf = (li: HTMLElement) => li.firstElementChild?.textContent;
+
+	beforeEach(() => mockApi([REPUSHED]));
+
+	it("🔴 重投那条印的是它补的**那一号**,不是它在数组里的位置", async () => {
+		const items = await expand();
+		expect(items.map(noOf)).toEqual(["1", "2", "3", "2", "3"]);
+	});
+
+	it("🔴 重投那条标得出是女仆补的,原来那几条不标", async () => {
+		const items = await expand();
+		expect(within(items[3] as HTMLElement).getByText(/女仆/)).toBeTruthy();
+		expect(within(items[4] as HTMLElement).getByText(/女仆/)).toBeTruthy();
+		expect(within(items[0] as HTMLElement).queryByText(/女仆/)).toBeNull();
+	});
+
+	/**
+	 * 被顶掉的那条压暗 —— 一眼看出「这条作废了,下面那条是它的重投」。判据是**后面还有
+	 * 一条补这一号的**,不是「谁是最后一次」那套服务端判定。
+	 */
+	it("🔴 被顶掉的那条压暗并说明,没被顶掉的照旧", async () => {
+		const items = await expand();
+		expect(items.map(dimOf)).toEqual([false, true, true, false, false]);
+		expect(within(items[1] as HTMLElement).getByText(/女仆后来/)).toBeTruthy();
+	});
+
+	it("没有 retryOf 的老行照旧按位置印 1..N", async () => {
+		mockApi([row()]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: /3 条/ }));
+		const items = screen.getAllByRole("listitem");
+		expect(items.map(noOf)).toEqual(["1", "2", "3"]);
+		expect(items.some(dimOf)).toBe(false);
+	});
+});
+
+/** 压暗与否(被顶掉的那条才压)。 */
+function dimOf(li: HTMLElement): boolean {
+	return /\bopacity-/.test(li.className);
+}

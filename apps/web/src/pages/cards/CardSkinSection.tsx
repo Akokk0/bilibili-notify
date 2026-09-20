@@ -33,7 +33,7 @@ import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
-import { CARD_SKINS_KEY, useCardSkinList } from "./card-skins-query";
+import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
 /** 七种卡在回落告警里怎么称呼。 */
 const KIND_LABEL: Record<CardSkinKind, string> = {
@@ -107,20 +107,19 @@ export function CardSkinSection() {
 	const skins = useMemo(() => sortSkins(listQuery.data?.skins ?? []), [listQuery.data?.skins]);
 	const active = listQuery.data?.active ?? "";
 
+	/** 装包 / 复制 / 删除之后的重取(启用那一档不走这里,见下面的 `activate`)。 */
 	function refresh(): void {
 		void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
-		// 启用指针住在 `globals.defaults.cardSkin`,不在店里 —— 换一套皮肤同时也改了
-		// 全局配置,页面上读 globals 的那些地方(预览、灵动岛基线)得跟着重取。
+		// 启用指针住在 `globals.defaults.cardSkin`,不在店里 —— 删掉正在用的那套,服务端
+		// 会顺手改这个指针,页面上读 globals 的那些地方(预览、灵动岛基线)得跟着重取。
 		void qc.invalidateQueries({ queryKey: ["globals"] });
 	}
 
-	const activate = useMutation({
-		mutationFn: (id: string) => api.put<{ ok: boolean }>("/api/card-skins/active", { id }),
-		onSuccess: () => {
-			setError(null);
-			refresh();
-		},
-		onError: (e) => setError(String((e as Error).message)),
+	// 启用那颗钮封在 card-skins-query 里(两个 key 的 invalidate 归它管)——「换上这套」
+	// 在卡片工坊的回复末尾还有一份,两处各写各的必然漏掉其中一个 key。
+	const activate = useActivateCardSkin({
+		onSuccess: () => setError(null),
+		onError: setError,
 	});
 
 	/**
