@@ -104,11 +104,22 @@ function setup(sub: Subscription, sinkOpts: SinkOptions = {}) {
 	return { push, calls, seen, isAvailable };
 }
 
-/** 一次回调压成 `[目标, [文案, ok]...]`,方便整体比对。 */
+/**
+ * 一次回调压成 `[目标, [文案, role, ok]...]`,方便整体比对。
+ *
+ * `ok: null` 有两种来源,在这一层刻意压成同一个:无目标行的每一条,和被中止、
+ * 从没出过网的那几条(ADR-0017 决策 17)。两者本就是同一个形状 ——「没有结果」。
+ */
 function flat(info: PushSendInfo): [string | null, Array<[string, string, boolean | null]>] {
 	return [
 		info.target?.id ?? null,
-		info.messages.map((m) => [textOf(m.payload), m.role, "result" in m ? m.result.ok : null]),
+		// `PushSendInfo` 是个联合,无目标那一支的消息类型上压根没有 `result` 这个键,
+		// 所以得先 `in` 一道再取。
+		info.messages.map((m) => [
+			textOf(m.payload),
+			m.role,
+			"result" in m ? (m.result?.ok ?? null) : null,
+		]),
 	];
 }
 
@@ -147,7 +158,15 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 		expect(ids[2]).not.toBe(ids[0]);
 	});
 
-	it("某条失败仍中止该目标后续条:失败那条在列表里,被中止的不在;别的目标不受牵连", async () => {
+	/**
+	 * **中止仍是中止 —— 只是不再静默。** 被挡下的那几条照样出现在列表里,结果是 `null`
+	 * (没有 `result` = 从没出过网,ADR-0017 决策 17)。它们没有进 sink,这一点由
+	 * `payload-sequence.test.ts` 的「被中止的那几条一次都没进 sink」钉着。
+	 *
+	 * 为什么要记:人工重推的按钮上写着「补 N 条」,而从前这一行只剩 2 条,第 3 条连存在过
+	 * 都看不出来 —— 补不回来,也查不出少了什么。
+	 */
+	it("某条失败仍中止该目标后续条:失败那条在列表里,被中止的也在(没有结果);别的目标不受牵连", async () => {
 		const { push, seen } = setup(subWith([T1, T2]), {
 			failOn: (id, nth) => id === T1 && nth === 2,
 		});
@@ -158,6 +177,7 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 				[
 					["m1", "main", true],
 					["m2", "main", false],
+					["m3", "main", null], // 被中止,从没出过网
 				],
 			],
 			[

@@ -47,7 +47,14 @@ export interface PushMessage {
 }
 
 export interface PushMessageOutcome extends PushMessage {
-	result: DeliveryResult;
+	/**
+	 * 缺省 = **这条从来没出过网**:同一目标的前一条失败、整段序列就此中止,后面这些
+	 * 连 sink 都没进(ADR-0017 决策 17)。它们照样回调,好让历史记全「本来要发几条」——
+	 * 从前静默丢掉,一次本该发 3 条的推送在面板上只剩 1 条,少掉的无从查起。
+	 *
+	 * 与无目标行的每一条同形状(那一整行也都没有结果)。
+	 */
+	result?: DeliveryResult;
 }
 
 interface PushSendBase {
@@ -419,7 +426,8 @@ export class BilibiliPush {
 			const atAllJob = this.sendToTarget(id, atAllPayload, { routing });
 			const outcomes = await this.sendSequence(id, payloads, ctx, myGen);
 			if (outcomes === null) break;
-			results.push(...outcomes.map((o) => o.result));
+			// 被中止的那几条没有结果可报(从没出过网),不进这个数组。
+			results.push(...outcomes.flatMap((o) => (o.result ? [o.result] : [])));
 			this.emit(ctx, id, outcomes);
 			// 本体那次回调已经发出,@全体 的结果再追加 —— 就算它早就落地了也排在后面。
 			void atAllJob
@@ -450,7 +458,8 @@ export class BilibiliPush {
 			if (this.disposed || this.generation !== myGen) break;
 			const outcomes = await this.sendSequence(id, payloads, ctx, myGen);
 			if (outcomes === null) break;
-			results.push(...outcomes.map((o) => o.result));
+			// 被中止的那几条没有结果可报(从没出过网),不进这个数组。
+			results.push(...outcomes.flatMap((o) => (o.result ? [o.result] : [])));
 			this.emit(ctx, id, outcomes);
 		}
 		return results;
@@ -458,8 +467,9 @@ export class BilibiliPush {
 
 	/**
 	 * 一个目标的一段序列:顺序发,某条失败即中止其后续条(失败后大概率继续失败,且乱序
-	 * 补发比缺失更糟);失败那条留在结果里,被中止的不在。返回 null = 生命周期翻转,
-	 * 这一段作废。
+	 * 补发比缺失更糟)。失败那条留在结果里;**被中止的也留在结果里,但不带 `result`**
+	 * —— 它们一次都没进 sink,只是让历史记得住「本来还有几条」(ADR-0017 决策 17)。
+	 * 返回 null = 生命周期翻转,这一段作废。
 	 */
 	private async sendSequence(
 		targetId: string,
@@ -469,11 +479,17 @@ export class BilibiliPush {
 	): Promise<PushMessageOutcome[] | null> {
 		const routing = { uid: ctx.uid, feature: ctx.feature };
 		const outcomes: PushMessageOutcome[] = [];
-		for (const payload of payloads) {
+		for (const [i, payload] of payloads.entries()) {
 			const result = await this.sendToTarget(targetId, payload, { routing });
 			if (this.disposed || this.generation !== myGen) return null;
 			outcomes.push({ payload, role: ctx.role, result });
-			if (!result.ok) break;
+			if (!result.ok) {
+				// 中止。剩下的原样记上,没有结果 —— 人工重推要按这个数把它们补齐。
+				for (const rest of payloads.slice(i + 1)) {
+					outcomes.push({ payload: rest, role: ctx.role });
+				}
+				break;
+			}
 		}
 		return outcomes;
 	}
