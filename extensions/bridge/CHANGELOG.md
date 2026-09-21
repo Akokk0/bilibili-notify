@@ -6,6 +6,14 @@
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- 插件那一侧:AstrBot 的也有了 —— `astrbot_plugin_bilibili_notify_bridge`(AstrBot 4.14.7 起,仓库 <https://github.com/Akokk0/astrbot_plugin_bilibili_notify_bridge>),建接入时挑 AstrBot 那一档就好。0.0.1 里「AstrBot 这一档面板上选得到,但插件还没写」那句作废
+
+---
+
 ## [0.0.1] — 2026-09-11
 
 第一版。协议 1.4;接入与 token 住拓展自己的设置里,能力按 bot 逐个报,对面读不了 markdown 就自动剥成纯文本。
