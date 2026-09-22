@@ -75,20 +75,39 @@ export const updateMotion: WebDevScenario = {
 	group: "web",
 	title: "播放更新动画",
 	icon: "sparkle",
-	desc: "在拓展页上把「换装」演一遍:卡上画着「更新」钮就从那颗钮起飞,没有就从卡片上方落下来。只演动画,什么都不更新、版本号不变;系统开着「减少动态」时不演。想从钮上起飞就先跑一次「拓展有更新」。",
-	params: [ID_PARAM],
+	desc: "在拓展页上把「换装」演一遍:卡上画着「更新」钮就从那颗钮起飞,没有就从卡片上方落下来;先「蓄」几秒(真更新时那是下载),再按挑的结果爆开或淡出。只演动画,什么都不更新、版本号不变;系统开着「减少动态」时不演。想从钮上起飞就先跑一次「拓展有更新」。",
+	params: [
+		ID_PARAM,
+		{ key: "charge", label: "蓄几秒(假装下载)", kind: "number", default: 2, min: 0, max: 30 },
+		{
+			key: "result",
+			label: "结果",
+			kind: "enum",
+			options: [
+				{ value: "landed", label: "装成了(爆开)" },
+				{ value: "failed", label: "没装成(淡出)" },
+			],
+			default: "landed",
+		},
+	],
 	run(params) {
 		const found = findCard(params);
 		if (!found.ok) return found.why;
 		// 只认**这张卡里**的那颗「更新」钮 —— 有新版时才画。别的卡上那颗与这次无关。认的是
 		// 标记不是文字:文案一改,按文字找就悄悄退回「从上方落下」。
 		const button = found.el.querySelector<HTMLElement>(`[${EXT_UPDATE_BUTTON}]`);
+		// 真更新的换装一直蓄到装完;这里没有真的装,就假装装了这么几秒再按挑的结果落定。
+		const seconds = typeof params.charge === "number" ? params.charge : 2;
+		const landed = params.result !== "failed";
+		const outcome = new Promise<boolean>((resolve) => {
+			setTimeout(() => resolve(landed), seconds * 1000);
+		});
 		useCardMotionStore
 			.getState()
 			.play(
 				button
-					? { kind: "update", id: found.id, from: button.getBoundingClientRect() }
-					: { kind: "update", id: found.id },
+					? { kind: "update", id: found.id, from: button.getBoundingClientRect(), outcome }
+					: { kind: "update", id: found.id, outcome },
 			);
 		return button
 			? `给 ${found.id} 演了一次换装(从「更新」钮起飞;没更新任何东西)。`

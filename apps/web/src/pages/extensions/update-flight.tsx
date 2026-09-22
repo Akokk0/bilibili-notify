@@ -5,11 +5,13 @@
  * 「点了一下什么都没发生」。更新是一件值得看见的事,但它发生在**原地**(卡不挪窝),所以不能
  * 照搬传送的「飞过去」,改成演「新版灌进这张卡」:
  *
- * 1. **起** —— 一颗与传送同款的粉球从按下的「更新」钮起飞,弧线飞进卡片中心;没有起点
- *    (devtools 直接放)就从卡片上方落下来。
- * 2. **蓄** —— 卡片微微下沉,边框上一道光沿着走满一圈(像进度走完),四周晕出粉光。
- * 3. **爆** —— 一道斜向高光扫过整张卡,卡片弹起放大一点,一圈粉色光点迸出去。
- * 4. **落** —— 带回弹落回原位,光晕退去。
+ * 1. **起** —— 请求一出门就开演:一颗与传送同款的粉球从按下的「更新」钮起飞,弧线飞进卡片
+ *    中心;没有起点(devtools 直接放)就从卡片上方落下来。
+ * 2. **蓄** —— 卡片微微下沉,边框上一道光一圈一圈地走,四周晕出粉光 —— **一直蓄到装完**
+ *    (`motion.outcome` 落定),下载那几秒因此有了反馈;至少走满一圈,短了没有蓄力感。
+ * 3. **爆** —— 装成了:一道斜向高光扫过整张卡,卡片弹起放大一点,一圈粉色光点迸出去。
+ * 4. **落** —— 带回弹落回原位,光晕退去。没装成就没有 3、4:光环淡出、卡轻轻回原样,错误由
+ *    页面那句话去说。
  *
  * 🔴 **只演「新版到货」,不演「已经换上」**:跑着的拓展更新完是「新版等着换上」(ADR-0012
  * 决策 47),并没有生效。所以这段动画**不写版本号**;落地时卡上印的是刷新之后的真相 ——
@@ -35,13 +37,20 @@ const WAIT_FOR_CARD_MS = 4000;
 /** 等滚动停稳的上限 —— 平滑滚动一般几百毫秒,停不下来也不能一直等。 */
 const WAIT_FOR_SCROLL_MS = 700;
 
-/** 四拍的时间表(毫秒)。「蓄」从球快到的时候开始,两段重叠才像一件事。 */
+/** 时间表(毫秒)。「蓄」从球快到的时候开始,两段重叠才像一件事。 */
 const FLY_MS = 460;
-const CARD_DELAY = 420;
-const CARD_MS = 1100;
-/** 卡片那段里「爆」发生在哪儿(占 CARD_MS 的比例)—— 高光与光点对着它起。 */
-const BURST_AT = 0.52;
-const BURST = CARD_DELAY + CARD_MS * BURST_AT;
+const CHARGE_AT = 420;
+/** 卡片沉下去用多久 —— 沉到底就停在那儿,蓄多久停多久。 */
+const SINK_MS = 320;
+/** 边框那道光走一圈多久。蓄的时候一圈接一圈。 */
+const LOOP_MS = 900;
+/** 至少蓄满一圈才爆(从开演算起)—— 装得再快,也得看得见蓄过力。 */
+const MIN_CHARGE_MS = CHARGE_AT + LOOP_MS;
+/** 装成之后「爆 + 落」那一段多长,「爆」在它的哪儿(比例)。 */
+const BURST_MS = 760;
+const BURST_PEAK = 0.3;
+/** 没装成:光环淡出、卡回原样那一下。 */
+const FADE_MS = 320;
 const PARTICLES = 14;
 
 const PINK = "var(--color-bn-pink)";
@@ -173,12 +182,17 @@ function makeParticles(card: DOMRect): Array<{ dot: HTMLSpanElement; dx: number;
 export function UpdateFlight({
 	motion,
 	onDone,
+	minChargeMs = MIN_CHARGE_MS,
 }: {
 	motion: UpdateMotion | null;
 	onDone: () => void;
+	/** 至少蓄多久才落定 —— 只有测试会给(给 0,不必真等一圈)。 */
+	minChargeMs?: number;
 }) {
 	const doneRef = useRef(onDone);
 	doneRef.current = onDone;
+	const minChargeRef = useRef(minChargeMs);
+	minChargeRef.current = minChargeMs;
 
 	useEffect(() => {
 		if (!motion) return;
@@ -188,7 +202,10 @@ export function UpdateFlight({
 		}
 
 		let cancelled = false;
+		/** 已经收过摊了 —— 收摊时要停掉所有动画,而停掉卡片那条会再叫一次收摊。 */
+		let over = false;
 		let raf = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		const nodes: HTMLElement[] = [];
 		const anims: Animation[] = [];
 		/**
@@ -197,6 +214,9 @@ export function UpdateFlight({
 		 */
 		let borrowed: { card: HTMLElement; position: string } | null = null;
 		const restore = () => {
+			// 🔴 先停动画再摘节点:「下沉」那条停在末帧(`fill: forwards`),不停的话卡永远陷着。
+			for (const anim of anims) anim.cancel?.();
+			anims.length = 0;
 			for (const node of nodes) node.remove();
 			nodes.length = 0;
 			if (borrowed) {
@@ -205,7 +225,8 @@ export function UpdateFlight({
 			}
 		};
 		const finish = () => {
-			if (cancelled) return;
+			if (cancelled || over) return;
+			over = true;
 			restore();
 			doneRef.current();
 		};
@@ -240,6 +261,7 @@ export function UpdateFlight({
 		const play = (card: HTMLElement, rect: DOMRect) => {
 			// 没有 WAAPI 就别演 —— 更新好了这件事不能被一段装饰卡住。
 			if (typeof card.animate !== "function") return finish();
+			const playedAt = performance.now();
 
 			if (getComputedStyle(card).position === "static") {
 				borrowed = { card, position: card.style.position };
@@ -281,84 +303,125 @@ export function UpdateFlight({
 				),
 			);
 
-			// 2–4. 卡片本身:下沉蓄力 → 弹起放大 → 带回弹落回原位。它是这一整段里最长的一条,
-			// 以它放完为收摊的时刻。
-			const main = card.animate(
-				[
-					{ transform: "translateY(0px) scale(1)" },
-					{ transform: "translateY(2px) scale(.975)", offset: 0.4 },
-					{ transform: "translateY(-6px) scale(1.035)", offset: BURST_AT },
-					{ transform: "translateY(1px) scale(.994)", offset: 0.74 },
-					{ transform: "translateY(0px) scale(1)" },
-				],
-				{ duration: CARD_MS, delay: CARD_DELAY, easing: "cubic-bezier(.45,0,.25,1)" },
-			);
-			anims.push(main);
-
+			// 2. 蓄:沉下去就停在那儿;光一圈接一圈地走,光晕亮起来 —— 蓄到装完为止。
+			const sunk = "translateY(2px) scale(.975)";
+			const sink = card.animate([{ transform: "translateY(0px) scale(1)" }, { transform: sunk }], {
+				duration: SINK_MS,
+				delay: CHARGE_AT,
+				easing: "cubic-bezier(.4,0,.2,1)",
+				fill: "forwards",
+			});
 			anims.push(
-				halo.animate(
-					[
-						{ opacity: 0 },
-						{ opacity: 0.8, offset: 0.35 },
-						{ opacity: 1, offset: 0.5 },
-						{ opacity: 0 },
-					],
-					{ duration: CARD_MS, delay: CARD_DELAY, fill: "forwards" },
-				),
-				ring.animate(
-					[
-						{ opacity: 0 },
-						{ opacity: 1, offset: 0.12 },
-						{ opacity: 1, offset: 0.78 },
-						{ opacity: 0 },
-					],
-					{ duration: BURST - CARD_DELAY + 260, delay: CARD_DELAY, fill: "forwards" },
-				),
-				// 光走满一圈正好落在「爆」的那一刻。
+				sink,
+				halo.animate([{ opacity: 0 }, { opacity: 0.8 }], {
+					duration: SINK_MS,
+					delay: CHARGE_AT,
+					fill: "forwards",
+				}),
+				ring.animate([{ opacity: 0 }, { opacity: 1 }], {
+					duration: 220,
+					delay: CHARGE_AT,
+					fill: "forwards",
+				}),
 				beam.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
-					duration: BURST - CARD_DELAY,
-					delay: CARD_DELAY,
-					easing: "cubic-bezier(.5,0,.3,1)",
-					fill: "forwards",
+					duration: LOOP_MS,
+					delay: CHARGE_AT,
+					iterations: Number.POSITIVE_INFINITY,
 				}),
-				band.animate([{ transform: "translateX(-130%)" }, { transform: "translateX(340%)" }], {
-					duration: 420,
-					delay: BURST - 60,
-					easing: "cubic-bezier(.4,0,.2,1)",
-					fill: "forwards",
-				}),
-				...particles.map(({ dot, dx: px, dy: py }, i) =>
-					dot.animate(
-						[
-							{ transform: "translate(0px,0px) scale(.2)", opacity: 0 },
-							{
-								transform: `translate(${px * 0.35}px,${py * 0.35}px) scale(1)`,
-								opacity: 1,
-								offset: 0.25,
-							},
-							{ transform: `translate(${px}px,${py}px) scale(.35)`, opacity: 0 },
-						],
-						// 最晚那颗也得在卡片落地之前放完:收摊跟着卡片走,晚到的光点会被半路拔掉。
-						{
-							duration: 460,
-							delay: BURST - 20 + i * 4,
-							easing: "cubic-bezier(.2,.7,.3,1)",
-							fill: "forwards",
-						},
-					),
-				),
 			);
 
-			main.onfinish = finish;
-			main.oncancel = finish;
+			// 装完没有 + 至少蓄满一圈,两样都到了才落定。
+			const enough = new Promise<void>((resolve) => {
+				timer = setTimeout(
+					resolve,
+					Math.max(0, minChargeRef.current - (performance.now() - playedAt)),
+				);
+			});
+			void Promise.all([motion.outcome, enough]).then(([landed]) => {
+				if (cancelled || over) return;
+				if (landed) burst(card);
+				else fade(card);
+				// 新的一段已经从沉底那一帧接过去了,这时再停「下沉」才不会闪一下。
+				sink.cancel();
+			});
+
+			/** 3–4. 爆 + 落:从沉底那一帧弹起、放大、带回弹落回原位;高光扫过,光点迸出去。 */
+			function burst(target: HTMLElement) {
+				const main = target.animate(
+					[
+						{ transform: sunk },
+						{ transform: "translateY(-6px) scale(1.035)", offset: BURST_PEAK },
+						{ transform: "translateY(1px) scale(.994)", offset: 0.62 },
+						{ transform: "translateY(0px) scale(1)" },
+					],
+					{ duration: BURST_MS, easing: "cubic-bezier(.45,0,.25,1)" },
+				);
+				const peak = BURST_MS * BURST_PEAK;
+				anims.push(
+					main,
+					halo.animate([{ opacity: 0.8 }, { opacity: 1, offset: BURST_PEAK }, { opacity: 0 }], {
+						duration: BURST_MS,
+						fill: "forwards",
+					}),
+					ring.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], {
+						duration: peak + 300,
+						fill: "forwards",
+					}),
+					band.animate([{ transform: "translateX(-130%)" }, { transform: "translateX(340%)" }], {
+						duration: 420,
+						delay: peak - 60,
+						easing: "cubic-bezier(.4,0,.2,1)",
+						fill: "forwards",
+					}),
+					...particles.map(({ dot, dx: px, dy: py }, i) =>
+						dot.animate(
+							[
+								{ transform: "translate(0px,0px) scale(.2)", opacity: 0 },
+								{
+									transform: `translate(${px * 0.35}px,${py * 0.35}px) scale(1)`,
+									opacity: 1,
+									offset: 0.25,
+								},
+								{ transform: `translate(${px}px,${py}px) scale(.35)`, opacity: 0 },
+							],
+							// 最晚那颗也得在卡片落地之前放完:收摊跟着卡片走,晚到的光点会被半路拔掉。
+							{
+								duration: 460,
+								delay: peak - 20 + i * 4,
+								easing: "cubic-bezier(.2,.7,.3,1)",
+								fill: "forwards",
+							},
+						),
+					),
+				);
+				main.onfinish = finish;
+				main.oncancel = finish;
+			}
+
+			/** 没装成:光环与光晕淡出,卡从沉底轻轻回原样。不爆 —— 没有值得庆祝的事。 */
+			function fade(target: HTMLElement) {
+				const main = target.animate(
+					[{ transform: sunk }, { transform: "translateY(0px) scale(1)" }],
+					{
+						duration: FADE_MS,
+						easing: "cubic-bezier(.4,0,.2,1)",
+					},
+				);
+				anims.push(
+					main,
+					halo.animate([{ opacity: 0.8 }, { opacity: 0 }], { duration: FADE_MS, fill: "forwards" }),
+					ring.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FADE_MS, fill: "forwards" }),
+				);
+				main.onfinish = finish;
+				main.oncancel = finish;
+			}
 		};
 
 		raf = requestAnimationFrame(hunt);
 		return () => {
 			cancelled = true;
 			cancelAnimationFrame(raf);
-			for (const anim of anims) anim.cancel?.();
-			anims.length = 0;
+			clearTimeout(timer);
 			// 顺利那条路走的是 finish();这一条是「演到一半被拆」,借来的样式也得还回去。
 			restore();
 		};

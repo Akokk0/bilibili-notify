@@ -26,6 +26,12 @@ export type CardMotion =
 			id: string;
 			/** 那颗球从哪儿起飞(按下的「更新」钮)。不给就从卡片上方落下来。 */
 			from?: DOMRect;
+			/**
+			 * 装完没有 —— **请求一出门就开演**,「蓄」一直持续到它落定:`true` 装成了(爆开落地),
+			 * `false` 没装成(光环淡出、卡回原样)。下载那几秒因此有了反馈,而不是一颗灰掉的钮。
+			 * 🔴 **只许 resolve、不许 reject**:演的那头只管等,没有人接拒绝。
+			 */
+			outcome: Promise<boolean>;
 	  };
 
 interface CardMotionStore {

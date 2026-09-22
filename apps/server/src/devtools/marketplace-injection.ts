@@ -32,7 +32,11 @@ export interface InstalledExtension {
 export interface InjectableMarketplace {
 	/** 交给路由的那份。 */
 	marketplace: Marketplace;
-	inject(id: string): void;
+	/**
+	 * `downloadMs`:按「更新」之后先假装下载这么久再回成功 —— 面板那段换装一直「蓄」到装完,
+	 * 一按就成的话蓄力根本看不见。
+	 */
+	inject(id: string, downloadMs?: number): void;
 	clear(): void;
 	/**
 	 * 眼下注入着的那一个,以及它此刻的假新版(按装着那份现算)。`version` 缺 = 那个 id 现在
@@ -90,6 +94,7 @@ export function injectableMarketplace(
 	installed: () => readonly InstalledExtension[],
 ): InjectableMarketplace {
 	let fake: string | null = null;
+	let downloadMs = 0;
 
 	const lookup = (id: string) => installed().find((one) => one.id === id);
 
@@ -138,6 +143,8 @@ export function injectableMarketplace(
 			// 没注入这个 id,或者它此刻没装(列表那边也就没改它)—— 原样交给真市场。
 			if (!onDisk) return real.install(sourceId, id);
 			fake = null;
+			const wait = downloadMs;
+			if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
 			return {
 				ok: true,
 				id,
@@ -151,8 +158,9 @@ export function injectableMarketplace(
 
 	return {
 		marketplace,
-		inject(id) {
+		inject(id, ms = 0) {
 			fake = id;
+			downloadMs = ms;
 		},
 		clear() {
 			fake = null;

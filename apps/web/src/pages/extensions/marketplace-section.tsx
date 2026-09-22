@@ -62,29 +62,51 @@ export function useMarketplaceInstall() {
 	const [action, setAction] = useState<"install" | "update">("install");
 	/*
 	 * 起飞位置要在**点下去那一刻**量:装成之后市场那张卡当场消失(已装的不在市场里露面),
-	 * 那时再量就没得量了。装成才把它变成一段动画交出去(装 = 传送,更新 = 换装),失败不演。
-	 * 放在 ref 里而不是 state:成功回调读的是按下那一刻记下的,不是回调闭包里那一帧的。
+	 * 那时再量就没得量了。放在 ref 里而不是 state:回调读的是按下那一刻记下的,不是回调闭包
+	 * 里那一帧的。
+	 *
+	 * 两段动画开演的时机不一样:
+	 * - **传送(装)装成才演**:落点是装成之后才出现的那张卡,之前无处可落;失败不演。
+	 * - **换装(更新)请求一出门就演**:卡本来就在,下载那几秒正是「蓄」—— 等装完才开演的话,
+	 *   那几秒页面上只有一颗灰掉的钮。装成 / 没装成由 `settle` 落定,演的那头据此爆开或淡出。
 	 */
 	const launch = useRef<{ kind: "install" | "update"; from?: DOMRect } | null>(null);
+	const settle = useRef<((landed: boolean) => void) | null>(null);
 	const play = useCardMotionStore((state) => state.play);
 	const install = useMutation({
 		mutationFn: (input: { source: string; id: string }) =>
 			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
-		onMutate: () => {
+		onMutate: ({ id }) => {
 			setErrors([]);
 			setDone(null);
+			const pending = launch.current;
+			if (pending?.kind !== "update") return;
+			launch.current = null;
+			// 换装没有起点也演 —— 球从卡片上方落下。
+			const outcome = new Promise<boolean>((resolve) => {
+				settle.current = resolve;
+			});
+			play({ kind: "update", id, from: pending.from, outcome });
 		},
 		onSuccess: (res) => {
 			setDone(res);
+			settle.current?.(true);
+			settle.current = null;
 			const pending = launch.current;
 			launch.current = null;
-			// 装的传送非得有起点(从市场那张卡飞过来);换装没有起点也演 —— 球从卡片上方落下。
-			if (pending?.kind === "update") play({ kind: "update", id: res.id, from: pending.from });
-			else if (pending?.from) play({ kind: "install", id: res.id, from: pending.from });
+			// 装的传送非得有起点(从市场那张卡飞过来)。
+			if (pending?.kind === "install" && pending.from) {
+				play({ kind: "install", id: res.id, from: pending.from });
+			}
 			void qc.invalidateQueries({ queryKey: ["extensions"] });
 			void qc.invalidateQueries({ queryKey: ["marketplace"] });
 		},
-		onError: (err) => setErrors(errorsOf(err)),
+		onError: (err) => {
+			setErrors(errorsOf(err));
+			settle.current?.(false);
+			settle.current = null;
+			launch.current = null;
+		},
 	});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
 	const start = (entry: MarketplaceEntryDTO, fromRect?: DOMRect) => {

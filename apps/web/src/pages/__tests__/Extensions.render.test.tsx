@@ -153,6 +153,27 @@ async function cardOf(name: string): Promise<HTMLElement> {
 	return card as HTMLElement;
 }
 
+/** 市场说桥有新版 v1.1.0(装着 1.0.0)—— 卡上长出「更新」钮。 */
+const UPDATABLE_MARKET: MarketplaceResponse = {
+	...MARKET,
+	sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
+	extensions: [
+		{
+			source: "official",
+			official: true,
+			id: "bridge",
+			name: "机器人框架桥接",
+			description: "",
+			version: "1.1.0",
+			apiVersion: 1,
+			prerelease: false,
+			size: 1,
+			installed: { version: "1.0.0", source: "official" },
+			state: "updatable",
+		},
+	],
+};
+
 describe("拓展页", () => {
 	beforeEach(() => {
 		apiGetMock.mockReset();
@@ -432,34 +453,18 @@ describe("已装卡片上的「有新版」", () => {
 	});
 
 	/**
-	 * 更新成了要**演一段换装**,起点是按下去的那颗「更新」钮 —— 此前更新一声不响,只有版本号
-	 * 悄悄变了。jsdom 没有动画接口,换装一放进去就当场收摊,所以记的是「放进来过什么」,
-	 * 不是事后去读那一格。
+	 * 更新要**演一段换装**,起点是按下去的那颗「更新」钮 —— 此前更新一声不响,只有版本号悄悄
+	 * 变了。🔴 **请求一出门就开演**:下载那几秒正是「蓄」,等装完才开演的话,那几秒页面上只有
+	 * 一颗灰掉的钮。jsdom 没有动画接口,换装一放进去就当场收摊,所以记的是「放进来过什么」。
 	 */
-	it("更新成了 → 那张卡上演一段换装,球从按下去的「更新」钮起飞", async () => {
+	it("按下「更新」→ 不等装完就开演,球从那颗钮起飞;装成了才算落定", async () => {
 		const played: CardMotion[] = [];
 		const unsubscribe = useCardMotionStore.subscribe((state) => {
 			if (state.motion) played.push(state.motion);
 		});
-		renderPage(LISTED, CONNECTIONS, STATUS, {
-			...MARKET,
-			sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
-			extensions: [
-				{
-					source: "official",
-					official: true,
-					id: "bridge",
-					name: "机器人框架桥接",
-					description: "",
-					version: "1.1.0",
-					apiVersion: 1,
-					prerelease: false,
-					size: 1,
-					installed: { version: "1.0.0", source: "official" },
-					state: "updatable",
-				},
-			],
-		});
+		let answer: (value: unknown) => void = () => {};
+		apiPostMock.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+		renderPage(LISTED, CONNECTIONS, STATUS, UPDATABLE_MARKET);
 		await screen.findAllByText("机器人框架桥接");
 		const card = installedCardOf("机器人框架桥接");
 		const button = await within(card).findByRole("button", { name: /更新/ });
@@ -467,10 +472,41 @@ describe("已装卡片上的「有新版」", () => {
 		expect(button.hasAttribute(EXT_UPDATE_BUTTON)).toBe(true);
 		fireEvent.click(button);
 
+		// 服务端还没回话,就已经在演了。
 		await waitFor(() => expect(played).toHaveLength(1));
 		unsubscribe();
-		expect(played[0]).toMatchObject({ kind: "update", id: "bridge" });
-		expect(played[0]?.kind === "update" && played[0].from).toBeTruthy();
+		const motion = played[0];
+		if (motion?.kind !== "update") throw new Error("应该是一段换装");
+		expect(motion.id).toBe("bridge");
+		expect(motion.from).toBeTruthy();
+
+		answer({
+			id: "bridge",
+			name: "机器人框架桥接",
+			version: "1.1.0",
+			staged: true,
+			restart: { can: true, how: "container" },
+		});
+		await expect(motion.outcome).resolves.toBe(true);
+	});
+
+	it("更新砸了 → 那段换装落定成「没装成」(光环淡出,不爆)", async () => {
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+		apiPostMock.mockRejectedValue(new Error("下不动"));
+		renderPage(LISTED, CONNECTIONS, STATUS, UPDATABLE_MARKET);
+		await screen.findAllByText("机器人框架桥接");
+		fireEvent.click(
+			await within(installedCardOf("机器人框架桥接")).findByRole("button", { name: /更新/ }),
+		);
+
+		await waitFor(() => expect(played).toHaveLength(1));
+		unsubscribe();
+		const motion = played[0];
+		if (motion?.kind !== "update") throw new Error("应该是一段换装");
+		await expect(motion.outcome).resolves.toBe(false);
 	});
 
 	/**

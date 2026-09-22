@@ -18,7 +18,7 @@ export function marketplaceUpdateScenario(injectable: InjectableMarketplace): De
 		group: "ext",
 		title: "拓展有更新",
 		icon: "arrowUp",
-		desc: "让一张已装卡片出现「有新版 · 更新」(版本 = 装着那版的下一个补丁号;索引里没有它就现造一条官方的)。按「更新」会假装装成:不下载、不写盘,卡上印的版本号也就不变;装成后这条自己撤掉。",
+		desc: "让一张已装卡片出现「有新版 · 更新」(版本 = 装着那版的下一个补丁号;索引里没有它就现造一条官方的)。按「更新」先假装下载几秒(看那段换装一直蓄到装完),再假装装成:不下载、不写盘,卡上印的版本号也就不变;装成后这条自己撤掉。",
 		params: [
 			{
 				key: "ext",
@@ -27,6 +27,7 @@ export function marketplaceUpdateScenario(injectable: InjectableMarketplace): De
 				default: "bridge",
 				placeholder: "已装的拓展 id,如 bridge",
 			},
+			{ key: "download", label: "假装下载几秒", kind: "number", default: 2, min: 0, max: 30 },
 		],
 		run(params) {
 			const id = String(params.ext ?? "").trim();
@@ -37,7 +38,8 @@ export function marketplaceUpdateScenario(injectable: InjectableMarketplace): De
 					`${id} 没装 —— 「有新版」长在已装卡片上,先装上它(拓展组「装一个仓里的拓展」或从市场装)`,
 				);
 			}
-			injectable.inject(id);
+			const seconds = typeof params.download === "number" ? params.download : 2;
+			injectable.inject(id, seconds * 1000);
 			const version = injectable.injected()?.version;
 			return {
 				summary: `${id} 的卡上现在有「有新版 v${version} · 更新」;按下去假装装成,盘上一个字节都不动`,

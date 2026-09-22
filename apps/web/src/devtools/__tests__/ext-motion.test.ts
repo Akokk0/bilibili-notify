@@ -100,15 +100,16 @@ describe("web.ext-install-motion", () => {
 });
 
 describe("web.ext-update-motion", () => {
-	const run = (params: Record<string, string>) =>
-		scenario("web.ext-update-motion").run(params, { qc });
+	// 蓄 0 秒:这几条看的是「演哪张卡、从哪儿起飞」,不等那一段。
+	const run = (params: Record<string, string | number>) =>
+		scenario("web.ext-update-motion").run({ charge: 0, ...params }, { qc });
 
 	it("卡上画着「更新」钮:从那颗钮起飞", () => {
 		const el = card("bridge");
 		const btn = rect(300, 180, 52, 28);
 		updateButton(el, btn);
 		run({ id: "bridge" });
-		expect(motion()).toEqual({ kind: "update", id: "bridge", from: btn });
+		expect(motion()).toMatchObject({ kind: "update", id: "bridge", from: btn });
 	});
 
 	it("卡上没有「更新」钮(没有新版):不给起点 —— 球从卡片上方落下来", () => {
@@ -120,8 +121,8 @@ describe("web.ext-update-motion", () => {
 		run({ id: "" });
 
 		const m = motion();
-		expect(m).toEqual({ kind: "update", id: "bridge" });
-		expect(m && "from" in m).toBe(false);
+		expect(m).toMatchObject({ kind: "update", id: "bridge" });
+		expect(m?.from).toBeUndefined();
 	});
 
 	it("量的是**这张卡里**那颗钮,不是页上随便哪张卡的", () => {
@@ -129,7 +130,30 @@ describe("web.ext-update-motion", () => {
 		updateButton(first, rect(10, 10, 52, 28));
 		card("bridge");
 		run({ id: "bridge" });
-		expect(motion()).toEqual({ kind: "update", id: "bridge" });
+		expect(motion()).toMatchObject({ kind: "update", id: "bridge" });
+		expect(motion()?.from).toBeUndefined();
+	});
+
+	/**
+	 * 真更新的那段换装一直「蓄」到装完;这里没有真的装,所以假装装了几秒再落定。结果也能挑:
+	 * 没装成那一版(光环淡出、不爆)同样得看得见。
+	 */
+	it("蓄几秒、落成什么都照参数:默认装成了", async () => {
+		card("bridge");
+		run({ id: "bridge", charge: 0.05 });
+		const m = motion();
+		if (m?.kind !== "update") throw new Error("应该是一段换装");
+		const started = Date.now();
+		await expect(m.outcome).resolves.toBe(true);
+		expect(Date.now() - started).toBeGreaterThanOrEqual(40);
+	});
+
+	it("结果挑「没装成」→ 那一段落定成没装成", async () => {
+		card("bridge");
+		run({ id: "bridge", result: "failed" });
+		const m = motion();
+		if (m?.kind !== "update") throw new Error("应该是一段换装");
+		await expect(m.outcome).resolves.toBe(false);
 	});
 });
 

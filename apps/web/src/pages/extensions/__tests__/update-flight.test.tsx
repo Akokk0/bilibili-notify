@@ -35,6 +35,7 @@ function matchMedia(reduce: boolean) {
 
 interface FakeAnim {
 	el: Element;
+	options: KeyframeAnimationOptions | undefined;
 	onfinish: (() => void) | null;
 	oncancel: (() => void) | null;
 	cancelled: boolean;
@@ -50,9 +51,10 @@ function stubAnimate(): FakeAnim[] {
 	Object.defineProperty(Element.prototype, "animate", {
 		configurable: true,
 		writable: true,
-		value(this: Element) {
+		value(this: Element, _frames: unknown, options?: KeyframeAnimationOptions) {
 			const anim: FakeAnim = {
 				el: this,
+				options,
 				onfinish: null,
 				oncancel: null,
 				cancelled: false,
@@ -73,7 +75,18 @@ function ball(): HTMLElement | null {
 	return document.body.querySelector<HTMLElement>(':scope > div[aria-hidden="true"]');
 }
 
-const update = (id: string, from?: DOMRect) => ({ kind: "update" as const, id, from });
+/** 一段换装。`outcome` 不给 = 还没装完(永远不落定)。 */
+const update = (id: string, from?: DOMRect, outcome: Promise<boolean> = new Promise(() => {})) => ({
+	kind: "update" as const,
+	id,
+	from,
+	outcome,
+});
+
+/** 卡片自己身上的那几条(下沉、爆开 / 回原样)。 */
+const onCard = (anims: FakeAnim[], card: Element) => anims.filter((anim) => anim.el === card);
+/** 光点那几条(挂在 span 上)—— 只有「爆」才有。 */
+const sparks = (anims: FakeAnim[]) => anims.filter((anim) => anim.el.tagName === "SPAN");
 
 describe("更新完那一下的换装", () => {
 	beforeEach(() => matchMedia(false));
@@ -129,27 +142,94 @@ describe("更新完那一下的换装", () => {
 	});
 
 	/**
-	 * 真动画那条路:演的时候光环挂在卡里、卡借来当定位容器;**卡片那条放完**(它最长)就收摊,
-	 * 借的样式还回去、挂上去的全摘掉。
+	 * 🔴 **一直蓄到装完**:下载那几秒正是「蓄」。没落定之前不许爆、也不许收摊 —— 光一圈接一圈
+	 * 地走,卡沉着。
 	 */
-	it("演完:光环与球都摘掉,借来的定位还回去,然后才说演完了", async () => {
+	it("还没装完 → 一直蓄着:光一圈接一圈,不爆、不收摊", async () => {
 		const anims = stubAnimate();
 		const card = cardInDom("bridge");
 		const done = vi.fn();
 
-		render(<UpdateFlight motion={update("bridge")} onDone={done} />);
+		render(<UpdateFlight motion={update("bridge")} onDone={done} minChargeMs={0} />);
 		await waitFor(() => expect(card.childElementCount).toBe(1));
+		await new Promise((resolve) => setTimeout(resolve, 30));
+
+		expect(anims.some((anim) => anim.options?.iterations === Number.POSITIVE_INFINITY)).toBe(true);
+		expect(onCard(anims, card)).toHaveLength(1);
+		expect(sparks(anims)).toHaveLength(0);
+		expect(done).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 装成了:从沉底那一帧爆开、落回原位;**卡片那条放完**就收摊 —— 光环与球摘掉、借来的定位
+	 * 还回去、停在末帧的「下沉」也停掉(不停的话卡永远陷着)。
+	 */
+	it("装成了 → 爆开、光点迸出;落地收摊,卡不留下沉、不留光环", async () => {
+		const anims = stubAnimate();
+		const card = cardInDom("bridge");
+		const done = vi.fn();
+
+		render(
+			<UpdateFlight
+				motion={update("bridge", undefined, Promise.resolve(true))}
+				onDone={done}
+				minChargeMs={0}
+			/>,
+		);
+		await waitFor(() => expect(onCard(anims, card)).toHaveLength(2));
+		const [sink, landing] = onCard(anims, card);
+		expect(sparks(anims).length).toBeGreaterThan(0);
 		expect(card.style.position).toBe("relative");
-		expect(ball()).not.toBeNull();
 		expect(done).not.toHaveBeenCalled();
 
-		const main = anims.find((anim) => anim.el === card);
-		main?.onfinish?.();
+		landing?.onfinish?.();
 
+		expect(sink?.cancelled).toBe(true);
 		expect(card.childElementCount).toBe(0);
 		expect(card.style.position).toBe("");
 		expect(ball()).toBeNull();
 		expect(done).toHaveBeenCalledTimes(1);
+	});
+
+	it("没装成 → 不爆、不迸光点:光环淡出,卡回原样后收摊", async () => {
+		const anims = stubAnimate();
+		const card = cardInDom("bridge");
+		const done = vi.fn();
+
+		render(
+			<UpdateFlight
+				motion={update("bridge", undefined, Promise.resolve(false))}
+				onDone={done}
+				minChargeMs={0}
+			/>,
+		);
+		await waitFor(() => expect(onCard(anims, card)).toHaveLength(2));
+		expect(sparks(anims)).toHaveLength(0);
+
+		onCard(anims, card)[1]?.onfinish?.();
+
+		expect(onCard(anims, card)[0]?.cancelled).toBe(true);
+		expect(card.childElementCount).toBe(0);
+		expect(done).toHaveBeenCalledTimes(1);
+	});
+
+	/** 装得再快也得看得见蓄过力 —— 当场爆开的话,那一圈光根本来不及走。 */
+	it("装得飞快也至少蓄满那一段才爆", async () => {
+		const anims = stubAnimate();
+		const card = cardInDom("bridge");
+
+		render(
+			<UpdateFlight
+				motion={update("bridge", undefined, Promise.resolve(true))}
+				onDone={vi.fn()}
+				minChargeMs={300}
+			/>,
+		);
+		await waitFor(() => expect(card.childElementCount).toBe(1));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(onCard(anims, card)).toHaveLength(1);
+
+		await waitFor(() => expect(onCard(anims, card)).toHaveLength(2), { timeout: 2000 });
 	});
 
 	/** 演到一半被拆(切页、马上又更新一个)—— 没还原的话卡片永久多一格内联样式,门禁全绿。 */
