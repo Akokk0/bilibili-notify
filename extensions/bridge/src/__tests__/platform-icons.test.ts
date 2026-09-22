@@ -35,7 +35,7 @@ describe("platformIcon", () => {
 	});
 
 	/**
-	 * 🔴 平台名是对端报的开放字符串,而这张表是个普通对象:`constructor` 会读到
+	 * 🔴 平台名是对端报的开放字符串,这张表拿普通对象按下标查的话:`constructor` 会读到
 	 * `[Function: Object]`、`__proto__` 读到 `Object.prototype` —— 进了视图的 icon 格,宿主
 	 * 校验不过就把**整份视图**换成一条错误提示。查表前先转小写,所以要试的是转完还落在原型链上的
 	 * 那几个(`toString` 转完是 `tostring`,碰不上)。

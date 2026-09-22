@@ -165,6 +165,15 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
 	let pushView: ExtensionPushView | undefined;
+	/**
+	 * 清单声明过的动作名;清单里没有 `actions` 这一段(v1 一律没有)就是 `undefined`。
+	 * 建成 Set 而不是拿清单那个普通对象查:名字是拓展与面板给的,`in` / 下标会顺着原型链把
+	 * `constructor` / `toString` 判成声明了。
+	 */
+	const declaredActions: ReadonlySet<string> | undefined =
+		opts.manifest.apiVersion === 2 && opts.manifest.actions
+			? new Set(Object.keys(opts.manifest.actions))
+			: undefined;
 	/** 代码接了的动作。卸载时清空 —— 之后面板再按,就是「声明了却没接」。 */
 	const actionHandlers = new Map<string, () => void | Promise<void>>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
@@ -416,14 +425,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				refuse("onAction");
 				return;
 			}
-			const declared = opts.manifest.apiVersion === 2 ? opts.manifest.actions : undefined;
-			if (!declared) {
+			if (!declaredActions) {
 				throw new Error(
 					`extension ${id}: 清单里没有 actions(v1 清单没有这一段),接不了动作 ${name}`,
 				);
 			}
-			// 只认清单自己身上的键 —— `in` 会顺着原型链把 `constructor` / `toString` 判成声明了。
-			if (!Object.hasOwn(declared, name)) {
+			if (!declaredActions.has(name)) {
 				throw new Error(`extension ${id}: 清单的 actions 里没有 ${name} —— 先在清单里声明`);
 			}
 			if (actionHandlers.has(name)) {
@@ -480,9 +487,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
 		async runAction(name, runOpts = {}) {
-			const declared = opts.manifest.apiVersion === 2 ? opts.manifest.actions : undefined;
-			// 同 onAction:查表只认自己身上的键。
-			if (!declared || !Object.hasOwn(declared, name)) return { ok: false, reason: "undeclared" };
+			if (!declaredActions?.has(name)) return { ok: false, reason: "undeclared" };
 			const handler = actionHandlers.get(name);
 			if (!handler) return { ok: false, reason: "unhandled" };
 			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;

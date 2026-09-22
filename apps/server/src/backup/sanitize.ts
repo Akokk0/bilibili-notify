@@ -90,8 +90,12 @@ export function redactSecretKeys<T>(value: T, secrets: ReadonlySet<string> = SEC
  * (ADR-0019 决策 17),跑没跑都问得出来。问不出来就把它的 config 与 settings **整片当密钥** —— 那两格
  * 本来就不由核心定形状(决策 19),分不出哪一格无辜。完整档照样原样恢复(真值在加密袋
  * 里,见 {@link collectRedactions});脱敏档丢的是本来就不该由我们替它担保的东西。
+ *
+ * 用 Map 不用普通对象:拿来查的 id 出自配置(连接的 `extensionId`、设置槽的键),普通对象按它取
+ * 会顺着原型链摸 —— `{}["toString"]` 是个长度 0 的函数,被当成「一格都没声明」,那个拓展的密钥
+ * 原样进备份;`{}["constructor"]` 则让导出直接炸。
  */
-export type ExtensionSecretCodes = Readonly<Record<string, readonly string[]>>;
+export type ExtensionSecretCodes = ReadonlyMap<string, readonly string[]>;
 
 /** 备份四个分区里,拓展能插手的那两格。只写出用得上的形状。 */
 interface ExtensionScopedSections {
@@ -106,7 +110,7 @@ interface ExtensionScopedSections {
  */
 export function redactBackupSections<T>(
 	sections: T,
-	extensionSecrets: ExtensionSecretCodes = {},
+	extensionSecrets: ExtensionSecretCodes = new Map(),
 ): T {
 	const out = redactSecretKeys(sections);
 	redactExtensionScopes(out as ExtensionScopedSections, extensionSecrets);
@@ -121,24 +125,13 @@ function redactExtensionScopes(
 	for (const [id, state] of Object.entries(sections.globals?.extensions ?? {})) {
 		// 开关(`enabled`)不是设置,不许跟着抹。
 		if (!state || state.settings === undefined) continue;
-		state.settings = redactScoped(state.settings, secretsOf(extensionSecrets, id));
+		state.settings = redactScoped(state.settings, extensionSecrets.get(id));
 	}
 	for (const connection of sections.connections ?? []) {
 		if (connection?.kind !== "extension") continue;
 		const id = typeof connection.extensionId === "string" ? connection.extensionId : "";
-		connection.config = redactScoped(connection.config, secretsOf(extensionSecrets, id));
+		connection.config = redactScoped(connection.config, extensionSecrets.get(id));
 	}
-}
-
-/**
- * 按 id 取它声明的密钥键 —— 只认表自己身上的。顺着原型链摸的话,`{}["toString"]` 是个长度 0
- * 的函数,被当成「一格都没声明」,那个拓展的密钥原样进备份;`{}["constructor"]` 则让导出直接炸。
- */
-function secretsOf(
-	extensionSecrets: ExtensionSecretCodes,
-	id: string,
-): readonly string[] | undefined {
-	return Object.hasOwn(extensionSecrets, id) ? extensionSecrets[id] : undefined;
 }
 
 function redactScoped(value: unknown, codes: readonly string[] | undefined): unknown {

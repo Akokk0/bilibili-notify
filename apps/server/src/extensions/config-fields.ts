@@ -116,9 +116,12 @@ function checkFields(
 	fail: (msg: string) => never,
 	opts: { picked: boolean; listItem: boolean; keysOnly: boolean },
 ): void {
+	// zod 的 shape 是个普通对象:`in` 会顺着原型链把 `toString` 这类判成 schema 的键。只认它
+	// 自己的键 —— v1 的字段表不过清单校验,只剩这一道。
+	const memberKeys: ReadonlySet<string> = new Set(Object.keys(members));
 	// 列表项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有 ——
 	// 没有的话,BN 生成的 id 会被拓展那份 zod 当场剥掉,视图就再也挂不到这一项上。
-	if (opts.listItem && !(LIST_ITEM_ID_KEY in members)) {
+	if (opts.listItem && !memberKeys.has(LIST_ITEM_ID_KEY)) {
 		fail(`列表项 "${prefix}${LIST_ITEM_ID_KEY}" 由 BN 生成,zod 的项里要有这一格`);
 	}
 	const seen = new Set<string>(opts.listItem ? [LIST_ITEM_ID_KEY] : []);
@@ -128,8 +131,7 @@ function checkFields(
 			fail(`字段表里 "${path}" 摆了两栏 —— 哪一栏说了算没有答案`);
 		}
 		seen.add(field.key);
-		// `in` 会顺着原型链把 `toString` 这类判成 schema 的键;v1 的字段表不过清单校验,只剩这一道。
-		if (!Object.hasOwn(members, field.key)) {
+		if (!memberKeys.has(field.key)) {
 			fail(`字段表里的 "${path}" 不是 config schema 的键`);
 		}
 		// 只对键的(v1)到这里为止,这一格的类型 / 默认值不看。

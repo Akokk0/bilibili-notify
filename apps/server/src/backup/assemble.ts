@@ -37,7 +37,7 @@ export function assembleFullBackup(
 	pin: string,
 	createdAt: string,
 	/** 拓展声明成密钥的 config 键,按拓展 id 分格 —— 明文段照它一并抹平。 */
-	extensionSecrets: ExtensionSecretCodes = {},
+	extensionSecrets: ExtensionSecretCodes = new Map(),
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
 	// 每家两把,全收。`redactBackupSections` 会按键名把明文段里的 apiKey 一律抹平

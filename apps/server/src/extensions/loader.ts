@@ -84,7 +84,7 @@ export interface LoadedExtensions {
 	 * 问不出来时宁可多抹:从前那条路的症状是「拨掉一个拓展的开关,它连接里的密钥就原样进
 	 * 备份文件」。
 	 */
-	secretConfigCodes(): Readonly<Record<string, readonly string[]>>;
+	secretConfigCodes(): ReadonlyMap<string, readonly string[]>;
 	/**
 	 * 某个拓展交上来的面板数据(`ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
@@ -545,16 +545,16 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	return {
 		list: () => [...entries.values()],
 		secretConfigCodes: () => {
-			const codes: Record<string, readonly string[]> = {};
+			const codes = new Map<string, readonly string[]>();
 			for (const entry of entries.values()) {
 				// v2 照清单读(ADR-0019 决策 17)—— 没跑起来的也读得到,备份只抹声明的那几格。
 				const declared = entry.manifest && manifestSecretKeys(entry.manifest);
-				if (declared) codes[entry.id] = declared;
+				if (declared) codes.set(entry.id, declared);
 			}
 			// v1 的声明在代码里,只有跑着的才交得出来;问不出来的不进表(脱敏那边整片当密钥)。
-			// 判「有没有」只认表自己身上的键:`in` 会把 `constructor` 这类原型上的名字判成有。
+			// 已经照清单记下的不许盖:跑着的 v2 代码那份只有连接配置项,清单那份还带着设置项。
 			for (const [id, runtime] of runtimes) {
-				if (!Object.hasOwn(codes, id)) codes[id] = runtime.secretConfigCodes();
+				if (!codes.has(id)) codes.set(id, runtime.secretConfigCodes());
 			}
 			return codes;
 		},

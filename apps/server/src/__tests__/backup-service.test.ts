@@ -112,7 +112,7 @@ describe("BackupService", () => {
 			configStore: makeFakeStore({ connections: [extension] }),
 			cookieStore: makeCookieStore(null),
 			now: () => "t0",
-			extensionSecretCodes: () => ({ bridge: ["botKey"] }),
+			extensionSecretCodes: () => new Map([["bridge", ["botKey"]]]),
 		});
 
 		const sanitized = await svc.exportBackup({ kind: "sanitized" });
@@ -145,7 +145,7 @@ describe("BackupService", () => {
 			cookieStore: makeCookieStore(null),
 			now: () => "t0",
 			// 跑着的一个都没有 —— 拓展全停用时就是这个样子。
-			extensionSecretCodes: () => ({}),
+			extensionSecretCodes: () => new Map(),
 		});
 
 		const sanitized = await svc.exportBackup({ kind: "sanitized" });

@@ -253,7 +253,7 @@ describe("拓展声明的密钥字段", () => {
 	});
 
 	it("拓展说了它是密钥 → 抹平;没说的原样留着", () => {
-		const out = redactBackupSections(sections(), { bridge: ["botKey"] });
+		const out = redactBackupSections(sections(), new Map([["bridge", ["botKey"]]]));
 		expect(out.connections[0]?.config.botKey).toBe("");
 		expect(out.connections[0]?.config.note).toBe("家里那台");
 	});
@@ -266,7 +266,7 @@ describe("拓展声明的密钥字段", () => {
 	 * 弄报废」不是任何人做过的决定。
 	 */
 	it("声明的键不外溢:别的连接、目标、别的拓展都不受影响", () => {
-		const out = redactBackupSections(sections(), { bridge: ["name"] });
+		const out = redactBackupSections(sections(), new Map([["bridge", ["name"]]]));
 		// 它自己那一格照抹。
 		expect(out.globals.extensions.bridge.settings.links[0]?.name).toBe("");
 		// 旁边这些一个都不许动。
@@ -281,7 +281,7 @@ describe("拓展声明的密钥字段", () => {
 	 * 什么都不抹」,于是**关掉一个拓展就把它连接里的密钥漏进备份文件**。
 	 */
 	it("拓展没跑起来 → 它的 config 与 settings 整片抹平", () => {
-		const out = redactBackupSections(sections(), {});
+		const out = redactBackupSections(sections(), new Map());
 		expect(out.connections[0]?.config).toEqual({ botKey: "", note: "" });
 		expect(out.globals.extensions.bridge.settings.links[0]).toEqual({ name: "", botKey: "" });
 		// 开关不是设置,不许跟着抹掉。
@@ -291,8 +291,8 @@ describe("拓展声明的密钥字段", () => {
 	});
 
 	/**
-	 * 🔴 声明表是个普通对象,按 id 取不能顺着原型链摸:`{}["toString"]` 是个函数、长度 0,被当成
-	 * 「一格都没声明」→ 那个拓展的密钥原样进备份;`{}["constructor"]` 则让整次导出直接炸掉。
+	 * 🔴 按 id 取声明不能顺着原型链摸:`{}["toString"]` 是个函数、长度 0,被当成「一格都没声明」
+	 * → 那个拓展的密钥原样进备份;`{}["constructor"]` 则让整次导出直接炸掉。
 	 */
 	it("拓展 id 撞上 Object.prototype 上的名字 —— 按「问不出来」整片抹平,不漏也不炸", () => {
 		const out = redactBackupSections(
@@ -308,14 +308,20 @@ describe("拓展声明的密钥字段", () => {
 					},
 				],
 			},
-			{},
+			new Map(),
 		);
 		expect(out.globals.extensions.toString.settings).toEqual({ botKey: "" });
 		expect(out.connections[0]?.config).toEqual({ botKey: "" });
 	});
 
 	it("跑起来但一格都没声明(字段表是空表)→ 只吃基础黑名单", () => {
-		const out = redactBackupSections(sections(), { bridge: [], other: [] });
+		const out = redactBackupSections(
+			sections(),
+			new Map([
+				["bridge", []],
+				["other", []],
+			]),
+		);
 		expect(out.connections[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
 	});
 

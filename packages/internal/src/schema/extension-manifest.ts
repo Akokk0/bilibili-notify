@@ -88,9 +88,10 @@ export const IdSegmentSchema = z
  * `Object.prototype` 自己身上的名字(`constructor` / `toString` / `valueOf` / `hasOwnProperty`
  * / `__proto__` …)。
  *
- * 拓展 id、设置项的 key、动作名都会被当成**普通对象的键**去查表 —— `name in obj` 与 `obj[name]`
- * 会顺着原型链摸到内置函数,一个根本没声明的名字就被当成「有」。各自的正则挡不全(字母开头
- * 照样拼得出 `toString`),所以单独拒;查表那头也一律用 `Object.hasOwn`,两道都在。
+ * 拓展 id、设置项的 key、动作名都是**拿来查表的键** —— 查的若是普通对象,`name in obj` 与
+ * `obj[name]` 会顺着原型链摸到内置函数,一个根本没声明的名字就被当成「有」。各自的正则挡不全
+ * (字母开头照样拼得出 `toString`),所以单独拒;查表那头也用 Map / Set(或 `Object.hasOwn`)
+ * 而不是裸下标,两道都在。
  */
 function isPrototypeName(name: string): boolean {
 	return Object.hasOwn(Object.prototype, name);

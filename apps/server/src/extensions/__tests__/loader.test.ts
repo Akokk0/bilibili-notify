@@ -281,12 +281,12 @@ describe("拓展声明的密钥字段", () => {
 
 		expect(loaded.list()[0]?.state).toBe("running");
 		// 只有声明过的那一格 —— `note` 不该被抹。按 id 分格:声明的键只对它自己那两格生效。
-		expect(loaded.secretConfigCodes()).toEqual({ bridge: ["botKey"] });
+		expect(loaded.secretConfigCodes()).toEqual(new Map([["bridge", ["botKey"]]]));
 
 		// 收摊之后它**不在表里** —— 在脱敏那边这不是「什么都不抹」而是「整片当密钥」,
 		// 见 `../backup/sanitize.ts` 的 ExtensionSecretCodes。
 		await loaded.dispose();
-		expect(loaded.secretConfigCodes()).toEqual({});
+		expect(loaded.secretConfigCodes()).toEqual(new Map());
 	});
 
 	/**
@@ -311,7 +311,46 @@ describe("拓展声明的密钥字段", () => {
 			enabled: () => false,
 		});
 		expect(loaded.list()[0]?.state).toBe("disabled");
-		expect(loaded.secretConfigCodes()).toEqual({ douyin: ["cookie"] });
+		expect(loaded.secretConfigCodes()).toEqual(new Map([["douyin", ["cookie"]]]));
+	});
+
+	/**
+	 * 跑着的 v2 两边都答得出:代码那份只有连接配置项里的密钥,清单那份还带着设置项里的。
+	 * 清单说了算 —— 让代码那份盖过去的话,设置里的 cookie 就原样进备份。
+	 */
+	it("v2 跑着时照清单那份(连设置项里的也算),不被代码交的那份盖掉", async () => {
+		await plant("douyin", "export function activate() {}", {
+			apiVersion: 2,
+			provides: undefined,
+			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
+			contributes: {
+				push: {
+					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+					connection: {
+						fields: [{ key: "token", type: "string", label: "令牌", secret: true, required: true }],
+					},
+				},
+			},
+		});
+		const loaded = await loadExtensions({
+			root,
+			host: fakeHost().ctx,
+			mounts: createExtensionMounts(),
+			...coreStubs(),
+			isEnabled: () => true,
+			maxFailures: 3,
+			// ⚠️ 换掉 import:种的是一行裸 mjs,拿不到 zod(同本组第一条)。
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					ctx.registerPushSource({
+						adapter: { platforms: [], isAvailable: () => true } as never,
+						configSchema: z.object({ token: z.string() }),
+					});
+				},
+			}),
+		});
+		expect(loaded.list()[0]?.state).toBe("running");
+		expect(loaded.secretConfigCodes()).toEqual(new Map([["douyin", ["cookie", "token"]]]));
 	});
 });
 

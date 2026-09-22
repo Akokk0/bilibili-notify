@@ -27,29 +27,26 @@ const WECOM =
 /**
  * 平台名 → 图标。平台名是 koishi / AstrBot 自己起的(`onebot`、`aiocqhttp`、`qq_official`……),
  * 同一个平台在两边叫法不同,所以一个图标挂几个名字。按小写比。
- */
-const BY_PLATFORM: Readonly<Record<string, string>> = {
-	onebot: QQ,
-	qq: QQ,
-	aiocqhttp: QQ,
-	qq_official: QQ,
-	"qq-official": QQ,
-	telegram: TELEGRAM,
-	discord: DISCORD,
-	lark: FEISHU,
-	feishu: FEISHU,
-	dingtalk: DINGTALK,
-	wecom: WECOM,
-};
-
-/**
- * 这个平台有没有我们带着的图标。没有就是 `undefined` —— 面板退回两个字。
  *
- * 🔴 平台名是对端报的开放字符串:只认表**自己身上**的键。直接按下标读的话,`constructor` 读到
- * `[Function: Object]`、`__proto__` 读到 `Object.prototype`,进了视图的 icon 格,宿主校验
+ * 🔴 平台名是对端报的开放字符串,所以这张表是 Map 不是普通对象:按下标读的话,`constructor`
+ * 读到 `[Function: Object]`、`__proto__` 读到 `Object.prototype`,进了视图的 icon 格,宿主校验
  * 不过就把整份视图换成一条错误提示。
  */
+const BY_PLATFORM: ReadonlyMap<string, string> = new Map([
+	["onebot", QQ],
+	["qq", QQ],
+	["aiocqhttp", QQ],
+	["qq_official", QQ],
+	["qq-official", QQ],
+	["telegram", TELEGRAM],
+	["discord", DISCORD],
+	["lark", FEISHU],
+	["feishu", FEISHU],
+	["dingtalk", DINGTALK],
+	["wecom", WECOM],
+]);
+
+/** 这个平台有没有我们带着的图标。没有就是 `undefined` —— 面板退回两个字。 */
 export function platformIcon(platform: string): string | undefined {
-	const key = platform.toLowerCase();
-	return Object.hasOwn(BY_PLATFORM, key) ? BY_PLATFORM[key] : undefined;
+	return BY_PLATFORM.get(platform.toLowerCase());
 }
