@@ -13,6 +13,8 @@ import {
 	GlassBox,
 	HintNote,
 	Icon,
+	KindMark,
+	MonoChip,
 	Pill,
 	StatusDot,
 } from "@bilibili-notify/ui";
@@ -46,7 +48,7 @@ import {
 	writeFailureOf,
 } from "./list-items";
 import { NewItemDialog } from "./list-new-item";
-import { CopyControl, KindMark, MonoChip, TriStateLegend } from "./parts";
+import { CopyControl, TriStateLegend } from "./parts";
 import { RichText } from "./rich-text";
 import { maskSecret, newHexSecret } from "./secret";
 import { extensionStatusKey, isNotFound, isRunning, useExtensionView } from "./view-query";

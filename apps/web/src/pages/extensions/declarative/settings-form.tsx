@@ -7,6 +7,8 @@ import {
 	HintNote,
 	Icon,
 	LoadingBlock,
+	MonoChip,
+	OptionCard,
 	Picker,
 	TArea,
 	TInput,
@@ -18,7 +20,7 @@ import { api } from "../../../services/api";
 import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
-import { CopyControl, MonoChip, OptionCard } from "./parts";
+import { CopyControl } from "./parts";
 import { maskSecret, newHexSecret } from "./secret";
 
 /**

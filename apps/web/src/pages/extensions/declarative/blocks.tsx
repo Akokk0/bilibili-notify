@@ -10,9 +10,13 @@ import {
 	ErrorNote,
 	HintNote,
 	Icon,
+	KindMark,
+	MonoChip,
 	Pill,
 	StatusDot,
 	type StatusDotKind,
+	type TriState,
+	TriStateChip,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,14 +25,7 @@ import { api } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { extensionAddress } from "./address";
 import { safeImage } from "./image";
-import {
-	CopyControl,
-	KindMark,
-	MonoChip,
-	type TriState,
-	TriStateChip,
-	TriStateLegend,
-} from "./parts";
+import { CopyControl, TriStateLegend } from "./parts";
 import { RichText } from "./rich-text";
 import { extensionStatusKey } from "./view-query";
 

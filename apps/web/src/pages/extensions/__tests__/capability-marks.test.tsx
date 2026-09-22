@@ -102,7 +102,7 @@ describe("能力三态怎么画", () => {
 
 	it("图例在场 —— 三个记号各配一句话,不用猜", async () => {
 		renderCaps();
-		const legend = await screen.findByRole("list", { name: "能力图例" });
+		const legend = await screen.findByRole("list", { name: "图例" });
 		for (const text of ["支持", "不支持", "还不知道"]) {
 			expect(
 				[...legend.querySelectorAll("li")].some((item) => item.textContent?.trim() === text),

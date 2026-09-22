@@ -6,6 +6,7 @@ import {
 	Icon,
 	IconButton,
 	ModalShell,
+	MonoChip,
 	TArea,
 	TInput,
 	Toggle,
@@ -13,7 +14,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { extensionAddress } from "./address";
 import { countWordOf, itemLabelOf, subFieldOf } from "./list-items";
-import { CopyControl, MonoChip } from "./parts";
+import { CopyControl } from "./parts";
 import { newHexSecret } from "./secret";
 import { EnumControl } from "./settings-form";
 

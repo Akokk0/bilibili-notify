@@ -605,6 +605,19 @@ export function Pill({
 	);
 }
 
+// ── MonoChip ────────────────────────────────────────────────────────────────
+
+/** 等宽小字的那种底 —— 地址、token 都装在这里面。 */
+export function MonoChip({ children, className }: { children: string; className?: string }) {
+	return (
+		<span
+			className={`rounded-bn-xs bg-bn-surface-muted px-[7px] py-[3px] font-mono text-bn-xs text-bn-text-secondary ${className ?? ""}`}
+		>
+			{children}
+		</span>
+	);
+}
+
 // ── DisclosurePill ──────────────────────────────────────────────────────────
 
 export interface DisclosurePillProps {
@@ -1260,6 +1273,117 @@ export function PlatformIcon({
 		>
 			{label[0]}
 		</span>
+	);
+}
+
+// ── KindMark ────────────────────────────────────────────────────────────────
+
+/** 中性灰的「12% 底 + 同色字」—— 设计稿上所有「哪一种」方块与「哪一种」徽章都是这一档。 */
+const MUTED_TINT: CSSProperties = {
+	background: "color-mix(in srgb, var(--color-bn-inactive) 12%, transparent)",
+	color: "var(--color-bn-inactive)",
+};
+
+/** 三档尺寸各自的形状:方块大小 / 圆角 / 字号。尺寸是**几何量**,不进皮肤词表。 */
+const KIND_MARK_SHAPE: Record<26 | 28 | 32, string> = {
+	26: "size-[26px] rounded-md text-bn-xs",
+	28: "size-7 rounded-md text-bn-sm",
+	32: "size-8 rounded-bn-sm text-bn-base",
+};
+
+/**
+ * 「哪一种」那枚方块:灰底,里面是 logo 或两个字母。接入卡左上(32)、表格的 icon 格(26)、
+ * 选项卡片(28)三处同一件,尺寸不同。
+ *
+ * 走中性灰而不是语义色:种类**不是状态**,给它一档语义色的话,卡上真正的状态(连没连上)
+ * 就得跟它抢注意力。选中那种要换色的(选项卡片)走 `style` 整个盖掉。
+ *
+ * `logo` 是一个图片 data URL,走 `<img>` —— 不跑脚本、拉不进外部资源,不用过白名单
+ * (ADR-0019 决策 31)。没有才印字母 —— 与 `PlatformIcon` 不同,这里不拿平台表去补。
+ */
+export function KindMark({
+	text,
+	size,
+	label,
+	logo,
+	style,
+}: {
+	text: string;
+	size: 26 | 28 | 32;
+	label?: string;
+	logo?: string;
+	style?: CSSProperties;
+}) {
+	const className = `grid shrink-0 place-items-center font-bold lowercase ${KIND_MARK_SHAPE[size]}`;
+	const tint = style ?? MUTED_TINT;
+	// logo 占方块的六成出头 —— 与 GlassBox 图标芯片里 17/32 那个比例一档
+	const inner = Math.round(size * 0.62);
+	const body = logo ? (
+		<img src={logo} alt="" draggable={false} style={{ width: inner, height: inner }} />
+	) : (
+		text.slice(0, 2)
+	);
+	// 有名字的是一枚「图」(读屏器念 label);没名字的是旁边那行字的装饰,读屏器跳过。
+	return label ? (
+		<span role="img" aria-label={label} className={className} style={tint}>
+			{body}
+		</span>
+	) : (
+		<span aria-hidden="true" className={className} style={tint}>
+			{body}
+		</span>
+	);
+}
+
+// ── OptionCard ──────────────────────────────────────────────────────────────
+
+/**
+ * 一张可选的卡(声明式 `enum` 选项带图标时,ADR-0019 决策 30 —— 桥的「哪一种桥」就是)。与
+ * 备份页的 ChoiceCard 同一种东西:一张可选的卡,不是按钮 —— 挂 `option`。
+ */
+export function OptionCard({
+	active,
+	label,
+	mark,
+	logo,
+	onSelect,
+}: {
+	active: boolean;
+	label: string;
+	/** 没有图时方块里印的字(取头两个)。 */
+	mark: string;
+	logo?: string;
+	onSelect: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			aria-pressed={active}
+			data-bn={active ? "option option-active" : "option"}
+			onClick={onSelect}
+			className={`flex items-center gap-2.5 rounded-lg border px-3 py-[11px] text-left transition ${
+				active
+					? SELECTED_LANGUAGE
+					: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-text-tertiary"
+			}`}
+		>
+			<KindMark
+				text={mark}
+				size={28}
+				logo={logo}
+				style={
+					active
+						? {
+								background: "color-mix(in srgb, var(--color-bn-pink) 16%, transparent)",
+								color: "var(--color-bn-pink)",
+							}
+						: undefined
+				}
+			/>
+			<span className={`text-bn-sm font-bold ${active ? "text-bn-text-primary" : ""}`}>
+				{label}
+			</span>
+		</button>
 	);
 }
 

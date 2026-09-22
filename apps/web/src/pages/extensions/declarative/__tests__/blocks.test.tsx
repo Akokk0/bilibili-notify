@@ -149,7 +149,7 @@ describe("table", () => {
 	/** 页上一出现三态格就挂图例(决策 27)—— 两个空心圈不说明就只能猜。 */
 	it("要图例时,有三态列的表挂一次图例", () => {
 		renderBlocks([BOTS], { legend: true });
-		expect(screen.getAllByRole("list", { name: "能力图例" })).toHaveLength(1);
+		expect(screen.getAllByRole("list", { name: "图例" })).toHaveLength(1);
 	});
 
 	it("没有三态列的表不挂图例", () => {
@@ -157,7 +157,7 @@ describe("table", () => {
 			[{ type: "table", columns: [{ kind: "mono" }], rows: [["abc"]] } as ExtensionBlock],
 			{ legend: true },
 		);
-		expect(screen.queryByRole("list", { name: "能力图例" })).toBeNull();
+		expect(screen.queryByRole("list", { name: "图例" })).toBeNull();
 		expect(screen.getByText("abc").className).toContain("font-mono");
 	});
 });

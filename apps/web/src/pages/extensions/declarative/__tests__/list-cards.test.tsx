@@ -395,7 +395,7 @@ describe("图例", () => {
 	it("卡里有三态列的表 → 标题行挂一次,卡里不挂", async () => {
 		renderList({ items: [HOME, OFFICE], view: CONNECTED });
 		await within(await findCard("c1")).findByText("它驮着的 bot");
-		const legends = screen.getAllByRole("list", { name: "能力图例" });
+		const legends = screen.getAllByRole("list", { name: "图例" });
 		expect(legends).toHaveLength(1);
 		expect(legends[0]?.closest("[data-list-card]")).toBeNull();
 	});
@@ -404,7 +404,7 @@ describe("图例", () => {
 		const tableFirst = viewOf({ lead: CONNECTED.items?.links?.c1?.blocks });
 		renderList({ items: [HOME], view: tableFirst });
 		await within(await findCard("c1")).findByText("它驮着的 bot");
-		expect(screen.getAllByRole("list", { name: "能力图例" })).toHaveLength(1);
+		expect(screen.getAllByRole("list", { name: "图例" })).toHaveLength(1);
 	});
 
 	it("没有三态格就不挂", async () => {
@@ -416,7 +416,7 @@ describe("图例", () => {
 			}),
 		});
 		await within(await findCard("c1")).findByText("已连接");
-		expect(screen.queryByRole("list", { name: "能力图例" })).toBeNull();
+		expect(screen.queryByRole("list", { name: "图例" })).toBeNull();
 	});
 });
 
