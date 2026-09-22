@@ -46,13 +46,26 @@ describe("装完、新版等着换上", () => {
 	afterEach(cleanup);
 
 	it("名字打头,说清装好了但换不上;「重启 BN」与「只重载这个拓展」并排", () => {
-		show({ staged: true, docs: undefined });
+		show({ staged: true, enabled: true, docs: undefined });
 		expect(screen.getByText("机器人框架桥接")).toBeTruthy();
 		expect(screen.getByText(/v0\.0\.1 装好了,但这个进程早就认下了它的另一份代码/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "重启 BN" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 		// 「装好了,已经在跑」那句不能同时出现 —— 跑的还是旧的。
 		expect(screen.queryByText(/已经在跑/)).toBeNull();
+	});
+
+	/**
+	 * 关着装进去的,而这个进程跑过它别的代码:拨开开关也只会停在「新版等着换上」。现在就得说,
+	 * 但**不给两颗钮** —— 它关着,「只重载」按下去等于替主人把开关拨开。
+	 */
+	it("关着、拨开也换不上 → 说清楚,指去它那一页;这里不给按钮", () => {
+		show({ staged: true, enabled: false, docs: undefined });
+		expect(screen.getByText("机器人框架桥接")).toBeTruthy();
+		expect(screen.getByText(/装好了,还关着/)).toBeTruthy();
+		expect(screen.getByText(/拨开开关也换不上/)).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
 	});
 
 	it("没等着换上 → 没有这块,也没有「只重载」", () => {
@@ -74,7 +87,7 @@ describe("装完那句话后面的文档入口", () => {
 
 	/** 更新完最想知道的是「这次改了啥」—— 那是 CHANGELOG,不是 README。 */
 	it("新版等着换上 + 包里有 CHANGELOG → 给的是「看看更新了什么」", () => {
-		show({ staged: true, docs: { readme: true, changelog: true } });
+		show({ staged: true, enabled: true, docs: { readme: true, changelog: true } });
 		expect(screen.getByRole("link", { name: /看看更新了什么/ })).toBeTruthy();
 	});
 
@@ -97,7 +110,7 @@ describe("装完那句话后面的文档入口", () => {
 	 * 另开一页。
 	 */
 	it("新版等着换上时,文档链接另开一页 —— 别把这块提示与它的两颗钮点没了", () => {
-		show({ staged: true, docs: { readme: true, changelog: true } });
+		show({ staged: true, enabled: true, docs: { readme: true, changelog: true } });
 		expect(screen.getByRole("link", { name: /看看更新了什么/ }).getAttribute("target")).toBe(
 			"_blank",
 		);
@@ -106,7 +119,7 @@ describe("装完那句话后面的文档入口", () => {
 
 	/** 主次不能颠倒:先看见要做的那件事,再看见可以顺便读的那份。 */
 	it("新版等着换上时,两颗钮都排在文档链接前面", () => {
-		show({ staged: true, docs: { readme: false, changelog: true } });
+		show({ staged: true, enabled: true, docs: { readme: false, changelog: true } });
 		const btn = screen.getByRole("button", { name: "只重载这个拓展" });
 		const link = screen.getByRole("link", { name: /看看更新了什么/ });
 		// DOCUMENT_POSITION_FOLLOWING:link 排在 btn 之后。

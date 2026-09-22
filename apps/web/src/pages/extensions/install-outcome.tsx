@@ -70,6 +70,23 @@ export function ExtensionInstallOutcome({
 	 * 🔴 老服务端(应用内自更新那几秒)回的是 `needsRestart` 而没有 `staged` —— 缺了就落到
 	 * 「装好了」那一句,不去读它没给的东西。少一块提示是小事,整块炸掉是大事。
 	 */
+	if (done.staged && !done.enabled) {
+		/*
+		 * 关着装进去的,而这个进程跑过它别的代码(决策 47):拨开也只会停在「新版等着换上」。
+		 * 现在就说,但**不给**那两颗钮 —— 它关着,「只重载」按下去等于替主人把开关拨开。
+		 */
+		return (
+			<HintNote tone="neutral" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<span>
+					<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
+					装好了,还关着 ——
+					不过这个进程早就认下了它的另一份代码,拨开开关也换不上;拨开之后到它那一页选「重启
+					BN」或「只重载这个拓展」。
+				</span>
+				<DocsLink done={done} />
+			</HintNote>
+		);
+	}
 	if (done.staged) {
 		return (
 			<StagedCodeNote

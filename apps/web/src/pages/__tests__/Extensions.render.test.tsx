@@ -414,6 +414,7 @@ describe("已装卡片上的「有新版」", () => {
 			name: "机器人框架桥接",
 			version: "1.1.0",
 			staged: true,
+			enabled: true,
 			restart: { can: true, how: "container" },
 		});
 	});
@@ -450,6 +451,7 @@ describe("已装卡片上的「有新版」", () => {
 		);
 		// 盖掉的是一份正在跑的:装完那句话要说清「换不上」,并给两条出路。
 		expect(await screen.findByText(/换不上/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 	});
 
 	/**
@@ -485,6 +487,7 @@ describe("已装卡片上的「有新版」", () => {
 			name: "机器人框架桥接",
 			version: "1.1.0",
 			staged: true,
+			enabled: true,
 			restart: { can: true, how: "container" },
 		});
 		await expect(motion.outcome).resolves.toBe(true);

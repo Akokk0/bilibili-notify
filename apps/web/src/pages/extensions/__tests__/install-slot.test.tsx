@@ -117,7 +117,7 @@ describe("传包装拓展", () => {
 	});
 
 	it("盖掉一份跑着的 → 说得清「换不上」,并就地给两条出路", async () => {
-		vi.mocked(api.upload).mockResolvedValue({ ...OK, staged: true });
+		vi.mocked(api.upload).mockResolvedValue({ ...OK, staged: true, enabled: true });
 		const { container } = renderSlot();
 
 		await pick(container);
@@ -135,6 +135,7 @@ describe("传包装拓展", () => {
 		vi.mocked(api.upload).mockResolvedValue({
 			...OK,
 			staged: true,
+			enabled: true,
 			restart: { can: false, reason: "source-run" },
 		});
 		const { container } = renderSlot();
