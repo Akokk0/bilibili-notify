@@ -108,6 +108,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				provides: entry.manifest && manifestProvides(entry.manifest),
 				// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
 				push: opts.pushSource(entry.id),
+				// 清单里声明的设置项 —— 来自清单、不来自代码,所以没在跑的也有。
+				...(entry.manifest?.apiVersion === 2 && entry.manifest.settings
+					? { settings: entry.manifest.settings }
+					: {}),
 				icon: identity?.icon,
 				// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
 				// 只有那一句答得了。

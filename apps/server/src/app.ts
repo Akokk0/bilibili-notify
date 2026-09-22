@@ -267,6 +267,11 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		wsTicketStore: options.wsTicketStore ?? null,
 		qqSessionRegistry: options.qqSessionRegistry ?? null,
 		commands: options.commands,
+		// 清单读得懂的 v2 拓展才有声明 —— 跑没跑都算(「装好 → 填 → 启用」)。
+		extensionSettingsFields: (id) => {
+			const manifest = options.extensions?.loaded().find((entry) => entry.id === id)?.manifest;
+			return manifest?.apiVersion === 2 ? (manifest.settings?.fields ?? []) : undefined;
+		},
 	};
 
 	app.onError((err, c) => {

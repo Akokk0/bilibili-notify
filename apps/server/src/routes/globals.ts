@@ -1,6 +1,7 @@
+import { type GlobalConfig, settingsValueSchema } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
@@ -123,7 +124,8 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			);
 		}
 		try {
-			const next = await deps.store.patchGlobals(patch);
+			const check = extensionSettingsCheck(patch, deps.extensionSettingsFields);
+			const next = await deps.store.patchGlobals(patch, check ? { check } : undefined);
 			return c.json(redactGlobals(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
@@ -135,6 +137,37 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 	});
 
 	return app;
+}
+
+/**
+ * 这次 PATCH 动到了哪几个拓展的**设置**,就对它们照清单声明拦一道(ADR-0019 决策 17)。
+ *
+ * 只看真碰到 `settings` 的:只拨开关的那次不校验 —— 存量的设置写坏了,不该连开关都拨不动。
+ * 拦的是**合并之后**的那一份(数组整份替换、`null` 是清掉),所以交给 store 在同一个排队里判。
+ */
+function extensionSettingsCheck(
+	patch: Record<string, unknown>,
+	fieldsOf: RouteDeps["extensionSettingsFields"],
+): ((merged: GlobalConfig) => unknown[]) | undefined {
+	const touched = patch.extensions;
+	if (!fieldsOf || typeof touched !== "object" || touched === null) return undefined;
+	const checks: Array<{ id: string; schema: ZodType }> = [];
+	for (const [id, slot] of Object.entries(touched)) {
+		if (typeof slot !== "object" || slot === null || !("settings" in slot)) continue;
+		const fields = fieldsOf(id);
+		if (fields) checks.push({ id, schema: settingsValueSchema(fields) });
+	}
+	if (checks.length === 0) return undefined;
+	return (merged) =>
+		checks.flatMap(({ id, schema }) => {
+			const parsed = schema.safeParse(merged.extensions[id]?.settings);
+			return parsed.success
+				? []
+				: parsed.error.issues.map((issue) => ({
+						...issue,
+						path: ["extensions", id, "settings", ...issue.path],
+					}));
+		});
 }
 
 // ---------------------------------------------------------------------------

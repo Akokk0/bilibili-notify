@@ -577,3 +577,62 @@ export function manifestSecretKeys(manifest: ExtensionManifest): string[] | unde
 	collect(manifest.contributes.push?.connection?.fields ?? []);
 	return [...keys].sort();
 }
+
+/** 一格设置项的值该长什么样 —— BN 这头照声明现造,不看拓展那份 zod(它可能根本没在跑)。 */
+function valueSchemaOf(field: ExtensionManifestField): z.ZodType {
+	const need = (schema: z.ZodType) => (field.required ? schema : schema.optional());
+	switch (field.type) {
+		case "string":
+			// 必填 = 不许空串:面板上那颗星的意思是「得填点什么」。
+			return need(field.required ? z.string().min(1) : z.string());
+		case "number": {
+			let n = z.number();
+			if (field.min !== undefined) n = n.min(field.min);
+			if (field.max !== undefined) n = n.max(field.max);
+			return need(n);
+		}
+		case "boolean":
+			return need(z.boolean());
+		case "enum":
+			return need(z.enum(field.options.map((option) => option.value) as [string, ...string[]]));
+		case "list":
+			return need(
+				z.array(fieldsObjectSchema(field.fields, true)).superRefine((items, ctx) => {
+					const seen = new Set<string>();
+					items.forEach((item, i) => {
+						const id = (item as Record<string, unknown>)[LIST_ITEM_ID_KEY] as string;
+						if (seen.has(id)) {
+							ctx.addIssue({
+								code: "custom",
+								path: [i, LIST_ITEM_ID_KEY],
+								message: `列表项的 id "${id}" 重复了`,
+							});
+						}
+						seen.add(id);
+					});
+				}),
+			);
+	}
+}
+
+/**
+ * 没声明的键**原样放过**(loose):拓展可能有面板不管的格,BN 不认识不等于写坏了。列表项多一格
+ * BN 管的 `id`(ADR-0019 决策 29),必须是非空字符串。
+ */
+function fieldsObjectSchema(fields: readonly ExtensionManifestField[], listItem: boolean) {
+	const shape: Record<string, z.ZodType> = {};
+	if (listItem) shape[LIST_ITEM_ID_KEY] = z.string().min(1);
+	for (const field of fields) shape[field.key] = valueSchemaOf(field);
+	return z.looseObject(shape);
+}
+
+/**
+ * 一份拓展设置照清单声明该长什么样 —— BN **写设置之前**拿它拦一道(ADR-0019 决策 17)。
+ *
+ * 核心那一格是 `z.unknown()`(核心不认识拓展设置的形状);写坏了的话拓展读到的是一份它自己的
+ * zod 解不出的设置,按「没设过」算 —— 桥就是接入名单变空、所有 token 当场失效,而面板上一切
+ * 正常。没设过(`undefined`)照收:那是「按没有算」,不是写坏了。
+ */
+export function settingsValueSchema(fields: readonly ExtensionManifestField[]): z.ZodType {
+	return fieldsObjectSchema(fields, false).optional();
+}

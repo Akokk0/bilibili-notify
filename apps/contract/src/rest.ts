@@ -4,7 +4,11 @@
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
-import type { ExtensionBotView, ExtensionPushView } from "@bilibili-notify/extension/wire";
+import type {
+	ExtensionBotView,
+	ExtensionField,
+	ExtensionPushView,
+} from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
 	CardSkinKind,
@@ -84,6 +88,11 @@ export interface ExtensionDTO {
 	 * 照连接配置项画「新建连接」的表单。
 	 */
 	push?: ExtensionPushView;
+	/**
+	 * 清单里声明的设置项(v2,ADR-0019 决策 17 / 30)—— 面板照它画设置表单。**没在跑的也有**:
+	 * 它来自清单,「装好 → 填 → 启用」这个顺序靠它才走得通。v1 拓展没有这一格。
+	 */
+	settings?: { fields: readonly ExtensionField[] };
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
 	/** 它自己那个目录,绝对路径(`<dataDir>/extensions/<id>`)。 */

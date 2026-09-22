@@ -24,6 +24,7 @@ import {
 	manifestProvides,
 	manifestSecretKeys,
 	parseExtensionManifest,
+	settingsValueSchema,
 } from "./extension-manifest";
 
 function v1(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -664,6 +665,91 @@ describe("manifestSecretKeys", () => {
 
 	it("v2 一格密钥都没声明 —— 空表", () => {
 		expect(manifestSecretKeys(ok(v2()))).toEqual([]);
+	});
+});
+
+/**
+ * BN 写设置之前照声明先校验(ADR-0019 决策 17「白捡的三样」之一)—— 今天那一格是
+ * `z.unknown()`,写坏了拓展读到的是一份它解不出的设置(桥:空名单、所有 token 当场失效)。
+ */
+describe("settingsValueSchema", () => {
+	const FIELDS = (() => {
+		const m = ok(
+			v2({
+				settings: {
+					fields: [
+						{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
+						{ key: "interval", type: "number", label: "间隔", min: 30, max: 600, default: 60 },
+						{
+							key: "quality",
+							type: "enum",
+							label: "清晰度",
+							options: [
+								{ value: "raw", label: "原图" },
+								{ value: "lite", label: "省流量" },
+							],
+						},
+						{ key: "live", type: "boolean", label: "开播也推" },
+						{
+							key: "links",
+							type: "list",
+							label: "接入",
+							title: "name",
+							fields: [
+								{ key: "name", type: "string", label: "名字", required: true },
+								{ key: "token", type: "string", label: "token", secret: true, generate: true },
+							],
+						},
+					],
+				},
+			}),
+		);
+		if (m.apiVersion !== 2 || !m.settings) throw new Error("应该是带设置的 v2");
+		return m.settings.fields;
+	})();
+	const accepts = (value: unknown) => settingsValueSchema(FIELDS).safeParse(value).success;
+	const GOOD = {
+		cookie: "sessionid=abc",
+		interval: 90,
+		quality: "lite",
+		live: true,
+		links: [{ id: "a1", name: "家里那台", token: "" }],
+	};
+
+	it("照声明写的 —— 收下;没声明的键原样放过(拓展自己可能有面板不管的格)", () => {
+		expect(accepts(GOOD)).toBe(true);
+		expect(accepts({ ...GOOD, extra: { anything: 1 } })).toBe(true);
+		expect(accepts({ cookie: "c" })).toBe(true);
+	});
+
+	it.each([
+		["必填的 string 是空串", { ...GOOD, cookie: "" }],
+		["必填的 string 缺了", { interval: 90 }],
+		["number 越界", { ...GOOD, interval: 10 }],
+		["number 写成字符串", { ...GOOD, interval: "90" }],
+		["enum 不是选项之一", { ...GOOD, quality: "hd" }],
+		["boolean 写成字符串", { ...GOOD, live: "true" }],
+		["列表不是数组", { ...GOOD, links: {} }],
+		["列表项没有 id", { ...GOOD, links: [{ name: "家里那台", token: "" }] }],
+		["列表项的 id 是空串", { ...GOOD, links: [{ id: "", name: "家里那台", token: "" }] }],
+		[
+			"列表项的 id 重复",
+			{
+				...GOOD,
+				links: [
+					{ id: "a1", name: "一", token: "" },
+					{ id: "a1", name: "二", token: "" },
+				],
+			},
+		],
+		["列表项里必填的 string 是空串", { ...GOOD, links: [{ id: "a1", name: "", token: "" }] }],
+		["整份不是对象", ["cookie"]],
+	])("%s —— 拒", (_label, value) => {
+		expect(accepts(value)).toBe(false);
+	});
+
+	it("没设过(undefined)—— 收下:那是「按没有算」,不是写坏了", () => {
+		expect(settingsValueSchema(FIELDS).safeParse(undefined).success).toBe(true);
 	});
 });
 

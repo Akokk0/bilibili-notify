@@ -171,6 +171,40 @@ describe("GET /api/ext", () => {
 		expect(body.extensions[0]?.provides).toEqual(["subscription"]);
 	});
 
+	/**
+	 * 面板照清单画设置表单(ADR-0019 决策 17 / 30),而「装好 → 填 → 启用」要求**没在跑**的
+	 * 拓展也拿得到这份声明 —— 它来自清单,不来自代码。
+	 */
+	it("v2 拓展的设置项声明随列表下发,没在跑也有;v1 没有这一格", async () => {
+		const fields = [
+			{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
+		];
+		const douyin: ExtensionEntry = {
+			id: "douyin",
+			dir: "/data/extensions/douyin",
+			state: "disabled",
+			manifest: {
+				id: "douyin",
+				name: "抖音订阅",
+				description: "一句话说明",
+				version: "0.1.0",
+				apiVersion: 2,
+				settings: { fields: fields as never },
+				contributes: {
+					subscription: {
+						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+						events: ["post"],
+					},
+				},
+			},
+		};
+		const body = (await (
+			await boot({ entries: [douyin, running("bridge")] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions.find((e) => e.id === "douyin")?.settings).toEqual({ fields });
+		expect(body.extensions.find((e) => e.id === "bridge")?.settings).toBeUndefined();
+	});
+
 	it("版本不合的拓展照样有名字与版本 —— 格式不认识,身份那几格也读得出来", async () => {
 		const future: ExtensionEntry = {
 			id: "future",

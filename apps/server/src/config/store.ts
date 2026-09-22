@@ -101,7 +101,7 @@ export interface ConfigStore {
 
 	// --- writes -----------------------------------------------------------
 	setGlobals(next: GlobalConfig): Promise<void>;
-	patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig>;
+	patchGlobals(patch: DeepPartial<GlobalConfig>, opts?: PatchGlobalsOptions): Promise<GlobalConfig>;
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
@@ -137,6 +137,14 @@ export interface CreateConfigStoreOptions {
 }
 
 /** Thrown when an incoming write fails Zod validation. Routes catch and map to 400. */
+export interface PatchGlobalsOptions {
+	/**
+	 * 合并之后再拦一道 —— 回一组 issue(形状同 zod 的,`path` 从 globals 的根写起)就整次拒绝、
+	 * 一个字都不落盘。核心的 schema 管不到的格(拓展设置那一格是 `z.unknown()`)走这里。
+	 */
+	check?: (merged: GlobalConfig) => readonly unknown[] | undefined;
+}
+
 export class ConfigValidationError extends Error {
 	readonly scope: ConfigScope;
 	readonly issues: unknown;
@@ -1229,12 +1237,21 @@ class NodeConfigStore implements ConfigStore {
 		this.bus.emit("config-changed", "globals");
 	}
 
-	async patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig> {
+	async patchGlobals(
+		patch: DeepPartial<GlobalConfig>,
+		opts: PatchGlobalsOptions = {},
+	): Promise<GlobalConfig> {
 		const result = await this.runScoped("globals", async () => {
 			const merged = deepMerge(this.globals, patch);
 			const parsed = GlobalConfigSchema.safeParse(merged);
 			if (!parsed.success) {
 				throw new ConfigValidationError("globals", parsed.error.issues);
+			}
+			// 调用方自己的那一道,在**合并之后、落盘之前**、同一个排队里 —— 拿合并前的快照去判
+			// 的话,两次写之间的那一次会从缝里溜过去。
+			const extra = opts.check?.(parsed.data);
+			if (extra && extra.length > 0) {
+				throw new ConfigValidationError("globals", extra);
 			}
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
