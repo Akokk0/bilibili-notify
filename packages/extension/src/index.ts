@@ -56,14 +56,23 @@ export type {
  * —— 拓展照旧只认这一扇门,不必知道有过这么一次拆分。
  */
 export type {
+	ExtensionBlock,
 	ExtensionBotView,
+	ExtensionButton,
 	ExtensionConfigField,
 	ExtensionDescriptor,
 	ExtensionDisplay,
 	ExtensionField,
+	ExtensionItemView,
 	ExtensionListField,
 	ExtensionPushView,
+	ExtensionRichRun,
+	ExtensionRichText,
 	ExtensionScalarField,
+	ExtensionTableCell,
+	ExtensionTableColumn,
+	ExtensionTone,
+	ExtensionView,
 } from "./wire";
 
 import type { IncomingMessage } from "node:http";
@@ -77,7 +86,12 @@ import type {
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { ExtensionBotView, ExtensionConfigField, ExtensionDescriptor } from "./wire";
+import type {
+	ExtensionBotView,
+	ExtensionConfigField,
+	ExtensionDescriptor,
+	ExtensionView,
+} from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -251,10 +265,12 @@ export interface ExtensionContext {
 	 */
 	onUpgrade(handler: ExtensionUpgradeHandler): void;
 	/**
-	 * 交一份给面板看的数据(任意 JSON)。宿主在 `/api/ext/<id>/status` 下发 —— 走
-	 * `/api/*` 才吃得到 dashboard 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。
+	 * 交给面板看的东西。宿主在 `/api/ext/<id>/status` 下发 —— 走 `/api/*` 才吃得到 dashboard
+	 * 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。**现取**,不缓存。
 	 *
-	 * 形状第一版不约束:面板那一页还没写,而抽象要两个例子。**现取**,不缓存。
+	 * v2 拓展交的是 {@link ExtensionView}(一组封闭的积木,ADR-0019 决策 20):宿主先校验,不合
+	 * 规矩的不画,换成一条说清哪里不对的错误提示。v1 交任意 JSON,原样下发(只剩桥,它的页是
+	 * 手写的)。
 	 */
 	publishStatus(fn: () => unknown): void;
 	/**

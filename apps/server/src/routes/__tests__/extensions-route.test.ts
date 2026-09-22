@@ -203,6 +203,9 @@ describe("GET /api/ext", () => {
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "douyin")?.settings).toEqual({ fields });
 		expect(body.extensions.find((e) => e.id === "bridge")?.settings).toBeUndefined();
+		// 面板靠这一格分:v2 照声明画,v1 还是桥那一页手写的。
+		expect(body.extensions.find((e) => e.id === "douyin")?.apiVersion).toBe(2);
+		expect(body.extensions.find((e) => e.id === "bridge")?.apiVersion).toBe(1);
 	});
 
 	it("版本不合的拓展照样有名字与版本 —— 格式不认识,身份那几格也读得出来", async () => {

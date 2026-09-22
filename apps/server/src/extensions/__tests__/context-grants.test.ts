@@ -317,6 +317,47 @@ describe("按清单注册推送源", () => {
 	});
 });
 
+/**
+ * v2 交的视图是一组封闭的积木(ADR-0019 决策 20),宿主**先校验再下发**:不合规矩的整份不画,
+ * 换成一条说清哪里不对的错误提示 —— 静默吞掉的话,面板上那块就是一片空白,没人知道为什么。
+ */
+describe("交给面板的视图", () => {
+	const V2: ExtensionManifest = {
+		...V1_PUSH,
+		apiVersion: 2,
+		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
+	} as unknown as ExtensionManifest;
+
+	it("v2 合规矩 —— 原样下发", () => {
+		const h = harness({ manifest: V2 });
+		const view = { summary: { tone: "ok", text: [{ b: "2" }, " 个 bot 在线"] } };
+		h.ctx.publishStatus(() => view);
+		expect(h.runtime.status()).toEqual(view);
+	});
+
+	it("v2 不合规矩 —— 换成一条错误提示条,点名哪一格;同一个错只记一行", () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.publishStatus(() => ({ page: [{ type: "notice", tone: "success", text: "好了" }] }));
+		const shown = h.runtime.status() as {
+			page: Array<{ type: string; tone: string; text: unknown }>;
+		};
+		expect(shown.page).toHaveLength(1);
+		expect(shown.page[0]).toMatchObject({ type: "notice", tone: "error" });
+		expect(JSON.stringify(shown.page[0]?.text)).toContain("page.0");
+		h.runtime.status();
+		expect(h.lines.filter((line) => line.startsWith("warn") && line.includes("视图"))).toHaveLength(
+			1,
+		);
+	});
+
+	it("v1 —— 任意 JSON 原样下发(桥的页是手写的)", () => {
+		const h = harness();
+		const status = { sessions: [{ linkId: "a", connected: false }] };
+		h.ctx.publishStatus(() => status);
+		expect(h.runtime.status()).toEqual(status);
+	});
+});
+
 describe("注册推送源", () => {
 	it("分发键由宿主按 id 填 —— 拓展自报的那份被覆盖掉", () => {
 		const h = harness();

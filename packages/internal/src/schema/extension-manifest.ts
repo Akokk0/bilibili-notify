@@ -161,7 +161,7 @@ export type ExtensionManifestV1 = z.infer<typeof ExtensionManifestV1Schema>;
  *
  * 字母开头:顺手挡住 `__proto__` 这一类;不带点与连字符:面板拼路径用的就是点。
  */
-const FieldKeySchema = z
+export const FieldKeySchema = z
 	.string()
 	.max(64)
 	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, "设置项的 key 只能是字母开头的字母、数字与下划线");
@@ -467,7 +467,7 @@ const ContributesSchema = z
  * 动作名 —— 它要进 URL(`POST /api/ext/:id/actions/:name`),所以只许小写字母开头的
  * 字母数字,点分段(`login.start`)。
  */
-const ActionNameSchema = z
+export const ActionNameSchema = z
 	.string()
 	.max(64)
 	.regex(

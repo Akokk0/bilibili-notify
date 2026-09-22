@@ -4,12 +4,14 @@ import type {
 	ExtensionContext,
 	ExtensionPushView,
 	ExtensionSettings,
+	ExtensionView,
 } from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
+	ExtensionViewSchema,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
@@ -400,9 +402,44 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 	};
 
+	/** 上一次记过日志的那个错 —— 面板每刷一次就问一次,同一个错只记一行。 */
+	let lastViewError: string | undefined;
+
+	/**
+	 * v2 交的视图**先校验再下发**(ADR-0019 决策 20)。不合规矩的整份不画,换成一条说清哪里
+	 * 不对的错误提示 —— 静默吞掉的话,面板上那块就是一片空白,谁也不知道为什么。
+	 */
+	function viewOf(raw: unknown): unknown {
+		if (raw === undefined || opts.manifest.apiVersion === 1) return raw;
+		const parsed = ExtensionViewSchema.safeParse(raw);
+		if (parsed.success) {
+			lastViewError = undefined;
+			// 校验过的 zod 形状当 wire 那份手写的类型交出去 —— 两份漂开,这一行过不了类型检查。
+			const view: ExtensionView = parsed.data;
+			return view;
+		}
+		const detail = parsed.error.issues
+			.map((issue) => `${issue.path.join(".") || "(根)"}: ${issue.message}`)
+			.join(";");
+		if (detail !== lastViewError) {
+			lastViewError = detail;
+			logger.warn(`交上来的视图不合规矩,这一份不画:${detail}`);
+		}
+		const fallback: ExtensionView = {
+			page: [
+				{
+					type: "notice",
+					tone: "error",
+					text: [{ b: "这个拓展交上来的界面不合规矩,BN 没法画。" }, `(${detail})`],
+				},
+			],
+		};
+		return fallback;
+	}
+
 	return {
 		ctx,
-		status: () => statusOf?.(),
+		status: () => viewOf(statusOf?.()),
 		pushSource: () => pushView,
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,

@@ -164,3 +164,89 @@ export interface ExtensionBotView<TConfig = unknown> {
 	/** 已经被哪条连接绑着 —— 面板标「已加过」,同一个 bot 别建两条连接。 */
 	boundTo?: string;
 }
+
+/**
+ * 拓展交给面板的「视图」—— v2 的 `ctx.publishStatus` 交的就是它(ADR-0019 决策 20 / 26–28)。
+ *
+ * 一组**封闭的积木**,由 BN 照着画;派生的东西由拓展算好交来,BN 不发明表达式语言。
+ * 🔴 这是 `@bilibili-notify/internal` 里 `ExtensionViewSchema` 的**手写镜像**(这个入口不许
+ * import zod 与 internal);宿主把校验过的视图当这个类型交出去,两份由宿主那头的类型检查钉住。
+ * 不合规矩的视图宿主不画,换成一条说清哪里不对的错误提示。
+ */
+export interface ExtensionView {
+	/** 拓展列表页那一行。 */
+	summary?: { tone?: ExtensionTone; text: ExtensionRichText };
+	/** 挂在头卡正文里的积木。 */
+	page?: readonly ExtensionBlock[];
+	/** 列表设置项的 key → 项的 id → 那一项在卡上的样子。 */
+	items?: Readonly<Record<string, Readonly<Record<string, ExtensionItemView>>>>;
+}
+
+/** 状态的语气,同时决定卡角那团颜色。 */
+export type ExtensionTone = "ok" | "warn" | "error" | "off";
+
+/**
+ * 一段字:一个字符串,或者一串片段。片段只有五种 —— 字、加粗、等宽、一个时刻(浏览器按
+ * 「N 分钟前」画,`suffix` 接在后面)、BN 在浏览器里现算的地址。
+ */
+export type ExtensionRichText = string | readonly ExtensionRichRun[];
+export type ExtensionRichRun =
+	| string
+	| { b: string }
+	| { mono: string }
+	| { time: number; suffix?: string }
+	| { host: "extensionUrl" };
+
+/** 调拓展的按钮(清单 `actions` 里声明),或者让 BN 改**这一项**的一格设置的按钮。 */
+export type ExtensionButton =
+	| { label: string; action: string }
+	| { label: string; set: Readonly<Record<string, string | number | boolean>> };
+
+/** 列表的一项在卡上的那几格。停用的项由 BN 盖成「已停用」,`status` 报什么都不算。 */
+export interface ExtensionItemView {
+	status?: { tone: ExtensionTone; text: string };
+	pill?: string;
+	subtitle?: ExtensionRichText;
+	buttons?: readonly ExtensionButton[];
+	blocks?: readonly ExtensionBlock[];
+}
+
+export type ExtensionTableColumn =
+	| { kind: "icon" }
+	| { kind: "text"; width?: number }
+	| { kind: "mono" }
+	| { kind: "tristate"; label: string };
+
+/** 表格的一格 —— 样子跟着那一列的种类走。 */
+export type ExtensionTableCell =
+	| { image?: string; fallback: string }
+	| string
+	| { text: string; sub?: string };
+
+export type ExtensionBlock =
+	| {
+			type: "keyValue";
+			items: readonly { label: string; value: ExtensionRichText; tone?: ExtensionTone }[];
+	  }
+	| {
+			type: "table";
+			title?: string;
+			count?: boolean;
+			empty?: ExtensionRichText;
+			columns: readonly ExtensionTableColumn[];
+			rows: readonly (readonly unknown[])[];
+	  }
+	| {
+			type: "notice";
+			tone: "info" | "warn" | "error";
+			text: ExtensionRichText;
+			button?: ExtensionButton;
+	  }
+	| {
+			type: "copy";
+			label: string;
+			value: string | { host: "extensionUrl" };
+			note?: ExtensionRichText;
+	  }
+	| { type: "qr"; image: string; caption?: ExtensionRichText }
+	| ({ type: "button" } & ExtensionButton);
