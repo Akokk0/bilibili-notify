@@ -21,6 +21,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { newId } from "../../types/domain";
 
@@ -65,7 +66,7 @@ export function MarketplaceSourcesDialog({
 			api.patch("/api/globals", { marketplace: { sources: next } }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: ["globals"] });
-			void qc.invalidateQueries({ queryKey: ["marketplace"] });
+			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
 	});
 

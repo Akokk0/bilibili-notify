@@ -12,7 +12,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useExtensions } from "../hooks/useExtensions";
+import { EXTENSIONS_QUERY_KEY, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import {
 	DeclarativeConfig,
@@ -75,7 +75,7 @@ export default function ExtensionDetail() {
 	const remove = useMutation({
 		mutationFn: () => api.delete<{ ok: true }>(`/api/ext/${id}`),
 		onSuccess: async () => {
-			await qc.invalidateQueries({ queryKey: ["extensions"] });
+			await qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 			navigate("/extensions");
 		},
 	});

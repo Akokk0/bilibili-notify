@@ -2,6 +2,13 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
+import {
+	EXTENSION_BOTS_QUERY_PREFIX,
+	EXTENSION_STATUS_QUERY_PREFIX,
+	EXTENSIONS_QUERY_KEY,
+	extensionBotsKey,
+	extensionStatusKey,
+} from "./useExtensions";
 
 /**
  * 处理 `state` 频道单条 envelope。两种帧:
@@ -10,8 +17,9 @@ import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
  *     重连唯一的"赶上 missed change"机制(WS 不重放历史事件)。
  *   - `config-changed`(运行时配置写入):按 scope 精准 invalidate 单一 query。
  *
- *   - `extension-changed`(拓展喊 `ctx.statusChanged`):按 id 失效 ["extension-status", id] 与
- *     ["extension-bots", id] —— 桥那头握完手,拓展页与连接编辑器当场刷新,不用切页。
+ *   - `extension-changed`(拓展喊 `ctx.statusChanged`):按 id 失效那个拓展的状态与 bot 名单
+ *     (键从 `useExtensions` 取,与读的那几处同一份)—— 桥那头握完手,拓展页与连接编辑器当场
+ *     刷新,不用切页。
  *
  * Server scopes (`config-changed.scope`):
  *   - "subscriptions" → invalidate ["subscriptions"]
@@ -32,18 +40,18 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		// 连接表与拓展表同样是服务端会改的东西(私聊指令建连接、拓展热装卸),而断线期间
 		// 的那些变化没有帧会重放 —— 漏掉哪张,哪张就一直停在断线那一刻,界面还一切正常。
 		qc.invalidateQueries({ queryKey: ["connections"] });
-		qc.invalidateQueries({ queryKey: ["extensions"] });
+		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 		// 断线期间连上 / 断开的桥没有帧会重放,重连时整个前缀一起失效。
-		qc.invalidateQueries({ queryKey: ["extension-status"] });
-		qc.invalidateQueries({ queryKey: ["extension-bots"] });
+		qc.invalidateQueries({ queryKey: EXTENSION_STATUS_QUERY_PREFIX });
+		qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
 		return;
 	}
 	// 拓展喊了「面板数据变了」:只失效那个拓展的 status 与 bot 名单,让页面自己重取。
 	if (env.event === "extension-changed") {
 		const id = (env.data as { id?: unknown } | undefined)?.id;
 		if (typeof id !== "string" || id === "") return;
-		qc.invalidateQueries({ queryKey: ["extension-status", id] });
-		qc.invalidateQueries({ queryKey: ["extension-bots", id] });
+		qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
+		qc.invalidateQueries({ queryKey: extensionBotsKey(id) });
 		return;
 	}
 	if (env.event !== "config-changed") return;

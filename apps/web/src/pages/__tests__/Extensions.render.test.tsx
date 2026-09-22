@@ -137,13 +137,15 @@ function renderPage(
 		return { restart: { can: true, how: "container" }, ...listed } satisfies ExtensionsResponse;
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const invalidate = vi.spyOn(qc, "invalidateQueries");
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter>
 				<Extensions />
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
+	return { ...view, invalidate };
 }
 
 /** 那张卡 —— 从名字往上找到玻璃卡的边。 */
@@ -229,8 +231,8 @@ describe("拓展页", () => {
 	 * 🔴 **补丁只带自己那一格。** 配置是 JSON Merge Patch:整份 `extensions` 发出去的话,
 	 * 别人刚拨的开关会被这一发悄悄按回旧值,而两边都不会报错。
 	 */
-	it("拨开关只发自己那一格,不把整张表发出去", async () => {
-		renderPage();
+	it("拨开关只发自己那一格,不把整张表发出去;拨成了拓展表重取", async () => {
+		const { invalidate } = renderPage();
 		const toggle = await screen.findByLabelText("机器人框架桥接");
 		fireEvent.click(toggle);
 		// mutate 是异步发起的,同步断言会在请求出门之前就跑完。
@@ -239,6 +241,7 @@ describe("拓展页", () => {
 				extensions: { bridge: { enabled: false } },
 			}),
 		);
+		await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] }));
 	});
 
 	/**

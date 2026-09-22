@@ -11,9 +11,10 @@
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { buildPlatformTable } from "../../components/platform-meta";
+import { handleStateEnvelope } from "../../hooks/useStateChannel";
 import Targets from "../Targets";
 
 vi.mock("../../services/api", () => ({
@@ -288,6 +289,30 @@ describe("新建连接里的拓展那一档", () => {
 		expect(
 			(within(dialog).getByRole("button", { name: /小电视/ }) as HTMLButtonElement).disabled,
 		).toBe(false);
+	});
+
+	/**
+	 * 🔴 桥那头握完手 / 断了,拓展喊一声 `statusChanged`,WS 按这个拓展的 bot 名单那个键失效。
+	 * 这一排读的键与那边失效的键对不上的话,名单停在打开弹窗那一刻 —— 而且不会有任何报错。
+	 */
+	it("拓展喊了「面板数据变了」→ 开着的 bot 名单当场重取", async () => {
+		const { qc } = renderPage();
+		fireEvent.click((await screen.findAllByRole("button", { name: /\+ 新建/ }))[0] as HTMLElement);
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(await within(dialog).findByRole("button", { name: /机器人框架桥接/ }));
+		await within(dialog).findByRole("button", { name: /小电视/ });
+		const asked = () =>
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/bots").length;
+		const before = asked();
+
+		act(() =>
+			handleStateEnvelope(
+				{ type: "state", event: "extension-changed", ts: "", data: { id: "bridge" } },
+				qc,
+			),
+		);
+
+		await waitFor(() => expect(asked()).toBe(before + 1));
 	});
 });
 

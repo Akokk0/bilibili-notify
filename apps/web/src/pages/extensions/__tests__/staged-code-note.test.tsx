@@ -87,7 +87,7 @@ describe("新版等着换上的那块提示", () => {
 		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 	});
 
-	it("按「只重载这个拓展」→ POST 它自己那一口;成了就刷新拓展表与它的状态", async () => {
+	it("按「只重载这个拓展」→ POST 它自己那一口;成了就刷新拓展表、它的状态与 bot 名单", async () => {
 		vi.mocked(api.post).mockResolvedValue({ ok: true });
 		const { invalidate } = show();
 
@@ -96,6 +96,7 @@ describe("新版等着换上的那块提示", () => {
 		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/ext/bridge/swap", {}));
 		await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] }));
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extension-status", "bridge"] });
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extension-bots", "bridge"] });
 		expect(api.post).not.toHaveBeenCalledWith("/api/system/restart", {});
 	});
 

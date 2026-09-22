@@ -69,7 +69,8 @@ vi.mock("../../services/api", () => ({
 
 function renderDetail() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const invalidate = vi.spyOn(qc, "invalidateQueries");
+	render(
 		<MemoryRouter initialEntries={["/extensions/bridge"]}>
 			<QueryClientProvider client={qc}>
 				<Routes>
@@ -79,6 +80,7 @@ function renderDetail() {
 			</QueryClientProvider>
 		</MemoryRouter>,
 	);
+	return { invalidate };
 }
 
 describe("删掉一个拓展", () => {
@@ -96,14 +98,15 @@ describe("删掉一个拓展", () => {
 		expect(api.delete).not.toHaveBeenCalled();
 	});
 
-	it("确认之后才删,删完离开这一页", async () => {
-		renderDetail();
+	it("确认之后才删,删完刷新拓展表、离开这一页", async () => {
+		const { invalidate } = renderDetail();
 
 		await userEvent.click(await screen.findByRole("button", { name: "删除拓展" }));
 		await userEvent.click(await screen.findByRole("button", { name: "删掉它" }));
 
 		await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/ext/bridge"));
 		expect(await screen.findByText("拓展列表")).toBeTruthy();
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] });
 	});
 
 	/** 🔴 服务端那句「还有 N 条连接在用它」是用户唯一能照着做的线索,不许换成自编的概括。 */

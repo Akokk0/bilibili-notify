@@ -18,6 +18,7 @@ import { AddFileButton } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { DEFAULT_RESTART_WAIT, type RestartWait } from "../../components/update/restart";
+import { EXTENSIONS_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { errorsOf, InstallErrors } from "./install-errors";
 import { ExtensionInstallOutcome } from "./install-outcome";
@@ -49,7 +50,7 @@ export function ExtensionInstallSlot({
 		onSuccess: (res) => {
 			setDone(res);
 			// 热装的那一份**已经在跑了** —— 列表要跟着换,不然主人以为没装上。
-			void qc.invalidateQueries({ queryKey: ["extensions"] });
+			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 		},
 		onError: (err) => setErrors(errorsOf(err)),
 	});

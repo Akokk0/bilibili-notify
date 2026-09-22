@@ -1,17 +1,13 @@
 import type { ExtensionDTO, ExtensionView } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
+import { extensionStatusKey } from "../../../hooks/useExtensions";
 import { api } from "../../../services/api";
 
 /**
- * 一个拓展的状态那一口(`/api/ext/:id/status`)在 react-query 里的键。
- *
- * 🔴 **与 WS 那条失效是同一个键**:拓展喊 `ctx.statusChanged()` 时,`useStateChannel` 按
- * `["extension-status", id]` 失效(`extension-changed` 那一支)。这边换一个键的话,页面
- * 照样画得出来,只是再也不跟着拓展刷新 —— 而且不会有任何报错。
+ * 状态那一口的键住在 `hooks/useExtensions.ts`(WS 那条失效也从那儿取,为什么见那里);
+ * 这里转出去,声明式视图里读它的几处照旧从这儿拿。
  */
-export function extensionStatusKey(extensionId: string) {
-	return ["extension-status", extensionId] as const;
-}
+export { extensionStatusKey };
 
 /**
  * 读一个 v2 拓展交上来的视图(ADR-0019 决策 20 / 26)。宿主交出来之前校验过:不合规矩的

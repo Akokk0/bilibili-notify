@@ -171,11 +171,13 @@ function renderSection(market: MarketplaceResponse = MARKET) {
 		throw new Error(`没有这一口:${url}`);
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const invalidate = vi.spyOn(qc, "invalidateQueries");
+	render(
 		<QueryClientProvider client={qc}>
 			<Host />
 		</QueryClientProvider>,
 	);
+	return { invalidate };
 }
 
 async function cardOf(name: string): Promise<HTMLElement> {
@@ -234,7 +236,7 @@ describe("拓展市场", () => {
 	});
 
 	it("官方条目一键装:POST source+id,装完那句话与传包装的同一段,列表与市场都重取", async () => {
-		renderSection();
+		const { invalidate } = renderSection();
 		await userEvent.click(
 			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
 		);
@@ -245,6 +247,9 @@ describe("拓展市场", () => {
 			}),
 		);
 		expect(await screen.findByText(/装好了/)).toBeTruthy();
+		// 拓展表那个键与拓展页、详情页、推送目标页读的是同一个 —— 失效一次,四处都换脸。
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] });
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["marketplace"] });
 	});
 
 	/**
@@ -338,7 +343,7 @@ describe("拓展市场", () => {
 
 describe("源", () => {
 	it("弹窗列官方(不可删)与第三方(可删,名字是索引报的);加源只填地址、先看见风险提示,存的是整份名单", async () => {
-		renderSection();
+		const { invalidate } = renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByText("BN 官方拓展")).toBeTruthy();
@@ -365,6 +370,32 @@ describe("源", () => {
 		]);
 		expect(body.marketplace.sources[1]?.id).toBeTruthy();
 		expect(body.marketplace.sources[1]?.name).toBeUndefined();
+		// 源换了,市场那一口得重取 —— 不然新加的源要等切页才露面。
+		await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["marketplace"] }));
+	});
+
+	/**
+	 * 「重新拉索引」是把强制重拉的那一份**写进市场那一节读的同一个键** —— 写进别的键的话,
+	 * 请求照样发、服务端照样重拉,画着的还是旧的那份,而且不会有任何报错。
+	 */
+	it("「重新拉索引」→ 带 refresh=1 重拉,拉回来的那份当场画上", async () => {
+		renderSection();
+		await screen.findByText("机器人框架桥接");
+		const base = MARKET.extensions[0];
+		if (!base) throw new Error("夹具里至少得有一条");
+		const fresh: MarketplaceResponse = {
+			...MARKET,
+			extensions: [...MARKET.extensions, { ...base, id: "fresh", name: "新来的" }],
+		};
+		const served = apiGetMock.getMockImplementation();
+		apiGetMock.mockImplementation(async (url: string) =>
+			url === "/api/ext/marketplace?refresh=1" ? fresh : served?.(url),
+		);
+
+		await userEvent.click(screen.getByRole("button", { name: "重新拉索引" }));
+
+		expect(apiGetMock).toHaveBeenCalledWith("/api/ext/marketplace?refresh=1");
+		expect(await screen.findByText("新来的")).toBeTruthy();
 	});
 
 	it("http 地址不收;删掉一个源存的是剩下的名单", async () => {

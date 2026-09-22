@@ -27,6 +27,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { EXTENSIONS_QUERY_KEY, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
@@ -34,7 +35,7 @@ import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
 export function useMarketplace() {
 	return useQuery({
-		queryKey: ["marketplace"],
+		queryKey: MARKETPLACE_QUERY_KEY,
 		queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace"),
 		retry: false,
 	});
@@ -98,8 +99,8 @@ export function useMarketplaceInstall() {
 			if (pending?.kind === "install" && pending.from) {
 				play({ kind: "install", id: res.id, from: pending.from });
 			}
-			void qc.invalidateQueries({ queryKey: ["extensions"] });
-			void qc.invalidateQueries({ queryKey: ["marketplace"] });
+			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
 		onError: (err) => {
 			setErrors(errorsOf(err));
@@ -311,7 +312,7 @@ export function MarketplaceSection({
 						size="sm"
 						onClick={() => {
 							void qc.fetchQuery({
-								queryKey: ["marketplace"],
+								queryKey: MARKETPLACE_QUERY_KEY,
 								queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace?refresh=1"),
 							});
 						}}

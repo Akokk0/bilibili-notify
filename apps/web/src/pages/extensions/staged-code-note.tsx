@@ -21,9 +21,12 @@ import {
 	type RestartWait,
 	useRestartStore,
 } from "../../components/update/restart";
-import { EXTENSIONS_QUERY_KEY } from "../../hooks/useExtensions";
+import {
+	EXTENSIONS_QUERY_KEY,
+	extensionBotsKey,
+	extensionStatusKey,
+} from "../../hooks/useExtensions";
 import { api } from "../../services/api";
-import { extensionStatusKey } from "./declarative/view-query";
 import { PARAGRAPH_CLS, reasonOf } from "./shared";
 
 /** 重启回不来的那两档各自的出路不一样,所以不能合成一句「不支持」。 */
@@ -127,7 +130,7 @@ export function StagedCodeNote({
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 			void qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
-			void qc.invalidateQueries({ queryKey: ["extension-bots", id] });
+			void qc.invalidateQueries({ queryKey: extensionBotsKey(id) });
 		},
 	});
 	const waiting = view?.intent.mode === "restart" && view.kind === "waiting";

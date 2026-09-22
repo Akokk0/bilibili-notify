@@ -45,11 +45,13 @@ const OK: ExtensionInstallResponse = {
 
 function renderSlot() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const invalidate = vi.spyOn(qc, "invalidateQueries");
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<ExtensionInstallSlot />
 		</QueryClientProvider>,
 	);
+	return { ...view, invalidate };
 }
 
 /** 挑一个文件 —— `AddFileButton` 藏的是一个 sr-only 的 input。 */
@@ -72,9 +74,9 @@ afterEach(() => {
 });
 
 describe("传包装拓展", () => {
-	it("挑一个 zip → 发上去,包确实交上去了,不提重启", async () => {
+	it("挑一个 zip → 发上去,包确实交上去了,拓展表跟着刷新,不提重启", async () => {
 		vi.mocked(api.upload).mockResolvedValue(OK);
-		const { container } = renderSlot();
+		const { container, invalidate } = renderSlot();
 
 		await pick(container);
 
@@ -83,6 +85,7 @@ describe("传包装拓展", () => {
 		expect(path).toBe("/api/ext/install");
 		expect((form.get("file") as File).name).toBe("bridge.zip");
 		expect(await screen.findByText(/装好了/)).toBeTruthy();
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] });
 		expect(screen.queryByRole("button", { name: /重启/ })).toBeNull();
 	});
 

@@ -31,7 +31,11 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { useConnectionFace } from "../components/platform-meta";
 import { QQQrBindButton } from "../components/qq-qr-bind";
-import { useExtensions } from "../hooks/useExtensions";
+import {
+	EXTENSION_BOTS_QUERY_PREFIX,
+	extensionBotsKey,
+	useExtensions,
+} from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
 import {
 	type ConnectionField,
@@ -581,7 +585,7 @@ function ExtensionBotPicker({
 }) {
 	const platformTint = usePlatformTint();
 	const bots = useQuery({
-		queryKey: ["extension-bots", extension.id],
+		queryKey: extensionBotsKey(extension.id),
 		queryFn: () => api.get<ExtensionBotsResponse>(`/api/ext/${extension.id}/bots`),
 		retry: false,
 	});
@@ -1595,7 +1599,7 @@ export default function Targets() {
 			// 🔴 bot 名单里的 `boundTo` 跟着连接走,而那条查询有 5 秒 staleTime:不作废它的话,
 			// 5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
 			// bot 建出两条连接,每条推一遍。整个前缀一起失效:哪个拓展的名单变了这里说不准。
-			qc.invalidateQueries({ queryKey: ["extension-bots"] });
+			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
 			showToast(connectionDraft?.mode === "add" ? "已新建连接" : "连接已保存");
 			setConnectionDraft(null);
 		},
@@ -1616,7 +1620,7 @@ export default function Targets() {
 			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			// 删掉一条,它绑着的那个 bot 该重新挑得动 —— 同上,名单得当场作废。
-			qc.invalidateQueries({ queryKey: ["extension-bots"] });
+			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
 			showToast("已移除连接");
 			setConfirmDelete(null);
 		},

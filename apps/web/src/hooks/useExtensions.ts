@@ -5,6 +5,10 @@
  * 而它们共用 `["extensions"]` 这个 key **是承重的**:装完一个拓展只 invalidate 一次,
  * 四处就都跟着换了脸。各起各的 `useQuery` 时那个 key 是靠手抄对齐的,抄错一处的症状
  * 是「装好了但那一页还是旧的」—— 类型、测试、构建全绿。
+ *
+ * 单个拓展的状态 / bot 名单、拓展市场那几个键也住这儿,理由相同:读的那处与失效的那几处
+ * (包括 WS 那条 `useStateChannel`)都从这儿取。放在 hooks 而不是拓展页底下 —— hooks 不反向
+ * import pages;市场那个键放在市场那一节里的话,改源的弹窗与市场那一节还会互相 import。
  */
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
@@ -12,6 +16,30 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
 
 export const EXTENSIONS_QUERY_KEY = ["extensions"] as const;
+
+/**
+ * 一个拓展的状态那一口(`/api/ext/:id/status`,v2 拓展交上来的视图)。
+ *
+ * 🔴 **与 WS 那条失效是同一个键**:拓展喊 `ctx.statusChanged()` 时,`useStateChannel` 按它失效
+ * (`extension-changed` 那一支),重连时按整个前缀失效。换一个键的话,页面照样画得出来,只是
+ * 再也不跟着拓展刷新 —— 而且不会有任何报错。
+ */
+export const EXTENSION_STATUS_QUERY_PREFIX = ["extension-status"] as const;
+export function extensionStatusKey(extensionId: string) {
+	return [...EXTENSION_STATUS_QUERY_PREFIX, extensionId] as const;
+}
+
+/** 一个拓展眼下借得到的 bot(`/api/ext/:id/bots`)。与 WS 那条失效同一个键,理由同上。 */
+export const EXTENSION_BOTS_QUERY_PREFIX = ["extension-bots"] as const;
+export function extensionBotsKey(extensionId: string) {
+	return [...EXTENSION_BOTS_QUERY_PREFIX, extensionId] as const;
+}
+
+/**
+ * 拓展市场那一口(`/api/ext/marketplace`)。市场那一节读它;装 / 更新成功、改源之后按它失效;
+ * 「重新拉索引」把强制重拉的那一份写进它 —— 哪一处对不上,市场就停在旧的那份,不报错。
+ */
+export const MARKETPLACE_QUERY_KEY = ["marketplace"] as const;
 
 export interface UseExtensionsOptions {
 	/**
