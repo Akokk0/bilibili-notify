@@ -133,6 +133,22 @@ export function StagedCodeNote({
 	const waiting = view?.intent.mode === "restart" && view.kind === "waiting";
 	const busy = restartNow.isPending || swap.isPending || waiting;
 
+	/*
+	 * 换上了就只剩这一句。详情页那一块会随拓展表刷新消失,**装完那句话里的这一块不会**(它挂在
+	 * 装的那一刻的回答上)—— 还摆着「换不上」与两颗钮的话三句话自相矛盾,再按一下只换来 409。
+	 */
+	if (swap.isSuccess) {
+		return (
+			<HintNote tone="neutral" className="flex flex-col gap-2.5">
+				<p className={PARAGRAPH_CLS}>
+					{name ? <strong className="text-bn-text-secondary">{name} </strong> : null}
+					重载完了 —— 起没起来,以它那张卡上的状态为准。
+				</p>
+				{children}
+			</HintNote>
+		);
+	}
+
 	return (
 		<HintNote tone="neutral" className="flex flex-col gap-2.5">
 			<p className={PARAGRAPH_CLS}>
@@ -163,11 +179,6 @@ export function StagedCodeNote({
 			</div>
 			{children}
 
-			{swap.isSuccess ? (
-				<p className="text-bn-2xs text-bn-text-tertiary">
-					重载完了 —— 起没起来,以它那张卡上的状态为准。
-				</p>
-			) : null}
 			{waiting ? (
 				<LoadingBlock variant="inset" label="正在重启" hint="服务回来后这一页会自动刷新。" />
 			) : null}

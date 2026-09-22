@@ -99,6 +99,23 @@ describe("新版等着换上的那块提示", () => {
 		expect(api.post).not.toHaveBeenCalledWith("/api/system/restart", {});
 	});
 
+	/**
+	 * 🔴 **换上了,这块就不再说「换不上」。** 装完那句话里的这一块不随拓展表刷新消失(它挂在装的
+	 * 那一刻的回答上),成了之后还摆着「换不上」与两颗钮的话,三句话自相矛盾,再按一下只换来一个
+	 * 409。只留一句「重载完了」,起没起来去看卡。
+	 */
+	it("只重载成了 → 只留「重载完了」:不再说换不上,两颗钮收起", async () => {
+		vi.mocked(api.post).mockResolvedValue({ ok: true });
+		show();
+
+		await userEvent.click(screen.getByRole("button", { name: "只重载这个拓展" }));
+
+		expect(await screen.findByText(/重载完了/)).toBeTruthy();
+		expect(screen.queryByText(/跑的还是/)).toBeNull();
+		expect(screen.queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
+	});
+
 	/** 「换不上」的原因只有服务端知道(盘上那份读不出来 / 已经没什么可换)—— 原话摆出来。 */
 	it("换不上 → 服务端那句原话摆出来", async () => {
 		vi.mocked(api.post).mockRejectedValue(new Error("bridge 盘上那份现在装不起来,换不上"));
