@@ -388,6 +388,9 @@ function webhookFields(
  *
  * 配置项按**数据类型**分(`string` / `number` / `boolean` / `enum`),这里翻成表单自己按
  * 控件分的那几种(`text` / `number` / `toggle` / `select`)。
+ *
+ * 🔴 键缺省时先落到字段声明的 `default`,再落到各控件的兜底:键缺省的格存下去,拓展那份
+ * zod 补的就是 `default` —— 表单要是画成「关」/ 第一项,屏幕上的和实际生效的就是两个值。
  */
 export function extensionConnectionFields(
 	connection: ExtensionConnection,
@@ -413,7 +416,7 @@ export function extensionConnectionFields(
 				return {
 					...base,
 					kind: "text",
-					value: typeof raw === "string" ? raw : "",
+					value: typeof raw === "string" ? raw : (field.default ?? ""),
 					placeholder: field.placeholder,
 					mono: field.monospace,
 					secret: field.secret,
@@ -423,7 +426,7 @@ export function extensionConnectionFields(
 				return {
 					...base,
 					kind: "number",
-					value: typeof raw === "number" ? raw : (field.min ?? 0),
+					value: typeof raw === "number" ? raw : (field.default ?? field.min ?? 0),
 					min: field.min,
 					max: field.max,
 					step: field.step,
@@ -431,12 +434,17 @@ export function extensionConnectionFields(
 					set: (v) => put(field.key, v),
 				};
 			case "boolean":
-				return { ...base, kind: "toggle", value: raw === true, set: (v) => put(field.key, v) };
+				return {
+					...base,
+					kind: "toggle",
+					value: typeof raw === "boolean" ? raw : (field.default ?? false),
+					set: (v) => put(field.key, v),
+				};
 			case "enum":
 				return {
 					...base,
 					kind: "select",
-					value: typeof raw === "string" ? raw : (field.options[0]?.value ?? ""),
+					value: typeof raw === "string" ? raw : (field.default ?? field.options[0]?.value ?? ""),
 					options: field.options,
 					set: (v) => put(field.key, v),
 				};

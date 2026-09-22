@@ -87,6 +87,55 @@ describe("extensionConnectionFields", () => {
 		expect(next.platform).toBe("telegram");
 	});
 
+	it("config 里没有这一格时显示字段自己声明的 default —— 不然显示关、存下去拓展补成开", () => {
+		// 键缺省时拓展那份 zod 会补成 default:表单要是画成「关」/ 第一项,主人不碰就存,
+		// 屏幕上的和实际生效的就是两个值。
+		const bare: ExtensionConnection = { ...connection, config: {} };
+		const fields = extensionConnectionFields(bare, [
+			{ type: "boolean", key: "loud", label: "吵", default: true },
+			{
+				type: "enum",
+				key: "flavor",
+				label: "口味",
+				options: [
+					{ value: "a", label: "A" },
+					{ value: "b", label: "B" },
+				],
+				default: "b",
+			},
+			{ type: "string", key: "note", label: "备注", default: "你好" },
+			{ type: "number", key: "retries", label: "重试", min: 0, default: 3 },
+		]);
+		expect(fields.map((f) => ("value" in f ? f.value : undefined))).toEqual([true, "b", "你好", 3]);
+	});
+
+	it("没声明 default 的照旧:关 / 第一项 / 空串 / min", () => {
+		const bare: ExtensionConnection = { ...connection, config: {} };
+		const fields = extensionConnectionFields(bare, [
+			...FIELDS.slice(0, 2),
+			{ type: "number", key: "retries", label: "重试", min: 2 },
+			FIELDS[3] as ExtensionScalarField,
+		]);
+		expect(fields.map((f) => ("value" in f ? f.value : undefined))).toEqual(["a", "", 2, false]);
+	});
+
+	it("存着的值压过 default —— default 只管键缺省", () => {
+		const fields = extensionConnectionFields(connection, [
+			{ type: "boolean", key: "loud", label: "吵", default: true },
+			{
+				type: "enum",
+				key: "flavor",
+				label: "口味",
+				options: [
+					{ value: "a", label: "A" },
+					{ value: "b", label: "B" },
+				],
+				default: "b",
+			},
+		]);
+		expect(fields.map((f) => ("value" in f ? f.value : undefined))).toEqual([false, "a"]);
+	});
+
 	it("空字段表翻出来就是空的 —— 桥那种「挑出来的」连接没有一栏是人填的", () => {
 		expect(extensionConnectionFields(connection, [])).toEqual([]);
 	});
