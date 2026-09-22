@@ -46,6 +46,32 @@ const TRISTATE: Readonly<Record<BridgeCapabilityState, "yes" | "no" | "unknown">
 /** 两种桥在面板上的叫法(「改成 AstrBot」那颗钮)。 */
 const KIND_LABELS: Readonly<Record<string, string>> = { koishi: "koishi", astrbot: "AstrBot" };
 
+/**
+ * 视图 schema 的上限 —— 照抄 `packages/internal/src/schema/extension-view.ts`。桥只准从
+ * `@bilibili-notify/extension` 进 BN 的东西,够不到那份 schema,只能抄数;那头调了要跟着改。
+ *
+ * 🔴 对端报什么这里就画什么(bot 名、账号、平台、会话名 / 版本、来源地址、bot 个数),而
+ * 视图一格超限,宿主就把**整份视图**换成一条错误提示 —— 一个对端报一个超长名字,所有接入的
+ * 状态、bot 表、列表页那句「N 个 bot 在线」一起没了。所以对端报来的一律在这里截。
+ */
+const VIEW_LIMITS = {
+	/** 表格 text 列的字与第二行。 */
+	tableText: 200,
+	/** 一张表的行数。 */
+	tableRows: 200,
+	/** 一段字(副标题)里的每一片。 */
+	richRun: 2000,
+} as const;
+
+/** 超长就截,末尾换一个省略号。不把代理对劈成半个 —— 半个 emoji 画出来是一个问号方块。 */
+function clip(text: string, max: number): string {
+	if (text.length <= max) return text;
+	let head = text.slice(0, max - 1);
+	const last = head.charCodeAt(head.length - 1);
+	if (last >= 0xd800 && last <= 0xdbff) head = head.slice(0, -1);
+	return `${head}…`;
+}
+
 /** 片段之间的分隔 —— 今天副标题就是拿 ` · ` 拼的。 */
 function joined(parts: readonly (ExtensionRichRun | undefined)[]): ExtensionRichRun[] {
 	const present = parts.filter((part): part is ExtensionRichRun => part !== undefined);
@@ -66,13 +92,19 @@ function connectedItem(link: BridgeLink, session: BridgeSession): ExtensionItemV
 	const nameAndVersion = [session.name, session.version ? `v${session.version}` : undefined]
 		.filter(Boolean)
 		.join(" ");
+	// 表画不下的那几个不能就这么没了:表头旁的行数是画出来的行数,不说一句的话主人会以为
+	// 桥就驮着这么多。
+	const listed = session.bots.slice(0, VIEW_LIMITS.tableRows);
+	const unlisted = session.bots.length - listed.length;
 	return {
 		status: mismatched ? { tone: "warn", text: "连上了,但对不上" } : { tone: "ok", text: "已连接" },
 		pill: mismatched ? `配置:${link.bridgeKind}` : link.bridgeKind,
 		subtitle: joined([
-			nameAndVersion || undefined,
+			nameAndVersion ? clip(nameAndVersion, VIEW_LIMITS.richRun) : undefined,
 			{ time: session.connectedAt, suffix: "连上" },
-			session.remoteAddress ? `来自 ${session.remoteAddress}` : undefined,
+			session.remoteAddress
+				? clip(`来自 ${session.remoteAddress}`, VIEW_LIMITS.richRun)
+				: undefined,
 		]),
 		buttons: mismatched
 			? [
@@ -109,15 +141,27 @@ function connectedItem(link: BridgeLink, session: BridgeSession): ExtensionItemV
 						label: CAPABILITY_LABELS[capability],
 					})),
 				],
-				rows: session.bots.map((bot) => [
+				rows: listed.map((bot) => [
 					iconCell(bot.platform, bot.icon),
 					{
-						text: bot.name ?? bot.botId,
-						sub: [bot.platform, bot.selfId].filter(Boolean).join(" · "),
+						text: clip(bot.name ?? bot.botId, VIEW_LIMITS.tableText),
+						sub: clip(
+							[bot.platform, bot.selfId].filter(Boolean).join(" · "),
+							VIEW_LIMITS.tableText,
+						),
 					},
 					...BRIDGE_CAPABILITIES.map((capability) => TRISTATE[bot.capabilities[capability]]),
 				]),
 			},
+			...(unlisted > 0
+				? [
+						{
+							type: "notice" as const,
+							tone: "info" as const,
+							text: `还有 ${unlisted} 个 bot 没列出来 —— 一张表最多画 ${VIEW_LIMITS.tableRows} 行。它们照样能在推送目标页挑来当连接。`,
+						},
+					]
+				: []),
 		],
 	};
 }

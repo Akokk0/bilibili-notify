@@ -161,6 +161,73 @@ describe("bridgeView", () => {
 		expect(view.summary).toEqual({ tone: "ok", text: [{ b: "3" }, " 个 bot 在线"] });
 	});
 
+	/**
+	 * 🔴 对端报什么这里就画什么,而视图 schema 一格超限,宿主就把**整份视图**换成一条错误提示
+	 * —— 一个对端报一个超长名字,所有接入的状态、bot 表、列表页那句「N 个 bot 在线」一起没了。
+	 * 下面的数照抄 `packages/internal/src/schema/extension-view.ts`(桥够不到那份 schema):
+	 * 表格字 / 第二行 ≤ 200、一张表 ≤ 200 行、一段字里的每片 ≤ 2000。
+	 */
+	describe("对端报来的东西超限:截在桥这一侧,别让一格拖垮整份视图", () => {
+		const long = (n: number, ch = "长") => ch.repeat(n);
+
+		it("超长的 bot 名、平台、账号:表格那一格截到 200,末尾一个省略号", () => {
+			const table = item([link()], {
+				a1: session({
+					bots: [bot({ name: long(500), platform: long(150, "p"), selfId: long(150, "9") })],
+				}),
+			})?.blocks?.[0];
+			if (table?.type !== "table") throw new Error("应该是一张表");
+			const cell = table.rows[0]?.[1] as { text: string; sub: string };
+			expect(cell.text).toHaveLength(200);
+			expect(cell.text.endsWith("…")).toBe(true);
+			expect(cell.text.startsWith(long(199))).toBe(true);
+			expect(cell.sub.length).toBeLessThanOrEqual(200);
+			expect(cell.sub.endsWith("…")).toBe(true);
+		});
+
+		it("截的时候不把一个 emoji 劈成半个", () => {
+			const table = item([link()], {
+				a1: session({ bots: [bot({ name: "😀".repeat(300) })] }),
+			})?.blocks?.[0];
+			if (table?.type !== "table") throw new Error("应该是一张表");
+			const cell = table.rows[0]?.[1] as { text: string };
+			expect(cell.text.length).toBeLessThanOrEqual(200);
+			expect(cell.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+			expect(cell.text.endsWith("…")).toBe(true);
+		});
+
+		it("超长的会话名、版本、来源地址:副标题每一片都截到 2000", () => {
+			const view = item([link()], {
+				a1: session({ name: long(3000), version: long(3000, "1"), remoteAddress: long(3000, "a") }),
+			});
+			const runs = view?.subtitle;
+			if (!Array.isArray(runs)) throw new Error("副标题应该是一串片段");
+			const strings = runs.filter((run): run is string => typeof run === "string");
+			for (const run of strings) expect(run.length).toBeLessThanOrEqual(2000);
+			expect(strings.filter((run) => run.endsWith("…"))).toHaveLength(2);
+		});
+
+		it("201 个 bot:表里画 200 行,表下面说一句还有 1 个没列;列表页那句照旧按全数", () => {
+			const bots = Array.from({ length: 201 }, (_, i) => bot({ botId: `b${i}`, name: `bot ${i}` }));
+			const view = bridgeView([link()], () => session({ bots }));
+			const blocks = view.items?.links?.a1?.blocks ?? [];
+			const table = blocks[0];
+			if (table?.type !== "table") throw new Error("应该是一张表");
+			expect(table.rows).toHaveLength(200);
+			expect(table.rows[199]?.[1]).toMatchObject({ text: "bot 199" });
+			const rest = blocks[1];
+			expect(rest).toMatchObject({ type: "notice", tone: "info" });
+			expect(JSON.stringify(rest)).toContain("还有 1 个");
+			expect(view.summary).toEqual({ tone: "ok", text: [{ b: "201" }, " 个 bot 在线"] });
+		});
+
+		it("正好 200 个:不多说那一句", () => {
+			const bots = Array.from({ length: 200 }, (_, i) => bot({ botId: `b${i}` }));
+			const blocks = item([link()], { a1: session({ bots }) })?.blocks ?? [];
+			expect(blocks).toHaveLength(1);
+		});
+	});
+
 	it("页级:BN 地址一行(值由 BN 在浏览器里现算)", () => {
 		const page = bridgeView([], () => undefined).page;
 		expect(page).toEqual([
