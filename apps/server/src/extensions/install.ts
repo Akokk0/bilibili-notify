@@ -207,23 +207,6 @@ export interface InstallExtensionPackageInput {
 	pkg: OpenedExtensionPackage;
 }
 
-export interface InstallExtensionPackageResult {
-	/**
-	 * 盖掉了一份已经装着的。
-	 *
-	 * ⚠️ **不等于「换不上」**:关着、从没跑过的那份盘上换了就是换了。换不换得上由装载器按入口
-	 * 指纹判(ADR-0012 决策 47),面板那句话照重扫之后装载器那一行的 `staged` 说。
-	 */
-	replaced: boolean;
-}
-
-/**
- * 把拆好的包落到 `<root>/<id>/`。
- *
- * **先写到一个临时目录再整体换过去**:直接往目标目录里逐个写的话,写到一半失败会留下
- * 一个「清单是新的、代码是旧的」的拓展,而那正是最难查的一种状态。同一个道理,覆盖时
- * 先把旧目录整个删掉 —— 留着上一版的残余文件,下一次谁也说不清跑的是哪一份。
- */
 /**
  * 同一个装载根上的安装**排队**:路由层没有锁,两个标签页同时点「装」,各自 mkdtemp → rm →
  * rename 交错起来,第二个 rename 会撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。
@@ -267,22 +250,28 @@ export async function uninstallExtension({
 	return { ok: true, removed: true };
 }
 
-export async function installExtensionPackage(
-	input: InstallExtensionPackageInput,
-): Promise<InstallExtensionPackageResult> {
+/**
+ * 把拆好的包落到 `<root>/<id>/`。
+ *
+ * **先写到一个临时目录再整体换过去**:直接往目标目录里逐个写的话,写到一半失败会留下
+ * 一个「清单是新的、代码是旧的」的拓展,而那正是最难查的一种状态。同一个道理,覆盖时
+ * 先把旧目录整个删掉 —— 留着上一版的残余文件,下一次谁也说不清跑的是哪一份。
+ *
+ * 盖掉一份已经装着的**不等于「换不上」**:关着、从没跑过的那份盘上换了就是换了。换不换得上
+ * 由装载器按入口指纹判(ADR-0012 决策 47),面板那句话照重扫之后装载器那一行的 `staged` 说。
+ */
+export async function installExtensionPackage(input: InstallExtensionPackageInput): Promise<void> {
 	const previous = installQueues.get(input.root) ?? Promise.resolve();
 	const run = previous.catch(() => undefined).then(() => installExtensionPackageUnlocked(input));
 	installQueues.set(input.root, run);
 	try {
-		return await run;
+		await run;
 	} finally {
 		if (installQueues.get(input.root) === run) installQueues.delete(input.root);
 	}
 }
 
-async function installExtensionPackageUnlocked(
-	input: InstallExtensionPackageInput,
-): Promise<InstallExtensionPackageResult> {
+async function installExtensionPackageUnlocked(input: InstallExtensionPackageInput): Promise<void> {
 	const { root, pkg } = input;
 	const at = join(root, pkg.id);
 	await mkdir(root, { recursive: true });
@@ -314,5 +303,4 @@ async function installExtensionPackageUnlocked(
 		// 任何一个目录当成一个拓展去扫。
 		await rm(staging, { recursive: true, force: true });
 	}
-	return { replaced: Boolean(existing) };
 }

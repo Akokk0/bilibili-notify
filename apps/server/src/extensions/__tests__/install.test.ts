@@ -12,6 +12,7 @@ import {
 	lstat,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	readlink,
 	rm,
@@ -313,10 +314,12 @@ describe("落盘", () => {
 		await expect(readFile(join(root, "bridge", "CHANGELOG.md"), "utf8")).rejects.toThrow();
 	});
 
-	it("新装 → 目录长在装载根里,两个文件都在", async () => {
+	it("新装 → 目录长在装载根里,不多不少就这两个文件", async () => {
+		// 装之前盘上没有它 —— 这是新装,不是覆盖。
+		await expect(lstat(join(root, "bridge"))).rejects.toThrow();
 		const { pkg } = await open();
-		const out = await installExtensionPackage({ root, pkg });
-		expect(out.replaced).toBe(false);
+		await installExtensionPackage({ root, pkg });
+		expect((await readdir(join(root, "bridge"))).sort()).toEqual(["extension.json", "index.mjs"]);
 		expect(await readFile(join(root, "bridge", "index.mjs"), "utf8")).toContain("activate");
 		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).id).toBe(
 			"bridge",
@@ -324,21 +327,23 @@ describe("落盘", () => {
 	});
 
 	/**
-	 * 🔴 覆盖 = 换掉**已经加载过**的代码,而 ESM 在这个进程里换不掉(决策 10)。所以这一步
-	 * 要如实说「得重启」—— 说成「装好了」的话,主人会以为新版本已经在跑。
+	 * 覆盖是**整份换掉**:旧目录先删再落新的 —— 留着上一版的残余文件,下一次谁也说不清跑的是
+	 * 哪一份。换不换得上(要不要重启)不归这一层,装载器按入口指纹判(ADR-0012 决策 47)。
 	 */
-	it("盖掉一份已经装着的 → 说清楚这是覆盖,旧文件不残留", async () => {
+	it("盖掉一份已经装着的 → 整份换成新的,旧文件不残留", async () => {
 		await mkdir(join(root, "bridge"), { recursive: true });
 		await writeFile(join(root, "bridge", "extension.json"), manifest({ version: "0.9.0" }));
 		await writeFile(join(root, "bridge", "index.mjs"), "// 旧的");
 		await writeFile(join(root, "bridge", "leftover.txt"), "上一版留下的");
 
 		const { pkg } = await open();
-		const out = await installExtensionPackage({ root, pkg });
+		await installExtensionPackage({ root, pkg });
 
-		expect(out.replaced).toBe(true);
+		expect((await readdir(join(root, "bridge"))).sort()).toEqual(["extension.json", "index.mjs"]);
 		expect(await readFile(join(root, "bridge", "index.mjs"), "utf8")).toContain("activate");
-		await expect(readFile(join(root, "bridge", "leftover.txt"), "utf8")).rejects.toThrow();
+		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
+			"1.0.0",
+		);
 	});
 
 	/** 🔴 那是 devtools 链进来的**仓库工作树**。往里写 = 往 git status 里拉屎。 */
@@ -356,7 +361,6 @@ describe("落盘", () => {
 	it("装完不留临时目录 —— 装载器会把它当成一个拓展扫出来", async () => {
 		const { pkg } = await open();
 		await installExtensionPackage({ root, pkg });
-		const { readdir } = await import("node:fs/promises");
 		expect(await readdir(root)).toEqual(["bridge"]);
 	});
 
@@ -365,19 +369,20 @@ describe("落盘", () => {
 	 * 第二个 rename 撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。同 id 的安装必须排队。
 	 */
 	it("同一个 id 并发装两次 → 排队,两次都成,盘上只剩最后落的那一份", async () => {
-		const a = openExtensionPackage(pack(GOOD));
+		// 头一份多带一份 README:第二份落下之后它必须不见了 —— 证明第二次是等第一次落完、再把它
+		// 整份换掉的,而不是两边交错着各写一半。
+		const a = openExtensionPackage(pack({ ...GOOD, "README.md": "# 第一份" }));
 		const b = openExtensionPackage(
 			pack({ ...GOOD, "extension.json": manifest({ version: "1.0.1" }) }),
 		);
 		if (!a.ok || !b.ok) throw new Error("fixture");
-		const [first, second] = await Promise.all([
+		await expect(lstat(join(root, "bridge"))).rejects.toThrow();
+		await Promise.all([
 			installExtensionPackage({ root, pkg: a.pkg }),
 			installExtensionPackage({ root, pkg: b.pkg }),
 		]);
-		expect(first.replaced).toBe(false);
-		expect(second.replaced).toBe(true);
-		const { readdir } = await import("node:fs/promises");
 		expect(await readdir(root)).toEqual(["bridge"]);
+		expect((await readdir(join(root, "bridge"))).sort()).toEqual(["extension.json", "index.mjs"]);
 		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
 			"1.0.1",
 		);
