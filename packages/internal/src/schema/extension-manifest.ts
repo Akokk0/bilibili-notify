@@ -1,4 +1,16 @@
 import { z } from "zod";
+import {
+	EXTENSION_IMAGE_DATA_URL_RE,
+	EXTENSION_IMAGE_MAX_CHARS,
+	LIST_ITEM_ID_KEY,
+} from "../constants";
+
+// 本体住零依赖的 constants(面板经 /constants 拿值),这里给根入口补一条路 —— 两路一值。
+export {
+	EXTENSION_IMAGE_DATA_URL_RE,
+	EXTENSION_IMAGE_MAX_CHARS,
+	LIST_ITEM_ID_KEY,
+} from "../constants";
 
 /**
  * 宿主认的**契约档位区间** `[min, current]`(ADR-0019 决策 18)。
@@ -237,24 +249,13 @@ const BooleanFieldSchema = z.strictObject({
 });
 
 /**
- * 拓展交的图片(选项图标、表格的 icon 格)的上限 —— 整段 data URL 的字数。与桥协议里 bot 图标
- * 那条(`BRIDGE_BOT_ICON_MAX_BYTES`)同一个数:拓展包进不来 internal,只能各写一份。
- */
-export const EXTENSION_IMAGE_MAX_CHARS = 32 * 1024;
-
-/**
- * 拓展交的图片 —— **只收图片的 base64 data URL**,面板一律当 `<img>` 画(ADR-0019 决策 31)。
- *
- * 不过 SVG 白名单:`<img>` 里的 SVG 不跑脚本、拉不进外部资源,而白名单每宽一格都是把外来标记
- * 塞进页面。不收 http(s) 地址:面板一开就去对家点名,不是图标该有的本事。
+ * 拓展交的图片 —— 判据见 {@link EXTENSION_IMAGE_DATA_URL_RE} 与 {@link EXTENSION_IMAGE_MAX_CHARS}
+ * (住 constants,面板也用同一份)。
  */
 export const ExtensionImageSchema = z
 	.string()
 	.max(EXTENSION_IMAGE_MAX_CHARS, "图片不能超过 32 KB")
-	.regex(
-		/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/,
-		"图片只收 png / jpeg / webp / svg 的 base64 data URL",
-	);
+	.regex(EXTENSION_IMAGE_DATA_URL_RE, "图片只收 png / jpeg / webp / svg 的 base64 data URL");
 
 const EnumFieldSchema = z.strictObject({
 	...fieldBase,
@@ -296,9 +297,6 @@ interface FieldLike {
 	toggle?: string;
 	newItemCopy?: readonly ({ field: string } | { host: string })[];
 }
-
-/** 列表项里保留给 BN 的键 —— 项的身份,由 BN 生成、藏起来、不许改(ADR-0019 决策 29)。 */
-export const LIST_ITEM_ID_KEY = "id";
 
 /**
  * 列表自己声明的那几格引用(`title` / `mark` / `toggle` / `newItemCopy`)必须指到项里一格、

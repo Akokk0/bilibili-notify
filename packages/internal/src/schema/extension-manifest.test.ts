@@ -14,6 +14,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import * as constants from "../constants";
+import * as root from "../index";
 import {
 	ActionNameSchema,
 	apiVersionAccepted,
@@ -563,6 +565,42 @@ describe("v2 的选项图标", () => {
 		["超过 32 KB", `data:image/png;base64,${"A".repeat(32 * 1024)}`],
 	])("%s —— 拒", (_label, icon) => {
 		unreadable(enumWith(icon));
+	});
+});
+
+/**
+ * 面板也要这几样判据(列表项的保留键、图片那道门),而它只能从零依赖的 `/constants` 拿值 ——
+ * 所以本体住那边、清单的 schema 从那边引。根入口照旧拿得到,而且是**同一份**:各写一份的话,
+ * 改了一边,另一边静默漂开。
+ */
+describe("搬进 /constants 的拓展判据", () => {
+	it("/constants 拿得到;根入口照旧拿得到,而且是同一份", () => {
+		expect(constants.LIST_ITEM_ID_KEY).toBe("id");
+		expect(constants.EXTENSION_IMAGE_MAX_CHARS).toBe(32 * 1024);
+		expect(constants.EXTENSION_IMAGE_DATA_URL_RE).toBeInstanceOf(RegExp);
+		expect(root.LIST_ITEM_ID_KEY).toBe(constants.LIST_ITEM_ID_KEY);
+		expect(root.EXTENSION_IMAGE_MAX_CHARS).toBe(constants.EXTENSION_IMAGE_MAX_CHARS);
+		expect(root.EXTENSION_IMAGE_DATA_URL_RE).toBe(constants.EXTENSION_IMAGE_DATA_URL_RE);
+	});
+
+	it("面板拿那条正则判出来的,与清单收不收是同一个答案", () => {
+		const enumWith = (icon: string) =>
+			withField({
+				key: "a",
+				type: "enum",
+				label: "A",
+				options: [{ value: "x", label: "X", icon }],
+			});
+		for (const icon of [
+			PNG,
+			"data:image/svg+xml;base64,PHN2Zy8+",
+			"data:image/svg+xml;utf8,<svg/>",
+			"data:text/html;base64,PGgxPg==",
+			"https://example.invalid/logo.png",
+		]) {
+			const accepted = parseExtensionManifest(enumWith(icon)).ok;
+			expect(constants.EXTENSION_IMAGE_DATA_URL_RE.test(icon), icon).toBe(accepted);
+		}
 	});
 });
 
