@@ -490,7 +490,7 @@ describe("已装卡片上的「有新版」", () => {
 		await expect(motion.outcome).resolves.toBe(true);
 	});
 
-	it("更新砸了 → 那段换装落定成「没装成」(光环淡出,不爆)", async () => {
+	it("更新砸了 → 那段换装落定成「没装成」(光环淡出,不画勾)", async () => {
 		const played: CardMotion[] = [];
 		const unsubscribe = useCardMotionStore.subscribe((state) => {
 			if (state.motion) played.push(state.motion);

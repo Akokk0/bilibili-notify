@@ -68,7 +68,7 @@ export function useMarketplaceInstall() {
 	 * 两段动画开演的时机不一样:
 	 * - **传送(装)装成才演**:落点是装成之后才出现的那张卡,之前无处可落;失败不演。
 	 * - **换装(更新)请求一出门就演**:卡本来就在,下载那几秒正是「蓄」—— 等装完才开演的话,
-	 *   那几秒页面上只有一颗灰掉的钮。装成 / 没装成由 `settle` 落定,演的那头据此爆开或淡出。
+	 *   那几秒页面上只有一颗灰掉的钮。装成 / 没装成由 `settle` 落定,演的那头据此画勾或淡出。
 	 */
 	const launch = useRef<{ kind: "install" | "update"; from?: DOMRect } | null>(null);
 	const settle = useRef<((landed: boolean) => void) | null>(null);

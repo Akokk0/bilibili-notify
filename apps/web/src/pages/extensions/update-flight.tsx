@@ -9,9 +9,12 @@
  *    中心;没有起点(devtools 直接放)就从卡片上方落下来。
  * 2. **蓄** —— 卡片微微下沉,边框上一道光一圈一圈地走,四周晕出粉光 —— **一直蓄到装完**
  *    (`motion.outcome` 落定),下载那几秒因此有了反馈;至少走满一圈,短了没有蓄力感。
- * 3. **爆** —— 装成了:一道斜向高光扫过整张卡,卡片弹起放大一点,一圈粉色光点迸出去。
- * 4. **落** —— 带回弹落回原位,光晕退去。没装成就没有 3、4:光环淡出、卡轻轻回原样,错误由
- *    页面那句话去说。
+ * 3. **收** —— 装成了:那道光一边转一边从边框收到卡心,收成一个圆;卡面蒙上一层薄纱托住它
+ *    (新版的卡正好在纱底下刷新,纱退去时印的就是真相)。
+ * 4. **画** —— 顺着光头把那个圆画满,接着打一个勾,像付款成功时那一下;勾落下的同时卡从沉底
+ *    浮回原位。停一会儿让人看清,圈勾与薄纱一起退去。
+ *
+ * 没装成就没有 3、4:光环淡出、卡轻轻回原样,错误由页面那句话去说。
  *
  * 🔴 **只演「新版到货」,不演「已经换上」**:跑着的拓展更新完是「新版等着换上」(ADR-0012
  * 决策 47),并没有生效。所以这段动画**不写版本号**;落地时卡上印的是刷新之后的真相 ——
@@ -44,17 +47,53 @@ const CHARGE_AT = 420;
 const SINK_MS = 320;
 /** 边框那道光走一圈多久。蓄的时候一圈接一圈。 */
 const LOOP_MS = 900;
-/** 至少蓄满一圈才爆(从开演算起)—— 装得再快,也得看得见蓄过力。 */
+/** 至少蓄满一圈才收(从开演算起)—— 装得再快,也得看得见蓄过力。 */
 const MIN_CHARGE_MS = CHARGE_AT + LOOP_MS;
-/** 装成之后「爆 + 落」那一段多长,「爆」在它的哪儿(比例)。 */
-const BURST_MS = 760;
-const BURST_PEAK = 0.3;
+
+/*
+ * 装成之后那一段(从落定那一刻算)。几段首尾略有重叠 —— 光还没收稳圈就开画、圈还差一点勾就
+ * 开打,才像同一道光一路画下来,而不是三段动画排队。
+ */
+/** 光从边框收到卡心、收成一个圆。 */
+const GATHER_MS = 420;
+const CIRCLE_AT = GATHER_MS - 40;
+/** 圈画满。 */
+const CIRCLE_MS = 440;
+const CHECK_AT = CIRCLE_AT + CIRCLE_MS - 60;
+/** 勾打完。 */
+const CHECK_MS = 300;
+/** 卡从沉底浮回原位(与勾同时起),回弹落在它的哪儿(比例)。 */
+const RISE_MS = 520;
+const RISE_PEAK = 0.5;
+/** 勾打完停一会儿,让人看清。 */
+const HOLD_MS = 520;
+const OUT_AT = CHECK_AT + CHECK_MS + HOLD_MS;
+/** 圈勾与薄纱退去。 */
+const OUT_MS = 320;
+const LANDING_MS = OUT_AT + OUT_MS;
 /** 没装成:光环淡出、卡回原样那一下。 */
 const FADE_MS = 320;
-const PARTICLES = 14;
+
+/** 卡心那个圈的直径与线宽 —— 光环收拢成的就是这个圆,粗细一致才像同一道光接着画。 */
+const MARK = 64;
+const STROKE = 3.5;
+const CIRCLE_R = (MARK - STROKE) / 2;
+const CIRCLE_LEN = 2 * Math.PI * CIRCLE_R;
+/** 勾:短的一笔、长的一笔(`MARK` 见方的画布里)。长度照点算,描线才刚好描满。 */
+const TICK_FROM = { x: 20.5, y: 33 };
+const TICK_TURN = { x: 28.5, y: 41 };
+const TICK_TO = { x: 44, y: 25.5 };
+const TICK_PATH = `M${TICK_FROM.x} ${TICK_FROM.y} L${TICK_TURN.x} ${TICK_TURN.y} L${TICK_TO.x} ${TICK_TO.y}`;
+const TICK_LEN =
+	Math.hypot(TICK_TURN.x - TICK_FROM.x, TICK_TURN.y - TICK_FROM.y) +
+	Math.hypot(TICK_TO.x - TICK_TURN.x, TICK_TO.y - TICK_TURN.y);
+
+/** 光头在锥形渐变里的位置(一圈的比例)—— 最亮的那一截,后面拖着渐淡的尾巴。 */
+const HEAD = 0.96;
 
 const PINK = "var(--color-bn-pink)";
 const RADIUS = "var(--radius-bn-card,14px)";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 function reducedMotion(): boolean {
 	return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -64,7 +103,7 @@ function center(rect: DOMRect): { x: number; y: number } {
 	return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
-/** 一块铺满卡片、不挡点击的层 —— 光环、光晕、高光、光点都挂在它底下。 */
+/** 一块铺满卡片、不挡点击的层 —— 光环、光晕、薄纱、圈勾都挂在它底下。 */
 function layer(extra: string[] = []): HTMLDivElement {
 	const el = document.createElement("div");
 	el.setAttribute("aria-hidden", "true");
@@ -103,7 +142,10 @@ function makeBall(at: { x: number; y: number }): HTMLDivElement {
 
 /**
  * 边框上那道走满一圈的光。一个比卡大的方块铺一圈锥形渐变、原地转一圈,外面那层用遮罩
- * 只露出 2px 的边 —— 于是看起来是一道光沿着卡的圆角边跑,而不是整张卡在转。
+ * 只露出一圈内边距 —— 于是看起来是一道光沿着卡的圆角边跑,而不是整张卡在转。
+ *
+ * 收的时候把这一层的盒子缩成卡心一个圆、内边距加到圈的线宽:锥形渐变一直居中在转,于是
+ * 那道光是**一边转一边收拢**成圆的,不是换了一个东西。
  */
 function makeRing(card: DOMRect): { ring: HTMLDivElement; beam: HTMLDivElement } {
 	const ring = layer(["padding:2px", "overflow:hidden", "opacity:0"]);
@@ -123,57 +165,77 @@ function makeRing(card: DOMRect): { ring: HTMLDivElement; beam: HTMLDivElement }
 		`height:${size}px`,
 		`margin-left:${-size / 2}px`,
 		`margin-top:${-size / 2}px`,
-		`background:conic-gradient(from 0deg, transparent 0 55%, color-mix(in srgb, ${PINK} 35%, transparent) 72%, ${PINK} 88%, white 96%, transparent 100%)`,
+		`background:conic-gradient(from 0deg, transparent 0 55%, color-mix(in srgb, ${PINK} 35%, transparent) 72%, ${PINK} 88%, white ${HEAD * 100}%, transparent 100%)`,
 		"will-change:transform",
 	].join(";");
 	ring.appendChild(beam);
 	return { ring, beam };
 }
 
-/** 扫过整张卡的那道斜向高光。 */
-function makeShine(): { shine: HTMLDivElement; band: HTMLDivElement } {
-	const shine = layer(["overflow:hidden"]);
-	const band = document.createElement("div");
-	band.style.cssText = [
-		"position:absolute",
-		"top:-30%",
-		"bottom:-30%",
-		"left:0",
-		"width:42%",
-		"background:linear-gradient(105deg, transparent 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 72%, transparent 100%)",
-		"transform:translateX(-130%)",
-		"will-change:transform",
-	].join(";");
-	shine.appendChild(band);
-	return { shine, band };
+/**
+ * 光头在 `aheadMs` 之后转到哪(从十二点钟顺时针量的角度)。读不到转了多少(测试替身)就当
+ * 还没转过 —— 差的只是圈从哪儿起笔。
+ */
+function headAngle(spin: Animation, aheadMs: number): number {
+	const turned = spin.effect?.getComputedTiming?.().progress ?? 0;
+	return ((HEAD + turned + aheadMs / LOOP_MS) % 1) * 360;
 }
 
-/** 一圈光点:从卡心迸向卡边之外。方向均匀、距离带一点随机,才不像齿轮。 */
-function makeParticles(card: DOMRect): Array<{ dot: HTMLSpanElement; dx: number; dy: number }> {
-	return Array.from({ length: PARTICLES }, (_, i) => {
-		const angle = (i / PARTICLES) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
-		const reach = 18 + Math.random() * 30;
-		const size = i % 3 === 0 ? 7 : 5;
-		const dot = document.createElement("span");
-		dot.style.cssText = [
-			"position:absolute",
-			"left:50%",
-			"top:50%",
-			`width:${size}px`,
-			`height:${size}px`,
-			`margin-left:${-size / 2}px`,
-			`margin-top:${-size / 2}px`,
-			"border-radius:999px",
-			i % 2 === 0 ? `background:${PINK}` : `background:color-mix(in srgb, ${PINK} 55%, white)`,
-			"opacity:0",
-			"will-change:transform,opacity",
-		].join(";");
-		return {
-			dot,
-			dx: Math.cos(angle) * (card.width / 2 + reach),
-			dy: Math.sin(angle) * (card.height / 2 + reach),
-		};
-	});
+/** 描一笔的样式:虚线只有一段、长度正好一笔;起始偏移把它整段藏在起点之前。 */
+function strokeStyle(len: number): string {
+	return [
+		"fill:none",
+		`stroke:${PINK}`,
+		`stroke-width:${STROKE}`,
+		"stroke-linecap:round",
+		"stroke-linejoin:round",
+		// 空档比一笔长出一截:圆头的线帽在偏移刚好等于长度时也会露一个点。
+		`stroke-dasharray:${len} ${len + STROKE * 2}`,
+		`stroke-dashoffset:${len + STROKE}`,
+	].join(";");
+}
+
+/**
+ * 卡心那个圈 + 勾。圈的起笔转到 `headDeg`(光头收到的地方):SVG 的圆从三点钟起笔、顺时针走,
+ * 所以转 `headDeg - 90` 度 —— 画出来是那道光接着往前跑,而不是在别处另起一笔。
+ */
+function makeMark(headDeg: number): {
+	mark: HTMLDivElement;
+	circle: SVGCircleElement;
+	tick: SVGPathElement;
+} {
+	const mid = MARK / 2;
+	const mark = document.createElement("div");
+	mark.style.cssText = [
+		"position:absolute",
+		"left:50%",
+		"top:50%",
+		`width:${MARK}px`,
+		`height:${MARK}px`,
+		`margin-left:${-mid}px`,
+		`margin-top:${-mid}px`,
+		"will-change:transform,opacity",
+	].join(";");
+	const svg = document.createElementNS(SVG_NS, "svg");
+	svg.setAttribute("viewBox", `0 0 ${MARK} ${MARK}`);
+	svg.setAttribute("width", String(MARK));
+	svg.setAttribute("height", String(MARK));
+	svg.style.cssText = `display:block;overflow:visible;filter:drop-shadow(0 0 6px color-mix(in srgb, ${PINK} 55%, transparent))`;
+
+	const circle = document.createElementNS(SVG_NS, "circle");
+	circle.setAttribute("cx", String(mid));
+	circle.setAttribute("cy", String(mid));
+	circle.setAttribute("r", String(CIRCLE_R));
+	circle.setAttribute("transform", `rotate(${headDeg - 90} ${mid} ${mid})`);
+	circle.style.cssText = strokeStyle(CIRCLE_LEN);
+
+	const tick = document.createElementNS(SVG_NS, "path");
+	tick.setAttribute("d", TICK_PATH);
+	tick.style.cssText = strokeStyle(TICK_LEN);
+
+	svg.append(circle, tick);
+	mark.appendChild(svg);
+	return { mark, circle, tick };
 }
 
 /**
@@ -272,10 +334,14 @@ export function UpdateFlight({
 				`box-shadow:0 0 0 1px color-mix(in srgb, ${PINK} 45%, transparent), 0 10px 38px color-mix(in srgb, ${PINK} 45%, transparent)`,
 				"opacity:0",
 			]);
+			const veil = layer([
+				"background:color-mix(in srgb, var(--color-bn-surface) 72%, transparent)",
+				"backdrop-filter:blur(6px)",
+				"-webkit-backdrop-filter:blur(6px)",
+				"opacity:0",
+			]);
 			const { ring, beam } = makeRing(rect);
-			const { shine, band } = makeShine();
-			const particles = makeParticles(rect);
-			rig.append(halo, ring, shine, ...particles.map((p) => p.dot));
+			rig.append(halo, veil, ring);
 			card.appendChild(rig);
 			nodes.push(rig);
 
@@ -311,6 +377,11 @@ export function UpdateFlight({
 				easing: "cubic-bezier(.4,0,.2,1)",
 				fill: "forwards",
 			});
+			const spin = beam.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
+				duration: LOOP_MS,
+				delay: CHARGE_AT,
+				iterations: Number.POSITIVE_INFINITY,
+			});
 			anims.push(
 				sink,
 				halo.animate([{ opacity: 0 }, { opacity: 0.8 }], {
@@ -323,11 +394,7 @@ export function UpdateFlight({
 					delay: CHARGE_AT,
 					fill: "forwards",
 				}),
-				beam.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
-					duration: LOOP_MS,
-					delay: CHARGE_AT,
-					iterations: Number.POSITIVE_INFINITY,
-				}),
+				spin,
 			);
 
 			// 装完没有 + 至少蓄满一圈,两样都到了才落定。
@@ -339,66 +406,109 @@ export function UpdateFlight({
 			});
 			void Promise.all([motion.outcome, enough]).then(([landed]) => {
 				if (cancelled || over) return;
-				if (landed) burst(card);
+				if (landed) land(card);
 				else fade(card);
 				// 新的一段已经从沉底那一帧接过去了,这时再停「下沉」才不会闪一下。
 				sink.cancel();
 			});
 
-			/** 3–4. 爆 + 落:从沉底那一帧弹起、放大、带回弹落回原位;高光扫过,光点迸出去。 */
-			function burst(target: HTMLElement) {
+			/**
+			 * 3–4. 收 + 画:光收到卡心成一个圆,顺着光头画满、打勾;卡跟着勾浮回原位。整段挂在
+			 * **卡片那一条**上(沉着 → 浮起 → 停着),它放完就收摊 —— 别的几条都在它之内放完。
+			 */
+			function land(target: HTMLElement) {
+				const { mark, circle, tick } = makeMark(headAngle(spin, CIRCLE_AT));
+				rig.append(mark);
+				const share = (ms: number) => ms / LANDING_MS;
 				const main = target.animate(
 					[
 						{ transform: sunk },
-						{ transform: "translateY(-6px) scale(1.035)", offset: BURST_PEAK },
-						{ transform: "translateY(1px) scale(.994)", offset: 0.62 },
+						{ transform: sunk, offset: share(CHECK_AT), easing: "cubic-bezier(.3,0,.2,1)" },
+						{
+							transform: "translateY(-2px) scale(1.012)",
+							offset: share(CHECK_AT + RISE_MS * RISE_PEAK),
+							easing: "cubic-bezier(.4,0,.2,1)",
+						},
+						{ transform: "translateY(0px) scale(1)", offset: share(CHECK_AT + RISE_MS) },
 						{ transform: "translateY(0px) scale(1)" },
 					],
-					{ duration: BURST_MS, easing: "cubic-bezier(.45,0,.25,1)" },
+					{ duration: LANDING_MS },
 				);
-				const peak = BURST_MS * BURST_PEAK;
+				const pop = CHECK_AT + CHECK_MS + 180 - CIRCLE_AT;
 				anims.push(
 					main,
-					halo.animate([{ opacity: 0.8 }, { opacity: 1, offset: BURST_PEAK }, { opacity: 0 }], {
-						duration: BURST_MS,
-						fill: "forwards",
-					}),
-					ring.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], {
-						duration: peak + 300,
-						fill: "forwards",
-					}),
-					band.animate([{ transform: "translateX(-130%)" }, { transform: "translateX(340%)" }], {
-						duration: 420,
-						delay: peak - 60,
-						easing: "cubic-bezier(.4,0,.2,1)",
-						fill: "forwards",
-					}),
-					...particles.map(({ dot, dx: px, dy: py }, i) =>
-						dot.animate(
-							[
-								{ transform: "translate(0px,0px) scale(.2)", opacity: 0 },
-								{
-									transform: `translate(${px * 0.35}px,${py * 0.35}px) scale(1)`,
-									opacity: 1,
-									offset: 0.25,
-								},
-								{ transform: `translate(${px}px,${py}px) scale(.35)`, opacity: 0 },
-							],
-							// 最晚那颗也得在卡片落地之前放完:收摊跟着卡片走,晚到的光点会被半路拔掉。
+					ring.animate(
+						[
 							{
-								duration: 460,
-								delay: peak - 20 + i * 4,
-								easing: "cubic-bezier(.2,.7,.3,1)",
-								fill: "forwards",
+								inset: "0px",
+								borderRadius: getComputedStyle(ring).borderTopLeftRadius || "14px",
+								padding: "2px",
 							},
-						),
+							{
+								inset: `calc(50% - ${MARK / 2}px)`,
+								borderRadius: `${MARK / 2}px`,
+								padding: `${STROKE}px`,
+							},
+						],
+						{ duration: GATHER_MS, easing: "cubic-bezier(.55,0,.15,1)", fill: "forwards" },
 					),
+					// 圈画上来,转着的那道光就退掉 —— 接力,不是两道光叠在一起。
+					ring.animate([{ opacity: 1 }, { opacity: 0 }], {
+						duration: CIRCLE_MS * 0.7,
+						delay: CIRCLE_AT,
+						fill: "forwards",
+					}),
+					halo.animate([{ opacity: 0.8 }, { opacity: 0 }], {
+						duration: GATHER_MS,
+						fill: "forwards",
+					}),
+					veil.animate([{ opacity: 0 }, { opacity: 1 }], {
+						duration: GATHER_MS,
+						easing: "ease-out",
+						fill: "forwards",
+					}),
+					// 起笔的速度接住那道光(一圈 LOOP_MS),再加速把圈合上。
+					circle.animate([{ strokeDashoffset: CIRCLE_LEN + STROKE }, { strokeDashoffset: 0 }], {
+						duration: CIRCLE_MS,
+						delay: CIRCLE_AT,
+						easing: "cubic-bezier(.4,.2,.2,1)",
+						fill: "both",
+					}),
+					tick.animate([{ strokeDashoffset: TICK_LEN + STROKE }, { strokeDashoffset: 0 }], {
+						duration: CHECK_MS,
+						delay: CHECK_AT,
+						easing: "cubic-bezier(.4,0,.2,1)",
+						fill: "both",
+					}),
+					// 圈画着慢慢放大到位,勾落下那一下轻轻一顶 —— 是「好了」,不是爆炸。
+					mark.animate(
+						[
+							{ transform: "scale(.9)" },
+							{ transform: "scale(1)", offset: (CHECK_AT - CIRCLE_AT) / pop },
+							{ transform: "scale(1.04)", offset: (CHECK_AT + CHECK_MS - CIRCLE_AT) / pop },
+							{ transform: "scale(1)" },
+						],
+						{ duration: pop, delay: CIRCLE_AT, easing: "ease-out", fill: "both" },
+					),
+					mark.animate(
+						[
+							{ opacity: 1, transform: "scale(1)", filter: "blur(0px)" },
+							{ opacity: 0, transform: "scale(.94)", filter: "blur(2px)" },
+						],
+						{ duration: OUT_MS, delay: OUT_AT, easing: "ease-in", fill: "forwards" },
+					),
+					veil.animate([{ opacity: 1 }, { opacity: 0 }], {
+						duration: OUT_MS,
+						delay: OUT_AT,
+						easing: "ease-in",
+						fill: "forwards",
+					}),
 				);
 				main.onfinish = finish;
 				main.oncancel = finish;
 			}
 
-			/** 没装成:光环与光晕淡出,卡从沉底轻轻回原样。不爆 —— 没有值得庆祝的事。 */
+			/** 没装成:光环与光晕淡出,卡从沉底轻轻回原样。不画勾 —— 没有值得庆祝的事。 */
 			function fade(target: HTMLElement) {
 				const main = target.animate(
 					[{ transform: sunk }, { transform: "translateY(0px) scale(1)" }],

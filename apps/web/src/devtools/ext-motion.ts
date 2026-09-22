@@ -75,7 +75,7 @@ export const updateMotion: WebDevScenario = {
 	group: "web",
 	title: "播放更新动画",
 	icon: "sparkle",
-	desc: "在拓展页上把「换装」演一遍:卡上画着「更新」钮就从那颗钮起飞,没有就从卡片上方落下来;先「蓄」几秒(真更新时那是下载),再按挑的结果爆开或淡出。只演动画,什么都不更新、版本号不变;系统开着「减少动态」时不演。想从钮上起飞就先跑一次「拓展有更新」。",
+	desc: "在拓展页上把「换装」演一遍:卡上画着「更新」钮就从那颗钮起飞,没有就从卡片上方落下来;先「蓄」几秒(真更新时那是下载),再按挑的结果画圈打勾或淡出。只演动画,什么都不更新、版本号不变;系统开着「减少动态」时不演。想从钮上起飞就先跑一次「拓展有更新」。",
 	params: [
 		ID_PARAM,
 		{ key: "charge", label: "蓄几秒(假装下载)", kind: "number", default: 2, min: 0, max: 30 },
@@ -84,7 +84,7 @@ export const updateMotion: WebDevScenario = {
 			label: "结果",
 			kind: "enum",
 			options: [
-				{ value: "landed", label: "装成了(爆开)" },
+				{ value: "landed", label: "装成了(画圈打勾)" },
 				{ value: "failed", label: "没装成(淡出)" },
 			],
 			default: "landed",

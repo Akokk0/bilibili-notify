@@ -83,10 +83,10 @@ const update = (id: string, from?: DOMRect, outcome: Promise<boolean> = new Prom
 	outcome,
 });
 
-/** 卡片自己身上的那几条(下沉、爆开 / 回原样)。 */
+/** 卡片自己身上的那几条(下沉、落地 / 回原样)。 */
 const onCard = (anims: FakeAnim[], card: Element) => anims.filter((anim) => anim.el === card);
-/** 光点那几条(挂在 span 上)—— 只有「爆」才有。 */
-const sparks = (anims: FakeAnim[]) => anims.filter((anim) => anim.el.tagName === "SPAN");
+/** 卡心那个圈 + 勾 —— 只有装成了才画。 */
+const mark = (card: Element) => card.querySelector("svg");
 
 describe("更新完那一下的换装", () => {
 	beforeEach(() => matchMedia(false));
@@ -142,10 +142,10 @@ describe("更新完那一下的换装", () => {
 	});
 
 	/**
-	 * 🔴 **一直蓄到装完**:下载那几秒正是「蓄」。没落定之前不许爆、也不许收摊 —— 光一圈接一圈
-	 * 地走,卡沉着。
+	 * 🔴 **一直蓄到装完**:下载那几秒正是「蓄」。没落定之前不许画勾、也不许收摊 —— 光一圈接
+	 * 一圈地走,卡沉着。
 	 */
-	it("还没装完 → 一直蓄着:光一圈接一圈,不爆、不收摊", async () => {
+	it("还没装完 → 一直蓄着:光一圈接一圈,不画勾、不收摊", async () => {
 		const anims = stubAnimate();
 		const card = cardInDom("bridge");
 		const done = vi.fn();
@@ -156,15 +156,15 @@ describe("更新完那一下的换装", () => {
 
 		expect(anims.some((anim) => anim.options?.iterations === Number.POSITIVE_INFINITY)).toBe(true);
 		expect(onCard(anims, card)).toHaveLength(1);
-		expect(sparks(anims)).toHaveLength(0);
+		expect(mark(card)).toBeNull();
 		expect(done).not.toHaveBeenCalled();
 	});
 
 	/**
-	 * 装成了:从沉底那一帧爆开、落回原位;**卡片那条放完**就收摊 —— 光环与球摘掉、借来的定位
-	 * 还回去、停在末帧的「下沉」也停掉(不停的话卡永远陷着)。
+	 * 装成了:边框那道光收到卡心、画成一个圈、打一个勾,卡从沉底浮回原位;**卡片那条放完**就
+	 * 收摊 —— 光环、圈勾与球摘掉、借来的定位还回去、停在末帧的「下沉」也停掉(不停的话卡永远陷着)。
 	 */
-	it("装成了 → 爆开、光点迸出;落地收摊,卡不留下沉、不留光环", async () => {
+	it("装成了 → 卡心画一个圈、打一个勾;落地收摊,卡不留下沉、不留光环", async () => {
 		const anims = stubAnimate();
 		const card = cardInDom("bridge");
 		const done = vi.fn();
@@ -178,7 +178,8 @@ describe("更新完那一下的换装", () => {
 		);
 		await waitFor(() => expect(onCard(anims, card)).toHaveLength(2));
 		const [sink, landing] = onCard(anims, card);
-		expect(sparks(anims).length).toBeGreaterThan(0);
+		expect(mark(card)?.querySelector("circle")).toBeTruthy();
+		expect(mark(card)?.querySelector("path")).toBeTruthy();
 		expect(card.style.position).toBe("relative");
 		expect(done).not.toHaveBeenCalled();
 
@@ -191,7 +192,7 @@ describe("更新完那一下的换装", () => {
 		expect(done).toHaveBeenCalledTimes(1);
 	});
 
-	it("没装成 → 不爆、不迸光点:光环淡出,卡回原样后收摊", async () => {
+	it("没装成 → 不画勾:光环淡出,卡回原样后收摊", async () => {
 		const anims = stubAnimate();
 		const card = cardInDom("bridge");
 		const done = vi.fn();
@@ -204,7 +205,7 @@ describe("更新完那一下的换装", () => {
 			/>,
 		);
 		await waitFor(() => expect(onCard(anims, card)).toHaveLength(2));
-		expect(sparks(anims)).toHaveLength(0);
+		expect(mark(card)).toBeNull();
 
 		onCard(anims, card)[1]?.onfinish?.();
 
@@ -213,8 +214,8 @@ describe("更新完那一下的换装", () => {
 		expect(done).toHaveBeenCalledTimes(1);
 	});
 
-	/** 装得再快也得看得见蓄过力 —— 当场爆开的话,那一圈光根本来不及走。 */
-	it("装得飞快也至少蓄满那一段才爆", async () => {
+	/** 装得再快也得看得见蓄过力 —— 当场收拢的话,那一圈光根本来不及走。 */
+	it("装得飞快也至少蓄满那一段才收", async () => {
 		const anims = stubAnimate();
 		const card = cardInDom("bridge");
 
