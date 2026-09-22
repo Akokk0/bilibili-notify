@@ -35,6 +35,7 @@ import {
 	reasonOf,
 	useExtensionToggle,
 } from "./extensions/shared";
+import { StagedCodeNote, stagedFactsOf } from "./extensions/staged-code-note";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
 
 /**
@@ -109,6 +110,13 @@ export default function ExtensionDetail() {
 	}
 
 	const meta = EXTENSION_STATE_META[ext.state];
+	/*
+	 * 盘上有一份这个进程干净地换不上的新代码(ADR-0012 决策 47)—— 跑着旧的与开着却没跑两档都算。
+	 * 没有就一颗钮都不给:生产上不给随手漏模块的口子。`restart` 与 `staged` 是同一版服务端才有的
+	 * 两格,老服务端两格都没有,这块也就不画。
+	 */
+	const staged = stagedFactsOf(ext);
+	const restart = listed.data?.restart;
 	// 按档位分,不按 id —— 认得某个具体拓展,就是「本体不认得拓展」那条的破口。
 	const declarative = ext.apiVersion === 2;
 	/*
@@ -158,6 +166,8 @@ export default function ExtensionDetail() {
 				<div className="flex flex-col gap-2.5">
 					<ExtensionToggleError toggle={toggle} />
 					<ExtensionStateDetail ext={ext} />
+					{/* 排在正文前面:这是等着主人拿主意的事,积木是看的。 */}
+					{staged && restart ? <StagedCodeNote id={ext.id} restart={restart} {...staged} /> : null}
 					{declarative ? (
 						<DeclarativeHead ext={ext} />
 					) : (

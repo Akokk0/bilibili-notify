@@ -100,6 +100,7 @@ const LISTED: ExtensionsResponse = {
 			dir: "/data/extensions/douyin",
 		},
 	],
+	restart: { can: true, how: "container" },
 };
 
 /** 从桥借来的 bot 建的两条连接,外加一条与拓展无关的直连 —— 数错了它就会混进来。 */
@@ -119,7 +120,8 @@ const STATUS: ExtensionView = { summary: { tone: "ok", text: [{ b: "2" }, " 个 
 
 /** `status` 传 `null` = 状态那一口拿不到。(⚠️ 别用 undefined:默认参数会把它换成 STATUS。) */
 function renderPage(
-	listed: ExtensionsResponse = LISTED,
+	/** 重启能力这一格不给就当「能」—— 这一页的大多数用例不关心它。 */
+	listed: Pick<ExtensionsResponse, "extensions"> & Partial<ExtensionsResponse> = LISTED,
 	connections: unknown = CONNECTIONS,
 	status: unknown = STATUS,
 	market: MarketplaceResponse = MARKET,
@@ -131,7 +133,7 @@ function renderPage(
 			if (status === null) throw new Error("拓展没跑起来");
 			return status;
 		}
-		return listed;
+		return { restart: { can: true, how: "container" }, ...listed } satisfies ExtensionsResponse;
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -181,6 +183,24 @@ describe("拓展页", () => {
 		expect(within(card).getByText(/连续加载失败 3 次/)).toBeTruthy();
 		// 跑着的那张说的是设计稿上那个词
 		expect(within(await cardOf("机器人框架桥接")).getByText("已启用")).toBeTruthy();
+	});
+
+	/**
+	 * 跑着旧的、盘上换了新版(ADR-0012 决策 47):徽章还是「已启用」(它确实在跑),所以卡上得
+	 * 另说一句有新版在等、去哪儿选怎么换。两条出路本身只在详情页 —— 卡上不给按钮。
+	 */
+	it("跑着的那张盘上有新版等着 → 卡上说一句,按钮留给详情页", async () => {
+		renderPage({ extensions: [{ ...BRIDGE, staged: { version: "1.1.0" } }] });
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).getByText(/v1\.1\.0 等着换上/)).toBeTruthy();
+		expect(within(card).queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
+		expect(within(card).queryByRole("button", { name: "重启 BN" })).toBeNull();
+	});
+
+	it("没有新版等着 → 卡上不说这句", async () => {
+		renderPage();
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).queryByText(/等着换上/)).toBeNull();
 	});
 
 	/**
@@ -371,7 +391,7 @@ describe("已装卡片上的「有新版」", () => {
 			id: "bridge",
 			name: "机器人框架桥接",
 			version: "1.1.0",
-			needsRestart: true,
+			staged: true,
 			restart: { can: true, how: "container" },
 		});
 	});
@@ -406,8 +426,8 @@ describe("已装卡片上的「有新版」", () => {
 				id: "bridge",
 			}),
 		);
-		// 盖掉的是一份正在跑的:装完那句话要说清「得重启一次」。
-		expect(await screen.findByText(/换不掉/)).toBeTruthy();
+		// 盖掉的是一份正在跑的:装完那句话要说清「换不上」,并给两条出路。
+		expect(await screen.findByText(/换不上/)).toBeTruthy();
 	});
 
 	/**

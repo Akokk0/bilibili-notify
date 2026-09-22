@@ -10,11 +10,17 @@
  * - 关着与没跑起来**分开说**:前者是主人自己刚拨的开关,后者要去查日志。
  */
 
-import type { ExtensionDTO, ExtensionsResponse, ExtensionView } from "@bilibili-notify/contract";
+import type {
+	ExtensionDTO,
+	ExtensionsResponse,
+	ExtensionView,
+	RestartAbility,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
 const { apiGetMock, apiPatchMock, NotFound } = vi.hoisted(() => {
@@ -70,11 +76,18 @@ interface Setup {
 	/** 状态那一口:一份视图,或一个错(`NotFound` = 404)。 */
 	status?: ExtensionView | Error;
 	settings?: Record<string, unknown>;
+	/** 这台机器能不能自己重启(`GET /api/ext` 那一格)。 */
+	restart?: RestartAbility;
 }
 
-function renderDetail({ ext = DOUYIN, status = VIEW, settings = { interval: 90 } }: Setup = {}) {
+function renderDetail({
+	ext = DOUYIN,
+	status = VIEW,
+	settings = { interval: 90 },
+	restart = { can: true, how: "container" },
+}: Setup = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
-		if (url === "/api/ext") return { extensions: [ext] } satisfies ExtensionsResponse;
+		if (url === "/api/ext") return { extensions: [ext], restart } satisfies ExtensionsResponse;
 		if (url === "/api/globals") {
 			return { extensions: { [ext.id]: { enabled: ext.enabled, settings } } };
 		}
@@ -211,6 +224,61 @@ describe("v2 拓展的详情页", () => {
 		const dialog = await screen.findByRole("dialog");
 		expect(dialog.textContent).not.toContain("桥");
 		expect(dialog.textContent).toContain("删掉它的设置也会一起没");
+	});
+});
+
+/**
+ * 盘上换了代码、这个进程干净地换不上(ADR-0012 决策 47)。头卡里摆那块「两条出路」—— 跑着旧的
+ * 那一档与开着却没跑那一档都要;**没有新代码时一颗也不给**(生产上不给随手漏模块的口子)。
+ */
+describe("新版等着换上", () => {
+	const STAGED: ExtensionDTO = { ...DOUYIN, staged: { version: "0.2.0" } };
+
+	it("跑着旧的、盘上换了新版 → 头卡里两条出路,说清两边各是哪一版", async () => {
+		renderDetail({ ext: STAGED });
+		const head = await headCard();
+		expect(within(head).getByText(/盘上换成了 v0\.2\.0,这里跑的还是 v0\.1\.0/)).toBeTruthy();
+		expect(within(head).getByRole("button", { name: "重启 BN" })).toBeTruthy();
+		expect(within(head).getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
+	});
+
+	/** 那一档没有状态可看,但原因不在日志里 —— 叫人去翻日志等于把人支走。 */
+	it("开着却换不上(state staged)→ 头卡里同一块;配置页签不叫人去翻日志", async () => {
+		renderDetail({
+			ext: { ...DOUYIN, version: "0.2.0", state: "staged", staged: { version: "0.2.0" } },
+		});
+		const head = await headCard();
+		expect(
+			within(head).getByText(/v0\.2\.0 装好了,但这个进程早就认下了它的另一份代码/),
+		).toBeTruthy();
+		expect(within(head).getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
+		expect(await screen.findByLabelText("检查间隔")).toBeTruthy();
+		expect(screen.queryByText(/去日志里看/)).toBeNull();
+		expect(statusCalls()).toBe(0);
+	});
+
+	it("没有新版等着 → 页上既没有「只重载」,也没有「重启 BN」", async () => {
+		renderDetail();
+		await headCard();
+		expect(await screen.findByLabelText("检查间隔")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
+	});
+
+	it("这台机器拉不起自己 → 不给「重启 BN」,换成原因", async () => {
+		renderDetail({ ext: STAGED, restart: { can: false, reason: "unsupervised" } });
+		const head = await headCard();
+		expect(within(head).queryByRole("button", { name: "重启 BN" })).toBeNull();
+		expect(within(head).getByText(/自己在终端里停掉再起一次/)).toBeTruthy();
+		expect(within(head).getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
+	});
+
+	it("按「只重载这个拓展」→ POST 这个拓展自己那一口", async () => {
+		vi.mocked(api.post).mockResolvedValue({ ok: true });
+		renderDetail({ ext: STAGED });
+		const head = await headCard();
+		fireEvent.click(within(head).getByRole("button", { name: "只重载这个拓展" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/ext/douyin/swap", {}));
 	});
 });
 

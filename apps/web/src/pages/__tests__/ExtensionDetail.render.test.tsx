@@ -35,7 +35,10 @@ vi.mock("../../services/api", () => ({
 const CONNECTED_ID = "11111111-1111-4111-8111-111111111111";
 const CONFIGURED_ID = "22222222-2222-4222-8222-222222222222";
 
-const LISTED: ExtensionsResponse = { extensions: [BRIDGE] };
+const LISTED: ExtensionsResponse = {
+	extensions: [BRIDGE],
+	restart: { can: true, how: "container" },
+};
 
 /** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里(ADR-0012 决策 45)。 */
 const GLOBALS = {

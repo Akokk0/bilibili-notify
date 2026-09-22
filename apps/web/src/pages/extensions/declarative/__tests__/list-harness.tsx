@@ -141,7 +141,12 @@ export interface ListSetup {
 
 function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSetup) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/ext") return { extensions: [ext] } satisfies ExtensionsResponse;
+		if (url === "/api/ext") {
+			return {
+				extensions: [ext],
+				restart: { can: true, how: "container" },
+			} satisfies ExtensionsResponse;
+		}
 		if (url === "/api/globals") {
 			if (items === "pending") return new Promise(() => {});
 			if (items === null) throw new Error("配置读不出来:500");

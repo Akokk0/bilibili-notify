@@ -4,6 +4,7 @@ import type {
 	ExtensionDTO,
 	ExtensionInstallResponse,
 	ExtensionPushView,
+	ExtensionsResponse,
 	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
@@ -57,6 +58,11 @@ export interface ExtensionsRouteOptions {
 	 * 的话那一口永远 404。
 	 */
 	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+	/**
+	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
+	 * 抛,那句话原样交给面板(→ 409)。没接这一格的话那一口永远 404。
+	 */
+	swap?: (id: string) => Promise<void>;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
@@ -90,6 +96,24 @@ export interface ExtensionsRouteOptions {
 		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。 */
 		restartAbility: RestartAbility;
 	};
+}
+
+/**
+ * 没接装载器时「这台机器能不能自己重启」答什么。那种构建一个拓展都列不出来,也就没有哪一行
+ * 等着换上,这一格其实没人读;答「拉不起来」是**不会坑人**的那一边 —— 反过来答「能」,哪天
+ * 有人读了,按下去就是把 BN 关了而没人拉(ADR-0005 决策 22)。
+ */
+const RESTART_UNKNOWN: RestartAbility = { can: false, reason: "unsupervised" };
+
+/**
+ * 盖掉 / 装完之后,装载器那一行是不是「新版等着换上」(ADR-0012 决策 47)。
+ *
+ * 🔴 **照重扫之后装载器那一行说,不照「盖掉了一份」说**:关着、从没跑过的那份盘上换了就是
+ * 换了,原样再传一遍的也没什么可换 —— 那两种照旧说「要重启」,主人会白白重启一次。换不换得上
+ * 只有按指纹认代码的装载器答得了。上传装包与市场装两口共用这一句,免得两边各判各的。
+ */
+function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boolean {
+	return entries.find((entry) => entry.id === id)?.staged !== undefined;
 }
 
 /**
@@ -133,9 +157,15 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				enabled: isExtensionEnabled(globals, entry.id),
 				state: entry.state,
 				detail: entry.detail,
+				// 盘上有一份这个进程干净地换不上的新代码 —— 详情页据此并排给「重启 BN」与「只重载」。
+				...(entry.staged === undefined ? {} : { staged: entry.staged }),
 			};
 		});
-		return c.json({ extensions });
+		const body: ExtensionsResponse = {
+			extensions,
+			restart: opts.install?.restartAbility ?? RESTART_UNKNOWN,
+		};
+		return c.json(body);
 	});
 
 	/**
@@ -145,8 +175,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * - **闸在 `parseBody()` 之前**(同皮肤那条):整个 multipart 实体化进堆之后再拦,拦到的
 	 *   不是那句「过大」而是一次 OOM —— 进程被杀、面板断线重连,该收到的提示永远不来。
 	 * - **拆包那几句原样交出去**:它们是主人手里那个包**哪里不对**的唯一线索。
-	 * - **装完当场重扫**,于是新拓展立刻出现在这一页;而**盖掉一份已经装着的**要如实说
-	 *   「得重启一次」—— 那份代码已经 import 过,ESM 在这个进程里换不掉(决策 10)。
+	 * - **装完当场重扫**,于是新拓展立刻出现在这一页;而**盖掉一份跑过的**要如实说「新版等着
+	 *   换上」—— 那份代码已经 import 过,ESM 在这个进程里干净地换不掉(决策 10 / 47)。
 	 */
 	app.post("/install", uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, "拓展包"), async (c) => {
 		const install = opts.install;
@@ -159,22 +189,21 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
 		if (!opened.ok) return c.json({ errors: opened.errors }, 400);
 
-		let replaced: boolean;
 		try {
-			({ replaced } = await installExtensionPackage({ root: install.root, pkg: opened.pkg }));
+			await installExtensionPackage({ root: install.root, pkg: opened.pkg });
 		} catch (err) {
 			// 落盘那头拒绝的只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
 			return c.json({ errors: [(err as Error).message] }, 400);
 		}
-		// 新装的当场跑起来;覆盖的那份**不会**被换掉(装载器不碰已收进名单的),所以下面
-		// 才要如实说重启。两种情形都扫一遍:代价只是一次读目录。
+		// 新装的当场跑起来;盖掉一份跑着的,旧代码照跑、那一行标上「等着换上」(装载器不偷偷
+		// 换跑着的代码,决策 47)。两种情形都扫一遍:代价只是一次读目录。
 		await install.rescan();
 
 		const answer: ExtensionInstallResponse = {
 			id: opened.pkg.id,
 			name: opened.pkg.manifest.name,
 			version: opened.pkg.manifest.version,
-			needsRestart: replaced,
+			staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
 			docs: docsPresence(opened.pkg.docs),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
@@ -251,7 +280,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			id: outcome.id,
 			name: outcome.name,
 			version: outcome.version,
-			needsRestart: outcome.needsRestart,
+			// 市场装完已经重扫过了 —— 与上传装包同一把尺子。
+			staged: stagedAfterInstall(opts.extensions(), outcome.id),
 			docs: outcome.docs,
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),
@@ -323,6 +353,29 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			case "failed":
 				return c.json({ ok: false, err: outcome.message }, 500);
 		}
+	});
+
+	/**
+	 * **只重载这个拓展**(ADR-0012 决策 47):收摊 → 按指纹换一个 URL 重新 `import` → 重新
+	 * `activate`。别的推送与直播监听都不断;代价是旧模块留在内存里,等下次重启 BN 才还回来。
+	 *
+	 * 🔴 **只在它标着「新版等着换上」时给按** —— 那道闸在装载器里(没有新代码时白漏一份模块),
+	 * 这里只把它那句为什么原样交出去(409),不自编一句「重载失败」。换上去之后 `activate` 炸了
+	 * 不算这一口失败:那一行成了「加载失败」,原因在列表里。
+	 */
+	app.post("/:id/swap", async (c) => {
+		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		if (!parsed.success) return c.json({ ok: false, err: "拓展 id 不合规矩" }, 400);
+		const id = parsed.data;
+		if (!opts.swap || !opts.extensions().some((entry) => entry.id === id)) {
+			return c.json({ ok: false, err: `没有装名叫 ${id} 的拓展` }, 404);
+		}
+		try {
+			await opts.swap(id);
+		} catch (err) {
+			return c.json({ ok: false, err: (err as Error).message }, 409);
+		}
+		return c.json({ ok: true });
 	});
 
 	app.get("/:id/status", (c) => {

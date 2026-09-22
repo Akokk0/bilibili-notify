@@ -89,7 +89,10 @@ describe("表真的喂给了组件库", () => {
 	}
 
 	it("拓展报的短名,组件库那一侧真取得到", async () => {
-		vi.mocked(api.get).mockResolvedValue({ extensions: [BRIDGE] } satisfies ExtensionsResponse);
+		vi.mocked(api.get).mockResolvedValue({
+			extensions: [BRIDGE],
+			restart: { can: true, how: "container" },
+		} satisfies ExtensionsResponse);
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>

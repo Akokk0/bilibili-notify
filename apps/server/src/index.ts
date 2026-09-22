@@ -913,6 +913,10 @@ export async function startStandaloneServer(
 				pushSource: (id) => loadedExtensions?.pushSource(id),
 				bots: (id) => loadedExtensions?.bots(id),
 				runAction: async (id, name) => loadedExtensions?.runAction(id, name),
+				// 「只重载这个拓展」(决策 47):没有新版等着换上时装载器自己拒,那句话原样回面板。
+				swap: async (id) => {
+					await loadedExtensions?.swap(id);
+				},
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {
 					await loadedExtensions?.sync();

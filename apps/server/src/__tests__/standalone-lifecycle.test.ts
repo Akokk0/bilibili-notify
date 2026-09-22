@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
@@ -174,6 +175,77 @@ describe("standalone server lifecycle", () => {
 		expect(running.extensions).toContainEqual(
 			expect.objectContaining({ id: "demo", state: "running", enabled: true }),
 		);
+	});
+
+	/**
+	 * 「新版等着换上 → 只重载」这一串在 `index.ts` 里接线(ADR-0012 决策 47):装完重扫、列表
+	 * 那一格、`/swap` 落到装载器。漏接 `swap` 的症状是那颗钮永远 404 —— app 层与路由层的测试
+	 * 照样全绿,因为它们的装载器是自己搭的。
+	 */
+	it("跑着的拓展被传包盖掉 → 等着换上;只重载之后跑的是新代码", async () => {
+		const manifest = (version: string) =>
+			JSON.stringify({
+				id: "demo",
+				name: "示例拓展",
+				description: "接线用",
+				version,
+				apiVersion: 1,
+				provides: ["push"],
+			});
+		const says = (word: string) =>
+			`export function activate(ctx) { ctx.mount(async () => new Response(${JSON.stringify(word)})); }`;
+		const extDir = join(dataDir, "extensions", "demo");
+		await mkdir(extDir, { recursive: true });
+		await writeFile(join(extDir, "extension.json"), manifest("1.0.0"));
+		await writeFile(join(extDir, "index.mjs"), says("旧的"));
+
+		const port = await findFreePort();
+		handle = await startStandaloneServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: makeEnv(),
+			shutdownTimeoutMs: 1_000,
+		});
+		const url = handle.url;
+		const patched = await fetch(`${url}/api/globals`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ extensions: { demo: { enabled: true } } }),
+		});
+		expect(patched.status).toBe(200);
+		// 列表那一口先把开关落实掉(settle)—— 之后旧代码就在跑了。
+		await fetch(`${url}/api/ext`);
+		expect(await (await fetch(`${url}/ext/demo/x`)).text()).toBe("旧的");
+
+		const body = new FormData();
+		const zip = zipSync({
+			"extension.json": strToU8(manifest("2.0.0")),
+			"index.mjs": strToU8(says("新的")),
+		});
+		body.append("file", new File([zip], "demo.zip"));
+		const installed = (await (
+			await fetch(`${url}/api/ext/install`, { method: "POST", body })
+		).json()) as { staged: boolean };
+		expect(installed.staged).toBe(true);
+		expect(await (await fetch(`${url}/ext/demo/x`)).text()).toBe("旧的");
+
+		const swapped = await fetch(`${url}/api/ext/demo/swap`, { method: "POST" });
+		expect(swapped.status).toBe(200);
+		expect(await (await fetch(`${url}/ext/demo/x`)).text()).toBe("新的");
+		const listed = (await (await fetch(`${url}/api/ext`)).json()) as {
+			extensions: Array<{ id: string; state: string; version?: string; staged?: unknown }>;
+		};
+		const demo = listed.extensions.find((ext) => ext.id === "demo");
+		expect(demo).toMatchObject({ state: "running", version: "2.0.0" });
+		expect(demo?.staged).toBeUndefined();
 	});
 
 	/**

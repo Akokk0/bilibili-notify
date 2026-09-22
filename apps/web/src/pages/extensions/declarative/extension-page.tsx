@@ -111,6 +111,17 @@ function RunStateNote({ ext }: { ext: ExtensionDTO }) {
 			</WarnNote>
 		);
 	}
+	/*
+	 * 新版等着换上(ADR-0012 决策 47):同样没有状态,但原因不在日志里 —— 是这个进程换不上盘上
+	 * 那份代码,怎么换就在头卡里。说「去日志里看」等于把人支走。
+	 */
+	if (ext.state === "staged") {
+		return (
+			<HintNote className="leading-[1.65]">
+				新版装好了还没换上,底下只有设置、没有状态 —— 怎么换在上面那张卡里。
+			</HintNote>
+		);
+	}
 	if (ext.state !== "running") {
 		return (
 			<HintNote className="leading-[1.65]">

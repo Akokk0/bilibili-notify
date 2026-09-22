@@ -137,6 +137,49 @@ describe("拓展动作的接线", () => {
 	});
 });
 
+/**
+ * 「只重载这个拓展」那一口的接线(ADR-0012 决策 47):面板按钮 → `/api/ext/:id/swap` → 加载器的
+ * `swap()`。路由的规矩钉在 `extensions-route.test.ts`;漏接的话那一口永远 404,而路由的测试
+ * 照样全绿。
+ */
+describe("只重载的接线", () => {
+	let dataDir: string;
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-swap-"));
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("按钮打到 /api/ext/:id/swap,落到加载器的 swap", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const swap = vi.fn(async () => {});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			extensions: {
+				mounts: createExtensionMounts(),
+				loaded: () => [
+					{
+						id: "bridge",
+						dir: "/data/extensions/bridge",
+						state: "running",
+						staged: { version: "2.0.0" },
+					},
+				],
+				status: () => undefined,
+				pushSource: () => undefined,
+				bots: () => undefined,
+				swap,
+			},
+		});
+		const res = await app.request("/api/ext/bridge/swap", { method: "POST" });
+		expect(res.status).toBe(200);
+		expect(swap).toHaveBeenCalledWith("bridge");
+		await runtime.dispose();
+	});
+});
+
 describe("面板上传装拓展的接线", () => {
 	let dataDir: string;
 	beforeEach(async () => {
@@ -184,7 +227,7 @@ describe("面板上传装拓展的接线", () => {
 		expect(res.status).toBe(200);
 		expect((await res.json()) as ExtensionInstallResponse).toMatchObject({
 			id: "douyin",
-			needsRestart: false,
+			staged: false,
 		});
 		expect(await readFile(join(root, "douyin", "index.mjs"), "utf8")).toContain("activate");
 		expect(rescan).toHaveBeenCalledOnce();

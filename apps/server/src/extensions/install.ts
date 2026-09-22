@@ -208,7 +208,12 @@ export interface InstallExtensionPackageInput {
 }
 
 export interface InstallExtensionPackageResult {
-	/** 盖掉了一份已经装着的 → 代码在这个进程里换不掉,调用方要据此说「得重启」。 */
+	/**
+	 * 盖掉了一份已经装着的。
+	 *
+	 * ⚠️ **不等于「换不上」**:关着、从没跑过的那份盘上换了就是换了。换不换得上由装载器按入口
+	 * 指纹判(ADR-0012 决策 47),面板那句话照重扫之后装载器那一行的 `staged` 说。
+	 */
 	replaced: boolean;
 }
 

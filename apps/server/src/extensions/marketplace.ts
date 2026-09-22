@@ -90,7 +90,6 @@ export type MarketplaceInstallOutcome =
 			id: string;
 			name: string;
 			version: string;
-			needsRestart: boolean;
 			/** 包里带没带那两份说明 —— 拆包时就知道,一路带回给面板。 */
 			docs: { readme: boolean; changelog: boolean };
 	  }
@@ -525,9 +524,8 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				err: `包里的清单是 ${opened.pkg.id}@${opened.pkg.manifest.version},索引说的是 ${entry.id}@${entry.version} —— 源那头发错了包`,
 			};
 		}
-		let replaced: boolean;
 		try {
-			({ replaced } = await installExtensionPackage({ root: deps.root, pkg: opened.pkg }));
+			await installExtensionPackage({ root: deps.root, pkg: opened.pkg });
 		} catch (err) {
 			return { ok: false, err: (err as Error).message };
 		}
@@ -547,7 +545,8 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			id: entry.id,
 			name: opened.pkg.manifest.name,
 			version: entry.version,
-			needsRestart: replaced,
+			// 「新版等着换上」不在这儿判:换不换得上只有装载器答得了(决策 47),路由照重扫之后
+			// 那一行说 —— 与上传装包同一把尺子。
 			docs: docsPresence(opened.pkg.docs),
 		};
 	}

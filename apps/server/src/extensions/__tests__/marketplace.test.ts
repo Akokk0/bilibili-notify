@@ -593,7 +593,7 @@ describe("install()", () => {
 		expect(outcome).toMatchObject({ ok: true, docs: { readme: true, changelog: false } });
 	});
 
-	it("下载 → 对 sha256 → 落盘 → 记来源 → 重扫;新装的不用重启", async () => {
+	it("下载 → 对 sha256 → 落盘 → 记来源 → 重扫", async () => {
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
 		const h = harness();
 		const outcome = await h.marketplace.install("official", "bridge");
@@ -602,7 +602,6 @@ describe("install()", () => {
 			id: "bridge",
 			name: "拓展 bridge",
 			version: "0.0.2",
-			needsRestart: false,
 			docs: { readme: false, changelog: false },
 		});
 		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(

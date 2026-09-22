@@ -9,13 +9,20 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfig, ServiceContext } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import type { ActionOutcome } from "../../extensions/context.js";
-import type { ExtensionEntry } from "../../extensions/loader.js";
+import {
+	type ExtensionEntry,
+	type LoadedExtensions,
+	loadExtensions,
+} from "../../extensions/loader.js";
 import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
+import { createExtensionMounts } from "../../extensions/mount.js";
+import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionsRoute } from "../extensions.js";
 
 let installRoot: string;
@@ -35,6 +42,11 @@ function boot(
 		marketplace?: { list: ReturnType<typeof vi.fn>; install: ReturnType<typeof vi.fn> };
 		/** `<id>/<动作名>` → 那一次跑的结果;没有的就当拓展没在跑。 */
 		actions?: Record<string, ActionOutcome>;
+		/**
+		 * 接一个**真的**装载器(装载根就是 `installRoot`):名单、装完重扫、只重载都走它 ——
+		 * 「盖掉之后换不换得上」是装载器按指纹判的,拿假名单钉等于替它把答案写好了。
+		 */
+		loader?: LoadedExtensions;
 	} = {},
 ) {
 	const store = {
@@ -44,16 +56,18 @@ function boot(
 		patchGlobals,
 	} as unknown as ConfigStore;
 	const entries = over.entries ?? [];
+	const loader = over.loader;
 	return createExtensionsRoute({
 		store,
-		extensions: () => (typeof entries === "function" ? entries() : entries),
+		extensions: () =>
+			loader ? loader.list() : typeof entries === "function" ? entries() : entries,
 		status: (id) => over.status?.[id],
 		pushSource: (id) => over.push?.[id] as never,
 		bots: (id) => over.bots?.[id] as never,
 		settle: over.settle,
 		install: {
 			root: installRoot,
-			rescan,
+			rescan: loader ? () => loader.rescan() : rescan,
 			restartAbility:
 				over.canRestart === false
 					? { can: false, reason: "source-run" }
@@ -61,7 +75,57 @@ function boot(
 		},
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
+		...(loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
+}
+
+/** 一个什么都不说的宿主 —— 这里只关心装载器认的是哪一份代码。 */
+function quietHost(): ServiceContext {
+	const noop = () => {};
+	return {
+		logger: { info: noop, warn: noop, error: noop, debug: noop },
+		setInterval: () => ({ dispose: noop }),
+		setTimeout: () => ({ dispose: noop }),
+		onDispose: noop,
+	};
+}
+
+/** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关。 */
+function realLoader(enabled = true): Promise<LoadedExtensions> {
+	return loadExtensions({
+		root: installRoot,
+		host: quietHost(),
+		mounts: createExtensionMounts(),
+		adapters: createAdapterRegistry(),
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
+		settings: () => undefined,
+		onSettingsChanged: () => ({ dispose() {} }),
+		inbound: {},
+		upgrades: createExtensionUpgrades(),
+		isEnabled: () => enabled,
+		maxFailures: 3,
+	});
+}
+
+/** 手放一份拓展进装载根(清单 + 入口)。`word` 进代码里,好让两份代码的指纹不一样。 */
+async function plant(id: string, word: string, version = "1.0.0"): Promise<void> {
+	await mkdir(join(installRoot, id), { recursive: true });
+	await writeFile(
+		join(installRoot, id, "extension.json"),
+		JSON.stringify({
+			id,
+			name: `${id} 拓展`,
+			description: "测试用",
+			version,
+			apiVersion: 1,
+			provides: ["push"],
+		}),
+	);
+	await writeFile(
+		join(installRoot, id, "index.mjs"),
+		`export function activate() { return ${JSON.stringify(word)}; }`,
+	);
 }
 
 /** 一个装得进去的包:清单 + 入口,两个文件。 */
@@ -419,36 +483,71 @@ describe("POST /api/ext/install", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as ExtensionInstallResponse;
 		expect(body).toMatchObject({ id: "bridge", name: "机器人框架桥接", version: "1.1.0" });
-		expect(body.needsRestart).toBe(false);
+		expect(body.staged).toBe(false);
 		// 🔴 装完不重扫的话,它要等下一次开机才出现在拓展页 —— 那正是这一整片要去掉的。
 		expect(rescan).toHaveBeenCalledOnce();
 		expect(await readFile(join(installRoot, "bridge", "index.mjs"), "utf8")).toContain("activate");
 	});
 
-	/** 覆盖 = 换掉已经加载过的代码,ESM 在这个进程里换不掉(决策 10)。 */
-	it("盖掉一份已经装着的 → 说得出「要重启一次」,并带上这台机器给不给按钮", async () => {
-		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(installRoot, "bridge"), { recursive: true });
-		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 旧的");
+	/**
+	 * 盖掉一份**跑着的**、代码换了 → 这个进程干净地换不上(ESM 按 URL 认模块,决策 10 / 47),
+	 * 旧的照跑。回答要照**重扫之后装载器那一行**说,并带上这台机器给不给重启按钮。
+	 */
+	it("盖掉一份跑着的、代码换了 → 说「新版等着换上」,并带上这台机器给不给按钮", async () => {
+		await plant("bridge", "旧的");
+		const loader = await realLoader();
 
-		const body = (await (await upload(boot(), form(pack()))).json()) as ExtensionInstallResponse;
+		const body = (await (
+			await upload(boot({ enabled: true, loader }), form(pack()))
+		).json()) as ExtensionInstallResponse;
 
-		expect(body.needsRestart).toBe(true);
+		expect(body.staged).toBe(true);
 		expect(body.restart).toEqual({ can: true, how: "container" });
+		await loader.dispose();
 	});
 
 	/** 拉不起来的机器上也照装,只是那句提示里不能有按钮 —— 判据原样交出去就行。 */
 	it("这台机器重启不回来 → 照样装,判据说清为什么没按钮", async () => {
-		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(installRoot, "bridge"), { recursive: true });
-		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 旧的");
+		await plant("bridge", "旧的");
+		const loader = await realLoader();
 
 		const body = (await (
-			await upload(boot({ canRestart: false }), form(pack()))
+			await upload(boot({ enabled: true, canRestart: false, loader }), form(pack()))
 		).json()) as ExtensionInstallResponse;
 
-		expect(body.needsRestart).toBe(true);
+		expect(body.staged).toBe(true);
 		expect(body.restart).toEqual({ can: false, reason: "source-run" });
+		await loader.dispose();
+	});
+
+	/**
+	 * 🔴 **「盖掉了一份」≠「换不上」**:关着、这个进程里一行代码都没跑过的那份,盘上换了就是
+	 * 换了 —— 装载器重读清单、下次打开跑的就是新的。照旧说「要重启」的话,主人会白白重启一次。
+	 */
+	it("盖掉一份关着、从没跑过的 → 不是「等着换上」", async () => {
+		await plant("bridge", "旧的");
+		const loader = await realLoader(false);
+
+		const body = (await (
+			await upload(boot({ loader }), form(pack()))
+		).json()) as ExtensionInstallResponse;
+
+		expect(body.staged).toBe(false);
+		expect(loader.list()[0]).toMatchObject({ state: "disabled", manifest: { version: "1.1.0" } });
+		await loader.dispose();
+	});
+
+	/** 同一个包再传一遍:盘上那份就是跑着的那份,没有什么可换的。 */
+	it("把跑着的那份原样再传一遍 → 不是「等着换上」", async () => {
+		const loader = await realLoader();
+		const app = boot({ enabled: true, loader });
+		await upload(app, form(pack()));
+		expect(loader.list()[0]?.state).toBe("running");
+
+		const body = (await (await upload(app, form(pack()))).json()) as ExtensionInstallResponse;
+
+		expect(body.staged).toBe(false);
+		await loader.dispose();
 	});
 
 	/**
@@ -483,6 +582,100 @@ describe("POST /api/ext/install", () => {
 		const res = await upload(boot(), form(undefined));
 		expect(res.status).toBe(400);
 		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("file");
+	});
+});
+
+/**
+ * 盘上换了代码、这个进程干净地换不上(ADR-0012 决策 47)。面板要并排给两个出口 —— 重启 BN,
+ * 或只重载这个拓展 —— 所以列表要说清「哪一个在等、等的是哪一版」与「这台机器能不能自己重启」,
+ * 另开一口真去换。这几条接的是**真的**装载器:要钉的正是真模块缓存的行为。
+ */
+describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
+	it("列表说得出这台机器能不能自己重启 —— 详情页据此给不给「重启 BN」", async () => {
+		const can = (await (await boot().request("/")).json()) as ExtensionsResponse;
+		expect(can.restart).toEqual({ can: true, how: "container" });
+		const cannot = (await (
+			await boot({ canRestart: false }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(cannot.restart).toEqual({ can: false, reason: "source-run" });
+	});
+
+	/**
+	 * 没接装载器的构建一个拓展都列不出来,这一格其实没人读;答「拉不起来」是**不会坑人**的那
+	 * 一边 —— 反过来答「能」,哪天有人读了,按下去就是把 BN 关了而没人拉。
+	 */
+	it("没接装载器 → 保守地答「拉不起来」", async () => {
+		const app = createExtensionsRoute({
+			store: {
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getConnections: () => [],
+			} as unknown as ConfigStore,
+			extensions: () => [],
+			status: () => undefined,
+			pushSource: () => undefined,
+			bots: () => undefined,
+		});
+		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
+		expect(body.restart).toEqual({ can: false, reason: "unsupervised" });
+	});
+
+	it("跑着的被盖掉 → 那一行带上盘上那份的版本号,跑的仍是旧的", async () => {
+		await plant("bridge", "旧的");
+		const loader = await realLoader();
+		await plant("bridge", "新的", "2.0.0");
+		await loader.rescan();
+
+		const body = (await (
+			await boot({ enabled: true, loader }).request("/")
+		).json()) as ExtensionsResponse;
+
+		expect(body.extensions[0]).toMatchObject({
+			state: "running",
+			version: "1.0.0",
+			staged: { version: "2.0.0" },
+		});
+		await loader.dispose();
+	});
+
+	it("只重载 → 200;列表里跑的换成新版,「等着换上」撤掉", async () => {
+		await plant("bridge", "旧的");
+		const loader = await realLoader();
+		await plant("bridge", "新的", "2.0.0");
+		await loader.rescan();
+		const app = boot({ enabled: true, loader });
+
+		const res = await app.request("/bridge/swap", { method: "POST" });
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
+		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
+		expect(body.extensions[0]).toMatchObject({ state: "running", version: "2.0.0" });
+		expect(body.extensions[0]?.staged).toBeUndefined();
+		await loader.dispose();
+	});
+
+	/**
+	 * 🔴 生产上**不给随手重载的口子**:每换一份新代码漏一份旧模块,没有新代码时白漏(决策 47)。
+	 * 装载器那句「为什么不给」原样交出去,别自编一句「重载失败」。
+	 */
+	it("没有等着换上的 → 409,装载器那句原话", async () => {
+		await plant("bridge", "旧的");
+		const loader = await realLoader();
+
+		const res = await boot({ enabled: true, loader }).request("/bridge/swap", { method: "POST" });
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { ok: boolean; err: string };
+		expect(body.ok).toBe(false);
+		expect(body.err).toContain("没有等着换上");
+		await loader.dispose();
+	});
+
+	it("没装这个 id → 404", async () => {
+		const loader = await realLoader();
+		const res = await boot({ loader }).request("/nobody/swap", { method: "POST" });
+		expect(res.status).toBe(404);
+		await loader.dispose();
 	});
 });
 
@@ -591,7 +784,6 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 					id: "bridge",
 					name: "桥",
 					version: "0.0.2",
-					needsRestart: true,
 					docs: { readme: true, changelog: false },
 				}),
 			),
@@ -623,9 +815,16 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		expect(m.list).toHaveBeenLastCalledWith({ refresh: true });
 	});
 
+	/**
+	 * 「等着换上」照**装载器那一行**说(市场装完已经重扫过了)—— 与上传装包同一把尺子,市场
+	 * 自己不必认得模块缓存这回事。
+	 */
 	it("POST 装:回答与上传装包同一个形状(含这台机器的重启能力)", async () => {
 		const m = market();
-		const app = boot({ marketplace: m });
+		const app = boot({
+			marketplace: m,
+			entries: [{ ...running("bridge"), staged: { version: "0.0.2" } }],
+		});
 		const res = await app.request("/marketplace/install", {
 			method: "POST",
 			body: JSON.stringify({ source: "official", id: "bridge" }),
@@ -637,12 +836,22 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 			id: "bridge",
 			name: "桥",
 			version: "0.0.2",
-			needsRestart: true,
+			staged: true,
 			docs: { readme: true, changelog: false },
 			enabled: false,
 			restart: { can: true, how: "container" },
 		});
 		expect(m.install).toHaveBeenCalledWith("official", "bridge");
+	});
+
+	it("POST 装:装载器那一行没标「等着换上」→ staged 是 false", async () => {
+		const app = boot({ marketplace: market(), entries: [running("bridge")] });
+		const res = await app.request("/marketplace/install", {
+			method: "POST",
+			body: JSON.stringify({ source: "official", id: "bridge" }),
+			headers: { "content-type": "application/json" },
+		});
+		expect(((await res.json()) as ExtensionInstallResponse).staged).toBe(false);
 	});
 
 	it("POST 装不了 → 400,原因原样;缺参数 → 400", async () => {

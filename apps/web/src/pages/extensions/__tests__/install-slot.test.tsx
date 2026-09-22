@@ -37,7 +37,7 @@ const OK: ExtensionInstallResponse = {
 	id: "bridge",
 	name: "机器人框架桥接",
 	version: "1.1.0",
-	needsRestart: false,
+	staged: false,
 	docs: { readme: false, changelog: false },
 	enabled: false,
 	restart: { can: true, how: "container" },
@@ -116,24 +116,25 @@ describe("传包装拓展", () => {
 		expect(note.textContent).not.toMatch(/还关着/);
 	});
 
-	it("盖掉一份已经装着的 → 说得清「得重启一次」,并就地给那一颗按钮", async () => {
-		vi.mocked(api.upload).mockResolvedValue({ ...OK, needsRestart: true });
+	it("盖掉一份跑着的 → 说得清「换不上」,并就地给两条出路", async () => {
+		vi.mocked(api.upload).mockResolvedValue({ ...OK, staged: true });
 		const { container } = renderSlot();
 
 		await pick(container);
 
-		// 那句话要说清「为什么」——「重启一次」四个字本身不解释任何东西。
-		expect(await screen.findByText(/换不掉/)).toBeTruthy();
+		// 那句话要说清「为什么」——「重启」两个字本身不解释任何东西。
+		expect(await screen.findByText(/换不上/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 		await userEvent.click(await screen.findByRole("button", { name: /重启/ }));
 		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/system/restart", {}));
 		expect(await screen.findByText(/正在重启/)).toBeTruthy();
 	});
 
 	/** 这台机器上按了也回不来,那就别给按钮 —— 但**要说为什么**,不然像功能坏了。 */
-	it("要重启、可这台机器没人拉 → 不给按钮,把原因写出来", async () => {
+	it("等着换上、可这台机器没人拉 → 不给重启按钮,把原因写出来", async () => {
 		vi.mocked(api.upload).mockResolvedValue({
 			...OK,
-			needsRestart: true,
+			staged: true,
 			restart: { can: false, reason: "source-run" },
 		});
 		const { container } = renderSlot();

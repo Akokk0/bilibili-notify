@@ -107,6 +107,11 @@ export interface CreateAppOptions {
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
 		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+		/**
+		 * 只重载这个拓展(装载器的 `swap()`,ADR-0012 决策 47)。没标着「新版等着换上」时抛,
+		 * 路由把那句话原样交出去。没接 → 那一口永远 404。
+		 */
+		swap?: (id: string) => Promise<void>;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
 		settle?: () => Promise<void>;
 		/** 面板上传装拓展那条路要的:装载根、装完重扫、以及「这台机器重启回不回得来」。 */
@@ -421,6 +426,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			pushSource: (id) => options.extensions?.pushSource(id),
 			bots: (id) => options.extensions?.bots(id),
 			runAction: async (id, name) => options.extensions?.runAction?.(id, name),
+			swap: options.extensions?.swap,
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,
 			marketplace: options.extensions?.marketplace,

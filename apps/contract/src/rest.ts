@@ -115,6 +115,14 @@ export interface ExtensionDTO {
 	state: ExtensionStateDTO;
 	/** 没跑起来时那句「为什么」。 */
 	detail?: string;
+	/**
+	 * 盘上有一份**这个进程干净地换不上**的新代码(ADR-0012 决策 47)—— 版本号取盘上那份的清单。
+	 *
+	 * 两种样子:`state: "running"` 带着它 = 跑的还是旧的那份(`version` 是旧的);`state: "staged"`
+	 * = 开着却没跑,`version` 已经是新的。两种都等主人选「重启 BN」或「只重载这个拓展」
+	 * (`POST /api/ext/:id/swap`)—— **没有这一格时面板不给只重载**,生产上不给随手漏模块的口子。
+	 */
+	staged?: { version: string };
 }
 
 /** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
@@ -133,10 +141,14 @@ export interface ExtensionInstallResponse {
 	name: string;
 	version: string;
 	/**
-	 * 盖掉了一份**已经装着**的 → 那份代码在这个进程里换不掉(ADR-0012 决策 10),
-	 * 要重启一次才会换成新的。全新装进来的是热的 —— `false`。
+	 * 装完重扫之后,装载器那一行标着「新版等着换上」(`ExtensionDTO.staged`,ADR-0012 决策 47)
+	 * —— 盖掉了一份这个进程**跑过的**代码,ESM 在这个进程里干净地换不掉(决策 10)。出口有两个:
+	 * 重启 BN,或只重载这个拓展。
+	 *
+	 * 🔴 **不等于「盖掉了一份」**:关着、从没跑过的那份盘上换了就是换了;原样再传一遍的也没什么
+	 * 可换。全新装进来的是热的 —— 都是 `false`。
 	 */
-	needsRestart: boolean;
+	staged: boolean;
 	/**
 	 * 装完这一刻它的开关是开是关。
 	 *
@@ -148,7 +160,7 @@ export interface ExtensionInstallResponse {
 	 * 两句话当场打架。
 	 */
 	enabled: boolean;
-	/** 需要重启时,这台机器上按下去回不回得来。判据见 ADR-0005 决策 22。 */
+	/** 要重启时,这台机器上按下去回不回得来。判据见 ADR-0005 决策 22。 */
 	restart: RestartAbility;
 	/**
 	 * 这个包里带没带那两份说明 —— **拆包时就知道**,所以直接说,别让界面去猜或者再拉一次。
@@ -164,6 +176,13 @@ export interface ExtensionInstallResponse {
 
 export interface ExtensionsResponse {
 	extensions: ExtensionDTO[];
+	/**
+	 * 这台机器上「重启 BN」按下去回不回得来(ADR-0005 决策 22)。详情页上某个拓展有新版等着换上
+	 * 时,据此决定并排的那颗「重启 BN」给不给;不给就换成那句手动重启的说明。
+	 *
+	 * 只在某一行带着 `staged` 时才被读 —— 老服务端两格都没有,面板也就不会去读它。
+	 */
+	restart: RestartAbility;
 }
 
 /**

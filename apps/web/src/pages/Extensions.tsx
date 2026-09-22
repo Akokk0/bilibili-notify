@@ -146,6 +146,21 @@ function ExtensionCard({
 			<div className="flex h-full flex-col gap-3">
 				{ext.description ? <p className={PARAGRAPH_CLS}>{ext.description}</p> : null}
 				<ExtensionStateDetail ext={ext} />
+				{/*
+				 * 跑着旧的、盘上换了新版(ADR-0012 决策 47):徽章仍是「已启用」—— 它确实在跑 ——
+				 * 所以另说一句。两条出路(重启 BN / 只重载)只在详情页,卡上不摆按钮;开着却没跑
+				 * 的那一档徽章自己就说了(「新版等着换上」)。
+				 */}
+				{ext.state === "running" && ext.staged ? (
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<Pill subtle size="sm" color="var(--color-bn-warning)">
+							{ext.staged.version === ext.version
+								? "盘上的代码换过了,等着换上"
+								: `v${ext.staged.version} 等着换上`}
+						</Pill>
+						<span className="text-bn-2xs text-bn-text-tertiary">到「管理」里选怎么换</span>
+					</div>
+				) : null}
 				{update ? (
 					<div className="flex items-center gap-2">
 						<Pill subtle size="sm">
