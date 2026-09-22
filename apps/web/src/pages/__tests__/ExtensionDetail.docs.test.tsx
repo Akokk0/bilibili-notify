@@ -9,6 +9,8 @@
  * 值得钉的:① **默认停在配置** —— 点进来八成是来管接入的,不是来读说明的;② 没有的那档
  * 不摆(第三方不写 README 是它的自由),只剩一档时整条 tab 都不出现;③ 文档是第三方写的,
  * 走 `UNTRUSTED_MARKDOWN_COMPONENTS` 那副受限渲染,不是站内文档那副。
+ *
+ * 拿迁到 v2 的桥来量(关着):清单里有一格接入列表,所以「配置」那一档在。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -42,6 +44,9 @@ vi.mock("../../services/api", () => ({
 				if (docs.value instanceof Error) throw docs.value;
 				return docs.value;
 			}
+			if (url === "/api/globals") {
+				return { extensions: { bridge: { enabled: false, settings: { links: [] } } } };
+			}
 			return {
 				extensions: [
 					{
@@ -49,6 +54,20 @@ vi.mock("../../services/api", () => ({
 						name: "机器人框架桥接",
 						description: "借 bot",
 						version: "0.0.1",
+						apiVersion: 2,
+						provides: ["push"],
+						settings: {
+							fields: [
+								{
+									key: "links",
+									type: "list",
+									label: "桥接入",
+									itemLabel: "接入",
+									title: "name",
+									fields: [{ key: "name", type: "string", label: "名字", required: true }],
+								},
+							],
+						},
 						enabled: false,
 						state: "disabled",
 					},
@@ -58,11 +77,6 @@ vi.mock("../../services/api", () => ({
 		patch: vi.fn(async () => ({})),
 		delete: vi.fn(async () => ({ ok: true })),
 	},
-}));
-
-vi.mock("../extensions/bridge-panel", () => ({
-	BridgeAddressRow: () => <div />,
-	BridgeConnections: () => <div />,
 }));
 
 function renderDetail() {
@@ -161,6 +175,8 @@ describe("配置 / 说明 / 更新日志三档 tab", () => {
 		renderDetail();
 
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/docs"));
+		// 配置那一档的正文就摊在页面上 —— 没有 tab 条不等于没有正文。
+		expect(await screen.findByText("还没有桥接入。")).toBeTruthy();
 		expect(screen.queryByRole("tab")).toBeNull();
 	});
 });

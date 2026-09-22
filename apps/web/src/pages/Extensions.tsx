@@ -7,7 +7,6 @@ import {
 	Icon,
 	LoadingBlock,
 	Pill,
-	StatusDot,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +14,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
 import { EXT_CARD_ANCHOR, InstallFlight } from "./extensions/install-flight";
@@ -41,11 +39,10 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * `/extensions` —— 装了哪些拓展、各开在哪一口、开没开。
  *
  * 版式照设计稿 V1 的「Main」那块画板:页头一行 + 按口子分两节,每节一排卡;卡 = 头
- * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条连接 · N 个 bot 在线」+ 右下「管理 ›」。
+ * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条连接 · 视图交来的那一行」+ 右下「管理 ›」。
  *
- * 这一页**不认得任何具体拓展**(ADR-0012),唯一的例外是那句「N 个 bot 在线」——
- * 它读的是桥交上来的活口状态,形状只有桥有(见 `bridge-status.ts` 顶上那段)。v2 拓展的那一行
- * 由它自己的视图交(`summary`,ADR-0019 决策 25),桥迁过去之后这个例外就没了。
+ * 这一页**不认得任何具体拓展**(ADR-0012):「N 条连接」按 `provides` 数,后面那一行由拓展
+ * 自己的视图交(`summary`,ADR-0019 决策 25)—— 桥的「N 个 bot 在线」就是这么来的。
  */
 
 /**
@@ -105,26 +102,6 @@ function countByExtension(rows: readonly ConnectionRow[]): Map<string, number> {
 		counts.set(row.extensionId, (counts.get(row.extensionId) ?? 0) + 1);
 	}
 	return counts;
-}
-
-/**
- * 「N 个 bot 在线」—— 桥现在真的驮着几个。**只有桥有这句**:bot 是桥那份状态里的东西,
- * 别的推送源拓展没有这个概念。拓展关着 / 没跑起来时不说 —— 数不出来的数字不该假装是 0。
- */
-function BridgeLiveCount({ ext }: { ext: ExtensionDTO }) {
-	const status = useBridgeStatus(ext.id, ext.enabled);
-	if (!ext.enabled || !status.data) return null;
-	return (
-		<>
-			<span className="h-4 w-px bg-bn-border-subtle" />
-			<div className="flex items-center gap-1.5">
-				<StatusDot kind="ok" />
-				<span className="text-bn-xs text-bn-text-secondary">
-					<strong className="font-bold">{onlineBotCount(status.data)}</strong> 个 bot 在线
-				</span>
-			</div>
-		</>
-	);
 }
 
 function ExtensionCard({
@@ -188,7 +165,6 @@ function ExtensionCard({
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
 						<ConnectionCount count={count} />
-						{ext.id === "bridge" && !declarative ? <BridgeLiveCount ext={ext} /> : null}
 						{declarative ? <ExtensionSummary ext={ext} divider /> : null}
 					</div>
 				) : declarative ? (

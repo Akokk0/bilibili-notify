@@ -23,29 +23,48 @@ const { FakeApiError } = vi.hoisted(() => {
 	return { FakeApiError };
 });
 
+/**
+ * 迁到 v2 的桥,关着 —— 头卡里没有视图可画,「配置」里是照清单画的那一格接入列表。删除这件事
+ * 与它是哪一档无关,但拿一个真有设置的拓展来量:「删掉它的设置也会一起没」说的正是这种。
+ */
 vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
-		get: vi.fn(async () => ({
-			extensions: [
-				{
-					id: "bridge",
-					name: "机器人框架桥接",
-					description: "借 bot",
-					version: "0.0.1",
-					enabled: false,
-					state: "disabled",
-				},
-			],
-		})),
+		get: vi.fn(async (url: string) => {
+			if (url === "/api/globals") {
+				return { extensions: { bridge: { enabled: false, settings: { links: [] } } } };
+			}
+			if (url.endsWith("/docs")) return {};
+			return {
+				extensions: [
+					{
+						id: "bridge",
+						name: "机器人框架桥接",
+						description: "借 bot",
+						version: "0.0.1",
+						apiVersion: 2,
+						provides: ["push"],
+						settings: {
+							fields: [
+								{
+									key: "links",
+									type: "list",
+									label: "桥接入",
+									itemLabel: "接入",
+									title: "name",
+									fields: [{ key: "name", type: "string", label: "名字", required: true }],
+								},
+							],
+						},
+						enabled: false,
+						state: "disabled",
+					},
+				],
+			};
+		}),
 		patch: vi.fn(async () => ({})),
 		delete: vi.fn(async () => ({ ok: true })),
 	},
-}));
-
-vi.mock("../extensions/bridge-panel", () => ({
-	BridgeAddressRow: () => <div />,
-	BridgeConnections: () => <div />,
 }));
 
 function renderDetail() {

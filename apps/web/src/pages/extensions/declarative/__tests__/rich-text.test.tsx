@@ -59,6 +59,17 @@ describe("RichText", () => {
 		expect(container.textContent).toBe("12 分钟前连上");
 	});
 
+	/**
+	 * 刚重连过的说「刚刚」—— 那是「它刚断过」的信号,不该跟「连了三天」长一个样。(原先钉在
+	 * 手写的桥页上;桥迁过来之后,「多久前连上」是视图交的时刻片段,由这里画。)
+	 */
+	it("一分钟以内的时刻说「刚刚」", () => {
+		const { container } = render(
+			<RichText text={[{ time: NOW - 5_000, suffix: "连上" }]} extensionId="bridge" />,
+		);
+		expect(container.textContent).toBe("刚刚连上");
+	});
+
 	/** 时刻越过 Date 能表示的范围(宿主只卡了下限)也不许把整段字带走。 */
 	it("离谱的时刻不炸", () => {
 		const { container } = render(

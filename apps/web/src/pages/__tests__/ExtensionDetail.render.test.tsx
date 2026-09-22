@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
 
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
+/**
+ * 拓展详情页整页画出来的样子 —— 拿迁到 v2 的桥来量:清单里一格接入列表,视图交来头卡的地址行
+ * 与每条接入的状态 / bot 表。
+ *
+ * 零件各自的测试在 `extensions/declarative/__tests__/` 里;这一份钉的是**整页接起来**之后
+ * 那几件主人一眼就要看到的事 —— 从路由进来、经头卡与「配置」页签,一路画到接入卡上。
+ */
+
+import type { ExtensionsResponse, ExtensionView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import ExtensionDetail from "../ExtensionDetail";
+// 迁到 v2 的桥长什么样只有一份 —— 清单那一格列表各处抄一份的话,迟早各漂各的。
+import { BRIDGE } from "../extensions/declarative/__tests__/list-harness";
 
 const { apiGetMock, apiPatchMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
@@ -16,25 +26,16 @@ vi.mock("../../services/api", () => ({
 	api: {
 		get: apiGetMock as unknown as (url: string) => Promise<unknown>,
 		patch: apiPatchMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
+		post: vi.fn(),
+		delete: vi.fn(),
 	},
+	ApiError: class extends Error {},
 }));
 
 const CONNECTED_ID = "11111111-1111-4111-8111-111111111111";
 const CONFIGURED_ID = "22222222-2222-4222-8222-222222222222";
 
-const LISTED: ExtensionsResponse = {
-	extensions: [
-		{
-			id: "bridge",
-			name: "机器人框架桥接",
-			description: "把别的机器人框架里的 bot 借过来发推送",
-			version: "1.0.0",
-			enabled: true,
-			state: "running",
-			dir: "/data/extensions/bridge",
-		},
-	],
-};
+const LISTED: ExtensionsResponse = { extensions: [BRIDGE] };
 
 /** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里(ADR-0012 决策 45)。 */
 const GLOBALS = {
@@ -51,54 +52,68 @@ const GLOBALS = {
 	},
 };
 
-const STATUS = {
-	sessions: [
+/** 桥交来的视图 —— 照 `extensions/bridge/src/view.ts` 算出来的形状写:一条连着、一条没连上。 */
+const VIEW: ExtensionView = {
+	summary: { tone: "ok", text: [{ b: "1" }, " 个 bot 在线"] },
+	page: [
 		{
-			linkId: CONNECTED_ID,
-			connected: true,
-			kind: "koishi",
-			name: "客厅那台 koishi",
-			version: "0.1.0",
-			connectedAt: 1_700_000_000_000,
-			remoteAddress: "192.168.1.5",
-			bots: [
-				{
-					botId: "bot-1",
-					platform: "telegram",
-					name: "小电视",
-					capabilities: {
-						atAll: "supported",
-						inbound: "unsupported",
-						forward: "unknown",
-						miniAppCard: "unknown",
-						shareCardLinks: "unknown",
-					},
-				},
+			type: "copy",
+			label: "BN 地址",
+			value: { host: "extensionUrl" },
+			note: [
+				"这是",
+				{ b: "桥那台机器" },
+				"要访问得到的地址 —— BN 在 NAS 上时别填 ",
+				{ mono: "127.0.0.1" },
+				"。",
 			],
 		},
-		{ linkId: CONFIGURED_ID, connected: false, bots: [] },
 	],
+	items: {
+		links: {
+			[CONNECTED_ID]: {
+				status: { tone: "ok", text: "已连接" },
+				pill: "koishi",
+				subtitle: [
+					"客厅那台 koishi v0.1.0",
+					" · ",
+					{ time: 1_700_000_000_000, suffix: "连上" },
+					" · ",
+					"来自 192.168.1.5",
+				],
+				blocks: [
+					{
+						type: "table",
+						title: "它驮着的 bot",
+						count: true,
+						columns: [
+							{ kind: "icon" },
+							{ kind: "text", width: 210 },
+							{ kind: "tristate", label: "@全体" },
+							{ kind: "tristate", label: "收私聊指令" },
+							{ kind: "tristate", label: "合并转发" },
+						],
+						rows: [
+							[{ fallback: "te" }, { text: "小电视", sub: "telegram" }, "yes", "no", "unknown"],
+						],
+					},
+				],
+			},
+			[CONFIGURED_ID]: {
+				status: { tone: "off", text: "没连上" },
+				pill: "koishi",
+				subtitle: "现在没有桥用这个 token 连着。",
+			},
+		},
+	},
 };
-
-function route(url: string): string {
-	if (url === "/api/ext") return "listed";
-	if (url === "/api/globals") return "globals";
-	if (url.startsWith("/api/ext/")) return "status";
-	return "other";
-}
 
 function renderDetail(id = "bridge") {
 	apiGetMock.mockImplementation(async (url: string) => {
-		switch (route(url)) {
-			case "listed":
-				return LISTED;
-			case "globals":
-				return GLOBALS;
-			case "status":
-				return STATUS;
-			default:
-				return {};
-		}
+		if (url === "/api/ext") return LISTED;
+		if (url === "/api/globals") return GLOBALS;
+		if (url === "/api/ext/bridge/status") return VIEW;
+		return {};
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -110,6 +125,22 @@ function renderDetail(id = "bridge") {
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
+}
+
+/** 头卡:「已启用」那枚徽章所在的玻璃卡。 */
+async function headCard(): Promise<HTMLElement> {
+	const head = (await screen.findByText("已启用")).closest(".bn-glass");
+	if (!head) throw new Error("找不到头卡");
+	return head as HTMLElement;
+}
+
+/** 一条接入的那张卡。 */
+async function linkCard(id: string): Promise<HTMLElement> {
+	return waitFor(() => {
+		const card = document.querySelector(`[data-list-card="${id}"]`);
+		if (!card) throw new Error(`没有 ${id} 那张卡`);
+		return card as HTMLElement;
+	});
 }
 
 describe("拓展详情页", () => {
@@ -131,7 +162,7 @@ describe("拓展详情页", () => {
 		// 名字有两处:面包屑与头卡 —— 两处都该是它自己的名字。
 		expect(await screen.findAllByText("机器人框架桥接")).toHaveLength(2);
 		expect(screen.getByText("已启用")).toBeTruthy();
-		expect(screen.getByText("把别的机器人框架里的 bot 借过来发推送")).toBeTruthy();
+		expect(screen.getByText(BRIDGE.description as string)).toBeTruthy();
 	});
 
 	/**
@@ -140,11 +171,9 @@ describe("拓展详情页", () => {
 	 */
 	it("接入卡不在头卡肚子里", async () => {
 		renderDetail();
-		const head = (await screen.findByText("已启用")).closest(".bn-glass");
-		expect(head).toBeTruthy();
-		const card = (await screen.findByText("家里那台")).closest("[data-link-card]");
-		expect(card).toBeTruthy();
-		expect(head?.contains(card as Node)).toBe(false);
+		const head = await headCard();
+		const card = await linkCard(CONNECTED_ID);
+		expect(head.contains(card)).toBe(false);
 	});
 
 	/**
@@ -161,15 +190,34 @@ describe("拓展详情页", () => {
 		);
 	});
 
-	it("连上了的那条:桥自报的种类 / 名字 / 版本 / 从哪来都印出来", async () => {
+	/**
+	 * 🔴 **插件那头必须手敲这个地址**,面板不给就等于让主人去翻文档。地址由视图的 `copy` 积木
+	 * 交、在浏览器里现算;最容易填错的那一处也得说出来:BN 常在 NAS / 容器里,`127.0.0.1`
+	 * 对桥来说是**桥自己那台机器**。
+	 */
+	it("头卡里印着插件那头要填的 BN 地址,还能一键复制", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 		renderDetail();
-		expect(await screen.findByText("家里那台")).toBeTruthy();
-		// 两条接入各有一枚「哪一种」徽章 —— 两条都配的 koishi
-		expect(screen.getAllByText("koishi")).toHaveLength(2);
-		expect(screen.getByText(/客厅那台 koishi v0\.1\.0/)).toBeTruthy();
-		expect(screen.getByText(/来自 192\.168\.1\.5/)).toBeTruthy();
-		expect(screen.getByText("已连接")).toBeTruthy();
-		expect(screen.getByText("小电视")).toBeTruthy();
+
+		const head = await headCard();
+		const address = `ws://${window.location.host}/ext/bridge`;
+		expect(await within(head).findByText(address)).toBeTruthy();
+		// 「别填 127.0.0.1」那句与地址一样要紧 —— 填错了这一页不会留下任何记录。
+		expect(within(head).getByText("127.0.0.1")).toBeTruthy();
+
+		fireEvent.click(within(head).getByLabelText("复制 BN 地址"));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith(address));
+	});
+
+	it("连上了的那条:视图交来的种类 / 名字 / 版本 / 从哪来都印出来", async () => {
+		renderDetail();
+		const card = await linkCard(CONNECTED_ID);
+		expect(await within(card).findByText("已连接")).toBeTruthy();
+		expect(within(card).getByText("koishi", { selector: "span:not([role])" })).toBeTruthy();
+		expect(card.textContent).toContain("客厅那台 koishi v0.1.0");
+		expect(card.textContent).toContain("来自 192.168.1.5");
+		expect(within(card).getByText("小电视")).toBeTruthy();
 	});
 
 	/**
@@ -178,8 +226,9 @@ describe("拓展详情页", () => {
 	 */
 	it("配了但没连上的那条也要在列表里", async () => {
 		renderDetail();
-		expect(await screen.findByText("公司那台")).toBeTruthy();
-		expect(screen.getByText("没连上")).toBeTruthy();
+		const card = await linkCard(CONFIGURED_ID);
+		expect(within(card).getByText("公司那台")).toBeTruthy();
+		expect(await within(card).findByText("没连上")).toBeTruthy();
 	});
 
 	/**

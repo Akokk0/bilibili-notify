@@ -14,7 +14,6 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
 import {
 	DeclarativeConfig,
 	DeclarativeHead,
@@ -44,7 +43,8 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  *
  * 头卡是**通用的**(名字 / 图标 / 说明 / 状态 / 开关,全来自清单);正文按**契约档位**分岔
  * (ADR-0019 决策 18 / 19):v2 照声明画 —— 头卡里是视图的页级积木,「配置」里是照清单画的
- * 设置;v1 只剩桥,那一页是手写的,迁过去之前一格不动。
+ * 设置;v1 没有面板,头卡里只有一句通用的话。这一页**不认得任何具体拓展**:桥的那一页手写过,
+ * 迁到 v2 之后退役了(决策 19)。
  *
  * 开关也摆在这儿:点进来正是为了摆弄它,只能回列表去拨的话这一页就是块只读展板。
  *
@@ -109,14 +109,13 @@ export default function ExtensionDetail() {
 	}
 
 	const meta = EXTENSION_STATE_META[ext.state];
-	// 按档位分,不按 id:桥迁到 v2 之后还叫 bridge,那时它就该走照声明画的那一页。
+	// 按档位分,不按 id —— 认得某个具体拓展,就是「本体不认得拓展」那条的破口。
 	const declarative = ext.apiVersion === 2;
-	const isBridge = id === "bridge" && !declarative;
 	/*
-	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。v1 只有桥有;v2 看
+	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。v1 一律没有;v2 看
 	 * 清单里有没有设置项(决策 25)。所以一个既没面板又没文档的拓展这里一档都没有,正文整块不画。
 	 */
-	const hasConfig = isBridge || (declarative && settingsFieldsOf(ext).length > 0);
+	const hasConfig = declarative && settingsFieldsOf(ext).length > 0;
 	const tabs: DetailTab[] = [...(hasConfig ? (["config"] as const) : []), ...docs.kinds];
 	/* 选中项每次都从「现在有哪几档」里挑:重取之后那一档可能没了,停在空档上就是一整块白。 */
 	const tab: DetailTab | null =
@@ -159,9 +158,7 @@ export default function ExtensionDetail() {
 				<div className="flex flex-col gap-2.5">
 					<ExtensionToggleError toggle={toggle} />
 					<ExtensionStateDetail ext={ext} />
-					{isBridge ? (
-						<BridgeAddressRow extensionId={id} />
-					) : declarative ? (
+					{declarative ? (
 						<DeclarativeHead ext={ext} />
 					) : (
 						<p className={PARAGRAPH_CLS}>
@@ -205,11 +202,7 @@ export default function ExtensionDetail() {
 			{docs.failure ? <ExtensionDocsFailureNote failure={docs.failure} /> : null}
 
 			{tab === "config" ? (
-				declarative ? (
-					<DeclarativeConfig ext={ext} />
-				) : (
-					<BridgeConnections extensionId={id} enabled={ext.enabled} />
-				)
+				<DeclarativeConfig ext={ext} />
 			) : tab ? (
 				<ExtensionDocPane kind={tab} text={docs.text[tab] as string} />
 			) : null}
@@ -221,7 +214,6 @@ export default function ExtensionDetail() {
 						<>
 							<p className={PARAGRAPH_CLS}>
 								盘上那份会被抹掉,<strong>删掉它的设置也会一起没</strong>
-								{isBridge ? "(桥的话就是所有接入与 token,koishi 那侧要重填一遍)" : ""}
 								。随时能从拓展市场再装回来。
 							</p>
 							{remove.isError ? (

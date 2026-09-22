@@ -2,10 +2,10 @@
 
 /**
  * v2 拓展的详情页照声明画(ADR-0019 决策 19 / 25 / 32):头卡正文是视图的页级积木,「配置」
- * 页签里是照清单画的设置表单。v1(今天只有桥)那一页一格不动。
+ * 页签里是照清单画的设置表单。v1 没有面板:头卡里一句通用的话,不摆「配置」。
  *
  * 值得钉的:
- * - **按契约档位分岔**,不按 id —— 桥迁过去之后还叫 bridge。
+ * - **按契约档位分岔**,不按 id —— 桥的手写页退役之后,叫 bridge 的 v1 也只有那句通用的话。
  * - 🔴 **拓展关着设置照样能改**(决策 32):「装好 → 填 → 启用」这个顺序靠它才走得通。
  * - 关着与没跑起来**分开说**:前者是主人自己刚拨的开关,后者要去查日志。
  */
@@ -214,25 +214,40 @@ describe("v2 拓展的详情页", () => {
 	});
 });
 
-describe("v1 的桥:原样", () => {
-	const BRIDGE_V1: ExtensionDTO = {
-		id: "bridge",
-		name: "机器人框架桥接",
-		description: "借 bot",
-		version: "1.0.0",
-		apiVersion: 1,
-		provides: ["push"],
-		enabled: true,
-		state: "running",
-		dir: "/data/extensions/bridge",
-	};
+describe("v1 拓展:没有面板", () => {
+	/**
+	 * 🔴 叫 bridge 的也一样 —— 手写的桥页退役了(决策 19),这一页不再认得任何具体拓展。
+	 * 按 id 留一条岔路的话,它会悄悄接着画一块已经不存在的面板。
+	 */
+	it.each(["legacy", "bridge"])(
+		"%s:头卡里是那句通用的话,不摆「配置」,不问状态,删除确认里没有桥的那句",
+		async (id) => {
+			const legacy: ExtensionDTO = {
+				id,
+				name: "老拓展",
+				description: "还停在 v1",
+				version: "1.0.0",
+				apiVersion: 1,
+				provides: ["push"],
+				enabled: true,
+				state: "running",
+				dir: `/data/extensions/${id}`,
+			};
+			renderDetail({ ext: legacy, settings: { links: [] } });
+			const head = await headCard("老拓展");
+			expect(within(head).getByText("v1.0.0 · 这个拓展没有交上来自己的面板。")).toBeTruthy();
+			// 版本号印在正文那句里,底下那句就不再重复
+			expect(within(head).getByText(/^卸掉它/)).toBeTruthy();
+			expect(within(head).queryByText("BN 地址")).toBeNull();
+			await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith(`/api/ext/${id}/docs`));
+			expect(screen.queryByRole("tab")).toBeNull();
+			expect(screen.queryByText("还没有桥接入。")).toBeNull();
+			expect(statusCalls(id)).toBe(0);
 
-	it("头卡里还是 BN 地址那一行,底下那句不带版本号,配置里是手写的接入那一节", async () => {
-		renderDetail({ ext: BRIDGE_V1, status: { sessions: [] } as never, settings: { links: [] } });
-		const head = await headCard("机器人框架桥接");
-		expect(within(head).getByText("BN 地址")).toBeTruthy();
-		expect(within(head).getByText(/^卸掉它/)).toBeTruthy();
-		expect(await screen.findByText("还没有桥接入。")).toBeTruthy();
-		expect(screen.queryByText("设置")).toBeNull();
-	});
+			fireEvent.click(screen.getByRole("button", { name: "删除拓展" }));
+			const dialog = await screen.findByRole("dialog");
+			expect(dialog.textContent).not.toContain("桥");
+			expect(dialog.textContent).toContain("删掉它的设置也会一起没");
+		},
+	);
 });

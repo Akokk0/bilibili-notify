@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 /**
- * 拓展列表卡上那一行(ADR-0019 决策 25):今天那句「N 个 bot 在线」是面板专为桥写的;v2 由
+ * 拓展列表卡上那一行(ADR-0019 决策 25):那句「N 个 bot 在线」曾是面板专为桥写的;如今由
  * 拓展的视图交 `summary`,状态点跟着 `tone` 走。
  *
  * 值得钉的:数不出来就不说(关着 / 没跑 / 没交)—— 一个假装是 0 的数字比没有更糟;订阅源没有
- * 「N 条连接」那一行,它的 summary 也得有地方摆;v1 的桥那句照旧。
+ * 「N 条连接」那一行,它的 summary 也得有地方摆。
  */
 
 import type { ExtensionDTO, ExtensionView, MarketplaceResponse } from "@bilibili-notify/contract";

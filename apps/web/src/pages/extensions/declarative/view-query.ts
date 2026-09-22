@@ -7,7 +7,7 @@ import { api } from "../../../services/api";
  *
  * 🔴 **与 WS 那条失效是同一个键**:拓展喊 `ctx.statusChanged()` 时,`useStateChannel` 按
  * `["extension-status", id]` 失效(`extension-changed` 那一支)。这边换一个键的话,页面
- * 照样画得出来,只是再也不跟着拓展刷新 —— 而且不会有任何报错。手写的桥页也读这个键。
+ * 照样画得出来,只是再也不跟着拓展刷新 —— 而且不会有任何报错。
  */
 export function extensionStatusKey(extensionId: string) {
 	return ["extension-status", extensionId] as const;

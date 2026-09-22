@@ -9,9 +9,14 @@
  * 所以钉三件事:① 不支持**不许**再用删除线;② 三态的画法**两两不同**(合并任意两档,
  * 「不支持」与「还不知道」的区别就没了 —— 前者是结论,后者是「试试看,可能行」);
  * ③ 图例**必须在场** —— 没有图例,主人只能靠猜每个记号是什么意思,今天就是这么猜错的。
+ *
+ * 桥的 bot 表迁到 v2 之后是拓展交来的一张 `table`(ADR-0019 决策 27),三态格由通用积木画 ——
+ * 所以这里从积木那一层量,不再从手写的桥页量。
  */
 
-import { cleanup, screen } from "@testing-library/react";
+import type { ExtensionBlock } from "@bilibili-notify/contract";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -19,41 +24,45 @@ vi.mock("../../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-import { LINK as HOME, renderPanel } from "./bridge-harness";
+import { Blocks } from "../declarative/blocks";
 
-const LINK = { ...HOME, name: "koishi 那台" };
-
-const STATUS = {
-	sessions: [
-		{
-			linkId: "c1",
-			connected: true,
-			kind: "koishi",
-			name: "客厅那台",
-			version: "0.1.0",
-			connectedAt: 1_700_000_000_000,
-			bots: [
-				{
-					botId: "onebot:1",
-					platform: "onebot",
-					name: "阿库娅",
-					selfId: "2854196310",
-					capabilities: {
-						atAll: "supported",
-						inbound: "supported",
-						forward: "supported",
-						miniAppCard: "unknown",
-						shareCardLinks: "unsupported",
-						markdown: "unsupported",
-					},
-				},
-			],
-		},
+/** 桥交来的那张 bot 表的样子:一行 onebot,三态三档都有。 */
+const BOTS: ExtensionBlock = {
+	type: "table",
+	title: "它驮着的 bot",
+	count: true,
+	columns: [
+		{ kind: "icon" },
+		{ kind: "text", width: 210 },
+		{ kind: "tristate", label: "@全体" },
+		{ kind: "tristate", label: "收私聊指令" },
+		{ kind: "tristate", label: "合并转发" },
+		{ kind: "tristate", label: "小程序卡" },
+		{ kind: "tristate", label: "分享卡链接" },
+		{ kind: "tristate", label: "markdown" },
+	],
+	rows: [
+		[
+			{ fallback: "on" },
+			{ text: "阿库娅", sub: "onebot · 2854196310" },
+			"yes",
+			"yes",
+			"yes",
+			"unknown",
+			"no",
+			"no",
+		],
 	],
 };
 
+/** 页级积木自己挂图例(没有列表头可挂)—— 与头卡里画的是同一条路。 */
 function renderCaps() {
-	return renderPanel({ links: [LINK], status: STATUS });
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<QueryClientProvider client={qc}>
+			<Blocks blocks={[BOTS]} extensionId="bridge" legend />
+		</QueryClientProvider>,
+	);
 }
 
 afterEach(() => {

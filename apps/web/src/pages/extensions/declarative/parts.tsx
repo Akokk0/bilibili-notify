@@ -1,12 +1,12 @@
 import { Btn, Icon, IconButton, SELECTED_LANGUAGE } from "@bilibili-notify/ui";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { copyToClipboard } from "../../../utils/clipboard";
 
 /**
- * 拓展页上反复出现的那几件小东西 —— 手写的桥页与照声明画的页(ADR-0019 决策 19)**共用这一份**。
+ * 照声明画的那一页(ADR-0019 决策 19)上反复出现的那几件小东西 —— 积木、列表卡、设置表单、
+ * 新建弹窗**共用这一份**。
  *
- * 迁移的承诺是「长相保持今天这样」(决策 24),而这句话只有在两页画的是**同一个组件**时才
- * 守得住:抄一份的话,桥页今天改一个圆角,声明式那页明天就对不上了,两边都不会报错。
+ * 各抄一份的话,一处今天改一个圆角,别处明天就对不上了,而且哪边都不会报错。
  */
 
 // ── 「哪一种」方块 ──────────────────────────────────────────────────────────────
@@ -32,21 +32,19 @@ const KIND_MARK_SHAPE: Record<26 | 28 | 32, string> = {
  * 就得跟它抢注意力。
  *
  * `logo` 是一个图片 data URL,走 `<img>` —— 不跑脚本、拉不进外部资源,不用过白名单
- * (ADR-0019 决策 31)。`glyph` 是库里已有的图标(BN 自己认得的平台)。都没有才印字母。
+ * (ADR-0019 决策 31)。没有才印字母 —— BN 不拿自己的平台表去补。
  */
 export function KindMark({
 	text,
 	size,
 	label,
 	logo,
-	glyph,
 	style,
 }: {
 	text: string;
 	size: 26 | 28 | 32;
 	label?: string;
 	logo?: string;
-	glyph?: ReactNode;
 	style?: CSSProperties;
 }) {
 	const className = `grid shrink-0 place-items-center font-bold lowercase ${KIND_MARK_SHAPE[size]}`;
@@ -55,8 +53,6 @@ export function KindMark({
 	const inner = Math.round(size * 0.62);
 	const body = logo ? (
 		<img src={logo} alt="" draggable={false} style={{ width: inner, height: inner }} />
-	) : glyph ? (
-		glyph
 	) : (
 		text.slice(0, 2)
 	);
@@ -84,8 +80,8 @@ export function MonoChip({ children, className }: { children: string; className?
 }
 
 /**
- * 一张可选的卡(桥的「哪一种桥」、声明式 `enum` 选项带图标时,ADR-0019 决策 30)。与备份页的
- * ChoiceCard 同一种东西:一张可选的卡,不是按钮 —— 挂 `option`。
+ * 一张可选的卡(声明式 `enum` 选项带图标时,ADR-0019 决策 30 —— 桥的「哪一种桥」就是)。与
+ * 备份页的 ChoiceCard 同一种东西:一张可选的卡,不是按钮 —— 挂 `option`。
  */
 export function OptionCard({
 	active,
@@ -178,7 +174,7 @@ export function CopyControl({
 
 // ── 三态 ─────────────────────────────────────────────────────────────────────
 
-/** 支持 / 不支持 / 还不知道。桥的能力表与声明式 `table` 的 tristate 列(决策 27)同一套。 */
+/** 支持 / 不支持 / 还不知道。声明式 `table` 的 tristate 列(决策 27)与图例同一套。 */
 export type TriState = "supported" | "unsupported" | "unknown";
 
 /**

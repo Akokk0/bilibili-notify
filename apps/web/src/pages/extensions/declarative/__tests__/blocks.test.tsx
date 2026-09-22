@@ -230,6 +230,30 @@ describe("copy", () => {
 		expect(screen.getByText("ABCD-1234")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "复制 设备码" })).toBeTruthy();
 	});
+
+	/**
+	 * 🔴 BN 常经 `http://<内网 IP>:8787` 打开,那里 `navigator.clipboard` 根本不存在 —— 裸写法
+	 * 按下去静默无事。抄错地址与抄错 token 一样连不上,而头卡上这一行正是桥那台机器要抄的地址。
+	 */
+	it("非安全上下文里也真的复制到", async () => {
+		vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+		const execCommand = vi.fn().mockReturnValue(true);
+		Object.defineProperty(document, "execCommand", {
+			value: execCommand,
+			configurable: true,
+			writable: true,
+		});
+		try {
+			renderBlocks([{ type: "copy", label: "BN 地址", value: { host: "extensionUrl" } }], {
+				id: "bridge",
+			});
+			fireEvent.click(screen.getByRole("button", { name: "复制 BN 地址" }));
+			await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+		} finally {
+			vi.unstubAllGlobals();
+			Reflect.deleteProperty(document, "execCommand");
+		}
+	});
 });
 
 describe("qr", () => {

@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import type { ExtensionsResponse, MarketplaceResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionsResponse,
+	ExtensionView,
+	MarketplaceResponse,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -25,11 +29,13 @@ vi.mock("../../services/api", () => ({
 /** 市场那一口的默认回答:官方源在、什么都没列 —— 单独一条用例才往里放条目。 */
 const MARKET: MarketplaceResponse = { available: true, fetchedAt: 1, sources: [], extensions: [] };
 
+/** 迁到 v2 的桥 —— 卡上「N 条连接」后面那一行由它的视图交(`summary`)。 */
 const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	id: "bridge",
 	name: "机器人框架桥接",
 	description: "把别的机器人框架里的 bot 借过来发推送",
 	version: "1.0.0",
+	apiVersion: 2,
 	provides: ["push"],
 	icon: '<svg viewBox="0 0 24 24" data-testid="bridge-icon"><path d="M4 4h16"/></svg>',
 	enabled: true,
@@ -105,23 +111,13 @@ const CONNECTIONS = [
 	{ id: "d", name: "别人家的", kind: "extension", extensionId: "somewhere-else", enabled: true },
 ];
 
-/** 桥的活口状态:两条连接一条连着(驮两个 bot)、一条没连上。接入住桥的设置里,与连接是两回事。 */
-const STATUS = {
-	sessions: [
-		{
-			connectionId: "a",
-			connected: true,
-			kind: "koishi",
-			bots: [
-				{ botId: "onebot:1", platform: "onebot", name: "阿库娅" },
-				{ botId: "telegram:2", platform: "telegram", name: "小电视" },
-			],
-		},
-		{ connectionId: "b", connected: false, bots: [] },
-	],
-};
+/**
+ * 桥交来的视图:列表页那一行是「2 个 bot 在线」。只数**连着的**会话驮着几个,是桥自己算好交来的
+ * (`extensions/bridge/src/view.ts`),面板照着画。
+ */
+const STATUS: ExtensionView = { summary: { tone: "ok", text: [{ b: "2" }, " 个 bot 在线"] } };
 
-/** `status` 传 `null` = 拓展没跑起来,那一口 404。(⚠️ 别用 undefined:默认参数会把它换成 STATUS。) */
+/** `status` 传 `null` = 状态那一口拿不到。(⚠️ 别用 undefined:默认参数会把它换成 STATUS。) */
 function renderPage(
 	listed: ExtensionsResponse = LISTED,
 	connections: unknown = CONNECTIONS,
@@ -226,8 +222,8 @@ describe("拓展页", () => {
 	});
 
 	/**
-	 * 「配了两条一条没连上」和「两条全连着」得在列表上就分得开 —— 那句 bot 数只数
-	 * **连着的**会话驮着的。
+	 * 「配了两条一条没连上」和「两条全连着」得在列表上就分得开 —— 那句 bot 数由桥的视图交,
+	 * 跟在「N 条连接」后面。
 	 */
 	it("桥那张卡还数得出现在几个 bot 在线", async () => {
 		renderPage();
@@ -235,7 +231,7 @@ describe("拓展页", () => {
 		await waitFor(() => expect(card.textContent).toMatch(/2\s*个 bot 在线/));
 	});
 
-	it("拓展没跑起来时只数连接,不假装有 bot 在线", async () => {
+	it("状态那一口拿不到时只数连接,不假装有 bot 在线", async () => {
 		renderPage(LISTED, CONNECTIONS, null);
 		const card = await cardOf("机器人框架桥接");
 		// 状态那条查询要先认输,才能断言它「没出现」而不是「还没来」
