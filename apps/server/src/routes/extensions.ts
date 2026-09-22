@@ -329,11 +329,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	});
 
 	/**
-	 * 一个拓展交给面板的数据(`ctx.publishStatus`),形状**第一版不约束** —— 面板那一页
-	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
-	 * 面板要能分开说。
-	 */
-	/**
 	 * 面板上的「调拓展」按钮。🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 绝不挂到
 	 * `/ext/<id>`(那里刻意在鉴权外,ADR-0012 决策 36 / 38):否则任何够得着 BN 的人都能替主人
 	 * 按这些钮(比如发起一次扫码登录,用自己的手机扫)。每种失败各有状态码与原话。
@@ -388,6 +383,14 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		return c.json({ ok: true });
 	});
 
+	/**
+	 * 一个拓展交给面板的视图(`ctx.publishStatus`),**现取**。没跑 / 没交过就是 404,不是空
+	 * 对象:那两件事面板要能分开说。
+	 *
+	 * 交上来的东西先过宿主那一道(`context.ts` 的 `viewOf`):v2 按 `ExtensionViewSchema` 校验,
+	 * 不合规矩的整份不画,换成一条说清哪里不对的错误提示(照样 200,同一个错只记一行日志);
+	 * v1 原样透传(桥的老页是手写的,形状归它自己)。
+	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

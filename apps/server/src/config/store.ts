@@ -136,7 +136,7 @@ export interface CreateConfigStoreOptions {
 	secretStore?: SecretStore;
 }
 
-/** Thrown when an incoming write fails Zod validation. Routes catch and map to 400. */
+/** `patchGlobals` 的可选项。 */
 export interface PatchGlobalsOptions {
 	/**
 	 * 合并之后再拦一道 —— 回一组 issue(形状同 zod 的,`path` 从 globals 的根写起)就整次拒绝、
@@ -145,6 +145,7 @@ export interface PatchGlobalsOptions {
 	check?: (merged: GlobalConfig) => readonly unknown[] | undefined;
 }
 
+/** Thrown when an incoming write fails Zod validation. Routes catch and map to 400. */
 export class ConfigValidationError extends Error {
 	readonly scope: ConfigScope;
 	readonly issues: unknown;
