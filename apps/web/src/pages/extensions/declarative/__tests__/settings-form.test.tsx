@@ -16,24 +16,14 @@ import type { ExtensionScalarField } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { api } from "../../../../services/api";
+import { ApiError, api } from "../../../../services/api";
 import { SettingsForm } from "../settings-form";
 
-vi.mock("../../../../services/api", () => ({
+vi.mock("../../../../services/api", async (importOriginal) => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-	ApiError: class extends Error {},
+	// 面板按 `instanceof ApiError` 认服务端的错 —— 用真的那个类,替身比它宽松的话测的就不是那条路。
+	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
-
-/** 服务端那种错:状态码 + 响应体(面板读的是 `body`)。 */
-class HttpError extends Error {
-	constructor(
-		readonly status: number,
-		readonly body: unknown,
-		message: string,
-	) {
-		super(message);
-	}
-}
 
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -373,7 +363,7 @@ describe("校验", () => {
 	/** 服务端照清单校验不过:那句话落在那一格底下,别的格不沾。 */
 	it("400 的 issue 落到对应那一格", async () => {
 		vi.mocked(api.patch).mockRejectedValue(
-			new HttpError(
+			new ApiError(
 				400,
 				{
 					error: "validation_failed",
@@ -394,7 +384,7 @@ describe("校验", () => {
 
 	it("落不到某一格的 issue 与别的失败,说在表单顶上", async () => {
 		vi.mocked(api.patch).mockRejectedValue(
-			new HttpError(
+			new ApiError(
 				400,
 				{
 					error: "validation_failed",
@@ -469,7 +459,7 @@ describe("校验", () => {
 
 		it("400 落到叫 constructor 的那一格,不被同名函数吞掉", async () => {
 			vi.mocked(api.patch).mockRejectedValue(
-				new HttpError(
+				new ApiError(
 					400,
 					{
 						error: "validation_failed",

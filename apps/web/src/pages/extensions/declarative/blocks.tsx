@@ -540,7 +540,7 @@ function ButtonBlock({
 }
 
 /** 调拓展的那种按钮(决策 22)。 */
-export type ActionButton = Extract<ExtensionButton, { action: string }>;
+type ActionButton = Extract<ExtensionButton, { action: string }>;
 
 /**
  * 调拓展的那一发:`POST /api/ext/:id/actions/:name`,只走 `/api/…`、吃面板会话鉴权(决策 23 那条

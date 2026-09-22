@@ -35,10 +35,12 @@ import {
 } from "./blocks";
 import {
 	declaredPatchOf,
+	extensionSettingsOf,
 	isPaused,
 	isRecord,
 	itemLabelOf,
 	itemsOf,
+	LIST_ITEM_ID,
 	type ListItem,
 	markOf,
 	plainValueOf,
@@ -155,10 +157,7 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 		},
 	});
 
-	const settings = (
-		globals.data?.extensions as Record<string, { settings?: unknown } | undefined> | undefined
-	)?.[ext.id]?.settings;
-	const items = itemsOf(settings, field.key);
+	const items = itemsOf(extensionSettingsOf(globals.data, ext.id), field.key);
 	const itemLabel = itemLabelOf(field);
 
 	const viewState: ViewState = !ext.enabled
@@ -290,7 +289,7 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 						save.mutate([
 							...items,
 							{
-								id: newId(),
+								[LIST_ITEM_ID]: newId(),
 								...values,
 								...(field.toggle !== undefined ? { [field.toggle]: toggleDefaultOf(field) } : {}),
 							},

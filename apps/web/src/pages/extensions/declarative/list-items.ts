@@ -1,4 +1,6 @@
 import type { ExtensionListField, ExtensionScalarField } from "@bilibili-notify/contract";
+import { ApiError } from "../../../services/api";
+import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
 
@@ -8,9 +10,18 @@ import { safeImage } from "./image";
  * 列表住在 `globals.extensions.<id>.settings.<key>`,形状归清单定,但存着的那份**可能不照清单长**
  * (手改过的配置、面板比服务端旧的那几秒),所以这一层读得防着点:认不出的项跳过,认得出的
  * 项**原样**留着所有键。
+ *
+ * 读那份设置、拆写回失败的 400 这两件设置表单也要,也住这里(`extensionSettingsOf` /
+ * `settingsIssuesOf`)—— 两处各写一份的话,同一份设置在两处读出两种样子。
  */
 
-/** 项里保留给 BN 的键 —— 项的身份,由 BN 生成、藏起来、不许改(决策 29)。 */
+/**
+ * 项里保留给 BN 的键 —— 项的身份,由 BN 生成、藏起来、不许改(决策 29)。
+ *
+ * 与 internal 的 `LIST_ITEM_ID_KEY` 是同一个词,却只能在这里再写一份:那个常量住在带 zod 的
+ * 清单 schema 里,只从根入口导出,而 web 从根入口拿值会把整个 zod 拖进 bundle(见
+ * `internal-entry-conformance.test.ts`)。
+ */
 export const LIST_ITEM_ID = "id";
 
 /**
@@ -27,13 +38,25 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * 一个拓展存着的那份设置(`globals.extensions.<id>.settings`)。宿主不认识它的形状,原样存、
+ * 原样取 —— 不是对象的(没存过、手改坏了)当它是空的。设置表单与列表那一节都从这里读。
+ */
+export function extensionSettingsOf(
+	globals: GlobalConfig | undefined,
+	extensionId: string,
+): Record<string, unknown> {
+	const settings = globals?.extensions?.[extensionId]?.settings;
+	return isRecord(settings) ? settings : {};
+}
+
+/**
  * 设置里那份列表。认不出身份的项(不是对象 / 没有 id / id 重了)**跳过** —— 视图按 id 把积木
  * 挂到项上、写回按 id 找那一项,没有 id 的项在这一页上够不着也改不了;服务端对它也只会回
  * 「列表项要有 id / id 重复了」,留着的话这一格从此一发都写不进去,而屏幕上看不出是哪条。
  * 与今天手写的桥页同一个取舍:写回时它们随之消失。
  */
-export function itemsOf(settings: unknown, key: string): ListItem[] {
-	const raw = isRecord(settings) ? settings[key] : undefined;
+export function itemsOf(settings: Readonly<Record<string, unknown>>, key: string): ListItem[] {
+	const raw = settings[key];
 	if (!Array.isArray(raw)) return [];
 	const seen = new Set<string>();
 	const items: ListItem[] = [];
@@ -148,11 +171,49 @@ export function declaredPatchOf(
 	return Object.fromEntries(Object.entries(set).filter(([key]) => declared.has(key)));
 }
 
+/** 服务端照清单校验不过时那份 400 里的一条,按「落在这个拓展设置里的哪一格」拆好。 */
+export interface SettingsIssue {
+	/** 落在这个拓展自己设置里的哪一格;落在别处的(别的拓展、设置之外)没有。 */
+	key: string | undefined;
+	/** 那一格往下的路径 —— 列表的话是 `[<第几项>, <哪一格>]`。 */
+	subPath: readonly unknown[];
+	message: string;
+	/** 不点名某一格时怎么说:照路径(这个拓展设置里的从设置那一层往下数)+ 那句话。 */
+	text: string;
+}
+
 /**
- * 写回失败的那句话。服务端照清单校验不过时回 400 `{ error: "validation_failed", issues }`,每条
- * `issue.path` 是 `["extensions", <id>, "settings", <key>, <第几项>, <哪一格>]` —— 落在这一格
- * 列表上的,说成「「家里那台」的 名字:这一格必填」;落在别处的(同一份设置里别的格也照清单
- * 校验,它们不合规矩一样拦下这一发)照路径说。别的失败原话照搬。
+ * 服务端照清单校验不过时回 400 `{ error: "validation_failed", issues }`,每条 `issue.path` 是
+ * `["extensions", <id>, "settings", <key>, …]`。设置表单与列表那一节**共用这一份拆法**:哪一条
+ * 算「我这一格的」、落不到某一格时怎么说,两边各拆一份的话迟早说成两种话。
+ *
+ * 不是那份 400 的交 `null` —— 那种失败的原话(`reasonOf`)就是该说的。
+ */
+export function settingsIssuesOf(err: unknown, extensionId: string): SettingsIssue[] | null {
+	if (!(err instanceof ApiError)) return null;
+	const { body } = err;
+	if (!isRecord(body) || body.error !== "validation_failed" || !Array.isArray(body.issues)) {
+		return null;
+	}
+	return body.issues.map((issue: unknown) => {
+		const bag = isRecord(issue) ? issue : {};
+		const path = Array.isArray(bag.path) ? (bag.path as unknown[]) : [];
+		const message = typeof bag.message === "string" ? bag.message : "不合规矩";
+		const [scope, id, slot, key] = path;
+		const mine = scope === "extensions" && id === extensionId && slot === "settings";
+		const where = (mine ? path.slice(3) : path).join(".");
+		return {
+			key: mine && typeof key === "string" ? key : undefined,
+			subPath: mine ? path.slice(4) : [],
+			message,
+			text: where ? `${where}:${message}` : message,
+		};
+	});
+}
+
+/**
+ * 写回失败的那句话。落在这一格列表上的,说成「「家里那台」的 名字:这一格必填」;落在别处的
+ * (同一份设置里别的格也照清单校验,它们不合规矩一样拦下这一发)照路径说。别的失败原话照搬。
  *
  * `sent` 是**这一发**发出去的名单(不是屏幕上现在那份):第几项要按它数。
  */
@@ -162,35 +223,25 @@ export function writeFailureOf(
 	field: ExtensionListField,
 	sent: readonly ListItem[] | undefined,
 ): string {
-	const body = (err as { body?: unknown } | null)?.body;
-	if (!isRecord(body) || body.error !== "validation_failed" || !Array.isArray(body.issues)) {
-		return reasonOf(err);
-	}
-	const lines = body.issues.map((issue) => issueText(issue, extensionId, field, sent));
-	return lines.length > 0 ? lines.join(";") : reasonOf(err);
+	const issues = settingsIssuesOf(err, extensionId);
+	if (!issues || issues.length === 0) return reasonOf(err);
+	return issues.map((issue) => issueText(issue, field, sent)).join(";");
 }
 
 function issueText(
-	issue: unknown,
-	extensionId: string,
+	issue: SettingsIssue,
 	field: ExtensionListField,
 	sent: readonly ListItem[] | undefined,
 ): string {
-	const bag = isRecord(issue) ? issue : {};
-	const path = Array.isArray(bag.path) ? (bag.path as unknown[]) : [];
-	const message = typeof bag.message === "string" ? bag.message : "不合规矩";
-	const [scope, id, slot, key, index, subKey] = path;
-	const mine = scope === "extensions" && id === extensionId && slot === "settings";
-	if (mine && key === field.key) {
-		if (typeof index !== "number") return `${field.label}:${message}`;
-		const item = sent?.[index];
-		const title = item ? titleOf(field, item) : "";
-		const which = title ? `「${title}」` : `第 ${index + 1} 条${itemLabelOf(field)}`;
-		const sub = typeof subKey === "string" ? subFieldOf(field, subKey) : undefined;
-		return sub ? `${which}的 ${sub.label}:${message}` : `${which}:${message}`;
-	}
-	const where = (mine ? path.slice(3) : path).join(".");
-	return where ? `${where}:${message}` : message;
+	if (issue.key !== field.key) return issue.text;
+	const { message } = issue;
+	const [index, subKey] = issue.subPath;
+	if (typeof index !== "number") return `${field.label}:${message}`;
+	const item = sent?.[index];
+	const title = item ? titleOf(field, item) : "";
+	const which = title ? `「${title}」` : `第 ${index + 1} 条${itemLabelOf(field)}`;
+	const sub = typeof subKey === "string" ? subFieldOf(field, subKey) : undefined;
+	return sub ? `${which}的 ${sub.label}:${message}` : `${which}:${message}`;
 }
 
 /** 「把这 N 样填到对面去」的 N —— `newItemCopy` 封顶 8 样。 */

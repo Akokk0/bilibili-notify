@@ -17,17 +17,17 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("../../../../services/api", () => ({
+vi.mock("../../../../services/api", async (importOriginal) => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-	ApiError: class extends Error {},
+	// 面板按 `instanceof ApiError` 认服务端的错 —— 用真的那个类,替身比它宽松的话测的就不是那条路。
+	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
-import { api } from "../../../../services/api";
+import { ApiError, api } from "../../../../services/api";
 import {
 	BRIDGE,
 	findCard,
 	HOME,
-	HttpError,
 	LINKS_FIELD,
 	OFFICE,
 	renderList,
@@ -321,7 +321,7 @@ describe("写不进去的时候", () => {
 	 */
 	it("照清单校验不过:说清是哪一条的哪一格", async () => {
 		vi.mocked(api.patch).mockRejectedValue(
-			new HttpError(
+			new ApiError(
 				400,
 				{
 					error: "validation_failed",

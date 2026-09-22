@@ -114,17 +114,6 @@ export class NotFound extends Error {
 	readonly status = 404;
 }
 
-/** 服务端那种错:状态码 + 响应体(面板读的是 `body`)。 */
-export class HttpError extends Error {
-	constructor(
-		readonly status: number,
-		readonly body: unknown,
-		message: string,
-	) {
-		super(message);
-	}
-}
-
 export interface ListSetup {
 	/** 拓展本身 —— 开关、状态、清单里的设置项。 */
 	ext?: ExtensionDTO;

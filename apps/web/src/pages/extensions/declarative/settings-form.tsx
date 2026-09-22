@@ -20,6 +20,7 @@ import { api } from "../../../services/api";
 import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
+import { extensionSettingsOf, settingsIssuesOf } from "./list-items";
 import { CopyControl } from "./parts";
 import { maskSecret, newHexSecret } from "./secret";
 
@@ -146,23 +147,16 @@ function saveIssuesOf(
 	extensionId: string,
 	keys: ReadonlySet<string>,
 ): SaveIssues | null {
-	const body = (err as { body?: unknown } | null)?.body as
-		| { error?: unknown; issues?: unknown }
-		| undefined;
-	if (body?.error !== "validation_failed" || !Array.isArray(body.issues)) return null;
+	const issues = settingsIssuesOf(err, extensionId);
+	if (!issues) return null;
 	const out: SaveIssues = { byField: {}, rest: [] };
-	for (const issue of body.issues as { path?: unknown; message?: unknown }[]) {
-		const path = Array.isArray(issue?.path) ? (issue.path as unknown[]) : [];
-		const message = typeof issue?.message === "string" ? issue.message : "不合规矩";
-		const [scope, id, slot, key] = path;
-		const mine = scope === "extensions" && id === extensionId && slot === "settings";
-		if (mine && typeof key === "string" && keys.has(key)) {
+	for (const { key, message, text } of issues) {
+		if (key !== undefined && keys.has(key)) {
 			// 同一格有好几句的,留第一句。
 			if (!Object.hasOwn(out.byField, key)) out.byField[key] = message;
 			continue;
 		}
-		const where = (mine ? path.slice(3) : path).join(".");
-		out.rest.push(where ? `${where}:${message}` : message);
+		out.rest.push(text);
 	}
 	return out;
 }
@@ -192,13 +186,7 @@ export function SettingsForm({
 	/** 等着确认「重新生成」的那一格。 */
 	const [confirming, setConfirming] = useState<ExtensionScalarField | null>(null);
 
-	const rawSettings = (
-		globals.data?.extensions as Record<string, { settings?: unknown } | undefined> | undefined
-	)?.[extensionId]?.settings;
-	const stored: Record<string, unknown> =
-		typeof rawSettings === "object" && rawSettings !== null && !Array.isArray(rawSettings)
-			? (rawSettings as Record<string, unknown>)
-			: {};
+	const stored = extensionSettingsOf(globals.data, extensionId);
 
 	const save = useMutation({
 		mutationFn: ({ patch }: SaveVars) =>
