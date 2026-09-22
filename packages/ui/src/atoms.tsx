@@ -1023,7 +1023,34 @@ const ERROR_NOTE_SIZE = {
 } as const;
 
 /** 图标与首行文字的基线对齐量,随字号走。 */
-const ERROR_NOTE_ICON_NUDGE = { sm: "mt-px", md: "mt-0.5", lg: "mt-0.5" } as const;
+const NOTE_ICON_NUDGE = { sm: "mt-px", md: "mt-0.5", lg: "mt-0.5" } as const;
+
+/** 带图标的提示盒外壳多出来的排布 —— 红黄两兄弟共用。 */
+const NOTE_WITH_ICON = "flex items-start gap-1.5";
+
+/**
+ * 红黄两兄弟的「图标 + 正文」两个槽 —— 共用这一份,两兄弟带图标时才同形(此前黄盒没有槽,
+ * 两处调用方各自手摆,间距与对齐量都与红盒不是一回事)。正文槽占满余下的宽:调用方往里放
+ * 「正文 + 贴右的按钮」一行时,按钮才贴得到右边。
+ */
+function NoteIconSlots({
+	icon,
+	size,
+	children,
+}: {
+	icon: ReactNode;
+	size: keyof typeof NOTE_ICON_NUDGE;
+	children: ReactNode;
+}) {
+	return (
+		<>
+			<span className={`${NOTE_ICON_NUDGE[size]} shrink-0`} aria-hidden="true">
+				{icon}
+			</span>
+			<div className="min-w-0 flex-1">{children}</div>
+		</>
+	);
+}
 
 /**
  * 错误/失败提示盒 —— 「XX 失败:…」这类红字盒子的唯一写法。
@@ -1046,12 +1073,11 @@ export function ErrorNote({ children, icon, size = "md", className }: ErrorNoteP
 		<div
 			role="alert"
 			data-bn="note note-danger"
-			className={`flex items-start gap-1.5 ${base} ${className ?? ""}`}
+			className={`${NOTE_WITH_ICON} ${base} ${className ?? ""}`}
 		>
-			<span className={`${ERROR_NOTE_ICON_NUDGE[size]} shrink-0`} aria-hidden="true">
-				{icon}
-			</span>
-			<span>{children}</span>
+			<NoteIconSlots icon={icon} size={size}>
+				{children}
+			</NoteIconSlots>
 		</div>
 	);
 }
@@ -1069,23 +1095,34 @@ const WARN_NOTE_SIZE = {
  * 靠调用方覆盖不住,所以基础样式里干脆不放。
  *
  * `size` 两档与 {@link ErrorNote} 对齐 —— 有了它,「红 / 黄双色同形」的一对才写得出来
- * (FontPicker 那处此前正是因为库里两兄弟一大一小,只能自己手搓一份)。
+ * (FontPicker 那处此前正是因为库里两兄弟一大一小,只能自己手搓一份)。`icon` 槽也同
+ * {@link ErrorNote}:给了才排成两列,对齐量随尺寸走。
  */
 export function WarnNote({
 	children,
+	icon,
 	size = "md",
 	className,
 }: {
 	children: ReactNode;
+	/** 左侧图标(通常是 `Icon.warning`)。同 {@link ErrorNoteProps.icon}。 */
+	icon?: ReactNode;
 	size?: "sm" | "md";
 	className?: string;
 }) {
+	const base = `border border-bn-warning/40 bg-bn-warning/10 text-bn-warning ${WARN_NOTE_SIZE[size]}`;
+	if (!icon) {
+		return (
+			<div data-bn="note note-warn" className={`${base} ${className ?? ""}`}>
+				{children}
+			</div>
+		);
+	}
 	return (
-		<div
-			data-bn="note note-warn"
-			className={`border border-bn-warning/40 bg-bn-warning/10 text-bn-warning ${WARN_NOTE_SIZE[size]} ${className ?? ""}`}
-		>
-			{children}
+		<div data-bn="note note-warn" className={`${NOTE_WITH_ICON} ${base} ${className ?? ""}`}>
+			<NoteIconSlots icon={icon} size={size}>
+				{children}
+			</NoteIconSlots>
 		</div>
 	);
 }

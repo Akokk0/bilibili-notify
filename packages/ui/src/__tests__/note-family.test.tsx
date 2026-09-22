@@ -74,6 +74,40 @@ describe("提示盒三兄弟共用一套尺寸阶梯", () => {
 		expect(shapeOf(empty ?? null)).toEqual(s);
 	});
 
+	/**
+	 * 带图标的那一副也只该差颜色:此前黄盒没有图标槽,两处调用方各自手摆「图标 + 正文」,
+	 * 间距、对齐量都与红盒不是一回事。比的是**骨架**(排布类 + 两个槽各是什么),不是颜色。
+	 */
+	it("带图标时红盒与黄盒同一副骨架,对齐量随尺寸走", () => {
+		const layout = (el: Element) =>
+			(el as HTMLElement).className.split(/\s+/).filter((t) => /^(flex|items-|gap-)/.test(t));
+		const slots = (el: Element) =>
+			Array.from(el.children).map(
+				(slot) => `${slot.tagName} ${slot.className} ${slot.getAttribute("aria-hidden")}`,
+			);
+		for (const size of ["sm", "md"] as const) {
+			const { container } = render(
+				<>
+					<ErrorNote size={size} icon={<svg data-glyph="err" />}>
+						红
+					</ErrorNote>
+					<WarnNote size={size} icon={<svg data-glyph="warn" />}>
+						黄
+					</WarnNote>
+				</>,
+			);
+			const [err, warn] = Array.from(container.children) as Element[];
+			expect(warn?.querySelector('[data-glyph="warn"]'), `${size}:图标得画出来`).toBeTruthy();
+			expect(warn?.textContent).toBe("黄");
+			expect(layout(warn as Element), size).toEqual(layout(err as Element));
+			expect(slots(warn as Element), size).toEqual(slots(err as Element));
+			cleanup();
+		}
+		// 没给图标就不套 flex 壳,与红盒同一条。
+		const { container } = render(<WarnNote>没图标</WarnNote>);
+		expect((container.firstElementChild as HTMLElement).className).not.toMatch(/\bflex\b/);
+	});
+
 	it("阶梯是单调的 —— 越大档圆角越大,不是随机三套", () => {
 		const { container } = render(
 			<>

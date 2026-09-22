@@ -102,12 +102,9 @@ function configGroupsOf(fields: readonly ExtensionField[]): ConfigGroup[] {
 function RunStateNote({ ext }: { ext: ExtensionDTO }) {
 	if (!ext.enabled) {
 		return (
-			<WarnNote size="sm" className="flex gap-[9px] leading-[1.7]">
-				<Icon.warning size={15} className="mt-px shrink-0" />
-				<div>
-					<strong className="font-bold">拓展关着,它现在什么都不做。</strong>
-					下面的设置照样能改,打开拓展之后生效;连接状态要等它跑起来才看得到。
-				</div>
+			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
+				<strong className="font-bold">拓展关着,它现在什么都不做。</strong>
+				下面的设置照样能改,打开拓展之后生效;连接状态要等它跑起来才看得到。
 			</WarnNote>
 		);
 	}

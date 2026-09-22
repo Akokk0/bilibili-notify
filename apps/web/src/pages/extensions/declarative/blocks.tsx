@@ -99,6 +99,9 @@ export function hasTriStateTable(blocks: readonly ExtensionBlock[] | undefined):
 	);
 }
 
+/** 某一种积木 —— 每种积木的组件收的就是它,字段不再一格格拆成 prop(拆了就得再抄一遍类型)。 */
+type BlockOf<T extends ExtensionBlock["type"]> = Extract<ExtensionBlock, { type: T }>;
+
 function Block({
 	block,
 	extensionId,
@@ -114,29 +117,12 @@ function Block({
 }) {
 	switch (block.type) {
 		case "keyValue":
-			return <KeyValueBlock items={block.items} extensionId={extensionId} />;
+			return <KeyValueBlock block={block} extensionId={extensionId} />;
 		case "table":
-			return (
-				<TableBlock
-					title={block.title}
-					count={block.count}
-					empty={block.empty}
-					columns={block.columns}
-					rows={block.rows}
-					extensionId={extensionId}
-					legend={legend}
-				/>
-			);
+			return <TableBlock block={block} extensionId={extensionId} legend={legend} />;
 		case "notice":
 			return (
-				<NoticeBlock
-					tone={block.tone}
-					text={block.text}
-					button={block.button}
-					extensionId={extensionId}
-					onSet={onSet}
-					disabled={disabled}
-				/>
+				<NoticeBlock block={block} extensionId={extensionId} onSet={onSet} disabled={disabled} />
 			);
 		case "copy":
 			return (
@@ -148,7 +134,7 @@ function Block({
 				/>
 			);
 		case "qr":
-			return <QrBlock image={block.image} caption={block.caption} extensionId={extensionId} />;
+			return <QrBlock block={block} extensionId={extensionId} />;
 		case "button":
 			return (
 				<ButtonBlock button={block} extensionId={extensionId} onSet={onSet} disabled={disabled} />
@@ -188,10 +174,10 @@ function kvColumns(count: number): string {
 }
 
 function KeyValueBlock({
-	items,
+	block: { items },
 	extensionId,
 }: {
-	items: Extract<ExtensionBlock, { type: "keyValue" }>["items"];
+	block: BlockOf<"keyValue">;
 	extensionId: string;
 }) {
 	return (
@@ -248,19 +234,11 @@ function segmentsOf(columns: readonly ExtensionTableColumn[]): RowSegment[] {
 }
 
 function TableBlock({
-	title,
-	count,
-	empty,
-	columns,
-	rows,
+	block: { title, count, empty, columns, rows },
 	extensionId,
 	legend,
 }: {
-	title?: string;
-	count?: boolean;
-	empty?: ExtensionRichText;
-	columns: readonly ExtensionTableColumn[];
-	rows: readonly (readonly unknown[])[];
+	block: BlockOf<"table">;
 	extensionId: string;
 	legend: boolean;
 }) {
@@ -379,16 +357,12 @@ function TableCell({ column, cell }: { column: ExtensionTableColumn; cell: unkno
 // ── notice ──────────────────────────────────────────────────────────────────
 
 function NoticeBlock({
-	tone,
-	text,
-	button,
+	block: { tone, text, button },
 	extensionId,
 	onSet,
 	disabled,
 }: {
-	tone: "info" | "warn" | "error";
-	text: ExtensionRichText;
-	button?: ExtensionButton;
+	block: BlockOf<"notice">;
 	extensionId: string;
 	onSet?: SetHandler;
 	disabled: boolean;
@@ -397,46 +371,38 @@ function NoticeBlock({
 	const trailing = control.node ? (
 		<span className="shrink-0 self-center">{control.node}</span>
 	) : null;
+	/** 带按钮时正文占满、按钮贴右;不带就只有正文。 */
+	const withTrailing = (body: ReactNode) =>
+		trailing ? (
+			<>
+				<div className="min-w-0 flex-1">{body}</div>
+				{trailing}
+			</>
+		) : (
+			body
+		);
 	const note =
 		tone === "info" ? (
 			<HintNote
 				className={trailing ? "flex items-center gap-[9px] leading-[1.65]" : "leading-[1.65]"}
 			>
-				{trailing ? (
-					<>
-						<div className="min-w-0 flex-1">
-							<RichText
-								text={text}
-								extensionId={extensionId}
-								monoClassName="text-bn-text-secondary"
-							/>
-						</div>
-						{trailing}
-					</>
-				) : (
-					<RichText text={text} extensionId={extensionId} monoClassName="text-bn-text-secondary" />
+				{withTrailing(
+					<RichText text={text} extensionId={extensionId} monoClassName="text-bn-text-secondary" />,
 				)}
 			</HintNote>
 		) : tone === "warn" ? (
-			<WarnNote size="sm" className="flex gap-[9px] leading-[1.7]">
-				<Icon.warning size={15} className="mt-px shrink-0" />
-				<div className="min-w-0 flex-1">
-					<RichText text={text} extensionId={extensionId} />
-				</div>
-				{trailing}
-			</WarnNote>
-		) : (
-			<ErrorNote size="sm" className={trailing ? "flex items-center gap-[9px]" : undefined}>
+			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
 				{trailing ? (
-					<>
-						<div className="min-w-0 flex-1">
-							<RichText text={text} extensionId={extensionId} />
-						</div>
-						{trailing}
-					</>
+					<div className="flex gap-[9px]">
+						{withTrailing(<RichText text={text} extensionId={extensionId} />)}
+					</div>
 				) : (
 					<RichText text={text} extensionId={extensionId} />
 				)}
+			</WarnNote>
+		) : (
+			<ErrorNote size="sm" className={trailing ? "flex items-center gap-[9px]" : undefined}>
+				{withTrailing(<RichText text={text} extensionId={extensionId} />)}
 			</ErrorNote>
 		);
 	// 按钮没成的原因摆在提示条**底下**,不塞进提示条肚子里 —— 黄盒里再套一个红盒读不成话。
@@ -489,12 +455,10 @@ function CopyBlock({
 
 /** 与系统页 B 站登录那张二维码卡同一副样子 —— 任何拓展的扫码都该与 BN 自己的长一样。 */
 function QrBlock({
-	image,
-	caption,
+	block: { image, caption },
 	extensionId,
 }: {
-	image: string;
-	caption?: ExtensionRichText;
+	block: BlockOf<"qr">;
 	extensionId: string;
 }) {
 	const src = safeImage(image);

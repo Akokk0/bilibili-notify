@@ -40,7 +40,7 @@
 | `Input` | 带可选前置 icon 的单行输入框 |
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
 | `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法。恒 `role="alert"`(21 个调用点无一例外都是「出错了才渲染」)。可选 `icon` 左槽;`size` 三档**是三种位置**不是口味:`sm` 密集卡片内(UpCard 整卡只有 10~11px)、`md` 默认给表单面板、`lg` 给消息流里的横幅(AI 聊天正文 13px)。外边距走 `className`。自带 `data-bn="note note-danger"` |
-| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);**行高与外边距走 `className`**。自带 `data-bn="note note-warn"` |
+| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);可选 `icon` 左槽**与 `ErrorNote` 同一份**(排布、对齐量、正文槽占满余宽都共用 —— 往正文里放「一句话 + 贴右的按钮」那一行,按钮才贴得到右边),**别再手摆「图标 + 正文」**;**行高与外边距走 `className`**。自带 `data-bn="note note-warn"` |
 | `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂。自带 `data-bn="note note-empty"`(**虚线是它的语义**,皮肤那头的 NOTES 也这么嘱咐) |
 | `HintNote` | 「顺带说一句」低调旁注盒:虚线 + 软底 + 小字,不打断主流程(实线红盒是「出事了」,虚线是「旁白 / 引用落了空」)。三档 `tone`:`neutral` 中性说明 / `success` 报喜旁注(预览用的是真实数据)/ `danger` 警示旁注(引用的字体 / 推送目标已失效)。形状钉死家族 `sm` 档不设尺寸;底走**实色** soft token(`/60` 纱在壁纸皮肤下隐形);布局(flex 行)与外边距走 `className`。danger 档自带 `data-bn="note note-danger"`(对皮肤与红盒同档),其余只挂 `note` |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |

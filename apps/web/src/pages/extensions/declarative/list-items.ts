@@ -1,4 +1,5 @@
 import type { ExtensionListField, ExtensionScalarField } from "@bilibili-notify/contract";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/constants";
 import { ApiError } from "../../../services/api";
 import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
@@ -14,15 +15,6 @@ import { safeImage } from "./image";
  * 读那份设置、拆写回失败的 400 这两件设置表单也要,也住这里(`extensionSettingsOf` /
  * `settingsIssuesOf`)—— 两处各写一份的话,同一份设置在两处读出两种样子。
  */
-
-/**
- * 项里保留给 BN 的键 —— 项的身份,由 BN 生成、藏起来、不许改(决策 29)。
- *
- * 与 internal 的 `LIST_ITEM_ID_KEY` 是同一个词,却只能在这里再写一份:那个常量住在带 zod 的
- * 清单 schema 里,只从根入口导出,而 web 从根入口拿值会把整个 zod 拖进 bundle(见
- * `internal-entry-conformance.test.ts`)。
- */
-export const LIST_ITEM_ID = "id";
 
 /**
  * 列表的一项 —— 存着的**原样**对象。
@@ -62,7 +54,7 @@ export function itemsOf(settings: Readonly<Record<string, unknown>>, key: string
 	const items: ListItem[] = [];
 	for (const entry of raw) {
 		if (!isRecord(entry)) continue;
-		const id = entry[LIST_ITEM_ID];
+		const id = entry[LIST_ITEM_ID_KEY];
 		if (typeof id !== "string" || id === "" || seen.has(id)) continue;
 		seen.add(id);
 		items.push(entry as ListItem);

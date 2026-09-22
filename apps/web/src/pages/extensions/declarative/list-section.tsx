@@ -5,6 +5,7 @@ import type {
 	ExtensionScalarField,
 	ExtensionTone,
 } from "@bilibili-notify/contract";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ConfirmDialog,
@@ -38,7 +39,6 @@ import {
 	isRecord,
 	itemLabelOf,
 	itemsOf,
-	LIST_ITEM_ID,
 	type ListItem,
 	markOf,
 	plainValueOf,
@@ -293,7 +293,7 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 						save.mutate([
 							...items,
 							{
-								[LIST_ITEM_ID]: newId(),
+								[LIST_ITEM_ID_KEY]: newId(),
 								...values,
 								...(field.toggle !== undefined ? { [field.toggle]: toggleDefaultOf(field) } : {}),
 							},
