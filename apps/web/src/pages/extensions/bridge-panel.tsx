@@ -1,4 +1,3 @@
-import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import {
 	Btn,
 	ConfirmDialog,
@@ -11,27 +10,37 @@ import {
 	ModalShell,
 	Pill,
 	PlatformIcon,
-	SELECTED_LANGUAGE,
 	StatusDot,
 	usePlatformMeta,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { useState } from "react";
 import { TInput } from "../../components/forms";
 import { api } from "../../services/api";
 import { newId } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { copyToClipboard } from "../../utils/clipboard";
 import { relativeTime } from "../up/helpers";
 import { BRIDGE_KIND_LOGOS } from "./bridge-logos";
+import { type BridgeBotView, type BridgeSessionView, useBridgeStatus } from "./bridge-status";
+import { extensionAddress } from "./declarative/address";
 import {
-	type BridgeBotView,
-	type BridgeSessionView,
-	type CapabilityState,
-	useBridgeStatus,
-} from "./bridge-status";
+	CopyControl,
+	KindMark,
+	MonoChip,
+	OptionCard,
+	TriStateChip,
+	TriStateLegend,
+} from "./declarative/parts";
+import { maskSecret, newHexSecret } from "./declarative/secret";
+import { extensionStatusKey } from "./declarative/view-query";
 import { reasonOf, SectionCaption } from "./shared";
+
+/**
+ * 遮法与生成器搬去了 `declarative/secret.ts`(声明式设置项的 `secret` / `generate` 用的是同一份);
+ * 老名字留着给还在按它找的人。
+ */
+export { maskSecret as maskToken } from "./declarative/secret";
 
 /**
  * 桥接拓展那一页的正文:接入的增删改 + 每条接入现在什么样。
@@ -76,68 +85,6 @@ const CAPABILITIES: ReadonlyArray<{ code: string; label: string }> = [
 
 // ── 小件 ────────────────────────────────────────────────────────────────────
 
-/** 中性灰的「12% 底 + 同色字」—— 设计稿上所有「哪一种」方块与「哪一种」徽章都是这一档。 */
-const MUTED_TINT: CSSProperties = {
-	background: "color-mix(in srgb, var(--color-bn-inactive) 12%, transparent)",
-	color: "var(--color-bn-inactive)",
-};
-
-/** 三档尺寸各自的形状:方块大小 / 圆角 / 字号。尺寸是**几何量**,不进皮肤词表。 */
-const KIND_MARK_SHAPE: Record<26 | 28 | 32, string> = {
-	26: "size-[26px] rounded-md text-bn-xs",
-	28: "size-7 rounded-md text-bn-sm",
-	32: "size-8 rounded-bn-sm text-bn-base",
-};
-
-/**
- * 「哪一种」那枚方块:灰底,里面是 logo 或两个字母。接入卡左上(32)、bot 行(26)、
- * 新建弹窗里的选项(28)三处同一件,尺寸不同。
- *
- * 走中性灰而不是语义色:种类**不是状态**,给它一档语义色的话,卡上真正的状态(连没连上)
- * 就得跟它抢注意力。
- *
- * `logo` 是一个 data URL(两种桥的 logo 写死在 `bridge-logos.ts`;bot 的平台图标由桥随 bot
- * 报上来,协议 §5.2),走 `<img>` —— 不跑脚本、拉不进外部资源,不用过白名单。`glyph` 是
- * 库里已有的图标(BN 自己认得的平台)。都没有才印字母。
- */
-function KindMark({
-	text,
-	size,
-	label,
-	logo,
-	glyph,
-	style,
-}: {
-	text: string;
-	size: 26 | 28 | 32;
-	label?: string;
-	logo?: string;
-	glyph?: ReactNode;
-	style?: CSSProperties;
-}) {
-	const className = `grid shrink-0 place-items-center font-bold lowercase ${KIND_MARK_SHAPE[size]}`;
-	const tint = style ?? MUTED_TINT;
-	// logo 占方块的六成出头 —— 与 GlassBox 图标芯片里 17/32 那个比例一档
-	const inner = Math.round(size * 0.62);
-	const body = logo ? (
-		<img src={logo} alt="" draggable={false} style={{ width: inner, height: inner }} />
-	) : glyph ? (
-		glyph
-	) : (
-		text.slice(0, 2)
-	);
-	// 有名字的是一枚「图」(读屏器念 label);没名字的是旁边那行字的装饰,读屏器跳过。
-	return label ? (
-		<span role="img" aria-label={label} className={className} style={tint}>
-			{body}
-		</span>
-	) : (
-		<span aria-hidden="true" className={className} style={tint}>
-			{body}
-		</span>
-	);
-}
-
 /**
  * bot 行左边那枚:**桥给的图标 → BN 自己认得的平台图标 → 平台名头两个字母**。
  *
@@ -157,119 +104,7 @@ function BotMark({ bot }: { bot: BridgeBotView }) {
 	);
 }
 
-/** 等宽小字的那种底 —— 地址、token 都装在这里面。 */
-function MonoChip({ children, className }: { children: string; className?: string }) {
-	return (
-		<span
-			className={`rounded-bn-xs bg-bn-surface-muted px-[7px] py-[3px] font-mono text-bn-xs text-bn-text-secondary ${className ?? ""}`}
-		>
-			{children}
-		</span>
-	);
-}
-
-// ── 能力三态 ─────────────────────────────────────────────────────────────────
-
-/**
- * 三态各自的说法与画法。
- *
- * 🔴 **「不支持」与「还不知道」不许并成一档**(ADR-0009 决策 10):前者是结论,后者是
- * 「试试看,可能行」—— 桥对没见过的平台会真的不知道。混成一个记号,主人会以为那条
- * 平台永远做不到,于是再也不试。
- *
- * 🔴 **也不许拿删除线画「不支持」**:删除线在这套界面里说的是「作废 / 坏了」。
- * 2026-09-10 主人正是对着一排划掉的能力说「肯定有问题」—— 那张表其实完全正常。
- * 三档靠**形状**分(实心打勾 / 空心一横 / 虚线空圈),颜色只是第二条通道 ——
- * 色觉差异与截图压缩吃得掉颜色,吃不掉形状。
- */
-const CAPABILITY_STATE: Record<CapabilityState, { text: string; mark: string; label: string }> = {
-	supported: {
-		text: "支持",
-		mark: "bg-bn-success text-bn-on-solid",
-		label: "text-bn-text-secondary",
-	},
-	unsupported: {
-		text: "不支持",
-		mark: "border-[1.5px] border-bn-text-disabled",
-		label: "text-bn-inactive",
-	},
-	unknown: {
-		text: "还不知道",
-		mark: "border-[1.5px] border-dashed border-bn-text-tertiary",
-		label: "text-bn-text-tertiary",
-	},
-};
-
-/**
- * 那颗记号本身。**图例与正文共用这一个** —— 各画各的话,图例迟早对不上它要解释的东西,
- * 而一份对不上的图例比没有图例更糟。
- */
-function CapabilityMark({ state, size = 14 }: { state: CapabilityState; size?: number }) {
-	return (
-		<span
-			data-cap-mark={state}
-			className={`grid shrink-0 place-items-center rounded-full ${CAPABILITY_STATE[state].mark}`}
-			// 记号是正圆,尺寸是几何量 —— 这两样留在行内,皮肤掰不坏。
-			style={{ width: size, height: size }}
-		>
-			{state === "supported" ? <Icon.check size={Math.round(size * 0.64)} /> : null}
-			{/* 「一横」是**空心圈里的减号** —— 与虚线空圈拉开距离靠的就是它。 */}
-			{state === "unsupported" ? (
-				<span className="h-px w-1.5 rounded-full bg-bn-text-disabled" />
-			) : null}
-		</span>
-	);
-}
-
-function CapabilityChip({ label, state }: { label: string; state: CapabilityState }) {
-	const meta = CAPABILITY_STATE[state];
-	return (
-		<span
-			// 三态在形状与颜色之外**还有一层字面说明** —— 读屏器与鼠标悬停都够得着。
-			title={`${label}:${meta.text}`}
-			className="inline-flex items-center gap-[5px] whitespace-nowrap text-bn-xs leading-[14px]"
-		>
-			<CapabilityMark state={state} />
-			<span className={meta.label}>{label}</span>
-		</span>
-	);
-}
-
-/**
- * 图例。**它不是装饰**:三个记号里有两个是空心圈,不告诉人哪个是哪个,就只能猜 ——
- * 2026-09-10 主人就是这么猜错的(把一张正常的能力表读成了故障)。
- */
-function CapabilityLegend() {
-	return (
-		<ul
-			aria-label="能力图例"
-			className="flex list-none items-center gap-3 p-0 text-bn-2xs text-bn-text-tertiary"
-		>
-			{(Object.keys(CAPABILITY_STATE) as CapabilityState[]).map((state) => (
-				<li key={state} className="flex items-center gap-[5px]">
-					<CapabilityMark state={state} size={12} />
-					{CAPABILITY_STATE[state].text}
-				</li>
-			))}
-		</ul>
-	);
-}
-
 // ── token 与地址 ─────────────────────────────────────────────────────────────
-
-/**
- * 一把新钥匙。**128 位随机**,前端现生成 —— token 只需要「两边一样」,不需要服务端参与
- * (ADR-0009)。而那条 WS 端点**刻意在 dashboard 鉴权之外**,所以这把钥匙的随机性
- * 就是它唯一的防线。
- *
- * 与 `newId()` 同一个理由不用 `crypto.randomUUID()`:那个只在 secure context 里有,
- * 而独立端常经 `http://<内网 IP>:8787` 访问。
- */
-export function newBridgeToken(): string {
-	const bytes = new Uint8Array(16);
-	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /** 设置里那份接入名单。形状不对的条目跳过 —— 面板不替拓展猜形状,也别因为一条坏的整页白屏。 */
 function linksOf(settings: unknown): BridgeLink[] {
@@ -294,78 +129,13 @@ function linksOf(settings: unknown): BridgeLink[] {
 }
 
 /**
- * 屏幕上只留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏。
- *
- * 🔴 **短的整段打点**:头四尾四加起来是八位,token 只有八位或更短时这两截拼起来就是
- * 全文(四位的甚至原样印两遍)。我们自己生成的是 32 位,但手填的、从别处迁来的不是 ——
- * 分不出谁是谁只是不方便,把钥匙印在屏幕上是把那条 WS 端点的唯一防线交出去。
- */
-export function maskToken(token: string): string {
-	if (token.length <= 8) return "•".repeat(Math.max(4, token.length));
-	return `${token.slice(0, 4)}${"•".repeat(Math.max(4, token.length - 8))}${token.slice(-4)}`;
-}
-
-/**
- * 插件那头要填的 BN 地址 —— **面板不给,主人只能去翻文档**。
- *
- * 从浏览器地址栏现算:主人此刻正是**经这个地址**看着这一页,所以它至少是一条通到 BN 的
- * 真路。服务端算不了这件事(它只知道自己绑在哪个口上,不知道外面怎么访问得到它),
- * 而写死 `127.0.0.1` 是最坏的那个答案 —— 桥常在另一台机器上。
- */
-function bnBridgeAddress(extensionId: string): string {
-	const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-	return `${scheme}://${window.location.host}${EXTENSION_MOUNT_PREFIX}/${extensionId}`;
-}
-
-/**
- * 「复制」那一颗。两档外壳同一件事:`iconOnly` 是塞在一行字里的方钮(地址行、弹窗里
- * 那两格),不填是接入卡 token 行上那颗带字的。
- *
- * 🔴 走 `copyToClipboard` 而不是裸 `navigator.clipboard`:BN 常经
- * `http://<内网 IP>:8787` 打开,那是**非安全上下文**,`navigator.clipboard` 根本不存在 ——
- * 裸写法在那里按下去静默无事,而这一页恰恰最常从内网 IP 打开。两档各写一份的话,
- * 这条只会被记起一半。
- */
-function CopyControl({
-	label,
-	text,
-	iconOnly = false,
-}: {
-	label: string;
-	text: string;
-	iconOnly?: boolean;
-}) {
-	const [copied, setCopied] = useState(false);
-	const icon = copied ? <Icon.check size={13} /> : <Icon.copy size={13} />;
-	const copy = () => {
-		void copyToClipboard(text).then(setCopied);
-	};
-	// 图标钮没文字,「已复制」只能进 label;带字那颗的 label 得稳住(读屏器按它找钮)。
-	if (iconOnly) {
-		return (
-			<IconButton
-				label={copied ? `${label}(已复制)` : label}
-				icon={icon}
-				size="sm"
-				onClick={copy}
-			/>
-		);
-	}
-	return (
-		<Btn variant="ghost" size="sm" aria-label={label} icon={icon} onClick={copy}>
-			{copied ? "已复制" : "复制"}
-		</Btn>
-	);
-}
-
-/**
  * 头卡正文那一行:BN 地址 + 复制 | 该填哪个地址。
  *
  * 只留「填哪个地址」这一句。401 / 连不上那两句在**「没连上」那张卡**上 ——
  * 那才是它们真正被需要的时刻,摆在这儿等于人人都要先读一遍排错说明。
  */
 export function BridgeAddressRow({ extensionId }: { extensionId: string }) {
-	const address = bnBridgeAddress(extensionId);
+	const address = extensionAddress(extensionId);
 	return (
 		<div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-0.5">
 			<div className="flex items-center gap-[7px] text-bn-xs text-bn-text-secondary">
@@ -428,7 +198,7 @@ function TokenRow({
 	return (
 		<div data-token-row className="flex flex-wrap items-center gap-2.5">
 			<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">token</span>
-			<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">{maskToken(token)}</MonoChip>
+			<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">{maskSecret(token)}</MonoChip>
 			<CopyControl label={`复制 ${linkName} 的 token`} text={token} />
 			<Btn
 				variant="danger-outline"
@@ -470,7 +240,7 @@ function BotRow({ bot }: { bot: BridgeBotView }) {
 			</div>
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
 				{CAPABILITIES.map((cap) => (
-					<CapabilityChip
+					<TriStateChip
 						key={cap.code}
 						label={cap.label}
 						// 桥少报的那些按「还不知道」算 —— 缺席不是「不支持」。
@@ -801,7 +571,7 @@ function AddLinkDialog({
 }) {
 	const [name, setName] = useState("");
 	const [bridgeKind, setBridgeKind] = useState("koishi");
-	const [token, setToken] = useState(newBridgeToken);
+	const [token, setToken] = useState(newHexSecret);
 	return (
 		<ModalShell
 			width={540}
@@ -814,41 +584,16 @@ function AddLinkDialog({
 				<div>
 					<FieldLabel>哪一种桥</FieldLabel>
 					<div className="grid grid-cols-2 gap-2.5">
-						{BRIDGE_KINDS.map((kind) => {
-							const active = kind.value === bridgeKind;
-							return (
-								<button
-									key={kind.value}
-									type="button"
-									aria-pressed={active}
-									// 与备份页的 ChoiceCard 同一种东西:一张可选的卡,不是按钮 —— 挂 option
-									data-bn={active ? "option option-active" : "option"}
-									onClick={() => setBridgeKind(kind.value)}
-									className={`flex items-center gap-2.5 rounded-lg border px-3 py-[11px] text-left transition ${
-										active
-											? SELECTED_LANGUAGE
-											: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-text-tertiary"
-									}`}
-								>
-									<KindMark
-										text={kind.value}
-										size={28}
-										logo={BRIDGE_KIND_LOGOS[kind.value]}
-										style={
-											active
-												? {
-														background: "color-mix(in srgb, var(--color-bn-pink) 16%, transparent)",
-														color: "var(--color-bn-pink)",
-													}
-												: undefined
-										}
-									/>
-									<span className={`text-bn-sm font-bold ${active ? "text-bn-text-primary" : ""}`}>
-										{kind.label}
-									</span>
-								</button>
-							);
-						})}
+						{BRIDGE_KINDS.map((kind) => (
+							<OptionCard
+								key={kind.value}
+								active={kind.value === bridgeKind}
+								label={kind.label}
+								mark={kind.value}
+								logo={BRIDGE_KIND_LOGOS[kind.value]}
+								onSelect={() => setBridgeKind(kind.value)}
+							/>
+						))}
 					</div>
 					<div className="mt-[7px] text-bn-2xs text-bn-text-tertiary">
 						只影响面板怎么称呼它。两种桥说的是同一套协议,BN 这边的处理完全相同。
@@ -879,7 +624,7 @@ function AddLinkDialog({
 							label="重新生成 token"
 							icon={<Icon.refresh size={13} />}
 							size="sm"
-							onClick={() => setToken(newBridgeToken())}
+							onClick={() => setToken(newHexSecret())}
 						/>
 					</div>
 					<div className="mt-[7px] text-bn-2xs text-bn-text-tertiary">
@@ -961,7 +706,7 @@ export function BridgeConnections({
 	const [adding, setAdding] = useState(false);
 	/** 两件事共用底下那**一个**确认框 —— 谁在等,由它说了算。 */
 	const [confirming, setConfirming] = useState<Confirming | null>(null);
-	const address = bnBridgeAddress(extensionId);
+	const address = extensionAddress(extensionId);
 
 	// 接入名单住桥自己的设置里(`globals.extensions.<id>.settings`)。与拓展表分开取:
 	// 拓展没跑起来时它照样在,「配了但没连上」那张卡正是要看见的。
@@ -974,7 +719,7 @@ export function BridgeConnections({
 
 	const refresh = () => {
 		void qc.invalidateQueries({ queryKey: ["globals"] });
-		void qc.invalidateQueries({ queryKey: ["extension-status", extensionId] });
+		void qc.invalidateQueries({ queryKey: extensionStatusKey(extensionId) });
 	};
 
 	/**
@@ -1038,7 +783,7 @@ export function BridgeConnections({
 			errorLead: "换不了钥匙",
 			label: "重新生成",
 			busyLabel: "重新生成中…",
-			run: (link) => update(link.id, { token: newBridgeToken() }),
+			run: (link) => update(link.id, { token: newHexSecret() }),
 		},
 	};
 	const confirmation = confirming ? CONFIRMS[confirming.kind] : null;
@@ -1065,7 +810,7 @@ export function BridgeConnections({
 				setConfirming({ kind: "regenerate", link });
 				return;
 			}
-			update(id, { token: newBridgeToken() });
+			update(id, { token: newHexSecret() });
 		},
 		remove: (id) => {
 			const link = linkOf(id);
@@ -1084,7 +829,7 @@ export function BridgeConnections({
 				<div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-2">
 					<SectionCaption>桥接入</SectionCaption>
 					<span className="h-px min-w-4 flex-1 bg-bn-border-subtle" />
-					<CapabilityLegend />
+					<TriStateLegend />
 					<Btn
 						size="sm"
 						disabled={busy}

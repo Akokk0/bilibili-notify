@@ -12,15 +12,25 @@
  */
 
 /**
- * 拓展的设置项 / 外观 / bot 视图 —— 本体住 `@bilibili-notify/extension`(拓展与宿主都要认),
- * 这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
+ * 拓展的设置项 / 外观 / bot 视图 / 状态视图(积木)—— 本体住 `@bilibili-notify/extension`
+ * (拓展与宿主都要认),这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
  */
 export type {
+	ExtensionBlock,
 	ExtensionBotView,
+	ExtensionButton,
 	ExtensionDisplay,
 	ExtensionField,
+	ExtensionItemView,
+	ExtensionListField,
 	ExtensionPushView,
+	ExtensionRichRun,
+	ExtensionRichText,
 	ExtensionScalarField,
+	ExtensionTableCell,
+	ExtensionTableColumn,
+	ExtensionTone,
+	ExtensionView,
 } from "@bilibili-notify/extension/wire";
 export * from "./card-skin";
 export * from "./devtools";

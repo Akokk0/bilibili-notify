@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
+import { extensionStatusKey } from "./declarative/view-query";
 
 /**
  * 桥接拓展交上来的活口状态 —— `/api/ext/bridge/status` 那份 JSON 在面板这头长什么样。
@@ -50,7 +51,7 @@ export interface BridgeStatusView {
  */
 export function useBridgeStatus(extensionId: string, enabled: boolean) {
 	return useQuery({
-		queryKey: ["extension-status", extensionId],
+		queryKey: extensionStatusKey(extensionId),
 		queryFn: () => api.get<BridgeStatusView>(`/api/ext/${extensionId}/status`),
 		retry: false,
 		enabled,

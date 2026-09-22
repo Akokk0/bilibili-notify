@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { onlineBotCount, useBridgeStatus } from "./extensions/bridge-status";
+import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
 import { EXT_CARD_ANCHOR, InstallFlight } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
@@ -43,7 +44,8 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条连接 · N 个 bot 在线」+ 右下「管理 ›」。
  *
  * 这一页**不认得任何具体拓展**(ADR-0012),唯一的例外是那句「N 个 bot 在线」——
- * 它读的是桥交上来的活口状态,形状只有桥有(见 `bridge-status.ts` 顶上那段)。
+ * 它读的是桥交上来的活口状态,形状只有桥有(见 `bridge-status.ts` 顶上那段)。v2 拓展的那一行
+ * 由它自己的视图交(`summary`,ADR-0019 决策 25),桥迁过去之后这个例外就没了。
  */
 
 /**
@@ -153,6 +155,7 @@ function ExtensionCard({
 }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	const pushes = (ext.provides ?? []).includes("push");
+	const declarative = ext.apiVersion === 2;
 	return (
 		<GlassBox
 			className="h-full"
@@ -185,8 +188,12 @@ function ExtensionCard({
 				{pushes ? (
 					<div className="flex items-center gap-3.5 pt-0.5">
 						<ConnectionCount count={count} />
-						{ext.id === "bridge" ? <BridgeLiveCount ext={ext} /> : null}
+						{ext.id === "bridge" && !declarative ? <BridgeLiveCount ext={ext} /> : null}
+						{declarative ? <ExtensionSummary ext={ext} divider /> : null}
 					</div>
+				) : declarative ? (
+					// 订阅源没有「N 条连接」那一行,它的 summary 自己撑起一行。
+					<ExtensionSummary ext={ext} standalone />
 				) : null}
 				{/* 详情页是拓展自己那块面板的唯一去处;叫「管理」—— 进去是要动手改东西的。 */}
 				<div className="mt-auto flex justify-end">

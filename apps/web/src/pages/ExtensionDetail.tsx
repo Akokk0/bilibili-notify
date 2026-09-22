@@ -16,6 +16,11 @@ import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { BridgeAddressRow, BridgeConnections } from "./extensions/bridge-panel";
 import {
+	DeclarativeConfig,
+	DeclarativeHead,
+	settingsFieldsOf,
+} from "./extensions/declarative/extension-page";
+import {
 	EXTENSION_DOC_LABEL,
 	type ExtensionDocKind,
 	ExtensionDocPane,
@@ -37,9 +42,9 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * `/extensions/:id` —— 一个拓展自己那一页。版式照设计稿 V1 的「BridgeDetail」:面包屑、
  * 一张头卡、然后是拓展自己那一节 —— **页面级的兄弟节点**,不套在头卡肚子里。
  *
- * 头卡是**通用的**(名字 / 图标 / 说明 / 状态 / 开关,全来自清单);正文是拓展自己交上来的
- * 面板数据,而它的形状 ADR-0012 决策 36 **刻意没约束** —— 所以眼下按 id 分岔,只有桥有。
- * 等第二个拓展也要面板时,再从两个真实例子里抽形状。
+ * 头卡是**通用的**(名字 / 图标 / 说明 / 状态 / 开关,全来自清单);正文按**契约档位**分岔
+ * (ADR-0019 决策 18 / 19):v2 照声明画 —— 头卡里是视图的页级积木,「配置」里是照清单画的
+ * 设置;v1 只剩桥,那一页是手写的,迁过去之前一格不动。
  *
  * 开关也摆在这儿:点进来正是为了摆弄它,只能回列表去拨的话这一页就是块只读展板。
  *
@@ -104,13 +109,15 @@ export default function ExtensionDetail() {
 	}
 
 	const meta = EXTENSION_STATE_META[ext.state];
-	const isBridge = id === "bridge";
+	// 按档位分,不按 id:桥迁到 v2 之后还叫 bridge,那时它就该走照声明画的那一页。
+	const declarative = ext.apiVersion === 2;
+	const isBridge = id === "bridge" && !declarative;
 	/*
-	 * 没交面板的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟;头卡里那句
-	 * 「这个拓展没有交上来自己的面板」已经把话说清了。所以一个既没面板又没文档的拓展
-	 * 这里一档都没有,正文整块不画。
+	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。v1 只有桥有;v2 看
+	 * 清单里有没有设置项(决策 25)。所以一个既没面板又没文档的拓展这里一档都没有,正文整块不画。
 	 */
-	const tabs: DetailTab[] = [...(isBridge ? (["config"] as const) : []), ...docs.kinds];
+	const hasConfig = isBridge || (declarative && settingsFieldsOf(ext).length > 0);
+	const tabs: DetailTab[] = [...(hasConfig ? (["config"] as const) : []), ...docs.kinds];
 	/* 选中项每次都从「现在有哪几档」里挑:重取之后那一档可能没了,停在空档上就是一整块白。 */
 	const tab: DetailTab | null =
 		tabs.length === 0 ? null : picked && tabs.includes(picked) ? picked : tabs[0];
@@ -154,6 +161,8 @@ export default function ExtensionDetail() {
 					<ExtensionStateDetail ext={ext} />
 					{isBridge ? (
 						<BridgeAddressRow extensionId={id} />
+					) : declarative ? (
+						<DeclarativeHead ext={ext} />
 					) : (
 						<p className={PARAGRAPH_CLS}>
 							{ext.version ? `v${ext.version} · ` : ""}
@@ -165,6 +174,8 @@ export default function ExtensionDetail() {
 				{/* 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。 */}
 				<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3">
 					<span className="text-bn-2xs text-bn-text-tertiary">
+						{/* v2 头卡正文让给了积木,版本号挪到这一句的开头(决策 24 的五处之一)。 */}
+						{declarative && ext.version ? `v${ext.version} · ` : ""}
 						卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。
 					</span>
 					<Btn
@@ -194,7 +205,11 @@ export default function ExtensionDetail() {
 			{docs.failure ? <ExtensionDocsFailureNote failure={docs.failure} /> : null}
 
 			{tab === "config" ? (
-				<BridgeConnections extensionId={id} enabled={ext.enabled} />
+				declarative ? (
+					<DeclarativeConfig ext={ext} />
+				) : (
+					<BridgeConnections extensionId={id} enabled={ext.enabled} />
+				)
 			) : tab ? (
 				<ExtensionDocPane kind={tab} text={docs.text[tab] as string} />
 			) : null}
