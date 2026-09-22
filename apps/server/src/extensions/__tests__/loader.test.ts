@@ -906,6 +906,52 @@ describe("换了代码(等着换上)", () => {
 		await expect(loaded.swap("nobody")).rejects.toThrow();
 		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
 	});
+
+	/**
+	 * 🔴 **跑着的那一行标上「等着换上」之后,下一次起它用的是盘上那份清单。** 名单里留着旧记录的
+	 * 话,拨一下开关就是「盘上的代码配旧清单」—— 正是决策 47 要防的那一下,只是换了个方向。
+	 */
+	it("跑着时盘上换了、再拨关拨开 → 那一行说的是盘上那一版", async () => {
+		await plant("bridge", says("旧的"));
+		let on = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => on,
+		});
+		await plant("bridge", says("新的"), { version: "1.1.0" });
+		await loaded.rescan();
+
+		on = false;
+		await loaded.sync();
+		expect(loaded.list()[0]?.manifest?.version).toBe("1.1.0");
+
+		on = true;
+		await loaded.sync();
+		expect(loaded.list()[0]).toMatchObject({ state: "staged", staged: { version: "1.1.0" } });
+	});
+
+	it("换上新的之后又装回旧的、再拨关拨开 → 旧代码配旧清单,不配刚才那份新清单", async () => {
+		await plant("bridge", says("旧的"));
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		let on = true;
+		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+		await loaded.swap("bridge");
+		await plant("bridge", says("旧的"));
+		await loaded.rescan();
+
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+
+		expect(await body()).toBe("旧的");
+		expect(loaded.list()[0]).toMatchObject({ state: "running", manifest: { version: "1.0.0" } });
+		expect(loaded.list()[0]?.staged).toBeUndefined();
+	});
 });
 
 /**

@@ -229,9 +229,13 @@ async function fingerprintOf(entry: string): Promise<string | undefined> {
 	}
 }
 
-/** 名单里一条记录的样子(清单 + 入口指纹)—— 重扫拿它判「盘上换过没有」。 */
+/** 一条记录的样子(入口指纹 + 清单)—— 重扫拿它判「盘上换过没有」。 */
+function recordOf(print: string | undefined, manifest: ExtensionManifest): string {
+	return `${print}\n${JSON.stringify(manifest)}`;
+}
+
 async function recordPrint(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<string> {
-	return `${await fingerprintOf(dir.entry)}\n${JSON.stringify(dir.manifest)}`;
+	return recordOf(await fingerprintOf(dir.entry), dir.manifest);
 }
 
 /**
@@ -293,8 +297,15 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 炸的那一下。
 	 */
 	const imported = new Map<string, Map<string, string>>();
-	/** 跑着的那份是哪一份代码(入口指纹)。 */
-	const runningPrint = new Map<string, string | undefined>();
+	/**
+	 * **跑着的那一份**的记录(入口指纹 + 清单,见 {@link recordOf})—— 与 `listed` 分开记:
+	 * `listed` / `ready` 永远跟着**盘上**走(下一次起它用的就是那份),这一格只管「跑着的是哪份」,
+	 * 重扫拿盘上那份与它比,不同就标「等着换上」。
+	 *
+	 * 🔴 合成一格的话,跑着的标上 `staged` 之后名单里还是旧清单 —— 拨一下开关就拿盘上的代码配旧
+	 * 清单起,正是决策 47 要防的那一下。
+	 */
+	const runningRecord = new Map<string, string>();
 
 	/**
 	 * 这一份代码该拿哪个 URL import。
@@ -382,7 +393,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			await mod.activate(runtime.ctx);
 			markLoadSucceeded({ root: ledgerRoot, id, version: manifest.version });
 			runtimes.set(id, runtime);
-			runningPrint.set(id, print);
+			runningRecord.set(id, recordOf(print, manifest));
 			entries.set(id, { ...at, state: "running", manifest });
 			// 带上代码指纹:「现在跑的是哪一份」一眼对得上盘上那份;软链那份把落点也印出来 ——
 			// 开发版跑的其实是仓里的工作树,「我改的那个到底跑没跑」不必再查一遍。
@@ -401,7 +412,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	async function stop(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
 		const runtime = runtimes.get(dir.id);
 		runtimes.delete(dir.id);
-		runningPrint.delete(dir.id);
+		runningRecord.delete(dir.id);
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		await runtime?.dispose();
 		if (runtime) host.logger.info(`[ext] ${dir.id} 已停下`);
@@ -457,9 +468,14 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const entry = entries.get(id);
 		if (runtimes.has(id)) {
 			if (!entry) return;
+			// 下一次起它(拨开关、只重载)用盘上这份,不是跑着那份的旧记录。
+			if (dir.state === "ready" && print !== undefined) {
+				ready.set(id, dir);
+				listed.set(id, print);
+			}
 			// 盘上又换回了跑着的那一份,或者盘上那份读不出来(没有新版可换):那句「等着换上」撤掉。
 			const next =
-				dir.state === "ready" && print !== listed.get(id)
+				dir.state === "ready" && print !== runningRecord.get(id)
 					? { ...entry, staged: { version: dir.manifest.version } }
 					: withoutStaged(entry);
 			// 每次重扫都会走到这儿(装别的拓展也扫):只在头一回标上 / 换了一版时记。
