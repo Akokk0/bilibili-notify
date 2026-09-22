@@ -28,8 +28,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { api } from "../../services/api";
+import { useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
-import type { InstallFlight } from "./install-flight";
 import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
 export function useMarketplace() {
@@ -62,10 +62,11 @@ export function useMarketplaceInstall() {
 	const [action, setAction] = useState<"install" | "update">("install");
 	/*
 	 * 起飞位置要在**点下去那一刻**量:装成之后市场那张卡当场消失(已装的不在市场里露面),
-	 * 那时再量就没得量了。装成才把它变成一次传送交出去,失败不飞。
+	 * 那时再量就没得量了。装成才把它变成一段动画交出去(装 = 传送,更新 = 换装),失败不演。
+	 * 放在 ref 里而不是 state:成功回调读的是按下那一刻记下的,不是回调闭包里那一帧的。
 	 */
-	const from = useRef<DOMRect | null>(null);
-	const [flight, setFlight] = useState<InstallFlight | null>(null);
+	const launch = useRef<{ kind: "install" | "update"; from?: DOMRect } | null>(null);
+	const play = useCardMotionStore((state) => state.play);
 	const install = useMutation({
 		mutationFn: (input: { source: string; id: string }) =>
 			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
@@ -75,8 +76,11 @@ export function useMarketplaceInstall() {
 		},
 		onSuccess: (res) => {
 			setDone(res);
-			if (from.current) setFlight({ id: res.id, from: from.current });
-			from.current = null;
+			const pending = launch.current;
+			launch.current = null;
+			// 装的传送非得有起点(从市场那张卡飞过来);换装没有起点也演 —— 球从卡片上方落下。
+			if (pending?.kind === "update") play({ kind: "update", id: res.id, from: pending.from });
+			else if (pending?.from) play({ kind: "install", id: res.id, from: pending.from });
 			void qc.invalidateQueries({ queryKey: ["extensions"] });
 			void qc.invalidateQueries({ queryKey: ["marketplace"] });
 		},
@@ -84,8 +88,9 @@ export function useMarketplaceInstall() {
 	});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
 	const start = (entry: MarketplaceEntryDTO, fromRect?: DOMRect) => {
-		setAction(entry.state === "updatable" ? "update" : "install");
-		from.current = fromRect ?? null;
+		const kind = entry.state === "updatable" ? "update" : "install";
+		setAction(kind);
+		launch.current = { kind, ...(fromRect ? { from: fromRect } : {}) };
 		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
 		else setConfirming(entry);
 	};
@@ -95,9 +100,6 @@ export function useMarketplaceInstall() {
 		errors,
 		action,
 		start,
-		/** 装成那一下的传送:从市场那张卡飞到它在上面那一排里的新位置。演完由页面清掉。 */
-		flight,
-		clearFlight: () => setFlight(null),
 		confirming,
 		confirm: () => {
 			if (!confirming) return;

@@ -33,6 +33,7 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+import { type CardMotion, useCardMotionStore } from "../card-motion";
 import { ExtensionInstallOutcome } from "../install-outcome";
 import {
 	MarketplaceInstallConfirm,
@@ -192,7 +193,7 @@ beforeEach(() => {
 		id: "bridge",
 		name: "机器人框架桥接",
 		version: "0.0.2",
-		needsRestart: false,
+		staged: false,
 		restart: { can: true, how: "container" },
 	});
 });
@@ -244,6 +245,26 @@ describe("拓展市场", () => {
 			}),
 		);
 		expect(await screen.findByText(/装好了/)).toBeTruthy();
+	});
+
+	/**
+	 * 装成了要演一段**传送**,起点是市场里那张卡 —— 它装完当场从市场消失,不演的话看起来像
+	 * 「点了一下什么都没发生」。动画本身由页面照那一格去演(`card-motion-stage.tsx`)。
+	 */
+	it("装成了 → 放一段传送,从市场那张卡起飞", async () => {
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+		renderSection();
+		await userEvent.click(
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
+		);
+
+		await waitFor(() => expect(played).toHaveLength(1));
+		unsubscribe();
+		expect(played[0]).toMatchObject({ kind: "install", id: "bridge" });
+		expect(played[0]?.from).toBeTruthy();
 	});
 
 	it("第三方条目装之前先确认 —— 取消就不发,确认才发", async () => {

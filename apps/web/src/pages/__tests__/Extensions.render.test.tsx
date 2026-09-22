@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Extensions from "../Extensions";
+import { type CardMotion, useCardMotionStore } from "../extensions/card-motion";
 
 const { apiGetMock, apiPatchMock, apiPostMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
@@ -428,6 +429,45 @@ describe("已装卡片上的「有新版」", () => {
 		);
 		// 盖掉的是一份正在跑的:装完那句话要说清「换不上」,并给两条出路。
 		expect(await screen.findByText(/换不上/)).toBeTruthy();
+	});
+
+	/**
+	 * 更新成了要**演一段换装**,起点是按下去的那颗「更新」钮 —— 此前更新一声不响,只有版本号
+	 * 悄悄变了。jsdom 没有动画接口,换装一放进去就当场收摊,所以记的是「放进来过什么」,
+	 * 不是事后去读那一格。
+	 */
+	it("更新成了 → 那张卡上演一段换装,球从按下去的「更新」钮起飞", async () => {
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...MARKET,
+			sources: [{ id: "official", name: "BN 官方拓展", official: true, ok: true }],
+			extensions: [
+				{
+					source: "official",
+					official: true,
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "",
+					version: "1.1.0",
+					apiVersion: 1,
+					prerelease: false,
+					size: 1,
+					installed: { version: "1.0.0", source: "official" },
+					state: "updatable",
+				},
+			],
+		});
+		await screen.findAllByText("机器人框架桥接");
+		const card = installedCardOf("机器人框架桥接");
+		fireEvent.click(await within(card).findByRole("button", { name: /更新/ }));
+
+		await waitFor(() => expect(played).toHaveLength(1));
+		unsubscribe();
+		expect(played[0]).toMatchObject({ kind: "update", id: "bridge" });
+		expect(played[0]?.kind === "update" && played[0].from).toBeTruthy();
 	});
 
 	/**

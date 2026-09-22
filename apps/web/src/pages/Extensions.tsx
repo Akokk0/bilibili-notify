@@ -14,9 +14,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
+import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
-import { EXT_CARD_ANCHOR, InstallFlight } from "./extensions/install-flight";
+import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
 	MarketplaceInstallConfirm,
@@ -119,7 +120,8 @@ function ExtensionCard({
 	onToggle: (enabled: boolean) => void;
 	/** 市场里这条有更新的那一版(ADR-0013)。没有就不画。 */
 	update?: MarketplaceEntryDTO;
-	onUpdate?: () => void;
+	/** 按下「更新」—— 交出那颗钮在屏幕上的位置:更新成了,换装的那颗球从这儿起飞。 */
+	onUpdate?: (from: DOMRect) => void;
 	updating?: boolean;
 	/**
 	 * 市场里也有这个 id,但装着的这份不是从那儿来的(手动传包装的最常见)。
@@ -166,7 +168,12 @@ function ExtensionCard({
 						<Pill subtle size="sm">
 							有新版 v{update.version}
 						</Pill>
-						<Btn variant="outline" size="sm" disabled={updating} onClick={onUpdate}>
+						<Btn
+							variant="outline"
+							size="sm"
+							disabled={updating}
+							onClick={(event) => onUpdate?.(event.currentTarget.getBoundingClientRect())}
+						>
 							更新
 						</Btn>
 					</div>
@@ -265,9 +272,9 @@ export default function Extensions() {
 						// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
 						// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
 						// mutate 等于给第三方源开一条「抬个版本号即可零确认装新代码」的路。
-						onUpdate={() => {
+						onUpdate={(from) => {
 							const entry = updates.get(ext.id);
-							if (entry) installer.start(entry);
+							if (entry) installer.start(entry, from);
 						}}
 					/>
 				</div>
@@ -331,8 +338,8 @@ export default function Extensions() {
 			{/* 第三方那道确认框:装与更新共用页面这一份 installer,所以由页面来画。 */}
 			<MarketplaceInstallConfirm installer={installer} />
 
-			{/* 装成之后那一下传送 —— 演完它自己叫停,失败 / 减少动态时当场收摊。 */}
-			<InstallFlight flight={installer.flight} onDone={installer.clearFlight} />
+			{/* 装成之后的传送、更新成了的换装 —— 演完自己收摊,失败 / 减少动态时当场收摊。 */}
+			<CardMotionStage />
 			{installing ? <ExtensionInstallDialog onClose={() => setInstalling(false)} /> : null}
 		</div>
 	);
