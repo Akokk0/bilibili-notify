@@ -26,7 +26,9 @@ import type {
 	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionFetchHandler,
+	ExtensionItemView,
 	ExtensionUpgradeHandler,
+	ExtensionView,
 	PlatformAdapter,
 	PushExtensionDef,
 	PushSourceHandle,
@@ -38,6 +40,17 @@ import { activate } from "../index.js";
 
 const EXTENSION_ID = "bridge";
 const MOUNT_PREFIX = `/ext/${EXTENSION_ID}`;
+/** 视图里这条接入的那一项。 */
+function itemView(status: unknown): ExtensionItemView | undefined {
+	return (status as ExtensionView | undefined)?.items?.links?.[LINK_ID];
+}
+
+/** 这条接入那张 bot 表的每一行。 */
+function botRows(status: unknown): readonly (readonly unknown[])[] {
+	const table = itemView(status)?.blocks?.find((block) => block.type === "table");
+	return table?.type === "table" ? table.rows : [];
+}
+
 const LINK_ID = "link-home";
 const CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const TARGET_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -384,7 +397,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		expect(host.statusChanges()).toBeGreaterThan(shook);
-		expect(host.status()).toMatchObject({ sessions: [{ linkId: LINK_ID, connected: false }] });
+		expect(itemView(host.status())?.status).toEqual({ tone: "off", text: "没连上" });
 	});
 
 	/**
@@ -407,17 +420,8 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 			],
 		});
 		await expectEventually(() => expect(host.statusChanges()).toBeGreaterThan(before));
-		expect(host.status()).toMatchObject({
-			sessions: [
-				{
-					bots: [
-						expect.objectContaining({
-							capabilities: expect.objectContaining({ miniAppCard: "supported" }),
-						}),
-					],
-				},
-			],
-		});
+		// 表头:方块、名字,然后六项能力 —— 「小程序卡」是第四项,落在第 6 格。
+		expect(botRows(host.status())[0]?.[5]).toBe("yes");
 	});
 
 	// ---- 入站归属 ------------------------------------------------------------
@@ -452,20 +456,14 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		expect(host.inbound()).toEqual([]);
 	});
 
-	it("publishStatus:握过手之后,面板拿得到会话与 bot 名单", async () => {
+	it("publishStatus:握过手之后,面板拿得到这条接入的样子与 bot 表(ADR-0019 决策 20)", async () => {
 		await handshake();
-		expect(host.status()).toEqual({
-			sessions: [
-				expect.objectContaining({
-					linkId: LINK_ID,
-					connected: true,
-					kind: "koishi",
-					name: "家里那台 koishi",
-					version: "0.1.0",
-					remoteAddress: "127.0.0.1",
-					bots: [expect.objectContaining({ botId: BOT_ID, platform: "telegram", icon: BOT_ICON })],
-				}),
-			],
-		});
+		const view = itemView(host.status());
+		expect(view?.status).toEqual({ tone: "ok", text: "已连接" });
+		expect(view?.pill).toBe("koishi");
+		expect(JSON.stringify(view?.subtitle)).toContain("家里那台 koishi v0.1.0");
+		expect(JSON.stringify(view?.subtitle)).toContain("来自 127.0.0.1");
+		// 插件随 bot 报了图标就用插件的。
+		expect(botRows(host.status())[0]?.[0]).toEqual({ image: BOT_ICON, fallback: "te" });
 	});
 });

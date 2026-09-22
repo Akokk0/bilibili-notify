@@ -26,25 +26,12 @@ import type {
 import { createBridgeAdapter } from "./adapter.js";
 import { createBridgeBlobStore } from "./blob.js";
 import { createBridgeFetchHandler } from "./blob-route.js";
-import {
-	BRIDGE_CONFIG_FIELDS,
-	type BridgeConnectionConfig,
-	BridgeConnectionConfigSchema,
-} from "./config.js";
+import { type BridgeConnectionConfig, BridgeConnectionConfigSchema } from "./config.js";
 import { routeBridgeInbound } from "./inbound.js";
 import { createBridgeServer } from "./server.js";
 import { type BridgeLink, BridgeSettingsSchema } from "./settings.js";
 import { resolveBridgeToken } from "./tokens.js";
-
-/**
- * 面板上这一档叫什么、什么颜色 —— 就这三格。作用域、能不能 @全体之类是 **bot 所在平台**
- * 的事(一条连接就是一个借来的 bot),bot 在握手时自己报。
- */
-const DESCRIPTOR = {
-	label: "机器人框架桥接",
-	shortLabel: "桥接",
-	tint: "#a855f7",
-} as const;
+import { bridgeView } from "./view.js";
 
 export function activate(ctx: ExtensionContext): void {
 	const blobs = createBridgeBlobStore({ ctx });
@@ -142,11 +129,11 @@ export function activate(ctx: ExtensionContext): void {
 	ctx.onUpgrade(server.upgrade);
 
 	const adapter = createBridgeAdapter({ server, connections, links, mountPath, blobs });
+	// 面板上这一档叫什么、什么颜色,写在清单的 `contributes.push.display` 里(ADR-0019 决策 16);
+	// 连接是从 bot 里挑出来的,没有一栏要人填,所以清单里也没有连接配置项。
 	source = ctx.registerPushSource({
 		adapter,
-		descriptor: DESCRIPTOR,
 		configSchema: BridgeConnectionConfigSchema,
-		configFields: BRIDGE_CONFIG_FIELDS,
 		// 推送目标页「新建连接」挑的那一排:每条**连着**的接入驮着的每个 bot。config 就是
 		// 那条连接要存的东西;`boundTo` 让面板标出「已加过」。
 		listBots: () => {
@@ -175,22 +162,8 @@ export function activate(ctx: ExtensionContext): void {
 	// 桥的对账看的是接入名单(现读),那个参数它用不着 —— 给空表就是这个意思。
 	settings.onChange(() => adapter.reconcile?.([]));
 
-	// 面板要的活口状态。**从接入名单那一头看起**,不是从活着的会话:最需要看见的恰恰是
-	// 「配了但没连上」那条,而它在会话表里根本不存在。
-	ctx.publishStatus(() => ({
-		sessions: links().map((link) => {
-			const live = server.getSession(link.id);
-			if (!live) return { linkId: link.id, connected: false, bots: [] };
-			return {
-				linkId: link.id,
-				connected: true,
-				kind: live.kind,
-				name: live.name,
-				version: live.version,
-				connectedAt: live.connectedAt,
-				remoteAddress: live.remoteAddress,
-				bots: [...live.bots],
-			};
-		}),
-	}));
+	// 面板照着画的视图(ADR-0019 决策 20):四种样子、「对不上」、bot 表都由这里算好交出去。
+	// 设置一动也喊一声 —— 停用 / 换种类之后卡上的话要当场跟着变。
+	ctx.publishStatus(() => bridgeView(links(), (linkId) => server.getSession(linkId)));
+	settings.onChange(() => ctx.statusChanged());
 }

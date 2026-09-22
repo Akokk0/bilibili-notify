@@ -14,6 +14,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtensionItemView, ExtensionView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
@@ -176,20 +177,33 @@ describe("devtools 的假桥 → 真桥", () => {
 		throw new Error(`状态一直没变成要的样子;最后一次是:${JSON.stringify(last)}`);
 	}
 
+	/** 视图里唯一那条接入的样子(配置里只摆了一条)。 */
+	function theItem(snapshot: Record<string, unknown>): ExtensionItemView | undefined {
+		return Object.values((snapshot as ExtensionView).items?.links ?? {})[0];
+	}
+
+	/** 那条接入的 bot 表的第一行 —— 方块、名字,然后六项能力。 */
+	function firstBotRow(snapshot: Record<string, unknown>): readonly unknown[] | undefined {
+		const table = theItem(snapshot)?.blocks?.find((block) => block.type === "table");
+		return table?.type === "table" ? table.rows[0] : undefined;
+	}
+
+	/** 连着没有 —— 桥交的视图里那一项是「已连接」。 */
+	function connected(snapshot: Record<string, unknown>): boolean {
+		return theItem(snapshot)?.status?.tone === "ok";
+	}
+
 	/**
 	 * 第二份名单快照(插件探完能力那份)到了没有。握手那份一格能力都不报,归一化之后
-	 * 六项全是 `unknown`;出现任何一个真答案,就说明第二份已经落地了。
+	 * 六项全是「还不知道」;出现任何一个真答案,就说明第二份已经落地了。
 	 */
 	function probedCapabilities(snapshot: Record<string, unknown>): boolean {
-		const sessions = snapshot.sessions as
-			| { bots?: { capabilities?: Record<string, string> }[] }[]
-			| undefined;
-		return Object.values(sessions?.[0]?.bots?.[0]?.capabilities ?? {}).includes("supported");
+		return (firstBotRow(snapshot) ?? []).slice(2).includes("yes");
 	}
 
 	it("按一下场景 → 真桥那头真的多了一条握过手的会话,bot 名单与能力表都在", async () => {
 		// 按之前:配着一条接入,但没人连 —— 拓展页上那张卡是灰的。
-		expect(status()).resolves.toMatchObject({ sessions: [{ connected: false }] });
+		expect(connected(await status())).toBe(false);
 
 		const res = await runScenario("bridge.connect", { platform: "telegram", caps: "mixed" });
 		expect(res.status).toBe(200);
@@ -198,43 +212,39 @@ describe("devtools 的假桥 → 真桥", () => {
 		expect(body.active.map((a) => a.scenarioId)).toContain("bridge.connect");
 
 		// 🔴 能力**在第二份快照里**(握手那份是「还没探」的样子),所以得等它到。
-		const after = (await statusUntil(probedCapabilities)) as {
-			sessions: {
-				connected: boolean;
-				kind?: string;
-				bots: { platform: string; icon?: string; capabilities: Record<string, string> }[];
-			}[];
-		};
-		const session = after.sessions[0];
-		expect(session?.connected).toBe(true);
-		expect(session?.kind).toBe("koishi");
-		expect(session?.bots).toHaveLength(1);
-		expect(session?.bots[0]?.platform).toBe("telegram");
+		const after = await statusUntil(probedCapabilities);
+		// 配置里是 koishi、连进来的也自报 koishi —— 「已连接」而不是「对不上」。
+		expect(theItem(after)?.status).toEqual({ tone: "ok", text: "已连接" });
+		const table = theItem(after)?.blocks?.find((block) => block.type === "table");
+		if (table?.type !== "table") throw new Error("应该有一张 bot 表");
+		expect(table.rows).toHaveLength(1);
+		const row = firstBotRow(after) ?? [];
+		expect(row[1]).toMatchObject({ sub: expect.stringContaining("telegram") });
 		// 🔴 平台图标一路走到状态接口:桥只收 data URL,http 地址会在归一化那关被丢掉,
 		// 所以「有」本身就证明了假桥造的那枚是合法的。
-		expect(session?.bots[0]?.icon).toMatch(/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/);
-		// 🔴 三态齐全:桥把没报的补成 unknown,面板据此分「不支持」与「还不知道」。
-		expect(new Set(Object.values(session?.bots[0]?.capabilities ?? {}))).toEqual(
-			new Set(["supported", "unsupported", "unknown"]),
-		);
+		expect(row[0]).toMatchObject({
+			image: expect.stringMatching(/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/),
+		});
+		// 🔴 三态齐全:桥把没报的补成「还不知道」,面板据此分「不支持」与「还不知道」。
+		expect(new Set(row.slice(2))).toEqual(new Set(["yes", "no", "unknown"]));
 	});
 
 	it("一键收摊 → 那条会话当场没了(假状态只由 devtools 收摊)", async () => {
 		await runScenario("bridge.connect");
-		expect(await status()).toMatchObject({ sessions: [{ connected: true }] });
+		expect(connected(await statusUntil(connected))).toBe(true);
 
 		const res = await fetch(`http://127.0.0.1:${port}/api/dev/reset`, { method: "POST" });
 		expect(res.status).toBe(200);
 
 		// 断开是异步到达的(socket 关闭 → 端点摘表)。
 		const deadline = Date.now() + 1_000;
-		let sessions: { connected: boolean }[] = [];
+		let still = true;
 		while (Date.now() < deadline) {
-			sessions = ((await status()) as { sessions: { connected: boolean }[] }).sessions;
-			if (!sessions[0]?.connected) break;
+			still = connected(await status());
+			if (!still) break;
 			await new Promise((resolve) => setTimeout(resolve, 20));
 		}
-		expect(sessions[0]?.connected).toBe(false);
+		expect(still).toBe(false);
 	});
 
 	/**
@@ -280,6 +290,6 @@ describe("devtools 的假桥 → 真桥", () => {
 		const res = await runScenario("bridge.inbound", { from: "10086", text: "/help" });
 		expect(res.status).toBe(200);
 		// 驮完之后连接还在 —— 帧畸形的话桥会以 4003 把它踢掉。
-		expect(await status()).toMatchObject({ sessions: [{ connected: true }] });
+		expect(connected(await status())).toBe(true);
 	});
 });

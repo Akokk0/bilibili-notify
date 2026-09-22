@@ -24,6 +24,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtensionView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
@@ -277,38 +278,30 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		client.send(botsFrame());
 		await expectStatusEventually((status) => {
-			expect(status.sessions).toEqual([
-				expect.objectContaining({
-					linkId: LINK_ID,
-					connected: true,
-					kind: "koishi",
-					name: "家里那台 koishi",
-					version: "0.1.0",
-					bots: [
-						expect.objectContaining({
-							botId: BOT_ID,
-							platform: "telegram",
-							// 桥少报的能力补成 `unknown`,不是 `false` —— 「不支持」与「还不知道」
-							// 在面板上是两回事。
-							capabilities: {
-								atAll: "supported",
-								inbound: "supported",
-								forward: "unknown",
-								miniAppCard: "unknown",
-								shareCardLinks: "unknown",
-								// 桥没报 markdown → 补成 unknown。BN 据此把主人写的排版剥成纯文本。
-								markdown: "unknown",
-							},
-						}),
-					],
-				}),
+			// 真桥交出去的视图过了宿主那道校验 —— 不合规矩的话,页上第一块会被换成一条错误提示。
+			expect(status.page?.[0]).toMatchObject({ type: "copy", label: "BN 地址" });
+			const item = status.items?.links?.[LINK_ID];
+			expect(item?.status).toEqual({ tone: "ok", text: "已连接" });
+			expect(JSON.stringify(item?.subtitle)).toContain("家里那台 koishi v0.1.0");
+			const table = item?.blocks?.find((block) => block.type === "table");
+			if (table?.type !== "table") throw new Error("应该有一张 bot 表");
+			expect(table.rows).toHaveLength(1);
+			expect(table.rows[0]?.[1]).toMatchObject({ sub: expect.stringContaining("telegram") });
+			// 六项能力:桥少报的补成「还不知道」,不是「不支持」—— 在面板上是两回事。
+			// 桥没报 markdown → 也是还不知道,BN 据此把主人写的排版剥成纯文本。
+			expect(table.rows[0]?.slice(2)).toEqual([
+				"yes",
+				"yes",
+				"unknown",
+				"unknown",
+				"unknown",
+				"unknown",
 			]);
 		});
 	}
 
-	interface BridgeStatus {
-		sessions: Record<string, unknown>[];
-	}
+	/** 桥交出去、宿主校验过的视图(ADR-0019 决策 20)。 */
+	type BridgeStatus = ExtensionView;
 
 	async function expectStatusEventually(assertion: (status: BridgeStatus) => void): Promise<void> {
 		let last: unknown;
