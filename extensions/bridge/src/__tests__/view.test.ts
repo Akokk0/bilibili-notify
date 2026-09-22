@@ -110,6 +110,19 @@ describe("bridgeView", () => {
 		expect(table.rows[1]?.slice(2)).toEqual(["yes", "yes", "unknown", "yes", "no", "no"]);
 	});
 
+	it("平台叫 constructor / __proto__:方块退回两个字,不把原型链上的东西塞进 icon 格", () => {
+		const table = item([link()], {
+			a1: session({
+				bots: [
+					bot({ botId: "1", platform: "constructor" }),
+					bot({ botId: "2", platform: "__proto__" }),
+				],
+			}),
+		})?.blocks?.[0];
+		if (table?.type !== "table") throw new Error("应该是一张表");
+		expect(table.rows.map((row) => row[0])).toEqual([{ fallback: "co" }, { fallback: "__" }]);
+	});
+
 	it("连上了、一个 bot 都没有:表还在,空的那句话说清为什么", () => {
 		const table = item([link()], { a1: session({ bots: [] }) })?.blocks?.[0];
 		if (table?.type !== "table") throw new Error("应该是一张表");

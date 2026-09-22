@@ -40,13 +40,26 @@ function isSecretInput(field: ExtensionScalarField): boolean {
 }
 
 /**
+ * 按设置项的 key 读草稿、错误表、存着的设置 —— **只认它自己身上的键**。判「有没有」用
+ * `Object.hasOwn`,不用 `in`。
+ *
+ * 🔴 key 归拓展自己起,而这些都是普通对象:key 叫 `valueOf` / `toString` / `constructor` 时,
+ * `in` 与 `obj[key] ?? …` 读到的是 `Object.prototype` 上的同名函数 —— number 格一上来就报错、
+ * 整张表单存不了,字符串格里显示 `function toString()…`,服务端落到这一格的那句话被 `??=`
+ * 吞掉。服务端会在清单那一步挡掉这些名字,但面板自己也得站得住:这个文件里按 key 读的一律走它。
+ */
+function own<T>(bag: Readonly<Record<string, T>> | undefined, key: string): T | undefined {
+	return bag !== undefined && Object.hasOwn(bag, key) ? bag[key] : undefined;
+}
+
+/**
  * 这一格「没改过」时显示什么:存着的值 → 清单里的默认值 → 空。
  *
  * 默认值只是**显示**:没改过的格不发,拓展那份 zod 自己会补默认值。密钥与生成的那种不看默认值 ——
  * 一把写在清单里的默认钥匙人人都知道。
  */
 function baselineOf(field: ExtensionScalarField, stored: Record<string, unknown>): Edit {
-	const raw = stored[field.key];
+	const raw = own(stored, field.key);
 	switch (field.type) {
 		case "string":
 			// 🔴 密钥的真值**从不**当成输入框的值 —— 按「换一份」给的必须是空框,否则真值就摆在
@@ -76,7 +89,7 @@ function isDirty(
 	edits: Readonly<Record<string, Edit>>,
 	stored: Record<string, unknown>,
 ): boolean {
-	if (!(field.key in edits)) return false;
+	if (!Object.hasOwn(edits, field.key)) return false;
 	const edit = edits[field.key];
 	if (isSecretInput(field)) return edit !== "";
 	return edit !== baselineOf(field, stored);
@@ -142,7 +155,8 @@ function saveIssuesOf(
 		const [scope, id, slot, key] = path;
 		const mine = scope === "extensions" && id === extensionId && slot === "settings";
 		if (mine && typeof key === "string" && keys.has(key)) {
-			out.byField[key] ??= message;
+			// 同一格有好几句的,留第一句。
+			if (!Object.hasOwn(out.byField, key)) out.byField[key] = message;
 			continue;
 		}
 		const where = (mine ? path.slice(3) : path).join(".");
@@ -191,20 +205,19 @@ export function SettingsForm({
 			// 先等那份设置重读回来,再丢草稿 —— 反过来的话会闪一下旧值。
 			await qc.invalidateQueries({ queryKey: ["globals"] });
 			const keep = (key: string, current: Edit | undefined) =>
-				!(key in sent) || current !== sent[key];
+				!Object.hasOwn(sent, key) || current !== sent[key];
 			setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => keep(k, v))));
 			setReplacing(
 				(prev) =>
-					Object.fromEntries(Object.entries(prev).filter(([k]) => !(k in sent))) as Record<
-						string,
-						true
-					>,
+					Object.fromEntries(
+						Object.entries(prev).filter(([k]) => !Object.hasOwn(sent, k)),
+					) as Record<string, true>,
 			);
 		},
 	});
 
 	const currentOf = (field: ExtensionScalarField): Edit =>
-		field.key in edits ? (edits[field.key] as Edit) : baselineOf(field, stored);
+		Object.hasOwn(edits, field.key) ? (edits[field.key] as Edit) : baselineOf(field, stored);
 
 	const edit = (key: string, value: Edit) => {
 		// 上一发的错说的是上一发:一动手它就过时了。
@@ -257,8 +270,9 @@ export function SettingsForm({
 	 * 空着的(脱敏备份恢复回来就是这样)与刚生成、还没存的那份不问 —— 没有旧钥匙可作废。
 	 */
 	const regenerate = (field: ExtensionScalarField) => {
-		const hasSaved = typeof stored[field.key] === "string" && stored[field.key] !== "";
-		if (hasSaved && !(field.key in edits)) {
+		const saved = own(stored, field.key);
+		const hasSaved = typeof saved === "string" && saved !== "";
+		if (hasSaved && !Object.hasOwn(edits, field.key)) {
 			setConfirming(field);
 			return;
 		}
@@ -283,14 +297,14 @@ export function SettingsForm({
 						<FieldRow
 							key={field.key}
 							field={field}
-							error={clientErrors[field.key] ?? issues?.byField[field.key]}
+							error={own(clientErrors, field.key) ?? own(issues?.byField, field.key)}
 						>
 							<FieldControl
 								field={field}
 								value={currentOf(field)}
-								saved={stored[field.key]}
-								fresh={field.key in edits}
-								replacing={replacing[field.key] === true}
+								saved={own(stored, field.key)}
+								fresh={Object.hasOwn(edits, field.key)}
+								replacing={own(replacing, field.key) === true}
 								onChange={(value) => edit(field.key, value)}
 								onReplace={() => setReplacing((prev) => ({ ...prev, [field.key]: true }))}
 								onCancelReplace={() => drop(field.key)}

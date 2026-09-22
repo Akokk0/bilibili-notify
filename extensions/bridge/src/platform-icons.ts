@@ -42,7 +42,14 @@ const BY_PLATFORM: Readonly<Record<string, string>> = {
 	wecom: WECOM,
 };
 
-/** 这个平台有没有我们带着的图标。没有就是 `undefined` —— 面板退回两个字。 */
+/**
+ * 这个平台有没有我们带着的图标。没有就是 `undefined` —— 面板退回两个字。
+ *
+ * 🔴 平台名是对端报的开放字符串:只认表**自己身上**的键。直接按下标读的话,`constructor` 读到
+ * `[Function: Object]`、`__proto__` 读到 `Object.prototype`,进了视图的 icon 格,宿主校验
+ * 不过就把整份视图换成一条错误提示。
+ */
 export function platformIcon(platform: string): string | undefined {
-	return BY_PLATFORM[platform.toLowerCase()];
+	const key = platform.toLowerCase();
+	return Object.hasOwn(BY_PLATFORM, key) ? BY_PLATFORM[key] : undefined;
 }

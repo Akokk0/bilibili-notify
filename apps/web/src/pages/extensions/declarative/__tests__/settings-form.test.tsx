@@ -412,6 +412,88 @@ describe("校验", () => {
 		expect(field("note").contains(alert)).toBe(false);
 	});
 
+	/**
+	 * 🔴 设置项的 key 归拓展自己起,而草稿、错误表都是普通对象:`in` / `??` 一读就读到
+	 * `Object.prototype` 上的同名函数。服务端会在清单那一步挡掉这些名字,但面板自己也得站得住。
+	 */
+	describe("key 撞上 Object.prototype 上的名字", () => {
+		const PROTO_FIELDS: ExtensionScalarField[] = [
+			{ key: "valueOf", type: "number", label: "次数", default: 5 },
+			{ key: "toString", type: "string", label: "称呼" },
+		];
+
+		it("一上来是默认值 / 空框,不报错,也不算改过", async () => {
+			stored = {};
+			renderForm(PROTO_FIELDS);
+			expect(((await screen.findByLabelText("次数")) as HTMLInputElement).value).toBe("5");
+			expect((screen.getByLabelText("称呼") as HTMLInputElement).value).toBe("");
+			expect(within(field("valueOf")).queryByRole("alert")).toBeNull();
+			expect(within(field("toString")).queryByRole("alert")).toBeNull();
+			expect(save()).toHaveProperty("disabled", true);
+		});
+
+		it("改一格就只发那一格", async () => {
+			stored = {};
+			renderForm(PROTO_FIELDS);
+			fireEvent.change(await screen.findByLabelText("次数"), { target: { value: "7" } });
+			fireEvent.click(save());
+			await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+			expect(sentSettings()).toEqual({ valueOf: 7 });
+		});
+
+		it("generate 格叫 valueOf:存着的那把遮住,重新生成先问一句", async () => {
+			stored = { valueOf: TOKEN };
+			renderForm([{ key: "valueOf", type: "string", label: "钥匙", secret: true, generate: true }]);
+			await screen.findByText("钥匙");
+			const key = within(field("valueOf"));
+			expect(key.getByText(`0123${"•".repeat(24)}cdef`)).toBeTruthy();
+			fireEvent.click(key.getByRole("button", { name: "重新生成 钥匙" }));
+			expect(await screen.findByRole("dialog")).toBeTruthy();
+		});
+
+		it("密钥格叫 toString:按了「换一份」,存别的格之后它还开着", async () => {
+			stored = { toString: COOKIE, note: "旧备注" };
+			renderForm([
+				{ key: "toString", type: "string", label: "密", secret: true },
+				{ key: "note", type: "string", label: "备注" },
+			]);
+			await screen.findByText("密");
+			fireEvent.click(within(field("toString")).getByRole("button", { name: "换一份" }));
+			fireEvent.change(screen.getByLabelText("备注"), { target: { value: "新备注" } });
+			fireEvent.click(save());
+			await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+			await waitFor(() => expect(save()).toHaveProperty("disabled", true));
+			expect(sentSettings()).toEqual({ note: "新备注" });
+			expect(within(field("toString")).getByRole("button", { name: "不换了" })).toBeTruthy();
+		});
+
+		it("400 落到叫 constructor 的那一格,不被同名函数吞掉", async () => {
+			vi.mocked(api.patch).mockRejectedValue(
+				new HttpError(
+					400,
+					{
+						error: "validation_failed",
+						scope: "globals",
+						issues: [
+							{ path: ["extensions", "douyin", "settings", "constructor"], message: "构造不对" },
+						],
+					},
+					"PATCH /api/globals → 400",
+				),
+			);
+			stored = { constructor: "旧" };
+			renderForm([{ key: "constructor", type: "string", label: "构造" }]);
+			const input = (await screen.findByLabelText("构造")) as HTMLInputElement;
+			expect(input.value).toBe("旧");
+			expect(within(field("constructor")).queryByRole("alert")).toBeNull();
+			fireEvent.change(input, { target: { value: "新" } });
+			fireEvent.click(save());
+			expect((await within(field("constructor")).findByRole("alert")).textContent).toContain(
+				"构造不对",
+			);
+		});
+	});
+
 	it("别的失败(只读盘 / 断网)原话摆出来", async () => {
 		vi.mocked(api.patch).mockRejectedValue(new Error("配置目录是只读的"));
 		renderForm();
