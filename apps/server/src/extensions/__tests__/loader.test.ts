@@ -364,7 +364,11 @@ describe("装载目录", () => {
  * 只在真机上露面。要新代码就显式说一声。
  */
 describe("重载(开发版换代码)", () => {
-	it("重载换一个 URL 再 import —— 拨开关不换", async () => {
+	/**
+	 * URL 按**入口指纹**定(ADR-0012 决策 47):代码没变,重载也不换 URL —— 换了就是白漏一份
+	 * 旧模块;代码变了才换。
+	 */
+	it("代码变了,重载才换一个 URL 再 import —— 拨开关、代码没变的重载都不换", async () => {
 		await plant("bridge", HEALTHY);
 		const seen: string[] = [];
 		let on = true;
@@ -383,12 +387,15 @@ describe("重载(开发版换代码)", () => {
 		await loaded.sync();
 		on = true;
 		await loaded.sync();
-		expect(new Set(seen).size).toBe(1);
-
 		await loaded.reload("bridge");
 		expect(seen).toHaveLength(3);
-		expect(seen[2]).not.toBe(seen[0]);
-		expect(seen[2]).toContain("?v=");
+		expect(new Set(seen).size).toBe(1);
+
+		await plant("bridge", `${HEALTHY}\n// 改了一行`);
+		await loaded.reload("bridge");
+		expect(seen).toHaveLength(4);
+		expect(seen[3]).not.toBe(seen[0]);
+		expect(seen[3]).toContain("?v=");
 	});
 
 	it("重载先收摊 —— 旧那份注册的东西不会留下", async () => {
@@ -757,5 +764,145 @@ describe("重扫(装 / 卸不必重启)", () => {
 		const entry = loaded.list()[0];
 		expect(entry?.state).toBe("unreadable");
 		expect(entry?.detail).toContain("JSON");
+	});
+});
+
+/**
+ * 同一个路径换了代码(ADR-0012 决策 47)。ESM 的模块缓存按 URL 认,同一个 URL 永远交回第一次
+ * 那份 —— 所以删了再装、覆盖安装,`import()` 拿到的都可能是旧代码,而清单是现读的新的。
+ * 装载器按**入口文件的指纹**认代码:这个进程里干净换不上的,不跑,等主人选重启或只重载。
+ *
+ * 这几条用**真的** `import()`:要钉的正是真模块缓存的行为,注入一个假的就把它抹平了。
+ */
+describe("换了代码(等着换上)", () => {
+	/** 挂一条路由,回一句话 —— 哪一份代码在跑,请求一下就知道。 */
+	const says = (word: string) =>
+		`export function activate(ctx) { ctx.mount(async () => new Response(${JSON.stringify(word)})); }`;
+
+	function serve(mounts: ReturnType<typeof createExtensionMounts>) {
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		return async () => {
+			const res = await app.request("/ext/bridge/x");
+			return res.status === 200 ? res.text() : res.status;
+		};
+	}
+
+	it("删了再装、代码变了 → 不拿缓存里的旧代码跑,等着换上;只重载之后跑的是新的", async () => {
+		await plant("bridge", says("旧的"));
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts });
+		expect(await body()).toBe("旧的");
+
+		await rm(join(root, "bridge"), { recursive: true, force: true });
+		await loaded.rescan();
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+
+		// 旧代码配新清单,正是 devtools 装桥时炸的那一下。
+		expect(await body()).not.toBe("旧的");
+		const staged = loaded.list()[0];
+		expect(staged?.state).toBe("staged");
+		expect(staged?.staged).toEqual({ version: "2.0.0" });
+
+		await loaded.swap("bridge");
+		expect(await body()).toBe("新的");
+		const swapped = loaded.list()[0];
+		expect(swapped?.state).toBe("running");
+		expect(swapped?.manifest?.version).toBe("2.0.0");
+		expect(swapped?.staged).toBeUndefined();
+	});
+
+	it("删了再装、代码没变 → 直接跑起来,不问(模块缓存里那份就是它)", async () => {
+		await plant("bridge", says("同一份"));
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts });
+
+		await rm(join(root, "bridge"), { recursive: true, force: true });
+		await loaded.rescan();
+		await plant("bridge", says("同一份"));
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => [e.state, e.staged])).toEqual([["running", undefined]]);
+		expect(await body()).toBe("同一份");
+	});
+
+	it("跑着的时候被覆盖 → 旧的照跑、标上新版本号;只重载之后换成新的", async () => {
+		await plant("bridge", says("旧的"));
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts });
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("running");
+		expect(entry?.manifest?.version).toBe("1.0.0");
+		expect(entry?.staged).toEqual({ version: "2.0.0" });
+		expect(await body()).toBe("旧的");
+
+		await loaded.swap("bridge");
+		expect(await body()).toBe("新的");
+		expect(loaded.list()[0]?.manifest?.version).toBe("2.0.0");
+	});
+
+	it("盘上又换回跑着的那一份 → 「等着换上」撤掉", async () => {
+		await plant("bridge", says("旧的"));
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+		await plant("bridge", says("旧的"));
+		await loaded.rescan();
+
+		expect(loaded.list().map((e) => [e.state, e.staged])).toEqual([["running", undefined]]);
+	});
+
+	/** 名单里那条记录是关着时读的;不重读的话,打开时是新代码配旧清单 —— 这次的 bug 反过来。 */
+	it("关着时被覆盖、从没跑过 → 打开时跑的是新代码、配新清单", async () => {
+		await plant("bridge", says("旧的"));
+		let on = false;
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+		on = true;
+		await loaded.sync();
+
+		expect(await body()).toBe("新的");
+		expect(loaded.list()[0]?.manifest?.version).toBe("2.0.0");
+	});
+
+	/** 原路径的模块缓存里是**第一次**那份;按路径取的话,热换上去的那份一拨开关就丢了。 */
+	it("只重载之后再拨一次开关 → 跑的还是换上去的那份", async () => {
+		await plant("bridge", says("旧的"));
+		let on = true;
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+		await loaded.swap("bridge");
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+
+		expect(await body()).toBe("新的");
+	});
+
+	it("没有等着换上的新代码 → 不给只重载(每换一次漏一份旧模块,不白漏)", async () => {
+		await plant("bridge", says("旧的"));
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+
+		await expect(loaded.swap("bridge")).rejects.toThrow(/没有等着换上/);
+		await expect(loaded.swap("nobody")).rejects.toThrow();
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
 	});
 });

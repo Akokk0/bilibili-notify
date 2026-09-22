@@ -20,4 +20,5 @@ export const EXTENSION_STATE_META: Record<
 	failed: { label: "加载失败", accent: "var(--color-bn-danger)", severity: "err" },
 	unreadable: { label: "清单读不出来", accent: "var(--color-bn-danger)", severity: "err" },
 	incompatible: { label: "版本不合", accent: "var(--color-bn-warning)", severity: "warn" },
+	staged: { label: "新版等着换上", accent: "var(--color-bn-warning)", severity: "warn" },
 };

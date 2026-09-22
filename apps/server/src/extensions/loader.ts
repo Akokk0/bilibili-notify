@@ -1,4 +1,6 @@
-import { stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionBotView } from "@bilibili-notify/extension";
 import {
@@ -24,6 +26,7 @@ import {
 	discoverExtensions,
 	EXTENSION_ENTRY_FILE,
 	type ExtensionDirRead,
+	readExtensionDir,
 } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
@@ -49,6 +52,12 @@ export interface ExtensionEntry {
 	identity?: ExtensionIdentity;
 	/** 没跑起来时那句「为什么」。 */
 	detail?: string;
+	/**
+	 * 盘上有一份这个进程**干净地换不上**的代码(ADR-0012 决策 47)—— 版本号取盘上那份的清单。
+	 * 跑着的照跑旧的(`state: "running"`);没跑的不跑(`state: "staged"`)。两种都等主人选
+	 * 重启 BN 或 {@link LoadedExtensions.swap}。
+	 */
+	staged?: { version: string };
 }
 
 /**
@@ -106,25 +115,26 @@ export interface LoadedExtensions {
 	/**
 	 * **再扫一遍装载目录**:新装进来的当场装上,卸掉的当场收摊 —— 装 / 卸都不用重启。
 	 *
-	 * 🔴 决策 10 否掉的只有「**换掉已加载的代码**」(ESM 模块缓存删不掉)。而一个新出现的
-	 * id 从来没被 import 过,它第一次 import 与「拨开关第一次启用」是同一档事实,没有缓存
-	 * 这回事 —— 曾经要重启,纯粹是因为开机扫一次就把名单定死了。
-	 *
-	 * 🔴 **已经收进名单的那些一律不碰**,哪怕目录里的代码变了:换代码是
-	 * {@link LoadedExtensions.reload} 的活(开发版专用,每次漏一份模块)。这里顺手换掉的话,
-	 * 生产会悄悄多出一条「换代码不重启」的路。清单坏了 / 版本不合的那些则每次重读 ——
-	 * 它们一行代码都没跑过,主人把清单修好了就该装得上。
+	 * 🔴 已经在名单里的**也重读**(ADR-0012 决策 47):清单与入口指纹都现读,盘上没换过的
+	 * 不碰。换过了的 —— 代码没跑的换成新记录再收一遍(还没有代码,谈不上换代码);**跑着的
+	 * 不偷偷换**,标上 `staged` 照跑旧的,换不换由主人选。「新出现的 id 从来没被 import 过」
+	 * 只在进程里第一次见到它时成立:删了再装的,由 `start()` 按指纹判。
 	 *
 	 * 显式调用:装 / 卸是低频动作,而扫盘不该挂在高频路径上(同 `sync()` 那条理由)。
-	 * 与 `sync()` / `reload()` 同一条队,自己吞异常,不会抛。
+	 * 与 `sync()` / `reload()` / `swap()` 同一条队,自己吞异常,不会抛。
 	 */
 	rescan(): Promise<void>;
 	/**
-	 * **换掉代码再跑一遍** —— 收摊 → 换一个 URL 重新 `import` → 重新 `activate`。
+	 * **只重载这个拓展**(生产那颗按钮,ADR-0012 决策 47):现读盘上那份 → 收摊 → 换一个按
+	 * 指纹定的 URL 重新 `import` → 重新 `activate`。
 	 *
-	 * 🔴 **开发版专用**:ESM 的模块缓存删不掉,靠的是「URL 不一样就是一份新模块」
-	 * (`?v=<mtime>`),于是**旧模块回收不掉** —— 每重载一次漏一份。开发时无所谓,
-	 * 生产里长跑的进程不该这么用:那边换代码就是重启一次。
+	 * 🔴 **只在它标着 `staged` 时给按**,否则抛:ESM 的模块缓存删不掉,每换一份新代码就漏
+	 * 一份旧模块 —— 漏可以,但不该在没有新代码的时候白漏。不记账(理由同 `reload`)。
+	 */
+	swap(id: string): Promise<void>;
+	/**
+	 * **开发版的「重载」**:与 {@link LoadedExtensions.swap} 同一段,只是不要求 `staged`
+	 * —— 改一行就按一下。代码没变的话 URL 也不变(按指纹定),不白漏。
 	 *
 	 * ⚠️ **刻意不挂在开关上**:拨开关保持生产语义(复用模块缓存),不然开发版比生产宽容,
 	 * 「拓展模块顶层存了状态」这种 bug 只会在真机上露面。
@@ -192,20 +202,25 @@ function realImport(specifier: string): Promise<unknown> {
 }
 
 /**
- * 要 import 的那个 URL。
+ * 入口文件内容的指纹 —— 装载器按它认「这是哪一份代码」(ADR-0012 决策 47)。
  *
- * 平时就是文件本身 —— **同一个 URL 拿到的是模块缓存里那份**,这正是「代码不热」的由来,
- * 也是生产的真实行为。`fresh` 时在后面挂一段 `?v=<mtime>`:URL 不同,Node 就当没见过它,
- * 于是真的重新读盘、重新跑顶层。mtime 读不到(理论上不会)就退回当前时刻,宁可多换一次。
+ * 不按 id、不按路径:ESM 的模块缓存按 URL 认,同一个路径删了再装、覆盖、换成软链,拿到的
+ * 都是第一次那份。读不出来(理论上不会 —— 扫盘时刚见过它)就是 `undefined`,照常 import,
+ * 让它自己报出真正的错。
  */
-async function entryUrl(entry: string, fresh: boolean): Promise<string> {
-	const href = pathToFileURL(entry).href;
-	if (!fresh) return href;
-	const version = await stat(entry).then(
-		(s) => s.mtimeMs,
-		() => Date.now(),
-	);
-	return `${href}?v=${version}`;
+async function fingerprintOf(entry: string): Promise<string | undefined> {
+	try {
+		return createHash("sha256")
+			.update(await readFile(entry))
+			.digest("hex");
+	} catch {
+		return undefined;
+	}
+}
+
+/** 名单里一条记录的样子(清单 + 入口指纹)—— 重扫拿它判「盘上换过没有」。 */
+async function recordPrint(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<string> {
+	return `${await fingerprintOf(dir.entry)}\n${JSON.stringify(dir.manifest)}`;
 }
 
 /**
@@ -222,6 +237,11 @@ function entryBase(
 		dir: dir.dir,
 		...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
 	};
+}
+
+/** 同一行,去掉「等着换上」那一格。 */
+function withoutStaged({ staged: _staged, ...entry }: ExtensionEntry): ExtensionEntry {
+	return entry;
 }
 
 /** 「装得起来,只是主人把开关关了」那一行 —— 开机、收摊、重扫三处是同一格。 */
@@ -252,10 +272,44 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	const ready = new Map<string, Extract<ExtensionDirRead, { state: "ready" }>>();
 	/** 上一次落实过的开关。热装卸只认**变化**,见 `sync()` 的注释。 */
 	const applied = new Map<string, boolean>();
+	/** 名单里每条记录读盘时的样子,见 {@link recordPrint}。 */
+	const listed = new Map<string, string>();
+	/**
+	 * 这个进程里每个 id **import 过的每一份代码**:入口指纹 → 那一份用的 URL(决策 47)。
+	 *
+	 * 🔴 **只增不减**,卸掉、重扫都不删:模块缓存本身删不掉,这里忘了它,下一次就会拿同一个
+	 * URL 去要一份新代码,而 Node 交回来的是旧的 —— 配上现读的新清单,就是 devtools 装桥时
+	 * 炸的那一下。
+	 */
+	const imported = new Map<string, Map<string, string>>();
+	/** 跑着的那份是哪一份代码(入口指纹)。 */
+	const runningPrint = new Map<string, string | undefined>();
+
+	/**
+	 * 这一份代码该拿哪个 URL import。
+	 *
+	 * - 这个进程见过**这一份** → 当时那个 URL(模块缓存里那份就是它,不漏)。
+	 * - 这个 id 从没 import 过 → 文件本身。生产绝大多数时候走这条。
+	 * - 见过**别的**、没见过这一份 → 只有 `fresh`(主人按了重载)才换一个按指纹定的 URL,
+	 *   代价是旧模块留在内存里;否则 `undefined` = 这个进程干净地换不上。
+	 */
+	function urlFor(
+		id: string,
+		entry: string,
+		print: string | undefined,
+		fresh: boolean,
+	): string | undefined {
+		const href = pathToFileURL(entry).href;
+		const seen = imported.get(id);
+		const known = print === undefined ? undefined : seen?.get(print);
+		if (known !== undefined) return known;
+		if (seen === undefined || seen.size === 0) return href;
+		return fresh ? `${href}?v=${(print ?? String(Date.now())).slice(0, 16)}` : undefined;
+	}
 
 	async function start(
 		dir: Extract<ExtensionDirRead, { state: "ready" }>,
-		/** 主人手按的重载:换个 URL 拿新代码,并且**不走记账**(理由见 `reload`)。 */
+		/** 主人手按的重载:换得上新代码,并且**不走记账**(理由见 `reload`)。 */
 		fresh = false,
 	): Promise<void> {
 		const { id, manifest } = dir;
@@ -269,6 +323,19 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				detail: `连续加载失败 ${maxFailures} 次,已自动停用;换一版会重新试`,
 			});
 			return;
+		}
+
+		const print = await fingerprintOf(dir.entry);
+		const url = urlFor(id, dir.entry, print, fresh);
+		if (url === undefined) {
+			// 一行代码都不跑、也不记账:这不是它的错,是这个进程换不上。
+			entries.set(id, { ...at, state: "staged", manifest, staged: { version: manifest.version } });
+			return;
+		}
+		if (print !== undefined) {
+			const seen = imported.get(id) ?? new Map<string, string>();
+			seen.set(print, url);
+			imported.set(id, seen);
 		}
 
 		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
@@ -294,15 +361,14 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 入口固定 `index.mjs`,**宿主自己判**、清单说了不算 —— 见 `EXTENSION_ENTRY_FILE`。
 			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
 			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
-			const mod = (await importModule(
-				await entryUrl(dir.entry, fresh),
-			)) as Partial<ExtensionModule>;
+			const mod = (await importModule(url)) as Partial<ExtensionModule>;
 			if (typeof mod.activate !== "function") {
 				throw new Error(`${EXTENSION_ENTRY_FILE} 没有导出 activate()`);
 			}
 			await mod.activate(runtime.ctx);
 			markLoadSucceeded({ root: ledgerRoot, id, version: manifest.version });
 			runtimes.set(id, runtime);
+			runningPrint.set(id, print);
 			entries.set(id, { ...at, state: "running", manifest });
 		} catch (err) {
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
@@ -316,6 +382,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	async function stop(dir: Extract<ExtensionDirRead, { state: "ready" }>): Promise<void> {
 		const runtime = runtimes.get(dir.id);
 		runtimes.delete(dir.id);
+		runningPrint.delete(dir.id);
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		await runtime?.dispose();
 		entries.set(dir.id, disabledEntry(dir));
@@ -350,10 +417,59 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		}
 
 		ready.set(dir.id, dir);
+		listed.set(dir.id, await recordPrint(dir));
 		const enabled = isEnabled(dir.id);
 		applied.set(dir.id, enabled);
 		if (enabled) await start(dir);
 		else entries.set(dir.id, disabledEntry(dir));
+	}
+
+	/**
+	 * 已经在名单里的那条,盘上换过没有(决策 47)。
+	 *
+	 * 没换过不碰 —— 加载失败的那个也不借重扫重试(开关不动就不重试,见 `sync()`)。换过了:
+	 * **跑着的不偷偷换**,照跑旧的、标上 `staged`;没跑的换成新记录再收一遍,换不换得上由
+	 * `start()` 按指纹判。
+	 */
+	async function revisit(dir: Exclude<ExtensionDirRead, { state: "absent" }>): Promise<void> {
+		const { id } = dir;
+		const print = dir.state === "ready" ? await recordPrint(dir) : undefined;
+		const entry = entries.get(id);
+		if (runtimes.has(id)) {
+			if (!entry) return;
+			// 盘上又换回了跑着的那一份,或者盘上那份读不出来(没有新版可换):那句「等着换上」撤掉。
+			const next =
+				dir.state === "ready" && print !== listed.get(id)
+					? { ...entry, staged: { version: dir.manifest.version } }
+					: withoutStaged(entry);
+			entries.set(id, next);
+			return;
+		}
+		if (print !== undefined && print === listed.get(id)) return;
+		ready.delete(id);
+		applied.delete(id);
+		listed.delete(id);
+		await admit(dir);
+	}
+
+	/**
+	 * 换代码那一段 —— 生产的「只重载」与开发版的「重载」共用(决策 47)。
+	 *
+	 * **现读盘上那份**:清单也可能跟着换了,拿名单里那条旧记录去跑新代码,就又是一次
+	 * 「新代码配旧清单」。
+	 */
+	async function replaceCode(id: string): Promise<void> {
+		const dir = await readExtensionDir(join(root, id));
+		if (dir.state !== "ready") {
+			throw new Error(`${id} 盘上那份现在装不起来,换不上 —— 先看拓展页上它那一行`);
+		}
+		const old = ready.get(id);
+		if (old) await stop(old);
+		ready.set(id, dir);
+		listed.set(id, await recordPrint(dir));
+		await start(dir, true);
+		// 收摊那一下把开关记成了「没应用」,补回来,免得下一次 sync() 又装一遍。
+		applied.set(id, true);
 	}
 
 	/** 面板那张表按 id 排。**次序不该跟着「什么时候装的」走** —— 否则重启一次就换个样。 */
@@ -419,36 +535,41 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				const now = await discoverExtensions(root);
 				const onDisk = new Set(now.map((dir) => dir.id));
 
-				// 先送走消失的。**三张表都要删干净** —— 在 `ready` 里留一格的话,下一次
+				// 先送走消失的。**几张表都要删干净** —— 在 `ready` 里留一格的话,下一次
 				// `sync()` 会把一个已经不在盘上的拓展装回来(它的代码还在模块缓存里,真装得起来)。
+				// `imported` 例外:模块缓存删不掉,它就得记着(见它的注释)。
 				for (const id of [...entries.keys()]) {
 					if (onDisk.has(id)) continue;
 					const dir = ready.get(id);
 					if (dir) await stop(dir);
 					ready.delete(id);
 					applied.delete(id);
+					listed.delete(id);
 					entries.delete(id);
 				}
 
 				for (const dir of now) {
-					// 已经收进装载名单的一律不碰,哪怕目录里的代码换了 —— 那是 `reload()` 的活。
-					// 清单坏了 / 版本不合的那些则重读一遍:它们一行代码都没跑过,主人把清单
-					// 修好、或者换了个版本合的包,重扫就该认出来。
-					if (ready.has(dir.id)) continue;
-					await admit(dir);
+					// 清单坏了 / 版本不合的那些不在名单里,每次重读:它们一行代码都没跑过,主人
+					// 把清单修好、或者换了个版本合的包,重扫就该认出来。
+					if (ready.has(dir.id)) await revisit(dir);
+					else await admit(dir);
 				}
 				resort();
 			});
 		},
+		swap(id) {
+			return enqueue(async () => {
+				if (!entries.get(id)?.staged) {
+					throw new Error(`${id} 没有等着换上的新代码 —— 每重载一次漏一份旧模块,不白漏`);
+				}
+				await replaceCode(id);
+			});
+		},
 		reload(id) {
 			return enqueue(async () => {
-				const dir = ready.get(id);
-				if (!dir) throw new Error(`没有装着叫 ${id} 的拓展(或者它的清单就读不出来)`);
+				if (!ready.has(id)) throw new Error(`没有装着叫 ${id} 的拓展(或者它的清单就读不出来)`);
 				if (!isEnabled(id)) throw new Error(`${id} 的开关关着 —— 先打开它,重载才有东西可换`);
-				await stop(dir);
-				await start(dir, true);
-				// 收摊那一下把开关记成了「没应用」,补回来,免得下一次 sync() 又装一遍。
-				applied.set(id, true);
+				await replaceCode(id);
 			});
 		},
 		async dispose() {

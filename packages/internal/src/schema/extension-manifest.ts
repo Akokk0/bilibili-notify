@@ -47,6 +47,11 @@ export const EXTENSION_RUN_STATES = [
 	"unreadable",
 	/** 给别的宿主契约版本写的。 */
 	"incompatible",
+	/**
+	 * 开着,但盘上那份代码这个进程**干净地换不上**(同一个 URL 早被 import 过另一份,ESM 的
+	 * 模块缓存删不掉)—— 不跑,等主人选重启或只重载(ADR-0012 决策 47)。
+	 */
+	"staged",
 ] as const;
 export type ExtensionRunState = (typeof EXTENSION_RUN_STATES)[number];
 
