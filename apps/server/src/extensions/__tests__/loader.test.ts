@@ -9,7 +9,8 @@
  * - **记账落在装载目录**,绝不写进某个拓展自己的目录(开发版那份是仓库工作树的软链)
  */
 
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili-notify/internal";
@@ -904,5 +905,65 @@ describe("换了代码(等着换上)", () => {
 		await expect(loaded.swap("bridge")).rejects.toThrow(/没有等着换上/);
 		await expect(loaded.swap("nobody")).rejects.toThrow();
 		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+	});
+});
+
+/**
+ * 宿主自己的日志。拓展起来、停下、换代码,此前只有开机那一趟记一行「已加载」—— 热装、拨开关、
+ * 只重载一声不吭,「现在跑的是哪一份代码」只能去翻拓展自己的日志,而拓展未必打。
+ */
+describe("宿主日志:跑的是哪一份代码看得见", () => {
+	const says = (word: string) => `export function activate() { return ${JSON.stringify(word)}; }`;
+	/** 盘上那份入口的指纹前 8 位 —— 日志里认代码就认它。 */
+	const printOnDisk = async () =>
+		createHash("sha256")
+			.update(await readFile(join(root, "bridge", "index.mjs")))
+			.digest("hex")
+			.slice(0, 8);
+
+	it("起来、停下、盘上换了、只重载 —— 每一步各记一行,带着版本与代码指纹", async () => {
+		await plant("bridge", says("旧的"));
+		const host = fakeHost();
+		const said = (re: RegExp) => host.lines.some((line) => re.test(line));
+		let on = true;
+		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const oldPrint = await printOnDisk();
+		expect(said(new RegExp(`^info .*bridge v1\\.0\\.0 已加载.*${oldPrint}`))).toBe(true);
+
+		on = false;
+		await loaded.sync();
+		expect(said(/^info .*bridge 已停下/)).toBe(true);
+
+		host.lines.length = 0;
+		on = true;
+		await loaded.sync();
+		expect(said(new RegExp(`^info .*bridge v1\\.0\\.0 已加载.*${oldPrint}`))).toBe(true);
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+		expect(said(/^info .*bridge 盘上换成了 v2\.0\.0,跑的还是 v1\.0\.0/)).toBe(true);
+
+		const newPrint = await printOnDisk();
+		await loaded.swap("bridge");
+		expect(said(new RegExp(`^info .*bridge v2\\.0\\.0 已重载.*${newPrint}`))).toBe(true);
+	});
+
+	it("关着装进去、拨开也换不上 → 记一句警告,说清为什么、怎么办", async () => {
+		await plant("bridge", says("旧的"));
+		const host = fakeHost();
+		let on = true;
+		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		on = false;
+		await loaded.sync();
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+
+		on = true;
+		await loaded.sync();
+
+		expect(loaded.list()[0]?.state).toBe("staged");
+		expect(host.lines.some((line) => /^warn .*bridge v2\.0\.0 换不上.*重启 BN/.test(line))).toBe(
+			true,
+		);
 	});
 });

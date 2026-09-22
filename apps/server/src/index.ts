@@ -861,12 +861,10 @@ export async function startStandaloneServer(
 			},
 			upgrades: extensionUpgrades,
 		});
+		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把
+		// 开机时没起来的说出来。
 		for (const entry of loadedExtensions.list()) {
-			if (entry.state === "running")
-				// 软链那份把落点也印出来:开发版跑的其实是仓里的工作树,日志里看不出来的话
-				// 「我改的那个到底跑没跑」还得再查一遍。
-				log.info(`[ext] ${entry.id} 已加载${entry.linkedTo ? `(→ ${entry.linkedTo})` : ""}`);
-			else if (entry.state !== "disabled")
+			if (entry.state !== "running" && entry.state !== "disabled")
 				log.warn(
 					`[ext] ${entry.id} 没加载(${entry.state})${entry.detail ? `:${entry.detail}` : ""}`,
 				);

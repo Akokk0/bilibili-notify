@@ -341,6 +341,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (url === undefined) {
 			// 一行代码都不跑、也不记账:这不是它的错,是这个进程换不上。
 			entries.set(id, { ...at, state: "staged", manifest, staged: { version: manifest.version } });
+			host.logger.warn(
+				`[ext] ${id} v${manifest.version} 换不上:这个进程跑过它的另一份代码 —— 重启 BN,或在它的详情页里只重载它`,
+			);
 			return;
 		}
 		if (print !== undefined) {
@@ -381,6 +384,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			runtimes.set(id, runtime);
 			runningPrint.set(id, print);
 			entries.set(id, { ...at, state: "running", manifest });
+			// 带上代码指纹:「现在跑的是哪一份」一眼对得上盘上那份;软链那份把落点也印出来 ——
+			// 开发版跑的其实是仓里的工作树,「我改的那个到底跑没跑」不必再查一遍。
+			host.logger.info(
+				`[ext] ${id} v${manifest.version} ${fresh ? "已重载" : "已加载"}(代码 ${print?.slice(0, 8) ?? "?"})${dir.linkedTo ? `(→ ${dir.linkedTo})` : ""}`,
+			);
 		} catch (err) {
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
 			// 留着的话面板写「没起来」而它的定时器还在跑 —— 那比要求重启难查得多。
@@ -396,6 +404,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		runningPrint.delete(dir.id);
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		await runtime?.dispose();
+		if (runtime) host.logger.info(`[ext] ${dir.id} 已停下`);
 		entries.set(dir.id, disabledEntry(dir));
 	}
 
@@ -453,6 +462,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				dir.state === "ready" && print !== listed.get(id)
 					? { ...entry, staged: { version: dir.manifest.version } }
 					: withoutStaged(entry);
+			// 每次重扫都会走到这儿(装别的拓展也扫):只在头一回标上 / 换了一版时记。
+			if (next.staged && next.staged.version !== entry.staged?.version) {
+				host.logger.info(
+					`[ext] ${id} 盘上换成了 v${next.staged.version},跑的还是 v${entryIdentity(entry)?.version ?? "?"} —— 等着换上(重启 BN 或只重载它)`,
+				);
+			}
 			entries.set(id, next);
 			return;
 		}
