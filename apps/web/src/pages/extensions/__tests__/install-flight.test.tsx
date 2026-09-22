@@ -45,12 +45,22 @@ describe("装完那一下的传送", () => {
 
 	it("开了「减少动态」→ 不飞,当场收摊", async () => {
 		matchMedia(true);
-		landingInDom("bridge");
+		// 🔴 动画接口桩上(永不结束):不桩的话 jsdom 走「没有 WAAPI」那条路也会当场收摊,删掉
+		// 减少动态的判断这条照样绿 —— 等于没钉。
+		const animate = vi.fn(() => ({ onfinish: null, oncancel: null, cancel() {} }));
+		Object.defineProperty(Element.prototype, "animate", {
+			configurable: true,
+			writable: true,
+			value: animate,
+		});
+		const landing = landingInDom("bridge");
 		const done = vi.fn();
 
 		render(<InstallFlight flight={{ id: "bridge", from: FROM }} onDone={done} />);
 
 		await waitFor(() => expect(done).toHaveBeenCalled());
+		expect(animate).not.toHaveBeenCalled();
+		expect(landing.style.opacity).toBe("");
 		expect(document.querySelector('[aria-hidden="true"][style*="position: fixed"]')).toBeNull();
 	});
 

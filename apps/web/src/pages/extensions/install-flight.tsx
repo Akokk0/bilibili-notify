@@ -23,11 +23,20 @@ export interface InstallFlight {
 /** 已装卡片的锚点属性名 —— 落点靠它找。两边都从这儿取,别各写各的字符串。 */
 export const EXT_CARD_ANCHOR = "data-ext-card";
 
+/**
+ * 按 id 找那张已装卡片的选择器 —— 传送找落点、换装找卡都用它。id 过一遍 `CSS.escape`,
+ * 带引号 / 方括号的也拼不坏。
+ */
+export function cardSelector(id: string): string {
+	return `[${EXT_CARD_ANCHOR}="${CSS.escape(id)}"]`;
+}
+
 const BALL = 26;
 /** 等落点出现的上限:refetch + 渲染。等不到就静默收摊,不留一颗停在半空的球。 */
 const WAIT_FOR_LANDING_MS = 4000;
 
-function reducedMotion(): boolean {
+/** 系统开着「减少动态」—— 传送、换装都是纯装饰,开着就一律直接收摊。 */
+export function reducedMotion(): boolean {
 	return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
@@ -125,9 +134,7 @@ export function InstallFlight({
 		const startedAt = performance.now();
 		const hunt = () => {
 			if (cancelled) return;
-			const landing = document.querySelector<HTMLElement>(
-				`[${EXT_CARD_ANCHOR}="${CSS.escape(flight.id)}"]`,
-			);
+			const landing = document.querySelector<HTMLElement>(cardSelector(flight.id));
 			if (!landing) {
 				if (performance.now() - startedAt > WAIT_FOR_LANDING_MS) return finish();
 				raf = requestAnimationFrame(hunt);

@@ -29,7 +29,7 @@
 
 import { useEffect, useRef } from "react";
 import type { CardMotion } from "./card-motion";
-import { EXT_CARD_ANCHOR } from "./install-flight";
+import { cardSelector, reducedMotion } from "./install-flight";
 
 type UpdateMotion = Extract<CardMotion, { kind: "update" }>;
 
@@ -94,10 +94,6 @@ const HEAD = 0.96;
 const PINK = "var(--color-bn-pink)";
 const RADIUS = "var(--radius-bn-card,14px)";
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-function reducedMotion(): boolean {
-	return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-}
 
 function center(rect: DOMRect): { x: number; y: number } {
 	return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -296,9 +292,7 @@ export function UpdateFlight({
 		const startedAt = performance.now();
 		const hunt = () => {
 			if (cancelled) return;
-			const card = document.querySelector<HTMLElement>(
-				`[${EXT_CARD_ANCHOR}="${CSS.escape(motion.id)}"]`,
-			);
+			const card = document.querySelector<HTMLElement>(cardSelector(motion.id));
 			if (!card) {
 				if (performance.now() - startedAt > WAIT_FOR_CARD_MS) return finish();
 				raf = requestAnimationFrame(hunt);
@@ -406,8 +400,8 @@ export function UpdateFlight({
 			});
 			void Promise.all([motion.outcome, enough]).then(([landed]) => {
 				if (cancelled || over) return;
-				if (landed) land(card);
-				else fade(card);
+				if (landed) land();
+				else fade();
 				// 新的一段已经从沉底那一帧接过去了,这时再停「下沉」才不会闪一下。
 				sink.cancel();
 			});
@@ -416,11 +410,11 @@ export function UpdateFlight({
 			 * 3–4. 收 + 画:光收到卡心成一个圆,顺着光头画满、打勾;卡跟着勾浮回原位。整段挂在
 			 * **卡片那一条**上(沉着 → 浮起 → 停着),它放完就收摊 —— 别的几条都在它之内放完。
 			 */
-			function land(target: HTMLElement) {
+			function land() {
 				const { mark, circle, tick } = makeMark(headAngle(spin, CIRCLE_AT));
 				rig.append(mark);
 				const share = (ms: number) => ms / LANDING_MS;
-				const main = target.animate(
+				const main = card.animate(
 					[
 						{ transform: sunk },
 						{ transform: sunk, offset: share(CHECK_AT), easing: "cubic-bezier(.3,0,.2,1)" },
@@ -509,8 +503,8 @@ export function UpdateFlight({
 			}
 
 			/** 没装成:光环与光晕淡出,卡从沉底轻轻回原样。不画勾 —— 没有值得庆祝的事。 */
-			function fade(target: HTMLElement) {
-				const main = target.animate(
+			function fade() {
+				const main = card.animate(
 					[{ transform: sunk }, { transform: "translateY(0px) scale(1)" }],
 					{
 						duration: FADE_MS,
