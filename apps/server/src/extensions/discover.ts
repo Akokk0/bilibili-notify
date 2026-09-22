@@ -2,11 +2,13 @@ import type { Dirent } from "node:fs";
 import { access, readdir, readFile, readlink } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import {
-	EXTENSION_API_VERSION,
+	EXTENSION_API_RANGE,
+	type ExtensionApiRange,
+	type ExtensionIdentity,
 	type ExtensionManifest,
-	ExtensionManifestSchema,
+	parseExtensionManifest,
 } from "@bilibili-notify/internal";
-import { safeExtensionIcon } from "./manifest-icon.js";
+import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
 
 /**
  * ⛔ **只有一个装载根:`<dataDir>/extensions/`。**
@@ -71,14 +73,18 @@ export type ExtensionDirRead =
 	| { state: "absent"; id: string; dir: string }
 	/** 有清单但用不了。**要列出来**:消失的东西没法排查。 */
 	| { state: "unreadable"; id: string; dir: string; detail: string }
-	/** 清单没问题,但它是给别的宿主版本写的。列出来、说清楚,不加载。 */
+	/**
+	 * 它是给别的契约档位写的。列出来、说清楚,不加载。
+	 *
+	 * 只带**身份那几格**:那一档的格式我们可能根本不认识,其余部分没有读。
+	 */
 	| {
 			state: "incompatible";
 			id: string;
 			dir: string;
-			manifest: ExtensionManifest;
+			identity: ExtensionIdentity;
 			requires: number;
-			host: number;
+			range: ExtensionApiRange;
 	  }
 	/** 可以加载了 —— 真加不加载还要看开关(`globals.extensions.<id>.enabled`)。 */
 	| {
@@ -111,20 +117,36 @@ async function exists(path: string): Promise<boolean> {
 }
 
 export interface ReadExtensionDirOptions {
-	hostApiVersion?: number;
+	/** 宿主认的档位区间。只有测试会换。 */
+	hostApiRange?: ExtensionApiRange;
+}
+
+/**
+ * 「版本不合」说成人话 —— 装载列表、上传装包、市场三处说的是同一句,分头写会说成三种。
+ *
+ * 两个方向要分开说:高了是 BN 旧了(先升级 BN),低了是拓展旧了(换它的新版)——
+ * 一律叫主人升级 BN 的话,抬过最低档之后那句话就是错的。
+ */
+export function apiVersionMismatch(requires: number, range: ExtensionApiRange): string {
+	const accepts =
+		range.min === range.current ? `v${range.current}` : `v${range.min}–v${range.current}`;
+	return requires > range.current
+		? `它要宿主契约 v${requires},这一版 BN 只认 ${accepts} —— 先升级 BN`
+		: `它是给宿主契约 v${requires} 写的,这一版 BN 只认 ${accepts} —— 换它的新版`;
 }
 
 /**
  * 读一个拓展目录的清单,并在**执行之前**把能判的都判了。
  *
- * 判的顺序是有讲究的:先「这份清单本身立得住吗」,再「它是给谁写的」。反过来的话,一份
- * 为将来宿主写的清单会被我们按今天的规矩挑出一堆毛病,而真正的原因只有一条 —— 版本不合。
+ * 判的顺序是有讲究的:先「它是给哪一档写的」,再按那一档的格式看「立不立得住」。反过来
+ * 的话,一份为将来宿主写的清单会被我们按今天的规矩挑出一堆毛病,而真正的原因只有一条 ——
+ * 版本不合。
  */
 export async function readExtensionDir(
 	dir: string,
 	options: ReadExtensionDirOptions = {},
 ): Promise<ExtensionDirRead> {
-	const hostApiVersion = options.hostApiVersion ?? EXTENSION_API_VERSION;
+	const range = options.hostApiRange ?? EXTENSION_API_RANGE;
 	const id = basename(dir);
 	let text: string;
 	try {
@@ -145,44 +167,43 @@ export async function readExtensionDir(
 		};
 	}
 
-	const parsed = ExtensionManifestSchema.safeParse(raw);
-	if (!parsed.success) {
-		const detail = parsed.error.issues
-			.map((issue) => `${issue.path.join(".") || "(根)"}: ${issue.message}`)
-			.join(";");
+	// 先单读 apiVersion、再按那一档的格式读其余(ADR-0019 决策 18)—— 为将来的宿主写的
+	// 清单,格式本来就可能是我们不认识的,挑它的毛病只会把「版本不合」说成「读不了」。
+	const read = parseExtensionManifest(raw, range);
+	if (!read.ok && read.reason === "unreadable") {
 		return {
 			state: "unreadable",
 			id,
 			dir,
-			detail: `${EXTENSION_MANIFEST_FILE} 不合法 —— ${detail}`,
+			detail: `${EXTENSION_MANIFEST_FILE} 不合法 —— ${read.issues.join(";")}`,
 		};
 	}
-	// 图标当场过白名单(决策 20)—— **这里是唯一的门**:再往下走,清单会被面板原样
-	// 塞进 DOM。坏图标不是拒绝加载的理由,它只是退回灰方章。
-	const manifest: ExtensionManifest = { ...parsed.data, icon: safeExtensionIcon(parsed.data.icon) };
 
 	// 清单里的 id 与目录名对不上 = 两个身份。挂载点按目录算、清单按自己那格算,
-	// 放过去的话「面板上点的」与「实际在跑的」会是两个东西。
-	if (manifest.id !== id) {
+	// 放过去的话「面板上点的」与「实际在跑的」会是两个东西。版本不合的也先判这一条。
+	const claimed = read.ok ? read.manifest.id : read.identity.id;
+	if (claimed !== id) {
 		return {
 			state: "unreadable",
 			id,
 			dir,
-			detail: `清单里的 id 是 ${manifest.id},与目录名 ${id} 对不上`,
+			detail: `清单里的 id 是 ${claimed},与目录名 ${id} 对不上`,
 		};
 	}
 
-	// 只比主版本:契约加一格不该判死已经装好的拓展,改一格的语义则必须把旧拓展停在门外。
-	if (manifest.apiVersion !== hostApiVersion) {
+	// 图标当场过白名单(决策 20)—— **这里是唯一的门**:再往下走,清单会被面板原样
+	// 塞进 DOM。坏图标不是拒绝加载的理由,它只是退回灰方章。
+	if (!read.ok) {
 		return {
 			state: "incompatible",
 			id,
 			dir,
-			manifest,
-			requires: manifest.apiVersion,
-			host: hostApiVersion,
+			identity: { ...read.identity, icon: safeExtensionIcon(read.identity.icon) },
+			requires: read.requires,
+			range,
 		};
 	}
+	const manifest = safeManifestIcons(read.manifest);
 
 	const entry = join(dir, EXTENSION_ENTRY_FILE);
 	if (!(await exists(entry))) {
@@ -198,7 +219,7 @@ export async function readExtensionDir(
 }
 
 export interface DiscoverExtensionsOptions {
-	hostApiVersion?: number;
+	hostApiRange?: ExtensionApiRange;
 }
 
 /**
@@ -215,7 +236,6 @@ export async function discoverExtensions(
 	root: string,
 	options: DiscoverExtensionsOptions = {},
 ): Promise<Array<Exclude<ExtensionDirRead, { state: "absent" }>>> {
-	const hostApiVersion = options.hostApiVersion ?? EXTENSION_API_VERSION;
 	let entries: Dirent[];
 	try {
 		entries = await readdir(root, { withFileTypes: true });
@@ -233,9 +253,7 @@ export async function discoverExtensions(
 			(entry) => (entry.isDirectory() || entry.isSymbolicLink()) && !entry.name.startsWith("."),
 		)
 		.map((entry) => entry.name);
-	const reads = await Promise.all(
-		dirs.map((name) => readExtensionDir(join(root, name), { hostApiVersion })),
-	);
+	const reads = await Promise.all(dirs.map((name) => readExtensionDir(join(root, name), options)));
 
 	// 按名字排:`readdir` 的顺序随文件系统走,不排的话面板列表每次开机都可能换个次序。
 	return reads

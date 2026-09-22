@@ -16,13 +16,14 @@
 import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	EXTENSION_API_VERSION,
+	EXTENSION_API_RANGE,
 	type ExtensionManifest,
-	ExtensionManifestSchema,
+	parseExtensionManifest,
 } from "@bilibili-notify/internal";
 import { strFromU8, unzipSync } from "fflate";
 import { isJunkZipEntry } from "../zip-junk.js";
 import {
+	apiVersionMismatch,
 	EXTENSION_CHANGELOG_FILE,
 	EXTENSION_DOC_MAX_BYTES,
 	EXTENSION_ENTRY_FILE,
@@ -180,29 +181,23 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 			errors: [`${EXTENSION_MANIFEST_FILE} 不是合法 JSON:${(err as Error).message}`],
 		};
 	}
-	const parsed = ExtensionManifestSchema.safeParse(raw);
-	if (!parsed.success) {
+	// 版本不合就在这儿拦,而且**先判它**:为将来的宿主写的清单,格式本来就可能是我们不认识
+	// 的,挑它的毛病只会把「先升级 BN」说成一串「读不了」。装进去再在页面上显示 incompatible
+	// 也不是不行,但**此刻**这句话最清楚:主人正拿着那个包,还能去换一个对的。
+	const read = parseExtensionManifest(raw, EXTENSION_API_RANGE);
+	if (!read.ok) {
 		return {
 			ok: false,
-			errors: parsed.error.issues.map(
-				(issue) => `${EXTENSION_MANIFEST_FILE} ${issue.path.join(".") || "(根)"}: ${issue.message}`,
-			),
-		};
-	}
-	// 版本不合就在这儿拦。装进去再在页面上显示 incompatible 也不是不行,但**此刻**这句话
-	// 最清楚:主人正拿着那个包,还能去换一个对的。
-	if (parsed.data.apiVersion !== EXTENSION_API_VERSION) {
-		return {
-			ok: false,
-			errors: [
-				`它要宿主契约 v${parsed.data.apiVersion},这一版是 v${EXTENSION_API_VERSION} —— 换一个匹配的包`,
-			],
+			errors:
+				read.reason === "incompatible"
+					? [apiVersionMismatch(read.requires, EXTENSION_API_RANGE)]
+					: read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue}`),
 		};
 	}
 
 	return {
 		ok: true,
-		pkg: { id: parsed.data.id, manifest: parsed.data, manifestBytes, entry, docs },
+		pkg: { id: read.manifest.id, manifest: read.manifest, manifestBytes, entry, docs },
 	};
 }
 

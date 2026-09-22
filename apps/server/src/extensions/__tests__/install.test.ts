@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { strFromU8, strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { EXTENSION_DOC_MAX_BYTES } from "../discover.js";
@@ -34,7 +34,7 @@ function manifest(over: Record<string, unknown> = {}): string {
 		name: "机器人框架桥接",
 		description: "测试用",
 		version: "1.0.0",
-		apiVersion: EXTENSION_API_VERSION,
+		apiVersion: 1,
 		provides: ["push"],
 		...over,
 	});
@@ -176,12 +176,53 @@ describe("拆包", () => {
 	});
 
 	/** 装一个跑不起来的东西没有意义,而**这一刻**的错误信息是最清楚的一次。 */
-	it("给别的宿主版本写的 → 当场拒绝,别等装进去再在页面上显示 incompatible", () => {
+	it("给更新的宿主写的 → 当场拒绝,别等装进去再在页面上显示 incompatible", () => {
 		const opened = openExtensionPackage(
-			pack({ ...GOOD, "extension.json": manifest({ apiVersion: EXTENSION_API_VERSION + 1 }) }),
+			pack({
+				...GOOD,
+				"extension.json": manifest({ apiVersion: EXTENSION_API_RANGE.current + 1 }),
+			}),
 		);
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toMatch(/契约|版本/);
+		if (!opened.ok) expect(opened.errors.join()).toContain("先升级 BN");
+	});
+
+	/**
+	 * 将来的清单格式我们不认识 —— 主人拿着这个包,该听到的是「版本不合、先升级 BN」,而不是
+	 * 一串「contributes.chat: 不认识的键」(ADR-0019 决策 18)。
+	 */
+	it("将来的格式我们不认识 → 说版本不合,不去挑格式的毛病", () => {
+		const opened = openExtensionPackage(
+			pack({
+				...GOOD,
+				"extension.json": manifest({
+					apiVersion: EXTENSION_API_RANGE.current + 1,
+					provides: undefined,
+					contributes: { chat: {} },
+				}),
+			}),
+		);
+		expect(opened.ok).toBe(false);
+		if (opened.ok) return;
+		expect(opened.errors).toHaveLength(1);
+		expect(opened.errors[0]).toContain("先升级 BN");
+	});
+
+	it("v2 清单的包 → 收下", () => {
+		const opened = openExtensionPackage(
+			pack({
+				...GOOD,
+				"extension.json": manifest({
+					apiVersion: 2,
+					provides: undefined,
+					contributes: {
+						push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } },
+					},
+				}),
+			}),
+		);
+		expect(opened.ok).toBe(true);
+		if (opened.ok) expect(opened.pkg.manifest.apiVersion).toBe(2);
 	});
 
 	/** 🔴 zip 里的路径是攻击者写的,`..` 一律不认 —— 落盘那一步不该再自己防一遍。 */

@@ -9,7 +9,7 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
-import { EXTENSION_API_VERSION, type GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfig } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
@@ -71,7 +71,7 @@ function pack(over: Record<string, unknown> = {}): Blob {
 				name: "机器人框架桥接",
 				description: "测试用",
 				version: "1.1.0",
-				apiVersion: EXTENSION_API_VERSION,
+				apiVersion: 1,
 				provides: ["push"],
 				...over,
 			}),
@@ -145,6 +145,51 @@ describe("GET /api/ext", () => {
 		expect(bridge?.state).toBe("running");
 		expect(bridge?.version).toBe("1.0.0");
 		expect(bridge?.provides).toEqual(["push"]);
+	});
+
+	/** v2 清单不再单写 provides(ADR-0019 决策 16),面板要的那一格由 contributes 推出来。 */
+	it("v2 拓展开哪一口由清单的 contributes 推出来", async () => {
+		const douyin: ExtensionEntry = {
+			id: "douyin",
+			dir: "/data/extensions/douyin",
+			state: "disabled",
+			manifest: {
+				id: "douyin",
+				name: "抖音订阅",
+				description: "一句话说明",
+				version: "0.1.0",
+				apiVersion: 2,
+				contributes: {
+					subscription: {
+						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+						events: ["post"],
+					},
+				},
+			},
+		};
+		const body = (await (
+			await boot({ entries: [douyin] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.provides).toEqual(["subscription"]);
+	});
+
+	it("版本不合的拓展照样有名字与版本 —— 格式不认识,身份那几格也读得出来", async () => {
+		const future: ExtensionEntry = {
+			id: "future",
+			dir: "/data/extensions/future",
+			state: "incompatible",
+			identity: { id: "future", name: "未来的拓展", description: "一句话", version: "3.0.0" },
+			detail: "它要宿主契约 v3",
+		};
+		const body = (await (
+			await boot({ entries: [future] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]).toMatchObject({
+			name: "未来的拓展",
+			version: "3.0.0",
+			state: "incompatible",
+		});
+		expect(body.extensions[0]?.provides).toBeUndefined();
 	});
 
 	/** 「我改的是不是跑着的那个」只有全路径答得了。 */
@@ -593,7 +638,7 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: EXTENSION_API_VERSION,
+					apiVersion: 1,
 					provides: ["push"],
 				}),
 			),
@@ -620,7 +665,7 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: EXTENSION_API_VERSION,
+					apiVersion: 1,
 					provides: ["push"],
 				}),
 			),

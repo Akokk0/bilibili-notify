@@ -9,7 +9,7 @@ import type {
 import {
 	type Connection,
 	type Disposable,
-	EXTENSION_API_VERSION,
+	EXTENSION_API_RANGE,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
@@ -259,7 +259,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	const ctx: ExtensionContext = {
 		id,
-		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_VERSION,
+		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
 		setTimeout: (fn, ms) => (disposed ? refuse("setTimeout") : track(host.setTimeout(fn, ms))),

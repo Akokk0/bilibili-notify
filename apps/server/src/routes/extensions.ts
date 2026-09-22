@@ -8,7 +8,7 @@ import type {
 	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
-import { ExtensionIdSchema, isExtensionEnabled } from "@bilibili-notify/internal";
+import { ExtensionIdSchema, isExtensionEnabled, manifestProvides } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
@@ -20,7 +20,7 @@ import {
 	openExtensionPackage,
 	uninstallExtension,
 } from "../extensions/install.js";
-import type { ExtensionEntry } from "../extensions/loader.js";
+import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
@@ -98,26 +98,30 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	app.get("/", async (c) => {
 		await opts.settle?.();
 		const globals = opts.store.getGlobals();
-		const extensions: ExtensionDTO[] = opts.extensions().map((entry) => ({
-			id: entry.id,
-			// 清单读不出来时退回目录名 —— 卡片总得印点什么,而目录名正是那时唯一的身份。
-			name: entry.manifest?.name ?? entry.id,
-			description: entry.manifest?.description,
-			version: entry.manifest?.version,
-			provides: entry.manifest?.provides,
-			// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
-			descriptor: opts.descriptor(entry.id),
-			configFields: opts.configFields(entry.id),
-			icon: entry.manifest?.icon,
-			// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
-			// 只有那一句答得了。
-			dir: entry.dir,
-			...(entry.linkedTo === undefined ? {} : { linkedTo: entry.linkedTo }),
-			// 开关与状态是**两件事**:开着却没跑(连败停用 / 清单坏了)正是最该看见的一格。
-			enabled: isExtensionEnabled(globals, entry.id),
-			state: entry.state,
-			detail: entry.detail,
-		}));
+		const extensions: ExtensionDTO[] = opts.extensions().map((entry) => {
+			// 版本不合的只有身份那几格(那一档的格式可能不认识),名字与版本照样印得出来。
+			const identity = entryIdentity(entry);
+			return {
+				id: entry.id,
+				// 清单读不出来时退回目录名 —— 卡片总得印点什么,而目录名正是那时唯一的身份。
+				name: identity?.name ?? entry.id,
+				description: identity?.description,
+				version: identity?.version,
+				provides: entry.manifest && manifestProvides(entry.manifest),
+				// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
+				descriptor: opts.descriptor(entry.id),
+				configFields: opts.configFields(entry.id),
+				icon: identity?.icon,
+				// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
+				// 只有那一句答得了。
+				dir: entry.dir,
+				...(entry.linkedTo === undefined ? {} : { linkedTo: entry.linkedTo }),
+				// 开关与状态是**两件事**:开着却没跑(连败停用 / 清单坏了)正是最该看见的一格。
+				enabled: isExtensionEnabled(globals, entry.id),
+				state: entry.state,
+				detail: entry.detail,
+			};
+		});
 		return c.json({ extensions });
 	});
 

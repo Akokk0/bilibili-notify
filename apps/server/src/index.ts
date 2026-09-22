@@ -30,6 +30,7 @@ import { createDevtools } from "./devtools/index.js";
 import { extensionsRootIn } from "./extensions/discover.js";
 import {
 	EXTENSION_MAX_LOAD_FAILURES,
+	entryIdentity,
 	type LoadedExtensions,
 	loadExtensions,
 } from "./extensions/loader.js";
@@ -312,7 +313,7 @@ export async function startStandaloneServer(
 			installed: () =>
 				loadedExtensions
 					?.list()
-					.map((entry) => ({ id: entry.id, version: entry.manifest?.version })) ?? [],
+					.map((entry) => ({ id: entry.id, version: entryIdentity(entry)?.version })) ?? [],
 			rescan: async () => {
 				await loadedExtensions?.rescan();
 			},

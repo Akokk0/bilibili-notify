@@ -15,7 +15,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { discoverExtensions, readExtensionDir } from "../discover.js";
 
@@ -27,8 +27,26 @@ function manifest(over: Record<string, unknown> = {}): Record<string, unknown> {
 		name: "机器人框架桥接",
 		description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
 		version: "1.0.0",
-		apiVersion: EXTENSION_API_VERSION,
+		apiVersion: 1,
 		provides: ["push"],
+		...over,
+	};
+}
+
+/** 一份 v2 清单(ADR-0019 决策 16):静态声明全住清单。 */
+function manifestV2(over: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		id: "douyin",
+		name: "抖音订阅",
+		description: "盯着抖音作者的新作品与开播。",
+		version: "0.1.0",
+		apiVersion: 2,
+		contributes: {
+			subscription: {
+				display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+				events: ["post"],
+			},
+		},
 		...over,
 	};
 }
@@ -110,16 +128,120 @@ describe("readExtensionDir", () => {
 		expect(r.detail).toContain("not-bridge");
 	});
 
-	it("为别的宿主版本写的 → incompatible,列得出来、带得上原因", async () => {
+	it("v2 清单 → ready(宿主认的是一个区间,不再只认一档)", async () => {
+		const r = await readExtensionDir(await plant("douyin", manifestV2()));
+		expect(r.state).toBe("ready");
+		if (r.state !== "ready") throw new Error("unreachable");
+		expect(r.manifest.apiVersion).toBe(2);
+	});
+
+	it("为更新的宿主写的 → incompatible,列得出来、带得上原因", async () => {
+		const requires = EXTENSION_API_RANGE.current + 1;
 		const r = await readExtensionDir(
-			await plant("future", manifest({ id: "future", apiVersion: EXTENSION_API_VERSION + 1 })),
+			await plant("future", manifest({ id: "future", apiVersion: requires })),
 		);
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toBe(EXTENSION_API_VERSION + 1);
-		expect(r.host).toBe(EXTENSION_API_VERSION);
+		expect(r.requires).toBe(requires);
+		expect(r.range).toEqual(EXTENSION_API_RANGE);
 		// 名字还在 —— 面板要印得出「谁没加载」。
-		expect(r.manifest.name).toBe("机器人框架桥接");
+		expect(r.identity.name).toBe("机器人框架桥接");
+	});
+
+	/**
+	 * 为将来的宿主写的清单,格式本来就可能是我们不认识的 —— 按今天的规矩挑毛病只会报
+	 * 「读不了」,而真正的原因只有一条:版本不合(ADR-0019 决策 18)。
+	 */
+	it("将来的格式我们不认识 → 照样是 incompatible,不是 unreadable", async () => {
+		const r = await readExtensionDir(
+			await plant("future", {
+				id: "future",
+				name: "未来的拓展",
+				description: "用的是我们还不认识的清单格式。",
+				version: "3.0.0",
+				apiVersion: EXTENSION_API_RANGE.current + 1,
+				contributes: { chat: { anything: true } },
+				brandNewSection: {},
+			}),
+		);
+		expect(r.state).toBe("incompatible");
+		if (r.state !== "incompatible") throw new Error("unreachable");
+		expect(r.identity.version).toBe("3.0.0");
+	});
+
+	it("低于宿主最低档的 → 同样 incompatible(抬过最低档之后,老拓展停在门外)", async () => {
+		const r = await readExtensionDir(await plant("bridge", manifest()), {
+			hostApiRange: { min: 2, current: 3 },
+		});
+		expect(r.state).toBe("incompatible");
+		if (r.state !== "incompatible") throw new Error("unreachable");
+		expect(r.requires).toBe(1);
+	});
+
+	it("版本不合、清单 id 又与目录名对不上 → unreadable(两个身份比版本更要紧)", async () => {
+		const r = await readExtensionDir(
+			await plant("future", manifest({ id: "other", apiVersion: EXTENSION_API_RANGE.current + 1 })),
+		);
+		expect(r.state).toBe("unreadable");
+	});
+
+	it("版本不合的拓展,图标一样过白名单", async () => {
+		const r = await readExtensionDir(
+			await plant(
+				"future",
+				manifest({
+					id: "future",
+					apiVersion: EXTENSION_API_RANGE.current + 1,
+					icon: '<svg viewBox="0 0 24 24"><script>x()</script></svg>',
+				}),
+			),
+		);
+		if (r.state !== "incompatible") throw new Error("unreachable");
+		expect(r.identity.icon).toBeUndefined();
+	});
+
+	/**
+	 * v2 清单里的选项图标也会被面板塞进 DOM(ADR-0019 决策 21,桥那两个 logo 从 web 搬回
+	 * 拓展),所以它和清单图标过**同一道门、在同一刻**。
+	 */
+	it("v2 设置项的选项图标过白名单:夹带脚本的那一枚丢掉,干净的留着", async () => {
+		const clean = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
+		const dirty = '<svg viewBox="0 0 24 24"><script>x()</script></svg>';
+		const field = (key: string) => ({
+			key,
+			type: "enum",
+			label: key,
+			options: [
+				{ value: "a", label: "A", icon: clean },
+				{ value: "b", label: "B", icon: dirty },
+			],
+		});
+		const r = await readExtensionDir(
+			await plant(
+				"douyin",
+				manifestV2({
+					settings: {
+						fields: [
+							field("kind"),
+							{ key: "links", type: "list", label: "接入", fields: [field("k")] },
+						],
+					},
+					contributes: {
+						push: {
+							display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+							connection: { fields: [field("mode")] },
+						},
+					},
+				}),
+			),
+		);
+		if (r.state !== "ready" || r.manifest.apiVersion !== 2) throw new Error("unreachable");
+		const icons = (f: unknown) =>
+			(f as { options: { icon?: string }[] }).options.map((option) => option.icon);
+		const [kind, links] = r.manifest.settings?.fields ?? [];
+		expect(icons(kind)).toEqual([clean, undefined]);
+		expect(icons((links as { fields: unknown[] }).fields[0])).toEqual([clean, undefined]);
+		expect(icons(r.manifest.contributes.push?.connection?.fields[0])).toEqual([clean, undefined]);
 	});
 
 	it("清单不是合法 JSON → unreadable,身份退回目录名", async () => {

@@ -182,7 +182,7 @@ export interface PushSourceHandle<TConfig> {
 export interface ExtensionContext {
 	/** 它自己的 id —— 同时是挂载点、装载目录与记账键那一段。 */
 	readonly id: string;
-	/** 宿主契约的主版本。拓展自己也可能要按它分叉。 */
+	/** 宿主**当前**的契约档位(它认的区间的上沿)。拓展自己也可能要按它分叉。 */
 	readonly hostApiVersion: number;
 	/**
 	 * 独立端自己的版本号(载荷版本)。**与契约版本是两件事** —— 那个决定「加不加载」,

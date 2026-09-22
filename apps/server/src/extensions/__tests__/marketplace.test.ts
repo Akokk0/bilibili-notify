@@ -12,7 +12,7 @@ import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE, type ExtensionApiRange } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createMarketplace, MARKETPLACE_PROVENANCE_FILE } from "../marketplace.js";
@@ -54,7 +54,7 @@ function pack(id: string, version: string, docs: Record<string, string> = {}): U
 				name: `拓展 ${id}`,
 				description: "测试用",
 				version,
-				apiVersion: EXTENSION_API_VERSION,
+				apiVersion: 1,
 				provides: ["push"],
 			}),
 		),
@@ -74,7 +74,7 @@ function entry(
 		name: `拓展 ${id}`,
 		description: "一句话",
 		version,
-		apiVersion: EXTENSION_API_VERSION,
+		apiVersion: 1,
 		package: { url, sha256: sha256(zip), size: zip.byteLength },
 		releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/x",
 		...over,
@@ -137,6 +137,7 @@ interface HarnessOptions {
 	prerelease?: boolean;
 	noOfficial?: boolean;
 	mirrors?: string[];
+	hostApiRange?: ExtensionApiRange;
 }
 
 function harness(opts: HarnessOptions = {}) {
@@ -152,6 +153,7 @@ function harness(opts: HarnessOptions = {}) {
 		rescan,
 		logger: SILENT,
 		timeoutMs: 1_000,
+		...(opts.hostApiRange ? { hostApiRange: opts.hostApiRange } : {}),
 	});
 	return {
 		marketplace,
@@ -270,7 +272,7 @@ describe("list():官方源", () => {
 				key.privateKey,
 				official({
 					extensions: [
-						entry("bridge", "0.0.2", bridgeZip, { apiVersion: EXTENSION_API_VERSION + 1 }),
+						entry("bridge", "0.0.2", bridgeZip, { apiVersion: EXTENSION_API_RANGE.current + 1 }),
 					],
 				}),
 			),
@@ -278,6 +280,45 @@ describe("list():官方源", () => {
 		expect((await harness().marketplace.list()).extensions[0]).toMatchObject({
 			state: "incompatible",
 		});
+	});
+
+	/** 宿主认的是区间(ADR-0019 决策 18):当前档与更早还没删退路的档都能装。 */
+	it("落在宿主区间里的每一档都能装", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [
+						entry("bridge", "0.0.2", bridgeZip, { apiVersion: EXTENSION_API_RANGE.min }),
+						entry("douyin", "0.1.0", pack("douyin", "0.1.0"), {
+							apiVersion: EXTENSION_API_RANGE.current,
+						}),
+					],
+				}),
+			),
+		});
+		const states = (await harness().marketplace.list()).extensions.map((e) => [e.id, e.state]);
+		expect(states).toEqual([
+			["bridge", "installable"],
+			["douyin", "installable"],
+		]);
+	});
+
+	it("低于宿主最低档 → 同样 incompatible;真去装会说「这个拓展太旧」而不是叫主人升级 BN", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ extensions: [entry("bridge", "0.0.2", bridgeZip, { apiVersion: 1 })] }),
+			),
+		});
+		const h = harness({ hostApiRange: { min: 2, current: 3 } });
+		expect((await h.marketplace.list()).extensions[0]).toMatchObject({ state: "incompatible" });
+		const outcome = await h.marketplace.install("official", "bridge");
+		expect(outcome.ok).toBe(false);
+		if (!outcome.ok) {
+			expect(outcome.err).not.toContain("升级 BN");
+			expect(outcome.err).toContain("v1");
+		}
 	});
 });
 
@@ -509,7 +550,7 @@ describe("list():已装的怎么标", () => {
 				key.privateKey,
 				official({
 					extensions: [
-						entry("bridge", "0.0.3", bridgeZip, { apiVersion: EXTENSION_API_VERSION + 1 }),
+						entry("bridge", "0.0.3", bridgeZip, { apiVersion: EXTENSION_API_RANGE.current + 1 }),
 					],
 				}),
 			),
@@ -603,7 +644,7 @@ describe("install()", () => {
 				key.privateKey,
 				official({
 					extensions: [
-						entry("bridge", "0.0.2", bridgeZip, { apiVersion: EXTENSION_API_VERSION + 1 }),
+						entry("bridge", "0.0.2", bridgeZip, { apiVersion: EXTENSION_API_RANGE.current + 1 }),
 					],
 				}),
 			),

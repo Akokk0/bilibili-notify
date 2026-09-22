@@ -12,7 +12,7 @@
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXTENSION_API_VERSION, type Logger, type ServiceContext } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -59,7 +59,7 @@ async function plant(id: string, code: string, over: Record<string, unknown> = {
 			name: id,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: EXTENSION_API_VERSION,
+			apiVersion: 1,
 			provides: ["push"],
 			...over,
 		}),
@@ -230,7 +230,7 @@ describe("加载拓展", () => {
 	});
 
 	it("清单坏了 / 版本不合 → 不 import,原样列出来带原因", async () => {
-		await plant("future", HEALTHY, { apiVersion: EXTENSION_API_VERSION + 1 });
+		await plant("future", HEALTHY, { apiVersion: EXTENSION_API_RANGE.current + 1 });
 		await mkdir(join(root, "junk"), { recursive: true });
 		await writeFile(join(root, "junk", "extension.json"), "{ 半个");
 		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
@@ -238,6 +238,10 @@ describe("加载拓展", () => {
 			["future", "incompatible"],
 			["junk", "unreadable"],
 		]);
+		// 版本不合的那一行说得出是谁、该怎么办。
+		const future = loaded.list()[0];
+		expect(future?.identity?.name).toBeTruthy();
+		expect(future?.detail).toContain("先升级 BN");
 	});
 });
 

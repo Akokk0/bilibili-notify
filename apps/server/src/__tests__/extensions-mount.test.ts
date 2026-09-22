@@ -10,7 +10,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
-import { EXTENSION_API_VERSION } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
@@ -134,7 +133,7 @@ describe("面板上传装拓展的接线", () => {
 					name: "抖音订阅源",
 					description: "测试用",
 					version: "0.2.0",
-					apiVersion: EXTENSION_API_VERSION,
+					apiVersion: 1,
 					provides: ["subscription"],
 				}),
 			),

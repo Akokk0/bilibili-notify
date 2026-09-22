@@ -1,19 +1,30 @@
 import { z } from "zod";
 
 /**
- * 宿主给拓展的那份契约的**主版本**。
+ * 宿主认的**契约档位区间** `[min, current]`(ADR-0019 决策 18)。
  *
- * 只比主版本(同桥接协议 v1 那条规矩):契约加一格不该把已经装好的拓展全判死,而改一格
- * 的语义则必须让旧拓展**停在门外**。宿主与清单对不上就是「不加载 + 说清楚为什么」——
+ * 清单里的 `apiVersion` 是拓展**要的那一档**。落在区间里就收;高于 `current` 是给更新的
+ * BN 写的,低于 `min` 是给已经删掉退路的旧契约写的 —— 两头都是「不加载 + 说清楚为什么」,
  * 加载了再炸的话,炸在哪一半全凭运气。
+ *
+ * - 契约**加东西**(清单多一段、ctx 多一格)= 抬 `current`:要新东西的拓展写新的那档,
+ *   旧 BN 当场说「版本不合」,而不是装进去才发现少了一块。
+ * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
+ *
+ * 现在:v1 是老格式(外观与配置项写在代码里,只剩桥在用),v2 是把静态声明搬进清单的那份。
  */
-export const EXTENSION_API_VERSION = 1;
+export interface ExtensionApiRange {
+	readonly min: number;
+	readonly current: number;
+}
+export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({ min: 1, current: 2 });
 
 /**
  * 这个拓展开的是哪一口。
  *
  * 只有两口(ADR-0012):**推送源**接进「推送目标」,**订阅源**接进「订阅 UP 主」。
- * 面板要在不加载代码的前提下把卡片归类,所以它写在清单里而不是靠代码注册时才知道。
+ * 面板要在不加载代码的前提下把卡片归类,所以它得从清单里读得出来:v1 单写一格
+ * `provides`,v2 由 `contributes` 的键推出来({@link manifestProvides})。
  */
 export const EXTENSION_PROVIDES = ["push", "subscription"] as const;
 export const ExtensionProvidesSchema = z.enum(EXTENSION_PROVIDES);
@@ -95,26 +106,367 @@ export const ExtensionVersionSchema = z.string().regex(
 	"拓展版本号必须是 semver,如 1.0.0 或 1.0.0-alpha.1",
 );
 
-/**
- * `extension.json` —— 拓展包的清单。
+/*
+ * ---- `extension.json` —— 拓展包的清单 ----------------------------------------------
  *
  * **它要在代码跑起来之前就把话说全**:面板列出「装了但没启用」的拓展、执行之前判兼容、
- * 失败记账拿得到身份,这三件事都发生在 `import()` 之前(ADR-0012 决策 8)。所以清单里
- * 不放任何「要跑一下才知道」的东西 —— config 的 zod 与字段表都由代码那边交,加载时对表。
+ * 失败记账拿得到身份,这三件事都发生在 `import()` 之前(ADR-0012 决策 8)。所以清单里不放
+ * 任何「要跑一下才知道」的东西 —— 而表单声明、外观、开哪一口**是静态数据**,从来不属于
+ * 那一类:v2 把它们全搬进了清单(ADR-0019 决策 16),代码那边只剩行为与 zod 校验。
+ *
+ * 读法固定是**先单读 `apiVersion`,再按那一档的格式校验其余**({@link parseExtensionManifest})
+ * —— 以后格式再变,旧宿主说的是「版本不合」,而不是「清单读不了」。
  */
-export const ExtensionManifestSchema = z.object({
+
+/**
+ * **身份那几格** —— 每一档清单都有、而且读法永远不变。
+ *
+ * 版本不合的拓展也要在面板上占一行、写得出「××× 3.0.0 要更新的 BN」,所以这几格是
+ * 跨档位的承诺:它们以后只许加可选格,不许改。
+ */
+const identityShape = {
 	id: ExtensionIdSchema,
 	name: z.string().min(1),
 	/** 一句话说清它是干嘛的 —— 拓展页卡片上印的就是这句。 */
 	description: z.string().min(1),
 	version: ExtensionVersionSchema,
-	/** 拿它跟 {@link EXTENSION_API_VERSION} 比,对不上就不加载。 */
-	apiVersion: z.number().int().min(1),
-	provides: z.array(ExtensionProvidesSchema).min(1),
 	/**
 	 * 卡片上的图标,一段 SVG。**可选** —— 没有就退回灰方章,不是拒绝加载的理由。
 	 * 内容在加载时过白名单(拓展能独立发版的代价:图标不能住在主程序的闭表里)。
 	 */
 	icon: z.string().max(64_000).optional(),
+};
+
+/** 不认识的档位只按这几格读 —— 其余部分可能是我们根本不认识的格式,不挑它的毛病。 */
+const ExtensionIdentitySchema = z.object(identityShape);
+export type ExtensionIdentity = z.infer<typeof ExtensionIdentitySchema>;
+
+/**
+ * v1:外观与配置项写在代码里(`registerPushSource` 时交),清单只报开哪一口。
+ *
+ * **格式已冻结、照旧宽松**(多出来的键丢掉):已经发出去的 v1 包不能因为宿主升级就变成
+ * 读不了。现在只剩桥还在用,它迁到 v2、再抬 `min` 之后整段删掉。
+ */
+const ExtensionManifestV1Schema = z.object({
+	...identityShape,
+	apiVersion: z.literal(1),
+	provides: z.array(ExtensionProvidesSchema).min(1),
 });
-export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
+export type ExtensionManifestV1 = z.infer<typeof ExtensionManifestV1Schema>;
+
+// ---- v2 的积木 -----------------------------------------------------------------------
+
+/**
+ * 设置项的键 —— 值落在 `settings[key]` / `config[key]`,面板还拿它拼表单路径。
+ *
+ * 字母开头:顺手挡住 `__proto__` 这一类;不带点与连字符:面板拼路径用的就是点。
+ */
+const FieldKeySchema = z
+	.string()
+	.max(64)
+	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, "设置项的 key 只能是字母开头的字母、数字与下划线");
+
+const fieldBase = {
+	key: FieldKeySchema,
+	label: z.string().min(1),
+	description: z.string().optional(),
+	required: z.boolean().optional(),
+};
+
+const StringFieldSchema = z.strictObject({
+	...fieldBase,
+	type: z.literal("string"),
+	default: z.string().optional(),
+	placeholder: z.string().optional(),
+	/** 面板遮住、备份脱敏 —— 拓展的键名归拓展自己起,密钥必须声明出来,不能靠猜。 */
+	secret: z.boolean().optional(),
+	multiline: z.boolean().optional(),
+	monospace: z.boolean().optional(),
+	/** 面板替主人生成一串(格式由 BN 定),新建时明文显示一次(ADR-0019 决策 21)。 */
+	generate: z.boolean().optional(),
+});
+
+const NumberFieldSchema = z.strictObject({
+	...fieldBase,
+	type: z.literal("number"),
+	default: z.number().optional(),
+	min: z.number().optional(),
+	max: z.number().optional(),
+	step: z.number().positive().optional(),
+	unit: z.string().optional(),
+});
+
+const BooleanFieldSchema = z.strictObject({
+	...fieldBase,
+	type: z.literal("boolean"),
+	default: z.boolean().optional(),
+});
+
+const EnumFieldSchema = z.strictObject({
+	...fieldBase,
+	type: z.literal("enum"),
+	options: z
+		.array(
+			z.strictObject({
+				value: z.string().min(1),
+				label: z.string().min(1),
+				/** 一段 SVG,与清单图标过同一道白名单。 */
+				icon: z.string().max(64_000).optional(),
+			}),
+		)
+		.min(1),
+	default: z.string().optional(),
+});
+
+/** 一格「单值」设置项 —— 列表的每一项、推送源的连接配置项都只能由它们拼。 */
+const ScalarFieldSchema = z.discriminatedUnion("type", [
+	StringFieldSchema,
+	NumberFieldSchema,
+	BooleanFieldSchema,
+	EnumFieldSchema,
+]);
+
+/** 形状宽松的一格,只给 {@link checkFieldList} 用 —— 四种单值与列表都能塞进来。 */
+interface FieldLike {
+	key: string;
+	type: string;
+	default?: unknown;
+	min?: number;
+	max?: number;
+	options?: readonly { value: string }[];
+}
+
+/**
+ * 一张表里跨格 / 格内跨字段的规矩 —— 单格的 schema 表达不了的那些。
+ *
+ * 每一条都点名到具体那一格:拓展是我们自己写的,信息给足才修得快。
+ */
+function checkFieldList(fields: readonly FieldLike[], ctx: z.RefinementCtx): void {
+	const seen = new Set<string>();
+	fields.forEach((field, i) => {
+		if (seen.has(field.key)) {
+			ctx.addIssue({
+				code: "custom",
+				path: [i, "key"],
+				message: `"${field.key}" 摆了两栏 —— 哪一栏说了算没有答案`,
+			});
+		}
+		seen.add(field.key);
+		if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+			ctx.addIssue({ code: "custom", path: [i, "min"], message: "min 比 max 还大" });
+		}
+		if (field.options) {
+			const values = new Set<string>();
+			field.options.forEach((option, j) => {
+				if (values.has(option.value)) {
+					ctx.addIssue({
+						code: "custom",
+						path: [i, "options", j, "value"],
+						message: `选项 "${option.value}" 摆了两个`,
+					});
+				}
+				values.add(option.value);
+			});
+			if (typeof field.default === "string" && !values.has(field.default)) {
+				ctx.addIssue({
+					code: "custom",
+					path: [i, "default"],
+					message: `默认值 "${field.default}" 不是选项之一`,
+				});
+			}
+		}
+	});
+}
+
+/** 列表:对象数组,每一项一张卡(ADR-0019 决策 21)。**只嵌一层** —— 项里不能再有列表。 */
+const ListFieldSchema = z.strictObject({
+	...fieldBase,
+	type: z.literal("list"),
+	fields: z.array(ScalarFieldSchema).min(1).max(64).superRefine(checkFieldList),
+});
+
+const FieldSchema = z.discriminatedUnion("type", [
+	StringFieldSchema,
+	NumberFieldSchema,
+	BooleanFieldSchema,
+	EnumFieldSchema,
+	ListFieldSchema,
+]);
+/** 一格设置项 —— 按**数据类型**分,不按控件分,与 zod 一一对应(ADR-0019 决策 17)。 */
+export type ExtensionManifestField = z.infer<typeof FieldSchema>;
+
+/**
+ * `{ fields: [...] }` —— 表单永远是这一个形状。
+ *
+ * 推送源的连接配置项只收单值:连接的 config 是**扁平的一层键值**,面板那侧生成的是
+ * `config[key] = v`。
+ */
+const SettingsSchema = z.strictObject({
+	fields: z.array(FieldSchema).max(64).superRefine(checkFieldList),
+});
+const ConnectionSchema = z.strictObject({
+	fields: z.array(ScalarFieldSchema).max(64).superRefine(checkFieldList),
+});
+
+/**
+ * 颜色进样式,而清单来自第三方 —— 只收 hex,别的写法(`url(...)`、带分号的)一律拒。
+ */
+const HexColorSchema = z
+	.string()
+	.regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "颜色只收 hex,如 #fe2c55");
+
+/** 一个口在界面上的样子(ADR-0012 决策 46 那三格,`tint` 改名 `color`)。 */
+const displayShape = {
+	/** 全名:新建连接 / 平台选择那一排。 */
+	label: z.string().min(1).max(64),
+	/** 短名:卡片上那个方章。 */
+	shortLabel: z.string().min(1).max(8),
+	color: HexColorSchema,
+};
+const PushDisplaySchema = z.strictObject(displayShape);
+const SubscriptionDisplaySchema = z.strictObject({
+	...displayShape,
+	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
+	postNoun: z.string().min(1).max(8).optional(),
+});
+export type ExtensionManifestDisplay = z.infer<typeof PushDisplaySchema>;
+
+/**
+ * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到
+ * `dynamic / live / liveEnd`。配置弹层只列这个源报的那几种。
+ */
+export const SUBSCRIPTION_EVENT_KINDS = ["post", "liveStart", "liveEnd"] as const;
+export type SubscriptionEventKind = (typeof SUBSCRIPTION_EVENT_KINDS)[number];
+
+/**
+ * 包内路径:相对拓展根、不带 `./`、不许 `..` —— 每一段都得以字母或数字开头,
+ * 所以 `.`、`..`、空段都拼不出来。
+ */
+const PACKAGE_PATH_SEGMENT = "[A-Za-z0-9][A-Za-z0-9._-]*";
+const PackagePathSchema = z
+	.string()
+	.max(128)
+	.regex(
+		new RegExp(`^${PACKAGE_PATH_SEGMENT}(?:/${PACKAGE_PATH_SEGMENT})*$`),
+		"包内路径要相对拓展根写(如 card-skin),不带 ./、不许 ..",
+	);
+
+const ContributesSchema = z
+	.strictObject({
+		push: z
+			.strictObject({
+				display: PushDisplaySchema,
+				/** 主人新建连接时要填的那几栏。桥那种「连接是挑出来的」可以不写。 */
+				connection: ConnectionSchema.optional(),
+			})
+			.optional(),
+		subscription: z
+			.strictObject({
+				display: SubscriptionDisplaySchema,
+				events: z
+					.array(z.enum(SUBSCRIPTION_EVENT_KINDS))
+					.min(1)
+					.refine((events) => new Set(events).size === events.length, "事件种类写重复了"),
+				/** 自带的卡片皮肤目录(ADR-0019 决策 13)。 */
+				cardSkin: PackagePathSchema.optional(),
+			})
+			.optional(),
+	})
+	.refine(
+		(contributes) => EXTENSION_PROVIDES.some((key) => contributes[key] !== undefined),
+		"contributes 至少要开一口",
+	);
+
+/**
+ * 动作名 —— 它要进 URL(`POST /api/ext/:id/actions/:name`),所以只许小写字母开头的
+ * 字母数字,点分段(`login.start`)。
+ */
+const ActionNameSchema = z
+	.string()
+	.max(64)
+	.regex(
+		/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/,
+		"动作名只能是小写字母开头的字母数字,用点分段,如 login.start",
+	);
+
+/**
+ * v2:静态声明全住清单(ADR-0019 决策 16)。
+ *
+ * **严格**:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明 ——
+ * 面板上少了一栏,没人报错。格式要长新东西,跟着抬 {@link EXTENSION_API_RANGE} 的 `current`。
+ */
+const ExtensionManifestV2Schema = z.strictObject({
+	/** 编辑器补全用,宿主不读。 */
+	$schema: z.string().optional(),
+	...identityShape,
+	apiVersion: z.literal(2),
+	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
+	settings: SettingsSchema.optional(),
+	/** 面板上能按的按钮,代码那边 `ctx.onAction` 注册(ADR-0019 决策 22)。 */
+	actions: z
+		.record(
+			ActionNameSchema,
+			z.strictObject({ label: z.string().min(1), description: z.string().optional() }),
+		)
+		.optional(),
+	/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
+	contributes: ContributesSchema,
+});
+export type ExtensionManifestV2 = z.infer<typeof ExtensionManifestV2Schema>;
+
+export type ExtensionManifest = ExtensionManifestV1 | ExtensionManifestV2;
+
+/** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */
+const MANIFEST_SCHEMAS: Readonly<Record<number, z.ZodType<ExtensionManifest>>> = {
+	1: ExtensionManifestV1Schema,
+	2: ExtensionManifestV2Schema,
+};
+
+/** 只读这一格 —— 其余部分长什么样要看它。 */
+const ApiVersionOnlySchema = z.object({ apiVersion: z.number().int().min(1) });
+
+export type ExtensionManifestRead =
+	| { ok: true; manifest: ExtensionManifest }
+	/** 读不了。`issues` 每条都是「路径: 原因」。 */
+	| { ok: false; reason: "unreadable"; issues: string[] }
+	/** 给别的契约档位写的。身份那几格照样读出来了,面板要印它是谁。 */
+	| { ok: false; reason: "incompatible"; identity: ExtensionIdentity; requires: number };
+
+function issuesOf(error: z.ZodError): string[] {
+	return error.issues.map((issue) => `${issue.path.join(".") || "(根)"}: ${issue.message}`);
+}
+
+/**
+ * 读一份清单(已经 `JSON.parse` 过的)。
+ *
+ * 顺序是有讲究的:**先单读 `apiVersion`**。为将来的宿主写的清单,格式本来就可能是我们
+ * 不认识的 —— 按今天的规矩挑它的毛病只会报一堆「读不了」,而真正的原因只有一条。
+ */
+export function parseExtensionManifest(
+	raw: unknown,
+	range: ExtensionApiRange = EXTENSION_API_RANGE,
+): ExtensionManifestRead {
+	const head = ApiVersionOnlySchema.safeParse(raw);
+	if (!head.success) return { ok: false, reason: "unreadable", issues: issuesOf(head.error) };
+	const requires = head.data.apiVersion;
+
+	const schema =
+		requires >= range.min && requires <= range.current ? MANIFEST_SCHEMAS[requires] : undefined;
+	if (!schema) {
+		const identity = ExtensionIdentitySchema.safeParse(raw);
+		if (!identity.success) {
+			return { ok: false, reason: "unreadable", issues: issuesOf(identity.error) };
+		}
+		return { ok: false, reason: "incompatible", identity: identity.data, requires };
+	}
+
+	const parsed = schema.safeParse(raw);
+	if (!parsed.success) return { ok: false, reason: "unreadable", issues: issuesOf(parsed.error) };
+	return { ok: true, manifest: parsed.data };
+}
+
+/** 它开的是哪几口 —— v1 照它写的,v2 由 `contributes` 的键推出来(次序固定)。 */
+export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides[] {
+	if (manifest.apiVersion === 1) return [...manifest.provides];
+	return EXTENSION_PROVIDES.filter((key) => manifest.contributes[key] !== undefined);
+}

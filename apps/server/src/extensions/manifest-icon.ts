@@ -16,6 +16,8 @@
  * 至少诚实。
  */
 
+import type { ExtensionManifest, ExtensionManifestField } from "@bilibili-notify/internal";
+
 /**
  * 认得的元素 —— 画形状的那些,加渐变。
  *
@@ -135,4 +137,43 @@ export function safeExtensionIcon(icon: string | undefined): string | undefined 
 	// 只认一枚图标:`</svg>` 之后还有别的东西,前面那句「根是 svg」就形同虚设。
 	if (!svg.toLowerCase().endsWith("</svg>")) return undefined;
 	return svg;
+}
+
+type ScalarField = Exclude<ExtensionManifestField, { type: "list" }>;
+
+function safeScalarField(field: ScalarField): ScalarField {
+	if (field.type !== "enum") return field;
+	return {
+		...field,
+		options: field.options.map((option) => ({ ...option, icon: safeExtensionIcon(option.icon) })),
+	};
+}
+
+function safeField(field: ExtensionManifestField): ExtensionManifestField {
+	return field.type === "list"
+		? { ...field, fields: field.fields.map(safeScalarField) }
+		: safeScalarField(field);
+}
+
+/**
+ * 整份清单里**每一枚**会进 DOM 的图标都过一遍:清单图标,加上 v2 设置项 / 连接配置项里
+ * 选项的图标(ADR-0019 决策 21,桥那两个 logo 从 web 搬回拓展)。与清单图标同一道门、
+ * 在同一刻 —— 漏一枚就是下游第一条能看见原样 SVG 的路。
+ */
+export function safeManifestIcons(manifest: ExtensionManifest): ExtensionManifest {
+	const icon = safeExtensionIcon(manifest.icon);
+	if (manifest.apiVersion === 1) return { ...manifest, icon };
+	const { settings, contributes } = manifest;
+	const push = contributes.push;
+	return {
+		...manifest,
+		icon,
+		...(settings ? { settings: { fields: settings.fields.map(safeField) } } : {}),
+		contributes: {
+			...contributes,
+			...(push?.connection
+				? { push: { ...push, connection: { fields: push.connection.fields.map(safeScalarField) } } }
+				: {}),
+		},
+	};
 }

@@ -4,6 +4,7 @@ import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/ex
 import type {
 	Connection,
 	Disposable,
+	ExtensionIdentity,
 	ExtensionManifest,
 	ExtensionRunState,
 	InboundSinks,
@@ -16,7 +17,12 @@ import {
 	type ExtensionDescriptor,
 	type ExtensionRuntime,
 } from "./context.js";
-import { discoverExtensions, EXTENSION_ENTRY_FILE, type ExtensionDirRead } from "./discover.js";
+import {
+	apiVersionMismatch,
+	discoverExtensions,
+	EXTENSION_ENTRY_FILE,
+	type ExtensionDirRead,
+} from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
@@ -34,8 +40,23 @@ export interface ExtensionEntry {
 	linkedTo?: string;
 	/** 清单读得出来就带上 —— 面板要印名字,哪怕它没跑起来。 */
 	manifest?: ExtensionManifest;
+	/**
+	 * 版本不合的那些只有**身份那几格**(那一档的格式可能根本不认识)—— 面板照样印得出
+	 * 它是谁、哪一版。与 `manifest` 不会同时有。
+	 */
+	identity?: ExtensionIdentity;
 	/** 没跑起来时那句「为什么」。 */
 	detail?: string;
+}
+
+/**
+ * 这一行**是谁** —— 名字、版本、图标。清单读得懂的取清单,版本不合的取身份那几格。
+ *
+ * 🔴 要「它是谁」一律走这里,别直接读 `entry.manifest`:版本不合的那些没有 `manifest`,
+ * 读漏了的症状是「装着的版本」静默变成 `undefined`(市场的来源比对、面板的版本号都靠它)。
+ */
+export function entryIdentity(entry: ExtensionEntry): ExtensionIdentity | undefined {
+	return entry.manifest ?? entry.identity;
 }
 
 export interface LoadedExtensions {
@@ -318,8 +339,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				id: dir.id,
 				dir: dir.dir,
 				state: "incompatible",
-				manifest: dir.manifest,
-				detail: `它要宿主契约 v${dir.requires},这一版是 v${dir.host}`,
+				identity: dir.identity,
+				detail: apiVersionMismatch(dir.requires, dir.range),
 			});
 			return;
 		}

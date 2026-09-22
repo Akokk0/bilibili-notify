@@ -7,7 +7,8 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	checkMarketplaceIndex,
-	EXTENSION_API_VERSION,
+	EXTENSION_API_RANGE,
+	type ExtensionApiRange,
 	isMarketplaceRevoked,
 	isPrereleaseEntry,
 	type Logger,
@@ -20,6 +21,7 @@ import { readJsonFile, writeJsonAtomic } from "../update/durable-json.js";
 import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
+import { apiVersionMismatch } from "./discover.js";
 import {
 	docsPresence,
 	installExtensionPackage,
@@ -72,7 +74,8 @@ export interface MarketplaceDeps {
 	/** 装完叫装载器再扫一遍盘。 */
 	rescan: () => Promise<void>;
 	logger: Logger;
-	hostApiVersion?: number;
+	/** 宿主认的档位区间。只有测试会换。 */
+	hostApiRange?: ExtensionApiRange;
 	timeoutMs?: number;
 	downloadTimeoutMs?: number;
 	maxIndexBytes?: number;
@@ -203,7 +206,10 @@ const OFFICIAL_FAILURE_TEXT = {
 
 export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	const now = deps.now ?? (() => Date.now());
-	const hostApiVersion = deps.hostApiVersion ?? EXTENSION_API_VERSION;
+	const hostApiRange = deps.hostApiRange ?? EXTENSION_API_RANGE;
+	/** 这一档宿主装不装得了 —— 列表的状态与真去装那一刻用**同一把尺子**。 */
+	const fitsHost = (entry: MarketplaceEntry): boolean =>
+		entry.apiVersion >= hostApiRange.min && entry.apiVersion <= hostApiRange.current;
 	const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const downloadTimeoutMs = deps.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
 	const maxIndexBytes = deps.maxIndexBytes ?? DEFAULT_MAX_INDEX_BYTES;
@@ -409,13 +415,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			// (它被撤回了、它要更高一格的宿主契约),install() 会当场拒 —— 别画出来
 			// 让主人点一次再吃一句错。压回 installed:装着那版好好的。
 			const newer = compareVersions(entry.version, record.version) > 0;
-			const installable =
-				!isMarketplaceRevoked(index, entry.id, entry.version) &&
-				entry.apiVersion === hostApiVersion;
+			const installable = !isMarketplaceRevoked(index, entry.id, entry.version) && fitsHost(entry);
 			return { state: newer && installable ? "updatable" : "installed", installed };
 		}
 		if (isMarketplaceRevoked(index, entry.id, entry.version)) return { state: "revoked" };
-		if (entry.apiVersion !== hostApiVersion) return { state: "incompatible" };
+		if (!fitsHost(entry)) return { state: "incompatible" };
 		return { state: "installable" };
 	}
 
@@ -473,10 +477,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		// 的话,面板上那张卡写着 A、按下去装的是 B —— 而两边都全绿。
 		const entry = pickPerId(source.index.extensions, deps.prerelease()).get(id);
 		if (!entry) return { ok: false, err: `源「${source.view.name}」里没有 ${id}` };
-		if (entry.apiVersion !== hostApiVersion) {
+		if (!fitsHost(entry)) {
 			return {
 				ok: false,
-				err: `${entry.name} 要宿主契约 v${entry.apiVersion},这一版 BN 是 v${hostApiVersion} —— 先升级 BN`,
+				err: `${entry.name}:${apiVersionMismatch(entry.apiVersion, hostApiRange)}`,
 			};
 		}
 		if (isMarketplaceRevoked(source.index, entry.id, entry.version)) {
