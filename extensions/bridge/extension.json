@@ -31,6 +31,7 @@
 						"key": "bridgeKind",
 						"type": "enum",
 						"label": "哪一种桥",
+						"required": true,
 						"description": "只影响面板怎么称呼它。两种桥说的是同一套协议,BN 这边的处理完全相同。",
 						"options": [
 							{
@@ -57,6 +58,7 @@
 						"type": "string",
 						"label": "token",
 						"secret": true,
+						"default": "",
 						"generate": true,
 						"monospace": true,
 						"description": "只在这一刻看得到全文。存下之后面板只显示头尾 —— 忘了就重新生成一个。"

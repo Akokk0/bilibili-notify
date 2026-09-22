@@ -27,8 +27,11 @@ export const BridgeLinkSchema = z.object({
 	 *
 	 * 空串**合法可存**:脱敏备份会把它抹成空串,存不回去就等于备份恢复不了。「没 token
 	 * 不许连」是**连接期**的约束(`tokens.ts` 永远不匹配空串),不是存储期的。
+	 *
+	 * 所以它**不能标必填**(BN 按清单校验时,必填的字符串不收空串),缺了就补空串 —— 清单那格
+	 * 也写着 `"default": ""`,两边对表对得上。缺了的那条同样连不上,别的接入不受牵连。
 	 */
-	token: z.string(),
+	token: z.string().default(""),
 	/** 停用不是吊销:配置全留,桥握手回 503(退避重连)而不是 401。 */
 	enabled: z.boolean().default(true),
 });

@@ -159,6 +159,21 @@ function checkField(
 		fail(`"${path}" 声明的是 ${field.type},zod 里却是 ${def.type}`);
 	}
 
+	// 🔴 必填也要对上。BN 保存设置前按**清单**校验,没写 `required` 也没给 `default` 的格照清单是
+	// 「可以不填」;zod 却收不下 `undefined` —— 缺了这一格的设置照样存得进去,拓展读的时候解不开,
+	// **整份**设置按没设过算(桥就是全部接入一起失效)。有默认值的两边已由下面对表钉住。
+	const zodRequired = !(member as ZodType).safeParse(undefined).success;
+	const declaredDefault = "default" in field ? field.default : undefined;
+	if (zodRequired && field.required !== true && declaredDefault === undefined) {
+		const fix =
+			field.type === "list"
+				? `要么写 "required": true,要么给 zod 那边一个默认值(比如 .default([]))`
+				: `要么写 "required": true,要么两边都给同一个 default`;
+		fail(
+			`"${path}" 在 zod 里是必填(收不下 undefined),设置项里却没写 "required": true 也没给 default —— 按清单保存时缺了它照样放行,拓展自己的 zod 却解不开(设置会整份当没设过)。${fix}`,
+		);
+	}
+
 	if (field.type === "list") {
 		// 列表自己的默认值(通常是空数组)不算漂移:设置项里没有给列表写默认值那一格。
 		const item = unwrap(def.element).def;

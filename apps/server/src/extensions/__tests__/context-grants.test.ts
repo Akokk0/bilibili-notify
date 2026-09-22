@@ -193,11 +193,12 @@ function def() {
 describe("按清单注册推送源", () => {
 	const DISPLAY = { label: "桥接", shortLabel: "桥", color: "#a855f7" };
 	const V2_FIELDS = [
-		{ type: "string" as const, key: "token", label: "长期 token", secret: true },
+		{ type: "string" as const, key: "token", label: "长期 token", secret: true, required: true },
 		{
 			type: "enum" as const,
 			key: "bridgeKind",
 			label: "哪一种桥",
+			required: true,
 			options: [
 				{ value: "koishi", label: "koishi" },
 				{ value: "astrbot", label: "AstrBot" },
@@ -356,7 +357,7 @@ describe("按清单注册推送源", () => {
 		const fields = (interval: Record<string, unknown>) => ({
 			settings: {
 				fields: [
-					{ type: "string", key: "cookie", label: "Cookie", secret: true },
+					{ type: "string", key: "cookie", label: "Cookie", secret: true, required: true },
 					{ type: "number", key: "interval", label: "间隔", ...interval },
 				],
 			},

@@ -23,11 +23,12 @@ function fields(...over: ExtensionField[]): ExtensionField[] {
 	return over.length > 0
 		? over
 		: [
-				{ type: "string", key: "token", label: "长期 token", secret: true },
+				{ type: "string", key: "token", label: "长期 token", secret: true, required: true },
 				{
 					type: "enum",
 					key: "bridgeKind",
 					label: "哪一种桥",
+					required: true,
 					options: [
 						{ value: "koishi", label: "koishi" },
 						{ value: "astrbot", label: "AstrBot" },
@@ -105,7 +106,7 @@ describe("字段表 × zod 对表", () => {
 		} as unknown as ZodType;
 		expect(() =>
 			assertConfigFieldsMatchSchema("bridge", foreign, [
-				{ type: "string", key: "token", label: "token" },
+				{ type: "string", key: "token", label: "token", required: true },
 			]),
 		).not.toThrow();
 		// 必填那条判据也得照样生效(`note` 收得下 undefined,所以不必有栏)。
@@ -123,15 +124,20 @@ describe("对表:类型与默认值", () => {
 		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
 
 	it.each<[string, ExtensionField, ZodType]>([
-		["string", { type: "string", key: "a", label: "A" }, z.string().min(1)],
-		["number(整数、带范围也算)", { type: "number", key: "a", label: "A" }, z.int().min(1)],
-		["boolean", { type: "boolean", key: "a", label: "A" }, z.boolean()],
+		["string", { type: "string", key: "a", label: "A", required: true }, z.string().min(1)],
+		[
+			"number(整数、带范围也算)",
+			{ type: "number", key: "a", label: "A", required: true },
+			z.int().min(1),
+		],
+		["boolean", { type: "boolean", key: "a", label: "A", required: true }, z.boolean()],
 		[
 			"enum",
 			{
 				type: "enum",
 				key: "a",
 				label: "A",
+				required: true,
 				options: [
 					{ value: "x", label: "X" },
 					{ value: "y", label: "Y" },
@@ -140,10 +146,10 @@ describe("对表:类型与默认值", () => {
 			z.enum(["y", "x"]),
 		],
 		["可选", { type: "string", key: "a", label: "A" }, z.string().optional()],
-		["可空", { type: "string", key: "a", label: "A" }, z.string().nullable()],
+		["可空", { type: "string", key: "a", label: "A", required: true }, z.string().nullable()],
 		[
 			"带转换(按输入那一侧对)",
-			{ type: "string", key: "a", label: "A" },
+			{ type: "string", key: "a", label: "A", required: true },
 			z.string().transform(Number),
 		],
 	])("%s —— 对得上", (_label, field, member) => {
@@ -164,6 +170,7 @@ describe("对表:类型与默认值", () => {
 					type: "enum",
 					key: "kind",
 					label: "种类",
+					required: true,
 					options: [{ value: "koishi", label: "koishi" }],
 				},
 				z.enum(["koishi", "astrbot"]),
@@ -197,14 +204,21 @@ describe("对表:类型与默认值", () => {
 			key: "links",
 			label: "接入",
 			title: "name",
+			required: true,
 			fields,
 		});
-		const NAME: ExtensionScalarField = { type: "string", key: "name", label: "名字" };
+		const NAME: ExtensionScalarField = {
+			type: "string",
+			key: "name",
+			label: "名字",
+			required: true,
+		};
 		const TOKEN: ExtensionScalarField = {
 			type: "string",
 			key: "token",
 			label: "Token",
 			secret: true,
+			required: true,
 		};
 
 		it("对象数组、每一项逐格对上 —— 放行(列表自己的默认空数组不算默认值漂移)", () => {
@@ -247,5 +261,70 @@ describe("对表:类型与默认值", () => {
 		expect(() =>
 			assertConfigFieldsMatchSchema("demo", opaque, [{ type: "string", key: "a", label: "A" }]),
 		).toThrow(/"a".*zod 4/);
+	});
+});
+
+/**
+ * 对表也对**必填**:zod 那格收不下 `undefined`,清单却既没写 `required: true` 也没给 `default`
+ * —— BN 按清单派生的保存校验就会放过缺了这一格的设置,而拓展自己的 zod 解不开,**整份**设置
+ * 按没设过算(桥就是全部接入一起失效)。所以拒绝加载,并说清哪一格、怎么改。
+ */
+describe("对表:必填", () => {
+	const one = (field: ExtensionField, member: ZodType) =>
+		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
+
+	it.each<[string, ExtensionField, ZodType]>([
+		["string", { type: "string", key: "a", label: "A" }, z.string()],
+		["number", { type: "number", key: "a", label: "A" }, z.number()],
+		["boolean", { type: "boolean", key: "a", label: "A" }, z.boolean()],
+		[
+			"enum",
+			{ type: "enum", key: "a", label: "A", options: [{ value: "x", label: "X" }] },
+			z.enum(["x"]),
+		],
+	])("zod 必填、清单没写 required 也没给 default(%s)—— 拒,点名那一格并说怎么改", (_l, f, m) => {
+		expect(() => one(f, m)).toThrow(/"a".*必填.*"required": true.*default/);
+	});
+
+	it("列表项里的一格也算 —— 点名到列表里那一格", () => {
+		const item = z.object({ id: z.string(), token: z.string() });
+		const list: ExtensionField = {
+			type: "list",
+			key: "links",
+			label: "接入",
+			title: "token",
+			required: true,
+			fields: [{ type: "string", key: "token", label: "Token" }],
+		};
+		expect(() => one(list, z.array(item))).toThrow(/"links\.token".*必填/);
+	});
+
+	it("列表本身 zod 必填(没有 .default([]))、清单没写 required —— 拒,提示给 zod 一个默认值", () => {
+		const item = z.object({ id: z.string(), name: z.string().optional() });
+		const list: ExtensionField = {
+			type: "list",
+			key: "links",
+			label: "接入",
+			title: "name",
+			fields: [{ type: "string", key: "name", label: "名字" }],
+		};
+		expect(() => one(list, z.array(item))).toThrow(/"links".*必填.*\.default\(\[\]\)/);
+		expect(() => one(list, z.array(item).default([]))).not.toThrow();
+	});
+
+	it.each<[string, ExtensionField, ZodType]>([
+		[
+			"清单写了 required: true",
+			{ type: "string", key: "a", label: "A", required: true },
+			z.string(),
+		],
+		[
+			"两边都给了默认值",
+			{ type: "string", key: "a", label: "A", default: "" },
+			z.string().default(""),
+		],
+		["zod 那格本来就可选", { type: "string", key: "a", label: "A" }, z.string().optional()],
+	])("%s —— 放行", (_label, field, member) => {
+		expect(() => one(field, member)).not.toThrow();
 	});
 });
