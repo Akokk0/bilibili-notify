@@ -202,6 +202,26 @@ const BooleanFieldSchema = z.strictObject({
 	default: z.boolean().optional(),
 });
 
+/**
+ * 拓展交的图片(选项图标、表格的 icon 格)的上限 —— 整段 data URL 的字数。与桥协议里 bot 图标
+ * 那条(`BRIDGE_BOT_ICON_MAX_BYTES`)同一个数:拓展包进不来 internal,只能各写一份。
+ */
+export const EXTENSION_IMAGE_MAX_CHARS = 32 * 1024;
+
+/**
+ * 拓展交的图片 —— **只收图片的 base64 data URL**,面板一律当 `<img>` 画(ADR-0019 决策 31)。
+ *
+ * 不过 SVG 白名单:`<img>` 里的 SVG 不跑脚本、拉不进外部资源,而白名单每宽一格都是把外来标记
+ * 塞进页面。不收 http(s) 地址:面板一开就去对家点名,不是图标该有的本事。
+ */
+export const ExtensionImageSchema = z
+	.string()
+	.max(EXTENSION_IMAGE_MAX_CHARS, "图片不能超过 32 KB")
+	.regex(
+		/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/,
+		"图片只收 png / jpeg / webp / svg 的 base64 data URL",
+	);
+
 const EnumFieldSchema = z.strictObject({
 	...fieldBase,
 	type: z.literal("enum"),
@@ -210,8 +230,8 @@ const EnumFieldSchema = z.strictObject({
 			z.strictObject({
 				value: z.string().min(1),
 				label: z.string().min(1),
-				/** 一段 SVG,与清单图标过同一道白名单。 */
-				icon: z.string().max(64_000).optional(),
+				/** 选项卡片上那枚图标(桥的 koishi / AstrBot logo)。 */
+				icon: ExtensionImageSchema.optional(),
 			}),
 		)
 		.min(1),
@@ -231,9 +251,51 @@ interface FieldLike {
 	key: string;
 	type: string;
 	default?: unknown;
+	required?: boolean;
 	min?: number;
 	max?: number;
 	options?: readonly { value: string }[];
+	// 列表才有的那几格
+	fields?: readonly FieldLike[];
+	title?: string;
+	mark?: string;
+	toggle?: string;
+	newItemCopy?: readonly ({ field: string } | { host: string })[];
+}
+
+/** 列表项里保留给 BN 的键 —— 项的身份,由 BN 生成、藏起来、不许改(ADR-0019 决策 29)。 */
+export const LIST_ITEM_ID_KEY = "id";
+
+/**
+ * 列表自己声明的那几格引用(`title` / `mark` / `toggle` / `newItemCopy`)必须指到项里一格、
+ * 类型也对得上 —— 指歪了的话面板上那张卡就少一块,而没人报错。
+ */
+function checkListRefs(list: FieldLike, at: number, ctx: z.RefinementCtx): void {
+	const items = list.fields ?? [];
+	const find = (key: string | undefined) => items.find((item) => item.key === key);
+	const issue = (path: (string | number)[], message: string) =>
+		ctx.addIssue({ code: "custom", path: [at, ...path], message });
+
+	const title = find(list.title);
+	if (title?.type !== "string" || title.required !== true) {
+		issue(["title"], `title 要指向项里一格必填的 string,"${list.title}" 不是`);
+	}
+	if (list.mark !== undefined && find(list.mark)?.type !== "enum") {
+		issue(["mark"], `mark 要指向项里一格 enum,"${list.mark}" 不是`);
+	}
+	if (list.toggle !== undefined && find(list.toggle)?.type !== "boolean") {
+		issue(["toggle"], `toggle 要指向项里一格 boolean,"${list.toggle}" 不是`);
+	}
+	list.newItemCopy?.forEach((entry, i) => {
+		if ("field" in entry && find(entry.field)?.type !== "string") {
+			issue(["newItemCopy", i, "field"], `newItemCopy 要指向项里一格 string,"${entry.field}" 不是`);
+		}
+	});
+	items.forEach((item, i) => {
+		if (item.key === LIST_ITEM_ID_KEY) {
+			issue(["fields", i, "key"], `项里的 "${LIST_ITEM_ID_KEY}" 由 BN 生成、不许声明`);
+		}
+	});
 }
 
 /**
@@ -275,6 +337,7 @@ function checkFieldList(fields: readonly FieldLike[], ctx: z.RefinementCtx): voi
 				});
 			}
 		}
+		if (field.type === "list") checkListRefs(field, i, ctx);
 	});
 }
 
@@ -283,6 +346,29 @@ const ListFieldSchema = z.strictObject({
 	...fieldBase,
 	type: z.literal("list"),
 	fields: z.array(ScalarFieldSchema).min(1).max(64).superRefine(checkFieldList),
+	/** 哪一格当卡片标题 —— 必须是项里一格必填的 string。 */
+	title: FieldKeySchema,
+	/** 一项叫什么(「接入」)—— 「新建接入」「还没有接入」「删掉这条接入?」。不给就用 `label`。 */
+	itemLabel: z.string().min(1).max(16).optional(),
+	/** 哪个 enum 的选中项图标当卡片左上的方块。 */
+	mark: FieldKeySchema.optional(),
+	/** 哪一格 boolean 画成卡上的「停用 / 启用」;关着的项 BN 盖成「已停用」。 */
+	toggle: FieldKeySchema.optional(),
+	/**
+	 * 新建弹窗底部要成对复制的几样(ADR-0009 决策 21「token 与地址成对交出去」):BN 现算的
+	 * 值,或者本项的某一格 string(新建时它还是明文)。
+	 */
+	newItemCopy: z
+		.array(
+			z.union([
+				z.strictObject({ host: z.literal("extensionUrl"), label: z.string().min(1) }),
+				z.strictObject({ field: FieldKeySchema }),
+			]),
+		)
+		.max(8)
+		.optional(),
+	/** 删除确认里「删了会怎样」那句 —— 安全提示,通用说法说不出来。 */
+	removeWarning: z.string().min(1).optional(),
 });
 
 const FieldSchema = z.discriminatedUnion("type", [

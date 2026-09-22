@@ -201,47 +201,33 @@ describe("readExtensionDir", () => {
 	});
 
 	/**
-	 * v2 清单里的选项图标也会被面板塞进 DOM(ADR-0019 决策 21,桥那两个 logo 从 web 搬回
-	 * 拓展),所以它和清单图标过**同一道门、在同一刻**。
+	 * 选项图标是图片 data URL,面板当 `<img>` 画(ADR-0019 决策 31)—— 它不进 SVG 白名单,
+	 * 原样留着;塞一段 SVG 标记进来的清单在格式那一步就读不了。
 	 */
-	it("v2 设置项的选项图标过白名单:夹带脚本的那一枚丢掉,干净的留着", async () => {
-		const clean = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
-		const dirty = '<svg viewBox="0 0 24 24"><script>x()</script></svg>';
-		const field = (key: string) => ({
-			key,
-			type: "enum",
-			label: key,
-			options: [
-				{ value: "a", label: "A", icon: clean },
-				{ value: "b", label: "B", icon: dirty },
-			],
-		});
-		const r = await readExtensionDir(
-			await plant(
-				"douyin",
-				manifestV2({
-					settings: {
-						fields: [
-							field("kind"),
-							{ key: "links", type: "list", label: "接入", fields: [field("k")] },
-						],
-					},
-					contributes: {
-						push: {
-							display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-							connection: { fields: [field("mode")] },
+	it("v2 设置项的选项图标:图片 data URL 原样留着;SVG 标记 —— 清单读不了", async () => {
+		const png =
+			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+		const withIcon = (icon: string) =>
+			manifestV2({
+				settings: {
+					fields: [
+						{
+							key: "kind",
+							type: "enum",
+							label: "种类",
+							options: [{ value: "a", label: "A", icon }],
 						},
-					},
-				}),
-			),
-		);
+					],
+				},
+			});
+		const r = await readExtensionDir(await plant("douyin", withIcon(png)));
 		if (r.state !== "ready" || r.manifest.apiVersion !== 2) throw new Error("unreachable");
-		const icons = (f: unknown) =>
-			(f as { options: { icon?: string }[] }).options.map((option) => option.icon);
-		const [kind, links] = r.manifest.settings?.fields ?? [];
-		expect(icons(kind)).toEqual([clean, undefined]);
-		expect(icons((links as { fields: unknown[] }).fields[0])).toEqual([clean, undefined]);
-		expect(icons(r.manifest.contributes.push?.connection?.fields[0])).toEqual([clean, undefined]);
+		expect(r.manifest.settings?.fields[0]).toMatchObject({ options: [{ icon: png }] });
+
+		const bad = await readExtensionDir(
+			await plant("douyin", withIcon('<svg viewBox="0 0 24 24"><script>x()</script></svg>')),
+		);
+		expect(bad.state).toBe("unreadable");
 	});
 
 	it("清单不是合法 JSON → unreadable,身份退回目录名", async () => {

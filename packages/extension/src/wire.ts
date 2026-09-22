@@ -47,15 +47,34 @@ export type ExtensionScalarField =
 	| (ExtensionFieldBase & { type: "boolean"; default?: boolean })
 	| (ExtensionFieldBase & {
 			type: "enum";
-			/** 选项图标是一段 SVG,宿主读清单那一刻已经过过白名单。 */
+			/**
+			 * 选项图标是图片的 base64 data URL(png / jpeg / webp / svg),面板当 `<img>` 画;
+			 * 清单格式那一步已经把它限定成图片、封了顶。
+			 */
 			options: readonly { value: string; label: string; icon?: string }[];
 			default?: string;
 	  });
 
-/** 对象数组:每一项一张卡。只嵌一层 —— 项里只有单值。 */
+/**
+ * 对象数组:每一项一张卡。只嵌一层 —— 项里只有单值。
+ *
+ * 项的 `id` 由 BN 生成、藏起来、不许改(视图按它把积木挂到那一项上),不在 `fields` 里。
+ */
 export interface ExtensionListField extends ExtensionFieldBase {
 	type: "list";
 	fields: readonly ExtensionScalarField[];
+	/** 哪一格当卡片标题(项里一格必填的 string)。 */
+	title: string;
+	/** 一项叫什么(「接入」)。不给就用 `label`。 */
+	itemLabel?: string;
+	/** 哪个 enum 的选中项图标当卡片左上的方块。 */
+	mark?: string;
+	/** 哪一格 boolean 画成「停用 / 启用」。 */
+	toggle?: string;
+	/** 新建弹窗底部要成对复制的几样:BN 现算的地址,或者本项的某一格。 */
+	newItemCopy?: readonly ({ host: "extensionUrl"; label: string } | { field: string })[];
+	/** 删除确认里「删了会怎样」那句。 */
+	removeWarning?: string;
 }
 
 interface ExtensionFieldBase {

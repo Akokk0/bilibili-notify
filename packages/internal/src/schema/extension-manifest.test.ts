@@ -39,6 +39,10 @@ function v1(over: Record<string, unknown> = {}): Record<string, unknown> {
 
 const DISPLAY = { label: "抖音", shortLabel: "抖", color: "#fe2c55" };
 
+/** 一枚最小的图片 data URL(1×1 PNG)。 */
+const PNG =
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 function v2(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "demo-ext",
@@ -374,7 +378,7 @@ describe("v2 的设置项", () => {
 			type: "enum",
 			label: "种类",
 			options: [
-				{ value: "koishi", label: "koishi", icon: "<svg/>" },
+				{ value: "koishi", label: "koishi", icon: PNG },
 				{ value: "astrbot", label: "AstrBot" },
 			],
 			default: "koishi",
@@ -382,7 +386,9 @@ describe("v2 的设置项", () => {
 		{
 			key: "links",
 			type: "list",
-			label: "接入",
+			label: "桥接入",
+			itemLabel: "接入",
+			title: "name",
 			fields: [
 				{ key: "name", type: "string", label: "名字", required: true },
 				{ key: "token", type: "string", label: "Token", secret: true, generate: true },
@@ -453,12 +459,13 @@ describe("v2 的设置项", () => {
 	});
 
 	it("list:每项至少一栏、只嵌一层(项里不能再有 list)、项里的 key 也不能重复", () => {
-		unreadable(withField({ key: "a", type: "list", label: "A", fields: [] }));
+		unreadable(withField({ key: "a", type: "list", label: "A", title: "b", fields: [] }));
 		unreadable(
 			withField({
 				key: "a",
 				type: "list",
 				label: "A",
+				title: "b",
 				fields: [
 					{
 						key: "b",
@@ -474,8 +481,9 @@ describe("v2 的设置项", () => {
 				key: "a",
 				type: "list",
 				label: "A",
+				title: "b",
 				fields: [
-					{ key: "b", type: "string", label: "B" },
+					{ key: "b", type: "string", label: "B", required: true },
 					{ key: "b", type: "string", label: "B2" },
 				],
 			}),
@@ -497,6 +505,113 @@ describe("v2 的设置项", () => {
 						connection: { fields: [{ key: "a", type: "text", label: "A" }] },
 					},
 				},
+			}),
+		);
+	});
+});
+
+/**
+ * 选项图标是**图片 data URL**,一律当 `<img>` 画(ADR-0019 决策 31):`<img>` 里的 SVG 不跑脚本、
+ * 拉不进外部资源,所以不用过 SVG 白名单。规矩与桥协议里 bot 图标那条相同。
+ */
+describe("v2 的选项图标", () => {
+	const enumWith = (icon: unknown) =>
+		withField({ key: "a", type: "enum", label: "A", options: [{ value: "x", label: "X", icon }] });
+
+	it.each([
+		PNG,
+		"data:image/jpeg;base64,/9j/4AAQ",
+		"data:image/webp;base64,UklGRg==",
+		"data:image/svg+xml;base64,PHN2Zy8+",
+	])("%s —— 收下", (icon) => {
+		expect(() => ok(enumWith(icon))).not.toThrow();
+	});
+
+	it.each([
+		["内联 SVG 标记", "<svg viewBox='0 0 1 1'/>"],
+		["http 地址(面板一开就去对家点名)", "https://example.invalid/logo.png"],
+		["不是 base64", "data:image/svg+xml;utf8,<svg/>"],
+		["不是图片", "data:text/html;base64,PGgxPg=="],
+		["超过 32 KB", `data:image/png;base64,${"A".repeat(32 * 1024)}`],
+	])("%s —— 拒", (_label, icon) => {
+		unreadable(enumWith(icon));
+	});
+});
+
+/**
+ * 列表设置项自己声明怎么画成卡(ADR-0019 决策 29)。引用的格必须真在项里、类型也对得上 ——
+ * 指歪了的话,面板上那张卡就少一块而没人报错。
+ */
+describe("v2 的列表声明", () => {
+	const ITEM = [
+		{ key: "name", type: "string", label: "名字", required: true },
+		{
+			key: "kind",
+			type: "enum",
+			label: "种类",
+			options: [
+				{ value: "koishi", label: "koishi", icon: PNG },
+				{ value: "astrbot", label: "AstrBot" },
+			],
+			default: "koishi",
+		},
+		{ key: "token", type: "string", label: "token", secret: true, generate: true, monospace: true },
+		{ key: "enabled", type: "boolean", label: "启用", default: true },
+	];
+	const list = (over: Record<string, unknown> = {}) =>
+		withField({
+			key: "links",
+			type: "list",
+			label: "桥接入",
+			title: "name",
+			fields: ITEM,
+			...over,
+		});
+
+	it("桥那份:标题 / 方块 / 停用开关 / 叫法 / 成对复制 / 删除后果 —— 收下", () => {
+		const m = ok(
+			list({
+				itemLabel: "接入",
+				mark: "kind",
+				toggle: "enabled",
+				description: "在这里建一条,把生成的 token 和 BN 地址填进插件设置里。",
+				newItemCopy: [{ host: "extensionUrl", label: "BN 地址" }, { field: "token" }],
+				removeWarning: "那一头的插件会连不上,从它借来的 bot 建的连接也会发不出去。",
+			}),
+		);
+		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		expect(m.settings?.fields[0]).toMatchObject({ title: "name", mark: "kind", toggle: "enabled" });
+	});
+
+	it("title 必填,而且要指向项里一格**必填的** string —— 卡片总得有个名字", () => {
+		unreadable(withField({ key: "links", type: "list", label: "L", fields: ITEM }));
+		unreadable(list({ title: "nope" }));
+		unreadable(list({ title: "enabled" }));
+		unreadable(list({ title: "token" }));
+	});
+
+	it("mark 要指向 enum,toggle 要指向 boolean", () => {
+		unreadable(list({ mark: "name" }));
+		unreadable(list({ mark: "nope" }));
+		unreadable(list({ toggle: "kind" }));
+		unreadable(list({ toggle: "nope" }));
+	});
+
+	it("newItemCopy:host 只认 extensionUrl;field 要指向项里一格 string", () => {
+		unreadable(list({ newItemCopy: [{ host: "publicUrl", label: "地址" }] }));
+		unreadable(list({ newItemCopy: [{ field: "enabled" }] }));
+		unreadable(list({ newItemCopy: [{ field: "nope" }] }));
+		unreadable(list({ newItemCopy: [{ host: "extensionUrl" }] }));
+	});
+
+	it("项里的字段不许叫 id —— 它由 BN 生成、藏起来(视图按它把积木挂到那一项上)", () => {
+		unreadable(
+			withField({
+				key: "links",
+				type: "list",
+				label: "L",
+				title: "name",
+				fields: [...ITEM, { key: "id", type: "string", label: "id" }],
 			}),
 		);
 	});

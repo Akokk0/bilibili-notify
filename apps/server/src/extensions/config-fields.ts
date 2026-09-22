@@ -1,4 +1,5 @@
 import type { ExtensionField } from "@bilibili-notify/extension";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 
 /**
@@ -38,7 +39,10 @@ export function assertConfigFieldsMatchSchema(
 	if (typeof shape !== "object" || shape === null) {
 		return void fail("config 的 schema 必须是一个对象(第一层只支持键值对象)");
 	}
-	checkFields("", shape as Record<string, unknown>, fields, fail, opts.picked === true);
+	checkFields("", shape as Record<string, unknown>, fields, fail, {
+		picked: opts.picked === true,
+		listItem: false,
+	});
 }
 
 /** zod 4 挂在每个 schema 上的定义里,对表要读的那几格。 */
@@ -102,9 +106,14 @@ function checkFields(
 	members: Record<string, unknown>,
 	fields: readonly ExtensionField[],
 	fail: (msg: string) => never,
-	picked: boolean,
+	opts: { picked: boolean; listItem: boolean },
 ): void {
-	const seen = new Set<string>();
+	// 列表项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有 ——
+	// 没有的话,BN 生成的 id 会被拓展那份 zod 当场剥掉,视图就再也挂不到这一项上。
+	if (opts.listItem && !(LIST_ITEM_ID_KEY in members)) {
+		fail(`列表项 "${prefix}${LIST_ITEM_ID_KEY}" 由 BN 生成,zod 的项里要有这一格`);
+	}
+	const seen = new Set<string>(opts.listItem ? [LIST_ITEM_ID_KEY] : []);
 	for (const field of fields) {
 		const path = `${prefix}${field.key}`;
 		if (seen.has(field.key)) {
@@ -117,7 +126,7 @@ function checkFields(
 		checkField(path, field, members[field.key], fail);
 	}
 
-	if (picked) return;
+	if (opts.picked) return;
 	for (const [key, member] of Object.entries(members)) {
 		// 收不下 `undefined` 的就是必填(可选与带默认值的都收得下)。
 		const required = !(member as ZodType).safeParse(undefined).success;
@@ -147,7 +156,7 @@ function checkField(
 		if (item?.type !== "object" || !item.shape) {
 			return void fail(`"${path}" 是列表,zod 那边每一项得是个对象`);
 		}
-		checkFields(`${path}.`, item.shape, field.fields, fail, false);
+		checkFields(`${path}.`, item.shape, field.fields, fail, { picked: false, listItem: true });
 		return;
 	}
 

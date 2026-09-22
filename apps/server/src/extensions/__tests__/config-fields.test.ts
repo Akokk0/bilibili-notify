@@ -8,7 +8,7 @@
  * 没有它的话,症状是「面板上填了保存不了」或者「有个必填项面板上根本没有」。
  */
 
-import type { ExtensionField } from "@bilibili-notify/contract";
+import type { ExtensionField, ExtensionScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { assertConfigFieldsMatchSchema } from "../config-fields.js";
@@ -187,14 +187,25 @@ describe("对表:类型与默认值", () => {
 
 	describe("list", () => {
 		const LINK = z.object({
+			id: z.string().min(1),
 			name: z.string().min(1),
 			token: z.string(),
 			note: z.string().optional(),
 		});
-		const list = (fields: ExtensionField[]): ExtensionField =>
-			({ type: "list", key: "links", label: "接入", fields }) as ExtensionField;
-		const NAME: ExtensionField = { type: "string", key: "name", label: "名字" };
-		const TOKEN: ExtensionField = { type: "string", key: "token", label: "Token", secret: true };
+		const list = (fields: ExtensionScalarField[]): ExtensionField => ({
+			type: "list",
+			key: "links",
+			label: "接入",
+			title: "name",
+			fields,
+		});
+		const NAME: ExtensionScalarField = { type: "string", key: "name", label: "名字" };
+		const TOKEN: ExtensionScalarField = {
+			type: "string",
+			key: "token",
+			label: "Token",
+			secret: true,
+		};
 
 		it("对象数组、每一项逐格对上 —— 放行(列表自己的默认空数组不算默认值漂移)", () => {
 			expect(() => one(list([NAME, TOKEN]), z.array(LINK).default([]))).not.toThrow();
@@ -214,6 +225,13 @@ describe("对表:类型与默认值", () => {
 
 		it("项里的必填键没人填 —— 拒", () => {
 			expect(() => one(list([NAME]), z.array(LINK))).toThrow(/"links\.token"/);
+		});
+
+		/** 项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有。 */
+		it("项的 id 免声明;zod 的项里没有 id —— 拒(BN 生成的 id 会被它当场剥掉)", () => {
+			expect(() => one(list([NAME, TOKEN]), z.array(LINK))).not.toThrow();
+			const noId = z.object({ name: z.string().min(1), token: z.string() });
+			expect(() => one(list([NAME, TOKEN]), z.array(noId))).toThrow(/"links\.id"/);
 		});
 
 		it("zod 那边不是对象数组 —— 拒", () => {
