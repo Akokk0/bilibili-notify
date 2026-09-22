@@ -10,7 +10,7 @@ import type { ZodType } from "zod";
  * 校验退化成只剩类型检查 —— 而真实 config 里有「加速前缀必须 https」这种跨字段规则。
  * 代价是「两份会漂」,这道对表就是那笔账的兜底:**同进程,宿主拿得到拓展的 zod**,所以
  * 漂了当场看得见,而不是等主人在面板上填完保存不上。对的不只是键:设置项按数据类型分、
- * 与 zod 一一对应,所以**类型与默认值一起对**。
+ * 与 zod 一一对应,所以**类型与默认值一起对**(v1 除外,见 `v1` 那一格)。
  *
  * 🔴 **判形状不用 `instanceof`。** 拓展会被打成自包含的 `index.mjs`,它那份 zod 是**另一个
  * 实例** —— `instanceof ZodObject` 当场为假,而报出来的错会把人指向完全错误的方向。对象看
@@ -28,6 +28,13 @@ export function assertConfigFieldsMatchSchema(
 		 * 一栏是人填的,所以「必填键没人填」那一半不查:那正是它的常态,不是漂了。
 		 */
 		picked?: boolean;
+		/**
+		 * v1 拓展在代码里交的连接配置项(收下时已翻译成新形状)。🔴 **v1 格式已冻结**
+		 * (`ExtensionManifestV1Schema`),对表也停在冻结那天:第一层是对象、键不重复、键在 zod
+		 * 里、zod 的必填键都有栏。类型 / 选项 / 默认值、读 zod 4 的 `_zod.def` 是 v2 才加的 ——
+		 * 加到已经发出去的 v1 包身上,宿主一升级它就加载不了。
+		 */
+		v1?: boolean;
 	} = {},
 ): void {
 	const fail = (msg: string): never => {
@@ -42,6 +49,7 @@ export function assertConfigFieldsMatchSchema(
 	checkFields("", shape as Record<string, unknown>, fields, fail, {
 		picked: opts.picked === true,
 		listItem: false,
+		keysOnly: opts.v1 === true,
 	});
 }
 
@@ -106,7 +114,7 @@ function checkFields(
 	members: Record<string, unknown>,
 	fields: readonly ExtensionField[],
 	fail: (msg: string) => never,
-	opts: { picked: boolean; listItem: boolean },
+	opts: { picked: boolean; listItem: boolean; keysOnly: boolean },
 ): void {
 	// 列表项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有 ——
 	// 没有的话,BN 生成的 id 会被拓展那份 zod 当场剥掉,视图就再也挂不到这一项上。
@@ -123,7 +131,8 @@ function checkFields(
 		if (!(field.key in members)) {
 			fail(`字段表里的 "${path}" 不是 config schema 的键`);
 		}
-		checkField(path, field, members[field.key], fail);
+		// 只对键的(v1)到这里为止,这一格的类型 / 默认值不看。
+		if (!opts.keysOnly) checkField(path, field, members[field.key], fail);
 	}
 
 	if (opts.picked) return;
@@ -156,7 +165,11 @@ function checkField(
 		if (item?.type !== "object" || !item.shape) {
 			return void fail(`"${path}" 是列表,zod 那边每一项得是个对象`);
 		}
-		checkFields(`${path}.`, item.shape, field.fields, fail, { picked: false, listItem: true });
+		checkFields(`${path}.`, item.shape, field.fields, fail, {
+			picked: false,
+			listItem: true,
+			keysOnly: false,
+		});
 		return;
 	}
 

@@ -9,7 +9,7 @@
 
 import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
-import type { ExtensionDescriptor } from "@bilibili-notify/extension";
+import type { ExtensionConfigField, ExtensionDescriptor } from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
@@ -19,7 +19,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import { adapterForConnection } from "../../platforms/dispatch.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionContext } from "../context.js";
@@ -278,6 +278,73 @@ describe("按清单注册推送源", () => {
 				: () => h.ctx.registerPushSource(v2Def());
 		expect(register).toThrow(message);
 		expect(h.adapters.list()).toEqual([]);
+	});
+
+	/**
+	 * 🔴 **v1 的对表停在冻结那天**(`ExtensionManifestV1Schema`:格式已冻结,已经发出去的 v1 包
+	 * 不能因为宿主升级就加载不了)。冻结时只对四样:第一层是对象、键不重复、键在 zod 里、zod
+	 * 的必填键都有栏。类型 / 选项 / 默认值、读 zod 4 的 `_zod.def` 是 v2 才加的,不往 v1 身上加。
+	 */
+	describe("v1 的连接配置项只对冻结那天的四样", () => {
+		const v1Def = (configSchema: ZodType, configFields: ExtensionConfigField[]) => ({
+			adapter: fakeAdapter(),
+			descriptor: descriptor(),
+			configSchema,
+			configFields,
+		});
+
+		it.each<[string, ZodType, ExtensionConfigField[]]>([
+			[
+				"zod 里有默认值、字段表没写",
+				z.object({ port: z.number().default(8080) }),
+				[{ kind: "number", code: "port", label: "端口" }],
+			],
+			[
+				"下拉的选项与 zod 的取值对不上",
+				z.object({ mode: z.enum(["a", "b"]) }),
+				[{ kind: "select", code: "mode", label: "模式", options: [{ value: "a", label: "A" }] }],
+			],
+			[
+				"字段表的类型与 zod 不一样",
+				z.object({ port: z.string() }),
+				[{ kind: "number", code: "port", label: "端口" }],
+			],
+			[
+				"schema 不是 zod 4 造的(没有 _zod.def)",
+				{
+					shape: { port: { safeParse: (v: unknown) => ({ success: v !== undefined }) } },
+				} as unknown as ZodType,
+				[{ kind: "text", code: "port", label: "端口" }],
+			],
+		])("%s —— 照常注册", (_label, configSchema, configFields) => {
+			const h = harness();
+			h.ctx.registerPushSource(v1Def(configSchema, configFields));
+			expect(h.adapters.list()).toHaveLength(1);
+		});
+
+		it.each<[string, ZodType, ExtensionConfigField[], RegExp]>([
+			["第一层不是对象", z.string(), [], /对象/],
+			[
+				"同一个键摆了两栏",
+				z.object({ token: z.string() }),
+				[
+					{ kind: "text", code: "token", label: "A" },
+					{ kind: "text", code: "token", label: "B" },
+				],
+				/"token" 摆了两栏/,
+			],
+			[
+				"字段表里有一格 zod 不认识",
+				z.object({ token: z.string().optional() }),
+				[{ kind: "text", code: "typoo", label: "手滑" }],
+				/"typoo" 不是 config schema 的键/,
+			],
+			["zod 的必填键没有栏", z.object({ token: z.string() }), [], /必填键 "token"/],
+		])("%s —— 照旧拒", (_label, configSchema, configFields, message) => {
+			const h = harness();
+			expect(() => h.ctx.registerPushSource(v1Def(configSchema, configFields))).toThrow(message);
+			expect(h.adapters.list()).toEqual([]);
+		});
 	});
 
 	/**

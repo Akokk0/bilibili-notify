@@ -349,9 +349,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
 			const view = pushViewOf(def);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
-			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
+			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。v1 只对冻结那天对的那几样。
 			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, {
 				picked: def.listBots !== undefined,
+				v1: opts.manifest.apiVersion === 1,
 			});
 			pushSourceRegistered = true;
 			pushView = view;
