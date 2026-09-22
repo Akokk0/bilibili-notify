@@ -131,7 +131,10 @@ function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
 	return value === "" ? null : value;
 }
 
-/** 服务端照清单校验不过时那份 400(`{ error: "validation_failed", issues }`)拆成两半。 */
+/**
+ * 服务端照清单校验不过时那份 400(`{ error: "validation_failed", issues }`)拆成两半。一条都拆
+ * 不出来的交 `null`,与别的失败一样说原话 —— 与列表那一节(`writeFailureOf`)同一个口径。
+ */
 interface SaveIssues {
 	/** 落得到某一格的:那一格 → 服务端那句话。 */
 	byField: Record<string, string>;
@@ -145,7 +148,7 @@ function saveIssuesOf(
 	keys: ReadonlySet<string>,
 ): SaveIssues | null {
 	const issues = settingsIssuesOf(err, extensionId);
-	if (!issues) return null;
+	if (!issues || issues.length === 0) return null;
 	const out: SaveIssues = { byField: {}, rest: [] };
 	for (const { key, message, text } of issues) {
 		if (key !== undefined && keys.has(key)) {
@@ -179,7 +182,7 @@ export function SettingsForm({
 	});
 	const [edits, setEdits] = useState<Record<string, Edit>>({});
 	/** 按了「换一份」的密钥 —— 只管显示(遮住 / 输入框),值照样只在 `edits` 里。 */
-	const [replacing, setReplacing] = useState<Record<string, true>>({});
+	const [replacing, setReplacing] = useState<Record<string, boolean>>({});
 	/** 等着确认「重新生成」的那一格。 */
 	const [confirming, setConfirming] = useState<ExtensionScalarField | null>(null);
 
@@ -189,16 +192,14 @@ export function SettingsForm({
 		mutationFn: ({ patch }: SaveVars) =>
 			api.patch("/api/globals", { extensions: { [extensionId]: { settings: patch } } }),
 		onSuccess: async (_data, { sent }) => {
-			// 先等那份设置重读回来,再丢草稿 —— 反过来的话会闪一下旧值。
-			await qc.invalidateQueries({ queryKey: ["globals"] });
+			// 先等那份设置重读回来,再丢草稿 —— 反过来的话会闪一下旧值。服务端在回这一发之前
+			// 就经 WS 发了「globals 变了」,多半已经在重读:并到那一发上,别取消了重发一次。
+			await qc.invalidateQueries({ queryKey: ["globals"] }, { cancelRefetch: false });
 			const keep = (key: string, current: Edit | undefined) =>
 				!Object.hasOwn(sent, key) || current !== sent[key];
 			setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => keep(k, v))));
-			setReplacing(
-				(prev) =>
-					Object.fromEntries(
-						Object.entries(prev).filter(([k]) => !Object.hasOwn(sent, k)),
-					) as Record<string, true>,
+			setReplacing((prev) =>
+				Object.fromEntries(Object.entries(prev).filter(([k]) => !Object.hasOwn(sent, k))),
 			);
 		},
 	});
@@ -213,7 +214,7 @@ export function SettingsForm({
 	};
 	const drop = (key: string) => {
 		setEdits(({ [key]: _, ...rest }) => rest);
-		setReplacing(({ [key]: _, ...rest }) => rest as Record<string, true>);
+		setReplacing(({ [key]: _, ...rest }) => rest);
 	};
 
 	const dirty = fields.filter((field) => isDirty(field, edits, stored));
@@ -223,19 +224,15 @@ export function SettingsForm({
 		if (error) clientErrors[field.key] = error;
 	}
 	const touched = Object.keys(edits).length > 0 || Object.keys(replacing).length > 0;
+	const canSave = dirty.length > 0 && Object.keys(clientErrors).length === 0;
 
 	const keys = new Set(fields.map((field) => field.key));
 	const issues = save.isError ? saveIssuesOf(save.error, extensionId, keys) : null;
-	const pageError = !save.isError
-		? null
-		: issues
-			? issues.rest.length > 0
-				? issues.rest.join(";")
-				: null
-			: reasonOf(save.error);
+	// 表单顶上那句:落不到某一格的那几句;拆不出来的失败说原话。
+	const pageError = save.isError ? (issues?.rest.join(";") ?? reasonOf(save.error)) : "";
 
 	const submit = () => {
-		if (dirty.length === 0 || Object.keys(clientErrors).length > 0) return;
+		if (!canSave) return;
 		const patch: Record<string, unknown> = {};
 		const sent: Record<string, Edit> = {};
 		for (const field of dirty) {
@@ -316,14 +313,7 @@ export function SettingsForm({
 						<Btn variant="outline" size="sm" disabled={!touched || save.isPending} onClick={revert}>
 							还原
 						</Btn>
-						<Btn
-							variant="primary"
-							size="sm"
-							disabled={
-								dirty.length === 0 || save.isPending || Object.keys(clientErrors).length > 0
-							}
-							onClick={submit}
-						>
+						<Btn variant="primary" size="sm" disabled={!canSave || save.isPending} onClick={submit}>
 							{save.isPending ? "保存中…" : "保存"}
 						</Btn>
 					</div>

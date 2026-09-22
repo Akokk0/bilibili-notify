@@ -90,11 +90,12 @@ function mergePatch(body: unknown) {
 
 function renderForm(fields: ExtensionScalarField[] = FIELDS) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<SettingsForm extensionId="douyin" fields={fields} />
 		</QueryClientProvider>,
 	);
+	return Object.assign(view, { qc });
 }
 
 /** 那一格(标题 + 控件 + 说明 + 它自己的错)。 */
@@ -261,6 +262,38 @@ describe("保存:只发改了的那几格", () => {
 		expect(sentSettings()).toEqual({ live: false, bridgeKind: "astrbot", quality: "lite" });
 	});
 
+	/**
+	 * 服务端在回 HTTP 之前就经 WS 发了「globals 变了」,面板已经在重读;回来之后那一下失效要
+	 * 并到在飞的那一发上 —— 默认的「取消重发」会让服务端白读一遍。
+	 */
+	it("存完:WS 已经在重读那份设置时,不取消重发", async () => {
+		const { qc } = renderForm();
+		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
+		const reads = () =>
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/globals").length;
+		let release = () => {};
+		vi.mocked(api.get).mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					release = () =>
+						resolve({ extensions: { douyin: { enabled: false, settings: { ...stored } } } });
+				}),
+		);
+		vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
+			mergePatch(body);
+			void qc.invalidateQueries({ queryKey: ["globals"] }); // WS 那一帧
+			return {};
+		});
+		const before = reads();
+		fireEvent.click(save());
+		await waitFor(() => expect(reads()).toBe(before + 1));
+		await new Promise((settle) => setTimeout(settle, 30));
+		expect(reads()).toBe(before + 1);
+		release();
+		await waitFor(() => expect(save()).toHaveProperty("disabled", true));
+		expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe("新备注");
+	});
+
 	it("存完回到「没改过」,显示的是存下去的值", async () => {
 		renderForm();
 		fireEvent.change(await screen.findByLabelText("检查间隔"), { target: { value: "120" } });
@@ -380,6 +413,26 @@ describe("校验", () => {
 		expect(within(field("interval")).queryByRole("alert")).toBeNull();
 		// 改动还在,没被当成「存上了」丢掉。
 		expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe("新备注");
+	});
+
+	/**
+	 * 与列表那一节同一个口径:一条都拆不出来时说原话。什么都不显示的话,按钮弹回去、改动还在,
+	 * 看上去就是「点了没反应」。
+	 */
+	it("400 却一条 issue 都没有:原话摆在表单顶上", async () => {
+		vi.mocked(api.patch).mockRejectedValue(
+			new ApiError(
+				400,
+				{ error: "validation_failed", scope: "globals", issues: [] },
+				"PATCH /api/globals → 400",
+			),
+		);
+		renderForm();
+		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
+		fireEvent.click(save());
+		expect((await screen.findByRole("alert")).textContent).toBe(
+			"没存进去:PATCH /api/globals → 400",
+		);
 	});
 
 	it("落不到某一格的 issue 与别的失败,说在表单顶上", async () => {

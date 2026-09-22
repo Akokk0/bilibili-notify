@@ -24,6 +24,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 }));
 
 import { ApiError, api } from "../../../../services/api";
+import { extensionStatusKey } from "../view-query";
 import {
 	BRIDGE,
 	findCard,
@@ -112,6 +113,38 @@ describe("停用 / 启用", () => {
 		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
 		await waitFor(() => expect(reads("/api/globals")).toBeGreaterThan(before.globals));
 		await waitFor(() => expect(reads("/api/ext/bridge/status")).toBeGreaterThan(before.status));
+	});
+
+	/**
+	 * 名单那一口:宿主写完就经 WS 发了失效帧(在回 HTTP 之前),在飞的那一发一定是写之后的 ——
+	 * 并过去,不取消重发。🔴 状态那一口**照旧取消重发**:宿主不替它发帧,在飞的那一发可能是写之前
+	 * 发出去的,并过去就拿着写之前的样子。
+	 */
+	it("写完:名单已经在重读就并过去;状态照旧再读一次", async () => {
+		const { qc } = renderList({ items: [HOME], view: MISMATCH });
+		await screen.findByText("连上了,但对不上");
+		const reads = (url: string) =>
+			vi.mocked(api.get).mock.calls.filter(([called]) => called === url).length;
+		const answer = vi.mocked(api.get).getMockImplementation();
+		const pending: Array<() => void> = [];
+		vi.mocked(api.get).mockImplementation(
+			(url: string) =>
+				new Promise((resolve, reject) => {
+					pending.push(() => answer?.(url).then(resolve, reject));
+				}),
+		);
+		vi.mocked(api.patch).mockImplementation(async () => {
+			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: extensionStatusKey("bridge") });
+			return {};
+		});
+		const before = { globals: reads("/api/globals"), status: reads("/api/ext/bridge/status") };
+		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
+		await waitFor(() => expect(reads("/api/globals")).toBe(before.globals + 1));
+		await new Promise((settle) => setTimeout(settle, 30));
+		expect(reads("/api/globals")).toBe(before.globals + 1);
+		expect(reads("/api/ext/bridge/status")).toBe(before.status + 2);
+		for (const release of pending) release();
 	});
 });
 

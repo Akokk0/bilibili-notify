@@ -159,11 +159,13 @@ function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSet
 export function renderList(setup: ListSetup = {}) {
 	mockApi(setup);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<DeclarativeConfig ext={setup.ext ?? BRIDGE} />
 		</QueryClientProvider>,
 	);
+	// 要替 WS 发一帧失效的测试用得到它。
+	return Object.assign(view, { qc });
 }
 
 /** 整页 —— 只有「配置」页签在不在、挂没挂上这件事要它。 */

@@ -64,20 +64,11 @@ export function TriStateMark({ state, size = 14 }: { state: TriState; size?: num
 }
 
 /** 记号 + 一个名字(「@全体」),一行里横排好几颗。 */
-export function TriStateChip({
-	label,
-	state,
-	stateText = TRISTATE_TEXT,
-}: {
-	label: string;
-	state: TriState;
-	/** 三档各自怎么说 —— 悬停说明里接在名字后面。 */
-	stateText?: Readonly<Record<TriState, string>>;
-}) {
+export function TriStateChip({ label, state }: { label: string; state: TriState }) {
 	return (
 		<span
 			// 三态在形状与颜色之外**还有一层字面说明** —— 读屏器与鼠标悬停都够得着。
-			title={`${label}:${stateText[state]}`}
+			title={`${label}:${TRISTATE_TEXT[state]}`}
 			className="inline-flex items-center gap-[5px] whitespace-nowrap text-bn-xs leading-[14px]"
 		>
 			<TriStateMark state={state} />

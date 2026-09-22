@@ -520,6 +520,8 @@ export function useExtensionAction(extensionId: string) {
 			if (answer?.ok === false) throw new Error(answer.err ?? `动作 ${name} 没成`);
 			return answer;
 		},
+		// 🔴 **取消重发,别并到在飞的那一发上**:宿主不替状态那一口发失效帧,在飞的可能是动作之前
+		// 就发出去的(窗口聚焦、上一帧 bot 快照),并过去就拿着动作之前的样子。
 		onSuccess: () => qc.invalidateQueries({ queryKey: extensionStatusKey(extensionId) }),
 	});
 }

@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { api } from "../../../../services/api";
 import { Blocks } from "../blocks";
-import { useExtensionView } from "../view-query";
+import { extensionStatusKey, useExtensionView } from "../view-query";
 
 vi.mock("../../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -37,12 +37,13 @@ function renderBlocks(
 ) {
 	const id = opts.id ?? "douyin";
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<StatusProbe id={id} />
 			<Blocks blocks={blocks} extensionId={id} legend={opts.legend} onSet={opts.onSet} />
 		</QueryClientProvider>,
 	);
+	return Object.assign(view, { qc });
 }
 
 /** 读状态那一口被问了几次。 */
@@ -298,6 +299,26 @@ describe("button", () => {
 		renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
 		expect((await screen.findByRole("alert")).textContent).toContain(reason);
+	});
+
+	/**
+	 * 🔴 状态那一口**照旧取消重发**:宿主不替它发失效帧,在飞的那一发可能是动作之前就发出去的
+	 * (窗口聚焦、上一帧 bot 快照)—— 并过去就拿着动作之前的样子,要等下一次变化才更新。
+	 */
+	it("调拓展:状态已经在重读时,成了照旧再读一次", async () => {
+		const { qc } = renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
+		await waitFor(() => expect(statusReads()).toBe(1));
+		const pending: Array<() => void> = [];
+		vi.mocked(api.get).mockImplementation(
+			() => new Promise((resolve) => pending.push(() => resolve({}))),
+		);
+		vi.mocked(api.post).mockImplementation(async () => {
+			void qc.invalidateQueries({ queryKey: extensionStatusKey("douyin") });
+			return { ok: true };
+		});
+		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
+		await waitFor(() => expect(statusReads()).toBe(3));
+		for (const release of pending) release();
 	});
 
 	it("回话说没成(ok: false)也算失败", async () => {

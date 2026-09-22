@@ -156,7 +156,10 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 		onSuccess: () => {
 			setAdding(false);
 			setConfirming(null);
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			// 名单那一口:宿主写完就经 WS 发了失效帧(在回这一发之前),在飞的那一发一定是写之后的 ——
+			// 并过去,别取消了重发一次。🔴 状态那一口**照旧取消重发**:宿主不替它发帧,在飞的可能是
+			// 写之前发出去的,并过去就拿着写之前的样子。
+			void qc.invalidateQueries({ queryKey: ["globals"] }, { cancelRefetch: false });
 			void qc.invalidateQueries({ queryKey: extensionStatusKey(ext.id) });
 		},
 	});
