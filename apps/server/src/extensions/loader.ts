@@ -133,6 +133,17 @@ export interface LoadedExtensions {
 	 */
 	swap(id: string): Promise<void>;
 	/**
+	 * 盘上这一份代码,这个进程**干净地跑得上吗**(决策 47)—— 跑不上就是 `true`。
+	 *
+	 * 跑着的看那一行有没有标 `staged`;没跑的(关着、加载失败)按指纹判:这个 id 跑过别的代码、
+	 * 没见过盘上这一份,那拨开开关也只会停在「新版等着换上」。装完那句话靠它**当场**说出来,
+	 * 不然关着装进去的那份,主人要等拨开开关才撞见「换不上」。
+	 *
+	 * 🔴 **不往那一行上挂 `staged`**:关着的那一行带上它,面板就会给「只重载」,而 `swap()`
+	 * 会把一个关着的拓展跑起来。
+	 */
+	codeStuck(id: string): Promise<boolean>;
+	/**
 	 * **开发版的「重载」**:与 {@link LoadedExtensions.swap} 同一段,只是不要求 `staged`
 	 * —— 改一行就按一下。代码没变的话 URL 也不变(按指纹定),不白漏。
 	 *
@@ -556,6 +567,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				}
 				resort();
 			});
+		},
+		async codeStuck(id) {
+			if (entries.get(id)?.staged) return true;
+			const dir = ready.get(id);
+			if (!dir || runtimes.has(id)) return false;
+			return urlFor(id, dir.entry, await fingerprintOf(dir.entry), false) === undefined;
 		},
 		swap(id) {
 			return enqueue(async () => {

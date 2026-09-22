@@ -118,6 +118,7 @@ export interface CreateAppOptions {
 		install?: {
 			root: string;
 			rescan: () => Promise<void>;
+			codeStuck?: (id: string) => Promise<boolean>;
 			restartAbility: RestartAbility;
 		};
 		/** 拓展市场(ADR-0013)。没接 → 那两口 404。 */

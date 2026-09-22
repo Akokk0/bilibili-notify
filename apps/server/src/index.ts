@@ -929,6 +929,7 @@ export async function startStandaloneServer(
 					rescan: async () => {
 						await loadedExtensions?.rescan();
 					},
+					codeStuck: async (id) => (await loadedExtensions?.codeStuck(id)) ?? false,
 					restartAbility,
 				},
 				// devtools 给的话是装饰过的那份:「拓展有更新」在它身上造(见 devtools/marketplace-injection.ts)。

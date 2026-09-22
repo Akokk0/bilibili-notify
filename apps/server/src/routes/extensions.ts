@@ -93,6 +93,11 @@ export interface ExtensionsRouteOptions {
 		 * 面板叫我重启,可我没处按」的由来。
 		 */
 		rescan: () => Promise<void>;
+		/**
+		 * 盘上这份代码这个进程干净地跑不上(装载器的 `codeStuck()`,决策 47)。装完那句话的
+		 * `staged` 照它说 —— 关着、但这个进程跑过它别的代码的那份也算。没接就只看名单那一行。
+		 */
+		codeStuck?: (id: string) => Promise<boolean>;
 		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。 */
 		restartAbility: RestartAbility;
 	};
@@ -112,7 +117,12 @@ const RESTART_UNKNOWN: RestartAbility = { can: false, reason: "unsupervised" };
  * 换了,原样再传一遍的也没什么可换 —— 那两种照旧说「要重启」,主人会白白重启一次。换不换得上
  * 只有按指纹认代码的装载器答得了。上传装包与市场装两口共用这一句,免得两边各判各的。
  */
-function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boolean {
+async function stagedAfterInstall(
+	install: NonNullable<ExtensionsRouteOptions["install"]>,
+	entries: readonly ExtensionEntry[],
+	id: string,
+): Promise<boolean> {
+	if (install.codeStuck) return install.codeStuck(id);
 	return entries.find((entry) => entry.id === id)?.staged !== undefined;
 }
 
@@ -203,7 +213,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			id: opened.pkg.id,
 			name: opened.pkg.manifest.name,
 			version: opened.pkg.manifest.version,
-			staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
+			staged: await stagedAfterInstall(install, opts.extensions(), opened.pkg.id),
 			docs: docsPresence(opened.pkg.docs),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
@@ -281,7 +291,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			name: outcome.name,
 			version: outcome.version,
 			// 市场装完已经重扫过了 —— 与上传装包同一把尺子。
-			staged: stagedAfterInstall(opts.extensions(), outcome.id),
+			staged: await stagedAfterInstall(install, opts.extensions(), outcome.id),
 			docs: outcome.docs,
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),

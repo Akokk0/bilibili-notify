@@ -68,6 +68,7 @@ function boot(
 		install: {
 			root: installRoot,
 			rescan: loader ? () => loader.rescan() : rescan,
+			...(loader ? { codeStuck: (id: string) => loader.codeStuck(id) } : {}),
 			restartAbility:
 				over.canRestart === false
 					? { can: false, reason: "source-run" }
@@ -90,8 +91,8 @@ function quietHost(): ServiceContext {
 	};
 }
 
-/** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关。 */
-function realLoader(enabled = true): Promise<LoadedExtensions> {
+/** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关(给函数就现读,好中途拨)。 */
+function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedExtensions> {
 	return loadExtensions({
 		root: installRoot,
 		host: quietHost(),
@@ -103,7 +104,7 @@ function realLoader(enabled = true): Promise<LoadedExtensions> {
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
-		isEnabled: () => enabled,
+		isEnabled: typeof enabled === "function" ? enabled : () => enabled,
 		maxFailures: 3,
 	});
 }
@@ -534,6 +535,29 @@ describe("POST /api/ext/install", () => {
 
 		expect(body.staged).toBe(false);
 		expect(loader.list()[0]).toMatchObject({ state: "disabled", manifest: { version: "1.1.0" } });
+		await loader.dispose();
+	});
+
+	/**
+	 * 🔴 **关着,但这个进程跑过它的另一份代码**:盘上这份拨开开关也跑不上(ESM 缓存里那份
+	 * 删不掉,决策 47)。装完那一刻就得说 —— 回「装好了,还关着」的话,主人拨开开关才撞见
+	 * 「换不上」,而那时已经不知道是哪一步出的事。
+	 */
+	it("盖掉一份关着、但这个进程跑过它别的代码的 → 是「等着换上」", async () => {
+		await plant("bridge", "旧的");
+		let on = true;
+		const loader = await realLoader(() => on);
+		expect(loader.list()[0]?.state).toBe("running");
+		on = false;
+		await loader.sync();
+		expect(loader.list()[0]?.state).toBe("disabled");
+
+		const body = (await (
+			await upload(boot({ loader }), form(pack()))
+		).json()) as ExtensionInstallResponse;
+
+		expect(body.staged).toBe(true);
+		expect(body.enabled).toBe(false);
 		await loader.dispose();
 	});
 
