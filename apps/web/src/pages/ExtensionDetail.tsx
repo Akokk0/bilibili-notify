@@ -168,8 +168,12 @@ export default function ExtensionDetail() {
 					)}
 				</div>
 
-				{/* 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。 */}
-				<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3">
+				{/*
+				 * 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。
+				 * 上面那块正文一样都没画的时候(v2 拓展没跑 / 只有设置项、没交视图),`:empty` 的正文
+				 * 后面这一行就不再留上边距与分隔线 —— 否则头卡里是两根线夹着一条空白带。
+				 */}
+				<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3 [:empty+&]:mt-0 [:empty+&]:border-t-0 [:empty+&]:pt-0">
 					<span className="text-bn-2xs text-bn-text-tertiary">
 						{/* v2 头卡正文让给了积木,版本号挪到这一句的开头(决策 24 的五处之一)。 */}
 						{declarative && ext.version ? `v${ext.version} · ` : ""}
