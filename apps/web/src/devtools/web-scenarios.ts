@@ -1,6 +1,6 @@
 /**
  * 前端半边的场景 —— 只存在于面板里的状态,服务端造不出来:涌 toast、不可达壳、灵动岛的
- * 几个态、新手指引的每一步。跑在浏览器里,不打服务端。
+ * 几个态、新手指引的每一步、拓展卡片上的两段动画(`ext-motion.ts`)。跑在浏览器里,不打服务端。
  */
 
 import type { OnboardingInputs, OnboardingStepKey } from "../components/onboarding/derive";
@@ -8,6 +8,7 @@ import { useOnboardingInputsOverride } from "../components/onboarding/inputs-ove
 import { HEALTH_QUERY_KEY } from "../hooks/useBackendReachable";
 import { type DraftUiState, useDraftStore } from "../store/draft";
 import { useToastStore } from "../store/notifications";
+import { installMotion, updateMotion } from "./ext-motion";
 import type { WebDevScenario, WebRunContext } from "./registry";
 
 const toastFlood: WebDevScenario = {
@@ -164,4 +165,6 @@ export const WEB_SCENARIOS: readonly WebDevScenario[] = [
 	backendUnreachable,
 	draftIsland,
 	onboardingStep,
+	installMotion,
+	updateMotion,
 ];

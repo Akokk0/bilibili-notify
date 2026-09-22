@@ -377,6 +377,8 @@ export async function startStandaloneServer(
 			payloadVersion,
 			sourceRun,
 			updateService,
+			// 「拓展有更新」装饰的是它:列表与装都从包好的那份过,市场本体一行不动。
+			marketplace,
 			adapters: adapterRegistry,
 			// 开发版装拓展那条路(见 devtools/scenarios/extensions.ts)。仓里那个目录只在
 			// 源码运行时够得着,而 devtools 本来就只在那种构建里存在 —— 两道门是同一道。
@@ -929,7 +931,8 @@ export async function startStandaloneServer(
 					},
 					restartAbility,
 				},
-				marketplace,
+				// devtools 给的话是装饰过的那份:「拓展有更新」在它身上造(见 devtools/marketplace-injection.ts)。
+				marketplace: devtools?.marketplace ?? marketplace,
 			},
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。

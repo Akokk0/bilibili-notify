@@ -10,7 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Extensions from "../Extensions";
-import { type CardMotion, useCardMotionStore } from "../extensions/card-motion";
+import { type CardMotion, EXT_UPDATE_BUTTON, useCardMotionStore } from "../extensions/card-motion";
 
 const { apiGetMock, apiPatchMock, apiPostMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
@@ -462,7 +462,10 @@ describe("已装卡片上的「有新版」", () => {
 		});
 		await screen.findAllByText("机器人框架桥接");
 		const card = installedCardOf("机器人框架桥接");
-		fireEvent.click(await within(card).findByRole("button", { name: /更新/ }));
+		const button = await within(card).findByRole("button", { name: /更新/ });
+		// devtools「播放更新动画」认这个标记找起飞点 —— 真的那颗钮身上得有,不然那头悄悄退化。
+		expect(button.hasAttribute(EXT_UPDATE_BUTTON)).toBe(true);
+		fireEvent.click(button);
 
 		await waitFor(() => expect(played).toHaveLength(1));
 		unsubscribe();

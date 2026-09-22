@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
+import { EXT_UPDATE_BUTTON } from "./extensions/card-motion";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
@@ -173,6 +174,7 @@ function ExtensionCard({
 							size="sm"
 							disabled={updating}
 							onClick={(event) => onUpdate?.(event.currentTarget.getBoundingClientRect())}
+							{...{ [EXT_UPDATE_BUTTON]: "" }}
 						>
 							更新
 						</Btn>

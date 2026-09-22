@@ -11,6 +11,8 @@ import type {
 } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
+import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
+import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import type { MuteState } from "../runtime/mute-state.js";
@@ -23,6 +25,7 @@ import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
 import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
 import { createLiveRooms } from "./live-rooms.js";
+import { injectableMarketplace } from "./marketplace-injection.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { createDevRoute, type DevCapturesApi } from "./route.js";
 import { bridgeScenarios } from "./scenarios/bridge.js";
@@ -36,6 +39,7 @@ import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { liveEventScenarios } from "./scenarios/live-events.js";
 import { loginStateScenario } from "./scenarios/login-state.js";
+import { marketplaceUpdateScenario } from "./scenarios/marketplace.js";
 import { timerScenarios } from "./scenarios/timers.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
@@ -73,8 +77,11 @@ export interface CreateDevtoolsInput {
 		repoDir: string;
 		/** `<dataDir>/extensions/`。 */
 		installRoot: string;
-		loaded: () => { reload(id: string): Promise<void>; rescan(): Promise<void> } | undefined;
+		/** 「拓展有更新」还要它的名单:装着哪一版,假新版就比它高一格。 */
+		loaded: () => Pick<LoadedExtensions, "reload" | "rescan" | "list"> | undefined;
 	};
+	/** 拓展市场。交回去的是装饰过的那份(「拓展有更新」:列表里那一条改成 updatable、装的那下假装成功)。 */
+	marketplace: Marketplace;
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
 	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
@@ -118,6 +125,8 @@ export interface Devtools {
 	captures: DevCapturesApi;
 	/** 交给 `/api/update` 路由的那份 —— 装饰过的。 */
 	updateService: UpdateService;
+	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
+	marketplace: Marketplace;
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
 	adapters: AdapterRegistry;
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
@@ -142,6 +151,18 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
 	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
 	const update = injectableUpdateService(input.updateService);
+	// 装着哪一版**现取**(装载器比 devtools 后起来,名单也会变),读法与市场自己那份同一把尺子。
+	const market = injectableMarketplace(
+		input.marketplace,
+		() =>
+			input.extensions
+				.loaded()
+				?.list()
+				.map((entry) => {
+					const who = entryIdentity(entry);
+					return { id: entry.id, name: who?.name, version: who?.version };
+				}) ?? [],
+	);
 	const gate = createCaptureGate();
 	const caps = createCapabilityInjector();
 	const api = overridableApi(input.api);
@@ -202,6 +223,8 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			installRoot: input.extensions.installRoot,
 			extensions: input.extensions.loaded,
 		}),
+		// 不跟上面那几条一起:仓里一个拓展都没有时它们整组不出现,而这一条认的是**装着的**。
+		marketplaceUpdateScenario(market),
 		...timerScenarios({
 			clock,
 			subs: input.subs,
@@ -217,6 +240,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		registry,
 		route: createDevRoute({ registry, captures }),
 		updateService: update.service,
+		marketplace: market.marketplace,
 		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
 		//
 		// 是个**视图**不是一份拷贝:注册转交给真注册表,包装在 `list()` 那一刻现做。

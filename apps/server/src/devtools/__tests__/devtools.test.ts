@@ -1,5 +1,7 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { ExtensionEntry } from "../../extensions/loader.js";
+import type { Marketplace } from "../../extensions/marketplace.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { UpdateService } from "../../update/service.js";
@@ -25,8 +27,15 @@ const updateService: UpdateService = {
 	probeMirrors: async () => [],
 };
 
+/** 真市场的替身:什么都不列,装只记账 —— 装饰那一层的规矩在 marketplace-update-scenario 里钉。 */
+const REAL_MARKET: Marketplace = {
+	list: async () => ({ available: true, sources: [], extensions: [], fetchedAt: 0 }),
+	install: async () => ({ ok: false, err: "真市场的替身不装东西" }),
+};
+
 const BARE = {
 	updateService,
+	marketplace: REAL_MARKET,
 	adapters: createAdapterRegistry(),
 	historyStore: { deleteRange: async () => 0 },
 	api: {} as never,
@@ -205,5 +214,41 @@ describe("createDevtools · 截流接线", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+/**
+ * 市场那一层的接线:零件(装饰器、场景)各自的测试全绿,证明不了 `createDevtools` 真把
+ * 包好的那份交了出去、真把装载器名单接进了装饰器。剪断任何一头这条就红。
+ */
+describe("createDevtools · 市场接线", () => {
+	it("交回去的 marketplace 是装饰过的:ext.updatable 之后那张卡有新版,装它不走真市场", async () => {
+		const install = vi.fn(REAL_MARKET.install);
+		const bridge: ExtensionEntry = {
+			id: "bridge",
+			state: "running",
+			dir: "/data/extensions/bridge",
+			identity: { id: "bridge", name: "机器人桥", description: "桥", version: "0.4.0" },
+		};
+		const dev = createDevtools({
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+			marketplace: { ...REAL_MARKET, install },
+			extensions: {
+				...BARE.extensions,
+				loaded: () => ({ reload: async () => {}, rescan: async () => {}, list: () => [bridge] }),
+			},
+		});
+		if (dev === null) throw new Error("unreachable");
+
+		await dev.registry.run("ext.updatable", { ext: "bridge" });
+		const [made] = (await dev.marketplace.list()).extensions;
+		expect(made).toMatchObject({ id: "bridge", state: "updatable", version: "0.4.1" });
+		expect(await dev.marketplace.install("official", "bridge")).toMatchObject({
+			ok: true,
+			name: "机器人桥",
+			version: "0.4.1",
+		});
+		expect(install).not.toHaveBeenCalled();
 	});
 });

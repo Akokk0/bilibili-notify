@@ -43,7 +43,12 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
   `/api/dev` 列举 / 跑 / 收摊(`routes/dev.ts`)。注册表补默认值、拦越界、汇总各场景的
   `active()`;场景做什么归各自的 `run`。
 - 前端那半:`apps/web/src/devtools/web-scenarios.ts`,同形状,`run` 在浏览器里跑(涌 toast、
-  不可达壳、灵动岛、新手指引步)。面板把两张表并成一张(`mergeScenarios`),撞 id 直接炸。
+  不可达壳、灵动岛、新手指引步、拓展卡片的两段动画)。面板把两张表并成一张(`mergeScenarios`),撞 id 直接炸。
+  **「播放安装动画 / 播放更新动画」**(`ext-motion.ts`)不装东西:往 `card-motion` 那一格放一段,
+  与真装 / 真更新成功之后放进去的同形状,拓展页照着演。卡从**页面上**找(`EXT_CARD_ANCHOR`,与动画
+  找落点同一个属性),页上没卡(不在拓展页)或没这个 id 就只回一句话、那一格不碰 —— 放一段落不了地
+  的进去,演的那头会干等到超时。安装的起点是视口底部正中一个卡那么大的框;更新从卡里那颗「更新」钮
+  起飞,没那颗钮(没有新版)就不给起点、球从卡片上方落下 —— 想看从钮上起飞,先跑一次「拓展有更新」。
 
 加一个场景 = 写一个 `DevScenarioDef` 塞进 `createDevtools` 那张表,面板一行不改。
 
@@ -62,6 +67,11 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 ⚠️ **每重载一次漏一份旧模块**(ESM 的模块注册表删不掉,ADR-0012 决策 39),所以它默认关着 ——
 挂成常开等于让它无声地漏。重载失败**不掐监听**:改一行崩一次就得重新点一遍的话,开发循环当场卡死。
 
+同组的 **「拓展有更新」**(`ext.updatable`)不做真事,造的是**假状态**:已装卡片上造出「有新版 vX · 更新」,
+按下去假装装成(见下表)。它进「当前生效」条、归一键收摊,按「更新」装成之后自己撤掉 —— 现实里
+更新完那张卡就不再提示了。参数是**装着的**拓展 id(没装的拒:那颗钮只长在已装卡片上),所以它不跟
+那几条一起「仓里没拓展就整组不出现」。
+
 ## 注入高度:既有边界上套装饰器,引擎一行不动
 
 | 要造什么 | 装饰在哪 | 文件 |
@@ -72,6 +82,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`getAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤 | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishStatus` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
+| 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。装那个 id **假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |
 | 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored | `scenarios/bus-events.ts` |
 | 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `scenarios/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |

@@ -12,6 +12,12 @@
 import { create } from "zustand";
 import type { InstallFlight } from "./install-flight";
 
+/**
+ * 已装卡片上那颗「更新」钮的标记 —— devtools「播放更新动画」靠它找起飞点。按文字认的话,
+ * 文案一改(或者 pending 时换了字)就悄悄退回「从上方落下」,而两头的测试都还绿。
+ */
+export const EXT_UPDATE_BUTTON = "data-ext-update";
+
 export type CardMotion =
 	| ({ kind: "install" } & InstallFlight)
 	| {
