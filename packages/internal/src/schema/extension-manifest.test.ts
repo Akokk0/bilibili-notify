@@ -748,6 +748,21 @@ describe("settingsValueSchema", () => {
 		expect(accepts(value)).toBe(false);
 	});
 
+	/**
+	 * 有默认值的格,存储里没有它也不算缺 —— 拓展那份 zod 会补上默认值。当成「必填却缺了」的话,
+	 * 主人还没碰过它,改别的格就被 400 拦下。
+	 */
+	it("必填但有默认值的格,存储里没有 —— 收下(拓展那份 zod 会补上)", () => {
+		const m = ok(
+			withField({ key: "interval", type: "number", label: "间隔", required: true, default: 60 }),
+		);
+		if (m.apiVersion !== 2 || !m.settings) throw new Error("应该是带设置的 v2");
+		expect(settingsValueSchema(m.settings.fields).safeParse({}).success).toBe(true);
+		expect(settingsValueSchema(m.settings.fields).safeParse({ interval: "60" }).success).toBe(
+			false,
+		);
+	});
+
 	it("没设过(undefined)—— 收下:那是「按没有算」,不是写坏了", () => {
 		expect(settingsValueSchema(FIELDS).safeParse(undefined).success).toBe(true);
 	});

@@ -580,21 +580,30 @@ export function manifestSecretKeys(manifest: ExtensionManifest): string[] | unde
 
 /** 一格设置项的值该长什么样 —— BN 这头照声明现造,不看拓展那份 zod(它可能根本没在跑)。 */
 function valueSchemaOf(field: ExtensionManifestField): z.ZodType {
-	const need = (schema: z.ZodType) => (field.required ? schema : schema.optional());
+	// 有默认值的格,存储里没有它也不算缺 —— 拓展那份 zod 会补上(对表时已经钉住两边的默认值
+	// 一样)。当成「必填却缺了」的话,主人还没碰过它,改别的格就被拦下。
+	const need = (schema: z.ZodType) =>
+		field.required && !("default" in field && field.default !== undefined)
+			? schema
+			: schema.optional();
 	switch (field.type) {
 		case "string":
 			// 必填 = 不许空串:面板上那颗星的意思是「得填点什么」。
-			return need(field.required ? z.string().min(1) : z.string());
+			return need(field.required ? z.string().min(1, "这一格必填") : z.string());
 		case "number": {
 			let n = z.number();
-			if (field.min !== undefined) n = n.min(field.min);
-			if (field.max !== undefined) n = n.max(field.max);
+			if (field.min !== undefined) n = n.min(field.min, `不能小于 ${field.min}`);
+			if (field.max !== undefined) n = n.max(field.max, `不能大于 ${field.max}`);
 			return need(n);
 		}
 		case "boolean":
 			return need(z.boolean());
 		case "enum":
-			return need(z.enum(field.options.map((option) => option.value) as [string, ...string[]]));
+			return need(
+				z.enum(field.options.map((option) => option.value) as [string, ...string[]], {
+					error: "不是可选的值",
+				}),
+			);
 		case "list":
 			return need(
 				z.array(fieldsObjectSchema(field.fields, true)).superRefine((items, ctx) => {
@@ -621,7 +630,7 @@ function valueSchemaOf(field: ExtensionManifestField): z.ZodType {
  */
 function fieldsObjectSchema(fields: readonly ExtensionManifestField[], listItem: boolean) {
 	const shape: Record<string, z.ZodType> = {};
-	if (listItem) shape[LIST_ITEM_ID_KEY] = z.string().min(1);
+	if (listItem) shape[LIST_ITEM_ID_KEY] = z.string().min(1, "列表项要有 id");
 	for (const field of fields) shape[field.key] = valueSchemaOf(field);
 	return z.looseObject(shape);
 }
