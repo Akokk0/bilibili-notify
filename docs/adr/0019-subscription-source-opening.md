@@ -123,7 +123,7 @@
 
 25. **放在哪。** 页级积木挂在**头卡正文**（桥的「BN 地址」行、抖音的键值与提示都在这儿）；「配置」页签给**任何**有设置项或有视图的拓展（今天只认 `id === "bridge"`）；拓展列表页那一行由视图的 `summary` 交（今天那句「N 个 bot 在线」是面板里专为桥写的）。
 
-26. **视图的形状**：`{ summary?, page?: 积木[], items?: { <列表设置项的 key>: { <项 id>: { status?, pill?, subtitle?, buttons?, blocks? } } } }`。`status` 是 `{ tone: ok | warn | error | off, text }`，`tone` 同时决定卡角那团颜色；**停用的项由 BN 盖成「已停用」**，拓展报什么都不算。
+26. **视图的形状**：`{ summary?, page?: 积木[], items?: { <列表设置项的 key>: { <项 id>: { status?, pill?, subtitle?, buttons?, lead?, blocks? } } } }`。卡里的积木分两段：`lead` 画在 BN 画的字段行（token 行这种）上面，`blocks` 画在下面 —— 桥今天就是「对不上」的提示在 token 行上、bot 表在下。`status` 是 `{ tone: ok | warn | error | off, text }`，`tone` 同时决定卡角那团颜色；**停用的项由 BN 盖成「已停用」**，拓展报什么都不算。
 
 27. **积木**：`keyValue`；`table`（列四种：icon、text（可两行、可定宽）、mono、tristate）；`notice`（info / warn / error，可带一颗按钮）；`copy`；`qr`；按钮两种 —— `action`（调拓展，决策 22）与 `set`（让 BN 改**这一项**的一格设置，**只挂在列表项上**）。页上一出现三态格，BN 就在列表头挂一次图例（它不是装饰：三个记号里两个是空心圈，不说明就只能猜）。`qrLogin` 在词表里**占位不实现**，与 `ctx.secrets` 同一刻开（决策 23）。
 

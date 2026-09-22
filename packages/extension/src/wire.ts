@@ -208,6 +208,9 @@ export interface ExtensionItemView {
 	pill?: string;
 	subtitle?: ExtensionRichText;
 	buttons?: readonly ExtensionButton[];
+	/** 画在 BN 画的字段行(token 行这种)上面的积木。 */
+	lead?: readonly ExtensionBlock[];
+	/** 画在字段行下面的积木。 */
 	blocks?: readonly ExtensionBlock[];
 }
 

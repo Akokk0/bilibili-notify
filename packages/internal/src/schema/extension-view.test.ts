@@ -81,6 +81,24 @@ describe("ExtensionViewSchema —— 收下", () => {
 		expect(accepts(BRIDGE_VIEW)).toBe(true);
 	});
 
+	/**
+	 * 卡里的积木分上下两段:`lead` 画在 BN 画的字段行(token 行)**上面**,`blocks` 画在下面 ——
+	 * 桥今天就是「对不上」的提示在 token 行上、bot 表在下。
+	 */
+	it("列表项的 lead 与 blocks 各收一串积木", () => {
+		const view = {
+			items: {
+				links: {
+					a: {
+						lead: [{ type: "notice", tone: "warn", text: "对不上" }],
+						blocks: [{ type: "notice", tone: "info", text: "填两样" }],
+					},
+				},
+			},
+		};
+		expect(accepts(view)).toBe(true);
+	});
+
 	it("空视图 —— 一样合规矩(拓展此刻什么都不想说)", () => {
 		expect(accepts({})).toBe(true);
 	});

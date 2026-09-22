@@ -164,6 +164,9 @@ const ItemViewSchema = z.strictObject({
 	subtitle: RichTextSchema.optional(),
 	/** 卡头右边的按钮,排在 BN 自己的「停用 / 删除」前面。 */
 	buttons: z.array(ButtonSchema).max(4).optional(),
+	/** 画在 BN 画的字段行(token 行这种)**上面**的积木 —— 要人先看见的提示放这儿。 */
+	lead: z.array(BlockSchema).max(8).optional(),
+	/** 画在字段行下面的积木。 */
 	blocks: z.array(BlockSchema).max(32).optional(),
 });
 
