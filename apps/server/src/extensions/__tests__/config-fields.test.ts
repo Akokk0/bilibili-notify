@@ -8,7 +8,7 @@
  * 没有它的话,症状是「面板上填了保存不了」或者「有个必填项面板上根本没有」。
  */
 
-import type { ExtensionConfigField } from "@bilibili-notify/contract";
+import type { ExtensionField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { assertConfigFieldsMatchSchema } from "../config-fields.js";
@@ -19,14 +19,14 @@ const SCHEMA = z.object({
 	label: z.string().optional(),
 });
 
-function fields(...over: ExtensionConfigField[]): ExtensionConfigField[] {
+function fields(...over: ExtensionField[]): ExtensionField[] {
 	return over.length > 0
 		? over
 		: [
-				{ kind: "text", code: "token", label: "长期 token", secret: true },
+				{ type: "string", key: "token", label: "长期 token", secret: true },
 				{
-					kind: "select",
-					code: "bridgeKind",
+					type: "enum",
+					key: "bridgeKind",
 					label: "哪一种桥",
 					options: [
 						{ value: "koishi", label: "koishi" },
@@ -36,7 +36,7 @@ function fields(...over: ExtensionConfigField[]): ExtensionConfigField[] {
 			];
 }
 
-const check = (f: ExtensionConfigField[], schema: z.ZodType = SCHEMA) =>
+const check = (f: ExtensionField[], schema: z.ZodType = SCHEMA) =>
 	assertConfigFieldsMatchSchema("bridge", schema, f);
 
 describe("字段表 × zod 对表", () => {
@@ -44,14 +44,14 @@ describe("字段表 × zod 对表", () => {
 		expect(() => check(fields())).not.toThrow();
 	});
 
-	it("字段表里有一格 zod 不认识 → 拒,并说出是哪个 code", () => {
-		expect(() => check([...fields(), { kind: "text", code: "typoo", label: "手滑" }])).toThrow(
+	it("字段表里有一格 zod 不认识 → 拒,并说出是哪个 key", () => {
+		expect(() => check([...fields(), { type: "string", key: "typoo", label: "手滑" }])).toThrow(
 			/typoo/,
 		);
 	});
 
 	it("zod 的必填键没人填 → 拒,并说出是哪个键", () => {
-		expect(() => check([fields()[0] as ExtensionConfigField])).toThrow(/bridgeKind/);
+		expect(() => check([fields()[0] as ExtensionField])).toThrow(/bridgeKind/);
 	});
 
 	/**
@@ -66,7 +66,7 @@ describe("字段表 × zod 对表", () => {
 			assertConfigFieldsMatchSchema(
 				"bridge",
 				SCHEMA,
-				[{ kind: "text", code: "nope", label: "?" }],
+				[{ type: "string", key: "nope", label: "?" }],
 				{
 					picked: true,
 				},
@@ -74,14 +74,14 @@ describe("字段表 × zod 对表", () => {
 		).toThrow(/nope/);
 	});
 
-	it("同一个 code 摆了两栏 → 拒。哪一栏说了算是个没人想回答的问题", () => {
-		expect(() => check([...fields(), { kind: "text", code: "token", label: "又一个" }])).toThrow(
+	it("同一个 key 摆了两栏 → 拒。哪一栏说了算是个没人想回答的问题", () => {
+		expect(() => check([...fields(), { type: "string", key: "token", label: "又一个" }])).toThrow(
 			/token/,
 		);
 	});
 
 	it("config 的 schema 不是个对象 → 拒。**第一版 config 必须是扁平的一层键值**", () => {
-		// `set` 由前端统一生成成 `config[code] = v`,前提就是它是扁平的。
+		// `set` 由前端统一生成成 `config[key] = v`,前提就是它是扁平的。
 		expect(() => check([], z.string())).toThrow(/对象/);
 	});
 
@@ -101,7 +101,7 @@ describe("字段表 × zod 对表", () => {
 		} as unknown as ZodType;
 		expect(() =>
 			assertConfigFieldsMatchSchema("bridge", foreign, [
-				{ kind: "text", code: "token", label: "token" },
+				{ type: "string", key: "token", label: "token" },
 			]),
 		).not.toThrow();
 		// 必填那条判据也得照样生效(`note` 收得下 undefined,所以不必有栏)。

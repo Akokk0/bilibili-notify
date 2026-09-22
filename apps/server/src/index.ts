@@ -910,8 +910,7 @@ export async function startStandaloneServer(
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
 				status: (id) => loadedExtensions?.status(id),
-				descriptor: (id) => loadedExtensions?.descriptor(id),
-				configFields: (id) => loadedExtensions?.configFields(id),
+				pushSource: (id) => loadedExtensions?.pushSource(id),
 				bots: (id) => loadedExtensions?.bots(id),
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {

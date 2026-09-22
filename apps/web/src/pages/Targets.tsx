@@ -396,7 +396,7 @@ function ConnectionEditorModal({
 							})}
 							{/*
 							 * 跑着的推送源拓展是同一排的后几档 —— 挑了它,底下从它借得到的 bot 里挑一个,
-							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的 descriptor。
+							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的外观。
 							 */}
 							{extensions.map((ext) => {
 								const active = value.kind === "extension" && value.extensionId === ext.id;
@@ -412,7 +412,7 @@ function ConnectionEditorModal({
 										}}
 									>
 										<PlatformIcon platform={ext.id} size={13} />
-										{ext.descriptor.label}
+										{ext.push.display.label}
 									</ToneChip>
 								);
 							})}
@@ -433,7 +433,7 @@ function ConnectionEditorModal({
 				{value.kind === "extension" ? (
 					<SectionBox
 						title="哪个 bot"
-						subtitle={`经 ${extension?.descriptor.label ?? value.extensionId} 借来的,连接就是它`}
+						subtitle={`经 ${extension?.push.display.label ?? value.extensionId} 借来的,连接就是它`}
 						accent={tint}
 					>
 						{extension ? (
@@ -455,7 +455,7 @@ function ConnectionEditorModal({
 						title="连接参数"
 						subtitle={
 							value.kind === "extension"
-								? `${extension?.descriptor.label ?? value.extensionId} 的接入参数`
+								? `${extension?.push.display.label ?? value.extensionId} 的接入参数`
 								: value.platform === "onebot"
 									? "OneBot v11 连接信息"
 									: value.platform === "qq-official"
@@ -670,31 +670,25 @@ function ExtensionBotPicker({
 }
 
 /**
- * 跑着的、开推送源那一口、报了 descriptor 与字段表的拓展 —— 新建连接那一排要的就是这些。
- * 三样缺一不可:少 descriptor 没名字,少字段表画不出表单。
+ * 跑着的、开推送源那一口、报了 `push` 的拓展 —— 新建连接那一排要的就是这些。`push` 里
+ * 外观与连接配置项一起交、一起有,缺一不可:少外观没名字,少连接配置项画不出表单。
  */
-type PushExtension = ExtensionDTO & {
-	descriptor: NonNullable<ExtensionDTO["descriptor"]>;
-	configFields: NonNullable<ExtensionDTO["configFields"]>;
-};
+type PushExtension = ExtensionDTO & { push: NonNullable<ExtensionDTO["push"]> };
 
 function pushExtensionsOf(extensions: readonly ExtensionDTO[]): PushExtension[] {
 	return extensions.filter(
 		(ext): ext is PushExtension =>
-			ext.state === "running" &&
-			(ext.provides ?? []).includes("push") &&
-			ext.descriptor !== undefined &&
-			ext.configFields !== undefined,
+			ext.state === "running" && (ext.provides ?? []).includes("push") && ext.push !== undefined,
 	);
 }
 
-/** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的字段表翻。 */
+/** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的连接配置项翻。 */
 function editorFields(
 	connection: Connection,
 	extension: PushExtension | undefined,
 ): ConnectionField[] {
 	if (connection.kind === "extension") {
-		return extension ? extensionConnectionFields(connection, extension.configFields) : [];
+		return extension ? extensionConnectionFields(connection, extension.push.connectionFields) : [];
 	}
 	return connectionFields(connection);
 }

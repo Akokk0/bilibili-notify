@@ -13,7 +13,7 @@
  * 要整份换 config 并同步 `connector`,官机扫码回填还要补显示名),页面不用知道。
  */
 
-import type { ExtensionConfigField } from "@bilibili-notify/contract";
+import type { ExtensionScalarField } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	DirectConnection,
@@ -382,39 +382,42 @@ function webhookFields(
 }
 
 /**
- * 拓展连接的表单:拓展交上来的字段表(`ExtensionDTO.configFields`,ADR-0012 决策 33)
- * 一栏翻一栏。字段身份带着拓展 id(`ext.<id>.<code>`),与内置平台的字段不撞。
- * 值就落在 `config[code]`,这一层不认得任何具体拓展。
+ * 拓展连接的表单:拓展交上来的连接配置项(`ExtensionDTO.push.connectionFields`,ADR-0012
+ * 决策 33)一栏翻一栏。字段身份带着拓展 id(`ext.<id>.<key>`),与内置平台的字段不撞。
+ * 值就落在 `config[key]`,这一层不认得任何具体拓展。
+ *
+ * 配置项按**数据类型**分(`string` / `number` / `boolean` / `enum`),这里翻成表单自己按
+ * 控件分的那几种(`text` / `number` / `toggle` / `select`)。
  */
 export function extensionConnectionFields(
 	connection: ExtensionConnection,
-	fields: readonly ExtensionConfigField[],
+	fields: readonly ExtensionScalarField[],
 ): ConnectionField[] {
 	const bag = (
 		typeof connection.config === "object" && connection.config !== null ? connection.config : {}
 	) as Record<string, unknown>;
-	const put = (code: string, v: unknown): Connection => ({
+	const put = (key: string, v: unknown): Connection => ({
 		...connection,
-		config: { ...bag, [code]: v },
+		config: { ...bag, [key]: v },
 	});
 	return fields.map((field): ConnectionField => {
 		const base = {
-			code: `ext.${connection.extensionId}.${field.code}`,
+			code: `ext.${connection.extensionId}.${field.key}`,
 			label: field.label,
-			hint: field.hint,
+			hint: field.description,
 			required: field.required,
 		};
-		const raw = bag[field.code];
-		switch (field.kind) {
-			case "text":
+		const raw = bag[field.key];
+		switch (field.type) {
+			case "string":
 				return {
 					...base,
 					kind: "text",
 					value: typeof raw === "string" ? raw : "",
 					placeholder: field.placeholder,
-					mono: field.mono,
+					mono: field.monospace,
 					secret: field.secret,
-					set: (v) => put(field.code, v),
+					set: (v) => put(field.key, v),
 				};
 			case "number":
 				return {
@@ -424,23 +427,23 @@ export function extensionConnectionFields(
 					min: field.min,
 					max: field.max,
 					step: field.step,
-					suffix: field.suffix,
-					set: (v) => put(field.code, v),
+					suffix: field.unit,
+					set: (v) => put(field.key, v),
 				};
-			case "toggle":
-				return { ...base, kind: "toggle", value: raw === true, set: (v) => put(field.code, v) };
-			case "select":
+			case "boolean":
+				return { ...base, kind: "toggle", value: raw === true, set: (v) => put(field.key, v) };
+			case "enum":
 				return {
 					...base,
 					kind: "select",
 					value: typeof raw === "string" ? raw : (field.options[0]?.value ?? ""),
 					options: field.options,
-					set: (v) => put(field.code, v),
+					set: (v) => put(field.key, v),
 				};
 			default: {
-				// 字段表加了新 kind 而这里没接 —— 编译期就该红,别悄悄画成空白。
+				// 配置项加了新 type 而这里没接 —— 编译期就该红,别悄悄画成空白。
 				const never: never = field;
-				throw new Error(`unknown extension field kind: ${JSON.stringify(never)}`);
+				throw new Error(`unknown extension field type: ${JSON.stringify(never)}`);
 			}
 		}
 	});

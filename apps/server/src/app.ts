@@ -4,8 +4,7 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
 	CardSkinFallback,
 	ExtensionBotView,
-	ExtensionConfigField,
-	ExtensionDescriptorDTO,
+	ExtensionPushView,
 	RestartAbility,
 } from "@bilibili-notify/contract";
 import type { CardSkinKind } from "@bilibili-notify/internal";
@@ -101,10 +100,8 @@ export interface CreateAppOptions {
 		loaded: () => readonly ExtensionEntry[];
 		/** 某个拓展交上来的面板数据(`ctx.publishStatus`)。没交过 / 没跑就是 undefined。 */
 		status: (id: string) => unknown;
-		/** 某个拓展注册推送源时报的面板元信息。没跑就是 undefined。 */
-		descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
-		/** 它交的 config 字段表(决策 33)。没跑就是 undefined。 */
-		configFields: (id: string) => readonly ExtensionConfigField[] | undefined;
+		/** 某个拓展推送源那一口的外观 + 连接配置项(决策 33)。没跑 / 没注册过就是 undefined。 */
+		pushSource: (id: string) => ExtensionPushView | undefined;
 		/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 undefined。 */
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
@@ -413,8 +410,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			store: deps.store,
 			extensions: () => options.extensions?.loaded() ?? [],
 			status: (id) => options.extensions?.status(id),
-			descriptor: (id) => options.extensions?.descriptor(id),
-			configFields: (id) => options.extensions?.configFields(id),
+			pushSource: (id) => options.extensions?.pushSource(id),
 			bots: (id) => options.extensions?.bots(id),
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,

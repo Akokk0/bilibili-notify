@@ -55,7 +55,16 @@ export type {
  * 面板也要认的那几个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**
  * —— 拓展照旧只认这一扇门,不必知道有过这么一次拆分。
  */
-export type { ExtensionBotView, ExtensionConfigField, ExtensionDescriptor } from "./wire";
+export type {
+	ExtensionBotView,
+	ExtensionConfigField,
+	ExtensionDescriptor,
+	ExtensionDisplay,
+	ExtensionField,
+	ExtensionListField,
+	ExtensionPushView,
+	ExtensionScalarField,
+} from "./wire";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";

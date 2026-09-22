@@ -1,10 +1,9 @@
 import type {
 	ExtensionBotsResponse,
 	ExtensionBotView,
-	ExtensionConfigField,
-	ExtensionDescriptorDTO,
 	ExtensionDTO,
 	ExtensionInstallResponse,
+	ExtensionPushView,
 	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
@@ -40,14 +39,13 @@ export interface ExtensionsRouteOptions {
 	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
 	status: (id: string) => unknown;
 	/**
-	 * 某个拓展注册推送源时报的面板元信息(短名 / 标识色 / 目标形态)。没跑就是 `undefined`。
+	 * 某个拓展推送源那一口给面板的东西:外观(短名 / 标识色)+ 连接配置项(决策 33 —— 推送
+	 * 目标页照它画「新建连接」)。没跑 / 没注册过推送源就是 `undefined`。
 	 *
-	 * 🔴 **这是那份元信息唯一的出处**:不下发的话面板只能自己手抄一份短名与颜色,而手抄
+	 * 🔴 **这是那份外观唯一的出处**:不下发的话面板只能自己手抄一份短名与颜色,而手抄
 	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
 	 */
-	descriptor: (id: string) => ExtensionDescriptorDTO | undefined;
-	/** 它注册推送源时交的字段表(决策 33)—— 推送目标页照它画「新建连接」。没跑就是 `undefined`。 */
-	configFields: (id: string) => readonly ExtensionConfigField[] | undefined;
+	pushSource: (id: string) => ExtensionPushView | undefined;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
@@ -109,8 +107,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				version: identity?.version,
 				provides: entry.manifest && manifestProvides(entry.manifest),
 				// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
-				descriptor: opts.descriptor(entry.id),
-				configFields: opts.configFields(entry.id),
+				push: opts.pushSource(entry.id),
 				icon: identity?.icon,
 				// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
 				// 只有那一句答得了。

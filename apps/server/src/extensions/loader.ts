@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension";
+import type { ExtensionBotView } from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
@@ -14,7 +14,7 @@ import type { AdapterRegistry } from "../platforms/registry.js";
 import {
 	createExtensionContext,
 	type ExtensionContext,
-	type ExtensionDescriptor,
+	type ExtensionPushView,
 	type ExtensionRuntime,
 } from "./context.js";
 import {
@@ -79,12 +79,10 @@ export interface LoadedExtensions {
 	 */
 	status(id: string): unknown;
 	/**
-	 * 某个拓展注册推送源时交的那份面板元信息(`ExtensionDescriptor`)。没跑 / 没注册过就是
-	 * `undefined`。**现取** —— 与 `status()` 同一条理由。
+	 * 某个拓展推送源那一口给面板的东西:外观(短名 / 标识色)+ 连接配置项(决策 33)。
+	 * 没跑 / 没注册过推送源就是 `undefined`。**现取** —— 与 `status()` 同一条理由。
 	 */
-	descriptor(id: string): ExtensionDescriptor | undefined;
-	/** 某个拓展注册推送源时交的字段表(决策 33)。没跑就是 `undefined`。 */
-	configFields(id: string): readonly ExtensionConfigField[] | undefined;
+	pushSource(id: string): ExtensionPushView | undefined;
 	/** 某个拓展某条连接上能绑目标的 bot。没跑 / 它没给 `listBots` 就是 `undefined`。 */
 	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/**
@@ -385,8 +383,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		secretConfigCodes: () =>
 			Object.fromEntries([...runtimes].map(([id, r]) => [id, r.secretConfigCodes()])),
 		status: (id) => runtimes.get(id)?.status(),
-		descriptor: (id) => runtimes.get(id)?.descriptor(),
-		configFields: (id) => runtimes.get(id)?.configFields(),
+		pushSource: (id) => runtimes.get(id)?.pushSource(),
 		bots: (id) => runtimes.get(id)?.bots(),
 		sync() {
 			return enqueue(async () => {

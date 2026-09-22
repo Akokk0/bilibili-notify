@@ -2,7 +2,7 @@
 /**
  * 把「画谁」这张表喂给组件库。
  *
- * 🔴 拓展那一档的短名与标识色**是拓展自己报的**(`activate` 里那份 descriptor,经
+ * 🔴 拓展那一档的短名与标识色**是拓展自己报的**(`activate` 里注册推送源时报的外观,经
  * `/api/ext` 下来)。面板这边一度手抄了一份桥的粉紫色 —— 手抄的副本会跟拓展报的悄悄
  * 漂开(改了拓展、面板还是旧色),而那种漂移**门禁一片绿,只有眼睛看得出来**。
  * 所以这里钉两条:表里没有写死的拓展,以及交上来的那份真的进得了表。
@@ -29,10 +29,13 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	enabled: true,
 	state: "running",
 	dir: "/data/extensions/bridge",
-	descriptor: {
-		label: "机器人框架桥接",
-		shortLabel: "桥接",
-		tint: "#a855f7",
+	push: {
+		display: {
+			label: "机器人框架桥接",
+			shortLabel: "桥接",
+			color: "#a855f7",
+		},
+		connectionFields: [],
 	},
 };
 
@@ -63,9 +66,9 @@ describe("平台元信息表", () => {
 		}
 	});
 
-	/** 没跑起来的拓展没有 descriptor(那是 activate 里报的)—— 不能因此塞一份空壳进去。 */
+	/** 没跑起来的拓展没有外观(那是 activate 里报的)—— 不能因此塞一份空壳进去。 */
 	it("没跑起来的那条不进表", () => {
-		const table = buildPlatformTable([{ ...BRIDGE, descriptor: undefined, state: "disabled" }]);
+		const table = buildPlatformTable([{ ...BRIDGE, push: undefined, state: "disabled" }]);
 		expect(table("bridge")).toBeUndefined();
 	});
 });

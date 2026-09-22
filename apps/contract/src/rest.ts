@@ -4,11 +4,7 @@
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
-import type {
-	ExtensionBotView,
-	ExtensionConfigField,
-	ExtensionDescriptor,
-} from "@bilibili-notify/extension/wire";
+import type { ExtensionBotView, ExtensionPushView } from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
 	CardSkinKind,
@@ -83,15 +79,11 @@ export interface ExtensionDTO {
 	/** 它开的是哪一口:推送源 / 订阅源。 */
 	provides?: ExtensionProvides[];
 	/**
-	 * 它注册推送源时交的那份面板元信息。**只有跑着的拓展有** —— 那是 `activate` 里报的。
-	 * 面板拿它给这一档画脸(推送目标卡上的短名与标识色),不许再手抄一份。
+	 * 推送源那一口:外观 + 连接配置项(ADR-0012 决策 33 / 46)。**只有注册了推送源的(也就是
+	 * 跑着的)拓展有**。面板拿外观给这一档画脸(推送目标卡上的短名与标识色,不许再手抄一份),
+	 * 照连接配置项画「新建连接」的表单。
 	 */
-	descriptor?: ExtensionDescriptorDTO;
-	/**
-	 * 它注册推送源时交的 config **字段表**(ADR-0012 决策 33)—— 推送目标页照它画「新建连接」
-	 * 的表单。**只有跑着的拓展有**,与 `descriptor` 同一个来路。
-	 */
-	configFields?: readonly ExtensionConfigField[];
+	push?: ExtensionPushView;
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
 	/** 它自己那个目录,绝对路径(`<dataDir>/extensions/<id>`)。 */
@@ -110,15 +102,6 @@ export interface ExtensionDTO {
 	/** 没跑起来时那句「为什么」。 */
 	detail?: string;
 }
-
-/**
- * 拓展**自己报**的那份面板元信息(短名 / 标识色 / 目标形态 / 会话种类…)。
- *
- * 就是拓展契约里的 `ExtensionDescriptor`(三格:全名 / 短名 / 颜色,ADR-0012 决策 46)——
- * **直接引用,不另抄一份**:抄的那份与契约漂开时两边各自都合法,没有门会红。**它是那份元信息唯一的出处**:面板不许再手抄短名或颜色,手抄的
- * 副本会跟拓展自己报的悄悄漂开,而门禁一片绿。
- */
-export type ExtensionDescriptorDTO = ExtensionDescriptor;
 
 /** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
 export interface ExtensionBotsResponse {

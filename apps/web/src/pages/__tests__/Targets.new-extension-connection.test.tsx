@@ -30,13 +30,15 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	state: "running",
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
-	descriptor: {
-		label: "机器人框架桥接",
-		shortLabel: "桥接",
-		tint: "#a855f7",
+	push: {
+		display: {
+			label: "机器人框架桥接",
+			shortLabel: "桥接",
+			color: "#a855f7",
+		},
+		// 桥的连接配置项是空的:连接是挑出来的,没有一栏是人填的。
+		connectionFields: [],
 	},
-	// 桥的字段表是空的:连接是挑出来的,没有一栏是人填的。
-	configFields: [],
 };
 
 const ICON = "data:image/png;base64,QUJD";
@@ -132,7 +134,7 @@ describe("新建连接里的拓展那一档", () => {
 		expect(await within(dialog).findByRole("button", { name: /机器人框架桥接/ })).toBeTruthy();
 	});
 
-	it("没跑起来的不出现 —— 它的 descriptor 是 activate 里才报的", async () => {
+	it("没跑起来的不出现 —— 它的外观与连接配置项是 activate 里才报的", async () => {
 		vi.mocked(api.get).mockImplementation(async (url: string) => {
 			if (url === "/api/ext") {
 				return {
@@ -141,8 +143,7 @@ describe("新建连接里的拓展那一档", () => {
 							...BRIDGE,
 							state: "disabled",
 							enabled: false,
-							descriptor: undefined,
-							configFields: undefined,
+							push: undefined,
 						},
 					],
 				};

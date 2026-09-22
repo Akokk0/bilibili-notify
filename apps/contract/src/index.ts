@@ -12,10 +12,16 @@
  */
 
 /**
- * 拓展的配置字段表与 bot 视图 —— 本体住 `@bilibili-notify/extension`(拓展要用它声明自己的
- * 表单),这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
+ * 拓展的设置项 / 外观 / bot 视图 —— 本体住 `@bilibili-notify/extension`(拓展与宿主都要认),
+ * 这里借一道给面板:web 只认 contract。同 `MiniAppCardSupport` 那条。
  */
-export type { ExtensionBotView, ExtensionConfigField } from "@bilibili-notify/extension/wire";
+export type {
+	ExtensionBotView,
+	ExtensionDisplay,
+	ExtensionField,
+	ExtensionPushView,
+	ExtensionScalarField,
+} from "@bilibili-notify/extension/wire";
 export * from "./card-skin";
 export * from "./devtools";
 export * from "./maid-skill";

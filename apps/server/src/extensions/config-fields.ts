@@ -1,4 +1,4 @@
-import type { ExtensionConfigField } from "@bilibili-notify/extension";
+import type { ExtensionField } from "@bilibili-notify/extension";
 import type { ZodType } from "zod";
 
 /**
@@ -19,7 +19,7 @@ import type { ZodType } from "zod";
 export function assertConfigFieldsMatchSchema(
 	id: string,
 	schema: ZodType,
-	fields: readonly ExtensionConfigField[],
+	fields: readonly ExtensionField[],
 	opts: {
 		/**
 		 * 连接是从 `listBots` 里**挑**出来的(ADR-0012 决策 45)—— config 由拓展自己交,没有
@@ -33,7 +33,7 @@ export function assertConfigFieldsMatchSchema(
 	};
 
 	// 第一版 config 必须是**扁平的一层键值**:面板那侧的 `set` 统一生成成
-	// `config[code] = v`,前提就是这个。
+	// `config[key] = v`,前提就是这个。
 	const shape = (schema as { shape?: unknown }).shape;
 	if (typeof shape !== "object" || shape === null) {
 		return void fail("config 的 schema 必须是一个对象(第一版 config 只支持扁平的一层键值)");
@@ -42,12 +42,12 @@ export function assertConfigFieldsMatchSchema(
 
 	const seen = new Set<string>();
 	for (const field of fields) {
-		if (seen.has(field.code)) {
-			fail(`字段表里 "${field.code}" 摆了两栏 —— 哪一栏说了算没有答案`);
+		if (seen.has(field.key)) {
+			fail(`字段表里 "${field.key}" 摆了两栏 —— 哪一栏说了算没有答案`);
 		}
-		seen.add(field.code);
-		if (!(field.code in members)) {
-			fail(`字段表里的 "${field.code}" 不是 config schema 的键`);
+		seen.add(field.key);
+		if (!(field.key in members)) {
+			fail(`字段表里的 "${field.key}" 不是 config schema 的键`);
 		}
 	}
 

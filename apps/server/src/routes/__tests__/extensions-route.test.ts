@@ -27,8 +27,7 @@ function boot(
 		connections?: unknown[];
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
-		descriptor?: Record<string, unknown>;
-		configFields?: Record<string, unknown[]>;
+		push?: Record<string, unknown>;
 		bots?: Record<string, unknown[]>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
@@ -46,8 +45,7 @@ function boot(
 		store,
 		extensions: () => (typeof entries === "function" ? entries() : entries),
 		status: (id) => over.status?.[id],
-		descriptor: (id) => over.descriptor?.[id] as never,
-		configFields: (id) => over.configFields?.[id] as never,
+		pushSource: (id) => over.push?.[id] as never,
 		bots: (id) => over.bots?.[id] as never,
 		settle: over.settle,
 		install: {
@@ -221,32 +219,35 @@ describe("GET /api/ext", () => {
 	 * (`platform-meta.tsx` 里那行躺了整整一片)。字段不下发的话,那份手抄就是唯一出路,
 	 * 而它迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
 	 */
-	it("跑着的那条把它自报的面板元信息一并交出去", async () => {
+	it("跑着的那条把它自报的外观一并交出去", async () => {
 		const body = (await (
 			await boot({
 				entries: [running("bridge")],
-				descriptor: { bridge: { shortLabel: "桥接", tint: "#a855f7" } },
+				push: { bridge: { display: { shortLabel: "桥接", color: "#a855f7" } } },
 			}).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.descriptor).toMatchObject({ shortLabel: "桥接", tint: "#a855f7" });
+		expect(body.extensions[0]?.push?.display).toMatchObject({
+			shortLabel: "桥接",
+			color: "#a855f7",
+		});
 	});
 
-	/** 字段表随清单下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
-	it("跑着的那条带字段表", async () => {
-		const fields = [{ kind: "text", code: "token", label: "token", secret: true }];
+	/** 连接配置项随清单下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
+	it("跑着的那条带连接配置项", async () => {
+		const fields = [{ type: "string", key: "token", label: "token", secret: true }];
 		const res = await boot({
 			entries: [running("bridge")],
-			configFields: { bridge: fields },
+			push: { bridge: { connectionFields: fields } },
 		}).request("/");
 		const body = (await res.json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.configFields).toEqual(fields);
+		expect(body.extensions[0]?.push?.connectionFields).toEqual(fields);
 	});
 
-	it("没跑起来的那条没有 descriptor —— 那是 activate 里才报的", async () => {
+	it("没跑起来的那条没有推送源那一口 —— 那是 activate 里才报的", async () => {
 		const body = (await (
 			await boot({ entries: [{ id: "x", dir: "/d/x", state: "disabled" }] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.descriptor).toBeUndefined();
+		expect(body.extensions[0]?.push).toBeUndefined();
 	});
 
 	it("一个都没装 → 空表。**没有写死的清单了** —— 拓展是装进来的", async () => {
@@ -357,8 +358,7 @@ describe("GET /api/ext/:id/status", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => ({ n: ++n }),
-			descriptor: () => undefined,
-			configFields: () => undefined,
+			pushSource: () => undefined,
 			bots: () => undefined,
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
@@ -771,8 +771,7 @@ describe("拓展自己的文档", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => undefined,
-			descriptor: () => undefined,
-			configFields: () => undefined,
+			pushSource: () => undefined,
 			bots: () => undefined,
 		});
 

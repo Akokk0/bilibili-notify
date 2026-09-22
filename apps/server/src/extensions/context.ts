@@ -1,9 +1,8 @@
 import type {
 	ExtensionBotView,
-	ExtensionConfigField,
 	ExtensionConnectionView,
 	ExtensionContext,
-	ExtensionDescriptor,
+	ExtensionPushView,
 	ExtensionSettings,
 } from "@bilibili-notify/extension";
 import {
@@ -20,6 +19,7 @@ import {
 import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
+import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 
@@ -31,7 +31,7 @@ import type { ExtensionUpgrades } from "./upgrade.js";
 export type {
 	ExtensionConnectionView,
 	ExtensionContext,
-	ExtensionDescriptor,
+	ExtensionPushView,
 	PushExtensionDef,
 	PushSourceHandle,
 } from "@bilibili-notify/extension";
@@ -42,19 +42,13 @@ export interface ExtensionRuntime {
 	/** 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。 */
 	status(): unknown;
 	/**
-	 * 它注册推送源时交的那份面板元信息(短名 / 标识色 / 目标形态…)。没注册过就是 `undefined`。
+	 * 推送源那一口给面板的东西:外观 + 连接配置项。没注册过推送源就是 `undefined`。
 	 *
-	 * 🔴 **收下就得能拿出来**:面板要靠它给拓展那一档一张脸。丢掉的话 web 只能自己手抄
-	 * 一份短名与颜色,而手抄的副本迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
+	 * 🔴 **收下就得能拿出来**:面板要靠外观给拓展那一档一张脸(丢掉的话 web 只能自己手抄
+	 * 一份短名与颜色,而手抄的副本迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿);连接配置项
+	 * 交上来是为了**被画出来**(决策 33),推送目标页照它画「新建连接」的表单。
 	 */
-	descriptor(): ExtensionDescriptor | undefined;
-	/**
-	 * 它注册推送源时交的字段表。没注册过就是 `undefined`。
-	 *
-	 * 🔴 交上来是为了**被画出来**(决策 33):推送目标页照它画「新建连接」的表单。此前它只
-	 * 用来对表与找密钥键,面板从没拿到过 —— 于是拓展连接只能在拓展页建。
-	 */
-	configFields(): readonly ExtensionConfigField[] | undefined;
+	pushSource(): ExtensionPushView | undefined;
 	/**
 	 * 现在能借来当连接的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
 	 * 前者是「这种推送源没有 bot 这回事」,后者是「现在一个都没连着」)。
@@ -146,8 +140,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
-	let descriptor: ExtensionDescriptor | undefined;
-	let configFields: readonly ExtensionConfigField[] | undefined;
+	let pushView: ExtensionPushView | undefined;
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
 
@@ -282,14 +275,17 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
-			assertConfigFieldsMatchSchema(id, def.configSchema, def.configFields, {
+			// v1 交的是老名字,收下这一刻翻译过来 —— 宿主里只有新形状。
+			const connectionFields = def.configFields.map(fieldFromV1);
+			assertConfigFieldsMatchSchema(id, def.configSchema, connectionFields, {
 				picked: def.listBots !== undefined,
 			});
 			pushSourceRegistered = true;
-			descriptor = def.descriptor;
-			configFields = def.configFields;
+			pushView = { display: displayFromV1(def.descriptor), connectionFields };
 			listBots = def.listBots;
-			secretCodes = def.configFields.filter((f) => "secret" in f && f.secret).map((f) => f.code);
+			secretCodes = connectionFields
+				.filter((f) => f.type === "string" && f.secret)
+				.map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
 			registered.add(adapters.register(adapter));
@@ -351,8 +347,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	return {
 		ctx,
 		status: () => statusOf?.(),
-		descriptor: () => descriptor,
-		configFields: () => configFields,
+		pushSource: () => pushView,
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
 		async dispose() {

@@ -51,8 +51,7 @@ describe("拓展挂载点接线", () => {
 				mounts,
 				loaded: () => [],
 				status: () => undefined,
-				descriptor: () => undefined,
-				configFields: () => undefined,
+				pushSource: () => undefined,
 				bots: () => undefined,
 			},
 		});
@@ -70,8 +69,7 @@ describe("拓展挂载点接线", () => {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
 				status: () => undefined,
-				descriptor: () => undefined,
-				configFields: () => undefined,
+				pushSource: () => undefined,
 				bots: () => undefined,
 				mounts: createExtensionMounts(),
 				loaded: () => [
@@ -119,8 +117,7 @@ describe("面板上传装拓展的接线", () => {
 				mounts: createExtensionMounts(),
 				loaded: () => [],
 				status: () => undefined,
-				descriptor: () => undefined,
-				configFields: () => undefined,
+				pushSource: () => undefined,
 				bots: () => undefined,
 				install: { root, rescan, restartAbility: { can: true, how: "container" } },
 			},
