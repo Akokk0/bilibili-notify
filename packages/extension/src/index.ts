@@ -288,6 +288,14 @@ export interface ExtensionContext {
 	 * 当场抛 —— 面板照清单画表单、宿主照 zod 解,两份漂开就是「填了存不进去」。
 	 */
 	settings<T>(schema: ZodType<T>): ExtensionSettings<T>;
+	/**
+	 * 接面板上的一个「调拓展」按钮(ADR-0019 决策 22)。`name` 必须在清单的 `actions` 里声明过
+	 * —— 清单是面板能按哪些钮的全集,没声明的注册当场抛;同一个名字接两次也抛。
+	 *
+	 * 面板经 `POST /api/ext/<id>/actions/<name>` 调(走面板会话鉴权)。抛出来的错**原话**给到面板;
+	 * 30 秒没回按超时算。界面该跟着变的话,自己叫一声 `statusChanged()`。卸载时自动摘掉。
+	 */
+	onAction(name: string, handler: () => void | Promise<void>): void;
 	/** 卸载时要跑的收摊钩子。后注册的先跑。 */
 	onDispose(fn: () => void | Promise<void>): void;
 }

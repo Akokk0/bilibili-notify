@@ -40,6 +40,18 @@ export type {
 	PushSourceHandle,
 } from "@bilibili-notify/extension";
 
+/**
+ * 跑一个动作的结果。失败分四种,各有各的说法 —— 并成一句「出错了」的话,面板只能对着黑盒猜:
+ * 清单里没这个名字、声明了代码却没接、拓展自己抛了(带原话)、超时。
+ */
+export type ActionOutcome =
+	| { ok: true }
+	| { ok: false; reason: "undeclared" | "unhandled" | "timeout" }
+	| { ok: false; reason: "failed"; message: string };
+
+/** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
+export const ACTION_TIMEOUT_MS = 30_000;
+
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
 export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
@@ -65,6 +77,8 @@ export interface ExtensionRuntime {
 	 * 黑名单看不见,会原样进备份文件。密钥要声明出来,不能靠猜。
 	 */
 	secretConfigCodes(): readonly string[];
+	/** 跑面板按下的那个动作(ADR-0019 决策 22)。 */
+	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
 }
@@ -150,6 +164,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let statusOf: (() => unknown) | undefined;
 	let pushSourceRegistered = false;
 	let pushView: ExtensionPushView | undefined;
+	/** 代码接了的动作。卸载时清空 —— 之后面板再按,就是「声明了却没接」。 */
+	const actionHandlers = new Map<string, () => void | Promise<void>>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
 
@@ -393,6 +409,25 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				},
 			};
 		},
+		onAction(name, handler) {
+			if (disposed) {
+				refuse("onAction");
+				return;
+			}
+			const declared = opts.manifest.apiVersion === 2 ? opts.manifest.actions : undefined;
+			if (!declared) {
+				throw new Error(
+					`extension ${id}: 清单里没有 actions(v1 清单没有这一段),接不了动作 ${name}`,
+				);
+			}
+			if (!(name in declared)) {
+				throw new Error(`extension ${id}: 清单的 actions 里没有 ${name} —— 先在清单里声明`);
+			}
+			if (actionHandlers.has(name)) {
+				throw new Error(`extension ${id}: 动作 ${name} 已经接过了`);
+			}
+			actionHandlers.set(name, handler);
+		},
 		onDispose(fn) {
 			if (disposed) {
 				refuse("onDispose");
@@ -443,6 +478,32 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		pushSource: () => pushView,
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
+		async runAction(name, runOpts = {}) {
+			const declared = opts.manifest.apiVersion === 2 ? opts.manifest.actions : undefined;
+			if (!declared || !(name in declared)) return { ok: false, reason: "undeclared" };
+			const handler = actionHandlers.get(name);
+			if (!handler) return { ok: false, reason: "unhandled" };
+			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const timeout = new Promise<ActionOutcome>((resolve) => {
+				timer = setTimeout(() => resolve({ ok: false, reason: "timeout" }), timeoutMs);
+			});
+			const run = (async (): Promise<ActionOutcome> => {
+				try {
+					await handler();
+					return { ok: true };
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					logger.warn(`动作 ${name} 抛了:${message}`);
+					return { ok: false, reason: "failed", message };
+				}
+			})();
+			try {
+				return await Promise.race([run, timeout]);
+			} finally {
+				clearTimeout(timer);
+			}
+		},
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
@@ -465,6 +526,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				}
 			}
 			registered.clear();
+			actionHandlers.clear();
 			statusOf = undefined;
 			secretCodes = [];
 		},

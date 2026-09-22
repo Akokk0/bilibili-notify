@@ -912,6 +912,7 @@ export async function startStandaloneServer(
 				status: (id) => loadedExtensions?.status(id),
 				pushSource: (id) => loadedExtensions?.pushSource(id),
 				bots: (id) => loadedExtensions?.bots(id),
+				runAction: async (id, name) => loadedExtensions?.runAction(id, name),
 				// 拨完开关面板紧接着刷这一口:先把还没落地的那一下落实掉再报状态。
 				settle: async () => {
 					await loadedExtensions?.sync();

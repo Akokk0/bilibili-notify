@@ -13,6 +13,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import {
+	type ActionOutcome,
 	createExtensionContext,
 	type ExtensionContext,
 	type ExtensionPushView,
@@ -87,6 +88,8 @@ export interface LoadedExtensions {
 	pushSource(id: string): ExtensionPushView | undefined;
 	/** 某个拓展某条连接上能绑目标的 bot。没跑 / 它没给 `listBots` 就是 `undefined`。 */
 	bots(id: string): readonly ExtensionBotView[] | undefined;
+	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
+	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
 	/**
 	 * 按**现在的开关**再对一遍:开了的装上,关了的收掉(决策 10 的「启用 / 停用热」)。
 	 *
@@ -399,6 +402,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		status: (id) => runtimes.get(id)?.status(),
 		pushSource: (id) => runtimes.get(id)?.pushSource(),
 		bots: (id) => runtimes.get(id)?.bots(),
+		runAction: async (id, name) => runtimes.get(id)?.runAction(name),
 		sync() {
 			return enqueue(async () => {
 				for (const [id, dir] of ready) {

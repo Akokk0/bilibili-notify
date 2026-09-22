@@ -358,6 +358,71 @@ describe("交给面板的视图", () => {
 	});
 });
 
+/**
+ * 面板上的「调拓展」按钮(ADR-0019 决策 22):清单 `actions` 声明、代码 `ctx.onAction` 接。
+ * 没声明的名字注册不上 —— 清单是面板能按哪些钮的全集,代码里多接一个等于开了一个清单里看
+ * 不见的口。
+ */
+describe("动作", () => {
+	const V2: ExtensionManifest = {
+		...V1_PUSH,
+		apiVersion: 2,
+		actions: { "poll.now": { label: "现在检查一次" }, "login.start": { label: "扫码登录" } },
+		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
+	} as unknown as ExtensionManifest;
+
+	it("声明了、接了 —— 跑得到", async () => {
+		const h = harness({ manifest: V2 });
+		let ran = 0;
+		h.ctx.onAction("poll.now", () => {
+			ran += 1;
+		});
+		expect(await h.runtime.runAction("poll.now")).toEqual({ ok: true });
+		expect(ran).toBe(1);
+	});
+
+	it("清单里没声明的名字 —— 注册当场抛;同一个名字接两次也抛", () => {
+		const h = harness({ manifest: V2 });
+		expect(() => h.ctx.onAction("secret.backdoor", () => {})).toThrow(/secret\.backdoor/);
+		h.ctx.onAction("poll.now", () => {});
+		expect(() => h.ctx.onAction("poll.now", () => {})).toThrow(/poll\.now/);
+	});
+
+	it("v1 清单没有 actions —— 注册就抛", () => {
+		expect(() => harness().ctx.onAction("poll.now", () => {})).toThrow(/actions/);
+	});
+
+	it("跑的结果分清四种:没声明 / 声明了没接 / 抛了(带原话)/ 超时", async () => {
+		const h = harness({ manifest: V2 });
+		expect(await h.runtime.runAction("nope")).toMatchObject({ ok: false, reason: "undeclared" });
+		expect(await h.runtime.runAction("login.start")).toMatchObject({
+			ok: false,
+			reason: "unhandled",
+		});
+		h.ctx.onAction("poll.now", async () => {
+			throw new Error("抖音网关回了 403");
+		});
+		expect(await h.runtime.runAction("poll.now")).toEqual({
+			ok: false,
+			reason: "failed",
+			message: "抖音网关回了 403",
+		});
+		const slow = harness({ manifest: V2 });
+		slow.ctx.onAction("poll.now", () => new Promise(() => {}));
+		expect(await slow.runtime.runAction("poll.now", { timeoutMs: 20 })).toMatchObject({
+			ok: false,
+			reason: "timeout",
+		});
+	});
+
+	it("卸载之后动作一个都跑不到", async () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.onAction("poll.now", () => {});
+		await h.runtime.dispose();
+		expect(await h.runtime.runAction("poll.now")).toMatchObject({ ok: false, reason: "unhandled" });
+	});
+});
+
 describe("注册推送源", () => {
 	it("分发键由宿主按 id 填 —— 拓展自报的那份被覆盖掉", () => {
 		const h = harness();

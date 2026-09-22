@@ -169,6 +169,8 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 			get: () => schema.parse(SETTINGS),
 			onChange: () => ({ dispose() {} }),
 		}),
+		// 桥不接动作(它的清单没有 actions)。
+		onAction() {},
 		onDispose(fn) {
 			hooks.push(fn);
 		},

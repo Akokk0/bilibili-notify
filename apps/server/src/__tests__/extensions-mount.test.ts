@@ -97,6 +97,46 @@ describe("拓展挂载点接线", () => {
  * 真的装得进去」—— 少接一根线的症状就是主人报的那句「装了拓展要我重启,可我没处按」,
  * 而门禁一片绿。这条从 app 那一头真发一次 multipart。
  */
+/**
+ * 动作那一口的接线(ADR-0019 决策 22):面板按钮 → `/api/ext/:id/actions/:name` → 加载器。
+ * 路由自己的规矩钉在 `extensions-route.test.ts`,这里只钉 `createApp` 真把那一格接上了 ——
+ * 漏接的话那一口永远 404,而路由的测试照样全绿。
+ */
+describe("拓展动作的接线", () => {
+	let dataDir: string;
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-action-"));
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("按钮打到 /api/ext/:id/actions/:name,落到加载器的 runAction", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const runAction = vi.fn(async () => ({ ok: true as const }));
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			extensions: {
+				mounts: createExtensionMounts(),
+				loaded: () => [],
+				status: () => undefined,
+				pushSource: () => undefined,
+				bots: () => undefined,
+				runAction,
+			},
+		});
+		const res = await app.request("/api/ext/douyin/actions/poll.now", { method: "POST" });
+		expect(res.status).toBe(200);
+		expect(runAction).toHaveBeenCalledWith("douyin", "poll.now");
+		// 同一个动作挂到鉴权外的 /ext 底下是不存在的。
+		expect((await app.request("/ext/douyin/actions/poll.now", { method: "POST" })).status).toBe(
+			404,
+		);
+		await runtime.dispose();
+	});
+});
+
 describe("面板上传装拓展的接线", () => {
 	let dataDir: string;
 	beforeEach(async () => {

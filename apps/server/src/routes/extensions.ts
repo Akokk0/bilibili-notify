@@ -7,10 +7,16 @@ import type {
 	MarketplaceResponse,
 	RestartAbility,
 } from "@bilibili-notify/contract";
-import { ExtensionIdSchema, isExtensionEnabled, manifestProvides } from "@bilibili-notify/internal";
+import {
+	ActionNameSchema,
+	ExtensionIdSchema,
+	isExtensionEnabled,
+	manifestProvides,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ConfigStore } from "../config/store.js";
+import { ACTION_TIMEOUT_MS, type ActionOutcome } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import {
 	docsPresence,
@@ -46,6 +52,11 @@ export interface ExtensionsRouteOptions {
 	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
 	 */
 	pushSource: (id: string) => ExtensionPushView | undefined;
+	/**
+	 * 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`(→ 404)。没接这一格
+	 * 的话那一口永远 404。
+	 */
+	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
@@ -282,6 +293,38 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 还没写,而抽象要两个例子(决策 36)。没跑 / 没交过就是 404,不是空对象:那两件事
 	 * 面板要能分开说。
 	 */
+	/**
+	 * 面板上的「调拓展」按钮。🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 绝不挂到
+	 * `/ext/<id>`(那里刻意在鉴权外,ADR-0012 决策 36 / 38):否则任何够得着 BN 的人都能替主人
+	 * 按这些钮(比如发起一次扫码登录,用自己的手机扫)。每种失败各有状态码与原话。
+	 */
+	app.post("/:id/actions/:name", async (c) => {
+		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
+		const name = ActionNameSchema.safeParse(c.req.param("name"));
+		if (!id.success || !name.success) {
+			return c.json({ ok: false, err: "拓展 id 或动作名不合规矩" }, 400);
+		}
+		const outcome = await opts.runAction?.(id.data, name.data);
+		if (!outcome) return c.json({ ok: false, err: `拓展 ${id.data} 没在跑` }, 404);
+		if (outcome.ok) return c.json({ ok: true });
+		switch (outcome.reason) {
+			case "undeclared":
+				return c.json({ ok: false, err: `拓展 ${id.data} 的清单里没有动作 ${name.data}` }, 404);
+			case "unhandled":
+				return c.json(
+					{ ok: false, err: `拓展 ${id.data} 声明了动作 ${name.data},代码却没接` },
+					501,
+				);
+			case "timeout":
+				return c.json(
+					{ ok: false, err: `动作 ${name.data} 超过 ${ACTION_TIMEOUT_MS / 1000} 秒没回` },
+					504,
+				);
+			case "failed":
+				return c.json({ ok: false, err: outcome.message }, 500);
+		}
+	});
+
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
 		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);

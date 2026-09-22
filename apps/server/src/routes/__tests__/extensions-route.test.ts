@@ -13,6 +13,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
+import type { ActionOutcome } from "../../extensions/context.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
 import { createExtensionsRoute } from "../extensions.js";
@@ -32,6 +33,8 @@ function boot(
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
 		marketplace?: { list: ReturnType<typeof vi.fn>; install: ReturnType<typeof vi.fn> };
+		/** `<id>/<动作名>` → 那一次跑的结果;没有的就当拓展没在跑。 */
+		actions?: Record<string, ActionOutcome>;
 	} = {},
 ) {
 	const store = {
@@ -57,6 +60,7 @@ function boot(
 					: { can: true, how: "container" },
 		},
 		marketplace: over.marketplace as never,
+		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
 	});
 }
 
@@ -816,5 +820,50 @@ describe("拓展自己的文档", () => {
 
 		expect(res.status).toBe(404);
 		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("装载器");
+	});
+});
+
+/**
+ * 面板上的「调拓展」按钮(ADR-0019 决策 22)。走 `/api/*`,吃面板会话鉴权 —— **绝不走
+ * `/ext/<id>`**(那里刻意在鉴权外)。每种失败各有自己的状态码与原话,别并成「出错了」。
+ */
+describe("POST /api/ext/:id/actions/:name", () => {
+	const call = (app: ReturnType<typeof boot>, path: string) =>
+		app.request(path, { method: "POST" });
+
+	it("跑成了 —— 200", async () => {
+		const res = await call(
+			boot({ actions: { "douyin/poll.now": { ok: true } } }),
+			"/douyin/actions/poll.now",
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
+	});
+
+	it.each<[string, ActionOutcome | undefined, number, string]>([
+		["拓展没在跑", undefined, 404, "没在跑"],
+		["清单里没这个动作", { ok: false, reason: "undeclared" }, 404, "没有"],
+		["声明了、代码没接", { ok: false, reason: "unhandled" }, 501, "没接"],
+		[
+			"拓展抛了",
+			{ ok: false, reason: "failed", message: "抖音网关回了 403" },
+			500,
+			"抖音网关回了 403",
+		],
+		["超时", { ok: false, reason: "timeout" }, 504, "秒"],
+	])("%s —— %s", async (_label, outcome, status, text) => {
+		const res = await call(
+			boot({ actions: outcome ? { "douyin/poll.now": outcome } : {} }),
+			"/douyin/actions/poll.now",
+		);
+		expect(res.status).toBe(status);
+		const body = (await res.json()) as { ok: boolean; err: string };
+		expect(body.ok).toBe(false);
+		expect(body.err).toContain(text);
+	});
+
+	it("拓展 id 或动作名不合规矩 —— 400,不往下问", async () => {
+		expect((await call(boot(), "/Douyin/actions/poll.now")).status).toBe(400);
+		expect((await call(boot(), "/douyin/actions/Poll%20Now")).status).toBe(400);
 	});
 });

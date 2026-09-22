@@ -20,6 +20,7 @@ import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import { CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
+import type { ActionOutcome } from "./extensions/context.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
@@ -104,6 +105,8 @@ export interface CreateAppOptions {
 		pushSource: (id: string) => ExtensionPushView | undefined;
 		/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 undefined。 */
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
+		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
+		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
 		settle?: () => Promise<void>;
 		/** 面板上传装拓展那条路要的:装载根、装完重扫、以及「这台机器重启回不回得来」。 */
@@ -417,6 +420,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			status: (id) => options.extensions?.status(id),
 			pushSource: (id) => options.extensions?.pushSource(id),
 			bots: (id) => options.extensions?.bots(id),
+			runAction: async (id, name) => options.extensions?.runAction?.(id, name),
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,
 			marketplace: options.extensions?.marketplace,
