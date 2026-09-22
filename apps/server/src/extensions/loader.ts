@@ -1,14 +1,15 @@
 import { stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import type { ExtensionBotView } from "@bilibili-notify/extension";
-import type {
-	Connection,
-	Disposable,
-	ExtensionIdentity,
-	ExtensionManifest,
-	ExtensionRunState,
-	InboundSinks,
-	ServiceContext,
+import {
+	type Connection,
+	type Disposable,
+	type ExtensionIdentity,
+	type ExtensionManifest,
+	type ExtensionRunState,
+	type InboundSinks,
+	manifestSecretKeys,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import {
@@ -62,15 +63,16 @@ export function entryIdentity(entry: ExtensionEntry): ExtensionIdentity | undefi
 export interface LoadedExtensions {
 	list(): readonly ExtensionEntry[];
 	/**
-	 * 跑着的拓展各自声明成密钥的 config 键,**按 id 分格** —— 备份脱敏拿它当依据。
+	 * 各拓展声明成密钥的键,**按 id 分格** —— 备份脱敏拿它当依据。
 	 *
 	 * 🔴 **分格,不合并**:合成一份全局键名集合的话,一个拓展把 `name` 声明成密钥,备份里
 	 * 每一条连接与目标的 `name` 都会被抹平,而 `name` 是 `min(1)` —— 恢复时整份被拒。
 	 *
-	 * 🔴 **没跑起来的不在表里**,而「不在表里」在脱敏那边的意思是**整片当密钥**,不是
-	 * 「什么都不抹」(见 `../backup/sanitize.ts` 的 `ExtensionSecretCodes`)。字段表是代码在
-	 * `registerPushSource` 时交上来的、清单里没有,所以停用的拓展问不出来 —— 问不出来时
-	 * 宁可多抹:从前那条路的症状是「拨掉一个拓展的开关,它连接里的密钥就原样进备份文件」。
+	 * v2 照**清单**读(ADR-0019 决策 17),跑没跑都在表里。v1 的声明是代码在
+	 * `registerPushSource` 时交的,**没跑起来的 v1 不在表里** —— 「不在表里」在脱敏那边的意思
+	 * 是**整片当密钥**,不是「什么都不抹」(见 `../backup/sanitize.ts` 的 `ExtensionSecretCodes`)。
+	 * 问不出来时宁可多抹:从前那条路的症状是「拨掉一个拓展的开关,它连接里的密钥就原样进
+	 * 备份文件」。
 	 */
 	secretConfigCodes(): Readonly<Record<string, readonly string[]>>;
 	/**
@@ -381,8 +383,19 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 	return {
 		list: () => [...entries.values()],
-		secretConfigCodes: () =>
-			Object.fromEntries([...runtimes].map(([id, r]) => [id, r.secretConfigCodes()])),
+		secretConfigCodes: () => {
+			const codes: Record<string, readonly string[]> = {};
+			for (const entry of entries.values()) {
+				// v2 照清单读(ADR-0019 决策 17)—— 没跑起来的也读得到,备份只抹声明的那几格。
+				const declared = entry.manifest && manifestSecretKeys(entry.manifest);
+				if (declared) codes[entry.id] = declared;
+			}
+			// v1 的声明在代码里,只有跑着的才交得出来;问不出来的不进表(脱敏那边整片当密钥)。
+			for (const [id, runtime] of runtimes) {
+				if (!(id in codes)) codes[id] = runtime.secretConfigCodes();
+			}
+			return codes;
+		},
 		status: (id) => runtimes.get(id)?.status(),
 		pushSource: (id) => runtimes.get(id)?.pushSource(),
 		bots: (id) => runtimes.get(id)?.bots(),

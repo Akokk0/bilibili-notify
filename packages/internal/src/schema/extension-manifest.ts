@@ -556,3 +556,24 @@ export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides
 	if (manifest.apiVersion === 1) return [...manifest.provides];
 	return EXTENSION_PROVIDES.filter((key) => manifest.contributes[key] !== undefined);
 }
+
+/**
+ * 清单里标了 `secret` 的键 —— 备份脱敏照它抹(ADR-0019 决策 17)。设置项、列表项、推送源的
+ * 连接配置项都算,排序去重。
+ *
+ * v1 的密钥声明写在代码里、注册推送源时才交,清单答不出来 —— 回 `undefined`,**不是空表**:
+ * 在脱敏那边空表是「一格都不用抹」,`undefined` 是「问不出来,整片当密钥」。
+ */
+export function manifestSecretKeys(manifest: ExtensionManifest): string[] | undefined {
+	if (manifest.apiVersion === 1) return undefined;
+	const keys = new Set<string>();
+	const collect = (fields: readonly ExtensionManifestField[]) => {
+		for (const field of fields) {
+			if (field.type === "string" && field.secret) keys.add(field.key);
+			if (field.type === "list") collect(field.fields);
+		}
+	};
+	collect(manifest.settings?.fields ?? []);
+	collect(manifest.contributes.push?.connection?.fields ?? []);
+	return [...keys].sort();
+}

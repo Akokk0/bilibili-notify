@@ -287,6 +287,31 @@ describe("拓展声明的密钥字段", () => {
 		await loaded.dispose();
 		expect(loaded.secretConfigCodes()).toEqual({});
 	});
+
+	/**
+	 * v2 的密钥声明在**清单**里(ADR-0019 决策 17):没跑起来的也读得到,备份就能只抹那几格,
+	 * 而不是整片当密钥 —— 「装好还没启用、先把 cookie 填了」正是最常见的那一刻。
+	 */
+	it("v2 拓展没在跑也交得出密钥键 —— 照清单读,不等代码注册", async () => {
+		await plant("douyin", HEALTHY, {
+			apiVersion: 2,
+			provides: undefined,
+			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
+			contributes: {
+				subscription: {
+					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+					events: ["post"],
+				},
+			},
+		});
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => false,
+		});
+		expect(loaded.list()[0]?.state).toBe("disabled");
+		expect(loaded.secretConfigCodes()).toEqual({ douyin: ["cookie"] });
+	});
 });
 
 /**

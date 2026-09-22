@@ -22,6 +22,7 @@ import {
 	type ExtensionManifestRead,
 	extensionNamespaceOf,
 	manifestProvides,
+	manifestSecretKeys,
 	parseExtensionManifest,
 } from "./extension-manifest";
 
@@ -614,6 +615,55 @@ describe("v2 的列表声明", () => {
 				fields: [...ITEM, { key: "id", type: "string", label: "id" }],
 			}),
 		);
+	});
+});
+
+/**
+ * 备份脱敏照清单里的密钥声明抹(ADR-0019 决策 17「白捡的三样」之一):清单在代码跑起来之前就
+ * 读得到,所以**没在跑的拓展也能精确地抹**,不必整片当密钥。
+ */
+describe("manifestSecretKeys", () => {
+	it("设置项、列表项、连接配置项里标了 secret 的键都算,去重", () => {
+		const m = ok(
+			v2({
+				settings: {
+					fields: [
+						{ key: "cookie", type: "string", label: "Cookie", secret: true },
+						{ key: "interval", type: "number", label: "间隔" },
+						{
+							key: "links",
+							type: "list",
+							label: "接入",
+							title: "name",
+							fields: [
+								{ key: "name", type: "string", label: "名字", required: true },
+								{ key: "token", type: "string", label: "token", secret: true, generate: true },
+							],
+						},
+					],
+				},
+				contributes: {
+					push: {
+						display: DISPLAY,
+						connection: {
+							fields: [
+								{ key: "botKey", type: "string", label: "密钥", secret: true },
+								{ key: "token", type: "string", label: "token", secret: true },
+							],
+						},
+					},
+				},
+			}),
+		);
+		expect(manifestSecretKeys(m)).toEqual(["botKey", "cookie", "token"]);
+	});
+
+	it("v1 的密钥声明在代码里,清单答不出来 —— undefined(不是空表:空表是「一格都不用抹」)", () => {
+		expect(manifestSecretKeys(ok(v1()))).toBeUndefined();
+	});
+
+	it("v2 一格密钥都没声明 —— 空表", () => {
+		expect(manifestSecretKeys(ok(v2()))).toEqual([]);
 	});
 });
 

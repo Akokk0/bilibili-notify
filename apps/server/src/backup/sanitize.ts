@@ -85,9 +85,9 @@ export function redactSecretKeys<T>(value: T, secrets: ReadonlySet<string> = SEC
  * 每一条连接与目标的 `name` 都会被抹成空串,而 `name` 是 `min(1)` —— 恢复时整份被拒。
  * 一个拓展声明的键只对**它自己那两格**生效:它那些连接的 `config`,与它自己那份 settings。
  *
- * 🔴 **不在表里 = 那个拓展没跑起来**(开关拨掉 / 清单坏了 / 连败停用)。字段表是**代码**
- * 在 `registerPushSource` 时交上来的,清单里没有(见 `extension-manifest.ts` 的文件头),
- * 所以停用的那些问不出来。问不出来就把它的 config 与 settings **整片当密钥** —— 那两格
+ * 🔴 **不在表里 = 问不出来**:v1 拓展没跑起来(开关拨掉 / 连败停用)—— 它的字段表是**代码**
+ * 在 `registerPushSource` 时交上来的;或者清单读不了 / 版本不合。v2 的声明住清单里
+ * (ADR-0019 决策 17),跑没跑都问得出来。问不出来就把它的 config 与 settings **整片当密钥** —— 那两格
  * 本来就不由核心定形状(决策 19),分不出哪一格无辜。完整档照样原样恢复(真值在加密袋
  * 里,见 {@link collectRedactions});脱敏档丢的是本来就不该由我们替它担保的东西。
  */
