@@ -6,7 +6,7 @@
  * 定时器还在跑、端点还挂着,而面板上写着「已停用」。
  */
 
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { createAdapterRegistry } from "../../platforms/registry.js";
@@ -49,6 +49,14 @@ function fakeHost() {
 /** 这个文件钉的是**生命周期**,与核心打交道那几格由 `context-grants.test.ts` 管。 */
 function coreStubs() {
 	return {
+		manifest: {
+			id: "bridge",
+			name: "机器人框架桥接",
+			description: "测试用",
+			version: "1.0.0",
+			apiVersion: 1,
+			provides: ["push"],
+		} as const satisfies ExtensionManifest,
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),

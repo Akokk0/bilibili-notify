@@ -9,10 +9,12 @@ import {
 	type Connection,
 	type Disposable,
 	EXTENSION_API_RANGE,
+	type ExtensionManifest,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
 	type Logger,
+	manifestProvides,
 	type PlatformAdapter,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
@@ -67,6 +69,11 @@ export interface ExtensionRuntime {
 
 export interface CreateExtensionContextOptions {
 	id: string;
+	/**
+	 * 它的清单 —— 注册时按它核对「开没开这一口」,v2 的外观、连接配置项、设置项都从这儿读
+	 * (ADR-0019 决策 16)。
+	 */
+	manifest: ExtensionManifest;
 	/** 宿主的 ServiceContext —— 定时器与日志的真身。 */
 	host: ServiceContext;
 	mounts: ExtensionMounts;
@@ -250,6 +257,55 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		deliver(meta);
 	}
 
+	/**
+	 * 推送源那一口给面板的东西从哪来 —— 先核对清单开没开这一口,再按档取:v2 只认清单,
+	 * v1 只认代码(收下时翻译成新形状)。
+	 *
+	 * 🔴 「注册的口 ⊆ 清单开的口」:不核的话,一个声明成订阅源的拓展照样能挂一个出口上来,
+	 * 面板按清单把它归在订阅那一栏,推送目标页却凭空多出一档。
+	 */
+	function pushViewOf(
+		def: Parameters<ExtensionContext["registerPushSource"]>[0],
+	): ExtensionPushView {
+		const { manifest } = opts;
+		if (!manifestProvides(manifest).includes("push")) {
+			const where = manifest.apiVersion === 1 ? "provides" : "contributes.push";
+			throw new Error(`extension ${id}: 清单里没开推送源那一口(${where}),不能注册推送源`);
+		}
+		if (manifest.apiVersion === 1) {
+			if (!("descriptor" in def) || !("configFields" in def)) {
+				throw new Error(
+					`extension ${id}: v1 清单的外观与连接配置项写在代码里,注册推送源时要交 descriptor 与 configFields`,
+				);
+			}
+			// v1 交的是老名字,收下这一刻翻译过来 —— 宿主里只有新形状。
+			return {
+				display: displayFromV1(def.descriptor),
+				connectionFields: def.configFields.map(fieldFromV1),
+			};
+		}
+		if ("descriptor" in def || "configFields" in def) {
+			throw new Error(
+				`extension ${id}: v2 的外观与连接配置项写在清单的 contributes.push 里,代码里别再交 —— 两份会打架`,
+			);
+		}
+		// 上面核对过开了这一口,这里一定有。
+		const push = manifest.contributes.push as NonNullable<typeof manifest.contributes.push>;
+		return { display: push.display, connectionFields: push.connection?.fields ?? [] };
+	}
+
+	/**
+	 * 设置项的两份声明(清单一份、`ctx.settings(schema)` 交一份 zod)在拿设置的那一刻对表,
+	 * 每份 schema 对一次。v1 没有这回事:桥的设置是手写页,清单里什么都没声明。
+	 */
+	const settingsChecked = new WeakSet<ZodType>();
+	function checkSettingsSchema(schema: ZodType): void {
+		const { manifest } = opts;
+		if (manifest.apiVersion === 1 || settingsChecked.has(schema)) return;
+		assertConfigFieldsMatchSchema(id, schema, manifest.settings?.fields ?? []);
+		settingsChecked.add(schema);
+	}
+
 	const ctx: ExtensionContext = {
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
@@ -273,17 +329,16 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
+			const view = pushViewOf(def);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
-			// v1 交的是老名字,收下这一刻翻译过来 —— 宿主里只有新形状。
-			const connectionFields = def.configFields.map(fieldFromV1);
-			assertConfigFieldsMatchSchema(id, def.configSchema, connectionFields, {
+			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, {
 				picked: def.listBots !== undefined,
 			});
 			pushSourceRegistered = true;
-			pushView = { display: displayFromV1(def.descriptor), connectionFields };
+			pushView = view;
 			listBots = def.listBots;
-			secretCodes = connectionFields
+			secretCodes = view.connectionFields
 				.filter((f) => f.type === "string" && f.secret)
 				.map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
@@ -325,6 +380,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			opts.onStatusChanged?.();
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
+			checkSettingsSchema(schema);
 			return {
 				get: () => readSettings(schema),
 				onChange: (fn: () => void) => {

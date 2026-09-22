@@ -13,6 +13,7 @@ import type { ExtensionDescriptor } from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
+	ExtensionManifest,
 	Logger,
 	PlatformAdapter,
 	ServiceContext,
@@ -41,7 +42,19 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 	} as Connection;
 }
 
-function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) {
+/** 桥今天那份:v1,只开推送源。 */
+const V1_PUSH: ExtensionManifest = {
+	id: "bridge",
+	name: "机器人框架桥接",
+	description: "测试用",
+	version: "1.0.0",
+	apiVersion: 1,
+	provides: ["push"],
+};
+
+function harness(
+	opts: { connections?: Connection[]; settings?: unknown; manifest?: ExtensionManifest } = {},
+) {
 	let statusChanges = 0;
 	const lines: string[] = [];
 	const logger: Logger = {
@@ -75,6 +88,7 @@ function harness(opts: { connections?: Connection[]; settings?: unknown } = {}) 
 
 	const runtime = createExtensionContext({
 		id: "bridge",
+		manifest: opts.manifest ?? V1_PUSH,
 		host,
 		mounts: createExtensionMounts(),
 		adapters,
@@ -170,6 +184,138 @@ function def() {
 		],
 	};
 }
+
+/**
+ * 按清单注册(ADR-0019 决策 16 / 17):v2 的外观与连接配置项**只住清单**,代码只交行为与
+ * zod;v1 的留在代码里、收下时翻译。不管哪一档,**注册的口必须是清单开了的口** —— 今天
+ * 「声明订阅却去注册推送」没人拦,面板按清单把它归在订阅那一栏,推送目标页却多出一档。
+ */
+describe("按清单注册推送源", () => {
+	const DISPLAY = { label: "桥接", shortLabel: "桥", color: "#a855f7" };
+	const V2_FIELDS = [
+		{ type: "string" as const, key: "token", label: "长期 token", secret: true },
+		{
+			type: "enum" as const,
+			key: "bridgeKind",
+			label: "哪一种桥",
+			options: [
+				{ value: "koishi", label: "koishi" },
+				{ value: "astrbot", label: "AstrBot" },
+			],
+		},
+	];
+	function v2(over: Record<string, unknown> = {}): ExtensionManifest {
+		return {
+			id: "bridge",
+			name: "机器人框架桥接",
+			description: "测试用",
+			version: "2.0.0",
+			apiVersion: 2,
+			contributes: { push: { display: DISPLAY, connection: { fields: V2_FIELDS } } },
+			...over,
+		} as ExtensionManifest;
+	}
+	const v2Def = () => ({ adapter: fakeAdapter(), configSchema: CONFIG });
+
+	it("v2:外观与连接配置项取自清单,代码只交行为与 zod", () => {
+		const h = harness({ manifest: v2() });
+		h.ctx.registerPushSource(v2Def());
+		expect(h.runtime.pushSource()).toEqual({ display: DISPLAY, connectionFields: V2_FIELDS });
+		// 密钥照清单里的声明抹 —— 备份脱敏那一格。
+		expect(h.runtime.secretConfigCodes()).toEqual(["token"]);
+		expect(h.adapters.list()).toHaveLength(1);
+	});
+
+	it("v2 的清单没写 connection:连接是挑出来的那种,连接配置项就是空表", () => {
+		const h = harness({ manifest: v2({ contributes: { push: { display: DISPLAY } } }) });
+		h.ctx.registerPushSource({ ...v2Def(), listBots: () => [] });
+		expect(h.runtime.pushSource()?.connectionFields).toEqual([]);
+	});
+
+	it("v2 的代码里还交外观 / 字段表 —— 抛:两份声明会打架,以清单为准", () => {
+		const h = harness({ manifest: v2() });
+		expect(() => h.ctx.registerPushSource(def())).toThrow(/contributes\.push/);
+		expect(h.adapters.list()).toEqual([]);
+	});
+
+	it("v1 的代码里没交外观 —— 抛:老格式的外观只在代码里", () => {
+		const h = harness();
+		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/descriptor/);
+	});
+
+	it("v2 清单里的连接配置项与代码的 zod 对不上 —— 抛,点名那一格", () => {
+		const h = harness({
+			manifest: v2({
+				contributes: {
+					push: {
+						display: DISPLAY,
+						connection: {
+							fields: [V2_FIELDS[0], { type: "string", key: "bridgeKind", label: "哪一种桥" }],
+						},
+					},
+				},
+			}),
+		});
+		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/"bridgeKind"/);
+	});
+
+	it.each<[string, ExtensionManifest, RegExp]>([
+		["v1 只声明了订阅源", { ...V1_PUSH, provides: ["subscription"] }, /provides/],
+		[
+			"v2 只开了订阅源",
+			v2({
+				contributes: {
+					subscription: { display: DISPLAY, events: ["post"] },
+				},
+			}),
+			/contributes\.push/,
+		],
+	])("%s —— 注册推送源当场抛,出口一个都不进表", (_label, manifest, message) => {
+		const h = harness({ manifest });
+		const register =
+			manifest.apiVersion === 1
+				? () => h.ctx.registerPushSource(def())
+				: () => h.ctx.registerPushSource(v2Def());
+		expect(register).toThrow(message);
+		expect(h.adapters.list()).toEqual([]);
+	});
+
+	/**
+	 * v2 的设置项也是两份声明(清单一份、`ctx.settings(schema)` 交一份 zod),一样在拿设置的
+	 * 那一刻对表。v1 没有这回事:桥的设置是手写页,清单里什么都没声明。
+	 */
+	describe("设置项对表", () => {
+		const SETTINGS = z.object({ cookie: z.string(), interval: z.number().default(60) });
+		const fields = (interval: Record<string, unknown>) => ({
+			settings: {
+				fields: [
+					{ type: "string", key: "cookie", label: "Cookie", secret: true },
+					{ type: "number", key: "interval", label: "间隔", ...interval },
+				],
+			},
+		});
+
+		it("对得上 —— 照常拿得到设置", () => {
+			const h = harness({ manifest: v2(fields({ default: 60 })), settings: { cookie: "c" } });
+			expect(h.ctx.settings(SETTINGS).get()).toEqual({ cookie: "c", interval: 60 });
+		});
+
+		it("对不上 —— 拿设置那一刻就抛,点名那一格", () => {
+			const h = harness({ manifest: v2(fields({ default: 30 })) });
+			expect(() => h.ctx.settings(SETTINGS)).toThrow(/"interval"/);
+		});
+
+		it("清单一栏设置都没声明,而 zod 有必填键 —— 抛(面板上根本没地方填)", () => {
+			const h = harness({ manifest: v2() });
+			expect(() => h.ctx.settings(SETTINGS)).toThrow(/"cookie"/);
+		});
+
+		it("v1 不对表 —— 桥的设置是手写页,清单里什么都没声明", () => {
+			const h = harness({ settings: { cookie: "c" } });
+			expect(h.ctx.settings(SETTINGS).get()).toEqual({ cookie: "c", interval: 60 });
+		});
+	});
+});
 
 describe("注册推送源", () => {
 	it("分发键由宿主按 id 填 —— 拓展自报的那份被覆盖掉", () => {
@@ -399,6 +545,7 @@ describe("认领 WS upgrade", () => {
 		};
 		const runtime = createExtensionContext({
 			id: "bridge",
+			manifest: V1_PUSH,
 			host: {
 				logger,
 				setInterval: () => ({ dispose() {} }),

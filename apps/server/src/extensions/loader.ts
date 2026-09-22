@@ -271,6 +271,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 
 		const runtime = createExtensionContext({
 			id,
+			manifest,
 			host,
 			mounts,
 			adapters: opts.adapters,

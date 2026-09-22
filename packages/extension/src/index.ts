@@ -105,34 +105,40 @@ export interface ExtensionUpgrade {
 export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
 
 /**
- * 一个推送源 —— 决策 7 那三样已有名字的东西装在一起,**一次交齐**。
+ * 一个推送源 —— **代码那一半**:行为与校验,一次交齐。
  *
- * 拆成三个口的话,一个拓展可以只注册一半,而「有行为、没有面板元信息」是个没人想处理的
- * 中间态。(config 的**字段表**是第四样,跟着表单那一片一起加。)
+ * 外观(`display`)与连接配置项(`connection.fields`)是静态数据,写在清单的
+ * `contributes.push` 里(ADR-0019 决策 16),宿主读清单拿;代码里别再交一份 —— 两份声明
+ * 会打架,宿主注册那一刻就会抛。清单里没开 `contributes.push` 的拓展注册不了推送源。
  */
 export interface PushExtensionDef<TConfig> {
 	/** 行为。⚠️ 它自报的 `platforms` **会被宿主覆盖**成这个拓展的 id。 */
 	adapter: PlatformAdapter;
-	/** 面板元信息。 */
-	descriptor: ExtensionDescriptor;
-	/** config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展。 */
-	configSchema: ZodType<TConfig>;
 	/**
-	 * config 里**要主人亲手填**的那几栏 —— 面板照它画表单。与 `configSchema` 是两份声明,
-	 * 注册那一刻逐格对表,对不上直接抛(决策 19 / 33)。
-	 *
-	 * 可以是空表:桥那种「连接是从 `listBots` 里挑出来的」推送源,config 整份由拓展自己
-	 * 交(见 {@link ExtensionBotView.config}),没有一栏是人填的。
+	 * config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展;注册那一刻还拿它与清单里的
+	 * 连接配置项逐格对表(键、类型、默认值),对不上直接抛(ADR-0019 决策 17)。
 	 */
-	configFields: readonly ExtensionConfigField[];
+	configSchema: ZodType<TConfig>;
 	/**
 	 * **现在能借来当连接的 bot**,现读。可选:endpoint 形态的推送源没有 bot 这回事。
 	 *
 	 * 🔴 **一条连接就是一个 bot**(ADR-0012 决策 45)—— 与直连同一套操作逻辑:新建连接时
 	 * 挑一个 bot,底下的推送目标只填地址。哪些 bot 能挑只有拓展知道(桥后面挂什么是握手时
-	 * 才知道的),所以宿主拿这一格列给主人挑,而不是让主人手敲一个 id。
+	 * 才知道的),所以宿主拿这一格列给主人挑,而不是让主人手敲一个 id。给了它,连接配置项
+	 * 就可以是空表(config 整份由拓展交,见 {@link ExtensionBotView.config})。
 	 */
 	listBots?: () => readonly ExtensionBotView<TConfig>[];
+}
+
+/**
+ * **v1 的推送源** —— 清单 `apiVersion: 1` 的拓展还把外观与连接配置项写在代码里,用的是
+ * 老名字。宿主收下时翻译成新形状。只剩桥在用;桥迁到 v2、再抬最低档之后删掉。
+ */
+export interface LegacyPushExtensionDef<TConfig> extends PushExtensionDef<TConfig> {
+	/** 外观(新名字:清单里的 `contributes.push.display`)。 */
+	descriptor: ExtensionDescriptor;
+	/** 连接配置项(新名字:清单里的 `contributes.push.connection.fields`)。 */
+	configFields: readonly ExtensionConfigField[];
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */
@@ -215,8 +221,13 @@ export interface ExtensionContext {
 	 *
 	 * **分发键由宿主按 id 填**,`adapter.platforms` 自报的那份会被覆盖:自报的话,一个
 	 * 拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走。归属是宿主的判断。
+	 *
+	 * 清单没开推送源那一口(v2 的 `contributes.push`、v1 的 `provides`)会抛。v2 交
+	 * {@link PushExtensionDef},v1 交 {@link LegacyPushExtensionDef}。
 	 */
-	registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig>;
+	registerPushSource<TConfig>(
+		def: PushExtensionDef<TConfig> | LegacyPushExtensionDef<TConfig>,
+	): PushSourceHandle<TConfig>;
 	/**
 	 * 把一条入站消息喂回核心 —— 归一化在拓展这一侧做完(决策 31)。
 	 *
@@ -256,6 +267,9 @@ export interface ExtensionContext {
 	/**
 	 * 自己的持久设置(见 {@link ExtensionSettings})。交一份 zod 进来,拿回一个现读的把手。
 	 * 可以叫多次,每次都是同一份数据的一个视图。
+	 *
+	 * v2 拓展的这份 zod 要与清单里的 `settings.fields` 对得上(键、类型、默认值),对不上
+	 * 当场抛 —— 面板照清单画表单、宿主照 zod 解,两份漂开就是「填了存不进去」。
 	 */
 	settings<T>(schema: ZodType<T>): ExtensionSettings<T>;
 	/** 卸载时要跑的收摊钩子。后注册的先跑。 */
