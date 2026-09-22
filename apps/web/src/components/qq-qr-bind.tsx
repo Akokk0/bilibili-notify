@@ -1,5 +1,5 @@
 import type { QQBindPollResult, QQBindStartResponse } from "@bilibili-notify/contract";
-import { Btn, ErrorNote, LoadingBlock, ModalShell, Pill } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, ModalShell, Pill, QrPanel } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../services/api";
 
@@ -130,19 +130,12 @@ export function QQQrBindButton({
 					title="扫码连接 / 创建机器人"
 					description="手机 QQ 扫码,在腾讯页面里重选已建的机器人回填凭据,或新建一个(每个 QQ 号最多 5 个)"
 				>
-					<div className="flex flex-col items-center gap-3">
-						{phase === "starting" ? (
-							<div className="flex h-56 w-56 items-center justify-center">
-								<LoadingBlock variant="inset" label="正在创建绑定任务" />
-							</div>
-						) : null}
-						{phase === "waiting" && session ? (
-							<img
-								alt="QQ 机器人绑定二维码"
-								className="h-56 w-56 rounded-sm bg-bn-surface p-2 shadow-bn-card"
-								src={session.qr}
-							/>
-						) : null}
+					<QrPanel
+						variant="bare"
+						src={phase === "waiting" && session ? session.qr : null}
+						alt="QQ 机器人绑定二维码"
+						loading={phase === "starting" ? "正在创建绑定任务" : undefined}
+					>
 						{phase === "expired" ? (
 							<div className="text-bn-sm text-bn-text-secondary">二维码已过期</div>
 						) : null}
@@ -157,7 +150,7 @@ export function QQQrBindButton({
 							注意:此通道创建的机器人能力有限,目前<b>限创建者私聊与创建者当群主的群</b>
 							(以腾讯当前政策为准)。要更宽的能力请手动填写正式注册的机器人凭据。
 						</div>
-					</div>
+					</QrPanel>
 				</ModalShell>
 			) : null}
 		</div>

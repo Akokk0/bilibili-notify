@@ -7,6 +7,7 @@ import {
 	Icon,
 	LoadingBlock,
 	ModalShell,
+	QrPanel,
 	SectionNav,
 	StatusDot,
 	Toggle,
@@ -71,25 +72,11 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 	const src = typeof data === "string" && data.length > 0 ? data : null;
 	return (
 		// data-tour:「带我做」导览的聚光灯锚点 —— 二维码一出现聚光灯就从登录按钮转移过来
-		<div
-			data-tour="bili-login-qr"
-			className="flex flex-col items-center gap-3 rounded-lg border border-bn-border bg-bn-surface/55 p-6"
-		>
-			{src ? (
-				<img
-					alt="登录二维码"
-					className="h-56 w-56 rounded-sm bg-bn-surface p-2 shadow-bn-card"
-					src={src}
-				/>
-			) : (
-				<div className="flex h-56 w-56 items-center justify-center rounded-sm bg-bn-surface">
-					<LoadingBlock variant="inset" label="二维码加载中" />
-				</div>
-			)}
+		<QrPanel data-tour="bili-login-qr" src={src} alt="登录二维码" loading="二维码加载中">
 			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
 			{/* 常驻一行:msg 从无到有(尚未扫码→已扫码…)不许把弹窗撑高 */}
 			<div className="text-bn-xs text-bn-text-tertiary">{msg || " "}</div>
-		</div>
+		</QrPanel>
 	);
 }
 

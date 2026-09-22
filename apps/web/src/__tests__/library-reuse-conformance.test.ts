@@ -217,6 +217,19 @@ describe("红字提示盒只有 ErrorNote 那一份", () => {
 	});
 });
 
+describe("扫码那一块只有 QrPanel 那一份", () => {
+	it("没有哪个页面自己摆 224px 见方、浮起来的二维码", () => {
+		// 收编前三份逐字相同(系统页登录 / 拓展的 qr 积木 / QQ 扫码绑定),积木那份的注释说
+		// 「任何拓展的扫码都该与 BN 自己的长一样」—— 靠的是复制粘贴。判据是图那一方的
+		// 尺寸 + 浮起:占位方块与说明各处不同,图本身才是那个「长一样」。
+		const isQrSquare = (code: string) => {
+			const cls = ` ${staticClasses(code)} `;
+			return cls.includes(" h-56 ") && cls.includes(" w-56 ") && cls.includes(" shadow-bn-card ");
+		};
+		expect(scan(isQrSquare, ["qr-panel.tsx"]).join("\n")).toBe("");
+	});
+});
+
 describe("转圈只有库里那一份", () => {
 	it("没有哪个页面自己拿 animate-spin 画转圈", () => {
 		// `Spinner`(atoms.tsx)是唯一的实现,`LoadingBlock` 是唯一的「转圈 + 文案」组合。

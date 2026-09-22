@@ -13,6 +13,7 @@ import {
 	KindMark,
 	MonoChip,
 	Pill,
+	QrPanel,
 	StatusDot,
 	type StatusDotKind,
 	type TriState,
@@ -453,7 +454,7 @@ function CopyBlock({
 
 // ── qr ──────────────────────────────────────────────────────────────────────
 
-/** 与系统页 B 站登录那张二维码卡同一副样子 —— 任何拓展的扫码都该与 BN 自己的长一样。 */
+/** 与系统页 B 站登录同一件(`QrPanel`)—— 任何拓展的扫码都该与 BN 自己的长一样。 */
 function QrBlock({
 	block: { image, caption },
 	extensionId,
@@ -461,22 +462,14 @@ function QrBlock({
 	block: BlockOf<"qr">;
 	extensionId: string;
 }) {
-	const src = safeImage(image);
 	return (
-		<div className="flex flex-col items-center gap-3 rounded-lg border border-bn-border bg-bn-surface/55 p-6">
-			{src ? (
-				<img
-					alt="二维码"
-					className="h-56 w-56 rounded-sm bg-bn-surface p-2 shadow-bn-card"
-					src={src}
-				/>
-			) : null}
+		<QrPanel src={safeImage(image)} alt="二维码">
 			{caption ? (
 				<div className="text-bn-sm text-bn-text-secondary">
 					<RichText text={caption} extensionId={extensionId} />
 				</div>
 			) : null}
-		</div>
+		</QrPanel>
 	);
 }
 
