@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
+	ActionNameSchema,
 	EXTENSION_API_RANGE,
 	type ExtensionApiRange,
 	ExtensionIdSchema,
@@ -412,6 +413,17 @@ describe("v2 的设置项", () => {
 		unreadable(withField({ key, type: "string", label: "X" }));
 	});
 
+	/**
+	 * 🔴 `Object.prototype` 上的名字字母开头,正则挡不住。key 会被当成普通对象的键查表 ——
+	 * `key in obj` / `obj[key]` 顺着原型链摸到内置函数,一格根本没有的被当成「有」。
+	 */
+	it.each(["valueOf", "toString", "constructor", "hasOwnProperty"])(
+		"key %s(Object.prototype 上的名字)—— 拒,并说清为什么",
+		(key) => {
+			expect(unreadable(withField({ key, type: "string", label: "X" })).join("\n")).toMatch(/原型/);
+		},
+	);
+
 	it("同一张表里 key 重复 —— 读不了(哪一栏说了算没有答案)", () => {
 		const issues = unreadable(
 			v2({
@@ -780,6 +792,14 @@ describe("v2 的动作", () => {
 		},
 	);
 
+	it.each(["toString", "constructor", "valueOf", "hasOwnProperty", "isPrototypeOf"])(
+		"%s(Object.prototype 上的名字)—— 拒:动作按名字查表,没声明的也会被当成声明了",
+		(name) => {
+			expect(ActionNameSchema.safeParse(name).success).toBe(false);
+			expect(unreadable(v2({ actions: { [name]: { label: "按钮" } } })).join("\n")).toMatch(/原型/);
+		},
+	);
+
 	it("动作要有名字给人看", () => {
 		unreadable(v2({ actions: { refresh: { label: "" } } }));
 		unreadable(v2({ actions: { refresh: {} } }));
@@ -802,6 +822,17 @@ describe("拓展 id 的命名空间", () => {
 		for (const id of ["a.b.c", ".x", "x.", "a..b", "A.b", "a.-b", "a-.b"]) {
 			expect(ExtensionIdSchema.safeParse(id).success, id).toBe(false);
 		}
+	});
+
+	/**
+	 * 🔴 id 是落盘的键(`globals.extensions[id]`、脱敏表、装载器的名册),会被当成普通对象的键
+	 * 查表。小写那几个 `Object.prototype` 上的名字里,正则放得过的只有 `constructor`。
+	 */
+	it("constructor(Object.prototype 上的名字)—— 拒,并说清为什么", () => {
+		const parsed = ExtensionIdSchema.safeParse("constructor");
+		expect(parsed.success).toBe(false);
+		expect(parsed.error?.issues.map((issue) => issue.message).join("\n")).toMatch(/原型/);
+		unreadable(v2({ id: "constructor" }));
 	});
 
 	it("extensionNamespaceOf:有点的取点前那段,没点的是官方(undefined)", () => {

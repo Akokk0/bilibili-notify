@@ -456,6 +456,19 @@ describe("动作", () => {
 		expect(() => h.ctx.onAction("poll.now", () => {})).toThrow(/poll\.now/);
 	});
 
+	/**
+	 * 🔴 清单的 actions 是个普通对象:`name in actions` 会顺着原型链把 `constructor` / `toString`
+	 * 判成「声明了」。清单校验那头已经拒这些名字,这里是第二道 —— 查表只认它自己身上的键。
+	 */
+	it("Object.prototype 上的名字不算声明过:注册当场抛,跑是 undeclared", async () => {
+		const h = harness({ manifest: V2 });
+		expect(() => h.ctx.onAction("constructor", () => {})).toThrow(/没有 constructor/);
+		expect(await h.runtime.runAction("toString")).toMatchObject({
+			ok: false,
+			reason: "undeclared",
+		});
+	});
+
 	it("v1 清单没有 actions —— 注册就抛", () => {
 		expect(() => harness().ctx.onAction("poll.now", () => {})).toThrow(/actions/);
 	});

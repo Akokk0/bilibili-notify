@@ -77,6 +77,22 @@ export const IdSegmentSchema = z
 	.regex(new RegExp(`^${ID_SEGMENT}$`), "只能是小写字母、数字与连字符,且首尾必须是字母或数字");
 
 /**
+ * `Object.prototype` 自己身上的名字(`constructor` / `toString` / `valueOf` / `hasOwnProperty`
+ * / `__proto__` …)。
+ *
+ * 拓展 id、设置项的 key、动作名都会被当成**普通对象的键**去查表 —— `name in obj` 与 `obj[name]`
+ * 会顺着原型链摸到内置函数,一个根本没声明的名字就被当成「有」。各自的正则挡不全(字母开头
+ * 照样拼得出 `toString`),所以单独拒;查表那头也一律用 `Object.hasOwn`,两道都在。
+ */
+function isPrototypeName(name: string): boolean {
+	return Object.hasOwn(Object.prototype, name);
+}
+
+function prototypeNameMessage(what: string): string {
+	return `${what}不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数`;
+}
+
+/**
  * 形状是 `<名字>` 或 `<命名空间>.<名字>`(ADR-0013):**没有点的 id 保留给官方源**,第三方源
  * 发的拓展必须带自己的命名空间。命名空间烧进 id 而不是装的时候拼 —— id 在 BN 里是落盘的
  * 键(连接的 `extensionId`、设置槽、目录名),它必须与用户怎么称呼那个源无关。
@@ -89,7 +105,9 @@ export const ExtensionIdSchema = z
 	.regex(
 		new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`),
 		"拓展 id 只能是小写字母、数字与连字符(可用一个点分出命名空间),且每段首尾必须是字母或数字",
-	);
+	)
+	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
+	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "));
 
 /** 命名空间那一段;没有点 = 官方源的拓展,回 `undefined`。 */
 export function extensionNamespaceOf(id: string): string | undefined {
@@ -164,12 +182,14 @@ export type ExtensionManifestV1 = z.infer<typeof ExtensionManifestV1Schema>;
 /**
  * 设置项的键 —— 值落在 `settings[key]` / `config[key]`,面板还拿它拼表单路径。
  *
- * 字母开头:顺手挡住 `__proto__` 这一类;不带点与连字符:面板拼路径用的就是点。
+ * 字母开头挡住 `__proto__` 这类下划线开头的;字母开头的 `constructor` / `toString` / `valueOf`
+ * 正则挡不住,由后面那道单独拒。不带点与连字符:面板拼路径用的就是点。
  */
 export const FieldKeySchema = z
 	.string()
 	.max(64)
-	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, "设置项的 key 只能是字母开头的字母、数字与下划线");
+	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, "设置项的 key 只能是字母开头的字母、数字与下划线")
+	.refine((key) => !isPrototypeName(key), prototypeNameMessage("设置项的 key "));
 
 const fieldBase = {
 	key: FieldKeySchema,
@@ -478,7 +498,9 @@ export const ActionNameSchema = z
 	.regex(
 		/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/,
 		"动作名只能是小写字母开头的字母数字,用点分段,如 login.start",
-	);
+	)
+	// `toString` 这类放过去,「清单里有没有这个动作」一查就是有 —— 面板能按一个没声明的名字。
+	.refine((name) => !isPrototypeName(name), prototypeNameMessage("动作名"));
 
 /**
  * v2:静态声明全住清单(ADR-0019 决策 16)。
@@ -524,7 +546,15 @@ export type ExtensionManifestRead =
 	| { ok: false; reason: "incompatible"; identity: ExtensionIdentity; requires: number };
 
 function issuesOf(error: z.ZodError): string[] {
-	return error.issues.map((issue) => `${issue.path.join(".") || "(根)"}: ${issue.message}`);
+	return error.issues.map((issue) => {
+		// 键不合规矩(动作名)时 zod 只说一句「Invalid key in record」,真正的原因(正则 / 原型
+		// 上的名字)在里层 —— 摊出来,不然拓展作者只知道这个名字不行、不知道为什么。
+		const message =
+			issue.code === "invalid_key" && issue.issues.length > 0
+				? issue.issues.map((inner) => inner.message).join(";")
+				: issue.message;
+		return `${issue.path.join(".") || "(根)"}: ${message}`;
+	});
 }
 
 /**

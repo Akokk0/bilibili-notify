@@ -128,7 +128,8 @@ function checkFields(
 			fail(`字段表里 "${path}" 摆了两栏 —— 哪一栏说了算没有答案`);
 		}
 		seen.add(field.key);
-		if (!(field.key in members)) {
+		// `in` 会顺着原型链把 `toString` 这类判成 schema 的键;v1 的字段表不过清单校验,只剩这一道。
+		if (!Object.hasOwn(members, field.key)) {
 			fail(`字段表里的 "${path}" 不是 config schema 的键`);
 		}
 		// 只对键的(v1)到这里为止,这一格的类型 / 默认值不看。

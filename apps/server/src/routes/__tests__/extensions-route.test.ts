@@ -1099,4 +1099,16 @@ describe("POST /api/ext/:id/actions/:name", () => {
 		expect((await call(boot(), "/Douyin/actions/poll.now")).status).toBe(400);
 		expect((await call(boot(), "/douyin/actions/Poll%20Now")).status).toBe(400);
 	});
+
+	/**
+	 * 🔴 往下问的话,拓展那头「清单里有没有这个动作」按普通对象查表,`toString` 顺着原型链一查
+	 * 就是有、代码却没接 —— 回 501,看着像拓展漏接了一个它根本没声明的动作。
+	 */
+	it("动作名是 Object.prototype 上的名字(toString)—— 400,不往下问", async () => {
+		const res = await call(
+			boot({ actions: { "douyin/toString": { ok: false, reason: "unhandled" } } }),
+			"/douyin/actions/toString",
+		);
+		expect(res.status).toBe(400);
+	});
 });

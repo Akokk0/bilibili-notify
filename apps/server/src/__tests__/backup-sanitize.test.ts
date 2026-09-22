@@ -290,6 +290,30 @@ describe("拓展声明的密钥字段", () => {
 		expect(out.connections[1]?.config.note).toBe("直连");
 	});
 
+	/**
+	 * 🔴 声明表是个普通对象,按 id 取不能顺着原型链摸:`{}["toString"]` 是个函数、长度 0,被当成
+	 * 「一格都没声明」→ 那个拓展的密钥原样进备份;`{}["constructor"]` 则让整次导出直接炸掉。
+	 */
+	it("拓展 id 撞上 Object.prototype 上的名字 —— 按「问不出来」整片抹平,不漏也不炸", () => {
+		const out = redactBackupSections(
+			{
+				globals: { extensions: { toString: { enabled: true, settings: { botKey: "s3cret" } } } },
+				connections: [
+					{
+						id: "c1",
+						name: "阿库娅",
+						kind: "extension",
+						extensionId: "constructor",
+						config: { botKey: "s3cret" },
+					},
+				],
+			},
+			{},
+		);
+		expect(out.globals.extensions.toString.settings).toEqual({ botKey: "" });
+		expect(out.connections[0]?.config).toEqual({ botKey: "" });
+	});
+
 	it("跑起来但一格都没声明(字段表是空表)→ 只吃基础黑名单", () => {
 		const out = redactBackupSections(sections(), { bridge: [], other: [] });
 		expect(out.connections[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });

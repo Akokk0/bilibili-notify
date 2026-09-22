@@ -552,8 +552,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				if (declared) codes[entry.id] = declared;
 			}
 			// v1 的声明在代码里,只有跑着的才交得出来;问不出来的不进表(脱敏那边整片当密钥)。
+			// 判「有没有」只认表自己身上的键:`in` 会把 `constructor` 这类原型上的名字判成有。
 			for (const [id, runtime] of runtimes) {
-				if (!(id in codes)) codes[id] = runtime.secretConfigCodes();
+				if (!Object.hasOwn(codes, id)) codes[id] = runtime.secretConfigCodes();
 			}
 			return codes;
 		},

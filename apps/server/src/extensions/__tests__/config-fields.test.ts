@@ -51,6 +51,21 @@ describe("字段表 × zod 对表", () => {
 		);
 	});
 
+	/**
+	 * 🔴 zod 的 shape 是个普通对象:`key in shape` 会顺着原型链把 `toString` 判成「是 schema 的键」。
+	 * v2 清单校验那头已经拒这种 key,但 v1 的字段表写在代码里、不过清单校验,只剩这一道。
+	 */
+	it("字段表里的 key 是 Object.prototype 上的名字、zod 里没有 → 拒(v1 只对键,也照拒)", () => {
+		const schema = z.object({ a: z.string().optional() });
+		const field: ExtensionField = { type: "string", key: "toString", label: "?" };
+		expect(() => assertConfigFieldsMatchSchema("demo", schema, [field])).toThrow(
+			/"toString" 不是 config schema 的键/,
+		);
+		expect(() => assertConfigFieldsMatchSchema("demo", schema, [field], { v1: true })).toThrow(
+			/"toString" 不是 config schema 的键/,
+		);
+	});
+
 	it("zod 的必填键没人填 → 拒,并说出是哪个键", () => {
 		expect(() => check([fields()[0] as ExtensionField])).toThrow(/bridgeKind/);
 	});

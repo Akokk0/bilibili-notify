@@ -121,13 +121,24 @@ function redactExtensionScopes(
 	for (const [id, state] of Object.entries(sections.globals?.extensions ?? {})) {
 		// 开关(`enabled`)不是设置,不许跟着抹。
 		if (!state || state.settings === undefined) continue;
-		state.settings = redactScoped(state.settings, extensionSecrets[id]);
+		state.settings = redactScoped(state.settings, secretsOf(extensionSecrets, id));
 	}
 	for (const connection of sections.connections ?? []) {
 		if (connection?.kind !== "extension") continue;
 		const id = typeof connection.extensionId === "string" ? connection.extensionId : "";
-		connection.config = redactScoped(connection.config, extensionSecrets[id]);
+		connection.config = redactScoped(connection.config, secretsOf(extensionSecrets, id));
 	}
+}
+
+/**
+ * 按 id 取它声明的密钥键 —— 只认表自己身上的。顺着原型链摸的话,`{}["toString"]` 是个长度 0
+ * 的函数,被当成「一格都没声明」,那个拓展的密钥原样进备份;`{}["constructor"]` 则让导出直接炸。
+ */
+function secretsOf(
+	extensionSecrets: ExtensionSecretCodes,
+	id: string,
+): readonly string[] | undefined {
+	return Object.hasOwn(extensionSecrets, id) ? extensionSecrets[id] : undefined;
 }
 
 function redactScoped(value: unknown, codes: readonly string[] | undefined): unknown {

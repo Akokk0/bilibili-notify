@@ -421,7 +421,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					`extension ${id}: 清单里没有 actions(v1 清单没有这一段),接不了动作 ${name}`,
 				);
 			}
-			if (!(name in declared)) {
+			// 只认清单自己身上的键 —— `in` 会顺着原型链把 `constructor` / `toString` 判成声明了。
+			if (!Object.hasOwn(declared, name)) {
 				throw new Error(`extension ${id}: 清单的 actions 里没有 ${name} —— 先在清单里声明`);
 			}
 			if (actionHandlers.has(name)) {
@@ -481,7 +482,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		secretConfigCodes: () => secretCodes,
 		async runAction(name, runOpts = {}) {
 			const declared = opts.manifest.apiVersion === 2 ? opts.manifest.actions : undefined;
-			if (!declared || !(name in declared)) return { ok: false, reason: "undeclared" };
+			// 同 onAction:查表只认自己身上的键。
+			if (!declared || !Object.hasOwn(declared, name)) return { ok: false, reason: "undeclared" };
 			const handler = actionHandlers.get(name);
 			if (!handler) return { ok: false, reason: "unhandled" };
 			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
