@@ -6,6 +6,7 @@ import type {
 	MarketplaceSourceDTO,
 } from "@bilibili-notify/contract";
 import {
+	apiVersionAccepted,
 	checkMarketplaceIndex,
 	EXTENSION_API_RANGE,
 	type ExtensionApiRange,
@@ -208,7 +209,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	const hostApiRange = deps.hostApiRange ?? EXTENSION_API_RANGE;
 	/** 这一档宿主装不装得了 —— 列表的状态与真去装那一刻用**同一把尺子**。 */
 	const fitsHost = (entry: MarketplaceEntry): boolean =>
-		entry.apiVersion >= hostApiRange.min && entry.apiVersion <= hostApiRange.current;
+		apiVersionAccepted(entry.apiVersion, hostApiRange);
 	const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const downloadTimeoutMs = deps.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
 	const maxIndexBytes = deps.maxIndexBytes ?? DEFAULT_MAX_INDEX_BYTES;

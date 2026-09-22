@@ -418,6 +418,20 @@ describe("交给面板的视图", () => {
 		);
 	});
 
+	/**
+	 * `items` 的键不合规矩时 zod 自己只说一句「Invalid key in record」,真正的原因在里层 ——
+	 * 与读清单同一套摊法,拓展作者才知道这个名字**为什么**不行。
+	 */
+	it("v2 items 的键不合规矩 —— 错误提示说得出里层原因", () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.publishStatus(() => ({ items: { "1bad": {} } }));
+		const shown = h.runtime.status() as { page: Array<{ text: unknown }> };
+		const text = JSON.stringify(shown.page[0]?.text);
+		expect(text).toContain("items.1bad");
+		expect(text).toContain("字母开头");
+		expect(text).not.toContain("Invalid key");
+	});
+
 	it("v1 —— 任意 JSON 原样下发(桥的页是手写的)", () => {
 		const h = harness();
 		const status = { sessions: [{ linkId: "a", connected: false }] };

@@ -197,5 +197,3 @@ export const ExtensionViewSchema = z
 			}
 		});
 	});
-
-export type ExtensionViewData = z.infer<typeof ExtensionViewSchema>;

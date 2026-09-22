@@ -16,6 +16,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	ActionNameSchema,
+	apiVersionAccepted,
 	EXTENSION_API_RANGE,
 	type ExtensionApiRange,
 	ExtensionIdSchema,
@@ -96,6 +97,19 @@ function incompatible(
 describe("parseExtensionManifest —— 两档格式", () => {
 	it("宿主这一版认 v1 到 v2", () => {
 		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 2 });
+	});
+
+	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
+		const range = { min: 2, current: 3 };
+		expect([1, 2, 3, 4].map((v) => apiVersionAccepted(v, range))).toEqual([
+			false,
+			true,
+			true,
+			false,
+		]);
+		// 不给区间就是宿主自己那一档。
+		expect(apiVersionAccepted(EXTENSION_API_RANGE.current + 1)).toBe(false);
+		expect(apiVersionAccepted(EXTENSION_API_RANGE.min)).toBe(true);
 	});
 
 	it("v1 最小清单 —— 光靠它就能把拓展列在面板上,不必先加载代码", () => {

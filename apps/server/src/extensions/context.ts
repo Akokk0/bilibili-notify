@@ -12,6 +12,7 @@ import {
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	ExtensionViewSchema,
+	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
@@ -455,9 +456,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const view: ExtensionView = parsed.data;
 			return view;
 		}
-		const detail = parsed.error.issues
-			.map((issue) => `${issue.path.join(".") || "(根)"}: ${issue.message}`)
-			.join(";");
+		const detail = formatZodIssues(parsed.error).join(";");
 		if (detail !== lastViewError) {
 			lastViewError = detail;
 			logger.warn(`交上来的视图不合规矩,这一份不画:${detail}`);

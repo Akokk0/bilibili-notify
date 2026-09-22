@@ -19,6 +19,14 @@ export interface ExtensionApiRange {
 }
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({ min: 1, current: 2 });
 
+/** 这一档落不落在区间里 —— 读清单与市场判「装得了吗」用的是同一把尺子。 */
+export function apiVersionAccepted(
+	apiVersion: number,
+	range: ExtensionApiRange = EXTENSION_API_RANGE,
+): boolean {
+	return apiVersion >= range.min && apiVersion <= range.current;
+}
+
 /**
  * 这个拓展开的是哪一口。
  *
@@ -440,7 +448,6 @@ const SubscriptionDisplaySchema = z.strictObject({
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 	postNoun: z.string().min(1).max(8).optional(),
 });
-export type ExtensionManifestDisplay = z.infer<typeof PushDisplaySchema>;
 
 /**
  * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到
@@ -545,10 +552,14 @@ export type ExtensionManifestRead =
 	/** 给别的契约档位写的。身份那几格照样读出来了,面板要印它是谁。 */
 	| { ok: false; reason: "incompatible"; identity: ExtensionIdentity; requires: number };
 
-function issuesOf(error: z.ZodError): string[] {
+/**
+ * zod 的错误摊成「路径: 原因」一条一条 —— 读清单与校验拓展交上来的视图共用这一套说法。
+ */
+export function formatZodIssues(error: z.ZodError): string[] {
 	return error.issues.map((issue) => {
-		// 键不合规矩(动作名)时 zod 只说一句「Invalid key in record」,真正的原因(正则 / 原型
-		// 上的名字)在里层 —— 摊出来,不然拓展作者只知道这个名字不行、不知道为什么。
+		// 键不合规矩(清单的动作名、视图里 items / set 的键)时 zod 只说一句「Invalid key in
+		// record」,真正的原因(正则 / 原型上的名字)在里层 —— 摊出来,不然拓展作者只知道这个
+		// 名字不行、不知道为什么。
 		const message =
 			issue.code === "invalid_key" && issue.issues.length > 0
 				? issue.issues.map((inner) => inner.message).join(";")
@@ -568,21 +579,24 @@ export function parseExtensionManifest(
 	range: ExtensionApiRange = EXTENSION_API_RANGE,
 ): ExtensionManifestRead {
 	const head = ApiVersionOnlySchema.safeParse(raw);
-	if (!head.success) return { ok: false, reason: "unreadable", issues: issuesOf(head.error) };
+	if (!head.success) {
+		return { ok: false, reason: "unreadable", issues: formatZodIssues(head.error) };
+	}
 	const requires = head.data.apiVersion;
 
-	const schema =
-		requires >= range.min && requires <= range.current ? MANIFEST_SCHEMAS[requires] : undefined;
+	const schema = apiVersionAccepted(requires, range) ? MANIFEST_SCHEMAS[requires] : undefined;
 	if (!schema) {
 		const identity = ExtensionIdentitySchema.safeParse(raw);
 		if (!identity.success) {
-			return { ok: false, reason: "unreadable", issues: issuesOf(identity.error) };
+			return { ok: false, reason: "unreadable", issues: formatZodIssues(identity.error) };
 		}
 		return { ok: false, reason: "incompatible", identity: identity.data, requires };
 	}
 
 	const parsed = schema.safeParse(raw);
-	if (!parsed.success) return { ok: false, reason: "unreadable", issues: issuesOf(parsed.error) };
+	if (!parsed.success) {
+		return { ok: false, reason: "unreadable", issues: formatZodIssues(parsed.error) };
+	}
 	return { ok: true, manifest: parsed.data };
 }
 
