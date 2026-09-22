@@ -1,4 +1,4 @@
-import type { ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ExtensionView } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../services/api";
 
@@ -28,4 +28,20 @@ export function useExtensionView(extensionId: string, enabled: boolean) {
 		retry: false,
 		enabled,
 	});
+}
+
+/**
+ * **只在「开着且跑着」时问状态**:关着的问了也是 404;没跑起来的(加载失败 / 自动停用 / 版本
+ * 不合)同理,而那两件事拓展表里的 `state` 已经说清楚了,用不着再拿一次 404 去猜。
+ */
+export function isRunning(ext: ExtensionDTO): boolean {
+	return ext.enabled && ext.state === "running";
+}
+
+/**
+ * 这一发失败是不是 404 —— 面板的 `ApiError` 带着状态码。跑着却 404 = **还没交过视图**
+ * (只有设置项的拓展一辈子都这样),不是出错。
+ */
+export function isNotFound(err: unknown): boolean {
+	return (err as { status?: unknown } | null)?.status === 404;
 }

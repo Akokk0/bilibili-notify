@@ -504,33 +504,49 @@ function FieldControl({
 		case "boolean":
 			return <Toggle ariaLabel={field.label} value={value === true} onChange={onChange} />;
 		case "enum":
-			if (field.options.some((option) => option.icon)) {
-				return (
-					// `<fieldset>` 而不是 `<div role="group">`:同一个语义,原生元素不用手写 role。
-					<fieldset aria-label={field.label} className="grid min-w-0 grid-cols-2 gap-2.5">
-						{field.options.map((option) => (
-							<OptionCard
-								key={option.value}
-								active={value === option.value}
-								label={option.label}
-								mark={option.value}
-								logo={safeImage(option.icon)}
-								onSelect={() => onChange(option.value)}
-							/>
-						))}
-					</fieldset>
-				);
-			}
-			return (
-				<fieldset aria-label={field.label} className="min-w-0">
-					<Picker
-						value={String(value)}
-						onChange={onChange}
-						options={field.options.map((option) => ({ value: option.value, label: option.label }))}
-					/>
-				</fieldset>
-			);
+			return <EnumControl field={field} value={String(value)} onChange={onChange} />;
 	}
+}
+
+/**
+ * 一格 `enum`(决策 30):选项带图标 → 两张一排的选项卡片(桥的「哪一种桥」),不带 → 分段按钮。
+ * 设置表单与列表的新建弹窗**共用这一份** —— 各画各的话,同一个清单在两处长成两种控件。
+ */
+export function EnumControl({
+	field,
+	value,
+	onChange,
+}: {
+	field: Extract<ExtensionScalarField, { type: "enum" }>;
+	value: string;
+	onChange: (value: string) => void;
+}) {
+	if (field.options.some((option) => option.icon)) {
+		return (
+			// `<fieldset>` 而不是 `<div role="group">`:同一个语义,原生元素不用手写 role。
+			<fieldset aria-label={field.label} className="grid min-w-0 grid-cols-2 gap-2.5">
+				{field.options.map((option) => (
+					<OptionCard
+						key={option.value}
+						active={value === option.value}
+						label={option.label}
+						mark={option.value}
+						logo={safeImage(option.icon)}
+						onSelect={() => onChange(option.value)}
+					/>
+				))}
+			</fieldset>
+		);
+	}
+	return (
+		<fieldset aria-label={field.label} className="min-w-0">
+			<Picker
+				value={value}
+				onChange={onChange}
+				options={field.options.map((option) => ({ value: option.value, label: option.label }))}
+			/>
+		</fieldset>
+	);
 }
 
 /**

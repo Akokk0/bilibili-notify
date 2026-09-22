@@ -16,7 +16,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { api } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { extensionAddress } from "./address";
@@ -48,6 +48,8 @@ export function Blocks({
 	extensionId,
 	legend = false,
 	onSet,
+	disabled = false,
+	ruleBeforeTables = false,
 }: {
 	blocks: readonly ExtensionBlock[];
 	extensionId: string;
@@ -58,14 +60,45 @@ export function Blocks({
 	legend?: boolean;
 	/** 接「改设置」的按钮。不给就不画那种按钮 —— 页级积木里本来就不许有。 */
 	onSet?: SetHandler;
+	/**
+	 * 摆放处有一发写回还在路上:积木里的按钮一律按不动。列表那一节是**整份写回**的 ——
+	 * 「改设置」的按钮在前一发没回来时再按,带的是旧名单,前一发的改动会被静默抹掉。
+	 */
+	disabled?: boolean;
+	/**
+	 * 每张表上面划一道发丝线 —— 列表项卡里,表是字段行底下另起的一段(今天桥卡上 token 行与
+	 * 「它驮着的 bot」之间就是这一道)。页级积木不要:头卡正文里各块本来就是并列的。
+	 */
+	ruleBeforeTables?: boolean;
 }) {
 	return (
 		<>
 			{blocks.map((block, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: 积木是拓展整份交来的一列,没有别的身份;整份换掉时下标跟着换,不会串
-				<Block key={i} block={block} extensionId={extensionId} legend={legend} onSet={onSet} />
+				<Fragment key={i}>
+					{ruleBeforeTables && block.type === "table" ? (
+						<div data-table-rule className="h-px bg-bn-border-subtle" />
+					) : null}
+					<Block
+						block={block}
+						extensionId={extensionId}
+						legend={legend}
+						onSet={onSet}
+						disabled={disabled}
+					/>
+				</Fragment>
 			))}
 		</>
+	);
+}
+
+/**
+ * 这几块积木里有没有带三态列的表 —— 有的话,列表那一节要在标题行挂一次图例(决策 27)。
+ * 它与表格自己挂图例用的是同一个判据,两处各写一份的话迟早对不上。
+ */
+export function hasTriStateTable(blocks: readonly ExtensionBlock[] | undefined): boolean {
+	return (blocks ?? []).some(
+		(block) => block.type === "table" && block.columns.some((column) => column.kind === "tristate"),
 	);
 }
 
@@ -74,11 +107,13 @@ function Block({
 	extensionId,
 	legend,
 	onSet,
+	disabled,
 }: {
 	block: ExtensionBlock;
 	extensionId: string;
 	legend: boolean;
 	onSet?: SetHandler;
+	disabled: boolean;
 }) {
 	switch (block.type) {
 		case "keyValue":
@@ -103,6 +138,7 @@ function Block({
 					button={block.button}
 					extensionId={extensionId}
 					onSet={onSet}
+					disabled={disabled}
 				/>
 			);
 		case "copy":
@@ -117,7 +153,9 @@ function Block({
 		case "qr":
 			return <QrBlock image={block.image} caption={block.caption} extensionId={extensionId} />;
 		case "button":
-			return <ButtonBlock button={block} extensionId={extensionId} onSet={onSet} />;
+			return (
+				<ButtonBlock button={block} extensionId={extensionId} onSet={onSet} disabled={disabled} />
+			);
 		default:
 			// 面板比服务端旧(应用内升级那几秒)时可能碰上没见过的积木 —— 不画,别整页白屏。
 			return null;
@@ -135,7 +173,7 @@ export const TONE_DOT: Record<ExtensionTone, StatusDotKind> = {
 };
 
 /** 语气 → 字色。与桥卡上那句状态同一套(已连接 / 对不上 / 没连上)。 */
-const TONE_TEXT: Record<ExtensionTone, string> = {
+export const TONE_TEXT: Record<ExtensionTone, string> = {
 	ok: "text-bn-success-text",
 	warn: "text-bn-warning-text",
 	error: "text-bn-danger-text",
@@ -349,14 +387,16 @@ function NoticeBlock({
 	button,
 	extensionId,
 	onSet,
+	disabled,
 }: {
 	tone: "info" | "warn" | "error";
 	text: ExtensionRichText;
 	button?: ExtensionButton;
 	extensionId: string;
 	onSet?: SetHandler;
+	disabled: boolean;
 }) {
-	const control = useButtonControl(button, extensionId, onSet);
+	const control = useButtonControl(button, extensionId, onSet, disabled);
 	const trailing = control.node ? (
 		<span className="shrink-0 self-center">{control.node}</span>
 	) : null;
@@ -485,12 +525,14 @@ function ButtonBlock({
 	button,
 	extensionId,
 	onSet,
+	disabled,
 }: {
 	button: ExtensionButton;
 	extensionId: string;
 	onSet?: SetHandler;
+	disabled: boolean;
 }) {
-	const control = useButtonControl(button, extensionId, onSet);
+	const control = useButtonControl(button, extensionId, onSet, disabled);
 	if (!control.node) return null;
 	return (
 		<div className="flex flex-col items-start gap-1.5">
@@ -500,22 +542,23 @@ function ButtonBlock({
 	);
 }
 
+/** 调拓展的那种按钮(决策 22)。 */
+export type ActionButton = Extract<ExtensionButton, { action: string }>;
+
 /**
- * 一颗按钮连同它「没成」时那句话。两种按钮(决策 22):
- * - **调拓展**:`POST /api/ext/:id/actions/:name`,只走 `/api/…`、吃面板会话鉴权(决策 23 那条红线
- *   在服务端守着)。成了就重读状态 —— 拓展多半会在动作里改自己的状态,等它喊 `statusChanged`
- *   也行,但主人按完那一下就该看见结果。
- * - **改设置**:交给列表那一层(它知道是哪一项);没人接就不画。
+ * 调拓展的那一发:`POST /api/ext/:id/actions/:name`,只走 `/api/…`、吃面板会话鉴权(决策 23 那条
+ * 红线在服务端守着)。成了就重读状态 —— 拓展多半会在动作里改自己的状态,等它喊
+ * `statusChanged` 也行,但主人按完那一下就该看见结果。
+ *
+ * 积木里的按钮与列表项卡头上的按钮**共用这一份**:两处各写一份的话,「回了 200 却说没成」
+ * 那条迟早只被记起一半。
  */
-function useButtonControl(
-	button: ExtensionButton | undefined,
-	extensionId: string,
-	onSet: SetHandler | undefined,
-): { node: ReactNode; error: ReactNode } {
+export function useExtensionAction(extensionId: string) {
 	const qc = useQueryClient();
-	const run = useMutation({
-		// 动作名走 variables,不从闭包里拿 —— 按的是哪一颗,由这一发自己带着。
-		mutationFn: async (name: string) => {
+	return useMutation({
+		// 按的是哪一颗走 variables,不从闭包里拿 —— 失败那句要说出**这一发**的名字。
+		mutationFn: async (button: ActionButton) => {
+			const name = button.action;
 			const answer = await api.post<{ ok?: boolean; err?: string } | undefined>(
 				`/api/ext/${extensionId}/actions/${encodeURIComponent(name)}`,
 			);
@@ -525,6 +568,34 @@ function useButtonControl(
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: extensionStatusKey(extensionId) }),
 	});
+}
+
+/**
+ * 那一发没成时那句话。
+ *
+ * 🔴 失败的原因不许吞:服务端那句原话(没声明 / 代码没接 / 超时 / 拓展自己抛的)是主人唯一能
+ * 照着做的线索,换成一句「操作失败」等于让人对着黑盒再按一下。
+ */
+export function ActionFailure({ label, error }: { label: string; error: unknown }) {
+	return (
+		<ErrorNote size="sm">
+			「{label}」没成:{reasonOf(error)}
+		</ErrorNote>
+	);
+}
+
+/**
+ * 一颗按钮连同它「没成」时那句话。两种按钮(决策 22):
+ * - **调拓展**:见 {@link useExtensionAction}。
+ * - **改设置**:交给列表那一层(它知道是哪一项);没人接就不画。
+ */
+function useButtonControl(
+	button: ExtensionButton | undefined,
+	extensionId: string,
+	onSet: SetHandler | undefined,
+	disabled: boolean,
+): { node: ReactNode; error: ReactNode } {
+	const run = useExtensionAction(extensionId);
 
 	if (!button) return { node: null, error: null };
 	if ("action" in button) {
@@ -533,25 +604,19 @@ function useButtonControl(
 				<Btn
 					variant="outline"
 					size="sm"
-					disabled={run.isPending}
-					onClick={() => run.mutate(button.action)}
+					disabled={disabled || run.isPending}
+					onClick={() => run.mutate(button)}
 				>
 					{button.label}
 				</Btn>
 			),
-			// 🔴 失败的原因不许吞:服务端那句原话(没声明 / 代码没接 / 超时 / 拓展自己抛的)是主人
-			// 唯一能照着做的线索,换成一句「操作失败」等于让人对着黑盒再按一下。
-			error: run.isError ? (
-				<ErrorNote size="sm">
-					「{button.label}」没成:{reasonOf(run.error)}
-				</ErrorNote>
-			) : null,
+			error: run.isError ? <ActionFailure label={button.label} error={run.error} /> : null,
 		};
 	}
 	if (!onSet) return { node: null, error: null };
 	return {
 		node: (
-			<Btn variant="outline" size="sm" onClick={() => onSet(button.set)}>
+			<Btn variant="outline" size="sm" disabled={disabled} onClick={() => onSet(button.set)}>
 				{button.label}
 			</Btn>
 		),

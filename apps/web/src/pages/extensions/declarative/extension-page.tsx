@@ -1,27 +1,23 @@
-import type { ExtensionDTO, ExtensionScalarField } from "@bilibili-notify/contract";
+import type {
+	ExtensionDTO,
+	ExtensionField,
+	ExtensionListField,
+	ExtensionScalarField,
+} from "@bilibili-notify/contract";
 import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify/ui";
 import { reasonOf } from "../shared";
 import { Blocks, TONE_DOT } from "./blocks";
+import { ListSection } from "./list-section";
 import { RichText } from "./rich-text";
 import { SettingsForm } from "./settings-form";
-import { useExtensionView } from "./view-query";
+import { isNotFound, isRunning, useExtensionView } from "./view-query";
 
 /**
- * v2 拓展那一页里「照声明画」的三块(ADR-0019 决策 19 / 25):头卡正文(页级积木)、「配置」
- * 页签(设置表单)、拓展列表上那一行(`summary`)。三块读的是**同一个**状态查询 —— 键相同,
- * react-query 只问一次,WS 那条失效也一次刷新三处。
- *
- * **只在「开着且跑着」时问状态**:关着的问了也是 404;没跑起来的(加载失败 / 自动停用 / 版本
- * 不合)同理,而那两件事拓展表里的 `state` 已经说清楚了,用不着再拿一次 404 去猜。
+ * v2 拓展那一页里「照声明画」的几块(ADR-0019 决策 19 / 25):头卡正文(页级积木)、「配置」
+ * 页签(设置表单 + 列表)、拓展列表上那一行(`summary`)。它们读的是**同一个**状态查询 ——
+ * 键相同,react-query 只问一次,WS 那条失效也一次刷新各处。什么时候问、404 算什么,见
+ * `view-query.ts`。
  */
-function isRunning(ext: ExtensionDTO): boolean {
-	return ext.enabled && ext.state === "running";
-}
-
-/** 这一发失败是不是 404 —— 面板的 `ApiError` 带着状态码。 */
-function isNotFound(err: unknown): boolean {
-	return (err as { status?: unknown } | null)?.status === 404;
-}
 
 /** 清单里声明的设置项(没在跑的也有,决策 17)。 */
 export function settingsFieldsOf(ext: ExtensionDTO) {
@@ -49,26 +45,54 @@ export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
 }
 
 /**
- * 「配置」页签的正文:一条说明拓展现在处境的提示 + 设置表单。
+ * 「配置」页签的正文:一条说明拓展现在处境的提示 + 设置表单与列表。
  *
- * 🔴 **关着也画表单、也能存**(决策 32):设置只是存着的数据,关着时改了什么都不会发生,
- * 打开时拓展才读 —— 「装好 → 填 → 启用」这个顺序靠它才走得通。今天桥「关着就压暗、不给
- * 按钮」那一档随之退役。
+ * 🔴 **关着也画表单与列表、也能存**(决策 32):设置只是存着的数据,关着时改了什么都不会
+ * 发生,打开时拓展才读 —— 「装好 → 填 → 启用」这个顺序靠它才走得通。今天桥「关着就压暗成
+ * 一行一条、不给按钮」那一档随之退役。
  */
 export function DeclarativeConfig({ ext }: { ext: ExtensionDTO }) {
-	const fields = settingsFieldsOf(ext);
-	const scalar = fields.filter((field): field is ExtensionScalarField => field.type !== "list");
 	return (
 		<>
 			<RunStateNote ext={ext} />
-			{scalar.length > 0 ? <SettingsForm extensionId={ext.id} fields={scalar} /> : null}
-			{/*
-			 * 列表设置项(`type: "list"`:每项一张卡、新建弹窗、删除 / 重新生成的确认、项上的视图与
-			 * 「停用 / 启用」,决策 21 / 26 / 29)接在这里 —— 施工第二步。它们不进上面那张表单:
-			 * 表单是「改完按保存」,列表是「每一下都当场写回」。
-			 */}
+			{configGroupsOf(settingsFieldsOf(ext)).map((group) =>
+				group.kind === "list" ? (
+					<ListSection key={`list:${group.field.key}`} ext={ext} field={group.field} />
+				) : (
+					<SettingsForm
+						key={`form:${group.fields[0]?.key}`}
+						extensionId={ext.id}
+						fields={group.fields}
+					/>
+				),
+			)}
 		</>
 	);
+}
+
+/**
+ * 「配置」页签照声明的**顺序**摆:挨着的单值格并进一张设置卡,每格列表自成一节。
+ *
+ * 列表不进那张表单:表单是「改完按保存」,列表是「每一下都当场写回」(新建 / 删除 / 停用各是
+ * 一发)—— 塞进同一张卡,主人分不清哪些改动还等着「保存」。顺序照清单,不把列表统一挪到最后:
+ * 拓展把哪一格写在前面,是它在说「先填这个」。
+ */
+type ConfigGroup =
+	| { kind: "form"; fields: ExtensionScalarField[] }
+	| { kind: "list"; field: ExtensionListField };
+
+function configGroupsOf(fields: readonly ExtensionField[]): ConfigGroup[] {
+	const groups: ConfigGroup[] = [];
+	for (const field of fields) {
+		if (field.type === "list") {
+			groups.push({ kind: "list", field });
+			continue;
+		}
+		const last = groups[groups.length - 1];
+		if (last?.kind === "form") last.fields.push(field);
+		else groups.push({ kind: "form", fields: [field] });
+	}
+	return groups;
 }
 
 /**
