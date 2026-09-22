@@ -619,6 +619,36 @@ describe("已装卡片上的「有新版」", () => {
 		);
 	});
 
+	/**
+	 * 🔴 「装不了 / 更新不了」说的是**失败的那一发**。第三方那条点下去只是弹确认框、还没发;取消
+	 * 之后,上一发更新砸了的那句话不许被改口成「装不了」—— 主人会去找一个他根本没点过的装。
+	 */
+	it("第三方确认框取消后,上一发失败的那句话不改口", async () => {
+		apiPostMock.mockRejectedValue(new Error("下不动"));
+		const installable = {
+			...THIRD_PARTY_ENTRY,
+			installed: undefined,
+			state: "installable" as const,
+		};
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...marketWith(installable),
+			extensions: [...UPDATABLE_MARKET.extensions, installable],
+		});
+		await screen.findAllByText("机器人框架桥接");
+		fireEvent.click(
+			await within(installedCardOf("机器人框架桥接")).findByRole("button", { name: /更新/ }),
+		);
+		expect(await screen.findByText(/更新不了:下不动/)).toBeTruthy();
+
+		fireEvent.click(within(await cardOf(THIRD_PARTY.name)).getByRole("button", { name: "安装" }));
+		fireEvent.click(
+			within(await screen.findByRole("dialog")).getByRole("button", { name: "取消" }),
+		);
+
+		expect(screen.getByText(/更新不了:下不动/)).toBeTruthy();
+		expect(screen.queryByText(/装不了/)).toBeNull();
+	});
+
 	it("市场那一节挂在页上;市场问不到时已装卡片照常、不出徽章", async () => {
 		renderPage();
 		expect(await screen.findByText("拓展市场")).toBeTruthy();

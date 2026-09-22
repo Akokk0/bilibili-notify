@@ -163,7 +163,8 @@ function Host() {
 	);
 }
 
-function renderSection(market: MarketplaceResponse = MARKET) {
+/** `strict`:照 `main.tsx` 那样套一层 StrictMode(effect 先拆一次再装回来)。 */
+function renderSection(market: MarketplaceResponse = MARKET, { strict = false } = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url.startsWith("/api/ext/marketplace")) return market;
 		if (url === "/api/globals") return GLOBALS;
@@ -172,12 +173,13 @@ function renderSection(market: MarketplaceResponse = MARKET) {
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
-	render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<Host />
 		</QueryClientProvider>,
+		{ reactStrictMode: strict },
 	);
-	return { invalidate };
+	return { ...view, invalidate };
 }
 
 async function cardOf(name: string): Promise<HTMLElement> {
@@ -288,6 +290,80 @@ describe("拓展市场", () => {
 				id: "alice.douyin",
 			}),
 		);
+	});
+
+	/**
+	 * 「页面还在」那个标记要经得起 StrictMode(`main.tsx` 就套着):它会把 effect 先拆一次再装
+	 * 回来,标记要是只在初值里给真,拆那一下就永远是假 —— 开发版里一段动画都不放,而且不报错。
+	 */
+	it("StrictMode 下装成了照样放传送", async () => {
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+		renderSection(MARKET, { strict: true });
+		await userEvent.click(
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
+		);
+
+		await waitFor(() => expect(played).toHaveLength(1));
+		unsubscribe();
+		expect(played[0]).toMatchObject({ kind: "install", id: "bridge" });
+	});
+
+	/** 起飞位置跟着**这一发**走:第三方那条隔着一道确认框,确认时带着的得是当初点的那张卡。 */
+	it("第三方条目确认装成 → 传送从当初点的那张卡起飞", async () => {
+		apiPostMock.mockImplementation(async (_url: string, input: { id: string }) => ({
+			id: input.id,
+			name: "抖音订阅",
+			version: "1.0.0",
+			staged: false,
+			restart: { can: true, how: "container" },
+		}));
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+		renderSection();
+		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "安装" }));
+		await userEvent.click(await screen.findByRole("button", { name: /照样装/ }));
+
+		await waitFor(() => expect(played).toHaveLength(1));
+		unsubscribe();
+		expect(played[0]).toMatchObject({ kind: "install", id: "alice.douyin" });
+		expect(played[0]?.from).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 装到一半切走:请求的回调挂在 mutation 上,页面拆了照样会跑。装成那一刻页面已经不在的话,
+	 * 放进那一格的传送没人演、也没人收,回到拓展页就从一个早就不在的起点再飞一遍。
+	 */
+	it("装到一半页面拆了 → 装成了也不往那一格里放动画", async () => {
+		let answer: (value: unknown) => void = () => {};
+		apiPostMock.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+		const { unmount, invalidate } = renderSection();
+		await userEvent.click(
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
+		);
+		await waitFor(() => expect(apiPostMock).toHaveBeenCalled());
+		const played: CardMotion[] = [];
+		const unsubscribe = useCardMotionStore.subscribe((state) => {
+			if (state.motion) played.push(state.motion);
+		});
+
+		unmount();
+		answer({
+			id: "bridge",
+			name: "机器人框架桥接",
+			version: "0.0.2",
+			staged: false,
+			restart: { can: true, how: "container" },
+		});
+
+		// 装成那一段回调确实跑过了(拓展表照样作废 —— 列表得是新的),只是不放动画。
+		await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] }));
+		unsubscribe();
+		expect(played).toEqual([]);
 	});
 
 	it("装不了 → 服务端那句原样摆出来", async () => {

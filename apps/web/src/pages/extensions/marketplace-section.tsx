@@ -26,7 +26,7 @@ import {
 	Spinner,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EXTENSIONS_QUERY_KEY, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { useCardMotionStore } from "./card-motion";
@@ -39,6 +39,15 @@ export function useMarketplace() {
 		queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace"),
 		retry: false,
 	});
+}
+
+/** 装 / 更新的这一发。请求本身只要 `source` + `id`;`kind` / `from` 是演动画与说失败那句话要的。 */
+interface InstallRequest {
+	source: string;
+	id: string;
+	kind: "install" | "update";
+	/** 起飞位置 —— 在**点下去那一刻**量:装成之后市场那张卡当场消失,那时再量就没得量了。 */
+	from?: DOMRect;
 }
 
 /**
@@ -54,79 +63,92 @@ export function useMarketplaceInstall() {
 	const qc = useQueryClient();
 	const [done, setDone] = useState<ExtensionInstallResponse | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
-	const [confirming, setConfirming] = useState<MarketplaceEntryDTO | null>(null);
+	/** 等着确认的那条第三方,连同点下去那一刻量的起飞位置 —— 确认时带着它们发。 */
+	const [confirming, setConfirming] = useState<{
+		entry: MarketplaceEntryDTO;
+		from?: DOMRect;
+	} | null>(null);
+	const play = useCardMotionStore((state) => state.play);
 	/*
-	 * 刚才那一下是**装**还是**更新**。两者落地的是同一发请求(所以同一个 mutation),
-	 * 但失败时要说的话不一样 —— 从市场装一个新的却被告知「更新不了」,主人会去找一个
-	 * 他根本没装过的旧版本。这一格只为那句话存在。
+	 * 页面还在不在。请求的回调挂在 mutation 上,页面拆了照样会跑:装成那一刻页面已经切走的话,
+	 * 放进那一格的传送没人演、也没人收,回到拓展页就从一个早就不在的起点再飞一遍。所以拆了就不往
+	 * 那一格里放东西。(在 effect 里置真而不是初值给真:StrictMode 会先拆一次再装回来。)
 	 */
-	const [action, setAction] = useState<"install" | "update">("install");
+	const mounted = useRef(false);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
 	/*
-	 * 起飞位置要在**点下去那一刻**量:装成之后市场那张卡当场消失(已装的不在市场里露面),
-	 * 那时再量就没得量了。放在 ref 里而不是 state:回调读的是按下那一刻记下的,不是回调闭包
-	 * 里那一帧的。
+	 * 演哪一段、从哪儿起飞,都跟着**这一发**走(`InstallRequest` 的 `kind` / `from`),不放在跨次
+	 * 共享的格子里 —— 第三方那条隔着一道确认框,共享的格子会被中间别的一下改掉或留下残渣。
 	 *
 	 * 两段动画开演的时机不一样:
 	 * - **传送(装)装成才演**:落点是装成之后才出现的那张卡,之前无处可落;失败不演。
 	 * - **换装(更新)请求一出门就演**:卡本来就在,下载那几秒正是「蓄」—— 等装完才开演的话,
-	 *   那几秒页面上只有一颗灰掉的钮。装成 / 没装成由 `settle` 落定,演的那头据此画勾或淡出。
+	 *   那几秒页面上只有一颗灰掉的钮。落定用的 `settle` 由 `onMutate` 交出来,装成 / 没装成时从
+	 *   那儿取,演的那头据此画勾或淡出。页面拆了再落定也无妨:那一段已随页面一起收掉,没人在等。
 	 */
-	const launch = useRef<{ kind: "install" | "update"; from?: DOMRect } | null>(null);
-	const settle = useRef<((landed: boolean) => void) | null>(null);
-	const play = useCardMotionStore((state) => state.play);
 	const install = useMutation({
-		mutationFn: (input: { source: string; id: string }) =>
-			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", input),
-		onMutate: ({ id }) => {
+		mutationFn: ({ source, id }: InstallRequest) =>
+			api.post<ExtensionInstallResponse>("/api/ext/marketplace/install", { source, id }),
+		onMutate: ({ id, kind, from }) => {
 			setErrors([]);
 			setDone(null);
-			const pending = launch.current;
-			if (pending?.kind !== "update") return;
-			launch.current = null;
+			if (kind !== "update" || !mounted.current) return undefined;
+			let settle: (landed: boolean) => void = () => {};
 			// 换装没有起点也演 —— 球从卡片上方落下。
 			const outcome = new Promise<boolean>((resolve) => {
-				settle.current = resolve;
+				settle = resolve;
 			});
-			play({ kind: "update", id, from: pending.from, outcome });
+			play({ kind: "update", id, from, outcome });
+			return { settle };
 		},
-		onSuccess: (res) => {
+		onSuccess: (res, { kind, from }, started) => {
 			setDone(res);
-			settle.current?.(true);
-			settle.current = null;
-			const pending = launch.current;
-			launch.current = null;
+			started?.settle(true);
 			// 装的传送非得有起点(从市场那张卡飞过来)。
-			if (pending?.kind === "install" && pending.from) {
-				play({ kind: "install", id: res.id, from: pending.from });
+			if (kind === "install" && from && mounted.current) {
+				play({ kind: "install", id: res.id, from });
 			}
 			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
-		onError: (err) => {
+		onError: (err, _request, started) => {
 			setErrors(errorsOf(err));
-			settle.current?.(false);
-			settle.current = null;
-			launch.current = null;
+			started?.settle(false);
 		},
 	});
+	const send = (entry: MarketplaceEntryDTO, from?: DOMRect) =>
+		install.mutate({
+			source: entry.source,
+			id: entry.id,
+			kind: entry.state === "updatable" ? "update" : "install",
+			from,
+		});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
-	const start = (entry: MarketplaceEntryDTO, fromRect?: DOMRect) => {
-		const kind = entry.state === "updatable" ? "update" : "install";
-		setAction(kind);
-		launch.current = { kind, ...(fromRect ? { from: fromRect } : {}) };
-		if (entry.official) install.mutate({ source: entry.source, id: entry.id });
-		else setConfirming(entry);
+	const start = (entry: MarketplaceEntryDTO, from?: DOMRect) => {
+		if (entry.official) send(entry, from);
+		else setConfirming({ entry, from });
 	};
 	return {
 		install,
 		done,
 		errors,
-		action,
+		/*
+		 * 刚才那一发是**装**还是**更新**。两者落地的是同一发请求(所以同一个 mutation),但失败时
+		 * 要说的话不一样 —— 从市场装一个新的却被告知「更新不了」,主人会去找一个他根本没装过的
+		 * 旧版本。取的是**发出去的那一发**:第三方那条点下去只是弹确认框,取消了也不该把上一发
+		 * 失败的那句话改口。
+		 */
+		action: install.variables?.kind ?? "install",
 		start,
-		confirming,
+		confirming: confirming?.entry ?? null,
 		confirm: () => {
 			if (!confirming) return;
-			install.mutate({ source: confirming.source, id: confirming.id });
+			send(confirming.entry, confirming.from);
 			setConfirming(null);
 		},
 		cancel: () => setConfirming(null),
