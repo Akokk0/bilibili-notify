@@ -4,10 +4,7 @@ import {
 	ConfirmDialog,
 	ErrorNote,
 	GlassBox,
-	HintNote,
-	Icon,
 	LoadingBlock,
-	MonoChip,
 	OptionCard,
 	Picker,
 	TArea,
@@ -15,14 +12,14 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type HTMLAttributes, type ReactNode, useState } from "react";
 import { api } from "../../../services/api";
 import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
 import { extensionSettingsOf, settingsIssuesOf } from "./list-items";
-import { CopyControl } from "./parts";
-import { maskSecret, newHexSecret } from "./secret";
+import { CopyControl, MissingSecretNote, RegenerateButton, SecretChip } from "./parts";
+import { newHexSecret } from "./secret";
 
 /**
  * 一个 v2 拓展的「设置」那张卡 —— 照清单里的设置项画(ADR-0019 决策 17 / 30),改完按「保存」
@@ -284,8 +281,10 @@ export function SettingsForm({
 				{pageError ? <ErrorNote size="sm">没存进去:{pageError}</ErrorNote> : null}
 				<div className="grid gap-4 md:grid-cols-2">
 					{fields.map((field) => (
-						<FieldRow
+						<FieldShell
 							key={field.key}
+							data-setting={field.key}
+							className={`min-w-0 ${isWide(field) ? "md:col-span-2" : ""}`}
 							field={field}
 							error={own(clientErrors, field.key) ?? own(issues?.byField, field.key)}
 						>
@@ -300,7 +299,7 @@ export function SettingsForm({
 								onCancelReplace={() => drop(field.key)}
 								onRegenerate={() => regenerate(field)}
 							/>
-						</FieldRow>
+						</FieldShell>
 					))}
 				</div>
 			</div>
@@ -357,18 +356,26 @@ function isWide(field: ExtensionScalarField): boolean {
 	return field.type === "enum" && field.options.some((option) => option.icon);
 }
 
-/** 一格的壳:标题(必填带星)+ 控件 + 它自己的错 + 说明。 */
-function FieldRow({
+/** 格下那一档小字:说明,以及生成的那一格刚换过时那句提醒。 */
+const FIELD_NOTE_CLS = "mt-[7px] text-bn-2xs leading-[1.7] text-bn-text-tertiary";
+
+/**
+ * 一格的壳:标题(必填带星)+ 控件 + 它自己的错 + 说明。设置表单与列表的新建弹窗**共用这一份**
+ * —— 各写一份时已经漂过:弹窗里的必填格没有星、说明的行距只有一边有。外面那一层(栅格占几列、
+ * 挂什么标记)走 `div` 的属性,由摆放处给。
+ */
+export function FieldShell({
 	field,
 	error,
 	children,
+	...box
 }: {
 	field: ExtensionScalarField;
-	error: string | undefined;
+	error?: string;
 	children: ReactNode;
-}) {
+} & Omit<HTMLAttributes<HTMLDivElement>, "children">) {
 	return (
-		<div data-setting={field.key} className={`min-w-0 ${isWide(field) ? "md:col-span-2" : ""}`}>
+		<div {...box}>
 			<div className="mb-1.5 flex items-center gap-1.5">
 				<span className="text-bn-xs font-bold text-bn-text-secondary">{field.label}</span>
 				{field.required ? (
@@ -383,11 +390,7 @@ function FieldRow({
 					{error}
 				</ErrorNote>
 			) : null}
-			{field.description ? (
-				<p className="mt-[7px] text-bn-2xs leading-[1.7] text-bn-text-tertiary">
-					{field.description}
-				</p>
-			) : null}
+			{field.description ? <p className={FIELD_NOTE_CLS}>{field.description}</p> : null}
 		</div>
 	);
 }
@@ -415,75 +418,78 @@ function FieldControl({
 	onCancelReplace: () => void;
 	onRegenerate: () => void;
 }) {
+	if (field.type === "string" && field.generate) {
+		return (
+			<GeneratedValue
+				label={field.label}
+				value={String(value)}
+				fresh={fresh}
+				onRegenerate={onRegenerate}
+			/>
+		);
+	}
+	if (field.type === "string" && field.secret) {
+		const hasSaved = typeof saved === "string" && saved !== "";
+		if (hasSaved && !replacing) {
+			return (
+				<div className="flex flex-wrap items-center gap-2.5">
+					<SecretChip value={saved} />
+					<Btn variant="outline" size="sm" onClick={onReplace}>
+						换一份
+					</Btn>
+				</div>
+			);
+		}
+		const input = <ScalarControl field={field} value={value} onChange={onChange} />;
+		return hasSaved ? (
+			<div className="flex items-start gap-2.5">
+				<div className="min-w-0 flex-1">{input}</div>
+				<Btn variant="ghost" size="sm" onClick={onCancelReplace}>
+					不换了
+				</Btn>
+			</div>
+		) : (
+			input
+		);
+	}
+	return <ScalarControl field={field} value={value} onChange={onChange} />;
+}
+
+/**
+ * 一格单值控件的通用那几种(字 / 数字 / 开关 / 枚举)。设置表单与列表的新建弹窗**共用这一份** ——
+ * 各画各的话,同一个清单在两处长成两种控件。生成的那种两处各有各的特化(表单里遮住 + 复制、弹窗
+ * 里明文 + 就地换一把),表单的密钥格存着值时先遮住、按「换一份」才给输入框 —— 那几样留在摆放处,
+ * 输入框本身还是这一件。
+ */
+export function ScalarControl({
+	field,
+	value,
+	onChange,
+}: {
+	field: ExtensionScalarField;
+	value: string | boolean;
+	onChange: (value: string | boolean) => void;
+}) {
+	const text = typeof value === "string" ? value : "";
 	switch (field.type) {
 		case "string":
-			if (field.generate) {
-				return (
-					<GeneratedValue
-						label={field.label}
-						value={String(value)}
-						fresh={fresh}
-						onRegenerate={onRegenerate}
-					/>
-				);
-			}
-			if (field.secret) {
-				const hasSaved = typeof saved === "string" && saved !== "";
-				if (hasSaved && !replacing) {
-					return (
-						<div className="flex flex-wrap items-center gap-2.5">
-							<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">
-								{maskSecret(saved)}
-							</MonoChip>
-							<Btn variant="outline" size="sm" onClick={onReplace}>
-								换一份
-							</Btn>
-						</div>
-					);
-				}
-				const input = field.multiline ? (
-					<TArea
-						ariaLabel={field.label}
-						value={String(value)}
-						onChange={onChange}
-						placeholder={field.placeholder}
-						mono
-					/>
-				) : (
-					<TInput
-						ariaLabel={field.label}
-						value={String(value)}
-						onChange={onChange}
-						placeholder={field.placeholder}
-						secret
-					/>
-				);
-				return hasSaved ? (
-					<div className="flex items-start gap-2.5">
-						<div className="min-w-0 flex-1">{input}</div>
-						<Btn variant="ghost" size="sm" onClick={onCancelReplace}>
-							不换了
-						</Btn>
-					</div>
-				) : (
-					input
-				);
-			}
+			// 密钥按密码框画(`secret` 自带等宽);多行的没有密码框这回事,只能等宽。
 			return field.multiline ? (
 				<TArea
 					ariaLabel={field.label}
-					value={String(value)}
+					value={text}
 					onChange={onChange}
 					placeholder={field.placeholder}
-					mono={field.monospace}
+					mono={field.monospace || field.secret}
 				/>
 			) : (
 				<TInput
 					ariaLabel={field.label}
-					value={String(value)}
+					value={text}
 					onChange={onChange}
 					placeholder={field.placeholder}
 					mono={field.monospace}
+					secret={field.secret}
 				/>
 			);
 		case "number":
@@ -497,7 +503,7 @@ function FieldControl({
 						type="number"
 						width={120}
 						ariaLabel={field.label}
-						value={String(value)}
+						value={text}
 						onChange={onChange}
 					/>
 					{field.unit ? (
@@ -508,15 +514,12 @@ function FieldControl({
 		case "boolean":
 			return <Toggle ariaLabel={field.label} value={value === true} onChange={onChange} />;
 		case "enum":
-			return <EnumControl field={field} value={String(value)} onChange={onChange} />;
+			return <EnumControl field={field} value={text} onChange={onChange} />;
 	}
 }
 
-/**
- * 一格 `enum`(决策 30):选项带图标 → 两张一排的选项卡片(桥的「哪一种桥」),不带 → 分段按钮。
- * 设置表单与列表的新建弹窗**共用这一份** —— 各画各的话,同一个清单在两处长成两种控件。
- */
-export function EnumControl({
+/** 一格 `enum`(决策 30):选项带图标 → 两张一排的选项卡片(桥的「哪一种桥」),不带 → 分段按钮。 */
+function EnumControl({
 	field,
 	value,
 	onChange,
@@ -568,44 +571,24 @@ function GeneratedValue({
 	fresh: boolean;
 	onRegenerate: () => void;
 }) {
-	const regenerate = (
-		<Btn
-			variant="danger-outline"
-			size="sm"
-			aria-label={`重新生成 ${label}`}
-			icon={<Icon.refresh size={13} />}
-			onClick={onRegenerate}
-		>
-			重新生成
-		</Btn>
-	);
-	/*
-	 * 🔴 空值是**脱敏备份恢复回来**的常态,不是稀罕情况。只说一句「生成一份」却不给那颗钮,
-	 * 等于请人做一件他在这一页上做不到的事(同桥 token 行那一条)。
-	 */
 	if (!value) {
 		return (
 			<div className="flex flex-wrap items-center gap-2.5">
-				<HintNote tone="danger" className="min-w-0 flex-1">
+				<MissingSecretNote label={label} onRegenerate={onRegenerate}>
 					还没有 {label} —— 脱敏备份恢复回来的就是这样,生成一份新的。
-				</HintNote>
-				{regenerate}
+				</MissingSecretNote>
 			</div>
 		);
 	}
 	return (
 		<>
 			<div className="flex flex-wrap items-center gap-2.5">
-				<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">
-					{fresh ? value : maskSecret(value)}
-				</MonoChip>
+				<SecretChip value={value} reveal={fresh} />
 				<CopyControl label={`复制 ${label}`} text={value} />
-				{regenerate}
+				<RegenerateButton label={label} onClick={onRegenerate} />
 			</div>
 			{fresh ? (
-				<p className="mt-[7px] text-bn-2xs leading-[1.7] text-bn-text-tertiary">
-					新生成的,还没保存 —— 存下之后只露头尾,要用就趁现在复制。
-				</p>
+				<p className={FIELD_NOTE_CLS}>新生成的,还没保存 —— 存下之后只露头尾,要用就趁现在复制。</p>
 			) : null}
 		</>
 	);

@@ -11,10 +11,8 @@ import {
 	EmptyNote,
 	ErrorNote,
 	GlassBox,
-	HintNote,
 	Icon,
 	KindMark,
-	MonoChip,
 	Pill,
 	StatusDot,
 } from "@bilibili-notify/ui";
@@ -50,9 +48,15 @@ import {
 	writeFailureOf,
 } from "./list-items";
 import { NewItemDialog } from "./list-new-item";
-import { CopyControl, TriStateLegend } from "./parts";
+import {
+	CopyControl,
+	MissingSecretNote,
+	RegenerateButton,
+	SecretChip,
+	TriStateLegend,
+} from "./parts";
 import { RichText } from "./rich-text";
-import { maskSecret, newHexSecret } from "./secret";
+import { newHexSecret } from "./secret";
 import { extensionStatusKey, isNotFound, isRunning, useExtensionView } from "./view-query";
 
 /**
@@ -579,29 +583,13 @@ function FieldRow({
 	if (sub.type === "string" && (sub.secret || sub.generate)) {
 		const raw = item[sub.key];
 		const value = typeof raw === "string" ? raw : "";
-		const regenerate = sub.generate ? (
-			<Btn
-				variant="danger-outline"
-				size="sm"
-				disabled={busy}
-				aria-label={`重新生成 ${title} 的 ${sub.label}`}
-				icon={<Icon.refresh size={13} />}
-				onClick={onRegenerate}
-			>
-				重新生成
-			</Btn>
-		) : null;
-		/*
-		 * 🔴 空值是**脱敏备份恢复回来**的常态(那条路把密钥抹掉了),不是稀罕情况。只说一句
-		 * 「生成一个」却不给那颗钮,等于请人做一件他在这一页上做不到的事。
-		 */
+		const which = `${title} 的 ${sub.label}`;
 		if (!value && sub.generate) {
 			return (
 				<div data-field-row={sub.key} className="flex flex-wrap items-center gap-2.5">
-					<HintNote tone="danger" className="min-w-0 flex-1">
+					<MissingSecretNote label={which} disabled={busy} onRegenerate={onRegenerate}>
 						这条{itemLabel}还没有 {sub.label} —— 脱敏备份恢复回来的就是这样,生成一个新的。
-					</HintNote>
-					{regenerate}
+					</MissingSecretNote>
 				</div>
 			);
 		}
@@ -613,16 +601,21 @@ function FieldRow({
 		 */
 		return (
 			<div data-field-row={sub.key} className="flex flex-wrap items-center gap-2.5">
-				<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">{sub.label}</span>
-				<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">
-					{maskSecret(value)}
-				</MonoChip>
-				<CopyControl label={`复制 ${title} 的 ${sub.label}`} text={value} />
-				{regenerate}
+				<RowLabel>{sub.label}</RowLabel>
+				<SecretChip value={value} />
+				<CopyControl label={`复制 ${which}`} text={value} />
+				{sub.generate ? (
+					<RegenerateButton label={which} disabled={busy} onClick={onRegenerate} />
+				) : null}
 			</div>
 		);
 	}
 	return <PlainRow sub={sub} text={plainValueOf(sub, item[sub.key])} />;
+}
+
+/** 字段行左边那格的名字 —— 窄窄一列,几行的值才对得齐。 */
+function RowLabel({ children }: { children: string }) {
+	return <span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">{children}</span>;
 }
 
 /** 别的格:名字 + 值,只读。 */
@@ -630,7 +623,7 @@ function PlainRow({ sub, text }: { sub: ExtensionScalarField; text: string }) {
 	const mono = sub.type === "string" && sub.monospace === true;
 	return (
 		<div data-field-row={sub.key} className="flex flex-wrap items-center gap-2.5">
-			<span className="w-9 shrink-0 text-bn-xs text-bn-text-tertiary">{sub.label}</span>
+			<RowLabel>{sub.label}</RowLabel>
 			<span
 				className={`min-w-0 flex-1 truncate text-bn-xs text-bn-text-secondary ${mono ? "font-mono" : ""}`}
 			>

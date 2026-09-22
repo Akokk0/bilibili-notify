@@ -7,16 +7,13 @@ import {
 	IconButton,
 	ModalShell,
 	MonoChip,
-	TArea,
-	TInput,
-	Toggle,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import { extensionAddress } from "./address";
 import { countWordOf, itemLabelOf, subFieldOf } from "./list-items";
 import { CopyControl } from "./parts";
 import { newHexSecret } from "./secret";
-import { EnumControl } from "./settings-form";
+import { FieldShell, ScalarControl } from "./settings-form";
 
 /**
  * 列表的新建弹窗(ADR-0019 决策 21 / 29 / 30)—— 照项里的格一格一个控件,**停用那一格不画**:
@@ -28,13 +25,6 @@ import { EnumControl } from "./settings-form";
 
 /** 一格草稿:字(数字格也存输入框里的字 —— 空着要表达得出来)或开关。 */
 type Draft = Record<string, string | boolean>;
-
-/** 表单里一格的标题 —— 设计稿的 `.label`。 */
-function FieldLabel({ children }: { children: string }) {
-	return (
-		<span className="mb-1.5 block text-bn-xs font-bold text-bn-text-secondary">{children}</span>
-	);
-}
 
 /**
  * 打开时每格的样子:清单的默认值;枚举没有默认值就选第一个(选项卡片总得有一张亮着);
@@ -131,17 +121,13 @@ export function NewItemDialog({
 		>
 			<div className="flex flex-col gap-3.5">
 				{fields.map((sub) => (
-					<div key={sub.key}>
-						<FieldLabel>{sub.label}</FieldLabel>
+					<FieldShell key={sub.key} field={sub}>
 						<DraftControl
 							sub={sub}
 							value={draft[sub.key]}
 							onChange={(value) => change(sub.key, value)}
 						/>
-						{sub.description ? (
-							<div className="mt-[7px] text-bn-2xs text-bn-text-tertiary">{sub.description}</div>
-						) : null}
-					</div>
+					</FieldShell>
 				))}
 
 				{/*
@@ -215,7 +201,7 @@ function copyRowsOf(
 	});
 }
 
-/** 一格的控件。 */
+/** 一格的控件。生成的那一格是弹窗自己的样子,别的格与设置表单同一件(`ScalarControl`)。 */
 function DraftControl({
 	sub,
 	value,
@@ -225,67 +211,27 @@ function DraftControl({
 	value: string | boolean | undefined;
 	onChange: (value: string | boolean) => void;
 }): ReactNode {
-	const text = typeof value === "string" ? value : "";
-	switch (sub.type) {
-		case "string":
-			/*
-			 * 生成的那一格**明文**摆着(决策 30「新建时明文显示一次」)—— 这是主人唯一一次看得到
-			 * 全文的时候,存下之后卡上只露头尾。只读:格式由 BN 定(32 位小写十六进制),要换就
-			 * 按旁边那颗。
-			 */
-			if (sub.generate) {
-				return (
-					<div className="flex items-center gap-2">
-						<span
-							data-generated={sub.key}
-							className="flex h-8 min-w-0 flex-1 items-center truncate rounded-md border border-bn-border bg-bn-surface-muted px-2.5 font-mono text-bn-xs text-bn-text-secondary"
-						>
-							{text}
-						</span>
-						<IconButton
-							label={`重新生成 ${sub.label}`}
-							icon={<Icon.refresh size={13} />}
-							size="sm"
-							onClick={() => onChange(newHexSecret())}
-						/>
-					</div>
-				);
-			}
-			return sub.multiline ? (
-				<TArea
-					ariaLabel={sub.label}
-					value={text}
-					onChange={onChange}
-					placeholder={sub.placeholder}
-					mono={sub.monospace || sub.secret}
+	/*
+	 * 生成的那一格**明文**摆着(决策 30「新建时明文显示一次」)—— 这是主人唯一一次看得到全文的
+	 * 时候,存下之后卡上只露头尾。只读:格式由 BN 定(32 位小写十六进制),要换就按旁边那颗。
+	 */
+	if (sub.type === "string" && sub.generate) {
+		return (
+			<div className="flex items-center gap-2">
+				<span
+					data-generated={sub.key}
+					className="flex h-8 min-w-0 flex-1 items-center truncate rounded-md border border-bn-border bg-bn-surface-muted px-2.5 font-mono text-bn-xs text-bn-text-secondary"
+				>
+					{typeof value === "string" ? value : ""}
+				</span>
+				<IconButton
+					label={`重新生成 ${sub.label}`}
+					icon={<Icon.refresh size={13} />}
+					size="sm"
+					onClick={() => onChange(newHexSecret())}
 				/>
-			) : (
-				<TInput
-					ariaLabel={sub.label}
-					value={text}
-					onChange={onChange}
-					placeholder={sub.placeholder}
-					mono={sub.monospace}
-					secret={sub.secret}
-					full
-				/>
-			);
-		case "number":
-			return (
-				<div className="flex items-center gap-2">
-					<TInput
-						type="number"
-						width={120}
-						ariaLabel={sub.label}
-						value={text}
-						onChange={onChange}
-					/>
-					{sub.unit ? <span className="text-bn-xs text-bn-text-tertiary">{sub.unit}</span> : null}
-				</div>
-			);
-		case "boolean":
-			return <Toggle ariaLabel={sub.label} value={value === true} onChange={onChange} />;
-		case "enum":
-			return <EnumControl field={sub} value={text} onChange={onChange} />;
+			</div>
+		);
 	}
+	return <ScalarControl field={sub} value={value ?? ""} onChange={onChange} />;
 }

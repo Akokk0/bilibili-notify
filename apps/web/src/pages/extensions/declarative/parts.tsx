@@ -1,13 +1,16 @@
 import {
 	Btn,
+	HintNote,
 	Icon,
 	IconButton,
+	MonoChip,
 	TRISTATE_TEXT,
 	type TriState,
 	TriStateMark,
 } from "@bilibili-notify/ui";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { copyToClipboard } from "../../../utils/clipboard";
+import { maskSecret } from "./secret";
 
 /**
  * 照声明画的那一页(ADR-0019 决策 19)上反复出现的那几件小东西 —— 积木、列表卡、设置表单、
@@ -16,7 +19,8 @@ import { copyToClipboard } from "../../../utils/clipboard";
  * 各抄一份的话,一处今天改一个圆角,别处明天就对不上了,而且哪边都不会报错。
  *
  * `KindMark` / `MonoChip` / `OptionCard` / `TriStateMark` / `TriStateChip` 零业务依赖,住在
- * `@bilibili-notify/ui`(清单见那个包的 README);`CopyControl` 走 web 的剪贴板,留在这儿。
+ * `@bilibili-notify/ui`(清单见那个包的 README);`CopyControl` 走 web 的剪贴板、密钥那几件走
+ * 这一页的遮法(`maskSecret`),留在这儿。
  */
 
 // ── 复制 ─────────────────────────────────────────────────────────────────────
@@ -59,6 +63,75 @@ export function CopyControl({
 		<Btn variant="ghost" size="sm" aria-label={label} icon={icon} onClick={copy}>
 			{copied ? "已复制" : "复制"}
 		</Btn>
+	);
+}
+
+// ── 密钥 ─────────────────────────────────────────────────────────────────────
+
+/**
+ * 密钥那一格的值:等宽小字胶囊,只露头尾。`reveal` 只给**刚生成、还没存**的那一把 —— 主人要把它
+ * 抄进对面去,只有那一刻明文。设置表单(遮住的密钥、生成的那一格)与列表卡的密钥行共用。
+ */
+export function SecretChip({ value, reveal = false }: { value: string; reveal?: boolean }) {
+	return (
+		<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">
+			{reveal ? value : maskSecret(value)}
+		</MonoChip>
+	);
+}
+
+/**
+ * 「重新生成」那一颗。红描边:存下之后旧的那一把就作废,正用着它的那一头会断开。`label` 是念给
+ * 读屏器的那一格(「家里那台 的 token」)—— 光一个「重新生成」,一屏好几颗时分不出是哪一格。
+ */
+export function RegenerateButton({
+	label,
+	disabled,
+	onClick,
+}: {
+	label: string;
+	disabled?: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<Btn
+			variant="danger-outline"
+			size="sm"
+			disabled={disabled}
+			aria-label={`重新生成 ${label}`}
+			icon={<Icon.refresh size={13} />}
+			onClick={onClick}
+		>
+			重新生成
+		</Btn>
+	);
+}
+
+/**
+ * 生成的那一格空着时:红字旁注说清怎么回事(`children`,各处的说法不同)+ 就地一颗「重新生成」。
+ * 外面那一排(flex 行、挂什么标记)归摆放处。
+ *
+ * 🔴 空值是**脱敏备份恢复回来**的常态(那条路把密钥抹掉了),不是稀罕情况。只说一句「生成一个」
+ * 却不给那颗钮,等于请人做一件他在这一页上做不到的事 —— 所以钮由这里出,不留给摆放处忘。
+ */
+export function MissingSecretNote({
+	children,
+	label,
+	disabled,
+	onRegenerate,
+}: {
+	children: ReactNode;
+	label: string;
+	disabled?: boolean;
+	onRegenerate: () => void;
+}) {
+	return (
+		<>
+			<HintNote tone="danger" className="min-w-0 flex-1">
+				{children}
+			</HintNote>
+			<RegenerateButton label={label} disabled={disabled} onClick={onRegenerate} />
+		</>
 	);
 }
 

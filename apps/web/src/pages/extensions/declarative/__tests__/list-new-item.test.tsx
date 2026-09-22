@@ -93,6 +93,15 @@ describe("照清单画", () => {
 		).toBe("比如「家里那台 koishi」");
 	});
 
+	/** 格标题与设置表单同一副样子:必填的后面一颗星(读屏器不念它,必填由「创建」按不动来说)。 */
+	it("必填的格标题带星,可选的不带", async () => {
+		const dialog = await openDialog();
+		const stars = within(dialog).getAllByText("*");
+		expect(stars).toHaveLength(1);
+		expect(stars[0]?.previousElementSibling?.textContent).toBe("名字");
+		expect(stars[0]?.getAttribute("aria-hidden")).toBe("true");
+	});
+
 	/** 带图标的枚举是两张一排的可选卡(决策 30);默认选中清单的默认值。 */
 	it("带图标的枚举:可选的卡,默认选中清单默认值,点别的换过去", async () => {
 		const dialog = await openDialog();
@@ -164,6 +173,36 @@ describe("照清单画", () => {
 		expect(item).toMatchObject({ mode: "fast", retry: 5, loud: true, memo: "默认备注" });
 		// 没填的可选格不写 —— 拓展那份 zod 按「没设过」补
 		expect("remark" in item).toBe(false);
+	});
+
+	/** 🔴 密钥格(不是生成的那种)按密码框画,全文不上屏;多行的是等宽的文本框。 */
+	it("密钥格:单行是密码框,多行是等宽的文本框;monospace 的字等宽", async () => {
+		const field: ExtensionListField = {
+			...LINKS_FIELD,
+			newItemCopy: undefined,
+			fields: [
+				...LINKS_FIELD.fields,
+				{ key: "secretKey", type: "string", label: "密", secret: true },
+				{ key: "secretBlock", type: "string", label: "密块", secret: true, multiline: true },
+				{ key: "memo", type: "string", label: "备注", monospace: true },
+			],
+		};
+		const dialog = await openDialog({ field });
+		const key = within(dialog).getByLabelText("密") as HTMLInputElement;
+		expect(key.type).toBe("password");
+		expect(key.className).toContain("font-mono");
+		const block = within(dialog).getByRole("textbox", { name: "密块" });
+		expect(block.tagName).toBe("TEXTAREA");
+		expect(block.className).toContain("font-mono");
+		expect(within(dialog).getByRole("textbox", { name: "备注" }).className).toContain("font-mono");
+		expect(within(dialog).getByRole("textbox", { name: "名字" }).className).not.toContain(
+			"font-mono",
+		);
+		await userEvent.type(key, "k1");
+		await userEvent.type(block, "b1");
+		await typeName(dialog, "家里那台");
+		await create(dialog);
+		expect(created()).toMatchObject({ secretKey: "k1", secretBlock: "b1" });
 	});
 });
 
