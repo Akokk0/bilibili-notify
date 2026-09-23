@@ -707,6 +707,26 @@ function isPresent(ext: ExtensionDTO): boolean {
 	return ext.state === "running";
 }
 
+/**
+ * 借来这条连接的拓展此刻不在场 —— 回它的名字;在场的、不是拓展连接的、拓展列表还没回来的都是
+ * `undefined`。
+ *
+ * 外观照清单画之后(ADR-0019 决策 41),停着的拓展借来的连接**看上去与好好的一模一样**,可平台
+ * 适配器已经随拓展撤了,推送走到它发不出去 —— 只在「配置」里挑 bot 那一节才看得出来的话,就是
+ * 「界面正常、推送不来」那一类最难查的。所以左栏与详情头当场说。
+ *
+ * 🔴 拓展列表没回来(还在读 / 读失败)时**不下结论**:那一刻什么都不知道,说「没在跑」是冤枉它。
+ */
+function absentExtensionOf(
+	connection: Connection,
+	extensions: readonly ExtensionDTO[] | undefined,
+): string | undefined {
+	if (connection.kind !== "extension" || extensions === undefined) return undefined;
+	const ext = extensions.find((one) => one.id === connection.extensionId);
+	if (ext && isPresent(ext)) return undefined;
+	return ext?.push?.display.label ?? ext?.name ?? connection.extensionId;
+}
+
 /** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的连接配置项翻。 */
 function editorFields(
 	connection: Connection,
@@ -1467,12 +1487,15 @@ function ConnectionRail({
 	onPick,
 	onAddClick,
 	targetCountByConnection,
+	absentOf,
 }: {
 	connections: Connection[];
 	selectedId: string | null;
 	onPick: (id: string) => void;
 	onAddClick: () => void;
 	targetCountByConnection: Map<string, number>;
+	/** 借来这条连接的拓展不在场时回它的名字,见 {@link absentExtensionOf}。 */
+	absentOf: (connection: Connection) => string | undefined;
 }) {
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
@@ -1508,8 +1531,12 @@ function ConnectionRail({
 					// (见 SectionNav 的 RAIL_ITEM_ACTIVE)。tertiary 这一档假设底是页面色,
 					// 皮肤把选中项画成实心块之后它就糊在上面了。弱化改由字号 + 字重扛,
 					// 和同一张卡上的副标题同一个办法。
+					// 停用的先说停用(主人自己拨的,也本来就发不出去);开着而借它的拓展不在场,说那一句 ——
+					// 副标题只有一行、会截断,整句放不下,详情头里说全。
 					badge: !a.enabled ? (
 						<span className="shrink-0 text-bn-2xs font-normal">(停用)</span>
+					) : absentOf(a) !== undefined ? (
+						<span className="shrink-0 text-bn-2xs font-normal">(拓展没在跑)</span>
 					) : undefined,
 				};
 			})}
@@ -1830,6 +1857,10 @@ export default function Targets() {
 		selectedConnection && isWebhookConnection(selectedConnection)
 			? selectedManagedWebhookTarget?.testStatus
 			: selectedConnection?.testStatus;
+	/** 拓展列表(`extensionsQuery`)没回来时是 `undefined` —— 那时不下「没在跑」的结论。 */
+	const absentOf = (connection: Connection) =>
+		absentExtensionOf(connection, extensionsQuery.data?.extensions);
+	const selectedAbsent = selectedConnection ? absentOf(selectedConnection) : undefined;
 
 	const isLoading = connectionsQuery.isLoading || targetsQuery.isLoading;
 
@@ -1847,6 +1878,7 @@ export default function Targets() {
 					onPick={setSelectedConnectionId}
 					onAddClick={startNewConnection}
 					targetCountByConnection={targetCountByConnection}
+					absentOf={absentOf}
 				/>
 
 				<div className="space-y-4">
@@ -1897,6 +1929,11 @@ export default function Targets() {
 											{platformLabel(face(selectedConnection))} ·{" "}
 											{connectionEndpointSummary(selectedConnection, platformLabel)}
 										</div>
+										{selectedAbsent !== undefined ? (
+											<div className="mt-0.5 text-bn-xs text-bn-text-tertiary">
+												{selectedAbsent}没在跑 —— 这条连接现在发不出去,先去拓展页把它开起来。
+											</div>
+										) : null}
 										{selectedConnectionTestStatus ? (
 											<EdgeBadge
 												tone={selectedConnectionTestStatus.ok ? "success" : "warning"}

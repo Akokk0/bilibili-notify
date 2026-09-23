@@ -53,9 +53,13 @@ const CONNECTION = {
 /** 桥的标识色经 jsdom 规范化之后的写法。 */
 const BRIDGE_TINT = "rgb(168, 85, 247)";
 
-function renderPage(opts: { extension?: unknown; connections?: unknown[] } = {}) {
+function renderPage(
+	opts: { extension?: unknown; connections?: unknown[]; extensionsPending?: boolean } = {},
+) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/ext") {
+			// 拓展列表迟迟不回:这时候什么都不知道,不许替它下「没在跑」的结论。
+			if (opts.extensionsPending) return new Promise(() => {});
 			return {
 				extensions: [opts.extension ?? STOPPED_BRIDGE],
 				restart: { can: true, how: "container" },
@@ -147,5 +151,32 @@ describe("停着时改一条它的连接", () => {
 		});
 		expect(within(dialog).getByText("连接参数")).toBeTruthy();
 		expect(within(dialog).getByText("房间")).toBeTruthy();
+	});
+});
+
+/**
+ * 外观照清单画之后,停着的拓展借来的连接**看上去与好好的一模一样** —— 可推送走到它时平台适配器
+ * 已经随拓展撤了,这条连接发不出去。只在「配置」里挑 bot 那一节才看得出来的话,就是「界面正常、
+ * 推送不来」那一类最难查的。所以左栏与详情头当场说。
+ */
+describe("拓展没在跑:这条连接发不出去", () => {
+	it("左栏那一格挂「(拓展没在跑)」,详情头说清这条连接现在发不出去", async () => {
+		renderPage();
+		// 左栏那一格 SectionNav 画两份(宽屏的栏与窄屏的下拉),同「(停用)」。
+		expect((await screen.findAllByText("(拓展没在跑)")).length).toBeGreaterThan(0);
+		expect(screen.getByText(/机器人框架桥接没在跑 —— 这条连接现在发不出去/)).toBeTruthy();
+	});
+
+	it("拓展跑着 → 两处都不说", async () => {
+		renderPage({ extension: { ...STOPPED_BRIDGE, enabled: true, state: "running" } });
+		expect(await screen.findByText(/桥接 · 0 个目标/)).toBeTruthy();
+		expect(screen.queryByText(/没在跑/)).toBeNull();
+	});
+
+	it("拓展列表还没回来 → 先不下「没在跑」的结论", async () => {
+		renderPage({ extensionsPending: true });
+		// 连接已经画出来了(左栏与详情头各一处名字),这时再看有没有「没在跑」—— 别在什么都没渲染时空跑。
+		expect((await screen.findAllByText("小电视")).length).toBeGreaterThan(0);
+		expect(screen.queryByText(/没在跑/)).toBeNull();
 	});
 });
