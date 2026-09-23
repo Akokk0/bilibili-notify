@@ -92,7 +92,7 @@ export interface LoadedExtensions {
 	 */
 	secretConfigCodes(): ReadonlyMap<string, readonly string[]>;
 	/**
-	 * 某个拓展交上来的面板数据(`ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
+	 * 某个拓展交上来的面板数据(v2 `ctx.publishView`、v1 `ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
 	 */
 	status(id: string): unknown;

@@ -33,14 +33,26 @@ function StatusProbe({ id }: { id: string }) {
 
 function renderBlocks(
 	blocks: readonly ExtensionBlock[],
-	opts: { id?: string; legend?: boolean; onSet?: (set: Record<string, unknown>) => void } = {},
+	opts: {
+		id?: string;
+		legend?: boolean;
+		onSet?: (set: Record<string, unknown>) => void;
+		/** 视图顶层的图片字典 —— 图标格与二维码按键引用(ADR-0019 决策 39)。 */
+		images?: Readonly<Record<string, string>>;
+	} = {},
 ) {
 	const id = opts.id ?? "douyin";
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const tree = (next: readonly ExtensionBlock[]) => (
 		<QueryClientProvider client={qc}>
 			<StatusProbe id={id} />
-			<Blocks blocks={next} extensionId={id} legend={opts.legend} onSet={opts.onSet} />
+			<Blocks
+				blocks={next}
+				extensionId={id}
+				images={opts.images}
+				legend={opts.legend}
+				onSet={opts.onSet}
+			/>
 		</QueryClientProvider>
 	);
 	const view = render(tree(blocks));
@@ -97,33 +109,53 @@ describe("table", () => {
 		],
 		rows: [
 			[
-				{ image: PNG, fallback: "qq" },
-				{ text: "小粉", sub: "onebot · 2854196310" },
-				"yes",
-				"no",
-				"unknown",
+				{ kind: "icon", image: "qq", fallback: "qq" },
+				{ kind: "text", text: "小粉", sub: "onebot · 2854196310" },
+				{ kind: "tristate", value: "yes" },
+				{ kind: "tristate", value: "no" },
+				{ kind: "tristate", value: "unknown" },
 			],
-			[{ fallback: "tg" }, "小电视", "unknown", "unknown", "yes"],
+			[
+				{ kind: "icon", fallback: "tg" },
+				{ kind: "text", text: "小电视" },
+				{ kind: "tristate", value: "unknown" },
+				{ kind: "tristate", value: "unknown" },
+				{ kind: "tristate", value: "yes" },
+			],
 		],
 	};
+	const IMAGES = { qq: PNG };
 
 	it("标题旁带行数", () => {
-		renderBlocks([BOTS]);
+		renderBlocks([BOTS], { images: IMAGES });
 		const title = screen.getByText("它驮着的 bot");
 		expect(title.parentElement?.textContent).toBe("它驮着的 bot2");
 	});
 
-	/** icon 格只有两级(决策 31):拓展给的图 → 两个字母。BN 不拿自己的平台表去补。 */
-	it("icon 格:有图画图,没图印两个字母", () => {
-		const { container } = renderBlocks([BOTS]);
+	/**
+	 * icon 格只有两级(决策 31):拓展给的图 → 两个字母。BN 不拿自己的平台表去补。图在视图顶层的
+	 * 字典里,格子按键引用(决策 39)。
+	 */
+	it("icon 格:有图画图(按键从字典里取),没图印两个字母", () => {
+		const { container } = renderBlocks([BOTS], { images: IMAGES });
 		const imgs = container.querySelectorAll("img");
 		expect(imgs).toHaveLength(1);
 		expect(imgs[0]?.getAttribute("src")).toBe(PNG);
 		expect(screen.getByText("tg")).toBeTruthy();
 	});
 
-	it("文字格两行:名字 + 等宽小字,定宽", () => {
+	/** 宿主核过「引用的都在字典里」;面板比服务端旧的那几秒可能对不上 —— 退回两个字母,不画空图。 */
+	it("icon 格:键在字典里找不到(或那张不是图片 data URL)—— 印两个字母", () => {
+		const { container } = renderBlocks([BOTS], { images: { qq: "https://evil.example/q.png" } });
+		expect(container.querySelector("img")).toBeNull();
+		expect(screen.getByText("qq")).toBeTruthy();
+		cleanup();
 		renderBlocks([BOTS]);
+		expect(document.querySelector("img")).toBeNull();
+	});
+
+	it("文字格两行:名字 + 等宽小字,定宽", () => {
+		renderBlocks([BOTS], { images: IMAGES });
 		const name = screen.getByText("小粉");
 		const cell = name.parentElement as HTMLElement;
 		expect(cell.textContent).toBe("小粉onebot · 2854196310");
@@ -137,7 +169,7 @@ describe("table", () => {
 	 * 字面说明挂在 title 上,读屏器与悬停都够得着。
 	 */
 	it("三态格:支持 / 不支持 / 还不知道分开说", () => {
-		renderBlocks([BOTS]);
+		renderBlocks([BOTS], { images: IMAGES });
 		expect(screen.getAllByTitle("@全体:支持")).toHaveLength(1);
 		expect(screen.getAllByTitle("合并转发:不支持")).toHaveLength(1);
 		expect(screen.getAllByTitle("markdown:还不知道")).toHaveLength(1);
@@ -158,7 +190,7 @@ describe("table", () => {
 
 	it("没有三态列的表不挂图例", () => {
 		renderBlocks(
-			[{ type: "table", columns: [{ kind: "mono" }], rows: [["abc"]] } as ExtensionBlock],
+			[{ type: "table", columns: [{ kind: "mono" }], rows: [[{ kind: "mono", text: "abc" }]] }],
 			{ legend: true },
 		);
 		expect(screen.queryByRole("list", { name: "图例" })).toBeNull();
@@ -202,7 +234,7 @@ describe("notice", () => {
 				type: "notice",
 				tone: "warn",
 				text: "cookie 快过期了。",
-				button: { label: "现在检查一次", action: "poll.now" },
+				button: { kind: "action", label: "现在检查一次", action: "poll.now" },
 			},
 		]);
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
@@ -261,17 +293,19 @@ describe("copy", () => {
 });
 
 describe("qr", () => {
-	it("画拓展交来的那张图,下面一行说明", () => {
-		renderBlocks([{ type: "qr", image: PNG, caption: "用抖音 App 扫码" }]);
+	it("画拓展交来的那张图(按键从字典里取),下面一行说明", () => {
+		renderBlocks([{ type: "qr", image: "login", caption: "用抖音 App 扫码" }], {
+			images: { login: PNG },
+		});
 		expect(screen.getByRole("img", { name: "二维码" }).getAttribute("src")).toBe(PNG);
 		expect(screen.getByText("用抖音 App 扫码")).toBeTruthy();
 	});
 
 	/** 🔴 图只收 data URL:一个 http 地址当 `<img src>` 画,面板一开就去对家点名。 */
 	it("不是图片 data URL 的不画", () => {
-		const { container } = renderBlocks([
-			{ type: "qr", image: "https://evil.example/track.png", caption: "扫我" },
-		]);
+		const { container } = renderBlocks([{ type: "qr", image: "login", caption: "扫我" }], {
+			images: { login: "https://evil.example/track.png" },
+		});
 		expect(container.querySelector("img")).toBeNull();
 	});
 });
@@ -279,7 +313,9 @@ describe("qr", () => {
 describe("button", () => {
 	it("调拓展:按下去 POST 那个动作,成了就重读状态", async () => {
 		vi.mocked(api.post).mockResolvedValue({ ok: true });
-		renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
 		await waitFor(() => expect(statusReads()).toBe(1));
 
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
@@ -299,7 +335,9 @@ describe("button", () => {
 		"cookie 已经失效,重新粘一份",
 	])("失败时把服务端那句原话摆出来:%s", async (reason) => {
 		vi.mocked(api.post).mockRejectedValue(new Error(reason));
-		renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
 		expect((await screen.findByRole("alert")).textContent).toContain(reason);
 	});
@@ -309,7 +347,9 @@ describe("button", () => {
 	 * (窗口聚焦、上一帧 bot 快照)—— 并过去就拿着动作之前的样子,要等下一次变化才更新。
 	 */
 	it("调拓展:状态已经在重读时,成了照旧再读一次", async () => {
-		const { qc } = renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
+		const { qc } = renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
 		await waitFor(() => expect(statusReads()).toBe(1));
 		const pending: Array<() => void> = [];
 		vi.mocked(api.get).mockImplementation(
@@ -335,13 +375,13 @@ describe("button", () => {
 			type: "notice",
 			tone: "warn",
 			text: "作品列表 2 小时没更新了。",
-			button: { label, action: "sync.now" },
+			button: { kind: "action", label, action: "sync.now" },
 		});
 		const update: ExtensionBlock = {
 			type: "notice",
 			tone: "warn",
 			text: "有新版本可以换上。",
-			button: { label: "看看新版", action: "update.check" },
+			button: { kind: "action", label: "看看新版", action: "update.check" },
 		};
 		const view = renderBlocks([sync("立即同步"), update]);
 		fireEvent.click(screen.getByRole("button", { name: "立即同步" }));
@@ -362,22 +402,37 @@ describe("button", () => {
 
 	it("回话说没成(ok: false)也算失败", async () => {
 		vi.mocked(api.post).mockResolvedValue({ ok: false, err: "拓展 douyin 没在跑" });
-		renderBlocks([{ type: "button", label: "现在检查一次", action: "poll.now" }]);
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
 		expect((await screen.findByRole("alert")).textContent).toContain("拓展 douyin 没在跑");
 	});
 
 	/** 「改设置」的按钮只挂在列表项上(决策 22),由列表那一层接;没人接就不画。 */
 	it("改设置的按钮:没人接就不画", () => {
-		renderBlocks([{ type: "button", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }]);
+		renderBlocks([
+			{
+				type: "button",
+				button: { kind: "set", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } },
+			},
+		]);
 		expect(screen.queryByRole("button", { name: "改成 AstrBot" })).toBeNull();
 	});
 
 	it("改设置的按钮:有人接就把那一格交出去", () => {
 		const onSet = vi.fn();
-		renderBlocks([{ type: "button", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }], {
-			onSet,
-		});
+		renderBlocks(
+			[
+				{
+					type: "button",
+					button: { kind: "set", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } },
+				},
+			],
+			{
+				onSet,
+			},
+		);
 		fireEvent.click(screen.getByRole("button", { name: "改成 AstrBot" }));
 		expect(onSet).toHaveBeenCalledWith({ bridgeKind: "astrbot" });
 		expect(api.post).not.toHaveBeenCalled();

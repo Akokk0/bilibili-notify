@@ -73,6 +73,7 @@ export type {
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionView,
+	ExtensionViewSummary,
 } from "./wire";
 
 import type { IncomingMessage } from "node:http";
@@ -271,16 +272,27 @@ export interface ExtensionContext {
 	 */
 	onUpgrade(handler: ExtensionUpgradeHandler): void;
 	/**
-	 * 交给面板看的东西。宿主在 `/api/ext/<id>/status` 下发 —— 走 `/api/*` 才吃得到 dashboard
-	 * 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。**现取**,不缓存。
+	 * 交给面板看的「视图」(ADR-0019 决策 20 / 39)—— **v2 专用**。宿主在 `/api/ext/<id>/status`
+	 * 下发:走 `/api/*` 才吃得到 dashboard 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。
+	 * **现取**,不缓存:面板每问一次,宿主叫一次这个回调。
 	 *
-	 * v2 拓展交的是 {@link ExtensionView}(一组封闭的积木,ADR-0019 决策 20):宿主先校验,不合
-	 * 规矩的不画,换成一条说清哪里不对的错误提示。v1 交任意 JSON,原样下发(只剩桥,它的页是
-	 * 手写的)。
+	 * 🔴 回调要**同步**交回视图。交回 Promise(`async` 回调就是这样)宿主当场报错 —— 那一口画成
+	 * 一条「publishView 的回调要同步交回视图」的提示,不会静默变成一份空视图;要等的东西自己先算好
+	 * 存着,变了喊一声 {@link statusChanged}。
+	 *
+	 * 宿主先校验再画,不合规矩的**按块 / 按项**降级(决策 40):页上坏一块只换掉那一块,列表坏一项
+	 * 那张卡写「状态未知」,摘要坏了就不画 —— 每一处都点名哪儿、为什么,日志里也记一行。
+	 */
+	publishView(fn: () => ExtensionView): void;
+	/**
+	 * **v1 的老口**:交任意 JSON,宿主原样下发(v1 的页是手写的,形状归它自己)。
+	 *
+	 * ⛔ v2 拓展叫它,宿主不受理(记一行日志)—— 它对 `async` 回调会静默交出一份空视图,v2 走
+	 * {@link publishView}。
 	 */
 	publishStatus(fn: () => unknown): void;
 	/**
-	 * 交上去的那份数据**变了**,喊一声。`publishStatus` 是现取的,盲点在「什么时候该再取」:
+	 * 交上去的那份数据**变了**,喊一声。`publishView` / `publishStatus` 是现取的,盲点在「什么时候该再取」:
 	 * 桥那头刚握完手,面板上那张卡还灰着,得切一下页才刷新。宿主把这一声推到面板(WS
 	 * `state` 频道),面板当场重取 `/api/ext/<id>/status` 与 bot 名单。什么算「变了」由
 	 * 拓展自己定 —— 桥:一条接入连上 / 断开。

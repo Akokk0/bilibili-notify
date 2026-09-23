@@ -17,6 +17,7 @@ import type {
 	ExtensionDTO,
 	ExtensionField,
 	ExtensionListField,
+	ExtensionPanelView,
 	ExtensionSettingsConflict,
 	ExtensionSettingsOp,
 	ExtensionSettingsPatch,
@@ -118,6 +119,28 @@ export const OFFICE = {
 	enabled: true,
 };
 
+/**
+ * 拓展交的视图**全都合规矩**时,宿主交给面板的样子:页上每块包成 `{ block }`、每项包成 `{ view }`
+ * (ADR-0019 决策 40 —— 不合规矩的那几处宿主换成 `{ fault }`,要那种的用例直接写)。
+ */
+export function shown(view: ExtensionView): ExtensionPanelView {
+	return {
+		...(view.summary ? { summary: view.summary } : {}),
+		...(view.page ? { page: view.page.map((block) => ({ block })) } : {}),
+		...(view.items
+			? {
+					items: Object.fromEntries(
+						Object.entries(view.items).map(([list, byId]) => [
+							list,
+							Object.fromEntries(Object.entries(byId).map(([id, item]) => [id, { view: item }])),
+						]),
+					),
+				}
+			: {}),
+		...(view.images ? { images: view.images } : {}),
+	};
+}
+
 /** 状态那一口的 404:拓展跑着、但还没交过视图。 */
 export class NotFound extends Error {
 	readonly status = 404;
@@ -133,8 +156,11 @@ export interface ListSetup {
 	items?: unknown[] | null | "pending";
 	/** 设置里别的格(列表之外)。 */
 	extraSettings?: Record<string, unknown>;
-	/** 状态那一口:一份视图,或一个错。不给 = 404(跑着但没交过视图)。 */
-	view?: ExtensionView | Error;
+	/**
+	 * 状态那一口:宿主核过的一份视图(拓展交的全都合规矩时用 {@link shown} 包一下),或一个错。
+	 * 不给 = 404(跑着但没交过视图)。
+	 */
+	view?: ExtensionPanelView | Error;
 }
 
 /**

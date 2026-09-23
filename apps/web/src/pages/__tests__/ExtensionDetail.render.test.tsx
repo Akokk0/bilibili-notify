@@ -8,14 +8,14 @@
  * 那几件主人一眼就要看到的事 —— 从路由进来、经头卡与「配置」页签,一路画到接入卡上。
  */
 
-import type { ExtensionsResponse, ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import ExtensionDetail from "../ExtensionDetail";
 // 迁到 v2 的桥长什么样只有一份 —— 清单那一格列表各处抄一份的话,迟早各漂各的。
-import { BRIDGE } from "../extensions/declarative/__tests__/list-harness";
+import { BRIDGE, shown } from "../extensions/declarative/__tests__/list-harness";
 
 const { apiGetMock, apiPatchMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
@@ -55,8 +55,11 @@ const GLOBALS = {
 	},
 };
 
-/** 桥交来的视图 —— 照 `extensions/bridge/src/view.ts` 算出来的形状写:一条连着、一条没连上。 */
-const VIEW: ExtensionView = {
+/**
+ * 桥交来的视图 —— 照 `extensions/bridge/src/view.ts` 算出来的形状写:一条连着、一条没连上。
+ * 全都合规矩,宿主核过之后原样包好交给面板(`shown`)。
+ */
+const VIEW = shown({
 	summary: { tone: "ok", text: [{ b: "1" }, " 个 bot 在线"] },
 	page: [
 		{
@@ -97,7 +100,13 @@ const VIEW: ExtensionView = {
 							{ kind: "tristate", label: "合并转发" },
 						],
 						rows: [
-							[{ fallback: "te" }, { text: "小电视", sub: "telegram" }, "yes", "no", "unknown"],
+							[
+								{ kind: "icon", fallback: "te" },
+								{ kind: "text", text: "小电视", sub: "telegram" },
+								{ kind: "tristate", value: "yes" },
+								{ kind: "tristate", value: "no" },
+								{ kind: "tristate", value: "unknown" },
+							],
 						],
 					},
 				],
@@ -109,7 +118,7 @@ const VIEW: ExtensionView = {
 			},
 		},
 	},
-};
+});
 
 function renderDetail(id = "bridge") {
 	apiGetMock.mockImplementation(async (url: string) => {

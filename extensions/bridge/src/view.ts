@@ -51,8 +51,8 @@ const KIND_LABELS: Readonly<Record<string, string>> = { koishi: "koishi", astrbo
  * `@bilibili-notify/extension` 进 BN 的东西,够不到那份 schema,只能抄数;那头调了要跟着改。
  *
  * 🔴 对端报什么这里就画什么(bot 名、账号、平台、会话名 / 版本、来源地址、bot 个数),而
- * 视图一格超限,宿主就把**整份视图**换成一条错误提示 —— 一个对端报一个超长名字,所有接入的
- * 状态、bot 表、列表页那句「N 个 bot 在线」一起没了。所以对端报来的一律在这里截。
+ * 视图一格超限,宿主就把**那一项**换成一条错误提示(ADR-0019 决策 40 按项降级)—— 一个对端报
+ * 一个超长名字,那条接入的卡就成了「状态未知」、bot 表整张没了。所以对端报来的一律在这里截。
  */
 const VIEW_LIMITS = {
 	/** 表格 text 列的字与第二行。 */
@@ -78,14 +78,54 @@ function joined(parts: readonly (ExtensionRichRun | undefined)[]): ExtensionRich
 	return present.flatMap((part, i) => (i === 0 ? [part] : [" · ", part]));
 }
 
-/** bot 那一行的方块:插件报的图标 → 桥自己带的平台小表 → 平台名头两个字(决策 31)。 */
-function iconCell(platform: string, icon: string | undefined): ExtensionTableCell {
-	const image = icon ?? platformIcon(platform);
-	const fallback = platform.slice(0, 2) || "?";
-	return image === undefined ? { fallback } : { image, fallback };
+/**
+ * 这一份视图里的图(ADR-0019 决策 39):进顶层的 `images` 字典,格子按键引用,**同一张只放一份**
+ * —— 按内容认,所以同一平台的几个 bot(桥自带的那枚、插件给几个 bot 报的同一枚)、两条接入之间
+ * 都共用一个键。每行内联一份 base64 时,两百个 bot 的视图八百多 KB,每喊一次 `statusChanged()`
+ * 面板就整份重拉一次。
+ *
+ * 键是桥自己编的序号,不拿平台名当键:平台名是对端报的开放字符串,`__proto__` 这种当字典的键
+ * 是给面板下套。
+ */
+function imageShelf() {
+	const keyOfImage = new Map<string, string>();
+	return {
+		keyOf(image: string): string {
+			let key = keyOfImage.get(image);
+			if (key === undefined) {
+				key = `icon-${keyOfImage.size + 1}`;
+				keyOfImage.set(image, key);
+			}
+			return key;
+		},
+		/** 一张都没有就是 `undefined` —— 视图里干脆不带这一格。 */
+		images(): Record<string, string> | undefined {
+			if (keyOfImage.size === 0) return undefined;
+			return Object.fromEntries([...keyOfImage].map(([image, key]) => [key, image]));
+		},
+	};
 }
 
-function connectedItem(link: BridgeLink, session: BridgeSession): ExtensionItemView {
+type ImageShelf = ReturnType<typeof imageShelf>;
+
+/** bot 那一行的方块:插件报的图标 → 桥自己带的平台小表 → 平台名头两个字(决策 31)。 */
+function iconCell(
+	platform: string,
+	icon: string | undefined,
+	shelf: ImageShelf,
+): ExtensionTableCell {
+	const image = icon ?? platformIcon(platform);
+	const fallback = platform.slice(0, 2) || "?";
+	return image === undefined
+		? { kind: "icon", fallback }
+		: { kind: "icon", image: shelf.keyOf(image), fallback };
+}
+
+function connectedItem(
+	link: BridgeLink,
+	session: BridgeSession,
+	shelf: ImageShelf,
+): ExtensionItemView {
 	// 方块与药丸印**配置里那一种**,不是桥自报的那一种:两者对不上正是要看见的事
 	// (token 填到另一头的插件里去了),而把自报的印出来会把那个错悄悄抹平。
 	const mismatched = session.kind !== link.bridgeKind;
@@ -109,6 +149,7 @@ function connectedItem(link: BridgeLink, session: BridgeSession): ExtensionItemV
 		buttons: mismatched
 			? [
 					{
+						kind: "set",
 						label: `改成 ${KIND_LABELS[session.kind] ?? session.kind}`,
 						set: { bridgeKind: session.kind },
 					},
@@ -142,15 +183,21 @@ function connectedItem(link: BridgeLink, session: BridgeSession): ExtensionItemV
 					})),
 				],
 				rows: listed.map((bot) => [
-					iconCell(bot.platform, bot.icon),
+					iconCell(bot.platform, bot.icon, shelf),
 					{
+						kind: "text",
 						text: clip(bot.name ?? bot.botId, VIEW_LIMITS.tableText),
 						sub: clip(
 							[bot.platform, bot.selfId].filter(Boolean).join(" · "),
 							VIEW_LIMITS.tableText,
 						),
 					},
-					...BRIDGE_CAPABILITIES.map((capability) => TRISTATE[bot.capabilities[capability]]),
+					...BRIDGE_CAPABILITIES.map(
+						(capability): ExtensionTableCell => ({
+							kind: "tristate",
+							value: TRISTATE[bot.capabilities[capability]],
+						}),
+					),
 				]),
 			},
 			...(unlisted > 0
@@ -209,17 +256,19 @@ export function bridgeView(
 	sessionOf: (linkId: string) => BridgeSession | undefined,
 ): ExtensionView {
 	let online = 0;
+	const shelf = imageShelf();
 	const items: Record<string, ExtensionItemView> = {};
 	for (const link of links) {
 		const session = sessionOf(link.id);
 		if (session) online += session.bots.length;
 		// 停用了但会话还没断干净的那一瞬,照连着的画 —— 状态由 BN 盖成「已停用」。
 		items[link.id] = session
-			? connectedItem(link, session)
+			? connectedItem(link, session, shelf)
 			: link.enabled
 				? disconnectedItem(link)
 				: pausedItem(link);
 	}
+	const images = shelf.images();
 	return {
 		summary: { tone: "ok", text: [{ b: String(online) }, " 个 bot 在线"] },
 		page: [
@@ -237,5 +286,6 @@ export function bridgeView(
 			},
 		],
 		items: { links: items },
+		...(images === undefined ? {} : { images }),
 	};
 }

@@ -294,19 +294,19 @@ describe("standalone server lifecycle", () => {
 		const second = await boot();
 		handle = second.started;
 
-		// `activate` 真的跑完了 —— 它最后一件事是 `ctx.publishStatus`,而这条口只有跑完
+		// `activate` 真的跑完了 —— 它最后一件事是 `ctx.publishView`,而这条口只有跑完
 		// 才答得出来。⚠️ 光断取图口那个 404 是不够的:拓展**根本没装载**时,请求会落到
 		// 挂载表自己那句「没这个拓展」,body 一模一样(实测过,那条断言两种情况都绿)。
 		const status = await fetch(`${handle.url}/api/ext/bridge/status`);
 		expect(status.status).toBe(200);
-		// 桥交的视图(ADR-0019 决策 20):一条接入都没配,所以没有列表项;页上第一块是 BN 地址
-		// 那一行 —— 视图不合规矩的话,宿主会把它换成一条错误提示。
+		// 桥交的视图(ADR-0019 决策 20 / 40):一条接入都没配,所以没有列表项;页上第一块是 BN 地址
+		// 那一行 —— 那一块不合规矩的话,宿主会把它换成一条 `{ fault }` 提示,而不是 `{ block }`。
 		const view = (await status.json()) as {
 			items?: { links?: Record<string, unknown> };
-			page?: { type: string }[];
+			page?: { block?: { type: string } }[];
 		};
 		expect(view.items?.links).toEqual({});
-		expect(view.page?.[0]?.type).toBe("copy");
+		expect(view.page?.[0]?.block?.type).toBe("copy");
 
 		// 取图口在 `/api/*` 之外,所以这一发不带任何凭据也该走到拓展的 handler。
 		const blob = await fetch(`${handle.url}/ext/bridge/blob/0123456789abcdef0123456789abcdef`);

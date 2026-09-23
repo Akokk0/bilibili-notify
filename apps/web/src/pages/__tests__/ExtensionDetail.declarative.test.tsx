@@ -13,8 +13,8 @@
 
 import type {
 	ExtensionDTO,
+	ExtensionPanelView,
 	ExtensionsResponse,
-	ExtensionView,
 	RestartAbility,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -59,15 +59,18 @@ const DOUYIN: ExtensionDTO = {
 	dir: "/data/extensions/douyin",
 };
 
-const VIEW: ExtensionView = {
+/** 宿主核过、全都合规矩的一份(ADR-0019 决策 40:页上每块包在 `{ block }` 里)。 */
+const VIEW: ExtensionPanelView = {
 	summary: { tone: "ok", text: "12 位作者" },
 	page: [
 		{
-			type: "keyValue",
-			items: [
-				{ label: "登录", value: "cookie 有效", tone: "ok" },
-				{ label: "在看的作者", value: "12 位" },
-			],
+			block: {
+				type: "keyValue",
+				items: [
+					{ label: "登录", value: "cookie 有效", tone: "ok" },
+					{ label: "在看的作者", value: "12 位" },
+				],
+			},
 		},
 	],
 };
@@ -75,7 +78,7 @@ const VIEW: ExtensionView = {
 interface Setup {
 	ext?: ExtensionDTO;
 	/** 状态那一口:一份视图,或一个错(`NotFound` = 404)。 */
-	status?: ExtensionView | Error;
+	status?: ExtensionPanelView | Error;
 	settings?: Record<string, unknown>;
 	/** 这台机器能不能自己重启(`GET /api/ext` 那一格)。 */
 	restart?: RestartAbility;

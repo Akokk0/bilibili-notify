@@ -8,7 +8,7 @@
  *
  * ```
  * connections.json 里那条接入 → 宿主按 zod 解出 config → ctx 交给桥 → 桥认 token
- *   → upgrade 分发到桥 → 握手 → bot 名单 → publishStatus
+ *   → upgrade 分发到桥 → 握手 → bot 名单 → publishView
  * /api/push/test → sink 按**分发键**找 adapter(键 = 拓展 id)→ 桥 adapter
  *   → server.send → `send` 帧 → 桥回 `result` → 回执一路回到 HTTP 响应
  * ```
@@ -24,7 +24,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
@@ -278,30 +278,35 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		client.send(botsFrame());
 		await expectStatusEventually((status) => {
-			// 真桥交出去的视图过了宿主那道校验 —— 不合规矩的话,页上第一块会被换成一条错误提示。
-			expect(status.page?.[0]).toMatchObject({ type: "copy", label: "BN 地址" });
-			const item = status.items?.links?.[LINK_ID];
-			expect(item?.status).toEqual({ tone: "ok", text: "已连接" });
-			expect(JSON.stringify(item?.subtitle)).toContain("家里那台 koishi v0.1.0");
-			const table = item?.blocks?.find((block) => block.type === "table");
+			// 真桥交出去的视图整份过了宿主那道校验(ADR-0019 决策 39 / 40)—— 哪一块、哪一项不合规矩,
+			// 宿主就把它换成一条 `{ fault }`:键对清单、「改设置」改的格、图片字典、字节上限都在这一道里。
+			expect(JSON.stringify(status)).not.toContain('"fault"');
+			expect(status.page?.[0]).toMatchObject({ block: { type: "copy", label: "BN 地址" } });
+			const slot = status.items?.links?.[LINK_ID];
+			if (!slot || !("view" in slot)) throw new Error("这条接入应该有自己的样子");
+			const item = slot.view;
+			expect(item.status).toEqual({ tone: "ok", text: "已连接" });
+			expect(JSON.stringify(item.subtitle)).toContain("家里那台 koishi v0.1.0");
+			const table = item.blocks?.find((block) => block.type === "table");
 			if (table?.type !== "table") throw new Error("应该有一张 bot 表");
 			expect(table.rows).toHaveLength(1);
-			expect(table.rows[0]?.[1]).toMatchObject({ sub: expect.stringContaining("telegram") });
+			expect(table.rows[0]?.[1]).toMatchObject({
+				kind: "text",
+				sub: expect.stringContaining("telegram"),
+			});
 			// 六项能力:桥少报的补成「还不知道」,不是「不支持」—— 在面板上是两回事。
 			// 桥没报 markdown → 也是还不知道,BN 据此把主人写的排版剥成纯文本。
-			expect(table.rows[0]?.slice(2)).toEqual([
-				"yes",
-				"yes",
-				"unknown",
-				"unknown",
-				"unknown",
-				"unknown",
-			]);
+			expect(table.rows[0]?.slice(2)).toEqual(
+				["yes", "yes", "unknown", "unknown", "unknown", "unknown"].map((value) => ({
+					kind: "tristate",
+					value,
+				})),
+			);
 		});
 	}
 
-	/** 桥交出去、宿主校验过的视图(ADR-0019 决策 20)。 */
-	type BridgeStatus = ExtensionView;
+	/** 桥交出去、宿主核过的视图(ADR-0019 决策 20 / 40)。 */
+	type BridgeStatus = ExtensionPanelView;
 
 	async function expectStatusEventually(assertion: (status: BridgeStatus) => void): Promise<void> {
 		let last: unknown;

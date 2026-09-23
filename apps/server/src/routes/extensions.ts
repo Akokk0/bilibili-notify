@@ -415,12 +415,13 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	);
 
 	/**
-	 * 一个拓展交给面板的视图(`ctx.publishStatus`),**现取**。没跑 / 没交过就是 404,不是空
-	 * 对象:那两件事面板要能分开说。
+	 * 一个拓展交给面板的视图(v2 `ctx.publishView`、v1 `ctx.publishStatus`),**现取**。没跑 /
+	 * 没交过就是 404,不是空对象:那两件事面板要能分开说。
 	 *
-	 * 交上来的东西先过宿主那一道(`context.ts` 的 `viewOf`):v2 按 `ExtensionViewSchema` 校验,
-	 * 不合规矩的整份不画,换成一条说清哪里不对的错误提示(照样 200,同一个错只记一行日志);
-	 * v1 原样透传(桥的老页是手写的,形状归它自己)。
+	 * v2 交的先过宿主那一道(`extensions/view-check.ts`,ADR-0019 决策 40):**按块 / 按项降级** ——
+	 * 坏块换成一条点名「哪儿、为什么」的提示,坏项那张卡写「状态未知」,摘要坏了不下发;交回
+	 * Promise 的也是一条提示。都照样 200(`ExtensionPanelView`),同一句只记一行日志。v1 原样透传
+	 * (它的页是手写的,形状归它自己)。
 	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));

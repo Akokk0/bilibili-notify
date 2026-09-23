@@ -31,9 +31,11 @@ export type {
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionView,
+	ExtensionViewSummary,
 } from "@bilibili-notify/extension/wire";
 export * from "./card-skin";
 export * from "./devtools";
+export * from "./extension-view";
 export * from "./maid-skill";
 export * from "./resources";
 export * from "./rest";

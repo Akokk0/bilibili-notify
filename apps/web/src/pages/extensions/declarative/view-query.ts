@@ -1,4 +1,4 @@
-import type { ExtensionDTO, ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ExtensionPanelView } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
 import { extensionStatusKey } from "../../../hooks/useExtensions";
 import { api } from "../../../services/api";
@@ -10,8 +10,8 @@ import { api } from "../../../services/api";
 export { extensionStatusKey };
 
 /**
- * 读一个 v2 拓展交上来的视图(ADR-0019 决策 20 / 26)。宿主交出来之前校验过:不合规矩的
- * 那份会换成一条说清哪里不对的错误提示,照样是一份视图。
+ * 读一个 v2 拓展交上来的视图(ADR-0019 决策 20 / 26)。宿主交出来之前核过(决策 40):不合规矩的
+ * 那一块 / 那一项换成了一条说清哪里不对的 `{ fault }`,别的照原样 —— 照样是一份视图。
  *
  * **不重试**:没跑 / 没交过视图时这一口是 404,那是一个要当场说出来的状态,不是一次网络
  * 抖动。`enabled` 为假时干脆不问 —— 关着的拓展问了也是 404,还会在开关刚拨下去的那一秒
@@ -20,7 +20,7 @@ export { extensionStatusKey };
 export function useExtensionView(extensionId: string, enabled: boolean) {
 	return useQuery({
 		queryKey: extensionStatusKey(extensionId),
-		queryFn: () => api.get<ExtensionView>(`/api/ext/${extensionId}/status`),
+		queryFn: () => api.get<ExtensionPanelView>(`/api/ext/${extensionId}/status`),
 		retry: false,
 		enabled,
 	});
@@ -36,8 +36,8 @@ export function useExtensionView(extensionId: string, enabled: boolean) {
  */
 export function liveViewOf(
 	running: boolean,
-	view: { isError: boolean; data: ExtensionView | undefined },
-): ExtensionView | undefined {
+	view: { isError: boolean; data: ExtensionPanelView | undefined },
+): ExtensionPanelView | undefined {
 	return running && !view.isError ? view.data : undefined;
 }
 

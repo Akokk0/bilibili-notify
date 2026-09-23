@@ -162,8 +162,9 @@ export function activate(ctx: ExtensionContext): void {
 	// 桥的对账看的是接入名单(现读),那个参数它用不着 —— 给空表就是这个意思。
 	settings.onChange(() => adapter.reconcile?.([]));
 
-	// 面板照着画的视图(ADR-0019 决策 20):四种样子、「对不上」、bot 表都由这里算好交出去。
+	// 面板照着画的视图(ADR-0019 决策 20 / 39):四种样子、「对不上」、bot 表都由这里算好交出去。
+	// 走 `publishView`,回调要同步交回 —— 会话表是现成的内存,本来就不用等。
 	// 设置一动也喊一声 —— 停用 / 换种类之后卡上的话要当场跟着变。
-	ctx.publishStatus(() => bridgeView(links(), (linkId) => server.getSession(linkId)));
+	ctx.publishView(() => bridgeView(links(), (linkId) => server.getSession(linkId)));
 	settings.onChange(() => ctx.statusChanged());
 }

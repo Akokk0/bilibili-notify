@@ -27,6 +27,7 @@ import type {
 	ExtensionContext,
 	ExtensionFetchHandler,
 	ExtensionItemView,
+	ExtensionTableCell,
 	ExtensionUpgradeHandler,
 	ExtensionView,
 	PlatformAdapter,
@@ -47,7 +48,7 @@ function itemView(status: unknown): ExtensionItemView | undefined {
 }
 
 /** 这条接入那张 bot 表的每一行。 */
-function botRows(status: unknown): readonly (readonly unknown[])[] {
+function botRows(status: unknown): readonly (readonly ExtensionTableCell[])[] {
 	const table = itemView(status)?.blocks?.find((block) => block.type === "table");
 	return table?.type === "table" ? table.rows : [];
 }
@@ -178,8 +179,12 @@ function hostFor(
 		onUpgrade(handler) {
 			upgradeHandler = handler;
 		},
-		publishStatus(fn) {
+		publishView(fn) {
 			statusOf = fn;
+		},
+		// v2 的桥走 `publishView`;真宿主对 v2 的旧口不受理 —— 这里直接炸,桥退回旧口就当场红。
+		publishStatus() {
+			throw new Error("v2 拓展交视图走 publishView,不该叫 publishStatus");
 		},
 		statusChanged() {
 			statusChanges += 1;
@@ -455,7 +460,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		});
 		await expectEventually(() => expect(host.statusChanges()).toBeGreaterThan(before));
 		// 表头:方块、名字,然后六项能力 —— 「小程序卡」是第四项,落在第 6 格。
-		expect(botRows(host.status())[0]?.[5]).toBe("yes");
+		expect(botRows(host.status())[0]?.[5]).toEqual({ kind: "tristate", value: "yes" });
 	});
 
 	// ---- 入站归属 ------------------------------------------------------------
@@ -525,14 +530,17 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		expect(host.adapter().isAvailable?.(CONNECTION, TARGET)).toBe(false);
 	});
 
-	it("publishStatus:握过手之后,面板拿得到这条接入的样子与 bot 表(ADR-0019 决策 20)", async () => {
+	it("publishView:握过手之后,面板拿得到这条接入的样子与 bot 表(ADR-0019 决策 20)", async () => {
 		await handshake();
 		const view = itemView(host.status());
 		expect(view?.status).toEqual({ tone: "ok", text: "已连接" });
 		expect(view?.pill).toBe("koishi");
 		expect(JSON.stringify(view?.subtitle)).toContain("家里那台 koishi v0.1.0");
 		expect(JSON.stringify(view?.subtitle)).toContain("来自 127.0.0.1");
-		// 插件随 bot 报了图标就用插件的。
-		expect(botRows(host.status())[0]?.[0]).toEqual({ image: BOT_ICON, fallback: "te" });
+		// 插件随 bot 报了图标就用插件的 —— 图进视图顶层的字典,格子按键引用(决策 39)。
+		const icon = botRows(host.status())[0]?.[0];
+		expect(icon).toMatchObject({ kind: "icon", fallback: "te" });
+		const key = icon?.kind === "icon" ? icon.image : undefined;
+		expect(key && (host.status() as ExtensionView).images?.[key]).toBe(BOT_ICON);
 	});
 });

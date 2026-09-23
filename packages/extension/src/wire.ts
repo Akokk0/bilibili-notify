@@ -166,20 +166,39 @@ export interface ExtensionBotView<TConfig = unknown> {
 }
 
 /**
- * 拓展交给面板的「视图」—— v2 的 `ctx.publishStatus` 交的就是它(ADR-0019 决策 20 / 26–28)。
+ * 拓展交给面板的「视图」—— v2 的 `ctx.publishView` 交的就是它(ADR-0019 决策 20 / 26–28,09-23
+ * 决策 39 改过一轮)。
  *
  * 一组**封闭的积木**,由 BN 照着画;派生的东西由拓展算好交来,BN 不发明表达式语言。
+ *
  * 🔴 这是 `@bilibili-notify/internal` 里 `ExtensionViewSchema` 的**手写镜像**(这个入口不许
- * import zod 与 internal);宿主把校验过的视图当这个类型交出去,两份由宿主那头的类型检查钉住。
- * 不合规矩的视图宿主不画,换成一条说清哪里不对的错误提示。
+ * import zod 与 internal),两份由宿主那头的类型断言**双向严格相等**地钉住
+ * (`apps/server/src/extensions/view-shape-pin.ts`)—— 这里多一个可选键,那边就过不了类型检查。
+ *
+ * 不合规矩时宿主**按块 / 按项**降级(决策 40):页上坏一块只换掉那一块,列表坏一项那张卡写「状态
+ * 未知」,摘要坏了就不画。那些「坏了」的标记只有宿主加得了,不在这个类型里。
  */
 export interface ExtensionView {
 	/** 拓展列表页那一行。 */
-	summary?: { tone?: ExtensionTone; text: ExtensionRichText };
+	summary?: ExtensionViewSummary;
 	/** 挂在头卡正文里的积木。 */
 	page?: readonly ExtensionBlock[];
-	/** 列表设置项的 key → 项的 id → 那一项在卡上的样子。 */
+	/**
+	 * 列表设置项的 key → 项的 id → 那一项在卡上的样子。第一层的键必须是清单里声明过的**列表**
+	 * 设置项、第二层是那张列表里现存的项 —— 对不上的宿主丢掉并记一行日志。
+	 */
 	items?: Readonly<Record<string, Readonly<Record<string, ExtensionItemView>>>>;
+	/**
+	 * 图片字典:键 → 图片的 base64 data URL(png / jpeg / webp / svg,单张封顶,与选项图标同一条)。
+	 * 表格的图标格、二维码按键引用 —— 同一张图只放一份。整份视图序列化后有字节上限(256 KiB)。
+	 */
+	images?: Readonly<Record<string, string>>;
+}
+
+/** 拓展列表页那一行。 */
+export interface ExtensionViewSummary {
+	tone?: ExtensionTone;
+	text: ExtensionRichText;
 }
 
 /** 状态的语气,同时决定卡角那团颜色。 */
@@ -197,10 +216,15 @@ export type ExtensionRichRun =
 	| { time: number; suffix?: string }
 	| { host: "extensionUrl" };
 
-/** 调拓展的按钮(清单 `actions` 里声明),或者让 BN 改**这一项**的一格设置的按钮。 */
+/**
+ * 一颗按钮,显式带 `kind`:
+ * - `action`:调拓展(清单 `actions` 里声明、代码 `ctx.onAction` 接);
+ * - `set`:让 BN 改**这一项**的一格设置 —— 只许挂在列表项上,只许改那张列表声明过的格,不碰
+ *   `id`、密钥与生成的格,值的类型要对得上(`enum` 要在选项里)。
+ */
 export type ExtensionButton =
-	| { label: string; action: string }
-	| { label: string; set: Readonly<Record<string, string | number | boolean>> };
+	| { kind: "action"; label: string; action: string }
+	| { kind: "set"; label: string; set: Readonly<Record<string, string | number | boolean>> };
 
 /** 列表的一项在卡上的那几格。停用的项由 BN 盖成「已停用」,`status` 报什么都不算。 */
 export interface ExtensionItemView {
@@ -220,11 +244,15 @@ export type ExtensionTableColumn =
 	| { kind: "mono" }
 	| { kind: "tristate"; label: string };
 
-/** 表格的一格 —— 样子跟着那一列的种类走。 */
+/**
+ * 表格的一格 —— **自带种类**,与列的 `kind` 同一套词;宿主核「这一格与这一列同种」。图标格的
+ * `image` 是 {@link ExtensionView.images} 里的键,没有就印 `fallback` 那两个字。
+ */
 export type ExtensionTableCell =
-	| { image?: string; fallback: string }
-	| string
-	| { text: string; sub?: string };
+	| { kind: "icon"; image?: string; fallback: string }
+	| { kind: "text"; text: string; sub?: string }
+	| { kind: "mono"; text: string }
+	| { kind: "tristate"; value: "yes" | "no" | "unknown" };
 
 export type ExtensionBlock =
 	| {
@@ -237,7 +265,7 @@ export type ExtensionBlock =
 			count?: boolean;
 			empty?: ExtensionRichText;
 			columns: readonly ExtensionTableColumn[];
-			rows: readonly (readonly unknown[])[];
+			rows: readonly (readonly ExtensionTableCell[])[];
 	  }
 	| {
 			type: "notice";
@@ -251,5 +279,6 @@ export type ExtensionBlock =
 			value: string | { host: "extensionUrl" };
 			note?: ExtensionRichText;
 	  }
+	/** `image` 是 {@link ExtensionView.images} 里的键。 */
 	| { type: "qr"; image: string; caption?: ExtensionRichText }
-	| ({ type: "button" } & ExtensionButton);
+	| { type: "button"; button: ExtensionButton };

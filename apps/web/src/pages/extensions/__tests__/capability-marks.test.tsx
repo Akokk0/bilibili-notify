@@ -43,14 +43,12 @@ const BOTS: ExtensionBlock = {
 	],
 	rows: [
 		[
-			{ fallback: "on" },
-			{ text: "阿库娅", sub: "onebot · 2854196310" },
-			"yes",
-			"yes",
-			"yes",
-			"unknown",
-			"no",
-			"no",
+			{ kind: "icon", fallback: "on" },
+			{ kind: "text", text: "阿库娅", sub: "onebot · 2854196310" },
+			...(["yes", "yes", "yes", "unknown", "no", "no"] as const).map((value) => ({
+				kind: "tristate" as const,
+				value,
+			})),
 		],
 	],
 };

@@ -78,15 +78,16 @@ describe("bridgeView", () => {
 	});
 
 	it("连上了:bot 表 —— 图标先用插件报的,没有查桥自己的小表,都没有退回两个字", () => {
-		const table = item([link()], {
-			a1: session({
+		const view = bridgeView([link()], () =>
+			session({
 				bots: [
 					bot({ botId: "1", platform: "telegram", icon: PNG }),
 					bot({ botId: "2", platform: "onebot" }),
 					bot({ botId: "3", platform: "kook", name: undefined, selfId: undefined }),
 				],
 			}),
-		})?.blocks?.[0];
+		);
+		const table = view.items?.links?.a1?.blocks?.[0];
 		if (table?.type !== "table") throw new Error("应该是一张表");
 		expect(table.title).toBe("它驮着的 bot");
 		expect(table.count).toBe(true);
@@ -100,14 +101,51 @@ describe("bridgeView", () => {
 			"分享卡链接",
 			"markdown",
 		]);
-		expect(table.rows.map((row) => row[0])).toEqual([
-			{ image: PNG, fallback: "te" },
-			{ image: platformIcon("onebot"), fallback: "on" },
-			{ fallback: "ko" },
-		]);
+		// 图进视图顶层的字典,格子按键引用(ADR-0019 决策 39)
+		const icons = table.rows.map((row) => row[0]);
+		expect(icons.map((cell) => cell?.kind)).toEqual(["icon", "icon", "icon"]);
+		const imageOf = (cell: (typeof icons)[number]) =>
+			cell?.kind === "icon" && cell.image !== undefined ? view.images?.[cell.image] : undefined;
+		expect(imageOf(icons[0])).toBe(PNG);
+		expect(icons[0]).toMatchObject({ fallback: "te" });
+		expect(imageOf(icons[1])).toBe(platformIcon("onebot"));
+		expect(icons[1]).toMatchObject({ fallback: "on" });
+		expect(icons[2]).toEqual({ kind: "icon", fallback: "ko" });
 		// 没有名字就用 botId;第二行是「平台 · 账号」。
-		expect(table.rows[2]?.[1]).toEqual({ text: "3", sub: "kook" });
-		expect(table.rows[1]?.slice(2)).toEqual(["yes", "yes", "unknown", "yes", "no", "no"]);
+		expect(table.rows[2]?.[1]).toEqual({ kind: "text", text: "3", sub: "kook" });
+		expect(table.rows[1]?.slice(2)).toEqual(
+			["yes", "yes", "unknown", "yes", "no", "no"].map((value) => ({ kind: "tristate", value })),
+		);
+	});
+
+	/**
+	 * 每行内联一份 base64 时,两百个 bot 的视图八百多 KB,每喊一次 `statusChanged()` 就整份重拉
+	 * (决策 39)。同一张图 —— 同一平台的桥自带图标、插件给几个 bot 报的同一枚 —— 只放一份,跨接入也是。
+	 */
+	it("同一张图只放一份:同一平台的几个 bot、两条接入之间都共用那一个键", () => {
+		const view = bridgeView([link(), link({ id: "a2" })], (id) =>
+			session({
+				linkId: id,
+				bots: [
+					bot({ botId: `${id}-1`, platform: "onebot" }),
+					bot({ botId: `${id}-2`, platform: "onebot" }),
+					bot({ botId: `${id}-3`, platform: "telegram", icon: PNG }),
+					bot({ botId: `${id}-4`, platform: "telegram", icon: PNG }),
+				],
+			}),
+		);
+		expect(Object.values(view.images ?? {}).sort()).toEqual([platformIcon("onebot"), PNG].sort());
+		const keys = ["a1", "a2"].flatMap((id) => {
+			const table = view.items?.links?.[id]?.blocks?.[0];
+			if (table?.type !== "table") throw new Error("应该是一张表");
+			return table.rows.map((row) => (row[0]?.kind === "icon" ? row[0].image : undefined));
+		});
+		expect(new Set(keys).size).toBe(2);
+	});
+
+	it("一个 bot 都没带图 —— 视图里没有 images 这一格", () => {
+		const view = bridgeView([link()], () => session({ bots: [bot({ platform: "kook" })] }));
+		expect(view.images).toBeUndefined();
 	});
 
 	it("平台叫 constructor / __proto__:方块退回两个字,不把原型链上的东西塞进 icon 格", () => {
@@ -120,7 +158,10 @@ describe("bridgeView", () => {
 			}),
 		})?.blocks?.[0];
 		if (table?.type !== "table") throw new Error("应该是一张表");
-		expect(table.rows.map((row) => row[0])).toEqual([{ fallback: "co" }, { fallback: "__" }]);
+		expect(table.rows.map((row) => row[0])).toEqual([
+			{ kind: "icon", fallback: "co" },
+			{ kind: "icon", fallback: "__" },
+		]);
 	});
 
 	it("连上了、一个 bot 都没有:表还在,空的那句话说清为什么", () => {
@@ -135,7 +176,9 @@ describe("bridgeView", () => {
 		const view = item([link()], { a1: session({ kind: "astrbot", name: "AstrBot" }) });
 		expect(view?.status).toEqual({ tone: "warn", text: "连上了,但对不上" });
 		expect(view?.pill).toBe("配置:koishi");
-		expect(view?.buttons).toEqual([{ label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }]);
+		expect(view?.buttons).toEqual([
+			{ kind: "set", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } },
+		]);
 		expect(view?.lead).toHaveLength(1);
 		expect(JSON.stringify(view?.lead)).toContain("这条接入配的是 koishi,连进来的却自报 astrbot。");
 		expect(JSON.stringify(view?.lead)).toContain("收发照常能用");
@@ -190,12 +233,12 @@ describe("bridgeView", () => {
 	});
 
 	/**
-	 * 🔴 对端报什么这里就画什么,而视图 schema 一格超限,宿主就把**整份视图**换成一条错误提示
-	 * —— 一个对端报一个超长名字,所有接入的状态、bot 表、列表页那句「N 个 bot 在线」一起没了。
+	 * 🔴 对端报什么这里就画什么,而视图 schema 一格超限,宿主就把**那一项**换成一条错误提示
+	 * (ADR-0019 决策 40)—— 一个对端报一个超长名字,那条接入的卡就成了「状态未知」、bot 表整张没了。
 	 * 下面的数照抄 `packages/internal/src/schema/extension-view.ts`(桥够不到那份 schema):
 	 * 表格字 / 第二行 ≤ 200、一张表 ≤ 200 行、一段字里的每片 ≤ 2000。
 	 */
-	describe("对端报来的东西超限:截在桥这一侧,别让一格拖垮整份视图", () => {
+	describe("对端报来的东西超限:截在桥这一侧,别让一格拖垮那条接入的卡", () => {
 		const long = (n: number, ch = "长") => ch.repeat(n);
 
 		it("超长的 bot 名、平台、账号:表格那一格截到 200,末尾一个省略号", () => {
@@ -242,7 +285,7 @@ describe("bridgeView", () => {
 			const table = blocks[0];
 			if (table?.type !== "table") throw new Error("应该是一张表");
 			expect(table.rows).toHaveLength(200);
-			expect(table.rows[199]?.[1]).toMatchObject({ text: "bot 199" });
+			expect(table.rows[199]?.[1]).toMatchObject({ kind: "text", text: "bot 199" });
 			const rest = blocks[1];
 			expect(rest).toMatchObject({ type: "notice", tone: "info" });
 			expect(JSON.stringify(rest)).toContain("还有 1 个");

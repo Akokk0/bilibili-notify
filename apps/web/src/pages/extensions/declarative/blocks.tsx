@@ -1,9 +1,12 @@
 import type {
 	ExtensionBlock,
 	ExtensionButton,
+	ExtensionPanelBlock,
 	ExtensionRichText,
+	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,
+	ExtensionViewFault,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -41,16 +44,43 @@ import { extensionStatusKey } from "./view-query";
 /** 「改设置」那种按钮要改的那一格(决策 22)。只挂在列表项上,由列表那一层接。 */
 export type SetHandler = (set: Readonly<Record<string, string | number | boolean>>) => void;
 
-export function Blocks({
-	blocks,
-	extensionId,
-	legend = false,
-	onSet,
-	disabled = false,
-	ruleBeforeTables = false,
-}: {
-	blocks: readonly ExtensionBlock[];
+/** 视图顶层的图片字典(决策 39)—— 图标格与二维码按键引用。 */
+type ViewImages = Readonly<Record<string, string>>;
+
+/** 列表项卡里的积木:拓展交的那一串,宿主核过(一项坏了整项换成提示,这里不会有半块坏的)。 */
+export function Blocks({ blocks, ...rest }: { blocks: readonly ExtensionBlock[] } & BlockOptions) {
+	return <BlockSlots slots={blocks.map((block) => ({ block }))} {...rest} />;
+}
+
+/**
+ * 头卡正文里的积木:**按块降级**过的那一串(ADR-0019 决策 40)—— 坏了的那块宿主换成一条
+ * `{ fault }`,画在原来的位置上,前后的好块照画。
+ */
+export function PageBlocks({
+	slots,
+	...rest
+}: { slots: readonly ExtensionPanelBlock[] } & BlockOptions) {
+	return <BlockSlots slots={slots} {...rest} />;
+}
+
+/**
+ * 宿主说「这一块 / 这一项画不出来」—— 原话照摆:哪儿、为什么。
+ *
+ * 🔴 失败的原因不许吞:那句话是拓展作者与主人唯一能照着查的线索,换成一句「出错了」等于让人对着
+ * 黑盒猜。标记只有宿主加得了(拓展交的积木包在 `{ block }` 里,它造不出一条 `{ fault }`)。
+ */
+export function ViewFaultNote({ fault }: { fault: ExtensionViewFault }) {
+	return (
+		<ErrorNote size="sm">
+			{fault.where}画不出来:{fault.reason}
+		</ErrorNote>
+	);
+}
+
+interface BlockOptions {
 	extensionId: string;
+	/** 视图顶层的图片字典;没有就是一张图都没有 —— 图标格印两个字母,二维码不画。 */
+	images?: ViewImages;
 	/**
 	 * 有三态列的表要不要自己挂图例。页级积木要(没有别处可挂);列表项卡里的不要 ——
 	 * 那一页的图例挂在列表头上,只挂一次(决策 27)。
@@ -68,22 +98,39 @@ export function Blocks({
 	 * 「它驮着的 bot」之间就是这一道)。页级积木不要:头卡正文里各块本来就是并列的。
 	 */
 	ruleBeforeTables?: boolean;
-}) {
-	const keys = blockKeysOf(blocks);
+}
+
+function BlockSlots({
+	slots,
+	extensionId,
+	images = {},
+	legend = false,
+	onSet,
+	disabled = false,
+	ruleBeforeTables = false,
+}: { slots: readonly ExtensionPanelBlock[] } & BlockOptions) {
+	const keys = blockKeysOf(slots);
 	return (
 		<>
-			{blocks.map((block, i) => (
+			{slots.map((slot, i) => (
 				<Fragment key={keys[i]}>
-					{ruleBeforeTables && block.type === "table" ? (
-						<div data-table-rule className="h-px bg-bn-border-subtle" />
-					) : null}
-					<Block
-						block={block}
-						extensionId={extensionId}
-						legend={legend}
-						onSet={onSet}
-						disabled={disabled}
-					/>
+					{"fault" in slot ? (
+						<ViewFaultNote fault={slot.fault} />
+					) : (
+						<>
+							{ruleBeforeTables && slot.block.type === "table" ? (
+								<div data-table-rule className="h-px bg-bn-border-subtle" />
+							) : null}
+							<Block
+								block={slot.block}
+								extensionId={extensionId}
+								images={images}
+								legend={legend}
+								onSet={onSet}
+								disabled={disabled}
+							/>
+						</>
+					)}
 				</Fragment>
 			))}
 		</>
@@ -101,10 +148,11 @@ export function Blocks({
  * 那种没有动作名,认它的名字),复制那一格认它的名字。别的块没有自己的状态,种类就够。同一份
  * 视图里撞了的按出现的先后加序号 —— 序号只在撞了的那几块里数,别的块插进来挪不动它们。
  */
-function blockKeysOf(blocks: readonly ExtensionBlock[]): string[] {
+function blockKeysOf(slots: readonly ExtensionPanelBlock[]): string[] {
 	const seen = new Map<string, number>();
-	return blocks.map((block) => {
-		const identity = blockIdentityOf(block);
+	return slots.map((slot) => {
+		// 宿主的提示认它点名的那一处 —— 那一块修好了回来,是一块新的积木。
+		const identity = "fault" in slot ? `fault:${slot.fault.where}` : blockIdentityOf(slot.block);
 		const n = seen.get(identity) ?? 0;
 		seen.set(identity, n + 1);
 		return `${identity}#${n}`;
@@ -113,12 +161,12 @@ function blockKeysOf(blocks: readonly ExtensionBlock[]): string[] {
 
 function blockIdentityOf(block: ExtensionBlock): string {
 	const buttonOf = (button: ExtensionButton) =>
-		"action" in button ? `action:${button.action}` : `set:${button.label}`;
+		button.kind === "action" ? `action:${button.action}` : `set:${button.label}`;
 	switch (block.type) {
 		case "notice":
 			return block.button ? `notice:${buttonOf(block.button)}` : "notice";
 		case "button":
-			return `button:${buttonOf(block)}`;
+			return `button:${buttonOf(block.button)}`;
 		case "copy":
 			return `copy:${block.label}`;
 		default:
@@ -142,12 +190,14 @@ type BlockOf<T extends ExtensionBlock["type"]> = Extract<ExtensionBlock, { type:
 function Block({
 	block,
 	extensionId,
+	images,
 	legend,
 	onSet,
 	disabled,
 }: {
 	block: ExtensionBlock;
 	extensionId: string;
+	images: ViewImages;
 	legend: boolean;
 	onSet?: SetHandler;
 	disabled: boolean;
@@ -156,7 +206,7 @@ function Block({
 		case "keyValue":
 			return <KeyValueBlock block={block} extensionId={extensionId} />;
 		case "table":
-			return <TableBlock block={block} extensionId={extensionId} legend={legend} />;
+			return <TableBlock block={block} extensionId={extensionId} images={images} legend={legend} />;
 		case "notice":
 			return (
 				<NoticeBlock block={block} extensionId={extensionId} onSet={onSet} disabled={disabled} />
@@ -171,10 +221,15 @@ function Block({
 				/>
 			);
 		case "qr":
-			return <QrBlock block={block} extensionId={extensionId} />;
+			return <QrBlock block={block} extensionId={extensionId} images={images} />;
 		case "button":
 			return (
-				<ButtonBlock button={block} extensionId={extensionId} onSet={onSet} disabled={disabled} />
+				<ButtonBlock
+					button={block.button}
+					extensionId={extensionId}
+					onSet={onSet}
+					disabled={disabled}
+				/>
 			);
 		default:
 			// 面板比服务端旧(应用内升级那几秒)时可能碰上没见过的积木 —— 不画,别整页白屏。
@@ -241,12 +296,25 @@ function KeyValueBlock({
 
 // ── table ───────────────────────────────────────────────────────────────────
 
-/** 视图里的三态词 → 面板的三态。认不出的按「还不知道」算 —— 缺席不是「不支持」。 */
-const TRISTATE_OF: Readonly<Record<string, TriState>> = {
+/** 视图里的三态词 → 面板的三态。 */
+const TRISTATE_OF: Readonly<Record<"yes" | "no" | "unknown", TriState>> = {
 	yes: "supported",
 	no: "unsupported",
 	unknown: "unknown",
 };
+
+/**
+ * 一格三态画成哪一档。格子自带种类、宿主核过「与那一列同种」(决策 39);面板比服务端旧的那几秒
+ * 可能碰上别的,按「还不知道」算 —— 缺席不是「不支持」。
+ */
+function triStateOf(cell: ExtensionTableCell | undefined): TriState {
+	return cell?.kind === "tristate" ? (TRISTATE_OF[cell.value] ?? "unknown") : "unknown";
+}
+
+/** 图标格 / 二维码引用的那张图:按键从字典里取,再认一次形状(`safeImage`)。取不到就是没有。 */
+function imageOf(images: ViewImages, key: string | undefined): string | undefined {
+	return key !== undefined && Object.hasOwn(images, key) ? safeImage(images[key]) : undefined;
+}
 
 /**
  * 一行里的几段:连着的三态列并成一段(它们在一个自己的 flex 里横排、间距比别的格宽 ——
@@ -273,10 +341,12 @@ function segmentsOf(columns: readonly ExtensionTableColumn[]): RowSegment[] {
 function TableBlock({
 	block: { title, count, empty, columns, rows },
 	extensionId,
+	images,
 	legend,
 }: {
 	block: BlockOf<"table">;
 	extensionId: string;
+	images: ViewImages;
 	legend: boolean;
 }) {
 	const withLegend = legend && columns.some((column) => column.kind === "tristate");
@@ -321,11 +391,7 @@ function TableBlock({
 										className="flex flex-wrap items-center gap-x-4 gap-y-1.5"
 									>
 										{segment.columns.map(({ label, index }) => (
-											<TriStateChip
-												key={index}
-												label={label}
-												state={TRISTATE_OF[String(row[index])] ?? "unknown"}
-											/>
+											<TriStateChip key={index} label={label} state={triStateOf(row[index])} />
 										))}
 									</div>
 								) : (
@@ -333,6 +399,7 @@ function TableBlock({
 										key={segment.index}
 										column={segment.column}
 										cell={row[segment.index]}
+										images={images}
 									/>
 								),
 							)}
@@ -344,46 +411,46 @@ function TableBlock({
 	);
 }
 
-function TableCell({ column, cell }: { column: ExtensionTableColumn; cell: unknown }) {
-	switch (column.kind) {
-		case "icon": {
-			const icon = (typeof cell === "object" && cell !== null ? cell : {}) as {
-				image?: unknown;
-				fallback?: unknown;
-			};
+/**
+ * 一格。格子**自带种类**(决策 39),照它自己的 `kind` 画;列只管版式(定宽)。宿主核过「这一格与
+ * 这一列同种」,面板比服务端旧的那几秒对不上时照格子画 —— 不把一个字画成图标。
+ */
+function TableCell({
+	column,
+	cell,
+	images,
+}: {
+	column: ExtensionTableColumn;
+	cell: ExtensionTableCell | undefined;
+	images: ViewImages;
+}) {
+	switch (cell?.kind) {
+		case "icon":
 			return (
 				<span className="flex shrink-0">
-					<KindMark
-						text={typeof icon.fallback === "string" ? icon.fallback : ""}
-						size={26}
-						logo={safeImage(icon.image)}
-					/>
+					<KindMark text={cell.fallback} size={26} logo={imageOf(images, cell.image)} />
 				</span>
 			);
-		}
-		case "text": {
-			const bag = (typeof cell === "object" && cell !== null ? cell : {}) as {
-				text?: unknown;
-				sub?: unknown;
-			};
-			// 宿主校验过形状;这里只防「不是字」的东西被当成 React 子节点画 —— 那会把整页带走。
-			const text = typeof cell === "string" ? cell : typeof bag.text === "string" ? bag.text : "";
-			const sub = typeof cell === "string" || typeof bag.sub !== "string" ? undefined : bag.sub;
+		case "text":
 			return (
 				// 定宽是版式的承重件:多行排下来,后面的三态记号得在同一条竖线上起排。宽度是几何量,
 				// 留在行内。
-				<div className="min-w-0" style={column.width ? { width: column.width } : undefined}>
-					<div className="truncate text-bn-sm font-bold text-bn-text-primary">{text}</div>
-					{sub ? (
-						<div className="mt-px truncate font-mono text-bn-2xs text-bn-text-tertiary">{sub}</div>
+				<div
+					className="min-w-0"
+					style={column.kind === "text" && column.width ? { width: column.width } : undefined}
+				>
+					<div className="truncate text-bn-sm font-bold text-bn-text-primary">{cell.text}</div>
+					{cell.sub ? (
+						<div className="mt-px truncate font-mono text-bn-2xs text-bn-text-tertiary">
+							{cell.sub}
+						</div>
 					) : null}
 				</div>
 			);
-		}
 		case "mono":
 			return (
 				<span className="min-w-0 truncate font-mono text-bn-xs text-bn-text-secondary">
-					{typeof cell === "string" ? cell : ""}
+					{cell.text}
 				</span>
 			);
 		default:
@@ -494,12 +561,14 @@ function CopyBlock({
 function QrBlock({
 	block: { image, caption },
 	extensionId,
+	images,
 }: {
 	block: BlockOf<"qr">;
 	extensionId: string;
+	images: ViewImages;
 }) {
 	return (
-		<QrPanel src={safeImage(image)} alt="二维码">
+		<QrPanel src={imageOf(images, image)} alt="二维码">
 			{caption ? (
 				<div className="text-bn-sm text-bn-text-secondary">
 					<RichText text={caption} extensionId={extensionId} />
@@ -533,7 +602,7 @@ function ButtonBlock({
 }
 
 /** 调拓展的那种按钮(决策 22)。 */
-type ActionButton = Extract<ExtensionButton, { action: string }>;
+type ActionButton = Extract<ExtensionButton, { kind: "action" }>;
 
 /**
  * 调拓展的那一发:`POST /api/ext/:id/actions/:name`,只走 `/api/…`、吃面板会话鉴权(决策 23 那条
@@ -590,7 +659,7 @@ function useButtonControl(
 	const run = useExtensionAction(extensionId);
 
 	if (!button) return { node: null, error: null };
-	if ("action" in button) {
+	if (button.kind === "action") {
 		return {
 			node: (
 				<Btn

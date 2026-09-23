@@ -6,7 +6,7 @@
  * 主人按下场景之后卡片不变绿,而**没有任何门禁会红**。
  *
  * 所以这一条把**真桥的构建产物**装进装载根、起一台真 BN,让 devtools 那条场景连一次:
- * 从「面板按钮」一路到「拓展 `publishStatus` 里真的多了一条会话」。这中间任意一环
+ * 从「面板按钮」一路到「拓展 `publishView` 里真的多了一条会话」。这中间任意一环
  * (token 怎么读、地址怎么拼、帧长什么样、协议版本认不认)错了,这条就红。
  */
 
@@ -14,7 +14,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionItemView, ExtensionView } from "@bilibili-notify/contract";
+import type {
+	ExtensionItemView,
+	ExtensionPanelView,
+	ExtensionTableCell,
+} from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
@@ -162,7 +166,7 @@ describe("devtools 的假桥 → 真桥", () => {
 		return (await res.json()) as Record<string, unknown>;
 	}
 
-	/** 帧是异步到达的(WS → 端点 → publishStatus),所以状态接口要等,不能只读一次。 */
+	/** 帧是异步到达的(WS → 端点 → publishView),所以状态接口要等,不能只读一次。 */
 	async function statusUntil(
 		pred: (snapshot: Record<string, unknown>) => boolean,
 		timeoutMs = 2_000,
@@ -179,11 +183,14 @@ describe("devtools 的假桥 → 真桥", () => {
 
 	/** 视图里唯一那条接入的样子(配置里只摆了一条)。 */
 	function theItem(snapshot: Record<string, unknown>): ExtensionItemView | undefined {
-		return Object.values((snapshot as ExtensionView).items?.links ?? {})[0];
+		const slot = Object.values((snapshot as ExtensionPanelView).items?.links ?? {})[0];
+		return slot && "view" in slot ? slot.view : undefined;
 	}
 
 	/** 那条接入的 bot 表的第一行 —— 方块、名字,然后六项能力。 */
-	function firstBotRow(snapshot: Record<string, unknown>): readonly unknown[] | undefined {
+	function firstBotRow(
+		snapshot: Record<string, unknown>,
+	): readonly ExtensionTableCell[] | undefined {
 		const table = theItem(snapshot)?.blocks?.find((block) => block.type === "table");
 		return table?.type === "table" ? table.rows[0] : undefined;
 	}
@@ -198,7 +205,9 @@ describe("devtools 的假桥 → 真桥", () => {
 	 * 六项全是「还不知道」;出现任何一个真答案,就说明第二份已经落地了。
 	 */
 	function probedCapabilities(snapshot: Record<string, unknown>): boolean {
-		return (firstBotRow(snapshot) ?? []).slice(2).includes("yes");
+		return (firstBotRow(snapshot) ?? [])
+			.slice(2)
+			.some((cell) => cell.kind === "tristate" && cell.value === "yes");
 	}
 
 	it("按一下场景 → 真桥那头真的多了一条握过手的会话,bot 名单与能力表都在", async () => {
@@ -219,14 +228,18 @@ describe("devtools 的假桥 → 真桥", () => {
 		if (table?.type !== "table") throw new Error("应该有一张 bot 表");
 		expect(table.rows).toHaveLength(1);
 		const row = firstBotRow(after) ?? [];
-		expect(row[1]).toMatchObject({ sub: expect.stringContaining("telegram") });
+		expect(row[1]).toMatchObject({ kind: "text", sub: expect.stringContaining("telegram") });
 		// 🔴 平台图标一路走到状态接口:桥只收 data URL,http 地址会在归一化那关被丢掉,
-		// 所以「有」本身就证明了假桥造的那枚是合法的。
-		expect(row[0]).toMatchObject({
-			image: expect.stringMatching(/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/),
-		});
+		// 所以「有」本身就证明了假桥造的那枚是合法的。图进视图顶层的字典,格子按键引用(决策 39)。
+		const icon = row[0];
+		const key = icon?.kind === "icon" ? icon.image : undefined;
+		expect(key && (after as ExtensionPanelView).images?.[key]).toMatch(
+			/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/,
+		);
 		// 🔴 三态齐全:桥把没报的补成「还不知道」,面板据此分「不支持」与「还不知道」。
-		expect(new Set(row.slice(2))).toEqual(new Set(["yes", "no", "unknown"]));
+		expect(new Set(row.slice(2).map((cell) => cell.kind === "tristate" && cell.value))).toEqual(
+			new Set(["yes", "no", "unknown"]),
+		);
 	});
 
 	it("一键收摊 → 那条会话当场没了(假状态只由 devtools 收摊)", async () => {

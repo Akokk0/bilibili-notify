@@ -14,7 +14,7 @@
  * - 图例只在**真有三态格**时挂、只挂一次(决策 27)。
  */
 
-import type { ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionItemView, ExtensionPanelView } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -39,6 +39,7 @@ import {
 	renderDetailPage,
 	renderList,
 	settingsReads,
+	shown,
 	TOKEN,
 	updatedValues,
 } from "./list-harness";
@@ -105,12 +106,13 @@ describe("一项一张卡", () => {
 	});
 });
 
-/** 视图里 c1 那一项:四样都交了 —— 状态、药丸、副标题、上下两段积木。 */
-function viewOf(item: NonNullable<ExtensionView["items"]>[string][string]): ExtensionView {
-	return { items: { links: { c1: item } } };
+/** 视图里只有 c1 那一项(宿主核过、合规矩)。 */
+function viewOf(item: ExtensionItemView): ExtensionPanelView {
+	return shown({ items: { links: { c1: item } } });
 }
 
-const CONNECTED = viewOf({
+/** c1 那一项:四样都交了 —— 状态、药丸、副标题、上下两段积木。 */
+const CONNECTED_ITEM: ExtensionItemView = {
 	status: { tone: "ok", text: "已连接" },
 	pill: "koishi",
 	subtitle: ["客厅那台 koishi v0.1.0 · ", { time: Date.now() - 12 * 60_000, suffix: "连上" }],
@@ -125,10 +127,17 @@ const CONNECTED = viewOf({
 				{ kind: "text", width: 210 },
 				{ kind: "tristate", label: "@全体" },
 			],
-			rows: [[{ fallback: "qq" }, { text: "小粉", sub: "onebot · 2854196310" }, "yes"]],
+			rows: [
+				[
+					{ kind: "icon", fallback: "qq" },
+					{ kind: "text", text: "小粉", sub: "onebot · 2854196310" },
+					{ kind: "tristate", value: "yes" },
+				],
+			],
 		},
 	],
-});
+};
+const CONNECTED = viewOf(CONNECTED_ITEM);
 
 /** 卡右上那句状态(点 + 字)。 */
 function statusOf(id: string): string | null {
@@ -159,7 +168,7 @@ describe("卡上的状态", () => {
 				{ ...HOME, id: "c3", name: "三号" },
 				{ ...HOME, id: "c4", name: "四号" },
 			],
-			view: {
+			view: shown({
 				items: {
 					links: {
 						c1: { status: { tone: "ok", text: "已连接" } },
@@ -167,7 +176,7 @@ describe("卡上的状态", () => {
 						c3: { status: { tone: "error", text: "登录失效" } },
 					},
 				},
-			},
+			}),
 		});
 		await within(await findCard("c1")).findByText("已连接");
 		expect(accentOf("c1")).toContain("--color-bn-success");
@@ -288,7 +297,7 @@ describe("卡的正文", () => {
 		expect(row.compareDocumentPosition(rule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(rule.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		cleanup();
-		renderList({ items: [HOME], view: viewOf({ lead: CONNECTED.items?.links?.c1?.blocks }) });
+		renderList({ items: [HOME], view: viewOf({ lead: CONNECTED_ITEM.blocks }) });
 		const leadOnly = await findCard("c1");
 		await within(leadOnly).findByText("它驮着的 bot");
 		expect(leadOnly.querySelector("[data-table-rule]")).toBeNull();
@@ -474,7 +483,7 @@ describe("图例", () => {
 	});
 
 	it("三态表挂在 lead 里也算", async () => {
-		const tableFirst = viewOf({ lead: CONNECTED.items?.links?.c1?.blocks });
+		const tableFirst = viewOf({ lead: CONNECTED_ITEM.blocks });
 		renderList({ items: [HOME], view: tableFirst });
 		await within(await findCard("c1")).findByText("它驮着的 bot");
 		expect(screen.getAllByRole("list", { name: "图例" })).toHaveLength(1);
@@ -485,7 +494,9 @@ describe("图例", () => {
 			items: [HOME],
 			view: viewOf({
 				status: { tone: "ok", text: "已连接" },
-				blocks: [{ type: "table", columns: [{ kind: "mono" }], rows: [["abc"]] }],
+				blocks: [
+					{ type: "table", columns: [{ kind: "mono" }], rows: [[{ kind: "mono", text: "abc" }]] },
+				],
 			}),
 		});
 		await within(await findCard("c1")).findByText("已连接");

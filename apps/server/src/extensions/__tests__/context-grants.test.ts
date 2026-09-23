@@ -9,7 +9,12 @@
 
 import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
-import type { ExtensionConfigField, ExtensionDescriptor } from "@bilibili-notify/extension";
+import type { ExtensionPanelView } from "@bilibili-notify/contract";
+import type {
+	ExtensionConfigField,
+	ExtensionDescriptor,
+	ExtensionView,
+} from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
@@ -386,53 +391,140 @@ describe("按清单注册推送源", () => {
 });
 
 /**
- * v2 交的视图是一组封闭的积木(ADR-0019 决策 20),宿主**先校验再下发**:不合规矩的整份不画,
- * 换成一条说清哪里不对的错误提示 —— 静默吞掉的话,面板上那块就是一片空白,没人知道为什么。
+ * v2 交的视图是一组封闭的积木(ADR-0019 决策 20),宿主**先校验再下发**,不合规矩的**按块 / 按项**
+ * 降级(决策 40)—— 怎么降级见 `view-check.test.ts`;这里钉 ctx 那一层:v2 走 `publishView`、交回
+ * Promise 当场报错(不静默变成空视图)、同一个错只记一行、v1 的老口原样留着。
  */
 describe("交给面板的视图", () => {
+	/** 一格列表设置 —— 视图里 `items` 的键要对得上它与存着的项。 */
 	const V2: ExtensionManifest = {
 		...V1_PUSH,
 		apiVersion: 2,
+		settings: {
+			fields: [
+				{
+					key: "links",
+					type: "list",
+					label: "桥接入",
+					title: "name",
+					fields: [{ key: "name", type: "string", label: "名字", required: true }],
+				},
+			],
+		},
 		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
 	} as unknown as ExtensionManifest;
+	const SETTINGS = { links: [{ id: "a", name: "家里那台" }] };
 
-	it("v2 合规矩 —— 原样下发", () => {
-		const h = harness({ manifest: V2 });
-		const view = { summary: { tone: "ok", text: [{ b: "2" }, " 个 bot 在线"] } };
-		h.ctx.publishStatus(() => view);
-		expect(h.runtime.status()).toEqual(view);
+	/** 回调交回 Promise —— 类型上 `publishView` 不收,真拓展(没过类型检查的、JS 写的)照样交得出来。 */
+	const asView = (fn: () => unknown) => fn as () => ExtensionView;
+
+	const viewWarnings = (lines: string[]) =>
+		lines.filter((line) => line.startsWith("warn") && line.includes("画不出来"));
+
+	it("合规矩 —— 积木包在 { block } 里、项包在 { view } 里交出去", () => {
+		const h = harness({ manifest: V2, settings: SETTINGS });
+		const notice = { type: "notice", tone: "info", text: "照常" } as const;
+		h.ctx.publishView(() => ({
+			summary: { tone: "ok", text: [{ b: "2" }, " 个 bot 在线"] },
+			page: [notice],
+			items: { links: { a: { status: { tone: "ok", text: "已连接" } } } },
+		}));
+		expect(h.runtime.status()).toEqual({
+			summary: { tone: "ok", text: [{ b: "2" }, " 个 bot 在线"] },
+			page: [{ block: notice }],
+			items: { links: { a: { view: { status: { tone: "ok", text: "已连接" } } } } },
+		});
 	});
 
-	it("v2 不合规矩 —— 换成一条错误提示条,点名哪一格;同一个错只记一行", () => {
+	it("坏一块只换掉那一块,点名哪一格;同一个错只记一行", () => {
 		const h = harness({ manifest: V2 });
-		h.ctx.publishStatus(() => ({ page: [{ type: "notice", tone: "success", text: "好了" }] }));
-		const shown = h.runtime.status() as {
-			page: Array<{ type: string; tone: string; text: unknown }>;
-		};
-		expect(shown.page).toHaveLength(1);
-		expect(shown.page[0]).toMatchObject({ type: "notice", tone: "error" });
-		expect(JSON.stringify(shown.page[0]?.text)).toContain("page.0");
-		h.runtime.status();
-		expect(h.lines.filter((line) => line.startsWith("warn") && line.includes("视图"))).toHaveLength(
-			1,
+		const notice = { type: "notice", tone: "info", text: "照常" } as const;
+		h.ctx.publishView(
+			asView(() => ({ page: [{ type: "notice", tone: "success", text: "好了" }, notice] })),
 		);
+		const shown = h.runtime.status() as ExtensionPanelView;
+		expect(shown.page?.[0]).toMatchObject({
+			fault: { where: "页上第 1 块(提示条)", reason: expect.stringContaining("tone") },
+		});
+		expect(shown.page?.[1]).toEqual({ block: notice });
+		h.runtime.status();
+		expect(viewWarnings(h.lines)).toHaveLength(1);
+	});
+
+	/** `items` 的第二层键认的是**现在**存着的项 —— 删掉一条之后,拓展还交它的样子就丢掉。 */
+	it("items 的键照存着的设置核:删掉的那一项丢掉并记一行", () => {
+		const h = harness({ manifest: V2, settings: SETTINGS });
+		h.ctx.publishView(() => ({ items: { links: { a: {} } } }));
+		expect((h.runtime.status() as ExtensionPanelView).items).toEqual({
+			links: { a: { view: {} } },
+		});
+		h.setSettings({ links: [] });
+		expect((h.runtime.status() as ExtensionPanelView).items).toEqual({ links: {} });
+		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("「a」"))).toBe(true);
 	});
 
 	/**
-	 * `items` 的键不合规矩时 zod 自己只说一句「Invalid key in record」,真正的原因在里层 ——
-	 * 与读清单同一套摊法,拓展作者才知道这个名字**为什么**不行。
+	 * 🔴 旧口 `publishStatus(() => unknown)` 对 async 回调静默给出一份空视图(决策 39)。v2 的专口当场
+	 * 报错:那一口画成一条说清原因的提示,现存的项各写「状态未知」,日志记一行 —— 同一个错不每次都记。
 	 */
-	it("v2 items 的键不合规矩 —— 错误提示说得出里层原因", () => {
-		const h = harness({ manifest: V2 });
-		h.ctx.publishStatus(() => ({ items: { "1bad": {} } }));
-		const shown = h.runtime.status() as { page: Array<{ text: unknown }> };
-		const text = JSON.stringify(shown.page[0]?.text);
-		expect(text).toContain("items.1bad");
-		expect(text).toContain("字母开头");
-		expect(text).not.toContain("Invalid key");
+	it("回调交回 Promise —— 当场一条提示说清要同步交,不当成空视图;只记一行", () => {
+		const h = harness({ manifest: V2, settings: SETTINGS });
+		h.ctx.publishView(asView(async () => ({ summary: { text: "迟到的" } })));
+		const shown = h.runtime.status() as ExtensionPanelView;
+		expect(shown.page).toEqual([
+			{
+				fault: {
+					where: "整份视图",
+					reason: expect.stringContaining("publishView 的回调要同步交回视图"),
+				},
+			},
+		]);
+		expect(shown.items?.links?.a).toMatchObject({ fault: { where: "这一项" } });
+		expect(shown.summary).toBeUndefined();
+		h.runtime.status();
+		expect(viewWarnings(h.lines)).toHaveLength(1);
 	});
 
-	it("v1 —— 任意 JSON 原样下发(桥的页是手写的)", () => {
+	/** 交回的 Promise 后来 reject 了:没人接的话就是一条未处理的 rejection —— Node 默认会让进程退出。 */
+	it("async 回调抛了 —— 同样一条提示,不留下未处理的 rejection", async () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.publishView(
+			asView(async () => {
+				throw new Error("算视图时炸了");
+			}),
+		);
+		expect(JSON.stringify(h.runtime.status())).toContain("publishView 的回调要同步交回视图");
+		// 让那一发 rejection 落地 —— 没接住的话 vitest 会把它报成一条错误。
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+
+	it("回调同步抛了 —— 一条提示带着原话", () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.publishView(() => {
+			throw new Error("算视图时炸了");
+		});
+		expect(JSON.stringify(h.runtime.status())).toContain("算视图时炸了");
+	});
+
+	it("v2 叫 publishStatus —— 不受理,记一行说走 publishView", () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.publishStatus(() => ({ summary: { text: "x" } }));
+		expect(h.runtime.status()).toBeUndefined();
+		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("publishView"))).toBe(
+			true,
+		);
+	});
+
+	it("v1 叫 publishView —— 不受理(v1 的状态走 publishStatus)", () => {
+		const h = harness();
+		h.ctx.publishView(() => ({ summary: { text: "x" } }));
+		expect(h.runtime.status()).toBeUndefined();
+		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("publishStatus"))).toBe(
+			true,
+		);
+	});
+
+	it("v1 —— 任意 JSON 原样下发(v1 的页是手写的)", () => {
 		const h = harness();
 		const status = { sessions: [{ linkId: "a", connected: false }] };
 		h.ctx.publishStatus(() => status);

@@ -11,8 +11,6 @@ import {
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
-	ExtensionViewSchema,
-	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
@@ -33,6 +31,7 @@ import {
 	type StoredSettingsVerdict,
 } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
+import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view-check.js";
 
 /**
  * ⚠️ **交给拓展的那一面住 `@bilibili-notify/extension`**,不在这里 —— 拓展与宿主都要
@@ -77,7 +76,12 @@ export const DISPOSE_TIMEOUT_MS = 30_000;
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
 export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
-	/** 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。 */
+	/**
+	 * 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。
+	 *
+	 * v2 是宿主核过的视图(`ExtensionPanelView`:坏块 / 坏项换成了宿主的提示,见 `view-check.ts`);
+	 * v1 是它 `publishStatus` 交的任意 JSON,原样。
+	 */
 	status(): unknown;
 	/**
 	 * 推送源那一口给面板的东西:外观 + 连接配置项。没注册过推送源就是 `undefined`。
@@ -176,6 +180,15 @@ function prefixed(logger: Logger, id: string): Logger {
 	};
 }
 
+/** 拓展交回来的是不是一个 Promise(或别的 thenable)—— `publishView` 要的是同步交回的视图。 */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		(typeof value === "object" || typeof value === "function") &&
+		value !== null &&
+		typeof (value as { then?: unknown }).then === "function"
+	);
+}
+
 /** 已经卸载了还来注册的东西,给它一个什么都不做的把手。 */
 const NOOP_DISPOSABLE: Disposable = { dispose() {} };
 
@@ -208,7 +221,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		};
 	}
 
+	/** v1 `publishStatus` 交的回调 —— 任意 JSON,原样下发。 */
 	let statusOf: (() => unknown) | undefined;
+	/** v2 `publishView` 交的回调 —— 每问一次叫一次,核过再下发。 */
+	let viewFn: (() => ExtensionView) | undefined;
+	const isV2 = opts.manifest.apiVersion === 2;
 	let pushSourceRegistered = false;
 	let pushView: ExtensionPushView | undefined;
 	/**
@@ -479,9 +496,25 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			registered.add(opts.upgrades.register(id, handler));
 		},
+		publishView(fn) {
+			if (disposed) {
+				refuse("publishView");
+				return;
+			}
+			if (!isV2) {
+				logger.warn("v1 清单交状态走 publishStatus,publishView 不受理");
+				return;
+			}
+			viewFn = fn;
+		},
 		publishStatus(fn) {
 			if (disposed) {
 				refuse("publishStatus");
+				return;
+			}
+			// v2 走专口(决策 39):旧口收任意 JSON,async 回调在它那儿静默变成一份空视图。
+			if (isV2) {
+				logger.warn("v2 交视图走 ctx.publishView,publishStatus 不受理 —— 面板上这个拓展不会有视图");
 				return;
 			}
 			statusOf = fn;
@@ -554,42 +587,54 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 	};
 
-	/** 上一次记过日志的那个错 —— 面板每刷一次就问一次,同一个错只记一行。 */
-	let lastViewError: string | undefined;
+	/**
+	 * 上一次问视图时记过的那几句 —— 面板每刷一次就问一次,同一句只记一行。只留上一次那一份(不越攒
+	 * 越多):一处好了又坏,会再记一次,那正是该再看见的时候。
+	 */
+	let lastViewProblems: ReadonlySet<string> = new Set();
 
 	/**
-	 * v2 交的视图**先校验再下发**(ADR-0019 决策 20)。不合规矩的整份不画,换成一条说清哪里
-	 * 不对的错误提示 —— 静默吞掉的话,面板上那块就是一片空白,谁也不知道为什么。
+	 * v2 交的视图**先核再下发**(ADR-0019 决策 40):坏的只换掉那一块 / 那一项,每一处都点名哪儿、
+	 * 为什么 —— 静默吞掉的话,面板上那块就是一片空白,谁也不知道为什么。核法在 `view-check.ts`。
 	 */
-	function viewOf(raw: unknown): unknown {
-		if (raw === undefined || opts.manifest.apiVersion === 1) return raw;
-		const parsed = ExtensionViewSchema.safeParse(raw);
-		if (parsed.success) {
-			lastViewError = undefined;
-			// 校验过的 zod 形状当 wire 那份手写的类型交出去 —— 两份漂开,这一行过不了类型检查。
-			const view: ExtensionView = parsed.data;
-			return view;
-		}
-		const detail = formatZodIssues(parsed.error).join(";");
-		if (detail !== lastViewError) {
-			lastViewError = detail;
-			logger.warn(`交上来的视图不合规矩,这一份不画:${detail}`);
-		}
-		const fallback: ExtensionView = {
-			page: [
-				{
-					type: "notice",
-					tone: "error",
-					text: [{ b: "这个拓展交上来的界面不合规矩,BN 没法画。" }, `(${detail})`],
-				},
-			],
+	function checkedView(fn: () => ExtensionView): ViewCheck {
+		const input = {
+			fields: opts.manifest.apiVersion === 2 ? (opts.manifest.settings?.fields ?? []) : [],
+			// 现读:`items` 的键认的是**现在**存着的项。
+			settings: opts.settings(),
 		};
-		return fallback;
+		let raw: unknown;
+		try {
+			raw = fn();
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return faultedExtensionView(`publishView 的回调抛了:${message}`, input);
+		}
+		if (isThenable(raw)) {
+			// 🔴 接住它后来的 reject:没人接的 rejection 在 Node 里默认让整个进程退出。
+			Promise.resolve(raw).catch(() => {});
+			return faultedExtensionView(
+				"publishView 的回调要同步交回视图,交回的却是一个 Promise(async 回调就是这样)—— BN 不等它,也不把它当成一份空视图;要等的东西先算好存着,变了喊一声 statusChanged()",
+				input,
+			);
+		}
+		return checkExtensionView(raw, input);
+	}
+
+	function viewNow(): unknown {
+		if (!viewFn) return undefined;
+		const { view, problems } = checkedView(viewFn);
+		const now = new Set(problems);
+		for (const problem of now) {
+			if (!lastViewProblems.has(problem)) logger.warn(`交上来的视图:${problem}`);
+		}
+		lastViewProblems = now;
+		return view;
 	}
 
 	return {
 		ctx,
-		status: () => viewOf(statusOf?.()),
+		status: () => (isV2 ? viewNow() : statusOf?.()),
 		pushSource: () => pushView,
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
@@ -684,6 +729,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			actionHandlers.clear();
 			handedSchemas.clear();
 			statusOf = undefined;
+			viewFn = undefined;
 			secretCodes = [];
 		},
 	};

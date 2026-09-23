@@ -2,9 +2,11 @@ import type {
 	ExtensionDTO,
 	ExtensionItemView,
 	ExtensionListField,
+	ExtensionPanelItem,
 	ExtensionScalarField,
 	ExtensionSettingsOp,
 	ExtensionTone,
+	ExtensionViewFault,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -27,6 +29,7 @@ import {
 	TONE_DOT,
 	TONE_TEXT,
 	useExtensionAction,
+	ViewFaultNote,
 } from "./blocks";
 import {
 	declaredPatchOf,
@@ -79,17 +82,19 @@ interface CardStatus {
  * 1. 停用的项由 BN 盖成「已停用」,拓展报什么都不算(决策 26)—— 那是主人自己拨的,最具体;
  * 2. 拓展关着 → 「拓展关着」(决策 32);
  * 3. 开着却没跑起来 / 状态那一口出错 → 「状态未知」—— 面板不替拓展猜(决策 24 的五处之一);
- * 4. 视图里这一项报了什么就是什么;没报就不说 —— 一句编出来的状态比没有更糟。
+ * 4. 这一项交来的样子宿主判它不合规矩(决策 40)→ 「状态未知」,卡上另有一条提示说为什么;
+ * 5. 视图里这一项报了什么就是什么;没报就不说 —— 一句编出来的状态比没有更糟。
  */
 function cardStatusOf(
 	paused: boolean,
 	viewState: ViewState,
-	itemView: ExtensionItemView | undefined,
+	slot: ExtensionPanelItem | undefined,
 ): CardStatus | undefined {
 	if (paused) return { tone: "off", text: "已停用" };
 	if (viewState === "off") return { tone: "off", text: "拓展关着" };
 	if (viewState === "unknown") return { tone: "off", text: "状态未知" };
-	return itemView?.status;
+	if (slot && "fault" in slot) return { tone: "off", text: "状态未知" };
+	return slot?.view.status;
 }
 
 /** 语气 → 卡角那抹光。没有状态的走中性灰,与「关着的」同一档。 */
@@ -195,11 +200,22 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 			? "unknown"
 			: "live";
 	// 出错之后 react-query 还攥着上一份 —— 旧的那份不作数,一样都不画(`liveViewOf`)。
-	const rawViews = liveViewOf(running, view)?.items?.[field.key];
-	const views = isRecord(rawViews)
-		? (rawViews as Readonly<Record<string, ExtensionItemView>>)
+	const live = liveViewOf(running, view);
+	const rawSlots = live?.items?.[field.key];
+	const slots = isRecord(rawSlots)
+		? (rawSlots as Readonly<Record<string, ExtensionPanelItem>>)
 		: undefined;
-	const viewOf = (item: ListItem) => views?.[item.id];
+	/** 这一项在视图里的那一格:拓展交的样子,或宿主换上的「画不出来」(决策 40)。 */
+	const slotOf = (item: ListItem) =>
+		slots && Object.hasOwn(slots, item.id) ? slots[item.id] : undefined;
+	const viewOf = (item: ListItem) => {
+		const slot = slotOf(item);
+		return slot && "view" in slot ? slot.view : undefined;
+	};
+	const faultOf = (item: ListItem) => {
+		const slot = slotOf(item);
+		return slot && "fault" in slot ? slot.fault : undefined;
+	};
 	const legend = items.some((item) => {
 		const itemView = viewOf(item);
 		return hasTriStateTable(itemView?.lead) || hasTriStateTable(itemView?.blocks);
@@ -335,7 +351,9 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 					field={field}
 					item={item}
 					itemView={viewOf(item)}
-					status={cardStatusOf(isPaused(field, item), viewState, viewOf(item))}
+					fault={faultOf(item)}
+					images={live?.images}
+					status={cardStatusOf(isPaused(field, item), viewState, slotOf(item))}
 					actions={actions}
 				/>
 			))}
@@ -494,6 +512,8 @@ function ListCard({
 	field,
 	item,
 	itemView,
+	fault,
+	images,
 	status,
 	actions,
 }: {
@@ -501,6 +521,13 @@ function ListCard({
 	field: ExtensionListField;
 	item: ListItem;
 	itemView: ExtensionItemView | undefined;
+	/**
+	 * 这一项交来的样子宿主判它不合规矩(决策 40)—— 那张卡写「状态未知」,正文顶上一条提示说为什么;
+	 * 它交的药丸、副标题、按钮、积木一样都不画。BN 自己画的(字段行、停用、删除)照常。
+	 */
+	fault: ExtensionViewFault | undefined;
+	/** 视图顶层的图片字典 —— 卡里的积木按键引用。 */
+	images: Readonly<Record<string, string>> | undefined;
 	status: CardStatus | undefined;
 	actions: CardActions;
 }) {
@@ -555,7 +582,7 @@ function ListCard({
 								variant="outline"
 								size="sm"
 								disabled={busy || run.isPending}
-								onClick={() => ("action" in button ? run.mutate(button) : onSet(button.set))}
+								onClick={() => (button.kind === "action" ? run.mutate(button) : onSet(button.set))}
 							>
 								{button.label}
 							</Btn>
@@ -595,6 +622,7 @@ function ListCard({
 				}
 			>
 				<div className="flex flex-col gap-3">
+					{fault ? <ViewFaultNote fault={fault} /> : null}
 					{run.isError && run.variables ? (
 						<ActionFailure label={run.variables.label} error={run.error} />
 					) : null}
@@ -602,6 +630,7 @@ function ListCard({
 						<Blocks
 							blocks={itemView.lead}
 							extensionId={extensionId}
+							images={images}
 							onSet={onSet}
 							disabled={busy}
 						/>
@@ -622,6 +651,7 @@ function ListCard({
 						<Blocks
 							blocks={itemView.blocks}
 							extensionId={extensionId}
+							images={images}
 							onSet={onSet}
 							disabled={busy}
 							ruleBeforeTables

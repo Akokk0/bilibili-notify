@@ -100,7 +100,10 @@ export interface CreateAppOptions {
 	extensions?: {
 		mounts: ExtensionMounts;
 		loaded: () => readonly ExtensionEntry[];
-		/** 某个拓展交上来的面板数据(`ctx.publishStatus`)。没交过 / 没跑就是 undefined。 */
+		/**
+		 * 某个拓展交上来的面板数据(v2 `ctx.publishView` 核过的那份 / v1 `ctx.publishStatus`)。
+		 * 没交过 / 没跑就是 undefined。
+		 */
 		status: (id: string) => unknown;
 		/** 某个拓展推送源那一口的外观 + 连接配置项(决策 33)。没跑 / 没注册过就是 undefined。 */
 		pushSource: (id: string) => ExtensionPushView | undefined;

@@ -6,7 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify/ui";
 import { reasonOf } from "../shared";
-import { Blocks, TONE_DOT } from "./blocks";
+import { PageBlocks, TONE_DOT } from "./blocks";
 import { ListSection } from "./list-section";
 import { RichText } from "./rich-text";
 import { SettingsForm } from "./settings-form";
@@ -38,10 +38,12 @@ export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
 		if (isNotFound(view.error)) return null;
 		return <ErrorNote size="sm">读不到它现在的状态:{reasonOf(view.error)}</ErrorNote>;
 	}
-	const page = liveViewOf(running, view)?.page;
+	const live = liveViewOf(running, view);
+	const page = live?.page;
 	if (!Array.isArray(page) || page.length === 0) return null;
-	// 页级积木没有「列表头」可挂图例,有三态列的表自己挂一次(决策 27)。
-	return <Blocks blocks={page} extensionId={ext.id} legend />;
+	// 页级积木没有「列表头」可挂图例,有三态列的表自己挂一次(决策 27)。坏了的那一块宿主已经换成
+	// 一条提示(决策 40),画在它原来的位置上。
+	return <PageBlocks slots={page} extensionId={ext.id} images={live?.images} legend />;
 }
 
 /**

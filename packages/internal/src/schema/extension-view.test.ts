@@ -1,12 +1,20 @@
 /**
- * 拓展交给面板的「视图」(ADR-0019 决策 20 / 26–28)—— 一组**封闭的积木**,由 BN 照着画。
+ * 拓展交给面板的「视图」(ADR-0019 决策 20 / 26–28,09-23 决策 39 改过一轮)—— 一组**封闭的积木**,
+ * 由 BN 照着画。
  *
- * 它是契约:拓展写什么、面板画什么都在这里说死。宿主拿这份 schema 校验 v2 拓展交来的视图,
- * 不合规矩的不画(换成一条说清哪里不对的错误提示),所以这里既钉「收下什么」,也钉「拒什么」。
+ * 它是契约:拓展写什么、面板画什么都在这里说死。宿主拿这里的几块 schema **逐块 / 逐项**校验 v2
+ * 拓展交来的视图(决策 40:坏的只换掉那一块 / 那一项),所以这里既钉「收下什么」,也钉「拒什么」。
+ * 要看清单才判得了的(列表的键、项的 id、「改设置」改的是哪几格)与整份的字节上限在宿主那头,
+ * 见 `apps/server/src/extensions/view-check.ts`。
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { ExtensionViewSchema } from "./extension-view";
+import {
+	EXTENSION_VIEW_MAX_BYTES,
+	ExtensionBlockSchema,
+	ExtensionViewSchema,
+	viewImageKeysOf,
+} from "./extension-view";
 
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -40,7 +48,7 @@ const BRIDGE_VIEW = {
 					{ time: 1790061520000, suffix: "连上" },
 					" · 来自 192.168.1.8",
 				],
-				buttons: [{ label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }],
+				buttons: [{ kind: "set", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }],
 				blocks: [
 					{
 						type: "notice",
@@ -63,10 +71,10 @@ const BRIDGE_VIEW = {
 						],
 						rows: [
 							[
-								{ image: PNG, fallback: "ai" },
-								{ text: "书房的小号", sub: "aiocqhttp · 1049382211" },
-								"yes",
-								"unknown",
+								{ kind: "icon", image: "qq", fallback: "ai" },
+								{ kind: "text", text: "书房的小号", sub: "aiocqhttp · 1049382211" },
+								{ kind: "tristate", value: "yes" },
+								{ kind: "tristate", value: "unknown" },
 							],
 						],
 					},
@@ -74,10 +82,16 @@ const BRIDGE_VIEW = {
 			},
 		},
 	},
+	images: { qq: PNG },
 };
 
+/** 一张只有一列的表 —— 拿来钉格子的规矩。 */
+const table = (columns: unknown[], rows: unknown[][]) => ({
+	page: [{ type: "table", columns, rows }],
+});
+
 describe("ExtensionViewSchema —— 收下", () => {
-	it("桥那一份(页级可复制值 + 列表项的状态、按钮、提示条、表格)", () => {
+	it("桥那一份(页级可复制值 + 列表项的状态、按钮、提示条、表格 + 图片字典)", () => {
 		expect(accepts(BRIDGE_VIEW)).toBe(true);
 	});
 
@@ -103,7 +117,7 @@ describe("ExtensionViewSchema —— 收下", () => {
 		expect(accepts({})).toBe(true);
 	});
 
-	it("抖音那一份(键值 + 带按钮的提示条 + 调拓展的按钮)", () => {
+	it("抖音那一份(键值 + 带按钮的提示条 + 按钮积木 + 二维码按键引用图)", () => {
 		expect(
 			accepts({
 				page: [
@@ -118,12 +132,39 @@ describe("ExtensionViewSchema —— 收下", () => {
 						type: "notice",
 						tone: "warn",
 						text: "cookie 还有 3 天过期。",
-						button: { label: "现在检查一次", action: "poll.now" },
+						button: { kind: "action", label: "现在检查一次", action: "poll.now" },
 					},
-					{ type: "button", label: "现在检查一次", action: "poll.now" },
-					{ type: "qr", image: PNG, caption: "用抖音扫一下" },
+					{
+						type: "button",
+						button: { kind: "action", label: "现在检查一次", action: "poll.now" },
+					},
+					{ type: "qr", image: "login", caption: "用抖音扫一下" },
 				],
+				images: { login: PNG },
 			}),
+		).toBe(true);
+	});
+
+	it("表格四种格各自带种类,与那一列同种就收", () => {
+		expect(
+			accepts(
+				table(
+					[
+						{ kind: "icon" },
+						{ kind: "text" },
+						{ kind: "mono" },
+						{ kind: "tristate", label: "@全体" },
+					],
+					[
+						[
+							{ kind: "icon", fallback: "qq" },
+							{ kind: "text", text: "小粉" },
+							{ kind: "mono", text: "2854196310" },
+							{ kind: "tristate", value: "no" },
+						],
+					],
+				),
+			),
 		).toBe(true);
 	});
 });
@@ -146,42 +187,126 @@ describe("ExtensionViewSchema —— 拒", () => {
 		issues({ summary: { text: [{ time: -1 }] } });
 	});
 
-	/** 「改设置」的按钮改的是**这一项**的一格(决策 27)—— 页级没有「这一项」。 */
-	it("改设置的按钮只许挂在列表项上 —— 页级积木、页级提示条里的都拒", () => {
-		const set = { label: "改掉", set: { kind: "astrbot" } };
-		expect(issues({ page: [{ type: "button", ...set }] })).toContain("set");
-		expect(issues({ page: [{ type: "notice", tone: "info", text: "x", button: set }] })).toContain(
-			"set",
-		);
-	});
+	/**
+	 * 按钮显式带 `kind`(决策 39):从前靠「有没有 `action` / `set` 这个键」分,类型挡不住两个键
+	 * 同时写 —— 面板按哪一种画全凭它先查哪个键。
+	 */
+	describe("按钮", () => {
+		const button = (b: unknown) => ({ page: [{ type: "button", button: b }] });
 
-	it("调拓展的按钮,动作名要合清单那条规矩(它要进 URL)", () => {
-		issues({ page: [{ type: "button", label: "按", action: "Poll Now" }] });
-	});
+		it("不带 kind 的老写法 —— 拒", () => {
+			expect(issues(button({ label: "按", action: "poll.now" }))).toContain("page.0.button");
+		});
 
-	it("表格:一行的格数要和列对上,每格的样子要和那一列的种类对上", () => {
-		const table = (rows: unknown[][]) => ({
-			page: [
-				{
-					type: "table",
-					columns: [{ kind: "icon" }, { kind: "text" }, { kind: "tristate", label: "@全体" }],
-					rows,
+		it("两个键同时写 —— 拒(一颗按钮只做一件事)", () => {
+			issues(button({ kind: "action", label: "按", action: "poll.now", set: { kind: "x" } }));
+			issues({
+				items: {
+					links: {
+						a: {
+							buttons: [
+								{ kind: "set", label: "改", set: { bridgeKind: "astrbot" }, action: "poll.now" },
+							],
+						},
+					},
 				},
-			],
+			});
 		});
-		expect(accepts(table([[{ fallback: "qq" }, "小粉", "no"]]))).toBe(true);
-		expect(issues(table([[{ fallback: "qq" }, "小粉"]]))).toContain("rows.0");
-		expect(issues(table([[{ fallback: "qq" }, "小粉", "maybe"]]))).toContain("rows.0.2");
-		expect(issues(table([["qq", "小粉", "yes"]]))).toContain("rows.0.0");
+
+		it("按钮积木是 { type: button, button },不再把按钮的键摊在积木上", () => {
+			issues({ page: [{ type: "button", kind: "action", label: "按", action: "poll.now" }] });
+		});
+
+		it("调拓展的按钮,动作名要合清单那条规矩(它要进 URL)", () => {
+			issues(button({ kind: "action", label: "按", action: "Poll Now" }));
+		});
+
+		/** 「改设置」的按钮改的是**这一项**的一格(决策 27)—— 页级没有「这一项」。 */
+		it("改设置的按钮只许挂在列表项上 —— 页级积木、页级提示条里的都拒", () => {
+			const set = { kind: "set", label: "改掉", set: { kind: "astrbot" } };
+			expect(issues(button(set))).toContain("button.set");
+			expect(
+				issues({ page: [{ type: "notice", tone: "info", text: "x", button: set }] }),
+			).toContain("button.set");
+		});
+
+		it("一格都不改的「改设置」—— 拒", () => {
+			issues({ items: { links: { a: { buttons: [{ kind: "set", label: "改", set: {} }] } } } });
+		});
 	});
 
-	it("表格的图标格:图片只收 data URL(和选项图标同一条),退路最多两个字", () => {
-		const cell = (icon: unknown) => ({
-			page: [{ type: "table", columns: [{ kind: "icon" }], rows: [[icon]] }],
+	/**
+	 * 表格的格子**自带种类**(决策 39):宿主只核「这一格与这一列同种」。从前按位置对列,格子在类型
+	 * 里只能是 `unknown`,一个字符串落在 icon 列上照样过了类型检查。
+	 */
+	describe("表格", () => {
+		it("一行的格数要和列对上", () => {
+			expect(
+				issues(table([{ kind: "mono" }, { kind: "mono" }], [[{ kind: "mono", text: "a" }]])),
+			).toContain("rows.0");
 		});
-		expect(accepts(cell({ image: PNG, fallback: "te" }))).toBe(true);
-		issues(cell({ image: "https://example.invalid/tg.png", fallback: "te" }));
-		issues(cell({ fallback: "telegram" }));
+
+		it("格子的种类与那一列不同 —— 拒,点名那一格", () => {
+			const text = issues(
+				table(
+					[{ kind: "icon" }, { kind: "tristate", label: "@全体" }],
+					[
+						[
+							{ kind: "icon", fallback: "qq" },
+							{ kind: "text", text: "yes" },
+						],
+					],
+				),
+			);
+			expect(text).toContain("rows.0.1");
+		});
+
+		it("不带种类的格(老写法:裸字符串、裸三态词)—— 拒", () => {
+			issues(table([{ kind: "mono" }], [["abc"]]));
+			issues(table([{ kind: "tristate", label: "@全体" }], [["yes"]]));
+			issues(table([{ kind: "text" }], [[{ text: "小粉" }]]));
+		});
+
+		it("三态只认那三个词", () => {
+			issues(
+				table([{ kind: "tristate", label: "@全体" }], [[{ kind: "tristate", value: "maybe" }]]),
+			);
+		});
+
+		it("图标格的退路最多两个字", () => {
+			issues(table([{ kind: "icon" }], [[{ kind: "icon", fallback: "telegram" }]]));
+		});
+	});
+
+	/**
+	 * 图片进顶层的 `images` 字典,格子与二维码按键引用(决策 39):每行内联一份 base64 时,两百个
+	 * bot 的视图八百多 KB,每喊一次 `statusChanged()` 就整份重拉。单张的规矩与选项图标同一条。
+	 */
+	describe("图片", () => {
+		it("引用了字典里没有的键 —— 拒,点名那一格", () => {
+			expect(
+				issues({
+					...table([{ kind: "icon" }], [[{ kind: "icon", image: "tg", fallback: "te" }]]),
+					images: { qq: PNG },
+				}),
+			).toContain("page.0.rows.0.0.image");
+			expect(issues({ page: [{ type: "qr", image: "login" }] })).toContain("page.0.image");
+		});
+
+		it("字典里的图只收图片 data URL,单张封顶", () => {
+			issues({ images: { tg: "https://example.invalid/tg.png" } });
+			issues({ images: { big: `data:image/png;base64,${"A".repeat(40_000)}` } });
+		});
+
+		it("格子里不再收内联的图", () => {
+			issues(table([{ kind: "icon" }], [[{ kind: "icon", image: PNG, fallback: "te" }]]));
+		});
+
+		it("键的规矩:字母数字开头、不许撞原型上的名字", () => {
+			issues({ images: { "": PNG } });
+			issues({ images: { "a b": PNG } });
+			issues({ images: { constructor: PNG } });
+		});
 	});
 
 	it("可复制的值:要么一段字,要么 BN 现算的地址 —— 别的 host 不认", () => {
@@ -197,4 +322,32 @@ describe("ExtensionViewSchema —— 拒", () => {
 		issues({ items: { "not a key": { a: {} } } });
 		issues({ items: { links: { "": {} } } });
 	});
+});
+
+describe("一块积木引用了哪些图", () => {
+	it("表格的图标格与二维码 —— 去重", () => {
+		const blocks = ExtensionBlockSchema.array().parse([
+			{
+				type: "table",
+				columns: [{ kind: "icon" }, { kind: "icon" }],
+				rows: [
+					[
+						{ kind: "icon", image: "qq", fallback: "qq" },
+						{ kind: "icon", fallback: "te" },
+					],
+					[
+						{ kind: "icon", image: "qq", fallback: "qq" },
+						{ kind: "icon", image: "tg", fallback: "te" },
+					],
+				],
+			},
+			{ type: "qr", image: "login" },
+			{ type: "notice", tone: "info", text: "没有图" },
+		]);
+		expect([...viewImageKeysOf(blocks)].sort()).toEqual(["login", "qq", "tg"]);
+	});
+});
+
+it("整份视图的字节上限是 256 KiB", () => {
+	expect(EXTENSION_VIEW_MAX_BYTES).toBe(256 * 1024);
 });

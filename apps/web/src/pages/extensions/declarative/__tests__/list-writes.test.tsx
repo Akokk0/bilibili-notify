@@ -15,7 +15,7 @@
  * - 有旧钥匙时「重新生成」先问一句;空着的不问。删除先问一句,点名是哪一条、删了会怎样。
  */
 
-import type { ExtensionView } from "@bilibili-notify/contract";
+import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -42,6 +42,7 @@ import {
 	servedRevision,
 	servedSettings,
 	settingsReads,
+	shown,
 	TOKEN,
 	updatedValues,
 } from "./list-harness";
@@ -49,27 +50,31 @@ import {
 /** 一条带着 BN 不认识的键的项 —— 只动一格的写不许碰到它。 */
 const HOME_WITH_EXTRA = { ...HOME, addedBy: "拓展自己放的" };
 
-const MISMATCH: ExtensionView = {
+const MISMATCH: ExtensionPanelView = shown({
 	items: {
 		links: {
 			c1: {
 				status: { tone: "warn", text: "连上了,但对不上" },
 				buttons: [
-					{ label: "改成 AstrBot", set: { bridgeKind: "astrbot", id: "hijacked", bogus: 1 } },
-					{ label: "踢下线", action: "kick" },
+					{
+						kind: "set",
+						label: "改成 AstrBot",
+						set: { bridgeKind: "astrbot", id: "hijacked", bogus: 1 },
+					},
+					{ kind: "action", label: "踢下线", action: "kick" },
 				],
 				lead: [
 					{
 						type: "notice",
 						tone: "warn",
 						text: "这条接入配的是 koishi,连进来的却自报 astrbot。",
-						button: { label: "就用 AstrBot", set: { bridgeKind: "astrbot" } },
+						button: { kind: "set", label: "就用 AstrBot", set: { bridgeKind: "astrbot" } },
 					},
 				],
 			},
 		},
 	},
-};
+});
 
 /** 服务端照清单 / 拓展校验不过时那份 400(`issues` 从设置那一层数,列表项按 id)。 */
 function invalid(issues: unknown[]): ApiError {
