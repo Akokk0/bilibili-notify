@@ -262,6 +262,12 @@ export async function startStandaloneServer(
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
 		await pruneOrphanSubRuntime(runtime.subRuntimeStore, subBinding.store);
+		// 拓展订阅的头像文件同理(ADR-0019 决策 49),保留名单同样是两支的全部 id。扫不动不致命:
+		// 最多多留几个孤儿文件,下次开机再扫。
+		// 头像不进备份(决策 49,与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
+		await runtime.subAvatarStore
+			.sweep(subBinding.store.list().map((s) => s.id))
+			.catch((err) => log.warn(`[sub-avatar] 开机清扫失败: ${String(err)}`));
 		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
 		//

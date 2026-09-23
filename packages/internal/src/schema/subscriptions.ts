@@ -137,12 +137,19 @@ export const SubscriptionRoutingSchema = z
  * **不再内嵌于 Subscription**（高频 fans/lastRefreshedAt 写入会污染配置写路径）。
  * 独立端持久化到 apps/server 的 SubRuntimeStore（`<dataDir>/state/sub-runtime.json`）；
  * schema/type 仍导出,供 SubRuntimeStore + `/api/subs` join 复用。
+ *
+ * `fans` 可缺:拓展订阅的候选 / 资料不一定知道粉丝数(ADR-0019 决策 52 的 `fans?`),缺了写成 0
+ * 就是在面板上印一句「0 粉丝」的假话。B 站那支照旧总有。`sub-runtime.json` 读盘是裸
+ * `JSON.parse`、不过这份 schema,所以旧载荷读到缺这一格的条目也照常开机。
+ *
+ * `avatar` 两支不同:B 站订阅是 B 站 CDN 的图链;拓展订阅是同源的相对地址
+ * `/api/subs/<id>/avatar?v=<摘要>`(决策 49,头像存成文件),没有就是空串。
  */
 export const CachedProfileSchema = z.object({
 	name: z.string(),
 	avatar: z.string(),
 	sign: z.string(),
-	fans: z.number().int().min(0),
+	fans: z.number().int().min(0).optional(),
 	lastRefreshedAt: z.string(),
 });
 export type CachedProfile = z.infer<typeof CachedProfileSchema>;

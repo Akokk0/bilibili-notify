@@ -11,6 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { ConfigValidationError } from "../../config/store.js";
 import { createSubsRoute } from "../subs.js";
 import type { RouteDeps } from "../types.js";
@@ -363,9 +364,8 @@ describe("/api/subs POST — 自动关注该 UP", () => {
 /**
  * 拓展订阅(ADR-0019 决策 9 / 12 / 50)。
  *
- * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅不走这条 POST(`extensionId` 得由宿主按
- * 「请求来自哪个拓展」填,那是 T4 的解析门);已有的那条整份 POST 回来(面板的启用开关)照收,
- * 关注 / 资料种子都不碰它。身份改不动,store 拒了就是 400。
+ * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅要宿主核过「它是装着的订阅源」;已有的
+ * 那条整份 POST 回来(面板的启用开关)照收,关注 / 资料种子都不碰它。身份改不动,store 拒了就是 400。
  */
 describe("/api/subs × 拓展订阅", () => {
 	beforeEach(() => vi.restoreAllMocks());
@@ -406,13 +406,15 @@ describe("/api/subs × 拓展订阅", () => {
 		expect("followError" in (body[1] ?? {})).toBe(false);
 	});
 
-	it("POST 一条新的拓展订阅 → 400,不落盘(新建走拓展的解析门)", async () => {
+	it("POST 一条新的拓展订阅,宿主没递装着的拓展名单 → 当作没装,400,不落盘", async () => {
+		// 新建的完整路径(核订阅源、判重、种资料、存头像)见 subs-extension-create.test.ts。
 		const h = makeHarness({ subs: [SUB] });
-		const res = await postJson(h, EXT);
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe(
-			"extension_subscription_unsupported",
+		const res = await postJson(
+			h,
+			makeExtensionSubscription({ id: EXT.id, extensionId: EXT.extensionId }),
 		);
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toBe("extension_not_installed");
 		expect(h.upsertSubscription).not.toHaveBeenCalled();
 	});
 

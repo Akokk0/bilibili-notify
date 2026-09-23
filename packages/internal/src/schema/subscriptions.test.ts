@@ -116,6 +116,12 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 		expect(r.success).toBe(true);
 	});
 
+	it("CachedProfile 可以不带粉丝数(拓展的候选不一定知道;写成 0 就是撒谎),带了照旧不许负数", () => {
+		const base = { name: "n", avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		expect(CachedProfileSchema.safeParse(base).success).toBe(true);
+		expect(CachedProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
+	});
+
 	it("FansBaselineSchema 仍可独立 parse", () => {
 		const r = FansBaselineSchema.safeParse({ value: 100, ts: "2026-05-19T00:00:00.000Z" });
 		expect(r.success).toBe(true);

@@ -424,7 +424,21 @@ export type BiliSubscriptionDTO = BiliSubscription &
 		followError?: string;
 	};
 
-/** 拓展订阅(ADR-0019 决策 9):身份是 `(extensionId, externalId)`,没有 uid。 */
+/**
+ * 拓展订阅(ADR-0019 决策 9):身份是 `(extensionId, externalId)`,没有 uid。
+ *
+ * - `cachedProfile.avatar` 是同源的**相对地址** `/api/subs/<id>/avatar?v=<摘要>`(决策 49:头像存成
+ *   文件,走面板鉴权;换了图 `v` 就变,可以放心缓存),没有头像是空串。`cachedProfile.fans` 可能没有
+ *   —— 拓展不一定知道粉丝数,别补成 0。
+ * - **新建**(`POST /api/subs`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
+ *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatar?, fans? }`,`avatar` 就是候选
+ *   里那个位图 data URL。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),头像存成文件后资料里
+ *   换成上面那个地址。宿主先核,都过了才落盘:`extensionId` 得是装着的 v2 订阅源(**不要求在跑**,
+ *   决策 10),否则 400 `extension_not_installed` / `not_subscription_source`;同一拓展名下同一
+ *   `externalId` 已经有了 → 409 `duplicate_subscription`;资料不合规矩(头像不是 png / jpeg / webp、
+ *   魔数对不上、超过 128 KiB……)→ 400 `invalid_profile`。已有的整份 POST 回来(启用开关)照旧,
+ *   带来的 `cachedProfile` 不收。
+ */
 export type ExtensionSubscriptionDTO = ExtensionSubscription & SubscriptionRuntimeDTO;
 
 // ---- /api/history ----------------------------------------------------------

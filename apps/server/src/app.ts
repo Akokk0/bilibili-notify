@@ -384,7 +384,11 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	app.route("/api/health", createHealthRoute(deps));
 	app.route("/api/globals", createGlobalsRoute(deps));
 	app.route("/api/commands", createCommandsRoute(deps));
-	app.route("/api/subs", createSubsRoute(deps));
+	app.route(
+		"/api/subs",
+		// 新建拓展订阅要核「它是不是装着的订阅源」—— 与拓展页同一份名单,现取。
+		createSubsRoute(deps, { extensions: () => options.extensions?.loaded() ?? [] }),
+	);
 	app.route("/api/connections", createConnectionsRoute(deps));
 	app.route("/api/targets", createTargetsRoute(deps));
 	app.route("/api/live", createLiveRoute(deps));

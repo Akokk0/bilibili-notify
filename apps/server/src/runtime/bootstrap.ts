@@ -18,6 +18,11 @@ import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
+import {
+	bindSubAvatarCleanup,
+	createSubAvatarStore,
+	type SubAvatarStore,
+} from "./sub-avatar-store.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
 import { createTargetScope } from "./target-scope.js";
 
@@ -62,6 +67,11 @@ export interface AppRuntime {
 	 * `/api/subs` join.
 	 */
 	subRuntimeStore: SubRuntimeStore;
+	/**
+	 * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataDir>/avatars/<订阅 id>.<后缀>`。新建订阅那条路写、
+	 * `GET /api/subs/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
+	 */
+	subAvatarStore: SubAvatarStore;
 	/**
 	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
 	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
@@ -181,6 +191,18 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	const subAvatarStore = createSubAvatarStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
+	// 删订阅的路不止一条(面板删、恢复备份整份覆盖、级联),都汇到 `subscription-changed` 上 ——
+	// 只听总线,所以在这儿就能起,不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
+	const subAvatarCleanup = bindSubAvatarCleanup({
+		bus,
+		avatars: subAvatarStore,
+		logger: serviceCtx.logger,
+	});
+	serviceCtx.onDispose(() => subAvatarCleanup.dispose());
 	const conversationStore = createConversationStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
@@ -235,6 +257,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		fansStore,
 		statsStore,
 		subRuntimeStore,
+		subAvatarStore,
 		conversationStore,
 		logStore,
 		get engines() {
