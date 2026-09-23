@@ -24,7 +24,7 @@ import {
  * Server scopes (`config-changed.scope`):
  *   - "subscriptions" → invalidate ["subscriptions"]
  *   - "targets"       → invalidate ["targets"]
- *   - "globals"       → invalidate ["globals"]
+ *   - "globals"       → invalidate ["globals"] + 拓展表(拓展的开关住在 globals 里)
  *   - "connections"   → invalidate ["connections"]
  *   - "secrets"       → no client cache, ignored
  *
@@ -58,7 +58,13 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	const scope = (env.data as { scope?: string } | undefined)?.scope;
 	if (scope === "subscriptions") qc.invalidateQueries({ queryKey: ["subscriptions"] });
 	else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
-	else if (scope === "globals") qc.invalidateQueries({ queryKey: ["globals"] });
+	else if (scope === "globals") {
+		qc.invalidateQueries({ queryKey: ["globals"] });
+		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页
+		// 把拓展关了,只重读 globals 的话,这一页还把它画成「跑着」,状态那一口的 404 被当成「没交
+		// 视图」,卡上一片空白。
+		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+	}
 	// 服务端建 / 改 / 删连接都发这一档(config/store.ts 三处);不接的话别处改了连接,
 	// 这一页要等 staleTime 过去或切页才知道。
 	else if (scope === "connections") qc.invalidateQueries({ queryKey: ["connections"] });

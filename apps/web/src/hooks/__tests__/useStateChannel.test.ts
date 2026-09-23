@@ -3,7 +3,7 @@
  *
  * 守护契约:
  *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
- *   - config-changed scope=globals       → 仅 invalidate ["globals"]
+ *   - config-changed scope=globals       → invalidate ["globals"] 与拓展表 ["extensions"]
  *   - config-changed scope=subscriptions → 仅 invalidate ["subscriptions"]
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
@@ -83,12 +83,26 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
-	it("config-changed scope=globals:仅 invalidate [globals]", () => {
+	it("config-changed scope=globals:invalidate [globals] 与 [extensions]", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"]]);
+	});
+
+	/**
+	 * 🔴 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口。别的标签页
+	 * 把拓展关了,这一页只重读 globals 的话,还把它画成「跑着」—— 状态那一口回 404 被当成
+	 * 「没交视图」,卡上一片空白。
+	 */
+	it("config-changed scope=globals:拓展表那一口也过期了(别处拨了拓展开关)", () => {
+		sc.qc.setQueryData(["extensions"], { extensions: [] });
+		handleStateEnvelope(
+			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
+			sc.qc,
+		);
+		expect(sc.qc.getQueryState(["extensions"])?.isInvalidated).toBe(true);
 	});
 
 	it("config-changed scope=subscriptions:仅 invalidate [subscriptions]", () => {
