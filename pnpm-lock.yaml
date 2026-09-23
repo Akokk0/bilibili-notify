@@ -470,6 +470,12 @@ importers:
         specifier: 'catalog:'
         version: 8.18.1
 
+  extensions/fake-source:
+    dependencies:
+      '@bilibili-notify/extension':
+        specifier: workspace:*
+        version: link:../../packages/extension
+
   packages/ai:
     dependencies:
       '@bilibili-notify/api':

@@ -1,0 +1,17 @@
+{
+	"name": "@bilibili-notify/extension-fake-source",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test"
+	},
+	"dependencies": {
+		"@bilibili-notify/extension": "workspace:*"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	}
+}
