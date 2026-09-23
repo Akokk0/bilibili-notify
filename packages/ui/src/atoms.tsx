@@ -1374,52 +1374,96 @@ export function KindMark({
 
 // ── OptionCard ──────────────────────────────────────────────────────────────
 
-/**
- * 一张可选的卡(声明式 `enum` 选项带图标时,ADR-0019 决策 30 —— 桥的「哪一种桥」就是)。与
- * 备份页的 ChoiceCard 同一种东西:一张可选的卡,不是按钮 —— 挂 `option`。
- */
-export function OptionCard({
-	active,
-	label,
-	mark,
-	logo,
-	onSelect,
-}: {
+export type OptionCardProps = {
 	active: boolean;
 	label: string;
-	/** 没有图时方块里印的字(取头两个)。 */
-	mark: string;
-	logo?: string;
+	/** 标题下那行小字。给了是两行卡(标题 base),不给是单行卡(标题 sm)。 */
+	description?: string;
 	onSelect: () => void;
-}) {
+} & (
+	| {
+			/** 方块里印的字(取头两个)。给了才有方块。 */
+			mark: string;
+			/** 方块里的图(data URL),有它就不印字。 */
+			logo?: string;
+	  }
+	// 没有 mark 就没有方块,logo 也就无处可画 —— 类型上不让单给 logo,免得它被静默丢掉。
+	| { mark?: undefined; logo?: undefined }
+);
+
+/**
+ * 一张可选的卡,不是按钮 —— 挂 `option`,带 `aria-pressed`。两种形态是同一件:
+ *
+ * - **有方块**(给 `mark`):左边一枚 `KindMark` + 名字,一行。声明式 `enum` 选项带图标时
+ *   (ADR-0019 决策 30)就是它 —— 桥的「哪一种桥」。
+ * - **没方块**:标题 + 一行小字说明(`description`)。备份弹窗的完整/脱敏、覆盖/合并就是它。
+ *
+ * 方块与说明各自可选,字号跟行数走:带说明的两行卡标题用 base,单行的用 sm。
+ *
+ * 选中的粉**只落一处**:有方块 → 方块换粉、名字转正文色;没方块 → 标题自己转粉。
+ *
+ * 两种形态是两份手写合过来的(没方块那件原是备份弹窗的 ChoiceCard),合并时除悬停外一个
+ * 像素都没动 —— 所以外壳间距、名字的字色按形态分开取,别顺手拉平。
+ */
+export function OptionCard({ active, label, description, mark, logo, onSelect }: OptionCardProps) {
+	const boxed = mark !== undefined;
+	// 有方块是一行 flex(28 的方块 + 上下各 11 = 50 高);没方块是字自己撑开。
+	const shape = boxed ? "flex items-center gap-2.5 px-3 py-[11px]" : "px-3 py-2.5";
+	// 未选中:中性描边,悬停转淡粉(两形态统一)。有方块那件的名字不自带字色、吃外壳这份
+	// 次级色;没方块那件的标题自带字色,外壳不给。两句写全、不拼接 —— 拼出来的类名
+	// Tailwind 扫不到。
+	const idle = boxed
+		? "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/40"
+		: "border-bn-border bg-bn-surface hover:border-bn-pink/40";
+	// 粉只落一处:有方块时外壳那句 SELECTED_LANGUAGE 的粉字要被名字的正文色压住。
+	const tone = boxed
+		? active
+			? "text-bn-text-primary"
+			: ""
+		: active
+			? "text-bn-pink"
+			: "text-bn-text-primary";
+	// block:没方块时它不是 flex 子项,不挂的话行高吃的是外壳的字号;有方块时它本来就被
+	// flex 块化,挂上等于没挂。
+	const title = (
+		<span
+			className={`block ${description === undefined ? "text-bn-sm" : "text-bn-base"} font-bold ${tone}`}
+		>
+			{label}
+		</span>
+	);
 	return (
 		<button
 			type="button"
 			aria-pressed={active}
 			data-bn={active ? "option option-active" : "option"}
 			onClick={onSelect}
-			className={`flex items-center gap-2.5 rounded-lg border px-3 py-[11px] text-left transition ${
-				active
-					? SELECTED_LANGUAGE
-					: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-text-tertiary"
-			}`}
+			className={`rounded-lg border text-left transition ${shape} ${active ? SELECTED_LANGUAGE : idle}`}
 		>
-			<KindMark
-				text={mark}
-				size={28}
-				logo={logo}
-				style={
-					active
-						? {
-								background: "color-mix(in srgb, var(--color-bn-pink) 16%, transparent)",
-								color: "var(--color-bn-pink)",
-							}
-						: undefined
-				}
-			/>
-			<span className={`text-bn-sm font-bold ${active ? "text-bn-text-primary" : ""}`}>
-				{label}
-			</span>
+			{boxed ? (
+				<KindMark
+					text={mark}
+					size={28}
+					logo={logo}
+					style={
+						active
+							? {
+									background: "color-mix(in srgb, var(--color-bn-pink) 16%, transparent)",
+									color: "var(--color-bn-pink)",
+								}
+							: undefined
+					}
+				/>
+			) : null}
+			{description === undefined ? (
+				title
+			) : (
+				// 两行字包成一列:有方块时它是方块右边那一格,不包的话两行会横着排。
+				<span className="block">
+					{title}
+					<span className="block text-bn-xs text-bn-text-tertiary">{description}</span>
+				</span>
+			)}
 		</button>
 	);
 }

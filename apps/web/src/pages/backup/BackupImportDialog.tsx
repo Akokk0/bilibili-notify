@@ -1,7 +1,7 @@
-import { AddFileButton, Btn, ErrorNote, ModalShell } from "@bilibili-notify/ui";
+import { AddFileButton, Btn, ErrorNote, ModalShell, OptionCard } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
-import { ChoiceCard, PinField } from "./dialog-bits";
+import { PinField } from "./dialog-bits";
 
 type Mode = "overwrite" | "merge";
 
@@ -69,17 +69,17 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 					<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">落地方式</div>
 					<div className="mb-3 grid grid-cols-2 gap-2">
-						<ChoiceCard
+						<OptionCard
 							active={mode === "overwrite"}
-							title="覆盖"
-							sub="回到快照 · 删多余"
-							onClick={() => setMode("overwrite")}
+							label="覆盖"
+							description="回到快照 · 删多余"
+							onSelect={() => setMode("overwrite")}
 						/>
-						<ChoiceCard
+						<OptionCard
 							active={mode === "merge"}
-							title="合并"
-							sub="并入现有 · 不删"
-							onClick={() => setMode("merge")}
+							label="合并"
+							description="并入现有 · 不删"
+							onSelect={() => setMode("merge")}
 						/>
 					</div>
 

@@ -1,41 +1,8 @@
-import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
-
 /**
- * 导出 / 导入两个备份对话框共用的小件。曾各自手搓一份(KindCard / ModeCard
- * 逐字符相同、PIN 输入框两份),合并到这里;只有 backup 在用,先不上升为全站原子。
+ * 导出 / 导入两个备份对话框共用的小件。曾各自手搓一份(PIN 输入框两份),合并到这里;
+ * 只有 backup 在用,先不上升为全站原子。二选一的方式卡原先也住这儿(ChoiceCard),
+ * 已并进 ui 库的 `OptionCard`(没方块、带说明的那一形态)。
  */
-
-/** 二选一的方式卡(完整/脱敏、覆盖/合并):标题 + 小字说明,选中态粉框。 */
-export function ChoiceCard(props: {
-	active: boolean;
-	title: string;
-	sub: string;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={props.onClick}
-			// 候选卡走 option —— 当初豁免的理由是「同 MenuItem,词表里没有这一档」,
-			// 那一档现在有了;选中态是自身的描边/淡底 token,不是行内样式,皮肤盖得动。
-			data-bn={props.active ? "option option-active" : "option"}
-			// 选中态整句吃 SELECTED_LANGUAGE(标题跟着变粉)—— 此前是自配的
-			// border-bn-pink/60 + bg-bn-pink/10 纱,与全站选中配方各漂各的。
-			className={`rounded-lg px-3 py-2.5 text-left transition ${
-				props.active
-					? SELECTED_LANGUAGE
-					: "border border-bn-border bg-bn-surface hover:border-bn-pink/40"
-			}`}
-		>
-			<div
-				className={`text-bn-base font-bold ${props.active ? "text-bn-pink" : "text-bn-text-primary"}`}
-			>
-				{props.title}
-			</div>
-			<div className="text-bn-xs text-bn-text-tertiary">{props.sub}</div>
-		</button>
-	);
-}
 
 /** 「备份 PIN（6 位数字）」标签 + 只收数字、上限 6 位的密码输入。 */
 export function PinField({

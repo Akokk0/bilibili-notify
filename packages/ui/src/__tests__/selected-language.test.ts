@@ -3,7 +3,7 @@
  *
  * 统一前五处各配各的:描边透明度 100 / 60 / 40 三档、粉纱 6 / 8 / 10 / 12% 四档。
  * 定案配方来自 Subs 分组胶囊(2026-08-30 主人真机三轮拍板):全浓粉描边 + 粉字 +
- * **不透明**粉调底。说这句话的:Subs 分组胶囊、FontPicker 候选行、备份 ChoiceCard、
+ * **不透明**粉调底。说这句话的:Subs 分组胶囊、FontPicker 候选行、OptionCard、
  * scope-tabs「添加 UP」展开态。只要那块不透明粉底的(Subs 批量状态条、About 徽章、
  * chrome-autodetect 粉药丸)单独吃 SELECTED_TINT_BG。
  */

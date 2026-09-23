@@ -59,6 +59,21 @@ describe("BackupImportDialog", () => {
 		expect(onImport.mock.calls[0]?.[0].pin).toBeUndefined();
 	});
 
+	it("the overwrite / merge cards report which one is pressed, and flip with the choice", async () => {
+		render(<BackupImportDialog onCancel={vi.fn()} onImport={vi.fn()} />);
+		pickFile(backupFile("full"));
+
+		const overwrite = await screen.findByRole("button", { name: /覆盖/ });
+		const merge = screen.getByRole("button", { name: /合并/ });
+		expect(overwrite.getAttribute("aria-pressed")).toBe("true");
+		expect(merge.getAttribute("aria-pressed")).toBe("false");
+
+		fireEvent.click(merge);
+
+		expect(overwrite.getAttribute("aria-pressed")).toBe("false");
+		expect(merge.getAttribute("aria-pressed")).toBe("true");
+	});
+
 	it("选文件框说的是虚线空位家族的话 —— 不再是统一前的手写方言", () => {
 		render(<BackupImportDialog onCancel={vi.fn()} onImport={vi.fn()} />);
 		const picker = screen.getByLabelText(/选择备份文件/).closest("label");

@@ -1,7 +1,7 @@
-import { Btn, CheckRow, ErrorNote, Icon, ModalShell } from "@bilibili-notify/ui";
+import { Btn, CheckRow, ErrorNote, Icon, ModalShell, OptionCard } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
-import { ChoiceCard, PinField } from "./dialog-bits";
+import { PinField } from "./dialog-bits";
 
 export interface BackupExportDialogProps {
 	onCancel: () => void;
@@ -43,17 +43,17 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 	return (
 		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导出备份">
 			<div className="mb-4 grid grid-cols-2 gap-2">
-				<ChoiceCard
+				<OptionCard
 					active={kind === "full"}
-					title="完整备份"
-					sub="含机密 · 用于灾备还原"
-					onClick={() => setKind("full")}
+					label="完整备份"
+					description="含机密 · 用于灾备还原"
+					onSelect={() => setKind("full")}
 				/>
-				<ChoiceCard
+				<OptionCard
 					active={kind === "sanitized"}
-					title="脱敏导出"
-					sub="无机密 · 可存档/分享"
-					onClick={() => setKind("sanitized")}
+					label="脱敏导出"
+					description="无机密 · 可存档/分享"
+					onSelect={() => setKind("sanitized")}
 				/>
 			</div>
 

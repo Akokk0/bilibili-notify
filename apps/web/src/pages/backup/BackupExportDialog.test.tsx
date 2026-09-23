@@ -40,6 +40,19 @@ describe("BackupExportDialog", () => {
 		expect(onExport.mock.calls[0]?.[0].pin).toBeUndefined();
 	});
 
+	it("the full / sanitized cards report which one is pressed, and flip with the choice", () => {
+		render(<BackupExportDialog onCancel={vi.fn()} onExport={vi.fn()} />);
+		const full = screen.getByRole("button", { name: /完整备份/ });
+		const sanitized = screen.getByRole("button", { name: /脱敏导出/ });
+		expect(full.getAttribute("aria-pressed")).toBe("true");
+		expect(sanitized.getAttribute("aria-pressed")).toBe("false");
+
+		fireEvent.click(sanitized);
+
+		expect(full.getAttribute("aria-pressed")).toBe("false");
+		expect(sanitized.getAttribute("aria-pressed")).toBe("true");
+	});
+
 	it("unchecking a section is reflected in the export payload", () => {
 		const onExport = vi.fn();
 		render(<BackupExportDialog onCancel={vi.fn()} onExport={onExport} />);

@@ -538,7 +538,7 @@ function TintOptionRow({
 			{trailing}
 		</>
 	);
-	// 候选行走 option;选中那档再加 option-active(与备份页的 ChoiceCard 同一种东西)。
+	// 候选行走 option;选中那档再加 option-active(与 ui 库的 OptionCard 同一种东西)。
 	const hook = active ? "option option-active" : "option";
 	if (as === "div") {
 		return (
