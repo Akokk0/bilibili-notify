@@ -43,10 +43,16 @@ export function CopyControl({
 	text: string;
 	iconOnly?: boolean;
 }) {
-	const [copied, setCopied] = useState(false);
+	/*
+	 * 记的是**复制下去的那一串**,不是一个「复制过」的开关:`text` 一换(重新生成了一把),屏幕
+	 * 上这一串就没进过剪贴板 —— 还说「已复制」,主人会以为新的已经在剪贴板里,粘过去的却是作废
+	 * 的那一把。复制还没回来就换了一串的,回来那一下记的也是旧的,挂不到新的头上。
+	 */
+	const [copiedText, setCopiedText] = useState<string | null>(null);
+	const copied = copiedText === text;
 	const icon = copied ? <Icon.check size={13} /> : <Icon.copy size={13} />;
 	const copy = () => {
-		void copyToClipboard(text).then(setCopied);
+		void copyToClipboard(text).then((ok) => setCopiedText(ok ? text : null));
 	};
 	// 图标钮没文字,「已复制」只能进 label;带字那颗的 label 得稳住(读屏器按它找钮)。
 	if (iconOnly) {
