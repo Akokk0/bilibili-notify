@@ -189,12 +189,18 @@ function disconnectedItem(link: BridgeLink): ExtensionItemView {
 /**
  * 停用的接入握手收到的是 **503**(桥会退避重连),不是 401 —— 迁过来之前那一页给它挂的是没连上
  * 那段排错说明,是错的(ADR-0019 决策 24 的五处之一)。
+ *
+ * 例外是 **token 为空**(脱敏备份恢复回来就是这样):空 token 永远不匹配(`tokens.ts`),upgrade
+ * 回的是 401 而不是 503,插件按协议当成配置错、不再重连 —— 这时说「启用就回来」是假话。
  */
 function pausedItem(link: BridgeLink): ExtensionItemView {
 	return {
 		status: { tone: "off", text: "已停用" },
 		pill: link.bridgeKind,
-		subtitle: "停用了 —— 桥用这个 token 连过来会被回 503,它会自己退避重连,启用就回来。",
+		subtitle:
+			link.token === ""
+				? "停用了,而且还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不再重连,光启用回不来。先生成一个 token,连同 BN 地址填进插件那头。"
+				: "停用了 —— 桥用这个 token 连过来会被回 503,它会自己退避重连,启用就回来。",
 	};
 }
 

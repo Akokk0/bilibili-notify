@@ -162,6 +162,21 @@ describe("bridgeView", () => {
 		expect(view?.subtitle).toContain("503");
 	});
 
+	/**
+	 * 停用、而且 token 是空的(脱敏备份恢复回来就是这样):空 token 永远不匹配,桥连过来收到的
+	 * 是 **401** 不是 503 —— 插件按协议把 401 当成配置错、不再重连,光启用回不来。这时还说
+	 * 「503、退避重连、启用就回来」就是在骗人。
+	 */
+	it("停用且没有 token:不讲 503 与启用就回来,讲 401、得先生成 token 填过去", () => {
+		const view = item([link({ enabled: false, token: "" })], {});
+		const said = JSON.stringify(view?.subtitle);
+		expect(said).not.toContain("503");
+		expect(said).not.toContain("退避重连");
+		expect(said).not.toContain("启用就回来");
+		expect(said).toContain("401");
+		expect(said).toContain("生成");
+	});
+
 	it("列表页那一行:连着的会话一共驮着几个 bot", () => {
 		const view = bridgeView(
 			[link(), link({ id: "a2" }), link({ id: "a3" })],
