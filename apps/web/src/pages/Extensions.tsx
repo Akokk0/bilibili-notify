@@ -1,5 +1,6 @@
 import type { ExtensionDTO, MarketplaceEntryDTO } from "@bilibili-notify/contract";
 import {
+	BELOW_HEADER_TOP,
 	Btn,
 	EmptyNote,
 	ErrorNote,
@@ -10,9 +11,10 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { api } from "../services/api";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
@@ -20,6 +22,7 @@ import { ExtensionInstallDialog } from "./extensions/install-dialog";
 import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
+	MARKETPLACE_SECTION_HASH,
 	MarketplaceInstallConfirm,
 	type MarketplaceInstaller,
 	MarketplaceSection,
@@ -221,6 +224,16 @@ export default function Extensions() {
 	// 市场(ADR-0013):已装卡片上的「有新版」从这儿来;装从市场装的那一套与下面那一节共用。
 	const market = useMarketplace();
 	const installer = useMarketplaceInstall();
+	// 别处的「去拓展市场」带着 #marketplace 跳过来:市场那一节在最底下,上面的卡片各自异步撑开,
+	// 市场自己的索引也晚到 —— 到齐时再补滚一次。
+	// 🔴 「到齐」要连拓展表一起算:拓展表回来之前这一页只画「正在读取」,锚点还没挂上。只看市场
+	// 索引的话,索引先到那一刻滚不到东西,锚点挂上时又没人再叫它,一下都不滚。
+	const marketAnchor = useRef<HTMLDivElement>(null);
+	useScrollToHash(
+		MARKETPLACE_SECTION_HASH,
+		marketAnchor,
+		listed.data !== undefined && market.data !== undefined,
+	);
 	const updates = new Map(
 		(market.data?.extensions ?? [])
 			.filter((entry) => entry.state === "updatable")
@@ -326,7 +339,9 @@ export default function Extensions() {
 				</div>
 			) : null}
 
-			<MarketplaceSection installer={installer} />
+			<div ref={marketAnchor} style={{ scrollMarginTop: BELOW_HEADER_TOP }}>
+				<MarketplaceSection installer={installer} />
+			</div>
 
 			{/* 第三方那道确认框:装与更新共用页面这一份 installer,所以由页面来画。 */}
 			<MarketplaceInstallConfirm installer={installer} />

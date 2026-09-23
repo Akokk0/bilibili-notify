@@ -231,6 +231,12 @@ export function MarketplaceUpdateOffer({
 }
 
 /**
+ * 拓展页上市场那一节的锚点。别处的「去拓展市场」带着它跳过来:这一节在拓展页最底下,只到页顶
+ * 的话主人还得自己往下翻一屏。锚点由拓展页挂(这一节不管路由),滚动见 `useScrollToHash`。
+ */
+export const MARKETPLACE_SECTION_HASH = "#marketplace";
+
+/**
  * 装了的不在市场里露面 —— 它已经在上面那一排卡里了,同一件东西同时摆在两处,看起来像装了两份
  * (主人 2026-09-12 指出)。
  *

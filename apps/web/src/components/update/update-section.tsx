@@ -18,9 +18,9 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { HEALTH_QUERY_KEY } from "../../hooks/useBackendReachable";
+import { useScrollToHash } from "../../hooks/useScrollToHash";
 import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
@@ -39,12 +39,6 @@ import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } fr
  * 另一条贯穿全节的规矩:**只有验签失败才弹红字**。连不上、我们自己发错了清单,
  * 都是中性旁注 —— 把代理站抽风渲染成安全警告,只会训练用户忽略真正的那一次。
  */
-
-/**
- * 跟着目标滚多久。上面几节都是本机 API,一般几百毫秒就撑开完了;首次冷启动慢一些,
- * 留到 1.2s。到点就撒手 —— 再往后还动的多半是用户自己在操作,不该跟。
- */
-const CHASE_MS = 1_200;
 
 const CHANNEL_OPTIONS = [
 	{ value: "stable", label: "正式版" },
@@ -130,40 +124,11 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 		void qc.invalidateQueries({ queryKey: HEALTH_QUERY_KEY });
 	}, [restart, qc]);
 
-	// 概览的「去更新」和右下角的通知卡都带着 #update 跳过来:滚到这一节。
-	//
-	// 滚一次不够。这一节前面还排着七八个**各自异步**的分区(系统设置 / 指令 / 链接解析 /
-	// 皮肤 / 备份 …),它们比这一节晚撑开,把这一节往下顶 —— 而 `scrollIntoView` 只在
-	// 调用那一刻算一次落点,不会跟着元素走,于是人停在这一节**上方**。所以滚完还得跟一
-	// 会儿:页面高度一变就重滚,直到 CHASE_MS 到点。同一次平滑滚动被重发会就地改道,不
-	// 会一顿一顿。人自己动手滚了就立刻收手 —— 别跟用户抢滚动条。
-	//
-	// 时间窗之外还得盯着**这一节自己**从骨架换成整张卡:冷启动慢的时候那一下就发生在窗口
-	// 关掉之后,而撑开最狠的正是它。所以 `loaded` 也是重触发条件 —— 到齐多晚都补一次,
-	// 顺便重开一个窗口。
-	const location = useLocation();
+	// 概览的「去更新」和右下角的通知卡都带着 #update 跳过来:滚到这一节。这一节前面还排着七八个
+	// 各自异步的分区(系统设置 / 指令 / 链接解析 / 皮肤 / 备份 …),滚完还得跟一会儿 —— 为什么与
+	// 怎么跟都在 `useScrollToHash` 里。这一节自己从骨架换成整张卡(`loaded`)时再补一次。
 	const anchorRef = useRef<HTMLDivElement>(null);
-	const wanted = location.hash === UPDATE_SECTION_HASH;
-	const loaded = Boolean(status && settings);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 与 loaded 是刻意的重触发条件 —— 再点一次「去更新」(同 hash)与数据到齐各要再滚一次
-	useEffect(() => {
-		if (!wanted) return;
-		const scroll = () => anchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-		scroll();
-		if (typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver(scroll);
-		ro.observe(document.body);
-		const stop = () => ro.disconnect();
-		const timer = setTimeout(stop, CHASE_MS);
-		window.addEventListener("wheel", stop, { passive: true });
-		window.addEventListener("touchstart", stop, { passive: true });
-		return () => {
-			clearTimeout(timer);
-			window.removeEventListener("wheel", stop);
-			window.removeEventListener("touchstart", stop);
-			ro.disconnect();
-		};
-	}, [location.key, wanted, loaded]);
+	useScrollToHash(UPDATE_SECTION_HASH, anchorRef, Boolean(status && settings));
 
 	if (!status || !settings) {
 		return (

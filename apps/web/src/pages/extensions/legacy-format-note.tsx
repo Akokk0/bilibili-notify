@@ -13,6 +13,7 @@ import type { ExtensionDTO, MarketplaceResponse } from "@bilibili-notify/contrac
 import { ErrorNote, HintNote } from "@bilibili-notify/ui";
 import { Link } from "react-router-dom";
 import {
+	MARKETPLACE_SECTION_HASH,
 	type MarketplaceInstaller,
 	MarketplaceUpdateOffer,
 	useMarketplace,
@@ -111,9 +112,9 @@ function LegacyUpdateNote({ ext, installer }: LegacyFormatNoteProps) {
 			{why ? (
 				<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-bn-2xs leading-[1.6] text-bn-text-tertiary">
 					<span>{why}</span>
-					{/* 市场是拓展页上的一节(ADR-0013 决策 14),源与「重新拉索引」都在那儿。 */}
+					{/* 市场是拓展页上的一节(ADR-0013 决策 14),源与「重新拉索引」都在那儿 —— 直接落到那一节。 */}
 					<Link
-						to="/extensions"
+						to={`/extensions${MARKETPLACE_SECTION_HASH}`}
 						className="shrink-0 font-bold text-bn-pink underline decoration-from-font underline-offset-2"
 					>
 						去拓展市场

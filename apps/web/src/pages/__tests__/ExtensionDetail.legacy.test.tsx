@@ -283,7 +283,8 @@ describe("老格式(v1)拓展的详情页", () => {
 		expect(await within(head).findByText(reason)).toBeTruthy();
 		expect(within(head).queryByRole("button", { name: "更新" })).toBeNull();
 		const toMarket = within(head).getByRole("link", { name: /去拓展市场/ });
-		expect(toMarket.getAttribute("href")).toBe("/extensions");
+		// 直接落到市场那一节(它在拓展页最底下),不是页顶。
+		expect(toMarket.getAttribute("href")).toBe("/extensions#marketplace");
 	});
 
 	/**

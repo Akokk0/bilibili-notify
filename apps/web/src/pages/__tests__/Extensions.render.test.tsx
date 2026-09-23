@@ -126,6 +126,10 @@ function renderPage(
 	connections: unknown = CONNECTIONS,
 	status: unknown = STATUS,
 	market: MarketplaceResponse = MARKET,
+	/** 从哪个地址进来 —— 别处的「去拓展市场」带着 `#marketplace`。 */
+	entry = "/extensions",
+	/** 给了就等它放行才回拓展表 —— 造「市场索引先到、拓展表后到」。 */
+	listedGate?: Promise<unknown>,
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/connections") return connections;
@@ -134,13 +138,14 @@ function renderPage(
 			if (status === null) throw new Error("拓展没跑起来");
 			return status;
 		}
+		if (listedGate) await listedGate;
 		return { restart: { can: true, how: "container" }, ...listed } satisfies ExtensionsResponse;
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<MemoryRouter>
+			<MemoryRouter initialEntries={[entry]}>
 				<Extensions />
 			</MemoryRouter>
 		</QueryClientProvider>,
@@ -771,5 +776,64 @@ describe("已装卡片上的「有新版」", () => {
 		expect(await screen.findByText("拓展市场")).toBeTruthy();
 		await screen.findAllByText("机器人框架桥接");
 		expect(within(installedCardOf("机器人框架桥接")).queryByText(/有新版/)).toBeNull();
+	});
+});
+
+/**
+ * v1 详情页的「去拓展市场」(市场里没有能更新到的版本时才出现)带着 `#marketplace` 跳过来 ——
+ * 市场那一节在页面最底下,主人正卡在「为什么没法更新」,不该再让他自己往下翻一屏。
+ */
+describe("拓展页 —— 从别处「去拓展市场」跳过来", () => {
+	// jsdom 没有 scrollIntoView;这里只关心滚没滚、滚的是不是市场那一节。
+	const scrollIntoView = vi.fn();
+	const original = Element.prototype.scrollIntoView;
+	beforeEach(() => {
+		apiGetMock.mockReset();
+		scrollIntoView.mockClear();
+		Element.prototype.scrollIntoView = scrollIntoView;
+	});
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+		Element.prototype.scrollIntoView = original;
+	});
+
+	it("带着 #marketplace 进来 → 市场那一节滚进视口", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions#marketplace");
+		await screen.findByText("拓展市场");
+		await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+		const target = scrollIntoView.mock.contexts.at(-1) as HTMLElement;
+		expect(within(target).getByText("拓展市场")).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 拓展表回来之前这一页只画「正在读取」,市场那一节的锚点还没挂上。市场索引先到的话,
+	 * 「该滚了」那一刻锚点不在;锚点挂上时又没有东西再叫它 —— 一下都不滚。
+	 */
+	it("市场索引先到、拓展表后到(锚点晚挂上)→ 照样滚过去", async () => {
+		let release: (value?: unknown) => void = () => {};
+		const gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions#marketplace", gate);
+		await waitFor(() =>
+			expect(
+				apiGetMock.mock.calls.some(([url]) => String(url).startsWith("/api/ext/marketplace")),
+			).toBe(true),
+		);
+		// 让市场索引先落进缓存,再放拓展表回来。
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(scrollIntoView).not.toHaveBeenCalled();
+		release();
+		await screen.findByText("拓展市场");
+		await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+		const target = scrollIntoView.mock.contexts.at(-1) as HTMLElement;
+		expect(within(target).getByText("拓展市场")).toBeTruthy();
+	});
+
+	it("正常打开拓展页 → 不乱滚", async () => {
+		renderPage();
+		await screen.findByText("拓展市场");
+		expect(scrollIntoView).not.toHaveBeenCalled();
 	});
 });
