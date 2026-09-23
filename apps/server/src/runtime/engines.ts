@@ -989,7 +989,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		get imageRenderer() {
 			return imageRenderer;
 		},
-		listLiveRooms: () => listLiveRooms(live),
+		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
 		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
 		connectionCapabilities: (connectionId: string) => sink.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
@@ -1702,14 +1702,23 @@ function subscriptionOpsToLive(
 	return out;
 }
 
-function listLiveRooms(live: LiveEngine): LiveListenerSnapshot[] {
+function listLiveRooms(
+	live: LiveEngine,
+	subscriptionStore: Pick<SubscriptionStore, "findByUid">,
+): LiveListenerSnapshot[] {
 	// Only rooms that have reported `liveStatus === true` via the WS dispatcher
 	// surface to the Dashboard. Monitored-but-idle rooms are filtered so the
 	// "正在直播" panel matches its name (vs. the looser "正在监听" set).
-	return live
-		.listLiveSnapshots()
-		.filter((s) => s.isLive)
-		.map((s) => ({
+	//
+	// 每个房间带上订阅自己的 id(ADR-0019 决策 50),面板拿它对订阅。直播引擎只认 uid,在这儿翻;
+	// 翻不到的不列 —— 监听器只为在册的 B 站订阅开,翻不到只可能是订阅刚删掉的那一瞬。
+	const out: LiveListenerSnapshot[] = [];
+	for (const s of live.listLiveSnapshots()) {
+		if (!s.isLive) continue;
+		const subscriptionId = subscriptionStore.findByUid(s.uid)?.id;
+		if (subscriptionId === undefined) continue;
+		out.push({
+			subscriptionId,
 			uid: s.uid,
 			roomId: s.roomId,
 			isLive: s.isLive,
@@ -1718,5 +1727,7 @@ function listLiveRooms(live: LiveEngine): LiveListenerSnapshot[] {
 			areaName: s.areaName,
 			startedAt: s.startedAt,
 			viewers: s.viewers,
-		}));
+		});
+	}
+	return out;
 }

@@ -369,6 +369,25 @@ describe("createEngines — live-state-changed 接线", () => {
 	});
 });
 
+/**
+ * 「正在直播」的快照带着订阅自己的 id(ADR-0019 决策 50):面板拿它对订阅,同一个 UP 配了两条
+ * 订阅时也认得出是哪一条。直播引擎只认 uid,翻译在宿主这边做。
+ */
+describe("createEngines — 在播快照带订阅 id", () => {
+	it("每个在播房间带上对应订阅的 id;uid 翻不到订阅的房间不出现", () => {
+		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		active = c;
+		H.live[0].listLiveSnapshots.mockReturnValue([
+			{ uid: "1", roomId: "r1", isLive: true, title: "在播" },
+			// 监听器只为在册的订阅开,翻不到只可能是刚删掉的那一瞬。
+			{ uid: "404", roomId: "r2", isLive: true, title: "刚删掉的那位" },
+		]);
+		expect(c.runtime.listLiveRooms()).toEqual([
+			{ subscriptionId: "s1", uid: "1", roomId: "r1", isLive: true, title: "在播" },
+		]);
+	});
+});
+
 describe("createEngines — boot wiring", () => {
 	it("默认 globals:push/dynamic 拉起,AI 与 image 不构造", () => {
 		const c = setup();

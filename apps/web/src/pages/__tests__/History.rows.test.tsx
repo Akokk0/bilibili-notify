@@ -11,6 +11,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({
@@ -42,12 +43,12 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	};
 }
 
-function mockApi(entries: HistoryEntryView[]) {
+function mockApi(entries: HistoryEntryView[], subs: Subscription[] = []) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path.startsWith("/api/history")) return Promise.resolve({ entries });
 		if (path === "/api/targets")
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
-		if (path === "/api/subs") return Promise.resolve([]);
+		if (path === "/api/subs") return Promise.resolve(subs);
 		return Promise.resolve({ app: { historyRetentionDays: 30 } });
 	});
 }
@@ -114,6 +115,51 @@ describe("推送历史 · 行", () => {
 		expect(screen.getByText("下播了")).toBeTruthy();
 		await userEvent.clear(screen.getByPlaceholderText(/搜索/));
 		await userEvent.type(screen.getByPlaceholderText(/搜索/), "不存在的词");
+		expect(screen.queryByText("下播了")).toBeNull();
+	});
+});
+
+/** 一条 B 站订阅,资料缓存里的名字就是面板上显示的名字。 */
+function biliSub(id: string, uid: string, name: string): Subscription {
+	return {
+		...makeEmptySubscription(uid),
+		id,
+		cachedProfile: { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00Z" },
+	};
+}
+
+/**
+ * 行是哪条订阅(ADR-0019 决策 50):先认行上的 `subscriptionId`,不在了再找第一个 uid 相同的
+ * B 站订阅 —— 与服务端重推同一条规矩。
+ */
+describe("推送历史 · 行对到哪条订阅", () => {
+	it("行的订阅删了、同 uid 又加了一条 → 按现在那条的名字搜得到", async () => {
+		mockApi(
+			[row({ subscriptionId: "s-gone", unameSnapshot: "当时的名字" })],
+			[biliSub("s-readded", "u1", "现在的名字")],
+		);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.type(screen.getByPlaceholderText(/搜索/), "现在的名字");
+		expect(screen.getByText("下播了")).toBeTruthy();
+	});
+
+	it("同 uid 几条订阅都在 → 行对到自己那条(按 id),不是先出现、也不是后出现的那条", async () => {
+		mockApi(
+			[row({ subscriptionId: "s-own", unameSnapshot: undefined })],
+			[
+				biliSub("s-first", "u1", "先出现的那条"),
+				biliSub("s-own", "u1", "行自己那条"),
+				biliSub("s-last", "u1", "后出现的那条"),
+			],
+		);
+		renderHistory();
+		// 行上没有写入期快照时,显示的就是对到的那条订阅的名字。
+		await waitFor(() => expect(screen.getByText("行自己那条")).toBeTruthy());
+		expect(screen.queryByText("先出现的那条")).toBeNull();
+		expect(screen.queryByText("后出现的那条")).toBeNull();
+		// 搜索串也是按同一条订阅拼的。
+		await userEvent.type(screen.getByPlaceholderText(/搜索/), "先出现");
 		expect(screen.queryByText("下播了")).toBeNull();
 	});
 });

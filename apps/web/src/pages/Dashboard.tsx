@@ -59,6 +59,7 @@ import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName } from "./up/helpers";
+import { createSubscriptionLookup } from "./up/subscription-lookup";
 
 interface HealthSnapshot {
 	status: string;
@@ -102,13 +103,16 @@ function hasAnyLiveTarget(sub: Subscription): boolean {
 	return LIVE_ROUTING_KEYS.some((k) => (sub.routing[k]?.length ?? 0) > 0);
 }
 
-function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subscription[] }) {
-	const subByUid = useMemo(() => {
-		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
-		const m = new Map<string, BiliSubscription>();
-		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
-		return m;
-	}, [subs]);
+export function LiveNowPanel({
+	live,
+	subs,
+}: {
+	live: LiveListenerSnapshot[];
+	subs: Subscription[];
+}) {
+	// 在播快照带着订阅自己的 id(ADR-0019 决策 50),按它对订阅 —— 同一个 UP 配了几条订阅时,
+	// 按 uid 对不出这间直播间是替哪一条开的。
+	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 	// 用户订阅了但没给 live 类 feature 配 target 的数量 —— 这些订阅的直播状态
 	// 永远不会出现在面板里。empty state 里露出 hint 让用户知道该去哪配置。
 	const unmonitoredCount = useMemo(
@@ -152,14 +156,14 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 				// header 的 「● N 人在播」 Pill 仍显示真实数量。
 				<div className="grid max-h-60 grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
 					{live.map((r) => {
-						const sub = subByUid.get(r.uid);
+						const sub = lookup.byId(r.subscriptionId);
 						const name = sub ? displayName(sub) : `UID ${r.uid}`;
 						const color = colorFromUid(r.uid);
 						// 数据小卡同款视觉语法(淡染色渐变 + 同色细描边),单层直接画在
 						// 区块玻璃上 —— 旧的「渐变包裹 + 白底内层」在行条透明化后会整块露色。
 						return (
 							<Link
-								key={r.uid}
+								key={r.subscriptionId}
 								to="/subs"
 								className="flex items-center gap-3 rounded-xl border p-2.5"
 								style={{
@@ -283,12 +287,9 @@ function TimelinePanel({
 	subs: Subscription[];
 	targets: PushTarget[];
 }) {
-	const subByUid = useMemo(() => {
-		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
-		const m = new Map<string, BiliSubscription>();
-		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
-		return m;
-	}, [subs]);
+	// 历史行先按 `subscriptionId` 对订阅,不在了再按 B 站 uid 找(ADR-0019 决策 50,与服务端
+	// 重推同一条规矩)—— 删了又重加的 UP,旧行照样对得上现在那条。
+	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 	const targetById = useMemo(() => {
 		const m = new Map<string, PushTarget>();
 		for (const t of targets) m.set(t.id, t);
@@ -328,7 +329,7 @@ function TimelinePanel({
 						}}
 					/>
 					{recent.map((h) => {
-						const sub = subByUid.get(h.uid);
+						const sub = lookup.forRow(h);
 						// 优先 entry 自带的写入期 snapshot —— 订阅后续被删除仍能正确显示。
 						const name = h.unameSnapshot ?? (sub ? displayName(sub) : `UID ${h.uid}`);
 						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
@@ -428,7 +429,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 		queryFn: () => api.get<FansResponse>("/api/fans"),
 	});
 	const subByUid = useMemo(() => {
-		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
+		// 粉丝只有 B 站(ADR-0019 决策 12):按 uid 采、按 uid 记,只对得上 B 站订阅。
 		const m = new Map<string, BiliSubscription>();
 		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
 		return m;
@@ -843,7 +844,8 @@ export default function Dashboard() {
 			<>
 				<b>
 					{(() => {
-						const sub = subs.filter(isBiliSubscription).find((s) => s.uid === live[0].uid);
+						// 与「正在直播」那块同一口径:按快照里的订阅 id 对(ADR-0019 决策 50)。
+						const sub = subs.find((s) => s.id === live[0].subscriptionId);
 						return sub ? displayName(sub) : `UID ${live[0].uid}`;
 					})()}
 				</b>{" "}

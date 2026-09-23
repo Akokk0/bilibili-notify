@@ -96,8 +96,8 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	describe("live-viewers-changed", () => {
 		it("房间在快照里:patch 该 uid 的 viewers,其他不动", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
-				{ uid: "u2", roomId: "r2", isLive: true, viewers: "200" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
+				{ subscriptionId: "s-u2", uid: "u2", roomId: "r2", isLive: true, viewers: "200" },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
@@ -112,7 +112,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("房间不在快照里:返回 old 原样不动(后续 invalidate 会补)", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
@@ -135,7 +135,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("tuple shape 不对:silent-drop,不动 qc", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ uid: "u1", roomId: "r1", isLive: true, viewers: "1万" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1万" },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(

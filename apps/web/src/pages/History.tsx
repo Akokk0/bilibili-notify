@@ -27,16 +27,12 @@ import {
 	type HistoryResponse,
 	historyQueryKey,
 } from "../services/dashboard";
-import {
-	type BiliSubscription,
-	isBiliSubscription,
-	type PushTarget,
-	type Subscription,
-} from "../types/domain";
+import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
 import { colorFromUid, displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
+import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 
 /**
  * `/history` — 1:1 port of `.bn-design/variation-a-tabs.jsx#HistoryTab`,
@@ -90,12 +86,9 @@ export default function History() {
 	});
 	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
 
-	const subByUid = useMemo(() => {
-		// 历史行今天按 uid 记(推送链改按订阅 id 是 ④ 的事,ADR-0019 决策 50):只有 B 站订阅对得上。
-		const m = new Map<string, BiliSubscription>();
-		for (const s of (subsQuery.data ?? []).filter(isBiliSubscription)) m.set(s.uid, s);
-		return m;
-	}, [subsQuery.data]);
+	// 行先按 `subscriptionId` 对订阅,不在了再按 B 站 uid 找(ADR-0019 决策 50,与服务端重推同一条
+	// 规矩)—— 删了又重加的 UP,旧行照样按现在那条的名字搜得到;同一个 UP 的几条订阅各认各的行。
+	const subs = useMemo(() => createSubscriptionLookup(subsQuery.data ?? []), [subsQuery.data]);
 	const targetById = useMemo(() => {
 		const m = new Map<string, PushTarget>();
 		for (const t of targetsQuery.data ?? []) m.set(t.id, t);
@@ -109,7 +102,7 @@ export default function History() {
 	const haystacks = useMemo(() => {
 		const m = new Map<string, string>();
 		for (const e of entries) {
-			const sub = subByUid.get(e.uid);
+			const sub = subs.forRow(e);
 			m.set(
 				e.id,
 				[
@@ -123,7 +116,7 @@ export default function History() {
 			);
 		}
 		return m;
-	}, [entries, subByUid, targetById]);
+	}, [entries, subs, targetById]);
 
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
@@ -163,7 +156,7 @@ export default function History() {
 			) : historyQuery.error ? (
 				<ErrorNote>加载失败：{String((historyQuery.error as Error).message)}</ErrorNote>
 			) : (
-				<HistoryTable entries={filtered} subByUid={subByUid} targetById={targetById} />
+				<HistoryTable entries={filtered} subs={subs} targetById={targetById} />
 			)}
 		</div>
 	);
@@ -171,11 +164,11 @@ export default function History() {
 
 function HistoryTable({
 	entries,
-	subByUid,
+	subs,
 	targetById,
 }: {
 	entries: HistoryEntryView[];
-	subByUid: Map<string, Subscription>;
+	subs: SubscriptionLookup;
 	targetById: Map<string, PushTarget>;
 }) {
 	return (
@@ -201,7 +194,7 @@ function HistoryTable({
 					<HistoryRow
 						key={e.id}
 						entry={e}
-						sub={subByUid.get(e.uid)}
+						sub={subs.forRow(e)}
 						target={e.targetId ? targetById.get(e.targetId) : undefined}
 						isLast={i === entries.length - 1}
 					/>

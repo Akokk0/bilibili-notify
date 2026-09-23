@@ -1016,6 +1016,11 @@ export interface ImportResult {
 
 /** `GET /api/live/listening` 的单房间条目,由 LiveEngine 的 per-session 快照投影。 */
 export interface LiveListenerSnapshot {
+	/**
+	 * 这间直播间是替哪条订阅开的 —— 订阅自己的 id,运行期键(ADR-0019 决策 50)。面板拿它对订阅:
+	 * 同一个 UP 配了几条订阅时,按 uid 对不出是哪一条。
+	 */
+	subscriptionId: string;
 	uid: string;
 	roomId: string;
 	isLive: boolean;
