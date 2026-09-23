@@ -142,10 +142,21 @@ describe("readExtensionDir", () => {
 		);
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toBe(requires);
+		expect(r.requires).toEqual({ apiVersion: requires });
 		expect(r.range).toEqual(EXTENSION_API_RANGE);
 		// 名字还在 —— 面板要印得出「谁没加载」。
 		expect(r.identity.name).toBe("机器人框架桥接");
+	});
+
+	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59)—— 与档位不合同一条路。 */
+	it("要更高契约小号的 v2 清单 → incompatible,记下要几号", async () => {
+		const apiRevision = EXTENSION_API_RANGE.revision + 1;
+		const r = await readExtensionDir(await plant("douyin", manifestV2({ apiRevision })));
+		expect(r.state).toBe("incompatible");
+		if (r.state !== "incompatible") throw new Error("unreachable");
+		expect(r.requires).toEqual({ apiVersion: 2, apiRevision });
+		expect(r.range).toEqual(EXTENSION_API_RANGE);
+		expect(r.identity.name).toBe("抖音订阅");
 	});
 
 	/**
@@ -171,11 +182,11 @@ describe("readExtensionDir", () => {
 
 	it("低于宿主最低档的 → 同样 incompatible(抬过最低档之后,老拓展停在门外)", async () => {
 		const r = await readExtensionDir(await plant("bridge", manifest()), {
-			hostApiRange: { min: 2, current: 3 },
+			hostApiRange: { min: 2, current: 3, revision: 0 },
 		});
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toBe(1);
+		expect(r.requires).toEqual({ apiVersion: 1 });
 	});
 
 	it("版本不合、清单 id 又与目录名对不上 → unreadable(两个身份比版本更要紧)", async () => {

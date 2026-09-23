@@ -89,6 +89,17 @@ describe("mergeMarketplaceEntry", () => {
 		expect(() => mergeMarketplaceEntry(undefined, entry({ version: "latest" }))).toThrow(/semver/);
 	});
 
+	/** 契约小号(ADR-0019 决策 59):并进去、客户端读得出;坏的在发版这头就拦住。 */
+	it("apiRevision 照抄进索引、客户端读得出;不是非负整数当场拒", () => {
+		const index = mergeMarketplaceEntry(undefined, entry({ apiVersion: 2, apiRevision: 1 }), {
+			issuedAt: 1,
+		});
+		expect(MarketplaceIndexSchema.parse(index).extensions[0]?.apiRevision).toBe(1);
+		for (const apiRevision of [-1, 1.5, "1"]) {
+			expect(() => mergeMarketplaceEntry(undefined, entry({ apiRevision }))).toThrow(/apiRevision/);
+		}
+	});
+
 	it("可选字段没给就不写(写 null 会让客户端判 malformed)", () => {
 		const index = mergeMarketplaceEntry(
 			undefined,
@@ -98,6 +109,7 @@ describe("mergeMarketplaceEntry", () => {
 		const only = index.extensions[0];
 		expect("notes" in only).toBe(false);
 		expect("releaseUrl" in only).toBe(false);
+		expect("apiRevision" in only).toBe(false);
 		expect(only.description).toBe("");
 	});
 });

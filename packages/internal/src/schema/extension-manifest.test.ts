@@ -97,21 +97,30 @@ function incompatible(
 }
 
 describe("parseExtensionManifest —— 两档格式", () => {
-	it("宿主这一版认 v1 到 v2", () => {
-		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 2 });
+	it("宿主这一版认 v1 到 v2,契约小号是 0(v2 还没发版,里面现有的一切都算 0 号)", () => {
+		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 2, revision: 0 });
 	});
 
 	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
-		const range = { min: 2, current: 3 };
-		expect([1, 2, 3, 4].map((v) => apiVersionAccepted(v, range))).toEqual([
+		const range = { min: 2, current: 3, revision: 0 };
+		expect([1, 2, 3, 4].map((v) => apiVersionAccepted({ apiVersion: v }, range))).toEqual([
 			false,
 			true,
 			true,
 			false,
 		]);
 		// 不给区间就是宿主自己那一档。
-		expect(apiVersionAccepted(EXTENSION_API_RANGE.current + 1)).toBe(false);
-		expect(apiVersionAccepted(EXTENSION_API_RANGE.min)).toBe(true);
+		expect(apiVersionAccepted({ apiVersion: EXTENSION_API_RANGE.current + 1 })).toBe(false);
+		expect(apiVersionAccepted({ apiVersion: EXTENSION_API_RANGE.min })).toBe(true);
+	});
+
+	it("档位对、要的小号比 BN 的高 → 装不了;不写小号按 0 算", () => {
+		const range = { min: 1, current: 2, revision: 1 };
+		expect(apiVersionAccepted({ apiVersion: 2, apiRevision: 2 }, range)).toBe(false);
+		expect(apiVersionAccepted({ apiVersion: 2, apiRevision: 1 }, range)).toBe(true);
+		expect(apiVersionAccepted({ apiVersion: 2 }, { ...range, revision: 0 })).toBe(true);
+		// 档位不合时小号再低也救不回来。
+		expect(apiVersionAccepted({ apiVersion: 3, apiRevision: 0 }, range)).toBe(false);
 	});
 
 	it("v1 最小清单 —— 光靠它就能把拓展列在面板上,不必先加载代码", () => {
@@ -210,19 +219,20 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 			contributes: { chat: { whatever: true } },
 			somethingNew: [1, 2, 3],
 		});
-		expect(r.requires).toBe(3);
+		// 档位不合时不读小号 —— 那一档的格式我们可能根本不认识。
+		expect(r.requires).toEqual({ apiVersion: 3 });
 		// 身份那几格**所有档位都读得出来** —— 面板照样能写出「××× 3.0.0 要更新的 BN」。
 		expect(r.identity).toMatchObject({ id: "future", name: "未来的拓展", version: "3.0.0" });
 	});
 
 	it("低于最低档:同样判不兼容(宿主抬过最低档之后,老拓展停在门外)", () => {
-		const r = incompatible(v1(), { min: 2, current: 3 });
-		expect(r.requires).toBe(1);
+		const r = incompatible(v1(), { min: 2, current: 3, revision: 0 });
+		expect(r.requires).toEqual({ apiVersion: 1 });
 		expect(r.identity.id).toBe("demo-ext");
 	});
 
 	it("在区间里就按那一档校验 —— 同一份 v1 清单,区间变了照样收", () => {
-		expect(ok(v1(), { min: 1, current: 5 }).apiVersion).toBe(1);
+		expect(ok(v1(), { min: 1, current: 5, revision: 0 }).apiVersion).toBe(1);
 	});
 
 	it("版本不合、身份那几格也坏了:读不了(那几格在哪一档都是坏的)", () => {
@@ -243,6 +253,52 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 	it("不是对象 —— 读不了", () => {
 		expect(unreadable([1, 2]).length).toBeGreaterThan(0);
 		expect(unreadable(null).length).toBeGreaterThan(0);
+	});
+});
+
+/**
+ * 档位下面的契约小号(ADR-0019 决策 59):拓展能用的东西变多才加一。拓展在清单里写它要的小号,
+ * BN 不够就与「档位不合」走同一条路 —— 装不上、不起、市场标灰。
+ */
+describe("parseExtensionManifest —— 契约小号", () => {
+	const HOST = { min: 1, current: 2, revision: 0 };
+
+	it("v2 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
+		expect(ok(v2(), HOST).apiVersion).toBe(2);
+		expect(ok(v2({ apiRevision: 0 }), HOST).apiVersion).toBe(2);
+	});
+
+	it("要的小号比 BN 的高 → 不兼容(不是读不了),身份照样读得出", () => {
+		const r = incompatible(v2({ apiRevision: 1 }), HOST);
+		expect(r.requires).toEqual({ apiVersion: 2, apiRevision: 1 });
+		expect(r.identity).toMatchObject({ id: "demo-ext", version: "0.1.0" });
+	});
+
+	/**
+	 * 要更高小号的清单里多半有我们不认识的格(新口、新积木的声明)—— 先判小号,别按今天的严格
+	 * 格式挑出一串「不认识的键」,而真正的原因只有一条。
+	 */
+	it("小号高、其余有我们不认识的格 → 仍是不兼容", () => {
+		const r = incompatible(v2({ apiRevision: 1, contributes: { chat: {} }, brandNew: true }), HOST);
+		expect(r.requires).toEqual({ apiVersion: 2, apiRevision: 1 });
+	});
+
+	it("BN 的小号够就收", () => {
+		expect(ok(v2({ apiRevision: 3 }), { ...HOST, revision: 3 }).apiVersion).toBe(2);
+	});
+
+	it.each([
+		["负数", -1],
+		["小数", 1.5],
+		["不是数", "1"],
+		["null", null],
+	])("apiRevision %s —— 读不了,而且点名是 apiRevision", (_label, apiRevision) => {
+		const issues = unreadable(v2({ apiRevision }), HOST);
+		expect(issues.join("\n")).toContain("apiRevision");
+	});
+
+	it("v1 没有这一格:写了也按 0 算,不挡", () => {
+		expect(ok(v1({ apiRevision: 9 }), HOST).apiVersion).toBe(1);
 	});
 });
 

@@ -298,6 +298,61 @@ describe("list():官方源", () => {
 		});
 	});
 
+	/**
+	 * 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59):同一口径标灰,真去装也在下载之前
+	 * 拦住,说清要几号、BN 是几号。
+	 */
+	it("档位对、小号高 → incompatible;条目带得出要几号,真去装说「先升级 BN」", async () => {
+		const wants = EXTENSION_API_RANGE.revision + 1;
+		const fetchMock = serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [
+						entry("bridge", "0.0.2", bridgeZip, {
+							apiVersion: EXTENSION_API_RANGE.current,
+							apiRevision: wants,
+						}),
+					],
+				}),
+			),
+			[ZIP_URL]: bridgeZip,
+		});
+		const h = harness();
+		expect((await h.marketplace.list()).extensions[0]).toMatchObject({
+			state: "incompatible",
+			apiVersion: EXTENSION_API_RANGE.current,
+			apiRevision: wants,
+		});
+		const outcome = await h.marketplace.install("official", "bridge");
+		expect(outcome.ok).toBe(false);
+		if (!outcome.ok) {
+			expect(outcome.err).toContain(`小号 ${wants}`);
+			expect(outcome.err).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
+			expect(outcome.err).toContain("先升级 BN");
+		}
+		expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(ZIP_URL);
+	});
+
+	it("小号不比 BN 的高 → 照常能装", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [
+						entry("bridge", "0.0.2", bridgeZip, {
+							apiVersion: EXTENSION_API_RANGE.current,
+							apiRevision: EXTENSION_API_RANGE.revision,
+						}),
+					],
+				}),
+			),
+		});
+		expect((await harness().marketplace.list()).extensions[0]).toMatchObject({
+			state: "installable",
+		});
+	});
+
 	/** 宿主认的是区间(ADR-0019 决策 18):当前档与更早还没删退路的档都能装。 */
 	it("落在宿主区间里的每一档都能装", async () => {
 		serve({
@@ -327,7 +382,7 @@ describe("list():官方源", () => {
 				official({ extensions: [entry("bridge", "0.0.2", bridgeZip, { apiVersion: 1 })] }),
 			),
 		});
-		const h = harness({ hostApiRange: { min: 2, current: 3 } });
+		const h = harness({ hostApiRange: { min: 2, current: 3, revision: 0 } });
 		expect((await h.marketplace.list()).extensions[0]).toMatchObject({ state: "incompatible" });
 		const outcome = await h.marketplace.install("official", "bridge");
 		expect(outcome.ok).toBe(false);

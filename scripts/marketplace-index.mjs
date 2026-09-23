@@ -48,6 +48,8 @@ export function assertEntryShape(e) {
 	if (isPre(e) !== e.version.includes("-"))
 		fail(`${e.id}:${e.version} 标成了${tierName(e)}版,与版本号对不上`);
 	if (!Number.isInteger(e.apiVersion) || e.apiVersion <= 0) fail(`${e.id}:apiVersion 必须是正整数`);
+	if (e.apiRevision !== undefined && (!Number.isInteger(e.apiRevision) || e.apiRevision < 0))
+		fail(`${e.id}:apiRevision 必须是非负整数`);
 	if (!e.package || typeof e.package !== "object") fail(`${e.id}:缺 package`);
 	const { url, sha256, size } = e.package;
 	if (typeof url !== "string" || !url.startsWith("https://"))
@@ -173,6 +175,7 @@ function cleanEntry(e) {
 		apiVersion: e.apiVersion,
 		package: { url: e.package.url, sha256: e.package.sha256, size: e.package.size },
 	};
+	if (e.apiRevision !== undefined) entry.apiRevision = e.apiRevision;
 	if (e.prerelease === true) entry.prerelease = true;
 	if (e.releaseUrl !== undefined) entry.releaseUrl = e.releaseUrl;
 	if (e.notes !== undefined && e.notes !== "") entry.notes = e.notes;

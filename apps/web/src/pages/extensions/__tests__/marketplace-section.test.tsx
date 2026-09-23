@@ -236,6 +236,20 @@ describe("拓展市场", () => {
 		expect(within(douyin).queryByText("官方")).toBeNull();
 	});
 
+	/** 档位对、要的契约小号高(ADR-0019 决策 59):只说「v2」的话,主人会以为这台 BN 明明认 v2。 */
+	it("要更高契约小号的条目:标灰那句带上要几号", async () => {
+		renderSection({
+			...MARKET,
+			extensions: MARKET.extensions.map((e) => (e.id === "bar" ? { ...e, apiRevision: 1 } : e)),
+		});
+		expect(within(await cardOf("Bar")).getByText("要宿主契约 v2 小号 1,先升级 BN")).toBeTruthy();
+	});
+
+	it("没写小号的条目照旧只说档位", async () => {
+		renderSection();
+		expect(within(await cardOf("Bar")).getByText("要宿主契约 v2,先升级 BN")).toBeTruthy();
+	});
+
 	/**
 	 * 🔴 **装了的不在市场里露面**。它已经在上面那一排「已装」的卡里了,同一件东西画两遍
 	 * 会让人以为装了两份。更新也没丢:「有新版 vX」+「更新」钮长在已装那张卡上

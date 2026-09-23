@@ -210,9 +210,11 @@ const OFFICIAL_FAILURE_TEXT = {
 export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	const now = deps.now ?? (() => Date.now());
 	const hostApiRange = deps.hostApiRange ?? EXTENSION_API_RANGE;
-	/** 这一档宿主装不装得了 —— 列表的状态与真去装那一刻用**同一把尺子**。 */
-	const fitsHost = (entry: MarketplaceEntry): boolean =>
-		apiVersionAccepted(entry.apiVersion, hostApiRange);
+	/**
+	 * 这一条宿主装不装得了(档位 + 契约小号)—— 列表的状态与真去装那一刻用**同一把尺子**,
+	 * 也是读清单用的那一把。
+	 */
+	const fitsHost = (entry: MarketplaceEntry): boolean => apiVersionAccepted(entry, hostApiRange);
 	const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const downloadTimeoutMs = deps.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
 	const maxIndexBytes = deps.maxIndexBytes ?? DEFAULT_MAX_INDEX_BYTES;
@@ -458,6 +460,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					description: entry.description,
 					version: entry.version,
 					apiVersion: entry.apiVersion,
+					apiRevision: entry.apiRevision,
 					prerelease: isPrereleaseEntry(entry),
 					notes: entry.notes,
 					releaseUrl: entry.releaseUrl,
@@ -491,7 +494,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		if (!fitsHost(entry)) {
 			return {
 				ok: false,
-				err: `${entry.name}:${apiVersionMismatch(entry.apiVersion, hostApiRange)}`,
+				err: `${entry.name}:${apiVersionMismatch(entry, hostApiRange)}`,
 			};
 		}
 		if (isMarketplaceRevoked(source.index, entry.id, entry.version)) {

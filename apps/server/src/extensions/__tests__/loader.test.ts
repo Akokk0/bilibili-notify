@@ -282,6 +282,38 @@ describe("加载拓展", () => {
 		expect(future?.identity?.name).toBeTruthy();
 		expect(future?.detail).toContain("先升级 BN");
 	});
+
+	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59):与档位不合同一条路。 */
+	it("要更高契约小号的拓展 → 不 import,原因写清要几号、BN 是几号、先升级 BN", async () => {
+		const wants = EXTENSION_API_RANGE.revision + 1;
+		await plant("douyin", HEALTHY, {
+			apiVersion: 2,
+			apiRevision: wants,
+			provides: undefined,
+			contributes: {
+				subscription: {
+					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+					events: ["post"],
+				},
+			},
+		});
+		const imported: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			importModule: async (specifier) => {
+				imported.push(specifier);
+				return {};
+			},
+		});
+		const [douyin] = loaded.list();
+		expect(douyin?.state).toBe("incompatible");
+		expect(imported).toEqual([]);
+		expect(douyin?.detail).toContain(`小号 ${wants}`);
+		expect(douyin?.detail).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
+		expect(douyin?.detail).toContain("先升级 BN");
+		await loaded.dispose();
+	});
 });
 
 describe("拓展声明的密钥字段", () => {

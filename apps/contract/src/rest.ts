@@ -336,7 +336,7 @@ export interface MarketplaceSourceDTO {
  * - `installed`:从这个源装的,就是这一版;
  * - `updatable`:从这个源装的,索引里有更新的版本(装着那版被撤回了的,`installed.revoked` 标着);
  * - `installed-elsewhere`:装着,但不是从这个源装的(手放的 / devtools 链的 / 别的源)—— 不提示更新;
- * - `incompatible`:它要的宿主契约版本对不上,先升级 BN;
+ * - `incompatible`:它要的宿主契约(档位或契约小号)对不上,先升级 BN;
  * - `revoked`:装着的那一版被这个源撤回了、又没有能换过去的新版(或索引里这一版本身就在撤回
  *   名单上)。
  */
@@ -358,6 +358,11 @@ export interface MarketplaceEntryDTO {
 	/** 索引里列的(最新)版本。 */
 	version: string;
 	apiVersion: number;
+	/**
+	 * 它要的契约小号(ADR-0019 决策 59);索引里没写就没有这一格,按 0 算。`incompatible` 的卡
+	 * 靠它说清要几号。
+	 */
+	apiRevision?: number;
 	prerelease: boolean;
 	notes?: string;
 	releaseUrl?: string;

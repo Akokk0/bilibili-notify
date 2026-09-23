@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import {
 	EXTENSION_API_RANGE,
 	type ExtensionApiRange,
+	type ExtensionApiRequirement,
 	type ExtensionIdentity,
 	type ExtensionManifest,
 	parseExtensionManifest,
@@ -74,7 +75,8 @@ export type ExtensionDirRead =
 	/** 有清单但用不了。**要列出来**:消失的东西没法排查。 */
 	| { state: "unreadable"; id: string; dir: string; detail: string }
 	/**
-	 * 它是给别的契约档位写的。列出来、说清楚,不加载。
+	 * 它是给别的契约档位写的,或要的契约小号比这台 BN 的高(ADR-0019 决策 59)。列出来、说清楚,
+	 * 不加载。
 	 *
 	 * 只带**身份那几格**:那一档的格式我们可能根本不认识,其余部分没有读。
 	 */
@@ -83,7 +85,7 @@ export type ExtensionDirRead =
 			id: string;
 			dir: string;
 			identity: ExtensionIdentity;
-			requires: number;
+			requires: ExtensionApiRequirement;
 			range: ExtensionApiRange;
 	  }
 	/** 可以加载了 —— 真加不加载还要看开关(`globals.extensions.<id>.enabled`)。 */
@@ -124,15 +126,24 @@ export interface ReadExtensionDirOptions {
 /**
  * 「版本不合」说成人话 —— 装载列表、上传装包、市场三处说的是同一句,分头写会说成三种。
  *
- * 两个方向要分开说:高了是 BN 旧了(先升级 BN),低了是拓展旧了(换它的新版)——
- * 一律叫主人升级 BN 的话,抬过最低档之后那句话就是错的。
+ * 档位的两个方向要分开说:高了是 BN 旧了(先升级 BN),低了是拓展旧了(换它的新版)——
+ * 一律叫主人升级 BN 的话,抬过最低档之后那句话就是错的。档位对、小号高(ADR-0019 决策 59)
+ * 也是 BN 旧了,要几号、BN 是几号都写出来。
  */
-export function apiVersionMismatch(requires: number, range: ExtensionApiRange): string {
+export function apiVersionMismatch(
+	requires: ExtensionApiRequirement,
+	range: ExtensionApiRange,
+): string {
+	const { apiVersion } = requires;
 	const accepts =
 		range.min === range.current ? `v${range.current}` : `v${range.min}–v${range.current}`;
-	return requires > range.current
-		? `它要宿主契约 v${requires},这一版 BN 只认 ${accepts} —— 先升级 BN`
-		: `它是给宿主契约 v${requires} 写的,这一版 BN 只认 ${accepts} —— 换它的新版`;
+	if (apiVersion > range.current) {
+		return `它要宿主契约 v${apiVersion},这一版 BN 只认 ${accepts} —— 先升级 BN`;
+	}
+	if (apiVersion < range.min) {
+		return `它是给宿主契约 v${apiVersion} 写的,这一版 BN 只认 ${accepts} —— 换它的新版`;
+	}
+	return `它要宿主契约 v${apiVersion} 的小号 ${requires.apiRevision ?? 0},这一版 BN 只到小号 ${range.revision} —— 先升级 BN`;
 }
 
 /**

@@ -71,6 +71,16 @@ describe("MarketplaceIndexSchema", () => {
 		).toBe(false);
 	});
 
+	/** 契约小号(ADR-0019 决策 59):市场按「档位 + 小号」标灰,所以索引得带得出这一格。 */
+	it("apiRevision 选填;写了就留着,只收非负整数", () => {
+		const parse = (apiRevision: unknown) =>
+			MarketplaceIndexSchema.safeParse(index({ extensions: [entry({ apiRevision })] }));
+		expect(MarketplaceIndexSchema.parse(index()).extensions[0]?.apiRevision).toBeUndefined();
+		const kept = parse(2);
+		expect(kept.success && kept.data.extensions[0]?.apiRevision).toBe(2);
+		for (const bad of [-1, 1.5, "1"]) expect(parse(bad).success).toBe(false);
+	});
+
 	it("不认识的字段丢掉不拒 —— 老客户端读得了带新字段的索引", () => {
 		const parsed = MarketplaceIndexSchema.parse(index({ future: 1 }));
 		expect("future" in parsed).toBe(false);

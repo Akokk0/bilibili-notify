@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	ApiRevisionSchema,
 	ExtensionIdSchema,
 	ExtensionVersionSchema,
 	extensionNamespaceOf,
@@ -32,6 +33,11 @@ export const MarketplaceEntrySchema = z.object({
 	version: ExtensionVersionSchema,
 	/** 它要的宿主契约版本;对不上宿主的就标灰「要先升级 BN」。 */
 	apiVersion: z.number().int().positive(),
+	/**
+	 * 它要的契约小号(ADR-0019 决策 59),抄自清单;不写 = 0。比这台 BN 的高也标灰 —— 与档位
+	 * 同一把尺子(`apiVersionAccepted`)。
+	 */
+	apiRevision: ApiRevisionSchema.optional(),
 	/** 预发布条目只在 BN 自己的更新渠道也是预发布时才显示。 */
 	prerelease: z.boolean().optional(),
 	/** 去哪下、多大、校验和 —— 与自主升级的载荷那三格同一套约束(同样只挡我们自己写错)。 */

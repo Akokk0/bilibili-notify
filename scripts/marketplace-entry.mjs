@@ -17,7 +17,7 @@ import { readArg } from "./cli-args.mjs";
 import { extensionPackageUrl, extensionReleaseUrl } from "./release-urls.mjs";
 
 /**
- * @param {{ id: string, name: string, description?: string, apiVersion: number }} manifest
+ * @param {{ id: string, name: string, description?: string, apiVersion: number, apiRevision?: number }} manifest
  *   `extensions/<id>/extension.json` 的内容。
  * @param {{ version: string, prerelease: boolean, repo: string, sha256: string, size: number, notes?: string }} release
  *   这一趟发布的那几个数。`version` 与清单里那个由 `assert-extension-tag.sh` 保证一致,
@@ -33,6 +33,8 @@ export function marketplaceEntryOf(manifest, release) {
 		description: manifest.description ?? "",
 		version: release.version,
 		apiVersion: manifest.apiVersion,
+		// 契约小号(ADR-0019 决策 59):清单没写就是 `undefined`,`JSON.stringify` 整格丢掉 —— 缺省即 0。
+		apiRevision: manifest.apiRevision,
 		prerelease: release.prerelease,
 		package: {
 			url: extensionPackageUrl(release.repo, id, release.version),

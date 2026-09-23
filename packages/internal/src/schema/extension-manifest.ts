@@ -13,31 +13,61 @@ export {
 } from "../constants";
 
 /**
- * 宿主认的**契约档位区间** `[min, current]`(ADR-0019 决策 18)。
+ * 宿主认的契约:**档位区间** `[min, current]`(ADR-0019 决策 18)+ 档位下面的**契约小号**
+ * `revision`(决策 59)。
  *
  * 清单里的 `apiVersion` 是拓展**要的那一档**。落在区间里就收;高于 `current` 是给更新的
  * BN 写的,低于 `min` 是给已经删掉退路的旧契约写的 —— 两头都是「不加载 + 说清楚为什么」,
  * 加载了再炸的话,炸在哪一半全凭运气。
  *
- * - 契约**加东西**(清单多一段、ctx 多一格)= 抬 `current`:要新东西的拓展写新的那档,
- *   旧 BN 当场说「版本不合」,而不是装进去才发现少了一块。
+ * - 拓展**能用的东西变多**(事件表加一格、ctx 多一个方法、多一种积木)= `revision` 加一:要新东西
+ *   的拓展在清单里写 `apiRevision`,旧 BN 当场说「要先升级 BN」,而不是照装、再把它报的东西整条
+ *   拒掉。为别的原因发版不动它;形状与它一起由 `extension-contract-shape.test.ts` 钉着。
+ * - `revision` **只增不归零** —— 抬档位也不归零:比较只看「拓展要的 ≤ BN 的」,归了零,在老档位上
+ *   要过高小号的拓展就会被新 BN 错拒。
  * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
  *
- * 现在:v1 是老格式(外观与配置项写在代码里,只剩桥在用),v2 是把静态声明搬进清单的那份。
+ * 现在:v1 是老格式(外观与配置项写在代码里,只剩桥在用),v2 是把静态声明搬进清单的那份;
+ * v2 还没发版,里面现有的一切都算 0 号。
  */
 export interface ExtensionApiRange {
 	readonly min: number;
 	readonly current: number;
+	readonly revision: number;
 }
-export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({ min: 1, current: 2 });
+export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
+	min: 1,
+	current: 2,
+	revision: 0,
+});
 
-/** 这一档落不落在区间里 —— 读清单与市场判「装得了吗」用的是同一把尺子。 */
-export function apiVersionAccepted(
-	apiVersion: number,
-	range: ExtensionApiRange = EXTENSION_API_RANGE,
-): boolean {
+/**
+ * 拓展要的契约:档位 + 小号。小号**缺省 0** —— v1 清单没有这一格,v2 与市场索引里是选填。
+ * 清单、索引条目与读清单的结论都长这样,判「装得了吗」只认这一种形状。
+ */
+export interface ExtensionApiRequirement {
+	readonly apiVersion: number;
+	readonly apiRevision?: number;
+}
+
+/** 这一档落不落在区间里(不看小号)。 */
+function tierAccepted(apiVersion: number, range: ExtensionApiRange): boolean {
 	return apiVersion >= range.min && apiVersion <= range.current;
 }
+
+/**
+ * 拓展要的这台 BN 给不给得起:档位落在区间里,**且**要的小号不比 BN 的高 —— 读清单与市场判
+ * 「装得了吗」用的是同一把尺子。
+ */
+export function apiVersionAccepted(
+	requires: ExtensionApiRequirement,
+	range: ExtensionApiRange = EXTENSION_API_RANGE,
+): boolean {
+	return tierAccepted(requires.apiVersion, range) && (requires.apiRevision ?? 0) <= range.revision;
+}
+
+/** 契约小号那一格:非负整数。清单 v2 与市场索引共用这一条。 */
+export const ApiRevisionSchema = z.number().int().nonnegative();
 
 /**
  * 这个拓展开的是哪一口。
@@ -548,13 +578,19 @@ export const ActionNameSchema = z
  * v2:静态声明全住清单(ADR-0019 决策 16)。
  *
  * **严格**:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明 ——
- * 面板上少了一栏,没人报错。格式要长新东西,跟着抬 {@link EXTENSION_API_RANGE} 的 `current`。
+ * 面板上少了一栏,没人报错。格式要长新东西,跟着抬 {@link EXTENSION_API_RANGE} 的 `revision`
+ * (决策 59):要新格的清单写上更高的 `apiRevision`,旧 BN 在挑格式之前就判「要先升级 BN」。
+ *
+ * 导出只为给契约形状的守卫登记(`extension-contract-shape.test.ts`);读清单一律走
+ * {@link parseExtensionManifest}。
  */
-const ExtensionManifestV2Schema = z.strictObject({
+export const ExtensionManifestV2Schema = z.strictObject({
 	/** 编辑器补全用,宿主不读。 */
 	$schema: z.string().optional(),
 	...identityShape,
 	apiVersion: z.literal(2),
+	/** 要的契约小号(ADR-0019 决策 59)。不写 = 0。 */
+	apiRevision: ApiRevisionSchema.optional(),
 	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
 	settings: SettingsSchema.optional(),
 	/**
@@ -590,13 +626,23 @@ const MANIFEST_SCHEMAS: Readonly<Record<number, z.ZodType<ExtensionManifest>>> =
 
 /** 只读这一格 —— 其余部分长什么样要看它。 */
 const ApiVersionOnlySchema = z.object({ apiVersion: z.number().int().min(1) });
+/** 档位认得了,再单读这一格 —— 小号不够就不必挑其余格式的毛病。 */
+const ApiRevisionOnlySchema = z.object({ apiRevision: ApiRevisionSchema.optional() });
 
 export type ExtensionManifestRead =
 	| { ok: true; manifest: ExtensionManifest }
 	/** 读不了。`issues` 每条都是「路径: 原因」。 */
 	| { ok: false; reason: "unreadable"; issues: string[] }
-	/** 给别的契约档位写的。身份那几格照样读出来了,面板要印它是谁。 */
-	| { ok: false; reason: "incompatible"; identity: ExtensionIdentity; requires: number };
+	/**
+	 * 给别的契约档位写的,或要的小号比这台 BN 的高。身份那几格照样读出来了,面板要印它是谁。
+	 * 档位不合时不读小号(那一档的格式可能根本不认识),`requires` 里就没有那一格。
+	 */
+	| {
+			ok: false;
+			reason: "incompatible";
+			identity: ExtensionIdentity;
+			requires: ExtensionApiRequirement;
+	  };
 
 /**
  * zod 的错误摊成「路径: 原因」一条一条 —— 读清单与校验拓展交上来的视图共用这一套说法。
@@ -617,8 +663,9 @@ export function formatZodIssues(error: z.ZodError): string[] {
 /**
  * 读一份清单(已经 `JSON.parse` 过的)。
  *
- * 顺序是有讲究的:**先单读 `apiVersion`**。为将来的宿主写的清单,格式本来就可能是我们
- * 不认识的 —— 按今天的规矩挑它的毛病只会报一堆「读不了」,而真正的原因只有一条。
+ * 顺序是有讲究的:**先单读 `apiVersion`,档位认得了再单读 `apiRevision`**。为将来的宿主写的
+ * 清单,格式本来就可能是我们不认识的 —— 按今天的规矩挑它的毛病只会报一堆「读不了」,而真正的
+ * 原因只有一条。
  */
 export function parseExtensionManifest(
 	raw: unknown,
@@ -628,10 +675,20 @@ export function parseExtensionManifest(
 	if (!head.success) {
 		return { ok: false, reason: "unreadable", issues: formatZodIssues(head.error) };
 	}
-	const requires = head.data.apiVersion;
+	const apiVersion = head.data.apiVersion;
+	const schema = tierAccepted(apiVersion, range) ? MANIFEST_SCHEMAS[apiVersion] : undefined;
 
-	const schema = apiVersionAccepted(requires, range) ? MANIFEST_SCHEMAS[requires] : undefined;
-	if (!schema) {
+	// v1 没有小号这一格(写了也不算);认得的新档位才读 —— 坏了就是读不了,点名这一格。
+	let requires: ExtensionApiRequirement = { apiVersion };
+	if (schema && apiVersion !== 1) {
+		const revision = ApiRevisionOnlySchema.safeParse(raw);
+		if (!revision.success) {
+			return { ok: false, reason: "unreadable", issues: formatZodIssues(revision.error) };
+		}
+		requires = { apiVersion, apiRevision: revision.data.apiRevision ?? 0 };
+	}
+
+	if (!schema || !apiVersionAccepted(requires, range)) {
 		const identity = ExtensionIdentitySchema.safeParse(raw);
 		if (!identity.success) {
 			return { ok: false, reason: "unreadable", issues: formatZodIssues(identity.error) };

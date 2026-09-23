@@ -283,9 +283,11 @@ function EntryAction({
 		case "installed-elsewhere":
 			return null;
 		case "incompatible":
+			// 档位对、小号高的(ADR-0019 决策 59)只说「v2」的话,主人会以为这台 BN 明明认 v2。
 			return (
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					要宿主契约 v{entry.apiVersion},先升级 BN
+					要宿主契约 v{entry.apiVersion}
+					{entry.apiRevision ? ` 小号 ${entry.apiRevision}` : ""},先升级 BN
 				</span>
 			);
 		case "revoked":

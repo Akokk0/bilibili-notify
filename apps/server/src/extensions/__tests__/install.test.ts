@@ -226,6 +226,30 @@ describe("拆包", () => {
 		if (opened.ok) expect(opened.pkg.manifest.apiVersion).toBe(2);
 	});
 
+	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59):装的时候就拦住,说清要几号。 */
+	it("要更高契约小号的 v2 包 → 当场拒绝,说要几号、BN 是几号、先升级 BN", () => {
+		const wants = EXTENSION_API_RANGE.revision + 1;
+		const opened = openExtensionPackage(
+			pack({
+				...GOOD,
+				"extension.json": manifest({
+					apiVersion: 2,
+					apiRevision: wants,
+					provides: undefined,
+					contributes: {
+						push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } },
+					},
+				}),
+			}),
+		);
+		expect(opened.ok).toBe(false);
+		if (opened.ok) return;
+		expect(opened.errors).toHaveLength(1);
+		expect(opened.errors[0]).toContain(`小号 ${wants}`);
+		expect(opened.errors[0]).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
+		expect(opened.errors[0]).toContain("先升级 BN");
+	});
+
 	/** 🔴 zip 里的路径是攻击者写的,`..` 一律不认 —— 落盘那一步不该再自己防一遍。 */
 	it("路径里带 .. → 拒绝", () => {
 		expect(openExtensionPackage(pack({ ...GOOD, "../evil.mjs": "//" })).ok).toBe(false);

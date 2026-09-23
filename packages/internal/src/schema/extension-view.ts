@@ -7,8 +7,9 @@ import { ActionNameSchema, ExtensionImageSchema, FieldKeySchema } from "./extens
  *
  * 一组**封闭的积木**,由 BN 照着画:拓展只说「画什么」,不说「怎么画」,也不带任何代码、HTML
  * 或表达式 —— 派生的东西(桥的四态、「对不上」)由拓展算好交来。缺一种积木就等 BN 加,加的时候
- * 抬契约档位(`EXTENSION_API_RANGE.current`),所以这份 schema 是**严格**的:多一个键就不画 ——
- * 拼错的键放过去就是一块静默不显示的积木。
+ * 抬契约小号(`EXTENSION_API_RANGE.revision`,决策 59;形状由 `extension-contract-shape.test.ts`
+ * 与小号一起钉着),所以这份 schema 是**严格**的:多一个键就不画 —— 拼错的键放过去就是一块静默
+ * 不显示的积木。
  *
  * 宿主**逐块 / 逐项**拿这里的几块校验(决策 40):页上按块、列表按项、摘要单独,坏的只换掉那一块
  * (`apps/server/src/extensions/view-check.ts`)。要看清单与存着的设置才判得了的几条(`items` 的

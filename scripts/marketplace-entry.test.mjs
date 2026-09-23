@@ -44,6 +44,16 @@ describe("marketplaceEntryOf", () => {
 		);
 	});
 
+	/** 契约小号(ADR-0019 决策 59):市场按「档位 + 小号」标灰,索引里就得有这一格。 */
+	it("清单写了 apiRevision 就抄进条目;没写就不带这一格", () => {
+		const entry = marketplaceEntryOf({ ...manifest, apiVersion: 2, apiRevision: 1 }, release);
+		expect(entry).toMatchObject({ apiVersion: 2, apiRevision: 1 });
+		expect(() => assertEntryShape(entry)).not.toThrow();
+		expect("apiRevision" in JSON.parse(JSON.stringify(marketplaceEntryOf(manifest, release)))).toBe(
+			false,
+		);
+	});
+
 	it("清单没写 description 时给空串,不是 undefined", () => {
 		const { description, ...bare } = manifest;
 		expect(marketplaceEntryOf(bare, release).description).toBe("");
