@@ -220,6 +220,23 @@ describe("bridgeView", () => {
 		expect(said).toContain("生成");
 	});
 
+	/**
+	 * 开着、token 却是空的(脱敏备份恢复回来就是这样):「没连上」那张卡原来说的是「没有桥用
+	 * **这个** token 连着」「填上面这个 token」—— 可根本没有 token。插件拿空 token 连过来收到
+	 * 401,按协议当成配置错、**不会自己重试**:等是等不回来的,得先生成一个填过去。
+	 */
+	it("开着但没有 token:不说「这个 token」,讲 401、不会自己重试、先重新生成一个连同地址填过去", () => {
+		const view = item([link({ token: "" })], {});
+		expect(view?.status).toEqual({ tone: "off", text: "没连上" });
+		expect(view?.subtitle).toBe(
+			"还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不会自己重试。先「重新生成」一个 token,连同 BN 地址填进插件那头。",
+		);
+		const said = JSON.stringify(view);
+		expect(said).not.toContain("这个 token");
+		// 地址照旧由 BN 在浏览器里现算、就摆在这张卡上 —— 这正是主人要去填插件的那一刻。
+		expect(said).toContain('{"host":"extensionUrl"}');
+	});
+
 	it("列表页那一行:连着的会话一共驮着几个 bot", () => {
 		const view = bridgeView(
 			[link(), link({ id: "a2" }), link({ id: "a3" })],

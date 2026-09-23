@@ -234,6 +234,28 @@ function disconnectedItem(link: BridgeLink): ExtensionItemView {
 }
 
 /**
+ * 开着、token 却是空的(脱敏备份恢复回来就是这样)。🔴 **不能照「没连上」那张卡说**:那张卡讲的
+ * 是「没有桥用**这个** token 连着」「填上面这个 token」,可根本没有 token —— 空 token 永远不匹配
+ * (`tokens.ts`),插件连过来收到 401,按协议当成配置错、不再重连。开着也等不回来,出路只有一条:
+ * 先生成一个,连同地址填过去。地址就摆在这张卡上 —— 这正是主人要去填插件的那一刻。
+ */
+function tokenlessItem(link: BridgeLink): ExtensionItemView {
+	return {
+		status: { tone: "off", text: "没连上" },
+		pill: link.bridgeKind,
+		subtitle:
+			"还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不会自己重试。先「重新生成」一个 token,连同 BN 地址填进插件那头。",
+		blocks: [
+			{
+				type: "notice",
+				tone: "info",
+				text: ["插件那头要填两样:BN 地址 ", { host: "extensionUrl" }, " 与新生成的那个 token。"],
+			},
+		],
+	};
+}
+
+/**
  * 停用的接入握手收到的是 **503**(桥会退避重连),不是 401 —— 迁过来之前那一页给它挂的是没连上
  * 那段排错说明,是错的(ADR-0019 决策 24 的五处之一)。
  *
@@ -264,9 +286,11 @@ export function bridgeView(
 		// 停用了但会话还没断干净的那一瞬,照连着的画 —— 状态由 BN 盖成「已停用」。
 		items[link.id] = session
 			? connectedItem(link, session, shelf)
-			: link.enabled
-				? disconnectedItem(link)
-				: pausedItem(link);
+			: !link.enabled
+				? pausedItem(link)
+				: link.token === ""
+					? tokenlessItem(link)
+					: disconnectedItem(link);
 	}
 	const images = shelf.images();
 	return {
