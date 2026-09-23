@@ -70,13 +70,15 @@ function renderPage(
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	for (const [id, view] of Object.entries(cached)) qc.setQueryData(["extension-status", id], view);
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter>
 				<Extensions />
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
+	// 要替 WS 发一帧失效(让状态那一口重读)的用例用得到它。
+	return Object.assign(view, { qc });
 }
 
 /** 那张卡(名字所在的玻璃卡)。 */
@@ -130,6 +132,30 @@ describe("列表卡上的 summary", () => {
 		renderPage([{ ...DOUYIN, enabled: false, state: "disabled" }], {}, { douyin: stale });
 		await card("抖音订阅");
 		expect(screen.queryByText("12 位作者在看")).toBeNull();
+	});
+
+	/**
+	 * 🔴 状态那一口出错之后,react-query 还攥着上一份 —— 那是出错之前的数,照着画就是在说一件
+	 * 已经不知道还成不成立的事。与头卡、列表那一节同一把尺子:出错(404 也算 —— 没交视图就是
+	 * 没有)就不画。
+	 */
+	it.each([
+		["500", Object.assign(new Error("拓展炸了"), { status: 500 })],
+		["404", Object.assign(new Error("not found"), { status: 404 })],
+	])("先读到过、再读出错(%s):旧的那句不画", async (_code, failure) => {
+		const { qc } = renderPage([DOUYIN], {
+			douyin: { summary: { tone: "ok", text: "12 位作者在看" } },
+		});
+		const douyin = await card("抖音订阅");
+		await within(douyin).findByText("12 位作者在看");
+
+		const answer = apiGetMock.getMockImplementation();
+		apiGetMock.mockImplementation(async (url: string) => {
+			if (url === "/api/ext/douyin/status") throw failure;
+			return answer?.(url);
+		});
+		await qc.invalidateQueries({ queryKey: ["extension-status", "douyin"] });
+		await waitFor(() => expect(within(douyin).queryByText("12 位作者在看")).toBeNull());
 	});
 
 	it("视图里没有 summary 就不画那一行", async () => {

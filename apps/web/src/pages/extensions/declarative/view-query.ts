@@ -27,6 +27,21 @@ export function useExtensionView(extensionId: string, enabled: boolean) {
 }
 
 /**
+ * 这份视图现在还作不作数 —— 头卡、列表那一节、拓展列表上那一行**共用这一把尺子**。跑着、这一口
+ * 也没出错才算。
+ *
+ * 🔴 出错之后 react-query 还攥着上一份:那是出错之前的样子,照着画就是在说一件已经不知道还成不成
+ * 立的事(「3 个 bot 在线」)。404(没交过视图)同样不算 —— 没有就是没有。关着 / 没跑时缓存里
+ * 也可能躺着之前那一份,同理不算。
+ */
+export function liveViewOf(
+	running: boolean,
+	view: { isError: boolean; data: ExtensionView | undefined },
+): ExtensionView | undefined {
+	return running && !view.isError ? view.data : undefined;
+}
+
+/**
  * **只在「开着且跑着」时问状态**:关着的问了也是 404;没跑起来的(加载失败 / 自动停用 / 版本
  * 不合)同理,而那两件事拓展表里的 `state` 已经说清楚了,用不着再拿一次 404 去猜。
  */

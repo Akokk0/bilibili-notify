@@ -58,7 +58,13 @@ import {
 } from "./parts";
 import { RichText } from "./rich-text";
 import { newHexSecret } from "./secret";
-import { extensionStatusKey, isNotFound, isRunning, useExtensionView } from "./view-query";
+import {
+	extensionStatusKey,
+	isNotFound,
+	isRunning,
+	liveViewOf,
+	useExtensionView,
+} from "./view-query";
 
 /**
  * 视图此刻作不作数。
@@ -175,9 +181,8 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 		: !running || (view.isError && !isNotFound(view.error))
 			? "unknown"
 			: "live";
-	// 出错之后 react-query 还攥着上一份 —— 旧的那份不作数,一样都不画。
-	const rawViews =
-		viewState === "live" && !view.isError ? view.data?.items?.[field.key] : undefined;
+	// 出错之后 react-query 还攥着上一份 —— 旧的那份不作数,一样都不画(`liveViewOf`)。
+	const rawViews = liveViewOf(running, view)?.items?.[field.key];
 	const views = isRecord(rawViews)
 		? (rawViews as Readonly<Record<string, ExtensionItemView>>)
 		: undefined;

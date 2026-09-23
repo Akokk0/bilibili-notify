@@ -215,6 +215,30 @@ describe("卡上的状态", () => {
 		expect(within(cardOf("c1")).queryByText(/连上/)).toBeNull();
 	});
 
+	/**
+	 * 先读到过、再读出错:react-query 还攥着出错之前那一份 —— 不作数,视图交的东西一样都不画。
+	 * 与头卡、拓展列表上那一行同一把尺子(`liveViewOf`);404 也一样,只是不盖「状态未知」。
+	 */
+	it.each([
+		["出错", Object.assign(new Error("连接中断"), { status: 500 }), "状态未知"],
+		["404", Object.assign(new Error("not found"), { status: 404 }), null],
+	])("先读到过视图、再读%s:旧的那份一样都不画", async (_what, failure, status) => {
+		const { qc } = renderList({ items: [HOME], view: CONNECTED });
+		const card = await findCard("c1");
+		await within(card).findByText(/12 分钟前连上/);
+
+		const answer = vi.mocked(api.get).getMockImplementation();
+		vi.mocked(api.get).mockImplementation(async (url: string) => {
+			if (url === "/api/ext/bridge/status") throw failure;
+			return answer?.(url);
+		});
+		await qc.invalidateQueries({ queryKey: ["extension-status", "bridge"] });
+		await waitFor(() => expect(statusOf("c1")).toBe(status));
+		expect(within(card).queryByText(/12 分钟前连上/)).toBeNull();
+		expect(within(card).queryByText(/连进来的却自报 astrbot/)).toBeNull();
+		expect(within(card).queryByText("它驮着的 bot")).toBeNull();
+	});
+
 	/** 跑着但没交过视图(404):那不是出错,卡上就没有状态这一句 —— 不许说「状态未知」吓人。 */
 	it("跑着但没交过视图(404):不盖章", async () => {
 		renderList({ items: [HOME] });

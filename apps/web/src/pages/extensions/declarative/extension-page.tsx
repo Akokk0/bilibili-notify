@@ -10,7 +10,7 @@ import { Blocks, TONE_DOT } from "./blocks";
 import { ListSection } from "./list-section";
 import { RichText } from "./rich-text";
 import { SettingsForm } from "./settings-form";
-import { isNotFound, isRunning, useExtensionView } from "./view-query";
+import { isNotFound, isRunning, liveViewOf, useExtensionView } from "./view-query";
 
 /**
  * v2 拓展那一页里「照声明画」的几块(ADR-0019 决策 19 / 25):头卡正文(页级积木)、「配置」
@@ -38,7 +38,7 @@ export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
 		if (isNotFound(view.error)) return null;
 		return <ErrorNote size="sm">读不到它现在的状态:{reasonOf(view.error)}</ErrorNote>;
 	}
-	const page = view.data?.page;
+	const page = liveViewOf(running, view)?.page;
 	if (!Array.isArray(page) || page.length === 0) return null;
 	// 页级积木没有「列表头」可挂图例,有三态列的表自己挂一次(决策 27)。
 	return <Blocks blocks={page} extensionId={ext.id} legend />;
@@ -147,7 +147,8 @@ export function ExtensionSummary({
 }) {
 	const running = isRunning(ext);
 	const view = useExtensionView(ext.id, running);
-	const summary = running ? view.data?.summary : undefined;
+	// 状态那一口出错(404 也算)时,缓存里那句是出错之前的数 —— 与头卡、列表那一节同一把尺子。
+	const summary = liveViewOf(running, view)?.summary;
 	if (!summary) return null;
 	const line = (
 		<>
