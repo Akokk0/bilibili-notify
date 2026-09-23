@@ -12,6 +12,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ExtensionViewBoundary } from "../components/error-boundary";
 import { EXTENSIONS_QUERY_KEY, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { CardMotionStage } from "./extensions/card-motion-stage";
@@ -190,8 +191,14 @@ export default function ExtensionDetail() {
 						{staged && restart ? (
 							<StagedCodeNote id={ext.id} restart={restart} {...staged} />
 						) : null}
+						{/*
+						 * 照拓展声明画的两块各包一层边界:那是拓展交来的视图,炸了只换掉那一块 —— 头卡的
+						 * 名字、开关、删除钮与页上别的部分照常(`error-boundary.tsx`)。
+						 */}
 						{declarative ? (
-							<DeclarativeHead ext={ext} />
+							<ExtensionViewBoundary resetKey={ext.id}>
+								<DeclarativeHead ext={ext} />
+							</ExtensionViewBoundary>
 						) : legacy ? (
 							<LegacyFormatNote ext={ext} installer={installer} />
 						) : (
@@ -244,7 +251,9 @@ export default function ExtensionDetail() {
 			{docs.failure ? <ExtensionDocsFailureNote failure={docs.failure} /> : null}
 
 			{tab === "config" ? (
-				<DeclarativeConfig ext={ext} />
+				<ExtensionViewBoundary resetKey={ext.id}>
+					<DeclarativeConfig ext={ext} />
+				</ExtensionViewBoundary>
 			) : tab ? (
 				<ExtensionDocPane kind={tab} text={docs.text[tab] as string} />
 			) : null}

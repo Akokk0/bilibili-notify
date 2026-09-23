@@ -5,6 +5,7 @@ import { AuthGate } from "./components/AuthGate";
 import { AiChatDock, CHAT_PATH } from "./components/ai-chat";
 import { AlertShell } from "./components/alert-shell";
 import { DraftIsland } from "./components/draft-island";
+import { PageErrorBoundary } from "./components/error-boundary";
 import { GlassHeader } from "./components/header";
 import { TourCompanion } from "./components/onboarding/tour-companion";
 import { ShellError, ShellLoading } from "./components/shell-states";
@@ -110,29 +111,32 @@ function AuthedApp() {
 				/>
 			) : (
 				<main className="flex-1 px-7 pb-24 pt-6">
-					<Routes>
-						<Route path="/" element={<Dashboard />} />
-						<Route path="/subs" element={<Subs />} />
-						<Route path="/targets" element={<Targets />} />
-						<Route path="/extensions" element={<Extensions />} />
-						<Route path="/extensions/:id" element={<ExtensionDetail />} />
-						<Route path="/history" element={<History />} />
-						<Route path="/stats" element={<Stats />} />
-						<Route path="/rules" element={<Rules />} />
-						<Route path="/cards" element={<Cards />} />
-						{/* 皮肤编辑器自铺 fixed inset-0(同聊天页):三栏并排要整个视口宽,
-						    挤在站内顶栏与两侧内边距里会两边都不够(ADR-0014 决策 20)。 */}
-						<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
-						<Route path="/ai" element={<Ai />} />
-						{/* 聊天页自带 fixed inset-0 的整页底,视觉上盖过 header 与 main 的
-						    留白 —— 放在健康门里是刻意的:后端断了就该看到统一的错误壳,
-						    而不是一个每问必挂的聊天。 */}
-						<Route path={CHAT_PATH} element={<Chat />} />
-						<Route path="/system" element={<System />} />
-						<Route path="/logs" element={<Logs />} />
-						{/* 新手指引并进关于页(五轮定稿):/about/guide/:chapter? 深链直达教程章节 */}
-						<Route path="/about/:section?/:chapter?" element={<About />} />
-					</Routes>
+					{/* 一页渲染炸了只丢这一页:边界在 main 里面,顶栏与角落里那几块在它外面(见组件注释)。 */}
+					<PageErrorBoundary>
+						<Routes>
+							<Route path="/" element={<Dashboard />} />
+							<Route path="/subs" element={<Subs />} />
+							<Route path="/targets" element={<Targets />} />
+							<Route path="/extensions" element={<Extensions />} />
+							<Route path="/extensions/:id" element={<ExtensionDetail />} />
+							<Route path="/history" element={<History />} />
+							<Route path="/stats" element={<Stats />} />
+							<Route path="/rules" element={<Rules />} />
+							<Route path="/cards" element={<Cards />} />
+							{/* 皮肤编辑器自铺 fixed inset-0(同聊天页):三栏并排要整个视口宽,
+							    挤在站内顶栏与两侧内边距里会两边都不够(ADR-0014 决策 20)。 */}
+							<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
+							<Route path="/ai" element={<Ai />} />
+							{/* 聊天页自带 fixed inset-0 的整页底,视觉上盖过 header 与 main 的
+							    留白 —— 放在健康门里是刻意的:后端断了就该看到统一的错误壳,
+							    而不是一个每问必挂的聊天。 */}
+							<Route path={CHAT_PATH} element={<Chat />} />
+							<Route path="/system" element={<System />} />
+							<Route path="/logs" element={<Logs />} />
+							{/* 新手指引并进关于页(五轮定稿):/about/guide/:chapter? 深链直达教程章节 */}
+							<Route path="/about/:section?/:chapter?" element={<About />} />
+						</Routes>
+					</PageErrorBoundary>
 				</main>
 			)}
 			<AiChatDock />
