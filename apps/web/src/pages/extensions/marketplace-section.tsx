@@ -23,13 +23,14 @@ import {
 	Icon,
 	IconButton,
 	LoadingBlock,
+	Pill,
 	Spinner,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { EXTENSIONS_QUERY_KEY, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
-import { useCardMotionStore } from "./card-motion";
+import { EXT_UPDATE_BUTTON, useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
 import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
@@ -55,9 +56,9 @@ interface InstallRequest {
  * 装完拓展表与市场都重取:热装的那份已经在跑,市场那条的状态也该从「装」变成「已装」。
  *
  * 🔴 **「确认第三方」这一道住在这里,不住在某个按钮旁边**:装与更新是两颗不同的钮、
- * 在两块不同的地方(市场那一节 / 已装卡片上),而它们落地的是同一件事 —— 把一份 BN
- * 不担保的代码放进 BN 进程里跑。哪一颗钮自己接 `install.mutate`,哪一颗就绕过了这道门,
- * 而且构建、类型、别的测试全绿:第三方源只要把版本号抬一格就能零确认装进新代码。
+ * 在几块不同的地方(市场那一节 / 已装卡片上 / 老格式拓展的详情页),而它们落地的是同一件事
+ * —— 把一份 BN 不担保的代码放进 BN 进程里跑。哪一颗钮自己接 `install.mutate`,哪一颗就绕过
+ * 了这道门,而且构建、类型、别的测试全绿:第三方源只要把版本号抬一格就能零确认装进新代码。
  */
 export function useMarketplaceInstall() {
 	const qc = useQueryClient();
@@ -187,11 +188,46 @@ export function MarketplaceInstallConfirm({ installer }: { installer: Marketplac
 }
 
 /**
+ * 「有新版 vX」+「更新」—— 已装卡片(列表页)与老格式拓展的头卡(详情页,ADR-0019 决策 44)
+ * **共用这一块**。按下去在那一刻量这颗钮的位置交出去:更新的换装,球从这儿起飞。
+ *
+ * 🔴 **走 `start` 而不是直接 `install.mutate`**:第三方那道确认框住在它里面。更新与装落地的是
+ * 同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),哪一处自己接 mutate,就给第三方源开了
+ * 一条「抬个版本号即可零确认装新代码」的路 —— 所以两处用的是同一颗钮,不各接各的。
+ */
+export function MarketplaceUpdateOffer({
+	entry,
+	installer,
+}: {
+	/** 市场里这条 `updatable` 的那一版。 */
+	entry: MarketplaceEntryDTO;
+	installer: MarketplaceInstaller;
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<Pill subtle size="sm">
+				有新版 v{entry.version}
+			</Pill>
+			<Btn
+				variant="outline"
+				size="sm"
+				disabled={installer.install.isPending}
+				onClick={(event) => installer.start(entry, event.currentTarget.getBoundingClientRect())}
+				{...{ [EXT_UPDATE_BUTTON]: "" }}
+			>
+				更新
+			</Btn>
+		</div>
+	);
+}
+
+/**
  * 装了的不在市场里露面 —— 它已经在上面那一排卡里了,同一件东西同时摆在两处,看起来像装了两份
  * (主人 2026-09-12 指出)。
  *
- * 🔴 **更新入口不在这儿丢**:「有新版 vX」+「更新」钮长在**已装那张卡**上(`Extensions.tsx`),
- * 吃的同样是这份索引里 `updatable` 那一档。所以把可更新的也滤掉,并不会让人更新不了。
+ * 🔴 **更新入口不在这儿丢**:「有新版 vX」+「更新」钮长在**已装那张卡**上(`Extensions.tsx`,
+ * 老格式的拓展在详情页头卡里还有一颗),吃的同样是这份索引里 `updatable` 那一档。所以把可更新的
+ * 也滤掉,并不会让人更新不了。
  */
 const INSTALLED_STATES: ReadonlySet<MarketplaceEntryDTO["state"]> = new Set([
 	"installed",

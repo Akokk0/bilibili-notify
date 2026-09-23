@@ -286,6 +286,36 @@ describe("拓展页", () => {
 	});
 
 	/**
+	 * 老格式(v1)这一版还认、照样跑,可「管理」里什么都管不了(ADR-0019 决策 44)。卡上不说的话,
+	 * 主人点进去才发现,而且不知道那颗「有新版 · 更新」正是出路。细说在详情页,卡上只挂一个短标记。
+	 */
+	it("老格式(v1)的那张卡挂一个「老格式」标记;v2 与读不出档位的不挂", async () => {
+		renderPage({
+			extensions: [{ ...BRIDGE, version: "0.0.1", apiVersion: 1 }, LISTED.extensions[1]],
+		});
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).getByText("老格式")).toBeTruthy();
+		expect(within(card).getByText(/更新之后才能在「管理」里管它/)).toBeTruthy();
+		expect(within(await cardOf("抖音订阅源")).queryByText("老格式")).toBeNull();
+	});
+
+	it("v2 的卡不挂「老格式」", async () => {
+		renderPage();
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).queryByText("老格式")).toBeNull();
+	});
+
+	/** 新版已经下好、等着换上:再挂「老格式 · 更新之后…」就是让人再去更新一遍。 */
+	it("老格式但新版已经等着换上 → 只说等着换上,不再挂「老格式」", async () => {
+		renderPage({
+			extensions: [{ ...BRIDGE, version: "0.0.1", apiVersion: 1, staged: { version: "0.1.0" } }],
+		});
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).getByText(/v0\.1\.0 等着换上/)).toBeTruthy();
+		expect(within(card).queryByText("老格式")).toBeNull();
+	});
+
+	/**
 	 * 🔴 **补丁只带自己那一格。** 配置是 JSON Merge Patch:整份 `extensions` 发出去的话,
 	 * 别人刚拨的开关会被这一发悄悄按回旧值,而两边都不会报错。
 	 */

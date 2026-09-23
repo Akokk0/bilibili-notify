@@ -2,10 +2,11 @@
 
 /**
  * v2 拓展的详情页照声明画(ADR-0019 决策 19 / 25 / 32):头卡正文是视图的页级积木,「配置」
- * 页签里是照清单画的设置表单。v1 没有面板:头卡里一句通用的话,不摆「配置」。
+ * 页签里是照清单画的设置表单。v1 没有面板:头卡里是「老格式」那块提示(决策 44,细节在
+ * `ExtensionDetail.legacy.test.tsx`),不摆「配置」。
  *
  * 值得钉的:
- * - **按契约档位分岔**,不按 id —— 桥的手写页退役之后,叫 bridge 的 v1 也只有那句通用的话。
+ * - **按契约档位分岔**,不按 id —— 桥的手写页退役之后,叫 bridge 的 v1 也只有那块通用的提示。
  * - 🔴 **拓展关着设置照样能改**(决策 32):「装好 → 填 → 启用」这个顺序靠它才走得通。
  * - 关着与没跑起来**分开说**:前者是主人自己刚拨的开关,后者要去查日志。
  */
@@ -329,7 +330,7 @@ describe("v1 拓展:没有面板", () => {
 	 * 按 id 留一条岔路的话,它会悄悄接着画一块已经不存在的面板。
 	 */
 	it.each(["legacy", "bridge"])(
-		"%s:头卡里是那句通用的话,不摆「配置」,不问状态,删除确认里没有桥的那句",
+		"%s:头卡里是「老格式」那块通用的提示,不摆「配置」,不问状态,删除确认里没有桥的那句",
 		async (id) => {
 			const legacy: ExtensionDTO = {
 				id,
@@ -344,9 +345,9 @@ describe("v1 拓展:没有面板", () => {
 			};
 			renderDetail({ ext: legacy, settings: { links: [] } });
 			const head = await headCard("老拓展");
-			expect(within(head).getByText("v1.0.0 · 这个拓展没有交上来自己的面板。")).toBeTruthy();
-			// 版本号印在正文那句里,底下那句就不再重复
-			expect(within(head).getByText(/^卸掉它/)).toBeTruthy();
+			expect(within(head).getByText(/老格式的拓展/)).toBeTruthy();
+			// 正文让给了那块提示,版本号挪到底下那句的开头(同 v2)
+			expect(within(head).getByText(/^v1\.0\.0 · 卸掉它/)).toBeTruthy();
 			expect(within(head).queryByText("BN 地址")).toBeNull();
 			await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith(`/api/ext/${id}/docs`));
 			expect(screen.queryByRole("tab")).toBeNull();

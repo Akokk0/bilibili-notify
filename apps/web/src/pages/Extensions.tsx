@@ -14,7 +14,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { EXT_UPDATE_BUTTON } from "./extensions/card-motion";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
@@ -22,7 +21,9 @@ import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
 	MarketplaceInstallConfirm,
+	type MarketplaceInstaller,
 	MarketplaceSection,
+	MarketplaceUpdateOffer,
 	useMarketplace,
 	useMarketplaceInstall,
 } from "./extensions/marketplace-section";
@@ -111,8 +112,7 @@ function ExtensionCard({
 	count,
 	onToggle,
 	update,
-	onUpdate,
-	updating,
+	installer,
 	elsewhere,
 }: {
 	ext: ExtensionDTO;
@@ -121,9 +121,8 @@ function ExtensionCard({
 	onToggle: (enabled: boolean) => void;
 	/** 市场里这条有更新的那一版(ADR-0013)。没有就不画。 */
 	update?: MarketplaceEntryDTO;
-	/** 按下「更新」—— 交出那颗钮在屏幕上的位置:更新成了,换装的那颗球从这儿起飞。 */
-	onUpdate?: (from: DOMRect) => void;
-	updating?: boolean;
+	/** 页面那一份「从市场装」—— 更新钮走的是它(第三方那道确认框在里面)。 */
+	installer: MarketplaceInstaller;
 	/**
 	 * 市场里也有这个 id,但装着的这份不是从那儿来的(手动传包装的最常见)。
 	 *
@@ -165,22 +164,20 @@ function ExtensionCard({
 						<span className="text-bn-2xs text-bn-text-tertiary">到「管理」里选怎么换</span>
 					</div>
 				) : null}
-				{update ? (
-					<div className="flex items-center gap-2">
-						<Pill subtle size="sm">
-							有新版 v{update.version}
+				{/*
+				 * 老格式(v1,ADR-0019 决策 44):这一版还认、照样跑,可「管理」里什么都管不了 ——
+				 * 细说在详情页,卡上只挂一个短标记,和底下那颗「更新」连起来读。新版已经在等着换上时
+				 * 不挂:上面那句已经说了,再说「更新之后…」就是让人再去更新一遍。
+				 */}
+				{ext.apiVersion === 1 && !ext.staged ? (
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<Pill subtle size="sm" color="var(--color-bn-warning)">
+							老格式
 						</Pill>
-						<Btn
-							variant="outline"
-							size="sm"
-							disabled={updating}
-							onClick={(event) => onUpdate?.(event.currentTarget.getBoundingClientRect())}
-							{...{ [EXT_UPDATE_BUTTON]: "" }}
-						>
-							更新
-						</Btn>
+						<span className="text-bn-2xs text-bn-text-tertiary">更新之后才能在「管理」里管它</span>
 					</div>
 				) : null}
+				{update ? <MarketplaceUpdateOffer entry={update} installer={installer} /> : null}
 				{elsewhere ? (
 					<p className="text-bn-2xs text-bn-text-tertiary">
 						{elsewhere.sourceName}里也有 v{elsewhere.entry.version},但你这份不是从那儿装的 ——
@@ -270,15 +267,8 @@ export default function Extensions() {
 						count={counts.get(ext.id) ?? 0}
 						onToggle={(enabled) => toggle.mutate({ id: ext.id, enabled })}
 						update={updates.get(ext.id)}
+						installer={installer}
 						elsewhere={elsewhere.get(ext.id)}
-						updating={installer.install.isPending}
-						// 🔴 走 `start` 而不是直接 `install.mutate`:第三方那道确认框住在它里面。更新
-						// 与装落地的是同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),自己接
-						// mutate 等于给第三方源开一条「抬个版本号即可零确认装新代码」的路。
-						onUpdate={(from) => {
-							const entry = updates.get(ext.id);
-							if (entry) installer.start(entry, from);
-						}}
 					/>
 				</div>
 			))}
