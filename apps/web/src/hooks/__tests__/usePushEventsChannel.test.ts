@@ -93,6 +93,20 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		});
 	});
 
+	describe("extension-live-changed", () => {
+		// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):服务端合并过、不带载荷,面板整份重取。
+		it("invalidate ['live','listening']", () => {
+			handlePushEnvelope(
+				env({ type: "push-events", event: "extension-live-changed", data: null }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.invalidate).toHaveBeenCalledTimes(1);
+			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: ["live", "listening"] });
+			expect(h.push).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("live-viewers-changed", () => {
 		it("房间在快照里:patch 该 uid 的 viewers,其他不动", () => {
 			const initial: LiveListenerSnapshot[] = [

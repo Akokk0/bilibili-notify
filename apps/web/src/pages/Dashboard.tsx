@@ -1,4 +1,4 @@
-import type { LogLevel, UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, LogLevel, UpdateStatusDTO } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -30,6 +30,7 @@ import {
 	HEALTH_QUERY_OPTIONS,
 	useBackendReachable,
 } from "../hooks/useBackendReachable";
+import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { api } from "../services/api";
 import {
@@ -44,7 +45,7 @@ import {
 	type HistoryResponse,
 	historyDailyPath,
 	historyQueryKey,
-	type LiveListenerSnapshot,
+	type LiveListeningEntry,
 	localDayKey,
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
@@ -58,8 +59,9 @@ import {
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import { colorFromUid, displayName } from "./up/helpers";
-import { createSubscriptionLookup } from "./up/subscription-lookup";
+import { colorFromUid, displayName, subscriptionColor } from "./up/helpers";
+import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
+import { subscriptionPlatformOf } from "./up/subscription-source";
 
 interface HealthSnapshot {
 	status: string;
@@ -84,6 +86,42 @@ function formatViewers(n: string | undefined): string {
 	return n;
 }
 
+/**
+ * 在播那一行画成什么样。B 站房间照旧(名字对不上订阅时写 UID、按 uid 取色);拓展订阅的在播没有
+ * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色按订阅自己的 id 取(同 `subscriptionColor`),
+ * 另带一枚平台徽章,人数是数字、这里排版。
+ */
+function liveRowFace(
+	r: LiveListeningEntry,
+	lookup: SubscriptionLookup,
+	extensions: readonly ExtensionDTO[] | undefined,
+): {
+	name: string;
+	color: string;
+	avatar?: string;
+	viewers: string;
+	platform?: { label: string; color?: string };
+} {
+	const sub = lookup.byId(r.subscriptionId);
+	const avatar = sub?.cachedProfile?.avatar;
+	if (r.kind !== "extension") {
+		return {
+			name: sub ? displayName(sub) : `UID ${r.uid}`,
+			color: colorFromUid(r.uid),
+			avatar,
+			viewers: formatViewers(r.viewers),
+		};
+	}
+	const platform = subscriptionPlatformOf(r, extensions);
+	return {
+		name: sub ? displayName(sub) : platform.label,
+		color: sub ? subscriptionColor(sub) : colorFromUid(r.subscriptionId),
+		avatar,
+		viewers: r.viewers === undefined ? "—" : formatCount(r.viewers),
+		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
+	};
+}
+
 function relativeTimeFromNow(iso: string): string {
 	const ts = new Date(iso).getTime();
 	if (Number.isNaN(ts)) return "—";
@@ -106,9 +144,12 @@ function hasAnyLiveTarget(sub: Subscription): boolean {
 export function LiveNowPanel({
 	live,
 	subs,
+	extensions,
 }: {
-	live: LiveListenerSnapshot[];
+	live: LiveListeningEntry[];
 	subs: Subscription[];
+	/** 装着的拓展 —— 拓展订阅那几行的平台徽章照它的清单画。没回来时徽章退拓展 id。 */
+	extensions?: readonly ExtensionDTO[];
 }) {
 	// 在播快照带着订阅自己的 id(ADR-0019 决策 50),按它对订阅 —— 同一个 UP 配了几条订阅时,
 	// 按 uid 对不出这间直播间是替哪一条开的。
@@ -156,9 +197,7 @@ export function LiveNowPanel({
 				// header 的 「● N 人在播」 Pill 仍显示真实数量。
 				<div className="grid max-h-60 grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
 					{live.map((r) => {
-						const sub = lookup.byId(r.subscriptionId);
-						const name = sub ? displayName(sub) : `UID ${r.uid}`;
-						const color = colorFromUid(r.uid);
+						const { name, color, avatar, viewers, platform } = liveRowFace(r, lookup, extensions);
 						// 数据小卡同款视觉语法(淡染色渐变 + 同色细描边),单层直接画在
 						// 区块玻璃上 —— 旧的「渐变包裹 + 白底内层」在行条透明化后会整块露色。
 						return (
@@ -171,16 +210,16 @@ export function LiveNowPanel({
 									borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
 								}}
 							>
-								<Avatar
-									name={name}
-									color={color}
-									size={44}
-									status="living"
-									url={sub?.cachedProfile?.avatar}
-								/>
+								<Avatar name={name} color={color} size={44} status="living" url={avatar} />
 								<div className="min-w-0 flex-1">
 									<div className="mb-0.5 flex items-center gap-2">
 										<span className="text-bn-base font-bold text-bn-text-primary">{name}</span>
+										{/* 拓展订阅的在播标一枚平台徽章(同订阅卡),B 站房间不标。 */}
+										{platform ? (
+											<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
+												{platform.label}
+											</Pill>
+										) : null}
 										{r.areaName ? (
 											<Pill color="var(--color-bn-pink)" subtle size="sm">
 												{r.areaName}
@@ -194,7 +233,7 @@ export function LiveNowPanel({
 								<div className="flex flex-col items-end gap-1">
 									<span className="inline-flex items-center gap-1 text-bn-xs font-bold text-bn-pink">
 										<Icon.eye size={11} />
-										{formatViewers(r.viewers)}
+										{viewers}
 									</span>
 								</div>
 							</Link>
@@ -389,7 +428,8 @@ function TimelinePanel({
 
 // ── Fans deltas panel ─────────────────────────────────────────────────────
 
-function formatFans(n: number): string {
+/** 人数 / 粉丝数的排版:过万写「万」、过亿写「亿」。 */
+function formatCount(n: number): string {
 	if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}亿`;
 	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`;
 	return n.toLocaleString();
@@ -483,7 +523,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 								<div className="min-w-0 flex-1">
 									<div className="truncate font-bold text-bn-text-primary">{name}</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
-										{formatFans(e.current)} 粉丝
+										{formatCount(e.current)} 粉丝
 									</div>
 								</div>
 								<FansDeltaCol label="起点" value={e.deltaSubscribed} />
@@ -795,10 +835,12 @@ export default function Dashboard() {
 	});
 	const liveQuery = useQuery({
 		queryKey: ["live", "listening"],
-		queryFn: () => api.get<LiveListenerSnapshot[]>("/api/live/listening"),
-		// 不再轮询；usePushEventsChannel 监听 WS `live-state-changed` 后 invalidate
-		// 即可让该 query 重新 fetch 最新快照。
+		queryFn: () => api.get<LiveListeningEntry[]>("/api/live/listening"),
+		// 不再轮询；usePushEventsChannel 监听 WS `live-state-changed`(B 站)与
+		// `extension-live-changed`(拓展订阅)后 invalidate 即可让该 query 重新 fetch 最新快照。
 	});
+	// 拓展订阅那几行的平台徽章照清单画;只是锦上添花,拿不到就不重试(同订阅页)。
+	const extensionsQuery = useExtensions({ retry: false });
 	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
 	// so KPI / recent list / trend chart update within ~1s without polling.
 	const historyQuery = useQuery({
@@ -824,6 +866,8 @@ export default function Dashboard() {
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
 	const live = liveQuery.data ?? [];
+	// 小贴士说谁:先挑 B 站房间(下播总结那句话只对它成立),没有再说拓展订阅的。
+	const tipLive = live.find((r) => r.kind !== "extension") ?? live[0];
 	const history = historyQuery.data?.entries ?? [];
 
 	const enabledSubs = subs.filter((s) => s.enabled).length;
@@ -845,11 +889,18 @@ export default function Dashboard() {
 				<b>
 					{(() => {
 						// 与「正在直播」那块同一口径:按快照里的订阅 id 对(ADR-0019 决策 50)。
-						const sub = subs.find((s) => s.id === live[0].subscriptionId);
-						return sub ? displayName(sub) : `UID ${live[0].uid}`;
+						const sub = subs.find((s) => s.id === tipLive?.subscriptionId);
+						if (sub) return displayName(sub);
+						// 订阅还没回来时拓展订阅写平台名(同「正在直播」那块),B 站写 UID。
+						return tipLive?.kind === "extension"
+							? subscriptionPlatformOf(tipLive, extensionsQuery.data?.extensions).label
+							: `UID ${tipLive?.uid}`;
 					})()}
 				</b>{" "}
-				正在直播，建议在结束后推送总结到游戏交流群～
+				{/* 下播总结只有 B 站有(ADR-0019 决策 12),拓展订阅在播时不这么劝。 */}
+				{tipLive?.kind === "extension"
+					? "正在直播～"
+					: "正在直播，建议在结束后推送总结到游戏交流群～"}
 			</>
 		) : (
 			<>
@@ -910,7 +961,7 @@ export default function Dashboard() {
 
 			{/* row 2: 正在直播(宽) + 粉丝数变化(窄) */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
-				<LiveNowPanel live={live} subs={subs} />
+				<LiveNowPanel live={live} subs={subs} extensions={extensionsQuery.data?.extensions} />
 				<FansPanel subs={subs} />
 			</div>
 

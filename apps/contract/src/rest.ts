@@ -1042,8 +1042,16 @@ export interface ImportResult {
 
 // ---- /api/live -------------------------------------------------------------
 
+/**
+ * `GET /api/live/listening` 的一行:B 站的直播间,或者一条拓展订阅的在播(ADR-0019 决策 12)。
+ * 按 `kind` 分 —— B 站那几行没有这一格,形状与从前一格不差。
+ */
+export type LiveListeningEntry = LiveListenerSnapshot | ExtensionLiveSnapshot;
+
 /** `GET /api/live/listening` 的单房间条目,由 LiveEngine 的 per-session 快照投影。 */
 export interface LiveListenerSnapshot {
+	/** B 站那几行没有这一格;有的是拓展订阅的在播({@link ExtensionLiveSnapshot})。 */
+	kind?: undefined;
 	/**
 	 * 这间直播间是替哪条订阅开的 —— 订阅自己的 id,运行期键(ADR-0019 决策 50)。面板拿它对订阅:
 	 * 同一个 UP 配了几条订阅时,按 uid 对不出是哪一条。
@@ -1058,4 +1066,30 @@ export interface LiveListenerSnapshot {
 	startedAt?: string;
 	/** B 站 WATCHED_CHANGE 帧给出的累计观看(预格式化字符串,如 "1.2万")。 */
 	viewers?: string;
+}
+
+/**
+ * 一条拓展订阅此刻在播(ADR-0019 决策 12 / 57):BN 按拓展报的开播 / 下播 / 直播状态记着,按订阅
+ * 自己的 id 认。
+ *
+ * 没有 `uid` / `roomId`(那是 B 站的东西,决策 9),也没有封面 —— 首页那块不画封面,几 MB 的图不该
+ * 跟着这份会被反复拉的 JSON 走。
+ */
+export interface ExtensionLiveSnapshot {
+	kind: "extension";
+	subscriptionId: string;
+	/** 哪个拓展报的 —— 订阅列表还没回来时,平台徽章照它认。 */
+	extensionId: string;
+	/** 拓展行没有。写出来是为了让按 `uid` 做事的地方先收窄,别把它当 B 站 uid 用。 */
+	uid?: undefined;
+	roomId?: undefined;
+	/** 在表里的就是在播;留这一格与 B 站那几行同形。 */
+	isLive: true;
+	title?: string;
+	/** 分区(拓展报的 `category`),与 B 站那几行同名好画。 */
+	areaName?: string;
+	/** 开播时刻(ISO)。拓展没报过就没有 —— BN 不拿「收到的时刻」冒充。 */
+	startedAt?: string;
+	/** 人数,拓展报的数字、没排版(B 站那几行是 B 站排好的字串)。 */
+	viewers?: number;
 }

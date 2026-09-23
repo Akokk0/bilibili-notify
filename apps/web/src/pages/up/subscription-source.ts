@@ -72,8 +72,11 @@ export interface SubscriptionPlatform {
 	absent: boolean | undefined;
 }
 
+/**
+ * 只看订阅记在哪个拓展名下 —— 首页在播那一行在订阅列表回来之前就要画徽章,手里只有拓展 id。
+ */
 export function subscriptionPlatformOf(
-	sub: ExtensionSubscription,
+	sub: Pick<ExtensionSubscription, "extensionId">,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): SubscriptionPlatform {
 	const ext = extensions?.find((one) => one.id === sub.extensionId);

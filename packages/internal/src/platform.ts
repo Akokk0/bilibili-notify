@@ -132,6 +132,22 @@ export interface BiliEvents {
 	 */
 	"live-viewers-changed": (uid: string, viewers: string) => void;
 	/**
+	 * 某个拓展不在跑了 —— 停用、卸载、换代码、加载失败、设置读不了、宿主关机,一律在它那面 ctx
+	 * **开始收摊的那一刻**发(每面 ctx 只发一次),之后它再报什么都不收。
+	 *
+	 * BN 手里替它记着的在播状态据此作废(ADR-0019 决策 61):它名下的订阅从首页在播里出去,重新跑起来
+	 * 之后靠直播状态上报接上。
+	 */
+	"extension-stopped": (id: string) => void;
+	/**
+	 * 拓展订阅的在播表变了(进表 / 出表 / 面板看得见的那几格变了,ADR-0019 决策 12 / 57)。**拓展订阅的
+	 * 在播不走 `live-state-changed`** —— 统计按 uid 订着那一个记场次,而统计不含拓展(决策 12)。
+	 *
+	 * 载荷为空,面板让 `/api/live/listening` 失效、自己重取。按窗口合并过:直播状态可能每轮都报,一阵
+	 * 连着的变化只发一次(`EXTENSION_LIVE_COALESCE_MS`)。
+	 */
+	"extension-live-changed": () => void;
+	/**
 	 * 一轮 FansPoller 完成后 emit。entries 携带本轮采样到的所有 enabled subs 的
 	 * 当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
 	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。

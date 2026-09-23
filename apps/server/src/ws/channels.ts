@@ -160,6 +160,13 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			deps.publish(envelope("push-events", "fans-refreshed", [entries])),
 		),
 	);
+	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):不带载荷,面板让「正在直播」重取。在播表那头
+	// 已经按窗口合并过,这里一发一帧。
+	subs.push(
+		deps.bus.on("extension-live-changed", () =>
+			deps.publish(envelope("push-events", "extension-live-changed", [])),
+		),
+	);
 
 	// log channel -----------------------------------------------------------
 	// Two sources merge here:

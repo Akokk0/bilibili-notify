@@ -294,6 +294,12 @@ export interface CreateExtensionContextOptions {
 	 * 「拓展的视图变了」;上报问题(决策 60)有自己那一声,在记录那头发,不走这里。
 	 */
 	onStatusChanged?: () => void;
+	/**
+	 * 这面 ctx **开始收摊**了(只叫一次)—— 拓展从这一刻起不在跑,再报什么都不收。停用、卸载、换代码、
+	 * 加载失败、设置读不了、宿主关机都走 `dispose()`,所以「拓展不在跑了」只认这一处,不在装载器的
+	 * 每条路上各记一遍(ADR-0019 决策 61:它名下的在播状态据此作废)。
+	 */
+	onDisposed?: () => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -1073,6 +1079,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
+			// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
+			try {
+				opts.onDisposed?.();
+			} catch (err) {
+				logger.error(`通知宿主「拓展停了」时抛了:${(err as Error).message}`);
+			}
 			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
 			clearTimeout(statusTimer);
 			statusTimer = undefined;

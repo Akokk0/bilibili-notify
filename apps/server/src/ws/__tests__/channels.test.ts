@@ -77,6 +77,19 @@ describe("attachChannelWiring — envelope 参数 unwrap", () => {
 		expect(h.last()).toMatchObject({ type: "auth", event: "auth-restored", data: null });
 	});
 
+	/**
+	 * 拓展订阅的在播表变了(ADR-0019 决策 12 / 57)—— 面板靠这一帧让「正在直播」重取。不转的话拓展的
+	 * 在播要等切页才出来 / 才下去;它也不能借 `live-state-changed` 走(统计按 uid 订着那一个)。
+	 */
+	it("extension-live-changed → push-events 频道同名帧,data=null", () => {
+		h.bus.emit("extension-live-changed");
+		expect(h.last()).toMatchObject({
+			type: "push-events",
+			event: "extension-live-changed",
+			data: null,
+		});
+	});
+
 	it("1 参事件:直接 unwrap 为值本身", () => {
 		const snap = { status: 5, msg: "ok" };
 		h.bus.emit("login-status-report", snap as never);

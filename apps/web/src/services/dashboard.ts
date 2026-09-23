@@ -11,6 +11,7 @@ import { PUSH_KIND_META } from "../config/push-kinds";
 
 export type {
 	DailyHistoryCount as DailyHistoryCountView,
+	ExtensionLiveSnapshot,
 	FansRefreshEntry as FansEntry,
 	FansResponse,
 	HistoryDailyResponse,
@@ -20,6 +21,8 @@ export type {
 	HistoryRepushResponse,
 	HistoryResponse,
 	LiveListenerSnapshot,
+	// `/api/live/listening` 的一行:B 站房间或拓展订阅的在播,按 `kind` 分。
+	LiveListeningEntry,
 	// `/api/logs` 归档行与 WS `log` 帧共用的行视图。
 	LogArchiveEntry as LogLineView,
 	// wire 4 值日志级别(含 warn)比 3 值配置枚举宽,别名维持旧命名。

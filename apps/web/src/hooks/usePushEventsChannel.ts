@@ -9,7 +9,7 @@ import {
 	type HistoryDailyResponse,
 	type HistoryResponse,
 	historyQueryKey,
-	type LiveListenerSnapshot,
+	type LiveListeningEntry,
 	localDayKey,
 } from "../services/dashboard";
 import type { WsEnvelope } from "../services/ws";
@@ -47,6 +47,7 @@ export interface PushToastSink {
 /**
  * 处理 `push-events` 频道的单条 envelope。逻辑大表盘:
  *   - `live-state-changed`        → invalidate ["live","listening"]
+ *   - `extension-live-changed`    → invalidate ["live","listening"](拓展订阅的在播表变了)
  *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent)
  *   - `fans-refreshed`            → setQueryData 整体覆盖 ["fans"]
  *   - `history-recorded`          → push 进 toast + prepend 到 ["history"] 并 dedup 截尾
@@ -67,6 +68,13 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 		return;
 	}
 
+	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):进表 / 出表 / 人数变了都是这一帧,不带载荷,
+	// 服务端已经按窗口合并过 —— 整份重取。
+	if (env.event === "extension-live-changed") {
+		qc.invalidateQueries({ queryKey: ["live", "listening"] });
+		return;
+	}
+
 	// 累计观看人数变化 —— 后端 per-UID 2s 节流过的稀疏事件,直接 setQueryData
 	// 局部 patch 该房间的 viewers 字段。0 额外 HTTP,Dashboard 数字即时跳。
 	// 房间不在快照里(可能刚下播 / 列表还没拉)就静默跳过,下一次 invalidate
@@ -75,11 +83,12 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 		const tuple = env.data as [string, string] | undefined;
 		if (tuple?.length !== 2) return;
 		const [uid, viewers] = tuple;
-		qc.setQueryData<LiveListenerSnapshot[]>(["live", "listening"], (old) => {
+		qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
 			if (!old) return old;
 			let touched = false;
 			const next = old.map((r) => {
-				if (r.uid !== uid) return r;
+				// 拓展订阅的在播没有 uid,人数随 `extension-live-changed` 整份重取 —— 这一帧只管 B 站房间。
+				if (r.kind === "extension" || r.uid !== uid) return r;
 				touched = true;
 				return { ...r, viewers };
 			});

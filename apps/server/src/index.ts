@@ -885,6 +885,9 @@ export async function startStandaloneServer(
 				}),
 			// 拓展喊「面板数据变了」→ bus → WS `state` 频道 → 面板按 id 失效缓存(不用切页)。
 			onStatusChanged: (id) => runtime.bus.emit("extension-status-changed", id),
+			// 拓展不在跑了(停用 / 卸载 / 换代码 / 加载失败 / 关机)→ bus;替它记着的在播状态据此作废
+			// (ADR-0019 决策 61),在播表从那里接。
+			onStopped: (id) => runtime.bus.emit("extension-stopped", id),
 			inbound: {
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),

@@ -239,6 +239,11 @@ export interface LoadExtensionsOptions {
 	 * 上报问题(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
 	 */
 	onStatusChanged?: (id: string) => void;
+	/**
+	 * 某个拓展不在跑了 —— 它那面 ctx 开始收摊的那一刻(停用、卸载、换代码、加载失败、设置读不了、关机
+	 * 都算,见 `CreateExtensionContextOptions.onDisposed`)。宿主据此作废替它记着的在播状态(ADR-0019 决策 61)。
+	 */
+	onStopped?: (id: string) => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
 	/** WS upgrade 的分发表。 */
@@ -598,6 +603,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。
 			onSettingsInvalid: settleLater,
 			onStatusChanged: () => opts.onStatusChanged?.(id),
+			onDisposed: () => opts.onStopped?.(id),
 			inbound: opts.inbound,
 			upgrades: opts.upgrades,
 			hostVersion: opts.hostVersion,

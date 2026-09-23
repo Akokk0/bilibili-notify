@@ -14,6 +14,7 @@ import { createLogStore, type LogStore } from "../logs/store.js";
 import { createStatsRecorder } from "../stats/recorder.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
+import { createExtensionLiveTable, type ExtensionLiveTable } from "./extension-live.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
@@ -86,6 +87,11 @@ export interface AppRuntime {
 	 * equals the console, all driven by the per-module pino level.
 	 */
 	logStore: LogStore;
+	/**
+	 * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里拓展那几行。只听总线(上报、
+	 * 订阅增删改、拓展停了),所以与 StatsRecorder 一样在这里就起;`/api/live/listening` 读它。
+	 */
+	extensionLive: ExtensionLiveTable;
 	/**
 	 * Engine layer: BilibiliPush + DynamicEngine + LiveEngine + Sink.
 	 *
@@ -222,6 +228,10 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		serviceCtx,
 		logger: serviceCtx.logger,
 	});
+	// 拓展订阅的在播表:只听总线,早起不漏拓展开机第一轮报上来的直播状态(拓展在 index.ts 里装载,
+	// 晚于这里)。合并那一发走 serviceCtx 的定时器,关机时一起清。
+	const extensionLive = createExtensionLiveTable({ bus, timers: serviceCtx });
+	serviceCtx.onDispose(() => extensionLive.dispose());
 
 	let engines: EnginesRuntime | null = null;
 	let fansPoller: FansPollerHandle | null = null;
@@ -271,6 +281,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		subAvatarStore,
 		conversationStore,
 		logStore,
+		extensionLive,
 		get engines() {
 			return engines;
 		},
