@@ -109,14 +109,12 @@ describe("字段表 × zod 对表", () => {
 	 * **不是本进程 zod 造的**、只是形状对得上的 schema 当替身:它必须照常通过。
 	 */
 	it("拓展自带的另一份 zod 造出来的 schema 照样认得 —— 不看类身份,看形状", () => {
-		// zod 4 的每个 schema 都挂着 `_zod.def`(不管哪个实例),对类型就是读它。
+		// zod 4 的每个 schema 都挂着 `_zod.def`(不管哪个实例),对类型就是读它;缺了收不收读
+		// `_zod.optin`。替身上不挂 `safeParse` —— 对表不跑校验(异步 refine 一跑就抛)。
 		const foreign = {
 			shape: {
-				token: {
-					safeParse: (v: unknown) => ({ success: v !== undefined }),
-					_zod: { def: { type: "string" } },
-				},
-				note: { safeParse: () => ({ success: true }), _zod: { def: { type: "string" } } },
+				token: { _zod: { def: { type: "string" } } },
+				note: { _zod: { def: { type: "string" }, optin: "optional" } },
 			},
 		} as unknown as ZodType;
 		expect(() =>
@@ -124,7 +122,7 @@ describe("字段表 × zod 对表", () => {
 				{ type: "string", key: "token", label: "token", required: true },
 			]),
 		).not.toThrow();
-		// 必填那条判据也得照样生效(`note` 收得下 undefined,所以不必有栏)。
+		// 必填那条判据也得照样生效(`note` 的 optin 是 optional,缺了也收,所以不必有栏)。
 		expect(() => assertConfigFieldsMatchSchema("bridge", foreign, [])).toThrow(/token/);
 	});
 });
@@ -141,8 +139,8 @@ describe("对表:类型与默认值", () => {
 	it.each<[string, ExtensionField, ZodType]>([
 		["string", { type: "string", key: "a", label: "A", required: true }, z.string().min(1)],
 		[
-			"number(整数、带范围也算)",
-			{ type: "number", key: "a", label: "A", required: true },
+			"number(整数、上下限两边一样)",
+			{ type: "number", key: "a", label: "A", required: true, min: 1 },
 			z.int().min(1),
 		],
 		["boolean", { type: "boolean", key: "a", label: "A", required: true }, z.boolean()],
@@ -341,5 +339,317 @@ describe("对表:必填", () => {
 		["zod 那格本来就可选", { type: "string", key: "a", label: "A" }, z.string().optional()],
 	])("%s —— 放行", (_label, field, member) => {
 		expect(() => one(field, member)).not.toThrow();
+	});
+});
+
+/**
+ * 审查找出来的两头(ADR-0019 决策 43):一头是**合法的写法被判成对不上**、拓展加载不了;另一头是
+ * **漂了对不出来** —— 面板放行的值拓展一读就整份失败,或者面板显示的默认值是假话。
+ */
+describe("对表:误判 —— 这些写法是合法的,得认得", () => {
+	const one = (field: ExtensionField, member: ZodType) =>
+		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
+
+	/**
+	 * `z.preprocess(fn, inner)` 在 zod 4 里是一根 pipe:`in` 是那个 fn(一格 transform),`out` 才是
+	 * 真类型。与 `.transform()` 正好反过来(`in` 是真类型、`out` 是转换),所以两种得分开认。
+	 */
+	it("z.preprocess 按里面那个真类型对 —— 对得上放行,对不上照拒", () => {
+		const toNumber = (v: unknown) => (typeof v === "string" ? Number(v) : v);
+		expect(() =>
+			one(
+				{ type: "number", key: "a", label: "A", required: true },
+				z.preprocess(toNumber, z.number()),
+			),
+		).not.toThrow();
+		expect(() =>
+			one(
+				{ type: "string", key: "a", label: "A", required: true },
+				z.preprocess(toNumber, z.number()),
+			),
+		).toThrow(/"a".*string.*number/);
+	});
+
+	/** 一组字符串取值,zod 里除了 `z.enum` 还常写成字面量的 union —— 两种说的是同一件事。 */
+	describe("enum 用字面量写", () => {
+		const XY: ExtensionField = {
+			type: "enum",
+			key: "a",
+			label: "A",
+			required: true,
+			options: [
+				{ value: "x", label: "X" },
+				{ value: "y", label: "Y" },
+			],
+		};
+		const X_ONLY: ExtensionField = { ...XY, options: [{ value: "x", label: "X" }] };
+
+		it.each<[string, ExtensionField, ZodType]>([
+			["字面量的 union", XY, z.union([z.literal("y"), z.literal("x")])],
+			["一个字面量带几个值", XY, z.literal(["x", "y"])],
+			["单个字面量", X_ONLY, z.literal("x")],
+			["union 里混着 z.enum", XY, z.union([z.enum(["x"]), z.literal("y")])],
+		])("%s —— 对得上", (_label, field, member) => {
+			expect(() => one(field, member)).not.toThrow();
+		});
+
+		it("取值对不上 —— 照拒,说出两边各是什么", () => {
+			expect(() => one(XY, z.union([z.literal("x"), z.literal("z")]))).toThrow(
+				/"a" 的选项 \[x, y\].*\[x, z\]/,
+			);
+		});
+
+		/** 两条都挑「别的都对得上」的例子 —— 只剩被测的那一条规矩能让它拒。 */
+		it("union 里有一支不是字面量 —— 拒(面板选不全它收的值)", () => {
+			expect(() => one(XY, z.union([z.literal("x"), z.literal("y"), z.string()]))).toThrow(
+				/"a".*enum.*union/,
+			);
+		});
+
+		it('字面量不是字符串 —— 拒(面板存的永远是字符串,选项写 "1" 也存不成数字 1)', () => {
+			const field: ExtensionField = {
+				...XY,
+				options: [
+					{ value: "x", label: "X" },
+					{ value: "1", label: "一" },
+				],
+			};
+			expect(() => one(field, z.union([z.literal("x"), z.literal(1)]))).toThrow(/"a".*字符串/);
+		});
+	});
+
+	/** `z.lazy` 只是晚一步拿到里面那份 schema(递归结构、互相引用时用),剥开再对。 */
+	it("z.lazy 剥开再对 —— 类型、默认值、列表的项都照常对", () => {
+		expect(() =>
+			one(
+				{ type: "string", key: "a", label: "A", required: true },
+				z.lazy(() => z.string()),
+			),
+		).not.toThrow();
+		expect(() =>
+			one(
+				{ type: "number", key: "a", label: "A", default: 3 },
+				z.lazy(() => z.number().default(3)),
+			),
+		).not.toThrow();
+		const item = z.object({ id: z.string(), name: z.string() });
+		expect(() =>
+			one(
+				{
+					type: "list",
+					key: "a",
+					label: "A",
+					title: "name",
+					required: true,
+					fields: [{ type: "string", key: "name", label: "名字", required: true }],
+				},
+				z.array(z.lazy(() => item)),
+			),
+		).not.toThrow();
+		expect(() =>
+			one(
+				{ type: "string", key: "a", label: "A", required: true },
+				z.lazy(() => z.number()),
+			),
+		).toThrow(/"a".*string.*number/);
+	});
+
+	/**
+	 * 🔴 判「必填」不能靠 `safeParse(undefined)`:带异步 refine 的 schema 一被同步解析就抛(「同步解析
+	 * 撞上 Promise」),整条对表跟着崩,拓展加载不了。refine 本来就与「缺了这一格收不收」无关。
+	 */
+	describe("异步 refine", () => {
+		const ok = async () => true;
+
+		it.each<[string, ExtensionField, ZodType]>([
+			[
+				"带默认值",
+				{ type: "string", key: "a", label: "A", default: "" },
+				z.string().default("").refine(ok),
+			],
+			["可选", { type: "string", key: "a", label: "A" }, z.string().optional().refine(ok)],
+		])("%s的一格带异步 refine —— 照常对,不崩", (_label, field, member) => {
+			expect(() => one(field, member)).not.toThrow();
+		});
+
+		it("字段表里没有的那一格带异步 refine —— 照常判它是不是必填,不崩", () => {
+			const schema = z.object({ a: z.string(), note: z.string().optional().refine(ok) });
+			expect(() =>
+				assertConfigFieldsMatchSchema("demo", schema, [
+					{ type: "string", key: "a", label: "A", required: true },
+				]),
+			).not.toThrow();
+			const strict = z.object({ a: z.string(), note: z.string().refine(ok) });
+			expect(() =>
+				assertConfigFieldsMatchSchema("demo", strict, [
+					{ type: "string", key: "a", label: "A", required: true },
+				]),
+			).toThrow(/必填键 "note"/);
+		});
+
+		it("必填照样判得出来 —— 带异步 refine 的必填格,清单没写 required 照拒", () => {
+			expect(() => one({ type: "string", key: "a", label: "A" }, z.string().refine(ok))).toThrow(
+				/"a".*必填/,
+			);
+		});
+	});
+
+	/**
+	 * 不跑校验判必填,读的是 zod 自己算的「缺了收不收」;preprocess 那根 pipe 的入口是个 transform,
+	 * 那一格说「收」—— 可缺了的值过完 fn 还是 undefined,里面那个真类型照样不收。
+	 */
+	it("z.preprocess 的必填照里面那个真类型判 —— 真类型必填、清单没写 required,拒", () => {
+		const toNumber = (v: unknown) => (typeof v === "string" ? Number(v) : v);
+		expect(() =>
+			one({ type: "number", key: "a", label: "A" }, z.preprocess(toNumber, z.number())),
+		).toThrow(/"a".*必填/);
+		expect(() =>
+			one({ type: "number", key: "a", label: "A" }, z.preprocess(toNumber, z.number().optional())),
+		).not.toThrow();
+	});
+});
+
+describe("对表:漏判 —— 漂了今天对不出来", () => {
+	const one = (field: ExtensionField, member: ZodType) =>
+		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
+
+	/**
+	 * 面板照设置项的 `min` / `max` 拦,拓展照自己的 zod 收:zod 那边多一道下限,面板放行的值拓展一读
+	 * 就整份失败;反过来是面板拦下了拓展本来收的值。设置项的上下限**含端点**(`.min()` / `.max()`)。
+	 */
+	describe("数值上下限", () => {
+		const num = (
+			over: Partial<Extract<ExtensionField, { type: "number" }>> = {},
+		): ExtensionField => ({
+			type: "number",
+			key: "a",
+			label: "A",
+			required: true,
+			...over,
+		});
+
+		it.each<[string, ExtensionField, ZodType]>([
+			["两边都没有", num(), z.number()],
+			["整数本身不算上下限", num(), z.int()],
+			["min / max 两边一样", num({ min: 1, max: 10 }), z.number().min(1).max(10)],
+			["gte / lte 就是 min / max", num({ min: 0, max: 10 }), z.int().gte(0).lte(10)],
+			// 最紧的那道摆在中间:「取第一道」「取最后一道」都会读成别的数。
+			["叠了几道的取最紧的那道", num({ min: 3 }), z.number().min(1).min(3).min(2)],
+		])("%s —— 放行", (_label, field, member) => {
+			expect(() => one(field, member)).not.toThrow();
+		});
+
+		it.each<[string, ExtensionField, ZodType, RegExp]>([
+			["zod 有下限、设置项没写", num(), z.number().min(1), /"a" 的下限/],
+			["设置项写了上限、zod 没有", num({ max: 10 }), z.number(), /"a" 的上限/],
+			["下限的数不一样", num({ min: 1 }), z.number().min(0), /"a" 的下限/],
+			["下限开闭不同(.positive() 是 > 0)", num({ min: 0 }), z.number().positive(), /"a" 的下限/],
+			["上限开闭不同", num({ max: 10 }), z.number().lt(10), /"a" 的上限/],
+		])("%s —— 拒,点名那一格", (_label, field, member, message) => {
+			expect(() => one(field, member)).toThrow(message);
+		});
+	});
+
+	/**
+	 * `.catch(v)`:缺了这一格(收不下 undefined)时它补 v —— 与 `.default(v)` 是同一件事,默认值照同一套
+	 * 规矩对。但它只在里面那层**拒了** undefined 时才出手,所以不是每个 `.catch` 都补值。
+	 */
+	describe(".catch 当默认值对", () => {
+		const field = (fill: number | undefined): ExtensionField => ({
+			type: "number",
+			key: "a",
+			label: "A",
+			...(fill === undefined ? {} : { default: fill }),
+		});
+
+		it.each<[string, ZodType, number | undefined]>([
+			["catch 补值", z.number().catch(5), 5],
+			["函数形式的 catch", z.number().catch(() => 5), 5],
+			["套在 nullable 里照样补", z.number().catch(5).nullable(), 5],
+			["default 在里面:default 先补,catch 不出手", z.number().default(3).catch(5), 3],
+			["default 在外面:缺了先补 default", z.number().catch(5).default(3), 3],
+			["里面已经收 undefined:catch 不出手", z.number().optional().catch(5), undefined],
+			[
+				"套在 optional 里:缺了就是缺了,catch 补的被 optional 丢掉",
+				z.number().catch(5).optional(),
+				undefined,
+			],
+		])("%s", (_label, member, fill) => {
+			// 先钉 zod 自己怎么补 —— 哪天升级 zod 改了这条,这里先红,对表那头跟着改。
+			expect(z.object({ a: member }).parse({}).a).toBe(fill);
+			expect(() => one(field(fill), member)).not.toThrow();
+		});
+
+		it("catch 补了值、设置项没写默认值 —— 拒,并说出是 .catch 补的", () => {
+			expect(() => one(field(undefined), z.number().catch(5))).toThrow(/"a".*默认值 5.*\.catch/);
+		});
+
+		it("两边的默认值不一样 —— 拒", () => {
+			expect(() => one(field(3), z.number().catch(5))).toThrow(/"a" 的默认值两边不一样.*3.*5/);
+		});
+
+		it(".catch 的函数算不出补什么 —— 拒并点名那一格,不是整条对表崩成一句看不懂的错", () => {
+			const member = z.number().catch(() => {
+				throw new Error("boom");
+			});
+			expect(() => one(field(undefined), member)).toThrow(/"a" 的 \.catch\(\).*boom/);
+		});
+	});
+
+	/**
+	 * 🔴 strict 对象碰上存量:清单改过、旧版留下一个旧键,strict 就整份解不开 —— 设置读不了,拓展起不来
+	 * (ADR-0019 决策 36)。对表时就拒,并说清怎么改。
+	 */
+	describe("strict 对象", () => {
+		const A: ExtensionField = { type: "string", key: "a", label: "A", required: true };
+		const list = (item: ZodType) =>
+			assertConfigFieldsMatchSchema("demo", z.object({ links: z.array(item).default([]) }), [
+				{
+					type: "list",
+					key: "links",
+					label: "接入",
+					title: "name",
+					fields: [{ type: "string", key: "name", label: "名字", required: true }],
+				},
+			]);
+
+		it.each<[string, ZodType]>([
+			["z.strictObject", z.strictObject({ a: z.string() })],
+			[".strict()", z.object({ a: z.string() }).strict()],
+		])("顶层是 %s —— 拒,说清为什么、怎么改", (_label, schema) => {
+			expect(() => assertConfigFieldsMatchSchema("demo", schema, [A])).toThrow(
+				/strict.*旧键.*z\.object.*passthrough/,
+			);
+		});
+
+		it("列表的项是 strict —— 拒,点名那个列表", () => {
+			expect(() => list(z.strictObject({ id: z.string(), name: z.string() }))).toThrow(
+				/"links".*strict/,
+			);
+		});
+
+		it("连接配置(挑出来的)也一样 —— 存在连接里的那份照样会多旧键", () => {
+			expect(() =>
+				assertConfigFieldsMatchSchema("demo", z.strictObject({ link: z.string() }), [], {
+					picked: true,
+				}),
+			).toThrow(/strict/);
+		});
+
+		it.each<[string, ZodType]>([
+			["普通 z.object(多的键丢掉)", z.object({ a: z.string() })],
+			["z.looseObject", z.looseObject({ a: z.string() })],
+			[".passthrough()", z.object({ a: z.string() }).passthrough()],
+		])("%s —— 放行", (_label, schema) => {
+			expect(() => assertConfigFieldsMatchSchema("demo", schema, [A])).not.toThrow();
+			expect(() => list(z.object({ id: z.string(), name: z.string() }))).not.toThrow();
+		});
+
+		/** v1 格式已冻结:加规矩等于让已经发出去的 v1 包加载不了。 */
+		it("v1 不查(只对键)", () => {
+			expect(() =>
+				assertConfigFieldsMatchSchema("demo", z.strictObject({ a: z.string() }), [A], { v1: true }),
+			).not.toThrow();
+		});
 	});
 });
