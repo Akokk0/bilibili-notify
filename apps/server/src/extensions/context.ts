@@ -16,6 +16,7 @@ import {
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
+	isSecretField,
 	type Logger,
 	manifestProvides,
 	type PlatformAdapter,
@@ -84,6 +85,12 @@ export interface ExtensionRuntime {
 	 * 黑名单看不见,会原样进备份文件。密钥要声明出来,不能靠猜。
 	 */
 	secretConfigCodes(): readonly string[];
+	/**
+	 * 它经 `ctx.settings(schema)` 交过的 zod(可能不止一份,按交的次序)—— 写设置时再过一道
+	 * (ADR-0019 决策 35):清单造出来的校验表达不了整数、正则、跨字段规则,放行的值拓展一读就整份
+	 * 失败。没交过就是空表,收摊之后也是。
+	 */
+	settingsSchemas(): readonly ZodType[];
 	/** 跑面板按下的那个动作(ADR-0019 决策 22)。 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/** 收回这个拓展注册过的一切。幂等。 */
@@ -341,6 +348,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		assertConfigFieldsMatchSchema(id, schema, manifest.settings?.fields ?? []);
 		settingsChecked.add(schema);
 	}
+	/** 交过的每一份(对表过了的才算),写设置时宿主拿它们再过一道。Set 保序、同一份只记一次。 */
+	const handedSchemas = new Set<ZodType>();
 
 	const ctx: ExtensionContext = {
 		id,
@@ -375,9 +384,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			pushSourceRegistered = true;
 			pushView = view;
 			listBots = def.listBots;
-			secretCodes = view.connectionFields
-				.filter((f) => f.type === "string" && f.secret)
-				.map((f) => f.key);
+			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
 			registered.add(adapters.register(adapter));
@@ -418,6 +425,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			checkSettingsSchema(schema);
+			if (!disposed) handedSchemas.add(schema);
 			return {
 				get: () => readSettings(schema),
 				onChange: (fn: () => void) => {
@@ -494,6 +502,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		pushSource: () => pushView,
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
+		settingsSchemas: () => [...handedSchemas],
 		async runAction(name, runOpts = {}) {
 			if (!declaredActions?.has(name)) return { ok: false, reason: "undeclared" };
 			const handler = actionHandlers.get(name);
@@ -563,6 +572,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			registered.clear();
 			actionHandlers.clear();
+			handedSchemas.clear();
 			statusOf = undefined;
 			secretCodes = [];
 		},

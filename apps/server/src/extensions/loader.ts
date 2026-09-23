@@ -13,6 +13,7 @@ import {
 	manifestSecretKeys,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import {
 	type ActionOutcome,
@@ -102,6 +103,11 @@ export interface LoadedExtensions {
 	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
 	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
+	/**
+	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
+	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:只认跑着的那一份,换过代码的交的是新的。
+	 */
+	settingsSchemas(id: string): readonly ZodType[] | undefined;
 	/**
 	 * 按**现在的开关**再对一遍:开了的装上,关了的收掉(决策 10 的「启用 / 停用热」)。
 	 *
@@ -710,6 +716,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		pushSource: (id) => slots.get(id)?.running?.runtime.pushSource(),
 		bots: (id) => slots.get(id)?.running?.runtime.bots(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
+		settingsSchemas: (id) => slots.get(id)?.running?.runtime.settingsSchemas(),
 		sync() {
 			return enqueue(async () => {
 				for (const [id, slot] of slots) {

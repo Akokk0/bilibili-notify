@@ -135,6 +135,93 @@ export interface ExtensionBotsResponse {
 	bots: readonly ExtensionBotView[];
 }
 
+// ---- /api/ext/:id/settings(ADR-0019 决策 35)------------------------------------
+//
+// 拓展设置自己的读写口。存储仍在 globals 的 `extensions.<id>.settings`,只是不再经
+// `PATCH /api/globals` 整份写回:列表整份替换时两发交错就丢一发,`id` 不可变与密钥占位回填
+// 也都表达不了。这里按项写、带版本号。
+
+/**
+ * 一格密钥下发时的样子:服务端算好的提示,原文永不下发。
+ *
+ * 不到 24 位整段打点(固定 8 个点,不泄露长度);24 位及以上只露头尾各四位。九到十二位时
+ * 头尾八位几乎就是全文,所以门槛不是「八位及以下」(决策 35 修订了决策 30)。
+ *
+ * 🔴 **只许读、不许写回**:PATCH 里任何一格的值是这个形状都回 400 —— 否则面板原样回传的
+ * 占位会把真密钥盖成一个对象。要换密钥就交新的明文(重新生成)。
+ */
+export interface MaskedSecret {
+	masked: string;
+}
+
+/** `GET /api/ext/:id/settings`。 */
+export interface ExtensionSettingsResponse {
+	/**
+	 * 不透明的版本号:存着的那份设置的内容摘要。写的时候带回来,对不上回 409。
+	 *
+	 * 摘要只看**这个拓展的设置** —— 别的全局设置、它的开关怎么变都不动它,不会让互不相干的
+	 * 写入互相 409。
+	 */
+	revision: string;
+	/**
+	 * 存着的设置;密钥格(`secret` 或 `generate`,顶层与列表项里都算)有值时换成
+	 * {@link MaskedSecret},空串照旧是空串 —— 面板要分得开「没配」与「配了」。
+	 * 清单没声明的键原样带着(拓展可能有面板不管的格)。
+	 */
+	values: Record<string, unknown>;
+}
+
+/**
+ * 一次写里的一步。按顺序套在存着的那份上,**只校验这一步动到的**:存量里别的不合规的不连坐
+ * (否则清单一收紧,连删一条坏项都被拒)。
+ */
+export type ExtensionSettingsOp =
+	/** 顶层非列表的一格;`value` 为 `null` = 清掉。对列表的键用 `set` 回 400 —— 列表只能逐项改。 */
+	| { op: "set"; key: string; value: unknown }
+	/** 不带 `id`:项的 id 由 BN 生成(UUID)、藏起来、不许改(决策 29)。生成的 id 在回应的 `added` 里。 */
+	| { op: "add"; list: string; item: Record<string, unknown> }
+	/** 部分合并进那一项(`null` = 清掉那一格);不许带 `id`。找不到那一项回 400。 */
+	| { op: "update"; list: string; id: string; values: Record<string, unknown> }
+	/** 找不到那一项回 400 —— 静默当成功的话,面板以为删掉了而它其实从没在那儿。 */
+	| { op: "remove"; list: string; id: string };
+
+/** `PATCH /api/ext/:id/settings` 的请求体。 */
+export interface ExtensionSettingsPatch {
+	/** 上一次 GET / PATCH 拿到的 {@link ExtensionSettingsResponse.revision}。 */
+	revision: string;
+	/** 至少一步;要么全写进去,要么一步都不写。 */
+	ops: ExtensionSettingsOp[];
+}
+
+/** PATCH 的回应:写完之后的那份(同 GET),外加每个 add 生成的 id(按 op 顺序)。 */
+export interface ExtensionSettingsWriteResponse extends ExtensionSettingsResponse {
+	added: string[];
+}
+
+/**
+ * PATCH 被拒(400 `{ error: "validation_failed", message, issues }`)时的一条。
+ *
+ * `path` 从**这个拓展的设置**那一层往下数,列表项**按 id 点名**(`["links", "<id>", "name"]`)
+ * —— 增删之后下标会挪,按第几项说会指错。`add` 那一项的 id 是这次现生成的、面板不认识,
+ * 所以每条尽量带上 `op`(第几步惹出来的):对不上某一步的(拓展自己的校验里跨格的规矩)
+ * 就没有。
+ */
+export interface ExtensionSettingsIssue {
+	op?: number;
+	path: (string | number)[];
+	message: string;
+}
+
+/**
+ * PATCH 带的版本号与存着的对不上(409)。带上**现在的**版本号 —— 面板重取之后照着新的那份
+ * 再改,而不是把别人刚写的盖掉。
+ */
+export interface ExtensionSettingsConflict {
+	error: "revision_conflict";
+	message: string;
+	revision: string;
+}
+
 /**
  * `POST /api/ext/install` 装完之后的回话。
  *

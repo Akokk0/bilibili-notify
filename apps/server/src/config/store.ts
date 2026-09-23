@@ -102,6 +102,14 @@ export interface ConfigStore {
 	// --- writes -----------------------------------------------------------
 	setGlobals(next: GlobalConfig): Promise<void>;
 	patchGlobals(patch: DeepPartial<GlobalConfig>, opts?: PatchGlobalsOptions): Promise<GlobalConfig>;
+	/**
+	 * 在 globals 那条排队里「读当前 → 算新值 → 校验 → 落盘」一气做完 —— 「先看一眼再决定写什么」
+	 * 的写入(比对版本号再写)走这里。队外先读后写的话,读与写之间的那一发会从缝里溜过去。
+	 *
+	 * `update` 拿到的是当前那份的**深拷贝**,改好交回整份;它抛了就整次作废、一个字都不落盘,
+	 * 那一发原样交回调用方。详见实现处的注释。
+	 */
+	updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig>;
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
@@ -1253,6 +1261,25 @@ class NodeConfigStore implements ConfigStore {
 			const extra = opts.check?.(parsed.data);
 			if (extra && extra.length > 0) {
 				throw new ConfigValidationError("globals", extra);
+			}
+			await this.writeGlobals(parsed.data);
+			this.touch("globals");
+			return parsed.data;
+		});
+		this.bus.emit("config-changed", "globals");
+		return deepClone(result);
+	}
+
+	/**
+	 * 🔴 `update` 是**同步**的:队里只做比对与拼装,不跑别人的代码。这条队是全部 globals 写入共用的,
+	 * 慢的校验(拓展自己那份 zod 是异步的、还可能挂住)要放在队外先做好,再到队里按版本号比对一次
+	 * —— 写成 async 的话,一个挂住的校验会让之后所有的全局设置都存不进去。
+	 */
+	async updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig> {
+		const result = await this.runScoped("globals", async () => {
+			const parsed = GlobalConfigSchema.safeParse(update(deepClone(this.globals)));
+			if (!parsed.success) {
+				throw new ConfigValidationError("globals", parsed.error.issues);
 			}
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");

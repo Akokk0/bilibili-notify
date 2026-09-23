@@ -15,7 +15,7 @@ import {
 	manifestProvides,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import { ACTION_TIMEOUT_MS, type ActionOutcome } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
@@ -28,6 +28,7 @@ import {
 } from "../extensions/install.js";
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
+import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
 const MarketplaceInstallRequestSchema = z.object({
@@ -65,6 +66,13 @@ export interface ExtensionsRouteOptions {
 	swap?: (id: string) => Promise<void>;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
+	/**
+	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
+	 * 没在跑是 `undefined`。不给这一格 = 只有清单那一道。
+	 */
+	settingsSchemas?: (id: string) => readonly ZodType[] | undefined;
+	/** 某个拓展的设置经 `/:id/settings` 写进去了 —— 宿主转成一帧推给面板。 */
+	settingsChanged?: (id: string) => void;
 	/**
 	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
 	 *
@@ -125,7 +133,7 @@ function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boo
  * (对家手里只有 URL、没有会话),把面板数据挂那儿等于把会话列表与 bot 名单公开出去。
  *
  * 开关本身不在这儿改 —— 它住 `globals.extensions`,走 `PATCH /api/globals`,与别的全局
- * 设置同一条路。这里只读。
+ * 设置同一条路。拓展自己的设置有自己的读写口(`/:id/settings`,见 `extension-settings.ts`)。
  */
 export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	const app = new Hono();
@@ -374,6 +382,18 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		}
 		return c.json({ ok: true });
 	});
+
+	// 设置自己的读写口(ADR-0019 决策 35)。wire 在 `extension-settings.ts`,逻辑在
+	// `extensions/settings-io.ts`。
+	app.route(
+		"/",
+		createExtensionSettingsRoute({
+			store: opts.store,
+			extensions: opts.extensions,
+			settingsSchemas: opts.settingsSchemas,
+			settingsChanged: opts.settingsChanged,
+		}),
+	);
 
 	/**
 	 * 一个拓展交给面板的视图(`ctx.publishStatus`),**现取**。没跑 / 没交过就是 404,不是空

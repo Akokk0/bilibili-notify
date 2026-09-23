@@ -670,6 +670,30 @@ describe("v2 的列表声明", () => {
 		unreadable(list({ newItemCopy: [{ host: "extensionUrl" }] }));
 	});
 
+	/**
+	 * 标题印在卡头与删除确认框里,一直明晃晃地摆在屏幕上 —— 指向密钥格就等于把密钥全文上屏
+	 * (ADR-0019 决策 38)。`generate` 的格一律算密钥(决策 35),没标 `secret` 也一样。
+	 */
+	it("title 不许指向密钥格(secret 或 generate)—— 读不了,并说清为什么", () => {
+		const withTitle = (title: Record<string, unknown>) =>
+			list({ title: "key", fields: [title, ...ITEM] });
+		const secretTitle = { key: "key", type: "string", label: "钥匙", required: true, secret: true };
+		const generatedTitle = {
+			key: "key",
+			type: "string",
+			label: "钥匙",
+			required: true,
+			generate: true,
+		};
+		for (const title of [secretTitle, generatedTitle]) {
+			const issues = unreadable(withTitle(title)).join("\n");
+			expect(issues).toMatch(/settings\.fields\.0\.title/);
+			expect(issues).toMatch(/卡头|确认框/);
+		}
+		// 同一格去掉密钥标记就收下 —— 拒的是「指向密钥」,不是别的。
+		ok(withTitle({ key: "key", type: "string", label: "钥匙", required: true }));
+	});
+
 	it("项里的字段不许叫 id —— 它由 BN 生成、藏起来(视图按它把积木挂到那一项上)", () => {
 		unreadable(
 			withField({
@@ -721,6 +745,33 @@ describe("manifestSecretKeys", () => {
 			}),
 		);
 		expect(manifestSecretKeys(m)).toEqual(["botKey", "cookie", "token"]);
+	});
+
+	/**
+	 * `generate` 的格一律按密钥算(ADR-0019 决策 35):它生成的就是 token,没标 `secret` 也不能
+	 * 原样进备份、原样下发给浏览器。
+	 */
+	it("generate 的格没标 secret 也算密钥 —— 设置项、列表项里都算", () => {
+		const m = ok(
+			v2({
+				settings: {
+					fields: [
+						{ key: "apiKey", type: "string", label: "Key", generate: true },
+						{
+							key: "links",
+							type: "list",
+							label: "接入",
+							title: "name",
+							fields: [
+								{ key: "name", type: "string", label: "名字", required: true },
+								{ key: "token", type: "string", label: "token", generate: true },
+							],
+						},
+					],
+				},
+			}),
+		);
+		expect(manifestSecretKeys(m)).toEqual(["apiKey", "token"]);
 	});
 
 	it("v1 的密钥声明在代码里,清单答不出来 —— undefined(不是空表:空表是「一格都不用抹」)", () => {

@@ -11,6 +11,7 @@ import type { CardSkinKind } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import type { ZodType } from "zod";
 import { createDashboardAuth } from "./auth/dashboard-auth.js";
 import { createDesktopTokenAuth } from "./auth/desktop-token.js";
 import type { AuthSystem } from "./auth/index.js";
@@ -107,6 +108,11 @@ export interface CreateAppOptions {
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
 		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+		/**
+		 * 某个拓展经 `ctx.settings(schema)` 交过的 zod(装载器的 `settingsSchemas()`)—— 写它的设置时
+		 * 再过一道(ADR-0019 决策 35)。没在跑是 undefined。没接 → 只有清单那一道。
+		 */
+		settingsSchemas?: (id: string) => readonly ZodType[] | undefined;
 		/**
 		 * 只重载这个拓展(装载器的 `swap()`,ADR-0012 决策 47)。没标着「新版等着换上」时抛,
 		 * 路由把那句话原样交出去。没接 → 那一口永远 404。
@@ -429,6 +435,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			pushSource: (id) => options.extensions?.pushSource(id),
 			bots: (id) => options.extensions?.bots(id),
 			runAction: async (id, name) => options.extensions?.runAction?.(id, name),
+			settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
+			// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。
+			settingsChanged: (id) => runtime.bus.emit("extension-settings-changed", id),
 			swap: options.extensions?.swap,
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,

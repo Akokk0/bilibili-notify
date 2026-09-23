@@ -63,6 +63,12 @@ export interface BiliEvents {
 	 */
 	"extension-status-changed": (id: string) => void;
 	/**
+	 * 某个拓展的设置经 `/api/ext/<id>/settings` 写进去了(ADR-0019 决策 35)。载荷只有拓展 id:
+	 * 面板按 id 失效它的设置与视图、自己去取 —— 设置里有密钥,数据本身不上 bus、不进帧。
+	 * 这是宿主自己知道的事实,不替拓展判它的视图变没变(那是 `extension-status-changed`)。
+	 */
+	"extension-settings-changed": (id: string) => void;
+	/**
 	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
 	 * 无需前端再二次 fetch detail。

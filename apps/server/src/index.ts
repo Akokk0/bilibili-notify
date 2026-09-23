@@ -912,6 +912,8 @@ export async function startStandaloneServer(
 				pushSource: (id) => loadedExtensions?.pushSource(id),
 				bots: (id) => loadedExtensions?.bots(id),
 				runAction: async (id, name) => loadedExtensions?.runAction(id, name),
+				// 跑着的那份交过的 zod —— 写设置时再过一道(ADR-0019 决策 35)。
+				settingsSchemas: (id) => loadedExtensions?.settingsSchemas(id),
 				// 「只重载这个拓展」(决策 47):没有新版等着换上时装载器自己拒,那句话原样回面板。
 				swap: async (id) => {
 					await loadedExtensions?.swap(id);

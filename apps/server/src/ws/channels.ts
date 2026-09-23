@@ -197,6 +197,17 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			}),
 		),
 	);
+	// 拓展的设置写进去了:同样只带 id(设置里有密钥,不进帧),面板按 id 失效设置与视图。
+	subs.push(
+		deps.bus.on("extension-settings-changed", (id) =>
+			deps.publish({
+				type: "state",
+				event: "extension-settings-changed",
+				ts: new Date().toISOString(),
+				data: { id },
+			}),
+		),
+	);
 
 	return {
 		dispose() {

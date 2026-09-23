@@ -281,12 +281,29 @@ const ScalarFieldSchema = z.discriminatedUnion("type", [
 	EnumFieldSchema,
 ]);
 
+/**
+ * 这一格是不是**密钥**:标了 `secret` 的,以及 `generate` 的 —— 后者一律算(ADR-0019 决策 35),
+ * 它生成的就是 token,没标 `secret` 也不能原样下发给浏览器、原样进备份。
+ *
+ * 🔴 判「是不是密钥」一律走这里:遮挡、备份脱敏、`title` 不许指向密钥,三处各写一份的话,
+ * 迟早有一处只认 `secret` —— 那一处就是明文漏出去的地方。
+ */
+export function isSecretField(field: {
+	type: string;
+	secret?: boolean;
+	generate?: boolean;
+}): boolean {
+	return field.type === "string" && (field.secret === true || field.generate === true);
+}
+
 /** 形状宽松的一格,只给 {@link checkFieldList} 用 —— 四种单值与列表都能塞进来。 */
 interface FieldLike {
 	key: string;
 	type: string;
 	default?: unknown;
 	required?: boolean;
+	secret?: boolean;
+	generate?: boolean;
 	min?: number;
 	max?: number;
 	options?: readonly { value: string }[];
@@ -311,6 +328,12 @@ function checkListRefs(list: FieldLike, at: number, ctx: z.RefinementCtx): void 
 	const title = find(list.title);
 	if (title?.type !== "string" || title.required !== true) {
 		issue(["title"], `title 要指向项里一格必填的 string,"${list.title}" 不是`);
+	} else if (isSecretField(title)) {
+		// 标题印在卡头与删除确认框里、一直摆在屏幕上 —— 指向密钥就是把密钥全文上屏(决策 38)。
+		issue(
+			["title"],
+			`title 不能指向密钥格(secret / generate),"${list.title}" 是:标题会印在卡头与删除确认框里,等于把密钥明文摆上屏`,
+		);
 	}
 	if (list.mark !== undefined && find(list.mark)?.type !== "enum") {
 		issue(["mark"], `mark 要指向项里一格 enum,"${list.mark}" 不是`);
@@ -606,8 +629,8 @@ export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides
 }
 
 /**
- * 清单里标了 `secret` 的键 —— 备份脱敏照它抹(ADR-0019 决策 17)。设置项、列表项、推送源的
- * 连接配置项都算,排序去重。
+ * 清单里的密钥键({@link isSecretField}:`secret`,以及一律算密钥的 `generate`)—— 备份脱敏
+ * 照它抹(ADR-0019 决策 17 / 35)。设置项、列表项、推送源的连接配置项都算,排序去重。
  *
  * ⚠️ 回的是**一套键名,不分出处**:设置、列表项、连接字段三处同名的键会一起当密钥抹,脱敏那头
  * 也拿这一套同时抹它的设置与它的连接配置(按键名、整棵往下找)。于是某处一格叫 `botKey` 的
@@ -622,7 +645,7 @@ export function manifestSecretKeys(manifest: ExtensionManifest): string[] | unde
 	const keys = new Set<string>();
 	const collect = (fields: readonly ExtensionManifestField[]) => {
 		for (const field of fields) {
-			if (field.type === "string" && field.secret) keys.add(field.key);
+			if (isSecretField(field)) keys.add(field.key);
 			if (field.type === "list") collect(field.fields);
 		}
 	};
@@ -697,4 +720,24 @@ function fieldsObjectSchema(fields: readonly ExtensionManifestField[], listItem:
  */
 export function settingsValueSchema(fields: readonly ExtensionManifestField[]): z.ZodType {
 	return fieldsObjectSchema(fields, false).optional();
+}
+
+/** 列表那一种设置项。 */
+export type ExtensionManifestListField = Extract<ExtensionManifestField, { type: "list" }>;
+
+/**
+ * **一格**设置项的值该长什么样 —— 按项写设置(`/api/ext/:id/settings`)时,`set` 只照它校验
+ * 动到的那一格(ADR-0019 决策 35「存量里别的不合规的不连坐」)。清掉(`undefined`)照「必填
+ * 且没默认值」判。
+ */
+export function settingsFieldSchema(field: ExtensionManifestField): z.ZodType {
+	return valueSchemaOf(field);
+}
+
+/**
+ * 列表的**一项**该长什么样(带 BN 管的 `id`)—— 增 / 改一项只照它校验合并之后的那一项,
+ * 同一列表里别的项不看。
+ */
+export function settingsListItemSchema(list: ExtensionManifestListField): z.ZodType {
+	return fieldsObjectSchema(list.fields, true);
 }
