@@ -33,6 +33,7 @@ import {
 import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
 import { LegacyFormatNote } from "./extensions/legacy-format-note";
 import { MarketplaceInstallConfirm, useMarketplaceInstall } from "./extensions/marketplace-section";
+import { ReportProblemsBox } from "./extensions/report-problems";
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
@@ -82,13 +83,15 @@ export default function ExtensionDetail() {
 	const installer = useMarketplaceInstall();
 	/*
 	 * 卸掉之后它名下的订阅**保留**、暂停(ADR-0019 决策 10)—— 确认框得说清有几条,否则主人会以为
-	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着时才去读 ——
-	 * 详情页每进一次都拉一遍整张订阅表,换来的只是框里那一句。
+	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着、或有「上报问题」
+	 * 要按订阅 id 印名字时才去读 —— 详情页每进一次都拉一遍整张订阅表,换来的只是框里那一句。
 	 */
+	const hasReportProblems =
+		(listed.data?.extensions.find((one) => one.id === id)?.reportProblems ?? []).length > 0;
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
-		enabled: confirming,
+		enabled: confirming || hasReportProblems,
 	});
 	const keptSubs = (subsQuery.data ?? []).filter(
 		(sub) => isExtensionSubscription(sub) && sub.extensionId === id,
@@ -248,6 +251,9 @@ export default function ExtensionDetail() {
 					</div>
 				</GlassBox>
 			</div>
+
+			{/* 订阅源报上来、BN 没照单全收的几条(决策 60)—— 有才出现。 */}
+			<ReportProblemsBox ext={ext} subs={subsQuery.data} />
 
 			{tab && tabs.length > 1 ? (
 				<TabBar<DetailTab>

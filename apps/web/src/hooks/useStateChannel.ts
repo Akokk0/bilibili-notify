@@ -24,6 +24,8 @@ import {
  *     刷新,不用切页。
  *   - `extension-settings-changed`(设置经 `/api/ext/:id/settings` 写进去了,ADR-0019 决策 35):
  *     按 id 失效那个拓展的设置与视图 —— 别的标签页改了名单,这一页当场换上,不用等撞 409。
+ *   - `extension-report-problems-changed`(服务端给某个拓展新记了「上报问题」,ADR-0019 决策 60):
+ *     只失效拓展表 —— 详情页那个框住在拓展表的那一行上。
  *
  * Server scopes (`config-changed.scope`):
  *   - "subscriptions" → invalidate ["subscriptions"]
@@ -60,6 +62,12 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		if (typeof id !== "string" || id === "") return;
 		qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
 		qc.invalidateQueries({ queryKey: extensionBotsKey(id) });
+		return;
+	}
+	// 服务端给某个拓展新记了「上报问题」(ADR-0019 决策 60):那个框住在拓展表的那一行上,只让拓展表
+	// 过期 —— 视图没变,不去重读它。
+	if (env.event === "extension-report-problems-changed") {
+		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
 		return;
 	}
 	// 拓展的设置写进去了:失效那个拓展的设置与视图(视图可能跟着设置变,宿主不替拓展判)。

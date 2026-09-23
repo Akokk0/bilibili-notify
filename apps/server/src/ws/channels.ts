@@ -208,6 +208,18 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			}),
 		),
 	);
+	// 拓展的「上报问题」新记了几条(ADR-0019 决策 60):只带 id,面板让拓展表失效(那个框住在那一行上)。
+	// 不借 `extension-changed` —— 那一帧说的是视图变了。
+	subs.push(
+		deps.bus.on("extension-report-problems-changed", (id) =>
+			deps.publish({
+				type: "state",
+				event: "extension-report-problems-changed",
+				ts: new Date().toISOString(),
+				data: { id },
+			}),
+		),
+	);
 	// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
 	// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。
 	subs.push(

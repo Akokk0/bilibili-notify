@@ -5,6 +5,7 @@ import type {
 	ExtensionInstallResponse,
 	ExtensionLookupResponse,
 	ExtensionPushView,
+	ExtensionReportProblemView,
 	ExtensionsResponse,
 	MarketplaceResponse,
 	RestartAbility,
@@ -36,6 +37,7 @@ import {
 } from "../extensions/install.js";
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
+import type { ReportProblemLog } from "../extensions/report-problems.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
@@ -92,6 +94,11 @@ export interface ExtensionsRouteOptions {
 	 * 抛,那句话原样交给面板(→ 409)。没接这一格的话那一口永远 404。
 	 */
 	swap?: (id: string) => Promise<void>;
+	/**
+	 * 订阅源拓展的「上报问题」记录(ADR-0019 决策 60)。列表那一行照它带上 `reportProblems`,卸载时清掉
+	 * 它那一段。不给就是没接上:哪一行都不带这一格。
+	 */
+	reportProblems?: Pick<ReportProblemLog, "list" | "clear">;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
@@ -169,6 +176,22 @@ function pushViewOfEntry(
 	return manifestPushView(entry.manifest);
 }
 
+/** 列表那一行的「上报问题」(决策 60):没有就不带这一格;拓展 id 不下发(它就挂在那一行上)。 */
+function reportProblemsOf(
+	id: string,
+	log: Pick<ReportProblemLog, "list"> | undefined,
+): { reportProblems?: ExtensionReportProblemView[] } {
+	const problems = log?.list(id) ?? [];
+	if (problems.length === 0) return {};
+	return {
+		reportProblems: problems.map(({ extensionId: _id, ...problem }) => ({
+			...problem,
+			subscriptionIds: [...problem.subscriptionIds],
+			reasons: [...problem.reasons],
+		})),
+	};
+}
+
 /**
  * 拓展页要的两样东西:装了哪些拓展(以及开没开),和某个拓展自己交上来的那份面板数据。
  *
@@ -215,6 +238,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				detail: entry.detail,
 				// 盘上有一份这个进程干净地换不上的新代码 —— 详情页据此并排给「重启 BN」与「只重载」。
 				...(entry.staged === undefined ? {} : { staged: entry.staged }),
+				// 上报问题(决策 60):有才带,详情页凭它判「有问题才出现」那个框。
+				...reportProblemsOf(entry.id, opts.reportProblems),
 			};
 		});
 		const body: ExtensionsResponse = {
@@ -309,6 +334,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		// 配置已经没了而拓展还在盘上跑着 —— 界面与实际当场对不上。
 		const removed = await install.changeDisk(() => uninstallExtension({ root: install.root, id }));
 		if (!removed.ok) return c.json({ errors: [removed.err] }, 400);
+		// 它那一段上报问题跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。抹盘时它已经
+		// 收摊,不会再有新的一条补进来。
+		opts.reportProblems?.clear(id);
 
 		await opts.store.patchGlobals({ extensions: { [id]: null } } as never);
 		return c.json({ ok: true });

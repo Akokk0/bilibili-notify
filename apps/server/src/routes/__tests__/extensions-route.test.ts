@@ -21,6 +21,7 @@ import {
 } from "../../extensions/loader.js";
 import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
+import { createReportProblemLog, type ReportProblemLog } from "../../extensions/report-problems.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionsRoute } from "../extensions.js";
@@ -51,6 +52,8 @@ function boot(
 		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
 		/** 解析门(`GET /:id/lookup`)。不给就是那一口没接上。 */
 		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
+		/** 「上报问题」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
+		reportProblems?: ReportProblemLog;
 	} = {},
 ) {
 	const store = {
@@ -90,6 +93,7 @@ function boot(
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
 		lookup: over.lookup,
+		reportProblems: over.reportProblems,
 		...(loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
 }
@@ -564,6 +568,35 @@ describe("GET /api/ext", () => {
 	});
 });
 
+describe("GET /api/ext:上报问题(ADR-0019 决策 60)", () => {
+	/**
+	 * 拓展详情页那个框照这一格画:有才有这一格(新的在前),没有的那一行干脆不带 —— 面板凭它判
+	 * 「有问题才出现」。`extensionId` 不下发:它就挂在那一行上。
+	 */
+	it("有上报问题的那一行带上(新的在前、不带 extensionId);没有的那一行没这一格", async () => {
+		const reportProblems = createReportProblemLog();
+		const base = {
+			kind: "post" as const,
+			externalId: "person",
+			subscriptionIds: ["s1"],
+			outcome: "dropped" as const,
+		};
+		reportProblems.record({ ...base, extensionId: "douyin", at: 1, reasons: ["images[0]:旧的"] });
+		reportProblems.record({ ...base, extensionId: "douyin", at: 2, reasons: ["images[1]:新的"] });
+
+		const body = (await (
+			await boot({ entries: [running("douyin"), running("bridge")], reportProblems }).request("/")
+		).json()) as ExtensionsResponse;
+
+		const douyin = body.extensions.find((e) => e.id === "douyin");
+		expect(douyin?.reportProblems).toEqual([
+			{ ...base, at: 2, reasons: ["images[1]:新的"] },
+			{ ...base, at: 1, reasons: ["images[0]:旧的"] },
+		]);
+		expect(body.extensions.find((e) => e.id === "bridge")).not.toHaveProperty("reportProblems");
+	});
+});
+
 describe("GET /api/ext/:id/bots", () => {
 	it("列现在能借来当连接的 bot —— 拓展交什么(含它自己那份 config)就原样下发", async () => {
 		const bots = [
@@ -980,6 +1013,50 @@ describe("DELETE /api/ext/:id", () => {
 		expect(await lstat(target).catch(() => null)).not.toBeNull();
 		// 🔴 拒了就什么都别动:先清配置再抹盘的话,这条路上配置已经没了而拓展还在。
 		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+
+	/** 卸掉的拓展那一段「上报问题」跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。 */
+	it("删掉 → 它那一段上报问题跟着清,别的拓展的不动", async () => {
+		await installed();
+		const reportProblems = createReportProblemLog();
+		const one = {
+			at: 1,
+			kind: "post" as const,
+			externalId: "person",
+			subscriptionIds: [],
+			outcome: "rejected" as const,
+			reasons: ["坏了"],
+		};
+		reportProblems.record({ ...one, extensionId: "bridge" });
+		reportProblems.record({ ...one, extensionId: "douyin" });
+
+		const res = await boot({ reportProblems }).request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(200);
+		expect(reportProblems.list("bridge")).toEqual([]);
+		expect(reportProblems.list("douyin")).toHaveLength(1);
+	});
+
+	/** 拦住了就什么都别动 —— 上报问题也照留。 */
+	it("被拦下的删除不清上报问题", async () => {
+		await installed();
+		const reportProblems = createReportProblemLog();
+		reportProblems.record({
+			extensionId: "bridge",
+			at: 1,
+			kind: "post",
+			externalId: "person",
+			subscriptionIds: [],
+			outcome: "rejected",
+			reasons: ["坏了"],
+		});
+		const app = boot({
+			reportProblems,
+			connections: [{ id: "c1", kind: "extension", extensionId: "bridge" }],
+		});
+
+		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(409);
+		expect(reportProblems.list("bridge")).toHaveLength(1);
 	});
 
 	/** 面板上的列表可能是上一秒的。盘上早就没了也当删成功,别让人对着一个删不掉的幽灵。 */

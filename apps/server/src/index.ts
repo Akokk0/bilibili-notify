@@ -38,6 +38,7 @@ import {
 } from "./extensions/loader.js";
 import { createMarketplace } from "./extensions/marketplace.js";
 import { createExtensionMounts } from "./extensions/mount.js";
+import { createReportProblemLog } from "./extensions/report-problems.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
@@ -838,6 +839,12 @@ export async function startStandaloneServer(
 		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
 		const extensionMounts = createExtensionMounts();
 		const extensionUpgrades = createExtensionUpgrades();
+		// 拓展详情页的「上报问题」(ADR-0019 决策 60):ctx 那个出口写进来,拓展列表那一口读出去。只在内存。
+		// 记了新的 → bus → WS `state` 频道 → 面板让拓展表失效(按拓展合并过)。
+		const reportProblems = createReportProblemLog({
+			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", id),
+		});
+		runtime.serviceCtx.onDispose(() => reportProblems.dispose());
 		loadedExtensions = await loadExtensions({
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
@@ -868,6 +875,8 @@ export async function startStandaloneServer(
 			// 订阅源报上来、核过、对上了订阅的一条 → bus(ADR-0019 决策 7 / 62)。出卡、存资料、首页在播都从
 			// bus 上接;这一趟不等它们,拓展那头在这一下之后就 resolve。
 			onSubscriptionReport: (delivery) => runtime.bus.emit("subscription-reported", delivery),
+			// 丢格与整条拒(决策 60)。ctx 已经记过日志;叫面板重取的那一声由记录自己发。
+			onSubscriptionReportProblem: (problem) => reportProblems.record(problem),
 			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
 			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,
 			onSettingsChanged: (fn) =>
@@ -938,6 +947,8 @@ export async function startStandaloneServer(
 				lookup: async (id, query) => loadedExtensions?.lookup(id, query),
 				// 跑着的那份交过的 zod —— 写设置时再过一道(ADR-0019 决策 35)。
 				settingsSchemas: (id) => loadedExtensions?.settingsSchemas(id),
+				// 列表那一行带上它的「上报问题」,卸载时清掉那一段(决策 60)。
+				reportProblems,
 				// 「只重载这个拓展」(决策 47):没有新版等着换上时装载器自己拒,那句话原样回面板。
 				swap: async (id) => {
 					await loadedExtensions?.swap(id);

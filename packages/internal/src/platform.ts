@@ -71,6 +71,14 @@ export interface BiliEvents {
 	 */
 	"extension-settings-changed": (id: string) => void;
 	/**
+	 * 某个订阅源拓展的「上报问题」(ADR-0019 决策 60:丢格、整条拒)新记了几条。载荷只有拓展 id,**按拓展
+	 * 合并过**(`REPORT_PROBLEMS_CHANGED_COALESCE_MS`)。独立端转成 `state` WS channel 的同名帧,面板只让
+	 * 拓展表失效 —— 那个框住在拓展表的那一行上。
+	 *
+	 * 不借 `extension-status-changed`:那一声说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表。
+	 */
+	"extension-report-problems-changed": (id: string) => void;
+	/**
 	 * 订阅源拓展报上来一条、宿主核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 57 / 62)。五种都走这一个
 	 * 事件,按 `report.kind` 分:三种事件(`post` / `liveStart` / `liveEnd`)与两种不触发推送的上报
 	 * (`profile` / `liveStatus`)。

@@ -24,6 +24,7 @@
 | `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。**按拓展合并**:第一喊起 250ms 窗口里的连喊只在尾沿发一次(`STATUS_CHANGED_COALESCE_MS`,窗口不随后来的喊往后推),收摊时挂着的那一发清掉。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |
 | `subscription-reported` | 订阅源拓展经 `handle.report*` 报上来一条、ctx 核过形状(`checkSubscriptionReport`:不认识的字段 / 必填坏了整条拒,选填坏了只丢那一格)、按 `(拓展, 外部 id)` 对上了它名下的订阅(ADR-0019 决策 7 / 57 / 59 / 62)。**五种上报走这一个事件**,按 `report.kind` 分:三种事件 `post` / `liveStart` / `liveEnd` 与两种不触发推送的 `profile` / `liveStatus`。载荷 `SubscriptionReportDelivery{extensionId, externalId, subscriptionIds, report}`:`subscriptionIds` 已按开关筛过 —— 事件与直播状态只含开着的订阅,资料更新含全部;一条都对不上就不发。图是 `Uint8Array`,**不进 WS 帧**。index.ts 经装载器的 `onSubscriptionReport` 接到 bus。丢格与拒绝不上 bus,走 ctx 里唯一那个「上报问题」出口(日志 + `onSubscriptionReportProblem`)。消费方:资料落盘(`runtime/reported-profiles.ts`,只收 `profile`,见 `subscription-profiles-changed`);在播表、出卡与推送在 ④ 后面几片接 |
 | `extension-settings-changed` | 某个拓展的设置经 `PATCH /api/ext/<id>/settings` 写进去了(ADR-0019 决策 35)。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-settings-changed` 帧,面板按 id 失效它的设置与视图(面板改走新口的那一片才接上,在那之前这一帧没人听)—— 设置里有密钥,数据本身不上 bus、不进帧。这是宿主自己知道的事实,不替拓展判视图变没变 |
+| `extension-report-problems-changed` | 某个订阅源拓展的「上报问题」(ADR-0019 决策 60:丢格、整条拒,ctx 里唯一那个出口 `reportProblem` → `onSubscriptionReportProblem`)新记了几条。记录在 `extensions/report-problems.ts`(每个拓展最近 20 条,只在内存,卸载清空),**按拓展合并**:第一条起 250ms 窗口里再记的只在尾沿发一次(`REPORT_PROBLEMS_CHANGED_COALESCE_MS`,窗口不往后推,与 `extension-status-changed` 各算各的)。载荷只有拓展 id;独立端转成 `state` WS channel 的同名帧,面板只让拓展表失效(框住在 `ExtensionDTO.reportProblems` 上)。**不借 `extension-status-changed`**:那一声说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表 |
 | `subscription-profiles-changed` | 拓展报的资料更新(`subscription-reported` 里 `kind === "profile"` 的)经 `runtime/reported-profiles.ts` 落进资料缓存(`SubRuntimeStore.cachedProfile`,给了哪格改哪格)与头像文件(摘要不同才覆盖)之后,面板看得见的名字 / 头像 / 粉丝**真变了**的订阅 id(ADR-0019 决策 7 / 49 / 62)。按 250ms 窗口合并(拓展起来时可能一口气报一百条)。独立端转成 `state` WS channel 的同名帧,面板失效订阅列表重取。🔴 **资料不是配置,不发 `config-changed "subscriptions"`** —— 那一档会重建路由表、通知拓展「名下订阅变了」、让引擎 reconcile |
 
 ## MessageBus 语义
@@ -43,7 +44,7 @@
 | `auth` | `login-status-report` | `useAuthChannel` → 扫码 / 登录状态 |
 | `push-events` | `history-recorded` / `history-updated` / `live-state-changed` / `live-viewers-changed` / `fans-refreshed` | `usePushEventsChannel` → tanstack-query `setQueryData` 补丁(recorded 头插 + 日桶 +1,无目标行不计;updated 按 id 换行、不插) |
 | `log` | `engine-error` + 每条 `logger.<level>`(在单一 fan-out 点脱敏,同时归档进 LogStore jsonl) | `useAlertChannel`(engine-error → AlertShell)+ `useLogChannel`(全量流 → Logs tab) |
-| `state` | `hydrate`(订阅 / 重连时)+ `config-changed`(只带 scope)+ `extension-changed` / `extension-settings-changed`(都只带拓展 id)+ `subscription-profiles-changed`(只带订阅 id) | `useStateChannel` → 按 scope / 按拓展 id invalidate tanstack-query 缓存;资料变了失效订阅列表 |
+| `state` | `hydrate`(订阅 / 重连时)+ `config-changed`(只带 scope)+ `extension-changed` / `extension-settings-changed`(都只带拓展 id)+ `extension-report-problems-changed`(只带拓展 id)+ `subscription-profiles-changed`(只带订阅 id) | `useStateChannel` → 按 scope / 按拓展 id invalidate tanstack-query 缓存;上报问题变了失效拓展表;资料变了失效订阅列表 |
 | `resources` | `ResourceMonitor` 每 2 秒一份系统资源样本(宿主机 / 本体 / 浏览器子树) | `useResourcesChannel` → 概览页「系统资源」卡 |
 
 ## 推送历史的行模型

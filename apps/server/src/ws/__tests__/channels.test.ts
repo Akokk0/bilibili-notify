@@ -255,6 +255,19 @@ describe("attachChannelWiring — 拓展喊「面板数据变了」", () => {
 	});
 });
 
+describe("attachChannelWiring — 拓展的上报问题变了", () => {
+	/**
+	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60)住在拓展表那一行上。这一帧只叫面板重取拓展表 ——
+	 * 不借 `extension-changed`:那一帧说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表。
+	 */
+	it("extension-report-problems-changed → state 频道同名帧,只带 id", () => {
+		const h = wire();
+		h.bus.emit("extension-report-problems-changed", "douyin");
+		expect(h.last()).toMatchObject({ type: "state", event: "extension-report-problems-changed" });
+		expect(h.last().data).toEqual({ id: "douyin" });
+	});
+});
+
 describe("attachChannelWiring — 拓展订阅的资料变了", () => {
 	/**
 	 * 拓展报的资料更新落进了资料缓存(ADR-0019 决策 7 / 62)—— 那不是配置,不走 `config-changed`。

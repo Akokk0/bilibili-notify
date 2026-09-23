@@ -234,7 +234,10 @@ export interface LoadExtensionsOptions {
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
-	/** 某个拓展喊了「面板数据变了」(`ctx.statusChanged`);宿主把它推到面板。 */
+	/**
+	 * 某个拓展喊了「面板数据变了」(`ctx.statusChanged`);宿主把它推到面板。只有拓展自己喊才叫它 ——
+	 * 上报问题(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
+	 */
 	onStatusChanged?: (id: string) => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;

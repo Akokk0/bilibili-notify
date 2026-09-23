@@ -25,6 +25,7 @@ import type { ActionOutcome, LookupOutcome } from "./extensions/context.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
+import type { ReportProblemLog } from "./extensions/report-problems.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAiRoute } from "./routes/ai.js";
@@ -121,6 +122,8 @@ export interface CreateAppOptions {
 		 * 再过一道(ADR-0019 决策 35)。没在跑是 undefined。没接 → 只有清单那一道。
 		 */
 		settingsSchemas?: (id: string) => readonly ZodType[] | undefined;
+		/** 订阅源拓展的「上报问题」记录(ADR-0019 决策 60)。没接 → 列表里哪一行都不带这一格。 */
+		reportProblems?: Pick<ReportProblemLog, "list" | "clear">;
 		/**
 		 * 只重载这个拓展(装载器的 `swap()`,ADR-0012 决策 47)。没标着「新版等着换上」时抛,
 		 * 路由把那句话原样交出去。没接 → 那一口永远 404。
@@ -444,6 +447,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			runAction: async (id, name) => options.extensions?.runAction?.(id, name),
 			lookup: async (id, query) => options.extensions?.lookup?.(id, query),
 			settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
+			reportProblems: options.extensions?.reportProblems,
 			// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。
 			settingsChanged: (id) => runtime.bus.emit("extension-settings-changed", id),
 			swap: options.extensions?.swap,

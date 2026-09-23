@@ -290,7 +290,8 @@ export interface CreateExtensionContextOptions {
 	onSettingsInvalid?: () => void;
 	/**
 	 * 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。**已经合并过**:一个
-	 * 窗口里的连喊只叫它一次,见 {@link STATUS_CHANGED_COALESCE_MS}。
+	 * 窗口里的连喊只叫它一次,见 {@link STATUS_CHANGED_COALESCE_MS}。**只有拓展自己喊才叫它** —— 它说的是
+	 * 「拓展的视图变了」;上报问题(决策 60)有自己那一声,在记录那头发,不走这里。
 	 */
 	onStatusChanged?: () => void;
 	/** 入站的两路收口。 */

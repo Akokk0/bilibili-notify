@@ -23,6 +23,7 @@ import type {
 	HistoryMessageRole,
 	PushKind,
 	PushStatus,
+	SubscriptionReportKind,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
@@ -141,6 +142,28 @@ export interface ExtensionDTO {
 	 * 生产上不给随手漏模块的口子。
 	 */
 	staged?: { version: string };
+	/**
+	 * 订阅源拓展最近的「上报问题」(ADR-0019 决策 60):丢格、整条拒 —— 一条上报一条,**新的在前**,
+	 * 最多 20 条。**有才有这一格**,详情页凭它判「有问题才出现」那个框。只在服务端内存里,重启清空、
+	 * 卸载清空;新记了时服务端发 `extension-report-problems-changed`(按拓展合并过),面板据此重取这张表。
+	 */
+	reportProblems?: ExtensionReportProblemView[];
+}
+
+/** 一条「上报问题」(见 {@link ExtensionDTO.reportProblems})。 */
+export interface ExtensionReportProblemView {
+	/** 什么时候(毫秒时间戳)。 */
+	at: number;
+	/** 报的哪一种:三种事件 + 直播状态 + 资料。 */
+	kind: SubscriptionReportKind;
+	/** 拓展报的外部 id(不是字符串 / 太长的已截成一段能看的)—— 订阅名对不上时就印它。 */
+	externalId: string;
+	/** 它名下指向这个人的订阅(停用的也算);一条都没对上是空表。 */
+	subscriptionIds: string[];
+	/** `rejected`:整条拒了;`dropped`:收下了,丢了几格。 */
+	outcome: "rejected" | "dropped";
+	/** 拒的原因(一句),或丢掉的每一格(每格一句)。 */
+	reasons: string[];
 }
 
 /** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
