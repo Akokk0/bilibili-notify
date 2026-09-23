@@ -865,6 +865,9 @@ export async function startStandaloneServer(
 				runtime.bus.on("config-changed", (scope) => {
 					if (scope === "subscriptions") fn();
 				}),
+			// 订阅源报上来、核过、对上了订阅的一条 → bus(ADR-0019 决策 7 / 62)。出卡、存资料、首页在播都从
+			// bus 上接;这一趟不等它们,拓展那头在这一下之后就 resolve。
+			onSubscriptionReport: (delivery) => runtime.bus.emit("subscription-reported", delivery),
 			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
 			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,
 			onSettingsChanged: (fn) =>

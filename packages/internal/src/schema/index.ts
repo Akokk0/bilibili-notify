@@ -12,5 +12,6 @@ export * from "./message-layout";
 export * from "./migration";
 export * from "./resolve";
 export * from "./roast-schedule";
+export * from "./subscription-report";
 export * from "./subscriptions";
 export * from "./targets";

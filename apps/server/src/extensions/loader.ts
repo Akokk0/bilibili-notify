@@ -13,6 +13,7 @@ import {
 	type InboundSinks,
 	manifestSecretKeys,
 	type ServiceContext,
+	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
@@ -24,6 +25,7 @@ import {
 	type ExtensionRuntime,
 	type ExtensionSubscriptionRow,
 	type LookupOutcome,
+	type SubscriptionReportProblem,
 } from "./context.js";
 import {
 	apiVersionMismatch,
@@ -221,6 +223,13 @@ export interface LoadExtensionsOptions {
 	subscriptions: () => readonly ExtensionSubscriptionRow[];
 	/** 订阅「订阅动过了」。 */
 	onSubscriptionsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 订阅源拓展报上来一条、核过、对上了它名下的订阅(ADR-0019 决策 7 / 62)—— 宿主发到 bus。载荷里
+	 * 已经带着拓展 id。
+	 */
+	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
+	/** 「上报问题」(决策 60):丢格、整条拒。ctx 已经记过日志;这里接到拓展详情页那个框上。 */
+	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
 	/** 某个拓展自己那份设置(`globals.extensions.<id>.settings`),现读、原样。 */
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
@@ -579,6 +588,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			onConnectionsChanged: opts.onConnectionsChanged,
 			subscriptions: opts.subscriptions,
 			onSubscriptionsChanged: opts.onSubscriptionsChanged,
+			onSubscriptionReport: opts.onSubscriptionReport,
+			onSubscriptionReportProblem: opts.onSubscriptionReportProblem,
 			settings: () => opts.settings(id),
 			onSettingsChanged: opts.onSettingsChanged,
 			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。

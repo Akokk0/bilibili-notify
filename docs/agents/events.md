@@ -22,6 +22,7 @@
 | `fans-refreshed` | 独立端 `FansPoller` 每个 tick 的完整 `FansRefreshEntry[]` 快照 |
 | `ready` | 业务核心完全启动 |
 | `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。**按拓展合并**:第一喊起 250ms 窗口里的连喊只在尾沿发一次(`STATUS_CHANGED_COALESCE_MS`,窗口不随后来的喊往后推),收摊时挂着的那一发清掉。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |
+| `subscription-reported` | 订阅源拓展经 `handle.report*` 报上来一条、ctx 核过形状(`checkSubscriptionReport`:不认识的字段 / 必填坏了整条拒,选填坏了只丢那一格)、按 `(拓展, 外部 id)` 对上了它名下的订阅(ADR-0019 决策 7 / 57 / 59 / 62)。**五种上报走这一个事件**,按 `report.kind` 分:三种事件 `post` / `liveStart` / `liveEnd` 与两种不触发推送的 `profile` / `liveStatus`。载荷 `SubscriptionReportDelivery{extensionId, externalId, subscriptionIds, report}`:`subscriptionIds` 已按开关筛过 —— 事件与直播状态只含开着的订阅,资料更新含全部;一条都对不上就不发。图是 `Uint8Array`,**不进 WS 帧**。index.ts 经装载器的 `onSubscriptionReport` 接到 bus。丢格与拒绝不上 bus,走 ctx 里唯一那个「上报问题」出口(日志 + `onSubscriptionReportProblem`)。**眼下还没有消费方**(资料落盘、在播表、出卡在 ④ 后面几片接)|
 | `extension-settings-changed` | 某个拓展的设置经 `PATCH /api/ext/<id>/settings` 写进去了(ADR-0019 决策 35)。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-settings-changed` 帧,面板按 id 失效它的设置与视图(面板改走新口的那一片才接上,在那之前这一帧没人听)—— 设置里有密钥,数据本身不上 bus、不进帧。这是宿主自己知道的事实,不替拓展判视图变没变 |
 
 ## MessageBus 语义

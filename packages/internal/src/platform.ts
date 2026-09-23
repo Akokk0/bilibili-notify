@@ -1,4 +1,5 @@
 import type { HistoryEntry } from "./schema/history";
+import type { SubscriptionReportDelivery } from "./schema/subscription-report";
 import type { Subscription } from "./schema/subscriptions";
 import type { PushTarget } from "./schema/targets";
 
@@ -69,6 +70,17 @@ export interface BiliEvents {
 	 * 这是宿主自己知道的事实,不替拓展判它的视图变没变(那是 `extension-status-changed`)。
 	 */
 	"extension-settings-changed": (id: string) => void;
+	/**
+	 * 订阅源拓展报上来一条、宿主核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 57 / 62)。五种都走这一个
+	 * 事件,按 `report.kind` 分:三种事件(`post` / `liveStart` / `liveEnd`)与两种不触发推送的上报
+	 * (`profile` / `liveStatus`)。
+	 *
+	 * `subscriptionIds` 已经按开关筛过:事件与直播状态只含开着的订阅,资料更新含全部(见
+	 * {@link SubscriptionReportDelivery})。一条都对不上就不发。
+	 *
+	 * 🔴 载荷里的图是字节(`Uint8Array`),**不进 WS 帧**、不落盘 —— 出卡、存头像这些消费方自己取用。
+	 */
+	"subscription-reported": (delivery: SubscriptionReportDelivery) => void;
 	/**
 	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,

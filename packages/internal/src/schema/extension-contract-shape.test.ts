@@ -11,9 +11,12 @@
  *   字段、换一换并集成员的次序不算形状变了。
  * - 转换按**输入侧**(`io: "input"`):钉的是拓展**交得进来**什么。表达不了的类型(`z.custom` 这类)
  *   让它照默认的 `unrepresentable: "throw"` 当场炸 —— 换成 `"any"` 那一格就成了 `{}`,守卫从此对它
- *   失明;真要登记这种,用 `override` 替那一种类型写一份形状。
+ *   失明;真要登记这种,替**那一份** schema 写一份形状(见 {@link BYTE_SHAPES})。⚠️ 走不了
+ *   `toJSONSchema` 的 `override` 参数:它在处理器之后才跑,custom 的处理器在那之前就 throw 了。
  * - ⚠️ **`refine` / `superRefine` 里的规矩进不了 JSON Schema**,这条看不见 —— 放宽那些(老 BN 会拒、
- *   新 BN 收)同样要抬小号,改的时候自己想一遍。
+ *   新 BN 收)同样要抬小号,改的时候自己想一遍。同一个盲区:上报里图的格式与单张字节上限在 `z.custom`
+ *   的判定函数里(替它写的形状只说「这是字节、哪一种」),整条上报的图总量上限在走格子那一段里
+ *   (`checkSubscriptionReport`),都看不见;张数上限是 `maxItems`、字数与数值的上下限都在形状里,看得见。
  * - 拓展一侧的 TS 类型由 `apps/server/src/extensions/*-shape-pin.ts` 与这几份 zod 双向钉着,所以钉住
  *   zod 就间接钉住了类型。ctx 多一个方法是纯 TS、没有 zod,不在这里。
  */
@@ -24,6 +27,15 @@ import { z } from "zod";
 import { EXTENSION_API_RANGE, ExtensionManifestV2Schema } from "./extension-manifest";
 import { SubscriptionCandidatesSchema } from "./extension-subscription";
 import { ExtensionViewSchema } from "./extension-view";
+import {
+	SubscriptionLiveEndSchema,
+	SubscriptionLiveStartSchema,
+	SubscriptionLiveStatusSchema,
+	SubscriptionPostSchema,
+	SubscriptionProfileSchema,
+	SubscriptionReportAvatarSchema,
+	SubscriptionReportPictureSchema,
+} from "./subscription-report";
 
 interface ContractRow {
 	/** 报错时点名用,也是摘要表的键 —— 不许重名。 */
@@ -36,13 +48,33 @@ interface ContractRow {
 /**
  * 被钉的契约 —— **以后加一个 schema 就是往这里加一行**。
  *
- * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、解析门候选、视图、(以后的)上报。
+ * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、解析门候选、视图、五种上报。
  */
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v2", schema: ExtensionManifestV2Schema, digest: "45bca9ed5ee47dd8" },
 	{ name: "解析门候选", schema: SubscriptionCandidatesSchema, digest: "69bdc90eeb29a4b2" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
+	{ name: "上报:作品", schema: SubscriptionPostSchema, digest: "21db7ebd2e6b36b3" },
+	{ name: "上报:开播", schema: SubscriptionLiveStartSchema, digest: "83ea3e17a459f360" },
+	{ name: "上报:下播", schema: SubscriptionLiveEndSchema, digest: "f7e48c7ee78de47e" },
+	{ name: "上报:直播状态", schema: SubscriptionLiveStatusSchema, digest: "ded2ea235332d960" },
+	{ name: "上报:资料更新", schema: SubscriptionProfileSchema, digest: "a522bed1fa10e01b" },
 ];
+
+/**
+ * 表达不了、但登记过的那几份 schema → 替它写的形状。**按 schema 对象认**,不按类型认:别处再冒出一个
+ * `z.custom`,它不在这张表里,照旧 throw。
+ *
+ * 上报的图是 `z.custom<Uint8Array>`(字节)。形状只说「这是字节」与「哪一种」—— 作品图 / 封面与头像收的
+ * 格式不一样,把头像那一格换成作品图那一份(就多收了 gif)也得红。格式与大小本身在判定函数里,看不见。
+ *
+ * ⚠️ 登记在这里的 schema 不能带 `_zod.parent`(接了 `.refine()` 就有):zod 4.4 碰上「钩子 + parent 链」
+ * 会在 `flattenRef` 里炸掉,所以上报那两份字节格是一个 custom、不接 refine。
+ */
+const BYTE_SHAPES: ReadonlyMap<z.ZodType, Record<string, unknown>> = new Map([
+	[SubscriptionReportPictureSchema, { "x-bn-bytes": "Uint8Array", "x-bn-image": "picture" }],
+	[SubscriptionReportAvatarSchema, { "x-bn-bytes": "Uint8Array", "x-bn-image": "avatar" }],
+]);
 
 /** 上面那些摘要是在哪个契约小号上记的。 */
 const PINNED_REVISION = 0;
@@ -76,14 +108,33 @@ function canonical(value: unknown): unknown {
 	return out;
 }
 
+/**
+ * 转 JSON Schema 的这一趟里,给 {@link BYTE_SHAPES} 那几份挂上 zod 的单 schema 钩子
+ * (`_zod.toJSONSchema`,「override `toJSONSchema` logic」)—— `process()` 先问它、问到了就不走处理器,
+ * custom 那一抛就不会发生。转完摘掉,别的地方看见的还是原样的 schema。
+ */
+function withByteShapes<T>(run: () => T): T {
+	const previous = [...BYTE_SHAPES.keys()].map(
+		(schema) => [schema, schema._zod.toJSONSchema] as const,
+	);
+	for (const [schema, shape] of BYTE_SHAPES) schema._zod.toJSONSchema = () => ({ ...shape });
+	try {
+		return run();
+	} finally {
+		for (const [schema, hook] of previous) schema._zod.toJSONSchema = hook;
+	}
+}
+
 /** 一份 schema 的形状摘要(sha256 前 16 位,只用来判「变没变」)。 */
 function contractDigest(schema: z.ZodType): string {
-	const json = z.toJSONSchema(schema, {
-		io: "input",
-		// 空的元数据表:`.describe()` / `.meta()` 是文档,不是形状。
-		metadata: z.registry(),
-		unrepresentable: "throw",
-	});
+	const json = withByteShapes(() =>
+		z.toJSONSchema(schema, {
+			io: "input",
+			// 空的元数据表:`.describe()` / `.meta()` 是文档,不是形状。
+			metadata: z.registry(),
+			unrepresentable: "throw",
+		}),
+	);
 	return createHash("sha256")
 		.update(JSON.stringify(canonical(json)))
 		.digest("hex")
@@ -134,5 +185,17 @@ describe("contractDigest", () => {
 		["严格变宽松", z.object(base.shape)],
 	])("%s → 摘要变了", (_label, changed) => {
 		expect(contractDigest(changed)).not.toBe(contractDigest(base));
+	});
+
+	it("没登记的 z.custom 照旧当场炸 —— 替字节格写的形状只挂在登记过的那两份上", () => {
+		expect(() =>
+			contractDigest(z.strictObject({ bytes: z.custom<Uint8Array>(() => true) })),
+		).toThrow(/Custom types/);
+	});
+
+	it("作品图与头像两种字节格分得开:头像那一格换成作品图那一份,摘要变了", () => {
+		expect(contractDigest(z.strictObject({ avatar: SubscriptionReportPictureSchema }))).not.toBe(
+			contractDigest(z.strictObject({ avatar: SubscriptionReportAvatarSchema })),
+		);
 	});
 });

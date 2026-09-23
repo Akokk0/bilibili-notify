@@ -246,7 +246,145 @@ export interface ExtensionOwnSubscription {
 	enabled: boolean;
 }
 
-/** 注册完一个订阅源之后拿到的把手。 */
+// ---- 订阅源的上报(ADR-0019 决策 4 / 7 / 54–57 / 62)--------------------------------------------
+//
+// 🔴 这几张表是 `@bilibili-notify/internal` 里上报 zod 的**手写镜像**(拓展进不来 internal),两份由宿主
+// 那头的类型断言**双向严格相等**地钉住(`apps/server/src/extensions/subscription-shape-pin.ts`)。
+//
+// 共同的规矩:
+// - **时刻一律是毫秒时间戳**(`Date.now()` / `getTime()`)。平台接口常给秒 —— 早于 2000 年的宿主当场拒。
+// - **图一律交字节**(`Uint8Array`,Buffer 也行),平台的门道(Referer、签名链接、过期)留在拓展里
+//   (决策 6)。宿主按文件头认格式,收下的是它自己拷的一份。
+// - 字段只收**通用的**;多交一格宿主不认识的,整条拒。认识的选填格值坏了(一张图解不开、超大小、数为负、
+//   字符串超长)只丢那一格,其余照收 —— 丢了什么、为什么,记在日志与拓展详情页的「上报问题」里。
+
+/**
+ * 卡上的作者(决策 54):都选填,出卡优先用这里的,没带的那一样用订阅资料。**不改资料** —— 订阅页的
+ * 名字 / 头像只认 {@link SubscriptionSourceHandle.reportProfile}。
+ */
+export interface SubscriptionAuthor {
+	/** 1–128 字。 */
+	name?: string;
+	/** png / jpeg / webp(不收 gif、SVG),约 96 KiB 封顶。 */
+	avatar?: Uint8Array;
+}
+
+/** 作品里的视频(决策 55)。都选填。 */
+export interface SubscriptionVideo {
+	/** 封面:png / jpeg / webp / gif,8 MiB 封顶。 */
+	cover?: Uint8Array;
+	title?: string;
+	/** 时长,**秒**。 */
+	duration?: number;
+	/** 简介,纯文本。 */
+	description?: string;
+	/** 播放数。 */
+	plays?: number;
+}
+
+/** 作品的互动数(决策 55):交数字(非负整数),BN 排版。 */
+export interface SubscriptionPostStats {
+	likes?: number;
+	comments?: number;
+	/** 转发 / 分享。 */
+	shares?: number;
+}
+
+/**
+ * 一条作品(决策 55)—— 映射到 BN 的「动态」。
+ *
+ * 不收:转发(嵌套原作品)、富文本(表情图 / @ / 话题高亮)、话题、附加卡(预约 / 商品 / 投票)、
+ * 充电专属、弹幕数、大会员标记。正文里的 #话题 照字面显示。
+ */
+export interface SubscriptionPost {
+	/** 平台自己的作品 id,原样存。 */
+	id: string;
+	/** 作品的链接,http(s)。 */
+	url: string;
+	/** 发布时刻,毫秒。 */
+	publishedAt: number;
+	/** 正文,纯文本,保留换行。 */
+	text?: string;
+	/** 作品图:png / jpeg / webp / gif,单张 8 MiB、最多 30 张;宽高由 BN 读。 */
+	images?: readonly Uint8Array[];
+	video?: SubscriptionVideo;
+	stats?: SubscriptionPostStats;
+	author?: SubscriptionAuthor;
+}
+
+/**
+ * 直播那张表里除了链接与开播时刻之外的格(决策 56),都选填。
+ *
+ * 不收:关键帧、人气值、短号、粉丝勋章、词云 / 总结 / SC / 上舰。粉丝那一格事件不带 —— BN 拿订阅资料
+ * 里的粉丝数自己算(开播记一次、下播相减)。
+ */
+export interface SubscriptionLiveDetails {
+	title?: string;
+	/** 封面:png / jpeg / webp / gif,8 MiB 封顶。 */
+	cover?: Uint8Array;
+	/** 分区。 */
+	category?: string;
+	viewers?: number;
+	likes?: number;
+	/** 纯文本。 */
+	description?: string;
+	author?: SubscriptionAuthor;
+}
+
+/** 开播(决策 56)—— 映射到 BN 的「开播」。 */
+export interface SubscriptionLiveStart extends SubscriptionLiveDetails {
+	/** 直播间链接,http(s)。 */
+	url: string;
+	/** 开播时刻,毫秒。 */
+	startedAt: number;
+}
+
+/**
+ * 下播(决策 56)—— 映射到 BN 的「下播」。开播时刻 BN 自己记着,BN 中途重启过才用得上这里补的那一格。
+ */
+export interface SubscriptionLiveEnd extends SubscriptionLiveDetails {
+	url: string;
+	startedAt?: number;
+}
+
+/**
+ * 直播状态(决策 57)—— **不触发推送**。每轮查询都可以报,开机第一轮查基线时也报。BN 拿它做首页在播、
+ * 周期「正在直播」、重启补推、下播补开播时刻;开播卡 / 下播卡仍只由事件触发,BN 不拿状态的翻转猜。
+ */
+export interface SubscriptionLiveStatus extends SubscriptionLiveDetails {
+	/** 在不在播。 */
+	live: boolean;
+	url?: string;
+	startedAt?: number;
+}
+
+/**
+ * 资料更新(决策 7 / 62)—— **不触发推送**,订阅页的名字 / 头像 / 粉丝数认的是它。都选填。
+ */
+export interface SubscriptionProfile {
+	/** 1–128 字。 */
+	name?: string;
+	/** png / jpeg / webp(不收 gif、SVG),约 96 KiB 封顶。 */
+	avatar?: Uint8Array;
+	fans?: number;
+}
+
+/**
+ * 注册完一个订阅源之后拿到的把手。
+ *
+ * **五个 `report*`**(决策 7 / 62):按外部 id 报「那个人怎么了」,BN 找出这个拓展名下所有指向他的订阅
+ * 逐条分发。它们都在 BN **核完形状、对上订阅**之后就 resolve,不等出卡与推送;拒掉时 reject 一个
+ * 带原因的 `Error`:
+ * - 报了清单 `contributes.subscription.events` 里没声明的种类(直播状态要声明了开播或下播之一;
+ *   资料更新总是收);
+ * - 外部 id 不是 1–256 字的字符串;
+ * - 多了 BN 不认识的字段,或者必填的缺了 / 坏了。
+ *
+ * 外部 id 不在自己名下(多半是订阅刚删、变更通知还没到)不算错:忽略、正常 resolve。停用的订阅收不到
+ * 事件与直播状态,资料更新照样生效。
+ *
+ * 判新、去重、限流都归拓展(决策 53):BN 报什么收什么,不兜底 —— 开机第一轮只记基线、别报。
+ */
 export interface SubscriptionSourceHandle {
 	/**
 	 * 属于自己的订阅,**现读**。别的拓展的、B 站的都不在里面。
@@ -257,6 +395,16 @@ export interface SubscriptionSourceHandle {
 	subscriptions(): readonly ExtensionOwnSubscription[];
 	/** 订阅动过了。卸载时自动摘掉。 */
 	onSubscriptionsChanged(fn: () => void): Disposable;
+	/** 那个人发了一条新作品(清单要声明 `post`)。 */
+	reportPost(externalId: string, post: SubscriptionPost): Promise<void>;
+	/** 那个人开播了(清单要声明 `liveStart`)。 */
+	reportLiveStart(externalId: string, live: SubscriptionLiveStart): Promise<void>;
+	/** 那个人下播了(清单要声明 `liveEnd`)。 */
+	reportLiveEnd(externalId: string, live: SubscriptionLiveEnd): Promise<void>;
+	/** 那个人此刻在不在播(清单要声明 `liveStart` 或 `liveEnd`)。不触发推送。 */
+	reportLiveStatus(externalId: string, status: SubscriptionLiveStatus): Promise<void>;
+	/** 那个人的名字 / 头像 / 粉丝数(总是收)。不触发推送。 */
+	reportProfile(externalId: string, profile: SubscriptionProfile): Promise<void>;
 }
 
 /**

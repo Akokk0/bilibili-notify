@@ -12,6 +12,8 @@ import type {
 } from "@bilibili-notify/extension";
 import {
 	type Connection,
+	checkReportedExternalId,
+	checkSubscriptionReport,
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
@@ -25,6 +27,10 @@ import {
 	type PlatformAdapter,
 	type ServiceContext,
 	SubscriptionCandidatesSchema,
+	type SubscriptionReport,
+	type SubscriptionReportDelivery,
+	type SubscriptionReportKind,
+	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
@@ -109,6 +115,28 @@ export interface ExtensionSubscriptionRow {
 	/** 那个人在平台上的 id,BN 不解读。 */
 	externalId: string;
 	enabled: boolean;
+}
+
+/**
+ * 一条「上报问题」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者丢了几格。
+ *
+ * 丢格与拒绝**只从一个出口出去**(ctx 里的 `reportProblem`):记一行 warn(带 `[ext:<id>]` 与原因),
+ * 再交给 {@link CreateExtensionContextOptions.onSubscriptionReportProblem} —— 拓展详情页那个「上报问题」框
+ * 接的就是它。散着写的话,框里迟早缺一类。
+ */
+export interface SubscriptionReportProblem {
+	extensionId: string;
+	/** 什么时候(毫秒)。 */
+	at: number;
+	/** 报的哪一种。 */
+	kind: SubscriptionReportKind;
+	/** 拓展报的外部 id(不是字符串 / 太长的,截成一段能看的)。 */
+	externalId: string;
+	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
+	subscriptionIds: readonly string[];
+	/** `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢了这几格(每格一句)。 */
+	outcome: "rejected" | "dropped";
+	reasons: readonly string[];
 }
 
 /**
@@ -244,6 +272,13 @@ export interface CreateExtensionContextOptions {
 	subscriptions: () => readonly ExtensionSubscriptionRow[];
 	/** 订阅「订阅动过了」。同 {@link onConnectionsChanged}:宿主替它订,只把结果转给它。 */
 	onSubscriptionsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 订阅源拓展报上来一条、核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 62)—— 宿主把它发到 bus。
+	 * `subscriptionIds` 已经按开关筛过(见 `SubscriptionReportDelivery`)。不给就只是没人收。
+	 */
+	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
+	/** 「上报问题」的出口(见 {@link SubscriptionReportProblem})。日志 ctx 已经记了;不给就只记日志。 */
+	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
 	/** 它自己那份设置(`globals.extensions.<id>.settings`),**现读**、原样。 */
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
@@ -406,6 +441,113 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		if (typeof def?.lookup !== "function") {
 			throw new Error(`extension ${id}: 订阅源要交解析门 lookup(query, signal)`);
 		}
+	}
+
+	// ---- 订阅源的上报(ADR-0019 决策 7 / 57 / 59 / 60 / 62)------------------------------------------
+
+	/** 清单声明的事件种类 —— 报上来的种类照它核(决策 5:清单就是能力声明)。 */
+	const declaredEvents =
+		opts.manifest.apiVersion === 2 ? (opts.manifest.contributes.subscription?.events ?? []) : [];
+
+	/** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
+	function externalIdPreview(raw: unknown): string {
+		if (typeof raw !== "string") return `(${typeof raw})`;
+		return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
+	}
+
+	/**
+	 * 「上报问题」**唯一**的出口(决策 60):记一行 warn(带 `[ext:<id>]` 与原因),再交给宿主 —— 拓展
+	 * 详情页那个框接的就是它。丢格、整条拒都从这里过,别散着写。
+	 */
+	function reportProblem(problem: Omit<SubscriptionReportProblem, "extensionId" | "at">): void {
+		const what = `${problem.kind}(外部 id ${problem.externalId})`;
+		logger.warn(
+			problem.outcome === "rejected"
+				? `上报 ${what} 整条拒了:${problem.reasons.join(";")}`
+				: `上报 ${what} 丢了 ${problem.reasons.length} 格:${problem.reasons.join(";")}`,
+		);
+		opts.onSubscriptionReportProblem?.({ ...problem, extensionId: id, at: Date.now() });
+	}
+
+	/**
+	 * 收一条上报:核外部 id → 核种类 → 核形状(规矩在 `checkSubscriptionReport`,决策 59)→ 找它名下指向
+	 * 这个人的订阅 → 按开关筛 → 交给宿主。拒掉时抛带原因的错(拓展那头是一个 reject),丢格照收。
+	 *
+	 * **不等出卡与推送**(决策 62):交给宿主(发到 bus)那一下就回。
+	 */
+	async function receiveReport(
+		kind: SubscriptionReportKind,
+		rawExternalId: unknown,
+		raw: unknown,
+	): Promise<void> {
+		if (disposed) {
+			refuse(`上报 ${kind}`);
+			throw new Error(`extension ${id} is already unloaded`);
+		}
+		const idCheck = checkReportedExternalId(rawExternalId);
+		const externalId = idCheck.ok ? idCheck.externalId : externalIdPreview(rawExternalId);
+		// 身份是 `(这个拓展, 外部 id)`(决策 50),同一个人可能有几条订阅。停用的也算「对上了」:资料更新
+		// 要发给它们,问题框里「哪条订阅」那一栏也要它们。
+		const matched = idCheck.ok
+			? opts
+					.subscriptions()
+					.filter((row) => row.extensionId === id && row.externalId === externalId)
+			: [];
+		const subscriptionIds = matched.map((row) => row.id);
+		const reject = (reason: string): never => {
+			reportProblem({ kind, externalId, subscriptionIds, outcome: "rejected", reasons: [reason] });
+			throw new Error(`BN 拒收这条 ${kind} 上报:${reason}`);
+		};
+		if (!idCheck.ok) return reject(idCheck.reason);
+		const undeclared = undeclaredReportReason(kind, declaredEvents);
+		if (undeclared !== undefined) return reject(undeclared);
+		const checked = checkSubscriptionReport(kind, raw);
+		if (!checked.ok) return reject(checked.reason);
+		if (checked.dropped.length > 0) {
+			reportProblem({
+				kind,
+				externalId,
+				subscriptionIds,
+				outcome: "dropped",
+				reasons: checked.dropped,
+			});
+		}
+		if (matched.length === 0) {
+			// 多半是订阅刚删、变更通知还没到它那儿(决策 62):不算错。
+			logger.debug(`上报 ${kind} 的外部 id ${externalId} 不在它名下的订阅里,忽略`);
+			return;
+		}
+		// 停用的:事件与直播状态收下不往下发(也不进首页在播);资料更新照样对它们生效(决策 62)。
+		const targets = kind === "profile" ? matched : matched.filter((row) => row.enabled);
+		if (targets.length === 0) {
+			logger.debug(`上报 ${kind} 的外部 id ${externalId} 名下的订阅都停用了,不往下发`);
+			return;
+		}
+		// `kind` 与 `checked.value` 是一对,只是泛型收窄不到联合的某一支。
+		const report = { kind, value: checked.value } as SubscriptionReport;
+		try {
+			opts.onSubscriptionReport?.({
+				extensionId: id,
+				externalId,
+				subscriptionIds: targets.map((row) => row.id),
+				report,
+			});
+		} catch (err) {
+			// bus 上的消费方抛了 —— 那是 BN 自己的 bug,不该变成拓展那头的一个 reject。
+			logger.error(`上报 ${kind} 交给宿主时抛了:${(err as Error).message}`);
+		}
+	}
+
+	/**
+	 * 把手上的一个 `report*`。🔴 拓展不接这个 Promise 时,它的 reject 不许变成 unhandledRejection ——
+	 * 独立端装的处理器会把整个进程关掉;拒掉的原因已经从上报问题的出口记下了。拓展 `await` 它照样拿得到。
+	 */
+	function reporter(kind: SubscriptionReportKind) {
+		return (externalId: unknown, raw: unknown): Promise<void> => {
+			const pending = receiveReport(kind, externalId, raw);
+			pending.catch(() => {});
+			return pending;
+		};
 	}
 
 	/** 这条连接是不是它自己的 —— 是的话把连接交出来,入站那两道校验都要用。 */
@@ -650,6 +792,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					if (disposed) return refuse("onSubscriptionsChanged");
 					return track(opts.onSubscriptionsChanged(fn));
 				},
+				reportPost: reporter("post"),
+				reportLiveStart: reporter("liveStart"),
+				reportLiveEnd: reporter("liveEnd"),
+				reportLiveStatus: reporter("liveStatus"),
+				reportProfile: reporter("profile"),
 			};
 		},
 		inbound: {
