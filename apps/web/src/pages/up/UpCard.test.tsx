@@ -152,7 +152,7 @@ describe("UpCard × 拓展订阅", () => {
 
 /**
  * 拓展订阅那张卡的平台(ADR-0019 决策 5 / 10 / 41):徽章说是哪个平台的;特性胶囊只列那个源报得
- * 出的,「动态」按平台的叫法走;拓展没在场时整张置灰、写明「××拓展没开」。
+ * 出的,「动态」按平台的叫法走;拓展没在场时整张置灰、写明「××拓展没在跑」。
  */
 const DOUYIN: SubscriptionPlatform = {
 	label: "抖音",
@@ -176,11 +176,11 @@ describe("UpCard × 订阅源的平台", () => {
 		expect(queryByText("SC")).toBeNull();
 	});
 
-	it("拓展不在场 → 置灰并写明「抖音拓展没开」", () => {
+	it("拓展不在场 → 置灰并写明「抖音拓展没在跑」", () => {
 		const { getByText, container } = render(
 			<UpCard {...props({ sub: makeExtSub(), platform: { ...DOUYIN, absent: true } })} />,
 		);
-		expect(getByText("抖音拓展没开")).toBeTruthy();
+		expect(getByText("抖音拓展没在跑")).toBeTruthy();
 		expect((container.firstElementChild as HTMLElement).className).toContain("grayscale");
 	});
 
@@ -188,7 +188,7 @@ describe("UpCard × 订阅源的平台", () => {
 		const { queryByText, container } = render(
 			<UpCard {...props({ sub: makeExtSub(), platform: { ...DOUYIN, absent: undefined } })} />,
 		);
-		expect(queryByText(/拓展没开/)).toBeNull();
+		expect(queryByText(/拓展没在跑/)).toBeNull();
 		expect((container.firstElementChild as HTMLElement).className).not.toContain("grayscale");
 	});
 

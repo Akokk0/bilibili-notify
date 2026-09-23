@@ -7,7 +7,7 @@
  * - 选了平台,输入框的字原样交给那个拓展的解析门;候选列出来(已订阅的标出来、挑不了);
  *   解析门报错时原样摆出服务端那句话。
  * - 挑一个候选 → 同一个配置弹层(新建)→「创建订阅」发一整条拓展订阅 + 用候选预填的资料。
- * - 列表里拓展没开的那条订阅置灰、写明「××拓展没开」;拓展列表没回来时不下结论。
+ * - 列表里拓展没在跑的那条订阅置灰、写明「××拓展没在跑」;拓展列表没回来时不下结论。
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
@@ -302,27 +302,36 @@ describe("选了订阅源", () => {
 });
 
 describe("列表里的拓展订阅", () => {
-	it("拓展停了 → 那张卡写「抖音拓展没开」", async () => {
+	it("拓展停了 → 那张卡写「抖音拓展没在跑」", async () => {
 		subs = [BILI, extSub()];
 		extensions = Promise.resolve({
 			extensions: [source({ state: "disabled", enabled: false })],
 		});
 		renderSubs();
-		expect(await screen.findByText("抖音拓展没开")).toBeTruthy();
+		expect(await screen.findByText("抖音拓展没在跑")).toBeTruthy();
+	});
+
+	it("拓展开着但没跑起来(加载失败)→ 同样写「抖音拓展没在跑」,不说「没开」", async () => {
+		subs = [BILI, extSub()];
+		extensions = Promise.resolve({
+			extensions: [source({ state: "failed", enabled: true })],
+		});
+		renderSubs();
+		expect(await screen.findByText("抖音拓展没在跑")).toBeTruthy();
 	});
 
 	it("拓展没装 → 拿不到名字,写拓展 id", async () => {
 		subs = [BILI, extSub({ extensionId: "kuaishou" })];
 		renderSubs();
-		expect(await screen.findByText("kuaishou拓展没开")).toBeTruthy();
+		expect(await screen.findByText("kuaishou拓展没在跑")).toBeTruthy();
 	});
 
-	it("拓展在跑 → 不说「没开」,有平台徽章", async () => {
+	it("拓展在跑 → 不说「没在跑」,有平台徽章", async () => {
 		subs = [BILI, extSub()];
 		renderSubs();
 		await screen.findByText("抖音乙");
 		await waitFor(() => expect(screen.getByText("抖音")).toBeTruthy());
-		expect(screen.queryByText(/拓展没开/)).toBeNull();
+		expect(screen.queryByText(/拓展没在跑/)).toBeNull();
 	});
 
 	it("拓展列表还没回来 → 不下结论", async () => {
@@ -330,6 +339,6 @@ describe("列表里的拓展订阅", () => {
 		extensions = new Promise(() => {});
 		renderSubs();
 		await screen.findByText("抖音乙");
-		expect(screen.queryByText(/拓展没开/)).toBeNull();
+		expect(screen.queryByText(/拓展没在跑/)).toBeNull();
 	});
 });

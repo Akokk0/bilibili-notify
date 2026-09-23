@@ -36,7 +36,7 @@ export interface UpCardProps {
 	/** 右键 / 长按请求在给定坐标弹出快捷菜单。 */
 	onRequestMenu: (pos: { x: number; y: number }) => void;
 	/**
-	 * 拓展订阅是哪个平台的(ADR-0019 决策 10 / 41)—— 徽章、特性胶囊的叫法与多少、「××拓展没开」
+	 * 拓展订阅是哪个平台的(ADR-0019 决策 10 / 41)—— 徽章、特性胶囊的叫法与多少、「××拓展没在跑」
 	 * 都照它。B 站订阅不看它。
 	 */
 	platform?: SubscriptionPlatform;
@@ -176,7 +176,7 @@ export function UpCard({
 				</div>
 				{paused && ext ? (
 					<WarnNote size="sm" icon={<Icon.extension size={12} />} className="mb-2.5">
-						{ext.label}拓展没开
+						{ext.label}拓展没在跑
 					</WarnNote>
 				) : null}
 				{/*

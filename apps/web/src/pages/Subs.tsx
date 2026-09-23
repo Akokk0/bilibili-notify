@@ -668,7 +668,7 @@ export default function Subs() {
 	const targets = targetsQuery.data ?? [];
 	// 拓展列表只是锦上添花(平台选择、拓展订阅的平台与「没开」),拿不到就不重试 —— 同推送目标页。
 	const extensionsQuery = useExtensions({ retry: false });
-	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没开」的结论。 */
+	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没在跑」的结论。 */
 	const extensions = extensionsQuery.data?.extensions;
 	const sources = useMemo(() => runningSubscriptionSources(extensions), [extensions]);
 	const platformOf = (s: Subscription): SubscriptionPlatform | undefined =>
