@@ -18,14 +18,16 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-	DeliveryResult,
-	FeatureKey,
-	HistoryEntry,
-	NotificationPayload,
+import {
+	type DeliveryResult,
+	type FeatureKey,
+	type HistoryEntry,
+	makeEmptySubscription,
+	type NotificationPayload,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { resolveTargetScope } from "../../runtime/target-scope.js";
 import { createRepushRunner, type RepushRunner } from "../repush-runner.js";
 import { createRepushStore, type RepushStore } from "../repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../store.js";
@@ -35,7 +37,7 @@ let history: HistoryStore;
 let repush: RepushStore;
 let runner: RepushRunner;
 /** 每次发送记一笔;`fail` 指定第几次(1 起)失败。 */
-let sent: Array<{ targetId: string; text: string; feature: FeatureKey }>;
+let sent: Array<{ targetId: string; text: string; subscriptionId: string; feature: FeatureKey }>;
 let failOn: (nth: number) => boolean;
 /** 卡住发送 —— 用来看「立刻回」。 */
 let gate: (() => void) | null;
@@ -63,24 +65,33 @@ beforeEach(async () => {
 	runner = createRepushRunner({
 		history,
 		repush,
-		send: async (targetId, payload, routing) => {
-			if (gate)
-				await new Promise<void>((r) => {
-					gate = r;
-				});
-			sent.push({
-				targetId,
-				text: payload.kind === "text" ? payload.text : payload.kind,
-				feature: routing.feature,
-			});
-			return (failOn(sent.length) ? FAIL : OK) as DeliveryResult;
-		},
+		send: recordingSend,
 		routedTargets: () => routed,
+		currentSubscriptionOf: (row) => row.subscriptionId,
 		targetEnabled: () => enabled,
 		logger: log,
 	});
 });
 afterEach(() => vi.restoreAllMocks());
+
+/** 发送口的替身:记一笔,按 `failOn` 回成败;`gate` 在时先卡住。 */
+async function recordingSend(
+	targetId: string,
+	payload: NotificationPayload,
+	routing: { subscriptionId: string; feature: FeatureKey },
+): Promise<DeliveryResult> {
+	if (gate)
+		await new Promise<void>((r) => {
+			gate = r;
+		});
+	sent.push({
+		targetId,
+		text: payload.kind === "text" ? payload.text : payload.kind,
+		subscriptionId: routing.subscriptionId,
+		feature: routing.feature,
+	});
+	return (failOn(sent.length) ? FAIL : OK) as DeliveryResult;
+}
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
@@ -279,5 +290,60 @@ describe("闸", () => {
 			messages: [{ payload: text("卡片"), role: "main", result: OK }],
 		});
 		expect((await runner.start(entry.id, entry.ts, "missing")).ok).toBe(false);
+	});
+});
+
+/**
+ * 行上记的订阅**现在**是哪一条(ADR-0019 决策 50):先按 `subscriptionId`,找不到再按身份
+ * (B 站 uid)—— 删了又重加的 UP,旧历史照样能重推;同 uid 两条都在时认行自己那条。
+ *
+ * 这里接的是真的路由快照表(`resolveTargetScope`),不是桩:要钉的正是 runner 拿行去问表、
+ * 再拿表给的那条订阅去发这一整串。
+ */
+describe("重推认的是哪一条订阅", () => {
+	function runnerOver(subscriptions: ReturnType<typeof makeEmptySubscription>[]): RepushRunner {
+		const table = resolveTargetScope({ subscriptions, targets: [], connections: [] });
+		return createRepushRunner({
+			history,
+			repush,
+			send: recordingSend,
+			routedTargets: (id, feature) => table.routedTargets(id, feature),
+			currentSubscriptionOf: (row) => table.currentSubscriptionOf(row),
+			targetEnabled: () => true,
+			logger: logger(),
+		});
+	}
+
+	it("行的订阅删了、同 uid 又加了一条 → 闸放行,发送认的是新那条", async () => {
+		const entry = await seedPartial();
+		const readded = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
+		readded.routing.dynamic = [T1];
+		const r = runnerOver([readded]);
+		expect(await r.canRepush(entry)).toBeNull();
+		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
+		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
+		expect(sent.map((s) => s.subscriptionId)).toEqual([readded.id, readded.id]);
+	});
+
+	it("同 uid 两条都在 → 用行自己那条的路由,不是先出现的那条", async () => {
+		const entry = await seedPartial();
+		// 先出现的那条不路由到 T1;行自己那条(SUB)路由着。
+		const first = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
+		const own = makeEmptySubscription({ id: SUB, uid: "u1" });
+		own.routing.dynamic = [T1];
+		const r = runnerOver([first, own]);
+		expect(await r.canRepush(entry)).toBeNull();
+		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
+		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
+		expect(sent.map((s) => s.subscriptionId)).toEqual([SUB, SUB]);
+	});
+
+	it("id 与 uid 都对不上 → 按「路由是空」拒,理由还是「路由里把它去掉了」那句", async () => {
+		const entry = await seedPartial();
+		const other = makeEmptySubscription({ id: randomUUID(), uid: "u2" });
+		other.routing.dynamic = [T1];
+		const r = runnerOver([other]);
+		expect(await r.canRepush(entry)).toContain("路由");
+		expect(sent).toHaveLength(0);
 	});
 });

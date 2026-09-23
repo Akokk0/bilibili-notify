@@ -54,7 +54,10 @@ export function unsentIndices(messages: readonly HistoryMessage[]): number[] {
 export interface RepushGateInput {
 	/** 要补的那一行。 */
 	entry: HistoryEntry;
-	/** 这个 uid 这把特性键**当前**路由到哪些目标;订阅已经没了就是空。 */
+	/**
+	 * 这一行的订阅这把特性键**当前**路由到哪些目标。订阅先按行上的 `subscriptionId`、再按身份
+	 * (B 站 uid)解析到**现在**那一条(ADR-0019 决策 50);订阅已经没了就是空。
+	 */
 	routedTargets: readonly string[];
 	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
 	targetEnabled: boolean;

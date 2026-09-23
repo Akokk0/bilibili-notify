@@ -69,10 +69,15 @@ export interface CreateRepushRunnerOptions {
 	send(
 		targetId: string,
 		payload: NotificationPayload,
-		routing: { uid: string; feature: FeatureKey },
+		routing: { subscriptionId: string; feature: FeatureKey },
 	): Promise<DeliveryResult>;
-	/** 这个 uid 这把特性键**当前**路由到哪些目标。 */
-	routedTargets(uid: string, feature: FeatureKey): readonly string[];
+	/** 这条订阅(按订阅自己的 id)这把特性键**当前**路由到哪些目标。 */
+	routedTargets(subscriptionId: string, feature: FeatureKey): readonly string[];
+	/**
+	 * 行上记的订阅**现在**是哪一条,回它的 id(ADR-0019 决策 50):先按 `subscriptionId` 找,
+	 * 找不到再按身份(B 站 uid)找 —— 删了又重加的 UP,旧历史照样能重推。都找不到回 undefined。
+	 */
+	currentSubscriptionOf(row: { subscriptionId: string; uid: string }): string | undefined;
 	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
 	targetEnabled(targetId: string): boolean;
 	logger: Logger;
@@ -90,9 +95,14 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 
 	/** 闸那一半 —— `start` 与 `canRepush` 共用,免得两处各判各的、慢慢漂开。 */
 	function gate(entry: HistoryEntry): string | null {
+		const subscriptionId = opts.currentSubscriptionOf(entry);
 		return repushDenial({
 			entry,
-			routedTargets: opts.routedTargets(entry.uid, pushKindToFeature(entry.kind)),
+			// 解析不到当前订阅 = 订阅已经没了,按「路由是空」处理:拒绝理由还是「路由里把它去掉了」那句。
+			routedTargets:
+				subscriptionId === undefined
+					? []
+					: opts.routedTargets(subscriptionId, pushKindToFeature(entry.kind)),
 			targetEnabled: entry.targetId !== null && opts.targetEnabled(entry.targetId),
 			running: running.has(entry.id),
 		});
@@ -145,9 +155,13 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		for (const i of indices) {
 			const m = messages[i];
 			if (!m) continue;
+			// 每条都现解析一次「现在是哪条订阅」,闸是在按按钮那一刻判的,补的途中订阅可能又变了。
+			// 解析不到就沿用行上记的那个 id —— 它已经不在任何订阅上了,发送层的 routing 复检当场
+			// 放弃并说明原因,结果照样追进行里(与闸那边一样落到「路由是空」那一档)。
+			const subscriptionId = opts.currentSubscriptionOf(entry) ?? entry.subscriptionId;
 			let result: DeliveryResult;
 			try {
-				result = await opts.send(targetId, m.payload, { uid: entry.uid, feature });
+				result = await opts.send(targetId, m.payload, { subscriptionId, feature });
 			} catch (err) {
 				// 发送层自己不抛,但注入进来的东西不是我们能打包票的。吞掉会让这一趟
 				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。

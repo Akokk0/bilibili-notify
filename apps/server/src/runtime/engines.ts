@@ -259,8 +259,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	opts.api.setUserAgent(globals().app.userAgent);
 
 	// ---------- Sink + push ----------
-	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到 uid + feature,
-	// 没法填 history 的 source / uid 字段。history 写入挂到 BilibiliPush.onSend
+	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到订阅 + feature,
+	// 没法填 history 的订阅 / uid 字段。history 写入挂到 BilibiliPush.onSend
 	// (见下方),那里能拿到完整的发起上下文。
 	const sink = createMultiplexSink({
 		store: opts.configStore,
@@ -317,10 +317,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
 			const input = historyRecordFromSend(info, {
-				subscriptionOf: (uid) => {
-					const sub = opts.subscriptionStore.findByUid(uid);
-					if (!sub) return undefined;
-					return { id: sub.id, profile: opts.subRuntimeStore.get(sub.id)?.cachedProfile };
+				subscriptionOf: (subscriptionId) => {
+					const subscription = opts.subscriptionStore.findById(subscriptionId);
+					if (!subscription) return undefined;
+					return {
+						subscription,
+						profile: opts.subRuntimeStore.get(subscription.id)?.cachedProfile,
+					};
 				},
 			});
 			if (!input) return;
@@ -330,6 +333,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 	});
 	push.start();
+
+	/**
+	 * B 站引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50)—— 两个 PushLike 适配器
+	 * 在这条边上先翻一次。同一个 uid 配了两条订阅时先出现的那条说了算(引擎本来就只按 uid 认人)。
+	 */
+	const subscriptionIdOfUid = (uid: string): string | undefined => {
+		const id = opts.subscriptionStore.findByUid(uid)?.id;
+		if (id === undefined) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
+		return id;
+	};
 
 	// ---------- Master notifier ----------
 	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
@@ -448,7 +461,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	);
 
 	// ---------- DynamicEngine ----------
-	const dynamicPushLike = makeDynamicPushLike(push);
+	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid);
 
 	const dynamicConfig = (): DynamicEngineConfig => {
 		const f = globals().defaults.filters;
@@ -522,7 +535,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	runFollowSync("boot");
 
 	// ---------- LiveEngine ----------
-	const livePushLike = makeLivePushLike(push);
+	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid);
 
 	const liveConfig = (): LiveEngineConfig => {
 		const g = globals();
@@ -1100,26 +1113,39 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  */
 type PushForEngines = Pick<BilibiliPush, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
 
+/**
+ * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),
+ * 翻译就在这两个适配器里做;查不到(推送途中被退订)就不往下交,由解析函数自己记一笔。
+ */
+type SubscriptionIdOf = (uid: string) => string | undefined;
+
 /** 动态引擎那侧的 PushLike。 */
-export function makeDynamicPushLike(push: PushForEngines): DynamicPushLike {
+export function makeDynamicPushLike(
+	push: PushForEngines,
+	subscriptionIdOf: SubscriptionIdOf,
+): DynamicPushLike {
 	return {
 		async broadcastDynamic(uid, segments, kind, o) {
+			const subscriptionId = subscriptionIdOf(uid);
+			if (subscriptionId === undefined) return;
 			const payload = pushSegmentsToPayload(segments);
 			// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
 			// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
 			await push.broadcastToFeature(
-				uid,
+				subscriptionId,
 				"dynamic",
 				payload,
 				broadcastOptsForDynamicKind(kind, o?.pushId),
 			);
 		},
 		async broadcastDynamicSequence(uid, messages, kind, o) {
+			const subscriptionId = subscriptionIdOf(uid);
+			if (subscriptionId === undefined) return;
 			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
 			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
 			const payloads = messages.map(pushSegmentsToPayload);
 			await push.broadcastToFeature(
-				uid,
+				subscriptionId,
 				"dynamic",
 				payloads,
 				broadcastOptsForDynamicKind(kind, o?.pushId),
@@ -1131,22 +1157,29 @@ export function makeDynamicPushLike(push: PushForEngines): DynamicPushLike {
 }
 
 /** 直播引擎那侧的 PushLike。 */
-export function makeLivePushLike(push: PushForEngines): LivePushLike {
+export function makeLivePushLike(
+	push: PushForEngines,
+	subscriptionIdOf: SubscriptionIdOf,
+): LivePushLike {
 	return {
 		async broadcastToTargets(uid, content, type, o) {
+			const subscriptionId = subscriptionIdOf(uid);
+			if (subscriptionId === undefined) return;
 			const payload = collapseSegments(segmentToPayload(content));
 			await push.broadcastToFeature(
-				uid,
+				subscriptionId,
 				liveTypeToFeature(type as number),
 				payload,
 				liveBroadcastOpts(type as number, o),
 			);
 		},
 		async broadcastSequenceToTargets(uid, contents, type, o) {
+			const subscriptionId = subscriptionIdOf(uid);
+			if (subscriptionId === undefined) return;
 			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
 			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
 			await push.broadcastToFeature(
-				uid,
+				subscriptionId,
 				liveTypeToFeature(type as number),
 				payloads,
 				liveBroadcastOpts(type as number, o),

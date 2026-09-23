@@ -127,7 +127,7 @@ function flat(info: PushSendInfo): [string | null, Array<[string, string, boolea
 describe("推送契约:一次广播 × 每个目标回调一次", () => {
 	it("两个目标各收两条 → 回调两次,各带整段消息与逐条结果,pushId 相同", async () => {
 		const { push, seen } = setup(subWith([T1, T2]));
-		await push.broadcastToFeature("u1", "dynamic", [M1, M2], { pushId: "p1" });
+		await push.broadcastToFeature("s1", "dynamic", [M1, M2], { pushId: "p1" });
 		expect(seen.map(flat)).toEqual([
 			[
 				T1,
@@ -145,13 +145,13 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 			],
 		]);
 		expect(seen.map((s) => s.pushId)).toEqual(["p1", "p1"]);
-		expect(seen[0]).toMatchObject({ uid: "u1", feature: "dynamic" });
+		expect(seen[0]).toMatchObject({ subscriptionId: "s1", feature: "dynamic" });
 	});
 
 	it("没传 pushId → 现生成一个,同一次广播里各目标同一个;下一次广播是新的", async () => {
 		const { push, seen } = setup(subWith([T1, T2]));
-		await push.broadcastToFeature("u1", "dynamic", M1);
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		const ids = seen.map((s) => s.pushId);
 		expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
 		expect(ids[0]).toBe(ids[1]);
@@ -171,7 +171,7 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 		const { push, seen } = setup(subWith([T1, T2]), {
 			failOn: (id, nth) => id === T1 && nth === 2,
 		});
-		await push.broadcastToFeature("u1", "dynamic", [M1, M2, M3]);
+		await push.broadcastToFeature("s1", "dynamic", [M1, M2, M3]);
 		expect(seen.map(flat)).toEqual([
 			[
 				T1,
@@ -194,8 +194,8 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 
 	it("role: 附加项(图集 / 词云 / 总结)按调用方说的标,缺省是本体", async () => {
 		const { push, seen } = setup(subWith([T1]));
-		await push.broadcastToFeature("u1", "dynamic", M1, { pushId: "p1" });
-		await push.broadcastToFeature("u1", "dynamic", M2, { pushId: "p1", role: "extra" });
+		await push.broadcastToFeature("s1", "dynamic", M1, { pushId: "p1" });
+		await push.broadcastToFeature("s1", "dynamic", M2, { pushId: "p1", role: "extra" });
 		expect(seen.map(flat)).toEqual([
 			[T1, [["m1", "main", true]]],
 			[T1, [["m2", "extra", true]]],
@@ -206,14 +206,14 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 describe("推送契约:推送类型跟着广播走", () => {
 	it("opts.kind 透传到回调;没传就按 feature 推(dynamic → dynamic)", async () => {
 		const { push, seen } = setup(subWith([T1]));
-		await push.broadcastToFeature("u1", "dynamic", M1);
-		await push.broadcastToFeature("u1", "dynamic", M2, { kind: "live-ongoing" });
+		await push.broadcastToFeature("s1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M2, { kind: "live-ongoing" });
 		expect(seen.map((s) => s.kind)).toEqual(["dynamic", "live-ongoing"]);
 	});
 
 	it("无目标那次回调也带 kind", async () => {
 		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("u1", "dynamic", M1, { kind: "dynamic" });
+		await push.broadcastToFeature("s1", "dynamic", M1, { kind: "dynamic" });
 		expect(seen[0]).toMatchObject({ target: null, kind: "dynamic" });
 	});
 });
@@ -221,7 +221,7 @@ describe("推送契约:推送类型跟着广播走", () => {
 describe("推送契约:无可用目标", () => {
 	it("没配目标 → target:null 回调一次,消息照带(没有结果),不调 sink,返回空", async () => {
 		const { push, seen, calls } = setup(subWith([]));
-		const out = await push.broadcastToFeature("u1", "dynamic", [M1, M2], { pushId: "p1" });
+		const out = await push.broadcastToFeature("s1", "dynamic", [M1, M2], { pushId: "p1" });
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 		expect(seen.map(flat)).toEqual([
@@ -233,14 +233,14 @@ describe("推送契约:无可用目标", () => {
 				],
 			],
 		]);
-		expect(seen[0]).toMatchObject({ pushId: "p1", uid: "u1", feature: "dynamic" });
+		expect(seen[0]).toMatchObject({ pushId: "p1", subscriptionId: "s1", feature: "dynamic" });
 	});
 
 	it("配了目标但全停用 → 同样是无目标;停用的不进可达性重试", async () => {
 		const { push, seen, calls, isAvailable } = setup(subWith([T1, T2]), {
 			disabled: [T1, T2],
 		});
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		expect(calls).toHaveLength(0);
 		expect(isAvailable).not.toHaveBeenCalled();
 		expect(seen.map(flat)).toEqual([[null, [["m1", "main", null]]]]);
@@ -248,15 +248,15 @@ describe("推送契约:无可用目标", () => {
 
 	it("一个启用一个停用 → 只推给启用的;停用的既不发也不记", async () => {
 		const { push, seen, calls } = setup(subWith([T1, T2]), { disabled: [T2] });
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		expect(calls.map((c) => c.targetId)).toEqual([T1]);
 		expect(seen.map(flat)).toEqual([[T1, [["m1", "main", true]]]]);
 	});
 
 	it("附加项那次广播也走无目标:同一 pushId 再回调一次 target:null", async () => {
 		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("u1", "dynamic", M1, { pushId: "p1" });
-		await push.broadcastToFeature("u1", "dynamic", M2, { pushId: "p1", role: "extra" });
+		await push.broadcastToFeature("s1", "dynamic", M1, { pushId: "p1" });
+		await push.broadcastToFeature("s1", "dynamic", M2, { pushId: "p1", role: "extra" });
 		expect(seen.map(flat)).toEqual([
 			[null, [["m1", "main", null]]],
 			[null, [["m2", "extra", null]]],
@@ -267,7 +267,7 @@ describe("推送契约:无可用目标", () => {
 describe("推送契约:@全体 是附加项", () => {
 	it("本体那次回调在前;@全体 单独一次回调、标 extra、同一 pushId 同一目标", async () => {
 		const { push, seen } = setup(subWith([T1], true));
-		await push.broadcastToFeature("u1", "dynamic", [M1, M2], { pushId: "p1" });
+		await push.broadcastToFeature("s1", "dynamic", [M1, M2], { pushId: "p1" });
 		// @全体 是 fire-and-forget,等它落地。
 		await vi.waitFor(() => expect(seen).toHaveLength(2));
 		expect(seen.map(flat)).toEqual([
@@ -287,7 +287,7 @@ describe("推送契约:@全体 是附加项", () => {
 		const { push, seen } = setup(subWith([T1], true), {
 			failOn: (id, nth) => id === T1 && nth === 1,
 		});
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		await vi.waitFor(() => expect(seen).toHaveLength(2));
 		expect(seen.map(flat)).toEqual([
 			[T1, [["m1", "main", true]]],
@@ -301,7 +301,7 @@ describe("推送契约:上游闸不算无目标", () => {
 		const sub = subWith([]);
 		sub.overrides = { features: { dynamic: false } };
 		const { push, seen } = setup(sub);
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		expect(seen).toHaveLength(0);
 	});
 
@@ -323,7 +323,7 @@ describe("推送契约:上游闸不算无目标", () => {
 			onSend: (info) => seen.push(info),
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("s1", "dynamic", M1);
 		expect(seen).toHaveLength(0);
 	});
 });

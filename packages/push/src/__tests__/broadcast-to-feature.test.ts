@@ -28,7 +28,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { makeExtensionSub, pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;
@@ -85,7 +85,7 @@ function loopbackDefaults(): GlobalDefaults {
 }
 
 describe("BilibiliPush.broadcastToFeature — routing decision", () => {
-	it("uid 无订阅 → 不调 sink", async () => {
+	it("订阅 id 查不到 → 不调 sink", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -109,7 +109,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -125,7 +125,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播了" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播了" });
 		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t2"]);
 	});
 
@@ -143,7 +143,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			defaults: () => defaults,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -161,7 +161,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			defaults: () => defaults,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -181,11 +181,11 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			quietHoursNow: () => pretend,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 
 		pretend = new Date(2026, 8, 6, 15, 0, 0); // 15:00,不在
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "y" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "y" });
 		// live 默认带 @全体,所以是两条;这里只关心「放行了」。
 		expect(calls.length).toBeGreaterThan(0);
 	});
@@ -202,7 +202,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "dynamic", { kind: "text", text: "动态" });
+		await push.broadcastToFeature("s1", "dynamic", { kind: "text", text: "动态" });
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 单独一条 composite,只含 at-all 段
 		expect(calls[0].payload.kind).toBe("composite");
@@ -226,7 +226,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播" });
 		// t1 一条原 payload;t2 先收 @全体 only,再收原 payload。共 3 条。
 		expect(calls).toHaveLength(3);
 		expect(calls[0]).toMatchObject({ targetId: "t1" });
@@ -258,7 +258,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			onSend: (info) => seen.push(info),
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播" });
 		await new Promise((r) => setTimeout(r, 0));
 		expect(calls.map((c) => c.payload)).toEqual([{ kind: "text", text: "开播" }]);
 		// 历史那一行也不该多出一条「@全体」附加项。
@@ -280,7 +280,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		});
 		push.start();
 		await push.broadcastToFeature(
-			"u1",
+			"s1",
 			"live",
 			{ kind: "text", text: "正在直播" },
 			{ allowAtAll: false },
@@ -316,7 +316,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			});
 			push.start();
 			await push.broadcastToFeature(
-				"u1",
+				"s1",
 				"live",
 				{ kind: "text", text: "开播" },
 				{ allowAtAll: true },
@@ -333,7 +333,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 				logger: silentLogger,
 			});
 			push.start();
-			await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+			await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播" });
 			assertAtAllThenPayload(calls);
 		}
 	});
@@ -357,7 +357,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 				{ type: "text", text: "开播啦" },
 			],
 		};
-		await push.broadcastToFeature("u1", "live", payload);
+		await push.broadcastToFeature("s1", "live", payload);
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 only
 		expect(calls[0].payload.kind).toBe("composite");
@@ -382,7 +382,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "dynamic", {
+		await push.broadcastToFeature("s1", "dynamic", {
 			kind: "composite",
 			segments: [
 				{ type: "image", buffer: Buffer.from([3]), mime: "image/jpeg" },
@@ -410,7 +410,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", {
+		await push.broadcastToFeature("s1", "live", {
 			kind: "image",
 			image: { buffer: Buffer.from([2]), mime: "image/png" },
 			caption: "字幕",
@@ -427,7 +427,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		}
 		// 纯文本无图 → 同样两条:@全体 only + text 原 payload
 		calls.length = 0;
-		await push.broadcastToFeature("u1", "live", { kind: "text", text: "无图开播" });
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "无图开播" });
 		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
 			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
@@ -448,7 +448,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "dynamic", {
+		await push.broadcastToFeature("s1", "dynamic", {
 			kind: "forward-images",
 			images: [{ url: "http://x/1.jpg" }],
 			forward: true,
@@ -475,7 +475,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "superchat", { kind: "text", text: "SC" });
+		await push.broadcastToFeature("s1", "superchat", { kind: "text", text: "SC" });
 		expect(calls[0].payload.kind).toBe("text"); // 没 at-all 头
 	});
 
@@ -517,7 +517,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		});
 		push.start();
 		// 旧版会在此处永久挂起;现在应在卡片发出后立即返回。
-		const out = await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+		const out = await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播" });
 		// @全体 与卡片都被发起(顺序:@全体 在前),且 @全体 同步先入 sink。
 		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t1"]);
 		expect(isAtAll(calls[0].payload)).toBe(true);
@@ -540,10 +540,54 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			onSend,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "dynamic", { kind: "text", text: "x" });
+		await push.broadcastToFeature("s1", "dynamic", { kind: "text", text: "x" });
 		expect(onSend).toHaveBeenCalledTimes(2);
 		const calls = onSend.mock.calls.map((c) => c[0]);
-		expect(calls[0]).toMatchObject({ uid: "u1", feature: "dynamic" });
+		expect(calls[0]).toMatchObject({ subscriptionId: "s1", feature: "dynamic" });
 		expect(calls[0].target.id).toBe("t1");
+	});
+});
+
+/**
+ * 推送链的运行期键是**订阅自己的 id**,不是 B 站 uid(ADR-0019 决策 50)。
+ *
+ * 按 uid 找的年代,同一个 uid 配了两条订阅时「先出现的那条说了算」,第二条的路由整条被
+ * 无视;拓展订阅没有 uid,压根找不到。这两条钉的就是那两个洞。
+ */
+describe("BilibiliPush.broadcastToFeature — 按订阅 id 找订阅", () => {
+	it("两条 uid 相同、路由不同的 B 站订阅:按 B 的 id 广播只发到 B 的目标", async () => {
+		const a = makeEmptySubscription({ id: "sA", uid: "u1" });
+		a.routing.live = ["tA"];
+		const b = makeEmptySubscription({ id: "sB", uid: "u1" });
+		b.routing.live = ["tB"];
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([a, b]),
+			logger: silentLogger,
+		});
+		push.start();
+		await push.broadcastToFeature("sB", "live", { kind: "text", text: "x" }, { allowAtAll: false });
+		expect(calls.map((c) => c.targetId)).toEqual(["tB"]);
+	});
+
+	it("拓展订阅(没有 uid)按 id 广播能路由到它的目标,onSend 带的是它的订阅 id", async () => {
+		const ext = makeExtensionSub({ id: "sE", externalId: "u1" });
+		ext.routing.dynamic = ["tE"];
+		setExtraDefault(ext, "atAllDynamic", false);
+		const seen: PushSendInfo[] = [];
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([ext]),
+			logger: silentLogger,
+			onSend: (info) => seen.push(info),
+		});
+		push.start();
+		await push.broadcastToFeature("sE", "dynamic", { kind: "text", text: "x" });
+		expect(calls.map((c) => c.targetId)).toEqual(["tE"]);
+		expect(seen.map((i) => i.subscriptionId)).toEqual(["sE"]);
 	});
 });

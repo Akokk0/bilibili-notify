@@ -13,7 +13,7 @@
 | 段 | 住哪 | 干什么 |
 |---|---|---|
 | ① 引擎 | `packages/dynamic` · `packages/live` | 只认总开关，产出平台中立的 segment |
-| ② 适配 | `apps/server/src/runtime/engines.ts` | 把引擎的枚举翻成推送的词 |
+| ② 适配 | `apps/server/src/runtime/engines.ts` | 把引擎的枚举翻成推送的词，uid 翻成订阅 id |
 | ③ 路由与闸 | `packages/push` · `broadcastToFeature` | 七道闸 + 选目标 |
 | ④ 发送 | 同上 · `sendBatch` → `sendSequence` → `sendToTarget` | 分条、重试、@全体 分流 |
 | ⑤ 投递 | `apps/server/src/sink/multiplex.ts` | 按连接找 adapter，真发出去 |
@@ -40,14 +40,16 @@
 
 动态端同理，`broadcastOptsForDynamicKind` 把 `dynamic-images`（图集）标成 `role: "extra"` 且 `allowAtAll: false`，否则一条 DRAW 动态会在主卡和图集各 @ 一次。
 
+身份也在这儿翻：引擎说的是 B 站 uid，推送链认的是**订阅自己的 id**（ADR-0019 决策 50）。两个适配器先用 `subscriptionIdOfUid`（`findByUid(uid)?.id`）翻一次，查不到就不往下交，只记一行 debug「uid=… 无订阅记录，跳过」。同一个 uid 配了两条订阅时，引擎那侧先出现的那条说了算 —— 引擎本来就只按 uid 认人。
+
 ### ③ 路由与闸
 
-`broadcastToFeature` 全仓只有 **4 个调用方**，全在 `engines.ts` 的两个 PushLike 适配器里。routing 查找也只有 2 处（入口一次、重试前复检一次）。
+`broadcastToFeature` 全仓只有 **4 个调用方**，全在 `engines.ts` 的两个 PushLike 适配器里。routing 查找也只有 2 处（入口一次、重试前复检一次），**都按订阅 id**（`store.findById`）：同一个 UP 的两条订阅各推各的路由，拓展订阅（没有 uid）也找得到。
 
 ### ④ 发送
 
 - `sendSequence`：一个目标的多条按序发，**某条失败即中止该目标后续条**（失败后大概率继续失败，乱序补发比缺失更糟）。
-- `sendToTarget`：目标不可达时退避重试 3s→6s→…→96s，累计约 190s 后放弃。**每次重试前复检 routing** —— 否则用户在重试窗口里取消了订阅，目标一恢复那条还是会发出去（「取消了还在推」）。
+- `sendToTarget`：目标不可达时退避重试 3s→6s→…→96s，累计约 190s 后放弃。**每次重试前复检 routing** —— 否则用户在重试窗口里取消了订阅，目标一恢复那条还是会发出去（「取消了还在推」）。复检的是**这条推送自己那条订阅**（`opts.routing.subscriptionId`）：同一个 UP 的另一条订阅还路由着这个目标不算数。
 - @全体 那支：**同步发起但不 await**。没有管理权限的群发 @全体 会被协议端拒绝并触发 adapter 重试，顺序 await 会把卡片正文连同后续任务一起拖住。顺序保证靠「它的 `sink.send` 先于卡片被调用」。
 
 ### ⑤ 投递
@@ -62,7 +64,7 @@
 
 ### ⑥ 历史
 
-`onSend` 每个目标回调一次。同 `pushId` 的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。四态：
+`onSend` 每个目标回调一次，带的是订阅 id；行里的 B 站 uid 与 UP 快照由 `push-history.ts` 回查订阅取（拓展订阅这一步先不记，行形状归 ADR-0019 施工第 ④ 步「接进推送链」那一片定）。同 `pushId` 的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。四态：
 
 | 态 | 判据 |
 |---|---|
@@ -78,12 +80,14 @@
 | # | 闸 | 依据 | 挡掉之后 |
 |---|---|---|---|
 | 1 | disposed / generation | 生命周期 | 静默 |
-| 2 | **全局静音** | `muted()` | 静默。**排在所有查询之前** —— 静音期间一次订阅查找都不做 |
-| 3 | 无订阅记录 | `store.findByUid` | 静默 |
+| 2 | **全局静音** | `muted()` | 静默。**排在推送层所有查询之前** —— 静音期间推送层一次订阅查找都不做 |
+| 3 | 无订阅记录 | `store.findById`（B 站那条边先在 ② 把 uid 翻成订阅 id） | 静默 |
 | 4 | **总开关** | `eff.features[feature]` | 静默 |
 | 5 | 免扰时段 | `inQuietHours(eff.schedule.quietHours)` | 静默 |
 | 6 | 无可用目标 | `routing[feature] ∩ isEnabled` | **回调 `target: null`** → 历史落「无目标」行 |
 | 7 | 附加项收窄成空 | `extras[key][id] ?? 折叠默认` | 静默 —— **不是「无目标」**，见下 |
+
+第 2 步说的「所有查询」只管推送层自己：B 站引擎那条边在 ② 把 uid 翻成订阅 id 的那一次 `findByUid` 在它上游，静音期间照做（内存里扫一遍数组，不深拷贝）。
 
 第 4 步的 `eff` 是 `resolve(sub, globals.defaults)` 的产出：全局 + per-UP 折叠。第 6 步与第 7 步的区别是这条链最容易看岔的一处：本体那一行明明已送达，附加项只是谁都没订，落一行「无目标」等于把配置意图报成故障。
 
@@ -120,5 +124,5 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 |---|---|
 | 加一把可订阅的特性 | `FEATURE_KEYS` → 扩散到 FeatureFlags / SubscriptionRouting / overrides |
 | 加一个附加项 | `EXTRA_KEYS` + `PUSH_EXTRAS` 各一行；面板与收窄都按注册表自动铺开 |
-| 改「发给谁」 | 只有 `broadcastToFeature` 入口那一行，和重试前的 `isStillRouted` |
+| 改「发给谁」 | 只有 `broadcastToFeature` 入口那一行（`store.findById`），和重试前的 `isStillRouted`；B 站 uid → 订阅 id 在 `engines.ts` 的 `subscriptionIdOfUid` |
 | 加一个平台 | adapter registry，推送层一个字不动 |

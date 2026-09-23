@@ -37,14 +37,14 @@ function makeUnreachableSink(): NotificationSink {
 const emptyStore = { list: () => [], findByUid: () => undefined } as unknown as SubscriptionStore;
 
 /** Permissive fake store — `targetIds` 对每个 feature 都视为已路由,供无关 routing 复检的用例复用。 */
-function permissiveStore(uid: string, targetIds: string[]): SubscriptionStore {
+function permissiveStore(subscriptionId: string, targetIds: string[]): SubscriptionStore {
 	const routing = new Proxy(
 		{},
 		{ get: () => targetIds },
 	) as unknown as import("@bilibili-notify/internal").Subscription["routing"];
 	return {
 		list: () => [],
-		findByUid: (u: string) => (u === uid ? ({ routing } as never) : undefined),
+		findById: (id: string) => (id === subscriptionId ? ({ routing } as never) : undefined),
 	} as unknown as SubscriptionStore;
 }
 
@@ -183,7 +183,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		push = new BilibiliPush({
 			...pushBase(),
 			sink,
-			store: permissiveStore("u1", ["a", "b"]),
+			store: permissiveStore("s1", ["a", "b"]),
 			logger: silentLogger,
 			onSend,
 		});
@@ -192,7 +192,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const results = await push.sendBatch(
 			["a", "b"],
 			{ kind: "text", text: "x" },
-			{ uid: "u1", feature: "live", kind: "live", pushId: "p1", role: "main" },
+			{ subscriptionId: "s1", feature: "live", kind: "live", pushId: "p1", role: "main" },
 		);
 
 		// 仅 "a" 触达 sink;generation 1→2 后 "b" 被放弃,不跨生命周期拆发。

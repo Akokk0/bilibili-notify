@@ -1,9 +1,11 @@
 import {
+	type ExtensionSubscription,
 	type ExtraKey,
 	FEATURE_KEYS,
 	type GlobalDefaults,
 	type Logger,
 	makeDefaultGlobalConfig,
+	makeEmptySubscription,
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -58,4 +60,29 @@ export function pushBase(): Pick<
 export function setExtraDefault(sub: Subscription, key: ExtraKey, on: boolean): void {
 	const features = sub.overrides.features ?? {};
 	sub.overrides.features = { ...features, extras: { ...features.extras, [key]: on } };
+}
+
+/**
+ * 一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 `(extensionId, externalId)`。
+ * 共有的那些字段(routing / extras / overrides …)跟着 B 站空订阅的出厂默认走。
+ */
+export function makeExtensionSub(opts: {
+	id: string;
+	externalId: string;
+	extensionId?: string;
+}): ExtensionSubscription {
+	const {
+		kind: _kind,
+		uid: _uid,
+		roastSchedule: _roast,
+		specialUsers: _special,
+		...common
+	} = makeEmptySubscription({ id: opts.id, uid: "0" });
+	return {
+		...common,
+		kind: "extension",
+		id: opts.id,
+		extensionId: opts.extensionId ?? "douyin",
+		externalId: opts.externalId,
+	};
 }

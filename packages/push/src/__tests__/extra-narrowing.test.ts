@@ -103,7 +103,7 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extras.wordcloud = { t1: false };
 		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
 			role: "extra",
 		});
@@ -115,7 +115,7 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", false);
 		sub.extras.wordcloud = { t2: true };
 		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
 			role: "extra",
 		});
@@ -128,11 +128,11 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "liveSummary", true);
 		sub.extras.wordcloud = { t1: false, t2: false };
 		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
 			role: "extra",
 		});
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "liveSummary",
 			role: "extra",
 		});
@@ -146,7 +146,7 @@ describe("附加项按目标收窄", () => {
 		sub.extras.wordcloud = { t1: false, t2: false, t3: false };
 		const seen: PushSendInfo[] = [];
 		const { push, calls } = makePush(sub, seen);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
 			role: "extra",
 		});
@@ -159,7 +159,7 @@ describe("附加项按目标收窄", () => {
 		sub.routing.liveEnd = [];
 		const seen: PushSendInfo[] = [];
 		const { push, calls } = makePush(sub, seen);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
 			role: "extra",
 		});
@@ -174,7 +174,7 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		const seen: PushSendInfo[] = [];
 		const { push } = makePush(sub, seen);
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, { extra: "wordcloud" });
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, { extra: "wordcloud" });
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["extra"]);
 	});
 
@@ -183,7 +183,7 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extras.wordcloud = { t1: false, t2: false, t3: false };
 		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("u1", "liveEnd", { kind: "text", text: "下播卡" });
+		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" });
 		expect(calls).toEqual(["t1", "t2", "t3"]);
 	});
 
@@ -195,8 +195,8 @@ describe("附加项按目标收窄", () => {
 		const seen: PushSendInfo[] = [];
 		const { push } = makePush(sub, seen);
 		const pushId = "p1";
-		await push.broadcastToFeature("u1", "liveEnd", { kind: "text", text: "下播卡" }, { pushId });
-		await push.broadcastToFeature("u1", "liveEnd", WORDCLOUD, {
+		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" }, { pushId });
+		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			pushId,
 			extra: "wordcloud",
 			role: "extra",

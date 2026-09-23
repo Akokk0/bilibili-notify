@@ -81,21 +81,21 @@ const TEXT: NotificationPayload = { kind: "text", text: "x" };
 describe("全局静音闸", () => {
 	it("静音中 → 订阅推送不发,sink 一次都不调", async () => {
 		const { push, calls } = setup(() => true);
-		const out = await push.broadcastToFeature("u1", "live", TEXT);
+		const out = await push.broadcastToFeature("s1", "live", TEXT);
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
 
 	it("没静音 → 照常发", async () => {
 		const { push, calls } = setup(() => false);
-		await push.broadcastToFeature("u1", "live", TEXT);
+		await push.broadcastToFeature("s1", "live", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 
 	// 「全局」的意思是所有 feature 一起挡,不是只挡开播。
 	it("静音挡的是全部 feature,不只是直播", async () => {
 		const { push, calls } = setup(() => true);
-		await push.broadcastToFeature("u1", "dynamic", TEXT);
+		await push.broadcastToFeature("s1", "dynamic", TEXT);
 		expect(calls).toHaveLength(0);
 	});
 
@@ -103,10 +103,10 @@ describe("全局静音闸", () => {
 	it("到期后无需重建 push 实例,下一条推送就通了", async () => {
 		let muted = true;
 		const { push, calls } = setup(() => muted);
-		await push.broadcastToFeature("u1", "live", TEXT);
+		await push.broadcastToFeature("s1", "live", TEXT);
 		expect(calls).toHaveLength(0);
 		muted = false;
-		await push.broadcastToFeature("u1", "live", TEXT);
+		await push.broadcastToFeature("s1", "live", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 
@@ -135,7 +135,7 @@ describe("全局静音闸", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("u1", "live", TEXT);
+		await push.broadcastToFeature("s1", "live", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 });

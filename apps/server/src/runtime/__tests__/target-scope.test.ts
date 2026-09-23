@@ -7,7 +7,8 @@
  * 就是 600 份订阅 / 目标 / 连接副本,订阅里还装着 per-UP 的 templates / cardStyle / extras。
  *
  * 所以这里钉三件事:
- *   1. 答案与从前那两句现问的写法**一字不差**(先出现的订阅说了算、停用一律不算);
+ *   1. 答案对:路由按订阅自己的 id 查(ADR-0019 决策 50),停用一律不算;重推回查「行上那条
+ *      订阅现在是哪一条」时先认 id、再按 B 站 uid 找(同 uid 先出现的说了算);
  *   2. 🔴 `targetEnabled` 与真 `sink.isEnabled` **对得上**(那是同一条判定的第二份手抄,
  *      `isEnabled` 将来多一个条件而这儿没跟上时,重推的闸会静默留在旧口径上);
  *   3. 问 N 次只折一次,而 `config-changed` 一来就重折(不失效 = 停用了目标还能补,
@@ -22,6 +23,7 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createMultiplexSink } from "../../sink/multiplex.js";
@@ -53,9 +55,18 @@ function target(id: string, connectionId: string, enabled = true): PushTarget {
 	} as PushTarget;
 }
 
-function sub(uid: string, routing: Partial<Record<FeatureKey, string[]>>): Subscription {
-	return { uid, routing } as unknown as Subscription;
+function sub(
+	id: string,
+	uid: string,
+	routing: Partial<Record<FeatureKey, string[]>>,
+): Subscription {
+	return { kind: "bilibili", id, uid, routing } as unknown as Subscription;
 }
+
+const S1 = "51515151-5151-4151-8151-515151515151";
+const S2 = "52525252-5252-4252-8252-525252525252";
+const S_EXT = "53535353-5353-4353-8353-535353535353";
+const S_GONE = "54545454-5454-4454-8454-545454545454";
 
 const CONNECTIONS = [connection(CONN_ON, true), connection(CONN_OFF, false)];
 const TARGETS = [
@@ -68,23 +79,35 @@ const TARGETS = [
 const logger = (): Logger => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
 describe("resolveTargetScope — 答案", () => {
+	// 同一个 uid 配了两条订阅(路由不同),外加一条外部 id 恰好也是 "u1" 的拓展订阅。
+	const ext = makeExtensionSubscription({ id: S_EXT, externalId: "u1" });
+	ext.routing.dynamic = [T_OK];
 	const table = resolveTargetScope({
-		subscriptions: [sub("u1", { dynamic: [T_OK, T_PAUSED] }), sub("u1", { dynamic: [T_UNKNOWN] })],
+		subscriptions: [
+			sub(S1, "u1", { dynamic: [T_OK, T_PAUSED] }),
+			sub(S2, "u1", { dynamic: [T_UNKNOWN] }),
+			ext,
+		],
 		targets: TARGETS,
 		connections: CONNECTIONS,
 	});
 
-	it("routedTargets:按 uid + 特性键查,没配过的键是空", () => {
-		expect(table.routedTargets("u1", "dynamic")).toEqual([T_OK, T_PAUSED]);
-		expect(table.routedTargets("u1", "live")).toEqual([]);
+	it("routedTargets:按订阅 id + 特性键查,没配过的键是空", () => {
+		expect(table.routedTargets(S1, "dynamic")).toEqual([T_OK, T_PAUSED]);
+		expect(table.routedTargets(S1, "live")).toEqual([]);
 	});
 
 	it("没有这条订阅 → 空(闸据此说「路由里把它去掉了」)", () => {
-		expect(table.routedTargets("u404", "dynamic")).toEqual([]);
+		expect(table.routedTargets(S_GONE, "dynamic")).toEqual([]);
 	});
 
-	it("同一个 uid 两条订阅:先出现的那条说了算(照搬从前那句 find)", () => {
-		expect(table.routedTargets("u1", "dynamic")).not.toContain(T_UNKNOWN);
+	// 按 uid 查的年代「先出现的那条说了算」,第二条的路由整条被无视(ADR-0019 决策 50)。
+	it("同一个 uid 两条订阅:各按各的 id 查,第二条的路由不被第一条盖住", () => {
+		expect(table.routedTargets(S2, "dynamic")).toEqual([T_UNKNOWN]);
+	});
+
+	it("拓展订阅也在表里:按它的 id 查得到它的路由", () => {
+		expect(table.routedTargets(S_EXT, "dynamic")).toEqual([T_OK]);
 	});
 
 	it("targetEnabled:目标停用 / 连接停用 / 连接不存在 / 目标不存在,一律不算", () => {
@@ -93,6 +116,35 @@ describe("resolveTargetScope — 答案", () => {
 		expect(table.targetEnabled(T_ON_DEAD_CONN)).toBe(false);
 		expect(table.targetEnabled(T_ON_GHOST_CONN)).toBe(false);
 		expect(table.targetEnabled(T_UNKNOWN)).toBe(false);
+	});
+});
+
+/**
+ * 历史行记下的那条订阅**现在**是哪一条(ADR-0019 决策 50):先认 `subscriptionId`,不在了
+ * 再按身份(B 站 uid)找 —— 删了又重加的 UP,旧历史照样能重推。
+ */
+describe("resolveTargetScope — currentSubscriptionOf", () => {
+	const ext = makeExtensionSubscription({ id: S_EXT, externalId: "u9" });
+	const table = resolveTargetScope({
+		subscriptions: [sub(S1, "u1", {}), sub(S2, "u1", {}), ext],
+		targets: TARGETS,
+		connections: CONNECTIONS,
+	});
+
+	it("id 还在 → 就是它,哪怕同 uid 还有一条排在前面", () => {
+		expect(table.currentSubscriptionOf({ subscriptionId: S2, uid: "u1" })).toBe(S2);
+	});
+
+	it("id 不在了 → 回落到 uid 相同的 B 站订阅,两条时先出现的那条", () => {
+		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u1" })).toBe(S1);
+	});
+
+	it("id 与 uid 都对不上 → undefined", () => {
+		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u404" })).toBeUndefined();
+	});
+
+	it("拓展订阅的外部 id 恰好等于那串 uid → 不算(是两个不同的人)", () => {
+		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u9" })).toBeUndefined();
 	});
 });
 
@@ -139,7 +191,7 @@ describe("createTargetScope — 什么时候重折", () => {
 
 	beforeEach(() => {
 		bus = createNodeMessageBus();
-		subscriptions = [sub("u1", { dynamic: [T_OK] })];
+		subscriptions = [sub(S1, "u1", { dynamic: [T_OK] })];
 		targets = [...TARGETS];
 		getSubscriptions = vi.fn(() => subscriptions);
 		getTargets = vi.fn(() => targets);
@@ -152,7 +204,8 @@ describe("createTargetScope — 什么时候重折", () => {
 
 	it("一页 200 行各问一次闸 → 三个 getter 各只被问一次", () => {
 		for (let i = 0; i < 200; i++) {
-			scope.routedTargets("u1", "dynamic");
+			scope.currentSubscriptionOf({ subscriptionId: S1, uid: "u1" });
+			scope.routedTargets(S1, "dynamic");
 			scope.targetEnabled(T_OK);
 		}
 		expect(getSubscriptions).toHaveBeenCalledTimes(1);
@@ -175,10 +228,10 @@ describe("createTargetScope — 什么时候重折", () => {
 	});
 
 	it("config-changed:subscriptions → 路由跟着变", () => {
-		expect(scope.routedTargets("u1", "dynamic")).toEqual([T_OK]);
-		subscriptions = [sub("u1", { dynamic: [] })];
+		expect(scope.routedTargets(S1, "dynamic")).toEqual([T_OK]);
+		subscriptions = [sub(S1, "u1", { dynamic: [] })];
 		bus.emit("config-changed", "subscriptions");
-		expect(scope.routedTargets("u1", "dynamic")).toEqual([]);
+		expect(scope.routedTargets(S1, "dynamic")).toEqual([]);
 	});
 
 	it("config-changed:connections → 连接停用立刻算数", () => {

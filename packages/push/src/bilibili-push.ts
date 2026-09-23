@@ -12,10 +12,12 @@ import type {
 	PushKind,
 	PushTarget,
 	ServiceContext,
+	Subscription,
 } from "@bilibili-notify/internal";
 import {
 	featureToPushKind,
 	inQuietHours,
+	isBiliSubscription,
 	platformSupportsAtAll,
 	resolve,
 } from "@bilibili-notify/internal";
@@ -33,6 +35,14 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 function makeAtAllPayload(): NotificationPayload {
 	const at: PayloadSegment = { type: "at-all" };
 	return { kind: "composite", segments: [at] };
+}
+
+/**
+ * 日志里认得出「是谁」的那一截:B 站 `uid=<uid>`,拓展 `<extensionId>:<externalId>`。
+ * 只拿来给人看 —— 推送链认的是订阅自己的 id(ADR-0019 决策 50),查不到订阅时日志就写 `sub=<id>`。
+ */
+function subscriptionLabel(sub: Subscription): string {
+	return isBiliSubscription(sub) ? `uid=${sub.uid}` : `${sub.extensionId}:${sub.externalId}`;
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -63,7 +73,11 @@ interface PushSendBase {
 	 * 动态主卡之后是图集),调用方传同一个 `pushId`,历史就落在同一行里追加。
 	 */
 	pushId: string;
-	uid: string;
+	/**
+	 * 这次推送属于哪条订阅 —— 订阅自己的 id(uuid),推送链的运行期键(ADR-0019 决策 50)。
+	 * B 站 uid 不在这儿:要的话拿这个 id 回查订阅。
+	 */
+	subscriptionId: string;
 	feature: FeatureKey;
 	/** 历史里记成哪一类推送(8 类之一)。 */
 	kind: PushKind;
@@ -78,7 +92,7 @@ interface PushSendBase {
  * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。上游闸(静音 / 特性关 /
  * 免扰 / 无订阅)不回调:那不是「无目标」,是本来就不该推。
  *
- * multiplex sink 拿不到 uid / feature(它只看 PushTarget),所以历史只能从这一层注入。
+ * multiplex sink 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
  */
 export type PushSendInfo =
 	| (PushSendBase & { target: PushTarget; messages: PushMessageOutcome[] })
@@ -86,7 +100,7 @@ export type PushSendInfo =
 
 /** 一次广播在发送层内部带着走的上下文。 */
 export interface SendContext {
-	uid: string;
+	subscriptionId: string;
 	feature: FeatureKey;
 	kind: PushKind;
 	pushId: string;
@@ -121,7 +135,7 @@ export interface BroadcastOptions {
 export interface BilibiliPushOptions {
 	/** Platform-neutral push sink — translates targetId → platform delivery. */
 	sink: NotificationSink;
-	/** Subscription store — used to resolve routing per uid+feature. */
+	/** Subscription store — used to resolve routing per subscription id + feature. */
 	store: SubscriptionStore;
 	/** Optional master PushTarget for private error notifications. */
 	master?: PushTarget | null;
@@ -161,7 +175,8 @@ export interface BilibiliPushOptions {
  * Platform-neutral push router.
  *
  * The standalone runtime's push router. Routing comes from
- * store.findByUid(uid)?.routing[feature] → targetId[] → sink.send(targetId, payload).
+ * store.findById(subscriptionId)?.routing[feature] → targetId[] → sink.send(targetId, payload).
+ * 键是订阅自己的 id,不是 B 站 uid(ADR-0019 决策 50):B 站引擎那条边在宿主里先把 uid 翻成 id。
  * The old pushArrMap, broadcastToTargets, sendPrivateMsg/sendErrorMsg are gone.
  */
 export class BilibiliPush {
@@ -260,8 +275,11 @@ export class BilibiliPush {
 	}
 
 	/**
-	 * 向某位 UP 某类推送的全部目标广播。返回每条消息的投递结果(一个目标一段序列;
+	 * 向某条订阅某类推送的全部目标广播。返回每条消息的投递结果(一个目标一段序列;
 	 * @全体 是 fire-and-forget,不计入返回值)。
+	 *
+	 * 订阅按**它自己的 id** 找(ADR-0019 决策 50):同一个 UP 配了两条订阅时各推各的路由,
+	 * 拓展订阅(没有 uid)也找得到。B 站引擎说的是 uid,翻译在宿主那条边上做。
 	 *
 	 * 闸门按代价排:全局静音 → 无订阅 → 特性总开关 → 免扰时段,任一挡下都静默返回 —— 这些
 	 * 不是「无目标」。过了闸再看目标:路由里**启用的**(目标启用、所属连接启用)才是候选,
@@ -280,7 +298,7 @@ export class BilibiliPush {
 	 * 显式抑制 @全体,否则会每条直播推送都 @全体(修过的 bug)。
 	 */
 	async broadcastToFeature(
-		uid: string,
+		subscriptionId: string,
 		feature: FeatureKey,
 		payload: NotificationPayload | NotificationPayload[],
 		opts?: BroadcastOptions,
@@ -294,31 +312,32 @@ export class BilibiliPush {
 		// 全局静音闸,排在所有查询之前 —— 静音期间一次订阅查找都不必做。
 		// 只挡订阅推送;发给主人的私聊不走这里,理由见 `muted` 的注释。
 		if (this.muted()) {
-			this.logger.debug(`[push] uid=${uid} feature=${feature} 处于全局静音，跳过`);
+			this.logger.debug(`[push] sub=${subscriptionId} feature=${feature} 处于全局静音，跳过`);
 			return [];
 		}
 
-		const sub = this.store.findByUid(uid);
+		const sub = this.store.findById(subscriptionId);
 		if (!sub) {
-			this.logger.debug(`[push] uid=${uid} 无订阅记录，跳过 feature=${feature}`);
+			this.logger.debug(`[push] sub=${subscriptionId} 无订阅记录，跳过 feature=${feature}`);
 			return [];
 		}
+		const who = subscriptionLabel(sub);
 
 		// 「features 总开关」与「quietHours 免扰时段」两道 runtime gate:把 sub 折叠成
 		// EffectiveSubscription 后按当前 globals 判定。
 		const defaults = this.defaults();
 		const eff = resolve(sub, defaults);
 		if (!eff.features[feature]) {
-			this.logger.debug(`[push] uid=${uid} feature=${feature} 总开关 OFF，跳过`);
+			this.logger.debug(`[push] ${who} feature=${feature} 总开关 OFF，跳过`);
 			return [];
 		}
 		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
-			this.logger.debug(`[push] uid=${uid} feature=${feature} 落在免扰时段，跳过`);
+			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，跳过`);
 			return [];
 		}
 
 		const ctx: SendContext = {
-			uid,
+			subscriptionId,
 			feature,
 			kind: opts?.kind ?? featureToPushKind(feature),
 			pushId: opts?.pushId ?? randomUUID(),
@@ -327,7 +346,7 @@ export class BilibiliPush {
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
 		const routed = (sub.routing[feature] ?? []).filter((id) => this.sink.isEnabled(id));
 		if (routed.length === 0) {
-			this.logger.debug(`[push] uid=${uid} feature=${feature} 无可用目标`);
+			this.logger.debug(`[push] ${who} feature=${feature} 无可用目标`);
 			this.onSend?.({
 				...ctx,
 				target: null,
@@ -346,7 +365,7 @@ export class BilibiliPush {
 		if (targetIds.length === 0) {
 			// 收窄成空**不是「无目标」**(决策 7):本体那一行已经在了、而且是「已送达」,
 			// 这个附加项只是谁都没订 —— 是配置意图不是故障,不落行、不弹卡、不记失败。
-			this.logger.debug(`[push] uid=${uid} feature=${feature} 附加项 ${extraKey} 无人订阅，跳过`);
+			this.logger.debug(`[push] ${who} feature=${feature} 附加项 ${extraKey} 无人订阅，跳过`);
 			return [];
 		}
 
@@ -361,7 +380,7 @@ export class BilibiliPush {
 						? "atAllLive"
 						: null;
 
-		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
+		this.logger.info(`[push] ${who} feature=${feature} → ${targetIds.length} 个目标`);
 		if (!atAllKey) {
 			return this.sendBatch(targetIds, payloads, ctx);
 		}
@@ -417,7 +436,7 @@ export class BilibiliPush {
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const myGen = this.generation;
-		const routing = { uid: ctx.uid, feature: ctx.feature };
+		const routing = { subscriptionId: ctx.subscriptionId, feature: ctx.feature };
 		const results: DeliveryResult[] = [];
 		for (const id of atAllTargets) {
 			if (this.disposed || this.generation !== myGen) break;
@@ -477,7 +496,7 @@ export class BilibiliPush {
 		ctx: SendContext,
 		myGen: number,
 	): Promise<PushMessageOutcome[] | null> {
-		const routing = { uid: ctx.uid, feature: ctx.feature };
+		const routing = { subscriptionId: ctx.subscriptionId, feature: ctx.feature };
 		const outcomes: PushMessageOutcome[] = [];
 		for (const [i, payload] of payloads.entries()) {
 			const result = await this.sendToTarget(targetId, payload, { routing });
@@ -501,7 +520,7 @@ export class BilibiliPush {
 		if (!target) return;
 		this.onSend({
 			pushId: ctx.pushId,
-			uid: ctx.uid,
+			subscriptionId: ctx.subscriptionId,
 			feature: ctx.feature,
 			kind: ctx.kind,
 			target,
@@ -514,25 +533,30 @@ export class BilibiliPush {
 	 * Retries with exponential back-off if the sink indicates the target is temporarily unavailable.
 	 *
 	 * `opts.routing` re-checks (每次重试前,不只入口一次)`targetId` 是否仍在
-	 * `store.findByUid(uid).routing[feature]` 里。退避重试窗口最长可达约 190s
+	 * `store.findById(subscriptionId).routing[feature]` 里。退避重试窗口最长可达约 190s
 	 * (3s→6s→…→96s),这期间用户完全可能编辑订阅、把这个 target 从路由里移除 ——
 	 * 若不复检,一次因目标暂时不可达(如 OneBot WS 正在重连)而进入重试的推送,
 	 * 会在用户"取消"之后、目标恢复可达时才真正发出,造成"取消了还在推"的错觉
 	 * (routing 早已改了,只是这条重试还攥着入口时那份旧 targetId 没放手)。
 	 * `sendToMaster` 等非订阅路由的调用不传 `routing`,不受影响。
+	 *
+	 * 复检认的是**这条推送自己那条订阅**(按订阅 id,ADR-0019 决策 50):同一个 UP 配了
+	 * 两条订阅时,另一条还路由着这个目标不算数。
 	 */
 	async sendToTarget(
 		targetId: string,
 		payload: NotificationPayload,
-		opts?: { private?: boolean; routing?: { uid: string; feature: FeatureKey } },
+		opts?: { private?: boolean; routing?: { subscriptionId: string; feature: FeatureKey } },
 	): Promise<DeliveryResult> {
 		if (this.disposed) return { ok: false, latencyMs: 0, err: "disposed" };
 
 		const myGen = this.generation;
+		const routing = opts?.routing;
 		let delay = INITIAL_RETRY_DELAY_MS;
 		while (!this.disposed && this.generation === myGen) {
-			if (opts?.routing && !this.isStillRouted(opts.routing.uid, opts.routing.feature, targetId)) {
-				const msg = `target=${targetId} 已从 uid=${opts.routing.uid} feature=${opts.routing.feature} 的路由中移除，放弃重试中的推送`;
+			if (routing && !this.isStillRouted(routing.subscriptionId, routing.feature, targetId)) {
+				const who = this.labelOf(routing.subscriptionId);
+				const msg = `target=${targetId} 已从 ${who} feature=${routing.feature} 的路由中移除，放弃重试中的推送`;
 				this.logger.info(`[push] ${msg}`);
 				return { ok: false, latencyMs: 0, err: msg };
 			}
@@ -569,10 +593,16 @@ export class BilibiliPush {
 		};
 	}
 
-	/** `targetId` 当前是否仍在 uid 该 feature 的 routing 里。查不到订阅视为不再路由。 */
-	private isStillRouted(uid: string, feature: FeatureKey, targetId: string): boolean {
-		const sub = this.store.findByUid(uid);
+	/** `targetId` 当前是否仍在这条订阅该 feature 的 routing 里。查不到订阅视为不再路由。 */
+	private isStillRouted(subscriptionId: string, feature: FeatureKey, targetId: string): boolean {
+		const sub = this.store.findById(subscriptionId);
 		return (sub?.routing[feature] ?? []).includes(targetId);
+	}
+
+	/** 日志用:订阅还在就出可读标签,不在了只剩 `sub=<id>`。 */
+	private labelOf(subscriptionId: string): string {
+		const sub = this.store.findById(subscriptionId);
+		return sub ? subscriptionLabel(sub) : `sub=${subscriptionId}`;
 	}
 
 	/**

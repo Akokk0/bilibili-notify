@@ -1092,7 +1092,8 @@ describe("createEngines — 消息版式", () => {
 	});
 
 	it("dynamicPushLike.broadcastDynamicSequence → BilibiliPush 收到 payload 数组", async () => {
-		const c = setup();
+		// 引擎说 uid,推送层认订阅 id —— 这个 uid 得真有一条订阅,适配器才往下交。
+		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
 		active = c;
 		const seq = H.dynamic[0].opts.push.broadcastDynamicSequence;
 		expect(seq).toBeDefined();
@@ -1105,8 +1106,8 @@ describe("createEngines — 消息版式", () => {
 			"dynamic",
 		);
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
-		const [uid, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
-		expect(uid).toBe("1");
+		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
+		expect(subscriptionId).toBe("s1");
 		expect(feature).toBe("dynamic");
 		expect(Array.isArray(payloads)).toBe(true);
 		expect(payloads).toHaveLength(2);
@@ -1117,7 +1118,7 @@ describe("createEngines — 消息版式", () => {
 	});
 
 	it("livePushLike.broadcastSequenceToTargets → feature 映射 + allowAtAll(开播=3)", async () => {
-		const c = setup();
+		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
 		active = c;
 		const seq = H.live[0].opts.push.broadcastSequenceToTargets;
 		expect(seq).toBeDefined();
@@ -1127,8 +1128,8 @@ describe("createEngines — 消息版式", () => {
 		const msg2 = standaloneContentBuilder.message([standaloneContentBuilder.text("开播文案")]);
 		await seq("1", [msg1, msg2], 3);
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
-		const [uid, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
-		expect(uid).toBe("1");
+		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
+		expect(subscriptionId).toBe("s1");
 		expect(feature).toBe("live");
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");

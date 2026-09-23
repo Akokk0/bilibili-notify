@@ -1,5 +1,5 @@
 /**
- * 「这个 uid 这把特性键路由到哪些目标」+「这个目标现在还该不该收」—— 折成一张
+ * 「这条订阅这把特性键路由到哪些目标」+「这个目标现在还该不该收」—— 折成一张
  * **随 `config-changed` 失效**的快照。
  *
  * 为什么不每次现问 ConfigStore:`getSubscriptions` / `getTargets` / `getConnections`
@@ -28,10 +28,22 @@ import type {
 import { isBiliSubscription, isTargetPaused } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 
-/** 折好的一张答案表。两问都是 O(1) 查表,不含任何深拷贝。 */
+/** 折好的一张答案表。几问都是 O(1) 查表,不含任何深拷贝。 */
 export interface TargetScopeTable {
-	/** 这个 uid 这把特性键**当前**路由到哪些目标;没有这条订阅就是空。 */
-	routedTargets(uid: string, feature: FeatureKey): readonly string[];
+	/**
+	 * 这条订阅(按订阅自己的 id,ADR-0019 决策 50)这把特性键**当前**路由到哪些目标;
+	 * 没有这条订阅就是空。
+	 */
+	routedTargets(subscriptionId: string, feature: FeatureKey): readonly string[];
+	/**
+	 * 历史行记下的那条订阅**现在**是哪一条,回它的 id(决策 50:重推先按 `subscriptionId`
+	 * 找、找不到再按身份找 —— 删了又重加的 UP,旧历史照样能重推)。
+	 *
+	 * id 还在就是它;不在了就找第一个 uid 相同的 **B 站**订阅(同一个 uid 两条时先出现的
+	 * 说了算);都没有回 undefined。拓展订阅的外部 id 恰好等于那串 uid 也不算 —— 那是
+	 * 另一个平台上的另一个人。
+	 */
+	currentSubscriptionOf(row: { subscriptionId: string; uid: string }): string | undefined;
 	/**
 	 * 目标与它所属的连接都还启用着。
 	 *
@@ -54,18 +66,21 @@ export function resolveTargetScope({
 	targets,
 	connections,
 }: ResolveTargetScopeInput): TargetScopeTable {
-	// 同一个 uid 配了两条订阅时**先出现的那条说了算** —— 与从前那句
-	// `getSubscriptions().find((s) => s.uid === uid)` 一字不差。
-	// 推送链今天按 uid 找订阅(ADR-0019 决策 50,改按 id 是 ④ 的第一片),所以这张表只收
-	// B 站订阅:拓展订阅没有 uid,外部 id 恰好是同一串数字也不是同一个人。
+	// 路由按订阅自己的 id 收**全部**订阅(ADR-0019 决策 50):同一个 UP 的两条订阅各有各的路由。
 	const routing = new Map<string, Subscription["routing"]>();
-	for (const sub of subscriptions.filter(isBiliSubscription)) {
-		if (!routing.has(sub.uid)) routing.set(sub.uid, sub.routing);
+	// 身份那一问只认 B 站:拓展订阅没有 uid,外部 id 恰好是同一串数字也不是同一个人。
+	// 同一个 uid 两条时**先出现的那条说了算** —— 与从前按 uid 找订阅的口径一致。
+	const byUid = new Map<string, string>();
+	for (const sub of subscriptions) {
+		routing.set(sub.id, sub.routing);
+		if (isBiliSubscription(sub) && !byUid.has(sub.uid)) byUid.set(sub.uid, sub.id);
 	}
 	const enabled = new Set<string>();
 	for (const target of targets) if (!isTargetPaused(target, connections)) enabled.add(target.id);
 	return {
-		routedTargets: (uid, feature) => routing.get(uid)?.[feature] ?? [],
+		routedTargets: (subscriptionId, feature) => routing.get(subscriptionId)?.[feature] ?? [],
+		currentSubscriptionOf: ({ subscriptionId, uid }) =>
+			routing.has(subscriptionId) ? subscriptionId : byUid.get(uid),
 		targetEnabled: (targetId) => enabled.has(targetId),
 	};
 }
@@ -100,7 +115,8 @@ export function createTargetScope(opts: CreateTargetScopeOptions): TargetScope {
 		return table;
 	};
 	return {
-		routedTargets: (uid, feature) => current().routedTargets(uid, feature),
+		routedTargets: (subscriptionId, feature) => current().routedTargets(subscriptionId, feature),
+		currentSubscriptionOf: (row) => current().currentSubscriptionOf(row),
 		targetEnabled: (targetId) => current().targetEnabled(targetId),
 		dispose: () => handle.dispose(),
 	};

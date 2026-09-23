@@ -238,7 +238,8 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 			if (!engines) return { ok: false, latencyMs: 0, err: "推送引擎还没起来，稍后再试" };
 			return engines.push.sendToTarget(targetId, payload, { routing });
 		},
-		routedTargets: (uid, feature) => targetScope.routedTargets(uid, feature),
+		routedTargets: (subscriptionId, feature) => targetScope.routedTargets(subscriptionId, feature),
+		currentSubscriptionOf: (row) => targetScope.currentSubscriptionOf(row),
 		targetEnabled: (targetId) => targetScope.targetEnabled(targetId),
 		logger: serviceCtx.logger,
 	});
