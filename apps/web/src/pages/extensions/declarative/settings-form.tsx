@@ -11,25 +11,23 @@ import {
 	TInput,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type HTMLAttributes, type ReactNode, useState } from "react";
-import { api } from "../../../services/api";
-import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
-import { adoptWrittenGlobals } from "./globals-cache";
 import { safeImage } from "./image";
-import { extensionSettingsOf, settingsIssuesOf } from "./list-items";
+import { settingsIssuesOf, settingsValuesOf, writeReasonOf } from "./list-items";
 import { CopyControl, MissingSecretNote, RegenerateButton, SecretChip } from "./parts";
-import { newHexSecret } from "./secret";
+import { maskedOf, newHexSecret } from "./secret";
+import { type SettingsWrite, useExtensionSettings, useSettingsWrite } from "./settings-query";
 
 /**
  * 一个 v2 拓展的「设置」那张卡 —— 照清单里的设置项画(ADR-0019 决策 17 / 30),改完按「保存」
  * 才写。**只管单值的那几种**(`string` / `number` / `boolean` / `enum`);`list` 那种每项一张卡、
  * 有新建弹窗与删除确认,另画一节,不进这张表单。
  *
- * 值来自 `globals.extensions.<id>.settings`,写回走同一条 `PATCH /api/globals` —— 设置的写路径
- * 只有 BN 这一条(决策 22),服务端照清单校验(决策 17)。**拓展关着也能改**(决策 32):设置
- * 只是存着的数据,「装好 → 填 → 启用」这个顺序靠它才走得通。
+ * 读写走拓展自己的口 `/api/ext/:id/settings`(决策 35):读回来的密钥只有服务端算好的头尾;存的
+ * 时候带着读到的版本号、每一格改了的发一步 `set`(一发里一起发)。服务端照清单校验,拓展在跑时再过
+ * 它自己的 zod。**拓展关着也能改**(决策 32):设置只是存着的数据,「装好 → 填 → 启用」这个顺序
+ * 靠它才走得通。
  */
 
 /** 一格没存的改动:数字格存的是输入框里的字(空着、打到一半都得表达得出来)。 */
@@ -63,11 +61,11 @@ function baselineOf(field: ExtensionScalarField, stored: Record<string, unknown>
 	const raw = own(stored, field.key);
 	switch (field.type) {
 		case "string":
-			// 🔴 密钥的真值**从不**当成输入框的值 —— 按「换一份」给的必须是空框,否则真值就摆在
-			// 一个 value 里(devtools 看得见、截图里有、改两个字再存就是一把半新半旧的钥匙)。
-			if (isSecretInput(field)) return "";
+			// 🔴 密钥格**从不**拿存着的东西当输入框的值 —— 下发的本来就只是遮挡,按「换一份」给的
+			// 必须是空框;生成的那一格没有输入框,刚生成的那一把才进草稿。
+			if (field.secret || field.generate) return "";
 			if (typeof raw === "string") return raw;
-			return field.generate ? "" : (field.default ?? "");
+			return field.default ?? "";
 		case "number":
 			if (typeof raw === "number") return String(raw);
 			return field.default === undefined ? "" : String(field.default);
@@ -140,8 +138,8 @@ export function clientErrorOf(field: ExtensionScalarField, value: Edit): string 
 }
 
 /**
- * 发出去的那一格。**空着的可选格发 `null`** —— 设置是 JSON Merge Patch,「删掉这个键」在线上
- * 只有 `null` 说得出来;把键拿掉的意思是「不改」,旧值会原样留着。
+ * 发出去的那一格(`set` 的 `value`)。**空着的可选格发 `null`** —— 「删掉这一格」在线上只有 `null`
+ * 说得出来;不发这一格的意思是「不改」,旧值会原样留着。
  */
 function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
 	if (typeof value === "boolean") return value;
@@ -151,26 +149,23 @@ function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
 }
 
 /**
- * 服务端照清单校验不过时那份 400(`{ error: "validation_failed", issues }`)拆成两半。一条都拆
+ * 校验不过那份 400(`{ error: "validation_failed", issues }`,路径从设置那一层数)拆成两半。一条都拆
  * 不出来的交 `null`,与别的失败一样说原话 —— 与列表那一节(`writeFailureOf`)同一个口径。
  */
 interface SaveIssues {
 	/** 落得到某一格的:那一格 → 服务端那句话。 */
 	byField: Record<string, string>;
-	/** 落不到的(列表那一节的、别处的):摆在表单顶上。 */
+	/** 落不到的(拓展自己跨格的规矩、别处的):摆在表单顶上。 */
 	rest: string[];
 }
 
-function saveIssuesOf(
-	err: unknown,
-	extensionId: string,
-	keys: ReadonlySet<string>,
-): SaveIssues | null {
-	const issues = settingsIssuesOf(err, extensionId);
+function saveIssuesOf(err: unknown, keys: ReadonlySet<string>): SaveIssues | null {
+	const issues = settingsIssuesOf(err);
 	if (!issues || issues.length === 0) return null;
 	const out: SaveIssues = { byField: {}, rest: [] };
-	for (const { key, message, text } of issues) {
-		if (key !== undefined && keys.has(key)) {
+	for (const { path, message, text } of issues) {
+		const [key] = path;
+		if (typeof key === "string" && keys.has(key)) {
 			// 同一格有好几句的,留第一句。
 			if (!Object.hasOwn(out.byField, key)) out.byField[key] = message;
 			continue;
@@ -180,9 +175,8 @@ function saveIssuesOf(
 	return out;
 }
 
-/** 一发保存带的东西 —— 走 variables,不从闭包里拿(onSuccess 要知道**这一发**发了什么)。 */
-interface SaveVars {
-	patch: Record<string, unknown>;
+/** 一发保存带的东西 —— 走 variables,不从闭包里拿(写成之后要知道**这一发**发了什么)。 */
+interface SaveVars extends SettingsWrite {
 	/** 这一发是照着哪份草稿发的:存上之后只丢掉没再改过的那几格。 */
 	sent: Record<string, Edit>;
 }
@@ -194,35 +188,24 @@ export function SettingsForm({
 	extensionId: string;
 	fields: readonly ExtensionScalarField[];
 }) {
-	const qc = useQueryClient();
-	const globals = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
-	});
+	const settings = useExtensionSettings(extensionId);
 	const [edits, setEdits] = useState<Record<string, Edit>>({});
 	/** 按了「换一份」的密钥 —— 只管显示(遮住 / 输入框),值照样只在 `edits` 里。 */
 	const [replacing, setReplacing] = useState<Record<string, boolean>>({});
 	/** 等着确认「重新生成」的那一格。 */
 	const [confirming, setConfirming] = useState<ExtensionScalarField | null>(null);
 
-	const stored = extensionSettingsOf(globals.data, extensionId);
+	const stored = settingsValuesOf(settings.data);
 
-	const save = useMutation({
-		mutationFn: ({ patch }: SaveVars) =>
-			api.patch<GlobalConfig>("/api/globals", {
-				extensions: { [extensionId]: { settings: patch } },
-			}),
-		onSuccess: async (written, { sent }) => {
-			// 先把回应(写后的整份)收进缓存,再丢草稿 —— 反过来的话会闪一下旧值。不等重读:
-			// 为什么见 `adoptWrittenGlobals`。
-			await adoptWrittenGlobals(qc, written);
-			const keep = (key: string, current: Edit | undefined) =>
-				!Object.hasOwn(sent, key) || current !== sent[key];
-			setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => keep(k, v))));
-			setReplacing((prev) =>
-				Object.fromEntries(Object.entries(prev).filter(([k]) => !Object.hasOwn(sent, k))),
-			);
-		},
+	// 回应(写后的整份)先进缓存、再丢草稿 —— 反过来的话会闪一下旧值。不等重读:为什么见
+	// `useSettingsWrite`。409 时草稿原样留着,重读回来的是别人刚写的那份,主人看一眼再存。
+	const save = useSettingsWrite<SaveVars>(extensionId, (_written, { sent }) => {
+		const keep = (key: string, current: Edit | undefined) =>
+			!Object.hasOwn(sent, key) || current !== sent[key];
+		setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => keep(k, v))));
+		setReplacing((prev) =>
+			Object.fromEntries(Object.entries(prev).filter(([k]) => !Object.hasOwn(sent, k))),
+		);
 	});
 
 	const currentOf = (field: ExtensionScalarField): Edit =>
@@ -248,20 +231,21 @@ export function SettingsForm({
 	const canSave = dirty.length > 0 && Object.keys(clientErrors).length === 0;
 
 	const keys = new Set(fields.map((field) => field.key));
-	const issues = save.isError ? saveIssuesOf(save.error, extensionId, keys) : null;
-	// 表单顶上那句:落不到某一格的那几句;拆不出来的失败说原话。
-	const pageError = save.isError ? (issues?.rest.join(";") ?? reasonOf(save.error)) : "";
+	const issues = save.isError ? saveIssuesOf(save.error, keys) : null;
+	// 表单顶上那句:落不到某一格的那几句;拆不出来的失败(409、只读盘、断网)说它自己的话。
+	const pageError = save.isError ? (issues?.rest.join(";") ?? writeReasonOf(save.error)) : "";
 
 	const submit = () => {
-		if (!canSave) return;
-		const patch: Record<string, unknown> = {};
+		const revision = settings.data?.revision;
+		if (!canSave || revision === undefined) return;
 		const sent: Record<string, Edit> = {};
-		for (const field of dirty) {
+		// 改了几格就几步 `set`,一发里一起发 —— 要么都存上,要么一格都不存。
+		const ops = dirty.map((field) => {
 			const value = currentOf(field);
-			patch[field.key] = wireValueOf(field, value);
 			sent[field.key] = value;
-		}
-		save.mutate({ patch, sent });
+			return { op: "set" as const, key: field.key, value: wireValueOf(field, value) };
+		});
+		save.mutate({ revision, ops, sent });
 	};
 
 	const revert = () => {
@@ -275,8 +259,7 @@ export function SettingsForm({
 	 * 空着的(脱敏备份恢复回来就是这样)与刚生成、还没存的那份不问 —— 没有旧钥匙可作废。
 	 */
 	const regenerate = (field: ExtensionScalarField) => {
-		const saved = own(stored, field.key);
-		const hasSaved = typeof saved === "string" && saved !== "";
+		const hasSaved = maskedOf(own(stored, field.key)) !== undefined;
 		if (hasSaved && !Object.hasOwn(edits, field.key)) {
 			setConfirming(field);
 			return;
@@ -285,14 +268,14 @@ export function SettingsForm({
 	};
 
 	let body: ReactNode;
-	if (globals.isPending) {
+	if (settings.isPending) {
 		body = <LoadingBlock variant="inset" label="正在读取设置" />;
-	} else if (globals.isError) {
+	} else if (settings.isError) {
 		/*
 		 * 🔴 **「读不到」不许画成「全是默认值」**:照着一张假的表改完一存,只发改了的那几格
 		 * 倒是不会抹掉别的 —— 但主人看到的「现在是什么」全是假话。
 		 */
-		body = <ErrorNote size="sm">读不到这个拓展的设置:{reasonOf(globals.error)}</ErrorNote>;
+		body = <ErrorNote size="sm">读不到这个拓展的设置:{reasonOf(settings.error)}</ErrorNote>;
 	} else {
 		body = (
 			<div className="flex flex-col gap-4">
@@ -309,7 +292,7 @@ export function SettingsForm({
 							<FieldControl
 								field={field}
 								value={currentOf(field)}
-								saved={own(stored, field.key)}
+								savedMask={maskedOf(own(stored, field.key))}
 								fresh={Object.hasOwn(edits, field.key)}
 								replacing={own(replacing, field.key) === true}
 								onChange={(value) => edit(field.key, value)}
@@ -409,7 +392,7 @@ export function FieldShell({
 function FieldControl({
 	field,
 	value,
-	saved,
+	savedMask,
 	fresh,
 	replacing,
 	onChange,
@@ -419,8 +402,8 @@ function FieldControl({
 }: {
 	field: ExtensionScalarField;
 	value: Edit;
-	/** 存着的那份原值 —— 只给遮住的那两种用(遮哪一串 / 有没有东西可遮)。 */
-	saved: unknown;
+	/** 存着的那一把在屏幕上的样子(服务端给的遮挡)—— 只给密钥那两种用;没存是 `undefined`。 */
+	savedMask: string | undefined;
 	/** 这一格有没存的改动(生成的那种:屏幕上是刚生成、还没存的那一把)。 */
 	fresh: boolean;
 	replacing: boolean;
@@ -433,18 +416,18 @@ function FieldControl({
 		return (
 			<GeneratedValue
 				label={field.label}
-				value={String(value)}
-				fresh={fresh}
+				fresh={fresh ? String(value) : undefined}
+				savedMask={savedMask}
 				onRegenerate={onRegenerate}
 			/>
 		);
 	}
 	if (field.type === "string" && field.secret) {
-		const hasSaved = typeof saved === "string" && saved !== "";
+		const hasSaved = savedMask !== undefined;
 		if (hasSaved && !replacing) {
 			return (
 				<div className="flex flex-wrap items-center gap-2.5">
-					<SecretChip value={saved} />
+					<SecretChip text={savedMask} />
 					<Btn variant="outline" size="sm" onClick={onReplace}>
 						换一份
 					</Btn>
@@ -566,21 +549,24 @@ function EnumControl({
 }
 
 /**
- * `generate` 那一格(决策 30):只读、遮住、能复制、能重新生成,格式由 BN 定(32 位小写十六进制)。
- * 刚生成还没存的那一把**明文显示** —— 主人要把它抄进对面去,存下之后就只露头尾。
+ * `generate` 那一格(决策 30 / 38):只读、能重新生成,格式由 BN 定(32 位小写十六进制)。
+ *
+ * 存着的那一把只画服务端给的遮挡、**不给复制** —— 浏览器只拿得到头尾,要全文就重新生成。刚生成、
+ * 还没存的那一把**明文显示、能复制**:主人要把它抄进对面去,只有这一刻明文在面板手里。
  */
 function GeneratedValue({
 	label,
-	value,
 	fresh,
+	savedMask,
 	onRegenerate,
 }: {
 	label: string;
-	value: string;
-	fresh: boolean;
+	/** 刚生成、还没存的那一把。 */
+	fresh: string | undefined;
+	savedMask: string | undefined;
 	onRegenerate: () => void;
 }) {
-	if (!value) {
+	if (fresh === undefined && savedMask === undefined) {
 		return (
 			<div className="flex flex-wrap items-center gap-2.5">
 				<MissingSecretNote label={label} onRegenerate={onRegenerate}>
@@ -592,11 +578,11 @@ function GeneratedValue({
 	return (
 		<>
 			<div className="flex flex-wrap items-center gap-2.5">
-				<SecretChip value={value} reveal={fresh} />
-				<CopyControl label={`复制 ${label}`} text={value} />
+				<SecretChip text={fresh ?? savedMask ?? ""} />
+				{fresh !== undefined ? <CopyControl label={`复制 ${label}`} text={fresh} /> : null}
 				<RegenerateButton label={label} onClick={onRegenerate} />
 			</div>
-			{fresh ? (
+			{fresh !== undefined ? (
 				<p className={FIELD_NOTE_CLS}>新生成的,还没保存 —— 存下之后只露头尾,要用就趁现在复制。</p>
 			) : null}
 		</>

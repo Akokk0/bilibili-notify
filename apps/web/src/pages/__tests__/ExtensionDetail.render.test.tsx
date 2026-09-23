@@ -115,6 +115,10 @@ function renderDetail(id = "bridge") {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return LISTED;
 		if (url === "/api/globals") return GLOBALS;
+		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/globals` 里已经没有设置那一格。
+		if (url === "/api/ext/bridge/settings") {
+			return { revision: "r1", values: GLOBALS.extensions.bridge.settings };
+		}
 		if (url === "/api/ext/bridge/status") return VIEW;
 		return {};
 	});

@@ -9,7 +9,8 @@
  * - 🔴 **屏幕上生成的那一把就是存下去的那一把**(ADR-0009 决策 21)。显示一把、存下另一把是这类
  *   界面的经典错法,症状是主人照着屏幕填进对面,对面收到 401,而面板上一切正常。
  * - 🔴 **要填到对面去的几样成对摆着、都能复制**(`newItemCopy`):分开摆的话,主人填完一样就走了。
- * - 项的 `id` 由 BN 生成(UUID),不在弹窗里(决策 29)。
+ * - 项的 `id` 由服务端生成(决策 29):发出去的 `add` 不带 id,回来的那一个就是这一条的身份。
+ * - 没成时弹窗不关、草稿留着:版本号对不上(409)重读一遍再按;校验不过(400)那句话落在那一格底下。
  */
 
 import type { ExtensionListField } from "@bilibili-notify/contract";
@@ -17,25 +18,27 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("../../../../services/api", () => ({
+vi.mock("../../../../services/api", async (importOriginal) => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-	ApiError: class extends Error {},
+	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
-import { api } from "../../../../services/api";
+import { ApiError, api } from "../../../../services/api";
 import {
 	answerPatch,
 	BRIDGE,
+	changeBehindTheBack,
 	HOME,
 	LINKS_FIELD,
 	renderList,
-	type SavedItem,
-	savedItems,
+	sentOps,
+	sentWrite,
+	servedSettings,
+	settingsReads,
 } from "./list-harness";
 
 const ADDRESS = "ws://192.168.1.20:8787/ext/bridge";
 const HEX32 = /^[0-9a-f]{32}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** 带一格数字的列表 —— 夹具里的桥没有数字格。 */
 const WITH_RETRY: ExtensionListField = {
@@ -67,11 +70,17 @@ function shownToken(dialog: HTMLElement): string {
 	return box.textContent;
 }
 
-/** 新建出来的那条 —— 列表整份写回,新的在末尾。 */
-function created(): SavedItem {
-	const item = savedItems().at(-1);
-	if (!item) throw new Error("名单里没有新的那条");
-	return item;
+/**
+ * 新建那一发里的那一项 —— 一步 `add`,只此一步。
+ *
+ * 🔴 **不带 `id`**:项的 id 由服务端生成(决策 29),面板生成的会被拒。
+ */
+function created(call = 0): Record<string, unknown> {
+	const ops = sentOps(call);
+	if (ops.length !== 1 || ops[0]?.op !== "add" || ops[0].list !== "links") {
+		throw new Error(`不是一步 add:${JSON.stringify(ops)}`);
+	}
+	return ops[0].item;
 }
 
 async function typeName(dialog: HTMLElement, name: string) {
@@ -323,27 +332,33 @@ describe("创建", () => {
 	});
 
 	/**
-	 * 新的那条接在末尾,原来那几条原样;`id` 是 BN 生成的 UUID(决策 29),停用那一格补清单的
-	 * 默认值 —— 弹窗里没有它。
+	 * 一步 `add`:填的那几格 + 停用那一格的默认值(弹窗里没有它),**不带 id** —— id 归服务端生成
+	 * (决策 29)。原来那几条碰都不碰。
 	 */
-	it("接在末尾:BN 生成的 id + 填的那几格 + 停用那一格的默认值", async () => {
-		const extra = { ...HOME, addedBy: "拓展自己放的" };
-		const dialog = await openDialog({ items: [extra] });
+	it("发一步 add:填的那几格 + 停用那一格的默认值,不带 id", async () => {
+		const dialog = await openDialog();
 		const token = shownToken(dialog);
 		await typeName(dialog, "公司那台");
 		await create(dialog);
-		const saved = savedItems();
-		expect(saved).toHaveLength(2);
-		expect(saved[0]).toEqual(extra);
-		const item = created();
-		expect(item.id).toMatch(UUID);
-		expect(item).toEqual({
-			id: item.id,
-			bridgeKind: "koishi",
-			name: "公司那台",
-			token,
-			enabled: true,
-		});
+		expect(created()).toEqual({ bridgeKind: "koishi", name: "公司那台", token, enabled: true });
+		expect(servedSettings().links).toHaveLength(2);
+		expect((servedSettings().links as unknown[])[0]).toEqual(HOME);
+	});
+
+	/** 回来的 id 就是新卡的身份:接着对它做什么(这里是停用),按的是服务端给的那一个。 */
+	it("回来的 id 用得上:新卡按它挂、接着停用它发的就是它", async () => {
+		const dialog = await openDialog();
+		await typeName(dialog, "公司那台");
+		await create(dialog);
+		const answered = vi.mocked(api.patch).mock.results[0];
+		if (!answered) throw new Error("没有那一发写");
+		const { added } = (await answered.value) as { added: string[] };
+		const id = added[0] as string;
+		expect(id).toMatch(/^srv-/);
+		await waitFor(() => expect(document.querySelector(`[data-list-card="${id}"]`)).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: "停用 公司那台" }));
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		expect(sentOps(1)).toEqual([{ op: "update", list: "links", id, values: { enabled: false } }]);
 	});
 
 	it("停用那一格清单默认关着,新建的就是关着的", async () => {
@@ -430,8 +445,70 @@ describe("创建", () => {
 		const dialog = await openDialog({ items: [] });
 		await typeName(dialog, "第一台");
 		await create(dialog);
-		expect(savedItems()).toHaveLength(1);
 		expect(created().name).toBe("第一台");
+		expect(await screen.findByText("第一台")).toBeTruthy();
+	});
+
+	/**
+	 * 校验不过(400):那句话落在**那一格**底下。新建那一项的 id 是服务端现生成的、面板不认识,
+	 * 按格认 —— 弹窗那一发只有这一步。落不到某一格的整条说在弹窗里。
+	 */
+	it("400:那句话落在那一格底下,落不到的整条说在弹窗里;弹窗不关", async () => {
+		vi.mocked(api.patch).mockRejectedValueOnce(
+			new ApiError(
+				400,
+				{
+					error: "validation_failed",
+					message: "不合规矩",
+					issues: [
+						{ op: 0, path: ["links", "4f1c-新的", "name"], message: "名字里不许有空格" },
+						{ path: ["links"], message: "最多十条" },
+					],
+				},
+				"PATCH /api/ext/bridge/settings → 400",
+			),
+		);
+		const dialog = await openDialog();
+		await typeName(dialog, "公司 那台");
+		await create(dialog);
+		const name = dialog.querySelector('[data-dialog-field="name"]') as HTMLElement;
+		expect((await within(name).findByRole("alert")).textContent).toBe("名字里不许有空格");
+		const kind = dialog.querySelector('[data-dialog-field="bridgeKind"]') as HTMLElement;
+		expect(within(kind).queryByRole("alert")).toBeNull();
+		expect(within(dialog).getByText("建不了这条接入:桥接入:最多十条")).toBeTruthy();
+		expect(screen.getByRole("dialog")).toBe(dialog);
+	});
+
+	/**
+	 * 🔴 版本号对不上(别的标签页刚写过一笔):弹窗不关、**草稿还在**(填的名字、屏幕上那一把
+	 * token),说清为什么,设置重读一遍;再按「创建」带的是新的版本号,存下去的还是这一把。
+	 */
+	it("409:弹窗不关、草稿还在,重读一遍;再按一次就建上了", async () => {
+		const dialog = await openDialog();
+		const token = shownToken(dialog);
+		await typeName(dialog, "公司那台");
+		changeBehindTheBack((settings) => {
+			(settings.links as { name: string }[])[0].name = "家里那台(改过)";
+		});
+		const reads = settingsReads();
+		await create(dialog);
+		expect(
+			await within(dialog).findByText(
+				"建不了这条接入:设置在你打开之后被改过了 —— 已经重新读了一遍,看一眼现在的样子再改",
+			),
+		).toBeTruthy();
+		await waitFor(() => expect(settingsReads()).toBe(reads + 1));
+		expect((within(dialog).getByRole("textbox", { name: "名字" }) as HTMLInputElement).value).toBe(
+			"公司那台",
+		);
+		expect(shownToken(dialog)).toBe(token);
+
+		await userEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		expect(sentWrite(1).revision).not.toBe(sentWrite(0).revision);
+		expect(created(1)).toMatchObject({ name: "公司那台", token });
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(screen.getByText("家里那台(改过)")).toBeTruthy();
 	});
 
 	/** 🔴 拓展关着也能建(决策 32)。 */

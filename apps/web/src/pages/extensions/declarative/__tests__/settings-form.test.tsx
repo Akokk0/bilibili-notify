@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 
 /**
- * 声明式设置表单(ADR-0019 决策 17 / 30):照清单里的设置项画,改完按「保存」才写。
+ * 声明式设置表单(ADR-0019 决策 17 / 30 / 35 / 38):照清单里的设置项画,改完按「保存」才写。
+ * 读写走 `/api/ext/:id/settings`:读回来的密钥只有服务端算好的头尾,写的是带版本号的一串 `set`。
  *
  * 值得钉的:
- * - **只发改了的那几格**。设置是 JSON Merge Patch,整份发出去的话,别处刚改的会被这一发按回旧值;
- *   清掉一格可选的要发 `null`(`undefined` 在 JSON 里表达不出来)。
- * - 🔴 **密钥不回传**:遮住的那一格从来没进过输入框,没按「换一份」重填就一个字都不发 —— 发回去
- *   的只可能是屏幕上那串点。
- * - 🔴 **屏幕上生成的那一把就是存下去的那一把**(ADR-0009 决策 21 的同一条)。
- * - 服务端照清单校验不过(400)时,那句话落在**那一格**底下,不是页顶一句笼统的「保存失败」。
+ * - **只发改了的那几格**,一格一步 `set`、一发里一起发;清掉一格可选的发 `null`。
+ * - 🔴 **密钥不回传**:遮住的那一格从来没进过输入框,没按「换一份」重填就一个字都不发。
+ * - 🔴 **已存的密钥只画服务端给的遮挡、不给复制**;刚生成的那一把明文显示、能复制,存下去的就是它。
+ * - 版本号对不上(409):重读一遍、说清为什么,改动留着;校验不过(400):那句话落在**那一格**底下。
  */
 
-import type { ExtensionScalarField } from "@bilibili-notify/contract";
+import type {
+	ExtensionScalarField,
+	ExtensionSettingsPatch,
+	ExtensionSettingsResponse,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -76,27 +79,57 @@ const FIELDS: ExtensionScalarField[] = [
 	{ key: "token", type: "string", label: "token", secret: true, generate: true },
 ];
 
-/** 服务端存着的那份设置 —— `api.patch` 照 Merge Patch 改它,`api.get` 读它。 */
+/** 服务端存着的那份设置(原文)—— `api.patch` 照 ops 改它,`api.get` 读它(密钥遮住)。 */
 let stored: Record<string, unknown>;
+/** 服务端眼下的版本号。每写成一次换一个。 */
+let revision: number;
 
-/**
- * 服务端眼下的整份 globals。GET 回它;PATCH 回的也是它(合并之后的那份,与 GET 同形 ——
- * `routes/globals.ts` 两边都过 `redactGlobals`)。
- */
-function servedGlobals() {
-	return { extensions: { douyin: { enabled: false, settings: { ...stored } } } };
+/** 假服务端的遮法,照真服务端:不到 24 位固定 8 个点,24 位及以上露头尾各四位。 */
+function maskOf(value: string): string {
+	const dots = "•".repeat(8);
+	return value.length < 24 ? dots : `${value.slice(0, 4)}${dots}${value.slice(-4)}`;
 }
 
-function mergePatch(body: unknown) {
-	const settings = (body as { extensions: { douyin: { settings: Record<string, unknown> } } })
-		.extensions.douyin.settings;
-	for (const [key, value] of Object.entries(settings)) {
-		if (value === null) delete stored[key];
-		else stored[key] = value;
+/** 服务端眼下下发的那一份 —— GET 回它;PATCH 回的也是它(写后的整份)外加 `added`。 */
+function served(fields: readonly ExtensionScalarField[] = FIELDS): ExtensionSettingsResponse {
+	const values: Record<string, unknown> = { ...stored };
+	for (const field of fields) {
+		const value = values[field.key];
+		const secret = field.type === "string" && (field.secret || field.generate);
+		if (secret && typeof value === "string" && value !== "") {
+			values[field.key] = { masked: maskOf(value) };
+		}
 	}
+	return { revision: `rev-${revision}`, values };
 }
+
+/** 照 ops 改存着的那份;版本号对不上回 409(与真服务端同形)。 */
+function applyPatch(body: unknown) {
+	const patch = body as ExtensionSettingsPatch;
+	if (patch.revision !== `rev-${revision}`) {
+		throw new ApiError(
+			409,
+			{
+				error: "revision_conflict",
+				message: "设置在你打开之后被改过了",
+				revision: `rev-${revision}`,
+			},
+			"设置在你打开之后被改过了",
+		);
+	}
+	for (const op of patch.ops) {
+		if (op.op !== "set") throw new Error(`表单只该发 set:${JSON.stringify(op)}`);
+		if (op.value === null) delete stored[op.key];
+		else stored[op.key] = op.value;
+	}
+	revision += 1;
+}
+
+/** 这一轮渲染的清单 —— 假服务端照它遮密钥。 */
+let rendered: readonly ExtensionScalarField[] = FIELDS;
 
 function renderForm(fields: ExtensionScalarField[] = FIELDS) {
+	rendered = fields;
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
@@ -113,33 +146,45 @@ function field(key: string): HTMLElement {
 	return el as HTMLElement;
 }
 
-/** 第 `call` 发写回里的设置补丁。 */
+/**
+ * 第 `call` 发写里改了的那几格(`set` 的 key → value)。
+ *
+ * 🔴 请求体只有版本号与 ops,每一步都是 `set`、带着读到的版本号 —— 表单不整份写回,也不碰列表。
+ */
 function sentSettings(call = 0): Record<string, unknown> {
 	const args = vi.mocked(api.patch).mock.calls[call];
-	if (!args) throw new Error(`没有第 ${call + 1} 发写回`);
-	const [url, body] = args as [string, { extensions: Record<string, { settings: unknown }> }];
-	expect(url).toBe("/api/globals");
-	// 补丁只带自己这一个拓展的一格设置,别的拓展、开关都不碰。
-	expect(Object.keys(body)).toEqual(["extensions"]);
-	expect(Object.keys(body.extensions)).toEqual(["douyin"]);
-	expect(Object.keys(body.extensions.douyin)).toEqual(["settings"]);
-	return body.extensions.douyin.settings as Record<string, unknown>;
+	if (!args) throw new Error(`没有第 ${call + 1} 发写`);
+	const [url, body] = args as [string, ExtensionSettingsPatch];
+	expect(url).toBe("/api/ext/douyin/settings");
+	expect(Object.keys(body).sort()).toEqual(["ops", "revision"]);
+	expect(body.revision).toMatch(/^rev-\d+$/);
+	return Object.fromEntries(
+		body.ops.map((op) => {
+			if (op.op !== "set") throw new Error(`表单只该发 set:${JSON.stringify(op)}`);
+			return [op.key, op.value];
+		}),
+	);
 }
+
+/** 读设置那一口被问了几次。 */
+const reads = () =>
+	vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/douyin/settings").length;
 
 const save = () => screen.getByRole("button", { name: "保存" });
 const revert = () => screen.getByRole("button", { name: "还原" });
 
 beforeEach(() => {
 	stored = { cookie: COOKIE, interval: 90, note: "旧备注", token: TOKEN };
+	revision = 1;
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/globals") return servedGlobals();
+		if (url === "/api/ext/douyin/settings") return served(rendered);
 		throw new Error(`没有这个口:${url}`);
 	});
 	vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
-		mergePatch(body);
-		return servedGlobals();
+		applyPatch(body);
+		return { ...served(rendered), added: [] };
 	});
 });
 afterEach(() => {
@@ -193,11 +238,11 @@ describe("每种设置项怎么画", () => {
 		expect(quality.getByRole("button", { name: "省流量" }).querySelector("img")).toBeNull();
 	});
 
-	/** 🔴 密钥只露头尾各四位,全文不上屏 —— 连输入框的 value 里都没有。 */
-	it("secret:只露头尾,全文哪儿都没有", async () => {
+	/** 🔴 密钥只画服务端给的那一串(头尾由服务端算),全文不上屏 —— 连输入框的 value 里都没有。 */
+	it("secret:画服务端给的遮挡,全文哪儿都没有", async () => {
 		const { container } = renderForm();
 		await screen.findByText("检查间隔");
-		expect(within(field("cookie")).getByText(/^sess•+d41c$/)).toBeTruthy();
+		expect(within(field("cookie")).getByText(`sess${"•".repeat(8)}d41c`)).toBeTruthy();
 		expect(container.innerHTML).not.toContain(COOKIE);
 		for (const input of container.querySelectorAll("input, textarea")) {
 			expect((input as HTMLInputElement).value).not.toContain("0123456789abcdef");
@@ -205,12 +250,13 @@ describe("每种设置项怎么画", () => {
 		expect(within(field("cookie")).getByRole("button", { name: "换一份" })).toBeTruthy();
 	});
 
-	it("generate:只读、遮住,能复制、能重新生成", async () => {
+	/** 🔴 存下之后不给复制(决策 38):浏览器只有头尾,要全文就重新生成。 */
+	it("generate:只读、画遮挡,没有「复制」,能重新生成", async () => {
 		renderForm();
 		await screen.findByText("检查间隔");
 		const token = within(field("token"));
-		expect(token.getByText(`0123${"•".repeat(24)}cdef`)).toBeTruthy();
-		expect(token.getByRole("button", { name: "复制 token" })).toBeTruthy();
+		expect(token.getByText(`0123${"•".repeat(8)}cdef`)).toBeTruthy();
+		expect(token.queryByRole("button", { name: /复制/ })).toBeNull();
 		expect(token.getByRole("button", { name: "重新生成 token" })).toBeTruthy();
 		expect(token.queryByRole("textbox")).toBeNull();
 	});
@@ -278,9 +324,9 @@ describe("保存:只发改了的那几格", () => {
 		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
 		vi.mocked(api.get).mockImplementation(() => new Promise(() => {}));
 		vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
-			stored.interval = 120; // 别处刚存的,合并进了这一发的回应
-			mergePatch(body);
-			return servedGlobals();
+			applyPatch(body);
+			stored.interval = 120; // 服务端那头同一刻落下的(拓展 zod 补的默认值之类),回应里带着
+			return { ...served(), added: [] };
 		});
 		fireEvent.click(save());
 		await waitFor(() => expect(save()).toHaveProperty("disabled", true));
@@ -289,25 +335,23 @@ describe("保存:只发改了的那几格", () => {
 	});
 
 	/**
-	 * 服务端在回 HTTP 之前就经 WS 发了「globals 变了」,面板已经在重读:回应本身就是写后的那份,
-	 * 在飞的那一发取消掉、换成回应 —— 再读一遍是让服务端白读。
+	 * 服务端在回 HTTP 之前就经 WS 发了「这个拓展的设置变了」,面板已经在重读:回应本身就是写后的
+	 * 那份,在飞的那一发取消掉、换成回应 —— 再读一遍是让服务端白读。
 	 */
 	it("存完:WS 已经在重读那份设置时,不再多读一遍", async () => {
 		const { qc } = renderForm();
 		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
-		const reads = () =>
-			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/globals").length;
 		let release = () => {};
 		vi.mocked(api.get).mockImplementation(
 			() =>
 				new Promise((resolve) => {
-					release = () => resolve(servedGlobals());
+					release = () => resolve(served());
 				}),
 		);
 		vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
-			mergePatch(body);
-			void qc.invalidateQueries({ queryKey: ["globals"] }); // WS 那一帧
-			return servedGlobals();
+			applyPatch(body);
+			void qc.invalidateQueries({ queryKey: ["ext-settings", "douyin"] }); // WS 那一帧
+			return { ...served(), added: [] };
 		});
 		const before = reads();
 		fireEvent.click(save());
@@ -381,9 +425,15 @@ describe("密钥", () => {
 		fireEvent.click(within(dialog).getByRole("button", { name: "重新生成" }));
 		const shown = within(field("token")).getByText(/^[0-9a-f]{32}$/).textContent as string;
 		expect(shown).not.toBe(TOKEN);
+		// 那一刻明文在面板手里:能复制(决策 38)
+		expect(within(field("token")).getByRole("button", { name: "复制 token" })).toBeTruthy();
 		fireEvent.click(save());
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
 		expect(sentSettings()).toEqual({ token: shown });
+		// 存下之后只剩服务端给的遮挡,「复制」跟着没了
+		expect(await within(field("token")).findByText(maskOf(shown))).toBeTruthy();
+		expect(within(field("token")).queryByRole("button", { name: /复制/ })).toBeNull();
+		expect(document.body.innerHTML).not.toContain(shown);
 	});
 
 	/** 空值(脱敏备份恢复回来就是这样)没有旧钥匙可作废,直接生成,并用一句红字说明。 */
@@ -474,17 +524,17 @@ describe("校验", () => {
 		expect(save()).toHaveProperty("disabled", true);
 	});
 
-	/** 服务端照清单校验不过:那句话落在那一格底下,别的格不沾。 */
+	/** 服务端校验不过:那句话落在那一格底下(路径从设置那一层数),别的格不沾。 */
 	it("400 的 issue 落到对应那一格", async () => {
 		vi.mocked(api.patch).mockRejectedValue(
 			new ApiError(
 				400,
 				{
 					error: "validation_failed",
-					scope: "globals",
-					issues: [{ path: ["extensions", "douyin", "settings", "note"], message: "备注太长了" }],
+					message: "note:备注太长了",
+					issues: [{ op: 0, path: ["note"], message: "备注太长了" }],
 				},
-				"PATCH /api/globals → 400",
+				"note:备注太长了",
 			),
 		);
 		renderForm();
@@ -504,28 +554,28 @@ describe("校验", () => {
 		vi.mocked(api.patch).mockRejectedValue(
 			new ApiError(
 				400,
-				{ error: "validation_failed", scope: "globals", issues: [] },
-				"PATCH /api/globals → 400",
+				{ error: "validation_failed", issues: [] },
+				"PATCH /api/ext/douyin/settings → 400",
 			),
 		);
 		renderForm();
 		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
 		fireEvent.click(save());
 		expect((await screen.findByRole("alert")).textContent).toBe(
-			"没存进去:PATCH /api/globals → 400",
+			"没存进去:PATCH /api/ext/douyin/settings → 400",
 		);
 	});
 
+	/** 拓展自己跨格的规矩(没有 `op`、落在表单之外的格上):照路径说在表单顶上。 */
 	it("落不到某一格的 issue 与别的失败,说在表单顶上", async () => {
 		vi.mocked(api.patch).mockRejectedValue(
 			new ApiError(
 				400,
 				{
 					error: "validation_failed",
-					scope: "globals",
-					issues: [{ path: ["extensions", "douyin", "settings", "links", 0], message: "少了 id" }],
+					issues: [{ path: ["links", "c1"], message: "少了 id" }],
 				},
-				"PATCH /api/globals → 400",
+				"PATCH /api/ext/douyin/settings → 400",
 			),
 		);
 		renderForm();
@@ -570,7 +620,7 @@ describe("校验", () => {
 			renderForm([{ key: "valueOf", type: "string", label: "钥匙", secret: true, generate: true }]);
 			await screen.findByText("钥匙");
 			const key = within(field("valueOf"));
-			expect(key.getByText(`0123${"•".repeat(24)}cdef`)).toBeTruthy();
+			expect(key.getByText(`0123${"•".repeat(8)}cdef`)).toBeTruthy();
 			fireEvent.click(key.getByRole("button", { name: "重新生成 钥匙" }));
 			expect(await screen.findByRole("dialog")).toBeTruthy();
 		});
@@ -597,12 +647,9 @@ describe("校验", () => {
 					400,
 					{
 						error: "validation_failed",
-						scope: "globals",
-						issues: [
-							{ path: ["extensions", "douyin", "settings", "constructor"], message: "构造不对" },
-						],
+						issues: [{ op: 0, path: ["constructor"], message: "构造不对" }],
 					},
-					"PATCH /api/globals → 400",
+					"PATCH /api/ext/douyin/settings → 400",
 				),
 			);
 			stored = { constructor: "旧" };
@@ -616,6 +663,33 @@ describe("校验", () => {
 				"构造不对",
 			);
 		});
+	});
+
+	/**
+	 * 🔴 版本号对不上(别的标签页刚存过一笔):重读一遍,说清为什么没存进去;**改动留着**,
+	 * 重读回来的是别人刚存的那份,主人看一眼再按一次 —— 带的是新的版本号。
+	 */
+	it("409:重读一遍,说「设置在你打开之后被改过了」,改动还在;再存一次就存上了", async () => {
+		renderForm();
+		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
+		stored = { ...stored, interval: 300 }; // 别处刚存的
+		revision += 1;
+		const before = reads();
+		fireEvent.click(save());
+		expect((await screen.findByRole("alert")).textContent).toBe(
+			"没存进去:设置在你打开之后被改过了 —— 已经重新读了一遍,看一眼现在的样子再改",
+		);
+		await waitFor(() => expect(reads()).toBe(before + 1));
+		await waitFor(() =>
+			expect((screen.getByLabelText("检查间隔") as HTMLInputElement).value).toBe("300"),
+		);
+		expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe("新备注");
+
+		fireEvent.click(save());
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		expect(sentSettings(1)).toEqual({ note: "新备注" });
+		await waitFor(() => expect(save()).toHaveProperty("disabled", true));
+		expect(stored).toMatchObject({ note: "新备注", interval: 300 });
 	});
 
 	it("别的失败(只读盘 / 断网)原话摆出来", async () => {

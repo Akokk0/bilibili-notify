@@ -9,7 +9,8 @@
  * - 🔴 **拓展关着也能增删改**(决策 32):卡照常画、钮照常在,只是没有状态。今天桥「关着就压暗成
  *   一行一条、不给按钮」那一档随之退役。
  * - 🔴 **停用的项由 BN 盖成「已停用」**,拓展报什么都不算(决策 26)。
- * - 🔴 **密钥全文不上屏**:只露头尾各四位,连 DOM 里都没有全文。
+ * - 🔴 **已存的密钥只画服务端给的遮挡**(ADR-0019 决策 38):浏览器拿不到全文,也就没有「复制」;
+ *   要全文就重新生成 —— 那一刻明文在面板手里,显示一次、能复制。
  * - 图例只在**真有三态格**时挂、只挂一次(决策 27)。
  */
 
@@ -17,30 +18,36 @@ import type { ExtensionView } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("../../../../services/api", () => ({
+vi.mock("../../../../services/api", async (importOriginal) => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-	ApiError: class extends Error {},
+	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
+import { handleStateEnvelope } from "../../../../hooks/useStateChannel";
 import { api } from "../../../../services/api";
 import {
+	answerPatch,
 	BRIDGE,
 	cardOf,
+	changeBehindTheBack,
 	findCard,
 	HOME,
 	KOISHI_PNG,
 	LINKS_FIELD,
+	maskOf,
 	OFFICE,
 	renderDetailPage,
 	renderList,
+	settingsReads,
 	TOKEN,
+	updatedValues,
 } from "./list-harness";
 
 beforeEach(() => {
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.post).mockReset();
-	vi.mocked(api.patch).mockResolvedValue({});
+	vi.mocked(api.patch).mockImplementation(answerPatch);
 });
 afterEach(() => {
 	cleanup();
@@ -304,40 +311,63 @@ function pretendInsecureContext(): ReturnType<typeof vi.fn> {
 	return execCommand;
 }
 
+/** 家里那台的 token 换一把(有旧值,先问一句再确认)。 */
+async function regenerateHome() {
+	fireEvent.click(await screen.findByRole("button", { name: "重新生成 家里那台 的 token" }));
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: "重新生成" }));
+	await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+}
+
 describe("字段行", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 		Reflect.deleteProperty(document, "execCommand");
 	});
 
-	/** 🔴 掩码留头尾各四位 —— 两条接入才分得出谁是谁,而全文哪儿都没有(属性里也没有)。 */
-	it("密钥只露头尾,全文不进 DOM", async () => {
+	/**
+	 * 🔴 已存的密钥**只画服务端给的那一串**(决策 35 / 38):头尾由服务端算,浏览器手里本来就没有
+	 * 全文 —— 也就没有「复制」。要全文就重新生成。
+	 */
+	it("已存的密钥:画服务端给的遮挡,没有「复制」,只有「重新生成」", async () => {
 		renderList({ items: [HOME, OFFICE] });
 		const row = (await findCard("c1")).querySelector('[data-field-row="token"]') as HTMLElement;
-		expect(row.textContent).toContain(`0123${"•".repeat(24)}cdef`);
+		expect(row.textContent).toContain(`0123${"•".repeat(8)}cdef`);
 		expect(within(row).getByText("token")).toBeTruthy();
-		expect(document.body.innerHTML).not.toContain(TOKEN);
-		expect(document.body.innerHTML).not.toContain(OFFICE.token);
-	});
-
-	/** 「重新生成」跟在它讲的那一格后面,不散在卡头那一排。 */
-	it("「复制」与「重新生成」都在这一行上,读屏器念得出是哪条的哪一格", async () => {
-		renderList({ items: [HOME] });
-		const row = (await findCard("c1")).querySelector('[data-field-row="token"]') as HTMLElement;
-		expect(within(row).getByRole("button", { name: "复制 家里那台 的 token" })).toBeTruthy();
+		expect(within(row).queryByRole("button", { name: /复制/ })).toBeNull();
 		const regenerate = within(row).getByRole("button", { name: "重新生成 家里那台 的 token" });
 		expect(regenerate.textContent).toBe("重新生成");
 		expect(regenerate.querySelector("svg")).toBeTruthy();
+		expect(document.body.innerHTML).not.toContain(TOKEN);
+		expect(screen.queryByRole("button", { name: /复制/ })).toBeNull();
 	});
 
-	it("复制的是全文,按完变「已复制」", async () => {
+	/** 服务端给什么就画什么 —— 短的那种它整段打点,面板不再自己截一刀。 */
+	it("遮挡原样照画:短的就是一串点", async () => {
+		renderList({ items: [{ ...HOME, token: "short-one" }] });
+		const row = (await findCard("c1")).querySelector('[data-field-row="token"]') as HTMLElement;
+		expect(within(row).getByText(maskOf("short-one")).textContent).toBe("•".repeat(8));
+	});
+
+	/**
+	 * 重新生成那一刻明文在面板手里(token 是面板生成的):卡上显示一次、能复制 —— 不然换完主人
+	 * 拿不到新的那一把,对面只能一直 401。
+	 */
+	it("重新生成之后:新的明文在卡上显示一次,「复制」复制的就是它", async () => {
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 		renderList({ items: [HOME] });
-		await findCard("c1");
-		fireEvent.click(screen.getByRole("button", { name: "复制 家里那台 的 token" }));
-		await waitFor(() => expect(writeText).toHaveBeenCalledWith(TOKEN));
-		expect(await screen.findByText("已复制")).toBeTruthy();
+		await regenerateHome();
+		const token = updatedValues().token as string;
+		const row = await waitFor(() => {
+			const found = cardOf("c1").querySelector('[data-field-row="token"]') as HTMLElement;
+			expect(found.textContent).toContain(token);
+			return found;
+		});
+		expect(row.textContent).toContain("只在这一刻看得到全文");
+		fireEvent.click(within(row).getByRole("button", { name: "复制 家里那台 的 token" }));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith(token));
+		expect(await within(row).findByText("已复制")).toBeTruthy();
 	});
 
 	/**
@@ -347,9 +377,28 @@ describe("字段行", () => {
 	it("非安全上下文里复制也真的复制到", async () => {
 		const execCommand = pretendInsecureContext();
 		renderList({ items: [HOME] });
-		await findCard("c1");
-		fireEvent.click(screen.getByRole("button", { name: "复制 家里那台 的 token" }));
+		await regenerateHome();
+		fireEvent.click(await screen.findByRole("button", { name: "复制 家里那台 的 token" }));
 		await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+	});
+
+	/**
+	 * 显示着的那一把得还是**现在存着的**那一把:别处(另一个标签页)又换了一次,这里还亮着旧的
+	 * 明文的话,主人粘过去的是作废的那一把。遮挡对不上就收起来。
+	 */
+	it("别处又换了一把:明文收起来,回到遮挡", async () => {
+		const { qc } = renderList({ items: [HOME] });
+		await regenerateHome();
+		const token = updatedValues().token as string;
+		await within(cardOf("c1")).findByText(token);
+		changeBehindTheBack((settings) => {
+			(settings.links as { token: string }[])[0].token = OFFICE.token;
+		});
+		await qc.invalidateQueries({ queryKey: ["ext-settings", "bridge"] });
+		const row = cardOf("c1").querySelector('[data-field-row="token"]') as HTMLElement;
+		await waitFor(() => expect(row.textContent).toContain(maskOf(OFFICE.token)));
+		expect(document.body.innerHTML).not.toContain(token);
+		expect(within(row).queryByRole("button", { name: /复制/ })).toBeNull();
 	});
 
 	/**
@@ -497,7 +546,7 @@ describe("名单读不到", () => {
 
 	it("还在读的时候什么都不画 —— 不闪一下空态", async () => {
 		renderList({ items: "pending" });
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/globals"));
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/settings"));
 		expect(screen.queryByText("还没有桥接入。")).toBeNull();
 		expect(screen.queryByRole("button", { name: /新建/ })).toBeNull();
 		expect(document.querySelector("[data-list-card]")).toBeNull();
@@ -510,5 +559,52 @@ describe("「配置」页签", () => {
 		renderDetailPage({ items: [HOME] });
 		expect(await screen.findByText("家里那台")).toBeTruthy();
 		expect(screen.getByText("桥接入")).toBeTruthy();
+	});
+});
+
+describe("别处改了设置", () => {
+	/**
+	 * 另一个标签页写了一笔:服务端经 WS 发 `extension-settings-changed`,这一页当场重读设置与视图 ——
+	 * 不然照旧画着旧名单,直到下一发拿着旧版本号撞 409。
+	 */
+	it("收到那一帧:重读设置与状态,画的是新的", async () => {
+		const { qc } = renderList({ items: [HOME], view: { items: { links: {} } } });
+		await findCard("c1");
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/status"));
+		const status = () =>
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/status").length;
+		const before = { settings: settingsReads(), status: status() };
+		changeBehindTheBack((settings) => {
+			settings.links = [HOME, OFFICE];
+		});
+		handleStateEnvelope(
+			{
+				type: "state",
+				event: "extension-settings-changed",
+				ts: new Date().toISOString(),
+				data: { id: "bridge" },
+			},
+			qc,
+		);
+		expect(await screen.findByText("机房那台")).toBeTruthy();
+		expect(settingsReads()).toBe(before.settings + 1);
+		await waitFor(() => expect(status()).toBe(before.status + 1));
+	});
+
+	it("别的拓展的那一帧:不重读", async () => {
+		const { qc } = renderList({ items: [HOME] });
+		await findCard("c1");
+		const before = settingsReads();
+		handleStateEnvelope(
+			{
+				type: "state",
+				event: "extension-settings-changed",
+				ts: new Date().toISOString(),
+				data: { id: "douyin" },
+			},
+			qc,
+		);
+		await new Promise((settle) => setTimeout(settle, 30));
+		expect(settingsReads()).toBe(before);
 	});
 });

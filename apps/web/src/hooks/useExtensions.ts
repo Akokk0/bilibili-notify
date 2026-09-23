@@ -6,7 +6,7 @@
  * 四处就都跟着换了脸。各起各的 `useQuery` 时那个 key 是靠手抄对齐的,抄错一处的症状
  * 是「装好了但那一页还是旧的」—— 类型、测试、构建全绿。
  *
- * 单个拓展的状态 / bot 名单、拓展市场那几个键也住这儿,理由相同:读的那处与失效的那几处
+ * 单个拓展的状态 / 设置 / bot 名单、拓展市场那几个键也住这儿,理由相同:读的那处与失效的那几处
  * (包括 WS 那条 `useStateChannel`)都从这儿取。放在 hooks 而不是拓展页底下 —— hooks 不反向
  * import pages;市场那个键放在市场那一节里的话,改源的弹窗与市场那一节还会互相 import。
  */
@@ -33,6 +33,16 @@ export function extensionStatusKey(extensionId: string) {
 export const EXTENSION_BOTS_QUERY_PREFIX = ["extension-bots"] as const;
 export function extensionBotsKey(extensionId: string) {
 	return [...EXTENSION_BOTS_QUERY_PREFIX, extensionId] as const;
+}
+
+/**
+ * 一个拓展的设置(`/api/ext/:id/settings`,ADR-0019 决策 35):设置表单与列表那一节读它,写成之后
+ * 把回应收进它;WS 的 `extension-settings-changed` 按它失效、重连时按整个前缀失效。键对不上的
+ * 症状同上:别处改了设置,这一页照旧画着旧的,直到下一发撞 409。
+ */
+export const EXTENSION_SETTINGS_QUERY_PREFIX = ["ext-settings"] as const;
+export function extensionSettingsKey(extensionId: string) {
+	return [...EXTENSION_SETTINGS_QUERY_PREFIX, extensionId] as const;
 }
 
 /**

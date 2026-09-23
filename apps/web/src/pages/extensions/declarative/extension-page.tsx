@@ -109,6 +109,18 @@ function RunStateNote({ ext }: { ext: ExtensionDTO }) {
 		);
 	}
 	/*
+	 * 设置读不了(ADR-0019 决策 36):存着的设置过不了它自己的规矩,它不跑 —— 出路就在底下这张表单
+	 * 与列表里,改对了它自己起来。原因不在日志里,也不是出错(黄的提醒,不是红的):服务端那句
+	 * `detail` 已经点名哪一格、为什么,原样摆出来。
+	 */
+	if (ext.state === "settings-invalid") {
+		return (
+			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
+				{ext.detail ?? "存着的设置过不了它自己的规矩,它没在跑 —— 在下面改对了,它会自己起来。"}
+			</WarnNote>
+		);
+	}
+	/*
 	 * 新版等着换上(ADR-0012 决策 47):同样没有状态,但原因不在日志里 —— 是这个进程换不上盘上
 	 * 那份代码,怎么换就在头卡里。说「去日志里看」等于把人支走。
 	 */

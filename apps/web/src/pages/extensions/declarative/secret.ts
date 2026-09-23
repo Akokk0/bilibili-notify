@@ -1,19 +1,22 @@
 /**
- * 密钥在面板上的两件事:怎么遮、怎么生成。声明式设置项的 `secret` / `generate`(ADR-0019
- * 决策 30)在设置表单、列表卡、新建弹窗里共用这一份 —— 各写一份的话,「八位及以下整段打点」
- * 那条迟早只被记起一半。
+ * 密钥在面板上的两件事:存着的那一把怎么画、新的一把怎么生成。声明式设置项的 `secret` / `generate`
+ * (ADR-0019 决策 30)在设置表单、列表卡、新建弹窗里共用这一份。
  */
 
 /**
- * 屏幕上只留头尾各四位 —— 两条接入才分得出谁是谁,而全文不上屏。
+ * 存着的一格密钥在屏幕上的样子 —— **服务端算好的那一串**(`{ masked }`,决策 35 / 38)。空着(没配、
+ * 脱敏备份恢复回来的)交 `undefined`,面板要分得开「没配」与「配了」。
  *
- * 🔴 **短的整段打点**:头四尾四加起来是八位,值只有八位或更短时这两截拼起来就是
- * 全文(四位的甚至原样印两遍)。我们自己生成的是 32 位,但手填的、从别处迁来的不是 ——
- * 分不出谁是谁只是不方便,把钥匙印在屏幕上是把那条 WS 端点的唯一防线交出去。
+ * 🔴 面板**不再自己截头尾**:浏览器手里本来就没有全文。万一下发的不是遮挡的形状(面板比服务端新的
+ * 那几秒、手改过的文件),一律画一串点 —— 一格声明成密钥的值,不管长什么样都不原样上屏。
  */
-export function maskSecret(value: string): string {
-	if (value.length <= 8) return "•".repeat(Math.max(4, value.length));
-	return `${value.slice(0, 4)}${"•".repeat(Math.max(4, value.length - 8))}${value.slice(-4)}`;
+export function maskedOf(value: unknown): string | undefined {
+	if (value === undefined || value === null || value === "") return undefined;
+	if (typeof value === "object" && !Array.isArray(value)) {
+		const masked = (value as { masked?: unknown }).masked;
+		if (typeof masked === "string") return masked;
+	}
+	return "•".repeat(8);
 }
 
 /**

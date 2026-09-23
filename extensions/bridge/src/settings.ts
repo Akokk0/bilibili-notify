@@ -6,7 +6,8 @@
  * (`globals.extensions.bridge.settings`,经 `ctx.settings(schema)` 现读),连接从它驮着的
  * bot 里挑(见 `config.ts`)。
  *
- * 写路径只有面板那一条(`PATCH /api/globals`),拓展这头只读。
+ * 写路径只有面板那一条(`/api/ext/bridge/settings`,按项写、带版本号 —— ADR-0019 决策 35),
+ * 拓展这头只读。
  */
 
 import { z } from "zod";

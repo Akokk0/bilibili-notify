@@ -1,9 +1,13 @@
 /**
- * PATCH /api/globals —— 拓展设置照清单声明校验(ADR-0019 决策 17)。
+ * `/api/globals` 不再带、也不再收拓展设置(ADR-0019 决策 35)。
  *
- * 拓展那一格在 globals 里是 `z.unknown()`:核心不认识拓展设置的形状。v2 拓展把设置项写进了
- * 清单,BN 就能在**落盘之前**照声明拦一道 —— 写坏了的话,拓展读到的是一份它自己的 zod 解不出
- * 的设置,按「没设过」算(桥:接入名单变空,所有 token 当场失效),而面板上一切正常。
+ * 拓展设置有了自己的读写口 `/api/ext/:id/settings`:按项写、带版本号、密钥下发时换成头尾。
+ * 存储仍在 globals 的 `extensions.<id>.settings`,所以 globals 这条老路得**两头都堵上**:
+ * - 读:GET(与 PATCH 的回应)照旧整份下发的话,密钥明文就从这一口出门 —— 新口的遮挡白做。
+ * - 写:整份写回会把两发交错的那一发丢掉、把 `id` 与密钥占位一起盖掉。老面板在应用内更新的
+ *   那几秒里可能还这么发,拒掉时得说清去哪儿写。
+ *
+ * 拨开关(`extensions.<id>.enabled`)照旧走 globals —— 它不是设置。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -37,14 +41,7 @@ const V2: ExtensionManifest = {
 	},
 };
 
-const V1: ExtensionManifest = {
-	id: "bridge",
-	name: "桥",
-	description: "测试用",
-	version: "0.0.1",
-	apiVersion: 1,
-	provides: ["push"],
-};
+const COOKIE = "sessionid=0123456789abcdef0123456789abcdef";
 
 function entry(manifest: ExtensionManifest, state: ExtensionEntry["state"]): ExtensionEntry {
 	return { id: manifest.id, dir: `/data/extensions/${manifest.id}`, state, manifest };
@@ -54,7 +51,7 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
 
-describe("PATCH /api/globals —— 拓展设置照清单校验", () => {
+describe("/api/globals —— 拓展设置不走这里了", () => {
 	let dataDir: string;
 
 	beforeEach(async () => {
@@ -65,74 +62,123 @@ describe("PATCH /api/globals —— 拓展设置照清单校验", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	async function boot(entries: ExtensionEntry[]) {
+	/** 起一个真 app;拓展那一格先按 `seed` 摆进 globals(存储仍在那儿)。 */
+	async function boot(seed?: Record<string, { enabled: boolean; settings?: unknown }>) {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
+		if (seed) {
+			await runtime.configStore.updateGlobals((globals) => ({ ...globals, extensions: seed }));
+		}
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
 				mounts: createExtensionMounts(),
-				loaded: () => entries,
+				loaded: () => [entry(V2, "running")],
 				status: () => undefined,
 				pushSource: () => undefined,
 				bots: () => undefined,
 			},
 		});
+		const get = () => app.request("/api/globals");
 		const patch = (body: unknown) =>
 			app.request("/api/globals", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
 			});
-		const settingsOf = (id: string) => runtime.configStore.getGlobals().extensions[id]?.settings;
-		return { runtime, patch, settingsOf };
+		const stored = (id: string) => runtime.configStore.getGlobals().extensions[id];
+		return { runtime, get, patch, stored };
 	}
 
-	it("照声明写坏了 —— 400,点名那一格,一个字都不落盘", async () => {
-		const { runtime, patch, settingsOf } = await boot([entry(V2, "running")]);
-		const res = await patch({ extensions: { douyin: { settings: { cookie: "", interval: 10 } } } });
-		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; issues: Array<{ path: unknown[] }> };
-		expect(body.error).toBe("validation_failed");
-		const paths = body.issues.map((issue) => issue.path.join("."));
-		expect(paths).toContain("extensions.douyin.settings.cookie");
-		expect(paths).toContain("extensions.douyin.settings.interval");
-		expect(settingsOf("douyin")).toBeUndefined();
-		await runtime.dispose();
-	});
-
-	it("写对了 —— 200,落盘", async () => {
-		const { runtime, patch, settingsOf } = await boot([entry(V2, "running")]);
-		const res = await patch({
-			extensions: { douyin: { settings: { cookie: "c", interval: 90 } } },
+	/** 🔴 密钥明文从这一口出门,新口的遮挡就白做了 —— 整格设置都不下发,开关照旧。 */
+	it("GET:每个拓展只剩开关,设置那一格抹掉", async () => {
+		const { runtime, get } = await boot({
+			douyin: { enabled: true, settings: { cookie: COOKIE, interval: 90 } },
+			bridge: { enabled: false, settings: { links: [{ id: "c1", name: "家里那台" }] } },
 		});
+		const res = await get();
 		expect(res.status).toBe(200);
-		expect(settingsOf("douyin")).toEqual({ cookie: "c", interval: 90 });
+		const text = await res.text();
+		expect(text).not.toContain(COOKIE);
+		const body = JSON.parse(text) as { extensions: Record<string, unknown> };
+		expect(body.extensions).toEqual({ douyin: { enabled: true }, bridge: { enabled: false } });
 		await runtime.dispose();
 	});
 
-	/** 「装好 → 填 cookie → 启用」:没启用的拓展也要能先把设置填好,也照样要拦写坏的。 */
-	it("拓展关着也照样校验 —— 声明在清单里,不等代码跑起来", async () => {
-		const { runtime, patch } = await boot([entry(V2, "disabled")]);
-		const bad = await patch({ extensions: { douyin: { settings: { cookie: "" } } } });
-		expect(bad.status).toBe(400);
-		const good = await patch({ extensions: { douyin: { settings: { cookie: "c" } } } });
-		expect(good.status).toBe(200);
-		await runtime.dispose();
-	});
-
-	it("只拨开关、没碰设置 —— 不校验(存量的设置是坏的也不该挡住开关)", async () => {
-		const { runtime, patch } = await boot([entry(V2, "running")]);
+	it("PATCH 的回应同样不带设置", async () => {
+		const { runtime, patch } = await boot({
+			douyin: { enabled: false, settings: { cookie: COOKIE } },
+		});
 		const res = await patch({ extensions: { douyin: { enabled: true } } });
 		expect(res.status).toBe(200);
+		const text = await res.text();
+		expect(text).not.toContain(COOKIE);
+		expect((JSON.parse(text) as { extensions: unknown }).extensions).toEqual({
+			douyin: { enabled: true },
+		});
 		await runtime.dispose();
 	});
 
-	it("v1 拓展的设置清单里没声明 —— 不校验(桥的名单还是手写页在写)", async () => {
-		const { runtime, patch, settingsOf } = await boot([entry(V1, "running")]);
-		const res = await patch({ extensions: { bridge: { settings: { links: "随便什么" } } } });
+	/**
+	 * 老面板(应用内更新那几秒里还开着的那一页)还会这么发 —— 拒掉,并说清去哪儿写。一个字都不落盘:
+	 * 整份写回会把 `id` 与别人刚写的那一条一起盖掉。
+	 */
+	it("PATCH 带了设置 → 400,点名新口,一个字都不落盘", async () => {
+		const { runtime, patch, stored } = await boot({
+			douyin: { enabled: false, settings: { cookie: COOKIE, interval: 90 } },
+		});
+		const res = await patch({ extensions: { douyin: { settings: { interval: 120 } } } });
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: string; message: string };
+		expect(body.error).toBe("extension_settings_moved");
+		expect(body.message).toContain("/api/ext/douyin/settings");
+		expect(stored("douyin")).toEqual({
+			enabled: false,
+			settings: { cookie: COOKIE, interval: 90 },
+		});
+		await runtime.dispose();
+	});
+
+	/** 顺带拨开关也不行:一发里只要带了设置就整发拒掉,不挑着写一半。 */
+	it("开关与设置一起带 → 整发 400,开关也不动", async () => {
+		const { runtime, patch, stored } = await boot({
+			douyin: { enabled: false, settings: { interval: 90 } },
+		});
+		const res = await patch({ extensions: { douyin: { enabled: true, settings: {} } } });
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toBe("extension_settings_moved");
+		expect(stored("douyin")).toEqual({ enabled: false, settings: { interval: 90 } });
+		await runtime.dispose();
+	});
+
+	/**
+	 * 整格清掉(`null`)等于连设置一起抹掉 —— 同样不收。卸载有自己的口(`DELETE /api/ext/:id`),
+	 * 面板从来不这么发。
+	 */
+	it.each([
+		["那个拓展整格", { extensions: { douyin: null } }],
+		["整张拓展表", { extensions: null }],
+	])("PATCH 把%s清掉 → 400,设置还在", async (_what, body) => {
+		const { runtime, patch, stored } = await boot({
+			douyin: { enabled: true, settings: { interval: 90 } },
+		});
+		const res = await patch(body);
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toBe("extension_settings_moved");
+		expect(stored("douyin")).toEqual({ enabled: true, settings: { interval: 90 } });
+		await runtime.dispose();
+	});
+
+	it("只拨开关 → 200,存着的设置原样不动", async () => {
+		const { runtime, patch, stored } = await boot({
+			douyin: { enabled: false, settings: { cookie: COOKIE, interval: 90 } },
+		});
+		const res = await patch({ extensions: { douyin: { enabled: true } } });
 		expect(res.status).toBe(200);
-		expect(settingsOf("bridge")).toEqual({ links: "随便什么" });
+		expect(stored("douyin")).toEqual({
+			enabled: true,
+			settings: { cookie: COOKIE, interval: 90 },
+		});
 		await runtime.dispose();
 	});
 });

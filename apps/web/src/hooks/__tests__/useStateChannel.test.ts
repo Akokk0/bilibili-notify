@@ -3,7 +3,8 @@
  *
  * 守护契约:
  *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
- *   - config-changed scope=globals       → invalidate ["globals"] 与拓展表 ["extensions"]
+ *   - config-changed scope=globals       → invalidate ["globals"]、拓展表 ["extensions"] 与各拓展的设置
+ *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - config-changed scope=subscriptions → 仅 invalidate ["subscriptions"]
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
@@ -63,8 +64,32 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"extensions",
 				"extension-status",
 				"extension-bots",
+				"ext-settings",
 			]),
 		);
+	});
+
+	/**
+	 * 设置经 `/api/ext/:id/settings` 写进去了(ADR-0019 决策 35):失效那个拓展的设置与视图 ——
+	 * 视图可能跟着设置变(停用了一条接入),宿主不替拓展判它变没变。帧里只有 id(设置里有密钥)。
+	 */
+	it("extension-settings-changed:只失效那个拓展的设置与状态", () => {
+		handleStateEnvelope(
+			env({ type: "state", event: "extension-settings-changed", data: { id: "bridge" } }),
+			sc.qc,
+		);
+		expect(keysOf(sc.invalidate)).toEqual([
+			["ext-settings", "bridge"],
+			["extension-status", "bridge"],
+		]);
+	});
+
+	it("extension-settings-changed 没带 id:不动", () => {
+		handleStateEnvelope(
+			env({ type: "state", event: "extension-settings-changed", data: { id: "" } }),
+			sc.qc,
+		);
+		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
 	it("extension-changed:只失效那个拓展的 status 与 bots", () => {
@@ -83,12 +108,16 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
-	it("config-changed scope=globals:invalidate [globals] 与 [extensions]", () => {
+	/**
+	 * 拓展设置仍存在 globals 里:备份恢复、卸载这类不经设置口的写,只会发这一档 —— 设置那一口也得
+	 * 跟着过期,不然这一页照旧画着旧名单,直到下一发撞 409。
+	 */
+	it("config-changed scope=globals:invalidate [globals]、[extensions] 与各拓展的设置", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"], ["ext-settings"]]);
 	});
 
 	/**

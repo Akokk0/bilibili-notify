@@ -1,7 +1,7 @@
-import { type GlobalConfig, settingsValueSchema } from "@bilibili-notify/internal";
+import type { GlobalConfig } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
-import { type ZodType, z } from "zod";
+import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
@@ -50,7 +50,7 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(redactGlobals(deps.store.getGlobals())));
+	app.get("/", (c) => c.json(publicGlobals(deps.store.getGlobals())));
 
 	app.patch("/", async (c) => {
 		let body: unknown;
@@ -72,6 +72,10 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 				400,
 			);
 		}
+		// 拓展设置有自己的口了(ADR-0019 决策 35),这里一格都不收 —— 老面板(应用内更新那几秒里
+		// 还开着的那一页)会整份写回,得拒掉并说清去哪儿写。先于别的检查:这一发整个作废。
+		const moved = extensionSettingsWriteOf(shapeCheck.data);
+		if (moved) return c.json({ error: "extension_settings_moved", message: moved }, 400);
 		// 把 REDACTED sentinel 从 patch 里剥掉:前端 GET 拿到的是 redact 占位,如果
 		// 用户没在 UI 改 apiKey,PATCH body 会把占位原样回传 — 视为"保留原值"。
 		const patch = stripRedactedSecrets(shapeCheck.data);
@@ -124,9 +128,8 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			);
 		}
 		try {
-			const check = extensionSettingsCheck(patch, deps.extensionSettingsFields);
-			const next = await deps.store.patchGlobals(patch, check ? { check } : undefined);
-			return c.json(redactGlobals(next));
+			const next = await deps.store.patchGlobals(patch);
+			return c.json(publicGlobals(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
@@ -140,34 +143,45 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 }
 
 /**
- * 这次 PATCH 动到了哪几个拓展的**设置**,就对它们照清单声明拦一道(ADR-0019 决策 17)。
+ * 这一发会不会写到某个拓展的**设置** —— 会的话回拒掉时说的那句话,不会回 `undefined`。
  *
- * 只看真碰到 `settings` 的:只拨开关的那次不校验 —— 存量的设置写坏了,不该连开关都拨不动。
- * 拦的是**合并之后**的那一份(数组整份替换、`null` 是清掉),所以交给 store 在同一个排队里判。
+ * 拓展设置有自己的读写口 `/api/ext/:id/settings`(ADR-0019 决策 35):按项写、带版本号。这里整份
+ * 写回的话,两发交错会丢一发、`id` 与密钥占位一起被盖掉 —— 所以一格都不收。三种写法都算:
+ * - 带了 `extensions.<id>.settings`(老面板就这么写);
+ * - `extensions.<id>` 整格清成 `null` —— 连设置一起抹掉(卸载有自己的口,`DELETE /api/ext/:id`);
+ * - `extensions` 整张表不是对象(`null` 同理,抹掉的是所有拓展的)。
+ *
+ * 只拨开关(`extensions.<id>.enabled`)照旧放行:开关不是设置。
  */
-function extensionSettingsCheck(
-	patch: Record<string, unknown>,
-	fieldsOf: RouteDeps["extensionSettingsFields"],
-): ((merged: GlobalConfig) => unknown[]) | undefined {
-	const touched = patch.extensions;
-	if (!fieldsOf || typeof touched !== "object" || touched === null) return undefined;
-	const checks: Array<{ id: string; schema: ZodType }> = [];
-	for (const [id, slot] of Object.entries(touched)) {
-		if (typeof slot !== "object" || slot === null || !("settings" in slot)) continue;
-		const fields = fieldsOf(id);
-		if (fields) checks.push({ id, schema: settingsValueSchema(fields) });
+function extensionSettingsWriteOf(patch: Record<string, unknown>): string | undefined {
+	if (!("extensions" in patch)) return undefined;
+	const table = patch.extensions;
+	const moved = (id: string) =>
+		`拓展设置不再经 /api/globals 写,改走 /api/ext/${id}/settings(按项写、带版本号)—— ` +
+		"这个面板多半是更新之前的旧版,刷新一下再改";
+	if (typeof table !== "object" || table === null || Array.isArray(table)) {
+		return "拓展表不能经 /api/globals 整张替换或清掉 —— 开关逐个拨(extensions.<id>.enabled),设置走 /api/ext/<id>/settings";
 	}
-	if (checks.length === 0) return undefined;
-	return (merged) =>
-		checks.flatMap(({ id, schema }) => {
-			const parsed = schema.safeParse(merged.extensions[id]?.settings);
-			return parsed.success
-				? []
-				: parsed.error.issues.map((issue) => ({
-						...issue,
-						path: ["extensions", id, "settings", ...issue.path],
-					}));
-		});
+	for (const [id, slot] of Object.entries(table)) {
+		if (slot === null) {
+			return `拓展 ${id} 那一格不能经 /api/globals 整个清掉(连它的设置一起)—— 卸载走 DELETE /api/ext/${id}`;
+		}
+		if (typeof slot === "object" && "settings" in slot) return moved(id);
+	}
+	return undefined;
+}
+
+/**
+ * 下发给浏览器的那一份:密钥换占位(`redactGlobals`),每个拓展的设置整格抹掉、只留开关。
+ *
+ * 🔴 拓展设置里有密钥(桥的 token、抖音的 cookie),它们的遮挡在 `/api/ext/:id/settings` 那一口做
+ * (服务端算头尾,决策 35)。这里照旧整份下发的话,明文从这一口出门,那边的遮挡就白做了。
+ */
+function publicGlobals(g: GlobalConfig): GlobalConfig {
+	const extensions = Object.fromEntries(
+		Object.entries(g.extensions).map(([id, { enabled }]) => [id, { enabled }]),
+	);
+	return redactGlobals({ ...g, extensions });
 }
 
 // ---------------------------------------------------------------------------

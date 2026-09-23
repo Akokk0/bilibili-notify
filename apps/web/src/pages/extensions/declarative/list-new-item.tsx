@@ -10,17 +10,27 @@ import {
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import { extensionAddress } from "./address";
-import { countWordOf, itemLabelOf, subFieldOf } from "./list-items";
+import {
+	countWordOf,
+	dialogFieldsOf,
+	itemLabelOf,
+	type ListItem,
+	subFieldOf,
+	titleOf,
+} from "./list-items";
 import { CopyControl } from "./parts";
 import { newHexSecret } from "./secret";
 import { clientErrorOf, decimalOf, FieldShell, ScalarControl } from "./settings-form";
 
 /**
- * 列表的新建弹窗(ADR-0019 决策 21 / 29 / 30)—— 照项里的格一格一个控件,**停用那一格不画**:
- * 新建出来的项一律按清单默认值开关,弹窗里多一个开关只会让人以为这里要做选择。项的 `id`
- * 也不在这儿(BN 生成、藏起来,决策 29)。
+ * 列表的新建 / 编辑弹窗(ADR-0019 决策 21 / 29 / 30 / 37)—— 照项里的格一格一个控件,**停用那一格
+ * 不画**:新建出来的项一律按清单默认值开关,那颗钮在卡上。项的 `id` 也不在这儿(BN 生成、藏起来,
+ * 决策 29)。
  *
- * 版式照今天桥的「新建接入」弹窗:同宽、同样的格标题、同一个「成对复制」的盒子。
+ * 编辑(决策 37)复用同一个弹窗、预填这一项现在的值,**密钥 / 生成的那几格不在这里**:存下之后
+ * 浏览器只有头尾(决策 38),要换走卡上的「重新生成」。发出去的只有改了的那几格。
+ *
+ * 版式照今天桥的「新建接入」弹窗:同宽、同样的格标题、同一个「成对复制」的盒子(只新建时有)。
  */
 
 /** 一格草稿:字(数字格也存输入框里的字 —— 空着要表达得出来)或开关。 */
@@ -45,6 +55,30 @@ function initialDraft(fields: readonly ExtensionScalarField[]): Draft {
 				break;
 			case "enum":
 				draft[sub.key] = sub.default ?? sub.options[0]?.value ?? "";
+				break;
+		}
+	}
+	return draft;
+}
+
+/**
+ * 编辑时每格的样子:这一项存着的值;没存的按新建时的样子(清单默认值 / 第一个选项)—— 那正是拓展
+ * 那份 zod 读到的值。存着的值与这一格的种类对不上的(手改过的文件)当它没存。
+ */
+function itemDraft(fields: readonly ExtensionScalarField[], item: ListItem): Draft {
+	const draft = initialDraft(fields);
+	for (const sub of fields) {
+		const raw = item[sub.key];
+		switch (sub.type) {
+			case "string":
+			case "enum":
+				if (typeof raw === "string") draft[sub.key] = raw;
+				break;
+			case "number":
+				if (typeof raw === "number") draft[sub.key] = String(raw);
+				break;
+			case "boolean":
+				if (typeof raw === "boolean") draft[sub.key] = raw;
 				break;
 		}
 	}
@@ -97,49 +131,104 @@ function valuesOf(fields: readonly ExtensionScalarField[], draft: Draft): Record
 	return values;
 }
 
-export function NewItemDialog({
+/**
+ * 编辑时发出去的那几格:与打开时比,**变了的**才发(`update` 是部分合并,没发的原样留着)。清空的
+ * 可选格发 `null` —— 线上「删掉这一格」只有它说得出来;没填的格不写反倒是「不改」。
+ */
+function changedValuesOf(
+	fields: readonly ExtensionScalarField[],
+	initial: Draft,
+	draft: Draft,
+): Record<string, unknown> {
+	const before = valuesOf(fields, initial);
+	const after = valuesOf(fields, draft);
+	const changed: Record<string, unknown> = {};
+	for (const sub of fields) {
+		const had = Object.hasOwn(before, sub.key);
+		const has = Object.hasOwn(after, sub.key);
+		if (has && (!had || after[sub.key] !== before[sub.key])) changed[sub.key] = after[sub.key];
+		else if (had && !has) changed[sub.key] = null;
+	}
+	return changed;
+}
+
+export function ItemDialog({
 	extensionId,
 	field,
+	item,
 	error,
+	fieldErrors,
 	saving,
 	onCancel,
-	onCreate,
+	onEdit,
+	onSubmit,
 }: {
 	extensionId: string;
 	field: ExtensionListField;
+	/** 给了就是编辑这一项(决策 37);不给是新建。 */
+	item?: ListItem;
 	/**
-	 * 上一次「创建」没成的原因。
+	 * 上一次提交没成、又落不到某一格的原因。
 	 *
-	 * 🔴 存不下去时弹窗**不关**(它只在成功那一路关),于是「创建」按下去毫无反应 —— 与「我是
-	 * 不是没点到」一模一样。原因得摆在按得到它的那一屏上,不能摆在弹窗背后。
+	 * 🔴 存不下去时弹窗**不关**(它只在成功那一路关),于是按钮按下去毫无反应 —— 与「我是不是
+	 * 没点到」一模一样。原因得摆在按得到它的那一屏上,不能摆在弹窗背后。草稿也就留着:409 之后
+	 * 重读一遍,主人看一眼再按一次,不用重填。
 	 */
 	error: string | null;
+	/** 服务端校验不过、落得到某一格的那几句(那一格 → 那句话)。 */
+	fieldErrors?: Readonly<Record<string, string>>;
 	saving: boolean;
 	onCancel: () => void;
-	/** 交出去的就是屏幕上这一份 —— 生成的那一格不许在别处再生成一次。 */
-	onCreate: (values: Record<string, unknown>) => void;
+	/** 动了一格 —— 上一发的错说的是上一发,一动手它就过时了(那一格底下那句尤其)。 */
+	onEdit?: () => void;
+	/**
+	 * 新建:交出去的就是屏幕上这一份 —— 生成的那一格不许在别处再生成一次。编辑:只交改了的那几格
+	 * (清空的是 `null`)。
+	 */
+	onSubmit: (values: Record<string, unknown>) => void;
 }) {
-	const fields = field.fields.filter((sub) => sub.key !== field.toggle);
-	const [draft, setDraft] = useState(() => initialDraft(fields));
-	const change = (key: string, value: string | boolean) =>
+	const editing = item !== undefined;
+	const fields = dialogFieldsOf(field, editing ? "edit" : "new");
+	const [initial] = useState(() => (item ? itemDraft(fields, item) : initialDraft(fields)));
+	const [draft, setDraft] = useState(initial);
+	const change = (key: string, value: string | boolean) => {
+		onEdit?.();
 		setDraft((prev) => ({ ...prev, [key]: value }));
-	const values = valuesOf(fields, draft);
-	const blocked = fields.some(
-		(sub) => isMissing(sub, draft[sub.key]) || draftErrorOf(sub, draft[sub.key]) !== undefined,
-	);
-	const copies = copyRowsOf(field, extensionId, values);
+	};
+	const values = editing ? changedValuesOf(fields, initial, draft) : valuesOf(fields, draft);
+	const blocked =
+		fields.some(
+			(sub) => isMissing(sub, draft[sub.key]) || draftErrorOf(sub, draft[sub.key]) !== undefined,
+		) ||
+		// 编辑时什么都没改,「保存」按了也是白发一次。
+		(editing && Object.keys(values).length === 0);
+	const copies = editing ? [] : copyRowsOf(field, extensionId, values);
+	const itemLabel = itemLabelOf(field);
+	const title = item ? titleOf(field, item) : "";
+	const idle = editing ? "保存" : "创建";
+	const busy = editing ? "保存中…" : "创建中…";
 
 	return (
 		<ModalShell
 			width={540}
 			onCancel={onCancel}
-			title={`新建${field.label}`}
-			description={field.description}
+			title={editing ? `编辑${title ? `「${title}」` : `这条${itemLabel}`}` : `新建${field.label}`}
+			description={editing ? undefined : field.description}
 			bodyClassName="px-5 pb-[18px] pt-4"
 		>
 			<div className="flex flex-col gap-3.5">
 				{fields.map((sub) => (
-					<FieldShell key={sub.key} field={sub} error={draftErrorOf(sub, draft[sub.key])}>
+					<FieldShell
+						key={sub.key}
+						data-dialog-field={sub.key}
+						field={sub}
+						error={
+							draftErrorOf(sub, draft[sub.key]) ??
+							(fieldErrors && Object.hasOwn(fieldErrors, sub.key)
+								? fieldErrors[sub.key]
+								: undefined)
+						}
+					>
 						<DraftControl
 							sub={sub}
 							value={draft[sub.key]}
@@ -175,7 +264,7 @@ export function NewItemDialog({
 
 				{error ? (
 					<ErrorNote size="sm">
-						建不了这条{itemLabelOf(field)}:{error}
+						{editing ? "改不了" : "建不了"}这条{itemLabel}:{error}
 					</ErrorNote>
 				) : null}
 
@@ -188,10 +277,10 @@ export function NewItemDialog({
 						size="md"
 						disabled={saving || blocked}
 						onClick={() => {
-							if (!saving && !blocked) onCreate(values);
+							if (!saving && !blocked) onSubmit(values);
 						}}
 					>
-						{saving ? "创建中…" : "创建"}
+						{saving ? busy : idle}
 					</Btn>
 				</div>
 			</div>

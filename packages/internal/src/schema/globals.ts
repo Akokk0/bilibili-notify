@@ -251,9 +251,9 @@ export const ExtensionStateSchema = z.object({
 	enabled: z.boolean().default(false),
 	/**
 	 * 这个拓展自己的持久设置(桥的接入名单住这儿)。**宿主不认识它的形状** —— 归拓展自己
-	 * 那份 zod(经 `ctx.settings(schema)` 现读),这里只保证原样存、原样取。写路径是
-	 * `/api/ext/:id/settings`(ADR-0019 决策 35,按项写、带版本号);`PATCH /api/globals` 眼下照旧
-	 * 收,面板改走新口的那一片去掉。
+	 * 那份 zod(经 `ctx.settings(schema)` 现读),这里只保证原样存、原样取。读写都走
+	 * `/api/ext/:id/settings`(ADR-0019 决策 35,按项写、带版本号、密钥下发时只给头尾);
+	 * `/api/globals` 既不下发也不收这一格。
 	 */
 	settings: z.unknown().optional(),
 });

@@ -1,4 +1,3 @@
-import type { ExtensionManifestField } from "@bilibili-notify/internal";
 import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
 import type { QQSessionRegistry } from "../platforms/qq-official.js";
@@ -40,10 +39,4 @@ export interface RouteDeps {
 	 * (CommandSpec / HelpEntry / 这里),给指令元数据加字段时路由层会被漏掉。
 	 */
 	commands?: readonly HelpEntry[];
-	/**
-	 * 某个拓展在清单里声明的设置项 —— globals PATCH 写它那份设置之前照这个拦一道
-	 * (ADR-0019 决策 17)。v1 拓展 / 认不出的拓展回 `undefined`(不校验);v2 没声明设置项的
-	 * 回空表。可选:路由测试大多不关心拓展。
-	 */
-	extensionSettingsFields?: (id: string) => readonly ExtensionManifestField[] | undefined;
 }

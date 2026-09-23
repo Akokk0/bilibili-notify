@@ -88,9 +88,8 @@ function renderDetail({
 }: Setup = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return { extensions: [ext], restart } satisfies ExtensionsResponse;
-		if (url === "/api/globals") {
-			return { extensions: { [ext.id]: { enabled: ext.enabled, settings } } };
-		}
+		// 设置走拓展自己的口(ADR-0019 决策 35)—— `/api/globals` 里已经没有这一格了。
+		if (url === `/api/ext/${ext.id}/settings`) return { revision: "r1", values: settings };
 		if (url === `/api/ext/${ext.id}/status`) {
 			if (status instanceof Error) throw status;
 			return status;
@@ -176,8 +175,9 @@ describe("v2 拓展的详情页", () => {
 		fireEvent.change(await screen.findByLabelText("检查间隔"), { target: { value: "120" } });
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() =>
-			expect(apiPatchMock).toHaveBeenCalledWith("/api/globals", {
-				extensions: { douyin: { settings: { interval: 120 } } },
+			expect(apiPatchMock).toHaveBeenCalledWith("/api/ext/douyin/settings", {
+				revision: "r1",
+				ops: [{ op: "set", key: "interval", value: 120 }],
 			}),
 		);
 		expect(statusCalls()).toBe(0);
@@ -196,6 +196,25 @@ describe("v2 拓展的详情页", () => {
 		).toBeTruthy();
 		expect(screen.queryByText("拓展关着,它现在什么都不做。")).toBeNull();
 		expect(await screen.findByLabelText("检查间隔")).toBeTruthy();
+		expect(statusCalls()).toBe(0);
+	});
+
+	/**
+	 * 设置读不了(ADR-0019 决策 36):存着的设置过不了它自己的规矩,它不跑 —— 出路就在这个「配置」
+	 * 页签里,改对了它自己起来。原因不在日志里(叫人去翻日志等于把人支走),也不是出错,是提醒:
+	 * 服务端那句 `detail` 已经点名哪一格、为什么,原样摆出来。
+	 */
+	it("设置读不了:配置页签顶上是黄的提醒,原样摆那句原因,不叫人去翻日志", async () => {
+		const detail =
+			"存着的设置不合它自己的规矩:「检查间隔」:要在 30 到 600 之间。在它的「配置」里改对,改对了会自己起来";
+		renderDetail({ ext: { ...DOUYIN, state: "settings-invalid", detail } });
+		const head = await headCard();
+		expect(await screen.findByLabelText("检查间隔")).toBeTruthy();
+		const notes = screen.getAllByText(detail).filter((el) => !head.contains(el));
+		expect(notes).toHaveLength(1);
+		expect(notes[0]?.closest("[data-bn]")?.getAttribute("data-bn")).toContain("note-warn");
+		expect(screen.queryByText(/去日志里看/)).toBeNull();
+		expect(screen.queryByText(/没跑起来/)).toBeNull();
 		expect(statusCalls()).toBe(0);
 	});
 

@@ -10,7 +10,6 @@ import {
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import { copyToClipboard } from "../../../utils/clipboard";
-import { maskSecret } from "./secret";
 
 /**
  * 照声明画的那一页(ADR-0019 决策 19)上反复出现的那几件小东西 —— 积木、列表卡、设置表单、
@@ -19,8 +18,8 @@ import { maskSecret } from "./secret";
  * 各抄一份的话,一处今天改一个圆角,别处明天就对不上了,而且哪边都不会报错。
  *
  * `KindMark` / `MonoChip` / `OptionCard` / `TriStateMark` / `TriStateChip` 零业务依赖,住在
- * `@bilibili-notify/ui`(清单见那个包的 README);`CopyControl` 走 web 的剪贴板、密钥那几件走
- * 这一页的遮法(`maskSecret`),留在这儿。
+ * `@bilibili-notify/ui`(清单见那个包的 README);`CopyControl` 走 web 的剪贴板、密钥那几件讲的是
+ * 这一页的规矩(存下之后只画服务端给的遮挡、不给复制),留在这儿。
  */
 
 // ── 复制 ─────────────────────────────────────────────────────────────────────
@@ -75,15 +74,13 @@ export function CopyControl({
 // ── 密钥 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 密钥那一格的值:等宽小字胶囊,只露头尾。`reveal` 只给**刚生成、还没存**的那一把 —— 主人要把它
- * 抄进对面去,只有那一刻明文。设置表单(遮住的密钥、生成的那一格)与列表卡的密钥行共用。
+ * 密钥那一格的值:等宽小字胶囊。设置表单(遮住的密钥、生成的那一格)与列表卡的密钥行共用。
+ *
+ * `text` 是**摆放处决定好的那一串**:存着的那一把是服务端给的遮挡(`maskedOf`,浏览器不自己截);
+ * 刚生成的那一把是明文 —— 主人要把它抄进对面去,只有那一刻明文在面板手里(决策 38)。
  */
-export function SecretChip({ value, reveal = false }: { value: string; reveal?: boolean }) {
-	return (
-		<MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">
-			{reveal ? value : maskSecret(value)}
-		</MonoChip>
-	);
+export function SecretChip({ text }: { text: string }) {
+	return <MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">{text}</MonoChip>;
 }
 
 /**
