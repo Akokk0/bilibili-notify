@@ -98,6 +98,8 @@ function serve(
 let root: string;
 const key = makeKey();
 const bridgeZip = pack("bridge", "0.0.2");
+const bridgeNextZip = pack("bridge", "0.0.3");
+const oldBridgeZip = pack("bridge", "0.0.1");
 const douyinZip = pack("alice.douyin", "1.0.0");
 // 预发布那一档的包与正式那档一样打成模块级常量:同一个版本要拿同一份字节(fflate 不给
 // mtime 就按当前时间打,两次打包字节可能不同),索引里写的 sha256 得对得上发出去的那份。
@@ -510,11 +512,17 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 });
 
 describe("list():已装的怎么标", () => {
-	it("从这个源装的:同版 installed、索引更新 updatable、那版被撤回 revoked", async () => {
+	/** 从官方源装上 bridge 0.0.2、装载器也报着它 —— 之后各条用例换一份索引看它怎么标。 */
+	async function installedFromOfficial() {
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
 		const h = harness();
 		await h.marketplace.install("official", "bridge");
 		h.setInstalled([{ id: "bridge", version: "0.0.2" }]);
+		return h;
+	}
+
+	it("从这个源装的:同版 installed、索引更新 updatable(没撤回的不带 revoked 那一格)", async () => {
+		const h = await installedFromOfficial();
 		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
 			state: "installed",
 			installed: { version: "0.0.2", source: "official" },
@@ -526,19 +534,9 @@ describe("list():已装的怎么标", () => {
 				official({ extensions: [entry("bridge", "0.0.3", bridgeZip)] }),
 			),
 		});
-		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
-			state: "updatable",
-		});
-
-		serve({
-			[OFFICIAL_URL]: envelope(
-				key.privateKey,
-				official({ revoked: ["bridge@0.0.2"], extensions: [entry("bridge", "0.0.3", bridgeZip)] }),
-			),
-		});
-		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
-			state: "revoked",
-		});
+		const [card] = (await h.marketplace.list({ refresh: true })).extensions;
+		expect(card).toMatchObject({ state: "updatable" });
+		expect(card?.installed).toEqual({ version: "0.0.2", source: "official" });
 	});
 
 	it("索引里那个新版自己装不了(被撤回 / 契约升了一格)→ 不画「有新版」", async () => {
@@ -571,6 +569,62 @@ describe("list():已装的怎么标", () => {
 		});
 		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
 			state: "installed",
+		});
+	});
+
+	it("装着那版被撤回、索引里有能装的新版 → updatable,installed 上标 revoked;按下去装得上那个新版", async () => {
+		const h = await installedFromOfficial();
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					revoked: ["bridge@0.0.2"],
+					extensions: [entry("bridge", "0.0.3", bridgeNextZip)],
+				}),
+			),
+			[ZIP_URL]: bridgeNextZip,
+		});
+		const [card] = (await h.marketplace.list({ refresh: true })).extensions;
+		expect(card).toMatchObject({ version: "0.0.3", state: "updatable" });
+		expect(card?.installed).toEqual({ version: "0.0.2", source: "official", revoked: true });
+		// 画出来的钮得按得动:装的是那个新版,不是被撤回的那版。
+		expect(await h.marketplace.install("official", "bridge")).toMatchObject({
+			ok: true,
+			version: "0.0.3",
+		});
+	});
+
+	/** 没有能换过去的版本时仍是 `revoked` —— 那颗「更新」画出来也按不动。 */
+	it.each<[string, Record<string, unknown>]>([
+		[
+			"新版也被撤回了",
+			{
+				revoked: ["bridge@0.0.2", "bridge@0.0.3"],
+				extensions: [entry("bridge", "0.0.3", bridgeNextZip)],
+			},
+		],
+		[
+			"新版要更高一格的宿主契约",
+			{
+				revoked: ["bridge@0.0.2"],
+				extensions: [
+					entry("bridge", "0.0.3", bridgeNextZip, { apiVersion: EXTENSION_API_RANGE.current + 1 }),
+				],
+			},
+		],
+		[
+			"索引里就是装着的那一版",
+			{ revoked: ["bridge@0.0.2"], extensions: [entry("bridge", "0.0.2", bridgeZip)] },
+		],
+		[
+			"索引里那条比装着的还旧(换回稳定渠道之后常见)",
+			{ revoked: ["bridge@0.0.2"], extensions: [entry("bridge", "0.0.1", oldBridgeZip)] },
+		],
+	])("装着那版被撤回、%s → 照旧 revoked", async (_case, index) => {
+		const h = await installedFromOfficial();
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official(index)) });
+		expect((await h.marketplace.list({ refresh: true })).extensions[0]).toMatchObject({
+			state: "revoked",
 		});
 	});
 

@@ -190,6 +190,8 @@ describe("老格式(v1)拓展的详情页", () => {
 		const head = await headCard();
 		const button = await within(head).findByRole("button", { name: "更新" });
 		expect(within(head).getByText(/有新版 v0\.1\.0/)).toBeTruthy();
+		// 老形状(没有 `installed.revoked` 那一格):缺了当没撤回,不标红。
+		expect(within(head).queryByText(/撤回/)).toBeNull();
 		// 有钮可按就不再指去市场 —— 两条路摆一起,主人会以为得先去市场做点什么。
 		expect(within(head).queryByRole("link", { name: /去拓展市场/ })).toBeNull();
 		// devtools「播放更新动画」认这个标记找起飞点。
@@ -214,6 +216,30 @@ describe("老格式(v1)拓展的详情页", () => {
 		// 这一页上有人演:jsdom 没有动画接口,演的那头找到卡就当场收摊、把那一格还回来。
 		// 没挂演的那一处的话,那一段一直占着那一格,回到列表页还会再演一遍。
 		await waitFor(() => expect(useCardMotionStore.getState().motion).toBeNull());
+	});
+
+	/**
+	 * 🔴 装着那版被撤回、市场里有能换过去的新版(`updatable` + `installed.revoked`):恰恰是最该
+	 * 更新的时候 —— 头卡里既标红、又给那颗「更新」,按下去走的还是市场那一口。
+	 */
+	it("装着那版被撤回、有能换过去的新版 → 标红说撤回,照给「更新」,按下去走市场那一口", async () => {
+		apiPostMock.mockResolvedValue(UPDATED);
+		renderDetail({
+			market: marketWith({ installed: { version: "0.0.1", source: "official", revoked: true } }),
+		});
+		const head = await headCard();
+		const revoked = await within(head).findByText("装着的这一版被撤回了");
+		expect(revoked.className).toContain("text-bn-danger");
+		expect(within(head).getByText(/有新版 v0\.1\.0/)).toBeTruthy();
+		// 有钮可按,就不是「没有能更新到的版本」那几档 —— 不再指去市场。
+		expect(within(head).queryByRole("link", { name: /去拓展市场/ })).toBeNull();
+		fireEvent.click(within(head).getByRole("button", { name: "更新" }));
+		await waitFor(() =>
+			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
+				source: "official",
+				id: "bridge",
+			}),
+		);
 	});
 
 	/**

@@ -120,6 +120,20 @@ const MARKET: MarketplaceResponse = {
 			state: "revoked",
 		},
 		{
+			// 装着那版被撤回了,但市场里有能换过去的新版 —— 照 `updatable` 给,红字靠 `installed.revoked`。
+			source: "official",
+			official: true,
+			id: "quux",
+			name: "Quux",
+			description: "",
+			version: "1.1.0",
+			apiVersion: 1,
+			prerelease: false,
+			size: 1000,
+			installed: { version: "1.0.0", source: "official", revoked: true },
+			state: "updatable",
+		},
+		{
 			source: "s1",
 			official: false,
 			id: "alice.douyin",
@@ -225,11 +239,13 @@ describe("拓展市场", () => {
 	/**
 	 * 🔴 **装了的不在市场里露面**。它已经在上面那一排「已装」的卡里了,同一件东西画两遍
 	 * 会让人以为装了两份。更新也没丢:「有新版 vX」+「更新」钮长在已装那张卡上
-	 * (`Extensions.tsx`),数据同样来自这份索引。
+	 * (`Extensions.tsx`),数据同样来自这份索引。装着那版被撤回、又有新版可换的那条也一样:
+	 * 红字跟着更新钮长在已装卡上,这里再画一张就是同一件事说两遍。
 	 */
 	it.each([
 		["已装的", "Foo"],
 		["别处装的", "Baz"],
+		["装着那版被撤回、有新版可换的", "Quux"],
 	])("%s不出现在市场里", async (_label, name) => {
 		renderSection();
 		// 等市场画完再断言「没有」—— 没等的话空 DOM 也会让它过。

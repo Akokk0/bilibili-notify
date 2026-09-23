@@ -316,10 +316,11 @@ export interface MarketplaceSourceDTO {
  * 一条条目在**这台机器上**的状态 —— 面板上那颗钮画什么全看它:
  * - `installable`:没装,能装;
  * - `installed`:从这个源装的,就是这一版;
- * - `updatable`:从这个源装的,索引里有更新的版本;
+ * - `updatable`:从这个源装的,索引里有更新的版本(装着那版被撤回了的,`installed.revoked` 标着);
  * - `installed-elsewhere`:装着,但不是从这个源装的(手放的 / devtools 链的 / 别的源)—— 不提示更新;
  * - `incompatible`:它要的宿主契约版本对不上,先升级 BN;
- * - `revoked`:装着的那一版被这个源撤回了(或索引里这一版本身就在撤回名单上)。
+ * - `revoked`:装着的那一版被这个源撤回了、又没有能换过去的新版(或索引里这一版本身就在撤回
+ *   名单上)。
  */
 export type MarketplaceEntryState =
 	| "installable"
@@ -345,7 +346,19 @@ export interface MarketplaceEntryDTO {
 	/** 包多大(字节)。 */
 	size: number;
 	/** 这台机器上装着的那份(没装就没有)。`source` 缺 = 不是从市场装的。 */
-	installed?: { version?: string; source?: string };
+	installed?: {
+		version?: string;
+		source?: string;
+		/**
+		 * 装着的这一版被这个源撤回了,而索引里有能换过去的新版 —— 只跟 `updatable` 一起出现。
+		 * 这时恰恰最该更新,所以状态照 `updatable` 给(那颗「更新」得在),红字另靠这一格说;
+		 * 没有能换过去的新版就是 `revoked` 那一档,用不着它。
+		 *
+		 * 🔴 **可选**:面板与服务端在应用内更新那几秒里版本可能对不上,老服务端的回应里压根没有
+		 * 这一格 —— 缺了就当没撤回,照常画「有新版」,不许因此出错。
+		 */
+		revoked?: true;
+	};
 	state: MarketplaceEntryState;
 }
 

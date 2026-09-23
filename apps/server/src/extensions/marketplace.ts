@@ -412,14 +412,22 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				(onDisk.version === undefined || onDisk.version === record.version);
 			const installed = { version: onDisk.version, source: fromHere ? record.source : undefined };
 			if (!fromHere) return { state: "installed-elsewhere", installed };
-			if (isMarketplaceRevoked(index, entry.id, record.version))
-				return { state: "revoked", installed };
 			// 「有新版」那颗钮画出来就得按得动:索引里那个新版自己装不了的两种情形
 			// (它被撤回了、它要更高一格的宿主契约),install() 会当场拒 —— 别画出来
-			// 让主人点一次再吃一句错。压回 installed:装着那版好好的。
+			// 让主人点一次再吃一句错。
 			const newer = compareVersions(entry.version, record.version) > 0;
 			const installable = !isMarketplaceRevoked(index, entry.id, entry.version) && fitsHost(entry);
-			return { state: newer && installable ? "updatable" : "installed", installed };
+			const updatable = newer && installable;
+			// 🔴 **撤回先看有没有路可走**:装着那版被撤回、而索引里有能换过去的新版,恰恰是最该
+			// 更新的时候 —— 先判撤回就返回 `revoked` 的话,几处更新入口一颗钮都不给。所以照
+			// `updatable` 给,红字靠 `installed.revoked` 另说。换不过去才是 `revoked`。
+			if (isMarketplaceRevoked(index, entry.id, record.version)) {
+				return updatable
+					? { state: "updatable", installed: { ...installed, revoked: true } }
+					: { state: "revoked", installed };
+			}
+			// 压回 installed:装着那版好好的。
+			return { state: updatable ? "updatable" : "installed", installed };
 		}
 		if (isMarketplaceRevoked(index, entry.id, entry.version)) return { state: "revoked" };
 		if (!fitsHost(entry)) return { state: "incompatible" };

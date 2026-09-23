@@ -56,6 +56,8 @@ function whyNoUpdate(
 		case "installed-elsewhere":
 			return "你这份不是从市场装的,市场不提示它的更新。";
 		case "revoked":
+			// 撤回了、却有能换过去的新版时服务端给的是 `updatable`(带 `installed.revoked`),红字
+			// 跟着那颗钮画在 `MarketplaceUpdateOffer` 里;走到这一档说明没有新版可换。
 			return "装着的这一版被市场撤回了。";
 		// 装着的拓展走不到这两档(服务端对装着的只给上面四种);留着让 switch 穷尽。
 		case "installable":

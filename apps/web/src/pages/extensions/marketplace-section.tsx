@@ -187,6 +187,9 @@ export function MarketplaceInstallConfirm({ installer }: { installer: Marketplac
 	);
 }
 
+/** 「撤回了」那句红字 —— 市场那一节的卡与更新入口说的是同一种警告,长一个样。 */
+const REVOKED_TEXT_CLS = "text-bn-2xs font-bold text-bn-danger";
+
 /**
  * 「有新版 vX」+「更新」—— 已装卡片(列表页)与老格式拓展的头卡(详情页,ADR-0019 决策 44)
  * **共用这一块**。按下去在那一刻量这颗钮的位置交出去:更新的换装,球从这儿起飞。
@@ -194,6 +197,9 @@ export function MarketplaceInstallConfirm({ installer }: { installer: Marketplac
  * 🔴 **走 `start` 而不是直接 `install.mutate`**:第三方那道确认框住在它里面。更新与装落地的是
  * 同一件事(把一份 BN 不担保的代码放进 BN 进程里跑),哪一处自己接 mutate,就给第三方源开了
  * 一条「抬个版本号即可零确认装新代码」的路 —— 所以两处用的是同一颗钮,不各接各的。
+ *
+ * 装着那版被撤回、而市场里有能换过去的新版时(`installed.revoked`),红字也长在**这一块**里:
+ * 两处入口都得既标红、又给钮 —— 那正是最该更新的时候。老服务端没有这一格,缺了就当没撤回。
  */
 export function MarketplaceUpdateOffer({
 	entry,
@@ -204,7 +210,10 @@ export function MarketplaceUpdateOffer({
 	installer: MarketplaceInstaller;
 }) {
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+			{entry.installed?.revoked === true ? (
+				<span className={REVOKED_TEXT_CLS}>装着的这一版被撤回了</span>
+			) : null}
 			<Pill subtle size="sm">
 				有新版 v{entry.version}
 			</Pill>
@@ -227,7 +236,8 @@ export function MarketplaceUpdateOffer({
  *
  * 🔴 **更新入口不在这儿丢**:「有新版 vX」+「更新」钮长在**已装那张卡**上(`Extensions.tsx`,
  * 老格式的拓展在详情页头卡里还有一颗),吃的同样是这份索引里 `updatable` 那一档。所以把可更新的
- * 也滤掉,并不会让人更新不了。
+ * 也滤掉,并不会让人更新不了。装着那版被撤回、又有新版可换的(`updatable` + `installed.revoked`)
+ * 同理:那句红字跟着更新钮长在已装卡上({@link MarketplaceUpdateOffer}),不在这儿再画一张。
  */
 const INSTALLED_STATES: ReadonlySet<MarketplaceEntryDTO["state"]> = new Set([
 	"installed",
@@ -273,7 +283,7 @@ function EntryAction({
 				</span>
 			);
 		case "revoked":
-			return <span className="text-bn-2xs font-bold text-bn-danger">这一版已被撤回</span>;
+			return <span className={REVOKED_TEXT_CLS}>这一版已被撤回</span>;
 	}
 }
 

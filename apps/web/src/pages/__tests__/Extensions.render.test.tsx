@@ -533,6 +533,8 @@ describe("已装卡片上的「有新版」", () => {
 		await screen.findAllByText("机器人框架桥接");
 		const card = installedCardOf("机器人框架桥接");
 		expect(await within(card).findByText(/有新版 v1\.1\.0/)).toBeTruthy();
+		// 老形状(没有 `installed.revoked` 那一格,老服务端就是这样):缺了当没撤回,不标红。
+		expect(within(card).queryByText(/撤回/)).toBeNull();
 		fireEvent.click(within(card).getByRole("button", { name: /更新/ }));
 		await waitFor(() =>
 			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
@@ -543,6 +545,33 @@ describe("已装卡片上的「有新版」", () => {
 		// 盖掉的是一份正在跑的:装完那句话要说清「换不上」,并给两条出路。
 		expect(await screen.findByText(/换不上/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 装着那版被撤回、市场里有能换过去的新版(`updatable` + `installed.revoked`)—— 恰恰是最该
+	 * 更新的时候。红字与那颗「更新」得**同时**在:只标红不给钮,主人知道出事了却没有出路;只给钮
+	 * 不标红,它看起来就是一次可有可无的例行更新。
+	 */
+	it("装着那版被撤回、有能换过去的新版 → 标红说撤回,更新钮照给,按下去走市场那一口", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, {
+			...UPDATABLE_MARKET,
+			extensions: UPDATABLE_MARKET.extensions.map((entry) => ({
+				...entry,
+				installed: { version: "1.0.0", source: "official", revoked: true },
+			})),
+		});
+		await screen.findAllByText("机器人框架桥接");
+		const card = installedCardOf("机器人框架桥接");
+		const revoked = await within(card).findByText("装着的这一版被撤回了");
+		expect(revoked.className).toContain("text-bn-danger");
+		expect(within(card).getByText(/有新版 v1\.1\.0/)).toBeTruthy();
+		fireEvent.click(within(card).getByRole("button", { name: /更新/ }));
+		await waitFor(() =>
+			expect(apiPostMock).toHaveBeenCalledWith("/api/ext/marketplace/install", {
+				source: "official",
+				id: "bridge",
+			}),
+		);
 	});
 
 	/**
