@@ -3,6 +3,7 @@ export * from "./commands";
 export * from "./common";
 export * from "./extension-manifest";
 export * from "./extension-marketplace";
+export * from "./extension-subscription";
 export * from "./extension-view";
 export * from "./globals";
 export * from "./history";

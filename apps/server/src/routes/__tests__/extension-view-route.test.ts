@@ -59,6 +59,8 @@ function boot() {
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		subscriptions: () => [],
+		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: () => ({ accounts: [{ id: "a1", name: "主号" }] }),
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},

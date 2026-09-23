@@ -139,6 +139,56 @@ export interface ExtensionPushView {
 	connectionFields: readonly ExtensionScalarField[];
 }
 
+/**
+ * 订阅源那一口在界面上的样子 —— 清单 `contributes.subscription.display`。比推送源那三格多两格
+ * 可选的叫法。
+ *
+ * 🔴 这是清单那份 zod 的**手写镜像**,两份由宿主那头的类型断言双向严格相等地钉住
+ * (`apps/server/src/extensions/subscription-shape-pin.ts`)。
+ */
+export interface ExtensionSubscriptionDisplay extends ExtensionDisplay {
+	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
+	postNoun?: string;
+	/** 新建订阅时输入框里那句提示(抖音:粘主页链接)。不给就用通用说法(ADR-0019 决策 51)。 */
+	lookupPlaceholder?: string;
+}
+
+/**
+ * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到自己的特性。配置弹层只列
+ * 这个源报的那几种。镜像 `@bilibili-notify/internal` 的 `SubscriptionEventKind`,同上钉住。
+ */
+export type ExtensionSubscriptionEventKind = "post" | "liveStart" | "liveEnd";
+
+/**
+ * 一个拓展**订阅源那一口**给面板的东西:平台选择那一排的名字与脸、输入框的提示、配置弹层列
+ * 哪几种事件。来自清单,**拓展停着也有**(ADR-0019 决策 41)—— 停用的拓展名下的订阅照样画得出
+ * 是哪个平台的。**有它不等于拓展在场**:要它在场的(解析门)另看运行状态。
+ */
+export interface ExtensionSubscriptionView {
+	display: ExtensionSubscriptionDisplay;
+	events: readonly ExtensionSubscriptionEventKind[];
+}
+
+/**
+ * 解析门交回的一个候选(ADR-0019 决策 11 / 52):主人粘的东西解析出来「可能是这个人」。建不建、
+ * 建成什么样由 BN 定,拓展只给候选。
+ *
+ * 🔴 宿主先核形状再交给面板,不合规矩的整次回「形状不对」并说清哪儿不对(最多 20 条、名字 1–128
+ * 字、`id` 非空且有长度上限、粉丝数是非负整数、头像见下)。严格:多一个键也算不合。
+ */
+export interface ExtensionSubscriptionCandidate {
+	/** 这个人在那个平台上的 id(抖音的 `sec_uid`)。BN 不解读,原样存、原样交回给拓展。 */
+	id: string;
+	name: string;
+	/**
+	 * 头像:**位图**的 base64 data URL(png / jpeg / webp),有大小上限。**不收 SVG** —— 建成订阅
+	 * 之后它存成文件、从同源地址取,同源的 SVG 被直接打开时会跑脚本(ADR-0019 决策 49)。不交 URL:
+	 * 平台的图链带签名、会过期、要 Referer。
+	 */
+	avatar?: string;
+	fans?: number;
+}
+
 /** **v1 的老形状**,新名字是 {@link ExtensionDisplay}(`tint` 改叫 `color`)。见上面那条。 */
 export interface ExtensionDescriptor {
 	label: string;

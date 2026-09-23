@@ -111,6 +111,8 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		subscriptions: () => [],
+		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: () => undefined,
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},
@@ -407,6 +409,60 @@ describe("GET /api/ext", () => {
 			connectionFields: fields,
 		});
 		expect(body.extensions.find((e) => e.id === "douyin")?.push).toBeUndefined();
+	});
+
+	/**
+	 * 🔴 ADR-0019 决策 41:订阅源那一口的外观(平台选择那一排、输入框的提示)与会报哪几种事件写在
+	 * 清单里,**跑没跑都交给面板** —— 拓展停了,它名下的订阅照样画得出是哪个平台的(决策 10 的
+	 * 置灰)。自带皮肤的包内路径不下发:那是装包那头的事。
+	 */
+	it("停着的 v2 照清单交出订阅源那一口(外观 + 事件);只开推送那口的、v1 的没有", async () => {
+		const display = {
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
+			postNoun: "作品",
+			lookupPlaceholder: "粘抖音主页链接",
+		};
+		const douyin: ExtensionEntry = {
+			id: "douyin",
+			dir: "/data/extensions/douyin",
+			state: "disabled",
+			manifest: {
+				id: "douyin",
+				name: "抖音订阅",
+				description: "一句话说明",
+				version: "0.1.0",
+				apiVersion: 2,
+				contributes: {
+					subscription: { display, events: ["post", "liveStart"], cardSkin: "card-skin" },
+				},
+			},
+		};
+		const bridge: ExtensionEntry = {
+			id: "bridge",
+			dir: "/data/extensions/bridge",
+			state: "disabled",
+			manifest: {
+				id: "bridge",
+				name: "机器人框架桥接",
+				description: "一句话说明",
+				version: "0.0.1",
+				apiVersion: 2,
+				contributes: {
+					push: { display: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" } },
+				},
+			},
+		};
+		const body = (await (
+			await boot({ entries: [douyin, bridge, running("legacy")] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions.find((e) => e.id === "douyin")?.subscription).toEqual({
+			display,
+			events: ["post", "liveStart"],
+		});
+		expect(body.extensions.find((e) => e.id === "bridge")?.subscription).toBeUndefined();
+		expect(body.extensions.find((e) => e.id === "legacy")?.subscription).toBeUndefined();
 	});
 
 	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */

@@ -361,6 +361,27 @@ describe("v2 的外观(display)", () => {
 		expect(() => ok(sub({ display: { ...DISPLAY, postNoun: "作品" } }))).not.toThrow();
 		unreadable(v2({ contributes: { push: { display: { ...DISPLAY, postNoun: "作品" } } } }));
 	});
+
+	/**
+	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51)—— B 站是「UID 或名字」,抖音大概是「粘主页
+	 * 链接」。静态外观,住清单;不给就用通用说法。
+	 */
+	it("lookupPlaceholder:订阅源那段可选一句,1 到 40 字", () => {
+		const m = ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "粘抖音主页链接" } }));
+		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		expect(m.contributes.subscription?.display.lookupPlaceholder).toBe("粘抖音主页链接");
+		expect(() =>
+			ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "字".repeat(40) } })),
+		).not.toThrow();
+		unreadable(sub({ display: { ...DISPLAY, lookupPlaceholder: "" } }));
+		unreadable(sub({ display: { ...DISPLAY, lookupPlaceholder: "字".repeat(41) } }));
+	});
+
+	it("lookupPlaceholder 只有订阅源那段有 —— 推送源没有「新建订阅」那个输入框", () => {
+		unreadable(
+			v2({ contributes: { push: { display: { ...DISPLAY, lookupPlaceholder: "粘链接" } } } }),
+		);
+	});
 });
 
 describe("v2 的订阅源段", () => {

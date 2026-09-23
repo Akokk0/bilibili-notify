@@ -17,7 +17,12 @@ import {
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
-import { ACTION_TIMEOUT_MS, type ActionOutcome, manifestPushView } from "../extensions/context.js";
+import {
+	ACTION_TIMEOUT_MS,
+	type ActionOutcome,
+	manifestPushView,
+	manifestSubscriptionView,
+} from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import {
 	docsPresence,
@@ -172,6 +177,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				apiVersion: entry.manifest?.apiVersion,
 				// v2 照清单、没在跑的也有;v1 跑起来了才有(`activate` 里注册推送源时交的那一份)。
 				push: pushViewOfEntry(entry, opts.pushSource),
+				// 订阅源那一口只有 v2 有,照清单给、没在跑的也有(决策 41):停了的拓展名下的订阅照样
+				// 画得出是哪个平台的。
+				subscription: entry.manifest && manifestSubscriptionView(entry.manifest),
 				// 清单里声明的设置项 —— 来自清单、不来自代码,所以没在跑的也有。
 				...(entry.manifest?.apiVersion === 2 && entry.manifest.settings
 					? { settings: entry.manifest.settings }

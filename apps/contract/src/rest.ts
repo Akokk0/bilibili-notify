@@ -8,6 +8,7 @@ import type {
 	ExtensionBotView,
 	ExtensionField,
 	ExtensionPushView,
+	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
 	BiliSubscription,
@@ -97,6 +98,13 @@ export interface ExtensionDTO {
 	 * 要它在场的(新建它的连接、挑 bot)另看 `state`。
 	 */
 	push?: ExtensionPushView;
+	/**
+	 * 订阅源那一口:外观(平台选择那一排的名字与脸、输入框的提示)+ 会报哪几种事件(配置弹层只列
+	 * 这几种)。**照清单给,没在跑的也有**(ADR-0019 决策 41)—— 拓展停了,它名下的订阅照样画得出
+	 * 是哪个平台的。只有 v2 有:v1 的契约里没有订阅源。「有这一格」**不等于**解析门问得到 —— 要它
+	 * 在场的另看 `state`。
+	 */
+	subscription?: ExtensionSubscriptionView;
 	/**
 	 * 清单里声明的设置项(v2,ADR-0019 决策 17 / 30)—— 面板照它画设置表单。**没在跑的也有**:
 	 * 它来自清单,「装好 → 填 → 启用」这个顺序靠它才走得通。v1 拓展没有这一格。

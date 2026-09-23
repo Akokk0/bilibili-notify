@@ -11,6 +11,7 @@ import {
 	type InboundPrivateMessage,
 	isBiliSubscription,
 	isExtensionEnabled,
+	isExtensionSubscription,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
@@ -851,6 +852,12 @@ export async function startStandaloneServer(
 			onConnectionsChanged: (fn) =>
 				runtime.bus.on("config-changed", (scope) => {
 					if (scope === "connections") fn();
+				}),
+			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
+			subscriptions: () => runtime.configStore.getSubscriptions().filter(isExtensionSubscription),
+			onSubscriptionsChanged: (fn) =>
+				runtime.bus.on("config-changed", (scope) => {
+					if (scope === "subscriptions") fn();
 				}),
 			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
 			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,

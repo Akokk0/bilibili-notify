@@ -69,6 +69,10 @@ export type {
 	ExtensionRichRun,
 	ExtensionRichText,
 	ExtensionScalarField,
+	ExtensionSubscriptionCandidate,
+	ExtensionSubscriptionDisplay,
+	ExtensionSubscriptionEventKind,
+	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,
@@ -91,6 +95,7 @@ import type {
 	ExtensionBotView,
 	ExtensionConfigField,
 	ExtensionDescriptor,
+	ExtensionSubscriptionCandidate,
 	ExtensionView,
 } from "./wire";
 
@@ -205,6 +210,56 @@ export interface PushSourceHandle<TConfig> {
 }
 
 /**
+ * 一个订阅源 —— **代码那一半**:行为(ADR-0012 决策 7 的 `SubscriptionSourceDef`)。
+ *
+ * 外观与会报哪几种事件是静态数据,写在清单的 `contributes.subscription` 里(ADR-0019 决策 16);
+ * 清单里没开这一口的拓展注册不了订阅源。
+ */
+export interface SubscriptionSourceDef {
+	/**
+	 * **解析门**:主人在新建订阅的输入框里粘的东西(主页链接、id、名字……)**原样**交进来,回「可能是
+	 * 哪几个人」(ADR-0019 决策 11 / 52)。只回候选 —— 建不建、建成什么样由 BN 定。一个都认不出就
+	 * 回空表;认不出是因为平台那头出了错(被风控、cookie 过期),抛出来 —— 原话会给到面板。
+	 *
+	 * 🔴 `signal` 在两种时候中止,手上的请求接着它停:**超时**(`reason` 是 `TimeoutError`,宿主已经
+	 * 回了面板一句「超时」)与**拓展停用 / 收摊**(`AbortError`)。
+	 *
+	 * 查询**可以并发**(主人一边打字一边查),宿主不排队、不挡第二发;要节流是拓展自己的事(它才知道
+	 * 那个平台的风控松紧)。
+	 */
+	lookup(
+		query: string,
+		signal: AbortSignal,
+	): readonly ExtensionSubscriptionCandidate[] | Promise<readonly ExtensionSubscriptionCandidate[]>;
+}
+
+/**
+ * 一条属于这个拓展的订阅 —— 只有拓展要的那三格(ADR-0019 决策 52):推不推、推给谁它不需要
+ * 知道(决策 1)。
+ */
+export interface ExtensionOwnSubscription {
+	/** BN 这条订阅自己的 id(uuid)—— 以后报资料、报事件时认的是 `externalId`,这一格用来分条。 */
+	id: string;
+	/** 那个人在平台上的 id —— 建订阅时它从解析门交出来的那个 `id`,原样。 */
+	externalId: string;
+	/** 主人有没有停用这条。**停用的也在名单里** —— 跳不跳过由拓展自己定。 */
+	enabled: boolean;
+}
+
+/** 注册完一个订阅源之后拿到的把手。 */
+export interface SubscriptionSourceHandle {
+	/**
+	 * 属于自己的订阅,**现读**。别的拓展的、B 站的都不在里面。
+	 *
+	 * 别缓存 —— 缓存与真相会漂,症状是「面板上删了它还在轮询」,而且没人报错。变更通知是用来
+	 * **做动作**的(补上新订阅的基线),不是用来刷缓存的。
+	 */
+	subscriptions(): readonly ExtensionOwnSubscription[];
+	/** 订阅动过了。卸载时自动摘掉。 */
+	onSubscriptionsChanged(fn: () => void): Disposable;
+}
+
+/**
  * 交给拓展的那面 —— **第一版刻意很窄**(ADR-0012 决策 13)。
  *
  * 窄面加宽容易,反过来不行;而我们手上只有一个真实用例(桥接),凭空设计「宿主应该提供
@@ -249,6 +304,13 @@ export interface ExtensionContext {
 	registerPushSource<TConfig>(
 		def: PushExtensionDef<TConfig> | LegacyPushExtensionDef<TConfig>,
 	): PushSourceHandle<TConfig>;
+	/**
+	 * 注册这个拓展的订阅源 —— 一个拓展就是一个平台(ADR-0019 决策 9),再注册一次会抛。
+	 *
+	 * **只有 v2**,而且清单得开了 `contributes.subscription`,否则抛:注册的口必须是清单开了的口。
+	 * 订阅记在哪个拓展名下由宿主按 id 认,拓展不自报(同推送源的分发键)。
+	 */
+	registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle;
 	/**
 	 * 把一条入站消息喂回核心 —— 归一化在拓展这一侧做完(决策 31)。
 	 *

@@ -189,6 +189,8 @@ async function boot(opts: {
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		subscriptions: () => [],
+		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: (id) => rt.configStore.getGlobals().extensions[id]?.settings,
 		// 与 index.ts 同一根线:globals 落盘 → 装载器与 ctx 各自判「我这一格动没动」。
 		onSettingsChanged: (fn) =>

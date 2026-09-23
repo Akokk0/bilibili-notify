@@ -22,6 +22,8 @@ import {
 	type ExtensionContext,
 	type ExtensionPushView,
 	type ExtensionRuntime,
+	type ExtensionSubscriptionRow,
+	type LookupOutcome,
 } from "./context.js";
 import {
 	apiVersionMismatch,
@@ -105,6 +107,15 @@ export interface LoadedExtensions {
 	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
 	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
+	/**
+	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52):主人输入的原话交过去,候选先核形状再交回。
+	 * 没在跑、或者它不是订阅源就是 `undefined`(路由回 404)。`timeoutMs` 默认 `LOOKUP_TIMEOUT_MS`。
+	 */
+	lookup(
+		id: string,
+		query: string,
+		opts?: { timeoutMs?: number },
+	): Promise<LookupOutcome | undefined>;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
 	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:跑着的认跑着的那一份,换过代码的交的是
@@ -206,6 +217,10 @@ export interface LoadExtensionsOptions {
 	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/** 全部拓展订阅(归属 + 外部 id + 开关),现读。属于谁由 ctx 那一层筛。 */
+	subscriptions: () => readonly ExtensionSubscriptionRow[];
+	/** 订阅「订阅动过了」。 */
+	onSubscriptionsChanged: (fn: () => void) => Disposable;
 	/** 某个拓展自己那份设置(`globals.extensions.<id>.settings`),现读、原样。 */
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
@@ -562,6 +577,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			connections: opts.connections,
 			connection: opts.connection,
 			onConnectionsChanged: opts.onConnectionsChanged,
+			subscriptions: opts.subscriptions,
+			onSubscriptionsChanged: opts.onSubscriptionsChanged,
 			settings: () => opts.settings(id),
 			onSettingsChanged: opts.onSettingsChanged,
 			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。
@@ -862,6 +879,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		pushSource: (id) => slots.get(id)?.running?.runtime.pushSource(),
 		bots: (id) => slots.get(id)?.running?.runtime.bots(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
+		lookup: async (id, query, lookupOpts) =>
+			slots.get(id)?.running?.runtime.lookup(query, lookupOpts),
 		settingsSchemas: (id) => {
 			const slot = slots.get(id);
 			if (slot?.running) return slot.running.runtime.settingsSchemas();

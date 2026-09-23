@@ -2,15 +2,20 @@ import type {
 	ExtensionBotView,
 	ExtensionConnectionView,
 	ExtensionContext,
+	ExtensionOwnSubscription,
 	ExtensionPushView,
 	ExtensionSettings,
+	ExtensionSubscriptionCandidate,
+	ExtensionSubscriptionView,
 	ExtensionView,
+	SubscriptionSourceDef,
 } from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
+	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
 	isExtensionConnection,
@@ -19,6 +24,7 @@ import {
 	manifestProvides,
 	type PlatformAdapter,
 	type ServiceContext,
+	SubscriptionCandidatesSchema,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
@@ -44,6 +50,8 @@ export type {
 	ExtensionPushView,
 	PushExtensionDef,
 	PushSourceHandle,
+	SubscriptionSourceDef,
+	SubscriptionSourceHandle,
 } from "@bilibili-notify/extension";
 
 /**
@@ -69,8 +77,39 @@ export type ActionOutcome =
  */
 export class ExtensionSettingsUnreadable extends Error {}
 
+/**
+ * 问一次解析门的结果(ADR-0019 决策 52)。失败分三种,各有各的说法:超时、拓展自己抛了(带原话)、
+ * 交回来的候选形状不对(带点名哪儿不对的原因)—— 并成一句「出错了」的话,面板只能对着黑盒猜。
+ */
+export type LookupOutcome =
+	| { ok: true; candidates: readonly ExtensionSubscriptionCandidate[] }
+	| { ok: false; reason: "timeout" }
+	| { ok: false; reason: "failed" | "invalid"; message: string };
+
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
+
+/**
+ * 解析门最多等多久(ADR-0019 决策 52)。主人粘完链接等着挑人;平台那头慢(风控、重定向)的
+ * 十几秒还算正常,再久就是卡住了。
+ */
+export const LOOKUP_TIMEOUT_MS = 15_000;
+
+/**
+ * 宿主递给 ctx 的一行**拓展订阅**:归属(`extensionId`)加拓展要的那三格。
+ *
+ * 按结构定,不引订阅存储的类型 —— 存储那头的一行对得上这几格就能直接递过来;筛「是不是它的」
+ * 在 ctx 这一层做,归属是宿主的判断(ADR-0019 决策 9 / 50)。
+ */
+export interface ExtensionSubscriptionRow {
+	/** BN 这条订阅自己的 id(uuid)。 */
+	id: string;
+	/** 记在哪个拓展名下 —— 由 BN 填,不由拓展报。 */
+	extensionId: string;
+	/** 那个人在平台上的 id,BN 不解读。 */
+	externalId: string;
+	enabled: boolean;
+}
 
 /**
  * `ctx.statusChanged()` 按拓展合并的窗口:第一喊起算,窗口里的连喊只在尾沿发**一次**。
@@ -101,6 +140,21 @@ export function manifestPushView(manifest: ExtensionManifest): ExtensionPushView
 	if (manifest.apiVersion !== 2) return undefined;
 	const push = manifest.contributes.push;
 	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
+}
+
+/**
+ * v2 清单里订阅源那一口给面板的东西:外观 + 会报哪几种事件(ADR-0019 决策 41)。v1 或没开这一口就是
+ * `undefined` —— v1 的契约里没有订阅源。
+ *
+ * 只从清单来、不问代码:停用的拓展名下的订阅照样画得出是哪个平台的(决策 10 的置灰)。自带皮肤的
+ * 包内路径(`cardSkin`)不给面板 —— 那是装包那头的事。
+ */
+export function manifestSubscriptionView(
+	manifest: ExtensionManifest,
+): ExtensionSubscriptionView | undefined {
+	if (manifest.apiVersion !== 2) return undefined;
+	const subscription = manifest.contributes.subscription;
+	return subscription && { display: subscription.display, events: subscription.events };
 }
 
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
@@ -156,6 +210,11 @@ export interface ExtensionRuntime {
 	 * 在跑时回 `busy`,不同的动作互不相干。
 	 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
+	/**
+	 * 问一次解析门(ADR-0019 决策 52):主人输入的原话交给拓展,交回来的候选**先核形状**。超时与收摊
+	 * 时经 `signal` 叫停;**不挡并发**(查询可以同时好几发)。没注册过订阅源 / 已经收摊就是 `undefined`。
+	 */
+	lookup(query: string, opts?: { timeoutMs?: number }): Promise<LookupOutcome | undefined>;
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
 }
@@ -181,6 +240,10 @@ export interface CreateExtensionContextOptions {
 	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。⛔ 拿不到 bus —— 宿主替它订,只把结果转给它。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/** 全部拓展订阅,**现读**。属于谁由宿主筛(ADR-0019 决策 52)。 */
+	subscriptions: () => readonly ExtensionSubscriptionRow[];
+	/** 订阅「订阅动过了」。同 {@link onConnectionsChanged}:宿主替它订,只把结果转给它。 */
+	onSubscriptionsChanged: (fn: () => void) => Disposable;
 	/** 它自己那份设置(`globals.extensions.<id>.settings`),**现读**、原样。 */
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
@@ -282,6 +345,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const runningActions = new Map<string, AbortController>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
+	let subscriptionSourceRegistered = false;
+	/** 注册上来的订阅源(解析门在它身上);收摊时摘掉。 */
+	let subscriptionSource: SubscriptionSourceDef | undefined;
+	/** 在跑的解析 —— 收摊时逐个叫停。**不按名字挡并发**(决策 52:查询可以同时好几发)。 */
+	const runningLookups = new Set<AbortController>();
 	/** 挂着的那一发「面板数据变了」(合并窗口,见 {@link STATUS_CHANGED_COALESCE_MS});没有就是 `undefined`。 */
 	let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -305,6 +373,39 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			});
 		}
 		return views;
+	}
+
+	/**
+	 * 记在这个拓展名下的订阅,**全部**(停用的也在,跳不跳过由它自己定)。只交它要的三格 —— 推不推、
+	 * 推给谁它不需要知道(ADR-0019 决策 1 / 52);每次都是新抄的一份,拓展改不着宿主手里那份。
+	 */
+	function ownSubscriptions(): readonly ExtensionOwnSubscription[] {
+		return opts
+			.subscriptions()
+			.filter((row) => row.extensionId === id)
+			.map((row) => ({ id: row.id, externalId: row.externalId, enabled: row.enabled }));
+	}
+
+	/**
+	 * 订阅源那一口开没开 —— 「注册的口 ⊆ 清单开的口」(ADR-0019 决策 16),同 {@link pushViewOf}。
+	 * v1 的契约里没有订阅源:它的 `provides` 里写着 `subscription` 也注册不了。
+	 */
+	function assertSubscriptionPort(def: SubscriptionSourceDef): void {
+		const { manifest } = opts;
+		if (manifest.apiVersion !== 2) {
+			throw new Error(
+				`extension ${id}: 订阅源只有 v2 清单开得了(contributes.subscription),v1 的契约里没有这一口`,
+			);
+		}
+		if (!manifest.contributes.subscription) {
+			throw new Error(
+				`extension ${id}: 清单里没开订阅源那一口(contributes.subscription),不能注册订阅源`,
+			);
+		}
+		// 第三方 JS 不受类型约束:没交解析门的话,每一次查询都会炸成一句「不是函数」。
+		if (typeof def?.lookup !== "function") {
+			throw new Error(`extension ${id}: 订阅源要交解析门 lookup(query, signal)`);
+		}
 	}
 
 	/** 这条连接是不是它自己的 —— 是的话把连接交出来,入站那两道校验都要用。 */
@@ -522,6 +623,32 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				onConnectionsChanged: (fn) => {
 					if (disposed) return refuse("onConnectionsChanged");
 					return track(opts.onConnectionsChanged(fn));
+				},
+			};
+		},
+		registerSubscriptionSource(def) {
+			if (disposed) {
+				refuse("registerSubscriptionSource");
+				throw new Error(`extension ${id} is already unloaded`);
+			}
+			// 一个拓展就是一个平台(决策 9);要两个平台的那天再加一格子键。
+			if (subscriptionSourceRegistered) {
+				throw new Error(`extension ${id} already registered a subscription source`);
+			}
+			assertSubscriptionPort(def);
+			subscriptionSourceRegistered = true;
+			subscriptionSource = def;
+			// 收摊时摘掉:之后再问解析门就是「没在跑」,不会叫到一个已经停了的拓展身上。
+			registered.add({
+				dispose() {
+					subscriptionSource = undefined;
+				},
+			});
+			return {
+				subscriptions: ownSubscriptions,
+				onSubscriptionsChanged: (fn) => {
+					if (disposed) return refuse("onSubscriptionsChanged");
+					return track(opts.onSubscriptionsChanged(fn));
 				},
 			};
 		},
@@ -752,6 +879,49 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				clearTimeout(timer);
 			}
 		},
+		async lookup(query, lookupOpts = {}) {
+			// 收摊一开始就把在跑的都叫停了 —— 这时再起一发就没人叫停它。
+			const source = disposed ? undefined : subscriptionSource;
+			if (!source) return undefined;
+			const timeoutMs = lookupOpts.timeoutMs ?? LOOKUP_TIMEOUT_MS;
+			const controller = new AbortController();
+			runningLookups.add(controller);
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const timeout = new Promise<LookupOutcome>((resolve) => {
+				timer = setTimeout(() => {
+					// 宿主不等了就叫它停:面板那头已经是一句「超时」,它接着问平台只是白白多挨一次风控。
+					controller.abort(
+						new DOMException(`解析门超过 ${timeoutMs / 1000} 秒没回,BN 不等了`, "TimeoutError"),
+					);
+					resolve({ ok: false, reason: "timeout" });
+				}, timeoutMs);
+			});
+			const run = (async (): Promise<LookupOutcome> => {
+				try {
+					// 同步交回、交回 Promise、同步抛都走这一处。
+					const raw: unknown = await source.lookup(query, controller.signal);
+					const parsed = SubscriptionCandidatesSchema.safeParse(raw);
+					if (!parsed.success) {
+						// 🔴 点名哪儿不对:吞成一句「出错了」的话,拓展作者只能对着黑盒猜。
+						const message = formatZodIssues(parsed.error).join(";");
+						logger.warn(`解析门交回的候选形状不对:${message}`);
+						return { ok: false, reason: "invalid", message };
+					}
+					return { ok: true, candidates: parsed.data };
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					logger.warn(`解析门抛了:${message}`);
+					return { ok: false, reason: "failed", message };
+				} finally {
+					runningLookups.delete(controller);
+				}
+			})();
+			try {
+				return await Promise.race([run, timeout]);
+			} finally {
+				clearTimeout(timer);
+			}
+		},
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
@@ -764,6 +934,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				controller.abort(new DOMException(`拓展 ${id} 停用了`, "AbortError"));
 			}
 			runningActions.clear();
+			// 在跑的解析同一条:拓展停了,它还在背后问平台就是白挨风控。
+			for (const controller of runningLookups) {
+				controller.abort(new DOMException(`拓展 ${id} 停用了`, "AbortError"));
+			}
+			runningLookups.clear();
 			// 先跑拓展自己的收摊钩子(它可能要用还活着的定时器 / 端点收尾),再拆机件。
 			// 后注册的先跑 —— 后建起来的东西通常依赖先建起来的。
 			const pending = [...hooks].reverse();

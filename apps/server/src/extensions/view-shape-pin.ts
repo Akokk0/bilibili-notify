@@ -31,11 +31,11 @@ import type { z } from "zod";
  * 严格相等:两个泛型函数类型只在 A 与 B **一模一样**时才互相可赋 —— 多一个可选键、少一个
  * `readonly` 都算不同。结构赋值(`A extends B`)做不到这一点。
  */
-type Equals<A, B> =
+export type Equals<A, B> =
 	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
 /** 不相等时这里报 `Type 'false' does not satisfy the constraint 'true'`。 */
-type Pinned<T extends true> = T;
+export type Pinned<T extends true> = T;
 
 export type ViewPinned = Pinned<Equals<z.infer<typeof ExtensionViewSchema>, ExtensionView>>;
 export type BlockPinned = Pinned<Equals<z.infer<typeof ExtensionBlockSchema>, ExtensionBlock>>;

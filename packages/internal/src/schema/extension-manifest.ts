@@ -477,6 +477,11 @@ const SubscriptionDisplaySchema = z.strictObject({
 	...displayShape,
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 	postNoun: z.string().min(1).max(8).optional(),
+	/**
+	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
+	 * 链接」。不给就用通用说法。
+	 */
+	lookupPlaceholder: z.string().min(1).max(40).optional(),
 });
 
 /**

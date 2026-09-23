@@ -172,6 +172,10 @@ function hostFor(
 				onConnectionsChanged: () => ({ dispose() {} }),
 			};
 		},
+		// 桥的清单只开推送那一口;真宿主对没开订阅口的清单当场抛 —— 桥哪天误叫了,这里就当场红。
+		registerSubscriptionSource() {
+			throw new Error("桥的清单没开 contributes.subscription,不该注册订阅源");
+		},
 		inbound: {
 			private: (msg) => inboundCalls.push({ route: "private", msg }),
 			group: (msg) => inboundCalls.push({ route: "group", msg }),

@@ -109,6 +109,9 @@ function harness(
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
 		},
+		// 订阅源那一口钉在 `subscription-source.test.ts`(装载器那一层)。
+		subscriptions: () => [],
+		onSubscriptionsChanged: () => ({ dispose() {} }),
 		// ⚠️ 与生产同形状:宿主那头是 `getGlobals().extensions[id]?.settings`,而 `getGlobals()`
 		// **每次都 deepClone**,所以每问一次拿到的都是一个新对象。直接把闭包变量交出去的话,
 		// 「按原始值的身份缓存」这种写法在测试里恒命中、在真机上恒不命中。
@@ -1066,6 +1069,8 @@ describe("认领 WS upgrade", () => {
 			adapters: createAdapterRegistry(),
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
+			subscriptions: () => [],
+			onSubscriptionsChanged: () => ({ dispose() {} }),
 			settings: () => undefined,
 			onSettingsChanged: () => ({ dispose() {} }),
 			inbound: {},
