@@ -183,6 +183,33 @@ describe("新建连接里的拓展那一档", () => {
 		expect(dialog.textContent).toMatch(/先挑一个 bot/);
 	});
 
+	/**
+	 * bot 的图标是拓展(说到底是桥那头的插件)交来的 —— 画之前要过面板出口那道闸(`safeImage`,与
+	 * 声明式积木同一份判据):一个 `https://` 地址当 `<img src>` 画,面板一开就去对家点名。不合格的
+	 * 当它没有,退回平台图标。
+	 */
+	it("不合格的 bot 图标(外链 / 超长)不进 <img src>,退回平台图标", async () => {
+		const REMOTE = "https://tracker.example/pixel.png";
+		const HUGE = `data:image/png;base64,${"A".repeat(40 * 1024)}`;
+		const dialog = await openNewConnection({
+			bots: {
+				bots: [
+					{ ...BOTS[0], icon: REMOTE },
+					{ ...BOTS[1], icon: HUGE },
+				],
+			},
+		});
+		for (const name of [/阿库娅/, /小电视/]) {
+			const row = await within(dialog).findByRole("button", { name });
+			expect(row.querySelector("img")).toBeNull();
+			// 兜底那枚平台图标照画(`PlatformIcon`:图标表里那枚 svg,或首字方章)—— 行首不能空出一块。
+			expect(["svg", "span"]).toContain(row.firstElementChild?.tagName.toLowerCase());
+		}
+		const srcs = [...dialog.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+		expect(srcs).not.toContain(REMOTE);
+		expect(srcs).not.toContain(HUGE);
+	});
+
 	it("挑中一个:显示名补成它的名字,存下去的连接带它的平台、config 原样", async () => {
 		const dialog = await openNewConnection();
 		fireEvent.click(await within(dialog).findByRole("button", { name: /小电视/ }));

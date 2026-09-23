@@ -56,6 +56,7 @@ import {
 	type PushTargetScope,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
+import { safeImage } from "./extensions/declarative/image";
 
 /**
  * Targets page — two-layer "connection → target" model.
@@ -631,6 +632,12 @@ function ExtensionBotPicker({
 				 */
 				const wrongPlatform = editing && value.platform !== "" && bot.platform !== value.platform;
 				const botTint = platformTint(bot.platform);
+				/*
+				 * 图标是拓展交来的(桥那头是插件报的),画之前过面板出口那道闸 —— 与声明式积木同一份判据
+				 * (ADR-0019 决策 31):只收图片 data URL。一个 `https://` 地址当 `<img src>` 画,面板一开
+				 * 就去对家点名;不合格的当它没有,退回平台图标。
+				 */
+				const botIcon = safeImage(bot.icon);
 				return (
 					<TintOptionRow
 						// config 才是它的身份(拓展自己定的),名单里没有别的稳定键。
@@ -647,8 +654,8 @@ function ExtensionBotPicker({
 							});
 						}}
 						icon={
-							bot.icon ? (
-								<img src={bot.icon} alt="" draggable={false} className="size-4 shrink-0" />
+							botIcon ? (
+								<img src={botIcon} alt="" draggable={false} className="size-4 shrink-0" />
 							) : (
 								<PlatformIcon platform={bot.platform} size={16} />
 							)
