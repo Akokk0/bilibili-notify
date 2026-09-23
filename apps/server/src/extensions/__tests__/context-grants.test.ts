@@ -788,12 +788,16 @@ describe("读自己的设置", () => {
 		expect(h.ctx.settings(LINKS).get()).toBeUndefined();
 	});
 
-	it("形状不对 → undefined 并留一行;同一份坏设置**只记一次**,握手一次问一次不该刷屏", () => {
+	/**
+	 * 🔴 形状不对**不再按没有算**(ADR-0019 决策 36):对桥那就是名单一空、插件收 401、按协议永久
+	 * 不再重连。`ctx.settings()` 那一下当场抛,原因记在 runtime 上 —— 装载器凭它不起这个拓展。
+	 */
+	it("形状不对 → ctx.settings() 当场抛、点名那一格;原因记在 runtime 上,那份 zod 照样交了", () => {
 		const h = harness({ settings: { links: "not-a-list" } });
-		const settings = h.ctx.settings(LINKS);
-		expect(settings.get()).toBeUndefined();
-		expect(settings.get()).toBeUndefined();
-		expect(h.lines.filter((l) => l.includes("设置"))).toHaveLength(1);
+		expect(() => h.ctx.settings(LINKS)).toThrow(/「links」/);
+		expect(h.runtime.settingsProblem()).toContain("「links」");
+		// 先交后判:改对了没有,装载器要拿这份判。
+		expect(h.runtime.settingsSchemas()).toEqual([LINKS]);
 	});
 
 	it("是**现读**:面板改了下一次问就是新的", () => {
@@ -805,29 +809,26 @@ describe("读自己的设置", () => {
 	});
 
 	/**
-	 * 🔴 **同一份 globals 连问两次只解析一次。**
+	 * 🔴 **`get()` 不去问宿主。**
 	 *
-	 * 缓存从前挂在「原始值的身份」上(WeakMap 的键),而宿主那头每问一次 `settings()` 都是
-	 * `getGlobals()` 现 deepClone 出来的**新对象** —— 键永远不同,缓存永远不命中。代价有二:
-	 * 每次 `get()` 都克隆一整份 globals 再 parse 一遍,以及下面那条「坏形状只记一次」实际上
-	 * 每次都记(桥每握一次手就刷一行)。
+	 * 宿主那头每问一次 `settings()` 都是 `getGlobals()` 现 deepClone 出来的一整份 —— 桥每握一次手
+	 * 问一次。解析只在两下做:交进来那一下(当场判得出坏了没有),与落盘那一下(读一次去比内容,
+	 * 变了就判、判过了才扇出)。缓存从前挂在「原始值的身份」上,键永远不同、永远不命中。
 	 */
-	it("同一份 globals 连问两次:只去问宿主一次", () => {
+	it("连问好几次都不去问宿主;落了一次盘也只读那一次", () => {
 		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
 		const settings = h.ctx.settings(LINKS);
-		// ctx 建起来时自己读过一次(去重游标的基线),从那之后开始数。
 		const before = h.settingsReads();
 		settings.get();
 		settings.get();
 		settings.get();
-		expect(h.settingsReads() - before).toBe(1);
+		expect(h.settingsReads() - before).toBe(0);
 
-		// 落了一次盘 = 缓存作废,下一次问是真去问的(落盘那一下自己也要读一次去比内容)。
 		h.setSettings({ links: [] });
 		const afterWrite = h.settingsReads();
+		expect(settings.get()).toEqual({ links: [] });
 		settings.get();
-		settings.get();
-		expect(h.settingsReads() - afterWrite).toBe(1);
+		expect(h.settingsReads() - afterWrite).toBe(0);
 	});
 
 	/**

@@ -251,3 +251,75 @@ describe("拓展详情页", () => {
 		expect(await screen.findByText(/没有装名叫 nope 的拓展/)).toBeTruthy();
 	});
 });
+
+/**
+ * 「设置读不了」(ADR-0019 决策 36):存着的设置过不了拓展自己的 zod,它不跑 —— 出路就在这一页的
+ * 「配置」里,改对了它自己起来。所以这一档表单与列表**照样画、照样能存**(它们本来就不看跑没跑),
+ * 头卡上的原因是黄的提醒,不是红的出错。
+ */
+describe("拓展详情页 —— 设置读不了", () => {
+	const DETAIL =
+		"存着的设置不合它自己的规矩:「桥接入」里「家里那台」这一项的「token」:太短了。在它的「配置」里改对,改对了会自己起来";
+
+	function renderInvalid() {
+		const settings = GLOBALS.extensions.bridge.settings;
+		apiGetMock.mockImplementation(async (url: string) => {
+			if (url === "/api/ext") {
+				return {
+					...LISTED,
+					extensions: [{ ...BRIDGE, state: "settings-invalid", detail: DETAIL }],
+				} satisfies ExtensionsResponse;
+			}
+			// 设置从哪口读取决于面板那一侧的版本:拓展自己的口(决策 35),或者更早的 globals。
+			if (url === "/api/ext/bridge/settings") return { revision: "r1", values: settings };
+			if (url === "/api/globals") return GLOBALS;
+			return {};
+		});
+		apiPatchMock.mockImplementation(async (url: string) =>
+			url === "/api/ext/bridge/settings"
+				? { revision: "r2", values: settings, added: [] }
+				: GLOBALS,
+		);
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		return render(
+			<QueryClientProvider client={qc}>
+				<MemoryRouter initialEntries={["/extensions/bridge"]}>
+					<Routes>
+						<Route path="/extensions/:id" element={<ExtensionDetail />} />
+					</Routes>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+	}
+
+	beforeEach(() => {
+		apiGetMock.mockReset();
+		apiPatchMock.mockReset();
+	});
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+	});
+
+	it("头卡:徽章说「设置读不了」,原因是黄的提醒", async () => {
+		renderInvalid();
+		const badge = await screen.findByText("设置读不了");
+		const head = badge.closest(".bn-glass") as HTMLElement;
+		const note = within(head).getByText(DETAIL).closest("[data-bn]");
+		expect(note?.getAttribute("data-bn")).toContain("note-warn");
+	});
+
+	it("「配置」照样画、照样能存", async () => {
+		renderInvalid();
+		const card = await linkCard(CONNECTED_ID);
+		expect(within(card).getByText("家里那台")).toBeTruthy();
+
+		fireEvent.click(await screen.findByRole("button", { name: "停用 家里那台" }));
+		await waitFor(() =>
+			expect(apiPatchMock).toHaveBeenCalledWith(
+				expect.stringMatching(/^\/api\/(ext\/bridge\/settings|globals)$/),
+				expect.anything(),
+			),
+		);
+	});
+});

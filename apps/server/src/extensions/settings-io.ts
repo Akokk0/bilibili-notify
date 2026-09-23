@@ -18,7 +18,8 @@ import type { ConfigStore } from "../config/store.js";
 /**
  * 拓展设置的读写口(`/api/ext/:id/settings`,ADR-0019 决策 35)背后的那几件事:怎么遮密钥、
  * 版本号怎么算、一步步的操作怎么套上去、拓展自己那份 zod 怎么比「这次新冒出来的」、最后怎么
- * 按版本号原子地写进去。路由那头只做 wire。
+ * 按版本号原子地写进去。路由那头只做 wire。另有一段不走路由:存着的那份过不过得了拓展自己的
+ * zod —— ctx 与装载器拿它判「设置读不了」(决策 36)。
  *
  * 存储仍在 globals 的 `extensions.<id>.settings` —— 不搬:应用内更新会退回旧载荷,旧版只认那一格。
  */
@@ -350,6 +351,129 @@ export async function newExtensionIssues(
 		}
 	}
 	return fresh;
+}
+
+// ---- 存着的那份过不过得了拓展自己的 zod ------------------------------------------------
+
+/**
+ * 存着的那份对拓展交过的每一份 zod 的判决(决策 36)。`values` 按 schema 放解出来的那一份 ——
+ * 拓展 `get()` 拿到的就是它;`detail` 是给主人看的那句「哪一格、为什么」。
+ */
+export type StoredSettingsVerdict =
+	| { ok: true; values: ReadonlyMap<ZodType, unknown> }
+	| { ok: false; detail: string };
+
+/** 一句话里最多点名几处。手改坏的文件一口气能报几百条,原因把整张卡撑满就什么都看不清了。 */
+const MAX_NAMED_ISSUES = 3;
+
+/**
+ * zod 路径 → 主人认得的说法:格按清单里的名字,**列表项按它的标题**(没有标题按 id,再没有才按
+ * 第几项)—— 下标对主人没有意义,删掉前面一条它就挪了。清单没声明的格(v1 一律没有)路径原样念。
+ */
+function whereOf(fields: readonly ExtensionManifestField[], raw: unknown, path: Path): string {
+	const [head, ...rest] = path;
+	if (head === undefined) return "整份设置";
+	const field = fields.find((candidate) => candidate.key === head);
+	if (!field) return `「${path.join(".")}」`;
+	const name = `「${field.label}」`;
+	if (rest.length === 0) return name;
+	const [index, ...inner] = rest;
+	if (field.type !== "list" || typeof index !== "number") return `${name}的「${rest.join(".")}」`;
+	const item = isPlainObject(raw) ? itemsOf(raw[field.key])[index] : undefined;
+	// 标题不会是密钥格(清单校验拦着,决策 38),念出来不漏东西。
+	const title = isPlainObject(item) ? item[field.title] : undefined;
+	const id = idOf(item);
+	const which =
+		typeof title === "string" && title !== ""
+			? `「${title}」这一项`
+			: typeof id === "string" && id !== ""
+				? ` id 为 ${id} 的那一项`
+				: `第 ${index + 1} 项`;
+	const [cell, ...deeper] = inner;
+	if (cell === undefined) return `${name}里${which}`;
+	const sub = field.fields.find((candidate) => candidate.key === cell);
+	return `${name}里${which}的「${sub ? [sub.label, ...deeper].join(".") : inner.join(".")}」`;
+}
+
+/** zod 的问题 → 一句人话:「哪一格:为什么」,同一句只说一次,多了只点名前几处。 */
+function describeSettingsIssues(
+	fields: readonly ExtensionManifestField[],
+	raw: unknown,
+	issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): string {
+	const lines = [
+		...new Set(
+			issues.map((issue) => `${whereOf(fields, raw, plainPath(issue.path))}:${issue.message}`),
+		),
+	];
+	const named = lines.slice(0, MAX_NAMED_ISSUES).join(";");
+	const more = lines.length - MAX_NAMED_ISSUES;
+	return more > 0 ? `${named};…另有 ${more} 处` : named;
+}
+
+/**
+ * **同步**判一次存着的那份 —— 判不了回 `undefined`,交给 {@link judgeStoredSettings}。
+ *
+ * 能同步就同步,是因为拓展那头要「当场」:`ctx.settings(schema)` 那一下就得抛,设置一变的扇出也不
+ * 该平白晚一拍。判不了有两种:schema 里有异步 refine(zod 同步解析一碰就抛),或者它自己的代码抛了。
+ * 🔴 两种都不按 `instanceof` 分 —— 拓展内联的是**另一份 zod**,它抛的异步错不是宿主这份的实例。
+ *
+ * 没设过(`undefined` / `null`)不算坏:在拓展那头是「按没有算」,每份 schema 交 `undefined`。
+ */
+export function judgeStoredSettingsSync(
+	schemas: readonly ZodType[],
+	fields: readonly ExtensionManifestField[],
+	raw: unknown,
+): StoredSettingsVerdict | undefined {
+	const values = new Map<ZodType, unknown>();
+	const issues: ZodError["issues"] = [];
+	for (const schema of schemas) {
+		if (raw === undefined || raw === null) {
+			values.set(schema, undefined);
+			continue;
+		}
+		let parsed: ReturnType<ZodType["safeParse"]>;
+		try {
+			parsed = schema.safeParse(raw);
+		} catch {
+			return undefined;
+		}
+		if (parsed.success) values.set(schema, parsed.data);
+		else issues.push(...parsed.error.issues);
+	}
+	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
+	return { ok: true, values };
+}
+
+/**
+ * 判一次存着的那份,同步判不了的走 `safeParseAsync`。**不抛**:拓展的 schema 自己抛了也折成一条
+ * 判决 —— 那种时候宿主一样没法把设置交给它,而原因要摆到面板上,不能变成一发没人接的拒绝。
+ */
+export async function judgeStoredSettings(
+	schemas: readonly ZodType[],
+	fields: readonly ExtensionManifestField[],
+	raw: unknown,
+): Promise<StoredSettingsVerdict> {
+	const sync = judgeStoredSettingsSync(schemas, fields, raw);
+	if (sync) return sync;
+	const values = new Map<ZodType, unknown>();
+	const issues: ZodError["issues"] = [];
+	for (const schema of schemas) {
+		let parsed: Awaited<ReturnType<ZodType["safeParseAsync"]>>;
+		try {
+			parsed = await schema.safeParseAsync(raw);
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			return {
+				ok: false,
+				detail: `它自己的设置校验抛了(是拓展代码的毛病,不是哪一格填错了):${reason}`,
+			};
+		}
+		if (parsed.success) values.set(schema, parsed.data);
+		else issues.push(...parsed.error.issues);
+	}
+	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
+	return { ok: true, values };
 }
 
 // ---- 原子地写进去 ----------------------------------------------------------------------

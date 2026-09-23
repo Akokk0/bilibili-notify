@@ -8,6 +8,7 @@ import {
 	type Disposable,
 	type ExtensionIdentity,
 	type ExtensionManifest,
+	type ExtensionManifestField,
 	type ExtensionRunState,
 	type InboundSinks,
 	manifestSecretKeys,
@@ -31,6 +32,7 @@ import {
 } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import type { ExtensionMounts } from "./mount.js";
+import { judgeStoredSettings, type StoredSettingsVerdict } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 
 /** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
@@ -105,7 +107,8 @@ export interface LoadedExtensions {
 	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
-	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:只认跑着的那一份,换过代码的交的是新的。
+	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:跑着的认跑着的那一份,换过代码的交的是
+	 * 新的;「设置读不了」的交它收摊前留下的那份(决策 36)—— 它正等着主人把设置改对。
 	 */
 	settingsSchemas(id: string): readonly ZodType[] | undefined;
 	/**
@@ -307,8 +310,21 @@ interface Slot {
 		/** 第几个起来的 —— 收摊时后起来的先收。 */
 		order: number;
 	};
-	/** 开着却没起来的原因:这一次炸了,或者连败自动停用了。关掉、起来、换了记录都清。 */
-	miss?: { state: "failed" | "blocked"; detail: string };
+	/**
+	 * 开着却没起来的原因:这一次炸了、连败自动停用了,或者存着的设置过不了它自己的 zod。关掉、起来、
+	 * 换了记录都清。
+	 */
+	miss?:
+		| { state: "failed" | "blocked"; detail: string }
+		| {
+				state: "settings-invalid";
+				detail: string;
+				/**
+				 * 它上次交过的 zod(ADR-0019 决策 36)—— **收摊之后也留着**:设置每变一次拿它判改对了
+				 * 没有(改对了才起,不为判一下再跑一遍 activate);写设置的路由也拿它做前后比对。
+				 */
+				schemas: readonly ZodType[];
+		  };
 }
 
 /**
@@ -323,6 +339,33 @@ function entryBase(dir: ReadyDir): Pick<ExtensionEntry, "id" | "dir" | "linkedTo
 		dir: dir.dir,
 		...(dir.linkedTo === undefined ? {} : { linkedTo: dir.linkedTo }),
 	};
+}
+
+/** 清单里声明的设置项。v1 的设置不在清单里(桥那一版是手写页)。 */
+function declaredSettings(manifest: ExtensionManifest): readonly ExtensionManifestField[] {
+	return manifest.apiVersion === 2 ? (manifest.settings?.fields ?? []) : [];
+}
+
+/**
+ * 清单声明了设置项的 v2,activate 里必须把校验它们的 zod 交上来(ADR-0019 决策 35)—— 面板照清单
+ * 放行的值,清单表达不了整数、正则、跨字段规则;写入不再过拓展自己那一道,它一读就可能整份解不开。
+ * 不交按加载失败算。v1 不管:它的设置不在清单里。
+ */
+function assertSettingsHanded(manifest: ExtensionManifest, runtime: ExtensionRuntime): void {
+	if (declaredSettings(manifest).length === 0) return;
+	if (runtime.settingsSchemas().length > 0) return;
+	throw new Error(
+		"清单里声明了设置项,activate 里却没交校验它们的 zod —— 要调 ctx.settings(schema):面板写进来的值得再过拓展自己那一道",
+	);
+}
+
+/** 「设置读不了」那一行:哪一格、为什么,再加一句怎么办 —— v1 在面板上改不了设置,出路不一样。 */
+function unreadableDetail(manifest: ExtensionManifest, why: string): string {
+	const fix =
+		manifest.apiVersion === 1
+			? "老格式的拓展在面板上改不了设置 —— 去市场更新它,或者恢复一份好的备份;设置一对上它会自己起来"
+			: "在它的「配置」里改对,改对了会自己起来";
+	return `存着的设置不合它自己的规矩:${why}。${fix}`;
 }
 
 /**
@@ -356,6 +399,29 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	let started = 0;
 	/** 上一次记过的记账写盘错 —— 同一个错只记一行(每个拓展每次起都要写两回)。 */
 	let ledgerError: string | undefined;
+
+	/**
+	 * 动名单的把手(`sync` / `rescan` / `changeDisk` / `swap` / `reload`)走**同一条队**:连拨两下
+	 * 开关、装完紧跟着拨、边拨开关边重载,后一次都得看见前一次的结果。开机那一趟与设置那一侧的
+	 * 对账也排在这条队里。
+	 */
+	let queue: Promise<void> = Promise.resolve();
+
+	/**
+	 * 串到队尾跑。
+	 *
+	 * 🔴 **留在队尾的是吞掉失败的那一份。** 把 `run` 本身接回队尾的话,一发拒绝会让之后
+	 * **每一次**排队的回调都不跑(rejected promise 的 `.then` 不跑回调)—— 症状是「报过
+	 * 一次错之后开关再也拨不动了」,而且没有任何人报错。调用方照样拿到那个拒绝。
+	 */
+	function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+		const run = queue.then(fn);
+		queue = run.then(
+			() => {},
+			() => {},
+		);
+		return run;
+	}
 
 	/**
 	 * 失败记账写不进去(只读挂载、磁盘满、那个位置被占了)。照样加载 —— 记账是启发,坏了不该让
@@ -498,15 +564,18 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			onConnectionsChanged: opts.onConnectionsChanged,
 			settings: () => opts.settings(id),
 			onSettingsChanged: opts.onSettingsChanged,
+			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。
+			onSettingsInvalid: settleLater,
 			onStatusChanged: () => opts.onStatusChanged?.(id),
 			inbound: opts.inbound,
 			upgrades: opts.upgrades,
 			hostVersion: opts.hostVersion,
 			disposeTimeoutMs: opts.disposeTimeoutMs,
 		});
-		/** 走到哪一步了 —— 超时那句话要说清是卡在 import 还是卡在 activate。 */
+		/** 走到哪一步了 —— 超时那句话要说清是卡在 import、activate 还是判设置。 */
 		const at = { step: `import ${EXTENSION_ENTRY_FILE}` };
-		const loading = (async () => {
+		/** 回的是「存着的设置读不了」的原因;起得来就是 `undefined`。真失败一律抛。 */
+		const loading = (async (): Promise<string | undefined> => {
 			// 入口固定 `index.mjs`,**宿主自己判**、清单说了不算 —— 见 `EXTENSION_ENTRY_FILE`。
 			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
 			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
@@ -515,17 +584,36 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				throw new Error(`${EXTENSION_ENTRY_FILE} 没有导出 activate()`);
 			}
 			at.step = "activate()";
-			await mod.activate(runtime.ctx);
+			let crashed: { err: unknown } | undefined;
+			try {
+				await mod.activate(runtime.ctx);
+			} catch (err) {
+				crashed = { err };
+			}
+			// 🔴 **不论 activate 抛没抛**,先问设置读不读得了(ADR-0019 决策 36):没接住的话抛出来的
+			// 正是 `ctx.settings()` 那一下,那不是它崩了;拓展 try/catch 吞了那一抛,也照样作数。
+			at.step = "判存着的设置";
+			const unreadable = await runtime.verifySettings();
+			if (unreadable !== undefined) return unreadable;
+			if (crashed) throw crashed.err;
+			assertSettingsHanded(manifest, runtime);
+			return undefined;
 		})();
 		try {
-			// import 与 activate 一起算时限:模块顶层 await 挂住,与 activate 挂住是同一件事。
-			await within(loading, activateTimeoutMs);
+			// import、activate 与判设置一起算时限:模块顶层 await 挂住,与 activate 挂住、拓展的异步
+			// refine 挂住是同一件事 —— 都会让整条队陪着等。
+			const unreadable = await within(loading, activateTimeoutMs);
+			// 设置读不了也销账:代码 import 得进来、activate 回得来,这不是它崩了(见下)。
 			markLoadSucceeded({
 				root: ledgerRoot,
 				id,
 				version: manifest.version,
 				onUnwritable: ledgerUnwritable,
 			});
+			if (unreadable !== undefined) {
+				await park(slot, runtime, manifest, unreadable);
+				return;
+			}
 			started += 1;
 			slot.running = { runtime, dir, print, order: started };
 			// 带上代码指纹:「现在跑的是哪一份」一眼对得上盘上那份;软链那份把落点也印出来 ——
@@ -556,6 +644,26 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			runtime.ctx.logger.error(`加载失败:${detail}`);
 			slot.miss = { state: "failed", detail };
 		}
+	}
+
+	/**
+	 * 「设置读不了」(ADR-0019 决策 36):收掉这一份,那一行写原因,留下它交过的 zod。
+	 *
+	 * 🔴 **不累进失败记账**(调用方负责销掉起它之前记的那一笔):代码 import 得进来、activate 回得来,
+	 * 只是存着的设置不合它自己的规矩 —— 这不是崩了。按失败记的话开机两三次它就被自动停用,主人把
+	 * 设置改对了它也起不来,还得换一版才解封。
+	 */
+	async function park(
+		slot: Slot,
+		runtime: ExtensionRuntime,
+		manifest: ExtensionManifest,
+		why: string,
+	): Promise<void> {
+		// 收摊会清空 runtime 上那份名单,先抄下来。
+		const schemas = runtime.settingsSchemas();
+		await runtime.dispose();
+		slot.miss = { state: "settings-invalid", detail: unreadableDetail(manifest, why), schemas };
+		host.logger.warn(`[ext] ${manifest.id} v${manifest.version} 设置读不了,不跑:${why}`);
 	}
 
 	/** 收掉跑着的那份(没在跑就什么都不做)。那一行怎么写由格子现推。 */
@@ -671,29 +779,67 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		resort();
 	}
 
-	for (const dir of found) await admit(dir);
-
 	/**
-	 * 动名单的把手(`sync` / `rescan` / `changeDisk` / `swap` / `reload`)走**同一条队**:连拨两下
-	 * 开关、装完紧跟着拨、边拨开关边重载,后一次都得看见前一次的结果。
-	 */
-	let queue: Promise<void> = Promise.resolve();
-
-	/**
-	 * 串到队尾跑。
+	 * 把设置那一侧的账对一遍(ADR-0019 决策 36)。「globals 落盘了」与 ctx 喊「设置解不开了」都排
+	 * 一趟,**只在队里跑**:它会收摊、会起拓展,与开关 / 装卸 / 换代码交错的话看见的是一半的格子。
 	 *
-	 * 🔴 **留在队尾的是吞掉失败的那一份。** 把 `run` 本身接回队尾的话,一发拒绝会让之后
-	 * **每一次**排队的回调都不跑(rejected promise 的 `.then` 不跑回调)—— 症状是「报过
-	 * 一次错之后开关再也拨不动了」,而且没有任何人报错。调用方照样拿到那个拒绝。
+	 * - 跑着的、ctx 记下了「解不开」→ 收掉,那一行变「设置读不了」。那一份它没看见过:ctx 先判再扇出。
+	 * - 「设置读不了」的 → 拿它留下的 zod 判现在那份:解得开、开关开着就起起来;还解不开只换原因。
+	 *   🔴 判是宿主拿留着的 zod 判的,**不为了看一眼就重跑 activate** —— 那样每存一次全局设置它就
+	 *   起一次、收一次。
 	 */
-	function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-		const run = queue.then(fn);
-		queue = run.then(
-			() => {},
-			() => {},
-		);
-		return run;
+	async function settleSettings(): Promise<void> {
+		// 宿主已经关机了:排在关机前面的那一趟别再把谁起起来。
+		if (closed) return;
+		for (const slot of slots.values()) {
+			const { running, miss, disk } = slot;
+			if (running) {
+				const why = running.runtime.settingsProblem();
+				if (why === undefined) continue;
+				slot.running = undefined;
+				await park(slot, running.runtime, running.dir.manifest, why);
+				continue;
+			}
+			if (miss?.state !== "settings-invalid" || disk.state !== "ready") continue;
+			// 开关现读:同一次落盘里关了开关的,别先起一下、再被 `sync()` 那一趟收掉。
+			if (!isEnabled(disk.id)) continue;
+			let verdict: StoredSettingsVerdict;
+			try {
+				// 判的是拓展的 zod(可能带异步 refine,那是它的代码):挂住了不能让整条队陪着等。
+				verdict = await within(
+					judgeStoredSettings(
+						miss.schemas,
+						declaredSettings(disk.manifest),
+						opts.settings(disk.id),
+					),
+					activateTimeoutMs,
+				);
+			} catch {
+				host.logger.warn(
+					`[ext] ${disk.id} 的设置校验 ${activateTimeoutMs / 1000} 秒没判完,这一次不管它`,
+				);
+				continue;
+			}
+			if (verdict.ok) await start(slot);
+			else slot.miss = { ...miss, detail: unreadableDetail(disk.manifest, verdict.detail) };
+		}
 	}
+
+	/** 排一趟 {@link settleSettings}。自己吞异常 —— 喊它的是 bus 与 ctx,那一发拒绝没人接。 */
+	function settleLater(): void {
+		enqueue(settleSettings).catch((err) =>
+			host.logger.error(`[ext] 对设置那一侧的账时抛了:${(err as Error).message}`),
+		);
+	}
+
+	/** 宿主关机了(`dispose()`)—— 之后到的「设置变了」一律不管。 */
+	let closed = false;
+	// 先订再起:开机那一趟里落的盘,排在开机后面对账,不会漏。
+	const settingsWatch = opts.onSettingsChanged(settleLater);
+	// 开机这一趟也在队里:activate 里喊的「设置解不开了」、开机途中落的盘,都得排在它后面。
+	await enqueue(async () => {
+		for (const dir of found) await admit(dir);
+	});
 
 	return {
 		list: () => [...slots.values()].map(entryOf),
@@ -716,7 +862,13 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		pushSource: (id) => slots.get(id)?.running?.runtime.pushSource(),
 		bots: (id) => slots.get(id)?.running?.runtime.bots(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
-		settingsSchemas: (id) => slots.get(id)?.running?.runtime.settingsSchemas(),
+		settingsSchemas: (id) => {
+			const slot = slots.get(id);
+			if (slot?.running) return slot.running.runtime.settingsSchemas();
+			// 「设置读不了」的交它留下的那份:写入照样走「写前写后只拦新冒出来的」—— 改对一条放行,
+			// 写坏别的拦下。只剩清单那一道的话,放进去的值它起来时照样读不了。
+			return slot?.miss?.state === "settings-invalid" ? slot.miss.schemas : undefined;
+		},
 		sync() {
 			return enqueue(async () => {
 				for (const [id, slot] of slots) {
@@ -767,6 +919,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			});
 		},
 		async dispose() {
+			closed = true;
+			settingsWatch.dispose();
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
 			const running = [...slots.values()]
 				.flatMap((slot) => (slot.running ? [{ slot, running: slot.running }] : []))

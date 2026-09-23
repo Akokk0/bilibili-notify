@@ -72,6 +72,14 @@ export const EXTENSION_RUN_STATES = [
 	 * 模块缓存删不掉)—— 不跑,等主人选重启或只重载(ADR-0012 决策 47)。
 	 */
 	"staged",
+	/**
+	 * 开着,但存着的设置过不了它**自己交的那份 zod**(`ctx.settings(schema)`)—— 不跑,等主人把
+	 * 设置改对;改对了自己起来(ADR-0019 决策 36)。
+	 *
+	 * 🔴 不是加载失败:代码没毛病,不记失败账。也不「按没有算」地照跑 —— 桥拿到一份空名单,插件
+	 * 来连收 401,按协议**永久**不再重连;不起的话插件收 404、退避重连,改对了自己回来。
+	 */
+	"settings-invalid",
 ] as const;
 export type ExtensionRunState = (typeof EXTENSION_RUN_STATES)[number];
 

@@ -22,12 +22,12 @@ import type {
 	ExtensionSettingsWriteResponse,
 } from "@bilibili-notify/contract";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import type { ExtensionContext } from "../../extensions/context.js";
-import { loadExtensions } from "../../extensions/loader.js";
+import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
@@ -136,12 +136,15 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 
 let dataDir: string;
 let runtime: AppRuntime | undefined;
+let loaded: LoadedExtensions | undefined;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-ext-settings-route-"));
 });
 
 afterEach(async () => {
+	await loaded?.dispose();
+	loaded = undefined;
 	await runtime?.dispose();
 	runtime = undefined;
 	await rm(dataDir, { recursive: true, force: true });
@@ -158,8 +161,13 @@ async function plant(manifest: { id: string }): Promise<void> {
 /**
  * 起一整条。`running` 决定抖音拓展开没开 —— 开着时它在 `activate` 里交那份 zod。
  * `settings` 是开机前存着的那份(直接写进 store,不过任何校验:存量里的坏项就这么来)。
+ * 开着、而存着的那份过不了它的 zod 时,它起不来(`state` 是「设置读不了」,ADR-0019 决策 36)。
  */
-async function boot(opts: { running: boolean; settings?: unknown }) {
+async function boot(opts: {
+	running: boolean;
+	settings?: unknown;
+	state?: "running" | "disabled" | "settings-invalid";
+}) {
 	await plant(DOUYIN);
 	await plant(LEGACY_V1);
 	await plant(BARE_V2);
@@ -172,6 +180,8 @@ async function boot(opts: { running: boolean; settings?: unknown }) {
 		} as never);
 	}
 	const mounts = createExtensionMounts();
+	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
+	let activations = 0;
 	const loader = await loadExtensions({
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
@@ -180,19 +190,25 @@ async function boot(opts: { running: boolean; settings?: unknown }) {
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		settings: (id) => rt.configStore.getGlobals().extensions[id]?.settings,
-		onSettingsChanged: () => ({ dispose() {} }),
+		// 与 index.ts 同一根线:globals 落盘 → 装载器与 ctx 各自判「我这一格动没动」。
+		onSettingsChanged: (fn) =>
+			rt.bus.on("config-changed", (scope) => {
+				if (scope === "globals") fn();
+			}),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
 		isEnabled: (id) => opts.running && id === "douyin",
 		maxFailures: 3,
 		importModule: async () => ({
 			activate(ctx: ExtensionContext) {
+				activations += 1;
 				ctx.settings(DOUYIN_ZOD);
 			},
 		}),
 	});
-	const douyin = loader.list().find((entry) => entry.id === "douyin");
-	expect(douyin?.state).toBe(opts.running ? "running" : "disabled");
+	loaded = loader;
+	const douyin = () => loader.list().find((entry) => entry.id === "douyin");
+	expect(douyin()?.state).toBe(opts.state ?? (opts.running ? "running" : "disabled"));
 
 	const frames: ServerEventEnvelope[] = [];
 	attachChannelWiring({ bus: rt.bus, log: createLogChannel(), publish: (e) => frames.push(e) });
@@ -220,7 +236,20 @@ async function boot(opts: { running: boolean; settings?: unknown }) {
 	const revision = async () => ((await (await get()).json()) as ExtensionSettingsResponse).revision;
 	const settingsFrames = () =>
 		frames.filter((frame) => frame.event === "extension-settings-changed");
-	return { get, patch, stored, revision, settingsFrames };
+	return {
+		get,
+		patch,
+		stored,
+		revision,
+		settingsFrames,
+		douyin,
+		activations: () => activations,
+		/** 装载器那条队排空 —— 「设置变了」那一趟对账走完了。 */
+		settled: () => loader.sync(),
+		/** 旁路写一次(恢复备份 / 手改文件那一类):不经这个路由,也就不过拓展的 zod。 */
+		bypass: (settings: unknown) =>
+			rt.configStore.patchGlobals({ extensions: { douyin: { settings } } } as never),
+	};
 }
 
 /** 一条存量:名字合规矩的一项、一项名字是空串(照清单就不合规矩)。 */
@@ -568,8 +597,13 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 
 	const ROTTEN = { ...GOOD_LINK, id: "rotten", name: "坏的那台" };
 
+	// 存量里坏着,它就起不来(「设置读不了」)—— 写入照样过它留下的那份 zod。
 	it("存量里本来就坏的(名字带「坏」):改另一条放行,改对它放行", async () => {
-		const h = await boot({ running: true, settings: { links: [ROTTEN, GOOD_LINK] } });
+		const h = await boot({
+			running: true,
+			settings: { links: [ROTTEN, GOOD_LINK] },
+			state: "settings-invalid",
+		});
 		// 坏的那条还在,但那不是这次写入冒出来的。
 		const other = await h.patch({
 			revision: await h.revision(),
@@ -594,7 +628,11 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 	 * 连删一条好项都被拒;所以比对时按 id 认项。
 	 */
 	it("存量里本来就坏的:删它前面那条(下标挪了)放行,删它自己也放行", async () => {
-		const h = await boot({ running: true, settings: { links: [GOOD_LINK, ROTTEN] } });
+		const h = await boot({
+			running: true,
+			settings: { links: [GOOD_LINK, ROTTEN] },
+			state: "settings-invalid",
+		});
 		const removedFirst = await h.patch({
 			revision: await h.revision(),
 			ops: [{ op: "remove", list: "links", id: "good-1" }],
@@ -616,6 +654,78 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 		});
 		expect(res.status).toBe(200);
 		expect(h.stored()).toEqual({ interval: 90.5 });
+	});
+});
+
+/**
+ * 拓展处在「设置读不了」(ADR-0019 决策 36):存着的那份过不了它自己的 zod,它不跑 —— 设置照样能改,
+ * 写入照样过它**收摊前留下的那份 zod**(只拦新冒出来的),改对了自己起来。
+ */
+describe("PATCH /api/ext/:id/settings —— 拓展处在「设置读不了」", () => {
+	const ROTTEN = { ...GOOD_LINK, id: "rotten", name: "坏的那台" };
+	const ROTTEN_2 = { ...GOOD_LINK, id: "rotten-2", name: "坏的第二台" };
+
+	it("写入照样过它留下的那份 zod:清单放行、它不收的(间隔不是整数)拦下", async () => {
+		const h = await boot({
+			running: true,
+			settings: { links: [ROTTEN] },
+			state: "settings-invalid",
+		});
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "set", key: "interval", value: 90.5 }],
+		});
+		expect(res.status).toBe(400);
+		expect(issuesOf(await res.json())).toEqual([
+			expect.objectContaining({ op: 0, path: ["interval"] }),
+		]);
+		expect(h.stored()).toEqual({ links: [ROTTEN] });
+	});
+
+	it("经这里改对 → 自己跑起来,不用拨开关、不用重启", async () => {
+		const h = await boot({
+			running: true,
+			settings: { links: [ROTTEN] },
+			state: "settings-invalid",
+		});
+		expect(h.douyin()?.detail).toContain("「坏的那台」");
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "update", list: "links", id: "rotten", values: { name: "好了" } }],
+		});
+		expect(res.status).toBe(200);
+		await h.settled();
+		expect(h.douyin()?.state).toBe("running");
+		expect(h.activations()).toBe(2);
+	});
+
+	it("改对一处、还有一处坏着 → 不起,原因换成剩下那处,activate 不重跑", async () => {
+		const h = await boot({
+			running: true,
+			settings: { links: [ROTTEN, ROTTEN_2] },
+			state: "settings-invalid",
+		});
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "update", list: "links", id: "rotten", values: { name: "好了" } }],
+		});
+		expect(res.status).toBe(200);
+		await h.settled();
+		expect(h.douyin()?.state).toBe("settings-invalid");
+		expect(h.douyin()?.detail).toContain("「坏的第二台」");
+		expect(h.douyin()?.detail).not.toContain("「坏的那台」");
+		expect(h.activations()).toBe(1);
+	});
+
+	/**
+	 * 跑着时经这个路由的写入过了它的 zod,撞上的只剩旁路。它的 zod 带**异步** refine:ctx 同步判不完,
+	 * 异步判坏了要自己喊装载器来收 —— 光靠「globals 落盘」那一趟对账,那时候判决还没回来。
+	 */
+	it("跑着时被旁路写坏(异步 refine)→ 收掉,那一行变「设置读不了」", async () => {
+		const h = await boot({ running: true, settings: { links: [GOOD_LINK] } });
+		await h.bypass({ links: [GOOD_LINK, ROTTEN] });
+		await vi.waitFor(() => expect(h.douyin()?.state).toBe("settings-invalid"));
+		expect(h.douyin()?.detail).toContain("名字里不许有「坏」字");
 	});
 });
 

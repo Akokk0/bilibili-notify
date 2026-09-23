@@ -210,6 +210,44 @@ describe("拓展页", () => {
 	});
 
 	/**
+	 * 「设置读不了」(ADR-0019 决策 36)是「等你去改设置」,不是「坏了」:原因摆成黄的提醒 —— 与加载
+	 * 失败同一个红盒的话,它会被当成要去翻日志的那一类,而出路其实就在它的「配置」里。
+	 */
+	it("设置读不了:徽章这么说,原因摆成提醒、不是出错", async () => {
+		renderPage({
+			extensions: [
+				{
+					...BRIDGE,
+					state: "settings-invalid",
+					detail:
+						"存着的设置不合它自己的规矩:「桥接入」里「家里那台」这一项的「token」:太短了。在它的「配置」里改对,改对了会自己起来",
+				},
+				{
+					id: "boom",
+					name: "炸了的那个",
+					version: "0.1.0",
+					provides: ["subscription"],
+					enabled: true,
+					state: "failed",
+					detail: "activate 炸了",
+					dir: "/data/extensions/boom",
+				},
+			],
+		});
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).getByText("设置读不了")).toBeTruthy();
+		const note = within(card)
+			.getByText(/存着的设置不合它自己的规矩/)
+			.closest("[data-bn]");
+		expect(note?.getAttribute("data-bn")).toContain("note-warn");
+		// 对照:真炸了的那张是红的 —— 两档分得开,才说明这一档是自己挑的颜色。
+		const boom = within(await cardOf("炸了的那个"))
+			.getByText("activate 炸了")
+			.closest("[data-bn]");
+		expect(boom?.getAttribute("data-bn")).toContain("note-danger");
+	});
+
+	/**
 	 * 跑着旧的、盘上换了新版(ADR-0012 决策 47):徽章还是「已启用」(它确实在跑),所以卡上得
 	 * 另说一句有新版在等、去哪儿选怎么换。两条出路本身只在详情页 —— 卡上不给按钮。
 	 */

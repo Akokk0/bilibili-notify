@@ -27,7 +27,8 @@ export interface ExtensionSettingsRouteOptions {
 	extensions: () => readonly ExtensionEntry[];
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod(ADR-0019 决策 35)。没在跑是 `undefined`,跑着但
-	 * 没交过是空表 —— 两种都只有清单那一道。不给这一格同理。
+	 * 没交过是空表 —— 两种都只有清单那一道。不给这一格同理。「设置读不了」的(决策 36)不跑也有:
+	 * 装载器交它收摊前留下的那份,改对一条放行、写坏别的照样拦下。
 	 */
 	settingsSchemas?: (id: string) => readonly ZodType[] | undefined;
 	/** 某个拓展的设置经这里写进去了 —— 宿主把它转成一帧推给面板。 */

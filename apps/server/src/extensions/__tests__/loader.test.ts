@@ -378,6 +378,8 @@ describe("拓展声明的密钥字段", () => {
 			// ⚠️ 换掉 import:种的是一行裸 mjs,拿不到 zod(同本组第一条)。
 			importModule: async () => ({
 				activate(ctx: ExtensionContext) {
+					// 清单声明了设置项,就得交校验它们的 zod(ADR-0019 决策 35),不然按加载失败算。
+					ctx.settings(z.object({ cookie: z.string().optional() }));
 					ctx.registerPushSource({
 						adapter: { platforms: [], isAvailable: () => true } as never,
 						configSchema: z.object({ token: z.string() }),

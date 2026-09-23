@@ -27,6 +27,11 @@ import type { AdapterRegistry } from "../platforms/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
+import {
+	judgeStoredSettings,
+	judgeStoredSettingsSync,
+	type StoredSettingsVerdict,
+} from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 
 /**
@@ -50,6 +55,15 @@ export type ActionOutcome =
 	| { ok: true }
 	| { ok: false; reason: "undeclared" | "unhandled" | "timeout" }
 	| { ok: false; reason: "failed"; message: string };
+
+/**
+ * `ctx.settings(schema)` 那一下,存着的那份过不了这份 zod(ADR-0019 决策 36)—— 拓展不该拿着
+ * 它接着往下起。
+ *
+ * ⚠️ 装载器认的不是这一抛(拓展 try/catch 吞了它也照样作数),是记在 runtime 上的那一格
+ * ({@link ExtensionRuntime.settingsProblem})。它是单独一类,只为了日志里一眼分得出。
+ */
+export class ExtensionSettingsUnreadable extends Error {}
 
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
@@ -91,6 +105,18 @@ export interface ExtensionRuntime {
 	 * 失败。没交过就是空表,收摊之后也是。
 	 */
 	settingsSchemas(): readonly ZodType[];
+	/**
+	 * 存着的设置眼下过不了它交过的 zod 的原因(ADR-0019 决策 36);解得开 / 没设过是 `undefined`。
+	 *
+	 * 🔴 宿主认的是**这一格**,不是 `ctx.settings()` 那一抛:拓展 try/catch 吞了那一抛也照样作数。
+	 * 跑着时设置被旁路写坏,也记在这里,并经 `onSettingsInvalid` 喊装载器来收。
+	 */
+	settingsProblem(): string | undefined;
+	/**
+	 * 拿交过的每一份 zod 把存着的那份再判一次(同步判不完的走异步),回 {@link settingsProblem}。
+	 * 装载器在 activate 之后叫 —— 带异步 refine 的 zod 在 `ctx.settings()` 那一刻判不完,只有这一道。
+	 */
+	verifySettings(): Promise<string | undefined>;
 	/** 跑面板按下的那个动作(ADR-0019 决策 22)。 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/** 收回这个拓展注册过的一切。幂等。 */
@@ -122,6 +148,11 @@ export interface CreateExtensionContextOptions {
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 存着的设置变得过不了它交过的 zod 了(跑着时被旁路写坏,或之后才交的那份判坏了)—— 装载器
+	 * 该来把它收掉。原因在 {@link ExtensionRuntime.settingsProblem}。不给就只是没人收。
+	 */
+	onSettingsInvalid?: () => void;
 	/** 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。 */
 	onStatusChanged?: () => void;
 	/** 入站的两路收口。 */
@@ -224,25 +255,42 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		return hit && isExtensionConnection(hit, id) ? hit : undefined;
 	}
 
+	// ---- 自己的设置(ADR-0019 决策 36)----------------------------------------------------
+
+	/** 清单声明的设置项 —— 点名「哪一格」时拿它念名字。v1 清单里没有,路径原样念。 */
+	const settingsFields =
+		opts.manifest.apiVersion === 2 ? (opts.manifest.settings?.fields ?? []) : [];
+	/** 交过的每一份(对表过了的才算),写设置时宿主拿它们再过一道。Set 保序、同一份只记一次。 */
+	const handedSchemas = new Set<ZodType>();
 	/**
-	 * 设置的解析结果缓存到**下一次 globals 落盘**为止。
+	 * 每份 zod 解出来的**最近一份好的** —— `get()` 只从这里拿,解析在「交进来」与「落盘了」那两下
+	 * 做完,不挂在 `get()` 上。
 	 *
-	 * 🔴 缓存不能挂在「原始值的身份」上:宿主那头是 `getGlobals().extensions[id]?.settings`,
-	 * 而 `getGlobals()` 每次都 deepClone —— 键永远是个新对象,缓存永远不命中。代价有二:
-	 * 每问一次设置就克隆一整份 globals 再 parse 一遍(桥每握一次手问一次),以及下面那句
-	 * 「坏形状只记一次」实际上每次都记。作废的信号用现成的那条:globals 落盘了。
+	 * 🔴 不能「每问一次现读现解」:宿主那头是 `getGlobals().extensions[id]?.settings`,每次都
+	 * deepClone 一整份 globals —— 桥每握一次手问一次。
+	 *
+	 * 🔴 **存着的那份变得解不开时这里不动**:拓展永远看不到一份过不了它自己 zod 的设置。在装载器
+	 * 把它收掉之前(那要排队),它读到的还是上一份好的 —— 从前是「按没有算」给一个 `undefined`,
+	 * 对桥就是名单一空、插件收 401、永久不再重连。
 	 */
-	let settingsCache = new Map<ZodType, unknown>();
+	const settingsValues = new Map<ZodType, unknown>();
+	/** 存着的那份眼下解不开的原因;`undefined` = 解得开或没设过。装载器凭它判「设置读不了」。 */
+	let settingsProblem: string | undefined;
+	/** 第几次「这一格动了」—— 异步判完回来时,中间又动过的那一次判决作废。 */
+	let settingsRound = 0;
+
+	function settingsUnreadable(detail: string): void {
+		settingsProblem = detail;
+		opts.onSettingsInvalid?.();
+	}
+
 	function readSettings<T>(schema: ZodType<T>): T | undefined {
-		if (settingsCache.has(schema)) return settingsCache.get(schema) as T | undefined;
-		const raw = opts.settings();
-		const parsed = raw === undefined || raw === null ? undefined : schema.safeParse(raw);
-		if (parsed && !parsed.success) {
-			logger.warn(`设置的形状不对,按没有算:${parsed.error.message}`);
-		}
-		const value = parsed?.success ? parsed.data : undefined;
-		settingsCache.set(schema, value);
-		return value;
+		if (settingsValues.has(schema)) return settingsValues.get(schema) as T | undefined;
+		// 只有一种情况走到这:交进来那一刻同步判不完(schema 里有异步 refine),异步那一道还没回来。
+		// 不给 `undefined` —— 那在拓展眼里是「没设过」,正是决策 36 要堵的那种误读。
+		throw new Error(
+			`extension ${id}: 设置还没校验完 —— 这份 zod 带异步规则,交进来那一刻同步判不完,要等一拍再读(activate 里别急着读)`,
+		);
 	}
 
 	/**
@@ -251,18 +299,42 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 🔴 **去重游标只此一个,而且只在这里推**。从前是每个订阅者各自比一次同一个闭包变量:
 	 * 第一个订阅者把游标推到最新,轮到第二个时「和上次一样」—— 于是**第二个订阅者永远
 	 * 收不到**。宿主的通知是「globals 落盘了」,内容变没变是 ctx 的判断,判一次就够。
+	 *
+	 * 🔴 **先判再扇出**:新的那份过不了交过的 zod,就一个订阅者都不叫、`get()` 也不换,记下原因交给
+	 * 装载器把它收掉(恢复备份、手改文件、关着时之外的旁路写入都会走到这儿 —— 面板那条写路径
+	 * 在跑着时已经过过它的 zod)。
 	 */
 	const settingsListeners = new Set<() => void>();
 	/** 上一次看见的设置(序列化),用来判「这次 globals 落盘动的是不是我这一格」。 */
 	let lastSettingsSeen = JSON.stringify(opts.settings() ?? null);
+	/** 上一次**扇出给拓展**的那份 —— 写坏了又改回原样的,拓展没见过中间那份,不再叫一遍。 */
+	let lastSettingsDelivered = lastSettingsSeen;
 	registered.add(
 		opts.onSettingsChanged(() => {
-			// 先作废缓存:落盘了就当它变了,下一次问再解一遍(代价是一次 parse)。
-			settingsCache = new Map();
-			const now = JSON.stringify(opts.settings() ?? null);
+			const raw = opts.settings();
+			const now = JSON.stringify(raw ?? null);
 			if (now === lastSettingsSeen) return;
 			lastSettingsSeen = now;
-			for (const fn of [...settingsListeners]) fn();
+			const round = ++settingsRound;
+			const settle = (verdict: StoredSettingsVerdict) => {
+				// 判的已经是过时的那份(中间又落了一次盘),或者已经收摊了:作废。
+				if (round !== settingsRound || disposed) return;
+				if (!verdict.ok) return settingsUnreadable(verdict.detail);
+				settingsProblem = undefined;
+				for (const [schema, value] of verdict.values) settingsValues.set(schema, value);
+				if (now === lastSettingsDelivered) return;
+				lastSettingsDelivered = now;
+				for (const fn of [...settingsListeners]) fn();
+			};
+			const schemas = [...handedSchemas];
+			const sync = judgeStoredSettingsSync(schemas, settingsFields, raw);
+			if (sync) {
+				settle(sync);
+				return;
+			}
+			judgeStoredSettings(schemas, settingsFields, raw)
+				.then(settle)
+				.catch((err) => logger.error(`设置变更的订阅者抛了:${(err as Error).message}`));
 		}),
 	);
 
@@ -348,8 +420,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		assertConfigFieldsMatchSchema(id, schema, manifest.settings?.fields ?? []);
 		settingsChecked.add(schema);
 	}
-	/** 交过的每一份(对表过了的才算),写设置时宿主拿它们再过一道。Set 保序、同一份只记一次。 */
-	const handedSchemas = new Set<ZodType>();
 
 	const ctx: ExtensionContext = {
 		id,
@@ -425,7 +495,28 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			checkSettingsSchema(schema);
+			// 先交后判:存着的那份解不开时,这份 zod 也得留给装载器 —— 改对了没有它就判不了能不能起。
 			if (!disposed) handedSchemas.add(schema);
+			const raw = opts.settings();
+			const verdict = judgeStoredSettingsSync([schema], settingsFields, raw);
+			if (verdict?.ok) {
+				settingsValues.set(schema, verdict.values.get(schema));
+			} else if (verdict) {
+				// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
+				settingsUnreadable(verdict.detail);
+				throw new ExtensionSettingsUnreadable(
+					`extension ${id}: 存着的设置过不了交进来的这份 zod(${verdict.detail})—— BN 不会起它,面板上是「设置读不了」`,
+				);
+			} else {
+				// 同步判不完(异步 refine):activate 里交的,装载器 activate 之后还会判一次;这里补上
+				// 「之后才交」的那种 —— 判完才有 `get()` 可读,判坏了照样交给装载器收掉。
+				const round = settingsRound;
+				void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
+					if (round !== settingsRound || disposed) return;
+					if (!late.ok) settingsUnreadable(late.detail);
+					else if (!settingsValues.has(schema)) settingsValues.set(schema, late.values.get(schema));
+				});
+			}
 			return {
 				get: () => readSettings(schema),
 				onChange: (fn: () => void) => {
@@ -503,6 +594,25 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		bots: () => listBots?.(),
 		secretConfigCodes: () => secretCodes,
 		settingsSchemas: () => [...handedSchemas],
+		settingsProblem: () => settingsProblem,
+		async verifySettings() {
+			if (settingsProblem !== undefined) return settingsProblem;
+			const schemas = [...handedSchemas];
+			if (schemas.length === 0) return undefined;
+			const round = settingsRound;
+			const verdict = await judgeStoredSettings(schemas, settingsFields, opts.settings());
+			// 判的时候又落了一次盘:以变更那一道的判决为准。
+			if (round !== settingsRound) return settingsProblem;
+			if (!verdict.ok) {
+				settingsProblem = verdict.detail;
+				return settingsProblem;
+			}
+			// 带异步规则的那几份到这儿才第一次有值可读。
+			for (const [schema, value] of verdict.values) {
+				if (!settingsValues.has(schema)) settingsValues.set(schema, value);
+			}
+			return undefined;
+		},
 		async runAction(name, runOpts = {}) {
 			if (!declaredActions?.has(name)) return { ok: false, reason: "undeclared" };
 			const handler = actionHandlers.get(name);
