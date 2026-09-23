@@ -28,7 +28,10 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
  * private bookkeeping) never leaks into the DTO.
  */
 export interface SubRuntime {
-	/** Cached B-station public profile mirror for UI display. FansPoller-owned. */
+	/**
+	 * Cached B-station public profile mirror for UI display. FansPoller-owned.
+	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62)。
+	 */
 	cachedProfile?: CachedProfile;
 	/** Fans count + ts at first poll of this sub; written once, never changed. */
 	fansBaseline?: FansBaseline;

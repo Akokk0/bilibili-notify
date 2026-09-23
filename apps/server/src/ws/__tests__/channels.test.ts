@@ -255,6 +255,19 @@ describe("attachChannelWiring — 拓展喊「面板数据变了」", () => {
 	});
 });
 
+describe("attachChannelWiring — 拓展订阅的资料变了", () => {
+	/**
+	 * 拓展报的资料更新落进了资料缓存(ADR-0019 决策 7 / 62)—— 那不是配置,不走 `config-changed`。
+	 * 不转这一帧的话,订阅页上的名字 / 头像 / 粉丝要等切页才换。
+	 */
+	it("subscription-profiles-changed → state 频道同名帧,带订阅 id", () => {
+		const h = wire();
+		h.bus.emit("subscription-profiles-changed", ["a", "b"]);
+		expect(h.last()).toMatchObject({ type: "state", event: "subscription-profiles-changed" });
+		expect(h.last().data).toEqual({ ids: ["a", "b"] });
+	});
+});
+
 describe("attachChannelWiring — log channel + dispose", () => {
 	it("LogChannel.push 转 log 信封(ts 用 entry.ts)", () => {
 		const h = wire();

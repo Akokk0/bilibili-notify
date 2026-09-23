@@ -5,6 +5,7 @@
  *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
  *   - config-changed scope=globals       → invalidate ["globals"]、拓展表 ["extensions"] 与各拓展的设置
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
+ *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
  *   - config-changed scope=subscriptions → 仅 invalidate ["subscriptions"]
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
@@ -132,6 +133,18 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			sc.qc,
 		);
 		expect(sc.qc.getQueryState(["extensions"])?.isInvalidated).toBe(true);
+	});
+
+	/**
+	 * 拓展报的资料更新落进了资料缓存(ADR-0019 决策 7 / 62):服务端不发 `config-changed`(资料不是配置),
+	 * 发这一帧。不接的话订阅页上的名字 / 头像 / 粉丝要等切页才换。
+	 */
+	it("subscription-profiles-changed:仅 invalidate [subscriptions]", () => {
+		handleStateEnvelope(
+			env({ type: "state", event: "subscription-profiles-changed", data: { ids: ["a"] } }),
+			sc.qc,
+		);
+		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"]]);
 	});
 
 	it("config-changed scope=subscriptions:仅 invalidate [subscriptions]", () => {

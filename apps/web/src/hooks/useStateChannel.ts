@@ -32,6 +32,9 @@ import {
  *   - "connections"   → invalidate ["connections"]
  *   - "secrets"       → no client cache, ignored
  *
+ * 另有 `subscription-profiles-changed`(拓展报的资料落进了资料缓存,ADR-0019 决策 7 / 62):失效订阅
+ * 列表 —— 资料不是配置,服务端不为它发 `config-changed`。
+ *
  * 提取成 export 纯函数让测试能注入测试用 QueryClient(`new QueryClient()`),
  * 不需要渲染 hook + Provider 整套。
  */
@@ -66,6 +69,12 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		if (typeof id !== "string" || id === "") return;
 		qc.invalidateQueries({ queryKey: extensionSettingsKey(id) });
 		qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
+		return;
+	}
+	// 拓展报的资料(名字 / 头像 / 粉丝)落进了资料缓存:订阅列表重取。帧里的订阅 id 不必看 —— 资料是
+	// join 进整张表回来的,单拉哪几条没有口。
+	if (env.event === "subscription-profiles-changed") {
+		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		return;
 	}
 	if (env.event !== "config-changed") return;

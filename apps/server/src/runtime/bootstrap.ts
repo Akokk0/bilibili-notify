@@ -17,6 +17,7 @@ import type { EnginesRuntime } from "./engines.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
+import { bindReportedProfiles } from "./reported-profiles.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import {
 	bindSubAvatarCleanup,
@@ -203,6 +204,15 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subAvatarCleanup.dispose());
+	// 拓展报的资料更新 → 资料缓存 + 头像文件(ADR-0019 决策 7 / 49 / 62)。同上只听总线。
+	const reportedProfiles = bindReportedProfiles({
+		bus,
+		subRuntime: subRuntimeStore,
+		avatars: subAvatarStore,
+		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
+		logger: serviceCtx.logger,
+	});
+	serviceCtx.onDispose(() => reportedProfiles.dispose());
 	const conversationStore = createConversationStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,

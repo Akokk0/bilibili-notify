@@ -82,6 +82,15 @@ export interface BiliEvents {
 	 */
 	"subscription-reported": (delivery: SubscriptionReportDelivery) => void;
 	/**
+	 * 拓展报的资料更新(ADR-0019 决策 7 / 62)落进资料缓存与头像文件之后,面板看得见的那几格(名字 /
+	 * 头像 / 粉丝数)真变了的订阅 id。**按窗口合并过**:拓展起来时可能一口气报一百条资料,一阵只发一次。
+	 *
+	 * 独立端转成 `state` WS channel 的同名帧,面板据此重取订阅列表。🔴 **不发 `config-changed
+	 * "subscriptions"`**:那一档会重建路由表、通知拓展「名下订阅变了」、让引擎 reconcile —— 资料缓存
+	 * 不是配置,那些全是白干。
+	 */
+	"subscription-profiles-changed": (subscriptionIds: string[]) => void;
+	/**
 	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
 	 * 无需前端再二次 fetch detail。

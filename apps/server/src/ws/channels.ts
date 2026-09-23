@@ -208,6 +208,18 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			}),
 		),
 	);
+	// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
+	// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。
+	subs.push(
+		deps.bus.on("subscription-profiles-changed", (ids) =>
+			deps.publish({
+				type: "state",
+				event: "subscription-profiles-changed",
+				ts: new Date().toISOString(),
+				data: { ids },
+			}),
+		),
+	);
 
 	return {
 		dispose() {

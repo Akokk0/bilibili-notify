@@ -6,12 +6,13 @@
  *  - 开机清扫:订阅已经不在的头像、崩溃时留下的半截临时文件都扫掉,不认得的文件不碰。
  *  - 同一条订阅换了图的类型(png → webp),旧类型的那个文件跟着删掉,读到的是新的。
  *  - 声明的类型与字节对不上 → 拒收,一个字节都不落盘。
+ *  - 拓展报资料时交的字节(决策 62):类型按文件头认,内容没变就不重写。
  */
 
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger } from "@bilibili-notify/internal";
+import { type Logger, SUBSCRIPTION_AVATAR_MAX_BYTES } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	avatarDataUrl,
@@ -109,6 +110,47 @@ describe("写", () => {
 	it("订阅 id 不是 uuid → 拒收(它要当文件名用)", async () => {
 		await expect(store.write("../escape", avatarDataUrl("png", PNG_BYTES))).rejects.toThrow();
 		expect(await readdir(dataDir)).toEqual([]);
+	});
+
+	/**
+	 * 「内容没变就不重写」(ADR-0019 决策 49 / 62):拓展每轮都可能报一次资料,同一张头像每次都改名换
+	 * 一个新文件的话,盘在白写、读的人还可能撞上换文件那一瞬。判据是 inode —— 先写临时文件再改名
+	 * 就是换了一个 inode,mtime 的精度在有的文件系统上分不出两次写。
+	 */
+	it("同一份字节再写一次:文件不重写(inode 不变)", async () => {
+		await store.write(KEEP, avatarDataUrl("png", PNG_BYTES));
+		const before = (await stat(join(avatarsDir, `${KEEP}.png`))).ino;
+		await store.writeBytes(KEEP, new Uint8Array(PNG_BYTES));
+		expect((await stat(join(avatarsDir, `${KEEP}.png`))).ino).toBe(before);
+		expect(await files()).toEqual([`${KEEP}.png`]);
+	});
+});
+
+describe("写字节(报资料更新,决策 62)", () => {
+	it("按文件头认类型:与 data URL 那条路落同一个文件、回同一个地址", async () => {
+		const viaBytes = await store.writeBytes(KEEP, new Uint8Array(WEBP_BYTES));
+		expect(await files()).toEqual([`${KEEP}.webp`]);
+		const read = await store.read(KEEP);
+		expect(read?.contentType).toBe("image/webp");
+		expect(read?.bytes.equals(WEBP_BYTES)).toBe(true);
+		expect(await store.write(KEEP, avatarDataUrl("webp", WEBP_BYTES))).toBe(viaBytes);
+	});
+
+	it("换了一张:覆盖,地址的摘要跟着变", async () => {
+		const first = await store.writeBytes(KEEP, new Uint8Array(PNG_BYTES));
+		const second = await store.writeBytes(KEEP, new Uint8Array(JPEG_BYTES));
+		expect(second).not.toBe(first);
+		expect(await files()).toEqual([`${KEEP}.jpeg`]);
+	});
+
+	it.each([
+		["gif", Buffer.from("GIF89a\x01\x00\x01\x00", "latin1")],
+		["svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
+		["空的", Buffer.alloc(0)],
+		["超过头像的上限", Buffer.concat([PNG_BYTES, Buffer.alloc(SUBSCRIPTION_AVATAR_MAX_BYTES)])],
+	])("%s → 拒收,不落盘", async (_label, bytes) => {
+		await expect(store.writeBytes(KEEP, new Uint8Array(bytes))).rejects.toThrow();
+		expect(await files()).toEqual([]);
 	});
 });
 
