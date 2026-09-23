@@ -73,6 +73,19 @@ export const ACTION_TIMEOUT_MS = 30_000;
  */
 export const DISPOSE_TIMEOUT_MS = 30_000;
 
+/**
+ * v2 清单里推送源那一口的外观 + 连接配置项(ADR-0019 决策 17 / 41)。v1(写在代码里)或没开这一口
+ * 就是 `undefined`。
+ *
+ * 注册推送源时与拓展列表下发时**共用这一份翻译** —— 停着的拓展列表照清单给,跑着的照注册时收下的给,
+ * 两处各写一遍的话,哪天清单多一格,两边就说成两种样子。
+ */
+export function manifestPushView(manifest: ExtensionManifest): ExtensionPushView | undefined {
+	if (manifest.apiVersion !== 2) return undefined;
+	const push = manifest.contributes.push;
+	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
+}
+
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
 export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
@@ -422,8 +435,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			);
 		}
 		// 上面核对过开了这一口,这里一定有。
-		const push = manifest.contributes.push as NonNullable<typeof manifest.contributes.push>;
-		return { display: push.display, connectionFields: push.connection?.fields ?? [] };
+		return manifestPushView(manifest) as ExtensionPushView;
 	}
 
 	/**

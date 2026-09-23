@@ -17,7 +17,7 @@ import {
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
-import { ACTION_TIMEOUT_MS, type ActionOutcome } from "../extensions/context.js";
+import { ACTION_TIMEOUT_MS, type ActionOutcome, manifestPushView } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import {
 	docsPresence,
@@ -141,8 +141,7 @@ function pushViewOfEntry(
 	running: (id: string) => ExtensionPushView | undefined,
 ): ExtensionPushView | undefined {
 	if (entry.manifest?.apiVersion !== 2) return running(entry.id);
-	const push = entry.manifest.contributes.push;
-	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
+	return manifestPushView(entry.manifest);
 }
 
 /**
