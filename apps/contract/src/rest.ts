@@ -10,16 +10,17 @@ import type {
 	ExtensionPushView,
 } from "@bilibili-notify/extension/wire";
 import type {
+	BiliSubscription,
 	CachedProfile,
 	CardSkinKind,
 	ConnectionCapabilities,
 	ExtensionProvides,
 	ExtensionRunState,
+	ExtensionSubscription,
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PushKind,
 	PushStatus,
-	Subscription,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
@@ -382,17 +383,32 @@ export interface MarketplaceInstallRequest {
  * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubRuntimeStore join
  * 回来的外置运行时字段(cachedProfile / state / 关注状态)。
  *
- * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态
- * 都收不到。`undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**
- * 「未关注」—— 别拿它去吓用户。
+ * 与域模型一样分两支(ADR-0019 决策 9),按 `kind` 收窄。
  */
-export type SubscriptionDTO = Subscription & {
+export type SubscriptionDTO = BiliSubscriptionDTO | ExtensionSubscriptionDTO;
+
+/** 两支都有的外置运行时字段。 */
+interface SubscriptionRuntimeDTO {
 	cachedProfile?: CachedProfile;
 	state: SubscriptionState;
-	followed?: boolean;
-	/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),直接展示给用户。 */
-	followError?: string;
-};
+}
+
+/**
+ * B 站订阅。
+ *
+ * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态
+ * 都收不到。`undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**
+ * 「未关注」—— 别拿它去吓用户。关注只对 B 站订阅有意义,拓展订阅那支没有这两格。
+ */
+export type BiliSubscriptionDTO = BiliSubscription &
+	SubscriptionRuntimeDTO & {
+		followed?: boolean;
+		/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),直接展示给用户。 */
+		followError?: string;
+	};
+
+/** 拓展订阅(ADR-0019 决策 9):身份是 `(extensionId, externalId)`,没有 uid。 */
+export type ExtensionSubscriptionDTO = ExtensionSubscription & SubscriptionRuntimeDTO;
 
 // ---- /api/history ----------------------------------------------------------
 

@@ -6,7 +6,7 @@ import type {
 	StatsSoloRoastResponse,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
-import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
+import { isBiliSubscription, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
@@ -149,7 +149,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	app.get("/overview", async (c) => {
 		const days = clampDays(c.req.query("days"));
 		const tzOffsetMin = parseTz(c.req.query("tz"));
-		const subs = deps.store.getSubscriptions();
+		// 统计页第一版只有 B 站订阅(ADR-0019 决策 12):粉丝 / 动态 / 场次都按 uid 记。
+		const subs = deps.store.getSubscriptions().filter(isBiliSubscription);
 		// 这两份是**内存快照**,不经 jsonl —— 也就是说它们跟 TTL 没有半点关系,
 		// 必须自己进 key(见下方 key 的说明)。放在缓存查询之前取。
 		const liveUids = new Set(

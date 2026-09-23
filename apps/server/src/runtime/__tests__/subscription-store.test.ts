@@ -46,7 +46,7 @@ describe("bindSubscriptionStore", () => {
 	it("boot 即 seed,store 反映 ConfigStore 当前订阅", () => {
 		const cs = makeConfigStore([sub("u1")]);
 		const b = bindSubscriptionStore({ bus, configStore: cs as never });
-		expect(b.store.list().map((s) => s.uid)).toEqual(["u1"]);
+		expect(b.store.list().map((s) => s.id)).toEqual(["sub-u1"]);
 		// [] → [u1] 的 diff 经 bus emit。
 		expect(changes.length).toBeGreaterThanOrEqual(1);
 	});
@@ -60,9 +60,9 @@ describe("bindSubscriptionStore", () => {
 		expect(
 			b.store
 				.list()
-				.map((s) => s.uid)
+				.map((s) => s.id)
 				.sort(),
-		).toEqual(["u1", "u2"]);
+		).toEqual(["sub-u1", "sub-u2"]);
 		expect(changes.length).toBeGreaterThan(before);
 	});
 
@@ -73,7 +73,7 @@ describe("bindSubscriptionStore", () => {
 		cs._fire("globals");
 		cs._fire("targets");
 		cs._fire("secrets");
-		expect(b.store.list().map((s) => s.uid)).toEqual(["u1"]); // 仍是 boot 时的快照
+		expect(b.store.list().map((s) => s.id)).toEqual(["sub-u1"]); // 仍是 boot 时的快照
 	});
 
 	it("dispose() 解绑 ConfigStore.onChange", () => {

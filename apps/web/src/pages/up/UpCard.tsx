@@ -2,8 +2,8 @@ import { Avatar, ErrorNote, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
-import { FEATURE_LABELS, type Subscription } from "../../types/domain";
-import { colorFromUid, displayName, subscribedFeatures } from "./helpers";
+import { FEATURE_LABELS, isBiliSubscription, type Subscription } from "../../types/domain";
+import { displayName, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
 
 /**
@@ -52,7 +52,7 @@ export function UpCard({
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
-	const color = colorFromUid(sub.uid);
+	const color = subscriptionColor(sub);
 	const features = subscribedFeatures(sub);
 	const fans = sub.cachedProfile?.fans;
 	const fansLabel =
@@ -145,8 +145,13 @@ export function UpCard({
 					/>
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-					<span>UID {sub.uid}</span>
-					<span>·</span>
+					{/* 拓展订阅没有 uid(ADR-0019 决策 9),这一行只剩粉丝数。 */}
+					{isBiliSubscription(sub) ? (
+						<>
+							<span>UID {sub.uid}</span>
+							<span>·</span>
+						</>
+					) : null}
 					<span>{fansLabel}</span>
 				</div>
 				{/*
@@ -155,7 +160,7 @@ export function UpCard({
 				 * 时一闪而过的 toast。followed===undefined(服务端没检查过 / 老数据)不显示,
 				 * 那不等于「未关注」,别凭空吓人。
 				 */}
-				{sub.followed === false ? (
+				{isBiliSubscription(sub) && sub.followed === false ? (
 					<ErrorNote size="sm" icon={<Icon.warning size={12} />} className="mb-2.5">
 						未关注该 UP —— 收不到动态
 						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}

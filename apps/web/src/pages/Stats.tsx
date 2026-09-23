@@ -1,4 +1,4 @@
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { BiliSubscriptionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -28,6 +28,7 @@ import {
 	statsQueryKey,
 	type UpStatsRow,
 } from "../services/stats";
+import { isBiliSubscription } from "../types/domain";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, formatSignedWan, formatWan, signTone } from "./stats/chart-utils";
 import {
@@ -106,7 +107,7 @@ interface UpMeta {
 	color: string;
 	/** B 站头像 URL。缺省时 Avatar 退回首字母块 —— 订阅刚建、profile 还没缓存到。 */
 	avatar?: string;
-	sub?: SubscriptionDTO;
+	sub?: BiliSubscriptionDTO;
 }
 
 /**
@@ -430,7 +431,8 @@ export default function Stats() {
 
 	const meta = useMemo(() => {
 		const m = new Map<string, UpMeta>();
-		for (const s of subsQuery.data ?? []) {
+		// 统计页第一版只有 B 站订阅(ADR-0019 决策 12)。
+		for (const s of (subsQuery.data ?? []).filter(isBiliSubscription)) {
 			m.set(s.uid, {
 				name: displayName(s),
 				color: colorFromUid(s.uid),

@@ -9,6 +9,7 @@ import {
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
+	isBiliSubscription,
 	isExtensionEnabled,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
@@ -70,6 +71,7 @@ import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { createStatusCommand } from "./runtime/status-command.js";
+import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createUpdateService } from "./update/service.js";
 import {
@@ -258,7 +260,7 @@ export async function startStandaloneServer(
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
-		await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
+		await pruneOrphanSubRuntime(runtime.subRuntimeStore, subBinding.store);
 		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
 		//
@@ -392,16 +394,20 @@ export async function startStandaloneServer(
 			historyStore: runtime.historyStore,
 			api: authSystem.api,
 			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
+			// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
 			subs: () =>
-				subStore.list().map((sub) => ({
-					id: sub.id,
-					uid: sub.uid,
-					name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
-					enabled: sub.enabled,
-					roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
-					specialUsers: sub.specialUsers.map((u) => u.uid),
-					avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
-				})),
+				subStore
+					.list()
+					.filter(isBiliSubscription)
+					.map((sub) => ({
+						id: sub.id,
+						uid: sub.uid,
+						name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
+						enabled: sub.enabled,
+						roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
+						specialUsers: sub.specialUsers.map((u) => u.uid),
+						avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
+					})),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
 			dynamic: () => engines?.dynamic,
 			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),

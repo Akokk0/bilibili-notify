@@ -2,7 +2,7 @@
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { makeEmptySubscription } from "../../types/domain";
+import { type ExtensionSubscription, makeEmptySubscription } from "../../types/domain";
 import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "./UpCard";
 
 /**
@@ -97,5 +97,54 @@ describe("UpCard 的高度不靠邻居撑着", () => {
 	it("根节点自带最小高度,且与「添加 UP 主」卡是同一个常量", () => {
 		const { container } = render(<UpCard {...props()} />);
 		expect((container.firstElementChild as HTMLElement).className).toContain(UP_CARD_MIN_H);
+	});
+});
+
+/**
+ * 拓展订阅(ADR-0019 决策 9)那一行:没有 uid —— 不出「UID …」、不出「未关注」(关注是 B 站
+ * 的事);名字按「资料缓存 → 主人起的名字 → 外部 id」取,总得认得出是哪一个。
+ */
+function makeExtSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscription {
+	const {
+		kind: _k,
+		uid: _u,
+		roastSchedule: _r,
+		specialUsers: _s,
+		followed: _f,
+		followError: _e,
+		...common
+	} = makeEmptySubscription("0");
+	return {
+		...common,
+		kind: "extension",
+		extensionId: "douyin",
+		externalId: "MS4wLjAB-sec",
+		...over,
+	};
+}
+
+describe("UpCard × 拓展订阅", () => {
+	it("没有 uid 那一行,名字回落到外部 id", () => {
+		const { queryByText, getAllByText } = render(<UpCard {...props({ sub: makeExtSub() })} />);
+		expect(queryByText(/UID/)).toBeNull();
+		expect(getAllByText("MS4wLjAB-sec").length).toBeGreaterThan(0);
+	});
+
+	it("有名字用名字,有资料缓存用资料缓存", () => {
+		const named = render(<UpCard {...props({ sub: makeExtSub({ name: "抖音那位" }) })} />);
+		expect(named.getAllByText("抖音那位").length).toBeGreaterThan(0);
+		named.unmount();
+		const cached = makeExtSub({
+			name: "抖音那位",
+			cachedProfile: { name: "资料里的名字", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
+		});
+		const { getAllByText } = render(<UpCard {...props({ sub: cached })} />);
+		expect(getAllByText("资料里的名字").length).toBeGreaterThan(0);
+	});
+
+	it("不出「未关注」—— 哪怕线上带来一个 followed:false", () => {
+		const sub = { ...makeExtSub(), followed: false, followError: "x" } as never;
+		const { queryByText } = render(<UpCard {...props({ sub })} />);
+		expect(queryByText(/收不到动态/)).toBeNull();
 	});
 });

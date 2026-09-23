@@ -18,7 +18,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../services/api";
-import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
+import {
+	isBiliSubscription,
+	makeEmptySubscription,
+	type PushTarget,
+	type Subscription,
+} from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
 import { GroupEditDialog } from "./up/GroupEditDialog";
 import { displayName } from "./up/helpers";
@@ -26,6 +31,9 @@ import { computeMenuPosition } from "./up/menu-position";
 import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
+
+/** 两支订阅都有的那几格 —— 右键菜单只改这些,乐观更新时整条的类型不会被抹成一坨。 */
+type SubscriptionCommonPatch = Partial<Pick<Subscription, "enabled" | "groups">>;
 
 type FilterId = "all" | "enabled" | "disabled";
 
@@ -516,7 +524,8 @@ export default function Subs() {
 			if (groupFilter && groupFilter !== UNGROUPED && !s.groups.includes(groupFilter)) return false;
 			if (!ql) return true;
 			return (
-				s.uid.includes(ql) ||
+				// 拓展订阅没有 uid,按它的外部 id 搜(ADR-0019 决策 9)。
+				(isBiliSubscription(s) ? s.uid : s.externalId).toLowerCase().includes(ql) ||
 				displayName(s).toLowerCase().includes(ql) ||
 				(s.notes ?? "").toLowerCase().includes(ql)
 			);
@@ -565,7 +574,7 @@ export default function Subs() {
 	 * 也不会 last-writer-wins 覆盖并发编辑的其它字段。
 	 */
 	const patchSub = useMutation({
-		mutationFn: ({ id, patch }: { id: string; patch: Partial<Subscription> }) =>
+		mutationFn: ({ id, patch }: { id: string; patch: SubscriptionCommonPatch }) =>
 			api.patch<Subscription>(`/api/subs/${id}`, patch),
 		onMutate: async ({ id, patch }) => {
 			await qc.cancelQueries({ queryKey: ["subscriptions"] });
@@ -856,7 +865,7 @@ export default function Subs() {
 					}}
 					pending={upsert.isPending}
 					error={error}
-					existingUids={new Set(subs.map((s) => s.uid))}
+					existingUids={new Set(subs.filter(isBiliSubscription).map((s) => s.uid))}
 				/>
 			) : null}
 
@@ -870,11 +879,15 @@ export default function Subs() {
 					onToggleEnabled={() =>
 						patchSub.mutate({ id: menuSub.id, patch: { enabled: !menuSub.enabled } })
 					}
-					onCopyUid={() => {
-						void copyToClipboard(menuSub.uid).then((ok) =>
-							setCopyMsg(ok ? "已复制 UID" : "复制失败,请手动复制"),
-						);
-					}}
+					onCopyUid={
+						isBiliSubscription(menuSub)
+							? () => {
+									void copyToClipboard(menuSub.uid).then((ok) =>
+										setCopyMsg(ok ? "已复制 UID" : "复制失败,请手动复制"),
+									);
+								}
+							: undefined
+					}
 					onAddToGroup={() => setGroupEditId(menuSub.id)}
 					onDelete={() => setPendingDelete({ ids: [menuSub.id] })}
 				/>

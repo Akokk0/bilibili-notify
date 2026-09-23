@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
-import type { PushTarget, Subscription } from "../../types/domain";
+import {
+	type BiliSubscription,
+	isBiliSubscription,
+	type PushTarget,
+	type Subscription,
+} from "../../types/domain";
 import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
 /**
@@ -27,9 +32,10 @@ export function SoloRoastScheduleBox({ uid, name }: { uid: string; name: string 
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	const sub = (subsQuery.data ?? []).find((s) => s.uid === uid);
+	// 单人锐评只有 B 站订阅有(ADR-0019 决策 12)。
+	const sub = (subsQuery.data ?? []).filter(isBiliSubscription).find((s) => s.uid === uid);
 
-	const [draft, setDraft] = useState<Subscription["roastSchedule"] | null>(null);
+	const [draft, setDraft] = useState<BiliSubscription["roastSchedule"] | null>(null);
 	// `sub` 是从列表里 find 出来的:换一位 UP 就是另一个对象引用,effect 自然重跑。
 	// (Stats 那边还按 uid 给这个组件上了 key,换人时整个重挂,这里只是第二道。)
 	useEffect(() => {
@@ -40,7 +46,7 @@ export function SoloRoastScheduleBox({ uid, name }: { uid: string; name: string 
 
 	const save = useMutation({
 		// 要发的东西走 variables,不从闭包里捞 —— 闭包捞到的是这一轮渲染的旧值。
-		mutationFn: async (next: Subscription["roastSchedule"]) => {
+		mutationFn: async (next: BiliSubscription["roastSchedule"]) => {
 			if (!sub) return;
 			// 整份回传:服务端 deepMerge 对数组是整体替换,所以 targets 清空也是
 			// 一次真的清除,不必再走 buildPatch。

@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
-import type { Subscription } from "../types/domain";
+import { type BiliSubscription, isBiliSubscription, type Subscription } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
@@ -49,7 +49,7 @@ function nestByPath(path: string, value: string): Record<string, unknown> {
 }
 
 /** Slices on Subscription.overrides that are populated; per-UP "已覆盖" 状态来源。 */
-function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
+function overrideKeysOf(sub: BiliSubscription): Set<PerUpOverrideKey> {
 	const keys = new Set<PerUpOverrideKey>();
 	for (const key of perUpOverrideKeys) {
 		if (sub.overrides[key] !== undefined) keys.add(key);
@@ -57,7 +57,7 @@ function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
 	return keys;
 }
 
-function hasAnyCustomization(sub: Subscription): boolean {
+function hasAnyCustomization(sub: BiliSubscription): boolean {
 	return overrideKeysOf(sub).size > 0 || sub.specialUsers.length > 0;
 }
 
@@ -200,7 +200,7 @@ export default function Rules() {
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
 	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
-	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
+	const [pendingRemoval, setPendingRemoval] = useState<BiliSubscription | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data);
@@ -249,7 +249,7 @@ export default function Rules() {
 	});
 
 	const removeSubCustomization = useMutation({
-		mutationFn: async (sub: Subscription) => {
+		mutationFn: async (sub: BiliSubscription) => {
 			// 移除该 UP 的所有 per-UP 配置。注意:发 `overrides: {}` 不行 —— 空对象给 store
 			// deepMerge 遍历不到任何键 → 当「不改」→ 旧 slice 原样保留(同 SY1)。须把每个
 			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
@@ -322,11 +322,15 @@ export default function Rules() {
 		};
 	}, [draft, patchDraft]);
 
-	const allSubs = subsQuery.data ?? [];
+	// 按 UP 定制规则第一版只有 B 站订阅(ADR-0019 决策 12:特别关注 / B 站专属过滤都不含拓展订阅)。
+	const allSubs = useMemo(
+		() => (subsQuery.data ?? []).filter(isBiliSubscription),
+		[subsQuery.data],
+	);
 
 	// Tab 栏只显示:已经在 backend 有 overrides / specialUsers 的 sub + 客户端本轮添加的 sub。
 	const tabSubs = useMemo(() => {
-		const result: Subscription[] = [];
+		const result: BiliSubscription[] = [];
 		for (const s of allSubs) {
 			if (hasAnyCustomization(s) || addedSubIds.has(s.id)) result.push(s);
 		}

@@ -246,7 +246,7 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", "1", "live", "不是时间");
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
-		trigger("subscription-changed", [{ type: "remove", id: "sub-1", uid: "1" }]);
+		trigger("subscription-changed", [{ type: "remove", sub: { id: "sub-1", uid: "1" } }]);
 		clock = "2026-05-16T16:00:00.000Z";
 		trigger("live-state-changed", "1", "live", "不是时间");
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
@@ -285,12 +285,23 @@ describe("StatsRecorder — 订阅删除清理", () => {
 	it("subscription-changed 的 remove → dropUid,不留孤儿文件", async () => {
 		const { trigger, store } = setup();
 		trigger("subscription-changed", [
-			{ type: "remove", id: "sub-1", uid: "1" },
+			{ type: "remove", sub: { id: "sub-1", uid: "1" } },
 			{ type: "add", sub: { uid: "2" } },
 		]);
 		await vi.waitFor(() => expect(store.dropUid).toHaveBeenCalled());
 		expect(store.dropUid).toHaveBeenCalledTimes(1);
 		expect(store.dropUid).toHaveBeenCalledWith("1");
+	});
+
+	it("删掉的是拓展订阅 → 统计没有它的文件,一个都不删(ADR-0019 决策 12)", async () => {
+		const { trigger, store } = setup();
+		trigger("subscription-changed", [
+			{ type: "remove", sub: { kind: "extension", id: "ext-1", externalId: "1" } },
+			{ type: "remove", sub: { id: "sub-2", uid: "2" } },
+		]);
+		await vi.waitFor(() => expect(store.dropUid).toHaveBeenCalled());
+		expect(store.dropUid).toHaveBeenCalledTimes(1);
+		expect(store.dropUid).toHaveBeenCalledWith("2");
 	});
 
 	it("退订正在直播的 UP → 关服时不再给他补下播帧,免得把刚删的文件重建出来", async () => {
@@ -302,7 +313,7 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
-		trigger("subscription-changed", [{ type: "remove", id: "sub-1", uid: "1" }]);
+		trigger("subscription-changed", [{ type: "remove", sub: { id: "sub-1", uid: "1" } }]);
 		await vi.waitFor(() => expect(store.dropUid).toHaveBeenCalled());
 
 		await handle.closeOpenSessions();
@@ -313,7 +324,7 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", "1", "live");
 		trigger("live-viewers-changed", "1", "50万");
-		trigger("subscription-changed", [{ type: "remove", id: "sub-1", uid: "1" }]);
+		trigger("subscription-changed", [{ type: "remove", sub: { id: "sub-1", uid: "1" } }]);
 		// 重新订阅同一 uid 后开播又下播 —— 峰值必须是新场自己的
 		trigger("live-state-changed", "1", "live");
 		trigger("live-state-changed", "1", "idle");

@@ -15,6 +15,7 @@ import { CardStyleSchema } from "./common";
 import { makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import {
+	BiliSubscriptionSchema,
 	CachedProfileSchema,
 	FansBaselineSchema,
 	makeEmptySubscription,
@@ -48,7 +49,7 @@ const LEGACY_RAW = {
 
 describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 	it("旧记录(内嵌 cachedProfile+state)parse 成功,且结果无这两个键", () => {
-		const parsed = SubscriptionSchema.parse(LEGACY_RAW);
+		const parsed = BiliSubscriptionSchema.parse(LEGACY_RAW);
 		expect("cachedProfile" in parsed).toBe(false);
 		expect("state" in parsed).toBe(false);
 		// 其余配置字段完好

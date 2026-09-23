@@ -22,7 +22,7 @@ import type {
 	ServiceContext,
 	Subscription,
 } from "@bilibili-notify/internal";
-import { makeEmptySubscription } from "@bilibili-notify/internal";
+import { isBiliSubscription, makeEmptySubscription } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
@@ -52,7 +52,7 @@ function makeStore(sub: Subscription): SubscriptionStore {
 	let subs = [sub];
 	return {
 		list: () => [...subs],
-		findByUid: (uid) => subs.find((s) => s.uid === uid),
+		findByUid: (uid) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
 		findById: (id) => subs.find((s) => s.id === id),
 		upsert: () => {},
 		removeById: () => undefined,

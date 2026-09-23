@@ -32,6 +32,7 @@ import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type {
 	AIOverride,
+	BiliSubscription,
 	ContentFiltersOverride,
 	ImageGroupOverride,
 	MessageLayoutOverride,
@@ -98,7 +99,8 @@ function patchSub(id: string, body: SubPatch) {
 /* -------------------------------------------------------------------------- */
 
 export interface PerUpEditorProps {
-	sub: Subscription;
+	/** 只有 B 站订阅(ADR-0019 决策 12:特别关注 / B 站专属过滤都不含拓展订阅)。 */
+	sub: BiliSubscription;
 	defaults: GlobalDefaults;
 	section: SectionId;
 }

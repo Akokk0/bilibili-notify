@@ -103,7 +103,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		globalCover?: string[];
 		/** 皮肤旋钮那一层(2026-09-14 起背景图的正主)。 */
 		knobs?: Record<string, Record<string, unknown>>;
-		subs?: Array<{ uid: string; legacyBg?: string[]; kindCover?: string[]; cover?: string[] }>;
+		subs?: Array<
+			{ legacyBg?: string[]; kindCover?: string[]; cover?: string[] } & (
+				| { uid: string }
+				| { kind: "extension"; externalId: string; name?: string }
+			)
+		>;
 	}): RouteDeps {
 		return {
 			runtime: {
@@ -128,7 +133,9 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				}),
 				getSubscriptions: () =>
 					(opts.subs ?? []).map((s) => ({
-						uid: s.uid,
+						...("uid" in s
+							? { kind: "bilibili", uid: s.uid }
+							: { kind: s.kind, externalId: s.externalId, name: s.name }),
 						overrides: {
 							cardStyle:
 								s.legacyBg || s.cover
@@ -275,6 +282,31 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
+			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除被拓展订阅引用的封面图 → 409,referencedBy 用名字 / 外部 id 指认(ADR-0019 决策 47)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-ext-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({
+					dataDir: dir,
+					subs: [
+						{ kind: "extension", externalId: "MS4wLjAB-sec", cover: [id] },
+						{ kind: "extension", externalId: "sec-2", name: "抖音那位", kindCover: [id] },
+					],
+				}),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy?: string[] };
+			expect(json.referencedBy).toEqual(["订阅「MS4wLjAB-sec」", "订阅「抖音那位」"]);
 			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
 		} finally {
 			await rm(dir, { recursive: true, force: true });

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS, type FeatureKey, makeEmptySubscription } from "../../types/domain";
-import { platformSupportsAtAll, routingAlignedToFeatures, subscribedFeatures } from "./helpers";
+import {
+	colorFromUid,
+	displayName,
+	platformSupportsAtAll,
+	routingAlignedToFeatures,
+	subscribedFeatures,
+	subscriptionColor,
+} from "./helpers";
 
 /**
  * 回归:订阅卡片的特性标签必须反映「订阅项主开关」(overrides.features,缺省继承
@@ -93,5 +100,31 @@ describe("routingAlignedToFeatures", () => {
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1", "t-2"];
 		const routing = routingAlignedToFeatures(sub, "t-1");
 		for (const k of FEATURE_KEYS) expect(routing[k]).toContain("t-2");
+	});
+});
+
+/**
+ * 拓展订阅(ADR-0019 决策 9)没有 uid:颜色按订阅自己的 id 取,名字回落到外部 id。
+ * B 站订阅照旧按 uid —— 同一位 UP 在页面上和服务端画的周报图上是同一个颜色。
+ */
+describe("subscriptionColor / displayName × 两支订阅", () => {
+	const bili = makeEmptySubscription("12345");
+	const { kind: _k, uid: _u, roastSchedule: _r, specialUsers: _s, ...common } = bili;
+	const ext = {
+		...common,
+		kind: "extension" as const,
+		extensionId: "douyin",
+		externalId: "12345",
+	};
+
+	it("B 站按 uid,拓展按订阅自己的 id(外部 id 不当颜色的种子)", () => {
+		expect(subscriptionColor(bili)).toBe(colorFromUid("12345"));
+		expect(subscriptionColor(ext)).toBe(colorFromUid(ext.id));
+	});
+
+	it("B 站没资料 → 「UID xxx」;拓展没资料 → 名字 → 外部 id", () => {
+		expect(displayName(bili)).toBe("UID 12345");
+		expect(displayName(ext)).toBe("12345");
+		expect(displayName({ ...ext, name: "抖音那位" })).toBe("抖音那位");
 	});
 });

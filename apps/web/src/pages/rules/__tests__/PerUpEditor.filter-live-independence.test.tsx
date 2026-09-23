@@ -16,7 +16,7 @@ import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
-import { makeEmptySubscription, type Subscription } from "../../../types/domain";
+import { type BiliSubscription, makeEmptySubscription } from "../../../types/domain";
 import { PerUpEditor } from "../PerUpEditor";
 import { makeDefaults } from "./fixtures";
 
@@ -34,7 +34,7 @@ function resetStore(): void {
 	});
 }
 
-function makeSub(): Subscription {
+function makeSub(): BiliSubscription {
 	return makeEmptySubscription("123456");
 }
 
@@ -143,7 +143,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 
 	it("关闭「动态过滤覆盖」并保存 → PATCH body 里过滤域字段显式 null,阈值域字段不受影响(不会保存后又复活)", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-		const sub: Subscription = {
+		const sub: BiliSubscription = {
 			...makeSub(),
 			overrides: { filters: { blockKeywords: ["广告"], minScPrice: 30 } },
 		};

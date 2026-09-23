@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CachedProfile, FansBaseline, Logger } from "@bilibili-notify/internal";
+import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
  * SubRuntimeStore — per-subscription **runtime** data, externalized out of the
@@ -69,6 +70,22 @@ export interface SubRuntimeStore {
 	prune(keepIds: readonly string[]): Promise<void>;
 	/** Load `<dataDir>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
 	load(): Promise<void>;
+}
+
+/**
+ * 孤儿清理:丢掉订阅已不存在的那些运行时条目。开机扫一次(停机期间删掉的),运行中每次
+ * 删订阅再扫一次。
+ *
+ * 🔴 **留下的是全部订阅的 id —— 两支都算**(ADR-0019 决策 47)。拓展订阅的资料缓存也住在
+ * 这里(拓展报来的名字 / 头像 / 粉丝,决策 7);只拿 B 站订阅当保留名单的话,开机一次、
+ * 每删一条 B 站订阅一次,拓展订阅的资料就被静默抹掉 —— 类型、测试、构建全绿。所以这里
+ * 收的是整个订阅仓而不是一份现成的 id 列表:调用方没有机会先筛一遍。
+ */
+export function pruneOrphanSubRuntime(
+	runtime: SubRuntimeStore,
+	subscriptions: Pick<SubscriptionStore, "list">,
+): Promise<void> {
+	return runtime.prune(subscriptions.list().map((s) => s.id));
 }
 
 export interface CreateSubRuntimeStoreOptions {

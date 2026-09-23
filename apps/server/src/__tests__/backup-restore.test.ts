@@ -4,7 +4,8 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { type CurrentState, planImport } from "../backup/restore.js";
+import { type CurrentState, foldPlan, planImport } from "../backup/restore.js";
+import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
  * planImport 把「当前状态 + 导入段 + 覆盖/合并」算成一组具体写操作(upsert / delete /
@@ -14,14 +15,20 @@ function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, uid });
 }
 
-function currentWith(subs: Subscription[]): CurrentState {
+function currentWith(
+	subs: Subscription[],
+	extensionSubscriptions: CurrentState["extensionSubscriptions"] = [],
+): CurrentState {
 	return {
 		globals: makeDefaultGlobalConfig(),
 		subscriptions: subs,
+		extensionSubscriptions,
 		connections: [],
 		targets: [],
 	};
 }
+
+const ext = (externalId: string) => makeExtensionSubscription({ id: externalId, externalId });
 
 describe("planImport", () => {
 	it("overwrite replaces the subscription set (deletes entries absent from the backup)", () => {
@@ -104,5 +111,42 @@ describe("planImport", () => {
 		// subscriptions untouched (not in the backup) — no upserts, no deletes
 		expect(plan.subscriptions.upsert).toEqual([]);
 		expect(plan.subscriptions.delete).toEqual([]);
+	});
+});
+
+/**
+ * 拓展订阅单独一节(ADR-0019 决策 48),两支各算各的计划。改动之前导出的备份全都没有
+ * 拓展那一节 —— 两种模式下都不许碰现有的拓展订阅。
+ */
+describe("planImport / foldPlan × 拓展订阅", () => {
+	it.each(["overwrite", "merge"] as const)(
+		"%s:没有拓展那一节的老备份 → 现有拓展订阅原样留着",
+		(mode) => {
+			const current = currentWith([sub("1")], [ext("e1")]);
+			const plan = planImport(current, { subscriptions: [sub("2")] }, mode);
+			expect(plan.extensionSubscriptions).toEqual({ upsert: [], delete: [] });
+			const folded = foldPlan(current, plan);
+			expect(folded.subscriptions?.filter((s) => s.kind === "extension")).toEqual([ext("e1")]);
+		},
+	);
+
+	it("overwrite:带着拓展那一节(哪怕是空的)→ 拓展那支按它替换,B 站那支不动", () => {
+		const current = currentWith([sub("1")], [ext("e1"), ext("e2")]);
+		const plan = planImport(
+			current,
+			{ extensionSubscriptions: [ext("e2"), ext("e3")] },
+			"overwrite",
+		);
+		expect(plan.extensionSubscriptions.delete).toEqual(["e1"]);
+		expect(plan.subscriptions).toEqual({ upsert: [], delete: [] });
+		expect(foldPlan(current, plan).subscriptions?.map((s) => s.id)).toEqual(["1", "e2", "e3"]);
+
+		const cleared = planImport(current, { extensionSubscriptions: [] }, "overwrite");
+		expect(foldPlan(current, cleared).subscriptions?.map((s) => s.id)).toEqual(["1"]);
+	});
+
+	it("两节都没有 → 订阅整个不给(保持不动)", () => {
+		const current = currentWith([sub("1")], [ext("e1")]);
+		expect(foldPlan(current, planImport(current, {}, "overwrite")).subscriptions).toBeUndefined();
 	});
 });

@@ -7,7 +7,9 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
+import type { BackupEnvelope } from "../backup/envelope.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
+import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
  * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope(+cookie),
@@ -313,5 +315,91 @@ describe("BackupService", () => {
 		await expect(
 			svc.importBackup({ envelope: env, pin: "0000", mode: "overwrite" }),
 		).rejects.toThrow();
+	});
+});
+
+/**
+ * 拓展订阅在备份里单独一节(ADR-0019 决策 48),不抬 schemaVersion。与 `subscriptions` 同一个
+ * 勾选管着;导入两支各算各的 —— 没有拓展那一节的备份(改动之前导出的全部)两种模式下都碰不到
+ * 现有的拓展订阅。
+ */
+describe("BackupService × 拓展订阅", () => {
+	const ext = (externalId: string) => makeExtensionSubscription({ id: externalId, externalId });
+
+	function service(store: BackupStore) {
+		return createBackupService({
+			configStore: store,
+			cookieStore: makeCookieStore(null),
+			now: () => "t",
+		});
+	}
+
+	/** 改动之前导出的备份:只有 `subscriptions` 那一节。 */
+	function oldBackup(subscriptions: Subscription[]): BackupEnvelope {
+		return {
+			format: "bilibili-notify-backup",
+			schemaVersion: 1,
+			kind: "sanitized",
+			createdAt: "t",
+			sections: { subscriptions },
+		};
+	}
+
+	it.each(["sanitized", "full"] as const)(
+		"%s 导出:B 站一节、拓展一节,schemaVersion 不动",
+		async (kind) => {
+			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
+			const env = await service(store).exportBackup({ kind, pin: "123456" });
+			expect(env.schemaVersion).toBe(1);
+			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
+			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
+			expect(sections.extensionSubscriptions?.map((s) => s.id)).toEqual(["e1"]);
+		},
+	);
+
+	it("勾了订阅、一条拓展订阅都没有 → 照样给一节空的;没勾就两节都没有", async () => {
+		const store = makeFakeStore({ subscriptions: [sub("1")] });
+		const withSubs = await service(store).exportBackup({ kind: "sanitized" });
+		expect(withSubs.sections.extensionSubscriptions).toEqual([]);
+		const without = await service(store).exportBackup({
+			kind: "sanitized",
+			sections: { subscriptions: false },
+		});
+		expect(without.sections.subscriptions).toBeUndefined();
+		expect(without.sections.extensionSubscriptions).toBeUndefined();
+	});
+
+	it.each(["overwrite", "merge"] as const)(
+		"%s 恢复一份老备份 → 现有拓展订阅原样留着",
+		async (mode) => {
+			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
+			await service(store).importBackup({ envelope: oldBackup([sub("2")]), mode });
+			const ids = store.getSubscriptions().map((s) => s.id);
+			expect(ids).toContain("e1");
+			expect(ids).toContain("2");
+		},
+	);
+
+	it("overwrite 恢复一份新备份 → 两支都按备份替换,计数两支合计", async () => {
+		const source = makeFakeStore({ subscriptions: [sub("2"), ext("e2")] });
+		const env = await service(source).exportBackup({ kind: "sanitized" });
+		const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
+		const result = await service(store).importBackup({ envelope: env, mode: "overwrite" });
+		expect(store.getSubscriptions().map((s) => s.id)).toEqual(["2", "e2"]);
+		expect(result.subscriptions).toEqual({ upserted: 2, deleted: 2 });
+	});
+
+	it.each([
+		["B 站那节里混进一条拓展订阅", { subscriptions: [sub("1"), ext("e1")] }],
+		["拓展那节里混进一条 B 站订阅", { extensionSubscriptions: [ext("e1"), sub("1")] }],
+	])("%s → 整份拒,一个字都不写", async (_label, sections) => {
+		const store = makeFakeStore({ subscriptions: [sub("0")] });
+		await expect(
+			service(store).importBackup({
+				envelope: { ...oldBackup([]), sections: sections as never },
+				mode: "overwrite",
+			}),
+		).rejects.toThrow();
+		expect(store.replaceSections).not.toHaveBeenCalled();
 	});
 });

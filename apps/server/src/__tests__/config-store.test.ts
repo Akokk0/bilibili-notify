@@ -10,6 +10,7 @@ import {
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
+	isBiliSubscription,
 	isDirectConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -320,7 +321,7 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("11111");
 		await store.upsertSubscription(sub);
 		expect(store.getSubscriptions()).toHaveLength(1);
-		expect(store.getSubscriptions()[0]?.uid).toBe("11111");
+		expect(store.getSubscriptions().filter(isBiliSubscription)[0]?.uid).toBe("11111");
 
 		// Update the same id (cannot mutate uid past schema regex, but we can flip enabled / notes)
 		const updated: Subscription = { ...sub, enabled: false, notes: "paused" };

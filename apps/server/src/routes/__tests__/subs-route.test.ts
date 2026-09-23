@@ -359,3 +359,89 @@ describe("/api/subs POST — 自动关注该 UP", () => {
 		expect(h.follow).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * 拓展订阅(ADR-0019 决策 9 / 12 / 50)。
+ *
+ * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅不走这条 POST(`extensionId` 得由宿主按
+ * 「请求来自哪个拓展」填,那是 T4 的解析门);已有的那条整份 POST 回来(面板的启用开关)照收,
+ * 关注 / 资料种子都不碰它。身份改不动,store 拒了就是 400。
+ */
+describe("/api/subs × 拓展订阅", () => {
+	beforeEach(() => vi.restoreAllMocks());
+
+	const EXT = {
+		kind: "extension",
+		id: "22222222-2222-4222-8222-222222222222",
+		extensionId: "douyin",
+		externalId: "MS4wLjAB-sec",
+		enabled: true,
+		groups: [],
+		routing: {},
+		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
+		overrides: {},
+	};
+
+	function postJson(h: Harness, body: unknown) {
+		return h.app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("GET 两支都回:拓展订阅带资料缓存,不带关注状态", async () => {
+		const h = makeHarness({
+			subs: [SUB, EXT],
+			rtRecord: {
+				[SUB.id]: { followed: true },
+				[EXT.id]: { cachedProfile: PROFILE, followed: true },
+			},
+		});
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect(body.map((s) => s.id)).toEqual([SUB.id, EXT.id]);
+		expect(body[0]?.followed).toBe(true);
+		expect(body[1]?.cachedProfile).toEqual(PROFILE);
+		expect("followed" in (body[1] ?? {})).toBe(false);
+		expect("followError" in (body[1] ?? {})).toBe(false);
+	});
+
+	it("POST 一条新的拓展订阅 → 400,不落盘(新建走拓展的解析门)", async () => {
+		const h = makeHarness({ subs: [SUB] });
+		const res = await postJson(h, EXT);
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toBe(
+			"extension_subscription_unsupported",
+		);
+		expect(h.upsertSubscription).not.toHaveBeenCalled();
+	});
+
+	it("POST 回一条已有的拓展订阅(启用开关)→ 照收,不去 B 站关注、不拉 B 站资料", async () => {
+		const h = makeHarness({ subs: [SUB, EXT] });
+		const res = await postJson(h, { ...EXT, enabled: false });
+		expect(res.status).toBe(200);
+		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
+		expect(h.follow).not.toHaveBeenCalled();
+		expect(h.getUserCardInfo).not.toHaveBeenCalled();
+		expect(h.rtPatch).not.toHaveBeenCalled();
+	});
+
+	it("store 拒了身份改动 → 400(PATCH 与 POST 同一个出口)", async () => {
+		const identity = () =>
+			new ConfigValidationError("subscriptions", {
+				id: SUB.id,
+				key: "uid",
+				message: "subscription identity cannot be changed",
+			});
+		const h = makeHarness();
+		h.patchSubscription.mockRejectedValueOnce(identity());
+		const patched = await h.app.request(`/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ uid: "999" }),
+		});
+		expect(patched.status).toBe(400);
+		h.upsertSubscription.mockRejectedValueOnce(identity());
+		expect((await postJson(h, { ...SUB, uid: "999" })).status).toBe(400);
+	});
+});

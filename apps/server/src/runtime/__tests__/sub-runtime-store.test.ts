@@ -19,9 +19,16 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger } from "@bilibili-notify/internal";
+import { type Logger, makeEmptySubscription } from "@bilibili-notify/internal";
+import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createSubRuntimeStore, type SubRuntimeStore } from "../sub-runtime-store.js";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { createNodeMessageBus } from "../message-bus.js";
+import {
+	createSubRuntimeStore,
+	pruneOrphanSubRuntime,
+	type SubRuntimeStore,
+} from "../sub-runtime-store.js";
 
 function makeLogger(): Logger {
 	return {
@@ -270,6 +277,23 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 		await store.patch("s1", { cachedProfile: PROFILE_A2 });
 		await store.load(); // 第二次 — loaded 已置位,应是 no-op
 		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A2 });
+	});
+});
+
+describe("pruneOrphanSubRuntime — 保留名单是两支订阅的全部 id(ADR-0019 决策 47)", () => {
+	it("拓展订阅的资料缓存不被当成孤儿抹掉;真孤儿照丢", async () => {
+		const runtime = make();
+		const subs = createSubscriptionStore(createNodeMessageBus());
+		const bili = makeEmptySubscription({ id: "b1", uid: "1" });
+		const ext = makeExtensionSubscription({ id: "e1" });
+		subs.replaceAll([bili, ext]);
+		await runtime.patch("b1", { cachedProfile: PROFILE_A });
+		await runtime.patch("e1", { cachedProfile: PROFILE_A2 });
+		await runtime.patch("gone", { cachedProfile: PROFILE_A });
+
+		await pruneOrphanSubRuntime(runtime, subs);
+
+		expect(Object.keys(runtime.getAll()).sort()).toEqual(["b1", "e1"]);
 	});
 });
 

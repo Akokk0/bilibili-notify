@@ -2,6 +2,8 @@ import type { ImportResult } from "@bilibili-notify/contract";
 import {
 	type Connection,
 	type GlobalConfig,
+	isBiliSubscription,
+	isExtensionSubscription,
 	migrateConfigSections,
 	type PushTarget,
 	type Subscription,
@@ -53,6 +55,7 @@ interface BackupCookieStore {
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
 	globals?: boolean;
+	/** 订阅 —— 两支一起:B 站那节与拓展那节(ADR-0019 决策 48)。 */
 	subscriptions?: boolean;
 	connections?: boolean;
 	targets?: boolean;
@@ -108,6 +111,30 @@ const ALL_SECTIONS: Required<SectionSelection> = {
 	targets: true,
 };
 
+/**
+ * 两节订阅各装各的那一支,装错了整份拒(ADR-0019 决策 48)。恢复是两支各算各的计划,一条
+ * 拓展订阅混在 B 站那节里,overwrite 算删除集时会拿它去比 B 站那一支 —— 同一个 id 可能在
+ * 两支里各留一份。备份的明文段没过任何 schema,这里是唯一能认出这件事的地方。
+ */
+function assertSubscriptionSectionKinds(sections: BackupSections): void {
+	const raw = sections as { subscriptions?: unknown; extensionSubscriptions?: unknown };
+	const kindOf = (row: unknown): unknown => (row as { kind?: unknown } | null)?.kind;
+	if (
+		Array.isArray(raw.subscriptions) &&
+		raw.subscriptions.some((s) => kindOf(s) === "extension")
+	) {
+		throw new Error("backup section `subscriptions` contains an extension subscription");
+	}
+	if (
+		Array.isArray(raw.extensionSubscriptions) &&
+		raw.extensionSubscriptions.some((s) => kindOf(s) !== "extension")
+	) {
+		throw new Error(
+			"backup section `extensionSubscriptions` contains a non-extension subscription",
+		);
+	}
+}
+
 export function createBackupService(deps: BackupServiceDeps): BackupService {
 	const now = deps.now ?? (() => new Date().toISOString());
 
@@ -115,7 +142,11 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const sel = { ...ALL_SECTIONS, ...opts.sections };
 		const picked: BackupSections = {};
 		if (sel.globals) picked.globals = deps.configStore.getGlobals();
-		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
+		if (sel.subscriptions) {
+			const subs = deps.configStore.getSubscriptions();
+			picked.subscriptions = subs.filter(isBiliSubscription);
+			picked.extensionSubscriptions = subs.filter(isExtensionSubscription);
+		}
 		if (sel.connections) picked.connections = deps.configStore.getConnections();
 		if (sel.targets) picked.targets = deps.configStore.getTargets();
 		const createdAt = opts.createdAt ?? now();
@@ -127,6 +158,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				{
 					globals: picked.globals,
 					subscriptions: picked.subscriptions,
+					extensionSubscriptions: picked.extensionSubscriptions,
 					connections: picked.connections,
 					targets: picked.targets,
 					cookies,
@@ -179,9 +211,12 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			};
 		}
 
+		assertSubscriptionSectionKinds(sections);
+		const currentSubs = deps.configStore.getSubscriptions();
 		const current = {
 			globals: deps.configStore.getGlobals(),
-			subscriptions: deps.configStore.getSubscriptions(),
+			subscriptions: currentSubs.filter(isBiliSubscription),
+			extensionSubscriptions: currentSubs.filter(isExtensionSubscription),
 			connections: currentConnections,
 			targets: deps.configStore.getTargets(),
 		};
@@ -208,9 +243,10 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		}
 
 		return {
+			// 面板上「订阅」一栏说的是两支合起来(导出时也是同一个勾选)。
 			subscriptions: {
-				upserted: plan.subscriptions.upsert.length,
-				deleted: plan.subscriptions.delete.length,
+				upserted: plan.subscriptions.upsert.length + plan.extensionSubscriptions.upsert.length,
+				deleted: plan.subscriptions.delete.length + plan.extensionSubscriptions.delete.length,
 			},
 			connections: {
 				upserted: plan.connections.upsert.length,

@@ -29,10 +29,12 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	DEFAULT_MESSAGE_LAYOUT,
+	isBiliSubscription,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { standaloneContentBuilder } from "../content-builder.js";
@@ -268,7 +270,7 @@ function setup(opts?: {
 		historyStore: { record: vi.fn(async () => {}) } as any,
 		subscriptionStore: {
 			list: () => subs,
-			findByUid: (uid: string) => subs.find((s) => s.uid === uid),
+			findByUid: (uid: string) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
 		} as any,
 		subRuntimeStore: {
 			get: () => undefined,
@@ -1000,10 +1002,24 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("400", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "remove", id: sub.id, uid: "400" }]);
+		c.bus.emit("subscription-changed", [{ type: "remove", sub }]);
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
+	});
+
+	it("拓展订阅的增删改不进 B 站引擎(ADR-0019 决策 9)", () => {
+		const ext = makeExtensionSubscription({ externalId: "400" });
+		const c = setup({ subs: [ext] });
+		active = c;
+		c.bus.emit("subscription-changed", [
+			{ type: "add", sub: ext },
+			{ type: "update", sub: ext },
+			{ type: "remove", sub: ext },
+		]);
+
+		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
+		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
 
 	it("连续 disable→enable→disable:live 翻译在 delete / update 间正确切换", () => {

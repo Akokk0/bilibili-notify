@@ -12,7 +12,12 @@
  * (messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type { ExtensionBotView, SubscriptionDTO } from "@bilibili-notify/contract";
+import type {
+	BiliSubscriptionDTO,
+	ExtensionBotView,
+	ExtensionSubscriptionDTO,
+	SubscriptionDTO,
+} from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
@@ -34,6 +39,8 @@ import {
 	type ExtraKey,
 	FEATURE_KEYS,
 	type FeatureKey,
+	isBiliSubscription,
+	isExtensionSubscription,
 	isTargetPaused,
 	isWebhookConnection,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -49,6 +56,8 @@ export {
 	DEFAULT_FEATURE_FLAGS,
 	EXTRA_KEYS,
 	FEATURE_KEYS,
+	isBiliSubscription,
+	isExtensionSubscription,
 	isTargetPaused,
 	isWebhookConnection,
 	PUSH_EXTRAS,
@@ -59,6 +68,12 @@ export {
  * join 回来的 cachedProfile / state / followed),沿用旧名 Subscription。
  */
 export type Subscription = SubscriptionDTO;
+/**
+ * 订阅分两支(ADR-0019 决策 9):B 站订阅带 uid / 锐评 / 特别关注 / 关注状态,拓展订阅带
+ * `(extensionId, externalId)`。读任何一支独有的字段前先用 `isBiliSubscription` 收窄。
+ */
+export type BiliSubscription = BiliSubscriptionDTO;
+export type ExtensionSubscription = ExtensionSubscriptionDTO;
 
 export type {
 	AIOverride,
@@ -219,8 +234,9 @@ function emptyExtras(): Subscription["extras"] {
 	return out as Subscription["extras"];
 }
 
-export function makeEmptySubscription(uid: string): Subscription {
+export function makeEmptySubscription(uid: string): BiliSubscription {
 	return {
+		kind: "bilibili",
 		id: newId(),
 		uid,
 		enabled: true,

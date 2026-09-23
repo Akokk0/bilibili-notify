@@ -25,7 +25,7 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
-import { isTargetPaused } from "@bilibili-notify/internal";
+import { isBiliSubscription, isTargetPaused } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 
 /** 折好的一张答案表。两问都是 O(1) 查表,不含任何深拷贝。 */
@@ -56,8 +56,12 @@ export function resolveTargetScope({
 }: ResolveTargetScopeInput): TargetScopeTable {
 	// 同一个 uid 配了两条订阅时**先出现的那条说了算** —— 与从前那句
 	// `getSubscriptions().find((s) => s.uid === uid)` 一字不差。
+	// 推送链今天按 uid 找订阅(ADR-0019 决策 50,改按 id 是 ④ 的第一片),所以这张表只收
+	// B 站订阅:拓展订阅没有 uid,外部 id 恰好是同一串数字也不是同一个人。
 	const routing = new Map<string, Subscription["routing"]>();
-	for (const sub of subscriptions) if (!routing.has(sub.uid)) routing.set(sub.uid, sub.routing);
+	for (const sub of subscriptions.filter(isBiliSubscription)) {
+		if (!routing.has(sub.uid)) routing.set(sub.uid, sub.routing);
+	}
 	const enabled = new Set<string>();
 	for (const target of targets) if (!isTargetPaused(target, connections)) enabled.add(target.id);
 	return {

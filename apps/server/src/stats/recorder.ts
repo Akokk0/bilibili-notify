@@ -1,4 +1,9 @@
-import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
+import {
+	type Disposable,
+	isBiliSubscription,
+	type Logger,
+	type MessageBus,
+} from "@bilibili-notify/internal";
 import type { StatsStore } from "./store.js";
 
 /**
@@ -173,17 +178,19 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	handles.push(
 		opts.bus.on("subscription-changed", (ops) => {
 			for (const op of ops) {
-				if (op.type !== "remove") continue;
+				// 统计只有 B 站订阅有(ADR-0019 决策 12),拓展订阅退订时这里没东西可清。
+				if (op.type !== "remove" || !isBiliSubscription(op.sub)) continue;
+				const uid = op.sub.uid;
 				// 取消订阅就把该 UP 的统计文件一并删掉,与 FansStore 的处置一致 ——
 				// 否则退订过的 UP 会在 stats 目录里永久留一份读不到、也删不掉的孤儿。
-				peaks.delete(op.uid);
+				peaks.delete(uid);
 				// `openLive` 也要摘掉。留着的话,关服时 closeOpenSessions 会给这位
 				// 已退订的 uid 再 append 一帧 end,把 dropUid 刚 unlink 掉的
 				// jsonl 整个重新创建出来 —— 从此是一份没人会读、也没人会再清的孤儿
 				// (dropUid 只在 remove 时调,而他已经不在订阅列表里了)。
-				openLive.delete(op.uid);
-				openStart.delete(op.uid);
-				opts.store.dropUid(op.uid).catch(swallow(`dropUid ${op.uid}`));
+				openLive.delete(uid);
+				openStart.delete(uid);
+				opts.store.dropUid(uid).catch(swallow(`dropUid ${uid}`));
 			}
 		}),
 	);

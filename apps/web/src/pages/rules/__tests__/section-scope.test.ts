@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { makeEmptySubscription, type Subscription } from "../../../types/domain";
+import { type BiliSubscription, makeEmptySubscription } from "../../../types/domain";
 import { isSectionCustomized } from "../section-scope";
 
 /**
@@ -9,7 +9,7 @@ import { isSectionCustomized } from "../section-scope";
  * 小点也亮起来 —— 必须按各自域内的字段判定。
  */
 
-function subWith(overrides: Subscription["overrides"]): Subscription {
+function subWith(overrides: BiliSubscription["overrides"]): BiliSubscription {
 	return { ...makeEmptySubscription("123456"), overrides };
 }
 

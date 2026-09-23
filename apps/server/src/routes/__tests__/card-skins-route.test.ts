@@ -53,11 +53,11 @@ function pack(
 	return zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(m)), ...assets });
 }
 
-interface SubStub {
-	uid: string;
-	name?: string;
-	cardSkin?: string;
-}
+/** B 站订阅带 uid;拓展订阅(ADR-0019 决策 9)没有 uid,带的是外部 id。 */
+type SubStub = { name?: string; cardSkin?: string } & (
+	| { uid: string }
+	| { kind: "extension"; externalId: string }
+);
 
 let dir: string;
 let store: CardSkinStore;
@@ -82,7 +82,7 @@ function mount(): void {
 		getGlobals: () => ({ defaults: { cardSkin: active, cardSkinKnobs: knobs } }),
 		getSubscriptions: () =>
 			subs.map((s) => ({
-				uid: s.uid,
+				...("uid" in s ? { kind: "bilibili", uid: s.uid } : s),
 				...(s.name === undefined ? {} : { name: s.name }),
 				overrides: s.cardSkin === undefined ? {} : { cardSkin: s.cardSkin },
 			})),
@@ -410,6 +410,19 @@ describe("DELETE /:id —— 删一套", () => {
 		subs = [{ uid: "333", cardSkin: id }];
 		const body = (await (await app.request(`/${id}`, { method: "DELETE" })).json()) as any;
 		expect(body.usedBy.subscriptions).toEqual(["333"]);
+	});
+
+	it("拓展订阅单独指着它也算在用 —— 没起名字就用它的外部 id 指认(ADR-0019 决策 47)", async () => {
+		const id = await install();
+		subs = [
+			{ kind: "extension", externalId: "MS4wLjAB-sec", cardSkin: id },
+			{ kind: "extension", externalId: "sec-2", name: "抖音那位", cardSkin: id },
+		];
+		const res = await app.request(`/${id}`, { method: "DELETE" });
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.usedBy.subscriptions).toEqual(["MS4wLjAB-sec", "抖音那位"]);
+		expect(store.has(id)).toBe(true);
 	});
 
 	it("没这套 → 404", async () => {

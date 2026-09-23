@@ -51,6 +51,21 @@ function makeSub(uid: string, id = `sub-${uid}`): Subscription {
 	return makeEmptySubscription({ id, uid });
 }
 
+/** 一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 (extensionId, externalId)。 */
+function makeExtSub(externalId: string, id = `ext-${externalId}`): Subscription {
+	const {
+		kind: _k,
+		uid: _u,
+		roastSchedule: _r,
+		specialUsers: _s,
+		...common
+	} = makeEmptySubscription({
+		id,
+		uid: "0",
+	});
+	return { ...common, kind: "extension", extensionId: "douyin", externalId };
+}
+
 function lastOps(bus: ReturnType<typeof makeFakeBus>): SubscriptionOp[] | undefined {
 	const last = bus.events.at(-1);
 	if (last?.[0] !== "subscription-changed") return undefined;
@@ -67,7 +82,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 
 		expect(store.list()).toHaveLength(1);
 		expect(store.findByUid("u1")?.id).toBe("sub-u1");
-		expect(store.findById("sub-u1")?.uid).toBe("u1");
+		expect(store.findById("sub-u1")?.id).toBe("sub-u1");
 		expect(lastOps(bus)).toEqual([{ type: "add", sub }]);
 	});
 
@@ -94,7 +109,26 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const removed = store.removeById("sub-u1");
 		expect(removed?.id).toBe("sub-u1");
 		expect(store.list()).toHaveLength(0);
-		expect(lastOps(bus)).toEqual([{ type: "remove", id: "sub-u1", uid: "u1" }]);
+		expect(lastOps(bus)).toEqual([{ type: "remove", sub }]);
+	});
+
+	it("findByUid 只在 B 站订阅里找 —— 外部 id 恰好是同一串数字的拓展订阅不算", () => {
+		const bus = makeFakeBus();
+		const store = createSubscriptionStore(bus);
+		store.upsert(makeExtSub("123"));
+		expect(store.findByUid("123")).toBeUndefined();
+		store.upsert(makeSub("123"));
+		expect(store.findByUid("123")?.id).toBe("sub-123");
+	});
+
+	it("删掉拓展订阅 → remove op 带着整条,消费方按 kind 收窄", () => {
+		const bus = makeFakeBus();
+		const store = createSubscriptionStore(bus);
+		const ext = makeExtSub("sec-1");
+		store.upsert(ext);
+		store.removeById(ext.id);
+		expect(lastOps(bus)).toEqual([{ type: "remove", sub: ext }]);
+		expect(diff([ext], [])).toEqual([{ type: "remove", sub: ext }]);
 	});
 
 	it("removeById 不存在 → 返回 undefined,不发事件", () => {
@@ -152,7 +186,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const a2 = { ...a, notes: "改" };
 
 		expect(diff([], [a])).toEqual([{ type: "add", sub: a }]);
-		expect(diff([a], [])).toEqual([{ type: "remove", id: "sub-a", uid: "u1" }]);
+		expect(diff([a], [])).toEqual([{ type: "remove", sub: a }]);
 		expect(diff([a], [a2])).toEqual([{ type: "update", sub: a2 }]);
 		expect(diff([a, b], [a, b])).toEqual([]);
 	});

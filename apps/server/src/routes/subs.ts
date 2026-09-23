@@ -1,6 +1,11 @@
 import { ensureFollowed } from "@bilibili-notify/api";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
-import type { CachedProfile, Subscription } from "@bilibili-notify/internal";
+import {
+	type BiliSubscription,
+	type CachedProfile,
+	isBiliSubscription,
+	type Subscription,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
@@ -24,6 +29,11 @@ import type { RouteDeps } from "./types.js";
  * server fill in defaults — `makeEmptySubscription({id, uid})` exists in
  * `@bilibili-notify/internal` and clients (the dashboard) call that locally.
  * Keeps the server stateless about defaults.
+ *
+ * 两支订阅(ADR-0019 决策 9):GET 两支都回;**新建拓展订阅这里不收**(400)—— `extensionId`
+ * 得由宿主按「请求来自哪个拓展」填,那条路走拓展的解析门,不是随便 POST 一份。已经存在的
+ * 拓展订阅可以整份 POST 回来改(面板的启用开关就是这么发的),身份几格改不动(store 拒)。
+ * 关注、资料种子、查 UID / 搜名字都只对 B 站订阅。
  */
 export function createSubsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -32,13 +42,13 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 	/** Join the externalized runtime fields back onto a config Subscription. */
 	function toDTO(sub: Subscription): SubscriptionDTO {
 		const rt = deps.runtime.subRuntimeStore.get(sub.id);
-		return {
-			...sub,
+		const runtime = {
 			cachedProfile: rt?.cachedProfile,
-			state: { lastPushedAt: {}, liveStatus: "unknown" },
-			followed: rt?.followed,
-			followError: rt?.followError,
+			state: { lastPushedAt: {}, liveStatus: "unknown" as const },
 		};
+		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流)。
+		if (!isBiliSubscription(sub)) return { ...sub, ...runtime };
+		return { ...sub, ...runtime, followed: rt?.followed, followError: rt?.followError };
 	}
 
 	/**
@@ -49,7 +59,7 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 	 * 如实写进 runtime 状态,前端在订阅卡片上持续显示,而不是弹一个转瞬即逝的 toast。
 	 * 启动时的 follow-sync 会再试一次,所以未登录 / 临时风控都能自愈。
 	 */
-	async function followUp(sub: Subscription): Promise<void> {
+	async function followUp(sub: BiliSubscription): Promise<void> {
 		const engines = deps.runtime.engines;
 		if (!engines) return; // 启动中 / 未登录 —— 交给启动时的 follow-sync 兜底。
 		const outcome = await ensureFollowed(engines.api, sub.uid);
@@ -72,7 +82,7 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 	 * any failure just leaves it for the first FansPoller tick (~2min). Skipped
 	 * when a cachedProfile already exists (re-POST / edit) to bound the call.
 	 */
-	async function seedCachedProfile(sub: Subscription): Promise<void> {
+	async function seedCachedProfile(sub: BiliSubscription): Promise<void> {
 		if (deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile) return;
 		const engines = deps.runtime.engines;
 		if (!engines) return;
@@ -198,13 +208,27 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 		} catch (_err) {
 			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
 		}
+		// 新建拓展订阅不走这里(见文件头):`extensionId` 该由宿主填,那条路是拓展的解析门。
+		// 已有的那条整份 POST 回来改照常收 —— 身份改不动由 store 把关。
+		if (isPlainObject(body) && body.kind === "extension") {
+			const exists = deps.store.getSubscriptions().some((s) => s.id === body.id);
+			if (!exists) {
+				return c.json(
+					{
+						error: "extension_subscription_unsupported",
+						message: "拓展订阅要经拓展的解析门新建,不能直接 POST",
+					},
+					400,
+				);
+			}
+		}
 		try {
 			// upsertSubscription validates via Zod internally
 			await deps.store.upsertSubscription(body as never);
 			const id = (body as { id?: unknown }).id;
 			const created =
 				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
-			if (created) {
+			if (created && isBiliSubscription(created)) {
 				// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
 				// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
 				await followUp(created);
@@ -244,10 +268,13 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 		const roastPatch = shapeCheck.data.roastSchedule;
 		if (isPlainObject(roastPatch)) {
 			const cur = deps.store.getSubscriptions().find((s) => s.id === id);
+			// 单人锐评只有 B 站订阅有(ADR-0019 决策 12);拓展订阅上这一段会被 schema 剥掉。
 			const approvalOn =
 				typeof roastPatch.approval === "boolean"
 					? roastPatch.approval
-					: (cur?.roastSchedule.approval ?? false);
+					: cur && isBiliSubscription(cur)
+						? cur.roastSchedule.approval
+						: false;
 			const gate = checkApprovalReachable({
 				approvalOn,
 				masterTargetId: deps.store.getGlobals().master.targetId,

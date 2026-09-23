@@ -27,7 +27,12 @@ import {
 	type HistoryResponse,
 	historyQueryKey,
 } from "../services/dashboard";
-import type { PushTarget, Subscription } from "../types/domain";
+import {
+	type BiliSubscription,
+	isBiliSubscription,
+	type PushTarget,
+	type Subscription,
+} from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
 import { colorFromUid, displayName } from "./up/helpers";
@@ -86,8 +91,9 @@ export default function History() {
 	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
 
 	const subByUid = useMemo(() => {
-		const m = new Map<string, Subscription>();
-		for (const s of subsQuery.data ?? []) m.set(s.uid, s);
+		// 历史行今天按 uid 记(推送链改按订阅 id 是 ④ 的事,ADR-0019 决策 50):只有 B 站订阅对得上。
+		const m = new Map<string, BiliSubscription>();
+		for (const s of (subsQuery.data ?? []).filter(isBiliSubscription)) m.set(s.uid, s);
 		return m;
 	}, [subsQuery.data]);
 	const targetById = useMemo(() => {

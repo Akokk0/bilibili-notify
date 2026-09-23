@@ -12,12 +12,12 @@
 import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import { type BiliSubscription, makeEmptySubscription } from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 
 afterEach(cleanup);
 
-function makeSub(uid: string, name: string): Subscription {
+function makeSub(uid: string, name: string): BiliSubscription {
 	return {
 		...makeEmptySubscription(uid),
 		cachedProfile: {

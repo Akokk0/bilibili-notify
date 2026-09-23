@@ -6,6 +6,7 @@
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type { Connection, PushTarget } from "@bilibili-notify/internal";
+import { isBiliSubscription } from "@bilibili-notify/internal/constants";
 import { TSelect } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
@@ -42,7 +43,8 @@ function useOptions(kind: PickKind): Option[] {
 	});
 	switch (kind) {
 		case "sub":
-			return (subs.data ?? []).map((s) => ({
+			// 造的是 B 站的直播 / 动态事件,只列 B 站订阅(ADR-0019 决策 12)。
+			return (subs.data ?? []).filter(isBiliSubscription).map((s) => ({
 				value: s.id,
 				label: `${s.name ?? s.cachedProfile?.name ?? s.uid} · ${s.uid}${disabledTag(s.enabled)}`,
 			}));

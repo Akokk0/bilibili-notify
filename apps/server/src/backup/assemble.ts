@@ -1,4 +1,10 @@
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	ExtensionSubscription,
+	GlobalConfig,
+	PushTarget,
+	Subscription,
+} from "@bilibili-notify/internal";
 import { applyAiSecrets, collectAiSecrets } from "../config/ai-secrets.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
@@ -22,6 +28,7 @@ import {
 export interface FullBackupInput {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
+	extensionSubscriptions?: ExtensionSubscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 	cookies?: { cookiesJson?: string; refreshToken?: string };
@@ -56,6 +63,7 @@ export function assembleFullBackup(
 	const original: BackupSections = {
 		globals: input.globals,
 		subscriptions: input.subscriptions,
+		extensionSubscriptions: input.extensionSubscriptions,
 		connections: input.connections,
 		targets: input.targets,
 	};

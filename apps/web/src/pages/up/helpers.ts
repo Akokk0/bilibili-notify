@@ -21,7 +21,7 @@ export {
 	UP_COLORS,
 } from "@bilibili-notify/internal/constants";
 // displayName 真身在 utils/up-display(组件层也要用,不能反向 import 页面层),这里转口。
-export { displayName } from "../../utils/up-display";
+export { displayName, subscriptionColor } from "../../utils/up-display";
 
 /**
  * 该订阅「实际开启」的推送特性 = `overrides.features` 覆写值,缺省继承

@@ -1140,6 +1140,33 @@ export function isExtensionConnection(
 	return extensionId === undefined || connection.extensionId === extensionId;
 }
 
+// ---- 订阅的两支(ADR-0019 决策 9 / 47)的零依赖判据 ----------------------------------
+//
+// 与上面连接那几个同理:面板也要按这一格分流(列表那一行、统计 / 锐评 / 卡片页只列 B 站订阅),
+// 而它只能 `import type` 域模型。schema 那边从这里引,两边是同一份判据。
+
+/** 订阅的两支:B 站订阅、拓展提供的订阅。 */
+export type SubscriptionKind = "bilibili" | "extension";
+
+/**
+ * 这条是 B 站订阅吗。泛型:订阅本体、wire DTO、折叠后的视图都能用它收窄。
+ *
+ * 判据写成「不是拓展的」而不是「kind 等于 bilibili」:与盘上的规矩同一个口径 —— 没有 `kind`
+ * 就是 B 站(决策 47)。两个判据因此互斥且合起来覆盖全部。
+ */
+export function isBiliSubscription<T extends { kind: SubscriptionKind }>(
+	sub: T,
+): sub is Extract<T, { kind: "bilibili" }> {
+	return sub.kind !== "extension";
+}
+
+/** 这条是拓展订阅吗。同 {@link isBiliSubscription}。 */
+export function isExtensionSubscription<T extends { kind: SubscriptionKind }>(
+	sub: T,
+): sub is Extract<T, { kind: "extension" }> {
+	return sub.kind === "extension";
+}
+
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //
 // 清单的 schema(`schema/extension-manifest.ts`)从这里引、并从根入口转出去;面板对根入口

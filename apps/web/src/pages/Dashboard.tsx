@@ -49,7 +49,12 @@ import {
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
-import type { PushTarget, Subscription } from "../types/domain";
+import {
+	type BiliSubscription,
+	isBiliSubscription,
+	type PushTarget,
+	type Subscription,
+} from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { DeltaTag, Sparkline } from "./stats/charts";
@@ -99,14 +104,15 @@ function hasAnyLiveTarget(sub: Subscription): boolean {
 
 function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subscription[] }) {
 	const subByUid = useMemo(() => {
-		const m = new Map<string, Subscription>();
-		for (const s of subs) m.set(s.uid, s);
+		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
+		const m = new Map<string, BiliSubscription>();
+		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
 		return m;
 	}, [subs]);
 	// 用户订阅了但没给 live 类 feature 配 target 的数量 —— 这些订阅的直播状态
 	// 永远不会出现在面板里。empty state 里露出 hint 让用户知道该去哪配置。
 	const unmonitoredCount = useMemo(
-		() => subs.filter((s) => s.enabled && !hasAnyLiveTarget(s)).length,
+		() => subs.filter((s) => isBiliSubscription(s) && s.enabled && !hasAnyLiveTarget(s)).length,
 		[subs],
 	);
 	return (
@@ -278,8 +284,9 @@ function TimelinePanel({
 	targets: PushTarget[];
 }) {
 	const subByUid = useMemo(() => {
-		const m = new Map<string, Subscription>();
-		for (const s of subs) m.set(s.uid, s);
+		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
+		const m = new Map<string, BiliSubscription>();
+		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
 		return m;
 	}, [subs]);
 	const targetById = useMemo(() => {
@@ -421,8 +428,9 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 		queryFn: () => api.get<FansResponse>("/api/fans"),
 	});
 	const subByUid = useMemo(() => {
-		const m = new Map<string, Subscription>();
-		for (const s of subs) m.set(s.uid, s);
+		// 在播 / 推送历史 / 粉丝都按 uid 记,只有 B 站订阅对得上(ADR-0019 决策 12,拓展订阅在 T5)。
+		const m = new Map<string, BiliSubscription>();
+		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
 		return m;
 	}, [subs]);
 
@@ -835,7 +843,7 @@ export default function Dashboard() {
 			<>
 				<b>
 					{(() => {
-						const sub = subs.find((s) => s.uid === live[0].uid);
+						const sub = subs.filter(isBiliSubscription).find((s) => s.uid === live[0].uid);
 						return sub ? displayName(sub) : `UID ${live[0].uid}`;
 					})()}
 				</b>{" "}

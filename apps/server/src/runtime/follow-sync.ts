@@ -1,6 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "@bilibili-notify/api";
-import type { Logger, Subscription } from "@bilibili-notify/internal";
+import { isBiliSubscription, type Logger, type Subscription } from "@bilibili-notify/internal";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
@@ -94,7 +94,8 @@ async function queryFollowed(
 }
 
 export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResult> {
-	const subs = deps.subs();
+	// 关注是 B 站的事:拓展订阅没有 uid,不在这里(ADR-0019 决策 9)。
+	const subs = deps.subs().filter(isBiliSubscription);
 	if (subs.length === 0) {
 		return { checked: 0, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
 	}

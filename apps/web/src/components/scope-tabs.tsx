@@ -26,23 +26,27 @@ import {
 	useDismiss,
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
-import type { Subscription } from "../types/domain";
+import type { BiliSubscription } from "../types/domain";
 import { displayName } from "../utils/up-display";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;
 
+/**
+ * 只收 B 站订阅:按 UP 定制规则 / 卡片的那两页第一版不含拓展订阅(ADR-0019 决策 12),
+ * 调用方先筛过。
+ */
 export interface ScopeTabsProps {
 	scope: Scope;
 	onChange: (next: Scope) => void;
-	tabSubs: Subscription[];
-	availableSubs: Subscription[]; // candidates for "添加 UP" dropdown
+	tabSubs: BiliSubscription[];
+	availableSubs: BiliSubscription[]; // candidates for "添加 UP" dropdown
 	onAddSub: (id: string) => void;
 	onRemoveSub: (id: string) => void;
-	overridesCountFor: (sub: Subscription) => number;
+	overridesCountFor: (sub: BiliSubscription) => number;
 	/** 自定义提示语(右侧)。默认走 Rules 文案;Cards 传卡片专属文案。 */
 	globalHint?: string;
-	perUpHint?: (sub: Subscription | undefined) => React.ReactNode;
+	perUpHint?: (sub: BiliSubscription | undefined) => React.ReactNode;
 }
 
 export function ScopeTabs({

@@ -31,13 +31,14 @@ export interface ServiceContext {
 /**
  * 订阅变更操作。CRUD 产生的 diff 列表，随 subscription-changed 事件携带。
  *
- * `remove` 同时携带 `id`（dashboard 内部 uuid）与 `uid`（B 站用户 ID）。
- * 下游引擎（DynamicEngine / LiveEngine）按 B 站 UID 索引 listener / poll target，
- * 没有 uid 时无法正确清理已订阅 UP 的资源；保留 id 以便 store 内部按主键定位。
+ * `remove` 带着**被删掉的那一整条**。下游引擎（DynamicEngine / LiveEngine）按 B 站 UID
+ * 索引 listener / poll target，得拿到 uid 才清得掉资源 —— 但拓展订阅没有 uid(ADR-0019
+ * 决策 9),所以这里不再单拎一个 `uid: string`:那样拓展订阅只能填个空串,下游照样拿它
+ * 去清,编译器一声不吭。带整条订阅,消费方按 `kind` 收窄之后才读得到 uid。
  */
 export type SubscriptionOp =
 	| { type: "add"; sub: Subscription }
-	| { type: "remove"; id: string; uid: string }
+	| { type: "remove"; sub: Subscription }
 	| { type: "update"; sub: Subscription };
 
 /**

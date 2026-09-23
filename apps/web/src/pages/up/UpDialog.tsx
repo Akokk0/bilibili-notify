@@ -20,16 +20,17 @@ import {
 	FEATURE_KEYS,
 	FEATURE_LABELS,
 	type FeatureKey,
+	isBiliSubscription,
 	PUSH_EXTRAS,
 	type PushTarget,
 	type Subscription,
 } from "../../types/domain";
 import {
-	colorFromUid,
 	displayName,
 	targetsById as makeTargetsById,
 	platformSupportsAtAll,
 	routingAlignedToFeatures,
+	subscriptionColor,
 } from "./helpers";
 
 const FEATURE_GROUPS: ReadonlyArray<{
@@ -247,7 +248,7 @@ export function UpDialog({
 
 	if (!draft) return null;
 
-	const color = colorFromUid(draft.uid);
+	const color = subscriptionColor(draft);
 	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
 	// 始终可点 + 关闭时一律走丢弃确认。
 	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
@@ -517,10 +518,13 @@ export function UpDialog({
 							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
-							<span className="tabular-nums">UID {draft.uid}</span>
+							{/* 拓展订阅没有 uid(ADR-0019 决策 9)。 */}
+							{isBiliSubscription(draft) ? (
+								<span className="tabular-nums">UID {draft.uid}</span>
+							) : null}
 							{draft.cachedProfile?.fans != null ? (
 								<>
-									<span className="mx-1 opacity-70">·</span>
+									{isBiliSubscription(draft) ? <span className="mx-1 opacity-70">·</span> : null}
 									<span>
 										{draft.cachedProfile.fans >= 10_000
 											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`

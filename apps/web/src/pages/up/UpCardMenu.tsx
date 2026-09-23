@@ -11,7 +11,8 @@ export interface UpCardMenuProps {
 	onClose: () => void;
 	onEdit: () => void;
 	onToggleEnabled: () => void;
-	onCopyUid: () => void;
+	/** 不给 = 不显示「复制 UID」:拓展订阅没有 uid(ADR-0019 决策 9)。 */
+	onCopyUid?: () => void;
 	onAddToGroup: () => void;
 	onDelete: () => void;
 }
@@ -63,7 +64,9 @@ export function UpCardMenu({
 			icon: <Icon.bell size={14} />,
 			onSelect: onToggleEnabled,
 		},
-		{ key: "copy", label: "复制 UID", icon: <Icon.link size={14} />, onSelect: onCopyUid },
+		...(onCopyUid
+			? [{ key: "copy", label: "复制 UID", icon: <Icon.link size={14} />, onSelect: onCopyUid }]
+			: []),
 		{ key: "group", label: "编辑分组", icon: <Icon.list size={14} />, onSelect: onAddToGroup },
 		{
 			key: "delete",

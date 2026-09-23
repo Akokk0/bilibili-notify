@@ -250,9 +250,11 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
 		refs.push("全局默认");
 	}
+	// 两支订阅都算(ADR-0019 决策 47):漏看拓展订阅,它引用的图会被当成「没人用」删掉。
+	// 拓展订阅没有 uid,用名字 / 外部 id 指认。
 	for (const s of subs) {
 		if (inStyle(s.overrides.cardStyle) || inByKind(s.overrides.cardStyleByKind)) {
-			refs.push(`UP ${s.uid}`);
+			refs.push(s.kind === "extension" ? `订阅「${s.name || s.externalId}」` : `UP ${s.uid}`);
 		}
 	}
 	return refs;

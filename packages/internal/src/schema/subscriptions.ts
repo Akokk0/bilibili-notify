@@ -19,6 +19,7 @@ import {
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
+import { ExtensionIdSchema } from "./extension-manifest";
 import { MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
@@ -254,15 +255,39 @@ export const SubscriptionStateSchema = z.object({
 export type SubscriptionState = z.infer<typeof SubscriptionStateSchema>;
 
 /**
- * 单一订阅模型，统一 SubItem (基础) + AdvancedSubItem (高级) 两套。
+ * 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
+ * 不用来这儿补一条 refine。两支订阅共用这一条。
+ */
+function refineExtrasWithinRouting(
+	s: { routing: SubscriptionRouting; extras: SubscriptionExtras },
+	ctx: z.RefinementCtx,
+): void {
+	for (const key of EXTRA_KEYS) {
+		const feature = PUSH_EXTRAS[key].feature;
+		if (Object.keys(s.extras[key]).every((t) => s.routing[feature].includes(t))) continue;
+		ctx.addIssue({
+			code: "custom",
+			message: `extras.${key} keys must be a subset of routing.${feature}`,
+			path: ["extras", key],
+		});
+	}
+}
+
+/**
+ * **B 站订阅**(ADR-0019 决策 9:「B 站那支一个字不动」)。
  * id 与 uid 分离：id 是 dashboard 内部稳定标识；uid 是 B 站用户 ID。
  *
  * **纯配置**：展示缓存 `cachedProfile` 与运行时 `state` 已外置到 apps/server 的
  * SubRuntimeStore（见 CachedProfileSchema / SubscriptionStateSchema 注释）。Zod
  * 默认 strip 未知键——旧 subscriptions.json 内嵌的这两个字段 load 时自动剥离。
+ *
+ * `kind` 只活在内存与线上(决策 47):盘上 `subscriptions.json` 的行**没有**这一格 —— 旧载荷
+ * 写的就是这个形状,写回时由 ConfigStore 剥掉。所以读的时候缺了就是 B 站。其余键的顺序别动:
+ * 剥掉 `kind` 之后,写出来的行与旧载荷写的一字不差。
  */
-const SubscriptionObjectSchema = z
+const BiliSubscriptionObjectSchema = z
 	.object({
+		kind: z.literal("bilibili").default("bilibili"),
 		id: z.uuid(),
 		uid: z.string().regex(/^\d+$/, "uid must be a numeric Bilibili UID string"),
 		/** 用户手填的 UP 昵称 / 别名。不同于 cachedProfile.name(平台实时资料缓存)。 */
@@ -285,28 +310,78 @@ const SubscriptionObjectSchema = z
 		roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
-	// 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
-	// 不用来这儿补一条 refine。
-	.superRefine((s, ctx) => {
-		for (const key of EXTRA_KEYS) {
-			const feature = PUSH_EXTRAS[key].feature;
-			if (Object.keys(s.extras[key]).every((t) => s.routing[feature].includes(t))) continue;
-			ctx.addIssue({
-				code: "custom",
-				message: `extras.${key} keys must be a subset of routing.${feature}`,
-				path: ["extras", key],
-			});
-		}
-	});
-export const SubscriptionSchema = z.preprocess(migrateLegacySubscription, SubscriptionObjectSchema);
-export type Subscription = z.infer<typeof SubscriptionObjectSchema>;
+	.superRefine(refineExtrasWithinRouting);
+export const BiliSubscriptionSchema = z.preprocess(
+	migrateLegacySubscription,
+	BiliSubscriptionObjectSchema,
+);
+export type BiliSubscription = z.infer<typeof BiliSubscriptionObjectSchema>;
 
-/** 工厂：创建一个完全继承全局默认的空 Subscription（routing 全空、overrides 全 undefined）。 */
-export function makeEmptySubscription(opts: { id: string; uid: string }): Subscription {
+/**
+ * 外部 id 的长度上限(字数)。BN 不解读它(决策 9),封顶只为挡住一坨巨大的字符串进配置;
+ * 抖音的 `sec_uid` 七十多个字。解析门交回的候选 `id` 就是将来的外部 id,用的是同一把尺子。
+ */
+export const EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX = 256;
+
+/**
+ * **拓展订阅**(ADR-0019 决策 9 / 47):住 `extension-subscriptions.json`,不进 `subscriptions.json`。
+ *
+ * - **身份** = `(extensionId, externalId)`(决策 50):`extensionId` 由 BN 填(请求来自哪个拓展),
+ *   `externalId` 是拓展给的不透明字符串,BN 原样交回、从不解读。
+ * - **不带 `uid`** —— 连 `uid?: never` 都不写:键不在,编译器才会把每一处直接读 `sub.uid`
+ *   的地方列出来逐个分流,「遍历订阅去 B 站拉资料」这类循环不会拿别的平台的 id 去问 B 站。
+ * - **没有锐评与特别关注**(决策 12:这两样是 B 站专属)。
+ */
+export const ExtensionSubscriptionSchema = z
+	.object({
+		kind: z.literal("extension"),
+		id: z.uuid(),
+		extensionId: ExtensionIdSchema,
+		externalId: z.string().min(1).max(EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX),
+		/** 用户手填的别名。不同于 cachedProfile.name(拓展报来的资料缓存)。 */
+		name: z.string().optional(),
+		enabled: z.boolean(),
+		groups: z.array(z.string()).default([]),
+		notes: z.string().optional(),
+		routing: SubscriptionRoutingSchema,
+		extras: SubscriptionExtrasSchema.default(emptyExtras),
+		overrides: SubscriptionOverridesSchema,
+	})
+	.superRefine(refineExtrasWithinRouting);
+export type ExtensionSubscription = z.infer<typeof ExtensionSubscriptionSchema>;
+
+/**
+ * 一条订阅:B 站的或拓展的。内存里只有这一份联合列表(决策 47),读任何一支独有的字段
+ * (`uid` / `roastSchedule` / `specialUsers` / `extensionId` …)之前先按 `kind` 收窄。
+ */
+export type Subscription = BiliSubscription | ExtensionSubscription;
+
+/**
+ * 联合那一份的解析:**按 `kind` 分派**,而不是 `z.union` 挨个试 —— 挨个试的话一行坏掉的
+ * B 站订阅会报出两份错(另一支的「kind 不对」混在里面)。`kind === "extension"` 走拓展那支,
+ * 其余(包括没有 `kind` 的老行)走 B 站那支;认不得的 `kind` 由 B 站那支的字面量报错。
+ *
+ * 不用 `z.discriminatedUnion`:B 站那支的 `kind` 可以缺,且它前面还挂着老数据迁移的 preprocess。
+ */
+export const SubscriptionSchema = z.unknown().transform((raw, ctx): Subscription => {
+	const r =
+		isPlainObject(raw) && raw.kind === "extension"
+			? ExtensionSubscriptionSchema.safeParse(raw)
+			: BiliSubscriptionSchema.safeParse(raw);
+	if (r.success) return r.data;
+	// 原样转交那一支的错:路径、代码、文案都不变(外层数组 / 对象照常往前补路径)。
+	// 断言只是因为「解析完的 issue」与「待登记的 issue」在 zod 里是两个类型,字段是同一套。
+	for (const issue of r.error.issues) ctx.addIssue(issue as z.core.$ZodRawIssue);
+	return z.NEVER;
+});
+
+/** 工厂：创建一个完全继承全局默认的空 B 站订阅（routing 全空、overrides 全 undefined）。 */
+export function makeEmptySubscription(opts: { id: string; uid: string }): BiliSubscription {
 	const emptyRouting = Object.fromEntries(
 		FEATURE_KEYS.map((k) => [k, [] as string[]]),
 	) as SubscriptionRouting;
 	return {
+		kind: "bilibili",
 		id: opts.id,
 		uid: opts.uid,
 		name: undefined,

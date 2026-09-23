@@ -11,6 +11,8 @@
  */
 
 import {
+	type BiliSubscription,
+	isBiliSubscription,
 	isTargetPaused,
 	type Logger,
 	type NotificationPayload,
@@ -292,8 +294,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return deps.store.getGlobals().roastSchedule;
 	}
 
+	/** 单人锐评只有 B 站订阅有(ADR-0019 决策 12)。 */
+	function biliSubs(): BiliSubscription[] {
+		return deps.store.getSubscriptions().filter(isBiliSubscription);
+	}
+
 	function soloConfig(uid: string): RoastSchedule | undefined {
-		return deps.store.getSubscriptions().find((s) => s.uid === uid)?.roastSchedule;
+		return biliSubs().find((s) => s.uid === uid)?.roastSchedule;
 	}
 
 	/**
@@ -328,7 +335,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (board?.enabled) {
 			out.set(BOARD_KEY, { cron: board.cron, run: runBoardOnce, label: "UP 主周报" });
 		}
-		for (const sub of deps.store.getSubscriptions()) {
+		for (const sub of biliSubs()) {
 			const s = sub.roastSchedule;
 			if (!s?.enabled) continue;
 			const name = sub.name?.trim() || `UID ${sub.uid}`;
@@ -355,7 +362,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			logger.debug(`[roast-sched] uid=${uid} 已不在订阅列表,跳过`);
 			return { kind: "gen-failed", why: "这位 UP 已经不在订阅列表里了" };
 		}
-		const sub = deps.store.getSubscriptions().find((s) => s.uid === uid);
+		const sub = biliSubs().find((s) => s.uid === uid);
 		return await runOnce("solo", cfg, `${sub?.name?.trim() || `UID ${uid}`} 的锐评`, uid);
 	}
 

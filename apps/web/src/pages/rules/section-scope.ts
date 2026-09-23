@@ -10,7 +10,12 @@
  * isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import type { ContentFiltersOverride, ScheduleOverride, Subscription } from "../../types/domain";
+import type {
+	BiliSubscription,
+	ContentFiltersOverride,
+	ScheduleOverride,
+	Subscription,
+} from "../../types/domain";
 import type { SectionId } from "./sections";
 
 /** ContentFilters 里属于「动态过滤」域的字段。 */
@@ -69,7 +74,7 @@ export function hasAiPersonaOverride(
  * 任何 preset 都指不着 = AI 那格恒不亮,对其余分类没有影响。
  */
 export function isSectionCustomized(
-	sub: Subscription,
+	sub: BiliSubscription,
 	sectionId: SectionId,
 	presets: readonly { id: string }[] = [],
 ): boolean {

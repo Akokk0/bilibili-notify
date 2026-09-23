@@ -1,5 +1,5 @@
 import type { SubItemView, Subscriptions } from "@bilibili-notify/ai";
-import type { Subscription } from "@bilibili-notify/internal";
+import { isBiliSubscription, type Subscription } from "@bilibili-notify/internal";
 
 /**
  * 只按**真正读到的那点东西**声明依赖,而不是整个 `SubscriptionStore` /
@@ -50,7 +50,8 @@ export function buildAiSubsView(
 	subRuntimeStore: ProfileSource,
 ): Subscriptions {
 	const view: Subscriptions = {};
-	for (const sub of subscriptionStore.list()) {
+	// AI 工具查订阅第一版只有 B 站订阅(ADR-0019 决策 12):视图按 uid 建,拓展订阅没有 uid。
+	for (const sub of subscriptionStore.list().filter(isBiliSubscription)) {
 		// 停用的订阅不进视图:主人把某个 UP 关掉了,女仆的答案里就不该还有他。
 		if (!sub.enabled) continue;
 		const cached = subRuntimeStore.get(sub.id)?.cachedProfile?.name?.trim();

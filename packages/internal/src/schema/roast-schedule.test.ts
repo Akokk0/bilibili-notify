@@ -21,7 +21,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import { ROAST_MAX_DAYS, ROAST_MIN_DAYS, RoastScheduleSchema } from "./roast-schedule";
-import { makeEmptySubscription, SubscriptionSchema } from "./subscriptions";
+import { BiliSubscriptionSchema, makeEmptySubscription } from "./subscriptions";
 
 describe("RoastScheduleSchema", () => {
 	it("默认是关的 —— 存量用户升上来不会突然开始发帖", () => {
@@ -78,7 +78,7 @@ describe("roastSchedule 在配置里的落点", () => {
 			uid: "123",
 		}) as unknown as Record<string, unknown>;
 		delete sub.roastSchedule;
-		const parsed = SubscriptionSchema.safeParse(sub);
+		const parsed = BiliSubscriptionSchema.safeParse(sub);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.roastSchedule.enabled).toBe(false);
 	});

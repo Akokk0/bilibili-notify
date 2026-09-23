@@ -1,4 +1,10 @@
-import type { MessageBus, Subscription, SubscriptionOp } from "@bilibili-notify/internal";
+import {
+	type BiliSubscription,
+	isBiliSubscription,
+	type MessageBus,
+	type Subscription,
+	type SubscriptionOp,
+} from "@bilibili-notify/internal";
 
 /**
  * 稳定序列化(递归按 key 排序)。P2:diff()/upsert 此前用裸 `JSON.stringify`
@@ -28,8 +34,11 @@ function sameSubscription(a: Subscription, b: Subscription): boolean {
 export interface SubscriptionStore {
 	/** Return a snapshot of all subscriptions (shallow copy). */
 	list(): Subscription[];
-	/** Find a subscription by uid; returns undefined if not found. */
-	findByUid(uid: string): Subscription | undefined;
+	/**
+	 * Find a **B 站** subscription by uid; returns undefined if not found. 拓展订阅没有 uid
+	 * (ADR-0019 决策 9),永远不会被它找到 —— 哪怕某个拓展的外部 id 恰好也是这串数字。
+	 */
+	findByUid(uid: string): BiliSubscription | undefined;
 	/** Find a subscription by its stable id; returns undefined if not found. */
 	findById(id: string): Subscription | undefined;
 	/**
@@ -58,7 +67,7 @@ export function diff(prev: Subscription[], next: Subscription[]): SubscriptionOp
 	const nextMap = new Map(next.map((s) => [s.id, s]));
 
 	for (const [id, sub] of prevMap) {
-		if (!nextMap.has(id)) ops.push({ type: "remove", id, uid: sub.uid });
+		if (!nextMap.has(id)) ops.push({ type: "remove", sub });
 	}
 	for (const [id, sub] of nextMap) {
 		if (!prevMap.has(id)) {
@@ -83,7 +92,7 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 			return [...subs];
 		},
 		findByUid(uid) {
-			return subs.find((s) => s.uid === uid);
+			return subs.filter(isBiliSubscription).find((s) => s.uid === uid);
 		},
 		findById(id) {
 			return subs.find((s) => s.id === id);
@@ -105,7 +114,7 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 			if (idx === -1) return undefined;
 			const removed = subs[idx];
 			subs = [...subs.slice(0, idx), ...subs.slice(idx + 1)];
-			bus.emit("subscription-changed", [{ type: "remove", id, uid: removed.uid }]);
+			bus.emit("subscription-changed", [{ type: "remove", sub: removed }]);
 			return removed;
 		},
 		replaceAll(next) {

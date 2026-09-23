@@ -17,6 +17,7 @@ import type {
 	StatsRoastResult,
 	StatsSoloRoastResult,
 } from "@bilibili-notify/contract";
+import { isBiliSubscription } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import { resolveAiOverride } from "../runtime/engines.js";
@@ -169,7 +170,8 @@ export async function generateBoardRoast(
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return { ok: false, kind: "overview-failed" };
 
-	const subs = deps.store.getSubscriptions();
+	// 锐评只有 B 站订阅有(ADR-0019 决策 12)。
+	const subs = deps.store.getSubscriptions().filter(isBiliSubscription);
 	const nameByUid = new Map(subs.map((s) => [s.uid, displayName(deps, s.id, s.uid)]));
 	const ups = overview.rows.map((r) => toRoastInput(r, nameByUid.get(r.uid) ?? `UID ${r.uid}`));
 	if (ups.length < 2) return { ok: false, kind: "too-few-ups" };
@@ -210,7 +212,10 @@ export async function generateSoloRoast(
 
 	// 先确认这个 uid 真的订阅着。不校验的话,任何人构造一个 uid 就能让我们拿着
 	// 一份空数据去请求模型 —— 白烧 token,还会渲染出一张查无此人的卡。
-	const sub = deps.store.getSubscriptions().find((s) => s.uid === opts.uid);
+	const sub = deps.store
+		.getSubscriptions()
+		.filter(isBiliSubscription)
+		.find((s) => s.uid === opts.uid);
 	if (!sub) return { ok: false, kind: "not-subscribed" };
 
 	const aiSettings = deps.store.getGlobals().defaults.ai;

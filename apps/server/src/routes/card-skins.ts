@@ -210,10 +210,12 @@ export function createCardSkinsRoute(deps: {
 		}
 		if (!store.has(id)) return notFound(c);
 		const global = config.getGlobals().defaults.cardSkin === id;
+		// 两支订阅都算(ADR-0019 决策 47):拓展订阅也能单独指定皮肤,漏看它就会删掉一套
+		// 还有人在用的皮肤。拓展订阅没有 uid,没起名字时用它的外部 id 指认。
 		const subscriptions = config
 			.getSubscriptions()
 			.filter((s) => s.overrides?.cardSkin === id)
-			.map((s) => s.name || s.uid);
+			.map((s) => s.name || (s.kind === "extension" ? s.externalId : s.uid));
 		if (global || subscriptions.length > 0) {
 			const who = [
 				...(global ? ["全局默认"] : []),

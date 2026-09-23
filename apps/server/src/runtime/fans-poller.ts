@@ -1,18 +1,24 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type {
-	CachedProfile,
-	ConfigScope,
-	Disposable,
-	FansRefreshEntry,
-	Logger,
-	MessageBus,
-	ServiceContext,
+import {
+	type BiliSubscription,
+	type CachedProfile,
+	type ConfigScope,
+	type Disposable,
+	type FansRefreshEntry,
+	isBiliSubscription,
+	type Logger,
+	type MessageBus,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
 import type { FansStore } from "../fans/store.js";
-import type { SubRuntime, SubRuntimeStore } from "./sub-runtime-store.js";
+import {
+	pruneOrphanSubRuntime,
+	type SubRuntime,
+	type SubRuntimeStore,
+} from "./sub-runtime-store.js";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * ONE_HOUR_MS;
@@ -106,6 +112,17 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// 跳过本轮没采到的 uid(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁)。
 	const lastByUid = new Map<string, FansRefreshEntry>();
 
+	/**
+	 * 粉丝轮询只问 B 站订阅(ADR-0019 决策 12:粉丝曲线第一版不含拓展订阅)。拓展订阅没有
+	 * uid,拿它去问 B 站等于拿别的平台的 id 查一个不相干的人。
+	 */
+	function enabledBiliSubs(): BiliSubscription[] {
+		return subscriptionStore
+			.list()
+			.filter(isBiliSubscription)
+			.filter((s) => s.enabled);
+	}
+
 	function tick(): void {
 		void tickOnce();
 	}
@@ -145,7 +162,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			logger.debug("[fans-poller] 风控退避中,跳过本轮 tick");
 			return;
 		}
-		const subs = subscriptionStore.list().filter((s) => s.enabled);
+		const subs = enabledBiliSubs();
 		// Sweep:lastByUid 只保留当前 enabled subs;被删除 / 禁用的 uid 同步 dropUid
 		// 清掉时序文件。这样下游 emit 出去的快照不会再含失效 uid,前端覆盖式 setQueryData
 		// 自然把已删订阅的卡片从 dashboard 上撤掉。
@@ -310,7 +327,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		if (disposed) return;
 		// 用一个"远未来"时间戳让 findNearestBefore 退化为"取最近一条"。
 		const futureIso = "9999-12-31T00:00:00.000Z";
-		const subs = subscriptionStore.list().filter((s) => s.enabled);
+		const subs = enabledBiliSubs();
 		for (const sub of subs) {
 			if (disposed) return;
 			try {
@@ -360,9 +377,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	 */
 	async function refreshProfilesBatch(): Promise<void> {
 		if (disposed) return;
-		const targets = subscriptionStore
-			.list()
-			.filter((s) => s.enabled && subRuntimeStore.get(s.id)?.cachedProfile);
+		const targets = enabledBiliSubs().filter((s) => subRuntimeStore.get(s.id)?.cachedProfile);
 		for (let i = 0; i < targets.length; i += CARDS_BATCH_SIZE) {
 			if (disposed) return;
 			const chunk = targets.slice(i, i + CARDS_BATCH_SIZE);
@@ -424,19 +439,22 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		let hadRemove = false;
 		for (const op of ops) {
 			if (op.type !== "remove") continue;
+			// 删掉的是哪一支都要清资料缓存(下面那次 prune);粉丝时序只有 B 站订阅有。
 			hadRemove = true;
-			if (lastByUid.has(op.uid)) {
-				lastByUid.delete(op.uid);
+			if (!isBiliSubscription(op.sub)) continue;
+			const uid = op.sub.uid;
+			if (lastByUid.has(uid)) {
+				lastByUid.delete(uid);
 				removedAny = true;
 			}
-			void fansStore.dropUid(op.uid);
+			void fansStore.dropUid(uid);
 		}
 		if (hadRemove) {
 			// Drop the deleted sub's SubRuntimeStore entry. subscriptionStore
 			// already reflects the post-delete set when this fires (config-changed
 			// → bridge replaceAll → subscription-changed), so a keep-set prune is
 			// precise + idempotent and avoids a dedicated delete(id) API.
-			void subRuntimeStore.prune(subscriptionStore.list().map((s) => s.id));
+			void pruneOrphanSubRuntime(subRuntimeStore, subscriptionStore);
 		}
 		if (removedAny) {
 			bus.emit("fans-refreshed", Array.from(lastByUid.values()));

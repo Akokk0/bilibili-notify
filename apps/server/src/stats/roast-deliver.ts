@@ -7,7 +7,12 @@
  */
 
 import type { RoastCardUp } from "@bilibili-notify/image";
-import { colorFromUid, isTargetPaused, type NotificationPayload } from "@bilibili-notify/internal";
+import {
+	colorFromUid,
+	isBiliSubscription,
+	isTargetPaused,
+	type NotificationPayload,
+} from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;
@@ -49,7 +54,13 @@ export interface DeliverOutcome {
 
 /** uid → 名称 / 头像 / 配色。配色走 colorFromUid,与 dashboard 上同一位 UP 一致。 */
 export function makeUpMeta(deps: RoastDeliverDeps): (uid: string) => RoastCardUp {
-	const subByUid = new Map(deps.store.getSubscriptions().map((s) => [s.uid, s]));
+	// 锐评只有 B 站订阅有(ADR-0019 决策 12)。
+	const subByUid = new Map(
+		deps.store
+			.getSubscriptions()
+			.filter(isBiliSubscription)
+			.map((s) => [s.uid, s]),
+	);
 	return (uid: string) => {
 		const sub = subByUid.get(uid);
 		const profile = sub ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;

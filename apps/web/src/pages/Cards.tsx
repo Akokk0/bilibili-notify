@@ -44,7 +44,7 @@ import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import type { PushTarget, Subscription } from "../types/domain";
+import { isBiliSubscription, type PushTarget, type Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
@@ -651,7 +651,11 @@ export default function Cards() {
 	const styleKind: StyleKind = isGlobalTab ? "live" : activeTab;
 	const kind: CardKind = styleKind === "dynamic" ? "dyn" : styleKind;
 
-	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
+	// 卡片页的按 UP 预览按 uid 取真实数据,第一版只有 B 站订阅(ADR-0019 决策 12)。
+	const allSubs = useMemo(
+		() => (subsQuery.data ?? []).filter(isBiliSubscription),
+		[subsQuery.data],
+	);
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
 	const serverGlobalStyle = globalsQuery.data?.defaults.cardStyle;
