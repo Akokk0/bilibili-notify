@@ -1244,6 +1244,9 @@ describe("POST /api/ext/:id/actions/:name", () => {
 			"抖音网关回了 403",
 		],
 		["超时", { ok: false, reason: "timeout" }, 504, "秒"],
+		// 决策 42:同一个动作在跑时再按,不排队、不并发 —— 说清「还在跑」,不是笼统的失败。
+		["同一个动作还在跑", { ok: false, reason: "busy", aborted: false }, 409, "还没回来"],
+		["上一发超时叫停了却还没停", { ok: false, reason: "busy", aborted: true }, 409, "已经叫它停下"],
 	])("%s —— %s", async (_label, outcome, status, text) => {
 		const res = await call(
 			boot({ actions: outcome ? { "douyin/poll.now": outcome } : {} }),

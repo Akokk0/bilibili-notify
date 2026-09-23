@@ -47,13 +47,18 @@ export type {
 } from "@bilibili-notify/extension";
 
 /**
- * 跑一个动作的结果。失败分四种,各有各的说法 —— 并成一句「出错了」的话,面板只能对着黑盒猜:
- * 清单里没这个名字、声明了代码却没接、拓展自己抛了(带原话)、超时。
+ * 跑一个动作的结果。失败分五种,各有各的说法 —— 并成一句「出错了」的话,面板只能对着黑盒猜:
+ * 清单里没这个名字、声明了代码却没接、拓展自己抛了(带原话)、超时、同一个动作还在跑。
  */
 export type ActionOutcome =
 	| { ok: true }
 	| { ok: false; reason: "undeclared" | "unhandled" | "timeout" }
-	| { ok: false; reason: "failed"; message: string };
+	| { ok: false; reason: "failed"; message: string }
+	/**
+	 * 同一个动作的上一发还没回来(决策 42:不排队、不并发)。`aborted`:上一发超时后已经叫停过,
+	 * 它却还没停 —— 主人要知道这不是自己按得太快。
+	 */
+	| { ok: false; reason: "busy"; aborted: boolean };
 
 /**
  * `ctx.settings(schema)` 那一下,存着的那份过不了这份 zod(ADR-0019 决策 36)—— 拓展不该拿着
@@ -134,7 +139,10 @@ export interface ExtensionRuntime {
 	 * 装载器在 activate 之后叫 —— 带异步 refine 的 zod 在 `ctx.settings()` 那一刻判不完,只有这一道。
 	 */
 	verifySettings(): Promise<string | undefined>;
-	/** 跑面板按下的那个动作(ADR-0019 决策 22)。 */
+	/**
+	 * 跑面板按下的那个动作(ADR-0019 决策 22 / 42)。超时与收摊时经 `signal` 叫停 handler;同一个动作
+	 * 在跑时回 `busy`,不同的动作互不相干。
+	 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
@@ -242,16 +250,21 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let pushSourceRegistered = false;
 	let pushView: ExtensionPushView | undefined;
 	/**
-	 * 清单声明过的动作名;清单里没有 `actions` 这一段(v1 一律没有)就是 `undefined`。
-	 * 建成 Set 而不是拿清单那个普通对象查:名字是拓展与面板给的,`in` / 下标会顺着原型链把
+	 * 清单声明过的动作名(决策 42:清单里只有名字的一串);清单里没有 `actions` 这一段(v1 一律
+	 * 没有)就是 `undefined`。建成 Set 查:名字是拓展与面板给的,拿普通对象按下标查会顺着原型链把
 	 * `constructor` / `toString` 判成声明了。
 	 */
 	const declaredActions: ReadonlySet<string> | undefined =
 		opts.manifest.apiVersion === 2 && opts.manifest.actions
-			? new Set(Object.keys(opts.manifest.actions))
+			? new Set(opts.manifest.actions)
 			: undefined;
 	/** 代码接了的动作。卸载时清空 —— 之后面板再按,就是「声明了却没接」。 */
-	const actionHandlers = new Map<string, () => void | Promise<void>>();
+	const actionHandlers = new Map<string, (signal: AbortSignal) => void | Promise<void>>();
+	/**
+	 * 在跑的动作 → 叫停它的那个把手。「在跑」算到 handler 真的回来为止(超时叫停了却不停的也算);
+	 * 收摊时逐个叫停。
+	 */
+	const runningActions = new Map<string, AbortController>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
 
@@ -611,7 +624,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 */
 	function checkedView(fn: () => ExtensionView): ViewCheck {
 		const input = {
-			fields: opts.manifest.apiVersion === 2 ? (opts.manifest.settings?.fields ?? []) : [],
+			fields: settingsFields,
+			// 「调拓展」的按钮只认清单声明过的动作(决策 42)。
+			actions: opts.manifest.apiVersion === 2 ? (opts.manifest.actions ?? []) : [],
 			// 现读:`items` 的键认的是**现在**存着的项。
 			settings: opts.settings(),
 		};
@@ -672,21 +687,41 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		async runAction(name, runOpts = {}) {
 			if (!declaredActions?.has(name)) return { ok: false, reason: "undeclared" };
-			const handler = actionHandlers.get(name);
+			// 收摊一开始就把在跑的都叫停了 —— 钩子还没跑完时再起一发,就没人叫停它。
+			const handler = disposed ? undefined : actionHandlers.get(name);
 			if (!handler) return { ok: false, reason: "unhandled" };
+			// 不排队、不并发(决策 42):两发一起跑,扫码登录就是两张码、两份轮询抢着存账号;排队的话,
+			// 主人连按三下就在背后多跑两轮。
+			const running = runningActions.get(name);
+			if (running) return { ok: false, reason: "busy", aborted: running.signal.aborted };
 			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
+			const controller = new AbortController();
+			runningActions.set(name, controller);
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const timeout = new Promise<ActionOutcome>((resolve) => {
-				timer = setTimeout(() => resolve({ ok: false, reason: "timeout" }), timeoutMs);
+				timer = setTimeout(() => {
+					// 🔴 宿主不等了就叫它停:主人那头只看见一句「超时」,它却在背后接着把事做完(扫码登录
+					// 会多存下一份账号)。TimeoutError 是 `AbortSignal.timeout()` 那个名字,拓展照惯例认得。
+					controller.abort(
+						new DOMException(
+							`动作 ${name} 超过 ${timeoutMs / 1000} 秒没回,BN 不等了`,
+							"TimeoutError",
+						),
+					);
+					resolve({ ok: false, reason: "timeout" });
+				}, timeoutMs);
 			});
 			const run = (async (): Promise<ActionOutcome> => {
 				try {
-					await handler();
+					await handler(controller.signal);
 					return { ok: true };
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
 					logger.warn(`动作 ${name} 抛了:${message}`);
 					return { ok: false, reason: "failed", message };
+				} finally {
+					// 收摊时整张表已经清掉了 —— 只摘自己这一格。
+					if (runningActions.get(name) === controller) runningActions.delete(name);
 				}
 			})();
 			try {
@@ -698,6 +733,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			// 🔴 在跑的动作先叫停,再跑收摊钩子 —— 钩子里能等它们收尾;不叫停的话,拓展都停了,它的
+			// handler 还在背后接着轮询平台。
+			for (const controller of runningActions.values()) {
+				controller.abort(new DOMException(`拓展 ${id} 停用了`, "AbortError"));
+			}
+			runningActions.clear();
 			// 先跑拓展自己的收摊钩子(它可能要用还活着的定时器 / 端点收尾),再拆机件。
 			// 后注册的先跑 —— 后建起来的东西通常依赖先建起来的。
 			const pending = [...hooks].reverse();

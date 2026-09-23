@@ -25,7 +25,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Fragment, type ReactNode } from "react";
-import { api } from "../../../services/api";
+import { ApiError, api } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { extensionAddress } from "./address";
 import { safeImage } from "./image";
@@ -621,7 +621,7 @@ export function useExtensionAction(extensionId: string) {
 			const answer = await api.post<{ ok?: boolean; err?: string } | undefined>(
 				`/api/ext/${extensionId}/actions/${encodeURIComponent(name)}`,
 			);
-			// 服务端的失败都带非 2xx(404 / 501 / 504 / 500),这一条防的是哪天回了 200 却说没成。
+			// 服务端的失败都带非 2xx(404 / 409 / 501 / 504 / 500),这一条防的是哪天回了 200 却说没成。
 			if (answer?.ok === false) throw new Error(answer.err ?? `动作 ${name} 没成`);
 			return answer;
 		},
@@ -636,8 +636,21 @@ export function useExtensionAction(extensionId: string) {
  *
  * 🔴 失败的原因不许吞:服务端那句原话(没声明 / 代码没接 / 超时 / 拓展自己抛的)是主人唯一能
  * 照着做的线索,换成一句「操作失败」等于让人对着黑盒再按一下。
+ *
+ * 409 不算失败:同一个动作的上一发还没回来(ADR-0019 决策 42:不排队、不并发)—— 说「还在跑」,
+ * 主人等一等就好,不用去查。服务端那句照样接在后面(超时叫停了却还没停的,那句话里说着)。
  */
 export function ActionFailure({ label, error }: { label: string; error: unknown }) {
+	if (error instanceof ApiError && error.status === 409) {
+		return (
+			// WarnNote 自己不带角色 —— 包一层 status,读屏的人按下去也听得到这一句。
+			<div role="status">
+				<WarnNote size="sm">
+					「{label}」还在跑:{reasonOf(error)}
+				</WarnNote>
+			</div>
+		);
+	}
 	return (
 		<ErrorNote size="sm">
 			「{label}」没成:{reasonOf(error)}

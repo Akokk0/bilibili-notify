@@ -36,7 +36,8 @@ import type { ZodError } from "zod";
  * 对端报来的超长名字就让整页连同列表页那一行一起消失,逼得每个拓展抄一份宿主的上限自己截断。
  *
  * 不看清单就判得了的规矩在 `@bilibili-notify/internal` 那几块 schema 里;这里多出来的是只有宿主判
- * 得了的:`items` 的键要对得上清单与存着的设置、「改设置」只许改这一项声明过的格、整份的字节上限。
+ * 得了的:`items` 的键要对得上清单与存着的设置、「改设置」只许改这一项声明过的格、「调拓展」只许调
+ * 清单声明过的动作、整份的字节上限。
  *
  * 🔴 「坏了」的标记(`{ fault }`)是这里造的,与拓展交的 `{ block }` / `{ view }` 并列 —— 拓展那份
  * schema 里没有这一层,它造不出一条假的「宿主报错」。
@@ -45,6 +46,11 @@ import type { ZodError } from "zod";
 export interface ViewCheckInput {
 	/** 清单里声明的设置项(v2 的 `settings.fields`)—— `items` 的第一层键只认其中的列表。 */
 	fields: readonly ExtensionManifestField[];
+	/**
+	 * 清单声明过的动作名(v2 的 `actions`,没声明就是空的)—— 「调拓展」的按钮只认这里面的。
+	 * 必填:可选的话哪天漏传一处,这道核就静默没了。
+	 */
+	actions: readonly string[];
 	/** 存着的设置,原样 —— `items` 的第二层键只认那张列表里现存的项。 */
 	settings: unknown;
 	/** 整份序列化后的上限,见 {@link EXTENSION_VIEW_MAX_BYTES}。只有测试会换。 */
@@ -137,6 +143,8 @@ export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewChe
 	}
 	const problems: string[] = [];
 	const images = checkImages(raw.images, problems);
+	// Set 查:名字是拓展给的,拿普通对象按下标查会顺着原型链把 `toString` 判成声明了。
+	const actions: ReadonlySet<string> = new Set(input.actions);
 	const page: ExtensionPanelBlock[] = [];
 
 	const extra = Object.keys(raw).filter((key) => !VIEW_KEYS.has(key));
@@ -157,10 +165,10 @@ export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewChe
 		else problems.push(`摘要画不出来,列表页那一行不说了:${reasonOf(parsed.error)}`);
 	}
 
-	if (raw.page !== undefined) page.push(...checkPage(raw.page, images, problems));
+	if (raw.page !== undefined) page.push(...checkPage(raw.page, images, actions, problems));
 
 	const items =
-		raw.items === undefined ? undefined : checkItems(raw.items, input, images, problems);
+		raw.items === undefined ? undefined : checkItems(raw.items, input, images, actions, problems);
 
 	const view = assemble(summary, page, items, images.good);
 	return { view: fitWithin(view, input.maxBytes ?? EXTENSION_VIEW_MAX_BYTES, problems), problems };
@@ -219,6 +227,19 @@ function imageIssues(block: ExtensionBlock, images: CheckedImages, at: string): 
 	});
 }
 
+/**
+ * 「调拓展」的按钮只许调清单声明过的动作(决策 22 / 42)。对不上的那颗画出来,按下去只会撞一句「清单
+ * 里没有这个动作」—— 先在这儿点名哪一颗、哪个名字。
+ */
+function actionIssues(
+	button: ExtensionButton,
+	declared: ReadonlySet<string>,
+	at: string,
+): string[] {
+	if (button.kind !== "action" || declared.has(button.action)) return [];
+	return [`${at}.action: 清单的 actions 里没有「${button.action}」—— 先在清单里声明`];
+}
+
 // ---- 页:按块 --------------------------------------------------------------------------
 
 function blockLabel(raw: unknown): string {
@@ -229,7 +250,12 @@ function blockLabel(raw: unknown): string {
 		: `「${type}」`;
 }
 
-function checkPage(raw: unknown, images: CheckedImages, problems: string[]): ExtensionPanelBlock[] {
+function checkPage(
+	raw: unknown,
+	images: CheckedImages,
+	actions: ReadonlySet<string>,
+	problems: string[],
+): ExtensionPanelBlock[] {
 	if (!Array.isArray(raw)) {
 		return [fault(problems, "页上的积木", "page 应该是一串积木")];
 	}
@@ -245,8 +271,13 @@ function checkPage(raw: unknown, images: CheckedImages, problems: string[]): Ext
 		}
 		const parsed = ExtensionPageBlockSchema.safeParse(block);
 		if (!parsed.success) return fault(problems, where, reasonOf(parsed.error));
-		const missing = imageIssues(parsed.data, images, "");
-		if (missing.length > 0) return fault(problems, where, missing.join(";"));
+		const issues = [
+			...imageIssues(parsed.data, images, ""),
+			...blockButtons(parsed.data).flatMap(({ path, button }) =>
+				actionIssues(button, actions, path.join(".")),
+			),
+		];
+		if (issues.length > 0) return fault(problems, where, issues.join(";"));
 		return { block: parsed.data };
 	});
 	const dropped = raw.length - EXTENSION_VIEW_MAX_PAGE_BLOCKS;
@@ -270,6 +301,7 @@ function checkItems(
 	raw: unknown,
 	input: ViewCheckInput,
 	images: CheckedImages,
+	actions: ReadonlySet<string>,
 	problems: string[],
 ): PanelItems {
 	const lists = listsOf(input.fields);
@@ -304,7 +336,7 @@ function checkItems(
 				problems.push(`items.${list} 里的「${id}」不是这张列表里现存的项 —— 这一格不画`);
 				continue;
 			}
-			const verdict = checkItem(item, field, images);
+			const verdict = checkItem(item, field, images, actions);
 			checked.set(
 				id,
 				"view" in verdict
@@ -322,6 +354,7 @@ function checkItem(
 	raw: unknown,
 	field: ExtensionManifestListField,
 	images: CheckedImages,
+	actions: ReadonlySet<string>,
 ): { view: ExtensionItemView } | { reason: string } {
 	const parsed = ExtensionItemViewSchema.safeParse(raw);
 	if (!parsed.success) return { reason: reasonOf(parsed.error) };
@@ -344,6 +377,7 @@ function checkItem(
 	}
 	for (const { at, button } of buttons) {
 		if (button.kind === "set") issues.push(...setIssues(button.set, field, `${at}.set`));
+		issues.push(...actionIssues(button, actions, at));
 	}
 	return issues.length > 0 ? { reason: issues.join(";") } : { view: item };
 }

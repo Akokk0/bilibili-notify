@@ -12,13 +12,14 @@ import type { ExtensionBlock } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { api } from "../../../../services/api";
+import { ApiError, api } from "../../../../services/api";
 import { Blocks } from "../blocks";
 import { extensionStatusKey, useExtensionView } from "../view-query";
 
-vi.mock("../../../../services/api", () => ({
+// 面板按 `instanceof ApiError` + 状态码认 409 —— 用真的那个类,替身比它宽松的话测的就不是那条路。
+vi.mock("../../../../services/api", async (importOriginal) => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-	ApiError: class extends Error {},
+	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
 /** 一枚 1×1 的 png —— 表格 icon 格与二维码都只收图片 data URL。 */
@@ -398,6 +399,23 @@ describe("button", () => {
 		// 那句话紧跟在按过的那块提示条后面
 		const pressed = screen.getByRole("button", { name: "再同步一次" });
 		expect(alert.previousElementSibling?.contains(pressed)).toBe(true);
+	});
+
+	/**
+	 * 同一个动作的上一发还没回来,服务端回 409(ADR-0019 决策 42:不排队、不并发)—— 那颗钮底下说
+	 * 「还在跑」,不是笼统的「没成」:主人要知道等一等就好,不是出了错要去查。服务端那句照样摆出来
+	 * (超时叫停了却还没停的,那句话里说着)。
+	 */
+	it("撞 409(同一个动作还在跑)—— 钮底下说「还在跑」,不当成失败", async () => {
+		const reason = "动作 poll.now 的上一发还没回来 —— 回来之前不接新的一发";
+		vi.mocked(api.post).mockRejectedValue(new ApiError(409, { ok: false, err: reason }, reason));
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
+		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
+		const note = await screen.findByRole("status");
+		expect(note.textContent).toBe(`「现在检查一次」还在跑:${reason}`);
+		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
 	it("回话说没成(ok: false)也算失败", async () => {

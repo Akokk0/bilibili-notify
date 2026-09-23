@@ -164,7 +164,7 @@ describe("parseExtensionManifest —— 两档格式", () => {
 					},
 				],
 			},
-			actions: { "login.start": { label: "扫码登录" } },
+			actions: ["login.start"],
 			contributes: {
 				subscription: {
 					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55", postNoun: "作品" },
@@ -883,15 +883,25 @@ describe("settingsValueSchema", () => {
 	});
 });
 
+/**
+ * 清单的 `actions` 只是**动作名的一串**(ADR-0019 决策 42):按钮上的字只认视图里那一份,从前每项
+ * 带的 `label` / `description` 从没被读过 —— 两份字,改了一份另一份静默作废。
+ */
 describe("v2 的动作", () => {
+	it("只有名字的一串 —— 收下,原样留着", () => {
+		const m = ok(v2({ actions: ["login.start", "refresh"] }));
+		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		expect(m.actions).toEqual(["login.start", "refresh"]);
+	});
+
 	it.each(["login.start", "refresh", "login.qrCode"])("%s —— 收下", (name) => {
-		expect(() => ok(v2({ actions: { [name]: { label: "按钮" } } }))).not.toThrow();
+		expect(() => ok(v2({ actions: [name] }))).not.toThrow();
 	});
 
 	it.each(["", "Login", "login..start", ".login", "login.", "login/start", "login-start"])(
 		"%s —— 拒(动作名要进 URL:/api/ext/:id/actions/:name)",
 		(name) => {
-			unreadable(v2({ actions: { [name]: { label: "按钮" } } }));
+			unreadable(v2({ actions: [name] }));
 		},
 	);
 
@@ -899,13 +909,20 @@ describe("v2 的动作", () => {
 		"%s(Object.prototype 上的名字)—— 拒:动作按名字查表,没声明的也会被当成声明了",
 		(name) => {
 			expect(ActionNameSchema.safeParse(name).success).toBe(false);
-			expect(unreadable(v2({ actions: { [name]: { label: "按钮" } } })).join("\n")).toMatch(/原型/);
+			expect(unreadable(v2({ actions: [name] })).join("\n")).toMatch(/原型/);
 		},
 	);
 
-	it("动作要有名字给人看", () => {
-		unreadable(v2({ actions: { refresh: { label: "" } } }));
-		unreadable(v2({ actions: { refresh: {} } }));
+	/** 重名:第二个是笔误还是本意,宿主猜不了 —— 点名是哪个名字、第几个。 */
+	it("重名 —— 拒,点名那一个", () => {
+		const issues = unreadable(v2({ actions: ["refresh", "login.start", "refresh"] }));
+		expect(issues.join("\n")).toMatch(/actions\.2.*refresh/);
+	});
+
+	/** 旧形状(名字 → { label, description } 的表)v2 还没发出去,不留退路(决策 46)。 */
+	it("旧形状(带 label 的表)—— 拒", () => {
+		unreadable(v2({ actions: { refresh: { label: "刷新" } } }));
+		unreadable(v2({ actions: {} }));
 	});
 });
 

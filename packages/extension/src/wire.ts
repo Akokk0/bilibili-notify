@@ -219,7 +219,8 @@ export type ExtensionRichRun =
 
 /**
  * 一颗按钮,显式带 `kind`:
- * - `action`:调拓展(清单 `actions` 里声明、代码 `ctx.onAction` 接);
+ * - `action`:调拓展(清单 `actions` 里声明、代码 `ctx.onAction` 接)—— 名字不在清单里的,宿主把那一块 /
+ *   那一项按降级画;
  * - `set`:让 BN 改**这一项**的一格设置 —— 只许挂在列表项上,只许改那张列表声明过的格,不碰
  *   `id`、密钥与生成的格,值的类型要对得上(`enum` 要在选项里)。
  */

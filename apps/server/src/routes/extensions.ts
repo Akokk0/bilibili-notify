@@ -375,6 +375,17 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				);
 			case "failed":
 				return c.json({ ok: false, err: outcome.message }, 500);
+			// 决策 42:不排队、不并发。面板照 409 说「还在跑」,不当成失败 —— 这句话接在它后面。
+			case "busy":
+				return c.json(
+					{
+						ok: false,
+						err: outcome.aborted
+							? `动作 ${name.data} 的上一发超过 ${ACTION_TIMEOUT_MS / 1000} 秒没回,已经叫它停下,可它还没停 —— 停下之前不接新的一发`
+							: `动作 ${name.data} 的上一发还没回来 —— 回来之前不接新的一发`,
+					},
+					409,
+				);
 		}
 	});
 

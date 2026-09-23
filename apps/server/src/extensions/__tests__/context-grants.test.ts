@@ -451,6 +451,22 @@ describe("交给面板的视图", () => {
 		expect(viewWarnings(h.lines)).toHaveLength(1);
 	});
 
+	/**
+	 * 接线:核视图时拿的是**这份清单**声明的动作(决策 42)—— 声明过的按钮照画,没声明的那一块换成
+	 * 提示。零件(`view-check`)各自的测试证明不了 ctx 真把清单那一串交过去了。
+	 */
+	it("调拓展的按钮照清单的 actions 核:声明过的照画,没声明的那一块画不出来", () => {
+		const h = harness({ manifest: { ...V2, actions: ["poll.now"] } as ExtensionManifest });
+		const button = (action: string) =>
+			({ type: "button", button: { kind: "action", label: "按我", action } }) as const;
+		h.ctx.publishView(() => ({ page: [button("poll.now"), button("secret.backdoor")] }));
+		const shown = h.runtime.status() as ExtensionPanelView;
+		expect(shown.page?.[0]).toEqual({ block: button("poll.now") });
+		expect(shown.page?.[1]).toMatchObject({
+			fault: { reason: expect.stringContaining("secret.backdoor") },
+		});
+	});
+
 	/** `items` 的第二层键认的是**现在**存着的项 —— 删掉一条之后,拓展还交它的样子就丢掉。 */
 	it("items 的键照存着的设置核:删掉的那一项丢掉并记一行", () => {
 		const h = harness({ manifest: V2, settings: SETTINGS });
@@ -541,7 +557,7 @@ describe("动作", () => {
 	const V2: ExtensionManifest = {
 		...V1_PUSH,
 		apiVersion: 2,
-		actions: { "poll.now": { label: "现在检查一次" }, "login.start": { label: "扫码登录" } },
+		actions: ["poll.now", "login.start"],
 		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
 	} as unknown as ExtensionManifest;
 
@@ -563,8 +579,8 @@ describe("动作", () => {
 	});
 
 	/**
-	 * 🔴 清单的 actions 是个普通对象:`name in actions` 会顺着原型链把 `constructor` / `toString`
-	 * 判成「声明了」。清单校验那头已经拒这些名字,这里是第二道 —— 查表只认它自己身上的键。
+	 * 🔴 「声明过没有」只认清单那一串里的名字 —— 哪天退回拿普通对象按下标查,`constructor` /
+	 * `toString` 会顺着原型链被判成「声明了」。清单校验那头已经拒这些名字,这里是第二道。
 	 */
 	it("Object.prototype 上的名字不算声明过:注册当场抛,跑是 undeclared", async () => {
 		const h = harness({ manifest: V2 });
@@ -600,6 +616,133 @@ describe("动作", () => {
 			ok: false,
 			reason: "timeout",
 		});
+	});
+
+	/**
+	 * handler 收一个 `AbortSignal`(决策 42):超时那一刻宿主已经不等了,还让它接着跑,它做完的
+	 * 事主人那头只看见一句「超时」—— 扫码登录这种会在背后多存下一份账号。
+	 */
+	it("超时 —— handler 拿到的 signal 当场中止(TimeoutError),之前没中止", async () => {
+		const h = harness({ manifest: V2 });
+		let seen: AbortSignal | undefined;
+		h.ctx.onAction("poll.now", (signal) => {
+			seen = signal;
+			return new Promise(() => {});
+		});
+		const pending = h.runtime.runAction("poll.now", { timeoutMs: 20 });
+		if (!seen) throw new Error("handler 应该当场被叫到,并拿到一个 signal");
+		expect(seen.aborted).toBe(false);
+		expect(await pending).toMatchObject({ ok: false, reason: "timeout" });
+		expect(seen.aborted).toBe(true);
+		expect((seen.reason as Error).name).toBe("TimeoutError");
+	});
+
+	/**
+	 * 停用 / 收摊时还在跑的动作一并叫停(AbortError),而且在收摊钩子跑**之前** —— 钩子里能等它们
+	 * 收尾。不叫停的话,拓展都停了,它的 handler 还在背后接着轮询平台。
+	 */
+	it("收摊 —— 还在跑的 handler 拿到的 signal 中止(AbortError),收摊钩子跑时已经中止", async () => {
+		const h = harness({ manifest: V2 });
+		let seen: AbortSignal | undefined;
+		h.ctx.onAction("poll.now", (signal) => {
+			seen = signal;
+			return new Promise((_resolve, reject) => {
+				signal.addEventListener("abort", () => reject(signal.reason));
+			});
+		});
+		let abortedWhenHookRan: boolean | undefined;
+		h.ctx.onDispose(() => {
+			abortedWhenHookRan = seen?.aborted;
+		});
+		const pending = h.runtime.runAction("poll.now");
+		if (!seen) throw new Error("handler 应该当场被叫到,并拿到一个 signal");
+		expect(seen.aborted).toBe(false);
+		await h.runtime.dispose();
+		expect(seen.aborted).toBe(true);
+		expect((seen.reason as Error).name).toBe("AbortError");
+		expect(abortedWhenHookRan).toBe(true);
+		// 它听了 signal 抛出来 —— 面板那一发照常收到它的原话,不会挂到超时。
+		expect(await pending).toMatchObject({ ok: false, reason: "failed" });
+	});
+
+	/**
+	 * 同一个动作在跑时再按 → busy(路由回 409),**不排队、不并发**(决策 42):两发一起跑,扫码登录
+	 * 就是两张码、两份轮询抢着存账号;排队的话,主人连按三下就在背后多跑两轮。不同的动作互不相干。
+	 */
+	it("同一个动作在跑时再按 —— busy;第一发照常跑完;不同的动作不互相挡;回来了又按得动", async () => {
+		const h = harness({ manifest: V2 });
+		let calls = 0;
+		let finish: (() => void) | undefined;
+		h.ctx.onAction("poll.now", () => {
+			calls += 1;
+			return new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+		});
+		let logins = 0;
+		h.ctx.onAction("login.start", () => {
+			logins += 1;
+		});
+
+		const first = h.runtime.runAction("poll.now");
+		expect(await h.runtime.runAction("poll.now")).toEqual({
+			ok: false,
+			reason: "busy",
+			aborted: false,
+		});
+		expect(calls).toBe(1);
+		expect(await h.runtime.runAction("login.start")).toEqual({ ok: true });
+		expect(logins).toBe(1);
+
+		finish?.();
+		expect(await first).toEqual({ ok: true });
+		const again = h.runtime.runAction("poll.now");
+		expect(calls).toBe(2);
+		finish?.();
+		expect(await again).toEqual({ ok: true });
+	});
+
+	/**
+	 * 「在跑」算到 handler 真的回来为止:超时叫停了它却不听,它就还在背后跑 —— 放第二发进去就是两发
+	 * 并发。回 busy 时说清「已经叫停过了」,主人才知道不是自己按得太快。
+	 */
+	it("超时叫停了却不停的 —— 仍算在跑,再按是 busy,并说明已经叫停过", async () => {
+		const h = harness({ manifest: V2 });
+		let calls = 0;
+		h.ctx.onAction("poll.now", () => {
+			calls += 1;
+			return new Promise(() => {});
+		});
+		expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toMatchObject({
+			reason: "timeout",
+		});
+		expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toEqual({
+			ok: false,
+			reason: "busy",
+			aborted: true,
+		});
+		expect(calls).toBe(1);
+	});
+
+	/** 收摊钩子还在跑时按下的:上面那一刻已经把在跑的都叫停了,这时再起一发就没人叫停它。 */
+	it("收摊进行中按下的 —— 不再起新的一发", async () => {
+		const h = harness({ manifest: V2 });
+		let calls = 0;
+		h.ctx.onAction("poll.now", () => {
+			calls += 1;
+		});
+		let release: (() => void) | undefined;
+		h.ctx.onDispose(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		const disposing = h.runtime.dispose();
+		expect(await h.runtime.runAction("poll.now")).toMatchObject({ ok: false, reason: "unhandled" });
+		expect(calls).toBe(0);
+		release?.();
+		await disposing;
 	});
 
 	it("卸载之后动作一个都跑不到", async () => {

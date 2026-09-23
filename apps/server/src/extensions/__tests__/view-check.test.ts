@@ -52,7 +52,10 @@ const SETTINGS = {
 	],
 };
 
-const INPUT: ViewCheckInput = { fields: FIELDS, settings: SETTINGS };
+/** 清单声明过的动作(决策 42:只有名字的一串)。 */
+const ACTIONS = ["poll.now", "login.start"];
+
+const INPUT: ViewCheckInput = { fields: FIELDS, actions: ACTIONS, settings: SETTINGS };
 
 const check = (raw: unknown, over: Partial<ViewCheckInput> = {}) =>
 	checkExtensionView(raw, { ...INPUT, ...over });
@@ -108,6 +111,39 @@ describe("页上按块", () => {
 		const { view } = check({ page: [{ type: "button", button: set }, NOTICE] });
 		expect(view.page?.[0]).toMatchObject({ fault: { reason: expect.stringContaining("列表项") } });
 		expect(view.page?.[1]).toEqual({ block: NOTICE });
+	});
+
+	/**
+	 * 调拓展的按钮,动作名要是清单声明过的(决策 22 / 42)—— 对不上的那颗按下去只会撞一句「清单里没有
+	 * 这个动作」,先在这儿点名:哪一块、哪个名字,别的块照画。
+	 */
+	it("调拓展的按钮,动作名不是清单声明过的 —— 那一块画不出来,点名那个名字", () => {
+		const good = { type: "button", button: { kind: "action", label: "检查", action: "poll.now" } };
+		const bad = {
+			type: "notice",
+			tone: "warn",
+			text: "过期了",
+			button: { kind: "action", label: "重登", action: "login.again" },
+		};
+		const { view, problems } = check({ page: [good, bad, NOTICE] });
+		expect(view.page?.[0]).toEqual({ block: good });
+		const slot = view.page?.[1];
+		if (!slot || !("fault" in slot)) throw new Error("第 2 块应该换成了一条提示");
+		expect(slot.fault.where).toBe("页上第 2 块(提示条)");
+		expect(slot.fault.reason).toContain("button.action");
+		expect(slot.fault.reason).toContain("login.again");
+		expect(view.page?.[2]).toEqual({ block: NOTICE });
+		expect(problems).toHaveLength(1);
+	});
+
+	it("清单一个动作都没声明 —— 调拓展的按钮一律画不出来", () => {
+		const button = {
+			type: "button",
+			button: { kind: "action", label: "检查", action: "poll.now" },
+		};
+		expect(check({ page: [button] }, { actions: [] }).view.page?.[0]).toMatchObject({
+			fault: { reason: expect.stringContaining("poll.now") },
+		});
 	});
 
 	it("引用了字典里没有的图 —— 那一块画不出来,说清是哪张", () => {
@@ -237,6 +273,44 @@ describe("列表按项", () => {
 			expect(blocks).toMatchObject({
 				fault: { reason: expect.stringContaining("blocks.0.button.set") },
 			});
+		});
+	});
+});
+
+/** 列表项上的「调拓展」按钮也照清单核:卡头上的、藏在积木里的,对不上的那一项整项画不出来。 */
+describe("列表项上「调拓展」的按钮", () => {
+	const item = (view: Record<string, unknown>) =>
+		check({ items: { links: { a: view, b: { status: { tone: "ok", text: "已连接" } } } } }).view
+			.items?.links;
+
+	it("声明过的 —— 照画", () => {
+		expect(
+			item({ buttons: [{ kind: "action", label: "踢下线", action: "login.start" }] })?.a,
+		).toHaveProperty("view");
+	});
+
+	it("卡头上的没声明 —— 那一项画不出来,点名那一颗;别的项照画", () => {
+		const links = item({ buttons: [{ kind: "action", label: "踢下线", action: "kick" }] });
+		const slot = links?.a;
+		if (!slot || !("fault" in slot)) throw new Error("应该画不出来");
+		expect(slot.fault.reason).toContain("buttons.0.action");
+		expect(slot.fault.reason).toContain("kick");
+		expect(links?.b).toHaveProperty("view");
+	});
+
+	it("藏在积木里的没声明 —— 同样按项降级", () => {
+		const slot = item({
+			lead: [
+				{
+					type: "notice",
+					tone: "warn",
+					text: "x",
+					button: { kind: "action", label: "重连", action: "reconnect" },
+				},
+			],
+		})?.a;
+		expect(slot).toMatchObject({
+			fault: { reason: expect.stringContaining("lead.0.button.action") },
 		});
 	});
 });

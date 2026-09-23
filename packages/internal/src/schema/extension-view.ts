@@ -82,7 +82,10 @@ export const ExtensionViewImagesSchema = z
  * 同时写,面板按哪一种画全凭它先查哪个键。
  */
 export const ExtensionButtonSchema = z.discriminatedUnion("kind", [
-	/** 调拓展:清单 `actions` 里声明、代码 `ctx.onAction` 接(决策 22)。 */
+	/**
+	 * 调拓展:清单 `actions` 里声明、代码 `ctx.onAction` 接(决策 22)。名字在不在清单里要看清单,
+	 * 那一道在宿主那头(决策 42)。
+	 */
 	z.strictObject({
 		kind: z.literal("action"),
 		label: z.string().min(1).max(32),

@@ -552,12 +552,23 @@ const ExtensionManifestV2Schema = z.strictObject({
 	apiVersion: z.literal(2),
 	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
 	settings: SettingsSchema.optional(),
-	/** 面板上能按的按钮,代码那边 `ctx.onAction` 注册(ADR-0019 决策 22)。 */
+	/**
+	 * 面板上能按的「调拓展」按钮 —— **只有动作名**,代码那边 `ctx.onAction` 注册(ADR-0019 决策 22 / 42)。
+	 * 按钮上的字只认视图里那一份:从前每项还带 `label` / `description`,从没被读过,两份字改了一份
+	 * 另一份静默作废。
+	 */
 	actions: z
-		.record(
-			ActionNameSchema,
-			z.strictObject({ label: z.string().min(1), description: z.string().optional() }),
-		)
+		.array(ActionNameSchema)
+		.superRefine((names, ctx) => {
+			// 重名:第二个是笔误还是本意宿主猜不了,点名它让作者自己看。
+			const seen = new Set<string>();
+			names.forEach((name, i) => {
+				if (seen.has(name)) {
+					ctx.addIssue({ code: "custom", path: [i], message: `动作名 ${name} 重复了` });
+				}
+				seen.add(name);
+			});
+		})
 		.optional(),
 	/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
 	contributes: ContributesSchema,

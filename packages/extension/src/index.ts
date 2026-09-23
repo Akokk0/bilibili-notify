@@ -311,13 +311,21 @@ export interface ExtensionContext {
 	 */
 	settings<T>(schema: ZodType<T>): ExtensionSettings<T>;
 	/**
-	 * 接面板上的一个「调拓展」按钮(ADR-0019 决策 22)。`name` 必须在清单的 `actions` 里声明过
-	 * —— 清单是面板能按哪些钮的全集,没声明的注册当场抛;同一个名字接两次也抛。
+	 * 接面板上的一个「调拓展」按钮(ADR-0019 决策 22 / 42)。`name` 必须在清单的 `actions`(一串动作名)
+	 * 里声明过 —— 清单是面板能按哪些钮的全集,没声明的注册当场抛;同一个名字接两次也抛。
 	 *
 	 * 面板经 `POST /api/ext/<id>/actions/<name>` 调(走面板会话鉴权)。抛出来的错**原话**给到面板;
 	 * 30 秒没回按超时算。界面该跟着变的话,自己叫一声 `statusChanged()`。卸载时自动摘掉。
+	 *
+	 * 🔴 `signal` 在两种时候中止,handler 要听它、手上的请求 / 轮询接着它停:
+	 * - **超时**(`reason` 是 `TimeoutError`):宿主已经回了面板一句「超时」,再接着跑下去,做完的事主人
+	 *   看不见(扫码登录会在背后多存下一份账号);
+	 * - **拓展停用 / 收摊**(`AbortError`):在 `onDispose` 的钩子跑之前就中止了,钩子里可以等它们收尾。
+	 *
+	 * 同一个动作在跑时再按,宿主直接回面板「还在跑」(409),不排队、不并发 —— 「在跑」算到 handler
+	 * 真的回来为止:超时叫停了却不停的,照样挡着下一发。不同的动作互不相干。
 	 */
-	onAction(name: string, handler: () => void | Promise<void>): void;
+	onAction(name: string, handler: (signal: AbortSignal) => void | Promise<void>): void;
 	/** 卸载时要跑的收摊钩子。后注册的先跑。 */
 	onDispose(fn: () => void | Promise<void>): void;
 }
