@@ -103,16 +103,33 @@ function rangeText(min: number | undefined, max: number | undefined): string {
 	return `不能大于 ${max}`;
 }
 
+/** 数字框认的那种十进制写法:可带负号、小数、指数(`-1.5`、`.5`、`2e3`)。 */
+const DECIMAL = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/;
+
 /**
- * 当场就能说的毛病(决策 30「min / max 当场校验」)。只看**改过的**格:没动过的格是存着的
- * 样子,那归服务端说。
+ * 数字格里那串字是几;不算一个数的交 `undefined`。首尾的空格不算数,中间的算。
+ *
+ * 🔴 **比 `Number()` 严**:它把 `0x10`、`0b1`、`+5`、`5.`、只有空格的串(= 0)都当成数 —— 存
+ * 下去的与主人以为自己填的对不上。设置表单与新建弹窗、校验与发出去的那一格都从这里认。
  */
-function clientErrorOf(field: ExtensionScalarField, value: Edit): string | undefined {
+export function decimalOf(text: string): number | undefined {
+	const trimmed = text.trim();
+	if (!DECIMAL.test(trimmed)) return undefined;
+	const n = Number(trimmed);
+	// 写法对、却大到没边的(`1e999`)一样不收。
+	return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * 当场就能说的毛病(决策 30「min / max 当场校验」)。设置表单只拿它看**改过的**格(没动过的格
+ * 是存着的样子,那归服务端说);新建弹窗拿它看填了字的格。
+ */
+export function clientErrorOf(field: ExtensionScalarField, value: Edit): string | undefined {
 	if (field.type === "number") {
 		const text = String(value).trim();
 		if (text === "") return field.required ? "这一格必填" : undefined;
-		const n = Number(text);
-		if (!Number.isFinite(n)) return "要填一个数字";
+		const n = decimalOf(text);
+		if (n === undefined) return "要填一个数字";
 		if ((field.min !== undefined && n < field.min) || (field.max !== undefined && n > field.max)) {
 			return rangeText(field.min, field.max);
 		}
@@ -128,7 +145,8 @@ function clientErrorOf(field: ExtensionScalarField, value: Edit): string | undef
  */
 function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
 	if (typeof value === "boolean") return value;
-	if (field.type === "number") return value.trim() === "" ? null : Number(value);
+	// 认不出的数走不到这里(`clientErrorOf` 拦着保存)。
+	if (field.type === "number") return value.trim() === "" ? null : decimalOf(value);
 	return value === "" ? null : value;
 }
 
@@ -491,14 +509,12 @@ export function ScalarControl({
 					{/*
 					 * 走 TInput 而不是 TNum:TNum 交出来的永远是个数,清空那一格会变成 0 —— 可选的
 					 * 数字格清空要发 `null`,打到一半的「-」也得先留在框里。
+					 *
+					 * 🔴 也不用 `type="number"`:那种框遇到不是数的输入(`abc`、`1e`、打到一半的「-」)
+					 * `.value` 按规范给空串 —— 框里明明有字,交出来的却是「清空了」,可选格就发 `null`
+					 * 把存着的值删掉。用文本框,算不算数由 `clientErrorOf` 当场说。
 					 */}
-					<TInput
-						type="number"
-						width={120}
-						ariaLabel={field.label}
-						value={text}
-						onChange={onChange}
-					/>
+					<TInput width={120} ariaLabel={field.label} value={text} onChange={onChange} />
 					{field.unit ? (
 						<span className="text-bn-xs text-bn-text-tertiary">{field.unit}</span>
 					) : null}

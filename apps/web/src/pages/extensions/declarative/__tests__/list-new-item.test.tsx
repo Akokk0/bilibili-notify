@@ -37,6 +37,16 @@ const ADDRESS = "ws://192.168.1.20:8787/ext/bridge";
 const HEX32 = /^[0-9a-f]{32}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+/** 带一格数字的列表 —— 夹具里的桥没有数字格。 */
+const WITH_RETRY: ExtensionListField = {
+	...LINKS_FIELD,
+	newItemCopy: undefined,
+	fields: [
+		...LINKS_FIELD.fields,
+		{ key: "retry", type: "number", label: "重试", unit: "次", min: 0, max: 10 },
+	],
+};
+
 /** 开弹窗:有卡时按标题行那颗,没卡时按空态那颗。 */
 async function openDialog(opts: { field?: ExtensionListField; items?: unknown[] } = {}) {
 	const items = opts.items ?? [HOME];
@@ -166,7 +176,7 @@ describe("照清单画", () => {
 		const mode = within(within(dialog).getByRole("group", { name: "模式" }));
 		expect(mode.getByRole("button", { name: "稳" }).getAttribute("aria-pressed")).toBe("true");
 		await userEvent.click(mode.getByRole("button", { name: "快" }));
-		const retry = within(dialog).getByRole("spinbutton", { name: "重试" }) as HTMLInputElement;
+		const retry = within(dialog).getByLabelText("重试") as HTMLInputElement;
 		expect(retry.value).toBe("3");
 		await userEvent.clear(retry);
 		await userEvent.type(retry, "5");
@@ -356,6 +366,37 @@ describe("创建", () => {
 		await typeName(dialog, "公司那台");
 		await create(dialog);
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	});
+
+	/**
+	 * 🔴 数字格里填了不是数的东西:与设置表单同一把尺子(`clientErrorOf`),当场说,「创建」按不动。
+	 * 否则那一格被悄悄丢掉,建出来的项里根本没有它,而弹窗上看着是填了的。
+	 */
+	it.each(["abc", "0x10"])("数字格填了「%s」:说「要填一个数字」,创建按不动", async (text) => {
+		const dialog = await openDialog({ field: WITH_RETRY });
+		await typeName(dialog, "公司那台");
+		await userEvent.type(within(dialog).getByLabelText("重试"), text);
+		expect(within(dialog).getByRole("alert").textContent).toBe("要填一个数字");
+		const button = within(dialog).getByRole("button", { name: "创建" }) as HTMLButtonElement;
+		expect(button.disabled).toBe(true);
+		await userEvent.click(button);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("数字格超出 min / max:当场说,创建按不动", async () => {
+		const dialog = await openDialog({ field: WITH_RETRY });
+		await typeName(dialog, "公司那台");
+		await userEvent.type(within(dialog).getByLabelText("重试"), "11");
+		expect(within(dialog).getByRole("alert").textContent).toBe("要在 0 到 10 之间");
+		expect(
+			(within(dialog).getByRole("button", { name: "创建" }) as HTMLButtonElement).disabled,
+		).toBe(true);
+	});
+
+	/** 必填的空着由「创建」按不动来说 —— 一打开就满屏「这一格必填」只是吓人。 */
+	it("一打开不说「这一格必填」", async () => {
+		const dialog = await openDialog({ field: WITH_RETRY });
+		expect(within(dialog).queryByRole("alert")).toBeNull();
 	});
 
 	it("取消什么都不发", async () => {

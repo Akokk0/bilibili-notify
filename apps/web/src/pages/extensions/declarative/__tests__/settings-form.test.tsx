@@ -407,6 +407,62 @@ describe("校验", () => {
 		expect(save()).toHaveProperty("disabled", true);
 	});
 
+	/**
+	 * 🔴 数字格里打了不是数的东西:当场说,存不了,存着的值不动。`type="number"` 的框遇到这种输入
+	 * `.value` 按规范给空串 —— 框里明明有字,交出来的却是「清空了」,可选格就发 `null` 把存着的值
+	 * 删掉。
+	 */
+	it("数字格打了不是数的东西:当场说「要填一个数字」,保存不了,一发都不发", async () => {
+		renderForm();
+		const interval = (await screen.findByLabelText("检查间隔")) as HTMLInputElement;
+		fireEvent.change(interval, { target: { value: "abc" } });
+		expect(interval.value).toBe("abc");
+		expect(within(field("interval")).getByRole("alert").textContent).toBe("要填一个数字");
+		expect(save()).toHaveProperty("disabled", true);
+		fireEvent.click(save());
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 只认数字框认的那种十进制写法。`Number()` 收得更宽 —— 十六进制、二进制、带正号、小数点
+	 * 收尾的它都当成数,这里不收:写进去的与主人以为的对不上。`Infinity` 与中间带空格的一样不收。
+	 */
+	it.each(["0x10", "0b1", "+5", "5.", "Infinity", "1 000"])("「%s」不算一个数", async (text) => {
+		renderForm();
+		fireEvent.change(await screen.findByLabelText("检查间隔"), { target: { value: text } });
+		expect(within(field("interval")).getByRole("alert").textContent).toBe("要填一个数字");
+		expect(save()).toHaveProperty("disabled", true);
+	});
+
+	/** 负号要打得出来:打到一半的「-」留在框里(只是还不算数),接着打完就是一个负数。 */
+	it("负号:打到一半的「-」留在框里,打完照常存", async () => {
+		stored = {};
+		renderForm([{ key: "offset", type: "number", label: "时差" }]);
+		const offset = (await screen.findByLabelText("时差")) as HTMLInputElement;
+		fireEvent.change(offset, { target: { value: "-" } });
+		expect(offset.value).toBe("-");
+		expect(save()).toHaveProperty("disabled", true);
+		fireEvent.change(offset, { target: { value: "-8" } });
+		fireEvent.click(save());
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(sentSettings()).toEqual({ offset: -8 });
+	});
+
+	/** 照旧的那几样:小数、指数照常认;清空可选的数字格发 `null`。 */
+	it.each([
+		["-1.5", -1.5],
+		[".5", 0.5],
+		["2e3", 2000],
+		["", null],
+	])("「%s」照常发 %s", async (text, sent) => {
+		stored = { offset: 3 };
+		renderForm([{ key: "offset", type: "number", label: "时差" }]);
+		fireEvent.change(await screen.findByLabelText("时差"), { target: { value: text } });
+		fireEvent.click(save());
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(sentSettings()).toEqual({ offset: sent });
+	});
+
 	it("必填的清空了当场说", async () => {
 		const fields: ExtensionScalarField[] = [
 			{ key: "name", type: "string", label: "名字", required: true },

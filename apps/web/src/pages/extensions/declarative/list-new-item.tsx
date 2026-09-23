@@ -13,7 +13,7 @@ import { extensionAddress } from "./address";
 import { countWordOf, itemLabelOf, subFieldOf } from "./list-items";
 import { CopyControl } from "./parts";
 import { newHexSecret } from "./secret";
-import { FieldShell, ScalarControl } from "./settings-form";
+import { clientErrorOf, decimalOf, FieldShell, ScalarControl } from "./settings-form";
 
 /**
  * 列表的新建弹窗(ADR-0019 决策 21 / 29 / 30)—— 照项里的格一格一个控件,**停用那一格不画**:
@@ -58,6 +58,21 @@ function isMissing(sub: ExtensionScalarField, value: string | boolean | undefine
 }
 
 /**
+ * 填了字的那一格当场说得出的毛病(不是数、超出 min / max)—— 与设置表单同一把尺子
+ * (`clientErrorOf`),有一格就不给「创建」。
+ *
+ * 🔴 不拦的话,那一格在 `valuesOf` 里被悄悄丢掉:建出来的项里根本没有它,弹窗上看着却是填了的。
+ * 空着的格不说:必填的空着由「创建」按不动来说,一打开就满屏「这一格必填」只是吓人。
+ */
+function draftErrorOf(
+	sub: ExtensionScalarField,
+	value: string | boolean | undefined,
+): string | undefined {
+	if (typeof value !== "string" || value.trim() === "") return undefined;
+	return clientErrorOf(sub, value);
+}
+
+/**
  * 草稿 → 存下去的那几格。字去掉首尾空格;**空着的可选格不写** —— 拓展那份 zod 按「没设过」
  * 补默认值,写一个空串进去反倒成了「设过了,是空的」。
  */
@@ -72,8 +87,9 @@ function valuesOf(fields: readonly ExtensionScalarField[], draft: Draft): Record
 		const text = (value ?? "").trim();
 		if (text === "") continue;
 		if (sub.type === "number") {
-			const n = Number(text);
-			if (Number.isFinite(n)) values[sub.key] = n;
+			// 认不出的数走不到「创建」(`draftErrorOf` 拦着)。
+			const n = decimalOf(text);
+			if (n !== undefined) values[sub.key] = n;
 			continue;
 		}
 		values[sub.key] = text;
@@ -108,7 +124,9 @@ export function NewItemDialog({
 	const change = (key: string, value: string | boolean) =>
 		setDraft((prev) => ({ ...prev, [key]: value }));
 	const values = valuesOf(fields, draft);
-	const blocked = fields.some((sub) => isMissing(sub, draft[sub.key]));
+	const blocked = fields.some(
+		(sub) => isMissing(sub, draft[sub.key]) || draftErrorOf(sub, draft[sub.key]) !== undefined,
+	);
 	const copies = copyRowsOf(field, extensionId, values);
 
 	return (
@@ -121,7 +139,7 @@ export function NewItemDialog({
 		>
 			<div className="flex flex-col gap-3.5">
 				{fields.map((sub) => (
-					<FieldShell key={sub.key} field={sub}>
+					<FieldShell key={sub.key} field={sub} error={draftErrorOf(sub, draft[sub.key])}>
 						<DraftControl
 							sub={sub}
 							value={draft[sub.key]}
