@@ -69,11 +69,11 @@ export function Blocks({
 	 */
 	ruleBeforeTables?: boolean;
 }) {
+	const keys = blockKeysOf(blocks);
 	return (
 		<>
 			{blocks.map((block, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: 积木是拓展整份交来的一列,没有别的身份;整份换掉时下标跟着换,不会串
-				<Fragment key={i}>
+				<Fragment key={keys[i]}>
 					{ruleBeforeTables && block.type === "table" ? (
 						<div data-table-rule className="h-px bg-bn-border-subtle" />
 					) : null}
@@ -88,6 +88,42 @@ export function Blocks({
 			))}
 		</>
 	);
+}
+
+/**
+ * 每块积木的 key。
+ *
+ * 🔴 **不能按下标认**:视图是拓展整份交来的,会重排(拓展在最前面插一块新的提示条)。块自己攥着
+ * 状态 —— 调拓展的那一发(没成那句话)、复制过的那一格 —— 按下标认的话,重排之后状态留在原来
+ * 那个位置上,挂到另一块头上:「「立即同步」没成」出现在一颗从没按过的钮底下。
+ *
+ * 身份 = 种类 + 带状态的那样东西:按钮认**动作名**(名字可能随状态变,动作名不会;「改设置」
+ * 那种没有动作名,认它的名字),复制那一格认它的名字。别的块没有自己的状态,种类就够。同一份
+ * 视图里撞了的按出现的先后加序号 —— 序号只在撞了的那几块里数,别的块插进来挪不动它们。
+ */
+function blockKeysOf(blocks: readonly ExtensionBlock[]): string[] {
+	const seen = new Map<string, number>();
+	return blocks.map((block) => {
+		const identity = blockIdentityOf(block);
+		const n = seen.get(identity) ?? 0;
+		seen.set(identity, n + 1);
+		return `${identity}#${n}`;
+	});
+}
+
+function blockIdentityOf(block: ExtensionBlock): string {
+	const buttonOf = (button: ExtensionButton) =>
+		"action" in button ? `action:${button.action}` : `set:${button.label}`;
+	switch (block.type) {
+		case "notice":
+			return block.button ? `notice:${buttonOf(block.button)}` : "notice";
+		case "button":
+			return `button:${buttonOf(block)}`;
+		case "copy":
+			return `copy:${block.label}`;
+		default:
+			return block.type;
+	}
 }
 
 /**
@@ -566,7 +602,11 @@ function useButtonControl(
 					{button.label}
 				</Btn>
 			),
-			error: run.isError ? <ActionFailure label={button.label} error={run.error} /> : null,
+			// 点名按下去时的那个名字(走 variables)—— 视图后来换了名字,说的也还是按的那一下。
+			error:
+				run.isError && run.variables ? (
+					<ActionFailure label={run.variables.label} error={run.error} />
+				) : null,
 		};
 	}
 	if (!onSet) return { node: null, error: null };

@@ -37,13 +37,16 @@ function renderBlocks(
 ) {
 	const id = opts.id ?? "douyin";
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const view = render(
+	const tree = (next: readonly ExtensionBlock[]) => (
 		<QueryClientProvider client={qc}>
 			<StatusProbe id={id} />
-			<Blocks blocks={blocks} extensionId={id} legend={opts.legend} onSet={opts.onSet} />
-		</QueryClientProvider>,
+			<Blocks blocks={next} extensionId={id} legend={opts.legend} onSet={opts.onSet} />
+		</QueryClientProvider>
 	);
-	return Object.assign(view, { qc });
+	const view = render(tree(blocks));
+	// 拓展交来新的一份视图:同一棵树换积木,各块的状态(按过的钮、复制过的格)该跟着自己的那一块走。
+	const update = (next: readonly ExtensionBlock[]) => view.rerender(tree(next));
+	return Object.assign(view, { qc, update });
 }
 
 /** 读状态那一口被问了几次。 */
@@ -319,6 +322,42 @@ describe("button", () => {
 		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
 		await waitFor(() => expect(statusReads()).toBe(3));
 		for (const release of pending) release();
+	});
+
+	/**
+	 * 🔴 视图是拓展整份交来的,会重排(拓展在最前面插一块新的提示条):没成那句话得跟着**真按过的
+	 * 那一颗**走,点名的也是按下去时的那个名字。按位置认块的话,它会挂到一颗从没被按过的钮底下、
+	 * 念着那颗钮的名字,真按过的那颗底下反而什么都没有。
+	 */
+	it("视图重排之后,没成那句话仍挂在按过的那一颗底下,点名的也是它", async () => {
+		vi.mocked(api.post).mockRejectedValue(new Error("拓展没接这个动作"));
+		const sync = (label: string): ExtensionBlock => ({
+			type: "notice",
+			tone: "warn",
+			text: "作品列表 2 小时没更新了。",
+			button: { label, action: "sync.now" },
+		});
+		const update: ExtensionBlock = {
+			type: "notice",
+			tone: "warn",
+			text: "有新版本可以换上。",
+			button: { label: "看看新版", action: "update.check" },
+		};
+		const view = renderBlocks([sync("立即同步"), update]);
+		fireEvent.click(screen.getByRole("button", { name: "立即同步" }));
+		expect((await screen.findByRole("alert")).textContent).toBe(
+			"「立即同步」没成:拓展没接这个动作",
+		);
+
+		// 新的一份:那块提示插到了最前,按过的那颗换了个名字
+		view.update([update, sync("再同步一次")]);
+		const alerts = screen.getAllByRole("alert");
+		expect(alerts).toHaveLength(1);
+		const [alert] = alerts as [HTMLElement];
+		expect(alert.textContent).toBe("「立即同步」没成:拓展没接这个动作");
+		// 那句话紧跟在按过的那块提示条后面
+		const pressed = screen.getByRole("button", { name: "再同步一次" });
+		expect(alert.previousElementSibling?.contains(pressed)).toBe(true);
 	});
 
 	it("回话说没成(ok: false)也算失败", async () => {
