@@ -26,6 +26,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 import { ApiError, api } from "../../../../services/api";
 import { extensionStatusKey } from "../view-query";
 import {
+	answerPatch,
 	BRIDGE,
 	findCard,
 	HOME,
@@ -65,7 +66,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.post).mockReset();
-	vi.mocked(api.patch).mockResolvedValue({});
+	vi.mocked(api.patch).mockImplementation(answerPatch);
 });
 afterEach(() => {
 	cleanup();
@@ -103,24 +104,27 @@ describe("停用 / 启用", () => {
 		expect(screen.queryByRole("button", { name: /停用|启用/ })).toBeNull();
 	});
 
-	/** 写成功之后重读名单与状态 —— 按完那一下就该看见结果,不用等 WS。 */
-	it("写完重读名单与状态", async () => {
+	/**
+	 * 按完那一下就该看见结果,不用等 WS:名单换成 PATCH 回来的那份(与 GET 同形,不必再读一遍),
+	 * 状态重读一次。
+	 */
+	it("写完:名单换成回应里那份、不再重读;状态重读", async () => {
 		renderList({ items: [HOME], view: MISMATCH });
 		await screen.findByText("连上了,但对不上");
 		const reads = (url: string) =>
 			vi.mocked(api.get).mock.calls.filter(([called]) => called === url).length;
 		const before = { globals: reads("/api/globals"), status: reads("/api/ext/bridge/status") };
 		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
-		await waitFor(() => expect(reads("/api/globals")).toBeGreaterThan(before.globals));
+		await screen.findByRole("button", { name: "启用 家里那台" });
 		await waitFor(() => expect(reads("/api/ext/bridge/status")).toBeGreaterThan(before.status));
+		expect(reads("/api/globals")).toBe(before.globals);
 	});
 
 	/**
-	 * 名单那一口:宿主写完就经 WS 发了失效帧(在回 HTTP 之前),在飞的那一发一定是写之后的 ——
-	 * 并过去,不取消重发。🔴 状态那一口**照旧取消重发**:宿主不替它发帧,在飞的那一发可能是写之前
-	 * 发出去的,并过去就拿着写之前的样子。
+	 * 名单那一口:WS 那一帧已经发起的重读取消掉、换成回应,不再多读一遍。🔴 状态那一口**照旧
+	 * 取消重发**:宿主不替它发帧,在飞的那一发可能是写之前发出去的,并过去就拿着写之前的样子。
 	 */
-	it("写完:名单已经在重读就并过去;状态照旧再读一次", async () => {
+	it("写完:名单在飞的重读取消掉、不再多读;状态照旧再读一次", async () => {
 		const { qc } = renderList({ items: [HOME], view: MISMATCH });
 		await screen.findByText("连上了,但对不上");
 		const reads = (url: string) =>
@@ -133,10 +137,10 @@ describe("停用 / 启用", () => {
 					pending.push(() => answer?.(url).then(resolve, reject));
 				}),
 		);
-		vi.mocked(api.patch).mockImplementation(async () => {
+		vi.mocked(api.patch).mockImplementation(async (url: string, body?: unknown) => {
 			void qc.invalidateQueries({ queryKey: ["globals"] });
 			void qc.invalidateQueries({ queryKey: extensionStatusKey("bridge") });
-			return {};
+			return answerPatch(url, body);
 		});
 		const before = { globals: reads("/api/globals"), status: reads("/api/ext/bridge/status") };
 		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
@@ -316,6 +320,96 @@ describe("一发还在路上", () => {
 		const busy = await within(dialog).findByRole("button", { name: "删除中…" });
 		await userEvent.click(busy);
 		expect(api.patch).toHaveBeenCalledTimes(1);
+	});
+});
+
+/** 从这一刻起,名单那一口的重读一律挂着 —— 写完之后看得见的,只能是 PATCH 的回应。 */
+function holdGlobalsReads() {
+	const answer = vi.mocked(api.get).getMockImplementation();
+	if (!answer) throw new Error("GET 还没摆好");
+	vi.mocked(api.get).mockImplementation((url: string) =>
+		url === "/api/globals" ? new Promise(() => {}) : answer(url),
+	);
+}
+
+/** 这一发 PATCH 先攥住,`finish()` 才照假服务端回答。 */
+function holdNextPatch() {
+	let finish = () => {};
+	vi.mocked(api.patch).mockImplementationOnce(
+		(url: string, body?: unknown) =>
+			new Promise((resolve) => {
+				finish = () => resolve(answerPatch(url, body));
+			}),
+	);
+	return () => finish();
+}
+
+describe("写完之后", () => {
+	/**
+	 * 🔴 钮一松开,基线就得是写后的那份:回应在这一发结束之前收进缓存,不等重读 —— 重读可能
+	 * 还在路上(WS 帧与 HTTP 回应走两条连接,谁先到没保证)。否则第二下带的是写之前的名单,
+	 * 把第一下按回去,两发都成功。
+	 */
+	it("停用一条、写完立刻停用另一条:第二发里两条都停用", async () => {
+		renderList({ items: [HOME, OFFICE] });
+		await screen.findByRole("button", { name: "停用 家里那台" });
+		holdGlobalsReads();
+		const finish = holdNextPatch();
+		const office = screen.getByRole("button", { name: "停用 机房那台" }) as HTMLButtonElement;
+		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
+		await waitFor(() => expect(office.disabled).toBe(true));
+		finish();
+		await waitFor(() => expect(office.disabled).toBe(false));
+		await userEvent.click(office);
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		expect(savedItems(1)).toEqual([
+			{ ...HOME, enabled: false },
+			{ ...OFFICE, enabled: false },
+		]);
+	});
+
+	it("新建之后立刻停用另一条:刚建的那条还在", async () => {
+		renderList({ items: [HOME] });
+		await userEvent.click(await screen.findByRole("button", { name: "新建接入" }));
+		holdGlobalsReads();
+		const dialog = await screen.findByRole("dialog");
+		await userEvent.type(within(dialog).getByRole("textbox", { name: "名字" }), "公司那台");
+		await userEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		const home = screen.getByRole("button", { name: "停用 家里那台" }) as HTMLButtonElement;
+		await waitFor(() => expect(home.disabled).toBe(false));
+		await userEvent.click(home);
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		const [first, created] = savedItems(1);
+		expect(first).toEqual({ ...HOME, enabled: false });
+		expect(created?.name).toBe("公司那台");
+		expect(savedItems(1)).toHaveLength(2);
+	});
+
+	/**
+	 * 写之前就发出去的那一发重读(窗口聚焦、上一帧 WS)晚到:收回应之前得先把它取消掉,
+	 * 否则它一落地,缓存又回到写之前的样子。
+	 */
+	it("更早发出的名单重读晚到,盖不回写之前的样子", async () => {
+		const { qc } = renderList({ items: [HOME] });
+		await screen.findByRole("button", { name: "停用 家里那台" });
+		const answer = vi.mocked(api.get).getMockImplementation();
+		if (!answer) throw new Error("GET 还没摆好");
+		const stale = await answer("/api/globals");
+		let release = () => {};
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url === "/api/globals"
+				? new Promise((resolve) => {
+						release = () => resolve(stale);
+					})
+				: answer(url),
+		);
+		void qc.invalidateQueries({ queryKey: ["globals"] });
+		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
+		await screen.findByRole("button", { name: "启用 家里那台" });
+		release();
+		await new Promise((settle) => setTimeout(settle, 30));
+		expect(screen.getByRole("button", { name: "启用 家里那台" })).toBeTruthy();
 	});
 });
 

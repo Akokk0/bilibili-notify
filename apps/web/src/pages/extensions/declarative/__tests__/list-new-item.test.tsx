@@ -23,7 +23,15 @@ vi.mock("../../../../services/api", () => ({
 }));
 
 import { api } from "../../../../services/api";
-import { BRIDGE, HOME, LINKS_FIELD, renderList, type SavedItem, savedItems } from "./list-harness";
+import {
+	answerPatch,
+	BRIDGE,
+	HOME,
+	LINKS_FIELD,
+	renderList,
+	type SavedItem,
+	savedItems,
+} from "./list-harness";
 
 const ADDRESS = "ws://192.168.1.20:8787/ext/bridge";
 const HEX32 = /^[0-9a-f]{32}$/;
@@ -68,7 +76,7 @@ async function create(dialog: HTMLElement) {
 beforeEach(() => {
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
-	vi.mocked(api.patch).mockResolvedValue({});
+	vi.mocked(api.patch).mockImplementation(answerPatch);
 });
 afterEach(() => {
 	cleanup();

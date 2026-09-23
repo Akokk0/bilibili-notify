@@ -79,6 +79,14 @@ const FIELDS: ExtensionScalarField[] = [
 /** 服务端存着的那份设置 —— `api.patch` 照 Merge Patch 改它,`api.get` 读它。 */
 let stored: Record<string, unknown>;
 
+/**
+ * 服务端眼下的整份 globals。GET 回它;PATCH 回的也是它(合并之后的那份,与 GET 同形 ——
+ * `routes/globals.ts` 两边都过 `redactGlobals`)。
+ */
+function servedGlobals() {
+	return { extensions: { douyin: { enabled: false, settings: { ...stored } } } };
+}
+
 function mergePatch(body: unknown) {
 	const settings = (body as { extensions: { douyin: { settings: Record<string, unknown> } } })
 		.extensions.douyin.settings;
@@ -126,14 +134,12 @@ beforeEach(() => {
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/globals") {
-			return { extensions: { douyin: { enabled: false, settings: { ...stored } } } };
-		}
+		if (url === "/api/globals") return servedGlobals();
 		throw new Error(`没有这个口:${url}`);
 	});
 	vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
 		mergePatch(body);
-		return {};
+		return servedGlobals();
 	});
 });
 afterEach(() => {
@@ -263,10 +269,30 @@ describe("保存:只发改了的那几格", () => {
 	});
 
 	/**
-	 * 服务端在回 HTTP 之前就经 WS 发了「globals 变了」,面板已经在重读;回来之后那一下失效要
-	 * 并到在飞的那一发上 —— 默认的「取消重发」会让服务端白读一遍。
+	 * 🔴 存完显示的是**回应里**的那份(合并之后的整份),不等重读:WS 那一帧与 HTTP 回应走两条
+	 * 连接,谁先到没保证,等重读就是把「保存中…」挂在一发不知道什么时候回来的请求上。回应里
+	 * 别处刚改的(这里是检查间隔)也跟着到位。
 	 */
-	it("存完:WS 已经在重读那份设置时,不取消重发", async () => {
+	it("存完:显示的是回应里的那份,不等重读", async () => {
+		renderForm();
+		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
+		vi.mocked(api.get).mockImplementation(() => new Promise(() => {}));
+		vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
+			stored.interval = 120; // 别处刚存的,合并进了这一发的回应
+			mergePatch(body);
+			return servedGlobals();
+		});
+		fireEvent.click(save());
+		await waitFor(() => expect(save()).toHaveProperty("disabled", true));
+		expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe("新备注");
+		expect((screen.getByLabelText("检查间隔") as HTMLInputElement).value).toBe("120");
+	});
+
+	/**
+	 * 服务端在回 HTTP 之前就经 WS 发了「globals 变了」,面板已经在重读:回应本身就是写后的那份,
+	 * 在飞的那一发取消掉、换成回应 —— 再读一遍是让服务端白读。
+	 */
+	it("存完:WS 已经在重读那份设置时,不再多读一遍", async () => {
 		const { qc } = renderForm();
 		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
 		const reads = () =>
@@ -275,14 +301,13 @@ describe("保存:只发改了的那几格", () => {
 		vi.mocked(api.get).mockImplementation(
 			() =>
 				new Promise((resolve) => {
-					release = () =>
-						resolve({ extensions: { douyin: { enabled: false, settings: { ...stored } } } });
+					release = () => resolve(servedGlobals());
 				}),
 		);
 		vi.mocked(api.patch).mockImplementation(async (_url: string, body?: unknown) => {
 			mergePatch(body);
 			void qc.invalidateQueries({ queryKey: ["globals"] }); // WS 那一帧
-			return {};
+			return servedGlobals();
 		});
 		const before = reads();
 		fireEvent.click(save());

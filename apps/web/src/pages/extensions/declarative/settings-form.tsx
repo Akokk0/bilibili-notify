@@ -16,6 +16,7 @@ import { type HTMLAttributes, type ReactNode, useState } from "react";
 import { api } from "../../../services/api";
 import type { GlobalConfig } from "../../../types/globals";
 import { reasonOf } from "../shared";
+import { adoptWrittenGlobals } from "./globals-cache";
 import { safeImage } from "./image";
 import { extensionSettingsOf, settingsIssuesOf } from "./list-items";
 import { CopyControl, MissingSecretNote, RegenerateButton, SecretChip } from "./parts";
@@ -190,11 +191,13 @@ export function SettingsForm({
 
 	const save = useMutation({
 		mutationFn: ({ patch }: SaveVars) =>
-			api.patch("/api/globals", { extensions: { [extensionId]: { settings: patch } } }),
-		onSuccess: async (_data, { sent }) => {
-			// 先等那份设置重读回来,再丢草稿 —— 反过来的话会闪一下旧值。服务端在回这一发之前
-			// 就经 WS 发了「globals 变了」,多半已经在重读:并到那一发上,别取消了重发一次。
-			await qc.invalidateQueries({ queryKey: ["globals"] }, { cancelRefetch: false });
+			api.patch<GlobalConfig>("/api/globals", {
+				extensions: { [extensionId]: { settings: patch } },
+			}),
+		onSuccess: async (written, { sent }) => {
+			// 先把回应(写后的整份)收进缓存,再丢草稿 —— 反过来的话会闪一下旧值。不等重读:
+			// 为什么见 `adoptWrittenGlobals`。
+			await adoptWrittenGlobals(qc, written);
 			const keep = (key: string, current: Edit | undefined) =>
 				!Object.hasOwn(sent, key) || current !== sent[key];
 			setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => keep(k, v))));

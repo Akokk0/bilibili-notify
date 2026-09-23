@@ -128,7 +128,42 @@ export interface ListSetup {
 	view?: ExtensionView | Error;
 }
 
+/**
+ * 假服务端存着的那份设置。`renderList` 按 setup 摆好;`GET /api/globals` 读它,`answerPatch`
+ * 照 Merge Patch 改它。
+ */
+let served: { ext: ExtensionDTO; settings: Record<string, unknown> } = {
+	ext: BRIDGE,
+	settings: {},
+};
+
+function servedGlobals() {
+	const { ext, settings } = served;
+	return { extensions: { [ext.id]: { enabled: ext.enabled, settings: { ...settings } } } };
+}
+
+/**
+ * `PATCH /api/globals` 的替身:把补丁里这个拓展的设置照 Merge Patch 并进去,回**合并之后的整份**
+ * —— 与真服务端一样(`routes/globals.ts` 回的是 `redactGlobals(next)`,与 GET 同形)。
+ *
+ * 各文件在 `beforeEach` 里把它装成 `api.patch` 的默认回答;要失败 / 挂着的用例再各自换掉。
+ */
+export async function answerPatch(url: string, body?: unknown): Promise<unknown> {
+	if (url !== "/api/globals") throw new Error(`写去了别处:${url}`);
+	const slot = (body as { extensions?: Record<string, { settings?: Record<string, unknown> }> })
+		.extensions?.[served.ext.id];
+	for (const [key, value] of Object.entries(slot?.settings ?? {})) {
+		if (value === null) delete served.settings[key];
+		else served.settings[key] = value;
+	}
+	return servedGlobals();
+}
+
 function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSetup) {
+	served = {
+		ext,
+		settings: Array.isArray(items) ? { ...extraSettings, links: items } : { ...extraSettings },
+	};
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/ext") {
 			return {
@@ -139,11 +174,7 @@ function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSet
 		if (url === "/api/globals") {
 			if (items === "pending") return new Promise(() => {});
 			if (items === null) throw new Error("配置读不出来:500");
-			return {
-				extensions: {
-					[ext.id]: { enabled: ext.enabled, settings: { ...extraSettings, links: items } },
-				},
-			};
+			return servedGlobals();
 		}
 		if (url === `/api/ext/${ext.id}/status`) {
 			if (view === undefined) throw new NotFound("not found");

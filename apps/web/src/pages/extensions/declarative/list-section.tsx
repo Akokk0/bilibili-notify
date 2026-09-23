@@ -32,6 +32,7 @@ import {
 	TONE_TEXT,
 	useExtensionAction,
 } from "./blocks";
+import { adoptWrittenGlobals } from "./globals-cache";
 import {
 	declaredPatchOf,
 	extensionSettingsOf,
@@ -115,7 +116,8 @@ interface CardActions {
 	 *
 	 * 🔴 名单是**整份写回**的,基线是渲染那一刻算出来的 —— 前一发没回来时点第二下,第二发带的
 	 * 名单里第一下的改动还是旧值,两发都成功而第一下被静默抹掉。所以这一节的钮串行:写回期间
-	 * 一律点不动,确认框也不接第二下。
+	 * 一律点不动,确认框也不接第二下。另一半在 `save` 的 `onSuccess`:写后的名单在这一发结束
+	 * **之前**就进了缓存 —— 钮松开的那一刻,基线已经是写后的。
 	 */
 	busy: boolean;
 }
@@ -150,16 +152,17 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 	 */
 	const save = useMutation({
 		mutationFn: (next: readonly ListItem[]) =>
-			api.patch("/api/globals", {
+			api.patch<GlobalConfig>("/api/globals", {
 				extensions: { [ext.id]: { settings: { [field.key]: next } } },
 			}),
-		onSuccess: () => {
+		onSuccess: async (written) => {
+			// 名单那一口:回应就是写后的整份,**这一发结束之前**收进缓存 —— 钮一松开,下一下的
+			// 基线已经是写后的(为什么不等重读,见 `adoptWrittenGlobals`)。
+			await adoptWrittenGlobals(qc, written);
 			setAdding(false);
 			setConfirming(null);
-			// 名单那一口:宿主写完就经 WS 发了失效帧(在回这一发之前),在飞的那一发一定是写之后的 ——
-			// 并过去,别取消了重发一次。🔴 状态那一口**照旧取消重发**:宿主不替它发帧,在飞的可能是
-			// 写之前发出去的,并过去就拿着写之前的样子。
-			void qc.invalidateQueries({ queryKey: ["globals"] }, { cancelRefetch: false });
+			// 🔴 状态那一口**照旧取消重发**:宿主不替它发帧,在飞的可能是写之前发出去的,并过去就
+			// 拿着写之前的样子。
 			void qc.invalidateQueries({ queryKey: extensionStatusKey(ext.id) });
 		},
 	});
