@@ -50,6 +50,9 @@ export interface ExtensionsRouteOptions {
 	 * 某个拓展推送源那一口给面板的东西:外观(短名 / 标识色)+ 连接配置项(决策 33 —— 推送
 	 * 目标页照它画「新建连接」)。没跑 / 没注册过推送源就是 `undefined`。
 	 *
+	 * **只问 v1 的**:v1 这两样写在代码里,只有跑着的交得出来;v2 的写在清单里,列表照清单给
+	 * (见 {@link pushViewOfEntry})。
+	 *
 	 * 🔴 **这是那份外观唯一的出处**:不下发的话面板只能自己手抄一份短名与颜色,而手抄
 	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
 	 */
@@ -127,6 +130,22 @@ function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boo
 }
 
 /**
+ * 列表里那一行推送源那一口的外观 + 连接配置项(ADR-0019 决策 41)。
+ *
+ * v2 照清单给,**跑没跑都有** —— 拓展停了,它借来的连接在推送目标页照样画得出短名与标识色,
+ * 不退成灰方章;清单搬出代码的初衷就是不跑代码也知道。v1 的写在代码里,只有跑着的交得出来,
+ * 停着的问不出、不替它编。要拓展在场的(能挑的 bot、视图)不在这儿,照旧跟着「在跑」。
+ */
+function pushViewOfEntry(
+	entry: ExtensionEntry,
+	running: (id: string) => ExtensionPushView | undefined,
+): ExtensionPushView | undefined {
+	if (entry.manifest?.apiVersion !== 2) return running(entry.id);
+	const push = entry.manifest.contributes.push;
+	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
+}
+
+/**
  * 拓展页要的两样东西:装了哪些拓展(以及开没开),和某个拓展自己交上来的那份面板数据。
  *
  * 🔴 **状态走 `/api/*` 而不是 `/ext/<id>/*`**(ADR-0012 决策 36):后者**刻意**在鉴权外
@@ -152,8 +171,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				version: identity?.version,
 				provides: entry.manifest && manifestProvides(entry.manifest),
 				apiVersion: entry.manifest?.apiVersion,
-				// 跑起来了才有:它是 `activate` 里注册推送源时交的那一份。
-				push: opts.pushSource(entry.id),
+				// v2 照清单、没在跑的也有;v1 跑起来了才有(`activate` 里注册推送源时交的那一份)。
+				push: pushViewOfEntry(entry, opts.pushSource),
 				// 清单里声明的设置项 —— 来自清单、不来自代码,所以没在跑的也有。
 				...(entry.manifest?.apiVersion === 2 && entry.manifest.settings
 					? { settings: entry.manifest.settings }

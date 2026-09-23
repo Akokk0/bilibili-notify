@@ -335,7 +335,10 @@ function TargetCard({
 interface ConnectionEditorProps {
 	mode: "add" | "edit";
 	value: Connection;
-	/** 跑着的、开推送源那一口的拓展 —— 平台那一排的后几档,表单照它们的字段表画。 */
+	/**
+	 * 开推送源那一口的拓展(停着的 v2 也在,见 {@link PushExtension})—— 在场的是平台那一排的
+	 * 后几档;名字与连接配置项照它们交的画,停着也画。
+	 */
 	extensions: readonly PushExtension[];
 	onChange: (next: Connection) => void;
 	onSave: () => void;
@@ -402,7 +405,7 @@ function ConnectionEditorModal({
 							 * 跑着的推送源拓展是同一排的后几档 —— 挑了它,底下从它借得到的 bot 里挑一个,
 							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的外观。
 							 */}
-							{extensions.map((ext) => {
+							{extensions.filter(isPresent).map((ext) => {
 								const active = value.kind === "extension" && value.extensionId === ext.id;
 								const eTint = platformTint(ext.id);
 								return (
@@ -440,7 +443,7 @@ function ConnectionEditorModal({
 						subtitle={`经 ${extension?.push.display.label ?? value.extensionId} 借来的,连接就是它`}
 						accent={tint}
 					>
-						{extension ? (
+						{extension && isPresent(extension) ? (
 							<ExtensionBotPicker
 								extension={extension}
 								value={value}
@@ -674,16 +677,27 @@ function ExtensionBotPicker({
 }
 
 /**
- * 跑着的、开推送源那一口、报了 `push` 的拓展 —— 新建连接那一排要的就是这些。`push` 里
- * 外观与连接配置项一起交、一起有,缺一不可:少外观没名字,少连接配置项画不出表单。
+ * 开推送源那一口、交了 `push` 的拓展。`push` 里外观与连接配置项一起交、一起有,缺一不可:
+ * 少外观没名字,少连接配置项画不出表单。
+ *
+ * ⚠️ **有 `push` 不等于它在场**(ADR-0019 决策 41):v2 的这一格照清单给,停着也有 —— 名字、
+ * 连接配置项照它画;要它在场的(新建它的连接、挑 bot)另看 {@link isPresent}。
  */
 type PushExtension = ExtensionDTO & { push: NonNullable<ExtensionDTO["push"]> };
 
 function pushExtensionsOf(extensions: readonly ExtensionDTO[]): PushExtension[] {
 	return extensions.filter(
-		(ext): ext is PushExtension =>
-			ext.state === "running" && (ext.provides ?? []).includes("push") && ext.push !== undefined,
+		(ext): ext is PushExtension => (ext.provides ?? []).includes("push") && ext.push !== undefined,
 	);
+}
+
+/**
+ * 它此刻在不在场 —— 新建一条它的连接、挑 bot 只给在场的。连接就是一个 bot(ADR-0012 决策 45),
+ * 而 bot 名单只有跑着的拓展交得出来(`/api/ext/:id/bots` 停着回 404):停着也给新建那一档的话,
+ * 点进去一个 bot 都挑不了、存不了。
+ */
+function isPresent(ext: ExtensionDTO): boolean {
+	return ext.state === "running";
 }
 
 /** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的连接配置项翻。 */
@@ -1512,7 +1526,8 @@ export default function Targets() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 跑着的推送源拓展是「新建连接」那一排的后几档。与拓展页共用同一张表。
+	// 开推送源那一口的拓展:在场的是「新建连接」那一排的后几档,停着的 v2 名字与连接配置项照清单
+	// 也在(决策 41)。与拓展页共用同一张表。
 	const extensionsQuery = useExtensions({ retry: false });
 	const pushExtensions = pushExtensionsOf(extensionsQuery.data?.extensions ?? []);
 

@@ -332,11 +332,11 @@ describe("GET /api/ext", () => {
 	});
 
 	/**
-	 * 🔴 拓展自己在 `activate` 里报了短名与标识色,而面板此前**手抄了一份**
+	 * 🔴 v1 拓展在 `activate` 里报了短名与标识色,而面板此前**手抄了一份**
 	 * (`platform-meta.tsx` 里那行躺了整整一片)。字段不下发的话,那份手抄就是唯一出路,
 	 * 而它迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
 	 */
-	it("跑着的那条把它自报的外观一并交出去", async () => {
+	it("跑着的 v1 把它在代码里报的外观一并交出去", async () => {
 		const body = (await (
 			await boot({
 				entries: [running("bridge")],
@@ -349,8 +349,8 @@ describe("GET /api/ext", () => {
 		});
 	});
 
-	/** 连接配置项随清单下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
-	it("跑着的那条带连接配置项", async () => {
+	/** 连接配置项随推送源那一口下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
+	it("跑着的 v1 带它在代码里报的连接配置项", async () => {
 		const fields = [{ type: "string", key: "token", label: "token", secret: true }];
 		const res = await boot({
 			entries: [running("bridge")],
@@ -360,9 +360,92 @@ describe("GET /api/ext", () => {
 		expect(body.extensions[0]?.push?.connectionFields).toEqual(fields);
 	});
 
-	it("没跑起来的那条没有推送源那一口 —— 那是 activate 里才报的", async () => {
+	/**
+	 * 🔴 ADR-0019 决策 41:v2 的外观与连接配置项写在清单里,**跑没跑都交给面板**。只从跑着的
+	 * 代码拿的话,拓展一停,它借来的连接在推送目标页就退成灰方章 —— 而清单搬出代码的初衷
+	 * 就是不跑代码也知道。这里不给 `push` 的假口子:v2 那一份不该去问代码。
+	 */
+	it("停着的 v2 照清单交出推送源那一口(外观 + 连接配置项);只开订阅那口的没有", async () => {
+		const display = { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" };
+		const fields = [{ type: "string", key: "room", label: "房间" }];
+		const bridge: ExtensionEntry = {
+			id: "bridge",
+			dir: "/data/extensions/bridge",
+			state: "disabled",
+			manifest: {
+				id: "bridge",
+				name: "机器人框架桥接",
+				description: "一句话说明",
+				version: "0.0.1",
+				apiVersion: 2,
+				contributes: { push: { display, connection: { fields: fields as never } } },
+			},
+		};
+		const douyin: ExtensionEntry = {
+			id: "douyin",
+			dir: "/data/extensions/douyin",
+			state: "disabled",
+			manifest: {
+				id: "douyin",
+				name: "抖音订阅",
+				description: "一句话说明",
+				version: "0.1.0",
+				apiVersion: 2,
+				contributes: {
+					subscription: {
+						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+						events: ["post"],
+					},
+				},
+			},
+		};
 		const body = (await (
-			await boot({ entries: [{ id: "x", dir: "/d/x", state: "disabled" }] }).request("/")
+			await boot({ entries: [bridge, douyin] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions.find((e) => e.id === "bridge")?.push).toEqual({
+			display,
+			connectionFields: fields,
+		});
+		expect(body.extensions.find((e) => e.id === "douyin")?.push).toBeUndefined();
+	});
+
+	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */
+	it("停着的 v2 没写连接配置项 → 空表", async () => {
+		const bridge: ExtensionEntry = {
+			id: "bridge",
+			dir: "/data/extensions/bridge",
+			state: "blocked",
+			manifest: {
+				id: "bridge",
+				name: "机器人框架桥接",
+				description: "一句话说明",
+				version: "0.0.1",
+				apiVersion: 2,
+				contributes: {
+					push: { display: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" } },
+				},
+			},
+		};
+		const body = (await (
+			await boot({ entries: [bridge] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.push?.connectionFields).toEqual([]);
+	});
+
+	/** v1 的外观写在代码里,只有跑着的交得出来 —— 停着的问不出,不替它编一份。 */
+	it("停着的 v1 没有推送源那一口", async () => {
+		const body = (await (
+			await boot({
+				entries: [{ ...running("bridge"), state: "disabled" }],
+				push: {},
+			}).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.push).toBeUndefined();
+	});
+
+	it("清单读不出来的那条没有推送源那一口", async () => {
+		const body = (await (
+			await boot({ entries: [{ id: "x", dir: "/d/x", state: "unreadable" }] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions[0]?.push).toBeUndefined();
 	});
