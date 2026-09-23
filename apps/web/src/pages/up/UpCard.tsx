@@ -1,10 +1,15 @@
-import { Avatar, ErrorNote, Icon, Pill, Toggle } from "@bilibili-notify/ui";
+import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
-import { FEATURE_LABELS, isBiliSubscription, type Subscription } from "../../types/domain";
+import { isBiliSubscription, type Subscription } from "../../types/domain";
 import { displayName, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
+import {
+	featureLabelOf,
+	type SubscriptionPlatform,
+	visibleFeaturesOf,
+} from "./subscription-source";
 
 /**
  * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
@@ -30,6 +35,11 @@ export interface UpCardProps {
 	togglePending: boolean;
 	/** 右键 / 长按请求在给定坐标弹出快捷菜单。 */
 	onRequestMenu: (pos: { x: number; y: number }) => void;
+	/**
+	 * 拓展订阅是哪个平台的(ADR-0019 决策 10 / 41)—— 徽章、特性胶囊的叫法与多少、「××拓展没开」
+	 * 都照它。B 站订阅不看它。
+	 */
+	platform?: SubscriptionPlatform;
 }
 
 /**
@@ -49,11 +59,17 @@ export function UpCard({
 	onToggleEnabled,
 	togglePending,
 	onRequestMenu,
+	platform,
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
 	const color = subscriptionColor(sub);
-	const features = subscribedFeatures(sub);
+	const ext = isBiliSubscription(sub) ? undefined : platform;
+	// 拓展订阅只列它那个源报得出的(决策 5):B 站独有的开着也不摆 —— 那是一个永远不会响的开关。
+	const visible = visibleFeaturesOf(sub, ext);
+	const features = subscribedFeatures(sub).filter((k) => visible.includes(k));
+	// 拓展停了 / 没装:订阅留着、不轮询不推送(决策 10)。拓展列表没回来时是 undefined,不下结论。
+	const paused = ext?.absent === true;
 	const fans = sub.cachedProfile?.fans;
 	const fansLabel =
 		fans == null
@@ -87,8 +103,8 @@ export function UpCard({
 			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${UP_CARD_MIN_H} ${
 				selected ? "ring-2 ring-bn-pink" : ""
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-bn-card"} ${
-				sub.enabled ? "" : "opacity-70"
-			}`}
+				sub.enabled && !paused ? "" : "opacity-70"
+			} ${paused ? "grayscale" : ""}`}
 		>
 			{/* cover band */}
 			<div
@@ -145,15 +161,24 @@ export function UpCard({
 					/>
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-					{/* 拓展订阅没有 uid(ADR-0019 决策 9),这一行只剩粉丝数。 */}
+					{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格换成平台徽章。 */}
 					{isBiliSubscription(sub) ? (
 						<>
 							<span>UID {sub.uid}</span>
 							<span>·</span>
 						</>
+					) : ext ? (
+						<Pill size="sm" subtle color={ext.color ?? "var(--color-bn-inactive)"}>
+							{ext.shortLabel ?? ext.label}
+						</Pill>
 					) : null}
 					<span>{fansLabel}</span>
 				</div>
+				{paused && ext ? (
+					<WarnNote size="sm" icon={<Icon.extension size={12} />} className="mb-2.5">
+						{ext.label}拓展没开
+					</WarnNote>
+				) : null}
 				{/*
 				 * 未关注 = 收不到动态。动态走 feed/all(关注流),没关注该 UP 就一条都拿不到 ——
 				 * 这条订阅看着正常,实际是哑的。所以是**故障**不是提示:显眼、常驻,而不是创建
@@ -172,7 +197,7 @@ export function UpCard({
 					) : (
 						features.map((f) => (
 							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
-								{FEATURE_LABELS[f]}
+								{featureLabelOf(f, ext)}
 							</Pill>
 						))
 					)}

@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ExtensionSubscription, makeEmptySubscription } from "../../types/domain";
+import type { SubscriptionPlatform } from "./subscription-source";
 import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "./UpCard";
 
 /**
@@ -146,5 +147,55 @@ describe("UpCard × 拓展订阅", () => {
 		const sub = { ...makeExtSub(), followed: false, followError: "x" } as never;
 		const { queryByText } = render(<UpCard {...props({ sub })} />);
 		expect(queryByText(/收不到动态/)).toBeNull();
+	});
+});
+
+/**
+ * 拓展订阅那张卡的平台(ADR-0019 决策 5 / 10 / 41):徽章说是哪个平台的;特性胶囊只列那个源报得
+ * 出的,「动态」按平台的叫法走;拓展没在场时整张置灰、写明「××拓展没开」。
+ */
+const DOUYIN: SubscriptionPlatform = {
+	label: "抖音",
+	shortLabel: "抖音",
+	color: "#161823",
+	postNoun: "作品",
+	features: ["dynamic", "live"],
+	absent: false,
+};
+
+describe("UpCard × 订阅源的平台", () => {
+	it("平台徽章 + 只列这个源报得出的特性,「动态」叫「作品」", () => {
+		// 连 B 站独有的 SC 也显式开着 —— 照样不许露面,那是一个永远不会响的开关。
+		const sub = makeExtSub({ overrides: { features: { superchat: true } } });
+		const { getByText, queryByText } = render(<UpCard {...props({ sub, platform: DOUYIN })} />);
+		expect(getByText("抖音")).toBeTruthy();
+		expect(getByText("作品")).toBeTruthy();
+		expect(getByText("开播")).toBeTruthy();
+		expect(queryByText("动态")).toBeNull();
+		expect(queryByText("下播")).toBeNull();
+		expect(queryByText("SC")).toBeNull();
+	});
+
+	it("拓展不在场 → 置灰并写明「抖音拓展没开」", () => {
+		const { getByText, container } = render(
+			<UpCard {...props({ sub: makeExtSub(), platform: { ...DOUYIN, absent: true } })} />,
+		);
+		expect(getByText("抖音拓展没开")).toBeTruthy();
+		expect((container.firstElementChild as HTMLElement).className).toContain("grayscale");
+	});
+
+	it("拓展列表没回来(absent 不知道)→ 不下结论", () => {
+		const { queryByText, container } = render(
+			<UpCard {...props({ sub: makeExtSub(), platform: { ...DOUYIN, absent: undefined } })} />,
+		);
+		expect(queryByText(/拓展没开/)).toBeNull();
+		expect((container.firstElementChild as HTMLElement).className).not.toContain("grayscale");
+	});
+
+	it("没给平台 → 也不列 B 站独有的特性", () => {
+		const sub = makeExtSub({ overrides: { features: { liveGuardBuy: true } } });
+		const { queryByText, getByText } = render(<UpCard {...props({ sub })} />);
+		expect(getByText("动态")).toBeTruthy();
+		expect(queryByText("上舰")).toBeNull();
 	});
 });

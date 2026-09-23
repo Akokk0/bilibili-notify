@@ -259,6 +259,36 @@ export function makeEmptySubscription(uid: string): BiliSubscription {
 }
 
 /**
+ * 一条拓展订阅的草稿(ADR-0019 决策 9 / 11):身份是 `(extensionId, externalId)`,`externalId` 就是
+ * 解析门交回的那个候选的 `id`,原样存、从不解读。没有 uid、锐评、特别关注(决策 12)。
+ *
+ * 与 {@link makeEmptySubscription} 同一个口径:路由全空、覆写全空 —— 推给谁由配置弹层里挑。
+ */
+export function makeEmptyExtensionSubscription(
+	extensionId: string,
+	externalId: string,
+): ExtensionSubscription {
+	return {
+		kind: "extension",
+		id: newId(),
+		extensionId,
+		externalId,
+		enabled: true,
+		groups: [],
+		notes: undefined,
+		cachedProfile: undefined,
+		routing: emptyRouting(),
+		extras: emptyExtras(),
+		overrides: {},
+		state: {
+			lastDynamicId: undefined,
+			lastPushedAt: {},
+			liveStatus: "unknown",
+		},
+	};
+}
+
+/**
  * 新建一条连接 —— 回的是**直连**那一支:面板这张表单只建直连,桥接入在拓展页建
  * (它要的是 BN 地址 + token,跟这里问的东西完全不同)。收窄返回类型让调用方
  * 直接拿得到 `platform` 与那一档的 config,不用再自己 narrow 一次。

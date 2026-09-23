@@ -1,5 +1,11 @@
+import type {
+	ExtensionLookupResponse,
+	ExtensionSubscriptionCandidate,
+} from "@bilibili-notify/contract";
+import { colorFromUid } from "@bilibili-notify/internal/constants";
 import {
 	AddCard,
+	Avatar,
 	Btn,
 	ConfirmDialog,
 	EmptyNote,
@@ -13,13 +19,18 @@ import {
 	SELECTED_TINT_BG,
 	TOAST_DURATION_MS,
 	Toast,
+	ToneChip,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useExtensions } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
 import {
+	type ExtensionSubscription,
 	isBiliSubscription,
+	isExtensionSubscription,
+	makeEmptyExtensionSubscription,
 	makeEmptySubscription,
 	type PushTarget,
 	type Subscription,
@@ -28,6 +39,12 @@ import { copyToClipboard } from "../utils/clipboard";
 import { GroupEditDialog } from "./up/GroupEditDialog";
 import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
+import {
+	runningSubscriptionSources,
+	type SubscriptionPlatform,
+	type SubscriptionSourceExtension,
+	subscriptionPlatformOf,
+} from "./up/subscription-source";
 import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
@@ -109,23 +126,53 @@ interface SearchResponse {
 }
 
 /**
+ * 平台选择里 B 站那一档的值。拓展 id 只许小写字母、数字、连字符与点,带 `@` 的这个撞不上任何
+ * 一个拓展 —— 哪怕真有人把拓展起名叫 `bilibili`。
+ */
+const BILI_PLATFORM = "@bilibili";
+
+/** 订阅源拓展没交 `lookupPlaceholder` 时输入框里那句(ADR-0019 决策 51 的「通用说法」)。 */
+const GENERIC_LOOKUP_PLACEHOLDER = "输入主页链接或账号 id";
+
+/**
  * "添加 UP" 弹窗。输入纯数字时走 `/api/subs/lookup` 单条 preview(原 UID 流程);
  * 输入非数字时走 `/api/subs/search` 列出 5 条结果,翻页 + 整行点击直接提交订阅。
  * 已订阅的行不可点击并附「已订阅」灰显标识。
+ *
+ * **至少一个订阅源拓展在跑时**(ADR-0019 决策 10)顶上多一排平台选择:选了拓展,输入框里的字
+ * 原样交给它的解析门(决策 11 / 52),候选整行点击就进配置弹层。没有在跑的订阅源时这一排不画,
+ * 弹窗与从前一模一样。
  */
 function NewSubDialog({
 	onSubmit,
+	onPickCandidate,
 	onCancel,
 	pending,
 	error,
 	existingUids,
+	sources,
+	existingExternal,
 }: {
 	onSubmit: (profile: UpProfileLookup) => void;
+	onPickCandidate: (
+		source: SubscriptionSourceExtension,
+		candidate: ExtensionSubscriptionCandidate,
+	) => void;
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
 	existingUids: Set<string>;
+	/** 此刻在跑的订阅源拓展 —— 空的就不画平台选择。 */
+	sources: readonly SubscriptionSourceExtension[];
+	/** 已经订阅了的拓展订阅:拓展 id → 它名下的外部 id。候选撞上的标「已订阅」、挑不了。 */
+	existingExternal: ReadonlyMap<string, ReadonlySet<string>>;
 }) {
+	const [platformId, setPlatformId] = useState(BILI_PLATFORM);
+	// 选中的拓展中途停了(拓展列表刷新后不在里面)就退回 B 站 —— 问一个不在场的解析门只会 404。
+	const source = sources.find((one) => one.id === platformId);
+	const [candidates, setCandidates] = useState<readonly ExtensionSubscriptionCandidate[] | null>(
+		null,
+	);
 	const [input, setInput] = useState("");
 	const [profile, setProfile] = useState<UpProfileLookup | null>(null);
 	const [searchData, setSearchData] = useState<SearchResponse | null>(null);
@@ -167,23 +214,60 @@ function NewSubDialog({
 		},
 	});
 
+	/**
+	 * 解析门(决策 52)。回调挂在 `mutate` 这一发上而不是选项里:换平台 / 改输入时 `reset()` 之后,
+	 * 上一发晚到的回应就不会再把候选写回来 —— 否则换到 B 站之后还会冒出一列抖音的人。
+	 */
+	const extLookup = useMutation({
+		mutationFn: ({ id, q }: { id: string; q: string }) =>
+			api.get<ExtensionLookupResponse>(
+				`/api/ext/${encodeURIComponent(id)}/lookup?q=${encodeURIComponent(q)}`,
+			),
+	});
+
 	function reset(): void {
 		setProfile(null);
 		setSearchData(null);
 		setSearchTerm("");
 		setPage(1);
 		setOpErr(null);
+		setCandidates(null);
 		lookup.reset();
 		search.reset();
+		extLookup.reset();
 	}
 
 	function handleInputChange(next: string): void {
 		setInput(next);
-		if (profile || searchData || opErr) reset();
+		if (profile || searchData || candidates || opErr) reset();
+	}
+
+	function switchPlatform(next: string): void {
+		if (next === (source?.id ?? BILI_PLATFORM)) return;
+		setPlatformId(next);
+		reset();
 	}
 
 	function runQuery(): void {
 		if (!trimmed) return;
+		if (source) {
+			extLookup.mutate(
+				{ id: source.id, q: trimmed },
+				{
+					onSuccess: (data) => {
+						setCandidates(data.candidates);
+						setOpErr(null);
+					},
+					// 服务端那句话原样摆出来(不合规矩的形状、超时、拓展没在跑各有各的说法)——
+					// 换成一句「查找失败」等于让人对着黑盒猜。
+					onError: (err) => {
+						setCandidates(null);
+						setOpErr(`查找失败:${err instanceof Error ? err.message : String(err)}`);
+					},
+				},
+			);
+			return;
+		}
 		if (mode === "uid") {
 			lookup.mutate(trimmed);
 		} else {
@@ -199,9 +283,10 @@ function NewSubDialog({
 		search.mutate({ q: searchTerm, p });
 	}
 
-	const busy = lookup.isPending || search.isPending || pending;
+	const busy = lookup.isPending || search.isPending || extLookup.isPending || pending;
 	const queryDisabled = !trimmed || busy;
-	const queryLabel = mode === "uid" ? "查询" : "搜索";
+	const queryLabel = source ? "查找" : mode === "uid" ? "查询" : "搜索";
+	const display = source?.subscription.display;
 	const totalPages = searchData
 		? Math.max(1, Math.ceil(searchData.total / Math.max(1, searchData.pageSize)))
 		: 1;
@@ -212,22 +297,52 @@ function NewSubDialog({
 			width={420}
 			bodyClassName="p-5"
 			title="添加 UP 主"
-			description="输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单"
+			description={
+				display
+					? `输入的内容原样交给${display.label}拓展去认,选定后进入配置表单`
+					: "输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单"
+			}
 		>
+			{sources.length > 0 ? (
+				// 与推送目标页「新建连接」那一排平台同一个样子:名字与标识色都是拓展清单里报的。
+				<div className="mb-3 flex flex-wrap gap-1.5">
+					<ToneChip
+						tone="var(--color-bn-pink)"
+						active={!source}
+						onClick={() => switchPlatform(BILI_PLATFORM)}
+					>
+						B 站
+					</ToneChip>
+					{sources.map((one) => (
+						<ToneChip
+							key={one.id}
+							tone={one.subscription.display.color}
+							active={source?.id === one.id}
+							onClick={() => switchPlatform(one.id)}
+						>
+							{one.subscription.display.label}
+						</ToneChip>
+					))}
+				</div>
+			) : null}
 			{/* data-tour:「带我做」导览的高亮挂点(TourCompanion) */}
 			<div className="flex gap-2" data-tour="subs-search">
 				<Input
 					full
 					value={input}
 					onChange={handleInputChange}
-					placeholder="搜索 UID 或 UP 主名字"
+					placeholder={
+						display
+							? (display.lookupPlaceholder ?? GENERIC_LOOKUP_PLACEHOLDER)
+							: "搜索 UID 或 UP 主名字"
+					}
 					icon={<Icon.user size={14} />}
 				/>
 				<Btn variant="outline" size="sm" onClick={runQuery} disabled={queryDisabled}>
 					{busy ? `${queryLabel}中…` : queryLabel}
 				</Btn>
 			</div>
-			{duplicate ? (
+			{duplicate && !source ? (
 				<div className="mt-3 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-bn-sm text-bn-warning-text">
 					该 UID 已经在订阅列表中,无需重复添加
 				</div>
@@ -235,6 +350,14 @@ function NewSubDialog({
 			{opErr ? <ErrorNote className="mt-3">{opErr}</ErrorNote> : null}
 			{profile ? (
 				<ProfilePreview profile={profile} subscribed={existingUids.has(profile.uid)} />
+			) : null}
+			{source && candidates ? (
+				<CandidateList
+					candidates={candidates}
+					existing={existingExternal.get(source.id) ?? NO_EXTERNAL_IDS}
+					pending={pending}
+					onPick={(candidate) => onPickCandidate(source, candidate)}
+				/>
 			) : null}
 			{searchData ? (
 				<SearchResultList
@@ -251,7 +374,7 @@ function NewSubDialog({
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={pending}>
-					{searchData ? "关闭" : "取消"}
+					{searchData || candidates ? "关闭" : "取消"}
 				</Btn>
 				{profile ? (
 					<Btn
@@ -275,11 +398,15 @@ function NewSubDialog({
  */
 function UpProfileSummary({
 	profile,
+	idLabel,
 	subscribed,
 	size,
 	children,
 }: {
-	profile: UpProfileLookup;
+	/** 头像可以没有(拓展交的候选不一定带),那时退首字头像。 */
+	profile: { name: string; avatar?: string };
+	/** 名字旁边那一小串:B 站是「UID …」;拓展的候选不写(外部 id 是给机器认的)。 */
+	idLabel?: string;
 	subscribed: boolean;
 	/** `md` 给预览卡(48px 头像),`sm` 给搜索结果行(40px)。 */
 	size: "sm" | "md";
@@ -287,13 +414,21 @@ function UpProfileSummary({
 }) {
 	return (
 		<>
-			<img
-				src={profile.avatar}
-				alt={profile.name}
-				data-bn="avatar"
-				className={`${size === "md" ? "h-12 w-12" : "h-10 w-10"} shrink-0 rounded-full bg-bn-surface object-cover`}
-				referrerPolicy="no-referrer"
-			/>
+			{profile.avatar !== undefined ? (
+				<img
+					src={profile.avatar}
+					alt={profile.name}
+					data-bn="avatar"
+					className={`${size === "md" ? "h-12 w-12" : "h-10 w-10"} shrink-0 rounded-full bg-bn-surface object-cover`}
+					referrerPolicy="no-referrer"
+				/>
+			) : (
+				<Avatar
+					name={profile.name}
+					color={colorFromUid(profile.name)}
+					size={size === "md" ? 48 : 40}
+				/>
+			)}
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
 					<span
@@ -301,7 +436,9 @@ function UpProfileSummary({
 					>
 						{profile.name}
 					</span>
-					<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">UID {profile.uid}</span>
+					{idLabel ? (
+						<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">{idLabel}</span>
+					) : null}
 					{subscribed ? (
 						<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
 							已订阅
@@ -323,7 +460,12 @@ function ProfilePreview({
 }) {
 	return (
 		<div className="mt-4 flex items-center gap-3 rounded-lg border border-bn-border bg-bn-surface-muted p-3">
-			<UpProfileSummary profile={profile} subscribed={subscribed} size="md">
+			<UpProfileSummary
+				profile={profile}
+				idLabel={`UID ${profile.uid}`}
+				subscribed={subscribed}
+				size="md"
+			>
 				<div className="mt-0.5 text-bn-xs text-bn-text-secondary">{fansLabel(profile.fans)}</div>
 				{profile.sign ? (
 					<div className="mt-1 line-clamp-2 text-bn-xs text-bn-text-tertiary" title={profile.sign}>
@@ -371,13 +513,14 @@ function SearchResultList({
 							// 候选行。**不挂 option-active** —— 这一列没有「选中的那一个」,
 							// 灰掉的那些是「已经订阅过、挑不了」,不是选中态。
 							data-bn="option"
-							className={`flex items-center gap-3 rounded-lg border p-2.5 text-left transition ${
-								subscribed
-									? "cursor-not-allowed border-bn-border bg-bn-surface-muted opacity-60"
-									: "border-bn-border bg-bn-surface hover:border-bn-pink/60 hover:bg-bn-pink/5"
-							}`}
+							className={resultRowClass(subscribed)}
 						>
-							<UpProfileSummary profile={r} subscribed={subscribed} size="sm">
+							<UpProfileSummary
+								profile={r}
+								idLabel={`UID ${r.uid}`}
+								subscribed={subscribed}
+								size="sm"
+							>
 								<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
 									{fansLabel(r.fans)}
 									{r.sign ? (
@@ -413,6 +556,84 @@ function SearchResultList({
 	);
 }
 
+/** 结果行的底与边:B 站的搜索结果与拓展的候选是同一种行。 */
+function resultRowClass(subscribed: boolean): string {
+	return `flex items-center gap-3 rounded-lg border p-2.5 text-left transition ${
+		subscribed
+			? "cursor-not-allowed border-bn-border bg-bn-surface-muted opacity-60"
+			: "border-bn-border bg-bn-surface hover:border-bn-pink/60 hover:bg-bn-pink/5"
+	}`;
+}
+
+const NO_EXTERNAL_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * 解析门交回的候选(ADR-0019 决策 52):与 B 站的搜索结果同一种行,整行点击就进配置弹层。
+ * 最多 20 条,不翻页;已经订阅过的(同一个拓展 + 同一个外部 id)标「已订阅」、挑不了。
+ */
+function CandidateList({
+	candidates,
+	existing,
+	pending,
+	onPick,
+}: {
+	candidates: readonly ExtensionSubscriptionCandidate[];
+	existing: ReadonlySet<string>;
+	pending: boolean;
+	onPick: (candidate: ExtensionSubscriptionCandidate) => void;
+}) {
+	return (
+		<div className="mt-4 flex flex-col gap-1.5">
+			{candidates.length === 0 ? (
+				<EmptyNote>没有匹配的 UP 主</EmptyNote>
+			) : (
+				candidates.map((c) => {
+					const subscribed = existing.has(c.id);
+					const disabled = subscribed || pending;
+					return (
+						<button
+							key={c.id}
+							type="button"
+							onClick={() => !disabled && onPick(c)}
+							disabled={disabled}
+							// 同 B 站的结果行:不挂 option-active,灰掉的是「订阅过了」不是选中。
+							data-bn="option"
+							className={resultRowClass(subscribed)}
+						>
+							<UpProfileSummary profile={c} subscribed={subscribed} size="sm">
+								{c.fans !== undefined ? (
+									<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
+										{fansLabel(c.fans)}
+									</div>
+								) : null}
+							</UpProfileSummary>
+						</button>
+					);
+				})
+			)}
+		</div>
+	);
+}
+
+/**
+ * 用选中的候选预填资料(ADR-0019 决策 49)—— 与 B 站那边把查到的资料放进草稿同一个做法。头像是
+ * 候选的 data URL,建成之后服务端存成文件、换成 `/api/subs/<id>/avatar?v=…`;没有头像就是空串
+ * (资料缓存里「没有」的写法,头像件见空串退首字)。
+ *
+ * 候选没带粉丝数就**不带这一格**:编一个 `0` 出来,卡上就会写「0 粉丝」这种假话。
+ */
+function candidateProfile(
+	candidate: ExtensionSubscriptionCandidate,
+): NonNullable<ExtensionSubscription["cachedProfile"]> {
+	return {
+		name: candidate.name,
+		avatar: candidate.avatar ?? "",
+		sign: "",
+		lastRefreshedAt: new Date().toISOString(),
+		...(candidate.fans !== undefined ? { fans: candidate.fans } : {}),
+	};
+}
+
 function fansLabel(n: number): string {
 	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万 粉丝`;
 	return `${n} 粉丝`;
@@ -445,6 +666,23 @@ export default function Subs() {
 	});
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
+	// 拓展列表只是锦上添花(平台选择、拓展订阅的平台与「没开」),拿不到就不重试 —— 同推送目标页。
+	const extensionsQuery = useExtensions({ retry: false });
+	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没开」的结论。 */
+	const extensions = extensionsQuery.data?.extensions;
+	const sources = useMemo(() => runningSubscriptionSources(extensions), [extensions]);
+	const platformOf = (s: Subscription): SubscriptionPlatform | undefined =>
+		isExtensionSubscription(s) ? subscriptionPlatformOf(s, extensions) : undefined;
+	const existingExternal = useMemo(() => {
+		const out = new Map<string, Set<string>>();
+		for (const s of subs) {
+			if (!isExtensionSubscription(s)) continue;
+			const ids = out.get(s.extensionId) ?? new Set<string>();
+			ids.add(s.externalId);
+			out.set(s.extensionId, ids);
+		}
+		return out;
+	}, [subs]);
 
 	const [q, setQ] = useState("");
 	const [filterId, setFilterId] = useState<FilterId>("all");
@@ -660,6 +898,17 @@ export default function Subs() {
 		setShowNewDialog(false);
 	}
 
+	/** 同 {@link handleNew},草稿换成拓展订阅:身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
+	function handleNewCandidate(
+		source: SubscriptionSourceExtension,
+		candidate: ExtensionSubscriptionCandidate,
+	): void {
+		const fresh = makeEmptyExtensionSubscription(source.id, candidate.id);
+		fresh.cachedProfile = candidateProfile(candidate);
+		setNewDraft(fresh);
+		setShowNewDialog(false);
+	}
+
 	return (
 		<div className="bn-anim-page-in space-y-4">
 			<div className="flex flex-wrap items-center gap-2.5">
@@ -796,6 +1045,7 @@ export default function Subs() {
 						onToggleSelect={() => toggleSelect(s.id)}
 						onToggleEnabled={(on) => toggleEnabled(s, on)}
 						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
+						platform={platformOf(s)}
 					/>
 				))}
 				{/* 在 grid 末尾追加「+ 添加 UP 主」预选卡。仅在没有任何搜索 / 过滤时
@@ -822,6 +1072,7 @@ export default function Subs() {
 				<UpDialog
 					sub={newDraft}
 					targets={targets}
+					platform={platformOf(newDraft)}
 					mode="create"
 					onClose={() => setNewDraft(null)}
 					saving={upsert.isPending}
@@ -838,6 +1089,7 @@ export default function Subs() {
 				<UpDialog
 					sub={drawerSub}
 					targets={targets}
+					platform={platformOf(drawerSub)}
 					focusSection={drawerFocus}
 					onClose={() => {
 						setDrawerSubId(null);
@@ -859,6 +1111,7 @@ export default function Subs() {
 			{showNewDialog ? (
 				<NewSubDialog
 					onSubmit={handleNew}
+					onPickCandidate={handleNewCandidate}
 					onCancel={() => {
 						setShowNewDialog(false);
 						setError(null);
@@ -866,6 +1119,8 @@ export default function Subs() {
 					pending={upsert.isPending}
 					error={error}
 					existingUids={new Set(subs.filter(isBiliSubscription).map((s) => s.uid))}
+					sources={sources}
+					existingExternal={existingExternal}
 				/>
 			) : null}
 

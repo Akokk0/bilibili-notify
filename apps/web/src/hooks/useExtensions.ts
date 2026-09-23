@@ -11,11 +11,22 @@
  * import pages;市场那个键放在市场那一节里的话,改源的弹窗与市场那一节还会互相 import。
  */
 
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
 
 export const EXTENSIONS_QUERY_KEY = ["extensions"] as const;
+
+/**
+ * 这个拓展此刻在不在场 —— 要它本人在的事只给在场的:新建它的连接、挑 bot(`/api/ext/:id/bots`
+ * 停着回 404)、订阅页的平台选择与解析门(`/api/ext/:id/lookup` 同理)。
+ *
+ * ⚠️ 清单里的外观(`push` / `subscription` 那一格)**不看这个**:它照清单给、停着也有(ADR-0019
+ * 决策 41)。两件事别混 —— 「有外观」当「在场」的话,点进去就是一个问不到的拓展。
+ */
+export function isExtensionPresent(ext: ExtensionDTO): boolean {
+	return ext.state === "running";
+}
 
 /**
  * 一个拓展的状态那一口(`/api/ext/:id/status`,v2 拓展交上来的视图)。

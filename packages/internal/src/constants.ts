@@ -11,6 +11,7 @@
  * schema/common.ts 反向引用这里(`z.enum(FEATURE_KEYS)`)并从根入口重导出,后端消费者
  * (server)照旧从根入口拿 —— 两条路径同一份值。
  */
+import type { SubscriptionEventKind } from "./schema/extension-manifest.js";
 import type {
 	Connection,
 	DirectConnection,
@@ -1166,6 +1167,19 @@ export function isExtensionSubscription<T extends { kind: SubscriptionKind }>(
 ): sub is Extract<T, { kind: "extension" }> {
 	return sub.kind === "extension";
 }
+
+/**
+ * 订阅源报的事件种类 → BN 自己的特性键(ADR-0019 决策 4)。拓展只说中立名,映射归 BN:配置
+ * 弹层照它只列这个源报的那几种(决策 5),推送链收到事件时照它找路由。
+ *
+ * `satisfies` 两头都钉着:清单那边多一种事件、这里没跟上,编译不过;写错一个特性键,同样编译
+ * 不过。住零依赖模块是因为面板也要它(见文件头)。
+ */
+export const SUBSCRIPTION_EVENT_FEATURES = {
+	post: "dynamic",
+	liveStart: "live",
+	liveEnd: "liveEnd",
+} as const satisfies Record<SubscriptionEventKind, FeatureKey>;
 
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //

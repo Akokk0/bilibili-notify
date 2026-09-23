@@ -47,6 +47,7 @@ export {
 	resolveActivePersona,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
+	SUBSCRIPTION_EVENT_FEATURES,
 	type SubscriptionKind,
 	THINKING_LEVELS,
 	type ThinkingLevel,

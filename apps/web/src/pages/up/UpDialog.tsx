@@ -8,6 +8,7 @@ import {
 	Icon,
 	IconButton,
 	ModalShell,
+	Pill,
 	PlatformIcon,
 	Toggle,
 } from "@bilibili-notify/ui";
@@ -18,7 +19,6 @@ import {
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
-	FEATURE_LABELS,
 	type FeatureKey,
 	isBiliSubscription,
 	PUSH_EXTRAS,
@@ -32,11 +32,18 @@ import {
 	routingAlignedToFeatures,
 	subscriptionColor,
 } from "./helpers";
+import {
+	featureLabelOf,
+	type SubscriptionPlatform,
+	visibleFeaturesOf,
+} from "./subscription-source";
 
-const FEATURE_GROUPS: ReadonlyArray<{
+type FeatureGroup = {
 	label: string;
 	keys: ReadonlyArray<{ key: FeatureKey; sub?: string }>;
-}> = [
+};
+
+const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
 	{
 		label: "动态",
 		keys: [{ key: "dynamic", sub: "投稿 / 转发 / 专栏" }],
@@ -74,6 +81,39 @@ function extrasUnder(feature: FeatureKey): ExtraKey[] {
 }
 
 /**
+ * 只有 B 站报得出的附加项(ADR-0019 决策 5):词云与直播总结吃的是 B 站直播间的弹幕,别的平台
+ * 没有这份料。拓展订阅的弹层上不摆它们 —— 摆出来就是一个永远不会响的开关。
+ */
+const BILI_ONLY_EXTRAS: ReadonlySet<ExtraKey> = new Set(["wordcloud", "liveSummary"]);
+
+/**
+ * 拓展订阅那几把的小字。B 站那几句说的是 B 站的事(投稿 / 转发 / 专栏、词云 / AI 总结跟着下播走),
+ * 搬到别的平台上就是假话;没有的就不写。
+ */
+const EXTENSION_FEATURE_SUBS: Partial<Record<FeatureKey, string>> = {
+	live: "开播提醒",
+	liveEnd: "下播卡片",
+};
+
+/**
+ * 弹层上怎么分组、每一格叫什么 —— B 站订阅原样是 {@link FEATURE_GROUPS};拓展订阅只留它那个源
+ * 报得出的那几把(决策 5),空了的组整组不画,「动态」那组跟着平台的叫法走。
+ */
+function featureGroupsFor(
+	sub: Subscription,
+	visible: readonly FeatureKey[],
+	labelOf: FeatureLabelOf,
+): ReadonlyArray<FeatureGroup> {
+	if (isBiliSubscription(sub)) return FEATURE_GROUPS;
+	return FEATURE_GROUPS.map((g) => ({
+		label: g.keys.some(({ key }) => key === "dynamic") ? labelOf("dynamic") : g.label,
+		keys: g.keys
+			.filter(({ key }) => visible.includes(key))
+			.map(({ key }) => ({ key, sub: EXTENSION_FEATURE_SUBS[key] })),
+	})).filter((g) => g.keys.length > 0);
+}
+
+/**
  * 每把附加项在面板上的一句说明。注册表里只放领域事实(挂哪、叫什么、默认值),界面措辞
  * 留在界面这一层;缺了也不炸 —— 新加的键先走兜底那句,补文案是另一回事。
  */
@@ -84,13 +124,16 @@ const EXTRA_HINTS: Partial<Record<ExtraKey, string>> = {
 	liveSummary: "下播时作为附加消息一起推",
 };
 
-function extraHint(k: ExtraKey): string {
-	return EXTRA_HINTS[k] ?? `推送「${FEATURE_LABELS[PUSH_EXTRAS[k].feature]}」时附加一条`;
+/** 特性在弹层上叫什么 —— 拓展订阅的「动态」按平台的叫法走(`postNoun`)。 */
+type FeatureLabelOf = (k: FeatureKey) => string;
+
+function extraHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
+	return EXTRA_HINTS[k] ?? `推送「${labelOf(PUSH_EXTRAS[k].feature)}」时附加一条`;
 }
 
 /** 主特性关着时的 tooltip —— 说清楚「先开哪个」,而不是干巴巴一句「不可用」。 */
-function extraOffHint(k: ExtraKey): string {
-	return `需先开启「${FEATURE_LABELS[PUSH_EXTRAS[k].feature]}」才能推这个附加项`;
+function extraOffHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
+	return `需先开启「${labelOf(PUSH_EXTRAS[k].feature)}」才能推这个附加项`;
 }
 
 export interface UpDialogProps {
@@ -112,6 +155,11 @@ export interface UpDialogProps {
 	onSave: (next: Subscription) => void;
 	onDelete: () => void;
 	saving: boolean;
+	/**
+	 * 拓展订阅是哪个平台的(ADR-0019 决策 5):只列它报得出的特性、「动态」按它的叫法、头部写它。
+	 * B 站订阅不看它。
+	 */
+	platform?: SubscriptionPlatform;
 }
 
 /**
@@ -200,6 +248,7 @@ export function UpDialog({
 	onDelete,
 	saving,
 	focusSection,
+	platform,
 }: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
@@ -249,6 +298,15 @@ export function UpDialog({
 	if (!draft) return null;
 
 	const color = subscriptionColor(draft);
+	// 拓展订阅只列它那个源报得出的那几把特性(决策 5);B 站订阅全列,一切照旧。
+	const ext = isBiliSubscription(draft) ? undefined : platform;
+	const visibleFeatures = visibleFeaturesOf(draft, ext);
+	const labelOf: FeatureLabelOf = (k) => featureLabelOf(k, ext);
+	const featureGroups = featureGroupsFor(draft, visibleFeatures, labelOf);
+	const extrasFor = (feature: FeatureKey): ExtraKey[] =>
+		isBiliSubscription(draft)
+			? extrasUnder(feature)
+			: extrasUnder(feature).filter((k) => !BILI_ONLY_EXTRAS.has(k));
 	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
 	// 始终可点 + 关闭时一律走丢弃确认。
 	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
@@ -518,13 +576,19 @@ export function UpDialog({
 							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
-							{/* 拓展订阅没有 uid(ADR-0019 决策 9)。 */}
+							{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格写它是哪个平台的。 */}
 							{isBiliSubscription(draft) ? (
 								<span className="tabular-nums">UID {draft.uid}</span>
+							) : ext ? (
+								<Pill size="sm" color={ext.color ?? "var(--color-bn-inactive)"}>
+									{ext.label}
+								</Pill>
 							) : null}
 							{draft.cachedProfile?.fans != null ? (
 								<>
-									{isBiliSubscription(draft) ? <span className="mx-1 opacity-70">·</span> : null}
+									{isBiliSubscription(draft) || ext ? (
+										<span className="mx-1 opacity-70">·</span>
+									) : null}
 									<span>
 										{draft.cachedProfile.fans >= 10_000
 											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`
@@ -568,7 +632,7 @@ export function UpDialog({
 						这是该 UP 的"默认推送内容"。下方的推送目标若未单独自定义,会跟随这里的设置。
 					</p>
 					<div className="space-y-2">
-						{FEATURE_GROUPS.map((g) => (
+						{featureGroups.map((g) => (
 							<div
 								key={g.label}
 								className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface"
@@ -582,13 +646,15 @@ export function UpDialog({
 										return (
 											<div key={key}>
 												<FeatureToggleRow
-													label={FEATURE_LABELS[key]}
+													label={labelOf(key)}
 													sub={featSub}
 													value={parentOn}
 													onChange={(on) => setFeatureEnabled(key, on)}
 												/>
 												<ExtraInlineToggles
 													feature={key}
+													keys={extrasFor(key)}
+													labelOf={labelOf}
 													parentOn={parentOn}
 													value={(k) => effExtra(draft, k)}
 													onChange={setExtraEnabled}
@@ -620,6 +686,10 @@ export function UpDialog({
 										target={t}
 										isCustom={customSet.has(t.id)}
 										sub={draft}
+										features={visibleFeatures}
+										groups={featureGroups}
+										labelOf={labelOf}
+										extrasFor={extrasFor}
 										onToggleMode={(toCustom) => switchTargetMode(t.id, toCustom)}
 										onToggleRoute={(k, on) => toggleRouteForTarget(t.id, k, on)}
 										onSetExtra={(extraKey, explicit) => setExtraExplicit(t.id, extraKey, explicit)}
@@ -870,16 +940,20 @@ function SubToggleRow({
  */
 function ExtraInlineToggles({
 	feature,
+	keys,
+	labelOf,
 	parentOn,
 	value,
 	onChange,
 }: {
 	feature: FeatureKey;
+	/** 这把主特性下面摆哪几把附加项(拓展订阅不摆只有 B 站报得出的那几把)。 */
+	keys: readonly ExtraKey[];
+	labelOf: FeatureLabelOf;
 	parentOn: boolean;
 	value: (k: ExtraKey) => boolean;
 	onChange: (k: ExtraKey, on: boolean) => void;
 }) {
-	const keys = extrasUnder(feature);
 	if (keys.length === 0) return null;
 	return (
 		<div className="mt-0.5 ml-9 flex flex-col gap-1 text-bn-xs">
@@ -892,9 +966,9 @@ function ExtraInlineToggles({
 					label={PUSH_EXTRAS[k].label}
 					// 带上所属主特性:@全体 在动态与开播下各有一枚,光一句「@全体」读屏分不清
 					// 是哪一枚 —— 同一屏里两个同名控件,按名字找必然找错一个。
-					ariaLabel={`${PUSH_EXTRAS[k].label} · ${FEATURE_LABELS[feature]}`}
-					hint={extraHint(k)}
-					offHint={extraOffHint(k)}
+					ariaLabel={`${PUSH_EXTRAS[k].label} · ${labelOf(feature)}`}
+					hint={extraHint(k, labelOf)}
+					offHint={extraOffHint(k, labelOf)}
 				/>
 			))}
 		</div>
@@ -920,6 +994,7 @@ function ExtraInlineToggles({
 function ExtraPerTargetToggle({
 	extraKey,
 	targetName,
+	labelOf,
 	parentOn,
 	explicit,
 	inheritedValue,
@@ -928,6 +1003,7 @@ function ExtraPerTargetToggle({
 }: {
 	extraKey: ExtraKey;
 	targetName: string;
+	labelOf: FeatureLabelOf;
 	parentOn: boolean;
 	explicit: boolean | undefined;
 	inheritedValue: boolean;
@@ -942,10 +1018,10 @@ function ExtraPerTargetToggle({
 	const hint = unsupported
 		? UNSUPPORTED_AT_ALL_NOTE
 		: !parentOn
-			? extraOffHint(extraKey)
+			? extraOffHint(extraKey, labelOf)
 			: isExplicit
 				? `已显式设置为 ${explicit ? "ON" : "OFF"}(订阅默认为 ${inheritedValue ? "ON" : "OFF"})`
-				: `${follow} · ${extraHint(extraKey)}`;
+				: `${follow} · ${extraHint(extraKey, labelOf)}`;
 	return (
 		<div className="mt-0.5 ml-9">
 			<div
@@ -987,6 +1063,10 @@ function TargetRoutingCard({
 	target,
 	isCustom,
 	sub,
+	features,
+	groups,
+	labelOf,
+	extrasFor,
 	onToggleMode,
 	onToggleRoute,
 	onSetExtra,
@@ -995,14 +1075,19 @@ function TargetRoutingCard({
 	target: PushTarget;
 	isCustom: boolean;
 	sub: Subscription;
+	/** 这条订阅摆出来的那几把特性 —— 计数只算它们(拓展订阅没有 B 站独有的那几把)。 */
+	features: readonly FeatureKey[];
+	groups: ReadonlyArray<FeatureGroup>;
+	labelOf: FeatureLabelOf;
+	extrasFor: (feature: FeatureKey) => ExtraKey[];
 	onToggleMode: (toCustom: boolean) => void;
 	onToggleRoute: (k: FeatureKey, on: boolean) => void;
 	onSetExtra: (extraKey: ExtraKey, explicit: boolean | undefined) => void;
 	onDetach: () => void;
 }) {
 	const enabledCount = isCustom
-		? FEATURE_KEYS.filter((k) => sub.routing[k].includes(target.id)).length
-		: FEATURE_KEYS.filter((k) => effFeature(sub, k)).length;
+		? features.filter((k) => sub.routing[k].includes(target.id)).length
+		: features.filter((k) => effFeature(sub, k)).length;
 
 	return (
 		<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
@@ -1019,7 +1104,7 @@ function TargetRoutingCard({
 				</div>
 				{isCustom ? (
 					<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">
-						{enabledCount}/{FEATURE_KEYS.length}
+						{enabledCount}/{features.length}
 					</span>
 				) : null}
 				<Toggle value={isCustom} onChange={onToggleMode} size="sm" />
@@ -1036,7 +1121,7 @@ function TargetRoutingCard({
 			{/* Detail (only when custom) */}
 			{isCustom ? (
 				<div className="border-t border-bn-border-subtle bg-bn-surface-muted">
-					{FEATURE_GROUPS.map((g) => (
+					{groups.map((g) => (
 						<div
 							key={g.label}
 							className="border-b border-bn-border-subtle px-3 py-2 last:border-b-0"
@@ -1049,16 +1134,17 @@ function TargetRoutingCard({
 									return (
 										<div key={key}>
 											<FeatureToggleRow
-												label={FEATURE_LABELS[key]}
+												label={labelOf(key)}
 												sub={featSub}
 												value={parentOn}
 												onChange={(on) => onToggleRoute(key, on)}
 											/>
-											{extrasUnder(key).map((ek) => (
+											{extrasFor(key).map((ek) => (
 												<ExtraPerTargetToggle
 													key={ek}
 													extraKey={ek}
 													targetName={target.name}
+													labelOf={labelOf}
 													parentOn={parentOn}
 													explicit={
 														Object.hasOwn(sub.extras[ek], target.id)

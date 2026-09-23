@@ -34,6 +34,7 @@ import { QQQrBindButton } from "../components/qq-qr-bind";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
 	extensionBotsKey,
+	isExtensionPresent,
 	useExtensions,
 } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
@@ -406,7 +407,7 @@ function ConnectionEditorModal({
 							 * 跑着的推送源拓展是同一排的后几档 —— 挑了它,底下从它借得到的 bot 里挑一个,
 							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的外观。
 							 */}
-							{extensions.filter(isPresent).map((ext) => {
+							{extensions.filter(isExtensionPresent).map((ext) => {
 								const active = value.kind === "extension" && value.extensionId === ext.id;
 								const eTint = platformTint(ext.id);
 								return (
@@ -444,7 +445,7 @@ function ConnectionEditorModal({
 						subtitle={`经 ${extension?.push.display.label ?? value.extensionId} 借来的,连接就是它`}
 						accent={tint}
 					>
-						{extension && isPresent(extension) ? (
+						{extension && isExtensionPresent(extension) ? (
 							<ExtensionBotPicker
 								extension={extension}
 								value={value}
@@ -688,7 +689,9 @@ function ExtensionBotPicker({
  * 少外观没名字,少连接配置项画不出表单。
  *
  * ⚠️ **有 `push` 不等于它在场**(ADR-0019 决策 41):v2 的这一格照清单给,停着也有 —— 名字、
- * 连接配置项照它画;要它在场的(新建它的连接、挑 bot)另看 {@link isPresent}。
+ * 连接配置项照它画;要它在场的(新建它的连接、挑 bot)另看 {@link isExtensionPresent} —— 连接就是
+ * 一个 bot(ADR-0012 决策 45),而 bot 名单只有跑着的拓展交得出来,停着也给新建那一档的话,点进去
+ * 一个 bot 都挑不了、存不了。
  */
 type PushExtension = ExtensionDTO & { push: NonNullable<ExtensionDTO["push"]> };
 
@@ -696,15 +699,6 @@ function pushExtensionsOf(extensions: readonly ExtensionDTO[]): PushExtension[] 
 	return extensions.filter(
 		(ext): ext is PushExtension => (ext.provides ?? []).includes("push") && ext.push !== undefined,
 	);
-}
-
-/**
- * 它此刻在不在场 —— 新建一条它的连接、挑 bot 只给在场的。连接就是一个 bot(ADR-0012 决策 45),
- * 而 bot 名单只有跑着的拓展交得出来(`/api/ext/:id/bots` 停着回 404):停着也给新建那一档的话,
- * 点进去一个 bot 都挑不了、存不了。
- */
-function isPresent(ext: ExtensionDTO): boolean {
-	return ext.state === "running";
 }
 
 /**
@@ -723,7 +717,7 @@ function absentExtensionOf(
 ): string | undefined {
 	if (connection.kind !== "extension" || extensions === undefined) return undefined;
 	const ext = extensions.find((one) => one.id === connection.extensionId);
-	if (ext && isPresent(ext)) return undefined;
+	if (ext && isExtensionPresent(ext)) return undefined;
 	return ext?.push?.display.label ?? ext?.name ?? connection.extensionId;
 }
 

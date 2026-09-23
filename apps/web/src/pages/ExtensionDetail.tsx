@@ -9,12 +9,13 @@ import {
 	TabBar,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExtensionViewBoundary } from "../components/error-boundary";
 import { EXTENSIONS_QUERY_KEY, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
+import { isExtensionSubscription, type Subscription } from "../types/domain";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import {
 	DeclarativeConfig,
@@ -79,6 +80,19 @@ export default function ExtensionDetail() {
 	 * 就是同一块提示、同两颗钮出两遍。
 	 */
 	const installer = useMarketplaceInstall();
+	/*
+	 * 卸掉之后它名下的订阅**保留**、暂停(ADR-0019 决策 10)—— 确认框得说清有几条,否则主人会以为
+	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着时才去读 ——
+	 * 详情页每进一次都拉一遍整张订阅表,换来的只是框里那一句。
+	 */
+	const subsQuery = useQuery({
+		queryKey: ["subscriptions"],
+		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		enabled: confirming,
+	});
+	const keptSubs = (subsQuery.data ?? []).filter(
+		(sub) => isExtensionSubscription(sub) && sub.extensionId === id,
+	).length;
 
 	/**
 	 * 删完**离开这一页** —— 留在原地的话它立刻变成「没有装名叫 X 的拓展」,看起来像出了错。
@@ -267,6 +281,9 @@ export default function ExtensionDetail() {
 								盘上那份会被抹掉,<strong>删掉它的设置也会一起没</strong>
 								。随时能从拓展市场再装回来。
 							</p>
+							{keptSubs > 0 ? (
+								<p className={`mt-2 ${PARAGRAPH_CLS}`}>有 {keptSubs} 条订阅会保留(暂停)</p>
+							) : null}
 							{remove.isError ? (
 								<ErrorNote size="sm" className="mt-2.5">
 									{reasonOf(remove.error)}
