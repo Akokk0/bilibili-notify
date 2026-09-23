@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ExtensionSubscriptionCandidate } from "@bilibili-notify/extension";
-import { FAKE_AVATARS } from "./avatars.js";
+import { FAKE_AVATARS, FAKE_SVG } from "./avatars.js";
 
 /**
  * 名字里最多带多少字的查询词。宿主收的名字是 1–128 字,而查询最长能到 1024 —— 截短了
@@ -26,9 +26,7 @@ const MESSY_CANDIDATES: readonly ExtensionSubscriptionCandidate[] = [
 	{
 		id: "fake-mess-svg",
 		name: "乱 · SVG 头像",
-		avatar: `data:image/svg+xml;base64,${Buffer.from(
-			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#0d9488"/></svg>',
-		).toString("base64")}`,
+		avatar: `data:image/svg+xml;base64,${Buffer.from(FAKE_SVG).toString("base64")}`,
 	},
 	{ id: "fake-mess-fans", name: "乱 · 粉丝数是负的", fans: -1 },
 ];

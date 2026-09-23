@@ -15,3 +15,25 @@ export const FAKE_AVATARS: readonly string[] = [
 	// indigo #6366f1
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAATklEQVR42u3PQQkAAAgEsOsq2N8GRvAtDFZgqZ7XIiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBwWV7OoZaC+o1lAAAAAElFTkSuQmCC",
 ];
+
+/**
+ * 一张 SVG —— 宿主**必须拒**的那种图(只收位图,ADR-0019 决策 49 / 62)。「乱」交回的候选头像与
+ * 「报一条带坏图的作品」混进去的那张都是它。
+ */
+export const FAKE_SVG =
+	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#0d9488"/></svg>';
+
+/**
+ * 「报资料」轮着换的另四张(同样 64×64 纯色 png)—— 与上面那四张**不重样**:订阅是拿解析门候选的头像
+ * 建的,报资料若也从那四张里挑,第一下可能恰好是同一张,宿主摘要一样不覆盖,主人看着像「头像没换」。
+ */
+export const FAKE_PROFILE_AVATARS: readonly string[] = [
+	// sky #0ea5e9
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAUElEQVR42u3PQQkAAAgEsEtg/wKGs4URfAuDFViq57UICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICFwW59LBeEtKdBAAAAAASUVORK5CYII=",
+	// lime #84cc16
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsEthYuMZygi+hcEKLD31WgQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQELguzbmFLSFzrtwAAAABJRU5ErkJggg==",
+	// violet #8b5cf6
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtqI/v6NoJvYbACS9e8FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKms9G0d9zivQAAAABJRU5ErkJggg==",
+	// orange #f97316
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsEthUdP7M4JvYbACy3S9FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywJ9TCFpNWCOBAAAAABJRU5ErkJggg==",
+];

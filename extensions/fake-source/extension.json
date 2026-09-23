@@ -1,9 +1,18 @@
 {
 	"id": "fake-source",
 	"name": "假源(开发用)",
-	"description": "开发用的假订阅源,背后不连任何平台:新建订阅时按你输入的字现编几个候选,好在真机上把「选平台 → 解析 → 建订阅」走一遍。",
+	"description": "开发用的假订阅源,背后不连任何平台:新建订阅时按你输入的字现编几个候选,页上的按钮造作品 / 开播 / 下播 / 资料 / 直播状态的上报,好在真机上把「选平台 → 解析 → 建订阅 → 报事件」走一遍。",
 	"version": "0.0.1",
 	"apiVersion": 2,
+	"actions": [
+		"report.post",
+		"report.liveStart",
+		"report.liveEnd",
+		"report.profile",
+		"report.liveStatus",
+		"report.badImage",
+		"report.extraField"
+	],
 	"icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5l-5.1-10.1a2 2 0 0 1-.2-.9V2\"/><path d=\"M8.5 2h7\"/><path d=\"M7 16h10\"/></svg>",
 	"contributes": {
 		"subscription": {
