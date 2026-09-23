@@ -3,7 +3,8 @@ import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
 import { FEATURE_LABELS, type Subscription } from "../../types/domain";
-import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";
+import { colorFromUid, displayName, subscribedFeatures } from "./helpers";
+import { RelativeTime } from "./relative-time";
 
 /**
  * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
@@ -181,7 +182,9 @@ export function UpCard({
 						分组：
 						<span className="text-bn-text-tertiary">{sub.groups[0] ?? "默认"}</span>
 					</span>
-					<span>· 更新于 {relativeTime(sub.cachedProfile?.lastRefreshedAt)}</span>
+					<span>
+						· 更新于 <RelativeTime at={sub.cachedProfile?.lastRefreshedAt} />
+					</span>
 				</div>
 			</div>
 		</div>

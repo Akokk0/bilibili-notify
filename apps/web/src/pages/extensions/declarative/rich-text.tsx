@@ -1,6 +1,6 @@
 import type { ExtensionRichRun, ExtensionRichText } from "@bilibili-notify/contract";
 import type { ReactNode } from "react";
-import { relativeTime } from "../../up/helpers";
+import { RelativeTime } from "../../up/relative-time";
 import { extensionAddress } from "./address";
 
 /**
@@ -60,7 +60,8 @@ function Run({ run, ctx }: { run: ExtensionRichRun; ctx: RunContext }): ReactNod
 		const at = new Date(run.time);
 		return (
 			<time dateTime={Number.isNaN(at.getTime()) ? undefined : at.toISOString()}>
-				{relativeTime(run.time)}
+				{/* 跟着分钟节拍走:页面开着不动,「刚刚连上」不该一直挂着。 */}
+				<RelativeTime at={run.time} />
 				{run.suffix ?? ""}
 			</time>
 		);

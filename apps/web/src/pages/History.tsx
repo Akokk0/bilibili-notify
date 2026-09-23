@@ -30,7 +30,8 @@ import {
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { colorFromUid, displayName, relativeTime } from "./up/helpers";
+import { colorFromUid, displayName } from "./up/helpers";
+import { RelativeTime } from "./up/relative-time";
 
 /**
  * `/history` — 1:1 port of `.bn-design/variation-a-tabs.jsx#HistoryTab`,
@@ -249,7 +250,7 @@ function HistoryRow({
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
 				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
-					{relativeTime(entry.ts)}
+					<RelativeTime at={entry.ts} />
 				</span>
 				<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 				<Pill color={tone} subtle size="sm">

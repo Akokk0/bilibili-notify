@@ -42,12 +42,15 @@ export function targetsById(targets: PushTarget[]): Map<string, PushTarget> {
 /**
  * 距今多久。收 ISO 串**或** epoch 毫秒 —— 后者是给拓展面板那边的:桥报上来的
  * `connectedAt` 就是个数字,为它再抄一份同样的阶梯是这仓里已经有三份的那种重复。
+ *
+ * `now` 默认取此刻。挂在页面上一直开着的地方别直接调它,用 `RelativeTime`(`relative-time.tsx`)
+ * —— 它跟着分钟节拍重画;只在渲染那一刻算一次的话,页面开着不动,它就一直停在「刚刚」。
  */
-export function relativeTime(iso: string | number | undefined): string {
+export function relativeTime(iso: string | number | undefined, now: number = Date.now()): string {
 	if (iso === undefined || iso === "") return "—";
 	const ts = typeof iso === "number" ? iso : new Date(iso).getTime();
 	if (Number.isNaN(ts)) return "—";
-	const delta = Date.now() - ts;
+	const delta = now - ts;
 	if (delta < 60_000) return "刚刚";
 	if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
 	if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
