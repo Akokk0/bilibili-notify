@@ -456,6 +456,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	// ---------------- 收帧 -----------------------------------------------------
 
 	function onMessage(conn: BridgeConn, raw: RawData): void {
+		// 🔴 **已经被我们关掉的连接,路上的帧一律不认**。`ws` 在关闭握手走完之前(CLOSING)
+		// 照样 emit 收到的帧,而 `drop` 已经跑过、不会再来第二次:放一条在路上的 hello 进来,
+		// 它就把这条踢掉的连接写进会话表 —— 面板上「已连接」,推送全落空,再也没人摘它。
+		// 重新生成 token 时对账踢的正是握手窗口里的连接,插件那头这时多半刚把 hello 发出来。
+		if (!conns.has(conn)) return;
 		conn.lastSeenAt = Date.now();
 		let payload: unknown;
 		try {

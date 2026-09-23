@@ -475,6 +475,26 @@ describe("桥 adapter", () => {
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
+	/**
+	 * 🔴 **换 token 按接入名单判,不按会话表判**。拿旧 token 过了 upgrade、还没发 hello 的那条
+	 * 不在会话表里 —— 只从会话看起的话这一轮看不见它,快照随后被刷成新 token,它握完手就是
+	 * 一条再也踢不掉的正式会话。`disconnect` 本来就连握手窗口里的一起关(真 socket 的那一半
+	 * 在 `e2e.test.ts`)。
+	 */
+	it("**会话表里没有它也照踢** —— 握手窗口里那条只有 disconnect 够得着", () => {
+		const h = harness(null);
+		h.setLinks([link({ token: "新的" })]);
+		h.adapter.reconcile?.([]);
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
+	});
+
+	it("新建的接入不算「token 换了」—— 上一轮名单里没有它", () => {
+		const h = harness(null);
+		h.setLinks([link(), link({ id: "link-new", token: "另一条" })]);
+		h.adapter.reconcile?.([]);
+		expect(h.disconnect).not.toHaveBeenCalled();
+	});
+
 	it("什么都没变 → 不动它(reconcile 每次配置变更都会跑)", () => {
 		const h = harness();
 		h.adapter.reconcile?.([]);

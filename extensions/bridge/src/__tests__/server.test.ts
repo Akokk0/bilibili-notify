@@ -526,6 +526,21 @@ describe("/bridge 端点", () => {
 		expect(await p.waitClose()).toBe(BRIDGE_CLOSE_CODES.revoked);
 	});
 
+	/**
+	 * 🔴 **被 BN 关掉的连接,路上的帧一律不认**。`ws` 在关闭握手走完之前(CLOSING)照样把
+	 * 收到的帧 emit 出来,而 `drop` 已经跑过、不会再有第二次 —— 一条在路上的 hello 会把这条
+	 * 已经踢掉的连接写进会话表,面板上「已连接」,推送发出去全落空,而且再也没人摘它。
+	 */
+	it("踢掉之后才到的 hello 不许把它写回会话表 —— 插件那头这时还不知道自己被关了", async () => {
+		const p = join();
+		await p.open();
+		server.disconnect(CONNECTION_ID, BRIDGE_CLOSE_CODES.revoked);
+		p.send(helloFrame());
+		expect(await p.waitClose()).toBe(BRIDGE_CLOSE_CODES.revoked);
+		expect(server.sessionCount).toBe(0);
+		expect(server.getSession(CONNECTION_ID)).toBeUndefined();
+	});
+
 	it("握手窗口里接入被停用了 → hello 不给过(upgrade 那一道早就过完了)", async () => {
 		let on = true;
 		await boot({ accepts: () => on });

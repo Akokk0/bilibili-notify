@@ -269,8 +269,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		 * 接入没了、被停用了、token 被重新生成了。看的是**接入名单**(设置),不是连接 ——
 		 * 连接是一个 bot,删一条连接不该断谁;宿主按连接变更叫它时也无妨,一样对得上。
 		 *
-		 * 从**活着的会话**看起而不是从配置看起:配置里那条早就删了,能告诉我们「还有谁连着」
-		 * 的只有会话表。
+		 * 删了 / 停用了从**活着的会话**看起:配置里那条早就删了,能告诉我们「还有谁连着」的
+		 * 只有会话表。握手窗口里那条不归这一段管 —— hello 那道 `accepts` 复查会拦下它。
 		 */
 		reconcile(): void {
 			const links = new Map<string, BridgeLink>();
@@ -279,16 +279,19 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				const link = links.get(session.linkId);
 				if (!link) {
 					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
-					continue;
-				}
-				if (!link.enabled) {
+				} else if (!link.enabled) {
 					// 停用不是吊销:配置全留、重开即恢复,所以给的是「可以退避重连」那个码。
 					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.disabled);
-					continue;
 				}
-				const before = lastTokens.get(session.linkId);
+			}
+			// 🔴 token 换了从**名单**看起,不从会话表:拿旧 token 过了 upgrade、还没发 hello 的
+			// 那条不在会话表里,而 hello 那道复查只问「接入在不在、开没开」,不问 token —— 这一轮
+			// 放过它,快照一刷,它握完手就是一条再也没人踢的正式会话。`disconnect` 本来就连握手
+			// 窗口里的一起关。停用又换了 token 的,上面已经按停用关过,这里再来一次是空操作。
+			for (const [id, link] of links) {
+				const before = lastTokens.get(id);
 				if (before !== undefined && before !== link.token) {
-					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
+					server.disconnect(id, BRIDGE_CLOSE_CODES.revoked);
 				}
 			}
 			lastTokens.clear();

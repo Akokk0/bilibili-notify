@@ -36,6 +36,7 @@ import type {
 } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
+import { BRIDGE_CLOSE_CODES } from "../contract.js";
 import { activate } from "../index.js";
 
 const EXTENSION_ID = "bridge";
@@ -101,9 +102,15 @@ const TARGET: PushTarget = {
  * 宿主的替身 —— **只做真宿主做的那几件事**:分配挂载前缀并剥掉它、按前缀把 upgrade 交过来、
  * 把分发键按拓展 id 覆盖掉、代收 status 与 ctx 注册的一切。
  */
-function hostFor(httpServer: HttpServer, connections: () => readonly Connection[]) {
+function hostFor(
+	httpServer: HttpServer,
+	connections: () => readonly Connection[],
+	settings: () => unknown,
+) {
 	const timers: NodeJS.Timeout[] = [];
 	const hooks: Array<() => void | Promise<void>> = [];
+	/** 订了「设置动了」的那些 —— 桥拿它接对账与面板刷新。 */
+	const settingsListeners = new Set<() => void>();
 	let fetchHandler: ExtensionFetchHandler | undefined;
 	let upgradeHandler: ExtensionUpgradeHandler | undefined;
 	let adapter: PlatformAdapter | undefined;
@@ -177,10 +184,13 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		statusChanged() {
 			statusChanges += 1;
 		},
-		// 设置也按真宿主的做法:拿拓展交的那份 zod 解,变更通知这里不需要。
+		// 设置也按真宿主的做法:拿拓展交的那份 zod 解;动了由 `settingsChanged()` 扇出。
 		settings: (schema) => ({
-			get: () => schema.parse(SETTINGS),
-			onChange: () => ({ dispose() {} }),
+			get: () => schema.parse(settings()),
+			onChange: (fn) => {
+				settingsListeners.add(fn);
+				return { dispose: () => settingsListeners.delete(fn) };
+			},
 		}),
 		// 桥不接动作(它的清单没有 actions)。
 		onAction() {},
@@ -202,6 +212,10 @@ function hostFor(httpServer: HttpServer, connections: () => readonly Connection[
 		status: () => statusOf?.(),
 		statusChanges: () => statusChanges,
 		inbound: () => inboundCalls,
+		/** 主人在面板上存了一次设置 —— 真宿主是 globals 落盘之后扇出给每个订阅者。 */
+		settingsChanged(): void {
+			for (const fn of [...settingsListeners]) fn();
+		},
 		async dispose() {
 			for (const fn of [...hooks].reverse()) await fn();
 			for (const timer of timers) clearTimeout(timer);
@@ -218,6 +232,8 @@ function peer(port: number, token: string) {
 	});
 	const frames: Frame[] = [];
 	let waiter: ((frame: Frame) => void) | null = null;
+	let closeCode: number | null = null;
+	let closeWaiter: ((code: number) => void) | null = null;
 
 	socket.on("message", (raw) => {
 		const frame = JSON.parse(raw.toString("utf8")) as Frame;
@@ -226,6 +242,10 @@ function peer(port: number, token: string) {
 			waiter = null;
 			resolve(frame);
 		} else frames.push(frame);
+	});
+	socket.on("close", (code) => {
+		closeCode = code;
+		closeWaiter?.(code);
 	});
 	socket.on("error", () => {});
 
@@ -246,6 +266,13 @@ function peer(port: number, token: string) {
 				waiter = resolve;
 			});
 		},
+		/** BN 关这条 socket 时给的 close code —— 插件拿它决定要不要重连。 */
+		waitClose(): Promise<number> {
+			if (closeCode !== null) return Promise.resolve(closeCode);
+			return new Promise((resolve) => {
+				closeWaiter = resolve;
+			});
+		},
 		dispose(): void {
 			try {
 				socket.terminate();
@@ -263,11 +290,18 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	let client: ReturnType<typeof peer> | undefined;
 	/** 宿主交下来的连接名单 —— 用例可以就地把那条连接停用掉。 */
 	let connections: Connection[];
+	/** 桥自己的设置(接入名单)—— 用例换掉它再 `host.settingsChanged()`,就是主人存了一次。 */
+	let settings: typeof SETTINGS;
 
 	beforeEach(async () => {
 		httpServer = createServer();
 		connections = [CONNECTION];
-		host = hostFor(httpServer, () => connections);
+		settings = SETTINGS;
+		host = hostFor(
+			httpServer,
+			() => connections,
+			() => settings,
+		);
 		activate(host.ctx);
 		await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
 		port = (httpServer.address() as AddressInfo).port;
@@ -454,6 +488,41 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		});
 		await new Promise((resolve) => setTimeout(resolve, 60));
 		expect(host.inbound()).toEqual([]);
+	});
+
+	// ---- 吊销 ----------------------------------------------------------------
+
+	/**
+	 * 🔴 **重新生成 token 也得踢掉握手窗口里那条**。它拿旧 token 过了 upgrade、还没发 hello,
+	 * 所以不在会话表里:只从会话看起的对账看不见它,上一轮快照随后被刷成新 token —— 它接着
+	 * 发 hello 就成了一条正式会话,之后每次对账都是「token 没变」,再也没人踢它。
+	 *
+	 * hello **紧跟着**发:插件那头这时还不知道自己已经被关了,帧正在路上。所以光看 close code
+	 * 不够,还得看它有没有借着那一帧溜进会话表(面板上那张卡是不是「已连接」)。
+	 * close code 要的是 4005 而不是 4004:握手超时也会关它,那样绿是假绿。
+	 */
+	it("握手窗口里重新生成了 token → 那条以 4005 被关,拿不到 welcome,也成不了会话", async () => {
+		client = peer(port, TOKEN);
+		await client.open();
+		const [link] = SETTINGS.links;
+		if (!link) throw new Error("unreachable");
+		settings = { links: [{ ...link, token: "重新生成的-token" }] };
+		host.settingsChanged();
+		client.send({
+			type: "hello",
+			protocol: { major: 1, minor: 0 },
+			bridge: { kind: "koishi", name: "家里那台 koishi", version: "0.1.0" },
+			bots: [{ botId: BOT_ID, platform: "telegram" }],
+		});
+		// 先到的是哪一个:welcome 帧(溜进来了)还是 close(被踢了)。
+		const first = await Promise.race([
+			client.next().then((frame) => ({ frame })),
+			client.waitClose().then((code) => ({ code })),
+		]);
+		expect(first).toEqual({ code: BRIDGE_CLOSE_CODES.revoked });
+		// close 到了插件这头时,它在那之前发出的 hello BN 早就收过了(同一条 TCP,先后不乱)。
+		expect(itemView(host.status())?.status).toEqual({ tone: "off", text: "没连上" });
+		expect(host.adapter().isAvailable?.(CONNECTION, TARGET)).toBe(false);
 	});
 
 	it("publishStatus:握过手之后,面板拿得到这条接入的样子与 bot 表(ADR-0019 决策 20)", async () => {
