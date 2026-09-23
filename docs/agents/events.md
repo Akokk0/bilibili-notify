@@ -21,7 +21,7 @@
 | `live-viewers-changed` | `room-session` 每 uid 2s 节流的 `WATCHED_CHANGE` 帧 `(uid, viewers)` |
 | `fans-refreshed` | 独立端 `FansPoller` 每个 tick 的完整 `FansRefreshEntry[]` 快照 |
 | `ready` | 业务核心完全启动 |
-| `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |
+| `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。**按拓展合并**:第一喊起 250ms 窗口里的连喊只在尾沿发一次(`STATUS_CHANGED_COALESCE_MS`,窗口不随后来的喊往后推),收摊时挂着的那一发清掉。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |
 | `extension-settings-changed` | 某个拓展的设置经 `PATCH /api/ext/<id>/settings` 写进去了(ADR-0019 决策 35)。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-settings-changed` 帧,面板按 id 失效它的设置与视图(面板改走新口的那一片才接上,在那之前这一帧没人听)—— 设置里有密钥,数据本身不上 bus、不进帧。这是宿主自己知道的事实,不替拓展判视图变没变 |
 
 ## MessageBus 语义

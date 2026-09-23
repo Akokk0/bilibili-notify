@@ -21,6 +21,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
+import { STATUS_CHANGED_COALESCE_MS } from "../extensions/context.js";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
@@ -278,20 +279,43 @@ describe("devtools 的假桥 → 真桥", () => {
 	});
 
 	/**
-	 * 🔴 **名单再来一份,面板也得知道**。插件探完能力会重推一份全量快照(bot 上下线同理),
-	 * 而桥只在「连上 / 断开」喊 `statusChanged()` 的话,面板上那张能力矩阵永远停在握手那份 ——
-	 * 状态接口里查得到真答案,屏幕上却是一片「还不知道」,直到主人切一次页。
+	 * 🔴 **名单再来一份,面板也得知道**。插件探完能力会重推一份全量快照(bot 上下线同理),面板上
+	 * 那张能力矩阵得跟着换 —— 否则状态接口里查得到真答案,屏幕上却是一片「还不知道」,直到主人切一次页。
 	 *
-	 * 数得清是因为这条链上没有任何合并:握手喊两声(会话 + 握手那份名单),第二份快照再喊
-	 * 一声 —— 所以**三帧**。少接一处,这个数就对不上。
+	 * 宿主**按拓展合并**连喊(`STATUS_CHANGED_COALESCE_MS`):握手喊两声(会话 + 握手那份名单)、第二份
+	 * 快照再喊一声,三声只差几毫秒,落在同一个窗口里 —— state 频道推的**少于三帧**(一般是一帧);面板
+	 * **照最后一帧重取**,看到的已经是探完那份。
+	 *
+	 * ⚠️ 两样它钉不住,各在别处钉着:
+	 * - 「尾沿」:同一个进程里第二份快照几毫秒就落地,「先发、窗口里的吞掉」那种合并重取也总赶在它之后
+	 *   (真跑过,照样绿)—— 尾沿在 ctx 的单测里用假定时器钉着(`context-grants.test.ts`「statusChanged 合并」);
+	 * - 「桥在 onBots 里也喊了一声」:第二份快照落在窗口里,握手那一声就把它带上了 —— 在桥自己的 e2e 里
+	 *   钉着(「bots 快照又来一份 → 再喊一声 statusChanged」)。
 	 */
-	it("插件探完能力重推名单 → state 频道再推一帧 extension-changed(一共三帧)", async () => {
+	it("握手连着探完能力的名单 → 连喊合并成尾沿那一帧,照最后一帧重取看到的是探完那份", async () => {
 		const panel = await stateSubscriber(port);
+		const changed = (f: StateFrame) => f.event === "extension-changed";
 		try {
 			await runScenario("bridge.connect");
-			await statusUntil(probedCapabilities);
-			await panel.waitFor((f) => f.event === "extension-changed", 3_000);
-			expect(panel.count((f) => f.event === "extension-changed")).toBe(3);
+			// 面板的做法:收到帧就重取一次。一直跟到安静下来(两个窗口没有新帧),记下最后那次重取。
+			let handled = 0;
+			let lastRefetch: boolean | undefined;
+			for (;;) {
+				const seen = handled;
+				try {
+					await panel.waitFor(
+						() => panel.count(changed) > seen,
+						seen === 0 ? 3_000 : 2 * STATUS_CHANGED_COALESCE_MS,
+					);
+				} catch {
+					break;
+				}
+				handled = panel.count(changed);
+				lastRefetch = probedCapabilities(await status());
+			}
+			expect(handled).toBeGreaterThanOrEqual(1);
+			expect(handled).toBeLessThan(3);
+			expect(lastRefetch).toBe(true);
 		} finally {
 			panel.close();
 		}

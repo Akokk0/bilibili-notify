@@ -73,6 +73,18 @@ export class ExtensionSettingsUnreadable extends Error {}
 export const ACTION_TIMEOUT_MS = 30_000;
 
 /**
+ * `ctx.statusChanged()` 按拓展合并的窗口:第一喊起算,窗口里的连喊只在尾沿发**一次**。
+ *
+ * 为什么是 250ms:一阵连喊(桥上两百个 bot 陆续报上来、一次握手连着「会话 + 名单」两声)彼此只隔
+ * 几毫秒到几十毫秒,四分之一秒兜得住;而单独一声(一条接入连上、扫码状态变了)的代价就是晚这么一点
+ * 才重读,人眼里仍是「当场变了」。每个拓展最多每秒四次整份重读。
+ *
+ * 🔴 窗口**不因为又喊了一声就往后推**(不是防抖):一个一直在喊的拓展那样永远发不出去,面板上那张卡
+ * 一直是旧的。
+ */
+export const STATUS_CHANGED_COALESCE_MS = 250;
+
+/**
  * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
  * 装包、只重载全卡在它后面,关机也关不下去(ADR-0019 决策 45)。
  */
@@ -178,7 +190,10 @@ export interface CreateExtensionContextOptions {
 	 * 该来把它收掉。原因在 {@link ExtensionRuntime.settingsProblem}。不给就只是没人收。
 	 */
 	onSettingsInvalid?: () => void;
-	/** 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。 */
+	/**
+	 * 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。**已经合并过**:一个
+	 * 窗口里的连喊只叫它一次,见 {@link STATUS_CHANGED_COALESCE_MS}。
+	 */
 	onStatusChanged?: () => void;
 	/** 入站的两路收口。 */
 	inbound: InboundSinks;
@@ -267,6 +282,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const runningActions = new Map<string, AbortController>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let secretCodes: readonly string[] = [];
+	/** 挂着的那一发「面板数据变了」(合并窗口,见 {@link STATUS_CHANGED_COALESCE_MS});没有就是 `undefined`。 */
+	let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
 	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
 	function ownConnections<TConfig>(
@@ -549,7 +566,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				refuse("statusChanged");
 				return;
 			}
-			opts.onStatusChanged?.();
+			// 窗口里已经挂着一发:这一喊由它带上 —— 它在这一喊之后才发,面板重读到的是这一喊之后的样子。
+			if (statusTimer !== undefined) return;
+			statusTimer = setTimeout(() => {
+				statusTimer = undefined;
+				opts.onStatusChanged?.();
+			}, STATUS_CHANGED_COALESCE_MS);
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			checkSettingsSchema(schema);
@@ -733,6 +755,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
+			clearTimeout(statusTimer);
+			statusTimer = undefined;
 			// 🔴 在跑的动作先叫停,再跑收摊钩子 —— 钩子里能等它们收尾;不叫停的话,拓展都停了,它的
 			// handler 还在背后接着轮询平台。
 			for (const controller of runningActions.values()) {

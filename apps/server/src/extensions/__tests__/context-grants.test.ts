@@ -23,11 +23,11 @@ import type {
 	PlatformAdapter,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { adapterForConnection } from "../../platforms/dispatch.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
-import { createExtensionContext } from "../context.js";
+import { createExtensionContext, STATUS_CHANGED_COALESCE_MS } from "../context.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -946,23 +946,97 @@ describe("给面板看的数据", () => {
 		expect(h.runtime.status()).toEqual({ n: 2 });
 	});
 
-	/**
-	 * 现取的数据有个盲点:**什么时候该再取一次**面板不知道。桥那头 koishi 已经握完手,
-	 * 面板上那张卡还灰着,得切一下页才刷新。所以拓展要能喊一声「变了」,宿主把这声推到面板。
-	 */
-	it("statusChanged 转给宿主 —— 面板据此当场重取,不用切页", () => {
-		const h = harness();
-		h.ctx.statusChanged();
-		h.ctx.statusChanged();
-		expect(h.statusChanges()).toBe(2);
-	});
-
 	it("卸载之后 statusChanged 被拒绝并留一行", async () => {
 		const h = harness();
 		await h.runtime.dispose();
 		h.ctx.statusChanged();
 		expect(h.statusChanges()).toBe(0);
 		expect(h.lines.some((l) => l.startsWith("warn") && l.includes("statusChanged"))).toBe(true);
+	});
+});
+
+/**
+ * 现取的数据有个盲点:**什么时候该再取一次**面板不知道。桥那头 koishi 已经握完手,面板上那张卡还灰着,
+ * 得切一下页才刷新。所以拓展要能喊一声「变了」,宿主把这声推到面板。
+ *
+ * 🔴 **按拓展合并**:每喊一声就是一帧 WS、面板整份重读一次视图 —— 桥上两百个 bot 陆续报上来就是两百次
+ * 重读。短窗口里的连喊只发一次,落在窗口的**尾沿**:窗口里最后那一喊之后一定还有一发,面板重读到的
+ * 是那一喊之后的样子。
+ */
+describe("statusChanged 合并", () => {
+	const W = STATUS_CHANGED_COALESCE_MS;
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("一阵连喊只发一次,落在窗口的尾沿", () => {
+		const h = harness();
+		for (let i = 0; i < 200; i += 1) h.ctx.statusChanged();
+		expect(h.statusChanges()).toBe(0);
+		vi.advanceTimersByTime(W - 1);
+		expect(h.statusChanges()).toBe(0);
+		vi.advanceTimersByTime(1);
+		expect(h.statusChanges()).toBe(1);
+		vi.advanceTimersByTime(W * 10);
+		expect(h.statusChanges()).toBe(1);
+	});
+
+	/**
+	 * 最后一次不丢:**每一喊之后都还有一发** —— 窗口快满时那一喊由尾沿那一发带上;发过之后再喊,另起
+	 * 一个窗口再发一次。「先发、窗口里的吞掉」那种合并,面板重读到的是最后一喊之前的样子。
+	 */
+	it("最后一次不丢:窗口快满时那一喊之后还有一发;发过之后再喊,再发一次", () => {
+		const h = harness();
+		h.ctx.statusChanged();
+		vi.advanceTimersByTime(W - 1);
+		h.ctx.statusChanged();
+		const beforeTail = h.statusChanges();
+		vi.advanceTimersByTime(1);
+		expect(h.statusChanges()).toBe(beforeTail + 1);
+
+		h.ctx.statusChanged();
+		const beforeNext = h.statusChanges();
+		vi.advanceTimersByTime(W);
+		expect(h.statusChanges()).toBe(beforeNext + 1);
+		expect(h.statusChanges()).toBe(2);
+	});
+
+	/**
+	 * 窗口**不因为又喊了一声就往后推**:那样的话一个一直在喊的拓展(每 100ms 报一次)永远发不出去,
+	 * 面板上那张卡一直是旧的。
+	 */
+	it("一直在喊也按窗口发,不会被饿死", () => {
+		const h = harness();
+		for (let t = 0; t < W * 10; t += W / 5) {
+			h.ctx.statusChanged();
+			vi.advanceTimersByTime(W / 5);
+		}
+		expect(h.statusChanges()).toBe(10);
+	});
+
+	/** 两个拓展各算各的:一个在连喊,另一个那一声照样按自己的窗口发出去。 */
+	it("按拓展合并 —— 两个拓展互不相干", () => {
+		const a = harness();
+		const b = harness();
+		a.ctx.statusChanged();
+		vi.advanceTimersByTime(W / 2);
+		b.ctx.statusChanged();
+		vi.advanceTimersByTime(W / 2);
+		expect([a.statusChanges(), b.statusChanges()]).toEqual([1, 0]);
+		vi.advanceTimersByTime(W / 2);
+		expect([a.statusChanges(), b.statusChanges()]).toEqual([1, 1]);
+	});
+
+	/** 收摊时挂着的那一发清掉 —— 收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。 */
+	it("收摊时挂着的那一发清掉,收摊之后不再发", async () => {
+		const h = harness();
+		h.ctx.statusChanged();
+		await h.runtime.dispose();
+		vi.advanceTimersByTime(W * 10);
+		expect(h.statusChanges()).toBe(0);
 	});
 });
 
