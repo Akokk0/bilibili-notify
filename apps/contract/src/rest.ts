@@ -8,6 +8,7 @@ import type {
 	ExtensionBotView,
 	ExtensionField,
 	ExtensionPushView,
+	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
@@ -145,6 +146,14 @@ export interface ExtensionDTO {
 /** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
 export interface ExtensionBotsResponse {
 	bots: readonly ExtensionBotView[];
+}
+
+/**
+ * `GET /api/ext/:id/lookup?q=` —— 新建订阅时那个拓展的解析门交回的候选(ADR-0019 决策 11 / 52)。
+ * 服务端已经核过形状(最多 20 条、头像只收位图 data URL……)。一个都认不出是空表,不是 404。
+ */
+export interface ExtensionLookupResponse {
+	candidates: readonly ExtensionSubscriptionCandidate[];
 }
 
 // ---- /api/ext/:id/settings(ADR-0019 决策 35)------------------------------------

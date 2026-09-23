@@ -13,7 +13,7 @@ import type { GlobalConfig, ServiceContext } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
-import type { ActionOutcome } from "../../extensions/context.js";
+import type { ActionOutcome, LookupOutcome } from "../../extensions/context.js";
 import {
 	type ExtensionEntry,
 	type LoadedExtensions,
@@ -49,6 +49,8 @@ function boot(
 		loader?: LoadedExtensions;
 		/** 换掉「在装载器那条队里改盘」那一口 —— 只有要看「写是不是在队里」的用例给。 */
 		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
+		/** 解析门(`GET /:id/lookup`)。不给就是那一口没接上。 */
+		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
 	} = {},
 ) {
 	const store = {
@@ -87,6 +89,7 @@ function boot(
 		},
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
+		lookup: over.lookup,
 		...(loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
 }
@@ -1330,5 +1333,109 @@ describe("POST /api/ext/:id/actions/:name", () => {
 			"/douyin/actions/toString",
 		);
 		expect(res.status).toBe(400);
+	});
+});
+
+/**
+ * 新建订阅时的解析门(ADR-0019 决策 11 / 52):主人粘的东西交给那个拓展,回候选。走 `/api/*`,吃面板
+ * 会话鉴权。每种失败各有状态码与原话 —— 两种 502(拓展自己抛了 / 交回来的不合规矩)要分得开:
+ * 前者是平台那头的事(cookie 过期、被风控),后者是拓展的 bug。
+ */
+describe("GET /api/ext/:id/lookup", () => {
+	const CANDIDATE = { id: "MS4wLjABAAAA-x", name: "抖音作者", fans: 12 };
+
+	function stub(outcome: LookupOutcome | undefined) {
+		return vi.fn(async (_id: string, _query: string) => outcome);
+	}
+
+	it("问到了 —— 200,{ candidates } 原样下发;交给拓展的是 id 与主人输入的原话", async () => {
+		const lookup = stub({ ok: true, candidates: [CANDIDATE] });
+		const res = await boot({ lookup }).request(
+			`/douyin/lookup?q=${encodeURIComponent("https://v.douyin.com/abc/")}`,
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ candidates: [CANDIDATE] });
+		expect(lookup).toHaveBeenCalledWith("douyin", "https://v.douyin.com/abc/");
+	});
+
+	it("一个都认不出 —— 200 加一张空表,不是 404", async () => {
+		const res = await boot({ lookup: stub({ ok: true, candidates: [] }) }).request(
+			"/douyin/lookup?q=nobody",
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ candidates: [] });
+	});
+
+	/** 粘链接时带进来的首尾空白去掉;除此之外一个字不动 —— 怎么解读是拓展的事。 */
+	it("q 首尾的空白去掉再交给拓展,中间的原样", async () => {
+		const lookup = stub({ ok: true, candidates: [] });
+		await boot({ lookup }).request(`/douyin/lookup?q=${encodeURIComponent("  \t抖音 作者 名\n ")}`);
+		expect(lookup).toHaveBeenCalledWith("douyin", "抖音 作者 名");
+	});
+
+	it.each<[string, string]>([
+		["没带 q", "/douyin/lookup"],
+		["q 是空串", "/douyin/lookup?q="],
+		["q 只有空白", `/douyin/lookup?q=${encodeURIComponent("   ")}`],
+		["q 超过 1024 字", `/douyin/lookup?q=${"字".repeat(1025)}`],
+		["拓展 id 不合规矩", "/Douyin/lookup?q=x"],
+	])("%s —— 400,不往下问", async (_label, path) => {
+		const lookup = stub({ ok: true, candidates: [] });
+		const res = await boot({ lookup }).request(path);
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { ok: boolean; err: string };
+		expect(body.ok).toBe(false);
+		expect(body.err.length).toBeGreaterThan(0);
+		expect(lookup).not.toHaveBeenCalled();
+	});
+
+	it("q 正好 1024 字 —— 照常问", async () => {
+		const lookup = stub({ ok: true, candidates: [] });
+		const res = await boot({ lookup }).request(`/douyin/lookup?q=${"字".repeat(1024)}`);
+		expect(res.status).toBe(200);
+		expect(lookup).toHaveBeenCalledOnce();
+	});
+
+	it.each<[string, LookupOutcome | undefined, number, string[]]>([
+		// 没在跑 / 不是订阅源 / 没装 —— 说清是哪个拓展。
+		["问不到", undefined, 404, ["douyin"]],
+		["超时", { ok: false, reason: "timeout" }, 504, ["15 秒"]],
+		[
+			"拓展自己抛了",
+			{ ok: false, reason: "failed", message: "cookie 过期了" },
+			502,
+			["拓展查询出错:", "cookie 过期了"],
+		],
+		[
+			"交回来的候选不合规矩",
+			{ ok: false, reason: "invalid", message: "0.avatar: 头像只收 png / jpeg / webp" },
+			502,
+			["拓展交回的候选不合规矩:", "0.avatar: 头像只收 png / jpeg / webp"],
+		],
+	])("%s —— %s", async (_label, outcome, status, texts) => {
+		const res = await boot({ lookup: stub(outcome) }).request("/douyin/lookup?q=x");
+		expect(res.status).toBe(status);
+		const body = (await res.json()) as { ok: boolean; err: string };
+		expect(body.ok).toBe(false);
+		for (const text of texts) expect(body.err).toContain(text);
+	});
+
+	/** 两种 502 的原话不能混:一个是平台那头的事,一个是拓展的 bug,主人与作者要一眼分得开。 */
+	it("两种 502 的说法分得开", async () => {
+		const failed = (await (
+			await boot({
+				lookup: stub({ ok: false, reason: "failed", message: "同一句" }),
+			}).request("/douyin/lookup?q=x")
+		).json()) as { err: string };
+		const invalid = (await (
+			await boot({
+				lookup: stub({ ok: false, reason: "invalid", message: "同一句" }),
+			}).request("/douyin/lookup?q=x")
+		).json()) as { err: string };
+		expect(failed.err).not.toBe(invalid.err);
+	});
+
+	it("这个构建没接解析门 —— 404", async () => {
+		expect((await boot().request("/douyin/lookup?q=x")).status).toBe(404);
 	});
 });

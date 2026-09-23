@@ -3,6 +3,7 @@ import type {
 	ExtensionBotView,
 	ExtensionDTO,
 	ExtensionInstallResponse,
+	ExtensionLookupResponse,
 	ExtensionPushView,
 	ExtensionsResponse,
 	MarketplaceResponse,
@@ -20,6 +21,8 @@ import type { ConfigStore } from "../config/store.js";
 import {
 	ACTION_TIMEOUT_MS,
 	type ActionOutcome,
+	LOOKUP_TIMEOUT_MS,
+	type LookupOutcome,
 	manifestPushView,
 	manifestSubscriptionView,
 } from "../extensions/context.js";
@@ -40,6 +43,18 @@ const MarketplaceInstallRequestSchema = z.object({
 	source: z.string().min(1),
 	id: z.string().min(1),
 });
+
+/** 解析门那句 `q` 最长多少字(去掉首尾空白之后算)。主页链接、id、名字都远到不了。 */
+export const LOOKUP_QUERY_MAX_CHARS = 1024;
+
+/**
+ * 解析门的 `q`:首尾空白去掉(粘链接时常带进来),除此之外一个字不动 —— 怎么解读是拓展的事。
+ */
+const LookupQuerySchema = z
+	.string({ error: "要给 q:主人在新建订阅的输入框里填的那句" })
+	.trim()
+	.min(1, "q 不能是空的")
+	.max(LOOKUP_QUERY_MAX_CHARS, `q 不能超过 ${LOOKUP_QUERY_MAX_CHARS} 字`);
 
 export interface ExtensionsRouteOptions {
 	store: ConfigStore;
@@ -67,6 +82,11 @@ export interface ExtensionsRouteOptions {
 	 * 的话那一口永远 404。
 	 */
 	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+	/**
+	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52)。没在跑 / 不是订阅源 / 没装就是 `undefined`(→ 404)。
+	 * 没接这一格的话那一口永远 404。
+	 */
+	lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
 	/**
 	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
 	 * 抛,那句话原样交给面板(→ 409)。没接这一格的话那一口永远 404。
@@ -394,6 +414,45 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 					},
 					409,
 				);
+		}
+	});
+
+	/**
+	 * 新建订阅时的解析门(ADR-0019 决策 11 / 52):主人在输入框里填的那句交给这个拓展,回候选。
+	 * 🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 拓展拿它去问平台用的是主人的 cookie,挂到鉴权外
+	 * 就是谁都能借主人的号去平台上查人。
+	 *
+	 * 每种失败各有状态码与原话;两种 502 要分得开:「拓展查询出错」是平台那头的事(cookie 过期、被
+	 * 风控),「交回的候选不合规矩」是拓展的 bug —— 并成一句的话,主人与作者都不知道该找谁。
+	 */
+	app.get("/:id/lookup", async (c) => {
+		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
+		if (!id.success) return c.json({ ok: false, err: "拓展 id 不合规矩" }, 400);
+		const query = LookupQuerySchema.safeParse(c.req.query("q"));
+		if (!query.success) {
+			return c.json({ ok: false, err: query.error.issues[0]?.message ?? "q 不合规矩" }, 400);
+		}
+		const outcome = await opts.lookup?.(id.data, query.data);
+		if (!outcome) {
+			return c.json(
+				{ ok: false, err: `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门` },
+				404,
+			);
+		}
+		if (outcome.ok) {
+			const body: ExtensionLookupResponse = { candidates: outcome.candidates };
+			return c.json(body);
+		}
+		switch (outcome.reason) {
+			case "timeout":
+				return c.json(
+					{ ok: false, err: `拓展 ${id.data} 的解析门超过 ${LOOKUP_TIMEOUT_MS / 1000} 秒没回` },
+					504,
+				);
+			case "failed":
+				return c.json({ ok: false, err: `拓展查询出错:${outcome.message}` }, 502);
+			case "invalid":
+				return c.json({ ok: false, err: `拓展交回的候选不合规矩:${outcome.message}` }, 502);
 		}
 	});
 

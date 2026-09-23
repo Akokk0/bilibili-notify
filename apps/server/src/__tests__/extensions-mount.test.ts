@@ -6,6 +6,7 @@
  * 对家(桥、回调)手里只有一条 URL、没有会话。
  */
 
+import { Buffer } from "node:buffer";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,9 @@ import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { createSessionCodec } from "../auth/session.js";
 import type { BootstrapConfig } from "../config/schema.js";
+import type { LookupOutcome } from "../extensions/context.js";
 import { createExtensionMounts } from "../extensions/mount.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -142,6 +145,83 @@ describe("拓展动作的接线", () => {
  * `swap()`。路由的规矩钉在 `extensions-route.test.ts`;漏接的话那一口永远 404,而路由的测试
  * 照样全绿。
  */
+/**
+ * 解析门的接线(ADR-0019 决策 11 / 52):新建订阅的输入框 → `/api/ext/:id/lookup?q=` → 加载器的
+ * `lookup()`。路由自己的规矩钉在 `extensions-route.test.ts`;这里钉 `createApp` 真把那一格接上了
+ * (漏接的话那一口永远 404,路由的测试照样全绿),以及它**在会话鉴权里面** —— 拓展拿它去问平台用的
+ * 是主人的 cookie,鉴权外够得着就是谁都能借主人的号查人。
+ */
+describe("解析门的接线", () => {
+	let dataDir: string;
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-lookup-"));
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	const CANDIDATE = { id: "MS4wLjABAAAA-x", name: "抖音作者" };
+
+	function extensionsWith(
+		lookup: (id: string, query: string) => Promise<LookupOutcome | undefined>,
+	) {
+		return {
+			mounts: createExtensionMounts(),
+			loaded: () => [],
+			status: () => undefined,
+			pushSource: () => undefined,
+			bots: () => undefined,
+			lookup,
+		};
+	}
+
+	it("打到 /api/ext/:id/lookup,落到加载器的 lookup;鉴权外的 /ext 底下没有这一口", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const lookup = vi.fn(
+			async (_id: string, _query: string): Promise<LookupOutcome> => ({
+				ok: true,
+				candidates: [CANDIDATE],
+			}),
+		);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			extensions: extensionsWith(lookup),
+		});
+		const res = await app.request("/api/ext/douyin/lookup?q=%E6%8A%96%E9%9F%B3");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ candidates: [CANDIDATE] });
+		expect(lookup).toHaveBeenCalledWith("douyin", "抖音");
+		expect((await app.request("/ext/douyin/lookup?q=x")).status).toBe(404);
+		await runtime.dispose();
+	});
+
+	it("配了面板密码、没带会话 → 401,解析门一次都没被问", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const creds = { username: "admin", password: "s3cret" };
+		const lookup = vi.fn(
+			async (_id: string, _query: string): Promise<LookupOutcome> => ({
+				ok: true,
+				candidates: [CANDIDATE],
+			}),
+		);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			basicAuthCredentials: creds,
+			sessionCodec: createSessionCodec({
+				keyMaterial: Buffer.from("test-key-material-32-bytes-long!!", "utf8"),
+				creds,
+			}),
+			extensions: extensionsWith(lookup),
+		});
+		const res = await app.request("/api/ext/douyin/lookup?q=x");
+		expect(res.status).toBe(401);
+		expect(lookup).not.toHaveBeenCalled();
+		await runtime.dispose();
+	});
+});
+
 describe("只重载的接线", () => {
 	let dataDir: string;
 	beforeEach(async () => {

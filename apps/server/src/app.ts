@@ -21,7 +21,7 @@ import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import { CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
-import type { ActionOutcome } from "./extensions/context.js";
+import type { ActionOutcome, LookupOutcome } from "./extensions/context.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
@@ -111,6 +111,11 @@ export interface CreateAppOptions {
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
 		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+		/**
+		 * 问某个拓展的解析门(装载器的 `lookup()`,ADR-0019 决策 52)。没在跑 / 不是订阅源就是
+		 * undefined。没接 → 那一口永远 404。
+		 */
+		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
 		/**
 		 * 某个拓展经 `ctx.settings(schema)` 交过的 zod(装载器的 `settingsSchemas()`)—— 写它的设置时
 		 * 再过一道(ADR-0019 决策 35)。没在跑是 undefined。没接 → 只有清单那一道。
@@ -433,6 +438,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			pushSource: (id) => options.extensions?.pushSource(id),
 			bots: (id) => options.extensions?.bots(id),
 			runAction: async (id, name) => options.extensions?.runAction?.(id, name),
+			lookup: async (id, query) => options.extensions?.lookup?.(id, query),
 			settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
 			// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。
 			settingsChanged: (id) => runtime.bus.emit("extension-settings-changed", id),
