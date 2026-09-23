@@ -53,6 +53,12 @@ export type ActionOutcome =
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
 
+/**
+ * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
+ * 装包、只重载全卡在它后面,关机也关不下去(ADR-0019 决策 45)。
+ */
+export const DISPOSE_TIMEOUT_MS = 30_000;
+
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
 export interface ExtensionRuntime {
 	readonly ctx: ExtensionContext;
@@ -118,6 +124,8 @@ export interface CreateExtensionContextOptions {
 	hostApiVersion?: number;
 	/** 载荷版本号。测试里可以不给。 */
 	hostVersion?: string;
+	/** 收摊钩子一共等多久,见 {@link DISPOSE_TIMEOUT_MS}。只有测试会换。 */
+	disposeTimeoutMs?: number;
 }
 
 function prefixed(logger: Logger, id: string): Logger {
@@ -516,15 +524,36 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			disposed = true;
 			// 先跑拓展自己的收摊钩子(它可能要用还活着的定时器 / 端点收尾),再拆机件。
 			// 后注册的先跑 —— 后建起来的东西通常依赖先建起来的。
-			for (const fn of [...hooks].reverse()) {
-				try {
-					await fn();
-				} catch (err) {
-					// 一个钩子抛了不许打断其余的回收:收一半的拓展是最难查的那种。
-					logger.error(`收摊钩子抛了:${(err as Error).message}`);
-				}
-			}
+			const pending = [...hooks].reverse();
 			hooks.length = 0;
+			let overdue = false;
+			const hooksDone = (async () => {
+				for (const fn of pending) {
+					// 过了时限就不再往下跑:机件已经拆了,后面的钩子多半要用的正是它们。
+					if (overdue) return;
+					try {
+						await fn();
+					} catch (err) {
+						// 一个钩子抛了不许打断其余的回收:收一半的拓展是最难查的那种。
+						logger.error(`收摊钩子抛了:${(err as Error).message}`);
+					}
+				}
+			})();
+			// 🔴 钩子挂住不许把收摊一起挂住:收摊排在装载器那条队里,等它就是整条队陪着等。
+			// 过了时限按已收摊处理 —— 下面拆机件那一段照走,半个拓展不留。
+			const limit = opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const deadline = new Promise<"overdue">((resolve) => {
+				timer = setTimeout(() => resolve("overdue"), limit);
+			});
+			try {
+				if ((await Promise.race([hooksDone, deadline])) === "overdue") {
+					overdue = true;
+					logger.warn(`收摊钩子 ${limit / 1000} 秒没跑完 —— 按已收摊处理,排在它后面的钩子不再跑`);
+				}
+			} finally {
+				clearTimeout(timer);
+			}
 			for (const entry of registered) {
 				try {
 					entry.dispose();

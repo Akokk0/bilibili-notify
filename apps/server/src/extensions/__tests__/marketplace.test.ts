@@ -138,10 +138,24 @@ interface HarnessOptions {
 	noOfficial?: boolean;
 	mirrors?: string[];
 	hostApiRange?: ExtensionApiRange;
+	/** 包在装载器那条队里写的时候,盘上各是什么样(写之前 / 写完)。 */
+	landed?: boolean[];
 }
 
 function harness(opts: HarnessOptions = {}) {
 	const rescan = vi.fn(async () => {});
+	const onDisk = async () =>
+		(await readFile(join(root, "bridge", "index.mjs")).catch(() => null)) !== null;
+	/** 装载器那条队的替身:写完紧跟着重扫(`loader.changeDisk` 的形状)。 */
+	const changeDisk = async <T>(write: () => Promise<T>): Promise<T> => {
+		opts.landed?.push(await onDisk());
+		try {
+			return await write();
+		} finally {
+			opts.landed?.push(await onDisk());
+			await rescan();
+		}
+	};
 	let installed = opts.installed ?? [];
 	const marketplace = createMarketplace({
 		root,
@@ -150,7 +164,7 @@ function harness(opts: HarnessOptions = {}) {
 		mirrors: () => opts.mirrors ?? [],
 		prerelease: () => opts.prerelease ?? false,
 		installed: () => installed,
-		rescan,
+		changeDisk,
 		logger: SILENT,
 		timeoutMs: 1_000,
 		...(opts.hostApiRange ? { hostApiRange: opts.hostApiRange } : {}),
@@ -610,6 +624,15 @@ describe("install()", () => {
 		const provenance = JSON.parse(await readFile(join(root, MARKETPLACE_PROVENANCE_FILE), "utf8"));
 		expect(provenance.installed.bridge).toMatchObject({ source: "official", version: "0.0.2" });
 		expect(h.rescan).toHaveBeenCalledTimes(1);
+	});
+
+	/** 🔴 落盘在装载器那条队里(ADR-0019 决策 45):写到一半时,并发的开关 / 重扫看不见半个目录。 */
+	it("包是在装载器那条队里写进去的", async () => {
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
+		const landed: boolean[] = [];
+		const outcome = await harness({ landed }).marketplace.install("official", "bridge");
+		expect(outcome).toMatchObject({ ok: true });
+		expect(landed).toEqual([false, true]);
 	});
 
 	it("sha256 对不上 → 不落盘、说清是校验和", async () => {

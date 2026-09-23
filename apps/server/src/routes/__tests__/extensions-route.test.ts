@@ -47,6 +47,8 @@ function boot(
 		 * 「盖掉之后换不换得上」是装载器按指纹判的,拿假名单钉等于替它把答案写好了。
 		 */
 		loader?: LoadedExtensions;
+		/** 换掉「在装载器那条队里改盘」那一口 —— 只有要看「写是不是在队里」的用例给。 */
+		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
 	} = {},
 ) {
 	const store = {
@@ -67,8 +69,17 @@ function boot(
 		settle: over.settle,
 		install: {
 			root: installRoot,
-			rescan: loader ? () => loader.rescan() : rescan,
-			...(loader ? { codeStuck: (id: string) => loader.codeStuck(id) } : {}),
+			changeDisk:
+				over.changeDisk ??
+				(loader
+					? (write) => loader.changeDisk(write)
+					: async (write) => {
+							try {
+								return await write();
+							} finally {
+								await rescan();
+							}
+						}),
 			restartAbility:
 				over.canRestart === false
 					? { can: false, reason: "source-run" }
@@ -594,6 +605,27 @@ describe("POST /api/ext/install", () => {
 		expect(body.enabled).toBe(true);
 	});
 
+	/**
+	 * 🔴 **落盘在装载器那条队里**(ADR-0019 决策 45):解包写目录与随后那一遍重扫是一件事,写到一半
+	 * 时并发的开关 / 重扫 / 只重载不许插进来看见半个目录。
+	 */
+	it("包是在装载器那条队里写进去的 —— 写之前盘上没有,写完才有", async () => {
+		const landed: boolean[] = [];
+		const onDisk = async () =>
+			(await lstat(join(installRoot, "bridge", "index.mjs")).catch(() => null)) !== null;
+		const app = boot({
+			changeDisk: async (write) => {
+				landed.push(await onDisk());
+				const out = await write();
+				landed.push(await onDisk());
+				return out;
+			},
+		});
+
+		expect((await upload(app, form(pack()))).status).toBe(200);
+		expect(landed).toEqual([false, true]);
+	});
+
 	it("包不合规 → 400,拆包那几句原样送到面板上,而且一个字节都没落盘", async () => {
 		const res = await upload(boot(), form(new Blob([strToU8("这不是 zip")])));
 
@@ -695,6 +727,32 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 		await loader.dispose();
 	});
 
+	/**
+	 * 关着、这个进程跑过它别的代码:那一行也带着「等着换上」(详情页据此说清拨开也换不上),可
+	 * 只重载按下去就是把它跑起来 —— 409,装载器那句原话。
+	 */
+	it("关着的被盖掉 → 那一行带上新版本号;只重载 409,说它关着", async () => {
+		await plant("bridge", "旧的");
+		let on = true;
+		const loader = await realLoader(() => on);
+		on = false;
+		await loader.sync();
+		await plant("bridge", "新的", "2.0.0");
+		await loader.rescan();
+		const app = boot({ loader });
+
+		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
+		expect(body.extensions[0]).toMatchObject({
+			state: "disabled",
+			enabled: false,
+			staged: { version: "2.0.0" },
+		});
+		const res = await app.request("/bridge/swap", { method: "POST" });
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as { err: string }).err).toContain("关着");
+		await loader.dispose();
+	});
+
 	it("没装这个 id → 404", async () => {
 		const loader = await realLoader();
 		const res = await boot({ loader }).request("/nobody/swap", { method: "POST" });
@@ -717,8 +775,8 @@ describe("DELETE /api/ext/:id", () => {
 	}
 
 	/**
-	 * 🔴 **配置那一格必须跟着删**。装载器注释写得很清楚:盘上没了而 `ready` 里还留着
-	 * 一格的话,下一次 `sync()` 会把它从 ESM 模块缓存里装回来 —— 留配置等于留一个
+	 * 🔴 **配置那一格必须跟着删**。装载器注释写得很清楚:盘上没了而它那一格还留着的话,
+	 * 下一次 `sync()` 会把它从 ESM 模块缓存里装回来 —— 留配置等于留一个
 	 * 诈尸的口子。而且桥的接入里存的是长期 token,那是凭据。
 	 */
 	it("删掉 → 目录没了,配置里那一格也清了,并当场重扫", async () => {
@@ -788,6 +846,25 @@ describe("DELETE /api/ext/:id", () => {
 
 		expect(res.status).toBe(200);
 		expect(patchGlobals).toHaveBeenCalledWith({ extensions: { bridge: null } });
+	});
+
+	/** 抹盘也在那条队里 —— 与装包同一条理由。 */
+	it("目录是在装载器那条队里抹掉的", async () => {
+		await installed();
+		const gone: boolean[] = [];
+		const onDisk = async () =>
+			(await lstat(join(installRoot, "bridge")).catch(() => null)) !== null;
+		const app = boot({
+			changeDisk: async (write) => {
+				gone.push(!(await onDisk()));
+				const out = await write();
+				gone.push(!(await onDisk()));
+				return out;
+			},
+		});
+
+		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(200);
+		expect(gone).toEqual([false, true]);
 	});
 
 	it("id 不合法 → 400,不碰盘", async () => {

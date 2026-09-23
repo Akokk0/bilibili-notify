@@ -73,15 +73,15 @@ export function ExtensionInstallOutcome({
 	if (done.staged && !done.enabled) {
 		/*
 		 * 关着装进去的,而这个进程跑过它别的代码(决策 47):拨开也只会停在「新版等着换上」。
-		 * 现在就说,但**不给**那两颗钮 —— 它关着,「只重载」按下去等于替主人把开关拨开。
+		 * 现在就说,但**不给**那两颗钮 —— 「只重载」只在开着时给(按下去等于替主人把开关拨开),
+		 * 重启指去它那一页(那一行也带着 `staged`,头卡里有同一块)。
 		 */
 		return (
 			<HintNote tone="neutral" className="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<span>
 					<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
-					装好了,还关着 ——
-					不过这个进程早就认下了它的另一份代码,拨开开关也换不上;拨开之后到它那一页选「重启
-					BN」或「只重载这个拓展」。
+					装好了,还关着 —— 不过这个进程早就认下了它的另一份代码,拨开开关也换不上;到它那一页选「重启
+					BN」,或者拨开之后「只重载这个拓展」。
 				</span>
 				<DocsLink done={done} />
 			</HintNote>
@@ -93,6 +93,8 @@ export function ExtensionInstallOutcome({
 				id={done.id}
 				name={done.name}
 				stagedVersion={done.version}
+				// 走到这儿的都开着(关着的上面那一支接走了)—— 只重载给。
+				swappable
 				restart={done.restart}
 				wait={wait}
 			>

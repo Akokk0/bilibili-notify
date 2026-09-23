@@ -93,6 +93,8 @@ function run(opts: {
 	enabled?: (id: string) => boolean;
 	maxFailures?: number;
 	importModule?: (specifier: string) => Promise<unknown>;
+	activateTimeoutMs?: number;
+	disposeTimeoutMs?: number;
 }) {
 	return loadExtensions({
 		root,
@@ -101,6 +103,8 @@ function run(opts: {
 		isEnabled: opts.enabled ?? (() => true),
 		maxFailures: opts.maxFailures ?? 3,
 		importModule: opts.importModule,
+		activateTimeoutMs: opts.activateTimeoutMs,
+		disposeTimeoutMs: opts.disposeTimeoutMs,
 		...coreStubs(),
 	});
 }
@@ -228,6 +232,38 @@ describe("加载拓展", () => {
 		expect((await runOnce()).list()[0]?.state).toBe("running");
 		// 销过账了,所以这次失败又是从头数,而不是当场判死。
 		expect((await runOnce()).list()[0]?.state).toBe("failed");
+	});
+
+	/**
+	 * 后起来的先收 —— 看的是**起来的次序**,不是 id 的次序:关了又开的那个排到最后,就先收它。
+	 * 后建起来的东西通常依赖先建起来的,与单个拓展内部的收摊次序同一条道理。
+	 */
+	it("宿主收摊时按起来的次序倒着收", async () => {
+		await plant("alpha", "export function activate() {}");
+		await plant("zeta", "export function activate() {}");
+		const order: string[] = [];
+		let alphaOn = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: (id) => id !== "alpha" || alphaOn,
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					ctx.onDispose(() => {
+						order.push(ctx.id);
+					});
+				},
+			}),
+		});
+		// 关了又开:alpha 现在是后起来的那个。
+		alphaOn = false;
+		await loaded.sync();
+		order.length = 0;
+		alphaOn = true;
+		await loaded.sync();
+
+		await loaded.dispose();
+		expect(order).toEqual(["alpha", "zeta"]);
 	});
 
 	it("清单坏了 / 版本不合 → 不 import,原样列出来带原因", async () => {
@@ -373,6 +409,28 @@ describe("装载目录", () => {
 	 * 会被换掉(升级 / 重装),记录跟着没。而开发版装进来的那份**是仓库工作树的软链** ——
 	 * 往里写等于往 `git status` 里拉屎。
 	 */
+	/**
+	 * 🔴 记账是启发,坏了不该让拓展起不来,更不该把开机带走 —— 但也不能一声不吭:写不进去的时候
+	 * 「连着失败就自动停用」这道保护是**失效**的,一个真炸的拓展会每次开机都炸一遍。同一个错只记一行。
+	 */
+	it("失败记账写不进去 → 拓展照常加载,记一行说保护此刻不起作用", async () => {
+		await plant("alpha", HEALTHY);
+		await plant("zeta", HEALTHY);
+		// 记账文件的位置被一个目录占着:读得到(当没记过),写不进去(rename 撞上目录)。
+		await mkdir(join(root, "load-state.json"));
+		const host = fakeHost();
+
+		const loaded = await run({ host, mounts: createExtensionMounts() });
+
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
+			["alpha", "running"],
+			["zeta", "running"],
+		]);
+		const warned = host.lines.filter((line) => /^warn .*失败记账写不进去/.test(line));
+		expect(warned).toHaveLength(1);
+		expect(warned[0]).toContain("自动停用");
+	});
+
 	it("失败记账落在装载目录,拓展自己那个目录一个文件都不多", async () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
@@ -784,6 +842,91 @@ describe("重扫(装 / 卸不必重启)", () => {
 		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
 	});
 
+	/** 盘上没换过就不碰 —— 加载失败的那个也不借重扫重试(同 `sync()` 那条:开关不动就不重试)。 */
+	it("加载失败的那个,盘上没换过 → 重扫不重试,也不多记一笔账", async () => {
+		await plant("bad", `export function activate() { throw new Error("炸"); }`);
+		const imported: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			maxFailures: 2,
+			importModule: (specifier) => {
+				imported.push(specifier);
+				return import(specifier);
+			},
+		});
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+
+		await loaded.rescan();
+		await loaded.rescan();
+
+		expect(imported).toHaveLength(1);
+		// 上限是 2:重扫要是借机重试了,这里早就被判死了。
+		expect(readLoadLedger(root).blocked).toEqual([]);
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+	});
+
+	/**
+	 * 🔴 **改盘是队里的一件事**(ADR-0019 决策 45):装包写到一半(清单落了、入口还没落)时,并发的
+	 * 重扫要是插进来,看见的是一个「少了入口」的拓展 —— 面板上闪一张 unreadable,开关拨过的话还会
+	 * 真去起它。写完、紧跟着那一遍重扫,两步之间谁都插不进来。
+	 */
+	it("改盘那一步在队里:写到一半时,排在后面的重扫看不见半个目录", async () => {
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let halfWritten!: () => void;
+		const half = new Promise<void>((resolve) => {
+			halfWritten = resolve;
+		});
+
+		const writing = loaded.changeDisk(async () => {
+			await mkdir(join(root, "bridge"), { recursive: true });
+			await writeFile(
+				join(root, "bridge", "extension.json"),
+				JSON.stringify({
+					id: "bridge",
+					name: "bridge",
+					description: "测试用",
+					version: "1.0.0",
+					apiVersion: 1,
+					provides: ["push"],
+				}),
+			);
+			halfWritten();
+			await gate;
+			await writeFile(join(root, "bridge", "index.mjs"), HEALTHY);
+		});
+		await half;
+		const seen = loaded.rescan().then(() => loaded.list().map((e) => e.state));
+		// 给没排队的那种写法一个机会先跑完 —— 排了队的话它还在等。
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		release();
+
+		expect(await seen).toEqual(["running"]);
+		await writing;
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
+	});
+
+	/** 写完不必自己再叫重扫:装进来的当场跑起来。写那一步抛了,原话交回调用方。 */
+	it("改完盘紧跟着重扫;写那一步抛了,原话交回去", async () => {
+		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+
+		await loaded.changeDisk(() => plant("bridge", HEALTHY));
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
+
+		await expect(
+			loaded.changeDisk(async () => {
+				throw new Error("软链,不写");
+			}),
+		).rejects.toThrow("软链,不写");
+		// 抛过之后队没被毒死。
+		await loaded.changeDisk(() => rm(join(root, "bridge"), { recursive: true, force: true }));
+		expect(loaded.list()).toEqual([]);
+	});
+
 	it("新装的按 id 归位 —— 现在这个次序就是重启之后的次序", async () => {
 		await plant("zeta", HEALTHY);
 		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
@@ -889,6 +1032,33 @@ describe("换了代码(等着换上)", () => {
 		expect(loaded.list()[0]?.manifest?.version).toBe("2.0.0");
 	});
 
+	/**
+	 * 跑着的那一份是「代码 + 清单」一起认的:只换了清单,跑着的照样配着旧清单,也得等着换上。
+	 * 只重载时代码没变,URL 也不换 —— 模块缓存里那份就是它,不白漏。
+	 */
+	it("跑着时只换了清单、代码没变 → 也等着换上;只重载不换 URL", async () => {
+		await plant("bridge", says("同一份"));
+		const seen: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			importModule: (specifier) => {
+				seen.push(specifier);
+				return import(specifier);
+			},
+		});
+
+		await plant("bridge", says("同一份"), { version: "1.0.1" });
+		await loaded.rescan();
+		expect(loaded.list()[0]).toMatchObject({ state: "running", staged: { version: "1.0.1" } });
+
+		await loaded.swap("bridge");
+		expect(loaded.list()[0]).toMatchObject({ state: "running", manifest: { version: "1.0.1" } });
+		expect(loaded.list()[0]?.staged).toBeUndefined();
+		expect(seen).toHaveLength(2);
+		expect(seen[1]).toBe(seen[0]);
+	});
+
 	it("盘上又换回跑着的那一份 → 「等着换上」撤掉", async () => {
 		await plant("bridge", says("旧的"));
 		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
@@ -935,6 +1105,49 @@ describe("换了代码(等着换上)", () => {
 		await loaded.sync();
 
 		expect(await body()).toBe("新的");
+	});
+
+	/**
+	 * 🔴 「新版等着换上」只有一种写法:凡是盘上那份这个进程干净地换不上的行都带 `staged`,**关着的
+	 * 也带** —— 不然装完那一刻、详情页、市场三处得各自现判一遍「它关着但换不上」。状态照旧是
+	 * 「已停用」:它确实关着。
+	 */
+	it("关着、这个进程跑过它别的代码、盘上换了 → 那一行也带着等着换上,状态仍是已停用", async () => {
+		await plant("bridge", says("旧的"));
+		let on = true;
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			enabled: () => on,
+		});
+		on = false;
+		await loaded.sync();
+
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+
+		expect(loaded.list()[0]).toMatchObject({
+			state: "disabled",
+			manifest: { version: "2.0.0" },
+			staged: { version: "2.0.0" },
+		});
+	});
+
+	/** 只重载 = 「开着 && 带 staged」:关着的按下去会把它跑起来,那是开关的活。 */
+	it("关着的带着等着换上也不给只重载 —— 按下去等于替主人把它跑起来", async () => {
+		await plant("bridge", says("旧的"));
+		let on = true;
+		const mounts = createExtensionMounts();
+		const body = serve(mounts);
+		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
+		on = false;
+		await loaded.sync();
+		await plant("bridge", says("新的"), { version: "2.0.0" });
+		await loaded.rescan();
+
+		await expect(loaded.swap("bridge")).rejects.toThrow(/关着/);
+		expect(loaded.list()[0]?.state).toBe("disabled");
+		expect(await body()).toBe(404);
 	});
 
 	it("没有等着换上的新代码 → 不给只重载(每换一次漏一份旧模块,不白漏)", async () => {
@@ -990,6 +1203,123 @@ describe("换了代码(等着换上)", () => {
 		expect(await body()).toBe("旧的");
 		expect(loaded.list()[0]).toMatchObject({ state: "running", manifest: { version: "1.0.0" } });
 		expect(loaded.list()[0]?.staged).toBeUndefined();
+	});
+});
+
+/**
+ * 🔴 **挂住的拓展不许卡死整条队**(ADR-0019 决策 45):开机时 `activate` 不回,HTTP 都起不来;
+ * 热装卸时它不回,之后的开关、装包、只重载全排在它后面。`activate` 与收摊钩子各有一个时限,
+ * 过了就按失败 / 按已收摊处理,队接着走。
+ */
+describe("挂住了的拓展", () => {
+	/** 一个按 id 分派的假 import:`hang` 的 activate 按给的写法挂住,别的正常起来。 */
+	function modules(hang: (ctx: ExtensionContext) => Promise<void>) {
+		return async (specifier: string) => ({
+			activate: specifier.includes("/hang/") ? hang : () => {},
+		});
+	}
+
+	it("activate 迟迟不回 → 按这一次加载失败记账、说清是超时;别的照样起来", async () => {
+		await plant("hang", "export function activate() {}");
+		await plant("good", "export function activate() {}");
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts(),
+			// 上限 1:记了一笔、没销账 = 当场在停用名单里。
+			maxFailures: 1,
+			activateTimeoutMs: 20,
+			importModule: modules(() => new Promise(() => {})),
+		});
+
+		const [good, hang] = loaded.list();
+		expect(good?.state).toBe("running");
+		expect(hang?.state).toBe("failed");
+		expect(hang?.detail).toMatch(/activate/);
+		expect(hang?.detail).toMatch(/超过/);
+		expect(readLoadLedger(root).blocked).toEqual(["hang@1.0.0"]);
+	});
+
+	/**
+	 * 超时之后它又回来了:那时已经按失败收过摊,不许把它登记成在跑 —— 它在超时之后才注册的东西
+	 * 一样不收(ctx 已经收摊,来了就拒),先前注册的收摊钩子当场跑过。
+	 */
+	it("超时之后 activate 才回来 → 不登记成在跑;它的收摊已经跑过,后注册的一律不收", async () => {
+		await plant("hang", "export function activate() {}");
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let hooks = 0;
+		let returned!: () => void;
+		const back = new Promise<void>((resolve) => {
+			returned = resolve;
+		});
+
+		const loaded = await run({
+			host,
+			mounts,
+			activateTimeoutMs: 20,
+			importModule: modules(async (ctx) => {
+				ctx.mount(async () => new Response("半个"));
+				ctx.onDispose(() => {
+					hooks += 1;
+				});
+				await gate;
+				ctx.setInterval(() => {}, 1000);
+				returned();
+			}),
+		});
+		expect(loaded.list()[0]?.state).toBe("failed");
+		expect(hooks).toBe(1);
+		expect((await app.request("/ext/hang/x")).status).toBe(404);
+
+		release();
+		await back;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(loaded.list()[0]?.state).toBe("failed");
+		expect(host.pending()).toBe(0);
+		expect(loaded.status("hang")).toBeUndefined();
+		expect((await app.request("/ext/hang/x")).status).toBe(404);
+		expect(host.lines.some((line) => /^warn .*hang.*超时之后/.test(line))).toBe(true);
+	});
+
+	it("收摊钩子迟迟不回 → 记一行,按已收摊处理;机件照样拆掉,队接着走", async () => {
+		await plant("bridge", "export function activate() {}");
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		let on = true;
+		const loaded = await run({
+			host,
+			mounts,
+			enabled: () => on,
+			disposeTimeoutMs: 20,
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					ctx.setInterval(() => {}, 1000);
+					ctx.mount(async () => new Response("hi"));
+					ctx.onDispose(() => new Promise(() => {}));
+				},
+			}),
+		});
+		expect(host.pending()).toBe(1);
+
+		on = false;
+		await loaded.sync();
+		expect(loaded.list()[0]?.state).toBe("disabled");
+		expect(host.pending()).toBe(0);
+		expect((await app.request("/ext/bridge/x")).status).toBe(404);
+		expect(host.lines.some((line) => /^warn .*bridge.*收摊钩子.*没跑完/.test(line))).toBe(true);
+
+		on = true;
+		await loaded.sync();
+		expect(loaded.list()[0]?.state).toBe("running");
 	});
 });
 

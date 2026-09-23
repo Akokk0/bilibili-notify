@@ -114,11 +114,13 @@ export interface CreateAppOptions {
 		swap?: (id: string) => Promise<void>;
 		/** 把还没落地的开关落实掉,再回答「现在什么状态」。见 routes/extensions.ts。 */
 		settle?: () => Promise<void>;
-		/** 面板上传装拓展那条路要的:装载根、装完重扫、以及「这台机器重启回不回得来」。 */
+		/**
+		 * 面板上传装拓展那条路要的:装载根、在装载器那条队里改盘(写完紧跟着重扫)、以及
+		 * 「这台机器重启回不回得来」。
+		 */
 		install?: {
 			root: string;
-			rescan: () => Promise<void>;
-			codeStuck?: (id: string) => Promise<boolean>;
+			changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
 			restartAbility: RestartAbility;
 		};
 		/** 拓展市场(ADR-0013)。没接 → 那两口 404。 */

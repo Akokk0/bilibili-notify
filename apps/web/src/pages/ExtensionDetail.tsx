@@ -111,9 +111,9 @@ export default function ExtensionDetail() {
 
 	const meta = EXTENSION_STATE_META[ext.state];
 	/*
-	 * 盘上有一份这个进程干净地换不上的新代码(ADR-0012 决策 47)—— 跑着旧的与开着却没跑两档都算。
-	 * 没有就一颗钮都不给:生产上不给随手漏模块的口子。`restart` 与 `staged` 是同一版服务端才有的
-	 * 两格,老服务端两格都没有,这块也就不画。
+	 * 盘上有一份这个进程干净地换不上的新代码(ADR-0012 决策 47)—— 跑着旧的、开着却没跑、关着
+	 * 三档都算;关着的只给「重启 BN」(只重载会把它跑起来)。没有就一颗钮都不给:生产上不给随手
+	 * 漏模块的口子。`restart` 与 `staged` 是同一版服务端才有的两格,老服务端两格都没有,这块也就不画。
 	 */
 	const staged = stagedFactsOf(ext);
 	const restart = listed.data?.restart;

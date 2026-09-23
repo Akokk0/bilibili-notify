@@ -34,6 +34,7 @@ function show(over: Partial<StagedCodeNoteProps> = {}) {
 				id="bridge"
 				stagedVersion="2.0.0"
 				runningVersion="1.0.0"
+				swappable
 				restart={CAN}
 				// 按了重启之后那段等待走得飞快,别让一条用例的等待漏进下一条。
 				wait={{ intervalMs: 5, timeoutMs: 20 }}
@@ -85,6 +86,19 @@ describe("新版等着换上的那块提示", () => {
 		expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
 		expect(screen.getByText(/tsx/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
+	});
+
+	/**
+	 * 🔴 关着的那一行也带着「等着换上」(ADR-0012 决策 47),可「只重载」按下去就是把它跑起来 ——
+	 * 那是开关的活。只给「重启 BN」,并说清只重载为什么不在。
+	 */
+	it("关着的:只给「重启 BN」,不给「只重载」,说清要先拨开", () => {
+		show({ runningVersion: undefined, swappable: false });
+		expect(screen.getByRole("button", { name: "重启 BN" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
+		expect(screen.getByText(/开关关着/)).toBeTruthy();
+		// 只重载那几句代价跟着按钮走 —— 没有按钮就不说。
+		expect(document.body.textContent).not.toMatch(/别的推送与直播监听都不断/);
 	});
 
 	it("按「只重载这个拓展」→ POST 它自己那一口;成了就刷新拓展表、它的状态与 bot 名单", async () => {

@@ -72,8 +72,11 @@ export interface MarketplaceDeps {
 	prerelease: () => boolean;
 	/** 盘上装着的拓展(装载器现取)。 */
 	installed: () => readonly { id: string; version?: string }[];
-	/** 装完叫装载器再扫一遍盘。 */
-	rescan: () => Promise<void>;
+	/**
+	 * **在装载器那条队里改盘**(装载器的 `changeDisk()`):`write` 落盘,紧跟着再扫一遍。队外写的话,
+	 * 并发的开关 / 重扫 / 只重载会看见写了一半的目录(ADR-0019 决策 45)。
+	 */
+	changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
 	logger: Logger;
 	/** 宿主认的档位区间。只有测试会换。 */
 	hostApiRange?: ExtensionApiRange;
@@ -525,22 +528,24 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				err: `包里的清单是 ${opened.pkg.id}@${opened.pkg.manifest.version},索引说的是 ${entry.id}@${entry.version} —— 源那头发错了包`,
 			};
 		}
+		// 落盘 → 记来源,在装载器的队里是一件事,紧跟着那一遍重扫由队替我们做。
 		try {
-			await installExtensionPackage({ root: deps.root, pkg: opened.pkg });
+			await deps.changeDisk(async () => {
+				await installExtensionPackage({ root: deps.root, pkg: opened.pkg });
+				const provenance = readProvenance(deps.root);
+				provenance.installed[entry.id] = {
+					source: source.view.id,
+					version: entry.version,
+					installedAt: now(),
+				};
+				writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, provenance);
+			});
 		} catch (err) {
 			return { ok: false, err: (err as Error).message };
 		}
-		const provenance = readProvenance(deps.root);
-		provenance.installed[entry.id] = {
-			source: source.view.id,
-			version: entry.version,
-			installedAt: now(),
-		};
-		writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, provenance);
 		deps.logger.info(
 			`marketplace: installed ${entry.id}@${entry.version} from ${source.view.name}`,
 		);
-		await deps.rescan();
 		return {
 			ok: true,
 			id: entry.id,

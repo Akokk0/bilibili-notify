@@ -87,17 +87,13 @@ export interface ExtensionsRouteOptions {
 		/** 装载根 —— `<dataDir>/extensions/`。 */
 		root: string;
 		/**
-		 * 装完叫装载器再扫一遍盘。
+		 * **在装载器那条队里改盘**(装载器的 `changeDisk()`):`write` 落盘 / 抹盘,紧跟着再扫一遍。
 		 *
-		 * 🔴 少这一下,新装的拓展要等下一次开机才出现在这一页 —— 而那正是「装了个拓展,
-		 * 面板叫我重启,可我没处按」的由来。
+		 * 🔴 两件事都不能少:队外写的话,并发的开关 / 重扫 / 只重载会看见写了一半的目录
+		 * (ADR-0019 决策 45);写完不扫的话,新装的拓展要等下一次开机才出现在这一页 —— 而那正是
+		 * 「装了个拓展,面板叫我重启,可我没处按」的由来。
 		 */
-		rescan: () => Promise<void>;
-		/**
-		 * 盘上这份代码这个进程干净地跑不上(装载器的 `codeStuck()`,决策 47)。装完那句话的
-		 * `staged` 照它说 —— 关着、但这个进程跑过它别的代码的那份也算。没接就只看名单那一行。
-		 */
-		codeStuck?: (id: string) => Promise<boolean>;
+		changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
 		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。 */
 		restartAbility: RestartAbility;
 	};
@@ -115,14 +111,10 @@ const RESTART_UNKNOWN: RestartAbility = { can: false, reason: "unsupervised" };
  *
  * 🔴 **照重扫之后装载器那一行说,不照「盖掉了一份」说**:关着、从没跑过的那份盘上换了就是
  * 换了,原样再传一遍的也没什么可换 —— 那两种照旧说「要重启」,主人会白白重启一次。换不换得上
- * 只有按指纹认代码的装载器答得了。上传装包与市场装两口共用这一句,免得两边各判各的。
+ * 只有按指纹认代码的装载器答得了,而它把答案挂在那一行的 `staged` 上 —— 关着、但这个进程跑过
+ * 它别的代码的那份也挂。上传装包与市场装两口共用这一句,免得两边各判各的。
  */
-async function stagedAfterInstall(
-	install: NonNullable<ExtensionsRouteOptions["install"]>,
-	entries: readonly ExtensionEntry[],
-	id: string,
-): Promise<boolean> {
-	if (install.codeStuck) return install.codeStuck(id);
+function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boolean {
 	return entries.find((entry) => entry.id === id)?.staged !== undefined;
 }
 
@@ -199,21 +191,22 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
 		if (!opened.ok) return c.json({ errors: opened.errors }, 400);
 
+		// 落盘与随后那一遍重扫在装载器的队里是一件事。新装的当场跑起来;盖掉一份跑着的,旧代码
+		// 照跑、那一行标上「等着换上」(装载器不偷偷换跑着的代码,决策 47)。
 		try {
-			await installExtensionPackage({ root: install.root, pkg: opened.pkg });
+			await install.changeDisk(() =>
+				installExtensionPackage({ root: install.root, pkg: opened.pkg }),
+			);
 		} catch (err) {
 			// 落盘那头拒绝的只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
 			return c.json({ errors: [(err as Error).message] }, 400);
 		}
-		// 新装的当场跑起来;盖掉一份跑着的,旧代码照跑、那一行标上「等着换上」(装载器不偷偷
-		// 换跑着的代码,决策 47)。两种情形都扫一遍:代价只是一次读目录。
-		await install.rescan();
 
 		const answer: ExtensionInstallResponse = {
 			id: opened.pkg.id,
 			name: opened.pkg.manifest.name,
 			version: opened.pkg.manifest.version,
-			staged: await stagedAfterInstall(install, opts.extensions(), opened.pkg.id),
+			staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
 			docs: docsPresence(opened.pkg.docs),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
@@ -223,18 +216,18 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	});
 
 	/**
-	 * 卸掉一个拓展:抹掉盘上那份 + **清掉配置里那一格**,然后重扫。不必重启。
+	 * 卸掉一个拓展:抹掉盘上那份(连同重扫)+ **清掉配置里那一格**。不必重启。
 	 *
-	 * 🔴 **配置必须跟着清**。装载器注释写着:盘上没了而 `ready` 里还留一格的话,下一次
+	 * 🔴 **配置必须跟着清**。装载器注释写着:盘上没了而它那一格还留着的话,下一次
 	 * `sync()` 会把它从 ESM 模块缓存里装回来。而且桥的接入里躺着长期 token,那是凭据,
 	 * 删了拓展还留着说不过去 —— 代价是重装之后接入要重建,koishi 那侧也得重填一遍。
 	 *
 	 * 🔴 **还有连接指着它就不删**。推送目标是用户亲手配的:连带删掉太狠,留着悬空则让
 	 * 推送静默失败。拦住并说清还有几条,由用户自己去推送目标页处置。
 	 *
-	 * 顺序是「先抹盘、再清配置、最后重扫」:抹盘是唯一会被拒的一步(软链),放在最前面
-	 * 才能保证「被拒 = 什么都没动」。中间那一瞬「盘上没了但配置还在」不碰得着 ——
-	 * 没有任何东西会在这两步之间触发 `sync()`。
+	 * 顺序是「先抹盘(连同重扫,在装载器的队里是一件事)、再清配置」:抹盘是唯一会被拒的一步
+	 * (软链),放在最前面才能保证「被拒 = 什么都没动」。之后那一瞬「格子没了但配置还在」不碰得着
+	 * —— 清配置触发的那次 `sync()` 已经找不到它的格子了。
 	 */
 	app.delete("/:id", async (c) => {
 		const install = opts.install;
@@ -260,11 +253,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 
 		// 抹盘在前:它是**唯一会被拒**的一步(软链)。反过来先清配置的话,被拒的那条路上
 		// 配置已经没了而拓展还在盘上跑着 —— 界面与实际当场对不上。
-		const removed = await uninstallExtension({ root: install.root, id });
+		const removed = await install.changeDisk(() => uninstallExtension({ root: install.root, id }));
 		if (!removed.ok) return c.json({ errors: [removed.err] }, 400);
 
 		await opts.store.patchGlobals({ extensions: { [id]: null } } as never);
-		await install.rescan();
 		return c.json({ ok: true });
 	});
 
@@ -291,7 +283,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			name: outcome.name,
 			version: outcome.version,
 			// 市场装完已经重扫过了 —— 与上传装包同一把尺子。
-			staged: await stagedAfterInstall(install, opts.extensions(), outcome.id),
+			staged: stagedAfterInstall(opts.extensions(), outcome.id),
 			docs: outcome.docs,
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),

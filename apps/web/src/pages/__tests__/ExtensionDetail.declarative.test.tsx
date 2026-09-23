@@ -257,6 +257,28 @@ describe("新版等着换上", () => {
 		expect(statusCalls()).toBe(0);
 	});
 
+	/**
+	 * 关着、这个进程跑过它别的代码:那一行也带着「等着换上」。头卡里照样说,但只给「重启 BN」——
+	 * 只重载按下去就是把一个关着的拓展跑起来,那是开关的活。
+	 */
+	it("关着、盘上换了新版 → 头卡里同一块,只给「重启 BN」", async () => {
+		renderDetail({
+			ext: {
+				...DOUYIN,
+				version: "0.2.0",
+				enabled: false,
+				state: "disabled",
+				staged: { version: "0.2.0" },
+			},
+		});
+		const head = await headCard();
+		expect(
+			within(head).getByText(/v0\.2\.0 装好了,但这个进程早就认下了它的另一份代码/),
+		).toBeTruthy();
+		expect(within(head).getByRole("button", { name: "重启 BN" })).toBeTruthy();
+		expect(within(head).queryByRole("button", { name: "只重载这个拓展" })).toBeNull();
+	});
+
 	it("没有新版等着 → 页上既没有「只重载」,也没有「重启 BN」", async () => {
 		renderDetail();
 		await headCard();

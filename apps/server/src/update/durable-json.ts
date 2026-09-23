@@ -24,14 +24,25 @@ export function readJsonFile(dir: string, file: string): unknown {
 	}
 }
 
-/** 原子写一份 JSON。写不进去不抛 —— 见文件头那条纪律。 */
-export function writeJsonAtomic(dir: string, file: string, value: unknown): void {
+/**
+ * 原子写一份 JSON。写不进去不抛 —— 见文件头那条纪律。
+ *
+ * 不抛不等于不说:给了 `onError` 就把原因交出去,由调用方决定要不要记一行(写不进去的那份
+ * 状态要是在防什么,防线此刻就是失效的,该让人知道)。
+ */
+export function writeJsonAtomic(
+	dir: string,
+	file: string,
+	value: unknown,
+	onError?: (err: unknown) => void,
+): void {
 	try {
 		mkdirSync(dir, { recursive: true });
 		const tmp = join(dir, `.${file}.${process.pid}.tmp`);
 		writeFileSync(tmp, JSON.stringify(value));
 		renameSync(tmp, join(dir, file));
-	} catch {
+	} catch (err) {
 		// 见文件头:写不进去的代价是这次没记上账,而那远好过因为记不上账就不启动。
+		onError?.(err);
 	}
 }

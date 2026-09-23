@@ -208,8 +208,11 @@ export interface InstallExtensionPackageInput {
 }
 
 /**
- * 同一个装载根上的安装**排队**:路由层没有锁,两个标签页同时点「装」,各自 mkdtemp → rm →
- * rename 交错起来,第二个 rename 会撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。
+ * 同一个装载根上的安装**排队**:两个标签页同时点「装」,各自 mkdtemp → rm → rename 交错起来,
+ * 第二个 rename 会撞上第一个刚落好的目录(ENOTEMPTY),或者把它删掉。
+ *
+ * 线上的调用方都经装载器的 `changeDisk()` 进来,那条队已经把它们排开了;这一道留给不经装载器
+ * 的调用(装载器还没起来的那一瞬、单测),便宜,不拆。
  */
 const installQueues = new Map<string, Promise<unknown>>();
 
@@ -230,8 +233,8 @@ export type UninstallExtensionResult =
  * 🔴 **软链一律拒**,不顺着删下去:开发版里那条是 devtools 链进来的**仓库工作树**,
  * 顺着删就是删主人的源码。同 {@link installExtensionPackage} 那头的判据。
  *
- * 收摊(停掉正在跑的那份、清掉装载器的三张表)不在这里 —— 那是 `rescan()` 的活:
- * 它发现 id 从盘上消失就会自己做完,所以删完调一次即可,不必重启。
+ * 收摊(停掉正在跑的那份、删掉装载器里它那一格)不在这里 —— 那是重扫的活:它发现 id 从盘上
+ * 消失就会自己做完,不必重启。调用方经装载器的 `changeDisk()` 调它,抹盘与重扫在队里是一件事。
  */
 export async function uninstallExtension({
 	root,

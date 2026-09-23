@@ -45,6 +45,11 @@ export interface RecordLoadAttemptInput {
 	version: string;
 	/** 连着失败多少次就自动停用。 */
 	maxFailures: number;
+	/**
+	 * 写不进去时交出原因。照样不抛(见文件头),但写不进去的时候「连败自动停用」这道保护是失效的
+	 * —— 调用方该记一行。
+	 */
+	onUnwritable?: (err: unknown) => void;
 }
 
 /**
@@ -62,15 +67,21 @@ export function recordLoadAttempt({
 	id,
 	version,
 	maxFailures,
+	onUnwritable,
 }: RecordLoadAttemptInput): void {
 	const state = readState(root);
 	const key = ledgerKey(id, version);
 	const attempts = (state.attempts[key] ?? 0) + 1;
 	const blocked = attempts >= maxFailures;
-	writeJsonAtomic(root, STATE_FILE, {
-		attempts: { ...state.attempts, [key]: attempts },
-		blocked: blocked && !state.blocked.includes(key) ? [...state.blocked, key] : state.blocked,
-	} satisfies LoadState);
+	writeJsonAtomic(
+		root,
+		STATE_FILE,
+		{
+			attempts: { ...state.attempts, [key]: attempts },
+			blocked: blocked && !state.blocked.includes(key) ? [...state.blocked, key] : state.blocked,
+		} satisfies LoadState,
+		onUnwritable,
+	);
 }
 
 /**
@@ -83,17 +94,19 @@ export function markLoadSucceeded({
 	root,
 	id,
 	version,
-}: {
-	root: string;
-	id: string;
-	version: string;
-}): void {
+	onUnwritable,
+}: Omit<RecordLoadAttemptInput, "maxFailures">): void {
 	const state = readState(root);
 	const key = ledgerKey(id, version);
 	if (state.attempts[key] === undefined && !state.blocked.includes(key)) return;
 	const { [key]: _cleared, ...rest } = state.attempts;
-	writeJsonAtomic(root, STATE_FILE, {
-		attempts: rest,
-		blocked: state.blocked.filter((entry) => entry !== key),
-	} satisfies LoadState);
+	writeJsonAtomic(
+		root,
+		STATE_FILE,
+		{
+			attempts: rest,
+			blocked: state.blocked.filter((entry) => entry !== key),
+		} satisfies LoadState,
+		onUnwritable,
+	);
 }

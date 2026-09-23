@@ -314,9 +314,8 @@ export async function startStandaloneServer(
 				loadedExtensions
 					?.list()
 					.map((entry) => ({ id: entry.id, version: entryIdentity(entry)?.version })) ?? [],
-			rescan: async () => {
-				await loadedExtensions?.rescan();
-			},
+			// 装载器比市场晚一步建起来;还没有它的那一瞬(开机途中)没人会按「装」,直接写就是。
+			changeDisk: (write) => (loadedExtensions ? loadedExtensions.changeDisk(write) : write()),
 			logger: log,
 		});
 		const updateService = createUpdateService({
@@ -921,13 +920,11 @@ export async function startStandaloneServer(
 				settle: async () => {
 					await loadedExtensions?.sync();
 				},
-				// 面板上传装拓展:落到唯一那个装载根,装完当场重扫(新装的于是立刻跑起来)。
+				// 面板上传装拓展:落到唯一那个装载根,在装载器的队里写、写完当场重扫(新装的于是
+				// 立刻跑起来;并发的开关 / 只重载看不见写了一半的目录)。
 				install: {
 					root: extensionsRoot,
-					rescan: async () => {
-						await loadedExtensions?.rescan();
-					},
-					codeStuck: async (id) => (await loadedExtensions?.codeStuck(id)) ?? false,
+					changeDisk: (write) => (loadedExtensions ? loadedExtensions.changeDisk(write) : write()),
 					restartAbility,
 				},
 				// devtools 给的话是装饰过的那份:「拓展有更新」在它身上造(见 devtools/marketplace-injection.ts)。

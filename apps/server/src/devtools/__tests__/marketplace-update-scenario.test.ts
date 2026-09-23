@@ -212,14 +212,18 @@ describe("ext.updatable · 按「更新」", () => {
 		const root = await mkdtemp(join(tmpdir(), "bn-dev-market-"));
 		try {
 			const logger: Logger = { info() {}, warn() {}, error() {}, debug() {} };
-			const rescan = vi.fn(async () => {});
+			let diskChanges = 0;
+			const changeDisk = async <T>(write: () => Promise<T>): Promise<T> => {
+				diskChanges += 1;
+				return write();
+			};
 			const realMarket = createMarketplace({
 				root,
 				sources: () => [],
 				mirrors: () => [],
 				prerelease: () => false,
 				installed: () => [{ id: "bridge", version: "0.3.0" }],
-				rescan,
+				changeDisk,
 				logger,
 			});
 			const injectable = injectableMarketplace(realMarket, () => [
@@ -234,7 +238,7 @@ describe("ext.updatable · 按「更新」", () => {
 			expect(outcome).toMatchObject({ ok: true, version: "0.3.1" });
 
 			expect(await readdir(root)).toEqual([]);
-			expect(rescan).not.toHaveBeenCalled();
+			expect(diskChanges).toBe(0);
 			// 撤掉之后就是真市场自己的话:这台机器上没有任何源列着它。
 			expect((await injectable.marketplace.list()).extensions).toEqual([]);
 		} finally {

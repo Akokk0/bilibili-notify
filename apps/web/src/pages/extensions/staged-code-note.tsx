@@ -6,8 +6,9 @@
  * - 「重启 BN」—— 最干净,代价是所有推送与直播监听断几秒。这台机器拉不起自己(开发版 / 裸跑)
  *   就不给按钮,换成为什么(ADR-0005 决策 22)。
  * - 「只重载这个拓展」—— 别的都不断;代价是旧模块回收不掉、以及拓展没交给 BN 管的副作用可能
- *   还在跑。**只在真有新代码时出现**:生产上不给随手漏模块的口子,那道闸在服务端(没有新代码
- *   时 409),这里靠调用方只在 `staged` 在时才画它。
+ *   还在跑。**只在「开着 && 带 `staged`」时出现**:生产上不给随手漏模块的口子,那道闸在服务端
+ *   (没有新代码 / 关着时 409),这里靠调用方只在 `staged` 在时才画这块、开着时才给这颗钮。
+ *   关着的那一行也带 `staged`(拨开也换不上),可换上去就是把它跑起来 —— 那是开关的活。
  *
  * ⛔ 那颗重启按钮仍然**不是常驻的**:它只在这件确实需要它的事旁边出现。
  */
@@ -54,19 +55,20 @@ function headlineOf(stagedVersion: string, runningVersion: string | undefined): 
 }
 
 /**
- * 从拓展表那一行读出这块提示要的两个版本号。没有 `staged` 就是 `null` —— 那时**不许**画这块
+ * 从拓展表那一行读出这块提示要的东西。没有 `staged` 就是 `null` —— 那时**不许**画这块
  * (生产上不给随手重载的口子)。
  *
- * 两种样子(契约 `ExtensionDTO.staged`):跑着的那一行 `version` 是旧的、`staged.version` 是
- * 新的;`state: "staged"` 那一行开着却没跑,`version` 已经是新的,没有「跑着的」那一版可说。
+ * 三种样子(契约 `ExtensionDTO.staged`):跑着的那一行 `version` 是旧的、`staged.version` 是
+ * 新的;`state: "staged"` 那一行开着却没跑、关着的那一行没在跑,`version` 都已经是新的,没有
+ * 「跑着的」那一版可说。只重载只在开着时给 —— 与服务端 `swap()` 那道闸是同一句「开着 && 带 staged」。
  */
 export function stagedFactsOf(
 	ext: ExtensionDTO,
-): { stagedVersion: string; runningVersion?: string } | null {
+): { stagedVersion: string; runningVersion?: string; swappable: boolean } | null {
 	if (!ext.staged) return null;
 	return ext.state === "running" && ext.version !== undefined
-		? { stagedVersion: ext.staged.version, runningVersion: ext.version }
-		: { stagedVersion: ext.staged.version };
+		? { stagedVersion: ext.staged.version, runningVersion: ext.version, swappable: ext.enabled }
+		: { stagedVersion: ext.staged.version, swappable: ext.enabled };
 }
 
 /**
@@ -77,6 +79,10 @@ export function stagedFactsOf(
 const SWAP_COST =
 	"别的推送与直播监听都不断;旧代码占的内存要等下次重启 BN 才还回来(每换一次约几 MB,反复换会一直累加);" +
 	"拓展要是有没交给 BN 管的定时器或连接,旧的那份可能还在后台跑。";
+
+/** 关着时「只重载」为什么不在 —— 按下去等于替主人拨开开关。拨开之后这颗钮自己会出来。 */
+const SWAP_NEEDS_ENABLED =
+	"开关关着,不给「只重载」—— 换上去就是把它跑起来,那是开关的活;拨开之后这里才有这颗钮。";
 
 /** 一条出路:按钮(可能没有)+ 它的代价 / 为什么没有按钮。两条并排时各占一半。 */
 function Way({ action, children }: { action: ReactNode; children: ReactNode }) {
@@ -95,6 +101,11 @@ export interface StagedCodeNoteProps {
 	stagedVersion: string;
 	/** 跑着的那份的版本号 —— 只有「旧的照跑」那一档有;不给 = 没在跑它 / 这一刻不知道。 */
 	runningVersion?: string;
+	/**
+	 * 给不给「只重载」—— **开关开着**才给。关着的换上去就是把它跑起来,那是开关的活;那时只剩
+	 * 「重启 BN」,旁边说清为什么。
+	 */
+	swappable: boolean;
 	/** 摆在那句话最前面的名字。装完那句话要;详情页的头卡标题已经是名字了,不给。 */
 	name?: string;
 	/** 这台机器上「重启 BN」按下去回不回得来(ADR-0005 决策 22)。 */
@@ -109,6 +120,7 @@ export function StagedCodeNote({
 	id,
 	stagedVersion,
 	runningVersion,
+	swappable,
 	name,
 	restart,
 	wait = DEFAULT_RESTART_WAIT,
@@ -172,12 +184,14 @@ export function StagedCodeNote({
 				</Way>
 				<Way
 					action={
-						<Btn variant="outline" size="sm" disabled={busy} onClick={() => swap.mutate()}>
-							只重载这个拓展
-						</Btn>
+						swappable ? (
+							<Btn variant="outline" size="sm" disabled={busy} onClick={() => swap.mutate()}>
+								只重载这个拓展
+							</Btn>
+						) : null
 					}
 				>
-					{SWAP_COST}
+					{swappable ? SWAP_COST : SWAP_NEEDS_ENABLED}
 				</Way>
 			</div>
 			{children}

@@ -150,14 +150,15 @@ function ExtensionCard({
 				{ext.description ? <p className={PARAGRAPH_CLS}>{ext.description}</p> : null}
 				<ExtensionStateDetail ext={ext} />
 				{/*
-				 * 跑着旧的、盘上换了新版(ADR-0012 决策 47):徽章仍是「已启用」—— 它确实在跑 ——
-				 * 所以另说一句。两条出路(重启 BN / 只重载)只在详情页,卡上不摆按钮;开着却没跑
-				 * 的那一档徽章自己就说了(「新版等着换上」)。
+				 * 盘上有新版等着换上(ADR-0012 决策 47),而徽章说的是别的 —— 跑着旧的是「已启用」
+				 * (它确实在跑),关着的是「已停用」—— 所以另说一句。出路(重启 BN / 只重载)只在
+				 * 详情页,卡上不摆按钮;开着却没跑的那一档徽章自己就说了(「新版等着换上」)。
 				 */}
-				{ext.state === "running" && ext.staged ? (
+				{ext.staged && ext.state !== "staged" ? (
 					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 						<Pill subtle size="sm" color="var(--color-bn-warning)">
-							{ext.staged.version === ext.version
+							{/* 版本号没变只可能出在跑着的那一档(关着的 `version` 本来就是盘上那一版)。 */}
+							{ext.state === "running" && ext.staged.version === ext.version
 								? "盘上的代码换过了,等着换上"
 								: `v${ext.staged.version} 等着换上`}
 						</Pill>

@@ -202,7 +202,18 @@ describe("面板上传装拓展的接线", () => {
 				status: () => undefined,
 				pushSource: () => undefined,
 				bots: () => undefined,
-				install: { root, rescan, restartAbility: { can: true, how: "container" } },
+				install: {
+					root,
+					// 装载器那条队的替身:写完紧跟着重扫(`loader.changeDisk` 的形状)。
+					changeDisk: async (write) => {
+						try {
+							return await write();
+						} finally {
+							await rescan();
+						}
+					},
+					restartAbility: { can: true, how: "container" },
+				},
 			},
 		});
 

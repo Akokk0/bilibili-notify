@@ -221,6 +221,26 @@ describe("拓展页", () => {
 		expect(within(card).queryByRole("button", { name: "重启 BN" })).toBeNull();
 	});
 
+	/**
+	 * 关着的那张也带着「等着换上」:徽章说的是「已停用」,新版在等这件事得另说一句。关着的那一行
+	 * `version` 就是盘上那一版(没有跑着的旧版可比),照样说出版本号。
+	 */
+	it("关着的那张盘上有新版等着 → 卡上也说一句", async () => {
+		renderPage({
+			extensions: [
+				{
+					...BRIDGE,
+					version: "1.1.0",
+					enabled: false,
+					state: "disabled",
+					staged: { version: "1.1.0" },
+				},
+			],
+		});
+		const card = await cardOf("机器人框架桥接");
+		expect(within(card).getByText(/v1\.1\.0 等着换上/)).toBeTruthy();
+	});
+
 	it("没有新版等着 → 卡上不说这句", async () => {
 		renderPage();
 		const card = await cardOf("机器人框架桥接");
