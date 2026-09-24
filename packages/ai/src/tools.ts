@@ -10,6 +10,25 @@ function clip(s: string, max: number): string {
 }
 
 /**
+ * 发布时刻 → 「2026/9/21 · 3 天前」。**距今多久在这里算好**:模型手上没有当前时间,
+ * 「已经 N 天」「最近一天」「从新到旧」让它拿一个裸日期自己推,只能靠猜。按经过的
+ * 时长算、不按日历日,所以与服务器时区无关。
+ */
+function stamp(tsSeconds: unknown, now = Date.now()): string {
+	if (typeof tsSeconds !== "number" || !Number.isFinite(tsSeconds) || tsSeconds <= 0) {
+		return "未知时间";
+	}
+	const ms = now - tsSeconds * 1000;
+	const age =
+		ms < 3_600_000
+			? "不到 1 小时前"
+			: ms < 86_400_000
+				? `${Math.floor(ms / 3_600_000)} 小时前`
+				: `${Math.floor(ms / 86_400_000)} 天前`;
+	return `${new Date(tsSeconds * 1000).toLocaleDateString("zh-CN")} · ${age}`;
+}
+
+/**
  * 女仆查订阅用的订阅条目最小视图,按订阅自己的 `id` 为键(ADR-0019 决策 64)。
  * 仅包含工具实际访问的字段。
  *
@@ -357,9 +376,8 @@ export async function executeTool(
 			return items
 				.map((item, i) => {
 					const text = extractDynamicText(item);
-					const ts: number | undefined = item.modules?.module_author?.pub_ts;
-					const date = ts ? new Date(ts * 1000).toLocaleDateString("zh-CN") : "未知时间";
-					return `${i + 1}. [${date}] ${text ? clip(text, 200) : "（无文字内容）"}`;
+					const when = stamp(item.modules?.module_author?.pub_ts);
+					return `${i + 1}. [${when}] ${text ? clip(text, 200) : "（无文字内容）"}`;
 				})
 				.join("\n");
 		}
@@ -427,10 +445,7 @@ export async function executeTool(
 			const vlist: any[] = res.data?.list?.vlist ?? [];
 			if (!vlist.length) return "暂无投稿视频";
 			return vlist
-				.map((v, i) => {
-					const date = new Date(v.created * 1000).toLocaleDateString("zh-CN");
-					return `${i + 1}. [${date}] ${v.title}（播放: ${v.play}）`;
-				})
+				.map((v, i) => `${i + 1}. [${stamp(v.created)}] ${v.title}（播放: ${v.play}）`)
 				.join("\n");
 		}
 		case "search_user": {

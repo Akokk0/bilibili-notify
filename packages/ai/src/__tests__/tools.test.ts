@@ -53,3 +53,56 @@ describe("executeTool get_user_stats — navnum.code 校验 (P2-G)", () => {
 		expect(out).toContain("动态数: 99");
 	});
 });
+
+/**
+ * 发布时间带上「距今多久」。模型手上没有当前时间,技能里「已经 N 天」「最近一天」
+ * 「从新到旧」全靠这一格 —— 只给裸日期,它只能拿训练截止前后的某一天去猜。
+ */
+describe("executeTool 的发布时间 —— 距今多久在代码里算好", () => {
+	const nowS = () => Math.floor(Date.now() / 1000);
+
+	it("get_user_videos:超过一天的按天报", async () => {
+		const api = {
+			getUserVideos: vi.fn(async () => ({
+				code: 0,
+				data: { list: { vlist: [{ title: "新曲", play: 10, created: nowS() - 3 * 86_400 }] } },
+			})),
+		} as unknown as BilibiliAPI;
+		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
+		expect(out).toContain("3 天前");
+		expect(out).toContain("新曲");
+	});
+
+	it("get_user_dynamics:一天之内的按小时报", async () => {
+		const api = {
+			getUserSpaceDynamic: vi.fn(async () => ({
+				code: 0,
+				data: {
+					items: [
+						{
+							modules: {
+								module_author: { pub_ts: nowS() - 5 * 3_600 },
+								module_dynamic: { desc: { text: "今晚八点开播" } },
+							},
+						},
+					],
+				},
+			})),
+		} as unknown as BilibiliAPI;
+		const out = await executeTool("get_user_dynamics", { uid: "123" }, api, () => null);
+		expect(out).toContain("5 小时前");
+		expect(out).toContain("今晚八点开播");
+	});
+
+	it("时间戳缺失 → 「未知时间」,不拼出 Invalid Date / NaN", async () => {
+		const api = {
+			getUserVideos: vi.fn(async () => ({
+				code: 0,
+				data: { list: { vlist: [{ title: "旧作", play: 1 }] } },
+			})),
+		} as unknown as BilibiliAPI;
+		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
+		expect(out).toContain("未知时间");
+		expect(out).not.toMatch(/Invalid Date|NaN/);
+	});
+});
