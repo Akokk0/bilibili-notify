@@ -6,7 +6,7 @@
  *    取不到值),且每个值的 typeof 与字段表声明的 type 对得上(text / image → string)。
  * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、动态卡的 node 上连类型
  *    与图都没有),每个字段仍有值 —— 没有 undefined,不会有 "undefined" 被替换进模板。
- * 三、**语义**:几条最容易在重构里被改掉的分支(直播三态、封面四种来源、动态卡的几组字段
+ * 三、**语义**:几条最容易在重构里被改掉的分支(直播卡的几种状态、封面、动态卡的几组字段
  *    都从 node 取、舰长四档、金额是数字)。
  * 四、**取值**:`readCardField` 只认两段路径、只认自有属性,原型链上的名字一律取不到。
  */
@@ -23,7 +23,7 @@ import { h } from "vue";
 import { getSCLevel, SC_COLORS } from "../../styles";
 import type { DynamicCardProps, DynamicNode } from "../../templates/dynamic-card";
 import type { GuardCardProps } from "../../templates/guard-card";
-import type { LiveCardProps } from "../../templates/live-card";
+import type { LiveCardView } from "../../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
 import type { SCCardProps } from "../../templates/sc-card";
 import type { WordCloudCardProps } from "../../templates/wordcloud-card";
@@ -31,45 +31,40 @@ import { buildCardData, type CardData, type CardDataValue, readCardField } from 
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
-function liveProps(over: Partial<LiveCardProps> = {}): LiveCardProps {
+function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
-		data: {
-			title: "今天也在打游戏",
-			area_name: "虚拟主播",
-			description: "<p>简介第一行<br>第二行</p>",
-			user_cover: "https://img/user_cover.jpg",
-			keyframe: "https://img/keyframe.jpg",
-		},
+		status: "streaming",
 		username: "阿可",
 		userface: "https://img/face.jpg",
-		titleStatus: "",
-		liveTime: "已开播 1 小时",
-		liveStatus: 1,
-		cover: true,
-		coverOverride: "https://img/override.jpg",
-		onlineNum: "1.2万",
-		likedNum: "3000",
-		watchedNum: "5.4万",
-		fansNum: "10.1万",
+		title: "今天也在打游戏",
+		area: "虚拟主播",
+		description: "简介第一行 第二行",
+		cover: "https://img/cover.jpg",
+		time: "直播时长：1小时",
+		online: "1.2万",
+		likes: "3000",
+		totalViewers: "5.4万",
+		fans: "10.1万",
 		fansChanged: "+123",
 		...over,
 	};
 }
 
-/** 什么都没有的直播卡:接口只回了个空壳,开关全关。 */
-function emptyLiveProps(): LiveCardProps {
+/** 什么都没有的直播卡:没在播,一格数据都没有。 */
+function emptyLiveProps(): LiveCardView {
 	return {
-		data: {},
+		status: "offline",
 		username: "",
 		userface: "",
-		titleStatus: "",
-		liveTime: "",
-		liveStatus: 0,
-		cover: false,
-		onlineNum: "",
-		likedNum: "",
-		watchedNum: "",
-		fansNum: "",
+		title: "",
+		area: "",
+		description: "",
+		cover: "",
+		time: "",
+		online: "",
+		likes: "",
+		totalViewers: "",
+		fans: "",
 		fansChanged: "",
 	};
 }
@@ -308,89 +303,58 @@ describe("缺数据时每个字段仍有值", () => {
 
 // ── 三、语义 ──────────────────────────────────────────────────────────────────
 
-describe("直播卡的三态", () => {
-	it("直播中:isStreaming、人气、当前粉丝数", () => {
-		const d = buildCardData("live", liveProps({ liveStatus: 1 }));
-		expect(d.live.isStreaming).toBe(true);
-		expect(d.live.isEnded).toBe(false);
-		expect(d.stats.popularity).toBe("1.2万");
-		expect(d.stats.fans).toBe("10.1万");
-	});
-
-	it("已下播:isEnded、累计观看;接口没给数(哨兵值 API)时为空", () => {
-		const d = buildCardData("live", liveProps({ liveStatus: 2 }));
-		expect(d.live.isStreaming).toBe(false);
-		expect(d.live.isEnded).toBe(true);
-		expect(d.stats.fans).toBe("5.4万");
-
-		const noData = buildCardData("live", liveProps({ liveStatus: 2, watchedNum: "API" }));
-		expect(noData.stats.fans).toBe("");
-	});
-
-	it("刚下播(3):两个 is* 都为假,人气位换成点赞、粉丝位换成粉丝变化", () => {
-		const d = buildCardData("live", liveProps({ liveStatus: 3 }));
-		expect(d.live.isStreaming).toBe(false);
-		expect(d.live.isEnded).toBe(false);
-		expect(d.stats.popularity).toBe("3000");
-		expect(d.stats.fans).toBe("+123");
-		expect(d.stats.fansChanged).toBe("+123");
-		expect(d.stats.hasFansChanged).toBe(true);
-	});
-});
-
-describe("直播卡封面的几种来源", () => {
-	const data = (over: Record<string, unknown>) => ({
-		title: "",
-		area_name: "",
-		description: "",
-		...over,
-	});
-
-	// 与 `blocks/live.tsx` 封面块同一条选择逻辑:自定义封面优先;否则 `cover` 为真取
-	// 房间封面、为假取关键帧。契约说「有封面」就得是画出来的那张。
-	it("自定义封面优先,不看 cover 开关", () => {
-		for (const cover of [true, false]) {
-			const d = buildCardData("live", liveProps({ cover }));
-			expect(d.live.cover).toBe("https://img/override.jpg");
-			expect(d.live.hasCover).toBe(true);
+describe("直播卡的几种状态", () => {
+	it("开播与直播中:isStreaming、人气、当前粉丝数", () => {
+		for (const status of ["start", "streaming"] as const) {
+			const d = buildCardData("live", liveProps({ status }));
+			expect(d.live.isStreaming, status).toBe(true);
+			expect(d.live.isEnded, status).toBe(false);
+			expect(d.stats.popularity, status).toBe("1.2万");
+			expect(d.stats.fans, status).toBe("10.1万");
 		}
 	});
 
-	it("cover 为真取房间封面", () => {
-		const d = buildCardData("live", liveProps({ cover: true, coverOverride: undefined }));
-		expect(d.live.cover).toBe("https://img/user_cover.jpg");
+	/** 决策 76:下播时人气位是点赞、粉丝位是累计观看。验红:把 popularity 改回恒取人气。 */
+	it("下播:isEnded、点赞、累计观看", () => {
+		const d = buildCardData("live", liveProps({ status: "end" }));
+		expect(d.live.isStreaming).toBe(false);
+		expect(d.live.isEnded).toBe(true);
+		expect(d.stats.popularity).toBe("3000");
+		expect(d.stats.fans).toBe("5.4万");
 	});
 
-	it("cover 为假取关键帧(直播中那张)", () => {
-		const d = buildCardData(
-			"live",
-			liveProps({
-				cover: false,
-				coverOverride: undefined,
-				data: data({ keyframe: "https://img/keyframe.jpg" }),
-			}),
-		);
-		expect(d.live.cover).toBe("https://img/keyframe.jpg");
+	it("没在播:两个 is* 都为假,人气照给,粉丝位为空", () => {
+		const d = buildCardData("live", liveProps({ status: "offline" }));
+		expect(d.live.isStreaming).toBe(false);
+		expect(d.live.isEnded).toBe(false);
+		expect(d.stats.popularity).toBe("1.2万");
+		expect(d.stats.fans).toBe("");
+	});
+
+	it("粉丝数变化哪种状态都照给(自己做皮肤的人想画就能画)", () => {
+		for (const status of ["start", "streaming", "end", "offline"] as const) {
+			const d = buildCardData("live", liveProps({ status }));
+			expect(d.stats.fansChanged, status).toBe("+123");
+			expect(d.stats.hasFansChanged, status).toBe(true);
+		}
+		expect(buildCardData("live", liveProps({ fansChanged: "" })).stats.hasFansChanged).toBe(false);
+	});
+});
+
+describe("直播卡的封面", () => {
+	// 用哪一张(关键帧 / 房间封面 / 自定义封面)在出卡入口之前就定好了 —— B 站那头与
+	// `generateNeutralLiveCard` 各管一段(`__tests__/live-card-bili.test.ts` 钉着)。契约说的就是
+	// 视图里那张,与封面块画的是同一张。
+	it("就是视图里生效的那张", () => {
+		const d = buildCardData("live", liveProps());
+		expect(d.live.cover).toBe("https://img/cover.jpg");
 		expect(d.live.hasCover).toBe(true);
 	});
 
-	it("该取的那张没有 → 空串且 hasCover 为假,不去偷另一张", () => {
-		const d = buildCardData(
-			"live",
-			liveProps({
-				cover: true,
-				coverOverride: undefined,
-				data: data({ keyframe: "https://img/keyframe.jpg" }),
-			}),
-		);
+	it("没有 → 空串且 hasCover 为假", () => {
+		const d = buildCardData("live", liveProps({ cover: "" }));
 		expect(d.live.cover).toBe("");
 		expect(d.live.hasCover).toBe(false);
-	});
-
-	it("简介剥成纯文本", () => {
-		const d = buildCardData("live", liveProps());
-		expect(d.live.description).not.toContain("<");
-		expect(d.live.description).toContain("简介第一行");
 	});
 });
 

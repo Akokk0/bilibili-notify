@@ -17,7 +17,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { LiveCardProps } from "../../templates/live-card";
+import type { LiveCardView } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
 interface Toggles {
@@ -61,10 +61,10 @@ function cardWith(toggles: Toggles): CardSkinCard {
 }
 
 /** 与基准 / 挂点对表共用的那份直播卡夹具(直播中,三件都有数据)。 */
-async function liveProps(): Promise<LiveCardProps> {
+async function liveProps(): Promise<LiveCardView> {
 	const fixture = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	if (!fixture) throw new Error("找不到 live-streaming 夹具");
-	return (await fixture.build()).props as unknown as LiveCardProps;
+	return (await fixture.build()).props as unknown as LiveCardView;
 }
 
 const html = async (vnode: VNode): Promise<string> =>

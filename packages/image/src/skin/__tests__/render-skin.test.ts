@@ -16,7 +16,7 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { LiveCardProps } from "../../templates/live-card";
+import type { LiveCardView } from "../../templates/live-card";
 import {
 	BLOCKED_IMG_PLACEHOLDER,
 	renderCardWithSkin,
@@ -25,12 +25,12 @@ import {
 } from "../render-skin";
 
 /** live-streaming 那份 props(直播中、封面 / 分区 / 人气 / 粉丝全开、无粉丝变化)。 */
-let liveProps: LiveCardProps;
+let liveProps: LiveCardView;
 
 beforeAll(async () => {
 	const fixture = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	if (!fixture) throw new Error("夹具表里没有 live-streaming");
-	liveProps = (await fixture.build()).props as unknown as LiveCardProps;
+	liveProps = (await fixture.build()).props as unknown as LiveCardView;
 });
 
 /** 一份只有指定块的 live 皮肤。 */
@@ -270,7 +270,7 @@ describe("皮肤渲染器 — 自定义块的占位符", () => {
 		);
 		expect(html).toContain(`src="${liveProps.userface}"`);
 		expect(html).toContain('<img src="">');
-		expect(html).not.toContain(liveProps.data.title);
+		expect(html).not.toContain(liveProps.title);
 	});
 
 	it("src 的资产名走 resolveAsset;解析不出退透明占位 GIF", async () => {
@@ -489,7 +489,7 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	 */
 	it("退役的 cardStyle 背景图不再注进外框 —— 背景图走 wallpaper 旋钮", async () => {
 		const { doc } = await render(card(), {
-			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" } as LiveCardProps,
+			props: { ...liveProps, backgroundImage: "data:image/png;base64,AAAA" } as LiveCardView,
 		});
 		const style = doc.querySelector("[data-bn~='frame']")?.getAttribute("style") ?? "";
 		expect(style).not.toContain("--bn-card-bg-image");

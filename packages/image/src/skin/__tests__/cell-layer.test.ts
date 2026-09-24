@@ -32,17 +32,17 @@ import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
 import type { GuardCardProps } from "../../templates/guard-card";
-import type { LiveCardProps } from "../../templates/live-card";
+import type { LiveCardView } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
-let liveProps: LiveCardProps;
+let liveProps: LiveCardView;
 let guardProps: GuardCardProps;
 
 beforeAll(async () => {
 	const live = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	const guard = CARD_FIXTURES.find((f) => f.name === "guard-captain");
 	if (!live || !guard) throw new Error("夹具表里少了 live-streaming / guard-captain");
-	liveProps = (await live.build()).props as unknown as LiveCardProps;
+	liveProps = (await live.build()).props as unknown as LiveCardView;
 	guardProps = (await guard.build()).props as unknown as GuardCardProps;
 });
 

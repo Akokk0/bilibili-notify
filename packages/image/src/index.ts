@@ -28,6 +28,9 @@ export {
 	type RoastBoardData,
 	type RoastSoloData,
 } from "./image-renderer";
+// 直播卡的中立输入 → 块与皮肤契约吃的视图(ADR-0019 决策 68)。绕开 ImageRenderer 自己拼
+// `renderCardWithSkin` 入参的调用方(预览路由)用它,与推送出图排出同一份。
+export { buildLiveCardView } from "./live-view";
 // 出厂示例卡片数据 —— 皮肤编辑器的实时预览拿它当「假数据」出图(ADR-0014 决策 22)。
 // 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
 export { sampleCard } from "./preview/sample-cards";
@@ -91,7 +94,14 @@ export {
 	type GalleryImage,
 } from "./templates/dynamic-content";
 export type { GuardCardProps } from "./templates/guard-card";
-export type { LiveCardProps } from "./templates/live-card";
+// 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateNeutralLiveCard`;
+// 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。`LiveCardProps` 是 🪦 旧形状。
+export type {
+	LiveCardInput,
+	LiveCardProps,
+	LiveCardStatus,
+	LiveCardView,
+} from "./templates/live-card";
 export type {
 	RoastBoardCardProps,
 	RoastCardUp,

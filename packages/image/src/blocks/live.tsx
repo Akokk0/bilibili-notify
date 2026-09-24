@@ -26,38 +26,49 @@
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
-import { htmlToPlain } from "../html-to-plain";
-import type { LiveCardProps } from "../templates/live-card";
+import type { LiveCardView } from "../templates/live-card";
 import type { BlockRenderer } from "./types";
 
-function statusLabel(p: LiveCardProps): { text: string; bg: string } {
-	if (p.liveStatus === 1) return { text: "直播中", bg: "#FF6699" };
-	if (p.liveStatus === 2) return { text: "已下播", bg: "#aaa" };
+/** 开播与直播中在卡上是同一种样子(角标、数据区都一样),只差那句时间 —— 那句由入口算好。 */
+function isOnAir(p: LiveCardView): boolean {
+	return p.status === "start" || p.status === "streaming";
+}
+
+function statusLabel(p: LiveCardView): { text: string; bg: string } {
+	if (isOnAir(p)) return { text: "直播中", bg: "#FF6699" };
+	if (p.status === "end") return { text: "已下播", bg: "#aaa" };
 	return { text: "未开播", bg: "#aaa" };
 }
 
-function statsLeft(p: LiveCardProps): string {
-	if (p.liveStatus === 3) return `点赞：${p.likedNum}`;
-	return `人气：${p.onlineNum}`;
+/**
+ * 人气那一格:下播卡换成点赞(ADR-0019 决策 76 —— 下播那一刻的人气是散场时的在线人数,
+ * 概括不了这一场),其余状态是此刻在线。那一格没有数就整行不画。
+ */
+function statsLeft(p: LiveCardView): string {
+	if (p.status === "end") return p.likes ? `点赞：${p.likes}` : "";
+	return p.online ? `人气：${p.online}` : "";
 }
 
-function followerText(p: LiveCardProps): string {
-	if (p.liveStatus === 1) return p.fansNum ? `当前粉丝数：${p.fansNum}` : "";
-	if (p.liveStatus === 2) return p.watchedNum !== "API" ? `累计观看人数：${p.watchedNum}` : "";
-	if (p.liveStatus === 3) return p.fansChanged ? `粉丝数变化：${p.fansChanged}` : "";
+/**
+ * 粉丝那一行:开播 / 直播中是当前粉丝数,下播是本场累计观看人数,没在播不画。粉丝数变化
+ * **不上默认卡**(决策 76,它进下播文案;皮肤契约照给,想画的皮肤自己画)。
+ */
+function followerText(p: LiveCardView): string {
+	if (isOnAir(p)) return p.fans ? `当前粉丝数：${p.fans}` : "";
+	if (p.status === "end") return p.totalViewers ? `累计观看人数：${p.totalViewers}` : "";
 	return "";
 }
 
 /** 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。 */
-const avatar: BlockRenderer<LiveCardProps> = (p) => (
+const avatar: BlockRenderer<LiveCardView> = (p) => (
 	<img data-bn="image" class="object-cover shrink-0" src={p.userface} alt="主播头像" />
 );
 
 /** 主播名(原子块)。 */
-const name: BlockRenderer<LiveCardProps> = (p) => <span data-bn="text">{p.username}</span>;
+const name: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.username}</span>;
 
 /** 开播时间(原子块)。 */
-const time: BlockRenderer<LiveCardProps> = (p) => <span data-bn="text">{p.liveTime}</span>;
+const time: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.time}</span>;
 
 /**
  * 数据区三件(人气 / 分区 / 粉丝)。
@@ -68,24 +79,28 @@ const time: BlockRenderer<LiveCardProps> = (p) => <span data-bn="text">{p.liveTi
  */
 
 /**
- * 人气 / 点赞(原子块):那个 span 恒画(`statsLeft` 带「人气：」前缀,永远不是空串),所以
- * 这里也不写「没内容收起」——写了也是一条永远走不到的分支。
+ * 人气 / 点赞(原子块)。那一格没有数就收起 —— B 站那头恒给(人气与点赞都有初值),拓展没报
+ * 的话不留一个「点赞：」后面什么都没有。
  */
-const popularity: BlockRenderer<LiveCardProps> = (p) => (
-	<span data-bn="text" class="block">
-		{statsLeft(p)}
-	</span>
-);
+const popularity: BlockRenderer<LiveCardView> = (p) => {
+	const text = statsLeft(p);
+	if (!text) return null;
+	return (
+		<span data-bn="text" class="block">
+			{text}
+		</span>
+	);
+};
 
 /** 分区(原子块)。文案同样恒有前缀,不会空。 */
-const area: BlockRenderer<LiveCardProps> = (p) => (
+const area: BlockRenderer<LiveCardView> = (p) => (
 	<span data-bn="text" class="block">
-		{`分区：${p.data.area_name}`}
+		{`分区：${p.area}`}
 	</span>
 );
 
-/** 粉丝行(原子块):三态各有各的文案,某态没有就收起。 */
-const fans: BlockRenderer<LiveCardProps> = (p) => {
+/** 粉丝行(原子块):各状态各有各的文案,某态没有就收起。 */
+const fans: BlockRenderer<LiveCardView> = (p) => {
 	const text = followerText(p);
 	if (!text) return null;
 	return <div data-bn="text">{text}</div>;
@@ -95,7 +110,7 @@ const fans: BlockRenderer<LiveCardProps> = (p) => {
  * live 卡的块表。每块返回内层 VNode(无 `data-block` —— 由 `renderBlocks` 的 wrapper
  * 统一加),无数据时返回 null 自动收起。divider 是可重复的分割线块。
  */
-export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
+export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardView>> = {
 	[DIVIDER_TYPE]: () => <div data-bn="line" />,
 
 	cover: (p) => (
@@ -105,7 +120,7 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 			// (`heightFromRows`),图得跟着填满、按比例裁。没声明高度时 `height:100%` 的
 			// 百分比没有参照物,浏览器当 auto 办 —— 所以这两个 class 对老皮肤是零影响。
 			class="block w-full h-full object-cover"
-			src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
+			src={p.cover}
 			alt="封面"
 		/>
 	),
@@ -126,11 +141,9 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardProps>> = {
 		);
 	},
 
-	title: (p) => <div data-bn="text">{p.data.title}</div>,
+	title: (p) => <div data-bn="text">{p.title}</div>,
 
-	desc: (p) => (
-		<div data-bn="text">{htmlToPlain(p.data.description) || "这个主播很懒，什么简介都没写"}</div>
-	),
+	desc: (p) => <div data-bn="text">{p.description || "这个主播很懒，什么简介都没写"}</div>,
 
 	avatar,
 	name,

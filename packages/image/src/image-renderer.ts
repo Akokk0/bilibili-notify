@@ -18,6 +18,8 @@ import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import type { CardPropsByKind } from "./blocks/frames";
 import { numberToStr } from "./format";
+import { htmlToPlain } from "./html-to-plain";
+import { buildLiveCardView, durationSince, LIVE_TIME_FORMAT, LIVE_TIME_ZONE } from "./live-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
 import { type ResolvedKnobAssets, resolveKnobAssets } from "./skin/knob-assets";
@@ -30,6 +32,7 @@ import {
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content";
+import type { LiveCardInput, LiveCardStatus } from "./templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
@@ -90,6 +93,59 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 		}
 	}
 	throw lastError;
+}
+
+/**
+ * B 站给卡片的状态码 → 明写的状态。直播引擎传 `LiveType`,私聊指令传接口原值(0 没在播 /
+ * 1 在播),两套在 0 ~ 3 上恰好对得上。
+ */
+const BILI_LIVE_STATUS: Record<number, LiveCardStatus> = {
+	0: "offline",
+	1: "start",
+	2: "streaming",
+	3: "end",
+};
+
+/** B 站 `live_time`(北京时间字符串)→ 毫秒时间戳;缺失或解析不出时 undefined。 */
+function parseBiliLiveTime(raw: unknown): number | undefined {
+	if (typeof raw !== "string" || raw === "") return undefined;
+	const at = DateTime.fromFormat(raw, LIVE_TIME_FORMAT, { zone: LIVE_TIME_ZONE });
+	return at.isValid ? at.toMillis() : undefined;
+}
+
+/**
+ * **B 站那头 → 中立的直播卡输入**(ADR-0019 决策 68)。卡上画什么全在这一步定好:
+ *
+ * - 封面:直播中用关键帧(实时画面),开播 / 下播 / 没在播用房间封面。
+ * - 其余状态码(今天没有调用方传,比如 4 首次开播)照旧画成「直播中」角标、不写那句时间、
+ *   用房间封面 —— 与从前的默认分支一个样。
+ * - 简介是富文本(可能带 `<p>` / `<br>` 或 entity-encoded 形式),先剥成纯文本。
+ */
+function biliLiveCardInput(
+	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
+	data: any,
+	username: string,
+	userface: string,
+	liveData: LiveData,
+	liveStatus: number,
+): LiveCardInput {
+	const known = BILI_LIVE_STATUS[liveStatus];
+	const status = known ?? "start";
+	const text = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+	return {
+		status,
+		author: { name: username, face: userface },
+		title: text(data?.title),
+		area: text(data?.area_name),
+		description: htmlToPlain(text(data?.description)),
+		cover: text(status === "streaming" ? data?.keyframe : data?.user_cover),
+		startedAt: known ? parseBiliLiveTime(data?.live_time) : undefined,
+		online: +(data?.online ?? 0),
+		likes: liveData.likedNum,
+		totalViewers: liveData.watchedNum,
+		fans: liveData.fansNum,
+		fansChanged: liveData.fansChanged,
+	};
 }
 
 /**
@@ -396,43 +452,14 @@ export class ImageRenderer {
 		}
 	}
 
+	/**
+	 * B 站 `live_time`(北京时间「yyyy-MM-dd HH:mm:ss」)到此刻过了多久,写成「2小时13分」。
+	 * 直播引擎拿它拼文案里的直播时长;卡上那句走的是同一个 {@link durationSince}。
+	 */
 	async getTimeDifference(dateString: string): Promise<string> {
-		const apiDateTime = DateTime.fromFormat(dateString, "yyyy-MM-dd HH:mm:ss", {
-			zone: "UTC+8",
-		});
-		const diff = DateTime.now().diff(apiDateTime, [
-			"years",
-			"months",
-			"days",
-			"hours",
-			"minutes",
-			"seconds",
-		]);
-		const { years, months, days, hours, minutes, seconds } = diff.toObject();
-		const parts: string[] = [];
-		if (years) parts.push(`${Math.abs(years)}年`);
-		if (months) parts.push(`${Math.abs(months)}个月`);
-		if (days) parts.push(`${Math.abs(days)}天`);
-		if (hours) parts.push(`${Math.abs(hours)}小时`);
-		if (minutes) parts.push(`${Math.abs(minutes)}分`);
-		if (seconds) parts.push(`${Math.round(Math.abs(seconds))}秒`);
-		const sign = diff.as("seconds") < 0 ? "-" : "";
-		return parts.length > 0 ? `${sign}${parts.join("")}` : "0秒";
-	}
-
-	async getLiveStatus(time: string, liveStatus: number): Promise<[string, string, boolean]> {
-		switch (liveStatus) {
-			case 0:
-				return ["未直播", "未开播", true];
-			case 1:
-				return ["开播啦", `开播时间：${time}`, true];
-			case 2:
-				return ["正在直播", `直播时长：${await this.getTimeDifference(time)}`, false];
-			case 3:
-				return ["下播啦", `开播时间：${time}`, true];
-			default:
-				return ["", "", true];
-		}
+		return durationSince(
+			DateTime.fromFormat(dateString, LIVE_TIME_FORMAT, { zone: LIVE_TIME_ZONE }),
+		);
 	}
 
 	// ── 皮肤(ADR-0014) ─────────────────────────────────────────────────────────
@@ -557,6 +584,13 @@ export class ImageRenderer {
 
 	// ── 图片生成公共方法 ──────────────────────────────────────────────────────────
 
+	/**
+	 * **B 站直播卡的适配层**:接口数据 → {@link biliLiveCardInput} → {@link generateNeutralLiveCard}。
+	 * 签名不动,直播引擎与预览路由照旧调它。
+	 *
+	 * `liveStatus` 两种来源:直播引擎传 `LiveType`(1 开播 / 2 直播中 / 3 下播 / 4 首次),
+	 * 私聊指令传接口原值(0 没在播 / 1 在播)。
+	 */
 	async generateLiveCard(
 		// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
 		data: any,
@@ -566,54 +600,37 @@ export class ImageRenderer {
 		liveStatus: number,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
+		return this.generateNeutralLiveCard(
+			biliLiveCardInput(data, username, userface, liveData, liveStatus),
+			colorOptions,
+		);
+	}
+
+	/**
+	 * **直播卡的中立入口**(ADR-0019 决策 68):吃一份 {@link LiveCardInput},不收任何平台的
+	 * 原始数据。状态明写(开播 / 直播中 / 下播 / 没在播),卡上那句时间由开播时刻算。
+	 *
+	 * 主人给这条订阅设的自定义直播封面(`colorOptions.liveCoverImage`,独立端专属)在这里
+	 * 解析、盖在输入的封面上 —— 它是 BN 的卡片样式,不分平台。
+	 *
+	 * 卡里的图只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
+	 */
+	async generateNeutralLiveCard(
+		input: LiveCardInput,
+		colorOptions: CardColorOptions = {},
+	): Promise<Buffer> {
 		const t0 = Date.now();
+		const username = input.author.name;
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
-		// 直播封面(独立端专属)解析成 data URL;解析为 "" 时模板回退 API 封面/关键帧,
-		// 特性自动无感。(从前这里还并发解析一份卡片背景图,那条链 2026-09-20 整个删掉。)
+		// 自定义封面解析成 data URL;解析为 "" 时用输入里那张,特性自动无感。
 		const coverOverride = await this.resolveBg(colorOptions.liveCoverImage);
-
-		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
-
-		// 规范化 liveStatus 用于 LiveCard 角标：
-		// live-service 传入的是 LiveType 枚举（2=LiveBroadcast, 3=StopBroadcast, 4=FirstLiveBroadcast）
-		// 指令传入的是原始 API live_status（1=正在播）
-		// 统一映射：直播中=1，已下播=2，其他=0
-		const cardBadgeStatus = liveStatus === 3 ? 2 : liveStatus >= 2 ? 1 : liveStatus;
 
 		return this.renderWithSkin({
 			kind: "live",
 			title: "直播通知",
 			skinId: this.skinIdOf(colorOptions),
 			font: await this.resolveFont(colorOptions),
-			props: {
-				data,
-				username,
-				userface,
-				titleStatus,
-				liveTime,
-				liveStatus: cardBadgeStatus,
-				cover,
-				coverOverride: coverOverride || undefined,
-				onlineNum: numberToStr(+(data.online ?? 0)),
-				likedNum:
-					typeof liveData.likedNum === "number"
-						? numberToStr(liveData.likedNum)
-						: (liveData.likedNum ?? ""),
-				watchedNum:
-					typeof liveData.watchedNum === "number"
-						? numberToStr(liveData.watchedNum)
-						: (liveData.watchedNum ?? ""),
-				fansNum:
-					typeof liveData.fansNum === "number"
-						? numberToStr(liveData.fansNum)
-						: (liveData.fansNum ?? ""),
-				fansChanged: (() => {
-					if (typeof liveData.fansChanged !== "number") return liveData.fansChanged ?? "";
-					const n = liveData.fansChanged;
-					if (n > 0) return n >= 10_000 ? `+${(n / 10_000).toFixed(1)}万` : `+${n}`;
-					return n <= -10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toString();
-				})(),
-			},
+			props: buildLiveCardView(input, coverOverride || undefined),
 		})
 			.then((buf) => {
 				this.logger.debug(`[live] 直播卡片渲染完成：${username}（${Date.now() - t0}ms）`);

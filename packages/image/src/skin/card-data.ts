@@ -14,11 +14,10 @@
 
 import type { GuardLevel } from "@bilibili-notify/blive";
 import { GUARD_DESC } from "../blocks/guard";
-import { htmlToPlain } from "../html-to-plain";
 import { getSCLevel } from "../styles";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { GuardCardProps } from "../templates/guard-card";
-import type { LiveCardProps } from "../templates/live-card";
+import type { LiveCardView } from "../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
 import type { SCCardProps } from "../templates/sc-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
@@ -47,43 +46,36 @@ function num(v: unknown): number {
 // ── live ─────────────────────────────────────────────────────────────────────
 
 /**
- * 粉丝那一格的**数值部分** —— 与 `blocks/live.tsx` 的 `followerText` 同一套分支,只是不带
- * 「当前粉丝数：」这类前缀(前缀归皮肤的模板写)。`watchedNum === "API"` 是接口没给数的哨兵值。
+ * 直播卡的数据全从 {@link LiveCardView} 取 —— 与块库(`blocks/live.tsx`)吃的是同一份,
+ * 判据也同一套:开播与直播中是同一种样子(`isStreaming`),下播是另一种(`isEnded`)。
  */
-function liveFans(p: LiveCardProps): string {
-	if (p.liveStatus === 1) return str(p.fansNum);
-	if (p.liveStatus === 2) return p.watchedNum !== "API" ? str(p.watchedNum) : "";
-	if (p.liveStatus === 3) return str(p.fansChanged);
-	return "";
-}
-
-function liveData(p: LiveCardProps): CardData {
-	// `data` 是 B 站直播接口的原始结构(模板里就是 any),字段一律经 str() 兜。
-	const data: Record<string, unknown> = p.data ?? {};
-	const area = str(data.area_name);
-	// 与 `blocks/live.tsx` 的封面块**同一条选择逻辑**:自定义封面优先;否则 `cover` 为真
-	// (开播 / 下播态)取房间封面、为假(直播中)取关键帧。契约说的「有没有封面」得和画出
-	// 来的那张一致,不能另起一套。
-	const cover = str(p.coverOverride || (p.cover ? data.user_cover : data.keyframe));
+function liveData(p: LiveCardView): CardData {
+	const onAir = p.status === "start" || p.status === "streaming";
+	const ended = p.status === "end";
+	const cover = str(p.cover);
 	const fansChanged = str(p.fansChanged);
 	return {
 		up: { name: str(p.username), face: str(p.userface) },
 		live: {
-			title: str(data.title),
-			area,
-			time: str(p.liveTime),
-			// 房间简介是富文本(可能带 <p>/<br> 或 entity-encoded 形式),契约只承诺纯文本。
-			description: htmlToPlain(str(data.description)),
+			title: str(p.title),
+			area: str(p.area),
+			time: str(p.time),
+			// 视图里的简介已经是纯文本(B 站那头剥过富文本)。
+			description: str(p.description),
+			// 生效的那张(自定义直播封面已经盖上去了)—— 与封面块画的是同一张。
 			cover,
 			hasCover: cover !== "",
-			isStreaming: p.liveStatus === 1,
-			isEnded: p.liveStatus === 2,
+			isStreaming: onAir,
+			isEnded: ended,
 		},
 		stats: {
-			// 与 `blocks/live.tsx` 的 statsLeft 同一套分支(含 3 = 刚下播那支)。
-			popularity: p.liveStatus === 3 ? str(p.likedNum) : str(p.onlineNum),
-			area,
-			fans: liveFans(p),
+			// 与 `blocks/live.tsx` 的 statsLeft 同一套分支:下播是点赞(决策 76),其余是此刻在线。
+			popularity: ended ? str(p.likes) : str(p.online),
+			area: str(p.area),
+			// 粉丝那一格的**数值部分** —— 与 `blocks/live.tsx` 的 `followerText` 同一套分支,
+			// 只是不带「当前粉丝数：」这类前缀(前缀归皮肤的模板写)。
+			fans: onAir ? str(p.fans) : ended ? str(p.totalViewers) : "",
+			// 默认卡不画它(决策 76,它进下播文案),契约照给 —— 自己做皮肤的人想画就能画。
 			fansChanged,
 			hasFansChanged: fansChanged !== "",
 		},
@@ -208,7 +200,7 @@ function wordCloudData(p: WordCloudCardProps): CardData {
 
 // ── 入口 ──────────────────────────────────────────────────────────────────────
 
-export function buildCardData(kind: "live", props: LiveCardProps): CardData;
+export function buildCardData(kind: "live", props: LiveCardView): CardData;
 export function buildCardData(kind: "dynamic", props: DynamicCardProps): CardData;
 export function buildCardData(kind: "sc", props: SCCardProps): CardData;
 export function buildCardData(kind: "guard", props: GuardCardProps): CardData;
@@ -224,7 +216,7 @@ export function buildCardData(
 ): CardData {
 	switch (kind) {
 		case "live":
-			return liveData(props as LiveCardProps);
+			return liveData(props as LiveCardView);
 		case "dynamic":
 			return dynamicData(props as DynamicCardProps);
 		case "sc":

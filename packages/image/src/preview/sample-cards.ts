@@ -24,6 +24,7 @@ import type { CardPropsByKind } from "../blocks/frames";
 import { numberToStr } from "../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
 import { buildDynamicNode, type NodeFormatters } from "../templates/dynamic-content";
+import type { LiveCardView } from "../templates/live-card";
 import type { Dynamic, RichTextNode } from "../types";
 
 /** 一份示例 props 就是该卡种的真 props。 */
@@ -59,48 +60,41 @@ const MASTER = { name: "示例 UP 主", face: SVG_AVATAR_BLUE } as const;
 /**
  * 两个场景的差异全在这几项里(其余字段共用)。
  *
- * `liveStatus` 是**卡上角标**用的那一档(1 = 直播中、2 = 已下播),不是 B 站接口原值 ——
- * `ImageRenderer.generateLiveCard` 会先把接口那套映射过来再传给卡片,示例数据照它的产物写。
- * 粉丝行也跟着换:直播中报当前粉丝数、下播报累计观看人数(`blocks/live.tsx` 的 `followerText`)。
+ * 示例直接写块吃的那一份({@link LiveCardView}):卡上那句时间写死,不读时钟。数据区跟着
+ * 状态换:直播中报人气与当前粉丝数,下播报点赞与累计观看人数(ADR-0019 决策 76,
+ * `blocks/live.tsx` 的 `statsLeft` / `followerText`)。
  */
-type LiveSceneOverlay = Pick<SampleProps<"live">, "titleStatus" | "liveTime" | "liveStatus"> &
-	Partial<Pick<SampleProps<"live">, "onlineNum" | "likedNum" | "watchedNum" | "fansNum">>;
+type LiveSceneOverlay = Pick<LiveCardView, "status" | "time"> &
+	Partial<Pick<LiveCardView, "online" | "likes" | "totalViewers" | "fans">>;
 
 const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 	streaming: {
-		titleStatus: "正在直播",
-		liveTime: "直播时长：2小时13分",
-		liveStatus: 1,
-		onlineNum: numberToStr(123_456),
-		fansNum: numberToStr(88_800),
+		status: "streaming",
+		time: "直播时长：2小时13分",
+		online: numberToStr(123_456),
+		fans: numberToStr(88_800),
 	},
 	ended: {
-		titleStatus: "下播啦",
-		liveTime: "开播时间：2026-09-13 20:00:00",
-		liveStatus: 2,
-		onlineNum: numberToStr(96_210),
-		watchedNum: numberToStr(31_200),
+		status: "end",
+		time: "开播时间：2026-09-13 20:00:00",
+		likes: numberToStr(20_133),
+		totalViewers: numberToStr(31_200),
 	},
 };
 
-function liveSample(scene: string): SampleProps<"live"> {
+function liveSample(scene: string): LiveCardView {
 	return {
-		data: {
-			title: "【示例】周年庆典特别直播，今晚不见不散！",
-			area_name: "虚拟主播",
-			user_cover: SVG_COVER,
-			// 「正在直播」那一档真机上铺的是实时关键帧;示例里两张是同一块占位图。
-			keyframe: SVG_COVER,
-			description: "这是一段示例直播间简介：每晚八点开播，周末加场。",
-			online: 123_456,
-		},
 		username: MASTER.name,
 		userface: MASTER.face,
-		cover: true,
-		onlineNum: "",
-		likedNum: "",
-		watchedNum: "",
-		fansNum: "",
+		title: "【示例】周年庆典特别直播，今晚不见不散！",
+		area: "虚拟主播",
+		description: "这是一段示例直播间简介：每晚八点开播，周末加场。",
+		// 「正在直播」那一档真机上铺的是实时关键帧;示例里两个场景是同一块占位图。
+		cover: SVG_COVER,
+		online: "",
+		likes: "",
+		totalViewers: "",
+		fans: "",
 		fansChanged: "",
 		...LIVE_SCENES[scene],
 	};

@@ -45,6 +45,7 @@ import { SC_BLOCKS } from "../blocks/sc";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { escapeHtml } from "../html-escape";
+import { liveCardViewOf } from "../live-view";
 import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { DynamicNode } from "../templates/dynamic-content";
@@ -512,7 +513,9 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
 	};
-	const children = placeBlocks(ctx, o.props);
+	// 直播卡的 🪦 旧形状在这儿翻成块吃的那一份 —— 所有出图路径都经过这里,块与契约只见一种。
+	const props = kind === "live" ? liveCardViewOf(o.props as CardPropsByKind["live"]) : o.props;
+	const children = placeBlocks(ctx, props);
 
 	// 翻译 CSS。按 `card.blocks` 的顺序走而不是按画出来的顺序 —— 内层先画完也不会把
 	// 它的规则插到前面去;真没画出来过的块照旧不留 CSS。
@@ -528,7 +531,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 
 	const extra: FrameExtra = {
 		frame:
-			frameVariables(o.props) +
+			frameVariables(props) +
 			cardSkinKnobDeclarations(o.knobs, o.knobValues) +
 			// 宿主解析出来的那两档排在后面:同一个 key 时以读盘拿到的为准(纯字面量那条
 			// 路径对它们一律回 null,本来也注不出东西来)。

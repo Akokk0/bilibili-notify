@@ -16,8 +16,10 @@
 
 import type { CardSkinKind } from "@bilibili-notify/internal";
 import { numberToStr } from "../../format";
+import { htmlToPlain } from "../../html-to-plain";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
 import { buildDynamicNode, type NodeFormatters } from "../../templates/dynamic-content";
+import type { LiveCardView } from "../../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
 import type { Dynamic, RichTextNode } from "../../types";
 
@@ -79,46 +81,42 @@ const GUARD_IMG = {
 
 // ── 直播卡 ────────────────────────────────────────────────────────────────────
 
-/** B 站直播间接口里模板真正读到的那几个字段。 */
-function liveRoom(over: Record<string, unknown> = {}) {
-	return {
-		title: "【4K】周年庆典特别直播，今晚不见不散！",
-		area_name: "虚拟主播",
-		user_cover: "http://i0.hdslb.com/bfs/live/new_room_cover/0a1b2c3d4e5f60718293.jpg",
-		keyframe: "http://i0.hdslb.com/bfs/live-key-frame/keyframe0102030405060708.jpg",
-		// 富文本简介:htmlToPlain 要把标签与 entity 都剥成纯文本。
-		description:
-			"<p>每晚八点开播&nbsp;&amp;&nbsp;周末加场</p><br>&lt;b&gt;联系方式见动态&lt;/b&gt;",
-		online: 123_456,
-		...over,
-	};
-}
+/** 房间封面与关键帧(直播中那张)。 */
+const USER_COVER = "http://i0.hdslb.com/bfs/live/new_room_cover/0a1b2c3d4e5f60718293.jpg";
+const KEYFRAME = "http://i0.hdslb.com/bfs/live-key-frame/keyframe0102030405060708.jpg";
 
-/** 照 `generateLiveCard` 的拼法组 props(数字都经 numberToStr)。 */
-function liveProps(over: Record<string, unknown> = {}): Record<string, unknown> {
+/**
+ * B 站给的房间简介是富文本 —— B 站那头(`biliLiveCardInput`)先剥成纯文本再交给卡片,
+ * 夹具照它的产物写。
+ */
+const RICH_DESCRIPTION =
+	"<p>每晚八点开播&nbsp;&amp;&nbsp;周末加场</p><br>&lt;b&gt;联系方式见动态&lt;/b&gt;";
+
+/**
+ * 照 `generateNeutralLiveCard` 排好的那一份组 props(块吃的 `LiveCardView`;数字都经
+ * numberToStr)。
+ */
+function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
-		showPopularity: true,
-		showArea: true,
-		showFans: true,
-		data: liveRoom(),
+		status: "streaming",
 		username: "示例主播",
 		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
-		titleStatus: "开播啦",
-		liveTime: "开播时间：2026-09-13 20:00:00",
-		liveStatus: 1,
-		cover: true,
-		coverOverride: undefined,
-		onlineNum: numberToStr(123_456),
-		likedNum: "",
-		watchedNum: "",
-		fansNum: numberToStr(88_800),
+		title: "【4K】周年庆典特别直播，今晚不见不散！",
+		area: "虚拟主播",
+		description: htmlToPlain(RICH_DESCRIPTION),
+		cover: USER_COVER,
+		time: "开播时间：2026-09-13 20:00:00",
+		online: numberToStr(123_456),
+		likes: "",
+		totalViewers: "",
+		fans: numberToStr(88_800),
 		fansChanged: "",
 		...over,
 	};
 }
 
 const liveInput = (
-	over: Record<string, unknown> = {},
+	over: Partial<LiveCardView> = {},
 	fontFace?: string,
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
@@ -655,19 +653,17 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		name: "live-ended",
 		group: "直播卡",
 		kind: "live",
-		label: "live-ended：下播(liveStatus=3)，点赞 + 粉丝数变化，自定义封面，简介空走兜底文案",
-		// liveStatus=3 是**模板自己**的下播分支(点赞 / 粉丝数变化);注意 `generateLiveCard`
-		// 会先把 3 归一成角标用的 2 再传进来,所以真机上这一支的角标是「已下播」而这里是
-		// 「未开播」—— 这条 quirk 属于现状,基准照钉,重构时别顺手"修"掉。
+		label:
+			"live-ended：下播，点赞 + 累计观看人数(粉丝数变化不上默认卡)，自定义封面，简介空走兜底文案",
+		// 下播卡的数据区是「点赞 + 累计观看人数」(ADR-0019 决策 76);粉丝数变化只进下播文案与
+		// 皮肤契约,默认卡不画 —— 这份夹具给了它,快照里不该出现。
 		build: liveInput({
-			data: liveRoom({ description: "" }),
-			titleStatus: "下播啦",
-			liveTime: "开播时间：2026-09-13 20:00:00",
-			liveStatus: 3,
-			cover: true,
-			coverOverride: "http://i0.hdslb.com/bfs/album/bn-custom-live-cover-0001.png",
-			likedNum: numberToStr(20_133),
-			fansNum: numberToStr(88_800),
+			status: "end",
+			description: "",
+			time: "开播时间：2026-09-13 20:00:00",
+			cover: "http://i0.hdslb.com/bfs/album/bn-custom-live-cover-0001.png",
+			likes: numberToStr(20_133),
+			totalViewers: numberToStr(31_200),
 			fansChanged: "+1.2万",
 		}),
 	},
@@ -677,23 +673,22 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		kind: "live",
 		label: "live-minimal：数据区整块收起 + 关键帧封面 + 改过顺序的版式",
 		build: liveInput({
-			titleStatus: "正在直播",
-			liveTime: "直播时长：2小时13分",
-			liveStatus: 2,
-			cover: false,
+			status: "end",
+			time: "直播时长：2小时13分",
+			cover: KEYFRAME,
 		}),
 	},
 	{
 		name: "live-with-fontface",
 		group: "直播卡",
 		kind: "live",
-		label: "live-with-fontface：带主人自带字体的 @font-face + 累计观看人数(liveStatus=2)",
+		label: "live-with-fontface：带主人自带字体的 @font-face + 累计观看人数(下播)",
 		build: liveInput(
 			{
-				titleStatus: "正在直播",
-				liveTime: "直播时长：2小时13分",
-				liveStatus: 2,
-				watchedNum: numberToStr(31_200),
+				status: "end",
+				time: "直播时长：2小时13分",
+				likes: numberToStr(20_133),
+				totalViewers: numberToStr(31_200),
 			},
 			// 与 buildFontFace 出的形状一致,data URL 换成固定短串(真实的是整份字体文件)。
 			'@font-face{font-family:"bn-user-font";src:url("data:font/woff2;base64,d09GMgABAAAAAAAY");font-display:block}',

@@ -18,15 +18,15 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { LiveCardProps } from "../../templates/live-card";
+import type { LiveCardView } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
-let props: LiveCardProps;
+let props: LiveCardView;
 
 beforeAll(async () => {
 	const fixture = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	if (!fixture) throw new Error("夹具表里没有 live-streaming");
-	props = (await fixture.build()).props as unknown as LiveCardProps;
+	props = (await fixture.build()).props as unknown as LiveCardView;
 });
 
 const block = (id: string, builtin: string, rowSpan?: number) =>

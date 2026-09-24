@@ -4,7 +4,6 @@
  * 刻意只覆盖「逻辑承载」函数,**不测** HTML/CSS 模板拼装与 puppeteer SSR
  * (测渲染产物又脆又低价值,属集成测试地盘):
  *   - getTimeDifference:luxon UTC+8 时差格式化(过去/未来/相等)
- *   - getLiveStatus:直播状态码 → 文案三元组
  *   - getMimeType / isRemoteUrl / unixTimestampToString:纯映射
  *   - fetchImageAsDataUrl:缓存命中 / fetch 成功 / content-type 回退 / HTTP 错误
  *   - inlineRemoteImages:<img>+CSS url() 内联为 data:,失败保留原 URL
@@ -110,49 +109,6 @@ describe("ImageRenderer.getTimeDifference", () => {
 	it("时间相等 → 「0秒」", async () => {
 		const r = makeRenderer();
 		expect(await r.getTimeDifference("2026-01-01 12:00:00")).toBe("0秒");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// getLiveStatus
-// ---------------------------------------------------------------------------
-
-describe("ImageRenderer.getLiveStatus", () => {
-	it("status=0 → 未直播", async () => {
-		const r = makeRenderer();
-		expect(await r.getLiveStatus("t", 0)).toEqual(["未直播", "未开播", true]);
-	});
-
-	it("status=1 → 开播啦 + 开播时间", async () => {
-		const r = makeRenderer();
-		expect(await r.getLiveStatus("2026-01-01 12:00:00", 1)).toEqual([
-			"开播啦",
-			"开播时间：2026-01-01 12:00:00",
-			true,
-		]);
-	});
-
-	it("status=2 → 正在直播 + 时长,第三元素 false", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-01-01T04:00:00Z"));
-		const r = makeRenderer();
-		const [title, , flag] = await r.getLiveStatus("2026-01-01 10:00:00", 2);
-		expect(title).toBe("正在直播");
-		expect(flag).toBe(false);
-	});
-
-	it("status=3 → 下播啦", async () => {
-		const r = makeRenderer();
-		expect(await r.getLiveStatus("2026-01-01 12:00:00", 3)).toEqual([
-			"下播啦",
-			"开播时间：2026-01-01 12:00:00",
-			true,
-		]);
-	});
-
-	it("未知 status → 空文案三元组", async () => {
-		const r = makeRenderer();
-		expect(await r.getLiveStatus("t", 99)).toEqual(["", "", true]);
 	});
 });
 
