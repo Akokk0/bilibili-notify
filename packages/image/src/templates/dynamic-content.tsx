@@ -346,25 +346,46 @@ export function buildPlainText(text: string, topics: readonly string[] = []): VN
 	return parseRichText(plainTextNodes(normalized, topics));
 }
 
+/** 字母或数字(任何文字的)—— `#名字` 后面紧跟着它,就不是这个话题。 */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
 /**
- * 纯文本按话题名切成富文本节点:话题一段是话题节点,其余是文字节点。
+ * 纯文本按话题名切成富文本节点:话题一段是话题节点,其余是文字节点。只在 `#` 所在的位置上试。
  *
- * 同一处能对上几种写法时取排在前面的:名字长的先(「旅行日记」与「旅行」都报了,`#旅行日记` 整个是
- * 话题),同一个名字 `#名字#` 先于 `#名字`(收尾的 `#` 算进话题)。只在 `#` 所在的位置上试。
+ * - `#名字` 后面紧跟的不能是字母或数字:报了「cat」,`#category` 里不抠出一个 `#cat`;报了「旅行」,
+ *   `#旅行今天` 也不算(与话题平台自己切话题的办法一致)。`#名字#` 自己带着边界,后面跟什么都行。
+ * - 同一处能对上几种写法时:名字长的先(「旅行日记」与「旅行」都报了,`#旅行日记` 整个是话题),同一个
+ *   名字 `#名字#` 先于 `#名字`(收尾的 `#` 算进话题)—— **除非**收尾的那个 `#` 正是下一个话题 `#别的`
+ *   的开头(`#旅行#美食`,两个都报了):那就取 `#名字`,把 `#` 让给下一个,两个都上色。
  */
 function plainTextNodes(text: string, topics: readonly string[]): RichTextNode {
-	const patterns = [...new Set(topics)]
+	const names = [...new Set(topics)]
 		.filter((name) => name !== "")
-		.sort((a, b) => b.length - a.length)
-		.flatMap((name) => [`#${name}#`, `#${name}`]);
+		.sort((a, b) => b.length - a.length);
+	/** 从 `at` 起是不是 `#名字`、而且后面没被字接着。 */
+	const openAt = (at: number, name: string): boolean => {
+		if (!text.startsWith(`#${name}`, at)) return false;
+		const next = text.codePointAt(at + name.length + 1);
+		return next === undefined || !WORD_CHAR.test(String.fromCodePoint(next));
+	};
+	const hitAt = (at: number): string | undefined => {
+		for (const name of names) {
+			if (text.startsWith(`#${name}#`, at)) {
+				const closing = at + name.length + 1;
+				return names.some((other) => openAt(closing, other)) ? `#${name}` : `#${name}#`;
+			}
+			if (openAt(at, name)) return `#${name}`;
+		}
+		return undefined;
+	};
 	const nodes: RichTextNode = [];
 	const push = (type: string, part: string) => {
 		if (part) nodes.push({ type, text: part, orig_text: part });
 	};
 	let plainFrom = 0;
-	let at = patterns.length > 0 ? text.indexOf("#") : -1;
+	let at = names.length > 0 ? text.indexOf("#") : -1;
 	while (at !== -1) {
-		const hit = patterns.find((pattern) => text.startsWith(pattern, at));
+		const hit = hitAt(at);
 		if (hit) {
 			push("RICH_TEXT_NODE_TYPE_TEXT", text.slice(plainFrom, at));
 			push("RICH_TEXT_NODE_TYPE_TOPIC", hit);

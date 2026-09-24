@@ -129,6 +129,38 @@ describe("buildPlainText — 照拓展报的话题名给正文里的话题上色
 		expect(html).toContain(`${topic("#旅行#")}日记`);
 	});
 
+	it("#名字# 收尾的 # 正是下一个话题的开头:让给下一个,两个都上色", async () => {
+		const html = await htmlOf(buildPlainText("#旅行#美食", ["旅行", "美食"]));
+		expect(html).toContain(`${topic("#旅行")}${topic("#美食")}`);
+	});
+
+	it("收尾的 # 后面那个名字其实对不上(被字接着):收尾的 # 照旧算进前一个话题", async () => {
+		const html = await htmlOf(buildPlainText("#旅行#美食家", ["旅行", "美食"]));
+		expect(html).toContain(`${topic("#旅行#")}美食家`);
+		expect(html.match(/text-\[#FF6699\]/g)).toHaveLength(1);
+	});
+
+	it("#名字 后面紧跟字母 / 数字就不是这个话题 —— 「#cat」不从「#category」里抠出来", async () => {
+		const none = [
+			["#category", "cat"],
+			["#cat123", "cat"],
+			["#旅行今天", "旅行"],
+			// 扩展区的汉字占两个 UTF-16 单元,也得认成字。
+			["#cat\u{20000}", "cat"],
+		] as const;
+		for (const [text, name] of none) {
+			const html = await htmlOf(buildPlainText(text, [name]));
+			expect(html, text).not.toContain("text-[#FF6699]");
+		}
+		expect(await htmlOf(buildPlainText("#cat is cute", ["cat"]))).toContain(topic("#cat"));
+		expect(await htmlOf(buildPlainText("#旅行，今天", ["旅行"]))).toContain(
+			`${topic("#旅行")}，今天`,
+		);
+		expect(await htmlOf(buildPlainText("#旅行\u{1F600}", ["旅行"]))).toContain(topic("#旅行"));
+		// #名字# 自己带着边界,后面跟什么字都不影响。
+		expect(await htmlOf(buildPlainText("#cat#egory", ["cat"]))).toContain(`${topic("#cat#")}egory`);
+	});
+
 	it("名字在正文里找不到:不上色、不出错,与没给话题时一模一样", async () => {
 		const text = "今天走了两万步 #城市散步";
 		expect(await htmlOf(buildPlainText(text, ["vlog"]))).toBe(await htmlOf(buildPlainText(text)));
