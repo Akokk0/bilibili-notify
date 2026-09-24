@@ -324,7 +324,16 @@ export interface SubscriptionLiveDetails {
 	cover?: Uint8Array;
 	/** 分区。 */
 	category?: string;
+	/**
+	 * **此刻在线**人数(非负整数)—— 「直播中」那张卡的人气格用它。平台只有累计观看的话就不报这一格,
+	 * 别拿累计冒充。
+	 */
 	viewers?: number;
+	/**
+	 * **本场累计观看**人数(非负整数)—— 与 B 站的「累计观看」同一个口径:下播卡、「正在直播」文案、
+	 * 首页「正在直播」那一列用它。平台只有此刻在线的话就不报这一格。
+	 */
+	totalViewers?: number;
 	likes?: number;
 	/** 纯文本。 */
 	description?: string;

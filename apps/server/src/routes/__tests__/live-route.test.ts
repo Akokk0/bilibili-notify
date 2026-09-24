@@ -67,7 +67,8 @@ describe("GET /api/live/listening", () => {
 					startedAt: T0,
 					title: "抖音这一场",
 					category: "聊天",
-					viewers: 30,
+					viewers: 12,
+					totalViewers: 30,
 					cover: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
 				},
 			},
@@ -82,7 +83,8 @@ describe("GET /api/live/listening", () => {
 				title: "抖音这一场",
 				areaName: "聊天",
 				startedAt: new Date(T0).toISOString(),
-				viewers: 30,
+				// 那一列是累计观看(决策 75);此刻在线不上面板。
+				totalViewers: 30,
 			},
 		]);
 

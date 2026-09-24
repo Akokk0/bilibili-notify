@@ -218,7 +218,13 @@ const liveDetails = {
 	cover: SubscriptionReportPictureSchema.optional(),
 	/** 分区。 */
 	category: TitleSchema.optional(),
+	/**
+	 * 人数是两格(决策 75),平台有哪个报哪个:`viewers` 是**此刻在线**(「直播中」那张卡的人气格),
+	 * `totalViewers` 是**本场累计观看**(下播卡、「正在直播」文案的 `{watched}`、首页在播那一列、统计的
+	 * 峰值)—— 与 B 站的两个数一一对上。
+	 */
 	viewers: CountSchema.optional(),
+	totalViewers: CountSchema.optional(),
 	likes: CountSchema.optional(),
 	/** 纯文本。 */
 	description: LongTextSchema.optional(),

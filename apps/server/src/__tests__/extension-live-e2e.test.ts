@@ -36,7 +36,7 @@ export function activate(ctx) {
 	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
 	const id = ${JSON.stringify(EXTERNAL)};
 	ctx.onAction("report.liveStart", () =>
-		handle.reportLiveStart(id, { url: URL, startedAt: T, title: "开播了", category: "聊天", viewers: 7 }),
+		handle.reportLiveStart(id, { url: URL, startedAt: T, title: "开播了", category: "聊天", viewers: 7, totalViewers: 70 }),
 	);
 	ctx.onAction("report.liveEnd", () => handle.reportLiveEnd(id, { url: URL }));
 	ctx.onAction("report.liveStatus", () =>
@@ -151,7 +151,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		return body.extensions.find((e) => e.id === FIXTURE_ID)?.state;
 	}
 
-	it("报开播 → 首页有它:按订阅 id 认,带着标题、分区、人数与开播时刻", async () => {
+	it("报开播 → 首页有它:按订阅 id 认,带着标题、分区、累计观看与开播时刻", async () => {
 		expect(await probeState()).toBe("running");
 		await press("report.liveStart");
 		expect(await extensionRows()).toEqual([
@@ -163,7 +163,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 				title: "开播了",
 				areaName: "聊天",
 				startedAt: new Date(T).toISOString(),
-				viewers: 7,
+				totalViewers: 70,
 			},
 		]);
 	});

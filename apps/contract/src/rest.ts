@@ -1090,6 +1090,10 @@ export interface ExtensionLiveSnapshot {
 	areaName?: string;
 	/** 开播时刻(ISO)。拓展没报过就没有 —— BN 不拿「收到的时刻」冒充。 */
 	startedAt?: string;
-	/** 人数,拓展报的数字、没排版(B 站那几行是 B 站排好的字串)。 */
-	viewers?: number;
+	/**
+	 * 本场累计观看(拓展报的 `totalViewers`),数字、没排版 —— 与 B 站那几行的 `viewers`(B 站排好的
+	 * 字串)同一个口径,面板那一列一个含义(ADR-0019 决策 75)。拓展报的此刻在线(`viewers`)不上面板,
+	 * 也就不在这里:它每轮都在变,放进来会让面板为一个看不见的数反复重取。
+	 */
+	totalViewers?: number;
 }

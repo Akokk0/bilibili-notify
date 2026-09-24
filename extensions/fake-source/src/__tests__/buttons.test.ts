@@ -74,6 +74,7 @@ type Live = {
 	cover?: Uint8Array;
 	category?: string;
 	viewers?: number;
+	totalViewers?: number;
 	likes?: number;
 	description?: string;
 };
@@ -250,7 +251,7 @@ describe("报一条作品", () => {
 });
 
 describe("开播 / 报直播状态 / 下播", () => {
-	it("开播:链接、开播时刻、带场次的标题、封面 png、分区、人数、点赞、简介都填上", async () => {
+	it("开播:链接、开播时刻、带场次的标题、封面 png、分区、在线与累计人数、点赞、简介都填上", async () => {
 		const fake = bootFakeSource([sub(1, "person-a", true)]);
 		await fake.press("report.liveStart");
 		const [start] = valuesOf<Live>(fake.reports(), "liveStart");
@@ -260,11 +261,14 @@ describe("开播 / 报直播状态 / 下播", () => {
 		expect(isPng(start?.cover)).toBe(true);
 		expect(start?.category).toEqual(expect.any(String));
 		expect(start?.viewers).toBeGreaterThan(0);
+		// 两个人数各给一个看得出区别的数:首页那一列画的是累计观看(决策 75),一眼要认得出不是在线。
+		expect(start?.totalViewers).toBeGreaterThan(start?.viewers ?? Number.POSITIVE_INFINITY);
+		expect(isCount(start?.totalViewers)).toBe(true);
 		expect(isCount(start?.likes)).toBe(true);
 		expect(start?.description).toEqual(expect.any(String));
 	});
 
-	it("报直播状态:报「在播」,人数每按一次往上涨;开播时刻沿用开播那一刻,链接同一个", async () => {
+	it("报直播状态:报「在播」,在线与累计每按一次都往上涨;开播时刻沿用开播那一刻,链接同一个", async () => {
 		const fake = bootFakeSource([sub(1, "person-a", true)]);
 		await fake.press("report.liveStart");
 		vi.setSystemTime(T + 60_000);
@@ -276,6 +280,8 @@ describe("开播 / 报直播状态 / 下播", () => {
 		expect([s1?.live, s2?.live]).toEqual([true, true]);
 		expect(s1?.viewers).toBeGreaterThan(start?.viewers ?? Number.POSITIVE_INFINITY);
 		expect(s2?.viewers).toBeGreaterThan(s1?.viewers ?? Number.POSITIVE_INFINITY);
+		expect(s1?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
+		expect(s2?.totalViewers).toBeGreaterThan(s1?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect([s1?.startedAt, s2?.startedAt]).toEqual([T, T]);
 		expect([s1?.url, s2?.url]).toEqual([start?.url, start?.url]);
 		expect(mentions(s2?.title, 1)).toBe(true);
@@ -302,9 +308,12 @@ describe("开播 / 报直播状态 / 下播", () => {
 		await fake.press("report.liveStatus");
 		release();
 		await starting;
-		const viewers = valuesOf<Live>(fake.reports(), "liveStart").map((v) => v.viewers);
-		expect(viewers).toHaveLength(2);
-		expect(viewers[1]).toBe(viewers[0]);
+		const counts = valuesOf<Live>(fake.reports(), "liveStart").map((v) => [
+			v.viewers,
+			v.totalViewers,
+		]);
+		expect(counts).toHaveLength(2);
+		expect(counts[1]).toEqual(counts[0]);
 	});
 
 	it("没开播就报直播状态(演 BN 重启过、开播没见着):照样报在播,从这一刻算起", async () => {
@@ -314,6 +323,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		expect(status?.live).toBe(true);
 		expect(status?.startedAt).toBe(T);
 		expect(status?.viewers).toBeGreaterThan(0);
+		expect(status?.totalViewers).toBeGreaterThan(status?.viewers ?? Number.POSITIVE_INFINITY);
 	});
 
 	it("下播:补上开播时刻;之后再报直播状态是新的一场", async () => {

@@ -20,7 +20,7 @@
 | `live-state-changed` | `LiveEngine` 的开/关播切换 `(uid, "live"\|"idle", startedAt?)`(grace 闸门之后,断流接续不翻转)。转 `live` 时 `startedAt` 带 B 站 `live_time` 的真实开播时刻(ISO;`room-session` 按 UTC+8 解析后转换),缺失时消费方回落到收到事件的时刻 —— 服务端在 UP 已开播时启动也能算出真实时长 |
 | `live-viewers-changed` | `room-session` 每 uid 2s 节流的 `WATCHED_CHANGE` 帧 `(uid, viewers)` |
 | `extension-stopped` | 某个拓展不在跑了(停用 / 卸载 / 换代码 / 加载失败 / 设置读不了 / 关机)—— 它那面 ctx **开始收摊的那一刻**发,每面 ctx 一次,之后它的上报一概拒。「不在跑了」只认收摊这一处(`CreateExtensionContextOptions.onDisposed` → 装载器 `onStopped` → index.ts 发 bus),不在装载器的每条路上各记一遍。载荷只有拓展 id;在播表据此清掉它名下的在播(ADR-0019 决策 61)。不进 WS |
-| `extension-live-changed` | 拓展订阅的在播表(`runtime/extension-live.ts`,按订阅 id 记开播 / 下播 / 直播状态)变了:进表、出表、面板看得见的那几格(标题 / 分区 / 人数 / 开播时刻)变了。**按 1s 窗口合并**(`EXTENSION_LIVE_COALESCE_MS`,不随后来的变化往后推)—— 直播状态可能每轮都报。载荷为空;独立端转成 `push-events` 的同名帧,面板让 `["live","listening"]` 失效重取。🔴 **拓展的在播不发 `live-state-changed`**:`StatsRecorder` 按 uid 订着它记场次,而统计不含拓展(决策 12) |
+| `extension-live-changed` | 拓展订阅的在播表(`runtime/extension-live.ts`,按订阅 id 记开播 / 下播 / 直播状态)变了:进表、出表、面板看得见的那几格(标题 / 分区 / 累计观看 `totalViewers` / 开播时刻)变了 —— 此刻在线(`viewers`)面板不画,变了不发(ADR-0019 决策 75)。**按 1s 窗口合并**(`EXTENSION_LIVE_COALESCE_MS`,不随后来的变化往后推)—— 直播状态可能每轮都报。载荷为空;独立端转成 `push-events` 的同名帧,面板让 `["live","listening"]` 失效重取。🔴 **拓展的在播不发 `live-state-changed`**:`StatsRecorder` 按 uid 订着它记场次,而统计不含拓展(决策 12) |
 | `fans-refreshed` | 独立端 `FansPoller` 每个 tick 的完整 `FansRefreshEntry[]` 快照 |
 | `ready` | 业务核心完全启动 |
 | `extension-status-changed` | 某个拓展喊了 `ctx.statusChanged()`(桥:一条接入连上 / 断开)。**按拓展合并**:第一喊起 250ms 窗口里的连喊只在尾沿发一次(`STATUS_CHANGED_COALESCE_MS`,窗口不随后来的喊往后推),收摊时挂着的那一发清掉。载荷只有拓展 id;独立端转成 `state` WS channel 的 `extension-changed` 帧,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存后自己重取 —— 数据本身不上 bus |

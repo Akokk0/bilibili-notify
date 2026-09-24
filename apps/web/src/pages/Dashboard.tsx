@@ -89,7 +89,10 @@ function formatViewers(n: string | undefined): string {
 /**
  * 在播那一行画成什么样。B 站房间照旧(名字对不上订阅时写 UID、按 uid 取色);拓展订阅的在播没有
  * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色按订阅自己的 id 取(同 `subscriptionColor`),
- * 另带一枚平台徽章,人数是数字、这里排版。
+ * 另带一枚平台徽章。
+ *
+ * 人数那一列两边都是**本场累计观看**(决策 75):B 站行是 B 站排好的字串,拓展行是拓展报的
+ * `totalViewers`(数字,这里排版)。拓展只报了此刻在线的话这一列是「—」,不拿在线冒充。
  */
 function liveRowFace(
 	r: LiveListeningEntry,
@@ -117,7 +120,7 @@ function liveRowFace(
 		name: sub ? displayName(sub) : platform.label,
 		color: sub ? subscriptionColor(sub) : colorFromUid(r.subscriptionId),
 		avatar,
-		viewers: r.viewers === undefined ? "—" : formatCount(r.viewers),
+		viewers: r.totalViewers === undefined ? "—" : formatCount(r.totalViewers),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
 	};
 }

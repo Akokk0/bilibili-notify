@@ -39,8 +39,14 @@ const LIVE_STATUS: ReportButton = { action: "report.liveStatus", label: "报直�
 const BAD_IMAGE: ReportButton = { action: "report.badImage", label: "报一条带坏图的作品" };
 const EXTRA_FIELD: ReportButton = { action: "report.extraField", label: "报一条多一格的作品" };
 
-/** 报直播状态每按一次,人数涨这么多。 */
+/**
+ * 报直播状态每按一次,此刻在线涨这么多;开播时就是这个数。
+ *
+ * 累计观看每次涨十倍这么多 —— 两个数差一个数量级,首页那一列(画的是累计观看,决策 75)一眼认得出
+ * 不是在线。
+ */
 const VIEWERS_STEP = 100;
+const TOTAL_VIEWERS_STEP = VIEWERS_STEP * 10;
 
 /**
  * 按一下要做的事:`each` 给每个开着的人报一次,`note` 是报完之后页上那行字的括号里那句。**只在有人可报时
@@ -120,7 +126,12 @@ export function wireReportButtons(
 	});
 
 	on(LIVE_START, (now) => {
-		const session = { n: ++liveSeq, startedAt: now, viewers: VIEWERS_STEP };
+		const session = {
+			n: ++liveSeq,
+			startedAt: now,
+			viewers: VIEWERS_STEP,
+			totalViewers: TOTAL_VIEWERS_STEP,
+		};
 		live = session;
 		// 按下这一刻就定下来:`live` 之后会被报直播状态改(人数),报到一半时别让后面的人沾上。
 		const details = fakeLiveDetails(session);
@@ -133,9 +144,10 @@ export function wireReportButtons(
 
 	on(LIVE_STATUS, (now) => {
 		// 没开播就报(演 BN 重启过、开播没见着):从这一刻算一场新的。
-		live ??= { n: ++liveSeq, startedAt: now, viewers: 0 };
+		live ??= { n: ++liveSeq, startedAt: now, viewers: 0, totalViewers: 0 };
 		live.viewers += VIEWERS_STEP;
-		const { n, viewers } = live;
+		live.totalViewers += TOTAL_VIEWERS_STEP;
+		const { n, viewers, totalViewers } = live;
 		const details = fakeLiveDetails(live);
 		return {
 			each: (externalId) =>
@@ -144,7 +156,7 @@ export function wireReportButtons(
 					url: fakeLiveUrl(externalId),
 					...details,
 				}),
-			note: `第 ${n} 场 · ${viewers} 人`,
+			note: `第 ${n} 场 · 在线 ${viewers} · 累计 ${totalViewers}`,
 		};
 	});
 

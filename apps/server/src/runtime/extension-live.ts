@@ -47,7 +47,10 @@ export interface ExtensionLiveRow {
 	cover?: Uint8Array;
 	/** 分区。 */
 	category?: string;
+	/** 此刻在线(决策 75)。首页不画,留给「直播中」那张卡的人气格。 */
 	viewers?: number;
+	/** 本场累计观看(决策 75)—— 首页「正在直播」那一列就是它。 */
+	totalViewers?: number;
 	likes?: number;
 	/** 直播间链接。 */
 	url?: string;
@@ -57,7 +60,10 @@ export interface ExtensionLiveRow {
 
 /** 直播那几格 —— 三种直播上报都能带,进表的就是这几样。 */
 type LiveDetails = Partial<
-	Pick<ExtensionLiveRow, "startedAt" | "title" | "cover" | "category" | "viewers" | "likes" | "url">
+	Pick<
+		ExtensionLiveRow,
+		"startedAt" | "title" | "cover" | "category" | "viewers" | "totalViewers" | "likes" | "url"
+	>
 >;
 
 export interface ExtensionLiveTable extends Disposable {
@@ -76,16 +82,26 @@ export interface CreateExtensionLiveTableOptions {
 
 /** 报了的那几格(没报的不带这个键 —— 合并时才不会拿「没报」盖掉已有的)。 */
 function detailsOf(value: LiveDetails): LiveDetails {
-	const { startedAt, title, cover, category, viewers, likes, url } = value;
-	const picked: LiveDetails = { startedAt, title, cover, category, viewers, likes, url };
+	const { startedAt, title, cover, category, viewers, totalViewers, likes, url } = value;
+	const picked: LiveDetails = {
+		startedAt,
+		title,
+		cover,
+		category,
+		viewers,
+		totalViewers,
+		likes,
+		url,
+	};
 	return Object.fromEntries(
 		Object.entries(picked).filter(([, cell]) => cell !== undefined),
 	) as LiveDetails;
 }
 
 /**
- * 面板上的那一行(`GET /api/live/listening`)。「在播表变了没有」也照它比 —— 面板看不见的格(封面、
- * 点赞、链接、最后更新时刻)变了不惊动面板。
+ * 面板上的那一行(`GET /api/live/listening`)。「在播表变了没有」也照它比 —— 面板看不见的格(此刻在线、
+ * 封面、点赞、链接、最后更新时刻)变了不惊动面板。人数那一列是累计观看(决策 75),与 B 站那几行同一个
+ * 口径;此刻在线每轮都在变,放进来就是每轮让面板白重取一次。
  */
 export function extensionLiveSnapshot(row: ExtensionLiveRow): ExtensionLiveSnapshot {
 	return {
@@ -96,7 +112,7 @@ export function extensionLiveSnapshot(row: ExtensionLiveRow): ExtensionLiveSnaps
 		title: row.title,
 		areaName: row.category,
 		startedAt: row.startedAt === undefined ? undefined : new Date(row.startedAt).toISOString(),
-		viewers: row.viewers,
+		totalViewers: row.totalViewers,
 	};
 }
 

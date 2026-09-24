@@ -197,7 +197,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect((await fakeRow())?.reportProblems).toBeUndefined();
 	});
 
-	it("开播 → 首页有甲乙两行,带着标题、分区、人数与开播时刻", async () => {
+	it("开播 → 首页有甲乙两行,带着标题、分区、累计观看与开播时刻", async () => {
 		await press("report.liveStart");
 		expect(heard.map((d) => d.report.kind)).toEqual(["liveStart", "liveStart"]);
 		const rows = await liveRows();
@@ -209,12 +209,12 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 				title: expect.stringContaining("第 1 场"),
 				areaName: expect.any(String),
 				startedAt: expect.any(String),
-				viewers: expect.any(Number),
+				totalViewers: expect.any(Number),
 			});
 		}
 	});
 
-	it("报直播状态 ×2 → 首页那两行的人数一次比一次多,开播时刻不变", async () => {
+	it("报直播状态 ×2 → 首页那两行的累计观看一次比一次多,开播时刻不变", async () => {
 		const [start] = await liveRows();
 		await press("report.liveStatus");
 		const [first] = await liveRows();
@@ -226,8 +226,8 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 			"liveStatus",
 			"liveStatus",
 		]);
-		expect(first?.viewers).toBeGreaterThan(start?.viewers ?? Number.POSITIVE_INFINITY);
-		expect(second?.viewers).toBeGreaterThan(first?.viewers ?? Number.POSITIVE_INFINITY);
+		expect(first?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
+		expect(second?.totalViewers).toBeGreaterThan(first?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect(second?.startedAt).toBe(start?.startedAt);
 		expect((await fakeRow())?.reportProblems).toBeUndefined();
 	});

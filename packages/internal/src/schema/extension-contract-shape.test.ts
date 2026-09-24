@@ -55,9 +55,9 @@ const CONTRACT: readonly ContractRow[] = [
 	{ name: "解析门候选", schema: SubscriptionCandidatesSchema, digest: "69bdc90eeb29a4b2" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
 	{ name: "上报:作品", schema: SubscriptionPostSchema, digest: "21db7ebd2e6b36b3" },
-	{ name: "上报:开播", schema: SubscriptionLiveStartSchema, digest: "83ea3e17a459f360" },
-	{ name: "上报:下播", schema: SubscriptionLiveEndSchema, digest: "f7e48c7ee78de47e" },
-	{ name: "上报:直播状态", schema: SubscriptionLiveStatusSchema, digest: "ded2ea235332d960" },
+	{ name: "上报:开播", schema: SubscriptionLiveStartSchema, digest: "fe38dc68764de721" },
+	{ name: "上报:下播", schema: SubscriptionLiveEndSchema, digest: "04a4949b77f4cad6" },
+	{ name: "上报:直播状态", schema: SubscriptionLiveStatusSchema, digest: "b345df6a00258083" },
 	{ name: "上报:资料更新", schema: SubscriptionProfileSchema, digest: "a522bed1fa10e01b" },
 ];
 

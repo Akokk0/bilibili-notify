@@ -109,7 +109,10 @@ export interface FakeLiveSession {
 	n: number;
 	/** 开播时刻,毫秒。 */
 	startedAt: number;
+	/** 此刻在线。 */
 	viewers: number;
+	/** 本场累计观看 —— 与在线差一个数量级,首页那一列(画的是它)一眼认得出不是在线。 */
+	totalViewers: number;
 }
 
 /** 直播间链接。 */
@@ -127,6 +130,7 @@ export function fakeLiveDetails(
 		cover: pictureAt(session.n),
 		category: CATEGORIES[session.n % CATEGORIES.length] as string,
 		viewers: session.viewers,
+		totalViewers: session.totalViewers,
 		likes: session.viewers * 2,
 		description: `假源造的第 ${session.n} 场直播。`,
 	};

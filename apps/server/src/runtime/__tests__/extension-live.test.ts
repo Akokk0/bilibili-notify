@@ -92,6 +92,7 @@ describe("开播 / 下播", () => {
 				cover: PNG,
 				category: "聊天",
 				viewers: 12,
+				totalViewers: 340,
 				likes: 3,
 			},
 		});
@@ -103,6 +104,7 @@ describe("开播 / 下播", () => {
 			cover: PNG,
 			category: "聊天",
 			viewers: 12,
+			totalViewers: 340,
 			likes: 3,
 			url: LIVE_URL,
 			updatedAt: T0,
@@ -138,6 +140,20 @@ describe("直播状态", () => {
 		report({ kind: "liveStatus", value: { live: true, title: "改名了" } });
 		expect(table.get(SUB_A)?.title).toBe("改名了");
 		expect(table.get(SUB_A)?.startedAt).toBe(T0 - 60_000);
+	});
+
+	it("在线与累计两格各合并各的:这一轮只报了一格,另一格留着上一轮的(决策 75)", () => {
+		report({
+			kind: "liveStart",
+			value: { url: LIVE_URL, startedAt: T0, viewers: 12, totalViewers: 340 },
+		});
+		report({ kind: "liveStatus", value: { live: true, viewers: 30 } });
+		expect(table.get(SUB_A)).toMatchObject({ viewers: 30, totalViewers: 340 });
+		report({ kind: "liveStatus", value: { live: true, totalViewers: 900 } });
+		expect(table.get(SUB_A)).toMatchObject({ viewers: 30, totalViewers: 900 });
+		// 只报过直播状态(BN 重启过)也带得进来。
+		report({ kind: "liveStatus", value: { live: true, totalViewers: 7 } }, [SUB_B]);
+		expect(table.get(SUB_B)?.totalViewers).toBe(7);
 	});
 
 	it("live: true 而表里没有(BN 中途重启过、开播事件没见着)→ 照样进表;没报开播时刻就没有", () => {
@@ -214,7 +230,7 @@ describe("作废", () => {
 describe("「在播表变了」", () => {
 	it("进表、改人数、又进一条挨着来 → 窗口尾沿只发一次", () => {
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } });
-		report({ kind: "liveStatus", value: { live: true, viewers: 3 } });
+		report({ kind: "liveStatus", value: { live: true, totalViewers: 3 } });
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B]);
 		expect(changed).toBe(0);
 		expect(timers.pending.map((job) => job.ms)).toEqual([EXTENSION_LIVE_COALESCE_MS]);
@@ -228,14 +244,26 @@ describe("「在播表变了」", () => {
 	});
 
 	it("每轮都报、面板上看得见的一格没变 → 不发", () => {
-		report({ kind: "liveStatus", value: { live: true, title: "同一场", viewers: 3 } });
+		report({
+			kind: "liveStatus",
+			value: { live: true, title: "同一场", viewers: 3, totalViewers: 40 },
+		});
 		timers.flush();
 		changed = 0;
 		clock = T0 + 60_000;
-		// 点赞、封面、链接首页不画,变了也不惊动面板;最后更新时刻照样跟着走。
+		// 此刻在线、点赞、封面、链接首页不画(那一列是累计观看,决策 75),变了也不惊动面板;最后更新
+		// 时刻照样跟着走。
 		report({
 			kind: "liveStatus",
-			value: { live: true, title: "同一场", viewers: 3, likes: 10, cover: PNG, url: LIVE_URL },
+			value: {
+				live: true,
+				title: "同一场",
+				viewers: 25,
+				totalViewers: 40,
+				likes: 10,
+				cover: PNG,
+				url: LIVE_URL,
+			},
 		});
 		expect(timers.pending).toEqual([]);
 		expect(table.get(SUB_A)?.updatedAt).toBe(T0 + 60_000);
@@ -244,6 +272,15 @@ describe("「在播表变了」", () => {
 		bus.emit("extension-stopped", "kuaishou");
 		expect(timers.pending).toEqual([]);
 		expect(changed).toBe(0);
+	});
+
+	it("累计观看变了 → 发(面板上那一列就是它)", () => {
+		report({ kind: "liveStatus", value: { live: true, totalViewers: 40 } });
+		timers.flush();
+		changed = 0;
+		report({ kind: "liveStatus", value: { live: true, totalViewers: 41 } });
+		timers.flush();
+		expect(changed).toBe(1);
 	});
 
 	it("收摊之后不再听总线,挂着的那一发也不发了", () => {
@@ -257,7 +294,7 @@ describe("「在播表变了」", () => {
 });
 
 describe("面板上的那一行", () => {
-	it("时刻换成 ISO、分区叫 areaName、人数原样是数字;封面与点赞不上面板", () => {
+	it("时刻换成 ISO、分区叫 areaName、累计观看原样是数字;此刻在线、封面与点赞不上面板", () => {
 		report({
 			kind: "liveStart",
 			value: {
@@ -267,6 +304,7 @@ describe("面板上的那一行", () => {
 				cover: PNG,
 				category: "聊天",
 				viewers: 12,
+				totalViewers: 3_456,
 				likes: 3,
 			},
 		});
@@ -279,7 +317,7 @@ describe("面板上的那一行", () => {
 			title: "晚上好",
 			areaName: "聊天",
 			startedAt: new Date(T0).toISOString(),
-			viewers: 12,
+			totalViewers: 3_456,
 		});
 	});
 });

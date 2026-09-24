@@ -331,6 +331,7 @@ describe("开播(liveStart)/ 下播(liveEnd):字段表照决策 56", () => {
 			cover: image("jpeg"),
 			category: "游戏",
 			viewers: 100,
+			totalViewers: 3_456,
 			likes: 5,
 			description: "简介",
 			author: { name: "主播" },
@@ -367,6 +368,41 @@ describe("开播(liveStart)/ 下播(liveEnd):字段表照决策 56", () => {
 	});
 });
 
+/**
+ * 直播人数是两格(决策 75):`viewers` 此刻在线、`totalViewers` 本场累计观看,都选填、平台有哪个报哪个。
+ * 两格各管各的:一格坏了只丢它,另一格照收。
+ */
+describe("直播人数:此刻在线与本场累计是两格(决策 75)", () => {
+	const LIVE_KINDS = [
+		["liveStart", { url: "https://live.douyin.com/123", startedAt: T }],
+		["liveEnd", { url: "https://live.douyin.com/123" }],
+		["liveStatus", { live: true }],
+	] as const;
+
+	it.each(LIVE_KINDS)("%s:两格都收", (kind, base) => {
+		const value = { ...base, viewers: 12, totalViewers: 3_456 };
+		expect(checkSubscriptionReport(kind, value)).toEqual({ ok: true, value, dropped: [] });
+	});
+
+	it.each(LIVE_KINDS)("%s:只报累计也收(平台只有这一个数)", (kind, base) => {
+		const value = { ...base, totalViewers: 0 };
+		expect(checkSubscriptionReport(kind, value)).toEqual({ ok: true, value, dropped: [] });
+	});
+
+	it.each([
+		["为负", -1, /totalViewers.*负/],
+		["是小数", 1.5, /totalViewers.*整数/],
+		["不是数字", "1.2万", /totalViewers.*数字/],
+	] as const)("累计观看%s:只丢这一格,在线人数照收", (_label, bad, reason) => {
+		for (const [kind, base] of LIVE_KINDS) {
+			const r = checkSubscriptionReport(kind, { ...base, viewers: 12, totalViewers: bad });
+			if (!r.ok) throw new Error(`${kind} 应该收下(丢格),却整条拒了:${r.reason}`);
+			expect(r.value).toEqual({ ...base, viewers: 12 });
+			expect(r.dropped).toEqual([expect.stringMatching(reason)]);
+		}
+	});
+});
+
 describe("直播状态(liveStatus):在不在播必填,其余同直播那张表、全选填(决策 57)", () => {
 	it("只报在不在播", () => {
 		expect(checkSubscriptionReport("liveStatus", { live: false })).toEqual({
@@ -376,7 +412,7 @@ describe("直播状态(liveStatus):在不在播必填,其余同直播那张表�
 		});
 	});
 
-	it("在播时带上标题 / 封面 / 人数 / 点赞 / 开播时刻", () => {
+	it("在播时带上标题 / 封面 / 在线与累计人数 / 点赞 / 开播时刻", () => {
 		const status = {
 			live: true,
 			url: "https://live.douyin.com/123",
@@ -384,6 +420,7 @@ describe("直播状态(liveStatus):在不在播必填,其余同直播那张表�
 			title: "t",
 			cover: image("webp"),
 			viewers: 1,
+			totalViewers: 30,
 			likes: 2,
 		};
 		expect(checkSubscriptionReport("liveStatus", status)).toEqual({

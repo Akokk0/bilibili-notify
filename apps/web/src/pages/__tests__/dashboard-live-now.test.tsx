@@ -95,7 +95,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		);
 	}
 
-	it("名字照订阅、平台徽章照清单、标题 / 分区 / 人数都画出来;头像是那条订阅的;不写开播多久", () => {
+	it("名字照订阅、平台徽章照清单、标题 / 分区 / 累计观看都画出来;头像是那条订阅的;不写开播多久", () => {
 		const { container } = renderPanel(
 			[
 				{
@@ -106,7 +106,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 					title: "抖音这一场",
 					areaName: "聊天",
 					startedAt: thirtyMinutesAgo(),
-					viewers: 12_345,
+					totalViewers: 12_345,
 				},
 			],
 			[extSub("s-dy", "抖音乙")],
@@ -116,6 +116,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getByText("抖")).toBeTruthy();
 		expect(screen.getByText("抖音这一场")).toBeTruthy();
 		expect(screen.getByText("聊天")).toBeTruthy();
+		// 那一列与 B 站行同一个口径:本场累计观看(决策 75)。
 		expect(screen.getByText("1.2万")).toBeTruthy();
 		// 面板只列正在播的,「开播」是多余的 —— 主人 09-23 定的,B 站行与拓展行都不写。
 		expect(screen.queryByText(/开播/)).toBeNull();
@@ -131,6 +132,15 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getAllByText("douyin").length).toBeGreaterThan(0);
 		expect(screen.queryByText(/UID/)).toBeNull();
 		expect(screen.getByText("（未拉取到房间标题）")).toBeTruthy();
+	});
+
+	it("拓展没报累计观看:那一列是「—」", () => {
+		renderPanel(
+			[{ kind: "extension", subscriptionId: "s-dy", extensionId: "douyin", isLive: true }],
+			[extSub("s-dy", "抖音乙")],
+			[DOUYIN],
+		);
+		expect(screen.getByText("—")).toBeTruthy();
 	});
 
 	it("与 B 站房间并排:各画各的,B 站那行照旧", () => {
