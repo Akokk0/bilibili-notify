@@ -88,7 +88,7 @@ src/
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)
     sub-runtime-store.ts  资料缓存 <dataDir>/state/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
-    fans-poller.ts        FansPoller —— 写 <dataDir>/fans/<订阅 id>.jsonl,emit fans-refreshed
+    fans-poller.ts        FansPoller —— 问 B 站、写 <dataDir>/fans/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
   fans/store.ts         append-only jsonl 时序(<dataDir>/fans/<订阅 id>.jsonl)
