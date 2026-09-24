@@ -45,6 +45,7 @@ export {
 export { RoomContext } from "./room-helpers";
 export { RoomSession } from "./room-session";
 export { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
+export { createSerialGate, type SerialGate } from "./serial-gate";
 export { default as defaultStopWords } from "./stop-words";
 export {
 	buildRoomLink,

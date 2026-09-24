@@ -9,6 +9,7 @@ import {
 	LiveRoomPreflightBlockedError,
 	type RoomContext,
 } from "./room-helpers";
+import { createSerialGate } from "./serial-gate";
 import { parseStopWords } from "./stop-words";
 import { buildRoomLink } from "./template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
@@ -117,8 +118,8 @@ export abstract class RoomSessionBase {
 		this.sub = sub;
 	}
 
-	/** {@link enqueuePush} 的链尾。永不 reject(失败在链上吞掉,但会抛回发起方)。 */
-	private pushTail: Promise<unknown> = Promise.resolve();
+	/** 本房间对外推送的串行闸,见 {@link enqueuePush}。 */
+	private readonly pushGate = createSerialGate();
 
 	/**
 	 * 同房间对外推送的串行闸:所有 target 推送(开播 / 下播 / 正在直播 / 词云 / 总结 /
@@ -137,9 +138,7 @@ export abstract class RoomSessionBase {
 	 * 不 await 送达,队列锁不住它真正的送达时刻。
 	 */
 	protected enqueuePush<T>(fn: () => Promise<T>): Promise<T> {
-		const run = this.pushTail.then(fn);
-		this.pushTail = run.catch(() => undefined);
-		return run;
+		return this.pushGate.run(fn);
 	}
 
 	/**
