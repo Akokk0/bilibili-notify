@@ -1,5 +1,6 @@
 import type {
 	Disposable,
+	ExtensionLiveSessionEndReason,
 	ExtensionSubscription,
 	Logger,
 	MessageBus,
@@ -26,8 +27,12 @@ import { extensionSubscriptionPushable } from "./extension-push-common.js";
  *   压着,等满了这一场才结束,结束时刻是**下播事件到达那一刻**(等的那几分钟不算);没开立刻结束。
  * - **作废**(决策 61):拓展停了、订阅停用 / 删了、关机 → 这一场当场结束,等着的下播不再等。
  *
- * 只记「订阅在、启用着、拓展在跑」的(与推送同一个判据,`extensionSubscriptionPushable`)。开播与下播推送
- * 都关着的不记 —— 与原来长在推送计时器里时一样。
+ * 一场的开始与结束发上总线(`extension-live-session`,ADR-0020 决策 6),统计据此记场次 —— 结束帧带着原因,
+ * 拓展停了 / 关机时补的那一帧也在里面;断流接续里的那一下不是边界,不发。推送要的比边界多(断流等待开始了、
+ * 又来一份状态、手里没有这一场的下播……),经 {@link ExtensionLiveSessions.onChange} 直接听,不走总线。
+ *
+ * 只记「订阅在、启用着、拓展在跑」的(与推送同一个判据,`extensionSubscriptionPushable`),**与推送开关无关**
+ * (ADR-0020 决策 4):统计记的是「UP 做了什么」,推送关着这一场照样开、照样结束 —— 推送关掉只是不推。
  *
  * 只在内存:BN 重启之后靠拓展开机第一轮报的直播状态接上(决策 57 / 8)。
  */
@@ -37,6 +42,9 @@ type LiveEnd = SubscriptionReportValue<"liveEnd">;
 type LiveStatus = SubscriptionReportValue<"liveStatus">;
 
 const MINUTE = 60_000;
+
+/** 毫秒 → 总线上的 ISO。 */
+const iso = (ms: number): string => new Date(ms).toISOString();
 
 /** 一条订阅正在播的这一场。只读:场次只由这里改。 */
 export interface ExtensionLiveSession {
@@ -59,23 +67,6 @@ export interface ExtensionLiveSession {
 	/** 断流接续正在等的那次下播:下播事件到达的时刻与它带的格。 */
 	readonly pendingEnd?: { readonly endedAt: number; readonly value: LiveEnd };
 }
-
-/** 一场为什么结束。 */
-export type ExtensionLiveSessionEndReason =
-	/** 拓展报了下播(断流接续开着的,等满了)。 */
-	| "ended"
-	/** 没报下播就又开播了,上一场在新的一场开播时收掉。 */
-	| "superseded"
-	/** 拓展停了(停用、卸载、换代码、崩了、关机时它先收摊)。 */
-	| "extension-stopped"
-	/** 订阅停用了。 */
-	| "disabled"
-	/** 订阅删了。 */
-	| "removed"
-	/** 开播与下播推送都关了。 */
-	| "push-off"
-	/** BN 关机。 */
-	| "shutdown";
 
 /**
  * 场次的每一次变化,按发生的顺序、同步地交给 {@link ExtensionLiveSessions.onChange} 的监听者。
@@ -143,21 +134,23 @@ export interface CreateExtensionLiveSessionsOptions {
 	running(extensionId: string): boolean;
 	/** 订阅资料里的粉丝数(资料缓存,现取)。 */
 	fans(id: string): number | undefined;
-	/** 这条订阅折好的直播设置(现折,见 `liveWorkSettings`):断流接续那两格,与两个直播推送开关。 */
+	/** 这条订阅折好的直播设置(现折,见 `liveWorkSettings`)—— 只看断流接续那两格。 */
 	settings(
 		sub: ExtensionSubscription,
-	): Pick<LiveWorkSettings, "live" | "liveEnd" | "liveEndGrace" | "liveEndGraceMinutes">;
+	): Pick<LiveWorkSettings, "liveEndGrace" | "liveEndGraceMinutes">;
 	/** 断流等待的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
 	timers: Pick<ServiceContext, "setTimeout">;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
 
-/** 场次在这里的样子:比对外多一个断流等待的定时器。 */
+/** 场次在这里的样子:比对外多一个断流等待的定时器,和总线上这一场的开播时刻。 */
 interface SessionState {
 	subscriptionId: string;
 	extensionId: string;
 	startedAt?: number;
+	/** 总线上这一场的开播时刻(身份):开始时定下,结束帧原样带着。 */
+	busStartedAt: string;
 	detectedAt: number;
 	fansAtStart?: number;
 	lastRow?: ExtensionLiveRow;
@@ -170,7 +163,6 @@ const REASON_TEXT: Record<ExtensionLiveSessionEndReason, string> = {
 	"extension-stopped": "拓展停了",
 	disabled: "订阅停用了",
 	removed: "订阅删了",
-	"push-off": "开播与下播推送都关了",
 	shutdown: "关机",
 };
 
@@ -187,17 +179,39 @@ export function createExtensionLiveSessions(
 		for (const listener of [...listeners]) listener(change);
 	}
 
+	/** 一场开始了,发上总线 —— 统计只要边界(ADR-0020 决策 6)。 */
+	function publishStart(session: SessionState, trigger: "liveStart" | "liveStatus"): void {
+		opts.bus.emit("extension-live-session", {
+			phase: "start",
+			subscriptionId: session.subscriptionId,
+			extensionId: session.extensionId,
+			startedAt: session.busStartedAt,
+			at: iso(session.detectedAt),
+			trigger,
+		});
+	}
+
+	/** 一场结束了,发上总线。 */
+	function publishEnd(
+		session: SessionState,
+		reason: ExtensionLiveSessionEndReason,
+		at: number,
+	): void {
+		opts.bus.emit("extension-live-session", {
+			phase: "end",
+			subscriptionId: session.subscriptionId,
+			extensionId: session.extensionId,
+			startedAt: session.busStartedAt,
+			at: iso(at),
+			reason,
+		});
+	}
+
 	/** 这条订阅现在记不记:还在、启用着、拓展在跑。关机之后一律不记。 */
 	function trackable(id: string): ExtensionSubscription | undefined {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
 		return extensionSubscriptionPushable(sub, opts.running) ? sub : undefined;
-	}
-
-	/** 开播与下播推送都关着。 */
-	function pushOff(sub: ExtensionSubscription): boolean {
-		const settings = opts.settings(sub);
-		return !settings.live && !settings.liveEnd;
 	}
 
 	/** 这一场结束。等着的下播不再等。 */
@@ -217,6 +231,7 @@ export function createExtensionLiveSessions(
 			`[ext-live] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
 		);
 		announce({ type: "end", subscriptionId: id, session, reason, at, value });
+		publishEnd(session, reason, at);
 	}
 
 	function begin(
@@ -224,11 +239,14 @@ export function createExtensionLiveSessions(
 		sub: ExtensionSubscription,
 		startedAt: number | undefined,
 	): SessionState {
+		const detectedAt = now();
 		const session: SessionState = {
 			subscriptionId: id,
 			extensionId: sub.extensionId,
 			startedAt,
-			detectedAt: now(),
+			// 状态没带开播时刻:取认出它的那一刻(ADR-0020 决策 6)。
+			busStartedAt: iso(startedAt ?? detectedAt),
+			detectedAt,
 			fansAtStart: opts.fans(id),
 			lastRow: opts.table.get(id),
 		};
@@ -240,10 +258,6 @@ export function createExtensionLiveSessions(
 		const sub = trackable(id);
 		if (!sub) {
 			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,这次开播不管`);
-			return;
-		}
-		if (pushOff(sub)) {
-			end(id, "push-off");
 			return;
 		}
 		const current = sessions.get(id);
@@ -260,12 +274,12 @@ export function createExtensionLiveSessions(
 		end(id, "superseded");
 		const session = begin(id, sub, value.startedAt);
 		announce({ type: "start", subscriptionId: id, session, trigger: "liveStart", value });
+		publishStart(session, "liveStart");
 	}
 
 	function onLiveStatus(id: string, value: LiveStatus): void {
 		const sub = trackable(id);
 		if (!sub) return;
-		if (pushOff(sub)) return;
 		const current = sessions.get(id);
 		// 报了不在播:BN 不拿它猜下播(决策 53),这一场等下播事件来收。
 		if (!value.live) {
@@ -282,16 +296,13 @@ export function createExtensionLiveSessions(
 		const session = begin(id, sub, value.startedAt);
 		log.debug(`[ext-live] 订阅 ${id} 正在播,认出这一场`);
 		announce({ type: "start", subscriptionId: id, session, trigger: "liveStatus", value });
+		publishStart(session, "liveStatus");
 	}
 
 	function onLiveEnd(id: string, value: LiveEnd): void {
 		const sub = trackable(id);
 		if (!sub) {
 			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,这次下播不管`);
-			return;
-		}
-		if (pushOff(sub)) {
-			end(id, "push-off");
 			return;
 		}
 		const endedAt = now();
@@ -327,12 +338,6 @@ export function createExtensionLiveSessions(
 		announce({ type: "ending", subscriptionId: id, session });
 	}
 
-	/** 设置可能变了:开播与下播推送都关了的,这一场不再记。 */
-	function reconcile(id: string): void {
-		const sub = sessions.has(id) ? trackable(id) : undefined;
-		if (sub && pushOff(sub)) end(id, "push-off");
-	}
-
 	const watches: Disposable[] = [
 		opts.bus.on("subscription-reported", (delivery) => {
 			const { report } = delivery;
@@ -362,15 +367,8 @@ export function createExtensionLiveSessions(
 		opts.bus.on("subscription-changed", (ops) => {
 			for (const op of ops) {
 				if (op.type === "remove") end(op.sub.id, "removed");
-				else if (op.type === "update") {
-					if (op.sub.enabled) reconcile(op.sub.id);
-					else end(op.sub.id, "disabled");
-				}
+				else if (op.type === "update" && !op.sub.enabled) end(op.sub.id, "disabled");
 			}
-		}),
-		opts.bus.on("config-changed", (scope) => {
-			if (scope !== "globals") return;
-			for (const id of [...sessions.keys()]) reconcile(id);
 		}),
 	];
 
@@ -378,7 +376,11 @@ export function createExtensionLiveSessions(
 		get: (subscriptionId) => sessions.get(subscriptionId),
 		onChange(listener) {
 			listeners.add(listener);
-			return { dispose: () => listeners.delete(listener) };
+			return {
+				dispose() {
+					listeners.delete(listener);
+				},
+			};
 		},
 		dispose() {
 			if (disposed) return;

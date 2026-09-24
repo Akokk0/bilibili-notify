@@ -148,6 +148,14 @@ export interface BiliEvents {
 	 */
 	"extension-live-changed": () => void;
 	/**
+	 * 拓展订阅的一场直播开始 / 结束了(ADR-0020 决策 4 / 6)—— 场次(`runtime/extension-live-sessions.ts`)
+	 * 算出来的边界,按订阅 id。统计据此记拓展订阅的场次;拓展直播的推送吃的是同一份场次(不经总线)。
+	 *
+	 * 与推送开关无关:订阅在、启用着、拓展在跑就记。断流接续里的那一下、直播状态、下播进等待都**不是**边界,
+	 * 不发。同一场的开始帧与结束帧带同一个 `startedAt`。不进 WS。
+	 */
+	"extension-live-session": (event: ExtensionLiveSessionEvent) => void;
+	/**
 	 * 一轮 FansPoller 完成后 emit。entries 携带本轮采样到的所有 enabled subs 的
 	 * 当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
 	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
@@ -166,6 +174,51 @@ export interface BiliEvents {
 	 */
 	"dynamic-detected": (event: DynamicDetectedEvent) => void;
 }
+
+/**
+ * 拓展订阅的一场直播为什么结束。
+ * - `ended`:拓展报了下播(断流接续开着的,等满了);
+ * - `superseded`:没报下播就又开播了,上一场在新的一场开播时收掉;
+ * - `extension-stopped`:拓展停了(停用、卸载、换代码、崩了);
+ * - `disabled` / `removed`:订阅停用了 / 删了;
+ * - `shutdown`:BN 关机。
+ */
+export type ExtensionLiveSessionEndReason =
+	| "ended"
+	| "superseded"
+	| "extension-stopped"
+	| "disabled"
+	| "removed"
+	| "shutdown";
+
+/**
+ * Bus 上 `extension-live-session` 的载荷。时刻都是 ISO。
+ *
+ * - `startedAt`:这一场的开播时刻,**也是这一场的身份**(同 `live-state-changed` 的 `at`)。开播事件的,
+ *   或认出这一场的那份在播状态带的,没带就是认出它的那一刻;开始时定下,结束帧原样带着 —— 之后的状态补上了
+ *   真开播时刻也不换,不然两帧对不上。拓展或 BN 重启之后再认出同一场,状态里带着同一个开播时刻,消费方
+ *   据此接回同一场(ADR-0020 决策 6)。
+ * - `at`:开始帧是 BN 认出这一场的那一刻;结束帧是这一场结束的时刻 —— 拓展报的下播是**下播事件到达那一刻**
+ *   (断流接续等的那几分钟不算),其余是结束的那一刻(拓展停了、订阅停用 / 删了、关机时补的就是这一帧)。
+ */
+export type ExtensionLiveSessionEvent =
+	| {
+			phase: "start";
+			subscriptionId: string;
+			extensionId: string;
+			startedAt: string;
+			at: string;
+			/** 认出这一场的是开播事件,还是 BN(或拓展)起来之后见到的在播状态。 */
+			trigger: "liveStart" | "liveStatus";
+	  }
+	| {
+			phase: "end";
+			subscriptionId: string;
+			extensionId: string;
+			startedAt: string;
+			at: string;
+			reason: ExtensionLiveSessionEndReason;
+	  };
 
 /** Bus 上 dynamic-detected 事件的载荷。 */
 export interface DynamicDetectedEvent {

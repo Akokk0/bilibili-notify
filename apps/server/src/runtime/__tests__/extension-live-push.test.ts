@@ -604,6 +604,33 @@ describe("收下不推", () => {
 	});
 });
 
+// ADR-0020 决策 4 / 6:场次与推送开关无关 —— 推送关掉只是不推,这一场还是这一场。
+describe("推送中途关掉又打开", () => {
+	it("还是同一场:关着的时候不推,下播卡的粉丝变化从开播那一刻算、不从重新打开时算", async () => {
+		settings = baseSettings({ pushTime: 1 });
+		start();
+		liveStart();
+		await settle();
+		settings = baseSettings({ pushTime: 1, live: false, liveEnd: false });
+		bus.emit("config-changed", "globals");
+		profile = { name: "抖音甲", fans: 12_345 + 55 };
+		liveStatus();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+
+		settings = baseSettings();
+		bus.emit("config-changed", "globals");
+		liveStatus();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		profile = { name: "抖音甲", fans: 12_345 + 100 };
+		liveEnd();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, 9]);
+		expect(sent[1]?.text).toBe(`抖音甲 下播啦，本次直播了 2小时，粉丝变化 +100\n${URL}`);
+	});
+});
+
 describe("同一条订阅的推送按顺序", () => {
 	it("开播卡出卡慢、下播紧跟着到:送出去仍是先开播后下播", async () => {
 		start();

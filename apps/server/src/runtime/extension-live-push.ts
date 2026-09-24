@@ -452,7 +452,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			current.fresh = true;
 			return;
 		}
-		// 推送这头没挂着这一场:BN 起来之前就开播了,或者拓展停过又跑起来了。
+		// 推送这头没挂着这一场:BN 起来之前就开播了、拓展停过又跑起来了,或者推送关过又打开了。
 		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
 		if (first && settings.restartPush && settings.live) {

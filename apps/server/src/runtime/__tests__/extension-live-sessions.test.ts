@@ -5,12 +5,17 @@
  * - 一场从开播事件开始,或从 BN 开始看之后见到的在播状态开始;下播只由事件结束(决策 53);
  * - 断流接续:下播先压着,等待期间再开播是同一场、开播时刻不变;等满了才结束,结束时刻是下播事件到达那一刻
  *   (决策 58);
- * - 拓展停了 / 订阅停用或删了 / 关机:当场结束,原因分得清(决策 61)。
+ * - 拓展停了 / 订阅停用或删了 / 关机:当场结束,原因分得清(决策 61);
+ * - 与推送开关无关(ADR-0020 决策 4);一场的开始与结束发上总线(`extension-live-session`),给统计记场次。
  *
  * ⚠️ 这个文件用假定时器:别用 `waitFor` / `findBy*`(会死锁),推进时间一律 `advanceTimersByTimeAsync`。
  */
 
-import type { Subscription, SubscriptionReport } from "@bilibili-notify/internal";
+import type {
+	ExtensionLiveSessionEvent,
+	Subscription,
+	SubscriptionReport,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { LiveWorkSettings } from "../engines.js";
@@ -44,6 +49,8 @@ let bus: ReturnType<typeof createNodeMessageBus>;
 let table: ExtensionLiveTable;
 let sessions: ExtensionLiveSessions;
 let changes: ExtensionLiveSessionChange[];
+/** 总线上听到的每一发 `extension-live-session`。 */
+let frames: ExtensionLiveSessionEvent[];
 let settings: GraceSettings;
 let subs: Map<string, Subscription>;
 let running: Set<string>;
@@ -70,6 +77,9 @@ function start(): void {
 	});
 	sessions.onChange((change) => changes.push(change));
 }
+
+/** 毫秒 → 总线上的 ISO。 */
+const iso = (ms: number) => new Date(ms).toISOString();
 
 function report(r: SubscriptionReport, sub: Subscription = SUB): void {
 	const extensionId = sub.kind === "extension" ? sub.extensionId : "";
@@ -121,7 +131,9 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(T0);
 	bus = createNodeMessageBus();
+	bus.on("extension-live-session", (event) => frames.push(event));
 	changes = [];
+	frames = [];
 	settings = { live: true, liveEnd: true, liveEndGrace: false, liveEndGraceMinutes: 2 };
 	subs = new Map([
 		[SUB.id, SUB],
@@ -279,6 +291,46 @@ describe("断流接续(决策 58)", () => {
 	});
 });
 
+// ADR-0020 决策 4:统计记的是「UP 做了什么」,与推送推没推无关。原来场次长在推送计时器里,开播与下播推送
+// 都关着时这一场直接扔掉,统计就永远看不到这一场。
+describe("与推送开关无关(ADR-0020 决策 4)", () => {
+	it("开播与下播推送都关着:照样开一场、断流接续照样等、下播照样结束", async () => {
+		settings = { live: false, liveEnd: false, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		start();
+		liveStart();
+		expect(sessions.get(SUB.id)).toBeDefined();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		liveStart({ startedAt: Date.now() });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		liveEnd();
+		const endedAt = Date.now();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE);
+
+		expect(summary()).toEqual([
+			{ type: "start", trigger: "liveStart", startedAt: T0 },
+			{ type: "ending" },
+			{ type: "resume" },
+			{ type: "ending" },
+			{ type: "end", reason: "ended", at: endedAt },
+		]);
+		// 统计照样看得到这一场:一帧开始、一帧结束,断流那一下不算两场。
+		expect(frames.map((f) => f.phase)).toEqual(["start", "end"]);
+	});
+
+	it("推送中途全关掉:这一场不结束", () => {
+		start();
+		liveStart();
+		settings = { ...settings, live: false, liveEnd: false };
+		bus.emit("config-changed", "globals");
+		bus.emit("subscription-changed", [{ type: "update", sub: SUB }]);
+		liveStatus();
+		expect(summary().map((c) => c.type)).toEqual(["start", "status"]);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(T0);
+	});
+});
+
 describe("作废(决策 61)", () => {
 	it("拓展停了:它名下的当场结束(原因分得清),等着的下播不再等;别的拓展的不动", async () => {
 		settings = { ...settings, liveEndGrace: true };
@@ -323,5 +375,176 @@ describe("作废(决策 61)", () => {
 		expect(summary().at(-1)).toEqual({ type: "end", reason: "shutdown", at: T0 + HOUR });
 		liveStart();
 		expect(summary().map((c) => c.type)).toEqual(["start", "end"]);
+	});
+});
+
+// 统计(ADR-0020 决策 6)只认总线:一场的开始与结束各一帧,按订阅 id。断流接续里的那一下、直播状态、
+// 手里没有这一场的下播都不上总线 —— 那些不是场次的边界。
+describe("总线上的场次事件(给统计)", () => {
+	it("开播事件开一场:一帧开始,开播时刻取事件的,触发是开播事件", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		expect(frames).toEqual([
+			{
+				phase: "start",
+				subscriptionId: SUB.id,
+				extensionId: EXT,
+				startedAt: iso(T0 - MINUTE),
+				at: iso(T0),
+				trigger: "liveStart",
+			},
+		]);
+	});
+
+	it("状态认出的一场:开播时刻取状态带的;没带就取收到的那一刻", () => {
+		start();
+		liveStatus({ startedAt: T0 - HOUR });
+		liveStatus({}, OTHER);
+		expect(frames).toEqual([
+			expect.objectContaining({
+				phase: "start",
+				subscriptionId: SUB.id,
+				startedAt: iso(T0 - HOUR),
+				trigger: "liveStatus",
+			}),
+			expect.objectContaining({
+				phase: "start",
+				subscriptionId: OTHER.id,
+				extensionId: "kuaishou",
+				startedAt: iso(T0),
+				at: iso(T0),
+				trigger: "liveStatus",
+			}),
+		]);
+	});
+
+	it("一场的开始帧与结束帧带同一个开播时刻 —— 之后的状态补上了真开播时刻也不换(不然两帧对不上)", () => {
+		start();
+		liveStatus({}, OTHER);
+		vi.advanceTimersByTime(MINUTE);
+		liveStatus({ startedAt: T0 - HOUR }, OTHER);
+		vi.advanceTimersByTime(HOUR);
+		liveEnd({}, OTHER);
+		expect(frames.map((f) => [f.phase, f.startedAt])).toEqual([
+			["start", iso(T0)],
+			["end", iso(T0)],
+		]);
+	});
+
+	it("断流接续:等待期间又开播不发任何帧;真下播等满了才发结束帧,结束时刻是那次下播事件到达的时刻", async () => {
+		settings = { ...settings, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		start();
+		liveStart();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		liveStart({ startedAt: Date.now() });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		expect(frames.map((f) => f.phase)).toEqual(["start"]);
+
+		liveEnd();
+		const endedAt = Date.now();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE - 1);
+		expect(frames.map((f) => f.phase)).toEqual(["start"]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(frames).toEqual([
+			expect.objectContaining({ phase: "start", startedAt: iso(T0) }),
+			{
+				phase: "end",
+				subscriptionId: SUB.id,
+				extensionId: EXT,
+				startedAt: iso(T0),
+				at: iso(endedAt),
+				reason: "ended",
+			},
+		]);
+	});
+
+	it("结束原因分得清:拓展停了、订阅停用、订阅删了、没报下播又开播、关机", () => {
+		const third = makeExtensionSubscription({
+			id: "e0000000-0000-4000-8000-000000000003",
+			extensionId: EXT,
+			externalId: "sec-uid-3",
+		});
+		subs.set(third.id, third);
+		start();
+		liveStart();
+		liveStart({}, OTHER);
+		liveStart({}, third);
+		vi.advanceTimersByTime(MINUTE);
+		liveStart({ startedAt: Date.now() }, third);
+		bus.emit("subscription-changed", [{ type: "update", sub: { ...OTHER, enabled: false } }]);
+		bus.emit("extension-stopped", EXT);
+		const endsSoFar = frames.filter((f) => f.phase === "end");
+		expect(endsSoFar.map((f) => [f.subscriptionId, f.phase === "end" && f.reason])).toEqual([
+			[third.id, "superseded"],
+			[OTHER.id, "disabled"],
+			[SUB.id, "extension-stopped"],
+			[third.id, "extension-stopped"],
+		]);
+
+		liveStart({}, OTHER);
+		bus.emit("subscription-changed", [{ type: "remove", sub: OTHER }]);
+		liveStart();
+		sessions.dispose();
+		const last = frames.filter((f) => f.phase === "end").slice(4);
+		expect(last.map((f) => [f.subscriptionId, f.phase === "end" && f.reason])).toEqual([
+			[OTHER.id, "removed"],
+			[SUB.id, "shutdown"],
+		]);
+	});
+
+	it("拓展停了又跑起来:按开播时刻接回同一场 —— 结束帧之后的开始帧带着原来那个开播时刻", () => {
+		start();
+		liveStart({ startedAt: T0 - HOUR });
+		vi.advanceTimersByTime(MINUTE);
+		bus.emit("extension-stopped", EXT);
+		vi.advanceTimersByTime(MINUTE);
+		liveStatus({ startedAt: T0 - HOUR });
+		expect(frames).toEqual([
+			expect.objectContaining({ phase: "start", startedAt: iso(T0 - HOUR), trigger: "liveStart" }),
+			expect.objectContaining({
+				phase: "end",
+				startedAt: iso(T0 - HOUR),
+				at: iso(T0 + MINUTE),
+				reason: "extension-stopped",
+			}),
+			expect.objectContaining({
+				phase: "start",
+				startedAt: iso(T0 - HOUR),
+				at: iso(T0 + 2 * MINUTE),
+				trigger: "liveStatus",
+			}),
+		]);
+	});
+
+	it("BN 重启:关机补一帧结束;新起来的一份见到在播,开始帧带着原来那个开播时刻", () => {
+		start();
+		liveStart({ startedAt: T0 - HOUR });
+		vi.advanceTimersByTime(MINUTE);
+		sessions.dispose();
+		table.dispose();
+		vi.advanceTimersByTime(MINUTE);
+		start();
+		liveStatus({ startedAt: T0 - HOUR });
+		expect(
+			frames.map((f) => [f.phase, f.startedAt, f.phase === "end" ? f.reason : f.trigger]),
+		).toEqual([
+			["start", iso(T0 - HOUR), "liveStart"],
+			["end", iso(T0 - HOUR), "shutdown"],
+			["start", iso(T0 - HOUR), "liveStatus"],
+		]);
+	});
+
+	it("不是场次边界的不上总线:直播状态、下播进断流等待、手里没有这一场的下播", async () => {
+		settings = { ...settings, liveEndGrace: true };
+		start();
+		liveEnd();
+		report({ kind: "liveStatus", value: { live: false } });
+		expect(frames).toEqual([]);
+		liveStart();
+		liveStatus({ totalViewers: 3 });
+		liveEnd();
+		expect(frames.map((f) => f.phase)).toEqual(["start"]);
 	});
 });
