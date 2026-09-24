@@ -28,7 +28,6 @@ function profile(over: Record<string, unknown> = {}) {
 		apiKey: "",
 		baseUrl: "",
 		model: "",
-		temperature: 0.7,
 		enableThinking: false,
 		thinkingLevel: "medium" as const,
 		extraParams: "",

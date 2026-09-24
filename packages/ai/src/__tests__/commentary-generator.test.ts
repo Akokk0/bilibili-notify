@@ -4,8 +4,8 @@
  * 覆盖:
  *   - callAPI 配置守卫(apiKey / baseURL 缺失即抛)
  *   - comment():engine 直接调用的单次点评 —— scene 提示词叠加、per-call override
- *     (model/temperature)、多模态图片仅在 enableVision 时下挂、thinking 不支持
- *     时的降级重试
+ *     (model)、多模态图片仅在 enableVision 时下挂、thinking 不支持时的降级重试
+ *   - temperature 一律不发(额外参数里写的除外)
  *   - chat():多轮会话历史携带 / enableConversation 关闭即丢弃 / 满载压缩 /
  *     tool-calling 循环 + MAX_ROUNDS 上限
  *   - session 生命周期:TTL 过期计数、stop() 清空
@@ -185,16 +185,11 @@ describe("CommentaryGenerator.comment", () => {
 		expect(sys).toContain("DYN_SCENE_PROMPT");
 	});
 
-	it("override.model / temperature 覆盖 config 值", async () => {
-		const { gen } = makeGen({ temperature: 0.2 });
+	it("override.model 覆盖 config 值", async () => {
+		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(msgResp("ok"));
-		await gen.comment("内容", "dynamic", undefined, {
-			model: "override-model",
-			temperature: 0.9,
-		});
-		const p = createParams(0);
-		expect(p.model).toBe("override-model");
-		expect(p.temperature).toBe(0.9);
+		await gen.comment("内容", "dynamic", undefined, { model: "override-model" });
+		expect(createParams(0).model).toBe("override-model");
 	});
 
 	it("enableVision=true + imageUrls → user 消息变多模态(text + image_url)", async () => {
@@ -339,6 +334,78 @@ describe("CommentaryGenerator.comment", () => {
 		);
 		expect(msg).toMatch(/空 choices/);
 		expect(msg).not.toMatch(/Cannot read properties/); // 不再是不可读的 TypeError
+	});
+});
+
+// ---------------------------------------------------------------------------
+// temperature 退役
+// ---------------------------------------------------------------------------
+
+/**
+ * temperature **一律不发**,走服务商自己的默认值。
+ *
+ * Claude Opus 4.7 起的模型、OpenAI 的推理模型收到它直接 400;DeepSeek 开思考时
+ * 静默忽略它。它曾经每次请求都带着(默认 0.7),方言降级重试也不摘 —— 换上这类
+ * 模型整条 AI 链路都会失败,设置页上还关不掉。
+ *
+ * 真想调的主人从「额外请求参数」写 `{"temperature": 1.3}`:那是唯一的口子,
+ * 所以 extra-params 的 BLOCKED_KEYS 刻意不挡它,这里也钉住它原样发得出去。
+ */
+describe("CommentaryGenerator — temperature 一律不发", () => {
+	const sent = (n: number) => "temperature" in createParams(n);
+
+	it("非流式点评:请求体里没有 temperature", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("ok"));
+		await gen.comment("x");
+		expect(sent(0)).toBe(false);
+	});
+
+	it("流式聊天:请求体里没有 temperature", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} });
+		expect(createParams(0).stream).toBe(true);
+		expect(sent(0)).toBe(false);
+	});
+
+	it("流式不可用回落非流式:两发都没有", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockRejectedValueOnce(new Error("stream is not supported"))
+			.mockResolvedValueOnce(msgResp("整段回复"));
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} });
+		expect(oai.create).toHaveBeenCalledTimes(2);
+		expect(createParams(1).stream).toBeUndefined();
+		expect(sent(0)).toBe(false);
+		expect(sent(1)).toBe(false);
+	});
+
+	it("方言降级重试:摘掉方言重来的那一发同样没有", async () => {
+		const { gen } = makeGen({ provider: "siliconflow", enableThinking: true });
+		oai.create
+			.mockRejectedValueOnce(new Error("thinking unsupported"))
+			.mockResolvedValueOnce(msgResp("降级成功"));
+		await gen.comment("x");
+		expect(oai.create).toHaveBeenCalledTimes(2);
+		// 第二发确实是摘了方言的那一发,不是别的什么重来。
+		expect(createParams(1).enable_thinking).toBeUndefined();
+		expect(sent(0)).toBe(false);
+		expect(sent(1)).toBe(false);
+	});
+
+	it("额外请求参数里写了 temperature → 原样带着,降级重试也带着 —— 想调它只剩这一个口子", async () => {
+		const { gen } = makeGen({
+			provider: "siliconflow",
+			enableThinking: true,
+			extraParams: '{"temperature": 1.3}',
+		});
+		oai.create
+			.mockRejectedValueOnce(new Error("thinking unsupported"))
+			.mockResolvedValueOnce(msgResp("降级成功"));
+		await gen.comment("x");
+		expect(createParams(0).temperature).toBe(1.3);
+		expect(createParams(1).temperature).toBe(1.3);
 	});
 });
 
@@ -628,6 +695,13 @@ describe("CommentaryGenerator.summarizeTitle", () => {
 		oai.create.mockResolvedValueOnce(msgResp("标题"));
 		await gen.summarizeTitle(ROUND);
 		expect(createParams(0).stream).toBeUndefined();
+	});
+
+	it("不带 temperature —— 与主调用同一条:推理模型收到它直接 400,起标题也不例外", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		expect("temperature" in createParams(0)).toBe(false);
 	});
 
 	it("模型爱加的引号 / 前缀 / 句号都洗掉", async () => {

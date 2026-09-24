@@ -31,7 +31,6 @@ function mountSidebar() {
 			baseUrl: "https://x",
 			model: "m",
 			apiFlavor: "chat",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

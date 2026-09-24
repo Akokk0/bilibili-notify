@@ -14,7 +14,7 @@ describe("formatDiffValue", () => {
 
 	it("number → 字符串", () => {
 		expect(formatDiffValue("minScPrice", 30)).toEqual({ display: "30" });
-		expect(formatDiffValue("ai.temperature", 0.7)).toEqual({ display: "0.7" });
+		expect(formatDiffValue("schedule.liveEndGraceMinutes", 2.5)).toEqual({ display: "2.5" });
 	});
 
 	it("number NaN → NaN 文本", () => {

@@ -266,11 +266,6 @@ export const FIELD_LABELS = {
 		section: "ai",
 	},
 	"ai.model": { label: "模型 ID", section: "ai" },
-	"ai.temperature": {
-		label: "temperature",
-		hint: "0–2,越高越发散",
-		section: "ai",
-	},
 
 	// ── 图片理解 ──────────────────────────────────────────────────────────
 	// 这个开关是在**声明主模型的能力**，不是在选「把图发给谁」。写成后者的话

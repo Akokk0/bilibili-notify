@@ -1340,7 +1340,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("点评");
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]));
-		const aiOverride = { temperature: 0.3 };
+		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", aiOverride });
 		await detect(b.engine);
 		expect(b.comment.mock.calls[0]?.[3]).toEqual(aiOverride);

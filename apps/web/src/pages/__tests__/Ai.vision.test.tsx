@@ -40,7 +40,6 @@ function globals() {
 			baseUrl: "https://api.deepseek.com/v1",
 			model: "deepseek-chat",
 			apiFlavor: "chat",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

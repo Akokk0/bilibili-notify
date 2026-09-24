@@ -16,7 +16,6 @@ function enabledAiGlobals() {
 			apiKey: "k",
 			baseUrl: "https://api.example.com",
 			model: "gpt-4o-mini",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",
@@ -40,9 +39,8 @@ describe("shouldRunAiEnableCheck", () => {
 		);
 	});
 
-	it("改 temperature / prompt 不触发探活", () => {
+	it("改 prompt 不触发探活", () => {
 		const cur = enabledAiGlobals();
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { temperature: 0.9 } } })).toBe(false);
 		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { dynamicPrompt: "x" } } })).toBe(false);
 	});
 
@@ -247,6 +245,30 @@ describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", (
 			expect(r.ok).toBe(true);
 			expect(calls[0]?.url).toBe("https://api.example.com/chat/completions");
 			expect(calls[0]?.body.messages).toBeDefined();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	// temperature 已整个退役、真聊天路径一律不发;探活要是还带着,Claude Opus 4.7 起的
+	// 模型与 OpenAI 推理模型会 400 拒掉这一发,主人就被探活挡在门外,而真聊天本来能通。
+	it("chat 风味的 ping 同样不带 temperature —— 探活不能比真聊天多踩一颗雷", async () => {
+		const { checkAiEnable } = await import("../globals.js");
+		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+			calls.push({ url, body: JSON.parse(String(init.body)) });
+			return okJson();
+		});
+		try {
+			const r = await checkAiEnable({
+				apiKey: "k",
+				baseUrl: "https://api.example.com",
+				model: "claude-opus-4-7",
+				apiFlavor: "chat",
+			});
+			expect(r.ok).toBe(true);
+			expect(calls[0]?.url).toBe("https://api.example.com/chat/completions");
+			expect("temperature" in (calls[0]?.body ?? {})).toBe(false);
 		} finally {
 			vi.unstubAllGlobals();
 		}

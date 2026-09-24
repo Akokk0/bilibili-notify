@@ -28,10 +28,6 @@ export function toGeneratorConfig(ai: AISettings) {
 		apiKey: p.apiKey,
 		baseURL: p.baseUrl,
 		model: p.model,
-		// `temperature` 是 CommentaryGeneratorConfig 的 optional 字段;dashboard 滑块
-		// 改值后,config-changed 路径下的 `commentary.updateConfig(...)` 会把新值推到
-		// 引擎,下次 chat.completions.create 即生效。
-		temperature: p.temperature,
 		persona: {
 			preset: "custom" as const,
 			name: active.persona.name,

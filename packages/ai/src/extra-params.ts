@@ -14,6 +14,9 @@
  * - `input`:responses 风味下的整段对话,与 `messages` 同罪
  * - `stream`:流式与非流式在代码里是两条分支,这里改它只会让分支与实际不符
  * - `tools` / `tool_choice`:覆盖会连带废掉看图(describe_image)与全部只读工具
+ *
+ * `temperature` 刻意**不在**这里:女仆自己一律不发它(走服务商默认),想调的主人
+ * 只剩这个框能写 —— 挡掉它就把唯一的口子也堵死了。
  */
 const BLOCKED_KEYS = ["model", "messages", "input", "stream", "tools", "tool_choice"] as const;
 

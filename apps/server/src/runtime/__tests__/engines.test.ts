@@ -400,7 +400,6 @@ function aiGlobals(): GlobalConfig {
 			baseUrl: "https://api.example.com",
 			model: "gpt-4o-mini",
 			apiFlavor: "chat",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

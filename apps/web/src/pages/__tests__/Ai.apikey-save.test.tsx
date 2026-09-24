@@ -44,7 +44,6 @@ function redactedGlobals() {
 			baseUrl: "https://api.example.com/v1",
 			model: "test-model",
 			apiFlavor: "chat",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

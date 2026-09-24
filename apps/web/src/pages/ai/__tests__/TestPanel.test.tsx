@@ -30,7 +30,6 @@ const DRAFT = {
 	apiKey: "__BN_REDACTED__",
 	baseUrl: "https://api.example.com/v1",
 	model: "test-model",
-	temperature: 0.7,
 	persona: { name: "恶魔兔", traits: "调皮，会整活" },
 	presets: [],
 } as unknown as AISettings;

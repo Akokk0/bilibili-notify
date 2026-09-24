@@ -34,8 +34,8 @@ describe("groupDiffsBySection", () => {
 	});
 
 	it("section 内多行按 code 字母序", () => {
-		const out = groupDiffsBySection([D("ai.temperature"), D("ai.apiKey"), D("ai.model")]);
-		expect(out[0].rows.map((r) => r.code)).toEqual(["ai.apiKey", "ai.model", "ai.temperature"]);
+		const out = groupDiffsBySection([D("ai.thinkingLevel"), D("ai.apiKey"), D("ai.model")]);
+		expect(out[0].rows.map((r) => r.code)).toEqual(["ai.apiKey", "ai.model", "ai.thinkingLevel"]);
 	});
 
 	it("多 section → 按 SECTION_ORDER 顺序(general/master/ai/persona/cardStyle/.../other)", () => {
@@ -55,7 +55,7 @@ describe("groupDiffsBySection", () => {
 	});
 
 	it("不就地改 caller 的数组", () => {
-		const input: FieldDiff[] = [D("ai.temperature"), D("ai.apiKey")];
+		const input: FieldDiff[] = [D("ai.thinkingLevel"), D("ai.apiKey")];
 		const before = input.map((d) => d.code);
 		groupDiffsBySection(input);
 		expect(input.map((d) => d.code)).toEqual(before);

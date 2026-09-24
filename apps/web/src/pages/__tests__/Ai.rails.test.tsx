@@ -36,7 +36,6 @@ function bucket(over: Partial<Bucket> = {}): Bucket {
 		baseUrl: "",
 		model: "m-1",
 		apiFlavor: "chat",
-		temperature: 0.7,
 		enableThinking: false,
 		thinkingLevel: "medium",
 		extraParams: "",
@@ -213,7 +212,7 @@ describe("模型配置 · 服务商左栏", () => {
 			globalsWith((g) => {
 				g.defaults.ai.activeProfile = "custom";
 				g.defaults.ai.providers = {
-					custom: bucket({ provider: "custom", apiKey: "", model: "", temperature: 0.7 }),
+					custom: bucket({ provider: "custom", apiKey: "", model: "" }),
 				};
 			}),
 		);

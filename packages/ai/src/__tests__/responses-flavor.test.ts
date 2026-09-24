@@ -228,6 +228,44 @@ describe("responses 风味:流式分流与思考参数", () => {
 	});
 });
 
+/**
+ * temperature 一律不发(退役原因见 commentary-generator.test.ts 的同名块)。o 系推理
+ * 模型正是走这套协议接进来的,它们收到 temperature 直接 400 —— 这条路尤其不能带。
+ */
+describe("responses 风味:temperature 一律不发", () => {
+	const sent = (n: number) => "temperature" in params(n);
+
+	it("流式、回落非流式:两发都没有", async () => {
+		oai.responsesCreate
+			.mockRejectedValueOnce(new Error("stream unsupported"))
+			.mockResolvedValueOnce({ output: [msgItem("回落成功")] });
+		const gen = makeGen();
+		await gen.chatStatelessStream([{ role: "user", content: "hi" }], { onDelta: () => {} });
+		expect(params(0).stream).toBe(true);
+		expect(params(1).stream).toBeUndefined();
+		expect(sent(0)).toBe(false);
+		expect(sent(1)).toBe(false);
+	});
+
+	it("摘掉 reasoning 重试的那一发同样没有", async () => {
+		oai.responsesCreate
+			.mockRejectedValueOnce(new Error("reasoning not supported"))
+			.mockResolvedValueOnce({ output: [msgItem("ok")] });
+		const gen = makeGen({ enableThinking: true });
+		await gen.chatStateless([{ role: "user", content: "hi" }]);
+		expect(params(1).reasoning).toBeUndefined();
+		expect(sent(0)).toBe(false);
+		expect(sent(1)).toBe(false);
+	});
+
+	it("额外请求参数里写了 temperature → 原样带着 —— 想调它只剩这一个口子", async () => {
+		oai.responsesCreate.mockResolvedValueOnce({ output: [msgItem("ok")] });
+		const gen = makeGen({ extraParams: '{"temperature": 1.3}' });
+		await gen.chatStateless([{ role: "user", content: "hi" }]);
+		expect(params(0).temperature).toBe(1.3);
+	});
+});
+
 describe("responses 风味:工具环", () => {
 	it("function_call → 执行 → function_call_output 回填;上一轮 output(含 reasoning)原样回传", async () => {
 		oai.responsesCreate

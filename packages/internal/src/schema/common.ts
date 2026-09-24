@@ -336,8 +336,9 @@ export const AIProviderProfileSchema = z.object({
 	 * schema 这层不掺和 —— 手改配置选了未确认的家,后果(404)自负且可逆。
 	 */
 	apiFlavor: z.enum(API_FLAVOR_IDS).default("chat"),
-	/** chat.completions 的 temperature(0–2)。 */
-	temperature: z.number().min(0).max(2).default(0.7),
+	// 这里曾有一格 `temperature`(默认 0.7),已整个退役:请求里一律不发、走服务商默认
+	// —— 推理模型收到它直接 400。老桶里残留的值被本 schema 剥掉(裸 z.object,未知键
+	// strip,不会整份拒收);想调的主人写进下面的 extraParams。
 	/**
 	 * 开启模型的深度思考。具体发什么字段由**这个桶属于哪家**决定 ——
 	 * 四家四种写法,没有通用解(见 `@bilibili-notify/ai#buildProviderParams`)。
@@ -492,12 +493,17 @@ const AISettingsObjectSchema = z.object({
 	),
 });
 
-/** 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。 */
+/**
+ * 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。
+ *
+ * 当年的扁平字段里还有 `temperature`,它已整个退役,所以不在这张表里:老配置残留的
+ * 那个键留在 ai 这一层,被 {@link AISettingsObjectSchema} 剥掉(裸 z.object,不会整份
+ * 拒收)。也不该让它单独撑起一个 custom 桶 —— 光有它不算「配过连接」。
+ */
 const LEGACY_FLAT_KEYS = [
 	"apiKey",
 	"baseUrl",
 	"model",
-	"temperature",
 	"enableThinking",
 	"thinkingLevel",
 	"extraParams",

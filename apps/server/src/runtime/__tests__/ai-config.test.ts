@@ -20,7 +20,6 @@ function aiWith(flavor?: "chat" | "responses") {
 			baseUrl: "https://api.deepseek.com",
 			model: "deepseek-v4-pro",
 			apiFlavor: flavor ?? "chat",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",
@@ -38,5 +37,19 @@ describe("toGeneratorConfig:接口风味", () => {
 
 	it("默认桶(chat)→ 引擎照旧走 chat completions", () => {
 		expect(toGeneratorConfig(aiWith()).apiFlavor).toBe("chat");
+	});
+});
+
+describe("toGeneratorConfig:temperature 已退役", () => {
+	// 一律不发、走服务商默认(推理模型收到它直接 400)。引擎配置里连这一格都不该有 ——
+	// 想调的主人从额外请求参数写,那一格照常递过去。
+	it("引擎配置里没有 temperature,额外参数原样递过去", () => {
+		const ai = aiWith();
+		const p1 = ai.providers.p1;
+		if (!p1) throw new Error("fixture 缺 p1");
+		p1.extraParams = '{"temperature": 1.3}';
+		const cfg = toGeneratorConfig(ai);
+		expect("temperature" in cfg).toBe(false);
+		expect(cfg.extraParams).toBe('{"temperature": 1.3}');
 	});
 });

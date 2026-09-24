@@ -71,9 +71,16 @@ describe("walkTreeDiff", () => {
 	});
 
 	it("一侧 plain object 一侧 undefined → 当 leaf 整体输出(add per-UP override 场景)", () => {
-		const diff = walkTreeDiff({ ai: undefined }, { ai: { preset: "inherit", temperature: 0.7 } });
+		const diff = walkTreeDiff(
+			{ templates: undefined },
+			{ templates: { liveStart: "开播啦", liveSummary: "总结" } },
+		);
 		expect(diff).toEqual([
-			{ code: "ai", oldValue: undefined, newValue: { preset: "inherit", temperature: 0.7 } },
+			{
+				code: "templates",
+				oldValue: undefined,
+				newValue: { liveStart: "开播啦", liveSummary: "总结" },
+			},
 		]);
 	});
 

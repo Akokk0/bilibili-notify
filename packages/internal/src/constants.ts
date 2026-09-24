@@ -583,12 +583,6 @@ export interface AIProviderMeta {
 	 */
 	supportsVision: boolean;
 	/**
-	 * 开思考时这家会**静默忽略** temperature(以及 top_p / presence_penalty /
-	 * frequency_penalty)。DeepSeek 官方文档明说不报错也不生效 —— 摆着让人调,
-	 * 只会让主人以为设置没存上。
-	 */
-	temperatureIgnoredWhenThinking: boolean;
-	/**
 	 * 这家有没有 **Responses API**(`/responses`,OpenAI 2025 起的接任协议)。
 	 * 决定设置页「接口风味」选项露不露 —— 未确认支持的家不开放,免得选出
 	 * 必然 404 的组合;日后他们支持了,这里改一行即可。2026-08 核实:
@@ -607,7 +601,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsThinking: true,
 		thinkingDefaultsOn: false,
 		supportsVision: true,
-		temperatureIgnoredWhenThinking: false,
 		supportsResponses: true,
 		baseUrlHint: "https://openrouter.ai/api/v1",
 	},
@@ -617,7 +610,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
 		supportsVision: true,
-		temperatureIgnoredWhenThinking: false,
 		supportsResponses: false,
 		baseUrlHint: "https://ark.cn-beijing.volces.com/api/v3",
 	},
@@ -627,7 +619,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
 		supportsVision: true,
-		temperatureIgnoredWhenThinking: false,
 		supportsResponses: false,
 		baseUrlHint: "https://api.siliconflow.cn/v1",
 	},
@@ -640,7 +631,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		// —— 对默认开的模型这是唯一能关掉的路,对默认关的模型这个字段也合法无害。
 		thinkingDefaultsOn: true,
 		supportsVision: true,
-		temperatureIgnoredWhenThinking: false,
 		supportsResponses: true,
 		baseUrlHint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	},
@@ -650,7 +640,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
 		supportsVision: false,
-		temperatureIgnoredWhenThinking: true,
 		supportsResponses: true,
 		baseUrlHint: "https://api.deepseek.com",
 	},
@@ -660,7 +649,6 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsThinking: false,
 		thinkingDefaultsOn: false,
 		supportsVision: true,
-		temperatureIgnoredWhenThinking: false,
 		supportsResponses: true,
 		baseUrlHint: "任何 OpenAI 兼容地址",
 	},
@@ -702,7 +690,6 @@ export interface AIProviderProfileShape {
 	model: string;
 	/** 这桶走哪套 wire 协议。默认 `chat`;能否选 `responses` 见 {@link AIProviderMeta.supportsResponses}。 */
 	apiFlavor: APIFlavorId;
-	temperature: number;
 	enableThinking: boolean;
 	thinkingLevel: ThinkingLevel;
 	extraParams: string;
@@ -721,7 +708,6 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
 	baseUrl: "",
 	model: "",
 	apiFlavor: "chat",
-	temperature: 0.7,
 	enableThinking: false,
 	thinkingLevel: "medium",
 	extraParams: "",

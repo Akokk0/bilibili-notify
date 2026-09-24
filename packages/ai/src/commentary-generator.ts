@@ -237,11 +237,8 @@ export interface CommentaryGeneratorConfig {
 	apiKey: string;
 	baseURL: string;
 	model: string;
-	/**
-	 * chat.completions.create 的 temperature 参数（0–2）。未设置时不传该参数，
-	 * 由 OpenAI 兼容服务自身决定默认值。adapter 通常用 `globals.defaults.ai.temperature` 填充。
-	 */
-	temperature?: number;
+	// 没有 temperature:请求里一律不发、走服务商默认 —— Claude Opus 4.7 起的模型与
+	// OpenAI 推理模型收到它直接 400。想调的主人写进 `extraParams`。
 
 	/** 结构化人格配置 */
 	persona: PersonaConfig;
@@ -313,7 +310,7 @@ export interface CommentaryGeneratorConfig {
  * 单次 comment() 调用的运行时覆盖。dynamic / live 引擎在 per-UP 推送上下文里构造
  * 一份只包含「与全局不同」的字段的 override，传给 comment() 后仅对该次调用生效。
  *
- * 未指定的字段都从 CommentaryGenerator.config 取，model/temperature 也走同一规则。
+ * 未指定的字段都从 CommentaryGenerator.config 取，model 也走同一规则。
  * persona 是「整体替换」而非字段级合并 —— adapter 在产生 override 之前已经做完
  * preset / inherit / partial 折叠（见 `@bilibili-notify/internal#resolve`)。
  */
@@ -321,7 +318,6 @@ export interface CommentaryCallOverride {
 	persona?: PersonaConfig;
 	dynamicPrompt?: string;
 	liveSummaryPrompt?: string;
-	temperature?: number;
 	model?: string;
 	/**
 	 * 这一次调用的思考开关 / 深度,压过全局配置。dashboard 聊天用它 —— 聊天页的
@@ -649,7 +645,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 	/**
 	 * 单次 AI 调用，不保存历史。
-	 * 供 dynamic/live 插件调用。`override` 可携带 per-UP 的 persona/prompt/model/temperature。
+	 * 供 dynamic/live 插件调用。`override` 可携带 per-UP 的 persona/prompt/model。
 	 */
 	async comment(
 		content: string,
@@ -1197,8 +1193,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		try {
 			res = await client.chat.completions.create({
 				model,
-				// 低温:标题要的是概括,不是发挥。
-				temperature: 0.2,
+				// 不发 temperature,与主调用同一条:推理模型收到它直接 400。
 				// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文
 				// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。
 				// 反正只调这一次,多给点无所谓。
@@ -1502,7 +1497,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<string> {
 		const { apiKey, baseURL } = this.config;
 		const model = override?.model ?? this.config.model;
-		const temperature = override?.temperature ?? this.config.temperature;
 		if (!apiKey) throw new Error("AI apiKey 未配置");
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 		const signal = override?.signal;
@@ -1520,7 +1514,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// flavor 必须打出来:两种风味成功时的其余日志一字不差,主人切了 responses
 		// 只能靠这里确认真的换了协议,否则「到底走没走新路」查无实据。
 		this.logger.debug(
-			`[api] flavor=${this.config.apiFlavor ?? "chat"}, baseURL=${baseURL}, model=${model}, temperature=${temperature ?? "default"}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
+			`[api] flavor=${this.config.apiFlavor ?? "chat"}, baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
 		);
 		const { default: OpenAI } = await import("openai");
 		// 单次 chat.completions.create 的硬超时。下播总结/动态点评偶发的 LLM 长尾(模型 hang
@@ -1585,7 +1579,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 				client,
 				apiMessages,
 				model,
-				temperature,
 				extra: extra.value,
 				toolOptions,
 				override,
@@ -1603,6 +1596,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		});
 
 		/**
+		 * 不发 temperature:一律走服务商默认 —— Claude Opus 4.7 起的模型与 OpenAI 推理
+		 * 模型收到它直接 400,DeepSeek 开思考时静默忽略。想调的主人从额外参数写,
+		 * 那一份照常摊进来(BLOCKED_KEYS 刻意不挡它)。
+		 *
 		 * `withProviderParams=false` 是**降级重试**用的:那时的判断是「这个网关根本
 		 * 不认这套方言」,所以一个方言字段都不发 —— 注意这跟「思考开关拨到关」不是
 		 * 一回事,后者对 DeepSeek 这类默认开思考的家还得显式发一条禁用。
@@ -1611,7 +1608,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const makeParams = (withProviderParams: boolean): CreateParams => ({
 			model,
 			messages: apiMessages,
-			...(temperature !== undefined ? { temperature } : {}),
 			// 空表就整个字段都不发:`tools: []` 有网关直接当参数错拒掉,而「一把工具
 			// 都没有」是专职模式的正常状态。
 			...(toolOptions && toolOptions.tools.length > 0
@@ -1809,7 +1805,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 		client: OpenAI;
 		apiMessages: OpenAI.ChatCompletionMessageParam[];
 		model: string;
-		temperature?: number;
 		extra: Record<string, unknown>;
 		toolOptions?: CallToolOptions;
 		override?: CommentaryCallOverride;
@@ -1818,7 +1813,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		/** 带取消信号发一次非流式请求,见 callAPI 里的同名闭包。 */
 		cancellable: <T>(run: (opts: { signal?: AbortSignal }) => Promise<T>) => Promise<T>;
 	}): Promise<string> {
-		const { client, model, temperature, toolOptions, override } = args;
+		const { client, model, toolOptions, override } = args;
 
 		// 思考走标准 reasoning.effort,不吃 chat 方言 —— 这正是上这套协议的动机。
 		const reasoningParams = buildResponsesReasoning({
@@ -1844,7 +1839,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			return {
 				model,
 				input,
-				...(temperature !== undefined ? { temperature } : {}),
+				// 同 chat 风味:不发 temperature(o 系推理模型正是走这套协议进来的)。
 				...(tools ? { tools, tool_choice: "auto" } : {}),
 				...mergeExtraParams(withReasoning ? reasoningParams : {}, args.extra),
 			};

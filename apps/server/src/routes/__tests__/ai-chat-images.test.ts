@@ -71,7 +71,6 @@ async function makeDeps(
 								apiKey: "sk-x",
 								baseUrl: "https://api.example.com/v1",
 								model: "m",
-								temperature: 0.7,
 								enableThinking: false,
 								thinkingLevel: "medium",
 								extraParams: "",

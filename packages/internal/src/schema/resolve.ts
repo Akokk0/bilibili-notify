@@ -74,7 +74,6 @@ export interface ResolvedAI {
 	baseUrl?: string;
 	apiKey?: string;
 	model: string;
-	temperature: number;
 	persona: AIPersona;
 	dynamicPrompt: string;
 	liveSummaryPrompt: string;
@@ -109,7 +108,7 @@ function mergeFeatures(
 
 function resolveAI(globals: AISettings, override: AIOverride | undefined): ResolvedAI {
 	// 连接与生成参数按家分桶存,先取出当前生效的那一套。per-UP override 覆盖的是
-	// **解析后**的值(它只动 temperature 与人格),不关心图来自哪个桶。
+	// **解析后**的值(它只挑人格),不关心图来自哪个桶。
 	const profile = resolveAIProfile(globals);
 	// 全局此刻用的是哪份人格 —— 读法只有一处(`resolveActivePersona`),各端共用。
 	// 这里曾经自己展开过那三行,于是别的消费方(常驻 generator、试一句、锐评、聊天窗
@@ -120,7 +119,6 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 		baseUrl: profile.baseUrl,
 		apiKey: profile.apiKey,
 		model: profile.model,
-		temperature: profile.temperature,
 		persona: active.persona,
 		dynamicPrompt: active.dynamicPrompt,
 		liveSummaryPrompt: active.liveSummaryPrompt,
@@ -145,10 +143,8 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	const persona = namedPreset?.persona ?? base.persona;
 	const dynamicPrompt = namedPreset?.dynamicPrompt ?? base.dynamicPrompt;
 	const liveSummaryPrompt = namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;
-	// temperature 不在撤掉之列 —— 它本来就是独立一格,与挑哪份人格无关。
-	const temperature = override.temperature ?? base.temperature;
 
-	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature };
+	return { ...base, persona, dynamicPrompt, liveSummaryPrompt };
 }
 
 /**

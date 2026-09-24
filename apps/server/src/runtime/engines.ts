@@ -1502,7 +1502,6 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
 		},
 		dynamicPrompt: eff.ai.dynamicPrompt,
 		liveSummaryPrompt: eff.ai.liveSummaryPrompt,
-		temperature: eff.ai.temperature,
 	};
 }
 

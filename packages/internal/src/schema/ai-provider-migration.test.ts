@@ -61,7 +61,6 @@ describe("最老一代:扁平连接字段", () => {
 			apiKey: "sk-old",
 			baseUrl: "https://api.deepseek.com",
 			model: "deepseek-v4-pro",
-			temperature: 0.3,
 		});
 	});
 
@@ -167,7 +166,6 @@ describe("桶内字段的默认值与拒收", () => {
 			label: "",
 			baseUrl: "",
 			model: "",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

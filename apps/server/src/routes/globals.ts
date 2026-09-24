@@ -290,7 +290,7 @@ export function aiActiveProfileAfterPatch(
  *  1. 本次 patch 把当前那份实例的连接字段 apiKey / baseUrl / model **改成跟 current 不同的新值**;
  *  2. 本次 patch **换了实例** —— 换实例就是换连接,新那份的 key 还没验过;
  *  3. 本次 patch 把 ai.enabled 从 false 翻成 true(启用动作本身要验)。
- * 改 persona / prompt / temperature 不触发探活;AI 最终为禁用态时一律不跑。
+ * 改 persona / prompt 不触发探活;AI 最终为禁用态时一律不跑。
  *
  * 「值跟 current 相同也不触发」是为兼容前端整段 patch 风格 —— Ai.tsx save mutation
  * 把整段 `defaults.ai` 原样送上,只改 persona 时连接字段也跟着进 patch,
@@ -371,8 +371,8 @@ export async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckR
 
 	// 探活打的端点跟实例的接口风味走 —— responses-only 的模型(o1-pro 这类)在
 	// /chat/completions 上是 404,打错端点等于把用户永久挡在自己的探活门外,
-	// 而真正的聊天路径本来能通。responses 的 ping 不带 temperature:o 系推理
-	// 模型会 400 拒掉它,探活自己不能先踩雷。
+	// 而真正的聊天路径本来能通。两种 ping 都不带 temperature:真聊天路径一律不发它,
+	// 而 o 系推理模型、Claude Opus 4.7 起的模型收到它会 400 —— 探活自己不能先踩雷。
 	const base = fields.baseUrl.replace(/\/+$/, "");
 	const responses = fields.apiFlavor === "responses";
 	const url = responses ? `${base}/responses` : `${base}/chat/completions`;
@@ -387,7 +387,6 @@ export async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckR
 				model: fields.model,
 				messages: [{ role: "user", content: "ping" }],
 				max_tokens: 5,
-				temperature: 0,
 				stream: false,
 			};
 	const controller = new AbortController();

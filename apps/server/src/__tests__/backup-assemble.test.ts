@@ -19,7 +19,6 @@ function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: strin
 			apiKey: k,
 			baseUrl: "https://api.deepseek.com",
 			model: "deepseek-v4-pro",
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

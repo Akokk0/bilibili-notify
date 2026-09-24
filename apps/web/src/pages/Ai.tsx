@@ -47,7 +47,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Field, Picker, TArea, TInput, TNum } from "../components/forms";
+import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
@@ -172,8 +172,8 @@ function packIsland(ai: AISettings, providerKeys: readonly string[]) {
 
 /**
  * 说明条。本页几乎每条都在解释**为什么某个选项看起来不做事、或者干脆不见了**
- * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、DeepSeek 没有视觉模型、
- * 思考时 temperature 被忽略。不写清楚,主人只会觉得开关坏了或者设置没存上。
+ * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、DeepSeek 没有视觉模型。
+ * 不写清楚,主人只会觉得开关坏了或者设置没存上。
  */
 function FieldNote({ children }: { children: React.ReactNode }) {
 	return (
@@ -294,8 +294,6 @@ export default function Ai() {
 	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
 	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
 	const visionSubModelOn = profile.vision.model.trim().length > 0;
-	// 这家开思考时会静默忽略 temperature(DeepSeek 如此)。露着它纯属误导。
-	const temperatureLive = !(meta.temperatureIgnoredWhenThinking && profile.enableThinking);
 
 	// 一份都没添加 → 右侧直接就是添加面板,那本身就是空态引导。
 	const showAddPanel = addingProvider || rail.length === 0;
@@ -838,34 +836,17 @@ export default function Ai() {
 									</Field>
 								</GlassBox>
 
-								{/* 生成参数 —— temperature 与深度思考同属「这一次请求怎么生成」,合成一块。
-								    思考那半边的可见形态取决于这一家:各家写法不同,兜底档索性不发。 */}
+								{/* 生成参数 —— 深度思考与额外请求参数同属「这一次请求怎么生成」,合成一块。
+								    思考那半边的可见形态取决于这一家:各家写法不同,兜底档索性不发。
+								    这里没有 temperature:请求里一律不发、走服务商默认(推理模型收到它
+								    直接 400),想调的主人写进额外请求参数。 */}
 								<GlassBox
 									title="生成参数"
-									subtitle="temperature / 深度思考 · ai.{temperature,enableThinking,thinkingLevel,extraParams}"
+									subtitle="深度思考 / 额外参数 · ai.{enableThinking,thinkingLevel,extraParams}"
 									accent="var(--color-bn-purple)"
 									icon={<Icon.sparkle size={14} />}
 									badge="generation"
 								>
-									{/* 这家开思考时会静默忽略 temperature(DeepSeek 明确如此) —— 不报错也不
-									    生效,摆着让人调只会以为设置没存上。收起来并说明原因。 */}
-									{temperatureLive ? (
-										<Field code={`ai.providers.${editing}.temperature`}>
-											<TNum
-												value={profile.temperature}
-												onChange={(v) => setProfile("temperature", v)}
-												min={0}
-												max={2}
-												step={0.1}
-												width={100}
-											/>
-										</Field>
-									) : (
-										<FieldNote>
-											{meta.label} 一开思考就会<strong>忽略 temperature</strong>
-											（连同 top_p 那几个）， 调了也不生效，所以先收起来。关掉下面的深度思考它就回来
-										</FieldNote>
-									)}
 									{/* responses 风味下思考是标准字段(reasoning.effort),custom 也能开 ——
 									    「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 constants。 */}
 									{canProfileThink(profile) ? (

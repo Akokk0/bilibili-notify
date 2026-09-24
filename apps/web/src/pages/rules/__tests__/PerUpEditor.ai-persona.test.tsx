@@ -136,6 +136,14 @@ describe("per-UP AI 人格 — 只能挑已有的那几份", () => {
 		expect(screen.getByText(/这个 UP 用「温柔女仆」/)).toBeTruthy();
 		expect(await saveAndReadAi()).toEqual({ preset: "gentle-maid" });
 	});
+
+	it("打开之后只有挑人格这一格 —— temperature 已退役,不再给单个 UP 调", async () => {
+		const { container } = mount({ preset: "tsundere" });
+		// 开着的覆盖:挑人格那格在场,说明这一块确实渲染出来了,下面的「没有」才作数。
+		expect(container.querySelector('[data-code="ai.preset"]')).toBeTruthy();
+		expect(container.querySelector('[data-code="ai.temperature"]')).toBeNull();
+		expect(container.querySelector('input[type="number"]')).toBeNull();
+	});
 });
 
 describe("per-UP AI 人格 — 指不着人格的老值一律显示成「继承」", () => {
@@ -181,14 +189,17 @@ describe("per-UP AI 人格 — 老的自定义残留不许被写回磁盘", () =
 		});
 	});
 
-	it("与人格无关的 temperature 照旧留着 —— 它不在撤掉之列", async () => {
-		const { container } = mount({ ...STALE, temperature: 1.5 });
+	it("残留的 temperature 同样显式清除 —— 它已整个退役,请求里一律不发", async () => {
+		// temperature 不再有任何读者(见 schema/subscriptions.ts 的 AIOverrideSchema),
+		// 原样写回去就是又一份看得见、不起作用的死配置。
+		const staleWithTemperature = { ...STALE, temperature: 1.5 };
+		const { container } = mount({ ...staleWithTemperature });
 		fireEvent.click(headerToggle(container));
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
 
 		expect(await saveAndReadAi()).toEqual({
 			preset: "gentle-maid",
-			temperature: 1.5,
+			temperature: null,
 			persona: null,
 			dynamicPrompt: null,
 			liveSummaryPrompt: null,

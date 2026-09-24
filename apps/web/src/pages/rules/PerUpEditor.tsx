@@ -10,7 +10,6 @@
  * at a time — matching the design's "侧栏选 section · 主体只看一项" pattern.
  */
 
-import { resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { Avatar, CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -1110,17 +1109,15 @@ function SpecialUserBox({
 /* -------- AI -------------------------------------------------------------- */
 
 /**
- * 覆盖开着时写回磁盘的那个对象 —— 只留「挑了哪份人格」,外加与人格无关的 temperature。
+ * 覆盖开着时写回磁盘的那个对象 —— 只有「挑了哪份人格」这一格。
  *
- * 刻意**逐字段挑**而不是 `{ ...prev, preset }`:老配置里可能还留着当年那档
- * 「完全自定义」写下的 persona 与两段 prompt(它们已不在 schema 里,见
+ * 刻意**从零造**而不是 `{ ...value, preset }`:老配置里可能还留着当年那档「完全自定义」
+ * 写下的 persona 与两段 prompt,以及已退役的 temperature(它们都已不在 schema 里,见
  * schema/subscriptions.ts 的说明)。原样带上就等于把一份死配置重新写回盘上,下一个人
- * 打开文件照样看得见,还以为它在起作用;逐字段挑之后 buildPatch 会对它们发显式 null。
+ * 打开文件照样看得见,还以为它在起作用;从零造之后 buildPatch 会对它们发显式 null。
  */
-function pickAiOverride(prev: AIOverride | undefined, presetId: string): AIOverride {
-	const next: AIOverride = { preset: presetId };
-	if (prev?.temperature !== undefined) next.temperature = prev.temperature;
-	return next;
+function pickAiOverride(presetId: string): AIOverride {
+	return { preset: presetId };
 }
 
 function AiOverrideBox({
@@ -1160,7 +1157,7 @@ function AiOverrideBox({
 			enabled={enabled}
 			// 开:落到第一份人格。关:整个 override 拿掉 —— 那才是「继承全局」,
 			// 不必再往里塞一个表示同一件事的值。
-			onToggle={(on) => onChange(on ? pickAiOverride(value, firstPresetId) : undefined)}
+			onToggle={(on) => onChange(on ? pickAiOverride(firstPresetId) : undefined)}
 			inheritNote="该 UP 将跟着全局那份人格走"
 		>
 			{/* 开着却索引不到预设(理论不可达)时沿用继承文案兜底 —— 与收编前行为一致。 */}
@@ -1169,7 +1166,7 @@ function AiOverrideBox({
 					<Field code="ai.preset" full>
 						<Picker
 							value={activePreset.id}
-							onChange={(v) => onChange(pickAiOverride(value, v))}
+							onChange={(v) => onChange(pickAiOverride(v))}
 							options={presetOptions}
 						/>
 					</Field>
@@ -1179,19 +1176,6 @@ function AiOverrideBox({
 						{activePreset.persona.addressUser} ·
 						提示词随这份走。想改内容或另起一份，都到「智能女仆」页
 					</div>
-
-					<Field code="ai.temperature">
-						<TNum
-							value={value?.temperature ?? resolveAIProfile(baseline).temperature}
-							onChange={(v) =>
-								onChange({ ...pickAiOverride(value, activePreset.id), temperature: v })
-							}
-							min={0}
-							max={2}
-							step={0.1}
-							width={100}
-						/>
-					</Field>
 				</>
 			) : (
 				<InheritNote>该 UP 将跟着全局那份人格走</InheritNote>

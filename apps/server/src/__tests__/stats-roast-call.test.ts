@@ -44,7 +44,6 @@ const AI_SETTINGS = {
 	apiKey: "k",
 	baseUrl: "https://example.invalid/v1",
 	model: "m",
-	temperature: 0.7,
 	persona: {
 		name: "伦伦",
 		addressUser: "主人",

@@ -338,7 +338,7 @@ describe("deliverWork — 模板", () => {
 
 describe("deliverWork — AI 点评", () => {
 	it("点评替换模板文字;提示词按平台叫法,图只看前 4 张,这条订阅的 AI 覆盖原样交过去", async () => {
-		const aiOverride = { temperature: 0.2 };
+		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
 		const h = harness({
 			withImage: false,
 			withAi: true,
@@ -363,10 +363,13 @@ describe("deliverWork — AI 点评", () => {
 			withAi: true,
 			work: { commentText: "正文" },
 			config: { aiWebSearch: true },
-			settings: { aiOverride: { temperature: 0.2 } },
+			settings: { aiOverride: { dynamicPrompt: "这位 UP 专属的场景提示" } },
 		});
 		await deliverWork(h.args);
-		expect(h.comment.mock.calls[0]?.[3]).toEqual({ temperature: 0.2, webSearch: true });
+		expect(h.comment.mock.calls[0]?.[3]).toEqual({
+			dynamicPrompt: "这位 UP 专属的场景提示",
+			webSearch: true,
+		});
 	});
 
 	it("没有可点评的正文 / 关了 AI / 文字块藏起来 → 不调 AI", async () => {

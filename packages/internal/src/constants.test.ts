@@ -32,18 +32,6 @@ describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	it("兜底档一律按「支持」放行 —— 能力未知时不替主人做减法", () => {
 		expect(providerMeta("custom").supportsVision).toBe(true);
 	});
-
-	it("DeepSeek 开思考时会静默忽略 temperature", () => {
-		// 官方文档明说 temperature / top_p / presence_penalty / frequency_penalty
-		// 在思考模式下不报错也不生效。摆着让人调,只会以为是设置没存上。
-		expect(providerMeta("deepseek").temperatureIgnoredWhenThinking).toBe(true);
-	});
-
-	it("其余各家开思考照样吃 temperature", () => {
-		for (const id of ["openrouter", "volcengine", "siliconflow", "custom"] as const) {
-			expect(providerMeta(id).temperatureIgnoredWhenThinking).toBe(false);
-		}
-	});
 });
 
 describe("注册表本体", () => {

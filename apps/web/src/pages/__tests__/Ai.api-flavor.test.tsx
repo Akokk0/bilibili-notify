@@ -41,7 +41,6 @@ function globals(provider: ProviderId, flavor: "chat" | "responses" = "chat") {
 			baseUrl: "https://x/v1",
 			model: "m",
 			apiFlavor: flavor,
-			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
 			extraParams: "",

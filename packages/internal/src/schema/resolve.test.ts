@@ -123,8 +123,8 @@ describe("resolve()", () => {
 		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
 		expect(eff.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
 		expect(eff.ai.liveSummaryPrompt).toBe(globals.defaults.ai.liveSummaryPrompt);
-		// temperature 不在撤掉之列 —— 它本来就是独立一格,与人格无关。
-		expect(eff.ai.temperature).toBe(1.5);
+		// temperature 也已退役(请求里一律不发),残留值同样不参与解析。
+		expect("temperature" in eff.ai).toBe(false);
 	});
 
 	it("AI named preset takes priority over base; missing preset falls back gracefully", () => {
