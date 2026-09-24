@@ -134,11 +134,12 @@ describe("拓展详情页:上报问题", () => {
 		expect(within(rows[0] as HTMLElement).getByText(/没声明 liveStart/)).toBeTruthy();
 		expect(within(rows[0] as HTMLElement).getByText("5 分钟前")).toBeTruthy();
 
-		// 对上了订阅的印订阅的名字;作品按平台叫法(抖音叫「作品」);丢了几格就列几句。
+		// 对上了订阅的印订阅的名字;作品按平台叫法(抖音叫「作品」);动了几格就列几句。药丸说「动了」不说
+		// 「丢了」:截断(决策 59 的 09-24 🔗)也走这一种,丢了还是截了由每一句自己说。
 		const second = rows[1] as HTMLElement;
 		expect(await within(second).findByText("某位 UP")).toBeTruthy();
 		expect(within(second).getByText("作品")).toBeTruthy();
-		expect(within(second).getByText("丢了 2 格")).toBeTruthy();
+		expect(within(second).getByText("动了 2 格")).toBeTruthy();
 		expect(within(second).getByText(/images\[0\]/)).toBeTruthy();
 		expect(within(second).getByText(/stats\.likes/)).toBeTruthy();
 	});

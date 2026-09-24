@@ -257,6 +257,9 @@ export interface ExtensionOwnSubscription {
 //   (决策 6)。宿主按文件头认格式,收下的是它自己拷的一份。
 // - 字段只收**通用的**;多交一格宿主不认识的,整条拒。认识的选填格值坏了(一张图解不开、超大小、数为负、
 //   字符串超长)只丢那一格,其余照收 —— 丢了什么、为什么,记在日志与拓展详情页的「上报问题」里。
+// - 例外:作品正文(`text`,10000 字)与视频标题(`video.title`,256 字)超长**不丢**,截到上限收下(截在字符
+//   边界上,不把一个 emoji 劈成两半),「上报问题」里同样记一句「已截断」—— 关键词屏蔽、出卡、点评看的都是
+//   截下来的那一段。「字」按 JS 字符串的 `length` 数(一个 emoji 算两个)。
 
 /**
  * 卡上的作者(决策 54):都选填,出卡优先用这里的,没带的那一样用订阅资料。**不改资料** —— 订阅页的
@@ -273,6 +276,7 @@ export interface SubscriptionAuthor {
 export interface SubscriptionVideo {
 	/** 封面:png / jpeg / webp / gif,8 MiB 封顶。 */
 	cover?: Uint8Array;
+	/** 超过 256 字截到 256 字收下(不丢)。 */
 	title?: string;
 	/** 时长,**秒**。 */
 	duration?: number;
@@ -303,7 +307,7 @@ export interface SubscriptionPost {
 	url: string;
 	/** 发布时刻,毫秒。 */
 	publishedAt: number;
-	/** 正文,纯文本,保留换行。 */
+	/** 正文,纯文本,保留换行。超过 10000 字截到 10000 字收下(不丢)。 */
 	text?: string;
 	/** 作品图:png / jpeg / webp / gif,单张 8 MiB、最多 30 张;宽高由 BN 读。 */
 	images?: readonly Uint8Array[];

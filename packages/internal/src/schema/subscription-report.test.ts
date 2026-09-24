@@ -6,7 +6,8 @@
  * - **不认识的字段整条拒**(只可能是拓展照更新的契约写的);
  * - **必填坏了整条拒**;
  * - **认识的选填格值坏了只丢那一格**(一张图解不开、互动数为负 —— 平台那边真会发生,主人宁可收一张
- *   少一张图的卡),并说清丢了什么、为什么。
+ *   少一张图的卡),并说清丢了什么、为什么;
+ * - **作品正文与视频标题太长不算坏**:截到上限收下,同样说一句「已截断」(决策 59 的 09-24 🔗)。
  *
  * 另外两条宿主在收下之前也要问的:报的种类清单里声明了没有、报的外部 id 像不像样。
  */
@@ -23,6 +24,7 @@ import {
 	SUBSCRIPTION_REPORT_IMAGE_MAX_BYTES,
 	SUBSCRIPTION_REPORT_IMAGES_TOTAL_MAX_BYTES,
 	SUBSCRIPTION_REPORT_TEXT_MAX,
+	SUBSCRIPTION_REPORT_TITLE_MAX,
 	sniffImageFormat,
 	undeclaredReportReason,
 } from "./subscription-report";
@@ -170,16 +172,72 @@ describe("选填:值坏了只丢那一格,其余照收,原因写清", () => {
 		]);
 	});
 
-	it("正文超长:丢正文", () => {
+	// 决策 59 的 09-24 🔗:作品正文与视频标题**太长不算坏** —— 截到上限收下,问题框里记一条「截断」。整格丢掉
+	// 的话关键词屏蔽看到的是空串,含屏蔽词的长文照推,卡上也没了正文。
+	it("正文超长:截到上限收下,记一条「已截断」", () => {
 		const r = checkSubscriptionReport("post", {
 			...POST,
 			text: "字".repeat(SUBSCRIPTION_REPORT_TEXT_MAX + 1),
 		});
 		if (!r.ok) throw new Error(r.reason);
-		expect(r.value.text).toBeUndefined();
+		expect(r.value.text).toBe("字".repeat(SUBSCRIPTION_REPORT_TEXT_MAX));
+		expect(r.dropped).toEqual([`text:超过 ${SUBSCRIPTION_REPORT_TEXT_MAX} 字,已截断`]);
+	});
+
+	it("视频标题超长:截到上限收下,记一条「已截断」", () => {
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			video: { title: "题".repeat(SUBSCRIPTION_REPORT_TITLE_MAX + 5), plays: 3 },
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.video).toEqual({ title: "题".repeat(SUBSCRIPTION_REPORT_TITLE_MAX), plays: 3 });
+		expect(r.dropped).toEqual([`video.title:超过 ${SUBSCRIPTION_REPORT_TITLE_MAX} 字,已截断`]);
+	});
+
+	it("截口正落在一个 emoji 中间:少截一个字,不把它劈成两半", () => {
+		const MAX = SUBSCRIPTION_REPORT_TEXT_MAX;
+		// 😀 占两个 UTF-16 单元(上限也按这个单位数):第 MAX 个单元是它的前一半。
+		const straddling = checkSubscriptionReport("post", {
+			...POST,
+			text: `${"字".repeat(MAX - 1)}😀尾`,
+		});
+		if (!straddling.ok) throw new Error(straddling.reason);
+		expect(straddling.value.text).toBe("字".repeat(MAX - 1));
+		// 正好装得下它:照留。
+		const fits = checkSubscriptionReport("post", { ...POST, text: `${"字".repeat(MAX - 2)}😀尾` });
+		if (!fits.ok) throw new Error(fits.reason);
+		expect(fits.value.text).toBe(`${"字".repeat(MAX - 2)}😀`);
+	});
+
+	it("正好在上限上:不截、不记", () => {
+		const text = "字".repeat(SUBSCRIPTION_REPORT_TEXT_MAX);
+		expect(checkSubscriptionReport("post", { ...POST, text })).toEqual({
+			ok: true,
+			value: { ...POST, text },
+			dropped: [],
+		});
+	});
+
+	it("只有正文与视频标题截断:别的长文本超长照旧丢那一格,正文不是字符串照旧丢", () => {
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			video: { description: "简".repeat(SUBSCRIPTION_REPORT_TEXT_MAX + 1) },
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.video).toEqual({});
 		expect(r.dropped).toEqual([
-			expect.stringMatching(new RegExp(`text.*${SUBSCRIPTION_REPORT_TEXT_MAX}`)),
+			expect.stringMatching(
+				new RegExp(`^video\\.description:超过 ${SUBSCRIPTION_REPORT_TEXT_MAX} 字$`),
+			),
 		]);
+		const live = checkSubscriptionReport("liveStart", {
+			url: "https://live.douyin.com/1",
+			startedAt: T,
+			title: "题".repeat(SUBSCRIPTION_REPORT_TITLE_MAX + 1),
+		});
+		if (!live.ok) throw new Error(live.reason);
+		expect(live.value.title).toBeUndefined();
+		expect(dropped("post", { ...POST, text: 42 })).toEqual([expect.stringMatching(/^text:/)]);
 	});
 
 	it("一组选填格整个不是对象:丢那一组", () => {

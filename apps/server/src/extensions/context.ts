@@ -118,7 +118,7 @@ export interface ExtensionSubscriptionRow {
 }
 
 /**
- * 一条「上报问题」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者丢了几格。
+ * 一条「上报问题」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。
  *
  * 丢格与拒绝**只从一个出口出去**(ctx 里的 `reportProblem`):记一行 warn(带 `[ext:<id>]` 与原因),
  * 再交给 {@link CreateExtensionContextOptions.onSubscriptionReportProblem} —— 拓展详情页那个「上报问题」框
@@ -135,7 +135,7 @@ export interface SubscriptionReportProblem {
 	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
 	subscriptionIds: readonly string[];
 	/**
-	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢了这几格(每格一句);`skipped`:周期
+	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢掉或截断了这几格(每格一句);`skipped`:周期
 	 * 「正在直播」到点时上次推送之后没收到新的直播状态,这一轮没推(决策 61,`kind` 是 `liveStatus`,一句)
 	 * —— 这一种不是 ctx 记的,是拓展直播的计时器(`runtime/extension-live-push.ts`)记的。
 	 */
@@ -475,7 +475,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		logger.warn(
 			problem.outcome === "rejected"
 				? `上报 ${what} 整条拒了:${problem.reasons.join(";")}`
-				: `上报 ${what} 丢了 ${problem.reasons.length} 格:${problem.reasons.join(";")}`,
+				: `上报 ${what} 动了 ${problem.reasons.length} 格:${problem.reasons.join(";")}`,
 		);
 		opts.onSubscriptionReportProblem?.({ ...problem, extensionId: id, at: Date.now() });
 	}

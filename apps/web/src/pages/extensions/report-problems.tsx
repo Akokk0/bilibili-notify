@@ -7,8 +7,8 @@ import { featureLabelOf } from "../up/subscription-source";
 import { PARAGRAPH_CLS } from "./shared";
 
 /**
- * 拓展详情页的「上报问题」框(ADR-0019 决策 60):订阅源拓展报上来、BN 没照单全收的那几条 —— 丢了几格,
- * 或者整条拒了;外加周期「正在直播」因为拓展没报新状态而跳过的那几轮(决策 61)。**有问题才出现**(`ext.reportProblems` 服务端有才给);最近 20 条、新的在前,只在服务端
+ * 拓展详情页的「上报问题」框(ADR-0019 决策 60):订阅源拓展报上来、BN 没照单全收的那几条 —— 动了几格
+ * (丢掉或截断),或者整条拒了;外加周期「正在直播」因为拓展没报新状态而跳过的那几轮(决策 61)。**有问题才出现**(`ext.reportProblems` 服务端有才给);最近 20 条、新的在前,只在服务端
  * 内存里(重启 BN 就清空)。
  *
  * 原因只写进日志的话,主人看见「卡片少了一张图」不会想到去日志里搜;私聊的话,一个系统性的 bug 就是每条
@@ -90,13 +90,16 @@ function ProblemRow({
 	);
 }
 
-/** 那颗药丸:整条拒了 / 丢了几格 / 周期「正在直播」因为没有新状态跳过了一轮(决策 61)。 */
+/**
+ * 那颗药丸:整条拒了 / 动了几格 / 周期「正在直播」因为没有新状态跳过了一轮(决策 61)。「动了」不说「丢了」:
+ * 超长的正文与视频标题是截断收下的(决策 59 的 09-24 🔗),也走 `dropped` 这一种 —— 丢了还是截了由每一句自己说。
+ */
 function outcomeLabel(problem: ExtensionReportProblemView): string {
 	switch (problem.outcome) {
 		case "rejected":
 			return "整条拒了";
 		case "dropped":
-			return `丢了 ${problem.reasons.length} 格`;
+			return `动了 ${problem.reasons.length} 格`;
 		case "skipped":
 			return "跳过一轮";
 	}

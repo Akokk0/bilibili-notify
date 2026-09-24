@@ -12,7 +12,12 @@ import {
 	type PushSegment,
 } from "@bilibili-notify/dynamic";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import { defaultMessageKindLayout, type SubscriptionReportValue } from "@bilibili-notify/internal";
+import {
+	checkSubscriptionReport,
+	defaultMessageKindLayout,
+	SUBSCRIPTION_REPORT_TEXT_MAX,
+	type SubscriptionReportValue,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { bindExtensionPosts } from "../extension-posts.js";
@@ -99,6 +104,67 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 		releaseFirst();
 		await vi.waitFor(() => expect(sent).toHaveLength(2));
 		expect(sent).toEqual([post(1).url, post(2).url]);
+		handle.dispose();
+	});
+});
+
+/**
+ * 正文超过上限的作品(ADR-0019 决策 59 的 09-24 🔗):收下时截到上限,**屏蔽看的是截下来的那一段**。从前
+ * 超长的正文整格丢掉,屏蔽看到的是空串 —— 前一万字里写着屏蔽词的长文照推。
+ *
+ * 走的是宿主收下作品的那一道(`checkSubscriptionReport`,ctx 原样交它的结果)→ bus → 作品的消费者 → 过滤。
+ */
+describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
+	it("前一万字里有屏蔽词、整段超长:挡下,不出卡不推", async () => {
+		const bus = createNodeMessageBus();
+		const render = vi.fn(async () => Buffer.from("card"));
+		const image = { generateNeutralDynamicCard: render } as unknown as ImageRenderer;
+		const sent: PushSegment[][] = [];
+		const push: BoundWorkPush = {
+			broadcast: async (segments: PushSegment[]) => {
+				sent.push(segments);
+			},
+			broadcastSequence: async () => {},
+		};
+		const handle = bindExtensionPosts({
+			bus,
+			logger,
+			subscription: (id) => (id === SUB.id ? SUB : undefined),
+			profileName: () => "资料名",
+			settings: () => ({
+				messageLayout: defaultMessageKindLayout("dynamic"),
+				filter: { enable: true, keywords: ["海边"] },
+				dynamic: true,
+			}),
+			sources: {
+				running: () => true,
+				postNoun: () => "作品",
+				readAvatar: async () => undefined,
+			},
+			pushFor: () => push,
+			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryDeps: () => ({
+				logger,
+				image,
+				cardFailures: createCardFailureTracker(),
+				sendErrorMsg: async () => {},
+				emitEngineError: () => {},
+			}),
+		});
+
+		const text = `今天去海边${"浪".repeat(SUBSCRIPTION_REPORT_TEXT_MAX)}`;
+		const checked = checkSubscriptionReport("post", { ...post(1), text });
+		if (!checked.ok) throw new Error(checked.reason);
+		bus.emit("subscription-reported", {
+			extensionId: SUB.extensionId,
+			externalId: SUB.externalId,
+			subscriptionIds: [SUB.id],
+			report: { kind: "post", value: checked.value },
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(render).not.toHaveBeenCalled();
+		expect(sent).toEqual([]);
 		handle.dispose();
 	});
 });

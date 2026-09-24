@@ -11,7 +11,8 @@ import { EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX } from "./subscriptions";
  * - **不认识的字段整条拒** —— 只可能是拓展照更新的契约写的(装的时候契约小号那道闸本该拦住);
  * - **必填坏了整条拒**;
  * - **认识的选填格值坏了只丢那一格**(一张图解不开 / 超大小、互动数为负、字符串超长 —— 平台那边真会
- *   发生,主人宁可收一张少一张图的卡),并交回丢了什么、为什么。
+ *   发生,主人宁可收一张少一张图的卡),并交回丢了什么、为什么;
+ * - **作品正文与视频标题太长不算坏**(决策 59 的 09-24 🔗):截到上限收下,同样交回一句「已截断」。
  *
  * 字段只收**通用的**(决策 4):哪个平台缺一样东西,就加进这张表、BN 发一版(并抬契约小号)。
  *
@@ -53,9 +54,13 @@ export const SUBSCRIPTION_REPORT_IMAGES_TOTAL_MAX_BYTES = 64 * MiB;
 export const SUBSCRIPTION_AVATAR_MAX_BYTES =
 	Math.floor((SUBSCRIPTION_AVATAR_MAX_CHARS - "data:image/jpeg;base64,".length) / 4) * 3;
 
-/** 正文、简介这类长文本的字数上限。 */
+/**
+ * 正文、简介这类长文本的字数上限。作品正文超了截断、不丢(见 {@link truncatingText}),简介超了丢那一格。
+ *
+ * 「字数」与 zod 的 `.max()` 同一个单位:UTF-16 单元(`string.length`),一个 emoji 算两个。
+ */
 export const SUBSCRIPTION_REPORT_TEXT_MAX = 10_000;
-/** 标题、分区的字数上限。 */
+/** 标题、分区的字数上限。视频标题超了截断、不丢;直播标题与分区超了丢那一格。 */
 export const SUBSCRIPTION_REPORT_TITLE_MAX = 256;
 /** 名字的字数上限 —— 与解析门候选的 `name` 同一把尺子。 */
 export const SUBSCRIPTION_REPORT_NAME_MAX = 128;
@@ -260,6 +265,32 @@ const text = (max: number) => z.string({ error: "要是字符串" }).max(max, `�
 const NameSchema = text(SUBSCRIPTION_REPORT_NAME_MAX).min(1, "不能是空串");
 const TitleSchema = text(SUBSCRIPTION_REPORT_TITLE_MAX);
 const LongTextSchema = text(SUBSCRIPTION_REPORT_TEXT_MAX);
+
+/** 超长就截到上限、不丢的那几格 → 它们的上限。走格子时照它截(同 {@link LIST_RULES} 的挂法)。 */
+const TRUNCATE_AT = new WeakMap<z.ZodType, number>();
+/**
+ * 超长就截到上限的一格(决策 59 的 09-24 🔗):作品正文与视频标题。关键词屏蔽只看这两样,整格丢掉的话屏蔽
+ * 看到的是空串、含屏蔽词的长文照推,卡上也没了正文、女仆也没得点评。B 站的正文 BN 不截,长度由平台在发布
+ * 那头限着;拓展没有平台兜底,这道上限只为安全 —— 以内全文走到底,超了截断、说一声。
+ *
+ * 形状上仍是 `.max()` 那一格(契约形状的守卫与整份复核照旧认它),截断在走格子那一步。
+ */
+function truncatingText(max: number) {
+	const schema = text(max);
+	TRUNCATE_AT.set(schema, max);
+	return schema;
+}
+const PostTextSchema = truncatingText(SUBSCRIPTION_REPORT_TEXT_MAX);
+const VideoTitleSchema = truncatingText(SUBSCRIPTION_REPORT_TITLE_MAX);
+
+/**
+ * 截到 `max` 个 UTF-16 单元,截在字符边界上:截口正落在一对代理项(emoji、扩展区汉字)中间就少截一个,
+ * 不留半个字。
+ */
+function truncateText(value: string, max: number): string {
+	const last = value.charCodeAt(max - 1);
+	return value.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
+}
 const UrlSchema = z
 	.url({ protocol: /^https?$/, error: "要是 http:// 或 https:// 开头的地址" })
 	.max(SUBSCRIPTION_REPORT_URL_MAX, `超过 ${SUBSCRIPTION_REPORT_URL_MAX} 字`);
@@ -332,8 +363,8 @@ export const SubscriptionPostSchema = z.strictObject({
 		),
 	url: UrlSchema,
 	publishedAt: TimeSchema,
-	/** 纯文本,保留换行。 */
-	text: LongTextSchema.optional(),
+	/** 纯文本,保留换行。超长截断、不丢。 */
+	text: PostTextSchema.optional(),
 	images: list(SubscriptionReportPictureSchema, {
 		max: SUBSCRIPTION_POST_IMAGES_MAX,
 		unit: "张",
@@ -347,7 +378,8 @@ export const SubscriptionPostSchema = z.strictObject({
 	video: z
 		.strictObject({
 			cover: SubscriptionReportPictureSchema.optional(),
-			title: TitleSchema.optional(),
+			/** 超长截断、不丢。 */
+			title: VideoTitleSchema.optional(),
 			/** 秒。 */
 			duration: z.number({ error: "要是数字(秒)" }).nonnegative("不能是负的").optional(),
 			description: LongTextSchema.optional(),
@@ -462,7 +494,7 @@ export type SubscriptionReportCheck<K extends SubscriptionReportKind> =
 	| { ok: false; reason: string };
 
 interface WalkState {
-	/** 丢掉的每一格一句:哪一格、为什么。 */
+	/** 丢掉(或截断)的每一格一句:哪一格、为什么。 */
 	dropped: string[];
 	/** 这条上报里还能收多少字节的图。 */
 	imageBytesLeft: number;
@@ -547,7 +579,13 @@ function walkCell(schema: z.ZodType, value: unknown, where: string, state: WalkS
 		}
 		return { ok: true, value: unique ? [...new Set(kept)] : kept };
 	}
-	const parsed = schema.safeParse(value);
+	let input = value;
+	const cut = TRUNCATE_AT.get(schema);
+	if (cut !== undefined && typeof input === "string" && input.length > cut) {
+		input = truncateText(input, cut);
+		state.dropped.push(`${where}:超过 ${cut} 字,已截断`);
+	}
+	const parsed = schema.safeParse(input);
 	if (!parsed.success) {
 		return {
 			ok: false,
@@ -569,8 +607,8 @@ function walkCell(schema: z.ZodType, value: unknown, where: string, state: WalkS
 }
 
 /**
- * 核一条上报(决策 59)。收下时 `dropped` 是丢掉的每一格(哪一格、为什么),拒掉时 `reason` 点名哪儿
- * 不对 —— 两样宿主都原样记进「上报问题」(决策 60),拒掉的还原样交回拓展。
+ * 核一条上报(决策 59)。收下时 `dropped` 是丢掉(或截断)的每一格(哪一格、为什么),拒掉时 `reason` 点名
+ * 哪儿不对 —— 两样宿主都原样记进「上报问题」(决策 60),拒掉的还原样交回拓展。
  *
  * 拓展交来的对象读起来会抛(getter、Proxy)也算整条拒,原话带上 —— 这里不往外抛。
  */
