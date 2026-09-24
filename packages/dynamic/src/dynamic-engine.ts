@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type {
@@ -9,33 +7,25 @@ import type {
 	MessageBus,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import {
-	assembleMessageGroups,
-	DEFAULT_MESSAGE_LAYOUT,
-	interpolate,
-} from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import { resolveDynamicColorOptions } from "./card-style";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
 import type {
 	PushLike,
-	PushSegment,
 	SubItemView,
 	SubManagerView,
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
 import type { AllDynamicInfo, Dynamic, DynamicFilterConfig, DynamicTimelineManager } from "./types";
-
-interface CommentaryClient {
-	comment(
-		content: string,
-		scene?: AIScene,
-		imageUrls?: string[],
-		override?: CommentaryCallOverride,
-	): Promise<string>;
-}
+import {
+	type CardFailureTracker,
+	type CommentaryClient,
+	createCardFailureTracker,
+	deliverWork,
+	type NeutralWork,
+	type WorkDeliveryConfig,
+} from "./work-delivery";
 
 const LOG_TAG = "bilibili-notify-dynamic";
 /**
@@ -46,25 +36,8 @@ const LOG_TAG = "bilibili-notify-dynamic";
  */
 const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
 
-/**
- * 动态推送文本模板的内建兜底,仅在 adapter 未填 config.dynamicTemplate /
- * videoTemplate 时使用(真实 adapter 都会从 globals.defaults.templates 填充)。
- * 与 `@bilibili-notify/internal` 的 `DEFAULT_TEMPLATES.dynamic/.dynamicVideo`
- * 保持一致。变量仅 `{name}`(UP 名);链接是消息版式的独立部件,不再进模板
- * 链接不是模板变量,由消息版式的 link 部件提供。
- */
-const DEFAULT_DYNAMIC_TEXT = {
-	dynamic: "{name}发布了一条动态",
-	video: "{name}发布了新视频",
-} as const;
-
-/**
- * 渲染动态推送文本:`{name}` 插值 + `\n` 展开。链接是版式的独立部件,模板里没有链接变量
- * (2026-09 起不再替旧模板剥 `{url}`:写了就原样出现,请从模板里删掉)。
- */
-function renderDynamicText(template: string, name: string): string {
-	return interpolate(template, { name }).replaceAll("\\n", "\n");
-}
+/** B 站的开播伪动态:开播由直播引擎推,动态这边只记统计。 */
+const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
 
 function parseUid(raw: unknown): string | undefined {
 	if (typeof raw === "number" && Number.isFinite(raw)) return String(Math.trunc(raw));
@@ -135,51 +108,17 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * Runtime configuration for {@link DynamicEngine}. The standalone runtime fills it
  * from its config store. The `logLevel` field is intentionally dropped — the host
  * sets logger level externally via {@link ServiceContext}.
+ *
+ * 模板 / 图集 / 出图 / AI 那几格是作品装配的引擎级设置(见 {@link WorkDeliveryConfig}),
+ * 这里只多出 B 站这头自己的:轮询节奏、视频链接换 BV、过滤。
  */
-export interface DynamicEngineConfig {
+export interface DynamicEngineConfig extends WorkDeliveryConfig {
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
-	/**
-	 * 非视频动态的推送文本模板,变量只有 `{name}`(UP 名)。链接不是模板变量:它是消息版式的
-	 * 独立部件,要不要带、放在哪由版式决定。缺省时回退到内建文案。Adapter 通常用
-	 * `globals.defaults.templates.dynamic` 填充。
-	 */
-	dynamicTemplate?: string;
-	/**
-	 * 视频投稿的推送文本模板,变量同上(链接部件给的是视频链接,或按 dynamicVideoUrlToBV 换成 BV)。
-	 * 缺省时回退到内建文案。Adapter 通常用 `globals.defaults.templates.dynamicVideo` 填充。
-	 */
-	videoTemplate?: string;
-	/**
-	 * DYNAMIC_TYPE_DRAW 图集图片推送行为。enable=false 时跳过图集广播,
-	 * 只发文本/卡片。forward=true 时走合并转发(聊天记录卡片,走 OneBot
-	 * send_group_forward_msg,部分 OneBot 实现/NapCat 长消息通道不稳);
-	 * forward=false 多图合并到一条普通 send_group_msg。单图永远不走合并转发。
-	 */
-	imageGroup: {
-		enable: boolean;
-		forward: boolean;
-	};
 	/** 内容过滤配置（含 notify：被屏蔽时是否通知）。 */
 	filter: DynamicFilterConfig & { notify?: boolean };
-	/**
-	 * 是否启用图片卡片渲染。`false` 时跳过 puppeteer 调用,推送降级为纯文字。缺省视为 true,
-	 * 保留旧 adapter 不传该字段时的既有行为。Adapter 通常用 `globals.defaults.cardStyle.enabled` 填充。
-	 */
-	imageEnabled?: boolean;
-	/**
-	 * 是否启用 AI 动态点评。`false` 时跳过 `CommentaryClient.comment()` 调用,推送只用原始动态文本。
-	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
-	 */
-	aiEnabled?: boolean;
-	/**
-	 * 点评时允不允许联网搜索。缺省 false —— 搜索按次付费,自动路径必须主人亲手
-	 * 点亮。Adapter 用 `globals.defaults.ai.search.engines.dynamic` 填充;引擎只把
-	 * 它翻成 override.webSearch,执行器在不在是生成器的事。
-	 */
-	aiWebSearch?: boolean;
 }
 
 export interface DynamicEngineOptions {
@@ -193,52 +132,58 @@ export interface DynamicEngineOptions {
 	ai?: CommentaryClient;
 	config: DynamicEngineConfig;
 	/**
+	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
+	 * 同一次故障只提醒一遍)就传进来;不传则引擎自己建一份。
+	 */
+	cardFailures?: CardFailureTracker;
+	/**
 	 * Adapter 提供的订阅快照访问器。返回 null 表示订阅尚未就绪
 	 * （engine 会在收到 `subscription-changed` / `auth-restored` 后再次拉取）。
 	 */
 	getSubs: () => SubscriptionsView | null;
 }
 
-/** 从动态数据中提取图片 URL，用于多模态 AI 点评（最多 4 张） */
+/** 从动态数据中提取图片 URL，用于多模态 AI 点评(装配只看前 4 张) */
 function extractDynamicImages(item: Dynamic): string[] {
-	const mod = item.modules.module_dynamic;
+	const mod = item.modules?.module_dynamic;
 	const urls: string[] = [];
 	// 图文动态（draw，纯图片帖）
 	// P2:这些字段经 as-cast 绕过索引类型,运行时可能是对象。`typeof===string`
 	// 运行时守卫,杜绝对象被 push 进 string[] 后当图片 URL 喂多模态 AI。
-	if (mod.major?.draw?.items) {
+	if (mod?.major?.draw?.items) {
 		for (const img of mod.major.draw.items as Array<{ src?: unknown }>) {
 			if (typeof img.src === "string" && img.src) urls.push(img.src);
 		}
 	}
 	// 专栏/opus 图片列表
-	if (mod.major?.opus?.pics) {
+	if (mod?.major?.opus?.pics) {
 		for (const pic of mod.major.opus.pics) {
 			if (typeof pic.url === "string" && pic.url) urls.push(pic.url);
 		}
 	}
 	// 视频封面（archive 有 [key: string]: any）
-	const archiveCover: unknown = mod.major?.archive?.cover;
+	const archiveCover: unknown = mod?.major?.archive?.cover;
 	if (typeof archiveCover === "string" && archiveCover) urls.push(archiveCover);
-	return urls.slice(0, 4);
+	return urls;
 }
 
 /** 从动态数据中提取纯文本内容，用于 AI 点评 */
 function extractDynamicText(item: Dynamic): string {
-	const mod = item.modules.module_dynamic;
+	// 可选链:翻作品时每条都会提一次(不再只在要点评时),缺了 module_dynamic 的残条不能在这儿抛。
+	const mod = item.modules?.module_dynamic;
 	const parts: string[] = [];
 
 	// 正文描述
-	if (mod.desc?.text) parts.push(mod.desc.text);
+	if (mod?.desc?.text) parts.push(mod.desc.text);
 
 	// 专栏/opus 摘要
-	if (mod.major?.opus?.summary?.text) {
+	if (mod?.major?.opus?.summary?.text) {
 		if (mod.major.opus.title) parts.push(`标题：${mod.major.opus.title}`);
 		parts.push(mod.major.opus.summary.text);
 	}
 
 	// 视频标题
-	if (mod.major?.archive?.title) parts.push(`视频标题：${mod.major.archive.title}`);
+	if (mod?.major?.archive?.title) parts.push(`视频标题：${mod.major.archive.title}`);
 
 	// 转发内容
 	if (item.orig) {
@@ -256,6 +201,66 @@ function extractDynamicText(item: Dynamic): string {
 	}
 
 	return parts.join("\n").trim();
+}
+
+/**
+ * 链接部件的内容(不含任何前缀文案)。视频给视频页(或按设置换成 BV 号,取不到 BV 就没有链接),
+ * 别的给动态页。
+ */
+function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): string {
+	if (!isVideo) return `https://t.bilibili.com/${item.id_str}`;
+	const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
+	if (!videoUrlToBV) return `https:${jumpUrl}`;
+	const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
+	return bvMatch ? bvMatch[0] : "";
+}
+
+/**
+ * 图集的图:只有图文动态(`DYNAMIC_TYPE_DRAW`)附。原图在 major.draw.items[].src;部分 opus 包裹的
+ * 图文帖图在 major.opus.pics[].url(此前只读 opus.pics → 纯 DRAW 帖的图组被静默丢弃)。两处都带
+ * width/height(B 站图集元数据)—— 透传给需要原始尺寸的平台(QQ 原生 markdown 多图
+ * `![#宽px #高px]`),其余平台只用 url。
+ */
+function extractGallery(item: Dynamic): ForwardImage[] {
+	if (item.type !== "DYNAMIC_TYPE_DRAW") return [];
+	const major = item.modules?.module_dynamic?.major;
+	const images: ForwardImage[] = [];
+	for (const it of (major?.draw?.items ?? []) as Array<{
+		src?: string;
+		width?: number;
+		height?: number;
+	}>) {
+		if (it.src) images.push({ url: it.src, width: it.width, height: it.height });
+	}
+	for (const pic of major?.opus?.pics ?? []) {
+		if (pic.url) images.push({ url: pic.url, width: pic.width, height: pic.height });
+	}
+	return images;
+}
+
+/**
+ * B 站原始动态 → 平台中立的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverWork`)与拓展
+ * 共用,不再读原始数据 —— 它要的这几样在这里一次翻好。
+ */
+function workFromDynamic(item: Dynamic, name: string, videoUrlToBV: boolean): NeutralWork {
+	const isVideo = item.type === "DYNAMIC_TYPE_AV";
+	return {
+		// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili 动态接口的子集，
+		// 仅声明字段不同），运行时是同一对象。这里用 unknown 中转的类型断言避开两份独立 .d.ts 的
+		// 结构性差异。
+		renderCard: (image, colorOptions) =>
+			image.generateDynamicCard(
+				item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
+				colorOptions,
+			),
+		link: dynamicLink(item, isVideo, videoUrlToBV),
+		name,
+		isVideo,
+		commentText: extractDynamicText(item),
+		commentImages: extractDynamicImages(item),
+		postNoun: "动态",
+		gallery: extractGallery(item),
+	};
 }
 
 /**
@@ -312,9 +317,8 @@ export class DynamicEngine {
 	private authLost = false;
 	private dynamicSubManager: SubManagerView = new Map();
 	private dynamicTimelineManager: DynamicTimelineManager = new Map();
-	/** 连续图片渲染失败计数，达到阈值时仅通知一次但不停 cron */
-	private imageFailureStreak = 0;
-	private imageFailureNotified = false;
+	/** 出图连续失败的计数:只提醒一次、不停 cron(可能与拓展作品那条路共用一份)。 */
+	private readonly cardFailures: CardFailureTracker;
 	/**
 	 * 上次**成功**拉到动态列表的时刻。`undefined` = 起来以后一次都没成功过。
 	 *
@@ -335,6 +339,7 @@ export class DynamicEngine {
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
 		this.logger = opts.serviceCtx.logger;
+		this.cardFailures = opts.cardFailures ?? createCardFailureTracker();
 	}
 
 	/** 启动钩子。Adapter 在 ServiceContext 就绪、订阅可访问后调用。 */
@@ -784,17 +789,25 @@ export class DynamicEngine {
 				ts: new Date(postTime * 1000).toISOString(),
 			});
 
-			// 这位 UP 关了动态推送:统计已经记上,推送就到此为止。锚点仍要推进 ——
-			// 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
-			// 但每次都要整份重读 jsonl,白烧盘)。
-			if (!this.dynamicSubManager.has(uid)) {
+			// 开播伪动态:开播由直播引擎推,这里统计记上就算处理完(推进锚点)。按类型认、放在
+			// 过滤与出卡之前 —— 从前靠出卡时抛错、再按错误文案接住来跳过,关了出图或版式藏起
+			// 卡片时根本不出卡,它就被当普通动态推出去、和直播引擎的开播撞车(ADR-0019 决策 66)。
+			if (item.type === DYNAMIC_TYPE_LIVE_RCMD) {
 				markOk(uid, postTime);
 				continue;
 			}
 
-			// P2:捕获本轮处理起点的 sub 对象引用,跨 await 后用它做身份校验,
+			// 这位 UP 关了动态推送:统计已经记上,推送就到此为止。锚点仍要推进 ——
+			// 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
+			// 但每次都要整份重读 jsonl,白烧盘)。
+			//
+			// P2:同时捕获本轮处理起点的 sub 对象引用,跨 await 后用它做身份校验,
 			// 区分「仍是同一订阅」与「同 uid 被 delete+re-add 成另一个」。
 			const subAtCapture = this.dynamicSubManager.get(uid);
+			if (!subAtCapture) {
+				markOk(uid, postTime);
+				continue;
+			}
 
 			// DY1:每条 qualifying item 必须恰好 markOk 或 markFail 一次。投递抛
 			// 错只标记本条 fail 并 continue,绝不让异常冒泡 abort 整轮(否则同轮
@@ -804,8 +817,7 @@ export class DynamicEngine {
 				// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
 				// 拿到的是完整 DynamicFilterConfig。空过滤器（{}）也算 override 生效，结果是「该 UP
 				// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
-				const subForFilter = this.dynamicSubManager.get(uid);
-				const effFilter = subForFilter?.filter ?? this.config.filter ?? {};
+				const effFilter = subAtCapture.filter ?? this.config.filter ?? {};
 				const filterResult = filterDynamic(item, effFilter, this.logger);
 				if (filterResult.blocked) {
 					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
@@ -838,206 +850,34 @@ export class DynamicEngine {
 					continue;
 				}
 
-				// Render card
-				const sub = this.dynamicSubManager.get(uid);
-				// 消息版式来自 per-UP 折叠值(宿主恒填);sub 在本轮处理中途被退订时用默认版式
-				// 兜底,发送前还有 stillSubscribed 重校。块隐藏的部件直接跳过其生产成本:
-				// card 不渲染图片、text 不调 AI。
-				const layout = sub?.messageLayout ?? DEFAULT_MESSAGE_LAYOUT.dynamic;
-				const wantPart = (t: string): boolean =>
-					layout.blocks.some((b) => b.visible && b.type === t);
-				let buffer: Buffer | undefined;
-				try {
-					if (this.image && this.config.imageEnabled !== false && wantPart("card")) {
-						// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili
-						// 动态接口的子集，仅声明字段不同），运行时是同一对象。这里用 unknown
-						// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
-						buffer = await this.image.generateDynamicCard(
-							item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
-							// 样式覆盖没启用时 resolveDynamicColorOptions 回 undefined(= 吃渲染器的
-							// 全局配置);皮肤 id 与它无关,恒要带上 —— 两件事混在一个对象里传,
-							// 展开的顺序决定了「没启用」不会把一份禁用的样式漏出去。
-							{
-								...resolveDynamicColorOptions(sub?.customCardStyle),
-								cardSkin: sub?.cardSkin,
-							},
-						);
-					}
-				} catch (e) {
-					const err = e as Error;
-					if (err.message === "直播开播动态，不做处理") {
-						// 开播伪动态由 live 引擎处理,这里视为已处理,推进锚点。
-						markOk(uid, postTime);
-						continue;
-					}
-					// 软降级：图片渲染失败不再永久停 cron。让流程继续走 text-only 推送，
-					// 同时只在连续失败首次通知一次管理员，避免长时间无服务又不刷屏。
-					this.imageFailureStreak++;
-					this.logger.error(
-						`[image] 生成动态图片失败 (连续 ${this.imageFailureStreak} 次): ${err.message}`,
-					);
-					if (!this.imageFailureNotified) {
-						// notify-once:此前在 await sendErrorMsg 之前就置 notified=true,
-						// 一旦该次通知 reject,notified 永远为 true 而通知从未真正送达 ——
-						// 后续失败被静默抑制。改为通知成功后才置位,失败则下轮重试通知。
-						try {
-							await this.push.sendErrorMsg(
-								`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
-							);
-							this.bus.emit("engine-error", LOG_TAG, `生成动态图片失败：${err.message}`);
-							this.imageFailureNotified = true;
-						} catch (notifyErr) {
-							this.logger.warn(
-								`[image] 失败通知发送失败,下轮将重试通知: ${(notifyErr as Error).message}`,
-							);
-						}
-					}
-					buffer = undefined;
-				}
-				// 渲染成功后重置失败追踪，恢复后续通知能力
-				if (buffer) {
-					if (this.imageFailureStreak > 0) {
-						this.logger.info(
-							`[image] 图片渲染已恢复（之前连续失败 ${this.imageFailureStreak} 次）`,
-						);
-					}
-					this.imageFailureStreak = 0;
-					this.imageFailureNotified = false;
-				}
-
-				// Build bare URL(链接部件的内容,不含任何前缀文案)。链接恒计算 —— 显隐 / 位置
-				// 由版式的 link 部件决定。
-				const isVideo = item.type === "DYNAMIC_TYPE_AV";
-				let url: string;
-				if (isVideo) {
-					const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
-					if (this.config.dynamicVideoUrlToBV) {
-						const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
-						url = bvMatch ? bvMatch[0] : "";
-					} else {
-						url = `https:${jumpUrl}`;
-					}
-				} else {
-					url = `https://t.bilibili.com/${item.id_str}`;
-				}
-
-				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
-				// 后仅对该次调用生效；缺失时 fall through 到 CommentaryClient 的全局 config。
-				let aiComment: string | undefined;
-				if (this.ai && this.config.aiEnabled !== false && wantPart("text")) {
-					const dynamicText = extractDynamicText(item);
-					if (dynamicText) {
-						const imageUrls = extractDynamicImages(item);
-						const subForAi = this.dynamicSubManager.get(uid);
-						this.logger.debug(
-							`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}${subForAi?.aiOverride ? "，命中 per-UP override" : ""}`,
-						);
-						try {
-							aiComment = await this.ai.comment(
-								`${name}发布了一条动态，内容如下：\n${dynamicText}`,
-								"dynamic",
-								imageUrls,
-								// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
-								this.config.aiWebSearch
-									? { ...subForAi?.aiOverride, webSearch: true }
-									: subForAi?.aiOverride,
-							);
-							this.logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
-						} catch (e) {
-							this.logger.error(`[ai] AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
-						}
-					} else {
-						this.logger.debug("[ai] 动态无可提取文本，跳过 AI 点评");
-					}
-				}
-
-				// 跨 image/AI 多个 await 后重校:期间 applyOps 可能已退订该 UID。
-				// 仍 dispatch 会给已退订用户推送,且下方时间线回写会“复活”其时间线。
-				if (!this.stillSubscribed(uid, subAtCapture)) {
-					this.logger.debug(`[detector] UID=${uid} 在本轮处理中已退订/被替换，跳过推送`);
-					continue;
-				}
-
-				// Send —— 文字内容在「有图」「无图」两条分支完全一致:有 AI 点评用点评,
-				// 否则按模板(per-UP override ?? engine 全局 config ?? 内建兜底)渲染。
-				const tmpl = isVideo
-					? (sub?.customVideoTemplate ?? this.config.videoTemplate ?? DEFAULT_DYNAMIC_TEXT.video)
-					: (sub?.customDynamicTemplate ??
-						this.config.dynamicTemplate ??
-						DEFAULT_DYNAMIC_TEXT.dynamic);
-				// 链接独立成部件,顺序 / 显隐 / 分条全由版式决定(与直播共用一份装配)。
-				const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name)) : "";
-				const messages: PushSegment[][] = assembleMessageGroups(layout, {
-					card: buffer,
-					text,
-					link: url,
+				// 作品装配(ADR-0019 决策 66):B 站这头只把原始动态翻成作品,出卡之后那一段
+				// (出卡 → AI 点评 → 再核还订阅着 → 套模板 → 按版式装配 → 推送 → 图集)与拓展共用。
+				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
+				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
+				const outcome = await deliverWork({
+					work: workFromDynamic(item, name, this.config.dynamicVideoUrlToBV),
+					settings: subAtCapture,
+					push: {
+						broadcast: (segments, kind, opts) =>
+							this.push.broadcastDynamic(uid, segments, kind, opts),
+						broadcastSequence: (messages, kind, opts) =>
+							this.push.broadcastDynamicSequence(uid, messages, kind, opts),
+					},
+					// 出卡 / 点评几个 await 期间 applyOps 可能已退订该 UID(或换成另一条订阅):
+					// 不发,这条也不 markOk。
+					stillSubscribed: () => this.stillSubscribed(uid, subAtCapture),
+					config: this.config,
+					deps: {
+						logger: this.logger,
+						image: this.image,
+						ai: this.ai,
+						cardFailures: this.cardFailures,
+						sendErrorMsg: (text) => this.push.sendErrorMsg(text),
+						emitEngineError: (message) => this.bus.emit("engine-error", LOG_TAG, message),
+					},
+					logLabel: `UID=${uid}`,
 				});
-				// 这一条动态 = 一次推送:主卡(可能分条)与后面的图集共用一个 pushId,宿主的
-				// 历史落同一行、图集是追加上去的附加项。
-				const pushId = randomUUID();
-				if (messages.length === 0) {
-					this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
-				} else if (messages.length === 1) {
-					await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic", {
-						pushId,
-					});
-				} else {
-					await this.push.broadcastDynamicSequence(uid, messages, "dynamic", { pushId });
-				}
-
-				// Push extra images from draw dynamics. DYNAMIC_TYPE_DRAW 的原图在
-				// major.draw.items[].src;部分 opus 包裹的图文帖图在 major.opus.pics[].url。
-				// 此前只读 opus.pics → 纯 DRAW 帖(图在 draw.items)图组被静默丢弃。
-				//
-				// per-UP override 优先于 engine config:adapter 折叠 sub.overrides.imageGroup
-				// 后塞进 SubItemView 的 `imageGroupEnable` / `imageGroupForward`,undefined 时
-				// 继承全局 config.imageGroup.{enable,forward}。
-				const subForImgs = this.dynamicSubManager.get(uid);
-				const effEnable = subForImgs?.imageGroupEnable ?? this.config.imageGroup.enable;
-				if (effEnable && item.type === "DYNAMIC_TYPE_DRAW") {
-					const major = item.modules?.module_dynamic?.major;
-					const images: ForwardImage[] = [];
-					// draw.items / opus.pics 均带 width/height(B站图集元数据)——透传给需要
-					// 原始尺寸的平台(QQ 原生 markdown 多图 `![#宽px #高px]`),其余平台只用 url。
-					for (const it of (major?.draw?.items ?? []) as Array<{
-						src?: string;
-						width?: number;
-						height?: number;
-					}>) {
-						if (it.src) images.push({ url: it.src, width: it.width, height: it.height });
-					}
-					for (const pic of major?.opus?.pics ?? []) {
-						if (pic.url) images.push({ url: pic.url, width: pic.width, height: pic.height });
-					}
-					if (images.length) {
-						const effForward = subForImgs?.imageGroupForward ?? this.config.imageGroup.forward;
-						// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
-						const forward = effForward && images.length > 1;
-						// 图组是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息
-						// 通道(config 注释点名其不稳定),reject 很现实。绝不能让它冒泡到外层
-						// catch → markFail:那会让锚点不前移,下轮整条重判、主卡以 kind='dynamic'
-						// 重发,而 dynamic 不抑制 @全体 → 每 tick 重复 @全体,直到动态滚出 feed。
-						// 与上方屏蔽提示推送(711-721)同源处置:发不出就算了,绝不因此重试。
-						try {
-							await this.push.broadcastDynamic(
-								uid,
-								[
-									{
-										type: "image-group",
-										forward,
-										images,
-									},
-								],
-								"dynamic-images",
-								{ pushId },
-							);
-						} catch (e) {
-							this.logger.warn(
-								`[push] UID=${uid} 图组发送失败(忽略,不重试以免重发主卡): ${(e as Error).message}`,
-							);
-						}
-					}
-				}
+				if (outcome === "unsubscribed") continue;
 				markOk(uid, postTime);
 			} catch (e) {
 				markFail(uid, postTime);

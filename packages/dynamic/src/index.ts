@@ -30,3 +30,17 @@ export type {
 	DynamicTimelineManager,
 	RichTextNode,
 } from "./types";
+export {
+	type BoundWorkPush,
+	type CardFailureTracker,
+	type CommentaryClient,
+	createCardFailureTracker,
+	type DeliverWorkArgs,
+	deliverWork,
+	type NeutralWork,
+	WORK_COMMENT_IMAGES_MAX,
+	type WorkDeliveryConfig,
+	type WorkDeliveryDeps,
+	type WorkDeliveryOutcome,
+	type WorkSubscriptionSettings,
+} from "./work-delivery";
