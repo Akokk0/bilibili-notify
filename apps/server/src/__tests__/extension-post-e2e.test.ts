@@ -312,23 +312,30 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 	});
 
 	it("历史:甲两行拓展行(带拓展 id 与外部 id、名字快照、已送达),乙一行,丙没有", async () => {
-		const res = await api("/api/history?limit=50");
-		await ok(res);
-		const { entries } = (await res.json()) as HistoryResponse;
-		const rowsOf = (key: Key) => entries.filter((e) => e.subscriptionId === SUBS[key].id);
-		expect(rowsOf("a")).toHaveLength(2);
-		for (const row of rowsOf("a")) {
-			expect(row).toMatchObject({
-				kind: "dynamic",
-				status: "delivered",
-				extensionId: FAKE,
-				externalId: who.a.externalId,
-				targetId: who.a.target,
-				unameSnapshot: who.a.name,
-			});
-			expect(row.uid).toBeUndefined();
-		}
-		expect(rowsOf("b")).toHaveLength(1);
-		expect(rowsOf("c")).toEqual([]);
-	});
+		// 历史在 BN 收到 webhook 的回复**之后**才落盘,而上一条用例等的是 webhook 收到消息 —— 负载重时
+		// 直接读会读早(全量跑偶发红),所以等它到齐。
+		await vi.waitFor(
+			async () => {
+				const res = await api("/api/history?limit=50");
+				await ok(res);
+				const { entries } = (await res.json()) as HistoryResponse;
+				const rowsOf = (key: Key) => entries.filter((e) => e.subscriptionId === SUBS[key].id);
+				expect(rowsOf("a")).toHaveLength(2);
+				for (const row of rowsOf("a")) {
+					expect(row).toMatchObject({
+						kind: "dynamic",
+						status: "delivered",
+						extensionId: FAKE,
+						externalId: who.a.externalId,
+						targetId: who.a.target,
+						unameSnapshot: who.a.name,
+					});
+					expect(row.uid).toBeUndefined();
+				}
+				expect(rowsOf("b")).toHaveLength(1);
+				expect(rowsOf("c")).toEqual([]);
+			},
+			{ timeout: 10_000 },
+		);
+	}, 15_000);
 });

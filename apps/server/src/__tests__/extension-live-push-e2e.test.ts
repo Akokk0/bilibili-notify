@@ -292,24 +292,31 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 	}, 15_000);
 
 	it("历史:每条订阅一行开播、一行下播,都是拓展行(带拓展 id 与外部 id、名字快照、已送达)", async () => {
-		const res = await api("/api/history?limit=50");
-		await ok(res);
-		const { entries } = (await res.json()) as HistoryResponse;
-		for (const key of KEYS) {
-			const rows = entries.filter((e) => e.subscriptionId === SUBS[key].id);
-			expect(rows.map((row) => row.kind).sort()).toEqual(["live", "live-end"]);
-			for (const row of rows) {
-				expect(row).toMatchObject({
-					status: "delivered",
-					extensionId: FAKE,
-					externalId: who[key].externalId,
-					targetId: who[key].target,
-					unameSnapshot: who[key].name,
-				});
-				expect(row.uid).toBeUndefined();
-			}
-		}
-	});
+		// 历史在 BN 收到 webhook 的回复**之后**才落盘,而上一条用例等的是 webhook 收到消息 —— 负载重时
+		// 直接读会读早(全量跑偶发红),所以等它到齐。
+		await vi.waitFor(
+			async () => {
+				const res = await api("/api/history?limit=50");
+				await ok(res);
+				const { entries } = (await res.json()) as HistoryResponse;
+				for (const key of KEYS) {
+					const rows = entries.filter((e) => e.subscriptionId === SUBS[key].id);
+					expect(rows.map((row) => row.kind).sort()).toEqual(["live", "live-end"]);
+					for (const row of rows) {
+						expect(row).toMatchObject({
+							status: "delivered",
+							extensionId: FAKE,
+							externalId: who[key].externalId,
+							targetId: who[key].target,
+							unameSnapshot: who[key].name,
+						});
+						expect(row.uid).toBeUndefined();
+					}
+				}
+			},
+			{ timeout: 10_000 },
+		);
+	}, 15_000);
 });
 
 /** 名字里的括号、点当正则用要转义(乙的名字带「(小号 · 不报粉丝)」)。 */
