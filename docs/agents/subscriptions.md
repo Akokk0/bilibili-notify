@@ -135,13 +135,13 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 - 今天的消费者：
   - 作品推送（`runtime/extension-posts.ts` 的 `bindExtensionPosts`，收 `post`）：每条订阅一道串行闸 → 再核订阅在、启用、拓展在跑 → 动态总开关 → 只按文字过滤（`filterByText`，正文 + 视频标题）→ `extensionPostWork`（`runtime/extension-post-work.ts`）翻成中立作品 → 与 B 站动态同一份的 `deliverWork`。推出去之后落历史的拓展行、可以人工重推；途中意外抛错只记日志不重试（决策 77）。细节见 [push.md](./push.md) ①。
   - 资料落盘（`runtime/reported-profiles.ts`，收 `profile`）。
-  - 拓展在播表（`runtime/extension-live.ts`，收 `liveStart` / `liveEnd` / `liveStatus`，表变了发 `extension-live-changed`，首页经 `/api/live/listening` 合进来）。开播 / 下播 / 周期「正在直播」卡、重启补推、断流接续接进推送链见决策 57 / 58 / 67，施工中。
+  - 拓展在播表（`runtime/extension-live.ts`，收 `liveStart` / `liveEnd` / `liveStatus`，表变了发 `extension-live-changed`，首页经 `/api/live/listening` 合进来）。开播 / 下播 / 周期「正在直播」卡、重启补推、断流接续由 `runtime/extension-live-push.ts` 的 `bindExtensionLivePush` 推（决策 57 / 58 / 61 / 67）：每条订阅一套状态与一道串行闸，最新状态取在播表；周期推送只在上次推送后收到过新状态时才推，否则记一条「跳过一轮」进上报问题框；拓展停了 / 订阅停用 / 两个直播特性都关，计时器与等待中的下播卡作废、不补推。
 - 相关事件 `subscription-reported` / `subscription-profiles-changed` / `extension-live-changed` / `extension-stopped` / `extension-report-problems-changed` 的语义见 [events.md](./events.md)。🔴 拓展的在播**不发 `live-state-changed`**，资料变了**不发 `config-changed "subscriptions"`**。
 
 ## 高级规则与女仆查订阅（决策 64）
 
 - **高级规则「按 UP 定制」**：`apps/web/src/pages/rules/sections.tsx` 的 `perUpSectionsFor(sub, features)`。B 站全露；拓展按源报得出的特性露 —— 过滤（只露关键词 / 正则 / 白名单，`FILTER_TEXT_KEYS`；四个类型开关对拓展作品一律不看，决策 70）与动态消息（报作品才露）、直播消息（报开播或下播才露）、消息版式与 AI 人格（都露）；「直播阈值」换成「推送时段」（免扰总露，报直播时再加推送频率 / 重启补推 / 断流接续）。不露：动态图集（决策 72）、直播总结、上舰提示、特别关注、SC / 上舰阈值。存储上拓展订阅本来就有 `overrides` 这几格，只是页面按这张表列。
-- **女仆查订阅**：`apps/server/src/ai/read-only-tools.ts` 的 `buildAiSubsView` 按订阅 `id` 为键收两支，停用的不进。B 站条目带 `uid`；拓展条目带平台名（`extensionPlatformLabel`：清单 `display.label` → 拓展名 → 拓展 id）与外部 id，工具那头据此不拿它去问 B 站。「女仆查直播状态」对拓展在播的接入放在拓展直播那一片，施工中。
+- **女仆查订阅**：`apps/server/src/ai/read-only-tools.ts` 的 `buildAiSubsView` 按订阅 `id` 为键收两支，停用的不进。B 站条目带 `uid`；拓展条目带平台名（`extensionPlatformLabel`：清单 `display.label` → 拓展名 → 拓展 id）与外部 id，工具那头据此不拿它去问 B 站。「女仆查直播状态」对拓展条目从拓展在播表回答（`liveNow`），拓展没在跑时答「查不到」。
 
 ## 要改的时候
 
