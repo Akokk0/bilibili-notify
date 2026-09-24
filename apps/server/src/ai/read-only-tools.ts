@@ -13,6 +13,13 @@ interface SubsSource {
 interface ProfileSource {
 	get(id: string): { cachedProfile?: { name?: string } } | undefined;
 }
+/**
+ * 拓展订阅的平台名从哪儿取(那个订阅源清单里的叫法)。取不到(拓展卸载了、装载器还没起来)交
+ * `undefined`,视图退拓展 id —— 与面板同一个口径(ADR-0019 决策 10 / 73)。
+ */
+export interface PlatformLabelSource {
+	label(extensionId: string): string | undefined;
+}
 
 /**
  * 把订阅**查询**能力接给女仆 —— 独立端唯一的 `setSubscriptionsSource` 调用处。
@@ -27,12 +34,16 @@ interface ProfileSource {
  */
 export function attachReadOnlyTools(
 	engine: { setSubscriptionsSource(getSubs: () => Subscriptions | null): void },
-	stores: { subscriptionStore: SubsSource; subRuntimeStore: ProfileSource },
+	stores: {
+		subscriptionStore: SubsSource;
+		subRuntimeStore: ProfileSource;
+		platforms?: PlatformLabelSource;
+	},
 ): void {
 	// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
 	// 运行期随时增删的。
 	engine.setSubscriptionsSource(() =>
-		buildAiSubsView(stores.subscriptionStore, stores.subRuntimeStore),
+		buildAiSubsView(stores.subscriptionStore, stores.subRuntimeStore, stores.platforms),
 	);
 }
 
@@ -42,26 +53,35 @@ export function attachReadOnlyTools(
  * `dynamic` / `live` 的口径是「该特性下**有没有推送目标**」而不是配置里的开关:
  * 一个特性配了却没有任何目标,推不出去任何东西,对女仆来说就等于没订。
  *
- * 名字按「主人手填的备注 → 平台资料缓存 → UID 兜底」取。cachedProfile 是外置的
- * 运行时数据(不在 Subscription 里),与 `/api/subs` 的 join 同源。
+ * 名字按「主人手填的备注 → 平台资料缓存 → UID 兜底」取(拓展订阅兜底的是外部 id)。
+ * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subs` 的 join 同源。
+ *
+ * 按订阅自己的 `id` 为键,两支都收(ADR-0019 决策 64):B 站条目带 `uid`,那几格的含义不变;
+ * 拓展条目没有 uid,带平台名与外部 id —— 外部 id 不是 B 站 UID,工具那头据此不拿它去问 B 站。
  */
 export function buildAiSubsView(
 	subscriptionStore: SubsSource,
 	subRuntimeStore: ProfileSource,
+	platforms?: PlatformLabelSource,
 ): Subscriptions {
 	const view: Subscriptions = {};
-	// AI 工具查订阅第一版只有 B 站订阅(ADR-0019 决策 12):视图按 uid 建,拓展订阅没有 uid。
-	for (const sub of subscriptionStore.list().filter(isBiliSubscription)) {
+	for (const sub of subscriptionStore.list()) {
 		// 停用的订阅不进视图:主人把某个 UP 关掉了,女仆的答案里就不该还有他。
 		if (!sub.enabled) continue;
 		const cached = subRuntimeStore.get(sub.id)?.cachedProfile?.name?.trim();
-		const item: SubItemView = {
-			uid: sub.uid,
-			uname: sub.name?.trim() || cached || `UID ${sub.uid}`,
+		const common = {
 			dynamic: sub.routing.dynamic.length > 0,
 			live: sub.routing.live.length > 0,
 		};
-		view[sub.uid] = item;
+		const item: SubItemView = isBiliSubscription(sub)
+			? { uid: sub.uid, uname: sub.name?.trim() || cached || `UID ${sub.uid}`, ...common }
+			: {
+					platform: platforms?.label(sub.extensionId) || sub.extensionId,
+					externalId: sub.externalId,
+					uname: sub.name?.trim() || cached || sub.externalId,
+					...common,
+				};
+		view[sub.id] = item;
 	}
 	return view;
 }

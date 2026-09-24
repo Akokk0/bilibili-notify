@@ -17,8 +17,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
+import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { type BiliSubscription, isBiliSubscription, type Subscription } from "../types/domain";
+import { isBiliSubscription, isExtensionSubscription, type Subscription } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
@@ -31,12 +32,17 @@ import {
 	ImageGroupSection,
 	LiveMsgSection,
 	LiveThresholdsSection,
-	PERUP_SECTIONS,
+	perUpSectionsFor,
 	type SectionId,
 	type SectionMeta,
 	SummarySection,
 } from "./rules/sections";
 import { displayName } from "./up/helpers";
+import {
+	type SubscriptionPlatform,
+	subscriptionPlatformOf,
+	visibleFeaturesOf,
+} from "./up/subscription-source";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -49,7 +55,7 @@ function nestByPath(path: string, value: string): Record<string, unknown> {
 }
 
 /** Slices on Subscription.overrides that are populated; per-UP "已覆盖" 状态来源。 */
-function overrideKeysOf(sub: BiliSubscription): Set<PerUpOverrideKey> {
+function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
 	const keys = new Set<PerUpOverrideKey>();
 	for (const key of perUpOverrideKeys) {
 		if (sub.overrides[key] !== undefined) keys.add(key);
@@ -57,8 +63,13 @@ function overrideKeysOf(sub: BiliSubscription): Set<PerUpOverrideKey> {
 	return keys;
 }
 
-function hasAnyCustomization(sub: BiliSubscription): boolean {
-	return overrideKeysOf(sub).size > 0 || sub.specialUsers.length > 0;
+/** 特别关注只有 B 站订阅有;拓展订阅那一支没有这一格,恒 false。 */
+function hasSpecialUsers(sub: Subscription): boolean {
+	return isBiliSubscription(sub) && sub.specialUsers.length > 0;
+}
+
+function hasAnyCustomization(sub: Subscription): boolean {
+	return overrideKeysOf(sub).size > 0 || hasSpecialUsers(sub);
 }
 
 // isSectionCustomized 已抽到 ./rules/section-scope(与 PerUpEditor 的 toggle 判定共用
@@ -200,7 +211,7 @@ export default function Rules() {
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
 	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
-	const [pendingRemoval, setPendingRemoval] = useState<BiliSubscription | null>(null);
+	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data);
@@ -249,14 +260,16 @@ export default function Rules() {
 	});
 
 	const removeSubCustomization = useMutation({
-		mutationFn: async (sub: BiliSubscription) => {
+		mutationFn: async (sub: Subscription) => {
 			// 移除该 UP 的所有 per-UP 配置。注意:发 `overrides: {}` 不行 —— 空对象给 store
 			// deepMerge 遍历不到任何键 → 当「不改」→ 旧 slice 原样保留(同 SY1)。须把每个
 			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
-			return api.patch<Subscription>(`/api/subs/${sub.id}`, {
-				overrides: buildOverridesPatch({}, sub.overrides),
-				specialUsers: [],
-			});
+			const overrides = buildOverridesPatch({}, sub.overrides);
+			// 特别关注只有 B 站订阅有,拓展订阅那一支没有这一格,不发。
+			return api.patch<Subscription>(
+				`/api/subs/${sub.id}`,
+				isBiliSubscription(sub) ? { overrides, specialUsers: [] } : { overrides },
+			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -322,15 +335,21 @@ export default function Rules() {
 		};
 	}, [draft, patchDraft]);
 
-	// 按 UP 定制规则第一版只有 B 站订阅(ADR-0019 决策 12:特别关注 / B 站专属过滤都不含拓展订阅)。
-	const allSubs = useMemo(
-		() => (subsQuery.data ?? []).filter(isBiliSubscription),
-		[subsQuery.data],
-	);
+	// 拓展订阅也能按 UP 定制(ADR-0019 决策 64),只是露的节少 —— 见 perUpSectionsFor。
+	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
+
+	// 拓展订阅是哪个平台、那个源报得出什么:决定露哪几节、tab 上怎么称呼它。拓展列表没回来
+	// (还在读 / 读失败)时按拓展订阅最多能有的那几种画,同配置弹层。
+	const extensionsQuery = useExtensions({ retry: false });
+	const extensions = extensionsQuery.data?.extensions;
+	const platformOf = (s: Subscription): SubscriptionPlatform | undefined =>
+		isExtensionSubscription(s) ? subscriptionPlatformOf(s, extensions) : undefined;
+	const sectionsOf = (s: Subscription): SectionMeta[] =>
+		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)));
 
 	// Tab 栏只显示:已经在 backend 有 overrides / specialUsers 的 sub + 客户端本轮添加的 sub。
 	const tabSubs = useMemo(() => {
-		const result: BiliSubscription[] = [];
+		const result: Subscription[] = [];
 		for (const s of allSubs) {
 			if (hasAnyCustomization(s) || addedSubIds.has(s.id)) result.push(s);
 		}
@@ -348,9 +367,7 @@ export default function Rules() {
 			next.add(id);
 			return next;
 		});
-		setScope(id);
-		// 切到 per-UP 时,如果 section 不在 PERUP_SECTIONS 里,回退到第一项。
-		if (!PERUP_SECTIONS.some((s) => s.id === section)) setSection(PERUP_SECTIONS[0].id);
+		handleScopeChange(id);
 	}
 
 	// 把 sub 从 tab 栏摘除(仅客户端态:addedSubIds 移除 + scope 回退全局),不动 backend。
@@ -382,15 +399,31 @@ export default function Rules() {
 		setPendingRemoval(null);
 	}
 
+	function sectionsFor(next: Scope): SectionMeta[] {
+		if (next === "__global") return GLOBAL_SECTIONS;
+		const sub = allSubs.find((s) => s.id === next);
+		return sub ? sectionsOf(sub) : [];
+	}
+
 	function handleScopeChange(next: Scope): void {
 		setScope(next);
-		const nextSecs = next === "__global" ? GLOBAL_SECTIONS : PERUP_SECTIONS;
-		if (!nextSecs.some((s) => s.id === section)) setSection(nextSecs[0].id);
+		// 切过去的那边没有当前这一节(全局没有特别关注、拓展订阅没有直播阈值……)就回退到第一项。
+		const nextSecs = sectionsFor(next);
+		if (nextSecs.length > 0 && !nextSecs.some((s) => s.id === section)) {
+			setSection(nextSecs[0].id);
+		}
 	}
 
 	const isGlobal = scope === "__global";
 	const focusedSub = !isGlobal ? allSubs.find((s) => s.id === scope) : undefined;
-	const sections = isGlobal ? GLOBAL_SECTIONS : PERUP_SECTIONS;
+	const focusedPlatform = focusedSub ? platformOf(focusedSub) : undefined;
+	const sections = sectionsFor(scope);
+	// 拓展列表晚一步回来时,源报得出的那几种会从「最多」收窄成它真报的,当前这一节可能就没了 ——
+	// 那一刻画第一节,别画一个侧栏里已经不在的节。
+	const shownSection: SectionId =
+		sections.length === 0 || sections.some((s) => s.id === section)
+			? section
+			: (sections[0] as SectionMeta).id;
 
 	// 灵动岛绑定改由互斥子组件承载:isGlobal → <GlobalDraftBinder>,per-UP →
 	// <PerUpEditor> 自调 useDirtyDraft。两者条件渲染互斥,见下方 JSX 与
@@ -429,13 +462,14 @@ export default function Rules() {
 				availableSubs={availableSubs}
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
-				overridesCountFor={(s) => overrideKeysOf(s).size + (s.specialUsers.length > 0 ? 1 : 0)}
+				overridesCountFor={(s) => overrideKeysOf(s).size + (hasSpecialUsers(s) ? 1 : 0)}
+				platformLabelOf={(extensionId) => subscriptionPlatformOf({ extensionId }, extensions).label}
 			/>
 
 			<div className="grid gap-4 xl:grid-bn-rail">
 				<SectionList
 					sections={sections}
-					current={section}
+					current={shownSection}
 					onPick={setSection}
 					heading={
 						isGlobal ? "规则分类(全局)" : `${focusedSub ? displayName(focusedSub) : ""} · 覆盖项`
@@ -448,7 +482,12 @@ export default function Rules() {
 				<FieldUpdatesProvider value={isGlobal ? fieldUpdates : null}>
 					<div className="space-y-4">
 						{!isGlobal && focusedSub ? (
-							<PerUpEditor sub={focusedSub} defaults={draft.defaults} section={section} />
+							<PerUpEditor
+								sub={focusedSub}
+								platform={focusedPlatform}
+								defaults={draft.defaults}
+								section={shownSection}
+							/>
 						) : section === "filter" ? (
 							<FilterSection value={draft.defaults.filters} onPatch={patchDraft} />
 						) : section === "imageGroup" ? (
@@ -486,7 +525,8 @@ export default function Rules() {
 					message={
 						<>
 							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
-							的所有覆盖项与特别关注,该 UP 之后跟随全局规则。此操作不可撤销。
+							的所有覆盖项{isBiliSubscription(pendingRemoval) ? "与特别关注" : ""}
+							,该 UP 之后跟随全局规则。此操作不可撤销。
 						</>
 					}
 					confirmLabel="移除"

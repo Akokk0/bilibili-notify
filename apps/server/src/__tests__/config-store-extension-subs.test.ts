@@ -18,6 +18,7 @@ import {
 	type ExtensionSubscription,
 	FEATURE_KEYS,
 	type MessageBus,
+	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
@@ -415,5 +416,39 @@ describe("跨分区的级联两支都覆盖", () => {
 
 		expect(await readFile(extFile, "utf8")).toBe(extBytes);
 		expect(store.getSubscriptions()).toEqual([ext]);
+	});
+});
+
+describe("按 UP 覆盖(ADR-0019 决策 64):拓展订阅存得进、清得掉", () => {
+	it("高级规则页给拓展订阅开的那几格照收;发 null 的那一格清掉,盘上也跟着没了", async () => {
+		const store = await open();
+		const ext = makeExtensionSubscription();
+		await store.upsertSubscription(ext);
+
+		// 拓展订阅露的那几节写的格:过滤(只有看内容的那几格)、推送时段、两种文案、版式、人格。
+		const kept = {
+			filters: {
+				blockKeywords: ["广告"],
+				blockRegex: ["抽奖"],
+				whitelistKeywords: [],
+				whitelistRegex: [],
+			},
+			ai: { preset: "maid" },
+			messageLayout: makeDefaultGlobalConfig().defaults.messageLayout,
+		};
+		const overrides = {
+			...kept,
+			schedule: { quietHours: [{ start: 23, end: 7 }] },
+			templates: { dynamic: "新作品!", liveStart: "开播啦" },
+		};
+		await store.patchSubscription(ext.id, { overrides });
+		expect(store.getSubscriptions().find((s) => s.id === ext.id)?.overrides).toEqual(overrides);
+
+		// 面板关掉一节时的线格式(buildOverridesPatch):那一格显式 null。
+		await store.patchSubscription(ext.id, {
+			overrides: { schedule: null, templates: null },
+		} as never);
+		expect(store.getSubscriptions().find((s) => s.id === ext.id)?.overrides).toEqual(kept);
+		expect(JSON.parse(await readFile(extFile, "utf8"))[0].overrides).toEqual(kept);
 	});
 });

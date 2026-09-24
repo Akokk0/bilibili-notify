@@ -252,6 +252,8 @@ function setup(opts?: {
 	platformAdapters?: PlatformAdapter[];
 	/** 卡片皮肤那三口(接线层给的);不给 = 这台机器只有内置默认皮肤。 */
 	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
+	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
+	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
@@ -283,6 +285,9 @@ function setup(opts?: {
 		adapters: createAdapterRegistry(opts?.platformAdapters ?? []),
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 		...(opts?.cardSkins ? { cardSkins: opts.cardSkins } : {}),
+		...(opts?.extensionPlatformLabel
+			? { extensionPlatformLabel: opts.extensionPlatformLabel }
+			: {}),
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
 }
@@ -430,6 +435,22 @@ describe("createEngines — boot wiring", () => {
 		// 只读如今是结构性的(工具表里就没有写工具),由 packages/ai 那道闸盯着;
 		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
 		expect(typeof H.ai[0].setSubscriptionsSource.mock.calls[0][0]).toBe("function");
+	});
+
+	it("只读工具那份视图里,拓展订阅的平台名接的是 extensionPlatformLabel(ADR-0019 决策 64)", () => {
+		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-1" });
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [ext],
+			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
+		});
+		active = c;
+		const getSubs = H.ai[0].setSubscriptionsSource.mock.calls[0][0] as () => Record<
+			string,
+			{ platform?: string }
+		>;
+		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platforms: …` 那一行删掉,平台名退成拓展 id。
+		expect(getSubs()[ext.id]?.platform).toBe("抖音");
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer 并 start", () => {

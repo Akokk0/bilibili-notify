@@ -211,6 +211,11 @@ export interface CreateEnginesOptions {
 	 */
 	quietHoursNow?: () => Date;
 	/**
+	 * 拓展订阅的平台名,女仆查订阅那份视图用(ADR-0019 决策 64)。每次现取 —— 拓展装载器比引擎
+	 * 晚建起来,装卸也随时发生。取不到(没接 / 没装 / 开机途中)交 `undefined`,视图退拓展 id。
+	 */
+	extensionPlatformLabel?: (extensionId: string) => string | undefined;
+	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
 	 */
@@ -377,6 +382,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			attachReadOnlyTools(c, {
 				subscriptionStore: opts.subscriptionStore,
 				subRuntimeStore: opts.subRuntimeStore,
+				platforms: { label: (id) => opts.extensionPlatformLabel?.(id) },
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,

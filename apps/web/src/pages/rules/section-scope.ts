@@ -10,20 +10,28 @@
  * isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import type {
-	BiliSubscription,
-	ContentFiltersOverride,
-	ScheduleOverride,
-	Subscription,
+import {
+	type ContentFiltersOverride,
+	isBiliSubscription,
+	type ScheduleOverride,
+	type Subscription,
 } from "../../types/domain";
 import type { SectionId } from "./sections";
 
-/** ContentFilters 里属于「动态过滤」域的字段。 */
-export const FILTER_CONTENT_KEYS = [
+/**
+ * ContentFilters 里「动态过滤」域看内容的那几格 —— 对所有平台都生效(ADR-0019 决策 70),拓展订阅
+ * 开这一节只带它们。
+ */
+export const FILTER_TEXT_KEYS = [
 	"blockKeywords",
 	"blockRegex",
 	"whitelistKeywords",
 	"whitelistRegex",
+] as const satisfies readonly (keyof ContentFiltersOverride)[];
+
+/** ContentFilters 里属于「动态过滤」域的字段:看内容的那几格 + 看 B 站动态类型的四个开关。 */
+export const FILTER_CONTENT_KEYS = [
+	...FILTER_TEXT_KEYS,
 	"blockForward",
 	"blockArticle",
 	"blockDraw",
@@ -74,7 +82,7 @@ export function hasAiPersonaOverride(
  * 任何 preset 都指不着 = AI 那格恒不亮,对其余分类没有影响。
  */
 export function isSectionCustomized(
-	sub: BiliSubscription,
+	sub: Subscription,
 	sectionId: SectionId,
 	presets: readonly { id: string }[] = [],
 ): boolean {
@@ -86,6 +94,8 @@ export function isSectionCustomized(
 				filters: sub.overrides.filters,
 				schedule: sub.overrides.schedule,
 			});
+		case "schedule":
+			return sub.overrides.schedule !== undefined;
 		case "summary":
 			return (
 				sub.overrides.templates?.liveSummary !== undefined ||
@@ -106,14 +116,15 @@ export function isSectionCustomized(
 			return sub.overrides.messageLayout !== undefined;
 		case "guard":
 			return sub.overrides.templates?.guardBuy?.enable === true;
+		// 特别关注只有 B 站订阅有(拓展订阅那一支没有 specialUsers)。
 		case "specialDanmaku":
 			return (
-				sub.specialUsers.some((u) => u.kinds.includes("danmaku")) ||
+				(isBiliSubscription(sub) && sub.specialUsers.some((u) => u.kinds.includes("danmaku"))) ||
 				Boolean(sub.overrides.templates?.specialDanmaku)
 			);
 		case "specialEnter":
 			return (
-				sub.specialUsers.some((u) => u.kinds.includes("enter")) ||
+				(isBiliSubscription(sub) && sub.specialUsers.some((u) => u.kinds.includes("enter"))) ||
 				Boolean(sub.overrides.templates?.specialUserEnter)
 			);
 		case "ai":

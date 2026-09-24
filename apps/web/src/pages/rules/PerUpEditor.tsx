@@ -30,17 +30,17 @@ import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
-import type {
-	AIOverride,
-	BiliSubscription,
-	ContentFiltersOverride,
-	ImageGroupOverride,
-	MessageLayoutOverride,
-	OverridesShape,
-	ScheduleOverride,
-	SpecialUser,
-	Subscription,
-	TemplateOverride,
+import {
+	type AIOverride,
+	type ContentFiltersOverride,
+	type ImageGroupOverride,
+	isBiliSubscription,
+	type MessageLayoutOverride,
+	type OverridesShape,
+	type ScheduleOverride,
+	type SpecialUser,
+	type Subscription,
+	type TemplateOverride,
 } from "../../types/domain";
 import type {
 	GlobalDefaults,
@@ -48,12 +48,14 @@ import type {
 	ImageGroupSettings,
 	TemplateBundle,
 } from "../../types/globals";
-import { colorFromUid, displayName } from "../up/helpers";
+import { displayName, subscriptionColor } from "../up/helpers";
+import type { SubscriptionPlatform } from "../up/subscription-source";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
 	FILTER_CONTENT_KEYS,
+	FILTER_TEXT_KEYS,
 	hasAiPersonaOverride,
 	hasFilterContentOverride,
 	hasLiveThresholdOverride,
@@ -99,8 +101,13 @@ function patchSub(id: string, body: SubPatch) {
 /* -------------------------------------------------------------------------- */
 
 export interface PerUpEditorProps {
-	/** 只有 B 站订阅(ADR-0019 决策 12:特别关注 / B 站专属过滤都不含拓展订阅)。 */
-	sub: BiliSubscription;
+	/**
+	 * B 站订阅或拓展订阅。拓展订阅露哪几节由调用方按 `perUpSectionsFor` 挑(ADR-0019 决策 64),
+	 * 这里只管节内的差别:过滤不画类型开关、推送时段按源报不报直播给格、版式只给源报得出的那套。
+	 */
+	sub: Subscription;
+	/** 拓展订阅是哪个平台、那个源报得出什么;B 站订阅不传。 */
+	platform?: SubscriptionPlatform;
 	defaults: GlobalDefaults;
 	section: SectionId;
 }
@@ -110,29 +117,42 @@ interface PerUpDraft {
 	specialUsers: SpecialUser[];
 }
 
-export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
+/** 拓展订阅没有特别关注那一格 —— 给一个稳定的空数组,别让 effect 每次渲染都当它变了。 */
+const NO_SPECIAL_USERS: SpecialUser[] = [];
+
+export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorProps) {
 	const qc = useQueryClient();
+	const isBili = isBiliSubscription(sub);
+	const specialUsers = isBili ? sub.specialUsers : NO_SPECIAL_USERS;
+	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
+	const features = platform?.features;
+	const reportsPost = isBili || !features || features.includes("dynamic");
+	const reportsLive =
+		isBili || !features || features.includes("live") || features.includes("liveEnd");
 	const [draft, setDraft] = useState<PerUpDraft>({
 		overrides: sub.overrides,
-		specialUsers: sub.specialUsers,
+		specialUsers,
 	});
 
 	useEffect(() => {
-		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
-	}, [sub.overrides, sub.specialUsers]);
+		setDraft({ overrides: sub.overrides, specialUsers });
+	}, [sub.overrides, specialUsers]);
 
 	const save = useMutation({
-		mutationFn: () =>
-			patchSub(sub.id, {
-				// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
-				overrides: buildOverridesPatch(draft.overrides, sub.overrides),
-				specialUsers: draft.specialUsers,
-			}),
+		mutationFn: () => {
+			// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
+			const overrides = buildOverridesPatch(draft.overrides, sub.overrides);
+			// 特别关注只有 B 站订阅有,拓展订阅那一支根本没有这一格,不发。
+			return patchSub(
+				sub.id,
+				isBili ? { overrides, specialUsers: draft.specialUsers } : { overrides },
+			);
+		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
 	function discard(): void {
-		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
+		setDraft({ overrides: sub.overrides, specialUsers });
 	}
 
 	// per-UP 草稿接入灵动岛:draft / sub 同款投影成扁平 code 结构,walkTreeDiff 出的
@@ -144,8 +164,8 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 		[draft],
 	);
 	const islandBaseline = useMemo(
-		() => projectPerUpIsland(sub.overrides, sub.specialUsers),
-		[sub.overrides, sub.specialUsers],
+		() => projectPerUpIsland(sub.overrides, specialUsers),
+		[sub.overrides, specialUsers],
 	);
 	useDirtyDraft({
 		pageKey: "rules-perup",
@@ -172,7 +192,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 		setDraft((d) => ({ ...d, specialUsers: next }));
 	}
 
-	const color = colorFromUid(sub.uid);
+	const color = subscriptionColor(sub);
 
 	return (
 		<div className="space-y-4">
@@ -193,7 +213,13 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 				<div className="min-w-0 flex-1">
 					<div className="text-bn-md font-bold text-bn-text-primary">{displayName(sub)}</div>
 					<div className="text-bn-sm text-bn-text-secondary">
-						UID {sub.uid} · 关闭一个分组 = 恢复继承全局默认
+						{/* 拓展订阅没有 uid,写「平台名 · 外部 id」(ADR-0019 决策 73 的口径)。 */}
+						{isBili ? (
+							<>UID {sub.uid}</>
+						) : (
+							`${platform?.label ?? sub.extensionId} · ${sub.externalId}`
+						)}{" "}
+						· 关闭一个分组 = 恢复继承全局默认
 					</div>
 				</div>
 			</div>
@@ -203,6 +229,8 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					value={draft.overrides.filters}
 					onChange={(v) => setSlice("filters", v)}
 					baseline={defaults.filters}
+					// 四个类型开关看的是 B 站的动态类型,对拓展作品一律不看(ADR-0019 决策 70)。
+					typeToggles={isBili}
 				/>
 			) : null}
 			{section === "live" ? (
@@ -213,6 +241,14 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					onSchedule={(v) => setSlice("schedule", v)}
 					baselineFilters={defaults.filters}
 					baselineSchedule={defaults.schedule}
+				/>
+			) : null}
+			{section === "schedule" ? (
+				<ScheduleOverrideBox
+					value={draft.overrides.schedule}
+					onChange={(v) => setSlice("schedule", v)}
+					baseline={defaults.schedule}
+					liveTiming={reportsLive}
 				/>
 			) : null}
 			{section === "summary" ? (
@@ -241,6 +277,8 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					value={draft.overrides.messageLayout}
 					onChange={(v) => setSlice("messageLayout", v)}
 					baseline={defaults.messageLayout}
+					showDynamic={reportsPost}
+					showLive={reportsLive}
 				/>
 			) : null}
 			{section === "guard" ? (
@@ -304,10 +342,13 @@ function FilterOverrideBox({
 	value,
 	onChange,
 	baseline,
+	typeToggles,
 }: {
 	value: ContentFiltersOverride | undefined;
 	onChange: (next: ContentFiltersOverride | undefined) => void;
 	baseline: GlobalDefaults["filters"];
+	/** 画不画四个类型开关。关着时开覆盖也只带看内容的那几格 —— 不画的格不钉快照。 */
+	typeToggles: boolean;
 }) {
 	const enabled = hasFilterContentOverride(value);
 	const cur = value ?? {};
@@ -318,17 +359,11 @@ function FilterOverrideBox({
 	}
 	function toggle(on: boolean): void {
 		if (on) {
-			onChange({
-				...cur,
-				blockKeywords: baseline.blockKeywords,
-				blockRegex: baseline.blockRegex,
-				whitelistKeywords: baseline.whitelistKeywords,
-				whitelistRegex: baseline.whitelistRegex,
-				blockForward: baseline.blockForward,
-				blockArticle: baseline.blockArticle,
-				blockDraw: baseline.blockDraw,
-				blockAv: baseline.blockAv,
-			});
+			const seeded: ContentFiltersOverride = { ...cur };
+			for (const k of typeToggles ? FILTER_CONTENT_KEYS : FILTER_TEXT_KEYS) {
+				Object.assign(seeded, { [k]: baseline[k] });
+			}
+			onChange(seeded);
 		} else {
 			const next = { ...cur };
 			for (const k of FILTER_CONTENT_KEYS) delete next[k];
@@ -338,7 +373,11 @@ function FilterOverrideBox({
 	return (
 		<OverrideBox
 			title="动态过滤覆盖"
-			subtitle="开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
+			subtitle={
+				typeToggles
+					? "开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
+					: "开 = 该 UP 使用自定义关键词 / 正则 / 白名单;关 = 继承全局过滤"
+			}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
 			enabled={enabled}
@@ -357,36 +396,38 @@ function FilterOverrideBox({
 					onChange={(n) => set("whitelistKeywords", n)}
 				/>
 			</Field>
-			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-				<Field code="blockForward">
-					<div className="flex h-7.5 items-center">
-						<Toggle
-							value={get("blockForward")}
-							onChange={(v) => set("blockForward", v)}
-							size="sm"
-						/>
-					</div>
-				</Field>
-				<Field code="blockArticle">
-					<div className="flex h-7.5 items-center">
-						<Toggle
-							value={get("blockArticle")}
-							onChange={(v) => set("blockArticle", v)}
-							size="sm"
-						/>
-					</div>
-				</Field>
-				<Field code="blockDraw">
-					<div className="flex h-7.5 items-center">
-						<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
-					</div>
-				</Field>
-				<Field code="blockAv">
-					<div className="flex h-7.5 items-center">
-						<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
-					</div>
-				</Field>
-			</div>
+			{typeToggles ? (
+				<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+					<Field code="blockForward">
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={get("blockForward")}
+								onChange={(v) => set("blockForward", v)}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					<Field code="blockArticle">
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={get("blockArticle")}
+								onChange={(v) => set("blockArticle", v)}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					<Field code="blockDraw">
+						<div className="flex h-7.5 items-center">
+							<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
+						</div>
+					</Field>
+					<Field code="blockAv">
+						<div className="flex h-7.5 items-center">
+							<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
+						</div>
+					</Field>
+				</div>
+			) : null}
 		</OverrideBox>
 	);
 }
@@ -453,50 +494,127 @@ function LiveOverrideBox({
 						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
 					/>
 				</Field>
-				<Field code="schedule.pushTime">
-					<TNum
-						value={sCur.pushTime ?? baselineSchedule.pushTime}
-						onChange={(v) => onSchedule({ ...sCur, pushTime: v })}
-						min={0}
-						max={23}
-						suffix="小时"
-					/>
-				</Field>
-				<Field code="schedule.restartPush">
-					<div className="flex h-7.5 items-center">
-						<Toggle
-							value={sCur.restartPush ?? baselineSchedule.restartPush}
-							onChange={(v) => onSchedule({ ...sCur, restartPush: v })}
-							size="sm"
-						/>
-					</div>
-				</Field>
-				<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
-					<div className="flex h-7.5 items-center">
-						<Toggle
-							value={sCur.liveEndGrace ?? baselineSchedule.liveEndGrace}
-							onChange={(v) => onSchedule({ ...sCur, liveEndGrace: v })}
-							size="sm"
-						/>
-					</div>
-				</Field>
-				{(sCur.liveEndGrace ?? baselineSchedule.liveEndGrace) ? (
-					<Field code="schedule.liveEndGraceMinutes">
+				<ScheduleFields value={sCur} onChange={onSchedule} baseline={baselineSchedule} liveTiming />
+			</div>
+		</OverrideBox>
+	);
+}
+
+/**
+ * `overrides.schedule` 那几格 —— B 站的「直播阈值」与拓展订阅的「推送时段」共用。返回一串
+ * 同级的格(Fragment),由外面那张两列网格排版。
+ *
+ * `liveTiming` 关着时只画免扰时段:推送频率那几格(周期推送 / 重启补推 / 断流接续)只对直播有意义。
+ */
+function ScheduleFields({
+	value,
+	onChange,
+	baseline,
+	liveTiming,
+}: {
+	value: ScheduleOverride;
+	onChange: (next: ScheduleOverride) => void;
+	baseline: GlobalDefaults["schedule"];
+	liveTiming: boolean;
+}) {
+	return (
+		<>
+			{liveTiming ? (
+				<>
+					<Field code="schedule.pushTime">
 						<TNum
-							value={sCur.liveEndGraceMinutes ?? baselineSchedule.liveEndGraceMinutes}
-							onChange={(v) => onSchedule({ ...sCur, liveEndGraceMinutes: v })}
-							min={1}
-							max={10}
-							suffix="分钟"
+							value={value.pushTime ?? baseline.pushTime}
+							onChange={(v) => onChange({ ...value, pushTime: v })}
+							min={0}
+							max={23}
+							suffix="小时"
 						/>
 					</Field>
-				) : null}
-				<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
-					<QuietHoursEditor
-						value={sCur.quietHours ?? baselineSchedule.quietHours}
-						onChange={(v) => onSchedule({ ...sCur, quietHours: v })}
-					/>
-				</Field>
+					<Field code="schedule.restartPush">
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={value.restartPush ?? baseline.restartPush}
+								onChange={(v) => onChange({ ...value, restartPush: v })}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={value.liveEndGrace ?? baseline.liveEndGrace}
+								onChange={(v) => onChange({ ...value, liveEndGrace: v })}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					{(value.liveEndGrace ?? baseline.liveEndGrace) ? (
+						<Field code="schedule.liveEndGraceMinutes">
+							<TNum
+								value={value.liveEndGraceMinutes ?? baseline.liveEndGraceMinutes}
+								onChange={(v) => onChange({ ...value, liveEndGraceMinutes: v })}
+								min={1}
+								max={10}
+								suffix="分钟"
+							/>
+						</Field>
+					) : null}
+				</>
+			) : null}
+			<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
+				<QuietHoursEditor
+					value={value.quietHours ?? baseline.quietHours}
+					onChange={(v) => onChange({ ...value, quietHours: v })}
+				/>
+			</Field>
+		</>
+	);
+}
+
+/* -------- Schedule (拓展订阅的「推送时段」,只有 overrides.schedule) ------- */
+
+/**
+ * 拓展订阅那一节「推送时段」:B 站那节「直播阈值」去掉 SC / 上舰两格(B 站独有,ADR-0019 决策 5)。
+ * 免扰时段对所有推送生效,所以只报作品的源也有这一节;源报直播时再加推送频率那几格(决策 57 / 58)。
+ *
+ * 开覆盖只钉画出来的那几格:只报作品的源不画推送频率,也就不替它钉一份用不上的快照。
+ */
+function ScheduleOverrideBox({
+	value,
+	onChange,
+	baseline,
+	liveTiming,
+}: {
+	value: ScheduleOverride | undefined;
+	onChange: (next: ScheduleOverride | undefined) => void;
+	baseline: GlobalDefaults["schedule"];
+	liveTiming: boolean;
+}) {
+	function toggle(on: boolean): void {
+		if (!on) onChange(undefined);
+		else onChange(liveTiming ? { ...baseline } : { quietHours: baseline.quietHours });
+	}
+	return (
+		<OverrideBox
+			title="推送时段覆盖"
+			subtitle={
+				liveTiming
+					? "开 = 该 UP 使用自定义免扰时段 / 直播推送频率;关 = 继承全局"
+					: "开 = 该 UP 使用自定义免扰时段;关 = 继承全局"
+			}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.sliders size={14} />}
+			enabled={value !== undefined}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局免扰时段与推送频率"
+		>
+			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
+				<ScheduleFields
+					value={value ?? {}}
+					onChange={onChange}
+					baseline={baseline}
+					liveTiming={liveTiming}
+				/>
 			</div>
 		</OverrideBox>
 	);
@@ -722,10 +840,18 @@ function MessageLayoutOverrideBox({
 	value,
 	onChange,
 	baseline,
+	showDynamic,
+	showLive,
 }: {
 	value: MessageLayoutOverride | undefined;
 	onChange: (next: MessageLayoutOverride | undefined) => void;
 	baseline: GlobalDefaults["messageLayout"];
+	/**
+	 * 画不画动态 / 直播那一套。拓展订阅只画源报得出的那套;覆盖仍是整份(schema 要两套齐全),
+	 * 没画的那套就是开覆盖时抄来的全局副本,用不上。
+	 */
+	showDynamic: boolean;
+	showLive: boolean;
 }) {
 	const enabled = value !== undefined;
 	const cur = value ?? baseline;
@@ -739,21 +865,29 @@ function MessageLayoutOverrideBox({
 			onToggle={(on) => onChange(on ? structuredClone(baseline) : undefined)}
 			inheritNote="该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)"
 		>
-			<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
-			<MessageLayoutEditor
-				value={cur.dynamic}
-				onChange={(next) => onChange({ ...cur, dynamic: next })}
-				separatorCode="messageLayout.dynamic.separator"
-				accent={SECTION_ACCENT.message}
-			/>
-			<div className="my-3 border-t border-bn-border-subtle" />
-			<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">直播消息版式</div>
-			<MessageLayoutEditor
-				value={cur.live}
-				onChange={(next) => onChange({ ...cur, live: next })}
-				separatorCode="messageLayout.live.separator"
-				accent="var(--color-bn-pink)"
-			/>
+			{showDynamic ? (
+				<>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
+					<MessageLayoutEditor
+						value={cur.dynamic}
+						onChange={(next) => onChange({ ...cur, dynamic: next })}
+						separatorCode="messageLayout.dynamic.separator"
+						accent={SECTION_ACCENT.message}
+					/>
+				</>
+			) : null}
+			{showDynamic && showLive ? <div className="my-3 border-t border-bn-border-subtle" /> : null}
+			{showLive ? (
+				<>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">直播消息版式</div>
+					<MessageLayoutEditor
+						value={cur.live}
+						onChange={(next) => onChange({ ...cur, live: next })}
+						separatorCode="messageLayout.live.separator"
+						accent="var(--color-bn-pink)"
+					/>
+				</>
+			) : null}
 			<div className="mt-2 text-bn-xs text-bn-text-tertiary">
 				文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
 			</div>

@@ -7,8 +7,6 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
-// 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套;色板直取 internal 正身。
-import { colorFromUid } from "@bilibili-notify/internal/constants";
 import {
 	ADD_LANGUAGE,
 	Avatar,
@@ -26,30 +24,36 @@ import {
 	useDismiss,
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
-import type { BiliSubscription } from "../types/domain";
-import { displayName } from "../utils/up-display";
+import { type ExtensionSubscription, isBiliSubscription, type Subscription } from "../types/domain";
+// 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套。
+import { displayName, subscriptionColor } from "../utils/up-display";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;
 
 /**
- * 只收 B 站订阅:按 UP 定制规则 / 卡片的那两页第一版不含拓展订阅(ADR-0019 决策 12),
- * 调用方先筛过。
+ * 收哪一支由调用方定:高级规则页两支都收(ADR-0019 决策 64),卡片页第一版只收 B 站订阅(卡片页的
+ * 按 UP 预览放到 ⑤ 再定),调用方先筛过。泛型让卡片页的回调照旧拿到收窄过的 B 站订阅。
  */
-export interface ScopeTabsProps {
+export interface ScopeTabsProps<S extends Subscription = Subscription> {
 	scope: Scope;
 	onChange: (next: Scope) => void;
-	tabSubs: BiliSubscription[];
-	availableSubs: BiliSubscription[]; // candidates for "添加 UP" dropdown
+	tabSubs: S[];
+	availableSubs: S[]; // candidates for "添加 UP" dropdown
 	onAddSub: (id: string) => void;
 	onRemoveSub: (id: string) => void;
-	overridesCountFor: (sub: BiliSubscription) => number;
+	overridesCountFor: (sub: S) => number;
+	/**
+	 * 拓展订阅的平台名(清单里的叫法)。拓展订阅没有 uid,「是谁」那一小行写「平台名 · 外部 id」
+	 * (ADR-0019 决策 73 的口径);不给、或取不到时平台名写拓展 id(同决策 10)。
+	 */
+	platformLabelOf?: (extensionId: string) => string | undefined;
 	/** 自定义提示语(右侧)。默认走 Rules 文案;Cards 传卡片专属文案。 */
 	globalHint?: string;
-	perUpHint?: (sub: BiliSubscription | undefined) => React.ReactNode;
+	perUpHint?: (sub: S | undefined) => React.ReactNode;
 }
 
-export function ScopeTabs({
+export function ScopeTabs<S extends Subscription>({
 	scope,
 	onChange,
 	tabSubs,
@@ -57,15 +61,27 @@ export function ScopeTabs({
 	onAddSub,
 	onRemoveSub,
 	overridesCountFor,
+	platformLabelOf,
 	globalHint,
 	perUpHint,
-}: ScopeTabsProps) {
+}: ScopeTabsProps<S>) {
 	const [adding, setAdding] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement | null>(null);
 
 	useDismiss(dropdownRef, () => setAdding(false), { enabled: adding });
 
 	const isGlobal = scope === "__global";
+	const extensionIdLabel = (sub: ExtensionSubscription): string =>
+		`${platformLabelOf?.(sub.extensionId) ?? sub.extensionId} · ${sub.externalId}`;
+	// 右侧提示里的「是谁」:B 站照旧只写那串 uid 数字;拓展订阅写「平台名 · 外部 id」。
+	// 先放宽成联合再收窄 —— 泛型 S 上的类型守卫只收窄真分支,假分支拿不到拓展那一支的字段。
+	const focused: Subscription | undefined = tabSubs.find((s) => s.id === scope);
+	const focusedIdLabel =
+		focused === undefined
+			? undefined
+			: isBiliSubscription(focused)
+				? focused.uid
+				: extensionIdLabel(focused);
 
 	return (
 		<TabBarShell>
@@ -84,7 +100,7 @@ export function ScopeTabs({
 			{/* per-UP tabs (仅显示已定制 + 客户端临时添加的) */}
 			{tabSubs.map((sub) => {
 				const active = scope === sub.id;
-				const color = colorFromUid(sub.uid);
+				const color = subscriptionColor(sub);
 				const count = overridesCountFor(sub);
 				return (
 					<div
@@ -173,7 +189,8 @@ export function ScopeTabs({
 						) : (
 							<div className="max-h-72 overflow-y-auto py-1">
 								{availableSubs.map((sub) => {
-									const color = colorFromUid(sub.uid);
+									const color = subscriptionColor(sub);
+									const one: Subscription = sub;
 									return (
 										<MenuItem
 											key={sub.id}
@@ -193,7 +210,7 @@ export function ScopeTabs({
 													{displayName(sub)}
 												</div>
 												<div className="text-bn-2xs text-bn-text-tertiary tabular-nums">
-													UID {sub.uid}
+													{isBiliSubscription(one) ? <>UID {one.uid}</> : extensionIdLabel(one)}
 												</div>
 											</div>
 											{sub.state.liveStatus === "live" ? (
@@ -225,7 +242,7 @@ export function ScopeTabs({
 					perUpHint(tabSubs.find((s) => s.id === scope))
 				) : (
 					<>
-						仅作用于 <b className="text-bn-pink">{tabSubs.find((s) => s.id === scope)?.uid}</b>
+						仅作用于 <b className="text-bn-pink">{focusedIdLabel}</b>
 						,未开启的项继承全局
 					</>
 				)}

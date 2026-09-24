@@ -18,7 +18,12 @@ import {
 import { InheritNote } from "../../components/inherit-note";
 import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
-import type { MessageKindLayoutFull } from "../../types/domain";
+import {
+	type FeatureKey,
+	isBiliSubscription,
+	type MessageKindLayoutFull,
+	type Subscription,
+} from "../../types/domain";
 import type {
 	ContentFilters,
 	GlobalConfigPatch,
@@ -32,6 +37,8 @@ import { MessageLayoutEditor } from "./MessageLayoutEditor";
 export type SectionId =
 	| "filter"
 	| "live"
+	// 拓展订阅那一节「推送时段」(免扰 + 直播的推送频率),见 perUpSectionsFor。
+	| "schedule"
 	| "summary"
 	| "msg"
 	| "dynamicMsg"
@@ -175,6 +182,53 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		desc: "挑一份人格给这个 UP",
 	},
 ];
+
+/** 拓展订阅露得出的那几节(ADR-0019 决策 64):看内容、看文案、看时段的,不看 B 站的东西。 */
+const EXTENSION_POST_SECTIONS = new Set<SectionId>(["filter", "dynamicMsg"]);
+const EXTENSION_LIVE_SECTIONS = new Set<SectionId>(["msg"]);
+const EXTENSION_ANY_SECTIONS = new Set<SectionId>(["messageLayout", "ai"]);
+
+/**
+ * 这条订阅在高级规则页上露哪几节。
+ *
+ * B 站订阅全露,一切照旧。拓展订阅只露通用的(ADR-0019 决策 64):
+ * - 过滤(只露关键词 / 正则 / 白名单,四个类型开关由编辑器藏,决策 70)与动态消息 —— 源报作品才露;
+ * - 直播消息 —— 源报开播或下播才露;
+ * - 消息版式、AI 人格 —— 都露;
+ * - 「直播阈值」换成「推送时段」:免扰时段对动态和直播一样生效(推送层那道闸不看是哪种推送),
+ *   所以只报作品的源也要能设;SC / 上舰阈值是 B 站独有的(决策 5),不露。报直播时这一节再加上
+ *   推送频率那几格(决策 57 / 58:周期推送、重启补推、断流接续对拓展订阅照样生效)。
+ * - 动态图集(决策 72)、直播总结、上舰提示、特别关注弹幕 / 进房不露。
+ *
+ * `features` 是这个源报得出的那几把特性(`visibleFeaturesOf` 的结果);认不出是哪个源时,调用方按
+ * 拓展订阅最多能有的那几种给,同配置弹层。
+ */
+export function perUpSectionsFor(
+	sub: Subscription,
+	features: readonly FeatureKey[],
+): SectionMeta[] {
+	if (isBiliSubscription(sub)) return PERUP_SECTIONS;
+	const post = features.includes("dynamic");
+	const live = features.includes("live") || features.includes("liveEnd");
+	const out: SectionMeta[] = [];
+	for (const s of PERUP_SECTIONS) {
+		if (s.id === "live") {
+			out.push({
+				id: "schedule",
+				label: "推送时段",
+				icon: <Icon.sliders size={14} />,
+				desc: live ? "覆盖免扰时段 / 直播推送频率" : "覆盖免扰时段",
+			});
+		} else if (
+			EXTENSION_ANY_SECTIONS.has(s.id) ||
+			(post && EXTENSION_POST_SECTIONS.has(s.id)) ||
+			(live && EXTENSION_LIVE_SECTIONS.has(s.id))
+		) {
+			out.push(s);
+		}
+	}
+	return out;
+}
 
 // ── 1. Filter section ────────────────────────────────────────────────────────
 

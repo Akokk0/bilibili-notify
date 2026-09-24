@@ -29,6 +29,7 @@ import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
+import { manifestSubscriptionView } from "./extensions/context.js";
 import { extensionsRootIn } from "./extensions/discover.js";
 import {
 	EXTENSION_MAX_LOAD_FAILURES,
@@ -465,6 +466,14 @@ export async function startStandaloneServer(
 			loadFontFace: runtime.loadFontFace,
 			api: devtools?.api ?? authSystem.api,
 			quietHoursNow: devtools?.quietHoursNow,
+			// 女仆查订阅时拓展订阅的平台名(ADR-0019 决策 64):清单里订阅源的叫法 → 拓展名。装载器比
+			// 引擎晚一步建起来,所以现取;取不到就交 undefined,视图退拓展 id(同面板,决策 10)。
+			extensionPlatformLabel: (id) => {
+				const entry = loadedExtensions?.list().find((one) => one.id === id);
+				if (!entry) return undefined;
+				const view = entry.manifest && manifestSubscriptionView(entry.manifest);
+				return view?.display.label ?? entryIdentity(entry)?.name;
+			},
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
