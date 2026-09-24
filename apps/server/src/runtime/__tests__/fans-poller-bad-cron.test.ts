@@ -77,7 +77,7 @@ describe("FansPoller — 无法解析的 dynamicCron", () => {
 					append: vi.fn(async () => {}),
 					findNearestBefore: vi.fn(async () => null),
 					findEarliest: vi.fn(async () => undefined),
-					dropUid: vi.fn(async () => {}),
+					drop: vi.fn(async () => {}),
 				} as never,
 				api: { getUserCardInfo: vi.fn() } as never,
 				serviceCtx: {

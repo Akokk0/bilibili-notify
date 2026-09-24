@@ -78,7 +78,7 @@ function runPoller(opts: {
 			append: vi.fn(async () => {}),
 			findNearestBefore: opts.findNearestBefore,
 			findEarliest: opts.findEarliest,
-			dropUid: vi.fn(async () => {}),
+			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
 			getUserCardInfo: vi.fn(async () => ({ code: 0, data: { card: { fans: 0 } } })),

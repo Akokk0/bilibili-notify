@@ -5,9 +5,10 @@ import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 
 /**
- * Per-UID fans 时序持久化。
+ * 按订阅分文件的 fans 时序持久化。
  *
- * 文件布局:`<dataDir>/fans/<uid>.jsonl`,每行 `{ ts: ISO, value: number }`。
+ * 文件布局:`<dataDir>/fans/<key>.jsonl`,每行 `{ ts: ISO, value: number }`。`<key>` 与统计仓
+ * 同一个规矩({@link statsFileKey}):B 站是 uid,拓展是 `ext-<订阅 id>`(ADR-0020 决策 2 / 16)。
  * append-only — FansPoller 每个 cron tick 拉到一个 UP 的当前 fans 数就在该
  * UP 的 jsonl 末尾追加一行。计算 24h / 7d delta 时通过 `findNearestBefore`
  * 逆向扫读最近 ~8 天分区,在内存里挑离目标时间戳最近的那条样本(误差与
@@ -23,19 +24,19 @@ export interface FansSample {
 }
 
 export interface FansStore {
-	/** Append one sample to the uid's jsonl. Creates the directory + file on demand. */
-	append(uid: string, sample: FansSample): Promise<void>;
+	/** Append one sample to the key's jsonl. Creates the directory + file on demand. */
+	append(key: string, sample: FansSample): Promise<void>;
 	/**
-	 * 找出该 uid 在 ts 时间点之前最接近的一条样本。没有匹配返回 undefined。
+	 * 找出这个键在 ts 时间点之前最接近的一条样本。没有匹配返回 undefined。
 	 * 实现:从文件尾向头流式读,第一条 ts <= target 的样本就是答案。
 	 */
-	findNearestBefore(uid: string, targetTsIso: string): Promise<FansSample | undefined>;
+	findNearestBefore(key: string, targetTsIso: string): Promise<FansSample | undefined>;
 	/**
 	 * 取 jsonl 最早一行有效样本(早返回,O(首行))。用于启动时 fansBaseline
 	 * 自愈:earliest 比持久化的 baseline 更早时以它校准。
 	 * 文件不存在 / 全空 / 全乱码 → undefined。
 	 */
-	findEarliest(uid: string): Promise<FansSample | undefined>;
+	findEarliest(key: string): Promise<FansSample | undefined>;
 	/**
 	 * 读回 ts >= sinceIso 的全部样本(jsonl 单调追加,所以天然时间升序)。
 	 * 数据统计页的粉丝曲线 / 每日净增靠它取原始点,再在 aggregate 层按日归并。
@@ -44,9 +45,9 @@ export interface FansStore {
 	 * 内容。30 天 × 2min ≈ 2 万行、~1MB 量级,一次请求内可接受;调用方应把
 	 * 窗口限制在 UI 真正要展示的天数,不要拿它当全量导出用。
 	 */
-	listSamplesSince(uid: string, sinceIso: string): Promise<FansSample[]>;
-	/** 删除该 uid 的全部历史(订阅被移除时调用,避免遗留垃圾)。 */
-	dropUid(uid: string): Promise<void>;
+	listSamplesSince(key: string, sinceIso: string): Promise<FansSample[]>;
+	/** 删除这个键的全部历史(订阅被移除时调用,避免遗留垃圾)。 */
+	drop(key: string): Promise<void>;
 }
 
 export interface CreateFansStoreOptions {
@@ -64,24 +65,24 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 		ensured = true;
 	}
 
-	function fileFor(uid: string): string {
-		return join(root, `${uid}.jsonl`);
+	function fileFor(key: string): string {
+		return join(root, `${key}.jsonl`);
 	}
 
 	return {
-		async append(uid, sample) {
+		async append(key, sample) {
 			await ensureRoot();
 			const line = `${JSON.stringify(sample)}\n`;
 			try {
-				await appendFile(fileFor(uid), line, "utf-8");
+				await appendFile(fileFor(key), line, "utf-8");
 			} catch (err) {
-				opts.logger.warn(`[fans-store] append ${uid} failed: ${String(err)}`);
+				opts.logger.warn(`[fans-store] append ${key} failed: ${String(err)}`);
 			}
 		},
 
-		async findNearestBefore(uid, targetTsIso) {
+		async findNearestBefore(key, targetTsIso) {
 			await ensureRoot();
-			const file = fileFor(uid);
+			const file = fileFor(key);
 			let best: FansSample | undefined;
 			try {
 				// streaming forward scan; jsonl 是单调追加的,如果 line.ts <= target
@@ -106,17 +107,17 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 					}
 				}
 			} catch (err) {
-				// 文件不存在 = 该 uid 还没有任何样本,正常情况,不打日志。
+				// 文件不存在 = 这个键还没有任何样本,正常情况,不打日志。
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[fans-store] read ${uid} failed: ${String(err)}`);
+					opts.logger.warn(`[fans-store] read ${key} failed: ${String(err)}`);
 				}
 			}
 			return best;
 		},
 
-		async findEarliest(uid) {
+		async findEarliest(key) {
 			await ensureRoot();
-			const file = fileFor(uid);
+			const file = fileFor(key);
 			try {
 				const stream = createReadStream(file, { encoding: "utf-8" });
 				const reader = createInterface({ input: stream });
@@ -135,15 +136,15 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 				}
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[fans-store] read ${uid} failed: ${String(err)}`);
+					opts.logger.warn(`[fans-store] read ${key} failed: ${String(err)}`);
 				}
 			}
 			return undefined;
 		},
 
-		async listSamplesSince(uid, sinceIso) {
+		async listSamplesSince(key, sinceIso) {
 			await ensureRoot();
-			const file = fileFor(uid);
+			const file = fileFor(key);
 			const out: FansSample[] = [];
 			try {
 				const stream = createReadStream(file, { encoding: "utf-8" });
@@ -160,20 +161,20 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 					}
 				}
 			} catch (err) {
-				// 文件不存在 = 该 uid 还没有任何样本,正常情况,不打日志。
+				// 文件不存在 = 这个键还没有任何样本,正常情况,不打日志。
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[fans-store] read ${uid} failed: ${String(err)}`);
+					opts.logger.warn(`[fans-store] read ${key} failed: ${String(err)}`);
 				}
 			}
 			return out;
 		},
 
-		async dropUid(uid) {
+		async drop(key) {
 			try {
-				await unlink(fileFor(uid));
+				await unlink(fileFor(key));
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[fans-store] drop ${uid} failed: ${String(err)}`);
+					opts.logger.warn(`[fans-store] drop ${key} failed: ${String(err)}`);
 				}
 			}
 		},

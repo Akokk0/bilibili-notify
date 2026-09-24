@@ -76,7 +76,7 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 				append: vi.fn(async () => {}),
 				findNearestBefore: vi.fn(async () => null),
 				findEarliest: vi.fn(async () => undefined),
-				dropUid: vi.fn(async () => {}),
+				drop: vi.fn(async () => {}),
 			} as never,
 			api: {
 				getUserCardsBatch,

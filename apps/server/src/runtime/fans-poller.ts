@@ -178,7 +178,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		for (const oldUid of Array.from(lastByUid.keys())) {
 			if (enabledUids.has(oldUid)) continue;
 			lastByUid.delete(oldUid);
-			if (!subscribedUids.has(oldUid)) void fansStore.dropUid(oldUid);
+			if (!subscribedUids.has(oldUid)) void fansStore.drop(oldUid);
 		}
 		if (subs.length === 0) {
 			// 全部被删除时仍要 emit 一次空快照让前端清屏。
@@ -455,7 +455,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				lastByUid.delete(uid);
 				removedAny = true;
 			}
-			void fansStore.dropUid(uid);
+			void fansStore.drop(uid);
 		}
 		if (hadRemove) {
 			// Drop the deleted sub's SubRuntimeStore entry. subscriptionStore

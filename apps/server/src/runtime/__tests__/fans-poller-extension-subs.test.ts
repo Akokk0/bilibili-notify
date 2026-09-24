@@ -44,7 +44,7 @@ function start(list: () => unknown[]) {
 			append: vi.fn(async () => {}),
 			findNearestBefore: vi.fn(async () => null),
 			findEarliest: vi.fn(async () => undefined),
-			dropUid,
+			drop: dropUid,
 		} as never,
 		api: {
 			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),

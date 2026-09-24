@@ -115,7 +115,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 				append,
 				findNearestBefore,
 				findEarliest: vi.fn(async () => undefined),
-				dropUid: vi.fn(async () => {}),
+				drop: vi.fn(async () => {}),
 			} as never,
 			api: api as never,
 			serviceCtx: {
@@ -183,7 +183,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 				append: vi.fn(async () => {}),
 				findNearestBefore: vi.fn(async () => null),
 				findEarliest: vi.fn(async () => undefined),
-				dropUid: vi.fn(async () => {}),
+				drop: vi.fn(async () => {}),
 			} as never,
 			api: api as never,
 			serviceCtx: {

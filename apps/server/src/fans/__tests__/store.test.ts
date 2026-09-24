@@ -5,7 +5,7 @@
  *   - append:按需建 fans 目录 + 追加一行;多次 append 累积
  *   - findNearestBefore:前向扫描,返回 ts<=target 的最近一条;遇首个 ts>target 停止;
  *     坏行 / 空行 / 缺字段行跳过;目标早于所有样本 → undefined;文件缺失 → undefined(不 warn)
- *   - dropUid:删文件;缺文件时静默(不抛、不 warn)
+ *   - drop:删文件;缺文件时静默(不抛、不 warn)
  */
 
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -133,15 +133,15 @@ describe("findEarliest", () => {
 	});
 });
 
-describe("dropUid", () => {
+describe("drop", () => {
 	it("删除该 uid 文件", async () => {
 		await store.append("u1", { ts: T(1), value: 1 });
-		await store.dropUid("u1");
+		await store.drop("u1");
 		expect(await store.findNearestBefore("u1", T(9))).toBeUndefined();
 	});
 
 	it("文件不存在时静默(不抛、不 warn)", async () => {
-		await expect(store.dropUid("ghost")).resolves.toBeUndefined();
+		await expect(store.drop("ghost")).resolves.toBeUndefined();
 		expect(logger.warn).not.toHaveBeenCalled();
 	});
 });
