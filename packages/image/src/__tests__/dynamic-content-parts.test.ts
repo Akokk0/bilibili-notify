@@ -306,6 +306,37 @@ describe("buildDynamicNode —— 转发", () => {
 		expect(text.indexOf("转发时说的话")).toBeLessThan(text.indexOf("原动态已不可见"));
 		expect(picsOf(node)).toBeNull();
 	});
+
+	it("原动态是开播动态 → 不抛,原动态那格是一句提示(和别的渲染不了的类型一样)", async () => {
+		// 顶层的开播动态动态引擎按类型先跳过了,转发里的那条跳不掉:从前在这里抛,整张转发卡
+		// 当成出图失败 —— 私信主人「生成动态图片失败」、推纯文字。
+		const orig = dynamic(
+			"DYNAMIC_TYPE_LIVE_RCMD",
+			{},
+			{
+				modules: {
+					module_author: author("开播的UP"),
+					module_dynamic: {},
+					module_stat: { forward: { count: 1 }, comment: { count: 2 }, like: { count: 3 } },
+				},
+			},
+		);
+		const node = await buildDynamicNode(forward(orig), false, fmt);
+
+		const text = await htmlOf(present(node.text, "外层 text"));
+		expect(text).toContain("转发时说的话");
+		const inner = node.forward as DynamicNode;
+		expect(inner).toBeDefined();
+		const innerText = await htmlOf(present(inner.text, "原动态 text"));
+		expect(innerText).toBe("<p>开播的UP发布了一条开播动态，我暂时无法渲染，请自行查看</p>");
+		expect(inner.additional ?? null).toBeNull();
+	});
+
+	it("开播动态不在转发里 → 照旧抛(引擎在出卡之前就按类型跳过了它)", async () => {
+		await expect(
+			buildDynamicNode(dynamic("DYNAMIC_TYPE_LIVE_RCMD", {}), false, fmt),
+		).rejects.toThrow("直播开播动态");
+	});
 });
 
 describe("buildDynamicNode —— text 与 pics 不共用 VNode 实例", () => {

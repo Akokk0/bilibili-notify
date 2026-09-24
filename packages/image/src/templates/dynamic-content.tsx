@@ -260,7 +260,11 @@ export async function buildDynamicNode(
 			notice(<p>{upName}发布了一条无效动态</p>);
 			break;
 		case DYNAMIC_TYPE_LIVE_RCMD:
-			throw new Error("直播开播动态，不做处理");
+			// 顶层的开播动态动态引擎按类型先跳过了(ADR-0019 决策 66),撞到这里的只剩卡片页的
+			// 真实预览,照旧抛。转发里的那条跳不掉:抛了整张转发卡都出不来,当一句提示画。
+			if (!isForward) throw new Error("直播开播动态，不做处理");
+			notice(<p>{upName}发布了一条开播动态，我暂时无法渲染，请自行查看</p>);
+			break;
 		default:
 			notice(<p>{upName}发布了一条我无法识别的动态，请自行查看</p>);
 	}
