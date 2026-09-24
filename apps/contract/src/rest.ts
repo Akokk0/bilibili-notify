@@ -595,15 +595,30 @@ export interface LogsResponse {
 // ---- /api/stats ------------------------------------------------------------
 
 /**
- * 数据统计页的单个 UP 行。
+ * 数据统计页的单个 UP 行 —— 一条订阅一行,B 站与拓展订阅都在(ADR-0020)。
  *
  * **`null` 一律表示「没有记录」,不是 0**:统计数据都是上线后才开始采集的,
  * 分不清「那天没涨粉」和「那天服务没跑」会让图表撒谎。前端对 null 的处理是
- * 不渲染,而不是补 0。
+ * 不渲染,而不是补 0。「那天有没有记录」两支各算各的(决策 9):B 站行看 B 站的粉丝采样,
+ * 拓展行看它自己的「在记」上报,开始记录之前的日子不画 0。
  */
 export interface UpStatsRow {
-	uid: string;
-	/** 最近一次采样到的粉丝数;从未采到为 null。 */
+	/**
+	 * 行的键(ADR-0020 决策 1 的 🔗 / 18):订阅自己的 id。面板按它选中、做键。统计随订阅一起删、
+	 * 从不比订阅活得久,所以认订阅就够(历史行要在订阅删了之后还认得出人,那边才认人)。
+	 */
+	subscriptionId: string;
+	/**
+	 * 这是谁(决策 1,同推送历史 / ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` +
+	 * `externalId`、不带 `uid`。只管颜色、名字兜底、页头写 UID 还是平台 + 外部 id —— 键是上面那个。
+	 */
+	uid?: string;
+	extensionId?: string;
+	externalId?: string;
+	/**
+	 * 此刻的粉丝数:B 站取粉丝轮询的最新快照、拓展取它最近报的资料(停用的两支都退回粉丝时序的末值);
+	 * 从未采到为 null —— 平台不报粉丝数的拓展订阅恒为 null(ADR-0020 决策 8)。
+	 */
 	fans: number | null;
 	/**
 	 * 近 1 / 7 个本地日的净增 —— **口径固定,不随请求的 days 变**。
@@ -631,7 +646,7 @@ export interface UpStatsRow {
 	cumulative: Array<number | null>;
 	/**
 	 * 每日活动次数(动态 + 投稿 + 开播),长度同 `series`,热力图用。
-	 * `null` = 那天没有任何采样记录,与「当天没活动」的 0 区分。
+	 * `null` = 那天没在记(B 站行:那天没有粉丝采样;拓展行:那天没收到它的上报),与「当天没活动」的 0 区分。
 	 */
 	activity: Array<number | null>;
 	/**
@@ -644,9 +659,15 @@ export interface UpStatsRow {
 	 * 画着一片「无记录」空格,两个数在同一屏里互相打脸。AI 锐评那边也一样:
 	 * prompt 里「标注为无记录的字段不要据此判定该 UP 偷懒」对这几项从来没生效过。
 	 */
-	/** 窗口内的视频投稿数(来自动态流的 DYNAMIC_TYPE_AV)。 */
+	/**
+	 * 窗口内的「投稿」数 = 发了视频的作品(ADR-0020 决策 5:统计仓里记成 `video`)。B 站是视频投稿,
+	 * 拓展是带视频的作品 —— 跨平台同一件事。
+	 */
 	archives: number | null;
-	/** 窗口内的普通动态数(已剔除开播伪动态)。 */
+	/**
+	 * 窗口内的「动态」数 = 其余的作品(统计仓里的 `post`:图文、纯文字、转发……)。B 站动态流里的
+	 * 开播公告(`live`)不算作品,只当活动的证据。
+	 */
 	dynamics: number | null;
 	/** 窗口内的开播场次(含仍在进行的那场)。 */
 	liveSessions: number | null;
@@ -659,9 +680,14 @@ export interface UpStatsRow {
 	 * `liveSessions` 当分母会把这种场次当成「0 小时」,平白稀释场均值。
 	 */
 	liveTimedSessions: number | null;
-	/** 各场峰值观看的最大值 / 平均值;从未采到为 null。 */
-	peakViewers: number | null;
-	avgPeakViewers: number | null;
+	/**
+	 * 窗口内**单场最高观看** / **场均观看**(ADR-0020 决策 7 / 18)。每场的数是这一场的**累计观看**
+	 * (看过的人数:B 站的「X 人看过」、拓展报的 `totalViewers`),不是同时在线的峰值 —— 所以不再叫
+	 * `peakViewers` / `avgPeakViewers`(同当年 `net30d` 改 `netWindow`,名字对不上号才看得出错)。
+	 * 只算采到了这个数的场次;一场都没采到为 null。平台只报此刻在线、不报累计的,那几场空着,不拿在线人数顶替。
+	 */
+	maxViewers: number | null;
+	avgViewers: number | null;
 	/** 最近一次可见活动(发动态或开播)的时间;窗口内没有则 null。 */
 	lastActivityAt: string | null;
 	/** 当前是否在直播。 */

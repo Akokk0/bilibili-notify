@@ -9,12 +9,13 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { UpStatsRow } from "../../services/stats.js";
+import type { BiliStatsRow } from "../../services/stats.js";
 import { buildCsv, csvColumns } from "./csv.js";
 
 /** 每个字段一个独一无二的哨兵值,任何一列取错都会露馅。 */
-function sentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
+function sentinel(over: Partial<BiliStatsRow> = {}): BiliStatsRow {
 	return {
+		subscriptionId: "s777",
 		uid: "777",
 		fans: 1,
 		net1d: 2,
@@ -28,8 +29,8 @@ function sentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		liveSessions: 7,
 		liveHours: 8,
 		liveTimedSessions: 9,
-		peakViewers: 10,
-		avgPeakViewers: 11,
+		maxViewers: 10,
+		avgViewers: 11,
 		lastActivityAt: "2026-05-16T00:00:00.000Z",
 		live: false,
 		...over,

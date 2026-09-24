@@ -122,6 +122,21 @@ describe("generateBoardRoast — 失败得说得清是哪一种", () => {
 		expect(r).toMatchObject({ ok: false, kind: "overview-failed" });
 	});
 
+	it("S6 之前 overview 里的拓展行不进榜单:一位 B 站 + 一位拓展仍是 too-few-ups", async () => {
+		// overview 已经两支都列(ADR-0020 S4),锐评要到 S6 才混着比 —— 在那之前与改之前一模一样,
+		// 拓展行不算人头,也不会带着一个空的 uid 进提示词。
+		const extRow = { ...row("x"), uid: undefined, extensionId: "douyin", externalId: "甲" };
+		// `comment` 是整个文件共用的替身、不清零:比调用次数的增量,不依赖用例的先后。
+		const calls = comment.mock.calls.length;
+		const r = await generateBoardRoast(makeDeps(["1"]), {
+			days: 7,
+			tz: 0,
+			fetchOverview: async () => ({ rows: [row("1"), extRow] }) as unknown as StatsOverviewResponse,
+		});
+		expect(r).toMatchObject({ ok: false, kind: "too-few-ups" });
+		expect(comment.mock.calls.length).toBe(calls);
+	});
+
 	it("只订阅 1 位 → too-few-ups(评鸽王要有对照组)", async () => {
 		const r = await generateBoardRoast(makeDeps(["1"]), {
 			days: 7,

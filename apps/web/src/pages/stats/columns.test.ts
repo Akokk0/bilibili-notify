@@ -21,10 +21,11 @@ const SENTINEL: Record<StatColumnId, number> = {
 	liveSessions: 44,
 	liveHours: 55,
 	dynamics: 66,
-	peakViewers: 77,
+	maxViewers: 77,
 };
 
 const row: UpStatsRow = {
+	subscriptionId: "s1",
 	uid: "1",
 	fans: 1000,
 	net1d: 99,
@@ -33,7 +34,7 @@ const row: UpStatsRow = {
 	series: [],
 	cumulative: [],
 	activity: [],
-	avgPeakViewers: null,
+	avgViewers: null,
 	lastActivityAt: null,
 	live: false,
 	...SENTINEL,

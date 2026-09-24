@@ -12,6 +12,7 @@ import { buildRadarAxes, normalizeAxis } from "./radar.js";
 
 function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 	return {
+		subscriptionId: `s${over.uid ?? "1"}`,
 		uid: "1",
 		fans: 10_000,
 		net1d: 10,
@@ -25,8 +26,8 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		liveSessions: 1,
 		liveHours: 3,
 		liveTimedSessions: 0,
-		peakViewers: 500,
-		avgPeakViewers: 500,
+		maxViewers: 500,
+		avgViewers: 500,
 		lastActivityAt: null,
 		live: false,
 		...over,

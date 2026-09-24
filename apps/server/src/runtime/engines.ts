@@ -94,7 +94,11 @@ import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import type { ExtensionLiveTable } from "./extension-live.js";
 import { bindExtensionLivePush } from "./extension-live-push.js";
-import { createExtensionLiveSessions } from "./extension-live-sessions.js";
+import {
+	createExtensionLiveSessions,
+	type ExtensionLiveSession,
+	type ExtensionLiveSessions,
+} from "./extension-live-sessions.js";
 import { bindExtensionPosts } from "./extension-posts.js";
 import type { ExtensionSourceLookups } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
@@ -141,6 +145,12 @@ export interface EnginesRuntime extends Disposable {
 	readonly imageRenderer: ImageRenderer | null;
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
+	/**
+	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `extension-live-sessions.ts` 手里的):没在播、或没接
+	 * 拓展订阅的直播(只测 B 站那几条路的引擎)是 `undefined`。统计页拿它判拓展行「此刻在播」—— 与盘上那一场
+	 * 敞着的同源(开一场、关一场的帧都是它发的),断流等待里也还算在播,同 B 站直播间在等待期里仍是在播。
+	 */
+	extensionLiveSession(subscriptionId: string): ExtensionLiveSession | undefined;
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
 	linkParsing(): LinkParsingConfig;
 	/**
@@ -677,6 +687,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、特性键映射)。最新状态从在播表取,
 	// 出卡的渲染器现取(热换、关了出图时不出卡)。
 	const extensionLive = opts.extensionLive;
+	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `extensionLiveSession` 读它。 */
+	let extensionLiveSessions: ExtensionLiveSessions | undefined;
 	if (extensionSources && extensionLive) {
 		const liveSessions = createExtensionLiveSessions({
 			bus: opts.bus,
@@ -689,6 +701,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			timers: liveCtx,
 		});
 		handles.push(liveSessions);
+		extensionLiveSessions = liveSessions;
 		handles.push(
 			bindExtensionLivePush({
 				bus: opts.bus,
@@ -1097,6 +1110,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
+		extensionLiveSession: (subscriptionId: string) => extensionLiveSessions?.get(subscriptionId),
 		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
 		connectionCapabilities: (connectionId: string) => sink.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>

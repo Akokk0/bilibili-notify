@@ -16,6 +16,8 @@ import { useMemo, useState } from "react";
 import { api } from "../services/api";
 import {
 	activityLevel,
+	type BiliStatsRow,
+	biliStatsOnly,
 	computeTotals,
 	coveredActivityTotal,
 	coveredDayCount,
@@ -26,7 +28,6 @@ import {
 	type StatsOverviewResponse,
 	sparseLabels,
 	statsQueryKey,
-	type UpStatsRow,
 } from "../services/stats";
 import { isBiliSubscription } from "../types/domain";
 import type { SignTone } from "./stats/chart-utils";
@@ -116,7 +117,7 @@ interface UpMeta {
  * 列定义在 `stats/csv.ts` —— 表头与取值同源、有测试守着。这里只剩下载那几行:
  * 拼 BOM(否则 Excel 打开中文列名是乱码)、造 Blob、点一下虚拟链接。
  */
-function exportCsv(rows: UpStatsRow[], meta: Map<string, UpMeta>, days: number): void {
+function exportCsv(rows: BiliStatsRow[], meta: Map<string, UpMeta>, days: number): void {
 	const csv = buildCsv(rows, days, (uid) => meta.get(uid)?.name ?? `UID ${uid}`);
 	const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
@@ -134,7 +135,7 @@ function UpPicker({
 	value,
 	onChange,
 }: {
-	rows: UpStatsRow[];
+	rows: BiliStatsRow[];
 	meta: Map<string, UpMeta>;
 	value: string | null;
 	onChange: (uid: string | null) => void;
@@ -212,7 +213,7 @@ function CompareTable({
 	days,
 	onPick,
 }: {
-	rows: UpStatsRow[];
+	rows: BiliStatsRow[];
 	meta: Map<string, UpMeta>;
 	days: number;
 	onPick: (uid: string) => void;
@@ -443,7 +444,11 @@ export default function Stats() {
 		return m;
 	}, [subsQuery.data]);
 
-	const res = statsQuery.data;
+	// S5: 拓展行先滤掉(见 biliStatsOnly),下面按 uid 做的键 / 选中 / 配色都还只认 B 站行。
+	const res = useMemo(
+		() => (statsQuery.data ? biliStatsOnly(statsQuery.data) : undefined),
+		[statsQuery.data],
+	);
 	const rows = res?.rows ?? [];
 	const axis = useMemo(() => dayAxis(days), [days]);
 	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
@@ -800,9 +805,10 @@ export default function Stats() {
 											: "—",
 										"h",
 									],
-									["峰值观看", num(focused.peakViewers), ""],
-									// 我们只采得到每场的峰值,所以这是「场均峰值」而不是「平均观看」。
-									["场均峰值", num(focused.avgPeakViewers), ""],
+									// S5: 每场的数其实是本场累计观看(ADR-0020 决策 7),字段已改名 maxViewers / avgViewers;
+									// 这两个列名(与 CSV / 对比表的表头)改成「单场最高观看 / 场均观看」是决策 11,随 S5 一起改。
+									["峰值观看", num(focused.maxViewers), ""],
+									["场均峰值", num(focused.avgViewers), ""],
 									["投稿", dash(focused.archives), "个"],
 								] as Array<[string, string, string]>
 							).map(([label, v, unit]) => (

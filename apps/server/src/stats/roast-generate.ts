@@ -16,6 +16,7 @@ import type {
 	StatsOverviewResponse,
 	StatsRoastResult,
 	StatsSoloRoastResult,
+	UpStatsRow,
 } from "@bilibili-notify/contract";
 import { isBiliSubscription } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
@@ -97,11 +98,17 @@ export function roastGenErrorStatus(e: RoastGenError): 400 | 404 | 500 | 502 | 5
 	}
 }
 
+/**
+ * overview 里的 B 站行。
+ *
+ * S6: overview 已经两支都列(ADR-0020 决策 1 / 18),锐评还只认 B 站、只按 uid 回指 —— 这里先把拓展行
+ * 滤掉,榜单与单人锐评与改之前逐字一致。S6(一张榜混着比、结果按订阅 id 回指)动工时拆掉这一层。
+ */
+type BiliStatsRow = UpStatsRow & { uid: string };
+const isBiliStatsRow = (row: UpStatsRow): row is BiliStatsRow => row.uid !== undefined;
+
 /** overview 的一行 → 喂给 prompt 的输入。两处生成同一套字段。 */
-function toRoastInput(
-	row: StatsOverviewResponse extends { rows: Array<infer R> } ? R : never,
-	name: string,
-): RoastInput {
+function toRoastInput(row: BiliStatsRow, name: string): RoastInput {
 	return {
 		uid: row.uid,
 		name,
@@ -173,7 +180,10 @@ export async function generateBoardRoast(
 	// 锐评只有 B 站订阅有(ADR-0019 决策 12)。
 	const subs = deps.store.getSubscriptions().filter(isBiliSubscription);
 	const nameByUid = new Map(subs.map((s) => [s.uid, displayName(deps, s.id, s.uid)]));
-	const ups = overview.rows.map((r) => toRoastInput(r, nameByUid.get(r.uid) ?? `UID ${r.uid}`));
+	// S6: 只评 B 站行(见 isBiliStatsRow)。
+	const ups = overview.rows
+		.filter(isBiliStatsRow)
+		.map((r) => toRoastInput(r, nameByUid.get(r.uid) ?? `UID ${r.uid}`));
 	if (ups.length < 2) return { ok: false, kind: "too-few-ups" };
 
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
@@ -223,7 +233,8 @@ export async function generateSoloRoast(
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return { ok: false, kind: "overview-failed" };
-	const row = overview.rows.find((r) => r.uid === opts.uid);
+	// S6: 按 uid 找 B 站那一行(见 isBiliStatsRow)。
+	const row = overview.rows.filter(isBiliStatsRow).find((r) => r.uid === opts.uid);
 	if (!row) return { ok: false, kind: "no-data" };
 
 	const up = toRoastInput(row, displayName(deps, sub.id, row.uid));

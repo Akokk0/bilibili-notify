@@ -50,7 +50,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 - **B 站引擎的订阅视图**：`engines.ts` 的 `buildDynamicSubsView` / `buildLiveSubsView`、op 翻译 `subscriptionOpsToDynamic` / `subscriptionOpsToLive`、`getModuleStatus` 的「直播监听」那一格。拓展订阅的轮询是拓展自己做的。
 - **关注**：`runtime/follow-sync.ts`、新建时的关注与 B 站资料种子（`routes/subs.ts` 的 `followUp` / `seedCachedProfile`）、查 UID / 搜名字（`/api/subs/lookup`、`/api/subs/search`）。
 - **粉丝轮询**：`runtime/fans-poller.ts`（B 站资料与粉丝曲线的来源）。
-- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘；读的那一头（统计页、锐评）还只列 B 站。
+- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。消费方还只认 B 站：统计页在 S5 之前先滤掉拓展行（`apps/web/src/services/stats.ts` 的 `biliStatsOnly`），锐评在 S6 之前只评 B 站行（`stats/roast-generate.ts` 的 `isBiliStatsRow`）。
 - devtools 场景挑订阅（`index.ts` 里那段 `subs`）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 

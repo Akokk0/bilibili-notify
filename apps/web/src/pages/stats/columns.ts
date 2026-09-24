@@ -21,7 +21,7 @@ export type StatColumnId =
 	| "dynamics"
 	| "liveSessions"
 	| "liveHours"
-	| "peakViewers";
+	| "maxViewers";
 
 export interface StatColumn {
 	id: StatColumnId;
@@ -93,9 +93,9 @@ export function buildStatColumns(
 			format: (v) => dash(v, (n) => `${fmt.hours(n)}h`),
 		},
 		{
-			id: "peakViewers",
+			id: "maxViewers",
 			label: "峰值观看",
-			value: (r) => r.peakViewers,
+			value: (r) => r.maxViewers,
 			kind: "text",
 			format: (v) => fmt.num(v),
 		},

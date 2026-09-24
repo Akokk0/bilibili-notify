@@ -10,13 +10,16 @@
  * 纯函数,不碰 DOM —— 下载那几行留在调用方,这里可以直接被测试拿去跑。
  */
 
-import type { UpStatsRow } from "../../services/stats";
+import type { BiliStatsRow } from "../../services/stats";
 
 /** 一列:表头文案与取值绑在一起,位置即对应关系,不再靠人肉对齐两个数组。 */
 export interface CsvColumn {
 	header: string;
-	/** `nameOf` 由调用方注入 —— UP 昵称在缓存的 profile 里,不在统计行上。 */
-	value: (r: UpStatsRow, nameOf: (uid: string) => string) => string;
+	/**
+	 * `nameOf` 由调用方注入 —— UP 昵称在缓存的 profile 里,不在统计行上。
+	 * S5: 还只收 B 站行(「UID」那一列);拓展行写什么随统计页的拓展行一起定。
+	 */
+	value: (r: BiliStatsRow, nameOf: (uid: string) => string) => string;
 }
 
 /**
@@ -40,7 +43,7 @@ export function csvColumns(days: number): CsvColumn[] {
 		{ header: "动态", value: (r) => cell(r.dynamics) },
 		{ header: "直播场次", value: (r) => cell(r.liveSessions) },
 		{ header: "直播时长(h)", value: (r) => cell(r.liveHours, (n) => n.toFixed(1)) },
-		{ header: "峰值观看", value: (r) => cell(r.peakViewers) },
+		{ header: "峰值观看", value: (r) => cell(r.maxViewers) },
 		{ header: "最后活动", value: (r) => r.lastActivityAt ?? "" },
 	];
 }
@@ -52,7 +55,7 @@ function escapeCell(s: string): string {
 
 /** 生成完整 CSV 文本(不含 BOM —— 那是下载环节的事)。 */
 export function buildCsv(
-	rows: readonly UpStatsRow[],
+	rows: readonly BiliStatsRow[],
 	days: number,
 	nameOf: (uid: string) => string,
 ): string {

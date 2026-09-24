@@ -11,6 +11,21 @@ export type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contrac
 
 export const statsQueryKey = (days: number) => ["stats", { days }] as const;
 
+/** 带 uid 的那种行 —— B 站订阅的(ADR-0020 决策 1:拓展行带拓展 id + 外部 id、不带 uid)。 */
+export type BiliStatsRow = UpStatsRow & { uid: string };
+
+/**
+ * S5: 服务端的 overview 已经两支都列(ADR-0020),统计页还只画得了 B 站行 —— 拓展行的配色、页头
+ * (平台 + 外部 id)、名字兜底、键与选中都在 S5。在那之前先把拓展行滤掉,汇总(总粉丝量、净增合计、
+ * 直播时长 Top……)也只算 B 站那几位,页面与服务端开始列拓展行之前一模一样。S5 动工时拆掉这一层,
+ * 顺手把页面里按 uid 做的键 / 选中 / 配色改成按订阅 id。
+ */
+export function biliStatsOnly(
+	res: StatsOverviewResponse,
+): Omit<StatsOverviewResponse, "rows"> & { rows: BiliStatsRow[] } {
+	return { ...res, rows: res.rows.filter((r): r is BiliStatsRow => r.uid !== undefined) };
+}
+
 /** 本地时区偏移,与服务端 `tz` 参数口径一致(`getTimezoneOffset()`)。 */
 export const localTzOffset = (): number => new Date().getTimezoneOffset();
 

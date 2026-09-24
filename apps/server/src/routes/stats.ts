@@ -6,7 +6,13 @@ import type {
 	StatsSoloRoastResponse,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
-import { isBiliSubscription, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
+import {
+	isBiliSubscription,
+	isExtensionSubscription,
+	ROAST_MAX_DAYS,
+	ROAST_MIN_DAYS,
+	type Subscription,
+} from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
@@ -150,28 +156,52 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	app.get("/overview", async (c) => {
 		const days = clampDays(c.req.query("days"));
 		const tzOffsetMin = parseTz(c.req.query("tz"));
-		// 统计页第一版只有 B 站订阅(ADR-0019 决策 12):粉丝 / 动态 / 场次都按 uid 记。
-		const subs = deps.store.getSubscriptions().filter(isBiliSubscription);
-		// 这两份是**内存快照**,不经 jsonl —— 也就是说它们跟 TTL 没有半点关系,
+		// 两支订阅都列(ADR-0020):停用的照样列 —— 统计页看的是「他这段时间做了什么」;拓展没在跑的
+		// 也照样列,它仍是一条订阅。行的顺序跟着订阅列表走。
+		const subs = deps.store.getSubscriptions();
+		// 以下是**内存快照**,不经 jsonl —— 也就是说它们跟 TTL 没有半点关系,
 		// 必须自己进 key(见下方 key 的说明)。放在缓存查询之前取。
+		//
+		// 在播:B 站认引擎(唯一权威);拓展认场次模块手里有没有这一场(盘上那一场的帧就是它发的)。
 		const liveUids = new Set(
 			(deps.runtime.engines?.listLiveRooms() ?? []).filter((r) => r.isLive).map((r) => r.uid),
 		);
+		const isLive = (sub: Subscription): boolean =>
+			isBiliSubscription(sub)
+				? liveUids.has(sub.uid)
+				: deps.runtime.engines?.extensionLiveSession(sub.id) !== undefined;
+		// 此刻的粉丝数:B 站取粉丝轮询的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
+		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
+		// 右端点不该再往前走。两边没有就回退到样本末值(见成行那里)。
 		const fansByUid = new Map(
 			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.uid, e]),
 		);
+		const currentFans = (sub: Subscription): number | undefined =>
+			isBiliSubscription(sub)
+				? fansByUid.get(sub.uid)?.current
+				: sub.enabled
+					? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans
+					: undefined;
+		const liveNow = subs.map(isLive);
+		const fansNow = subs.map(currentFans);
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
 		//
 		// 订阅集合:退订后 recorder 已经 `drop` 物理删掉了那位 UP 的 jsonl,前端
 		// 却还能从缓存里读到他一整行(数据背后的文件已不存在);刚加的订阅同理要等
-		// 满 TTL 才出现。不排序 —— rows 的顺序就跟着 subs 走,顺序变了输出也变。
+		// 满 TTL 才出现。按订阅 id 记(行的键,两支都有)。不排序 —— rows 的顺序就跟着
+		// subs 走,顺序变了输出也变。
 		//
-		// 在播状态 / 粉丝快照:两者都被原样嵌进响应,却都不来自被 TTL 兜住的 jsonl。
+		// 在播状态 / 当前粉丝:两者都被原样嵌进响应,却都不来自被 TTL 兜住的 jsonl。
 		// 漏掉在播状态的话,UP 一开播,统计页最长 30 秒仍报 live:false,而同一屏的
 		// 「正在直播」面板走 WS 实时喂、早就亮了 —— 两块面板互相打脸,点刷新也没用。
-		const liveKey = [...liveUids].sort().join(",");
-		const fansKey = subs.map((s) => fansByUid.get(s.uid)?.current ?? "").join(",");
-		const key = `${days}:${tzOffsetMin}:${subs.map((s) => s.uid).join(",")}|${liveKey}|${fansKey}`;
+		// 拓展行的这两样(场次模块、资料缓存)同理。
+		const liveKey = subs
+			.filter((_, i) => liveNow[i])
+			.map((s) => s.id)
+			.sort()
+			.join(",");
+		const fansKey = fansNow.map((v) => v ?? "").join(",");
+		const key = `${days}:${tzOffsetMin}:${subs.map((s) => s.id).join(",")}|${liveKey}|${fansKey}`;
 
 		const hit = cache.get(key);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -193,15 +223,27 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 先把每位 UP 的原始序列取回来。热力图的遮罩要用到**跨 UP** 的全局事实,
 		// 在单个 UP 的闭包里判不出来,所以取数与成行分成两趟。
 		const perSub = await Promise.all(
-			subs.map(async (sub) => {
+			subs.map(async (sub, index) => {
 				// 两个仓都按订阅 id 分文件(ADR-0020 决策 2 的 🔗 / 16);老的 uid 文件开机时已迁过来。
 				const key = statsFileKey(sub);
-				const [samples, events, sessions] = await Promise.all([
+				const [samples, events, sessions, seen] = await Promise.all([
 					deps.runtime.fansStore.listSamplesSince(key, since),
 					deps.runtime.statsStore.listDynamics(key, since),
 					deps.runtime.statsStore.listLiveSessions(key, since),
+					// 「在记」只有拓展订阅有(决策 9 / 16),B 站行「那天有没有记录」看粉丝采样(见下)。
+					isExtensionSubscription(sub)
+						? deps.runtime.statsStore.listSeenSince(key, since)
+						: Promise.resolve([]),
 				]);
-				return { sub, samples, events, sessions };
+				return {
+					sub,
+					samples,
+					events,
+					sessions,
+					seen,
+					live: liveNow[index] === true,
+					fans: fansNow[index],
+				};
 			}),
 		);
 
@@ -215,24 +257,34 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		//
 		// 残留的空档:所有 UP 的采样都缺失时(只订阅了一位且刚被禁用过)仍会判成
 		// 「没在跑」。那种情况下盘上确实不存在任何佐证,宁可显示「无记录」也不瞎猜。
+		//
+		// **只收 B 站那几位的采样**(ADR-0020 决策 9:各算各的)。这些采样是粉丝轮询问 B 站问来的,
+		// 证明的是「B 站那头在看着」;拓展报来的粉丝数证明不了 —— B 站没登录、轮询一轮都没成时,
+		// 拿拓展的样本把 B 站行那天判成「在记、是 0」就是撒谎。拓展行也不借这一份,见 extensionActivity。
 		const coveredDays = new Set<string>();
-		for (const { samples } of perSub) {
+		for (const { sub, samples } of perSub) {
+			if (!isBiliSubscription(sub)) continue;
 			for (const s of samples) {
 				const d = localDayKey(s.ts, tzOffsetMin);
 				if (d) coveredDays.add(d);
 			}
 		}
 
-		const rows = perSub.map(({ sub, samples, events, sessions }): UpStatsRow => {
-			const daily = dailyFansSeries(samples, { days, tzOffsetMin });
-			const series = daily.map((p) => p.net);
+		/**
+		 * B 站行的热力图遮罩 —— 改之前的规矩,一字不动(ADR-0020 决策 9:B 站行的规矩不变)。
+		 * `samples` / `events` / `sessions` 是这一位自己的。
+		 */
+		const biliActivity = (
+			activityCounts: readonly number[],
+			daily: ReturnType<typeof dailyFansSeries>,
+			{ samples, events, sessions }: (typeof perSub)[number],
+		): Array<number | null> => {
 			// 活动热力图:计数本身恒有值(没活动就是 0),但有两种情况必须显示成
 			// 空格而不是 0 —— 0 会被读成「这位 UP 那天什么都没发」:
 			//   · 那天服务根本没跑 —— 见上方 coveredDays;
 			//   · 那天还没开始采集活动 —— fans 采样比统计功能上线得早,光看采样
 			//     会把上线之前的日子全判成「活跃度 0」。
 			//   · 那天我们还没在看**这一位** —— 见下方 firstSampleDay。
-			const activityCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
 			// 这位 UP 自己的首个 fans 采样日。fans poller 只采**订阅中**的 UP、每 2min
 			// 一轮,稠密到足以当「那天我们在看着他」的凭证 —— 而 coveredDays 是跨 UP
 			// 并集,只证明得了服务器在跑,证明不了这一位在不在册。
@@ -242,7 +294,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			);
 			// 盘上关于这位 UP 有没有任何东西。三样全空 = 一无所知,整行留白。
 			const hasEvidence = samples.length > 0 || events.length > 0 || sessions.length > 0;
-			const activity = activityCounts.map((c, i) => {
+			return activityCounts.map((c, i) => {
 				const day = daily[i];
 				if (!day || !coveredDays.has(day.d)) return null;
 				// 严格小于:采集起始日**当天**照常出数。
@@ -265,16 +317,57 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				if (firstSampleDay && day.d < firstSampleDay && c === 0) return null;
 				return c;
 			});
+		};
+
+		/**
+		 * 拓展行的热力图遮罩(ADR-0020 决策 9):「那天有记录」只看**它自己**的「在记」——
+		 * 收到它的任何上报(资料、直播状态、作品)就记一条,最密 10 分钟一条,第一条就是开始记录(决策 16)。
+		 *
+		 * - 那天有「在记」→ 我们在看着他,没活动就是 0;
+		 * - 那天没有 → 无记录:开始记录之前的日子、BN 或拓展没在跑的日子都落在这里,一律不画 0。
+		 *   不借 B 站的 coveredDays —— 那只证明 B 站那头在看着;也不借全局的采集水位线 ——
+		 *   这一位的第一条「在记」就是它自己的水位线;
+		 * - 那天有活动 → 照数,哪怕那天没有「在记」:作品报上来本身就是铁证(与 B 站那边「只遮 0」
+		 *   同一个道理 —— 遮成 null 是拿「不完整」换「假装没有」)。
+		 *
+		 * 粉丝样本不另算:它们跟着资料上报走,那一刻也记了「在记」。
+		 */
+		const extensionActivity = (
+			activityCounts: readonly number[],
+			daily: ReturnType<typeof dailyFansSeries>,
+			{ seen }: (typeof perSub)[number],
+		): Array<number | null> => {
+			const seenDays = new Set<string>();
+			for (const row of seen) {
+				const d = localDayKey(row.ts, tzOffsetMin);
+				if (d) seenDays.add(d);
+			}
+			return activityCounts.map((c, i) => {
+				const day = daily[i];
+				if (!day) return null;
+				return c > 0 || seenDays.has(day.d) ? c : null;
+			});
+		};
+
+		const rows = perSub.map((one): UpStatsRow => {
+			const { sub, samples, events, sessions } = one;
+			const daily = dailyFansSeries(samples, { days, tzOffsetMin });
+			const series = daily.map((p) => p.net);
+			// 计数、场次、峰值、粉丝两支同一套聚合;只有「那天有没有记录」各算各的(决策 9)。
+			const activityCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
+			const activity = isBiliSubscription(sub)
+				? biliActivity(activityCounts, daily, one)
+				: extensionActivity(activityCounts, daily, one);
 			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
-			//   · `activity` 有非 null 位 —— fans 采样证明服务当时在跑;
+			//   · `activity` 有非 null 位 —— fans 采样证明服务当时在跑(拓展行:那天有它的「在记」);
 			//   · 盘上有动态 / 场次记录 —— 能记下来本身就说明我们在记。
 			// 只认第一种是不够的:fans jsonl 曾被物理删掉(ADR-0020 决策 10 之前的禁用订阅),
 			// 而动态与场次记录原封不动留着 —— 那时把计数判成「无记录」就是睁眼说瞎话。
 			const hasCoverage =
 				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
 			const counts = countDynamics(events);
-			// 在播状态来自引擎(唯一权威),用来区分「这场正在播」与「end 帧丢了」。
-			const live = summarizeLiveSessions(sessions, { isLive: liveUids.has(sub.uid), sinceMs });
+			// 在播状态来自引擎(唯一权威;拓展是场次模块),用来区分「这场正在播」与「end 帧丢了」。
+			const live = summarizeLiveSessions(sessions, { isLive: one.live, sinceMs });
 
 			// 最后活动 = 最近一条动态 与 最近一次开播 里更晚的那个。两者都没有
 			// 就是 null —— 这正是设计稿「鸽子榜」要的信号,不能拿窗口起点顶替。
@@ -297,10 +390,14 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 					: (lastDynamic ?? lastLive);
 
 			return {
-				uid: sub.uid,
-				// 当前粉丝优先用 poller 的最新快照,它比 jsonl 末行更新;
-				// poller 还没起来时回退到采样末值。
-				fans: fansByUid.get(sub.uid)?.current ?? samples.at(-1)?.value ?? null,
+				// 键是订阅 id,身份两支随行带着(ADR-0020 决策 1 的 🔗 / 18,同推送历史)。
+				subscriptionId: sub.id,
+				...(isBiliSubscription(sub)
+					? { uid: sub.uid }
+					: { extensionId: sub.extensionId, externalId: sub.externalId }),
+				// 当前粉丝优先用内存里的最新值(B 站的轮询快照 / 拓展的资料),它比 jsonl 末行更新;
+				// 没有(轮询还没起来、停用了、拓展还没报过)时回退到采样末值。
+				fans: one.fans ?? samples.at(-1)?.value ?? null,
 				net1d: sumTail(series, 1),
 				// 窗口装不下 7 天就没法给出 7 天口径 —— 拿 3 天的和冒充 7 天更糟。
 				net7d: days >= 7 ? sumTail(series, 7) : null,
@@ -316,10 +413,11 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				liveSessions: hasCoverage ? live.sessions : null,
 				liveHours: hasCoverage ? live.hours : null,
 				liveTimedSessions: hasCoverage ? live.timedSessions : null,
-				peakViewers: live.peakViewers,
-				avgPeakViewers: live.avgPeakViewers,
+				// 每场的数是本场累计观看,所以这两格叫单场最高 / 场均观看(决策 7 / 18)。
+				maxViewers: live.peakViewers,
+				avgViewers: live.avgPeakViewers,
 				lastActivityAt,
-				live: liveUids.has(sub.uid),
+				live: one.live,
 			};
 		});
 
