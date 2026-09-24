@@ -86,6 +86,15 @@ describe("buildStatColumns", () => {
 					num: (v: number | null) => (v === null ? "—" : String(v)),
 				},
 			).map((c) => c.label),
-		).toEqual(["近7日粉丝", "近30日粉丝", "投稿", "动态", "直播场次", "直播时长", "峰值观看"]);
+		).toEqual(["近7日粉丝", "近30日粉丝", "投稿", "动态", "直播场次", "直播时长", "单场最高观看"]);
+	});
+
+	it("观看那一列名字诚实(ADR-0020 决策 11)、带那句说明;别的列不带", () => {
+		// 每场的数是本场**累计**看过的人数(B 站的「X 人看过」、拓展报的 totalViewers),不是同时在线的峰值 ——
+		// 「峰值观看」名不副实。
+		const viewers = cols.find((c) => c.id === "maxViewers");
+		expect(viewers?.label).toBe("单场最高观看");
+		expect(viewers?.hint).toBe("按每场累计看过的人数算");
+		expect(cols.filter((c) => c.hint !== undefined).map((c) => c.id)).toEqual(["maxViewers"]);
 	});
 });

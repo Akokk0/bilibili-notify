@@ -507,7 +507,8 @@ export function RadarChart({
 }
 
 export interface HeatRow {
-	uid: string;
+	/** 行的键:订阅 id(两支订阅都有;拓展行没有 uid)。 */
+	id: string;
 	name: string;
 	color: string;
 	/** 每格一天的活跃强度 0..4;`null` = 那天没有记录。 */
@@ -541,7 +542,7 @@ export function Heatmap({
 		<div className="flex h-full flex-col justify-center gap-1.5">
 			{rows.map((r) => (
 				<div
-					key={r.uid}
+					key={r.id}
 					className="flex flex-1 items-stretch gap-2.5"
 					// 内联的 min-height 会盖掉任何 min-h-* 类,这里就是唯一的下限来源。
 					style={{ minHeight: minCellH, maxHeight: maxCellH }}
@@ -553,7 +554,7 @@ export function Heatmap({
 					<div className="flex flex-1" style={{ gap }}>
 						{r.cells.map((v, i) => (
 							<div
-								key={`${r.uid}-${days[i]}`}
+								key={`${r.id}-${days[i]}`}
 								title={`${days[i]} · ${v === null ? "无记录" : `活跃度 ${v}/4`}`}
 								className="flex-1 rounded-sm"
 								// 无记录 = 空心描边,有记录 = 实心。口径在 heatCellStyle 里,有测试守着。

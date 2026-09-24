@@ -13,6 +13,13 @@
 import type { UpStatsRow } from "../../services/stats";
 import { dash } from "./chart-utils";
 
+/**
+ * 「单场最高观看 / 场均观看」旁边那一句(ADR-0020 决策 11):每场的数是本场**累计**看过的人数(B 站的「X 人
+ * 看过」、拓展报的 `totalViewers`),不是同时在线的峰值 —— 列名改诚实之后还得说一句是按什么算的。对比表的表头
+ * 与单人视图的直播概览共用这一句。
+ */
+export const VIEWERS_HINT = "按每场累计看过的人数算";
+
 /** 可进表的数值字段。`UpStatsRow` 里的字符串 / 数组字段不参与排序与展示。 */
 export type StatColumnId =
 	| "net7d"
@@ -37,6 +44,8 @@ export interface StatColumn {
 	format?: (v: number | null) => string;
 	/** 数字的着色;缺省用次要文本色。 */
 	color?: string;
+	/** 列名旁边那句「这个数是怎么算的」(表头的悬停提示);大多数列一看就懂,不给。 */
+	hint?: string;
 }
 
 export interface ColumnPalette {
@@ -55,7 +64,7 @@ export function buildStatColumns(
 	palette: ColumnPalette,
 	fmt: { hours: (v: number) => string; num: (v: number | null) => string },
 ): StatColumn[] {
-	// 列序按维度成组:粉丝 → 内容产出(投稿 / 动态)→ 直播(场次 / 时长 / 峰值观看)。
+	// 列序按维度成组:粉丝 → 内容产出(投稿 / 动态)→ 直播(场次 / 时长 / 单场最高观看)。
 	// 「投稿」与「动态」曾被直播那两列从中间劈开,横着扫一行要跳着看。插新列时
 	// 请并进它所属的那一组,别插在组与组的接缝上。`columns.test.ts` 钉了全序。
 	return [
@@ -94,7 +103,9 @@ export function buildStatColumns(
 		},
 		{
 			id: "maxViewers",
-			label: "峰值观看",
+			// 曾叫「峰值观看」,名不副实:存的是每场的累计观看(ADR-0020 决策 7 / 11)。
+			label: "单场最高观看",
+			hint: VIEWERS_HINT,
 			value: (r) => r.maxViewers,
 			kind: "text",
 			format: (v) => fmt.num(v),

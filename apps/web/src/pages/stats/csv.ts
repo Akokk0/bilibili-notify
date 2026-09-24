@@ -10,16 +10,20 @@
  * 纯函数,不碰 DOM —— 下载那几行留在调用方,这里可以直接被测试拿去跑。
  */
 
-import type { BiliStatsRow } from "../../services/stats";
+import type { UpStatsRow } from "../../services/stats";
+
+/**
+ * 一行「是谁」的那两样,由调用方注入 —— 昵称在缓存的 profile 里、平台名在装着的拓展清单里,都不在统计行上。
+ */
+export interface CsvWho {
+	nameOf: (r: UpStatsRow) => string;
+	platformOf: (r: UpStatsRow) => string;
+}
 
 /** 一列:表头文案与取值绑在一起,位置即对应关系,不再靠人肉对齐两个数组。 */
 export interface CsvColumn {
 	header: string;
-	/**
-	 * `nameOf` 由调用方注入 —— UP 昵称在缓存的 profile 里,不在统计行上。
-	 * S5: 还只收 B 站行(「UID」那一列);拓展行写什么随统计页的拓展行一起定。
-	 */
-	value: (r: BiliStatsRow, nameOf: (uid: string) => string) => string;
+	value: (r: UpStatsRow, who: CsvWho) => string;
 }
 
 /**
@@ -32,8 +36,13 @@ const cell = (v: number | null, fmt: (n: number) => string = String) => (v === n
 
 export function csvColumns(days: number): CsvColumn[] {
 	return [
-		{ header: "UP 主", value: (r, nameOf) => nameOf(r.uid) },
-		{ header: "UID", value: (r) => r.uid },
+		{ header: "UP 主", value: (r, who) => who.nameOf(r) },
+		// 两支订阅都导(ADR-0020)。「UID」照旧只放 B 站的 uid —— 老的导出拿它对账的照样对得上;拓展行的外部 id
+		// 另起一列、不塞进 UID:外部 id 恰好是一串数字时,塞进去就是把另一个平台上的另一个人认成某位 B 站 UP
+		// (ADR-0019 决策 73)。「平台」让两支混在一张表里也分得清。
+		{ header: "平台", value: (r, who) => who.platformOf(r) },
+		{ header: "UID", value: (r) => r.uid ?? "" },
+		{ header: "外部 ID", value: (r) => r.externalId ?? "" },
 		{ header: "粉丝数", value: (r) => cell(r.fans) },
 		{ header: "近7日粉丝", value: (r) => cell(r.net7d) },
 		{ header: `近${days}日粉丝`, value: (r) => cell(r.netWindow) },
@@ -43,7 +52,7 @@ export function csvColumns(days: number): CsvColumn[] {
 		{ header: "动态", value: (r) => cell(r.dynamics) },
 		{ header: "直播场次", value: (r) => cell(r.liveSessions) },
 		{ header: "直播时长(h)", value: (r) => cell(r.liveHours, (n) => n.toFixed(1)) },
-		{ header: "峰值观看", value: (r) => cell(r.maxViewers) },
+		{ header: "单场最高观看", value: (r) => cell(r.maxViewers) },
 		{ header: "最后活动", value: (r) => r.lastActivityAt ?? "" },
 	];
 }
@@ -54,13 +63,9 @@ function escapeCell(s: string): string {
 }
 
 /** 生成完整 CSV 文本(不含 BOM —— 那是下载环节的事)。 */
-export function buildCsv(
-	rows: readonly BiliStatsRow[],
-	days: number,
-	nameOf: (uid: string) => string,
-): string {
+export function buildCsv(rows: readonly UpStatsRow[], days: number, who: CsvWho): string {
 	const cols = csvColumns(days);
 	const head = cols.map((c) => escapeCell(c.header)).join(",");
-	const body = rows.map((r) => cols.map((c) => escapeCell(c.value(r, nameOf))).join(","));
+	const body = rows.map((r) => cols.map((c) => escapeCell(c.value(r, who))).join(","));
 	return [head, ...body].join("\n");
 }

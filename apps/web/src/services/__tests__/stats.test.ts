@@ -10,7 +10,6 @@ import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contrac
 import { describe, expect, it } from "vite-plus/test";
 import {
 	activityLevel,
-	biliStatsOnly,
 	computeTotals,
 	coveredActivityTotal,
 	coveredDayCount,
@@ -45,26 +44,6 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 }
 
 const res = (rows: UpStatsRow[], days = 3): StatsOverviewResponse => ({ days, rows });
-
-describe("biliStatsOnly — S5 之前统计页只画 B 站行", () => {
-	/** 拓展行:带拓展 id + 外部 id,不带 uid(ADR-0020 决策 1)。 */
-	const ext = (over: Partial<UpStatsRow> = {}): UpStatsRow => {
-		const { uid: _uid, ...rest } = row({ fans: 5000, archives: 9, live: true, ...over });
-		return { ...rest, subscriptionId: "e1", extensionId: "douyin", externalId: "甲" };
-	};
-
-	it("拓展行滤掉,B 站行原样、次序不变", () => {
-		const out = biliStatsOnly(res([row(), ext(), row({ uid: "2" })]));
-		expect(out.rows.map((r) => r.uid)).toEqual(["1", "2"]);
-		expect(out.days).toBe(3);
-	});
-
-	it("汇总也只算 B 站那几位 —— 与服务端开始列拓展行之前一模一样", () => {
-		const bili = res([row(), row({ uid: "2" })]);
-		const mixed = res([row(), ext(), row({ uid: "2" })]);
-		expect(computeTotals(biliStatsOnly(mixed))).toEqual(computeTotals(bili));
-	});
-});
 
 describe("computeTotals", () => {
 	it("逐项求和", () => {

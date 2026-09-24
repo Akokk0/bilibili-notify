@@ -1,4 +1,5 @@
-import type { BiliSubscriptionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
+import { upColor } from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
 	Btn,
@@ -6,18 +7,19 @@ import {
 	ErrorNote,
 	GlassPanel,
 	GlassStatCard,
+	HintNote,
 	Icon,
 	LoadingBlock,
 	MenuItem,
+	Pill,
 	PopoverShell,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import {
 	activityLevel,
-	type BiliStatsRow,
-	biliStatsOnly,
 	computeTotals,
 	coveredActivityTotal,
 	coveredDayCount,
@@ -28,8 +30,10 @@ import {
 	type StatsOverviewResponse,
 	sparseLabels,
 	statsQueryKey,
+	type UpStatsRow,
 } from "../services/stats";
-import { isBiliSubscription } from "../types/domain";
+import type { Subscription } from "../types/domain";
+import { isExtensionRow } from "../utils/up-display";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, formatSignedWan, formatWan, signTone } from "./stats/chart-utils";
 import {
@@ -42,7 +46,7 @@ import {
 	Sparkline,
 	TrendChart,
 } from "./stats/charts";
-import { buildStatColumns, type StatColumnId } from "./stats/columns";
+import { buildStatColumns, type StatColumnId, VIEWERS_HINT } from "./stats/columns";
 import { buildCsv } from "./stats/csv";
 import { netFromCumulative, sumNetPoints } from "./stats/gaps";
 import { RoastCard } from "./stats/RoastCard";
@@ -51,7 +55,9 @@ import { buildRadarAxes } from "./stats/radar";
 import { STATS_RANGES } from "./stats/ranges";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
-import { colorFromUid, displayName } from "./up/helpers";
+import { displayName } from "./up/helpers";
+import { createSubscriptionLookup } from "./up/subscription-lookup";
+import { subscriptionPlatformOf } from "./up/subscription-source";
 
 /**
  * 面板 / KPI 卡的主题色 —— 走 token,跟皮肤换装。
@@ -103,12 +109,60 @@ function sinceText(iso: string | null): string {
 	return `${Math.floor(hrs / 24)} 天前`;
 }
 
+/**
+ * 一行统计在页面上「是谁」(ADR-0020 决策 1 / 3)。行以订阅 id 为键,这些都从它对上的订阅与行上带的身份来。
+ */
 interface UpMeta {
+	/** 名字:订阅卡那条链(`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id)。 */
 	name: string;
+	/** 跟着人走的颜色(`upColor`):与订阅卡、历史页同一个颜色。 */
 	color: string;
-	/** B 站头像 URL。缺省时 Avatar 退回首字母块 —— 订阅刚建、profile 还没缓存到。 */
+	/** 头像:B 站是 CDN 链接,拓展是同源相对地址。缺省时 Avatar 退回首字母块 —— 订阅刚建、资料还没到。 */
 	avatar?: string;
-	sub?: BiliSubscriptionDTO;
+	/**
+	 * 单人页头「这是谁」那一小串:B 站「UID」+ uid(昵称会改、UID 不会,对着后台核对要的是它),拓展是平台名 +
+	 * 外部 id(ADR-0020 决策 3,同历史页的 ADR-0019 决策 73)。
+	 */
+	identity: { label: string; id: string };
+	/** 拓展行的平台(徽章与 CSV 的「平台」那一列);B 站行没有。平台名取不到(拓展卸载了)写拓展 id。 */
+	platform?: { label: string; shortLabel?: string; color?: string };
+}
+
+/** 订阅列表还没回来(或对不上)时,也画得出一个认得出的人:B 站写 UID,拓展写外部 id。 */
+function upMetaOf(
+	r: UpStatsRow,
+	sub: Subscription | undefined,
+	extensions: readonly ExtensionDTO[] | undefined,
+): UpMeta {
+	const base = {
+		color: upColor(r, r.subscriptionId),
+		avatar: sub?.cachedProfile?.avatar || undefined,
+	};
+	if (!isExtensionRow(r)) {
+		const uid = r.uid ?? "";
+		return {
+			...base,
+			name: sub ? displayName(sub) : `UID ${uid}`,
+			identity: { label: "UID", id: uid },
+		};
+	}
+	const platform = subscriptionPlatformOf(r, extensions);
+	return {
+		...base,
+		name: sub ? displayName(sub) : r.externalId,
+		identity: { label: platform.label, id: r.externalId },
+		platform: { label: platform.label, shortLabel: platform.shortLabel, color: platform.color },
+	};
+}
+
+/** 拓展行名字旁边那枚平台徽章(同历史页、首页「正在直播」);B 站行不画。 */
+function PlatformPill({ meta }: { meta: UpMeta }) {
+	if (!meta.platform) return null;
+	return (
+		<Pill size="sm" subtle color={meta.platform.color ?? "var(--color-bn-inactive)"}>
+			{meta.platform.shortLabel ?? meta.platform.label}
+		</Pill>
+	);
 }
 
 /**
@@ -117,8 +171,11 @@ interface UpMeta {
  * 列定义在 `stats/csv.ts` —— 表头与取值同源、有测试守着。这里只剩下载那几行:
  * 拼 BOM(否则 Excel 打开中文列名是乱码)、造 Blob、点一下虚拟链接。
  */
-function exportCsv(rows: BiliStatsRow[], meta: Map<string, UpMeta>, days: number): void {
-	const csv = buildCsv(rows, days, (uid) => meta.get(uid)?.name ?? `UID ${uid}`);
+function exportCsv(rows: UpStatsRow[], metaOf: (r: UpStatsRow) => UpMeta, days: number): void {
+	const csv = buildCsv(rows, days, {
+		nameOf: (r) => metaOf(r).name,
+		platformOf: (r) => metaOf(r).platform?.label ?? "B 站",
+	});
 	const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
@@ -128,20 +185,21 @@ function exportCsv(rows: BiliStatsRow[], meta: Map<string, UpMeta>, days: number
 	URL.revokeObjectURL(url);
 }
 
-/** UP 选择器 —— 全部 / 单个 UP 的切换入口。 */
+/** UP 选择器 —— 全部 / 单个 UP 的切换入口。值是订阅 id(行的键)。 */
 function UpPicker({
 	rows,
-	meta,
+	metaOf,
 	value,
 	onChange,
 }: {
-	rows: BiliStatsRow[];
-	meta: Map<string, UpMeta>;
+	rows: UpStatsRow[];
+	metaOf: (r: UpStatsRow) => UpMeta;
 	value: string | null;
-	onChange: (uid: string | null) => void;
+	onChange: (subscriptionId: string | null) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const cur = value ? meta.get(value) : undefined;
+	const curRow = value ? rows.find((r) => r.subscriptionId === value) : undefined;
+	const cur = curRow ? metaOf(curRow) : undefined;
 	return (
 		<div className="relative">
 			<button
@@ -172,25 +230,29 @@ function UpPicker({
 						<span className="ml-auto text-bn-sm text-bn-text-secondary">汇总</span>
 					</MenuItem>
 					{rows.map((r) => {
-						const m = meta.get(r.uid);
+						const m = metaOf(r);
 						return (
 							<MenuItem
-								key={r.uid}
+								key={r.subscriptionId}
+								ariaLabel={m.name}
 								onClick={() => {
-									onChange(r.uid);
+									onChange(r.subscriptionId);
 									setOpen(false);
 								}}
 							>
 								<Avatar
-									name={m?.name ?? r.uid}
-									color={m?.color ?? PINK}
+									name={m.name}
+									color={m.color}
 									size={26}
-									url={m?.avatar}
+									url={m.avatar}
 									status={r.live ? "living" : undefined}
 								/>
 								<span className="min-w-0 flex-1">
-									<span className="block truncate text-bn-sm font-bold text-bn-text-primary">
-										{m?.name ?? `UID ${r.uid}`}
+									<span className="flex min-w-0 items-center gap-1.5">
+										<span className="truncate text-bn-sm font-bold text-bn-text-primary">
+											{m.name}
+										</span>
+										<PlatformPill meta={m} />
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
 										{num(r.fans)} · {sinceText(r.lastActivityAt)}
@@ -206,17 +268,17 @@ function UpPicker({
 	);
 }
 
-/** UP 对比表 —— 全局视图的主面板,点行进入单 UP 钻取。 */
+/** UP 对比表 —— 全局视图的主面板,点行进入单 UP 钻取(按订阅 id)。 */
 function CompareTable({
 	rows,
-	meta,
+	metaOf,
 	days,
 	onPick,
 }: {
-	rows: BiliStatsRow[];
-	meta: Map<string, UpMeta>;
+	rows: UpStatsRow[];
+	metaOf: (r: UpStatsRow) => UpMeta;
 	days: number;
-	onPick: (uid: string) => void;
+	onPick: (subscriptionId: string) => void;
 }) {
 	const [sort, setSort] = useState<StatColumnId>("net7d");
 	// 表头与单元格都从这一个数组出 —— 曾经它们是两份手写的平行名单,插一列就
@@ -257,7 +319,7 @@ function CompareTable({
 								className="whitespace-nowrap px-2.5 py-2 text-right text-bn-xs font-bold"
 								style={{ color: sort === c.id ? PINK : "var(--color-bn-text-secondary)" }}
 							>
-								<button type="button" onClick={() => setSort(c.id)}>
+								<button type="button" onClick={() => setSort(c.id)} title={c.hint}>
 									{c.label}
 									{sort === c.id ? " ▾" : ""}
 								</button>
@@ -267,26 +329,29 @@ function CompareTable({
 				</thead>
 				<tbody>
 					{sorted.map((r) => {
-						const m = meta.get(r.uid);
-						const color = m?.color ?? PINK;
+						const m = metaOf(r);
+						const color = m.color;
 						return (
 							<tr
-								key={r.uid}
-								onClick={() => onPick(r.uid)}
+								key={r.subscriptionId}
+								onClick={() => onPick(r.subscriptionId)}
 								className="cursor-pointer border-b border-bn-border-subtle hover:bg-bn-hover-muted"
 							>
 								<td className="px-2.5 py-2">
 									<div className="flex items-center gap-2">
 										<Avatar
-											name={m?.name ?? r.uid}
+											name={m.name}
 											color={color}
 											size={28}
-											url={m?.avatar}
+											url={m.avatar}
 											status={r.live ? "living" : undefined}
 										/>
 										<div className="min-w-0">
-											<div className="truncate text-bn-sm font-bold text-bn-text-primary">
-												{m?.name ?? `UID ${r.uid}`}
+											<div className="flex min-w-0 items-center gap-1.5">
+												<span className="truncate text-bn-sm font-bold text-bn-text-primary">
+													{m.name}
+												</span>
+												<PlatformPill meta={m} />
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
 												{sinceText(r.lastActivityAt)}
@@ -429,34 +494,40 @@ export default function Stats() {
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<SubscriptionDTO[]>("/api/subs"),
 	});
+	// 拓展行的平台名与徽章照装着的拓展清单;没回来时写拓展 id。
+	const extensions = useExtensions({ retry: false }).data?.extensions;
 
+	// 两支订阅都列(ADR-0020):行以**订阅 id** 为键,选中、聚焦、配色、名字都按它对 —— 外部 id 恰好等于某个
+	// B 站 uid 时,按 uid 对就会把另一个平台上的另一个人认成那位 B 站 UP。
+	const res = statsQuery.data;
+	const rows = res?.rows ?? [];
 	const meta = useMemo(() => {
+		const lookup = createSubscriptionLookup(subsQuery.data ?? []);
 		const m = new Map<string, UpMeta>();
-		// 统计页第一版只有 B 站订阅(ADR-0019 决策 12)。
-		for (const s of (subsQuery.data ?? []).filter(isBiliSubscription)) {
-			m.set(s.uid, {
-				name: displayName(s),
-				color: colorFromUid(s.uid),
-				avatar: s.cachedProfile?.avatar,
-				sub: s,
-			});
+		for (const r of statsQuery.data?.rows ?? []) {
+			m.set(r.subscriptionId, upMetaOf(r, lookup.byId(r.subscriptionId), extensions));
 		}
 		return m;
-	}, [subsQuery.data]);
-
-	// S5: 拓展行先滤掉(见 biliStatsOnly),下面按 uid 做的键 / 选中 / 配色都还只认 B 站行。
-	const res = useMemo(
-		() => (statsQuery.data ? biliStatsOnly(statsQuery.data) : undefined),
-		[statsQuery.data],
-	);
-	const rows = res?.rows ?? [];
+	}, [statsQuery.data, subsQuery.data, extensions]);
+	const metaOf = (r: UpStatsRow): UpMeta =>
+		meta.get(r.subscriptionId) ?? upMetaOf(r, undefined, extensions);
+	// S6: 榜单锐评还只评 B 站行(服务端 `isBiliStatsRow`),结果按 uid 回指 —— 这张表只给 RoastCard 查名字 / 颜色 /
+	// 头像。S6 把锐评结果换成订阅 id 之后跟着换成 `meta`。
+	const roastMetaByUid = useMemo(() => {
+		const m = new Map<string, UpMeta>();
+		for (const r of statsQuery.data?.rows ?? []) {
+			const face = meta.get(r.subscriptionId);
+			if (r.uid !== undefined && !isExtensionRow(r) && face) m.set(r.uid, face);
+		}
+		return m;
+	}, [statsQuery.data, meta]);
 	const axis = useMemo(() => dayAxis(days), [days]);
 	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
 	const totals = useMemo(() => (res ? computeTotals(res) : null), [res]);
 	/** 「总粉丝量」只加得动有记录的那几位,少于订阅数时标签要如实说明。 */
 	const fansKnown = fansKnownCount(rows);
-	const focused = picked ? (rows.find((r) => r.uid === picked) ?? null) : null;
-	const focusedMeta = focused ? meta.get(focused.uid) : undefined;
+	const focused = picked ? (rows.find((r) => r.subscriptionId === picked) ?? null) : null;
+	const focusedMeta = focused ? metaOf(focused) : undefined;
 	const focusColor = focusedMeta?.color ?? PINK;
 
 	// 画像跟随顶部的时间范围。六根轴里只有「粉丝规模(当前)」不随窗口变 ——
@@ -485,9 +556,9 @@ export default function Stats() {
 	}
 
 	const heatRows = (focused ? [focused] : rows).map((r) => ({
-		uid: r.uid,
-		name: meta.get(r.uid)?.name ?? `UID ${r.uid}`,
-		color: meta.get(r.uid)?.color ?? PINK,
+		id: r.subscriptionId,
+		name: metaOf(r).name,
+		color: metaOf(r).color,
 		cells: r.activity.map(activityLevel),
 	}));
 
@@ -496,25 +567,27 @@ export default function Stats() {
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div className="flex items-center gap-3">
 					{/* 单 UP 视图给一枚大头像 —— 钻进某个人之后,页头得先回答「现在看的是谁」。 */}
-					{focused ? (
+					{focused && focusedMeta ? (
 						<Avatar
-							name={focusedMeta?.name ?? focused.uid}
+							name={focusedMeta.name}
 							color={focusColor}
 							size={44}
-							url={focusedMeta?.avatar}
+							url={focusedMeta.avatar}
 							status={focused.live ? "living" : undefined}
 						/>
 					) : null}
 					<div>
 						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
-							{focused ? (focusedMeta?.name ?? `UID ${focused.uid}`) : "数据统计 · 粉丝与动态分析"}
+							{focusedMeta ? focusedMeta.name : "数据统计 · 粉丝与动态分析"}
 						</div>
 						<div className="mt-1 text-bn-sm text-bn-text-secondary">
-							{focused ? (
-								// 名字已经在上面的标题里了,这行改说 UID —— 昵称会改,UID 不会,
-								// 主人对着后台核对时要的是这个。
+							{focusedMeta ? (
+								// 名字已经在上面的标题里了,这行改说「这是谁」:B 站写 UID —— 昵称会改,UID 不会,
+								// 主人对着后台核对时要的是这个;拓展写平台名 + 外部 id(ADR-0020 决策 3)。
 								<>
-									UID <b style={{ color: focusColor }}>{focused.uid}</b> · 粉丝增减、投稿与直播情况
+									{focusedMeta.identity.label}{" "}
+									<b style={{ color: focusColor }}>{focusedMeta.identity.id}</b> ·
+									粉丝增减、投稿与直播情况
 								</>
 							) : (
 								<>
@@ -526,7 +599,7 @@ export default function Stats() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2.5">
-					<UpPicker rows={rows} meta={meta} value={picked} onChange={setPicked} />
+					<UpPicker rows={rows} metaOf={metaOf} value={picked} onChange={setPicked} />
 					<div className="flex gap-1 rounded-bn-card border border-bn-border bg-bn-surface p-0.5">
 						{STATS_RANGES.map((r) => (
 							<button
@@ -652,7 +725,7 @@ export default function Stats() {
 								<TrendChart
 									series={[
 										{
-											name: focused.uid,
+											name: focused.subscriptionId,
 											color: focusColor,
 											data: cumulativeFans(focused),
 										},
@@ -674,12 +747,12 @@ export default function Stats() {
 						accent={PINK}
 						icon={<Icon.list width={15} height={15} />}
 						right={
-							<Btn size="sm" variant="ghost" onClick={() => exportCsv(rows, meta, days)}>
+							<Btn size="sm" variant="ghost" onClick={() => exportCsv(rows, metaOf, days)}>
 								导出 CSV
 							</Btn>
 						}
 					>
-						<CompareTable rows={rows} meta={meta} days={days} onPick={setPicked} />
+						<CompareTable rows={rows} metaOf={metaOf} days={days} onPick={setPicked} />
 					</GlassPanel>
 				)}
 
@@ -787,7 +860,7 @@ export default function Stats() {
 				{focused ? (
 					<GlassPanel
 						title="直播概览"
-						subtitle={`近${days}日开播与人气`}
+						subtitle={`近${days}日开播与观看`}
 						accent={PINK}
 						icon={<Icon.live width={15} height={15} />}
 					>
@@ -805,10 +878,10 @@ export default function Stats() {
 											: "—",
 										"h",
 									],
-									// S5: 每场的数其实是本场累计观看(ADR-0020 决策 7),字段已改名 maxViewers / avgViewers;
-									// 这两个列名(与 CSV / 对比表的表头)改成「单场最高观看 / 场均观看」是决策 11,随 S5 一起改。
-									["峰值观看", num(focused.maxViewers), ""],
-									["场均峰值", num(focused.avgViewers), ""],
+									// 每场的数是本场**累计**观看(ADR-0020 决策 7),不是同时在线的峰值 —— 曾叫「峰值观看 /
+									// 场均峰值」,名不副实(决策 11)。面板底下那句说明是按什么算的。
+									["单场最高观看", num(focused.maxViewers), ""],
+									["场均观看", num(focused.avgViewers), ""],
 									["投稿", dash(focused.archives), "个"],
 								] as Array<[string, string, string]>
 							).map(([label, v, unit]) => (
@@ -830,6 +903,7 @@ export default function Stats() {
 								</div>
 							))}
 						</div>
+						<HintNote className="mt-2">单场最高观看 / 场均观看:{VIEWERS_HINT}</HintNote>
 					</GlassPanel>
 				) : (
 					<GlassPanel
@@ -848,18 +922,18 @@ export default function Stats() {
 									.slice(0, 5)
 									.map((r) => {
 										const mx = Math.max(...rows.map((x) => x.liveHours ?? 0));
-										const m = meta.get(r.uid);
+										const m = metaOf(r);
 										return (
-											<div key={r.uid} className="flex items-center gap-2 text-bn-sm">
+											<div key={r.subscriptionId} className="flex items-center gap-2 text-bn-sm">
 												<span className="w-16 truncate font-semibold text-bn-text-primary">
-													{m?.name ?? r.uid}
+													{m.name}
 												</span>
 												<div className="h-2 flex-1 overflow-hidden rounded-full bg-bn-code-bg">
 													<div
 														className="h-full rounded-full"
 														style={{
 															width: `${((r.liveHours ?? 0) / mx) * 100}%`,
-															background: m?.color ?? PINK,
+															background: m.color,
 														}}
 													/>
 												</div>
@@ -882,25 +956,29 @@ export default function Stats() {
 			    页头选了某位 UP 就整组换成他自己的那一套(定时锐评 + 单人锐评),没选就是
 			    全局那套(榜单周报 + 榜单锐评)—— 看的是谁,配的就是谁。窄屏回落成单栏。 */}
 			{focused ? (
-				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-					<SoloRoastScheduleBox
-						key={`sched-${focused.uid}`}
-						uid={focused.uid}
-						name={focusedMeta?.name ?? `UID ${focused.uid}`}
-					/>
-					<SoloRoastCard
-						key={focused.uid}
-						uid={focused.uid}
-						name={focusedMeta?.name ?? `UID ${focused.uid}`}
-						color={focusColor}
-						avatar={focusedMeta?.avatar}
-						days={days}
-					/>
-				</div>
+				// S6: 单人锐评与它的定时还只认 B 站(路由按 uid、排程只长在 B 站订阅上);拓展订阅那一套
+				// (ADR-0020 决策 14)接上之前,聚焦到拓展行时不出这两张卡 —— 不摆一套点了也不灵的控件。
+				focused.uid !== undefined && !isExtensionRow(focused) ? (
+					<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+						<SoloRoastScheduleBox
+							key={`sched-${focused.subscriptionId}`}
+							uid={focused.uid}
+							name={focusedMeta?.name ?? `UID ${focused.uid}`}
+						/>
+						<SoloRoastCard
+							key={focused.subscriptionId}
+							uid={focused.uid}
+							name={focusedMeta?.name ?? `UID ${focused.uid}`}
+							color={focusColor}
+							avatar={focusedMeta?.avatar}
+							days={days}
+						/>
+					</div>
+				) : null
 			) : (
 				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
 					<RoastScheduleBox />
-					<RoastCard days={days} meta={meta} />
+					<RoastCard days={days} meta={roastMetaByUid} />
 				</div>
 			)}
 		</div>
