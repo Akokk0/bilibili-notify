@@ -3,7 +3,7 @@ import { z } from "zod";
 // 一起经 ./common 重导出去撑大根入口的 API 面。
 import { extrasRecord } from "../constants";
 import { isPlainObject } from "../util/plain-object";
-import { CardSkinIdSchema } from "./card-skin";
+import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
 	CardStyleByKindSchema,
 	CardStylePartialSchema,
@@ -229,6 +229,17 @@ export const SubscriptionOverridesSchema = z.object({
 	// 这个 UP 单独用哪套卡片皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖,不再
 	// 有版式补丁)。缺 = 跟全局。
 	cardSkin: CardSkinIdSchema.optional(),
+	/**
+	 * 这个 UP 单独拧过的**皮肤旋钮**,按皮肤 id 分(ADR-0014 决策 17 的 🔗,2026-09-24)——
+	 * 与 `globals.defaults.cardSkinKnobs` 同形、同一条「存覆盖不存值」。
+	 *
+	 * 出图时**逐枚**叠在全局那份上(per-UP 拧过的 → 全局拧过的 → 皮肤兜底),只认这位 UP
+	 * 实际用的那套皮肤那一格:换皮肤再换回来,拧过的还在。不分卡种,这位 UP 的每种卡吃同一份。
+	 *
+	 * **不带 `.default`**:缺 = 一枚都没单独拧;面板「全部还原」下发整份 null 删掉它,带了
+	 * default 的话删完又长回一个空对象,读起来像「这位 UP 设置过什么」。
+	 */
+	cardSkinKnobs: z.record(CardSkinIdSchema, CardSkinKnobOverridesSchema).optional(),
 	// 消息版式同 cardLayout:数组型描述符,per-UP 一旦自定义即整份覆盖。
 	messageLayout: MessageLayoutSchema.optional(),
 	imageGroup: ImageGroupSettingsPartialSchema.optional(),

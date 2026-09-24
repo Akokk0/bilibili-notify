@@ -13,7 +13,13 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BiliEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import {
+	type BiliEvents,
+	type Disposable,
+	type MessageBus,
+	makeEmptySubscription,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
 import { type ConfigStore, createConfigStore } from "../store.js";
@@ -148,5 +154,50 @@ describe("patchGlobals 的删除语义", () => {
 
 		await store.patchGlobals({ app: { logLevels: { image: null } } } as never);
 		expect(store.getGlobals().app.logLevels?.image).toBeUndefined();
+	});
+});
+
+/**
+ * **per-UP 那层旋钮覆盖**(ADR-0014 决策 17 的 🔗,2026-09-24)住订阅的 `overrides.cardSkinKnobs`,
+ * 与全局那份同形、同一条「存覆盖不存值」。面板上那颗「还原」= 这位 UP 的这一枚退回跟随全局,
+ * 靠的是**键真被删掉** —— 删不掉的话它会以一个写死的值永远压着全局,全局再拧也改不动这位 UP。
+ */
+describe("patchSubscription 的删除语义 —— per-UP 旋钮", () => {
+	const SUB_ID = "11111111-1111-4111-8111-111111111111";
+
+	beforeEach(async () => {
+		await store.upsertSubscription(makeEmptySubscription({ id: SUB_ID, uid: "12345" }));
+	});
+
+	const knobsOf = () =>
+		store.getSubscriptions().find((s) => s.id === SUB_ID)?.overrides.cardSkinKnobs;
+
+	it("拧一枚存得下;显式 null 还原那一枚,同一套的别的旋钮与别的皮肤都不受牵连", async () => {
+		await store.patchSubscription(SUB_ID, {
+			overrides: {
+				cardSkinKnobs: {
+					default: { "glass-opacity": 0.4, font: "upload:f1" },
+					cyberpunk: { neon: "#00f0ff" },
+				},
+			},
+		});
+		expect(knobsOf()).toEqual({
+			default: { "glass-opacity": 0.4, font: "upload:f1" },
+			cyberpunk: { neon: "#00f0ff" },
+		});
+
+		await store.patchSubscription(SUB_ID, {
+			overrides: { cardSkinKnobs: { default: { "glass-opacity": null } } },
+		} as never);
+
+		expect(knobsOf()).toEqual({ default: { font: "upload:f1" }, cyberpunk: { neon: "#00f0ff" } });
+	});
+
+	it("整份 null → 这位 UP 一枚都不单独拧了,键整个消失", async () => {
+		await store.patchSubscription(SUB_ID, {
+			overrides: { cardSkinKnobs: { default: { "glass-opacity": 0.4 } } },
+		});
+		await store.patchSubscription(SUB_ID, { overrides: { cardSkinKnobs: null } } as never);
+		expect(knobsOf()).toBeUndefined();
 	});
 });

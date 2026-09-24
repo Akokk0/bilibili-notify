@@ -1621,6 +1621,29 @@ export function parseCardSkinImageKnobValue(value: unknown): string[] | null {
 	return ids.length > 0 ? ids : null;
 }
 
+/**
+ * 一套皮肤**生效**的旋钮覆盖:per-UP 那层叠在全局那层上,**逐枚**合并(ADR-0014 决策 17 的
+ * 🔗,2026-09-24)—— per-UP 拧过的 → 全局拧过的 → 两层都没有的键不出现(皮肤 CSS 的兜底管事)。
+ *
+ * 两层都按皮肤 id 分(`globals.defaults.cardSkinKnobs` 与 `overrides.cardSkinKnobs` 同形),只取
+ * `skinId` 那一格:这位 UP 存着别的皮肤那份覆盖时,它对这套皮肤不生效。
+ *
+ * 判「拧过没有」只看**键在不在**(存覆盖不存值),不看值合不合法 —— per-UP 那层存着一个残值时
+ * 它照样压过全局,注入前那道闸(`cardSkinKnobCss`)把它挡下,于是画皮肤兜底。
+ *
+ * 出图、预览、面板三处都经它,住零依赖的这里是因为面板也要拿它算「跟随全局」时的起始位置。
+ */
+export function effectiveCardSkinKnobs<V>(
+	global: Readonly<Record<string, Readonly<Record<string, V>>>> | undefined,
+	perUp: Readonly<Record<string, Readonly<Record<string, V>>>> | undefined,
+	skinId: string,
+): Readonly<Record<string, V>> | undefined {
+	const g = global?.[skinId];
+	const u = perUp?.[skinId];
+	if (u === undefined) return g;
+	return { ...g, ...u };
+}
+
 /** 一个内置块的目录条目:人话名 + 它内部可分别挂 CSS 的部件。 */
 export interface CardSkinBuiltinBlock {
 	label: string;

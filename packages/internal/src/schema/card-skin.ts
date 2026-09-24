@@ -48,6 +48,7 @@ import {
 	type CardSkinKnobUnit,
 	cardSkinBytes,
 	DIVIDER_TYPE,
+	effectiveCardSkinKnobs,
 	type PreviewScene,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
@@ -394,8 +395,14 @@ export function cardSkinKnobCss(knob: CardSkinKnob, value: unknown): string | nu
 }
 
 // 这两个解析器与那个前缀住零依赖的 `constants.ts`(理由同块目录:面板要拿它们把旋钮值
-// 与字体 / 图廊选择器来回翻,而从根入口取值会把 zod 拽进前端 bundle)。原样再导出。
-export { CARD_SKIN_UPLOAD_PREFIX, parseCardSkinFontKnobValue, parseCardSkinImageKnobValue };
+// 与字体 / 图廊选择器来回翻,而从根入口取值会把 zod 拽进前端 bundle)。两层覆盖的合并
+// 同理(面板要拿它算 per-UP 那侧「跟随全局」时的起始位置)。原样再导出。
+export {
+	CARD_SKIN_UPLOAD_PREFIX,
+	effectiveCardSkinKnobs,
+	parseCardSkinFontKnobValue,
+	parseCardSkinImageKnobValue,
+};
 
 /**
  * 皮肤声明的旋钮 + 用户覆盖 → 注在外框上的那串自定义属性。
