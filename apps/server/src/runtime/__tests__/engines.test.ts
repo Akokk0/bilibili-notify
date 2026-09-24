@@ -1178,6 +1178,28 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		]);
 	});
 
+	/**
+	 * 给某位 UP 拧了 / 还原了旋钮(ADR-0014 决策 17 的 🔗):正在监听的直播间要当场换上,
+	 * 不能等重启 —— LiveEngine 只认 update op 里带的那几格。「全部还原」那一下这一格是
+	 * undefined,键也得在(Object.assign 靠它盖掉旧的那份)。
+	 * 验红:把 subscriptionOpsToLive 里 `cardSkinKnobs: view.cardSkinKnobs` 删掉,两条断言都红。
+	 */
+	it("订阅 update:live 的 update change 带上这位 UP 那层旋钮覆盖(还原后键在、值为 undefined)", () => {
+		const sub = makeSub("700", true);
+		sub.overrides.cardSkinKnobs = { default: { "glass-opacity": 0.4 } };
+		const c = setup({ subs: [sub] });
+		active = c;
+		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(liveOps[0].changes[0].cardSkinKnobs).toEqual({ default: { "glass-opacity": 0.4 } });
+
+		delete sub.overrides.cardSkinKnobs;
+		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		const cleared = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
+		expect(Object.hasOwn(cleared, "cardSkinKnobs")).toBe(true);
+		expect(cleared.cardSkinKnobs).toBeUndefined();
+	});
+
 	it("禁用订阅 add:不向 live.applyOps 下发 add op", () => {
 		const sub = makeSub("300", false);
 		const c = setup({ subs: [sub] });

@@ -170,6 +170,7 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 | 改直播卡怎么发 | `pushLiveNotify`；**什么时候**推（计时器、断流接续、串行闸）在来源那头：B 站是 `packages/live` 的 `room-session*` |
 | 改版式怎么分组、怎么拼文字 | `assembleMessageGroups` 一处 |
 | 改卡片吃什么 | 中立入口的输入（`DynamicNode` / `LiveCardInput`）；B 站的翻译在 `generateDynamicCard` / `biliLiveCardInput`，不许让中立入口回头去读原始数据 |
+| 改一位 UP 的卡用哪套皮肤、他怎么拧它 | 皮肤 id 与这位 UP 那层旋钮覆盖（`cardSkin` / `cardSkinKnobs`，ADR-0014 决策 17）在 `dynamicWorkSettings` / `liveWorkSettings` 里一起折，per-UP 旋钮**原样**递到每个 `generate*`、不折全局（全局随渲染器 config 热更）；两层逐枚合并只在渲染器 `renderWithSkin` 一处（`effectiveCardSkinKnobs`，预览路由用同一个函数） |
 | 改历史行记谁 | `historyRecordFromSend` 按支分；行 → 订阅的回找两份实现（`currentSubscriptionOf` / `forRow`）一起改 |
 | 加一个推送平台 | adapter registry，推送层一个字不动 |
 | 加一个订阅平台 | 写一个订阅源拓展，这条链一个字不动（见 [subscriptions.md](./subscriptions.md)） |

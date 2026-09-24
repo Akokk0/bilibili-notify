@@ -1654,6 +1654,9 @@ export function dynamicWorkSettings(
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
+		// 这位 UP 自己那层旋钮覆盖,**原样**给、不折全局(ADR-0014 决策 17 的 🔗):渲染器出图时与
+		// 它 config 里的全局那份逐枚合并。折进来的话 B 站动态引擎那份快照就把全局冻住了。
+		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
 		messageLayout: eff.messageLayout.dynamic,
 	};
@@ -1685,6 +1688,7 @@ export type LiveWorkSettings = Pick<
 	| "customCardStyle"
 	| "customCardStyleByKind"
 	| "cardSkin"
+	| "cardSkinKnobs"
 	| "messageLayout"
 	| "customLiveMsg"
 	| "pushTime"
@@ -1740,6 +1744,9 @@ export function liveWorkSettings(
 		},
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
+		// 这位 UP 自己那层旋钮覆盖,原样给、不折全局(理由同 `dynamicWorkSettings` 那一格)。
+		// 开播 / 直播中 / 下播 / SC / 上舰 / 词云都吃这一份(不分卡种)。
+		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
 		messageLayout: eff.messageLayout.live,
 	};
@@ -1909,6 +1916,9 @@ function subscriptionOpsToLive(
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
 						cardSkin: view.cardSkin,
+						// 键恒在(值可能是 undefined):LiveEngine 按 Object.assign 合进活着的监听器,
+						// 这位 UP「全部还原」之后得靠这个 undefined 把旧的那份盖掉。
+						cardSkinKnobs: view.cardSkinKnobs,
 						messageLayout: view.messageLayout,
 					},
 				],

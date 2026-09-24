@@ -104,10 +104,13 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		/** 皮肤旋钮那一层(2026-09-14 起背景图的正主)。 */
 		knobs?: Record<string, Record<string, unknown>>;
 		subs?: Array<
-			{ legacyBg?: string[]; kindCover?: string[]; cover?: string[] } & (
-				| { uid: string }
-				| { kind: "extension"; externalId: string; name?: string }
-			)
+			{
+				legacyBg?: string[];
+				kindCover?: string[];
+				cover?: string[];
+				/** 这位 UP 自己那层旋钮覆盖(ADR-0014 决策 17 的 🔗)。 */
+				knobs?: Record<string, Record<string, unknown>>;
+			} & ({ uid: string } | { kind: "extension"; externalId: string; name?: string })
 		>;
 	}): RouteDeps {
 		return {
@@ -144,6 +147,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 							cardStyleByKind: s.kindCover
 								? { guard: { liveCoverImages: s.kindCover } }
 								: undefined,
+							cardSkinKnobs: s.knobs,
 						},
 					})),
 			},
@@ -248,6 +252,44 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { referencedBy?: string[] };
 			expect(json.referencedBy?.some((s) => s.includes("neon"))).toBe(true);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * per-UP 那层旋钮(ADR-0014 决策 17 的 🔗)里的壁纸同样是一条引用 —— 漏看它就是上面那条的
+	 * per-UP 版:删得掉、请求成功,这位 UP 的卡静静回落兜底。两支订阅都算。
+	 * 验红:把 `cardBgReferences` 里扫订阅旋钮那一段删掉,这条红。
+	 */
+	it("删除被某 UP 单独拧的**皮肤旋钮**引用的背景图 → 409,referencedBy 指出该 UP 与皮肤", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-up-knob-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({
+					dataDir: dir,
+					subs: [
+						{ uid: "10086", knobs: { neon: { wallpaper: [id] } } },
+						{
+							kind: "extension",
+							externalId: "sec-1",
+							name: "抖音甲",
+							knobs: { neon: { wallpaper: [id] } },
+						},
+					],
+				}),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy?: string[] };
+			expect(json.referencedBy).toEqual([
+				"UP 10086 · 皮肤「neon」",
+				"订阅「抖音甲」 · 皮肤「neon」",
+			]);
+			expect(await listCardBg(dir)).toEqual([id]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -1764,6 +1806,103 @@ describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", ()
 			});
 			expect(res.status).toBe(200);
 			expect(capturedHtml.join("")).not.toContain("--bn-knob-wallpaper:");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+/**
+ * **per-UP 那侧的预览吃草稿里的旋钮**(ADR-0014 决策 17 的 🔗,2026-09-24;缺省只在一处解析那条
+ * 见决策 19 的 🔗)。面板在 per-UP 作用域把这位 UP 那层草稿(按皮肤 id 分)放进请求体,服务端在
+ * 出图那一刻与**配置里的全局那份**逐枚合并 —— 所以拧一格预览当场变,不必先保存;全局作用域一个字
+ * 都不传,照旧只认全局。四条出图路子(SC / 上舰 / 真实拉取走渲染器,直播 / 动态示例走 SSR)
+ * 都要认它,这里各挑一条:SSR 那条与渲染器那条。
+ */
+describe("cards route — per-UP 预览带草稿旋钮", () => {
+	function depsWithGlobalKnobs(dataDir: string): RouteDeps {
+		return {
+			runtime: {
+				serviceCtx: {
+					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+				},
+			},
+			store: {
+				bootstrap: { dataDir },
+				getGlobals: () => ({
+					defaults: {
+						cardSkin: DEFAULT_CARD_SKIN_ID,
+						cardSkinKnobs: {
+							[DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#111111", "gradient-end": "#222222" },
+						},
+					},
+				}),
+			},
+		} as unknown as RouteDeps;
+	}
+
+	async function preview(dataDir: string, body: Record<string, unknown>): Promise<string> {
+		capturedHtml.length = 0;
+		const app = createCardsRoute({
+			deps: depsWithGlobalKnobs(dataDir),
+			puppeteer: makeFakePuppeteer(),
+			api: null,
+		});
+		const res = await app.request("/preview", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ style: {}, content: {}, fallback: true, ...body }),
+		});
+		expect(res.status).toBe(200);
+		return capturedHtml.join("");
+	}
+
+	/** 验红:把 `renderPreviewCard` 示例那条的 `knobValues` 换回只取全局那份,这条红。 */
+	it("示例直播卡:草稿拧过的赢、没拧的跟全局,草稿里的壁纸也读了盘", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-perup-preview-"));
+		try {
+			const assetId = await saveCardBg(dir, PNG, "image/png");
+			const html = await preview(dir, {
+				kind: "live",
+				cardSkinKnobs: {
+					[DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#aaaaaa", wallpaper: [assetId] },
+				},
+			});
+			expect(html).toContain("--bn-knob-gradient-start:#aaaaaa");
+			expect(html).not.toContain("#111111");
+			expect(html).toContain("--bn-knob-gradient-end:#222222");
+			expect(html).toMatch(/--bn-knob-wallpaper:url\((?:"|&quot;)data:image\/png;base64,/);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	/** 验红:把 SC 那条交给 `generateSCCard` 的 `cardSkinKnobs` 删掉,这条红。 */
+	it("SC 卡(走渲染器那条):草稿同样逐枚叠在全局上", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-perup-preview-sc-"));
+		try {
+			const html = await preview(dir, {
+				kind: "sc",
+				content: { price: 30 },
+				cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#aaaaaa" } },
+			});
+			expect(html).toContain("--bn-knob-gradient-start:#aaaaaa");
+			expect(html).not.toContain("#111111");
+			expect(html).toContain("--bn-knob-gradient-end:#222222");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("草稿存的是别的皮肤那份 → 这张预览不认它", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-perup-preview-other-"));
+		try {
+			const html = await preview(dir, {
+				kind: "live",
+				cardSkinKnobs: { cyberpunk: { "gradient-start": "#aaaaaa" } },
+			});
+			expect(html).toContain("--bn-knob-gradient-start:#111111");
+			expect(html).not.toContain("#aaaaaa");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

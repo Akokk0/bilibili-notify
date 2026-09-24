@@ -287,6 +287,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 				layout: settings.messageLayout,
 				cardStyle: opts.cardStyle(sub, settings),
 				cardSkin: settings.cardSkin,
+				cardSkinKnobs: settings.cardSkinKnobs,
 				pushType: job.pushType,
 				label: `sub=${id}`,
 			},

@@ -31,6 +31,7 @@ import type {
 	TestPushResponse,
 } from "@bilibili-notify/contract";
 import {
+	type CardSkinChoice,
 	type DynamicCardProps,
 	h,
 	ImageRenderer,
@@ -47,8 +48,10 @@ import {
 	type CardSkinKind,
 	CardSkinKindSchema,
 	type CardSkinKnobOverrides,
+	CardSkinKnobOverridesSchema,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
+	effectiveCardSkinKnobs,
 	type GlobalConfig,
 	type NotificationPayload,
 	type Subscription,
@@ -160,12 +163,20 @@ const ContentSchema = z
 	})
 	.optional();
 
+/**
+ * per-UP 那侧的**草稿**旋钮覆盖,按皮肤 id 分(与订阅的 `overrides.cardSkinKnobs` 同形,ADR-0014
+ * 决策 17 的 🔗)。出图时与配置里的**全局那份**逐枚合并,只认这张预览实际画的那套皮肤那一格。
+ * 全局作用域一个字都不传 —— 全局那份面板是存完再看的,服务端自己从配置里读。
+ */
+const PreviewKnobDraftSchema = z.record(CardSkinIdSchema, CardSkinKnobOverridesSchema).optional();
+
 const PreviewRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
 	content: ContentSchema,
 	/** 预览用哪套皮肤(ADR-0014);缺省 = 全局在用的那套。 */
 	cardSkin: CardSkinIdSchema.optional(),
+	cardSkinKnobs: PreviewKnobDraftSchema,
 	/**
 	 * 真实拉取失败时是否自动回退示例数据。per-UP 作用域自动用该 UP 真实数据预览,失败
 	 * (未开播 / 无动态 / 网络)应静默回退;全局显式输入失败则照常报错告知用户。
@@ -195,6 +206,7 @@ const TestPushRequestSchema = z.object({
 	style: StyleSchema,
 	content: ContentSchema,
 	cardSkin: CardSkinIdSchema.optional(),
+	cardSkinKnobs: PreviewKnobDraftSchema,
 	fallback: z.boolean().optional(),
 });
 
@@ -217,11 +229,46 @@ export function testPushCaption(kind: PreviewKind): string {
 	return `【bilibili-notify 测试推送】${KIND_LABEL[kind]}卡片`;
 }
 
+/** 引用列表里怎么称呼一条订阅。拓展订阅没有 uid,用名字 / 外部 id 指认。 */
+function subscriptionLabel(s: Subscription): string {
+	return s.kind === "extension" ? `订阅「${s.name || s.externalId}」` : `UP ${s.uid}`;
+}
+
+/**
+ * 旋钮覆盖里哪些层还选着某个资产 —— **全局那份**(按皮肤 id)与**每位 UP 那份**
+ * (`overrides.cardSkinKnobs`,ADR-0014 决策 17 的 🔗)都扫。漏扫 per-UP 那层的后果是静默的:
+ * 删得掉、请求成功,这位 UP 的卡出图时静静回落兜底(图不出 / 字体换回默认)。
+ *
+ * 不认旋钮声明,直接按值扫:这里没有皮肤清单,而「哪个 key 是图 / 字体旋钮」只有清单知道。
+ * 多扫一个同形状的值也只是多拦一次删除。
+ */
+function knobReferences(
+	globals: GlobalConfig,
+	subs: Subscription[],
+	hit: (value: unknown) => boolean,
+): string[] {
+	const refs: string[] = [];
+	const scan = (
+		bySkin: Record<string, CardSkinKnobOverrides> | undefined,
+		label: (skinId: string) => string,
+	): void => {
+		for (const [skinId, overrides] of Object.entries(bySkin ?? {})) {
+			if (Object.values(overrides ?? {}).some(hit)) refs.push(label(skinId));
+		}
+	};
+	scan(globals.defaults.cardSkinKnobs, (skinId) => `皮肤「${skinId}」`);
+	for (const s of subs) {
+		scan(s.overrides.cardSkinKnobs, (skinId) => `${subscriptionLabel(s)} · 皮肤「${skinId}」`);
+	}
+	return refs;
+}
+
 /**
  * 收集当前配置里仍引用某图 id 的作用域(人话标签),用于删除前拦截。
  *
- * 两处算:**皮肤旋钮**(2026-09-14 起背景图的正主 —— 每套皮肤一份,值是一串 id)与
- * 直播封面(`liveCoverImages`,与背景图共用同一图廊)。返回空数组 = 没人用,可安全删盘。
+ * 两处算:**皮肤旋钮**(2026-09-14 起背景图的正主 —— 每套皮肤一份,值是一串 id;全局那份与
+ * 每位 UP 那份都算,见 {@link knobReferences})与直播封面(`liveCoverImages`,与背景图共用
+ * 同一图廊)。返回空数组 = 没人用,可安全删盘。
  *
  * ⚠️ **判据里去掉了退役的 `cardStyle.backgroundImages`(2026-09-20,整条链删干净那次)。**
  * 这是一处**主人看得见**的行为变化:存量配置里那个键还在(schema 不 strict,加载时静静
@@ -239,29 +286,23 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
 	const inByKind = (byKind?: Record<string, { liveCoverImages?: string[] }>): boolean =>
 		byKind ? Object.values(byKind).some(inStyle) : false;
 
-	const refs: string[] = [];
-	// 旋钮值是「一串 id」(图片旋钮)—— 不认旋钮声明,直接按形状扫:这里没有皮肤清单,
-	// 而「哪个 key 是图片旋钮」只有清单知道。多扫一个同形状的值也只是多拦一次删除。
-	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
-		if (Object.values(overrides ?? {}).some((v) => Array.isArray(v) && v.includes(id))) {
-			refs.push(`皮肤「${skinId}」`);
-		}
-	}
+	// 旋钮值是「一串 id」(图片旋钮)。
+	const refs = knobReferences(globals, subs, (v) => Array.isArray(v) && v.includes(id));
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
 		refs.push("全局默认");
 	}
 	// 两支订阅都算(ADR-0019 决策 47):漏看拓展订阅,它引用的图会被当成「没人用」删掉。
-	// 拓展订阅没有 uid,用名字 / 外部 id 指认。
 	for (const s of subs) {
 		if (inStyle(s.overrides.cardStyle) || inByKind(s.overrides.cardStyleByKind)) {
-			refs.push(s.kind === "extension" ? `订阅「${s.name || s.externalId}」` : `UP ${s.uid}`);
+			refs.push(subscriptionLabel(s));
 		}
 	}
 	return refs;
 }
 
 /**
- * 哪些皮肤的旋钮还选着这款字体。
+ * 哪些皮肤的旋钮还选着这款字体 —— 全局那份与每位 UP 那份(ADR-0014 决策 17 的 🔗,
+ * 2026-09-24)都算,见 {@link knobReferences}。**只扫旋钮**:下面说的那条老路仍然不扫。
  *
  * 🪦 2026-09-20 从四层收成一层。从前它还扫 `cardStyle.fontAsset` 的四个位置(全局基准 /
  * 全局 per-kind / UP 基准 / UP per-kind),那在字体还由卡片页管的时候是对的。今天那条路
@@ -274,13 +315,9 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
  *
  * 与 {@link cardBgReferences} 不同:那边扫的 `liveCoverImages` 是**还活着**的字段。
  */
-function fontAssetReferences(globals: GlobalConfig, id: string): string[] {
-	const refs: string[] = [];
+function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
 	const asKnob = `${CARD_SKIN_UPLOAD_PREFIX}${id}`;
-	for (const [skinId, overrides] of Object.entries(globals.defaults.cardSkinKnobs ?? {})) {
-		if (Object.values(overrides ?? {}).some((v) => v === asKnob)) refs.push(`皮肤「${skinId}」`);
-	}
-	return refs;
+	return knobReferences(globals, subs, (v) => v === asKnob);
 }
 
 /**
@@ -515,7 +552,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.delete("/font-asset/:id", async (c) => {
 		const id = c.req.param("id");
 		if (!isValidFontAssetId(id)) return c.json({ ok: false, err: "无效的资产 id" }, 400);
-		const referencedBy = fontAssetReferences(opts.deps.store.getGlobals(), id);
+		const referencedBy = fontAssetReferences(
+			opts.deps.store.getGlobals(),
+			opts.deps.store.getSubscriptions(),
+			id,
+		);
 		if (referencedBy.length > 0) {
 			return c.json(
 				{ ok: false, err: "该字体仍被皮肤的字体旋钮选着,请先换掉再删除", referencedBy },
@@ -573,11 +614,19 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 
 	/**
-	 * 预览要用的那份**旋钮覆盖**:按皮肤 id 从配置里取(存覆盖不存值,没拧过就没有键)。
-	 * 与出图那条路同源 —— 两边各取一份的话,预览与推出去的卡会在配色上悄悄分家。
+	 * 预览要用的那份**旋钮覆盖**:全局那份按皮肤 id 从配置里取(存覆盖不存值,没拧过就没有键),
+	 * per-UP 预览再把请求里的草稿逐枚叠上去(ADR-0014 决策 17 的 🔗)。合并用的是出图那头
+	 * **同一个**函数 —— 两边各合一份的话,预览与推出去的卡会在配色上悄悄分家。
 	 */
-	function previewKnobValues(skinId: string): CardSkinKnobOverrides | undefined {
-		return opts.deps.store.getGlobals().defaults.cardSkinKnobs?.[skinId];
+	function previewKnobValues(
+		skinId: string,
+		draft: CardSkinChoice["cardSkinKnobs"],
+	): Readonly<CardSkinKnobOverrides> | undefined {
+		return effectiveCardSkinKnobs(
+			opts.deps.store.getGlobals().defaults.cardSkinKnobs,
+			draft,
+			skinId,
+		);
 	}
 
 	let imageRenderer: ImageRenderer | null = null;
@@ -718,13 +767,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		kind: PreviewKind,
 		style: PreviewStyle,
 		content: PreviewContent,
-		cardSkin?: string,
+		/** 请求里指的皮肤(缺省 = 全局在用的那套)与 per-UP 草稿旋钮(全局作用域不给)。 */
+		requested: CardSkinChoice = {},
 		fallback = false,
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
-		// 下面四条出图路子(SC / 上舰 / 真实拉取 / 虚构 mock)都吃这一个 id。
-		const skinId = previewSkinId(cardSkin);
+		// 下面四条出图路子(SC / 上舰 / 真实拉取 / 虚构 mock)都吃这一个 id,走渲染器的那三条
+		// 还带着草稿旋钮(渲染器自己与 config 里的全局那份合并);mock 那条见 `previewKnobValues`。
+		const skinId = previewSkinId(requested.cardSkin);
+		const skin: CardSkinChoice = { cardSkin: skinId, cardSkinKnobs: requested.cardSkinKnobs };
 
 		if (kind === "sc") {
 			const renderer = await getImageRenderer(style);
@@ -741,8 +793,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
 				},
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
-				{ cardSkin: skinId },
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
+				skin,
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -757,8 +809,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateGuardCard(
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
 				{ masterAvatarUrl: master.face, masterName: master.name },
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤 id。
-				{ cardSkin: skinId },
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
+				skin,
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -779,7 +831,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					roomId,
 					style,
 					opts.deps.store.bootstrap.dataDir,
-					skinId,
+					skin,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -797,7 +849,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					renderer,
 					content.uid.trim(),
 					content.offset ?? 1,
-					skinId,
+					skin,
 				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
@@ -832,7 +884,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 少了这一句,主人在旋钮面板里选了「卡片背景图」,别的旋钮照常跟着变,唯独背景图
 		// 与字体**静静地什么也不做**,而推送出去的卡是对的(ImageRenderer 那条路调了它)。
 		// 「预览好看、推出去变样」的镜像版,2026-09-19 审查抓到。
-		const knobValues = previewKnobValues(skinId);
+		const knobValues = previewKnobValues(skinId, requested.cardSkinKnobs);
 		const knobAssets = await resolveKnobAssets(manifest.knobs, knobValues, {
 			image: (id) => readCardBgDataUrl(dataDir, id),
 			fontFace: loadFontFace,
@@ -870,9 +922,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!currentPuppeteer) {
 			return c.json<PreviewResponse>({ ok: false, err: NO_CHROME_HINT }, 503);
 		}
-		const { kind, style, content, cardSkin, fallback } = parsed.data;
+		const { kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
 		try {
-			const { buffer, mime } = await renderPreviewCard(kind, style, content, cardSkin, fallback);
+			const { buffer, mime } = await renderPreviewCard(
+				kind,
+				style,
+				content,
+				{ cardSkin, cardSkinKnobs },
+				fallback,
+			);
 			return c.json<PreviewResponse>({
 				ok: true,
 				dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
@@ -944,7 +1002,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
 		}
-		const { targetId, kind, style, content, cardSkin, fallback } = parsed.data;
+		const { targetId, kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
 
 		if (!currentPuppeteer) {
 			return c.json<TestPushResponse>(
@@ -966,7 +1024,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		let card: { buffer: Buffer; mime: string };
 		try {
-			card = await renderPreviewCard(kind, style, content, cardSkin, fallback);
+			card = await renderPreviewCard(kind, style, content, { cardSkin, cardSkinKnobs }, fallback);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
@@ -1036,7 +1094,7 @@ async function renderRealLive(
 	roomId: string,
 	style: PreviewStyle,
 	dataDir: string,
-	cardSkin?: string,
+	skin: CardSkinChoice = {},
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
 
@@ -1076,7 +1134,7 @@ async function renderRealLive(
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
 			// B 站原始封面,即便后面还有张有效图。
 			liveCoverImage: await firstExistingCardBg(dataDir, style.liveCoverImages),
-			cardSkin,
+			...skin,
 		},
 	);
 }
@@ -1086,7 +1144,7 @@ async function renderRealDynamic(
 	renderer: ImageRenderer,
 	uid: string,
 	offset: number,
-	cardSkin?: string,
+	skin: CardSkinChoice = {},
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 
@@ -1106,7 +1164,7 @@ async function renderRealDynamic(
 	const item = items[idx];
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
-	return renderer.generateDynamicCard(item, { cardSkin });
+	return renderer.generateDynamicCard(item, skin);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────

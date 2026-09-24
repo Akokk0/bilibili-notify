@@ -38,7 +38,7 @@ function makeDeps(opts: {
 	globalFont?: string;
 	/** 全局某 per-kind(sc)覆盖里选的字体。 */
 	globalKindFont?: string;
-	subs?: Array<{ uid: string; font?: string; kindFont?: string }>;
+	subs?: Array<{ uid: string; font?: string; kindFont?: string; knobFont?: string }>;
 }): RouteDeps {
 	return {
 		runtime: {
@@ -66,6 +66,10 @@ function makeDeps(opts: {
 					overrides: {
 						cardStyle: s.font ? { fontAsset: s.font } : undefined,
 						cardStyleByKind: s.kindFont ? { guard: { fontAsset: s.kindFont } } : undefined,
+						// 这位 UP 自己那层旋钮(ADR-0014 决策 17 的 🔗)—— 今天**算数**的那条 per-UP 引用。
+						cardSkinKnobs: s.knobFont
+							? { "my-skin": { titleFont: `${CARD_SKIN_UPLOAD_PREFIX}${s.knobFont}` } }
+							: undefined,
 					},
 				})),
 		},
@@ -224,6 +228,24 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { referencedBy: string[] };
 			expect(json.referencedBy).toContain("皮肤「my-skin」");
+			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
+		});
+	});
+
+	/**
+	 * per-UP 那层旋钮(ADR-0014 决策 17 的 🔗)选着它也得拦 —— 与下面那条「老 `cardStyle` 残留
+	 * 拦不住」不矛盾:那边是一条没有读者的死路,这边出图真读它,删了这位 UP 的卡就静静回落兜底字体。
+	 * 验红:把 `fontAssetReferences` 里扫订阅旋钮那一段删掉,这条红。
+	 */
+	it("某位 UP 单独拧的字体旋钮选着它 → 409 拦下并点名是谁、哪套,文件仍在", async () => {
+		await withDir(async (dir) => {
+			const id = await saveFontAsset(dir, WOFF2, "UP 在用.woff2");
+			const res = await route(
+				makeDeps({ dataDir: dir, subs: [{ uid: "12345", knobFont: id }] }),
+			).request(`/font-asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy: string[] };
+			expect(json.referencedBy).toEqual(["UP 12345 · 皮肤「my-skin」"]);
 			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
 		});
 	});
