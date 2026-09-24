@@ -94,6 +94,7 @@ import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import type { ExtensionLiveTable } from "./extension-live.js";
 import { bindExtensionLivePush } from "./extension-live-push.js";
+import { createExtensionLiveSessions } from "./extension-live-sessions.js";
 import { bindExtensionPosts } from "./extension-posts.js";
 import type { ExtensionSourceLookups } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
@@ -671,15 +672,28 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		);
 	}
 
-	// 拓展订阅的直播(ADR-0019 决策 57 / 58 / 61 / 67):开播 / 下播卡由事件触发,周期「正在直播」、重启补推、
-	// 断流接续由这里的小计时器管;推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、
-	// 特性键映射)。最新状态从在播表取,出卡的渲染器现取(热换、关了出图时不出卡)。
+	// 拓展订阅的直播(ADR-0019 决策 57 / 58 / 61 / 67):场次(开播 / 下播、断流接续)由 `liveSessions` 算一份,
+	// 推送吃它(ADR-0020 决策 6);开播 / 下播卡由事件触发,周期「正在直播」、重启补推由推送那头的小计时器管;
+	// 推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、特性键映射)。最新状态从在播表取,
+	// 出卡的渲染器现取(热换、关了出图时不出卡)。
 	const extensionLive = opts.extensionLive;
 	if (extensionSources && extensionLive) {
+		const liveSessions = createExtensionLiveSessions({
+			bus: opts.bus,
+			logger: liveCtx.logger,
+			table: extensionLive,
+			subscription: (id) => opts.subscriptionStore.findById(id),
+			running: (id) => extensionSources.running(id),
+			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
+			settings: (sub) => liveWorkSettings(sub, globals()),
+			timers: liveCtx,
+		});
+		handles.push(liveSessions);
 		handles.push(
 			bindExtensionLivePush({
 				bus: opts.bus,
 				logger: liveCtx.logger,
+				sessions: liveSessions,
 				table: extensionLive,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,

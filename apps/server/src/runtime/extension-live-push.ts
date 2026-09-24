@@ -15,7 +15,6 @@ import {
 	type LiveNotifySend,
 	LivePushType,
 	type LiveTextKind,
-	liveEndGraceMinutes,
 	pushLiveNotify,
 	renderLiveText,
 	type SerialGate,
@@ -23,6 +22,11 @@ import {
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
+import type {
+	ExtensionLiveSession,
+	ExtensionLiveSessionChange,
+	ExtensionLiveSessions,
+} from "./extension-live-sessions.js";
 import {
 	type ExtensionSourceLookups,
 	extensionCardAuthor,
@@ -31,16 +35,20 @@ import {
 } from "./extension-push-common.js";
 
 /**
- * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):bus 上 `subscription-reported` 里的三种
- * 直播上报,逐条订阅推开播 / 正在直播 / 下播卡,外加 BN 为拓展订阅另写的那个小计时器。
+ * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`extension-live-sessions.ts`)
+ * 的变化逐条订阅推开播 / 正在直播 / 下播卡,外加 BN 为拓展订阅另写的那个小计时器(周期「正在直播」)。
  *
  * **推什么、怎么推与 B 站共用**:直播装配(`pushLiveNotify`)、中立的文案渲染(`renderLiveText`)、按 UP
  * 折好的直播设置(`liveWorkSettings`)、特性键与推送类型的映射(`boundLivePush`)。**什么时候推是这里自己的**
  * (决策 67):B 站那套计时器每次触发都现问 B 站,搬不过来;拓展这边只认它报的事件与状态。
  *
+ * **场次不在这里**(ADR-0020 决策 6):这一场从哪开始、到哪结束、断流接续等不等,由场次那一份算,推送与统计
+ * 共用;这里只管推送自己的几样 —— 挂在哪一场上、上次推送之后收到过新状态没有、周期计时器、重启补推要的
+ * 「见过」、每条订阅的串行闸。
+ *
  * - **开播 / 下播卡只由事件触发**(决策 53):BN 不拿直播状态的翻转自己猜开播 / 下播。
- * - **开播**:记下这一场(开播时刻取事件的、开播时资料里的粉丝数),推开播卡,挂上周期「正在直播」。
- *   正处在断流等待里时 → 取消等待、沿用第一次的开播时刻与粉丝基线、两张卡都不发(决策 58)。
+ * - **开播**:场次开了一场 → 推开播卡(开播时刻取事件的、粉丝数取这一场开播时记下的),挂上周期「正在直播」。
+ *   断流等待里又开播(场次说「接着播」)→ 两张卡都不发、周期推送接着挂(决策 58)。
  * - **直播状态**:最新一份住在播表里(`extension-live.ts`),这里只记「上次推送之后收到过新状态」。BN 开始看
  *   这条订阅之后**收到的第一份状态**就是在播、又没见过这一场的开播事件 → 重启补推开着就补推一张「正在直播」
  *   卡(决策 57 的 09-24 🔗),并挂上周期推送。报「不在播」也算见过:契约不规定状态与事件谁先报,一场刚开
@@ -51,12 +59,12 @@ import {
  *   拓展没报下播或下播被拒收)→ 这一轮悄悄跳过,不记问题、也不替拓展判下播(决策 53);又报在播就接着推。
  * - 排着队的「正在直播」卡(补推或周期)**这一场已经不是当前那场**就不发:开始跑时认一次,出完卡发送前
  *   再认一次 —— 出卡的那几秒里开播事件到了,也不会在开播卡前面多一张。
- * - **下播**:断流接续开着就先压着,等待期满才推下播卡;没开立刻推。下播卡的时长从这一场的开播时刻算到下播
- *   事件到达那一刻(等的那几分钟不算);BN 中途重启过、没记着开播时刻时用事件带的。粉丝数变化 = 推的那一刻
- *   资料里的粉丝数 − 开播时记下的(决策 56),哪头没有就空着;默认卡不画它,文案与皮肤契约有(决策 76)。
- * - **作废**(决策 61):拓展停了(停用、卸载、换代码、崩了)→ 它名下所有订阅的计时器、等着的下播全部作废,
- *   等着的下播卡**不补推**;订阅删了 / 停用了 / 直播两个特性都关了 → 这条订阅同样作废。停用的订阅事件收下
- *   不推(决策 62)。
+ * - **下播**:场次说这一场因为下播结束了(断流接续开着的,等满了才算)才推下播卡。时长从这一场的开播时刻算到
+ *   下播事件到达那一刻(等的那几分钟不算);BN 中途重启过、手里没有这一场时用事件带的开播时刻。粉丝数变化 =
+ *   推的那一刻资料里的粉丝数 − 这一场开播时记下的(决策 56),哪头没有就空着;默认卡不画它,文案与皮肤契约有
+ *   (决策 76)。
+ * - **作废**(决策 61):场次因为拓展停了(停用、卸载、换代码、崩了)、订阅删了 / 停用了、关机而结束 → 计时器
+ *   拆掉,等着的下播卡**不补推**。直播两个特性都关了 → 推送这头放下这一场。停用的订阅事件收下不推(决策 62)。
  * - **同一条订阅的推送按发起顺序送到**(每条订阅一道串行闸):秒级断流重开时,前一场的下播卡还在出卡,
  *   新一场的开播卡不会抢先送到(同 B 站的 `enqueuePush`)。
  *
@@ -65,7 +73,6 @@ import {
 
 type LiveStart = SubscriptionReportValue<"liveStart">;
 type LiveEnd = SubscriptionReportValue<"liveEnd">;
-type LiveStatus = SubscriptionReportValue<"liveStatus">;
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -86,31 +93,22 @@ type LiveFacts = Partial<
 	>
 >;
 
-/** BN 手里一条订阅正在播的这一场。 */
+/**
+ * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
+ */
 interface LiveRun {
-	extensionId: string;
-	/**
-	 * 这一场的开播时刻(毫秒)。开播事件必带;只见过直播状态时拓展报了才有。断流接续时沿用第一次的。
-	 */
-	startedAt?: number;
-	/** 开播时(或 BN 起来后第一次见到这一场时)资料里的粉丝数 —— 下播算粉丝数变化的基线(决策 56)。 */
-	fansAtStart?: number;
+	session: ExtensionLiveSession;
 	/** 上次推送之后收到过新的直播状态(决策 61)。推一张卡就清。 */
 	fresh: boolean;
-	/**
-	 * 在播表里这一场最后一份。下播事件一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
-	 * 只是拿着那一行,不是另存的一份状态。
-	 */
-	lastRow?: ExtensionLiveRow;
 	/** 周期「正在直播」。 */
 	periodic?: { handle: Disposable; hours: number };
-	/** 断流接续正在等的那次下播:下播事件到达的时刻与它带的格。 */
-	pendingEnd?: { handle: Disposable; endedAt: number; value: LiveEnd };
 }
 
 export interface BindExtensionLivePushOptions {
 	bus: MessageBus;
 	logger: Logger;
+	/** 场次 —— 这一场从哪开始、到哪结束、断流接续等不等,都听它的。 */
+	sessions: Pick<ExtensionLiveSessions, "onChange">;
 	/** 在播表 —— 「最新状态」只从这里取(拓展报的直播状态合并好的那一份)。 */
 	table: Pick<ExtensionLiveTable, "get">;
 	/** 此刻的这条订阅(现取)。 */
@@ -132,8 +130,8 @@ export interface BindExtensionLivePushOptions {
 	renderer(): Pick<ImageRenderer, "generateNeutralLiveCard"> | null | undefined;
 	/** 上报问题框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
 	reportProblem(problem: SubscriptionReportProblem): void;
-	/** 周期推送与断流等待的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
-	timers: Pick<ServiceContext, "setTimeout" | "setInterval">;
+	/** 周期推送的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
+	timers: Pick<ServiceContext, "setInterval">;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
@@ -172,13 +170,14 @@ interface CardJob {
 	fans?: number;
 	/** 本场粉丝数变化(下播)。 */
 	fansChanged?: number;
-	/** 「正在直播」卡属于哪一场:发送前这一场已经不是当前那场(开播 / 下播事件到了)就不发。 */
+	/** 「正在直播」卡属于哪一场:发送前推送这头已经不挂在它上面了(开播 / 下播事件到了)就不发。 */
 	run?: LiveRun;
 }
 
 export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Disposable {
 	const log = opts.logger;
 	const now = opts.now ?? Date.now;
+	/** 推送这头挂着的那一场,按订阅。与场次那边此刻那一场是同一场,或者没挂(推送都关着时)。 */
 	const runs = new Map<string, LiveRun>();
 	/** 每条订阅一道闸。订阅删了就扔掉(还排着的照跑完,跑到时发现订阅不在了就不推)。 */
 	const gates = new Map<string, SerialGate>();
@@ -196,23 +195,20 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		return extensionSubscriptionPushable(sub, opts.sources.running) ? sub : undefined;
 	};
 
-	/** 这一场作废:周期推送与等着的下播都拆掉,不补推。 */
+	/** 推送这头放下这一场:周期推送拆掉。这一场本身在场次那边,不归这里收。 */
 	function dropRun(id: string, why: string): void {
 		const run = runs.get(id);
 		if (!run) return;
 		run.periodic?.handle.dispose();
-		run.pendingEnd?.handle.dispose();
 		runs.delete(id);
-		log.debug(
-			`[ext-live] 订阅 ${id} 的这一场作废(${why})${run.pendingEnd ? ",等着的下播卡不补推" : ""}`,
-		);
+		log.debug(`[ext-live] 订阅 ${id} 的这一场推送这头放下了(${why})`);
 	}
 
 	/**
 	 * 周期「正在直播」挂成设置里那个频率:直播特性关着、频率是 0、正在断流等待里就不挂。频率没变不动它。
 	 */
 	function armPeriodic(id: string, run: LiveRun, settings: LiveWorkSettings): void {
-		const hours = settings.live && !run.pendingEnd ? settings.pushTime : 0;
+		const hours = settings.live && !run.session.pendingEnd ? settings.pushTime : 0;
 		if (run.periodic?.hours === hours) return;
 		run.periodic?.handle.dispose();
 		run.periodic = undefined;
@@ -328,12 +324,12 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			log.debug(`[ext-live] 订阅 ${id} 排队期间换了一场,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const row = opts.table.get(id) ?? run.lastRow;
+		const row = opts.table.get(id) ?? run.session.lastRow;
 		if (!row) {
 			log.debug(`[ext-live] 订阅 ${id} 已经不在在播表里,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const startedAt = run.startedAt ?? row.startedAt;
+		const startedAt = run.session.startedAt ?? row.startedAt;
 		return pushCard(id, {
 			status: "streaming",
 			pushType: LivePushType.Live,
@@ -369,7 +365,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			const reason = "上次推送之后没收到新的直播状态,这一轮周期「正在直播」没推";
 			log.info(`[ext-live] 订阅 ${id}:${reason}`);
 			opts.reportProblem({
-				extensionId: run.extensionId,
+				extensionId: run.session.extensionId,
 				at: now(),
 				kind: "liveStatus",
 				externalId: sub.externalId,
@@ -383,38 +379,30 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		enqueue(id, "「正在直播」", () => pushOngoing(id, run));
 	}
 
-	function onLiveStart(id: string, value: LiveStart): void {
+	/** 这一场该推送了吗:订阅还该推、开播与下播推送没全关。全关着的放下这一场。 */
+	function pushSettings(
+		id: string,
+	): { sub: ExtensionSubscription; settings: LiveWorkSettings } | undefined {
 		const sub = pushable(id);
-		if (!sub) {
-			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,开播不推`);
-			return;
-		}
+		if (!sub) return undefined;
 		const settings = opts.settings(sub);
 		if (!settings.live && !settings.liveEnd) {
 			dropRun(id, "开播与下播推送都关了");
-			return;
+			return undefined;
 		}
+		return { sub, settings };
+	}
+
+	/** 开播事件开了新的一场:推开播卡,挂上周期推送。 */
+	function onStart(session: ExtensionLiveSession, value: LiveStart): void {
+		const id = session.subscriptionId;
+		const ready = pushSettings(id);
+		if (!ready) return;
+		const { sub, settings } = ready;
 		seen.set(id, sub.extensionId);
-		const current = runs.get(id);
-		if (current?.pendingEnd) {
-			// 断流接续(决策 58):同一场。取消等待,开播时刻与粉丝基线沿用第一次的,两张卡都不发。
-			current.pendingEnd.handle.dispose();
-			current.pendingEnd = undefined;
-			current.lastRow = opts.table.get(id) ?? current.lastRow;
-			armPeriodic(id, current, settings);
-			log.info(`[ext-live] 订阅 ${id} 断流后重新开播,接续为同一场(开播卡、下播卡都不发)`);
-			return;
-		}
-		// 新的一场。上一场没报下播的话,它的计时器在这儿收掉。
 		dropRun(id, "新的一场开播了");
-		const at = now();
-		const run: LiveRun = {
-			extensionId: sub.extensionId,
-			startedAt: value.startedAt,
-			fansAtStart: opts.profile(id)?.fans,
-			fresh: false,
-			lastRow: opts.table.get(id),
-		};
+		const at = session.detectedAt;
+		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
 		if (settings.live) {
 			enqueue(id, "开播", () =>
@@ -425,14 +413,31 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 					facts: value,
 					startedAt: value.startedAt,
 					time: liveDuration(value.startedAt, at),
-					fans: run.fansAtStart,
+					fans: session.fansAtStart,
 				}),
 			);
 		}
 		armPeriodic(id, run, settings);
 	}
 
-	function onLiveStatus(id: string, value: LiveStatus): void {
+	/** 断流等待里又开播(决策 58):同一场,两张卡都不发,周期推送接着挂。 */
+	function onResume(session: ExtensionLiveSession): void {
+		const id = session.subscriptionId;
+		const ready = pushSettings(id);
+		if (!ready) return;
+		const { sub, settings } = ready;
+		seen.set(id, sub.extensionId);
+		let run = runs.get(id);
+		if (run?.session !== session) {
+			run = { session, fresh: false };
+			runs.set(id, run);
+		}
+		armPeriodic(id, run, settings);
+		log.info(`[ext-live] 订阅 ${id} 断流后重新开播,接续为同一场(开播卡、下播卡都不发)`);
+	}
+
+	/** 一份直播状态(认出一场的那一份也是):记「见过」、「收到过新状态」,必要时补推。 */
+	function onStatus(id: string, live: boolean, session: ExtensionLiveSession | undefined): void {
 		const sub = pushable(id);
 		if (!sub) return;
 		const settings = opts.settings(sub);
@@ -441,22 +446,14 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const first = !seen.has(id);
 		seen.set(id, sub.extensionId);
 		// 报了不在播:BN 不拿它猜下播(决策 53),在播表自己出表;这一场的计时器等下播事件来收。
-		if (!value.live) return;
+		if (!live || !session) return;
 		const current = runs.get(id);
-		if (current) {
+		if (current?.session === session) {
 			current.fresh = true;
-			current.lastRow = opts.table.get(id) ?? current.lastRow;
-			current.startedAt ??= value.startedAt;
 			return;
 		}
-		// 这一场没见过开播事件:BN 起来之前就开播了,或者拓展停过又跑起来了。
-		const run: LiveRun = {
-			extensionId: sub.extensionId,
-			startedAt: value.startedAt,
-			fansAtStart: opts.profile(id)?.fans,
-			fresh: false,
-			lastRow: opts.table.get(id),
-		};
+		// 推送这头没挂着这一场:BN 起来之前就开播了,或者拓展停过又跑起来了。
+		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
 		if (first && settings.restartPush && settings.live) {
 			log.info(`[ext-live] 订阅 ${id} 在 BN 起来之前就开播了,补推一张「正在直播」`);
@@ -467,9 +464,24 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		armPeriodic(id, run, settings);
 	}
 
-	/** 推下播卡、清掉这一场。`run` 没有 = BN 手里没有这一场(中途重启过、拓展没报过状态)。 */
-	function finishEnd(id: string, run: LiveRun | undefined, endedAt: number, value: LiveEnd): void {
-		if (run && runs.get(id) === run) runs.delete(id);
+	/** 下播进了断流等待:周期推送先停。 */
+	function onEnding(session: ExtensionLiveSession): void {
+		const id = session.subscriptionId;
+		const ready = pushSettings(id);
+		if (!ready) return;
+		const run = runs.get(id);
+		if (run?.session === session) armPeriodic(id, run, ready.settings);
+	}
+
+	/**
+	 * 推下播卡。`session` 没有 = BN 手里没有这一场(中途重启过、拓展没报过状态):时长用事件带的开播时刻。
+	 */
+	function finishEnd(
+		id: string,
+		session: ExtensionLiveSession | undefined,
+		endedAt: number,
+		value: LiveEnd,
+	): void {
 		const sub = pushable(id);
 		if (!sub) return;
 		if (!opts.settings(sub).liveEnd) {
@@ -477,13 +489,13 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			return;
 		}
 		// 事件没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
-		const facts: LiveFacts = { ...defined(run?.lastRow), ...defined(value) };
-		const startedAt = run?.startedAt ?? value.startedAt ?? run?.lastRow?.startedAt;
+		const facts: LiveFacts = { ...defined(session?.lastRow), ...defined(value) };
+		const startedAt = session?.startedAt ?? value.startedAt ?? session?.lastRow?.startedAt;
 		enqueue(id, "下播", () => {
 			const fansNow = opts.profile(id)?.fans;
 			const fansChanged =
-				fansNow !== undefined && run?.fansAtStart !== undefined
-					? fansNow - run.fansAtStart
+				fansNow !== undefined && session?.fansAtStart !== undefined
+					? fansNow - session.fansAtStart
 					: undefined;
 			return pushCard(id, {
 				status: "end",
@@ -497,75 +509,40 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		});
 	}
 
-	function onLiveEnd(id: string, value: LiveEnd): void {
-		const sub = pushable(id);
-		if (!sub) {
-			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,下播不推`);
-			return;
-		}
-		const settings = opts.settings(sub);
-		if (!settings.live && !settings.liveEnd) {
-			dropRun(id, "开播与下播推送都关了");
-			return;
-		}
-		const endedAt = now();
-		const run = runs.get(id);
-		if (run?.pendingEnd) {
-			log.debug(`[ext-live] 订阅 ${id} 已经在断流等待里,这次下播忽略`);
-			return;
-		}
-		if (run) {
-			run.lastRow = opts.table.get(id) ?? run.lastRow;
-			run.periodic?.handle.dispose();
-			run.periodic = undefined;
-			if (settings.liveEndGrace) {
-				// 断流接续(决策 58):先压着,期满才推;期间再开播就当同一场。
-				const minutes = liveEndGraceMinutes(settings.liveEndGraceMinutes);
-				run.pendingEnd = {
-					endedAt,
-					value,
-					handle: opts.timers.setTimeout(() => {
-						const waiting = runs.get(id);
-						if (waiting !== run || !run.pendingEnd) return;
-						const pending = run.pendingEnd;
-						run.pendingEnd = undefined;
-						log.info(`[ext-live] 订阅 ${id} 等了 ${minutes} 分钟没重新开播,推下播`);
-						finishEnd(id, run, pending.endedAt, pending.value);
-					}, minutes * MINUTE),
-				};
-				log.info(`[ext-live] 订阅 ${id} 下播,进入 ${minutes} 分钟断流接续等待`);
+	function onChange(change: ExtensionLiveSessionChange): void {
+		switch (change.type) {
+			case "start":
+				if (change.trigger === "liveStart") onStart(change.session, change.value);
+				else onStatus(change.subscriptionId, true, change.session);
 				return;
-			}
+			case "resume":
+				onResume(change.session);
+				return;
+			case "status":
+				onStatus(change.subscriptionId, change.live, change.session);
+				return;
+			case "ending":
+				onEnding(change.session);
+				return;
+			case "end":
+				// 为什么结束场次那边的日志写了。
+				dropRun(change.subscriptionId, "这一场结束了");
+				// 只有拓展报的下播推下播卡;拓展停了、订阅停用 / 删了、关机的,等着的下播卡不补推(决策 61)。
+				if (change.reason === "ended" && change.value) {
+					finishEnd(change.subscriptionId, change.session, change.at, change.value);
+				}
+				return;
+			case "unmatched-end":
+				finishEnd(change.subscriptionId, undefined, change.at, change.value);
+				return;
 		}
-		finishEnd(id, run, endedAt, value);
 	}
 
 	const watches: Disposable[] = [
-		opts.bus.on("subscription-reported", (delivery) => {
-			const { report } = delivery;
-			for (const id of delivery.subscriptionIds) {
-				switch (report.kind) {
-					case "liveStart":
-						onLiveStart(id, report.value);
-						break;
-					case "liveStatus":
-						onLiveStatus(id, report.value);
-						break;
-					case "liveEnd":
-						onLiveEnd(id, report.value);
-						break;
-					default:
-						// 作品、资料更新不归这里。
-						return;
-				}
-			}
-		}),
-		// 拓展停了(决策 61):它名下的全部作废,等着的下播卡不补推。「见过」也一并作废:重新跑起来后靠直播
-		// 状态接上,收到的第一份就是在播的照开机那样补推(它停着的时候开的播)。
+		opts.sessions.onChange(onChange),
+		// 拓展停了(决策 61):「见过」一并作废 —— 重新跑起来后靠直播状态接上,收到的第一份就是在播的照开机那样
+		// 补推(它停着的时候开的播)。它名下的场次由场次那边收掉,推送这头跟着放下。
 		opts.bus.on("extension-stopped", (extensionId) => {
-			for (const [id, run] of [...runs]) {
-				if (run.extensionId === extensionId) dropRun(id, `拓展 ${extensionId} 停了`);
-			}
 			for (const [id, owner] of [...seen]) {
 				if (owner === extensionId) seen.delete(id);
 			}

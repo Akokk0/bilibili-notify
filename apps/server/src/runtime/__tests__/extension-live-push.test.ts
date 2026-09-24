@@ -25,6 +25,10 @@ import type { SubscriptionReportProblem } from "../../extensions/context.js";
 import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";
+import {
+	createExtensionLiveSessions,
+	type ExtensionLiveSessions,
+} from "../extension-live-sessions.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
 const EXT = "douyin";
@@ -61,6 +65,7 @@ function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
 
 let bus: ReturnType<typeof createNodeMessageBus>;
 let table: ExtensionLiveTable;
+let sessions: ExtensionLiveSessions;
 let handle: { dispose(): void };
 let sent: Sent[];
 let problems: SubscriptionReportProblem[];
@@ -85,6 +90,16 @@ function start(): void {
 		},
 	};
 	table = createExtensionLiveTable({ bus, timers });
+	sessions = createExtensionLiveSessions({
+		bus,
+		logger,
+		table,
+		subscription: (id) => subs.get(id),
+		running: () => running,
+		fans: () => profile?.fans,
+		settings: () => settings,
+		timers,
+	});
 	const renderer = {
 		generateNeutralLiveCard: vi.fn(async (input: LiveCardInput) => {
 			renderedInputs.push(input);
@@ -97,6 +112,7 @@ function start(): void {
 	handle = bindExtensionLivePush({
 		bus,
 		logger,
+		sessions,
 		table,
 		subscription: (id) => subs.get(id),
 		profile: () => profile,
@@ -161,6 +177,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	handle?.dispose();
+	sessions?.dispose();
 	table?.dispose();
 	vi.useRealTimers();
 });

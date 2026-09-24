@@ -37,6 +37,7 @@ import {
 } from "../engines.js";
 import { createExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";
+import { createExtensionLiveSessions } from "../extension-live-sessions.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntimeStore } from "../sub-runtime-store.js";
 
@@ -161,6 +162,17 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 		};
 		const table = createExtensionLiveTable({ bus, timers });
 		disposers.push(table);
+		const sessions = createExtensionLiveSessions({
+			bus,
+			logger: SERVICE_CTX.logger,
+			table,
+			subscription: (id) => (id === sub.id ? sub : undefined),
+			running: () => true,
+			fans: () => undefined,
+			settings: (s) => liveWorkSettings(s, g),
+			timers,
+		});
+		disposers.push(sessions);
 		let delivered!: () => void;
 		const sent = new Promise<void>((resolve) => {
 			delivered = resolve;
@@ -169,6 +181,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			bindExtensionLivePush({
 				bus,
 				logger: SERVICE_CTX.logger,
+				sessions,
 				table,
 				subscription: (id) => (id === sub.id ? sub : undefined),
 				profile: () => ({ name: "抖音甲" }),
