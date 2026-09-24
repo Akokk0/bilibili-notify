@@ -288,7 +288,7 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 	const lookCard: ExtraTool = {
 		definition: fn(
 			T.lookCard,
-			"把一张卡用示例数据真渲染出来给你看一眼。只用来自查:看完把看到的问题告诉主人,不要自己接着改。",
+			"用示例数据把一张卡真渲染成图交给你看,用来自查效果;不改任何东西。服务端没装 Chrome 时截不了图,只返回一句说明;当前模型看不了图时,返回的是看图副模型给的文字描述,或一句「看不见」。",
 			{ skin: SKIN_PARAM, kind: KIND_PARAM },
 			["skin", "kind"],
 		),
@@ -437,7 +437,7 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 	const removeBlock: ExtraTool = {
 		definition: fn(
 			T.removeBlock,
-			"删掉一块。",
+			"从一张卡里按块 id 删掉一块。不是这场对话做的皮肤会先复制一份再删,原件不动;这套还没写这种卡、或卡里没有这一块时报错,什么都不删。",
 			{ skin: SKIN_PARAM, kind: KIND_PARAM, block: BLOCK_PARAM },
 			["skin", "kind", "block"],
 		),
