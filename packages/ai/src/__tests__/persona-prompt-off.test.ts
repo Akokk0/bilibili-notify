@@ -52,7 +52,8 @@ describe("buildSystemPrompt 的 withPersona", () => {
 
 	it("去掉的只有性格 —— 职责与工具铁律照旧", () => {
 		const off = buildSystemPrompt({ ...PERSONA, withPersona: false, withTools: true });
-		expect(off).toContain("关注 B 站 UP 主");
+		// 职责那一句不再只认 B 站(ADR-0020 决策 13):B 站的语境还在,也不把别的平台排除在外。
+		expect(off).toContain("帮用户关注 B 站等平台上的 UP 主");
 		expect(off).toContain("必须调用对应工具");
 	});
 
