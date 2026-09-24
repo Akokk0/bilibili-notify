@@ -14,6 +14,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
 import type { FansStore } from "../fans/store.js";
+import { statsFileKey } from "../stats/file-key.js";
 import {
 	pruneOrphanSubRuntime,
 	type SubRuntime,
@@ -74,7 +75,7 @@ export interface FansPollerHandle extends Disposable {
 /**
  * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `getUserCardInfo` 取 fans;
  *
- *   1. 追加一行样本到 FansStore(<dataDir>/fans/<uid>.jsonl);
+ *   1. 追加一行样本到 FansStore(<dataDir>/fans/<订阅 id>.jsonl,ADR-0020 决策 2 的 🔗);
  *   2. 第一次见该 sub → 把当前值作为 fansBaseline(订阅起点)写进 SubRuntimeStore;
  *   3. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
  *      (不再走 configStore.patchSubscription —— 见 FansPollerOptions 注释);
@@ -111,6 +112,12 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// uid → 最近一次成功采样。replace,不累加。每轮跑完整体替换为新一批,但
 	// 跳过本轮没采到的 uid(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁)。
 	const lastByUid = new Map<string, FansRefreshEntry>();
+	/**
+	 * 这一进程里往哪些粉丝文件(订阅 id)写过样本。清扫按它删「删了订阅之后又被写回来」的那份 ——
+	 * 判据是**这条订阅**不在了,不是这个 uid 不在了:同一个人删了重订是另一条订阅、另一份文件,
+	 * 旧的那份照样得删。
+	 */
+	const writtenKeys = new Set<string>();
 
 	/**
 	 * 粉丝轮询只问 B 站订阅(ADR-0019 决策 12:粉丝曲线第一版不含拓展订阅)。拓展订阅没有
@@ -169,16 +176,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		// 前端覆盖式 setQueryData 自然把他们的卡片从首页粉丝面板上撤掉。
 		//
 		// 撤出快照 ≠ 删时序文件(ADR-0020 决策 10):**停用**的 UP 统计页照样列着,文件留着,
-		// 再启用接着往里记;只有这个 uid 一条 B 站订阅都不剩了才删。删订阅平时由下面的
-		// subscription-changed 监听当场删,这里兜的是它删完之后又被写回来的那种:tick 正
-		// 在跑时删了订阅,这一轮随后照样 append(文件重新长出来)、重新塞进 lastByUid。
-		// 只扫 lastByUid,不扫盘 —— BN 停机期间删掉的订阅留下的文件这里管不到。
+		// 再启用接着往里记;只有这条订阅不在了才删。删订阅平时由下面的 subscription-changed
+		// 监听当场删,这里兜的是它删完之后又被写回来的那种:tick 正在跑时删了订阅,这一轮随后
+		// 照样 append(文件重新长出来)。只扫这一进程写过的,不扫盘 —— BN 停机期间删掉的订阅
+		// 留下的文件这里管不到。
 		const enabledUids = new Set(subs.map((s) => s.uid));
-		const subscribedUids = new Set(allBili.map((s) => s.uid));
 		for (const oldUid of Array.from(lastByUid.keys())) {
-			if (enabledUids.has(oldUid)) continue;
-			lastByUid.delete(oldUid);
-			if (!subscribedUids.has(oldUid)) void fansStore.drop(oldUid);
+			if (!enabledUids.has(oldUid)) lastByUid.delete(oldUid);
+		}
+		const subscribedKeys = new Set(allBili.map((s) => statsFileKey(s)));
+		for (const key of Array.from(writtenKeys)) {
+			if (subscribedKeys.has(key)) continue;
+			writtenKeys.delete(key);
+			void fansStore.drop(key);
 		}
 		if (subs.length === 0) {
 			// 全部被删除时仍要 emit 一次空快照让前端清屏。
@@ -237,12 +247,14 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				}
 				if (typeof current !== "number" || current < 0) continue;
 
-				await fansStore.append(sub.uid, { ts: nowIso, value: current });
+				const key = statsFileKey(sub);
+				await fansStore.append(key, { ts: nowIso, value: current });
+				writtenKeys.add(key);
 				if (disposed) return;
 
 				const [near24h, near7d] = await Promise.all([
-					fansStore.findNearestBefore(sub.uid, target24hIso),
-					fansStore.findNearestBefore(sub.uid, target7dIso),
+					fansStore.findNearestBefore(key, target24hIso),
+					fansStore.findNearestBefore(key, target7dIso),
 				]);
 				if (disposed) return;
 
@@ -327,7 +339,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	/**
-	 * 重启恢复:从每个 enabled sub 的 fans/<uid>.jsonl 末尾读最近一条样本,填进
+	 * 重启恢复:从每个 enabled sub 的 fans/<订阅 id>.jsonl 末尾读最近一条样本,填进
 	 * lastByUid 并立即 emit 一次。这样 Dashboard 首屏不会因为新一轮 tick 还没跑完
 	 * 就空白。窗口 delta(24h/7d)留给第一次正式 tick 计算。
 	 */
@@ -339,14 +351,14 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		for (const sub of subs) {
 			if (disposed) return;
 			try {
-				const last = await fansStore.findNearestBefore(sub.uid, futureIso);
+				const last = await fansStore.findNearestBefore(statsFileKey(sub), futureIso);
 				if (!last) continue;
 				// 自愈 baseline:jsonl 是 ground truth(append-only),而 sub-runtime.json
 				// 里的 fansBaseline 历史上被批量重写过(c4e9dcd 把 baseline 搬出 Subscription
 				// 时旧值没迁过来 → fans-poller 看 baseline 缺失就把当时值当起点写)。
 				// 启动时若发现 jsonl earliest 比 baseline 早,以 earliest 校准 baseline。
 				let baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
-				const earliest = await fansStore.findEarliest(sub.uid);
+				const earliest = await fansStore.findEarliest(statsFileKey(sub));
 				if (earliest && baseline && earliest.ts < baseline.ts) {
 					logger.info(
 						`[fans-poller] baseline self-heal uid=${sub.uid}: ${baseline.ts}(${baseline.value}) → ${earliest.ts}(${earliest.value})`,
@@ -455,7 +467,9 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				lastByUid.delete(uid);
 				removedAny = true;
 			}
-			void fansStore.drop(uid);
+			const key = statsFileKey(op.sub);
+			writtenKeys.delete(key);
+			void fansStore.drop(key);
 		}
 		if (hadRemove) {
 			// Drop the deleted sub's SubRuntimeStore entry. subscriptionStore

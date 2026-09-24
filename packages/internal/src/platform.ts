@@ -227,8 +227,9 @@ export interface DynamicDetectedEvent {
 	id: string;
 	/**
 	 * B 站原始动态类型字符串(DYNAMIC_TYPE_AV / _DRAW / _WORD / _LIVE_RCMD …)。
-	 * 事件层**不做语义归类** —— 哪些算投稿、哪些算普通动态、哪些是开播伪动态
-	 * 要剔除,策略集中在 stats 聚合层一处,免得多个消费方各自跑偏。
+	 * 事件层**不做语义归类** —— 哪些算投稿、哪些算普通动态、哪些是开播公告,由统计的
+	 * B 站适配在落盘之前归成中立种类(`apps/server/src/stats/bili-format.ts`:AV → `video`、
+	 * 开播那两种 → `live`、其余 → `post`,ADR-0020 决策 5 / 17),免得多个消费方各自跑偏。
 	 */
 	type: string;
 	/** 动态发布时间(ISO)。 */

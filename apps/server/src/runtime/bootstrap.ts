@@ -183,10 +183,15 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	});
 	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
 	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
+	//
+	// 它在这里就挂上了,但只在引擎发事件时才写盘 —— 引擎在 index.ts 里建,晚于那边的开机迁移
+	// (`migrateStatsFileKeys`),所以老的 `<uid>.jsonl` 一定先挪到订阅 id 名下,它才会往里写。
 	const statsRecorder = createStatsRecorder({
 		bus,
 		store: statsStore,
 		logger: serviceCtx.logger,
+		// 按 uid 找订阅 id。读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
+		subscriptions: () => configStore.getSubscriptions(),
 	});
 	serviceCtx.onDispose(async () => {
 		// 先给在播的场次补下播帧,再解绑 —— 顺序反了就没人记得谁还在播。

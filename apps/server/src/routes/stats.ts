@@ -18,6 +18,7 @@ import {
 	summarizeLiveSessions,
 	windowSinceIso,
 } from "../stats/aggregate.js";
+import { statsFileKey } from "../stats/file-key.js";
 import { deliverRoast } from "../stats/roast-deliver.js";
 import {
 	generateBoardRoast,
@@ -161,7 +162,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		);
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
 		//
-		// 订阅集合:退订后 recorder 已经 `dropUid` 物理删掉了那位 UP 的 jsonl,前端
+		// 订阅集合:退订后 recorder 已经 `drop` 物理删掉了那位 UP 的 jsonl,前端
 		// 却还能从缓存里读到他一整行(数据背后的文件已不存在);刚加的订阅同理要等
 		// 满 TTL 才出现。不排序 —— rows 的顺序就跟着 subs 走,顺序变了输出也变。
 		//
@@ -193,10 +194,12 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 在单个 UP 的闭包里判不出来,所以取数与成行分成两趟。
 		const perSub = await Promise.all(
 			subs.map(async (sub) => {
+				// 两个仓都按订阅 id 分文件(ADR-0020 决策 2 的 🔗 / 16);老的 uid 文件开机时已迁过来。
+				const key = statsFileKey(sub);
 				const [samples, events, sessions] = await Promise.all([
-					deps.runtime.fansStore.listSamplesSince(sub.uid, since),
-					deps.runtime.statsStore.listDynamics(sub.uid, since),
-					deps.runtime.statsStore.listLiveSessions(sub.uid, since),
+					deps.runtime.fansStore.listSamplesSince(key, since),
+					deps.runtime.statsStore.listDynamics(key, since),
+					deps.runtime.statsStore.listLiveSessions(key, since),
 				]);
 				return { sub, samples, events, sessions };
 			}),
@@ -206,7 +209,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		//
 		// 取**所有 UP 的并集**,而不是每位 UP 各看各的:服务器在不在跑是服务器的
 		// 属性,与具体订阅了谁无关。按 UP 各判会踩一个很难发现的坑 —— ADR-0020 决策 10
-		// 之前禁用订阅会 `dropUid` 物理删掉那位 UP 的 fans jsonl(现在不删了,但老数据里还留着
+		// 之前禁用订阅会物理删掉那位 UP 的 fans jsonl(现在不删了,但老数据里还留着
 		// 那种断档),于是订阅了三个月的 UP 只要被禁用再启用过,热力图就整片变「无记录」,尽管它的
 		// 动态和场次原封不动在盘上。
 		//
@@ -255,7 +258,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				// 一位 UP,他昨天那格本会被画成灰色的 0,读起来是「他昨天什么都没发」,
 				// 而那天他还不在订阅列表里。
 				//
-				// **只遮 0** 是要紧的:ADR-0020 决策 10 之前禁用订阅会 `dropUid` 物理删掉
+				// **只遮 0** 是要紧的:ADR-0020 决策 10 之前禁用订阅会物理删掉
 				// fans jsonl(老数据里还留着那种断档),订阅了三个月的 UP 被禁用再启用过,首采日就成了那天,
 				// 而他更早的动态与场次原封不动在盘上 —— 那些格子有铁证,一刀切会把
 				// 已经知道的事实重新抹成「不知道」。
@@ -265,7 +268,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
 			//   · `activity` 有非 null 位 —— fans 采样证明服务当时在跑;
 			//   · 盘上有动态 / 场次记录 —— 能记下来本身就说明我们在记。
-			// 只认第一种是不够的:fans jsonl 曾被 `dropUid` 物理删掉(ADR-0020 决策 10 之前的禁用订阅),
+			// 只认第一种是不够的:fans jsonl 曾被物理删掉(ADR-0020 决策 10 之前的禁用订阅),
 			// 而动态与场次记录原封不动留着 —— 那时把计数判成「无记录」就是睁眼说瞎话。
 			const hasCoverage =
 				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
@@ -275,6 +278,10 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 
 			// 最后活动 = 最近一条动态 与 最近一次开播 里更晚的那个。两者都没有
 			// 就是 null —— 这正是设计稿「鸽子榜」要的信号,不能拿窗口起点顶替。
+			//
+			// `events` 里的开播公告(`live`)照算:它不是作品,但确实是这位 UP 的动静 —— 没开
+			// 直播类推送的 UP 不记场次,开播公告是他开过播的唯一痕迹(ADR-0020 决策 5 的
+			// 第二个 🔗)。上面的 hasEvidence / hasCoverage 同理。
 			//
 			// 动态取**最大 ts** 而不是末元素:`listDynamics` 的契约是「按落盘顺序」
 			// = 检测顺序,而 B 站动态流按惯例最新在前,一轮里检测到多条时末元素

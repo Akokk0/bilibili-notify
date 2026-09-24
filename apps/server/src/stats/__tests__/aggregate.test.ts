@@ -1,13 +1,13 @@
 /**
  * 单元测试 — stats 聚合层(纯函数,无 IO)。
  *
- * 这层是全仓**唯一**给 B 站动态类型定语义的地方,所以类型归类的用例写得比较死:
- * 归类一旦漂移,投稿数 / 动态数两个口径会同时错,而且错得很安静。
+ * 这层只认中立的种类(`video` / `post`)与数字峰值(ADR-0020 决策 5 / 7 的 🔗)。
+ * B 站类型怎么归类、「1.2万」怎么解析,钉在 bili-format.test.ts;老 B 站行读回来
+ * 与改之前算出同样的数,钉在 legacy-rows.test.ts。
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import {
-	classifyDynamic,
 	countDynamics,
 	dailyActivityCounts,
 	dailyFansSeries,
@@ -21,34 +21,13 @@ const TZ_CN = -480;
 /** 北京时间 2026-05-16 h 时的 UTC ISO。 */
 const CN = (day: number, h: number) => new Date(Date.UTC(2026, 4, day, h - 8, 0, 0)).toISOString();
 
-describe("classifyDynamic — 类型归类策略", () => {
-	it("视频投稿算 archive", () => {
-		expect(classifyDynamic("DYNAMIC_TYPE_AV")).toBe("archive");
-	});
-
-	it("开播伪动态忽略 —— 直播场次由 live 场次记录负责,不能两头都计一次", () => {
-		expect(classifyDynamic("DYNAMIC_TYPE_LIVE_RCMD")).toBe("ignored");
-		expect(classifyDynamic("DYNAMIC_TYPE_LIVE")).toBe("ignored");
-	});
-
-	it("图文 / 纯文字 / 转发算普通动态", () => {
-		expect(classifyDynamic("DYNAMIC_TYPE_DRAW")).toBe("dynamic");
-		expect(classifyDynamic("DYNAMIC_TYPE_WORD")).toBe("dynamic");
-		expect(classifyDynamic("DYNAMIC_TYPE_FORWARD")).toBe("dynamic");
-	});
-
-	it("没见过的新类型算普通动态,不静默丢弃", () => {
-		expect(classifyDynamic("DYNAMIC_TYPE_SOMETHING_NEW")).toBe("dynamic");
-	});
-});
-
 describe("countDynamics", () => {
-	it("按归类分别计数,开播伪动态不进任何一栏", () => {
+	it("按种类分别计数:video 进投稿,post 进动态,开播公告(live)哪一栏都不进", () => {
 		const got = countDynamics([
-			{ id: "1", type: "DYNAMIC_TYPE_AV", ts: CN(16, 10) },
-			{ id: "2", type: "DYNAMIC_TYPE_AV", ts: CN(16, 11) },
-			{ id: "3", type: "DYNAMIC_TYPE_DRAW", ts: CN(16, 12) },
-			{ id: "4", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: CN(16, 13) },
+			{ id: "1", kind: "video", ts: CN(16, 10) },
+			{ id: "2", kind: "video", ts: CN(16, 11) },
+			{ id: "3", kind: "post", ts: CN(16, 12) },
+			{ id: "4", kind: "live", ts: CN(16, 13) },
 		]);
 		expect(got).toEqual({ archives: 2, dynamics: 1 });
 	});
@@ -217,8 +196,8 @@ describe("summarizeLiveSessions", () => {
 
 	it("峰值取全窗口最大,场均取各场峰值的平均", () => {
 		const got = summarizeLiveSessions([
-			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: "1万" },
-			{ startedAt: CN(16, 10), endedAt: CN(16, 12), peakViewers: "3万" },
+			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: 10_000 },
+			{ startedAt: CN(16, 10), endedAt: CN(16, 12), peakViewers: 30_000 },
 		]);
 		expect(got.peakViewers).toBe(30000);
 		expect(got.avgPeakViewers).toBe(20000);
@@ -266,8 +245,8 @@ describe("坏时间戳守卫 —— 一行脏数据不能掀翻整个接口", ()
 	it("dailyActivityCounts 跳过坏事件,不整段崩掉", () => {
 		const counts = dailyActivityCounts(
 			[
-				{ id: "a", type: "DYNAMIC_TYPE_AV", ts: "坏行" },
-				{ id: "b", type: "DYNAMIC_TYPE_AV", ts: CN(16, 10) },
+				{ id: "a", kind: "video", ts: "坏行" },
+				{ id: "b", kind: "video", ts: CN(16, 10) },
 			],
 			[],
 			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
@@ -295,9 +274,9 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 	it("动态 / 投稿 / 开播都算一次活动,按本地日归并", () => {
 		const got = dailyActivityCounts(
 			[
-				{ id: "a", type: "DYNAMIC_TYPE_AV", ts: CN(15, 10) },
-				{ id: "b", type: "DYNAMIC_TYPE_WORD", ts: CN(15, 20) },
-				{ id: "c", type: "DYNAMIC_TYPE_DRAW", ts: CN(16, 9) },
+				{ id: "a", kind: "video", ts: CN(15, 10) },
+				{ id: "b", kind: "post", ts: CN(15, 20) },
+				{ id: "c", kind: "post", ts: CN(16, 9) },
 			],
 			[{ startedAt: CN(16, 21), endedAt: CN(16, 22) }],
 			opts,
@@ -306,9 +285,9 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 		expect(got).toEqual([0, 2, 2]);
 	});
 
-	it("开播伪动态不计 —— 否则一场直播会同时算进动态和开播", () => {
+	it("开播公告(live)不计 —— 否则一场直播会同时算进公告和开播", () => {
 		const got = dailyActivityCounts(
-			[{ id: "a", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: CN(16, 10) }],
+			[{ id: "a", kind: "live", ts: CN(16, 10) }],
 			[{ startedAt: CN(16, 10), endedAt: CN(16, 12) }],
 			opts,
 		);
@@ -320,11 +299,7 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 	});
 
 	it("窗口外的事件不计入", () => {
-		const got = dailyActivityCounts(
-			[{ id: "old", type: "DYNAMIC_TYPE_WORD", ts: CN(1, 10) }],
-			[],
-			opts,
-		);
+		const got = dailyActivityCounts([{ id: "old", kind: "post", ts: CN(1, 10) }], [], opts);
 		expect(got).toEqual([0, 0, 0]);
 	});
 });
@@ -430,39 +405,17 @@ describe("summarizeLiveSessions — isLive 是悬空记录的止损闸门", () =
 	});
 });
 
-describe("summarizeLiveSessions — 观看数字符串的解析", () => {
-	// 覆盖缺口回归:测试数据此前只用过「万」和裸数字,「亿」分支和解析失败分支
-	// 从没被碰过 —— 把亿的乘数改成 ×1、或让解析失败返回 0,都无人发现。
-	const withPeak = (peak: string) => [
-		{ startedAt: CN(16, 20), endedAt: CN(16, 22), peakViewers: peak },
-	];
-
-	it("「亿」按 1e8 换算,不是当成裸数字", () => {
-		expect(summarizeLiveSessions(withPeak("1.2亿")).peakViewers).toBe(120_000_000);
-	});
-
-	it("「万」按 1e4 换算", () => {
-		expect(summarizeLiveSessions(withPeak("1.2万")).peakViewers).toBe(12_000);
-	});
-
-	it("裸数字原样取用", () => {
-		expect(summarizeLiveSessions(withPeak("9500")).peakViewers).toBe(9500);
-	});
-
-	it("解析不出的字符串整场跳过,不是当成 0 混进平均值", () => {
+describe("summarizeLiveSessions — 没采到峰值的场次", () => {
+	// 「1.2万 / 亿 / 解析不出」的换算搬去了 bili-format(B 站那头交进来之前就解析好);
+	// 这里只剩数字,守的是同一条口径:没采到的场不是 0,不进平均。
+	it("没有峰值的场整场跳过,不是当成 0 混进平均值", () => {
 		// 「未知不是零」——一个静默的 0 会把场均峰值拖下水,而且看不出来。
 		const got = summarizeLiveSessions([
-			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: "1万" },
-			{ startedAt: CN(16, 20), endedAt: CN(16, 22), peakViewers: "看不懂" },
+			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: 10_000 },
+			{ startedAt: CN(16, 20), endedAt: CN(16, 22) },
 		]);
 		expect(got.peakViewers).toBe(10_000);
 		expect(got.avgPeakViewers).toBe(10_000);
-	});
-
-	it("所有场次的峰值都解析不出 → null,而不是 0", () => {
-		const got = summarizeLiveSessions(withPeak("???"));
-		expect(got.peakViewers).toBeNull();
-		expect(got.avgPeakViewers).toBeNull();
 	});
 });
 

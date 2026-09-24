@@ -8,7 +8,8 @@ import type { Logger } from "@bilibili-notify/internal";
  * 按订阅分文件的 fans 时序持久化。
  *
  * 文件布局:`<dataDir>/fans/<key>.jsonl`,每行 `{ ts: ISO, value: number }`。`<key>` 与统计仓
- * 同一个规矩({@link statsFileKey}):B 站是 uid,拓展是 `ext-<订阅 id>`(ADR-0020 决策 2 / 16)。
+ * 同一个规矩({@link statsFileKey}):订阅 id(ADR-0020 决策 2 的 🔗 / 16)。老版本的 B 站文件
+ * 叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`stats/migrate-file-keys.ts`)。
  * append-only — FansPoller 每个 cron tick 拉到一个 UP 的当前 fans 数就在该
  * UP 的 jsonl 末尾追加一行。计算 24h / 7d delta 时通过 `findNearestBefore`
  * 逆向扫读最近 ~8 天分区,在内存里挑离目标时间戳最近的那条样本(误差与
@@ -28,7 +29,9 @@ export interface FansStore {
 	append(key: string, sample: FansSample): Promise<void>;
 	/**
 	 * 找出这个键在 ts 时间点之前最接近的一条样本。没有匹配返回 undefined。
-	 * 实现:从文件尾向头流式读,第一条 ts <= target 的样本就是答案。
+	 * 实现:从头往后流式读,遇到第一条 ts > target 就停 —— 靠的是文件里时间只增不减。
+	 * 开机迁移把回退期间写的那份接在后面(那段一定更晚),所以并过的文件照样单调;万一那段
+	 * 被接了两遍,停下之前扫到的仍是同一个值。
 	 */
 	findNearestBefore(key: string, targetTsIso: string): Promise<FansSample | undefined>;
 	/**
@@ -50,13 +53,16 @@ export interface FansStore {
 	drop(key: string): Promise<void>;
 }
 
+/** 粉丝时序住的目录(相对 dataDir)。开机迁移认的也是这一处。 */
+export const FANS_DIR = "fans";
+
 export interface CreateFansStoreOptions {
 	dataDir: string;
 	logger: Logger;
 }
 
 export function createFansStore(opts: CreateFansStoreOptions): FansStore {
-	const root = join(opts.dataDir, "fans");
+	const root = join(opts.dataDir, FANS_DIR);
 	let ensured = false;
 
 	async function ensureRoot(): Promise<void> {

@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
@@ -17,7 +17,8 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * - 🔴 tick 在跑时删了订阅:remove 监听先删了文件,那一轮随后又把样本写回去 —— 下一轮的
  *   清扫得把它再删掉(判据是「一条 B 站订阅都不剩」,不是「没启用」)。
  *
- * 粉丝仓用真的(tmpdir),文件在不在就是断言本身。
+ * 粉丝仓用真的(tmpdir),文件在不在就是断言本身。文件按**订阅 id** 命名(ADR-0020 决策 2
+ * 的 🔗):下面订阅 id 是 "a" / "b",uid 是 "1" / "2"。
  */
 
 const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
@@ -38,8 +39,8 @@ function biliSub(id: string, uid: string, enabled = true) {
 	return { kind: "bilibili", id, uid, enabled };
 }
 
-function fanFile(uid: string): string {
-	return join(dataDir, "fans", `${uid}.jsonl`);
+function fanFile(key: string): string {
+	return join(dataDir, "fans", `${key}.jsonl`);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -51,8 +52,8 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-async function samples(uid: string): Promise<number[]> {
-	const raw = await readFile(fanFile(uid), "utf8");
+async function samples(key: string): Promise<number[]> {
+	const raw = await readFile(fanFile(key), "utf8");
 	return raw
 		.trim()
 		.split("\n")
@@ -123,20 +124,65 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	};
 }
 
+describe("fans poller:粉丝文件按订阅 id 读写", () => {
+	it("开机恢复读的是订阅 id 那份:面板首屏就有上次的粉丝数", async () => {
+		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await writeFile(
+			fanFile("a"),
+			`${JSON.stringify({ ts: "2026-05-16T00:00:00.000Z", value: 777 })}\n`,
+		);
+		const p = await start([biliSub("a", "1")]);
+		expect(p.handle.getLastEntries()).toEqual([
+			expect.objectContaining({ uid: "1", current: 777 }),
+		]);
+	});
+
+	it("uid 同一个人删了重订(换了订阅 id)→ 旧 id 那份被那一轮写回来的,清扫照样删掉", async () => {
+		const p = await start([biliSub("a", "1")]);
+		p.followers.set("1", 100);
+		await p.handle.pollNow();
+
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		p.getRelationStat.mockImplementationOnce(async () => {
+			await gate;
+			return { code: 0, data: { follower: 101 } };
+		});
+		const inFlight = p.handle.pollNow();
+		await vi.waitFor(() => expect(p.getRelationStat).toHaveBeenCalledTimes(1));
+
+		// 删掉 a、立刻又订了同一个 uid(新订阅 id c)。
+		p.setSubs([biliSub("c", "1")]);
+		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
+		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
+		release();
+		await inFlight;
+		expect(await exists(fanFile("a"))).toBe(true); // 前提:那一轮确实写回来了
+
+		await p.handle.pollNow();
+		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
+		expect(await exists(fanFile("c"))).toBe(true);
+	});
+});
+
 describe("fans poller:停用留着粉丝时序,删除才删", () => {
 	it("停用 → 下一轮撤出快照,粉丝文件还在", async () => {
 		const p = await start([biliSub("a", "1"), biliSub("b", "2")]);
 		p.followers.set("1", 100).set("2", 200);
 		expect(await p.handle.pollNow()).toBe(true);
-		expect(await samples("1")).toEqual([100]);
+		expect(await samples("a")).toEqual([100]);
+		// 写的是订阅 id 那份,uid 那份从头到尾不出现。
+		expect(await exists(fanFile("1"))).toBe(false);
 
 		p.setSubs([biliSub("a", "1", false), biliSub("b", "2")]);
 		expect(await p.handle.pollNow()).toBe(true);
 
 		expect(p.lastSnapshotUids()).toEqual(["2"]);
 		expect(p.handle.getLastEntries().map((e) => e.uid)).toEqual(["2"]);
-		expect(await exists(fanFile("1"))).toBe(true);
-		expect(await samples("1")).toEqual([100]);
+		expect(await exists(fanFile("a"))).toBe(true);
+		expect(await samples("a")).toEqual([100]);
 	});
 
 	it("再启用 → 接着往同一份文件里追加,起点仍是最初那次采样", async () => {
@@ -151,7 +197,7 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		p.followers.set("1", 150);
 		await p.handle.pollNow();
 
-		expect(await samples("1")).toEqual([100, 150]);
+		expect(await samples("a")).toEqual([100, 150]);
 		expect(p.runtime.get("a")?.fansBaseline?.value).toBe(100);
 		const entry = p.handle.getLastEntries().find((e) => e.uid === "1");
 		expect(entry).toMatchObject({ current: 150, deltaSubscribed: 50 });
@@ -162,15 +208,15 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		const p = await start([biliSub("a", "1"), biliSub("b", "2")]);
 		p.followers.set("1", 100).set("2", 200);
 		await p.handle.pollNow();
-		expect(await exists(fanFile("1"))).toBe(true);
+		expect(await exists(fanFile("a"))).toBe(true);
 
 		// 事件到的时候订阅仓已经是删完的样子(config-changed → replaceAll → subscription-changed)。
 		p.setSubs([biliSub("b", "2")]);
 		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
 
-		await vi.waitFor(async () => expect(await exists(fanFile("1"))).toBe(false));
+		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		expect(p.lastSnapshotUids()).toEqual(["2"]);
-		expect(await exists(fanFile("2"))).toBe(true);
+		expect(await exists(fanFile("b"))).toBe(true);
 	});
 
 	it("tick 在跑时删了订阅 → 那一轮把文件写了回来,下一轮清扫再删掉", async () => {
@@ -192,15 +238,15 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 
 		p.setSubs([]);
 		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
-		await vi.waitFor(async () => expect(await exists(fanFile("1"))).toBe(false));
+		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 
 		release();
 		expect(await inFlight).toBe(true);
 		// 前提:这一轮确实把文件写回来了 —— 否则下面的断言是空转。
-		expect(await samples("1")).toEqual([101]);
+		expect(await samples("a")).toEqual([101]);
 
 		expect(await p.handle.pollNow()).toBe(true);
-		await vi.waitFor(async () => expect(await exists(fanFile("1"))).toBe(false));
+		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		expect(p.snapshots.at(-1)).toEqual([]);
 		expect(p.handle.getLastEntries()).toEqual([]);
 	});

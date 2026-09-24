@@ -76,6 +76,7 @@ import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { createStatusCommand } from "./runtime/status-command.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
+import { migrateStatsFileKeys } from "./stats/migrate-file-keys.js";
 import { createUpdateService } from "./update/service.js";
 import {
 	EXTENSION_MARKETPLACE_URL,
@@ -181,6 +182,18 @@ export async function startStandaloneServer(
 		// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
+
+		// 统计与粉丝文件改按订阅 id 命名(ADR-0020 决策 2 的 🔗):老的 / 回退期间写下的
+		// `<uid>.jsonl` 并进 `<订阅 id>.jsonl`。**每次开机都跑,而且必须在这里** —— 要读完订阅才知道
+		// uid 对哪个 id,又必须赶在写这三处的人之前:粉丝轮询(下面 startFansPoller,一起来就按
+		// 订阅 id 读盘恢复、之后往里写)与统计记录器(它早就挂在总线上了,但只在引擎发事件时写,
+		// 引擎在下面 createEngines 才建)。HTTP 也要到最后才 serve。挪位置之前先看
+		// __tests__/stats-file-key-migration-boot-e2e.test.ts。
+		await migrateStatsFileKeys({
+			dataDir: bootstrap.dataDir,
+			subscriptions: runtime.configStore.getSubscriptions(),
+			logger: log,
+		});
 
 		// Stage 2.4: assemble the auth stack (StorageManager → BilibiliAPI → LoginFlow). Bus
 		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.

@@ -91,6 +91,26 @@ function runPoller(opts: {
 }
 
 describe("restoreFromDisk — fansBaseline 自愈", () => {
+	it("读的是这条订阅的 id 那份(ADR-0020 决策 2 的 🔗),不是 uid 那份", async () => {
+		const findEarliest = vi.fn(async (_key: string) => undefined);
+		const findNearestBefore = vi.fn(async (_key: string, _before: string) => ({
+			ts: "2026-05-20T00:00:00.000Z",
+			value: 1600,
+		}));
+		handle = runPoller({
+			rtGet: vi.fn(() => ({})),
+			rtPatch: vi.fn(async () => {}),
+			findEarliest,
+			findNearestBefore,
+		});
+		await vi.waitFor(() => expect(findEarliest).toHaveBeenCalled(), {
+			timeout: 2000,
+			interval: 10,
+		});
+		expect(findNearestBefore.mock.calls.map((c) => c[0])).toEqual(["sub-1"]);
+		expect(findEarliest.mock.calls.map((c) => c[0])).toEqual(["sub-1"]);
+	});
+
 	it("earliest 比 baseline 早 → patch 重置 baseline 为 earliest", async () => {
 		const earliest = { ts: "2026-05-13T10:00:00.000Z", value: 1000 };
 		const oldBaseline = { ts: "2026-05-19T06:30:00.000Z", value: 1500 };

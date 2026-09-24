@@ -88,10 +88,11 @@ src/
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)
     sub-runtime-store.ts  资料缓存 <dataDir>/state/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
-    fans-poller.ts        FansPoller —— 写 <dataDir>/fans/<uid>.jsonl,emit fans-refreshed
+    fans-poller.ts        FansPoller —— 写 <dataDir>/fans/<订阅 id>.jsonl,emit fans-refreshed
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
-  fans/store.ts         append-only jsonl 时序
+  fans/store.ts         append-only jsonl 时序(<dataDir>/fans/<订阅 id>.jsonl)
+  stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评;migrate-file-keys.ts 每次开机把老的 <uid>.jsonl 并进订阅 id 那份(ADR-0020)
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin

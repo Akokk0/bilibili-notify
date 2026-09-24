@@ -17,29 +17,39 @@ const NOW = Date.UTC(2026, 4, 16, 12, 0, 0);
 interface Fixture {
 	subs?: Array<{ uid: string }>;
 	samples?: Record<string, Array<{ ts: string; value: number }>>;
-	dynamics?: Record<string, Array<{ id: string; type: string; ts: string }>>;
-	sessions?: Record<string, Array<{ startedAt: string; endedAt?: string; peakViewers?: string }>>;
+	dynamics?: Record<string, Array<{ id: string; kind: "video" | "post" | "live"; ts: string }>>;
+	sessions?: Record<string, Array<{ startedAt: string; endedAt?: string; peakViewers?: number }>>;
 	liveRooms?: Array<{ uid: string; isLive: boolean }>;
 	fansEntries?: Array<{ uid: string; current: number }>;
 	/** 活动采集的起始时刻。缺省取足够早的值,等于「一直在采」。 */
 	recordingSince?: string;
 }
 
+/**
+ * 夹具按 uid 写(好读),两个仓却按**订阅 id** 分文件(ADR-0020 决策 2 的 🔗)。订阅 id 取
+ * `id-<uid>`,mock 的仓按它查回夹具 —— 路由拿 uid 去读的话一样都读不到。
+ */
+const subId = (uid: string) => `id-${uid}`;
+const uidOf = (key: string) => (key.startsWith("id-") ? key.slice(3) : `(不是订阅 id:${key})`);
+
 function makeDeps(f: Fixture): RouteDeps {
 	return {
 		runtime: {
 			fansStore: {
-				listSamplesSince: async (uid: string) => f.samples?.[uid] ?? [],
+				listSamplesSince: async (key: string) => f.samples?.[uidOf(key)] ?? [],
 			},
 			statsStore: {
-				listDynamics: async (uid: string) => f.dynamics?.[uid] ?? [],
-				listLiveSessions: async (uid: string) => f.sessions?.[uid] ?? [],
+				listDynamics: async (key: string) => f.dynamics?.[uidOf(key)] ?? [],
+				listLiveSessions: async (key: string) => f.sessions?.[uidOf(key)] ?? [],
 				recordingSince: async () => f.recordingSince ?? "1970-01-01T00:00:00.000Z",
 			},
 			engines: f.liveRooms ? { listLiveRooms: () => f.liveRooms } : null,
 			fansPoller: f.fansEntries ? { getLastEntries: () => f.fansEntries } : null,
 		},
-		store: { getSubscriptions: () => f.subs ?? [] },
+		store: {
+			getSubscriptions: () =>
+				(f.subs ?? []).map((s) => ({ kind: "bilibili", id: subId(s.uid), ...s })),
+		},
 		puppeteer: null,
 		wsTicketStore: null,
 		qqSessionRegistry: null,
@@ -93,7 +103,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 			makeDeps({
 				subs: [{ uid: "1" }],
 				dynamics: {
-					"1": [{ id: "d", type: "DYNAMIC_TYPE_AV", ts: new Date(NOW - 3600_000).toISOString() }],
+					"1": [{ id: "d", kind: "video", ts: new Date(NOW - 3600_000).toISOString() }],
 				},
 				sessions: { "1": [{ startedAt: new Date(NOW - 3 * DAY).toISOString() }] },
 			}),
@@ -177,15 +187,15 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		expect((await get(deps)).rows[0]?.fans).toBe(100);
 	});
 
-	it("投稿与动态按类型分栏,开播伪动态两边都不计", async () => {
+	it("投稿与动态按种类分栏,开播公告两边都不计", async () => {
 		const ts = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			dynamics: {
 				"1": [
-					{ id: "a", type: "DYNAMIC_TYPE_AV", ts },
-					{ id: "b", type: "DYNAMIC_TYPE_DRAW", ts },
-					{ id: "c", type: "DYNAMIC_TYPE_LIVE_RCMD", ts },
+					{ id: "a", kind: "video", ts },
+					{ id: "b", kind: "post", ts },
+					{ id: "c", kind: "live", ts },
 				],
 			},
 		});
@@ -212,7 +222,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		const late = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: { "1": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: early }] },
+			dynamics: { "1": [{ id: "a", kind: "post", ts: early }] },
 			sessions: { "1": [{ startedAt: late, endedAt: late }] },
 		});
 		expect((await get(deps)).rows[0]?.lastActivityAt).toBe(late);
@@ -228,8 +238,8 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			subs: [{ uid: "1" }],
 			dynamics: {
 				"1": [
-					{ id: "new", type: "DYNAMIC_TYPE_WORD", ts: newer },
-					{ id: "old", type: "DYNAMIC_TYPE_WORD", ts: older },
+					{ id: "new", kind: "post", ts: newer },
+					{ id: "old", kind: "post", ts: older },
 				],
 			},
 		});
@@ -293,7 +303,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			subs: [{ uid: "1" }, { uid: "2" }],
 			samples: { "1": dailySamples() }, // uid 2 的档案被删了
 			dynamics: {
-				"2": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: new Date(NOW).toISOString() }],
+				"2": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -306,7 +316,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			dynamics: {
-				"1": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: new Date(NOW).toISOString() }],
+				"1": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -358,7 +368,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
 			},
 			dynamics: {
-				"2": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: new Date(NOW - 3 * DAY).toISOString() }],
+				"2": [{ id: "a", kind: "post", ts: new Date(NOW - 3 * DAY).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -371,7 +381,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			subs: [{ uid: "1" }],
 			samples: { "1": dailySamples() },
 			dynamics: {
-				"1": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: new Date(NOW).toISOString() }],
+				"1": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW).toISOString(),
 		});

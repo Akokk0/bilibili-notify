@@ -74,7 +74,8 @@ describe("fans poller × 拓展订阅", () => {
 		const { bus, prune, dropUid } = start(() => [EXT]);
 		bus.emit("subscription-changed", [{ type: "remove", sub: BILI as never }]);
 		expect(prune).toHaveBeenCalledWith(["e1"]);
-		expect(dropUid).toHaveBeenCalledWith("1");
+		// 粉丝文件按订阅 id 命名(ADR-0020 决策 2 的 🔗),删的是这条订阅的 id,不是 uid。
+		expect(dropUid).toHaveBeenCalledWith("b1");
 	});
 
 	it("删掉一条拓展订阅 → 照样清资料缓存,不碰粉丝时序", () => {

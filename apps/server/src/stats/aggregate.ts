@@ -4,31 +4,15 @@ import type { LiveSessionRecord, UpDynamicEvent } from "./store.js";
 /**
  * stats 聚合层 —— 纯函数,不碰 IO。路由只负责把 store 读出来的原始序列喂进来。
  *
- * 单独成层的理由是**口径**:动态类型归类、日界怎么切、未闭合直播算不算时长,
+ * 单独成层的理由是**口径**:投稿 / 动态怎么分栏、日界怎么切、未闭合直播算不算时长,
  * 这些决定同时影响页面上好几个数字。散在路由里改一处漏一处,集中在这里才能
  * 用测试把口径钉死。
+ *
+ * **只认中立的东西**(ADR-0020 决策 5 / 7 的 🔗):作品是 `video` / `post`,开播公告是 `live`
+ * (不算作品,只当活动证据),峰值是数字。
+ * 平台的类型串怎么归类、「1.2万」怎么解析,由各来源在交进来之前做好(B 站那份在
+ * `bili-format`),这里不认识任何平台 —— 以后再接一个平台,统计这一层一行不动。
  */
-
-/** 动态在统计口径下的归类。 */
-export type DynamicKind = "archive" | "dynamic" | "ignored";
-
-/** 视频投稿 —— 设计稿「投稿」一栏的唯一来源。 */
-const ARCHIVE_TYPES = new Set(["DYNAMIC_TYPE_AV"]);
-/**
- * 开播伪动态。B 站会把「某某开播了」塞进动态流,但直播场次我们已经从
- * `live-state-changed` 单独记了,两边都计就会把一场直播算两次。
- */
-const IGNORED_TYPES = new Set(["DYNAMIC_TYPE_LIVE_RCMD", "DYNAMIC_TYPE_LIVE"]);
-
-/**
- * 全仓唯一给动态类型定语义的地方。未知类型一律归为普通动态而不是丢弃 ——
- * B 站随时会加新类型,漏计比错计更难被发现。
- */
-export function classifyDynamic(type: string): DynamicKind {
-	if (ARCHIVE_TYPES.has(type)) return "archive";
-	if (IGNORED_TYPES.has(type)) return "ignored";
-	return "dynamic";
-}
 
 /**
  * ISO 时刻 → 本地日 `YYYY-MM-DD`(`getTimezoneOffset()` 口径,UTC+8 → -480)。
@@ -66,13 +50,16 @@ export interface DynamicCounts {
 	dynamics: number;
 }
 
+/**
+ * 投稿 = `video`,动态 = `post`(页面上照旧叫「投稿 / 动态」,ADR-0019 决策 65)。
+ * 开播公告 `live` 哪一栏都不进 —— 直播按场次另算。
+ */
 export function countDynamics(events: readonly UpDynamicEvent[]): DynamicCounts {
 	let archives = 0;
 	let dynamics = 0;
 	for (const e of events) {
-		const kind = classifyDynamic(e.type);
-		if (kind === "archive") archives++;
-		else if (kind === "dynamic") dynamics++;
+		if (e.kind === "video") archives++;
+		else if (e.kind === "post") dynamics++;
 	}
 	return { archives, dynamics };
 }
@@ -149,8 +136,8 @@ export function dailyFansSeries(
  * 逐日活动次数 —— 热力图的数据源。一条动态、一次投稿、一场开播各算一次。
  *
  * 单独一个函数而不是复用 `countDynamics`,是因为热力图要的是**按天散开**的
- * 分布,而不是窗口总计;两者的口径必须共用同一套归类(开播伪动态照样剔除),
- * 否则热力图和表格里的数字会对不上。
+ * 分布,而不是窗口总计;两者的口径必须一致(开播公告 `live` 照样不计),否则热力图和
+ * 表格里的数字会对不上。一场直播只按下面的场次、在开播那天算一次。
  */
 export function dailyActivityCounts(
 	events: readonly UpDynamicEvent[],
@@ -170,7 +157,7 @@ export function dailyActivityCounts(
 	};
 
 	for (const e of events) {
-		if (classifyDynamic(e.type) === "ignored") continue;
+		if (e.kind === "live") continue;
 		bump(e.ts);
 	}
 	// 直播按**开播**那天记一次,不按跨天时长摊开 —— 通宵直播算一次活动。
@@ -201,20 +188,6 @@ export interface LiveSummary {
 	peakViewers: number | null;
 	/** 各场峰值的平均 —— 是「场均峰值」,不是「平均在线」,别在 UI 上标错。 */
 	avgPeakViewers: number | null;
-}
-
-/**
- * 把 B 站的压缩观看数字符串解析成数字。与 recorder 里的同名逻辑同源 ——
- * 那边为了比大小,这边为了求和求平均。
- */
-function parseViewers(raw: string): number {
-	const m = raw.trim().match(/^([\d.]+)\s*(万|亿)?$/);
-	if (!m) return Number.NaN;
-	const n = Number(m[1]);
-	if (!Number.isFinite(n)) return Number.NaN;
-	if (m[2] === "万") return n * 10_000;
-	if (m[2] === "亿") return n * 100_000_000;
-	return n;
 }
 
 export function summarizeLiveSessions(
@@ -268,9 +241,9 @@ export function summarizeLiveSessions(
 				hours += ms / 3_600_000;
 			}
 		}
-		if (s.peakViewers !== undefined) {
-			const v = parseViewers(s.peakViewers);
-			if (Number.isFinite(v)) peaks.push(v);
+		// 没采到峰值的场不进最高与平均 —— 未知不是零。
+		if (typeof s.peakViewers === "number" && Number.isFinite(s.peakViewers)) {
+			peaks.push(s.peakViewers);
 		}
 	}
 	return {
