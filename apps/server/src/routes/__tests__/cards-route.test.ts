@@ -1503,6 +1503,59 @@ describe("cards route — /preview 走皮肤", () => {
 		expect(colorOptions?.cardSkin).toBe("marked");
 		spy.mockRestore();
 	});
+
+	/**
+	 * 测试推送与预览出图走同一份 `renderPreviewCard`,请求里的皮肤与 per-UP 草稿旋钮也得一起交进去
+	 * —— 所见即所推。验红:把 `/test-push` 里交给 `renderPreviewCard` 的 `cardSkin` 或 `cardSkinKnobs`
+	 * 删掉,这条红。
+	 */
+	it("测试推送同样带着请求里的皮肤与草稿旋钮,推给所选目标", async () => {
+		const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
+			const d = globalsDeps(DEFAULT_CARD_SKIN_ID) as unknown as {
+				runtime: { engines?: unknown };
+				store: { getTargets?: () => unknown };
+			};
+			d.runtime.engines = { push: { sendToTarget } };
+			d.store.getTargets = () => [{ id: TARGET_ID, name: "群一", enabled: true }];
+			const app = createCardsRoute({
+				deps: d as unknown as RouteDeps,
+				puppeteer: makeFakePuppeteer(),
+				api: null,
+				cardSkins: skinStore({ marked: MARKED }),
+			});
+			const res = await app.request("/test-push", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					targetId: TARGET_ID,
+					kind: "sc",
+					style: STYLE,
+					content: { price: 30 },
+					cardSkin: "marked",
+					cardSkinKnobs: { marked: { accent: "#00f0ff" } },
+					fallback: true,
+				}),
+			});
+			expect(res.status).toBe(200);
+			const colorOptions = spy.mock.calls[0]?.[1] as
+				| { cardSkin?: string; cardSkinKnobs?: unknown }
+				| undefined;
+			expect(colorOptions?.cardSkin).toBe("marked");
+			expect(colorOptions?.cardSkinKnobs).toEqual({ marked: { accent: "#00f0ff" } });
+			expect(sendToTarget).toHaveBeenCalledWith(
+				TARGET_ID,
+				expect.objectContaining({ kind: "image" }),
+			);
+		} finally {
+			// 断言红了也得还原:漏掉的 spy 会让后面那条用例跟着红。
+			spy.mockRestore();
+		}
+	});
 });
 
 /**

@@ -217,7 +217,7 @@ function PreviewImage({
 
 /**
  * 预览内容 + 测试推送(合并卡)—— 上半编辑该类型的预览内容(全局可改 mock,per-UP 用真实
- * 数据),下半把当前预览卡片(草稿样式 + 类型 + 内容)渲染成图片推给所选 PushTarget。
+ * 数据),下半把当前预览卡片(草稿样式 + 皮肤 + 类型 + 内容)渲染成图片推给所选 PushTarget。
  * 所见即所推:用的是当前预览正在调的草稿,无需先保存。
  */
 function TestPushCard({
@@ -225,6 +225,8 @@ function TestPushCard({
 	style,
 	pushContent,
 	fallback,
+	cardSkin,
+	cardSkinKnobs,
 	mockContent,
 	setMockContent,
 	realData,
@@ -235,6 +237,9 @@ function TestPushCard({
 	/** 已解析的预览/推送内容载荷(全局 = mock;per-UP = 该 UP 真实数据 id)。 */
 	pushContent: Record<string, unknown>;
 	fallback: boolean;
+	/** 与预览同一份(`previewSkin` / `previewKnobs`):全局作用域不传,per-UP 传这位 UP 的皮肤与草稿旋钮。 */
+	cardSkin?: string;
+	cardSkinKnobs?: CardSkinKnobsBySkin;
 	/** 可编辑的 mock 内容状态(供上半内容编辑)。 */
 	mockContent: PreviewContent;
 	setMockContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
@@ -265,6 +270,8 @@ function TestPushCard({
 				style,
 				content: pushContent,
 				fallback,
+				cardSkin,
+				cardSkinKnobs,
 			});
 			if (!res.ok) throw new ApiError(500, res, res.err ?? "推送失败");
 			return res;
@@ -1151,6 +1158,8 @@ export default function Cards() {
 							style={effStyle}
 							pushContent={previewContent}
 							fallback={previewFallback}
+							cardSkin={previewSkin}
+							cardSkinKnobs={previewKnobs}
 							mockContent={content}
 							setMockContent={setContent}
 							realData={!isGlobalScope}

@@ -270,3 +270,72 @@ describe("per-UP 那侧的旋钮面板", () => {
 		expect(withKnobs).toBeFalsy();
 	});
 });
+
+/**
+ * **测试推送与预览同一份皮肤**:所见即所推。per-UP 作用域的预览带着这位 UP 的皮肤与草稿旋钮,测试推送
+ * 也得带 —— 从前测试推送一个字都不传,推出去的是全局那套,与屏上的预览对不上。全局作用域两边都不传
+ * (服务端自己从配置里读)。
+ */
+describe("测试推送带着与预览同一份皮肤", () => {
+	const TARGET = { id: "t1", name: "群一", enabled: true };
+
+	function mockWithTarget(sub: Subscription): void {
+		mockApi(sub);
+		const base = vi.mocked(api.get).getMockImplementation();
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url.includes("/api/targets") ? Promise.resolve([TARGET]) : (base?.(url) as Promise<unknown>),
+		);
+		vi.mocked(api.post).mockImplementation((url: string) =>
+			Promise.resolve(
+				url === "/api/cards/test-push"
+					? { ok: true, latencyMs: 5 }
+					: { ok: true, dataUrl: "data:image/png;base64,xx" },
+			),
+		);
+	}
+
+	/** 切到 SC 那个类型 tab(测试推送只在类型 tab 里),点「测试推送」,回发出去的请求体。 */
+	async function testPush(): Promise<Record<string, unknown>> {
+		fireEvent.click(screen.getAllByRole("button", { name: "SC 提醒" })[0] as HTMLElement);
+		const btn = await screen.findByRole("button", { name: "测试推送" });
+		await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+		fireEvent.click(btn);
+		return await waitFor(() => {
+			const call = vi.mocked(api.post).mock.calls.find(([url]) => url === "/api/cards/test-push");
+			if (!call) throw new Error("测试推送还没发出去");
+			return call[1] as Record<string, unknown>;
+		});
+	}
+
+	/** 验红:把 TestPushCard 请求体里的 `cardSkin` / `cardSkinKnobs` 删掉,这条红。 */
+	it("per-UP:测试推送带着这位 UP 的皮肤与草稿旋钮(没保存的那一拧也在)", async () => {
+		const sub: Subscription = {
+			...makeEmptySubscription("123456"),
+			overrides: { cardSkin: "aurora", cardSkinKnobs: { aurora: { neon: "#123456" } } },
+		};
+		mockWithTarget(sub);
+		renderCards();
+		await openPerUp("123456");
+
+		const row = await knobRow("neon");
+		fireEvent.change(row.querySelector('input[type="text"]') as HTMLInputElement, {
+			target: { value: "#ff0000" },
+		});
+
+		const body = await testPush();
+		expect(body.targetId).toBe("t1");
+		expect(body.cardSkin).toBe("aurora");
+		expect(body.cardSkinKnobs).toEqual({ aurora: { neon: "#ff0000" } });
+	});
+
+	it("全局作用域:测试推送与预览一样,皮肤与旋钮都不传", async () => {
+		mockWithTarget({ ...makeEmptySubscription("123456"), overrides: {} });
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+
+		const body = await testPush();
+		expect(body.targetId).toBe("t1");
+		expect(body.cardSkin).toBeUndefined();
+		expect(body.cardSkinKnobs).toBeUndefined();
+	});
+});
