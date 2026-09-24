@@ -38,7 +38,7 @@ import type { CardSkinKind } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { GuardCardProps } from "../templates/guard-card";
-import type { LiveCardProps, LiveCardView } from "../templates/live-card";
+import type { LiveCardView } from "../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
 import type { SCCardProps } from "../templates/sc-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
@@ -68,12 +68,9 @@ export type FrameRenderer = (children: VNode | VNode[], extra: FrameExtra) => VN
 
 /**
  * 卡种 → 它的 props。皮肤渲染器吃的 props 与块库是同一份。
- *
- * 直播卡多收一种 🪦 旧形状(`LiveCardProps`):皮肤渲染器在入口处把它翻成块吃的
- * `LiveCardView`,块与契约只见后者。旧形状的去留见它自己的注释。
  */
 export interface CardPropsByKind {
-	live: LiveCardView | LiveCardProps;
+	live: LiveCardView;
 	dynamic: DynamicCardProps;
 	sc: SCCardProps;
 	guard: GuardCardProps;

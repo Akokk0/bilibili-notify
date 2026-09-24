@@ -8,13 +8,7 @@
 
 import { DateTime } from "luxon";
 import { numberToStr } from "./format";
-import { htmlToPlain } from "./html-to-plain";
-import type {
-	LiveCardInput,
-	LiveCardProps,
-	LiveCardStatus,
-	LiveCardView,
-} from "./templates/live-card";
+import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
 /**
  * 卡上的时间按**北京时间**写 —— B 站接口的 `live_time` 就是这个时区的字符串,卡上一直原样
@@ -94,38 +88,5 @@ export function buildLiveCardView(input: LiveCardInput, coverOverride?: string):
 		totalViewers: countText(input.totalViewers),
 		fans: countText(input.fans),
 		fansChanged: changeText(input.fansChanged),
-	};
-}
-
-/** 任意值 → 文字(缺席一律空串,绝不让 "undefined" 上卡)。 */
-function str(v: unknown): string {
-	return v === undefined || v === null ? "" : String(v);
-}
-
-/**
- * 🪦 旧形状({@link LiveCardProps})→ 块吃的那一份;已经是那一份就原样返回。皮肤渲染器在
- * 入口处调它,只为 `apps/server/src/routes/cards.ts` 的示例预览还在拼旧形状 —— 那边改掉就删。
- *
- * 旧的状态码是压过的角标档:1 直播中、2 已下播、其余未开播。
- */
-export function liveCardViewOf(props: LiveCardView | LiveCardProps): LiveCardView {
-	if (!("liveStatus" in props)) return props;
-	const p = props;
-	const data: Record<string, unknown> = p.data ?? {};
-	return {
-		status: p.liveStatus === 1 ? "streaming" : p.liveStatus === 2 ? "end" : "offline",
-		username: str(p.username),
-		userface: str(p.userface),
-		title: str(data.title),
-		area: str(data.area_name),
-		// 房间简介是富文本(可能带 <p>/<br> 或 entity-encoded 形式),块与契约只要纯文本。
-		description: htmlToPlain(str(data.description)),
-		cover: str(p.coverOverride || (p.cover ? data.user_cover : data.keyframe)),
-		time: str(p.liveTime),
-		online: str(p.onlineNum),
-		likes: str(p.likedNum),
-		totalViewers: str(p.watchedNum),
-		fans: str(p.fansNum),
-		fansChanged: str(p.fansChanged),
 	};
 }

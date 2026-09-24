@@ -3,13 +3,12 @@
  * 一律走皮肤渲染器,整卡模板一处都不剩了(ADR-0014 决策 24 的 2026-09-18 🔗)。块渲染器
  * 与外框吃的仍是这份 props,所以类型留在原地。
  *
- * 直播卡有三份形状(ADR-0019 决策 68):
+ * 直播卡有两份形状(ADR-0019 决策 68):
  * - {@link LiveCardInput}:**中立的输入**,出卡入口 `generateNeutralLiveCard` 吃它。纯数据、
- *   不带任何平台的原始结构,状态明写。B 站那头(`generateLiveCard`)是把接口数据翻成它的适配层。
+ *   不带任何平台的原始结构,状态明写。B 站那头(`biliLiveCardInput`)把接口数据翻成它。
  * - {@link LiveCardView}:块与皮肤契约吃的那一份 —— 全是排好的文字(数字排成「1.2万」、
  *   开播时刻算成「直播时长：…」那句)。从输入到它只有一步(`buildLiveCardView`),预览的
  *   示例数据直接写它(不读时钟)。
- * - {@link LiveCardProps}:🪦 旧的那份,见它自己的注释。
  */
 
 /**
@@ -83,31 +82,5 @@ export type LiveCardView = {
 	likes: string;
 	totalViewers: string;
 	fans: string;
-	fansChanged: string;
-};
-
-/**
- * 🪦 **旧的直播卡 props**:B 站直播接口原样的 `data` + 已排好的数字 + 一个压成角标用的状态码
- * (`liveStatus`:1 直播中 / 2 已下播 / 其余未开播)。块与契约早已改吃 {@link LiveCardView};
- * 皮肤渲染器在入口处把它翻成那一份(`liveCardViewOf`)。
- *
- * 留着只因 `apps/server/src/routes/cards.ts` 的示例预览还在拼这个形状、那几行这一波不许动;
- * 那边改成拼 {@link LiveCardView}(或 {@link LiveCardInput})后,连同翻译那一步一起删。
- */
-export type LiveCardProps = {
-	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
-	data: any;
-	username: string;
-	userface: string;
-	titleStatus: string;
-	liveTime: string;
-	liveStatus: number;
-	cover: boolean;
-	/** 自定义封面(已解析 URL);有值时优先于 user_cover / keyframe。 */
-	coverOverride?: string;
-	onlineNum: string;
-	likedNum: string;
-	watchedNum: string;
-	fansNum: string;
 	fansChanged: string;
 };

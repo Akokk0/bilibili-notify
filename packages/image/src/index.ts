@@ -5,6 +5,9 @@ export type { Component, VNode } from "vue";
 // consumer's tree creates mismatched VNode / Component types — TS rejects the
 // argument because the two `Component` types are unrelated nominally.
 export { h } from "vue";
+// B 站直播接口数据 → 中立的直播卡输入(ADR-0019 决策 65 / 68)。出卡入口的 B 站适配层与
+// 直播引擎的推送共用这一份,别再各翻一遍。
+export { biliLiveCardInput } from "./bili-live-input";
 // 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
 export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
 // 卡片外框(根块):皮肤渲染器给每张卡套的那两层壳。
@@ -95,13 +98,8 @@ export {
 } from "./templates/dynamic-content";
 export type { GuardCardProps } from "./templates/guard-card";
 // 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateNeutralLiveCard`;
-// 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。`LiveCardProps` 是 🪦 旧形状。
-export type {
-	LiveCardInput,
-	LiveCardProps,
-	LiveCardStatus,
-	LiveCardView,
-} from "./templates/live-card";
+// 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。
+export type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 export type {
 	RoastBoardCardProps,
 	RoastCardUp,

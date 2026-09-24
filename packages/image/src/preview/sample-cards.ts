@@ -465,18 +465,7 @@ const SAMPLES: {
  * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
  * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。
  */
-export async function sampleCard(
-	kind: CardSkinKind,
-	scene?: string,
-): Promise<{
-	props: unknown;
-	/**
-	 * 🪦 **不再给**(ADR-0019 决策 68:契约要的那几格跟着 node 走,渲染器不收原始动态了)。
-	 * 留着这一格只因 `apps/server/src/card-skins/preview-html.ts` 还在读 `sample.raw`、
-	 * 那一行这一波不许动;那行删掉就把它一起删。
-	 */
-	raw?: never;
-}> {
+export async function sampleCard(kind: CardSkinKind, scene?: string): Promise<{ props: unknown }> {
 	const picked = resolvePreviewScene(kind, scene);
 	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
 	return { props };

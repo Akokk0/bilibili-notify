@@ -9,6 +9,15 @@ export {
 	type LiveEngineConfig,
 	type LiveEngineOptions,
 } from "./live-engine";
+// 直播装配(ADR-0019 决策 67):出卡 → 按版式分组 → 交给绑到订阅上的发送。B 站的推送与
+// 拓展订阅的直播共用这一段,不认 uid。
+export {
+	type LiveNotifyDeps,
+	type LiveNotifyParams,
+	type LiveNotifyPushType,
+	type LiveNotifySend,
+	pushLiveNotify,
+} from "./live-notify";
 export {
 	LIVE_SUMMARY_MIN_SENDERS,
 	LiveSummaryRequester,

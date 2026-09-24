@@ -3,10 +3,11 @@
  *
  * 这份**只钉接线**,不重复钉渲染器与示例数据 —— 那两头各有自己的测试,而它们各自全绿
  * 证明不了这条路把东西递过去了。皮肤这一摊已经栽过两次同族的:`cardSkin` 那个可选参数
- * 从头到尾没人传,两端单测全绿、类型也绿;示例数据的 `raw` 同理 —— 不传的话七种卡照样
- * 画得出来,只有皮肤作者写下 `{video.title}` 才发现那儿永远是空的。
+ * 从头到尾没人传,两端单测全绿、类型也绿;示例数据从前另递的原始动态(`raw`)同理 —— 不传
+ * 的话七种卡照样画得出来,只有皮肤作者写下 `{video.title}` 才发现那儿永远是空的。
  *
- * 验红方式:把 `renderSkinPreviewHtml` 里递 `raw` 那一句删掉,这里当场红。
+ * 契约的视频那一组如今跟着 `node.video` 走(ADR-0019 决策 68),`raw` 那一格已删。
+ * 验红方式:让 `renderSkinPreviewHtml` 递给渲染器的 props 丢掉 `node.video`,这里当场红。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -79,12 +80,12 @@ async function preview(manifest: unknown, scene?: string): Promise<string> {
 	return out.html;
 }
 
-describe("实时预览 — 示例数据的原始动态真的递到了渲染器", () => {
+describe("实时预览 — 示例数据的视频真的递到了契约", () => {
 	// ⚠️ 占位符前面那句前缀不是装饰:正文块**自己**也会把视频标题画出来,光断言
-	// 「页面里有『示例视频』」的话,把 raw 那根线剪断照样绿。
+	// 「页面里有『示例视频』」的话,把契约那根线剪断照样绿。
 	const PROBE = "<div>探针:{video.title}</div>";
 
-	it("{video.title} 在预览里取得到 —— 不递 raw 的话这儿永远是空的", async () => {
+	it("{video.title} 在预览里取得到 —— 视频没递进契约的话这儿永远是空的", async () => {
 		// 视频那一场才有视频卡(默认那场是纯文字)。
 		expect(await preview(skinWith(PROBE), "video")).toContain("探针:【示例视频】");
 	});

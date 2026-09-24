@@ -16,9 +16,9 @@ import {
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
+import { biliLiveCardInput } from "./bili-live-input";
 import type { CardPropsByKind } from "./blocks/frames";
 import { numberToStr } from "./format";
-import { htmlToPlain } from "./html-to-plain";
 import { buildLiveCardView, durationSince, LIVE_TIME_FORMAT, LIVE_TIME_ZONE } from "./live-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
@@ -32,7 +32,7 @@ import {
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content";
-import type { LiveCardInput, LiveCardStatus } from "./templates/live-card";
+import type { LiveCardInput } from "./templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
@@ -93,59 +93,6 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 		}
 	}
 	throw lastError;
-}
-
-/**
- * B 站给卡片的状态码 → 明写的状态。直播引擎传 `LiveType`,私聊指令传接口原值(0 没在播 /
- * 1 在播),两套在 0 ~ 3 上恰好对得上。
- */
-const BILI_LIVE_STATUS: Record<number, LiveCardStatus> = {
-	0: "offline",
-	1: "start",
-	2: "streaming",
-	3: "end",
-};
-
-/** B 站 `live_time`(北京时间字符串)→ 毫秒时间戳;缺失或解析不出时 undefined。 */
-function parseBiliLiveTime(raw: unknown): number | undefined {
-	if (typeof raw !== "string" || raw === "") return undefined;
-	const at = DateTime.fromFormat(raw, LIVE_TIME_FORMAT, { zone: LIVE_TIME_ZONE });
-	return at.isValid ? at.toMillis() : undefined;
-}
-
-/**
- * **B 站那头 → 中立的直播卡输入**(ADR-0019 决策 68)。卡上画什么全在这一步定好:
- *
- * - 封面:直播中用关键帧(实时画面),开播 / 下播 / 没在播用房间封面。
- * - 其余状态码(今天没有调用方传,比如 4 首次开播)照旧画成「直播中」角标、不写那句时间、
- *   用房间封面 —— 与从前的默认分支一个样。
- * - 简介是富文本(可能带 `<p>` / `<br>` 或 entity-encoded 形式),先剥成纯文本。
- */
-function biliLiveCardInput(
-	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
-	data: any,
-	username: string,
-	userface: string,
-	liveData: LiveData,
-	liveStatus: number,
-): LiveCardInput {
-	const known = BILI_LIVE_STATUS[liveStatus];
-	const status = known ?? "start";
-	const text = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
-	return {
-		status,
-		author: { name: username, face: userface },
-		title: text(data?.title),
-		area: text(data?.area_name),
-		description: htmlToPlain(text(data?.description)),
-		cover: text(status === "streaming" ? data?.keyframe : data?.user_cover),
-		startedAt: known ? parseBiliLiveTime(data?.live_time) : undefined,
-		online: +(data?.online ?? 0),
-		likes: liveData.likedNum,
-		totalViewers: liveData.watchedNum,
-		fans: liveData.fansNum,
-		fansChanged: liveData.fansChanged,
-	};
 }
 
 /**
@@ -743,8 +690,10 @@ export class ImageRenderer {
 	 * **B 站动态的适配层**:原始动态 → {@link buildDynamicNode} 造 node(皮肤要的类型与图也
 	 * 一并记在 node 上)→ {@link generateNeutralDynamicCard}。签名不动,推送与链接解析照旧调它。
 	 *
-	 * 造 node 那一步**在包错之外**:开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)在那儿抛,动态引擎按
-	 * 原文(「直播开播动态，不做处理」)认它来跳过 —— 包成「生成动态卡片失败」就认不出了。
+	 * 开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)造不出 node,在那一步抛「直播开播动态，不做处理」。
+	 * 动态引擎在过滤与出卡之前就按类型把它跳过了(ADR-0019 决策 66),不再靠认这句原文;还撞得
+	 * 上它的只剩卡片页的真实预览(按序号取某位 UP 的一条动态,可能正好是它)。造 node 放在包错
+	 * 之外,那里报出来的就是这句原文,比套一层「生成动态卡片失败」说得清。
 	 */
 	async generateDynamicCard(
 		data: Dynamic,

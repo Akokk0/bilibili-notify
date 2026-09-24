@@ -5,12 +5,10 @@ import {
 	RiskControlError,
 } from "@bilibili-notify/api";
 import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
-import {
-	assembleMessageGroups,
-	type MessageKindLayout,
-	type MessageLayoutSegment,
-} from "@bilibili-notify/internal";
+import { biliLiveCardInput } from "@bilibili-notify/image";
+import type { MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify";
 import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
@@ -278,9 +276,10 @@ export class RoomContext extends RoomContextBase {
 	}
 
 	/**
-	 * Push a "live start / live ongoing / live end" notification card. Generates
-	 * an image via {@link ImageRenderer.generateLiveCard} when available; falls
-	 * back to plain text on failure.
+	 * 推一张「开播 / 直播中 / 下播」卡 —— **B 站那头的适配**:房间接口数据经
+	 * `biliLiveCardInput` 翻成中立的直播卡输入,「按 uid 推」绑成发送({@link sendToUid}),
+	 * 再交给中立的直播装配 {@link pushLiveNotify}(出卡 → 按版式分组 → 发送;出卡失败降级
+	 * 为文字)。拓展订阅的直播走同一个装配,只是输入与发送换成它自己的(ADR-0019 决策 67)。
 	 *
 	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType 传参):
 	 * 卡片 / 文本(各自模板,模板里没有链接变量)/ 链接(roomLink)按块序装配,分条符切多条经
@@ -301,83 +300,51 @@ export class RoomContext extends RoomContextBase {
 		/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,词云 / 总结才能追加到同一行。 */
 		pushId?: string;
 	}): Promise<void> {
-		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardSkin, uid, notifyMsg } =
-			params;
-		const layout = params.messageLayout;
-		// 版式里 card 块隐藏 → 连图片渲染都跳过(白渲染更亏)。
-		const wantCard = layout.blocks.some((b) => b.visible && b.type === "card");
-
-		let buffer: Buffer | undefined;
-		if (this.imageRenderer?.generateLiveCard && wantCard) {
-			try {
-				buffer = await this.imageRenderer.generateLiveCard(
+		const { liveType, liveData, liveRoomInfo, master, uid } = params;
+		await pushLiveNotify(
+			{
+				input: biliLiveCardInput(
 					liveRoomInfo,
 					master.username,
 					master.userface,
 					liveData,
 					liveType,
-					// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与它无关,恒要带上。
-					{ ...(cardStyle?.enable ? cardStyle : undefined), cardSkin },
-				);
-			} catch (e) {
-				this.logger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);
-			}
-		}
-		if (this.isDisposed()) return;
-
-		const pushType =
-			liveType === LiveType.StartBroadcasting
-				? LivePushType.StartBroadcasting
-				: liveType === LiveType.StopBroadcast
-					? LivePushType.LiveEnd
-					: LivePushType.Live;
-
-		await this.broadcastWithMessageLayout({
-			layout,
-			buffer,
-			notifyMsg,
-			uid,
-			pushType,
-			roomLink: params.roomLink ?? "",
-			pushId: params.pushId,
-		});
+				),
+				text: params.notifyMsg,
+				link: params.roomLink ?? "",
+				layout: params.messageLayout,
+				cardStyle: params.cardStyle,
+				cardSkin: params.cardSkin,
+				pushType: livePushTypeOf(liveType),
+				pushId: params.pushId,
+				label: `uid=${uid}`,
+			},
+			{ renderer: this.imageRenderer, send: this.sendToUid(uid), logger: this.logger },
+		);
 	}
 
 	/**
-	 * 版式路径的装配与投递:装配走与动态共用的 {@link assembleMessageGroups}(分条符切组、
-	 * 同条内相邻文本类部件以 separator 连接),这里只把中立的段包成 contentBuilder 的
-	 * 形状;多条走 `broadcastSequenceToTargets`。
+	 * 绑到这位 UP 上的发送:中立的段包成 contentBuilder 的形状,一条走 `broadcastToTargets`、
+	 * 多条走 `broadcastSequenceToTargets`。
 	 */
-	private async broadcastWithMessageLayout(args: {
-		layout: MessageKindLayout;
-		buffer: Buffer | undefined;
-		notifyMsg: string;
-		roomLink: string;
-		uid: string;
-		pushType: LivePushType;
-		pushId?: string;
-	}): Promise<void> {
-		const { layout, buffer, notifyMsg, roomLink, uid, pushType } = args;
-		const opts: LiveBroadcastOptions = { pushId: args.pushId };
-		const text = layout.blocks.some((b) => b.visible && b.type === "text") ? notifyMsg : "";
-		const groups = assembleMessageGroups(layout, { card: buffer, text, link: roomLink });
-		const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
-			this.contentBuilder.message(
-				segs.map((s) =>
-					s.type === "image"
-						? this.contentBuilder.image(s.buffer, s.mime)
-						: this.contentBuilder.text(s.text),
-				),
-			);
-		if (groups.length === 0) {
-			this.logger.debug(`[push] uid=${uid} 消息版式所有部件隐藏/缺失,本次开播不推送`);
-			return;
-		}
-		if (groups.length === 1) {
-			await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType, opts);
-			return;
-		}
-		await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType, opts);
+	private sendToUid(uid: string): LiveNotifySend {
+		return async (groups, pushType, opts) => {
+			// 出卡要好几秒:这期间引擎被拆了,就不再往外推。
+			if (this.isDisposed()) return;
+			const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
+				this.contentBuilder.message(
+					segs.map((s) =>
+						s.type === "image"
+							? this.contentBuilder.image(s.buffer, s.mime)
+							: this.contentBuilder.text(s.text),
+					),
+				);
+			if (groups.length === 1) {
+				await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType, opts);
+				return;
+			}
+			await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType, opts);
+		};
 	}
 
 	/** Format `dateString` (yyyy-MM-dd HH:mm:ss UTC+8) as elapsed-time text. */
@@ -392,4 +359,14 @@ export class RoomContext extends RoomContextBase {
 		const minutes = Math.floor(diff.minutes % 60);
 		return hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`;
 	}
+}
+
+/**
+ * B 站引擎的 `LiveType` → 直播卡的推送类型。只有真开播是 `StartBroadcasting`(唯一允许
+ * @全体的那一档),下播是 `LiveEnd`,其余(周期「正在直播」、重启补推)一律 `Live`。
+ */
+function livePushTypeOf(liveType: LiveType): LiveNotifyPushType {
+	if (liveType === LiveType.StartBroadcasting) return LivePushType.StartBroadcasting;
+	if (liveType === LiveType.StopBroadcast) return LivePushType.LiveEnd;
+	return LivePushType.Live;
 }

@@ -45,7 +45,6 @@ import { SC_BLOCKS } from "../blocks/sc";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { escapeHtml } from "../html-escape";
-import { liveCardViewOf } from "../live-view";
 import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { DynamicNode } from "../templates/dynamic-content";
@@ -212,8 +211,7 @@ function renderCustomHtml(
  * 字体不在 props 里(它经 `renderCard` 的 `font` 进来),所以不写 `--bn-card-font`。
  *
  * 渐变起 / 止色**不在这里注**(决策 15 的 🔗):底色归皮肤自己的外框 CSS,props 上那两个
- * 颜色字段 2026-09-20 起没有任何人读(只剩 `LiveCardProps` / `DynamicCardProps` 上两行墓碑,
- * 等 `routes/cards.ts` 的预览 props 不再写它们就一起删)。**玻璃同理**(决策 16 的 🔗,
+ * 颜色字段 2026-09-20 起没有任何人读,已从各卡的 props 上删掉。**玻璃同理**(决策 16 的 🔗,
  * 2026-09-14):它退役成皮肤自己的旋钮,值从 `cardSkinKnobs` 经 `knobValues` 进来,
  * 不再从 props 翻译。
  */
@@ -513,8 +511,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
 	};
-	// 直播卡的 🪦 旧形状在这儿翻成块吃的那一份 —— 所有出图路径都经过这里,块与契约只见一种。
-	const props = kind === "live" ? liveCardViewOf(o.props as CardPropsByKind["live"]) : o.props;
+	const { props } = o;
 	const children = placeBlocks(ctx, props);
 
 	// 翻译 CSS。按 `card.blocks` 的顺序走而不是按画出来的顺序 —— 内层先画完也不会把

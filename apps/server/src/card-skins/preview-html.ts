@@ -59,13 +59,12 @@ export async function renderSkinPreviewHtml(args: {
 	const picked = resolvePreviewScene(kind, args.scene);
 	// 刻意**不掺用户自己的配置**(全局字体 / 旋钮):编辑器看的是**这套皮肤**长什么样,
 	// 掺进去就成了「同一套皮肤在不同人眼里不一样」,作者照着调反而调歪。
-	// `raw` 只有动态卡有(视频卡 / 图廊那两组契约字段从它取),别的卡种是 undefined ——
-	// 原样递进去,渲染器自己认。
+	// 契约里视频 / 图廊那两组字段与动态类型跟着 `node` 走(ADR-0019 决策 68),示例的 props
+	// 就是全部 —— 不再另递原始动态。
 	const sample = await sampleCard(kind, picked.id);
 	const html = await renderCardWithSkin(kind, sample.props as never, manifest, {
 		title: `皮肤预览 · ${kind}`,
 		resolveAsset: (name) => assets.get(name),
-		...(sample.raw ? { raw: sample.raw } : {}),
 	});
 	return {
 		ok: true,

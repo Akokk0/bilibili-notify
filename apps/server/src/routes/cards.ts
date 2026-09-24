@@ -34,7 +34,7 @@ import {
 	type DynamicCardProps,
 	h,
 	ImageRenderer,
-	type LiveCardProps,
+	type LiveCardView,
 	renderCardWithSkin,
 	resolveKnobAssets,
 	shrinkImageForCssVar,
@@ -1116,7 +1116,7 @@ async function renderRealDynamic(
  * `renderCardWithSkin` 自己取,这里再写一个 600 就是第二个事实源。
  */
 type PreviewSpec =
-	| { kind: "live"; props: LiveCardProps; title: string }
+	| { kind: "live"; props: LiveCardView; title: string }
 	| { kind: "dynamic"; props: DynamicCardProps; title: string };
 
 function buildPreviewSpec(
@@ -1127,7 +1127,7 @@ function buildPreviewSpec(
 	if (kind === "live") {
 		return {
 			kind: "live",
-			props: { ...buildLivePreviewProps(), coverOverride: coverDataUrl || undefined },
+			props: buildLivePreviewProps(coverDataUrl),
 			title: "卡片预览 · 直播",
 		};
 	}
@@ -1146,26 +1146,26 @@ const SVG_AVATAR_BLUE =
 const SVG_AVATAR_FAN =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23fdcb6e'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='28' text-anchor='middle' dominant-baseline='middle'%3E粉%3C/text%3E%3C/svg%3E";
 
-function buildLivePreviewProps(): LiveCardProps {
+/**
+ * 直播卡的示例:直接写块吃的那一份(`LiveCardView`),卡上那句时间写死、不读时钟 ——
+ * 同一份样式连按几次预览,画出来的必须是同一张。
+ *
+ * @param coverDataUrl 主人设的自定义直播封面(已解析成 data URL);有就盖在示例封面上。
+ */
+function buildLivePreviewProps(coverDataUrl?: string): LiveCardView {
 	return {
-		data: {
-			user_cover: SVG_COVER,
-			keyframe: "",
-			title: "【赛博朋克 2077】资料片实况首播！",
-			area_name: "游戏",
-			description: "今晚 7 点开始，欢迎围观。这是一段示例直播间简介。",
-			online: 12_345,
-		},
+		status: "streaming",
 		username: "示例 UP 主",
 		userface: SVG_AVATAR_BLUE,
-		titleStatus: "已开播 12 分钟",
-		liveTime: "2026-05-09 19:00:00",
-		liveStatus: 1,
-		cover: true,
-		onlineNum: "1.2万",
-		likedNum: "8.7万",
-		watchedNum: "3.4万",
-		fansNum: "215万",
+		title: "【赛博朋克 2077】资料片实况首播！",
+		area: "游戏",
+		description: "今晚 7 点开始，欢迎围观。这是一段示例直播间简介。",
+		cover: coverDataUrl || SVG_COVER,
+		time: "2026-05-09 19:00:00",
+		online: "1.2万",
+		likes: "8.7万",
+		totalViewers: "3.4万",
+		fans: "215万",
 		fansChanged: "+128",
 	};
 }
