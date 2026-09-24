@@ -109,7 +109,6 @@ function makeExtSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscri
 	const {
 		kind: _k,
 		uid: _u,
-		roastSchedule: _r,
 		specialUsers: _s,
 		followed: _f,
 		followError: _e,

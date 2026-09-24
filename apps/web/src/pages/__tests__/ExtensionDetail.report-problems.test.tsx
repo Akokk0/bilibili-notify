@@ -59,7 +59,6 @@ function extSub(id: string, externalId: string, name?: string): Subscription {
 	const {
 		kind: _k,
 		uid: _u,
-		roastSchedule: _r,
 		specialUsers: _s,
 		followed: _f,
 		followError: _e,

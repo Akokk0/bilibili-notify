@@ -2,7 +2,7 @@
  * 订阅分两支(ADR-0019 决策 9 / 12 / 47 / 50):B 站订阅与拓展订阅在内存里是一份联合列表。
  *
  * - B 站那支「一个字不动」:盘上没有 `kind`,读进来补成 `"bilibili"`;老数据迁移照旧。
- * - 拓展那支:身份是 `(extensionId, externalId)`,**没有 uid**,也没有锐评 / 特别关注。
+ * - 拓展那支:身份是 `(extensionId, externalId)`,**没有 uid**,也没有特别关注;单人定时锐评两支都有(ADR-0020 决策 14)。
  * - 联合那一份按 `kind` 分派,错误只报那一支自己的。
  */
 
@@ -80,16 +80,35 @@ describe("B 站那支", () => {
 });
 
 describe("拓展那支", () => {
-	it("经联合解析 → kind extension,身份两格都在,没有 uid / 锐评 / 特别关注", () => {
-		const parsed = SubscriptionSchema.parse(
-			extRow({ uid: "999", roastSchedule: { enabled: true }, specialUsers: [] }),
-		);
+	it("经联合解析 → kind extension,身份两格都在,没有 uid / 特别关注", () => {
+		const parsed = SubscriptionSchema.parse(extRow({ uid: "999", specialUsers: [] }));
 		expect(parsed.kind).toBe("extension");
 		expect(isExtensionSubscription(parsed) && parsed.externalId).toBe("MS4wLjABAAAA-sec_uid");
 		expect(isExtensionSubscription(parsed) && parsed.extensionId).toBe("douyin");
 		expect("uid" in parsed).toBe(false);
-		expect("roastSchedule" in parsed).toBe(false);
 		expect("specialUsers" in parsed).toBe(false);
+	});
+
+	it("单人定时锐评也长在拓展订阅上(ADR-0020 决策 14):写了就留着,形状同 B 站那一格", () => {
+		const schedule = {
+			enabled: true,
+			cron: "0 9 * * 1",
+			days: 14,
+			targets: [T1],
+			approval: true,
+			notifyOnError: false,
+		};
+		const parsed = SubscriptionSchema.parse(extRow({ roastSchedule: schedule }));
+		expect(isExtensionSubscription(parsed) && parsed.roastSchedule).toEqual(schedule);
+	});
+
+	it("老的拓展订阅没有这一格 → 补出厂默认(关着),与 B 站老订阅同一个口径", () => {
+		const ext = SubscriptionSchema.parse(extRow());
+		const bili = SubscriptionSchema.parse(diskBiliRow());
+		expect(isExtensionSubscription(ext) && ext.roastSchedule).toEqual(
+			isBiliSubscription(bili) && bili.roastSchedule,
+		);
+		expect(isExtensionSubscription(ext) && ext.roastSchedule.enabled).toBe(false);
 	});
 
 	it("外部 id 不解读、原样保留(什么字符都可能有)", () => {

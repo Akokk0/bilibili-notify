@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
+import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import type { ExtensionSubscription } from "../../types/domain";
 import {
@@ -52,6 +53,7 @@ function sub(extensionId = "douyin"): ExtensionSubscription {
 		},
 		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
+		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
 		state: { lastPushedAt: {}, liveStatus: "unknown" },
 	};
 }

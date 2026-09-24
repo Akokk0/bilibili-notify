@@ -56,7 +56,6 @@ function makeExtSub(externalId: string, id = `ext-${externalId}`): Subscription 
 	const {
 		kind: _k,
 		uid: _u,
-		roastSchedule: _r,
 		specialUsers: _s,
 		...common
 	} = makeEmptySubscription({

@@ -74,7 +74,6 @@ export function makeExtensionSub(opts: {
 	const {
 		kind: _kind,
 		uid: _uid,
-		roastSchedule: _roast,
 		specialUsers: _special,
 		...common
 	} = makeEmptySubscription({ id: opts.id, uid: "0" });

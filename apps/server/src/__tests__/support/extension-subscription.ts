@@ -3,8 +3,8 @@ import { type ExtensionSubscription, makeEmptySubscription } from "@bilibili-not
 /**
  * 测试用的一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 `(extensionId, externalId)`。
  *
- * 从 B 站那支的空订阅上摘掉身份与 B 站专属的两格再补上拓展的身份 —— 共有的那些字段
- * (routing / extras / overrides …)两支长得一样,跟着出厂默认走,不必在这儿再抄一份。
+ * 从 B 站那支的空订阅上摘掉身份与 B 站专属的特别关注再补上拓展的身份 —— 共有的那些字段
+ * (routing / extras / overrides / roastSchedule …)两支长得一样,跟着出厂默认走,不必在这儿再抄一份。
  */
 export function makeExtensionSubscription(
 	opts: {
@@ -22,7 +22,6 @@ export function makeExtensionSubscription(
 	const {
 		kind: _kind,
 		uid: _uid,
-		roastSchedule: _roast,
 		specialUsers: _special,
 		...common
 	} = makeEmptySubscription({ id, uid: "0" });

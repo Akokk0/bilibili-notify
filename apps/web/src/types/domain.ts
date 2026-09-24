@@ -69,8 +69,9 @@ export {
  */
 export type Subscription = SubscriptionDTO;
 /**
- * 订阅分两支(ADR-0019 决策 9):B 站订阅带 uid / 锐评 / 特别关注 / 关注状态,拓展订阅带
- * `(extensionId, externalId)`。读任何一支独有的字段前先用 `isBiliSubscription` 收窄。
+ * 订阅分两支(ADR-0019 决策 9):B 站订阅带 uid / 特别关注 / 关注状态,拓展订阅带
+ * `(extensionId, externalId)`;单人定时锐评两支都有(ADR-0020 决策 14)。读任何一支独有的字段前先用
+ * `isBiliSubscription` 收窄。
  */
 export type BiliSubscription = BiliSubscriptionDTO;
 export type ExtensionSubscription = ExtensionSubscriptionDTO;
@@ -260,7 +261,8 @@ export function makeEmptySubscription(uid: string): BiliSubscription {
 
 /**
  * 一条拓展订阅的草稿(ADR-0019 决策 9 / 11):身份是 `(extensionId, externalId)`,`externalId` 就是
- * 解析门交回的那个候选的 `id`,原样存、从不解读。没有 uid、锐评、特别关注(决策 12)。
+ * 解析门交回的那个候选的 `id`,原样存、从不解读。没有 uid、特别关注(决策 12);单人定时锐评有
+ * (ADR-0020 决策 14),同 B 站新订阅一样不自带。
  *
  * 与 {@link makeEmptySubscription} 同一个口径:路由全空、覆写全空 —— 推给谁由配置弹层里挑。
  */
@@ -280,6 +282,7 @@ export function makeEmptyExtensionSubscription(
 		routing: emptyRouting(),
 		extras: emptyExtras(),
 		overrides: {},
+		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
 		state: {
 			lastDynamicId: undefined,
 			lastPushedAt: {},

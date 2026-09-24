@@ -63,7 +63,6 @@ function extSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscriptio
 	const {
 		kind: _k,
 		uid: _u,
-		roastSchedule: _r,
 		specialUsers: _s,
 		followed: _f,
 		followError: _e,

@@ -237,6 +237,32 @@ describe("写:哪个文件的行变了才写哪个", () => {
 	});
 });
 
+describe("拓展订阅的单人定时锐评(ADR-0020 决策 14)", () => {
+	it("上一版写的拓展订阅没有 roastSchedule → 读进来补出厂默认;改了它落进拓展那份,新 store 读得回来", async () => {
+		// 上一版写出来的那种行:拓展订阅上没有这一格。
+		const { roastSchedule: _r, ...legacy } = makeExtensionSubscription({ id: randomUUID() });
+		await writeFile(extFile, JSON.stringify([legacy]), "utf8");
+		const store = await open();
+		const loaded = store.getSubscriptions()[0];
+		expect(loaded?.kind).toBe("extension");
+		expect(loaded && "roastSchedule" in loaded && loaded.roastSchedule.enabled).toBe(false);
+
+		const target = makeSessionTarget(randomUUID()).id;
+		await store.patchSubscription(legacy.id, {
+			roastSchedule: { enabled: true, cron: "0 9 * * 1", days: 14, targets: [target] },
+		});
+		const onDisk = JSON.parse(await readFile(extFile, "utf8"))[0];
+		expect(onDisk.roastSchedule).toMatchObject({
+			enabled: true,
+			cron: "0 9 * * 1",
+			days: 14,
+			targets: [target],
+		});
+		const again = await open();
+		expect(again.getSubscriptions()).toEqual(store.getSubscriptions());
+	});
+});
+
 describe("身份改不动(ADR-0019 决策 50)", () => {
 	let store: ConfigStore;
 	let bili: BiliSubscription;

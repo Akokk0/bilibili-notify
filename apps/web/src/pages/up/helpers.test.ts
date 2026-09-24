@@ -109,7 +109,7 @@ describe("routingAlignedToFeatures", () => {
  */
 describe("subscriptionColor / displayName × 两支订阅", () => {
 	const bili = makeEmptySubscription("12345");
-	const { kind: _k, uid: _u, roastSchedule: _r, specialUsers: _s, ...common } = bili;
+	const { kind: _k, uid: _u, specialUsers: _s, ...common } = bili;
 	const ext = {
 		...common,
 		kind: "extension" as const,
