@@ -82,6 +82,14 @@ export { shrinkImageForCssVar } from "./skin/shrink-image";
 // 七种卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
 // 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
 export type { DynamicCardProps, DynamicNode } from "./templates/dynamic-card";
+// 造动态卡 node 的零件(ADR-0019 决策 68):拓展作品照着 B 站那条同样造一棵 node,交给
+// `ImageRenderer.generateNeutralDynamicCard`。图廊与纯文本正文与 B 站那条同一份实现。
+export {
+	buildGallery,
+	buildPlainText,
+	type DynamicVideo,
+	type GalleryImage,
+} from "./templates/dynamic-content";
 export type { GuardCardProps } from "./templates/guard-card";
 export type { LiveCardProps } from "./templates/live-card";
 export type {

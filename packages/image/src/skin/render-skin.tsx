@@ -48,7 +48,6 @@ import { escapeHtml } from "../html-escape";
 import { renderCard } from "../render";
 import type { DynamicCardProps } from "../templates/dynamic-card";
 import type { DynamicNode } from "../templates/dynamic-content";
-import type { Dynamic } from "../types";
 import { buildCardData, type CardData, readCardField } from "./card-data";
 import type { ResolvedKnobAssets } from "./knob-assets";
 
@@ -76,8 +75,6 @@ export interface SkinRenderOptions<K extends CardSkinKind = CardSkinKind> {
 	card: CardSkinCard;
 	/** 与模板同一份 props。 */
 	props: CardPropsByKind[K];
-	/** 仅 dynamic 卡:原始动态,视频卡 / 图廊那两组契约字段从它取。 */
-	raw?: Dynamic;
 	/** 包内资产名 → data URL(宿主注入)。缺省或回 undefined → 用透明占位 GIF。 */
 	resolveAsset?: (name: string) => string | undefined;
 	/** 皮肤自带的字体(清单级),每款注一条 `@font-face`;解析不出资产的那款跳过。 */
@@ -245,7 +242,7 @@ function frameVariables(props: unknown): string {
  * (数据换成内层那条动态)。这条递归以前走的是模板那条一维竖栈,而且因为全仓已经没人往
  * props 里传 `layout`,实际是钉死在出厂默认版式上:换皮肤不跟,迁移过自己版式的也拿不回来。
  */
-function blockPropsOf(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): unknown {
+function blockPropsOf(ctx: AssembleCtx, props: unknown): unknown {
 	if (ctx.kind !== "dynamic") return props;
 	const p = props as DynamicCardProps;
 	return {
@@ -254,9 +251,9 @@ function blockPropsOf(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined
 			h(
 				"div",
 				{ style: gridStyleOf(ctx.card) },
-				// 内层的 `raw` 是外层那条动态的 `orig` —— 视频卡 / 图廊那两组契约字段从它取,
-				// 不接上的话内层的 `{video.title}` / `hasPics` 会凭空变空。
-				placeBlocks(ctx, { ...p, node }, raw?.orig),
+				// 内层那张卡的契约数据(`{video.title}` / `hasPics` / `dynamic.type`…)跟着内层
+				// 那棵 node 走 —— 它自己带着类型与图,不必再回头找外层的原始数据。
+				placeBlocks(ctx, { ...p, node }),
 			),
 	};
 }
@@ -421,17 +418,13 @@ interface AssembleCtx {
  * 按 `renderBlocks` 那三条规矩收分割线,最后才压行号 —— 反过来的话,被收起的块会在网格
  * 里留一行空白,而 `gap` 会把那行空白撑成看得见的缝。
  */
-function placeBlocks(ctx: AssembleCtx, props: unknown, raw: Dynamic | undefined): VNode[] {
+function placeBlocks(ctx: AssembleCtx, props: unknown): VNode[] {
 	const { kind, card } = ctx;
 	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
 	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
-	const data = (buildCardData as (k: CardSkinKind, p: unknown, raw?: Dynamic) => CardData)(
-		kind,
-		props,
-		raw,
-	);
+	const data = (buildCardData as (k: CardSkinKind, p: unknown) => CardData)(kind, props);
 	const table = BLOCK_TABLES[kind] as Record<string, BlockRenderer<unknown>>;
-	const blockProps = blockPropsOf(ctx, props, raw);
+	const blockProps = blockPropsOf(ctx, props);
 
 	// ① 筛:showIf 为假、内置块没数据(返回 null)的整块不画。
 	const kept: PlacedBlock[] = [];
@@ -519,7 +512,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
 	};
-	const children = placeBlocks(ctx, o.props, o.raw);
+	const children = placeBlocks(ctx, o.props);
 
 	// 翻译 CSS。按 `card.blocks` 的顺序走而不是按画出来的顺序 —— 内层先画完也不会把
 	// 它的规则插到前面去;真没画出来过的块照旧不留 CSS。
@@ -564,8 +557,6 @@ export interface SkinCardHtmlOptions {
 	font?: string;
 	/** 一整条 `@font-face`(宿主解析出来的)。 */
 	fontFace?: string;
-	/** 仅 dynamic 卡:原始动态,视频 / 图廊那两组契约字段从它取。 */
-	raw?: Dynamic;
 	/** 包内资产名 → data URL。**同步**:调用方须先把该皮肤用到的资产预取成表。 */
 	resolveAsset?: (name: string) => string | undefined;
 	/** 用户为**这套**皮肤拧过的旋钮值(宿主按皮肤 id 取好再传)。 */
@@ -594,7 +585,6 @@ export async function renderCardWithSkin<K extends CardSkinKind>(
 		kind,
 		card,
 		props,
-		raw: options.raw,
 		resolveAsset: options.resolveAsset,
 		fonts: manifest.fonts,
 		knobs: manifest.knobs,

@@ -25,9 +25,7 @@ async function render(kind: (typeof CARD_SKIN_KINDS)[number], scene?: string): P
 	// `as never`:出口刻意回 unknown(示例数据不是对外契约,别让调用方照它写类型),
 	// 这里替调用方把 props 递进去。
 	const sample = await sampleCard(kind, scene);
-	return renderCardWithSkin(kind, sample.props as never, DEFAULT_CARD_SKIN, {
-		...(sample.raw ? { raw: sample.raw } : {}),
-	});
+	return renderCardWithSkin(kind, sample.props as never, DEFAULT_CARD_SKIN);
 }
 
 describe("出厂示例数据 — 七种卡都画得出来", () => {
@@ -131,7 +129,6 @@ async function truthy(scene: string, fields: readonly string[]): Promise<Record<
 				},
 			},
 		} as never,
-		{ ...(sample.raw ? { raw: sample.raw } : {}) },
 	);
 	return Object.fromEntries(fields.map((f) => [f, html.includes(`有:${f}`)]));
 }
@@ -202,7 +199,6 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 					},
 				},
 			} as never,
-			{ ...(sample.raw ? { raw: sample.raw } : {}) },
 		);
 		expect(html).toContain("探针:9|");
 		expect(html).toContain("探针图:data:image/svg+xml");
@@ -217,11 +213,11 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 });
 
 /**
- * **契约里那两组「要原始动态才取得到」的字段**(视频卡 / 图廊)。
+ * **契约里视频卡 / 图廊那两组字段在预览里取得到**。
  *
- * 它们在 `node` 里已经被画进正文的 VNode、拆不回来,只能从原始动态取 —— 所以渲染器收一个
- * 可选的 `raw`。预览这条路**从来没传过它**:类型全绿、七种卡照样画得出来,只有皮肤作者写下
- * `{video.title}` 才发现那儿永远是空的。这份钉的就是那根线。
+ * 它们从前要回头去原始动态里取,渲染器另收一个可选的 `raw`,而预览这条路**从来没传过它**:
+ * 类型全绿、七种卡照样画得出来,只有皮肤作者写下 `{video.title}` 才发现那儿永远是空的。
+ * 如今这几格跟着 node 走(ADR-0019 决策 68),没有第二根线可断 —— 这份钉的是结果还对。
  */
 describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得到", () => {
 	/**
@@ -266,11 +262,10 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 			"dynamic",
 			sample.props as never,
 			probeSkin(`<div>${placeholder}</div>`),
-			{ ...(sample.raw ? { raw: sample.raw } : {}) },
 		);
 	}
 
-	// ⚠️ 前缀不是装饰:正文块自己也画视频标题,光找「示例视频」的话剪断 raw 照样绿。
+	// ⚠️ 前缀不是装饰:正文块自己也画视频标题,光找「示例视频」的话契约取不到值照样绿。
 	it("{video.title} 在视频投稿场面取得到", async () => {
 		expect(await probe("video", "探针:{video.title}")).toContain("探针:【示例视频】");
 	});
@@ -298,7 +293,6 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 					},
 				},
 			} as never,
-			{ ...(sample.raw ? { raw: sample.raw } : {}) },
 		);
 		expect(html).toContain("有视频");
 	});

@@ -14,10 +14,16 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, isVNode, type VNode } from "vue";
 import * as ICONS from "../icons";
-import { buildDynamicNode, type DynamicNode } from "../templates/dynamic-content";
+import { buildDynamicNode, buildGallery, type DynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
 
 const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
+
+/**
+ * `pics` 块画出的那一整块。图廊不再预先画进 node,而是 node 上一份图列表、块拿它现画
+ * (ADR-0019 决策 68)—— 这里照块的画法取,钉的仍是「图廊那一份装着什么」。
+ */
+const picsOf = (node: DynamicNode): VNode | null => buildGallery(node.images ?? []);
 
 const COVER = "https://i0.hdslb.com/bfs/archive/cover.jpg";
 const PIC = "https://i0.hdslb.com/bfs/new_dyn/pic.jpg";
@@ -154,7 +160,7 @@ describe("buildDynamicNode —— 视频投稿", () => {
 			danmaku: "34",
 		});
 		// 图廊那份是空的:投稿视频没有图廊。
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 	});
 });
 
@@ -171,7 +177,7 @@ describe("buildDynamicNode —— 图文", () => {
 
 	it("pics 是图廊本身 —— 不带跟在文字后面的那层间距,挂点都在", async () => {
 		const node = await buildDynamicNode(draw(), false, fmt);
-		const html = await htmlOf(present(node.pics, "pics"));
+		const html = await htmlOf(present(picsOf(node), "pics"));
 		// 根就是图廊:`mt-[8px]` 那层是「跟在文字后面」的间距,单独摆时归皮肤 CSS 管。
 		expect(html).toMatch(/^<div data-bn="pics"/);
 		expect(html).not.toContain("mt-[8px]");
@@ -187,7 +193,7 @@ describe("buildDynamicNode —— 图文", () => {
 			fmt,
 		);
 		expect(node.text ?? null).toBeNull();
-		expect(await htmlOf(present(node.pics, "pics"))).toMatch(/^<div data-bn="pics pic"/);
+		expect(await htmlOf(present(picsOf(node), "pics"))).toMatch(/^<div data-bn="pics pic"/);
 	});
 });
 
@@ -202,7 +208,7 @@ describe("buildDynamicNode —— 纯文字", () => {
 		expect(html).toContain("一条纯文字动态");
 		expect([...hooksIn(html)]).toEqual(["body"]);
 		expect(node.video ?? null).toBeNull();
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 	});
 });
 
@@ -225,7 +231,7 @@ describe("buildDynamicNode —— 专栏", () => {
 
 	it("pics 是头图那格图廊", async () => {
 		const node = await buildDynamicNode(article(), false, fmt);
-		const html = await htmlOf(present(node.pics, "pics"));
+		const html = await htmlOf(present(picsOf(node), "pics"));
 		// 单图时整个图廊就是那一格,两个挂点落在同一个元素上。
 		expect(html).toMatch(/^<div data-bn="pics pic"/);
 		expect(html).toContain(PIC);
@@ -245,7 +251,7 @@ describe("buildDynamicNode —— 充电专属占位", () => {
 		expect(html).toContain("充电专属内容");
 		expect(html).toContain("为 示例UP 充电即可查看完整内容");
 		expect(node.video ?? null).toBeNull();
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 	});
 });
 
@@ -264,7 +270,7 @@ describe("buildDynamicNode —— 渲染不了的动态", () => {
 		const html = await htmlOf(present(node.text, "text"));
 		expect(html).toBe(`<p>${notice}</p>`);
 		expect(node.video ?? null).toBeNull();
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 	});
 });
 
@@ -279,14 +285,14 @@ describe("buildDynamicNode —— 转发", () => {
 		const text = await htmlOf(present(node.text, "外层 text"));
 		expect(text).toContain("转发时说的话");
 		expect(text).not.toContain("原动态的正文");
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 
 		const inner = node.forward as DynamicNode;
 		expect(inner).toBeDefined();
 		const innerText = await htmlOf(present(inner.text, "原动态 text"));
 		expect(innerText).toContain("原动态的正文");
 		expect(innerText).not.toContain("转发时说的话");
-		const innerPics = await htmlOf(present(inner.pics, "原动态 pics"));
+		const innerPics = await htmlOf(present(picsOf(inner), "原动态 pics"));
 		expect(innerPics).toMatch(/^<div data-bn="pics"/);
 		expect(innerPics.match(/<img/g)).toHaveLength(2);
 	});
@@ -298,7 +304,7 @@ describe("buildDynamicNode —— 转发", () => {
 		expect(text).toContain("转发时说的话");
 		expect(text).toContain("示例UP转发了一条动态，但原动态已不可见");
 		expect(text.indexOf("转发时说的话")).toBeLessThan(text.indexOf("原动态已不可见"));
-		expect(node.pics ?? null).toBeNull();
+		expect(picsOf(node)).toBeNull();
 	});
 });
 
@@ -334,7 +340,7 @@ describe("buildDynamicNode —— text 与 pics 不共用 VNode 实例", () => {
 			const outer = await buildDynamicNode(d, false, fmt);
 			for (const node of outer.forward ? [outer, outer.forward] : [outer]) {
 				const inText = collectVNodes(node.text, new Set());
-				const inPics = collectVNodes(node.pics, new Set());
+				const inPics = collectVNodes(picsOf(node), new Set());
 				expect(
 					inText.size + inPics.size + (node.video ? 1 : 0),
 					`${d.type} 的 text / pics / video 应当有点什么`,

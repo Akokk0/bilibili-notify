@@ -50,7 +50,6 @@ async function renderWith(
 				},
 			},
 		} as never,
-		{ ...(sample.raw ? { raw: sample.raw } : {}) },
 	);
 	return new JSDOM(html).window.document;
 }

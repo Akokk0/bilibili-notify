@@ -22,7 +22,6 @@ import type { LiveCardProps } from "../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
 import type { SCCardProps } from "../templates/sc-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
-import type { Dynamic } from "../types";
 
 /** 契约里一个字段的值。对应 `CardSkinFieldType`:`text` / `image` → string。 */
 export type CardDataValue = string | number | boolean;
@@ -94,26 +93,22 @@ function liveData(p: LiveCardProps): CardData {
 // ── dynamic ──────────────────────────────────────────────────────────────────
 
 /**
- * 动态卡的数据有两个来源。
+ * 动态卡的数据**全从 node 取**(ADR-0019 决策 68)。
  *
- * **视频那一组跟着块走**:`buildDynamicNode` 已经把投稿视频那六个字段抽成了 `node.video`
- * (见 `templates/dynamic-content.tsx` 的 `videoOf`),五个视频块画的就是这一份。契约这边
- * 也读它,而不是回头再从 `raw` 刨一遍 —— 各刨各的,判据迟早分叉(从前这里拿「标题非空」
- * 当 `hasVideo`,而块看的是 `node.video` 在不在:一条没标题的投稿会画出封面,却告诉皮肤的
- * `showIf` 说没视频)。
- *
- * **图廊那一组只有 `raw` 有**:张数是动态的,在 node 里已经被画进一整块 VNode,拆不回来。
- * 动态类型(`dynamic.type`)同理。没有 `raw` 时这两项空着(`hasPics` 随之为 false)。
+ * 块画什么、契约就说什么,判据只有一份:视频那一组读 `node.video`(五个视频块画的就是它),
+ * 图廊那一组读 `node.images`(`pics` 块拿它现画),动态类型读 `node.type`。从前后两样要回头
+ * 去 B 站原始数据里刨,出卡入口因此得另收一份原始数据 —— 拓展的作品没有那份东西;而各刨
+ * 各的,判据迟早分叉(从前拿「标题非空」当 `hasVideo`,一条没标题的投稿会画出封面,却告诉
+ * 皮肤的 `showIf` 说没视频)。
  */
-function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
+function dynamicData(p: DynamicCardProps): CardData {
 	const node = p.node;
-	// 图廊的来源与 `templates/dynamic-content.tsx` 的 buildPicsContent 同一处。
-	const pics = raw?.modules?.module_dynamic?.major?.opus?.pics ?? [];
+	const images = node.images ?? [];
 	const video = node.video;
 	return {
 		up: { name: str(node.upName), face: str(node.avatarUrl), isVip: !!node.upIsVip },
 		dynamic: {
-			type: str(raw?.type),
+			type: str(node.type),
 			action: str(node.headerLabel),
 			time: str(node.pubTime),
 			topic: str(node.topic),
@@ -121,7 +116,7 @@ function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
 			isForward: !!node.forward,
 			hasAdditional: !!node.additional,
 			hasVideo: !!video,
-			hasPics: pics.length > 0,
+			hasPics: images.length > 0,
 		},
 		video: {
 			title: str(video?.title),
@@ -129,10 +124,11 @@ function dynamicData(p: DynamicCardProps, raw?: Dynamic): CardData {
 			cover: str(video?.cover),
 			duration: str(video?.duration),
 			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),`videoOf` 原样转了文本。
+			// 弹幕数选填(拓展作品不收),缺了就是空串。
 			views: str(video?.views),
 			danmaku: str(video?.danmaku),
 		},
-		pics: { count: pics.length, first: str(pics[0]?.url) },
+		pics: { count: images.length, first: str(images[0]?.url) },
 		stats: {
 			forward: str(node.stats?.forward),
 			comment: str(node.stats?.comment),
@@ -213,7 +209,7 @@ function wordCloudData(p: WordCloudCardProps): CardData {
 // ── 入口 ──────────────────────────────────────────────────────────────────────
 
 export function buildCardData(kind: "live", props: LiveCardProps): CardData;
-export function buildCardData(kind: "dynamic", props: DynamicCardProps, raw?: Dynamic): CardData;
+export function buildCardData(kind: "dynamic", props: DynamicCardProps): CardData;
 export function buildCardData(kind: "sc", props: SCCardProps): CardData;
 export function buildCardData(kind: "guard", props: GuardCardProps): CardData;
 export function buildCardData(kind: "roastBoard", props: RoastBoardCardProps): CardData;
@@ -221,19 +217,16 @@ export function buildCardData(kind: "roastSolo", props: RoastSoloCardProps): Car
 export function buildCardData(kind: "wordcloud", props: WordCloudCardProps): CardData;
 /**
  * 把一张卡的 props 翻成它那份契约数据。产出的路径集合与 `CARD_SKIN_FIELDS[kind]` 一字不差。
- *
- * @param raw 仅 dynamic 卡用:原始动态,视频卡 / 图廊那两组字段从它取。
  */
 export function buildCardData(
 	kind: "live" | "dynamic" | "sc" | "guard" | "roastBoard" | "roastSolo" | "wordcloud",
 	props: unknown,
-	raw?: Dynamic,
 ): CardData {
 	switch (kind) {
 		case "live":
 			return liveData(props as LiveCardProps);
 		case "dynamic":
-			return dynamicData(props as DynamicCardProps, raw);
+			return dynamicData(props as DynamicCardProps);
 		case "sc":
 			return scData(props as SCCardProps);
 		case "guard":

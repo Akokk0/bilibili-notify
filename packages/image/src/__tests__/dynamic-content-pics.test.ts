@@ -15,7 +15,7 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { buildDynamicNode } from "../templates/dynamic-content";
+import { buildDynamicNode, buildGallery } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
@@ -60,7 +60,9 @@ function drawDynamic(pics: Pic[]): Dynamic {
 
 async function picsHtml(pics: Pic[]): Promise<string> {
 	const node = await buildDynamicNode(drawDynamic(pics), false, fmt);
-	const app = createSSRApp({ render: () => h("div", [node.text, node.pics]) });
+	const app = createSSRApp({
+		render: () => h("div", [node.text, buildGallery(node.images ?? [])]),
+	});
 	return renderToString(app);
 }
 

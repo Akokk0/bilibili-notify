@@ -22,9 +22,7 @@ import { renderCardWithSkin } from "../render-skin";
 
 async function render(kind: CardSkinKind, scene: string, skin: CardSkinManifest): Promise<string> {
 	const sample = await sampleCard(kind, scene);
-	return renderCardWithSkin(kind, sample.props as never, skin, {
-		...(sample.raw ? { raw: sample.raw } : {}),
-	});
+	return renderCardWithSkin(kind, sample.props as never, skin);
 }
 
 describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {

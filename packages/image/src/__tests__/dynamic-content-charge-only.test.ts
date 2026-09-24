@@ -8,7 +8,7 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { buildDynamicNode } from "../templates/dynamic-content";
+import { buildDynamicNode, buildGallery } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
 
 const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
@@ -46,7 +46,9 @@ function textNodes(text: string): Dynamic["modules"]["module_dynamic"]["desc"] {
 }
 
 async function bodyHtml(node: Awaited<ReturnType<typeof buildDynamicNode>>): Promise<string> {
-	const app = createSSRApp({ render: () => h("div", [node.text, node.pics]) });
+	const app = createSSRApp({
+		render: () => h("div", [node.text, buildGallery(node.images ?? [])]),
+	});
 	return renderToString(app);
 }
 

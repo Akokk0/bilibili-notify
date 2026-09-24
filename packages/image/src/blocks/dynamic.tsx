@@ -32,7 +32,7 @@
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
 import { SVG_COMMENT, SVG_DANMAKU, SVG_FORWARD, SVG_LIKE, SVG_TOPIC, SVG_VIEW } from "../icons";
-import type { DynamicNode } from "../templates/dynamic-content";
+import { buildGallery, type DynamicNode } from "../templates/dynamic-content";
 import type { BlockRenderer } from "./types";
 
 /**
@@ -146,7 +146,12 @@ const videoDesc: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 		</div>
 	) : null;
 
-/** 播放 · 弹幕数。两项各挂一个 `stat`,皮肤要能单独调「图标与数之间的间距」。 */
+/**
+ * 播放 · 弹幕数。两项各挂一个 `stat`,皮肤要能单独调「图标与数之间的间距」。
+ *
+ * 弹幕数是选填的(ADR-0019 决策 55:拓展的作品不收它),没有就连图标一起不画 —— 从前只要有
+ * 视频就无条件画,画出一个空着的弹幕图标。
+ */
 const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 	node.video ? (
 		<div data-bn="text" class="flex items-center">
@@ -154,18 +159,21 @@ const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 				{SVG_VIEW}
 				{node.video.views}
 			</span>
-			<span data-bn="stat" class="flex items-center">
-				{SVG_DANMAKU}
-				{node.video.danmaku}
-			</span>
+			{node.video.danmaku ? (
+				<span data-bn="stat" class="flex items-center">
+					{SVG_DANMAKU}
+					{node.video.danmaku}
+				</span>
+			) : null}
 		</div>
 	) : null;
 
 /**
- * 图廊(原子块):`node.pics`。张数是动态的,拆不开,所以仍是 builder 画好的一整块,挂点
- * (`pics` / `pic`)在它画的部件上。没有图就收起。
+ * 图廊(原子块):拿 `node.images` 现画一整块(`buildGallery`,B 站与拓展同一份实现),挂点
+ * (`pics` / `pic`)在它画的部件上。没有图就收起。每次调用各画一份 VNode —— 皮肤把这块摆
+ * 两回也不会共用同一个实例。
  */
-const pics: BlockRenderer<DynamicBlockProps> = ({ node }) => node.pics ?? null;
+const pics: BlockRenderer<DynamicBlockProps> = ({ node }) => buildGallery(node.images ?? []);
 
 /**
  * 转发框(原子块)。根**就是**那个框,样子(灰底、圆角、左边那道蓝、`zoom`)写在皮肤的

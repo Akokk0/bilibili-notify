@@ -4,10 +4,10 @@
  * 一、**对表**:七种卡各造一份「样样都有」的夹具,产出的字段路径集合必须与
  *    `CARD_SKIN_FIELDS[kind]` 一字不差(多一个 = 皮肤引用不到的死数据,少一个 = 皮肤写了
  *    取不到值),且每个值的 typeof 与字段表声明的 type 对得上(text / image → string)。
- * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、动态卡连 raw 都没有),
- *    每个字段仍有值 —— 没有 undefined,不会有 "undefined" 被替换进模板。
- * 三、**语义**:几条最容易在重构里被改掉的分支(直播三态、封面四种来源、有无 raw、
- *    舰长四档、金额是数字)。
+ * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、动态卡的 node 上连类型
+ *    与图都没有),每个字段仍有值 —— 没有 undefined,不会有 "undefined" 被替换进模板。
+ * 三、**语义**:几条最容易在重构里被改掉的分支(直播三态、封面四种来源、动态卡的几组字段
+ *    都从 node 取、舰长四档、金额是数字)。
  * 四、**取值**:`readCardField` 只认两段路径、只认自有属性,原型链上的名字一律取不到。
  */
 
@@ -27,7 +27,6 @@ import type { LiveCardProps } from "../../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
 import type { SCCardProps } from "../../templates/sc-card";
 import type { WordCloudCardProps } from "../../templates/wordcloud-card";
-import type { Dynamic } from "../../types";
 import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
@@ -95,28 +94,9 @@ function dynamicNode(over: Partial<DynamicNode> = {}): DynamicNode {
 	};
 }
 
-/**
- * 原始动态夹具。真实结构又深又全(module_author 十几个必填字段),这里只捏映射层真正会读
- * 的那几支 —— 读到别的字段就会在这条断言里当场炸,正是想要的。
- */
-function rawDynamic(major: unknown, type = "DYNAMIC_TYPE_AV"): Dynamic {
-	return { type, modules: { module_dynamic: { major } } } as unknown as Dynamic;
-}
-
-const FULL_ARCHIVE = {
-	badge: { text: "投稿视频" },
-	cover: "https://img/video-cover.jpg",
-	duration_text: "12:34",
-	title: "这是一期视频",
-	desc: "",
-	stat: { play: "6.5万", danmaku: 1024 },
-	bvid: "BV1xx411c7mD",
-	jump_url: "",
-};
-
 const FULL_PICS = [{ url: "https://img/pic1.jpg" }, { url: "https://img/pic2.jpg" }];
 
-/** `buildDynamicNode` 从 {@link FULL_ARCHIVE} 抽出来挂在 node 上的那一份(见 `videoOf`)。 */
+/** 投稿视频那张卡挂在 node 上的数据(`buildDynamicNode` 的 `videoOf` 抽出来的形状)。 */
 const NODE_VIDEO = {
 	cover: "https://img/video-cover.jpg",
 	duration: "12:34",
@@ -221,8 +201,7 @@ const FULL: Record<CardSkinKind, () => CardData> = {
 	dynamic: () =>
 		buildCardData(
 			"dynamic",
-			dynamicProps(),
-			rawDynamic({ type: "MAJOR_TYPE_ARCHIVE", archive: FULL_ARCHIVE, opus: { pics: FULL_PICS } }),
+			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_AV", video: NODE_VIDEO, images: FULL_PICS })),
 		),
 	sc: () => buildCardData("sc", scProps()),
 	guard: () => buildCardData("guard", guardProps()),
@@ -231,7 +210,7 @@ const FULL: Record<CardSkinKind, () => CardData> = {
 	wordcloud: () => buildCardData("wordcloud", wordCloudProps()),
 };
 
-/** 七种卡的「什么都没有」夹具:可选字段全缺、动态卡连 raw 都不给。 */
+/** 七种卡的「什么都没有」夹具:可选字段全缺、动态卡的 node 上没有类型、视频与图。 */
 const EMPTY: Record<CardSkinKind, () => CardData> = {
 	live: () => buildCardData("live", emptyLiveProps()),
 	dynamic: () =>
@@ -416,11 +395,14 @@ describe("直播卡封面的几种来源", () => {
 });
 
 describe("动态卡的视频与图廊", () => {
-	it("视频那一组从 node 取、图廊那一组从原始动态取", () => {
+	/**
+	 * 三组都从 node 取(ADR-0019 决策 68):出卡入口只收 node,不再另收平台的原始数据。
+	 * 验红:把 `dynamic.type` / `pics.*` 改回从别处取(或写死空值),这条红。
+	 */
+	it("类型、视频、图廊三组都从 node 取", () => {
 		const d = buildCardData(
 			"dynamic",
-			dynamicProps(dynamicNode({ video: NODE_VIDEO })),
-			rawDynamic({ archive: FULL_ARCHIVE, opus: { pics: FULL_PICS } }),
+			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_AV", video: NODE_VIDEO, images: FULL_PICS })),
 		);
 		expect(d.dynamic.type).toBe("DYNAMIC_TYPE_AV");
 		expect(d.dynamic.hasVideo).toBe(true);
@@ -435,7 +417,7 @@ describe("动态卡的视频与图廊", () => {
 		expect(d.pics.first).toBe("https://img/pic1.jpg");
 	});
 
-	it("没有 raw、node 上也没有视频:两组字段全空,两个 has* 为假,node 那边的字段照常", () => {
+	it("node 上没有类型、视频与图:三组字段全空,两个 has* 为假,别的字段照常", () => {
 		const d = buildCardData("dynamic", dynamicProps());
 		expect(d.dynamic.type).toBe("");
 		expect(d.dynamic.hasVideo).toBe(false);
@@ -444,7 +426,7 @@ describe("动态卡的视频与图廊", () => {
 		expect(d.dynamic.hasPics).toBe(false);
 		expect(d.pics.count).toBe(0);
 		expect(d.pics.first).toBe("");
-		// node 给的那几组不受 raw 缺席影响。
+		// 别的几组不受这三组缺席影响。
 		expect(d.up.name).toBe("某 UP 主");
 		expect(d.dynamic.action).toBe("投稿了视频");
 		expect(d.dynamic.isForward).toBe(true);
@@ -458,24 +440,22 @@ describe("动态卡的视频与图廊", () => {
 	 * 自己去 raw 里刨了一遍 archive,再拿「标题非空」当判据 —— 一条没标题的投稿于是画出了
 	 * 封面,却告诉皮肤的 `showIf` 说没视频,皮肤要么摆出一块空的、要么把封面那格藏了。
 	 *
-	 * 验红:把 `hasVideo` 改回 `videoTitle !== ""`(或让 video 那一组回去读 raw),这条红。
+	 * 验红:把 `hasVideo` 改回 `videoTitle !== ""`,这条红。
 	 */
 	it("标题是空的投稿:hasVideo 仍为真 —— 判据是有没有这张卡,不是有没有标题", () => {
 		const d = buildCardData(
 			"dynamic",
 			dynamicProps(dynamicNode({ video: { ...NODE_VIDEO, title: "" } })),
-			rawDynamic({ archive: { ...FULL_ARCHIVE, title: "" } }),
 		);
 		expect(d.dynamic.hasVideo).toBe(true);
 		expect(d.video.title).toBe("");
 		expect(d.video.cover).toBe("https://img/video-cover.jpg");
 	});
 
-	it("有 raw 但不是视频动态:video 全空,图廊照取", () => {
+	it("不是视频动态:video 全空,图廊照取", () => {
 		const d = buildCardData(
 			"dynamic",
-			dynamicProps(),
-			rawDynamic({ opus: { pics: FULL_PICS } }, "DYNAMIC_TYPE_DRAW"),
+			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_DRAW", images: FULL_PICS })),
 		);
 		expect(d.dynamic.type).toBe("DYNAMIC_TYPE_DRAW");
 		expect(d.dynamic.hasVideo).toBe(false);

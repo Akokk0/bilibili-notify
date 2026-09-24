@@ -29,7 +29,7 @@ import {
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import { buildDynamicNode } from "./templates/dynamic-content";
+import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
@@ -494,8 +494,6 @@ export class ImageRenderer {
 		title: string;
 		skinId: string;
 		font: { font: string; fontFace?: string };
-		/** 仅 dynamic 卡:原始动态(契约里视频 / 图廊那两组字段从它取)。 */
-		raw?: Dynamic;
 		priority?: RenderPriority;
 		/** 截图前要等的页内条件(词云等画完)。 */
 		waitFor?: string;
@@ -519,7 +517,6 @@ export class ImageRenderer {
 				title,
 				font: font.font,
 				fontFace: font.fontFace,
-				raw: args.raw,
 				resolveAsset: (name) => assets.get(name),
 				knobValues,
 				knobAssets,
@@ -725,36 +722,51 @@ export class ImageRenderer {
 			});
 	}
 
+	/**
+	 * **B 站动态的适配层**:原始动态 → {@link buildDynamicNode} 造 node(皮肤要的类型与图也
+	 * 一并记在 node 上)→ {@link generateNeutralDynamicCard}。签名不动,推送与链接解析照旧调它。
+	 *
+	 * 造 node 那一步**在包错之外**:开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)在那儿抛,动态引擎按
+	 * 原文(「直播开播动态，不做处理」)认它来跳过 —— 包成「生成动态卡片失败」就认不出了。
+	 */
 	async generateDynamicCard(
 		data: Dynamic,
 		colorOptions: CardColorOptions = {},
 		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
-		const t0 = Date.now();
-		const moduleAuthor = data.modules.module_author;
-		this.logger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
-
 		const node = await buildDynamicNode(data, false, {
 			time: (ts) => this.unixTimestampToString(ts),
 			num: (n) => numberToStr(n),
 		});
+		return this.generateNeutralDynamicCard(node, colorOptions, options);
+	}
 
+	/**
+	 * **动态卡的中立入口**(ADR-0019 决策 68):吃一棵造好的 {@link DynamicNode},不收任何平台的
+	 * 原始数据 —— 皮肤契约要的那几格(动态类型、图廊张数 / 首图、转发内层那一份)都在 node 上,
+	 * 转发内层是 `node.forward`,自己带着自己的那几格。
+	 *
+	 * 卡里的图只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
+	 */
+	async generateNeutralDynamicCard(
+		node: DynamicNode,
+		colorOptions: CardColorOptions = {},
+		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
+		options?: { priority?: RenderPriority },
+	): Promise<Buffer> {
+		const t0 = Date.now();
+		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.upName}`);
 		return this.renderWithSkin({
 			kind: "dynamic",
 			title: "动态通知",
 			skinId: this.skinIdOf(colorOptions),
 			font: await this.resolveFont(colorOptions),
-			// 契约里视频 / 图廊那两组字段(`{video.title}`、`{pics.count}`…)从原始动态取,
-			// props 里的 `node` 已经是画好的结构树,取不回那些值。
-			raw: data,
 			priority: options?.priority,
 			props: { node },
 		})
 			.then((buf) => {
-				this.logger.debug(
-					`[dynamic] 动态卡片渲染完成：${moduleAuthor.name}（${Date.now() - t0}ms）`,
-				);
+				this.logger.debug(`[dynamic] 动态卡片渲染完成：${node.upName}（${Date.now() - t0}ms）`);
 				return buf;
 			})
 			.catch((e) => {

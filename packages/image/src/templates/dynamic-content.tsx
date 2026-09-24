@@ -73,14 +73,34 @@ export type NodeFormatters = {
  * 两份仍**各是各的 VNode 实例**:Vue 文档明说一棵组件树里的 vnode 必须各不相同(客户端
  * 挂载会往 vnode 上写 `el` / `component`,后一处盖掉前一处),而皮肤可以把同一块摆两回。
  */
-/** 投稿视频那张卡的数据。播放 / 弹幕数接口可能已给成 "6.5万",原样转文本,不做算术。 */
+/**
+ * 投稿视频那张卡的数据。播放 / 弹幕数接口可能已给成 "6.5万",原样转文本,不做算术。
+ *
+ * 弹幕数**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数,缺了那一格就不画弹幕图标与数字
+ * (从前只要有视频就无条件画,拓展作品会画出一个空图标)。
+ */
 export type DynamicVideo = {
 	cover: string;
 	duration: string;
 	title: string;
 	desc: string;
 	views: string;
-	danmaku: string;
+	danmaku?: string;
+};
+
+/**
+ * 图廊里的一张图 —— **中立的形状**(ADR-0019 决策 68)。B 站与拓展都先映射成它,再交给
+ * {@link buildGallery};图廊只有那一份实现。
+ *
+ * - 宽高缺了就不判长图,按普通比例铺(拓展的图宽高由 BN 读文件头拿,读不出来也照样出卡)。
+ * - `animated` 由来源自己判:B 站看 `live_url` 或 `.gif` 结尾,拓展看交来的 MIME ——
+ *   拓展的图是 data URL,「看结尾」那一招对它不成立。
+ */
+export type GalleryImage = {
+	url: string;
+	width?: number;
+	height?: number;
+	animated?: boolean;
 };
 
 export type DynamicNode = {
@@ -88,6 +108,12 @@ export type DynamicNode = {
 	upName: string;
 	upIsVip: boolean;
 	pubTime: string;
+	/**
+	 * 动态类型(`DYNAMIC_TYPE_*`),皮肤契约的 `dynamic.type`。造 node 时顺手记下(决策 68)——
+	 * 从前契约回头去 B 站原始数据里取,出卡入口因此得另收一份原始数据。拓展作品套进 B 站的
+	 * 类型(决策 69)。不给就是空串。
+	 */
+	type?: string;
 	/** 作为内部转发渲染时,附在作者名后的类型标签(如「投稿了视频」)。 */
 	headerLabel?: string;
 	topic?: string;
@@ -103,10 +129,11 @@ export type DynamicNode = {
 	 */
 	video?: DynamicVideo | null;
 	/**
-	 * 图廊(图文 / 专栏)。张数是动态的,拆不开,所以仍是一整块画好的 VNode。**不带**
-	 * 「跟在文字后面」的那层间距,单独摆时由皮肤 CSS 管。
+	 * 图廊(图文 / 专栏)的图,**数据**不是画好的 VNode:`pics` 块拿它现画(`buildGallery`),
+	 * 皮肤契约的张数 / 首图(`pics.count` / `pics.first`)也从这一份取 —— 画的和说的同一个
+	 * 来源,不会一边有图一边说没有。没有图就不给(或给空数组)。
 	 */
-	pics?: VNode | null;
+	images?: readonly GalleryImage[];
 	additional?: VNode | null;
 	forward?: DynamicNode;
 	stats?: { forward: string; comment: string; like: string };
@@ -130,6 +157,7 @@ export async function buildDynamicNode(
 		upName: author.name,
 		upIsVip: author.vip.type !== 0,
 		pubTime: fmt.time(author.pub_ts),
+		type: dynamic.type,
 		topic: dynamic.modules.module_dynamic.topic?.name || undefined,
 		additional: buildAdditionalContent(dynamic),
 		// 内部转发不展示互动数(与原行为一致,版式上 stats 块自动收起)。
@@ -166,13 +194,13 @@ export async function buildDynamicNode(
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
 			node.text = buildBasicText(dynamic, false);
-			node.pics = buildOpusPics(dynamic);
+			node.images = opusImages(dynamic);
 			return node;
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
 			// 转发本身不带图(接口给的 major 是空的),照样取一遍,真有也不丢。
-			node.pics = buildOpusPics(dynamic);
+			node.images = opusImages(dynamic);
 			if (!dynamic.orig) {
 				// 没有转发框可装这句说明,它跟着转发语走。
 				node.text = (
@@ -198,7 +226,7 @@ export async function buildDynamicNode(
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			node.text = buildBasicText(dynamic, true);
-			node.pics = buildOpusPics(dynamic);
+			node.images = opusImages(dynamic);
 			label("投稿了专栏");
 			return node;
 		}
@@ -292,31 +320,58 @@ function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
 }
 
 /**
- * 图廊,给 `media` 原子块。空数组算没图 —— 画一个空的图廊壳不如整块收起。
+ * **纯文本正文** → `text` 块的那一份(ADR-0019 决策 68,给拓展作品用)。保留换行;标签原样
+ * 当文字(转义),正文里的 `#话题` 照字面显示(决策 55 不收富文本)。
+ *
+ * 走的是 B 站富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):当成一整段
+ * 普通文字交给 {@link parseRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
+ *
+ * 一个字都没有(空串 / 只有空白)回 null,正文块收起。
  */
-function buildOpusPics(dynamic: Dynamic): VNode | null {
-	const pics = dynamic.modules.module_dynamic?.major?.opus?.pics;
-	return pics?.length ? buildPicsContent(pics) : null;
+export function buildPlainText(text: string): VNode | null {
+	const normalized = text.replace(/\r\n?/g, "\n");
+	if (normalized.trim() === "") return null;
+	return parseRichText([
+		{ type: "RICH_TEXT_NODE_TYPE_TEXT", text: normalized, orig_text: normalized },
+	]);
 }
 
 /** 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。 */
 const MAX_GRID_PICS = 9;
 
-type DynamicPic = { height: number; url: string; width: number; live_url?: string };
+type OpusPic = { height: number; url: string; width: number; live_url?: string };
 
 /**
- * 这张图会不会动。
+ * B 站图文 / 专栏的图 → 图廊吃的中立列表(决策 68)。没有图给空数组,`pics` 块自己收起。
+ */
+function opusImages(dynamic: Dynamic): GalleryImage[] {
+	const pics = dynamic.modules.module_dynamic?.major?.opus?.pics ?? [];
+	return pics.map((p) => ({
+		url: p.url,
+		width: p.width,
+		height: p.height,
+		animated: isAnimatedOpusPic(p),
+	}));
+}
+
+/**
+ * B 站的这张图会不会动。
  *
  * 两条判据取并集:`live_url` 非空(B 站给动图带的播放地址)**或** URL 后缀是 `.gif`。
  * 只认一条的话,万一它在某类动态里不成立就是整片漏标;两条都不满足才不标 —— 宁可漏
  * 也不误标,把静图标成动图更让人费解。
  */
-function isAnimatedPic(p: DynamicPic): boolean {
+function isAnimatedOpusPic(p: OpusPic): boolean {
 	if (p.live_url) return true;
 	// 真实 URL 常带处理后缀和 query(`….gif@1280w_80q_1s.webp?from=dyn`),直接看结尾
 	// 会把 GIF 认成 webp 而漏标 —— 先把这两截削掉。
 	const path = p.url.split("?")[0].split("@")[0];
 	return path.toLowerCase().endsWith(".gif");
+}
+
+/** 高是不是超过宽的 `ratio` 倍。宽高缺一样就不算(不知道就当普通比例)。 */
+function tallerThan(p: GalleryImage, ratio: number): boolean {
+	return p.width !== undefined && p.height !== undefined && p.height > p.width * ratio;
 }
 
 /**
@@ -325,16 +380,24 @@ function isAnimatedPic(p: DynamicPic): boolean {
  * 动图压过长图:「这张会动」是截图里绝对看不出来的信息(出图只截得到一帧),而「被裁
  * 过」在缩略图上多少感觉得到。两者同时成立极罕见,不值得为它另设一个双标签位。
  */
-function picBadgeText(p: DynamicPic, isLong: boolean): string | null {
-	if (isAnimatedPic(p)) return "动图";
+function picBadgeText(p: GalleryImage, isLong: boolean): string | null {
+	if (p.animated) return "动图";
 	return isLong ? "长图" : null;
 }
 
-function buildPicsContent(pics: DynamicPic[]) {
-	if (pics.length === 1) {
-		const pic = pics[0];
-		const isSuperLong = pic.height > pic.width * 2;
-		const isLong = !isSuperLong && pic.height > pic.width;
+/**
+ * **图廊**(`pics` 块画的那一整块):一份中立的图列表 → 单图 / 长图 / 超长图 / 九宫格,
+ * 最多铺 9 格,其余折进最后一格的 `+N`。空列表回 null(块收起 —— 画一个空的图廊壳不如
+ * 整块收起)。
+ *
+ * B 站与拓展共用这一份(决策 68):B 站先经 `opusImages` 映射成同一种列表再调它。
+ */
+export function buildGallery(images: readonly GalleryImage[]): VNode | null {
+	if (images.length === 0) return null;
+	if (images.length === 1) {
+		const pic = images[0];
+		const isSuperLong = tallerThan(pic, 2);
+		const isLong = !isSuperLong && tallerThan(pic, 1);
 		const badge = picBadgeText(pic, isSuperLong);
 		// 三种形态各自的图框宽高都不一样,角标就近挂在各自那层 —— 统一提到最外层的话,
 		// 竖图(width:auto)那支会把角标甩到图片右侧的空白里去。
@@ -374,8 +437,8 @@ function buildPicsContent(pics: DynamicPic[]) {
 
 	// 超出 9 张的部分不铺格子,折进最后一格的 `+N`。以前是有几张铺几张,十几张图的
 	// 动态能把卡片拉出一米多长,推到群里就是一堵缩略图墙。
-	const shown = pics.slice(0, MAX_GRID_PICS);
-	const overflow = pics.length - shown.length;
+	const shown = images.slice(0, MAX_GRID_PICS);
+	const overflow = images.length - shown.length;
 	const is2col = shown.length === 2 || shown.length === 4;
 	// 多图总宽与单图对齐（max 480px），图片在其中平分，gap 8px
 	const containerClass = is2col
@@ -384,7 +447,7 @@ function buildPicsContent(pics: DynamicPic[]) {
 	return (
 		<div data-bn="pics" class="flex flex-wrap gap-[8px]" style="max-width: 600px;">
 			{shown.map((p, i) => {
-				const isLong = p.height > p.width * 2;
+				const isLong = tallerThan(p, 2);
 				const badge = picBadgeText(p, isLong);
 				// `+N` 盖在**第 9 张图上**,不另起一格 —— 另起就成了 10 格,末格空着,
 				// 三列也就散了。

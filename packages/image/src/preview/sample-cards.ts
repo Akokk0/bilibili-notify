@@ -468,18 +468,22 @@ const SAMPLES: {
  * (预览路由)本来就在 async 里,所以这里跟着 async,而不是反过来去改那个出图共用的
  * 模板模块 —— 它在 23 张基准快照那条线上,少一个碰它的理由就少一分风险。
  *
- * **`raw` 要跟着一起交出去**:契约里视频卡与图廊那两组字段在 `node` 里已经被画进正文的
- * VNode、拆不回来,渲染器只能从原始动态取。它是可选参数,预览这条路从前一直没传 ——
- * 类型全绿、七种卡照样画得出来,只有皮肤作者写下 `{video.title}` 才发现那儿永远是空的。
- *
- * 两样一起喂 `renderCardWithSkin(kind, props, manifest, { raw })`。
+ * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
+ * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。
  */
 export async function sampleCard(
 	kind: CardSkinKind,
 	scene?: string,
-): Promise<{ props: unknown; raw?: Dynamic }> {
+): Promise<{
+	props: unknown;
+	/**
+	 * 🪦 **不再给**(ADR-0019 决策 68:契约要的那几格跟着 node 走,渲染器不收原始动态了)。
+	 * 留着这一格只因 `apps/server/src/card-skins/preview-html.ts` 还在读 `sample.raw`、
+	 * 那一行这一波不许动;那行删掉就把它一起删。
+	 */
+	raw?: never;
+}> {
 	const picked = resolvePreviewScene(kind, scene);
 	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
-	if (kind !== "dynamic") return { props };
-	return { props, raw: DYNAMIC_SCENES[picked.id] ?? SAMPLE_TEXT_DYNAMIC };
+	return { props };
 }
