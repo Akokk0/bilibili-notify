@@ -180,9 +180,9 @@ export async function generateBoardRoast(
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	let reply: string;
 	try {
-		// `comment()` 而不是 `chat()` —— 一次性调用,不留会话历史。工具默认不挂,
-		// 只有 engines.roast 开着时才带上 web_search(见 roastSearchOverride)。
-		// 走 chat() 的话评完 A 再评 B,B 的上下文里坐着 A(详见 stats-roast-call.test.ts)。
+		// `comment()` 而不是 `chat()` —— 工具默认不挂,只有 engines.roast 开着时才
+		// 带上 web_search(见 roastSearchOverride)。chat() 会挂上整套 B 站工具与工具
+		// 铁律,模型可能中途发起 tool call 而不是回 JSON(详见 stats-roast-call.test.ts)。
 		reply = await generator.comment(
 			buildRoastPrompt(ups, opts.days),
 			undefined,

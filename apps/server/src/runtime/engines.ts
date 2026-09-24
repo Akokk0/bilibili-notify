@@ -967,11 +967,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					const ap = resolveAIProfile(a);
 					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
-						try {
-							commentary.stop();
-						} catch (e) {
-							log.warn(`[ai] commentary.stop on disable failed: ${String(e)}`);
-						}
 						commentary = null;
 						dynamic.setAi(undefined);
 						live.setCommentary(null);
@@ -1063,11 +1058,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			live.stop();
 		} catch (e) {
 			log.warn(`[engines] live.stop failed: ${String(e)}`);
-		}
-		try {
-			commentary?.stop();
-		} catch (e) {
-			log.warn(`[engines] commentary.stop failed: ${String(e)}`);
 		}
 		try {
 			imageRenderer?.stop();

@@ -250,14 +250,14 @@ describe("comment() × web_search(引擎路径)", () => {
 	});
 });
 
-describe("chat() × web_search(进程内会话路径,koishi `bili chat`)", () => {
+describe("chat() × web_search(单发路径,AI 页试推送)", () => {
 	it("opts.webSearch=true 且接了执行器 → 工具表在 B 站只读工具之上多出 web_search", async () => {
 		oai.create.mockResolvedValueOnce(msgResp("好"));
 		const gen = makeGen();
 		gen.setWebSearchSource(() => makeExecutor());
-		await gen.chat("最近有什么新闻", "s1", undefined, { webSearch: true });
+		await gen.chat("最近有什么新闻", undefined, { webSearch: true });
 		expect(toolNames(0)).toContain("web_search");
-		// 会话路径本来就挂 B 站只读工具 —— 搜索是加装,不是替换。
+		// 这条路本来就挂 B 站只读工具 —— 搜索是加装,不是替换。
 		expect(toolNames(0)).toContain("list_subscriptions");
 	});
 
@@ -265,18 +265,18 @@ describe("chat() × web_search(进程内会话路径,koishi `bili chat`)", () =>
 		oai.create.mockResolvedValueOnce(msgResp("好"));
 		const gen = makeGen();
 		gen.setWebSearchSource(() => makeExecutor());
-		await gen.chat("最近有什么新闻", "s1");
+		await gen.chat("最近有什么新闻");
 		expect(toolNames(0)).not.toContain("web_search");
 	});
 
-	it("会话路径全链路:模型调 web_search → 执行器收到 query → 第二轮出正文", async () => {
+	it("单发路径全链路:模型调 web_search → 执行器收到 query → 第二轮出正文", async () => {
 		oai.create
 			.mockResolvedValueOnce(searchCallResp("b站 新闻"))
 			.mockResolvedValueOnce(msgResp("搜到了"));
 		const gen = makeGen();
 		const ex = makeExecutor();
 		gen.setWebSearchSource(() => ex);
-		const reply = await gen.chat("最近有什么新闻", "s1", undefined, { webSearch: true });
+		const reply = await gen.chat("最近有什么新闻", undefined, { webSearch: true });
 
 		expect(reply).toBe("搜到了");
 		expect(ex.search).toHaveBeenCalledWith("b站 新闻");

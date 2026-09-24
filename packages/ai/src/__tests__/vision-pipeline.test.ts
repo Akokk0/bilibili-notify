@@ -166,20 +166,20 @@ describe("comment() — 副模型挂了", () => {
 	});
 });
 
-describe("chat() — 多轮里的看图提示", () => {
-	it("「本条消息附带 N 张图片」只发给模型,不写进会话历史", async () => {
-		const gen = makeGen({ vision: VISION, enableConversation: true });
+describe("chat() — 单发里的看图提示", () => {
+	it("「本条消息附带 N 张图片」随这一条发出去,不漏到同一台 generator 的下一次", async () => {
+		const gen = makeGen({ vision: VISION });
 		oai.create.mockResolvedValue(msgResp("看到了"));
 
-		// 第一轮带图:提示该出现在发出去的消息里。
-		await gen.chat("这是什么", "s1", ["http://img/1.jpg"]);
+		// 带图:提示该出现在发出去的消息里。
+		await gen.chat("这是什么", ["http://img/1.jpg"]);
 		const firstSent = mainCall().messages.find((m) => m.role === "user");
 		expect(String(firstSent?.content)).toContain("describe_image");
 
-		// 第二轮不带图:上一轮那句提示不该还留在历史里 —— 那会让女仆以为手上
-		// 还有图可看,而 describe_image 工具这一轮根本没下发,她只会撞一鼻子灰。
+		// 下一次不带图:上一次那句提示不该跟过来 —— 那会让女仆以为手上还有图可看,
+		// 而 describe_image 工具这一次根本没下发,她只会撞一鼻子灰。
 		oai.create.mockClear();
-		await gen.chat("那再说说别的", "s1");
+		await gen.chat("那再说说别的");
 		const sentNow = mainCall().messages.filter((m) => m.role === "user");
 		expect(sentNow.map((m) => String(m.content)).join("\n")).not.toContain("describe_image");
 	});

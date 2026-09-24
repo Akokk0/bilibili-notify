@@ -47,7 +47,6 @@ export function aiConfig(over: Partial<CommentaryGeneratorConfig> = {}): Comment
 		persona: { preset: "assistant" },
 		dynamicPrompt: "DYN",
 		liveSummaryPrompt: "LIVE",
-		enableConversation: true,
 		maxHistory: 5,
 		provider: "custom",
 		enableThinking: false,

@@ -128,7 +128,7 @@ export function createAiRoute(
 
 		let reply: string;
 		try {
-			reply = await generator.chat(message, `test-push-${targetId}`);
+			reply = await generator.chat(message);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			return c.json<AiTestPushResponse>({ ok: false, latencyMs: 0, err: msg }, 500);

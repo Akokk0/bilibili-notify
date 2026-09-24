@@ -5,15 +5,14 @@
  * 被这个 mock 波及。
  *
  * 守的是一条容易在 review 里滑过去的语义差别:`CommentaryGenerator` 有两个入口,
- * `chat()` 按 sessionId **保存多轮历史**并自动挂上工具,`comment()` 是单次调用、
- * 不存历史、不带工具,但**两者都会前置人格 system prompt**。锐评是一次性任务,
- * 必须走后者 —— 走前者会有三个后果:
+ * `chat()` 自动挂上 B 站只读工具、system 里带工具铁律,`comment()` 不带工具,但
+ * **两者都会前置人格 system prompt**。锐评是一次性、要回 JSON 的任务,必须走后者 ——
+ * 工具能力对锐评毫无用处,却多出一条「模型中途发起 tool call 而不是回 JSON」的
+ * 失败路径。
  *
- * 1. sessionId 固定 ⇒ 评完 A 再评 B,B 的上下文里坐着 A 的数据和上一次回复,
- *    而提示词明写着「只针对这一位」;
- * 2. 「重新生成」时模型看得见自己上次的答案,倾向照抄;
- * 3. 工具能力对锐评毫无用处,却多出一条「模型中途发起 tool call 而不是回 JSON」
- *    的失败路径。
+ * 早先 `chat()` 还按 sessionId 保存多轮历史时,误用它的代价更大:sessionId 固定 ⇒
+ * 评完 A 再评 B,B 的上下文里坐着 A;「重新生成」时模型看得见自己上次的答案。那套
+ * 会话记忆已经删了,这条守卫仍然成立。
  *
  * 后半段守的是 `comment()` 的**第四个参数** —— per-UP 人格覆盖。
  */
@@ -25,7 +24,7 @@ import type { RouteDeps } from "../routes/types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: 断言 mock 收到的 override 参数,不为测试再造一遍类型
 const comment = vi.fn(async (_p: string, _scene?: unknown, _img?: unknown, _ov?: any) => "{}");
-const chat = vi.fn(async (_prompt: string, _sessionId: string) => "{}");
+const chat = vi.fn(async (_prompt: string) => "{}");
 
 vi.mock("@bilibili-notify/ai", () => ({
 	// class 而不是箭头函数 —— 路由是 `new CommentaryGenerator(...)`,

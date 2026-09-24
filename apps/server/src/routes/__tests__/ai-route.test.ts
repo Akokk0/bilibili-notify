@@ -32,8 +32,6 @@ vi.mock("@bilibili-notify/ai", () => ({
 			if (H.chatError) throw H.chatError;
 			return H.reply;
 		});
-		stop = vi.fn();
-		clearSession = vi.fn();
 		constructor(opts: { config: unknown }) {
 			this.config = opts.config;
 			H.instances.push(this);

@@ -10,8 +10,8 @@
  * `callAPI` 的 toolOptions 传的是 `undefined`,**一个工具都没挂**。
  *
  * 于是模型被告知「查订阅必须调工具」,手上却没有工具,只好用自然语言演一遍「我去
- * 查一下」然后卡住。工具铁律只该发给真正挂了工具的那两条路(群聊女仆 / dashboard
- * 聊天),其余场景要明确告诉它:这一次没有工具,直接回应。
+ * 查一下」然后卡住。工具铁律只该发给真正挂了工具的那两条路(试推送的 `chat()` /
+ * dashboard 聊天),其余场景要明确告诉它:这一次没有工具,直接回应。
  */
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -113,7 +113,6 @@ function makeGen(): CommentaryGenerator {
 		persona: { preset: "custom", customBase: "你是一个超级元气的助手，充满活力！" },
 		dynamicPrompt: "DYN_SCENE_PROMPT",
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
-		enableConversation: false,
 	});
 }
 
@@ -143,8 +142,8 @@ describe("哪条路发工具铁律", () => {
 		expect(sentSystemPrompt()).not.toContain(TOOL_LAW);
 	});
 
-	it("群聊女仆要发 —— 那条路是真的挂了工具的", async () => {
-		await makeGen().chat("session-1", "帮我订阅一下这个 UP");
+	it("试推送的 chat() 要发 —— 那条路是真的挂了工具的", async () => {
+		await makeGen().chat("帮我订阅一下这个 UP");
 		expect(sentSystemPrompt()).toContain(TOOL_LAW);
 		expect(sentSystemPrompt()).not.toContain(NO_TOOL_RULE);
 	});

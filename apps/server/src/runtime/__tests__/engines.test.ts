@@ -130,7 +130,6 @@ vi.mock("@bilibili-notify/ai", () => ({
 	CommentaryGenerator: class {
 		opts: any;
 		start = vi.fn();
-		stop = vi.fn();
 		updateConfig = vi.fn();
 		/**
 		 * 构造后 engines.ts 会立刻 `attachReadOnlyTools` 把只读工具接上。替身少了
@@ -1026,7 +1025,7 @@ describe("createEngines — AI 热重载三态", () => {
 		expect(H.live[0].setCommentary).toHaveBeenCalledWith(H.ai[0]);
 	});
 
-	it("停用:commentary.stop + dynamic.setAi(undefined) + live.setCommentary(null)", () => {
+	it("停用:dynamic.setAi(undefined) + live.setCommentary(null)", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		expect(H.ai).toHaveLength(1);
@@ -1035,7 +1034,6 @@ describe("createEngines — AI 热重载三态", () => {
 			if (p) p.apiKey = "";
 		});
 		c.bus.emit("config-changed", "globals");
-		expect(H.ai[0].stop).toHaveBeenCalledTimes(1);
 		expect(H.dynamic[0].setAi).toHaveBeenCalledWith(undefined);
 		expect(H.live[0].setCommentary).toHaveBeenCalledWith(null);
 		// 不应构造新实例。

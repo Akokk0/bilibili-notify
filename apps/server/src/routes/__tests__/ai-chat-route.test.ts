@@ -92,7 +92,6 @@ vi.mock("@bilibili-notify/ai", () => ({
 		chatStateless = vi.fn();
 		chatStatelessStream = chatStatelessStream;
 		summarizeTitle = summarizeTitle;
-		stop = vi.fn();
 	},
 }));
 

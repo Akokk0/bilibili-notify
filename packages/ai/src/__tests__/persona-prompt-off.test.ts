@@ -83,7 +83,6 @@ function makeGen(): CommentaryGenerator {
 		persona: { preset: "custom", customBase: "你是一个超级元气的助手!" },
 		dynamicPrompt: "",
 		liveSummaryPrompt: "",
-		enableConversation: false,
 	});
 }
 

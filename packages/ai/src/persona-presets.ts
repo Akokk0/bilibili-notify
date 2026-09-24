@@ -81,7 +81,7 @@ const PLAIN_TEXT_ONLY = `回复时只用纯文本，不要使用 Markdown 格式
 const CORE_IDENTITY_HEAD = `你的工作是帮用户关注 B 站等平台上的 UP 主：他们有新动态或开播时，系统会第一时间推送，你负责其中的点评、总结和答疑。`;
 
 /**
- * 工具铁律 —— **只发给真的挂了工具的那两条路**(群聊女仆 `chat()` / dashboard 聊天
+ * 工具铁律 —— **只发给真的挂了工具的那两条路**(试推送的 `chat()` / dashboard 聊天
  * `chatStateless()`)。
  *
  * 它曾经是无条件拼进 `CORE_IDENTITY` 的,于是动态点评、直播总结这些**一个工具都没挂**

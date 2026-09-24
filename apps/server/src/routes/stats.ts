@@ -602,19 +602,21 @@ const RoastPushSchema = z.intersection(
 /**
  * ROAST_CALL —— 为什么两处锐评都走 `comment()` 而不是 `chat()`。
  *
- * `CommentaryGenerator` 有两个入口,都会前置人格 system prompt,但历史语义相反:
+ * `CommentaryGenerator` 这两个入口都是单发、都会前置人格 system prompt,差别在工具:
  *
- * - `chat(content, sessionId)` 按 sessionId **保存多轮历史**(TTL 2h)并自动挂上
- *   工具能力。给 `bili chat` 指令那种真·对话用的。
- * - `comment(content, scene?)` 单次调用,不存历史、不带工具。
+ * - `chat(content)` 自动挂上 B 站只读工具,system 里带工具铁律。给 AI 页的「试推送」用。
+ * - `comment(content, scene?)` 不带工具(开了联网搜索时只挂 web_search)。
  *
- * 锐评是一次性任务,必须走后者。早先误用了 `chat()` 并且写死 sessionId,三个后果:
+ * 锐评是一次性、要回 JSON 的任务,必须走后者。早先误用过 `chat()` 并且写死 sessionId
+ * (那时它还按 sessionId 保存多轮历史),三个后果:
  *
  * 1. `"stats-roast-solo"` 是所有 UP 共用的 —— 评完 A 再评 B,B 的上下文里坐着
  *    A 的数据和上一次回复,而提示词明写着「只针对这一位 UP 主」;
  * 2. 点「重新生成」时模型看得见自己上一次的答案,倾向照抄而不是重新判断;
  * 3. 工具对锐评毫无用处,却多出一条「模型中途发起 tool call 而不是回 JSON」的
  *    失败路径。
+ *
+ * 前两条随 `chat()` 的会话记忆一起删掉了,第三条至今成立。
  *
  * 人格**不受影响**:`comment()` 内部同样调 `getSystemPrompt()`,主人配的女仆人格
  * 照常生效。这里只是不传 `scene`,因为动态点评 / 下播总结的场景补充提示词与锐评

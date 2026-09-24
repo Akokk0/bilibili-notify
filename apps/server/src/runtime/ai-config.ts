@@ -40,7 +40,6 @@ export function toGeneratorConfig(ai: AISettings) {
 		},
 		dynamicPrompt: active.dynamicPrompt,
 		liveSummaryPrompt: active.liveSummaryPrompt,
-		enableConversation: false,
 		maxHistory: 6,
 		// 方言归属写在桶里 —— activeProfile 只是实例指针,同一家可以有多份实例。
 		provider: p.provider,

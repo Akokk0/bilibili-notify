@@ -6,9 +6,7 @@
  *   - comment():engine 直接调用的单次点评 —— scene 提示词叠加、per-call override
  *     (model)、多模态图片仅在 enableVision 时下挂、thinking 不支持时的降级重试
  *   - temperature 一律不发(额外参数里写的除外)
- *   - chat():多轮会话历史携带 / enableConversation 关闭即丢弃 / 满载压缩 /
- *     tool-calling 循环 + MAX_ROUNDS 上限
- *   - session 生命周期:TTL 过期计数、stop() 清空
+ *   - chat():单发(不带历史)/ tool-calling 循环 + MAX_ROUNDS 上限
  *
  * 策略:`openai` 是 `await import("openai")` 动态导入 → `vi.mock` 注入 FakeOpenAI;
  * `./tools` 整体 mock 以隔离 tool 循环(不牵连真实 executeTool / api / 订阅);
@@ -16,8 +14,7 @@
  */
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 import {
 	aiConfig,
@@ -410,41 +407,22 @@ describe("CommentaryGenerator — temperature 一律不发", () => {
 });
 
 // ---------------------------------------------------------------------------
-// chat() — 会话历史 / 压缩 / 工具循环
+// chat() — 单发 / 工具循环
 // ---------------------------------------------------------------------------
 
-describe("CommentaryGenerator.chat — 会话历史", () => {
-	it("enableConversation=true → 第二轮携带上一轮 user+assistant", async () => {
+describe("CommentaryGenerator.chat — 单发 + 工具循环", () => {
+	it("单发:同一台 generator 连问两次,第二次只带这一条 user 消息", async () => {
 		const { gen } = makeGen({ maxHistory: 5 });
-		oai.create.mockResolvedValueOnce(msgResp("答1"));
-		await gen.chat("问1", "s1");
-		oai.create.mockResolvedValueOnce(msgResp("答2"));
-		await gen.chat("问2", "s1");
+		oai.create.mockResolvedValueOnce(msgResp("答1")).mockResolvedValueOnce(msgResp("答2"));
+		await gen.chat("问1");
+		await gen.chat("问2");
 
 		const msgs2 = createParams(1).messages;
+		expect(msgs2[0]?.role).toBe("system");
+		expect(msgs2[1]).toEqual({ role: "user", content: "问2" });
 		const texts = msgs2.map((m) => m.content);
-		expect(texts).toContain("问1");
-		expect(texts).toContain("答1");
-		expect(texts).toContain("问2");
-	});
-
-	it("enableConversation=false → 调用后立即丢弃 session", async () => {
-		const { gen } = makeGen({ enableConversation: false });
-		oai.create.mockResolvedValueOnce(msgResp("答"));
-		await gen.chat("问", "s1");
-		expect(gen.sessionCount).toBe(0);
-	});
-
-	it("历史满载(maxHistory=1)→ 触发压缩,产生额外一次 create(摘要)", async () => {
-		const { gen } = makeGen({ maxHistory: 1 });
-		oai.create
-			.mockResolvedValueOnce(msgResp("答1")) // 主对话
-			.mockResolvedValueOnce(msgResp("这是摘要")); // compressHistory
-		await gen.chat("问1", "s1");
-
-		expect(oai.create).toHaveBeenCalledTimes(2);
-		const summaryUserMsg = createParams(1).messages[1]?.content as string;
-		expect(summaryUserMsg).toContain("请将以上对话提炼为简短摘要");
+		expect(texts).not.toContain("问1");
+		expect(texts).not.toContain("答1");
 	});
 
 	it("tool-calling:首响应带 tool_calls → 执行工具 → 二响应返回内容", async () => {
@@ -452,7 +430,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 		oai.create
 			.mockResolvedValueOnce(toolCallResp("fake_tool", { q: "abc" }))
 			.mockResolvedValueOnce(msgResp("最终回答"));
-		const result = await gen.chat("帮我查", "s1");
+		const result = await gen.chat("帮我查");
 
 		expect(result).toBe("最终回答");
 		expect(toolsMock.executeTool).toHaveBeenCalledTimes(1);
@@ -463,7 +441,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 	it("tool-calling 持续返回工具调用 → MAX_ROUNDS(8)后返回上限提示", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValue(toolCallResp("fake_tool", {}));
-		const result = await gen.chat("死循环工具", "s1");
+		const result = await gen.chat("死循环工具");
 		expect(result).toBe("（工具调用轮次已达上限）");
 		expect(oai.create).toHaveBeenCalledTimes(8);
 	});
@@ -488,7 +466,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 			],
 		};
 		oai.create.mockResolvedValueOnce(badArgs).mockResolvedValueOnce(msgResp("收尾"));
-		const result = await gen.chat("x", "s1");
+		const result = await gen.chat("x");
 		expect(result).toBe("收尾");
 		// 解析失败时 executeTool 不会被调用(在 JSON.parse 阶段就 catch)
 		expect(toolsMock.executeTool).not.toHaveBeenCalled();
@@ -515,7 +493,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 		};
 		oai.create.mockResolvedValueOnce(customCall).mockResolvedValueOnce(msgResp("收尾"));
 
-		const result = await gen.chat("x", "s1");
+		const result = await gen.chat("x");
 
 		expect(result).toBe("收尾");
 		expect(toolsMock.executeTool).not.toHaveBeenCalled();
@@ -533,10 +511,8 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * `chat()` 把历史存在**进程内存**的 session map 里,重启即失忆;独立端 dashboard
- * 的聊天记录却落在磁盘上,重开还在。两者搭在一起就会出现「界面上明明摆着上文,
- * 女仆却完全不记得」——`chatStateless` 就是为此存在:历史由调用方交出来,引擎
- * 一次性用完,不读也不写 session map。
+ * 多轮对话只有 `chatStateless` 这一条路:生成器自己不存历史,dashboard 的聊天记录
+ * 落在磁盘上(ConversationStore),每一轮由调用方整段交进来,引擎一次性用完。
  */
 describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 	it("整段历史原样送进模型,顺序不变", async () => {
@@ -567,14 +543,6 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 		expect(history).toEqual([{ role: "user", content: "问" }]);
 	});
 
-	it("不碰 session map —— 调用前后会话数都是 0", async () => {
-		// enableConversation=true 时 chat() 会存一条;chatStateless 无论如何都不该存。
-		const { gen } = makeGen({ enableConversation: true });
-		oai.create.mockResolvedValueOnce(msgResp("答"));
-		await gen.chatStateless([{ role: "user", content: "问" }]);
-		expect(gen.sessionCount).toBe(0);
-	});
-
 	it("历史超过 maxHistory*2 条 → 只送最近的那些", async () => {
 		const { gen } = makeGen({ maxHistory: 1 }); // 上限 2 条
 		oai.create.mockResolvedValueOnce(msgResp("答"));
@@ -591,8 +559,8 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 	});
 
 	it("截断不会触发压缩 —— 只发一次请求,不额外调模型写摘要", async () => {
-		// chat() 满载时会多打一次 create 去压缩历史存回 session;无状态路径没有
-		// 「存回」这一步,再去压缩就是白白多花一次 token。
+		// 截断就是截断:历史存在调用方那里,生成器没有「存回摘要」这一步,再调一次
+		// 模型去压缩就是白白多花一次 token。
 		const { gen } = makeGen({ maxHistory: 1 });
 		oai.create.mockResolvedValueOnce(msgResp("答"));
 		await gen.chatStateless([
@@ -1491,10 +1459,10 @@ describe("CommentaryGenerator — Markdown 约束的作用域", () => {
 		expect(sysPrompt(0)).toContain(PLAIN_TEXT_RULE);
 	});
 
-	it("koishi 侧的 chat():约束照旧 —— 那边是群消息,不渲染 Markdown", async () => {
+	it("试推送的 chat():约束照旧 —— 回复直奔 QQ / Telegram,不渲染 Markdown", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(msgResp("答"));
-		await gen.chat("问", "s1");
+		await gen.chat("问");
 		expect(sysPrompt(0)).toContain(PLAIN_TEXT_RULE);
 	});
 
@@ -1520,135 +1488,16 @@ describe("CommentaryGenerator — Markdown 约束的作用域", () => {
 });
 
 // ---------------------------------------------------------------------------
-// session 生命周期
+// P2: :384 错误脱敏
 // ---------------------------------------------------------------------------
 
-describe("CommentaryGenerator — session 生命周期", () => {
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
-	it("sessionCount 只统计未过期(TTL=2h)会话", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-		const { gen } = makeGen();
-		oai.create.mockResolvedValue(msgResp("答"));
-		await gen.chat("问", "s1");
-		expect(gen.sessionCount).toBe(1);
-
-		vi.setSystemTime(new Date("2026-01-01T02:00:01Z")); // > 2h 后
-		expect(gen.sessionCount).toBe(0);
-	});
-
-	it("stop() 清空所有会话", async () => {
-		const { gen } = makeGen();
-		oai.create.mockResolvedValue(msgResp("答"));
-		await gen.chat("问", "s1");
-		expect(gen.sessionCount).toBe(1);
-		gen.stop();
-		expect(gen.sessionCount).toBe(0);
-	});
-
-	it("clearSession 只清指定会话", async () => {
-		const { gen } = makeGen();
-		oai.create.mockResolvedValue(msgResp("答"));
-		await gen.chat("问a", "sa");
-		await gen.chat("问b", "sb");
-		expect(gen.sessionCount).toBe(2);
-		gen.clearSession("sa");
-		expect(gen.sessionCount).toBe(1);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// P2-F: 过期 session 周期清扫(无界增长根因 — 过期项此前从不 delete)
-// ---------------------------------------------------------------------------
-
-describe("CommentaryGenerator — 过期 session 清扫 (P2-F)", () => {
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
-	it("start() arm 周期 sweep;过期且不再访问的 session 被真正 delete(非仅跳过计数)", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-		let sweepFn: (() => void) | undefined;
-		let sweepMs = 0;
-		let intervalDisposed = false;
-		const ctx: ServiceContext = {
-			logger: { info() {}, warn() {}, error() {}, debug() {} },
-			setInterval: (fn, ms) => {
-				sweepFn = fn;
-				sweepMs = ms;
-				return {
-					dispose() {
-						intervalDisposed = true;
-					},
-				};
-			},
-			setTimeout: () => ({ dispose() {} }),
-			onDispose: () => {},
-		};
-		const gen = new CommentaryGenerator({
-			serviceCtx: ctx,
-			api: {} as BilibiliAPI,
-			config: makeConfig(),
-		});
-		gen.start();
-		expect(typeof sweepFn).toBe("function");
-		expect(sweepMs).toBe(10 * 60 * 1000);
-
-		oai.create.mockResolvedValue(msgResp("答"));
-		await gen.chat("问", "s-leak");
-		expect((gen as unknown as { sessions: Map<string, unknown> }).sessions.size).toBe(1);
-
-		// 越过 TTL(2h)且永不再访问 → sessionCount 已不计,但 Map 仍持有(泄漏点)
-		vi.setSystemTime(new Date("2026-01-01T02:00:01Z"));
-		expect(gen.sessionCount).toBe(0);
-		expect((gen as unknown as { sessions: Map<string, unknown> }).sessions.size).toBe(1);
-
-		// 周期 sweep 触发 → 真正从 Map 删除
-		sweepFn?.();
-		expect((gen as unknown as { sessions: Map<string, unknown> }).sessions.size).toBe(0);
-
-		gen.stop();
-		expect(intervalDisposed).toBe(true);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// P2: ②8 chat() 同会话串行化 + :384 错误脱敏
-// ---------------------------------------------------------------------------
-
-describe("CommentaryGenerator — ②8 chat 串行化 / :384 脱敏 (P2)", () => {
-	it("②8:同 sessionId 并发 chat 串行化,前一轮历史不丢", async () => {
-		const { gen } = makeGen({ maxHistory: 10 });
-		// 每次 create 在 microtask 后才 resolve,放大并发交错窗口。
-		oai.create.mockImplementation(async () => {
-			await new Promise((r) => setImmediate(r));
-			return msgResp("R");
-		});
-		// 不在两次之间 await —— 并发进入 chat()。
-		const c1 = gen.chat("M1", "S");
-		const c2 = gen.chat("M2", "S");
-		await Promise.all([c1, c2]);
-
-		// 第三轮:其 messages 必须同时含 M1 与 M2(串行化 → 无写覆盖丢历史)。
-		oai.create.mockImplementationOnce(async () => msgResp("R3"));
-		await gen.chat("M3", "S");
-		const lastMsgs = createParams(oai.create.mock.calls.length - 1).messages.map((m) => m.content);
-		expect(lastMsgs).toContain("M1");
-		expect(lastMsgs).toContain("M2");
-		expect(lastMsgs).toContain("M3");
-	});
-
+describe("CommentaryGenerator — :384 脱敏 (P2)", () => {
 	it(":384:OpenAI 错误经 chat 外抛前已抹掉 apiKey / Bearer", async () => {
 		const { gen } = makeGen();
 		oai.create.mockRejectedValueOnce(
 			new Error("401 POST https://api.test/v1 — Authorization: Bearer sk-test-LEAKED"),
 		);
-		const msg = await gen.chat("x", "s-err").then(
+		const msg = await gen.chat("x").then(
 			() => "NO_THROW",
 			(e: Error) => e.message,
 		);

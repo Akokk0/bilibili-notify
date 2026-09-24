@@ -61,7 +61,6 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGener
 		apiKey: "sk-main",
 		baseURL: "https://main.test/v1",
 		model: "deepseek-v4",
-		enableConversation: false,
 		maxHistory: 6,
 		thinkingLevel: "medium",
 		...over,
