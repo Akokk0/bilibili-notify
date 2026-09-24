@@ -23,6 +23,10 @@ export interface PushHistoryLookups {
  * 「替谁发的」分两支(ADR-0019 决策 73):B 站行记 uid;拓展行记拓展 id + 外部 id、不记 uid ——
  * 外部 id 恰好等于某个 B 站 uid 时,记进 uid 就会在订阅删掉之后被认成那位 B 站 UP。拓展行只存
  * 名字快照、不存头像快照(决策 74):它的头像是面板里的相对地址,订阅一删文件就没了。
+ *
+ * 拓展行的名字快照走决策 77 的名字链(少了事件里的作者名那一层,这里拿不到):资料里的名字 → 主人填的
+ * 别名(订阅的 `name`)。拓展没报过资料时订阅上没有资料名字,不退到别名的话这一行就没有「当时是谁」。
+ * `notes` 是自由文字,不当名字用。B 站行照旧只认资料里的名字。
  */
 export function historyRecordFromSend(
 	info: PushSendInfo,
@@ -34,6 +38,9 @@ export function historyRecordFromSend(
 	const who = isBiliSubscription(subscription)
 		? { uid: subscription.uid, uavatarSnapshot: profile?.avatar }
 		: { extensionId: subscription.extensionId, externalId: subscription.externalId };
+	const unameSnapshot = isBiliSubscription(subscription)
+		? profile?.name
+		: (filled(profile?.name) ?? filled(subscription.name));
 	return {
 		pushId: info.pushId,
 		kind: info.kind,
@@ -43,6 +50,11 @@ export function historyRecordFromSend(
 		// 推送层那条消息与历史那条消息本就是同一个形状(payload / role / 可选 result),
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,
-		unameSnapshot: profile?.name,
+		unameSnapshot,
 	};
+}
+
+/** 有字才算有:空串、只有空白的都不算。 */
+function filled(text: string | undefined): string | undefined {
+	return text !== undefined && text.trim() !== "" ? text : undefined;
 }
