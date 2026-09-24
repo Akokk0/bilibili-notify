@@ -18,6 +18,8 @@ export {
 	type LiveNotifySend,
 	pushLiveNotify,
 } from "./live-notify";
+// 直播推送的两处小规矩(断流接续等多久、直播封面轮换),B 站与拓展订阅的直播共用(决策 67)。
+export { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
 export {
 	LIVE_SUMMARY_MIN_SENDERS,
 	LiveSummaryRequester,
@@ -62,6 +64,9 @@ export {
 	formatFollowerChange,
 	formatFollowerCount,
 	LiveTemplateRenderer,
+	type LiveTextKind,
+	type LiveTextValues,
+	renderLiveText,
 } from "./template-renderer";
 export {
 	type LiveData,

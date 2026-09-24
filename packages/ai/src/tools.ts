@@ -34,7 +34,23 @@ export interface ExtensionSubItemView extends SubItemCommon {
 	/** 平台名(那个订阅源清单里的叫法;拓展卸载了拿不到时是拓展 id)。 */
 	platform: string;
 	externalId: string;
+	/**
+	 * BN 手里这条订阅此刻在不在播(拓展报的开播 / 直播状态,ADR-0019 决策 57 / 64)—— `get_live_status`
+	 * 照它答,不去问 B 站(外部 id 不是 B 站 UID)。没给 = 没接上,按「查不到」答。
+	 */
+	liveNow?: ExtensionLiveNow;
 }
+
+/**
+ * 拓展订阅此刻的在播:
+ * - `unknown`:它的拓展没在跑 —— BN 手里没有它的在播状态(拓展停了,那份状态就作废了,决策 61);
+ * - `idle`:拓展在跑,没报它在播;
+ * - `live`:在播,报了哪几格就有哪几格(开播时刻毫秒、本场累计观看)。
+ */
+export type ExtensionLiveNow =
+	| { state: "unknown" }
+	| { state: "idle" }
+	| { state: "live"; title?: string; startedAt?: number; totalViewers?: number };
 
 export type SubItemView = BiliSubItemView | ExtensionSubItemView;
 
@@ -61,6 +77,23 @@ function notBiliUidNote(
 	return ext
 		? `「${uid}」是${ext.platform}那边「${ext.uname}」的外部 id，不是 B 站 UID —— 这把工具只查得了 B 站用户`
 		: null;
+}
+
+/** 拓展订阅那一行:从 BN 手里的在播状态答(不问 B 站)。 */
+function extensionLiveLine(s: ExtensionSubItemView): string {
+	const now = s.liveNow;
+	if (!now || now.state === "unknown") {
+		return `${s.uname}：查不到（${s.platform}的拓展没在跑，BN 手里没有它的在播状态）`;
+	}
+	if (now.state === "idle") return `${s.uname}：未开播`;
+	const details = [
+		now.startedAt === undefined
+			? undefined
+			: `开播于 ${new Date(now.startedAt).toLocaleString("zh-CN", { hour12: false })}`,
+		now.totalViewers === undefined ? undefined : `累计观看 ${now.totalViewers}`,
+	].filter((part): part is string => part !== undefined);
+	const title = now.title ? `「${clip(now.title, 80)}」` : "";
+	return `${s.uname}：直播中${title}${details.length > 0 ? `，${details.join("，")}` : ""}`;
 }
 
 export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
@@ -356,9 +389,7 @@ export async function executeTool(
 				rooms = res.data ?? {};
 			}
 			const lines = liveItems.map((s) => {
-				if (isExtensionItem(s)) {
-					return `${s.uname}：查不到（${s.platform}的订阅，这把工具只查得了 B 站直播间）`;
-				}
+				if (isExtensionItem(s)) return extensionLiveLine(s);
 				const room = rooms[s.uid];
 				// B 站 live_status 仅 0/1/2;此前数组多一个虚构 `3=下播`,
 				// 任何越界(含 undefined)统一落 "未知"。

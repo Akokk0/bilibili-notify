@@ -1,4 +1,4 @@
-import type { SubItemView, Subscriptions } from "@bilibili-notify/ai";
+import type { ExtensionLiveNow, SubItemView, Subscriptions } from "@bilibili-notify/ai";
 import { isBiliSubscription, type Subscription } from "@bilibili-notify/internal";
 
 /**
@@ -22,6 +22,19 @@ export interface PlatformLabelSource {
 }
 
 /**
+ * 拓展订阅此刻在不在播从哪儿取(ADR-0019 决策 64 的 09-24 🔗):BN 手里的在播表(拓展报的开播 / 直播状态)
+ * 与「这个拓展在不在跑」—— 拓展停了,它名下的在播状态就作废了(决策 61),这时答「不知道」而不是「未开播」。
+ */
+export interface ExtensionLiveSource {
+	/** 在播表里这条订阅的那一行(在播才有)。 */
+	row(
+		subscriptionId: string,
+	): { title?: string; startedAt?: number; totalViewers?: number } | undefined;
+	/** 这个拓展此刻在跑吗。 */
+	running(extensionId: string): boolean;
+}
+
+/**
  * 把订阅**查询**能力接给女仆 —— 独立端唯一的 `setSubscriptionsSource` 调用处。
  *
  * 「只读」如今是**结构性**的:`CommentaryGenerator` 的工具表里根本没有会改订阅
@@ -38,13 +51,36 @@ export function attachReadOnlyTools(
 		subscriptionStore: SubsSource;
 		subRuntimeStore: ProfileSource;
 		platforms?: PlatformLabelSource;
+		extensionLive?: ExtensionLiveSource;
 	},
 ): void {
 	// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
 	// 运行期随时增删的。
 	engine.setSubscriptionsSource(() =>
-		buildAiSubsView(stores.subscriptionStore, stores.subRuntimeStore, stores.platforms),
+		buildAiSubsView(
+			stores.subscriptionStore,
+			stores.subRuntimeStore,
+			stores.platforms,
+			stores.extensionLive,
+		),
 	);
+}
+
+/** 拓展订阅此刻的在播(见 {@link ExtensionLiveSource})。 */
+function extensionLiveNow(
+	live: ExtensionLiveSource,
+	subscriptionId: string,
+	extensionId: string,
+): ExtensionLiveNow {
+	if (!live.running(extensionId)) return { state: "unknown" };
+	const row = live.row(subscriptionId);
+	if (!row) return { state: "idle" };
+	return {
+		state: "live",
+		title: row.title,
+		startedAt: row.startedAt,
+		totalViewers: row.totalViewers,
+	};
 }
 
 /**
@@ -57,12 +93,14 @@ export function attachReadOnlyTools(
  * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subs` 的 join 同源。
  *
  * 按订阅自己的 `id` 为键,两支都收(ADR-0019 决策 64):B 站条目带 `uid`,那几格的含义不变;
- * 拓展条目没有 uid,带平台名与外部 id —— 外部 id 不是 B 站 UID,工具那头据此不拿它去问 B 站。
+ * 拓展条目没有 uid,带平台名与外部 id —— 外部 id 不是 B 站 UID,工具那头据此不拿它去问 B 站;接上了在播来源
+ * 时再带上它此刻在不在播(`get_live_status` 照它答)。
  */
 export function buildAiSubsView(
 	subscriptionStore: SubsSource,
 	subRuntimeStore: ProfileSource,
 	platforms?: PlatformLabelSource,
+	extensionLive?: ExtensionLiveSource,
 ): Subscriptions {
 	const view: Subscriptions = {};
 	for (const sub of subscriptionStore.list()) {
@@ -80,6 +118,9 @@ export function buildAiSubsView(
 					externalId: sub.externalId,
 					uname: sub.name?.trim() || cached || sub.externalId,
 					...common,
+					...(extensionLive
+						? { liveNow: extensionLiveNow(extensionLive, sub.id, sub.extensionId) }
+						: {}),
 				};
 		view[sub.id] = item;
 	}

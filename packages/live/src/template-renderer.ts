@@ -79,6 +79,59 @@ export function buildRoomLink(info: { short_id: number; room_id: number }): stri
 	return `https://live.bilibili.com/${info.short_id === 0 ? info.room_id : info.short_id}`;
 }
 
+/** 三句直播文案:开播 / 正在直播(周期推送、重启补推)/ 下播。键与 `DEFAULT_LIVE_TEMPLATES` 同名。 */
+export type LiveTextKind = "liveStart" | "liveOngoing" | "liveEnd";
+
+/**
+ * 三句直播文案的变量,**中立的值**(ADR-0019 决策 65 / 67)—— B 站的直播间与拓展订阅的直播各自把自己的
+ * 东西翻成它。数字由渲染排成「1.2万」(粉丝数变化带正负号),平台给的成品文字原样;没有的格子空着
+ * (决策 56:拓展没报过资料,粉丝那一格就空着)。
+ */
+export interface LiveTextValues {
+	/** `{name}`。 */
+	name: string;
+	/** `{time}`:开播到此刻(下播:到下播那一刻)播了多久,已经排好的一句。 */
+	time: string;
+	/** `{follower}`(开播):当前粉丝数。 */
+	follower?: number | string;
+	/** `{watched}`(正在直播):本场累计观看。 */
+	watched?: number | string;
+	/** `{follower_change}`(下播):本场粉丝数变化。 */
+	followerChange?: number | string;
+}
+
+/** 数字按 `format` 排,文字原样,没有就空串。 */
+function textOf(v: number | string | undefined, format: (n: number) => string): string {
+	return typeof v === "number" ? format(v) : (v ?? "");
+}
+
+/**
+ * **三句直播文案的中立渲染**:模板(没给 = 默认那句)套上中立的值。
+ *
+ * 每一种只认自己那几个变量 —— 开播:`{name}` `{time}` `{follower}`;正在直播:`{name}` `{time}`
+ * `{watched}`;下播:`{name}` `{time}` `{follower_change}`。别的原样留在文案里(与从前 B 站那三句一样,
+ * 主人在开播模板里写了 `{watched}`,看到的就是字面的 `{watched}`)。
+ */
+export function renderLiveText(
+	kind: LiveTextKind,
+	template: string | undefined,
+	values: LiveTextValues,
+): string {
+	const vars: Record<string, string> = { name: values.name, time: values.time };
+	switch (kind) {
+		case "liveStart":
+			vars.follower = textOf(values.follower, formatFollowerCount);
+			break;
+		case "liveOngoing":
+			vars.watched = textOf(values.watched, formatFollowerCount);
+			break;
+		case "liveEnd":
+			vars.follower_change = textOf(values.followerChange, formatFollowerChange);
+			break;
+	}
+	return applyTemplate(template ?? DEFAULT_LIVE_TEMPLATES[kind], vars);
+}
+
 /**
  * Resolve the effective template string for a sub at a given occurrence,
  * preferring per-sub override → global config → built-in default.
@@ -110,7 +163,7 @@ export class LiveTemplateRenderer {
 			"customLiveStart",
 			DEFAULT_LIVE_TEMPLATES.liveStart,
 		);
-		return applyTemplate(tmpl, {
+		return renderLiveText("liveStart", tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower: params.followerNum,
@@ -131,7 +184,7 @@ export class LiveTemplateRenderer {
 			"customLive",
 			DEFAULT_LIVE_TEMPLATES.liveOngoing,
 		);
-		return applyTemplate(tmpl, {
+		return renderLiveText("liveOngoing", tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			watched: params.watched,
@@ -152,10 +205,10 @@ export class LiveTemplateRenderer {
 			"customLiveEnd",
 			DEFAULT_LIVE_TEMPLATES.liveEnd,
 		);
-		return applyTemplate(tmpl, {
+		return renderLiveText("liveEnd", tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
-			follower_change: formatFollowerChange(params.followerChange),
+			followerChange: params.followerChange,
 		});
 	}
 

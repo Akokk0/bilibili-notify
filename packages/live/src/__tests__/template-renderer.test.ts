@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { applyTemplate, LiveTemplateRenderer } from "../template-renderer";
+import { applyTemplate, LiveTemplateRenderer, renderLiveText } from "../template-renderer";
 
 /**
  * 回归守护 — P2:applyTemplate 单遍替换 + 裸键双语法。
@@ -98,5 +98,130 @@ describe("LiveTemplateRenderer.renderLiveSummary — topSenders <5 守卫", () =
 		});
 		expect(out).toContain("1:u1=9");
 		expect(out).toContain("5:u5=5");
+	});
+});
+
+/**
+ * 刻画 —— B 站那三句直播文案今天怎么出(抽出中立的渲染之前先钉住):模板按 per-UP → 全局 → 默认取,
+ * 每一种只认自己那几个变量(开播不认 `{watched}`、正在直播不认 `{follower}`……),粉丝数变化带正负号。
+ */
+describe("LiveTemplateRenderer — B 站三句直播文案(刻画)", () => {
+	const r = new LiveTemplateRenderer();
+	const master = {
+		username: "晨风",
+		userface: "",
+		roomId: 1,
+		liveOpenFollowerNum: 0,
+		liveEndFollowerNum: 0,
+		liveFollowerChange: 0,
+		medalName: "",
+	};
+	const sub = (custom: Record<string, string | undefined> = {}) =>
+		({ customLiveMsg: { enable: true, ...custom } }) as unknown as Parameters<
+			LiveTemplateRenderer["renderLiveStart"]
+		>[0]["sub"];
+
+	it("没有任何覆盖 → 默认模板", () => {
+		expect(r.renderLiveStart({ sub: sub(), master, diffTime: "5秒", followerNum: "1.2万" })).toBe(
+			"晨风 开播啦，当前粉丝数：1.2万",
+		);
+		expect(r.renderLiveOngoing({ sub: sub(), master, diffTime: "2小时", watched: "3.4万" })).toBe(
+			"晨风 正在直播，已播 2小时，累计观看：3.4万",
+		);
+		expect(r.renderLiveEnd({ sub: sub(), master, diffTime: "3小时", followerChange: 12_345 })).toBe(
+			"晨风 下播啦，本次直播了 3小时，粉丝变化 +1.2万",
+		);
+	});
+
+	it("per-UP 覆盖优先于全局;每一种只认自己那几个变量", () => {
+		const globalCustom = { enable: true, customLiveStart: "全局 {name}" };
+		expect(
+			r.renderLiveStart({
+				sub: sub({ customLiveStart: "{name}|{time}|{follower}|{watched}|{follower_change}" }),
+				globalCustom,
+				master,
+				diffTime: "5秒",
+				followerNum: "100",
+			}),
+		).toBe("晨风|5秒|100|{watched}|{follower_change}");
+		expect(
+			r.renderLiveStart({ sub: sub(), globalCustom, master, diffTime: "5秒", followerNum: "1" }),
+		).toBe("全局 晨风");
+		expect(
+			r.renderLiveOngoing({
+				sub: sub({ customLive: "{name}|{time}|{watched}|{follower}" }),
+				master,
+				diffTime: "1分",
+				watched: "暂未获取到",
+			}),
+		).toBe("晨风|1分|暂未获取到|{follower}");
+		expect(
+			r.renderLiveEnd({
+				sub: sub({ customLiveEnd: "{name}|{time}|{follower_change}|{follower}" }),
+				master,
+				diffTime: "1分",
+				followerChange: -35,
+			}),
+		).toBe("晨风|1分|-35|{follower}");
+	});
+});
+
+/**
+ * 三句直播文案的**中立渲染**(ADR-0019 决策 65 / 67):吃中立的值,B 站与拓展订阅的直播共用。数字排成
+ * 「1.2万」、粉丝数变化带正负号,平台给的成品文字原样;没有的格子空着(决策 56:拓展没报过资料,粉丝那格
+ * 就空着)。模板没给就是默认那句。
+ */
+describe("renderLiveText — 中立的三句直播文案", () => {
+	it("数字排成卡片同款的写法;没给模板就用默认那句", () => {
+		expect(
+			renderLiveText("liveStart", undefined, { name: "甲", time: "5秒", follower: 12_345 }),
+		).toBe("甲 开播啦，当前粉丝数：1.2万");
+		expect(
+			renderLiveText("liveOngoing", undefined, { name: "甲", time: "2小时", watched: 23_456 }),
+		).toBe("甲 正在直播，已播 2小时，累计观看：2.3万");
+		expect(
+			renderLiveText("liveEnd", undefined, { name: "甲", time: "3小时", followerChange: 128 }),
+		).toBe("甲 下播啦，本次直播了 3小时，粉丝变化 +128");
+		expect(
+			renderLiveText("liveEnd", undefined, { name: "甲", time: "3小时", followerChange: -12_000 }),
+		).toBe("甲 下播啦，本次直播了 3小时，粉丝变化 -1.2万");
+	});
+
+	it("没有的格子空着,不写 undefined / 0", () => {
+		expect(renderLiveText("liveStart", undefined, { name: "甲", time: "5秒" })).toBe(
+			"甲 开播啦，当前粉丝数：",
+		);
+		expect(renderLiveText("liveOngoing", "{watched}|{time}", { name: "甲", time: "" })).toBe("|");
+		expect(renderLiveText("liveEnd", "[{follower_change}]", { name: "甲", time: "1分" })).toBe(
+			"[]",
+		);
+	});
+
+	it("文字原样;每一种只认自己那几个变量", () => {
+		expect(
+			renderLiveText("liveStart", "{name}|{follower}|{watched}|{follower_change}", {
+				name: "甲",
+				time: "1分",
+				follower: "12万",
+				watched: 1,
+				followerChange: 1,
+			}),
+		).toBe("甲|12万|{watched}|{follower_change}");
+		expect(
+			renderLiveText("liveOngoing", "{watched}|{follower}", {
+				name: "甲",
+				time: "1分",
+				watched: "暂未获取到",
+				follower: 1,
+			}),
+		).toBe("暂未获取到|{follower}");
+		expect(
+			renderLiveText("liveEnd", "{follower_change}|{follower}", {
+				name: "甲",
+				time: "1分",
+				followerChange: "+5",
+				follower: 1,
+			}),
+		).toBe("+5|{follower}");
 	});
 });

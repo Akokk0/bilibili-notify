@@ -73,15 +73,18 @@ import {
 import {
 	LiveEngine,
 	type LiveEngineConfig,
+	type LiveNotifySend,
 	type PushLike as LivePushLike,
 	type LiveSubscriptionOp,
 	type SubscriptionsView as LiveSubsView,
 	type SubItemView as LiveSubView,
+	rotateLiveCover,
 } from "@bilibili-notify/live";
 import { BilibiliPush, type BroadcastOptions } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { attachReadOnlyTools } from "../ai/read-only-tools.js";
+import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
+import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
@@ -89,6 +92,8 @@ import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
+import type { ExtensionLiveTable } from "./extension-live.js";
+import { bindExtensionLivePush } from "./extension-live-push.js";
 import { bindExtensionPosts } from "./extension-posts.js";
 import type { ExtensionSourceLookups } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
@@ -230,6 +235,16 @@ export interface CreateEnginesOptions {
 	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
 	 */
 	extensionSources?: ExtensionSourceLookups;
+	/**
+	 * 拓展订阅的在播表(`runtime.extensionLive`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
+	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
+	 */
+	extensionLive?: Pick<ExtensionLiveTable, "get">;
+	/**
+	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
+	 * 记进去。不给就只记日志。
+	 */
+	extensionReportProblem?: (problem: SubscriptionReportProblem) => void;
 	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
@@ -381,6 +396,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
 	const buildAiConfig = () => toGeneratorConfig(globals().defaults.ai);
 
+	const extensionLiveSource = (): ExtensionLiveSource | undefined => {
+		const table = opts.extensionLive;
+		const sources = opts.extensionSources;
+		if (!table || !sources) return undefined;
+		return { row: (id) => table.get(id), running: (id) => sources.running(id) };
+	};
+
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
 		const p = resolveAIProfile(globals().defaults.ai);
@@ -398,6 +420,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subscriptionStore: opts.subscriptionStore,
 				subRuntimeStore: opts.subRuntimeStore,
 				platforms: { label: (id) => opts.extensionPlatformLabel?.(id) },
+				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
+				extensionLive: extensionLiveSource(),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
@@ -643,6 +667,36 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					// 共用一个的话,一边刚报过,另一边这次出图失败的告警就被吞了。
 					emitEngineError: (message) => opts.bus.emit("engine-error", "extension-post", message),
 				}),
+			}),
+		);
+	}
+
+	// 拓展订阅的直播(ADR-0019 决策 57 / 58 / 61 / 67):开播 / 下播卡由事件触发,周期「正在直播」、重启补推、
+	// 断流接续由这里的小计时器管;推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、
+	// 特性键映射)。最新状态从在播表取,出卡的渲染器现取(热换、关了出图时不出卡)。
+	const extensionLive = opts.extensionLive;
+	if (extensionSources && extensionLive) {
+		handles.push(
+			bindExtensionLivePush({
+				bus: opts.bus,
+				logger: liveCtx.logger,
+				table: extensionLive,
+				subscription: (id) => opts.subscriptionStore.findById(id),
+				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
+				settings: (sub) => liveWorkSettings(sub, globals()),
+				// 按种类 ?? 基准,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
+				cardStyle: (sub, settings) =>
+					rotateLiveCover(
+						settings.customCardStyleByKind?.live ?? settings.customCardStyle,
+						globals().defaults.cardStyle.liveCoverImages,
+						pickExistingCardBg,
+						`${sub.extensionId}:${sub.externalId}:live-cover`,
+					),
+				sources: extensionSources,
+				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
+				renderer: () => (globals().defaults.cardStyle.enabled ? imageRenderer : null),
+				reportProblem: (problem) => opts.extensionReportProblem?.(problem),
+				timers: liveCtx,
 			}),
 		);
 	}
@@ -1203,6 +1257,38 @@ export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
 	};
 }
 
+/**
+ * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):装配交来的消息组 → 推送层的载荷,特性键与推送
+ * 选项照 B 站的映射({@link liveTypeToFeature} / {@link liveBroadcastOpts}:只有开播 @全体、周期「正在直播」
+ * 在历史里单列一类)。拓展订阅的直播用它(ADR-0019 决策 67);B 站的直播间经 {@link makeLivePushLike} 走同一
+ * 套映射,段也照同一个口子翻(`standaloneContentBuilder` → `segmentToPayload`)。
+ *
+ * 一组是一条消息:一组交一条载荷,几组交一串(推送层的序列语义,同 B 站的「分条」)。
+ */
+export function boundLivePush(send: SubscriptionPush): LiveNotifySend {
+	return async (groups, type, o) => {
+		const payloads = groups.map((segs) =>
+			collapseSegments(
+				segmentToPayload(
+					standaloneContentBuilder.message(
+						segs.map((seg) =>
+							seg.type === "image"
+								? standaloneContentBuilder.image(seg.buffer, seg.mime)
+								: standaloneContentBuilder.text(seg.text),
+						),
+					),
+				),
+			),
+		);
+		const [only] = payloads;
+		await send(
+			liveTypeToFeature(type),
+			payloads.length === 1 && only ? only : payloads,
+			liveBroadcastOpts(type, o),
+		);
+	};
+}
+
 /** 动态引擎那侧的 PushLike:uid → 订阅 id,再走 {@link boundWorkPush}。 */
 export function makeDynamicPushLike(
 	push: PushForEngines,
@@ -1587,61 +1673,63 @@ function buildLiveSubsView(
 	return view;
 }
 
-export function buildLiveSubViewSingle(
-	sub: BiliSubscription,
-	subRuntimeStore: SubRuntimeStore,
+/**
+ * 一条订阅折好的**直播设置** —— 开播 / 正在直播 / 下播三张卡共用的那几格(ADR-0019 决策 65 / 67):
+ * 两个特性开关、卡片样式(基准 + 按种类)、皮肤、消息版式、三句文案模板,以及推送频率 / 重启补推 /
+ * 断流接续这几格按 UP 折好的值。
+ */
+export type LiveWorkSettings = Pick<
+	LiveSubView,
+	| "live"
+	| "liveEnd"
+	| "customCardStyle"
+	| "customCardStyleByKind"
+	| "cardSkin"
+	| "messageLayout"
+	| "customLiveMsg"
+	| "pushTime"
+	| "restartPush"
+	| "liveEndGrace"
+	| "liveEndGraceMinutes"
+>;
+
+/**
+ * 一条订阅(B 站或拓展)→ 直播设置(ADR-0019 决策 65 / 67)。B 站直播引擎的视图(`buildLiveSubViewSingle`)
+ * 与拓展订阅的直播都从这里拿,别抄第二份 —— 与 {@link dynamicWorkSettings} 同一个道理:两份的话主人给某个
+ * 抖音号换的文案 / 版式 / 推送频率,迟早有一格只有 B 站那头认。
+ *
+ * `cardKinds`:为哪几类卡折按种类的样式。B 站的直播引擎还要出 SC / 上舰卡(`live` / `sc` / `guard`);
+ * 拓展订阅只出直播卡(缺省 `live`)。`eff` 给了就不再折一遍。
+ */
+export function liveWorkSettings(
+	sub: Subscription,
 	globals: GlobalConfig,
-): LiveSubView {
-	const eff = resolve(sub, globals.defaults);
-	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
-	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
-	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate)。routing 由推送层
-	// BilibiliPush 在 broadcastToFeature 时按 routing 空 = 无 sink 自然兜底,这里不再 AND routing。
-	// 即:features.X=true / routing.X=[] 的 UP 也开 WS / build payload,加 routing 后下一次事件
-	// 立即生效。
-	const feat = (k: keyof typeof eff.routing) => eff.features[k];
+	eff: EffectiveSubscription = resolve(sub, globals.defaults),
+	cardKinds: readonly CardKind[] = ["live"],
+): LiveWorkSettings {
 	return {
-		uid: sub.uid,
-		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
-		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
-		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
-		dynamic: feat("dynamic"),
-		live: feat("live"),
-		liveEnd: feat("liveEnd"),
-		liveGuardBuy: feat("liveGuardBuy"),
-		superchat: feat("superchat"),
-		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
-		extras: eff.features.extras,
-		target: eff.routing,
-		// customCardStyle / aiOverride 只在真有 per-UP override 时生成(对齐 dynamic
-		// 端 buildDynamicSubsView 同名字段)。无 override → enable:false / undefined →
-		// LiveEngine 推送时(room-helpers `cardStyle?.enable ? cardStyle : undefined`
-		// / live-summary-requester 透传 aiOverride)自动传 undefined → ImageRenderer
-		// / CommentaryGenerator 走 this.config 兜底,跟全局 hot-reload 同步。
+		// 特性布尔 = features.X(source-side gate)。routing 由推送层 BilibiliPush 在 broadcastToFeature
+		// 时按 routing 空 = 无 sink 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
+		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
+		live: eff.features.live,
+		liveEnd: eff.features.liveEnd,
+		// customCardStyle 只在真有 per-UP override 时生成(对齐 dynamic 端 buildDynamicSubsView 同名
+		// 字段)。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
+		// undefined`)自动传 undefined → ImageRenderer 走 this.config 兜底,跟全局 hot-reload 同步。
 		customCardStyle: sub.overrides.cardStyle
 			? cardStyleToColorOptions(sub.overrides.cardStyle)
 			: { enable: false },
-		// per-kind 样式:仅为真有 per-kind 覆盖的 kind(live / sc / guard)emit 完整解析样式;
-		// 无覆盖的 kind 省略 → room-session 的 resolvedCardStyle 回退基准 customCardStyle。
-		// dynamic 卡不经 LiveEngine(走 DynamicEngine),故这里不含 dynamic。
-		customCardStyleByKind: buildCardStyleByKind(globals.defaults, sub.overrides, [
-			"live",
-			"sc",
-			"guard",
-		]),
-		// Per-UP 阈值 / 调度 / AI;adapter 在 add 路径上灌入,room-session 在 SC /
-		// guard / restartPush / pushTime / liveSummary 调用点先取 sub 值,缺失时回退全局。
-		// 已活跃 listener 通过 LiveScopedChange 同步增量更新(`subscriptionOpsToLive`
-		// 在 update 分支把这些字段一并带上,LiveEngine.applyOps Object.assign 后即刻生效;
-		// pushTime 变化时 engine 额外 rearm 一次 setInterval)。
-		minScPrice: eff.filters.minScPrice,
-		minGuardLevel: eff.filters.minGuardLevel,
+		// per-kind 样式:仅为真有 per-kind 覆盖的 kind emit 完整解析样式;无覆盖的 kind 省略 → 推送点
+		// 回退基准 customCardStyle。
+		customCardStyleByKind: buildCardStyleByKind(globals.defaults, sub.overrides, cardKinds),
+		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
+		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
+		// Object.assign 后即刻生效;pushTime 变化时 engine 额外 rearm 一次 setInterval)。
 		pushTime: eff.schedule.pushTime,
 		restartPush: eff.schedule.restartPush,
-		// 断流接续(per-UP ?? 全局,resolve 已折算):该 UP 下播是否先挂起等待重开。
+		// 断流接续:该 UP 下播是否先挂起等待重开。
 		liveEndGrace: eff.schedule.liveEndGrace,
 		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
-		aiOverride: resolveAiOverride(sub, globals.defaults),
 		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
 		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
 		customLiveMsg: {
@@ -1650,6 +1738,43 @@ export function buildLiveSubViewSingle(
 			customLive: eff.templates.liveOngoing,
 			customLiveEnd: eff.templates.liveEnd,
 		},
+		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
+		cardSkin: eff.cardSkin,
+		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
+		messageLayout: eff.messageLayout.live,
+	};
+}
+
+export function buildLiveSubViewSingle(
+	sub: BiliSubscription,
+	subRuntimeStore: SubRuntimeStore,
+	globals: GlobalConfig,
+): LiveSubView {
+	const eff = resolve(sub, globals.defaults);
+	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
+	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
+	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate),同 liveWorkSettings。
+	const feat = (k: keyof typeof eff.routing) => eff.features[k];
+	return {
+		uid: sub.uid,
+		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
+		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
+		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
+		dynamic: feat("dynamic"),
+		liveGuardBuy: feat("liveGuardBuy"),
+		superchat: feat("superchat"),
+		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
+		extras: eff.features.extras,
+		target: eff.routing,
+		// 开播 / 正在直播 / 下播三张卡共用的那几格(与拓展订阅的直播同一份)。dynamic 卡不经 LiveEngine
+		// (走 DynamicEngine),所以按种类的样式只折 live / sc / guard。
+		...liveWorkSettings(sub, globals, eff, ["live", "sc", "guard"]),
+		// Per-UP 阈值 / AI;adapter 在 add 路径上灌入,room-session 在 SC / guard / liveSummary 调用点
+		// 先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →
+		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
+		minScPrice: eff.filters.minScPrice,
+		minGuardLevel: eff.filters.minGuardLevel,
+		aiOverride: resolveAiOverride(sub, globals.defaults),
 		customGuardBuy: {
 			enable: eff.templates.guardBuy.enable,
 			guardBuyMsg: eff.templates.guardBuy.captain.template,
@@ -1664,11 +1789,6 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
 		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
 		wordcloudStopWords: eff.templates.wordcloudStopWords,
-		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。room-session
-		// 渲染 live/sc/guard/词云时原样透传给 generate*。
-		cardSkin: eff.cardSkin,
-		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
-		messageLayout: eff.messageLayout.live,
 		customSpecialDanmakuUsers:
 			danmakuUsers.length > 0
 				? {

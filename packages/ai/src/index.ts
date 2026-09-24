@@ -18,6 +18,7 @@ export {
 export * from "./persona-presets";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
+	type ExtensionLiveNow,
 	type ExtraTool,
 	type ExtraToolResult,
 	executeTool,

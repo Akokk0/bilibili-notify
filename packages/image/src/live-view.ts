@@ -23,14 +23,20 @@ export const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
  * 是「0秒」。
  */
 export function durationSince(start: DateTime): string {
-	const diff = DateTime.now().diff(start, [
-		"years",
-		"months",
-		"days",
-		"hours",
-		"minutes",
-		"seconds",
-	]);
+	return durationBetween(start, DateTime.now());
+}
+
+/**
+ * 从 `startedAt` 到 `at`(都是毫秒)过了多久 —— 与 {@link durationSince} 同一种写法,两个时刻都由调用方给。
+ * 拓展订阅的直播文案 `{time}` 用它(ADR-0019 决策 67):下播卡的时长要定格在下播那一刻,断流接续等的那
+ * 几分钟不算进去。
+ */
+export function liveDuration(startedAt: number, at: number): string {
+	return durationBetween(DateTime.fromMillis(startedAt), DateTime.fromMillis(at));
+}
+
+function durationBetween(start: DateTime, end: DateTime): string {
+	const diff = end.diff(start, ["years", "months", "days", "hours", "minutes", "seconds"]);
 	const { years, months, days, hours, minutes, seconds } = diff.toObject();
 	const parts: string[] = [];
 	if (years) parts.push(`${Math.abs(years)}年`);

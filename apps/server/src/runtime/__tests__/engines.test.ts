@@ -96,27 +96,35 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 	};
 });
 
-vi.mock("@bilibili-notify/live", async (importOriginal) => ({
-	// 拓展作品每条订阅一道串行闸,纯函数,走真的。
-	createSerialGate: (await importOriginal<typeof import("@bilibili-notify/live")>())
-		.createSerialGate,
-	LiveEngine: class {
-		opts: any;
-		start = vi.fn();
-		stop = vi.fn();
-		updateConfig = vi.fn();
-		setCommentary = vi.fn();
-		setImageRenderer = vi.fn();
-		applyOps = vi.fn();
-		rebuildFromSubs = vi.fn();
-		teardown = vi.fn();
-		listLiveSnapshots = vi.fn(() => []);
-		constructor(opts: any) {
-			this.opts = opts;
-			H.live.push(this);
-		}
-	},
-}));
+vi.mock("@bilibili-notify/live", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/live")>();
+	return {
+		// 拓展作品每条订阅一道串行闸,纯函数,走真的。
+		createSerialGate: actual.createSerialGate,
+		// 拓展直播(ADR-0019 决策 67)用的直播装配、文案渲染与两处小规矩也走真的 —— 没有副作用。
+		pushLiveNotify: actual.pushLiveNotify,
+		renderLiveText: actual.renderLiveText,
+		liveEndGraceMinutes: actual.liveEndGraceMinutes,
+		rotateLiveCover: actual.rotateLiveCover,
+		LivePushType: actual.LivePushType,
+		LiveEngine: class {
+			opts: any;
+			start = vi.fn();
+			stop = vi.fn();
+			updateConfig = vi.fn();
+			setCommentary = vi.fn();
+			setImageRenderer = vi.fn();
+			applyOps = vi.fn();
+			rebuildFromSubs = vi.fn();
+			teardown = vi.fn();
+			listLiveSnapshots = vi.fn(() => []);
+			constructor(opts: any) {
+				this.opts = opts;
+				H.live.push(this);
+			}
+		},
+	};
+});
 
 vi.mock("@bilibili-notify/ai", () => ({
 	CommentaryGenerator: class {
@@ -148,6 +156,8 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 		buildPlainText: actual.buildPlainText,
 		formatCardTime: actual.formatCardTime,
 		numberToStr: actual.numberToStr,
+		// 拓展直播文案的 `{time}`。
+		liveDuration: actual.liveDuration,
 		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 		ImageRenderer: class {
@@ -172,6 +182,7 @@ const {
 	buildDynamicSubViewSingle,
 	resolveDynamicCardStyle,
 	buildLiveSubViewSingle,
+	boundLivePush,
 } = await import("../engines.js");
 
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
@@ -198,6 +209,54 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 		for (const t of [4, 5, 6, 7, 8, 9, 10, 999]) {
 			expect(liveTypeAllowsAtAll(t)).toBe(false);
 		}
+	});
+});
+
+/**
+ * 拓展订阅的直播那一跳(ADR-0019 决策 67):装配交来的消息组 → 推送层,**特性键与推送选项照 B 站的映射**
+ * (`liveTypeToFeature` / `liveBroadcastOpts`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
+ * 「正在直播」都 @全体、历史把周期推送记成开播。
+ */
+describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给推送层", () => {
+	const card = { type: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
+
+	it("开播:特性 live、允许 @全体、历史记开播;一组 = 一条载荷,卡 + 文字合成一条", async () => {
+		const send = vi.fn(async () => {});
+		await boundLivePush(send)([[card, { type: "text", text: "开播啦" }]], 3, {});
+		expect(send).toHaveBeenCalledWith(
+			"live",
+			{
+				kind: "composite",
+				segments: [
+					{ type: "image", buffer: card.buffer, mime: "image/jpeg" },
+					{ type: "text", text: "开播啦" },
+				],
+			},
+			expect.objectContaining({ allowAtAll: true, kind: "live", extra: undefined }),
+		);
+	});
+
+	it("正在直播:特性 live、不 @全体、历史记正在直播", async () => {
+		const send = vi.fn(async () => {});
+		await boundLivePush(send)([[{ type: "text", text: "还在播" }]], 0, {});
+		expect(send).toHaveBeenCalledWith(
+			"live",
+			{ kind: "text", text: "还在播" },
+			expect.objectContaining({ allowAtAll: false, kind: "live-ongoing" }),
+		);
+	});
+
+	it("下播:特性 liveEnd、不 @全体;几组 = 一串载荷,pushId 原样带上", async () => {
+		const send = vi.fn(async () => {});
+		await boundLivePush(send)([[card], [{ type: "text", text: "下播啦" }]], 9, { pushId: "p1" });
+		expect(send).toHaveBeenCalledWith(
+			"liveEnd",
+			[
+				{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
+				{ kind: "text", text: "下播啦" },
+			],
+			expect.objectContaining({ allowAtAll: false, kind: "live-end", pushId: "p1" }),
+		);
 	});
 });
 
@@ -275,6 +334,9 @@ function setup(opts?: {
 	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
 	/** 拓展订阅推送现取的那几样(接线层给的);不给 = 不接拓展订阅的推送。 */
 	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
+	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
+	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
+	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
@@ -311,6 +373,10 @@ function setup(opts?: {
 			? { extensionPlatformLabel: opts.extensionPlatformLabel }
 			: {}),
 		...(opts?.extensionSources ? { extensionSources: opts.extensionSources } : {}),
+		...(opts?.extensionLive ? { extensionLive: opts.extensionLive } : {}),
+		...(opts?.extensionReportProblem
+			? { extensionReportProblem: opts.extensionReportProblem }
+			: {}),
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
 }
@@ -456,6 +522,66 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 	});
 });
 
+/**
+ * 拓展订阅的直播接进引擎(ADR-0019 决策 57 / 60 / 61):计时器挂在 live 子系统的定时器上,周期「正在直播」
+ * 因为没有新状态跳过的那一轮记进接线层给的上报问题框;开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
+ * 剪掉注册、上报问题框那一口没往下传,这里都会红。
+ */
+describe("createEngines — 拓展直播接上计时器与上报问题框", () => {
+	it("开播 → 推送层收到按订阅 id 的开播;周期推送到点没有新状态 → 记进 extensionReportProblem", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const g = makeDefaultGlobalConfig();
+		g.defaults.schedule.pushTime = 1;
+		const problems: unknown[] = [];
+		const c = setup({
+			globals: g,
+			subs: [sub],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				readAvatar: async () => undefined,
+			},
+			extensionLive: { get: () => undefined },
+			extensionReportProblem: (problem) => problems.push(problem),
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "liveStart",
+				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
+			},
+		});
+		await vi.waitFor(() =>
+			expect(H.push[0].broadcastToFeature).toHaveBeenCalledWith(
+				sub.id,
+				"live",
+				expect.anything(),
+				expect.objectContaining({ allowAtAll: true, kind: "live" }),
+			),
+		);
+
+		// 周期推送挂在 live 子系统的定时器上,一小时一次。
+		const subsystems = c.serviceCtx.forSubsystem.mock.calls as unknown as [string][];
+		const liveIndex = subsystems.findIndex(([name]) => name === "live");
+		const liveCtx = c.serviceCtx.forSubsystem.mock.results[liveIndex]?.value;
+		const intervals = (liveCtx?.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
+		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
+		expect(periodic, "周期推送没挂上").toBeDefined();
+		periodic?.[0]();
+		expect(problems).toEqual([
+			expect.objectContaining({
+				extensionId: "douyin",
+				kind: "liveStatus",
+				subscriptionIds: [sub.id],
+				outcome: "skipped",
+			}),
+		]);
+	});
+});
+
 describe("createEngines — boot wiring", () => {
 	it("默认 globals:push/dynamic 拉起,AI 与 image 不构造", () => {
 		const c = setup();
@@ -514,6 +640,31 @@ describe("createEngines — boot wiring", () => {
 		>;
 		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platforms: …` 那一行删掉,平台名退成拓展 id。
 		expect(getSubs()[ext.id]?.platform).toBe("抖音");
+	});
+
+	it("只读工具那份视图里,拓展订阅的在播接的是在播表(ADR-0019 决策 64 的 🔗)", () => {
+		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-1" });
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [ext],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				readAvatar: async () => undefined,
+			},
+			extensionLive: {
+				get: (id) =>
+					id === ext.id
+						? { subscriptionId: ext.id, extensionId: "douyin", title: "在播", updatedAt: 0 }
+						: undefined,
+			},
+		});
+		active = c;
+		const getSubs = H.ai[0].setSubscriptionsSource.mock.calls[0][0] as () => Record<
+			string,
+			{ liveNow?: unknown }
+		>;
+		expect(getSubs()[ext.id]?.liveNow).toEqual({ state: "live", title: "在播" });
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer 并 start", () => {

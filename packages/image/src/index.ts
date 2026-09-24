@@ -33,7 +33,8 @@ export {
 } from "./image-renderer";
 // 直播卡的中立输入 → 块与皮肤契约吃的视图(ADR-0019 决策 68)。绕开 ImageRenderer 自己拼
 // `renderCardWithSkin` 入参的调用方(预览路由)用它,与推送出图排出同一份。
-export { buildLiveCardView } from "./live-view";
+// `liveDuration`:直播时长那一句(「2小时13分」),拓展订阅的直播文案 `{time}` 用它(决策 67)。
+export { buildLiveCardView, liveDuration } from "./live-view";
 // 出厂示例卡片数据 —— 皮肤编辑器的实时预览拿它当「假数据」出图(ADR-0014 决策 22)。
 // 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
 export { sampleCard } from "./preview/sample-cards";

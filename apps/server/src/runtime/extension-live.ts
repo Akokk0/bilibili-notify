@@ -9,7 +9,8 @@ import type {
 /**
  * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61)—— 首页「正在直播」里拓展那几行从这里来。
  *
- * 按**订阅自己的 id** 记「此刻在播」与直播那几格。只听总线:
+ * 按**订阅自己的 id** 记「此刻在播」与直播那几格 —— 拓展直播的计时器(`extension-live-push.ts`)出「正在直播」
+ * 卡也从这里取最新一份,不另存。只听总线:
  * - `subscription-reported`:开播 → 进表(整行换新,这一场从这儿算起);下播 → 出表;直播状态
  *   `live: true` → 报了的格盖上去、没报的留着(不在表里就进表 —— BN 中途重启过也接得上),
  *   `live: false` → 出表。**开播 / 下播卡与推送不在这里**,这里只管「现在在不在播」;BN 不拿状态的
@@ -52,6 +53,10 @@ export interface ExtensionLiveRow {
 	/** 本场累计观看(决策 75)—— 首页「正在直播」那一列就是它。 */
 	totalViewers?: number;
 	likes?: number;
+	/** 简介(纯文本)。首页不画,留给「直播中」那张卡。 */
+	description?: string;
+	/** 事件里带的作者(名字 / 头像都选填,决策 54)。首页不画,出卡时优先用它。 */
+	author?: { name?: string; avatar?: Uint8Array };
 	/** 直播间链接。 */
 	url?: string;
 	/** 最后一次收到关于它的上报(毫秒)—— 周期「正在直播」判「上次推送之后收到过新状态」要用(决策 61)。 */
@@ -62,7 +67,16 @@ export interface ExtensionLiveRow {
 type LiveDetails = Partial<
 	Pick<
 		ExtensionLiveRow,
-		"startedAt" | "title" | "cover" | "category" | "viewers" | "totalViewers" | "likes" | "url"
+		| "startedAt"
+		| "title"
+		| "cover"
+		| "category"
+		| "viewers"
+		| "totalViewers"
+		| "likes"
+		| "description"
+		| "author"
+		| "url"
 	>
 >;
 
@@ -82,7 +96,18 @@ export interface CreateExtensionLiveTableOptions {
 
 /** 报了的那几格(没报的不带这个键 —— 合并时才不会拿「没报」盖掉已有的)。 */
 function detailsOf(value: LiveDetails): LiveDetails {
-	const { startedAt, title, cover, category, viewers, totalViewers, likes, url } = value;
+	const {
+		startedAt,
+		title,
+		cover,
+		category,
+		viewers,
+		totalViewers,
+		likes,
+		description,
+		author,
+		url,
+	} = value;
 	const picked: LiveDetails = {
 		startedAt,
 		title,
@@ -91,6 +116,8 @@ function detailsOf(value: LiveDetails): LiveDetails {
 		viewers,
 		totalViewers,
 		likes,
+		description,
+		author,
 		url,
 	};
 	return Object.fromEntries(

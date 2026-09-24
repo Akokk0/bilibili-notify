@@ -144,3 +144,47 @@ describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
 		expect(view(s)).toEqual({});
 	});
 });
+
+/**
+ * 女仆查直播状态对拓展订阅接上在播表(ADR-0019 决策 64 的 09-24 🔗):视图里带上 BN 手里这条订阅此刻在不在播,
+ * `get_live_status` 照它答。拓展没在跑时 BN 手里没有它的在播状态(决策 61)—— 说「不知道」,不说「未开播」。
+ */
+describe("buildAiSubsView — 拓展订阅的在播", () => {
+	const STARTED = Date.UTC(2026, 8, 24, 4, 0, 0);
+	const withLive = (
+		row: { title?: string; startedAt?: number; totalViewers?: number } | undefined,
+		running: boolean,
+	) => {
+		const s = makeStores([makeExtensionSubscription()]);
+		return buildAiSubsView(s.subscriptionStore, s.subRuntimeStore, s.platforms, {
+			row: (id) => (id === EXT_ID ? row : undefined),
+			running: (extensionId) => running && extensionId === "douyin",
+		})[EXT_ID];
+	};
+
+	it("在播表里有它 → 在播,带标题、开播时刻、累计观看", () => {
+		expect(
+			withLive({ title: "晚饭直播", startedAt: STARTED, totalViewers: 99 }, true),
+		).toMatchObject({
+			liveNow: { state: "live", title: "晚饭直播", startedAt: STARTED, totalViewers: 99 },
+		});
+	});
+
+	it("拓展在跑、表里没有它 → 未开播", () => {
+		expect(withLive(undefined, true)).toMatchObject({ liveNow: { state: "idle" } });
+	});
+
+	it("拓展没在跑 → 不知道", () => {
+		expect(withLive(undefined, false)).toMatchObject({ liveNow: { state: "unknown" } });
+	});
+
+	it("接上了在播来源才有这一格;B 站条目从来没有", () => {
+		const s = makeStores([makeSub({ uid: "1" }), makeExtensionSubscription()]);
+		expect(view(s)[EXT_ID]).not.toHaveProperty("liveNow");
+		const v = buildAiSubsView(s.subscriptionStore, s.subRuntimeStore, s.platforms, {
+			row: () => undefined,
+			running: () => true,
+		});
+		expect(v["id-1"]).not.toHaveProperty("liveNow");
+	});
+});

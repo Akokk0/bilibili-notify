@@ -3,6 +3,7 @@ import type { LiveRoomInfo } from "@bilibili-notify/api";
 import type { LiveEvent } from "@bilibili-notify/blive";
 import type { CardKind, Disposable } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
 import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
 import {
 	LiveRoomAccessDeniedError,
@@ -160,18 +161,14 @@ export abstract class RoomSessionBase {
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
 		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
-		let out = style;
-		if (kind === "live") {
-			const covers =
-				style.liveCoverImages && style.liveCoverImages.length > 0
-					? style.liveCoverImages
-					: this.ctx.config.defaultLiveCoverImages;
-			if (covers && covers.length > 1) {
-				const picked = this.ctx.pickBackground(`${this.sub.uid}:live-cover`, covers);
-				if (picked !== undefined) out = { ...out, enable: true, liveCoverImage: picked };
-			}
-		}
-		return out;
+		if (kind !== "live") return style;
+		// 封面轮换与拓展订阅的直播共用一份规矩(`rotateLiveCover`)。
+		return rotateLiveCover(
+			style,
+			this.ctx.config.defaultLiveCoverImages,
+			this.ctx.pickBackground,
+			`${this.sub.uid}:live-cover`,
+		);
 	}
 
 	/** Whether the underlying B-station room is currently broadcasting. */
@@ -573,7 +570,7 @@ export abstract class RoomSessionBase {
 
 	/** 断流接续等待时长(分钟),per-UP 缺省 2,防御性夹到 [1,10]。 */
 	protected graceMinutes(): number {
-		return Math.min(10, Math.max(1, this.sub.liveEndGraceMinutes ?? 2));
+		return liveEndGraceMinutes(this.sub.liveEndGraceMinutes);
 	}
 
 	/**

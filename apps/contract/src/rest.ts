@@ -160,9 +160,12 @@ export interface ExtensionReportProblemView {
 	externalId: string;
 	/** 它名下指向这个人的订阅(停用的也算);一条都没对上是空表。 */
 	subscriptionIds: string[];
-	/** `rejected`:整条拒了;`dropped`:收下了,丢了几格。 */
-	outcome: "rejected" | "dropped";
-	/** 拒的原因(一句),或丢掉的每一格(每格一句)。 */
+	/**
+	 * `rejected`:整条拒了;`dropped`:收下了,丢了几格;`skipped`:周期「正在直播」到点时上次推送之后没收到
+	 * 新的直播状态,这一轮没推(决策 61,`kind` 是 `liveStatus`)。
+	 */
+	outcome: "rejected" | "dropped" | "skipped";
+	/** 拒的原因(一句),或丢掉的每一格(每格一句),或跳过的原因(一句)。 */
 	reasons: string[];
 }
 

@@ -134,8 +134,12 @@ export interface SubscriptionReportProblem {
 	externalId: string;
 	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
 	subscriptionIds: readonly string[];
-	/** `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢了这几格(每格一句)。 */
-	outcome: "rejected" | "dropped";
+	/**
+	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢了这几格(每格一句);`skipped`:周期
+	 * 「正在直播」到点时上次推送之后没收到新的直播状态,这一轮没推(决策 61,`kind` 是 `liveStatus`,一句)
+	 * —— 这一种不是 ctx 记的,是拓展直播的计时器(`runtime/extension-live-push.ts`)记的。
+	 */
+	outcome: "rejected" | "dropped" | "skipped";
 	reasons: readonly string[];
 }
 

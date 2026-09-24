@@ -11,7 +11,7 @@
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { executeTool, type Subscriptions } from "../tools";
+import { type ExtensionSubItemView, executeTool, type Subscriptions } from "../tools";
 
 const VIEW: Subscriptions = {
 	"sub-bili": { uid: "1", uname: "晨风", dynamic: true, live: true },
@@ -50,22 +50,65 @@ describe("list_subscriptions", () => {
 });
 
 describe("get_live_status", () => {
-	it("只拿 B 站订阅的 UID 去问 B 站;拓展那条说查不到,不冒充一个状态", async () => {
+	const STARTED = Date.UTC(2026, 8, 24, 4, 0, 0);
+	const ext = (liveNow: ExtensionSubItemView["liveNow"]): Subscriptions => ({
+		"sub-bili": VIEW["sub-bili"] as Subscriptions[string],
+		"sub-ext": { ...(VIEW["sub-ext"] as ExtensionSubItemView), liveNow },
+	});
+
+	it("只拿 B 站订阅的 UID 去问 B 站;拓展那条从 BN 手里的在播状态答:标题、开播时刻、累计观看", async () => {
 		const api = apiStub();
-		const out = await run("get_live_status", {}, api);
+		const view = ext({
+			state: "live",
+			title: "晚饭直播",
+			startedAt: STARTED,
+			totalViewers: 23_456,
+		});
+		const out = await executeTool("get_live_status", {}, api as unknown as BilibiliAPI, () => view);
 		expect(api.getLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
 		expect(out).toContain("晨风：直播中「晚间杂谈」");
-		expect(out).toContain("抖音甲");
-		expect(out).toContain("查不到");
-		expect(out).not.toMatch(/抖音甲：(未开播|直播中|轮播中|未知)/);
+		const line = out.split("\n").find((l) => l.startsWith("抖音甲"));
+		expect(line).toMatch(/^抖音甲：直播中「晚饭直播」/);
+		expect(line).toContain(
+			`开播于 ${new Date(STARTED).toLocaleString("zh-CN", { hour12: false })}`,
+		);
+		expect(line).toContain("累计观看 23456");
+	});
+
+	it("拓展报了不在播 → 未开播;没报的格不写", async () => {
+		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BilibiliAPI, () =>
+			ext({ state: "idle" }),
+		);
+		expect(out).toContain("抖音甲：未开播");
+		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BilibiliAPI, () =>
+			ext({ state: "live" }),
+		);
+		expect(live).toContain("抖音甲：直播中");
+		expect(live).not.toMatch(/抖音甲：直播中.*(开播于|累计观看|「)/);
+	});
+
+	it("拓展没在跑(BN 手里没有它的在播状态)→ 说查不到,不冒充一个状态", async () => {
+		for (const liveNow of [{ state: "unknown" } as const, undefined]) {
+			const out = await executeTool(
+				"get_live_status",
+				{},
+				apiStub() as unknown as BilibiliAPI,
+				() => ext(liveNow),
+			);
+			expect(out).toContain("抖音甲：查不到");
+			expect(out).toContain("抖音");
+			expect(out).not.toMatch(/抖音甲：(未开播|直播中|轮播中|未知)/);
+		}
 	});
 
 	it("开了直播的只有拓展订阅 → 根本不问 B 站", async () => {
 		const api = apiStub();
-		const view: Subscriptions = { "sub-ext": VIEW["sub-ext"] as Subscriptions[string] };
+		const view: Subscriptions = {
+			"sub-ext": { ...(VIEW["sub-ext"] as ExtensionSubItemView), liveNow: { state: "idle" } },
+		};
 		const out = await executeTool("get_live_status", {}, api as unknown as BilibiliAPI, () => view);
 		expect(api.getLiveRoomInfoByUids).not.toHaveBeenCalled();
-		expect(out).toContain("查不到");
+		expect(out).toContain("抖音甲：未开播");
 	});
 });
 

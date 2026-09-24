@@ -460,6 +460,14 @@ export async function startStandaloneServer(
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
 		const skins = cardSkinStore;
 
+		// 拓展详情页的「上报问题」(ADR-0019 决策 60):ctx 那个出口与拓展直播的计时器(周期推送跳过的那一轮,
+		// 决策 61)写进来,拓展列表那一口读出去。只在内存。记了新的 → bus → WS `state` 频道 → 面板让拓展表
+		// 失效(按拓展合并过)。建在引擎之前:引擎里的计时器也往里记。
+		const reportProblems = createReportProblemLog({
+			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", id),
+		});
+		runtime.serviceCtx.onDispose(() => reportProblems.dispose());
+
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
@@ -485,6 +493,9 @@ export async function startStandaloneServer(
 				},
 				readAvatar: (id) => runtime.subAvatarStore.read(id),
 			},
+			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
+			extensionLive: runtime.extensionLive,
+			extensionReportProblem: (problem) => reportProblems.record(problem),
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
@@ -859,12 +870,6 @@ export async function startStandaloneServer(
 		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
 		const extensionMounts = createExtensionMounts();
 		const extensionUpgrades = createExtensionUpgrades();
-		// 拓展详情页的「上报问题」(ADR-0019 决策 60):ctx 那个出口写进来,拓展列表那一口读出去。只在内存。
-		// 记了新的 → bus → WS `state` 频道 → 面板让拓展表失效(按拓展合并过)。
-		const reportProblems = createReportProblemLog({
-			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", id),
-		});
-		runtime.serviceCtx.onDispose(() => reportProblems.dispose());
 		loadedExtensions = await loadExtensions({
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
