@@ -11,6 +11,7 @@ import {
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
+	effectiveCardSkinKnobs,
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
@@ -35,7 +36,7 @@ import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content"
 import type { LiveCardInput } from "./templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
-import type { CardColorOptions, Dynamic, LiveData } from "./types";
+import type { CardColorOptions, CardSkinChoice, Dynamic, LiveData } from "./types";
 
 /**
  * 本模块能读到自带静态资源的目录 —— 词云要的那两个脚本就在 `static/` 下。
@@ -57,6 +58,24 @@ export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** 图旋钮的解析结果最多留几份。见 `ImageRenderer#rememberKnobImage`。 */
 const KNOB_IMAGE_CACHE_MAX = 4;
+
+/**
+ * 图旋钮轮换游标的键。**全局那串**记在 `<皮肤 id>:<旋钮 key>`(与 per-UP 出现之前一字不差);
+ * 这枚旋钮的值来自 **per-UP 那层**时另记一格,键里带上那串 id 本身。
+ *
+ * 分开记是 ADR-0014 决策 17 的 🔗 要的:共用一格的话,这位 UP 每推一张就替全局那串往前拨
+ * 一格(反过来也一样),两边都跳着出图。键用「那串 id」而不用订阅 id:渲染器不认得订阅,
+ * 而这串就是 per-UP 那层自己的身份 —— 代价是两位 UP 单独选了**一模一样**的一串时共用一格,
+ * 与全局那串跨订阅共用同一个道理(只让它转起来,不承诺公平)。那串一改就是新的一格、从头转。
+ */
+function knobCursorKey(
+	skinId: string,
+	key: string,
+	perUp: Readonly<CardSkinKnobOverrides> | undefined,
+): string {
+	if (perUp === undefined || !(key in perUp)) return `${skinId}:${key}`;
+	return `${skinId}:${key}@up:${JSON.stringify(perUp[key])}`;
+}
 
 /**
  * 锐评卡的**业务**入参。渐变 / 玻璃那几项 2026-09-20 从 props 上整批删掉(外观归皮肤的
@@ -115,8 +134,9 @@ export interface ImageRendererConfig {
 	 */
 	font?: string;
 	/**
-	 * 用户拧过的皮肤旋钮,**按皮肤 id** 分开(ADR-0014 决策 16 的 🔗)。回落到默认皮肤时
-	 * 自动取默认皮肤那份 —— 一套坏皮肤的配色不该跟着回落画到默认皮肤上。
+	 * 用户拧过的皮肤旋钮(**全局**那份),**按皮肤 id** 分开(ADR-0014 决策 16 的 🔗)。回落到
+	 * 默认皮肤时自动取默认皮肤那份 —— 一套坏皮肤的配色不该跟着回落画到默认皮肤上。
+	 * per-UP 那层随每张卡的选项进来(`CardColorOptions.cardSkinKnobs`),在出图那一刻逐枚叠上。
 	 */
 	cardSkinKnobs?: Readonly<Record<string, CardSkinKnobOverrides>>;
 }
@@ -173,7 +193,10 @@ export class ImageRenderer {
 	private readonly serviceCtx: ServiceContext;
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
-	/** 图片旋钮的轮换游标:`<皮肤 id>:<旋钮 key>` → 已经出过几张。 */
+	/**
+	 * 图片旋钮的轮换游标 → 已经出过几张。全局那串记在 `<皮肤 id>:<旋钮 key>`;per-UP 那串
+	 * 另记一格(见 {@link knobCursorKey}),两边不互相拨动。
+	 */
 	private readonly knobImageCursor = new Map<string, number>();
 	/**
 	 * 资产 id → **最终注进 CSS 的那串**(空串 = 这张注不出去,别再白读白压)。
@@ -338,14 +361,18 @@ export class ImageRenderer {
 	/**
 	 * 字体 / 图两档旋钮 → 额外的 `@font-face` 与根块变量(见 `skin/knob-assets.ts`)。
 	 *
-	 * 多张图**每次推送轮换**:游标按「皮肤 + 旋钮」记在渲染器上。从前那份轮换记在推送侧
-	 * (每个房间自己一份),而旋钮值住全局配置、推送侧根本不认得它 —— 记在这里是唯一
-	 * 摸得着那个「第几次」的地方。跨订阅共用一个游标只是让它转起来,不承诺公平。
+	 * `overrides` 是**合好的**那份(per-UP → 全局);`perUp` 单给是为了认出哪一枚来自
+	 * per-UP 那层 —— 轮换游标要按层分开记(见 {@link knobCursorKey})。
+	 *
+	 * 多张图**每次推送轮换**:游标记在渲染器上。从前那份轮换记在推送侧(每个房间自己一份),
+	 * 而旋钮值住配置、推送侧根本不认得它 —— 记在这里是唯一摸得着那个「第几次」的地方。
+	 * 跨订阅共用一个游标只是让它转起来,不承诺公平。
 	 */
 	private async resolveKnobAssets(
 		skinId: string,
 		knobs: CardSkinManifest["knobs"],
-		overrides: CardSkinKnobOverrides | undefined,
+		overrides: Readonly<CardSkinKnobOverrides> | undefined,
+		perUp: Readonly<CardSkinKnobOverrides> | undefined,
 	): Promise<ResolvedKnobAssets> {
 		const out = await resolveKnobAssets(knobs, overrides, {
 			image: (assetId) => this.knobImage(assetId),
@@ -353,8 +380,9 @@ export class ImageRenderer {
 			shrinkImage: (url, budget) => shrinkImageForCssVar(this.puppeteer, url, budget),
 			onImageResolved: (assetId, url) => this.rememberKnobImage(assetId, url),
 			pick: (count, key) => {
-				const at = this.knobImageCursor.get(`${skinId}:${key}`) ?? 0;
-				this.knobImageCursor.set(`${skinId}:${key}`, at + 1);
+				const cursor = knobCursorKey(skinId, key, perUp);
+				const at = this.knobImageCursor.get(cursor) ?? 0;
+				this.knobImageCursor.set(cursor, at + 1);
 				return at % count;
 			},
 		});
@@ -465,6 +493,11 @@ export class ImageRenderer {
 		/** `<title>`;截图里看不见,排障时看得见。 */
 		title: string;
 		skinId: string;
+		/**
+		 * 这位 UP 那层旋钮覆盖(按皮肤 id 分,原样的 per-UP 层)。与 config 里全局那份在
+		 * 下面的 `once` 里逐枚合并 —— 回落到默认皮肤时取的也是默认皮肤那一格。
+		 */
+		skinKnobs?: CardSkinChoice["cardSkinKnobs"];
 		font: { font: string; fontFace?: string };
 		priority?: RenderPriority;
 		/** 截图前要等的页内条件(词云等画完)。 */
@@ -479,11 +512,13 @@ export class ImageRenderer {
 			id: string,
 			manifest: CardSkinManifest,
 		): Promise<{ buffer: Buffer; height: number }> => {
-			const knobValues = this.config.cardSkinKnobs?.[id];
+			// 逐枚合并:per-UP 拧过的 → 全局拧过的 → 不注(ADR-0014 决策 17 的 🔗)。字体 / 图两档
+			// 也吃这份合好的 —— 它们要读盘,只把 per-UP 喂给 `knobValues` 的话那两档会静静不动。
+			const knobValues = effectiveCardSkinKnobs(this.config.cardSkinKnobs, args.skinKnobs, id);
 			// 包内资产与旋钮资产之间零依赖 —— 并发发起,省掉一次串行 I/O 往返。
 			const [assets, knobAssets] = await Promise.all([
 				this.prefetchSkinAssets(id, cardOfManifest(manifest, kind), manifest.fonts),
-				this.resolveKnobAssets(id, manifest.knobs, knobValues),
+				this.resolveKnobAssets(id, manifest.knobs, knobValues, args.skinKnobs?.[id]),
 			]);
 			let html = await renderCardWithSkin(kind, props, manifest, {
 				title,
@@ -574,6 +609,7 @@ export class ImageRenderer {
 			kind: "live",
 			title: "直播通知",
 			skinId: this.skinIdOf(colorOptions),
+			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
 			props: buildLiveCardView(input, coverOverride || undefined),
 		})
@@ -609,6 +645,7 @@ export class ImageRenderer {
 			kind: "guard",
 			title: "上舰通知",
 			skinId: this.skinIdOf(colorOptions),
+			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
 			props: {
 				captainImgUrl,
@@ -663,6 +700,7 @@ export class ImageRenderer {
 			kind: "sc",
 			title: "醒目留言通知",
 			skinId: this.skinIdOf(colorOptions),
+			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
 			props: {
 				senderFace,
@@ -725,6 +763,7 @@ export class ImageRenderer {
 			kind: "dynamic",
 			title: "动态通知",
 			skinId: this.skinIdOf(colorOptions),
+			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
 			priority: options?.priority,
 			props: { node },
@@ -742,8 +781,10 @@ export class ImageRenderer {
 		words: Array<[string, number]>,
 		masterName: string,
 		masterAvatarUrl?: string,
-		/** 用哪套皮肤;词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
-		opts: { cardSkin?: string } = {},
+		/**
+		 * 用哪套皮肤、这位 UP 怎么拧它;词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。
+		 */
+		opts: CardSkinChoice = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
@@ -754,6 +795,7 @@ export class ImageRenderer {
 			kind: "wordcloud",
 			title: "弹幕词云",
 			skinId: this.skinIdOf(opts),
+			skinKnobs: opts.cardSkinKnobs,
 			font: await this.resolveFont(),
 			waitFor: "window.wordcloudDone === true",
 			postProcess: (html) => injectWordCloudScript(html, script),

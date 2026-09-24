@@ -296,6 +296,166 @@ describe("ImageRenderer 皮肤旋钮", () => {
 	});
 });
 
+/**
+ * **per-UP 那层旋钮覆盖**(ADR-0014 决策 17 的 🔗,2026-09-24)。值挂在订阅上,随每张卡的
+ * 选项(`colorOptions.cardSkinKnobs`,按皮肤 id 分层)进来;全局那份照旧住渲染器 config。
+ * 两层在 `renderWithSkin` 碰面,**逐枚**合并:per-UP 拧过的 → 全局拧过的 → 不注(皮肤兜底)。
+ *
+ * 验红:把 `renderWithSkin` 里合并那一句换回只读 `this.config.cardSkinKnobs?.[id]`,
+ * 这一组除「别的皮肤那份不生效」外全红。
+ */
+describe("ImageRenderer per-UP 旋钮覆盖", () => {
+	const UP_SKIN: CardSkinManifest = {
+		...DEFAULT_CARD_SKIN,
+		name: "per-UP 旋钮探针",
+		knobs: [
+			{ key: "accent", label: "主色", type: "color", default: "#fb7299" },
+			{ key: "ink", label: "字色", type: "color", default: "#333333" },
+			{ key: "edge", label: "描边", type: "color", default: "#000000" },
+			{ key: "font", label: "字体", type: "font", default: "" },
+			{ key: "wallpaper", label: "壁纸", type: "image" },
+		],
+	};
+	const withGlobal = (global: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+		makeHarness({
+			config: { ...BASE_CONFIG, cardSkinKnobs: global },
+			resolveCardSkin: (id) => (id === "upskin" ? UP_SKIN : undefined),
+			resolveAsset: async (id) => `data:image/png;base64,${id}`,
+			resolveFontFace: async (id) => `@font-face{font-family:"bn-user-font";src:url("${id}")}`,
+		});
+	const upLive = (
+		renderer: ImageRenderer,
+		cardSkinKnobs?: ImageRendererConfig["cardSkinKnobs"],
+	): Promise<Buffer> =>
+		renderer.generateLiveCard(
+			LIVE_ROOM,
+			"示例UP",
+			"http://i0.hdslb.com/bfs/face/f.jpg",
+			LIVE_DATA,
+			1,
+			{
+				cardSkin: "upskin",
+				...(cardSkinKnobs ? { cardSkinKnobs } : {}),
+			},
+		);
+
+	it("逐枚合并:per-UP 拧过的赢,没拧过的跟全局,两层都没有的不注", async () => {
+		const h = withGlobal({ upskin: { accent: "#111111", ink: "#222222" } });
+		await upLive(h.renderer, { upskin: { accent: "#aaaaaa" } });
+		const style = frameStyle(h.captured[0] ?? "");
+		expect(style).toContain("--bn-knob-accent:#aaaaaa");
+		expect(style).not.toContain("#111111");
+		expect(style).toContain("--bn-knob-ink:#222222");
+		expect(style).not.toContain("--bn-knob-edge");
+		expect(h.fallbacks).toEqual([]);
+	});
+
+	it("per-UP 存的是别的皮肤那份 → 这张卡不认它,全局照常", async () => {
+		const h = withGlobal({ upskin: { accent: "#111111" } });
+		await upLive(h.renderer, { other: { accent: "#aaaaaa" } });
+		const style = frameStyle(h.captured[0] ?? "");
+		expect(style).toContain("--bn-knob-accent:#111111");
+		expect(style).not.toContain("#aaaaaa");
+	});
+
+	/**
+	 * 「不分卡种」:这位 UP 的每一种卡都吃同一份。每个 `generate*` 各自拼一次选项,
+	 * 漏一个就是「直播卡变了、SC 卡没变」。验红:把任一 `generate*` 里传给
+	 * `renderWithSkin` 的 `skinKnobs` 掐掉,对应那一行红。
+	 */
+	it.each([
+		["live", (r: ImageRenderer, o: object) => upLiveWith(r, o)],
+		[
+			"sc",
+			(r: ImageRenderer, o: object) =>
+				r.generateSCCard(
+					{ senderFace: "", senderName: "粉丝", masterName: "UP", text: "加油", price: 30 },
+					o,
+				),
+		],
+		[
+			"guard",
+			(r: ImageRenderer, o: object) =>
+				r.generateGuardCard(
+					{ guardLevel: 3, uname: "新舰长", face: "", isAdmin: 0 },
+					{ masterAvatarUrl: "", masterName: "UP" },
+					o,
+				),
+		],
+		[
+			"dynamic",
+			(r: ImageRenderer, o: object) =>
+				r.generateNeutralDynamicCard(
+					{
+						avatarUrl: "data:image/png;base64,FACE",
+						upName: "示例作者",
+						upIsVip: false,
+						pubTime: "2026-09-24 12:00:00",
+						stats: { forward: "1", comment: "2", like: "3" },
+					},
+					o,
+				),
+		],
+		[
+			"wordcloud",
+			(r: ImageRenderer, o: object) => r.generateWordCloudImg([["词", 1]], "UP", undefined, o),
+		],
+	] as const)("%s 卡也吃 per-UP 那份", async (_kind, render) => {
+		const h = withGlobal({});
+		await render(h.renderer, {
+			cardSkin: "upskin",
+			cardSkinKnobs: { upskin: { accent: "#aaaaaa" } },
+		});
+		expect(h.fallbacks).toEqual([]);
+		expect(frameStyle(h.captured[0] ?? "")).toContain("--bn-knob-accent:#aaaaaa");
+	});
+
+	/**
+	 * 字体与图不是 CSS 字面量,要宿主读盘解析 —— 这两档「别的旋钮都生效、唯独它俩静静不动」
+	 * 已经栽过一回(2026-09-19)。per-UP 那份得走同一条解析路。
+	 * 验红:把 `resolveKnobAssets` 的入参换回只有全局那份,这条红。
+	 */
+	it("per-UP 的字体文件与壁纸照样读盘解析、进得了 HTML", async () => {
+		const h = withGlobal({});
+		await upLive(h.renderer, { upskin: { font: "upload:f9", wallpaper: ["bgU"] } });
+		const html = h.captured[0] ?? "";
+		expect(html).toContain('@font-face{font-family:"bn-user-font";src:url("f9")}');
+		const style = frameStyle(html);
+		expect(style).toContain('--bn-knob-font:"bn-user-font"');
+		expect(style).toContain('--bn-knob-wallpaper:url("data:image/png;base64,bgU") center / cover');
+	});
+
+	/**
+	 * 多张图按推送轮换,游标记在渲染器上。per-UP 那串要有**自己的**游标 —— 与全局共用一个的话,
+	 * 这位 UP 每推一张都替全局那串往前拨一格(反过来也一样),两边都跳着出图。
+	 * 验红:把 per-UP 那条游标键换回 `<皮肤 id>:<旋钮 key>`,这条红(第二张出成 u2)。
+	 */
+	it("per-UP 的多图轮换走自己的游标,不与全局那串互相拨动", async () => {
+		const h = withGlobal({ upskin: { wallpaper: ["g1", "g2"] } });
+		const upKnobs = { upskin: { wallpaper: ["u1", "u2"] } };
+		const wallpaper = (i: number) =>
+			/--bn-knob-wallpaper:url\("data:image\/png;base64,([^"]*)"\)/.exec(
+				frameStyle(h.captured[i] ?? ""),
+			)?.[1];
+		await upLive(h.renderer);
+		await upLive(h.renderer, upKnobs);
+		await upLive(h.renderer);
+		await upLive(h.renderer, upKnobs);
+		expect([0, 1, 2, 3].map(wallpaper)).toEqual(["g1", "u1", "g2", "u2"]);
+	});
+
+	function upLiveWith(r: ImageRenderer, o: object): Promise<Buffer> {
+		return r.generateLiveCard(
+			LIVE_ROOM,
+			"示例UP",
+			"http://i0.hdslb.com/bfs/face/f.jpg",
+			LIVE_DATA,
+			1,
+			o,
+		);
+	}
+});
+
 // ── ② 回落 ───────────────────────────────────────────────────────────────────
 
 describe("ImageRenderer 皮肤回落", () => {

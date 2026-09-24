@@ -109,6 +109,7 @@ export type {
 export type { SCCardProps } from "./templates/sc-card";
 export type {
 	CardColorOptions,
+	CardSkinChoice,
 	Dynamic,
 	LiveData,
 	RichTextNode,
