@@ -4,8 +4,10 @@ import {
 	type CachedProfile,
 	type ConfigScope,
 	type Disposable,
+	type ExtensionSubscription,
 	type FansRefreshEntry,
 	isBiliSubscription,
+	isExtensionSubscription,
 	type Logger,
 	type MessageBus,
 	type ServiceContext,
@@ -24,6 +26,8 @@ import {
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * ONE_HOUR_MS;
 const SEVEN_DAYS_MS = 7 * 24 * ONE_HOUR_MS;
+/** 一个「远未来」时间戳:拿它去 `findNearestBefore` 就退化成「取最近一条」。 */
+const FUTURE_ISO = "9999-12-31T00:00:00.000Z";
 
 /**
  * 命中即判定为风控/限流的响应码。-352 风控、-403 越权风控、-412 请求被拦、
@@ -61,8 +65,9 @@ export interface FansPollerOptions {
 
 export interface FansPollerHandle extends Disposable {
 	/**
-	 * 最近一轮成功采样的 entries 快照。GET /api/fans 直接读这个,免去对 jsonl
-	 * 的同步查询。Bootstrap 前为空数组;第一轮 tick(启动时立即触发)结束后即填充。
+	 * 首页粉丝面板的快照(一条订阅一条,键是订阅 id):B 站是最近一轮成功采样的,拓展是按它的粉丝时序算的
+	 * (ADR-0020 决策 8)。GET /api/fans 直接读这个,免去对 jsonl 的同步查询。Bootstrap 前为空数组;
+	 * 开机从盘上恢复一份,之后每轮 tick 更新。
 	 */
 	getLastEntries(): FansRefreshEntry[];
 	/**
@@ -85,6 +90,11 @@ export interface FansPollerHandle extends Disposable {
  * 失败处理:per-uid try/catch,单 UP 失败不阻断剩余轮询。串行 + 200ms 间隔
  * 减小被 B 站风控的概率。cron 用 globals.app.fansCron(默认每 10min 一轮),
  * 用户改 cron 表达式会通过 config-changed 通道触发本 poller reconcile。
+ *
+ * **拓展订阅**(ADR-0020 决策 8):粉丝轮询**不问**它们(那是 B 站独有的,ADR-0019 决策 64);它们的粉丝时序
+ * 由统计的拓展适配按资料上报里的粉丝数写(`stats/extension-source.ts`)。面板上那一行在这里从时序算:
+ * 启用着、有时序的才上;当前数取最近报的资料,起点 / 24h / 7d 见 {@link extensionEntry}。每轮 tick 算一遍
+ * (B 站风控退避时也算 —— 它不问 B 站),拓展报了新的粉丝数(`subscription-profiles-changed`)时只算报了的那几条。
  *
  * auth-lost / auth-restored:auth 丢失期间任何调用都会失败,所以 poller 不
  * 自己暂停,而是依赖 BilibiliAPI 内部状态;失败的轮次产出全 null delta,前
@@ -109,9 +119,10 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// ② 风控退避:命中风控码后设成 Date.now()+FANS_RISK_BACKOFF_MS,窗口内的 tick
 	// 直接跳过(不再逐 UP 敲一遍放大风控)。0 = 无退避。
 	let riskBackoffUntil = 0;
-	// uid → 最近一次成功采样。replace,不累加。每轮跑完整体替换为新一批,但
-	// 跳过本轮没采到的 uid(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁)。
-	const lastByUid = new Map<string, FansRefreshEntry>();
+	// 订阅 id → 面板上那一行(两支都在这一张表里,ADR-0020 决策 8)。replace,不累加。B 站:每轮跑完
+	// 覆盖本轮采到的,跳过本轮没采到的(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁);拓展:
+	// 每次按时序重算。键是订阅 id 而不是 uid:同一个 uid 配两条订阅时各是各的一行,拓展条目没有 uid。
+	const lastBySub = new Map<string, FansRefreshEntry>();
 	/**
 	 * 这一进程里往哪些粉丝文件(订阅 id)写过样本。清扫按它删「删了订阅之后又被写回来」的那份 ——
 	 * 判据是**这条订阅**不在了,不是这个 uid 不在了:同一个人删了重订是另一条订阅、另一份文件,
@@ -129,6 +140,80 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 
 	function enabledBiliSubs(): BiliSubscription[] {
 		return biliSubs().filter((s) => s.enabled);
+	}
+
+	/** 启用着的拓展订阅 —— 面板上那一行从它们的粉丝时序算,不拿外部 id 去问 B 站。 */
+	function enabledExtensionSubs(): ExtensionSubscription[] {
+		return subscriptionStore
+			.list()
+			.filter(isExtensionSubscription)
+			.filter((s) => s.enabled);
+	}
+
+	/**
+	 * 一条拓展订阅在面板上的那一行,从它的粉丝时序算(ADR-0020 决策 8);没有时序(平台不报粉丝数,或还没报过)
+	 * 就没有这一行。与 B 站同一个意思:
+	 *   - 当前数:它最近一次报的资料里的(比稀释过的样本新,与统计页的「当前粉丝」同一个数);资料没带取时序末值;
+	 *   - 起点:时序的**第一条样本** —— B 站的 fansBaseline 是第一次采到的值、开机按时序最早一条自愈,是同一件事。
+	 *     拓展的时序停用不删、删订阅才删,第一条就是这条订阅开始被记的那一刻,不另存一份;
+	 *   - 24h / 7d:那一刻之前最近的一条样本,同 B 站。
+	 */
+	async function extensionEntry(
+		sub: ExtensionSubscription,
+		nowMs: number,
+	): Promise<FansRefreshEntry | undefined> {
+		const key = statsFileKey(sub);
+		const [latest, first, near24h, near7d] = await Promise.all([
+			fansStore.findNearestBefore(key, FUTURE_ISO),
+			fansStore.findEarliest(key),
+			fansStore.findNearestBefore(key, new Date(nowMs - TWENTY_FOUR_HOURS_MS).toISOString()),
+			fansStore.findNearestBefore(key, new Date(nowMs - SEVEN_DAYS_MS).toISOString()),
+		]);
+		if (!latest) return undefined;
+		const profile = subRuntimeStore.get(sub.id)?.cachedProfile;
+		const reported = profile?.fans;
+		const current = reported ?? latest.value;
+		return {
+			subscriptionId: sub.id,
+			extensionId: sub.extensionId,
+			externalId: sub.externalId,
+			current,
+			ts: reported !== undefined && profile ? profile.lastRefreshedAt : latest.ts,
+			deltaSubscribed: first ? current - first.value : null,
+			delta24h: near24h ? current - near24h.value : null,
+			delta7d: near7d ? current - near7d.value : null,
+		};
+	}
+
+	/**
+	 * 把启用着的拓展订阅(给了 `only` 就只看那几条)的那一行按时序重算一遍,回「快照动没动」。算的这会儿
+	 * 订阅可能被停用 / 删了:算完再看一眼,别把刚撤下来的又放回去。
+	 */
+	async function refreshExtensionEntries(only?: ReadonlySet<string>): Promise<boolean> {
+		const nowMs = Date.now();
+		let changed = false;
+		for (const sub of enabledExtensionSubs()) {
+			if (only && !only.has(sub.id)) continue;
+			if (disposed) return changed;
+			try {
+				const entry = await extensionEntry(sub, nowMs);
+				if (disposed) return changed;
+				const stillEnabled = enabledExtensionSubs().some((s) => s.id === sub.id);
+				if (entry && stillEnabled) {
+					lastBySub.set(sub.id, entry);
+					changed = true;
+				} else if (lastBySub.delete(sub.id)) {
+					changed = true;
+				}
+			} catch (err) {
+				logger.debug(`[fans-poller] 拓展订阅 ${sub.id} 的粉丝条目没算出来: ${String(err)}`);
+			}
+		}
+		return changed;
+	}
+
+	function emitSnapshot(): void {
+		bus.emit("fans-refreshed", Array.from(lastBySub.values()));
 	}
 
 	function tick(): void {
@@ -165,36 +250,50 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 
 	async function runTick(): Promise<void> {
 		if (disposed) return;
-		// ② 风控退避窗口内:整轮跳过,不发任何请求。
-		if (Date.now() < riskBackoffUntil) {
-			logger.debug("[fans-poller] 风控退避中,跳过本轮 tick");
-			return;
-		}
-		const allBili = biliSubs();
-		const subs = allBili.filter((s) => s.enabled);
-		// Sweep:lastByUid 只保留当前 enabled subs,emit 出去的快照就不含停用 / 已删的 uid,
-		// 前端覆盖式 setQueryData 自然把他们的卡片从首页粉丝面板上撤掉。
+		// Sweep:快照只保留启用着的订阅(两支),emit 出去的就不含停用 / 已删的,前端覆盖式
+		// setQueryData 自然把他们的卡片从首页粉丝面板上撤掉。
 		//
 		// 撤出快照 ≠ 删时序文件(ADR-0020 决策 10):**停用**的 UP 统计页照样列着,文件留着,
-		// 再启用接着往里记;只有这条订阅不在了才删。删订阅平时由下面的 subscription-changed
-		// 监听当场删,这里兜的是它删完之后又被写回来的那种:tick 正在跑时删了订阅,这一轮随后
-		// 照样 append(文件重新长出来)。只扫这一进程写过的,不扫盘 —— BN 停机期间删掉的订阅
-		// 留下的文件这里管不到。
-		const enabledUids = new Set(subs.map((s) => s.uid));
-		for (const oldUid of Array.from(lastByUid.keys())) {
-			if (!enabledUids.has(oldUid)) lastByUid.delete(oldUid);
+		// 再启用接着往里记;只有这条订阅不在了才删(见 pollBili 里的清扫)。
+		const enabledIds = new Set(
+			subscriptionStore
+				.list()
+				.filter((s) => s.enabled)
+				.map((s) => s.id),
+		);
+		for (const id of Array.from(lastBySub.keys())) {
+			if (!enabledIds.has(id)) lastBySub.delete(id);
 		}
+		// ② 风控退避窗口内:B 站整轮跳过,不发任何请求。拓展的那几行不问 B 站,照样算。
+		if (Date.now() < riskBackoffUntil) {
+			logger.debug("[fans-poller] 风控退避中,跳过本轮 B 站采样");
+		} else {
+			await pollBili();
+			if (disposed) return;
+		}
+		await refreshExtensionEntries();
+		// 每轮固定 emit 一次「全部启用订阅的当前快照」(全删光了也 emit 空快照让前端清屏),前端做覆盖式
+		// setQueryData,从而正确反映"本轮失败保留旧值"+"停用 / 删除的撤掉"两种语义
+		// (删除由 subscription-changed 监听当场撤,停用等这一轮的 sweep)。
+		if (disposed) return;
+		emitSnapshot();
+		logger.debug(`[fans-poller] tick done, snapshot=${lastBySub.size}`);
+	}
+
+	/** 一轮 B 站采样:逐个问启用着的 B 站订阅,写样本、写资料缓存、更新快照里那一行。不 emit。 */
+	async function pollBili(): Promise<void> {
+		const allBili = biliSubs();
+		const subs = allBili.filter((s) => s.enabled);
+		// 删订阅平时由下面的 subscription-changed 监听当场删文件,这里兜的是它删完之后又被写回来的那种:
+		// tick 正在跑时删了订阅,这一轮随后照样 append(文件重新长出来)。只扫这一进程写过的,不扫盘 ——
+		// BN 停机期间删掉的订阅留下的文件这里管不到。
 		const subscribedKeys = new Set(allBili.map((s) => statsFileKey(s)));
 		for (const key of Array.from(writtenKeys)) {
 			if (subscribedKeys.has(key)) continue;
 			writtenKeys.delete(key);
 			void fansStore.drop(key);
 		}
-		if (subs.length === 0) {
-			// 全部被删除时仍要 emit 一次空快照让前端清屏。
-			bus.emit("fans-refreshed", []);
-			return;
-		}
+		if (subs.length === 0) return;
 		logger.debug(`[fans-poller] tick start, ${subs.length} subs`);
 		const now = new Date();
 		const nowIso = now.toISOString();
@@ -288,6 +387,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				if (disposed) return;
 
 				const entry: FansRefreshEntry = {
+					subscriptionId: sub.id,
 					uid: sub.uid,
 					current,
 					ts: nowIso,
@@ -295,21 +395,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					delta24h,
 					delta7d,
 				};
-				lastByUid.set(sub.uid, entry);
+				lastBySub.set(sub.id, entry);
 			} catch (err) {
 				logger.warn(`[fans-poller] uid=${sub.uid} failed: ${String(err)}`);
 			}
 			// 200ms 间隔,串行 + 节流,避免 cookies 风控。
 			await new Promise((r) => setTimeout(r, 200));
 		}
-
-		// 每轮固定 emit 一次「全部 enabled subs 的当前快照」,前端做覆盖式
-		// setQueryData,从而正确反映"本轮失败保留旧值"+"停用 / 删除的撤掉"两种语义
-		// (删除由 subscription-changed 监听当场撤,停用等这一轮的 sweep)。
-		if (disposed) return;
-		const snapshot = Array.from(lastByUid.values());
-		bus.emit("fans-refreshed", snapshot);
-		logger.debug(`[fans-poller] tick done, snapshot=${snapshot.length}`);
 	}
 
 	// fansCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
@@ -339,19 +431,18 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	/**
-	 * 重启恢复:从每个 enabled sub 的 fans/<订阅 id>.jsonl 末尾读最近一条样本,填进
-	 * lastByUid 并立即 emit 一次。这样 Dashboard 首屏不会因为新一轮 tick 还没跑完
-	 * 就空白。窗口 delta(24h/7d)留给第一次正式 tick 计算。
+	 * 重启恢复:从每个 enabled B 站 sub 的 fans/<订阅 id>.jsonl 末尾读最近一条样本,填进
+	 * lastBySub 并立即 emit 一次。这样 Dashboard 首屏不会因为新一轮 tick 还没跑完
+	 * 就空白。B 站的窗口 delta(24h/7d)留给第一次正式 tick 计算;拓展的那几行本来就是从盘上算的,
+	 * 这里整行算好。
 	 */
 	async function restoreFromDisk(): Promise<void> {
 		if (disposed) return;
-		// 用一个"远未来"时间戳让 findNearestBefore 退化为"取最近一条"。
-		const futureIso = "9999-12-31T00:00:00.000Z";
 		const subs = enabledBiliSubs();
 		for (const sub of subs) {
 			if (disposed) return;
 			try {
-				const last = await fansStore.findNearestBefore(statsFileKey(sub), futureIso);
+				const last = await fansStore.findNearestBefore(statsFileKey(sub), FUTURE_ISO);
 				if (!last) continue;
 				// 自愈 baseline:jsonl 是 ground truth(append-only),而 sub-runtime.json
 				// 里的 fansBaseline 历史上被批量重写过(c4e9dcd 把 baseline 搬出 Subscription
@@ -371,7 +462,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					}
 				}
 				const deltaSubscribed = baseline ? last.value - baseline.value : 0;
-				lastByUid.set(sub.uid, {
+				lastBySub.set(sub.id, {
+					subscriptionId: sub.id,
 					uid: sub.uid,
 					current: last.value,
 					ts: last.ts,
@@ -383,9 +475,10 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				logger.debug(`[fans-poller] restore ${sub.uid} skipped: ${String(err)}`);
 			}
 		}
-		if (lastByUid.size > 0 && !disposed) {
-			bus.emit("fans-refreshed", Array.from(lastByUid.values()));
-			logger.info(`[fans-poller] restored ${lastByUid.size} entries from disk`);
+		await refreshExtensionEntries();
+		if (lastBySub.size > 0 && !disposed) {
+			emitSnapshot();
+			logger.info(`[fans-poller] restored ${lastBySub.size} entries from disk`);
 		}
 	}
 
@@ -459,14 +552,11 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		let hadRemove = false;
 		for (const op of ops) {
 			if (op.type !== "remove") continue;
-			// 删掉的是哪一支都要清资料缓存(下面那次 prune);粉丝时序只有 B 站订阅有。
+			// 删掉的是哪一支都要清资料缓存(下面那次 prune)、撤下面板上那一行。
 			hadRemove = true;
+			if (lastBySub.delete(op.sub.id)) removedAny = true;
+			// 粉丝文件:B 站的归这里删;拓展的归统计的拓展适配删(它写的,`stats/extension-source.ts`)。
 			if (!isBiliSubscription(op.sub)) continue;
-			const uid = op.sub.uid;
-			if (lastByUid.has(uid)) {
-				lastByUid.delete(uid);
-				removedAny = true;
-			}
 			const key = statsFileKey(op.sub);
 			writtenKeys.delete(key);
 			void fansStore.drop(key);
@@ -478,9 +568,21 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			// precise + idempotent and avoids a dedicated delete(id) API.
 			void pruneOrphanSubRuntime(subRuntimeStore, subscriptionStore);
 		}
-		if (removedAny) {
-			bus.emit("fans-refreshed", Array.from(lastByUid.values()));
-		}
+		if (removedAny) emitSnapshot();
+	});
+
+	// 拓展报了新的资料(面板看得见的名字 / 头像 / 粉丝数真变了,250ms 窗口合并过)→ 不等下一轮,当场把报了的
+	// 那几条拓展订阅的那一行重算一遍。只动那几条、读几次时序,不碰 B 站。B 站的资料是这里自己写的,不经这条。
+	// 资料是先落盘、窗口满了才发这一声,所以当前数一定是新的;时序那一条样本可能还在记录器的队里 —— 第一条
+	// 样本没落盘之前这一行还上不来,等下一轮 tick。
+	const offProfiles = bus.on("subscription-profiles-changed", (ids) => {
+		const wanted = new Set(ids);
+		if (!enabledExtensionSubs().some((s) => wanted.has(s.id))) return;
+		void refreshExtensionEntries(wanted)
+			.then((changed) => {
+				if (changed && !disposed) emitSnapshot();
+			})
+			.catch((err) => logger.debug(`[fans-poller] 拓展粉丝条目刷新失败: ${String(err)}`));
 	});
 
 	return {
@@ -489,11 +591,12 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			job?.stop();
 			offConfig.dispose();
 			offSubs.dispose();
+			offProfiles.dispose();
 			// 不主动 await in-flight tick(Disposable 接口为 void);runTick 内会在每个
 			// await 后 check disposed,中途返回,新副作用不会出现。
 		},
 		getLastEntries(): FansRefreshEntry[] {
-			return Array.from(lastByUid.values());
+			return Array.from(lastBySub.values());
 		},
 		pollNow: tickOnce,
 	};

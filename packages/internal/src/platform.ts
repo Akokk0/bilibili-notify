@@ -156,8 +156,9 @@ export interface BiliEvents {
 	 */
 	"extension-live-session": (event: ExtensionLiveSessionEvent) => void;
 	/**
-	 * 一轮 FansPoller 完成后 emit。entries 携带本轮采样到的所有 enabled subs 的
-	 * 当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
+	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
+	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020
+	 * 决策 8),各带当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
 	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
 	 */
 	"fans-refreshed": (entries: FansRefreshEntry[]) => void;
@@ -241,14 +242,30 @@ export interface DynamicDetectedEvent {
 	ts: string;
 }
 
-/** Bus 上 fans-refreshed 事件 / HTTP /api/fans 返回的单条 entry。 */
+/**
+ * Bus 上 fans-refreshed 事件 / HTTP /api/fans 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行
+ * (ADR-0020 决策 8)。
+ */
 export interface FansRefreshEntry {
-	uid: string;
-	/** 本次采样到的 B 站当前 fans 数。 */
+	/** 行的键:订阅自己的 id(同统计行,ADR-0020 决策 1 的 🔗)。面板按它对订阅、做键。 */
+	subscriptionId: string;
+	/**
+	 * 这是谁(同统计行 / 推送历史,ADR-0019 决策 73):B 站条目带 `uid`;拓展条目带 `extensionId` +
+	 * `externalId`、不带 `uid`。只管颜色与名字兜底。
+	 */
+	uid?: string;
+	extensionId?: string;
+	externalId?: string;
+	/**
+	 * 当前 fans 数。B 站:本次采样问 B 站问到的;拓展:它最近一次报的资料里的(资料没带就是时序的末值)。
+	 */
 	current: number;
-	/** 本次采样时间(ISO)。 */
+	/** `current` 是什么时候的(ISO):B 站是本次采样时间,拓展是最近那次资料 / 那条样本的时间。 */
 	ts: string;
-	/** delta 相对 subscribed baseline;subscribed baseline 缺失时为 null。 */
+	/**
+	 * delta 相对订阅起点:B 站是 fansBaseline(第一次采到的值,开机按时序最早一条自愈),拓展是它粉丝时序的
+	 * **第一条样本**(同一个意思:这位开始被记的那一刻);起点缺失时为 null。
+	 */
 	deltaSubscribed: number | null;
 	/** delta 相对 24h 前最近一条样本;窗口内无样本时为 null。 */
 	delta24h: number | null;

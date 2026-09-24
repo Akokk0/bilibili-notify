@@ -118,7 +118,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		setSubs(next: ReturnType<typeof biliSub>[]) {
 			subs = next;
 		},
-		lastSnapshotUids(): string[] {
+		lastSnapshotUids(): Array<string | undefined> {
 			return (snapshots.at(-1) ?? []).map((e) => e.uid);
 		},
 	};

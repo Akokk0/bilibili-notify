@@ -20,6 +20,7 @@ interface Fixture {
 	dynamics?: Record<string, Array<{ id: string; kind: "video" | "post" | "live"; ts: string }>>;
 	sessions?: Record<string, Array<{ startedAt: string; endedAt?: string; peakViewers?: number }>>;
 	liveRooms?: Array<{ uid: string; isLive: boolean }>;
+	/** 粉丝轮询的快照,按 uid 写(好读);轮询按订阅 id 记,makeDeps 替它补上 `subscriptionId`。 */
 	fansEntries?: Array<{ uid: string; current: number }>;
 	/** 活动采集的起始时刻。缺省取足够早的值,等于「一直在采」。 */
 	recordingSince?: string;
@@ -44,7 +45,12 @@ function makeDeps(f: Fixture): RouteDeps {
 				recordingSince: async () => f.recordingSince ?? "1970-01-01T00:00:00.000Z",
 			},
 			engines: f.liveRooms ? { listLiveRooms: () => f.liveRooms } : null,
-			fansPoller: f.fansEntries ? { getLastEntries: () => f.fansEntries } : null,
+			fansPoller: f.fansEntries
+				? {
+						getLastEntries: () =>
+							f.fansEntries?.map((e) => ({ subscriptionId: subId(e.uid), ...e })),
+					}
+				: null,
 		},
 		store: {
 			getSubscriptions: () =>

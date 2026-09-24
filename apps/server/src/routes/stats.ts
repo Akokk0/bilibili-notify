@@ -173,12 +173,13 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 此刻的粉丝数:B 站取粉丝轮询的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
 		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
 		// 右端点不该再往前走。两边没有就回退到样本末值(见成行那里)。
-		const fansByUid = new Map(
-			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.uid, e]),
+		// 粉丝轮询的快照按订阅 id 记(一条订阅一行)。拓展的那几行它也有,可这里取资料缓存更直接(同一个数)。
+		const fansBySub = new Map(
+			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.subscriptionId, e]),
 		);
 		const currentFans = (sub: Subscription): number | undefined =>
 			isBiliSubscription(sub)
-				? fansByUid.get(sub.uid)?.current
+				? fansBySub.get(sub.id)?.current
 				: sub.enabled
 					? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans
 					: undefined;

@@ -43,8 +43,8 @@ interface Fixture {
 	profileFans?: Record<string, number>;
 	/** 此刻有一场在播的拓展订阅(场次模块手里有这一场)。 */
 	liveExt?: Set<string>;
-	/** B 站粉丝轮询的快照;缺省 = 轮询没起来。 */
-	fansEntries?: Array<{ uid: string; current: number }>;
+	/** 粉丝轮询的快照(按订阅 id 记);缺省 = 轮询没起来。 */
+	fansEntries?: Array<{ subscriptionId: string; uid?: string; current: number }>;
 	/** `false` = 引擎没挂上。 */
 	engines?: boolean;
 }

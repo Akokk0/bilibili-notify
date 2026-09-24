@@ -169,7 +169,15 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	describe("fans-refreshed", () => {
 		it("data 是数组:整体覆盖 ['fans']", () => {
 			const entries: FansEntry[] = [
-				{ uid: "u1", current: 100, ts: "t", deltaSubscribed: 10, delta24h: 5, delta7d: 20 },
+				{
+					subscriptionId: "s1",
+					uid: "u1",
+					current: 100,
+					ts: "t",
+					deltaSubscribed: 10,
+					delta24h: 5,
+					delta7d: 20,
+				},
 			];
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: entries }),
@@ -191,7 +199,17 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("空数组:覆盖为空(表达「全部 enabled subs 已被删除」)", () => {
 			h.qc.setQueryData<FansResponse>(["fans"], {
-				entries: [{ uid: "u1", current: 1, ts: "t", deltaSubscribed: 0, delta24h: 0, delta7d: 0 }],
+				entries: [
+					{
+						subscriptionId: "s1",
+						uid: "u1",
+						current: 1,
+						ts: "t",
+						deltaSubscribed: 0,
+						delta24h: 0,
+						delta7d: 0,
+					},
+				],
 			});
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: [] }),

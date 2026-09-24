@@ -31,7 +31,9 @@ function makeDeps(opts: StubOpts = {}) {
 				api: {},
 				listLiveRooms: () => state.liveUids.map((uid) => ({ uid, isLive: true })),
 			},
-			fansPoller: { getLastEntries: () => [{ uid: "1", current: state.fans }] },
+			fansPoller: {
+				getLastEntries: () => [{ subscriptionId: "s1", uid: "1", current: state.fans }],
+			},
 			fansStore: { listSamplesSince: async () => [] },
 			statsStore: {
 				recordingSince: async () => {

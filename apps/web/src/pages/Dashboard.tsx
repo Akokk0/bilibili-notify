@@ -1,4 +1,5 @@
 import type { ExtensionDTO, LogLevel, UpdateStatusDTO } from "@bilibili-notify/contract";
+import { upColor } from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
 	Btn,
@@ -50,12 +51,7 @@ import {
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
-import {
-	type BiliSubscription,
-	isBiliSubscription,
-	type PushTarget,
-	type Subscription,
-} from "../types/domain";
+import { isBiliSubscription, type PushTarget, type Subscription } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { historyRowColor, historyRowIdentity, isExtensionRow } from "../utils/up-display";
@@ -463,6 +459,32 @@ function formatDeltaNumber(n: number): string {
 	return `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
 }
 
+/**
+ * 粉丝面板那一行画成什么样(ADR-0020 决策 8)。条目按订阅 id 对订阅:名字走订阅卡那条链
+ * (`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id),头像是那条订阅的;订阅列表还没回来时
+ * B 站行写 UID、拓展行写外部 id。颜色跟着人走(`upColor`,与订阅卡、历史页、统计页同一个颜色)。拓展行另带一枚
+ * 平台徽章(同「正在直播」)。
+ */
+function fansRowFace(
+	e: FansEntry,
+	lookup: SubscriptionLookup,
+	extensions: readonly ExtensionDTO[] | undefined,
+): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
+	const sub = lookup.byId(e.subscriptionId);
+	const fallback = e.extensionId !== undefined ? (e.externalId ?? e.extensionId) : `UID ${e.uid}`;
+	const face = {
+		name: sub ? displayName(sub) : fallback,
+		color: upColor(e, e.subscriptionId),
+		avatar: sub?.cachedProfile?.avatar || undefined,
+	};
+	if (e.extensionId === undefined) return face;
+	const platform = subscriptionPlatformOf({ extensionId: e.extensionId }, extensions);
+	return {
+		...face,
+		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
+	};
+}
+
 function FansDeltaCol({ label, value }: { label: string; value: number | null }) {
 	const isNull = value == null;
 	const text = isNull ? "—" : value === 0 ? "±0" : formatDeltaNumber(value);
@@ -483,18 +505,22 @@ function FansDeltaCol({ label, value }: { label: string; value: number | null })
 	);
 }
 
-function FansPanel({ subs }: { subs: Subscription[] }) {
+export function FansPanel({
+	subs,
+	extensions,
+}: {
+	subs: Subscription[];
+	/** 装着的拓展 —— 拓展行的平台徽章照它的清单;没回来时徽章写拓展 id。 */
+	extensions?: readonly ExtensionDTO[];
+}) {
 	// 不轮询 — 由 usePushEventsChannel 的 `fans-refreshed` 覆盖式刷新缓存。
 	const fansQuery = useQuery({
 		queryKey: ["fans"],
 		queryFn: () => api.get<FansResponse>("/api/fans"),
 	});
-	const subByUid = useMemo(() => {
-		// 粉丝只有 B 站(ADR-0019 决策 12):按 uid 采、按 uid 记,只对得上 B 站订阅。
-		const m = new Map<string, BiliSubscription>();
-		for (const s of subs.filter(isBiliSubscription)) m.set(s.uid, s);
-		return m;
-	}, [subs]);
+	// 条目按订阅 id 记(ADR-0020 决策 8):B 站订阅与有粉丝时序的拓展订阅各一行。按 uid 对的话,拓展行对不上、
+	// 同一个 uid 的两条订阅也分不开。
+	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 
 	const entries: FansEntry[] = fansQuery.data?.entries ?? [];
 	const sorted = useMemo(() => {
@@ -532,17 +558,22 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 				// 跟同行「正在直播」由 grid row-stretch 拉到等高。
 				<div className="bn-no-scrollbar grid max-h-60 grid-cols-1 gap-2 overflow-y-auto">
 					{sorted.map((e) => {
-						const sub = subByUid.get(e.uid);
-						const name = sub ? displayName(sub) : `UID ${e.uid}`;
-						const color = colorFromUid(e.uid);
+						const { name, color, avatar, platform } = fansRowFace(e, lookup, extensions);
 						return (
 							<div
-								key={e.uid}
+								key={e.subscriptionId}
 								className="flex items-center gap-3 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2.5 text-bn-sm"
 							>
-								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
+								<Avatar name={name} color={color} size={32} url={avatar} />
 								<div className="min-w-0 flex-1">
-									<div className="truncate font-bold text-bn-text-primary">{name}</div>
+									<div className="flex min-w-0 items-center gap-1.5">
+										<span className="truncate font-bold text-bn-text-primary">{name}</span>
+										{platform ? (
+											<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
+												{platform.label}
+											</Pill>
+										) : null}
+									</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
 										{formatCount(e.current)} 粉丝
 									</div>
@@ -983,7 +1014,7 @@ export default function Dashboard() {
 			{/* row 2: 正在直播(宽) + 粉丝数变化(窄) */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
 				<LiveNowPanel live={live} subs={subs} extensions={extensionsQuery.data?.extensions} />
-				<FansPanel subs={subs} />
+				<FansPanel subs={subs} extensions={extensionsQuery.data?.extensions} />
 			</div>
 
 			{/* AI insight strip */}
