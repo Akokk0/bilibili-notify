@@ -11,7 +11,7 @@
  * 「报一条作品」,再从 webhook、卡片 HTML 与历史三处看结果。
  *
  * - 甲:开着,什么都不拦 —— 图文、视频两条都收到,照默认版式(卡 + 文案 + 链接一条)。
- * - 乙:开着,按 UP 屏蔽「图文」—— 第一条(图文)被挡,第二条(视频)照收。
+ * - 乙:开着,按 UP 屏蔽「海边」—— 第一条(图文,正文写着去海边)被挡,第二条(视频)照收。
  * - 丙:停用 —— 什么都收不到(决策 62)。
  */
 
@@ -225,10 +225,10 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 					...json({
 						...base,
 						routing: { ...base.routing, dynamic: [who[key].target] },
-						// 乙按 UP 屏蔽「图文」:第一条作品(图文)正文里有这两个字。
+						// 乙按 UP 屏蔽「海边」:只有第一条作品(图文)的正文里有这两个字,视频那条没有。
 						overrides:
 							key === "b"
-								? { ...base.overrides, filters: { blockKeywords: ["图文"] } }
+								? { ...base.overrides, filters: { blockKeywords: ["海边"] } }
 								: base.overrides,
 						cachedProfile: profile,
 					}),
@@ -290,7 +290,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		).toString("base64")}`;
 
 		const card = renderedHtml.find(
-			(html) => html.includes(who.a.name) && html.includes("假源的第 1 条作品"),
+			(html) => html.includes(who.a.name) && html.includes("旅行第 1 天，去海边拍了三张"),
 		);
 		expect(card, "甲那张图文卡没画出来").toBeDefined();
 		expect(card).toContain(avatarDataUrl);

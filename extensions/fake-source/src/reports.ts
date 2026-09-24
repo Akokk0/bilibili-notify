@@ -53,25 +53,37 @@ function statsOf(n: number) {
 	return { likes: n * 321, comments: n * 45, shares: n * 6 };
 }
 
+/**
+ * 图文作品的正文,按序号轮着用。写成像真作品的话 —— 打开 AI 点评时,女仆点评的就是这段字,写成
+ * 「这是第二行」一类自我介绍的测试文案,点评也只会跟着复述它。卡上要核的都照样在:序号(连按几下
+ * 分得清哪张卡是哪一下报的)、第二行(正文保留换行)、`#假话题`(照字面显示,不收富文本,ADR-0019
+ * 决策 55)。
+ */
+const PICTURE_POST_TEXTS: readonly ((n: number) => string)[] = [
+	(n) => `旅行第 ${n} 天，去海边拍了三张\n风好大，帽子差点被吹跑 #假话题`,
+	(n) => `第 ${n} 次挑战自己做饭，摆盘失败但味道还行\n第三张是饭后甜点 #假话题`,
+	(n) => `连续第 ${n} 天下班路上拍晚霞\n明天也要加油呀 #假话题`,
+];
+
 /** 一条作品:单数是图文(正文 + 三张图),双数是视频 —— 两种卡按两下就都看得见。 */
 export function fakePost(externalId: string, n: number, now: number): SubscriptionPost {
 	const base = postBase(externalId, n, now);
 	if (n % 2 === 1) {
 		return {
 			...base,
-			text: `假源的第 ${n} 条作品:图文,三张图。\n这是第二行 —— 正文保留换行;#假话题 照字面显示。`,
+			text: PICTURE_POST_TEXTS[((n - 1) / 2) % PICTURE_POST_TEXTS.length]?.(n),
 			images: [pictureAt(n), pictureAt(n + 1), pictureAt(n + 2)],
 			stats: statsOf(n),
 		};
 	}
 	return {
 		...base,
-		text: `假源的第 ${n} 条作品:视频。`,
+		text: `第 ${n} 支视频来啦，这次拍了一整天的城市散步，喜欢的话点个赞`,
 		video: {
 			cover: pictureAt(n),
-			title: `假视频 · 第 ${n} 条`,
+			title: `城市散步 vlog · 第 ${n} 期`,
 			duration: 120 + n,
-			description: `假源造的第 ${n} 条视频的简介。`,
+			description: "从早走到晚，两万多步，记下了沿路的小店和街景。",
 			plays: n * 1_234,
 		},
 		stats: statsOf(n),
@@ -82,7 +94,7 @@ export function fakePost(externalId: string, n: number, now: number): Subscripti
 export function fakePostWithBadImage(externalId: string, n: number, now: number): SubscriptionPost {
 	return {
 		...postBase(externalId, n, now),
-		text: `假源的第 ${n} 条作品:第 2 张图是 SVG —— BN 应只丢那一张,其余照收。`,
+		text: `第 ${n} 条：随手拍了三张，第二张好像传坏了`,
 		images: [pictureAt(n), SVG_BYTES, pictureAt(n + 1)],
 	};
 }
