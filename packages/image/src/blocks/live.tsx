@@ -113,6 +113,8 @@ const fans: BlockRenderer<LiveCardView> = (p) => {
 export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardView>> = {
 	[DIVIDER_TYPE]: () => <div data-bn="line" />,
 
+	// 没有真封面时 `p.cover` 已经是占位图(`buildLiveCardView` 给的),这里照画、不收起 ——
+	// 想没封面就整格收起的皮肤自己挂 `showIf: "live.hasCover"`。
 	cover: (p) => (
 		<img
 			data-bn="image"

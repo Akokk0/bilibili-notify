@@ -1161,6 +1161,7 @@ function buildLivePreviewProps(coverDataUrl?: string): LiveCardView {
 		area: "游戏",
 		description: "今晚 7 点开始，欢迎围观。这是一段示例直播间简介。",
 		cover: coverDataUrl || SVG_COVER,
+		hasCover: true,
 		time: "2026-05-09 19:00:00",
 		online: "1.2万",
 		likes: "8.7万",

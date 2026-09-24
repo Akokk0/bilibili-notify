@@ -91,6 +91,7 @@ function liveSample(scene: string): LiveCardView {
 		description: "这是一段示例直播间简介：每晚八点开播，周末加场。",
 		// 「正在直播」那一档真机上铺的是实时关键帧;示例里两个场景是同一块占位图。
 		cover: SVG_COVER,
+		hasCover: true,
 		online: "",
 		likes: "",
 		totalViewers: "",

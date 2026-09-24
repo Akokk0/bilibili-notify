@@ -20,6 +20,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
+import { LIVE_COVER_PLACEHOLDER } from "../../live-view";
 import { getSCLevel, SC_COLORS } from "../../styles";
 import type { DynamicCardProps, DynamicNode } from "../../templates/dynamic-card";
 import type { GuardCardProps } from "../../templates/guard-card";
@@ -40,6 +41,7 @@ function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 		area: "虚拟主播",
 		description: "简介第一行 第二行",
 		cover: "https://img/cover.jpg",
+		hasCover: true,
 		time: "直播时长：1小时",
 		online: "1.2万",
 		likes: "3000",
@@ -60,6 +62,7 @@ function emptyLiveProps(): LiveCardView {
 		area: "",
 		description: "",
 		cover: "",
+		hasCover: false,
 		time: "",
 		online: "",
 		likes: "",
@@ -351,9 +354,12 @@ describe("直播卡的封面", () => {
 		expect(d.live.hasCover).toBe(true);
 	});
 
-	it("没有 → 空串且 hasCover 为假", () => {
-		const d = buildCardData("live", liveProps({ cover: "" }));
-		expect(d.live.cover).toBe("");
+	// 没有真封面时视图里已经是占位图(`buildLiveCardView` 定的,`neutral-live-card.test.ts`
+	// 钉着);契约照视图说:`live.cover` 就是那张占位图,`live.hasCover` 如实为假。
+	// 验红:把 `hasCover` 改回按「封面非空」判,这条红(占位图不是空串)。
+	it("没有真封面 → cover 是视图里的占位图,hasCover 为假", () => {
+		const d = buildCardData("live", liveProps({ cover: LIVE_COVER_PLACEHOLDER, hasCover: false }));
+		expect(d.live.cover).toBe(LIVE_COVER_PLACEHOLDER);
 		expect(d.live.hasCover).toBe(false);
 	});
 });

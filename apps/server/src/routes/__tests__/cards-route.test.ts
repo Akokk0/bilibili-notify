@@ -1011,6 +1011,60 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
+
+	/**
+	 * 主人真机撞见的:按 UP 预览一位**没在播**的 UP,这条路恒按「直播中」出卡,取的是关键帧 ——
+	 * 没开播时 B 站给的关键帧是空串,封面那一格画成一张只剩 alt 文字的裂图。
+	 * 验红:把 `biliLiveCardInput` 的封面改回只取关键帧 / 把 `buildLiveCardView` 的占位去掉,
+	 * 对应那条红。图一律 data URL:测试不许联网。
+	 */
+	describe("真实数据预览:没在播的房间", () => {
+		const ROOM_COVER = "data:image/png;base64,ROOM-COVER";
+
+		async function coverSrcOf(room: Record<string, unknown>): Promise<string | undefined> {
+			const captured = { html: "" };
+			const page = {
+				setContent: vi.fn(async (html: string) => {
+					captured.html = html;
+				}),
+				waitForFunction: vi.fn(async () => undefined),
+				$: vi.fn(async () => ({
+					boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+					dispose: async () => {},
+				})),
+				screenshot: vi.fn(async () => Buffer.from("png")),
+				close: vi.fn(async () => {}),
+			};
+			const api = {
+				getLiveRoomInfo: vi.fn(async () => ({
+					code: 0,
+					data: { uid: 12345, live_status: 0, title: "没在播", ...room },
+				})),
+				getMasterInfo: vi.fn(async () => ({
+					code: 0,
+					data: { info: { uname: "真实UP", face: "data:image/png;base64,FACE" } },
+				})),
+			} as unknown as BilibiliAPI;
+			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const app = createCardsRoute({ deps: makeDeps(), puppeteer, api });
+			const res = await postPreview(app, {
+				kind: "live",
+				style: STYLE,
+				content: { roomId: "778899" },
+			});
+			expect(res.status).toBe(200);
+			return /src="([^"]*)" alt="封面"/.exec(captured.html)?.[1];
+		}
+
+		it("关键帧是空串 → 封面退到直播间封面", async () => {
+			expect(await coverSrcOf({ keyframe: "", user_cover: ROOM_COVER })).toBe(ROOM_COVER);
+		});
+
+		it("连直播间封面也没有 → 画内嵌的占位图,不出空的 src", async () => {
+			const src = await coverSrcOf({ keyframe: "", user_cover: "" });
+			expect(src).toMatch(/^data:image\/svg\+xml;base64,/);
+		});
+	});
 });
 
 describe("cards route — /preview sc/guard 发送者取登录账号", () => {

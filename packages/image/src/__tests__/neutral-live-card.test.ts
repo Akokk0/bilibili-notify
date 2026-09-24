@@ -8,7 +8,8 @@
  * 2. 卡上那句时间由开播时刻算(北京时间);数字排成「1.2万」,粉丝数变化带正负号;
  * 3. 皮肤契约的直播取值(下播时 `stats.popularity` = 点赞、`stats.fans` = 累计观看,
  *    `stats.fansChanged` 有就给);
- * 4. 自定义直播封面盖在输入的封面上。
+ * 4. 自定义直播封面盖在输入的封面上;
+ * 5. 没有真封面时封面格画 BN 自带的占位图,契约的 `live.cover` 同样给它、`live.hasCover` 为假。
  */
 
 import type { CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
@@ -16,6 +17,7 @@ import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
+import { LIVE_COVER_PLACEHOLDER } from "../live-view";
 import type { PuppeteerLike } from "../puppeteer";
 import type { LiveCardInput } from "../templates/live-card";
 
@@ -173,6 +175,33 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 		const d = await drawn(input(), { liveCoverImage: "my-cover" });
 		expect(d.cover).toBe("data:image/png;base64,ASSET-my-cover");
 	});
+
+	/**
+	 * 拓展直播没报封面、B 站两张都没有时走到这里:从前 `<img src="">` 画成一张只剩 alt 文字的
+	 * 裂图。验红:把 `buildLiveCardView` 的封面改回 `input.cover ?? ""`,这条红。
+	 */
+	it("没有封面(没给或空串)→ 画 BN 自带的占位图", async () => {
+		expect((await drawn(input({ cover: undefined }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
+		expect((await drawn(input({ cover: "" }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
+	});
+
+	it("没有封面但设了自定义封面 → 画自定义封面,不画占位", async () => {
+		const d = await drawn(input({ cover: undefined }), { liveCoverImage: "my-cover" });
+		expect(d.cover).toBe("data:image/png;base64,ASSET-my-cover");
+	});
+});
+
+/** 占位图本身:内嵌的 data URL(出卡不许联网),而且真是一张 SVG。 */
+describe("直播封面的占位图", () => {
+	it("是内嵌的 SVG,带「暂无封面」那行字", () => {
+		const prefix = "data:image/svg+xml;base64,";
+		expect(LIVE_COVER_PLACEHOLDER.startsWith(prefix)).toBe(true);
+		const svg = Buffer.from(LIVE_COVER_PLACEHOLDER.slice(prefix.length), "base64").toString("utf8");
+		expect(svg).toMatch(/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+		expect(svg).toContain("暂无封面");
+		// 16:9 —— 与 B 站封面同比例,没声明高度的皮肤里它按自己的比例撑开,不会压扁。
+		expect(svg).toContain('width="640" height="360"');
+	});
 });
 
 /** 一套探针皮肤:一个自定义块把直播契约的几格原样印出来。 */
@@ -201,6 +230,66 @@ async function contract(i: LiveCardInput): Promise<string> {
 	await renderer.generateNeutralLiveCard(i, { cardSkin: "probe" });
 	return /探针\[([^\]]*)\]/.exec(captured[0] ?? "")?.[1] ?? "(没找到探针)";
 }
+
+/**
+ * 封面探针:一个没写 `showIf` 的自定义块直接 `<img src="{live.cover}">`,再印出 `live.hasCover`
+ * —— 契约说的是「`live.cover` 永远画得出来(没有真封面时是占位图),`live.hasCover` 如实说
+ * 有没有真封面」。
+ */
+const COVER_PROBE: CardSkinManifest = {
+	...DEFAULT_CARD_SKIN,
+	cards: {
+		...DEFAULT_CARD_SKIN.cards,
+		live: {
+			width: 600,
+			blocks: [
+				{
+					id: "probe",
+					kind: "custom",
+					html: '<div><img src="{live.cover}"><span>有封面[{live.hasCover}]</span></div>',
+					grid: { row: 1, column: 1, span: 12 },
+				},
+			],
+		},
+	},
+} as never;
+
+async function coverContract(
+	i: LiveCardInput,
+	colorOptions: Record<string, string> = {},
+): Promise<{ src: string; hasCover: string }> {
+	const { renderer, captured } = makeRenderer({
+		resolveAsset: async (id) => `data:image/png;base64,ASSET-${id}`,
+		resolveCardSkin: (id) => (id === "cover-probe" ? COVER_PROBE : undefined),
+	});
+	await renderer.generateNeutralLiveCard(i, { ...colorOptions, cardSkin: "cover-probe" });
+	const doc = new JSDOM(captured[0] ?? "").window.document;
+	// 自定义块的 wrapper 一律挂 `data-block="custom"`(块 id 不上 DOM)。
+	const probe = doc.querySelector('[data-block="custom"]');
+	return {
+		src: probe?.querySelector("img")?.getAttribute("src") ?? "(没找到探针)",
+		hasCover: /有封面\[([^\]]*)\]/.exec(probe?.textContent ?? "")?.[1] ?? "(没找到探针)",
+	};
+}
+
+describe("generateNeutralLiveCard — 皮肤契约的封面", () => {
+	it("有封面:live.cover 就是它,live.hasCover 为真", async () => {
+		expect(await coverContract(input())).toEqual({ src: COVER, hasCover: "true" });
+	});
+
+	it("没有真封面:live.cover 给占位图(没写 showIf 的皮肤也不裂图),live.hasCover 为假", async () => {
+		expect(await coverContract(input({ cover: undefined }))).toEqual({
+			src: LIVE_COVER_PLACEHOLDER,
+			hasCover: "false",
+		});
+	});
+
+	it("自定义封面算真封面", async () => {
+		expect(
+			await coverContract(input({ cover: undefined }), { liveCoverImage: "my-cover" }),
+		).toEqual({ src: "data:image/png;base64,ASSET-my-cover", hasCover: "true" });
+	});
+});
 
 describe("generateNeutralLiveCard — 皮肤契约的直播取值", () => {
 	it("下播:popularity = 点赞、fans = 累计观看,粉丝数变化照给", async () => {

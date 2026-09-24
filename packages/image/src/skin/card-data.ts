@@ -52,7 +52,6 @@ function num(v: unknown): number {
 function liveData(p: LiveCardView): CardData {
 	const onAir = p.status === "start" || p.status === "streaming";
 	const ended = p.status === "end";
-	const cover = str(p.cover);
 	const fansChanged = str(p.fansChanged);
 	return {
 		up: { name: str(p.username), face: str(p.userface) },
@@ -62,9 +61,10 @@ function liveData(p: LiveCardView): CardData {
 			time: str(p.time),
 			// 视图里的简介已经是纯文本(B 站那头剥过富文本)。
 			description: str(p.description),
-			// 生效的那张(自定义直播封面已经盖上去了)—— 与封面块画的是同一张。
-			cover,
-			hasCover: cover !== "",
+			// 生效的那张(自定义直播封面已经盖上去了)—— 与封面块画的是同一张。没有真封面时
+			// 视图里已经是占位图(没写 `showIf` 的皮肤也不会裂图),真不真由 `hasCover` 如实说。
+			cover: str(p.cover),
+			hasCover: !!p.hasCover,
 			isStreaming: onAir,
 			isEnded: ended,
 		},

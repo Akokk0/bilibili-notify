@@ -1504,8 +1504,10 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("live.area", "text", "分区"),
 		f("live.time", "text", "开播时长 / 下播时间那句"),
 		f("live.description", "text", "房间简介(纯文本)"),
-		f("live.cover", "image", "封面(生效的那张)"),
-		f("live.hasCover", "bool", "有没有封面"),
+		// 封面永远画得出来:没有真封面时 `live.cover` 给 BN 自带的占位图(不是空串 —— 没写
+		// `showIf` 的皮肤也不会裂图),`live.hasCover` 如实为假;想整格收起就 `showIf` 它。
+		f("live.cover", "image", "封面(生效的那张;没有真封面时是占位图)"),
+		f("live.hasCover", "bool", "有没有真封面(占位图不算)"),
 		f("live.isStreaming", "bool", "正在直播"),
 		f("live.isEnded", "bool", "已下播"),
 		f("stats.popularity", "text", "人气(直播中)/ 点赞(下播)"),

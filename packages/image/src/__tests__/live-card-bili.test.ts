@@ -11,6 +11,7 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
+import { LIVE_COVER_PLACEHOLDER } from "../live-view";
 import type { PuppeteerLike } from "../puppeteer";
 import type { LiveData } from "../types";
 
@@ -166,9 +167,29 @@ describe("generateLiveCard — B 站的状态码翻成卡上的样子", () => {
 		expect(d.cover).toBe(USER_COVER);
 	});
 
-	it("直播中却没有关键帧 → 封面空着,不去偷房间封面", async () => {
-		const d = await bili(2, { ...ROOM, keyframe: undefined });
-		expect(d.cover ?? "").toBe("");
+	/**
+	 * 两张互相兜底:没开播时 B 站给的关键帧是空串(卡片页「按 UP 预览」拿没在播的房间选直播中
+	 * 就是这样),刚开播时关键帧也还没生成 —— 从前那一格画成一张只剩 alt 文字的裂图。
+	 * 验红:把 `biliLiveCardInput` 的封面改回只取一张,这几条红。
+	 */
+	it("直播中却没有关键帧(空串或缺)→ 退到房间封面", async () => {
+		expect((await bili(2, { ...ROOM, keyframe: "" })).cover).toBe(USER_COVER);
+		expect((await bili(2, { ...ROOM, keyframe: undefined })).cover).toBe(USER_COVER);
+	});
+
+	it("开播 / 下播 / 没在播却没有房间封面 → 退到关键帧", async () => {
+		for (const status of [1, 3, 0, 4]) {
+			expect((await bili(status, { ...ROOM, user_cover: "" })).cover, `状态 ${status}`).toBe(
+				KEYFRAME,
+			);
+		}
+	});
+
+	it("两张都没有 → 画 BN 自带的占位图,不是空的 src", async () => {
+		for (const status of [2, 1]) {
+			const d = await bili(status, { ...ROOM, keyframe: "", user_cover: "" });
+			expect(d.cover, `状态 ${status}`).toBe(LIVE_COVER_PLACEHOLDER);
+		}
 	});
 
 	it("没有粉丝数:开播卡不画粉丝行", async () => {

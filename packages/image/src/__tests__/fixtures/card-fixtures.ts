@@ -105,6 +105,7 @@ function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 		area: "虚拟主播",
 		description: htmlToPlain(RICH_DESCRIPTION),
 		cover: USER_COVER,
+		hasCover: true,
 		time: "开播时间：2026-09-13 20:00:00",
 		online: numberToStr(123_456),
 		likes: "",

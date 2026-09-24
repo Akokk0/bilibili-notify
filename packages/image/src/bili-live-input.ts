@@ -34,9 +34,11 @@ function parseBiliLiveTime(raw: unknown): number | undefined {
 /**
  * **B 站那头 → 中立的直播卡输入**。卡上画什么全在这一步定好:
  *
- * - 封面:直播中用关键帧(实时画面),开播 / 下播 / 没在播用房间封面。
+ * - 封面:直播中先用关键帧(实时画面),开播 / 下播 / 没在播先用房间封面;**先取的那张没有,
+ *   拿另一张兜** —— 没开播时 B 站给的关键帧是空串,刚开播时关键帧也常常还没生成。两张都
+ *   没有就不给,出卡那头画占位图(`buildLiveCardView`)。
  * - 其余状态码(比如 4 首次开播,今天没有调用方传进出卡)照旧画成「直播中」角标、不写那句
- *   时间、用房间封面 —— 与从前的默认分支一个样。
+ *   时间、先用房间封面 —— 与从前的默认分支一个样。
  * - 简介是富文本(可能带 `<p>` / `<br>` 或 entity-encoded 形式),先剥成纯文本。
  *
  * @param data B 站直播间接口的 `data`(`getLiveRoomInfo`)。
@@ -53,13 +55,15 @@ export function biliLiveCardInput(
 	const known = BILI_LIVE_STATUS[liveStatus];
 	const status = known ?? "start";
 	const text = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+	const keyframe = text(data?.keyframe);
+	const roomCover = text(data?.user_cover);
 	return {
 		status,
 		author: { name: username, face: userface },
 		title: text(data?.title),
 		area: text(data?.area_name),
 		description: htmlToPlain(text(data?.description)),
-		cover: text(status === "streaming" ? data?.keyframe : data?.user_cover),
+		cover: (status === "streaming" ? keyframe || roomCover : roomCover || keyframe) || undefined,
 		startedAt: known ? parseBiliLiveTime(data?.live_time) : undefined,
 		online: +(data?.online ?? 0),
 		likes: liveData.likedNum,
