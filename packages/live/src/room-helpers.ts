@@ -5,7 +5,11 @@ import {
 	RiskControlError,
 } from "@bilibili-notify/api";
 import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
-import { type MessageKindLayout, planMessageGroups } from "@bilibili-notify/internal";
+import {
+	assembleMessageGroups,
+	type MessageKindLayout,
+	type MessageLayoutSegment,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
@@ -340,8 +344,9 @@ export class RoomContext extends RoomContextBase {
 	}
 
 	/**
-	 * 版式路径的装配与投递:按块序分组(分条符切组),同条内相邻文本类部件以
-	 * separator 连接;多条走 `broadcastSequenceToTargets`。
+	 * 版式路径的装配与投递:装配走与动态共用的 {@link assembleMessageGroups}(分条符切组、
+	 * 同条内相邻文本类部件以 separator 连接),这里只把中立的段包成 contentBuilder 的
+	 * 形状;多条走 `broadcastSequenceToTargets`。
 	 */
 	private async broadcastWithMessageLayout(args: {
 		layout: MessageKindLayout;
@@ -355,33 +360,15 @@ export class RoomContext extends RoomContextBase {
 		const { layout, buffer, notifyMsg, roomLink, uid, pushType } = args;
 		const opts: LiveBroadcastOptions = { pushId: args.pushId };
 		const text = layout.blocks.some((b) => b.visible && b.type === "text") ? notifyMsg : "";
-		const present = new Set<string>();
-		if (buffer) present.add("card");
-		if (text) present.add("text");
-		if (roomLink) present.add("link");
-		const groups = planMessageGroups(layout.blocks, present);
-		const buildContent = (group: readonly string[]): unknown => {
-			const segs: unknown[] = [];
-			let texts: string[] = [];
-			const flushText = (): void => {
-				if (texts.length > 0) {
-					segs.push(this.contentBuilder.text(texts.join(layout.separator)));
-					texts = [];
-				}
-			};
-			for (const part of group) {
-				if (part === "card" && buffer) {
-					flushText();
-					segs.push(this.contentBuilder.image(buffer, "image/jpeg"));
-				} else if (part === "text") {
-					texts.push(text);
-				} else if (part === "link") {
-					texts.push(roomLink);
-				}
-			}
-			flushText();
-			return this.contentBuilder.message(segs);
-		};
+		const groups = assembleMessageGroups(layout, { card: buffer, text, link: roomLink });
+		const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
+			this.contentBuilder.message(
+				segs.map((s) =>
+					s.type === "image"
+						? this.contentBuilder.image(s.buffer, s.mime)
+						: this.contentBuilder.text(s.text),
+				),
+			);
 		if (groups.length === 0) {
 			this.logger.debug(`[push] uid=${uid} 消息版式所有部件隐藏/缺失,本次开播不推送`);
 			return;

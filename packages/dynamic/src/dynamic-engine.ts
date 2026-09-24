@@ -9,7 +9,11 @@ import type {
 	MessageBus,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { DEFAULT_MESSAGE_LAYOUT, interpolate, planMessageGroups } from "@bilibili-notify/internal";
+import {
+	assembleMessageGroups,
+	DEFAULT_MESSAGE_LAYOUT,
+	interpolate,
+} from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { resolveDynamicColorOptions } from "./card-style";
@@ -961,34 +965,12 @@ export class DynamicEngine {
 					: (sub?.customDynamicTemplate ??
 						this.config.dynamicTemplate ??
 						DEFAULT_DYNAMIC_TEXT.dynamic);
-				// 链接独立成部件,顺序 / 显隐 / 分条全由版式决定;同条内相邻文本类部件以 separator 连接。
+				// 链接独立成部件,顺序 / 显隐 / 分条全由版式决定(与直播共用一份装配)。
 				const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name)) : "";
-				const present = new Set<string>();
-				if (buffer) present.add("card");
-				if (text) present.add("text");
-				if (url) present.add("link");
-				const groups = planMessageGroups(layout.blocks, present);
-				const messages: PushSegment[][] = groups.map((group) => {
-					const segs: PushSegment[] = [];
-					let texts: string[] = [];
-					const flushText = (): void => {
-						if (texts.length > 0) {
-							segs.push({ type: "text", text: texts.join(layout.separator) });
-							texts = [];
-						}
-					};
-					for (const part of group) {
-						if (part === "card" && buffer) {
-							flushText();
-							segs.push({ type: "image", buffer, mime: "image/jpeg" });
-						} else if (part === "text") {
-							texts.push(text);
-						} else if (part === "link") {
-							texts.push(url);
-						}
-					}
-					flushText();
-					return segs;
+				const messages: PushSegment[][] = assembleMessageGroups(layout, {
+					card: buffer,
+					text,
+					link: url,
 				});
 				// 这一条动态 = 一次推送:主卡(可能分条)与后面的图集共用一个 pushId,宿主的
 				// 历史落同一行、图集是追加上去的附加项。

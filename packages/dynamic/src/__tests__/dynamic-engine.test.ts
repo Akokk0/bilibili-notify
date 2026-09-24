@@ -1828,6 +1828,47 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		expect(b.generateDynamicCard).not.toHaveBeenCalled();
 	});
 
+	// 刻画(ADR-0019 决策 67 把装配合成一份之前钉的现状):自定义连接符、隐藏的分条符
+	// 不切组、卡片夹在文字中间时前后两段文字各自成段、卡片段带 image/jpeg。
+	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seedLayout(
+			b,
+			layoutOf(
+				[
+					{ type: "link" },
+					{ type: "split", id: "split-1", visible: false },
+					{ type: "text" },
+					{ type: "card" },
+				],
+				" | ",
+			),
+		);
+		await detect(b.engine);
+		expect(b.push.broadcastDynamicSequence).not.toHaveBeenCalled();
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
+		expect(segments.map((s) => s.type)).toEqual(["text", "image"]);
+		expect(segments[0]?.text).toBe(`${URL1} | UP发布了一条动态`);
+	});
+
+	it("卡片夹在文字中间 → 前后两段文字各自成段,卡片段是 image/jpeg", async () => {
+		const b = makeEngine({ withImage: true });
+		const png = Buffer.from("png");
+		b.generateDynamicCard.mockResolvedValue(png);
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seedLayout(b, layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]));
+		await detect(b.engine);
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<
+			Seg & { buffer?: Buffer; mime?: string }
+		>;
+		expect(segments.map((s) => s.type)).toEqual(["text", "image", "text"]);
+		expect(segments[0]?.text).toBe("UP发布了一条动态");
+		expect(segments[1]).toMatchObject({ buffer: png, mime: "image/jpeg" });
+		expect(segments[2]?.text).toBe(URL1);
+	});
+
 	it("渲染失败 → card 部件缺席,其余部件照发(软降级不变)", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generateDynamicCard.mockRejectedValue(new Error("boom"));

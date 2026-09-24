@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+	assembleMessageGroups,
 	DEFAULT_MESSAGE_LAYOUT,
 	defaultMessageKindLayout,
 	MESSAGE_SPLIT_TYPE,
 	type MessageBlock,
+	type MessageKindLayout,
 	MessageLayoutSchema,
 	normalizeMessageLayout,
 	planMessageGroups,
@@ -109,5 +111,77 @@ describe("planMessageGroups", () => {
 			b("text"),
 		];
 		expect(planMessageGroups(blocks, PRESENT)).toEqual([["card", "text"]]);
+	});
+});
+
+describe("assembleMessageGroups", () => {
+	const b = (type: string, visible = true, id = type): MessageBlock => ({ id, type, visible });
+	const split = (visible = true, id = "split-1"): MessageBlock => ({
+		id,
+		type: MESSAGE_SPLIT_TYPE,
+		visible,
+	});
+	const layout = (blocks: MessageBlock[], separator = "\n"): MessageKindLayout => ({
+		blocks,
+		separator,
+	});
+	const card = Buffer.from("card");
+	const ALL = { card, text: "文案", link: "https://example.com/1" };
+	const img = { type: "image", buffer: card, mime: "image/jpeg" } as const;
+
+	it("默认版式 → 一条:卡片成段,文字与链接以连接符连成一段", () => {
+		expect(assembleMessageGroups(DEFAULT_MESSAGE_LAYOUT.dynamic, ALL)).toEqual([
+			[img, { type: "text", text: "文案\nhttps://example.com/1" }],
+		]);
+	});
+
+	it("卡片段原样带出那份 buffer(不拷贝),mime 恒为 image/jpeg", () => {
+		const seg = assembleMessageGroups(layout([b("card")]), { card })[0]?.[0];
+		expect(seg?.type === "image" && seg.buffer).toBe(card);
+		expect(seg?.type === "image" && seg.mime).toBe("image/jpeg");
+	});
+
+	it("相邻文字按版式的连接符连", () => {
+		expect(assembleMessageGroups(layout([b("link"), b("text")], " | "), ALL)).toEqual([
+			[{ type: "text", text: "https://example.com/1 | 文案" }],
+		]);
+	});
+
+	it("卡片夹在文字中间 → 前后两段文字各自成段,不跨卡片连接", () => {
+		expect(assembleMessageGroups(layout([b("text"), b("card"), b("link")]), ALL)).toEqual([
+			[{ type: "text", text: "文案" }, img, { type: "text", text: "https://example.com/1" }],
+		]);
+	});
+
+	it("分条符切组;隐藏的分条符视同不存在", () => {
+		expect(assembleMessageGroups(layout([b("card"), split(), b("text"), b("link")]), ALL)).toEqual([
+			[img],
+			[{ type: "text", text: "文案\nhttps://example.com/1" }],
+		]);
+		expect(assembleMessageGroups(layout([b("card"), split(false), b("text")]), ALL)).toEqual([
+			[img, { type: "text", text: "文案" }],
+		]);
+	});
+
+	it("隐藏的块不进消息,哪怕调用方给了它的值", () => {
+		expect(
+			assembleMessageGroups(layout([b("card", false), b("text"), b("link", false)]), ALL),
+		).toEqual([[{ type: "text", text: "文案" }]]);
+	});
+
+	it("缺某个部件(没给 / 空串)→ 从消息里剔掉;剔空的那条整条丢弃", () => {
+		expect(
+			assembleMessageGroups(layout([b("card"), split(), b("text"), b("link")]), {
+				text: "",
+				link: "https://example.com/1",
+			}),
+		).toEqual([[{ type: "text", text: "https://example.com/1" }]]);
+	});
+
+	it("什么都没有 / 全部隐藏 → [](本次无可发内容)", () => {
+		expect(assembleMessageGroups(DEFAULT_MESSAGE_LAYOUT.live, {})).toEqual([]);
+		expect(
+			assembleMessageGroups(layout([b("card", false), b("text", false), b("link", false)]), ALL),
+		).toEqual([]);
 	});
 });

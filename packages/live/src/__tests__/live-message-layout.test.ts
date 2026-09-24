@@ -183,6 +183,44 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		expect(broadcastToTargets).not.toHaveBeenCalled();
 		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
 	});
+	// 刻画(ADR-0019 决策 67 把装配合成一份之前钉的现状):自定义连接符、隐藏的分条符
+	// 不切组、卡片夹在文字中间时前后两段文字各自成段。
+	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
+		const { ctx, broadcastToTargets, broadcastSequenceToTargets } = makeCtx();
+		await send(
+			ctx,
+			baseParams({
+				messageLayout: layoutOf(
+					[
+						{ type: "link" },
+						{ type: "split", id: "split-1", visible: false },
+						{ type: "text" },
+						{ type: "card" },
+					],
+					" | ",
+				),
+			}),
+		);
+		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
+		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		expect(content.segs.map((s) => s.kind)).toEqual(["text", "image"]);
+		expect(content.segs[0]?.text).toBe(`${LINK} | 开播文案`);
+	});
+
+	it("卡片夹在文字中间 → 前后两段文字各自成段,不跨卡片连接", async () => {
+		const { ctx, broadcastToTargets } = makeCtx();
+		await send(
+			ctx,
+			baseParams({
+				messageLayout: layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]),
+			}),
+		);
+		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		expect(content.segs.map((s) => s.kind)).toEqual(["text", "image", "text"]);
+		expect(content.segs[0]?.text).toBe("开播文案");
+		expect(content.segs[2]?.text).toBe(LINK);
+	});
+
 	it("直播中推送(LiveBroadcast)传版式 → 同开播一样按块序装配,链接独立部件", async () => {
 		const { ctx, broadcastToTargets } = makeCtx();
 		await send(

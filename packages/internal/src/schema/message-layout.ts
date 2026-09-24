@@ -140,3 +140,65 @@ export function planMessageGroups(
 	flush();
 	return groups;
 }
+
+/**
+ * 按版式装配出来的一段:卡片图,或一段文字。平台中立 —— 调用方各自映射成自己的
+ * 消息形状(动态直接当 `PushSegment` 发,直播经 `LiveContentBuilder` 包一层)。
+ */
+export type MessageLayoutSegment =
+	| { type: "image"; buffer: Buffer; mime: string }
+	| { type: "text"; text: string };
+
+/**
+ * 本次推送三个部件的值。没给 / 空串 = 本次没有这个部件(块隐藏没生产、关了出图、
+ * 渲染失败、没有链接…),由调用方决定;这里只照值装。
+ */
+export interface MessageLayoutParts {
+	/** 卡片图。渲染器出的恒是 JPEG。 */
+	card?: Buffer;
+	/** 文字部件(AI 点评 ?? 模板)。 */
+	text?: string;
+	/** 链接部件(裸链接,不带前缀文案)。 */
+	link?: string;
+}
+
+/**
+ * 按版式把三个部件装成消息组:每组是一条消息,按块序排成「图片 / 文字」段。分组照
+ * {@link planMessageGroups}(隐藏块与缺席部件剔除、分条符切组、空组丢弃);同一条里
+ * 相邻的文字类部件(text / link)以 `layout.separator` 连成一段,卡片把前后文字隔开。
+ * 返回 [] = 本次无任何可发内容。
+ *
+ * 动态、直播(以及拓展的作品 / 直播,ADR-0019 决策 67)共用这一份,别再各抄一遍。
+ */
+export function assembleMessageGroups(
+	layout: MessageKindLayout,
+	parts: MessageLayoutParts,
+): MessageLayoutSegment[][] {
+	const { card, text, link } = parts;
+	const present = new Set<string>();
+	if (card) present.add("card");
+	if (text) present.add("text");
+	if (link) present.add("link");
+	return planMessageGroups(layout.blocks, present).map((group) => {
+		const segs: MessageLayoutSegment[] = [];
+		let texts: string[] = [];
+		const flushText = (): void => {
+			if (texts.length > 0) {
+				segs.push({ type: "text", text: texts.join(layout.separator) });
+				texts = [];
+			}
+		};
+		for (const part of group) {
+			if (part === "card" && card) {
+				flushText();
+				segs.push({ type: "image", buffer: card, mime: "image/jpeg" });
+			} else if (part === "text" && text) {
+				texts.push(text);
+			} else if (part === "link" && link) {
+				texts.push(link);
+			}
+		}
+		flushText();
+		return segs;
+	});
+}
