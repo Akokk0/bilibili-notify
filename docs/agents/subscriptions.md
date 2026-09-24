@@ -16,8 +16,8 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 |---|---|---|
 | `kind` | `"bilibili"` —— 只活在内存与线上，盘上没有这一格，缺了就是 B 站 | `"extension"` |
 | 身份 | `uid`（纯数字串） | `extensionId` + `externalId`（拓展给的不透明串，1–256 字，BN 从不解读） |
-| 独有 | `roastSchedule`、`specialUsers` | —— |
-| 共有 | `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` | 同左 |
+| 独有 | `specialUsers` | —— |
+| 共有 | `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` / `roastSchedule`（拓展那支是 ADR-0020 决策 14 加的，老文件缺这一格读进来补出厂默认） | 同左 |
 | 盘上 | `<dataDir>/state/subscriptions.json` | `<dataDir>/state/extension-subscriptions.json` |
 
 - **拓展那支连 `uid` 这个键都没有**（不写 `uid?: never`）：键不在，编译器才会把每一处直接读 `sub.uid` 的地方列出来逐个分流，「遍历订阅去 B 站拉资料」不会拿别的平台的 id 去问 B 站。
@@ -50,7 +50,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 - **B 站引擎的订阅视图**：`engines.ts` 的 `buildDynamicSubsView` / `buildLiveSubsView`、op 翻译 `subscriptionOpsToDynamic` / `subscriptionOpsToLive`、`getModuleStatus` 的「直播监听」那一格。拓展订阅的轮询是拓展自己做的。
 - **关注**：`runtime/follow-sync.ts`、新建时的关注与 B 站资料种子（`routes/subs.ts` 的 `followUp` / `seedCachedProfile`）、查 UID / 搜名字（`/api/subs/lookup`、`/api/subs/search`）。
 - **粉丝轮询**：`runtime/fans-poller.ts` 只问 B 站订阅（B 站资料与粉丝曲线的来源）。它发的首页粉丝面板快照两支都有：拓展订阅那一行不问任何人，从统计写下的粉丝时序算（ADR-0020 决策 8，只列启用着、有时序的）。
-- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。还只认 B 站的是锐评：榜单在 S6 之前只评 B 站行（`stats/roast-generate.ts` 的 `isBiliStatsRow`），单人锐评与它的定时在 S6 之前只对 B 站行出（聚焦到拓展行时那两张卡不出现，`pages/Stats.tsx` 的 `// S6:`）。
+- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 别名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run-now/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；盘上 `state/roast-drafts.json` 里升级前按 uid 记的草稿，读盘时按 uid 找回 B 站订阅翻译过来，对不上的丢掉、记 debug。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subs/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），拓展头像读存下的头像文件转 data URL（资料里那个面板相对地址截图加载不到，同 ADR-0019 决策 68 的坑）。
 - devtools 场景挑订阅（`index.ts` 里那段 `subs`）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
