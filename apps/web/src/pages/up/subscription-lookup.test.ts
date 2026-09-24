@@ -48,3 +48,42 @@ describe("createSubscriptionLookup", () => {
 		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "u404" })).toBeUndefined();
 	});
 });
+
+/**
+ * 拓展行(ADR-0019 决策 73):先认 `subscriptionId`,不在了按「同一个拓展 + 同一个外部 id」找第一条
+ * **拓展**订阅;绝不跨支 —— 与服务端重推的 `currentSubscriptionOf` 同一条规矩。
+ */
+describe("createSubscriptionLookup — 拓展行", () => {
+	const OTHER_EXT = { ...makeEmptyExtensionSubscription("kuaishou", "sec-1"), id: "s-kuaishou" };
+	const EXT_A = { ...makeEmptyExtensionSubscription("douyin", "sec-1"), id: "s-ext-a" };
+	const EXT_B = { ...makeEmptyExtensionSubscription("douyin", "sec-1"), id: "s-ext-b" };
+	const BILI = bili("s-bili", "123");
+	const lookup = createSubscriptionLookup([BILI, OTHER_EXT, EXT_A, EXT_B]);
+	const extRow = (subscriptionId: string, externalId = "sec-1") => ({
+		subscriptionId,
+		extensionId: "douyin",
+		externalId,
+	});
+
+	it("forRow:id 还在 → 就是它,哪怕同一个人还有一条排在前面", () => {
+		expect(lookup.forRow(extRow("s-ext-b"))).toBe(EXT_B);
+	});
+
+	it("forRow:id 不在了 → 同一个拓展 + 同一个外部 id 的拓展订阅,两条时先出现的那条", () => {
+		expect(lookup.forRow(extRow("s-gone"))).toBe(EXT_A);
+	});
+
+	it("forRow:外部 id 相同、拓展不同 → 不算", () => {
+		expect(
+			lookup.forRow({ subscriptionId: "s-gone", extensionId: "weibo", externalId: "sec-1" }),
+		).toBeUndefined();
+	});
+
+	it("forRow:跨支不认 —— 外部 id 恰好等于某个 B 站 uid,不认成那条 B 站订阅", () => {
+		expect(lookup.forRow(extRow("s-gone", "123"))).toBeUndefined();
+	});
+
+	it("forRow:跨支不认 —— B 站行的 uid 恰好等于某个拓展订阅的外部 id,不认成那条拓展订阅", () => {
+		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "sec-1" })).toBeUndefined();
+	});
+});

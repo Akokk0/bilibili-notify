@@ -1,8 +1,9 @@
 /**
  * `BilibiliPush.onSend` → `HistoryStore.record` 的字段搬运。
  *
- * 推送层只知道订阅 id / feature / target / 消息与结果;历史行还要 B 站 uid、UP 的名字头像快照、
- * 推送类型。这一层把它们拼齐:无目标那次照记(target: null),附加项的 role 与逐条结果原样带过去。
+ * 推送层只知道订阅 id / feature / target / 消息与结果;历史行还要「替谁发的」(B 站 uid,或拓展 id +
+ * 外部 id)、UP 的名字头像快照、推送类型。这一层把它们拼齐:无目标那次照记(target: null),附加项的
+ * role 与逐条结果原样带过去。
  */
 
 import { makeEmptySubscription } from "@bilibili-notify/internal";
@@ -31,7 +32,16 @@ const lookups = {
 					profile: { name: "某UP", avatar: "http://a/x.jpg" },
 				}
 			: subscriptionId === EXT_ID
-				? { subscription: makeExtensionSubscription({ id: EXT_ID, externalId: "u1" }) }
+				? {
+						// 外部 id 恰好也是 "u1" —— 拓展行照样不许把它写进 uid 那一格。
+						subscription: makeExtensionSubscription({
+							id: EXT_ID,
+							extensionId: "douyin",
+							externalId: "u1",
+						}),
+						// 拓展订阅的头像是面板里的相对地址,订阅一删文件就没了(ADR-0019 决策 74)。
+						profile: { name: "某抖音号", avatar: `/api/subs/${EXT_ID}/avatar?v=abc` },
+					}
 				: undefined,
 };
 
@@ -114,17 +124,48 @@ describe("historyRecordFromSend", () => {
 		});
 	});
 
-	// 拓展订阅没有 uid,而 `HistoryEntry.uid` 今天还是必填。它的历史行长什么样归 ④「接进推送链」
-	// 那一片定(ADR-0019 决策 50);这一片里只有 B 站适配器调 broadcastToFeature,走不到这儿。
-	it("拓展订阅 → 不记,返回 null", () => {
+	// 拓展行的身份是两格选填的 extensionId / externalId,不带 uid(ADR-0019 决策 73);只存名字快照、
+	// 不存头像快照(决策 74)。
+	it("拓展订阅 → 照记:带拓展 id 与外部 id、没有 uid、有名字快照、没有头像快照", () => {
 		const info: PushSendInfo = {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
 			feature: "dynamic",
 			kind: "dynamic",
 			target,
+			messages: [
+				{
+					payload: { kind: "text", text: "作品" },
+					role: "main",
+					result: { ok: true, latencyMs: 1 },
+				},
+			],
+		};
+		const input = historyRecordFromSend(info, lookups);
+		expect(input).toMatchObject({
+			pushId: "p5",
+			kind: "dynamic",
+			subscriptionId: EXT_ID,
+			extensionId: "douyin",
+			externalId: "u1",
+			target: target.id,
+			unameSnapshot: "某抖音号",
+		});
+		expect(input).not.toHaveProperty("uid");
+		expect(input).not.toHaveProperty("uavatarSnapshot");
+	});
+
+	it("B 站订阅的行不带拓展那两格", () => {
+		const info: PushSendInfo = {
+			pushId: "p6",
+			subscriptionId: SUB_ID,
+			feature: "dynamic",
+			kind: "dynamic",
+			target,
 			messages: [],
 		};
-		expect(historyRecordFromSend(info, lookups)).toBeNull();
+		const input = historyRecordFromSend(info, lookups);
+		expect(input).not.toHaveProperty("extensionId");
+		expect(input).not.toHaveProperty("externalId");
 	});
 });

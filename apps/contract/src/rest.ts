@@ -497,13 +497,22 @@ export interface HistoryEntryView {
 	ts: string;
 	kind: PushKind;
 	status: PushStatus;
-	uid: string;
+	/**
+	 * 替谁发的(ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` + `externalId`、
+	 * 不带 `uid`。两格都有就是拓展行。
+	 */
+	uid?: string;
+	extensionId?: string;
+	externalId?: string;
 	subscriptionId: string;
 	/** null = 无目标行(这类推送没配目标,或配的全停用)。 */
 	targetId: string | null;
 	/** 首条本体是面板上显示的文案;其余展开看。 */
 	messages: HistoryMessageView[];
-	/** 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。 */
+	/**
+	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。拓展行只有名字、没有头像
+	 * (决策 74:拓展头像是面板里的相对地址,订阅一删就没了)。
+	 */
 	unameSnapshot?: string;
 	uavatarSnapshot?: string;
 	/**

@@ -129,6 +129,32 @@ describe("record — 建行与追加", () => {
 		expect(b.status).toBe("failed");
 		expect((await store.query({})).map((e) => e.id).sort()).toEqual([a.id, b.id].sort());
 	});
+
+	// ADR-0019 决策 73:拓展行的身份是两格选填的 extensionId / externalId、不带 uid。这一层把字段
+	// 一格格抄进行里,漏抄一格的话写进去的就是一行「谁也不是」的 B 站行。
+	it("拓展行:拓展 id 与外部 id 落盘、读得回来,没有 uid", async () => {
+		const entry = await store.record(
+			input({
+				uid: undefined,
+				extensionId: "douyin",
+				externalId: "123",
+				unameSnapshot: "某抖音号",
+			}),
+		);
+		expect(entry).toMatchObject({ extensionId: "douyin", externalId: "123" });
+		expect(entry.uid).toBeUndefined();
+		const [line] = await dayLines(entry);
+		const onDisk = JSON.parse(line as string);
+		expect(onDisk).toMatchObject({ extensionId: "douyin", externalId: "123" });
+		expect(onDisk).not.toHaveProperty("uid");
+		const [read] = await store.query({});
+		expect(read).toMatchObject({
+			extensionId: "douyin",
+			externalId: "123",
+			unameSnapshot: "某抖音号",
+		});
+		expect(read?.uid).toBeUndefined();
+	});
 });
 
 describe("record — 四态", () => {

@@ -2,8 +2,16 @@ import { Btn, Icon, NoticeCard, NoticeStack, Pill } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { PUSH_KIND_META, PUSH_STATUS_META } from "../config/push-kinds";
-import { AUTO_DISMISS_MS, type ToastItem, useToastStore } from "../store/notifications";
+import { useExtensions } from "../hooks/useExtensions";
+import { subscriptionPlatformOf } from "../pages/up/subscription-source";
+import {
+	AUTO_DISMISS_MS,
+	type PushEventView,
+	type ToastItem,
+	useToastStore,
+} from "../store/notifications";
 import { headlineOf, messageCountOf } from "../utils/push-row";
+import { historyRowIdentity, isExtensionRow } from "../utils/up-display";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
@@ -98,7 +106,11 @@ function ToastCard({ item }: { item: ToastItem }) {
 			style={marked ? { borderColor: edge } : undefined}
 		>
 			<div className="mt-0.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-				<span className="tabular-nums">UID {view.uid}</span>
+				{isExtensionRow(view) ? (
+					<ExtensionRowWho view={view} />
+				) : (
+					<span className="tabular-nums">{historyRowIdentity(view)}</span>
+				)}
 				{count > 1 ? (
 					<Pill color={meta.tone} subtle size="sm">
 						{count} 条
@@ -121,6 +133,23 @@ function ToastCard({ item }: { item: ToastItem }) {
 				</div>
 			) : null}
 		</NoticeCard>
+	);
+}
+
+/**
+ * 拓展行「这是谁」那行小字:「平台名 · 外部 id」(ADR-0019 决策 73)。平台名照已装拓展的清单;
+ * 清单没回来、或拓展卸载了取不到,写拓展 id。单拆一个组件:只有拓展行要去读清单,B 站行不白问一次。
+ */
+function ExtensionRowWho({ view }: { view: PushEventView }) {
+	const extensions = useExtensions({ retry: false }).data?.extensions;
+	return (
+		// 外部 id 可以很长(抖音的 sec_uid 七八十个字符),截断而不是把「N 条」胶囊挤出卡外。
+		<span className="min-w-0 truncate">
+			{historyRowIdentity(
+				view,
+				(extensionId) => subscriptionPlatformOf({ extensionId }, extensions).label,
+			)}
+		</span>
 	);
 }
 

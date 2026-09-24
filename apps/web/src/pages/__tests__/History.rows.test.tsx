@@ -6,12 +6,17 @@
  * (文案 / 图 / 结果);目标列写目标名。
  */
 
+import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
-import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import {
+	makeEmptyExtensionSubscription,
+	makeEmptySubscription,
+	type Subscription,
+} from "../../types/domain";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({
@@ -43,12 +48,17 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	};
 }
 
-function mockApi(entries: HistoryEntryView[], subs: Subscription[] = []) {
+function mockApi(
+	entries: HistoryEntryView[],
+	subs: Subscription[] = [],
+	extensions: ExtensionDTO[] = [],
+) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path.startsWith("/api/history")) return Promise.resolve({ entries });
 		if (path === "/api/targets")
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
 		if (path === "/api/subs") return Promise.resolve(subs);
+		if (path === "/api/ext") return Promise.resolve({ extensions });
 		return Promise.resolve({ app: { historyRetentionDays: 30 } });
 	});
 }
@@ -161,5 +171,132 @@ describe("推送历史 · 行对到哪条订阅", () => {
 		// 搜索串也是按同一条订阅拼的。
 		await userEvent.type(screen.getByPlaceholderText(/搜索/), "先出现");
 		expect(screen.queryByText("下播了")).toBeNull();
+	});
+});
+
+/**
+ * 拓展行(ADR-0019 决策 73):身份是拓展 id + 外部 id、没有 uid。名字对不上时写外部 id(B 站行写 uid);
+ * 行对订阅照同一条规矩 —— 先认 id,不在了按「同一个拓展 + 同一个外部 id」找。
+ */
+describe("推送历史 · 拓展行", () => {
+	function extRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
+		return row({
+			uid: undefined,
+			extensionId: "douyin",
+			externalId: "sec-1",
+			subscriptionId: "s-gone",
+			unameSnapshot: undefined,
+			...over,
+		});
+	}
+
+	it("没有名字快照、订阅也对不上 → 名字写外部 id", async () => {
+		mockApi([extRow()]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		expect(screen.getByText("sec-1")).toBeTruthy();
+		expect(screen.queryByText("未知")).toBeNull();
+	});
+
+	it("订阅删了、同一个拓展同一个外部 id 又加了一条 → 显示现在那条的名字", async () => {
+		const readded: Subscription = {
+			...makeEmptyExtensionSubscription("douyin", "sec-1"),
+			id: "s-readded",
+			cachedProfile: {
+				name: "现在的抖音号",
+				avatar: "",
+				sign: "",
+				lastRefreshedAt: "2026-09-24T00:00:00Z",
+			},
+		};
+		mockApi([extRow()], [readded]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("现在的抖音号")).toBeTruthy());
+	});
+
+	it("外部 id 恰好等于某个 B 站 uid → 不认成那位 B 站 UP", async () => {
+		mockApi([extRow({ externalId: "u1" })], [biliSub("s-bili", "u1", "某B站UP")]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		expect(screen.queryByText("某B站UP")).toBeNull();
+		expect(screen.getByText("u1")).toBeTruthy();
+	});
+
+	it("搜外部 id 搜得到这一行", async () => {
+		mockApi([extRow({ unameSnapshot: "某抖音号" })]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.type(screen.getByPlaceholderText(/搜索/), "sec-1");
+		expect(screen.getByText("下播了")).toBeTruthy();
+		await userEvent.clear(screen.getByPlaceholderText(/搜索/));
+		await userEvent.type(screen.getByPlaceholderText(/搜索/), "sec-404");
+		expect(screen.queryByText("下播了")).toBeNull();
+	});
+});
+
+/** 装着的抖音订阅源 —— 徽章的短名与颜色照它的清单。 */
+const DOUYIN = {
+	id: "douyin",
+	name: "抖音订阅",
+	dir: "/data/extensions/douyin",
+	enabled: true,
+	state: "running",
+	apiVersion: 2,
+	provides: ["subscription"],
+	subscription: {
+		display: { label: "抖音", shortLabel: "抖", color: "#161823" },
+		events: ["post", "liveStart", "liveEnd"],
+	},
+} as ExtensionDTO;
+
+/**
+ * 拓展行带一枚平台徽章(ADR-0019 决策 9「订阅删了也看得出是哪个平台的」),画法同首页「正在直播」:
+ * 短名照清单,拓展卸载了取不到写拓展 id。名字取自快照还是外部 id 兜底都带;B 站行不画。
+ */
+describe("推送历史 · 平台徽章", () => {
+	const extRow = (over: Partial<HistoryEntryView> = {}) =>
+		row({
+			uid: undefined,
+			extensionId: "douyin",
+			externalId: "sec-1",
+			subscriptionId: "s-gone",
+			unameSnapshot: "某抖音号",
+			...over,
+		});
+
+	it("拓展行带平台徽章(短名照清单),名字取自快照也带", async () => {
+		mockApi([extRow()], [], [DOUYIN]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("抖")).toBeTruthy());
+		expect(screen.getByText("某抖音号")).toBeTruthy();
+	});
+
+	it("名字是外部 id 兜底的拓展行也带徽章", async () => {
+		mockApi([extRow({ unameSnapshot: undefined })], [], [DOUYIN]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("抖")).toBeTruthy());
+		expect(screen.getByText("sec-1")).toBeTruthy();
+	});
+
+	it("拓展卸载了(清单里没有它)→ 徽章写拓展 id", async () => {
+		mockApi([extRow()], [], []);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("某抖音号")).toBeTruthy());
+		expect(await screen.findByText("douyin")).toBeTruthy();
+	});
+
+	it("B 站行没有平台徽章:只有类型与状态那两枚", async () => {
+		// 单条、已送达:没有「N 条」那颗展开胶囊,徽章只剩类型与状态。
+		mockApi(
+			[row({ status: "delivered", messages: [{ text: "下播了", role: "main", ok: true }] })],
+			[],
+			[DOUYIN],
+		);
+		const { container } = renderHistory();
+		await waitFor(() => expect(screen.getByText("某UP")).toBeTruthy());
+		// 等拓展清单也回来,免得「还没回来所以没画」冒充「B 站行不画」。
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext"));
+		const badges = [...container.querySelectorAll('[data-bn="badge"]')].map((b) => b.textContent);
+		expect(badges).toEqual(["下播", "已送达"]);
 	});
 });

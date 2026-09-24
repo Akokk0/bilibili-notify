@@ -134,7 +134,18 @@ const HistoryEntryObjectSchema = z.object({
 	/** 建行时刻(本体落地那一刻);后续追加不改它。 */
 	ts: z.string(),
 	kind: PushKindSchema,
-	uid: z.string(),
+	/**
+	 * 这一行替谁发的(ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` + `externalId`、
+	 * **不带 `uid`**。旧行只有 uid,读进来就是 B 站行。
+	 *
+	 * 不把外部 id 塞进 `uid`:它恰好是一串等于某个 B 站 uid 的数字时,订阅删掉之后重推与面板会按
+	 * uid 把它认成那位 B 站 UP —— 静默认错人。
+	 */
+	uid: z.string().optional(),
+	/** 拓展行:哪个拓展(一个拓展就是一个平台)。有它 + `externalId` 就是拓展行。 */
+	extensionId: z.string().optional(),
+	/** 拓展行:拓展给的那个人的外部 id,BN 不解读。 */
+	externalId: z.string().optional(),
 	subscriptionId: z.uuid(),
 	/** null = 无目标行。 */
 	targetId: z.uuid().nullable(),
@@ -148,11 +159,23 @@ const HistoryEntryObjectSchema = z.object({
 	 * 名称 — 一旦用户后续删除该订阅,Dashboard 上的旧 history 条目只剩 "UID xxx" +
 	 * 默认头像,失去了"当时是谁"的信息。把名称 / 头像跟 entry 一起 snapshot
 	 * 进 jsonl 后,删除订阅不再影响历史展示。
+	 *
+	 * 拓展行只有名字快照、**没有头像快照**(ADR-0019 决策 74):拓展的头像是面板里的相对地址,
+	 * 订阅一删文件就没了,存下来就是删后裂图。
 	 */
 	unameSnapshot: z.string().optional(),
 	uavatarSnapshot: z.string().optional(),
 });
 export type HistoryEntry = z.infer<typeof HistoryEntryObjectSchema>;
+
+/**
+ * 一行历史「是哪条订阅、替谁发的」那几格 —— 回找订阅(先认订阅、再认人)只看它们。
+ * 有 `extensionId` + `externalId` 就是拓展行,否则是 B 站行(ADR-0019 决策 73)。
+ */
+export type HistoryRowIdentity = Pick<
+	HistoryEntry,
+	"subscriptionId" | "uid" | "extensionId" | "externalId"
+>;
 
 /**
  * 老格式(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)读时映射成新形状,

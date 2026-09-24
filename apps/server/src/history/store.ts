@@ -49,7 +49,12 @@ export interface HistoryRecordMessage {
 export interface HistoryRecordInput {
 	pushId: string;
 	kind: PushKind;
-	uid: string;
+	/**
+	 * 替谁发的(ADR-0019 决策 73):B 站行填 `uid`;拓展行填 `extensionId` + `externalId`、不填 `uid`。
+	 */
+	uid?: string;
+	extensionId?: string;
+	externalId?: string;
 	subscriptionId: string;
 	/** null = 这类推送没有任何可用目标,落「无目标」那一行。 */
 	target: string | null;
@@ -409,6 +414,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				ts,
 				kind: input.kind,
 				uid: input.uid,
+				extensionId: input.extensionId,
+				externalId: input.externalId,
 				subscriptionId: input.subscriptionId,
 				targetId: input.target,
 				status: computeStatus(input.target, messages),

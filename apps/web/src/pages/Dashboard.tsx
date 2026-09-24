@@ -58,6 +58,7 @@ import {
 } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
+import { historyRowColor, historyRowIdentity, isExtensionRow } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -88,8 +89,8 @@ function formatViewers(n: string | undefined): string {
 
 /**
  * 在播那一行画成什么样。B 站房间照旧(名字对不上订阅时写 UID、按 uid 取色);拓展订阅的在播没有
- * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色按订阅自己的 id 取(同 `subscriptionColor`),
- * 另带一枚平台徽章。
+ * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色照 `subscriptionColor` 跟着人走(决策 73),
+ * 另带一枚平台徽章。在播快照里没有外部 id,订阅列表还没回来时颜色只能先按订阅 id 取。
  *
  * 人数那一列两边都是**本场累计观看**(决策 75):B 站行是 B 站排好的字串,拓展行是拓展报的
  * `totalViewers`(数字,这里排版)。拓展只报了此刻在线的话这一列是「—」,不拿在线冒充。
@@ -320,23 +321,28 @@ function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 	);
 }
 
-function TimelinePanel({
+export function TimelinePanel({
 	entries,
 	subs,
 	targets,
+	extensions,
 }: {
 	entries: HistoryEntryView[];
 	subs: Subscription[];
 	targets: PushTarget[];
+	/** 装着的拓展 —— 拓展行对不上名字时写「平台名 · 外部 id」,平台名照它的清单。没回来时写拓展 id。 */
+	extensions?: readonly ExtensionDTO[];
 }) {
-	// 历史行先按 `subscriptionId` 对订阅,不在了再按 B 站 uid 找(ADR-0019 决策 50,与服务端
-	// 重推同一条规矩)—— 删了又重加的 UP,旧行照样对得上现在那条。
+	// 历史行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
+	// ADR-0019 决策 50 / 73,与服务端重推同一条规矩)—— 删了又重加的 UP,旧行照样对得上现在那条。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 	const targetById = useMemo(() => {
 		const m = new Map<string, PushTarget>();
 		for (const t of targets) m.set(t.id, t);
 		return m;
 	}, [targets]);
+	const platformLabelOf = (extensionId: string) =>
+		subscriptionPlatformOf({ extensionId }, extensions).label;
 	const recent = entries.slice(0, 6);
 	return (
 		<GlassPanel
@@ -372,10 +378,17 @@ function TimelinePanel({
 					/>
 					{recent.map((h) => {
 						const sub = lookup.forRow(h);
-						// 优先 entry 自带的写入期 snapshot —— 订阅后续被删除仍能正确显示。
-						const name = h.unameSnapshot ?? (sub ? displayName(sub) : `UID ${h.uid}`);
+						// 优先 entry 自带的写入期 snapshot —— 订阅后续被删除仍能正确显示。都对不上就写身份:
+						// B 站行「UID xxx」,拓展行「平台名 · 外部 id」(决策 73)。
+						const name =
+							h.unameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
+						// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
 						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
-						const color = colorFromUid(h.uid);
+						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
+						const color = historyRowColor(h);
+						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
+						// B 站行不画。
+						const platform = isExtensionRow(h) ? subscriptionPlatformOf(h, extensions) : undefined;
 						const tone = familyTone(h.kind);
 						const status = PUSH_STATUS_META[h.status];
 						const marked = h.status !== "delivered";
@@ -406,6 +419,11 @@ function TimelinePanel({
 									<Pill color={tone} subtle size="sm">
 										{PUSH_KIND_META[h.kind].label}
 									</Pill>
+									{platform ? (
+										<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
+											{platform.shortLabel ?? platform.label}
+										</Pill>
+									) : null}
 									<div className="min-w-0 flex-1 truncate text-bn-text-tertiary">
 										<span className="font-bold text-bn-text-primary">{name}</span>
 										{headline ? ` · ${headline}` : ""}
@@ -974,7 +992,12 @@ export default function Dashboard() {
 			{/* row 4: 推送趋势(窄) + 最近推送活动(宽) —— 跟 row 2 的列比反向,视觉错位 */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.3fr]">
 				<TrendPanel daily={daily} />
-				<TimelinePanel entries={history} subs={subs} targets={targets} />
+				<TimelinePanel
+					entries={history}
+					subs={subs}
+					targets={targets}
+					extensions={extensionsQuery.data?.extensions}
+				/>
 			</div>
 
 			{/* row 5: 各模块状态(窄) + 系统资源(宽) —— 同属「系统」这一组,并排不多占一行。

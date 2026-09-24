@@ -149,6 +149,58 @@ describe("resolveTargetScope — currentSubscriptionOf", () => {
 });
 
 /**
+ * 拓展行(ADR-0019 决策 73):先认 `subscriptionId`,不在了按「同一个拓展 + 同一个外部 id」找第一条
+ * **拓展**订阅 —— 删了又重加的抖音号,旧历史照样能重推。**绝不跨支**:外部 id 恰好等于某个 B 站
+ * uid 也不认成那条 B 站订阅。
+ */
+describe("resolveTargetScope — currentSubscriptionOf(拓展行)", () => {
+	const S_EXT2 = "55555555-5555-4555-8555-555555555555";
+	const S_OTHER_EXT = "56565656-5656-4656-8656-565656565656";
+	const table = resolveTargetScope({
+		subscriptions: [
+			sub(S1, "123", {}),
+			// 同一个外部 id,另一个拓展(另一个平台上的另一个人)。
+			makeExtensionSubscription({ id: S_OTHER_EXT, extensionId: "kuaishou", externalId: "sec-1" }),
+			makeExtensionSubscription({ id: S_EXT, extensionId: "douyin", externalId: "sec-1" }),
+			makeExtensionSubscription({ id: S_EXT2, extensionId: "douyin", externalId: "sec-1" }),
+		],
+		targets: TARGETS,
+		connections: CONNECTIONS,
+	});
+	const extRow = (subscriptionId: string, externalId = "sec-1") => ({
+		subscriptionId,
+		extensionId: "douyin",
+		externalId,
+	});
+
+	it("id 还在 → 就是它,哪怕同一个人还有一条排在前面", () => {
+		expect(table.currentSubscriptionOf(extRow(S_EXT2))).toBe(S_EXT2);
+	});
+
+	it("id 不在了 → 回落到同一个拓展 + 同一个外部 id 的拓展订阅,两条时先出现的那条", () => {
+		expect(table.currentSubscriptionOf(extRow(S_GONE))).toBe(S_EXT);
+	});
+
+	it("外部 id 相同、拓展不同 → 不算", () => {
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S_GONE,
+				extensionId: "bilibili-mirror",
+				externalId: "sec-1",
+			}),
+		).toBeUndefined();
+	});
+
+	it("跨支不认:外部 id 恰好等于某个 B 站 uid → 不认成那条 B 站订阅", () => {
+		expect(table.currentSubscriptionOf(extRow(S_GONE, "123"))).toBeUndefined();
+	});
+
+	it("跨支不认:B 站行的 uid 恰好等于某个拓展订阅的外部 id → 不认成那条拓展订阅", () => {
+		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "sec-1" })).toBeUndefined();
+	});
+});
+
+/**
  * 🔴 **同一条判定的两份实现,拿真的那份来对答案。**
  *
  * `NotificationSink.isEnabled`(`sink/multiplex.ts`)与这张表都在回答「这个目标现在还

@@ -24,8 +24,10 @@ import {
 	type HistoryEntry,
 	makeEmptySubscription,
 	type NotificationPayload,
+	type Subscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { resolveTargetScope } from "../../runtime/target-scope.js";
 import { createRepushRunner, type RepushRunner } from "../repush-runner.js";
@@ -294,14 +296,15 @@ describe("闸", () => {
 });
 
 /**
- * 行上记的订阅**现在**是哪一条(ADR-0019 决策 50):先按 `subscriptionId`,找不到再按身份
- * (B 站 uid)—— 删了又重加的 UP,旧历史照样能重推;同 uid 两条都在时认行自己那条。
+ * 行上记的订阅**现在**是哪一条(ADR-0019 决策 50 / 73):先按 `subscriptionId`,找不到再按身份
+ * (B 站行按 uid、拓展行按拓展 id + 外部 id,绝不跨支)—— 删了又重加的 UP,旧历史照样能重推;
+ * 同 uid 两条都在时认行自己那条。
  *
  * 这里接的是真的路由快照表(`resolveTargetScope`),不是桩:要钉的正是 runner 拿行去问表、
  * 再拿表给的那条订阅去发这一整串。
  */
 describe("重推认的是哪一条订阅", () => {
-	function runnerOver(subscriptions: ReturnType<typeof makeEmptySubscription>[]): RepushRunner {
+	function runnerOver(subscriptions: Subscription[]): RepushRunner {
 		const table = resolveTargetScope({ subscriptions, targets: [], connections: [] });
 		return createRepushRunner({
 			history,
@@ -343,6 +346,46 @@ describe("重推认的是哪一条订阅", () => {
 		const other = makeEmptySubscription({ id: randomUUID(), uid: "u2" });
 		other.routing.dynamic = [T1];
 		const r = runnerOver([other]);
+		expect(await r.canRepush(entry)).toContain("路由");
+		expect(sent).toHaveLength(0);
+	});
+
+	/** 拓展行(ADR-0019 决策 73):订阅已经删掉的一行,身份是 douyin 名下的外部 id "u1"。 */
+	async function seedExtensionPartial(): Promise<HistoryEntry> {
+		return history.record({
+			pushId: randomUUID(),
+			kind: "dynamic",
+			extensionId: "douyin",
+			externalId: "u1",
+			subscriptionId: SUB,
+			target: T1,
+			messages: [
+				{ payload: text("作品"), role: "main", result: OK },
+				{ payload: text("点评"), role: "extra", result: FAIL },
+			],
+		});
+	}
+
+	it("拓展行的订阅删了、同一个拓展同一个外部 id 又加了一条 → 闸放行,发送认的是新那条", async () => {
+		const entry = await seedExtensionPartial();
+		const readded = makeExtensionSubscription({
+			id: randomUUID(),
+			extensionId: "douyin",
+			externalId: "u1",
+		});
+		readded.routing.dynamic = [T1];
+		const r = runnerOver([readded]);
+		expect(await r.canRepush(entry)).toBeNull();
+		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(1);
+		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
+		expect(sent.map((s) => s.subscriptionId)).toEqual([readded.id]);
+	});
+
+	it("拓展行的外部 id 恰好等于某个 B 站 uid → 不认成那条 B 站订阅,按「路由是空」拒", async () => {
+		const entry = await seedExtensionPartial();
+		const bili = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
+		bili.routing.dynamic = [T1];
+		const r = runnerOver([bili]);
 		expect(await r.canRepush(entry)).toContain("路由");
 		expect(sent).toHaveLength(0);
 	});

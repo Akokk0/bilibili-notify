@@ -21,6 +21,7 @@
 import type {
 	Connection,
 	FeatureKey,
+	HistoryRowIdentity,
 	MessageBus,
 	PushTarget,
 	Subscription,
@@ -39,11 +40,12 @@ export interface TargetScopeTable {
 	 * 历史行记下的那条订阅**现在**是哪一条,回它的 id(决策 50:重推先按 `subscriptionId`
 	 * 找、找不到再按身份找 —— 删了又重加的 UP,旧历史照样能重推)。
 	 *
-	 * id 还在就是它;不在了就找第一个 uid 相同的 **B 站**订阅(同一个 uid 两条时先出现的
-	 * 说了算);都没有回 undefined。拓展订阅的外部 id 恰好等于那串 uid 也不算 —— 那是
-	 * 另一个平台上的另一个人。
+	 * 先认订阅、再认人(决策 73):id 还在就是它;不在了,B 站行找第一个 uid 相同的 **B 站**订阅,
+	 * 拓展行找第一个「同一个拓展 + 同一个外部 id」的**拓展**订阅(同一个人两条时先出现的说了算);
+	 * 都没有回 undefined。**绝不跨支**:外部 id 恰好等于某个 B 站 uid 也不算 —— 那是另一个平台上
+	 * 的另一个人。面板的 `createSubscriptionLookup().forRow` 是同一条规矩。
 	 */
-	currentSubscriptionOf(row: { subscriptionId: string; uid: string }): string | undefined;
+	currentSubscriptionOf(row: HistoryRowIdentity): string | undefined;
 	/**
 	 * 目标与它所属的连接都还启用着。
 	 *
@@ -68,19 +70,37 @@ export function resolveTargetScope({
 }: ResolveTargetScopeInput): TargetScopeTable {
 	// 路由按订阅自己的 id 收**全部**订阅(ADR-0019 决策 50):同一个 UP 的两条订阅各有各的路由。
 	const routing = new Map<string, Subscription["routing"]>();
-	// 身份那一问只认 B 站:拓展订阅没有 uid,外部 id 恰好是同一串数字也不是同一个人。
-	// 同一个 uid 两条时**先出现的那条说了算** —— 与从前按 uid 找订阅的口径一致。
+	// 身份那一问两支各查各的表:B 站按 uid,拓展按「拓展 id → 外部 id」两层(不拼成一串:外部 id
+	// 是拓展给的不透明字符串,拼就得选分隔符)。外部 id 恰好是同一串数字也不是同一个人。
+	// 同一个人两条时**先出现的那条说了算** —— 与从前按 uid 找订阅的口径一致。
 	const byUid = new Map<string, string>();
+	const byExternal = new Map<string, Map<string, string>>();
 	for (const sub of subscriptions) {
 		routing.set(sub.id, sub.routing);
-		if (isBiliSubscription(sub) && !byUid.has(sub.uid)) byUid.set(sub.uid, sub.id);
+		if (isBiliSubscription(sub)) {
+			if (!byUid.has(sub.uid)) byUid.set(sub.uid, sub.id);
+			continue;
+		}
+		let ofExtension = byExternal.get(sub.extensionId);
+		if (!ofExtension) {
+			ofExtension = new Map();
+			byExternal.set(sub.extensionId, ofExtension);
+		}
+		if (!ofExtension.has(sub.externalId)) ofExtension.set(sub.externalId, sub.id);
 	}
 	const enabled = new Set<string>();
 	for (const target of targets) if (!isTargetPaused(target, connections)) enabled.add(target.id);
 	return {
 		routedTargets: (subscriptionId, feature) => routing.get(subscriptionId)?.[feature] ?? [],
-		currentSubscriptionOf: ({ subscriptionId, uid }) =>
-			routing.has(subscriptionId) ? subscriptionId : byUid.get(uid),
+		currentSubscriptionOf: ({ subscriptionId, uid, extensionId, externalId }) => {
+			if (routing.has(subscriptionId)) return subscriptionId;
+			// 拓展那两格有一格就是拓展行,只在拓展那张表里找 —— 缺了一格也不退去按 uid 找。
+			if (extensionId !== undefined || externalId !== undefined) {
+				if (extensionId === undefined || externalId === undefined) return undefined;
+				return byExternal.get(extensionId)?.get(externalId);
+			}
+			return uid === undefined ? undefined : byUid.get(uid);
+		},
 		targetEnabled: (targetId) => enabled.has(targetId),
 	};
 }

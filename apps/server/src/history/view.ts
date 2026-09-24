@@ -17,6 +17,8 @@ export function toHistoryView(
 		kind: entry.kind,
 		status: entry.status,
 		uid: entry.uid,
+		extensionId: entry.extensionId,
+		externalId: entry.externalId,
 		subscriptionId: entry.subscriptionId,
 		targetId: entry.targetId,
 		messages: entry.messages.map((m) => ({

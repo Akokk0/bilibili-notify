@@ -2,6 +2,7 @@ import {
 	type DeliveryResult,
 	type FeatureKey,
 	type HistoryEntry,
+	type HistoryRowIdentity,
 	type Logger,
 	type NotificationPayload,
 	pushKindToFeature,
@@ -74,10 +75,11 @@ export interface CreateRepushRunnerOptions {
 	/** 这条订阅(按订阅自己的 id)这把特性键**当前**路由到哪些目标。 */
 	routedTargets(subscriptionId: string, feature: FeatureKey): readonly string[];
 	/**
-	 * 行上记的订阅**现在**是哪一条,回它的 id(ADR-0019 决策 50):先按 `subscriptionId` 找,
-	 * 找不到再按身份(B 站 uid)找 —— 删了又重加的 UP,旧历史照样能重推。都找不到回 undefined。
+	 * 行上记的订阅**现在**是哪一条,回它的 id(ADR-0019 决策 50 / 73):先按 `subscriptionId` 找,
+	 * 找不到再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,绝不跨支)—— 删了又重加的 UP,
+	 * 旧历史照样能重推。都找不到回 undefined。
 	 */
-	currentSubscriptionOf(row: { subscriptionId: string; uid: string }): string | undefined;
+	currentSubscriptionOf(row: HistoryRowIdentity): string | undefined;
 	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
 	targetEnabled(targetId: string): boolean;
 	logger: Logger;

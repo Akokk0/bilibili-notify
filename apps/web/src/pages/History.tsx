@@ -1,3 +1,4 @@
+import type { ExtensionDTO } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -19,6 +20,7 @@ import {
 	PUSH_TONE,
 	type PushFamily,
 } from "../config/push-kinds";
+import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
@@ -30,9 +32,11 @@ import {
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { colorFromUid, displayName } from "./up/helpers";
+import { historyRowColor, isExtensionRow } from "../utils/up-display";
+import { displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
+import { subscriptionPlatformOf } from "./up/subscription-source";
 
 /**
  * `/history` — 1:1 port of `.bn-design/variation-a-tabs.jsx#HistoryTab`,
@@ -85,9 +89,12 @@ export default function History() {
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
+	// 拓展行的平台徽章照已装拓展的清单画(ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
+	const extensionsQuery = useExtensions({ retry: false });
 
-	// 行先按 `subscriptionId` 对订阅,不在了再按 B 站 uid 找(ADR-0019 决策 50,与服务端重推同一条
-	// 规矩)—— 删了又重加的 UP,旧行照样按现在那条的名字搜得到;同一个 UP 的几条订阅各认各的行。
+	// 行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
+	// ADR-0019 决策 50 / 73,与服务端重推同一条规矩)—— 删了又重加的 UP,旧行照样按现在那条的名字
+	// 搜得到;同一个 UP 的几条订阅各认各的行。
 	const subs = useMemo(() => createSubscriptionLookup(subsQuery.data ?? []), [subsQuery.data]);
 	const targetById = useMemo(() => {
 		const m = new Map<string, PushTarget>();
@@ -106,7 +113,8 @@ export default function History() {
 			m.set(
 				e.id,
 				[
-					e.uid,
+					e.uid ?? "",
+					e.externalId ?? "",
 					sub ? displayName(sub) : "",
 					e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "",
 					...e.messages.map((x) => x.text ?? ""),
@@ -156,7 +164,12 @@ export default function History() {
 			) : historyQuery.error ? (
 				<ErrorNote>加载失败：{String((historyQuery.error as Error).message)}</ErrorNote>
 			) : (
-				<HistoryTable entries={filtered} subs={subs} targetById={targetById} />
+				<HistoryTable
+					entries={filtered}
+					subs={subs}
+					targetById={targetById}
+					extensions={extensionsQuery.data?.extensions}
+				/>
 			)}
 		</div>
 	);
@@ -166,10 +179,12 @@ function HistoryTable({
 	entries,
 	subs,
 	targetById,
+	extensions,
 }: {
 	entries: HistoryEntryView[];
 	subs: SubscriptionLookup;
 	targetById: Map<string, PushTarget>;
+	extensions: readonly ExtensionDTO[] | undefined;
 }) {
 	return (
 		<div className="bn-glass overflow-hidden rounded-bn-sm shadow-bn-card">
@@ -196,6 +211,7 @@ function HistoryTable({
 						entry={e}
 						sub={subs.forRow(e)}
 						target={e.targetId ? targetById.get(e.targetId) : undefined}
+						extensions={extensions}
 						isLast={i === entries.length - 1}
 					/>
 				))
@@ -216,21 +232,29 @@ function HistoryRow({
 	entry,
 	sub,
 	target,
+	extensions,
 	isLast,
 }: {
 	entry: HistoryEntryView;
 	sub: Subscription | undefined;
 	target: PushTarget | undefined;
+	extensions: readonly ExtensionDTO[] | undefined;
 	isLast: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [repushOpen, setRepushOpen] = useState(false);
 	const tone = familyTone(entry.kind);
 	const status = PUSH_STATUS_META[entry.status];
-	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。
-	const upName = entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || "未知");
+	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份:B 站行 uid、拓展行
+	// 外部 id(ADR-0019 决策 73)。
+	const upName =
+		entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || entry.externalId || "未知");
+	// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
 	const upAvatar = entry.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
-	const upColor = colorFromUid(entry.uid || entry.id);
+	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
+	const upColor = historyRowColor(entry);
+	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
+	const platform = isExtensionRow(entry) ? subscriptionPlatformOf(entry, extensions) : undefined;
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
@@ -256,6 +280,11 @@ function HistoryRow({
 					{PUSH_KIND_META[entry.kind].label}
 				</Pill>
 				<div className="flex min-w-0 items-center gap-2">
+					{platform ? (
+						<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
+							{platform.shortLabel ?? platform.label}
+						</Pill>
+					) : null}
 					<div className="min-w-0 flex-1 truncate" title={headline}>
 						<span className="font-bold text-bn-text-primary">{upName}</span>
 						{headline ? (

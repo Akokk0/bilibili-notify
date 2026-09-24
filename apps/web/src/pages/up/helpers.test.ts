@@ -104,8 +104,8 @@ describe("routingAlignedToFeatures", () => {
 });
 
 /**
- * 拓展订阅(ADR-0019 决策 9)没有 uid:颜色按订阅自己的 id 取,名字回落到外部 id。
- * B 站订阅照旧按 uid —— 同一位 UP 在页面上和服务端画的周报图上是同一个颜色。
+ * 拓展订阅(ADR-0019 决策 9)没有 uid:颜色跟着人走、按「拓展 id + 冒号 + 外部 id」取(决策 73),
+ * 名字回落到外部 id。B 站订阅照旧按 uid —— 同一位 UP 在页面上和服务端画的周报图上是同一个颜色。
  */
 describe("subscriptionColor / displayName × 两支订阅", () => {
 	const bili = makeEmptySubscription("12345");
@@ -117,9 +117,15 @@ describe("subscriptionColor / displayName × 两支订阅", () => {
 		externalId: "12345",
 	};
 
-	it("B 站按 uid,拓展按订阅自己的 id(外部 id 不当颜色的种子)", () => {
+	it("B 站按 uid,拓展按「拓展 id:外部 id」这一串 —— 带着冒号与拓展名,永远不等于纯数字 uid", () => {
 		expect(subscriptionColor(bili)).toBe(colorFromUid("12345"));
-		expect(subscriptionColor(ext)).toBe(colorFromUid(ext.id));
+		expect(subscriptionColor(ext)).toBe(colorFromUid("douyin:12345"));
+	});
+
+	it("同一个人删了再加(订阅 id 变了)→ 颜色不变", () => {
+		const readded = { ...ext, id: "e-readded-0000-4000-8000-000000000009" };
+		const original = { ...ext, id: "e-original-0000-4000-8000-000000000001" };
+		expect(subscriptionColor(readded)).toBe(subscriptionColor(original));
 	});
 
 	it("B 站没资料 → 「UID xxx」;拓展没资料 → 名字 → 外部 id", () => {
