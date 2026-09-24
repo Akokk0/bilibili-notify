@@ -88,7 +88,7 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 		"- reason 一句话;roast 给出 3-4 条最有梗的锐评;",
 		`- scores 必须覆盖全部 ${ups.length} 位 UP,score 为 0-100 的综合勤奋度评分(越勤奋越高);`,
 		"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该 UP 偷懒;",
-		"- pushText 是一段可直接发到群里的中文周报(120 字内,可带少量 emoji)。",
+		"- pushText 是一段可直接发到群里的中文周报,群友扫一眼就能读完(可带少量 emoji)。",
 		"  **它是唯一给人读的字段**:里面提到 UP 时一律写上表的「名称」,不要出现下标",
 		"  (读者手上没有这张表,写「i=0」他们不知道是谁)。",
 	].join("\n");
@@ -211,12 +211,12 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 		'{"verdict":"","score":0,"highlights":[{"label":"","comment":""}],"pushText":""}',
 		"",
 		"要求:",
-		"- verdict 是一句话总评(40 字内),要有梗但别造谣;",
+		"- verdict 是一句话总评,要有梗但别造谣;",
 		"- score 是 0-100 的综合勤奋度评分(越勤奋越高);",
 		"- highlights 给 3-4 条分维度点评,label 是维度名(如「涨粉」「投稿」「直播」),comment 一句话;",
 		"- 没有对照组,**不要**和「其他 UP」比较,只就他自己的数据说话;",
 		"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该 UP 偷懒;",
-		"- pushText 是一段可直接发到群里的中文短评(80 字内,可带少量 emoji)。",
+		"- pushText 是一段可直接发到群里的中文短评,扫一眼就能读完(可带少量 emoji)。",
 	].join("\n");
 }
 
