@@ -359,6 +359,31 @@ describe("周期「正在直播」", () => {
 		expect(problems[0]?.reasons[0]).toMatch(/没收到新的直播状态/);
 	});
 
+	// 拓展没报下播(清单可以只声明开播)、或下播事件被拒收了:在播表那一行已经被「不在播」的状态请出去,
+	// 这一场的计时器却还挂着。拓展明明一直在报,不该每一轮都记一句「没收到新的直播状态」;BN 也不拿状态
+	// 替它判下播(决策 53)—— 悄悄跳过,又报在播了就接着推。
+	it("最新状态说不在播:到点悄悄跳过,不推、不记跳过;之后又报在播,周期推送接着来", async () => {
+		start();
+		liveStart();
+		await settle();
+		liveStatus({ totalViewers: 7 });
+		report({ kind: "liveStatus", value: { live: false } });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		expect(problems).toEqual([]);
+
+		liveStatus({ totalViewers: 8 });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, 0]);
+		expect(sent[1]?.input).toMatchObject({ status: "streaming", totalViewers: 8 });
+		expect(problems).toEqual([]);
+	});
+
 	it("下播之后不再推,也不记跳过", async () => {
 		start();
 		liveStart();

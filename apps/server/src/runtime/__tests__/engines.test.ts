@@ -541,7 +541,13 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 				postNoun: () => undefined,
 				readAvatar: async () => undefined,
 			},
-			extensionLive: { get: () => undefined },
+			// 在播表里有这一行(开播进表):表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
+			extensionLive: {
+				get: (id) =>
+					id === sub.id
+						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
+						: undefined,
+			},
 			extensionReportProblem: (problem) => problems.push(problem),
 		});
 		active = c;
