@@ -20,4 +20,21 @@ describe("liveDuration", () => {
 		expect(liveDuration(T0, T0)).toBe("0秒");
 		expect(liveDuration(T0 + 60_000, T0)).toBe("-1分");
 	});
+
+	// 时刻带毫秒:先把整段取整到秒再拆单位。从前拆完单独给秒取整 —— 119.6 秒拆成 1 分 59.6 秒,
+	// 取整成「1分60秒」;300.3 秒拆成 5 分 0.3 秒,多出一个「5分0秒」。
+	it("不足一秒的零头先整段取整,再拆单位:不出「60秒」,也不出尾巴上的「0秒」", () => {
+		expect(liveDuration(T0, T0 + 119_600)).toBe("2分");
+		expect(liveDuration(T0, T0 + 59_600)).toBe("1分");
+		expect(liveDuration(T0, T0 + 300_300)).toBe("5分");
+		expect(liveDuration(T0, T0 + 125_400)).toBe("2分5秒");
+		expect(liveDuration(T0, T0 + 3_599_700)).toBe("1小时");
+		expect(liveDuration(T0, T0 + 400)).toBe("0秒");
+	});
+
+	it("倒过来的也先取整:带负号,零头不留;不到半秒是「0秒」,不带负号", () => {
+		expect(liveDuration(T0 + 119_600, T0)).toBe("-2分");
+		expect(liveDuration(T0 + 125_400, T0)).toBe("-2分5秒");
+		expect(liveDuration(T0 + 400, T0)).toBe("0秒");
+	});
 });

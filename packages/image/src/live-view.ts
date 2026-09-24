@@ -35,8 +35,16 @@ export function liveDuration(startedAt: number, at: number): string {
 	return durationBetween(DateTime.fromMillis(startedAt), DateTime.fromMillis(at));
 }
 
+/**
+ * 先把整段取整到秒,再拆单位。反过来(拆完单独给秒取整)的话,119.6 秒拆成 1 分 59.6 秒、取整成
+ * 「1分60秒」;300.3 秒拆出 0.3 秒,多一个「5分0秒」。取整按绝对值,正负两头对称。
+ */
 function durationBetween(start: DateTime, end: DateTime): string {
-	const diff = end.diff(start, ["years", "months", "days", "hours", "minutes", "seconds"]);
+	const ms = end.toMillis() - start.toMillis();
+	const wholeSeconds = Math.sign(ms) * Math.round(Math.abs(ms) / 1000);
+	const diff = start
+		.plus({ seconds: wholeSeconds })
+		.diff(start, ["years", "months", "days", "hours", "minutes", "seconds"]);
 	const { years, months, days, hours, minutes, seconds } = diff.toObject();
 	const parts: string[] = [];
 	if (years) parts.push(`${Math.abs(years)}年`);
@@ -44,8 +52,8 @@ function durationBetween(start: DateTime, end: DateTime): string {
 	if (days) parts.push(`${Math.abs(days)}天`);
 	if (hours) parts.push(`${Math.abs(hours)}小时`);
 	if (minutes) parts.push(`${Math.abs(minutes)}分`);
-	if (seconds) parts.push(`${Math.round(Math.abs(seconds))}秒`);
-	const sign = diff.as("seconds") < 0 ? "-" : "";
+	if (seconds) parts.push(`${Math.abs(seconds)}秒`);
+	const sign = wholeSeconds < 0 ? "-" : "";
 	return parts.length > 0 ? `${sign}${parts.join("")}` : "0秒";
 }
 
