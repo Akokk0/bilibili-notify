@@ -61,6 +61,17 @@ export const SUBSCRIPTION_REPORT_TITLE_MAX = 256;
 export const SUBSCRIPTION_REPORT_NAME_MAX = 128;
 /** 链接的字数上限。 */
 export const SUBSCRIPTION_REPORT_URL_MAX = 2048;
+/**
+ * 一个话题名的字数上限(剥掉两头的 `#` 与空白之后数)。话题上卡是正文上方那一行标签,各平台的话题名
+ * 都是一句短语;64 字比常见的话题名长出一截,挡的是拓展把整段正文错塞进来 —— 那样标签会占掉半张卡。
+ */
+export const SUBSCRIPTION_POST_TOPIC_MAX = 64;
+/**
+ * 一条作品最多几个话题。只有第一个上标签,其余只用来给正文里的 `#名字#` / `#名字` 上色(每个名字扫
+ * 一遍正文);一条作品真带的话题不过十来个,20 个够用,挡的是拓展的 bug 一口气报上千个。多出来的
+ * 丢掉、说一声 —— 前面那些照收。
+ */
+export const SUBSCRIPTION_POST_TOPICS_MAX = 20;
 
 /**
  * 时刻一律是**毫秒**时间戳(与视图里 `{ time }` 那一格同一个单位,`Date.now()` / `getTime()` 直接给)。
@@ -260,11 +271,44 @@ const TimeSchema = z
 /** 互动数、人数、粉丝数:BN 自己排版(「1.2 万」),交数字。 */
 const CountSchema = z.number({ error: "要是数字" }).int("要是整数").nonnegative("不能是负的");
 
-/** 选填格的列表(作品图)最多几项 —— 走格子的时候照它截,多出来的丢掉。 */
-const LIST_MAX = new WeakMap<z.ZodType, number>();
-function list<T extends z.ZodType>(item: T, max: number) {
-	const schema = z.array(item).max(max, `最多 ${max} 项`).readonly();
-	LIST_MAX.set(schema, max);
+/**
+ * 话题名(决策 55 的 09-24 🔗):不带 `#`。平台接口常把 `#` 连着名字一起给(`#旅行#`、`#旅行`),两头的
+ * `#` 与空白先剥掉再核 —— 名字中间的照留(`我的#日记`)。
+ *
+ * 剥用 `z.preprocess` 而不是 `.transform()`:契约形状的守卫按输入侧转 JSON Schema,preprocess 那一侧
+ * 看得见后面的字数上下限;transform 接在后面,守卫只看得见「一个字符串」。
+ */
+const TopicSchema = z.preprocess(
+	(value) => (typeof value === "string" ? stripTopic(value) : value),
+	text(SUBSCRIPTION_POST_TOPIC_MAX).min(1, "剥掉两头的 # 与空白之后是空的"),
+);
+
+/**
+ * 剥掉两头的 `#` 与空白。逐字走、不用 `/[#\s]+$/` 那种正则:剥在字数上限之前,拓展交来一长串
+ * `# # # …x`,那个正则在每个起点都要回溯到头,是平方级的。
+ */
+function stripTopic(value: string): string {
+	const strippable = (ch: string | undefined) => ch === "#" || (ch !== undefined && /\s/.test(ch));
+	let start = 0;
+	let end = value.length;
+	while (start < end && strippable(value[start])) start++;
+	while (end > start && strippable(value[end - 1])) end--;
+	return value.slice(start, end);
+}
+
+/** 选填格的列表(作品图、话题)走格子时的规矩。 */
+interface ListRule {
+	/** 最多几项 —— 照它截,多出来的丢掉、说一声。 */
+	max: number;
+	/** 报「多出来几项」时的量词(张 / 个)。 */
+	unit: string;
+	/** 核完之后去重(只用于字符串一类的值),重复的不算丢格。 */
+	unique?: boolean;
+}
+const LIST_RULES = new WeakMap<z.ZodType, ListRule>();
+function list<T extends z.ZodType>(item: T, rule: ListRule) {
+	const schema = z.array(item).max(rule.max, `最多 ${rule.max} 项`).readonly();
+	LIST_RULES.set(schema, rule);
 	return schema;
 }
 
@@ -290,7 +334,16 @@ export const SubscriptionPostSchema = z.strictObject({
 	publishedAt: TimeSchema,
 	/** 纯文本,保留换行。 */
 	text: LongTextSchema.optional(),
-	images: list(SubscriptionReportPictureSchema, SUBSCRIPTION_POST_IMAGES_MAX).optional(),
+	images: list(SubscriptionReportPictureSchema, {
+		max: SUBSCRIPTION_POST_IMAGES_MAX,
+		unit: "张",
+	}).optional(),
+	/** 话题名:第一个上卡当标签,正文里照名字找到的 `#名字#` / `#名字` 上色。 */
+	topics: list(TopicSchema, {
+		max: SUBSCRIPTION_POST_TOPICS_MAX,
+		unit: "个",
+		unique: true,
+	}).optional(),
 	video: z
 		.strictObject({
 			cover: SubscriptionReportPictureSchema.optional(),
@@ -476,7 +529,10 @@ function walkCell(schema: z.ZodType, value: unknown, where: string, state: WalkS
 	if (schema instanceof z.ZodReadonly && schema.unwrap() instanceof z.ZodArray) {
 		if (!Array.isArray(value)) return { ok: false, fatal: false, reason: `${where}:要是一个数组` };
 		const item = (schema.unwrap() as z.ZodArray<z.ZodType>).element;
-		const max = LIST_MAX.get(schema) ?? Number.POSITIVE_INFINITY;
+		const { max, unit, unique } = LIST_RULES.get(schema) ?? {
+			max: Number.POSITIVE_INFINITY,
+			unit: "项",
+		};
 		const kept: unknown[] = [];
 		for (const [i, element] of value.slice(0, max).entries()) {
 			const cell = walkCell(item, element, at(where, i), state);
@@ -486,10 +542,10 @@ function walkCell(schema: z.ZodType, value: unknown, where: string, state: WalkS
 		}
 		if (value.length > max) {
 			state.dropped.push(
-				`${at(where, max)} 起:最多 ${max} 张,多出来的 ${value.length - max} 张丢了`,
+				`${at(where, max)} 起:最多 ${max} ${unit},多出来的 ${value.length - max} ${unit}丢了`,
 			);
 		}
-		return { ok: true, value: kept };
+		return { ok: true, value: unique ? [...new Set(kept)] : kept };
 	}
 	const parsed = schema.safeParse(value);
 	if (!parsed.success) {

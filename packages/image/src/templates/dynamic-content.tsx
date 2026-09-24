@@ -33,7 +33,7 @@
 import type { VNode } from "vue";
 import { SVG_BELL, SVG_GOODS, SVG_LOTTERY } from "../icons";
 import { parseRichText } from "../rich-text";
-import type { Dynamic } from "../types";
+import type { Dynamic, RichTextNode } from "../types";
 
 // ── 动态类型常量 ──────────────────────────────────────────────────────────────
 
@@ -325,19 +325,53 @@ function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
 
 /**
  * **纯文本正文** → `text` 块的那一份(ADR-0019 决策 68,给拓展作品用)。保留换行;标签原样
- * 当文字(转义),正文里的 `#话题` 照字面显示(决策 55 不收富文本)。
+ * 当文字(转义)。
  *
- * 走的是 B 站富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):当成一整段
- * 普通文字交给 {@link parseRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
+ * 走的是 B 站富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):切成富文本节点交给
+ * {@link parseRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
+ *
+ * `topics` 是来源报的话题名(决策 55 的 09-24 🔗):正文里的 `#名字#` / `#名字` 切成 B 站富文本
+ * **同一种话题节点**,画出来是同一种 span。只照这份名单找 —— 不在名单里的 `#`(「C#」「#1」)
+ * 一律当文字,BN 不按 `#` 自己猜。
  *
  * 一个字都没有(空串 / 只有空白)回 null,正文块收起。
  */
-export function buildPlainText(text: string): VNode | null {
+export function buildPlainText(text: string, topics: readonly string[] = []): VNode | null {
 	const normalized = text.replace(/\r\n?/g, "\n");
 	if (normalized.trim() === "") return null;
-	return parseRichText([
-		{ type: "RICH_TEXT_NODE_TYPE_TEXT", text: normalized, orig_text: normalized },
-	]);
+	return parseRichText(plainTextNodes(normalized, topics));
+}
+
+/**
+ * 纯文本按话题名切成富文本节点:话题一段是话题节点,其余是文字节点。
+ *
+ * 同一处能对上几种写法时取排在前面的:名字长的先(「旅行日记」与「旅行」都报了,`#旅行日记` 整个是
+ * 话题),同一个名字 `#名字#` 先于 `#名字`(收尾的 `#` 算进话题)。只在 `#` 所在的位置上试。
+ */
+function plainTextNodes(text: string, topics: readonly string[]): RichTextNode {
+	const patterns = [...new Set(topics)]
+		.filter((name) => name !== "")
+		.sort((a, b) => b.length - a.length)
+		.flatMap((name) => [`#${name}#`, `#${name}`]);
+	const nodes: RichTextNode = [];
+	const push = (type: string, part: string) => {
+		if (part) nodes.push({ type, text: part, orig_text: part });
+	};
+	let plainFrom = 0;
+	let at = patterns.length > 0 ? text.indexOf("#") : -1;
+	while (at !== -1) {
+		const hit = patterns.find((pattern) => text.startsWith(pattern, at));
+		if (hit) {
+			push("RICH_TEXT_NODE_TYPE_TEXT", text.slice(plainFrom, at));
+			push("RICH_TEXT_NODE_TYPE_TOPIC", hit);
+			plainFrom = at + hit.length;
+			at = text.indexOf("#", plainFrom);
+		} else {
+			at = text.indexOf("#", at + 1);
+		}
+	}
+	push("RICH_TEXT_NODE_TYPE_TEXT", text.slice(plainFrom));
+	return nodes;
 }
 
 /** 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。 */

@@ -5,12 +5,14 @@
  *
  * - `buildGallery`:吃中立的图列表。动图只认来源给的 `animated`(不再自己看 `.gif` 结尾 ——
  *   那是 B 站映射那一步的事,拓展的图是 data URL);宽高缺了就按普通比例铺。
- * - `buildPlainText`:纯文本正文,保留换行,落在与 B 站富文本同一个根上(`body` 挂点)。
+ * - `buildPlainText`:纯文本正文,保留换行,落在与 B 站富文本同一个根上(`body` 挂点);给了话题名,
+ *   正文里的 `#名字#` / `#名字` 画成 B 站富文本话题那一种 span(决策 55 的 09-24 🔗)。
  */
 
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
+import { parseRichText } from "../rich-text";
 import { buildGallery, buildPlainText, type GalleryImage } from "../templates/dynamic-content";
 
 async function htmlOf(v: VNode | null): Promise<string> {
@@ -89,5 +91,67 @@ describe("buildPlainText — 纯文本正文", () => {
 	it("一个字都没有(空串 / 只有空白)→ null,正文块收起", () => {
 		expect(buildPlainText("")).toBeNull();
 		expect(buildPlainText(" \n\t ")).toBeNull();
+	});
+});
+
+describe("buildPlainText — 照拓展报的话题名给正文里的话题上色", () => {
+	/** B 站富文本里话题节点画出来的那一种 span。 */
+	const topic = (text: string) => `<span class="text-[#FF6699]">${text}</span>`;
+
+	it("画法与 B 站富文本的话题节点同一种 span(皮肤对两边一视同仁)", async () => {
+		const bili = await htmlOf(
+			parseRichText([
+				{ type: "RICH_TEXT_NODE_TYPE_TOPIC", text: "#假话题#", orig_text: "#假话题#" },
+			]),
+		);
+		expect(bili).toContain(topic("#假话题#"));
+		const ours = await htmlOf(buildPlainText("#假话题#", ["假话题"]));
+		expect(ours).toContain(topic("#假话题#"));
+	});
+
+	it("#名字# 与 #名字 都上色,两边的字照旧", async () => {
+		const html = await htmlOf(buildPlainText("去 #海边# 玩,顺便 #旅行", ["海边", "旅行"]));
+		expect(html).toContain(topic("#海边#"));
+		expect(html).toContain(topic("#旅行"));
+		expect(html).toContain("去 ");
+		expect(html).toContain(" 玩,顺便 ");
+	});
+
+	it("名字有包含关系时长的先匹配,与报的次序无关", async () => {
+		const html = await htmlOf(buildPlainText("#旅行日记 和 #旅行", ["旅行", "旅行日记"]));
+		expect(html).toContain(topic("#旅行日记"));
+		expect(html).toContain(topic("#旅行"));
+		expect(html).not.toContain(`${topic("#旅行")}日记`);
+	});
+
+	it("#名字# 优先于 #名字:收尾的 # 算进话题,不留给后面", async () => {
+		const html = await htmlOf(buildPlainText("#旅行#日记", ["旅行"]));
+		expect(html).toContain(`${topic("#旅行#")}日记`);
+	});
+
+	it("名字在正文里找不到:不上色、不出错,与没给话题时一模一样", async () => {
+		const text = "今天走了两万步 #城市散步";
+		expect(await htmlOf(buildPlainText(text, ["vlog"]))).toBe(await htmlOf(buildPlainText(text)));
+		expect(await htmlOf(buildPlainText(text, []))).toBe(await htmlOf(buildPlainText(text)));
+	});
+
+	it("不在名单里的 # 一律不动 —— 「C#」「#1」不是话题,BN 不按 # 猜", async () => {
+		const html = await htmlOf(buildPlainText("学 C# 的第 #1 课 #编程", ["编程"]));
+		expect(html.match(/text-\[#FF6699\]/g)).toHaveLength(1);
+		expect(html).toContain(topic("#编程"));
+		expect(html).toContain("学 C# 的第 #1 课 ");
+	});
+
+	it("HTML 转义照旧:正文与话题里的标签都当文字", async () => {
+		const html = await htmlOf(buildPlainText("<b>粗</b> #<i>#", ["<i>"]));
+		expect(html).toContain("&lt;b&gt;粗&lt;/b&gt; ");
+		expect(html).toContain(topic("#&lt;i&gt;#"));
+		expect(html).not.toContain("<b>");
+		expect(html).not.toContain("<i>");
+	});
+
+	it("换行照旧:话题前后换行,<br> 落在原处", async () => {
+		const html = await htmlOf(buildPlainText("第一行 #话题\r\n第二行 #话题#", ["话题"]));
+		expect(html).toContain(`第一行 ${topic("#话题")}<br>第二行 ${topic("#话题#")}`);
 	});
 });

@@ -54,7 +54,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v2", schema: ExtensionManifestV2Schema, digest: "45bca9ed5ee47dd8" },
 	{ name: "解析门候选", schema: SubscriptionCandidatesSchema, digest: "69bdc90eeb29a4b2" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
-	{ name: "上报:作品", schema: SubscriptionPostSchema, digest: "21db7ebd2e6b36b3" },
+	{ name: "上报:作品", schema: SubscriptionPostSchema, digest: "7877ab1518955737" },
 	{ name: "上报:开播", schema: SubscriptionLiveStartSchema, digest: "fe38dc68764de721" },
 	{ name: "上报:下播", schema: SubscriptionLiveEndSchema, digest: "04a4949b77f4cad6" },
 	{ name: "上报:直播状态", schema: SubscriptionLiveStatusSchema, digest: "b345df6a00258083" },

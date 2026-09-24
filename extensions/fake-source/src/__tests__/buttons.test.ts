@@ -57,6 +57,7 @@ type Post = {
 	publishedAt: number;
 	text?: string;
 	images?: Uint8Array[];
+	topics?: string[];
 	video?: {
 		cover?: Uint8Array;
 		title?: string;
@@ -194,6 +195,24 @@ describe("作用于谁", () => {
 });
 
 describe("报一条作品", () => {
+	/**
+	 * 话题照契约报名字(不带 `#`):图文报的那个正文里有 `#假话题`,卡上既有标签又有上色;视频报两个,
+	 * 第二个(`vlog`)正文里没有 —— 演「只进名单、正文里找不到就不上色」,宿主照收不报错。
+	 */
+	it("话题:图文报「假话题」(正文里有 #假话题);视频报「城市散步」「vlog」,正文末尾只有 #城市散步", async () => {
+		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		await fake.press("report.post");
+		await fake.press("report.post");
+		const [first, second] = valuesOf<Post>(fake.reports(), "post");
+
+		expect(first?.topics).toEqual(["假话题"]);
+		expect(first?.text).toContain("#假话题");
+
+		expect(second?.topics).toEqual(["城市散步", "vlog"]);
+		expect(second?.text).toMatch(/#城市散步$/);
+		expect(second?.text).not.toContain("#vlog");
+	});
+
 	it("单数是图文(正文 + 三张 png + 互动数),双数是视频(封面 png、标题、时长、简介、播放数 + 互动数)", async () => {
 		const fake = bootFakeSource([sub(1, "person-a", true)]);
 		await fake.press("report.post");
@@ -413,7 +432,17 @@ describe("两颗报坏的", () => {
 	});
 
 	/** 作品那张表认的格,抄自契约 `SubscriptionPost`。 */
-	const POST_KEYS = ["id", "url", "publishedAt", "text", "images", "video", "stats", "author"];
+	const POST_KEYS = [
+		"id",
+		"url",
+		"publishedAt",
+		"text",
+		"images",
+		"topics",
+		"video",
+		"stats",
+		"author",
+	];
 
 	it("多一格的作品:多带一格作品表里没有的字段;宿主整条拒是意料之中,动作不算失败", async () => {
 		let refused: HeardReport | undefined;

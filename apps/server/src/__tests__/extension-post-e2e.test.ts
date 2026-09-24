@@ -300,6 +300,17 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(card?.match(/data:image\/png;base64,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
 	});
 
+	it("话题照 B 站卡的两种画法:正文上方有话题标签,正文里的 #假话题 画成富文本话题那一种 span", () => {
+		const card = renderedHtml.find(
+			(html) => html.includes(who.a.name) && html.includes("旅行第 1 天，去海边拍了三张"),
+		);
+		expect(card, "甲那张图文卡没画出来").toBeDefined();
+		// 标签:话题图标 + 名字那一行(假源报的第一个话题)。
+		expect(card).toMatch(/aria-label="话题"[\s\S]*?<\/svg>假话题</);
+		// 正文里的 `#假话题` 与 B 站富文本的话题节点同一种 span。
+		expect(card).toContain('<span class="text-[#FF6699]">#假话题</span>');
+	});
+
 	it("历史:甲两行拓展行(带拓展 id 与外部 id、名字快照、已送达),乙一行,丙没有", async () => {
 		const res = await api("/api/history?limit=50");
 		await ok(res);

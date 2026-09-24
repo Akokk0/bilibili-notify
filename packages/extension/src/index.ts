@@ -293,8 +293,8 @@ export interface SubscriptionPostStats {
 /**
  * 一条作品(决策 55)—— 映射到 BN 的「动态」。
  *
- * 不收:转发(嵌套原作品)、富文本(表情图 / @ / 话题高亮)、话题、附加卡(预约 / 商品 / 投票)、
- * 充电专属、弹幕数、大会员标记。正文里的 #话题 照字面显示。
+ * 不收:转发(嵌套原作品)、富文本(表情图 / @ 高亮)、附加卡(预约 / 商品 / 投票)、充电专属、
+ * 弹幕数、大会员标记。话题走 {@link SubscriptionPost.topics}。
  */
 export interface SubscriptionPost {
 	/** 平台自己的作品 id,原样存。 */
@@ -307,6 +307,15 @@ export interface SubscriptionPost {
 	text?: string;
 	/** 作品图:png / jpeg / webp / gif,单张 8 MiB、最多 30 张;宽高由 BN 读。 */
 	images?: readonly Uint8Array[];
+	/**
+	 * 话题名,**不带 `#`**(带了也行:两头的 `#` 与空白 BN 先剥掉)。
+	 *
+	 * - **第一个**上卡,当正文上方那一行话题标签(同 B 站动态卡的话题);
+	 * - 正文里出现的 `#名字#` / `#名字` 画成话题的颜色 —— BN **只照这里报的名字**去正文里找,不自己按 `#`
+	 *   猜(「C#」「#1」不是话题)。名字在正文里找不到的,只进标签(若是第一个)、不上色;
+	 * - 每个 1–64 字、最多 20 个,坏的那一项(剥完是空的、超长)只丢那一项;重复的 BN 去掉。
+	 */
+	topics?: readonly string[];
 	video?: SubscriptionVideo;
 	stats?: SubscriptionPostStats;
 	author?: SubscriptionAuthor;

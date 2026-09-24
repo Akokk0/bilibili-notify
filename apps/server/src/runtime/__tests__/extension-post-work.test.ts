@@ -125,6 +125,20 @@ describe("套进 B 站的动态类型(决策 69),动作写法照 B 站同一种�
 	});
 });
 
+describe("话题(决策 55 的 09-24 🔗)", () => {
+	it("第一个话题进正文上方那一行标签(B 站卡的 node.topic),其余不进", async () => {
+		const { node } = await render(
+			post({ text: "走了一天 #城市散步", topics: ["城市散步", "vlog"] }),
+		);
+		expect(node.topic).toBe("城市散步");
+	});
+
+	it("没报话题就没有标签(那一行收起)", async () => {
+		expect((await render(post({ text: "只有字 #看着像话题" }))).node.topic).toBeUndefined();
+		expect((await render(post({ text: "只有字", topics: [] }))).node.topic).toBeUndefined();
+	});
+});
+
 describe("卡上的作者、样式", () => {
 	it("作者的名字与头像原样上卡(取法见 extension-push-common),不是大会员色", async () => {
 		const { node } = await render(post());

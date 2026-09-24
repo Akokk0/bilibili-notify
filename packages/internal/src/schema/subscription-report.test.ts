@@ -18,6 +18,8 @@ import {
 	readImageSize,
 	SUBSCRIPTION_AVATAR_MAX_BYTES,
 	SUBSCRIPTION_POST_IMAGES_MAX,
+	SUBSCRIPTION_POST_TOPIC_MAX,
+	SUBSCRIPTION_POST_TOPICS_MAX,
 	SUBSCRIPTION_REPORT_IMAGE_MAX_BYTES,
 	SUBSCRIPTION_REPORT_IMAGES_TOTAL_MAX_BYTES,
 	SUBSCRIPTION_REPORT_TEXT_MAX,
@@ -290,6 +292,80 @@ describe("作品的图:png / jpeg / webp / gif,按文件头认", () => {
 		if (!r.ok) throw new Error(r.reason);
 		expect(r.value.video).toEqual({ title: "t" });
 		expect(r.dropped).toEqual([expect.stringContaining("video.cover")]);
+	});
+});
+
+describe("作品的话题(topics):话题名的列表,第一个上卡当标签", () => {
+	it("原样收下,次序不变", () => {
+		const r = checkSubscriptionReport("post", { ...POST, topics: ["城市散步", "vlog"] });
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual(["城市散步", "vlog"]);
+		expect(r.dropped).toEqual([]);
+	});
+
+	/** 平台接口常把 `#` 连着名字一起给(`#旅行#`、`#旅行`),BN 收的是名字本身。 */
+	it("名字两头的 # 与空白先剥掉,中间的原样", () => {
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			topics: ["#旅行#", " #城市 散步 ", "C#", "##我的#日记##"],
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual(["旅行", "城市 散步", "C", "我的#日记"]);
+		expect(r.dropped).toEqual([]);
+	});
+
+	it("剥完空了的、不是字符串的只丢那一项,点名第几项;其余照收", () => {
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			topics: ["旅行", "##", "  ", 42, "美食"],
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual(["旅行", "美食"]);
+		expect(r.dropped).toEqual([
+			expect.stringMatching(/^topics\[1\]:.*空/),
+			expect.stringMatching(/^topics\[2\]:.*空/),
+			expect.stringMatching(/^topics\[3\]:.*字符串/),
+		]);
+	});
+
+	it(`超过 ${SUBSCRIPTION_POST_TOPIC_MAX} 字的只丢那一项;字数按剥掉 # 之后数`, () => {
+		const longest = "长".repeat(SUBSCRIPTION_POST_TOPIC_MAX);
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			topics: [`${longest}长`, `#${longest}#`],
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual([longest]);
+		expect(r.dropped).toEqual([
+			expect.stringMatching(new RegExp(`^topics\\[0\\]:.*${SUBSCRIPTION_POST_TOPIC_MAX} 字`)),
+		]);
+	});
+
+	/** 重复的不是坏值(卡上什么都不少),不进上报问题。按剥完的名字认:`#旅行#` 与 `旅行` 是同一个。 */
+	it("去重:留第一次出现的那个,次序不变,不算丢格", () => {
+		const r = checkSubscriptionReport("post", {
+			...POST,
+			topics: ["旅行", "美食", "#旅行#", "美食", "vlog"],
+		});
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual(["旅行", "美食", "vlog"]);
+		expect(r.dropped).toEqual([]);
+	});
+
+	it(`超过 ${SUBSCRIPTION_POST_TOPICS_MAX} 个:前 ${SUBSCRIPTION_POST_TOPICS_MAX} 个照收,多出来的丢掉、说是几个`, () => {
+		const names = Array.from({ length: SUBSCRIPTION_POST_TOPICS_MAX + 3 }, (_, i) => `话题${i}`);
+		const r = checkSubscriptionReport("post", { ...POST, topics: names });
+		if (!r.ok) throw new Error(r.reason);
+		expect(r.value.topics).toEqual(names.slice(0, SUBSCRIPTION_POST_TOPICS_MAX));
+		expect(r.dropped).toEqual([
+			`topics[${SUBSCRIPTION_POST_TOPICS_MAX}] 起:最多 ${SUBSCRIPTION_POST_TOPICS_MAX} 个,多出来的 3 个丢了`,
+		]);
+	});
+
+	it("topics 不是数组:丢这一格", () => {
+		expect(dropped("post", { ...POST, topics: "旅行" })).toEqual([
+			expect.stringMatching(/^topics:.*数组/),
+		]);
 	});
 });
 

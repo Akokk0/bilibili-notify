@@ -56,8 +56,8 @@ function statsOf(n: number) {
 /**
  * 图文作品的正文,按序号轮着用。写成像真作品的话 —— 打开 AI 点评时,女仆点评的就是这段字,写成
  * 「这是第二行」一类自我介绍的测试文案,点评也只会跟着复述它。卡上要核的都照样在:序号(连按几下
- * 分得清哪张卡是哪一下报的)、第二行(正文保留换行)、`#假话题`(照字面显示,不收富文本,ADR-0019
- * 决策 55)。
+ * 分得清哪张卡是哪一下报的)、第二行(正文保留换行)、`#假话题`(报了同名的话题,卡上正文上方出话题
+ * 标签、正文里这几个字上色,ADR-0019 决策 55 的 09-24 🔗)。
  */
 const PICTURE_POST_TEXTS: readonly ((n: number) => string)[] = [
 	(n) => `旅行第 ${n} 天，去海边拍了三张\n风好大，帽子差点被吹跑 #假话题`,
@@ -65,7 +65,12 @@ const PICTURE_POST_TEXTS: readonly ((n: number) => string)[] = [
 	(n) => `连续第 ${n} 天下班路上拍晚霞\n明天也要加油呀 #假话题`,
 ];
 
-/** 一条作品:单数是图文(正文 + 三张图),双数是视频 —— 两种卡按两下就都看得见。 */
+/**
+ * 一条作品:单数是图文(正文 + 三张图),双数是视频 —— 两种卡按两下就都看得见。
+ *
+ * 话题照契约报名字、不带 `#`:图文报「假话题」;视频报「城市散步」「vlog」,正文末尾只有
+ * `#城市散步` —— 第二个在正文里找不到,演「只进名单、不上色,宿主照收不报错」。
+ */
 export function fakePost(externalId: string, n: number, now: number): SubscriptionPost {
 	const base = postBase(externalId, n, now);
 	if (n % 2 === 1) {
@@ -73,12 +78,14 @@ export function fakePost(externalId: string, n: number, now: number): Subscripti
 			...base,
 			text: PICTURE_POST_TEXTS[((n - 1) / 2) % PICTURE_POST_TEXTS.length]?.(n),
 			images: [pictureAt(n), pictureAt(n + 1), pictureAt(n + 2)],
+			topics: ["假话题"],
 			stats: statsOf(n),
 		};
 	}
 	return {
 		...base,
-		text: `第 ${n} 支视频来啦，这次拍了一整天的城市散步，喜欢的话点个赞`,
+		text: `第 ${n} 支视频来啦，这次拍了一整天的城市散步，喜欢的话点个赞 #城市散步`,
+		topics: ["城市散步", "vlog"],
 		video: {
 			cover: pictureAt(n),
 			title: `城市散步 vlog · 第 ${n} 期`,

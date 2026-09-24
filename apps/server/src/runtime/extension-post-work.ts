@@ -108,7 +108,13 @@ function statsOf(stats: Post["stats"]): DynamicNode["stats"] {
 	return out.like || out.comment || out.forward ? out : undefined;
 }
 
-/** 出卡的 node。发布时间照 B 站卡的写法,视频动态在后面接「· 投稿了视频」(B 站外层卡就是这么贴的)。 */
+/**
+ * 出卡的 node。发布时间照 B 站卡的写法,视频动态在后面接「· 投稿了视频」(B 站外层卡就是这么贴的)。
+ *
+ * 话题(决策 55 的 09-24 🔗)照 B 站卡的两种画法:第一个进正文上方那一行标签(`topic`,皮肤契约的
+ * `dynamic.topic` / `hasTopic` 也从这里来);正文里照报的名字找到的 `#名字#` / `#名字` 画成富文本话题
+ * 那一种 span。
+ */
 function postNode(post: Post, author: ExtensionCardAuthor): DynamicNode {
 	const type = extensionPostType(post);
 	const time = formatCardTime(Math.floor(post.publishedAt / 1000));
@@ -118,7 +124,8 @@ function postNode(post: Post, author: ExtensionCardAuthor): DynamicNode {
 		upIsVip: false,
 		pubTime: type === DYNAMIC_TYPE_AV ? `${time} · 投稿了视频` : time,
 		type,
-		text: buildPlainText(post.text ?? ""),
+		topic: post.topics?.[0],
+		text: buildPlainText(post.text ?? "", post.topics),
 		images: galleryOf(post.images ?? []),
 		video: post.video ? videoOf(post.video) : undefined,
 		stats: statsOf(post.stats),
