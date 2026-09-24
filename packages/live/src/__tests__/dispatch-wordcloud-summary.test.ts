@@ -200,6 +200,22 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		expect(call[3]).toBe("k6eee-cafed00d");
 	});
 
+	// 词云卡也吃这位 UP 那份旋钮(不分卡种,ADR-0014 决策 17 的 🔗)。
+	// 验红:把 room-session-base.ts 里递给词云生成器的第五参删掉,这条红。
+	it("per-UP 旋钮覆盖递给词云生成器(第五参)", async () => {
+		const { ctx } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: true,
+			sortedWords: [["精彩", 5]],
+		});
+		const sub = makeSub();
+		const cardSkinKnobs = { "k6eee-cafed00d": { accent: "#aaaaaa" } };
+		sub.cardSkinKnobs = cardSkinKnobs;
+		await new TestSession(ctx, sub).runDispatch();
+		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(call[4]).toEqual(cardSkinKnobs);
+	});
+
 	it("无 per-UP 停用词时 sortedWords 原样透传", async () => {
 		const { ctx } = makeCtx({
 			wantWordcloud: true,

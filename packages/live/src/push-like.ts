@@ -11,6 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { CardKind, ExtraKey, MessageKindLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
@@ -202,6 +203,12 @@ export interface SubItemView {
 	 */
 	cardSkin?: string;
 	/**
+	 * 该 UP 自己那层**皮肤旋钮覆盖**,按皮肤 id 分(`overrides.cardSkinKnobs` 原样,ADR-0014
+	 * 决策 17 的 🔗)。undefined = 一枚都没单独拧。与 `cardSkin` 一起递给每一种卡的 generate*
+	 * (开播 / 直播中 / 下播 / SC / 上舰 / 词云),渲染器在出图时与全局那份逐枚合并。
+	 */
+	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
+	/**
 	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.live` 后填入。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响
 	 * (走各自独立渲染,不经 sendLiveNotifyCard)。
@@ -240,6 +247,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "aiOverride"
 		| "wordcloudStopWords"
 		| "cardSkin"
+		| "cardSkinKnobs"
 		| "messageLayout"
 	>
 >;

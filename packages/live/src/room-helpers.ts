@@ -293,6 +293,8 @@ export class RoomContext extends RoomContextBase {
 		cardStyle: SubItemView["customCardStyle"];
 		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */
 		cardSkin?: string;
+		/** 这位 UP 那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);undefined = 全跟全局。 */
+		cardSkinKnobs?: SubItemView["cardSkinKnobs"];
 		uid: string;
 		notifyMsg: string;
 		messageLayout: MessageKindLayout;
@@ -315,6 +317,7 @@ export class RoomContext extends RoomContextBase {
 				layout: params.messageLayout,
 				cardStyle: params.cardStyle,
 				cardSkin: params.cardSkin,
+				cardSkinKnobs: params.cardSkinKnobs,
 				pushType: livePushTypeOf(liveType),
 				pushId: params.pushId,
 				label: `uid=${uid}`,

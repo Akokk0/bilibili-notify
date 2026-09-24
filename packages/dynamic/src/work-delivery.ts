@@ -83,6 +83,7 @@ export type WorkSubscriptionSettings = Pick<
 	| "messageLayout"
 	| "customCardStyle"
 	| "cardSkin"
+	| "cardSkinKnobs"
 	| "aiOverride"
 	| "imageGroupEnable"
 	| "imageGroupForward"
@@ -244,11 +245,12 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	if (deps.image && config.imageEnabled !== false && wantPart("card")) {
 		try {
 			// 样式覆盖没启用时 resolveDynamicColorOptions 回 undefined(= 吃渲染器的全局配置);
-			// 皮肤 id 与它无关,恒要带上 —— 两件事混在一个对象里传,展开的顺序决定了「没启用」
+			// 皮肤 id 与这条订阅的旋钮覆盖都与它无关,恒要带上 —— 几件事混在一个对象里传,展开的顺序决定了「没启用」
 			// 不会把一份禁用的样式漏出去。
 			card = await work.renderCard(deps.image, {
 				...resolveDynamicColorOptions(settings.customCardStyle),
 				cardSkin: settings.cardSkin,
+				cardSkinKnobs: settings.cardSkinKnobs,
 			});
 		} catch (e) {
 			await noteCardFailure(e as Error, deps);

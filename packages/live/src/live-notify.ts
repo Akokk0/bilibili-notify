@@ -10,7 +10,7 @@
  * **什么时候推不在这里**(计时器、断流接续、串行闸):两边各管各的,决策 67。
  */
 
-import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
+import type { CardSkinChoice, ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import {
 	assembleMessageGroups,
 	type Logger,
@@ -49,6 +49,8 @@ export interface LiveNotifyParams {
 	cardStyle?: CustomCardStyleLike;
 	/** 这张卡用哪套皮肤(ADR-0014);不给 = 内置默认。 */
 	cardSkin?: string;
+	/** 这条订阅自己那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);不给 = 全跟全局。 */
+	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	pushType: LiveNotifyPushType;
 	/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,附加项才能追加到同一行。 */
 	pushId?: string;
@@ -79,9 +81,10 @@ export async function pushLiveNotify(
 	if (deps.renderer && wantCard) {
 		try {
 			card = await deps.renderer.generateNeutralLiveCard(params.input, {
-				// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与它无关,恒要带上。
+				// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与旋钮覆盖与它无关,恒要带上。
 				...(params.cardStyle?.enable ? params.cardStyle : undefined),
 				cardSkin: params.cardSkin,
+				cardSkinKnobs: params.cardSkinKnobs,
 			});
 		} catch (e) {
 			deps.logger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);

@@ -9,6 +9,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { ForwardImage, MessageKindLayout } from "@bilibili-notify/internal";
 import type { DynamicFilterConfig } from "./types";
 
@@ -154,6 +155,12 @@ export interface SubItemView {
 	 * colorOptions —— 版式住皮肤包里,不再逐块下发。
 	 */
 	cardSkin?: string;
+	/**
+	 * Per-UP 自己那层**皮肤旋钮覆盖**,按皮肤 id 分(`overrides.cardSkinKnobs` 原样,ADR-0014
+	 * 决策 17 的 🔗)。undefined = 一枚都没单独拧。与 `cardSkin` 一起透传给出卡的 colorOptions,
+	 * 渲染器在出图时与全局那份逐枚合并 —— 所以这里不折全局值,快照也就不会把全局冻住。
+	 */
+	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/**
 	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.dynamic` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染

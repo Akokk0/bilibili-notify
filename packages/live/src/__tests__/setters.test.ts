@@ -66,6 +66,17 @@ describe("WordcloudGenerator — getImageRenderer provider 模式", () => {
 		expect(calls[0]?.[3]).toEqual({ cardSkin: "k6eee-cafed00d" });
 	});
 
+	// 验红:把 wordcloud-generator.ts 里交给 generateWordCloudImg 的 `cardSkinKnobs` 删掉,这条红。
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateWordCloudImg", async () => {
+		const r = fakeRenderer();
+		const wc = new WordcloudGenerator({ getImageRenderer: () => r, logger: fakeLogger() });
+		const cardSkinKnobs = { "k6eee-cafed00d": { accent: "#aaaaaa" } };
+		await wc.generate(buildWords(60), "M", undefined, "k6eee-cafed00d", cardSkinKnobs);
+		const calls = (r.generateWordCloudImg as unknown as { mock: { calls: unknown[][] } }).mock
+			.calls;
+		expect(calls[0]?.[3]).toEqual({ cardSkin: "k6eee-cafed00d", cardSkinKnobs });
+	});
+
 	it("isImageEnabled() 返回 false → 即便 provider 有渲染器也跳过", async () => {
 		const r = fakeRenderer();
 		const wc = new WordcloudGenerator({

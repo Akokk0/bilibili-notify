@@ -311,6 +311,23 @@ describe("onLiveStart 准备期间到达的下播事件", () => {
 		expect(liveEmits(mocks.emitLiveState)).toBe(1);
 		expect(mocks.sendLiveNotifyCard).toHaveBeenCalled();
 	});
+
+	// 开播卡也得带上这位 UP 的皮肤与旋钮(ADR-0014 决策 17 的 🔗)—— 下播那一处有自己的
+	// 守卫(live-end-push.test.ts),这里守开播那一处。验红:把 room-session.ts 开播那一处的
+	// 皮肤选项换回只带 `cardSkin`,这条红。
+	it("开播卡把 per-UP 皮肤 id 与旋钮覆盖一起交给 sendLiveNotifyCard", async () => {
+		const cardSkinKnobs = { "k4ddd-0ddba11": { accent: "#aaaaaa" } };
+		const { mocks, handler } = await readySession(
+			makeSub({ cardSkin: "k4ddd-0ddba11", cardSkinKnobs }),
+		);
+		await dispatch(handler({ kind: "live-start" }));
+		// 替身是个无参的 vi.fn,调用记录的元组类型是 `[]` —— 按「收到了什么」取就得先放宽。
+		const calls = mocks.sendLiveNotifyCard.mock.calls as unknown as unknown[][];
+		expect(calls[0]?.[0]).toMatchObject({
+			cardSkin: "k4ddd-0ddba11",
+			cardSkinKnobs,
+		});
+	});
 });
 
 describe("退避耗尽彻底放弃监听", () => {

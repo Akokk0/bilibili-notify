@@ -568,7 +568,7 @@ export class RoomSession extends RoomSessionBase {
 						text: body.content,
 						price: body.price,
 					},
-					{ ...(scStyle.enable ? scStyle : undefined), cardSkin: this.sub.cardSkin },
+					{ ...(scStyle.enable ? scStyle : undefined), ...this.skinChoice() },
 				);
 				if (this.ctx.isDisposed()) return;
 				await this.enqueuePush(() =>
@@ -646,7 +646,7 @@ export class RoomSession extends RoomSessionBase {
 							masterName: this.masterInfo?.username ?? "",
 							masterAvatarUrl: this.masterInfo?.userface ?? "",
 						},
-						{ ...(guardStyle.enable ? guardStyle : undefined), cardSkin: this.sub.cardSkin },
+						{ ...(guardStyle.enable ? guardStyle : undefined), ...this.skinChoice() },
 					);
 					if (this.ctx.isDisposed()) return;
 					await this.ctx.push.broadcastToTargets(
@@ -779,7 +779,7 @@ export class RoomSession extends RoomSessionBase {
 				liveRoomInfo,
 				master,
 				cardStyle: this.resolvedCardStyle("live"),
-				cardSkin: this.sub.cardSkin,
+				...this.skinChoice(),
 				uid: this.sub.uid,
 				notifyMsg: liveStartMsg,
 				messageLayout: this.sub.messageLayout,

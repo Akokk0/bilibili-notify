@@ -171,6 +171,15 @@ export abstract class RoomSessionBase {
 		);
 	}
 
+	/**
+	 * 这位 UP 的卡用哪套皮肤、他自己怎么拧它(ADR-0014 决策 17 的 🔗)—— 每一种卡(开播 /
+	 * 直播中 / 下播 / SC / 上舰)都经这一处拿,**两格捆在一起走**:各写一遍的话,哪一处只记得
+	 * 带皮肤 id,那一类卡就不认这位 UP 拧的旋钮,而且全绿(两格都是可选的)。
+	 */
+	protected skinChoice(): { cardSkin?: string; cardSkinKnobs?: SubItemView["cardSkinKnobs"] } {
+		return { cardSkin: this.sub.cardSkin, cardSkinKnobs: this.sub.cardSkinKnobs };
+	}
+
 	/** Whether the underlying B-station room is currently broadcasting. */
 	get isLive(): boolean {
 		return this.liveStatus;
@@ -400,7 +409,7 @@ export abstract class RoomSessionBase {
 						liveRoomInfo,
 						master,
 						cardStyle: this.resolvedCardStyle("live"),
-						cardSkin: this.sub.cardSkin,
+						...this.skinChoice(),
 						uid: this.sub.uid,
 						notifyMsg: liveMsg,
 						messageLayout: this.sub.messageLayout,
@@ -559,7 +568,7 @@ export abstract class RoomSessionBase {
 				liveRoomInfo,
 				master,
 				cardStyle: this.resolvedCardStyle("live"),
-				cardSkin: this.sub.cardSkin,
+				...this.skinChoice(),
 				uid: this.sub.uid,
 				notifyMsg: liveMsg,
 				messageLayout: this.sub.messageLayout,
@@ -726,7 +735,7 @@ export abstract class RoomSessionBase {
 						liveRoomInfo,
 						master,
 						cardStyle: this.resolvedCardStyle("live"),
-						cardSkin: this.sub.cardSkin,
+						...this.skinChoice(),
 						uid: this.sub.uid,
 						notifyMsg: liveEndMsg,
 						messageLayout: this.sub.messageLayout,
@@ -776,6 +785,7 @@ export abstract class RoomSessionBase {
 						this.masterInfo?.username ?? "",
 						this.masterInfo?.userface,
 						this.sub.cardSkin,
+						this.sub.cardSkinKnobs,
 					)
 				: Promise.resolve(undefined),
 			wantSummary

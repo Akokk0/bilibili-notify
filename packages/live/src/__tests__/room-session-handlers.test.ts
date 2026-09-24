@@ -217,8 +217,25 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee" }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		// 验红:把 room-session.ts 里那句 `cardSkin: this.sub.cardSkin` 删掉,这条红。
+		// 验红:把 room-session.ts 里 SC 那一处的 `...this.skinChoice()` 删掉,这条红。
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k7xxx-c0ffee" });
+	});
+
+	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)不分卡种:SC 卡也吃这位 UP 那一份。
+	// 验红:把 room-session.ts 里 SC 那一处的皮肤选项换回只带 `cardSkin`,这条红。
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateSCCard(样式没启用也照带)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const cardSkinKnobs = { "k7xxx-c0ffee": { accent: "#aaaaaa" } };
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee", cardSkinKnobs }),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({
+			cardSkin: "k7xxx-c0ffee",
+			cardSkinKnobs,
+		});
 	});
 
 	it("有 per-kind sc 样式 → generateSCCard 收到 sc 专属 colorOptions(而非基准)", async () => {
@@ -343,6 +360,22 @@ describe("RoomSession.onGuardBuy", () => {
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ cardSkin: "k8yyy-facade" });
+	});
+
+	// 验红:把 room-session.ts 里上舰那一处的皮肤选项换回只带 `cardSkin`,这条红。
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateGuardCard", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		const cardSkinKnobs = { "k8yyy-facade": { accent: "#aaaaaa" } };
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveGuardBuy: true, minGuardLevel: 3, cardSkin: "k8yyy-facade", cardSkinKnobs }),
+		) as AnySession;
+		await s.onGuardBuy(guardBody);
+		expect(m.generateGuardCard.mock.calls[0]?.[2]).toEqual({
+			cardSkin: "k8yyy-facade",
+			cardSkinKnobs,
+		});
 	});
 
 	it("有 per-kind guard 样式 → generateGuardCard 收到 guard 专属 colorOptions", async () => {

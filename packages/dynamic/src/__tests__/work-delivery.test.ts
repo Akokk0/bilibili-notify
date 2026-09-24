@@ -182,6 +182,17 @@ describe("deliverWork — 出卡", () => {
 		expect(h.work.renderCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
+	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)跟皮肤 id 同路,与样式启没启用无关。B 站动态与
+	// 拓展作品都经这里出卡。验红:把 work-delivery.ts 里递 `cardSkinKnobs` 那一句删掉,这条红。
+	it("这条订阅的旋钮覆盖随皮肤一起交给出卡(样式没启用也带着)", async () => {
+		const cardSkinKnobs = { "skin-1": { accent: "#aaaaaa" } };
+		const h = harness({
+			settings: { customCardStyle: { enable: false }, cardSkin: "skin-1", cardSkinKnobs },
+		});
+		await deliverWork(h.args);
+		expect(h.work.renderCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "skin-1", cardSkinKnobs });
+	});
+
 	it("关了出图 / 没有渲染器 / 版式藏起卡片 → 不出卡,纯文字", async () => {
 		const cases = [
 			harness({ config: { imageEnabled: false } }),

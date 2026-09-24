@@ -1,4 +1,4 @@
-import type { ImageRenderer } from "@bilibili-notify/image";
+import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
 import type { Logger } from "@bilibili-notify/internal";
 
 /**
@@ -58,6 +58,8 @@ export class WordcloudGenerator {
 		masterAvatarUrl?: string,
 		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */
 		cardSkin?: string,
+		/** 这位 UP 那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);undefined = 全跟全局。 */
+		cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"],
 	): Promise<Buffer | undefined> {
 		if (sortedWords.length < WORDCLOUD_MIN_WORDS) {
 			this.logger.debug(`[wordcloud] 热词不足${WORDCLOUD_MIN_WORDS}个，放弃生成弹幕词云`);
@@ -74,7 +76,7 @@ export class WordcloudGenerator {
 				sortedWords.slice(0, WORDCLOUD_TOP_WORDS),
 				masterName,
 				masterAvatarUrl,
-				{ cardSkin },
+				{ cardSkin, cardSkinKnobs },
 			);
 		} catch (e) {
 			this.logger.error(`[wordcloud] 生成词云失败：${(e as Error).message}`);

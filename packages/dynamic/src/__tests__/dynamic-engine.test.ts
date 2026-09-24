@@ -835,8 +835,24 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
 		await detect(b.engine);
-		// 验红:把 dynamic-engine.ts 里那句 `cardSkin: sub?.cardSkin` 删掉,这条红。
+		// 验红:把 work-delivery.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
 		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
+	});
+
+	// 旋钮覆盖(ADR-0014 决策 17 的 🔗)是订阅视图上的一格,引擎把整份视图当设置交给装配 ——
+	// 这条钉的是「视图上那格真走到了出卡」。验红:把 push-like.ts 的 `WorkSubscriptionSettings`
+	// 里 `cardSkinKnobs` 那一项与 work-delivery.ts 递它那一句一起删掉,这条红。
+	it("per-UP 旋钮覆盖随皮肤 id 进 colorOptions", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		const cardSkinKnobs = { "k5aaa-b0a710": { accent: "#aaaaaa" } };
+		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710", cardSkinKnobs });
+		await detect(b.engine);
+		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({
+			cardSkin: "k5aaa-b0a710",
+			cardSkinKnobs,
+		});
 	});
 
 	it("有 image + 有 AI → 段含 image + AI 点评文本", async () => {

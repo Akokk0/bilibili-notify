@@ -88,6 +88,21 @@ describe("pushLiveNotify — 出卡", () => {
 		expect(d.generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ ...cardStyle, cardSkin: "k1" });
 	});
 
+	/**
+	 * per-UP 那层旋钮覆盖(ADR-0014 决策 17 的 🔗)跟皮肤 id 一起走,**与样式启没启用无关** ——
+	 * 没单独调过卡片样式的 UP 也可以单独拧旋钮。验红:把 live-notify.ts 里递 `cardSkinKnobs`
+	 * 那一句删掉,这条红。
+	 */
+	it("per-UP 旋钮覆盖与皮肤 id 一起交给渲染器,样式没启用也带着", async () => {
+		const d = deps();
+		const cardSkinKnobs = { k1: { accent: "#aaaaaa" } };
+		await pushLiveNotify(
+			params({ cardStyle: { enable: false }, cardSkin: "k1", cardSkinKnobs }),
+			d.deps,
+		);
+		expect(d.generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1", cardSkinKnobs });
+	});
+
 	it("版式里卡片块藏起来 → 不出卡,只发文字与链接", async () => {
 		const d = deps();
 		await pushLiveNotify(

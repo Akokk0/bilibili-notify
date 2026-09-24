@@ -141,9 +141,22 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		const sub = makeSub();
 		(sub as SubItemView).cardSkin = "k4ddd-0ddba11";
 		await liveSession(ctx, sub).handleLiveEnd("ws");
-		// 验红:把 room-session-base.ts 里那句 `cardSkin: this.sub.cardSkin` 删掉,这条红。
+		// 验红:把 room-session-base.ts 下播那一处的 `...this.skinChoice()` 删掉,这条红。
 		const card = sendLiveNotifyCard.mock.calls[0]?.[0] as { cardSkin?: string } | undefined;
 		expect(card?.cardSkin).toBe("k4ddd-0ddba11");
+	});
+
+	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)与皮肤 id 同路。
+	// 验红:把 room-session-base.ts 下播那一处的皮肤选项换回只带 `cardSkin`,这条红。
+	it("下播卡把 per-UP 旋钮覆盖一起交给 sendLiveNotifyCard", async () => {
+		const { ctx, sendLiveNotifyCard } = makeCtx();
+		const sub = makeSub();
+		const cardSkinKnobs = { "k4ddd-0ddba11": { accent: "#aaaaaa" } };
+		(sub as SubItemView).cardSkin = "k4ddd-0ddba11";
+		(sub as SubItemView).cardSkinKnobs = cardSkinKnobs;
+		await liveSession(ctx, sub).handleLiveEnd("ws");
+		const card = sendLiveNotifyCard.mock.calls[0]?.[0] as { cardSkinKnobs?: unknown } | undefined;
+		expect(card?.cardSkinKnobs).toEqual(cardSkinKnobs);
 	});
 
 	it("两场下播各自一个 pushId", async () => {

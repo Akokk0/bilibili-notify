@@ -111,6 +111,18 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		expect(generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k4ddd-0ddba11" });
 	});
 
+	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)同一跳:断在这儿的话,主人给这位 UP 拧的
+	// 只有预览认。验红:把 room-helpers.ts 里递 `cardSkinKnobs` 那一句删掉,这条红。
+	it("per-UP 旋钮覆盖随皮肤 id 一起透传给出卡", async () => {
+		const { ctx, generateNeutralLiveCard } = makeCtx();
+		const cardSkinKnobs = { "k4ddd-0ddba11": { accent: "#aaaaaa" } };
+		await send(ctx, baseParams({ cardSkin: "k4ddd-0ddba11", cardSkinKnobs }));
+		expect(generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({
+			cardSkin: "k4ddd-0ddba11",
+			cardSkinKnobs,
+		});
+	});
+
 	// B 站那头的翻译要真接上:出卡收到的是房间数据翻成的中立输入,状态照 liveType 明写。
 	it("房间数据翻成中立的直播卡输入再出卡", async () => {
 		const { ctx, generateNeutralLiveCard } = makeCtx();
