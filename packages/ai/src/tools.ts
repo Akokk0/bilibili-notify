@@ -115,6 +115,13 @@ function extensionLiveLine(s: ExtensionSubItemView): string {
 	return `${s.uname}：直播中${title}${details.length > 0 ? `，${details.join("，")}` : ""}`;
 }
 
+/** 按 UID 查的四把工具共用的参数。拓展订阅进来以后,外部 id 是最容易被错塞进来的那个。 */
+const BILI_UID_PARAM = {
+	type: "string",
+	description:
+		"B 站 UID（纯数字），从订阅列表或搜索结果里拿。其他平台订阅的外部 id 不是 B 站 UID，传进来只会拿回一句说明",
+};
+
 export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 	{
 		type: "function",
@@ -129,11 +136,12 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "get_user_dynamics",
-			description: "获取指定 UP 主最近发布的动态内容（最多 5 条）",
+			description:
+				"获取一位 B 站 UP 主最近发布的动态（最多 5 条），每条带发布时间与正文（正文超过 200 字截断）。",
 			parameters: {
 				type: "object",
 				properties: {
-					uid: { type: "string", description: "UP 主的 UID" },
+					uid: BILI_UID_PARAM,
 				},
 				required: ["uid"],
 			},
@@ -143,11 +151,11 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "get_user_info",
-			description: "获取指定 UP 主的基本信息，包括名称、粉丝数、等级",
+			description: "获取一位 B 站 UP 主的名称、粉丝数、等级。",
 			parameters: {
 				type: "object",
 				properties: {
-					uid: { type: "string", description: "UP 主的 UID" },
+					uid: BILI_UID_PARAM,
 				},
 				required: ["uid"],
 			},
@@ -157,7 +165,8 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "get_live_status",
-			description: "查询订阅的 UP 主中哪些正在直播，返回直播状态和标题",
+			description:
+				"查订阅里开着直播推送的那些 UP 主此刻的直播状态（未开播 / 直播中 / 轮播中）与直播标题。只覆盖这些订阅：没开直播推送的订阅不在结果里，不能据此说他没在播；订阅以外的人也查不了。其他平台的订阅按本服务收到的在播状态回答，该平台的拓展没在跑时答「查不到」。",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -165,11 +174,12 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "get_user_stats",
-			description: "获取指定 UP 主的数据概览，包括总播放量、总获赞数、视频数、动态数",
+			description:
+				"获取一位 B 站 UP 主的累计数据：总播放量、总获赞数、视频数、动态数。都是历史总量，看不出最近活不活跃。",
 			parameters: {
 				type: "object",
 				properties: {
-					uid: { type: "string", description: "UP 主的 UID" },
+					uid: BILI_UID_PARAM,
 				},
 				required: ["uid"],
 			},
@@ -179,11 +189,12 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "get_user_videos",
-			description: "获取指定 UP 主最近发布的视频列表（最多 5 条），含标题、播放量、发布时间",
+			description:
+				"获取一位 B 站 UP 主最近投稿的视频（最多 5 条，新的在前），每条带发布时间、标题、播放量。",
 			parameters: {
 				type: "object",
 				properties: {
-					uid: { type: "string", description: "UP 主的 UID" },
+					uid: BILI_UID_PARAM,
 				},
 				required: ["uid"],
 			},
@@ -193,7 +204,8 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		type: "function",
 		function: {
 			name: "search_user",
-			description: "按关键词搜索 B 站用户，返回匹配的 UP 主列表（含 UID、粉丝数、简介）",
+			description:
+				"按关键词搜索 B 站用户，返回最多 5 位：名称、UID、粉丝数、视频数、简介（简介截到 80 字）。返回的 UID 可以直接用于按 UID 查询的工具。",
 			parameters: {
 				type: "object",
 				properties: {

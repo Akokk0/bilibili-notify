@@ -155,6 +155,13 @@ async function searchBocha(
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 
 /**
+ * 单次生成里最多真正执行几次搜索。模型循环里「再搜一次说不定更好」是常态,
+ * 而每一次都是真金白银的按次计费 —— 超过就回「已用完」,让它拿现有资料作答。
+ * 声明在工具定义之前:描述里要把这个上限告诉模型。
+ */
+export const WEB_SEARCH_MAX_CALLS = 3;
+
+/**
  * `web_search` 的工具定义。**不在** `TOOL_DEFINITIONS` 里 —— 由调用方在这次调用
  * 确实开了搜索、且执行器真的在(key 已填)时才挂上,同 `DESCRIBE_IMAGE_TOOL` 的
  * 条件挂载纪律。挂了却执行不了,模型会白调一轮再拿到「不可用」。
@@ -163,8 +170,7 @@ export const WEB_SEARCH_TOOL: OpenAI.ChatCompletionFunctionTool = {
 	type: "function",
 	function: {
 		name: WEB_SEARCH_TOOL_NAME,
-		description:
-			"联网搜索实时信息（新闻、近期事件、网络热梗、版本更新等）。仅当所需信息可能超出你的知识范围或时效性强时调用；query 填简洁的搜索关键词，不要整句照抄。",
+		description: `联网搜索实时信息（新闻、近期事件、网络热梗、版本更新等）。仅当所需信息可能超出你的知识范围或时效性强时调用；query 填简洁的搜索关键词，不要整句照抄。每次返回至多 ${DEFAULT_COUNT} 条结果（标题、链接、摘要）；一次回答里最多真正搜 ${WEB_SEARCH_MAX_CALLS} 次，用完再调只会拿回「次数已用完」。`,
 		parameters: {
 			type: "object",
 			properties: {
@@ -174,12 +180,6 @@ export const WEB_SEARCH_TOOL: OpenAI.ChatCompletionFunctionTool = {
 		},
 	},
 };
-
-/**
- * 单次生成里最多真正执行几次搜索。模型循环里「再搜一次说不定更好」是常态,
- * 而每一次都是真金白银的按次计费 —— 超过就回「已用完」,让它拿现有资料作答。
- */
-export const WEB_SEARCH_MAX_CALLS = 3;
 
 /** 给界面的来源引用 —— `onToolEvent` 的 end 事件带走的结构化形态。 */
 export interface WebSearchSourceRef {
