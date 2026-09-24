@@ -29,6 +29,7 @@ import {
 	TOOL_DEFINITIONS,
 	type VisionToolContext,
 } from "./tools";
+import { formatUsageLine, readTokenUsage, type TokenUsage } from "./usage";
 import { describeImages, renderImageDescriptions, type VisionCaller } from "./vision";
 import {
 	formatWebSearchResults,
@@ -160,6 +161,18 @@ export interface ConversationMessage {
 }
 
 export type AIScene = "dynamic" | "liveSummary";
+
+/** chat 风味取回的一轮:回复本身,外加这一轮的 token 用量(拿不到的格子是 undefined)。 */
+interface ChatRound {
+	message: OpenAI.ChatCompletionMessage;
+	usage: TokenUsage;
+}
+
+/** responses 风味取回的一轮:整轮 output items,外加这一轮的 token 用量。 */
+interface ResponsesRound {
+	items: unknown[];
+	usage: TokenUsage;
+}
 
 /** callAPI 的工具选项 —— chat 与 responses 两条风味共用的形状。 */
 interface CallToolOptions {
@@ -627,6 +640,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		);
 		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
+			scene === "dynamic" ? "动态点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
 			systemPrompt,
 			[{ role: "user", content: shaped.content }],
 			searchExec
@@ -681,15 +695,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			return { content, passthrough: this.mainModelCanSeeImages() ? imageUrls : undefined };
 		}
 
-		const call = await this.makeVisionCaller();
-		const descriptions = await describeImages(imageUrls, {
-			call,
-			model,
-			// 正文当背景:副模型才分得清眼前这张是梗图、直播截图还是作品图。
-			contextText: content,
-			timeoutMs: VISION_TIMEOUT_MS,
-			onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
-		});
+		// 正文当背景:副模型才分得清眼前这张是梗图、直播截图还是作品图。
+		const descriptions = await this.describeImagesLogged(imageUrls, model, content);
 
 		const block = renderImageDescriptions(descriptions);
 		const ok = descriptions.filter((d) => d !== null).length;
@@ -720,13 +727,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			ctx: {
 				images: imageUrls,
 				describe: async (url) => {
-					const call = await this.makeVisionCaller();
-					const [text] = await describeImages([url], {
-						call,
-						model,
-						timeoutMs: VISION_TIMEOUT_MS,
-						onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
-					});
+					const [text] = await this.describeImagesLogged([url], model);
 					if (text === null) throw new Error("视觉模型没能识别这张图");
 					return text;
 				},
@@ -751,12 +752,46 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
+	 * 交给副模型看一批图,并为**这一批**记一行用量 —— 看图的三个入口(点评的
+	 * 预处理、聊天的 describe_image、注入工具交回的图)都走这里。
+	 *
+	 * 一批一行而不是一张一行:一条带 9 张图的动态逐张记就是 9 行,推送高峰在 info
+	 * 里刷屏。各张加总,单位写「张」;有哪张失败 / 超时就标「未完成」,成功的照加;
+	 * 一张都没成功返回就不记。
+	 */
+	private async describeImagesLogged(
+		urls: readonly string[],
+		model: string,
+		contextText?: string,
+	): Promise<Array<string | null>> {
+		const usages: TokenUsage[] = [];
+		let failed = 0;
+		const call = await this.makeVisionCaller((u) => usages.push(u));
+		const descriptions = await describeImages(urls, {
+			call,
+			model,
+			contextText,
+			timeoutMs: VISION_TIMEOUT_MS,
+			onWarn: (msg, reason) => {
+				failed++;
+				this.warnVisionOnce(msg, reason);
+			},
+		});
+		if (usages.length > 0) {
+			this.logger.info(
+				formatUsageLine("看图", model, usages, { unit: "张", unfinished: failed > 0 }),
+			);
+		}
+		return descriptions;
+	}
+
+	/**
 	 * 造一个连到副模型的调用口子。client 只建一次,由所有图共用。
 	 *
 	 * `baseURL` / `apiKey` 留空则继承主模型的 —— 聚合网关(硅基流动 / OpenRouter)
 	 * 上主模型与视觉模型同 key 同址,那种情况下只需填一个模型名。
 	 */
-	private async makeVisionCaller(): Promise<VisionCaller> {
+	private async makeVisionCaller(onUsage: (usage: TokenUsage) => void): Promise<VisionCaller> {
 		const cfg = this.config.vision;
 		const baseURL = cfg?.baseURL?.trim() || this.config.baseURL;
 		const apiKey = cfg?.apiKey?.trim() || this.config.apiKey;
@@ -783,6 +818,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			});
 			const choice = res.choices?.[0];
 			if (!choice) throw new Error("视觉模型返回空 choices(疑似命中内容审查或上游异常)");
+			// 只报成功返回的那张 —— 空 choices 与 callAPI 那边同一口径,不算。
+			onUsage(readTokenUsage(res.usage));
 			return choice.message.content ?? "";
 		};
 	}
@@ -814,6 +851,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// chatStatelessImpl 同一口径)。
 		const searchExec = this.resolveWebSearch(opts?.webSearch);
 		const result = await this.callAPI(
+			"试推送",
 			systemPrompt,
 			withVisionNote([{ role: "user", content }], vision),
 			{
@@ -930,6 +968,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(searchExec ? { webSearch: searchExec } : {}),
 		};
 		const result = await this.callAPI(
+			"面板聊天",
 			systemPrompt,
 			withVisionNote(trimmed, vision),
 			toolOptions,
@@ -960,14 +999,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!model) {
 			return `${text}\n\n(这张图你看不见:当前模型不支持看图,也没配看图副模型。照实告诉主人,请主人自己看预览。)`;
 		}
-		const call = await this.makeVisionCaller();
-		const descriptions = await describeImages(images, {
-			call,
-			model,
-			contextText: text,
-			timeoutMs: VISION_TIMEOUT_MS,
-			onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
-		});
+		const descriptions = await this.describeImagesLogged(images, model, text);
 		const block = renderImageDescriptions(descriptions);
 		return block
 			? `${text}\n\n${block}`
@@ -1011,6 +1043,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 无条件走流式(传了 onDelta 就是流式):非流式时网关要整份生成完才回响应头,
 		// SDK 那道闸于是压满全程 —— 一份 skin.json 写三分钟就必然被误杀。
 		const result = await this.callAPI(
+			"结构化生成",
 			system,
 			[{ role: "user", content: user }],
 			undefined,
@@ -1070,6 +1103,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		} catch (e) {
 			throw CommentaryGenerator.rejectionOf(e) ?? new Error(this.sanitizeErr(e));
 		}
+		// 请求回来了就记 —— 后面洗出来是空标题照样抛,但这一发的 token 已经花了。
+		this.logger.info(formatUsageLine("起标题", model, [readTokenUsage(res.usage)]));
 
 		const title = clipTitle(stripTitleDecoration(res.choices?.[0]?.message?.content ?? ""));
 		// 空标题比「你好」更糟 —— 侧栏那一行会变成一片空白,看着像会话坏了。
@@ -1265,7 +1300,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
 		external?: AbortSignal,
-	): Promise<OpenAI.ChatCompletionMessage> {
+	): Promise<ChatRound> {
 		return this.withStreamWatchdog(
 			async (signal, beat) =>
 				this.consumeChatStream(
@@ -1283,15 +1318,25 @@ export class CommentaryGenerator implements CommentaryProvider {
 		beat: () => void,
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
-	): Promise<OpenAI.ChatCompletionMessage> {
+	): Promise<ChatRound> {
 		let content = "";
 		// 思考**无条件**累积,不看有没有人听:DeepSeek v4 要求思考 + 工具调用时把
 		// `reasoning_content` 原样回传到后续请求,缺了直接 400 —— 回传是 API 契约,
 		// 不是显示需求。回调才看 onReasoning。
 		let reasoning = "";
 		const slots: Array<{ id: string; name: string; args: string }> = [];
+		/**
+		 * token 用量:**每一块**都看,非空就覆盖、留最后一次。落点三家三样 ——
+		 * OpenAI / 百炼 / 方舟单独一块、在 finish_reason 之后、`choices` 是空数组;
+		 * DeepSeek 挂在最后一个内容块上;OpenRouter 那块带一个空 delta 的 choice。
+		 * 所以必须在下面「没 delta 就跳过」**之前**读,也不能见了 finish_reason
+		 * 就收工(这个循环本来就读到流尽,不看 finish_reason)。流中途断了可能
+		 * 根本没有这一块 —— 那就是「不知道」。
+		 */
+		let usage: unknown;
 		for await (const chunk of stream as AsyncIterable<OpenAI.ChatCompletionChunk>) {
 			beat();
+			if (chunk.usage) usage = chunk.usage;
 			const delta = chunk.choices?.[0]?.delta;
 			if (!delta) continue;
 			// 首块通常只带 role、没有 content。回调一个空串会让页面白闪一下。
@@ -1320,7 +1365,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			type: "function" as const,
 			function: { name: s.name, arguments: s.args },
 		}));
-		return {
+		const message = {
 			role: "assistant",
 			content: content || null,
 			// 回传统一用 `reasoning_content`(要求回传的只有 DeepSeek 这一系;别家
@@ -1329,9 +1374,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(reasoning ? { reasoning_content: reasoning } : {}),
 			...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
 		} as OpenAI.ChatCompletionMessage;
+		return { message, usage: readTokenUsage(usage) };
 	}
 
+	/**
+	 * 一次**逻辑调用**:取轮与工具环见 {@link callAPIRounds},这一层只管用量日志 ——
+	 * 各轮加总记**一行** info(工具环跑几轮都只一行,不许每轮一行刷屏)。
+	 *
+	 * 一轮都没成功返回的调用不记(配置缺失、第一发就被拒):没有哪一轮的 token
+	 * 看得见。中途失败 / 被取消而前面已有几轮成功的,照记并标「未完成」——
+	 * 那几轮的 token 已经花出去了。
+	 */
 	private async callAPI(
+		/** 日志里这次调用叫什么(动态点评 / 面板聊天 …)。 */
+		label: string,
 		systemPrompt: string,
 		messages: ConversationMessage[],
 		toolOptions?: CallToolOptions,
@@ -1343,6 +1399,43 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 */
 		onDelta?: (text: string) => void,
 		/** 思考流,方言见 {@link CommentaryGenerator.reasoningOf}。 */
+		onReasoning?: (text: string) => void,
+	): Promise<string> {
+		const rounds: TokenUsage[] = [];
+		let finished = false;
+		try {
+			const result = await this.callAPIRounds(
+				rounds,
+				systemPrompt,
+				messages,
+				toolOptions,
+				imageUrls,
+				override,
+				onDelta,
+				onReasoning,
+			);
+			finished = true;
+			return result;
+		} finally {
+			if (rounds.length > 0) {
+				this.logger.info(
+					formatUsageLine(label, override?.model ?? this.config.model, rounds, {
+						unfinished: !finished,
+					}),
+				);
+			}
+		}
+	}
+
+	private async callAPIRounds(
+		/** 每轮**成功返回**的用量往这里推一条;失败重来的那一发不算。 */
+		rounds: TokenUsage[],
+		systemPrompt: string,
+		messages: ConversationMessage[],
+		toolOptions?: CallToolOptions,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+		onDelta?: (text: string) => void,
 		onReasoning?: (text: string) => void,
 	): Promise<string> {
 		const { apiKey, baseURL } = this.config;
@@ -1426,6 +1519,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// completions 专属,在 /responses 上一个字段都不该出现。
 		if ((this.config.apiFlavor ?? "chat") === "responses") {
 			return this.callResponsesAPI({
+				rounds,
 				client,
 				apiMessages,
 				model,
@@ -1469,6 +1563,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 出字记账(吐过字就不许悄悄重来)—— 规则本体见 makeAccountedEmitters。
 		const acct = makeAccountedEmitters(onDelta, onReasoning);
 		const { emit, emitReasoning } = acct;
+		const streamUsageOptIn = providerMeta(this.config.provider).streamUsageNeedsOptIn;
 
 		/**
 		 * 取一轮响应。开了流式就走流式,并在**还没吐过任何字**时容许回落非流式 ——
@@ -1478,13 +1573,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 反过来,一旦吐过字再断,就必须把错误抛出去:那时页面上已经有半句话了,
 		 * 静默重来会让那半句凭空变成另一段,比直接报错更难懂。
 		 */
-		const fetchRound = async (): Promise<OpenAI.ChatCompletionMessage> => {
+		const fetchRound = async (): Promise<ChatRound> => {
 			const base = makeParams(true);
 			if (emit) {
 				try {
 					return await this.streamOnce(
 						client,
-						{ ...base, stream: true } as OpenAI.ChatCompletionCreateParamsStreaming,
+						{
+							// 只有流式这一发、只对「不开就不给用量」的家发(见能力位的注释):
+							// 非流式带它有的家直接 400,回落 / 降级那几发因此都不带。摆在
+							// base 前面 —— 主人在额外参数里自己写了就以他的为准。
+							...(streamUsageOptIn ? { stream_options: { include_usage: true } } : {}),
+							...base,
+							stream: true,
+						} as OpenAI.ChatCompletionCreateParamsStreaming,
 						emit,
 						emitReasoning,
 						signal,
@@ -1515,7 +1617,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				if (think) emitReasoning(think);
 			}
 			if (emit && choice.message.content) emit(choice.message.content);
-			return choice.message;
+			return { message: choice.message, usage: readTokenUsage(res.usage) };
 		};
 
 		/**
@@ -1525,7 +1627,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 静默重来会让那半句凭空变成另一段。重来的是**整轮原样请求**,不换任何参数
 		 * (换参数那条路是给「网关不认这套方言」准备的,对限流毫无帮助)。
 		 */
-		const fetchRoundRetrying = async (): Promise<OpenAI.ChatCompletionMessage> => {
+		const fetchRoundRetrying = async (): Promise<ChatRound> => {
 			try {
 				return await fetchRound();
 			} catch (e) {
@@ -1545,8 +1647,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const maxRounds = toolOptions?.maxRounds ?? MAX_TOOL_ROUNDS;
 		for (let round = 0; round < maxRounds; round++) {
 			let message: OpenAI.ChatCompletionMessage;
+			let usage: TokenUsage;
 			try {
-				message = await fetchRoundRetrying();
+				({ message, usage } = await fetchRoundRetrying());
 			} catch (e) {
 				// 账单 / 鉴权那一层的拒绝原样抛出去。降级重试换的只是 thinking 参数,
 				// 对「没钱了」毫无帮助 —— 白撞一次,还会把原因说成「thinking 不受支持」。
@@ -1579,6 +1682,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						}
 						if (emit && choice.message.content) emit(choice.message.content);
 						message = choice.message;
+						usage = readTokenUsage(res.usage);
 					} catch (e2) {
 						throw new Error(this.sanitizeErr(e2));
 					}
@@ -1587,6 +1691,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				}
 			}
 
+			rounds.push(usage);
 			apiMessages.push(message);
 
 			if (!message.tool_calls?.length) {
@@ -1652,6 +1757,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * —— 两套协议的 404 语义完全不同,静默换协议只会把「没配对」演成玄学。
 	 */
 	private async callResponsesAPI(args: {
+		/** 见 {@link callAPIRounds} 的同名参数。 */
+		rounds: TokenUsage[];
 		client: OpenAI;
 		apiMessages: OpenAI.ChatCompletionMessageParam[];
 		model: string;
@@ -1700,7 +1807,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const { emit, emitReasoning } = acct;
 
 		/** 非流式取一轮,思考与正文按「先想后说」补喂回调(与 chat 的回落路径同规矩)。 */
-		const createOnce = async (withReasoning: boolean): Promise<unknown[]> => {
+		const createOnce = async (withReasoning: boolean): Promise<ResponsesRound> => {
 			const res = (await args.cancellable((opts) =>
 				client.responses.create(
 					// SDK 的参数类型要求具名字段,而这里的请求体是动态拼的(方言 + 主人
@@ -1708,7 +1815,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					makeParams(withReasoning) as unknown as Parameters<OpenAI["responses"]["create"]>[0],
 					opts,
 				),
-			)) as { output?: unknown[] };
+			)) as { output?: unknown[]; usage?: unknown };
 			const items = res.output;
 			if (!Array.isArray(items)) {
 				throw new Error("AI 网关返回的 responses 响应缺少 output(疑似不支持该协议或命中审查)");
@@ -1721,10 +1828,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 				const text = responsesOutputText(items);
 				if (text) emit(text);
 			}
-			return items;
+			return { items, usage: readTokenUsage(res.usage) };
 		};
 
-		const fetchRound = async (): Promise<unknown[]> => {
+		const fetchRound = async (): Promise<ResponsesRound> => {
 			if (emit) {
 				try {
 					return await this.streamResponsesOnce(
@@ -1750,8 +1857,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const maxRounds = toolOptions?.maxRounds ?? MAX_TOOL_ROUNDS;
 		for (let round = 0; round < maxRounds; round++) {
 			let items: unknown[];
+			let usage: TokenUsage;
 			try {
-				items = await fetchRound();
+				({ items, usage } = await fetchRound());
 			} catch (e) {
 				const rejection = CommentaryGenerator.fatalOf(e);
 				if (rejection) throw rejection;
@@ -1760,7 +1868,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						`[api] reasoning 参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
 					);
 					try {
-						items = await createOnce(false);
+						({ items, usage } = await createOnce(false));
 					} catch (e2) {
 						throw new Error(this.sanitizeErr(e2));
 					}
@@ -1769,6 +1877,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				}
 			}
 
+			args.rounds.push(usage);
 			// 整轮 output(含 reasoning item)原样回填历史 —— 思考回传是这套协议
 			// 对推理模型的契约(丢了轻则变笨,DeepSeek 直接 400),不是显示需求。
 			input.push(...(items as ResponsesInputItem[]));
@@ -1824,7 +1933,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
 		external?: AbortSignal,
-	): Promise<unknown[]> {
+	): Promise<ResponsesRound> {
 		return this.withStreamWatchdog(async (signal, beat) => {
 			const stream = (await client.responses.create(
 				{
@@ -1842,11 +1951,26 @@ export class CommentaryGenerator implements CommentaryProvider {
 		beat: () => void,
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
-	): Promise<unknown[]> {
+	): Promise<ResponsesRound> {
 		let items: unknown[] | null = null;
+		/**
+		 * token 用量在终态事件的 `response.usage` 里:`response.completed`、
+		 * `response.incomplete`(可能是 null),以及 OpenRouter 示例里写的
+		 * `response.done`。非空就覆盖、留最后一次。`response.done` 只取用量 ——
+		 * 终态产物仍只认前两个,那是另一件事。
+		 */
+		let usage: unknown;
 		for await (const ev of stream) {
 			beat();
 			const type = ev.type;
+			if (
+				type === "response.completed" ||
+				type === "response.incomplete" ||
+				type === "response.done"
+			) {
+				const u = (ev.response as { usage?: unknown } | undefined)?.usage;
+				if (u) usage = u;
+			}
 			if (type === "response.output_text.delta") {
 				if (typeof ev.delta === "string" && ev.delta) onDelta(ev.delta);
 			} else if (
@@ -1870,7 +1994,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!items) {
 			throw new Error("responses 流式未收到 response.completed(网关可能不支持流式)");
 		}
-		return items;
+		return { items, usage: readTokenUsage(usage) };
 	}
 
 	/**

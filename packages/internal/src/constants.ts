@@ -590,6 +590,17 @@ export interface AIProviderMeta {
 	 * custom 恒 true:能力未知时不替主人做减法(OpenAI 官方正是经此接入)。
 	 */
 	supportsResponses: boolean;
+	/**
+	 * 流式 chat completions 要**显式**发 `stream_options: { include_usage: true }`
+	 * 才在末尾给一块 token 用量吗。只影响请求形状(用量日志靠它),不上设置页。
+	 *
+	 * 2026-09 按各家文档核实:百炼、火山方舟写明流式默认不带 usage、要这个参数开;
+	 * DeepSeek 不开也给(挂在最后一个内容块上);OpenRouter 总是自动带,该参数已
+	 * 标废弃;硅基流动文档里没有这个参数、也没写流式 usage,不发。custom 为 false ——
+	 * 与看图那条「未知就当支持」方向相反:那边是少摆一个开关,这边是多发一个参数,
+	 * 未知网关不认它就 400,白撞一次回落非流式。
+	 */
+	streamUsageNeedsOptIn: boolean;
 	/** 配置面上的参考地址,只作提示,不自动填。 */
 	baseUrlHint: string;
 }
@@ -602,6 +613,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: false,
 		supportsVision: true,
 		supportsResponses: true,
+		streamUsageNeedsOptIn: false,
 		baseUrlHint: "https://openrouter.ai/api/v1",
 	},
 	{
@@ -611,6 +623,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		supportsResponses: false,
+		streamUsageNeedsOptIn: true,
 		baseUrlHint: "https://ark.cn-beijing.volces.com/api/v3",
 	},
 	{
@@ -620,6 +633,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		supportsResponses: false,
+		streamUsageNeedsOptIn: false,
 		baseUrlHint: "https://api.siliconflow.cn/v1",
 	},
 	{
@@ -632,6 +646,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		supportsResponses: true,
+		streamUsageNeedsOptIn: true,
 		baseUrlHint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	},
 	{
@@ -641,6 +656,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: false,
 		supportsResponses: true,
+		streamUsageNeedsOptIn: false,
 		baseUrlHint: "https://api.deepseek.com",
 	},
 	{
@@ -650,6 +666,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: false,
 		supportsVision: true,
 		supportsResponses: true,
+		streamUsageNeedsOptIn: false,
 		baseUrlHint: "任何 OpenAI 兼容地址",
 	},
 ];

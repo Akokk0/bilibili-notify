@@ -34,6 +34,25 @@ describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	});
 });
 
+describe("能力门控 —— 流式用量要不要显式开 include_usage(只影响请求形状,不上设置页)", () => {
+	it("百炼、火山方舟:不开就不给 —— 两家文档都写明流式默认不带 usage", () => {
+		expect(providerMeta("bailian").streamUsageNeedsOptIn).toBe(true);
+		expect(providerMeta("volcengine").streamUsageNeedsOptIn).toBe(true);
+	});
+
+	it("DeepSeek(不开也给)、OpenRouter(总是给,参数已废弃)、硅基流动(文档里没这个参数)不发", () => {
+		expect(providerMeta("deepseek").streamUsageNeedsOptIn).toBe(false);
+		expect(providerMeta("openrouter").streamUsageNeedsOptIn).toBe(false);
+		expect(providerMeta("siliconflow").streamUsageNeedsOptIn).toBe(false);
+	});
+
+	it("兜底档不发 —— 网关未知,被拒就白撞一次回落非流式", () => {
+		// 与「能力未知不替主人做减法」方向相反:那边少发一个开关是减法,这边多发
+		// 一个参数是加法 —— 未知的网关对陌生参数可能直接 400。
+		expect(providerMeta("custom").streamUsageNeedsOptIn).toBe(false);
+	});
+});
+
 describe("注册表本体", () => {
 	it("每个 id 都有一条 meta,不多不少", () => {
 		expect(AI_PROVIDERS.map((p) => p.id)).toEqual([...AI_PROVIDER_IDS]);
