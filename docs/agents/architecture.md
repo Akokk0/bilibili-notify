@@ -18,15 +18,15 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 
 | 包 | npm 名 | 角色 |
 |---|---|---|
-| `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / NotificationSink / NotificationPayload)+ 工具(withLock / retry / interpolate) |
+| `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription —— B 站 / 拓展两支的联合,见 subscriptions.md —— / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / NotificationSink / NotificationPayload)+ 工具(withLock / retry / interpolate)+ 按版式装配消息组 `assembleMessageGroups`(动态与直播共用) |
 | `packages/api` | `@bilibili-notify/api` | `BilibiliAPI`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
 | `packages/storage` | `@bilibili-notify/storage` | `StorageManager` —— cookie/密钥持久化 + AES 加密 |
 | `packages/push` | `@bilibili-notify/push` | `BilibiliPush` —— 经 `PushLike` 适配器做推送路由;只把**启用的**目标当候选,每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `kind` / 逐条结果),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
-| `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff |
-| `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发 |
-| `packages/live` | `@bilibili-notify/live` | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester) |
+| `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展两支同一份联合列表;`findById` 两支都找,`findByUid` 只找 B 站 |
+| `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发。另有**中立作品装配** `deliverWork`(出卡 → AI → 模板 → 版式 → 推送 → 图集,不认 uid;B 站动态与拓展作品共用)、出图失败计数 `createCardFailureTracker`、只看文字的 `filterByText`(拓展作品只走它)。见 push.md ① |
+| `packages/live` | `@bilibili-notify/live` | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)与串行闸 `createSerialGate` |
 | `packages/blive` | `@bilibili-notify/blive` | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
-| `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS/JSDOM SSR + 经 `PuppeteerLike` 接口包 puppeteer |
+| `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS/JSDOM SSR + 经 `PuppeteerLike` 接口包 puppeteer。动态卡 / 直播卡的出卡入口有**中立版本** `generateNeutralDynamicCard(node)` / `generateNeutralLiveCard(input)`;`generateDynamicCard(raw)` / `generateLiveCard(raw…)`(经 `biliLiveCardInput`)是 B 站的适配层 |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
 | `packages/extension` | `@bilibili-notify/extension` | **宿主给拓展的那一面**,也是拓展拿 BN 东西的**唯一一扇门**:ctx / 挂载点 / upgrade / 表单字段表定义在这里,推送源契约与域类型从 `internal` **转出一道**。只放类型不放实现(拓展会被打成自包含 bundle)。列出来的就是契约的全部 —— 加一格是一次明确的加宽决定 |
 | `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README |
@@ -44,18 +44,23 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 ## 服务依赖图(独立端)
 
 ```
-ConfigStore        (apps/server/src/config;globals / subscriptions / targets / connections 的文件权威,写入后 emit config-changed)
+ConfigStore        (apps/server/src/config;globals / subscriptions / targets / connections 的文件权威,写入后 emit config-changed;
+                    订阅落两个文件:B 站 subscriptions.json、拓展 extension-subscriptions.json)
 BilibiliAPI        (@bilibili-notify/api)
-SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威)
+SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威,B 站 + 拓展两支同一份)
 BilibiliPush       (@bilibili-notify/push;sink = MultiplexSink → 各平台 adapter,注入 defaults / muted / serviceCtx)
 
 apps/server/src/runtime/engines.ts 按顺序构造(image → ai → dynamic → live),后两者直接拿前两者的引用:
 
 image  (cardStyle.enabled 才造)  → ImageRenderer({ puppeteer, resolveAsset, resolveFontFace, ... })
 ai     (ai.enabled 才造)         → CommentaryGenerator({ api, ... })
-dynamic(恒造)                     → DynamicEngine({ api, push, image?, ai?, getSubs, pickCardBackground, ... })
+dynamic(恒造)                     → DynamicEngine({ api, push, image?, ai?, cardFailures, getSubs, pickCardBackground, ... })
 live   (恒造)                     → LiveEngine({ api, push, contentBuilder, imageRenderer?, commentary?, emitLiveState, emitViewers, pickCardBackground, onRoomIdResolved, ... })
+拓展作品(给了 extensionSources 才接)→ bindExtensionPosts({ settings: dynamicWorkSettings, pushFor: boundWorkPush(bindSubscriptionPush(push, id)),
+                                   deliveryDeps: 同一个 image / ai / cardFailures, ... })
 ```
+
+`cardFailures`(出图连续失败只提醒一次)全进程一份,B 站动态与拓展作品共用。B 站引擎只吃 B 站订阅的视图;拓展订阅的推送不经引擎,由 `bindExtensionPosts` 听 `subscription-reported` 直接进中立装配(见 push.md、subscriptions.md)。
 
 `config-changed` 之后 engines.ts 按 scope 热重载:cron / 模板 / 版式走 `updateConfig`,渲染器与 AI 上下线走 `setImage` / `setAi`(dynamic)与 `setImageRenderer` / `setCommentary`(live)。
 
@@ -79,7 +84,10 @@ src/
     bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...)
     service-context.ts    NodeServiceContext(pino + setInterval/setTimeout/onDispose)
     message-bus.ts        NodeMessageBus(mitt 风格 BiliEvents emitter)
-    engines.ts            引擎热重载接线;消费 config-changed
+    engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
+    extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
+    extension-live.ts     拓展订阅的在播表(首页「正在直播」)
+    sub-runtime-store.ts  资料缓存 <dataDir>/state/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
     fans-poller.ts        FansPoller —— 写 <dataDir>/fans/<uid>.jsonl,emit fans-refreshed
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
