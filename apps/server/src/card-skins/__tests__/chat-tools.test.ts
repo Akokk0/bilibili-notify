@@ -632,4 +632,9 @@ describe("提示词从契约常量拼", () => {
 		expect(system).not.toMatch(/主人的女仆|喵/);
 		expect(system).toMatch(/换上这套/);
 	});
+
+	it("不点 web_search 的名字 —— 它只在开了搜索、配了 key 的会话里才挂上", () => {
+		expect(system).toContain("联网搜索");
+		expect(system).not.toContain("web_search");
+	});
 });

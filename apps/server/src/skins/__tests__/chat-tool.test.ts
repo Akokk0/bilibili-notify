@@ -93,7 +93,10 @@ describe("create_skin 工具定义", () => {
 
 describe("皮肤工坊的 system", () => {
 	it("教会模型先查资料再动手 —— 「某部作品风格」靠猜配色做不出来", () => {
-		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("web_search");
+		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("联网搜索");
+		// 不点工具名:web_search 只在这场会话开了搜索、且配了 key 时才挂上。system 里
+		// 写死名字,关着搜索的那几轮就是在指一把不存在的工具。
+		expect(SKIN_MODE_SYSTEM_PROMPT).not.toContain("web_search");
 	});
 
 	it("明说查到的色值要写进 brief —— 设计师那一跳看不见搜索结果", () => {
