@@ -160,15 +160,31 @@ export interface CardFailureTracker {
 	readonly notified: boolean;
 	/** 记一次失败,回记完之后连着失败的次数。 */
 	recordFailure(): number;
-	/** 这一串的提醒送达了,同一串之后不再提醒。 */
-	markNotified(): void;
+	/**
+	 * 领这一串的提醒 —— **发之前**领:还没提醒过、也没有别的提醒在路上,才给一张凭据,否则回 null
+	 * (别发)。几条订阅各自并行出卡,「先看没提醒过、发完再记」的话,同一次故障并发的几条失败都
+	 * 看见「没提醒过」,各发一遍。发完拿凭据报结果,见 {@link CardFailureNotice}。
+	 */
+	claimNotice(): CardFailureNotice | null;
 	/** 记一次成功、复位,回复位前连着失败的次数(> 0 = 刚恢复)。 */
 	recordSuccess(): number;
+}
+
+/** 领到的那一次提醒。 */
+export interface CardFailureNotice {
+	/**
+	 * 报结果:送达 → 这一串算提醒过;没送达 → 放回去,下一次失败再领。提醒还在路上时出图恢复了
+	 * (`recordSuccess` 复位过),这张凭据作废、报什么都不算 —— 晚到的送达记到下一串头上的话,
+	 * 下一串失败就一声不吭了。
+	 */
+	settle(delivered: boolean): void;
 }
 
 export function createCardFailureTracker(): CardFailureTracker {
 	let streak = 0;
 	let notified = false;
+	// 在路上的那一次提醒;复位时丢掉,晚到的 settle 认不出自己就不算数。
+	let pending: CardFailureNotice | null = null;
 	return {
 		get streak() {
 			return streak;
@@ -180,13 +196,23 @@ export function createCardFailureTracker(): CardFailureTracker {
 			streak++;
 			return streak;
 		},
-		markNotified: () => {
-			notified = true;
+		claimNotice: () => {
+			if (notified || pending) return null;
+			const notice: CardFailureNotice = {
+				settle: (delivered) => {
+					if (pending !== notice) return;
+					pending = null;
+					if (delivered) notified = true;
+				},
+			};
+			pending = notice;
+			return notice;
 		},
 		recordSuccess: () => {
 			const before = streak;
 			streak = 0;
 			notified = false;
+			pending = null;
 			return before;
 		},
 	};
@@ -338,19 +364,22 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 
 /**
  * 出图失败:软降级(这一条走纯文字),并在连续失败的**头一次**提醒主人 —— 长时间没有卡片又不刷屏。
- * 提醒送达才算提醒过:发不出去的话,下一次失败再试。
+ * 提醒送达才算提醒过:发不出去的话,下一次失败再试。提醒在 await 之前领(`claimNotice`),并发的
+ * 几条失败只有一条发。
  */
 async function noteCardFailure(err: Error, deps: WorkDeliveryDeps): Promise<void> {
 	const streak = deps.cardFailures.recordFailure();
 	deps.logger.error(`[image] 生成动态图片失败 (连续 ${streak} 次): ${err.message}`);
-	if (deps.cardFailures.notified) return;
+	const notice = deps.cardFailures.claimNotice();
+	if (!notice) return;
 	try {
 		await deps.sendErrorMsg(
 			`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
 		);
 		deps.emitEngineError(`生成动态图片失败：${err.message}`);
-		deps.cardFailures.markNotified();
+		notice.settle(true);
 	} catch (notifyErr) {
+		notice.settle(false);
 		deps.logger.warn(`[image] 失败通知发送失败,下轮将重试通知: ${(notifyErr as Error).message}`);
 	}
 }

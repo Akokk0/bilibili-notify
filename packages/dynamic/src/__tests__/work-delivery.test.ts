@@ -247,6 +247,37 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 		expect(ext.sendErrorMsg).not.toHaveBeenCalled();
 	});
 
+	it("并发的几条失败只提醒一次:提醒还在路上时,别的失败不再各发一遍", async () => {
+		const tracker = createCardFailureTracker();
+		const a = harness({ cardFailures: tracker, work: { renderCard: failing() } });
+		const b = harness({ cardFailures: tracker, work: { renderCard: failing() } });
+		await Promise.all([deliverWork(a.args), deliverWork(b.args)]);
+		expect(tracker.streak).toBe(2);
+		expect(a.sendErrorMsg.mock.calls.length + b.sendErrorMsg.mock.calls.length).toBe(1);
+		expect(tracker.notified).toBe(true);
+	});
+
+	it("提醒还在路上时出图恢复了:晚到的送达不算到下一串头上", async () => {
+		const tracker = createCardFailureTracker();
+		const bad = harness({ cardFailures: tracker, work: { renderCard: failing() } });
+		let release!: () => void;
+		bad.sendErrorMsg.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		const pending = deliverWork(bad.args);
+		await vi.waitFor(() => expect(bad.sendErrorMsg).toHaveBeenCalled());
+		await deliverWork(harness({ cardFailures: tracker }).args);
+		release();
+		await pending;
+		expect(tracker.notified).toBe(false);
+		const badAgain = harness({ cardFailures: tracker, work: { renderCard: failing() } });
+		await deliverWork(badAgain.args);
+		expect(badAgain.sendErrorMsg).toHaveBeenCalledTimes(1);
+	});
+
 	it("提醒没送达 → 不算提醒过,下一次失败再提醒", async () => {
 		const tracker = createCardFailureTracker();
 		const h = harness({ cardFailures: tracker, work: { renderCard: failing() } });
