@@ -11,7 +11,9 @@ import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
  * 文件布局(`<key>` 是 {@link statsFileKey}:两支都是订阅 id):
  *   `<dataDir>/stats/dyn/<key>.jsonl`   每行一条 {@link UpDynamicEvent}
  *   `<dataDir>/stats/live/<key>.jsonl`  每行一帧 {@link LiveFrame}
- * 老版本的 B 站文件叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`migrate-file-keys.ts`)。
+ *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenRow}(「在记」的证据,只有拓展订阅有)
+ * 老版本的 B 站文件叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`migrate-file-keys.ts`);`seen` 从一开始
+ * 就按订阅 id 命名,迁移不认它。
  *
  * **盘上的行是中立的**(ADR-0020 决策 16):作品行记 `video` / `post` / `live`,峰值存数字。平台的
  * 写法由各来源的适配在交进来之前翻好;这一层唯一认得 B 站写法的地方是下面的「老 B 站行的
@@ -71,6 +73,14 @@ export interface LiveSessionRecord {
 	current?: boolean;
 }
 
+/**
+ * 「在记」的一条证据(ADR-0020 决策 9 / 16):收到这位的某条上报的时刻。**第一条就是这位的开始记录** ——
+ * 不另存。只有拓展订阅写(B 站行「那天有没有记录」的规矩不变,看粉丝采样);最密多少一条由记录器管。
+ */
+export interface StatsSeenRow {
+	ts: string;
+}
+
 /** 落盘的单帧(新写的形状)。读时按顺序配对成 {@link LiveSessionRecord}。 */
 interface LiveFrame {
 	k: "start" | "end";
@@ -102,7 +112,11 @@ export interface StatsStore {
 	 * 「这位 UP 那天什么都没发」。这条水位线就是用来把那段日子还原成「无记录」的。
 	 */
 	recordingSince(): Promise<string>;
-	/** 删除这个键的两类文件(订阅被移除时调用)。 */
+	/** 记一条「在记」。不去重、不稀释 —— 最密多少一条是记录器的事。 */
+	appendSeen(key: string, tsIso: string): Promise<void>;
+	/** 读回 ts >= sinceIso 的「在记」行,按落盘顺序(时间只增不减)。`""` 读全部,第一条就是开始记录。 */
+	listSeenSince(key: string, sinceIso: string): Promise<StatsSeenRow[]>;
+	/** 删除这个键的三类文件(订阅被移除时调用)。 */
 	drop(key: string): Promise<void>;
 }
 
@@ -154,6 +168,8 @@ function readFramePeak(peak: unknown): number | undefined | "absent" {
 /** 两类文件各住的目录(相对 dataDir)。开机迁移认的也是这两处,别各写一份。 */
 export const STATS_DYN_DIR = join("stats", "dyn");
 export const STATS_LIVE_DIR = join("stats", "live");
+/** 「在记」住的目录。从一开始就按订阅 id 命名,开机迁移不认它。 */
+export const STATS_SEEN_DIR = join("stats", "seen");
 
 export interface CreateStatsStoreOptions {
 	dataDir: string;
@@ -166,6 +182,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	const statsRoot = join(opts.dataDir, "stats");
 	const dynRoot = join(opts.dataDir, STATS_DYN_DIR);
 	const liveRoot = join(opts.dataDir, STATS_LIVE_DIR);
+	const seenRoot = join(opts.dataDir, STATS_SEEN_DIR);
 	const sinceFile = join(statsRoot, "since");
 	const now = opts.now ?? (() => new Date());
 	let ensured = false;
@@ -176,6 +193,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		if (ensured) return;
 		await mkdir(dynRoot, { recursive: true });
 		await mkdir(liveRoot, { recursive: true });
+		await mkdir(seenRoot, { recursive: true });
 		ensured = true;
 	}
 
@@ -213,6 +231,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 	const dynFile = (key: string) => join(dynRoot, `${key}.jsonl`);
 	const liveFile = (key: string) => join(liveRoot, `${key}.jsonl`);
+	const seenFile = (key: string) => join(seenRoot, `${key}.jsonl`);
 
 	/**
 	 * 逐行流式读一个 jsonl,把每行交给 `onLine`。文件不存在是正常情况
@@ -346,12 +365,17 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 				}
 				if (f.k !== "end" || !open) return;
 				open.endedAt = f.ts;
-				// 带了峰值的 end 帧**盖掉**这一场先前的峰值(接回同一场时,后一帧是更晚的观测)——
-				// 解析不出的老字符串也照盖,这一场于是当没采到:与改之前「字符串原样盖上、
-				// aggregate 解析失败就跳过」同一个结果。
+				// 同一场有几帧 end(关服截断一帧、接回之后真下播一帧)时,峰值取**最大的**:它是本场累计观看,
+				// 只增不减(ADR-0020 决策 7)。接回之后那一段是从重新认出这一场才开始取的 —— 平台这回少报了、
+				// 或压根没报,都不该把前一段已经记下的数拽下去(没带的帧本来就不动它)。
+				// 解析不出的老字符串照旧盖掉,这一场于是当没采到:与改之前「字符串原样盖上、aggregate 解析
+				// 失败就跳过」同一个结果。
 				const peak = readFramePeak(f.peak);
 				if (peak === undefined) delete open.peakViewers;
-				else if (peak !== "absent") open.peakViewers = peak;
+				else if (peak !== "absent") {
+					open.peakViewers =
+						open.peakViewers === undefined ? peak : Math.max(open.peakViewers, peak);
+				}
 				open = undefined;
 			});
 			// 读完仍挂着的那场 = 最后一次观测时它是敞着的,也就是唯一可能在播的那场。
@@ -372,9 +396,26 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 		recordingSince: readSince,
 
+		async appendSeen(key, tsIso) {
+			await ensureRoots();
+			const row: StatsSeenRow = { ts: tsIso };
+			await appendLine(seenFile(key), row, `seen ${key}`);
+		},
+
+		async listSeenSince(key, sinceIso) {
+			await ensureRoots();
+			const rows: StatsSeenRow[] = [];
+			await readLines(seenFile(key), (parsed) => {
+				const ts = (parsed as { ts?: unknown } | null)?.ts;
+				if (typeof ts === "string" && ts >= sinceIso) rows.push({ ts });
+			});
+			return rows;
+		},
+
 		async drop(key) {
 			await unlinkQuiet(dynFile(key));
 			await unlinkQuiet(liveFile(key));
+			await unlinkQuiet(seenFile(key));
 		},
 	};
 }

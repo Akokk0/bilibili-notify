@@ -365,6 +365,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		const recorder = createStatsRecorder({
 			bus,
 			store,
+			fans: createFansStore({ dataDir, logger }),
+			fansCron: () => "*/10 * * * *",
 			logger,
 			now,
 			subscriptions: () => bilibili(uids) as never,

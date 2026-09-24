@@ -11,7 +11,8 @@ import type { Logger } from "@bilibili-notify/internal";
  * 同一个规矩({@link statsFileKey}):订阅 id(ADR-0020 决策 2 的 🔗 / 16)。老版本的 B 站文件
  * 叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`stats/migrate-file-keys.ts`)。
  * append-only — FansPoller 每个 cron tick 拉到一个 UP 的当前 fans 数就在该
- * UP 的 jsonl 末尾追加一行。计算 24h / 7d delta 时通过 `findNearestBefore`
+ * UP 的 jsonl 末尾追加一行。拓展订阅的样本来自它报的资料(统计的拓展适配经记录器写,
+ * 稀释到不密过粉丝轮询,ADR-0020 决策 8)。计算 24h / 7d delta 时通过 `findNearestBefore`
  * 逆向扫读最近 ~8 天分区,在内存里挑离目标时间戳最近的那条样本(误差与
  * dynamicCron 周期同阶,默认 2min;前端 UI 不需要更高精度)。
  *

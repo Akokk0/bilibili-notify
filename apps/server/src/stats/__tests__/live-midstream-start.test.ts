@@ -13,6 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createFansStore } from "../../fans/store.js";
 import { summarizeLiveSessions } from "../aggregate.js";
 import { createStatsRecorder } from "../recorder.js";
 import { createStatsStore } from "../store.js";
@@ -51,7 +52,15 @@ describe("服务器在 UP 已开播时启动", () => {
 	/** 建一套 recorder + store,并把「已在播」那条 bootstrap 事件喂进去。 */
 	async function bootWhileLive() {
 		const store = createStatsStore({ dataDir: dir, logger });
-		createStatsRecorder({ bus, store, logger, now: () => BOOT, subscriptions });
+		createStatsRecorder({
+			bus,
+			store,
+			fans: createFansStore({ dataDir: dir, logger }),
+			fansCron: () => "*/10 * * * *",
+			logger,
+			now: () => BOOT,
+			subscriptions,
+		});
 		emit("live-state-changed", "1", "live", REAL_START);
 		// 落盘是 fire-and-forget,让出一轮事件循环等它写完。
 		await new Promise((r) => setTimeout(r, 20));
@@ -122,7 +131,15 @@ describe("采集水位线钉在采集起点", () => {
 		// 「无记录」—— 数据在盘上却永远显示不出来。
 		const START = new Date("2026-05-10T00:00:00.000Z");
 		const store = createStatsStore({ dataDir: dir, logger, now: () => START });
-		createStatsRecorder({ bus, store, logger, now: () => START, subscriptions: () => [] });
+		createStatsRecorder({
+			bus,
+			store,
+			fans: createFansStore({ dataDir: dir, logger }),
+			fansCron: () => "*/10 * * * *",
+			logger,
+			now: () => START,
+			subscriptions: () => [],
+		});
 		await new Promise((r) => setTimeout(r, 20));
 
 		// 五天后才第一次有人打开统计页。

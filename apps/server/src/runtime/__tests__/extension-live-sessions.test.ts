@@ -548,3 +548,113 @@ describe("总线上的场次事件(给统计)", () => {
 		expect(frames.map((f) => f.phase)).toEqual(["start"]);
 	});
 });
+
+// ADR-0020 决策 7:统计的峰值 = 本场累计观看。累计只增不减,所以就是这一场报过的最大 `totalViewers`;
+// 场次在这里算,这一场报过什么也只有这里全看得见 —— 结束帧带着它,统计照抄。
+describe("本场累计观看(ADR-0020 决策 7)", () => {
+	/** 这一轮总线上的结束帧:订阅 id 与带的累计观看。 */
+	const ends = () =>
+		frames.flatMap((f) => (f.phase === "end" ? [[f.subscriptionId, f.totalViewers]] : []));
+
+	it("取开播 / 直播状态 / 下播报过的最大 totalViewers;此刻在线再大也不算", () => {
+		start();
+		liveStart({ totalViewers: 100, viewers: 90_000 });
+		liveStatus({ totalViewers: 800, viewers: 90_000 });
+		liveStatus({ viewers: 99_999 });
+		expect(sessions.get(SUB.id)?.totalViewers).toBe(800);
+		liveEnd({ totalViewers: 900 });
+		expect(ends()).toEqual([[SUB.id, 900]]);
+	});
+
+	it("报小了的那一份不往下拽(只留最大的)", () => {
+		start();
+		liveStart({ totalViewers: 500 });
+		liveStatus({ totalViewers: 300 });
+		liveEnd();
+		expect(ends()).toEqual([[SUB.id, 500]]);
+	});
+
+	it("只报此刻在线的平台:结束帧不带这一格,不拿在线顶替", () => {
+		start();
+		liveStart({ viewers: 50 });
+		liveStatus({ viewers: 60 });
+		liveEnd({ viewers: 70 });
+		const end = frames.find((f) => f.phase === "end");
+		expect(end).toBeDefined();
+		expect(end).not.toHaveProperty("totalViewers");
+	});
+
+	it("靠在播状态认出的一场:认出它的那一份就算(BN 半路起来,这个数已经很大了)", () => {
+		start();
+		liveStatus({ startedAt: T0 - HOUR, totalViewers: 50_000 });
+		liveEnd();
+		expect(ends()).toEqual([[SUB.id, 50_000]]);
+	});
+
+	it("不在播的状态(还没等到下播事件)报的也算这一场的", () => {
+		start();
+		liveStart({ totalViewers: 10 });
+		report({ kind: "liveStatus", value: { live: false, totalViewers: 70 } });
+		liveEnd();
+		expect(ends()).toEqual([[SUB.id, 70]]);
+	});
+
+	it("断流接续是同一场:接着取,不从头来", async () => {
+		settings = { ...settings, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		start();
+		liveStart({ totalViewers: 10 });
+		liveEnd({ totalViewers: 40 });
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		// 平台那头断流重开,累计从头数了 —— 但在 BN 这里还是同一场,前面那 40 不丢。
+		liveStart({ startedAt: Date.now(), totalViewers: 5 });
+		liveStatus({ totalViewers: 30 });
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE);
+		expect(ends()).toEqual([[SUB.id, 40]]);
+	});
+
+	it("新的一场从头取:没报下播又开播,新一场开播带的数不算到上一场头上", () => {
+		start();
+		liveStart({ startedAt: T0, totalViewers: 10 });
+		liveStatus({ totalViewers: 700 });
+		vi.advanceTimersByTime(HOUR);
+		liveStart({ startedAt: Date.now(), totalViewers: 5 });
+		liveEnd();
+		expect(ends()).toEqual([
+			[SUB.id, 700],
+			[SUB.id, 5],
+		]);
+	});
+
+	it("下播之后再开的一场也从头取:上一场的数、两场之间不在播的状态都带不过来", () => {
+		start();
+		liveStart({ totalViewers: 400 });
+		liveEnd();
+		report({ kind: "liveStatus", value: { live: false, totalViewers: 9_999 } });
+		liveStart({ startedAt: Date.now() });
+		liveEnd();
+		expect(ends()).toEqual([
+			[SUB.id, 400],
+			[SUB.id, undefined],
+		]);
+	});
+
+	it("拓展停了 / 订阅停用 / 关机补的结束帧同样带着", () => {
+		start();
+		liveStart({ totalViewers: 1 });
+		liveStart({ totalViewers: 2 }, OTHER);
+		bus.emit("subscription-changed", [{ type: "update", sub: { ...OTHER, enabled: false } }]);
+		bus.emit("extension-stopped", EXT);
+		subs.set(SUB.id, SUB);
+		liveStart({ startedAt: Date.now(), totalViewers: 3 });
+		expect(
+			frames.filter((f) => f.phase === "end").map((f) => f.phase === "end" && f.reason),
+		).toEqual(["disabled", "extension-stopped"]);
+		sessions.dispose();
+		expect(ends()).toEqual([
+			[OTHER.id, 2],
+			[SUB.id, 1],
+			[SUB.id, 3],
+		]);
+	});
+});

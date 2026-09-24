@@ -8,7 +8,8 @@
  *       · 正常 start→end 配成一场,带 peakViewers
  *       · 未闭合的 start(仍在直播 / 崩溃丢了 end)→ endedAt 为 undefined,不算时长
  *       · 孤立的 end(没有对应 start)→ 丢弃,不产出半场
- *   - drop:两类文件一并删;缺文件时静默
+ *   - drop:三类文件(作品 / 直播 / 「在记」)一并删;缺文件时静默
+ *   - 「在记」:`{ts}` 逐行追加,按 since 读回(ADR-0020 决策 16)
  *   - 盘上的行是中立的(ADR-0020 决策 16):作品 `{id, kind, ts}`、下播帧的 `peak` 是数字
  *   - 文件按订阅 id 命名,两支一样(`statsFileKey`);老的 B 站 `<uid>.jsonl` 由开机迁移改名,
  *     见 migrate-file-keys.test.ts
@@ -199,6 +200,34 @@ describe("StatsStore — drop", () => {
 	});
 });
 
+describe("StatsStore — 「在记」(ADR-0020 决策 9 / 16)", () => {
+	it("追加的 {ts} 按落盘顺序读回;since 之前的滤掉,空串读全部(第一条就是开始记录)", async () => {
+		await store.appendSeen("s1", T(1));
+		await store.appendSeen("s1", T(3));
+		await store.appendSeen("s1", T(5));
+		expect(await store.listSeenSince("s1", "")).toEqual([{ ts: T(1) }, { ts: T(3) }, { ts: T(5) }]);
+		expect(await store.listSeenSince("s1", T(3))).toEqual([{ ts: T(3) }, { ts: T(5) }]);
+		expect(await readdir(join(dataDir, "stats", "seen"))).toEqual(["s1.jsonl"]);
+	});
+
+	it("没有文件 → 空;坏行跳过", async () => {
+		expect(await store.listSeenSince("404", "")).toEqual([]);
+		await mkdir(join(dataDir, "stats", "seen"), { recursive: true });
+		await writeFile(
+			join(dataDir, "stats", "seen", "s2.jsonl"),
+			`{"ts":"${T(1)}"}\nnot json\n{"nope":1}\n\n{"ts":"${T(2)}"}\n`,
+		);
+		expect(await store.listSeenSince("s2", "")).toEqual([{ ts: T(1) }, { ts: T(2) }]);
+	});
+
+	it("drop 连「在记」一起删", async () => {
+		await store.appendSeen("s3", T(1));
+		await store.drop("s3");
+		expect(await store.listSeenSince("s3", "")).toEqual([]);
+		expect(await readdir(join(dataDir, "stats", "seen"))).toEqual([]);
+	});
+});
+
 describe("StatsStore — 采集水位线", () => {
 	it("首次调用落盘「此刻」,之后恒定不动", async () => {
 		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(5)) });
@@ -244,6 +273,18 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		await store.closeLiveSession("1", T(13), 12_000); // 真正下播
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(9), endedAt: T(13), peakViewers: 12_000 }]);
+	});
+
+	it("接回同一场之后那帧 end 的峰值更小 / 没带 → 留着前一帧更大的(累计观看只增不减)", async () => {
+		await store.openLiveSession("1", T(9));
+		await store.closeLiveSession("1", T(10), 5_000); // 关服截断,记到 5000
+		await store.openLiveSession("1", T(9)); // 重启接回,从这一刻重新取
+		await store.closeLiveSession("1", T(11), 3_000); // 这一段平台只报到 3000
+		await store.openLiveSession("1", T(9));
+		await store.closeLiveSession("1", T(12)); // 又一段,一次都没报
+		expect(await store.listLiveSessions("1", T(0))).toEqual([
+			{ startedAt: T(9), endedAt: T(12), peakViewers: 5_000 },
+		]);
 	});
 
 	it("不同开播时刻仍是不同场次", async () => {

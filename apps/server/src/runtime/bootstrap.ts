@@ -186,16 +186,23 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	//
 	// 它在这里就挂上了,但只在引擎发事件时才写盘 —— 引擎在 index.ts 里建,晚于那边的开机迁移
 	// (`migrateStatsFileKeys`),所以老的 `<uid>.jsonl` 一定先挪到订阅 id 名下,它才会往里写。
+	//
+	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报与 `extension-live-session`(场次在引擎里建)。
 	const statsRecorder = createStatsRecorder({
 		bus,
 		store: statsStore,
+		fans: fansStore,
+		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
+		fansCron: () => configStore.getGlobals().app.fansCron,
 		logger: serviceCtx.logger,
-		// 按 uid 找订阅 id。读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
+		// 按 uid 找订阅 id、判拓展订阅启用着没有。读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
 		subscriptions: () => configStore.getSubscriptions(),
 	});
 	serviceCtx.onDispose(async () => {
 		// 先给在播的场次补下播帧,再解绑 —— 顺序反了就没人记得谁还在播。
-		// dispose() 会 await 这个钩子,所以写盘赶得及在进程退出前完成。
+		// dispose() 会 await 这个钩子,所以写盘赶得及在进程退出前完成。拓展直播的场次在更早的关机步骤里
+		// (拓展收摊、引擎拆)就结束了、下播帧已经交出去;closeOpenSessions 等到它们也落地才返回,
+		// 且不会给它们补第二帧。
 		await statsRecorder.closeOpenSessions();
 		statsRecorder.dispose();
 	});

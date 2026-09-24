@@ -16,6 +16,7 @@
 
 import type { MessageBus } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { FansStore } from "../../fans/store.js";
 import { attachBiliStatsSource } from "../bili-source.js";
 import { createStatsRecorder, createStatsRecorderCore } from "../recorder.js";
 import type { StatsStore } from "../store.js";
@@ -58,12 +59,25 @@ function makeStore() {
 		closeLiveSession: vi.fn(async () => {}),
 		listLiveSessions: vi.fn(async () => []),
 		recordingSince: vi.fn(async () => "1970-01-01T00:00:00.000Z"),
+		appendSeen: vi.fn(async () => {}),
+		listSeenSince: vi.fn(async () => []),
 		drop: vi.fn(async () => {}),
 	} satisfies Record<keyof StatsStore, unknown> as unknown as StatsStore & {
 		appendDynamic: ReturnType<typeof vi.fn>;
 		openLiveSession: ReturnType<typeof vi.fn>;
 		closeLiveSession: ReturnType<typeof vi.fn>;
+		drop: ReturnType<typeof vi.fn>;
 	};
+}
+
+function makeFans() {
+	return {
+		append: vi.fn(async () => {}),
+		findNearestBefore: vi.fn(async () => undefined),
+		findEarliest: vi.fn(async () => undefined),
+		listSamplesSince: vi.fn(async () => []),
+		drop: vi.fn(async () => {}),
+	} satisfies Record<keyof FansStore, unknown> as unknown as FansStore;
 }
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -85,7 +99,15 @@ const SUBS = [
 function setup(subs: () => readonly unknown[] = () => SUBS) {
 	const { bus, trigger } = makeBus();
 	const store = makeStore();
-	const handle = createStatsRecorder({ bus, store, logger, now, subscriptions: subs as never });
+	const handle = createStatsRecorder({
+		bus,
+		store,
+		fans: makeFans(),
+		fansCron: () => "*/10 * * * *",
+		logger,
+		now,
+		subscriptions: subs as never,
+	});
 	return { trigger, store, handle };
 }
 
@@ -363,15 +385,14 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		expect(store.drop).toHaveBeenCalledWith("id-1");
 	});
 
-	it("删掉的是拓展订阅 → 统计没有它的文件,一个都不删(ADR-0019 决策 12)", async () => {
+	it("一次删掉一条拓展订阅、一条 B 站订阅 → 两支的适配各删各的,每条恰好删一次(ADR-0020 S3)", async () => {
 		const { trigger, store } = setup();
 		trigger("subscription-changed", [
 			{ type: "remove", sub: { kind: "extension", id: "ext-1", externalId: "1" } },
 			{ type: "remove", sub: { id: "id-2", uid: "2" } },
 		]);
-		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
-		expect(store.drop).toHaveBeenCalledTimes(1);
-		expect(store.drop).toHaveBeenCalledWith("id-2");
+		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledTimes(2));
+		expect(store.drop.mock.calls.map((c) => c[0]).sort()).toEqual(["ext-1", "id-2"]);
 	});
 
 	it("退订正在直播的 UP → 关服时不再给他补下播帧,免得把刚删的文件重建出来", async () => {
@@ -485,7 +506,7 @@ describe("StatsRecorder — 观看数解析不出", () => {
 describe("中立记录器(给各来源适配用的那一面)", () => {
 	function core() {
 		const store = makeStore();
-		const recorder = createStatsRecorderCore({ store, logger, now });
+		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
 		return { store, recorder };
 	}
 
@@ -516,7 +537,7 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		// 拓展那一场不该跟着被忘掉 —— 否则关服时它等不到补的那帧下播。
 		const { bus, trigger } = makeBus();
 		const store = makeStore();
-		const recorder = createStatsRecorderCore({ store, logger, now });
+		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
 		attachBiliStatsSource({ bus, recorder, now, subscriptions: () => SUBS as never });
 		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
 		recorder.openSession("ext-x", "2026-05-16T09:30:00.000Z");

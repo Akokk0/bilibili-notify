@@ -200,6 +200,9 @@ export type ExtensionLiveSessionEndReason =
  *   据此接回同一场(ADR-0020 决策 6)。
  * - `at`:开始帧是 BN 认出这一场的那一刻;结束帧是这一场结束的时刻 —— 拓展报的下播是**下播事件到达那一刻**
  *   (断流接续等的那几分钟不算),其余是结束的那一刻(拓展停了、订阅停用 / 删了、关机时补的就是这一帧)。
+ * - `totalViewers`(只有结束帧有):这一场里开播 / 直播状态 / 下播报过的**最大累计观看**(ADR-0020 决策 7)。
+ *   累计只增不减,最大的就是本场最后那个累计数;断流接续是同一场、接着算。只报此刻在线(`viewers`)的平台
+ *   一次都没报过,这一格就没有 —— 不拿在线顶替。
  */
 export type ExtensionLiveSessionEvent =
 	| {
@@ -218,6 +221,8 @@ export type ExtensionLiveSessionEvent =
 			startedAt: string;
 			at: string;
 			reason: ExtensionLiveSessionEndReason;
+			/** 本场报过的最大累计观看;一次都没报过就没有这一格。 */
+			totalViewers?: number;
 	  };
 
 /** Bus 上 dynamic-detected 事件的载荷。 */

@@ -5,6 +5,9 @@ export type KeyedSubscription =
 	| Pick<BiliSubscription, "kind" | "id" | "uid">
 	| Pick<ExtensionSubscription, "kind" | "id">;
 
+/** 统计的来源适配看订阅看这几样:哪一支、订阅 id、B 站的 uid、启用着没有。 */
+export type StatsSubscription = KeyedSubscription & { enabled: boolean };
+
 /**
  * 一条订阅在统计仓与粉丝仓里的**文件键**:两支一样,就是**订阅 id**(ADR-0020 决策 2 的 🔗)。
  *
