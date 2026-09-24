@@ -55,6 +55,9 @@ const RoastReplySchema = z.object({
 	pigeon: z.object({ i: z.number().int(), reason: z.string().min(1) }),
 	diligent: z.object({ i: z.number().int(), reason: z.string().min(1) }),
 	roast: z.array(z.object({ i: z.number().int(), comment: z.string().min(1) })).default([]),
+	// 分数(单人锐评的 score 同理)有意让模型打,不按公式算:一张榜上混着几个平台,粉丝量级
+	// 没法直接比;「无记录」不能当 0;单人锐评没有对照组,排名法用不了。公式得先拍一堆权重,
+	// 拍出来只是「稳定地拍脑袋」,而锐评是娱乐功能、每次数据本来就不同(2026-09-24 定)。
 	scores: z.array(z.object({ i: z.number().int(), score: z.number() })).default([]),
 	pushText: z.string().default(""),
 });
