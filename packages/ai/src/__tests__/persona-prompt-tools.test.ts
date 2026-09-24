@@ -149,3 +149,14 @@ describe("哪条路发工具铁律", () => {
 		expect(sentSystemPrompt()).not.toContain(NO_TOOL_RULE);
 	});
 });
+
+describe("buildSystemPrompt — 核心身份不把推送说成她的活", () => {
+	// 推送是系统按订阅发的。身份里写「你的工作是第一时间通知用户」,聊天里主人一句
+	// 「XX 开播了叫我」,她就会答应「好的我第一时间通知你」—— 同 NO_WRITE_RULE 那类
+	// 空头承诺:她没有发推送的手,订阅也只有主人自己改得了。
+	it.each(["assistant", "maid"] as const)("%s:推送归系统,她管点评、总结与答疑", (preset) => {
+		const p = buildSystemPrompt({ preset });
+		expect(p).toContain("系统会第一时间推送");
+		expect(p).not.toContain("通知用户");
+	});
+});

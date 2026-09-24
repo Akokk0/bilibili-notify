@@ -64,7 +64,7 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 		const plain = buildSystemPrompt({ preset: "assistant" });
 		const lines = plain.split("\n");
 		const ruleAt = lines.findIndex((l) => l.includes(PLAIN_TEXT_RULE));
-		const dutyAt = lines.findIndex((l) => l.includes("这是你最重要的职责"));
+		const dutyAt = lines.findIndex((l) => l.includes("你的工作是帮用户关注"));
 		// 规则块的抬头按档位不同:挂了工具是【重要规则】,没挂是【本次任务】。这条要守的
 		// 是**位置**(纯文本那句夹在职责句与规则块之间),所以两种抬头都认。
 		const ruleBlockAt = lines.findIndex((l) => /^【(重要规则|本次任务)】/.test(l));
