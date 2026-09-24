@@ -18,7 +18,7 @@ import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import { biliLiveCardInput } from "./bili-live-input";
 import type { CardPropsByKind } from "./blocks/frames";
-import { numberToStr } from "./format";
+import { formatCardTime, numberToStr } from "./format";
 import { buildLiveCardView, durationSince, LIVE_TIME_FORMAT, LIVE_TIME_ZONE } from "./live-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
@@ -292,9 +292,7 @@ export class ImageRenderer {
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
 
 	unixTimestampToString(timestamp: number): string {
-		const d = new Date(timestamp * 1000);
-		const pad = (n: number) => `0${n}`.slice(-2);
-		return `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+		return formatCardTime(timestamp);
 	}
 
 	/**

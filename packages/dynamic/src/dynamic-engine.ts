@@ -9,7 +9,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
+import { blockedNotice, type DynamicFilterReason, filterDynamic } from "./dynamic-filter";
 import type {
 	PushLike,
 	SubItemView,
@@ -822,21 +822,18 @@ export class DynamicEngine {
 				if (filterResult.blocked) {
 					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
 					if (effFilter.notify && this.stillSubscribed(uid, subAtCapture)) {
-						const msgs: Record<DynamicFilterReason, string> = {
-							[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
-							[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
-							[DynamicFilterReason.BlacklistArticle]: `${name}投稿了一条专栏，已屏蔽`,
-							[DynamicFilterReason.BlacklistDraw]: `${name}发布了一条图文动态，已屏蔽`,
-							[DynamicFilterReason.BlacklistAv]: `${name}投稿了一条视频，已屏蔽`,
-							[DynamicFilterReason.WhitelistUnmatched]: `${name}发布了一条不在白名单范围内的动态，已屏蔽`,
-						};
 						// P2:屏蔽提示是 best-effort。此前广播抛错冒泡到外层 catch→
 						// markFail,锚点不前移 → 下轮重判重发,"已屏蔽"提示重复轰炸。
 						// 自包 try/catch:发不出就算了,绝不因此重试。
 						try {
 							await this.push.broadcastDynamic(
 								uid,
-								[{ type: "text", text: msgs[filterResult.reason as DynamicFilterReason] }],
+								[
+									{
+										type: "text",
+										text: blockedNotice(name, filterResult.reason as DynamicFilterReason),
+									},
+								],
 								"dynamic",
 							);
 						} catch (e) {

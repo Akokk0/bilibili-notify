@@ -24,14 +24,18 @@ import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-no
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import {
+	type BoundWorkPush,
 	broadcastOptsForDynamicKind,
+	createCardFailureTracker,
 	DynamicEngine,
 	type DynamicEngineConfig,
+	type DynamicFilterConfig,
 	type PushLike as DynamicPushLike,
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
 	resolveDynamicColorOptions,
+	type WorkSubscriptionSettings,
 } from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
@@ -40,7 +44,9 @@ import type {
 	CardSkinKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
+	ContentFilters,
 	Disposable,
+	EffectiveSubscription,
 	ExtraKey,
 	FeatureKey,
 	GlobalConfig,
@@ -83,6 +89,8 @@ import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
+import { bindExtensionPosts } from "./extension-posts.js";
+import type { ExtensionSourceLookups } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
@@ -215,6 +223,13 @@ export interface CreateEnginesOptions {
 	 * 晚建起来,装卸也随时发生。取不到(没接 / 没装 / 开机途中)交 `undefined`,视图退拓展 id。
 	 */
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
+	/**
+	 * 拓展订阅推送要从外面现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、平台对作品的叫法、
+	 * 存下的头像文件。装载器比引擎晚建起来,装卸也随时发生,都现取。
+	 *
+	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
+	 */
+	extensionSources?: ExtensionSourceLookups;
 	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
@@ -470,18 +485,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid);
 
 	const dynamicConfig = (): DynamicEngineConfig => {
-		const f = globals().defaults.filters;
-		// New schema uses array-of-regex while the engine takes a single combined
-		// regex string; join with `|` (capturing-group safe since users supply
-		// alt patterns themselves).
-		const blockHasRules =
-			f.blockKeywords.length > 0 ||
-			f.blockRegex.length > 0 ||
-			f.blockForward ||
-			f.blockArticle ||
-			f.blockDraw ||
-			f.blockAv;
-		const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
 		return {
 			dynamicCron: globals().app.dynamicCron,
 			dynamicVideoUrlToBV: false,
@@ -491,21 +494,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
 			dynamicTemplate: globals().defaults.templates.dynamic,
 			videoTemplate: globals().defaults.templates.dynamicVideo,
-			filter: {
-				enable: blockHasRules,
-				notify: false,
-				regex: f.blockRegex.join("|"),
-				keywords: f.blockKeywords,
-				forward: f.blockForward,
-				article: f.blockArticle,
-				draw: f.blockDraw,
-				av: f.blockAv,
-				whitelistEnable: whitelistHasRules,
-				whitelistRegex: f.whitelistRegex.join("|"),
-				whitelistKeywords: f.whitelistKeywords,
-			},
+			filter: dynamicFilterOf(globals().defaults.filters),
 		};
 	};
+
+	// 出图连续失败「只提醒一次」的计数(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个渲染器,
+	// **全进程一份**,两条路各记各的话同一次故障会各提醒一遍。
+	const cardFailures = createCardFailureTracker();
 
 	const dynamic = new DynamicEngine({
 		serviceCtx: dynamicCtx,
@@ -514,6 +509,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push: dynamicPushLike,
 		image: imageRenderer ?? undefined,
 		ai: commentary ?? undefined,
+		cardFailures,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
 	});
@@ -613,6 +609,43 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- Bus wiring ----------
 	const handles: Disposable[] = [];
+
+	// 拓展订阅的作品(ADR-0019 决策 69–72):听上报,逐条订阅走与 B 站动态同一份的装配、同一个渲染器、
+	// 同一份出图失败计数。设置每条现折(与 B 站视图同一个折法),渲染器与 AI 每条现取(会被热换)。
+	const extensionSources = opts.extensionSources;
+	if (extensionSources) {
+		handles.push(
+			bindExtensionPosts({
+				bus: opts.bus,
+				logger: dynamicCtx.logger,
+				subscription: (id) => opts.subscriptionStore.findById(id),
+				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				settings: (sub) => {
+					const g = globals();
+					const eff = resolve(sub, g.defaults);
+					const work = dynamicWorkSettings(sub, g, eff);
+					return {
+						...work,
+						filter: work.filter ?? dynamicFilterOf(g.defaults.filters),
+						dynamic: eff.features.dynamic,
+					};
+				},
+				sources: extensionSources,
+				pushFor: (id) => boundWorkPush(bindSubscriptionPush(push, id)),
+				deliveryConfig: dynamicConfig,
+				deliveryDeps: () => ({
+					logger: dynamicCtx.logger,
+					image: imageRenderer ?? undefined,
+					ai: commentary ?? undefined,
+					cardFailures,
+					sendErrorMsg: (text) => push.sendErrorMsg(text),
+					// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)
+					// 共用一个的话,一边刚报过,另一边这次出图失败的告警就被吞了。
+					emitEngineError: (message) => opts.bus.emit("engine-error", "extension-post", message),
+				}),
+			}),
+		);
+	}
 
 	handles.push(
 		opts.bus.on("subscription-changed", (ops) => {
@@ -1125,37 +1158,68 @@ type PushForEngines = Pick<BilibiliPush, "broadcastToFeature" | "sendPrivateMsg"
  */
 type SubscriptionIdOf = (uid: string) => string | undefined;
 
-/** 动态引擎那侧的 PushLike。 */
+/**
+ * 绑到**一条订阅**上的发送(ADR-0019 决策 50 / 66 / 67):按订阅自己的 id 直接交推送层,没有 uid 那一跳。
+ * 特性键由调用方给 —— 作品走 `dynamic`(见 {@link boundWorkPush}),拓展的直播走 `live` / `liveEnd`。
+ * 开关、免扰、路由、@全体、历史都在推送层(`broadcastToFeature`)里,这里只是把订阅 id 钉上。
+ */
+export type SubscriptionPush = (
+	feature: FeatureKey,
+	payload: NotificationPayload | NotificationPayload[],
+	opts?: BroadcastOptions,
+) => Promise<void>;
+
+export function bindSubscriptionPush(
+	push: Pick<BilibiliPush, "broadcastToFeature">,
+	subscriptionId: string,
+): SubscriptionPush {
+	return async (feature, payload, opts) => {
+		await push.broadcastToFeature(subscriptionId, feature, payload, opts);
+	};
+}
+
+/**
+ * 作品那一路(`deliverWork` 的 {@link BoundWorkPush}):装配交来的段 → 推送层的载荷,特性恒为
+ * `dynamic`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成订阅 id)与拓展作品共用这一跳。
+ */
+export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
+	return {
+		// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
+		// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
+		broadcast: (segments, kind, o) =>
+			send(
+				"dynamic",
+				pushSegmentsToPayload(segments),
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			),
+		// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
+		// 某条失败中止该 target 后续条、@全体只跟首条之前)。
+		broadcastSequence: (messages, kind, o) =>
+			send(
+				"dynamic",
+				messages.map(pushSegmentsToPayload),
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			),
+	};
+}
+
+/** 动态引擎那侧的 PushLike:uid → 订阅 id,再走 {@link boundWorkPush}。 */
 export function makeDynamicPushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
 ): DynamicPushLike {
+	const bound = (uid: string): BoundWorkPush | undefined => {
+		const subscriptionId = subscriptionIdOf(uid);
+		return subscriptionId === undefined
+			? undefined
+			: boundWorkPush(bindSubscriptionPush(push, subscriptionId));
+	};
 	return {
 		async broadcastDynamic(uid, segments, kind, o) {
-			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return;
-			const payload = pushSegmentsToPayload(segments);
-			// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
-			// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
-			await push.broadcastToFeature(
-				subscriptionId,
-				"dynamic",
-				payload,
-				broadcastOptsForDynamicKind(kind, o?.pushId),
-			);
+			await bound(uid)?.broadcast(segments, kind, o);
 		},
 		async broadcastDynamicSequence(uid, messages, kind, o) {
-			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return;
-			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
-			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
-			const payloads = messages.map(pushSegmentsToPayload);
-			await push.broadcastToFeature(
-				subscriptionId,
-				"dynamic",
-				payloads,
-				broadcastOptsForDynamicKind(kind, o?.pushId),
-			);
+			await bound(uid)?.broadcastSequence(messages, kind, o);
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),
@@ -1322,12 +1386,12 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
 }
 
 /**
- * 把 `EffectiveSubscription.filters` 翻译成 dynamic-engine 接受的 DynamicFilterConfig。
- * 数组形态的 blockRegex/whitelistRegex 在 engine 内合并成单一 `|` 正则字符串,与全局
- * filter 的 dynamicConfig() 构造逻辑一致。`notify` 字段固定 false —— 全局也是 false。
+ * 一份折好的内容过滤 → 动态过滤吃的 DynamicFilterConfig。全局那份(`dynamicConfig().filter`)、per-UP
+ * 那份(`dynamicWorkSettings`)都经它,拓展作品也吃同一份(ADR-0019 决策 70,它只看文字那一半)。
+ * 数组形态的 blockRegex/whitelistRegex 合并成单一 `|` 正则(用户自己写的备选,加 `|` 不破坏分组)。
+ * `notify` 固定 false —— 独立端没有「屏蔽后提醒」的开关。
  */
-function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
-	const f = eff.filters;
+export function dynamicFilterOf(f: ContentFilters): DynamicFilterConfig & { notify?: boolean } {
 	const blockHasRules =
 		f.blockKeywords.length > 0 ||
 		f.blockRegex.length > 0 ||
@@ -1461,7 +1525,6 @@ export function buildDynamicSubViewSingle(
 	globals: GlobalConfig,
 ): DynamicSubsView[string] {
 	const eff = resolve(sub, globals.defaults);
-	const dynamicCardStyle = resolveDynamicCardStyle(globals.defaults, sub.overrides);
 	return {
 		uid: sub.uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
@@ -1469,8 +1532,35 @@ export function buildDynamicSubViewSingle(
 		// add 用 `if(!op.sub.dynamic) break` 拦截。buildDynamicSubsView 已 continue 跳
 		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
 		dynamic: sub.enabled && eff.features.dynamic,
-		customCardStyle: dynamicCardStyle,
-		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
+		...dynamicWorkSettings(sub, globals, eff),
+	};
+}
+
+/** 一条订阅折好的作品设置:装配吃的那几格 + per-UP 的过滤覆盖。 */
+export type DynamicWorkSettings = WorkSubscriptionSettings & {
+	/** Per-UP 过滤覆盖;没配是 undefined(用全局那份,见 {@link dynamicFilterOf})。 */
+	filter?: DynamicFilterConfig & { notify?: boolean };
+};
+
+/**
+ * 一条订阅(B 站或拓展)→ 作品装配吃的设置(ADR-0019 决策 65 / 66)。B 站动态引擎的视图
+ * (`buildDynamicSubViewSingle`)与拓展作品都从这里拿,别抄第二份 —— 两份的话主人给某个抖音号
+ * 换的文案模板 / 版式 / 皮肤,迟早有一格只有 B 站那头认。
+ *
+ * customCardStyle / filter / aiOverride / 模板等只在**真有 per-UP override 时**才生成,理由见
+ * `buildDynamicSubViewSingle` 上面那段(B 站引擎的视图是快照,折进全局值就冻住了)。拓展那头每条
+ * 作品现折一次,没有快照问题,留空的几格由装配用全局兜底,效果一样。
+ *
+ * `eff` 给了就不再折一遍(B 站那头已经折过)。
+ */
+export function dynamicWorkSettings(
+	sub: Subscription,
+	globals: GlobalConfig,
+	eff: EffectiveSubscription = resolve(sub, globals.defaults),
+): DynamicWorkSettings {
+	return {
+		customCardStyle: resolveDynamicCardStyle(globals.defaults, sub.overrides),
+		filter: sub.overrides.filters ? dynamicFilterOf(eff.filters) : undefined,
 		aiOverride: resolveAiOverride(sub, globals.defaults),
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
 		imageGroupForward: sub.overrides.imageGroup?.forward,

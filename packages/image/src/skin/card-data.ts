@@ -116,7 +116,7 @@ function dynamicData(p: DynamicCardProps): CardData {
 			cover: str(video?.cover),
 			duration: str(video?.duration),
 			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),`videoOf` 原样转了文本。
-			// 弹幕数选填(拓展作品不收),缺了就是空串。
+			// 播放数、弹幕数都选填(拓展作品不收弹幕数、播放数选填),缺了就是空串。
 			views: str(video?.views),
 			danmaku: str(video?.danmaku),
 		},

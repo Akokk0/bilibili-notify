@@ -23,7 +23,7 @@ export { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "./blocks/roast";
 export { SC_BLOCKS } from "./blocks/sc";
 export type { BlockRenderer } from "./blocks/types";
 export { WORDCLOUD_BLOCKS } from "./blocks/wordcloud";
-export { numberToStr } from "./format";
+export { formatCardTime, numberToStr } from "./format";
 export {
 	ImageRenderer,
 	type ImageRendererConfig,

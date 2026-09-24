@@ -8,8 +8,11 @@
 import type { VideoInfo } from "@bilibili-notify/api";
 import { type Dynamic, numberToStr } from "@bilibili-notify/image";
 
-/** 秒 → `m:ss` / `h:mm:ss`,与 B 站封面角标一致。 */
-function formatDuration(seconds: number): string {
+/**
+ * 秒 → `m:ss` / `h:mm:ss`,与 B 站封面角标一致。拓展作品的视频时长(交的是秒数)也排成这样
+ * (`extension-post-work.ts`)。
+ */
+export function formatDuration(seconds: number): string {
 	const s = Math.max(0, Math.floor(seconds));
 	const h = Math.floor(s / 3600);
 	const m = Math.floor((s % 3600) / 60);

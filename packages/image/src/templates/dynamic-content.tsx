@@ -76,15 +76,15 @@ export type NodeFormatters = {
 /**
  * 投稿视频那张卡的数据。播放 / 弹幕数接口可能已给成 "6.5万",原样转文本,不做算术。
  *
- * 弹幕数**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数,缺了那一格就不画弹幕图标与数字
- * (从前只要有视频就无条件画,拓展作品会画出一个空图标)。
+ * 播放数与弹幕数都**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数、播放数是选填的,缺了哪一格
+ * 就不画哪一格的图标与数字(从前只要有视频就无条件画,拓展作品会画出空图标)。B 站两格恒有。
  */
 export type DynamicVideo = {
 	cover: string;
 	duration: string;
 	title: string;
 	desc: string;
-	views: string;
+	views?: string;
 	danmaku?: string;
 };
 
@@ -136,6 +136,10 @@ export type DynamicNode = {
 	images?: readonly GalleryImage[];
 	additional?: VNode | null;
 	forward?: DynamicNode;
+	/**
+	 * 互动数,已排好版的文本。某一项是空串 = 没有这一项,那一格连图标一起不画(拓展的作品三样各自
+	 * 选填,决策 55);B 站三样恒有。
+	 */
 	stats?: { forward: string; comment: string; like: string };
 };
 

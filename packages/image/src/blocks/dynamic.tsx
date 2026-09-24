@@ -149,16 +149,18 @@ const videoDesc: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 /**
  * 播放 · 弹幕数。两项各挂一个 `stat`,皮肤要能单独调「图标与数之间的间距」。
  *
- * 弹幕数是选填的(ADR-0019 决策 55:拓展的作品不收它),没有就连图标一起不画 —— 从前只要有
- * 视频就无条件画,画出一个空着的弹幕图标。
+ * 两项都是选填的(ADR-0019 决策 55:拓展的作品不收弹幕数、播放数选填),缺哪项就连图标一起不画
+ * —— 从前只要有视频就无条件画,画出空着的图标;两项都没有整块收起。
  */
 const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
-	node.video ? (
+	node.video && (node.video.views || node.video.danmaku) ? (
 		<div data-bn="text" class="flex items-center">
-			<span data-bn="stat" class="flex items-center">
-				{SVG_VIEW}
-				{node.video.views}
-			</span>
+			{node.video.views ? (
+				<span data-bn="stat" class="flex items-center">
+					{SVG_VIEW}
+					{node.video.views}
+				</span>
+			) : null}
 			{node.video.danmaku ? (
 				<span data-bn="stat" class="flex items-center">
 					{SVG_DANMAKU}
@@ -188,12 +190,13 @@ const STAT_ATOM_CLASS = "flex items-center";
 type DynamicStats = NonNullable<DynamicNode["stats"]>;
 
 /**
- * 一项互动数(原子块):图标 + 数。没有互动数就收起 —— 转发框里的原动态本来就不带。
+ * 一项互动数(原子块):图标 + 数。没有互动数就收起 —— 转发框里的原动态本来就不带;这一项是空串
+ * 也收起(拓展的作品三样各自选填,ADR-0019 决策 55),不画一个空着的图标。
  */
 const statAtom =
 	(icon: VNode, pick: (s: DynamicStats) => string): BlockRenderer<DynamicBlockProps> =>
 	({ node }) =>
-		node.stats ? (
+		node.stats && pick(node.stats) ? (
 			<div data-bn="text" class={STAT_ATOM_CLASS}>
 				{icon}
 				<span>{pick(node.stats)}</span>

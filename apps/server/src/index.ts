@@ -474,6 +474,17 @@ export async function startStandaloneServer(
 				const view = entry.manifest && manifestSubscriptionView(entry.manifest);
 				return view?.display.label ?? entryIdentity(entry)?.name;
 			},
+			// 拓展订阅推送要现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、清单里平台对作品的
+			// 叫法、存下的头像文件。同上,装载器晚一步建起来,所以都现取。
+			extensionSources: {
+				running: (id) =>
+					loadedExtensions?.list().some((one) => one.id === id && one.state === "running") ?? false,
+				postNoun: (id) => {
+					const entry = loadedExtensions?.list().find((one) => one.id === id);
+					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
+				},
+				readAvatar: (id) => runtime.subAvatarStore.read(id),
+			},
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,

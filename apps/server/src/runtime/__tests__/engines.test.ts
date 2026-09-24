@@ -73,6 +73,13 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
 		broadcastOptsForDynamicKind: actual.broadcastOptsForDynamicKind,
 		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
+		// 出图失败计数(全进程一份,B 站与拓展作品共用)是个没有副作用的小对象,同理走真的。
+		createCardFailureTracker: actual.createCardFailureTracker,
+		// 拓展作品那条路(ADR-0019 决策 66 / 70)用的装配与过滤也走真的 —— 被测的正是它们与
+		// B 站那条路接在同一份计数上。
+		deliverWork: actual.deliverWork,
+		filterByText: actual.filterByText,
+		blockedNotice: actual.blockedNotice,
 		DynamicEngine: class {
 			opts: any;
 			start = vi.fn();
@@ -89,7 +96,10 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 	};
 });
 
-vi.mock("@bilibili-notify/live", () => ({
+vi.mock("@bilibili-notify/live", async (importOriginal) => ({
+	// 拓展作品每条订阅一道串行闸,纯函数,走真的。
+	createSerialGate: (await importOriginal<typeof import("@bilibili-notify/live")>())
+		.createSerialGate,
 	LiveEngine: class {
 		opts: any;
 		start = vi.fn();
@@ -130,20 +140,29 @@ vi.mock("@bilibili-notify/ai", () => ({
 	webSearchExecutorFromSettings: () => null,
 }));
 
-vi.mock("@bilibili-notify/image", () => ({
-	// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
-	buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
-	ImageRenderer: class {
-		opts: any;
-		start = vi.fn();
-		stop = vi.fn();
-		updateConfig = vi.fn();
-		constructor(opts: any) {
-			this.opts = opts;
-			H.image.push(this);
-		}
-	},
-}));
+vi.mock("@bilibili-notify/image", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/image")>();
+	return {
+		// 拓展作品造 node 用的几个纯函数与占位图,走真的。
+		BLOCKED_IMG_PLACEHOLDER: actual.BLOCKED_IMG_PLACEHOLDER,
+		buildPlainText: actual.buildPlainText,
+		formatCardTime: actual.formatCardTime,
+		numberToStr: actual.numberToStr,
+		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
+		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
+		ImageRenderer: class {
+			opts: any;
+			start = vi.fn();
+			stop = vi.fn();
+			updateConfig = vi.fn();
+			generateNeutralDynamicCard = vi.fn(async () => Buffer.from("card"));
+			constructor(opts: any) {
+				this.opts = opts;
+				H.image.push(this);
+			}
+		},
+	};
+});
 
 // SUT must be imported AFTER the vi.mock calls register.
 const {
@@ -254,6 +273,8 @@ function setup(opts?: {
 	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
 	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
 	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
+	/** 拓展订阅推送现取的那几样(接线层给的);不给 = 不接拓展订阅的推送。 */
+	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
@@ -273,6 +294,7 @@ function setup(opts?: {
 		subscriptionStore: {
 			list: () => subs,
 			findByUid: (uid: string) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
+			findById: (id: string) => subs.find((s) => s.id === id),
 		} as any,
 		subRuntimeStore: {
 			get: () => undefined,
@@ -288,6 +310,7 @@ function setup(opts?: {
 		...(opts?.extensionPlatformLabel
 			? { extensionPlatformLabel: opts.extensionPlatformLabel }
 			: {}),
+		...(opts?.extensionSources ? { extensionSources: opts.extensionSources } : {}),
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
 }
@@ -390,6 +413,46 @@ describe("createEngines — 在播快照带订阅 id", () => {
 		expect(c.runtime.listLiveRooms()).toEqual([
 			{ subscriptionId: "s1", uid: "1", roomId: "r1", isLive: true, title: "在播" },
 		]);
+	});
+});
+
+/**
+ * 出图连续失败「只提醒一次」的计数全进程一份(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个
+ * 渲染器,各记各的话同一次故障会各提醒主人一遍。计数在 createEngines 里建,一头交给
+ * `new DynamicEngine({ cardFailures })`,一头交给拓展作品的装配 —— 两头哪一头换成自己建的一份
+ * (或者 B 站那头压根没传、引擎自己建),类型与别的测试全绿,只有这一条红。
+ */
+describe("createEngines — 出图失败计数 B 站与拓展作品共用一份", () => {
+	it("拓展作品出图失败之后,B 站引擎手里那份计数跟着变;只提醒主人一次", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => "作品",
+				readAvatar: async () => undefined,
+			},
+		});
+		active = c;
+		H.image[0].generateNeutralDynamicCard.mockRejectedValue(new Error("浏览器挂了"));
+		const bili = H.dynamic[0].opts.cardFailures;
+		expect(bili?.streak).toBe(0);
+
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "post",
+				value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
+			},
+		});
+
+		await vi.waitFor(() => expect(bili.streak).toBe(1));
+		// 这一串已经提醒过了:B 站那头紧接着也失败的话,不会再私聊一遍。
+		await vi.waitFor(() => expect(bili.notified).toBe(true));
+		expect(H.push[0].sendErrorMsg).toHaveBeenCalledTimes(1);
 	});
 });
 

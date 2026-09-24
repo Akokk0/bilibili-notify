@@ -5,9 +5,11 @@ export {
 	type DynamicEngineOptions,
 } from "./dynamic-engine";
 export {
+	blockedNotice,
 	type DynamicFilterConfig,
 	DynamicFilterReason,
 	type DynamicFilterResult,
+	filterByText,
 	filterDynamic,
 } from "./dynamic-filter";
 export type {

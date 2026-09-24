@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { filterDynamic } from "../dynamic-filter";
+import { blockedNotice, filterByText, filterDynamic } from "../dynamic-filter";
 import { type Dynamic, DynamicFilterReason } from "../types";
 
 function makeDynamic(opts: {
@@ -200,5 +200,77 @@ describe("P2-B safeRegexTest — ReDoS 加固", () => {
 			regex: "https?://\\S+",
 		});
 		expect(miss.blocked).toBe(false);
+	});
+});
+
+/**
+ * 只看文字的那一半(ADR-0019 决策 70):拓展的作品只认关键词 / 正则 / 白名单,四个类型开关一律不看 ——
+ * 抖音几乎全是视频,全局开着「屏蔽视频」就会把整个抖音号吞掉。B 站的 `filterDynamic` 先判类型、
+ * 再交给同一个函数判文字,上面那批用例钉着它行为不变。
+ */
+describe("filterByText — 只看文字(B 站与拓展共用)", () => {
+	it("屏蔽关键词 / 屏蔽正则命中 → 拦下,原因是关键词", () => {
+		expect(filterByText("今天开箱抽奖", { enable: true, keywords: ["抽奖"] })).toEqual({
+			blocked: true,
+			reason: DynamicFilterReason.BlacklistKeyword,
+		});
+		expect(filterByText("视频标题:第 3 期", { enable: true, regex: "第\\s*\\d+\\s*期" })).toEqual({
+			blocked: true,
+			reason: DynamicFilterReason.BlacklistKeyword,
+		});
+		expect(filterByText("日常", { enable: true, keywords: ["抽奖"] })).toEqual({ blocked: false });
+	});
+
+	it("屏蔽没开(enable=false)时关键词不生效", () => {
+		expect(filterByText("抽奖", { enable: false, keywords: ["抽奖"] })).toEqual({ blocked: false });
+	});
+
+	it("白名单:没命中拦下,命中放行;一条规则都没有就不拦", () => {
+		const cfg = { whitelistEnable: true, whitelistKeywords: ["新歌"] };
+		expect(filterByText("日常 vlog", cfg)).toEqual({
+			blocked: true,
+			reason: DynamicFilterReason.WhitelistUnmatched,
+		});
+		expect(filterByText("新歌上线", cfg)).toEqual({ blocked: false });
+		expect(filterByText("日常", { whitelistEnable: true })).toEqual({ blocked: false });
+	});
+
+	it("四个类型开关全开也不拦:它不知道、也不看类型", () => {
+		expect(
+			filterByText("一条普通的作品", {
+				enable: true,
+				forward: true,
+				article: true,
+				draw: true,
+				av: true,
+			}),
+		).toEqual({ blocked: false });
+	});
+});
+
+/**
+ * 「屏蔽后提醒」的那句话:B 站那六种原因的原话钉在这儿(动态引擎发的就是它),拓展作品只会命中
+ * 关键词与白名单两种,措辞按平台的叫法(`postNoun`,决策 70)。
+ */
+describe("blockedNotice — 屏蔽后提醒的措辞", () => {
+	it("B 站的六句原话(叫法缺省就是「动态」)", () => {
+		const said = Object.values(DynamicFilterReason).map((reason) => blockedNotice("某UP", reason));
+		expect(said).toEqual([
+			"某UP发布了一条含有屏蔽关键字的动态",
+			"某UP转发了一条动态，已屏蔽",
+			"某UP投稿了一条专栏，已屏蔽",
+			"某UP发布了一条图文动态，已屏蔽",
+			"某UP投稿了一条视频，已屏蔽",
+			"某UP发布了一条不在白名单范围内的动态，已屏蔽",
+		]);
+	});
+
+	it("拓展的叫法:关键词与白名单两句换成它的 postNoun", () => {
+		expect(blockedNotice("抖音号", DynamicFilterReason.BlacklistKeyword, "作品")).toBe(
+			"抖音号发布了一条含有屏蔽关键字的作品",
+		);
+		expect(blockedNotice("抖音号", DynamicFilterReason.WhitelistUnmatched, "作品")).toBe(
+			"抖音号发布了一条不在白名单范围内的作品，已屏蔽",
+		);
 	});
 });

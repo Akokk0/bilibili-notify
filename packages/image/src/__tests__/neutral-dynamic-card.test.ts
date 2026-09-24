@@ -159,4 +159,53 @@ describe("generateNeutralDynamicCard — 视频那一行", () => {
 		expect(html).toContain('aria-label="弹幕"');
 		expect(html).toMatch(/aria-label="弹幕"[\s\S]*?34/);
 	});
+
+	/**
+	 * 播放数同样选填(决策 55 的作品表里它是选填的):没报就不画播放图标与数字 —— 从前只要有视频就
+	 * 无条件画,画出一个空着的播放图标。弹幕数有就照画。
+	 */
+	it("没有播放数:不画播放图标,弹幕数照画", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(
+			node({ type: "DYNAMIC_TYPE_AV", video: { ...video, views: undefined, danmaku: "34" } }),
+		);
+		const html = captured[0] ?? "";
+		expect(html).not.toContain('aria-label="播放量"');
+		expect(html).toMatch(/aria-label="弹幕"[\s\S]*?34/);
+	});
+
+	it("播放数与弹幕数都没有:两个图标都不画(整行收起),视频的标题照画", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(
+			node({ type: "DYNAMIC_TYPE_AV", video: { ...video, views: undefined } }),
+		);
+		const html = captured[0] ?? "";
+		expect(html).not.toContain('aria-label="播放量"');
+		expect(html).not.toContain('aria-label="弹幕"');
+		expect(html).toContain("一期视频");
+	});
+});
+
+describe("generateNeutralDynamicCard — 互动数", () => {
+	/**
+	 * 拓展的作品不一定三样都报(决策 55:赞 / 评论 / 转发各自选填)。没报的那一项不画 —— 画一个空着的
+	 * 图标像是数字丢了,写 0 又是瞎说。B 站三样恒有,照旧。
+	 */
+	it("只报了点赞:只画点赞那一项,评论与转发连图标都不画", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(
+			node({ stats: { forward: "", comment: "", like: "1.2万" } }),
+		);
+		const html = captured[0] ?? "";
+		expect(html).toMatch(/aria-label="点赞"[\s\S]*?1\.2万/);
+		expect(html).not.toContain('aria-label="评论"');
+		expect(html).not.toContain('aria-label="转发"');
+	});
+
+	it("三样都有:三项都画(B 站那条照旧)", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(node());
+		const html = captured[0] ?? "";
+		for (const label of ["转发", "评论", "点赞"]) expect(html).toContain(`aria-label="${label}"`);
+	});
 });
