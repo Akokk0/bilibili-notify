@@ -82,7 +82,7 @@ export interface FansPollerHandle extends Disposable {
  *   5. 单次轮询全部完成后 emit `fans-refreshed`(entries);
  *
  * 失败处理:per-uid try/catch,单 UP 失败不阻断剩余轮询。串行 + 200ms 间隔
- * 减小被 B 站风控的概率。cron 用 globals.app.dynamicCron(默认每 2min 一轮),
+ * 减小被 B 站风控的概率。cron 用 globals.app.fansCron(默认每 10min 一轮),
  * 用户改 cron 表达式会通过 config-changed 通道触发本 poller reconcile。
  *
  * auth-lost / auth-restored:auth 丢失期间任何调用都会失败,所以 poller 不
@@ -116,11 +116,12 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	 * 粉丝轮询只问 B 站订阅(ADR-0019 决策 12:粉丝曲线第一版不含拓展订阅)。拓展订阅没有
 	 * uid,拿它去问 B 站等于拿别的平台的 id 查一个不相干的人。
 	 */
+	function biliSubs(): BiliSubscription[] {
+		return subscriptionStore.list().filter(isBiliSubscription);
+	}
+
 	function enabledBiliSubs(): BiliSubscription[] {
-		return subscriptionStore
-			.list()
-			.filter(isBiliSubscription)
-			.filter((s) => s.enabled);
+		return biliSubs().filter((s) => s.enabled);
 	}
 
 	function tick(): void {
@@ -162,16 +163,22 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			logger.debug("[fans-poller] 风控退避中,跳过本轮 tick");
 			return;
 		}
-		const subs = enabledBiliSubs();
-		// Sweep:lastByUid 只保留当前 enabled subs;被删除 / 禁用的 uid 同步 dropUid
-		// 清掉时序文件。这样下游 emit 出去的快照不会再含失效 uid,前端覆盖式 setQueryData
-		// 自然把已删订阅的卡片从 dashboard 上撤掉。
-		const currentUids = new Set(subs.map((s) => s.uid));
+		const allBili = biliSubs();
+		const subs = allBili.filter((s) => s.enabled);
+		// Sweep:lastByUid 只保留当前 enabled subs,emit 出去的快照就不含停用 / 已删的 uid,
+		// 前端覆盖式 setQueryData 自然把他们的卡片从首页粉丝面板上撤掉。
+		//
+		// 撤出快照 ≠ 删时序文件(ADR-0020 决策 10):**停用**的 UP 统计页照样列着,文件留着,
+		// 再启用接着往里记;只有这个 uid 一条 B 站订阅都不剩了才删。删订阅平时由下面的
+		// subscription-changed 监听当场删,这里兜的是它删完之后又被写回来的那种:tick 正
+		// 在跑时删了订阅,这一轮随后照样 append(文件重新长出来)、重新塞进 lastByUid。
+		// 只扫 lastByUid,不扫盘 —— BN 停机期间删掉的订阅留下的文件这里管不到。
+		const enabledUids = new Set(subs.map((s) => s.uid));
+		const subscribedUids = new Set(allBili.map((s) => s.uid));
 		for (const oldUid of Array.from(lastByUid.keys())) {
-			if (!currentUids.has(oldUid)) {
-				lastByUid.delete(oldUid);
-				void fansStore.dropUid(oldUid);
-			}
+			if (enabledUids.has(oldUid)) continue;
+			lastByUid.delete(oldUid);
+			if (!subscribedUids.has(oldUid)) void fansStore.dropUid(oldUid);
 		}
 		if (subs.length === 0) {
 			// 全部被删除时仍要 emit 一次空快照让前端清屏。
@@ -285,14 +292,15 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		}
 
 		// 每轮固定 emit 一次「全部 enabled subs 的当前快照」,前端做覆盖式
-		// setQueryData,从而正确反映"本轮失败保留旧值"+"删除订阅即时撤掉"两种语义。
+		// setQueryData,从而正确反映"本轮失败保留旧值"+"停用 / 删除的撤掉"两种语义
+		// (删除由 subscription-changed 监听当场撤,停用等这一轮的 sweep)。
 		if (disposed) return;
 		const snapshot = Array.from(lastByUid.values());
 		bus.emit("fans-refreshed", snapshot);
 		logger.debug(`[fans-poller] tick done, snapshot=${snapshot.length}`);
 	}
 
-	// dynamicCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
+	// fansCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
 	// 表达式同步抛错,未捕获会让整个独立端进程在启动/reconcile 期崩溃(见
 	// dynamic-engine.ts startJob 同类修复的注释与 `.bugs/sidecar.stderr.log` 复现)。
 	function startJob(): void {

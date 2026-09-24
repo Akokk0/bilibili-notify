@@ -205,9 +205,10 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 哪些天服务器确实在跑 —— fans poller 每 2min 一次,有采样就说明我们当时看着。
 		//
 		// 取**所有 UP 的并集**,而不是每位 UP 各看各的:服务器在不在跑是服务器的
-		// 属性,与具体订阅了谁无关。按 UP 各判会踩一个很难发现的坑 —— 禁用订阅会
-		// `dropUid` 物理删掉那位 UP 的 fans jsonl,于是订阅了三个月的 UP 只要被禁用
-		// 再启用,热力图整片变「无记录」,尽管它的动态和场次原封不动在盘上。
+		// 属性,与具体订阅了谁无关。按 UP 各判会踩一个很难发现的坑 —— ADR-0020 决策 10
+		// 之前禁用订阅会 `dropUid` 物理删掉那位 UP 的 fans jsonl(现在不删了,但老数据里还留着
+		// 那种断档),于是订阅了三个月的 UP 只要被禁用再启用过,热力图就整片变「无记录」,尽管它的
+		// 动态和场次原封不动在盘上。
 		//
 		// 残留的空档:所有 UP 的采样都缺失时(只订阅了一位且刚被禁用过)仍会判成
 		// 「没在跑」。那种情况下盘上确实不存在任何佐证,宁可显示「无记录」也不瞎猜。
@@ -254,8 +255,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				// 一位 UP,他昨天那格本会被画成灰色的 0,读起来是「他昨天什么都没发」,
 				// 而那天他还不在订阅列表里。
 				//
-				// **只遮 0** 是要紧的:禁用订阅会 `dropUid` 物理删掉 fans jsonl(退订
-				// 才连带删 stats),订阅了三个月的 UP 被禁用再启用,首采日就成了今天,
+				// **只遮 0** 是要紧的:ADR-0020 决策 10 之前禁用订阅会 `dropUid` 物理删掉
+				// fans jsonl(老数据里还留着那种断档),订阅了三个月的 UP 被禁用再启用过,首采日就成了那天,
 				// 而他更早的动态与场次原封不动在盘上 —— 那些格子有铁证,一刀切会把
 				// 已经知道的事实重新抹成「不知道」。
 				if (firstSampleDay && day.d < firstSampleDay && c === 0) return null;
@@ -264,7 +265,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
 			//   · `activity` 有非 null 位 —— fans 采样证明服务当时在跑;
 			//   · 盘上有动态 / 场次记录 —— 能记下来本身就说明我们在记。
-			// 只认第一种是不够的:fans jsonl 会被 `dropUid` 物理删掉(禁用订阅),
+			// 只认第一种是不够的:fans jsonl 曾被 `dropUid` 物理删掉(ADR-0020 决策 10 之前的禁用订阅),
 			// 而动态与场次记录原封不动留着 —— 那时把计数判成「无记录」就是睁眼说瞎话。
 			const hasCoverage =
 				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
