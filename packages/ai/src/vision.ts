@@ -44,7 +44,7 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 /** 交给副模型的指令。不开放给用户配 —— AI 配置面已经有三段提示词了。 */
 function buildPrompt(contextText?: string): string {
 	const base =
-		"请客观描述这张图片的内容,用一到两句话说清楚:画面上有什么、如果有文字请把文字念出来。只描述你看到的,不要评价,不要联想。";
+		"请客观描述这张图片的内容:画面上有什么;图里有文字就照原文念出来。说清楚即可,不必铺陈。只描述你看到的,不要评价、不要联想 —— 点评由另一个模型来写,它只能从你的描述里知道这张图。";
 	if (!contextText?.trim()) return base;
 	return `${base}\n\n这张图来自下面这条内容,可作为理解画面的背景(但仍然只描述图片本身):\n${contextText.trim()}`;
 }
