@@ -110,10 +110,12 @@ describe("POST /roast — 内部代理失败时的错误信封", () => {
 		const { deps } = makeDeps({ failOverview: true });
 		const app = createStatsRoute(deps);
 
-		const res = await app.request("/roast/1?days=7", { method: "POST" });
+		const res = await app.request("/roast/s1?days=7", { method: "POST" });
 		const body = (await res.json()) as any;
 
 		expect(body.ok).toBe(false);
 		expect(typeof body.err).toBe("string");
+		// 越过了「这条订阅在不在」那道闸,落在取数失败上 —— 不是被当成查无此人挡回去的。
+		expect(body.err).toContain("统计数据读取失败");
 	});
 });

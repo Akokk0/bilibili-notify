@@ -12,15 +12,17 @@ import { RoastShell, roastError } from "./RoastShell";
  *
  * 与榜单版是**两张不同的卡**,不是同一张的变体:榜单讲「谁比谁强」,离开对照组
  * 就不成立;这张只就这位 UP 自己的数据说话。所以后端也是两个端点、两套提示词。
+ *
+ * 两支订阅都行,按订阅 id 请求(ADR-0020 决策 18)。
  */
 export function SoloRoastCard({
-	uid,
+	subscriptionId,
 	name,
 	color,
 	avatar,
 	days,
 }: {
-	uid: string;
+	subscriptionId: string;
 	name: string;
 	color: string;
 	avatar?: string;
@@ -28,14 +30,15 @@ export function SoloRoastCard({
 }) {
 	const roast = useMutation<StatsSoloRoastResponse>({
 		// tz 同 RoastCard:漏了服务端就按 UTC 重算 overview,模型看到的不是屏幕上那份数。
+		// 订阅 id 编码进路径:它是一整段路径参数,原样拼的话里面的字符会改写路径。
 		mutationFn: () =>
 			api.post<StatsSoloRoastResponse>(
-				`/api/stats/roast/${uid}?days=${days}&tz=${localTzOffset()}`,
+				`/api/stats/roast/${encodeURIComponent(subscriptionId)}?days=${days}&tz=${localTzOffset()}`,
 				{},
 			),
 	});
 
-	// 换时间范围要清掉上一份结论:组件的 key 只含 uid,切 days 不会重挂载,
+	// 换时间范围要清掉上一份结论:组件的 key 只含订阅 id,切 days 不会重挂载,
 	// 30 日的评分会原样留在写着「近7日」的卡里。
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 就是要在 days 变化时清掉
 	useEffect(() => {

@@ -7,7 +7,8 @@
  * - 名字走订阅卡那条链(资料里的名字 → 别名 → 外部 id);单人页头 B 站写「UID xxx」、拓展写「平台名 外部 id」。
  * - 汇总(总粉丝量、在盯几位)两支一起算。
  * - 「峰值观看 / 场均峰值」改成「单场最高观看 / 场均观看」,旁边一句「按每场累计看过的人数算」。
- * - 单人锐评与它的定时还只认 B 站(S6 才接拓展):聚焦到拓展行时那两张卡不出现,不摆一套点了也不灵的控件。
+ * - 锐评两支都管(ADR-0020 决策 12 / 14 / 18):聚焦到拓展行照样出单人锐评与它的定时,请求按(编码过的)订阅 id
+ *   走;榜单的结果按订阅 id 回指,名字 / 颜色照统计行那一份。
  */
 
 import type { ExtensionDTO, UpStatsRow } from "@bilibili-notify/contract";
@@ -181,7 +182,7 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(screen.getByText("6000")).toBeTruthy();
 	});
 
-	it("点拓展那一行 → 聚焦的是它(外部 id 与某个 uid 相同也不串):页头写平台名 + 外部 id;单人锐评两张卡不出现", async () => {
+	it("点拓展那一行 → 聚焦的是它(外部 id 与某个 uid 相同也不串):页头写平台名 + 外部 id;单人锐评两张卡照样出", async () => {
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
 		await userEvent.click(tableRow("抖音乙"));
@@ -193,9 +194,10 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(screen.queryByRole("table")).toBeNull();
 		// 聚焦的颜色也是它自己的。
 		expect(within(title).getByText("12345").style.color).toBe(cssColor(subscriptionColor(EXT_SUB)));
-		// S6 之前单人锐评只认 B 站:不出一套点了也不灵的控件。
-		expect(screen.queryByText("定时锐评")).toBeNull();
-		expect(screen.queryByText(/AI 锐评 · /)).toBeNull();
+		// 单人锐评与它的定时两支都有(ADR-0020 决策 14)。
+		expect(screen.getByText("定时锐评")).toBeTruthy();
+		expect(screen.getByText("AI 锐评 · 抖音乙")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "启用 抖音乙 的定时锐评" })).toBeTruthy();
 	});
 
 	it("点 B 站那一行 → 页头照旧写 UID,单人锐评两张卡照旧在", async () => {
@@ -259,5 +261,68 @@ describe("统计页 · 观看那两格改名(ADR-0020 决策 11)", () => {
 		expect(screen.getByText("2000")).toBeTruthy();
 		expect(screen.getByText("1500")).toBeTruthy();
 		expect(screen.queryByText(/峰值/)).toBeNull();
+	});
+});
+
+describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => {
+	/** 订阅 id 里带着要转义的字符 —— 验面板把它编码进路径,不是原样拼。 */
+	const ODD_ID = "s/dy 甲";
+	const ODD_ROW = { ...EXT_ROW, subscriptionId: ODD_ID };
+	const ODD_SUB: ExtensionSubscription = {
+		...EXT_SUB,
+		id: ODD_ID,
+		roastSchedule: { ...EXT_SUB.roastSchedule, targets: ["t1"] },
+	};
+
+	it("拓展行的单人锐评:按编码过的订阅 id 请求", async () => {
+		mockApi([BILI_ROW, ODD_ROW], [BILI_SUB, ODD_SUB]);
+		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, err: "占位" });
+		renderStats();
+		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+		await userEvent.click(tableRow("抖音乙"));
+		await userEvent.click(await screen.findByRole("button", { name: "生成 AI 锐评" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		const path = String((api.post as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]);
+		expect(path.startsWith(`/api/stats/roast/${encodeURIComponent(ODD_ID)}?`)).toBe(true);
+	});
+
+	it("拓展行的定时锐评「试一次」:按编码过的订阅 id 跑那一条,不是榜单", async () => {
+		mockApi([BILI_ROW, ODD_ROW], [BILI_SUB, ODD_SUB]);
+		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, err: "占位" });
+		renderStats();
+		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+		await userEvent.click(tableRow("抖音乙"));
+		await userEvent.click(await screen.findByRole("button", { name: "试一次" }));
+		await userEvent.click(await screen.findByRole("button", { name: "真的发出去" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		expect((api.post as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+			`/api/stats/roast/run-now/${encodeURIComponent(ODD_ID)}`,
+		);
+	});
+
+	it("榜单结果按订阅 id 回指:两支的人都认得出,名字照统计行那一份", async () => {
+		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+			ok: true,
+			result: {
+				pigeon: { subscriptionId: "s-dy", reason: "鸽了一个月" },
+				diligent: { subscriptionId: "s-bili", reason: "天天更新" },
+				roast: [{ subscriptionId: "s-dy", comment: "咕咕咕" }],
+				scores: [
+					{ subscriptionId: "s-bili", score: 90 },
+					{ subscriptionId: "s-dy", score: 10 },
+				],
+				pushText: "",
+			},
+		});
+		renderStats();
+		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: "生成 AI 锐评" }));
+		const reason = await screen.findByText("鸽了一个月");
+		const pigeonCard = reason.parentElement as HTMLElement;
+		expect(within(pigeonCard).getByText("抖音乙")).toBeTruthy();
+		const diligentCard = screen.getByText("天天更新").parentElement as HTMLElement;
+		expect(within(diligentCard).getByText("B 站甲")).toBeTruthy();
+		expect(screen.getByText("咕咕咕").previousElementSibling?.textContent).toBe("抖音乙");
+		expect(screen.queryByText(/UID s-/)).toBeNull();
 	});
 });

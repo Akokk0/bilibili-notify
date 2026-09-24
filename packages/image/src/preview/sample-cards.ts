@@ -390,8 +390,8 @@ function guardSample(): SampleProps<"guard"> {
 // ── 锐评卡 ────────────────────────────────────────────────────────────────────
 
 /**
- * 真机上每位 UP 的强调色由 `colorFromUid` 按 uid 算(与面板上同一位 UP 同色);示例里没有
- * uid,直接写死三个分得开的色。
+ * 真机上每位 UP 的强调色由 `upColor` 按人算(B 站按 uid、拓展按「拓展 id:外部 id」,与面板上同一位 UP
+ * 同色);示例里没有真人,直接写死三个分得开的色。
  */
 const SAMPLE_UPS = {
 	first: { name: "示例 UP 主·甲", color: "#fb7299", avatar: SVG_AVATAR_PINK },

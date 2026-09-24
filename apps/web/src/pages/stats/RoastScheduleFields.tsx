@@ -44,7 +44,7 @@ export function RoastScheduleCard({
 	subtitle,
 	toggleAriaLabel,
 	noun,
-	uid,
+	subscriptionId,
 	draft,
 	baseline,
 	onChange,
@@ -56,8 +56,8 @@ export function RoastScheduleCard({
 	toggleAriaLabel: string;
 	/** 措辞(「周报」/「锐评」),透传给 {@link RoastScheduleFields}。 */
 	noun: string;
-	/** per-UP 卡传 uid,「试一次」就走单人接口;全局卡不传。 */
-	uid?: string;
+	/** per-UP 卡传订阅 id,「试一次」就走单人接口;全局卡不传。 */
+	subscriptionId?: string;
 	draft: RoastScheduleValue;
 	baseline: RoastScheduleValue | null;
 	onChange: (next: RoastScheduleValue) => void;
@@ -83,7 +83,7 @@ export function RoastScheduleCard({
 			{/* 「试一次」读的是**已保存**的那份配置,所以要把「面板上还有没存的改动」
 			    告诉它。脏判据用的是灵动岛同一对值(draft / baseline),不另立一套。 */}
 			<RoastRunNowBox
-				uid={uid}
+				subscriptionId={subscriptionId}
 				approval={draft.approval && canApprove}
 				targetCount={draft.targets.length}
 				dirty={JSON.stringify(draft) !== JSON.stringify(baseline)}

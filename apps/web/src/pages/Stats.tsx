@@ -511,16 +511,6 @@ export default function Stats() {
 	}, [statsQuery.data, subsQuery.data, extensions]);
 	const metaOf = (r: UpStatsRow): UpMeta =>
 		meta.get(r.subscriptionId) ?? upMetaOf(r, undefined, extensions);
-	// S6: 榜单锐评还只评 B 站行(服务端 `isBiliStatsRow`),结果按 uid 回指 —— 这张表只给 RoastCard 查名字 / 颜色 /
-	// 头像。S6 把锐评结果换成订阅 id 之后跟着换成 `meta`。
-	const roastMetaByUid = useMemo(() => {
-		const m = new Map<string, UpMeta>();
-		for (const r of statsQuery.data?.rows ?? []) {
-			const face = meta.get(r.subscriptionId);
-			if (r.uid !== undefined && !isExtensionRow(r) && face) m.set(r.uid, face);
-		}
-		return m;
-	}, [statsQuery.data, meta]);
 	const axis = useMemo(() => dayAxis(days), [days]);
 	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
 	const totals = useMemo(() => (res ? computeTotals(res) : null), [res]);
@@ -956,29 +946,27 @@ export default function Stats() {
 			    页头选了某位 UP 就整组换成他自己的那一套(定时锐评 + 单人锐评),没选就是
 			    全局那套(榜单周报 + 榜单锐评)—— 看的是谁,配的就是谁。窄屏回落成单栏。 */}
 			{focused ? (
-				// S6: 单人锐评与它的定时还只认 B 站(路由按 uid、排程只长在 B 站订阅上);拓展订阅那一套
-				// (ADR-0020 决策 14)接上之前,聚焦到拓展行时不出这两张卡 —— 不摆一套点了也不灵的控件。
-				focused.uid !== undefined && !isExtensionRow(focused) ? (
-					<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-						<SoloRoastScheduleBox
-							key={`sched-${focused.subscriptionId}`}
-							uid={focused.uid}
-							name={focusedMeta?.name ?? `UID ${focused.uid}`}
-						/>
-						<SoloRoastCard
-							key={focused.subscriptionId}
-							uid={focused.uid}
-							name={focusedMeta?.name ?? `UID ${focused.uid}`}
-							color={focusColor}
-							avatar={focusedMeta?.avatar}
-							days={days}
-						/>
-					</div>
-				) : null
+				// 单人锐评与它的定时两支订阅都有,按订阅 id 认(ADR-0020 决策 14 / 18)。
+				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+					<SoloRoastScheduleBox
+						key={`sched-${focused.subscriptionId}`}
+						subscriptionId={focused.subscriptionId}
+						name={metaOf(focused).name}
+					/>
+					<SoloRoastCard
+						key={focused.subscriptionId}
+						subscriptionId={focused.subscriptionId}
+						name={metaOf(focused).name}
+						color={focusColor}
+						avatar={focusedMeta?.avatar}
+						days={days}
+					/>
+				</div>
 			) : (
 				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
 					<RoastScheduleBox />
-					<RoastCard days={days} meta={roastMetaByUid} />
+					{/* 榜单结果按订阅 id 回指(决策 18),名字 / 颜色 / 头像查的就是统计行那一份。 */}
+					<RoastCard days={days} meta={meta} />
 				</div>
 			)}
 		</div>

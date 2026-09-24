@@ -4,8 +4,8 @@
  * 这条路由的核心契约是**降级**:图片推不出去时必须退成文字送达,而不是整条失败。
  * 一份已经生成好的周报,不该因为服务器上没装 Chrome 就发不出去。
  *
- * 另一条是**不信前端**:名称 / 头像 / 配色一律服务端按 uid 自己 join,请求体里
- * 只有 uid 说了算。
+ * 另一条是**不信前端**:名称 / 头像 / 配色一律服务端按订阅 id 自己 join,请求体里
+ * 只有订阅 id 说了算(ADR-0020 决策 18:两支订阅混着,uid 不再是回指的键)。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
@@ -14,18 +14,18 @@ import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
 const BOARD = {
-	pigeon: { uid: "200", reason: "一个月就发一条" },
-	diligent: { uid: "100", reason: "更新最勤" },
-	roast: [{ uid: "200", comment: "鸽子精本精" }],
+	pigeon: { subscriptionId: "s200", reason: "一个月就发一条" },
+	diligent: { subscriptionId: "s100", reason: "更新最勤" },
+	roast: [{ subscriptionId: "s200", comment: "鸽子精本精" }],
 	scores: [
-		{ uid: "100", score: 96 },
-		{ uid: "200", score: 41 },
+		{ subscriptionId: "s100", score: 96 },
+		{ subscriptionId: "s200", score: 41 },
 	],
 	pushText: "本周鸽王诞生 🕊️",
 };
 
 const SOLO = {
-	uid: "200",
+	subscriptionId: "s200",
 	verdict: "一个月就发一条",
 	score: 32,
 	highlights: [{ label: "涨粉", comment: "掉了两万" }],
@@ -73,8 +73,8 @@ function makeDeps(opts: StubOpts = {}) {
 	const deps = {
 		store: {
 			getSubscriptions: () => [
-				{ id: "s100", uid: "100" },
-				{ id: "s200", uid: "200" },
+				{ kind: "bilibili", id: "s100", uid: "100" },
+				{ kind: "bilibili", id: "s200", uid: "200" },
 			],
 			getGlobals: () => ({
 				defaults: {
@@ -215,10 +215,10 @@ describe("POST /roast/push — 降级成文字", () => {
 
 		const text = (sendToTarget.mock.calls[0] as any)[1].text as string;
 		expect(text.length).toBeGreaterThan(0);
-		// 兜底文本必须是**名字**,不是 uid —— 群友不认识 uid。
+		// 兜底文本必须是**名字**,不是 id —— 群友不认识 id。
 		expect(text).toContain("机智的党妹");
 		expect(text).toContain("老番茄");
-		expect(text).not.toContain("200");
+		expect(text).not.toContain("s200");
 	});
 
 	it("单人锐评的兜底文本也走名字", async () => {
@@ -236,7 +236,7 @@ describe("POST /roast/push — 降级成文字", () => {
 });
 
 describe("POST /roast/push — 名称与配色由服务端 join", () => {
-	it("卡片拿到的是订阅里的名字与头像,请求体里只有 uid 说了算", async () => {
+	it("卡片拿到的是订阅里的名字与头像,请求体里只有订阅 id 说了算", async () => {
 		const { deps, generateRoastBoardCard } = makeDeps();
 		await push(createStatsRoute(deps), boardBody());
 
@@ -245,18 +245,37 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 		expect(data.pigeon.avatar).toBe("https://i0.hdslb.com/dangmei.jpg");
 		expect(data.diligent.name).toBe("老番茄");
 		expect(data.days).toBe(30);
-		// 颜色来自 colorFromUid —— 与 dashboard 上同一位 UP 的颜色一致。
+		// 颜色来自 upColor —— 与 dashboard 上同一位 UP 的颜色一致。
 		expect(data.pigeon.color).toMatch(/^#[0-9a-f]{6}$/i);
 		expect(data.pigeon.color).not.toBe(data.diligent.color);
 	});
 
-	it("uid 不在订阅里 → 退回 `UID xxx`,而不是渲染出一张空名字的卡", async () => {
+	it("订阅 id 对不上任何订阅 → 写「未知 UP」,而不是渲染出一张空名字的卡", async () => {
 		const { deps, generateRoastBoardCard } = makeDeps();
 		await push(
 			createStatsRoute(deps),
-			boardBody({ result: { ...BOARD, pigeon: { uid: "999", reason: "查无此人" } } }),
+			boardBody({ result: { ...BOARD, pigeon: { subscriptionId: "gone", reason: "查无此人" } } }),
 		);
-		expect((generateRoastBoardCard.mock.calls[0] as any)[0].pigeon.name).toBe("UID 999");
+		expect((generateRoastBoardCard.mock.calls[0] as any)[0].pigeon.name).toBe("未知 UP");
+	});
+
+	it("请求体还按 uid 回指(旧页面)→ 400,不拿一个认不出的键去出卡", async () => {
+		const { deps, sendToTarget } = makeDeps();
+		const legacy = {
+			...BOARD,
+			pigeon: { uid: "200", reason: "鸽" },
+			diligent: { uid: "100", reason: "勤" },
+		};
+		const res = await push(createStatsRoute(deps), boardBody({ result: legacy }));
+		expect(res.status).toBe(400);
+		const solo = await push(createStatsRoute(deps), {
+			targetId: TARGET,
+			days: 7,
+			kind: "solo",
+			result: { uid: "200", verdict: "v", score: 1 },
+		});
+		expect(solo.status).toBe(400);
+		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 });
 

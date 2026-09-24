@@ -19,7 +19,7 @@ const deps = {
 } as unknown as RouteDeps;
 
 function appWith(outcome: RoastRunOutcome | null) {
-	const runRoastNow = vi.fn(async (_uid?: string) => outcome as RoastRunOutcome);
+	const runRoastNow = vi.fn(async (_subscriptionId?: string) => outcome as RoastRunOutcome);
 	// null = 调度器还没建好(启动早期 / 引擎没起来)。
 	const app = createStatsRoute(deps, outcome === null ? {} : { runRoastNow });
 	return { app, runBoardNow: runRoastNow, runRoastNow };
@@ -98,8 +98,8 @@ describe("POST /roast/run-now", () => {
 	});
 });
 
-describe("POST /roast/run-now/:uid — 单人那条", () => {
-	it("带上 uid → 跑的是这位 UP 的那条排程,不是榜单", async () => {
+describe("POST /roast/run-now/:subscriptionId — 单人那条", () => {
+	it("带上订阅 id → 跑的是这条订阅的那条排程,不是榜单(两支订阅都按订阅 id,ADR-0020 决策 18)", async () => {
 		const { app, runRoastNow } = appWith({
 			kind: "sent",
 			mode: "text",
@@ -107,14 +107,15 @@ describe("POST /roast/run-now/:uid — 单人那条", () => {
 			skipped: [],
 			failed: [],
 		});
-		const res = await app.request("/roast/run-now/12345", { method: "POST" });
+		const id = "e0000000-0000-4000-8000-000000000001";
+		const res = await app.request(`/roast/run-now/${encodeURIComponent(id)}`, { method: "POST" });
 		expect(res.status).toBe(200);
-		// 传错(或压根没传)uid 的话,主人点「试一次」会收到一份全站榜单 —— 完全
+		// 传错(或压根没传)订阅 id 的话,主人点「试一次」会收到一份全站榜单 —— 完全
 		// 不是他要试的东西,而且真发进群。
-		expect(runRoastNow).toHaveBeenCalledWith("12345");
+		expect(runRoastNow).toHaveBeenCalledWith(id);
 	});
 
-	it("不带 uid → 跑榜单那条", async () => {
+	it("不带订阅 id → 跑榜单那条", async () => {
 		const { app, runRoastNow } = appWith({
 			kind: "sent",
 			mode: "text",

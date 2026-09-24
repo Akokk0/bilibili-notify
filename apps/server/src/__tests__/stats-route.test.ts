@@ -446,8 +446,8 @@ describe("GET /api/stats/overview — 缓存", () => {
 	});
 });
 
-describe("POST /api/stats/roast/:uid — 单 UP 锐评", () => {
-	/** AI 没启用时的 deps —— 只用来验「路由认不认这个 uid」这一段前置检查。 */
+describe("POST /api/stats/roast/:subscriptionId — 单 UP 锐评", () => {
+	/** AI 没启用时的 deps —— 只用来验「路由认不认这条订阅」这一段前置检查。 */
 	const withAi = (enabled: boolean, f: Fixture): RouteDeps => {
 		const deps = makeDeps(f);
 		(deps.runtime as unknown as { engines: unknown }).engines = { api: {} };
@@ -460,15 +460,22 @@ describe("POST /api/stats/roast/:uid — 单 UP 锐评", () => {
 		return deps;
 	};
 
-	it("未订阅的 uid → 404,而不是拿别人的数据去评", async () => {
+	it("对不上任何订阅的 id → 404,而不是拿别人的数据去评", async () => {
 		const deps = withAi(true, { subs: [{ uid: "1" }] });
 		const res = await createStatsRoute(deps).request("/roast/999", { method: "POST" });
 		expect(res.status).toBe(404);
 	});
 
+	it("路径参数是订阅 id,不再认 uid(ADR-0020 决策 18):传一位 B 站 UP 的 uid → 404", async () => {
+		const deps = withAi(true, { subs: [{ uid: "1" }] });
+		const res = await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as { err?: string }).err).toContain("不在订阅列表里");
+	});
+
 	it("只订阅 1 位也能评 —— 单人锐评不需要对照组", async () => {
 		const deps = withAi(false, { subs: [{ uid: "1" }] });
-		const res = await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		const res = await createStatsRoute(deps).request(`/roast/${subId("1")}`, { method: "POST" });
 		// AI 没开是 400,但至少已经越过了「至少 2 位」那道只属于榜单的闸门。
 		expect(res.status).toBe(400);
 		expect(((await res.json()) as { err?: string }).err).toContain("智能女仆");

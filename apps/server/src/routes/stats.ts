@@ -139,14 +139,14 @@ async function fetchOverview(
 
 export interface StatsRouteOptions {
 	/**
-	 * 立刻跑一轮 —— 面板上的「试一次」按它。带 uid 跑那位 UP 的单人锐评,
-	 * 不带则跑全局那条榜单周报。
+	 * 立刻跑一轮 —— 面板上的「试一次」按它。带订阅 id 跑那条订阅的单人锐评(两支都行,ADR-0020
+	 * 决策 18),不带则跑全局那条榜单周报。
 	 *
 	 * 由 `index.ts` late-bind 进来(调度器建得比路由晚):没传就等于「还没就绪」,
 	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
 	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
 	 */
-	runRoastNow?: (uid?: string) => Promise<RoastRunOutcome>;
+	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
 }
 
 export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
@@ -462,13 +462,13 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	/**
 	 * `POST /api/stats/roast/push` —— 把**页面上已生成的那份**锐评推到一个目标。
 	 *
-	 * **必须注册在 `/roast/:uid` 之前。** Hono 按注册序匹配,反过来的话 `push` 会
-	 * 被当成 uid 吃掉,推送请求得到的是一句「该 UP 主不在订阅列表里」—— 类型、
+	 * **必须注册在 `/roast/:subscriptionId` 之前。** Hono 按注册序匹配,反过来的话 `push`
+	 * 会被当成订阅 id 吃掉,推送请求得到的是一句「该 UP 主不在订阅列表里」—— 类型、
 	 * 构建、lint 全绿,只有真发一次才看得出来。
 	 *
 	 * 结果由请求体带来而不是服务端重新生成:主人是看过卡片才决定推的,重新生成
-	 * 会推出一份谁都没审过的文本。请求体里**只有 uid 可信** —— 名称 / 头像 / 配色
-	 * 一律服务端 join(见 `upMeta`)。
+	 * 会推出一份谁都没审过的文本。请求体里**只有订阅 id 可信** —— 名称 / 头像 / 配色
+	 * 一律服务端 join(见 `makeUpMeta`)。
 	 *
 	 * 开着图片渲染就推卡片图,否则推文字;渲染路上任何一步出问题都**降级成文字**
 	 * 而不是整条失败 —— 一份已经生成好的周报,不该因为服务器上没装 Chrome 就发不出去。
@@ -510,8 +510,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	/**
 	 * `POST /api/stats/roast/run-now` —— 立刻跑一轮定时周报(面板上的「试一次」)。
 	 *
-	 * **必须注册在 `/roast/:uid` 之前**,理由同 `/roast/push`:Hono 按注册序匹配,
-	 * 反过来 `run-now` 会被当成一个 uid 吃掉。
+	 * **必须注册在 `/roast/:subscriptionId` 之前**,理由同 `/roast/push`:Hono 按注册序匹配,
+	 * 反过来 `run-now` 会被当成一个订阅 id 吃掉。
 	 *
 	 * 三件要紧事:
 	 * - 走的是**和 cron 完全同一个函数**。另写一条「测试专用」的轻量路径,验的就
@@ -523,14 +523,14 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 * 业务性失败(生成不出来、没配目标)一律 **200 + 结构化结局**,不用 4xx ——
 	 * 前端的 error 分支只拿得到一句 HTTP 错误,原因就丢了(锐评卡踩过这个坑)。
 	 */
-	async function runNow(c: Context, uid?: string): Promise<Response> {
+	async function runNow(c: Context, subscriptionId?: string): Promise<Response> {
 		if (!options.runRoastNow) {
 			return c.json<StatsRoastRunNowResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
 		}
 		try {
 			return c.json<StatsRoastRunNowResponse>({
 				ok: true,
-				outcome: await options.runRoastNow(uid),
+				outcome: await options.runRoastNow(subscriptionId),
 			});
 		} catch (err) {
 			// 这一轮里任何一步炸了都收在这儿:端点是给人点的,不能把异常漏出去。
@@ -541,18 +541,21 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	}
 
 	app.post("/roast/run-now", (c) => runNow(c));
-	/** 带 uid = 跑这位 UP 的单人锐评。漏掉它就会发出一份全站榜单,完全不是主人要试的东西。 */
-	app.post("/roast/run-now/:uid", (c) => runNow(c, c.req.param("uid")));
+	/**
+	 * 带订阅 id = 跑这条订阅的单人锐评。漏掉它就会发出一份全站榜单,完全不是主人要试的东西。
+	 * 订阅 id 由面板编码进路径,这里拿到的是解码后的。
+	 */
+	app.post("/roast/run-now/:subscriptionId", (c) => runNow(c, c.req.param("subscriptionId")));
 
 	/**
-	 * `POST /api/stats/roast/:uid` —— 单 UP 锐评。
+	 * `POST /api/stats/roast/:subscriptionId` —— 单 UP 锐评,两支订阅都行(ADR-0020 决策 18)。
 	 *
 	 * 与榜单版共用取数与 AI 配置,但**没有「至少 2 位」那道闸门** —— 那道闸门是
 	 * 榜单特有的(评鸽王需要对照组),单人只就他自己的数据说话。
 	 */
-	app.post("/roast/:uid", async (c) => {
+	app.post("/roast/:subscriptionId", async (c) => {
 		const gen = await generateSoloRoast(deps, {
-			uid: c.req.param("uid"),
+			subscriptionId: c.req.param("subscriptionId"),
 			days: clampDays(c.req.query("days")),
 			tz: parseTz(c.req.query("tz")),
 			fetchOverview: (d, t) => fetchOverview(app, d, t),
@@ -571,16 +574,17 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 
 // ── 锐评推送 ─────────────────────────────────────────────────────────────────
 
+// UP 一律按订阅 id 回指(ADR-0020 决策 18)。请求体里只有它可信 —— 名称 / 头像 / 配色服务端自己 join。
 const BoardResultSchema = z.object({
-	pigeon: z.object({ uid: z.string(), reason: z.string() }),
-	diligent: z.object({ uid: z.string(), reason: z.string() }),
-	roast: z.array(z.object({ uid: z.string(), comment: z.string() })).default([]),
-	scores: z.array(z.object({ uid: z.string(), score: z.number() })).default([]),
+	pigeon: z.object({ subscriptionId: z.string(), reason: z.string() }),
+	diligent: z.object({ subscriptionId: z.string(), reason: z.string() }),
+	roast: z.array(z.object({ subscriptionId: z.string(), comment: z.string() })).default([]),
+	scores: z.array(z.object({ subscriptionId: z.string(), score: z.number() })).default([]),
 	pushText: z.string().default(""),
 });
 
 const SoloResultSchema = z.object({
-	uid: z.string(),
+	subscriptionId: z.string(),
 	verdict: z.string(),
 	score: z.number(),
 	highlights: z.array(z.object({ label: z.string(), comment: z.string() })).default([]),

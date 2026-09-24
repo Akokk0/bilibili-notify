@@ -1,5 +1,6 @@
 /**
- * 定时锐评调度器 —— 两条线:全局一条榜单周报,每位 UP 各一条单人锐评。
+ * 定时锐评调度器 —— 两条线:全局一条榜单周报,每位 UP 各一条单人锐评(B 站与拓展订阅都有,按订阅 id
+ * 排、跑、发 —— ADR-0020 决策 14 / 18)。
  *
  * 与手动推送最大的差别是**没人在场**。手动推送失败了主人当场就看见了;定时这条路
  * 上,生成不出来、群把机器人踢了、审批没人理,全都发生在没人看着的时候。所以每条
@@ -11,12 +12,12 @@
  */
 
 import {
-	type BiliSubscription,
 	isBiliSubscription,
 	isTargetPaused,
 	type Logger,
 	type NotificationPayload,
 	type RoastSchedule,
+	type Subscription,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import {
@@ -33,6 +34,7 @@ import {
 	type RoastGenDeps,
 	roastGenErrorText,
 } from "../stats/roast-generate.js";
+import { roastSubjectName } from "../stats/roast-subject.js";
 import type { RoastDraftStore } from "./roast-draft-store.js";
 
 export interface CreateRoastSchedulerOptions {
@@ -88,8 +90,8 @@ export interface RoastScheduler {
 	 * `days` 只覆盖统计天数(私聊里 `/report 14` 用),其余照配置走;不传 = 全按配置。
 	 */
 	runBoardOnce(days?: number): Promise<RoastRunOutcome>;
-	/** 立刻跑一次某位 UP 的单人锐评。 */
-	runSoloOnce(uid: string): Promise<RoastRunOutcome>;
+	/** 立刻跑一次某条订阅的单人锐评(两支订阅都行)。 */
+	runSoloOnce(subscriptionId: string): Promise<RoastRunOutcome>;
 	/**
 	 * 把一份**已经获批**的草稿发出去。审批指令链路调它。
 	 *
@@ -97,7 +99,7 @@ export interface RoastScheduler {
 	 */
 	deliverApproved(draft: {
 		kind: "board" | "solo";
-		uid?: string;
+		subscriptionId?: string;
 		days: number;
 		targets: string[];
 		result: unknown;
@@ -111,7 +113,7 @@ function localTz(): number {
 
 export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastScheduler {
 	const { deps, drafts, logger, fetchOverview } = opts;
-	/** 榜单那条。key 恒为 BOARD_KEY,与 per-UP 的 subId 同居一张表便于统一 reconcile。 */
+	/** 榜单那条。key 恒为 BOARD_KEY,与 per-UP 的订阅 id 同居一张表便于统一 reconcile。 */
 	const BOARD_KEY = "@board";
 	const jobs = new Map<string, { cron: string; job: CronJob }>();
 	let stopped = false;
@@ -148,7 +150,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		kind: "board" | "solo",
 		cfg: RoastSchedule,
 		label: string,
-		uid?: string,
+		subscriptionId?: string,
 	): Promise<RoastRunOutcome> {
 		if (stopped) return { kind: "gen-failed", why: "调度器已停止" };
 
@@ -169,7 +171,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			kind === "board"
 				? await generateBoardRoast(deps, { days: cfg.days, tz: localTz(), fetchOverview })
 				: await generateSoloRoast(deps, {
-						uid: uid ?? "",
+						subscriptionId: subscriptionId ?? "",
 						days: cfg.days,
 						tz: localTz(),
 						fetchOverview,
@@ -188,7 +190,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (cfg.approval) {
 			const draft = await drafts.add({
 				kind,
-				uid,
+				subscriptionId,
 				days: cfg.days,
 				targets: cfg.targets,
 				result: gen.result,
@@ -271,12 +273,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	/** 审批通过后把这份草稿发出去。指令链路调它。 */
 	async function deliverApproved(draft: {
 		kind: "board" | "solo";
-		uid?: string;
+		subscriptionId?: string;
 		days: number;
 		targets: string[];
 		result: unknown;
 	}): Promise<void> {
-		const cfg = draft.kind === "board" ? boardConfig() : soloConfig(draft.uid ?? "");
+		const sub = draft.kind === "solo" ? findSub(draft.subscriptionId ?? "") : undefined;
+		const cfg = draft.kind === "board" ? boardConfig() : sub?.roastSchedule;
 		await deliverAndReport(
 			draft.kind,
 			draft.result as BoardLike | SoloLike,
@@ -286,7 +289,8 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				targets: draft.targets,
 				notifyOnError: cfg?.notifyOnError ?? true,
 			},
-			draft.kind === "board" ? "UP 主周报" : `${draft.uid} 的锐评`,
+			// 批下来之前订阅被删了:名字对不上,只好写「这份锐评」。
+			draft.kind === "board" ? "UP 主周报" : sub ? soloLabel(sub) : "这份锐评",
 		);
 	}
 
@@ -294,13 +298,20 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return deps.store.getGlobals().roastSchedule;
 	}
 
-	/** 单人锐评只有 B 站订阅有(ADR-0019 决策 12)。 */
-	function biliSubs(): BiliSubscription[] {
-		return deps.store.getSubscriptions().filter(isBiliSubscription);
+	/** 单人锐评两支订阅都有(ADR-0020 决策 14),按订阅 id 认。 */
+	function findSub(subscriptionId: string): Subscription | undefined {
+		return deps.store.getSubscriptions().find((s) => s.id === subscriptionId);
 	}
 
-	function soloConfig(uid: string): RoastSchedule | undefined {
-		return biliSubs().find((s) => s.uid === uid)?.roastSchedule;
+	/**
+	 * 日志与私聊里这条单人锐评叫什么。B 站照旧(主人起的别名 → `UID xxx`);拓展走名字链(资料 → 别名 →
+	 * 外部 id,`roast-subject.ts`)—— 拓展订阅没有 uid,写成「UID undefined」主人认不出是谁。
+	 */
+	function soloLabel(sub: Subscription): string {
+		const name = isBiliSubscription(sub)
+			? sub.name?.trim() || `UID ${sub.uid}`
+			: roastSubjectName(deps, sub);
+		return `${name} 的锐评`;
 	}
 
 	/**
@@ -335,14 +346,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (board?.enabled) {
 			out.set(BOARD_KEY, { cron: board.cron, run: runBoardOnce, label: "UP 主周报" });
 		}
-		for (const sub of biliSubs()) {
+		for (const sub of deps.store.getSubscriptions()) {
 			const s = sub.roastSchedule;
 			if (!s?.enabled) continue;
-			const name = sub.name?.trim() || `UID ${sub.uid}`;
 			out.set(sub.id, {
 				cron: s.cron,
-				run: () => runSoloOnce(sub.uid),
-				label: `${name} 的锐评`,
+				run: () => runSoloOnce(sub.id),
+				label: soloLabel(sub),
 			});
 		}
 		return out;
@@ -355,15 +365,14 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return await runOnce("board", days === undefined ? cfg : { ...cfg, days }, "UP 主周报");
 	}
 
-	async function runSoloOnce(uid: string): Promise<RoastRunOutcome> {
-		const cfg = soloConfig(uid);
-		if (!cfg) {
+	async function runSoloOnce(subscriptionId: string): Promise<RoastRunOutcome> {
+		const sub = findSub(subscriptionId);
+		if (!sub) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。
-			logger.debug(`[roast-sched] uid=${uid} 已不在订阅列表,跳过`);
+			logger.debug(`[roast-sched] 订阅 ${subscriptionId} 已不在订阅列表,跳过`);
 			return { kind: "gen-failed", why: "这位 UP 已经不在订阅列表里了" };
 		}
-		const sub = biliSubs().find((s) => s.uid === uid);
-		return await runOnce("solo", cfg, `${sub?.name?.trim() || `UID ${uid}`} 的锐评`, uid);
+		return await runOnce("solo", sub.roastSchedule, soloLabel(sub), sub.id);
 	}
 
 	function reconcile(): void {

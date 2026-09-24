@@ -67,8 +67,8 @@ const { createRoastDraftStore } = await import("../roast-draft-store.js");
 
 const BOARD_RESULT = {
 	pushText: "本周榜单",
-	pigeon: { uid: "1", reason: "鸽" },
-	diligent: { uid: "2", reason: "勤" },
+	pigeon: { subscriptionId: "s1", reason: "鸽" },
+	diligent: { subscriptionId: "s2", reason: "勤" },
 	roast: [],
 	scores: [],
 };
@@ -84,7 +84,7 @@ let dataDir: string;
 
 /** 真实临时目录 —— 草稿库本来就要落盘,假目录只会测出 ENOENT。 */
 function memDrafts() {
-	return createRoastDraftStore({ dataDir, logger });
+	return createRoastDraftStore({ dataDir, logger, subscriptionIdOfUid: () => undefined });
 }
 
 let globals: GlobalConfig;
@@ -94,7 +94,13 @@ let tellMasterPayload: ReturnType<typeof vi.fn>;
 let targetsTable: Array<{ id: string; enabled: boolean; connectionId: string }>;
 const ADAPTER = "a1";
 
-function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
+function makeScheduler(
+	over: {
+		subs?: Array<Record<string, unknown>>;
+		/** 订阅 id → 资料缓存(名字)。 */
+		profiles?: Record<string, { name: string }>;
+	} = {},
+) {
 	const drafts = memDrafts();
 	tellMaster = vi.fn(async () => {});
 	tellMasterPayload = vi.fn(async () => {});
@@ -102,7 +108,7 @@ function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 		runtime: {
 			engines: { api: {}, imageRenderer: null, push: {} },
 			serviceCtx: { logger, setTimeout: () => ({ dispose() {} }) },
-			subRuntimeStore: { get: () => undefined },
+			subRuntimeStore: { get: (id: string) => ({ cachedProfile: over.profiles?.[id] }) },
 		},
 		store: {
 			getGlobals: () => globals,
@@ -430,5 +436,96 @@ describe("调度器 — 一轮的结论", () => {
 		const { sched, drafts } = armed({ approval: true });
 		const out = await sched.runBoardOnce();
 		expect(out).toEqual({ kind: "pending-approval", draftId: drafts.list()[0]?.id });
+	});
+});
+
+/**
+ * 拓展订阅的单人定时锐评(ADR-0020 决策 14 / 18):排程两支都排,到点按**订阅 id** 跑、按订阅 id 发;
+ * 日志与私聊里那条叫什么走名字链(资料 → 别名 → 外部 id),不写成「UID undefined」。
+ */
+describe("调度器 — 拓展订阅的单人锐评", () => {
+	const EXT = {
+		kind: "extension",
+		id: "e1",
+		extensionId: "douyin",
+		externalId: "sec-1",
+		name: "别名甲",
+		overrides: {},
+		roastSchedule: {
+			enabled: true,
+			cron: "0 9 * * 4",
+			days: 14,
+			targets: ["t1"],
+			approval: false,
+			notifyOnError: true,
+		},
+	};
+
+	it("开了就排一条 job;到点按订阅 id 生成、按这条订阅自己的配置发", async () => {
+		const { sched } = makeScheduler({ subs: [EXT] });
+		sched.start();
+		expect(cronMock.instances.map((i) => i.cronTime)).toEqual(["0 9 * * 4"]);
+		cronMock.instances[0]?.onTick();
+		await vi.waitFor(() => expect(deliverRoast).toHaveBeenCalledTimes(1));
+		expect(generateSoloRoast.mock.calls[0]?.[1]).toMatchObject({ subscriptionId: "e1", days: 14 });
+		expect(deliverRoast.mock.calls[0]?.[1]).toMatchObject({
+			kind: "solo",
+			days: 14,
+			targetIds: ["t1"],
+		});
+	});
+
+	it("日志与私聊里写它的名字:资料里的名字优先,没有退主人起的别名", async () => {
+		generateSoloRoast.mockResolvedValue({ ok: false, kind: "no-data" });
+		const withProfile = makeScheduler({ subs: [EXT], profiles: { e1: { name: "抖音乙" } } });
+		await withProfile.sched.runSoloOnce("e1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("抖音乙 的锐评");
+
+		const aliasOnly = makeScheduler({ subs: [EXT] });
+		await aliasOnly.sched.runSoloOnce("e1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("别名甲 的锐评");
+		expect(String(tellMaster.mock.calls[0]?.[0])).not.toContain("UID");
+	});
+
+	it("审批开着 → 草稿记的是订阅 id;批下来之后按这条订阅的出错通知开关发,失败明细写它的名字", async () => {
+		const sub = { ...EXT, roastSchedule: { ...EXT.roastSchedule, approval: true } };
+		const { sched, drafts } = makeScheduler({ subs: [sub] });
+		const out = await sched.runSoloOnce("e1");
+		expect(out.kind).toBe("pending-approval");
+		const draft = drafts.list()[0];
+		expect(draft).toMatchObject({ kind: "solo", subscriptionId: "e1", targets: ["t1"] });
+		if (!draft) throw new Error("没落草稿");
+
+		deliverRoast.mockResolvedValue({
+			mode: "text",
+			sent: [],
+			skipped: [],
+			failed: [{ targetId: "t1", err: "机器人不在群里" }],
+			text: "x",
+		});
+		await sched.deliverApproved(draft);
+		expect(String(tellMaster.mock.calls.at(-1)?.[0])).toContain("别名甲 的锐评");
+	});
+
+	it("订阅 id 对不上(期间删了)→ gen-failed,不拿别人的配置跑", async () => {
+		const { sched } = makeScheduler({ subs: [EXT] });
+		const out = await sched.runSoloOnce("gone");
+		expect(out.kind).toBe("gen-failed");
+		expect(generateSoloRoast).not.toHaveBeenCalled();
+	});
+
+	it("同一个 uid 订了两条 B 站订阅:各跑各的那条排程(按订阅 id,不按 uid 找第一条)", async () => {
+		const twin = (id: string, cron: string, days: number) => ({
+			kind: "bilibili",
+			id,
+			uid: "42",
+			overrides: {},
+			roastSchedule: { enabled: true, cron, days, targets: ["t1"], approval: false },
+		});
+		const { sched } = makeScheduler({
+			subs: [twin("b1", "0 9 * * 1", 7), twin("b2", "0 9 * * 2", 30)],
+		});
+		await sched.runSoloOnce("b2");
+		expect(generateSoloRoast.mock.calls[0]?.[1]).toMatchObject({ subscriptionId: "b2", days: 30 });
 	});
 });

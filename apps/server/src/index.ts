@@ -598,7 +598,14 @@ export async function startStandaloneServer(
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
 		// (statsRoute 要等 createApp,engines 上面刚建好)。
-		const roastDrafts = createRoastDraftStore({ dataDir: bootstrap.dataDir, logger: log });
+		const roastDrafts = createRoastDraftStore({
+			dataDir: bootstrap.dataDir,
+			logger: log,
+			// 升级之前写下的待审草稿按 uid 记,读盘时按 uid 找回那位 B 站订阅(ADR-0020 决策 18)。
+			subscriptionIdOfUid: (uid) =>
+				runtime.configStore.getSubscriptions().find((s) => isBiliSubscription(s) && s.uid === uid)
+					?.id,
+		});
 		await roastDrafts.load();
 
 		let statsRoute: Hono | null = null;
@@ -1015,7 +1022,8 @@ export async function startStandaloneServer(
 				statsRoute = route;
 			},
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
-			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
+			runRoastNow: (subscriptionId) =>
+				subscriptionId ? roastScheduler.runSoloOnce(subscriptionId) : roastScheduler.runBoardOnce(),
 			devtools: devtools?.route,
 			update: {
 				service: devtools?.updateService ?? updateService,

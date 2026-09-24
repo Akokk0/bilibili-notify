@@ -165,10 +165,10 @@ export interface CreateAppOptions {
 	 */
 	onStatsRoute?: (route: Hono) => void;
 	/**
-	 * 立刻跑一轮 —— 面板上的「试一次」。带 uid 跑单人,不带跑榜单。
+	 * 立刻跑一轮 —— 面板上的「试一次」。带订阅 id 跑那条订阅的单人锐评(两支都行),不带跑榜单。
 	 * 由 `index.ts` 交给调度器;不传就是「还没就绪」,端点回 503。
 	 */
-	runRoastNow?: (uid?: string) => Promise<RoastRunOutcome>;
+	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
 	/**
 	 * Session codec used to sign/verify the `bn_session` cookie. Must be
 	 * provided exactly when `basicAuthCredentials` is — `index.ts` builds it

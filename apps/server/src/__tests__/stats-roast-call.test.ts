@@ -101,7 +101,21 @@ function makeSub(id: string, uid: string, perUpPersona?: boolean) {
 	};
 }
 
-function makeDeps(subs: Array<ReturnType<typeof makeSub>>): RouteDeps {
+/** 一条拓展订阅(ADR-0020:单人锐评两支都有)。id 带着要转义的字符,验路由按编码后的订阅 id 认。 */
+function makeExtSub(id: string, perUpPersona?: boolean) {
+	return {
+		kind: "extension",
+		id,
+		extensionId: "douyin",
+		externalId: "sec-1",
+		enabled: true,
+		overrides: perUpPersona ? { ai: { preset: PER_UP_PRESET_ID } } : {},
+	};
+}
+
+function makeDeps(
+	subs: Array<ReturnType<typeof makeSub> | ReturnType<typeof makeExtSub>>,
+): RouteDeps {
 	// 全局 defaults 取默认整份再覆盖 ai:resolve() 会读 features / cardStyle /
 	// presets 等一系列字段,只喂 { ai } 的话 per-UP 覆盖那条路径会当场炸。
 	const globals = makeDefaultGlobalConfig();
@@ -114,9 +128,15 @@ function makeDeps(subs: Array<ReturnType<typeof makeSub>>): RouteDeps {
 			statsStore: {
 				listDynamics: async () => [],
 				listLiveSessions: async () => [],
+				listSeenSince: async () => [],
 				recordingSince: async () => "1970-01-01T00:00:00.000Z",
 			},
-			engines: { api: {}, listLiveRooms: () => [] },
+			engines: {
+				api: {},
+				listLiveRooms: () => [],
+				extensionLiveSession: () => undefined,
+				extensionPlatformLabel: () => "抖音",
+			},
 			fansPoller: null,
 			subRuntimeStore: { get: () => ({ cachedProfile: { name: "老番茄" } }) },
 			serviceCtx: {},
@@ -136,7 +156,7 @@ beforeEach(() => {
 describe("锐评的 AI 调用方式", () => {
 	it("单人锐评走一次性的 comment(),不碰会话历史", async () => {
 		const deps = makeDeps([makeSub("s1", "1")]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(comment).toHaveBeenCalledTimes(1);
 		expect(chat).not.toHaveBeenCalled();
 	});
@@ -150,13 +170,13 @@ describe("锐评的 AI 调用方式", () => {
 
 	it("提示词照常带着这位 UP 的数据过去", async () => {
 		const deps = makeDeps([makeSub("s1", "1")]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(String(comment.mock.calls[0]?.[0])).toContain("老番茄");
 	});
 
 	it("不传 scene —— 动态/下播总结的场景补充提示词与锐评无关", async () => {
 		const deps = makeDeps([makeSub("s1", "1")]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(comment.mock.calls[0]?.[1]).toBeUndefined();
 	});
 });
@@ -169,7 +189,7 @@ describe("锐评的 AI 调用方式", () => {
 describe("锐评带谁的人格", () => {
 	it("这位 UP 配了自己的人格时,单人锐评就用他那份", async () => {
 		const deps = makeDeps([makeSub("s1", "1", true), makeSub("s2", "2")]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		// persona 已由 buildAiOverride 从 schema 的 baseRole 翻译成
 		// CommentaryGenerator 的 customBase。
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
@@ -178,7 +198,7 @@ describe("锐评带谁的人格", () => {
 	it("拿的是被评那位的人格,不是订阅列表里第一位的", async () => {
 		// uid=2 配了人格、uid=1 没配。搞错主语就会拿 uid=1 的空覆盖去评 uid=2。
 		const deps = makeDeps([makeSub("s1", "1"), makeSub("s2", "2", true)]);
-		await createStatsRoute(deps).request("/roast/2", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s2", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
 	});
 
@@ -194,7 +214,7 @@ describe("锐评带谁的人格", () => {
 			overrides: { ai: { preset: "custom", persona: { baseRole: PER_UP_ROLE } } },
 		} as unknown as ReturnType<typeof makeSub>;
 		const deps = makeDeps([legacy]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).not.toBe(PER_UP_ROLE);
 	});
 
@@ -203,8 +223,20 @@ describe("锐评带谁的人格", () => {
 		// 内部走 `?? this.config` 兜底,主人改了全局人格立刻生效;折进来则把当时的
 		// 全局值冻成了这次调用的 per-UP 值。engines.ts 的 aiOverride 也是这条纪律。
 		const deps = makeDeps([makeSub("s1", "1")]);
-		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]).toBeUndefined();
+	});
+
+	it("拓展订阅的单人锐评:路由按(编码过的)订阅 id 认,带上它自己配的人格", async () => {
+		const extId = "ext/抖音 1";
+		const deps = makeDeps([makeSub("s1", "1"), makeExtSub(extId, true)]);
+		const res = await createStatsRoute(deps).request(`/roast/${encodeURIComponent(extId)}`, {
+			method: "POST",
+		});
+		expect(res.status).toBe(502); // 替身回的是 "{}",解析失败 —— 但已经实打实调过模型。
+		expect(comment).toHaveBeenCalledTimes(1);
+		expect(String(comment.mock.calls[0]?.[0])).toContain("抖音");
+		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
 	});
 
 	it("榜单锐评恒走全局人格 —— 一张卡上好几位 UP,选谁的都是错的", async () => {

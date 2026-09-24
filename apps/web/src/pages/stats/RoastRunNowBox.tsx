@@ -23,22 +23,24 @@ export function RoastRunNowBox({
 	dirty,
 	/** id → 群名。失败明细里报 UUID 的话,主人根本读不出是哪个群没收到。 */
 	targetName,
-	/** 给了就跑这位 UP 的单人锐评;不给跑全局那条榜单周报。 */
-	uid,
+	/** 给了就跑这条订阅的单人锐评(两支订阅都行);不给跑全局那条榜单周报。 */
+	subscriptionId,
 }: {
 	approval: boolean;
 	targetCount: number;
 	dirty: boolean;
 	targetName: (id: string) => string;
-	uid?: string;
+	subscriptionId?: string;
 }) {
 	const [asking, setAsking] = useState(false);
 
 	const run = useMutation<StatsRoastRunNowResponse>({
-		// uid 进的是路径 —— 漏掉它会跑成一份全站榜单并真发进群,完全不是主人要试的东西。
+		// 订阅 id 进的是路径 —— 漏掉它会跑成一份全站榜单并真发进群,完全不是主人要试的东西。
 		mutationFn: () =>
 			api.post<StatsRoastRunNowResponse>(
-				uid ? `/api/stats/roast/run-now/${encodeURIComponent(uid)}` : "/api/stats/roast/run-now",
+				subscriptionId
+					? `/api/stats/roast/run-now/${encodeURIComponent(subscriptionId)}`
+					: "/api/stats/roast/run-now",
 				{},
 			),
 	});
@@ -49,7 +51,7 @@ export function RoastRunNowBox({
 			? run.data.err
 			: undefined;
 
-	const noun = uid ? "锐评" : "周报";
+	const noun = subscriptionId ? "锐评" : "周报";
 	const confirmMessage = approval ? (
 		<>
 			会立刻生成一份{noun}并私聊发给主人等你回 y，<b>群里先不发</b>。顺便也能验一下「回

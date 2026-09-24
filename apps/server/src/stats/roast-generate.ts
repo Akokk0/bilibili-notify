@@ -18,7 +18,7 @@ import type {
 	StatsSoloRoastResult,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
-import { isBiliSubscription } from "@bilibili-notify/internal";
+import type { Subscription } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import { resolveAiOverride } from "../runtime/engines.js";
@@ -29,6 +29,7 @@ import {
 	parseSoloRoastReply,
 	type RoastInput,
 } from "./roast.js";
+import { roastPlatformLabel, roastRowName } from "./roast-subject.js";
 
 /** 生成只用得到这两样,不牵整份 RouteDeps —— 调度器不该为了生成一份周报去凑 puppeteer。 */
 export type RoastGenDeps = Pick<RouteDeps, "runtime" | "store">;
@@ -48,7 +49,7 @@ export type RoastGenError =
 	| { kind: "overview-failed" }
 	/** 榜单特有:评鸽王需要对照组。 */
 	| { kind: "too-few-ups" }
-	/** 单人特有:uid 不在订阅列表里。 */
+	/** 单人特有:订阅 id 对不上任何一条订阅。 */
 	| { kind: "not-subscribed" }
 	/** 单人特有:订阅着但这个窗口内没有任何统计数据。 */
 	| { kind: "no-data" }
@@ -99,19 +100,21 @@ export function roastGenErrorStatus(e: RoastGenError): 400 | 404 | 500 | 502 | 5
 }
 
 /**
- * overview 里的 B 站行。
+ * overview 的一行 → 喂给 prompt 的输入。两处生成同一套字段。
  *
- * S6: overview 已经两支都列(ADR-0020 决策 1 / 18),锐评还只认 B 站、只按 uid 回指 —— 这里先把拓展行
- * 滤掉,榜单与单人锐评与改之前逐字一致。S6(一张榜混着比、结果按订阅 id 回指)动工时拆掉这一层。
+ * 两支订阅的行都收(ADR-0020 决策 12:一张榜混着比):回指的键是行的键 —— 订阅 id(决策 18);名字走
+ * `roast-subject.ts` 那两条链(决策 3),平台一列 B 站写「B 站」、拓展写清单里的平台名。`sub` 对不上
+ * (取完数这一刻订阅被删了)时名字按行上带的身份兜底。
  */
-type BiliStatsRow = UpStatsRow & { uid: string };
-const isBiliStatsRow = (row: UpStatsRow): row is BiliStatsRow => row.uid !== undefined;
-
-/** overview 的一行 → 喂给 prompt 的输入。两处生成同一套字段。 */
-function toRoastInput(row: BiliStatsRow, name: string): RoastInput {
+function toRoastInput(
+	deps: RoastGenDeps,
+	row: UpStatsRow,
+	sub: Subscription | undefined,
+): RoastInput {
 	return {
-		uid: row.uid,
-		name,
+		subscriptionId: row.subscriptionId,
+		platform: roastPlatformLabel(deps, row),
+		name: roastRowName(deps, row, sub),
 		net7d: row.net7d,
 		netWindow: row.netWindow,
 		archives: row.archives,
@@ -120,14 +123,6 @@ function toRoastInput(row: BiliStatsRow, name: string): RoastInput {
 		liveHours: row.liveHours,
 		lastActivityAt: row.lastActivityAt,
 	};
-}
-
-/**
- * UP 名字。取自 SubRuntimeStore 的 `cachedProfile`(平台实时资料缓存,是外置运行时
- * 数据、不在配置里),与 `/api/subs` 的 join 同源。
- */
-function displayName(deps: RoastGenDeps, subId: string, uid: string): string {
-	return deps.runtime.subRuntimeStore.get(subId)?.cachedProfile?.name?.trim() || `UID ${uid}`;
 }
 
 /** 这两个函数只读 `defaults.ai` 的这个投影,不为它们抄一遍完整类型。 */
@@ -163,7 +158,7 @@ function roastSearchOverride(
 	return aiSettings.search.engines.roast ? { ...base, webSearch: true } : base;
 }
 
-/** 榜单锐评:全体订阅一起评,需要至少 2 位做对照。 */
+/** 榜单锐评:全体订阅(两支混着)一起评,需要至少 2 位做对照 —— 两支加起来数人头。 */
 export async function generateBoardRoast(
 	deps: RoastGenDeps,
 	opts: { days: number; tz: number; fetchOverview: OverviewFetcher },
@@ -177,13 +172,9 @@ export async function generateBoardRoast(
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return { ok: false, kind: "overview-failed" };
 
-	// 锐评只有 B 站订阅有(ADR-0019 决策 12)。
-	const subs = deps.store.getSubscriptions().filter(isBiliSubscription);
-	const nameByUid = new Map(subs.map((s) => [s.uid, displayName(deps, s.id, s.uid)]));
-	// S6: 只评 B 站行(见 isBiliStatsRow)。
-	const ups = overview.rows
-		.filter(isBiliStatsRow)
-		.map((r) => toRoastInput(r, nameByUid.get(r.uid) ?? `UID ${r.uid}`));
+	// 行与订阅都以订阅 id 为键(ADR-0020 决策 1 的 🔗):按它对,外部 id 恰好等于某个 uid 也不串。
+	const subById = new Map(deps.store.getSubscriptions().map((s) => [s.id, s]));
+	const ups = overview.rows.map((r) => toRoastInput(deps, r, subById.get(r.subscriptionId)));
 	if (ups.length < 2) return { ok: false, kind: "too-few-ups" };
 
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
@@ -212,20 +203,20 @@ export async function generateBoardRoast(
 	return { ok: true, result };
 }
 
-/** 单人锐评:只就这一位说话,没有「至少 2 位」那道闸门,但带上他自己的人格。 */
+/**
+ * 单人锐评:只就这一位说话,没有「至少 2 位」那道闸门,但带上他自己的人格。两支订阅都行,按订阅 id 认
+ * (ADR-0020 决策 18)。
+ */
 export async function generateSoloRoast(
 	deps: RoastGenDeps,
-	opts: { uid: string; days: number; tz: number; fetchOverview: OverviewFetcher },
+	opts: { subscriptionId: string; days: number; tz: number; fetchOverview: OverviewFetcher },
 ): Promise<RoastGenResult<StatsSoloRoastResult>> {
 	const engines = deps.runtime.engines;
 	if (!engines) return { ok: false, kind: "not-ready" };
 
-	// 先确认这个 uid 真的订阅着。不校验的话,任何人构造一个 uid 就能让我们拿着
+	// 先确认这条订阅真的在。不校验的话,任何人构造一个 id 就能让我们拿着
 	// 一份空数据去请求模型 —— 白烧 token,还会渲染出一张查无此人的卡。
-	const sub = deps.store
-		.getSubscriptions()
-		.filter(isBiliSubscription)
-		.find((s) => s.uid === opts.uid);
+	const sub = deps.store.getSubscriptions().find((s) => s.id === opts.subscriptionId);
 	if (!sub) return { ok: false, kind: "not-subscribed" };
 
 	const aiSettings = deps.store.getGlobals().defaults.ai;
@@ -233,11 +224,10 @@ export async function generateSoloRoast(
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return { ok: false, kind: "overview-failed" };
-	// S6: 按 uid 找 B 站那一行(见 isBiliStatsRow)。
-	const row = overview.rows.filter(isBiliStatsRow).find((r) => r.uid === opts.uid);
+	const row = overview.rows.find((r) => r.subscriptionId === sub.id);
 	if (!row) return { ok: false, kind: "no-data" };
 
-	const up = toRoastInput(row, displayName(deps, sub.id, row.uid));
+	const up = toRoastInput(deps, row, sub);
 
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的

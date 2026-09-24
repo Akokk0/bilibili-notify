@@ -9,10 +9,10 @@
  * 就是把不该发的发出去了,而这正是审批要防的事。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createRoastDraftStore, DRAFT_TTL_MS, type RoastDraftStore } from "../roast-draft-store.js";
 
 const logger = {
@@ -26,9 +26,12 @@ const logger = {
 let dir: string;
 let store: RoastDraftStore;
 
+/** 没有老草稿要翻译的用例:哪个 uid 都对不上订阅。 */
+const noLegacy = () => undefined;
+
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "roast-draft-"));
-	store = createRoastDraftStore({ dataDir: dir, logger });
+	store = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
 	await store.load();
 });
 
@@ -38,7 +41,7 @@ afterEach(async () => {
 
 /** 一份榜单草稿的最小载荷。 */
 function board(targets: string[] = ["t1"]) {
-	return { kind: "board" as const, days: 7, targets, result: { pigeon: { uid: "1" } } };
+	return { kind: "board" as const, days: 7, targets, result: { pigeon: { subscriptionId: "s1" } } };
 }
 
 describe("RoastDraftStore", () => {
@@ -98,7 +101,7 @@ describe("RoastDraftStore", () => {
 	it("重启后草稿还在 —— 主人隔夜回的那句 y 得还有东西可批", async () => {
 		const d = await store.add(board(["t1", "t2"]));
 
-		const reopened = createRoastDraftStore({ dataDir: dir, logger });
+		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
 		await reopened.load();
 		const got = reopened.get(d.id);
 		expect(got?.id).toBe(d.id);
@@ -112,10 +115,145 @@ describe("RoastDraftStore", () => {
 		await mkdir(join(dir, "state"), { recursive: true });
 		await writeFile(join(dir, "state", "roast-drafts.json"), "{ 这不是 json");
 
-		const reopened = createRoastDraftStore({ dataDir: dir, logger });
+		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
 		await reopened.load();
 		expect(reopened.list()).toEqual([]);
 		// 还得能继续用,不是只读一个废墟。
 		expect((await reopened.add(board())).id).toBeTruthy();
+	});
+});
+
+/**
+ * 盘上的老草稿(ADR-0020 决策 18):升级之前生成、还没批的草稿按 uid 记着「评的是谁」,结果里的 UP 也按 uid
+ * 回指。读盘时按 uid 找回那位 B 站订阅、换成订阅 id —— 升级前一刻私聊出去的「回复 y xx」升级后照样批得动,
+ * 卡上照样是那几位的名字。对不上任何订阅的(期间退订了)丢掉,记一笔 debug。
+ */
+describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
+	const NOW = Date.parse("2026-09-24T00:00:00.000Z");
+	const alive = {
+		createdAt: new Date(NOW).toISOString(),
+		expiresAt: new Date(NOW + DRAFT_TTL_MS).toISOString(),
+	};
+	const SUBS: Record<string, string> = { "100": "sub-100", "200": "sub-200" };
+
+	async function openWith(records: unknown[]) {
+		await mkdir(join(dir, "state"), { recursive: true });
+		await writeFile(join(dir, "state", "roast-drafts.json"), JSON.stringify(records));
+		const debug = vi.fn();
+		const reopened = createRoastDraftStore({
+			dataDir: dir,
+			logger: { ...logger, debug },
+			subscriptionIdOfUid: (uid) => SUBS[uid],
+		});
+		await reopened.load();
+		return { reopened, debug };
+	}
+
+	it("老的单人草稿 → 换成那位 B 站订阅的 id,结果里的 uid 也换;不再带 uid", async () => {
+		const { reopened } = await openWith([
+			{
+				id: "a3",
+				kind: "solo",
+				uid: "200",
+				days: 7,
+				targets: ["t1"],
+				result: { uid: "200", verdict: "鸽", score: 10, highlights: [], pushText: "" },
+				...alive,
+			},
+		]);
+		const got = reopened.get("a3", NOW);
+		expect(got).toMatchObject({ kind: "solo", subscriptionId: "sub-200", targets: ["t1"] });
+		expect(got && "uid" in got).toBe(false);
+		expect(got?.result).toEqual({
+			subscriptionId: "sub-200",
+			verdict: "鸽",
+			score: 10,
+			highlights: [],
+			pushText: "",
+		});
+	});
+
+	it("老的单人草稿对不上任何订阅(期间退订了)→ 丢掉,记一笔 debug", async () => {
+		const { reopened, debug } = await openWith([
+			{
+				id: "b4",
+				kind: "solo",
+				uid: "999",
+				days: 7,
+				targets: ["t1"],
+				result: { uid: "999", verdict: "鸽", score: 10, highlights: [], pushText: "" },
+				...alive,
+			},
+		]);
+		expect(reopened.list(NOW)).toEqual([]);
+		expect(debug).toHaveBeenCalledTimes(1);
+		expect(String(debug.mock.calls[0]?.[0])).toContain("b4");
+	});
+
+	it("老的榜单草稿:结果里每一处 uid 换成订阅 id;锐评 / 评分里对不上的那几条丢掉", async () => {
+		const { reopened } = await openWith([
+			{
+				id: "c5",
+				kind: "board",
+				days: 30,
+				targets: ["t1", "t2"],
+				result: {
+					pigeon: { uid: "200", reason: "鸽" },
+					diligent: { uid: "100", reason: "勤" },
+					roast: [
+						{ uid: "200", comment: "咕" },
+						{ uid: "999", comment: "退订了" },
+					],
+					scores: [
+						{ uid: "100", score: 90 },
+						{ uid: "999", score: 5 },
+					],
+					pushText: "周报",
+				},
+				...alive,
+			},
+		]);
+		expect(reopened.get("c5", NOW)?.result).toEqual({
+			pigeon: { subscriptionId: "sub-200", reason: "鸽" },
+			diligent: { subscriptionId: "sub-100", reason: "勤" },
+			roast: [{ subscriptionId: "sub-200", comment: "咕" }],
+			scores: [{ subscriptionId: "sub-100", score: 90 }],
+			pushText: "周报",
+		});
+	});
+
+	it("老的榜单草稿里鸽王或勤奋 UP 对不上 → 整份丢掉(卡的主体缺一半),记一笔 debug", async () => {
+		const { reopened, debug } = await openWith([
+			{
+				id: "d6",
+				kind: "board",
+				days: 30,
+				targets: ["t1"],
+				result: {
+					pigeon: { uid: "999", reason: "鸽" },
+					diligent: { uid: "100", reason: "勤" },
+					roast: [],
+					scores: [],
+					pushText: "周报",
+				},
+				...alive,
+			},
+		]);
+		expect(reopened.list(NOW)).toEqual([]);
+		expect(String(debug.mock.calls[0]?.[0])).toContain("d6");
+	});
+
+	it("新写的草稿按订阅 id 存,重启原样读回(不经翻译)", async () => {
+		const d = await store.add({
+			kind: "solo",
+			subscriptionId: "ext-1",
+			days: 7,
+			targets: ["t1"],
+			result: { subscriptionId: "ext-1", verdict: "v", score: 1, highlights: [], pushText: "" },
+		});
+		expect(d.subscriptionId).toBe("ext-1");
+		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
+		await reopened.load();
+		expect(reopened.get(d.id)).toEqual(d);
 	});
 });

@@ -21,7 +21,13 @@ import { z } from "zod";
 
 /** 喂给模型的单个 UP。用下标而不是名字做引用键 —— 见 `RoastReplySchema`。 */
 export interface RoastInput {
-	uid: string;
+	/**
+	 * 回指用的键:订阅 id(ADR-0020 决策 18)。两支混在一张榜上(决策 12),B 站的 uid 与拓展的外部 id
+	 * 不是一个东西,订阅 id 才是两支共有的那个键 —— 统计行的键也是它。
+	 */
+	subscriptionId: string;
+	/** 「平台」那一列:B 站写「B 站」,拓展写它清单里的平台名。模型据此不拿抖音的粉丝量去压 B 站的。 */
+	platform: string;
 	name: string;
 	net7d: number | null;
 	/** 整个统计窗口的净增合计。 */
@@ -57,6 +63,7 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 	const table = ups.map((u, i) => ({
 		i,
 		名称: u.name,
+		平台: u.platform,
 		近7日粉丝: u.net7d ?? "无记录",
 		[`近${days}日粉丝`]: u.netWindow ?? "无记录",
 		投稿: u.archives ?? "无记录",
@@ -66,7 +73,7 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 		最后活动: u.lastActivityAt ?? "无记录",
 	}));
 	return [
-		`以下是我订阅的 ${ups.length} 位 B 站 UP 主近 ${days} 天的数据(JSON):`,
+		`以下是我订阅的 ${ups.length} 位 UP 主近 ${days} 天的数据(JSON):`,
 		JSON.stringify(table),
 		"",
 		"请评选出「鸽王」(最不勤奋:掉粉/停更/投稿直播都少)和「勤奋 UP」(更新最勤/涨粉最猛),",
@@ -129,7 +136,7 @@ function inlineUpNames(text: string, ups: readonly RoastInput[]): string {
 }
 
 /**
- * 把模型回复解析成可渲染的结构,并把下标映射回 uid。
+ * 把模型回复解析成可渲染的结构,并把下标映射回订阅 id。
  *
  * 越界下标一律丢弃而不是 clamp:clamp 会把模型的胡话安到一个无辜的 UP 头上,
  * 而这张卡是要发到群里的。鸽王 / 勤奋 UP 任一越界即整体失败 —— 这两个是卡片
@@ -141,22 +148,24 @@ export function parseRoastReply(raw: string, ups: readonly RoastInput[]): StatsR
 	const parsed = RoastReplySchema.safeParse(json);
 	if (!parsed.success) return null;
 
-	const uidAt = (i: number): string | null => ups[i]?.uid ?? null;
-	const pigeonUid = uidAt(parsed.data.pigeon.i);
-	const diligentUid = uidAt(parsed.data.diligent.i);
-	if (!pigeonUid || !diligentUid) return null;
+	const idAt = (i: number): string | null => ups[i]?.subscriptionId ?? null;
+	const pigeonId = idAt(parsed.data.pigeon.i);
+	const diligentId = idAt(parsed.data.diligent.i);
+	if (!pigeonId || !diligentId) return null;
 
 	return {
-		pigeon: { uid: pigeonUid, reason: parsed.data.pigeon.reason },
-		diligent: { uid: diligentUid, reason: parsed.data.diligent.reason },
+		pigeon: { subscriptionId: pigeonId, reason: parsed.data.pigeon.reason },
+		diligent: { subscriptionId: diligentId, reason: parsed.data.diligent.reason },
 		roast: parsed.data.roast.flatMap((r) => {
-			const uid = uidAt(r.i);
-			return uid ? [{ uid, comment: r.comment }] : [];
+			const subscriptionId = idAt(r.i);
+			return subscriptionId ? [{ subscriptionId, comment: r.comment }] : [];
 		}),
 		scores: parsed.data.scores.flatMap((s) => {
-			const uid = uidAt(s.i);
+			const subscriptionId = idAt(s.i);
 			// 评分越界一律夹到 0..100:这个数只驱动一根进度条,夹一下比整卡失败划算。
-			return uid ? [{ uid, score: Math.max(0, Math.min(100, Math.round(s.score))) }] : [];
+			return subscriptionId
+				? [{ subscriptionId, score: Math.max(0, Math.min(100, Math.round(s.score))) }]
+				: [];
 		}),
 		pushText: inlineUpNames(parsed.data.pushText, ups),
 	};
@@ -167,7 +176,7 @@ export function parseRoastReply(raw: string, ups: readonly RoastInput[]): StatsR
 /**
  * 单人锐评的回复形状。
  *
- * 这里不需要下标回指 —— 只有一位 UP,uid 由服务端从入参带出,压根不让模型碰。
+ * 这里不需要下标回指 —— 只有一位 UP,订阅 id 由服务端从入参带出,压根不让模型碰。
  * 模型唯一能污染的就是文本内容本身。
  */
 const SoloRoastReplySchema = z.object({
@@ -182,6 +191,7 @@ const SoloRoastReplySchema = z.object({
 export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 	const data = {
 		名称: up.name,
+		平台: up.platform,
 		近7日粉丝: up.net7d ?? "无记录",
 		[`近${days}日粉丝`]: up.netWindow ?? "无记录",
 		投稿: up.archives ?? "无记录",
@@ -191,7 +201,7 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 		最后活动: up.lastActivityAt ?? "无记录",
 	};
 	return [
-		`以下是我订阅的一位 B 站 UP 主近 ${days} 天的数据(JSON):`,
+		`以下是我订阅的一位 UP 主近 ${days} 天的数据(JSON):`,
 		JSON.stringify(data),
 		"",
 		"请只针对这一位 UP 主作出评价 —— 他这段时间是勤快还是在鸽,",
@@ -211,8 +221,8 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 }
 
 /**
- * 解析单人锐评。`uid` 一律从入参带出,不读模型回复里的同名字段 ——
- * 模型没有任何理由知道 uid,它写出来的只可能是幻觉。
+ * 解析单人锐评。订阅 id 一律从入参带出,不读模型回复里的同名字段 ——
+ * 模型没有任何理由知道它,写出来的只可能是幻觉。
  */
 export function parseSoloRoastReply(raw: string, up: RoastInput): StatsSoloRoastResult | null {
 	const json = extractJson(raw);
@@ -220,7 +230,7 @@ export function parseSoloRoastReply(raw: string, up: RoastInput): StatsSoloRoast
 	const parsed = SoloRoastReplySchema.safeParse(json);
 	if (!parsed.success) return null;
 	return {
-		uid: up.uid,
+		subscriptionId: up.subscriptionId,
 		verdict: parsed.data.verdict,
 		// 与榜单口径一致:评分只驱动一根进度条,夹一下比整卡失败划算。
 		score: Math.max(0, Math.min(100, Math.round(parsed.data.score))),

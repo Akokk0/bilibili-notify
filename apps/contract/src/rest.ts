@@ -694,13 +694,16 @@ export interface UpStatsRow {
 	live: boolean;
 }
 
-/** AI 锐评的结构化结果。所有 UP 引用都是 uid,前端据此 join 名称与头像。 */
+/**
+ * AI 锐评的结构化结果。所有 UP 引用都是**订阅 id**(ADR-0020 决策 18):一张榜上 B 站与拓展混着比
+ * (决策 12),订阅 id 是两支共有的键,与统计行的键是同一个。前端据此 join 名称、头像与颜色。
+ */
 export interface StatsRoastResult {
-	pigeon: { uid: string; reason: string };
-	diligent: { uid: string; reason: string };
-	roast: Array<{ uid: string; comment: string }>;
+	pigeon: { subscriptionId: string; reason: string };
+	diligent: { subscriptionId: string; reason: string };
+	roast: Array<{ subscriptionId: string; comment: string }>;
 	/** 综合勤奋度 0-100。 */
-	scores: Array<{ uid: string; score: number }>;
+	scores: Array<{ subscriptionId: string; score: number }>;
 	/** 可直接推送到群里的周报文本。 */
 	pushText: string;
 }
@@ -713,13 +716,14 @@ export interface StatsRoastResponse {
 }
 
 /**
- * 单 UP 锐评的结果 —— `POST /api/stats/roast/:uid`。
+ * 单 UP 锐评的结果 —— `POST /api/stats/roast/:subscriptionId`(两支订阅都行,ADR-0020 决策 18)。
  *
  * 与榜单式的 {@link StatsRoastResult} 是**两种形状**,不要试图合并:榜单讲的是
  * 「谁比谁强」,单人讲的是「他自己这段时间干了什么」,前者离开对照组就不成立。
  */
 export interface StatsSoloRoastResult {
-	uid: string;
+	/** 评的是哪条订阅。 */
+	subscriptionId: string;
 	/** 一句话总评。 */
 	verdict: string;
 	/** 综合勤奋度 0-100。 */
@@ -730,7 +734,7 @@ export interface StatsSoloRoastResult {
 	pushText: string;
 }
 
-/** `POST /api/stats/roast/:uid` 响应。 */
+/** `POST /api/stats/roast/:subscriptionId` 响应。 */
 export interface StatsSoloRoastResponse {
 	ok: boolean;
 	err?: string;
@@ -741,7 +745,7 @@ export interface StatsSoloRoastResponse {
  * `POST /api/stats/roast/push` 请求 —— 把**页面上已经生成的那一份**锐评推出去。
  *
  * 结果由前端回传,服务端不重新调模型:主人是看过卡片内容才决定推送的,重新生成会
- * 推出一份谁都没审过的文本(还要再烧一次 token、再等一轮)。服务端只信 uid,名称 /
+ * 推出一份谁都没审过的文本(还要再烧一次 token、再等一轮)。服务端只信订阅 id,名称 /
  * 头像 / 配色一律自己 join —— 那几项前端说了不算。
  */
 export type StatsRoastPushRequest = {

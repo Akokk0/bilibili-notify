@@ -16,7 +16,8 @@ import {
 
 const UPS: RoastInput[] = [
 	{
-		uid: "100",
+		subscriptionId: "sub-tomato",
+		platform: "B 站",
 		name: "老番茄",
 		net7d: 8000,
 		netWindow: 29000,
@@ -27,7 +28,8 @@ const UPS: RoastInput[] = [
 		lastActivityAt: "2026-05-16T10:00:00.000Z",
 	},
 	{
-		uid: "200",
+		subscriptionId: "sub-dangmei",
+		platform: "抖音",
 		name: "机智的党妹",
 		net7d: -8000,
 		netWindow: -22000,
@@ -51,25 +53,25 @@ const good = {
 };
 
 describe("parseRoastReply — 正常路径", () => {
-	it("下标被映射回 uid", () => {
+	it("下标被映射回订阅 id(两支混着比,B 站与拓展都按订阅 id 回指 —— ADR-0020 决策 18)", () => {
 		const got = parseRoastReply(JSON.stringify(good), UPS);
-		expect(got?.pigeon).toEqual({ uid: "200", reason: "一个月就发一条" });
-		expect(got?.diligent.uid).toBe("100");
-		expect(got?.roast).toEqual([{ uid: "200", comment: "鸽子精本精" }]);
+		expect(got?.pigeon).toEqual({ subscriptionId: "sub-dangmei", reason: "一个月就发一条" });
+		expect(got?.diligent.subscriptionId).toBe("sub-tomato");
+		expect(got?.roast).toEqual([{ subscriptionId: "sub-dangmei", comment: "鸽子精本精" }]);
 		expect(got?.scores).toEqual([
-			{ uid: "100", score: 96 },
-			{ uid: "200", score: 41 },
+			{ subscriptionId: "sub-tomato", score: 96 },
+			{ subscriptionId: "sub-dangmei", score: 41 },
 		]);
 	});
 
 	it("剥掉 markdown 围栏", () => {
 		const got = parseRoastReply(`\`\`\`json\n${JSON.stringify(good)}\n\`\`\``, UPS);
-		expect(got?.pigeon.uid).toBe("200");
+		expect(got?.pigeon.subscriptionId).toBe("sub-dangmei");
 	});
 
 	it("剥掉 JSON 前后的客套话", () => {
 		const got = parseRoastReply(`好的,这是您要的结果:\n${JSON.stringify(good)}\n希望满意!`, UPS);
-		expect(got?.pigeon.uid).toBe("200");
+		expect(got?.pigeon.subscriptionId).toBe("sub-dangmei");
 	});
 
 	it("roast / scores 缺失时退化成空数组,不整体失败", () => {
@@ -116,7 +118,7 @@ describe("parseRoastReply — 局部脏数据只丢局部", () => {
 			],
 		};
 		const got = parseRoastReply(JSON.stringify(bad), UPS);
-		expect(got?.roast).toEqual([{ uid: "100", comment: "好" }]);
+		expect(got?.roast).toEqual([{ subscriptionId: "sub-tomato", comment: "好" }]);
 	});
 
 	it("评分越界被夹到 0..100 —— 它只驱动一根进度条,不值得整卡失败", () => {
@@ -129,8 +131,8 @@ describe("parseRoastReply — 局部脏数据只丢局部", () => {
 		};
 		const got = parseRoastReply(JSON.stringify(bad), UPS);
 		expect(got?.scores).toEqual([
-			{ uid: "100", score: 100 },
-			{ uid: "200", score: 0 },
+			{ subscriptionId: "sub-tomato", score: 100 },
+			{ subscriptionId: "sub-dangmei", score: 0 },
 		]);
 	});
 
@@ -156,6 +158,15 @@ describe("buildRoastPrompt", () => {
 
 	it("要求 JSON 的 i 字段用下标回指,而不是写名字", () => {
 		expect(buildRoastPrompt(UPS, 30)).toContain("不要写名字");
+	});
+
+	it("一张榜混着比:开头不写死「B 站」、仍叫「UP 主」;数据表多一列「平台」(ADR-0020 决策 12)", () => {
+		const p = buildRoastPrompt(UPS, 30);
+		expect(p).not.toContain("B 站 UP 主");
+		expect(p).toContain("2 位 UP 主");
+		const table = JSON.parse(p.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
+		expect(table.map((row) => row.平台)).toEqual(["B 站", "抖音"]);
+		expect(table.map((row) => row.名称)).toEqual(["老番茄", "机智的党妹"]);
 	});
 
 	it("**单独**叮嘱 pushText 要写名字 —— 那段是给群友看的,他们看不到下标表", () => {
@@ -222,6 +233,14 @@ describe("buildSoloRoastPrompt", () => {
 		expect(buildSoloRoastPrompt(SOLO, 90)).toContain("90");
 	});
 
+	it("开头同样不写死「B 站」,数据里带上平台", () => {
+		const p = buildSoloRoastPrompt(SOLO, 30);
+		expect(p).not.toContain("B 站 UP 主");
+		expect(p).toContain("一位 UP 主");
+		const data = JSON.parse(p.split("\n")[1] ?? "{}") as Record<string, unknown>;
+		expect(data.平台).toBe("抖音");
+	});
+
 	it("无记录的字段标成「无记录」,并叮嘱模型别当成偷懒", () => {
 		const p = buildSoloRoastPrompt(SOLO, 30);
 		expect(p).toContain("无记录");
@@ -256,7 +275,7 @@ describe("提示词只讲任务,不讲身份", () => {
 describe("parseSoloRoastReply", () => {
 	it("解析正常回复", () => {
 		const r = parseSoloRoastReply(JSON.stringify(goodSolo), SOLO);
-		expect(r?.uid).toBe("200");
+		expect(r?.subscriptionId).toBe("sub-dangmei");
 		expect(r?.verdict).toBe("一个月就发一条,鸽子精本精");
 		expect(r?.score).toBe(32);
 		expect(r?.highlights).toHaveLength(2);
@@ -285,8 +304,12 @@ describe("parseSoloRoastReply", () => {
 		expect(parseSoloRoastReply(JSON.stringify(rest), SOLO)?.highlights).toEqual([]);
 	});
 
-	it("uid 从入参带出,不信模型自己写的", () => {
-		const r = parseSoloRoastReply(JSON.stringify({ ...goodSolo, uid: "999" }), SOLO);
-		expect(r?.uid).toBe("200");
+	it("订阅 id 从入参带出,不信模型自己写的", () => {
+		const r = parseSoloRoastReply(
+			JSON.stringify({ ...goodSolo, subscriptionId: "sub-evil", uid: "999" }),
+			SOLO,
+		);
+		expect(r?.subscriptionId).toBe("sub-dangmei");
+		expect(r && "uid" in r).toBe(false);
 	});
 });

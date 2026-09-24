@@ -11,14 +11,18 @@ import { RoastShell, roastError } from "./RoastShell";
 interface UpMeta {
 	name: string;
 	color: string;
-	/** B 站头像 URL;没缓存到时 Avatar 退回首字母。 */
+	/** 头像:B 站是 CDN 图链,拓展是面板同源的相对地址;没缓存到时 Avatar 退回首字母。 */
 	avatar?: string;
 }
+
+/** 结果里回指的订阅 id 在这张表里对不上(生成之后订阅被删了)时写的名字。 */
+const UNKNOWN_UP_NAME = "未知 UP";
 
 /**
  * AI 锐评卡 —— 把统计数据喂给智能女仆,评鸽王 / 勤奋 UP 并生成可推送的周报。
  *
- * 只在「全部 UP」视图出现:单人视图下没有可比较的对象,评不出榜。
+ * 只在「全部 UP」视图出现:单人视图下没有可比较的对象,评不出榜。一张榜上两支订阅混着比,结果按
+ * **订阅 id** 回指(ADR-0020 决策 12 / 18),`meta` 就是统计行那张以订阅 id 为键的表。
  */
 export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMeta> }) {
 	const roast = useMutation<StatsRoastResponse>({
@@ -37,9 +41,9 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 
 	const result: StatsRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
 
-	const nameOf = (uid: string) => meta.get(uid)?.name ?? `UID ${uid}`;
-	const colorOf = (uid: string) => meta.get(uid)?.color ?? AI_PURPLE;
-	const avatarOf = (uid: string) => meta.get(uid)?.avatar;
+	const nameOf = (id: string) => meta.get(id)?.name ?? UNKNOWN_UP_NAME;
+	const colorOf = (id: string) => meta.get(id)?.color ?? AI_PURPLE;
+	const avatarOf = (id: string) => meta.get(id)?.avatar;
 
 	return (
 		<RoastShell
@@ -82,13 +86,13 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 									</div>
 									<div className="mb-1.5 flex items-center gap-1.5">
 										<Avatar
-											name={nameOf(who.uid)}
-											color={colorOf(who.uid)}
+											name={nameOf(who.subscriptionId)}
+											color={colorOf(who.subscriptionId)}
 											size={24}
-											url={avatarOf(who.uid)}
+											url={avatarOf(who.subscriptionId)}
 										/>
 										<span className="truncate text-bn-base font-bold text-bn-text-primary">
-											{nameOf(who.uid)}
+											{nameOf(who.subscriptionId)}
 										</span>
 									</div>
 									<div className="text-bn-xs leading-relaxed text-bn-text-tertiary">
@@ -101,15 +105,15 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 							<div className="flex flex-col gap-1.5">
 								{result.roast.map((r) => (
 									<div
-										key={`${r.uid}-${r.comment}`}
+										key={`${r.subscriptionId}-${r.comment}`}
 										className="flex gap-2 text-bn-sm leading-relaxed"
 									>
 										<span
 											className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-											style={{ background: colorOf(r.uid) }}
+											style={{ background: colorOf(r.subscriptionId) }}
 										/>
 										<div>
-											<b className="text-bn-text-primary">{nameOf(r.uid)}</b>{" "}
+											<b className="text-bn-text-primary">{nameOf(r.subscriptionId)}</b>{" "}
 											<span className="text-bn-text-tertiary">{r.comment}</span>
 										</div>
 									</div>
@@ -135,14 +139,14 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 							{[...result.scores]
 								.sort((a, b) => b.score - a.score)
 								.map((s) => (
-									<div key={s.uid} className="flex items-center gap-2 text-bn-xs">
+									<div key={s.subscriptionId} className="flex items-center gap-2 text-bn-xs">
 										<span className="w-16 truncate font-semibold text-bn-text-primary">
-											{nameOf(s.uid)}
+											{nameOf(s.subscriptionId)}
 										</span>
 										<div className="h-3 flex-1 overflow-hidden rounded-full bg-bn-code-bg">
 											<div
 												className="h-full rounded-full"
-												style={{ width: `${s.score}%`, background: colorOf(s.uid) }}
+												style={{ width: `${s.score}%`, background: colorOf(s.subscriptionId) }}
 											/>
 										</div>
 										<span className="w-7 text-right tabular-nums font-bold text-bn-text-tertiary">

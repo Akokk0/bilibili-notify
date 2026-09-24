@@ -8,28 +8,31 @@
 
 import type { RoastCardUp } from "@bilibili-notify/image";
 import {
-	colorFromUid,
 	isBiliSubscription,
 	isTargetPaused,
 	type NotificationPayload,
+	type Subscription,
+	upColor,
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
+import { imageDataUrl } from "../runtime/extension-push-common.js";
+import { roastSubjectName } from "./roast-subject.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;
 
-/** 榜单结果里推送用得到的部分 —— 与 `StatsRoastResult` 结构兼容。 */
+/** 榜单结果里推送用得到的部分 —— 与 `StatsRoastResult` 结构兼容。UP 一律按订阅 id 回指(ADR-0020 决策 18)。 */
 export interface BoardLike {
 	pushText: string;
-	pigeon: { uid: string; reason: string };
-	diligent: { uid: string; reason: string };
-	roast: Array<{ uid: string; comment: string }>;
-	scores: Array<{ uid: string; score: number }>;
+	pigeon: { subscriptionId: string; reason: string };
+	diligent: { subscriptionId: string; reason: string };
+	roast: Array<{ subscriptionId: string; comment: string }>;
+	scores: Array<{ subscriptionId: string; score: number }>;
 }
 
 /** 单人结果里推送用得到的部分 —— 与 `StatsSoloRoastResult` 结构兼容。 */
 export interface SoloLike {
 	pushText: string;
-	uid: string;
+	subscriptionId: string;
 	verdict: string;
 	score: number;
 	highlights: Array<{ label: string; comment: string }>;
@@ -52,24 +55,66 @@ export interface DeliverOutcome {
 	text: string;
 }
 
-/** uid → 名称 / 头像 / 配色。配色走 colorFromUid,与 dashboard 上同一位 UP 一致。 */
-export function makeUpMeta(deps: RoastDeliverDeps): (uid: string) => RoastCardUp {
-	// 锐评只有 B 站订阅有(ADR-0019 决策 12)。
-	const subByUid = new Map(
-		deps.store
-			.getSubscriptions()
-			.filter(isBiliSubscription)
-			.map((s) => [s.uid, s]),
-	);
-	return (uid: string) => {
-		const sub = subByUid.get(uid);
-		const profile = sub ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
-		return {
-			name: profile?.name?.trim() || `UID ${uid}`,
-			avatar: profile?.avatar || undefined,
-			color: colorFromUid(uid),
-		};
+/** 订阅 id 对不上任何订阅(推送前那一刻被删了、或页面回传了一个陈旧的 id)时卡上写的名字。 */
+export const UNKNOWN_UP_NAME = "未知 UP";
+
+/**
+ * 拓展订阅卡上的头像:存下的头像文件转成内嵌图(ADR-0020 决策 15)。资料里存的是面板的同源相对地址
+ * (`/api/subs/<id>/avatar?v=…`),截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、认不出
+ * 类型、读盘抛了都给 `undefined` —— 卡上画首字母圆牌,不因为一张头像让整张卡降级成文字。
+ */
+async function extensionAvatar(deps: RoastDeliverDeps, subscriptionId: string) {
+	try {
+		const stored = await deps.runtime.subAvatarStore.read(subscriptionId);
+		return stored ? imageDataUrl(stored.bytes) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** 一条订阅在卡上的样子。颜色跟着人走,与面板同一个算法(`upColor`,ADR-0020 决策 15)。 */
+async function cardUp(
+	deps: RoastDeliverDeps,
+	subscriptionId: string,
+	sub: Subscription | undefined,
+): Promise<RoastCardUp> {
+	if (!sub) return { name: UNKNOWN_UP_NAME, color: upColor({}, subscriptionId) };
+	const name = roastSubjectName(deps, sub);
+	if (isBiliSubscription(sub)) {
+		// B 站照旧:头像是 CDN 图链,渲染器出图前自己内联。
+		const avatar = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar;
+		return { name, avatar: avatar || undefined, color: upColor({ uid: sub.uid }) };
+	}
+	return {
+		name,
+		avatar: await extensionAvatar(deps, sub.id),
+		color: upColor({ extensionId: sub.extensionId, externalId: sub.externalId }),
 	};
+}
+
+/**
+ * 订阅 id → 名称 / 头像 / 配色(两支订阅都行,ADR-0020 决策 18)。名字走 `roast-subject.ts`(与提示词里的
+ * 同一份);拓展的头像要读盘,所以先把这份锐评提到的人一次备齐,返回的查表是同步的。
+ */
+export async function makeUpMeta(
+	deps: RoastDeliverDeps,
+	subscriptionIds: Iterable<string>,
+): Promise<(subscriptionId: string) => RoastCardUp> {
+	const subById = new Map(deps.store.getSubscriptions().map((s) => [s.id, s]));
+	const metas = new Map<string, RoastCardUp>();
+	await Promise.all(
+		[...new Set(subscriptionIds)].map(async (id) => {
+			metas.set(id, await cardUp(deps, id, subById.get(id)));
+		}),
+	);
+	return (id) => metas.get(id) ?? { name: UNKNOWN_UP_NAME, color: upColor({}, id) };
+}
+
+/** 这份锐评提到的所有订阅 id —— 卡上与兜底文案要画的就是这几位。 */
+function mentionedIds(kind: "board" | "solo", result: BoardLike | SoloLike): string[] {
+	if (kind === "solo") return [(result as SoloLike).subscriptionId];
+	const r = result as BoardLike;
+	return [r.pigeon, r.diligent, ...r.roast, ...r.scores].map((x) => x.subscriptionId);
 }
 
 /** 推送正文。模型给了 pushText 就用它,否则按类型拼一段兜底。 */
@@ -77,19 +122,19 @@ export function roastPushText(
 	kind: "board" | "solo",
 	result: BoardLike | SoloLike,
 	days: number,
-	upMeta: (uid: string) => RoastCardUp,
+	upMeta: (subscriptionId: string) => RoastCardUp,
 ): string {
 	if (result.pushText.trim()) return result.pushText;
 	if (kind === "board") {
 		const r = result as BoardLike;
 		return [
 			`📊 UP 主周报（近 ${days} 天）`,
-			`🕊️ 本期鸽王：${upMeta(r.pigeon.uid).name} —— ${r.pigeon.reason}`,
-			`🏆 勤奋 UP：${upMeta(r.diligent.uid).name} —— ${r.diligent.reason}`,
+			`🕊️ 本期鸽王：${upMeta(r.pigeon.subscriptionId).name} —— ${r.pigeon.reason}`,
+			`🏆 勤奋 UP：${upMeta(r.diligent.subscriptionId).name} —— ${r.diligent.reason}`,
 		].join("\n");
 	}
 	const s = result as SoloLike;
-	return `📊 ${upMeta(s.uid).name}（近 ${days} 天）：${s.verdict}`;
+	return `📊 ${upMeta(s.subscriptionId).name}（近 ${days} 天）：${s.verdict}`;
 }
 
 /**
@@ -128,7 +173,7 @@ export async function buildRoastPayload(
 	deps: RoastDeliverDeps,
 	opts: { kind: "board" | "solo"; result: BoardLike | SoloLike; days: number },
 ): Promise<RoastPayload> {
-	const upMeta = makeUpMeta(deps);
+	const upMeta = await makeUpMeta(deps, mentionedIds(opts.kind, opts.result));
 	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
 
 	const renderer = deps.runtime.engines?.imageRenderer ?? null;
@@ -200,20 +245,20 @@ export async function deliverRoast(
 	return { mode, sent, skipped, failed, text };
 }
 
-function boardCardData(r: BoardLike, days: number, upMeta: (uid: string) => RoastCardUp) {
+function boardCardData(r: BoardLike, days: number, upMeta: (id: string) => RoastCardUp) {
 	return {
 		days,
-		pigeon: { ...upMeta(r.pigeon.uid), reason: r.pigeon.reason },
-		diligent: { ...upMeta(r.diligent.uid), reason: r.diligent.reason },
-		roast: r.roast.map((x) => ({ ...upMeta(x.uid), comment: x.comment })),
-		scores: r.scores.map((x) => ({ ...upMeta(x.uid), score: x.score })),
+		pigeon: { ...upMeta(r.pigeon.subscriptionId), reason: r.pigeon.reason },
+		diligent: { ...upMeta(r.diligent.subscriptionId), reason: r.diligent.reason },
+		roast: r.roast.map((x) => ({ ...upMeta(x.subscriptionId), comment: x.comment })),
+		scores: r.scores.map((x) => ({ ...upMeta(x.subscriptionId), score: x.score })),
 	};
 }
 
-function soloCardData(s: SoloLike, days: number, upMeta: (uid: string) => RoastCardUp) {
+function soloCardData(s: SoloLike, days: number, upMeta: (id: string) => RoastCardUp) {
 	return {
 		days,
-		up: upMeta(s.uid),
+		up: upMeta(s.subscriptionId),
 		verdict: s.verdict,
 		score: s.score,
 		highlights: s.highlights,

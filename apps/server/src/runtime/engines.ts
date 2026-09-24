@@ -151,6 +151,12 @@ export interface EnginesRuntime extends Disposable {
 	 * 敞着的同源(开一场、关一场的帧都是它发的),断流等待里也还算在播,同 B 站直播间在等待期里仍是在播。
 	 */
 	extensionLiveSession(subscriptionId: string): ExtensionLiveSession | undefined;
+	/**
+	 * 拓展订阅的平台名(清单里订阅源的叫法 → 拓展名),每次现取 —— 与女仆查订阅那份视图同一口
+	 * ({@link CreateEnginesOptions.extensionPlatformLabel})。锐评的「平台」一列用它(ADR-0020 决策 12)。
+	 * 取不到(没接 / 没装 / 开机途中)是 `undefined`,调用方退拓展 id。
+	 */
+	extensionPlatformLabel(extensionId: string): string | undefined;
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
 	linkParsing(): LinkParsingConfig;
 	/**
@@ -1111,6 +1117,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
 		extensionLiveSession: (subscriptionId: string) => extensionLiveSessions?.get(subscriptionId),
+		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
 		connectionCapabilities: (connectionId: string) => sink.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
