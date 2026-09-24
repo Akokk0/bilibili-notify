@@ -276,7 +276,8 @@ export function CardSkinSection() {
 			)}
 
 			<HintNote className="mt-3">
-				per-UP 想单独换一套:上方切到那个 UP,在「卡片皮肤」里挑;想给它改排版就先「复制一份」再改。
+				per-UP 想单独换一套或单独拧旋钮:上方切到那个
+				UP,在「卡片皮肤」里挑、在它下面的旋钮里拧;想给它改排版就先「复制一份」再改。
 			</HintNote>
 
 			{confirmRemove ? (

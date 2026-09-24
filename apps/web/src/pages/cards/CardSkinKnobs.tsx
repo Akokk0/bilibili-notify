@@ -1,6 +1,6 @@
 /**
- * 皮肤旋钮区(ADR-0014 决策 16 的 🔗,2026-09-14)—— 卡片页「全局」tab 上,照**当前启用
- * 那套皮肤自己的声明**生成控件的一块。
+ * 皮肤旋钮区(ADR-0014 决策 16 的 🔗,2026-09-14)—— 卡片页「全局」tab 上,照**一套皮肤
+ * 自己的声明**生成控件的一块。
  *
  * 与隔壁固定变量(字体 / 背景图)那几栏刻意不同的两处,都来自那条决策:
  *
@@ -10,12 +10,19 @@
  * - **存覆盖不存值**:没拧过的键根本不落盘,控件只是拿 `default` 当起始位置摆着;
  *   「还原」删的是键,不是写回 default(理由见 `knob-ops.ts` 文件头)。
  *
- * 值住全局配置(`globals.defaults.cardSkinKnobs`),按皮肤 id 分层、**不分卡种** ——
- * 所以这块只在全局作用域出现;per-UP 那边挑的是「用哪套皮肤」,不是拧这套皮肤的钮。
+ * 两个作用域各用一次(按皮肤 id 分层、**不分卡种**,两层同形):
+ *
+ * - **全局**:值住 `globals.defaults.cardSkinKnobs`,拧的是全局在用的那套;
+ * - **per-UP**(给了 `perUp`,ADR-0014 决策 17 的 🔗,2026-09-24):值住这位 UP 的
+ *   `overrides.cardSkinKnobs`,拧的是**他实际用的那套**(单独指了就是那套,否则全局那套)。
+ *   没单独拧过的标「跟随全局」、起始位置取全局那份(再没有才是皮肤 `default`);「还原」
+ *   删的是 per-UP 那一枚,回到跟随全局。出图时两层逐枚合并,见 `effectiveCardSkinKnobs`。
  */
 
 import type { CardSkinKnob } from "@bilibili-notify/contract";
-import { Btn, GlassBox, HintNote, Icon, Toggle } from "@bilibili-notify/ui";
+// 两层合并走零依赖子路径(理由同 knob-ops.ts 顶上那句):与出图、预览是**同一个**函数。
+import { effectiveCardSkinKnobs } from "@bilibili-notify/internal/constants";
+import { Btn, GlassBox, HintNote, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { FIELD_ROW_CHROME, TColor, TSelect } from "../../components/forms";
 import { useCardSkinList } from "./card-skins-query";
 import { FontPicker } from "./FontPicker";
@@ -36,13 +43,20 @@ import {
 export function CardSkinKnobsSection({
 	value,
 	onChange,
+	perUp,
 }: {
-	/** 全表(所有皮肤的覆盖)。这一块只改当前启用那一层,其余原样带着走。 */
+	/** 全表(所有皮肤的覆盖)。这一块只改当前这一套那一层,其余原样带着走。 */
 	value: CardSkinKnobsBySkin;
 	onChange: (next: CardSkinKnobsBySkin) => void;
+	/**
+	 * 给了就是 **per-UP 那侧**:`value` 是这位 UP 自己那层,`inherit` 是**已保存的**全局那份
+	 * (per-UP 预览在服务端与它合并,面板的起始位置得跟预览对得上),`skinId` 是他单独指的
+	 * 皮肤(undefined = 跟随全局那套)。不给 = 全局那侧。
+	 */
+	perUp?: { inherit: CardSkinKnobsBySkin; skinId: string | undefined };
 }) {
 	const listQuery = useCardSkinList();
-	const active = listQuery.data?.active ?? "";
+	const active = perUp?.skinId || (listQuery.data?.active ?? "");
 	// `skins` 也要问一句 —— 拉取失败 / 回了个不成形的响应时它就是 undefined,而这一块
 	// 摆在卡片页整页里,它一炸整页跟着白屏(隔壁皮肤库那节的 `?? []` 是同一个道理)。
 	const knobs = listQuery.data?.skins?.find((s) => s.id === active)?.knobs;
@@ -53,19 +67,29 @@ export function CardSkinKnobsSection({
 
 	const overrides: CardSkinKnobOverrides | undefined = value[active];
 	const tweaked = overrides === undefined ? 0 : Object.keys(overrides).length;
+	// 控件摆在哪:全局那侧就是这一层;per-UP 那侧没拧过的那几枚取全局那份(两层逐枚合并)。
+	const shown = perUp ? effectiveCardSkinKnobs(perUp.inherit, value, active) : overrides;
 
 	return (
 		<GlassBox
 			title="皮肤旋钮"
-			subtitle="这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底"
+			subtitle={
+				perUp
+					? "这位 UP 实际用的那套皮肤的可调项 —— 单独拧过的只作用于他,没拧过的跟随全局"
+					: "这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底"
+			}
 			accent="var(--color-bn-purple)"
 			icon={<Icon.sliders size={14} />}
 			badge={
 				knobs === undefined || knobs.length === 0
 					? "无"
-					: tweaked > 0
-						? `已调 ${tweaked} 项`
-						: "出厂值"
+					: perUp
+						? tweaked > 0
+							? `单独调 ${tweaked} 项`
+							: "跟随全局"
+						: tweaked > 0
+							? `已调 ${tweaked} 项`
+							: "出厂值"
 			}
 		>
 			{knobs === undefined || knobs.length === 0 ? (
@@ -79,13 +103,17 @@ export function CardSkinKnobsSection({
 						<KnobRow
 							key={knob.key}
 							knob={knob}
-							overrides={overrides}
+							tweaked={isKnobTweaked(overrides, knob.key)}
+							current={knobValue(knob, shown)}
+							perUp={perUp !== undefined}
 							onSet={(next) => onChange(setKnobOverride(value, active, knob.key, next))}
 							onReset={() => onChange(resetKnobOverride(value, active, knob.key))}
 						/>
 					))}
 					<HintNote className="mt-3">
-						旋钮按皮肤分开存,换皮肤再换回来设置还在;「还原」是把这个键删掉,不是写回默认值。
+						{perUp
+							? "单独拧过的按皮肤分开存,给他换皮肤再换回来还在;「还原」把这一枚退回跟随全局,之后全局怎么改他就跟着怎么变。"
+							: "旋钮按皮肤分开存,换皮肤再换回来设置还在;「还原」是把这个键删掉,不是写回默认值。"}
 					</HintNote>
 				</>
 			)}
@@ -103,17 +131,22 @@ export function CardSkinKnobsSection({
  */
 function KnobRow({
 	knob,
-	overrides,
+	tweaked,
+	current,
+	perUp,
 	onSet,
 	onReset,
 }: {
 	knob: CardSkinKnob;
-	overrides: CardSkinKnobOverrides | undefined;
+	/** 这一层拧过这一枚没有(只看键在不在)。 */
+	tweaked: boolean;
+	/** 控件摆在哪(拧过的值;没拧过的:全局那侧是皮肤 default,per-UP 那侧是全局那份)。 */
+	current: CardSkinKnobValue;
+	/** per-UP 那侧:没拧过的标「跟随全局」,「还原」回到跟随全局。 */
+	perUp: boolean;
 	onSet: (next: CardSkinKnobValue) => void;
 	onReset: () => void;
 }) {
-	const tweaked = isKnobTweaked(overrides, knob.key);
-	const current = knobValue(knob, overrides);
 	return (
 		<div
 			// 按 key 找得到这一行(测试、以后的「跳到这枚旋钮」都靠它);同 Field 的 data-code。
@@ -129,10 +162,16 @@ function KnobRow({
 							variant="ghost"
 							size="sm"
 							onClick={onReset}
-							title="删掉这个覆盖，回到皮肤自带的兜底"
+							title={
+								perUp ? "删掉这位 UP 的这一枚，回到跟随全局" : "删掉这个覆盖，回到皮肤自带的兜底"
+							}
 						>
 							还原
 						</Btn>
+					) : perUp ? (
+						<Pill color="var(--color-bn-text-tertiary)" subtle size="sm">
+							跟随全局
+						</Pill>
 					) : null}
 				</div>
 				<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">

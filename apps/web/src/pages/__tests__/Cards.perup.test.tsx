@@ -4,8 +4,8 @@
  * Cards 页 per-UP 作用域接线测试。
  *
  * 验证:① 全局作用域以 pageKey "cards" 注册灵动岛;② 点已定制 UP 的 tab 切到
- * pageKey "cards-perup";③ per-UP 保存只下发卡片三片(cardStyle + cardStyleByKind
- * + cardSkin),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢;
+ * pageKey "cards-perup";③ per-UP 保存只下发卡片四片(cardStyle + cardStyleByKind
+ * + cardSkin + cardSkinKnobs),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢;
  * ⑤ 全局 tab 右侧铺四卡全家福(四种 kind 各发一次预览)。
  */
 
@@ -220,7 +220,7 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(withSkin).toBeFalsy();
 	});
 
-	it("per-UP 保存 → 只 PATCH cardStyle + cardSkin(cardSkin 未覆盖 = null)", async () => {
+	it("per-UP 保存 → 只 PATCH 卡片那几片(cardSkin / 旋钮未覆盖 = null)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
@@ -233,11 +233,18 @@ describe("Cards per-UP 作用域接线", () => {
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
 		expect(url).toBe(`/api/subs/${CUSTOMIZED.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
-		// 只含卡片三片:cardStyle 为完整快照、cardSkin 未覆盖故 null、cardStyleByKind 无
-		// 按类型覆盖故 null;不带 imageGroup(不动该 UP 其它 slice)。
-		expect(Object.keys(overrides).sort()).toEqual(["cardSkin", "cardStyle", "cardStyleByKind"]);
+		// 只含卡片四片:cardStyle 为完整快照、cardSkin 未覆盖故 null、cardStyleByKind 无
+		// 按类型覆盖故 null、cardSkinKnobs 一枚都没单独拧故 null(ADR-0014 决策 17 的 🔗);
+		// 不带 imageGroup(不动该 UP 其它 slice)。
+		expect(Object.keys(overrides).sort()).toEqual([
+			"cardSkin",
+			"cardSkinKnobs",
+			"cardStyle",
+			"cardStyleByKind",
+		]);
 		expect(overrides.cardSkin).toBeNull();
 		expect(overrides.cardStyleByKind).toBeNull();
+		expect(overrides.cardSkinKnobs).toBeNull();
 		expect((overrides.cardStyle as { font: string }).font).toBe("PerUP Sans");
 	});
 

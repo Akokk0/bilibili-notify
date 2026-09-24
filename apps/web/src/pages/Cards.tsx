@@ -12,8 +12,9 @@
  * GlobalConfig.defaults.{cardStyle,cardStyleByKind}; per-UP they bind to that
  * subscription's overrides, gated by 「覆盖全局」 toggles.
  *
- * 排版归卡片皮肤(ADR-0014):「全局」tab 上的皮肤库是整套外观的入口,per-UP 只挑一套
- * (`overrides.cardSkin`)。旧的一维版式编辑器连同它的配置字段已随决策 15 整个退役 ——
+ * 排版归卡片皮肤(ADR-0014):「全局」tab 上的皮肤库是整套外观的入口,per-UP 挑一套
+ * (`overrides.cardSkin`)并可单独拧那套的旋钮(`overrides.cardSkinKnobs`,决策 17 的 🔗)。
+ * 旧的一维版式编辑器连同它的配置字段已随决策 15 整个退役 ——
  * 面板里现在搜不到它,那个键只剩服务端一次性迁移时读一遍。
  */
 
@@ -112,6 +113,7 @@ function PreviewImage({
 	content,
 	fallback,
 	cardSkin,
+	cardSkinKnobs,
 	frame = true,
 }: {
 	kind: CardKind;
@@ -125,6 +127,11 @@ function PreviewImage({
 	 * per-UP 单独指了一套时才填,否则「单独指定」的选择器与预览里的卡对不上。
 	 */
 	cardSkin?: string;
+	/**
+	 * per-UP 那侧的**草稿**旋钮(按皮肤 id 分,ADR-0014 决策 17 的 🔗)。全局作用域不传 ——
+	 * 全局那份是存完再看的,服务端自己从配置里读;per-UP 传草稿,拧一格预览当场变。
+	 */
+	cardSkinKnobs?: CardSkinKnobsBySkin;
 	/** 带边框大容器(单卡预览)。false = 裸图缩放填满父格(全家福格子复用)。 */
 	frame?: boolean;
 }) {
@@ -134,8 +141,8 @@ function PreviewImage({
 	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
 	// 后一次变更只触发一次 refetch。TArea / 图廊等控件的高频 onChange 同样收敛。
 	const spec = useMemo(
-		() => ({ kind, style, content, fallback, cardSkin }),
-		[kind, style, content, fallback, cardSkin],
+		() => ({ kind, style, content, fallback, cardSkin, cardSkinKnobs }),
+		[kind, style, content, fallback, cardSkin, cardSkinKnobs],
 	);
 	const [debouncedSpec, setDebouncedSpec] = useState(spec);
 	useEffect(() => {
@@ -568,19 +575,26 @@ function hasCardStyleByKind(sub: Subscription): boolean {
 	const bk = sub.overrides.cardStyleByKind;
 	return bk !== undefined && Object.keys(bk).length > 0;
 }
-/** 该 sub 已覆盖的卡片切片数(0..3),供 ScopeTabs 计数徽章。 */
+/** 该 UP 单独拧过皮肤旋钮没有(非空才算;按皮肤 id 分层,哪一套拧过都算)。 */
+function hasCardSkinKnobs(sub: Subscription): boolean {
+	const k = sub.overrides.cardSkinKnobs;
+	return k !== undefined && Object.keys(k).length > 0;
+}
+/** 该 sub 已覆盖的卡片切片数(0..4),供 ScopeTabs 计数徽章。 */
 function cardOverrideCount(sub: Subscription): number {
 	return (
 		(sub.overrides.cardStyle ? 1 : 0) +
 		(hasCardStyleByKind(sub) ? 1 : 0) +
-		(sub.overrides.cardSkin ? 1 : 0)
+		(sub.overrides.cardSkin ? 1 : 0) +
+		(hasCardSkinKnobs(sub) ? 1 : 0)
 	);
 }
 function hasCardCustomization(sub: Subscription): boolean {
 	return (
 		sub.overrides.cardStyle !== undefined ||
 		hasCardStyleByKind(sub) ||
-		sub.overrides.cardSkin !== undefined
+		sub.overrides.cardSkin !== undefined ||
+		hasCardSkinKnobs(sub)
 	);
 }
 
@@ -613,7 +627,8 @@ export default function Cards() {
 	 * 点得进去看或改。per-UP 那层(`puByKind`)仍有入口、仍生效,与这条无关。
 	 */
 	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
-	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局唯一,不分卡种也不分 UP。
+	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局那一份,不分卡种;
+	// 每位 UP 自己那层见下面的 `puKnobs`。
 	const [gSkinKnobs, setGSkinKnobs] = useState<CardSkinKnobsBySkin>({});
 
 	// per-UP 覆盖草稿(undefined = 继承全局)
@@ -622,6 +637,8 @@ export default function Cards() {
 	const [puByKind, setPuByKind] = useState<CardStyleByKind>({});
 	// 该 UP 单独指定的卡片皮肤;undefined = 跟随全局(保存时把这个键整个清掉)。
 	const [puSkin, setPuSkin] = useState<string | undefined>(undefined);
+	// 该 UP 单独拧过的皮肤旋钮,按皮肤 id 分层(ADR-0014 决策 17 的 🔗)。空 = 全跟全局。
+	const [puKnobs, setPuKnobs] = useState<CardSkinKnobsBySkin>({});
 
 	// 删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
 	// 基准 / per-UP per-kind 的直播封面 + 字体)。picker 自身的 onChange 只清它绑定的
@@ -680,13 +697,18 @@ export default function Cards() {
 		() => focusedSub?.overrides.cardStyleByKind ?? {},
 		[focusedSub?.overrides.cardStyleByKind],
 	);
+	const seededPuKnobs = useMemo<CardSkinKnobsBySkin>(
+		() => focusedSub?.overrides.cardSkinKnobs ?? {},
+		[focusedSub?.overrides.cardSkinKnobs],
+	);
 
 	// 切换到不同 UP(或其服务端数据变化)→ 重新 seed 覆盖草稿。
 	useEffect(() => {
 		setPuStyle(seededPuStyle);
 		setPuByKind(seededPuByKind);
 		setPuSkin(seededPuSkin);
-	}, [seededPuStyle, seededPuByKind, seededPuSkin]);
+		setPuKnobs(seededPuKnobs);
+	}, [seededPuStyle, seededPuByKind, seededPuSkin, seededPuKnobs]);
 
 	// 选中的 UP 从订阅列表消失 → 回退全局。
 	useEffect(() => {
@@ -743,7 +765,7 @@ export default function Cards() {
 		},
 	});
 
-	// per-UP 保存:只下发卡片两片(缺席键 = 不改其它 slice;null = 清除)。
+	// per-UP 保存:只下发卡片那几片(缺席键 = 不改其它 slice;null = 清除)。
 	const savePerUp = useMutation({
 		mutationFn: async (sub: Subscription) => {
 			await api.patch<Subscription>(`/api/subs/${sub.id}`, {
@@ -762,6 +784,13 @@ export default function Cards() {
 					// api.patch 的 nullifyUndefined),必须落成显式 null 才是删除哨兵 ——
 					// 否则键消失 = 服务端读作「不改」,选回「跟随全局」永远生效不了。
 					cardSkin: puSkin ?? null,
+					// 旋钮同 cardStyleByKind:一枚都不剩 → 整份 null(不留空壳);还有 → 与服务端
+					// 当前值做 diff,「还原」掉的那一枚由 buildPatch 变成显式 null(键消失 = 不改,
+					// 还原就永远不生效)。
+					cardSkinKnobs:
+						Object.keys(puKnobs).length > 0
+							? buildPatch(puKnobs, sub.overrides.cardSkinKnobs ?? {})
+							: null,
 				},
 			});
 		},
@@ -771,7 +800,7 @@ export default function Cards() {
 	const removeCardCustomization = useMutation({
 		mutationFn: async (sub: Subscription) =>
 			api.patch<Subscription>(`/api/subs/${sub.id}`, {
-				overrides: { cardStyle: null, cardStyleByKind: null, cardSkin: null },
+				overrides: { cardStyle: null, cardStyleByKind: null, cardSkin: null, cardSkinKnobs: null },
 			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -841,16 +870,22 @@ export default function Cards() {
 		};
 	}, [globalsQuery.data]);
 	const perUpIslandDraft = useMemo(
-		() => ({ ...(puStyle ?? {}), cardStyleByKind: puByKind, cardSkin: puSkin ?? null }),
-		[puStyle, puByKind, puSkin],
+		() => ({
+			...(puStyle ?? {}),
+			cardStyleByKind: puByKind,
+			cardSkin: puSkin ?? null,
+			cardSkinKnobs: puKnobs,
+		}),
+		[puStyle, puByKind, puSkin, puKnobs],
 	);
 	const perUpIslandBaseline = useMemo(
 		() => ({
 			...(seededPuStyle ?? {}),
 			cardStyleByKind: seededPuByKind,
 			cardSkin: seededPuSkin ?? null,
+			cardSkinKnobs: seededPuKnobs,
 		}),
-		[seededPuStyle, seededPuByKind, seededPuSkin],
+		[seededPuStyle, seededPuByKind, seededPuSkin, seededPuKnobs],
 	);
 
 	// 预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,后端解析房间号
@@ -898,6 +933,7 @@ export default function Cards() {
 				setPuStyle(seededPuStyle);
 				setPuByKind(seededPuByKind);
 				setPuSkin(seededPuSkin);
+				setPuKnobs(seededPuKnobs);
 			}
 		},
 	});
@@ -939,6 +975,8 @@ export default function Cards() {
 	 * 那个值(`puSkin`),这样选择器里刚点的那套立刻就能在预览里看到,不必先保存。
 	 */
 	const previewSkin = isGlobalScope ? undefined : puSkin;
+	/** 同上:per-UP 那侧的草稿旋钮;全局作用域不传,没拧过也不传(请求体与从前一字不差)。 */
+	const previewKnobs = isGlobalScope || Object.keys(puKnobs).length === 0 ? undefined : puKnobs;
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -1039,20 +1077,32 @@ export default function Cards() {
 						(isGlobalScope ? (
 							<>
 								<CardSkinSection />
-								{/* 旋钮值住全局配置、按皮肤 id 分层(不分卡种也不分 UP),所以只在全局作用域出现
-								    —— per-UP 那边挑的是「用哪套皮肤」,不是拧这套皮肤的钮。 */}
+								{/* 全局那份旋钮(按皮肤 id 分层、不分卡种),拧的是全局在用的那套。 */}
 								<CardSkinKnobsSection value={gSkinKnobs} onChange={setGSkinKnobs} />
 							</>
 						) : (
-							<GlassBox
-								title="卡片皮肤"
-								subtitle="这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在全局皮肤库「复制一份」再改"
-								accent="var(--color-bn-purple)"
-								icon={<Icon.palette size={14} />}
-								badge={puSkin ? "单独指定" : "跟随全局"}
-							>
-								<CardSkinPicker value={puSkin} onChange={setPuSkin} />
-							</GlassBox>
+							<>
+								<GlassBox
+									title="卡片皮肤"
+									subtitle="这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在全局皮肤库「复制一份」再改"
+									accent="var(--color-bn-purple)"
+									icon={<Icon.palette size={14} />}
+									badge={puSkin ? "单独指定" : "跟随全局"}
+								>
+									<CardSkinPicker value={puSkin} onChange={setPuSkin} />
+								</GlassBox>
+								{/* 这位 UP 实际用的那套(单独指了就是它,否则全局那套)的旋钮,ADR-0014 决策 17
+								    的 🔗。「跟随全局」的起始位置取**已保存**的全局那份 —— per-UP 预览在服务端
+								    也是与它合并,两边对得上。 */}
+								<CardSkinKnobsSection
+									value={puKnobs}
+									onChange={setPuKnobs}
+									perUp={{
+										inherit: globalsQuery.data?.defaults.cardSkinKnobs ?? {},
+										skinId: puSkin,
+									}}
+								/>
+							</>
 						))}
 
 					{/* 直播封面 —— 仅「直播开播」tab。全局作用域改 gStyle 基准(engines 的全局默认
@@ -1149,6 +1199,7 @@ export default function Cards() {
 														content={fcontent}
 														fallback={previewFallback}
 														cardSkin={previewSkin}
+														cardSkinKnobs={previewKnobs}
 														frame={false}
 													/>
 												</div>
@@ -1182,6 +1233,7 @@ export default function Cards() {
 								content={previewContent}
 								fallback={previewFallback}
 								cardSkin={previewSkin}
+								cardSkinKnobs={previewKnobs}
 							/>
 
 							{/* Effective style readout */}
