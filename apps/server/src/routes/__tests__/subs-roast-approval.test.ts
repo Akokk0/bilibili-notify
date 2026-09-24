@@ -59,6 +59,14 @@ function routeWith(masterPlatform: string | null) {
 		store: {
 			getSubscriptions: () => [
 				{ id: "s1", uid: "1", roastSchedule: { approval: false, enabled: false } },
+				// 拓展订阅也有单人定时锐评(ADR-0020 决策 14),审批已经开着。
+				{
+					kind: "extension",
+					id: "e1",
+					extensionId: "douyin",
+					externalId: "sec-1",
+					roastSchedule: { approval: true, enabled: true },
+				},
 			],
 			getGlobals: () => ({ master: { targetId: masterPlatform ? "m1" : undefined } }),
 			getTargets: () => (masterPlatform ? [{ id: "m1", platform: masterPlatform }] : []),
@@ -112,6 +120,40 @@ describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
 		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
 			"/s1",
+			patchRoast({ roastSchedule: { cron: "0 9 * * 1" } }) as RequestInit,
+		);
+		expect(res.status).toBe(200);
+		expect(patchSubscription).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("PATCH /api/subs/:id — 拓展订阅同一道闸(ADR-0020 决策 14)", () => {
+	it("在收不到回复的通道上给拓展订阅开审批 → 400,没落盘", async () => {
+		const { app, patchSubscription } = routeWith("feishu");
+		const res = await app.request(
+			"/e1",
+			patchRoast({ roastSchedule: { approval: true } }) as RequestInit,
+		);
+		expect(res.status).toBe(400);
+		expect(patchSubscription).not.toHaveBeenCalled();
+	});
+
+	it("审批本来就开着、这次只改 cron → 照样过闸:收不到回复的通道上拦下", async () => {
+		// 闸看的是「存完之后审批开没开」:这次没带 approval 就看它现在的值 —— 拓展订阅也得读它自己那一格,
+		// 不能当成「拓展没有锐评、审批恒关」放过去。
+		const { app, patchSubscription } = routeWith("feishu");
+		const res = await app.request(
+			"/e1",
+			patchRoast({ roastSchedule: { cron: "0 9 * * 1" } }) as RequestInit,
+		);
+		expect(res.status).toBe(400);
+		expect(patchSubscription).not.toHaveBeenCalled();
+	});
+
+	it("通道收得到 → 放行", async () => {
+		const { app, patchSubscription } = routeWith("onebot");
+		const res = await app.request(
+			"/e1",
 			patchRoast({ roastSchedule: { cron: "0 9 * * 1" } }) as RequestInit,
 		);
 		expect(res.status).toBe(200);

@@ -430,13 +430,11 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		const roastPatch = shapeCheck.data.roastSchedule;
 		if (isPlainObject(roastPatch)) {
 			const cur = deps.store.getSubscriptions().find((s) => s.id === id);
-			// 单人锐评只有 B 站订阅有(ADR-0019 决策 12);拓展订阅上这一段会被 schema 剥掉。
+			// 单人定时锐评两支订阅都有(ADR-0020 决策 14),闸也两支都拦:这次没带 approval 就看它现在那一格。
 			const approvalOn =
 				typeof roastPatch.approval === "boolean"
 					? roastPatch.approval
-					: cur && isBiliSubscription(cur)
-						? cur.roastSchedule.approval
-						: false;
+					: (cur?.roastSchedule.approval ?? false);
 			const gate = checkApprovalReachable({
 				approvalOn,
 				masterTargetId: deps.store.getGlobals().master.targetId,
