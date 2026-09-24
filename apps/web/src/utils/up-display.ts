@@ -5,7 +5,7 @@
  */
 
 import type { HistoryRowIdentity } from "@bilibili-notify/internal";
-import { colorFromUid } from "@bilibili-notify/internal/constants";
+import { upColor } from "@bilibili-notify/internal/constants";
 import { isBiliSubscription, type Subscription } from "../types/domain";
 
 /**
@@ -20,22 +20,15 @@ export function displayName(sub: Subscription): string {
 }
 
 /**
- * 拓展那一支的「人」取色用的那一串(ADR-0019 决策 73):拓展 id + 冒号 + 外部 id。带着冒号和
- * 拓展名,永远不会等于一个纯数字的 uid,不会和某位 B 站 UP 撞成同一个人的颜色。只用来取色 ——
- * 查订阅不拼串(外部 id 是不透明字符串,拼就得选分隔符)。
- */
-function extensionColorSeed(extensionId: string, externalId: string): string {
-	return `${extensionId}:${externalId}`;
-}
-
-/**
- * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取(与服务端渲染周报图时同一套,同一位 UP
- * 在页面与图上是同一个颜色);拓展订阅按「拓展 id:外部 id」取(决策 73):删了再加订阅 id 变了,
- * 颜色不变。历史行用 {@link historyRowColor},同一个人同一个颜色。
+ * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取,拓展订阅按「拓展 id:外部 id」取(决策 73):
+ * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `upColor`(ADR-0020 决策 15),服务端出图(周报 /
+ * 锐评卡)用的是同一份,同一个人在页面与图上是同一个颜色。历史行用 {@link historyRowColor}。
  */
 export function subscriptionColor(sub: Subscription): string {
-	return colorFromUid(
-		isBiliSubscription(sub) ? sub.uid : extensionColorSeed(sub.extensionId, sub.externalId),
+	return upColor(
+		isBiliSubscription(sub)
+			? { uid: sub.uid }
+			: { extensionId: sub.extensionId, externalId: sub.externalId },
 	);
 }
 
@@ -51,8 +44,7 @@ export function isExtensionRow<T extends HistoryRowIdentity>(
  * 订阅卡与历史行是同一个颜色,订阅删了也不变。两格都没有才退订阅 id。
  */
 export function historyRowColor(row: HistoryRowIdentity): string {
-	if (isExtensionRow(row)) return colorFromUid(extensionColorSeed(row.extensionId, row.externalId));
-	return colorFromUid(row.uid || row.subscriptionId);
+	return upColor(row, row.subscriptionId);
 }
 
 /**

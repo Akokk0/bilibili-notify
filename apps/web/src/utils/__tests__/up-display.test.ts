@@ -33,6 +33,47 @@ describe("historyRowColor", () => {
 	});
 });
 
+/**
+ * 颜色与搬家之前一字不差(ADR-0020 决策 15:拓展的配色种子搬进 internal,面板与出卡共用)。下面的
+ * 色值是拿**搬之前**那份代码(git 里 up-display.ts 的 `extensionColorSeed` + internal 的
+ * `colorFromUid`)现算出来写死的 —— 搬完之后订阅卡、历史行上同一个人的颜色一个都不许变。
+ */
+describe("颜色与搬家之前一字不差", () => {
+	const BILI: Array<[string, string]> = [
+		["1", "#ffaf7b"],
+		["12345", "#fb7299"],
+		["946974", "#01b355"],
+		["387654321", "#ff9c89"],
+	];
+	const EXT: Array<[string, string, string]> = [
+		["douyin", "12345", "#ffaf7b"],
+		["douyin", "MS4wLjABAAAA-abc/def", "#fb7299"],
+		["fake-source", "1", "#b3cd2f"],
+		["kuaishou", "3xabc", "#ff93d1"],
+	];
+
+	it("B 站:订阅卡与历史行都是搬之前那个颜色", () => {
+		for (const [uid, color] of BILI) {
+			expect(subscriptionColor(makeEmptySubscription(uid)), uid).toBe(color);
+			expect(historyRowColor({ subscriptionId: "s", uid }), uid).toBe(color);
+		}
+	});
+
+	it("拓展:订阅卡与历史行都是搬之前那个颜色", () => {
+		for (const [extensionId, externalId, color] of EXT) {
+			const sub = makeEmptyExtensionSubscription(extensionId, externalId);
+			expect(subscriptionColor(sub), externalId).toBe(color);
+			expect(historyRowColor({ subscriptionId: "s", extensionId, externalId }), externalId).toBe(
+				color,
+			);
+		}
+	});
+
+	it("两格都没有的历史行退订阅 id,也是搬之前那个颜色", () => {
+		expect(historyRowColor({ subscriptionId: "s-only" })).toBe("#b3cd2f");
+	});
+});
+
 describe("historyRowIdentity", () => {
 	const labelOf = (extensionId: string) => (extensionId === "douyin" ? "抖音" : extensionId);
 

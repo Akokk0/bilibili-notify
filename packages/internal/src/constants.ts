@@ -417,6 +417,38 @@ export function colorFromUid(uid: string): string {
 	return UP_COLORS[(h >>> 0) % UP_COLORS.length] as string;
 }
 
+/**
+ * 拓展那一支的「人」取色用的那一串(ADR-0019 决策 73):拓展 id + 冒号 + 外部 id。带着冒号和拓展名,
+ * 永远不会等于一个纯数字的 uid,不会和某位 B 站 UP 撞成同一个人的颜色。**只用来取色** —— 查订阅不拼串
+ * (外部 id 是不透明字符串,拼就得选分隔符)。
+ */
+export function extensionColorSeed(extensionId: string, externalId: string): string {
+	return `${extensionId}:${externalId}`;
+}
+
+/** 按人取色要看的那两支身份(同历史行 / 统计行 / 粉丝面板条目的那几格)。 */
+export interface UpColorIdentity {
+	uid?: string;
+	extensionId?: string;
+	externalId?: string;
+}
+
+/**
+ * 这个人的颜色 —— 跟着人走,不跟着订阅走(ADR-0019 决策 73):拓展(两格都有)按
+ * {@link extensionColorSeed},B 站按 uid。删了再加订阅 id 变了,颜色不变。
+ *
+ * 面板(订阅卡、历史行、统计页、粉丝面板)与服务端出图(锐评卡)用的是这同一份(ADR-0020 决策 15)——
+ * 各抄一份的话,迟早有一处同一个人换了颜色。两支都认不出(老行缺格)时退 `fallbackSeed`
+ * (历史行给的是订阅 id)。
+ */
+export function upColor(identity: UpColorIdentity, fallbackSeed = ""): string {
+	const { uid, extensionId, externalId } = identity;
+	if (extensionId !== undefined && externalId !== undefined) {
+		return colorFromUid(extensionColorSeed(extensionId, externalId));
+	}
+	return colorFromUid(uid || fallbackSeed);
+}
+
 // ---------------------------------------------------------------------------
 // 自带字体的体积口径
 // ---------------------------------------------------------------------------

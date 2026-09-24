@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { colorFromUid, UP_COLORS } from "./constants";
+import { colorFromUid, extensionColorSeed, UP_COLORS, upColor } from "./constants";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
@@ -103,5 +103,52 @@ describe("UP 主配色", () => {
 		expect(buckets.size).toBe(UP_COLORS.length);
 		const counts = [...buckets.values()];
 		expect(Math.max(...counts) / Math.min(...counts)).toBeLessThan(1.5);
+	});
+});
+
+/**
+ * 按人取色(ADR-0019 决策 73 / ADR-0020 决策 15):B 站按 uid,拓展按「拓展 id:外部 id」。这份算法以前只在
+ * 面板里有(`apps/web/src/utils/up-display.ts`),锐评卡在服务端出图也要同一个颜色,所以搬进这里。
+ *
+ * 下面的色值是拿**搬之前**那份代码(git 里面板的 `extensionColorSeed` + 这里的 `colorFromUid`)现算出来
+ * 写死的,不是拿新代码算的 —— 搬家之后订阅卡、历史行、统计页上同一个人的颜色一个都不许变。
+ */
+describe("upColor — 按人取色", () => {
+	it("B 站按 uid:与搬之前一字不差", () => {
+		const before: Array<[string, string]> = [
+			["1", "#ffaf7b"],
+			["12345", "#fb7299"],
+			["946974", "#01b355"],
+			["387654321", "#ff9c89"],
+			["2", "#05d6bd"],
+			["672328094", "#02b088"],
+		];
+		for (const [uid, color] of before) expect(upColor({ uid }), uid).toBe(color);
+	});
+
+	it("拓展按「拓展 id:外部 id」:与搬之前一字不差(外部 id 带 / 也照算)", () => {
+		const before: Array<[string, string, string]> = [
+			["douyin", "12345", "#ffaf7b"],
+			["douyin", "MS4wLjABAAAA-abc/def", "#fb7299"],
+			["fake-source", "1", "#b3cd2f"],
+			["kuaishou", "3xabc", "#ff93d1"],
+			["douyin", "1", "#fb7299"],
+		];
+		for (const [extensionId, externalId, color] of before) {
+			expect(upColor({ extensionId, externalId }), `${extensionId} ${externalId}`).toBe(color);
+			expect(extensionColorSeed(extensionId, externalId)).toBe(`${extensionId}:${externalId}`);
+		}
+	});
+
+	it("拓展不按外部 id 取色:外部 id 恰好等于某个 B 站 uid,种子也不是那串 uid", () => {
+		expect(extensionColorSeed("douyin", "12345")).not.toBe("12345");
+		expect(upColor({ extensionId: "douyin", externalId: "12345" })).toBe(
+			colorFromUid("douyin:12345"),
+		);
+	});
+
+	it("拓展两格缺一格不算拓展;两支都认不出退调用方给的种子(历史行给订阅 id)", () => {
+		expect(upColor({ uid: "12345", extensionId: "douyin" })).toBe("#fb7299");
+		expect(upColor({}, "s-only")).toBe("#b3cd2f");
 	});
 });
