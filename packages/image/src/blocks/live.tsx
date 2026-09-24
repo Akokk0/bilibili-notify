@@ -92,12 +92,18 @@ const popularity: BlockRenderer<LiveCardView> = (p) => {
 	);
 };
 
-/** 分区(原子块)。文案同样恒有前缀,不会空。 */
-const area: BlockRenderer<LiveCardView> = (p) => (
-	<span data-bn="text" class="block">
-		{`分区：${p.area}`}
-	</span>
-);
+/**
+ * 分区(原子块)。没有分区就收起 —— B 站那头恒给,拓展可以不报,不留一个「分区：」后面什么都
+ * 没有(同人气 / 点赞那一格)。
+ */
+const area: BlockRenderer<LiveCardView> = (p) => {
+	if (!p.area) return null;
+	return (
+		<span data-bn="text" class="block">
+			{`分区：${p.area}`}
+		</span>
+	);
+};
 
 /** 粉丝行(原子块):各状态各有各的文案,某态没有就收起。 */
 const fans: BlockRenderer<LiveCardView> = (p) => {

@@ -155,6 +155,13 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 		expect(started.fans).toBeUndefined();
 	});
 
+	/** 拓展可以不报分区:不留一个「分区：」后面什么都没有。B 站恒有分区。 */
+	it("没有分区(没给或空串)→ 分区那一行不画", async () => {
+		expect((await drawn(input({ area: undefined }))).area).toBeUndefined();
+		expect((await drawn(input({ area: "" }))).area).toBeUndefined();
+		expect((await drawn(input())).area).toBe("分区：虚拟主播");
+	});
+
 	it("没有开播时刻 → 不写那句时间", async () => {
 		expect((await drawn(input({ status: "start", startedAt: undefined }))).time).toBe("");
 		expect((await drawn(input({ status: "streaming", startedAt: undefined }))).time).toBe("");
