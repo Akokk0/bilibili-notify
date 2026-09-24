@@ -456,15 +456,85 @@ describe("重启补推", () => {
 		expect(sent.map((s) => s.type)).toEqual([3]);
 	});
 
-	it("拓展停过又跑起来:靠直播状态接上,不再补推", async () => {
+	// 契约不规定状态与事件谁先报(决策 57 的 09-24 🔗):报「不在播」也算见过,「正在直播」卡发之前再认一次
+	// 这一场还是不是当前那场 —— 否则一场刚开的直播会先补推一张「正在直播」、紧跟着又推开播卡。
+	it("先报不在播、再报在播、再来开播事件:只推一张开播卡", async () => {
+		settings = baseSettings({ restartPush: true });
+		start();
+		report({ kind: "liveStatus", value: { live: false } });
+		await settle();
+		// 在播与开播事件分在两轮到:等开播事件到的时候,要补推的那张早发出去了,只能靠「不在播也算见过」拦。
+		liveStatus();
+		await settle();
+		liveStart();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+	});
+
+	it("BN 起来后第一份状态就是在播、同一轮紧跟着开播事件:只推一张开播卡", async () => {
+		settings = baseSettings({ restartPush: true });
+		start();
+		liveStatus();
+		liveStart();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		expect(sent[0]?.input?.status).toBe("start");
+		// 排队时就认出换了一场:那张「正在直播」连卡都不出。
+		expect(renderedInputs.map((i) => i.status)).toEqual(["start"]);
+	});
+
+	it("补推的「正在直播」还在出卡时开播事件到了:这张不发,只推开播卡", async () => {
+		settings = baseSettings({ restartPush: true });
+		start();
+		let release: () => void = () => {};
+		slowNext = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		liveStatus();
+		await settle();
+		expect(renderedInputs.map((i) => i.status)).toEqual(["streaming"]);
+		liveStart();
+		release();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+	});
+
+	it("拓展停过又跑起来:「见过」一并作废,它重新跑起来的第一份状态就是在播 → 照开机那样补推", async () => {
 		settings = baseSettings({ restartPush: true });
 		start();
 		liveStatus();
 		await settle();
 		bus.emit("extension-stopped", EXT);
+		// 停着的时候开的播(或者一直在播):重新跑起来报的第一份就是在播。
+		liveStatus();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([0, 0]);
+	});
+
+	it("拓展停过又跑起来、先报了不在播:之后的在播照常接上,不补推", async () => {
+		settings = baseSettings({ restartPush: true });
+		start();
+		liveStatus();
+		await settle();
+		bus.emit("extension-stopped", EXT);
+		report({ kind: "liveStatus", value: { live: false } });
 		liveStatus();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([0]);
+	});
+
+	it("别的拓展停了:这条订阅的「见过」不动,不补推", async () => {
+		settings = baseSettings({ restartPush: true });
+		start();
+		liveStatus();
+		await settle();
+		// 下播把这一场收掉,之后再报在播时手里没有这一场,补不补推只看「见过」。
+		liveEnd();
+		await settle();
+		bus.emit("extension-stopped", "kuaishou");
+		liveStatus();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([0, 9]);
 	});
 });
 
