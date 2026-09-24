@@ -63,4 +63,19 @@ describe("内置技能表", () => {
 			}
 		}
 	});
+
+	it("正文点名的工具都在它自己的 allowed-tools 里 —— 读技能之后工具面会收窄到那张清单", () => {
+		// 收窄是交集:正文让她调、清单里却没有的那把,读完技能就从工具表上消失了。
+		// 她只能说做不到,或者编一个结果。
+		const mentioned = /`([a-z_]{4,})`/g;
+		for (const s of BUILTIN_SKILLS) {
+			if (!s.allowedTools) continue;
+			for (const [, name] of s.body.matchAll(mentioned)) {
+				if (!name?.includes("_")) continue;
+				expect(s.allowedTools, `${s.name} 正文点名了 ${name},allowed-tools 里却没有`).toContain(
+					name,
+				);
+			}
+		}
+	});
 });

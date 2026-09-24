@@ -20,7 +20,13 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "weekly-report",
 		description: "把所有订阅的 UP 拉一遍数据,评出本周最勤奋与最能鸽的那几位,出一张榜再锐评几句",
-		allowedTools: ["list_subscriptions", "get_user_stats", "get_user_videos", "get_user_info"],
+		allowedTools: [
+			"list_subscriptions",
+			"get_user_stats",
+			"get_user_videos",
+			"get_user_dynamics",
+			"get_user_info",
+		],
 		disableModelInvocation: false,
 		body: [
 			"## 周报",
@@ -28,7 +34,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到全部订阅。**一个都不要漏**,也不要只挑几个有名的看。",
-			"2. 对每一位 UP 调 `get_user_stats`(总播放 / 总获赞 / 视频数 / 动态数),再调 `get_user_videos` 看最近发了什么、什么时候发的。",
+			"2. 对每一位 UP 调 `get_user_stats`(总播放 / 总获赞 / 视频数 / 动态数),再调 `get_user_videos` 看最近发了什么、什么时候发的;订了动态、没订直播的那几位,再调 `get_user_dynamics` 看最近一条动态是什么时候(下面判鸽王要用)。",
 			"3. 订阅超过 12 位时,先用 `get_user_stats` 过一遍,只对**数据最活跃的前 8 位**和**最沉寂的 3 位**再拉 `get_user_videos` —— 中间那段既不上榜也不进鸽王名单,拉了也用不上。这一步省下的是主人的等待时间。",
 			"",
 			"### 判定",
