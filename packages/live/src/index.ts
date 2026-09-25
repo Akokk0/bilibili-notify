@@ -21,6 +21,8 @@ export {
 	type CustomSpecialDanmakuUsersLike,
 	type CustomSpecialUsersEnterTheRoomLike,
 	type DynamicScopedChange,
+	type GuardTierKey,
+	type GuardTierLike,
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveBroadcastOptions,
 	type LiveMasterFeature,
