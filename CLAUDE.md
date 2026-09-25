@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上不再有任何包(所以也不需要 changesets)。Koishi 插件与 AstrBot 插件已从 dev 移除、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;后续以「薄的适配插件桥接到跑着的独立端」的形式回归,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **别再往 `CONNECTION_PLATFORMS` 里加档**:拓展提供的连接走 `kind: "extension"` 那一支 —— **一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(从桥报的 bot 上抄,枚举不了),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,别再给它们留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:拓展提供的连接走 `kind: "extension"` 那一支 —— **一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(从桥报的 bot 上抄,枚举不了),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
@@ -16,7 +16,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 vp install
 vp run build           # 全 workspace 拓扑序构建
 vp run typecheck       # 全 workspace tsc --noEmit
-vp test                # vitest,全包;定向跑用 vp test <路径>(别用 vpx vitest,根不再声明 vitest,会 dlx 一份野的 runner)
+vp test                # vitest,全包;定向跑用 vp test <路径>(别用 vpx vitest:根不声明 vitest,会 dlx 一份野的 runner)
 vp run check           # Biome lint + format 检查(check:fix 自动修)
 vp run dev:apps        # apps/server + apps/web 并行 dev,顺带 watch 打包仓里的拓展
 vp run -F <pkg> build  # 构建单个包
@@ -24,7 +24,7 @@ vp run build:update-payload   # server 自包含 bundle + 装配 + web dist(Dock
 ```
 
 - **`-F` filter 必须在 script 名之前**:`vp run -F <pkg> <script>`。写成 `vp run <script> -F <pkg>` 会把 `-F` 转发给 script(如 tsc)而出错。
-- **测试文件一律 `import ... from "vite-plus/test"`,不从 `vitest`**:vitest 是 vite-plus 自带的,仓库里没有任何包声明它。`from "vitest"` 在嵌套于别的工程里的 checkout 可能被外层 node_modules 兜底而本地全绿,CI 干净安装必报 TS2307(2026-09-03 栽过)。
+- **测试文件一律 `import ... from "vite-plus/test"`,不从 `vitest`**:vitest 是 vite-plus 自带的,仓库里没有任何包声明它。`from "vitest"` 在嵌套于别的工程里的 checkout 可能被外层 node_modules 兜底而本地全绿,CI 干净安装必报 TS2307。
 - Git hooks(Lefthook)在 `vp install` 时装好:pre-commit 跑 Biome,commit-msg 强制 conventional-commits。
 
 ## 顶层布局
@@ -52,7 +52,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - `dev` —— 活跃开发主干(独立端)。
 - `main` —— GitHub 默认分支,发布快照。不触发任何发版。
-- `koishi-astrbot-maintenance` —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线;两端各自的发版 workflow 只认这条分支,dev 不再含这两个目录。
+- `koishi-astrbot-maintenance` —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线;两端各自的发版 workflow 只认这条分支,dev 不含这两个目录。
 
 独立端 Docker 镜像与 Desktop Release 由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha`,纯 semver tag→`:latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 会分别触发 Docker、Desktop 与应用内更新载荷,三者互不阻塞。详见 `docs/agents/build-release.md`。
 
@@ -72,4 +72,4 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - **Issue tracker** —— GitHub Issues `Akokk0/bilibili-notify`,经 `gh` CLI;外部 PR 不作为 triage 来源。见 `docs/agents/issue-tracker.md`。
 - **Triage labels** —— 三轴:流转 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`(每条 issue 恒有且只有一个,新开自动打 `needs-triage`)、类型(GitHub 默认)、模块 `area:*`。标签都已建好,词表见 `docs/agents/triage-labels.md`。
-- **Domain docs** —— 单 context 仓库,`CONTEXT.md` + `docs/adr/` 在仓库根(由 `/grill-with-docs` 按需创建)。见 `docs/agents/domain.md`。
+- **Domain docs** —— 拷问定案后先落 ADR(`docs/adr/`,规矩见其 README)再动手;`CONTEXT.md` 暂无(`/grill-with-docs` 要调的 domain-modeling 本机没装)。见 `docs/agents/domain.md`。
