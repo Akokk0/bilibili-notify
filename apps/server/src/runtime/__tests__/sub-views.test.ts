@@ -188,6 +188,38 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 	});
 });
 
+/**
+ * 回归守卫 —— 上舰自定义的三档文案**各自**下发。
+ *
+ * 此前这一步只把 `guardBuy.captain.template` 当成唯一一条文案往下传(图片倒是三档
+ * 各传各的),面板上给提督 / 总督写的专属文案运行时从来不读,有人上总督推出去的
+ * 是舰长那句。三档写成三句不同的话,少传一档、传串一档都会红。
+ */
+describe("buildLiveSubViewSingle — 上舰自定义三档各自下发", () => {
+	const guardBuy = {
+		enable: true,
+		captain: { template: "舰长那句 {uname}", imageUrl: "cap.png" },
+		commander: { template: "提督那句 {uname}", imageUrl: "com.png" },
+		governor: { template: "总督那句 {uname}", imageUrl: "gov.png" },
+	};
+
+	it("per-UP 覆盖了上舰提示 → 视图带上该 UP 的三档文案与图片", () => {
+		const view = buildLiveSubViewSingle(
+			makeSub({ templates: { guardBuy } }),
+			fakeRuntimeStore(),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view.customGuardBuy).toEqual(guardBuy);
+	});
+
+	it("无 per-UP 覆盖 → 视图带上全局的三档文案与图片", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.templates.guardBuy = guardBuy;
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), g);
+		expect(view.customGuardBuy).toEqual(guardBuy);
+	});
+});
+
 describe("per-kind 样式解析进视图", () => {
 	it("无任何 per-kind 覆盖 → live 视图 customCardStyleByKind 为 undefined(各 kind 走基准)", () => {
 		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), makeDefaultGlobalConfig());

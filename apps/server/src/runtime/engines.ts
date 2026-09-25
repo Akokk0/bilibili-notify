@@ -51,6 +51,7 @@ import type {
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
+	GuardBundle,
 	LinkParsingConfig,
 	LinkParsingPolicy,
 	NotificationPayload,
@@ -71,6 +72,7 @@ import {
 	resolveCardStyleForKind,
 } from "@bilibili-notify/internal";
 import {
+	type CustomGuardBuyLike,
 	LiveEngine,
 	type LiveEngineConfig,
 	type LiveNotifySend,
@@ -592,13 +594,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			imageEnabled: g.defaults.cardStyle.enabled,
 			aiEnabled: g.defaults.ai.enabled,
 			aiWebSearch: g.defaults.ai.search.engines.live,
-			customGuardBuy: {
-				enable: g.defaults.templates.guardBuy.enable,
-				guardBuyMsg: g.defaults.templates.guardBuy.captain.template,
-				captainImgUrl: g.defaults.templates.guardBuy.captain.imageUrl,
-				supervisorImgUrl: g.defaults.templates.guardBuy.commander.imageUrl,
-				governorImgUrl: g.defaults.templates.guardBuy.governor.imageUrl,
-			},
+			customGuardBuy: toCustomGuardBuy(g.defaults.templates.guardBuy),
 			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
 			// DEFAULT_LIVE_TEMPLATES,未编辑时输出不变;编辑后即生效)。renderer 走
 			// subCustom ?? globalCustom ?? DEFAULT_LIVE_TEMPLATES,enable 仅占位、不被读。
@@ -1686,6 +1682,20 @@ export function dynamicWorkSettings(
 	};
 }
 
+/**
+ * 配置的上舰提示 → 引擎视图。三档(总督 / 提督 / 舰长)的文案与图片**各自**下发,
+ * room-session 按事件的 guard_level 取同一档。全局(`liveConfig`)与 per-UP
+ * (`buildLiveSubViewSingle`)共用这一处,别在两边各抄一份映射。
+ */
+function toCustomGuardBuy(b: GuardBundle): CustomGuardBuyLike {
+	return {
+		enable: b.enable,
+		governor: { ...b.governor },
+		commander: { ...b.commander },
+		captain: { ...b.captain },
+	};
+}
+
 function buildLiveSubsView(
 	store: SubscriptionStore,
 	subRuntimeStore: SubRuntimeStore,
@@ -1806,13 +1816,7 @@ export function buildLiveSubViewSingle(
 		minScPrice: eff.filters.minScPrice,
 		minGuardLevel: eff.filters.minGuardLevel,
 		aiOverride: resolveAiOverride(sub, globals.defaults),
-		customGuardBuy: {
-			enable: eff.templates.guardBuy.enable,
-			guardBuyMsg: eff.templates.guardBuy.captain.template,
-			captainImgUrl: eff.templates.guardBuy.captain.imageUrl,
-			supervisorImgUrl: eff.templates.guardBuy.commander.imageUrl,
-			governorImgUrl: eff.templates.guardBuy.governor.imageUrl,
-		},
+		customGuardBuy: toCustomGuardBuy(eff.templates.guardBuy),
 		customLiveSummary: {
 			enable: true,
 			liveSummary: eff.templates.liveSummary,

@@ -1,13 +1,8 @@
-import {
-	GuardLevel,
-	type LiveEvent,
-	type LiveUser,
-	type UserActionType,
-} from "@bilibili-notify/blive";
+import type { GuardLevel, LiveEvent, LiveUser, UserActionType } from "@bilibili-notify/blive";
 import type { Disposable } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { LivePushType } from "./push-like";
-import { GUARD_LEVEL_IMG } from "./room-context";
+import { GUARD_LEVEL_IMG, GUARD_LEVEL_TIER } from "./room-context";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 import { buildRoomLink } from "./template-renderer";
@@ -607,14 +602,11 @@ export class RoomSession extends RoomSessionBase {
 			? this.sub.customGuardBuy
 			: this.ctx.config.customGuardBuy;
 		if (effectiveGuardBuy.enable) {
-			const customGuardImg: Record<GuardLevel, string | undefined> = {
-				[GuardLevel.None]: undefined,
-				[GuardLevel.Captain]: effectiveGuardBuy.captainImgUrl,
-				[GuardLevel.Admiral]: effectiveGuardBuy.supervisorImgUrl,
-				[GuardLevel.Governor]: effectiveGuardBuy.governorImgUrl,
-			};
+			// 文案和图片取同一档:哪一档上舰,就用哪一档的文案与图。
+			const tierKey = GUARD_LEVEL_TIER[body.guard_level];
+			const tier = tierKey ? effectiveGuardBuy[tierKey] : undefined;
 			const text = this.ctx.templateRenderer.renderGuardBuy({
-				guardBuyConfig: effectiveGuardBuy,
+				template: tier?.template ?? "",
 				uname: body.user.uname,
 				master: this.masterInfo,
 				giftName: body.gift_name,
@@ -623,7 +615,7 @@ export class RoomSession extends RoomSessionBase {
 			await this.ctx.push.broadcastToTargets(
 				this.sub.uid,
 				this.ctx.contentBuilder.message([
-					this.ctx.contentBuilder.image(customGuardImg[body.guard_level] ?? guardImg),
+					this.ctx.contentBuilder.image(tier?.imageUrl ?? guardImg),
 					this.ctx.contentBuilder.text(text),
 				]),
 				LivePushType.LiveGuardBuy,

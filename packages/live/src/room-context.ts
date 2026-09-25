@@ -6,6 +6,8 @@ import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
+	type CustomGuardBuyLike,
+	type GuardTierKey,
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
 	type PickCardBackground,
@@ -27,6 +29,14 @@ export const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
 		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
 };
 
+/** Guard-level → 自定义上舰配置里对应的那一档(B 站 guard_level:1 总督 / 2 提督 / 3 舰长)。 */
+export const GUARD_LEVEL_TIER: Record<GuardLevel, GuardTierKey | undefined> = {
+	[GuardLevel.None]: undefined,
+	[GuardLevel.Governor]: "governor",
+	[GuardLevel.Admiral]: "commander",
+	[GuardLevel.Captain]: "captain",
+};
+
 /**
  * 模板 / 渲染层全局配置,listener-manager + room-session 共用。
  *
@@ -34,13 +44,7 @@ export const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
  * per-UP 字段,adapter build SubItemView 时已折算好,引擎直接读 `SubItemView.X`。
  */
 export interface ListenerManagerConfig {
-	customGuardBuy: {
-		enable: boolean;
-		guardBuyMsg?: string;
-		captainImgUrl?: string;
-		supervisorImgUrl?: string;
-		governorImgUrl?: string;
-	};
+	customGuardBuy: CustomGuardBuyLike;
 	customLiveMsg: {
 		enable: boolean;
 		customLiveStart?: string;

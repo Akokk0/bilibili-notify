@@ -112,12 +112,21 @@ export interface CustomLiveMsgLike {
 	customLiveEnd?: string;
 }
 
-export interface CustomGuardBuyLike {
+/** 大航海三档的键,与配置 `templates.guardBuy` 同名(总督 / 提督 / 舰长)。 */
+export type GuardTierKey = "governor" | "commander" | "captain";
+
+/** 一档上舰的自定义文案 + 图片。 */
+export interface GuardTierLike {
+	template?: string;
+	imageUrl?: string;
+}
+
+/**
+ * 自定义上舰提示:三档**各自**一份文案 + 图片,room-session 按事件的 guard_level
+ * 取同一档的文案和图。`enable` 为 false 时三档都不读(走官方上舰图 / 上舰卡)。
+ */
+export interface CustomGuardBuyLike extends Partial<Record<GuardTierKey, GuardTierLike>> {
 	enable: boolean;
-	guardBuyMsg?: string;
-	captainImgUrl?: string;
-	supervisorImgUrl?: string;
-	governorImgUrl?: string;
 }
 
 export interface CustomLiveSummaryLike {

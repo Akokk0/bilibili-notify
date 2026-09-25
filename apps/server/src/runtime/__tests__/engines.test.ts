@@ -927,6 +927,25 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveCfg.defaultLiveCoverImages).toEqual(["a", "b"]);
 	});
 
+	it("回归:改全局上舰三档文案 → live config 的 customGuardBuy 三档各带各的文案与图片", () => {
+		// 此前 liveConfig() 只把 `captain.template` 当成所有档位的文案传给引擎,提督 /
+		// 总督的专属文案运行时从来不读(图片倒是三档各传各的)。
+		const guardBuy = {
+			enable: true,
+			captain: { template: "舰长那句", imageUrl: "cap.png" },
+			commander: { template: "提督那句", imageUrl: "com.png" },
+			governor: { template: "总督那句", imageUrl: "gov.png" },
+		};
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.templates.guardBuy = guardBuy;
+		});
+		c.bus.emit("config-changed", "globals");
+		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
+		expect(liveCfg.customGuardBuy).toEqual(guardBuy);
+	});
+
 	it("item 4 — 改 defaults.ai 不扇出重设 UA / level / healthCheck", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
