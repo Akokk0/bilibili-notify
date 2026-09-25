@@ -14,7 +14,16 @@ The skills speak in terms of five canonical triage roles; this table maps them t
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-`needs-triage` is applied automatically when an issue is opened (`.github/workflows/issue-triage.yml`, runs from the default branch). Moving an issue along means **replacing** the status label, not adding a second one.
+`needs-triage` is applied automatically when an issue is opened without a status label (`.github/workflows/issue-triage.yml`, runs from the default branch); an issue created already carrying one — say a skill filing it as `ready-for-agent` — is left alone. Moving an issue along means **replacing** the status label, not adding a second one.
+
+`needs-info` runs itself (`.github/workflows/issue-needs-info.yml` → `scripts/issue-needs-info.mjs`, also from the default branch):
+
+- **Labelled** → the bot @-mentions the reporter, says the issue closes after 3 days without a reply, and removes any other status label.
+- **Reporter replies** → the clock stops: `needs-info` is swapped back to `needs-triage`. A maintainer's follow-up does not count as a reply.
+- **Daily sweep** → an open issue whose latest `needs-info` label is 3+ days old, with no reporter reply since, gets a short note and is closed as not planned. The label stays on.
+- **Reporter replies after that auto-close** → the issue reopens as `needs-triage`. Reporters cannot reopen an issue someone else closed, so the bot does it for them; an issue a maintainer closed by hand is left alone.
+
+To ask a reporter for more, label `needs-info` and post the question — don't start the clock by commenting alone.
 
 ## Type (optional, usually one)
 

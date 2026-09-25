@@ -1,0 +1,50 @@
+name: bilibili-notify — issue needs-info
+
+# `needs-info` 流转标签(「在等报告人补信息」)的自动化:
+#   - 打上它 → @报告人,说明 3 天不回会先关;顺手摘掉别的流转标签
+#   - 报告人回复 → 停表,换回 needs-triage
+#   - 每天清扫一次:满 3 天没回的按「不计划处理」关闭
+#   - 被这样关掉后报告人又回复 → 重开并换回 needs-triage
+# 逻辑全在 scripts/issue-needs-info.mjs(有单测),这里只管接线。标签词表见 docs/agents/triage-labels.md。
+#
+# `issues` / `issue_comment` / `schedule` 只认**默认分支**上的 workflow 文件,所以这份要在 main 上
+# 才生效。用 GITHUB_TOKEN 写回的标签和评论不会再触发 workflow,不会自己喂自己。
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: "17 1 * * *" # 每天 UTC 01:17(北京时间 09:17)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read # checkout 要;写了 permissions 之后没列的一律是 none
+
+# 同一条 issue 的事件排队处理,别让「报告人回复」和清扫同时改标签。
+concurrency:
+  group: issue-needs-info-${{ github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  needs-info:
+    # 先在这层粗筛,免得每条评论都起一台机器:打标签只看 needs-info,评论只看报告人本人。
+    # 细判(是不是 PR、标签还在不在、是不是我们关的)在脚本里。
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'needs-info') ||
+      (github.event_name == 'issue_comment' && github.event.comment.user.login == github.event.issue.user.login)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/issue-needs-info.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Handle needs-info
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/issue-needs-info.mjs
