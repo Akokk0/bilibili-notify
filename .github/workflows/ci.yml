@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [dev]
+    # dev-next 是 1.0 的开发线(发 alpha 时 dev 快进过去),和 dev 一样每次推送都跑门禁。
+    branches: [dev, dev-next]
   pull_request:
     branches: [main]
 
