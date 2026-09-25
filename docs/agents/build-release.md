@@ -84,7 +84,7 @@ GitHub Release 的正文由 `create-standalone-github-release.sh` 拼(desktop-re
 
 ### 发布前验证
 
-正式创建 tag 前先手动 dry-run:
+默认不跑 dry-run、直接打 tag;用户点名,或本版动过 `build:desktop` / `build:update-payload` / `prepare-resources` 时,打 tag 前先手动 dry-run:
 
 - `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
 - `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
