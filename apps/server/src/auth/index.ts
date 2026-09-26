@@ -28,17 +28,16 @@ export interface AuthSystem extends Disposable {
 	/** Force a cookie refresh check against bilibili. */
 	refreshCookies(): Promise<void>;
 	/**
-	 * Forget the bilibili login: delete the cookie file, clear the live jar, report
-	 * logged-out. Never touches master.key — it also encrypts the config secrets.
-	 */
-	resetCookies(): Promise<void>;
-	/**
 	 * Re-load cookies from disk into the live api jar and re-probe account info.
 	 * Called after a backup restore writes new cookies, to live-swap the login
 	 * without a process restart.
 	 */
 	reloadCookiesFromStore(): Promise<void>;
-	/** Mark the session logged-out client-side. */
+	/**
+	 * Forget the bilibili login: delete the cookie file, clear the live jar, report
+	 * logged-out. Safe when not logged in (clears a cookie file that no longer
+	 * decrypts). Never touches master.key — it also encrypts the config secrets.
+	 */
 	logout(): Promise<void>;
 	/** Current snapshot — proxy to `flow.current()`. */
 	status(): LoginSnapshot;
@@ -170,15 +169,9 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		await flowFinal.reportAccountInfo();
 	};
 
-	const resetCookies = async (): Promise<void> => {
-		await storage.cookieStore.clear();
-		// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
-		await api.clearCookies();
-		flowFinal.reportLoggedOut("cookiesCleared");
-	};
-
 	const logout = async (): Promise<void> => {
 		await storage.cookieStore.clear();
+		// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
 		await api.clearCookies();
 		flowFinal.reportLoggedOut("notLogin");
 	};
@@ -196,7 +189,6 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		flow: flowFinal,
 		beginLogin,
 		refreshCookies,
-		resetCookies,
 		reloadCookiesFromStore,
 		logout,
 		status,

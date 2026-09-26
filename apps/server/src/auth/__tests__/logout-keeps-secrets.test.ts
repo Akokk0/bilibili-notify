@@ -1,12 +1,12 @@
 /**
- * 回归守护 — 「清除 Cookie」不许把配置密钥一起清掉。
+ * 回归守护 — 「退出登录」不许把配置密钥一起清掉。
  *
  * master.key 是 cookie 与配置密钥袋(AI key / 搜索 key)共用的一把钥匙。旧版的
  * 「重置密钥与 Cookie」会轮换它;而配置密钥袋在进程里缓存着旧钥匙,继续用旧钥匙
  * 写 `config-secrets.enc`,下次重启拿新钥匙解不开 → 按空处理、只打一条 warn,
  * 所有 AI key 被静默清空。
  *
- * 这里走真的 `createAuthSystem().resetCookies()` + 真的 FileKeyProvider /
+ * 这里走真的 `createAuthSystem().logout()` + 真的 FileKeyProvider /
  * SecretStore,只把会联网的 B 站 API 与登录流换成替身。
  */
 
@@ -60,8 +60,8 @@ afterEach(async () => {
 const keyPath = () => join(dataDir, "secrets", "master.key");
 const secretsPath = () => join(dataDir, "secrets", "config-secrets.enc");
 
-describe("AuthSystem.resetCookies — 清除 Cookie 不牵连配置密钥", () => {
-	it("清除 Cookie 之后再存配置密钥,重启后配置密钥还在", async () => {
+describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
+	it("退出登录之后再存配置密钥,重启后配置密钥还在", async () => {
 		// 同一个 provider 同时喂 cookie 与配置密钥袋 —— 与 runtime/bootstrap 的装配一致。
 		const ctx = makeCtx();
 		const keyProvider = new FileKeyProvider(keyPath(), ctx.logger);
@@ -78,7 +78,7 @@ describe("AuthSystem.resetCookies — 清除 Cookie 不牵连配置密钥", () =
 			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
 			keyProvider,
 		});
-		await auth.resetCookies();
+		await auth.logout();
 		// 清完之后面板上再改一次 key:secret store 用它进程里缓存的那把钥匙写盘。
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-after" } });
 		auth.dispose();

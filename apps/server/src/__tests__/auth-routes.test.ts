@@ -28,10 +28,6 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 			snapshot = { status: BiliLoginStatus.LOGIN_QR, msg: "", data: "data:image/png;base64,XYZ" };
 		}),
 		refreshCookies: vi.fn(async () => {}),
-		resetCookies: vi.fn(async () => {
-			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "Cookie 已清除" };
-			opts.bus?.emit("auth-lost");
-		}),
 		logout: vi.fn(async () => {
 			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
 		}),
@@ -143,28 +139,6 @@ describe("auth routes", () => {
 		const res = await app.request("/api/auth/qr", { method: "POST" });
 		expect(res.status).toBe(409);
 		expect(fake.beginLogin).not.toHaveBeenCalled();
-
-		await runtime.dispose();
-	});
-
-	it("POST /api/auth/cookies/reset clears storage AND emits auth-lost on the bus", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
-		await runtime.configStore.load();
-		const events: string[] = [];
-		runtime.bus.on("auth-lost", () => {
-			events.push("auth-lost");
-		});
-		const fake = makeFakeAuthSystem({ bus: runtime.bus });
-		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
-			authSystem: asAuthSystem(fake),
-		});
-
-		const res = await app.request("/api/auth/cookies/reset", { method: "POST" });
-		expect(res.status).toBe(200);
-		expect(await readJson(res)).toEqual({ ok: true });
-		expect(fake.resetCookies).toHaveBeenCalledTimes(1);
-		expect(events).toEqual(["auth-lost"]);
 
 		await runtime.dispose();
 	});

@@ -13,7 +13,6 @@ import {
 export type LoginStatusMsgKey =
 	| "loading"
 	| "notLogin"
-	| "cookiesCleared"
 	| "authLost"
 	| "loggedIn"
 	| "loginJustSucceeded"
@@ -30,7 +29,6 @@ export type LoginStatusMsgKey =
 const MESSAGES: Record<LoginStatusMsgKey, string> = {
 	loading: "正在加载登录信息...",
 	notLogin: "账号未登录，请点击「扫码登录」",
-	cookiesCleared: "Cookie 已清除，请重新扫码登录",
 	authLost: "账号登录已失效，请在控制台重新扫码登录",
 	loggedIn: "已登录",
 	loginJustSucceeded: "登录成功，正在加载订阅...",
