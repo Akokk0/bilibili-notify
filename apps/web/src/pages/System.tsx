@@ -572,7 +572,7 @@ export default function System() {
 									{logout.isPending ? "处理中…" : "退出登录"}
 								</Btn>
 								<Btn variant="danger" disabled={reset.isPending} onClick={() => reset.mutate()}>
-									{reset.isPending ? "处理中…" : "重置密钥与 Cookie"}
+									{reset.isPending ? "处理中…" : "清除 Cookie"}
 								</Btn>
 							</div>
 						</GlassBox>

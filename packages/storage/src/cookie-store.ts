@@ -92,19 +92,6 @@ export class CookieStore {
 		}
 	}
 
-	async resetKey(): Promise<void> {
-		await this.clear();
-		if (this.keyProvider.resettable) {
-			this.key = await this.keyProvider.resetKey();
-			this.logger.info("[cookie] 密钥已重置");
-		} else {
-			// Injected passphrase can't be rotated server-side; wiping the cookie
-			// is the meaningful action (next login re-encrypts under the same key).
-			this.key = await this.keyProvider.getKey();
-			this.logger.info("[cookie] Cookie 已清除（注入密钥不可在服务端轮换）");
-		}
-	}
-
 	private requireKey(): Buffer {
 		if (!this.key) throw new Error("CookieStore not initialized");
 		return this.key;

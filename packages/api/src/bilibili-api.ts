@@ -388,7 +388,7 @@ export class BilibiliAPI {
 	}
 
 	/**
-	 * 清空内存 cookie jar(登出 / 密钥重置)。调用方此前只删盘 cookie 而不清
+	 * 清空内存 cookie jar(登出 / 清除 Cookie)。调用方此前只删盘 cookie 而不清
 	 * 这里,导致 api 仍以 stale SESSDATA/bili_jct 发已认证请求,直到进程重启
 	 * (安全缺陷,P0-2)。重建 jar + 重绑 client(沿用 -101 路径同款做法,
 	 * 旧 client 仍持旧 jar 引用,必须 initClient 重绑),停掉刷新定时器

@@ -37,7 +37,7 @@ export class KeyManager {
 		return this.createNew();
 	}
 
-	async createNew(): Promise<Buffer> {
+	private async createNew(): Promise<Buffer> {
 		const key = randomBytes(32);
 		await mkdir(dirname(this.keyPath), { recursive: true });
 		// Atomic write: write to .tmp then rename, so an interrupted write

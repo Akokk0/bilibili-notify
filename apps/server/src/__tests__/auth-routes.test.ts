@@ -29,7 +29,7 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 		}),
 		refreshCookies: vi.fn(async () => {}),
 		resetCookies: vi.fn(async () => {
-			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "密钥已重置" };
+			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "Cookie 已清除" };
 			opts.bus?.emit("auth-lost");
 		}),
 		logout: vi.fn(async () => {

@@ -13,7 +13,7 @@ export interface AuthRouteDeps extends RouteDeps {
  * - GET    /status              → current LoginSnapshot
  * - POST   /qr                  → kicks off LoginFlow.beginLogin; QR url flows via WS auth channel
  * - POST   /cookies/refresh     → forces a cookie refresh check
- * - POST   /cookies/reset       → wipes secrets (master.key + cookies.json)
+ * - POST   /cookies/reset       → clears the bilibili cookies (file + live jar); master.key untouched
  * - POST   /logout              → clears cookies, transitions to NOT_LOGIN
  *
  * Note: the QR PNG itself is NOT returned over HTTP — it is published as a
