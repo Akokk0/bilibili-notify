@@ -13,8 +13,9 @@ export interface AuthRouteDeps extends RouteDeps {
  * - GET    /status              → current LoginSnapshot
  * - POST   /qr                  → kicks off LoginFlow.beginLogin; QR url flows via WS auth channel
  * - POST   /cookies/refresh     → forces a cookie refresh check
- * - POST   /cookies/reset       → clears the bilibili cookies (file + live jar); master.key untouched
- * - POST   /logout              → clears cookies, transitions to NOT_LOGIN
+ * - POST   /logout              → clears the bilibili cookies (file + live jar), transitions to
+ *                                  NOT_LOGIN; master.key untouched. Works when not logged in too —
+ *                                  that is how a cookie file that no longer decrypts gets cleared.
  *
  * Note: the QR PNG itself is NOT returned over HTTP — it is published as a
  * `login-status-report` event over the WS `auth` channel by `LoginFlow.beginLogin`.
@@ -67,16 +68,6 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 		} catch (err) {
 			log.error("POST /api/auth/cookies/refresh failed", err);
 			return c.json({ error: "auth_failed", message: "failed to refresh cookies" }, 500);
-		}
-	});
-
-	app.post("/cookies/reset", async (c) => {
-		try {
-			await deps.authSystem.resetCookies();
-			return c.json({ ok: true });
-		} catch (err) {
-			log.error("POST /api/auth/cookies/reset failed", err);
-			return c.json({ error: "auth_failed", message: "failed to reset cookies" }, 500);
 		}
 	});
 
