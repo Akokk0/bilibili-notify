@@ -5,7 +5,7 @@
  *   - save→load round-trip(含/不含 refreshToken);缺文件→null
  *   - 旧 CBC 文件({iv,data} 无 v/tag)→ load() 返回 null + warn(不迁移)
  *   - 注入 encryptionKey:跨实例同 key 可解;不同 key → null(GCM 认证失败)
- *   - resetKey:文件模式轮换 key(旧 cookie 失效);注入模式清 cookie、key 不变
+ *   - 清除 cookie:两种模式都不动主密钥(文件模式下 master.key 内容不变)
  */
 
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { StorageManager } from "../index";
+import { FileKeyProvider, StorageManager } from "../index";
 
 function makeCtx(): { ctx: ServiceContext; logger: Logger } {
 	const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -117,13 +117,24 @@ describe("CookieStore — 注入 encryptionKey", () => {
 	});
 });
 
-describe("CookieStore — resetKey", () => {
-	it("文件模式:轮换 key,旧 cookie 失效", async () => {
-		const { sm } = await mkStore();
+describe("CookieStore — 清除 cookie 不动主密钥", () => {
+	// master.key 是 cookie 与配置密钥(AI key / 搜索 key)共用的。清 cookie 时若顺手
+	// 轮换它,server 进程里缓存着旧钥匙的配置密钥袋会继续用旧钥匙写盘,下次重启
+	// 用新钥匙解不开 → 按空处理,所有 AI key 被静默清空(v0.12.0 线上实况)。
+	it("文件模式:清除 cookie 后 master.key 文件内容不变", async () => {
+		const { ctx } = makeCtx();
+		const keyPath = join(dataDir, "bilibili-notify", "master.key");
+		const keyProvider = new FileKeyProvider(keyPath, ctx.logger);
+		const sm = new StorageManager({ serviceCtx: ctx, dataDir, keyProvider });
+		await sm.init();
 		await sm.cookieStore.save({ cookiesJson: "old" });
-		await sm.cookieStore.resetKey(); // clear + 轮换 master.key
-		expect(await sm.cookieStore.load()).toBeNull();
-		// 新 key 下仍可正常 save/load。
+		const before = await readFile(keyPath, "utf8");
+
+		await sm.cookieStore.clear();
+
+		expect(await sm.cookieStore.load()).toBeNull(); // cookie 确实清掉了
+		expect(await readFile(keyPath, "utf8")).toBe(before);
+		// 清完仍能在同一把钥匙下存取。
 		await sm.cookieStore.save({ cookiesJson: "new" });
 		expect((await sm.cookieStore.load())?.cookiesJson).toBe("new");
 	});
@@ -131,7 +142,7 @@ describe("CookieStore — resetKey", () => {
 	it("注入模式:清 cookie 但 key 不变(同 passphrase 后续 save/load 正常)", async () => {
 		const { sm } = await mkStore("pass-X");
 		await sm.cookieStore.save({ cookiesJson: "before" });
-		await sm.cookieStore.resetKey();
+		await sm.cookieStore.clear();
 		expect(await sm.cookieStore.load()).toBeNull(); // 已清
 		await sm.cookieStore.save({ cookiesJson: "after" });
 		const reopened = await mkStore("pass-X"); // 同 passphrase + 磁盘 salt

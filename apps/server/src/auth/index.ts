@@ -27,7 +27,10 @@ export interface AuthSystem extends Disposable {
 	beginLogin(): Promise<void>;
 	/** Force a cookie refresh check against bilibili. */
 	refreshCookies(): Promise<void>;
-	/** Wipe secrets (cookies + master.key); caller must initiate a fresh login. */
+	/**
+	 * Forget the bilibili login: delete the cookie file, clear the live jar, report
+	 * logged-out. Never touches master.key — it also encrypts the config secrets.
+	 */
 	resetCookies(): Promise<void>;
 	/**
 	 * Re-load cookies from disk into the live api jar and re-probe account info.
@@ -168,10 +171,10 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	};
 
 	const resetCookies = async (): Promise<void> => {
-		await storage.cookieStore.resetKey();
+		await storage.cookieStore.clear();
 		// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
 		await api.clearCookies();
-		flowFinal.reportLoggedOut("keyReset");
+		flowFinal.reportLoggedOut("cookiesCleared");
 	};
 
 	const logout = async (): Promise<void> => {
