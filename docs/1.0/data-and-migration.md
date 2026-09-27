@@ -180,9 +180,11 @@
 
 所有存储都收到三件东西上，挂在已有的件上、不另开一套：
 
-1. **原子写**（`packages/storage`，正本是 `atomicWriteJson`）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件仍开机报错）；开机清掉上个进程留下的临时文件。
-2. **写道** = internal 的 `createSerialQueue` 加 `flush` 与关门：按键串行，支持单一全局键（历史的全局串行是刻意的）；关门后的写入直接拒绝、不碰盘。
+1. **原子写**（新建，家在 `packages/storage`，叫 `atomicWriteJson`；现在是服务端三份逐字相同的私有副本，另有约 8 种各写各的临时文件写法）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件仍开机报错）；开机清掉上个进程留下的临时文件。
+2. **写道** = `createSerialQueue`（新建，家在 internal 的零依赖子路径；现在只有面板里一个小的，服务端至少 11 处手写 `prev.then` 队列）带 `flush` 与关门：按键串行，支持单一全局键（历史的全局串行是刻意的）；关门后的写入直接拒绝、不碰盘。
 3. **后台任务登记** = ServiceContext 加 `track(promise)` 与分阶段的 onDispose：「发出去不管」的写入改成登记在案、能被取消。
+
+原语已落（第 1 期第一片）：`packages/storage` 导出 `atomicWriteFile` / `atomicWriteJson`（临时名 `<目标>.bn-tmp.<pid>.<随机>`，fsync 文件与目录，Windows 跳过目录 fsync）、`readJsonFile`（结果分 `ok` / `missing` / `corrupt`，坏文件改名 `.corrupt-<ISO 时刻>`）、`appendJsonl`（不 fsync，读方要容得下末尾半行）、`replaceDirectory`（换下来的旧目录叫 `.bn-old.*`）、`sweepTempFiles`（只认这两种标记；Docker 里 pid 常常相同，所以必须在任何写入之前跑）；internal 导出 `createSerialQueue`（`run(key, task)`、`flush`、`close`，关门后拒绝，错误码 `queue_closed`）。
 
 关停顺序（服务端预算 8 秒，给桌面壳与 Docker 默认的 10 秒留余量；compose 样例写上 `stop_grace_period`）：
 
