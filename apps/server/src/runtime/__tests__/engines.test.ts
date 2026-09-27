@@ -20,6 +20,7 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BiliLoginStatus } from "@bilibili-notify/api";
 import type {
 	Connection,
 	GlobalConfig,
@@ -315,7 +316,7 @@ interface Ctx {
 	bus: ReturnType<typeof createNodeMessageBus>;
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
-	api: { setUserAgent: ReturnType<typeof vi.fn> };
+	api: { setUserAgent: ReturnType<typeof vi.fn>; getRelations: ReturnType<typeof vi.fn> };
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
 }
 
@@ -336,12 +337,24 @@ function setup(opts?: {
 	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
 	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
+	/** 开机那一刻的登录状态;不给 = 未登录。 */
+	loginStatus?: BiliLoginStatus;
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
 	if (opts?.connections) configStore._setConnections(opts.connections);
-	const api = { setUserAgent: vi.fn() };
-	const loginFlow = { setHealthCheckMs: vi.fn() };
+	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
+	const api = {
+		setUserAgent: vi.fn(),
+		getRelations: vi.fn(async (uids: string[]) => ({
+			code: 0,
+			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
+		})),
+	};
+	const loginFlow = {
+		setHealthCheckMs: vi.fn(),
+		current: () => ({ status: opts?.loginStatus ?? BiliLoginStatus.NOT_LOGIN, msg: "" }),
+	};
 	const bus = createNodeMessageBus();
 	const subs = opts?.subs ?? [];
 	const runtime = createEngines({
@@ -1685,5 +1698,35 @@ describe("createEngines — 连接所在平台的能力", () => {
 		const c = setup();
 		active = c;
 		expect(c.runtime.connectionCapabilities("nope")).toBeUndefined();
+	});
+});
+
+/**
+ * 开机补关注只在已登录时跑。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
+ * 还把每条订阅标成「未关注」。未登录开机时 LoginFlow 已记下 needsRestore,扫码登录后发
+ * auth-restored,由那条补上。
+ */
+describe("createEngines — 开机补关注", () => {
+	it("未登录开机:不查关注关系", async () => {
+		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		active = c;
+		await new Promise((r) => setTimeout(r, 0));
+		expect(c.api.getRelations).not.toHaveBeenCalled();
+	});
+
+	it("已登录开机:查一次关注关系", async () => {
+		const c = setup({
+			subs: [makeEmptySubscription({ id: "s1", uid: "1" })],
+			loginStatus: BiliLoginStatus.LOGGED_IN,
+		});
+		active = c;
+		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
+	});
+
+	it("未登录开机、之后登录恢复:补上那一次", async () => {
+		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		active = c;
+		c.bus.emit("auth-restored");
+		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
 	});
 });

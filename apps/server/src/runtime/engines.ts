@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
-import type { BilibiliAPI } from "@bilibili-notify/api";
+import { type BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import {
 	type BoundWorkPush,
@@ -576,8 +576,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			log.warn(`[follow] 关注同步(${reason})失败: ${e instanceof Error ? e.message : String(e)}`);
 		});
 	};
-	// 启动时补一遍(未登录则整批失败,交给下面的 auth-restored 重试)。
-	runFollowSync("boot");
+	// 启动时只在已登录时补一遍。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
+	// 还把每条订阅标成「未关注」。开机时登录状态已探完(createAuthSystem 等过探活);未登录时
+	// LoginFlow 记下了 needsRestore,扫码登录后发 auth-restored,由下面那条补上。
+	if (opts.loginFlow.current().status === BiliLoginStatus.LOGGED_IN) runFollowSync("boot");
 
 	// ---------- LiveEngine ----------
 	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid);
