@@ -208,7 +208,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | # | 守卫 |
 | --- | --- |
 | 1 | 核心目录不许 import 服务端 `bilibili/`，例外只有 `compose.ts`；和现有两条拓展边界合成一张「谁不许 import 谁」的边界表 |
-| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片 |
+| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片。已落：`scripts/network-guard.mjs`，挂在根配置的 `test.setupFiles`；拦在 `net.Socket#connect`（fetch、http、ws、WebSocket 都经过它），每条测试收尾查账，被测代码吞掉了报错也判失败。管不到：测试起的子进程（Chrome、脚本）、直接调 `dns.lookup`、在包目录里跑 `vp test` |
 | 3 | 服务端除了持久化底层，不许直接写文件（writeFile、rename、appendFile）。底层要接住原子写 JSON、追加 JSONL、原子写二进制、整目录替换；白名单只有 config/persist.ts 那份保留注释的 YAML |
 | 4 | 同一个导出名全仓只定义一次；另有「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。不扫 extensions/ 与测试夹具，TS 重载不算多次定义 |
 | 5 | 面板里 `"/api/"` 字面量只许出现在 `services/` |

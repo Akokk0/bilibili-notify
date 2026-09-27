@@ -12,5 +12,7 @@ export default defineConfig({
 		// 分支的整个包副本),从仓库根跑 `vp test` 会把那些副本也跑一遍。在 vitest 默认
 		// 排除基础上追加 .claude,只跑当前分支自己的测试。
 		exclude: [...configDefaults.exclude, "**/.claude/**"],
+		// 测试拦外网:连非本机地址直接报错,见 scripts/network-guard.mjs。
+		setupFiles: ["./scripts/vitest-setup.mjs"],
 	},
 });
