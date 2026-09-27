@@ -14,7 +14,7 @@
 | --- | --- |
 | 契约版本 | v3 |
 | 宿主认的最低版本 | 3 —— v1、v2 的退路删掉（`legacy-v1.ts` 连同过时注释一起删） |
-| v2 拓展 | 装不上；数据迁移时照拷，列进升级后的首访页，给一键更新 |
+| v2 拓展 | 装不上：按现成机制不加载、说清楚原因（「这个拓展是给旧契约写的，请更新」），不会加载后再炸；数据迁移时照拷，列进升级后的首访页，给一键更新 |
 | 以后加口 | 清单里多一个可选键，不抬大版本 |
 
 v3 与 v2 不兼容：第三方拓展重发之前装不上 1.0。桥和 1.0 同批迁到 v3。
@@ -69,7 +69,7 @@ ctx 各成员的完整语义与 B 站共用，见 [subscription-sources.md](./su
 
 ### 拓展这一侧交什么
 
-宿主把拓展的订阅源转成一份 `SubscriptionSource`。1.0 的对应关系：
+宿主把拓展的订阅源转成一份 `SubscriptionSource`。注册口沿用 `registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle`，和推送侧的 `registerPushOutlet(def: PushOutletDef): PushOutletHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。
 
 | `SubscriptionSource` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
@@ -77,9 +77,9 @@ ctx 各成员的完整语义与 B 站共用，见 [subscription-sources.md](./su
 | `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名；`lookupPlaceholder` 改名 `searchPlaceholder`。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`） |
 | `fetchProfile` | 可选；不实现就靠主动报资料 | 宿主适配补齐 |
 | `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选 | 形状同中立接口 |
+| `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |
 
 没有「新建 / 启用订阅」钩子：拓展要在订阅变化时做事，一律用 `ctx.onSubscriptionsChanged`，自己对比新旧名单。
-| `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |
 
 **能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。
 
@@ -87,7 +87,11 @@ ctx 各成员的完整语义与 B 站共用，见 [subscription-sources.md](./su
 
 ### 上报
 
-上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。和 v2 相比改名的字段：
+上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。
+
+附加块 `attachment` 这版不对拓展开：v3 的上报 schema 没有这一格（照「多交一格宿主不认识的，整条拒」处理）。
+
+和 v2 相比改名的字段：
 
 | v2 | v3 |
 | --- | --- |
@@ -100,6 +104,8 @@ ctx 各成员的完整语义与 B 站共用，见 [subscription-sources.md](./su
 | 作品 `topics[]` | `topic` |
 | 作品上的 `id` / `url` | 挪到 `PostReport` 信封上：`postId` / `url` |
 | 表格积木 `count` | `showCount` |
+
+正文：拓展必交纯文本 `text`，可选交片段列表 `richText`（09-27 拍板，推翻 09-26 精简时无声改成的「交完整片段」，也不是 Q3 原来的「只交纯文本」）。契约只开放五种片段：文字、@人、话题、链接、表情，是中立 `RichText` 的子集，宿主一对一转成中立片段；中立片段以后加种类不影响契约，开放新种类是一次明确的加宽。选片段不选「纯文本 + 位置」：各平台的位置单位互不兼容（Bluesky UTF-8 字节、Telegram / YouTube UTF-16、X 码点），片段让作者按自己平台的单位切，调研见施工记录。`text` 是用户在平台上看到的字，平台私有标记（小红书 `#x[话题]#`、Discord `<@id>`、X 的 `&amp;` 转义）由拓展剥掉。片段字段与中立 `RichText` 完全相同（见 data-model「正文片段」）：`mention` 的 `userId` 可选，`link` 带 `url` 与可选图标，图标和表情图都先用 `ctx.storeImage` / `ctx.fetchImage` 存成 `ImageRef`。
 
 只留一处传输差异，在进门处换掉：
 
@@ -122,7 +128,7 @@ ctx 各成员的完整语义与 B 站共用，见 [subscription-sources.md](./su
 照旧不变的规矩：
 
 - 判新、去重、限流归拓展；BN 报什么收什么。开机第一轮只记基线、别报。
-- 按外部 id 报，`sourceKey` 由宿主按 ctx 补（拓展冒充不了别家）；核心按身份查订阅，正常一条，老数据里遗留的重复各分一份，查不到或已停用就丢弃，并兜底再查一次名单。停用的订阅收不到事件与直播状态，资料照样生效。
+- 按外部 id 报，`sourceKey` 由宿主按 ctx 补（拓展冒充不了别家）；核心按身份查订阅，正常一条，老数据里遗留的重复各分一份，查不到或已停用就丢弃，并兜底再查一次名单。停用的订阅收不到事件与直播状态，也不刷资料：资料缓存停在停用那一刻，重新启用后下一轮刷新（09-27 拍板，改掉 v2 的「资料照样生效」）。
 - 多交一格宿主不认识的，整条拒；认识的选填格值坏了只丢那一格；丢了什么记在日志与拓展详情页。
 - 直播 `status` 不触发推送；开播卡 / 下播卡只由事件触发。周期「正在直播」由核心计时、调 `fetchLiveStatus`（见 [subscription-sources.md](./subscription-sources.md)「直播」）。
 - 过滤（屏蔽转发 / 文章 / 图集 / 视频、关键词、正则）对拓展作品与 B 站一视同仁：看 `Post` 上有没有，不再只看文字。

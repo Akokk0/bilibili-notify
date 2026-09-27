@@ -72,11 +72,13 @@ interface CreatorProfile {
 - **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili` 列为保留 id，手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
 - 「identity」在仓里另有 ChatIdentity、inboundIdentity、ExtensionIdentity 等意思，订阅身份的函数一律带 `subscription` 限定词。
 - **订阅只有一个文件** `config/subscriptions.json`，B 站与拓展同一数组、行行带 `identity`。「缺 kind 就当 B 站」的默认值删掉。
-- **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions` 把关，判据是「这次写入有没有**新增**重复」，不是整份数组有没有重复。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。
-- **核心的订阅运行态里没有 B 站字段**：只留资料缓存与问题表。B 站的 `roomId`、`followed`、`followError` 在 B 站自己的 `ctx.state` 里。`fansBaseline` 退役，涨粉起点取粉丝时序的第一条样本。这份文件丢了只退化，不会重推漏推。
-- **显示名只有一条链** `displayNameOf()`：事件上的 `creator.name` → 资料名 → 身份标签（「UID 123」或「抖音 · abc」）。别名退役。
+- **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions`（现在是 `ConfigStore.writeSubscriptions`）把关——`packages/subscription` 只是写盘之后才同步的内存镜像，在那里拒收已经晚了。判据是「这次写入有没有**新增**重复」（跟当前集合比），不是整份数组有没有重复：否则盘上留着一对遗留重复时，改任何一条不相干的订阅都会被拒。新建、保存、恢复备份，所有写入都要过。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。
+- **核心的订阅运行态里没有 B 站字段**：只留资料缓存与问题表。B 站的 `roomId`、`followed`、`followError` 在 B 站自己的 `ctx.state` 里。`fansBaseline` 退役，涨粉起点取粉丝时序的第一条样本。这份文件丢了只退化，不会重推漏推。⚠️ 以后要给粉丝时序加截尾（保留期）之前，必须先把这个起点另存，否则截尾会悄悄改掉涨粉起点。
+- **显示名只有一条链** `displayNameOf()`：事件上的 `creator.name` → 资料名 → 身份标签（「UID 123」或「抖音 · abc」），收编面板现有的 `historyRowIdentity`。身份标签只留这两种写法，现在还有的裸「123」和「UP 123」一并收掉。别名退役：现在有 8 处按四种顺序读别名（面板显示资料名，单人锐评的定时推送却写别名），一律改走 `displayNameOf()`。
 - **身份挂在所有行上**：推送历史、统计、在播三种行都带 `identity`，盘上直接是新形状，不留读时映射。
+- 现在判「是不是拓展行」有四种写法：只看 `extensionId`（面板 `Dashboard.tsx`、服务端 `stats/roast-subject.ts`）；两格都要有（面板 `utils/up-display.ts`、internal `constants.ts` 的 `upColor`）；只看 `externalId`（`packages/ai/src/tools.ts`）；只有一格就判无效（`runtime/target-scope.ts`、`pages/up/subscription-lookup.ts`）。行带 `identity` 以后四种一律删掉，按 `identity.sourceKey` 判。
 - **特别关注名单只存 `{ id, note? }`**，平台由所挂的订阅决定。来源在 `descriptor.supportedFeatures` 里声明了 `specialDanmaku` 或 `specialUserEnter` 才露出这项设置。
+- internal 里没人写的旧 `SubscriptionStateSchema`（`schema/subscriptions.ts`，连同它导出的同名旧类型 `SubscriptionState` 与测试里钉它「仍 export」的那条）在数据模型期删掉：它和上面的新 `SubscriptionState` 同名，不先删会撞守卫 4，也容易有人把新形状写进这份老 schema。
 
 ## 作品
 
@@ -96,7 +98,8 @@ interface Post {
   label?: string;                      // 「投稿了视频」，来源给
   topic?: string;
   article?: { title: string; images?: PostImage[] };   // 有这格就按文章排版；images 是文章配图
-  text?: RichText;                     // 片段：text / break / emoji / mention / topic / link（可带图标 video | lottery）
+  text: string;                        // 纯文本，必有：用户在平台上看到的字（平台私有标记由来源剥掉）；关键词过滤、AI 点评、纯文字推送、历史摘要都用它
+  richText?: RichText;                 // 可选，只用来出卡高亮；片段见下。核心统一校验：片段的 text 拼起来必须等于 text，对不上就丢掉 richText、只用 text（B 站与拓展同一套）
   notice?: string;                     // BN 自己说的一句，画在正文后面
   locked?: { icon?: PostImage; title: string; hint: string };   // 专属内容锁，替掉正文
   images?: PostImage[];                // 只表示图集
@@ -130,12 +133,23 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 - **来源只认人**：来源上报只带 externalId；核心按身份查订阅，正常只有一条，老数据里遗留的重复各分一份；查不到或已停用就丢弃、记 debug 日志。
 
 - `images` 只是图集；文章配图在 `article.images`。`blockImages` 就是屏蔽图集。
-- `video` 表示「作品本身就是这个视频」，不设视频级的互动数。
+- `video` 表示「作品本身就是这个视频」，不设视频级的互动数；作品里引用别人的视频走 `repost` 或 `attachment` 的 `video`。互动数只在 `Post.stats`，收藏 `stats.saves` 这类等有卡片要画时再加。
 - `repost` 是被转发的原作品；OneBot 的「合并转发」叫 `mergeForward`，两者无关。
 - 所有图格（封面、附加块、锁图标）都是 `PostImage`。图由来源先用 `ctx.fetchImage`（有链接）或 `ctx.storeImage`（手里已是字节）存进图库、填 `ref`，上报里只交 `ImageRef`；抓失败由来源决定跳过这张，或只给 `url`（卡上画占位）。
+- **正文片段 `RichText`**（09-27 拍板）只有五种，全中立、核心不认识任何平台：
+  - `{ type: "text", text }`：换行留在 `text` 里当 `\n`，不设单独的换行片段；Unicode 表情也在这里。
+  - `{ type: "mention", text, userId? }`：平台只给昵称时不带 `userId`。
+  - `{ type: "topic", text, name }`：`name` 去掉 `#`。
+  - `{ type: "link", text, url, icon?: ImageRef }`：`text` 是来源给的显示文字（B 站节点的 `text`，视频链接就是标题），`url` 是跳转地址（B 站 `jump_url`）；图标由来源存进图库再给引用，核心不留图标枚举。B 站的网页、视频、抽奖、投票、商品节点都翻成链接。
+  - `{ type: "emoji", text, image?: ImageRef }`：`text` 是「[doge]」这种代码，没图时当文字显示。
+  - 卡片只画片段的 `text`（有图标就画图标），BN 不写死任何字；纯文本里本来就写着的网址不识别。
+  - 1.0 不收样式（粗体、斜体、引用、剧透）：带样式的原文当普通文字，样式丢、字不丢；平铺的片段表达不了嵌套，等真有来源要再设计加宽（如文字片段加可选 `style`）。
+- 附加块的翻译都在 `bilibili/`：B 站预约卡与通用卡翻成 `card`，引用的 UGC 视频翻成 `video`，商品翻成 `goods`；投票没有附加块，只是正文里的链接片段。
+- 名字用 `attachment`：`additional` 是 B 站接口原词、又是形容词；`embed` 撞皮肤 HTML 清洗器拦的 `<embed>`。
 - 链接卡出的也是 `Post`，就是作品卡。
 - 老的 NeutralWork 上的 link / name / isVideo / postNoun / gallery / commentText，要么在信封上，要么由 `Post` 推出来，不许每条路各拼一个包装。
 - 统计仓里一条作品记录叫 `PostRecord`（与同文件的 `LiveSessionRecord` 对称），和装配信封 `PostEvent` 是两样东西。
+- 以后：音乐、位置（抖音几乎每条都有）做成 `Post` 上的小标签，不是附加块。
 
 **验收硬门**：同一份 B 站动态，改造前后出的图逐字节不变。
 
@@ -168,7 +182,7 @@ type LiveStatusResult =
 interface LiveSession {
   subscriptionId: string;
   sourceKey: SourceKey;
-  startedAt: string;          // 场次身份：来源给的开播时刻 ⛔ 语义不动
+  startedAt: string;          // 场次身份：来源给的开播时刻（B 站就是 live_time）⛔ 语义不动
   detectedAt: string;         // BN 认出这一场的时刻；没开播时刻时拿它当身份
   followersAtStart?: number;  // 下播卡算涨粉的基线
   peakTotalViewers?: number;  // 本场报过的最大累计观看
@@ -241,7 +255,9 @@ interface SuperchatEvent {
 | 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片，没单独配的档用 default；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
 | 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`；没有 rank 的体系只能开或关 |
 | SC 门槛 | `defaults.superchat.minAmount`，按人民币；别的币种先放行 |
-| 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`、`isModerator: boolean`；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/` |
+| 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`、`isModerator: boolean`；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/`。皮肤可以按 `rank` 换色；没有 rank 的体系走默认样式。 |
+
+体系上不标「全平台 / 按主播」：不影响路由，先不加。
 
 ## 特性键与推送种类
 
@@ -256,17 +272,19 @@ type FeatureKey = typeof FEATURE_KEYS[number];
 type PushKind = "post" | "liveStart" | "liveStreaming" | "liveEnd"
   | "membership" | "superchat" | "specialDanmaku" | "specialUserEnter";
 
-// 作品推送的部件（原 DynamicPushPart），与 PushKind 不是一回事
+// 作品推送的部件（原 packages/dynamic 里同名不同义的 PushKind，值 "dynamic" / "dynamic-images"），与上面的 PushKind 不是一回事
 type PostPushPart = "post" | "post-images";
 ```
 
 | 键 | 说明 |
 | --- | --- |
 | `post` / `atAllPost` | 作品推送与它的 @全体 |
-| `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次。只有开播能 @全体（`atAllLiveStart`） |
+| `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
 | `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。来源提供了 `fetchLiveStatus` 并且同时上报开播与下播，面板才显示这个开关 |
 | `liveEnd` | 下播 |
 | `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` / `wordcloud` / `liveSummary` | 核心中立特性 |
+
+⛔ 命名：`liveNow`（仓里 4 处表示「此刻在播」）、`onAir`（6 处表示状态）、`liveStatus`（95 处，拓展事件名）都撞，所以叫 `liveStreaming`。
 
 卡种：作品卡 `post`、直播卡、榜单（锐评）、醒目留言 `superchat`、会员 `membership`、词云、直播总结，全由核心登记。附加块 card / video / goods 核心直接渲染。历史行状态多一种 `silenced`，见 [push.md](./push.md)。
 
@@ -283,6 +301,7 @@ type PostPushPart = "post" | "post-images";
 | --- | --- |
 | 所有卡种的 `up.*` 与 `master.*` | `creator.*`；`up.isVip` → `creator.isPremium` |
 | `sender.*`、`user.*`（付钱的观众） | `viewer.*` |
+| 会员卡（原上舰卡）的积木 `user` | `viewer`（对齐皮肤字段 `viewer.*`） |
 | `dynamic.time` / `dynamic.action` | `post.time` / `post.label`（内外层卡都填） |
 | `dynamic.topic` / `dynamic.hasTopic` | `post.topic` / `post.hasTopic` |
 | `dynamic.isForward` / `dynamic.hasAdditional` | `post.hasRepost` / `post.hasAttachment` |
@@ -314,7 +333,7 @@ interface Settings {
     rankingReport: RankingReport;     // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
     muteEndsAt?: string;              // 原 mutedUntil；没在静音就缺键
     commands: CommandConfig;
-    linkCards: LinkCardsConfig;       // base{ enabled, replyForm }、byTarget（键是目标 id）
+    linkCards: LinkCardsConfig;       // base{ enabled, replyForm: "image" | "nativeShare" }、byTarget（键是目标 id）
     accounts: { order: SourceKey[] }; // 头部显示顺序
     onboarding: { isSkipped?: boolean };
     update: UpdateSettings;           // isAutoDownloadEnabled 等
@@ -354,7 +373,7 @@ interface GlobalDefaults {
 - **过滤**：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」，在装配第一步、对所有来源生效。白名单 `allowKeywords` / `allowRegex` 对 `blockKeywords` / `blockRegex`。特别关注去掉 uid 正则，template 死字段退役。SC 与会员的门槛不在 filters 里。
 - **主人通知**：推送层只有一个 `notifyMaster(text)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`）；出口上的 `sendPrivate` 与「强制私聊」标志删掉，因为主人要是选了群目标，强制私聊会把群号当 QQ 号错投。私聊的要求挪到选主人目标时：`master.targetId` 必须指向私聊目标；迁移时指向群目标的清空，首访页提示重选。
 - **图集推送行为** `imageGroup`（全局与逐订阅）只作用于 `Post.images`，子键 `imageGroup.mergeForward`。
-- **模板变量**：`{noun}` 取自 `descriptor.postNoun`，默认文案「{name}发布了一条{noun}」；人名变量统一 `{name}` / `{viewer}`；直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。
+- **模板变量**：`{noun}` 取自 `descriptor.postNoun`，默认文案「{name}发布了一条{noun}」；人名变量统一 `{name}` / `{viewer}`；直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
 
 ### 连接与目标
 
@@ -374,13 +393,15 @@ type PushTarget =
 - 下发给面板只有一种打码：契约里的 `MaskedSecret`，固定 8 个点，≥24 字符才露头尾各 4 位。带着打码对象写回一律 400；面板保存时没动过的密钥格不进 PATCH。AI apiKey 的哨兵字符串退役。
 - Webhook 的 `url` 算凭据（token 常在路径里）。OneBot 的 `baseUrl` / ws 地址面板照常显示，备份里照旧抹掉。
 - 密钥放哪：AI key 在 `secrets/config-secrets.enc`；B 站 cookie 在 `secrets/bilibili/`；拓展凭据走 `ctx.secrets`，在 `secrets/extensions/<id>/`。
+- 现在明文下发的有：连接的 `accessToken`、webhook 的 `secret` 与 `url`、QQ 的 `appSecret`（`GET /api/connections` 直接回存储）；AI apiKey 用哨兵字符串。都换成 `MaskedSecret`。`packages/ui` 出统一的密钥输入框：显示「已配置」+「更换」，各处都换成它。**例外**：QQ 扫码创建时回传的那一次 `appSecret` 不打码。
 
 ## 数字、时间与「不知道」
 
-- **计数排版只有一份** `formatCount`（internal），带正负号的变体也在里面。口径照搬卡片现有的：万和亿都一位小数、保留「.0」、万以下不加千分位；统计表「百万以上取整」是同一函数的紧凑档。统计图轴刻度另有 `formatAxisTick`。
-- **直播人数传精确数**。B 站存 WATCHED_CHANGE 帧里的 num；「1.2万」的解析只在迁移模块。文字模板的 `{watched}` 缺数时，文字渲染器在出口印「暂未获取到」。
-- **时长只有一种写法** `formatDuration(start, end)`，写成「2小时13分5秒」。按秒数排时钟格式的另叫 `formatClock`。
+- **计数排版只有一份** `formatCount`（internal），带正负号的变体也在里面。口径照搬卡片现有的：万和亿都一位小数、保留「.0」、万以下不加千分位；统计表「百万以上取整」是同一函数的紧凑档。统计图轴刻度另有 `formatAxisTick`。统一后看得见的变化（主人已知）：首页的亿从两位小数变一位，万以下去掉千分位（「9,500」→「9500」），统计表「1万」→「1.0万」；统计表和六处内联写法原来没有亿档（3 亿粉写成「30000.0万」），跟着修掉。
+- **直播人数传精确数**。B 站存 WATCHED_CHANGE 帧里的 num；「1.2万」的解析只在迁移模块。文字模板的 `{watched}` 缺数时，文字渲染器在出口印「暂未获取到」。缺数就缺键：卡上那一格不画，面板照旧显示「—」，`currentViewers` 不再 `?? 0`（现在缺了会印「人气：0」）。「暂未获取到」只在文字渲染器出口印，不再写回直播数据（现在会写回，下播卡可能印出「累计观看人数：暂未获取到」）。
+- **时长只有一种写法** `formatDuration(start, end)`，写成「2小时13分5秒」；文字与卡片、B 站与拓展、有没有配 Chrome 都走它。按秒数排时钟格式的另叫 `formatClock`。现在没配 Chrome 时出图器是 null，直播文案的 `{time}` 落进 live 自己的兜底（`packages/live/src/room-helpers.ts`），写成不带秒的「2小时13分钟」；这份兜底和 `imageRenderer?.getTimeDifference` 这个可选钩子一并删掉。它们和 `formatDuration` 不同名，守卫 4 抓不到，按这里清。
 - **进门换 ISO**：拓展契约的毫秒时刻、签名清单的秒、B 站不带时区的 `live_time`（北京时间），都在进门处换成 ISO。
+- 要算时间差的地方，在用的那一刻 `Date.parse`，wire 与盘上只存 ISO。现在存毫秒、要改的 wire 字段（施工清单）：皮肤 `updatedAt`、资源采样 `ts`、市场 `fetchedAt`、更新状态的 4 个 `checkedAt`；在播列表里 B 站行的 `startedAt` 是原样抄来的 `live_time`、拓展行是 ISO，同名不同格式。
 - **不知道就缺键**：外部数据不知道就不写这个键（`mutedUntil: 0`、内置皮肤的 `updatedAt: 0` 也改成缺键）。只有位置固定的格子（数组、表格）用 `null`。出口不受约束：给皮肤的排好版文字缺了就是空串。头像、bio 都是可选，渲染器缺了显示首字。这条不加守卫，靠审查。
 
 ## 改名对照
@@ -392,8 +413,8 @@ type PushTarget =
 | 以前 | 现在 |
 | --- | --- |
 | `UpCard`、`UpDialog`、`pages/up/`、`UpStatsRow`、`UpMeta`、`upColor` / `UP_COLORS`、`upName` | `CreatorCard`、`CreatorDialog`、`pages/creator/`、`CreatorStatsRow`、`CreatorMeta`、`creatorColor` / `CREATOR_COLORS`、`creatorName` |
-| `UpColorIdentity`、`colorFromUid` | 并进身份判别联合、`colorFromSeed` |
-| `SubscriptionAuthor` / `AuthorSchema`；拓展契约里的 `author` | `SubscriptionCreator` / `CreatorSchema`；`creator` |
+| `UpColorIdentity`、`colorFromUid` | 删掉 `UpColorIdentity`，取色直接收 `Identity`；`colorFromUid` → `colorFromSeed` |
+| `SubscriptionAuthor` / `AuthorSchema`；拓展契约 `SubscriptionPost.author`、`SubscriptionLiveDetails.author` | `SubscriptionCreator` / `CreatorSchema`；`creator` |
 | `UpDynamicEvent` / `appendDynamic` / `listDynamics` | `PostRecord` / `appendPost` / `listPosts` |
 | `AUTHOR_FIELDS`、挂点 `masterAvatar` / `masterName` | `CREATOR_FIELDS`、`creatorAvatar` / `creatorName` |
 | 直播内部 `MasterInfo` / `masterInfo` / `masterName` / `masterAvatarUrl` / `LiveMasterFeature` / `getMasterInfo` | `CreatorInfo` / `creatorInfo` / `creatorName` / `creatorAvatar` / `LiveCreatorFeature` / `getCreatorInfo` |
@@ -446,14 +467,14 @@ type PushTarget =
 | `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers` |
 | `SubRuntimeStore`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore`（与 `SubscriptionState`、`subscription-state.json` 同一个词）、头像库删掉并进图库、`subscriptionId` 系、`/api/subscriptions` |
 | `identityOf`（草案名） | `subscriptionIdentityOf` |
-| 会员 `tiers: "dynamic"`（草案名）；`DynamicPushPart` | `tiers: "custom"`；`PostPushPart`（`post` / `post-images`） |
+| 会员 `tiers: "dynamic"`（草案名）；`packages/dynamic` 的 `PushKind`（命名批中途叫过 `DynamicPushPart`） | `tiers: "custom"`；`PostPushPart`（`post` / `post-images`） |
 | 错误体 `{ error, message }`、`{ ok: false, err }` | `{ code, message }`、`{ ok: false, code, message }` |
 | `AIOverride` / `AISettings` / `AIScene` / `APIFlavorId`；`WordCloud` / `wordCloud` / `Wordcloud` | `Ai…` / `Api…`；`WordCloud` / `wordCloud`（特性键仍是 `wordcloud`） |
 | `formatWan` / `formatSignedWan` / `formatAxisWan`；`pigeon` / `diligent` | 并进 `formatCount`、`formatAxisTick`；`leastActive` / `mostActive`（连同提示词与草稿） |
 | `DailyHistoryCount.d`、`Opts`、`Img`、`normaliseAvatarUrl` | `day`、`Options`、`Image`、`normalizeAvatarUrl` |
 | `HistoryPatch.patch`、`PickCardBackground`、table 积木的 `count` | `rowId`、`PickLiveCover`、`showCount` |
 | 两个 `createSerialGate` | `createSerialQueue`（串行队列）、`createRenderGate`（渲染闸） |
-| `PushLike`、`SubItemView`（动态、直播、AI 各一份） | 各合成一份；推送出口收成 `broadcast(subscriptionId, messages, kind)` |
+| `PushLike`、`SubItemView`（动态、直播、AI 各一份） | 各合成一份；推送出口收成 `broadcast(subscriptionId, messages, kind)`；`SubItemView` 由 internal 的「生效特性」解析器产出 |
 | 拓展积木 `qrLogin` | 删掉 |
 
 **订阅与来源（09-27 字段名专项审查）。**
@@ -474,7 +495,7 @@ type PushTarget =
 | `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
 | ⚠️ 面板在播列表 `LiveListenerSnapshot.viewers`（装的是累计观看的排版字符串「1.2万」） | `totalViewers: number`，**不是** `currentViewers` |
 | ⚠️ `upstream_failed` 错误体里占着 `code` 的 B 站数字码 | `upstreamCode` |
-| `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `peakTotalViewers`；`{ type, occurredAt, peakTotalViewers }`；`videoPosts` / `posts`；`followers` |
+| `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `peakTotalViewers`；`{ type, occurredAt, peakTotalViewers }`；`videoPosts` / `posts`（**口径从「其余」变「全部」**：`posts` 是全部作品，`videoPosts` 是其中带视频的）；`followers` |
 | 在播表 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `{ subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder` |
 | 面板 `SubscriptionPlatform` / `subscriptionPlatformOf`、`BILI_PLATFORM`、`SubscriptionLookup`、`absent` | `SourceDescriptor` / `descriptorOf(sourceKey)`、`sourceKey`、`SubscriptionIndex`、`isAbsent` |
 | 历史行推送种类那格 `kind`；`AuthState` 的 `loggedOut` / `awaitingScan` / `loggedIn` | `feature`；`logged-out` / `awaiting-scan` / `logged-in` |
@@ -485,11 +506,11 @@ type PushTarget =
 | --- | --- |
 | 订阅顶层 `extras`（按目标的三态表） | `extraTargets` |
 | `retryOf` / `HistoryRetryMessage`（人工重推） | `repushOf` / `HistoryRepushMessage` |
-| 连接 `testStatus`；`ProbeResult.ok: boolean \| null`；目标 `testStatus.lastCheckedAt` | `probeStatus`；三态 `status`；`reachability.changedAt` |
+| 连接 `testStatus`；`ProbeResult.ok: boolean \| null`；目标 `testStatus.lastCheckedAt`（只在通断翻转时写） | `probeStatus`；三态 `status`；`reachability.changedAt` |
 | endpoint 目标的 `scope: "channel"`；OneBot 的 `config.transport` | 删掉（通用 webhook 对外 JSON 照写常量）；删掉（和 connector 重复） |
 | `POST /api/connections/:id/test`；`/api/push/test`；`TestResponse` 与 `TestPushResponse` | `/probe`；`/api/targets/:id/test`；合成一个 |
 | `TargetPlatformSchema`；`isConnectionOn`；拓展契约 `listBots` / `ExtensionBotView` / `boundTo` | `OpenPlatformSchema`；`isDirectConnectionOn`；连接候选 / `boundConnectionId` |
-| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryEntry`；`HistoryRecordInput.target`；`countsAsDelivery`；`PushMessageRole` 与 `HistoryMessageRole` | `RepushOriginal`、`version`、`isOwnCopy`；`HistoryRow`；`targetId`；改成名副其实的名字（施工时定）；合成一个 |
+| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryEntry`；`HistoryRecordInput.target`；`countsAsDelivery`（现在 failed 也回 true）；`PushMessageRole` 与 `HistoryMessageRole` | `RepushOriginal`、`version`、`isOwnCopy`；`HistoryRow`；`targetId`；改成名副其实的名字，按真实语义起（施工时定）；合成一个 |
 | `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`；出口 `sendPrivate` 与 `{ private: true }` | `notifyMaster(text)`；删掉 |
 | 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，outlet 映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；address；`address` |
 | WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`、重推结果判别键 `can`；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | 名副其实的名字（施工时定）；特性键；`code` + `message`、`ok`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
@@ -504,8 +525,9 @@ type PushTarget =
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards` / `cards.byKind` / `liveCoverImageIds`；从 schema 删掉 |
 | `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkCards.base` / `base.enabled` / `base.replyForm` / `byTarget` |
+| 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享（09-27 拍板）：取值 `nativeShare`（随 `linkCards` 同一趟迁移）、类型 `NativeShare…`、面板「原生分享卡」并附小字「在 QQ 里显示为小程序卡」；桥帧能力名 `miniapp-card` alpha 不动，1.0.0 之前两步改完（见 construction-plan） |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
-| `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目 |
+| `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
 **服务端命名约定**：`create*` 造对象，`bind*` 挂到总线并返回可释放对象，`start*` 起定时或循环；入参一律叫 `XxxOptions`；存储一律是接口加 `create`。现存 24 个 `*Deps`、4 个 `attach*`、5 个 `make*` 全改。面板的类型门面别名删掉，用本名。
 

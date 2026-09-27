@@ -12,7 +12,7 @@
 
 | 段 | 住哪 | 干什么 |
 | --- | --- | --- |
-| ① 来源 | 服务端 `bilibili/`；拓展经 `extensions/` 收件口 | 把平台数据翻成 `PostEvent` / `LiveSignal`，uid 在这里翻成订阅 id；图先 `ctx.fetchImage` 进图库 |
+| ① 来源 | 服务端 `bilibili/`；拓展经 `extensions/` 收件口 | 把平台数据翻成 `PostReport` / `LiveSignalReport`，只带 externalId 上报（来源不知道订阅 id）；图先用 `ctx.fetchImage` / `ctx.storeImage` 存进图库，上报里只交 `ImageRef` |
 | ② 装配 | 服务端 `posts/`（作品）、`live/`（直播与直播附加项） | 过滤 → 出卡 → AI 点评 → 套文案 → 按版式分组 → 交给发送 |
 | ③ 路由与闸 | `packages/push` 的 `PushRouter` | 按订阅 id 查路由、过闸、选目标、收窄附加项 |
 | ④ 发送 | 同上 | 分条、重试、@全体 分流 |
@@ -22,8 +22,8 @@
 ### ① 来源
 
 - 来源只管「和那个平台打交道」：拉数据或收上报、判新、翻成中立形状。判新、去重、限流归来源，BN 不兜底。
-- B 站：拉动态翻成 `PostEvent`；弹幕通道翻成 `LiveSignal`。uid → 订阅 id 在发事件那一刻翻，核心从此只见订阅 id（现在 `engines.ts` 里那层 `subscriptionIdOfUid` 适配消失）。
-- 拓展：上报经宿主收件口核形状、对上订阅、字节换图库引用、毫秒换 ISO，转成同样的 `PostEvent` / `LiveSignal`。
+- B 站：拉动态翻成 `PostReport`，弹幕通道翻成 `LiveSignalReport`，按 uid（就是 externalId）经 `ctx.reportPost` / `ctx.reportLive` 上报。核心在进门那一刻按身份展开成每条订阅一份 `PostEvent` / `LiveSignal`，此后只见订阅 id（现在 `engines.ts` 里那层 `subscriptionIdOfUid` 适配消失）。
+- 拓展：上报经宿主收件口核形状、毫秒换 ISO；图在上报之前已由拓展用 `ctx.fetchImage` / `ctx.storeImage` 存成 `ImageRef`。之后和 B 站一样由核心按身份展开。
 - 直播「什么时候推」不在来源：核心的场次引擎决定开播、正在直播、下播、断流接续（见 [subscription-sources.md](./subscription-sources.md)「直播」）。
 
 ### ② 装配
@@ -35,11 +35,11 @@
 | 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。被挡时的「屏蔽后提醒」带 `postNoun` |
 | 出卡 | `packages/image` 的 `generatePostCard` / `generateLiveCard`，只吃中立形状、只内联图库引用、不联网 |
 | AI 点评 | `packages/ai`，按订阅设置 |
-| 套文案 | 全仓唯一的 `interpolate`；变量 `{name}`、`{noun}`、`{viewer}`、`{key}` |
-| 按版式分组 | internal 的版式分组，作品与直播共用一份 |
+| 套文案 | 全仓唯一的 `interpolate`（internal）；变量 `{name}`、`{noun}`、`{viewer}`、`{key}` |
+| 按版式分组 | internal 的版式分组，作品与直播共用一份；版式块：卡片、文字、链接（作品本身的地址）、正文链接、分条符。**正文链接**（09-27 拍板）：默认显示、默认跟在「链接」块后面同一条消息；把正文里 `type: "link"` 的片段一个一行写成「显示文字 地址」，同一地址只列一次，没有就不占行；只认片段类型，不认来源（卡片上的链接点不了，靠它把地址带出去） |
 | 交给发送 | 收成一个出口 `broadcast(subscriptionId, messages, kind)`；`PushLike` 全仓一份 |
 
-- **装配不管静音和免扰**：那是路由层的事。
+- **装配不管静音和免扰**：那是路由层的事。代价：免扰期间照样出卡、照样调 AI（花钱）再丢——主人知情拍板，推翻了先定的「装配前先判」（Q20）。
 - **没配目标照样出卡**（不动）：引擎不许知道目标，发不出去是下游的事。
 - 作品装配入口是 `deliverPost`；主卡发送失败往外抛，来源自己定怎么办；图集（`PostPushPart` 的 `post-images`）失败吞掉，它是 `role: "extra"`、不许 @全体。
 - 串行：送达次序 = 发起次序，按订阅过 `createSerialQueue`，防「下播卡晚于新一场开播卡」。渲染闸另叫 `createRenderGate`。
@@ -61,6 +61,10 @@
 | 6 | 全局静音 / 免扰时段 | `core.muteEndsAt`（原 `mutedUntil`）、订阅折叠后的免扰时段（`defaults.quietHours`） | 每个目标落一行 `silenced` + 重推原件 |
 
 ⚠️ 第 5、6 两道的先后、以及 `silenced` 的附加项消息怎么记，设计稿只定了「先算目标再判」，具体顺序施工时定。
+
+- 只有「时间上的挡」（静音、免扰）才落 `silenced`；总开关关着、附加项收窄成空、平台不支持 @全体，照旧静默、不落行。
+- `silenced` 连带三处：不算「今日推送」与趋势（现 `countsAsDelivery`），追加补丁（词云、总结）时不被 `computeStatus` 重算成 failed，补发闸（`repushDenial`）放行。
+- ⛔ 被挡时不弹警告卡，历史页也不加按状态筛选（09-05 否过）。
 
 「会不会被监听」和「推不推」是两件事：前者核心有唯一判定（在 internal），后者是这几道闸。
 
@@ -153,7 +157,7 @@
 
 | 想干的事 | 动哪儿 |
 | --- | --- |
-| 加一把特性 | `FEATURE_KEYS`；推送种类若要记历史，同步 `PushKind`（它是特性键的子集）；迁移清单守卫会逼你补迁移 |
+| 加一把特性 | `FEATURE_KEYS`；历史的推送种类 `PushKind` 从特性键表取子集，不另写同名列表；迁移清单守卫会逼你补迁移 |
 | 加一个附加项 | `EXTRA_KEYS` + 附加项注册表；来源在 `descriptor.supportedExtras` 声明 |
 | 改一条作品推送的步骤 | `posts/` 的 `deliverPost` 一处 |
 | 改直播卡怎么发 | `live/` 的直播装配；什么时候推在 `live/` 的场次引擎 |
@@ -166,7 +170,7 @@
 | 现在 | 1.0 |
 | --- | --- |
 | ① 引擎在 `packages/dynamic` / `packages/live` / `runtime/extension-*.ts` | 来源在 `bilibili/` 与 `extensions/` 收件口；四个 B 站包删掉 |
-| ② 适配段：`liveTypeToFeature` / `liveTypeToPushKind` / `liveTypeToExtra`、`subscriptionIdOfUid` | 整段消失：推送种类就是特性键，uid 在来源里翻 |
+| ② 适配段：`liveTypeToFeature` / `liveTypeToPushKind` / `liveTypeToExtra`、`subscriptionIdOfUid` | 整段消失：推送种类就是特性键（B 站引擎内部的 0 / 3 / 9 在 `bilibili/` 里翻）；uid → 订阅 id 由核心在进门处按身份展开（来源只报 externalId） |
 | 装配在 `packages/dynamic`（`deliverWork`）与 `packages/live`（`pushLiveNotify`） | 在服务端 `posts/` 与 `live/` |
 | 拓展作品只按文字过滤，类型开关不看 | 过滤看 `Post` 上有没有，对所有来源生效 |
 | 拓展作品套进 B 站动态类型出卡 | 渲染器只认 `Post` |

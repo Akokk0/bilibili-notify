@@ -63,7 +63,7 @@ interface SourceDescriptor {
 - 特性开关、附加项、规则节、平台徽章、CSV 平台列、锐评平台名全从 descriptor 取。
 - B 站那一行的平台徽章，只在装了第二个订阅源时才画。
 - **用词**：只涉及一个来源的地方用它的 `creatorNoun`；混着多个来源的地方用「创作者」；只装了 B 站时混合处也用 B 站的叫法。
-- `postNoun` 进模板变量 `{noun}`，默认文案「{name}发布了一条{noun}」。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。
+- `postNoun` 进模板变量 `{noun}`，默认文案「{name}发布了一条{noun}」。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。
 - 特别关注这项设置只在 `supportedFeatures` 含 `specialDanmaku` 或 `specialUserEnter` 时露出。
 - `liveStreaming` 开关只在来源提供了 `fetchLiveStatus`、并且同时上报开播与下播时显示。
 
@@ -137,7 +137,7 @@ interface SourceSubscription {      // 原拓展契约的 ExtensionOwnSubscripti
 | `reportLive` | 同样按身份展开，喂场次引擎 |
 | `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
-| `fetchImage` | 拦内网地址防 SSRF、单张 8MB、按内容嗅探格式、超时；按 sha256 存进图库，交回引用。来源带着自己要的请求头去抓 |
+| `fetchImage` | 拦内网地址防 SSRF、单张 8MB、按内容嗅探格式、超时；按 sha256 存进图库，交回引用。来源带着自己要的请求头去抓。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
 | `storeImage` | 手里已是字节的图走它（本地生成的扫码二维码，B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储。单键 64KB、总 1MB，超了拒收。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清 |
 | `secrets` | 主密钥加密，存 `secrets/bilibili/` 或 `secrets/extensions/<id>/`；仅完整备份（普通备份抹掉）；卸载清掉 |
@@ -157,14 +157,14 @@ interface SourceSubscription {      // 原拓展契约的 ExtensionOwnSubscripti
 - 核心收到每条问题自动记一行日志。问题上报不设「只记日志」档，只想记日志就用 `ctx.logger`，两者不合并。
 - 不填 `externalId` 就是来源本身的问题（如登录失效）；填了由核心展开到对应订阅，存进 `SubscriptionState.problems[code]`（订阅卡显示为什么收不到东西），`since` 记第一次出现，重复报只更新文案，`resolveProblem` 按 code 清除。
 - code 用 snake：`follow_failed`、`login_expired`。
-- B 站也走它：比如「登录失效」以 `notify` 上报、文案自己写；关注同步失败也经这里上报。
+- B 站也走它：比如「登录失效」以 `notify` 上报、文案自己写；关注同步失败也经这里上报。关注同步失败报 `follow_failed`，文案沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`），补关注成功就 `resolveProblem` 清掉；订阅卡上的红色警告文字不变。
 - 来源级问题不再走 `engine-error`。
 
 ## 资料刷新与 seen
 
 **资料**：
 
-- 核心按 `core.profileRefreshCron`（由 `fansCron` 原值迁来）定时调 `fetchProfile`。
+- 核心按 `core.profileRefreshCron`（由 `fansCron` 原值迁来）定时调 `fetchProfile`，只调启用中的订阅（09-27 拍板；和名单只列启用中一致，也少打平台接口）。停用的订阅资料缓存停在停用那一刻，面板照常显示最后一次的名字与头像，重新启用后下一轮刷新。
 - 对同一来源**串行**调用；防风控的间隔由来源自己管（B 站那个 200ms 留在 `bilibili/`）。
 - 来源主动 `reportProfile` 的，按同一个间隔限密。
 - 粉丝数就在资料里，粉丝轮询并进这项必备能力，不另占能力位。涨粉的增量、时序、首页粉丝面板由核心算，上总线 `followers-refreshed`。
@@ -175,11 +175,15 @@ interface SourceSubscription {      // 原拓展契约的 ExtensionOwnSubscripti
 
 - 核心每次成功联系到来源——拉资料成功、收到作品或直播信号——就给该订阅记当天一条 seen，B 站与拓展同一规则。
 - 统计的热力图与「在记」标记只看 seen；在播状态与当前粉丝数取在播表与资料缓存。
-- 统计记录全部作品，另外记其中带视频的那些；面板与 CSV 里仍叫「投稿」「动态」。
+- 统计记录全部作品，另外记其中带视频的那些。面板与 CSV 仍叫「投稿」「动态」：投稿 = `videoPosts`，动态 = `posts − videoPosts`（面板相减）；锐评提示词同样这么算。
 
 ## 直播
 
-两套场次引擎合成一套：原先拓展那套（本就中立）去掉 `Extension` 前缀升格为核心 `live/`，B 站的 `room-session-base` 删掉。来源只有两种输入：
+两套场次引擎合成一套：原先拓展那套（本就中立）去掉 `Extension` 前缀升格为核心 `live/`，B 站的 `room-session-base` 删掉。
+
+删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。
+
+来源只有两种输入：
 
 | 输入 | 形状 | 谁用 |
 | --- | --- | --- |
@@ -196,12 +200,13 @@ interface SourceSubscription {      // 原拓展契约的 ExtensionOwnSubscripti
 
 - 计时按每一场的开播时刻各自起算（`LiveSession.nextTickAt`），不全局同时拉。间隔是 `liveStreaming.streamingIntervalHours`。
 - 同一来源串行调用；超时与中止复用 `searchCreators` 那套外壳；拓展停用时用 signal 取消在途调用。
-- **重启**后核心对每条开着直播推送的订阅调一次 `fetchLiveStatus` 重建场次；要不要补推一张正在直播卡由 `liveStart.catchUpOnBoot` 统一决定。
+- **重启**后核心对每条开着直播推送的订阅调一次 `fetchLiveStatus` 重建场次；要不要补推一张正在直播卡由 `liveStart.catchUpOnBoot` 统一决定。补报不 @全体、历史记成开播，见 data-model「特性键」。
 - 断流：收到 `end` 先进 `pendingEnd` 等宽限，宽限里又开播就 `resume` 接着同一场；等满了才 `end`。
 - 场次的每次变化是一条 `LiveSessionChange`，推送、统计、总线（`live-session-changed`）吃同一份。
 - ⛔ 场次身份按开播时刻认、排在闩之前；统计 `current` 与 `isLive` 的语义不动。
 - 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用。
 - **验收**：先在旧引擎上用端到端测试钉住开播、下播、断流接续、漏收下播兜底四种行为，再换新引擎跑同一组。
+- 被否的备选：拓展自己计时上报（每个拓展都得重写一遍计时）；BN 发事件要数据、拓展再另报（对不上是哪一轮要的，拓展还能自己触发推送）。
 
 ## 预览
 
@@ -255,7 +260,7 @@ interface DevtoolsProvider { scenes: DevtoolsScene[] }           // 只在开发
 - **禁 fs**：B 站的状态（`roomId`、`followed`、`followError` 等）只走 `ctx.state`，cookie 只走 `ctx.secrets`；动态游标仍只在内存。
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`userAgent`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。
 - **补关注**（BN → B 站单向）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次。整份名单先批量查关系、只补缺的（稳态写请求为零）；失败按「问题上报」报 `follow_failed`。登录态失效时跳过；批量查询回 -101 按「没登录」整批跳过，订阅卡上的关注状态不动，等登录恢复再跑；其他失败码仍走降级。停用的订阅不在名单里，自然不补；从停用改回启用时名单变化，那一轮就补上。
-- **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来）。
+- **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来；分期见 [construction-plan.md](./construction-plan.md)）。
 - **风控码**：-412 在拉粉丝时算风控、刷 cookie 时算登出，各处不一，先验证再定。
 - **失败码**：B 站接口的数字错误码放在 `upstreamCode`，不占错误体的 `code`。
-- 验收检查点：「接口先行」那一期完成时，B 站全经中立接口运行、行为不变。
+- 验收检查点：「接口先行」那一期（3a，见 [construction-plan.md](./construction-plan.md)）完成时，B 站全经中立接口运行、行为不变。

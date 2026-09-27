@@ -74,6 +74,7 @@
 
 - 备份里订阅只有一节，备份 schema 抬版。
 - **1.0 之前的备份拒收**：信封改成比自己新、比自己旧的都拒，提示「这是 1.0 之前的备份：先装 0.12 恢复，再升级到 1.0 走迁移」。
+- 已知限制（这次不改）：备份只恢复「引用方」。背景图、字体、卡片皮肤不在备份里，恢复到另一台机器后会悬空、回落到默认。
 
 ## 开机顺序
 
@@ -101,7 +102,7 @@
 | 直播拆键 | `routing.live` 复制给 `liveStart` 与 `liveStreaming`；`liveStart` 开关沿用 `live`；`liveStreaming` = 原 `live` 开着且 `pushTime > 0`，间隔用原 `pushTime`；`pushTime` 为 0 的 `liveStreaming` 关、间隔填 1 小时；`restartPush` → `liveStart.catchUpOnBoot`；`atAllLive` → `atAllLiveStart`；`templates.liveOngoing` → `templates.liveStreaming`。每条订阅按合并后的值算，只有和全局不同的才写进 overrides |
 | 以特性键 / 卡种 / 附加项 / 模块名做键的配置：`messageLayout.dynamic`（必填键）、`cardStyleByKind` 的 `dynamic` / `sc` / `guard`（裸 object，不迁会被悄悄剥掉）、逐目标 extras 的 `atAllDynamic` / `atAllLive`、`overrides.features.extras`、`app.logLevels` | 按改名对照改键；`cardStyleByKind` → `defaults.cards.byKind`；订阅顶层 `extras` → `extraTargets`；`logLevels` → `core.logging.levels`，`dynamic` / `live` 并成 `bilibili` |
 | 文案 `templates.dynamic` / `dynamicVideo`（全局与逐订阅）、`templateDefaultsSeen` | `templates.post` / `postVideo`，值原样搬；账本随模板键换键，等于旧默认指纹的换成新默认指纹 |
-| 直播 9 条文案里的 `-key`；人名变量 `{mname}` / `{mastername}` / `{uname}` | 按运行期同一套规则改写成 `{key}`；改成 `{name}` / `{name}` / `{viewer}` |
+| 直播侧 9 条文案（开播 / 直播中 / 下播 3 条、上舰 3 档、特别弹幕、特别进场、弹幕总结）里 koishi 时代的 `-key`；人名变量 `{mname}`（上舰）、`{mastername}`（特别弹幕、特别进场）、`{uname}` | 按运行期同一套规则（同一组键、最长先匹配）改写成 `{key}`，出字一字不差（现行规则会误伤，如 `real-time` 里的 `-time`，迁移照同一规则改写，出字仍不变）；人名改成 `{name}` / `{name}` / `{viewer}`，和 `-key` 同一趟。**不动**：面板变量列表（`pages/rules/sections.tsx`）只换代码、中文说明不动；弹幕总结的缩写 `{dmc}` `{dca}` `{mdn}` `{un1..5}` `{dc1..5}` 不动 |
 | `templates.guardBuy.{captain,commander,governor}`、`minGuardLevel` | `templates.membership.guard`：`enabled` 取旧 `enable`，`tiers` 取旧三档、key 不变，`default` 留空；`minGuardLevel` → `defaults.membership.minRank.guard`，换算反过来（1 ↔ 3，旧值 1 = 总督） |
 | 过滤与阈值：`blockForward` / `blockArticle` / `blockDraw` / `blockAv`、`whitelistKeywords` / `whitelistRegex`、`minScPrice`、特别关注的 uid | `blockReposts` / `blockArticles` / `blockImages` / `blockVideos`、`allowKeywords` / `allowRegex`、`defaults.superchat.minAmount`；特别关注转成 `{ id, note? }` 进公共订阅形状 |
 | `imageGroup`（全局与逐订阅） | 形状不变，子键 `forward` → `mergeForward`，`enable` → `enabled` |
@@ -115,7 +116,7 @@
 | 历史行与重推原件 | 行带 `identity`；`unameSnapshot` / `uavatarSnapshot` → `nameSnapshot` / `avatarSnapshot`；`ts` → `createdAt`；推送种类那格 `kind` → `feature`，值 `dynamic` → `post`、`live` → `liveStart`、`live-ongoing` → `liveStreaming`、`live-end` → `liveEnd`、`guard` → `membership`、`sc` → `superchat`、`special-danmaku` → `specialDanmaku`、`special-enter` → `specialUserEnter`；`retryOf` → `repushOf`；原件（`Draft` → `RepushOriginal`，`v` → `version`、`own` → `isOwnCopy`）里的 `forward` 布尔、miniapp 的 `desc`、自存图换新名与摘要引用 |
 | 图：`history/img/` 与 `avatars/` | 都进代内 `images/`，按 sha256 改名后硬链接到旧文件；历史行、重推原件、资料缓存里的引用同步换成摘要 |
 | 统计与粉丝 | `stats/dyn` → `stats/posts`（`video` → `post` + `hasVideo`，老的 `type: DYNAMIC_TYPE_*` 行同样改写，开播公告行不搬）；根目录 `fans/` → `stats/followers`；`<uid>.jsonl` → `<订阅 id>.jsonl`；直播帧 `{ k, ts, peak }` → `{ type, occurredAt, peakTotalViewers }`，peak 的「1.2万」转精确数；场次 `peakViewers` → `peakTotalViewers`；粉丝样本 `value` → `followers`；`ts` → `publishedAt` / `sampledAt`；从 B 站老粉丝样本每天补一条 seen，老热力图显示不变 |
-| AI 对话 | `ai/chat` → `ai/conversations`，`assets/chat` → `ai/attachments`；消息上的卡片皮肤引用去掉、对话文字全部保留；皮肤账本清空 |
+| AI 对话 | `ai/chat` → `ai/conversations`，`assets/chat` → `ai/attachments`；消息上的卡片皮肤引用去掉、对话文字全部保留；皮肤账本（`CardSkinLedger`）清空 |
 | 皮肤、素材、技能、拓展 | 卡片皮肤不迁；`skins/` → `skins/panel/` 原样拷；`assets/card-bg`、`assets/font` → `library/images`、`library/fonts`；`maid-skills` 拷、`allowedTools` 变换；`extensions/` 拷、devtools 软链重建、v2 拓展列进首访页 |
 | 遗留物：`state/adapters.json`、`*.json.bak`、`*.restore.bak`、`*.tmp.*`、`.staging-*`、`*.migrating`、storage 默认路径 `bilibili-notify/` | 只作输入读一次或丢弃，不进新代 |
 
@@ -149,6 +150,7 @@
 - 开一个空代：B 站重扫、token 与 AI key 重填、回新手引导；来源的 `ctx.state` 与 `ctx.secrets` 一并清空。
 - **不碰 `bn.config.yaml` 与环境变量**，面板账号保留。理由：面板账号只在 bootstrap 配置或环境变量里；清掉的话监听 0.0.0.0 的 Docker 会拒绝启动，环境变量里的账号也根本清不掉。
 - 被否的备选：用环境变量控制迁移——自动更新的 Docker 不会有人去设。
+- 被否的备选：只清内容、保留接入（B 站登录、推送连接、AI key）——主人选了像新装一样全清；面板账号保留只是因为它在 bootstrap 里、清不掉（Q49）。
 
 ## 旧代清理
 
@@ -172,7 +174,7 @@
 
 ## 素材库与皮肤
 
-- **素材库 `library/`** 只收主人主动上传、反复挑选的图与字体（卡片旋钮、直播封面）。接口 `/api/library` + 通用素材选择器，**删前查引用**。
+- **素材库 `library/`** 只收主人主动上传、反复挑选的图与字体（卡片旋钮、直播封面）。接口 `/api/library` + 通用素材选择器，**删前查引用**。女仆做皮肤、界面皮肤、拓展选图以后再接进来。
 - 对话附件留 `ai/`、皮肤包自带的资产留在包内——它们随对话或皮肤包一起生死，进库只会塞满一次性的东西。三者共用一份资产存储实现 `createAssetStore`（参数：目录、id 取法随机或 sha256、允许的格式、大小上限）。
 - **皮肤**：卡片与界面皮肤合目录（`skins/card/`、`skins/panel/`）、合存储代码（`createSkinStore<清单>`），不合概念——清单、「用哪套」的指针、渲染各走各的。
 
@@ -180,11 +182,11 @@
 
 所有存储都收到三件东西上，挂在已有的件上、不另开一套：
 
-1. **原子写**（新建，家在 `packages/storage`，叫 `atomicWriteJson`；现在是服务端三份逐字相同的私有副本，另有约 8 种各写各的临时文件写法）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件仍开机报错）；开机清掉上个进程留下的临时文件。
+1. **原子写**（新建，家在 `packages/storage`，叫 `atomicWriteJson`；现在是服务端三份逐字相同的私有副本，另有约 8 种各写各的临时文件写法）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件仍开机报错）；开机清掉上个进程留下的临时文件。服务端 `update/durable-json.ts`（`readJsonFile` / `writeJsonAtomic`，`select-version-for-boot`、`manifest-freshness`、`extensions/load-ledger`、`extensions/marketplace` 在用）也并进来：它现在读坏了当没有、写失败只回调不抛，并进来后读到坏文件改走改名隔离。它导出的 `readJsonFile` 和 storage 的新原语同名，不并掉守卫 4 一上线就红。
 2. **写道** = `createSerialQueue`（新建，家在 internal 的零依赖子路径；现在只有面板里一个小的，服务端至少 11 处手写 `prev.then` 队列）带 `flush` 与关门：按键串行，支持单一全局键（历史的全局串行是刻意的）；关门后的写入直接拒绝、不碰盘。
 3. **后台任务登记** = ServiceContext 加 `track(promise)` 与分阶段的 onDispose：「发出去不管」的写入改成登记在案、能被取消。
 
-原语已落（第 1 期第一片）：`packages/storage` 导出 `atomicWriteFile` / `atomicWriteJson`（临时名 `<目标>.bn-tmp.<pid>.<随机>`，fsync 文件与目录，Windows 跳过目录 fsync）、`readJsonFile`（结果分 `ok` / `missing` / `corrupt`，坏文件改名 `.corrupt-<ISO 时刻>`）、`appendJsonl`（不 fsync，读方要容得下末尾半行）、`replaceDirectory`（换下来的旧目录叫 `.bn-old.*`）、`sweepTempFiles`（只认这两种标记；Docker 里 pid 常常相同，所以必须在任何写入之前跑）；internal 导出 `createSerialQueue`（`run(key, task)`、`flush`、`close`，关门后拒绝，错误码 `queue_closed`）。
+原语已落（第 1 期第一片，见 [construction-plan.md](./construction-plan.md)）：`packages/storage` 导出 `atomicWriteFile` / `atomicWriteJson`（临时名 `<目标>.bn-tmp.<pid>.<随机>`，fsync 文件与目录，Windows 跳过目录 fsync）、`readJsonFile`（结果分 `ok` / `missing` / `corrupt`，坏文件改名 `.corrupt-<ISO 时刻>`）、`appendJsonl`（不 fsync，读方要容得下末尾半行）、`replaceDirectory`（换下来的旧目录叫 `.bn-old.*`）、`sweepTempFiles`（只认这两种标记；Docker 里 pid 常常相同，所以必须在任何写入之前跑）；internal 导出 `createSerialQueue`（`run(key, task)`、`flush`、`close`，关门后拒绝，错误码 `queue_closed`）。fsync 本身没法用不崩溃的夹具验证（残余风险）。
 
 关停顺序（服务端预算 8 秒，给桌面壳与 Docker 默认的 10 秒留余量；compose 样例写上 `stop_grace_period`）：
 
@@ -196,7 +198,7 @@
 
 守卫：服务端除了持久化底层不许直接写文件；服务关停返回以后数据目录不再变化。
 
-**正常关停的通知路**：外壳起服务端时把 stdin 接成管道、退出时关掉它，服务端听到 stdin 关闭走和 SIGTERM 同一套收尾，超时硬杀不变。只在外壳设了开关变量（如 `BN_STDIN_SHUTDOWN=1`）时才听，和 `BN_PARENT_PID` 同一个做法，两者并进「宿主看护」模块。这套托管规矩写进托管文档，桌面版和以后的插件照同一份。注意：桌面壳不随应用内更新替换，只对重装了新安装包的用户生效。
+**正常关停的通知路**：外壳起服务端时把 stdin 接成管道、退出时关掉它，服务端听到 stdin 关闭走和 SIGTERM 同一套收尾，超时硬杀不变。只在外壳设了开关变量（如 `BN_STDIN_SHUTDOWN=1`）时才听，和 `BN_PARENT_PID` 同一个做法。开关不能省：Docker 不带 `-i`、systemd、nohup 下 stdin 是 `/dev/null`，不设开关的话一开机就读到结尾、把自己关掉。SIGTERM 留给 Docker 和直接运行；外壳崩了管道也会断，和 `BN_PARENT_PID` 的孤儿自检互为兜底。两者并进由 `runtime/parent-watch.ts` 扩成的「宿主看护」模块。现状：Windows 上桌面壳的 `terminate_child` 直接 `child.kill()`，服务端的收尾一次也没跑过；壳是冻住的，老安装包这条修不了。这套托管规矩写进托管文档，桌面版和以后的插件照同一份。注意：桌面壳不随应用内更新替换，只对重装了新安装包的用户生效。
 
 ## 宿主件与冻结格式
 
@@ -207,4 +209,4 @@
 | 日志 | `logs/<日>.jsonl` | 冻住的桌面壳写死了这里；日志要跨代连续 | 行格式（`msg`、`ts`…）不改名，否则回退后显示错乱 |
 
 - 日志落盘前按当前全部密钥的实际值脱敏（`ctx.secrets`、`secret: true` 字段、各来源用 `ctx.redact` 登记的临时凭据）；写死的 cookie 名正则删掉；来源名（`bilibili` 或拓展 id）在已有的 `name` 字段里。
-- `docs/agents/self-update.md` 在收尾期补写数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样。
+- `docs/agents/self-update.md` 在收尾期（第 5 期，见 [construction-plan.md](./construction-plan.md)）补写数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样。
