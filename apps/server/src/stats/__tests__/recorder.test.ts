@@ -430,7 +430,7 @@ describe("StatsRecorder — dispose", () => {
 		handle.dispose();
 		trigger("dynamic-detected", { uid: "1", id: "a", type: "T", ts: "2026-05-16T09:00:00.000Z" });
 		trigger("live-state-changed", "1", "live");
-		await new Promise((r) => setTimeout(r, 10));
+		await handle.flush();
 		expect(store.appendDynamic).not.toHaveBeenCalled();
 		expect(store.openLiveSession).not.toHaveBeenCalled();
 	});
@@ -609,14 +609,16 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 	});
 
 	it("拓展订阅的外部 id 撞上 uid 也不认 —— 只查 B 站那一支", async () => {
-		const { trigger, store } = setup(() => [{ kind: "extension", id: "ext-x", externalId: "1" }]);
+		const { trigger, store, handle } = setup(() => [
+			{ kind: "extension", id: "ext-x", externalId: "1" },
+		]);
 		trigger("dynamic-detected", {
 			uid: "1",
 			id: "y",
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		await new Promise((r) => setTimeout(r, 10));
+		await handle.flush();
 		expect(store.appendDynamic).not.toHaveBeenCalled();
 	});
 
@@ -667,7 +669,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 
 	it("删掉的订阅不再记:之后同 uid 的事件不会把文件重新写出来", async () => {
 		let subs: unknown[] = [...SUBS];
-		const { trigger, store } = setup(() => subs);
+		const { trigger, store, handle } = setup(() => subs);
 		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		subs = [SUBS[1]];
@@ -680,7 +682,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledWith("id-1"));
-		await new Promise((r) => setTimeout(r, 10));
+		await handle.flush();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
 		expect(store.appendDynamic).not.toHaveBeenCalled();
 	});

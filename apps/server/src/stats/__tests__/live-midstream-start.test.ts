@@ -52,7 +52,7 @@ describe("服务器在 UP 已开播时启动", () => {
 	/** 建一套 recorder + store,并把「已在播」那条 bootstrap 事件喂进去。 */
 	async function bootWhileLive() {
 		const store = createStatsStore({ dataDir: dir, logger });
-		createStatsRecorder({
+		const recorder = createStatsRecorder({
 			bus,
 			store,
 			fans: createFansStore({ dataDir: dir, logger }),
@@ -62,26 +62,26 @@ describe("服务器在 UP 已开播时启动", () => {
 			subscriptions,
 		});
 		emit("live-state-changed", "1", "live", REAL_START);
-		// 落盘是 fire-and-forget,让出一轮事件循环等它写完。
-		await new Promise((r) => setTimeout(r, 20));
-		return store;
+		// 落盘是 fire-and-forget,等 recorder 把交出去的写入落完。
+		await recorder.flush();
+		return { store, recorder };
 	}
 
 	it("开播时刻记的是 B 站的真实时间,不是我们启动的时间", async () => {
-		const store = await bootWhileLive();
+		const { store } = await bootWhileLive();
 		expect(await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z")).toEqual([
 			{ startedAt: REAL_START, current: true },
 		]);
 	});
 
 	it("启动那一刻就已经算出 2 小时,而不是从 0 开始数", async () => {
-		const store = await bootWhileLive();
+		const { store } = await bootWhileLive();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		expect(summarizeLiveSessions(sessions, { now: BOOT, isLive: true }).hours).toBeCloseTo(2, 5);
 	});
 
 	it("时长随时间推进 —— 不下播也能一直涨", async () => {
-		const store = await bootWhileLive();
+		const { store } = await bootWhileLive();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		const at = (h: number) =>
 			summarizeLiveSessions(sessions, { now: hoursLater(h), isLive: true }).hours;
@@ -90,9 +90,9 @@ describe("服务器在 UP 已开播时启动", () => {
 	});
 
 	it("下播后定格在真实总时长,不再随时间变", async () => {
-		const store = await bootWhileLive();
+		const { store, recorder } = await bootWhileLive();
 		emit("live-state-changed", "1", "idle");
-		await new Promise((r) => setTimeout(r, 20));
+		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		// 下播帧用的是 recorder 的注入时钟(BOOT),所以这一场是 20:00→22:00 共 2h。
 		const a = summarizeLiveSessions(sessions, { now: hoursLater(1), isLive: false });
@@ -103,9 +103,9 @@ describe("服务器在 UP 已开播时启动", () => {
 
 	it("直播中再次重启服务器 → 仍是一场,时长不翻倍", async () => {
 		// 重启后从 B 站拿到的还是同一个 live_time,于是又发了一条开播事件。
-		const store = await bootWhileLive();
+		const { store, recorder } = await bootWhileLive();
 		emit("live-state-changed", "1", "live", REAL_START);
-		await new Promise((r) => setTimeout(r, 20));
+		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		const got = summarizeLiveSessions(sessions, { now: hoursLater(1), isLive: true });
 		expect(got.sessions).toBe(1);
@@ -131,7 +131,7 @@ describe("采集水位线钉在采集起点", () => {
 		// 「无记录」—— 数据在盘上却永远显示不出来。
 		const START = new Date("2026-05-10T00:00:00.000Z");
 		const store = createStatsStore({ dataDir: dir, logger, now: () => START });
-		createStatsRecorder({
+		const recorder = createStatsRecorder({
 			bus,
 			store,
 			fans: createFansStore({ dataDir: dir, logger }),
@@ -140,7 +140,7 @@ describe("采集水位线钉在采集起点", () => {
 			now: () => START,
 			subscriptions: () => [],
 		});
-		await new Promise((r) => setTimeout(r, 20));
+		await recorder.flush();
 
 		// 五天后才第一次有人打开统计页。
 		const later = createStatsStore({
