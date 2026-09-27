@@ -20,7 +20,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
 	type ImageRendererConfig,
@@ -30,6 +30,18 @@ import type { PuppeteerLike } from "../puppeteer";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS } from "../skin/knob-assets";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
+
+// 渲染器在 Node 这边预取卡片里的图(头像 / 封面 / 舰长图标),夹具里写的是 B 站 CDN 的地址。
+// 测试不许真去拉(根 setup 的守卫会拦),一律回 404,渲染器照常落到占位图。
+beforeEach(() => {
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response(null, { status: 404 })),
+	);
+});
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
 
 const SERVICE_CTX: ServiceContext = {
 	logger: { debug() {}, info() {}, warn() {}, error() {} },
