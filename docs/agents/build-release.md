@@ -116,7 +116,7 @@ bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、j
 `.github/scripts/assert-{macos,windows}-desktop-artifact.*`(查文件)、以及外壳
 `apps/desktop/src-tauri/src/main.rs`(决定起什么)。前三个**运行时读同一份 JSON**;
 外壳是 Rust,读不到(为一份三行的声明引 build.rs 不值当),所以那边留字面量,由
-`scripts/desktop-release-gates.test.mjs` 核对它和声明说的是同一套。
+`scripts/__tests__/desktop-release-gates.test.mjs` 核对它和声明说的是同一套。
 
 那份守卫还盯着另一件事:**谁都不许把路径抄回自己家里**。抄回去的那份可以静静地落后 ——
 macOS 那条闸只查文件存在,落后了照样绿,而用户拿到的是一个起不来的包(2026-09-02 真栽过)。

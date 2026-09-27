@@ -32,8 +32,8 @@ const REPO_RELATIVE_BASE = join(SRC_DIR, "../../..");
 const RAW_SIZE_RE =
 	/(?<![-a-zA-Z])text-(2xs|xs|sm|base|md|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)(?![-a-zA-Z[])/g;
 
-/** 测试目录/文件跳过 —— 守卫守的是产品源码;测试里引用旧类名是断言不是漂移。 */
-const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true, skipTestFiles: true });
+/** 测试跳过(一律住在 `__tests__`)—— 守卫守的是产品源码;测试里引用旧类名是断言不是漂移。 */
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true });
 
 describe("字号走 bn 阶,不许裸 Tailwind 档", () => {
 	it("web 与 ui 的组件源码里没有裸字号", () => {

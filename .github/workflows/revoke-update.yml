@@ -63,7 +63,7 @@ jobs:
         with:
           node-version-file: .node-version
 
-      # 参数的规矩全在脚本里(scripts/revocation.test.mjs 钉着):目标版本自己不能在
+      # 参数的规矩全在脚本里(scripts/__tests__/revocation.test.mjs 钉着):目标版本自己不能在
       # 撤回名单里、版本号得成形、渠道只认三种。sha256 / size 从**真的那份已发布的包**
       # 上算 —— 手抄那一步就是这么被去掉的。
       - name: Resolve revocation

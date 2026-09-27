@@ -26,8 +26,7 @@ import { listSources } from "./walk.js";
 
 /** 连 `.ts` 一起收:从根入口取值的写法在纯逻辑文件里一样会把 zod 拖进 bundle。
  *  测试自己可以从根入口拿值 —— 它们不进 bundle。 */
-const listTsx = (dir: string) =>
-	listSources(dir, { skipTestDirs: true, skipTestFiles: true, exts: [".ts", ".tsx"] });
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true, exts: [".ts", ".tsx"] });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(TEST_DIR, "..");

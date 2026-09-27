@@ -25,7 +25,7 @@ packages:
 # "vite" anywhere reachable from that dep graph (so @vitejs/plugin-react,
 # @tailwindcss/vite etc. all fall under it) — instead of the README's global
 # `vite:` form, so that nothing outside the frontends (vitest inside vite-plus,
-# vp pack) gets its vite silently swapped by a side effect. scripts/vite-alias.test.mjs
+# vp pack) gets its vite silently swapped by a side effect. scripts/__tests__/vite-alias.test.mjs
 # pins the invariant the overrides exist for: every frontend resolves bare `vite`
 # to the Vite+ core, on one version. A missing override is silent otherwise —
 # real vite also builds and tests fine, and only misbehaves at runtime.

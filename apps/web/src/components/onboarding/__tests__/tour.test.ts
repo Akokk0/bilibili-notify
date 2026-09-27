@@ -149,7 +149,7 @@ describe("锚点与页面挂点不脱节", () => {
 		// 红在「文件名对不上」而不是「挂点没了」,人就学会改列表而不是信它。
 		// 排除导览自己那一箱 —— 词表与脚本本身就写着这些词面,算进来条条都白给。
 		const srcDir = resolve(__dirname, "../../..");
-		const files = listSources(srcDir, { skipTestDirs: true, skipTestFiles: true }).filter(
+		const files = listSources(srcDir, { skipTestDirs: true }).filter(
 			(f) => !f.includes("/components/onboarding/"),
 		);
 		expect(files.length).toBeGreaterThan(50); // 目录没扫到时别假绿

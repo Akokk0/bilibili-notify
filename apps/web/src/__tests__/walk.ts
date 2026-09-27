@@ -17,17 +17,11 @@ import { join } from "node:path";
 export interface WalkOptions {
 	/** 收哪些后缀。默认只收 `.tsx`。 */
 	exts?: readonly string[];
-	/** 跳过 `__tests__` 目录。**没有默认值,必须写明**。 */
-	skipTestDirs: boolean;
 	/**
-	 * 另外跳过任何位置的 `*.test.*` 文件。
-	 *
-	 * **和上一条是两件事**:站里有十个测试文件不住在 `__tests__` 里(挨着被测组件
-	 * 放,如 `pages/backup/BackupExportDialog.test.tsx`),只跳目录的守卫照样在扫
-	 * 它们。收编时逐个文件对过两边的扫描面,才发现这一层差别 —— 所以它是个独立
-	 * 开关,而不是被并进 skipTestDirs 里悄悄改掉谁的射程。
+	 * 跳过 `__tests__` 目录。**没有默认值,必须写明**。测试文件一律住在 `__tests__` 里
+	 * (`scripts/__tests__/test-file-layout.test.mjs` 钉着),所以跳了它就跳了全部测试。
 	 */
-	skipTestFiles?: boolean;
+	skipTestDirs: boolean;
 	/** 顺带跳过的目录名(如 `node_modules`)。 */
 	skipDirs?: readonly string[];
 }
@@ -46,7 +40,6 @@ export function listSources(dir: string, opts: WalkOptions): string[] {
 			continue;
 		}
 		if (!exts.some((e) => name.endsWith(e))) continue;
-		if (opts.skipTestFiles && /\.test\.[cm]?tsx?$/.test(name)) continue;
 		acc.push(full);
 	}
 	return acc;

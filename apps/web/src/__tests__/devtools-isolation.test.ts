@@ -29,7 +29,6 @@ describe("devtools 只活在开发期", () => {
 		for (const file of listSources(SRC, {
 			exts: [".ts", ".tsx"],
 			skipTestDirs: true,
-			skipTestFiles: true,
 		})) {
 			const rel = relative(SRC, file);
 			if (rel.startsWith("devtools/") || rel === "App.tsx") continue;

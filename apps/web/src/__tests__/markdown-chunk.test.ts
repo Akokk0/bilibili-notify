@@ -176,7 +176,6 @@ describe("markdown 重依赖不许进初始包", () => {
 		const files = listSources(SRC, {
 			exts: [".ts", ".tsx"],
 			skipTestDirs: true,
-			skipTestFiles: true,
 		});
 		expect(files.length).toBeGreaterThan(80); // 目录没扫到时别假绿
 		const offenders: string[] = [];

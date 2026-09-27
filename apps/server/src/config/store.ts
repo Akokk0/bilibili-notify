@@ -1018,7 +1018,7 @@ class NodeConfigStore implements ConfigStore {
 			// (`AISettingsSchema` 的 migratePersonaPointer)。那道迁移必然把列表填成非空,
 			// 所以这里原先那个 `presets.length === 0` 判据永远不成立 —— 留着是死代码,
 			// 更糟的是会让人以为补齐还归 store 管。见
-			// packages/internal/src/schema/ai-persona-pointer.test.ts。
+			// packages/internal/src/schema/__tests__/ai-persona-pointer.test.ts。
 
 			// ⚠️ **这张表已冻结,不要再往里加条目。**
 			//

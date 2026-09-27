@@ -29,7 +29,7 @@ import { readArg, readListArg, requireArg } from "./cli-args.mjs";
  *
  * **它是客户端 `ManifestSchema` 的一份手抄**(apps/server/src/update/signed-manifest.ts)
  * —— 两处实现不可能自动同步,所以防漂移靠的是
- * `scripts/sign-update-manifest.test.mjs`:那些测试把签出来的信封**真的交给客户端
+ * `scripts/__tests__/sign-update-manifest.test.mjs`:那些测试把签出来的信封**真的交给客户端
  * 的 `loadSignedManifest`** 去验。客户端一旦收紧规则,这里签出来的东西会当场被拒,
  * 测试就红。
  *

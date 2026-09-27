@@ -307,7 +307,7 @@ describe("removeProfile", () => {
 // 人格只住在 `presets[]` 里,`activePreset` 指着全局用的那一份。曾经还有个「默认」项
 // 对应 `ai.persona` —— 但它与 `presets[0]`「温柔女仆」本就是同一份东西,摆两个入口是
 // 重复。schema 那边的迁移保证 presets 恒非空、指针恒有着落
-// (见 packages/internal/src/schema/ai-persona-pointer.test.ts)。
+// (见 packages/internal/src/schema/__tests__/ai-persona-pointer.test.ts)。
 
 const TSUNDERE: AIPersona = { ...PERSONA, name: "傲娇", traits: "毒舌" };
 

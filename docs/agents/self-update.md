@@ -209,7 +209,7 @@ WS 重连的 hydrate 也只补 globals / subs / targets。所以「重启完了�
 
 它做三件事:按规矩校验参数(目标版本自己不能在撤回名单里、版本号得成形)、**从那一版
 已发布的 zip 上现算 sha256 与字节数**、签名并刷渠道清单。规矩在 `scripts/revocation.mjs`,
-`scripts/revocation.test.mjs` 钉着。
+`scripts/__tests__/revocation.test.mjs` 钉着。
 
 它**不跑门禁** —— 这里一行代码都不发,只是把清单指回一个已经发布过的载荷;给一件
 本该几十秒的急事加十几分钟没有意义,而且门禁红了也不说明这次撤回有问题。

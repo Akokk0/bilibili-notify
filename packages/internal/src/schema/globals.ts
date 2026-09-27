@@ -156,7 +156,7 @@ export const GlobalDefaultsSchema = z.object({
 	 *
 	 * `.default({})` 是老配置兜底(同 imageGroup);全新安装由
 	 * `makeDefaultGlobalConfig` 一次填满 —— 理由见
-	 * `./template-defaults-seen.test.ts` 里那条「改了自己的文案不该立刻被提示」。
+	 * `./__tests__/template-defaults-seen.test.ts` 里那条「改了自己的文案不该立刻被提示」。
 	 */
 	templateDefaultsSeen: z.record(z.string(), z.string()).default({}),
 });
@@ -302,7 +302,7 @@ export const GlobalConfigSchema = z.object({
 	 *
 	 * 放顶层同 `commands`:它不是「per-UP overrides 缺字段时的回退」。
 	 * `.default(...)` 是老配置兜底 —— 独立端启动时 `parse` 会补上,理由见
-	 * `./onboarding-skipped.test.ts`。
+	 * `./__tests__/onboarding-skipped.test.ts`。
 	 */
 	onboarding: OnboardingConfigSchema.default(DEFAULT_ONBOARDING),
 	/**

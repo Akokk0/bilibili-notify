@@ -8,7 +8,7 @@
 //
 // 客户端那半边:apps/server/src/extensions/marketplace.ts(拿 fetchSignedJson 验、按
 // MarketplaceIndexSchema 读、再过 checkMarketplaceIndex 那两条官方源规矩)。这里的形状检查
-// 是那份 schema 的手抄,防漂移靠 scripts/marketplace-index.test.mjs 真拿客户端去验。
+// 是那份 schema 的手抄,防漂移靠 scripts/__tests__/marketplace-index.test.mjs 真拿客户端去验。
 //
 // 用法:
 //   BN_UPDATE_SIGNING_KEY="$(cat key.pem)" node scripts/marketplace-index.mjs \
