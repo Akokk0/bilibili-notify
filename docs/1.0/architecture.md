@@ -213,7 +213,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 4 | 同一个导出名全仓只定义一次；另有「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。不扫 extensions/ 与测试夹具，TS 重载不算多次定义 |
 | 5 | 面板里 `"/api/"` 字面量只许出现在 `services/` |
 | 6 | 注释里写的仓内路径必须指向真实存在的文件 |
-| 7 | 测试只放 `__tests__/`；文件名一律 kebab-case（biome `useFilenamingConvention`） |
+| 7 | 测试只放 `__tests__/`；文件名一律 kebab-case（biome `useFilenamingConvention`）。前半已落：`scripts/__tests__/test-file-layout.test.mjs`，全仓无例外（`scripts/` 也搬进了 `__tests__/`） |
 | 8 | 服务关停返回以后，数据目录不再变化（端到端） |
 | 9 | 存储层拒收同一身份的第二条订阅，所有写入路径各一条测试 |
 | 10 | B 站动态出图的字节快照长期保留 |
