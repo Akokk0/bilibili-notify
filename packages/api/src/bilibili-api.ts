@@ -141,6 +141,10 @@ export class BilibiliAPI {
 		this.jar = new BiliCookieJar();
 	}
 
+	/**
+	 * 起 HTTP 客户端与每日 ticket 定时,**不联网**:ticket 在第一次 WBI 签名时由 getWbi 现取。
+	 * 开机预取会让「开机那一刻连不上 B 站」变成整台 BN 起不来(见 start-offline.test.ts)。
+	 */
 	async start(): Promise<void> {
 		this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
@@ -158,8 +162,6 @@ export class BilibiliAPI {
 			"Asia/Shanghai",
 		);
 		this.ticketJob.start();
-		await this.updateBiliTicket();
-		this.logger.info("[init] BiliTicket 已更新，API 初始化完成");
 	}
 
 	stop(): void {

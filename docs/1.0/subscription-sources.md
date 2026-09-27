@@ -255,6 +255,7 @@ interface DevtoolsProvider { scenes: DevtoolsScene[] }           // 只在开发
 - **禁 fs**：B 站的状态（`roomId`、`followed`、`followError` 等）只走 `ctx.state`，cookie 只走 `ctx.secrets`；动态游标仍只在内存。
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`userAgent`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。
 - **补关注**（BN → B 站单向）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次。整份名单先批量查关系、只补缺的（稳态写请求为零）；失败按「问题上报」报 `follow_failed`。登录态失效时跳过；批量查询回 -101 按「没登录」整批跳过，订阅卡上的关注状态不动，等登录恢复再跑；其他失败码仍走降级。停用的订阅不在名单里，自然不补；从停用改回启用时名单变化，那一轮就补上。
+- **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来）。
 - **风控码**：-412 在拉粉丝时算风控、刷 cookie 时算登出，各处不一，先验证再定。
 - **失败码**：B 站接口的数字错误码放在 `upstreamCode`，不占错误体的 `code`。
 - 验收检查点：「接口先行」那一期完成时，B 站全经中立接口运行、行为不变。

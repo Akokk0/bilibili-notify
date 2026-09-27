@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { createSecretStore } from "../../config/secret-store.js";
 import { createAuthSystem } from "../index.js";
 
-// BilibiliAPI.start() 会去拿 BiliTicket(真联网),替身只留 auth 层碰得到的几个口。
+// 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
 vi.mock("@bilibili-notify/api", () => ({
 	BilibiliAPI: class {
 		start = vi.fn(async () => {});
