@@ -5,6 +5,7 @@
 - **影响面**:`packages/internal/src/schema/targets.ts`、`packages/internal/src/constants.ts`、`apps/server/src/platforms/`、`apps/server/src/sink/multiplex.ts`、`apps/web/src/pages/Targets.tsx` 及其表单一族
 - **取代**:ADR-0009 原稿里的数据模型一节(`platform` → `{driver, platform?}`)
 - **🔗 后续**:拓展契约整个建在这套模型上,见 ADR-0012
+- **后续**：2026-09-27 ADR-0023 决策 2 修订了决策 11、14（各条下挂 🔗）。
 
 ## 背景
 
@@ -41,12 +42,14 @@
 ### 命名
 
 11. **`PushAdapter` → `Connection` 要改,`PushTarget` 不改。** 判据是**一词二义**,不是跟对方对称:`adapter` 这个词在这一行里普遍指「实现」,而仓里同时有 `PlatformAdapter` 也指实现 —— 一个词兼两个身份;「推送目标」则没有第二个意思。
+    🔗 **2026-09-27 ADR-0023 决策 2 修订**：平台那一层改叫 `PushOutlet`（出口），与 Connection、Target 三层分开。
 12. **改成 `Target` 方向相反,是往里引入二义**:DOM 的 `event.target` / `EventTarget` 全仓 75 处,CDP 里浏览器页签也叫 Target。代价也不对称(343 处 vs 189 处,跨 4 个包)。
 13. ⛔ **`platform` → `driver` 那套改名已被撤回**(2026-09-08,主人未说理由)。**别再提议改名到 driver。** 新模型不改名 —— `platform` 留着,`kind` 这根正交轴做判别子,那个别扭点已经绕开了。
 
 ### 接口分家
 
 14. `PlatformAdapter` 拆成 `Connector`(建连 / 重连退避 / 心跳 / 状态机,通用)+ `PlatformDialect`(握手 / 鉴权 / 编解码 / 地址语义 / 能力)。让 `ws` 真通用的钥匙是 `dialect.resolveEndpoint()` —— QQ 在这里拿 gateway 地址,所以「用户不填 url」也能塞进通用 ws。
+    🔗 **2026-09-27 ADR-0023 决策 2 修订**：`PlatformAdapter` 改名 `PushOutlet`；拆出的两半的新名施工时定。
 15. **文件刻意不拆**(`onebot.ts` 1385 行、`qq-official.ts` 1338 行)—— 抽象只有一个长连接用例验证过,容易抽错。
 
 ### 迁移

@@ -4,6 +4,7 @@
 - **影响面**:`packages/internal/src/schema/extension-marketplace.ts`(新)、`extension-manifest.ts`(id 放开命名空间)、`globals.ts`(`marketplace.sources`)、`apps/server/src/extensions/marketplace.ts`(新)、`apps/server/src/update/`(签名验证泛化)、`apps/web` 拓展页、`scripts/marketplace-index.mjs` / `pack-extension.mjs`、`.github/workflows/extension-release.yml`
 - **依赖**:ADR-0005(签名镜像链、信任公钥、加速前缀、新鲜度)、ADR-0012(拓展包的形状、上传装包那段落地逻辑、装载根)
 - **取代**:ADR-0012 决策 34 里「日后从签名镜像下载」那句预告 —— 现在有了
+- **后续**：2026-09-27 ADR-0021 决策 37 修订了决策 5（各条下挂 🔗）。
 
 ## 背景
 
@@ -22,6 +23,7 @@
 3. **官方索引单开一个滚动 release `extension-marketplace`**(不挂在 `update-channel` 上):任何一方发坏了都不牵连另一方,两条流水线各有各的并发锁。同域同路径前缀,一条加速前缀照样管住四样(本体清单、本体载荷、拓展索引、拓展包)。
 4. **每个拓展版本一个不可变 release**,tag `extension/<id>@<version>`,zip 挂上面;索引条目写 URL + sha256 + size,客户端不拼地址(沿用 ADR-0005 那条铁律)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红 —— 拓展是独立发布物,清单里的版本就该是真的,不像本体那样按 tag 临时改元数据。
 5. **一份索引,不分渠道**:条目带 `prerelease: true` 标记,BN 自己的更新渠道是预发布时才显示。拆两份文件只多一次 `--clobber` 失同步的机会。
+    🔗 **2026-09-27 ADR-0021 决策 37 修订**：索引每个契约版本各留最新一条，宿主取装得了的里面最高的；1.0 alpha 期 v3 桥只进预发布档。
 6. **每个 id 只列最新那一版**:「有没有新版」就是一次版本比较,索引永远很小;老版本靠发布页手动下。
     🔗 **2026-09-11 改:同 id 各留一条正式 + 一条预发布。** 发版前审查发现:只留一条时打 alpha tag 会把正式版从索引抹掉,稳定渠道(跳过 `prerelease` 条目)在下个正式版之前**看不到这个拓展**、已装的被标「从别处装的」。合并脚本改成按「同 id 同档」替换,比新正式版还旧的预发布一并清掉;宿主每 id 仍只出**一张卡**,稳定渠道取正式档、预发布渠道取两档里版本高的。顺带:`+build` 版本号 tag 守卫与合并脚本**两边都拒**(此前守卫拒、脚本收,只有一条测试钉着差异;build 元数据不参与排序,与「等于即可复现重发」那条前提打架)。
 

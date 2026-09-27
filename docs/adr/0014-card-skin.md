@@ -6,6 +6,7 @@
 - **依赖**:ADR-0002(CSS 清洗方言与挂点哲学整套借用)
 - **取代**:ADR-0002 头部那句「不影响卡片渲染图(后者有模版编辑器的地盘)」—— 那块地盘现在归这份
 - **不影响**:发送侧的消息版式(`messageLayout`:卡 / 文字 / 链接的先后)、dashboard 皮肤本身
+- **后续**：2026-09-27 ADR-0021 决策 31、32 推翻了决策 14（各条下挂 🔗）。
 
 ## 背景
 
@@ -134,6 +135,7 @@ dashboard 有皮肤包,AI 女仆能造皮肤包;推送出去的卡片图却只�
 
 14. **对外、带版本、每种卡一份的数据模型**,字段名稳定、有中文说明、**只增不删不改名**,老皮肤永远能画;含场面布尔字段(`live.isEnded`、`dynamic.hasCover` 等)供 `showIf`。字段表当契约常量住 `packages/internal/src/schema/card-skin.ts`(拷问时说的是 `apps/contract`,开工时按依赖方向改正:`apps/contract` 依赖 `packages/internal`,反过来不行,而 `packages/image` 也要读这份表),编辑器的「插入字段」下拉与渲染器的占位符解析都从它读;内部 props → 契约的映射层住 `packages/image`。
     - 被否:直接暴露 `LiveCardProps` / `DynamicNode` 等内部形状。皮肤包能分享就一定会被第三方写,内部一重构所有第三方皮肤一起断;`LiveCardProps.data` 还是 B 站原始 `any`。
+    🔗 **2026-09-27 ADR-0021 决策 31、32 推翻**：字段按中立名重排，皮肤包 schemaVersion 抬版，老皮肤不适配、1.0 重新生成。
 
 ### 与现有配置的关系
 
