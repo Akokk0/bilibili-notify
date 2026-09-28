@@ -39,6 +39,8 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 ## 硬约束(违反即 bug)
 
+- **动手前先对仓库规范**:`docs/agents/conventions/`(索引是里面的 `README.md`)—— 命名后缀、失败形状与标准码、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造,每条一篇。都是活规范,加条、改条要主人拍板。
+
 - **写前端 UI 前先查组件清单**:`packages/ui`(`@bilibili-notify/ui`)是纯展示基础件库,给 web / desktop 写任何 UI **之前必须先读 `packages/ui/README.md` 的组件清单**——清单里有的组件不许重写。新增纯展示件(零业务依赖)进库并**同步更新清单**;缠 api/store/react-query 的留在 `apps/web/src/components`。库是源码直出(exports 指 src,无构建步),消费方入口 CSS 要 `@import "@bilibili-notify/ui/theme.css"` + `@source` 库的 src。
 
 - **拓展只从一扇门拿 BN 的东西**:`extensions/<id>/` 底下第三方随便用,但我们自己的东西**只准从 `@bilibili-notify/extension` 进** —— 那个包列出来的就是契约的全部,直接依赖 `internal` 等于把契约放宽成「整个域模型」。反方向也一样:**核心不 import 拓展**。两条都由 `apps/server/src/extensions/__tests__/extension-import-boundary.test.ts` 真扫目录钉着,越界是静默的(类型、测试、构建全绿)。
@@ -59,6 +61,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 ## 深入参考(`docs/agents/`)
 
 - `architecture.md` —— 包清单、独立端模块图、服务依赖图
+- `conventions/` —— 仓库规范:索引 `README.md` + 8 篇(命名后缀表、失败规矩、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造),每篇带出处与守卫
 - `events.md` —— BiliEvents 契约、MessageBus 语义、WS channel 契约
 - `push.md` —— 推送链路:引擎 → 适配 → 路由与闸 → 发送 → 投递 → 历史;闸的顺序、附加项的「生产 vs 推送」、不走这条链的三条旁路
 - `subscriptions.md` —— 订阅:B 站 / 拓展两支与两个文件、身份 vs 订阅 id 两种键、资料与头像、订阅源拓展(清单 / 契约小号 / 解析门 / 上报的丢格与拒收)

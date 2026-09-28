@@ -16,7 +16,7 @@
 | 时长 | 名字带单位：`Ms` / `Sec` 缩写，`Minutes` / `Hours` / `Days` 写全（`cooldownSec`、`chromeIdleSec`、`pollIntervalSec`、`streamingIntervalHours`、`loginCheckIntervalMinutes`、`retentionDays`）；不用 `Min`（会和 `min*` 阈值撞）；cron 字符串叫 `…Cron` |
 | 枚举值 | 事件与状态类的值用 kebab（`grace-expired`、`logged-out`、`settings-invalid`）；失败码与问题码用 snake（`invalid_profile`、`follow_failed`），应用内更新的失败原因 `reason` 也从 kebab 改成 snake；特性键保持 camel（`liveStart`）。「此刻没在播」统一叫 `offline`，`end` 只指「下播」这个事件 |
 | 判别键 | 说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格，如 `AuthState.status`、`probeState.status`）；`type` 只留给外部协议里的原名（B 站接口、桥帧） |
-| 类型名 | 后缀对 [docs/agents/naming.md](../agents/naming.md) 的表：一个概念只用一个词，表里没有的概念先加一行再用。按表改的名字见文末「类型名后缀」 |
+| 类型名 | 后缀对 [docs/agents/conventions/naming.md](../agents/conventions/naming.md) 的表：一个概念只用一个词，表里没有的概念先加一行再用。按表改的名字见文末「类型名后缀」 |
 | 设置 | 设置的值只叫 `settings`（连接的 `settings`、`settingsSchema`、`settingsFields`）；`config` 只指存储：`config/` 目录、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG` |
 | 计数 | 全程是数字，只在出口（卡片、文案、面板）排一次版，见「数字、时间、不知道」 |
 | 开关 | `enabled`，不用 `enable` |
@@ -729,7 +729,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
-**类型名后缀（ADR-0023 决策 15，按 [naming.md](../agents/naming.md) 改）。** 上面几张表里已有的不重复列。
+**类型名后缀（ADR-0023 决策 15，按 [naming.md](../agents/conventions/naming.md) 改）。** 上面几张表里已有的不重复列。
 
 | 以前 | 现在 |
 | --- | --- |

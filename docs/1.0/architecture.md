@@ -2,7 +2,7 @@
 
 > 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023，以及 ADR-0024 ～ 0031。
 
-分层、目录地图、接口族与登记表、集成与 ctx、装配根、总线、守卫、施工原则。类型与字段见 [data-model.md](./data-model.md)；各接口的细节见 [subscription-sources.md](./subscription-sources.md)；推送链见 [push.md](./push.md)；拓展能拿什么见 [extension-contract.md](./extension-contract.md)；盘上布局见 [data-and-migration.md](./data-and-migration.md)；施工分期见 [construction-plan.md](./construction-plan.md)；类型名的后缀见 [naming.md](../agents/naming.md)。
+分层、目录地图、接口族与登记表、集成与 ctx、装配根、总线、守卫、施工原则。类型与字段见 [data-model.md](./data-model.md)；各接口的细节见 [subscription-sources.md](./subscription-sources.md)；推送链见 [push.md](./push.md)；拓展能拿什么见 [extension-contract.md](./extension-contract.md)；盘上布局见 [data-and-migration.md](./data-and-migration.md)；施工分期见 [construction-plan.md](./construction-plan.md)；类型名的后缀见 [naming.md](../agents/conventions/naming.md)。
 
 ## 一句话
 
@@ -46,7 +46,7 @@ B 站（信号 · 接口 · 扫码）──SubscriptionSource 等接口──┐
 
 - **不整体重写，以改造为主**（ADR-0021 决策 58）。判据：某个模块的核心逻辑从头到尾是 B 站的形状、改造要动每一行时，才对着中立接口局部重写，旧测试当规格书；否则改造。各期哪块用哪种方式，见 [construction-plan.md](./construction-plan.md) 分期表的「方式」一列。
 - **没有实现者的接口先不造**：`CommandProvider` 就是这样删的（ADR-0031 决策 1）。
-- **起名先对后缀表**：[naming.md](../agents/naming.md)；表里没有的概念先加一行再用（加行、改行要主人拍板）。新写或重写的代码直接用新名，第 5 期只清扫没被动到的旧名。
+- **起名先对后缀表**：[naming.md](../agents/conventions/naming.md)；表里没有的概念先加一行再用（加行、改行要主人拍板）。新写或重写的代码直接用新名，第 5 期只清扫没被动到的旧名。
 - **失败一律用结果形状、抛错只留给 bug**（ADR-0026），见「wire 契约」。
 
 ## packages/
@@ -316,7 +316,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | `.platform` 决定棘轮（推送侧） | 核心里读 `.platform` 的地方只许用来构造身份、显示、记日志 | 核心按平台名做决定：`platformSupportsAtAll`、`platformCanReceiveReply`、`isWebhookConnection` 这类中立名谓词，词棘轮看不见；该改成问适配器能力（`atAll`、`inbound`） | 3a 棘轮开，3b 末清零 |
 | 推送守卫②（推送平台专有词） | 范围 `packages/*/src`（ui 除外）+ `apps/server/src` + `apps/contract/src`，排除 `platforms/` 与测试，迁移模块进白名单；先剥注释。词表 `onebot`、`qq-official`、`miniapp`、`guild`、`openid`、`feishu`、`dingtalk`、`wecom`、`napcat`、`send_group_forward_msg`、`user_id`、`group_id`、CQ 码，加宽 `\bQQ[A-Z]`、`ws-reverse`、`transport`、`get_mini_app_ark`、`c2c`（「分享到 QQ」这类说 B 站的语境别误伤） | 核心里出现推送平台的专有词。勘察时核心 + 服务端代码约 133 处，大头随平台表与设置 schema 搬出、原生分享改名消失 | 3a 棘轮开，3b 末清零 |
 | 事件载荷 | 总线事件表的载荷类型递归检查：不许有 `uid` 键、`Bili*` 类型；平台原始值（如动态类型码）不许以裸 `string` 进载荷 | 总线事件又带上 B 站的形状（今天 `DynamicDetectedEvent` 带 `uid`、`type` 原样装 `DYNAMIC_TYPE_*`，剥注释后守卫 11 零命中） | 1④ |
-| 类型名后缀 | 扫核心（`packages/`、服务端）与 contract 的类型声明，类型名用了 [naming.md](../agents/naming.md)「不再用」那一列的后缀就红（ADR-0023 决策 15）；第三方与外部协议里的原名不管。那一列里带条件的写法（「当参数包用的 `Input`」「当设置值用的 `Config`」这类）怎么机判施工时定 | 新起或改的类型名不对表；按表该改的名字逐条见 data-model 的改名对照 | 施工时定 |
+| 类型名后缀 | 扫我们写的全部类型声明（`packages/`、`apps/` 的服务端 / 面板 / contract / 桌面壳、`extensions/`，含 `bilibili/`），类型名用了 [naming.md](../agents/conventions/naming.md)「不再用」那一列的后缀就红（ADR-0023 决策 15）；第三方库的名字与外部协议定死的字段名不管。那一列里带条件的写法（「当参数包用的 `Input`」「当设置值用的 `Config`」这类）怎么机判施工时定 | 新起或改的类型名不对表；按表该改的名字逐条见 data-model 的改名对照 | 施工时定 |
 | 4 名字唯一的家 | 同一个导出名全仓只定义一次；「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。点名表补上：直播监听的唯一判定、身份索引、`formatViewers`、`posts/` 里作品文字的取段函数、contract 里的叫法函数（没定名的施工时定）；面板不许自带路由键表（今天首页自抄 4 键 `LIVE_ROUTING_KEYS`）。不扫 extensions/ 与测试夹具，TS 重载不算多次定义 | 家以外出现同名定义。改了名的抄本拦不住，靠审查 | 随各项 |
 | 12 不读 `bilibili` 段（加固） | 核心代码不许读设置的 `bilibili` 段；加固后覆盖解构（`const { bilibili } = …`）与下标（`settings["bilibili"]`） | 核心读了 B 站的设置 | 1⑥（连同解构与下标） |
 | 错误体 | 契约测试：错误体与失败结果的 `code` 只装 snake 字符串，平台的数字码只在 `upstreamCode` | 平台的错误码塞进 `code`（今天 `routes/subs.ts` 两处） | 1④（随契约骨架） |

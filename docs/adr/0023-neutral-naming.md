@@ -43,7 +43,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 布尔值：带 `is` / `has` / `can` 前缀，例外见决策 11；
    - 过滤：`allow*` 与 `block*` 成对；
    - 服务端：入参类型叫 `*Options`，挂到总线的叫 `bind*`，造对象的叫 `create*`。现存的违规写法列成清单，一并改掉。
-   🔗 **2026-09-28**：注入的协作者包 `*Deps` 保留，不并进 `*Options`；各后缀的分工以 docs/agents/naming.md 为准（决策 15）。
+   🔗 **2026-09-28**：注入的协作者包 `*Deps` 保留，不并进 `*Options`；各后缀的分工以 docs/agents/conventions/naming.md 为准（决策 15）。
 5. **拼写、缩写、名不符实**：
    - 拼音：`formatWan` 并进 `formatCount`，`formatAxisWan` 改名 `formatAxisTick`；
    - `pigeon` / `diligent` 改成 `leastActive` / `mostActive`，提示词和草稿一起改；
@@ -82,9 +82,10 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 
 ### 09-28 补的命名规矩
 
-15. **类型名的后缀一个概念只用一个词，表放在 [docs/agents/naming.md](../agents/naming.md)**：起新名、改名先对表；表里没有的概念先加一行再用。表是活规范，可以直接改，但加行、改行要主人拍板。守卫扫核心与 contract 的类型名，用了「不再用」那一列的判红。按表改名的逐条对照进 docs/1.0 的改名对照。
+15. **类型名的后缀一个概念只用一个词，表放在 [docs/agents/conventions/naming.md](../agents/conventions/naming.md)**：起新名、改名先对表；表里没有的概念先加一行再用。表是活规范，可以直接改，但加行、改行要主人拍板。守卫扫核心与 contract 的类型名，用了「不再用」那一列的判红。按表改名的逐条对照进 docs/1.0 的改名对照。
     - 理由：同一个概念在仓里有两三种写法（`Result` / `Outcome`、`View` / `DTO`、`Entry` / `Record` / `Row`、`Options` / `Params` / `Args` / `Config`），读名字认不出装的是什么。表放在 ADR 里只能追加 🔗，越改越难读；放在活文档里，读到的永远是现在的规矩。
     - 被否的备选：表写进本份 ADR；按包各定各的叫法。
+    🔗 **2026-09-29 扩大范围**：表管我们写的全部代码（核心、内置集成含 `bilibili/`、面板、官方拓展），守卫随之扫 `packages/`、`apps/`、`extensions/`；原先豁免的「照 B 站接口起名的类型」收回，只有第三方库的名字与外部协议定死的字段名不管。
 
 ## 明确不改
 
