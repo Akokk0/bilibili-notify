@@ -1,6 +1,6 @@
 # ADR-0023：1.0 中立命名
 
-- **状态**：2026-09-25 ～ 26 两轮 `/grill-me` 拍板（Q29、Q41、Q43、Q74，命名批 29 条）；2026-09-27 推送 / 订阅 / 配置三路字段名专项审查补了命名规矩 R1–R5 与一批机械改名。**未施工**。
+- **状态**：2026-09-25 ～ 26 两轮 `/grill-me` 拍板（Q29、Q41、Q43、Q74，命名批 29 条）；2026-09-27 推送 / 订阅 / 配置三路字段名专项审查补了命名规矩 R1–R5 与一批机械改名；2026-09-28 补决策 15（全仓类型名后缀表）。**未施工**。
 - **正本**：每一条的「以前叫什么、现在叫什么」对照，以 [docs/1.0/data-model.md](../1.0/data-model.md) 的改名对照为准；本份只写原则、关键条目和不改的范围。
 - **同批三份**：[ADR-0021](0021-neutral-core.md) 讲中立核心，[ADR-0022](0022-data-generations-and-migration.md) 讲数据代与迁移，本份讲命名与改名。
 
@@ -27,6 +27,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 订阅侧：`Source` 改名 `SubscriptionSource`；核心里的 `platform` 只指推送或聊天平台，订阅来源的平台名改叫 `sourceLabel`。
 
    被否的备选：推送侧叫 `PushOutbound`。
+   🔗 **2026-09-28 推送侧改回 `PlatformAdapter` 一套**：`PushOutlet` 一族作废；`NotificationSink` → `TargetDispatcher` 与订阅侧那两条不变（ADR-0024 决策 2）。
 3. **把平台词清出中立层**：
    - `fans` 整族改成 `followers`；
    - `dynamic` 整族改成 `post`，照 Q29 对 up 的做法，补一条「全改」的总规则；
@@ -42,6 +43,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 布尔值：带 `is` / `has` / `can` 前缀，例外见决策 11；
    - 过滤：`allow*` 与 `block*` 成对；
    - 服务端：入参类型叫 `*Options`，挂到总线的叫 `bind*`，造对象的叫 `create*`。现存的违规写法列成清单，一并改掉。
+   🔗 **2026-09-28**：注入的协作者包 `*Deps` 保留，不并进 `*Options`；各后缀的分工以 docs/agents/naming.md 为准（决策 15）。
 5. **拼写、缩写、名不符实**：
    - 拼音：`formatWan` 并进 `formatCount`，`formatAxisWan` 改名 `formatAxisTick`；
    - `pigeon` / `diligent` 改成 `leastActive` / `mostActive`，提示词和草稿一起改；
@@ -56,6 +58,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 错误体统一成 `{ code, message }`；
    - 取订阅身份的函数叫 `subscriptionIdentityOf`；
    - `PushLike`、`SubItemView` 各合成一份，不再按包加前缀区分。
+   🔗 **2026-09-28**：`PostRecord` / `LiveSessionRecord` 按后缀表改叫 `PostEntry` / `LiveSessionEntry`（决策 15）；链接卡统一叫「链接预览」，配置叫 `linkPreview`（ADR-0029 决策 1）。
 7. **界面文案里的「UP主」由来源给出（Q74）**：见 ADR-0021 决策 35。
 8. **施工时守住改名**：每一批改完，全仓 grep 旧名字，结果必须为零；改名对照表里本来就要列出的旧名除外。新写或重写的代码直接用新名字，收尾期只清扫没被动到的旧名。
 
@@ -63,15 +66,25 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 
 9. **时长后缀（R1）**：`Ms` / `Sec` 用缩写，`Minutes` / `Hours` / `Days` 写全（`cooldownSec`、`streamingIntervalHours`、`loginCheckIntervalMinutes`、`retentionDays`）。不用 `Min`，因为会和 `minScPrice` 这类「最小值」前缀撞。cron 字符串的字段以 `…Cron` 结尾。没带单位的名字要补上：`fansCron` 改成核心的 `profileRefreshCron`，迁移时原值照搬。
 10. **枚举值的大小写（R2）**：事件与状态类的值用 kebab（`grace-expired`、`logged-out`）；错误码与问题码用 snake（`invalid_profile`、`follow_failed`）；特性键保持 camel（`liveStart`）。「此刻没在播」统一叫 `offline`，`end` 只指「下播」这个事件。
+    🔗 **2026-09-28**：应用内更新的 `reason` 是失败原因，也改成 snake（ADR-0026 决策 3）。
 11. **操作结果的 `ok` 是布尔前缀规矩的例外（R3）**：全仓 537 处、76 个文件的 `{ ok }` 保留，它意思没有歧义，改名换不来什么。失败原因只用 `code` + `message`，`reason` / `err` / `why` 不再出现；上游平台的错误码放 `upstreamCode`，不占 `code`。
 
     被否的备选：`isOk`（生态里几乎没人这么写）、`success`（名词，照规矩同样要前缀）、字符串 `status`（`status` 在仓里已经太多意思）、看有没有错误字段（类型收窄不如 `r.ok` 清楚）、HTTP 接口不要 `ok` 改看状态码（最地道，但有些接口故意用 200 带业务失败，要逐个分辨，537 处不值得）。
+    🔗 **2026-09-28**：「`reason` / `err` / `why` 不再出现」只管失败原因，事件原因与描述性字段不在此列（ADR-0026 决策 2）。
 12. **历史行的推送种类那一格叫 `feature`（R4）**：值就是特性键；`/api/history?feature=`、按天计数的键、测试推送的种类都跟着改，测试推送不再用 `dyn` / `sc` / `guard` 那一套。
     - 理由：`kind` 在仓里已经是订阅、推送载荷、连接好几处的判别键。
 13. **`defaults` 只表示「按订阅覆盖时的回退层」（R5）**：订阅上能单独覆盖的设置，全局那份放 `core.defaults`（文案模板、词云停用词、免打扰时段、人格预设 `presetId`……）；订阅覆盖不了的一律挪出去（AI 实例桶、搜索、聊天进 `core.ai`，出厂文案账本进 `core.templatesSeen`）；链接卡的「默认行」改名 `linkCards.base`。形状见 [docs/1.0/data-model.md](../1.0/data-model.md) 的「配置」一节。
     - 理由：`defaults` 原先一词三义（回退层、链接卡默认行、出厂文案账本），而且挂着不少根本没有订阅覆盖版本的东西。
+    🔗 **2026-09-28**：链接卡改名链接预览，配置摊平成 `linkPreview { enabled, replyForm, byTarget }`，没有 `base` 这一层（ADR-0029 决策 1）。
 14. **三路审查的机械改名整批采纳**：推送（如订阅顶层 `extras` → `extraTargets`、`retryOf` → `repushOf`、`testStatus` → `probeStatus`）、订阅（如 `reportProblems` 这一族 → `reportRejections`，把「上报被拒」和来源自报的问题分开）、配置（如全局 `roastSchedule` → `rankingReport`、`app` 拆成 `logging` / `history` / `timezone`）。逐条对照以 [docs/1.0/data-model.md](../1.0/data-model.md) 改名对照里订阅、推送、配置三张表为准。
     - ⚠️ 两个机械替换会改错的坑：面板在播列表的 `viewers` 装的是累计观看（还是排好版的字符串），要改成 `totalViewers: number`，**不是** `currentViewers`；B 站接口的数字错误码原先占着 `code`，统一错误体以后挪到 `upstreamCode`。
+    🔗 **2026-09-28**：`probeStatus` 装的是对象，按后缀表改叫 `probeState`，三态取值放在里面的 `status`（决策 15）。
+
+### 09-28 补的命名规矩
+
+15. **类型名的后缀一个概念只用一个词，表放在 [docs/agents/naming.md](../agents/naming.md)**：起新名、改名先对表；表里没有的概念先加一行再用。表是活规范，可以直接改，但加行、改行要主人拍板。守卫扫核心与 contract 的类型名，用了「不再用」那一列的判红。按表改名的逐条对照进 docs/1.0 的改名对照。
+    - 理由：同一个概念在仓里有两三种写法（`Result` / `Outcome`、`View` / `DTO`、`Entry` / `Record` / `Row`、`Options` / `Params` / `Args` / `Config`），读名字认不出装的是什么。表放在 ADR 里只能追加 🔗，越改越难读；放在活文档里，读到的永远是现在的规矩。
+    - 被否的备选：表写进本份 ADR；按包各定各的叫法。
 
 ## 明确不改
 
@@ -81,6 +94,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 - **日志行格式**：日志跨代共享，冻住的桌面壳也把日志目录写死了。改了名字得不到好处，回退后还会显示错乱。
 - **通用 webhook 的 JSON**：读它的是用户自己写的接收端，没法通知他们，也没法协商版本，所以永远不改。
 - **1.0 不改桥协议的线上帧**（`forward`、`desc`、`picUrl` 等）：已经发布的 koishi 和 AstrBot 插件在读，而握手只比对主版本号。内部改名只改到桥的 adapter 为止。真要改就分两步：先发一版插件，同时认新旧两种字段；等大家都升级了，BN 再切过去。
+    🔗 **2026-09-27 改期**：alpha 期间不改；1.0.0 之前按上面的两步改完。插件发给 BN 的入站字段反过来走：BN 先同时认新旧，插件再改发新的（ADR-0029 决策 2）。改成什么名字列在 docs/1.0 的施工计划。
 
 ## 取代与修订的旧条款
 

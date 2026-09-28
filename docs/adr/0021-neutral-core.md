@@ -1,10 +1,10 @@
 # ADR-0021：1.0 中立核心 —— B 站退为内置来源，核心只认中立接口
 
-- **状态**：2026-09-25 ～ 27 两轮 `/grill-me` 拍板（N1–N3、Q3–Q78、Q60b、命名批 29 条，以及 09-27 的字段名审查 R1–R5 / S1–S9 / M，一次一题）。**未施工**；在 dev-next 上做，先发 1.0 alpha，稳定后升 1.0.0。
+- **状态**：2026-09-25 ～ 27 两轮 `/grill-me` 拍板（N1–N3、Q3–Q78、Q60b、命名批 29 条，以及 09-27 的字段名审查 R1–R5 / S1–S9 / M，一次一题）；2026-09-28 第三轮拷问补定（推送侧中立化、三路中立性审计查出的缺口、失败规矩与各模块，一次一题）：施工规矩是本份决策 58–60，其余分到 ADR-0024 ～ 0031。**未施工**；在 dev-next 上做，先发 1.0 alpha，稳定后升 1.0.0。
 - **记录方式**：拷问当场落的定案，不是事后追认。细节的正本在 [docs/1.0/](../1.0/) 的施工参考（类型、目录树、迁移表、改名表）；本份只写定了什么、为什么、否了什么。
 - **同批三份**：本份讲中立核心；[ADR-0022](0022-data-generations-and-migration.md) 讲数据代与迁移；[ADR-0023](0023-neutral-naming.md) 讲命名与改名。
 - **影响面**：几乎全仓。
-  - `packages/*`：internal、push、image、ai、storage、subscription、ui、extension。
+  - `packages/*`：internal、push、image、ai、storage、subscription、ui、extension，新增 http。
   - `apps/server`：目录重组、`bilibili/`、`compose.ts`、迁移模块、数据代。
   - `apps/contract`。
   - `apps/web`：按 descriptor 渲染、账号、预览、日志。
@@ -71,8 +71,10 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
    - 可选：`auth`、`fetchLiveStatus`、`liveInteractions`、`health`、`fetchPreview`。
 
    搜人只有一个方法 `searchCreators`，沿用拓展「解析门」的语义：输入框里是链接、id 还是名字都原样交进来，来源自己认（B 站：纯数字按 UID 精确查、主页链接先抽 UID、其余按名字搜），最多回 10 个候选 `CreatorCandidate = CreatorProfileReport & { externalId }`。按 id 取人就是 `fetchProfile`，原先设计的 `lookupCreator` 与它重复，删掉。核心的 `/api/subs/search` 与 `/api/subs/lookup` 合成 `GET /api/sources/:sourceKey/creators?q=`，B 站搜人的后门关上。原先的「新建 / 启用订阅」钩子 `onSubscriptionAdded(sub)`（一度改名 `onSubscriptionActivated`）删掉：它和 ctx 的 `onSubscriptionsChanged` 重复（S9）。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单（决策 56）。`status()` 改名 `health()`，免得和登录状态、直播状态撞词。
+    🔗 **2026-09-28**：`searchCreators` 改成返回结果形状，失败不再靠抛；`health()` 只交一行字 `{ summary }`（ADR-0025 决策 12、ADR-0026 决策 4）。
 8. **与订阅无关的能力拆成横切接口（Q61）**：`LinkResolver`、`CommandProvider`、`AiToolProvider`，再加上 `DevtoolsProvider`（Q52）与 `PushOutlet`（Q43）。
    - 理由：只做链接解析的拓展，不该被迫去实现订阅源；契约的 `contributes` 本来就是按键分开声明的。
+    🔗 **2026-09-28**：推送侧那个口叫 `PlatformAdapter`（ADR-0024 决策 2）；`CommandProvider` 1.0 不造，`login` 改成核心的通用指令（ADR-0031 决策 1）。
 9. **每种接口一张登记表，全都建在现有的 `createClaimTable` 上**：
    - 表加一个 `entries()`，用来列出全部；
    - 键就是 `"bilibili"` 或拓展 id，不加前缀（09-27 S1）；分派读 `identity.sourceKey`；
@@ -81,6 +83,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 
    理由：原先按订阅 `kind` 分派认不出是哪个拓展，所以一度给拓展的键加 `ext:` 前缀；身份摊平（决策 14）以后分派直接读 `sourceKey`。前缀只是为了防拓展 id 恰好叫 `bilibili`，而不带点的 id 本就只留给官方源（ADR-0013），再把 `bilibili` 列为保留 id（`ExtensionIdSchema` 拒收），手动放进目录的拓展也撞不上，前缀就不需要了。
 10. **来源用 `descriptor` 做自我介绍（Q61、Q74、Q10；09-27 S5 修订）**：字段有 `label`、`shortLabel`、`color`、`postNoun`、`creatorNoun`、`searchPlaceholder`、`supportedFeatures`、`supportedExtras`、`membershipPrograms`。「支持哪些」加 `supported` 前缀，和订阅上表示「开没开」的 `features` 分开。拓展清单的 `contributes.subscription` 直接写这些同名字段，删掉 `display` 那一层与 `events`，宿主的对照表 `SUBSCRIPTION_EVENT_FEATURES` 删掉。面板、锐评、模板都只读它，所有 `isBili` 分叉删掉。B 站那一行的平台徽章，只在装了第二个订阅源时才画。
+    🔗 **2026-09-28 ADR-0027**：描述符加 `externalIdNoun?`（决策 5）、`icon?` 与 `featureHints?`（决策 6）。
 11. **资料刷新由核心定时拉取（Q54）**：
     - 核心按「资料刷新间隔」调 `fetchProfile`，这个间隔从 `fansCron` 迁来；
     - 对同一来源串行调用，防风控的间隔由来源自己管，B 站的 200ms 留在 `bilibili/`；
@@ -106,6 +109,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 15. **订阅合成一个文件、一次原子写；备份里订阅也只留一节，备份 schema 抬版（Q55）**。同一个 uid 的重复订阅，照旧分发给每一条。
     - 理由：当初分成两个文件，是为了回退到旧载荷时旧版读到的是自己的格式。有了数据代（ADR-0022 决策 1），回退读的是旧代，这个理由没了。
 16. **显示名只有一条链，别名退役（Q8）；运行期状态只留资料缓存与问题表（Q19；09-27 S3、S6）**。问题表 `problems` 按 code 做键、多条并存（原先单数的 `problem` 装不下）；运行态统一叫 State：`SubscriptionStateStore` / `SubscriptionState` / `subscription-state.json`。
+    🔗 **2026-09-28**：问题表不再存进订阅运行态，改成全在内存的一张表（ADR-0025 决策 11）；运行态只留资料缓存。
 17. **特别关注的名单 `specialUsers { id, note? }[]` 进公共的订阅形状**。露不露这个设置，看 `descriptor.supportedFeatures` 有没有声明特别弹幕或特别进场（Q69，推翻 Q41「只挂在 B 站订阅上」）。
 18. **补关注在登录失效时跳过，停用的订阅不补（Q14）**。关注同步是 BN → B 站单向（订阅了谁就补关注谁，因为动态从关注流里拉），全在 B 站内部（决策 56）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次，整份名单先批量查关系、只补缺的（稳态写请求为零），失败按决策 47 报 `follow_failed`（09-27 S9）。停用的订阅不在名单里，自然不补。
 
@@ -125,6 +129,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     理由：缓存与防护只在核心留一份，拓展不用各自写一套下载；所有来源交给 BN 的都是同一种形状。
 
     代价：交作品时就抓图，被过滤掉的作品，它的图也白抓了。抓失败时由来源决定是跳过，还是只给 `url`（卡片上显示占位）。
+    🔗 **2026-09-28**：`fetchImage` / `storeImage` 返回结果形状；`fetchImage` 走集成自己的请求客户端，每一跳重定向都查（ADR-0025 决策 8、10）。
 23. **头像也走 `fetchImage`（Q75，修正 Q62）**：资料里的 `avatar` 是 `ImageRef`，B 站图链没变就不重抓。作品图、直播封面、头像、历史快照都引用同一个图库，图库的位置与清扫规则见 ADR-0022 决策 9。面板一律走同源地址，删掉 `no-referrer` 绕行。
 24. **数字、时间和「不知道」（Q5、Q6、Q7、Q9）**：
     - 人数传精确数，缺了就不写这个键；
@@ -168,6 +173,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - `up.*`、`master.*` 统一为 `creator.*`（ADR-0023 决策 1）。
 32. **老卡片皮肤不适配（Q31）**：皮肤包的 schemaVersion 抬版，旧包拒收，卡片只用按 1.0 契约新生成的皮肤。迁移时怎么处理指向老皮肤的指针，见 ADR-0022 决策 12。
 33. **文案模板（Q10、Q11、Q11b）**：模板加 `{noun}`，取自 `descriptor.postNoun`；直播文案里的 `-key` 迁成 `{key}`，全仓只用一个模板引擎；人名变量统一为 `{name}` / `{viewer}`。
+    🔗 **2026-09-28**：变量改叫 `{postNoun}`，与提示词变量同名；`{noun}` 从没上过盘，直接改名、不用迁移；默认文案「{name}发布了一条{postNoun}」保留「一条」（ADR-0028 决策 3）。
 34. **静音与免打扰只管推送（Q20）**：被挡下的目标落一行 `silenced`、存下重推原件；它不算推送，也不算失败，补发闸会放行它。
 35. **「UP主」这个叫法由来源给（Q74）**：
     - `descriptor.creatorNoun`：B 站是「UP主」，拓展自己报，缺省叫「创作者」；
@@ -189,6 +195,9 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - 契约里拓展的 `lookup` / `lookupPlaceholder` 改名 `searchCreators` / `searchPlaceholder`（09-27 S8）。
 
     `linkResolver`、`commands`、`aiTools` 暂不对拓展开放：核心的接口与登记表照做，B 站照用，等写抖音拓展时再定。以后加进来，只是清单里多几个可选键，不用抬大版本。
+    🔗 **2026-09-28**：ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`；上报类改成 `void`，被拒记进 `reportRejections`（ADR-0025 决策 1、6、10）。
+    🔗 **2026-09-28**：`commands` 那张登记表 1.0 不造（ADR-0031 决策 1）；`linkResolver`、`aiTools` 照原句。
+    🔗 **2026-09-28**：清单不收 `membershipPrograms` 与 `supportedExtras`：1.0 的拓展声明不了会员与直播互动类特性，这两格填了也用不上。
 39. **来源的运行状态由宿主托管，接口是 `ctx.state`（Q77，撤回 Q70 的 `ctx.dataDir`）**：
     - 三个方法：`get`、`set`、`delete`，值是 JSON；
     - 上限：单个键 64KB，总共 1MB；
@@ -198,6 +207,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     理由：宿主已经托管了订阅、上报、设置、凭据，只差运行状态这一格（游标、分页令牌、小索引）。补上以后，来源的所有持久状态都由宿主落盘，ADR-0012 决策 14 完整保留，并且延伸到这一格。
 40. **`ctx.secrets` 在 1.0 开放（Q66）**：用主密钥加密，存在 `secrets/bilibili/` 或 `secrets/extensions/<id>/`；仅完整备份（普通备份抹掉）；卸载时清掉。
     - 理由：拓展的登录要接进系统账号（决策 45），凭据得有地方放。
+    🔗 **2026-09-28**：`secrets` 与 `state` 是同一个 `KeyValueStore` 接口；一个集成一个文件，按值脱敏，`http.` 前缀归宿主（ADR-0025 决策 9）。
 41. **来源不读写文件（Q77）**：
     - **B 站**：和拓展用同一个 `SourceContext`。cookie 走 `ctx.secrets`；`roomId`、`followed`、`followError` 搬出核心的订阅运行态，放进 B 站自己的 `ctx.state`。`bilibili/` 下 import `fs`，门禁判红，守卫写法同 `extension-import-boundary.test.ts`。
     - **拓展**：「不读写文件」写进契约；官方市场发布时做静态检查，打包产物 import 了 `fs` 就不收；手动安装的第三方拓展在安装时警告。
@@ -212,6 +222,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - 守卫禁止核心代码读 `bilibili` 段。
 
     理由：拓展是给 BN 加功能的，它的设置本来就是 BN 的设置；现有的原子写和写入队列版本号，都是按「单文件 + 一条队列」写好的。
+    🔗 **2026-09-28 改成只停那一处**：拓展段与 `bilibili` 段坏了只停那个集成；`core` 段逐格退回默认并记问题；只有信封坏了才挡开机（ADR-0025 决策 4）。
 43. **核心配置去掉 B 站的形状（Q25）**：
     - 过滤看 `Post` 上「有没有」某样东西，放在装配第一步，对所有来源生效；
     - SC 阈值按人民币算，别的币种先放行；
@@ -243,12 +254,14 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     严重度、文案、要不要打扰主人，全由来源决定：问题一律进面板问题框，`notify: true` 再私聊主人。不填 `externalId` 是来源本身的问题；填了由核心展开到订阅，按 code 存进 `problems`（`since` 记第一次出现，重复报只更新文案）。code 用 snake。核心只守一条底线：同一来源、同一 code 的私聊，60 秒内只发一次。核心收到每条问题都自动记一行日志；只想记日志就用 `ctx.logger`，两者不合并。B 站的「登录失效」也走这里。
 
     理由：原先的泛型 `report(kind)` 在一堆 `reportX` 里是孤例；`level: "panel" | "notify"` 的两个值其实是「发到哪」，不是严重程度；拓展详情页那个「上报被拒」的框改名 `reportRejections`，和来源自报的问题分开。
+    🔗 **2026-09-28**：问题表的形状、生死规矩与推给面板的方式见 ADR-0025 决策 11；平台适配器也能报，带 `connectionId`。
 48. **健康页与 status 指令按来源列（审查补扫）**：
     - 可选能力 `health()`（原 `status()`）交状态行；
     - 健康页返回 `sources[]` 加上核心各模块，删掉 `dynamicCron` 等没人读的字段；
     - 新建订阅的弹窗合成一套流程：选平台 → 搜索或候选 → 预填资料；
     - 面板调接口的代码只在 `services/` 写一次（Q18）；
     - 面板文件名全部用 kebab-case（Q15）。
+    🔗 **2026-09-28**：健康卡分核心与集成两排，`health()` 只交一行字（ADR-0025 决策 12）。
 49. **日志（Q73）**：
     - `ctx.logger` 把来源写进日志行已有的 `name` 字段（`bilibili` 或拓展 id），面板可以按来源筛选；
     - 按模块调级别改成开放的键：核心各模块，加上 `bilibili`、拓展 id；老的 `dynamic`、`live` 并成 `bilibili`；
@@ -263,6 +276,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - 热力图与「在记」标记只看 seen；
     - 在播状态与当前粉丝数，取在播表与资料缓存；
     - 迁移时从 B 站的老粉丝样本里，每天补一条 seen，老热力图显示不变。
+    🔗 **2026-09-28 改成按特性分**：「在记」分作品、直播、粉丝各算，热力图也读它；seen 不再单独当判据（ADR-0027 决策 2）。
 
 ### 总线与横切
 
@@ -275,6 +289,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - 桥的假桥与场景搬进桥自己的开发入口，直接用桥自己的协议定义。
 
     理由：核心 devtools 里写死桥的协议帧，是核心为某一个拓展开的特例。搬过去以后，核心 devtools 不认识任何一家来源。
+    🔗 **2026-09-28**：场景叫 `DevScenarioDef`，id 由宿主加前缀，参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2）。
 55. **全仓的包版本统一为 `0.0.0-dev`（Q16）**。
 
 ### 09-27 字段名专项审查补的结构决策
@@ -288,8 +303,34 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - `PostEvent.id` 改名 `postId`。
 
     理由：订阅 id 是 BN 自己编的号，来源只认识平台上的人。让来源按订阅 id 上报，就得把内部编号告诉它、让它再维护一张对照表，而这张表核心本来就有。
+    🔗 **2026-09-28**：按后缀表，这个从订阅现算给来源看的投影叫 `SourceSubscriptionView`（ADR-0023 决策 15）。
 57. **主人通知只有一个口（09-27 命名审查）**：推送层的 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg` 合成 `notifyMaster(text)`；出口上的 `sendPrivate` 与「强制私聊」标志 `{ private: true }` 删掉，出口只有普通的 `send`。私聊的要求挪到选主人目标时：`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊目标）；迁移时指向群目标的清空，首访页提示重选。
     - 理由：主人目标原先可以随便选；选了群目标，强制私聊会把群号当成 QQ 号去调「发私聊」，要么报错、要么错投；选的本来就是私聊目标时，这个标志又什么都不做。
+    🔗 **2026-09-28**：`notifyMaster` 收文字或消息体、返回结果形状；发送时复检主人目标是私聊，把它改成群目标的 PATCH 拒收（ADR-0024 决策 14）。
+
+### 09-28 第三轮拷问补定
+
+起因：订阅侧已经是「B 站与拓展实现同一个接口」，推送侧还是两套。随后三路只读审计把「订阅进来 → 核心 → 推送出去」逐模块查了一遍中立性与守卫覆盖，查出一入一出都没有咽喉守卫、守卫 11 不扫 contract 与面板、`isBili` 的替身（`sourceKey === "bilibili"`、`"@bilibili"`）没有门拦，再逐题补缺口。按主题分到各自的 ADR：
+
+| ADR | 讲什么 |
+|---|---|
+| [0024](0024-push-platform-adapter.md) | 推送侧：内置平台与拓展实现同一个 `PlatformAdapter`，只有 `TargetDispatcher` 能发送，投递失败归核心 |
+| [0025](0025-integrations.md) | 集成：`IntegrationContext`、设置、`packages/http`、`state` / `secrets`、问题表、健康 |
+| [0026](0026-failure-results.md) | 失败规矩：一次操作的结果形状与标准码 |
+| [0027](0027-monitoring-stats-and-descriptor-driven-panel.md) | 开了开关才监听、统计按特性记、面板只从描述符拿来源信息 |
+| [0028](0028-post-text-rendering-and-templates.md) | 作品文字的拼法、出图字节门、模板变量、醒目留言与会员卡 |
+| [0029](0029-link-preview.md) | 链接预览 |
+| [0030](0030-ai-follows-sources.md) | AI 跟着来源走 |
+| [0031](0031-commands-and-devtools.md) | 指令与 devtools 场景 |
+
+本份只留整个中立核心的施工规矩：
+
+58. **不整体重写，以改造为主**：某个模块的核心逻辑从头到尾是 B 站的形状、改造要动每一行时，才对着中立接口局部重写，旧测试当规格书。
+59. **中立性守卫补成三层**（表在 docs/1.0 的 architecture）：
+    - 咽喉：入口（compose 里 `bilibili/` 的东西只能作登记的参数，核心里没有平台客户端）；出口（只有 `TargetDispatcher` 能发，全部发送路径的截流 e2e）；出图器零联网。
+    - 静态扫描：B 站替身、守卫 11 修订（边界匹配、词表自动生成、扫 contract）、uid 棘轮、中文叫法棘轮、按 `.platform` 做决定的棘轮、推送词表加宽、事件载荷、类型名后缀（ADR-0023 决策 15）。
+    - 对拍：契约层与进程内全量假来源两层、推送假适配器、模板变量可满足性、AI 工具与技能约束、守卫 10 扩到五种卡。
+60. **归期**：第 2 期抽 `packages/http`（抓图服务建在它上面）；3a 平台适配器接口与登记表、内置适配器与模板候选、`/api/adapters`、连接与目标的新形状与迁移、`SourceContext` 的 `settings` 与 `http`、设置坏了只停那一处、推送守卫①与守卫②棘轮开；3b 契约 v3 推送侧加宽、桥迁 v3、守卫③；第 4 期面板按描述画（健康卡先出设计稿）；3b 结束时守卫②清零；第 6 期的抖音拓展是 `ctx.http` 的第一个拓展用户。
 
 ## 取代与修订的旧条款
 
@@ -350,6 +391,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 - **devtools 换桩用 `**/devtools/**` 通配**（Q52）：这等于谁在哪开一个 devtools 目录都合法。
 - **1.0 就把 devtools 换成 devframe、新手引导换成 driver.js**：1.0 之后各自立项，先做小试验再决定。
     🔗 **2026-09-27 改期**：提前到第一版 alpha 之后、1.0.0 之前；仍各自先做小试验再定（见 docs/1.0 的 construction-plan）。
+- **整体重写**（09-28）：按决策 58 的判据逐模块局部重写。
 
 ## 后果
 

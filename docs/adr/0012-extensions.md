@@ -29,6 +29,7 @@ BN 的功能面在变宽:接一个新聊天平台要改核心词表、发一次�
 5. 🔴 **不叫 plugin。** 两条理由:① **会撞车** —— 桥接的用户故事里已经有一个「插件」(装在机器人框架那一侧的那个),BN 自己的东西再叫插件,一句话里就会出现两个不同的「插件」;② **过度承诺** —— 「插件系统」在所有人的预期里是「插进通用插槽、什么都能干」,而我们**刻意**只开两个口。
 6. 面板与配置层叫**「拓展」**(extension),分发物叫**「拓展包」**(extension bundle)。「载荷 / payload」已经被 ADR-0005 占了,不能复用,否则日志里会出现「载荷里的载荷」。
 7. **契约层不统一命名。** 两边本来就不是一回事(订阅源产事件、推送源收消息,一个入口一个出口),抽共同基类只会得到一个空壳。推送侧**不造新词** —— `PushExtensionDef` 装着三样已有名字的东西:`PlatformAdapter`(行为)+ `PlatformDescriptor`(元信息)+ config 字段表;订阅侧造词 `SubscriptionSourceDef`(那边今天连轴都没有)。
+    🔗 **2026-09-28 ADR-0024 修订**：注册口交 `PlatformAdapterDef`（适配器 + 描述 + `settingsSchema`），内置平台也走这一口（ADR-0024 决策 1–3）。
 
 ### 拓展包长什么样
 
@@ -178,6 +179,7 @@ BN 的功能面在变宽:接一个新聊天平台要改核心词表、发一次�
     - 老形状(没有 `platform` 的拓展连接)**没发过版,不写迁移**:加载器把它当已撤下的形状丢掉(`isRetiredPlatformRecord` 写明了这一档),主人本地那条「Koishi」接入要在拓展页重建、把新 token 贴回插件;挂在它底下的目标成了悬空的,手删。
     - 列表卡那句「N 条接入」改成「N 条连接」(宿主认得的是连接;接入是桥私有的,在详情页数)。
     🔗 **2026-09-27 ADR-0023 决策 2**：规则不变；契约里 `PushExtensionDef.adapter` 等名字随推送侧改名。
+    🔗 **2026-09-28 ADR-0024 修订**：连接上的 `kind` 删掉，这一支不再单列；「一条连接就是一个 bot、接入是拓展自己的设置」不变，bot 经 `listConnectionCandidates` 列出来（ADR-0024 决策 4、7）。
 
 46. **`ExtensionDescriptor.targetKind` 收窄到 `"session"`。**(2026-09-11,发版前审查;主人拍板。)决策 45 之后一条拓展连接就是一个 bot,目标全是 session 形态;endpoint 形态的目标在宿主里是「webhook 连接自动派生、外部不许凭空建」,拓展连接没有那条派生路。契约里留着 `"endpoint"` 等于一个能过类型、面板照画、建目标时才被一句和拓展无关的错误拒掉的空口子。收窄对今天所有拓展兼容(桥与假桥都写的 `session`),契约主版本仍是 1;真有 endpoint 形态的拓展时再放宽,放宽也是兼容的。运行时在 `registerPushSource` 对一遍,第三方 JS 不受类型约束。
     🔗 **2026-09-12 改:整格收成 `{ label, shortLabel, tint }`,`targetKind` 在契约里不再存在。** simplify 的层级审查查到面板从拓展 descriptor 只读短名与颜色(新建连接那一排读全名),`scopes` / `addressNouns` / `inbound` / `atAll` / `targetKind` 没有任何生产代码读 —— 决策 45 之后这些都是 bot 所在平台的事,从 bot 报的 `platform` 查注册表。于是上面那道运行时守卫和 contract 里的第二份类型一起消失;类型搬进零依赖的 `@bilibili-notify/extension/wire`,contract 照它自己的规矩从子入口进。

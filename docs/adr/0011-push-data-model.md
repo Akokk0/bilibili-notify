@@ -22,16 +22,20 @@
 1. **连接与目标各长出一根 `kind` 轴**,判别子从 `platform` 换成 `kind`:
    - `Connection`:`{kind:"direct", platform, connector, config}` | `{kind:"bridge", connector:"bridge", config:{token, bridgeKind}}`
    - `PushTarget`:`{kind:"session", platform, botId?, scope, address, parentAddress?}` | `{kind:"endpoint", platform, managedBy:"connection"}`
+    🔗 **2026-09-28 ADR-0024 推翻**：连接上的 `kind` 删掉，内置与拓展走同一个 `PlatformAdapter`，连接按 `adapterKey` 认适配器（ADR-0024 决策 1、7）。
 2. 🔴 ~~**桥那一支没有 `platform`**~~。不给它塞一个可选的 —— 那只会让全仓读点静默变 `undefined`;少那一格,读它的地方就会**编译不过**,而那份编译错清单正是「哪些地方假定了连接就是一个平台」。
    🔗 **2026-09-11 被 ADR-0012 决策 45 推翻**:拓展连接改成「一个 bot」,**有** `platform`(开放词表);`PushTarget` 上的 `botId?` 随之拆掉。
 3. **两侧的词表开放度相反**:`connection.platform` 闭集(每一档都要配齐 config schema + adapter + 面板控件),**`target.platform` 开放**(桥驮来的枚举不了)。因此 `PushTargetPlatform` **必须拆成两个类型** —— 继续共用等于用一个类型把开、闭两套词表糊在一起。
+    🔗 **2026-09-28 ADR-0024 推翻**：连接的 `platform` 也开放，只来自挑中的候选；目标上的 `platform` 删掉，一律经连接取（ADR-0024 决策 4、7、9）。
 4. **每平台一套的 session 字段收成一格 `address`**(+ 可选 `parentAddress`),且**必填**(旧模型是 optional,那是个洞)。
 5. 出站 webhook 的 `provider` **升格成 platform**:`feishu` / `dingtalk` / `wecom` / `generic`(generic 是承认的疤,面板显示「未指明的 HTTP 端点」)。
+    🔗 **2026-09-28 ADR-0024 修订**：webhook 是一个适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选（ADR-0024 决策 5）。
 6. **qq 不拆频道**:一个 `qq` 平台覆盖群 / C2C / 频道。
 
 ### 分发
 
 7. **分发键从平台名里剥出来**:`connectionDispatchKey(connection)` —— 直连是它的平台名,桥是常量 `"bridge"`。**计算出来的,从不落盘。** adapter 矩阵按它索引,于是那张表的键集合是「平台词表 + 桥那一个」。
+    🔗 **2026-09-28 ADR-0024 推翻**：分发按连接上存的 `adapterKey`，不再从平台名算（ADR-0024 决策 7）。
 8. 它住零依赖的 `constants.ts`,因为**前端要在运行时用它**。
 
 ### 身份
@@ -43,6 +47,7 @@
 
 11. **`PushAdapter` → `Connection` 要改,`PushTarget` 不改。** 判据是**一词二义**,不是跟对方对称:`adapter` 这个词在这一行里普遍指「实现」,而仓里同时有 `PlatformAdapter` 也指实现 —— 一个词兼两个身份;「推送目标」则没有第二个意思。
     🔗 **2026-09-27 ADR-0023 决策 2 修订**：平台那一层改叫 `PushOutlet`（出口），与 Connection、Target 三层分开。
+    🔗 **2026-09-28 ADR-0024 决策 2**：上面那条 🔗 作废，平台那一层仍叫 `PlatformAdapter`。
 12. **改成 `Target` 方向相反,是往里引入二义**:DOM 的 `event.target` / `EventTarget` 全仓 75 处,CDP 里浏览器页签也叫 Target。代价也不对称(343 处 vs 189 处,跨 4 个包)。
 13. ⛔ **`platform` → `driver` 那套改名已被撤回**(2026-09-08,主人未说理由)。**别再提议改名到 driver。** 新模型不改名 —— `platform` 留着,`kind` 这根正交轴做判别子,那个别扭点已经绕开了。
 
@@ -50,6 +55,7 @@
 
 14. `PlatformAdapter` 拆成 `Connector`(建连 / 重连退避 / 心跳 / 状态机,通用)+ `PlatformDialect`(握手 / 鉴权 / 编解码 / 地址语义 / 能力)。让 `ws` 真通用的钥匙是 `dialect.resolveEndpoint()` —— QQ 在这里拿 gateway 地址,所以「用户不填 url」也能塞进通用 ws。
     🔗 **2026-09-27 ADR-0023 决策 2 修订**：`PlatformAdapter` 改名 `PushOutlet`；拆出的两半的新名施工时定。
+    🔗 **2026-09-28 ADR-0024 决策 2**：上面那条 🔗 作废，接口仍叫 `PlatformAdapter`；拆出的两半的名字仍施工时定。
 15. **文件刻意不拆**(`onebot.ts` 1385 行、`qq-official.ts` 1338 行)—— 抽象只有一个长连接用例验证过,容易抽错。
 
 ### 迁移
