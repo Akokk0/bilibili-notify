@@ -1,28 +1,33 @@
 # 1.0 架构：中立核心
 
-> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023。
+> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023，以及 ADR-0024 ～ 0031。
 
-分层、目录地图、接口族与登记表、装配根、总线、守卫。类型与字段见 [data-model.md](./data-model.md)；各接口的细节见 [subscription-sources.md](./subscription-sources.md)；推送链见 [push.md](./push.md)；拓展能拿什么见 [extension-contract.md](./extension-contract.md)；盘上布局见 [data-and-migration.md](./data-and-migration.md)；施工分期见 [construction-plan.md](./construction-plan.md)。
+分层、目录地图、接口族与登记表、集成与 ctx、装配根、总线、守卫、施工原则。类型与字段见 [data-model.md](./data-model.md)；各接口的细节见 [subscription-sources.md](./subscription-sources.md)；推送链见 [push.md](./push.md)；拓展能拿什么见 [extension-contract.md](./extension-contract.md)；盘上布局见 [data-and-migration.md](./data-and-migration.md)；施工分期见 [construction-plan.md](./construction-plan.md)；类型名的后缀见 [naming.md](../agents/naming.md)。
 
 ## 一句话
 
-**核心里出现「B 站」这个概念就算越界。** B 站的东西要么搬回 `bilibili/`，要么变成核心的一个中立概念、由 B 站去实现。B 站和拓展都只是来源：B 站直接实现中立接口，拓展由宿主转成同一组接口。**没有后门。**
+**核心里出现「B 站」这个概念就算越界。** B 站的东西要么搬回 `bilibili/`，要么变成核心的一个中立概念、由 B 站去实现。B 站和拓展都只是来源：B 站直接实现中立接口，拓展由宿主转成同一组接口。推送侧同理：OneBot、QQ 官方机器人、webhook 与拓展实现同一个 `PlatformAdapter`。**没有后门。**
 
 ## 三层
 
 | 层 | 是什么 | 包括 |
 | --- | --- | --- |
-| 一等：中立核心 | 名字、类型、数据形状、文档都不带平台味；来源只往里交东西 | 订阅、推送路由与闸、出卡与皮肤、AI、统计与锐评、历史与重推、粉丝、链接卡、指令框架、账号、面板；醒目留言、会员、特别弹幕、特别进场、词云、直播总结 |
+| 一等：中立核心 | 名字、类型、数据形状、文档都不带平台味；来源只往里交东西 | 订阅、推送路由与闸、投递（`TargetDispatcher`）、出卡与皮肤、AI、统计与锐评、历史与重推、粉丝、链接预览、指令框架、账号、问题表与健康、面板；醒目留言、会员、特别弹幕、特别进场、词云、直播总结 |
 | 二等：B 站 | 内置来源，住服务端 `bilibili/`，直接实现 `SubscriptionSource` 等中立接口 | B 站接口、弹幕通道、动态与直播信号、扫码登录、关注同步、B 站链接解析器；给醒目留言 / 会员 / 特别弹幕 / 特别进场 / 词云 / 总结填数据 |
-| 2.5 等：拓展 | 外部来源，只从 `@bilibili-notify/extension` 这扇窄门进，由宿主转成同一组中立接口 | 订阅源拓展（如抖音）、桥、推送出口 |
+| 2.5 等：拓展 | 外部来源，只从 `@bilibili-notify/extension` 这扇窄门进，由宿主转成同一组中立接口 | 订阅源拓展（如抖音）、桥、推送适配器 |
 
 ```
-B 站模块（信号 · 接口 · 扫码）──SubscriptionSource 等接口──┐
-                                                          ├─→ 中立核心 ─→ 推送 · 出卡 · 历史 · 统计
-拓展 ──窄门契约──→ 宿主（extensions/）──转成同一组接口─────┘
+B 站（信号 · 接口 · 扫码）──SubscriptionSource 等接口──┐
+                                                    ├─→ 中立核心 ─→ 推送 · 出卡 · 历史 · 统计
+拓展 ──窄门契约──→ 宿主（extensions/）──转成同一组接口──┘            │
+                                                                  │ 只经 TargetDispatcher
+                                                                  ▼
+                                   PlatformAdapter 登记表 ─→ 内置适配器（platforms/）· 拓展的适配器（如桥）
 ```
 
 - **中立接口族是全集，拓展契约是它的子集。** 两边的区别只在谁写、住在哪、开放多宽。
+- 推送侧的内置平台（OneBot、QQ 官方机器人、webhook）也是内置的、直接实现中立接口：住服务端 `platforms/`，和拓展提供的适配器是同一个 `PlatformAdapter`、同一张登记表（ADR-0024 决策 1）。`CONNECTION_PLATFORMS` 这个闭集删掉。
+- `bilibili/`、每个拓展、每个内置平台适配器各是一个**集成**，拿同一种 ctx、走同一套生命周期（见下「集成与 ctx」）。
 - 产品名 bilibili-notify 与包作用域 `@bilibili-notify/*` 是品牌，不改。
 - 机器人框架（Koishi / AstrBot）不当核心的宿主，引擎层不给它们留钩子。以后要做完整插件，走「薄插件 + 插件托管一个 BN 进程（吃同一份更新载荷）+ 桥借 bot」；还缺的零件：桥 token 自动配对、AstrBot 侧的 Node 运行时。
 
@@ -30,47 +35,61 @@ B 站模块（信号 · 接口 · 扫码）──SubscriptionSource 等接口─
 
 | 方向 | 用什么 | 例子 |
 | --- | --- | --- |
-| 来源 → 核心：「发生了什么」 | 事件（经 `SourceContext` 上报） | 作品、直播信号、资料、问题、关注变了 |
-| 核心 → 来源：「帮我做什么并给结果」 | 接口调用 | 搜人、拉资料、查直播状态、解析链接、执行指令、调工具、预览 |
+| 来源 → 核心：「发生了什么」 | 事件（经 `SourceContext` 上报） | 作品、直播信号、资料、问题 |
+| 核心 → 来源：「帮我做什么并给结果」 | 接口调用，结果用结果形状（见「wire 契约」） | 搜人、拉资料、查直播状态、解析链接、调工具、预览 |
 
 理由：把请求 / 回应做成事件，就要手工重造函数调用自带的东西（对号、超时、取消、报错、类型）；来源没实现某个请求时，事件只能干等超时，接口在登记那一刻就知道有没有。拓展的事件由宿主转进 MessageBus，**拓展拿不到总线本身**，所以伪造不了核心事件。
 
+推送侧同理：入站消息经 `ctx.inbound` 交给宿主（内置适配器也一样，宿主核归属、平台取自连接），发送、探活、列候选是核心调适配器。
+
+## 施工原则
+
+- **不整体重写，以改造为主**（ADR-0021 决策 58）。判据：某个模块的核心逻辑从头到尾是 B 站的形状、改造要动每一行时，才对着中立接口局部重写，旧测试当规格书；否则改造。各期哪块用哪种方式，见 [construction-plan.md](./construction-plan.md) 分期表的「方式」一列。
+- **没有实现者的接口先不造**：`CommandProvider` 就是这样删的（ADR-0031 决策 1）。
+- **起名先对后缀表**：[naming.md](../agents/naming.md)；表里没有的概念先加一行再用（加行、改行要主人拍板）。新写或重写的代码直接用新名，第 5 期只清扫没被动到的旧名。
+- **失败一律用结果形状、抛错只留给 bug**（ADR-0026），见「wire 契约」。
+
 ## packages/
 
-判据：**中立的留在 `packages/`，B 站与宿主装配进服务端。** `packages/` 物理上 import 不到 `apps/server/src/bilibili/`，中立性由目录结构直接守住。
+判据：**中立的留在 `packages/`，B 站、内置平台适配器与宿主装配进服务端。** `packages/` 物理上 import 不到 `apps/server/src/bilibili/` 与 `platforms/`，中立性由目录结构直接守住。
 
 | 包 | 层 | 放什么 | 相对现在的变化 |
 | --- | --- | --- | --- |
-| `internal` | 一等 | 域模型（订阅、身份、作品 / 直播模型、特性键表）、schema、零依赖工具（显示名、计数与时间格式、身份索引、串行队列、重试等）。零依赖工具走子路径——根入口带 zod，面板拿不到 | 工具收成一份，面板与服务端共用 |
-| `push` | 一等 | `PushRouter`：按订阅 id 路由、闸、附加项 | 类名改掉 |
-| `image` | 一等 | 作品卡、直播卡、榜单等中立卡种 + 皮肤；附加块按 card / video / goods 直接渲染；不联网，只内联图库引用 | 解析 B 站 JSON 的代码、B 站域名白名单、大航海等级表搬走 |
-| `ai` | 一等 | 生成器、人格、核心中立只读工具；看图（`describe_image`）与联网搜索照留核心 | 删掉对 B 站包的 import；来源专有工具经 `AiToolProvider` 登记 |
-| `storage` | 一等 | 持久化底层（原子写、写道）、主密钥与加密 | `CookieStore` 随 B 站进 `bilibili/` |
+| `internal` | 一等 | 域模型（订阅、身份、作品 / 直播模型、特性键表）、schema、失败标准码表（ADR-0026 决策 3）、零依赖工具（显示名、计数与时间格式、身份索引、串行队列、重试等）。零依赖工具走子路径——根入口带 zod，面板拿不到 | 工具收成一份，面板与服务端共用；`CONNECTION_PLATFORMS`、平台信息表与各平台的连接 / 目标设置 schema 搬出，归各平台适配器（ADR-0024 决策 1） |
+| `http` | 一等 | 请求客户端、cookie 罐、浏览器身份；`websocket(url, opts?)` 只管用集成的身份建连、集成停下时自动关 | **新包**（第 2 期）：从 B 站的实现里抽出、去掉 B 站前缀；每个集成一个客户端，经 `ctx.http` 拿；BN 自己的请求不用它（ADR-0025 决策 6） |
+| `push` | 一等 | `PushRouter`：按订阅 id 路由、闸、附加项 | 类名改掉；按平台名判断的（如 @全体）改成问适配器能力 |
+| `image` | 一等 | 作品卡、直播卡、榜单等中立卡种 + 皮肤；附加块按 card / video / goods 直接渲染；醒目留言按档取色、金额按币种；不联网，只内联图库引用 | 解析 B 站 JSON 的代码、B 站域名白名单、大航海等级表搬走 |
+| `ai` | 一等 | 生成器、人格、核心中立只读工具；看图（`describe_image`）与联网搜索照留核心 | 删掉对 B 站包的 import；来源专有工具经 `AiToolProvider` 登记；中立工具参数统一叫 `creator`；看图只收 `ImageRef`、字节由宿主注入的读图函数读，`packages/ai` 不碰磁盘（ADR-0030） |
+| `storage` | 一等 | 持久化底层（原子写、写道）、主密钥与加密 | `CookieStore` 退役：cookie 罐进 `http`，由宿主存进 B 站这个集成的 `secrets`（`cookies.enc` 改名并入，ADR-0025 决策 9） |
 | `subscription` | 一等 | 订阅仓、身份唯一的规则 | 去掉 `findByUid` |
 | `ui` | 一等 | 纯展示组件 | 新增统一的密钥输入框、素材选择器 |
 | `extension` | 2.5 的门 | 拓展契约 v3 | 见 [extension-contract.md](./extension-contract.md) |
-| `api`、`blive`、`dynamic`、`live` | 二等 | — | 搬进 `apps/server/src/bilibili/` 各成子目录，包删掉；中立部分进服务端 `posts/` 与 `live/`；api 删掉 7 个没人调的方法 |
+| `api`、`blive`、`dynamic`、`live` | 二等 | — | 搬进 `apps/server/src/bilibili/` 各成子目录，包删掉；中立部分进服务端 `posts/` 与 `live/`；api 删掉 7 个没人调的方法；api 里的请求客户端、cookie 罐、浏览器身份抽进 `http` |
 
-`apps/contract` 是一等：服务端与面板之间所有请求、响应、WS 帧的唯一来源。
+`apps/contract` 是一等：服务端与面板之间所有请求、响应、WS 帧的唯一来源；叫法函数（单个来源用它自己的叫法、混着的用「创作者」「作品」，ADR-0027 决策 6）也住这里，面板与服务端共用。
 
-搬 B 站四个包（约 8,800 行、43 个测试文件）之前先断开别的使用方：面板的登录态类型改从 contract 取，image 的大航海等级表归 B 站，ai 的 B 站查询工具改由 B 站登记。第三方依赖（cron、md5、qrcode、protobufjs、ws、luxon）并进服务端。
+搬 B 站四个包（约 8,800 行、43 个测试文件）之前先断开别的使用方：面板的登录态类型改从 contract 取，image 的大航海等级表归 B 站，ai 的 B 站查询工具改由 B 站登记。第三方依赖（cron、md5、qrcode、protobufjs、luxon）并进服务端；`ws` 随 `websocket()` 进 `packages/http`。
 
 ### 共享件归位
 
 | 东西 | 进哪 |
 | --- | --- |
 | 两个及以上包或应用要用的纯逻辑、常量、中文名表 | internal（零依赖子路径） |
-| wire 上的形状 | contract |
+| 失败标准码表 | internal |
+| wire 上的形状、叫法函数 | contract |
+| 请求客户端、cookie 罐、浏览器身份 | http |
 | 纯展示组件 | ui |
 | B 站专属 | 服务端 `bilibili/` |
+| 某个推送平台专属（平台表、设置 schema、协议细节） | 服务端 `platforms/` 里那个适配器 |
 | 持久化底层 | storage |
 
 internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几份之间已经有行为分歧，在它所属那一期里最先收；各项归哪一期见 [construction-plan.md](./construction-plan.md)）：
 
 - 🔴 卡种中文名 5 张表、两套键（dyn / dynamic）→ internal
-- 🔴 「要不要开直播监听」3 套判据（首页 4 键读未合并的 routing，服务端 6 键读合并后的）→ internal，全仓唯一判定
+- 🔴 「要不要开直播监听」3 套判据（首页 4 键读未合并的 routing，服务端 6 键读合并后的；面板的「不会被监听」只看有没有目标，是一句假话）→ internal，全仓唯一判定；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）
 - 🔴 「N 分钟前」4 份 → `formatAgo`（⛔ 首页「正在直播」不写「N 分钟前开播」：面板只列在播的，「开播」多余，`dashboard-live-now.test.tsx` 钉着，收的时候别顺手加上）；带正负号的增量 4 份（负号两种、零两种写法）→ 并进 `formatCount`
 - 🔴 B 站动态转纯文字两个同名函数（AI 工具那份丢掉转发）、B 站风控码集合（-412 各处不一，见 subscription-sources「风控码」）与响应解包（手写约 5 处）→ `bilibili/`
+- 🔴 过滤、AI、出图各拼各的作品文字 → `posts/` 里唯一一个取段函数（ADR-0028 决策 1）：`text` 只放正文，标题、视频标题、转发的原作品各有位置
 - 串行队列至少 11 处手写 → `createSerialQueue`（含按键分队）；两个同名不同义的 `createSerialGate`（internal、live 各一）拆成 `createSerialQueue` 与 `createRenderGate`
 - `isPlainObject` 15 份、两种判据，internal 正本没导出 → internal 零依赖子路径
 - 深比较（稳定序列化 2 份、键序敏感的比较 5 处）、重试 3 套、本地日键 / 日轴 / 时区参数（`tzOffset` 与 `tz` 两种写法）→ internal
@@ -79,39 +98,43 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 - 生效特性：面板 3 处以写死的默认值为底 → internal 零依赖入口；`SubItemView` 由它产出
 - 原子写：服务端三份逐字相同的私有副本 + 约 8 种各写各的临时文件写法 → storage 的 `atomicWriteJson`；`update/durable-json.ts` 并进来（见 data-and-migration「持久化底层与关停」）
 - 资产存储三份 → 一份 `createAssetStore`；两个皮肤库 → 一份 `createSkinStore`
-- 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状 → contract
+- 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状（中立的只有 `AuthState`）→ contract
 - 密钥打码：服务端 `maskSecret`、contract 的 `MaskedSecret`、面板 `SecretChip` 已成套，面板组件进 ui
 - 零碎：webhook URL 打码两份、`LogLevel` 两份（只在 internal 留一份，contract 转口）、`PushKind` 同名不同义（见 data-model「特性键与推送种类」）、`escapeRegExp` 两份、HTML 去标签两份（一个解实体一个不解，合并前先定解不解）
 - 大航海等级表与等级名、`GuardLevel` → `bilibili/`
-- internal 里放错的：B 站视频链接识别、`LoginSnapshot` → `bilibili/`；`BiliEvents` / `DynamicDetectedEvent` 改成中立事件、留在核心；链接卡闸门配置（`LINK_REPLY_FORMS` / `LINK_LIMITS`、link-cards schema）是核心的，留 internal；没人用的 `withLock` 删；`deterministic-uuid` 搬回唯一的使用方（`config/store.ts`）；更新镜像前缀搬进 contract
+- internal 里放错的：B 站视频链接识别 → `bilibili/`；B 站形状的登录态类型删掉，中立一侧只有 `AuthState`（`bilibili/` 内部若还要一个原形，叫 `BiliLoginState`）；`BiliEvents` / `DynamicDetectedEvent` 改成中立事件、留在核心；链接预览的闸门配置（`LINK_REPLY_FORMS` / `LINK_LIMITS`、`linkPreview` 的 schema）是核心的，留 internal；没人用的 `withLock` 删；`deterministic-uuid` 搬回唯一的使用方（`config/store.ts`）；更新镜像前缀搬进 contract
 
 ## apps/server/src/
 
-按功能分目录，B 站的全部放顶层 `bilibili/`。
+按功能分目录，B 站的全部放顶层 `bilibili/`，内置平台适配器放 `platforms/`。
 
 ```
-compose.ts         组装根：登记 B 站的各个实现与拓展宿主（整个核心只有它能 import bilibili/）
+compose.ts         组装根：登记内置集成（B 站、三个内置平台适配器）与拓展宿主（整个核心只有它能 import bilibili/ 与 platforms/）
 subscriptions/     订阅、资料刷新、身份唯一闸、SubscriptionSource 登记表与接口定义
 accounts/          账号：系统 → 账号、排序、汇总各来源登录态
-images/            图库：fetchImage / storeImage 的落点、按引用清扫
-push/              路由、闸、免扰、多路分发、TargetDispatcher、出错告诉主人
-posts/             作品装配：推一条 Post，不管来自哪里
+images/            图库：fetchImage / storeImage 的落点、按引用清扫（引用方含历史、重推原件、资料缓存、AI 会话）
+push/              路由、闸、免扰、TargetDispatcher（含 sendToAddress）、PlatformAdapterRegistry 与按连接分发、notifyMaster
+platforms/         内置平台适配器：OneBot、QQ 官方机器人、webhook，各带描述、设置 schema 与模板候选
+posts/             作品装配：推一条 Post，不管来自哪里；作品文字唯一的取段函数
 live/              中立场次引擎（场次、断流接续、定时、在播表）、直播装配与附加项生产
-link-cards/        链接卡：闸门、出口、LinkResolver 登记表
-commands/          指令框架 + 通用指令（help / mute / report / status）+ CommandProvider 登记表
+link-preview/      链接预览：闸门、候选挑选、回复（经 sendToAddress）、LinkResolver 登记表
+commands/          指令框架 + 通用指令（help / mute / report / status / login [来源] 等）；没有来源指令的登记表
 roast/             锐评：生成、审批、定时、投递（从 stats/ 拆出）
-stats/             统计仓与聚合（含粉丝时序、seen）
+stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；最近作品缓存并进来）
 history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
 extensions/        拓展宿主：生命周期、ctx、市场、安装、设置、视图 + 收件口
-bilibili/          B 站：SubscriptionSource 实现、auth/（扫码登录）、LinkResolver、指令、AI 工具；原四个包各成子目录
+bilibili/          B 站：SubscriptionSource 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
 bilibili/devtools/ B 站的 DevtoolsProvider，只在开发版登记
 runtime/           只留 service-context、message-bus、引擎编排（engines.ts 拆三份）
-routes/ ws/ outlets/ config/ backup/ update/ devtools/ logs/ types/ util/
+routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 ```
 
 - 中立装配住服务端，不开新包：作品装配在 `posts/`，直播装配与直播附加项的生产在 `live/`。装配把来源交来的 `PostEvent` / 直播信号做成要发的消息，步骤见 [push.md](./push.md)「装配」。
 - 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。
+- `platforms/` 只放内置适配器的实现。今天放在里面的登记表与分发（`platforms/registry.ts`、`dispatch.ts`）是中立件，和 `sink/` 一起挪进 `push/`。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
+- `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。
+- 集成宿主（`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态）和问题表放哪个目录，施工时定：今天拓展宿主在 `extensions/`，内置集成要走同一套。
 - jieba 的 wasm 跟着 `live/` 进打包清单，改完要跑 `vp run build:update-payload`。
 - 被否的备选：适配文件散进各功能目录（B 站代码散在十几处，守卫只能靠文件名约定）；`sources/bilibili/` + `sources/extension/`（多一层，还把 BN 自己的中立逻辑挂成了「对接拓展」）。
 - `bilibili/devtools/` 被否的备选：放 `src/devtools/bilibili/`、B 站句柄从外面注入。
@@ -121,68 +144,107 @@ routes/ ws/ outlets/ config/ backup/ update/ devtools/ logs/ types/ util/
 - 页面私有的件回到 `pages/<页>/`，`components/` 只放至少两处复用的件。
 - 文件名全部 kebab-case（组件与 hook 也改；要改名的连测试 172 个，其中 52 个只改大小写，得用两步 `git mv`）。
 - 每个接口只在 `services/<域>.ts` 写一次，类型从 contract 取；纯逻辑进 `utils/`，不另开 `lib/`。
-- 读来源一律经 `GET /api/sources` 的 descriptor，删掉所有 `isBili` 分叉。
+- **来源的信息只从描述符拿**（ADR-0027 决策 6）：`GET /api/sources` 进来拉一次进缓存、`extension-changed` 时失效，按 `identity.sourceKey` 取；叫法走 contract 的叫法函数；描述符只装叫法、能力清单与会员档位，不装界面句子；集成的设置字段在登记集成时交，不挂在描述符上（ADR-0025 决策 3），面板从哪个路由拿施工时定。面板代码里不出现 `bilibili`，所有 `isBili` 分叉删掉，档位色表、「UID」「B 站」「UP 主」「舰长 / 提督 / 总督」这些写死的字一并删掉。拓展卸载后遗留的订阅：平台名显示来源键、叫法用中性词、不露特性开关，卡上标「来源没装」。
+- **推送连接与目标的表单由适配器的描述驱动**：新建连接走「挑一个候选，再填字段」一条路（`/api/adapters`）；已有连接的脸与目标编辑器读连接上的 `platformSnapshot`，适配器不在场也画得出来（ADR-0024 决策 4、8）。面板代码里不按平台名分叉。
+- **系统页按集成开 tab**（ADR-0025 决策 3）：声明了 `settingsFields` 的内置集成各开一个（今天只有 B 站，tab 名取它的 `label`），用通用的设置表单与对表门；拓展的设置只在拓展页，功能页面放指过去的入口；「运行」tab 只留核心参数。
+- 健康卡（「系统状态 · 各模块」）第 4 期先出设计稿，主人认了再照稿重做。
 
 ## 接口族与登记表
 
-核心只认一组中立接口。每种接口一张登记表，键都是 `SourceKey`（`"bilibili"` 或拓展 id，不加前缀；分派读 `identity.sourceKey`）。接口全文见 [subscription-sources.md](./subscription-sources.md)。
+核心只认一组中立接口。每种接口一张登记表，键都是 `IntegrationKey`：集成的键，就是 `"bilibili"`、拓展 id 或内置平台适配器的键，不加前缀（ADR-0025 决策 1）。来源的 `SourceKey`（`"bilibili"` 或拓展 id）是它的一部分，分派仍读 `identity.sourceKey`。订阅侧接口全文见 [subscription-sources.md](./subscription-sources.md)，推送侧见 [push.md](./push.md)。
 
 | 接口 | 管什么 | 登记表 |
 | --- | --- | --- |
-| `SubscriptionSource` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged` | `subscriptionSources` |
-| `LinkResolver` | 群里的链接 → 链接卡 | `linkResolvers` |
-| `CommandProvider` | 来源自己的私聊指令 | `commandProviders` |
-| `AiToolProvider` | 来源专有的 AI 工具与技能 | `aiToolProviders` |
-| `DevtoolsProvider` | 开发版的造状态 / 造事件场景 | `devtoolsProviders`（只在开发版） |
-| `PushOutlet` | 推送侧：把消息交给某种连接 | `pushOutlets` |
+| `SubscriptionSource` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字 | `subscriptionSources` |
+| `LinkResolver` | 群里的链接 → `LinkPreview { post, canonicalId, nativeShare? }`；带 `label`，`resolve` 返回结果形状（ADR-0029） | `linkResolvers` |
+| `AiToolProvider` | 来源专有的只读 AI 工具与技能（B 站：总播放、获赞、视频列表与 B 站版周报） | `aiToolProviders` |
+| `DevtoolsProvider` | 开发版的造状态 / 造事件场景：`{ scenarios: DevScenarioDef[] }`；场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2） | `devtoolsProviders`（只在开发版） |
+| `PlatformAdapter` | 推送侧：一种连接怎么真发出去。描述 `PlatformAdapterDescriptor` 与 `settingsSchema`；必备 `start(ctx)` / `stop()`、`send`、`isAvailable`、`probe`、`listConnectionCandidates`；可选 `capabilities` / `probeCapabilities`（含 `atAll`、`inbound`）、`listAddressCandidates`、`connectionAuth`（ADR-0024 决策 3）。内置三个与拓展提供的同一个接口；`send` 只有 `TargetDispatcher` 能调 | `platformAdapters`（`PlatformAdapterRegistry`） |
+
+- **指令没有登记表**：1.0 没有来源自带的指令，`CommandProvider` 先不造（ADR-0031 决策 1）；指令全是核心的，以 `CommandDef` 交给指令框架。来源自带指令与重名的规矩等第一个真要自带指令的拓展。
+- `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段）；`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法），由连接候选带来。
 
 ```ts
-interface ClaimTable<T> {           // 现成的 createClaimTable，补一个 entries()
-  get(key: SourceKey): T | undefined;
-  claim(key: SourceKey, value: T): { dispose(): void };   // 一个键一个主人；只撤自己那行；撤了能再登
-  entries(): Iterable<[SourceKey, T]>;
+interface Registry<T> {             // 原 ClaimTable<T>（extensions/claim-table.ts）改名，补一个 entries()；工厂照 create* 规矩跟着改名
+  get(key: IntegrationKey): T | undefined;
+  claim(key: IntegrationKey, value: T): { dispose(): void };   // 一个键一个主人；只撤自己那行；撤了能再登
+  entries(): Iterable<[IntegrationKey, T]>;
 }
 ```
 
-键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），`ExtensionIdSchema` 再把 `bilibili` 列为保留 id，手动放进目录的拓展也撞不上内置来源。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决。
+键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），`ExtensionIdSchema` 再把 `bilibili` 与内置平台适配器的键（`onebot`、`qq-official`、`webhook`）列为保留 id，手动放进目录的拓展也撞不上内置集成。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决；连接上原先的 `kind`、`connector` 删掉，`extensionId` 并进 `adapterKey`（ADR-0024 决策 7）。
+
+## 集成与 ctx
+
+**集成**是「归属方」的统称：`bilibili/` 是一个集成，每个拓展是一个，三个内置平台适配器各是一个（ADR-0025）。
+
+| 项 | 规矩 |
+| --- | --- |
+| ctx | 每个集成一个 `IntegrationContext { logger, state, secrets, redact, settings(schema), http, fetchImage, storeImage, reportProblem, resolveProblem, signal, onDispose }`；`SourceContext`、`PlatformAdapterContext` 在它上面加各自特有的；拓展的 `activate(ctx)` 拿到它加各登记方法 |
+| 生命周期 | 内置集成与拓展同一套：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾。收尾的先后：宿主先调来源或适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾（ADR-0025 决策 5）。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`；系统页、健康卡、`status` 指令都读它 |
+| 设置 | 只有一个词 `settings`：`connection.config` → `settings`、`configSchema` → `settingsSchema`、`configFields` → `settingsFields`；`config` 只指存储（`config/`、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG`）。`ctx.settings(schema)` 给 `get` 与 `onChange` |
+| 设置坏了 | 只停那一处，不挡开机（ADR-0025 决策 4）：拓展段、`bilibili` 段校验不过只停那个集成（`settings-invalid`，面板显示原值与原因、进问题框，改对当场起）；`core` 段逐格校验，坏的那格在内存里用默认值、盘上原文不动、问题表记一条；只有信封坏了才挡开机。只有 `start` / `activate` 期间读设置失败可以抛错中止启动，运行中的 `get()` 不抛 |
+| `state` / `secrets` | 同一个 `KeyValueStore { get, set, delete }`：`get` 同步（宿主在 `start` 前读进内存），写由宿主原子落盘。`state` 明文、不进备份、不脱敏，单键 64KB、每个集成 1MB，`http.` 开头的键归宿主（浏览器身份）；`secrets` 主密钥加密、一个集成一个文件、只进完整备份、值里每段字符串按原文脱敏（很短的不遮），每个集成 256KB，`http.` 开头的键归宿主（cookie 罐） |
+| `http` | `packages/http` 的客户端，每个集成一个：cookie 由宿主自动存进该集成的 `secrets`；浏览器身份生成一次存进 `state`、重启照用，只在发版把版本区间前挪、存的低于下限时升级（只升不降）；重试、退避、限流归集成；整体不拦内网（局域网里的 RSSHub 要连得上）；1.0 对拓展整套开放 |
+| `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头）；拦内网、8MB、嗅探、超时这一层只在这条路上，每一跳重定向都查 |
+| 调用被拒或失败 | 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志（内置集成被拒就是 BN 的 bug，只打错误日志）；请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状、不抛错 |
+
+ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources.md)「SourceContext」与 [extension-contract.md](./extension-contract.md)。
 
 ## compose.ts 装配
 
-整个核心只有 `compose.ts` 能 import `bilibili/`；`index.ts` 只管启动。
+整个核心只有 `compose.ts` 能 import `bilibili/` 与 `platforms/`；`index.ts` 只管启动。**内置集成和拓展走同一条路**（ADR-0024 决策 1、ADR-0025 决策 1、5）：
 
-```ts
-const bili = createBilibili(options);
-subscriptionSources.claim("bilibili", bili.source);
-linkResolvers.claim("bilibili", bili.linkResolver);
-commandProviders.claim("bilibili", bili.commands);
-aiToolProviders.claim("bilibili", bili.aiTools);
-if (isDev) devtoolsProviders.claim("bilibili", bili.devtools);
-```
+| 内置集成 | 键 | 登进哪些表 |
+| --- | --- | --- |
+| B 站（`bilibili/`） | `bilibili` | `subscriptionSources`、`linkResolvers`、`aiToolProviders`；开发版另登 `devtoolsProviders` |
+| OneBot（`platforms/`） | `onebot` | `platformAdapters`（一个模板候选） |
+| QQ 官方机器人（`platforms/`） | `qq-official` | `platformAdapters`（一个模板候选） |
+| webhook（`platforms/`） | `webhook` | `platformAdapters`（飞书、钉钉、企业微信、通用四个模板候选） |
+
+- `compose.ts` 为每个内置集成登记键、脸（名字、图标等，取自它的描述）与 `settingsFields`；宿主给它建 `IntegrationContext`、调 `start(ctx)`，集成在里面读设置、经 ctx 上的登记方法把各接口的实现登进对应的表——和拓展的 `activate(ctx)` 是同一组登记方法。撤销把手交给生命周期，集成停下时撤掉它登的全部行。登记口与工厂的名字施工时定。
+- 登进表的接口再由宿主起：`SubscriptionSource.start` 拿 `SourceContext`，`PlatformAdapter` 登记即 `start`（晚登记的也收得到）、拿 `PlatformAdapterContext`。来源与适配器特有的那一层（名单、上报、入站、自己的连接）内置与拓展一样都经 `start(ctx)` 递进来，登记交回的把手只管注销（ADR-0025 决策 1）。
+- B 站段设置校验不过时，B 站这个集成不起（`settings-invalid`）：来源、链接解析器、AI 工具都不登记，订阅显示来源不可用；改对了当场起。`/api/sources` 的描述符不受影响：`compose.ts` 静态登记 B 站完整的 `SourceDescriptor`，设置坏了照样下发。
+- `compose.ts` 里 `bilibili/` 的东西只能作登记的参数；核心拿不到 B 站客户端（今天的 `engines.api` 删掉，见「守卫」入口咽喉）。
 
 拓展在清单的 `contributes` 里按需声明，宿主启用时以拓展 id 登进对应的表、把撤销把手交给生命周期；停用、卸载即撤，不用重启。1.0 对拓展开放哪些键见 [extension-contract.md](./extension-contract.md)。
 
-## 核心功能怎么接来源
+## 核心功能怎么接集成
 
-分派按 `identity.sourceKey` 查登记表，不再点名 B 站。来源上报只带 externalId，核心按身份展开到订阅；来源看不到订阅 id。
+分派按 `identity.sourceKey` 查登记表，不再点名 B 站。来源上报只带 externalId，核心按身份展开到订阅；来源看不到订阅 id。推送侧按连接的 `adapterKey` 找适配器，不按平台名。
 
 | 功能 | 核心负责 | B 站实现 | 拓展 |
 | --- | --- | --- | --- |
-| 推送 | 按订阅 id 路由、闸、附加项；中立装配；按身份把上报展开成每条订阅一份 | 拉动态、把弹幕通道翻成直播信号，按 externalId 上报 | 报订阅事件（同样只带 externalId），宿主翻好交装配 |
-| 直播 | 唯一的场次引擎、定时调 `fetchLiveStatus`、在播表、「会不会被监听」的唯一判定 | 直播信号 + `fetchLiveStatus` + `liveInteractions` | 直播信号，可选 `fetchLiveStatus` |
-| 出卡 | 中立卡种、皮肤、卡种注册表；图只认图库引用 | 动态翻成 `Post`、附加块翻成三种中立数据、用 `ctx.fetchImage` 抓图 | 宿主把作品翻成作品卡 |
-| 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板） | `searchCreators`（UID、主页链接、名字都认） | `searchCreators`（契约的 `lookup` 改名） |
-| 链接卡 | 闸门与出口 | `LinkResolver` | 1.0 暂不开 |
-| 指令 | 框架与 `help` / `mute` / `report` / `status` | `CommandProvider`（`login`）；`health()` 交一行 | 1.0 暂不开；`health()` 交一行 |
-| AI | 生成器、人格、中立只读工具与内置技能 | `AiToolProvider` | 1.0 暂不开 |
-| 资料、头像与粉丝 | 定时调 `fetchProfile`；增量、时序、头像进图库、显示名链 | `fetchProfile` | `fetchProfile` 或主动 `reportProfile` |
-| 统计与锐评 | 中立统计仓与聚合；「那天有没有在看」按 seen | — | — |
-| 账号 | 系统 → 账号、头部、新手引导登录步 | `auth` | 可选 `auth` + `ctx.secrets` |
+| 推送 | 按订阅 id 路由、闸、附加项；中立装配；按身份把上报展开成每条订阅一份 | 按名单的 `features` 决定拉谁（开了开关才监听，ADR-0027 决策 1）；拉动态、把弹幕通道翻成直播信号，按 externalId 上报 | 报订阅事件（同样只带 externalId），宿主翻好交装配 |
+| 投递 | `TargetDispatcher` 是唯一能发送的口；按目标逐个投递、只重试失败的那个（`rate_limited` / `unavailable` / `timeout` 退避，`indeterminate` 与其他码不重试），出卡或 AI 失败就降级、不整条重来，每个目标一行历史、失败带 code；`sendToAddress` 给链接预览与指令回复用（不进路由、不过闸、不落历史）；`notifyMaster` 收文字或消息体、返回结果形状；连接设置按适配器的 `settingsSchema` 校验，坏的只隔离那一条（ADR-0024 决策 10、13–15） | —（内置的是 `platforms/` 的三个适配器，与拓展同一个接口） | 清单 `contributes.push` 只装描述；`PlatformAdapterDef` 经 `registerPlatformAdapter` 交；`listAddressCandidates`、`connectionAuth`、描述里的条件显示与键值表字段这版不开 |
+| 直播 | 唯一的场次引擎、定时调 `fetchLiveStatus`、在播表、「会不会被监听」的唯一判定（只看开关） | 直播信号 + `fetchLiveStatus` + `liveInteractions` | 直播信号，可选 `fetchLiveStatus` |
+| 出卡 | 中立卡种、皮肤、卡种注册表；图只认图库引用；醒目留言按 `tier.rank` 取色、金额按币种；会员卡宣告语取 `MembershipTier.announcement`（ADR-0028 决策 4） | 动态翻成 `Post`（UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡）、附加块翻成三种中立数据、用 `ctx.fetchImage` 抓图；醒目留言按 B 站规矩算 `tier` | 宿主把作品翻成作品卡 |
+| 文案模板 | 全仓唯一的模板引擎；`{tier}`（原 `{guard}`）、`{fanclub}`（原 `{mdn}`）；迁移改写主人的文案，出来的字不变（ADR-0028 决策 3） | 资料里填 `fanClubName`（粉丝牌名） | 有就填，没有就空 |
+| 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板） | `searchCreators`（UID、主页链接、名字都认；返回结果形状） | `searchCreators`（契约的 `lookup` 改名） |
+| 链接预览 | 闸门（开关、群表、冷却键「群 + 解析器 + canonicalId」、上限）；先用通用网址正则挑候选再问各解析器 `matches`；回复经 `sendToAddress` 发回原会话；原生分享卡里的链接不回预览 | `LinkResolver`；原生分享交中立描述，由 OneBot 适配器去签，签不了回图片 | 1.0 暂不开 |
+| 指令 | 框架与 `help` / `mute` / `report` / `status` / `login [来源]`；`run` 返回结果形状，`reply` 经 `sendToAddress` 回到发指令的会话；失败回「『{指令名}』没办成：{message}」，抛错回「出错了，详情在日志里」（ADR-0031 决策 1） | 没有自带指令；`login` 从它的 `AuthState` 取二维码；`health()` 交一行 | 没有自带指令；`health()` 交一行 |
+| AI | 生成器、人格；六把中立只读工具，参数统一叫 `creator`（「来源键:外部 id」）；六个内置技能跨来源、只用中立工具；看图读图库、聊天附件存进图库；提示词里的平台叫法用 `{creatorNoun}` / `{postNoun}` / `{sources}`（ADR-0030） | `AiToolProvider`（专有只读工具与 B 站版周报技能） | 1.0 暂不开 |
+| 资料、头像与粉丝 | 定时调 `fetchProfile`（只调启用中的）；`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；增量、时序、头像进图库、显示名链 | `fetchProfile` | `fetchProfile` 或主动 `reportProfile` |
+| 统计与锐评 | 中立统计仓与聚合；开了开关才记；「在记」按特性分、核心自己算（作品 / 直播 / 粉丝，ADR-0027 决策 2），热力图也读它、seen 不再单独当判据；关着的日子显示「没在记」、锐评与榜单跳过；多收来源已交到手的现成字段；CSV 的「UID」与「外部 ID」合成一列 | 开播公告动态直接丢掉、不上报 | — |
+| 账号 | 系统 → 账号、头部、新手引导登录步；登录态只有中立的 `AuthState`（推送侧的 `connectionAuth` 也用它） | `auth`（`bilibili/auth/`） | 可选 `auth` + `ctx.secrets` |
+| 设置 | 按集成放；`core` 段逐格校验、坏格退默认；集成段坏了只停那一个 | `bilibili` 段经 `ctx.settings(schema)` 读，系统页一个 tab；自定义 UA 设置删掉（老配置里这格由迁移丢掉、新 schema 不留），改成「换一个身份」按钮（ADR-0025 决策 7） | `extensions.<id>` 段，设置只在拓展页 |
+| 请求 | `packages/http`：每个集成一个客户端 | `ctx.http`（请求与弹幕通道的 `websocket`） | `ctx.http` 整套开放 |
 | 预览 | 卡片页预览、按订阅覆盖 | `fetchPreview` | 可选 `fetchPreview` |
-| 健康与问题 | 健康页回 `sources[]` + 核心模块；问题框与私聊节流 | `health()`、`reportProblem` / `resolveProblem` | 同左 |
-| 备份与日志脱敏 | 备份信封按来源分格（内容就是各来源的 `ctx.secrets`）、日志按真实密钥值脱敏 | `ctx.secrets` + `ctx.redact` | `ctx.secrets`、`ctx.redact` 与 secret 字段自动覆盖 |
-| 历史与重推 | 全部 | — | — |
+| 健康与问题 | 见下「问题表与健康」 | `health()` 交一行字；`reportProblem` / `resolveProblem` | 同左；平台适配器也能报，带 `connectionId` |
+| 备份与日志脱敏 | 备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `secrets`，只进完整备份），恢复回 `restoredIntegrations`；日志按真实密钥值脱敏 | `ctx.secrets` + `ctx.redact` | `ctx.secrets`、`ctx.redact` 与 secret 字段自动覆盖 |
+| 历史与重推 | 全部；每个目标一行，失败带 code，可以手动补发 | — | — |
 
-现在服务端有 22 个非测试文件直接 import B 站的包，其中 routes/subs、routes/auth、routes/cards、routes/health、app.ts 是核心在点名 B 站——这些都要改成经登记表。
+现在服务端有 22 个非测试文件直接 import B 站的包，其中 routes/subs、routes/auth、routes/cards、routes/health、app.ts 是核心在点名 B 站——这些都要改成经登记表。另有经结构化句柄直调 B 站的：`engines.api` 喂 `routes/subs.ts` 搜人、查人，守卫 1 只看 import 抓不到，靠入口咽喉。
+
+### 问题表与健康
+
+- **问题表只有一种形状，全在内存**（ADR-0025 决策 11）：`Problem { reporter: IntegrationKey | "core", about?: { subscriptionId } | { connectionId }, code, message, since }`。订阅运行态不再存问题。
+- 一条生死规矩：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象删了，关于它的全清。
+- 谁报：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，code 表明是哪个模块（如 `renderer_unavailable`）；`core` 段某格退回默认也记一条。
+- 谁看：订阅卡、连接卡看关于自己的，问题框看全部；集成级的问题只在问题框与健康卡，不在每张订阅卡上重复。`GET /api/problems` 一次给全，变了发 `problems-changed`。
+- 私聊：`notify: true` 再私聊主人，同一报的人（`reporter`）、同一 code 60 秒内只发一次（ADR-0021 决策 47）。
+- 代价：重启后的头几秒，订阅卡上的问题红字先消失，等来源重报。
+- **健康**（ADR-0025 决策 12）：`SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字；订阅卡的「暂停 / 不可用」改看运行状态与问题表。健康卡分两排：核心（持久化、订阅、推送、卡片、AI）与集成（每个集成一格；推送适配器有连接才占格；灯按运行状态与问题分四色）。数据放 `/api/health/details`，短版 `/api/health` 见「wire 契约」。
 
 ## 总线事件
 
@@ -193,10 +255,11 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | `post-detected` | `PostEvent` | `dynamic-detected`；拓展作品也发 |
 | `live-session-changed` | `LiveSessionChange` | `live-state-changed`、`extension-live-session`、`extension-live-changed` |
 | `live-viewers-changed` | `{ subscriptionId, currentViewers?, totalViewers? }` | 原来的人数文字 |
-| `subscription-auth-changed` | `{ sourceKey, status, detail }`，status 是 `AuthState` 的状态值，detail 用 contract 里该来源的登录 wire 类型 | B 站四个登录事件；原载荷的 `kind` 改叫 `sourceKey` |
+| `subscription-auth-changed` | `{ sourceKey, state }`，`state` 是那一刻完整的中立 `AuthState`（状态取值在它的 `status` 里） | B 站四个登录事件；原载荷的 `kind` 改叫 `sourceKey` |
 | `followers-refreshed` | 按订阅 id 的粉丝刷新条目 | `fans-refreshed`（去掉 uid / extensionId 三格） |
+| `problems-changed` | 只带键、不带问题内容（键的形状施工时定）；经 WS 的 `state` 频道推给面板，250ms 合并 | 新增：问题表搬进内存以后，面板靠它知道要重拉（ADR-0025 决策 11） |
 
-- 来源级问题不走 `engine-error`，改走 `ctx.reportProblem`。出卡失败这类流水线错误仍走 `engine-error`，`source` 改成中立的模块名（名字施工时定）。
+- 来源与平台适配器的问题走 `reportProblem`，核心模块自己的问题直接写问题表；`engine-error` 只留流水线错误（如某一次出卡失败），`source` 改成中立的模块名（名字施工时定）。
 - 施工时补一张「现有 22 个事件 → 1.0 去向」的全量表（含 `subscription-reported` 这类宿主内部事件），写进 events.md。
 - 直播互动（弹幕、SC、会员、进场）走能力回调还是走总线施工时定；弹幕是高频流，要在 events.md 写清。
 - 被否的备选：另开一条 B 站私有总线（违反「MessageBus 是唯一事件通道」）。
@@ -205,41 +268,103 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 
 - `apps/contract` 是唯一来源：每个请求体、响应体、WS 帧有且只有一份；服务端的 zod 用契约类型钉住。
 - WS 有一张事件表，载荷一律是具名对象（不发裸元组），类型从总线事件表推导。
-- 错误体只有一种：非 2xx 是 `{ code, message }`，业务失败是 `{ ok: false, code, message }`。操作结果的 `ok` 保留（布尔前缀规矩的例外）；失败原因只用 `code` + `message`；上游平台的错误码放 `upstreamCode`，不占 `code`。
-  - 防撞 B 站那种 `{ code, message, data }`：`code` 只装 BN 自己的错误码（字符串、snake_case，如 `not_found`、`upstream_failed`），永远不装平台的数字；平台的数字码只放 `upstreamCode`（现 `routes/subs.ts` 两处把 B 站的码塞在 `code` 里，契约骨架时改）；平台的原始响应不直接转给面板，一律在来源那层翻成 BN 的形状。主人 09-27 看过嵌套的 `{ error: { code, message } }`，选回平铺。
-- 路由按新名：`/api/subscriptions`、`/api/followers`、`/api/library`、`/api/sources`（来源的 descriptor 与登录状态）、`/api/sources/:sourceKey/creators?q=`（搜人）、`/api/history?feature=`、`/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
+- **失败只有一种形状**（ADR-0026）：一次操作的结果一律是 `{ ok: true, … } | { ok: false, code, message, upstreamCode? }`，抛错只留给 bug（宿主在边界接住，按 `unavailable` 处理并记错误日志）；HTTP 非 2xx 的错误体是 `{ code, message }`。管来源、平台适配器、横切接口与 ctx 的方法、HTTP 业务失败与错误体、WS 控制帧、桥回执进门时的翻译；不管事件原因、描述性字段、AI 产出的内容、能力三态。操作结果的 `ok` 保留（布尔前缀规矩的例外）；失败原因只用 `code` + `message`；上游平台的错误码放 `upstreamCode`，不占 `code`。
+  - `code` 取 internal 里唯一一张标准码表：`not_found`、`invalid`、`unauthorized`、`rate_limited`、`unavailable`、`timeout`、`unsupported`、`conflict`、`indeterminate`、`unknown`；自定义码算失败、不自动重试；问题表里的 code 另算，只要求 snake。
+  - 防撞 B 站那种 `{ code, message, data }`：`code` 只装 BN 自己的错误码（字符串、snake_case，如 `not_found`、`unavailable`），永远不装平台的数字；平台的数字码只放 `upstreamCode`（现 `routes/subs.ts` 两处把 B 站的码塞在 `code` 里，契约骨架时改）；平台的原始响应不直接转给面板，一律在来源那层翻成 BN 的形状。主人 09-27 看过嵌套的 `{ error: { code, message } }`，选回平铺。
+- 路由按新名：
+  - `/api/subscriptions`、`/api/followers`、`/api/library`。
+  - `/api/sources`：每个来源一份 `{ key, descriptor, has, status }`，`has { auth, liveStatus, preview }` 由宿主按实现推算、不让来源自报，`status` 是运行状态的取值；拓展停用、失败、设置不合法时照样有描述符。
+  - `/api/sources/:sourceKey/creators?q=`（搜人，返回结果形状）。
+  - `/api/adapters`：各平台适配器的描述，新建连接时用；连接候选、`connectionAuth`、`listAddressCandidates` 的路由形状施工时定。`routes/qq.ts` 这类按平台开的路由删掉，QQ 官方机器人的扫码建连接与会话地址改走这组通用路由。
+  - `/api/problems`（问题表一次给全）。
+  - `/api/health`：短版只留存活探测与应用内更新要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程）；B 站的格子（`login`、`dynamicCron`、moduleVersions 里的 api / dynamic / live 等）删掉。`/api/health/details`：分核心、集成两组，给健康卡。
+  - `/api/history?feature=`；`?uid=` 删掉（没有调用方），以后要按人查再加 `?identity=`（ADR-0027 决策 7）。
+  - `/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
 - 设置拆进 `config/settings.json` 的三类段以后，系统页的字段路径与 `PATCH /api/globals` 跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。
 - 删掉死字段 `SubscriptionDTO.state`；订阅卡上永远不亮的「播」角标改用真实的在播数据。
-- `/api/health` 补进契约，moduleVersions 删掉 api / dynamic / live，`dynamicCron` 删掉。面板把 contract 移进 `dependencies`。
+- `/api/health` 补进契约。面板把 contract 移进 `dependencies`。
 - 密钥下发只用 `MaskedSecret`，见 [data-model.md](./data-model.md)「凭据字段标 secret: true」。
 
 ## 守卫
 
 每条规矩配一道会变红的门。扫源码的守卫共用一套仓库级工具（遍历、剥注释、抠 import、白名单与逐行放行标记），收编现有的 walk.ts、stripComments、importSpecifiersIn。写法仿拓展边界守卫：判据是纯函数、配样例、真扫目录。
 
+**中立性守卫分三层**（ADR-0021 决策 59）：**咽喉**守一入一出，结构上只留一条路；**静态扫描**抓字面上的越界；**对拍**用假来源、假适配器把 B 站与内置平台用到的每种中立能力走一遍，抓一个平台词都没有的语义后门。
+
+- **棘轮**：开的那一刻记下命中数当上限，只许少不许多，多一处就红；上限随清理调低，到清零期必须是 0。每期都得全绿才出期，所以不能「一开就红」。
+- 期次写法同 [construction-plan.md](./construction-plan.md)：「1⑥」是第 1 期切片 ⑥，「3b 末」是 3b 结束时。
+
+### 第一层：咽喉
+
+| 守卫 | 判据 | 什么时候红 | 期 |
+| --- | --- | --- | --- |
+| 入口咽喉 | `compose.ts` 里 `bilibili/` 的东西只能作登记的参数（按 AST 判）；核心拿到的依赖包里不许有平台客户端 | B 站客户端绕过登记表塞进核心：今天的 `engines.api`（「给路由临时调 B 站用」）。守卫 1 只看 import，这种结构化句柄它抓不到 | 3a |
+| 出口咽喉 | 平台适配器登记表对外只给不含 `send` 的视图，`send` 只经 `TargetDispatcher` 的特权句柄；另配源码扫描，白名单只有 `TargetDispatcher` | 有文件拿到可发送的适配器句柄、绕过 `TargetDispatcher` 直接发（今天链接回复现造临时目标直调 `send`，主人通知靠强制私聊的平台分叉） | 3a |
+| 咽喉 e2e | 开截流 + 守卫 2，逐条驱动全部发送路径：广播、`notifyMaster`、目标测试、卡片发送、AI 试一句、锐评投递、人工重推、链接预览回复、审批预览、指令回复（含登录二维码）；每条恰好一条截流记录、零外连 | 有人在登记表外构造适配器，或自己开 socket | 3a |
+| 出图器零联网 | 渲染页开请求拦截，`data:` 与本机图库以外的请求一律 abort 并计数；图只有地址、没有图库引用时画占位，出网仍是 0；`packages/image/src` 里不许出现 `fetch(`、`node:http(s)`、`undici` | 出图器联网（守卫 2 管不到 Chrome 子进程；今天出图器运行时从 `s1.hdslb.com` 拉图、按域名白名单预取） | 2 |
+
+### 第二层：静态扫描
+
+| 守卫 | 判据 / 范围 | 什么时候红 | 期 |
+| --- | --- | --- | --- |
+| 1 边界表 | 核心目录不许 import 服务端 `bilibili/`，例外只有 `compose.ts`；和现有两条拓展边界、推送守卫① 合成一张「谁不许 import 谁」的边界表 | 核心文件 import 了 `bilibili/` | 3a |
+| 推送守卫① | 核心不许 import `platforms/`（内置适配器的实现），例外只有 `compose.ts` | 核心文件 import 了内置适配器。勘察时真越界的是 `app.ts`、`routes/qq.ts`、`routes/types.ts`；`sink/`、`engines.ts`、拓展宿主、devtools import 的是 `registry.ts` / `dispatch.ts` 这两个放错目录的中立件，挪进 `push/` 即清 | 3a |
+| B 站替身 | 范围核心 + 面板 + contract：裸 `"bilibili"` 字面量（`@bilibili-notify/` 除外）、`Bili*` / `BILIBILI_` 标识符、`"@bilibili"` 哨兵；白名单 `compose.ts`、`bilibili/`、保留 id 表、迁移模块、设置 schema 的组合处 | `isBiliSubscription` 删掉以后换个写法回来：`identity.sourceKey === "bilibili"`、`"@bilibili"`、`BILIBILI_*` 常量 | 1⑥ 棘轮开，4 末清零 |
+| 11 B 站专有词（修订） | 范围 `packages/` 全部 + 服务端 `bilibili/` 以外 + contract（登录态在 contract 里只有中立的 `AuthState`，没有要进白名单的 B 站文件）；面板、测试、夹具不扫（面板归「B 站替身」与「中文叫法棘轮」）。先剥注释，按词边界匹配。词表自动生成（`bilibili/` 的导出名、B 站接口客户端的方法名、B 站类型的键）再手补：`DYNAMIC_TYPE_`、`RICH_TEXT_NODE_`、`MAJOR_TYPE_`、`ADDITIONAL_TYPE_`、`module_dynamic`、`jump_url`、`id_str`、`guard_level`、`live_time`、`live_status`、`WATCHED_CHANGE`、`roomId` / `room_id`、`bili_user`、`bvid`、`hdslb`、`bilibili.com`、`b23.tv`、风控码等；原始字段按属性访问匹配。不收 `uid`（另有 uid 棘轮）。确实要留的进白名单、附理由 | 核心里出现 B 站专有词。旧版只有英文词、按子串匹配：会误中 `get_live_status`，剥注释后 `platform.ts` 这类文件零命中，也不扫 contract（旧词表现查：中立包约 68 处、服务端约 50 处） | 3a 棘轮开，3b 末清零；这是中立化的验收线 |
+| uid 棘轮 | `bilibili/` 与迁移模块以外出现 `uid`；面板算不算进这道棘轮施工时定（面板的 UID 字样随第 4 期按描述符重画） | 中立层又拿 `uid` 当身份（中立层只有 `externalId`） | 3a 棘轮开，3b 末清零 |
+| 中文叫法棘轮 | 范围核心 + 面板的字符串字面量（不扫注释）：`UP ?主`、`B ?站`、`哔哩`、`舰长`、`提督`、`总督`、`大航海`、`上舰`、`粉丝牌`、`专栏`、`房管`、`UID`、`动态`；白名单 `bilibili/`、迁移模块、ADR-0021 决策 50 的「投稿」「动态」 | 文案、提示词、界面写死 B 站的叫法（守卫 11 只有英文词） | 4 棘轮开，5 末清零 |
+| `.platform` 决定棘轮（推送侧） | 核心里读 `.platform` 的地方只许用来构造身份、显示、记日志 | 核心按平台名做决定：`platformSupportsAtAll`、`platformCanReceiveReply`、`isWebhookConnection` 这类中立名谓词，词棘轮看不见；该改成问适配器能力（`atAll`、`inbound`） | 3a 棘轮开，3b 末清零 |
+| 推送守卫②（推送平台专有词） | 范围 `packages/*/src`（ui 除外）+ `apps/server/src` + `apps/contract/src`，排除 `platforms/` 与测试，迁移模块进白名单；先剥注释。词表 `onebot`、`qq-official`、`miniapp`、`guild`、`openid`、`feishu`、`dingtalk`、`wecom`、`napcat`、`send_group_forward_msg`、`user_id`、`group_id`、CQ 码，加宽 `\bQQ[A-Z]`、`ws-reverse`、`transport`、`get_mini_app_ark`、`c2c`（「分享到 QQ」这类说 B 站的语境别误伤） | 核心里出现推送平台的专有词。勘察时核心 + 服务端代码约 133 处，大头随平台表与设置 schema 搬出、原生分享改名消失 | 3a 棘轮开，3b 末清零 |
+| 事件载荷 | 总线事件表的载荷类型递归检查：不许有 `uid` 键、`Bili*` 类型；平台原始值（如动态类型码）不许以裸 `string` 进载荷 | 总线事件又带上 B 站的形状（今天 `DynamicDetectedEvent` 带 `uid`、`type` 原样装 `DYNAMIC_TYPE_*`，剥注释后守卫 11 零命中） | 1④ |
+| 类型名后缀 | 扫核心（`packages/`、服务端）与 contract 的类型声明，类型名用了 [naming.md](../agents/naming.md)「不再用」那一列的后缀就红（ADR-0023 决策 15）；第三方与外部协议里的原名不管。那一列里带条件的写法（「当参数包用的 `Input`」「当设置值用的 `Config`」这类）怎么机判施工时定 | 新起或改的类型名不对表；按表该改的名字逐条见 data-model 的改名对照 | 施工时定 |
+| 4 名字唯一的家 | 同一个导出名全仓只定义一次；「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。点名表补上：直播监听的唯一判定、身份索引、`formatViewers`、`posts/` 里作品文字的取段函数、contract 里的叫法函数（没定名的施工时定）；面板不许自带路由键表（今天首页自抄 4 键 `LIVE_ROUTING_KEYS`）。不扫 extensions/ 与测试夹具，TS 重载不算多次定义 | 家以外出现同名定义。改了名的抄本拦不住，靠审查 | 随各项 |
+| 12 不读 `bilibili` 段（加固） | 核心代码不许读设置的 `bilibili` 段；加固后覆盖解构（`const { bilibili } = …`）与下标（`settings["bilibili"]`） | 核心读了 B 站的设置 | 1⑥（连同解构与下标） |
+| 错误体 | 契约测试：错误体与失败结果的 `code` 只装 snake 字符串，平台的数字码只在 `upstreamCode` | 平台的错误码塞进 `code`（今天 `routes/subs.ts` 两处） | 1④（随契约骨架） |
+
+### 第三层：对拍
+
+| 守卫 | 判据 | 什么时候红 | 期 |
+| --- | --- | --- | --- |
+| 21a 契约层对拍 | 用仓库里的假源拓展经契约 v3 走作品与直播：带图标的链接片段、直播、资料、问题上报等 | 只有 B 站走得通、拓展走不通 | 3b |
+| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `SubscriptionSource`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
+| 推送守卫③（假适配器对拍） | 一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`：要么走通，要么在「这版不开」名单里写明理由（ADR-0024 决策 11）。必须有的行：`atAll` 为 false 时不 @全体、`inbound`、`endpoint` 目标由连接托管、能力接口列得出拓展连接、登记即 `start`（晚登记的也收得到）、内置与拓展的入站都经宿主校验 | 只有内置适配器走得通的能力（勘察时：单向终点与托管目标、一个实现对多个平台、能力接口跳过拓展连接、晚注册的适配器收不到 `reconcile`） | 3b |
+| 模板变量可满足性 | 每个模板变量都映射到中立字段，表外的判红；`{tier}`、`{fanclub}` 进表 | 模板变量只有 B 站填得出（今天的 `{guard}`、`{mdn}`） | 3b |
+| AI 工具与技能约束 | 核心工具参数统一叫 `creator`，参数里不许有 `uid`；每把工具必须带 `label` 与参数标签；内置技能的 `allowedTools` 必须是核心中立工具的子集，否则挂到提供者的 `skills` 下；缺工具的技能自动隐藏要有测试 | 工具或技能只对 B 站成立 | 3b |
+| 10 出图字节门（扩到五种卡） | B 站动态出图的字节快照长期保留，并扩到直播、醒目留言、会员、词云、榜单五种卡。裁决规则（ADR-0028 决策 2）：中立形状优先；能用通用手段表达的照样逐字节一致；需要通用能力的就加通用能力（如卡片行 `{ text, icon?: ImageRef }`），不许加 B 站专属枚举；B 站纯装饰去掉；剩下的差异进「批准的像素差清单」，预批三类（平台叫法中立化、内联 SVG 换成图库图的残差、B 站纯装饰去掉），每条写样例、变化、类别与依据 | 清单外的像素差。更新快照必须同时补清单 | 2 |
+
+21b 的清单（按模块，施工时逐条补齐）：
+
+- 规则：四个开关各一条假源作品；关键词、正则、白名单命中正文、视频标题、文章标题、转发原作品；屏蔽后提醒用 `postNoun`；规则节按描述符露出；非人民币醒目留言的门槛、`custom` 会员体系、`minRank`、特别关注按 `viewer.id`。
+- 卡片：五种片段、三种附加块、转发嵌套、文章配图、互动数缺几项；零出网；预览走 `fetchPreview`；按订阅的皮肤；会员卡 `custom` + `tier.icon` + 按档换色、非人民币醒目留言、词云与总结卡。
+- 智能女仆：点评输入与过滤用同一个取段函数；看图从图库引用；六把中立工具按 `creator` 答得出；只装假源时内置技能可见可跑、依赖 B 站工具的隐藏、工具有中文标签、提示词里没有「B 站」「UP 主」；锐评平台列用 `descriptor.label`；假 `AiToolProvider` 能登记与撤销。
+- 模板：`{postNoun}`、`{name}`、`{tier}`、`{fanclub}`、时长与粉丝变量；假源不亮「默认文案有更新」。
+- 事件与契约：`post-detected`、`live-session-changed`、`live-viewers-changed`（具名、带 `subscriptionId`）、`followers-refreshed`；WS 帧快照里没有 `uid`；面板不用认识假源的类型。
+- 订阅、历史、统计、概览四个页面各自的清单施工时补。
+
+### 其余守卫
+
+1、4、10、11、12、21 与推送守卫①②③ 见上面三层。
+
 | # | 守卫 |
 | --- | --- |
-| 1 | 核心目录不许 import 服务端 `bilibili/`，例外只有 `compose.ts`；和现有两条拓展边界合成一张「谁不许 import 谁」的边界表 |
-| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片（第 0 期，见 [construction-plan.md](./construction-plan.md)）。已落：`scripts/network-guard.mjs`，挂在根配置的 `test.setupFiles`；拦在 `net.Socket#connect`（fetch、http、ws、WebSocket 都经过它），每条测试收尾查账，被测代码吞掉了报错也判失败。管不到：测试起的子进程（Chrome、脚本）、直接调 `dns.lookup`、在包目录里跑 `vp test`、本机代理转发 |
+| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片（第 0 期，见 [construction-plan.md](./construction-plan.md)）。已落：`scripts/network-guard.mjs`，挂在根配置的 `test.setupFiles`；拦在 `net.Socket#connect`（fetch、http、ws、WebSocket 都经过它），每条测试收尾查账，被测代码吞掉了报错也判失败。管不到：测试起的子进程（Chrome、脚本；Chrome 那一半由「出图器零联网」补）、直接调 `dns.lookup`、在包目录里跑 `vp test`、本机代理转发 |
 | 3 | 服务端除了持久化底层，不许直接写文件（writeFile、rename、appendFile）。底层要接住原子写 JSON、追加 JSONL、原子写二进制、整目录替换；白名单只有 config/persist.ts 那份保留注释的 YAML |
-| 4 | 同一个导出名全仓只定义一次；另有「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。不扫 extensions/ 与测试夹具，TS 重载不算多次定义。改了名的抄本拦不住，靠审查。 |
 | 5 | 面板里 `"/api/"` 字面量只许出现在 `services/` |
 | 6 | 注释里写的仓内路径必须指向真实存在的文件 |
 | 7 | 测试只放 `__tests__/`；文件名一律 kebab-case（biome `useFilenamingConvention`）。前半已落：`scripts/__tests__/test-file-layout.test.mjs`，全仓无例外（`scripts/` 也搬进了 `__tests__/`） |
 | 8 | 服务关停返回以后，数据目录不再变化（端到端） |
 | 9 | 存储层拒收同一身份的第二条订阅，所有写入路径各一条测试 |
-| 10 | B 站动态出图的字节快照长期保留 |
-| 11 | 核心里不许出现 B 站专有词：范围 `packages/` 全部 + 服务端 `bilibili/` 以外；contract、面板、测试、夹具不扫；词表 `DYNAMIC_TYPE_`、`bvid`、`hdslb`、`bilibili.com`、`b23.tv`、`live_status`、`WATCHED_CHANGE` 等，不收 `uid`；先剥注释。确实要留的进白名单、附理由。现查中立包里约 68 处、服务端约 50 处。以棘轮开启（3a 开头记下命中数当上限，只许少不许多，3b 结束清到 0），这就是中立化的验收线 |
-| 12 | 核心代码不许读设置的 `bilibili` 段 |
-| 13 | 迁移清单完整：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；对数据根的 `join(dataDir, …)` 前缀都必须在目录表里 |
+| 13 | 迁移清单完整：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；对数据根的 `join(dataDir, …)` 前缀都必须在目录表里。加固（随各项）：重推原件的每个载荷 kind（`forward-images`、`miniapp-card`）与字段（`picUrl`、`path`）都要有去向 |
 | 14 | devtools 换桩表写死两项目录（`src/devtools`、`src/bilibili/devtools`，⛔ 不用通配），隔离测试认两个引用点。构建后自检不动。 |
-| 15 | 桥协议的帧形状与通用 webhook 的 JSON 各一条快照守卫 |
+| 15 | 桥协议的帧形状与通用 webhook 的 JSON 各一条快照守卫；webhook JSON 里的 `private` 写死 `false`（主人目标不可能是 webhook） |
 | 16 | 改名收尾：每批改完旧名 grep 为零（桥协议、webhook、`bilibili/` 里 B 站原字段、卡片皮肤包清单的 `author`（指皮肤作者）进白名单） |
 | 17 | 来源不读写文件：`bilibili/` 里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红 |
-| 18 | `bilibili` 是保留 id：`ExtensionIdSchema` 拒收，同拒绝原型名的写法 |
-| 19 | 主人目标必须是私聊目标：`master.targetId` 指向群目标时 schema 校验不过；面板选主人的下拉只列私聊目标 |
+| 18 | 保留 id：`bilibili` 与内置平台适配器的键（`onebot`、`qq-official`、`webhook`）`ExtensionIdSchema` 拒收，同拒绝原型名的写法 |
+| 19 | 主人目标必须是私聊目标：`master.targetId` 指向群目标时 schema 校验不过；面板选主人的下拉只列私聊目标。加固（随各项，ADR-0024 决策 14）：PATCH 把主人目标改成群目标直接拒收；`notifyMaster` 发送时复检，不是私聊就拒发（`invalid`） |
 | 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 |
-| 21 | 中立性对拍（09-27 加）：用仓库里的假源拓展把 B 站用到的每一种中立能力走一遍端到端（带图标的链接片段、直播、资料、问题上报等）；只有 B 站走得通、拓展走不通的就是后门。词表与 import 守卫抓不到语义上的后门（例：照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有），靠它抓。3a 检查点的验收之一 |
+
+- 推送侧另有两道数据守卫（ADR-0024 决策 9，3a）：改目标的 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
+- 守卫 17 在 3a（`bilibili/` 在 3a 才出现），守卫 18 加上三个内置适配器的键也在 3a；哪一期改了盘上形状，就在同一期往迁移模块加条目、钉进守卫 13 的清单。各道守卫哪期开、哪期清零，与 [construction-plan.md](./construction-plan.md)「中立性守卫的归期」对不上时以那边为准。
 
 守卫 4 上线前要先清掉现有重名：`BootstrapConfigSchema` 两份（服务端 `config/schema.ts` 那份 `cookieEncryptionKey` 可选、至少 1 位；internal 那份必填且至少 16 位）合一并**按可选**（否则没设密钥的用户开不了机）；`CommentaryClient` / `SubscriptionsView` / `ConversationRole` 各两份合并；`createDevtools` 的 stub 和零 import 文件里的 `isPlainObject` 进白名单并写明理由；`runtime/video-card.ts` 的 `formatDuration(seconds)` 改叫 `formatClock`。
 
@@ -249,10 +374,11 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - `bilibili/` 里贴着 B 站接口的原始字段名，以及 B 站内部的 `uid` / `roomId`。
 - `bilibili/` 内部名实相符的名字（如 `biliLiveCardInput`）。原先还列了 `BiliSubscription`、`isBiliSubscription`、`BiliStatsSourceOptions`，已被 09-27 的身份摊平与改名取代：订阅不再分 B 站支，`isBiliSubscription` 删掉、按 `sourceKey` 判，统计适配器合成 `bindStatsRecorder`。
 - **日志行格式**（`msg`、`ts` 等）：logs 跨代共享、冻住的桌面壳写死了目录。
-- **通用 webhook 发出的 JSON**（`forward`、`ts` 等）：读它的是用户自己的接收端，永远不改。
-- **桥协议的线上帧**（`forward`、`desc`、`picUrl`、能力名 `forward`、`miniapp-card` 等）：已发布的插件在读，握手只比主版本。内部改名只改到桥的 adapter；真要改走两步（先发一版插件同时认新旧字段，等大家升上去 BN 再切）。这些冻结的线上名字 1.0.0 之前全部改成内部新名（09-27 拍板）：`forward` → 合并转发 `mergeForward`、`desc` → `description`、`picUrl` → `imageUrl`、能力名 `forward` 同改、能力名 `miniapp-card` → 原生分享；alpha 不动，alpha 之后、1.0.0 之前按两步走一次改完，之后出口里的新旧映射整个删掉，见 [construction-plan.md](./construction-plan.md)。
+- **通用 webhook 发出的 JSON**（`forward`、`ts` 等）：读它的是用户自己的接收端，永远不改；`private` 那一格写死 `false`。
+- **桥协议的线上帧**（`forward`、`desc`、`picUrl`、能力名 `forward`、`miniapp-card`、入站的 `miniAppCardLinks` 等）：alpha 期间不改，1.0.0 之前按两步改完（09-27 拍板，09-28 补上入站那一格）。已发布的插件在读，握手只比主版本，所以在那之前内部改名只改到桥的适配器。两步按方向分：BN 发出去的格，先发一版插件同时认新旧字段，等大家升上去 BN 再切；插件发进来的格（入站的 `miniAppCardLinks`）反过来，BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。改完之后适配器里的新旧映射整个删掉；改成什么名字见 [construction-plan.md](./construction-plan.md)。
 - 拓展契约里的毫秒时刻、签名清单的 `issuedAt`（秒）：已发出的格式，进门换 ISO。
 - 已经拍板不动的：import 后缀两套并存；`FRAMES.live` 与 `FRAMES.wordcloud` 不合并；`skin.json` 与 `default.json` 双文件；锐评分数由模型打；`apps/contract` 放在 `apps/` 下。
 - 全仓包版本统一 `0.0.0-dev` 是施工项、不是「不动」：现在只有 ui 与 `apps/*` 是 `0.0.0-dev`，其余包排在第 5 期统一（见 [construction-plan.md](./construction-plan.md)）。
 - ⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本）。
+- ⛔ 不做：BN 侧替来源或适配器限流、去重（维持 ADR-0019 决策 53）；投递重试只在核心按目标做。
 - alpha 不做、1.0.0 之前做（09-27 改，原定「1.0 之后」）：devtools 换 devframe、新手引导换 driver.js，各自先做小试验再定，见 [construction-plan.md](./construction-plan.md)。devframe 要先查清许可证和维护者，并重新验证 devtools 不会进生产产物；driver.js 要先验证引导锁（聚光灯外不能操作，⛔ 不许放开）、跨页面的步骤与晚挂上的锚点、能不能跟随界面皮肤。真正拦住拓展读写文件也不做（要等沙箱）。

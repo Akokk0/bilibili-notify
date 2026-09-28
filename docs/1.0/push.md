@@ -1,12 +1,14 @@
 # 1.0 推送链路
 
-> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023。
+> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023 与 ADR-0024 ～ 0031（推送侧见 0024，集成与问题表见 0025，失败规矩见 0026，链接预览见 0029，指令见 0031）。
 
-一条推送从来源交东西，到落进历史，要过六段。这份是 1.0 的那张图与各段的边界，文末列出与现行 `docs/agents/push.md` 的差异。数据形状见 [data-model.md](./data-model.md)；来源怎么交东西见 [subscription-sources.md](./subscription-sources.md)；拓展的推送出口见 [extension-contract.md](./extension-contract.md)。
+一条推送从来源交东西，到落进历史，要过六段。这份是 1.0 的那张图与各段的边界，文末列出与现行 `docs/agents/push.md` 的差异。数据形状见 [data-model.md](./data-model.md)；来源怎么交东西见 [subscription-sources.md](./subscription-sources.md)；拓展怎么提供平台适配器见 [extension-contract.md](./extension-contract.md)。
 
 ## 一句话
 
 **来源只交中立数据，装配只出消息，路由只认订阅 id，投递只认连接。** 四段各切各的，谁都不许越界。B 站与拓展从第二段起走完全同一条链。
+
+推送那头同理：OneBot、QQ 官方机器人、webhook 与拓展借来的 bot 实现同一个 `PlatformAdapter`，进同一张登记表；真正往外发只有 `TargetDispatcher` 一个口。
 
 ## 六段
 
@@ -15,15 +17,16 @@
 | ① 来源 | 服务端 `bilibili/`；拓展经 `extensions/` 收件口 | 把平台数据翻成 `PostReport` / `LiveSignalReport`，只带 externalId 上报（来源不知道订阅 id）；图先用 `ctx.fetchImage` / `ctx.storeImage` 存进图库，上报里只交 `ImageRef` |
 | ② 装配 | 服务端 `posts/`（作品）、`live/`（直播与直播附加项） | 过滤 → 出卡 → AI 点评 → 套文案 → 按版式分组 → 交给发送 |
 | ③ 路由与闸 | `packages/push` 的 `PushRouter` | 按订阅 id 查路由、过闸、选目标、收窄附加项 |
-| ④ 发送 | 同上 | 分条、重试、@全体 分流 |
-| ⑤ 投递 | 服务端 `push/` 的 `TargetDispatcher` → `outlets/` 里的 `PushOutlet` | 按连接找出口，真发出去 |
-| ⑥ 历史 | `history/` | 一行 = 一次推送 × 一个目标；存重推原件 |
+| ④ 发送 | 同上 | 分条、按目标重试、@全体 分流 |
+| ⑤ 投递 | 服务端 `push/` 的 `TargetDispatcher` → `platforms/` 里的 `PlatformAdapter` | 按目标所在的连接找适配器，真发出去；适配器登记表与分发在 `push/` |
+| ⑥ 历史 | `history/` | 一行 = 一次推送 × 一个目标，失败带 code；存重推原件 |
 
 ### ① 来源
 
 - 来源只管「和那个平台打交道」：拉数据或收上报、判新、翻成中立形状。判新、去重、限流归来源，BN 不兜底。
 - B 站：拉动态翻成 `PostReport`，弹幕通道翻成 `LiveSignalReport`，按 uid（就是 externalId）经 `ctx.reportPost` / `ctx.reportLive` 上报。核心在进门那一刻按身份展开成每条订阅一份 `PostEvent` / `LiveSignal`，此后只见订阅 id（现在 `engines.ts` 里那层 `subscriptionIdOfUid` 适配消失）。
 - 拓展：上报经宿主收件口核形状、毫秒换 ISO；图在上报之前已由拓展用 `ctx.fetchImage` / `ctx.storeImage` 存成 `ImageRef`。之后和 B 站一样由核心按身份展开。
+- **交完就算完**：`reportPost` 保持 `void`（上报类都是，见 ADR-0025），来源交完就前移自己的锚点。投没投出去、失败了重不重试，归核心（见 ④），来源不知道。
 - 直播「什么时候推」不在来源：核心的场次引擎决定开播、正在直播、下播、断流接续（见 [subscription-sources.md](./subscription-sources.md)「直播」）。
 
 ### ② 装配
@@ -32,16 +35,16 @@
 
 | 步骤 | 规矩 |
 | --- | --- |
-| 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。被挡时的「屏蔽后提醒」带 `postNoun` |
-| 出卡 | `packages/image` 的 `generatePostCard` / `generateLiveCard`，只吃中立形状、只内联图库引用、不联网 |
-| AI 点评 | `packages/ai`，按订阅设置 |
-| 套文案 | 全仓唯一的 `interpolate`（internal）；变量 `{name}`、`{noun}`、`{viewer}`、`{key}` |
-| 按版式分组 | internal 的版式分组，作品与直播共用一份；版式块：卡片、文字、链接（作品本身的地址）、正文链接、分条符。**正文链接**（09-27 拍板）：默认显示、默认跟在「链接」块后面同一条消息；把正文里 `type: "link"` 的片段一个一行写成「显示文字 地址」，同一地址只列一次，没有就不占行；只认片段类型，不认来源（卡片上的链接点不了，靠它把地址带出去） |
-| 交给发送 | 收成一个出口 `broadcast(subscriptionId, messages, kind)`；`PushLike` 全仓一份 |
+| 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。文字取自 `posts/` 里唯一的取段函数（过滤与 AI 看同一份字）。被挡时的「屏蔽后提醒」带 `postNoun` |
+| 出卡 | `packages/image` 的 `generatePostCard` / `generateLiveCard`，只吃中立形状、只内联图库引用、不联网。出卡失败就降级成纯文字 |
+| AI 点评 | `packages/ai`，按订阅设置。失败就不带点评 |
+| 套文案 | 全仓唯一的 `interpolate`（internal）；变量 `{name}`、`{postNoun}`、`{viewer}`、`{key}`，会员档名 `{tier}`（原 `{guard}`）、粉丝团名 `{fanclub}`（原 `{mdn}`） |
+| 按版式分组 | internal 的版式分组，作品与直播共用一份；版式块：卡片、文字、链接（作品本身的地址）、正文链接、分条符。**正文链接**（09-27 拍板）：默认显示、默认跟在「链接」块后面同一条消息；把正文里 `kind: "link"` 的片段一个一行写成「显示文字 地址」，同一地址只列一次，没有就不占行；只认片段类型，不认来源（卡片上的链接点不了，靠它把地址带出去） |
+| 交给发送 | 收成一个入口 `broadcast(subscriptionId, messages, feature)`（推送种类就是特性键，ADR-0023 决策 12）；`PushLike` 全仓一份 |
 
 - **装配不管静音和免扰**：那是路由层的事。代价：免扰期间照样出卡、照样调 AI（花钱）再丢——主人知情拍板，推翻了先定的「装配前先判」（Q20）。
 - **没配目标照样出卡**（不动）：引擎不许知道目标，发不出去是下游的事。
-- 作品装配入口是 `deliverPost`；主卡发送失败往外抛，来源自己定怎么办；图集（`PostPushPart` 的 `post-images`）失败吞掉，它是 `role: "extra"`、不许 @全体。
+- **失败降级，不回给来源**：出卡失败发纯文字、AI 失败不带点评，都不整条重来。作品装配入口是 `deliverPost`，它不把投递结果交回来源；投递失败由推送层按目标处理（④）、按目标落历史（⑥）。图集（`PostPushPart` 的 `post-images`）是 `role: "extra"`、不许 @全体；它没送到，那一行记成 `partial`。
 - 串行：送达次序 = 发起次序，按订阅过 `createSerialQueue`，防「下播卡晚于新一场开播卡」。渲染闸另叫 `createRenderGate`。
 - 直播附加项（词云、直播总结）的生产在 `live/`。
 
@@ -62,7 +65,8 @@
 
 ⚠️ 第 5、6 两道的先后、以及 `silenced` 的附加项消息怎么记，设计稿只定了「先算目标再判」，具体顺序施工时定。
 
-- 只有「时间上的挡」（静音、免扰）才落 `silenced`；总开关关着、附加项收窄成空、平台不支持 @全体，照旧静默、不落行。
+- 只有「时间上的挡」（静音、免扰）才落 `silenced`；总开关关着、附加项收窄成空、目标所在的连接不支持 @全体，照旧静默、不落行。
+- 支不支持 @全体 问适配器的能力 `atAll`，不按平台名判（见 ⑤「成员」）。
 - `silenced` 连带三处：不算「今日推送」与趋势（现 `countsAsDelivery`），追加补丁（词云、总结）时不被 `computeStatus` 重算成 failed，补发闸（`repushDenial`）放行。
 - ⛔ 被挡时不弹警告卡，历史页也不加按状态筛选（09-05 否过）。
 
@@ -70,36 +74,158 @@
 
 ### ④ 发送
 
-照旧：
-
 - 一个目标的多条按序发，某条失败即中止该目标后续条。
-- 目标不可达时退避重试，**每次重试前复检这条订阅自己的路由**——防「取消了还在推」。
+- **按目标逐个投递，只重试失败的那个目标**，别的目标不重发。重不重试看结果里的 `code`（码表见 ADR-0026）：
+
+  | code | 重试 |
+  | --- | --- |
+  | `rate_limited` / `unavailable` / `timeout` | 退避重试 |
+  | `indeterminate`（结果不明，可能已经送到） | 绝不重试 |
+  | 其他标准码与自定义码 | 不重试 |
+
+- 目标不可达时照旧退避重试，**每次重试前复检这条订阅自己的路由**——防「取消了还在推」。
 - @全体 那支同步发起、不 await，顺序靠它先于卡片交给投递。
+- BN 不替适配器限流、去重：重试只在核心按目标做。
+- 推送层对每个目标回调一次 `PushSendResult`（原 `PushSendInfo`），历史按它落行。
+- 代价：推送进行到一半进程崩了，这一条可能漏掉（最多一次）。存盘的待发队列仍未决。
 
 ### ⑤ 投递
 
+内置平台（OneBot、QQ 官方机器人、webhook）与拓展实现同一个 `PlatformAdapter`、进同一张登记表：留内置、拓展两套，就永远有一套没被对拍到。`CONNECTION_PLATFORMS` 这个闭集删掉；各平台的设置 schema 与平台信息表搬出 `internal`，由适配器自带，面板经 `/api/adapters` 拿描述。
+
+#### 名字
+
 | 名字 | 原名 | 管什么 |
 | --- | --- | --- |
-| `TargetDispatcher` | `NotificationSink` / 多路分发 `MultiplexSink` | 按目标所在的连接找出口；避免和 `PushOutlet` 同叫「出口」 |
-| `PushOutlet` | `PlatformAdapter` | 一种连接怎么真发出去；内置在 `outlets/`，拓展经 `registerPushOutlet` 登记 |
-| `PushOutletRegistry` | `AdapterRegistry` | 出口登记表 |
+| `TargetDispatcher` | `NotificationSink` / 多路分发 `MultiplexSink` | 按目标所在的连接找适配器；**唯一能发送的**（见「出口咽喉」） |
+| `PlatformAdapter` | 不变 | 一种连接怎么真发出去；内置的在 `platforms/` |
+| `PlatformAdapterDef` / `PlatformAdapterHandle` / `registerPlatformAdapter` | 拓展契约的 `PushExtensionDef` / `PushSourceHandle` / `registerPushSource` | 交进登记表的一整包（适配器 + 描述 + `settingsSchema`）、登记后拿回的把手、登记口；内置与拓展同一个 |
+| `PlatformAdapterRegistry` | `AdapterRegistry` | 适配器登记表，和分发一起在 `push/` |
+| `PlatformAdapterContext` | — | 适配器拿到的环境：`IntegrationContext`（ADR-0025）加推送侧特有的（入站 `ctx.inbound` 是其一，其余施工时定） |
+| `PlatformAdapterDescriptor` | 拓展契约的 `ExtensionPushView` | 描述**一个适配器**：`{ label, shortLabel, color, icon, settingsFields }` |
+| `PlatformDescriptor` | 不变（`tint` 改叫 `color`） | 描述**一个聊天平台**：`{ platform, label, shortLabel, color, icon?, targetKind: "session" \| "endpoint", scopes, addressNouns }`；`inbound`、`atAll` 从这里挪成适配器的运行期能力 |
+| `ConnectionCandidate` | 拓展的 `ExtensionBotView`（`listBots` 的元素） | 新建连接时供挑的候选 |
 
-- ⚠️ 按连接找出口，**不按消息里报的平台名找**——拓展借来的 bot 平台名是开放字符串。
-- 出口内部拆成的两半（原 `Connector` / `PlatformDialect`）新名施工时定。
-- 线上格式不改：桥协议的帧（`forward`、`desc`、`picUrl`…）与通用 webhook 的 JSON（`forward`、`ts`…）原样，改名只改到出口内部，各有快照守卫。
-- 连接与目标的数据形状见 [data-model.md](./data-model.md)「连接与目标」。凭据按 `secret: true` 打码下发。
+- ⚠️ 按连接的 `adapterKey` 找适配器，**不按平台名找**（分发键 `connectionDispatchKey` 删掉）：拓展借来的 bot 平台名是开放字符串，一个适配器也能对多个平台（webhook 就是）。内置三个的键是 `onebot` / `qq-official` / `webhook`，和 `bilibili` 一样进保留 id；拓展的键就是拓展 id。
+- 适配器内部拆成的两半（原 `Connector` / `PlatformDialect`）新名施工时定。
+- 清单的 `contributes.push` 不改名。
+
+#### 成员
+
+| 类 | 成员 | 说明 |
+| --- | --- | --- |
+| 描述 | `descriptor`、`settingsSchema` | `descriptor` 就是 `PlatformAdapterDescriptor`；`settingsSchema` 校验连接的 `settings`，面板照 `settingsFields` 画表单 |
+| 必备 | `start(ctx)` / `stop()` | 取代 `reconcile` / `dispose`。登记即 `start`：晚登记的拓展也一样起来，不用等下一次连接变更才补 |
+| 必备 | `send`、`isAvailable`、`probe` | 真发、此刻发不发得出、探一次通断；`send` 与 `probe` 回结果形状（见「结果与失败」） |
+| 必备 | `listConnectionCandidates(signal)` | 列新建连接的候选（见「新建连接」） |
+| 可选 | `capabilities` / `probeCapabilities` | 运行期能力，新增 `atAll`、`inbound`；原先按平台名判断的（@全体 分流、审批能不能收回复）一律改问能力。能力是三态，不算失败结果 |
+| 可选 | `listAddressCandidates(connection, signal)` | 列可挑的地址（如 QQ 官方机器人的会话与频道，频道带 `parentAddress`） |
+| 可选 | `connectionAuth` | 扫码之类的建连接流程（如 QQ 官方机器人扫码建号），与订阅侧同一个 `AuthState`，结果是一份连接草稿 |
+
+内置适配器也是集成，走同一套生命周期：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时宿主先调适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾；运行状态只取 `running` / `failed` / `settings-invalid`（ADR-0025 决策 5）。
+
+#### 新建连接：只走候选
+
+- 只有一条路：挑一个候选，再填字段。`ConnectionCandidate = { name, platform: PlatformDescriptor, settings, selfId?, via?, boundConnectionId? }`。
+- 平台固定的适配器返回写死的**模板候选**：OneBot 一个、QQ 官方机器人一个、webhook 四个。模板的 `settings` 是默认值、不带 `boundConnectionId`，可以反复用。
+- 桥返回在线的 bot。
+- 连接的 `platform` 只来自挑中的候选。
+- 后果：新建连接要适配器在跑；清单里的静态数据拿不到平台列表（推送侧的平台列表改由运行期的候选给）。已有连接的脸读连接上的 `platformSnapshot`，不等适配器。
+
+#### webhook
+
+webhook 是**一个**适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选：webhook 是「怎么连」，不是一个平台；拆成四个会占掉 `feishu` 等平台键，而一个适配器本来也要能对多个平台。冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
+
+#### 连接与目标
+
+`connections.json` 回答「用谁发」，一条连接就是一个 bot；`targets.json` 回答「发到哪」；订阅按目标 id 引用。
+
+```ts
+type Connection = {
+  id: string; name: string; enabled: boolean;
+  adapterKey: IntegrationKey;   // 找适配器用；拓展的就是拓展 id
+  platform: string;         // 开放字符串，只来自挑中的候选
+  settings;                 // 归适配器的 settingsSchema 校验
+  platformSnapshot;         // PlatformDescriptor 去掉 platform 那一格，只有宿主写
+  probeState?;              // 对象，三态取值在它的 status 里，只有宿主写
+};
+
+type PushTarget =
+  | { id; name; connectionId; enabled; kind: "session"; scope; address; parentAddress?; reachability? }
+  | { id; name; connectionId; enabled; kind: "endpoint"; managedBy: "connection"; reachability? };
+```
+
+- 连接上删掉 `kind`、顶层的 `connector`、`extensionId`（并进 `adapterKey`）；`transport` 留作 OneBot 适配器私有的设置。
+- **目标上删掉 `platform`**：它只是连接平台的一份拷贝，两处一改就漂。平台一律经 `connectionId` 从连接取，主人身份比对的平台也是。补两道守卫：改 `connectionId` 时比新旧连接的平台；整节替换（备份恢复）时校验连接身份没变。
+- 连接不在了的目标只隔离那一条，不连累别的；作用域键（链接预览按群的那张表）去掉平台前缀。
+- 托管目标（webhook 这种连接本身就是终点）按 `targetKind` 是 `endpoint` 判，不再按平台闭集。
+- 凭据按 `secret: true` 打码下发（见 data-model.md）。
+
+#### `platformSnapshot`
+
+连接上存一份 `PlatformDescriptor` 去掉 `platform` 那一格。适配器不在场（拓展停了、桥没连上）时，面板照样画得出已有的连接；「面板异步拿描述、拿不到怎么兜底」那一题因此不用答。
+
+| | |
+| --- | --- |
+| 谁写 | 只有宿主：新建时照候选抄、列候选时按平台名刷新、迁移时填、备份里带回；POST / PATCH 带来的一律忽略 |
+| 谁读 | 面板上连接的脸与目标编辑器（`scopes`、`addressNouns`）、托管目标同步（`targetKind`）、目标的 scope 校验 |
+| 谁不读 | 推送层（认 `adapterKey` 与能力）、适配器；主人身份认 `connection.platform` |
+
+快照变了不许触发适配器重连。
+
+#### 连接设置的校验
+
+- 保存时：适配器在场就按它的 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。
+- 读盘时：逐条校验，不过的只隔离那一条——不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动。BN 照常开机。
+- 只有外壳（`id` / `name` / `adapterKey` / `platform`）坏了才挡开机。
+- 撤下的旧形状写成明确的名单：适配器没登记不等于存量（拓展是晚加载的）。
+- 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。现行「坏的内置连接开机就抛错」翻掉。
+
+#### 这一版不对拓展开放
+
+`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
+
+#### 入站
+
+内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报（现行内置的入站在装配处直通分发，不核归属）。回调包叫 `InboundHandlers`（原 `InboundSinks`）。
+
+#### 结果与失败
+
+按 ADR-0026：一次操作的结果一律是 `{ ok: true, … } | { ok: false, code, message, upstreamCode? }`，抛错只留给 bug。
+
+- `DeliveryResult`（`send` 的结果）与 `ProbeResult`（`probe` 的结果）改成这个形状，`err` 删掉。平台自己的码（OneBot 的 retcode、QQ 的错误码、HTTP 状态）放 `upstreamCode`，不占 `code`；各平台的码翻成哪个标准码，施工时逐个适配器定。附带的 `latencyMs` 与截流标记 `isSynthetic`（原 `synthetic`）照留。
+- `ProbeResult` 原来的 `ok: null`（这个适配器没有探测协议），按码表是 `unsupported`。
+- 适配器抛错算 bug：宿主在边界接住，按 `unavailable` 处理并记错误日志。
+- 桥的回执进门时翻成结果形状；说不清原因的记 `unknown`。
+- 连接上的探测状态叫 `probeState`（原 `testStatus`），是对象，三态取值在它的 `status` 里；只有宿主写。不迁移，开机重探。路由 `/api/connections/:id/probe`（原 `/test`）。
+- 目标的可达性记在 `reachability.changedAt`（原 `testStatus.lastCheckedAt`，只在通断翻转时写）。
+
+#### 原生分享与链接入站
+
+链接预览（ADR-0029）落在适配器这一侧的部分：
+
+- 解析器交中立描述 `{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`（`LinkPreview.nativeShare`），由 OneBot 适配器去签，签不了就回图片。现行签卡写死的 `type: "bili"` 删掉。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表。
+- OneBot 入站的 B 站域名预筛删掉：该不该回预览由解析器的 `matches` 说了算，适配器不认识任何一家来源。64KB / 8 层的上限保留。
+- 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格照旧，进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。
+- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。
+
+#### 线上格式
+
+- 通用 webhook 的 JSON（`forward`、`ts`…）永远不改，改名只改到适配器内部，有快照守卫。
+- 桥协议的帧（`forward`、`desc`、`picUrl`…）alpha 期间不改，1.0.0 之前按两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md)；在那之前改名只改到桥的适配器内部，有快照守卫。
 
 ### ⑥ 历史
 
-一行 = 一次推送 × 一个目标。同一次推送的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。
+一行 = 一次推送 × 一个目标。同一次推送的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。投递失败按目标记：每个目标一行，失败带 code，可以手动补发。
 
 | 字段 | 1.0 |
 | --- | --- |
-| 行类型 | `HistoryRow`（原 `HistoryEntry`）；记录入参的目标叫 `targetId` |
+| 行类型 | `HistoryEntry`（不改名：后缀表里「列表、日志、账本里的一条」用 `Entry`）；追加新行的入参叫 `NewHistoryEntry`（原 `HistoryRecordInput`），里面的目标叫 `targetId` |
 | 身份 | 行上带 `identity: { sourceKey, externalId }`，不再分「B 站行 / 拓展行」两套格 |
 | 快照 | `nameSnapshot`；`avatarSnapshot` 是图库引用（所有来源都有头像快照了） |
 | 时刻 | `createdAt`（ISO） |
 | 推送种类 | 那一格叫 `feature`（原 `kind`），值直接用特性键名：`post` / `liveStart` / `liveStreaming` / `liveEnd` / `membership` / `superchat` / `specialDanmaku` / `specialUserEnter`；`featureToPushKind` 删掉；`/api/history?feature=`、按天计数的键同一套 |
+| 投递结果 | 每条消息的结果是结果形状：失败带 `code` + `message`（与 `upstreamCode?`），原来那格 `err` 原话删掉。旧历史里的失败迁成 `{ code: "unknown", message: 原话 }`，统计与重推按 `unknown` 处理 |
 | 重推关系 | `repushOf` / `HistoryRepushMessage`（原 `retryOf` / `HistoryRetryMessage`；retry 只指传输层自动重试 `maxRetries`） |
 
 | 态 | 判据 |
@@ -112,46 +238,81 @@
 
 **重推原件与图**：
 
-- 每行存重推原件，原件类型叫 `RepushOriginal`（原 `DraftSchema` / `DRAFT_GONE`，和锐评草稿撞词；字段 `v` → `version`、`own` → `isOwnCopy`）；原件里的图（卡片图、自存图）与头像快照都按内容摘要存进统一图库 `images/<sha256>.<ext>`，行里只存引用。取消 `history/img/`。
-- 保留期清理那一趟按引用全局清扫图库，引用方含历史行、重推原件、资料缓存。不再「按日删日文件时连图一起删」。
+- 每行存重推原件，原件类型叫 `RepushSnapshot`（代码里的 `DraftSchema` / `DRAFT_GONE`，和锐评草稿撞词；字段 `v` → `version`）；原件里的图（卡片图、自存图）与头像快照都按内容摘要存进统一图库 `images/<sha256>.<ext>`，行里只存引用。取消 `history/img/`。
+- 原件图上的 `own`（标「复用历史那份 / 原件自己存的」）删掉：图按摘要进图库、按引用清扫，两处不再有区别。
+- 原件里的载荷种类与字段（`forward-images` → `image-group`；小程序卡那一种按原生分享的中立描述改字段）由迁移改写，进守卫 13 的清单。
+- 保留期清理那一趟按引用全局清扫图库，引用方含历史行、重推原件、资料缓存、AI 会话。不再「按日删日文件时连图一起删」。
 - 人工重推走 `PushRouter` 的单目标发送，所以静音 / 免扰 / 总开关天然不参与，退避重试与重试前复检照有。**补发闸放行 `silenced` 行**：主人静音期间被挡下的，事后可以补发。
 
 ## 附加项
 
 生产与推送仍是两个问题：
 
-- **@全体 没有「生产」**：只有推不推。1.0 只有 `atAllPost` 与 `atAllLiveStart` 两把；只有开播能 @全体，周期「正在直播」不能。
+- **@全体 没有「生产」**：只有推不推。1.0 只有 `atAllPost` 与 `atAllLiveStart` 两把；只有开播能 @全体，周期「正在直播」不能。目标所在的连接支不支持 @全体，问适配器的能力 `atAll`。
 - **词云 / 直播总结**在 `live/` 生产，三道全看折叠值、不看目标：开播时攒不攒弹幕 → 下播时要不要算 → 生产者自己弃权（热词不足等回 `undefined`）。产出是 `undefined` 的**根本不发起广播**，和「收窄成空」看起来一样、成因相反。
-- 附加项的逐目标三态表、注册表照旧；盘上以特性键 / 附加项做键的配置由迁移改键（见 [data-and-migration.md](./data-and-migration.md)）。
+- 附加项的逐目标三态表、注册表照旧；盘上以特性键 / 附加项做键的设置由迁移改键（见 [data-and-migration.md](./data-and-migration.md)）。
 
 ## 主人通知与问题上报
 
-推送层告诉主人只有一个口 `notifyMaster(text)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`）。出口上的 `sendPrivate` 与「强制私聊」标志 `{ private: true }` 删掉，出口只有普通的 `send`：主人要是在面板上选了群目标，强制私聊会把群号当成 QQ 号去调「发私聊」，要么报错、要么错投。私聊的要求挪到选主人目标时——`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊目标）；迁移时指向群目标的清空，首访页提示重选。
+推送层告诉主人只有一个口 `notifyMaster(payload: string | NotificationPayload)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`），经 `TargetDispatcher` 发到主人目标，返回结果形状；审批预览卡这种带图的也走它。
+
+适配器上的 `sendPrivate` 与「强制私聊」标志 `{ private: true }` 删掉，适配器只有普通的 `send`：主人要是在面板上选了群目标，强制私聊会把群号当成 QQ 号去调「发私聊」，要么报错、要么错投。私聊的要求挪到主人目标上，守三道：
+
+- 选的时候：`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊目标）；PATCH 把它改成群目标直接拒收。
+- 发的时候：`notifyMaster` 复检主人目标是私聊，不是就拒发，回 `invalid`。
+- 迁移时：指向群目标的清空，首访页提示重选。
 
 | 通路 | 受静音管？ | 说明 |
 | --- | --- | --- |
-| 主人通知 `notifyMaster`（指令回复、出错告诉主人） | 否 | 挡掉的话主人只会看到指令毫无反应 |
-| `ctx.reportProblem({ …, notify: true })` | 否 | 来源定严重度与文案；核心按「同一来源、同一 code 60 秒一次」节流；同时进面板问题框 |
+| 主人通知 `notifyMaster`（出错告诉主人、审批预览卡） | 否 | 发到主人目标 |
+| 指令回复（`CommandDef.run` 的 `reply`） | 否 | 经 `sendToAddress` 回到发指令的那个会话，不再发到主人目标那条连接；挡掉的话主人只会看到指令毫无反应 |
+| `ctx.reportProblem({ …, notify: true })` | 否 | 来源定严重度与文案；核心按「同一报的人（`reporter`）、同一 code 60 秒一次」节流；同时进面板问题框 |
 | `ctx.reportProblem({ … })`（不带 notify） | — | 只进面板问题框，不私聊 |
 | `engine-error` | 否 | 只剩流水线错误（如出卡失败）；`source` 改成中立模块名（施工时定）；出图连续失败只提醒一次 |
 
-来源级问题（登录失效、关注同步失败、拿不到直播状态）一律走 `reportProblem`，不再走 `engine-error`。
+来源级问题（登录失效、关注同步失败）一律走 `reportProblem`，不再走 `engine-error`；拿不到直播状态不归来源报，由核心调 `fetchLiveStatus` 拿到失败时自己记。平台适配器也经 `ctx.reportProblem` 报问题，带 `connectionId`，宿主核这条连接是不是这个适配器的；连接卡看关于自己的，问题框看全部（ADR-0025 决策 11）。
 
 ## 不走这条链的旁路
 
 | 旁路 | 差在哪 |
 | --- | --- |
-| 主人通知 | 发给主人目标（必须是私聊目标），不受全局静音管 |
+| 主人通知 `notifyMaster` | 发给主人目标（必须是私聊目标，发送时复检），不受全局静音管；返回结果形状 |
 | 手动发一条（连接自测、卡片预览发送、AI 试一句、锐评投递） | 走同一套重试与投递，但不查路由、不落历史 |
-| 链接卡 | 不进 `PushRouter`：`link-cards/` 的闸门过完，按收到那一帧的连接直接找出口回源群；解析经 `LinkResolver` 登记表 |
+| 链接预览回复 | 不进 `PushRouter`：`link-preview/` 的闸门过完（冷却键「群 + 解析器 + canonicalId」），经 `TargetDispatcher.sendToAddress` 回到消息进来的那个会话；解析经 `LinkResolver` 登记表 |
+| 指令回复 | `CommandDef.run(values, ctx: { reply(payload), signal })` 返回结果形状；`reply` 经 `sendToAddress` 回到发指令的那个会话，`login [来源]` 的二维码（取自 `AuthState`）也经它发图。返回失败时框架回「『{指令名}』没办成：{message}」；抛错回「出错了，详情在日志里」并记错误日志 |
+
+`TargetDispatcher.sendToAddress(connectionId, address, payload)` 只给后两条用：不进路由、不过闸、不落历史；但要查 `isAvailable`，结果带 code，由截流统一记，不重试。链接回复原先现造的临时目标删掉。
+
+### 出口咽喉：只有 `TargetDispatcher` 能发送
+
+所有往外发的路——按路由的广播、人工重推、手动发一条、主人通知、链接预览回复、指令回复——最后都经 `TargetDispatcher`。登记表对外只给不含 `send` 的视图，`send` 只经 `TargetDispatcher` 的特权句柄；拿到登记表也绕不过它直接发。守卫见下文「推送侧的守卫」。
 
 ## 边界：谁不许知道什么
 
 - **来源不许知道目标。** 推不推、推给谁归 BN。
 - **装配不许认身份、不许读平台原始数据。** 一段步骤所有来源共用，往来源那头另加一步，别的来源就静默漏掉。
 - **出图器不许联网。** 图只认图库引用。
-- **推送层不许知道平台。** 只认订阅 id 与目标 id。
+- **推送层不许知道平台。** 只认订阅 id 与目标 id；找适配器认 `adapterKey`，@全体、能不能收回复问适配器的能力。核心读 `.platform` 只许用在身份构造、显示、日志。
+- **适配器不许认识来源。** 不按哪一家的域名预筛链接，签原生分享不写死来源；该不该回预览由解析器的 `matches` 说了算。
+- **只有 `TargetDispatcher` 能发送。** 见「出口咽喉」。
 - **MessageBus 不在这条链上。** 状态通知（`live-session-changed`、`post-detected`…）去统计与面板，与推送载荷两条路。
+
+## 推送侧的守卫
+
+完整的守卫表见 [architecture.md](./architecture.md)「守卫」；推送侧这几道（ADR-0021 决策 59、60）：
+
+| 守卫 | 判据 | 期 |
+| --- | --- | --- |
+| 出口咽喉 | 登记表对外只给不含 `send` 的视图，`send` 只经 `TargetDispatcher`；源码扫描的白名单只剩它 | 3a |
+| 咽喉 e2e | 开截流 + 守卫 2，逐条驱动全部发送路径（广播、`notifyMaster`、目标测试、卡片发送、AI 试一句、锐评投递、人工重推、链接预览回复、指令回复与登录二维码、审批预览卡），每条恰好一条截流记录、零外连 | 3a |
+| 推送守卫① | 核心不 import 适配器的实现（`platforms/`），例外只有 `compose.ts` | 3a |
+| 推送守卫② | 推送平台专有词棘轮，词表加 `\bQQ[A-Z]`、`ws-reverse`、`transport`、`get_mini_app_ark`、`c2c`，范围纳入 contract | 3a 开，3b 末清零 |
+| `.platform` 决定棘轮 | 核心读 `.platform` 只许身份构造、显示、日志 | 3a 开，3b 末清零 |
+| 推送守卫③ | 假适配器对拍：一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`；必须有的行：`atAll` 为假、`inbound`、endpoint 托管、能力接口列拓展连接、登记即 `start`、内置与拓展入站都经宿主校验 | 3b |
+| 主人目标 | 守卫 19 加固：PATCH 改成群目标拒收，`notifyMaster` 发送时复检 | 随该项 |
+| 重推原件 | 守卫 13 纳入重推原件的载荷种类与字段 | 随该项 |
+
+归期（ADR-0021 决策 60）：3a 适配器接口与登记表、内置适配器与模板候选、`/api/adapters`、连接与目标的新形状与迁移；3b 契约 v3 推送侧加宽、桥迁 v3；第 4 期面板按描述画连接与目标表单。
 
 ## 要改的时候
 
@@ -162,7 +323,10 @@
 | 改一条作品推送的步骤 | `posts/` 的 `deliverPost` 一处 |
 | 改直播卡怎么发 | `live/` 的直播装配；什么时候推在 `live/` 的场次引擎 |
 | 改历史行记什么 | `history/`；盘上形状变了要进迁移模块 |
-| 加一个推送平台 | 写一个 `PushOutlet`（内置进 `outlets/`，或做成拓展），推送层一个字不动 |
+| 加一个推送平台 | 写一个 `PlatformAdapter`：内置的进 `platforms/`，或做成拓展经 `registerPlatformAdapter` 登记；设置由它的 `settingsSchema` + `settingsFields` 声明，平台由它的候选给。推送层与面板一个字不动 |
+| 改某种连接怎么连、有哪些设置 | 那个适配器自己（如 OneBot 的 `transport`） |
+| 加一条往外发的路 | 只能经 `TargetDispatcher`（按目标，或 `sendToAddress`），并补进咽喉 e2e 的清单 |
+| 改链接预览回什么 | `link-preview/` 与各 `LinkResolver`；原生分享怎么签在 OneBot 适配器 |
 | 加一个订阅平台 | 写一个订阅源拓展，这条链一个字不动 |
 
 ## 与现行 docs/agents/push.md 的差异
@@ -175,15 +339,28 @@
 | 拓展作品只按文字过滤，类型开关不看 | 过滤看 `Post` 上有没有，对所有来源生效 |
 | 拓展作品套进 B 站动态类型出卡 | 渲染器只认 `Post` |
 | 卡里的图是地址：远端走白名单预取，拓展图转 data URL | 只认图库引用，出图器不联网，B 站域名白名单删掉 |
+| 主卡发送失败往外抛：B 站不前移锚点、下一轮整条重来，拓展只记日志；图集失败吞掉 | `reportPost` 是 `void`，来源交完就前移锚点；核心按目标逐个投递、只重试失败的那个，按 code 分退避与不重试；出卡 / AI 失败降级；每个目标一行历史带 code |
 | 静音排在推送层所有查询之前，被挡不落行 | 先算目标再判，被挡的每个目标落 `silenced` 行 + 重推原件 |
 | B 站开播与周期「正在直播」共用 `feature: "live"` | 拆成 `liveStart` / `liveStreaming` / `liveEnd` |
 | 两套直播计时（B 站 `room-session*`、拓展直播计时器） | 核心一个场次引擎 + `fetchLiveStatus` |
 | 历史行按支记：B 站 `uid` + `unameSnapshot` / `uavatarSnapshot`；拓展 `extensionId` + `externalId`、只存名字 | 行带 `identity`；`nameSnapshot` / `avatarSnapshot`（图库引用） |
 | 历史种类 `dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter` | 特性键名 |
 | 历史图在 `history/img/`，随日文件删 | 统一图库，按引用清扫 |
-| `BilibiliPush` / `NotificationSink` / `MultiplexSink` / `PlatformAdapter` | `PushRouter` / `TargetDispatcher` / `PushOutlet` |
-| 链接解析 `createLinkParser` | `link-cards/` + `LinkResolver` |
+| `BilibiliPush` / `NotificationSink` / `MultiplexSink` | `PushRouter` / `TargetDispatcher`；`PlatformAdapter` 名字不变 |
+| 平台闭集 `CONNECTION_PLATFORMS`、平台信息表与各平台连接 schema 在 `internal`；拓展连接走 `kind: "extension"` 那一支 | 内置与拓展同一个 `PlatformAdapter`、同一张登记表；schema 与描述由适配器自带，面板经 `/api/adapters` 拿 |
+| 新建连接：内置按平台表选，拓展列在线 bot（`listBots`） | 只有一条路：挑候选（`listConnectionCandidates`）再填字段；平台固定的适配器返回模板候选 |
+| webhook 族占四个平台键 | 一个 `webhook` 适配器、四个模板候选；冻结 JSON 的 `private` 写死 `false` |
+| 连接带 `kind` / `connector` / `extensionId`，分发键 `connectionDispatchKey` | `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot, probeState? }`，分发按 `adapterKey`；`transport` 是 OneBot 适配器私有的设置 |
+| 目标存 `platform`（连接平台的拷贝） | 删掉，经 `connectionId` 从连接取；补两道守卫；悬空目标只隔离那一条 |
+| 坏的内置连接开机就抛错；拓展连接只核外壳 | 存时适配器在场就校验、不过回 400；读时逐条隔离；只有外壳坏才挡开机 |
+| 适配器 `reconcile` / `dispose`，只在开机与连接变更时 reconcile | `start(ctx)` / `stop()`，登记即 `start` |
+| 内置入站在装配处直通分发、平台由适配器自报 | 都经 `ctx.inbound`，宿主核归属、平台取自连接 |
+| @全体、能不能收回复按平台名判 | 问适配器的能力 `atAll` / `inbound` |
+| `DeliveryResult { ok, latencyMs, err? }`、`ProbeResult.ok: boolean \| null`；历史存 `err` 原话 | 结果形状带 `code`，平台码进 `upstreamCode`；旧历史失败迁成 `unknown` |
+| 链接回复现造临时目标、直调适配器的 `send`，不查 `isAvailable` | `TargetDispatcher.sendToAddress`；只有 `TargetDispatcher` 能发送 |
+| 链接解析 `createLinkParser`；OneBot 入站按 B 站域名预筛，签卡写死 `type: "bili"`；入站 `miniAppCardLinks` | `link-preview/` + `LinkResolver`，设置 `linkPreview { enabled, replyForm, byTarget }`；删预筛，按中立描述签；入站链接带来源标记 |
 | 出错告诉主人经 `engine-error` 按来源 60 秒节流 | 来源级问题走 `reportProblem`，按来源 + code 60 秒节流 |
-| 主人私聊走 `sendPrivateMsg` 等三个方法 + 出口的强制私聊 | 一个 `notifyMaster`；强制私聊删掉，主人目标必须是私聊目标 |
-| 连接 `testStatus`、`/api/connections/:id/test`、`/api/push/test`；目标 `testStatus.lastCheckedAt` | `probeStatus`（三态）、`/probe`、`/api/targets/:id/test`；`reachability.changedAt` |
-| 订阅顶层 `extras`（按目标三态表）；载荷 `"forward-images"`；小程序卡 `picUrl` / `path` | `extraTargets`；`"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，outlet 映射） |
+| 主人私聊走 `sendPrivateMsg` 等三个方法 + 适配器的强制私聊；指令回复发到主人目标那条连接 | 一个 `notifyMaster(payload)`，返回结果形状、发送时复检私聊；强制私聊删掉；指令回复经 `reply` → `sendToAddress` 回到发指令的会话 |
+| 连接 `testStatus`、`/api/connections/:id/test`、`/api/push/test`；目标 `testStatus.lastCheckedAt` | `probeState`（对象，三态在 `status`）、`/probe`、`/api/targets/:id/test`；`reachability.changedAt` |
+| 订阅顶层 `extras`（按目标三态表）；载荷 `"forward-images"`；小程序卡 `desc` / `picUrl` / `path` / `jumpUrl` | `extraTargets`；`"image-group"`；原生分享的中立描述 `description` / `imageUrl` / `pagePath` / `webUrl`，另有 `appId`、`iconUrl?`（桥帧照旧，由适配器映射） |
+| `PushSendInfo`；重推原件 `DraftSchema` / `DRAFT_GONE` | `PushSendResult`；`RepushSnapshot`；`HistoryEntry` 不改名 |

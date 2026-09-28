@@ -1,23 +1,26 @@
 # 1.0 数据模型与字段名
 
-> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023。
+> 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 / 0022 / 0023，以及 ADR-0024 ～ 0031。
 
-1.0 全部数据模型的正本。字段名一律是定案后的新名字，旧名在文末「改名对照」。文件放在哪、怎么迁，见 [data-and-migration.md](./data-and-migration.md)；接口（谁交这些数据、谁调谁）见 [subscription-sources.md](./subscription-sources.md)。
+1.0 全部数据模型的正本。字段名一律是定案后的新名字，旧名在文末「改名对照」。文件放在哪、怎么迁，见 [data-and-migration.md](./data-and-migration.md)；接口（谁交这些数据、谁调谁）见 [subscription-sources.md](./subscription-sources.md) 与 [push.md](./push.md)。
 
 ## 一句话
 
-**核心只认中立形状**：订阅按身份 `{ sourceKey, externalId }` 认人，作品只有 `Post`，直播只有 `LiveSignal` / `LiveSession`，图只有图库引用 `ImageRef`。B 站的原始形状只活在服务端 `bilibili/`，进门就翻。
+**核心只认中立形状**：订阅按身份 `{ sourceKey, externalId }` 认人，作品只有 `Post`，直播只有 `LiveSignal` / `LiveSession`，图只有图库引用 `ImageRef`，失败只有一种结果形状。B 站的原始形状只活在服务端 `bilibili/`，进门就翻。
 
 ## 通用规矩
 
 | 规矩 | 写法 |
 | --- | --- |
-| 时刻 | wire 与盘上一律 ISO 字符串，名字以 `…At` / `…Until` 结尾。老的 `ts` / `at` 与存毫秒的 `…At` 全改 |
+| 时刻 | wire 与盘上一律 ISO 字符串，名字以 `…At` 结尾。老的 `ts` / `at` 与存毫秒的 `…At` 全改 |
 | 时长 | 名字带单位：`Ms` / `Sec` 缩写，`Minutes` / `Hours` / `Days` 写全（`cooldownSec`、`chromeIdleSec`、`pollIntervalSec`、`streamingIntervalHours`、`loginCheckIntervalMinutes`、`retentionDays`）；不用 `Min`（会和 `min*` 阈值撞）；cron 字符串叫 `…Cron` |
-| 枚举值 | 事件与状态类的值用 kebab（`grace-expired`、`logged-out`）；错误码与 problem code 用 snake（`invalid_profile`、`follow_failed`）；特性键保持 camel（`liveStart`）。「此刻没在播」统一叫 `offline`，`end` 只指「下播」这个事件 |
+| 枚举值 | 事件与状态类的值用 kebab（`grace-expired`、`logged-out`、`settings-invalid`）；失败码与问题码用 snake（`invalid_profile`、`follow_failed`），应用内更新的失败原因 `reason` 也从 kebab 改成 snake；特性键保持 camel（`liveStart`）。「此刻没在播」统一叫 `offline`，`end` 只指「下播」这个事件 |
+| 判别键 | 说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格，如 `AuthState.status`、`probeState.status`）；`type` 只留给外部协议里的原名（B 站接口、桥帧） |
+| 类型名 | 后缀对 [docs/agents/naming.md](../agents/naming.md) 的表：一个概念只用一个词，表里没有的概念先加一行再用。按表改的名字见文末「类型名后缀」 |
+| 设置 | 设置的值只叫 `settings`（连接的 `settings`、`settingsSchema`、`settingsFields`）；`config` 只指存储：`config/` 目录、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG` |
 | 计数 | 全程是数字，只在出口（卡片、文案、面板）排一次版，见「数字、时间、不知道」 |
 | 开关 | `enabled`，不用 `enable` |
-| 布尔 | 带 `is` / `has` / `can` 前缀：`isLive`、`isAnimated`、`isPremium`、`isModerator`。例外：表示操作结果的 `ok` 保留；失败原因只用 `code` + `message` |
+| 布尔 | 带 `is` / `has` / `can` 前缀：`isLive`、`isAnimated`、`isPremium`、`isModerator`。例外：表示操作结果的 `ok` 保留；失败原因只用 `code` + `message`，见下「失败」 |
 | 回退层 | `defaults` 只表示「按订阅覆盖时缺字段就回退到这里」；订阅覆盖不了的不放进去 |
 | 过滤 | `allow*` 与 `block*` 成对 |
 | 缩写 | `Ai…` / `Api…`，不用 `AI…` / `API…` |
@@ -25,12 +28,43 @@
 
 ⛔ 日志行格式（`msg`、`ts`）跨代共享、冻结，不在上面这些规矩之内。
 
+### 失败
+
+一次操作的结果只有一种形状（ADR-0026）：成功是 `{ ok: true, … }`，失败是 `{ ok: false, code, message, upstreamCode? }`。通用类型的正式名字施工时定。
+
+- **抛错只留给 bug**。宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志。
+- **上游平台自己的错误码放 `upstreamCode`**，不占 `code`（B 站接口的数字码就放这里）。
+- **管**：来源、平台适配器、横切接口与 ctx 的方法，HTTP 业务失败与错误体（`{ code, message }`），WS 控制帧，桥回执进门时的翻译。
+- **不管**：事件原因（如下播的 `reason`）、描述性字段、AI 产出的内容、能力三态。「能不能」的预检保留 `can`，原因用 `code` + `message`。
+- 面板的错误提示按 `code` + `message` 读一处。
+
+**标准码只有一张表**，住在 `internal`：
+
+| code | 意思 | 自动重试 |
+| --- | --- | --- |
+| `not_found` | 要的东西不存在 | 否 |
+| `invalid` | 输入或形状不对 | 否 |
+| `unauthorized` | 没登录或凭据失效 | 否 |
+| `rate_limited` | 被限流或风控 | 稍后 |
+| `unavailable` | 对端或本地暂时不可用 | 稍后 |
+| `timeout` | 超时 | 稍后 |
+| `unsupported` | 这个对端不支持这项操作 | 否 |
+| `conflict` | 与当前状态冲突（版本号对不上、重复） | 看场合 |
+| `indeterminate` | 结果不明，可能已经成功 | 绝不 |
+| `unknown` | 原因不明、只有原话 | 否 |
+
+- 自定义码算失败、不自动重试。
+- 问题表里的 code 另算，只要求 snake（`follow_failed`、`creator_not_found`、`renderer_unavailable`）。
+- `unknown` 只给两种：迁移来的旧记录；冻结格式翻译过来、说不清原因的失败（如桥的回执）。
+- **旧数据**：历史里存的旧失败转成 `{ code: "unknown", message: 原话 }`，不按原话猜码（猜错比「原因不明」更坏）；连接的探测状态不迁移，开机重探。
+
 ## 键、身份与订阅
 
-归属方只有两种键：内置的 `bilibili` 与拓展 id。所有登记表、设置段、数据目录都用它：
+**集成**（ADR-0025 决策 1）：`bilibili/` 是一个集成，每个拓展是一个集成，内置的平台适配器也是。集成的键叫 `IntegrationKey`，登记表、设置段、数据目录、问题表的 `reporter` 都用它；订阅来源的键 `SourceKey` 是其中一部分：
 
 ```ts
 type SourceKey = "bilibili" | ExtensionId;   // 不加前缀；bilibili 是保留 id，拓展清单不许用
+type IntegrationKey = SourceKey | "onebot" | "qq-official" | "webhook";   // 后三个是内置平台适配器的键，同样是保留 id
 
 interface Identity {                          // 分派、判重都只看这两格
   sourceKey: SourceKey;
@@ -51,12 +85,12 @@ interface Subscription {
 }
 
 interface SubscriptionState {          // runtime/subscription-state.json，按订阅 id；存储叫 SubscriptionStateStore
-  cachedProfile?: CreatorProfile;
-  problems?: Record<string, { message: string; since: string }>;   // 按 code 做键；重复报只更新文案、不重置 since
+  cachedProfile?: CreatorProfile;      // 只剩资料缓存；问题表全在内存，见「问题表」
 }
 
-interface CreatorProfileReport {       // fetchProfile / reportProfile 交的；头像先用 ctx.fetchImage 抓好
+interface CreatorProfileReport {       // fetchProfile 成功时 / reportProfile 交的；头像先用 ctx.fetchImage 抓好
   name: string; avatar?: ImageRef; bio?: string; followers?: number;
+  fanClubName?: string;                // 粉丝团名；B 站填粉丝牌名，平台没有就缺键；模板变量 {fanclub} 取它
 }
 
 interface CreatorCandidate extends CreatorProfileReport {   // searchCreators 交的候选，最多 10 个
@@ -65,27 +99,56 @@ interface CreatorCandidate extends CreatorProfileReport {   // searchCreators �
 
 interface CreatorProfile {
   name: string; avatar?: ImageRef; bio?: string;
-  followers?: number; refreshedAt: string;
+  followers?: number; fanClubName?: string; refreshedAt: string;
 }
 ```
 
-- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili` 列为保留 id，手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
+- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili` 与三个内置适配器的键列为保留 id，手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
 - 「identity」在仓里另有 ChatIdentity、inboundIdentity、ExtensionIdentity 等意思，订阅身份的函数一律带 `subscription` 限定词。
 - **订阅只有一个文件** `config/subscriptions.json`，B 站与拓展同一数组、行行带 `identity`。「缺 kind 就当 B 站」的默认值删掉。
-- **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions`（现在是 `ConfigStore.writeSubscriptions`）把关——`packages/subscription` 只是写盘之后才同步的内存镜像，在那里拒收已经晚了。判据是「这次写入有没有**新增**重复」（跟当前集合比），不是整份数组有没有重复：否则盘上留着一对遗留重复时，改任何一条不相干的订阅都会被拒。新建、保存、恢复备份，所有写入都要过。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。
-- **核心的订阅运行态里没有 B 站字段**：只留资料缓存与问题表。B 站的 `roomId`、`followed`、`followError` 在 B 站自己的 `ctx.state` 里。`fansBaseline` 退役，涨粉起点取粉丝时序的第一条样本。这份文件丢了只退化，不会重推漏推。⚠️ 以后要给粉丝时序加截尾（保留期）之前，必须先把这个起点另存，否则截尾会悄悄改掉涨粉起点。
-- **显示名只有一条链** `displayNameOf()`：事件上的 `creator.name` → 资料名 → 身份标签（「UID 123」或「抖音 · abc」），收编面板现有的 `historyRowIdentity`。身份标签只留这两种写法，现在还有的裸「123」和「UP 123」一并收掉。别名退役：现在有 8 处按四种顺序读别名（面板显示资料名，单人锐评的定时推送却写别名），一律改走 `displayNameOf()`。
+- **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions`（现在是 `ConfigStore.writeSubscriptions`）把关——`packages/subscription` 的 `SubscriptionCache`（原 `SubscriptionStore`）只是写盘之后才同步的内存镜像，在那里拒收已经晚了。判据是「这次写入有没有**新增**重复」（跟当前集合比），不是整份数组有没有重复：否则盘上留着一对遗留重复时，改任何一条不相干的订阅都会被拒。新建、保存、恢复备份，所有写入都要过。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。
+- **核心的订阅运行态里没有 B 站字段**：只留资料缓存（问题表全在内存，不存盘）。B 站的 `roomId`、`followed`、`followError` 在 B 站自己的 `ctx.state` 里。`fansBaseline` 退役，涨粉起点取粉丝时序的第一条样本。这份文件丢了只退化，不会重推漏推。⚠️ 以后要给粉丝时序加截尾（保留期）之前，必须先把这个起点另存，否则截尾会悄悄改掉涨粉起点。
+- **显示名只有一条链** `displayNameOf()`：事件上的 `creator.name` → 资料名 → 身份标签，收编面板现有的 `historyRowIdentity`。**身份标签**由一个函数生成：来源声明了 `externalIdNoun` 就写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」（「抖音 · abc」）；现在还有的裸「123」和「UP 123」一并收掉，「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。别名退役：现在有 8 处按四种顺序读别名（面板显示资料名，单人锐评的定时推送却写别名），一律改走 `displayNameOf()`。
 - **身份挂在所有行上**：推送历史、统计、在播三种行都带 `identity`，盘上直接是新形状，不留读时映射。
 - 现在判「是不是拓展行」有四种写法：只看 `extensionId`（面板 `Dashboard.tsx`、服务端 `stats/roast-subject.ts`）；两格都要有（面板 `utils/up-display.ts`、internal `constants.ts` 的 `upColor`）；只看 `externalId`（`packages/ai/src/tools.ts`）；只有一格就判无效（`runtime/target-scope.ts`、`pages/up/subscription-lookup.ts`）。行带 `identity` 以后四种一律删掉，按 `identity.sourceKey` 判。
 - **特别关注名单只存 `{ id, note? }`**，平台由所挂的订阅决定。来源在 `descriptor.supportedFeatures` 里声明了 `specialDanmaku` 或 `specialUserEnter` 才露出这项设置。
 - internal 里没人写的旧 `SubscriptionStateSchema`（`schema/subscriptions.ts`，连同它导出的同名旧类型 `SubscriptionState` 与测试里钉它「仍 export」的那条）在数据模型期删掉：它和上面的新 `SubscriptionState` 同名，不先删会撞守卫 4，也容易有人把新形状写进这份老 schema。
+
+## 问题表
+
+来源、平台适配器与核心自报的问题（ADR-0025 决策 11）。上报与清除的接口、谁看，见 [subscription-sources.md](./subscription-sources.md)「问题上报」。
+
+```ts
+interface Problem {                    // 全在内存，不存盘
+  reporter: IntegrationKey | "core";
+  about?: { subscriptionId: string } | { connectionId: string };   // 不带就是报的人自己的问题（如登录失效）
+  code: string;                        // snake；不受标准码表约束
+  message: string;
+  since: string;                       // 第一次出现的时刻
+}
+```
+
+- **一种形状、全在内存**：订阅运行态不再存问题。开机时关注同步与第一轮资料刷新几秒内就会重报，所以重启后的头几秒订阅卡上的红字会先消失，等报的人重报。
+- **一条生死规矩**：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象（订阅、连接）删了，关于它的全清。
+- **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
+- 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。
+- 与 `reportRejections` 分开：上报被拒或被丢格记进该集成的 `reportRejections` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
+
+## 来源描述符
+
+`SourceDescriptor` 的全形状、面板怎么读它、叫法规矩与「来源没装」的兜底，见 [subscription-sources.md](./subscription-sources.md)「SourceDescriptor」与「面板怎么读描述符」。与本文件的数据相关的几格：
+
+- `externalIdNoun?`：外部 id 叫什么（B 站「UID」），决定上面的身份标签。
+- `icon?`：平台图标，对齐推送侧 `PlatformDescriptor.icon`。
+- `featureHints?: Partial<Record<FeatureKey, string>>`：特性开关下的小字，描述符里唯一的自由文字格。
+- `membershipPrograms[].tiers[]` 的全形状见下「会员」。
 
 ## 作品
 
 渲染器只认中立的 `Post`。B 站动态与拓展作品各自翻过来，B 站动态类型不进核心。`Post` 是纯数据（能 JSON 序列化、不含 JSX），存原始值，排版归核心。**没有形态字段**：有什么画什么，块没数据就收起。
 
 ```ts
-type ImageRef = string;   // 图库 images/ 里的 sha256；作品图、直播封面、头像、历史快照共用
+type ImageRef = string;   // 图库 images/ 里的 sha256；作品图、直播封面、头像、历史快照、聊天附件共用
 
 // 出卡只认 ref；url 只给「查看原图」，出图器不去抓
 interface PostImage { ref?: ImageRef; url?: string; width?: number; height?: number; isAnimated?: boolean }
@@ -98,7 +161,7 @@ interface Post {
   label?: string;                      // 「投稿了视频」，来源给
   topic?: string;
   article?: { title: string; images?: PostImage[] };   // 有这格就按文章排版；images 是文章配图
-  text: string;                        // 纯文本，必有：用户在平台上看到的字（平台私有标记由来源剥掉）；关键词过滤、AI 点评、纯文字推送、历史摘要都用它
+  text: string;                        // 纯文本，必有：只放正文（用户在平台上看到的字，平台私有标记由来源剥掉）；标题、视频标题、被转发的原作品各在自己的格里
   richText?: RichText;                 // 可选，只用来出卡高亮；片段见下。核心统一校验：片段的 text 拼起来必须等于 text，对不上就丢掉 richText、只用 text（B 站与拓展同一套）
   notice?: string;                     // BN 自己说的一句，画在正文后面
   locked?: { icon?: PostImage; title: string; hint: string };   // 专属内容锁，替掉正文
@@ -110,7 +173,7 @@ interface Post {
 }
 
 type Attachment =                      // 封闭联合，出图器按种类直接渲染，不开登记口
-  | { kind: "card"; eyebrow?: string; cover?: PostImage; title: string; lines?: string[]; button?: { text: string; enabled: boolean } }
+  | { kind: "card"; eyebrow?: string; cover?: PostImage; title: string; lines?: { text: string; icon?: ImageRef }[]; button?: { text: string; enabled: boolean } }
   | { kind: "video"; cover: PostImage; title: string; durationSec?: number; subtitle?: string }
   | { kind: "goods"; eyebrow?: string; items: { cover: PostImage; name: string; price?: string }[] };
 
@@ -132,26 +195,53 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 
 - **来源只认人**：来源上报只带 externalId；核心按身份查订阅，正常只有一条，老数据里遗留的重复各分一份；查不到或已停用就丢弃、记 debug 日志。
 
-- `images` 只是图集；文章配图在 `article.images`。`blockImages` 就是屏蔽图集。
+- **作品的文字只有一种拼法**（ADR-0028 决策 1）：`text` 只放正文，文章标题在 `article.title`、视频标题在 `video.title`、转发的原作品在 `repost`。过滤、AI 点评、统计摘要等要整条作品文字的地方，一律经核心 `posts/` 里唯一的取段函数，所有来源同一个：过滤时各段无前缀、换行拼接；AI 用「标题：」「视频标题：」「（转发自 X：…）」。函数名施工时定；它进守卫 4 的点名表，对拍逐字比。
+- B 站的映射：动态正文与图文的摘要进 `text`，图文标题进 `article.title`；UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡。
+- `images` 只是图集；文章配图在 `article.images`。`blockImages` 就是屏蔽图集。`blockImages` / `blockVideos` 只看最外层，被转发的原作品里的图集与视频归 `blockReposts` 管。
 - `video` 表示「作品本身就是这个视频」，不设视频级的互动数；作品里引用别人的视频走 `repost` 或 `attachment` 的 `video`。互动数只在 `Post.stats`，收藏 `stats.saves` 这类等有卡片要画时再加。
 - `repost` 是被转发的原作品；OneBot 的「合并转发」叫 `mergeForward`，两者无关。
-- 所有图格（封面、附加块、锁图标）都是 `PostImage`。图由来源先用 `ctx.fetchImage`（有链接）或 `ctx.storeImage`（手里已是字节）存进图库、填 `ref`，上报里只交 `ImageRef`；抓失败由来源决定跳过这张，或只给 `url`（卡上画占位）。
+- 所有图格（封面、附加块、锁图标）都是 `PostImage`。图由来源先用 `ctx.fetchImage`（有链接）或 `ctx.storeImage`（手里已是字节）存进图库、填 `ref`，上报里只交 `ImageRef`；抓失败（两者都返回结果形状）由来源决定跳过这张，或只给 `url`（卡上画占位）。
 - **正文片段 `RichText`**（09-27 拍板）只有五种，全中立、核心不认识任何平台：
-  - `{ type: "text", text }`：换行留在 `text` 里当 `\n`，不设单独的换行片段；Unicode 表情也在这里。
-  - `{ type: "mention", text, userId? }`：平台只给昵称时不带 `userId`。
-  - `{ type: "topic", text, name }`：`name` 去掉 `#`。
-  - `{ type: "link", text, url, icon?: ImageRef }`：`text` 是来源给的显示文字（B 站节点的 `text`，视频链接就是标题），`url` 是跳转地址（B 站 `jump_url`）；图标由来源存进图库再给引用，核心不留图标枚举。B 站的网页、视频、抽奖、投票、商品节点都翻成链接。
-  - `{ type: "emoji", text, image?: ImageRef }`：`text` 是「[doge]」这种代码，没图时当文字显示。
+  - `{ kind: "text", text }`：换行留在 `text` 里当 `\n`，不设单独的换行片段；Unicode 表情也在这里。
+  - `{ kind: "mention", text, userId? }`：平台只给昵称时不带 `userId`。
+  - `{ kind: "topic", text, name }`：`name` 去掉 `#`。
+  - `{ kind: "link", text, url, icon?: ImageRef }`：`text` 是来源给的显示文字（B 站节点的 `text`，视频链接就是标题），`url` 是跳转地址（B 站 `jump_url`）；图标由来源存进图库再给引用，核心不留图标枚举。B 站的网页、视频、抽奖、投票、商品节点都翻成链接。
+  - `{ kind: "emoji", text, image?: ImageRef }`：`text` 是「[doge]」这种代码，没图时当文字显示。
   - 卡片只画片段的 `text`（有图标就画图标），BN 不写死任何字；纯文本里本来就写着的网址不识别。
   - 1.0 不收样式（粗体、斜体、引用、剧透）：带样式的原文当普通文字，样式丢、字不丢；平铺的片段表达不了嵌套，等真有来源要再设计加宽（如文字片段加可选 `style`）。
-- 附加块的翻译都在 `bilibili/`：B 站预约卡与通用卡翻成 `card`，引用的 UGC 视频翻成 `video`，商品翻成 `goods`；投票没有附加块，只是正文里的链接片段。
+- 附加块的翻译都在 `bilibili/`：B 站预约卡与通用卡翻成 `card`，引用的 UGC 视频与番剧、合集、课程翻成 `video`，商品翻成 `goods`；投票没有附加块，只是正文里的链接片段。`card` 的每行是 `{ text, icon? }`：B 站写死的行图标改由来源存进图库再给引用。
 - 名字用 `attachment`：`additional` 是 B 站接口原词、又是形容词；`embed` 撞皮肤 HTML 清洗器拦的 `<embed>`。
-- 链接卡出的也是 `Post`，就是作品卡。
+- 链接预览出的也是 `Post`，就是作品卡，见下「链接预览」。
 - 老的 NeutralWork 上的 link / name / isVideo / postNoun / gallery / commentText，要么在信封上，要么由 `Post` 推出来，不许每条路各拼一个包装。
-- 统计仓里一条作品记录叫 `PostRecord`（与同文件的 `LiveSessionRecord` 对称），和装配信封 `PostEvent` 是两样东西。
+- 统计仓里一条作品记录叫 `PostEntry`（与同文件的 `LiveSessionEntry` 对称），和装配信封 `PostEvent` 是两样东西，见「统计」。
 - 以后：音乐、位置（抖音几乎每条都有）做成 `Post` 上的小标签，不是附加块。
 
-**验收硬门**：同一份 B 站动态，改造前后出的图逐字节不变。
+**出图字节门**（ADR-0028 决策 2，中立的形状优先）：
+
+- 能用通用手段表达的照样逐字节一致（比如把链接图标的颜色烤进图库里的图）。
+- 需要通用能力的就加通用能力（比如上面 `card` 的行 `{ text, icon? }`），不许加 B 站专属的枚举。
+- B 站纯装饰去掉。
+- 剩下的差异进「批准的像素差清单」，预批三类：平台叫法中立化、内联 SVG 换成图库图的残差、B 站纯装饰去掉；每条写样例、变化、类别与依据。清单外的差异由守卫 10 判红，更新快照必须同时补清单。
+- 守卫 10 扩到五种卡：直播、醒目留言、会员、词云、榜单。
+
+## 链接预览
+
+群里贴链接，回一张预览（ADR-0029）。目录 `link-preview/`；设置是「配置」里的 `core.linkPreview`；闸门、回复与入站的规矩见 [subscription-sources.md](./subscription-sources.md)「链接预览」。
+
+```ts
+interface LinkPreview {                 // LinkResolver.resolve 成功时交的
+  post: Post;                           // 出的就是作品卡
+  canonicalId: string;                  // 冷却键是「群 + 解析器 + canonicalId」
+  nativeShare?: {                       // 原生分享的中立描述，由 OneBot 适配器去签；签不了就回图片
+    appId: string; title: string; description: string;
+    imageUrl: string; pagePath: string; webUrl: string; iconUrl?: string;
+  };
+}
+```
+
+- `LinkResolver`（链接解析器）补 `label`，`resolve` 返回结果形状。
+- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。
+- 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。标记那一格的名字施工时定。
 
 ## 直播
 
@@ -165,18 +255,18 @@ interface LiveDetails {                 // 一场直播的内容
 
 // ① 推送式信号：来源发生了就报，reportLive(externalId, signal)
 type LiveSignalReport =
-  | { type: "start";  startedAt?: string; details: LiveDetails }
-  | { type: "status"; isLive: boolean;    details: LiveDetails }
-  | { type: "end";    endedAt: string;    details?: LiveDetails };
+  | { kind: "start";  startedAt?: string; details: LiveDetails }
+  | { kind: "status"; isLive: boolean;    details: LiveDetails }
+  | { kind: "end";    endedAt: string;    details?: LiveDetails };
 
 // 核心按身份展开后喂给场次引擎的：每条订阅一份
 type LiveSignal = LiveSignalReport & { subscriptionId: string; identity: Identity };
 
-// ② 拉取式：核心定时问 fetchLiveStatus
+// ② 拉取式：核心定时问 fetchLiveStatus；返回结果形状（ADR-0026 决策 4）
 type LiveStatusResult =
-  | { type: "live"; startedAt?: string; details: LiveDetails }
-  | { type: "offline" }                                        // 此刻没在播，核心当成漏收的下播
-  | { type: "unavailable"; code: string; message: string };
+  | { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
+  | { ok: true; kind: "offline" }                              // 此刻没在播，核心当成漏收的下播
+  | { ok: false; code: string; message: string };              // 跳过这一轮、记一条问题，不停止监听
 
 // ③ 核心自己记的一场
 interface LiveSession {
@@ -193,13 +283,13 @@ interface LiveSession {
 
 // ④ 场次的变化 → 推送、统计、总线 live-session-changed
 type LiveSessionChange =
-  | { type: "start";  session: LiveSession; trigger: "start-signal" | "status-signal" | "poll" }
-  | { type: "resume"; session: LiveSession }
-  | { type: "status"; session?: LiveSession; isLive: boolean }
-  | { type: "tick";   session: LiveSession; details: LiveDetails }
-  | { type: "ending"; session: LiveSession }
-  | { type: "end";    session: LiveSession; reason: "signal" | "poll" | "grace-expired" | "stopped" }
-  | { type: "unmatched-end"; subscriptionId: string; endedAt: string };
+  | { kind: "start";  session: LiveSession; trigger: "start-signal" | "status-signal" | "poll" }
+  | { kind: "resume"; session: LiveSession }
+  | { kind: "status"; session?: LiveSession; isLive: boolean }
+  | { kind: "tick";   session: LiveSession; details: LiveDetails }
+  | { kind: "ending"; session: LiveSession }
+  | { kind: "end";    session: LiveSession; reason: "signal" | "poll" | "grace-expired" | "stopped" }
+  | { kind: "unmatched-end"; subscriptionId: string; endedAt: string };
 
 // 出卡输入
 interface LiveCardInput {
@@ -214,6 +304,7 @@ interface LiveCardInput {
 
 - `currentViewers`（此刻在线）与 `totalViewers`（累计观看）是两个含义，**不许互相顶替**。统计里的聚合叫 `maxViewers` / `avgViewers`。
 - ⛔ 两条语义不动：场次身份按开播时刻认、排在闩之前；统计的 `current` 是「最后一次观测时还开着」，`isLive` 是「此刻真在播」。
+- `LiveSessionChange` 的 `trigger` 与 `reason` 是事件原因，不归失败规矩管。
 - 场次引擎的行为（断流、定时、重启重建）见 [subscription-sources.md](./subscription-sources.md)「直播」一节。
 
 ## 会员、醒目留言与特别关注
@@ -226,7 +317,13 @@ interface MembershipProgram {
   name: string;
   tiers: MembershipTier[] | "custom";   // "custom" = 档位由主播自定
 }
-interface MembershipTier { key: string; name: string; rank: number; icon?: PostImage }   // rank 从 1 起、1 最低
+interface MembershipTier {
+  key: string; name: string;
+  rank: number;                         // 从 1 起、1 最低
+  icon?: PostImage;                     // 徽章
+  color?: string;                       // 档色：面板与出图共读
+  announcement?: string;                // 宣告语，可用 {viewer}、{name}、{tier}；没声明就不画
+}
 
 interface MembershipEvent {
   subscriptionId: string;
@@ -245,6 +342,7 @@ interface SuperchatEvent {
   viewer: { id: string; name: string; avatar?: ImageRef };
   text: string;
   amount: number; currency: string;
+  tier?: { rank: number; durationSec?: number };   // 醒目留言的档，来源按平台规矩算；durationSec 是留言挂多久
 }
 ```
 
@@ -252,9 +350,13 @@ interface SuperchatEvent {
 | --- | --- |
 | B 站体系 | `guard`，档 key 是 `captain` / `commander` / `governor`，rank 1 / 2 / 3。B 站接口的 `guard_level` 1 = 总督，这个反向换算只在 `bilibili/` |
 | 徽章 | 图库引用，来源声明档位时给（`tier.icon`） |
+| 档色 | `tier.color`，面板与出图共读。面板自己的档位色表（`guard-levels.ts`）删掉，B 站的色写进 `bilibili/` 的描述符 |
+| 宣告语 | `tier.announcement`，由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`，没声明就不画；皮肤字段 `membership.announcement`，面板上叫「宣告语」 |
 | 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片，没单独配的档用 default；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
 | 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`；没有 rank 的体系只能开或关 |
 | SC 门槛 | `defaults.superchat.minAmount`，按人民币；别的币种先放行 |
+| SC 的档 | `SuperchatEvent.tier`：卡按 `rank` 取色，默认配色照今天六档，皮肤可以按档换色；有 `durationSec` 就显示留言时长（走中立的时长格式化） |
+| 金额 | 按币种用 `Intl.NumberFormat` 排版；人民币整数仍写「¥30」 |
 | 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`、`isModerator: boolean`；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/`。皮肤可以按 `rank` 换色；没有 rank 的体系走默认样式。 |
 
 体系上不标「全平台 / 按主播」：不影响路由，先不加。
@@ -280,13 +382,44 @@ type PostPushPart = "post" | "post-images";
 | --- | --- |
 | `post` / `atAllPost` | 作品推送与它的 @全体 |
 | `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
-| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。来源提供了 `fetchLiveStatus` 并且同时上报开播与下播，面板才显示这个开关 |
+| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关 |
 | `liveEnd` | 下播 |
 | `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` / `wordcloud` / `liveSummary` | 核心中立特性 |
 
 ⛔ 命名：`liveNow`（仓里 4 处表示「此刻在播」）、`onAir`（6 处表示状态）、`liveStatus`（95 处，拓展事件名）都撞，所以叫 `liveStreaming`。
 
 卡种：作品卡 `post`、直播卡、榜单（锐评）、醒目留言 `superchat`、会员 `membership`、词云、直播总结，全由核心登记。附加块 card / video / goods 核心直接渲染。历史行状态多一种 `silenced`，见 [push.md](./push.md)。
+
+## 统计
+
+统计仓按订阅记作品、直播场次与粉丝时序（文件布局见 [data-and-migration.md](./data-and-migration.md)）。
+
+- **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。
+- **「在记」按特性分**（ADR-0027 决策 2），核心自己算：作品（那天作品开关开着且来源在跑）、直播（直播类任一开关开着且来源在跑）、粉丝（那天拉资料成功）。每张图（热力图也是）读自己的「在记」，关着的日子显示「没在记」、不画成 0；锐评与榜单跳过没在记的日子。seen（「那天有没有联系上来源」）不再单独当判据。每天的开关与运行状态怎么记下来（统计仓里原来的 `seen/` 留不留、改装什么），施工时定。
+- **开播公告不再记**（决策 3）：B 站来源直接丢掉、不上报；旧数据照原定不搬。旧日子的「在记」按旧规则推：作品看旧数据那天有没有记录，直播用现在的直播开关近似。
+- 统计记录全部作品，另外记其中带视频的那些：`posts` 是全部作品，`videoPosts` 是其中带视频的（面板与 CSV 仍叫「投稿」「动态」，见改名对照）。
+
+**多收的字段**（决策 4）：规矩是来源已经交到手、不用多发请求、每条几百字节以内；不存图片字节，不收观众个人数据（只收汇总），字段全部可选。除 `url` 外字段名施工时定，照本文件的通用规矩起。
+
+| 行 | 多收什么 |
+| --- | --- |
+| 作品行 `PostEntry` | 链接 `url`、标题、摘要（取段函数的 AI 拼法，截 200 字）、话题、视频时长 |
+| 场次行 `LiveSessionEntry` | 标题、分区、弹幕条数与发弹幕人数、醒目留言条数与按币种的总额、按档的新增会员数；累计观看本来就有（`peakTotalViewers`） |
+
+- 不收：检测时点的互动数、弹幕原文、观众名单。估算 50 条订阅一年约 20MB。
+- 「最近作品小缓存」并进统计仓：AI 的 `get_creator_posts` 读统计仓最近几条。
+- **CSV**：「UID」与「外部 ID」合成一列，放在「平台」旁边，值取 `identity.externalId`，列名走叫法函数；「投稿」「动态」照 ADR-0021 决策 50 不动。代价：只订 B 站的主人导出的 CSV 少一列空的「外部 ID」，后面的列左移一格。
+
+## AI
+
+AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sources.md](./subscription-sources.md)「AI 工具」。
+
+- **工具参数 `creator`**：中立工具的参数统一叫 `creator`，值是「来源键:外部 id」（按第一个冒号切，如 `bilibili:123`）；核心工具参数里不许出现 `uid`。`list_subscriptions` 与 `search_creators` 的返回带着它。
+- **六把中立工具**：原有五把（`list_subscriptions`、`get_creator_profile`、`get_creator_posts`、`get_live_status`、`search_creators(source, query)`）加第六把 `get_creator_stats(creator, days?)`，读统计仓。B 站独有的数据（总播放、获赞、视频列表）由 B 站的 `AiToolProvider` 登记只读工具。
+- `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。
+- **看图读图库**：点评与聊天传 `ImageRef`，宿主注入读图函数读字节、过大先缩、拼 data URL 放进请求；`packages/ai` 不碰磁盘；视觉副模型同路，工具返回的图也是 `ImageRef`。
+- **聊天附件存进图库**（不是素材库）：会话里存 `ImageRef`，图库清扫把会话算作引用方；上传仍是单张 5MB、每条 4 张、拒 SVG。
+- **提示词变量**：内置人格、卡片工坊、锐评、内置技能与工具说明里的平台叫法改用 `{creatorNoun}`、`{postNoun}`、`{sources}`，调用时由核心按这次涉及的订阅填；主人自己写的不改写。
 
 ## 皮肤字段
 
@@ -313,7 +446,7 @@ type PostPushPart = "post" | "post-images";
 | 直播中 `stats.popularity`、`stats.fans`、`stats.fansChanged`、`stats.hasFansChanged` | `stats.currentViewers`、`stats.followers`、`stats.followersDelta`、`stats.hasFollowersDelta` |
 | `video.desc` | `video.description`；`video.duration` 装排好版的文字；`danmaku` 保留 |
 | `dynamic.type` | 删；用 `hasVideo` / `hasImages` / `hasRepost` |
-| `sc.*` / `guard.*` | `superchat.*` / `membership.{ program, tier, rank?, icon?, text, months?, gift? }` |
+| `sc.*` / `guard.*` | `superchat.*` / `membership.{ program, tier, rank?, icon?, announcement?, months?, gift? }`（`announcement` 是宣告语） |
 | 锐评榜单卡的 `master.name`（恒为空串） | 删 |
 | `live.title` / `live.time` / `live.description` / `live.cover` / `live.hasCover` / `live.isStreaming` / `live.isEnded`，`video.title` / `video.cover` / `video.views` | 不变 |
 
@@ -321,30 +454,30 @@ type PostPushPart = "post" | "post-images";
 
 ## 配置
 
-主人填的设置只有一个文件 `config/settings.json`，分段存。每段的 schema 由归属方定义，核心组合成最终 schema。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
+主人填的设置只有一个文件 `config/settings.json`，分段存。每段的 schema 由那个集成定义，核心组合成最终 schema。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
 
 ```ts
 interface Settings {
   core: {
-    master: { targetId?: string };    // 主人目标必须是私聊目标（schema 校验；面板下拉只列私聊）
+    master: { targetId?: string };    // 主人目标必须是私聊目标，见下「主人通知」
     defaults: GlobalDefaults;         // 按订阅覆盖的回退层，订阅上的覆盖与它同形
     templatesSeen: TemplatesSeen;     // 出厂文案账本（原 defaults.templateDefaultsSeen）
     ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处
-    rankingReport: RankingReport;     // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
+    rankingReport: RankingReportSettings;   // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
     muteEndsAt?: string;              // 原 mutedUntil；没在静音就缺键
-    commands: CommandConfig;
-    linkCards: LinkCardsConfig;       // base{ enabled, replyForm: "image" | "nativeShare" }、byTarget（键是目标 id）
+    commands: CommandSettings;
+    linkPreview: LinkPreviewSettings; // { enabled, replyForm: "image" | "nativeShare" | "text", byTarget }，byTarget 的键是目标 id；没有默认行那一层
     accounts: { order: SourceKey[] }; // 头部显示顺序
     onboarding: { isSkipped?: boolean };
     update: UpdateSettings;           // isAutoDownloadEnabled 等
     marketplace: MarketplaceSettings;
-    logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + bilibili + 拓展 id
+    logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键
     history: { retentionDays };
     profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来
     timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
   };
-  bilibili: { dynamicCron; userAgent?; loginCheckIntervalMinutes };   // 由 bilibili/ 定义
-  extensions: Record<ExtensionId, { enabled: boolean; settings?: unknown }>;   // settings 由拓展自己的 zod 校验
+  bilibili: { dynamicCron; loginCheckIntervalMinutes };   // 由 bilibili/ 定义
+  extensions: Record<ExtensionId, ExtensionSection>;   // ExtensionSection = { enabled: boolean; settings?: unknown }；settings 由拓展自己的 zod 校验
 }
 
 interface GlobalDefaults {
@@ -363,36 +496,85 @@ interface GlobalDefaults {
 }
 ```
 
+**设置坏了只停那一处，不挡开机**（ADR-0025 决策 4）：
+
 | 段 | 校验不过 | 谁能读 |
 | --- | --- | --- |
-| `core` | BN 起不来 | 核心 |
-| `bilibili` | BN 起不来 | 只有 `bilibili/`（守卫拦核心读它） |
-| `extensions.<id>` | 只停那一个拓展，面板卡片显示「设置不合法」 | 宿主与那个拓展；卸载删掉这一段 |
+| `core` | 逐格校验（每个顶层键一格，`defaults` 与 `ai` 再细一层）：坏的那格在内存里用默认值、盘上原文不动，问题表记一条「先按默认值跑」；主人在面板上重存那一格就清掉 | 核心 |
+| `bilibili` | 只停 B 站这个集成，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起 | 只有 `bilibili/`（守卫拦核心读它） |
+| `extensions.<id>` | 只停那一个拓展，同上 | 宿主与那个拓展；卸载删掉这一段 |
 
+- 只有信封坏了（整份解析不了）才挡开机。理由：BN 起不来时，桌面壳连续失败几次就把这一版判死、自愈退回 0.12，还进不去面板改设置；Docker 则反复重启。面板登录凭据在 `bn.config.yaml`，不在这些段里，退回默认值不会把门打开。
+- 生命周期闸是唯一的例外：只有 `start` / `activate` 期间读设置失败可以抛错中止启动，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。
+- 代价：`core` 某格退回默认时行为会变（过滤、静音、新手引导），靠问题框亮出来。
+- **设置按集成放**：设置字段在登记集成时交，不挂在 `SourceDescriptor` 上（ADR-0025 决策 3）；声明了 `settingsFields` 的内置集成在系统页各开一个 tab（今天只有 B 站，tab 名取它的 `label`）；拓展的设置只在拓展页；「运行」tab 只留核心参数。
+- **自定义 UA 删掉**（ADR-0025 决策 7）：浏览器身份一律由 `packages/http` 生成，UA 与 `sec-ch-ua` 永远配套；B 站设置页加「换一个身份」按钮重新生成。老配置里的 `userAgent` 这一格由迁移丢掉，新 schema 不留。
 - **并发**：所有写入排在同一条队列里；拓展设置用内容哈希做版本号，对不上回 409；面板普通保存在队里深合并。
-- **过滤**：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」，在装配第一步、对所有来源生效。白名单 `allowKeywords` / `allowRegex` 对 `blockKeywords` / `blockRegex`。特别关注去掉 uid 正则，template 死字段退役。SC 与会员的门槛不在 filters 里。
-- **主人通知**：推送层只有一个 `notifyMaster(text)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`）；出口上的 `sendPrivate` 与「强制私聊」标志删掉，因为主人要是选了群目标，强制私聊会把群号当 QQ 号错投。私聊的要求挪到选主人目标时：`master.targetId` 必须指向私聊目标；迁移时指向群目标的清空，首访页提示重选。
+- **过滤**：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看最外层 `Post` 上「有没有」，在装配第一步、对所有来源生效；转发的原作品里的图集与视频不算，转发归 `blockReposts` 管。关键词与正则看取段函数拼出来的文字。白名单 `allowKeywords` / `allowRegex` 对 `blockKeywords` / `blockRegex`。特别关注去掉 uid 正则，template 死字段退役。SC 与会员的门槛不在 filters 里。
+- **主人通知**（ADR-0024 决策 14）：推送层只有一个 `notifyMaster(payload: string | NotificationPayload)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`），返回结果形状，审批预览卡也走它。出口上的 `sendPrivate` 与「强制私聊」标志删掉，因为主人要是选了群目标，强制私聊会把群号当 QQ 号错投。私聊的要求挪到主人目标上：`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊）；PATCH 把主人目标改成群目标直接拒收；发送时再复检一次，不是私聊就拒发（`invalid`）；迁移时指向群目标的清空，首访页提示重选。
 - **图集推送行为** `imageGroup`（全局与逐订阅）只作用于 `Post.images`，子键 `imageGroup.mergeForward`。
-- **模板变量**：`{noun}` 取自 `descriptor.postNoun`，默认文案「{name}发布了一条{noun}」；人名变量统一 `{name}` / `{viewer}`；直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
+- **模板变量**：`{postNoun}` 取自 `descriptor.postNoun`（原定 `{noun}`，与提示词变量同名；从没上过盘，不用迁移），默认文案「{name}发布了一条{postNoun}」；人名变量统一 `{name}` / `{viewer}`；会员事件的档名是 `{tier}`（原 `{guard}`），粉丝团名是 `{fanclub}`（原 `{mdn}`，取资料的 `fanClubName`），两者进模板变量可满足性守卫，迁移改写主人的文案、出来的字不变；弹幕总结的其余缩写不动。直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
 
 ### 连接与目标
 
-`connections.json` 回答「用谁发」，一条连接就是一个 bot（OneBot http / ws / 反向 ws、Webhook、QQ 官方机器人、拓展借来的 bot）。`targets.json` 回答「发到哪」。订阅按目标 id 引用。
+`connections.json` 回答「用谁发」，一条连接就是一个 bot（OneBot http / ws / 反向 ws、QQ 官方机器人、一个 webhook 地址、拓展借来的 bot）。`targets.json` 回答「发到哪」。订阅按目标 id 引用。内置平台与拓展实现同一个 `PlatformAdapter`、登记在同一张表，连接按 `adapterKey` 分发（ADR-0024；接口见 [push.md](./push.md)）。
 
 ```ts
+interface Connection {
+  id: string;
+  name: string;
+  enabled: boolean;
+  adapterKey: IntegrationKey;          // 哪个平台适配器负责它：onebot / qq-official / webhook，或拓展 id
+  platform: string;                    // 开放字符串，只来自新建时挑中的候选
+  settings: unknown;                   // 归适配器的 settingsSchema 校验；OneBot 的 transport 是它私有的一格
+  platformSnapshot: Omit<PlatformDescriptor, "platform">;   // 只有宿主写，见下
+  probeState?: { status: …; … };       // 连接探测，只有宿主写；三态取值在 status 里，取值名与其余格施工时定
+}
+
 type PushTarget =
-  | { kind: "session"; id: string; connectionId: string; platform: string; scope: "group" | "private"; address: string }
-  | { kind: "endpoint"; id: string; connectionId: string; platform: string; managedBy?: "connection" };   // Webhook 这种连接本身就是终点
+  | { kind: "session"; id: string; name: string; connectionId: string; enabled: boolean;
+      scope: "group" | "private" | "channel"; address: string;
+      parentAddress?: string;          // 上一级容器的地址（官机子频道所在的频道；论坛话题所在的群）
+      reachability?: { changedAt: string; … } }   // 会话级通不通；只在通断翻转时写 changedAt，其余格施工时定
+  | { kind: "endpoint"; id: string; name: string; connectionId: string; enabled: boolean;
+      managedBy: "connection";         // Webhook 这种连接本身就是终点，目标由连接托管
+      reachability?: { changedAt: string; … } };
+
+interface PlatformDescriptor {          // 描述一个聊天平台（不是一个适配器）
+  platform: string;
+  label: string; shortLabel: string; color: string; icon?: string;
+  targetKind: "session" | "endpoint";
+  scopes: ("group" | "private" | "channel")[];                         // 会话目标能选的会话种类
+  addressNouns: Partial<Record<"group" | "private" | "channel", string>>;   // 地址那一格在这个平台叫什么
+}
+
+interface ConnectionCandidate {         // listConnectionCandidates(signal) 交的
+  name: string;
+  platform: PlatformDescriptor;
+  settings: unknown;                    // 模板候选的就是默认值
+  selfId?: string;
+  via?: string;                         // 经由谁借来的（桥：那条接入的名字）
+  boundConnectionId?: string;           // 已被哪条连接用上；模板候选没有这一格，可以反复用
+}
 ```
+
+- **两种描述**：`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法）；`PlatformAdapterDescriptor { label, shortLabel, color, icon, settingsFields }` 描述一个适配器（它的脸与设置字段），适配器另交 `settingsSchema`。`tint` 统一改叫 `color`；`inbound`（收不收得到回复）与 `atAll`（能不能 @全体）挪成适配器的运行期能力（`capabilities` / `probeCapabilities`）；`connectors` 随「连接器」这一格删掉。`CONNECTION_PLATFORMS` 闭集与平台信息表搬出 `internal`，由适配器自带。
+- **连接上删掉的格**：`kind`、`connector`、`extensionId`（并进 `adapterKey`）。`transport` 留作 OneBot 适配器私有的设置。
+- **新建连接只有一条路**：挑一个候选，再填字段。平台固定的适配器返回写死的模板候选（OneBot 一个、QQ 官方机器人一个、webhook 四个：飞书、钉钉、企业微信、通用），模板可以反复用；桥返回在线的 bot。
+- **`platformSnapshot`**（`PlatformDescriptor` 去掉 `platform` 那一格）只有宿主写：新建时照候选抄、列候选时按平台名刷新、迁移时填、备份里带回；POST / PATCH 带来的一律忽略（`probeState`、`managedBy` 同样只有宿主写）。读它的是面板上连接的脸与目标编辑器、托管目标同步（看 `targetKind`）、目标的 scope 校验；推送层与适配器不读。快照变了不许触发适配器重连。适配器不在场（拓展停了、桥没连上）时，面板照样画得出已有的连接。
+- **目标上没有 `platform`**：它只是连接平台的拷贝，平台一律经 `connectionId` 从连接取。两道守卫：改 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。连接不在了的目标只隔离那一条；作用域键去掉平台前缀。
+- **连接设置的校验**（ADR-0024 决策 10）：保存时适配器在场就按 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。读盘时逐条校验，不过的只隔离那一条（不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动），BN 照常开机。只有外壳（`id` / `name` / `adapterKey` / `platform`）坏了才挡开机。撤下的旧形状写成明确的名单。
+- 冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
+- 探测状态与可达性不迁移，开机重探（ADR-0026 决策 5）。
 
 `platform` 在核心里只指推送 / 聊天平台；订阅来源的平台名叫 `sourceLabel`。
 
 ### 凭据字段标 `secret: true`
 
-- 凭据字段在 schema 上标 `secret: true`，与拓展设置字段同一写法。面板打码与备份脱敏都读这个标记，不再按键名猜。
+- 凭据字段在 schema 上标 `secret: true`，与各集成、适配器、拓展的设置字段同一写法。面板打码与备份脱敏都读这个标记，不再按键名猜。
 - 下发给面板只有一种打码：契约里的 `MaskedSecret`，固定 8 个点，≥24 字符才露头尾各 4 位。带着打码对象写回一律 400；面板保存时没动过的密钥格不进 PATCH。AI apiKey 的哨兵字符串退役。
 - Webhook 的 `url` 算凭据（token 常在路径里）。OneBot 的 `baseUrl` / ws 地址面板照常显示，备份里照旧抹掉。
-- 密钥放哪：AI key 在 `secrets/config-secrets.enc`；B 站 cookie 在 `secrets/bilibili/`；拓展凭据走 `ctx.secrets`，在 `secrets/extensions/<id>/`。
+- 密钥放哪：AI key 在 `secrets/config-secrets.enc`；集成的凭据（B 站 cookie、拓展的 token）一律走各自的 `ctx.secrets`，一个集成一个加密文件（B 站原来的 `cookies.enc` 改名并入），位置见 [data-and-migration.md](./data-and-migration.md)。
 - 现在明文下发的有：连接的 `accessToken`、webhook 的 `secret` 与 `url`、QQ 的 `appSecret`（`GET /api/connections` 直接回存储）；AI apiKey 用哨兵字符串。都换成 `MaskedSecret`。`packages/ui` 出统一的密钥输入框：显示「已配置」+「更换」，各处都换成它。**例外**：QQ 扫码创建时回传的那一次 `appSecret` 不打码。
 
 ## 数字、时间与「不知道」
@@ -402,23 +584,24 @@ type PushTarget =
 - **时长只有一种写法** `formatDuration(start, end)`，写成「2小时13分5秒」；文字与卡片、B 站与拓展、有没有配 Chrome 都走它。按秒数排时钟格式的另叫 `formatClock`。现在没配 Chrome 时出图器是 null，直播文案的 `{time}` 落进 live 自己的兜底（`packages/live/src/room-helpers.ts`），写成不带秒的「2小时13分钟」；这份兜底和 `imageRenderer?.getTimeDifference` 这个可选钩子一并删掉。它们和 `formatDuration` 不同名，守卫 4 抓不到，按这里清。
 - **进门换 ISO**：拓展契约的毫秒时刻、签名清单的秒、B 站不带时区的 `live_time`（北京时间），都在进门处换成 ISO。
 - 要算时间差的地方，在用的那一刻 `Date.parse`，wire 与盘上只存 ISO。现在存毫秒、要改的 wire 字段（施工清单）：皮肤 `updatedAt`、资源采样 `ts`、市场 `fetchedAt`、更新状态的 4 个 `checkedAt`；在播列表里 B 站行的 `startedAt` 是原样抄来的 `live_time`、拓展行是 ISO，同名不同格式。
-- **不知道就缺键**：外部数据不知道就不写这个键（`mutedUntil: 0`、内置皮肤的 `updatedAt: 0` 也改成缺键）。只有位置固定的格子（数组、表格）用 `null`。出口不受约束：给皮肤的排好版文字缺了就是空串。头像、bio 都是可选，渲染器缺了显示首字。这条不加守卫，靠审查。
+- **不知道就缺键**：外部数据不知道就不写这个键（`muteEndsAt: 0`、内置皮肤的 `updatedAt: 0` 也改成缺键）。只有位置固定的格子（数组、表格）用 `null`。出口不受约束：给皮肤的排好版文字缺了就是空串。头像、bio 都是可选，渲染器缺了显示首字。这条不加守卫，靠审查。
 
 ## 改名对照
 
-量大但都是机械替换，每批改完 grep 旧名必须为零。盘上有的键归迁移模块（见 [data-and-migration.md](./data-and-migration.md)「迁移步骤」）。特性键、推送种类、皮肤字段见上文。
+量大但都是机械替换，每批改完 grep 旧名必须为零。盘上有的键归迁移模块（见 [data-and-migration.md](./data-and-migration.md)「迁移步骤」）。特性键、推送种类、皮肤字段见上文。左列是代码里现有的名字；拷问途中起过、没进代码就被推翻的草案名不列。
 
 **人：up / author / master 统一叫 creator。** 之后 `author` 只指皮肤或拓展的作者，`master` 只指「主人」。
 
 | 以前 | 现在 |
 | --- | --- |
-| `UpCard`、`UpDialog`、`pages/up/`、`UpStatsRow`、`UpMeta`、`upColor` / `UP_COLORS`、`upName` | `CreatorCard`、`CreatorDialog`、`pages/creator/`、`CreatorStatsRow`、`CreatorMeta`、`creatorColor` / `CREATOR_COLORS`、`creatorName` |
+| `UpCard`、`UpDialog`、`pages/up/`、`UpStatsRow`、`UpMeta`（面板两份）、`upColor` / `UP_COLORS`、`upName` | `CreatorCard`、`CreatorDialog`、`pages/creator/`、`CreatorStatsView`、`CreatorView`（只留一份）、`creatorColor` / `CREATOR_COLORS`、`creatorName` |
 | `UpColorIdentity`、`colorFromUid` | 删掉 `UpColorIdentity`，取色直接收 `Identity`；`colorFromUid` → `colorFromSeed` |
 | `SubscriptionAuthor` / `AuthorSchema`；拓展契约 `SubscriptionPost.author`、`SubscriptionLiveDetails.author` | `SubscriptionCreator` / `CreatorSchema`；`creator` |
-| `UpDynamicEvent` / `appendDynamic` / `listDynamics` | `PostRecord` / `appendPost` / `listPosts` |
+| `UpDynamicEvent` / `appendDynamic` / `listDynamics` | `PostEntry` / `appendPost` / `listPosts` |
 | `AUTHOR_FIELDS`、挂点 `masterAvatar` / `masterName` | `CREATOR_FIELDS`、`creatorAvatar` / `creatorName` |
-| 直播内部 `MasterInfo` / `masterInfo` / `masterName` / `masterAvatarUrl` / `LiveMasterFeature` / `getMasterInfo` | `CreatorInfo` / `creatorInfo` / `creatorName` / `creatorAvatar` / `LiveCreatorFeature` / `getCreatorInfo` |
-| AI 视图的 `uname`；历史行 `unameSnapshot` / `uavatarSnapshot` | `name`；`nameSnapshot` / `avatarSnapshot` |
+| 直播内部 `MasterInfo` / `masterInfo` / `getMasterInfo` | 删掉：拆进 `Creator`（名字、头像）、`LiveSession.followersAtStart` 与资料的 `fanClubName`，房号留在 `bilibili/` |
+| 直播内部 `masterName` / `masterAvatarUrl` / `LiveMasterFeature` | `creatorName` / `creatorAvatar` / `LiveCreatorFeature` |
+| AI 视图的 `uname`；历史行 `unameSnapshot` / `uavatarSnapshot` | `name`；`nameSnapshot` / `avatarSnapshot`（改装图库引用；旧行存的远端头像地址迁移时丢掉，图缺就画兜底） |
 | 订阅来源的平台名 `platform`（AI 视图、锐评对象） | `sourceLabel` |
 
 **数据字段与平台词。**
@@ -445,12 +628,15 @@ type PushTarget =
 | --- | --- |
 | `templates.dynamic` / `dynamicVideo`、`customDynamicTemplate` / `customVideoTemplate` | `templates.post` / `postVideo`、`customPostTemplate` / `customPostVideoTemplate` |
 | `templates.guardBuy`；`GuardBundle` / `GuardEntry` / `GuardTierKey`；`minGuardLevel` | `templates.membership.guard`；并进会员体系模型；`defaults.membership.minRank` |
+| 模板变量 `{guard}`、`{mdn}` | `{tier}`、`{fanclub}`（资料加 `fanClubName?`）；迁移改写主人的文案，出来的字不变 |
 | AI 配置 `dynamicPrompt`、`presets[].dynamicPrompt`、`search.engines.dynamic`、AiScene 的 `dynamic` | `postPrompt`、`presets[].postPrompt`、`search.scenes.post`、`post` |
-| `linkParsing`、`LinkParser` | `linkCards`、`LinkResolver` |
+| `linkParsing`、`LinkParsingConfig`、`LinkParser`、`runtime/link-parser.ts` | `linkPreview`、`LinkPreviewSettings`、`LinkResolver`、`link-preview/` |
+| `CommandConfig` | `CommandSettings` |
 | `templates.wordcloudStopWords` | `defaults.wordcloud.stopWords` |
 | `fansCron` | `core.profileRefreshCron`（原值迁来） |
-| 日志级别键 `dynamic` / `live` | 并成 `bilibili`，键改成开放的 |
+| 日志级别键 `dynamic` / `live` | 并成 `bilibili`，键改成开放的（核心模块 + 集成键） |
 | `restartPush`、`pushTime` | `liveStart.catchUpOnBoot`、`liveStreaming.streamingIntervalHours` |
+| `app.userAgent` | 删掉：身份由 `packages/http` 生成，B 站设置页加「换一个身份」；老配置里这一格由迁移丢掉，新 schema 不留 |
 | bootstrap 的 `cookieEncryptionKey` / `BN_COOKIE_KEY` / `--cookie-key`（实际是所有密钥的主密钥） | 中立名（如 `secretsPassphrase`，名字施工时定），yaml、环境变量、命令行三处同步改；旧名永远继续认，新旧同设且值不同就拒绝启动；两份 BootstrapConfigSchema 合一、按可选处理 |
 | `chromeIdleSeconds` / `BN_CHROME_IDLE_SECONDS` / `--chrome-idle-seconds` | `chromeIdleSec` / `BN_CHROME_IDLE_SEC` / `--chrome-idle-sec`，旧名永远继续认 |
 | bootstrap 的 `preset.pushTargets`（零读取） | 删掉。其余 bootstrap 名字不动；冻住的桌面壳放行的 5 个环境变量、镜像写死的 5 个永不改名 |
@@ -460,22 +646,29 @@ type PushTarget =
 | 以前 | 现在 |
 | --- | --- |
 | `Source`、暂定名 `fetchLiveStreaming` | `SubscriptionSource`、`fetchLiveStatus` |
-| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（字段 `adapter`）；`PlatformAdapter`、`AdapterRegistry`、`platforms/` | `registerPushOutlet` / `PushOutletHandle` / `PushOutletDef`（字段 `outlet`）；`PushOutlet`、`PushOutletRegistry`、`outlets/`；`PlatformDialect` / `Connector` 的新名施工时定 |
-| `NotificationSink` | `TargetDispatcher` |
+| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（字段 `adapter`、`configSchema`）；`AdapterRegistry`；适配器的 `reconcile` / `dispose` | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`（内置与拓展同一个：适配器 + 描述 + `settingsSchema`）；`PlatformAdapterRegistry`；`start(ctx)` / `stop()`（登记即 `start`）。`PlatformAdapter` 这个名字不变，目录仍叫 `platforms/`，登记表与分发挪到 `push/`；拆出来的两半 `PlatformDialect` / `Connector` 的新名施工时定 |
+| 拓展的 `ExtensionPushView`（`display` + `connectionFields`）；v1 的 `configFields` | `PlatformAdapterDescriptor { label, shortLabel, color, icon, settingsFields }`；`settingsFields`（v1 退路删掉） |
+| `CONNECTION_PLATFORMS` / `ConnectionPlatform`、`PLATFORM_REGISTRY` | 删掉：平台信息由适配器的候选给，连接上存 `platformSnapshot` |
+| `NotificationSink`、多路分发 `MultiplexSink` | `TargetDispatcher` |
 | `BilibiliPush` / `bilibili-push.ts` / `BilibiliPushOptions` | `PushRouter` / `push-router.ts` / `PushRouterOptions` |
 | `BiliEvents`；事件 `source-auth-changed` / `live-session` / `live-viewers` | `BusEvents`；`subscription-auth-changed` / `live-session-changed` / `live-viewers-changed` |
 | `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers` |
-| `SubRuntimeStore`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore`（与 `SubscriptionState`、`subscription-state.json` 同一个词）、头像库删掉并进图库、`subscriptionId` 系、`/api/subscriptions` |
+| `SubRuntimeStore` / `SubRuntime`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore` / `SubscriptionState`（与 `subscription-state.json` 同一个词）、头像库删掉并进图库、`subscriptionId` 系、`/api/subscriptions` |
 | `identityOf`（草案名） | `subscriptionIdentityOf` |
 | 会员 `tiers: "dynamic"`（草案名）；`packages/dynamic` 的 `PushKind`（命名批中途叫过 `DynamicPushPart`） | `tiers: "custom"`；`PostPushPart`（`post` / `post-images`） |
-| 错误体 `{ error, message }`、`{ ok: false, err }` | `{ code, message }`、`{ ok: false, code, message }` |
+| 错误体 `{ error, message }`、`{ ok: false, err }` | `{ code, message }`、`{ ok: false, code, message, upstreamCode? }` |
+| 应用内更新失败原因 `reason` 的 kebab 取值 | snake |
 | `AIOverride` / `AISettings` / `AIScene` / `APIFlavorId`；`WordCloud` / `wordCloud` / `Wordcloud` | `Ai…` / `Api…`；`WordCloud` / `wordCloud`（特性键仍是 `wordcloud`） |
 | `formatWan` / `formatSignedWan` / `formatAxisWan`；`pigeon` / `diligent` | 并进 `formatCount`、`formatAxisTick`；`leastActive` / `mostActive`（连同提示词与草稿） |
 | `DailyHistoryCount.d`、`Opts`、`Img`、`normaliseAvatarUrl` | `day`、`Options`、`Image`、`normalizeAvatarUrl` |
 | `HistoryPatch.patch`、`PickCardBackground`、table 积木的 `count` | `rowId`、`PickLiveCover`、`showCount` |
 | 两个 `createSerialGate` | `createSerialQueue`（串行队列）、`createRenderGate`（渲染闸） |
-| `PushLike`、`SubItemView`（动态、直播、AI 各一份） | 各合成一份；推送出口收成 `broadcast(subscriptionId, messages, kind)`；`SubItemView` 由 internal 的「生效特性」解析器产出 |
+| `PushLike`、`SubItemView`（动态、直播、AI 各一份） | 各合成一份；推送出口收成 `broadcast(subscriptionId, messages, feature)`；`SubItemView` 由 internal 的「生效特性」解析器产出 |
 | 拓展积木 `qrLogin` | 删掉 |
+| `CommandSpec`；B 站自带的 `login` 指令 | `CommandDef`（字段不变）；核心的通用指令 `login [来源]`；1.0 不造 `CommandProvider` |
+| contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`） |
+| AI 工具参数 `uid`；内置技能 `find-up` / `up-pk` | `creator`（「来源键:外部 id」）；`find-creator` / `creator-pk`，旧名留别名 |
+| 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef` |
 
 **订阅与来源（09-27 字段名专项审查）。**
 
@@ -483,52 +676,120 @@ type PushTarget =
 | --- | --- |
 | `Identity` 判别联合 `{ kind, uid }` / `{ kind, extensionId, externalId }`；`SourceKey` 的 `ext:<id>`；`sourceKeyOf` | `{ sourceKey, externalId }`；`bilibili` 或拓展 id，不加前缀；读 `identity.sourceKey` |
 | `SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription`；`EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX` | 删掉，按 `sourceKey` 判；`EXTERNAL_ID_MAX` |
-| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators` / `searchPlaceholder`；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
-| `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscription{ externalId, features }`（只列启用中） |
+| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchPlaceholder`；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
+| `fetchProfile` 查无此人回 `null` | 返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败 |
+| `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscriptionView{ externalId, features }`（从订阅现算、给来源看的只读形状；只列启用中） |
 | `reportSubscriptionsChanged` | 删掉（关注同步是 BN → B 站单向） |
 | `PostEvent.id`；`reportPost(externalId, SubscriptionPost)`、`reportLiveStart` / `End` / `Status`；上报种类五种 | `postId`；`reportPost(externalId, PostReport)`、`reportLive(externalId, LiveSignalReport)`；收成 `post` / `live` / `profile` |
-| `ctx.report("problem" / "problem-resolved")` 与 `level`；`SubscriptionState.problem` | `reportProblem` / `resolveProblem` 与 `notify?: boolean`；`problems` 按 code 做键 |
+| `ctx.report("problem" / "problem-resolved")` 与 `level`；`SubscriptionState.problem` | `reportProblem` / `resolveProblem` 与 `notify?: boolean`；问题表 `Problem`，全在内存，订阅运行态不再存 |
 | `SourceAuth.secrets{ export, import, redactPatterns }` | 删掉；临时凭据用 `ctx.redact(value)` |
 | `descriptor.features` / `extras`；清单 `display{ … }` + `events` | `supportedFeatures` / `supportedExtras`；摊平成 descriptor 同名字段，删 `SUBSCRIPTION_EVENT_FEATURES` |
-| `ExtensionDTO.reportProblems` 这一族 | `reportRejections` / `ReportRejectionView` / `extension-report-rejections-changed`（上报被拒，与来源自报的问题分开） |
-| `LiveStatusResult.state`、`"ended"`、`reason` | `type`、`"offline"`、`code` + `message` |
-| `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
+| `ExtensionDTO.reportProblems` 这一族 | `InstalledExtensionView.reportRejections` / `ReportRejectionView` / `extension-report-rejections-changed`（上报被拒，每个集成一张，与问题表分开） |
+| `LiveStatusResult.state`、`"ended"`、`reason` | 结果形状：成功 `ok: true` + `kind`（`"live"` / `"offline"`），失败 `ok: false` + `code` + `message` |
+| `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`（只交 `SourceHealth { summary }` 一行字）；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
 | ⚠️ 面板在播列表 `LiveListenerSnapshot.viewers`（装的是累计观看的排版字符串「1.2万」） | `totalViewers: number`，**不是** `currentViewers` |
 | ⚠️ `upstream_failed` 错误体里占着 `code` 的 B 站数字码 | `upstreamCode` |
-| `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `peakTotalViewers`；`{ type, occurredAt, peakTotalViewers }`；`videoPosts` / `posts`（**口径从「其余」变「全部」**：`posts` 是全部作品，`videoPosts` 是其中带视频的）；`followers` |
-| 在播表 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `{ subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder` |
-| 面板 `SubscriptionPlatform` / `subscriptionPlatformOf`、`BILI_PLATFORM`、`SubscriptionLookup`、`absent` | `SourceDescriptor` / `descriptorOf(sourceKey)`、`sourceKey`、`SubscriptionIndex`、`isAbsent` |
+| `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `LiveSessionEntry.peakTotalViewers`；`{ kind, occurredAt, peakTotalViewers }`；`CreatorStatsView.videoPosts` / `posts`（**口径从「其余」变「全部」**：`posts` 是全部作品，`videoPosts` 是其中带视频的）；`followers` |
+| 在播表：contract 的 `LiveListenerSnapshot` / `ExtensionLiveSnapshot`、服务端 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `LiveListeningEntry { subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder` |
+| 面板 `SubscriptionPlatform` / `subscriptionPlatformOf`、`BILI_PLATFORM`、`SubscriptionLookup`、`absent`；`BILI_ONLY_EXTRAS`、`guard-levels.ts` | `SourceDescriptor` / `descriptorOf(sourceKey)`、`sourceKey`、`SubscriptionTable`、`isAbsent`；删掉，改看 `supportedExtras`、`MembershipTier.color` |
 | 历史行推送种类那格 `kind`；`AuthState` 的 `loggedOut` / `awaitingScan` / `loggedIn` | `feature`；`logged-out` / `awaiting-scan` / `logged-in` |
 
-**推送（09-27 字段名专项审查）。**
+**推送（09-27 字段名专项审查、09-28 推送侧中立化）。**
 
 | 以前 | 现在 |
 | --- | --- |
 | 订阅顶层 `extras`（按目标的三态表） | `extraTargets` |
 | `retryOf` / `HistoryRetryMessage`（人工重推） | `repushOf` / `HistoryRepushMessage` |
-| 连接 `testStatus`；`ProbeResult.ok: boolean \| null`；目标 `testStatus.lastCheckedAt`（只在通断翻转时写） | `probeStatus`；三态 `status`；`reachability.changedAt` |
-| endpoint 目标的 `scope: "channel"`；OneBot 的 `config.transport` | 删掉（通用 webhook 对外 JSON 照写常量）；删掉（和 connector 重复） |
+| 连接 `testStatus`（`ConnectionTestStatus`）；`ProbeResult.ok: boolean \| null`；目标 `testStatus.lastCheckedAt`（只在通断翻转时写） | `probeState`（对象，类型 `ConnectionProbeState`）；三态 `status`；`reachability.changedAt` |
+| 连接的 `kind`（`direct` / `extension`）、`connector`、`extensionId`；连接的 `config` | 删掉，分发键并成 `adapterKey`；`settings`（OneBot 的 `transport` 留在里面，是它私有的设置） |
+| `OnebotConnectionConfig` / `WebhookConnectionConfig` / `QQOfficialConnectionConfig`、桥的 `BridgeConnectionConfig` | `…ConnectionSettings`，随各自的适配器搬出 `internal` |
+| endpoint 目标的 `scope: "channel"`；目标的 `platform` | 删掉（通用 webhook 对外 JSON 照写常量）；删掉（经 `connectionId` 从连接取） |
+| `PlatformDescriptor.tint`、`inbound`、`atAll`、`connectors` | `color`；挪成适配器的运行期能力；删掉 |
 | `POST /api/connections/:id/test`；`/api/push/test`；`TestResponse` 与 `TestPushResponse` | `/probe`；`/api/targets/:id/test`；合成一个 |
-| `TargetPlatformSchema`；`isConnectionOn`；拓展契约 `listBots` / `ExtensionBotView` / `boundTo` | `OpenPlatformSchema`；`isDirectConnectionOn`；连接候选 / `boundConnectionId` |
-| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryEntry`；`HistoryRecordInput.target`；`countsAsDelivery`（现在 failed 也回 true）；`PushMessageRole` 与 `HistoryMessageRole` | `RepushOriginal`、`version`、`isOwnCopy`；`HistoryRow`；`targetId`；改成名副其实的名字，按真实语义起（施工时定）；合成一个 |
-| `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`；出口 `sendPrivate` 与 `{ private: true }` | `notifyMaster(text)`；删掉 |
-| 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，outlet 映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；address；`address` |
-| WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`、重推结果判别键 `can`；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | 名副其实的名字（施工时定）；特性键；`code` + `message`、`ok`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
+| `TargetPlatformSchema`；`isConnectionOn`；拓展契约 `listBots` / `ExtensionBotView` / `boundTo` | `OpenPlatformSchema`；去留施工时定（连接不再分直连 / 拓展，分发按 `adapterKey`）；`listConnectionCandidates(signal)` / `ConnectionCandidate` / `boundConnectionId` |
+| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryRecordInput.target`；`countsAsDelivery`（现在 failed 也回 true）；`PushMessageRole` 与 `HistoryMessageRole` | `RepushSnapshot`、`version`、`own` 删掉（图按摘要进图库、按引用清扫，「复用历史那份 / 自己存的」不再有区别）；`NewHistoryEntry.targetId`；改成名副其实的名字，按真实语义起（施工时定）；合成一个。`HistoryEntry` 不改名（它就是日志里的一条） |
+| `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`；出口 `sendPrivate` 与 `{ private: true }` | `notifyMaster(payload: string \| NotificationPayload)`，返回结果形状；删掉 |
+| 链接回复现造的临时目标 | 删掉：回复经 `TargetDispatcher.sendToAddress(connectionId, address, payload)` 发回原会话 |
+| `/api/history?uid=` | 删掉（没有调用方）；以后要按人查再加 `?identity=` |
+| 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，在适配器里映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；address；`address` |
+| OneBot 入站的 `miniAppCardLinks`；B 站域名预筛 `CARD_HOST_HINT` | 入站链接的来源标记（正文 / 普通卡 / 原生分享卡，格名施工时定）；删掉 |
+| WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`（重推预检的 `reason` 也在内，判别键 `can` 保留）；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | 名副其实的名字（施工时定）；特性键；`code` + `message`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
 
 **配置（09-27 字段名专项审查）。**
 
 | 以前 | 现在 |
 | --- | --- |
-| 全局 `roastSchedule` 及 `targets` / `days` / `approval` | `core.rankingReport` 及 `targetIds` / `windowDays` / `requiresApproval` |
+| 全局 `roastSchedule` 及 `targets` / `days` / `approval` | `core.rankingReport`（类型 `RankingReportSettings`）及 `targetIds` / `windowDays` / `requiresApproval` |
 | `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`；`core.history.retentionDays`；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards` / `cards.byKind` / `liveCoverImageIds`；从 schema 删掉 |
-| `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkCards.base` / `base.enabled` / `base.replyForm` / `byTarget` |
-| 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享（09-27 拍板）：取值 `nativeShare`（随 `linkCards` 同一趟迁移）、类型 `NativeShare…`、面板「原生分享卡」并附小字「在 QQ 里显示为小程序卡」；桥帧能力名 `miniapp-card` alpha 不动，1.0.0 之前两步改完（见 construction-plan） |
+| `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkPreview`（摊平，没有默认行那一层）/ `enabled` / `replyForm` / `byTarget` |
+| 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；类型 `NativeShare…`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧能力名 `miniapp-card` alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
-**服务端命名约定**：`create*` 造对象，`bind*` 挂到总线并返回可释放对象，`start*` 起定时或循环；入参一律叫 `XxxOptions`；存储一律是接口加 `create`。现存 24 个 `*Deps`、4 个 `attach*`、5 个 `make*` 全改。面板的类型门面别名删掉，用本名。
+**类型名后缀（ADR-0023 决策 15，按 [naming.md](../agents/naming.md) 改）。** 上面几张表里已有的不重复列。
+
+| 以前 | 现在 |
+| --- | --- |
+| contract：`DevStatusDTO` / `DevActiveDTO` / `DevCapturesDTO` | `DevScenariosResponse` / `DevActiveResponse` / `DevCapturesResponse` |
+| contract：`MaidSkillDTO` / `MaidSkillProblemDTO`；`MarketplaceSourceDTO` / `MarketplaceEntryDTO`；`AiToolTraceDTO` / `AiChatMessageDTO` / `AiCardSkinTouchDTO` / `AiConversationDTO`；`ChromeSourceDTO` | `MaidSkillView` / `MaidSkillProblemView`；`MarketplaceSourceView` / `MarketplaceEntryView`；`AiToolTraceView` / `AiChatMessageView` / `AiCardSkinTouchView` / `AiConversationView`；`ChromeOriginView` |
+| contract：`AiConversationMetaDTO` | `AiConversationMeta` |
+| contract：`ExtensionDTO`（拓展页那张卡，没跑起来的也在） | `InstalledExtensionView` |
+| contract：`UpdateStatusDTO` 与服务端别名 `UpdateStatus`（`GET /api/update` 的整份响应） | `UpdateResponse`，别名删掉；里面那格 `UpdateState` 不动 |
+| contract：`SubscriptionDTO` / `BiliSubscriptionDTO` / `ExtensionSubscriptionDTO` / `SubscriptionRuntimeDTO` | 两支合成一个 `SubscriptionView` |
+| `ExtensionStateDTO`（`ExtensionRunState` 的别名）；`ExtensionRunState`（装的是取值） | 别名删掉；`ExtensionRunStatus`，常量 `EXTENSION_RUN_STATES` 跟着改 |
+| `MarketplaceEntryState`（六档取值） | `MarketplaceEntryStatus` |
+| `HistoryRepushInfo` | `HistoryRepushView` |
+| contract 的 `StatsRoastRunOutcome`、服务端 `RoastRunOutcome` 与 `ReportOutcome`（三份同形） | contract 里一份 `RoastRunResult`，服务端两处都用它 |
+| 服务端 `DevRunOutcome` 与面板 `RunOutcome` | contract 里一份 `DevRunResult` |
+| `ActionOutcome`、`MarketplaceInstallOutcome`、`QQSendVerdict`、`DeliverOutcome`（锐评投递）、`PushMessageOutcome`、`CellOutcome`、桥的 `BridgeSendOutcome` / `BridgePingOutcome` | `ActionResult`、`MarketplaceInstallResult`、`QQSendResult`、`RoastDeliveryResult`、`PushMessageResult`、`CellResult`、`BridgeSendResult` / `BridgePingResult` |
+| `LookupOutcome`（解析门） | 随 `searchCreators` 改成 `…Result` |
+| `StoredSettingsVerdict` / `judgeStoredSettings` | `StoredSettingsCheckResult` / `checkStoredSettings` |
+| `ParsedExtraParams`（装的是 `{ ok, value, error }`） | `ExtraParamsParseResult` |
+| `SweepReport`（这次清扫的结果）；`StatusReport`（status 指令现算的） | `SweepResult`；`StatusView` |
+| `LiveSessionRecord`；`StatsSeenRow`；`ProvenanceRecord`；`ProcRow` | `LiveSessionEntry`；`StatsSeenEntry`；`ProvenanceEntry`；`ProcessEntry` |
+| `ModuleStatus`（装的是四个布尔的对象） | `ModuleState` |
+| contract 的 `BrowserProcessState`（装的是取值）与 WS 字段 `ResourceSample.browserState`；服务端 `BrowserProcessInfo`（`{ state, pid }`） | `BrowserProcessStatus` 与 `browserStatus`；`BrowserProcessState`，里面的 `state` 改 `status` |
+| `LoginSnapshot`（internal、B 站 api、面板各一份）；服务端 `LoginSnapshotView`；devtools 登录场景的 `OverridableStatus` | 中立一侧用 `AuthState`，`bilibili/` 里还要原形就叫 `BiliLoginState`；删掉（`login` 改核心通用指令、场景搬进 `bilibili/` 的 devtools，都读 `AuthState`） |
+| `AIProviderMeta` / `WebSearchBackendMeta` | `AiProviderDescriptor` / `WebSearchBackendDescriptor` |
+| `GlobalConfig` / `AppConfig` / `MasterConfig` / `OnboardingConfig`；`ScheduleConfig` / `ScheduleConfigPartial` | `Settings` 的分段（`core.*`）；拆进 `defaults.quietHours` 与 `defaults.liveEnd` |
+| `PersonaConfig` / `CommentaryGeneratorConfig` / `ImageRendererConfig`（设置的值） | `PersonaSettings` / `CommentaryGeneratorSettings` / `ImageRendererSettings` |
+| `WebSearchExecutorConfig`、`EnableCheckArgs`（参数包） | `WebSearchExecutorOptions`、`EnableCheckOptions` |
+| devtools update 场景的本地 `Params`；HTML 清洗器的本地 `Ctx`；出图的 `AssembleCtx` | `UpdateScenarioValues`；`SanitizeState`；`AssembleState` |
+| `QQTokenManager` / `QQTokenManagerOptions`；`KeyManager` | `QQTokenCache` / `QQTokenCacheOptions`；`KeyFileLoader` |
+| `StorageManager` / `StorageManagerOptions` | 删掉（B 站 cookie 改走 `ctx.secrets`） |
+| `SubscriptionStore`（`packages/subscription`，不存盘的内存镜像）；`WsTicketStore`（内存里的一次性票）、桥的 `BridgeBlobStore`（内存里取过即焚的图） | `SubscriptionCache`；`WsTicketIssuer`；`BridgeBlobCache` |
+| `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>`（补一个 `entries()`，见 [architecture.md](./architecture.md)「接口族与登记表」），工厂照 `create*` 规矩跟着改 |
+| 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 |
+| 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
+| 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |
+| dynamic 的 `DynamicEngineConfig`、`DynamicFilterConfig`、`WorkDeliveryConfig`、`DeliverWorkArgs`、`WorkDeliveryOutcome`、`DynamicTimelineManager`、`SubManagerView` | 随包消失：`deliverPost` 的 `…Options`、`PostSettings`；过滤进核心的 `ContentFilters` |
+| live 的 `LiveEngineConfig`、`ListenerManagerConfig`、`ListenerManager`、`LiveNotifyParams`、`LivePushTimerManager`、`UserInfoInLiveData`；种类取值 `LiveType`、`LivePushType`、`LiveNotifyPushType` | 场次引擎合一以后消失（推送种类就是特性键；`bilibili/` 里还要的种类照表叫 `…Kind`） |
+| 面板：`RestartOutcome`；`SectionMeta`；`PushKindMeta`；`WebDevScenario`（带 `run`）；`CardStatus`（`{ tone, text }`） | `RestartResult`；`SectionDescriptor`；`FeatureDescriptor`（推送种类改成特性键以后）；`WebDevScenarioDef`；`CardStatusView` |
+| 面板：`DetectState` / `ViewState` / `DraftUiState` / `TestState`（装的都是取值） | `DetectStatus` / `ViewStatus` / `DraftUiStatus` / 探测三态 `ProbeStatus` |
+| 面板：手抄四份的 `HealthSnapshot`；`GlobalConfigPatch` | contract 里一份 `HealthResponse`；`SettingsPatch` |
+| 推送层的 `PushSendInfo`（一次广播对每个目标回调一次的载荷）；`SendContext`（跟着一次发送走的一包字段，不是宿主环境） | `PushSendResult`；`SendMeta` |
+| 服务端 `MuteState`（带 `isMuted()` / `muteFor()` 的部件，不是状态对象） | `MuteGate` |
+| 服务端 `ExtensionRuntime`（宿主这边握着的拓展把手） | `ExtensionHandle` |
+| ai 的 `VisionToolContext`（`{ images, describe }`：一份数据加一个协作函数） | `VisionToolDeps` |
+| 统计聚合的 `LiveSummary`（窗口里的直播场次与时长，撞了 AI 直播总结 `liveSummary`） | `LiveStatsView` |
+| internal 设置段 `ExtensionState`（`{ enabled, settings? }`）；拓展契约的读取把手 `ExtensionSettings<T>` | `ExtensionSection`（和 `core` / `bilibili` 同一层的「段」）；`SettingsReader<T>` |
+| `HistoryRecordInput`（要追加进历史的那一行）；备份的 `FullBackupInput`（要打包的各节数据）、`BuildBackupInput`（参数包） | `NewHistoryEntry`；`FullBackupPayload`、`BuildBackupOptions` |
+| 三态取值：ui 的 `TriState`、桥的 `BridgeCapabilityState`、`MiniAppCardSupport` 的判别字段 `state` | `TriStatus`、`BridgeCapabilityStatus`、`status`（类型名随原生分享改成 `NativeShare…`）；拓展视图的 `tristate` 列名是契约 v3 的字面量，不动 |
+| ui 的 `PlatformMeta`（怎么画一个平台：`tint`、`label`、`icon`、`svg`） | `PlatformBadgeSpec`；面板的注入口 `platform-meta` 跟着改 |
+| 面板 `SessionStatus`（`GET /api/session` 的响应，面板手写的）；面板 store 里本地的 `AuthState` | contract 里一份 `SessionResponse`；`AuthStoreState`（`AuthState` 让给来源的登录态） |
+| 当结果用的 `Check` / `Read` / `Parse`：`MarketplaceIndexCheck`、`SubscriptionReportCheck`、`SafeRegexCheck`、`ViewCheck`、`ExtensionDirRead`、storage 的 `JsonFileRead`、`ExtensionManifestRead`、桥的 `BridgeFrameParse` | `MarketplaceIndexCheckResult`、`SubscriptionReportCheckResult`（上报 schema 随契约 v3 重写，新名照这个起）、`SafeRegexCheckResult`、`ViewCheckResult`、`ExtensionDirReadResult`、`JsonFileReadResult`、`ExtensionManifestReadResult`、`BridgeFrameParseResult` |
+| 更新镜像的 `Acceptance<T, R>`（`{ ok, value } \| { ok, reason }`） | `…Result`，主干施工时定 |
+| 面板的 `PushToastSink`（一包两把回调） | `PushToastHandlers` |
+| 太虚的 `Data`：storage 的 `CookieData`；出图的 `CardData`（皮肤字段取值表）、`RoastBoardData` / `RoastSoloData`（`…CardProps` 的别名） | `CookieData` 随 `CookieStore` 退役消失（cookie 罐进 `packages/http`）；其余按装的东西起名，施工时定 |
+| `Row`：拓展在播表的 `ExtensionLiveRow`、拓展宿主递给 ctx 的 `ExtensionSubscriptionRow` | 随 1.0 消失：在播表合成一个 `LiveListeningEntry`；来源拿到的名单是 `SourceSubscriptionView` |
+| 种类取值叫 `…Type`：指令参数 `ParamType`、版式块 `MessagePartType`、皮肤字段 `CardSkinFieldType`、QQ 官方机器人的 `QQOfficialBotType`（公域 / 私域）、blive 的 `UserActionType` | `ParamKind`、`MessagePartKind`、`CardSkinFieldKind`、`QQOfficialBotKind`（随适配器搬出 `internal`）、`UserActionKind`（随 blive 搬进 `bilibili/`） |
+| 当读口子用的 `Source`：AI 只读工具的 `PlatformLabelSource` / `ExtensionLiveSource`、资源采样的 `BrowserSource`、WS 的 `ResourceMonitorSource`、拓展推送的 `ExtensionNameSources` / `ExtensionCardAuthorSources`、桥的 `BridgeInboundSource`、面板的 `PersonaSource`；统计适配器的 `BiliStatsSourceOptions` / `ExtensionStatsSourceOptions` | 读口子改 `…Reader` / `…Lookups`，各自新名施工时定；`ExtensionNameSources` / `ExtensionCardAuthorSources` 随显示名链 `displayNameOf` 与头像进图库消失，`PlatformLabelSource` / `ExtensionLiveSource` 随描述符与在播表合一多半消失；统计那两个并成 `BindStatsRecorderOptions`。市场源 `MarketplaceSource` / `MarketplaceOfficialSource` 是主人看得见的叫法，不改 |
+
+参数包叫 `Input` 的 31 个改 `…Options`：`BareAuthPolicyInput`、`BootSelectedPayloadInput`、`ResolveWebDistDirInput`、`CreateDevtoolsInput`、`CreateDevRouteInput`、`ExtensionScenariosInput`、`InstallExtensionPackageInput`、`UninstallExtensionInput`、`RecordLoadAttemptInput`、`ViewCheckInput`、`RepushGateInput`、`CreateSystemRouteInput`、`CreateUpdateRouteInput`、`ResolveLinkParsingPoliciesInput`（主干随 `linkPreview` 改）、`RestartAbilityInput`、`ResolveTargetScopeInput`、`SkinAiCreateInput`、`SkinAiEditInput`、`DecideUpdateInput`、`FetchSignedManifestInput`、`FetchSignedJsonInput`、`FetchThroughMirrorsInput`、`InstallPayloadInput`、`PruneOldVersionsInput`、`SelectVersionForBootInput`、`ReadBootViewInput`、`PinVersionInput`、`MarkBootSucceededInput`、`CreateUpdateServiceInput`、`ResolveVersionsRootInput`、`BuildProviderParamsInput`。**不改**：`LiveCardInput`（出卡模板的输入）与 `RoastInput`（喂给模型的提示词输入），它们合 Input 行。
+
+**服务端命名约定**：`create*` 造对象，`bind*` 挂到总线并返回可释放对象，`start*` 起定时或循环；入参一律叫 `XxxOptions`，注入的协作者包叫 `XxxDeps`（只放协作者，不混配置值）；存储一律是接口加 `create`，`Store` 只指存盘的。现存 4 个 `attach*`、5 个 `make*` 全改。面板的类型门面别名删掉，用本名。
 
 **明确不改**：见 [architecture.md](./architecture.md)「明确不改的」。
