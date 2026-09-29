@@ -83,6 +83,8 @@ describe("FansPoller — 无法解析的 dynamicCron", () => {
 				serviceCtx: {
 					setTimeout: vi.fn(() => undefined),
 					setInterval: vi.fn(() => undefined),
+					track: vi.fn(),
+					signal: new AbortController().signal,
 				} as never,
 			});
 		}).not.toThrow();

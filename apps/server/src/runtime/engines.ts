@@ -333,11 +333,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					latencyMs: result.latencyMs,
 					err: result.err,
 				};
-				void opts.configStore
-					.recordTargetTestStatus(target.id, nextStatus)
-					.catch((e) =>
-						log.warn(`[sink] target ${target.id} testStatus writeback failed: ${String(e)}`),
-					);
+				// 发出去不等,但登记进 track:关停得等这笔写交进 config 写道,写道才能关门。
+				opts.serviceCtx.track(
+					opts.configStore
+						.recordTargetTestStatus(target.id, nextStatus)
+						.catch((e) =>
+							log.warn(`[sink] target ${target.id} testStatus writeback failed: ${String(e)}`),
+						),
+				);
 			}
 		},
 	});
@@ -382,9 +385,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				},
 			});
 			if (!input) return;
-			void opts.historyStore
-				.record(input)
-				.catch((e) => log.warn(`[history] record failed: ${String(e)}`));
+			// 发出去不等,但登记进 track:关停得等这行历史(含图片落盘)交进历史写道,写道才能关门。
+			opts.serviceCtx.track(
+				opts.historyStore
+					.record(input)
+					.catch((e) => log.warn(`[history] record failed: ${String(e)}`)),
+			);
 		},
 	});
 	push.start();
@@ -402,7 +408,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// ---------- Master notifier ----------
 	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
 	// Web dashboard 上同样会通过 AlertShell 看到 engine-error;两路通道互不影响。
-	const masterNotifier = new MasterNotifier({ bus: opts.bus, push, logger: log });
+	const masterNotifier = new MasterNotifier({
+		bus: opts.bus,
+		push,
+		logger: log,
+		serviceCtx: opts.serviceCtx,
+	});
 	masterNotifier.install();
 
 	// ---------- AI (optional) ----------
@@ -568,14 +579,24 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 * 下次 auth-restored 再试。
 	 */
 	const runFollowSync = (reason: string): void => {
-		void syncFollows({
-			api: opts.api,
-			subs: () => opts.subscriptionStore.list(),
-			rt: opts.subRuntimeStore,
-			logger: log,
-		}).catch((e: unknown) => {
-			log.warn(`[follow] 关注同步(${reason})失败: ${e instanceof Error ? e.message : String(e)}`);
-		});
+		// 长跑(逐个订阅补关注、中间有 300ms 间隔):登记进 track 让关停等它写完状态,
+		// 同时把 signal 交给它 —— 关停一开始它就停在当前这一个,不靠预算硬等。
+		opts.serviceCtx.track(
+			syncFollows({
+				api: opts.api,
+				subs: () => opts.subscriptionStore.list(),
+				rt: opts.subRuntimeStore,
+				logger: log,
+				signal: opts.serviceCtx.signal,
+			}).then(
+				() => undefined,
+				(e: unknown) => {
+					log.warn(
+						`[follow] 关注同步(${reason})失败: ${e instanceof Error ? e.message : String(e)}`,
+					);
+				},
+			),
+		);
 	};
 	// 启动时只在已登录时补一遍。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
 	// 还把每条订阅标成「未关注」。开机时登录状态已探完(createAuthSystem 等过探活);未登录时
@@ -631,9 +652,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const sub = opts.subscriptionStore.findByUid(uid);
 			if (!sub) return;
 			if (opts.subRuntimeStore.get(sub.id)?.roomId === roomId) return;
-			void opts.subRuntimeStore.patch(sub.id, { roomId }).catch((err) => {
-				log.warn(`[engines] 房号写盘失败 uid=${uid}: ${String(err)}`);
-			});
+			opts.serviceCtx.track(
+				opts.subRuntimeStore.patch(sub.id, { roomId }).catch((err) => {
+					log.warn(`[engines] 房号写盘失败 uid=${uid}: ${String(err)}`);
+				}),
+			);
 		},
 	});
 
@@ -658,6 +681,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			bindExtensionPosts({
 				bus: opts.bus,
 				logger: dynamicCtx.logger,
+				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
 				settings: (sub) => {
@@ -711,6 +735,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			bindExtensionLivePush({
 				bus: opts.bus,
 				logger: liveCtx.logger,
+				serviceCtx: liveCtx,
 				sessions: liveSessions,
 				table: extensionLive,
 				subscription: (id) => opts.subscriptionStore.findById(id),
@@ -728,7 +753,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
 				renderer: () => (globals().defaults.cardStyle.enabled ? imageRenderer : null),
 				reportProblem: (problem) => opts.extensionReportProblem?.(problem),
-				timers: liveCtx,
 			}),
 		);
 	}
@@ -797,6 +821,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		try {
 			for (const connection of opts.configStore.getConnections()) {
 				if (!connection.enabled) continue;
+				// 关停一开始就不再起新的探测:一轮探下来要等每条连接的超时,登记进 track 之后
+				// 不能靠预算硬等它。
+				if (opts.serviceCtx.signal.aborted) break;
 				try {
 					const result = await probeConnectionAndCapabilities(connection.id);
 					if (result.ok === null) continue; // platform doesn't support probe (e.g. webhook)
@@ -820,10 +847,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Kick off an immediate probe after engines come up, then poll on a timer.
 	// `config-changed` for the 'connections' scope triggers an extra immediate probe
 	// so the UI reflects new connections / edits without waiting up to 5 min.
-	void probeAllConnections();
-	const probeTimer = setInterval(() => {
-		void probeAllConnections();
-	}, CONNECTION_PROBE_INTERVAL_MS);
+	// 探测结果经 patchConnection 写回连接表:登记进 track,关停等这笔写交进 config 写道。
+	const trackProbe = (): void => {
+		opts.serviceCtx.track(
+			probeAllConnections().catch((e) => log.warn(`[probe] 健康探测失败: ${String(e)}`)),
+		);
+	};
+	trackProbe();
+	const probeTimer = setInterval(trackProbe, CONNECTION_PROBE_INTERVAL_MS);
 	// Allow process exit without waiting for the next tick.
 	probeTimer.unref?.();
 

@@ -20,6 +20,11 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import {
+	deferred,
+	makeTrackingContext,
+	stillPending,
+} from "../../__tests__/support/track-context.js";
 import { bindExtensionPosts } from "../extension-posts.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
@@ -63,6 +68,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 		const handle = bindExtensionPosts({
 			bus,
 			logger,
+			serviceCtx: makeTrackingContext(),
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
@@ -129,6 +135,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 		const handle = bindExtensionPosts({
 			bus,
 			logger,
+			serviceCtx: makeTrackingContext(),
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
@@ -165,6 +172,83 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(render).not.toHaveBeenCalled();
 		expect(sent).toEqual([]);
+		handle.dispose();
+	});
+});
+
+/**
+ * 关停(切片 ③)。每条作品的出卡与推送是发出去不等的后台活;登记进 `ctx.track()` 之后关停等它推完 ——
+ * 推送落历史的那一笔得赶在各写道关门之前交进去。
+ */
+describe("bindExtensionPosts — 登记进 track", () => {
+	function bind(overrides: { broadcast: () => Promise<void> }) {
+		const ctx = makeTrackingContext();
+		const bus = createNodeMessageBus();
+		const image = {
+			generateNeutralDynamicCard: vi.fn(async () => Buffer.from("card")),
+		} as unknown as ImageRenderer;
+		const push: BoundWorkPush = {
+			broadcast: overrides.broadcast,
+			broadcastSequence: async () => {},
+		};
+		const errors: string[] = [];
+		const handle = bindExtensionPosts({
+			bus,
+			logger: { ...logger, error: (msg: string) => errors.push(msg) },
+			serviceCtx: ctx,
+			subscription: (id) => (id === SUB.id ? SUB : undefined),
+			profileName: () => "资料名",
+			settings: () => ({
+				messageLayout: defaultMessageKindLayout("dynamic"),
+				filter: {},
+				dynamic: true,
+			}),
+			sources: { running: () => true, postNoun: () => "作品", readAvatar: async () => undefined },
+			pushFor: () => push,
+			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryDeps: () => ({
+				logger,
+				image,
+				cardFailures: createCardFailureTracker(),
+				sendErrorMsg: async () => {},
+				emitEngineError: () => {},
+			}),
+		});
+		const emit = (n: number) =>
+			bus.emit("subscription-reported", {
+				extensionId: SUB.extensionId,
+				externalId: SUB.externalId,
+				subscriptionIds: [SUB.id],
+				report: { kind: "post", value: post(n) },
+			});
+		return { ctx, handle, emit, errors };
+	}
+
+	it("一条作品的推送登记进 track:发送落定它才落定", async () => {
+		const sending = deferred();
+		const broadcast = vi.fn(() => sending.promise);
+		const { ctx, handle, emit } = bind({ broadcast });
+
+		emit(1);
+
+		expect(ctx.tracked).toHaveLength(1);
+		await vi.waitFor(() => expect(broadcast).toHaveBeenCalledTimes(1)); // 卡出好了,发送停在半路
+		expect(await stillPending(ctx.settled())).toBe(true);
+		sending.resolve(undefined);
+		await ctx.settled();
+		handle.dispose();
+	});
+
+	it("推送途中出错:登记进去的这件事不拒,记一条 error(决策 77:不重试)", async () => {
+		const broadcast = vi.fn(async () => {
+			throw new Error("boom");
+		});
+		const { ctx, handle, emit, errors } = bind({ broadcast });
+
+		emit(1);
+
+		await expect(ctx.tracked[0]).resolves.toBeUndefined();
+		expect(errors.some((msg) => msg.includes("boom"))).toBe(true);
 		handle.dispose();
 	});
 });

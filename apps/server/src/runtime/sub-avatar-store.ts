@@ -8,6 +8,7 @@ import {
 	isExtensionSubscription,
 	type Logger,
 	type MessageBus,
+	type ServiceContext,
 	SUBSCRIPTION_AVATAR_MAX_BYTES,
 	SubscriptionAvatarSchema,
 	sniffImageFormat,
@@ -266,14 +267,18 @@ export function bindSubAvatarCleanup(opts: {
 	bus: MessageBus;
 	avatars: SubAvatarStore;
 	logger: Logger;
+	/** 删头像是发出去就不等的写:登记进 track,关停等它删完才让头像仓关门。 */
+	serviceCtx: Pick<ServiceContext, "track">;
 }): Disposable {
 	return opts.bus.on("subscription-changed", (ops) => {
 		for (const op of ops) {
 			if (op.type !== "remove" || !isExtensionSubscription(op.sub)) continue;
 			const id = op.sub.id;
-			opts.avatars.remove(id).catch((err) => {
-				opts.logger.warn(`[sub-avatar] 删订阅 ${id} 的头像失败:${String(err)}`);
-			});
+			opts.serviceCtx.track(
+				opts.avatars.remove(id).catch((err) => {
+					opts.logger.warn(`[sub-avatar] 删订阅 ${id} 的头像失败:${String(err)}`);
+				}),
+			);
 		}
 	});
 }

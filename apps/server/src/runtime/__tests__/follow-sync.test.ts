@@ -155,3 +155,57 @@ describe("syncFollows — 启动时补齐关注", () => {
 		expect(r.checked).toBe(0);
 	});
 });
+
+/**
+ * 关停(切片 ③)。一轮逐个补关注中间每个隔 300ms、订阅一多要好几分钟,登记进 `ctx.track()` 之后
+ * 关停不能靠预算硬等 —— `signal` 一中止就得停在手上这一个订阅。
+ */
+describe("syncFollows — signal 中止", () => {
+	/** 全都没关注:每个订阅都要补,中间隔 FOLLOW_GAP_MS。 */
+	const NONE_FOLLOWED = { code: 0, data: null };
+
+	it("补完手上这一个就停:结果照样写进 rt,后面的不再发关注,别人的状态也不再补写", async () => {
+		const shutdown = new AbortController();
+		const { deps, follow, patch } = makeDeps({ relations: NONE_FOLLOWED });
+		follow.mockImplementationOnce(async () => {
+			shutdown.abort(); // 关停正好在第一个关注在途时开始
+			return { code: 0, message: "0" };
+		});
+
+		const r = await syncFollows({ ...deps, signal: shutdown.signal });
+
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).toHaveBeenCalledWith("111");
+		// 已经发出去的那个关注,状态照样落进去(不然和 B 站上的真相对不上)。
+		expect(patch).toHaveBeenCalledTimes(1);
+		expect(patch).toHaveBeenCalledWith("sub-0", { followed: true, followError: undefined });
+		expect(r.followed).toBe(1);
+	});
+
+	it("两个关注之间的间隔里中止:马上醒,不把 300ms 睡满", async () => {
+		const shutdown = new AbortController();
+		const { deps, follow } = makeDeps({ relations: NONE_FOLLOWED });
+
+		const running = syncFollows({ ...deps, signal: shutdown.signal });
+		// 第一个补完,正睡在 300ms 的间隔里。轮询间隔压小,让中止尽量贴着间隔的开头落下 ——
+		// 没接线的话中止之后还得再睡 ~290ms,和「马上醒」差出一大截,余量不靠机器快慢。
+		await vi.waitFor(() => expect(follow).toHaveBeenCalledTimes(1), { interval: 2 });
+		const abortedAt = Date.now();
+		shutdown.abort();
+		await running;
+
+		expect(Date.now() - abortedAt).toBeLessThan(150);
+		expect(follow).toHaveBeenCalledTimes(1);
+	});
+
+	it("开始之前信号就已经中止:一个关注都不发,一笔状态都不写", async () => {
+		const shutdown = new AbortController();
+		shutdown.abort();
+		const { deps, follow, patch } = makeDeps({ relations: NONE_FOLLOWED });
+
+		await syncFollows({ ...deps, signal: shutdown.signal });
+
+		expect(follow).not.toHaveBeenCalled();
+		expect(patch).not.toHaveBeenCalled();
+	});
+});

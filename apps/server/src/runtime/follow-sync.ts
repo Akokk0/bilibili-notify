@@ -24,6 +24,11 @@ export interface FollowSyncDeps {
 	subs: () => Subscription[];
 	rt: SubRuntimeStore;
 	logger: Logger;
+	/**
+	 * 关停信号。中止之后停在手上这一个订阅:已经发出去的那个关注照样把结果写进 `rt`(不然状态和
+	 * B 站对不上),但不再发下一个、不再补写别的订阅的状态 —— 一轮逐个补关注要好几分钟,关停不能靠预算硬等。
+	 */
+	signal?: AbortSignal;
 }
 
 export interface FollowSyncResult {
@@ -42,7 +47,21 @@ export interface FollowSyncResult {
 /** 补关注之间的间隔 —— 写接口连发最招风控。 */
 const FOLLOW_GAP_MS = 300;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 睡 `ms` 毫秒;`signal` 中止就提前醒。 */
+const sleep = (ms: number, signal?: AbortSignal) =>
+	new Promise<void>((resolve) => {
+		if (signal?.aborted) {
+			resolve();
+			return;
+		}
+		const wake = (): void => {
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", wake);
+			resolve();
+		};
+		const timer = setTimeout(wake, ms);
+		signal?.addEventListener("abort", wake, { once: true });
+	});
 
 /**
  * 批量查出「已经关注了的 uid」。
@@ -103,6 +122,11 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	const uids = [...new Set(subs.map((s) => s.uid))];
 	const alreadyFollowed = await queryFollowed(deps.api, uids, deps.logger);
 	const degraded = alreadyFollowed === null;
+	const interrupted = (): boolean => deps.signal?.aborted === true;
+	if (interrupted()) {
+		deps.logger.info("[follow] 关停中，关注同步到此为止");
+		return { checked: subs.length, followed: 0, alreadyFollowed: 0, failed: 0, degraded };
+	}
 
 	// 降级时对现状一无所知 → 每个都得 follow 一遍(幂等)。
 	const needFollow = subs.filter((s) => degraded || !alreadyFollowed?.has(s.uid));
@@ -132,7 +156,8 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	const followingIds = new Set(needFollow.map((s) => s.id));
 
 	for (const [i, sub] of needFollow.entries()) {
-		if (i > 0) await sleep(FOLLOW_GAP_MS); // 写接口连发最招风控
+		if (i > 0) await sleep(FOLLOW_GAP_MS, deps.signal); // 写接口连发最招风控
+		if (interrupted()) break;
 		const outcome = await ensureFollowed(deps.api, sub.uid);
 		if (outcome.ok) {
 			followed++;
@@ -146,6 +171,17 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 			followed: outcome.ok,
 			followError: outcome.ok ? undefined : outcome.message || `code=${outcome.code}`,
 		});
+	}
+
+	if (interrupted()) {
+		deps.logger.info(`[follow] 关停中，补关注到此为止:${followed} 成功、${failed} 失败`);
+		return {
+			checked: subs.length,
+			followed,
+			alreadyFollowed: subs.length - needFollow.length,
+			failed,
+			degraded,
+		};
 	}
 
 	// 批量查询说「已关注」的那些,也把状态落一遍。

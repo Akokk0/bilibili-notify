@@ -17,6 +17,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+	deferred,
+	makeTrackingContext,
+	stillPending,
+	type TrackingContext,
+} from "../../__tests__/support/track-context.js";
 import { createRepushStore, listRepushDays, type RepushStore } from "../repush-store.js";
 import { startHistoryRetention } from "../retention.js";
 import { listDayFiles } from "../store.js";
@@ -29,12 +35,14 @@ let dataDir: string;
 let logger: ReturnType<typeof makeLogger>;
 let intervalHandle: Disposable;
 let setInterval_: ReturnType<typeof vi.fn>;
+let ctx: TrackingContext;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-ret-"));
 	logger = makeLogger();
 	intervalHandle = { dispose: vi.fn() };
 	setInterval_ = vi.fn(() => intervalHandle);
+	ctx = makeTrackingContext();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -47,7 +55,7 @@ function makeStore(historyRetentionDays: number) {
 
 function start(days: number, intervalMs?: number, repush?: RepushStore) {
 	return startHistoryRetention({
-		serviceCtx: { setInterval: setInterval_ } as never,
+		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: makeStore(days) as never,
 		logger,
 		intervalMs,
@@ -64,6 +72,73 @@ async function seedDraft(day: string): Promise<void> {
 }
 
 const today = new Date().toISOString().slice(0, 10);
+
+describe("startHistoryRetention — 登记进 track", () => {
+	// 清理是删盘上的文件。不登记的话,关停会在它删到一半时让各写道关门、返回 —— 返回之后数据目录还在变。
+	it("开机那一轮:重推原件删完它才落定", async () => {
+		await seedDraft("2000-01-01");
+		const release = deferred();
+		const dropped: string[] = [];
+		const repush = {
+			dropDay: async (day: string) => {
+				await release.promise;
+				dropped.push(day);
+			},
+		} as unknown as RepushStore;
+
+		start(30, undefined, repush);
+
+		expect(ctx.tracked).toHaveLength(1);
+		expect(await stillPending(ctx.settled())).toBe(true);
+		expect(dropped).toEqual([]);
+		release.resolve();
+		await ctx.settled();
+		expect(dropped).toEqual(["2000-01-01"]);
+	});
+
+	it("定时那一轮:同样登记,原件删完它才落定", async () => {
+		const release = deferred();
+		const dropped: string[] = [];
+		const repush = {
+			dropDay: async (day: string) => {
+				await release.promise;
+				dropped.push(day);
+			},
+		} as unknown as RepushStore;
+		start(30, undefined, repush); // 开机那一轮盘上什么都没有
+		await ctx.settled();
+		await seedDraft("2000-01-01");
+
+		const tick = setInterval_.mock.calls[0]?.[0] as () => void;
+		tick();
+
+		expect(ctx.tracked).toHaveLength(2);
+		const [, second] = ctx.tracked as [Promise<unknown>, Promise<unknown>];
+		expect(await stillPending(second)).toBe(true);
+		release.resolve();
+		await second;
+		expect(dropped).toEqual(["2000-01-01"]);
+	});
+
+	it("一轮抛错:登记进去的那件事不拒(失败在交进去之前就接住了),只记一条 warn", async () => {
+		startHistoryRetention({
+			serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
+			store: {
+				getGlobals: () => {
+					throw new Error("boom");
+				},
+				bootstrap: { dataDir },
+			} as never,
+			logger,
+		});
+
+		const [task] = ctx.tracked;
+		await expect(task).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("initial retention pass failed"),
+		);
+	});
+});
 
 describe("startHistoryRetention", () => {
 	it("days<=0:整轮跳过,旧文件保留", async () => {

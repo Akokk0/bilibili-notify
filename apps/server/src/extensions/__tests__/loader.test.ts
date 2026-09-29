@@ -967,6 +967,57 @@ describe("重扫(装 / 卸不必重启)", () => {
 		expect(loaded.list()).toEqual([]);
 	});
 
+	/**
+	 * 🔴 **收摊先等在途的装卸落定**(切片 ③)。在途的那一项可能正起一个拓展:不等的话收摊时它还没登记进
+	 * 格子,收不到它;它随后才起完,成了没人收的运行体(定时器、端点都还在),而关停已经往下走、
+	 * 各写道也要关门了。
+	 */
+	it("收摊先等在途的装卸:刚起来的拓展一并收掉,不留下没人收的运行体", async () => {
+		await plant("bridge", HEALTHY);
+		let enabled = false;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let importing!: () => void;
+		const reached = new Promise<void>((resolve) => {
+			importing = resolve;
+		});
+		const host = fakeHost();
+		const mounts = createExtensionMounts();
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		const loaded = await run({
+			host,
+			mounts,
+			enabled: () => enabled,
+			importModule: async (specifier) => {
+				importing();
+				await gate; // 装载队里在途的这一项停在 import 上
+				return import(/* @vite-ignore */ specifier);
+			},
+		});
+		expect(loaded.list().map((e) => e.state)).toEqual(["disabled"]);
+
+		enabled = true;
+		const syncing = loaded.sync();
+		await reached;
+		let disposed = false;
+		const disposing = loaded.dispose().then(() => {
+			disposed = true;
+		});
+		// 给不等在途那一项的写法一个机会先跑完 —— 等了的话它还在等。
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(disposed).toBe(false);
+
+		release();
+		await syncing;
+		await disposing;
+
+		expect(host.pending()).toBe(0); // 刚起来的那个也收了,它的定时器没留下
+		expect((await app.request("/ext/bridge/x")).status).toBe(404);
+	});
+
 	it("新装的按 id 归位 —— 现在这个次序就是重启之后的次序", async () => {
 		await plant("zeta", HEALTHY);
 		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });

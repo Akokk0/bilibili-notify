@@ -376,11 +376,15 @@ export class BilibiliAPI {
 			return;
 		}
 		this.refreshInFlight = true;
-		this.checkIfTokenNeedRefresh(refreshToken, csrf)
-			.catch((e: Error) => this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`))
-			.finally(() => {
-				this.refreshInFlight = false;
-			});
+		// 登记进 track:刷新链最后一步要把新 cookie 落到 secrets/cookies.json(`onCookiesRefreshed`),
+		// 关停得等它落完再让各写道关门。失败在交进去之前接住。
+		this.serviceCtx.track(
+			this.checkIfTokenNeedRefresh(refreshToken, csrf)
+				.catch((e: Error) => this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`))
+				.finally(() => {
+					this.refreshInFlight = false;
+				}),
+		);
 	}
 
 	markLoginInfoLoaded(): void {

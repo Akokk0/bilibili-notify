@@ -280,11 +280,17 @@ export class LoginFlow {
 		this.loginTimer = this.serviceCtx.setInterval(async () => {
 			if (!polling) return;
 			polling = false;
-			try {
-				await this.pollOnce(qrContent.data.qrcode_key);
-			} finally {
-				polling = true;
-			}
+			// 登记进 track:扫码成功的那一拍会把 cookie 落到 secrets/cookies.json,关停得等它落完再让各写道
+			// 关门。失败在交进去之前接住(以前这里是裸的 async 回调,抛错就是一次 unhandledRejection)。
+			const poll = this.pollOnce(qrContent.data.qrcode_key)
+				.catch((e) => {
+					this.logger.warn(`[login] 二维码轮询出错：${e instanceof Error ? e.message : String(e)}`);
+				})
+				.finally(() => {
+					polling = true;
+				});
+			this.serviceCtx.track(poll);
+			await poll;
 		}, QR_POLL_MS);
 
 		this.clearLoginExpiryTimer();

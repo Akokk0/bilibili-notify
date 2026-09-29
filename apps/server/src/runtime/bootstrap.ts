@@ -233,6 +233,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		bus,
 		avatars: subAvatarStore,
 		logger: serviceCtx.logger,
+		serviceCtx,
 	});
 	serviceCtx.onDispose(() => subAvatarCleanup.dispose(), "stop");
 	// 拓展报的资料更新 → 资料缓存 + 头像文件(ADR-0019 决策 7 / 49 / 62)。同上只听总线。
@@ -291,6 +292,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		currentSubscriptionOf: (row) => targetScope.currentSubscriptionOf(row),
 		targetEnabled: (targetId) => targetScope.targetEnabled(targetId),
 		logger: serviceCtx.logger,
+		serviceCtx,
 	});
 
 	return {

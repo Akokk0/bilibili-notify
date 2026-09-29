@@ -13,6 +13,7 @@ import type {
 	ExtensionSubscription,
 	Logger,
 	MessageBus,
+	ServiceContext,
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
@@ -71,6 +72,11 @@ export interface BindExtensionPostsOptions {
 	deliveryConfig(): WorkDeliveryConfig;
 	/** 装配用到的服务:渲染器与 AI 会被热换,现取;出图失败的计数两条路同一份。 */
 	deliveryDeps(): WorkDeliveryDeps;
+	/**
+	 * 每条作品的出卡与推送是发出去不等的后台活:登记进 `track`,关停等它推完 —— 推送落历史的那一笔
+	 * 得赶在各写道关门之前交进去。
+	 */
+	serviceCtx: Pick<ServiceContext, "track">;
 }
 
 export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable {
@@ -153,13 +159,15 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			if (delivery.report.kind !== "post") return;
 			const post = delivery.report.value;
 			for (const id of delivery.subscriptionIds) {
-				void gateOf(id)
-					.run(() => deliverOne(id, post))
-					.catch((err) => {
-						log.error(
-							`[ext-post] 订阅 ${id} 的作品 ${post.id} 推送途中出错(不重试): ${err instanceof Error ? err.message : String(err)}`,
-						);
-					});
+				opts.serviceCtx.track(
+					gateOf(id)
+						.run(() => deliverOne(id, post))
+						.catch((err) => {
+							log.error(
+								`[ext-post] 订阅 ${id} 的作品 ${post.id} 推送途中出错(不重试): ${err instanceof Error ? err.message : String(err)}`,
+							);
+						}),
+				);
 			}
 		}),
 		opts.bus.on("subscription-changed", (ops) => {

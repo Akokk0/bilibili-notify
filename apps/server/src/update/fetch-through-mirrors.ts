@@ -39,6 +39,12 @@ export interface FetchThroughMirrorsInput<T, R extends string> {
 	 * 从没被试过。验收不过就和网络失败一样换下一个。
 	 */
 	accept: (bytes: Uint8Array) => Acceptance<T, R>;
+	/**
+	 * 关停信号。中止之后手上这一个候选的请求当场断开、不再试后面的候选 —— 一个候选最长等 `timeoutMs`,
+	 * 候选一多,关停就没法靠预算等它。中止得到的是失败结果(`all-mirrors-failed`),调用方自己
+	 * 看 `signal.aborted` 分辨「被叫停」和「真没下成」。
+	 */
+	signal?: AbortSignal;
 }
 
 export type FetchThroughMirrorsResult<T, R extends string> =
@@ -104,14 +110,18 @@ export async function fetchThroughMirrors<T, R extends string>({
 	maxBytes,
 	timeoutMs,
 	accept,
+	signal,
 }: FetchThroughMirrorsInput<T, R>): Promise<FetchThroughMirrorsResult<T, R>> {
 	let last: "all-mirrors-failed" | R = "all-mirrors-failed";
 	for (const mirror of mirrors) {
+		// 被叫停就别再试下一个候选:每个都会秒败一遍,最后还得走一次「全部失败」的归因。
+		if (signal?.aborted) break;
 		last = "all-mirrors-failed";
 		try {
 			// signal 同时管住建连和读 body —— 慢慢滴水的站也一样被这一条掐断。
+			const timeout = AbortSignal.timeout(timeoutMs);
 			const response = await fetch(candidateUrl(mirror, url), {
-				signal: AbortSignal.timeout(timeoutMs),
+				signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 			});
 			if (!response.ok) continue;
 			const bytes = await readCapped(response, maxBytes);

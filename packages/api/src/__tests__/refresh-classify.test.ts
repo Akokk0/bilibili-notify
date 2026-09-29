@@ -32,17 +32,21 @@ describe("classifyRefreshCode — ②4 判别式", () => {
 	});
 });
 
-function makeCtx(): { ctx: ServiceContext; logger: Logger } {
+function makeCtx(): { ctx: ServiceContext; logger: Logger; tracked: Promise<unknown>[] } {
 	const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	/** 交进 `track` 的后台活(切片 ③)。 */
+	const tracked: Promise<unknown>[] = [];
 	const ctx: ServiceContext = {
 		logger,
 		setInterval: () => ({ dispose: vi.fn() }),
 		setTimeout: () => ({ dispose: vi.fn() }),
 		onDispose: () => undefined,
 		signal: new AbortController().signal,
-		track: () => {},
+		track: (task) => {
+			tracked.push(task);
+		},
 	};
-	return { ctx, logger };
+	return { ctx, logger, tracked };
 }
 
 describe("loadCookies — 损坏 JSON 不崩启动链 (P1)", () => {
@@ -86,5 +90,56 @@ describe("stop — 作废在途的 cookie 刷新", () => {
 		// 刷新链的下一步就是拿公钥算 correspond path;走到这里说明这轮没被作废。
 		expect(importKey).not.toHaveBeenCalled();
 		importKey.mockRestore();
+	});
+});
+
+/**
+ * 关停(切片 ③)。加载 cookie 与每小时的定时器都会发起一轮刷新检查 —— 刷新链最后一步把新 cookie 落到
+ * secrets/cookies.json(`onCookiesRefreshed`)。发出去不管的话,关停对它一无所知,cookie 写道关门时
+ * 它可能还没落完;登记进 `ctx.track()`,关停才等得到它。
+ */
+describe("triggerRefreshCheck — 登记进 track", () => {
+	const COOKIES = JSON.stringify([
+		{ key: "SESSDATA", value: "s", domain: ".bilibili.com", path: "/", secure: true },
+		{ key: "bili_jct", value: "csrf", domain: ".bilibili.com", path: "/", secure: true },
+	]);
+
+	it("加载 cookie 发起的那轮刷新登记进 track:刷新链走完它才落定", async () => {
+		const { ctx, tracked } = makeCtx();
+		const api = new BilibiliAPI({ serviceCtx: ctx, config: {} });
+		let finish!: () => void;
+		const running = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const check = vi.spyOn(api, "checkIfTokenNeedRefresh").mockReturnValue(running);
+
+		await api.loadCookies({ cookiesJson: COOKIES, refreshToken: "rt" } as unknown as CookieData);
+
+		expect(check).toHaveBeenCalledTimes(1);
+		expect(tracked).toHaveLength(1);
+		let settled = false;
+		void tracked[0]?.then(() => {
+			settled = true;
+		});
+		await new Promise((r) => setTimeout(r, 20));
+		expect(settled).toBe(false);
+
+		finish();
+		await tracked[0];
+		expect(settled).toBe(true);
+	});
+
+	it("刷新检查抛错:登记进去的这件事不拒,记一条 warn,并放开「已在刷新」的闸", async () => {
+		const { ctx, logger, tracked } = makeCtx();
+		const api = new BilibiliAPI({ serviceCtx: ctx, config: {} });
+		vi.spyOn(api, "checkIfTokenNeedRefresh").mockRejectedValue(new Error("network down"));
+
+		await api.loadCookies({ cookiesJson: COOKIES, refreshToken: "rt" } as unknown as CookieData);
+
+		await expect(tracked[0]).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("network down"));
+		// 闸放开了:再来一次(重新加载 cookie)照样发起新的一轮。
+		await api.loadCookies({ cookiesJson: COOKIES, refreshToken: "rt" } as unknown as CookieData);
+		expect(tracked).toHaveLength(2);
 	});
 });

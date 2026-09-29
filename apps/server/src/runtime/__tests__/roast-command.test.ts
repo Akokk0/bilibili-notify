@@ -188,6 +188,30 @@ describe("审批指令处理", () => {
 		deliver.mockRejectedValue(new Error("推送炸了"));
 		await expect(feed(h, "y")).resolves.not.toThrow();
 	});
+
+	// 关停(切片 ③):草稿库先于入站链路关门时,`drafts.take` 以 `queue_closed` 拒绝。take 在 `run` 里,
+	// `tryHandle` 的 try/catch 包着整个 `run` —— 所以这一拒不会逃出去变成 unhandledRejection,
+	// 与 `deliver` 抛错同一个口径:记一条 warn、消费掉这条消息、不发、不回。钉住它,免得以后有人把
+	// `take` 挪到 try 外面。
+	it("草稿库已关门(take 拒绝)→ 被 tryHandle 接住:记 warn、不发、消息照样算消费掉", async () => {
+		await seedDraft();
+		const warn = vi.fn();
+		deliver = vi.fn(async () => {});
+		reply = vi.fn(async () => {});
+		const h = createRoastCommandHandler({
+			drafts,
+			logger: { ...logger, warn },
+			masterIdentity: () => ({ platform: PLATFORM, address: MASTER }),
+			deliver: deliver as Any,
+			reply: reply as Any,
+		});
+		await drafts.close();
+
+		await expect(feed(h, "y")).resolves.toBe(true);
+
+		expect(deliver).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("处理指令失败"));
+	});
 });
 
 describe("作为 dispatcher 的确认流窗口", () => {

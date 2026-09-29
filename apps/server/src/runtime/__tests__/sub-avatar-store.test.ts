@@ -20,8 +20,15 @@ import {
 	PNG_BYTES,
 	WEBP_BYTES,
 } from "../../__tests__/support/avatar-fixtures.js";
+import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
-import { createSubAvatarStore, type SubAvatarStore } from "../sub-avatar-store.js";
+import { makeTrackingContext, stillPending } from "../../__tests__/support/track-context.js";
+import { createNodeMessageBus } from "../message-bus.js";
+import {
+	bindSubAvatarCleanup,
+	createSubAvatarStore,
+	type SubAvatarStore,
+} from "../sub-avatar-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -225,5 +232,69 @@ describe("SubAvatarStore.close", () => {
 
 		expect(storageWriteGate.writes).toBe(writesAtClose);
 		expect(await files()).toEqual([`${KEEP}.png`]);
+	});
+});
+
+describe("bindSubAvatarCleanup × ctx.track", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	// 删订阅时删头像是发出去就不等的写。不登记的话,关停在头像仓关门时它可能还排在队里 ——
+	// 关门之后那次删被拒,头像文件成了没人认的孤儿。
+	it("删拓展订阅的头像登记进 track:删完它才落定", async () => {
+		await store.write(KEEP, avatarDataUrl("png", PNG_BYTES));
+		const ctx = makeTrackingContext();
+		const bus = createNodeMessageBus();
+		const binding = bindSubAvatarCleanup({
+			bus,
+			avatars: store,
+			logger: makeLogger(),
+			serviceCtx: ctx,
+		});
+		// 队里先压一笔停在半路的写,删排在它后面。
+		storageWriteGate.hold();
+		const writing = store.write(GONE, avatarDataUrl("jpeg", JPEG_BYTES));
+		await storageWriteGate.arrived();
+
+		bus.emit("subscription-changed", [
+			{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) },
+		]);
+
+		expect(ctx.tracked).toHaveLength(1);
+		expect(await stillPending(ctx.settled())).toBe(true);
+		expect(await files()).toContain(`${KEEP}.png`);
+		storageWriteGate.release();
+		await ctx.settled();
+		await writing;
+		expect(await files()).toEqual([`${GONE}.jpeg`]);
+		binding.dispose();
+	});
+
+	it("头像仓已经关门:登记进去的这件事不拒,记一条 warn", async () => {
+		const ctx = makeTrackingContext();
+		const bus = createNodeMessageBus();
+		const logger = makeLogger();
+		bindSubAvatarCleanup({ bus, avatars: store, logger, serviceCtx: ctx });
+		await store.close();
+
+		bus.emit("subscription-changed", [
+			{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) },
+		]);
+
+		expect(ctx.tracked).toHaveLength(1);
+		await expect(ctx.tracked[0]).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("SerialQueueClosedError"));
+	});
+
+	it("B 站订阅没有头像文件:什么都不登记", async () => {
+		const ctx = makeTrackingContext();
+		const bus = createNodeMessageBus();
+		bindSubAvatarCleanup({ bus, avatars: store, logger: makeLogger(), serviceCtx: ctx });
+
+		bus.emit("subscription-changed", [
+			{ type: "remove", sub: { kind: "bilibili", id: KEEP, uid: "1", enabled: true } as never },
+		]);
+
+		expect(ctx.tracked).toHaveLength(0);
 	});
 });

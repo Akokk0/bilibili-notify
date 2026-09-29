@@ -9,12 +9,13 @@
  * 复发点:去掉 onDispose final flush / store 又长出第二道 floor / query 漏 pending。
  */
 
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import { stillPending } from "../../__tests__/support/track-context.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createLogStore } from "../store.js";
 
@@ -28,18 +29,30 @@ function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
-/** ServiceContext fake:捕获 onDispose 钩子 + setInterval(不自动触发)。 */
+/**
+ * ServiceContext fake:捕获 onDispose 钩子 + setInterval(不自动触发,`fireTimer` 手动触发一次)
+ * + 交进 `track` 的后台活(切片 ③)。
+ */
 function makeCtx() {
 	let disposeHook: (() => Promise<void> | void) | undefined;
+	let timerFn: (() => void) | undefined;
+	const tracked: Promise<unknown>[] = [];
 	const ctx = {
 		logger: makeLogger(),
-		setInterval: vi.fn(() => ({ dispose: vi.fn() })),
+		setInterval: vi.fn((fn: () => void) => {
+			timerFn = fn;
+			return { dispose: vi.fn() };
+		}),
 		setTimeout: vi.fn(() => ({ dispose: vi.fn() })),
 		onDispose: vi.fn((fn: () => Promise<void> | void) => {
 			disposeHook = fn;
 		}),
+		signal: new AbortController().signal,
+		track: (task: Promise<unknown>) => {
+			tracked.push(task);
+		},
 	} as unknown as ServiceContext;
-	return { ctx, fireDispose: () => disposeHook?.() };
+	return { ctx, tracked, fireDispose: () => disposeHook?.(), fireTimer: () => timerFn?.() };
 }
 
 function entry(over: Partial<LogEntry>): LogEntry {
@@ -228,5 +241,89 @@ describe("createLogStore — 最终落盘等在途的那次、写完再关门", 
 		expect(storageWriteGate.writes).toBe(writesAtClose);
 		expect(await readDay(today)).toBe(before);
 		expect(await store.query({ limit: 10 })).toHaveLength(1);
+	});
+});
+
+/**
+ * 关停(切片 ③)。定时器与满批触发的落盘是发出去不等的写:登记进 `ctx.track()`,关停得等这一批交进盘;
+ * 建不出日志目录时那一下拒绝以前没人接(unhandledRejection),现在接住、记一条 warn。
+ */
+describe("createLogStore — 后台落盘登记进 track", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	it("定时落盘:写落盘之后它才落定", async () => {
+		const { ctx, tracked, fireTimer } = makeCtx();
+		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		store.ingest(entry({ msg: "timer-batch", ts: `${today}T03:00:00.000Z` }));
+		storageWriteGate.hold();
+
+		fireTimer();
+
+		expect(tracked).toHaveLength(1);
+		await storageWriteGate.arrived();
+		expect(await stillPending(Promise.all(tracked))).toBe(true);
+		expect(await readDay(today)).toBe("");
+		storageWriteGate.release();
+		await Promise.all(tracked);
+		expect(await readDay(today)).toContain('"msg":"timer-batch"');
+	});
+
+	it("满 MAX_BATCH 触发的落盘同样登记", async () => {
+		const { ctx, tracked } = makeCtx();
+		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		storageWriteGate.hold();
+
+		for (let i = 0; i < 100; i++)
+			store.ingest(entry({ msg: `b${i}`, ts: `${today}T04:00:00.000Z` }));
+
+		expect(tracked).toHaveLength(1);
+		await storageWriteGate.arrived();
+		expect(await stillPending(Promise.all(tracked))).toBe(true);
+		storageWriteGate.release();
+		await Promise.all(tracked);
+		expect(await readDay(today)).toContain('"msg":"b99"');
+	});
+
+	describe("建不出日志目录(logs 被同名文件占了)", () => {
+		beforeEach(async () => {
+			await writeFile(join(dataDir, "logs"), "不是目录");
+		});
+
+		it("落盘失败被接住:登记进去的这件事不拒,记一条 warn,这一批丢掉", async () => {
+			const { ctx, tracked, fireTimer } = makeCtx();
+			const logger = makeLogger();
+			const store = createLogStore({ dataDir, serviceCtx: ctx, logger });
+			store.ingest(entry({ msg: "lost" }));
+
+			fireTimer();
+
+			await expect(tracked[0]).resolves.toBeUndefined();
+			expect(logger.warn).toHaveBeenCalledTimes(1);
+			expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("建不出日志目录"));
+		});
+
+		it("同一个错只记一行:warn 自己回到缓冲,关停时的最终落盘不会被它拖成死循环", async () => {
+			const { ctx, tracked, fireTimer, fireDispose } = makeCtx();
+			// 真实接线里 logger.warn 会经日志 hook 回到这个仓的 ingest —— 这里照样接上。
+			let store: ReturnType<typeof createLogStore> | undefined;
+			const logger = makeLogger();
+			logger.warn.mockImplementation((msg: string) => {
+				store?.ingest(entry({ level: "warn", name: "log-store", msg }));
+			});
+			store = createLogStore({ dataDir, serviceCtx: ctx, logger });
+			store.ingest(entry({ msg: "first" }));
+
+			fireTimer();
+			await tracked[0];
+			expect(logger.warn).toHaveBeenCalledTimes(1);
+			fireTimer(); // 缓冲里只剩上面那条 warn:再落一次仍然失败,但不再记
+			await tracked[1];
+			expect(logger.warn).toHaveBeenCalledTimes(1);
+
+			store.ingest(entry({ msg: "second" }));
+			await fireDispose(); // 最终落盘必须能收尾
+			expect(logger.warn).toHaveBeenCalledTimes(1);
+		});
 	});
 });

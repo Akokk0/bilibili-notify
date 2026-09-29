@@ -85,6 +85,8 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 	let inflight: Promise<void> | undefined;
 	/** 最终落盘之后关门:再来的条目只到 stdout,不缓冲、不写盘。 */
 	let closed = false;
+	/** 上一次记过的「建不出日志目录」的错(按错误码认)。同一个错只记一行,见 {@link writeBatch}。 */
+	let rootError: string | undefined;
 
 	async function ensureRoot(): Promise<void> {
 		if (ensured) return;
@@ -127,7 +129,23 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 	}
 
 	async function writeBatch(batch: readonly LogArchiveEntry[]): Promise<void> {
-		await ensureRoot();
+		try {
+			await ensureRoot();
+			rootError = undefined;
+		} catch (err) {
+			// 建不出日志目录(只读挂载、权限、被同名文件占了):这一批丢掉,与下面某天的文件写不进去同一个口径
+			// (日志是非关键的)。以前这里的拒绝没人接,是一次 unhandledRejection。
+			//
+			// 🔴 **同一个错只记一行。** 这条 warn 自己会经日志 hook 回到本仓的缓冲,下一次落盘同样建不出目录的话
+			// 又是一条 warn、又回到缓冲……关停时的最终落盘(`finish`)「缓冲非空就再落一次」,会被它拖成死循环。
+			const { code, syscall } = err as NodeJS.ErrnoException;
+			const key = code ? `${code}:${syscall ?? ""}` : String(err);
+			if (key !== rootError) {
+				rootError = key;
+				opts.logger.warn(`[log-store] 建不出日志目录 ${root}，这一批日志丢掉: ${String(err)}`);
+			}
+			return;
+		}
 		// Group by day file so a flush spanning UTC midnight still lands right.
 		const byDay = new Map<string, string[]>();
 		for (const e of batch) {
@@ -169,9 +187,15 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 		if (entry.name) archived.name = entry.name;
 		if (entry.args.length > 0) archived.args = entry.args;
 		buffer.push(archived);
-		if (buffer.length >= MAX_BATCH) {
-			void flush();
-		}
+		if (buffer.length >= MAX_BATCH) trackFlush();
+	}
+
+	/**
+	 * 落盘发出去不等,但登记进 track:关停得等这一批交进盘再往下走。`flush` 自己接住了失败,不会拒。
+	 * (最终落盘 `finish` 在 dispose 段,会再等一遍在途的,这里是让 flush 之前的等待也看得见它。)
+	 */
+	function trackFlush(): void {
+		opts.serviceCtx.track(flush());
 	}
 
 	async function readDayFile(path: string): Promise<LogArchiveEntry[]> {
@@ -238,9 +262,7 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 
 	// ~1s flush cadence + final flush on graceful shutdown (the data-integrity
 	// guarantee: a clean dispose/SIGINT never loses the unflushed tail).
-	opts.serviceCtx.setInterval(() => {
-		void flush();
-	}, LOG_FLUSH_INTERVAL_MS);
+	opts.serviceCtx.setInterval(trackFlush, LOG_FLUSH_INTERVAL_MS);
 	// 最后一段(`dispose`)里最早登记的,所以最后跑:关停期各段打的日志都赶得上这一次落盘。
 	opts.serviceCtx.onDispose(finish);
 

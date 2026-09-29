@@ -5,7 +5,7 @@ import type {
 	UpdateState,
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
-import type { UpdateSettings } from "@bilibili-notify/internal";
+import type { ServiceContext, UpdateSettings } from "@bilibili-notify/internal";
 import { decideUpdate } from "./decide-update.js";
 import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "./fetch-through-mirrors.js";
@@ -58,6 +58,11 @@ export interface CreateUpdateServiceInput {
 	releasesPageUrl: string;
 	/** 每次读都取最新 —— 用户在面板上改完设置,下一次检查就该按新的来。 */
 	readSettings: () => UpdateSettings;
+	/**
+	 * 宿主的关停接线。后台下载登记进 `track`(关停等它收尾再让写道关门);`signal` 一中止,
+	 * 下载当场断开,并且不再去装 —— 一个 25MB 的包最长等 `timeoutMs` × 候选数,关停不能靠预算硬等。
+	 */
+	serviceCtx: Pick<ServiceContext, "track" | "signal">;
 }
 
 export interface UpdateService {
@@ -88,6 +93,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		manifestUrls,
 		releasesPageUrl,
 		readSettings,
+		serviceCtx,
 	} = input;
 
 	// 两种情况整个功能关着、连网络都不碰:没内置公钥(拿回清单也验不了),以及正在跑开发版
@@ -235,7 +241,15 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				createHash("sha256").update(bytes).digest("hex") === manifest.payload.sha256
 					? { ok: true, value: bytes }
 					: { ok: false, reason: "checksum-mismatch" as const },
+			signal: serviceCtx.signal,
 		});
+		// 关停已经开始:不装,也不算失败(不是没下成,是不下了)。字节就算已经到手了也不落盘,
+		// 数据目录里什么都不留。只在**开始装之前**拦:装载本身一旦开始就让它做完 ——
+		// 那是「要么完整出现、要么一个字节没动」的原子替换,几百毫秒的事,半路叫停反而要收拾残局。
+		if (serviceCtx.signal.aborted) {
+			state = { phase: "idle" };
+			return status();
+		}
 		// 清单在手,所以这里能精确指到**那一版**的发布页,比只给发布列表有用得多。
 		if (!fetched.ok) {
 			return fail(
@@ -300,6 +314,8 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				if (downloadJob === job) downloadJob = null;
 			});
 		downloadJob = job;
+		// 登记进 track:关停等它收尾(取包 → 校验 → 落盘 → 钉版本)再让写道关门。`job` 自己接住了失败。
+		serviceCtx.track(job);
 		return status();
 	}
 

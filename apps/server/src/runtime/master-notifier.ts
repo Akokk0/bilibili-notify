@@ -1,4 +1,4 @@
-import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
+import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
 
 /**
@@ -14,6 +14,11 @@ export interface MasterNotifierOptions {
 	bus: MessageBus;
 	push: BilibiliPush;
 	logger: Logger;
+	/**
+	 * 私聊是发出去不等的后台活:登记进 `track`,关停等它发完 —— 发送经 sink 回调的目标可达性写回,
+	 * 得赶在各写道关门之前交进去。
+	 */
+	serviceCtx: Pick<ServiceContext, "track">;
 }
 
 /**
@@ -44,12 +49,12 @@ export class MasterNotifier {
 				// PrivateMsg no-op 时,日志是唯一可观测通道,丢日志=运行时错误对运维
 				// 彻底静默。DM 仍走 notify() 的 per-source 60s 节流避免刷屏。两端对称。
 				this.opts.logger.warn(`[${source}] ${message}`);
-				void this.notify(source, `[${source}] ${message}`);
+				this.opts.serviceCtx.track(this.notify(source, `[${source}] ${message}`));
 			}),
 		);
 		this.handles.push(
 			this.opts.bus.on("auth-lost", () => {
-				void this.notify("auth", "账号登录已失效，请到控制台重新扫码登录");
+				this.opts.serviceCtx.track(this.notify("auth", "账号登录已失效，请到控制台重新扫码登录"));
 			}),
 		);
 	}

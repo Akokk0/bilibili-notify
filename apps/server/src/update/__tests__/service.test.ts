@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeTrackingContext, stillPending } from "../../__tests__/support/track-context.js";
 import { pinVersion } from "../select-version-for-boot.js";
 import { createUpdateService, type UpdateService, type UpdateStatus } from "../service.js";
 
@@ -177,8 +178,10 @@ function makeService(
 	const root = overrides.root ?? tempRoot();
 	const versionsRoot = join(root, "versions");
 	mkdirSync(versionsRoot, { recursive: true });
+	const ctx = makeTrackingContext();
 	return {
 		versionsRoot,
+		ctx,
 		service: createUpdateService({
 			currentVersion: overrides.currentVersion ?? "0.8.0",
 			imageVersion: overrides.imageVersion ?? "0.8.0",
@@ -188,6 +191,7 @@ function makeService(
 			manifestUrls: MANIFEST_URLS,
 			releasesPageUrl: RELEASES_PAGE,
 			readSettings: () => ({ ...SETTINGS, ...overrides.settings }),
+			serviceCtx: ctx,
 		}),
 	};
 }
@@ -1323,5 +1327,81 @@ describe("createUpdateService —— 下载在后台跑", () => {
 		expect((await settled(service)).state).toMatchObject({ phase: "ready", target: "0.9.0" });
 		expect(manifestFetches(fetchMock)).toBe(1);
 		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+});
+
+/**
+ * 关停(切片 ③)。后台下载是发出去不管的活:登记进 `ctx.track()`,关停等它收尾再让写道关门;
+ * `signal` 一中止就当场断开、不再去装 —— 25MB 的包最长等 `timeoutMs` × 候选数,关停不能靠预算硬等。
+ */
+describe("createUpdateService —— 关停", () => {
+	/** 版本根里除了「见过的清单签发时刻」那份记账(检查更新那一步就写了)之外的东西:装载、暂存、旧目录。 */
+	const installedThings = (versionsRoot: string) =>
+		readdirSync(versionsRoot).filter((name) => name !== "manifest-freshness.json");
+
+	function setupDownload() {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const body = envelope(key.privateKey, manifestFor("0.9.0", zip));
+		return { key, zip, body };
+	}
+
+	it("后台下载登记进 track:装到盘上、钉子拔掉之后它才落定", async () => {
+		const { key, zip, body } = setupDownload();
+		const { fetchMock, release } = gatedFetch(body, zip, (url) => url.endsWith("payload.zip"));
+		const { service, versionsRoot, ctx } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		await service.check(); // 只把下载发起就回
+
+		expect(ctx.tracked).toHaveLength(1);
+		await vi.waitFor(() => expect(payloadFetches(fetchMock)).toBe(1)); // 取包卡在半路
+		expect(await stillPending(ctx.settled())).toBe(true);
+		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(false);
+
+		release();
+		await ctx.settled();
+		expect(existsSync(join(versionsRoot, "0.9.0", "index.mjs"))).toBe(true);
+		expect(service.getStatus().state).toMatchObject({ phase: "ready", target: "0.9.0" });
+	});
+
+	it("signal 中止:下载当场断开,马上落定,数据目录里什么都不留,落定之后也不再写", async () => {
+		const { key, body } = setupDownload();
+		// 载荷这一请求挂着不回,只认 signal —— 和真的 fetch 一样。
+		const fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
+			const url = String(input);
+			if (url.endsWith(".json")) return Promise.resolve(new Response(body, { status: 200 }));
+			return new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+			});
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const { service, versionsRoot, ctx } = makeService({ trustedKeys: [key.spkiBase64] });
+		await service.check();
+		await vi.waitFor(() => expect(payloadFetches(fetchMock)).toBe(1));
+		expect(await stillPending(ctx.settled())).toBe(true);
+
+		ctx.abort();
+
+		expect(await stillPending(ctx.settled(), 500)).toBe(false); // 很快落定,不等 15s 的超时
+		expect(installedThings(versionsRoot)).toEqual([]);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(installedThings(versionsRoot)).toEqual([]);
+		expect(payloadFetches(fetchMock)).toBe(1); // 没有去试下一个候选
+	});
+
+	it("字节已经到手、关停才开始:不去装,也不算下载失败", async () => {
+		const { key, zip, body } = setupDownload();
+		// 这一份 fetch 不认 signal:字节照样回来,模拟「中止正好落在取包完成之后」。
+		const { fetchMock, release } = gatedFetch(body, zip, (url) => url.endsWith("payload.zip"));
+		const { service, versionsRoot, ctx } = makeService({ trustedKeys: [key.spkiBase64] });
+		await service.check();
+		await vi.waitFor(() => expect(payloadFetches(fetchMock)).toBe(1));
+
+		ctx.abort();
+		release();
+		await ctx.settled();
+
+		expect(installedThings(versionsRoot)).toEqual([]); // installPayload 一次都没跑
+		expect(service.getStatus().state.phase).toBe("idle"); // 不是 error:不是没下成,是不下了
 	});
 });

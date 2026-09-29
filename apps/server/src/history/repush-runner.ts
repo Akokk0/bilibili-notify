@@ -6,6 +6,7 @@ import {
 	type Logger,
 	type NotificationPayload,
 	pushKindToFeature,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { originalCount, repushDenial, unsentIndices } from "./repush.js";
 import type { RepushMessage, RepushStore } from "./repush-store.js";
@@ -83,6 +84,11 @@ export interface CreateRepushRunnerOptions {
 	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
 	targetEnabled(targetId: string): boolean;
 	logger: Logger;
+	/**
+	 * 宿主的关停接线。后台补发登记进 `track`(关停等它把手上这条写回历史行再让写道关门);
+	 * `signal` 一中止,补发停在手上这一条 —— 一行补 N 条、每条最长退避约 190s,关停不能靠预算硬等。
+	 */
+	serviceCtx: Pick<ServiceContext, "track" | "signal">;
 }
 
 /** 原件不在了(保留期到了、或者当初就没写成)。两处都说这一句。 */
@@ -132,7 +138,16 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		if (indices.length === 0) return { ok: false, reason: "这一行全都送到了，不用补啦" };
 
 		running.add(rowId);
-		void run(entry, ts, draft.messages, indices).finally(() => running.delete(rowId));
+		opts.serviceCtx.track(
+			run(entry, ts, draft.messages, indices)
+				.catch((err) => {
+					// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
+					opts.logger.warn(
+						`[history] 重推 ${rowId} 中途出错：${err instanceof Error ? err.message : String(err)}`,
+					);
+				})
+				.finally(() => running.delete(rowId)),
+		);
 		return { ok: true, count: indices.length };
 	}
 
@@ -143,6 +158,9 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	 *
 	 * 每补一条就立刻写回历史,不攒到最后:面板上看得见进度,而且进程半路退出时已经补上
 	 * 的那几条不会丢。
+	 *
+	 * 关停(`signal` 中止)时停在手上这一条:已经发出去的照样写回行里(消息出了网、行里不记的话
+	 * 按钮会让它再发一遍),之后的不再发 —— 它们本来就还躺在行里,下次按按钮照样补得到。
 	 */
 	async function run(
 		entry: HistoryEntry,
@@ -155,6 +173,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		const feature = pushKindToFeature(entry.kind);
 		let latest: HistoryEntry | null = null;
 		for (const i of indices) {
+			if (opts.serviceCtx.signal.aborted) break;
 			const m = messages[i];
 			if (!m) continue;
 			// 每条都现解析一次「现在是哪条订阅」,闸是在按按钮那一刻判的,补的途中订阅可能又变了。
@@ -169,6 +188,9 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。
 				result = { ok: false, latencyMs: 0, err: err instanceof Error ? err.message : String(err) };
 			}
+			// 关停把发送层叫醒回来的失败是生命周期的产物(消息从没出过网),不是这个目标真的不通 ——
+			// 记进行里等于凭空添一条假失败。成功的照记:那条已经发出去了。
+			if (!result.ok && opts.serviceCtx.signal.aborted) break;
 			latest = await opts.history.appendToRow(entry.id, ts, [
 				{ payload: m.payload, role: m.role, result, retryOf: i },
 			]);

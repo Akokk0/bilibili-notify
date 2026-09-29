@@ -8,12 +8,18 @@
  * cron 走 FakeCronJob 捕获 onTick(同 fans-poller / dynamic-engine 的套路),不真排程。
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import {
+	makeTrackingContext,
+	stillPending,
+	type TrackingContext,
+} from "../../__tests__/support/track-context.js";
 
 /** 测试替身的统一收口 —— 只填被测路径真正读到的字段,其余不为测试再造一遍类型。 */
 // biome-ignore lint/suspicious/noExplicitAny: 见上
@@ -45,6 +51,12 @@ const cronMock = vi.hoisted(() => {
 });
 
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
+
+// 落盘函数前的闸默认敞开;只有「登记进 track」那条用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 const generateBoardRoast = vi.hoisted(() => vi.fn());
 const generateSoloRoast = vi.hoisted(() => vi.fn());
@@ -81,6 +93,7 @@ const logger = {
 } as Any;
 
 let dataDir: string;
+let ctx: TrackingContext;
 
 /** 真实临时目录 —— 草稿库本来就要落盘,假目录只会测出 ENOENT。 */
 function memDrafts() {
@@ -107,7 +120,7 @@ function makeScheduler(
 	const deps = {
 		runtime: {
 			engines: { api: {}, imageRenderer: null, push: {} },
-			serviceCtx: { logger, setTimeout: () => ({ dispose() {} }) },
+			serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: ctx.track },
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: over.profiles?.[id] }) },
 		},
 		store: {
@@ -130,6 +143,8 @@ function makeScheduler(
 
 beforeEach(() => {
 	dataDir = mkdtempSync(join(tmpdir(), "roast-sched-"));
+	ctx = makeTrackingContext();
+	storageWriteGate.reset();
 	cronMock.instances.length = 0;
 	globals = makeDefaultGlobalConfig();
 	targetsTable = [
@@ -153,6 +168,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	storageWriteGate.reset();
 	rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -328,6 +344,51 @@ describe("调度器 — 到点之后", () => {
 		// 微任务跑完,rejection 应该已经被 catch 住并落成一条 error 日志。
 		await new Promise((r) => setTimeout(r, 0));
 		expect(logger.error).toHaveBeenCalled();
+	});
+
+	// 关停(切片 ③):到点这一轮要生成、落草稿、发群。cron 回调是同步签名,不登记的话关停对它一无所知 ——
+	// 草稿库在 flush 段关门时它可能还没把草稿交进去,那份待审草稿就丢了。
+	it("到点这一轮登记进 track:草稿落盘之后它才落定", async () => {
+		globals.roastSchedule = {
+			...globals.roastSchedule,
+			enabled: true,
+			cron: "0 9 * * 1",
+			targets: ["t1"],
+			approval: true,
+		};
+		const { sched, drafts } = makeScheduler();
+		sched.start();
+		storageWriteGate.hold();
+
+		cronMock.instances[0]?.onTick();
+
+		expect(ctx.tracked).toHaveLength(1);
+		await storageWriteGate.arrived(); // 草稿的写停在了半路
+		expect(await stillPending(ctx.settled())).toBe(true);
+		expect(existsSync(join(dataDir, "state", "roast-drafts.json"))).toBe(false);
+
+		storageWriteGate.release();
+		await ctx.settled();
+		expect(existsSync(join(dataDir, "state", "roast-drafts.json"))).toBe(true);
+		expect(drafts.list()).toHaveLength(1);
+	});
+
+	it("到点这一轮抛错:登记进去的那件事不拒,只记一条 error", async () => {
+		globals.roastSchedule = {
+			...globals.roastSchedule,
+			enabled: true,
+			cron: "0 9 * * 1",
+			targets: ["t1"],
+		};
+		generateBoardRoast.mockRejectedValue(new Error("磁盘满了"));
+		const { sched } = makeScheduler();
+		sched.start();
+
+		cronMock.instances[0]?.onTick();
+
+		expect(ctx.tracked).toHaveLength(1);
+		await expect(ctx.tracked[0]).resolves.toBeUndefined();
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("磁盘满了"));
 	});
 
 	it("私聊自己抛错 → 不影响这一轮的结论(通知是锦上添花)", async () => {

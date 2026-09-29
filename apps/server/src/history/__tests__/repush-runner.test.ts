@@ -28,6 +28,12 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import {
+	deferred,
+	makeTrackingContext,
+	stillPending,
+	type TrackingContext,
+} from "../../__tests__/support/track-context.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { resolveTargetScope } from "../../runtime/target-scope.js";
 import { createRepushRunner, type RepushRunner } from "../repush-runner.js";
@@ -38,6 +44,7 @@ let dataDir: string;
 let history: HistoryStore;
 let repush: RepushStore;
 let runner: RepushRunner;
+let ctx: TrackingContext;
 /** 每次发送记一笔;`fail` 指定第几次(1 起)失败。 */
 let sent: Array<{ targetId: string; text: string; subscriptionId: string; feature: FeatureKey }>;
 let failOn: (nth: number) => boolean;
@@ -64,6 +71,7 @@ beforeEach(async () => {
 	gate = null;
 	routed = [T1];
 	enabled = true;
+	ctx = makeTrackingContext();
 	runner = createRepushRunner({
 		history,
 		repush,
@@ -72,6 +80,7 @@ beforeEach(async () => {
 		currentSubscriptionOf: (row) => row.subscriptionId,
 		targetEnabled: () => enabled,
 		logger: log,
+		serviceCtx: ctx,
 	});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -314,6 +323,7 @@ describe("重推认的是哪一条订阅", () => {
 			currentSubscriptionOf: (row) => table.currentSubscriptionOf(row),
 			targetEnabled: () => true,
 			logger: logger(),
+			serviceCtx: ctx,
 		});
 	}
 
@@ -388,5 +398,105 @@ describe("重推认的是哪一条订阅", () => {
 		const r = runnerOver([bili]);
 		expect(await r.canRepush(entry)).toContain("路由");
 		expect(sent).toHaveLength(0);
+	});
+});
+
+/**
+ * **关停**(切片 ③)。后台补发是发出去不管的活:关停在 flush 段让各写道关门,补发写回历史行的那一笔
+ * 要是还没交进写道,关门后就被拒 —— 那条消息发出去了、行里却不记,按钮会让它再发一遍。
+ * 所以补发登记进 `track`(补完、写回完才落定),`signal` 一中止就停在手上这一条。
+ */
+describe("关停", () => {
+	/** 把 `appendToRow` 停在半路:放行了才真的写。 */
+	function holdAppend() {
+		const release = deferred();
+		const original = history.appendToRow.bind(history);
+		const spy = vi.spyOn(history, "appendToRow").mockImplementation(async (...args) => {
+			await release.promise;
+			return original(...args);
+		});
+		return { release, spy };
+	}
+
+	it("后台补发登记进 track:写回历史行落定它才落定", async () => {
+		const entry = await seedPartial();
+		const append = holdAppend();
+		expect(started(await runner.start(entry.id, entry.ts, "missing"))).toBe(2);
+
+		expect(ctx.tracked).toHaveLength(1);
+		await vi.waitFor(() => expect(append.spy).toHaveBeenCalledTimes(1)); // 第一条发出去了,写回停在半路
+		expect(await stillPending(ctx.settled())).toBe(true);
+		expect((await history.findRow(entry.id, entry.ts))?.messages).toHaveLength(3);
+
+		append.release.resolve();
+		await ctx.settled();
+		const row = await history.findRow(entry.id, entry.ts);
+		expect(row?.messages).toHaveLength(5); // 两条都补上了,都写回了
+		expect(runner.isRunning(entry.id)).toBe(false);
+	});
+
+	it("signal 中止:很快落定,已经发出去的那条写回行里,后面的一条都不再发、落定之后不再写", async () => {
+		const entry = await seedPartial();
+		const parked = () => {};
+		gate = parked; // 第一条卡在发送口:发送口一进来就把 gate 换成放行函数
+		await runner.start(entry.id, entry.ts, "missing");
+		await vi.waitFor(() => expect(gate).not.toBe(parked));
+		const appendSpy = vi.spyOn(history, "appendToRow");
+
+		ctx.abort();
+		const release = gate as () => void;
+		release(); // 第一条这才发出去,回 ok
+		await ctx.settled();
+
+		expect(sent.map((s) => s.text)).toEqual(["词云"]); // 第二条(总结)没有再发
+		expect(appendSpy).toHaveBeenCalledTimes(1); // 发出去的那条照样写回
+		expect(runner.isRunning(entry.id)).toBe(false);
+		await new Promise((r) => setTimeout(r, 30));
+		expect(appendSpy).toHaveBeenCalledTimes(1); // 落定之后没有再写
+		const row = await history.findRow(entry.id, entry.ts);
+		expect(row?.messages).toHaveLength(4);
+	});
+
+	it("关停把发送层叫醒回来的失败不写进行里(那不是这个目标真的不通)", async () => {
+		const entry = await seedPartial();
+		const parked = () => {};
+		gate = parked;
+		failOn = () => true; // 卡住的那一条醒来时回的是失败
+		await runner.start(entry.id, entry.ts, "missing");
+		await vi.waitFor(() => expect(gate).not.toBe(parked));
+		const appendSpy = vi.spyOn(history, "appendToRow");
+
+		ctx.abort();
+		(gate as () => void)();
+		await ctx.settled();
+
+		expect(appendSpy).not.toHaveBeenCalled();
+		expect((await history.findRow(entry.id, entry.ts))?.messages).toHaveLength(3);
+		// 原件还在 —— 按钮下次照样能补。
+		expect(await repush.load(entry.id, entry.ts, 3)).not.toBeNull();
+	});
+
+	it("补发出了错(写道已关门):登记进去的这件事不拒,记一条 warn", async () => {
+		const log = logger();
+		const localCtx = makeTrackingContext();
+		const local = createRepushRunner({
+			history,
+			repush,
+			send: recordingSend,
+			routedTargets: () => routed,
+			currentSubscriptionOf: (row) => row.subscriptionId,
+			targetEnabled: () => enabled,
+			logger: log,
+			serviceCtx: localCtx,
+		});
+		const entry = await seedPartial();
+		vi.spyOn(history, "appendToRow").mockRejectedValue(new Error("queue closed"));
+
+		await local.start(entry.id, entry.ts, "missing");
+		await localCtx.settled();
+
+		await expect(localCtx.tracked[0]).resolves.toBeUndefined();
+		expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("queue closed"));
+		expect(local.isRunning(entry.id)).toBe(false);
 	});
 });

@@ -449,9 +449,13 @@ export class BilibiliPush {
 			results.push(...outcomes.flatMap((o) => (o.result ? [o.result] : [])));
 			this.emit(ctx, id, outcomes);
 			// 本体那次回调已经发出,@全体 的结果再追加 —— 就算它早就落地了也排在后面。
-			void atAllJob
-				.then((result) => this.emit(ctx, id, [{ payload: atAllPayload, role: "extra", result }]))
-				.catch(() => {});
+			// 登记进 track:追加的这次回调会把 @全体 那条落进历史,关停得等它交出去再让历史写道关门。
+			// (代价:@全体 卡在适配器自己的重试里时,关停最多为它多等到预算耗尽。)
+			this.serviceCtx.track(
+				atAllJob
+					.then((result) => this.emit(ctx, id, [{ payload: atAllPayload, role: "extra", result }]))
+					.catch(() => {}),
+			);
 		}
 		return results;
 	}

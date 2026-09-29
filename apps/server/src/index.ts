@@ -375,6 +375,7 @@ export async function startStandaloneServer(
 			releasesPageUrl: RELEASES_PAGE_URL,
 			// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
 			readSettings: () => runtime.configStore.getGlobals().update,
+			serviceCtx: runtime.serviceCtx,
 		});
 		const rawAdapters = [
 			createOnebotAdapter({
@@ -810,13 +811,31 @@ export async function startStandaloneServer(
 		// adapter 们交出来的是同一个形状:私聊进指令分发,群进链接解析。「从哪儿来」全在
 		// `meta` 里 —— 平台曾经由接线层另传一个参数补上,那是把同一件事说了两遍,而且那个
 		// 参数是闭集,桥后面挂着的平台塞不进去。
-		onInboundPrivate = (msg, meta) => void commandDispatcher.handleMessage(msg, meta);
-		onInboundGroup = (msg, meta) =>
-			void linkParser.handleMessage({
-				...msg,
-				platform: meta.platform,
-				connectionId: meta.connectionId,
-			});
+		//
+		// 处理一条入站消息是发出去不等的后台活(回指令、出卡片、落草稿都在里面),登记进 track:关停等它
+		// 收尾,各写道才关门。两个入口自己吞了大部分失败,这里再接一道 —— 以前这两条连 catch 都没有。
+		onInboundPrivate = (msg, meta) => {
+			runtime.serviceCtx.track(
+				commandDispatcher.handleMessage(msg, meta).catch((err) => {
+					log.warn(
+						`[command] 私聊消息处理出错: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}),
+			);
+		};
+		onInboundGroup = (msg, meta) => {
+			runtime.serviceCtx.track(
+				linkParser
+					.handleMessage({
+						...msg,
+						platform: meta.platform,
+						connectionId: meta.connectionId,
+					})
+					.catch((err) => {
+						log.warn(`[link] 群消息处理出错: ${err instanceof Error ? err.message : String(err)}`);
+					}),
+			);
+		};
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {
@@ -833,18 +852,21 @@ export async function startStandaloneServer(
 		// 这期又没发 —— 那正是这个功能要消除的沉默。
 		runtime.serviceCtx.setInterval(
 			() => {
-				void roastDrafts
-					.sweep()
-					.then(async (dead) => {
-						for (const d of dead) {
-							await tellMaster(`编号 ${d.id} 的锐评超过 48 小时没有回复，已经作废了～`);
-						}
-					})
-					.catch((err) => {
-						log.warn(
-							`[roast-draft] 过期清理失败: ${err instanceof Error ? err.message : String(err)}`,
-						);
-					});
+				// 清扫写草稿库,登记进 track:关停等它写完,草稿库才关门。
+				runtime.serviceCtx.track(
+					roastDrafts
+						.sweep()
+						.then(async (dead) => {
+							for (const d of dead) {
+								await tellMaster(`编号 ${d.id} 的锐评超过 48 小时没有回复，已经作废了～`);
+							}
+						})
+						.catch((err) => {
+							log.warn(
+								`[roast-draft] 过期清理失败: ${err instanceof Error ? err.message : String(err)}`,
+							);
+						}),
+				);
 			},
 			60 * 60 * 1000,
 		);
@@ -975,7 +997,14 @@ export async function startStandaloneServer(
 		// 动过了」转过去 —— 它认的是开关**变没变**,别的全局设置存一百次也不会惊动拓展。
 		const extensions = loadedExtensions;
 		runtime.bus.on("config-changed", (scope) => {
-			if (scope === "globals") void extensions.sync();
+			// 装卸拓展落盘、起停它的定时器:登记进 track,关停等这一趟装卸做完。
+			if (scope === "globals") {
+				runtime.serviceCtx.track(
+					extensions.sync().catch((err) => {
+						log.warn(`[ext] 同步拓展开关失败: ${err instanceof Error ? err.message : String(err)}`);
+					}),
+				);
+			}
 		});
 
 		const app = createApp(runtime, {

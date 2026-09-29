@@ -21,6 +21,11 @@ import {
 import type { LiveNotifySend } from "@bilibili-notify/live";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import {
+	deferred,
+	makeTrackingContext,
+	type TrackingContext,
+} from "../../__tests__/support/track-context.js";
 import type { SubscriptionReportProblem } from "../../extensions/context.js";
 import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
@@ -77,6 +82,8 @@ let profile: { name?: string; fans?: number } | undefined;
 /** 出卡:每张卡的输入按出卡顺序记下;`slowNext` 让下一张卡卡住,由测试放行。 */
 let renderedInputs: LiveCardInput[];
 let slowNext: Promise<void> | undefined;
+/** 登记进 `track` 的后台活(切片 ③)。 */
+let ctx: TrackingContext;
 
 function start(): void {
 	const timers = {
@@ -130,7 +137,7 @@ function start(): void {
 			},
 		renderer: () => renderer,
 		reportProblem: (problem) => problems.push(problem),
-		timers,
+		serviceCtx: { setInterval: timers.setInterval, track: ctx.track },
 	});
 }
 
@@ -169,6 +176,7 @@ beforeEach(() => {
 	problems = [];
 	renderedInputs = [];
 	slowNext = undefined;
+	ctx = makeTrackingContext();
 	settings = baseSettings();
 	subs = new Map([[SUB.id, SUB]]);
 	running = true;
@@ -645,5 +653,33 @@ describe("同一条订阅的推送按顺序", () => {
 		release();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);
+	});
+});
+
+/**
+ * 关停(切片 ③)。每张卡的出卡与推送是发出去不等的后台活;登记进 `ctx.track()` 之后关停等它推完 ——
+ * 推送落历史的那一笔得赶在各写道关门之前交进去。(这个文件用假定时器,所以不用 `stillPending`。)
+ */
+describe("登记进 track", () => {
+	it("开播卡:出卡 → 发送,发完它才落定", async () => {
+		const sending = deferred();
+		start();
+		// 发送换成停在半路的:sendFor 是 start() 里写死的记账函数,这里借 slowNext 卡在出卡这一步。
+		slowNext = sending.promise;
+		let settledAlready = false;
+		liveStart();
+		void Promise.all(ctx.tracked).then(() => {
+			settledAlready = true;
+		});
+		await settle();
+
+		expect(ctx.tracked).toHaveLength(1);
+		expect(settledAlready).toBe(false); // 出卡还卡着,登记的这件事不许落
+		expect(sent).toEqual([]);
+
+		sending.resolve(undefined);
+		await settle();
+		await ctx.settled();
+		expect(sent).toHaveLength(1);
 	});
 });

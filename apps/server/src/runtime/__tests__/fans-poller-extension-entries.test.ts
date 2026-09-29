@@ -92,6 +92,8 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 	const serviceCtx = {
 		setTimeout: vi.fn(() => undefined),
 		setInterval: vi.fn(() => undefined),
+		track: vi.fn(),
+		signal: new AbortController().signal,
 	};
 	handle = startFansPoller({
 		bus,

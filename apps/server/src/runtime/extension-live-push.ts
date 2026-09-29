@@ -130,8 +130,11 @@ export interface BindExtensionLivePushOptions {
 	renderer(): Pick<ImageRenderer, "generateNeutralLiveCard"> | null | undefined;
 	/** 上报问题框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
 	reportProblem(problem: SubscriptionReportProblem): void;
-	/** 周期推送的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
-	timers: Pick<ServiceContext, "setInterval">;
+	/**
+	 * 宿主的 ServiceContext。`setInterval` 管周期推送的定时器(关机时一起清);每张卡的出卡与推送是
+	 * 发出去不等的后台活，登记进 `track`,关停等它推完 —— 推送落历史的那一笔得赶在各写道关门之前交进去。
+	 */
+	serviceCtx: Pick<ServiceContext, "setInterval" | "track">;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
@@ -215,7 +218,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		if (hours <= 0) return;
 		run.periodic = {
 			hours,
-			handle: opts.timers.setInterval(() => tick(id), hours * HOUR),
+			handle: opts.serviceCtx.setInterval(() => tick(id), hours * HOUR),
 		};
 	}
 
@@ -242,12 +245,14 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			gate = createSerialGate();
 			gates.set(id, gate);
 		}
-		void gate.run(job).catch((err) => {
-			// 与拓展作品同一条规矩(决策 77):不重试,记错误日志;发不出去的目标推送层自己接住、落历史「失败」。
-			log.error(
-				`[ext-live] 订阅 ${id} 的${what}卡推送途中出错(不重试): ${err instanceof Error ? err.message : String(err)}`,
-			);
-		});
+		opts.serviceCtx.track(
+			gate.run(job).catch((err) => {
+				// 与拓展作品同一条规矩(决策 77):不重试,记错误日志;发不出去的目标推送层自己接住、落历史「失败」。
+				log.error(
+					`[ext-live] 订阅 ${id} 的${what}卡推送途中出错(不重试): ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}),
+		);
 	}
 
 	/** 出卡 → 套文案 → 按版式分组 → 发送。发送那一刻再核一次还该推(出卡要几秒,期间可能停了拓展)。 */

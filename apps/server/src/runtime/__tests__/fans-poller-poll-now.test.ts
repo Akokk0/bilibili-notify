@@ -46,6 +46,8 @@ function start(getRelationStat: ReturnType<typeof vi.fn>) {
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
 			setInterval: vi.fn(() => undefined),
+			track: vi.fn(),
+			signal: new AbortController().signal,
 		} as never,
 	});
 	return handle;

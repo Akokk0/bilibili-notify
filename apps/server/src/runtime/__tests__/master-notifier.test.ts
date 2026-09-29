@@ -11,8 +11,12 @@ import type { Logger } from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { deferred, makeTrackingContext, stillPending } from "../../__tests__/support/track-context";
 import { MasterNotifier } from "../master-notifier";
 import { createNodeMessageBus } from "../message-bus";
+
+/** 这一页的用例不看关停登记,只要它有 `track` 可调(登记进 track 的那组见文件末尾)。 */
+const serviceCtx = { track: () => {} };
 
 function makeSilentLogger() {
 	return {
@@ -41,7 +45,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 	it("auth-lost → push.sendPrivateMsg('账号登录已失效，请到控制台重新扫码登录')", async () => {
 		const bus = createNodeMessageBus();
 		const push = makePush();
-		new MasterNotifier({ bus, push, logger: makeSilentLogger() }).install();
+		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
 
 		bus.emit("auth-lost");
 		await vi.runAllTimersAsync();
@@ -54,7 +58,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const bus = createNodeMessageBus();
 		const push = makePush();
 		const logger = makeSilentLogger();
-		new MasterNotifier({ bus, push, logger }).install();
+		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
 		bus.emit("engine-error", "dynamic", "服务出错");
 		await vi.runAllTimersAsync();
@@ -69,7 +73,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const bus = createNodeMessageBus();
 		const push = makePush();
 		const logger = makeSilentLogger();
-		new MasterNotifier({ bus, push, logger }).install();
+		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
 		bus.emit("engine-error", "dynamic", "first");
 		await vi.runAllTimersAsync();
@@ -91,7 +95,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 	it("不同 source 各自独立节流(auth vs 不同 engine)", async () => {
 		const bus = createNodeMessageBus();
 		const push = makePush();
-		new MasterNotifier({ bus, push, logger: makeSilentLogger() }).install();
+		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
 
 		bus.emit("auth-lost");
 		bus.emit("engine-error", "dynamic", "d-err");
@@ -108,7 +112,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 	it("dispose 后 bus 事件不再触发私聊", async () => {
 		const bus = createNodeMessageBus();
 		const push = makePush();
-		const notifier = new MasterNotifier({ bus, push, logger: makeSilentLogger() });
+		const notifier = new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx });
 		notifier.install();
 
 		bus.emit("auth-lost");
@@ -129,7 +133,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const push = makePush();
 		push.sendPrivateMsg.mockRejectedValueOnce(new Error("net down"));
 		const logger = makeSilentLogger();
-		new MasterNotifier({ bus, push, logger }).install();
+		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
 		bus.emit("auth-lost");
 		await vi.runAllTimersAsync();
@@ -139,5 +143,62 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const warnArg = warnMock.mock.calls[0]?.[0];
 		expect(String(warnArg)).toMatch(/source=auth/);
 		expect(String(warnArg)).toMatch(/net down/);
+	});
+});
+
+/**
+ * 关停(切片 ③)。私聊是发出去不等的后台活;登记进 `ctx.track()` 之后,关停等它发完 ——
+ * 发送经 sink 回调的目标可达性写回,得赶在各写道关门之前交进去。
+ */
+describe("MasterNotifier — 登记进 track", () => {
+	it("auth-lost → 私聊发完它才落定", async () => {
+		const bus = createNodeMessageBus();
+		const send = deferred();
+		const push = makePush();
+		push.sendPrivateMsg.mockReturnValue(send.promise);
+		const ctx = makeTrackingContext();
+		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx: ctx }).install();
+
+		bus.emit("auth-lost");
+
+		expect(ctx.tracked).toHaveLength(1);
+		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		expect(await stillPending(ctx.settled())).toBe(true);
+		send.resolve(undefined);
+		await ctx.settled();
+	});
+
+	it("engine-error → 同样登记;被节流吞掉的那次也是一件(很快落定的)事", async () => {
+		const bus = createNodeMessageBus();
+		const send = deferred();
+		const push = makePush();
+		push.sendPrivateMsg.mockReturnValue(send.promise);
+		const ctx = makeTrackingContext();
+		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx: ctx }).install();
+
+		bus.emit("engine-error", "dynamic", "first");
+		bus.emit("engine-error", "dynamic", "second"); // 60s 内同 source:吞掉
+
+		expect(ctx.tracked).toHaveLength(2);
+		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		const [first, throttled] = ctx.tracked as [Promise<unknown>, Promise<unknown>];
+		expect(await stillPending(first)).toBe(true);
+		expect(await stillPending(throttled)).toBe(false);
+		send.resolve(undefined);
+		await first;
+	});
+
+	it("私聊发不出去:登记进去的这件事不拒,记一条 warn", async () => {
+		const bus = createNodeMessageBus();
+		const push = makePush();
+		push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
+		const logger = makeSilentLogger();
+		const ctx = makeTrackingContext();
+		new MasterNotifier({ bus, push, logger, serviceCtx: ctx }).install();
+
+		bus.emit("auth-lost");
+
+		await expect(ctx.tracked[0]).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("master unreachable"));
 	});
 });

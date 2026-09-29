@@ -55,6 +55,8 @@ function start(list: () => unknown[]) {
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
 			setInterval: vi.fn(() => undefined),
+			track: vi.fn(),
+			signal: new AbortController().signal,
 		} as never,
 	});
 	return { bus, prune, dropUid, getRelationStat, handle };

@@ -393,15 +393,22 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			// rejected promise 扔进了空气里 —— 而独立端装了 unhandledRejection
 			// 处理器,它会**直接关掉整个进程**。也就是说草稿落盘失败、私聊通道抛错
 			// 这类小事,会让整个服务停摆。
+			//
+			// 一轮要生成、落草稿、发群:登记进 track,关停等这一轮收尾(草稿库才能安心关门)。
 			arm(
 				key,
 				w.cron,
 				() => {
-					w.run().catch((err) => {
-						logger.error(
-							`[roast-sched] ${w.label} 本轮异常终止：${err instanceof Error ? err.message : String(err)}`,
-						);
-					});
+					deps.runtime.serviceCtx.track(
+						w.run().then(
+							() => undefined,
+							(err) => {
+								logger.error(
+									`[roast-sched] ${w.label} 本轮异常终止：${err instanceof Error ? err.message : String(err)}`,
+								);
+							},
+						),
+					);
 				},
 				w.label,
 			);

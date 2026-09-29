@@ -231,4 +231,32 @@ describe("fetchThroughMirrors", () => {
 		expect(result.ok === false && result.reason).toBe("all-mirrors-failed");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
+
+	// 关停(切片 ③):后台下载登记进 track 之后,关停不能靠预算硬等一个卡住的候选。
+	it("signal 中止:手上这个候选当场断开,不再试后面的候选", async () => {
+		const shutdown = new AbortController();
+		const fetchMock = vi.fn(
+			(_input: unknown, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+						once: true,
+					});
+				}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const running = fetchThroughMirrors({
+			url: RELEASE_URL,
+			mirrors: ["https://mirror-stuck.example", ""],
+			maxBytes: 1024,
+			timeoutMs: 60_000,
+			accept: takeAll,
+			signal: shutdown.signal,
+		});
+		shutdown.abort();
+		const result = await running;
+
+		expect(result).toEqual({ ok: false, reason: "all-mirrors-failed" });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 });

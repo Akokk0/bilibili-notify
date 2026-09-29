@@ -964,6 +964,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		async dispose() {
 			closed = true;
 			settingsWatch.dispose();
+			// 🔴 **先等装载队里在途的那一项落定。** 在途的可能正 `start` 一个拓展 —— 不等的话,下面收摊时
+			// 它还没登记进格子,收不到它;等它起完了才落进格子,成了没人收的运行体(定时器、端点、写盘都还在),
+			// 而关停已经往下走、各写道也要关门了。队尾是吞掉失败的那一份(见 `enqueue`),等它安全。
+			// 等多久由关停的预算管(超了就不再等,剩下的钩子照样调用),这里不另加时限。
+			await queue;
 			// 后起来的先收 —— 与单个拓展内部的收摊次序同一条道理。
 			const running = [...slots.values()]
 				.flatMap((slot) => (slot.running ? [{ slot, running: slot.running }] : []))

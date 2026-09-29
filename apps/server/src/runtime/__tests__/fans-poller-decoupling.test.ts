@@ -122,6 +122,8 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 				// 让首轮 3s 延时 tick 永不触发(我们手动驱动 onTick),避免双跑。
 				setTimeout: vi.fn(() => undefined),
 				setInterval: vi.fn(() => undefined),
+				track: vi.fn(),
+				signal: new AbortController().signal,
 			} as never,
 		});
 
@@ -189,6 +191,8 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 			serviceCtx: {
 				setTimeout: vi.fn(() => undefined),
 				setInterval: vi.fn(() => undefined),
+				track: vi.fn(),
+				signal: new AbortController().signal,
 			} as never,
 		});
 

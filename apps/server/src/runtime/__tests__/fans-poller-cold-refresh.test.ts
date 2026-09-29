@@ -91,6 +91,8 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 					return undefined;
 				}),
 				setInterval: vi.fn(() => undefined),
+				track: vi.fn(),
+				signal: new AbortController().signal,
 			} as never,
 		});
 

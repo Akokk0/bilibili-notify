@@ -86,6 +86,8 @@ function runPoller(opts: {
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
 			setInterval: vi.fn(() => undefined),
+			track: vi.fn(),
+			signal: new AbortController().signal,
 		} as never,
 	});
 }

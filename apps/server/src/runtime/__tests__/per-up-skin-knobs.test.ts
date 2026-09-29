@@ -193,7 +193,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				sendFor: (): LiveNotifySend => async () => delivered(),
 				renderer: () => renderer,
 				reportProblem: () => {},
-				timers,
+				serviceCtx: { setInterval: timers.setInterval, track: () => {} },
 			}),
 		);
 

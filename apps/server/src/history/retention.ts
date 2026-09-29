@@ -31,15 +31,20 @@ const DEFAULT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export function startHistoryRetention(opts: RetentionRunnerOptions): Disposable {
 	const interval = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
+	// 清理是删盘上的文件:登记进 track,关停等它删完再让各写道关门(关门之后不许再动数据目录)。
 	const handle = opts.serviceCtx.setInterval(() => {
-		void runOnce(opts).catch((err) => {
-			opts.logger.warn(`[history] retention pass failed: ${String(err)}`);
-		});
+		opts.serviceCtx.track(
+			runOnce(opts).catch((err) => {
+				opts.logger.warn(`[history] retention pass failed: ${String(err)}`);
+			}),
+		);
 	}, interval);
 	// Run once on boot so we don't carry over stale state for hours.
-	void runOnce(opts).catch((err) => {
-		opts.logger.warn(`[history] initial retention pass failed: ${String(err)}`);
-	});
+	opts.serviceCtx.track(
+		runOnce(opts).catch((err) => {
+			opts.logger.warn(`[history] initial retention pass failed: ${String(err)}`);
+		}),
+	);
 	return handle;
 }
 

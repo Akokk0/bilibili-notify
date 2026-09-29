@@ -34,6 +34,8 @@ function makeFakeServiceCtx() {
 	const intervals: Array<{ fn: () => void | Promise<void>; ms: number; handle: FakeTimer }> = [];
 	const timeouts: Array<{ fn: () => void | Promise<void>; ms: number; handle: FakeTimer }> = [];
 	const disposeHooks: Array<() => void | Promise<void>> = [];
+	/** 交进 `track` 的后台活(切片 ③)。 */
+	const tracked: Promise<unknown>[] = [];
 
 	const logger: Logger = {
 		info: vi.fn(),
@@ -71,10 +73,12 @@ function makeFakeServiceCtx() {
 			disposeHooks.push(fn);
 		},
 		signal: new AbortController().signal,
-		track: () => {},
+		track: (task) => {
+			tracked.push(task);
+		},
 	};
 
-	return { sc, intervals, timeouts, disposeHooks, logger };
+	return { sc, intervals, timeouts, disposeHooks, logger, tracked };
 }
 
 interface RecordedEvent {
@@ -329,6 +333,74 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
 		// The QR is still useful (user hasn't confirmed on phone yet) — must not be dropped.
 		expect(h.flow.current().data).toBe("data:image/png;base64,QR_BASE64_PAYLOAD");
+	});
+});
+
+/**
+ * 关停(切片 ③)。扫码成功的那一拍把 cookie 落到 secrets/cookies.json —— 轮询回调是同步签名的定时器
+ * 回调,不登记进 `ctx.track()` 的话,关停对它一无所知,cookie 写道关门时它可能还没落完。
+ */
+describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
+	function loggedInPoll(h: Harness) {
+		h.api.getLoginQRCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+		h.api.getLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		h.api.getMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+	}
+
+	it("扫码成功那一拍:cookie 落盘之后它才落定", async () => {
+		const h = makeFlow();
+		loggedInPoll(h);
+		const save = deferred<void>();
+		h.saveCookies.mockReturnValueOnce(save.promise);
+		await h.flow.beginLogin(async () => "data:url");
+
+		void h.scFake.intervals[0].handle.fire();
+		await flush();
+
+		expect(h.scFake.tracked).toHaveLength(1);
+		expect(h.saveCookies).toHaveBeenCalledTimes(1);
+		let settled = false;
+		void h.scFake.tracked[0]?.then(() => {
+			settled = true;
+		});
+		await flush();
+		expect(settled).toBe(false); // cookie 还没落盘,登记的这件事不许落
+
+		save.resolve();
+		await h.scFake.tracked[0];
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+	});
+
+	it("轮询里抛了错:登记进去的这件事不拒,记一条 warn,下一拍还能轮询", async () => {
+		const h = makeFlow();
+		h.api.getLoginQRCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+		h.api.getLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
+		await h.flow.beginLogin(async () => "data:url");
+		// waitScan 之后的状态汇报炸了 —— 以前这是定时器回调里的 unhandledRejection。
+		vi.spyOn(
+			h.flow as unknown as { reportQrPending: () => void },
+			"reportQrPending",
+		).mockImplementation(() => {
+			throw new Error("boom");
+		});
+
+		await h.scFake.intervals[0].handle.fire();
+
+		await expect(h.scFake.tracked[0]).resolves.toBeUndefined();
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		h.api.getLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
+		await h.scFake.intervals[0].handle.fire();
+		expect(h.scFake.tracked).toHaveLength(2); // polling 标志复位了,下一拍照常轮询
 	});
 });
 

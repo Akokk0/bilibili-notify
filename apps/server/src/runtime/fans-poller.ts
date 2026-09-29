@@ -216,8 +216,48 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		bus.emit("fans-refreshed", Array.from(lastBySub.values()));
 	}
 
+	/**
+	 * cron 到点调的那个 tick。**登记进 track**:一轮 sweep 写样本、写资料缓存,关停得等它收完
+	 * (`disposed` 一置位它就在下一个 await 之后返回)再让各写道关门。`tickOnce` 自己接住失败。
+	 */
 	function tick(): void {
-		void tickOnce();
+		serviceCtx.track(tickOnce());
+	}
+
+	/**
+	 * 删一份粉丝时序文件:发出去不等,但登记进 track,关停等它删完;失败只记日志。
+	 * (以前是裸 `void`,连 `.catch` 都没有。)
+	 */
+	function dropSeries(key: string): void {
+		serviceCtx.track(
+			fansStore.drop(key).catch((err) => {
+				logger.warn(`[fans-poller] 删除粉丝时序 ${key} 失败: ${String(err)}`);
+			}),
+		);
+	}
+
+	/**
+	 * 等 `ms` 毫秒,关停一开始(`signal` 中止)就提前醒。
+	 *
+	 * 🔴 光靠 `serviceCtx.setTimeout` 不行:关停第一步中止 `signal`、紧接着清掉所有定时器,这个定时器被
+	 * 清了就永远不会触发,等它的 promise 永不落定 —— 登记进 track 的首轮任务会一直挂到关停预算耗尽。
+	 */
+	function sleepUnlessShutdown(ms: number): Promise<void> {
+		return new Promise<void>((resolve) => {
+			if (serviceCtx.signal.aborted) {
+				resolve();
+				return;
+			}
+			const onShutdown = (): void => {
+				timer?.dispose();
+				resolve();
+			};
+			serviceCtx.signal.addEventListener("abort", onShutdown, { once: true });
+			const timer = serviceCtx.setTimeout(() => {
+				serviceCtx.signal.removeEventListener("abort", onShutdown);
+				resolve();
+			}, ms);
+		});
 	}
 
 	/** 一轮 tick;回「这次真的跑了没」。在跑 / 已释放都不跑。 */
@@ -291,7 +331,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		for (const key of Array.from(writtenKeys)) {
 			if (subscribedKeys.has(key)) continue;
 			writtenKeys.delete(key);
-			void fansStore.drop(key);
+			dropSeries(key);
 		}
 		if (subs.length === 0) return;
 		logger.debug(`[fans-poller] tick start, ${subs.length} subs`);
@@ -528,17 +568,21 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// 先从磁盘恢复历史 entries 给首屏用,然后延后 3s 才发首轮 tick — 给 auth /
 	// LoginFlow 起来的窗口期,降低"第一次 tick 撞 auth 未就绪 → 每个 sub 打一行
 	// warn + 首屏全 —"的概率。3s 门后先批量冷刷一次 name/avatar,再开轮询。
-	void (async () => {
-		await restoreFromDisk();
-		if (disposed) return;
-		await new Promise<void>((resolveFirstTick) => {
-			serviceCtx.setTimeout(resolveFirstTick, 3000);
-		});
-		if (disposed) return;
-		await refreshProfilesBatch();
-		if (disposed) return;
-		tick();
-	})();
+	//
+	// 登记进 track:冷刷写资料缓存、首轮 sweep 写样本,关停得等它们收完。失败在交进去之前接住。
+	serviceCtx.track(
+		(async () => {
+			await restoreFromDisk();
+			if (disposed) return;
+			await sleepUnlessShutdown(3000);
+			if (disposed || serviceCtx.signal.aborted) return;
+			await refreshProfilesBatch();
+			if (disposed) return;
+			await tickOnce();
+		})().catch((err) => {
+			logger.warn(`[fans-poller] 首轮启动失败: ${String(err)}`);
+		}),
+	);
 
 	const offConfig = bus.on("config-changed", (scope: ConfigScope) => {
 		if (scope !== "globals") return;
@@ -559,14 +603,18 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			if (!isBiliSubscription(op.sub)) continue;
 			const key = statsFileKey(op.sub);
 			writtenKeys.delete(key);
-			void fansStore.drop(key);
+			dropSeries(key);
 		}
 		if (hadRemove) {
 			// Drop the deleted sub's SubRuntimeStore entry. subscriptionStore
 			// already reflects the post-delete set when this fires (config-changed
 			// → bridge replaceAll → subscription-changed), so a keep-set prune is
 			// precise + idempotent and avoids a dedicated delete(id) API.
-			void pruneOrphanSubRuntime(subRuntimeStore, subscriptionStore);
+			serviceCtx.track(
+				pruneOrphanSubRuntime(subRuntimeStore, subscriptionStore).catch((err) => {
+					logger.warn(`[fans-poller] 清理已删订阅的资料缓存失败: ${String(err)}`);
+				}),
+			);
 		}
 		if (removedAny) emitSnapshot();
 	});

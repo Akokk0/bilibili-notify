@@ -18,6 +18,7 @@
  *   dispose():                stop 全引擎 + 解绑 bus(dispose 后 config-changed 不再生效)
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,7 +38,14 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import {
+	deferred,
+	makeTrackingContext,
+	stillPending,
+} from "../../__tests__/support/track-context.js";
 import type { ConfigStore } from "../../config/store.js";
+import { createHistoryStore } from "../../history/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { standaloneContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -126,6 +134,12 @@ vi.mock("@bilibili-notify/live", async (importOriginal) => {
 			}
 		},
 	};
+});
+
+// 落盘函数前的闸默认敞开;只有「后台写登记进 track」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
 });
 
 vi.mock("@bilibili-notify/ai", () => ({
@@ -266,16 +280,22 @@ function makeLogger() {
 }
 
 function makeSubCtx() {
+	const tracking = makeTrackingContext();
 	return {
 		logger: makeLogger(),
 		setLevel: vi.fn(),
 		setInterval: vi.fn(() => ({ dispose() {} })),
 		setTimeout: vi.fn(() => ({ dispose() {} })),
 		onDispose: vi.fn(),
+		track: tracking.track,
+		signal: tracking.signal,
 	};
 }
 
 function makeServiceCtx() {
+	// 发出去不管的写登记进 `track`(切片 ③):`tracking.tracked` 是登记进来的每一件后台活,
+	// `tracking.abort()` 模拟关停开始。
+	const tracking = makeTrackingContext();
 	return {
 		logger: makeLogger(),
 		setLevel: vi.fn(),
@@ -283,6 +303,9 @@ function makeServiceCtx() {
 		setTimeout: vi.fn(() => ({ dispose() {} })),
 		onDispose: vi.fn(),
 		forSubsystem: vi.fn(() => makeSubCtx()),
+		track: tracking.track,
+		signal: tracking.signal,
+		tracking,
 	};
 }
 
@@ -317,7 +340,11 @@ interface Ctx {
 	bus: ReturnType<typeof createNodeMessageBus>;
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
-	api: { setUserAgent: ReturnType<typeof vi.fn>; getRelations: ReturnType<typeof vi.fn> };
+	api: {
+		setUserAgent: ReturnType<typeof vi.fn>;
+		getRelations: ReturnType<typeof vi.fn>;
+		follow?: ReturnType<typeof vi.fn>;
+	};
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
 }
 
@@ -342,9 +369,19 @@ function setup(opts?: {
 	loginStatus?: BiliLoginStatus;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
 	dataDir?: string;
+	/** 换掉存储替身里的几个口子(登记进 track 的那组用例让写停在半路)。 */
+	overrides?: {
+		configStore?: Record<string, unknown>;
+		historyStore?: unknown;
+		subRuntimeStore?: Record<string, unknown>;
+		api?: Record<string, unknown>;
+	};
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
-	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig(), opts?.dataDir);
+	const configStore = Object.assign(
+		makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig(), opts?.dataDir),
+		opts?.overrides?.configStore,
+	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
 	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
 	const api = {
@@ -353,6 +390,7 @@ function setup(opts?: {
 			code: 0,
 			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
 		})),
+		...opts?.overrides?.api,
 	};
 	const loginFlow = {
 		setHealthCheckMs: vi.fn(),
@@ -367,7 +405,7 @@ function setup(opts?: {
 		api: api as any,
 		loginFlow: loginFlow as any,
 		configStore: configStore as unknown as ConfigStore,
-		historyStore: { record: vi.fn(async () => {}) } as any,
+		historyStore: (opts?.overrides?.historyStore ?? { record: vi.fn(async () => {}) }) as any,
 		subscriptionStore: {
 			list: () => subs,
 			findByUid: (uid: string) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
@@ -379,6 +417,7 @@ function setup(opts?: {
 			patch: vi.fn(async () => {}),
 			prune: vi.fn(async () => {}),
 			load: vi.fn(async () => {}),
+			...opts?.overrides?.subRuntimeStore,
 		} as any,
 		bus,
 		adapters: createAdapterRegistry(opts?.platformAdapters ?? []),
@@ -1784,5 +1823,220 @@ describe("createEngines — 开机补关注", () => {
 		active = c;
 		c.bus.emit("auth-restored");
 		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
+	});
+});
+
+/**
+ * 发出去不管的写要登记进 `ctx.track()`(切片 ③)。
+ *
+ * 关停在 flush 段让各写道关门;关门前还没**交进写道**的活(先下载图片、再写历史)会在关门后被拒 ——
+ * 数据就丢了。所以每条用例都是:让那笔写停在半路 → 断言登记进去的这件事此刻还悬着 → 放行 → 断言写已落定。
+ * `track` 没接线时登记进来的是空的,`Promise.all([])` 立刻落定,第二句必红。
+ */
+describe("createEngines — 后台写登记进 track", () => {
+	const SUB_ID = "11111111-1111-4111-8111-111111111111";
+	const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+	const CONNECTION_ID = "33333333-3333-4333-8333-333333333333";
+
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	/** 开机那一刻已经登记着的(健康探测那一轮),用例只看这之后新登记的。 */
+	function newlyTracked(c: Ctx, before: number): Promise<unknown> {
+		return Promise.all(c.serviceCtx.tracking.tracked.slice(before));
+	}
+
+	it("onSend:历史行登记进 track —— 历史写落盘,它才落定", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-engines-track-"));
+		try {
+			const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+			const historyStore = createHistoryStore({
+				dataDir,
+				bus: createNodeMessageBus(),
+				logger: makeLogger() as never,
+			});
+			const c = setup({ subs: [sub], overrides: { historyStore } });
+			active = c;
+			await new Promise((r) => setTimeout(r, 0));
+			const before = c.serviceCtx.tracking.tracked.length;
+			storageWriteGate.hold();
+
+			H.push[0].opts.onSend({
+				pushId: randomUUID(), // 历史行的 schema 要求 pushId 是 uuid
+				subscriptionId: SUB_ID,
+				feature: "dynamic",
+				kind: "dynamic",
+				target: null,
+				messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
+			});
+
+			expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
+			await storageWriteGate.arrived();
+			const registered = newlyTracked(c, before);
+			expect(await stillPending(registered)).toBe(true);
+			storageWriteGate.release();
+			await registered;
+			const files = await readdir(join(dataDir, "history"));
+			expect(files.some((f) => f.endsWith(".jsonl"))).toBe(true);
+		} finally {
+			await rm(dataDir, { recursive: true, force: true });
+		}
+	});
+
+	it("onSend:历史写失败 —— 登记进去的这件事不拒,记一条 warn", async () => {
+		const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+		const record = vi.fn(async () => {
+			throw new Error("queue closed");
+		});
+		const c = setup({ subs: [sub], overrides: { historyStore: { record } } });
+		active = c;
+		await new Promise((r) => setTimeout(r, 0));
+		const before = c.serviceCtx.tracking.tracked.length;
+
+		H.push[0].opts.onSend({
+			pushId: "p1",
+			subscriptionId: SUB_ID,
+			feature: "dynamic",
+			kind: "dynamic",
+			target: null,
+			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
+		});
+
+		await expect(newlyTracked(c, before)).resolves.toBeDefined();
+		expect(c.serviceCtx.logger.warn).toHaveBeenCalledWith(expect.stringContaining("queue closed"));
+	});
+
+	it("投递回调回写目标可达性:登记进 track —— 写交进 config 写道,它才落定", async () => {
+		const write = deferred();
+		const recordTargetTestStatus = vi.fn(() => write.promise);
+		const target = {
+			id: TARGET_ID,
+			name: "群",
+			connectionId: CONNECTION_ID,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+		} as unknown as PushTarget;
+		const c = setup({ overrides: { configStore: { recordTargetTestStatus } } });
+		active = c;
+		c.configStore._setTargets([target]);
+		await new Promise((r) => setTimeout(r, 0));
+		const before = c.serviceCtx.tracking.tracked.length;
+
+		// 连接不在 → 投递失败,sink 照样回调 onDelivery。
+		await H.push[0].opts.sink.send(TARGET_ID, { kind: "text", text: "hi" });
+
+		expect(recordTargetTestStatus).toHaveBeenCalledTimes(1);
+		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
+		const registered = newlyTracked(c, before);
+		expect(await stillPending(registered)).toBe(true);
+		write.resolve(undefined);
+		await registered;
+	});
+
+	it("房号解析出来即写盘:登记进 track —— 写交进 sub-runtime 写道,它才落定", async () => {
+		const write = deferred();
+		const patch = vi.fn(() => write.promise);
+		const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+		const c = setup({ subs: [sub], overrides: { subRuntimeStore: { patch } } });
+		active = c;
+		await new Promise((r) => setTimeout(r, 0));
+		const before = c.serviceCtx.tracking.tracked.length;
+
+		H.live[0].opts.onRoomIdResolved("1", 4242);
+
+		expect(patch).toHaveBeenCalledWith(SUB_ID, { roomId: 4242 });
+		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
+		const registered = newlyTracked(c, before);
+		expect(await stillPending(registered)).toBe(true);
+		write.resolve(undefined);
+		await registered;
+	});
+
+	describe("开机健康探测", () => {
+		const onebot = (id: string) =>
+			({
+				id,
+				name: "bot",
+				enabled: true,
+				kind: "direct",
+				platform: "onebot",
+				config: {},
+			}) as any;
+		const okPlatform = (
+			probe: () => Promise<{ ok: boolean; latencyMs: number }>,
+		): PlatformAdapter => ({
+			platforms: ["onebot"],
+			isAvailable: () => true,
+			send: async () => ({ ok: true, latencyMs: 1 }),
+			probe,
+		});
+
+		it("探测结果写回连接表:登记进 track —— 写交进 config 写道,它才落定", async () => {
+			const write = deferred();
+			const patchConnection = vi.fn(() => write.promise);
+			const c = setup({
+				connections: [onebot(CONNECTION_ID)],
+				platformAdapters: [okPlatform(async () => ({ ok: true, latencyMs: 1 }))],
+				overrides: { configStore: { patchConnection } },
+			});
+			active = c;
+
+			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
+			const tracked = c.serviceCtx.tracking.tracked;
+			expect(tracked.length).toBeGreaterThan(0);
+			expect(await stillPending(Promise.all(tracked))).toBe(true);
+			write.resolve(undefined);
+			await Promise.all(tracked);
+		});
+
+		it("关停一开始就不再起新的探测:一轮探下来要等每条连接的超时,登记之后不能靠预算硬等", async () => {
+			const first = deferred<{ ok: boolean; latencyMs: number }>();
+			const probe = vi.fn(() => first.promise);
+			const other = "44444444-4444-4444-8444-444444444444";
+			const c = setup({
+				connections: [onebot(CONNECTION_ID), onebot(other)],
+				platformAdapters: [okPlatform(probe)],
+			});
+			active = c;
+			await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(1));
+
+			c.serviceCtx.tracking.abort();
+			first.resolve({ ok: true, latencyMs: 1 });
+			await Promise.all(c.serviceCtx.tracking.tracked);
+
+			expect(probe).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("补关注", () => {
+		const twoSubs = [
+			makeEmptySubscription({ id: SUB_ID, uid: "1" }),
+			makeEmptySubscription({ id: "55555555-5555-4555-8555-555555555555", uid: "2" }),
+		];
+		/** 关系查询回「都没关注」→ 走逐个补关注。 */
+		const noneFollowed = vi.fn(async () => ({ code: 0, data: null }));
+
+		it("逐个补关注:登记进 track,关停信号中止后停在手上这一个", async () => {
+			const first = deferred<{ code: number; message: string }>();
+			const follow = vi.fn(() => first.promise);
+			const c = setup({
+				subs: twoSubs,
+				loginStatus: BiliLoginStatus.LOGGED_IN,
+				overrides: { api: { getRelations: noneFollowed, follow } },
+			});
+			active = c;
+			await vi.waitFor(() => expect(follow).toHaveBeenCalledTimes(1));
+			const tracked = c.serviceCtx.tracking.tracked;
+			expect(await stillPending(Promise.all(tracked))).toBe(true);
+
+			c.serviceCtx.tracking.abort();
+			first.resolve({ code: 0, message: "0" });
+			await Promise.all(tracked);
+
+			// 第二个订阅没有再发关注 —— signal 一路交到了 syncFollows 手里。
+			expect(follow).toHaveBeenCalledTimes(1);
+			expect(follow).toHaveBeenCalledWith("1");
+		});
 	});
 });

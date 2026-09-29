@@ -527,6 +527,66 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(out[0].ok).toBe(true);
 	});
 
+	// 关停(切片 ③):@全体 即发不等,它落地后追加的那次 onSend 会把这条落进历史。不登记进 track 的话,
+	// 关停返回、历史写道关门之后这次回调才到 —— 那条 @全体 的历史就丢了。
+	it("@全体 落地后追加的那次 onSend 登记进 track:回调交出去它才落定", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		setExtraDefault(sub, "atAllLive", true);
+		const isAtAll = (p: NotificationPayload) =>
+			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";
+		let landAtAll!: (result: DeliveryResult) => void;
+		const atAllLanded = new Promise<DeliveryResult>((resolve) => {
+			landAtAll = resolve;
+		});
+		const sink: NotificationSink = {
+			isAvailable: () => true,
+			isEnabled: () => true,
+			send: (_targetId, payload) =>
+				isAtAll(payload)
+					? atAllLanded
+					: Promise.resolve({ ok: true, latencyMs: 1 } as DeliveryResult),
+			sendPrivate: async () => ({ ok: true, latencyMs: 1 }) as DeliveryResult,
+			resolve: (id) =>
+				({
+					id,
+					name: id,
+					connectionId: "a",
+					platform: "test",
+					scope: "group",
+					enabled: true,
+				}) as unknown as PushTarget,
+		};
+		const tracked: Promise<unknown>[] = [];
+		const sent: PushSendInfo[] = [];
+		const push = new BilibiliPush({
+			...pushBase(),
+			serviceCtx: { ...pushBase().serviceCtx, track: (task) => void tracked.push(task) },
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+			onSend: (info) => sent.push(info),
+		});
+		push.start();
+
+		await push.broadcastToFeature("s1", "live", { kind: "text", text: "开播" });
+
+		// 卡片那次回调已经交出去了;@全体 还在路上 —— 登记着的这件事不许落。
+		expect(sent).toHaveLength(1);
+		expect(tracked).toHaveLength(1);
+		let settled = false;
+		void Promise.all(tracked).then(() => {
+			settled = true;
+		});
+		await new Promise((r) => setTimeout(r, 20));
+		expect(settled).toBe(false);
+
+		landAtAll({ ok: true, latencyMs: 2 });
+		await Promise.all(tracked);
+		expect(sent).toHaveLength(2);
+		expect(sent[1]?.messages[0]).toMatchObject({ role: "extra", result: { ok: true } });
+	});
+
 	it("onSend 每个 target 触发一次,target 字段填", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1", "t2"];
