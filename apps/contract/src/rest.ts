@@ -19,6 +19,7 @@ import type {
 	ExtensionProvides,
 	ExtensionRunState,
 	ExtensionSubscription,
+	Failure,
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PushKind,
@@ -29,7 +30,14 @@ import type {
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
 
-export type { MiniAppCardSupport } from "@bilibili-notify/internal";
+// 失败规矩(ADR-0026)的类型也从这儿转出:web 只认 contract。
+export type {
+	Failure,
+	FailureCode,
+	Issue,
+	MiniAppCardSupport,
+	Result,
+} from "@bilibili-notify/internal";
 export type {
 	ConnectionCapabilities,
 	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 MiniAppCardSupport 那条。
@@ -39,6 +47,19 @@ export type {
 	PushKind,
 	PushStatus,
 };
+
+// ---- HTTP 非 2xx 的错误体(ADR-0026 决策 6)---------------------------------------
+
+/**
+ * HTTP 非 2xx 的回应体:就是 `Failure` 去掉 `ok`,平铺的 `{ code, message }`。
+ *
+ * 可选附加**只有两格**:`issues`(逐条原因,面板逐格标红读它)与 `upstreamCode`(上游平台自己的码,
+ * 永远不占 `code`)。要加别的先问主人 —— 清单封闭,免得又长回 19 种形状。
+ *
+ * 路由一律经服务端的 `respondFailure` 回它,状态码从 `code` 推;「做一件事、回报结果」的接口
+ * (测试推送、预览)照旧回 200,体是 `Result<T>`,不是它。
+ */
+export type ErrorResponse = Omit<Failure, "ok">;
 
 // ---- /api/connections/capabilities ------------------------------------------
 

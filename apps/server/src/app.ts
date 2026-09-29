@@ -7,7 +7,7 @@ import type {
 	ExtensionPushView,
 	RestartAbility,
 } from "@bilibili-notify/contract";
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import { type CardSkinKind, fail } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -45,6 +45,12 @@ import { createLogsRoute } from "./routes/logs.js";
 import { createMaidSkillsRoute } from "./routes/maid-skills.js";
 import { createPushRoute } from "./routes/push.js";
 import { createQQRoute } from "./routes/qq.js";
+import {
+	failureOfHttpException,
+	ROUTE_NOT_FOUND_MESSAGE,
+	respondFailure,
+	UNHANDLED_ERROR_MESSAGE,
+} from "./routes/respond-failure.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSkinsRoute } from "./routes/skins.js";
 import { createStatsRoute } from "./routes/stats.js";
@@ -297,14 +303,17 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		commands: options.commands,
 	};
 
+	// 全局出错处理(ADR-0026 决策 2、6):抛错只留给 bug,这里接住 —— 原始错误进错误日志,
+	// 客户端只拿一句固定的话,`String(err)` 不再外泄(里头可能带路径、内部状态)。
+	// `HTTPException` 是中间件 / 路由主动抛的,按它的状态码挑码、状态码与 message 照原样。
 	app.onError((err, c) => {
-		// Let hono's HTTPException-derived responses (e.g. basicAuth's 401) flow
-		// through unchanged — wrapping them in 500 would mask auth challenges.
 		if (err instanceof HTTPException) {
-			return err.getResponse();
+			const { failure, status } = failureOfHttpException(err);
+			if (status >= 500) runtime.serviceCtx.logger.error("http exception", err);
+			return respondFailure(c, failure, status);
 		}
 		runtime.serviceCtx.logger.error("unhandled request error", err);
-		return c.json({ error: "internal_error", message: String(err) }, 500);
+		return respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE));
 	});
 
 	// SPA fallback — when staticDir is configured, any non-`/api/*` GET that
@@ -317,7 +326,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		if (indexHtml && c.req.method === "GET" && !c.req.path.startsWith("/api/")) {
 			return c.html(indexHtml);
 		}
-		return c.json({ error: "not_found" }, 404);
+		return respondFailure(c, fail("not_found", ROUTE_NOT_FOUND_MESSAGE));
 	});
 
 	/**
