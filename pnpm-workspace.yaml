@@ -27,14 +27,17 @@ packages:
 # to the Vite+ core, on one version. A missing override is silent otherwise —
 # real vite also builds and tests fine, and only misbehaves at runtime.
 #
-# Bumping vite-plus? Three things move in lockstep, and missing any one of them
+# Bumping vite-plus? Two things move in lockstep, and missing either one
 # silently leaves half the toolchain on the old version:
 #   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps
 #   2. the overrides below (else the React frontends keep the old core)
-#   3. apps/Dockerfile `VP_BUILDER_IMAGE` ARG — the Docker builder builds on the
-#      official toolchain image and must run the same vp as everywhere else.
-# CI needs no edit: setup-vp installs whatever vp version the root `vite-plus`
-# devDep names. The action itself is pinned by exact tag (see gate.yml).
+# Everything else follows 1 by itself: CI's setup-vp installs that vp version,
+# and the image build passes it to apps/Dockerfile as `VP_BUILDER_IMAGE`
+# (.github/actions/build-push-image-digest), so the builder runs the same vp as
+# everywhere else. The Dockerfile's own default is the major floating tag, for
+# local `docker build` only: edit it on a major bump
+# (scripts/__tests__/vp-builder-image.test.mjs catches a miss). setup-vp itself
+# is pinned by exact tag (see gate.yml).
 # Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
 # declarations — installing a newer vite-plus package with an older CLI has
 # corrupted the lockfile before (biome's entry took on vite-plus's resolution).

@@ -155,7 +155,7 @@ image-release run 在相同 build job 里顺带构建(同 buildx 实例复用 bu
 
 **chromium base 镜像**(`apps/base.Dockerfile` → `akokk0/bilibili-notify-base`):node-slim + chromium + CJK/emoji 字体 + tini,~300MB 冻结在 base、digest 只随显式重建而变 —— 用户拉一次、之后每次升级只下 app 小层。重建走 `base-image.yml`(workflow_dispatch,不可变递增 tag `b1`/`b2`/… + `:latest`,双 arch 经 QEMU),刷新后 bump `apps/Dockerfile` 的 `ARG BN_BASE_IMAGE`。**时序**:新 base tag 必须先推上 registry,image-release(含 dry-run)才构建得动。
 
-builder 基于官方工具链镜像 `ghcr.io/voidzero-dev/vite-plus`(`ARG VP_BUILDER_IMAGE`,版本与根 `vite-plus` 同步升):镜像自带 vp CLI,按 `.node-version` 供给 Node、按 `package.json#packageManager` 供给 pnpm,`vp pm ci` 即 frozen-lockfile 干净安装,`vp run` 跑 script —— 与本地完全同一套工具链。早年「builder 用 corepack 的 pnpm、不用 vp」的例外已随这个镜像出现而取消。`.dockerignore` 排除了 `.git`,而根 `prepare` 脚本要跑 `lefthook install`,所以 builder 先 `git init` 一个空仓再装(用完即弃,不进 runtime)。
+builder 基于官方工具链镜像 `ghcr.io/voidzero-dev/vite-plus`(`ARG VP_BUILDER_IMAGE`:发版构建按根 `vite-plus` 的精确版本经 build-arg 传入,升 vite-plus 不用改 Dockerfile;Dockerfile 里的默认值是大版本浮动 tag,只给本地手动构建兜底,跨大版本时才改):镜像自带 vp CLI,按 `.node-version` 供给 Node、按 `package.json#packageManager` 供给 pnpm,`vp pm ci` 即 frozen-lockfile 干净安装,`vp run` 跑 script —— 与本地完全同一套工具链。早年「builder 用 corepack 的 pnpm、不用 vp」的例外已随这个镜像出现而取消。`.dockerignore` 排除了 `.git`,而根 `prepare` 脚本要跑 `lefthook install`,所以 builder 先 `git init` 一个空仓再装(用完即弃,不进 runtime)。
 
 **构建上下文必须是仓库根,不是 `apps/`** —— `apps/server` 经 `workspace:*` 依赖 `packages/*`,单独的 `apps/` 解析不到。手动构建:
 

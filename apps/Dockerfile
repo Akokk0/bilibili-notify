@@ -24,11 +24,13 @@
 
 ARG NODE_VERSION=24
 
-# builder 工具链镜像 —— 版本与 root devDependency 的 vite-plus 同步升级(联动
-# 清单见 pnpm-workspace.yaml 顶部大注释)。官方只发 ghcr.io(amd64+arm64);CI 在
-# GHA 上拉 ghcr 走 GitHub 内网、很快。国内本地构建嫌慢时用 --build-arg 整体换成
-# 任意镜像加速源,风格同下方 BN_BASE_IMAGE。
-ARG VP_BUILDER_IMAGE=ghcr.io/voidzero-dev/vite-plus:1.0.0
+# builder 工具链镜像。发版构建(.github/actions/build-push-image-digest)按 root
+# devDependency 的 vite-plus 精确版本用 --build-arg 传进来,升 vite-plus 不用改这里;
+# 这个默认值只给本地手动 docker build 兜底,写大版本浮动 tag —— 只有 vite-plus 跨大
+# 版本时要改(scripts/__tests__/vp-builder-image.test.mjs 拦着)。官方只发 ghcr.io
+# (amd64+arm64);CI 在 GHA 上拉 ghcr 走 GitHub 内网、很快。国内本地构建嫌慢时用
+# --build-arg 整体换成任意镜像加速源,风格同下方 BN_BASE_IMAGE。
+ARG VP_BUILDER_IMAGE=ghcr.io/voidzero-dev/vite-plus:1
 
 # runtime 底座:预装 chromium + CJK/emoji 字体 + tini 的自建 base(见
 # apps/base.Dockerfile)。这 ~300MB 冻结在 base 里,digest 只随 base 显式重建
