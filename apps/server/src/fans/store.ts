@@ -1,8 +1,9 @@
 import { createReadStream } from "node:fs";
-import { appendFile, mkdir, unlink } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
+import { appendJsonl } from "@bilibili-notify/storage";
 
 /**
  * 按订阅分文件的 fans 时序持久化。
@@ -79,9 +80,8 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 	return {
 		async append(key, sample) {
 			await ensureRoot();
-			const line = `${JSON.stringify(sample)}\n`;
 			try {
-				await appendFile(fileFor(key), line, "utf-8");
+				await appendJsonl(fileFor(key), [sample]);
 			} catch (err) {
 				opts.logger.warn(`[fans-store] append ${key} failed: ${String(err)}`);
 			}

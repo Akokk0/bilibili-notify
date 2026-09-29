@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type {
 	HistoryMessageRole,
@@ -7,6 +7,7 @@ import type {
 	NotificationPayload,
 	PayloadSegment,
 } from "@bilibili-notify/internal";
+import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
 import { mimeToExt } from "./store.js";
 
@@ -174,7 +175,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		/** 自己写一份,回它的引用。 */
 		const writeOwn = async (buffer: Buffer, mime: string) => {
 			const ref = `${rowId}-${msgIdx}-${ownCount++}.${mimeToExt(mime)}`;
-			await writeFile(join(dayDir(ts), ref), buffer);
+			await atomicWriteFile(join(dayDir(ts), ref), buffer);
 			return { ref, mime, own: true as const };
 		};
 
@@ -268,14 +269,14 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		items: readonly RepushAppendItem[],
 	): Promise<void> {
 		if (items.length === 0) return;
-		await mkdir(dayDir(ts), { recursive: true });
 		const existing = await readDraft(rowId, ts);
 		const messages = existing ? [...existing.messages] : [];
 		const offset = messages.length;
 		for (const [i, item] of items.entries()) {
 			messages.push({ payload: await toStored(item, rowId, ts, offset + i), role: item.role });
 		}
-		await writeFile(draftPath(rowId, ts), JSON.stringify({ v: 1, messages }), "utf8");
+		// 原子写会顺手建日目录(图也是这么建的)。
+		await atomicWriteJson(draftPath(rowId, ts), { v: 1, messages });
 	}
 
 	async function load(

@@ -1,9 +1,10 @@
 import { createReadStream } from "node:fs";
-import { appendFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { LogArchiveEntry } from "@bilibili-notify/contract";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import { appendLines } from "@bilibili-notify/storage";
 import { z } from "zod";
 import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
 
@@ -92,12 +93,15 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 		return join(root, `${day}.jsonl`);
 	}
 
-	/** Stable single-line serialization that never throws (circular/huge args). */
+	/**
+	 * Stable single-line serialization that never throws (circular/huge args). No trailing
+	 * newline: `appendLines` adds it. The line format is frozen (see store.test.ts).
+	 */
 	function lineFor(entry: LogArchiveEntry): string {
 		try {
-			return `${JSON.stringify(entry)}\n`;
+			return JSON.stringify(entry);
 		} catch {
-			return `${JSON.stringify({ ...entry, args: ["[unserializable]"] })}\n`;
+			return JSON.stringify({ ...entry, args: ["[unserializable]"] });
 		}
 	}
 
@@ -118,7 +122,7 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 			}
 			for (const [day, lines] of byDay) {
 				try {
-					await appendFile(dayFilePath(day), lines.join(""), "utf8");
+					await appendLines(dayFilePath(day), lines);
 				} catch (err) {
 					// Best-effort: a failed flush drops that batch (logs are
 					// non-critical). Warn so the operator notices disk problems.

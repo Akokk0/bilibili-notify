@@ -1,8 +1,9 @@
 import { createReadStream } from "node:fs";
-import { appendFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
+import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
 import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
 
 /**
@@ -220,7 +221,8 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		}
 		const stamp = now().toISOString();
 		try {
-			await writeFile(sinceFile, stamp, "utf-8");
+			// 盘上是裸的 ISO 串(不是 JSON):读的一方 trim 后直接 Date.parse。
+			await atomicWriteFile(sinceFile, stamp);
 		} catch (err) {
 			// 写不进去不致命:这次按「此刻」处理,下次再试。
 			opts.logger.warn(`[stats-store] write since failed: ${String(err)}`);
@@ -259,7 +261,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 	async function appendLine(file: string, value: unknown, what: string): Promise<void> {
 		try {
-			await appendFile(file, `${JSON.stringify(value)}\n`, "utf-8");
+			await appendJsonl(file, [value]);
 		} catch (err) {
 			opts.logger.warn(`[stats-store] append ${what} failed: ${String(err)}`);
 		}

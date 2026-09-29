@@ -8,7 +8,7 @@
  *   - drop:删文件;缺文件时静默(不抛、不 warn)
  */
 
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -41,6 +41,26 @@ describe("append", () => {
 		const lines = raw.trim().split("\n");
 		expect(lines).toHaveLength(2);
 		expect(JSON.parse(lines[0] as string)).toEqual({ ts: T(1), value: 100 });
+	});
+
+	it("盘上逐字节:紧凑 JSON、一行一条、末尾换行,下一次追加接在后面", async () => {
+		await store.append("u1", { ts: T(1), value: 100 });
+		await store.append("u1", { ts: T(2), value: 110 });
+		expect(await readFile(join(dataDir, "fans", "u1.jsonl"), "utf8")).toBe(
+			`{"ts":"${T(1)}","value":100}\n{"ts":"${T(2)}","value":110}\n`,
+		);
+	});
+
+	it("目录里没有多余文件(不留临时名)", async () => {
+		await store.append("u1", { ts: T(1), value: 100 });
+		expect(await readdir(join(dataDir, "fans"))).toEqual(["u1.jsonl"]);
+	});
+
+	it("写不进去只 warn、不抛(键名对上的是个目录)", async () => {
+		await mkdir(join(dataDir, "fans", "u1.jsonl"), { recursive: true });
+		await expect(store.append("u1", { ts: T(1), value: 100 })).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("[fans-store] append u1 failed");
 	});
 });
 

@@ -160,6 +160,14 @@ describe("半路崩了", () => {
 		expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
 	});
 
+	it("第一次开机崩在「id 那份已经写好、uid 那份还没删」→ 再跑一次只删 uid 那份,不重复", async () => {
+		await put(DIRS[2], "101", FANS);
+		await put(DIRS[2], ID_A, FANS); // 两份内容一样:id 那份是上次写好的
+		await run([bili(ID_A, "101")]);
+		expect(await read(DIRS[2], ID_A)).toBe(FANS);
+		expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
+	});
+
 	it("临时文件写了一半没换上 → 两份原样都在,再跑一次正常并完、临时文件不留", async () => {
 		const during = jsonl([{ ts: T(12), value: 120 }]);
 		await put(DIRS[2], ID_A, FANS);

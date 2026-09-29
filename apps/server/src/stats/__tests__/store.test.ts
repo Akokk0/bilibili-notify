@@ -208,6 +208,17 @@ describe("StatsStore — 「在记」(ADR-0020 决策 9 / 16)", () => {
 		expect(await store.listSeenSince("s1", "")).toEqual([{ ts: T(1) }, { ts: T(3) }, { ts: T(5) }]);
 		expect(await store.listSeenSince("s1", T(3))).toEqual([{ ts: T(3) }, { ts: T(5) }]);
 		expect(await readdir(join(dataDir, "stats", "seen"))).toEqual(["s1.jsonl"]);
+		// 逐字节:紧凑 JSON、一行一条、末尾换行。
+		expect(await readFile(join(dataDir, "stats", "seen", "s1.jsonl"), "utf-8")).toBe(
+			`{"ts":"${T(1)}"}\n{"ts":"${T(3)}"}\n{"ts":"${T(5)}"}\n`,
+		);
+	});
+
+	it("写不进去只 warn、不抛(键名对上的是个目录)", async () => {
+		await mkdir(join(dataDir, "stats", "seen", "s9.jsonl"), { recursive: true });
+		await expect(store.appendSeen("s9", T(1))).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("[stats-store] append seen s9 failed");
 	});
 
 	it("没有文件 → 空;坏行跳过", async () => {
@@ -248,6 +259,35 @@ describe("StatsStore — 采集水位线", () => {
 		await writeFile(join(dataDir, "stats", "since"), "不是时间", "utf-8");
 		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(7)) });
 		expect(await s.recordingSince()).toBe(T(7));
+	});
+
+	it("盘上就是裸的 ISO 串:不带引号、不带换行(读的一方 trim 后 Date.parse)", async () => {
+		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(5)) });
+		await s.recordingSince();
+		expect(await readFile(join(dataDir, "stats", "since"), "utf-8")).toBe(T(5));
+		// 目录里只有三个子目录与它,没有落下临时文件。
+		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
+			"dyn",
+			"live",
+			"seen",
+			"since",
+		]);
+	});
+
+	it("水位线写不进去 → 只 warn、这次按「此刻」算,不抛、不留临时文件", async () => {
+		// 占位:`since` 是个目录,读它报 EISDIR、写它也报 EISDIR。
+		await mkdir(join(dataDir, "stats", "since"), { recursive: true });
+		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(7)) });
+		expect(await s.recordingSince()).toBe(T(7));
+		expect(logger.warn.mock.calls.map((c) => String(c[0])).join("\n")).toContain(
+			"[stats-store] write since failed",
+		);
+		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
+			"dyn",
+			"live",
+			"seen",
+			"since",
+		]);
 	});
 });
 

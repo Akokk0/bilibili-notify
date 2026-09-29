@@ -81,6 +81,58 @@ describe("createLogStore — dispose final-flush(数据完整性)", () => {
 	});
 });
 
+describe("createLogStore — 落盘的行格式(冻结)", () => {
+	// 日志行是面板「下载原文」直接吐给人的东西,也是历史上落下的老文件的读法。这条钉的是
+	// 整份文件的逐字节内容:紧凑 JSON、键序 ts → level → msg → name → args、一行一条、末尾换行,
+	// 循环引用的 args 换成 ["[unserializable]"] 而不是丢整行 —— 换写盘方式时这些一个字节都不许变。
+	it("一批日志(含循环引用 args、跨两天)落盘后逐字节不变", async () => {
+		const { ctx, fireDispose } = makeCtx();
+		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const loop: Record<string, unknown> = {};
+		loop.self = loop;
+		store.ingest(entry({ msg: "plain", ts: "2020-01-01T00:00:00.000Z" }));
+		store.ingest(
+			entry({
+				level: "warn",
+				name: "live",
+				msg: '带 "引号" 与\n换行',
+				args: [1, { a: "x" }],
+				ts: "2020-01-01T00:00:01.000Z",
+			}),
+		);
+		store.ingest(
+			entry({
+				level: "error",
+				name: "push",
+				msg: "cyc",
+				args: [loop],
+				ts: "2020-01-01T00:00:02.000Z",
+			}),
+		);
+		store.ingest(entry({ level: "debug", msg: "次日", ts: "2020-01-02T00:00:00.000Z" }));
+		await fireDispose();
+
+		expect(await readDay("2020-01-01")).toBe(
+			[
+				'{"ts":"2020-01-01T00:00:00.000Z","level":"info","msg":"plain"}',
+				'{"ts":"2020-01-01T00:00:01.000Z","level":"warn","msg":"带 \\"引号\\" 与\\n换行","name":"live","args":[1,{"a":"x"}]}',
+				'{"ts":"2020-01-01T00:00:02.000Z","level":"error","msg":"cyc","name":"push","args":["[unserializable]"]}',
+				"",
+			].join("\n"),
+		);
+		expect(await readDay("2020-01-02")).toBe(
+			'{"ts":"2020-01-02T00:00:00.000Z","level":"debug","msg":"次日"}\n',
+		);
+		// 再来一批:追加在原有内容之后,不覆盖、不多空行。
+		store.ingest(entry({ msg: "later", ts: "2020-01-02T00:00:05.000Z" }));
+		await fireDispose();
+		expect(await readDay("2020-01-02")).toBe(
+			'{"ts":"2020-01-02T00:00:00.000Z","level":"debug","msg":"次日"}\n' +
+				'{"ts":"2020-01-02T00:00:05.000Z","level":"info","msg":"later"}\n',
+		);
+	});
+});
+
 describe("createLogStore — ingest 无条件 + query", () => {
 	it("store 不再有 floor:debug/info/warn/error 全部照写(过滤已上移 fanOut)", async () => {
 		const { ctx, fireDispose } = makeCtx();

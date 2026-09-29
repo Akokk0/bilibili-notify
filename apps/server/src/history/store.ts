@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -23,6 +23,7 @@ import {
 	HistoryPatchSchema,
 	PushKindSchema,
 } from "@bilibili-notify/internal";
+import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
 import { RecencyTable } from "../util/recency-table.js";
 import { latestByIdentity } from "./repush.js";
 import type { RepushStore } from "./repush-store.js";
@@ -239,7 +240,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	}
 
 	async function writeImage(name: string, buffer: Buffer): Promise<string> {
-		await writeFile(join(imgRoot, name), buffer);
+		await atomicWriteFile(join(imgRoot, name), buffer);
 		return name;
 	}
 
@@ -280,7 +281,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 						textParts.push(seg.text);
 					} else if (seg.type === "image" && !imageRef) {
 						const name = `${stem}-${imageIdx++}.${mimeToExt(seg.mime)}`;
-						await writeFile(join(imgRoot, name), seg.buffer);
+						await atomicWriteFile(join(imgRoot, name), seg.buffer);
 						imageRef = name;
 					} else if (seg.type === "link") {
 						textParts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
@@ -390,7 +391,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			messages,
 		});
 		const patch = { patch: merged.id, status: merged.status, messages: added };
-		await writeFile(path, `${JSON.stringify(patch)}\n`, { flag: "a", encoding: "utf8" });
+		await appendJsonl(path, [patch]);
 		// 这一行要是还在内存表里(刚推完就点了重推),把它也更新掉 —— 否则同一次推送
 		// 后面那几段(词云 / 总结)落地时会拿旧的算 offset 与状态。
 		const key = `${merged.pushId}|${merged.targetId ?? "-"}`;
@@ -423,7 +424,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				unameSnapshot: input.unameSnapshot,
 				uavatarSnapshot: input.uavatarSnapshot,
 			});
-			await writeFile(dayFile(ts), `${JSON.stringify(entry)}\n`, { flag: "a", encoding: "utf8" });
+			await appendJsonl(dayFile(ts), [entry]);
 			open.set(key, entry);
 			await saveDraft(id, ts, input.messages, messages, input.target);
 			opts.bus.emit("history-recorded", entry);
@@ -720,12 +721,9 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			}
 			kept.push(line);
 		}
-		// 先写旁边再换名:rename 是原子的,所以**读的人**永远看不到半个日文件,失败也只会
-		// 留下一个多余的 .tmp。注意它挡的是「读到写了一半的内容」,不是断电丢数据 ——
-		// 没有 fsync,掉电仍可能丢掉刚写下的这一份。
-		const tmp = `${path}.tmp`;
-		await writeFile(tmp, kept.length === 0 ? "" : `${kept.join("\n")}\n`, "utf8");
-		await rename(tmp, path);
+		// 原子写:**读的人**永远看不到半个日文件,fsync 之后掉电也不丢刚写下的这一份;
+		// 写失败不留临时文件,被杀留下的由开机清扫收走。
+		await atomicWriteFile(path, kept.length === 0 ? "" : `${kept.join("\n")}\n`);
 		return { doomed, images };
 	}
 
