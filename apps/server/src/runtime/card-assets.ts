@@ -11,7 +11,12 @@
 import { existsSync } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { type AssetStore, createAssetStore, isValidAssetId } from "../assets/asset-store.js";
+import {
+	AssetRejectedError,
+	type AssetStore,
+	createAssetStore,
+	isValidAssetId,
+} from "../assets/asset-store.js";
 import { MIME_TO_EXT, UPLOAD_EXT_TO_MIME } from "./image-mime.js";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
@@ -46,15 +51,15 @@ export async function listCardBg(dataDir: string): Promise<string[]> {
 	return (await storeOf(dataDir).list()).map((asset) => asset.id);
 }
 
-/** 保存上传的背景图,返回资产 id(= 文件名)。非图片 mime 或超限抛错(消息面向用户)。 */
+/** 保存上传的背景图,返回资产 id(= 文件名)。非图片 mime 或超限抛 {@link AssetRejectedError}(消息面向用户)。 */
 export async function saveCardBg(
 	dataDir: string,
 	bytes: Uint8Array,
 	mime: string,
 ): Promise<string> {
 	const ext = MIME_TO_EXT[mime];
-	if (!ext) throw new Error(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
-	if (bytes.byteLength > MAX_CARD_BG_BYTES) throw new Error("图片过大（上限 5MB）");
+	if (!ext) throw new AssetRejectedError(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
+	if (bytes.byteLength > MAX_CARD_BG_BYTES) throw new AssetRejectedError("图片过大（上限 5MB）");
 	const result = await storeOf(dataDir).put({ bytes, ext });
 	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
 	if (!result.ok) throw new Error(result.message);

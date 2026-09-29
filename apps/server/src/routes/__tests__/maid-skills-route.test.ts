@@ -9,6 +9,10 @@
  * ② **内置动不了。** 只读、跟版本走(ADR 决策 15)。
  * ③ **盘上读不进来的要报出来。** 主人手放的文件写错了,得让他在界面上看得见,
  *    否则跟「我大概没放对地方」分不开。
+ *
+ * 失败只有一种形状(ADR-0026):`{ code, message }`。名字不合法 / 内容不合规 `invalid`(400),
+ * 没这条 `not_found`(404),内置只读 / 重名 `conflict`(409)—— 码由技能库的错误自带,
+ * 路由不再把它们一把抓成 400。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
@@ -113,36 +117,47 @@ describe("POST /", () => {
 		expect(mine.body).toBe(sample.body);
 	});
 
-	it("名字不合法 → 400,并把理由原样交给主人", async () => {
+	it("名字不合法 → invalid(400),并把理由原样交给主人", async () => {
 		const bad = { ...sample, name: "我的技能" };
 		const res = await post(bad);
 		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
 		// **原样**:比对的是共用规则集那句本身,不是某几个字。此前钉的是「含 name」,
 		// 那把措辞焊死在了英文上 —— 规则收进 contract、两端统一说中文之后它就红了,
 		// 而红的是断言的写法,不是这条路径的行为。
-		expect(((await res.json()) as any).err).toBe(complainAboutSkill(bad));
+		expect(body.message).toBe(complainAboutSkill(bad));
 	});
 
-	it("与内置同名 → 400,并说清是被内置占了", async () => {
+	it("与内置同名 → conflict(409),并说清是被内置占了", async () => {
 		const res = await post({ ...sample, name: BUILTIN.name });
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).err).toContain("内置");
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("内置");
 	});
 
-	it("body 不是那个形状 → 400 而不是 500", async () => {
+	it("body 不是那个形状 → invalid(400)而不是 500,逐格原因进 issues", async () => {
 		for (const bad of [{}, { name: "a" }, { ...sample, body: 42 }, "不是 JSON 对象"]) {
-			expect((await post(bad)).status).toBe(400);
+			const res = await post(bad);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as any;
+			expect(body.code).toBe("invalid");
+			expect(body.message).toBe("请求体不是一条技能的形状");
+			expect(body.issues.length).toBeGreaterThan(0);
 		}
 	});
 
-	it("与盘上手放的同名 → 400,那份文件一个字都不动", async () => {
+	it("与盘上手放的同名 → conflict(409),那份文件一个字都不动", async () => {
 		// **一次 GET 都没发过** —— 这正是要钉的场景:内存索引还是空的。界面正常
 		// 流程会先拉列表把它热上,可陈旧标签页、脚本、以及先挂后拉的页面不会。
 		// 索引空 → 占用检查查了个寂寞 → 主人手写的那份被 200 OK 悄悄盖掉。
 		const file = await handPlace();
 		const res = await post({ ...sample, name: "hand-made" });
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).err).toContain("已经有了");
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("已经有了");
 		expect(await readFile(file, "utf-8")).toBe(HAND_MADE);
 	});
 });
@@ -155,18 +170,28 @@ describe("PUT /:name", () => {
 		expect(body.list.find((s: any) => s.name === "my-skill").body).toBe("换了个说法");
 	});
 
-	it("改内置 → 403,一个字都动不了", async () => {
+	it("改内置 → conflict(409),一个字都动不了", async () => {
 		const res = await put(BUILTIN.name, { ...BUILTIN, body: "篡改" });
-		expect(res.status).toBe(403);
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
 		const body = (await (await app.request("/")).json()) as any;
 		expect(body.list.find((s: any) => s.name === BUILTIN.name).body).toBe(BUILTIN.body);
 	});
 
-	it("改不存在的 → 404", async () => {
-		expect((await put("nope", sample)).status).toBe(404);
+	it("改不存在的 → not_found(404)", async () => {
+		const res = await put("nope", sample);
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).code).toBe("not_found");
 	});
 
-	it("改名撞上盘上手放的那份 → 400,那份文件一个字都不动", async () => {
+	it("改的内容不合规矩 → invalid(400),不是 conflict", async () => {
+		await post(sample);
+		const res = await put("my-skill", { ...sample, body: "   " });
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
+	});
+
+	it("改名撞上盘上手放的那份 → conflict(409),那份文件一个字都不动", async () => {
 		// 与 POST 那条同源:改名走的也是「这个名字空着吗」那道闸。索引热过之后
 		// 手放的那份就再没进过它 —— 闸看不见,改名等于覆盖。
 		//
@@ -176,7 +201,8 @@ describe("PUT /:name", () => {
 		await put("my-skill", { ...sample, body: "先改一次,把索引热上" });
 		const file = await handPlace();
 		const res = await put("my-skill", { ...sample, name: "hand-made" });
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
 		expect(await readFile(file, "utf-8")).toBe(HAND_MADE);
 	});
 });
@@ -189,8 +215,16 @@ describe("DELETE /:name", () => {
 		expect(body.list.some((s: any) => s.name === "my-skill")).toBe(false);
 	});
 
-	it("删内置 → 403", async () => {
-		expect((await app.request(`/${BUILTIN.name}`, { method: "DELETE" })).status).toBe(403);
+	it("删内置 → conflict(409)", async () => {
+		const res = await app.request(`/${BUILTIN.name}`, { method: "DELETE" });
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
+	});
+
+	it("删没有的 → not_found(404)", async () => {
+		const res = await app.request("/nope", { method: "DELETE" });
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).code).toBe("not_found");
 	});
 
 	it("名字带路径穿越 → 一律拒,库外的东西一根汗毛都不能少", async () => {
@@ -206,7 +240,9 @@ describe("DELETE /:name", () => {
 				// **挡下来的必须是名字白名单,不是路由表。** `%2e%2e%2f` 是真的会被
 				// 解码成 `../` 一路送到处理器的(实测),所以「404 也算过」这种断言
 				// 会让这条测试在闸被拆掉之后照样绿。认准这句话。
-				expect(((await res.json()) as any).err).toContain("不合法");
+				const body = (await res.json()) as any;
+				expect(body.code).toBe("invalid");
+				expect(body.message).toContain("不合法");
 			}
 			// 目录还在 —— 这才是真正要证明的事。
 			expect(await readdir(dirname(dir))).toContain("victim-dir");

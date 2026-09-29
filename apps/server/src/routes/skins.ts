@@ -10,6 +10,7 @@ import type {
 	SkinManifestResponse,
 	SkinsListResponse,
 } from "@bilibili-notify/contract";
+import { fail, ok } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { type Context, Hono } from "hono";
 import { FONT_EXT_TO_MIME, fontExtOf } from "../runtime/font-mime.js";
@@ -18,7 +19,10 @@ import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
 import { ASSET_NAMES_FILE } from "../skins/asset-names.js";
 import { MAX_FONT_BYTES, openSkinPackage, referencedAssets } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
-import type { SkinStore } from "../skins/store.js";
+import { type SkinStore, SkinStoreError } from "../skins/store.js";
+import { failureOfChecks } from "../util/failure-text.js";
+import { readJsonBody } from "./request-body.js";
+import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
 /**
@@ -31,17 +35,11 @@ import { uploadBodyLimit } from "./upload-limit.js";
 const MAX_SKIN_ZIP_BYTES = 30 * 1024 * 1024;
 
 /**
- * 「这个 id 没有皮肤」—— 九个 handler 的同一句开场白。
- *
- * **两种响应体形状都是契约要的**,不是历史遗留:多数端点回 `{ ok, err }`,
- * 而 ai-edit 与 PUT manifest 的成功路径本来就带着一串校验意见(`warnings` /
- * `errors`),它们的契约类型写死了 `{ ok: false; errors: string[] }` ——
- * 那两处回 `err` 的话前端拿到的是 undefined,界面上只会空一块。
+ * 「这个 id 没有皮肤」—— 九个 handler 的同一句开场白。失败只有一种形状(ADR-0026):
+ * `{ code: "not_found", message }`,从前按端点分的 `err` / `errors` 两种壳不再有。
  */
-function skinNotFound(c: Context, shape: "err" | "errors" = "err") {
-	return shape === "errors"
-		? c.json({ ok: false, errors: ["皮肤不存在"] }, 404)
-		: c.json({ ok: false, err: "皮肤不存在" }, 404);
+function skinNotFound(c: Context) {
+	return respondFailure(c, fail("not_found", "皮肤不存在"));
 }
 
 export function createSkinsRoute(deps: {
@@ -71,17 +69,19 @@ export function createSkinsRoute(deps: {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
-			return c.json({ ok: false, errors: ["缺少皮肤包文件(multipart 字段 file)"] }, 400);
+			return respondFailure(c, fail("invalid", "缺少皮肤包文件(multipart 字段 file)"));
 		}
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		const opened = openSkinPackage(bytes);
-		if (!opened.ok) return c.json({ ok: false, errors: opened.errors }, 400);
+		if (!opened.ok) {
+			return respondFailure(c, failureOfChecks("invalid", "这个皮肤包", opened.errors));
+		}
 		const { id } = await skinStore.save({
 			manifest: opened.manifest,
 			assets: opened.assets,
 			names: opened.names,
 		});
-		return c.json({ ok: true, id, warnings: opened.warnings }, 201);
+		return c.json(ok({ id, warnings: opened.warnings }), 201);
 	});
 
 	app.get("/active", async (c) => {
@@ -102,10 +102,10 @@ export function createSkinsRoute(deps: {
 		const req = body && typeof body === "object" ? (body as { id?: unknown; theme?: unknown }) : {};
 		const { id, theme } = req;
 		if (id !== null && typeof id !== "string") {
-			return c.json({ ok: false, err: "id 必须是皮肤 id 或 null" }, 400);
+			return respondFailure(c, fail("invalid", "id 必须是皮肤 id 或 null"));
 		}
 		if (theme !== undefined && theme !== "light" && theme !== "dark") {
-			return c.json({ ok: false, err: "theme 只能是 light 或 dark" }, 400);
+			return respondFailure(c, fail("invalid", "theme 只能是 light 或 dark"));
 		}
 		if (id !== null && !(await skinStore.get(id))) {
 			return skinNotFound(c);
@@ -114,20 +114,23 @@ export function createSkinsRoute(deps: {
 			if (theme === undefined) await skinStore.activate(id);
 			else await skinStore.setActiveSlot(theme, id);
 		} catch (e) {
-			return c.json({ ok: false, err: String((e as Error).message) }, 400);
+			// 只接皮肤库自己拒收的(皮肤没有那个模式 `invalid`、中途被删 `not_found`);别的抛错往上抛。
+			if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
+			throw e;
 		}
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	// 「让女仆改」:AI 产物只回编辑器 draft 做实时预览,**不落盘** —— 保存永远主人点。
 	app.post("/:id/ai-edit", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return skinNotFound(c, "errors");
+		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const generator = deps.commentary?.() ?? null;
 		if (!generator) {
-			return c.json(
-				{ ok: false, errors: ["智能女仆尚未配置或未就绪,先去 AI 设置页接好模型"] },
-				503,
+			// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」;那句话本来就是叫主人去接模型,按没配。
+			return respondFailure(
+				c,
+				fail("not_configured", "智能女仆尚未配置或未就绪,先去 AI 设置页接好模型"),
 			);
 		}
 		const body = await c.req.json().catch(() => null);
@@ -135,22 +138,38 @@ export function createSkinsRoute(deps: {
 			body && typeof body === "object" ? (body as { instruction?: unknown }).instruction : null;
 		const draft = body && typeof body === "object" ? (body as { draft?: unknown }).draft : null;
 		if (typeof instruction !== "string" || instruction.trim() === "" || instruction.length > 2000) {
-			return c.json({ ok: false, errors: ["修改要求必须是 1~2000 字的文本"] }, 400);
+			return respondFailure(c, fail("invalid", "修改要求必须是 1~2000 字的文本"));
 		}
 		if (typeof draft !== "object" || draft === null) {
-			return c.json({ ok: false, errors: ["draft 必须是当前 manifest 对象"] }, 400);
+			return respondFailure(c, fail("invalid", "draft 必须是当前 manifest 对象"));
 		}
-		const result = await runSkinAiEdit({
-			generateRaw: (s, u) => generator.generateRaw(s, u),
-			assets: await skinStore.listAssets(id),
-			// 原名只进提示词的资产清单(帮设计师看懂这是什么图);它写进 manifest 的
-			// 仍旧是生成名 —— 提示词里那句消歧就是为这件事写的。
-			assetNames: await skinStore.assetNames(id),
-			draft,
-			instruction: instruction.trim(),
-		});
-		if (!result.ok) return c.json(result, 422);
-		return c.json(result);
+		const assets = await skinStore.listAssets(id);
+		// 原名只进提示词的资产清单(帮设计师看懂这是什么图);它写进 manifest 的
+		// 仍旧是生成名 —— 提示词里那句消歧就是为这件事写的。
+		const assetNames = await skinStore.assetNames(id);
+		let result: Awaited<ReturnType<typeof runSkinAiEdit>>;
+		try {
+			result = await runSkinAiEdit({
+				generateRaw: (s, u) => generator.generateRaw(s, u),
+				assets,
+				assetNames,
+				draft,
+				instruction: instruction.trim(),
+			});
+		} catch (e) {
+			// 生成本身失败(模型那头的错、网络):对端给的原因就是主人要看的,原话进 `message` ——
+			// 与卡片皮肤的 ai-css 同一口径。
+			const reason = e instanceof Error ? e.message : String(e);
+			return respondFailure(c, fail("unavailable", `女仆那边没改成：${reason}`));
+		}
+		// 女仆两趟都没改出合格的皮肤:是 `invalid`(逐条意见进 `issues`),不再是 422 的私有形状。
+		if (!result.ok) {
+			return respondFailure(
+				c,
+				failureOfChecks("invalid", "女仆改出来的皮肤", result.errors, { listSingle: true }),
+			);
+		}
+		return c.json(ok({ manifest: result.manifest, warnings: result.warnings }));
 	});
 
 	app.get("/:id/manifest", async (c) => {
@@ -184,7 +203,7 @@ export function createSkinsRoute(deps: {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
-			return c.json({ ok: false, err: "缺少文件(multipart 字段 file)" }, 400);
+			return respondFailure(c, fail("invalid", "缺少文件(multipart 字段 file)"));
 		}
 		/**
 		 * 图**按 mime 定扩展名**(各家浏览器给得准),字体**按文件名后缀**。
@@ -196,9 +215,9 @@ export function createSkinsRoute(deps: {
 		 */
 		const ext = MIME_TO_EXT[file.type] ?? fontExtOf(file.name);
 		if (!ext) {
-			return c.json(
-				{ ok: false, err: "只收 PNG / JPEG / WebP 图片,或 woff2 / woff / ttf / otf 字体" },
-				400,
+			return respondFailure(
+				c,
+				fail("invalid", "只收 PNG / JPEG / WebP 图片,或 woff2 / woff / ttf / otf 字体"),
 			);
 		}
 		try {
@@ -209,9 +228,10 @@ export function createSkinsRoute(deps: {
 				ext,
 				file.name,
 			);
-			return c.json({ ok: true, name }, 201);
+			return c.json(ok({ name }), 201);
 		} catch (e) {
-			return c.json({ ok: false, err: e instanceof Error ? e.message : String(e) }, 400);
+			if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
+			throw e;
 		}
 	});
 
@@ -219,22 +239,32 @@ export function createSkinsRoute(deps: {
 	// parseSkinManifest + 「引用的图/字体必须在包里」同一把尺(referencedAssets)。
 	app.put("/:id/manifest", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return skinNotFound(c, "errors");
-		const body = await c.req.json().catch(() => null);
-		if (body === null) return c.json({ ok: false, errors: ["请求体不是合法 JSON"] }, 400);
-		const parsed = parseSkinManifest(body);
-		if (!parsed.ok) return c.json({ ok: false, errors: parsed.errors }, 400);
+		if (!(await skinStore.get(id))) return skinNotFound(c);
+		const read = await readJsonBody(c);
+		if (!read.ok) return respondFailure(c, read);
+		const parsed = parseSkinManifest(read.body);
+		if (!parsed.ok) return respondFailure(c, failureOfChecks("invalid", "皮肤清单", parsed.errors));
 
 		const assets = new Set(await skinStore.listAssets(id));
 		const missing = [...referencedAssets(parsed.skin)].filter((name) => !assets.has(name));
 		if (missing.length > 0) {
-			return c.json(
-				{ ok: false, errors: missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`) },
-				400,
+			return respondFailure(
+				c,
+				failureOfChecks(
+					"invalid",
+					"皮肤清单",
+					missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`),
+				),
 			);
 		}
-		await skinStore.updateManifest(id, parsed.skin);
-		return c.json({ ok: true, warnings: parsed.warnings });
+		try {
+			await skinStore.updateManifest(id, parsed.skin);
+		} catch (e) {
+			// 校验到落盘之间这套皮肤被删了 —— 皮肤库带码拒收,原样回。
+			if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
+			throw e;
+		}
+		return c.json(ok({ warnings: parsed.warnings }));
 	});
 
 	// 出厂快照:GET 读基准(「恢复默认值」的数据源,前端拉回编辑器 draft 预览,
@@ -244,7 +274,7 @@ export function createSkinsRoute(deps: {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const manifest = await skinStore.getDefault(id);
-		if (!manifest) return c.json({ ok: false, err: "该皮肤还没有钉过默认值" }, 404);
+		if (!manifest) return respondFailure(c, fail("not_found", "该皮肤还没有钉过默认值"));
 		const body: SkinDefaultResponse = { manifest };
 		return c.json(body);
 	});
@@ -252,8 +282,13 @@ export function createSkinsRoute(deps: {
 	app.put("/:id/default", async (c) => {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return skinNotFound(c);
-		await skinStore.setDefault(id);
-		return c.json({ ok: true });
+		try {
+			await skinStore.setDefault(id);
+		} catch (e) {
+			if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
+			throw e;
+		}
+		return c.json(ok());
 	});
 
 	// 导出皮肤包:manifest + 全部资产打回标准 zip,和上传收的是同一种包(往返闭环)。
@@ -288,35 +323,37 @@ export function createSkinsRoute(deps: {
 
 	app.delete("/:id", async (c) => {
 		await skinStore.remove(c.req.param("id"));
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	/**
 	 * 只删一套皮肤的**其中一色**。深浅双色皮肤里主人只想留一套时走这条路 ——
 	 * 从前只有「删整套」,想扔掉其中一色得整套删了重做。
 	 *
-	 * 三种失败分开报,主人一眼看得出是哪一种:没这套皮肤(404)、`:theme` 不是那
-	 * 两个字(400)、以及 store 那边的两条业务规则(没有该模式 / 这是最后一套,400)。
+	 * 三种失败分开报,主人一眼看得出是哪一种:没这套皮肤(`not_found`)、`:theme` 不是那
+	 * 两个字(`invalid`)、以及 store 那边的两条业务规则(没有该模式 `invalid` / 这是最后一套
+	 * `conflict`)。
 	 */
 	app.delete("/:id/modes/:theme", async (c) => {
 		const id = c.req.param("id");
 		const theme = c.req.param("theme");
 		// 先卡形状再碰 store:`:theme` 从 URL 来,而它下一步要当对象键用。
 		if (theme !== "light" && theme !== "dark") {
-			return c.json({ ok: false, err: "模式只能是 light 或 dark" }, 400);
+			return respondFailure(c, fail("invalid", "模式只能是 light 或 dark"));
 		}
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		try {
 			await skinStore.removeMode(id, theme);
 		} catch (err) {
-			return c.json({ ok: false, err: (err as Error).message }, 400);
+			if (err instanceof SkinStoreError) return respondFailure(c, err.toFailure());
+			throw err;
 		}
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	app.get("/:id/assets/:name", async (c) => {
 		const path = await skinStore.assetPath(c.req.param("id"), `assets/${c.req.param("name")}`);
-		if (!path) return c.json({ ok: false, err: "资产不存在" }, 404);
+		if (!path) return respondFailure(c, fail("not_found", "资产不存在"));
 		const ext = path.split(".").pop()?.toLowerCase() ?? "";
 		const data = await readFile(path);
 		return c.body(new Uint8Array(data), 200, {

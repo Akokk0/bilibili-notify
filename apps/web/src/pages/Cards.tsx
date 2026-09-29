@@ -162,9 +162,9 @@ function PreviewImage({
 				const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec, {
 					timeoutMs: PREVIEW_TIMEOUT_MS,
 				});
-				if (!res.ok || !res.dataUrl) {
-					throw new ApiError(500, res, res.err ?? "preview failed");
-				}
+				// 画不出来是 200 + 失败那一支(`Result`):请求没毛病、这一趟没成。造成 `ApiError`
+				// 是为了让下面按 `code` / `message` 读的地方与非 2xx(如 `not_configured`)走同一条路。
+				if (!res.ok) throw new ApiError(200, res, res.message);
 				return res.dataUrl;
 			}),
 		retry: false,
@@ -172,7 +172,6 @@ function PreviewImage({
 
 	const showSkeleton = query.isPending;
 	const apiErr = query.error as ApiError | undefined;
-	const status = apiErr?.status;
 
 	const body = showSkeleton ? (
 		/* `inset` + 自带外壳:这块占的是预览图的位置,底与宽度要跟着预览框走,
@@ -184,12 +183,18 @@ function PreviewImage({
 		/>
 	) : query.error ? (
 		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-bn-sm">
-			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(status)}</div>
+			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(apiErr)}</div>
 			<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
-			{previewErrorHint(status) ? (
-				<div className="mt-2 text-bn-xs text-bn-text-tertiary">{previewErrorHint(status)}</div>
+			{previewErrorHint(apiErr?.status) ? (
+				<div className="mt-2 text-bn-xs text-bn-text-tertiary">
+					{previewErrorHint(apiErr?.status)}
+				</div>
 			) : null}
-			{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
+			{/* 没配浏览器(`not_configured`)才摆「一键检测并启用 Chrome」;引擎还没就绪是
+			    `unavailable`,等一会儿就好,摆了也没用。从前按状态码 503 认,两件事分不开。 */}
+			{apiErr?.code === "not_configured" ? (
+				<ChromeAutoDetect onEnabled={() => query.refetch()} />
+			) : null}
 		</div>
 	) : (
 		<img
@@ -273,7 +278,8 @@ function TestPushCard({
 				cardSkin,
 				cardSkinKnobs,
 			});
-			if (!res.ok) throw new ApiError(500, res, res.err ?? "推送失败");
+			// 没送达是 200 + 失败那一支,`message` 就是对端的原话。
+			if (!res.ok) throw new ApiError(200, res, res.message);
 			return res;
 		},
 	});

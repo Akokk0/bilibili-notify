@@ -1,4 +1,4 @@
-import type { RenderSourceResponse } from "@bilibili-notify/contract";
+import type { EnableRenderingResponse, RenderSourceResponse } from "@bilibili-notify/contract";
 import { Btn, GlassBox } from "@bilibili-notify/ui";
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
@@ -10,7 +10,7 @@ type Busy = null | "detect" | "path" | "endpoint";
  * System 页「卡片渲染 · 浏览器」区 —— 展示当前渲染浏览器来源,并支持**热切换**:
  * 改本地 Chrome 路径(带自动探测)或远程端点,应用即调 POST
  * /api/cards/enable-rendering(后端先探测新浏览器连通,通了才换、才写回 yaml;
- * 失败保持现状并回显错误)。Cards 页 503 提示区只管「从无到有」的首次启用,
+ * 失败保持现状并回显错误)。Cards 页 `not_configured` 提示区只管「从无到有」的首次启用,
  * 启用之后的查看与切换都在这里。
  */
 export function BrowserSourceSettings() {
@@ -57,11 +57,8 @@ export function BrowserSourceSettings() {
 		setErr(null);
 		setOkMsg(null);
 		try {
-			const res = await api.post<{ ok: boolean; alreadyEnabled?: boolean; err?: string }>(
-				"/api/cards/enable-rendering",
-				body,
-			);
-			if (!res.ok) throw new Error(res.err ?? "切换失败");
+			// 切换不成一律是非 2xx(`api` 抛 `ApiError`,`message` 是服务端的原话),走到下一行就是成了。
+			const res = await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", body);
 			setOkMsg(res.alreadyEnabled ? "已是当前配置,无需切换" : "已生效");
 			await load();
 		} catch (e) {

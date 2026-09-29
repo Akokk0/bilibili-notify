@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import { useSkinStore } from "../../store/skin";
 import { useThemeStore } from "../../store/theme";
 import {
@@ -166,7 +167,8 @@ export function SkinEditor(props: {
 			setFeedback(null);
 			onClose();
 		},
-		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
+		// 校验没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人。
+		onError: (e) => setFeedback({ tone: "err", text: errorTextOf(e) }),
 	});
 
 	// 「让女仆改」:AI 产物只进 draft(实时预览),不落盘 —— 保存永远主人点。
@@ -175,14 +177,14 @@ export function SkinEditor(props: {
 		mutationFn: (vars: { instruction: string; draft: SkinManifest }) =>
 			api.post<SkinAiEditResponse>(`/api/skins/${id}/ai-edit`, vars),
 		onSuccess: (res) => {
-			if (!res.ok) return; // 4xx/5xx 走 onError;这里只剩 ok 形状
+			// 女仆没改出合格的皮肤是 400(`issues` 逐条),走 onError;这里只剩成功那一支。
 			setDraft(res.manifest);
 			setBokehRaw(null);
 			setAiWarnings(res.warnings);
 			setAiInstruction("");
 			setFeedback(null);
 		},
-		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
+		onError: (e) => setFeedback({ tone: "err", text: errorTextOf(e) }),
 	});
 
 	// 出厂快照:挂载拉一次,既喂「恢复默认值」(点击零请求),也喂字段旁的

@@ -77,6 +77,20 @@ describe("GalleryPicker", () => {
 		expect(onAssetDeleted).toHaveBeenCalledWith(REAL);
 	});
 
+	it("删被引用的图(conflict)→ 服务端 message 里的「谁在用」原样露出来,选择不动、不通知页面清扫", async () => {
+		const message = "该背景图还有 1 处在用：UP 30303，请先在卡片设置里移除再删除";
+		deleteMock.mockRejectedValue(new Error(message));
+		const onChange = vi.fn();
+		const onAssetDeleted = vi.fn();
+		renderWithQuery(
+			<GalleryPicker value={[REAL]} onChange={onChange} onAssetDeleted={onAssetDeleted} />,
+		);
+		fireEvent.click(await screen.findByLabelText("从图廊删除"));
+		expect(await screen.findByText(message)).toBeTruthy();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(onAssetDeleted).not.toHaveBeenCalled();
+	});
+
 	it("空选/单张的底部文案可被调用方定制(封面上下文不再写「用渐变背景」)", async () => {
 		const { unmount } = renderWithQuery(
 			<GalleryPicker value={[]} onChange={() => {}} emptyHint="未选择(用 B 站直播间原始封面)" />,

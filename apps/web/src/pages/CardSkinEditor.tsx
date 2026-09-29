@@ -34,6 +34,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import { streamCardSkinAiCss } from "../services/cardSkinAi";
+import { errorTextOf } from "../services/error-text";
 import type { GridMetrics } from "./cards/canvas-tracks";
 import { cardSkinAiReadiness } from "./cards/card-skin-ai";
 import { useCardSkinList } from "./cards/card-skins-query";
@@ -481,7 +482,7 @@ export default function CardSkinEditor() {
 					</ErrorNote>
 				) : null}
 				{save.isError ? (
-					<ErrorNote className="mt-3">保存失败:{String((save.error as Error).message)}</ErrorNote>
+					<ErrorNote className="mt-3">保存失败:{errorTextOf(save.error)}</ErrorNote>
 				) : null}
 			</div>
 		</div>

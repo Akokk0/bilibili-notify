@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_SKILLS } from "../builtin.js";
 import { formatSkillFile, parseSkillFile } from "../parse.js";
-import { MaidSkillStore } from "../store.js";
+import { MaidSkillStore, SkillStoreError } from "../store.js";
 
 let dir: string;
 let store: MaidSkillStore;
@@ -205,5 +205,52 @@ describe("手放的文件", () => {
 		await handPlace("Bad Name", formatSkillFile({ ...sample, name: "bad-name" }));
 		await store.reload();
 		expect(store.get("bad-name")).toBeUndefined();
+	});
+});
+
+/**
+ * 拒收**自带码**(ADR-0026):路由靠 `SkillStoreError.code` 回给面板,不再把名字不合法、重名、
+ * 没这条一把抓成 400。这里钉每一处拒收各是哪个码。
+ */
+describe("SkillStoreError:拒收各带各的码", () => {
+	const codeOf = async (run: () => Promise<unknown>): Promise<unknown> => {
+		try {
+			await run();
+		} catch (e) {
+			expect(e).toBeInstanceOf(SkillStoreError);
+			return (e as SkillStoreError).code;
+		}
+		return "没有拒收";
+	};
+
+	it("内容或名字不合规矩 → invalid", async () => {
+		expect(await codeOf(() => store.create({ ...sample, name: "我的技能" }))).toBe("invalid");
+		expect(await codeOf(() => store.create({ ...sample, body: "  " }))).toBe("invalid");
+		expect(await codeOf(() => store.remove("../evil"))).toBe("invalid");
+	});
+
+	it("没有这条 → not_found", async () => {
+		expect(await codeOf(() => store.update("nope", sample))).toBe("not_found");
+		expect(await codeOf(() => store.remove("nope"))).toBe("not_found");
+	});
+
+	it("与当前状态冲突 → conflict(内置只读、重名、盘上手放的同名)", async () => {
+		expect(await codeOf(() => store.create({ ...sample, name: BUILTIN.name }))).toBe("conflict");
+		expect(await codeOf(() => store.update(BUILTIN.name, sample))).toBe("conflict");
+		expect(await codeOf(() => store.remove(BUILTIN.name))).toBe("conflict");
+
+		await store.create(sample);
+		expect(await codeOf(() => store.create(sample))).toBe("conflict");
+
+		await handPlace("hand-made", "---\nname: hand-made\ndescription: 手放的\n---\n\n正文\n");
+		expect(await codeOf(() => store.create({ ...sample, name: "hand-made" }))).toBe("conflict");
+	});
+
+	it("toFailure():码原样、话就是 message,不带别的格", () => {
+		expect(new SkillStoreError("not_found", "没这条").toFailure()).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "没这条",
+		});
 	});
 });

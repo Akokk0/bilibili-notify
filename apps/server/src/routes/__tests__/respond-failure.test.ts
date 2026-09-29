@@ -2,7 +2,12 @@ import { FAILURE_CODES, type Failure, type FailureCode, fail } from "@bilibili-n
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vite-plus/test";
-import { failureOfHttpException, respondFailure, statusOf } from "../respond-failure.js";
+import {
+	errorBodyOf,
+	failureOfHttpException,
+	respondFailure,
+	statusOf,
+} from "../respond-failure.js";
 
 describe("statusOf:失败码 → HTTP 状态码", () => {
 	it.each([
@@ -67,6 +72,37 @@ describe("respondFailure:错误体平铺 { code, message }", () => {
 		const sloppy = { ...fail("conflict", "版本对不上"), revision: "r2", usedBy: ["x"] } as Failure;
 		const { body } = await call(sloppy);
 		expect(Object.keys(body).sort()).toEqual(["code", "message"]);
+	});
+});
+
+describe("errorBodyOf:不经 HTTP 状态码、把失败塞进别的通道时用的错误体(如 SSE 的 error 帧)", () => {
+	it("去掉 ok,只留 { code, message },没给的附加格不出现", () => {
+		const body = errorBodyOf(fail("unavailable", "女仆那边没写成"));
+		expect(body).toEqual({ code: "unavailable", message: "女仆那边没写成" });
+		expect(Object.keys(body).sort()).toEqual(["code", "message"]);
+	});
+
+	it("issues 与 upstreamCode 原样带上;混进来的别的字段不往外甩(清单封闭)", () => {
+		const sloppy = {
+			...fail("invalid", "没通过检查（共 1 条）", {
+				issues: [{ message: "太长" }],
+				upstreamCode: 7,
+			}),
+			usedBy: ["x"],
+		} as Failure;
+		expect(errorBodyOf(sloppy)).toEqual({
+			code: "invalid",
+			message: "没通过检查（共 1 条）",
+			issues: [{ message: "太长" }],
+			upstreamCode: 7,
+		});
+	});
+
+	it("respondFailure 回的体就是它 —— 两个出口不会各长各的", async () => {
+		const failure = fail("conflict", "撞名了", { issues: [{ message: "甲" }] });
+		const app = new Hono().get("/", (c) => respondFailure(c, failure));
+		const res = await app.request("/");
+		expect(await res.json()).toEqual(errorBodyOf(failure));
 	});
 });
 

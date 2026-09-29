@@ -15,7 +15,12 @@
 
 import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { type AssetStore, createAssetStore, isValidAssetId } from "../assets/asset-store.js";
+import {
+	AssetRejectedError,
+	type AssetStore,
+	createAssetStore,
+	isValidAssetId,
+} from "../assets/asset-store.js";
 import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
 
 /**
@@ -88,7 +93,7 @@ export async function listFontAssets(dataDir: string): Promise<FontAsset[]> {
 }
 
 /**
- * 保存上传的字体,返回资产 id(= 文件名)。后缀不认或超限抛错(消息面向用户)。
+ * 保存上传的字体,返回资产 id(= 文件名)。后缀不认或超限抛 {@link AssetRejectedError}(消息面向用户)。
  * 原始文件名记进清单,供设置页显示。
  */
 export async function saveFontAsset(
@@ -98,10 +103,10 @@ export async function saveFontAsset(
 ): Promise<string> {
 	const ext = fontExtOf(filename);
 	if (!ext) {
-		throw new Error(`不支持的字体格式：${filename}（仅 woff2 / woff / ttf / otf）`);
+		throw new AssetRejectedError(`不支持的字体格式：${filename}（仅 woff2 / woff / ttf / otf）`);
 	}
 	if (bytes.byteLength > MAX_FONT_ASSET_BYTES) {
-		throw new Error(
+		throw new AssetRejectedError(
 			// 上限从常量算,别硬写 —— 写死的话改了常量这句话还在说旧数字。
 			`字体文件过大（上限 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB，这个 ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB）—— 同一套字转成 woff2 通常只占三分之一`,
 		);

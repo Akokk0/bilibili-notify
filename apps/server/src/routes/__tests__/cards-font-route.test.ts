@@ -10,15 +10,20 @@
  *
  * 字体特有的那条:列表要带**原始文件名**。背景图有缩略图可看,字体只有一串 hex ——
  * 名字丢了主人根本认不出哪个是哪个。
+ *
+ * 失败只有一种形状(ADR-0026):`{ code, message }`。删除撞上「还被选着」是 `conflict`(409),
+ * 用家并进 `message`,不再另占一格 `referencedBy`。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CARD_SKIN_UPLOAD_PREFIX } from "@bilibili-notify/internal";
+import { CARD_SKIN_UPLOAD_PREFIX, fail } from "@bilibili-notify/internal";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
 import { createCardsRoute } from "../cards.js";
+import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]);
@@ -90,7 +95,7 @@ async function withDir(fn: (dir: string) => Promise<void>): Promise<void> {
 	}
 }
 
-function upload(app: ReturnType<typeof route>, filename: string, bytes = WOFF2) {
+function upload(app: Pick<Hono, "request">, filename: string, bytes = WOFF2) {
 	const form = new FormData();
 	form.append("file", new File([bytes], filename));
 	return app.request("/font-asset", { method: "POST", body: form });
@@ -133,24 +138,48 @@ describe("POST /font-asset —— 上传", () => {
 		});
 	});
 
-	it("不是字体的后缀 → 400,错因说得出支持哪几种", async () => {
+	it("不是字体的后缀 → invalid(400),错因说得出支持哪几种", async () => {
 		await withDir(async (dir) => {
 			const res = await upload(route(makeDeps({ dataDir: dir })), "trojan.exe");
 			expect(res.status).toBe(400);
-			const json = (await res.json()) as { ok: boolean; err: string };
-			expect(json.ok).toBe(false);
-			expect(json.err).toContain("woff2");
+			const json = (await res.json()) as Record<string, unknown>;
+			expect(json.code).toBe("invalid");
+			expect(json.message).toContain("woff2");
+			expect(json).not.toHaveProperty("ok");
+			expect(json).not.toHaveProperty("err");
 			expect(await listFontAssets(dir)).toEqual([]);
 		});
 	});
 
-	it("没带文件 → 400", async () => {
+	it("没带文件 → invalid(400)", async () => {
 		await withDir(async (dir) => {
 			const res = await route(makeDeps({ dataDir: dir })).request("/font-asset", {
 				method: "POST",
 				body: new FormData(),
 			});
 			expect(res.status).toBe(400);
+			expect(((await res.json()) as { code: string }).code).toBe("invalid");
+		});
+	});
+
+	/**
+	 * 只有「上传的东西不合规矩」(后缀不认、超上限)才是主人的 400;磁盘写不进去是环境的事,
+	 * 往上抛给全局出错处理 —— 原话(里头带着数据目录的路径)进日志,客户端只拿固定一句。
+	 * 从前路由把一切抛错都当 400 原样甩出去。验红:把路由里 `instanceof AssetRejectedError` 那句
+	 * 改成无条件回 400,这条红。
+	 */
+	it("磁盘写失败 → 不当成 400 把原话甩出去:走全局出错处理,只回固定一句", async () => {
+		await withDir(async (dir) => {
+			// `assets` 是个文件而不是目录 —— 建字体目录必然失败。
+			await writeFile(join(dir, "assets"), "占位");
+			const app = new Hono()
+				.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
+				.route("/", route(makeDeps({ dataDir: dir })));
+			const res = await upload(app, "好字体.woff2");
+			expect(res.status).toBe(503);
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+			expect(JSON.stringify(json)).not.toContain(dir);
 		});
 	});
 });
@@ -218,7 +247,7 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 		});
 	});
 
-	it("某套皮肤的字体旋钮选着它 → 409 拦下并点名是哪套,文件仍在", async () => {
+	it("某套皮肤的字体旋钮选着它 → conflict(409) 拦下并在 message 里点名是哪套,文件仍在", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "在用.woff2");
 			const res = await route(makeDeps({ dataDir: dir, knobFont: id })).request(
@@ -226,8 +255,11 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 				{ method: "DELETE" },
 			);
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy: string[] };
-			expect(json.referencedBy).toContain("皮肤「my-skin」");
+			const json = (await res.json()) as Record<string, unknown>;
+			expect(json.code).toBe("conflict");
+			expect(json.message).toContain("还有 1 处在用：皮肤「my-skin」");
+			// 用家并进了 message,不再另占一格。
+			expect(json).not.toHaveProperty("referencedBy");
 			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
 		});
 	});
@@ -237,15 +269,16 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 	 * 拦不住」不矛盾:那边是一条没有读者的死路,这边出图真读它,删了这位 UP 的卡就静静回落兜底字体。
 	 * 验红:把 `fontAssetReferences` 里扫订阅旋钮那一段删掉,这条红。
 	 */
-	it("某位 UP 单独拧的字体旋钮选着它 → 409 拦下并点名是谁、哪套,文件仍在", async () => {
+	it("某位 UP 单独拧的字体旋钮选着它 → conflict(409) 拦下并点名是谁、哪套,文件仍在", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "UP 在用.woff2");
 			const res = await route(
 				makeDeps({ dataDir: dir, subs: [{ uid: "12345", knobFont: id }] }),
 			).request(`/font-asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy: string[] };
-			expect(json.referencedBy).toEqual(["UP 12345 · 皮肤「my-skin」"]);
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json.code).toBe("conflict");
+			expect(json.message).toContain("UP 12345 · 皮肤「my-skin」");
 			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
 		});
 	});
@@ -280,13 +313,25 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 		});
 	});
 
-	it("非法 id → 400,而且压根不去碰盘", async () => {
+	it("非法 id → invalid(400),而且压根不去碰盘", async () => {
 		await withDir(async (dir) => {
 			const res = await route(makeDeps({ dataDir: dir })).request(
 				"/font-asset/..%2f..%2fbn.config.yaml",
 				{ method: "DELETE" },
 			);
 			expect(res.status).toBe(400);
+			expect(((await res.json()) as { code: string }).code).toBe("invalid");
+		});
+	});
+
+	it("删一款本来就不在的 → 200(幂等):面板拿到 200 照常刷新字体库", async () => {
+		await withDir(async (dir) => {
+			const gone = `${"a".repeat(32)}.woff2`;
+			const res = await route(makeDeps({ dataDir: dir })).request(`/font-asset/${gone}`, {
+				method: "DELETE",
+			});
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ ok: true });
 		});
 	});
 });

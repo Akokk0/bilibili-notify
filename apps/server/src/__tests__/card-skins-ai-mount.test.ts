@@ -2,8 +2,8 @@
  * 接线守卫:卡片皮肤那口 AI 真的拿得到引擎吗。
  *
  * 🔴 路由自己的测试是直接喂 `commentary` 的,证明不了 app 里那一行真的接上了。少这一行
- * 的症状是**配好了模型也永远 503**,而两边都不报错。引擎是后挂的,所以也钉住「热读」:
- * app 装配完才挂上的引擎照样用得上。
+ * 的症状是**配好了模型也永远被当成没配**(`not_configured`),而两边都不报错。引擎是后挂的,
+ * 所以也钉住「热读」:app 装配完才挂上的引擎照样用得上。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -40,7 +40,7 @@ describe("/api/card-skins/:id/ai-css 的引擎接线", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("引擎没挂 → 503;app 装配完再挂上 → 用的就是它", async () => {
+	it("引擎没挂 → not_configured(409);app 装配完再挂上 → 用的就是它", async () => {
 		const bootstrap: BootstrapConfig = {
 			server: { host: "127.0.0.1", port: 8787 },
 			dataDir,
@@ -71,7 +71,10 @@ describe("/api/card-skins/:id/ai-css 的引擎接线", () => {
 				}),
 			});
 
-		expect((await ask()).status).toBe(503);
+		// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」:那句话本来就是叫主人去接模型,按没配。
+		const before = await ask();
+		expect(before.status).toBe(409);
+		expect(((await before.json()) as { code: string }).code).toBe("not_configured");
 
 		const generateRaw = vi.fn(async () => '[data-bn="self"]{border-radius:16px}');
 		runtime.attachEngines({ commentary: { generateRaw } } as unknown as EnginesRuntime);

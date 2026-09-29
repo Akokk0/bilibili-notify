@@ -24,6 +24,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { TArea } from "../../components/forms";
 import type { CardSkinAiDone, CardSkinAiHandlers } from "../../services/cardSkinAi";
+import { errorTextOf } from "../../services/error-text";
 import type { CardSkinAiReadiness } from "./card-skin-ai";
 
 /** 已经绑好「写哪个框」的那一口。 */
@@ -136,7 +137,9 @@ export function CssAiSlot({
 			onChangeRef.current(original);
 			setRunning(false);
 			setNote(null);
-			setError(e instanceof Error ? e.message : String(e));
+			// 两趟都没过清洗器时 `message` 只是一句概括,清洗器逐条的意见在 `issues` —— 一起给主人,
+			// 他要照着去改那段话。
+			setError(errorTextOf(e));
 		}
 	};
 

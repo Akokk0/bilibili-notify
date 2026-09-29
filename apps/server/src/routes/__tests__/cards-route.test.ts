@@ -189,7 +189,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被某 UP liveCoverImages 引用的图 → 409,referencedBy 指出该 UP", async () => {
+	it("删除被某 UP liveCoverImages 引用的图 → conflict(409),message 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -200,8 +200,11 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy?: string[] };
-			expect(json.referencedBy?.some((s) => s.includes("30303"))).toBe(true);
+			const json = (await res.json()) as Record<string, unknown>;
+			expect(json.code).toBe("conflict");
+			expect(json.message).toContain("UP 30303");
+			// 用家并进了 message,不再另占一格。
+			expect(json).not.toHaveProperty("referencedBy");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -237,7 +240,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被**皮肤旋钮**引用的背景图 → 409,referencedBy 指出是哪套皮肤", async () => {
+	it("删除被**皮肤旋钮**引用的背景图 → conflict(409),message 指出是哪套皮肤", async () => {
 		// 2026-09-14 起壁纸的正主是旋钮。漏掉这一处是静默的:删得掉、请求成功,皮肤清单里
 		// 留着一个指向空气的 id,出图静静回落渐变。
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-knob-"));
@@ -250,8 +253,9 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy?: string[] };
-			expect(json.referencedBy?.some((s) => s.includes("neon"))).toBe(true);
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json.code).toBe("conflict");
+			expect(json.message).toContain("皮肤「neon」");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -262,7 +266,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 	 * per-UP 版:删得掉、请求成功,这位 UP 的卡静静回落兜底。两支订阅都算。
 	 * 验红:把 `cardBgReferences` 里扫订阅旋钮那一段删掉,这条红。
 	 */
-	it("删除被某 UP 单独拧的**皮肤旋钮**引用的背景图 → 409,referencedBy 指出该 UP 与皮肤", async () => {
+	it("删除被某 UP 单独拧的**皮肤旋钮**引用的背景图 → conflict(409),message 指出该 UP 与皮肤", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-up-knob-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -284,18 +288,18 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy?: string[] };
-			expect(json.referencedBy).toEqual([
-				"UP 10086 · 皮肤「neon」",
-				"订阅「抖音甲」 · 皮肤「neon」",
-			]);
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json.code).toBe("conflict");
+			expect(json.message).toBe(
+				"该背景图还有 2 处在用：UP 10086 · 皮肤「neon」、订阅「抖音甲」 · 皮肤「neon」，请先在卡片设置里移除再删除",
+			);
 			expect(await listCardBg(dir)).toEqual([id]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("删除被某 UP 覆盖引用的封面图 → 409,referencedBy 指出该 UP", async () => {
+	it("删除被某 UP 覆盖引用的封面图 → conflict(409),message 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-ref-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -306,8 +310,9 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { ok: boolean; referencedBy?: string[] };
-			expect(json.referencedBy?.some((s) => s.includes("10086"))).toBe(true);
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json.code).toBe("conflict");
+			expect(json.message).toContain("UP 10086");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -330,7 +335,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被拓展订阅引用的封面图 → 409,referencedBy 用名字 / 外部 id 指认(ADR-0019 决策 47)", async () => {
+	it("删除被拓展订阅引用的封面图 → conflict(409),message 用名字 / 外部 id 指认(ADR-0019 决策 47)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-ext-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -347,15 +352,15 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy?: string[] };
-			expect(json.referencedBy).toEqual(["订阅「MS4wLjAB-sec」", "订阅「抖音那位」"]);
+			const json = (await res.json()) as { message: string };
+			expect(json.message).toContain("订阅「MS4wLjAB-sec」、订阅「抖音那位」");
 			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("删除仅被某 UP 的 per-kind 样式引用的封面图 → 409,referencedBy 指出该 UP", async () => {
+	it("删除仅被某 UP 的 per-kind 样式引用的封面图 → conflict(409),message 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -366,14 +371,14 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			});
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
-			const json = (await res.json()) as { referencedBy?: string[] };
-			expect(json.referencedBy?.some((s) => s.includes("20020"))).toBe(true);
+			const json = (await res.json()) as { message: string };
+			expect(json.message).toContain("UP 20020");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("删除非法 id → 400", async () => {
+	it("删除非法 id → invalid(400)", async () => {
 		const app = createCardsRoute({
 			deps: depsWithStore({ dataDir: join(tmpdir(), "bn-x-no-such-dir") }),
 			puppeteer: null,
@@ -381,6 +386,29 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		});
 		const res = await app.request("/asset/..%2f..%2fsecrets.json", { method: "DELETE" });
 		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "无效的资产 id" });
+	});
+
+	it("用家多了只点前三个名字再报个数 —— 一条错误不该变成一面墙", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-many-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({
+					dataDir: dir,
+					subs: ["101", "102", "103", "104", "105"].map((uid) => ({ uid, cover: [id] })),
+				}),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { message: string };
+			expect(json.message).toContain("还有 5 处在用：UP 101、UP 102、UP 103 等 5 处");
+			expect(json.message).not.toContain("UP 104");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -500,7 +528,7 @@ describe("cards route — enable-rendering", () => {
 		expect(onPuppeteerEnabled).toHaveBeenCalledWith(fakePup);
 	});
 
-	it("chromeEndpoint 探测失败 → 502,dispose,不启用不写回", async () => {
+	it("chromeEndpoint 探测失败 → unavailable(503),dispose,不启用不写回", async () => {
 		const fakePup = {
 			page: vi.fn(async () => {
 				throw new Error("connect ECONNREFUSED browser:3000");
@@ -522,10 +550,13 @@ describe("cards route — enable-rendering", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
 		});
-		expect(res.status).toBe(502);
-		const body = (await res.json()) as { ok: boolean; err?: string };
-		expect(body.ok).toBe(false);
-		expect(body.err).toMatch(/ECONNREFUSED/);
+		// 502 → 503:探活连不上是 `unavailable`(等一会儿 / 修好那台浏览器就好),对端给的原因原样写进 message。
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toContain("浏览器连接失败");
+		expect(body.message).toMatch(/ECONNREFUSED/);
+		expect(body).not.toHaveProperty("err");
 		expect(enableImageRendering).not.toHaveBeenCalled();
 		expect(persistChromeSource).not.toHaveBeenCalled();
 		expect(fakePup.dispose).toHaveBeenCalled();
@@ -661,11 +692,12 @@ describe("cards route — enable-rendering", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
 		});
-		expect(res.status).toBe(500);
-		const body = (await res.json()) as { ok: boolean; err?: string };
-		expect(body.ok).toBe(false);
-		expect(body.err).toMatch(/已生效/);
-		expect(body.err).toContain("EACCES");
+		// 500 → 503:配置写不进去是环境的事,原因(EACCES)照实写进 message,主人要照着去修。
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toMatch(/已生效/);
+		expect(body.message).toContain("EACCES");
 		// 切换本身(swap)已经生效——不是"报失败就当作啥都没变"。
 		expect(swapImageRendering).toHaveBeenCalledWith(newPup);
 		// 但旧浏览器刻意不销毁,留作"重启会退回它"的可用状态。
@@ -704,7 +736,7 @@ describe("cards route — enable-rendering", () => {
 		expect(persistChromeSource).not.toHaveBeenCalled();
 	});
 
-	it("body 缺 chromePath 与 chromeEndpoint → 400,不构造 puppeteer", async () => {
+	it("body 缺 chromePath 与 chromeEndpoint → invalid(400),不构造 puppeteer", async () => {
 		const createPuppeteer = vi.fn();
 		const app = createCardsRoute({
 			deps: depsWithEngines(vi.fn()),
@@ -718,10 +750,13 @@ describe("cards route — enable-rendering", () => {
 			body: JSON.stringify({}),
 		});
 		expect(res.status).toBe(400);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("chromePath 或 chromeEndpoint");
 		expect(createPuppeteer).not.toHaveBeenCalled();
 	});
 
-	it("engines 未就绪 → 503", async () => {
+	it("engines 未就绪 → unavailable(503),这是「等一会儿就好」,不是 not_configured", async () => {
 		const deps = {
 			runtime: {
 				serviceCtx: {
@@ -737,6 +772,7 @@ describe("cards route — enable-rendering", () => {
 			body: JSON.stringify({ chromePath: "/x" }),
 		});
 		expect(res.status).toBe(503);
+		expect(((await res.json()) as { code: string }).code).toBe("unavailable");
 	});
 });
 
@@ -890,7 +926,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		expect(json.dataUrl).toMatch(/^data:image\/png;base64,/);
 	});
 
-	it("fallback 缺省(false)且真实拉取失败 → 500,把错误抛给用户", async () => {
+	it("fallback 缺省(false)且真实拉取失败 → 200 + 失败那一支(unavailable),把原话交给用户", async () => {
 		const api = {
 			getUserInfo: vi.fn(async () => {
 				throw new Error("network down");
@@ -902,8 +938,13 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			style: STYLE,
 			content: { uid: "12345" },
 		});
-		expect(res.status).toBe(500);
-		expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+		// 「画一张、回报结果」:请求没毛病、这一趟没成 —— 200,体是 `Result` 的失败那一支。
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "卡片渲染失败：network down",
+		});
 	});
 
 	/**
@@ -1579,8 +1620,9 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		height?: number;
 		overHeight?: boolean;
 		scene?: string;
-		err?: string;
-		errors?: string[];
+		code?: string;
+		message?: string;
+		issues?: Array<{ message: string }>;
 	};
 
 	async function shot(body: unknown, puppeteer: StandalonePuppeteer | null) {
@@ -1628,24 +1670,26 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		expect(capturedHtml[0]).not.toContain("background:transparent");
 	});
 
-	it("没配 Chrome → 503,并且把该怎么办说出来", async () => {
+	it("没配 Chrome → not_configured(409),并且把该怎么办说出来", async () => {
 		const { res, json } = await shot(
 			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
 			null,
 		);
-		expect(res.status).toBe(503);
-		expect(json.ok).toBe(false);
-		expect(json.err).toContain("BN_CHROME_PATH");
+		expect(res.status).toBe(409);
+		expect(json.code).toBe("not_configured");
+		expect(json.message).toContain("BN_CHROME_PATH");
+		expect(json).not.toHaveProperty("ok");
 	});
 
-	it("草稿过的是与实时预览同一道装包门 —— 拒了就 400 逐条列原因", async () => {
+	it("草稿过的是与实时预览同一道装包门 —— 拒了就 invalid(400),逐条原因进 issues", async () => {
 		const { res, json } = await shot(
 			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: { schemaVersion: 1 } },
 			makeFakePuppeteer(),
 		);
 		expect(res.status).toBe(400);
-		expect(Array.isArray(json.errors)).toBe(true);
-		expect(json.errors?.length).toBeGreaterThan(0);
+		expect(json.code).toBe("invalid");
+		expect(json.message).toContain("这版草稿没通过检查");
+		expect(json.issues?.length).toBeGreaterThan(0);
 	});
 
 	it("出血不算进超高的判定 —— 与出图那头同一把尺子", async () => {

@@ -11,7 +11,14 @@
  * 两色之分,`active` 是单个 id),以及 **`builtin` 那份列得出但改不了删不了**(决策 5)。
  */
 
-import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/internal";
+import type {
+	CardSkinKind,
+	CardSkinKnob,
+	CardSkinManifest,
+	Issue,
+	Result,
+} from "@bilibili-notify/internal";
+import type { ErrorResponse } from "./rest";
 
 export type { CardSkinKind, CardSkinKnob, CardSkinManifest };
 
@@ -112,7 +119,7 @@ export interface CardSkinPreviewRequest {
 	manifest: unknown;
 }
 
-/** POST /api/card-skins/:id/preview 的回值。装包门拒了就是 400 + `errors`。 */
+/** POST /api/card-skins/:id/preview 的回值。装包门拒了就是 400 的 {@link ErrorResponse}(`issues` 是逐条原因)。 */
 export interface CardSkinPreviewResponse {
 	html: string;
 	/** 卡宽(px),面板按它摆 iframe。 */
@@ -129,8 +136,8 @@ export const CARD_SKIN_AI_INSTRUCTION_MAX = 2000;
 /**
  * POST /api/card-skins/:id/ai-css —— CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)。
  *
- * 开流之前的拒绝(id 不对 / 默认皮肤 / 没配模型 / 草稿不合法 / 块不存在)回普通 JSON
- * `{ ok: false, errors }`;都过了才开 SSE,事件见 {@link CardSkinAiCssEvent}。
+ * 开流之前的拒绝(id 不对 / 默认皮肤 / 没配模型 / 草稿不合法 / 块不存在)回普通 JSON 的
+ * {@link ErrorResponse};都过了才开 SSE,事件见 {@link CardSkinAiCssEvent}。
  * 用户点「停」就断开这条连接,服务端跟着掐断到模型的请求。
  */
 export interface CardSkinAiCssRequest {
@@ -148,51 +155,39 @@ export interface CardSkinAiCssRequest {
  * - `rule`:写完的一整条规则,按到达顺序拼起来就是框里的新内容;
  * - `retry`:第一趟没过清洗器、要重来 —— 框退回动手前的原文,之后的 `rule` 从头拼;
  * - `done`:框里该留的最终内容(模型原文,不是清洗后的版本)+ 清洗器削掉了什么;
- * - `error`:两趟都没过,或生成本身失败了。框退回原文。
+ * - `error`:两趟都没过,或生成本身失败了。框退回原文。帧体与非 2xx 的错误体同形
+ *   ({@link ErrorResponse}):两趟都没过是 `invalid`,`message` 一句话概括、`issues` 是清洗器逐条的意见;
+ *   生成本身失败是 `unavailable`,`message` 带对端给的原因。
  */
 export type CardSkinAiCssEvent =
 	| { event: "rule"; data: { text: string } }
-	| { event: "retry"; data: { errors: string[] } }
+	| { event: "retry"; data: { issues: Issue[] } }
 	| { event: "done"; data: { css: string; warnings: string[] } }
-	| { event: "error"; data: { errors: string[] } };
+	| { event: "error"; data: ErrorResponse };
 
 /**
  * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」。
  *
  * 与实时预览**同源**(共用「清单 → HTML」那一步),差别只在这张是 server 上的 Chrome 画的。
- * 没配 Chrome 时是 503 + `err`,面板照它把按钮禁掉并说清楚该去配什么。
+ * 试了一次、回报结果,**照旧回 200**,体是 `Result<…>`:截成了是 `{ ok: true, … }`,截不出来
+ * (渲染抛错)是 `{ ok: false, code, message }`。
+ *
+ * 请求本身不成是非 2xx 的 {@link ErrorResponse}:草稿没过装包门 `invalid`(`issues` 逐条),
+ * 没配 Chrome `not_configured`(面板据此把按钮禁掉并说清楚该去配什么)。
  */
-export type CardSkinShotResponse =
-	| {
-			ok: true;
-			/** `data:image/jpeg;base64,…`。 */
-			dataUrl: string;
-			width: number;
-			/** 截出来的真实高度(px)。 */
-			height: number;
-			/** 超过卡片最大高度 —— 出图那头会静默回落默认皮肤,这里得说出来。 */
-			overHeight: boolean;
-			warnings: string[];
-			scene: string;
-	  }
-	| { ok: false; err?: string; errors?: string[] };
+export type CardSkinShotResponse = Result<{
+	/** `data:image/jpeg;base64,…`。 */
+	dataUrl: string;
+	width: number;
+	/** 截出来的真实高度(px)。 */
+	height: number;
+	/** 超过卡片最大高度 —— 出图那头会静默回落默认皮肤,这里得说出来。 */
+	overHeight: boolean;
+	warnings: string[];
+	scene: string;
+}>;
 
 /** PUT /api/card-skins/active —— 改 `globals.defaults.cardSkin`。 */
 export interface CardSkinActiveRequest {
 	id: string;
-}
-
-/**
- * DELETE /api/card-skins/:id 撞上「还有人在用」(409)。
- *
- * 光回一句「删不掉」等于让主人挨个页面翻一遍。`global` 说的是全局默认那一档,
- * `subscriptions` 列的是订阅里手填的昵称(没填就是 uid)。
- */
-export interface CardSkinInUseResponse {
-	ok: false;
-	err: string;
-	usedBy: {
-		global: boolean;
-		subscriptions: string[];
-	};
 }

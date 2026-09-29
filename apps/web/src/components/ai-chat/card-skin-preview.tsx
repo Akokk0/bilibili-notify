@@ -31,6 +31,7 @@ import { useState } from "react";
 import { useActivateCardSkin, useCardSkinList } from "../../pages/cards/card-skins-query";
 import { SkinHtmlFrame, useStageWidth } from "../../pages/cards/SkinHtmlFrame";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 
 /** 量到卡高之前预览框先占的高度 px。量到了框就跟着卡走(与编辑器同一个框)。 */
 const VIEW_H = 460;
@@ -121,7 +122,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 							/>
 						) : preview.isError ? (
 							<ErrorNote size="sm" className="w-full">
-								这张画不出来:{String((preview.error as Error).message)}
+								这张画不出来:{errorTextOf(preview.error)}
 							</ErrorNote>
 						) : (
 							<LoadingBlock label="正在画预览…" variant="inset" />

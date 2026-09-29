@@ -1,3 +1,4 @@
+import type { EnableRenderingResponse } from "@bilibili-notify/contract";
 import { SELECTED_TINT_BG } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { api } from "../services/api";
@@ -5,7 +6,7 @@ import { api } from "../services/api";
 type DetectState = "idle" | "detecting" | "enabling" | "connecting" | "enabled";
 
 /**
- * 「启用卡片渲染」交互 —— 嵌在卡片预览 503(浏览器未配置)提示区,两条路:
+ * 「启用卡片渲染」交互 —— 嵌在卡片预览 `not_configured`(浏览器未配置)提示区,两条路:
  *
  * - **自动探测本机 Chrome**:探测常见安装位置 → 展示路径 → 一键热启用。
  * - **连接远程浏览器**:填 `ws://`(browserless 等)或 `http://`(chromium
@@ -80,10 +81,11 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 		setState("enabling");
 		setErr(null);
 		try {
-			const res = await api.post<{ ok: boolean; err?: string }>("/api/cards/enable-rendering", {
+			// 启用不成一律是非 2xx(`api` 抛 `ApiError`,`message` 就是服务端的原话,如浏览器连不上的原因),
+			// 走到下一行就是成了。
+			await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", {
 				chromePath: path,
 			});
-			if (!res.ok) throw new Error(res.err ?? "启用失败");
 			setState("enabled");
 			onEnabled();
 		} catch (e) {
@@ -98,10 +100,9 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 		setState("connecting");
 		setErr(null);
 		try {
-			const res = await api.post<{ ok: boolean; err?: string }>("/api/cards/enable-rendering", {
+			await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", {
 				chromeEndpoint: trimmed,
 			});
-			if (!res.ok) throw new Error(res.err ?? "连接失败");
 			setState("enabled");
 			onEnabled();
 		} catch (e) {

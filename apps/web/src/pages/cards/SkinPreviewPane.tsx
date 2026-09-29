@@ -26,6 +26,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { errorTextOf } from "../../services/error-text";
 import { type GridMetrics, readGridMetrics } from "./canvas-tracks";
 import {
 	CELL_DEBUG_LABELS,
@@ -43,7 +44,7 @@ const DEBOUNCE_MS = 400;
 /** 量到卡高之前(以及万一量不到时)预览框先占的高度 px。量到了框就跟着卡走。 */
 const VIEW_H = 560;
 
-/** 截成功那一支。失败那支只有 `err` / `errors`,没有图可摆。 */
+/** 截成功那一支。失败那支只有 `code` + `message`,没有图可摆。 */
 type ShotOk = Extract<CardSkinShotResponse, { ok: true }>;
 
 export function SkinPreviewPane({
@@ -131,8 +132,18 @@ export function SkinPreviewPane({
 	const scale = shown / width;
 
 	const stale = snap !== null && snap.of !== manifest;
-	/** 没配 Chrome 就别让主人按下去吃一个 503 —— 禁掉,并且把该去配什么说出来。 */
+	/** 没配 Chrome 就别让主人按下去吃一个 `not_configured` —— 禁掉,并且把该去配什么说出来。 */
 	const noChrome = chrome.data?.enabled === false;
+	/**
+	 * 「最终效果」没截出来的原因。两种:请求被拒(草稿没过装包门等,非 2xx,`shot.error`),或这一趟渲染
+	 * 没成(200 + 失败那一支,`shot.data`)。后一种若只看 `r.ok && setSnap(...)` 会静静落空,按钮弹回来、
+	 * 什么都不说 —— 主人分不清是没按上还是没截成。
+	 */
+	const shotFailure = shot.isError
+		? errorTextOf(shot.error)
+		: shot.data && !shot.data.ok
+			? shot.data.message
+			: null;
 
 	return (
 		<div className="space-y-3.5">
@@ -190,6 +201,12 @@ export function SkinPreviewPane({
 							没配渲染浏览器,截不了图 —— 去系统页的「卡片渲染浏览器」设一下,或者设环境变量
 							BN_CHROME_PATH / BN_CHROME_ENDPOINT。下面的实时预览不受影响。
 						</HintNote>
+					) : null}
+
+					{shotFailure !== null ? (
+						<ErrorNote className="w-full" size="sm">
+							最终效果没截出来:{shotFailure}
+						</ErrorNote>
 					) : null}
 
 					{errors.length > 0 ? (

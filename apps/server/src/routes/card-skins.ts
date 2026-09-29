@@ -8,7 +8,7 @@
  * - **启用指针不在店里**,在配置里(`globals.defaults.cardSkin`)。`PUT /active` 走
  *   `patchGlobals` —— 店不认识配置,配置也不该认识店。
  * - **删之前先问「谁在用」**:全局指着它、或任一订阅的 `overrides.cardSkin` 指着它,
- *   一律 409 并把用家列出来。不拦的话,删完出图静默回落默认皮肤,而主人只会觉得
+ *   一律 `conflict`(409)并把用家点名写进 `message`。不拦的话,删完出图静默回落默认皮肤,而主人只会觉得
  *   「皮肤突然没了」——「失去界面入口的老字段仍被直读」那一族的同款。
  * - **`:id` 一律先过 `CardSkinIdSchema`**。它要拼进磁盘路径,而 store 那头虽然自己也挡
  *   (`index.has` + 白名单正则),门口这一道让「id 写错了」与「没这套皮肤」分得开。
@@ -20,7 +20,6 @@ import {
 	type CardSkinDuplicateResponse,
 	type CardSkinFallback,
 	type CardSkinInstallResponse,
-	type CardSkinInUseResponse,
 	type CardSkinListResponse,
 	type CardSkinManifestResponse,
 	type CardSkinPreviewResponse,
@@ -31,6 +30,9 @@ import {
 	CardSkinIdSchema,
 	CardSkinKindSchema,
 	DEFAULT_CARD_SKIN_ID,
+	fail,
+	issuesFromZod,
+	ok,
 	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
@@ -43,6 +45,9 @@ import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js
 import type { ConfigStore } from "../config/store.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
+import { failureOfChecks, listUsers } from "../util/failure-text.js";
+import { readJsonBody } from "./request-body.js";
+import { errorBodyOf, respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
 /**
@@ -81,18 +86,13 @@ export interface CardCssAiEngine {
 	): Promise<string>;
 }
 
-/** 「这个 id 没有皮肤」。装包 / 保存两条路的成功体带着 `warnings`,失败体就得带 `errors`。 */
-function notFound(c: Context, shape: "err" | "errors" = "err") {
-	return shape === "errors"
-		? c.json({ ok: false, errors: ["卡片皮肤不存在"] }, 404)
-		: c.json({ ok: false, err: "卡片皮肤不存在" }, 404);
+/** 「这个 id 没有皮肤」。失败只有一种形状(ADR-0026):`{ code: "not_found", message }`。 */
+function notFound(c: Context) {
+	return respondFailure(c, fail("not_found", "卡片皮肤不存在"));
 }
 
-function badId(c: Context, shape: "err" | "errors" = "err") {
-	const msg = "皮肤 id 只准小写字母、数字、连字符";
-	return shape === "errors"
-		? c.json({ ok: false, errors: [msg] }, 400)
-		: c.json({ ok: false, err: msg }, 400);
+function badId(c: Context) {
+	return respondFailure(c, fail("invalid", "皮肤 id 只准小写字母、数字、连字符"));
 }
 
 export function createCardSkinsRoute(deps: {
@@ -140,14 +140,14 @@ export function createCardSkinsRoute(deps: {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
-			return c.json({ ok: false, errors: ["缺少皮肤包文件(multipart 字段 file)"] }, 400);
+			return respondFailure(c, fail("invalid", "缺少皮肤包文件(multipart 字段 file)"));
 		}
 		try {
 			const installed = await store.install(new Uint8Array(await file.arrayBuffer()));
 			const res: CardSkinInstallResponse = installed;
 			return c.json(res, 201);
 		} catch (e) {
-			if (e instanceof CardSkinPackageError) return c.json({ ok: false, errors: e.errors }, 400);
+			if (e instanceof CardSkinPackageError) return respondFailure(c, e.toFailure("这个皮肤包"));
 			throw e;
 		}
 	});
@@ -159,11 +159,11 @@ export function createCardSkinsRoute(deps: {
 	app.put("/active", async (c) => {
 		const body = await c.req.json().catch(() => null);
 		const id = body && typeof body === "object" ? (body as { id?: unknown }).id : null;
-		if (typeof id !== "string") return c.json({ ok: false, err: "id 必须是皮肤 id" }, 400);
+		if (typeof id !== "string") return respondFailure(c, fail("invalid", "id 必须是皮肤 id"));
 		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		if (!store.has(id)) return notFound(c);
 		await config.patchGlobals({ defaults: { cardSkin: id } });
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	app.get("/:id", async (c) => {
@@ -182,7 +182,7 @@ export function createCardSkinsRoute(deps: {
 		const body = await c.req.json().catch(() => null);
 		const name = body && typeof body === "object" ? (body as { name?: unknown }).name : undefined;
 		if (name !== undefined && typeof name !== "string") {
-			return c.json({ ok: false, err: "name 必须是文本" }, 400);
+			return respondFailure(c, fail("invalid", "name 必须是文本"));
 		}
 		const res: CardSkinDuplicateResponse = await store.duplicate(id, name);
 		// 拧好的设置跟着走(2026-09-14 主人拍板):旋钮覆盖按皮肤 id 存,副本是新 id,不抄
@@ -199,14 +199,14 @@ export function createCardSkinsRoute(deps: {
 	// 「知道了」收到的是一句「id 不合法」。同 `PUT /active` 与 `PUT /:id` 那一对。
 	app.delete("/fallbacks", (c) => {
 		deps.clearFallbacks?.();
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
 		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			return c.json({ ok: false, err: "内置的默认皮肤删不掉 —— 想改它请先「复制一份」" }, 400);
+			return respondFailure(c, fail("conflict", "内置的默认皮肤删不掉 —— 想改它请先「复制一份」"));
 		}
 		if (!store.has(id)) return notFound(c);
 		const global = config.getGlobals().defaults.cardSkin === id;
@@ -217,19 +217,15 @@ export function createCardSkinsRoute(deps: {
 			.filter((s) => s.overrides?.cardSkin === id)
 			.map((s) => s.name || (s.kind === "extension" ? s.externalId : s.uid));
 		if (global || subscriptions.length > 0) {
+			// 用家点名并进 `message`(不另占一格 `usedBy`):订阅多了只列前几个,后面报个数。
 			const who = [
 				...(global ? ["全局默认"] : []),
-				...(subscriptions.length > 0 ? [`${subscriptions.join("、")} 单独指定了它`] : []),
+				...(subscriptions.length > 0 ? [`${listUsers(subscriptions)} 单独指定了它`] : []),
 			].join("，");
-			const body: CardSkinInUseResponse = {
-				ok: false,
-				err: `这套皮肤还在用（${who}），换掉之后再删`,
-				usedBy: { global, subscriptions },
-			};
-			return c.json(body, 409);
+			return respondFailure(c, fail("conflict", `这套皮肤还在用（${who}），换掉之后再删`));
 		}
 		await store.remove(id);
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	// 导出:manifest + 全部资产打回标准 zip,和装包收的是同一种包(往返闭环)。
@@ -251,18 +247,18 @@ export function createCardSkinsRoute(deps: {
 	// 编辑器保存:与装包同一道验+洗,只是资产清单来自盘上。
 	app.put("/:id", async (c) => {
 		const id = c.req.param("id");
-		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			return c.json({ ok: false, errors: ["内置的默认皮肤改不了 —— 想改它请先「复制一份」"] }, 400);
+			return respondFailure(c, fail("conflict", "内置的默认皮肤改不了 —— 想改它请先「复制一份」"));
 		}
-		if (!store.has(id)) return notFound(c, "errors");
-		const body = await c.req.json().catch(() => null);
-		if (body === null) return c.json({ ok: false, errors: ["请求体不是合法 JSON"] }, 400);
+		if (!store.has(id)) return notFound(c);
+		const read = await readJsonBody(c);
+		if (!read.ok) return respondFailure(c, read);
 		try {
-			const res: CardSkinSaveResponse = await store.save(id, body);
+			const res: CardSkinSaveResponse = await store.save(id, read.body);
 			return c.json(res);
 		} catch (e) {
-			if (e instanceof CardSkinPackageError) return c.json({ ok: false, errors: e.errors }, 400);
+			if (e instanceof CardSkinPackageError) return respondFailure(c, e.toFailure());
 			throw e;
 		}
 	});
@@ -280,12 +276,17 @@ export function createCardSkinsRoute(deps: {
 	 */
 	app.post("/:id/preview", async (c) => {
 		const id = c.req.param("id");
-		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		// 资产(图 / 字体)仍住在**已存盘**那套皮肤的目录里 —— 草稿只带清单,引用的是名字。
-		if (!store.has(id)) return notFound(c, "errors");
+		if (!store.has(id)) return notFound(c);
 		const parsed = PreviewBodySchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return c.json({ ok: false, errors: ["请求体要 { kind, scene?, manifest }"] }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "请求体要 { kind, scene?, manifest }", {
+					issues: issuesFromZod(parsed.error),
+				}),
+			);
 		}
 		const { kind, scene, manifest: raw } = parsed.data;
 
@@ -301,7 +302,7 @@ export function createCardSkinsRoute(deps: {
 			// 截图那条(`POST /api/cards/skin-shot`)不开,见 `transparentPage` 的说明。
 			transparentPage: true,
 		});
-		if (!out.ok) return c.json({ ok: false, errors: out.errors }, 400);
+		if (!out.ok) return respondFailure(c, failureOfChecks("invalid", "这版草稿", out.errors));
 		const body: CardSkinPreviewResponse = {
 			html: out.html,
 			width: out.width,
@@ -322,35 +323,38 @@ export function createCardSkinsRoute(deps: {
 	 */
 	app.post("/:id/ai-css", async (c) => {
 		const id = c.req.param("id");
-		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			return c.json(
-				{ ok: false, errors: ["内置的默认皮肤改不了 —— 先「复制一份」再请女仆写"] },
-				400,
+			return respondFailure(
+				c,
+				fail("conflict", "内置的默认皮肤改不了 —— 先「复制一份」再请女仆写"),
 			);
 		}
-		if (!store.has(id)) return notFound(c, "errors");
+		if (!store.has(id)) return notFound(c);
 		const parsed = AiCssBodySchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return c.json(
-				{
-					ok: false,
-					errors: [
-						`请求体要 { kind, blockId?, instruction(1~${CARD_SKIN_AI_INSTRUCTION_MAX} 字), manifest }`,
-					],
-				},
-				400,
+			return respondFailure(
+				c,
+				fail(
+					"invalid",
+					`请求体要 { kind, blockId?, instruction(1~${CARD_SKIN_AI_INSTRUCTION_MAX} 字), manifest }`,
+					{ issues: issuesFromZod(parsed.error) },
+				),
 			);
 		}
 		const engine = deps.commentary?.() ?? null;
 		if (!engine) {
-			return c.json({ ok: false, errors: ["还没配好模型 —— 先到「智能女仆」页接好模型"] }, 503);
+			// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」;那句话本来就是叫主人去接模型,按没配。
+			return respondFailure(
+				c,
+				fail("not_configured", "还没配好模型 —— 先到「智能女仆」页接好模型"),
+			);
 		}
 		const draft = parseCardSkin(parsed.data.manifest);
-		if (!draft.ok) return c.json({ ok: false, errors: draft.errors }, 400);
+		if (!draft.ok) return respondFailure(c, failureOfChecks("invalid", "这版草稿", draft.errors));
 		const { kind, blockId, instruction } = parsed.data;
 		const prepared = prepareCardCssAi(draft.manifest, { kind, blockId });
-		if (!prepared.ok) return c.json({ ok: false, errors: [prepared.error] }, 400);
+		if (!prepared.ok) return respondFailure(c, fail("invalid", prepared.error));
 
 		const abort = new AbortController();
 		const stop = () => abort.abort();
@@ -367,19 +371,34 @@ export function createCardSkinsRoute(deps: {
 					user: prepared.user(instruction),
 					sanitize: prepared.sanitize,
 					onRule: (text) => void send({ event: "rule", data: { text } }),
-					onRetry: (errors) => void send({ event: "retry", data: { errors } }),
+					onRetry: (errors) =>
+						void send({
+							event: "retry",
+							data: { issues: errors.map((message) => ({ message })) },
+						}),
 					signal: abort.signal,
 				});
+				// 错误帧与非 2xx 的错误体同形(`{ code, message, issues? }`):两趟都没过清洗器是 `invalid`,
+				// 清洗器逐条的意见进 `issues`。
 				await send(
 					res.ok
 						? { event: "done", data: { css: res.css, warnings: res.warnings } }
-						: { event: "error", data: { errors: res.errors } },
+						: {
+								event: "error",
+								data: errorBodyOf(
+									failureOfChecks("invalid", "女仆写的样式", res.errors, { listSingle: true }),
+								),
+							},
 				);
 			} catch (e) {
 				// 被掐的那一种没人在听了,不必再写。
 				if (abort.signal.aborted) return;
+				// 生成本身失败(模型那头的错、网络):对端给的原因就是主人要看的,原话进 `message`。
 				const reason = e instanceof Error ? e.message : String(e);
-				await send({ event: "error", data: { errors: [reason] } });
+				await send({
+					event: "error",
+					data: errorBodyOf(fail("unavailable", `女仆那边没写成：${reason}`)),
+				});
 			} finally {
 				c.req.raw.signal.removeEventListener("abort", stop);
 			}
@@ -392,8 +411,8 @@ export function createCardSkinsRoute(deps: {
 	 */
 	app.get("/:id/assets", async (c) => {
 		const id = c.req.param("id");
-		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
-		if (!store.has(id)) return notFound(c, "errors");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
+		if (!store.has(id)) return notFound(c);
 		return c.json({ assets: await store.listAssets(id) });
 	});
 
@@ -409,41 +428,38 @@ export function createCardSkinsRoute(deps: {
 		uploadBodyLimit(CARD_SKIN_LIMITS.maxAssetBytes, "皮肤资产"),
 		async (c) => {
 			const id = c.req.param("id");
-			if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
-			if (!store.has(id)) return notFound(c, "errors");
+			if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
+			if (!store.has(id)) return notFound(c);
 			const body = await c.req.parseBody().catch(() => null);
 			const file = body?.file;
 			if (!(file instanceof File)) {
-				return c.json({ ok: false, errors: ["缺少文件(multipart 字段 file)"] }, 400);
+				return respondFailure(c, fail("invalid", "缺少文件(multipart 字段 file)"));
 			}
 			try {
 				const added = await store.addAsset(id, file.name, new Uint8Array(await file.arrayBuffer()));
 				return c.json(added, 201);
 			} catch (e) {
-				if (e instanceof CardSkinPackageError) return c.json({ ok: false, errors: e.errors }, 400);
+				if (e instanceof CardSkinPackageError) return respondFailure(c, e.toFailure());
 				throw e;
 			}
 		},
 	);
 
 	/**
-	 * 删一份资产。**清单还引用着 → 409 并把用家列出来**(同「删皮肤先问谁在用」那条):
+	 * 删一份资产。**清单还引用着 → `conflict`(409)并把用家写进 `message`**(同「删皮肤先问谁在用」那条):
 	 * 删了之后这套皮肤连自己都存不下去,而主人看到的只会是下次保存时一句莫名其妙的报错。
 	 */
 	app.delete("/:id/assets/:name", async (c) => {
 		const id = c.req.param("id");
-		if (!CardSkinIdSchema.safeParse(id).success) return badId(c, "errors");
-		if (!store.has(id)) return notFound(c, "errors");
+		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
+		if (!store.has(id)) return notFound(c);
 		try {
 			await store.removeAsset(id, c.req.param("name"));
-			return c.json({ ok: true });
+			return c.json(ok());
 		} catch (e) {
-			if (e instanceof CardSkinPackageError) {
-				// 「还被用着」与「名字不合法」都从店里抛同一种错,按话分档:前者是 409
-				// (状态冲突,换掉引用就能删),后者是 400。
-				const inUse = e.errors.some((x) => x.includes("还被用着"));
-				return c.json({ ok: false, errors: e.errors }, inUse ? 409 : 400);
-			}
+			// 「还被用着」(`conflict`,换掉引用就能删)与「名字不合法」(`invalid`)都从店里抛,码由店里带,
+			// 这里不再按话分档。
+			if (e instanceof CardSkinPackageError) return respondFailure(c, e.toFailure());
 			throw e;
 		}
 	});
@@ -453,7 +469,7 @@ export function createCardSkinsRoute(deps: {
 		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		// store 那头按白名单正则认名字(`assets/` 一级 + 后缀),`..` 与 `/` 连正则都进不来。
 		const data = await store.readAsset(id, `assets/${c.req.param("name")}`);
-		if (!data) return c.json({ ok: false, err: "资产不存在" }, 404);
+		if (!data) return respondFailure(c, fail("not_found", "资产不存在"));
 		const ext = c.req.param("name").split(".").pop()?.toLowerCase() ?? "";
 		return c.body(new Uint8Array(data), 200, {
 			// 图与字体两张表都查一遍 —— 字体给错 content-type 浏览器直接不认这份 @font-face。

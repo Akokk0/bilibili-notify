@@ -100,6 +100,17 @@ describe("ChromeAutoDetect", () => {
 		});
 	});
 
+	it("启用本机 Chrome 失败(非 2xx,api 抛 ApiError)→ 显示服务端那句原话,不回调 onEnabled", async () => {
+		getMock.mockResolvedValue({ path: "/usr/bin/google-chrome" });
+		postMock.mockRejectedValue(new Error("服务还没准备好，请稍后重试"));
+		const onEnabled = vi.fn();
+		render(<ChromeAutoDetect onEnabled={onEnabled} />);
+		fireEvent.click(screen.getByRole("button", { name: /自动探测/ }));
+		fireEvent.click(await screen.findByRole("button", { name: "启用" }));
+		expect(await screen.findByText("服务还没准备好，请稍后重试")).toBeTruthy();
+		expect(onEnabled).not.toHaveBeenCalled();
+	});
+
 	it("远程端点连接失败 → 显示后端错误,不回调 onEnabled", async () => {
 		postMock.mockRejectedValue(new Error("远程浏览器连接失败：connect ECONNREFUSED browser:3000"));
 		const onEnabled = vi.fn();

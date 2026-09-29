@@ -7,15 +7,25 @@
  */
 
 import { OFFLINE_STATUS } from "../../services/api";
+import { issueTextsOf } from "../../services/error-text";
 
-export function previewErrorTitle(status: number | undefined): string {
+/** 标题只看错误的这两格:`status`(断线是 0)与 `code`(服务端的标准码)。 */
+interface PreviewFailure {
+	status?: number;
+	code?: string;
+}
+
+/**
+ * 标题按**码**挑,不按 HTTP 状态码(ADR-0026):没配浏览器是 `not_configured`,引擎还没就绪
+ * 是 `unavailable`,从前同挤在 503 里面板分不出来。断线不是服务端说的话(没有码,状态是 0),
+ * 仍单独成一档。
+ */
+export function previewErrorTitle(err: PreviewFailure | undefined): string {
 	// 先挡住「没有状态码」这一档。`undefined === 0` 本就是 false,但测试里 mock 掉
 	// services/api 时 OFFLINE_STATUS 会变成 undefined —— 那时每个无状态码的错误都会
 	// 谎报「连接中断」。显式挡一道,判断就不再依赖那个 import 有没有被 mock 全。
-	if (status === undefined) return "渲染失败";
-	if (status === OFFLINE_STATUS) return "连接中断";
-	if (status === 503) return "puppeteer 未配置";
-	if (status === 501) return "kind 暂未支持";
+	if (err?.status !== undefined && err.status === OFFLINE_STATUS) return "连接中断";
+	if (err?.code === "not_configured") return "puppeteer 未配置";
 	return "渲染失败";
 }
 
@@ -29,15 +39,14 @@ export function previewErrorHint(status: number | undefined): string | null {
 }
 
 /**
- * 服务端拒收时那串**逐条**原因(装包门 / 资产闸都回 `{ ok:false, errors:[…] }`)。
+ * 服务端拒收时那串**逐条**原因(装包门 / 资产闸的错误体:`message` 一句概括,逐条在 `issues`)。
  *
- * `api` 那层把 4xx 的响应体挂在 error 上,这里把它捞出来 —— 捞不到就退回 message,
- * 至少还有一句话。**自编一句「失败了」等于把线索吞掉**:装包门那串正是主人照着改的东西。
+ * 有逐条原因就列它们;一句话的失败没有 `issues`,退回 `message`,至少还有一句话。
+ * **自编一句「失败了」等于把线索吞掉**:装包门那串正是主人照着改的东西。
  */
 export function serverErrors(err: unknown): string[] {
 	if (!err) return [];
-	const body = (err as { body?: { errors?: unknown; err?: unknown } }).body;
-	if (Array.isArray(body?.errors)) return body.errors.map(String);
-	if (typeof body?.err === "string") return [body.err];
+	const lines = issueTextsOf(err);
+	if (lines.length > 0) return lines;
 	return [String((err as Error).message)];
 }

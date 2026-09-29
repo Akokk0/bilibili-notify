@@ -16,6 +16,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { AssetRejectedError } from "../../assets/asset-store";
 import {
 	createFontAssetReader,
 	deleteFontAsset,
@@ -62,14 +63,19 @@ describe("落盘与读回", () => {
 		expect(id.endsWith(".ttf")).toBe(true);
 	});
 
+	// 拒收抛的是 `AssetRejectedError`(消息面向用户):路由据此回 `invalid`,磁盘写失败之类往上抛。
 	it("不认的后缀一律拒 —— 上传目录不是随便放文件的地方", async () => {
-		await expect(saveFontAsset(dir, WOFF2, "malware.exe")).rejects.toThrow();
-		await expect(saveFontAsset(dir, WOFF2, "无后缀")).rejects.toThrow();
+		await expect(saveFontAsset(dir, WOFF2, "malware.exe")).rejects.toBeInstanceOf(
+			AssetRejectedError,
+		);
+		await expect(saveFontAsset(dir, WOFF2, "无后缀")).rejects.toBeInstanceOf(AssetRejectedError);
 	});
 
 	it("超上限拒掉,报错说得出上限是多少", async () => {
 		const tooBig = new Uint8Array(MAX_FONT_ASSET_BYTES + 1);
-		await expect(saveFontAsset(dir, tooBig, "huge.ttf")).rejects.toThrow(/20/);
+		const rejected = saveFontAsset(dir, tooBig, "huge.ttf");
+		await expect(rejected).rejects.toBeInstanceOf(AssetRejectedError);
+		await expect(rejected).rejects.toThrow(/20/);
 	});
 });
 

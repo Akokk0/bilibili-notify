@@ -2,8 +2,9 @@
  * `POST /api/card-skins/:id/ai-css` —— CSS 框旁那颗「请女仆帮忙写」的 wire(ADR-0015 决策 3–10)。
  *
  * 提示词怎么拼、一轮怎么跑归 `card-skins/ai-css.ts`(那边有自己的测试);这一层钉的是:
- * - 开流**之前**把能拒的都拒掉(没配模型、默认皮肤、草稿不合法、块不存在),回普通 JSON;
- * - 流上的事件顺序与载荷;
+ * - 开流**之前**把能拒的都拒掉(没配模型、默认皮肤、草稿不合法、块不存在),回普通 JSON 的错误体
+ *   (`{ code, message, issues? }`);
+ * - 流上的事件顺序与载荷 —— `error` 帧与非 2xx 的错误体同形(`{ code, message, issues? }`);
  * - 客户端断开 = 用户点了「停」,到模型的请求跟着被掐。
  */
 
@@ -120,44 +121,61 @@ function parseSse(text: string): SseEvent[] {
 }
 
 describe("开流之前的拒绝", () => {
-	it("没配模型 → 503,按钮那头本该先禁用,这是兜底", async () => {
+	it("没配模型 → not_configured(409),按钮那头本该先禁用,这是兜底", async () => {
 		engine = null;
 		const res = await post(BLOCK());
-		expect(res.status).toBe(503);
-		expect(((await res.json()) as any).errors[0]).toMatch(/模型/);
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toMatch(/模型/);
 		expect(generateRaw).not.toHaveBeenCalled();
 	});
 
-	it("默认皮肤 → 400:它的草稿存不下来,写了白烧 key", async () => {
+	it("默认皮肤 → conflict(409):它的草稿存不下来,写了白烧 key", async () => {
 		const res = await post(BLOCK(), DEFAULT_CARD_SKIN_ID);
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
 		expect(generateRaw).not.toHaveBeenCalled();
 	});
 
-	it("没这套皮肤 → 404;id 不合形 → 400", async () => {
-		expect((await post(BLOCK(), "nope")).status).toBe(404);
-		expect((await post(BLOCK(), "Bad.Id")).status).toBe(400);
+	it("没这套皮肤 → not_found(404);id 不合形 → invalid(400)", async () => {
+		const missing = await post(BLOCK(), "nope");
+		expect(missing.status).toBe(404);
+		expect(((await missing.json()) as any).code).toBe("not_found");
+		const badId = await post(BLOCK(), "Bad.Id");
+		expect(badId.status).toBe(400);
+		expect(((await badId.json()) as any).code).toBe("invalid");
 	});
 
-	it("那句话是空的或太长 → 400", async () => {
-		expect((await post({ ...BLOCK(), instruction: "   " })).status).toBe(400);
+	it("那句话是空的或太长 → invalid(400),zod 的逐格原因进 issues", async () => {
+		const empty = await post({ ...BLOCK(), instruction: "   " });
+		expect(empty.status).toBe(400);
+		const body = (await empty.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.issues.length).toBeGreaterThan(0);
 		const long = "字".repeat(CARD_SKIN_AI_INSTRUCTION_MAX + 1);
 		expect((await post({ ...BLOCK(), instruction: long })).status).toBe(400);
 		expect(generateRaw).not.toHaveBeenCalled();
 	});
 
-	it("草稿过不了形状门 → 400 带原因", async () => {
+	it("草稿过不了形状门 → invalid(400),原因进 issues", async () => {
 		const bad = manifest();
 		bad.cards.live.width = "宽";
 		const res = await post({ ...BLOCK(), manifest: bad });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		// 一句话的原因只在 message;一串则 issues 逐条 —— 原因一条也不丢。
+		const reasons = body.issues?.map((i: any) => i.message) ?? [body.message];
+		expect(reasons.join()).toContain("width");
 	});
 
-	it("块不存在 → 400 说清楚", async () => {
+	it("块不存在 → invalid(400) 说清楚", async () => {
 		const res = await post({ ...BLOCK(), blockId: "ghost" });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).errors[0]).toContain("ghost");
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("ghost");
 		expect(generateRaw).not.toHaveBeenCalled();
 	});
 });
@@ -211,14 +229,26 @@ describe("流", () => {
 		});
 		const events = parseSse(await (await post(BLOCK())).text());
 		expect(events.map((e) => e.event)).toEqual(["rule", "retry", "rule", "error"]);
-		expect(events.at(-1)?.data.errors.length).toBeGreaterThan(0);
+		// `retry` 帧里的逐条意见也按词表叫 `issues`(`{ message }`),不再是 `errors: string[]`。
+		const retry = events[1]?.data;
+		expect(retry.issues.length).toBeGreaterThan(0);
+		expect(typeof retry.issues[0].message).toBe("string");
+		expect(retry).not.toHaveProperty("errors");
+		// `error` 帧与非 2xx 的错误体同形:`invalid`,一句话概括 + 清洗器逐条的意见进 `issues`。
+		const frame = events.at(-1)?.data;
+		expect(frame.code).toBe("invalid");
+		expect(frame.message).toContain("女仆写的样式没通过检查");
+		expect(frame.issues.length).toBeGreaterThan(0);
+		expect(frame).not.toHaveProperty("errors");
 		expect(generateRaw).toHaveBeenCalledTimes(2);
 	});
 
-	it("生成本身失败 → error 带原因", async () => {
+	it("生成本身失败 → error 帧:unavailable,对端给的原因原样写进 message", async () => {
 		generateRaw.mockRejectedValue(new Error("AI 网关超时"));
 		const events = parseSse(await (await post(BLOCK())).text());
-		expect(events).toEqual([{ event: "error", data: { errors: ["AI 网关超时"] } }]);
+		expect(events).toEqual([
+			{ event: "error", data: { code: "unavailable", message: "女仆那边没写成：AI 网关超时" } },
+		]);
 	});
 
 	it("客户端断开 → 到模型的请求被掐", async () => {

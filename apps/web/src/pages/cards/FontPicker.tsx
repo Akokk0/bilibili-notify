@@ -27,7 +27,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { TInput } from "../../components/forms";
-import { ApiError, api } from "../../services/api";
+import { api } from "../../services/api";
 import {
 	type FontChoice,
 	fontSelection,
@@ -131,11 +131,12 @@ export function FontPicker({
 		try {
 			const form = new FormData();
 			form.append("file", file);
-			const res = await api.upload<{ ok: boolean; id?: string; err?: string }>(
+			// 上传被拒(后缀不认、超上限)是非 2xx,`api` 抛 `ApiError`,`message` 就是服务端的原话;
+			// 走到下一行就是收下了。
+			const res = await api.upload<{ ok: true; id: string; name: string }>(
 				"/api/cards/font-asset",
 				form,
 			);
-			if (!res.ok || !res.id) throw new Error(res.err ?? "上传失败");
 			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
 			// 传上来的当场选用,否则像没反应。大字体那句提醒不在这儿说 —— 它由「当前选中
 			// 的是哪款、那款多大」派生,列表刷新后自然就出来了,切走 / 重载也都对得上。
@@ -156,12 +157,9 @@ export function FontPicker({
 			onAssetDeleted?.(id);
 			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
 		} catch (e) {
-			if (e instanceof ApiError && e.status === 409) {
-				const by = (e.body as { referencedBy?: string[] } | undefined)?.referencedBy ?? [];
-				setErr(`仍被使用,无法删除：${by.join("、")}`);
-			} else {
-				setErr((e as Error).message);
-			}
+			// 还被选着(`conflict`)时,服务端的 `message` 已经把用家点名了(「该字体还有 2 处在用：…」),
+			// 与别的失败一样原样显示 —— 从前这里按 409 去读 `body.referencedBy` 自己拼一句。
+			setErr((e as Error).message);
 		}
 	};
 

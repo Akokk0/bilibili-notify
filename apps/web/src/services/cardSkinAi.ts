@@ -2,13 +2,18 @@
  * CSS 框旁那颗「请女仆帮忙写」的那条流(`POST /api/card-skins/:id/ai-css`,ADR-0015 决策 3–10)。
  *
  * 与聊天那条同一套读法:fetch + 手读 body,帧由 {@link createSseParser} 切。不用
- * `EventSource` 的理由也一样 —— 它只会发 GET。开流之前的拒绝是普通 JSON,照常抛
- * {@link ApiError}。取消就是掐断这次 fetch,服务端跟着掐断到模型的请求。
+ * `EventSource` 的理由也一样 —— 它只会发 GET。开流之前的拒绝是普通 JSON 的错误体,照常抛
+ * {@link ApiError};流上的 `error` 帧与它同形(`{ code, message, issues? }`),也抛成 `ApiError`,
+ * 面板按同一套读法读 `code` / `message` / `issues`。取消就是掐断这次 fetch,服务端跟着掐断到模型的请求。
  */
 
-import type { CardSkinAiCssEvent, CardSkinAiCssRequest } from "@bilibili-notify/contract";
+import type {
+	CardSkinAiCssEvent,
+	CardSkinAiCssRequest,
+	ErrorResponse,
+} from "@bilibili-notify/contract";
 import { createSseParser } from "./aiChat";
-import { ApiError } from "./api";
+import { apiErrorOf } from "./api";
 import { withDesktopTokenHeader } from "./desktop-token";
 
 export interface CardSkinAiHandlers {
@@ -39,14 +44,14 @@ export async function streamCardSkinAiCss(
 	});
 	if (!res.ok || !res.body) {
 		const payload = await res.json().catch(() => undefined);
-		throw new ApiError(res.status, payload, refusal(payload, res.status));
+		throw apiErrorOf(res.status, payload, `请求失败(${res.status})`);
 	}
 
 	const reader = res.body.getReader();
 	const decoder = new TextDecoder();
 	const parse = createSseParser();
 	let done: CardSkinAiDone | null = null;
-	let failure: string[] | null = null;
+	let failure: ErrorResponse | null = null;
 
 	while (true) {
 		const { value, done: finished } = await reader.read();
@@ -55,21 +60,14 @@ export async function streamCardSkinAiCss(
 		for (const frame of parse(decoder.decode(value, { stream: true }))) {
 			const e = { event: frame.event, data: JSON.parse(frame.data) } as CardSkinAiCssEvent;
 			if (e.event === "rule") handlers.onRule(e.data.text);
-			else if (e.event === "retry") handlers.onRetry(e.data.errors);
+			else if (e.event === "retry") handlers.onRetry(e.data.issues.map((issue) => issue.message));
 			else if (e.event === "done") done = e.data;
-			else if (e.event === "error") failure = e.data.errors;
+			else if (e.event === "error") failure = e.data;
 		}
 	}
 
-	if (failure !== null) throw new Error(failure.join("\n"));
+	if (failure !== null) throw apiErrorOf(res.status, failure, failure.message);
 	// 既没 done 也没 error:服务端进程被掐了、或反代掐了连接。当成写完的话,框里会留下半截。
 	if (!done) throw new Error("连接中断,AI 没能写完");
 	return done;
-}
-
-/** 开流之前的拒绝:服务端这条路回的是 `{ ok: false, errors }`。 */
-function refusal(payload: unknown, status: number): string {
-	const errors = (payload as { errors?: unknown } | undefined)?.errors;
-	if (Array.isArray(errors) && errors.length > 0) return errors.join("\n");
-	return `请求失败(${status})`;
 }

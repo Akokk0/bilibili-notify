@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
 import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
@@ -94,6 +95,31 @@ const MODE_LABEL = { light: "浅色", dark: "深色" } as const;
 export interface ActiveSlots {
 	light: string | null;
 	dark: string | null;
+}
+
+/**
+ * 皮肤库拒收一件事的原因,只有这三种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
+ * `invalid` 这一下要的东西不对(文件类型、体积、这套没有那个模式),`not_found` 要动的皮肤不存在,
+ * `conflict` 与当前状态冲突(资产份数满了、最后一套模式删不得)。
+ */
+export type SkinStoreFailureCode = Extract<FailureCode, "invalid" | "not_found" | "conflict">;
+
+/**
+ * 皮肤库拒收:**自带码**,路由靠 `toFailure()` 回给面板。从前这些都是裸 `Error`,路由只能
+ * `catch` 一把抓成 400 —— 「皮肤不存在」与「磁盘写失败」看着一样,后者的原话(带路径)还会外泄。
+ * 现在路由只接这个类,别的抛错(环境的事、bug)交给全局出错处理:原话进日志,客户端拿固定一句。
+ */
+export class SkinStoreError extends Error {
+	readonly code: SkinStoreFailureCode;
+	constructor(code: SkinStoreFailureCode, message: string) {
+		super(message);
+		this.name = "SkinStoreError";
+		this.code = code;
+	}
+
+	toFailure(): Failure {
+		return fail(this.code, this.message);
+	}
 }
 
 export class SkinStore {
@@ -213,18 +239,20 @@ export class SkinStore {
 		/** 主人上传时这个文件叫什么;只做显示,过 sanitizeAssetLabel 后记进原名清单。 */
 		originalName?: string,
 	): Promise<string> {
-		if (!this.pkg.has(id)) throw new Error("皮肤不存在或已被删除");
+		if (!this.pkg.has(id)) throw new SkinStoreError("not_found", "皮肤不存在或已被删除");
 		const clean = ext.toLowerCase().replace(/^\./, "");
 		const isFont = SKIN_FONT_EXTS.has(clean);
 		if (!isFont && !SKIN_ASSET_EXTS.has(clean)) {
-			throw new Error(
+			throw new SkinStoreError(
+				"invalid",
 				`不支持的文件类型:${ext}(图片仅 PNG / JPEG / WebP,字体仅 woff2 / woff / ttf / otf)`,
 			);
 		}
 		const limit = isFont ? MAX_FONT_BYTES : MAX_ASSET_BYTES;
 		if (bytes.byteLength > limit) {
 			const mb = Math.round(limit / 1024 / 1024);
-			throw new Error(
+			throw new SkinStoreError(
+				"invalid",
 				isFont
 					? `字体过大(上限 ${mb}MB)—— 同一套字转成 woff2 通常只占三分之一`
 					: `图片过大(上限 ${mb}MB)`,
@@ -232,14 +260,17 @@ export class SkinStore {
 		}
 		return await this.pkg.run(id, async () => {
 			// 排队的这段时间里,前面的写可能已经把这套皮肤删了。
-			if (!this.pkg.has(id)) throw new Error("皮肤不存在或已被删除");
+			if (!this.pkg.has(id)) throw new SkinStoreError("not_found", "皮肤不存在或已被删除");
 			const existing = await this.listAssets(id);
 			if (existing.length >= MAX_SKIN_ASSETS) {
-				throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`);
+				throw new SkinStoreError(
+					"conflict",
+					`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`,
+				);
 			}
 			const fileName = `${isFont ? "font" : "img"}-${randomBytes(4).toString("hex")}.${clean}`;
 			const put = await this.pkg.assetsOf(id).put({ bytes, ext: clean, name: fileName });
-			if (!put.ok) throw new Error(put.message);
+			if (!put.ok) throw new SkinStoreError(put.code, put.message);
 			const name = `assets/${fileName}`;
 			const label = sanitizeAssetLabel(originalName);
 			if (label !== null) {
@@ -311,7 +342,9 @@ export class SkinStore {
 	 * 与资产引用校验,这里只管原子落盘。
 	 */
 	async updateManifest(id: string, manifest: SkinManifest): Promise<void> {
-		if (!(await this.pkg.saveManifest(id, manifest))) throw new Error(`皮肤不存在: ${id}`);
+		if (!(await this.pkg.saveManifest(id, manifest))) {
+			throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+		}
 	}
 
 	/**
@@ -339,11 +372,16 @@ export class SkinStore {
 		await this.pkg.run(id, async (saveManifest) => {
 			const manifest = this.pkg.get(id);
 			// 不认识的 id 一律不动手 —— 与 remove 同一条纪律,这里同样要写盘。
-			if (!manifest) throw new Error(`皮肤不存在: ${id}`);
-			if (!manifest.modes[theme]) throw new Error(`这套皮肤没有${MODE_LABEL[theme]}模式`);
+			if (!manifest) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+			if (!manifest.modes[theme]) {
+				throw new SkinStoreError("invalid", `这套皮肤没有${MODE_LABEL[theme]}模式`);
+			}
 			const other = theme === "light" ? "dark" : "light";
 			if (!manifest.modes[other]) {
-				throw new Error(`这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」`);
+				throw new SkinStoreError(
+					"conflict",
+					"这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」",
+				);
 			}
 
 			const next: SkinManifest = { ...manifest, modes: { [other]: manifest.modes[other] } };
@@ -366,7 +404,7 @@ export class SkinStore {
 	async setDefault(id: string): Promise<void> {
 		await this.pkg.run(id, async () => {
 			const manifest = this.pkg.get(id);
-			if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+			if (!manifest) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
 			await atomicWriteFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), serializeJson(manifest));
 		});
 	}
@@ -412,8 +450,8 @@ export class SkinStore {
 		await this.pkg.runRoot(async () => {
 			if (id !== null) {
 				const m = this.pkg.get(id);
-				if (!m) throw new Error(`皮肤不存在: ${id}`);
-				if (!m.modes[theme]) throw new Error(`皮肤没有 ${theme} 模式: ${id}`);
+				if (!m) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+				if (!m.modes[theme]) throw new SkinStoreError("invalid", `皮肤没有 ${theme} 模式: ${id}`);
 			}
 			await this.writeActive({ ...this.active, [theme]: id });
 		});
@@ -427,7 +465,7 @@ export class SkinStore {
 				return;
 			}
 			const m = this.pkg.get(id);
-			if (!m) throw new Error(`皮肤不存在: ${id}`);
+			if (!m) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
 			await this.writeActive({
 				light: m.modes.light ? id : this.active.light,
 				dark: m.modes.dark ? id : this.active.dark,

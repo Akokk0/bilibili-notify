@@ -1,14 +1,14 @@
 /**
  * 图廊选择器 —— 多选已上传的图(选中顺序 = 每次推送的轮换顺序),支持上传与删盘。
  * 两家在用:皮肤的 `image` 旋钮(壁纸)与 `cardStyle.liveCoverImages`(直播封面)。
- * `value` 是一串资产 id:空 = 不覆盖,1 = 单张,>1 = 轮换。删被引用的图被服务端 409
- * 拦截,这里把 referencedBy 提示出来。
+ * `value` 是一串资产 id:空 = 不覆盖,1 = 单张,>1 = 轮换。删被引用的图被服务端以 `conflict`
+ * (409)拦截,`message` 里已经点名了用家,这里原样提示出来。
  */
 
 import { AddFileButton, Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { ApiError, api } from "../../services/api";
+import { api } from "../../services/api";
 import { removeFromGallery, toggleSelected } from "./gallery-ops";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";
 
@@ -121,11 +121,9 @@ export function GalleryPicker({
 		try {
 			const form = new FormData();
 			form.append("file", file);
-			const res = await api.upload<{ ok: boolean; id?: string; err?: string }>(
-				"/api/cards/asset",
-				form,
-			);
-			if (!res.ok || !res.id) throw new Error(res.err ?? "上传失败");
+			// 上传被拒(格式不认、超上限)是非 2xx,`api` 抛 `ApiError`,`message` 就是服务端的原话;
+			// 走到下一行就是收下了。
+			const res = await api.upload<{ ok: true; id: string }>("/api/cards/asset", form);
 			await qc.invalidateQueries({ queryKey: ["card-assets"] });
 			if (!value.includes(res.id)) onChange([...value, res.id]); // 新传的默认选入
 		} catch (e) {
@@ -144,12 +142,9 @@ export function GalleryPicker({
 			onAssetDeleted?.(id);
 			await qc.invalidateQueries({ queryKey: ["card-assets"] });
 		} catch (e) {
-			if (e instanceof ApiError && e.status === 409) {
-				const by = (e.body as { referencedBy?: string[] } | undefined)?.referencedBy ?? [];
-				setErr(`仍被使用,无法删除：${by.join("、")}`);
-			} else {
-				setErr((e as Error).message);
-			}
+			// 还被引用着(`conflict`)时,服务端的 `message` 已经把用家点名了(「该背景图还有 2 处在用：…」),
+			// 与别的失败一样原样显示 —— 从前这里按 409 去读 `body.referencedBy` 自己拼一句。
+			setErr((e as Error).message);
 		}
 	};
 

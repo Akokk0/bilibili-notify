@@ -22,6 +22,8 @@ import {
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
+	type Failure,
+	type FailureCode,
 	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
@@ -32,6 +34,7 @@ import {
 	type ManifestResult,
 	type SkinPackageStore,
 } from "../skins/skin-store.js";
+import { failureOfChecks } from "../util/failure-text.js";
 import {
 	CARD_SKIN_MANIFEST_FILE,
 	checkCardSkinPackage,
@@ -49,15 +52,35 @@ import {
 export type { CardSkinSummary };
 
 /**
- * 装包 / 保存被拒。**逐条错误单独带着**(不是拼成一句话):路由要把它们原样列给主人,
+ * 皮肤库拒收一件事的原因,只有这三种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
+ * `invalid` 内容不合规矩(装包门、名字、体积),`not_found` 要动的皮肤不存在,
+ * `conflict` 与当前状态冲突(内置只读、清单还引用着、撞名、份数满了)。
+ */
+export type CardSkinPackageFailureCode = Extract<FailureCode, "invalid" | "not_found" | "conflict">;
+
+/**
+ * 装包 / 保存 / 传资产被拒。**逐条错误单独带着**(不是拼成一句话):路由要把它们原样列给主人,
  * 而「哪一块的哪一段不合格」正是作者唯一能据以动手的信息。
+ *
+ * **自带码**,路由靠 {@link CardSkinPackageError.toFailure} 回给面板,不再嗅文案 —— 从前「还被用着」
+ * 是 409、「名字不合法」是 400,分档全凭 `errors` 里有没有那四个字,改一个字就静默变成 400。
  */
 export class CardSkinPackageError extends Error {
 	readonly errors: string[];
-	constructor(errors: string[]) {
+	readonly code: CardSkinPackageFailureCode;
+	constructor(errors: string[], code: CardSkinPackageFailureCode = "invalid") {
 		super(errors.join("；"));
 		this.name = "CardSkinPackageError";
 		this.errors = errors;
+		this.code = code;
+	}
+
+	/**
+	 * 回给面板的失败:一句话就是 `message`;一串检查意见 `message` 概括、`issues` 逐条。
+	 * `subject` 是概括那句里「谁没通过检查」(装 zip 包传「这个皮肤包」,其余缺省)。
+	 */
+	toFailure(subject = "这套皮肤"): Failure {
+		return failureOfChecks(this.code, subject, this.errors);
 	}
 }
 
@@ -273,9 +296,12 @@ export class CardSkinStore {
 	 */
 	async addAsset(id: string, filename: string, bytes: Uint8Array): Promise<{ name: string }> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new CardSkinPackageError(["内置的默认皮肤加不了资产 —— 想改它请先「复制一份」"]);
+			throw new CardSkinPackageError(
+				["内置的默认皮肤加不了资产 —— 想改它请先「复制一份」"],
+				"conflict",
+			);
 		}
-		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
 
 		// **只小写,不剥路径**。白名单正则不收 `/` 也不收 `..`,带路径的名字到这儿会被明着
 		// 拒掉 —— 而先剥成 basename 的话,`../../etc/passwd.ttf` 会变成一份叫 passwd.ttf 的
@@ -294,15 +320,21 @@ export class CardSkinStore {
 		}
 		return await this.pkg.run(id, async () => {
 			// 排队的这段时间里,前面的写可能已经把这套皮肤删了。
-			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
 			const existing = await this.listAssets(id);
 			if (existing.includes(name)) {
-				throw new CardSkinPackageError([`已经有一份叫「${base}」的了 —— 先删掉那份再传`]);
+				throw new CardSkinPackageError(
+					[`已经有一份叫「${base}」的了 —— 先删掉那份再传`],
+					"conflict",
+				);
 			}
 			if (existing.length >= CARD_SKIN_LIMITS.maxAssets) {
-				throw new CardSkinPackageError([
-					`这套皮肤已经 ${existing.length} 份资产,上限 ${CARD_SKIN_LIMITS.maxAssets} 份 —— 删掉用不上的再传`,
-				]);
+				throw new CardSkinPackageError(
+					[
+						`这套皮肤已经 ${existing.length} 份资产,上限 ${CARD_SKIN_LIMITS.maxAssets} 份 —— 删掉用不上的再传`,
+					],
+					"conflict",
+				);
 			}
 			const put = await this.pkg
 				.assetsOf(id)
@@ -318,19 +350,20 @@ export class CardSkinStore {
 	 */
 	async removeAsset(id: string, name: string): Promise<void> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new CardSkinPackageError(["内置的默认皮肤没有落盘的资产"]);
+			throw new CardSkinPackageError(["内置的默认皮肤没有落盘的资产"], "conflict");
 		}
-		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
 		if (!isCardSkinAssetName(name)) throw new CardSkinPackageError(["资产名不合法"]);
 
 		// 「清单还引用着吗」与删文件排在同一条写道里:中间不许有编辑器保存钻进来把引用加回去。
 		await this.pkg.run(id, async () => {
-			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"]);
+			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
 			const users = assetUsers(this.get(id), name);
 			if (users.length > 0) {
-				throw new CardSkinPackageError([
-					`「${name}」还被用着(${users.join("、")})—— 先在编辑器里换掉再删`,
-				]);
+				throw new CardSkinPackageError(
+					[`「${name}」还被用着(${users.join("、")})—— 先在编辑器里换掉再删`],
+					"conflict",
+				);
 			}
 			// 文件本来就不在也算删好了,不抛。
 			await this.pkg.assetsOf(id).remove(name.slice(ASSET_PREFIX_LEN));

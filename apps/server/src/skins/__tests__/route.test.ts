@@ -1,6 +1,10 @@
 /**
  * 皮肤库 API:上传(multipart zip)/列表/启用/删除/资产 serve。
  * 资产路径穿越与白名单由 store 层兜底,这里验 wire 行为与状态码。
+ *
+ * 失败只有一种形状(ADR-0026):`{ code, message, issues? }`。一句话的原因只有 `message`;
+ * 一串检查意见(装包门、manifest 校验)`message` 一句概括、逐条进 `issues`。码由皮肤库的
+ * `SkinStoreError` 自带(没这套 `not_found`、没有那个模式 `invalid`、最后一套模式 / 份数满了 `conflict`)。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
@@ -8,11 +12,13 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fail } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { ROUTE_NOT_FOUND_MESSAGE, respondFailure } from "../../routes/respond-failure.js";
 import { createSkinsRoute } from "../../routes/skins.js";
-import { SkinStore } from "../store.js";
+import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -51,7 +57,11 @@ let store: SkinStore;
 beforeEach(async () => {
 	store = new SkinStore({ skinsDir: await mkdtemp(join(tmpdir(), "bn-skins-route-")) });
 	await store.init();
-	app = new Hono().route("/", createSkinsRoute({ skinStore: store }));
+	// 与生产一样带全局的 notFound:路径压根匹不上路由时(如 `/:id/modes/` 少了 theme)回的是
+	// 标准的 `not_found` 错误体,不是 Hono 默认的纯文本 —— 否则这条测试自己造的 404 会被错误体守卫点名。
+	app = new Hono()
+		.notFound((c) => respondFailure(c, fail("not_found", ROUTE_NOT_FOUND_MESSAGE)))
+		.route("/", createSkinsRoute({ skinStore: store }));
 });
 
 describe("skins route", () => {
@@ -74,13 +84,43 @@ describe("skins route", () => {
 		expect(list.list[0].name).toBe("樱花夜");
 	});
 
-	it("POST / 非法包 → 400 带 errors", async () => {
+	it("POST / 非法包 → invalid(400),原因就是 message", async () => {
 		const bad = new File([Buffer.from(strToU8("not a zip"))], "x.zip");
 		const res = await upload(app, bad);
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as any;
-		expect(body.ok).toBe(false);
-		expect(body.errors.length).toBeGreaterThan(0);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("zip");
+		expect(body).not.toHaveProperty("ok");
+		expect(body).not.toHaveProperty("errors");
+	});
+
+	it("POST / 没带文件 → invalid(400)", async () => {
+		const res = await app.request("/", { method: "POST", body: new FormData() });
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
+	});
+
+	it("PUT /active 单槽:纯暗皮肤放不进亮槽 → invalid(400),码由皮肤库自带、不靠嗅文案", async () => {
+		const made = await upload(app, makeZipFile(false, { dark: { colors: { accent: "#00e5ff" } } }));
+		const id = ((await made.json()) as any).id as string;
+		const res = await putActive(app, { id, theme: "light" });
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("light");
+		// 槽没动。
+		const list = (await (await app.request("/")).json()) as any;
+		expect(list.active).toEqual({ light: null, dark: null });
+	});
+
+	it("PUT /active 参数不对 → invalid(400),原因就是 message", async () => {
+		const badId = await putActive(app, { id: 5 });
+		expect(badId.status).toBe(400);
+		expect(await badId.json()).toEqual({ code: "invalid", message: "id 必须是皮肤 id 或 null" });
+		const badTheme = await putActive(app, { id: null, theme: "blue" });
+		expect(badTheme.status).toBe(400);
+		expect(((await badTheme.json()) as any).message).toContain("light 或 dark");
 	});
 
 	it("PUT /active 整套启用(纯亮→亮槽)与清空;不存在的 id → 404", async () => {
@@ -235,12 +275,33 @@ describe("POST /:id/assets(编辑器里传图)", () => {
 			new File([Buffer.from(PNG)], "a.png", { type: "image/png" }),
 		);
 		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).code).toBe("not_found");
 	});
 
-	it("没带文件 → 400", async () => {
+	it("没带文件 → invalid(400)", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
 		const res = await app.request(`/${id}/assets`, { method: "POST", body: new FormData() });
 		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
+	});
+
+	it("份数满了 → conflict(409),不是 400:请求没错,是这套皮肤的状态不许", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		for (let i = 0; i < MAX_SKIN_ASSETS; i++) {
+			const ok = await postAsset(
+				id,
+				new File([Buffer.from(PNG)], `a${i}.png`, { type: "image/png" }),
+			);
+			expect(ok.status).toBe(201);
+		}
+		const res = await postAsset(
+			id,
+			new File([Buffer.from(PNG)], "more.png", { type: "image/png" }),
+		);
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain(String(MAX_SKIN_ASSETS));
 	});
 });
 
@@ -413,7 +474,7 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 		expect(list.list[0]).toMatchObject({ name: "樱花夜·改", modes: ["light", "dark"] });
 	});
 
-	it("校验不过 → 400 带 errors,盘上原样", async () => {
+	it("校验不过 → invalid(400),原因进 message / issues,盘上原样", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
 		const res = await putManifest(id, {
 			schemaVersion: 1,
@@ -421,7 +482,12 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 			modes: { light: { colors: { accent: "url(evil)" } } },
 		});
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		// 一句话的原因就是 message;一串则 message 概括、逐条进 issues —— 总之原因一条也不丢。
+		const reasons = body.issues?.map((i: any) => i.message) ?? [body.message];
+		expect(reasons.length).toBeGreaterThan(0);
+		expect(reasons.join()).toContain("accent");
 		const got = (await (await app.request(`/${id}/manifest`)).json()) as any;
 		expect(got.manifest.name).toBe("樱花夜");
 	});
@@ -435,7 +501,8 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as any;
-		expect(body.errors.join()).toContain("assets/nope.png");
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("assets/nope.png");
 	});
 
 	it("不存在的皮肤 → 404;非 JSON → 400", async () => {
@@ -449,6 +516,8 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 			body: "not json",
 		});
 		expect(bad.status).toBe(400);
+		const body = (await bad.json()) as any;
+		expect(body).toEqual({ code: "invalid", message: "请求体不是合法的 JSON" });
 	});
 });
 
@@ -520,20 +589,51 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 		expect(seen).toContain(`- ${name} —— 原文件名「樱花壁纸.png」`);
 	});
 
-	it("AI 未配置(commentary 为 null)→ 503;皮肤不存在 → 404;缺 instruction → 400", async () => {
+	it("模型那头出错 → unavailable(503),对端给的原因写进 message(与卡片皮肤的 ai-css 同一口径)", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
-		expect((await aiEdit(appWithAi(null), id, { instruction: "x", draft: {} })).status).toBe(503);
-		const aiApp = appWithAi("{}");
-		expect((await aiEdit(aiApp, "nope", { instruction: "x", draft: {} })).status).toBe(404);
-		expect((await aiEdit(aiApp, id, { instruction: "", draft: {} })).status).toBe(400);
+		const failing = new Hono().route(
+			"/",
+			createSkinsRoute({
+				skinStore: store,
+				commentary: () => ({
+					generateRaw: async () => {
+						throw new Error("上游 429:请求太频繁");
+					},
+				}),
+			}),
+		);
+		const res = await aiEdit(failing, id, { instruction: "改成暗色", draft: { schemaVersion: 1 } });
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toContain("上游 429:请求太频繁");
 	});
 
-	it("AI 两答都不合法 → 422 带 errors", async () => {
+	it("AI 未配置(commentary 为 null)→ not_configured(409);皮肤不存在 → not_found;缺 instruction → invalid", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const unconfigured = await aiEdit(appWithAi(null), id, { instruction: "x", draft: {} });
+		expect(unconfigured.status).toBe(409);
+		expect(((await unconfigured.json()) as any).code).toBe("not_configured");
+		const aiApp = appWithAi("{}");
+		const missing = await aiEdit(aiApp, "nope", { instruction: "x", draft: {} });
+		expect(missing.status).toBe(404);
+		expect(((await missing.json()) as any).code).toBe("not_found");
+		const empty = await aiEdit(aiApp, id, { instruction: "", draft: {} });
+		expect(empty.status).toBe(400);
+		expect(((await empty.json()) as any).code).toBe("invalid");
+	});
+
+	it("AI 两答都不合法 → invalid(400),概括进 message、逐条意见进 issues(不再是 422 的私有形状)", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
 		const aiApp = appWithAi("不是 JSON");
 		const res = await aiEdit(aiApp, id, { instruction: "x", draft: {} });
-		expect(res.status).toBe(422);
-		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("女仆改出来的皮肤没通过检查");
+		expect(body.issues.length).toBeGreaterThan(0);
+		expect(body.issues[0].message).toContain("JSON");
+		expect(body).not.toHaveProperty("errors");
 	});
 });
 
@@ -582,7 +682,9 @@ describe("出厂快照 API", () => {
 		await rm(join((store as any).skinsDir, id, "default.json"));
 		const res = await app.request(`/${id}/default`);
 		expect(res.status).toBe(404);
-		expect(((await res.json()) as any).err).toContain("默认值");
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("not_found");
+		expect(body.message).toContain("默认值");
 	});
 });
 
@@ -618,35 +720,47 @@ describe("DELETE /:id/modes/:theme —— 只删一色", () => {
 		expect(body.active).toEqual({ light: null, dark: id });
 	});
 
-	it("最后一套模式 → 400,并指路去「删除」", async () => {
+	it("最后一套模式 → conflict(409),并指路去「删除」", async () => {
 		const id = await uploadDual();
 		await del(id, "light");
 		const res = await del(id, "dark");
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).err).toContain("删除");
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("删除");
 		// 皮肤还在,没被顺手删掉。
 		const after = (await (await app.request("/")).json()) as any;
 		expect(after.list).toHaveLength(1);
 	});
 
-	it("本来就没有那一色 → 400", async () => {
+	it("本来就没有那一色 → invalid(400)", async () => {
 		const res = await upload(app, makeZipFile());
 		const id = ((await res.json()) as any).id as string;
-		expect((await del(id, "dark")).status).toBe(400);
+		const gone = await del(id, "dark");
+		expect(gone.status).toBe(400);
+		const body = (await gone.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("深色");
 	});
 
-	it("theme 不是 light / dark → 400,压根不进 store", async () => {
+	it("theme 不是 light / dark → invalid(400),压根不进 store", async () => {
 		const id = await uploadDual();
-		for (const bad of ["blue", "LIGHT", ""]) {
-			expect((await del(id, bad)).status).not.toBe(200);
+		for (const bad of ["blue", "LIGHT"]) {
+			const res = await del(id, bad);
+			expect(res.status).toBe(400);
+			expect(((await res.json()) as any).code).toBe("invalid");
 		}
+		// 空的 theme 连路由都匹不上:落到全局的 not_found,同样不进 store。
+		expect((await del(id, "")).status).toBe(404);
 		// 一色都没少。
 		const body = (await (await app.request("/")).json()) as any;
 		expect(body.list.find((e: any) => e.id === id).modes).toHaveLength(2);
 	});
 
 	it("不认识的 id → 404", async () => {
-		expect((await del("nope", "light")).status).toBe(404);
+		const res = await del("nope", "light");
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).code).toBe("not_found");
 	});
 
 	it("id 带路径穿越 → 不给 200", async () => {

@@ -587,10 +587,14 @@ export interface SkinManifestResponse {
 	assetNames: Record<string, string>;
 }
 
-/** PUT /api/skins/:id/manifest(编辑器就地保存,资产不变)。 */
-export type SkinManifestUpdateResponse =
-	| { ok: true; warnings: string[] }
-	| { ok: false; errors: string[] };
+/**
+ * PUT /api/skins/:id/manifest(编辑器就地保存,资产不变)。存不下去(不是合法 JSON / 没过校验 /
+ * 引用了包里没有的文件)是 400 的错误体(`ErrorResponse`,`issues` 是逐条原因),不在这里。
+ */
+export interface SkinManifestUpdateResponse {
+	ok: true;
+	warnings: string[];
+}
 
 /**
  * GET /api/skins/:id/default —— 出厂快照(「恢复默认值」的基准)。
@@ -600,7 +604,12 @@ export interface SkinDefaultResponse {
 	manifest: SkinManifest;
 }
 
-/** POST /api/skins/:id/ai-edit(「让女仆改」)。产物只回编辑器 draft,不落盘。 */
-export type SkinAiEditResponse =
-	| { ok: true; manifest: SkinManifest; warnings: string[] }
-	| { ok: false; errors: string[] };
+/**
+ * POST /api/skins/:id/ai-edit(「让女仆改」)。产物只回编辑器 draft,不落盘。女仆改出来的没过检查
+ * 是 400 的错误体(`ErrorResponse`,`issues` 是逐条意见),没配模型是 `not_configured`,都不在这里。
+ */
+export interface SkinAiEditResponse {
+	ok: true;
+	manifest: SkinManifest;
+	warnings: string[];
+}

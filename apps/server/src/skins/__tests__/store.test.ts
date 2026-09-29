@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
-import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
+import { MAX_SKIN_ASSETS, SkinStore, SkinStoreError } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** woff2 魔数 `wOF2`;store 不解析内容,只看扩展名。 */
@@ -697,5 +697,58 @@ describe("并发写", () => {
 
 		expect(added.status).toBe("rejected");
 		expect(existsSync(join(dir, id))).toBe(false);
+	});
+});
+
+/**
+ * 拒收**自带码**(ADR-0026):路由靠 `SkinStoreError.code` 回给面板,不再把一切抛错一把抓成 400。
+ * 这里钉的是每一处拒收各是哪个码 —— 换掉哪个码,路由的状态码和面板的分支都跟着变。
+ */
+describe("SkinStoreError:拒收各带各的码", () => {
+	const codeOf = async (run: () => Promise<unknown>): Promise<unknown> => {
+		try {
+			await run();
+		} catch (e) {
+			expect(e).toBeInstanceOf(SkinStoreError);
+			return (e as SkinStoreError).code;
+		}
+		return "没有拒收";
+	};
+
+	it("没有这套皮肤 → not_found(启用 / 设槽 / 存清单 / 钉默认值 / 删一色 / 传资产)", async () => {
+		expect(await codeOf(() => store.activate("nope"))).toBe("not_found");
+		expect(await codeOf(() => store.setActiveSlot("light", "nope"))).toBe("not_found");
+		expect(await codeOf(() => store.updateManifest("nope", makeManifest()))).toBe("not_found");
+		expect(await codeOf(() => store.setDefault("nope"))).toBe("not_found");
+		expect(await codeOf(() => store.removeMode("nope", "light"))).toBe("not_found");
+		expect(await codeOf(() => store.addAsset("nope", PNG, "png"))).toBe("not_found");
+	});
+
+	it("要的东西不对 → invalid(没有那个模式、文件类型不认、太大)", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		expect(await codeOf(() => store.setActiveSlot("dark", id))).toBe("invalid");
+		expect(await codeOf(() => store.removeMode(id, "dark"))).toBe("invalid");
+		expect(await codeOf(() => store.addAsset(id, PNG, "svg"))).toBe("invalid");
+		expect(await codeOf(() => store.addAsset(id, new Uint8Array(6 * 1024 * 1024), "png"))).toBe(
+			"invalid",
+		);
+	});
+
+	it("与当前状态冲突 → conflict(资产份数满了、最后一套模式)", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		for (let i = 0; i < MAX_SKIN_ASSETS; i++) await store.addAsset(id, PNG, "png");
+		expect(await codeOf(() => store.addAsset(id, PNG, "png"))).toBe("conflict");
+
+		const dual = await store.save({
+			manifest: makeManifest({ modes: { light: {}, dark: {} } }),
+			assets: new Map(),
+		});
+		await store.removeMode(dual.id, "light");
+		expect(await codeOf(() => store.removeMode(dual.id, "dark"))).toBe("conflict");
+	});
+
+	it("toFailure():码原样、话就是 message,不带别的格", async () => {
+		const err = new SkinStoreError("conflict", "满了");
+		expect(err.toFailure()).toEqual({ ok: false, code: "conflict", message: "满了" });
 	});
 });

@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
 import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
@@ -120,7 +121,8 @@ export function SkinSection() {
 			const manifest = await fetchManifest(data.id);
 			useSkinStore.getState().setPreview({ id: data.id, manifest });
 		},
-		onError: (e) => setError(String((e as Error).message)),
+		// 装包门没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人。
+		onError: (e) => setError(errorTextOf(e)),
 	});
 
 	async function tryOn(id: string): Promise<void> {

@@ -50,10 +50,18 @@ export function respondFailure(
 	failure: Failure,
 	status: ContentfulStatusCode = statusOf(failure.code),
 ): Response {
+	return c.json(errorBodyOf(failure), status);
+}
+
+/**
+ * 失败 → 错误体({@link ErrorResponse}):去掉 `ok`,逐个字段挑。不经 HTTP 状态码、把失败塞进别的通道里的
+ * 出口也用它(如 SSE 的 `error` 帧),免得各写一份、清单长不一样。
+ */
+export function errorBodyOf(failure: Failure): ErrorResponse {
 	const body: ErrorResponse = { code: failure.code, message: failure.message };
 	if (failure.issues !== undefined) body.issues = failure.issues;
 	if (failure.upstreamCode !== undefined) body.upstreamCode = failure.upstreamCode;
-	return c.json(body, status);
+	return body;
 }
 
 /** 全局出错处理回给客户端的那一句:原话只进日志,不外泄。 */

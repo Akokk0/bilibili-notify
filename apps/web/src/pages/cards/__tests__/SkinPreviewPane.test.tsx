@@ -16,13 +16,19 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const { FakeApiError } = vi.hoisted(() => {
+	// 与真 `ApiError` 一样:`code` / `issues` 从错误体里读出来。
 	class FakeApiError extends Error {
+		readonly code?: string;
+		readonly issues?: Array<{ message: string }>;
 		constructor(
 			readonly status: number,
 			readonly body: unknown,
 			message: string,
 		) {
 			super(message);
+			const b = body as { code?: string; issues?: Array<{ message: string }> } | undefined;
+			this.code = b?.code;
+			this.issues = b?.issues;
 		}
 	}
 	return { FakeApiError };
@@ -152,13 +158,21 @@ describe("皮肤预览栏", () => {
 		expect(el.style.transform).toBe("");
 	});
 
-	it("装包门拒了 → 原因逐条列出来,并且上一张图还留着", async () => {
+	it("装包门拒了 → 原因逐条(issues)列出来,并且上一张图还留着", async () => {
 		renderPane();
 		await tick();
 		expect(frame()).not.toBeNull();
 
 		vi.mocked(api.post).mockRejectedValue(
-			new FakeApiError(400, { ok: false, errors: ["块 id 重了:notice", "css 洗完是空的"] }, "400"),
+			new FakeApiError(
+				400,
+				{
+					code: "invalid",
+					message: "这版草稿没通过检查（共 2 条）",
+					issues: [{ message: "块 id 重了:notice" }, { message: "css 洗完是空的" }],
+				},
+				"这版草稿没通过检查（共 2 条）",
+			),
 		);
 		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 		render(
@@ -290,6 +304,49 @@ describe("皮肤预览栏 · 最终效果", () => {
 		);
 		await tick();
 		expect(screen.getByText(/这张是上一版/)).toBeTruthy();
+	});
+
+	it("这一趟渲染没成(200 + 失败那一支)→ 把原话说出来,不是静静弹回按钮", async () => {
+		// 从前 `onSuccess: r => r.ok && setSnap(...)`:失败那支落进 onSuccess 被丢掉,主人只看到按钮弹回来。
+		mockBoth({ ok: false, code: "unavailable", message: "卡片截图失败：Chrome 崩了" });
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		renderPane();
+		await tick();
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+
+		expect(screen.getByText(/最终效果没截出来:卡片截图失败：Chrome 崩了/)).toBeTruthy();
+		// 没有图可摆,实时预览那张还在。
+		expect(document.querySelector("img")).toBeNull();
+		expect(frame()).not.toBeNull();
+	});
+
+	it("请求被拒(非 2xx,如草稿没过装包门)→ 说出概括与逐条原因", async () => {
+		vi.mocked(api.post).mockImplementation(async (url: string) => {
+			if (!url.endsWith("/skin-shot")) return OK;
+			throw new FakeApiError(
+				400,
+				{
+					code: "invalid",
+					message: "这版草稿没通过检查（共 2 条）",
+					issues: [{ message: "甲不行" }, { message: "乙不行" }],
+				},
+				"这版草稿没通过检查（共 2 条）",
+			);
+		});
+		vi.mocked(api.get).mockResolvedValue({ enabled: true, source: null, persistable: false });
+		renderPane();
+		await tick();
+		await act(async () => {
+			shotBtn().click();
+		});
+		await tick();
+
+		expect(
+			screen.getByText("最终效果没截出来:这版草稿没通过检查（共 2 条）：甲不行；乙不行"),
+		).toBeTruthy();
 	});
 
 	it("超过最大高度 → 照样给看,但把「出图时会回落默认皮肤」说出来", async () => {

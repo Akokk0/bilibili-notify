@@ -51,6 +51,17 @@ export interface AssetPutOptions {
 	label?: string;
 }
 
+/**
+ * 上传的东西不合规矩(格式不认、超上限)—— 消息是给主人看的中文。路由据此回 `invalid`,别的抛错
+ * (磁盘写失败之类)不是它,那是 bug 或环境的事,交给全局出错处理:原话进日志,客户端只拿一句固定的话。
+ */
+export class AssetRejectedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AssetRejectedError";
+	}
+}
+
 /** 存一件资产的结果:成功给 id,可预期的拒收回 `invalid`。磁盘写失败是抛错。 */
 export type AssetPutResult =
 	| { ok: true; id: string }

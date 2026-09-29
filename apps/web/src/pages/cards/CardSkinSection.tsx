@@ -33,6 +33,7 @@ import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
 /** 七种卡在回落告警里怎么称呼。 */
@@ -147,8 +148,8 @@ export function CardSkinSection() {
 			setError(null);
 			refresh();
 		},
-		// 409 的响应体里那句 `err` 已经点名了用家(全局默认 / 哪几个 UP),`api` 那层会把它
-		// 抬成 message。原样显示 —— 换成自编的「删除失败」就把唯一能照着去改的线索吞了。
+		// `conflict`(409)的 `message` 已经点名了用家(全局默认 / 哪几个 UP)。原样显示 ——
+		// 换成自编的「删除失败」就把唯一能照着去改的线索吞了。
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
@@ -163,7 +164,8 @@ export function CardSkinSection() {
 			setWarnings(data.warnings);
 			refresh();
 		},
-		onError: (e) => setError(String((e as Error).message)),
+		// 装包门没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人,他要照着去改那个包。
+		onError: (e) => setError(errorTextOf(e)),
 	});
 
 	function onUploadPick(e: ChangeEvent<HTMLInputElement>): void {

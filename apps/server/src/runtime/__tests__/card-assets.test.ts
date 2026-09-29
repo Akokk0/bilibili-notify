@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { AssetRejectedError } from "../../assets/asset-store";
 import {
 	cardBgDir,
 	deleteCardBg,
@@ -39,13 +40,17 @@ describe("card-assets", () => {
 		expect(await saveCardBg(dir, PNG, "image/webp")).toMatch(/\.webp$/);
 	});
 
+	// 拒收抛的是 `AssetRejectedError`(消息面向用户):路由据此回 `invalid`,别的抛错(磁盘写失败)
+	// 不是它、往上抛。换成裸 `Error`,路由就分不出「主人传错了」与「磁盘坏了」。
 	it("rejects a non-image mime", async () => {
-		await expect(saveCardBg(dir, PNG, "application/pdf")).rejects.toThrow();
+		await expect(saveCardBg(dir, PNG, "application/pdf")).rejects.toBeInstanceOf(
+			AssetRejectedError,
+		);
 	});
 
 	it("rejects an oversized image", async () => {
 		const big = new Uint8Array(5 * 1024 * 1024 + 1);
-		await expect(saveCardBg(dir, big, "image/png")).rejects.toThrow();
+		await expect(saveCardBg(dir, big, "image/png")).rejects.toBeInstanceOf(AssetRejectedError);
 	});
 
 	it("rejects path-traversal / malformed ids", () => {

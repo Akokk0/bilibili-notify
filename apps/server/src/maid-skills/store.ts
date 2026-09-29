@@ -12,6 +12,7 @@
 
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
 import { atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
 import { formatSkillFile, isValidSkillName, type ParsedSkill, parseSkillFile } from "./parse.js";
@@ -29,6 +30,30 @@ export interface SkillProblem {
 export interface MaidSkillEntry extends ParsedSkill {
 	/** 内置的只读、跟版本走(决策 15);改 / 删一律拒。 */
 	builtin: boolean;
+}
+
+/**
+ * 技能库拒收一件事的原因,只有这三种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
+ * `invalid` 内容或名字不合规矩,`not_found` 要动的技能不存在,`conflict` 与当前状态冲突(内置只读、重名)。
+ */
+export type SkillStoreFailureCode = Extract<FailureCode, "invalid" | "not_found" | "conflict">;
+
+/**
+ * 技能库拒收:**自带码**,路由靠 `toFailure()` 回给面板。从前名字不合法、重名、没这条都是同一种裸
+ * `Error`,路由只能一把抓成 400;磁盘写失败也混在里头,原话(带路径)照样外泄。现在路由只接这个类,
+ * 别的抛错交给全局出错处理。
+ */
+export class SkillStoreError extends Error {
+	readonly code: SkillStoreFailureCode;
+	constructor(code: SkillStoreFailureCode, message: string) {
+		super(message);
+		this.name = "SkillStoreError";
+		this.code = code;
+	}
+
+	toFailure(): Failure {
+		return fail(this.code, this.message);
+	}
 }
 
 /** 单份 SKILL.md 的大小上限 —— 手放的目录里可能是任何东西,别把一整个视频读进内存。 */
@@ -135,7 +160,7 @@ export class MaidSkillStore {
 
 	async update(name: string, next: ParsedSkill): Promise<void> {
 		this.assertEditable(name);
-		if (!this.user.has(name)) throw new Error(`技能不存在:${name}`);
+		if (!this.user.has(name)) throw new SkillStoreError("not_found", `技能不存在:${name}`);
 		const clean = this.validate(next);
 		if (clean.name !== name) await this.assertFree(clean.name);
 		await this.writeSkill(clean);
@@ -149,7 +174,7 @@ export class MaidSkillStore {
 
 	async remove(name: string): Promise<void> {
 		this.assertEditable(name);
-		if (!this.user.has(name)) throw new Error(`技能不存在:${name}`);
+		if (!this.user.has(name)) throw new SkillStoreError("not_found", `技能不存在:${name}`);
 		await rm(join(this.dir, name), { recursive: true, force: true });
 		this.user.delete(name);
 	}
@@ -161,7 +186,7 @@ export class MaidSkillStore {
 	 */
 	private validate(skill: ParsedSkill): ParsedSkill {
 		const res = parseSkillFile(formatSkillFile(skill));
-		if (!res.ok) throw new Error(res.reason);
+		if (!res.ok) throw new SkillStoreError("invalid", res.reason);
 		return res.skill;
 	}
 
@@ -175,9 +200,11 @@ export class MaidSkillStore {
 	 * 的正文抹掉,界面上连个响都没有。缓存怎么调都堵不住,只能问盘。
 	 */
 	private async assertFree(name: string): Promise<void> {
-		if (BUILTIN_SKILL_NAMES.has(name)) throw new Error(`「${name}」已被内置技能占用,换个名字吧`);
-		if (this.user.has(name)) throw new Error(`「${name}」已经有了`);
-		if (await this.fileExists(name)) throw new Error(`「${name}」已经有了`);
+		if (BUILTIN_SKILL_NAMES.has(name)) {
+			throw new SkillStoreError("conflict", `「${name}」已被内置技能占用,换个名字吧`);
+		}
+		if (this.user.has(name)) throw new SkillStoreError("conflict", `「${name}」已经有了`);
+		if (await this.fileExists(name)) throw new SkillStoreError("conflict", `「${name}」已经有了`);
 	}
 
 	/** 盘上有没有这个名字的 SKILL.md。空目录 / 临时文件残留不算占用 —— 那儿没有主人的东西可丢。 */
@@ -190,8 +217,10 @@ export class MaidSkillStore {
 
 	/** 改 / 删的前置:名字合法(它要拼进路径)且不是内置。 */
 	private assertEditable(name: string): void {
-		if (!isValidSkillName(name)) throw new Error(`技能名不合法:${name}`);
-		if (BUILTIN_SKILL_NAMES.has(name)) throw new Error(`「${name}」是内置技能,改不动也删不掉`);
+		if (!isValidSkillName(name)) throw new SkillStoreError("invalid", `技能名不合法:${name}`);
+		if (BUILTIN_SKILL_NAMES.has(name)) {
+			throw new SkillStoreError("conflict", `「${name}」是内置技能,改不动也删不掉`);
+		}
 	}
 
 	/**

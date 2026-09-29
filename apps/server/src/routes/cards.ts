@@ -19,9 +19,16 @@
  *                              gradient picker stays usable without a
  *                              logged-in account.
  *
- * 503 path — when the operator hasn't set BN_CHROME_PATH (or chromePath in
- * yaml) we don't try to launch puppeteer. The route reports the missing
- * config so the Cards page can render an actionable hint.
+ * not_configured path (409) — when the operator hasn't set BN_CHROME_PATH (or
+ * chromePath in yaml) we don't try to launch puppeteer. The route reports the
+ * missing config so the Cards page can render an actionable hint; the engine
+ * not being up yet is a different failure (`unavailable`, 503) and the page
+ * tells the two apart by `code`, not by status.
+ *
+ * Failures follow docs/agents/conventions/failure-results.md: anything the
+ * request itself gets wrong or can't proceed with is a non-2xx error body via
+ * `respondFailure`; "tried and it didn't work" (a render that threw, a
+ * delivery that wasn't accepted) answers 200 with a `Result`.
  */
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
@@ -52,12 +59,16 @@ import {
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	effectiveCardSkinKnobs,
+	fail,
 	type GlobalConfig,
+	issuesFromZod,
 	type NotificationPayload,
+	ok,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { AssetRejectedError } from "../assets/asset-store.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
@@ -85,6 +96,9 @@ import {
 	resolveChromePath,
 	type StandalonePuppeteer,
 } from "../runtime/puppeteer.js";
+import { describeUsers, failureOfChecks } from "../util/failure-text.js";
+import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
@@ -321,7 +335,7 @@ function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: st
 }
 
 /**
- * 没配 Chrome 时那句话。**两处 503 共用一份** —— 说的是同一件事,分成两份写迟早会漂,
+ * 没配 Chrome 时那句话(`not_configured`)。**三处共用一份** —— 说的是同一件事,分成几份写迟早会漂,
  * 而这句正是主人照着去修的那条路径(「失败的原因不许吞」)。
  */
 const NO_CHROME_HINT =
@@ -380,77 +394,79 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const body = await c.req.json().catch(() => null);
 		const parsed = EnableRenderingSchema.safeParse(body);
 		if (!parsed.success) {
-			return c.json({ ok: false, err: "chromePath 或 chromeEndpoint 至少填一项" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "chromePath 或 chromeEndpoint 至少填一项", {
+					issues: issuesFromZod(parsed.error),
+				}),
+			);
 		}
 		const engines = opts.deps.runtime.engines;
-		if (!engines) return c.json({ ok: false, err: "engines 未就绪" }, 503);
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const source = parsed.data;
 		// 热切换 = 路由已握有在用 adapter;同源直接幂等返回,连 adapter 都不构造。
 		const replacing = currentPuppeteer !== null;
 		if (replacing && sourceEquals(currentSource, source)) {
-			return c.json({ ok: true, alreadyEnabled: true });
+			return c.json(ok({ alreadyEnabled: true }));
 		}
-		try {
-			const pup = createPuppeteer(source);
-			// 连通性探测:远程端点没有 detect-chrome 那样的存在性预验,连不上只会在
-			// 之后首次渲染才暴露;热切换则无论来源都要先验 —— 失败就不动现有渲染器。
-			if (source.chromeEndpoint || replacing) {
-				try {
-					const probe = await pup.page();
-					await probe.close();
-				} catch (err) {
-					await pup.dispose();
-					const detail = err instanceof Error ? err.message : String(err);
-					log.warn(`[cards] 浏览器探测失败 · ${JSON.stringify(source)}: ${detail}`);
-					return c.json({ ok: false, err: `浏览器连接失败：${detail}` }, 502);
-				}
-			}
-			if (replacing) {
-				engines.swapImageRendering(pup);
-			} else {
-				const enabled = engines.enableImageRendering(pup);
-				if (!enabled) {
-					// 引擎侧已有渲染器但路由不知情(理论不该发生的接线错位):保持旧行为,
-					// 释放多余 adapter。
-					await pup.dispose();
-					return c.json({ ok: true, alreadyEnabled: true });
-				}
-			}
-			const old = currentPuppeteer;
-			currentPuppeteer = pup;
-			currentSource = source;
-			opts.onPuppeteerEnabled?.(pup);
-			// 持久化先于销毁旧浏览器:写盘失败时旧浏览器留着不 dispose,不会出现
-			// "报切换失败,但其实新浏览器已经在用、旧的已经没了"的错觉(旧根因:persist
-			// 曾排在 dispose 之后 —— 写盘失败时旧浏览器已被销毁,响应却仍是 500)。
+		// 这里没有兜底的 `catch`:构造 / 换上 / 销毁抛出来的是 bug 或环境的事(抛错只留给 bug),
+		// 交给全局出错处理 —— 原话进错误日志,客户端拿固定一句。可预期的两种失败(探测连不上、
+		// 配置写不进去)是下面显式回的 `unavailable`,原因原样写进 `message`。
+		const pup = createPuppeteer(source);
+		// 连通性探测:远程端点没有 detect-chrome 那样的存在性预验,连不上只会在
+		// 之后首次渲染才暴露;热切换则无论来源都要先验 —— 失败就不动现有渲染器。
+		if (source.chromeEndpoint || replacing) {
 			try {
-				await opts.persistChromeSource?.(source);
+				const probe = await pup.page();
+				await probe.close();
 			} catch (err) {
+				await pup.dispose();
 				const detail = err instanceof Error ? err.message : String(err);
-				log.error(`[cards] 浏览器来源持久化失败(切换已生效,旧浏览器未销毁) · ${detail}`);
-				return c.json(
-					{ ok: false, err: `切换已生效,但配置写入失败(重启会退回旧来源)：${detail}` },
-					500,
-				);
+				log.warn(`[cards] 浏览器探测失败 · ${JSON.stringify(source)}: ${detail}`);
+				return respondFailure(c, fail("unavailable", `浏览器连接失败：${detail}`));
 			}
-			if (old) {
-				// 旧浏览器关掉(本地)/断开(远程)。若旧 adapter 恰有渲染在飞,那一张会
-				// 失败一次 —— 切换是人工低频操作,可接受。
-				await old.dispose();
-			}
-			log.info(
-				`[cards] 卡片渲染已${replacing ? "热切换" : "热启用"} · ${
-					source.chromeEndpoint
-						? `chromeEndpoint=${source.chromeEndpoint}`
-						: `chromePath=${source.chromePath}`
-				}`,
-			);
-			return c.json({ ok: true, ...source });
-		} catch (err) {
-			const detail = String((err as Error)?.message ?? err);
-			log.error(`[cards] enable-rendering failed: ${detail}`);
-			return c.json({ ok: false, err: detail }, 500);
 		}
+		if (replacing) {
+			engines.swapImageRendering(pup);
+		} else {
+			const enabled = engines.enableImageRendering(pup);
+			if (!enabled) {
+				// 引擎侧已有渲染器但路由不知情(理论不该发生的接线错位):保持旧行为,
+				// 释放多余 adapter。
+				await pup.dispose();
+				return c.json(ok({ alreadyEnabled: true }));
+			}
+		}
+		const old = currentPuppeteer;
+		currentPuppeteer = pup;
+		currentSource = source;
+		opts.onPuppeteerEnabled?.(pup);
+		// 持久化先于销毁旧浏览器:写盘失败时旧浏览器留着不 dispose,不会出现
+		// "报切换失败,但其实新浏览器已经在用、旧的已经没了"的错觉(旧根因:persist
+		// 曾排在 dispose 之后 —— 写盘失败时旧浏览器已被销毁,响应却仍是 500)。
+		try {
+			await opts.persistChromeSource?.(source);
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+			log.error(`[cards] 浏览器来源持久化失败(切换已生效,旧浏览器未销毁) · ${detail}`);
+			return respondFailure(
+				c,
+				fail("unavailable", `切换已生效,但配置写入失败(重启会退回旧来源)：${detail}`),
+			);
+		}
+		if (old) {
+			// 旧浏览器关掉(本地)/断开(远程)。若旧 adapter 恰有渲染在飞,那一张会
+			// 失败一次 —— 切换是人工低频操作,可接受。
+			await old.dispose();
+		}
+		log.info(
+			`[cards] 卡片渲染已${replacing ? "热切换" : "热启用"} · ${
+				source.chromeEndpoint
+					? `chromeEndpoint=${source.chromeEndpoint}`
+					: `chromePath=${source.chromePath}`
+			}`,
+		);
+		return c.json(ok(source));
 	});
 
 	// 图片上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进皮肤的图旋钮
@@ -459,26 +475,29 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
-		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);
+		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
 			const id = await saveCardBg(opts.deps.store.bootstrap.dataDir, bytes, file.type);
-			return c.json({ ok: true, id });
+			return c.json(ok({ id }));
 		} catch (err) {
-			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
+			// 只接「上传的东西不合规矩」(格式不认、超上限,消息是给主人看的中文);磁盘写失败之类往上抛,
+			// 全局出错处理把原话记进日志、客户端拿固定一句 —— 不再把带路径的系统报错当 400 原样甩出去。
+			if (err instanceof AssetRejectedError) return respondFailure(c, fail("invalid", err.message));
+			throw err;
 		}
 	});
 
 	// 图廊列表 —— 列出已上传的所有背景图 id,供前端图廊选择。
 	app.get("/assets", async (c) => {
 		const ids = await listCardBg(opts.deps.store.bootstrap.dataDir);
-		return c.json({ ok: true, ids });
+		return c.json(ok({ ids }));
 	});
 
 	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。
 	app.get("/asset/:id", async (c) => {
 		const res = await readCardBg(opts.deps.store.bootstrap.dataDir, c.req.param("id"));
-		if (!res) return c.json({ ok: false, err: "not found" }, 404);
+		if (!res) return respondFailure(c, fail("not_found", "背景图不存在"));
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
@@ -487,23 +506,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		});
 	});
 
-	// 图廊删除 —— 仍被全局 / 某 UP 引用的图先拦截(409),避免删掉正在用的背景图。
+	// 图廊删除 —— 仍被全局 / 某 UP 引用的图先拦截(`conflict`,409),避免删掉正在用的背景图。
+	// 用家写进 `message`(不再另占一格 `referencedBy`)。删一张本来就不在的图算删好了:幂等,
+	// 面板拿到 200 照常刷新图廊。
 	app.delete("/asset/:id", async (c) => {
 		const id = c.req.param("id");
-		if (!isValidCardBgId(id)) return c.json({ ok: false, err: "无效的资产 id" }, 400);
+		if (!isValidCardBgId(id)) return respondFailure(c, fail("invalid", "无效的资产 id"));
 		const referencedBy = cardBgReferences(
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
 			id,
 		);
 		if (referencedBy.length > 0) {
-			return c.json(
-				{ ok: false, err: "该背景图仍被使用,请先在卡片设置里移除再删除", referencedBy },
-				409,
+			return respondFailure(
+				c,
+				fail("conflict", `该背景图${describeUsers(referencedBy)}，请先在卡片设置里移除再删除`),
 			);
 		}
-		const removed = await deleteCardBg(opts.deps.store.bootstrap.dataDir, id);
-		return c.json({ ok: removed });
+		await deleteCardBg(opts.deps.store.bootstrap.dataDir, id);
+		return c.json(ok());
 	});
 
 	// ---- 字体图廊 -----------------------------------------------------------
@@ -518,27 +539,29 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.post("/font-asset", uploadBodyLimit(MAX_FONT_ASSET_BYTES, "字体文件"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
-		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少字体文件" }, 400);
+		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少字体文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
 			const id = await saveFontAsset(opts.deps.store.bootstrap.dataDir, bytes, file.name);
-			return c.json({ ok: true, id, name: file.name });
+			return c.json(ok({ id, name: file.name }));
 		} catch (err) {
-			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
+			// 同背景图那条:只接「上传的东西不合规矩」,磁盘的事往上抛。
+			if (err instanceof AssetRejectedError) return respondFailure(c, fail("invalid", err.message));
+			throw err;
 		}
 	});
 
 	// 字体图廊列表 —— 带原始文件名,否则设置页上只剩一串 hex,主人认不出哪个是哪个。
 	app.get("/font-assets", async (c) => {
 		const fonts = await listFontAssets(opts.deps.store.bootstrap.dataDir);
-		return c.json({ ok: true, fonts });
+		return c.json(ok({ fonts }));
 	});
 
 	// 字体文件服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。
 	// 设置页拿它做预览:同一款字体在页面上和出图里得是同一款。
 	app.get("/font-asset/:id", async (c) => {
 		const res = await readFontAsset(opts.deps.store.bootstrap.dataDir, c.req.param("id"));
-		if (!res) return c.json({ ok: false, err: "not found" }, 404);
+		if (!res) return respondFailure(c, fail("not_found", "字体不存在"));
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
@@ -547,24 +570,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		});
 	});
 
-	// 字体删除 —— 仍被某处选着的先拦截(409)。直接删掉的话那一处立刻成了悬空引用:
+	// 字体删除 —— 仍被某处选着的先拦截(`conflict`,409)。直接删掉的话那一处立刻成了悬空引用:
 	// 出图静静回落到兜底字体,而设置页上还显示着这款字体的名字,主人查都没法查。
+	// 用家写进 `message`;删一款本来就不在的算删好了(幂等,同背景图)。
 	app.delete("/font-asset/:id", async (c) => {
 		const id = c.req.param("id");
-		if (!isValidFontAssetId(id)) return c.json({ ok: false, err: "无效的资产 id" }, 400);
+		if (!isValidFontAssetId(id)) return respondFailure(c, fail("invalid", "无效的资产 id"));
 		const referencedBy = fontAssetReferences(
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
 			id,
 		);
 		if (referencedBy.length > 0) {
-			return c.json(
-				{ ok: false, err: "该字体仍被皮肤的字体旋钮选着,请先换掉再删除", referencedBy },
-				409,
+			return respondFailure(
+				c,
+				fail("conflict", `该字体${describeUsers(referencedBy)}，请先换掉再删除`),
 			);
 		}
-		const removed = await deleteFontAsset(opts.deps.store.bootstrap.dataDir, id);
-		return c.json({ ok: removed });
+		await deleteFontAsset(opts.deps.store.bootstrap.dataDir, id);
+		return c.json(ok());
 	});
 
 	// One ImageRenderer reused across requests. Lazy — only constructed when
@@ -917,12 +941,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const body = (await c.req.json().catch(() => null)) as unknown;
 		const parsed = PreviewRequestSchema.safeParse(body);
 		if (!parsed.success) {
-			return c.json<PreviewResponse>({ ok: false, err: "invalid_request" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "预览请求体格式不对", { issues: issuesFromZod(parsed.error) }),
+			);
 		}
-		if (!currentPuppeteer) {
-			return c.json<PreviewResponse>({ ok: false, err: NO_CHROME_HINT }, 503);
-		}
+		// 没配浏览器:要主人先去配(面板据 `not_configured` 摆出「一键检测并启用 Chrome」),不是等一会儿就好。
+		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
 		const { kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
+		// 「画一张、回报结果」:画出来是 200 + `ok`,画不出来(渲染抛错)是 200 + 失败那一支 ——
+		// 请求本身没毛病,只是这一趟没成。原话进 `message`,主人要照着去查(Chrome 起不来、B 站取数失败……)。
 		try {
 			const { buffer, mime } = await renderPreviewCard(
 				kind,
@@ -931,14 +959,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				{ cardSkin, cardSkinKnobs },
 				fallback,
 			);
-			return c.json<PreviewResponse>({
-				ok: true,
-				dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
-			});
+			return c.json<PreviewResponse>(
+				ok({ dataUrl: `data:${mime};base64,${buffer.toString("base64")}` }),
+			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] preview render failed (${kind}): ${msg}`);
-			return c.json<PreviewResponse>({ ok: false, err: msg }, 500);
+			return c.json<PreviewResponse>(fail("unavailable", `卡片渲染失败：${msg}`));
 		}
 	});
 
@@ -953,15 +980,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.post("/skin-shot", async (c) => {
 		const parsed = SkinShotRequestSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return c.json<CardSkinShotResponse>(
-				{ ok: false, err: "请求体要 { skinId, kind, scene?, manifest }" },
-				400,
+			return respondFailure(
+				c,
+				fail("invalid", "请求体要 { skinId, kind, scene?, manifest }", {
+					issues: issuesFromZod(parsed.error),
+				}),
 			);
 		}
-		if (!opts.cardSkins)
-			return c.json<CardSkinShotResponse>({ ok: false, err: "皮肤库未就绪" }, 503);
+		if (!opts.cardSkins) return respondFailure(c, fail("unavailable", "皮肤库未就绪"));
 		const renderer = await getScreenshotRenderer();
-		if (!renderer) return c.json<CardSkinShotResponse>({ ok: false, err: NO_CHROME_HINT }, 503);
+		if (!renderer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
 
 		const { skinId, kind, scene, manifest } = parsed.data;
 		const out = await renderSkinPreviewHtml({
@@ -971,26 +999,29 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			scene,
 			manifest,
 		});
-		if (!out.ok) return c.json<CardSkinShotResponse>({ ok: false, errors: out.errors }, 400);
+		// 草稿没过装包门是请求本身的毛病:400,逐条意见进 `issues`。
+		if (!out.ok) return respondFailure(c, failureOfChecks("invalid", "这版草稿", out.errors));
 
+		// 同 `/preview`:截不出来是 200 + 失败那一支。
 		try {
 			const { buffer, height } = await renderer.screenshotHtml(out.html);
-			return c.json<CardSkinShotResponse>({
-				ok: true,
-				dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
-				width: out.width,
-				height,
-				// 超了出图那头会**静默**回落默认皮肤(决策 19);作者只有在这儿能提前知道。
-				// 减掉上下两道出血 —— 出图那头的闸也这么算,两把尺子不一样的话,编辑器
-				// 会为一张其实发得出去的卡报警(反过来更糟:说没事,推的时候静默回落)。
-				overHeight: height - out.bleed * 2 > CARD_SKIN_LIMITS.maxHeight,
-				warnings: out.warnings,
-				scene: out.scene,
-			});
+			return c.json<CardSkinShotResponse>(
+				ok({
+					dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
+					width: out.width,
+					height,
+					// 超了出图那头会**静默**回落默认皮肤(决策 19);作者只有在这儿能提前知道。
+					// 减掉上下两道出血 —— 出图那头的闸也这么算,两把尺子不一样的话,编辑器
+					// 会为一张其实发得出去的卡报警(反过来更糟:说没事,推的时候静默回落)。
+					overHeight: height - out.bleed * 2 > CARD_SKIN_LIMITS.maxHeight,
+					warnings: out.warnings,
+					scene: out.scene,
+				}),
+			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] skin-shot render failed (${kind}): ${msg}`);
-			return c.json<CardSkinShotResponse>({ ok: false, err: msg }, 500);
+			return c.json<CardSkinShotResponse>(fail("unavailable", `卡片截图失败：${msg}`));
 		}
 	});
 
@@ -1000,35 +1031,27 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const body = (await c.req.json().catch(() => null)) as unknown;
 		const parsed = TestPushRequestSchema.safeParse(body);
 		if (!parsed.success) {
-			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "测试推送请求体格式不对", { issues: issuesFromZod(parsed.error) }),
+			);
 		}
 		const { targetId, kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
 
-		if (!currentPuppeteer) {
-			return c.json<TestPushResponse>(
-				{ ok: false, latencyMs: 0, err: "puppeteer 未配置,无法渲染卡片" },
-				503,
-			);
-		}
+		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
 		const engines = opts.deps.runtime.engines;
-		if (!engines) {
-			return c.json<TestPushResponse>(
-				{ ok: false, latencyMs: 0, err: "engines not yet attached" },
-				503,
-			);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const target = opts.deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) {
-			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "target not found" }, 404);
-		}
+		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
 
+		// 试一次、回报结果(同 push.ts):渲染没成、投递没成都是 200 + 失败那一支,耗时只在送达那一支。
 		let card: { buffer: Buffer; mime: string };
 		try {
 			card = await renderPreviewCard(kind, style, content, { cardSkin, cardSkinKnobs }, fallback);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
-			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: `卡片渲染失败:${msg}` }, 500);
+			return c.json<TestPushResponse>(fail("unavailable", `卡片渲染失败：${msg}`));
 		}
 
 		const payload: NotificationPayload = {
@@ -1038,7 +1061,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			caption: testPushCaption(kind),
 		};
 		const result = await engines.push.sendToTarget(target.id, payload);
-		return c.json<TestPushResponse>(result);
+		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / 目标的 `testStatus`),只在这个出口翻成线上的;
+		// 落盘那条路(sink 的 `onDelivery`)不经这里,照旧写 `err`。
+		return c.json<TestPushResponse>(testResultOfDelivery(result));
 	});
 
 	return app;

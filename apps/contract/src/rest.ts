@@ -848,14 +848,16 @@ export type TestResponse = Result<{ latencyMs: number }>;
  */
 export type ConnectionTestResponse = Result<{ latencyMs: number }>;
 
-/** `POST /api/cards/test-push` 响应(还没迁到 `Result`)。 */
-export interface TestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
+/**
+ * `POST /api/cards/test-push` 响应:渲染一张卡片推给所选目标,试了一次、回报结果,**照旧回 200**,
+ * 体是 `Result<{ latencyMs }>` —— 形状同 {@link TestResponse}(送达带耗时,没送达带码和原话,不带假的耗时)。
+ * 渲染没成也是失败那一支(`unavailable`,原话进 `message`)。
+ *
+ * 请求本身不成(体不对、没配浏览器、引擎没起、没这个目标)是非 2xx 的 {@link ErrorResponse}。
+ */
+export type TestPushResponse = Result<{ latencyMs: number }>;
 
-/** `POST /api/ai/test-push` 响应 —— TestPushResponse 多一个 `reply` 供页面回显。 */
+/** `POST /api/ai/test-push` 响应(还没迁到 `Result`)—— 旧形状 `{ ok, latencyMs, err? }` 多一个 `reply` 供页面回显。 */
 export interface AiTestPushResponse {
 	ok: boolean;
 	latencyMs: number;
@@ -1031,12 +1033,14 @@ export interface AiChatReplyResponse {
 	conversation: AiConversationMetaDTO;
 }
 
-/** `POST /api/cards/preview` 响应。 */
-export interface PreviewResponse {
-	ok: boolean;
-	dataUrl?: string;
-	err?: string;
-}
+/**
+ * `POST /api/cards/preview` 响应:画一张预览卡,**照旧回 200**,体是 `Result<{ dataUrl }>` ——
+ * 画出来是 `{ ok: true, dataUrl }`,画不出来(渲染抛错)是 `{ ok: false, code, message }`。
+ *
+ * 请求本身不成是非 2xx 的 {@link ErrorResponse}:体不对 `invalid`,**没配浏览器 `not_configured`**
+ * (面板据此摆出「一键检测并启用 Chrome」),引擎没起 `unavailable`。
+ */
+export type PreviewResponse = Result<{ dataUrl: string }>;
 
 /** 卡片渲染的浏览器来源(二选一;都在时 endpoint 生效)。 */
 export interface ChromeSourceDTO {
@@ -1054,13 +1058,15 @@ export interface RenderSourceResponse {
 	persistable: boolean;
 }
 
-/** `POST /api/cards/enable-rendering` 响应。 */
+/**
+ * `POST /api/cards/enable-rendering` 响应(成功那一支)。启用不成(体不对、引擎没起、浏览器连不上、
+ * 配置写不进去)一律是非 2xx 的 {@link ErrorResponse},这里不再有 `ok: false`。
+ */
 export interface EnableRenderingResponse {
-	ok: boolean;
+	ok: true;
 	alreadyEnabled?: boolean;
 	chromePath?: string;
 	chromeEndpoint?: string;
-	err?: string;
 }
 
 // ---- /api/qq ----------------------------------------------------------------

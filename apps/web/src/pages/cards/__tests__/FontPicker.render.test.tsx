@@ -4,8 +4,8 @@
  * 字体选择器接线 —— 纯变换另有单测(`font-ops.test.ts`),这里只管界面接对没有。
  *
  * 盯的是三件在界面上才现形的事:选中态落在哪一档、切档时 `fontAsset` 有没有真被清掉
- * (留着的话选的是内置、出图却还是上传那款)、以及删掉正被别处用着的字体时那句 409
- * 提示有没有露出来。
+ * (留着的话选的是内置、出图却还是上传那款)、以及删掉正被别处用着的字体时服务端那句
+ * `conflict` 的 `message`(用家已经点名在里头)有没有露出来。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,13 +16,16 @@ import type { FontChoice } from "../font-ops";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), upload: vi.fn(), delete: vi.fn() },
+	// 与真 `ApiError` 一样:`message` 是服务端的原话,`code` 从错误体里读出来。
 	ApiError: class extends Error {
 		status: number;
 		body: unknown;
-		constructor(status: number, body: unknown) {
-			super("api error");
+		code?: string;
+		constructor(status: number, body: unknown, message = "api error") {
+			super(message);
 			this.status = status;
 			this.body = body;
+			this.code = (body as { code?: string } | undefined)?.code;
 		}
 	},
 }));
@@ -102,15 +105,20 @@ describe("切档", () => {
 });
 
 describe("删除", () => {
-	it("被别处用着 → 把服务端说的「谁在用」原样告诉主人", async () => {
+	it("被别处用着(conflict)→ 把服务端 message 里「谁在用」原样告诉主人,不再自己拼一句", async () => {
+		const message = "该字体还有 2 处在用：全局默认、UP 12345，请先换掉再删除";
 		vi.mocked(api.delete).mockRejectedValue(
-			new (ApiError as unknown as new (s: number, b: unknown) => Error)(409, {
-				referencedBy: ["全局默认", "UP 12345"],
-			}),
+			new (ApiError as unknown as new (s: number, b: unknown, m: string) => Error)(
+				409,
+				{ code: "conflict", message },
+				message,
+			),
 		);
 		mount({ font: "" }, [{ id: UPLOADED, name: "在用的.ttf" }]);
 		fireEvent.click(await screen.findByLabelText("删除 在用的.ttf"));
-		expect(await screen.findByText(/全局默认、UP 12345/)).toBeTruthy();
+		expect(await screen.findByText(message)).toBeTruthy();
+		// 从前是面板读 `body.referencedBy` 自己拼「仍被使用,无法删除：…」。
+		expect(screen.queryByText(/仍被使用,无法删除/)).toBeNull();
 	});
 
 	it("删掉的正是当前选着的那款 → 当场落回默认,不留悬空 id", async () => {

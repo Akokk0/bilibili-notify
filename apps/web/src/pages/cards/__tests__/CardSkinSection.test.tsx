@@ -18,13 +18,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CardSkinSection } from "../CardSkinSection";
 
 const { FakeApiError } = vi.hoisted(() => {
+	// 与真 `ApiError` 一样:`code` / `issues` 从错误体里读出来。
 	class FakeApiError extends Error {
+		readonly code?: string;
+		readonly issues?: Array<{ message: string }>;
 		constructor(
 			readonly status: number,
 			readonly body: unknown,
 			message: string,
 		) {
 			super(message);
+			const b = body as { code?: string; issues?: Array<{ message: string }> } | undefined;
+			this.code = b?.code;
+			this.issues = b?.issues;
 		}
 	}
 	return { FakeApiError };
@@ -183,13 +189,10 @@ describe("卡片皮肤库", () => {
 		expect(within(await rowOf("极光")).getByRole("button", { name: "删除" })).toBeTruthy();
 	});
 
-	it("删除撞 409 → 把服务端说的「谁在用」原样显示出来", async () => {
+	it("删除撞 conflict → 把服务端 message 里点名的「谁在用」原样显示出来", async () => {
+		const message = "这套皮肤还在用（全局默认，小白 单独指定了它），换掉之后再删";
 		vi.mocked(api.delete).mockRejectedValue(
-			new FakeApiError(
-				409,
-				{ ok: false, usedBy: { global: true, subscriptions: ["小白"] } },
-				"这套皮肤还在用（全局默认，小白 单独指定了它），换掉之后再删",
-			),
+			new FakeApiError(409, { code: "conflict", message }, message),
 		);
 
 		renderSection();
@@ -200,6 +203,29 @@ describe("卡片皮肤库", () => {
 		fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
 
 		await screen.findByText(/这套皮肤还在用（全局默认，小白 单独指定了它），换掉之后再删/);
+	});
+
+	it("上传的包没过装包门 → 概括与逐条原因都显示出来(只读 message 会把线索丢了)", async () => {
+		vi.mocked(api.upload).mockRejectedValue(
+			new FakeApiError(
+				400,
+				{
+					code: "invalid",
+					message: "这个皮肤包没通过检查（共 2 条）",
+					issues: [{ message: "name 缺失" }, { message: "cards 不是对象" }],
+				},
+				"这个皮肤包没通过检查（共 2 条）",
+			),
+		);
+
+		const { container } = renderSection();
+		await screen.findByText("极光");
+		const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+		fireEvent.change(input, {
+			target: { files: [new File([new Uint8Array([1])], "skin.zip", { type: "application/zip" })] },
+		});
+
+		await screen.findByText(/这个皮肤包没通过检查（共 2 条）：name 缺失；cards 不是对象/);
 	});
 
 	it("上传成功 → 列表重取,并把清洗提示列出来", async () => {

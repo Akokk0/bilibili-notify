@@ -90,7 +90,7 @@ export function useDeleteCardSkinAsset(id: string) {
 
 /**
  * **有没有 Chrome**(`GET /api/cards/render-source`)。「最终效果」得靠它 —— 没有就把钮
- * 禁掉并说清楚该去配什么,而不是让主人按下去吃一个 503。
+ * 禁掉并说清楚该去配什么,而不是让主人按下去吃一个 `not_configured`。
  *
  * 与系统页「卡片渲染浏览器」那一区问的是同一个端点,但那边是直接 `api.get`、不走
  * react-query,所以两处**没有**共用缓存。这里不去追它:配 Chrome 的入口在另一页,

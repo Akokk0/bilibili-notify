@@ -577,3 +577,72 @@ describe("并发 addAsset", () => {
 		expect(store.get(id)?.fonts?.[0]?.family).toBe("Song");
 	});
 });
+
+/**
+ * 拒收**自带码**(ADR-0026):路由靠 `CardSkinPackageError.code` 回给面板,不再嗅文案 ——
+ * 从前「还被用着」是 409、「名字不合法」是 400,分档全凭 `errors` 里有没有那四个字。
+ * 这里钉每一处拒收各是哪个码,以及 `toFailure()` 怎么把一串意见摆给面板。
+ */
+describe("CardSkinPackageError:拒收各带各的码", () => {
+	const TTF = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00]);
+	const codeOf = async (run: () => Promise<unknown>): Promise<unknown> => {
+		try {
+			await run();
+		} catch (e) {
+			expect(e).toBeInstanceOf(CardSkinPackageError);
+			return (e as CardSkinPackageError).code;
+		}
+		return "没有拒收";
+	};
+
+	it("内容不合规矩 → invalid(装包门、资产名、体积、不认的类型)", async () => {
+		const { id } = await store.install(pack());
+		expect(await codeOf(() => store.install(strToU8("这不是 zip")))).toBe("invalid");
+		expect(await codeOf(() => store.save(id, { schemaVersion: 99 }))).toBe("invalid");
+		expect(await codeOf(() => store.addAsset(id, "evil.svg", TTF))).toBe("invalid");
+		expect(await codeOf(() => store.removeAsset(id, "nope.exe"))).toBe("invalid");
+	});
+
+	it("要动的皮肤不存在 → not_found(传资产 / 删资产:路由前面的 has() 与店里之间被删了)", async () => {
+		expect(await codeOf(() => store.addAsset("nope-1234", "a.ttf", TTF))).toBe("not_found");
+		expect(await codeOf(() => store.removeAsset("nope-1234", "assets/a.ttf"))).toBe("not_found");
+	});
+
+	it("与当前状态冲突 → conflict(内置只读、撞名、份数满了、清单还引用着)", async () => {
+		expect(await codeOf(() => store.addAsset(DEFAULT_CARD_SKIN_ID, "a.ttf", TTF))).toBe("conflict");
+		expect(await codeOf(() => store.removeAsset(DEFAULT_CARD_SKIN_ID, "assets/a.ttf"))).toBe(
+			"conflict",
+		);
+
+		const { id } = await store.install(pack());
+		await store.addAsset(id, "song.ttf", TTF);
+		expect(await codeOf(() => store.addAsset(id, "song.ttf", TTF))).toBe("conflict");
+
+		await store.save(id, {
+			...manifest(),
+			fonts: [{ family: "Song", asset: "asset:assets/song.ttf" }],
+		});
+		expect(await codeOf(() => store.removeAsset(id, "assets/song.ttf"))).toBe("conflict");
+
+		const full = await store.install(pack());
+		for (let i = 0; i < CARD_SKIN_LIMITS.maxAssets; i++) {
+			await store.addAsset(full.id, `f${i}.ttf`, TTF);
+		}
+		expect(await codeOf(() => store.addAsset(full.id, "more.ttf", TTF))).toBe("conflict");
+	});
+
+	it("toFailure():一句话就是 message,不带 issues", () => {
+		const f = new CardSkinPackageError(["卡片皮肤不存在"], "not_found").toFailure();
+		expect(f).toEqual({ ok: false, code: "not_found", message: "卡片皮肤不存在" });
+	});
+
+	it("toFailure():一串意见 → message 概括(带 subject 与条数),逐条进 issues,码不变", () => {
+		const f = new CardSkinPackageError(["name 缺失", "cards 不是对象"]).toFailure("这个皮肤包");
+		expect(f).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "这个皮肤包没通过检查（共 2 条）",
+			issues: [{ message: "name 缺失" }, { message: "cards 不是对象" }],
+		});
+	});
+});

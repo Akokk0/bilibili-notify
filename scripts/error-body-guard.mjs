@@ -38,12 +38,8 @@ const ISSUE_KEYS = new Set(["path", "message", "op"]);
 export const LEGACY_UNMIGRATED_FILES = [
 	"apps/server/src/routes/ai.ts",
 	"apps/server/src/routes/backup.ts",
-	"apps/server/src/routes/card-skins.ts",
-	"apps/server/src/routes/cards.ts",
 	"apps/server/src/routes/extension-settings.ts",
 	"apps/server/src/routes/extensions.ts",
-	"apps/server/src/routes/maid-skills.ts",
-	"apps/server/src/routes/skins.ts",
 	"apps/server/src/routes/stats.ts",
 ];
 

@@ -5,9 +5,12 @@
  *
  * ① **`:id` 进不了磁盘路径**:每条带 `:id` 的路先过 `CardSkinIdSchema`,大小写 / 点 / 斜杠
  *    一律 400 —— dashboard 皮肤那次审计(2026-08-19)`DELETE /%2e%2e%2f…` 删掉过整个目录。
- * ② **内置那份改不了删不了**(决策 5),而且报的是 400 不是 404:它明明列得出来。
- * ③ **还有人在用就不许删**(409,并说清是谁)。删掉正在用的那套,出图会静默回落默认皮肤,
- *    主人看到的只是「皮肤突然没了」。
+ * ② **内置那份改不了删不了**(决策 5),而且报的是 `conflict`(409)不是 `not_found`:它明明列得出来。
+ * ③ **还有人在用就不许删**(`conflict`,并在 `message` 里说清是谁)。删掉正在用的那套,出图会静默
+ *    回落默认皮肤,主人看到的只是「皮肤突然没了」。
+ *
+ * 失败只有一种形状(ADR-0026):`{ code, message, issues? }`。一句话的原因只有 `message`;一串装包门
+ * 意见 `message` 一句概括、逐条进 `issues`。码由店里的 `CardSkinPackageError` 自带,路由不嗅文案。
  * ④ **启用指针写的是配置**,不是店里的某个文件 —— `PUT /active` 落到 `patchGlobals`。
  *
  * 全程在 `mkdtemp` 的临时目录里跑,一个字节都不碰真实 dataDir。
@@ -157,10 +160,14 @@ describe("GET /:id —— 清单", () => {
 		expect(body.assets).toEqual([]);
 	});
 
-	it("没这套 → 404;id 形状不对 → 400(两种失败分得开)", async () => {
-		expect((await app.request("/nope-1234")).status).toBe(404);
+	it("没这套 → not_found(404);id 形状不对 → invalid(400)(两种失败分得开)", async () => {
+		const missing = await app.request("/nope-1234");
+		expect(missing.status).toBe(404);
+		expect(await missing.json()).toEqual({ code: "not_found", message: "卡片皮肤不存在" });
 		// 大写字母不在 `CardSkinIdSchema` 的字符集里 —— 门口这一道拦下,不到 store。
-		expect((await app.request("/NOPE")).status).toBe(400);
+		const badId = await app.request("/NOPE");
+		expect(badId.status).toBe(400);
+		expect(((await badId.json()) as any).code).toBe("invalid");
 	});
 });
 
@@ -176,7 +183,7 @@ describe("POST / —— 装包", () => {
 		expect(store.get(body.id)?.name).toBe("测试卡片皮肤");
 	});
 
-	it("形状不对的包 → 400,并把逐条原因带出来", async () => {
+	it("形状不对的包 → invalid(400),message 概括、逐条原因进 issues", async () => {
 		const form = new FormData();
 		form.append(
 			"file",
@@ -185,13 +192,30 @@ describe("POST / —— 装包", () => {
 		const res = await app.request("/", { method: "POST", body: form });
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as any;
-		expect(body.ok).toBe(false);
-		expect(body.errors.length).toBeGreaterThan(0);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("这个皮肤包没通过检查");
+		expect(body.issues.length).toBeGreaterThan(1);
+		expect(body.issues.every((i: any) => typeof i.message === "string")).toBe(true);
+		// 旧壳(`ok` / `errors`)不再有。
+		expect(body).not.toHaveProperty("ok");
+		expect(body).not.toHaveProperty("errors");
 	});
 
-	it("没带文件 → 400", async () => {
+	it("不是 zip 的字节 → invalid(400),原因只有一句就只在 message 里", async () => {
+		const form = new FormData();
+		form.append("file", new File([strToU8("这不是 zip")], "skin.zip"));
+		const res = await app.request("/", { method: "POST", body: form });
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.message.length).toBeGreaterThan(0);
+		expect(body).not.toHaveProperty("issues");
+	});
+
+	it("没带文件 → invalid(400)", async () => {
 		const res = await app.request("/", { method: "POST", body: new FormData() });
 		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
 	});
 });
 
@@ -325,21 +349,28 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 		expect(json.warnings.length).toBeGreaterThan(0);
 	});
 
-	it("装包拒了 → 400 + 原因逐条列出来,不是一张空白卡", async () => {
+	it("装包拒了 → invalid(400) + 原因逐条进 issues,不是一张空白卡", async () => {
 		const { res, json } = await preview({ kind: "live", manifest: { schemaVersion: 1 } });
 		expect(res.status).toBe(400);
-		expect(Array.isArray(json.errors)).toBe(true);
-		expect(json.errors.length).toBeGreaterThan(0);
+		expect(json.code).toBe("invalid");
+		expect(json.message).toContain("没通过检查");
+		expect(Array.isArray(json.issues)).toBe(true);
+		expect(json.issues.length).toBeGreaterThan(0);
+		expect(json).not.toHaveProperty("errors");
 	});
 
-	it("卡种不认识 / 请求体不成形 → 400", async () => {
-		expect((await preview({ kind: "nope", manifest: draft() })).res.status).toBe(400);
+	it("卡种不认识 / 请求体不成形 → invalid(400),zod 的逐格原因进 issues", async () => {
+		const badKind = await preview({ kind: "nope", manifest: draft() });
+		expect(badKind.res.status).toBe(400);
+		expect(badKind.json.code).toBe("invalid");
+		expect(badKind.json.issues.length).toBeGreaterThan(0);
 		expect((await preview({ manifest: draft() })).res.status).toBe(400);
 	});
 
-	it("皮肤不存在 → 404", async () => {
-		const { res } = await preview({ kind: "live", manifest: draft() }, "nope-1234");
+	it("皮肤不存在 → not_found(404)", async () => {
+		const { res, json } = await preview({ kind: "live", manifest: draft() }, "nope-1234");
 		expect(res.status).toBe(404);
+		expect(json.code).toBe("not_found");
 	});
 });
 
@@ -375,23 +406,27 @@ describe("DELETE /:id —— 删一套", () => {
 		expect(store.has(id)).toBe(false);
 	});
 
-	it("内置那份删不掉 —— 400 而不是 404(它明明列得出来)", async () => {
+	it("内置那份删不掉 —— conflict(409)而不是 404(它明明列得出来)", async () => {
 		const res = await app.request(`/${DEFAULT_CARD_SKIN_ID}`, { method: "DELETE" });
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
 		expect(store.has(DEFAULT_CARD_SKIN_ID)).toBe(true);
 	});
 
-	it("全局正用着它 → 409,并说清是全局在用", async () => {
+	it("全局正用着它 → conflict(409),并说清是全局在用", async () => {
 		const id = await install();
 		active = id;
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
-		expect(body.usedBy).toEqual({ global: true, subscriptions: [] });
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("全局默认");
+		// 用家点名并进了 message,不再另占一格 `usedBy`。
+		expect(body).not.toHaveProperty("usedBy");
 		expect(store.has(id)).toBe(true);
 	});
 
-	it("某个 UP 单独指着它 → 409,并把这个 UP 的名字列出来", async () => {
+	it("某个 UP 单独指着它 → conflict(409),并把这个 UP 的名字列出来", async () => {
 		const id = await install();
 		subs = [
 			{ uid: "111", name: "阿夸" },
@@ -400,8 +435,9 @@ describe("DELETE /:id —— 删一套", () => {
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
-		expect(body.usedBy).toEqual({ global: false, subscriptions: ["小白"] });
-		expect(body.err).toContain("小白");
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("小白");
+		expect(body.message).not.toContain("阿夸");
 		expect(store.has(id)).toBe(true);
 	});
 
@@ -409,7 +445,15 @@ describe("DELETE /:id —— 删一套", () => {
 		const id = await install();
 		subs = [{ uid: "333", cardSkin: id }];
 		const body = (await (await app.request(`/${id}`, { method: "DELETE" })).json()) as any;
-		expect(body.usedBy.subscriptions).toEqual(["333"]);
+		expect(body.message).toContain("333");
+	});
+
+	it("用家多了只点前三个名字,后面报个数 —— 一条错误不该变成一面墙", async () => {
+		const id = await install();
+		subs = ["11", "22", "33", "44", "55"].map((uid) => ({ uid, cardSkin: id }));
+		const body = (await (await app.request(`/${id}`, { method: "DELETE" })).json()) as any;
+		expect(body.message).toContain("11、22、33 等 5 处");
+		expect(body.message).not.toContain("44");
 	});
 
 	it("拓展订阅单独指着它也算在用 —— 没起名字就用它的外部 id 指认(ADR-0019 决策 47)", async () => {
@@ -421,12 +465,14 @@ describe("DELETE /:id —— 删一套", () => {
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
-		expect(body.usedBy.subscriptions).toEqual(["MS4wLjAB-sec", "抖音那位"]);
+		expect(body.message).toContain("MS4wLjAB-sec、抖音那位");
 		expect(store.has(id)).toBe(true);
 	});
 
-	it("没这套 → 404", async () => {
-		expect((await app.request("/nope-1234", { method: "DELETE" })).status).toBe(404);
+	it("没这套 → not_found(404)", async () => {
+		const res = await app.request("/nope-1234", { method: "DELETE" });
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).code).toBe("not_found");
 	});
 });
 
@@ -463,16 +509,17 @@ describe("PUT /:id —— 编辑器保存", () => {
 		expect(store.get(id)?.name).toBe("改过名");
 	});
 
-	it("内置那份存不了 → 400", async () => {
+	it("内置那份存不了 → conflict(409)", async () => {
 		const res = await app.request(`/${DEFAULT_CARD_SKIN_ID}`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(manifest()),
 		});
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("conflict");
 	});
 
-	it("形状不对 → 400 并逐条带原因", async () => {
+	it("形状不对 → invalid(400) 并逐条带原因(issues)", async () => {
 		const id = await install();
 		const res = await app.request(`/${id}`, {
 			method: "PUT",
@@ -480,9 +527,22 @@ describe("PUT /:id —— 编辑器保存", () => {
 			body: JSON.stringify({ schemaVersion: 1 }),
 		});
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		expect(body.issues.length).toBeGreaterThan(0);
 		// 没存进去 —— 盘上还是装包时那份。
 		expect(store.get(id)?.name).toBe("测试卡片皮肤");
+	});
+
+	it("请求体不是合法 JSON → invalid(400)", async () => {
+		const id = await install();
+		const res = await app.request(`/${id}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: "不是 JSON",
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "请求体不是合法的 JSON" });
 	});
 });
 
@@ -573,7 +633,10 @@ describe("资产:POST /:id/assets · GET /:id/assets · DELETE /:id/assets/:name
 		const fd = new FormData();
 		fd.append("file", new File([bytes], filename));
 		const res = await app.request(`/${id}/assets`, { method: "POST", body: fd });
-		return { res, json: (await res.json()) as { name?: string; errors?: string[] } };
+		return {
+			res,
+			json: (await res.json()) as { name?: string; code?: string; message?: string },
+		};
 	}
 
 	it("传一份字体 → 201,回的是清单里该写的那个名字", async () => {
@@ -586,17 +649,34 @@ describe("资产:POST /:id/assets · GET /:id/assets · DELETE /:id/assets/:name
 		expect(((await listed.json()) as { assets: string[] }).assets).toContain("assets/song.ttf");
 	});
 
-	it("店里拒了 → 400 + 原因逐条(不是一句「上传失败」)", async () => {
+	it("店里拒了 → invalid(400) + 说出为什么(不是一句「上传失败」)", async () => {
 		const id = await install();
 		const { res, json } = await upload(id, "evil.svg");
 		expect(res.status).toBe(400);
-		expect(json.errors?.length).toBeGreaterThan(0);
+		expect(json.code).toBe("invalid");
+		expect(json.message).toContain("evil.svg");
 	});
 
-	it("缺文件 → 400", async () => {
+	it("同名再传 → conflict(409),不是 400:请求没错,是状态不许", async () => {
+		const id = await install();
+		await upload(id, "song.ttf");
+		const { res, json } = await upload(id, "song.ttf");
+		expect(res.status).toBe(409);
+		expect(json.code).toBe("conflict");
+		expect(json.message).toContain("song.ttf");
+	});
+
+	it("内置默认皮肤加不了资产 → conflict(409)", async () => {
+		const { res, json } = await upload(DEFAULT_CARD_SKIN_ID, "song.ttf");
+		expect(res.status).toBe(409);
+		expect(json.code).toBe("conflict");
+	});
+
+	it("缺文件 → invalid(400)", async () => {
 		const id = await install();
 		const res = await app.request(`/${id}/assets`, { method: "POST", body: new FormData() });
 		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
 	});
 
 	it("删一份 → 真的没了", async () => {
@@ -608,7 +688,14 @@ describe("资产:POST /:id/assets · GET /:id/assets · DELETE /:id/assets/:name
 		expect(((await listed.json()) as { assets: string[] }).assets).toEqual([]);
 	});
 
-	it("清单还引用着 → 409,并说出是谁在引用", async () => {
+	it("资产名不合法 → invalid(400);还被用着才是 conflict(409)(码由店里带,路由不嗅「还被用着」)", async () => {
+		const id = await install();
+		const res = await app.request(`/${id}/assets/nope.exe`, { method: "DELETE" });
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
+	});
+
+	it("清单还引用着 → conflict(409),并说出是谁在引用", async () => {
 		const id = await install();
 		await upload(id, "song.ttf");
 		await app.request(`/${id}`, {
@@ -621,7 +708,9 @@ describe("资产:POST /:id/assets · GET /:id/assets · DELETE /:id/assets/:name
 		});
 		const res = await app.request(`/${id}/assets/assets%2Fsong.ttf`, { method: "DELETE" });
 		expect(res.status).toBe(409);
-		expect(JSON.stringify(await res.json())).toContain("Song");
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("Song");
 	});
 
 	it("皮肤 id 不合法 → 400;形状对但没这套 → 404(两者要分得开)", async () => {
