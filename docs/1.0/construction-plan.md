@@ -58,7 +58,7 @@
 | 片 | 做什么 | 状态 |
 | --- | --- | --- |
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
-| ② | 守卫 3 先红；29 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | |
+| ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | |
 | ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | |
 | ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走 | |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |
@@ -76,11 +76,11 @@
 
 ② 写盘：
 
-- 29 个非测试文件、151 处直接写盘，全部迁上原语。
+- 守卫 3 开张时点名 25 个非测试文件（按它的判据，mkdir / rm / unlink 不算写盘；盘点时的「29 个文件、151 处」连这几样一起数），全部迁上原语，待迁名单清空。
 - 不是原子写的重要文件：cookie、AI 会话、card-bg 游标、字体清单（另有读改写不加锁）、资产字节、repush 草稿、stats since、两个皮肤库直写在用目录的资产。
 - 固定名 `.tmp` 并发互踩：key-manager、两个皮肤库、maid-skills。
 - `update/durable-json.ts` 并进原语时注意：`boot.ts` 直接 import `select-version-for-boot`（它用 durable-json），所以这次改动会打进新载荷与新镜像里的选版代码；`boot-state.json` / `manifest-freshness.json` 在宿主根、格式冻结，改的只能是写法，不许动文件格式与位置。
-- `bn.config.yaml` 两处写（`config/loader.ts` 的 `writeFileAtomic`，写首启动的种文件与迁移后的用户文件；`config/persist.ts`）也走原子写底层。守卫 3 的白名单只放 `config/persist.ts`，它可以改用 storage 的 `atomicWriteFile`（原子写字节，不碰 YAML 注释）；`loader.ts` 那处写进 ② 的迁移名单。
+- `bn.config.yaml` 两处写（`config/loader.ts` 的 `writeFileAtomic`，写首启动的种文件与迁移后的用户文件；`config/persist.ts`）也走原子写底层：两处都改用 storage 的 `atomicWriteFile`（原子写字节，不碰 YAML 注释），守卫 3 不留白名单。
 
 ③ 关停：
 
