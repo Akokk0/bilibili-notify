@@ -1,6 +1,6 @@
-# 类型名的后缀
+# 命名
 
-**一个概念只用一个词。** 起新类型名、改名之前先对这张表；表里没有的概念，先加一行再用，不许随手造新后缀。我们写的代码都管：核心、内置集成（`bilibili/`、内置平台适配器）、面板、官方拓展；第三方写的管不到。这是活规范，可以直接改，但加行、改行要主人拍板；为什么定这套见 [ADR-0023](../../adr/0023-neutral-naming.md) 决策 15。
+**一个概念只用一个词。** 起名、改名之前先对下面两张表：类型名的后缀表、词表；表里没有的概念，先加一行再用，不许随手造新词。我们写的代码都管：核心、内置集成（`bilibili/`、内置平台适配器）、面板、官方拓展；第三方写的管不到。这是活规范，可以直接改，但加行、改行要主人拍板；为什么定这套见 [ADR-0023](../../adr/0023-neutral-naming.md) 决策 15。
 
 选词时先数代码里各候选的现有用法（`git grep -h -o -P "\b[A-Z][A-Za-z]*<后缀>\b"`），看它实际装的是什么，别凭一两个新名定。
 
@@ -48,10 +48,32 @@
 - **核心里的 `Source` 只指订阅来源**：读数据的口子叫 `…Reader` 或 `…Lookups`。「市场源」是主人在界面上看得到的叫法，算例外。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。
 - **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。
+- **外部接口的回应**：外壳叫 `…Envelope<T>`（B 站的 `{ code, message, data }` 叫 `BiliEnvelope<T>`）；某个接口回的内容叫 `…Response`（`UserCardResponse`）；回应里嵌套的结构用名词、不加后缀（`DynamicItem`、`ModuleAuthor`）。`Data`、`Info` 在这里也不用；`Result` 只指我们自己操作的结果。
+- **外部协议的原字段名只留在回应上**：`mid`、`face`、`uname` 这类只准出现在描述那份数据的类型上，以及直接读它的代码里；我们自己定义的形状（事件、状态、函数参数、返回值）用下面词表里的词。
+
+## 词表
+
+平台特有的概念，在它自己的集成里用平台的叫法，出口翻成中立词；各平台都有的通用概念，全仓只用一个词。「不再用」指我们自己起的名字，外部协议的原字段名照上面那条留在回应上。
+
+| 概念 | 用这个 | 不再用 |
+| --- | --- | --- |
+| 平台前缀 | 集成目录里默认不加；和中立名字撞了才加，B 站写 `Bili`（`BiliEnvelope`、`BiliLoginState`） | `Bilibili…`、`BA…`、`BL…` |
+| 创作者 | 核心里 `creator`；B 站里 `up`（`upUid`、`upName`，开播的也是它） | `master`（只指主人）、`anchor`、`author`（只指皮肤或拓展的作者） |
+| 弹幕 | `danmaku` | `danmu`、`dm` |
+| 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
+| 直播间 id | `roomId` | `roomid` |
+| 名字 | `name` | `uname`、`username`、`mastername` |
+| 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef` | `face`、`userface`、当网址用的 `avatar` |
+| 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |
+| 会员档 | 核心里 `tier`；B 站里 `guard`（大航海） | — |
+| 粉丝团 | 核心里 `fanClub`；B 站里 `medal`（粉丝牌） | `badge` |
+| 作品 | 核心里 `post`；B 站里 `dynamic`（动态） | `work` |
+| 走网络取数 | `fetch…`；`get…` 只留给不走网络的读取（`ctx.state.get`） | 走网络却叫 `get…` 的 |
+| 单个 / 一批 | `fetchUserCard` / `fetchUserCards` | `…Batch`、单复数对不上 |
 
 ## 不管的
 
 - 第三方库自带的名字：`ZodDef` 等。
-- 外部协议定死的字段名：B 站接口 JSON 里的 `mid`、`face`，OneBot 帧里的字段。它们是线上的数据，改不了；我们给这些数据写的类型名照表起。
+- 外部协议定死的字段名：B 站接口 JSON 里的 `mid`、`face`，OneBot 帧里的字段。它们是线上的数据，改不了；我们给这些数据写的类型名照表起，原字段名只准留在哪见上面「表外的几条规矩」。
 - 第三方写的拓展。
 - 面板 zustand 的 `useXxxStore`，这是 React 的惯用写法。

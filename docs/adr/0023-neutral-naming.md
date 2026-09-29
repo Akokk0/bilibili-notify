@@ -21,6 +21,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 拓展契约的 `SubscriptionAuthor` 改成 `SubscriptionCreator`。
 
    被否的备选：把 `up` 拆成三个名字。主人要的是一个词。
+   🔗 **2026-09-29**：这一条管核心。`bilibili/` 里 B 站特有的概念用 B 站的叫法，UP 主叫 `up`（`upUid`、`upName`），出口翻成 `creator`；`master` 仍只指主人。词表见 docs/agents/conventions/naming.md。
 2. **推送侧与订阅源的命名（Q43、Q41）**：
    - 推送侧：`registerPushOutlet` / `PushOutletHandle` / `PushOutletDef`，`PushOutletRegistry`，目录 `outlets/`；`PushExtensionDef.adapter` 改为 `outlet`；
    - `NotificationSink` 改为 `TargetDispatcher`，免得它和 PushOutlet 都叫「出口」；
