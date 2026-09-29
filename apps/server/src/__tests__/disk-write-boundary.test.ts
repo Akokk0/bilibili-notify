@@ -37,13 +37,7 @@ const FS_MODULE = String.raw`["'](?:node:)?fs(?:\/promises)?["']`;
  * 切片 ② 迁移中还没迁完的文件。每迁完一个就删掉那一行;名单里的文件已经不再直接写盘时这里也红,
  * 逼着把行删掉。切片 ② 收尾时名单为空。
  */
-const PENDING_MIGRATION = new Set<string>([
-	"card-skins/store.ts",
-	"runtime/card-assets.ts",
-	"runtime/chat-assets.ts",
-	"runtime/font-assets.ts",
-	"skins/store.ts",
-]);
+const PENDING_MIGRATION = new Set<string>(["card-skins/store.ts", "skins/store.ts"]);
 
 /** 去掉注释:守卫只认代码,注释里写 `fs.writeFile(` 不算。 */
 function stripComments(source: string): string {

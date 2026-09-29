@@ -29,3 +29,14 @@ export const EXT_TO_MIME: Record<string, string> = {
 	webp: "image/webp",
 	gif: "image/gif",
 };
+
+/**
+ * 站内上传**收**的后缀 → content-type,喂给资产存储(`createAssetStore`)的 `formats`。
+ *
+ * 从上面两张表派生,不另摆一份:上传收哪些 mime 由 `MIME_TO_EXT` 定,回读发什么 content-type
+ * 由 `EXT_TO_MIME` 定。这里取「回读表里、mime 也在上传表里」的后缀 —— png / jpg / jpeg / webp。
+ * `gif` 只在回读侧(皮肤包能带、站内上传不收),被这一道筛掉;SVG 两边都没有。
+ */
+export const UPLOAD_EXT_TO_MIME: Readonly<Record<string, string>> = Object.fromEntries(
+	Object.entries(EXT_TO_MIME).filter(([, mime]) => Object.hasOwn(MIME_TO_EXT, mime)),
+);

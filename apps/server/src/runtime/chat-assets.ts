@@ -11,12 +11,14 @@
  *
  * 安全:**不**用 serveStatic 暴露 dataDir(里面有 `bn.config.yaml`,带 apiKey 与
  * cookie)。id 从 HTTP 请求原样进来,{@link isValidChatImageId} 是唯一那道闸。
+ *
+ * 存取本身(取名、认后缀、落盘、读回、删除)由 `createAssetStore` 管;这里只留聊天附件
+ * 自己的规矩 —— 5MB 上限、每条消息的张数、用户可见的拒收消息,以及转 data URL 那一步。
  */
 
-import { randomBytes } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EXT_TO_MIME, MIME_TO_EXT } from "./image-mime.js";
+import { type AssetStore, createAssetStore, isValidAssetId } from "../assets/asset-store.js";
+import { MIME_TO_EXT, UPLOAD_EXT_TO_MIME } from "./image-mime.js";
 
 /** 单张附件上限 5MB —— 与卡片背景图同口径。 */
 export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -24,21 +26,29 @@ export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 /** 一条消息最多带几张图。与动态点评那条路的上限一致(`extractDynamicImages`)。 */
 export const MAX_CHAT_IMAGES_PER_MESSAGE = 4;
 
-/**
- * 资产 id 严格形如 `<32 位小写 hex>.<png|jpg|jpeg|webp>`。
- *
- * SVG 刻意不在白名单里 —— 它能带脚本,而这些图会在 dashboard 里直接渲染。
- */
-const ID_RE = /^[a-f0-9]{32}\.(png|jpe?g|webp)$/;
-
 /** 聊天附件目录 `<dataDir>/assets/chat`。 */
 export function chatImageDir(dataDir: string): string {
 	return join(dataDir, "assets", "chat");
 }
 
+/**
+ * 存储的规矩。资产 id 严格形如 `<32 位小写 hex>.<png|jpg|jpeg|webp>`(格式表见
+ * `UPLOAD_EXT_TO_MIME`)。
+ *
+ * SVG 刻意不在白名单里 —— 它能带脚本,而这些图会在 dashboard 里直接渲染。
+ */
+const RULES = {
+	formats: UPLOAD_EXT_TO_MIME,
+	maxBytes: MAX_CHAT_IMAGE_BYTES,
+	naming: { kind: "random" },
+} as const;
+
+const storeOf = (dataDir: string): AssetStore =>
+	createAssetStore({ ...RULES, dir: chatImageDir(dataDir) });
+
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidChatImageId(id: string): boolean {
-	return ID_RE.test(id);
+	return isValidAssetId(RULES, id);
 }
 
 /** 保存一张附件,返回资产 id(= 文件名)。非白名单 mime 或超限抛错(消息面向用户)。 */
@@ -50,11 +60,10 @@ export async function saveChatImage(
 	const ext = MIME_TO_EXT[mime];
 	if (!ext) throw new Error(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
 	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) throw new Error("图片过大（上限 5MB）");
-	const id = `${randomBytes(16).toString("hex")}.${ext}`;
-	const dir = chatImageDir(dataDir);
-	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, id), bytes);
-	return id;
+	const result = await storeOf(dataDir).put({ bytes, ext });
+	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
+	if (!result.ok) throw new Error(result.message);
+	return result.id;
 }
 
 /** 读附件原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */
@@ -62,14 +71,7 @@ export async function readChatImage(
 	dataDir: string,
 	id: string,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-	if (!isValidChatImageId(id)) return null;
-	const ext = id.split(".").pop() as string;
-	try {
-		const bytes = await readFile(join(chatImageDir(dataDir), id));
-		return { bytes, mime: EXT_TO_MIME[ext] ?? "application/octet-stream" };
-	} catch {
-		return null;
-	}
+	return await storeOf(dataDir).read(id);
 }
 
 /**
@@ -87,11 +89,5 @@ export async function readChatImageDataUrl(dataDir: string, id: string): Promise
 
 /** 删一张附件。id 非法 / 文件不存在返回 false(幂等);删成功返回 true。 */
 export async function deleteChatImage(dataDir: string, id: string): Promise<boolean> {
-	if (!isValidChatImageId(id)) return false;
-	try {
-		await unlink(join(chatImageDir(dataDir), id));
-		return true;
-	} catch {
-		return false;
-	}
+	return await storeOf(dataDir).remove(id);
 }

@@ -197,6 +197,22 @@ describe("清单里的名字是不可信输入", () => {
 	});
 });
 
+describe("并发上传", () => {
+	it("同时传 8 款 → 列表里 8 个原名一个不丢", async () => {
+		// 名字清单是整份读、整份写:并发的上传各读到同一份旧清单、各写回自己那一条,
+		// 后写的盖掉先写的 —— 主人一次拖进来一批字体,列表里就只剩几个认得出名字的。
+		const fresh = await mkdtemp(join(tmpdir(), "font-concurrent-"));
+		try {
+			const names = Array.from({ length: 8 }, (_, i) => `字体${i}.ttf`);
+			await Promise.all(names.map((name) => saveFontAsset(fresh, WOFF2, name)));
+			const listed = await listFontAssets(fresh);
+			expect(listed.map((f) => f.name).sort()).toEqual([...names].sort());
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("删除", () => {
 	it("删掉之后文件、列表、清单里都不剩", async () => {
 		const fresh = await mkdtemp(join(tmpdir(), "font-del-"));

@@ -4,19 +4,18 @@
  * 的定向读取 + 路由的 id 正则校验访问,杜绝路径穿越。渲染期由服务端把 id 解析成 data URL
  * 拼进 `@font-face` 内联给模版(`packages/image` 不碰文件系统)。
  *
- * 整体照抄 `card-assets.ts` 的形态,两处刻意不一样:
+ * 存取本身由 `createAssetStore` 管(与卡片背景图、聊天附件同一份实现),这里留字体自己的
+ * 两处不一样:
  *
  * 1. **后缀取自原始文件名,不看 mime**(见 `font-mime.ts`,那张表与皮肤包自带字体共用)。
  * 2. **记住原始文件名。** 背景图有缩略图可看,字体没有 —— 列表里只剩一串 hex 主人根本
- *    认不出哪个是哪个。名字存同目录的 `index.json`,而**目录才是真相**:清单丢了照样列
- *    得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
+ *    认不出哪个是哪个。名字存同目录的 `index.json`(存储的原名清单),而**目录才是真相**:
+ *    清单丢了照样列得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
  */
 
-import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { parseAssetNames, sanitizeAssetLabel } from "./asset-labels.js";
+import { type AssetStore, createAssetStore, isValidAssetId } from "../assets/asset-store.js";
 import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
 
 /**
@@ -29,10 +28,7 @@ import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
  */
 export { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES };
 
-/** 资产 id 严格形如 `<32 位小写 hex>.<woff2|woff|ttf|otf>` —— 排除 `..` / `/` 等穿越。 */
-const ID_RE = /^[a-f0-9]{32}\.(woff2|woff|ttf|otf)$/;
-
-/** 名字清单的文件名。它住在资产目录里,故 id 正则不会让它被当成一款字体读出去。 */
+/** 名字清单的文件名。它住在资产目录里,故 id 校验不会让它被当成一款字体读出去。 */
 const MANIFEST = "index.json";
 
 /**
@@ -46,33 +42,24 @@ export function fontAssetDir(dataDir: string): string {
 	return join(dataDir, "assets", "font");
 }
 
-/** id 是否合法(防穿越的唯一闸门)。 */
-export function isValidFontAssetId(id: string): boolean {
-	return ID_RE.test(id);
-}
+const RULES = {
+	// 资产 id 严格形如 `<32 位小写 hex>.<woff2|woff|ttf|otf>` —— 排除 `..` / `/` 等穿越。
+	formats: FONT_EXT_TO_MIME,
+	maxBytes: MAX_FONT_ASSET_BYTES,
+	naming: { kind: "random" },
+	labelsFile: MANIFEST,
+} as const;
 
 /**
- * 读名字清单;缺失 / 损坏一律当空 —— 名字没了不该让整个图廊瘫掉。
- *
- * 内容过 {@link parseAssetNames}:键得是合法字体 id、值得清洗得出一个能显示的标签,
- * 不合格的只丢那一条。清单文件是盘上的普通 JSON,能被手改、能从别处拷来,不该因为
- * 它写着 `{"x": 42}` 就让 `name` 撒谎说自己是字符串。
+ * 每次调用就地建一个存储,不必记忆化:名字清单是整份读、整份写,它的串行队列按清单文件走、
+ * 住在 `asset-store` 的模块级(同一个目录上建几个存储都共用一条)。
  */
-async function readManifest(dataDir: string): Promise<Record<string, string>> {
-	try {
-		const parsed: unknown = JSON.parse(
-			await readFile(join(fontAssetDir(dataDir), MANIFEST), "utf8"),
-		);
-		return parseAssetNames(parsed, isValidFontAssetId);
-	} catch {
-		return {};
-	}
-}
+const storeOf = (dataDir: string): AssetStore =>
+	createAssetStore({ ...RULES, dir: fontAssetDir(dataDir) });
 
-async function writeManifest(dataDir: string, next: Record<string, string>): Promise<void> {
-	const dir = fontAssetDir(dataDir);
-	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, MANIFEST), JSON.stringify(next, null, 2));
+/** id 是否合法(防穿越的唯一闸门)。 */
+export function isValidFontAssetId(id: string): boolean {
+	return isValidAssetId(RULES, id);
 }
 
 /** 图廊里的一款字体。`name` 是上传时的原始文件名(清单丢了则回落成 id)。 */
@@ -92,30 +79,12 @@ export interface FontAsset {
  * 目录不存在或读失败返回 []。
  */
 export async function listFontAssets(dataDir: string): Promise<FontAsset[]> {
-	let names: string[];
-	try {
-		names = await readdir(fontAssetDir(dataDir));
-	} catch {
-		return [];
-	}
-	const manifest = await readManifest(dataDir);
-	const dir = fontAssetDir(dataDir);
-	return await Promise.all(
-		names.filter(isValidFontAssetId).map(async (id) => ({
-			id,
-			name: manifest[id] ?? id,
-			size: await fileSize(join(dir, id)),
-		})),
-	);
-}
-
-/** 文件字节数;读不到(刚被删 / 权限)记 0 —— 少一句提醒好过整个图廊列不出来。 */
-async function fileSize(path: string): Promise<number> {
-	try {
-		return (await stat(path)).size;
-	} catch {
-		return 0;
-	}
+	const assets = await storeOf(dataDir).list();
+	return assets.map((asset) => ({
+		id: asset.id,
+		name: asset.label ?? asset.id,
+		size: asset.size,
+	}));
 }
 
 /**
@@ -137,18 +106,12 @@ export async function saveFontAsset(
 			`字体文件过大（上限 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB，这个 ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB）—— 同一套字转成 woff2 通常只占三分之一`,
 		);
 	}
-	const id = `${randomBytes(16).toString("hex")}.${ext}`;
-	const dir = fontAssetDir(dataDir);
-	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, id), bytes);
-	// 存进去的就先洗一遍(读出来那头也洗):浏览器给的这一串可能是整条桌面路径,
-	// 也可能带着双向覆盖符 —— 让它显示成别的文件名,就把这个功能反过来用了。
-	const label = sanitizeAssetLabel(filename);
-	await writeManifest(dataDir, {
-		...(await readManifest(dataDir)),
-		...(label ? { [id]: label } : {}),
-	});
-	return id;
+	// 原始文件名交给存储记进清单(它记之前会洗:浏览器给的这一串可能是整条桌面路径,
+	// 也可能带着双向覆盖符)。
+	const result = await storeOf(dataDir).put({ bytes, ext, label: filename });
+	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
+	if (!result.ok) throw new Error(result.message);
+	return result.id;
 }
 
 /** 读字体原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */
@@ -156,14 +119,7 @@ export async function readFontAsset(
 	dataDir: string,
 	id: string,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-	if (!isValidFontAssetId(id)) return null;
-	const ext = id.split(".").pop() as string;
-	try {
-		const bytes = await readFile(join(fontAssetDir(dataDir), id));
-		return { bytes, mime: FONT_EXT_TO_MIME[ext] ?? "application/octet-stream" };
-	} catch {
-		return null;
-	}
+	return await storeOf(dataDir).read(id);
 }
 
 /**
@@ -269,16 +225,5 @@ export function createFontAssetReader(
  * 清单里那条一并抹掉 —— 留着就是个永远对不上的名字。
  */
 export async function deleteFontAsset(dataDir: string, id: string): Promise<boolean> {
-	if (!isValidFontAssetId(id)) return false;
-	try {
-		await unlink(join(fontAssetDir(dataDir), id));
-	} catch {
-		return false;
-	}
-	const manifest = await readManifest(dataDir);
-	if (id in manifest) {
-		delete manifest[id];
-		await writeManifest(dataDir, manifest);
-	}
-	return true;
+	return await storeOf(dataDir).remove(id);
 }
