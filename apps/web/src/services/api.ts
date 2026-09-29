@@ -4,17 +4,128 @@
  * is served from the same origin, so relative paths just work.
  */
 
+import type { FailureCode, Issue } from "@bilibili-notify/contract";
+import { FAILURE_CODES } from "@bilibili-notify/internal/constants";
 import { withDesktopTokenHeader } from "./desktop-token";
 
+/**
+ * 一条逐格原因。`op` 只有拓展设置那处带(第几步惹出来的,ADR-0026 决策 6),标准的 `Issue` 里没有。
+ */
+export type ApiIssue = Issue & { op?: number };
+
+/**
+ * 非 2xx 的错误响应,**只在这里解析一次**(ADR-0026 决策 6):界面读 `code` + `message`,逐格标红读
+ * `issues`,分情况只按 `code` 判,不再按状态码或旧的机器串换文案。`body` 留着原始响应体 ——
+ * 给还没迁完的旧读法用,以及 `upstreamCode` 这类 ApiError 不另开一格的附加。
+ *
+ * 构造时从 `body` 里读出 `code` / `issues`,所以自己 `new ApiError(status, body, message)` 的
+ * 出口(聊天、皮肤流)也拿得到,不必各写一遍。
+ */
 export class ApiError extends Error {
+	/** 标准码。只有新形状才有;旧形状(迁移期)与断线(`status` 为 0)都没有。 */
+	readonly code?: FailureCode;
+	/** 逐条原因。新形状的 `issues`;旧形状只认 `validation_failed` 带的那一份。 */
+	readonly issues?: ApiIssue[];
+
 	constructor(
 		public readonly status: number,
 		public readonly body: unknown,
 		message: string,
+		/** 解析好的错误体。缺省就地解析;`apiErrorOf` 已经解析过一次,直接递进来免得再读。 */
+		parsed: ParsedErrorBody = readErrorBody(body),
 	) {
 		super(message);
 		this.name = "ApiError";
+		if (parsed.code !== undefined) this.code = parsed.code;
+		if (parsed.issues !== undefined) this.issues = parsed.issues;
 	}
+}
+
+interface ParsedErrorBody {
+	code?: FailureCode;
+	message?: string;
+	issues?: ApiIssue[];
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** 一段非空文字。 */
+function textOf(v: unknown): string | undefined {
+	return typeof v === "string" && v.trim() !== "" ? v : undefined;
+}
+
+/** 一条 issue 的形状整理:路径只留 string / number 段,缺话给兜底句,`op` 有才带。 */
+function issueOf(raw: unknown): ApiIssue {
+	const bag = isRecord(raw) ? raw : {};
+	const issue: ApiIssue = { message: typeof bag.message === "string" ? bag.message : "不合规矩" };
+	if (Array.isArray(bag.path)) {
+		const path = bag.path.filter(
+			(segment): segment is string | number =>
+				typeof segment === "string" || typeof segment === "number",
+		);
+		if (path.length > 0) issue.path = path;
+	}
+	if (typeof bag.op === "number") issue.op = bag.op;
+	return issue;
+}
+
+/** 新形状 `{ code, message, issues? }`。`code` 得在码表里 —— 不在的不冒充标准码。 */
+function modernErrorBody(payload: Record<string, unknown>): ParsedErrorBody | null {
+	const { code } = payload;
+	const message = textOf(payload.message);
+	if (typeof code !== "string" || !Object.hasOwn(FAILURE_CODES, code) || message === undefined) {
+		return null;
+	}
+	const parsed: ParsedErrorBody = { code: code as FailureCode, message };
+	if (Array.isArray(payload.issues)) parsed.issues = payload.issues.map(issueOf);
+	return parsed;
+}
+
+/**
+ * 旧形状的兼容 —— **④b 末删**(第 1 期切片 ④b 最后一组路由迁完,服务端不会再回这三种了)。
+ *
+ * 迁移期服务端还有没迁的路由:`{err}`(锐评 / 推送测试 / 卡片测试…)、`{message}`(备份…)、
+ * `{errors: string[]}`(皮肤上传 / 编辑保存的字段级校验),都要认 —— 漏认一种,那一路的失败就被降级成
+ * 「POST /api/… → 400」这种线格式噪音,用户看不到真正可操作的原因。`code` 一律留空。
+ * 逐格标红那一路是 `{ error: "validation_failed", issues }`(拓展设置)。
+ */
+function legacyErrorBody(payload: Record<string, unknown>): ParsedErrorBody {
+	const parsed: ParsedErrorBody = {};
+	const message = textOf(payload.err) ?? textOf(payload.message);
+	if (message !== undefined) {
+		parsed.message = message;
+	} else if (Array.isArray(payload.errors)) {
+		const lines = payload.errors.filter((e): e is string => textOf(e) !== undefined);
+		if (lines.length > 0) parsed.message = lines.join(";");
+	}
+	if (payload.error === "validation_failed" && Array.isArray(payload.issues)) {
+		parsed.issues = payload.issues.map(issueOf);
+	}
+	return parsed;
+}
+
+function readErrorBody(payload: unknown): ParsedErrorBody {
+	if (!isRecord(payload)) return {};
+	return modernErrorBody(payload) ?? legacyErrorBody(payload);
+}
+
+/**
+ * 非 2xx 响应体 → `ApiError`。`fallback` 是体里读不出话来时的那一句。
+ * 不走 `api` 的 fetch 出口(登录、下载、聊天上传)也经它,解析只此一处。
+ */
+export function apiErrorOf(status: number, payload: unknown, fallback: string): ApiError {
+	const parsed = readErrorBody(payload);
+	return new ApiError(status, payload, parsed.message ?? fallback, parsed);
+}
+
+/**
+ * 逐条原因:新形状取 `issues`,旧形状兼容 `validation_failed` + `issues`(都在构造时读好了)。
+ * 不是 `ApiError`、或这次失败没带逐条原因的交 `null` —— 那种失败的原话(`message`)就是该说的。
+ */
+export function issuesOf(err: unknown): ApiIssue[] | null {
+	return err instanceof ApiError && err.issues !== undefined ? err.issues : null;
 }
 
 /**
@@ -28,31 +139,6 @@ type UnauthorizedHandler = () => void;
 let onUnauthorized: UnauthorizedHandler | null = null;
 export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
 	onUnauthorized = fn;
-}
-
-/**
- * 从错误响应体里挑出给人看的那句话。
- *
- * 服务端有**三种**错误体形状:`{err}`(锐评 / 推送测试 / 卡片测试…)、
- * `{message}`(backup…)与 `{errors: string[]}`(皮肤上传 / 编辑保存的字段级
- * 校验)。都要认 —— 漏认一种,那一路的失败就被降级成「POST /api/… → 400」这种
- * 线格式噪音,用户看不到「哪个字段不合法」这类真正可操作的原因。
- */
-function errorMessage(payload: unknown, what: string, status: number): string {
-	if (typeof payload === "object" && payload !== null) {
-		for (const key of ["err", "message"] as const) {
-			if (key in payload) {
-				const v = (payload as Record<string, unknown>)[key];
-				if (typeof v === "string" && v.trim()) return v;
-			}
-		}
-		const errors = (payload as Record<string, unknown>).errors;
-		if (Array.isArray(errors)) {
-			const lines = errors.filter((e): e is string => typeof e === "string" && e.trim() !== "");
-			if (lines.length > 0) return lines.join(";");
-		}
-	}
-	return `${what} → ${status}`;
 }
 
 /**
@@ -176,7 +262,7 @@ async function request<T>(
 		if (res.status === 401 && !path.startsWith("/api/session")) {
 			onUnauthorized?.();
 		}
-		throw new ApiError(res.status, payload, errorMessage(payload, what, res.status));
+		throw apiErrorOf(res.status, payload, `${what} → ${res.status}`);
 	}
 	if (failed) throw incompleteBodyError(what);
 	return payload as T;
@@ -195,7 +281,7 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
 	const { payload, failed } = await readJsonPayload(res);
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
-		throw new ApiError(res.status, payload, errorMessage(payload, what, res.status));
+		throw apiErrorOf(res.status, payload, `${what} → ${res.status}`);
 	}
 	if (failed) throw incompleteBodyError(what);
 	return payload as T;

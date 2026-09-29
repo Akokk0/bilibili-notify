@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { api } from "../api";
+import { ApiError, api, apiErrorOf, issuesOf, setUnauthorizedHandler } from "../api";
 
 /**
  * SY1 的线格式收口。`JSON.stringify` 会把值为 `undefined` 的键整个丢掉,于是
@@ -111,6 +111,225 @@ describe("api 错误信息", () => {
 	it("两个字段都没有时退回线格式,至少带上状态码", async () => {
 		fail(500, { nope: 1 });
 		await expect(api.post("/api/whatever", {})).rejects.toThrow("500");
+	});
+});
+
+/**
+ * 非 2xx 只解析一次成 `ApiError`(ADR-0026 决策 6):新形状 `{ code, message, issues? }` 直接取;
+ * 迁移期还没迁的路由回旧形状(`err` / `message` / `errors[]`),`code` 为空。旧形状的兼容
+ * 在 ④b 最后一组删,所以两种样例各钉一份 —— 删兼容的那一天,旧形状那半跟着删。
+ */
+describe("ApiError 解析非 2xx(新旧两种形状)", () => {
+	const respond = (status: number, body: unknown) =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+	const caught = async (run: () => Promise<unknown>): Promise<ApiError> => {
+		try {
+			await run();
+		} catch (e) {
+			return e as ApiError;
+		}
+		throw new Error("应当抛 ApiError,却成功了");
+	};
+
+	it("新形状:code / message 直接取,status 与原始 body 都保留", async () => {
+		const body = { code: "not_found", message: "没有这个订阅" };
+		respond(404, body);
+		const err = await caught(() => api.get("/api/subs/x"));
+		expect(err).toBeInstanceOf(ApiError);
+		expect(err.status).toBe(404);
+		expect(err.code).toBe("not_found");
+		expect(err.message).toBe("没有这个订阅");
+		expect(err.issues).toBeUndefined();
+		expect(err.body).toEqual(body);
+	});
+
+	it("新形状带 issues:逐条原因原样挂在 ApiError 上(含拓展设置那处的 op)", async () => {
+		respond(400, {
+			code: "invalid",
+			message: "配置不合规",
+			issues: [{ path: ["links", "a", 0], message: "不能为空", op: 2 }, { message: "整体不对" }],
+		});
+		const err = await caught(() => api.patch("/api/x", {}));
+		expect(err.code).toBe("invalid");
+		expect(err.issues).toEqual([
+			{ path: ["links", "a", 0], message: "不能为空", op: 2 },
+			{ message: "整体不对" },
+		]);
+	});
+
+	it("新形状的 upstreamCode 不占位:它留在原始 body 里,ApiError 不另开一格", async () => {
+		respond(503, { code: "unavailable", message: "B 站没回应", upstreamCode: -352 });
+		const err = await caught(() => api.get("/api/x"));
+		expect(err.code).toBe("unavailable");
+		expect(err.body).toMatchObject({ upstreamCode: -352 });
+	});
+
+	it("码表里没有的 code 不冒充标准码 —— 落到 message 上照常说话", async () => {
+		respond(400, { code: "no_such_code", message: "还是能读到这句" });
+		const err = await caught(() => api.get("/api/x"));
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("还是能读到这句");
+	});
+
+	it("旧形状 {err}:message 取 err,code 为空", async () => {
+		respond(400, { ok: false, err: "智能女仆尚未启用" });
+		const err = await caught(() => api.post("/api/x", {}));
+		expect(err.status).toBe(400);
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("智能女仆尚未启用");
+	});
+
+	it("旧形状 {error, message}:message 取 message,code 为空(B 站的数字 code 也不冒充)", async () => {
+		respond(502, { error: "upstream_failed", code: -352, message: "无法访问 B 站" });
+		const err = await caught(() => api.get("/api/x"));
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("无法访问 B 站");
+	});
+
+	it("旧形状 {errors:[…]}:逐条拼起来,code 为空", async () => {
+		respond(400, { ok: false, errors: ["甲不对", "乙不对"] });
+		const err = await caught(() => api.put("/api/x", {}));
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("甲不对;乙不对");
+	});
+
+	it("什么形状都不是:退回线格式 `方法 路径 → 状态码`", async () => {
+		respond(500, { nope: 1 });
+		const err = await caught(() => api.post("/api/whatever", {}));
+		expect(err.message).toBe("POST /api/whatever → 500");
+		expect(err.code).toBeUndefined();
+	});
+
+	it("上传走同一套解析", async () => {
+		respond(413, { code: "invalid", message: "图片过大（上限 5MB）" });
+		const err = await caught(() => api.upload("/api/cards/asset", new FormData()));
+		expect(err.status).toBe(413);
+		expect(err.code).toBe("invalid");
+		expect(err.message).toBe("图片过大（上限 5MB）");
+	});
+
+	it("apiErrorOf 给拼 ApiError 的其它出口用(不走 api 的 fetch):同一套解析,兜底句自己给", () => {
+		const err = apiErrorOf(429, { code: "rate_limited", message: "慢一点" }, "登录失败");
+		expect(err).toBeInstanceOf(ApiError);
+		expect([err.status, err.code, err.message]).toEqual([429, "rate_limited", "慢一点"]);
+		expect(apiErrorOf(500, undefined, "登录失败").message).toBe("登录失败");
+	});
+});
+
+describe("issuesOf", () => {
+	const errorWith = (status: number, body: unknown) => new ApiError(status, body, "x");
+
+	it("新形状:取 issues", () => {
+		const err = errorWith(400, {
+			code: "invalid",
+			message: "配置不合规",
+			issues: [{ path: ["a"], message: "不对" }],
+		});
+		expect(issuesOf(err)).toEqual([{ path: ["a"], message: "不对" }]);
+	});
+
+	it("旧形状:兼容 validation_failed + issues(逐格标红那一路),路径里非 string / number 的段丢掉", () => {
+		const err = errorWith(400, {
+			error: "validation_failed",
+			issues: [
+				{ path: ["links", 1, { x: 1 }], message: "不对", op: 3 },
+				{ message: "整体不对" },
+				"怪东西",
+			],
+		});
+		expect(issuesOf(err)).toEqual([
+			{ path: ["links", 1], message: "不对", op: 3 },
+			{ message: "整体不对" },
+			{ message: "不合规矩" },
+		]);
+	});
+
+	it("旧形状里别的 error 串带 issues 不算(只认 validation_failed)", () => {
+		expect(
+			issuesOf(errorWith(400, { error: "invalid_payload", issues: [{ message: "x" }] })),
+		).toBeNull();
+	});
+
+	it("没有 issues 的 ApiError / 别的错误 / 非错误 → null", () => {
+		expect(issuesOf(errorWith(404, { code: "not_found", message: "没有" }))).toBeNull();
+		expect(issuesOf(new Error("boom"))).toBeNull();
+		expect(issuesOf(undefined)).toBeNull();
+	});
+
+	it("空数组也是 issues(服务端明说了「没有逐条原因」),不该被当成没有", () => {
+		expect(issuesOf(errorWith(400, { code: "invalid", message: "x", issues: [] }))).toEqual([]);
+	});
+});
+
+/**
+ * 全局 401 钩子(踢回登录框)靠**状态码**认,不看 code:`unauthorized` 默认回 403,
+ * 只有看板自己的登录失效才显式回 401 —— 所以钩子一直认 401,`/api/session/*` 除外。
+ */
+describe("全局 401 钩子", () => {
+	const respond = (status: number, body: unknown) =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+	afterEach(() => setUnauthorizedHandler(null));
+
+	it("401(新形状)→ 钩子触发一次,错误照常抛", async () => {
+		const hook = vi.fn();
+		setUnauthorizedHandler(hook);
+		respond(401, { code: "unauthorized", message: "需要先登录面板" });
+		await expect(api.get("/api/globals")).rejects.toMatchObject({
+			status: 401,
+			code: "unauthorized",
+		});
+		expect(hook).toHaveBeenCalledTimes(1);
+	});
+
+	it("401(旧形状)同样触发", async () => {
+		const hook = vi.fn();
+		setUnauthorizedHandler(hook);
+		respond(401, { error: "unauthorized", message: "dashboard session required" });
+		await expect(api.get("/api/globals")).rejects.toMatchObject({ status: 401 });
+		expect(hook).toHaveBeenCalledTimes(1);
+	});
+
+	it("403 的 unauthorized(来源、平台的凭据失效)不踢人 —— 只有看板自己的 401 才踢", async () => {
+		const hook = vi.fn();
+		setUnauthorizedHandler(hook);
+		respond(403, { code: "unauthorized", message: "B 站登录失效了" });
+		await expect(api.get("/api/subs/search")).rejects.toMatchObject({ status: 403 });
+		expect(hook).not.toHaveBeenCalled();
+	});
+
+	it("/api/session/* 的 401 是「账号密码错」,不是会话过期,不触发", async () => {
+		const hook = vi.fn();
+		setUnauthorizedHandler(hook);
+		respond(401, { code: "unauthorized", message: "账号或密码错误" });
+		await expect(api.post("/api/session/login", {})).rejects.toMatchObject({ status: 401 });
+		expect(hook).not.toHaveBeenCalled();
+	});
+
+	it("上传与取二进制两条出口也触发", async () => {
+		const hook = vi.fn();
+		setUnauthorizedHandler(hook);
+		respond(401, { code: "unauthorized", message: "需要先登录面板" });
+		await api.upload("/api/cards/asset", new FormData()).catch(() => undefined);
+		await api.blob("/api/cards/asset/x").catch(() => undefined);
+		expect(hook).toHaveBeenCalledTimes(2);
 	});
 });
 
