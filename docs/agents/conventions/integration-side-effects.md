@@ -50,11 +50,12 @@
 - **守卫 17**（[docs/1.0/architecture.md](../../1.0/architecture.md)「其余守卫」，3a 期开，[construction-plan.md](../../1.0/construction-plan.md)「中立性守卫的归期」）：`bilibili/` 与 `platforms/` 里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红。写法仿 `extension-import-boundary.test.ts`。拓展不在它的范围里，见下一条。
 - **守卫 3**（第 1 期切片 ②）：服务端除了持久化底层，不许直接写文件（`writeFile`、`rename`、`appendFile`）。管的是服务端整体，不专门管集成读文件。
 - **拓展**：官方市场发布时做静态检查，打包产物 import 了 `fs`（`fs`、`node:fs`、`fs/promises`）就不收；手动安装的第三方拓展安装时警告。
+- **出网点名表**（第 1 期切片 ④ 以棘轮开、3b 末清零，[docs/1.0/architecture.md](../../1.0/architecture.md)「第二层：静态扫描」）：服务端进程里跑的源码（含 `extensions/*/src`，不含测试）出现出站原语（`fetch(`、客户端 `new WebSocket(`、`http(s).request` / `get`、`net` / `tls` 的 connect、`undici`），文件又不在白名单里就红。白名单只有集成的请求客户端（第 2 期起是 `packages/http`）和 BN 自己的几个出口。第三方拓展的打包产物不扫。
 - **守卫 22**（3a 期开）：扫 `extensions/*/src`（不含测试），不经 ctx 的 `setTimeout` / `setInterval`、`createServer`、自己监听端口的 `WebSocketServer` 就红。第三方拓展的打包产物不扫，库自己会用定时器。
 - **其余靠审查**，审 PR 时逐条看：
   1. 集成目录里有没有 `fs`、`node:fs`、`fs/promises`、`path` 拼数据目录的痕迹。
   2. 状态是不是都经 `ctx.state`，凭据是不是都经 `ctx.secrets`；`set` / `delete` 的返回值有没有被看。
-  3. 内置集成（`bilibili/`、`platforms/`）自己开的定时器与连接，`stop` 或 `onDispose` 里有没有收掉；拓展里有没有守卫 22 扫不到的写法（换个名字的 `setTimeout`、`new WebSocket(`）。
+  3. 内置集成（`bilibili/`、`platforms/`）自己开的定时器与连接，`stop` 或 `onDispose` 里有没有收掉；拓展里有没有守卫 22 与出网点名表扫不到的写法（换个名字的 `setTimeout`、把 `fetch` 另存一个名字再调）。
   4. 每个不经 ctx 管的资源，`onDispose` 里有没有对应的关闭。
   5. 日志有没有自己拼集成 id，有没有把凭据原文打进日志。
 

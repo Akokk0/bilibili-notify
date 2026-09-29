@@ -44,10 +44,10 @@
 
 | 期 | 开启 | 清零 / 必须绿 |
 | --- | --- | --- |
-| 1 | 切片 ④：事件载荷（总线事件载荷里不许有 `uid` 键、`Bili*` 类型、平台原始值的裸 string）、错误体的 `code` 只装 snake 字符串；切片 ⑥：守卫 12（连同解构与下标的读法）、B 站替身（棘轮） | — |
+| 1 | 切片 ④：事件载荷（总线事件载荷里不许有 `uid` 键、`Bili*` 类型、平台原始值的裸 string）、错误体的 `code` 只装 snake 字符串、出网点名表（棘轮）；切片 ⑥：守卫 12（连同解构与下标的读法）、B 站替身（棘轮） | — |
 | 2 | 出图器零联网；守卫 10 扩到五种卡（直播、醒目留言、会员、词云、榜单），差异按「批准的像素差清单」裁决 | 两条都绿 |
 | 3a | 咽喉三道：入口咽喉、出口咽喉、咽喉 e2e（逐条驱动全部发送路径，每条恰好一条截流记录、零外连）；守卫 1、17、22；守卫 11 修订版（边界匹配、词表自动生成、扫 contract；3a 开头以棘轮开）；uid 棘轮；`.platform` 决定棘轮（推送侧）；推送守卫①；推送守卫②（棘轮，词表同期加宽并扫 contract）；守卫 18 的保留 id 加上三个内置适配器的键 | 守卫 21b（进程内对拍）绿，即 3a 检查点 |
-| 3b | 守卫 21a（契约层对拍）、推送守卫③（假适配器对拍）、模板变量可满足性、AI 工具与技能约束 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫② 清零 |
+| 3b | 守卫 21a（契约层对拍）、推送守卫③（假适配器对拍）、模板变量可满足性、AI 工具与技能约束 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫②、出网点名表清零 |
 | 4 | 中文叫法棘轮 | B 站替身清零 |
 | 5 | 守卫补齐 | 中文叫法棘轮清零 |
 | 随各项 | 守卫 4 点名表补项（监听判定、身份索引、`displayNameOf`、`formatViewers`、作品文字的取段函数、叫法函数；禁面板自带路由键表）；守卫 19 在 PATCH 与发送时复检；守卫 13 补上重推原件的 `kind` | 随所在那一项 |
@@ -60,7 +60,7 @@
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
 | ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | ✅ 已落 |
 | ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | ✅ 已落 |
-| ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走 | |
+| ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走；出网点名表（棘轮开）；本片新增的扫源码守卫与现有三份私抄（守卫 3、拓展边界、面板 internal 入口）收成一套共用工具 | |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |
 | ⑥ | 数据代、`.partial`、先 listen 再迁、第 0 步收编 0.x 升级链、订阅合一 + `Identity`、设置分段、身份唯一闸 + 守卫 9、守卫 12、B 站替身棘轮开 | |
 | ⑦ | 回退指纹与重迁 | |
@@ -134,6 +134,8 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | 测试助手重复：scripts 6 处各算 repoRoot、internal 三份 BASE AI 夹具、面板 UpDialog 三份 renderDialog 与造目标、`extSub` 与 `makeExtSub` 重复、backup 两份 pickFile | 各区重写那期合并，没重写到的归 5 |
 | knip 报的 3 个老的未使用文件（`devtools/stub.ts`、两个 shape-pin；knip 不在 CI） | 5 |
 | `constants-imports.test.ts` 按行判，多行 `export {…} from "zod"` 会漏；`UpDialog.test.tsx` 没有 JSX，应是 `.ts`；network-guard 夹具路径写了两处 | 5（守卫补齐） |
+| 设置页的 AI 连通测试从 `routes/globals.ts` 挪进 `packages/ai`（出网点名表不给路由开白名单） | 最迟 3b 末（出网点名表清零） |
+| 出网点名表加不加一条判据：集成目录（`bilibili/`、`platforms/`、`extensions/*/src`）值 import `@bilibili-notify/http` 自己造客户端、绕过 `ctx.http` 就红 | 3a（有了 ctx 再定） |
 | 全仓包版本统一 `0.0.0-dev`：剩 push、subscription、internal、image、ai、storage、extension 7 个包（api / blive / dynamic / live 在 3a 随包删掉；第 2 期新建的 `packages/http` 建时就用 `0.0.0-dev`）。⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本） | 5 |
 | 进程托管文档：孤儿自检、stdin 关停、数据目录与端口、载荷选版；桌面版和以后的插件照同一份 | 5 |
 | `docs/agents/self-update.md`：数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样 | 5 |

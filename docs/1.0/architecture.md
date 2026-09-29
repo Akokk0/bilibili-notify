@@ -301,7 +301,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 入口咽喉 | `compose.ts` 里 `bilibili/` 的东西只能作登记的参数（按 AST 判）；核心拿到的依赖包里不许有平台客户端 | B 站客户端绕过登记表塞进核心：今天的 `engines.api`（「给路由临时调 B 站用」）。守卫 1 只看 import，这种结构化句柄它抓不到 | 3a |
 | 出口咽喉 | 平台适配器登记表对外只给不含 `send` 的视图，`send` 只经 `TargetDispatcher` 的特权句柄；另配源码扫描，白名单只有 `TargetDispatcher` | 有文件拿到可发送的适配器句柄、绕过 `TargetDispatcher` 直接发（今天链接回复现造临时目标直调 `send`，主人通知靠强制私聊的平台分叉） | 3a |
 | 咽喉 e2e | 开截流 + 守卫 2，逐条驱动全部发送路径：广播、`notifyMaster`、目标测试、卡片发送、AI 试一句、锐评投递、人工重推、链接预览回复、审批预览、指令回复（含登录二维码）；每条恰好一条截流记录、零外连 | 有人在登记表外构造适配器，或自己开 socket | 3a |
-| 出图器零联网 | 渲染页开请求拦截，`data:` 与本机图库以外的请求一律 abort 并计数；图只有地址、没有图库引用时画占位，出网仍是 0；`packages/image/src` 里不许出现 `fetch(`、`node:http(s)`、`undici` | 出图器联网（守卫 2 管不到 Chrome 子进程；今天出图器运行时从 `s1.hdslb.com` 拉图、按域名白名单预取） | 2 |
+| 出图器零联网 | 渲染页开请求拦截，`data:` 与本机图库以外的请求一律 abort 并计数；图只有地址、没有图库引用时画占位，出网仍是 0；源码那半（`packages/image/src` 里不许有出站原语）归出网点名表，`packages/image` 不在白名单 | 出图器联网（守卫 2 管不到 Chrome 子进程；今天出图器运行时从 `s1.hdslb.com` 拉图、按域名白名单预取） | 2 |
 
 ### 第二层：静态扫描
 
@@ -319,6 +319,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 类型名后缀 | 扫我们写的全部类型声明（`packages/`、`apps/` 的服务端 / 面板 / contract / 桌面壳、`extensions/`，含 `bilibili/`），类型名用了 [naming.md](../agents/conventions/naming.md)「不再用」那一列的后缀就红（ADR-0023 决策 15）；第三方库的名字与外部协议定死的字段名不管。那一列里带条件的写法（「当参数包用的 `Input`」「当设置值用的 `Config`」这类）怎么机判施工时定 | 新起或改的类型名不对表；按表该改的名字逐条见 data-model 的改名对照 | 施工时定 |
 | 4 名字唯一的家 | 同一个导出名全仓只定义一次；「名字 → 唯一的家」点名表（`isPlainObject`、`formatCount`、`formatDuration`、`formatAgo`、`subscriptionIdentityOf`、`displayNameOf`、`createSerialQueue`、`atomicWriteJson`、`createAssetStore`、`createSkinStore` 等），家以外出现同名定义就红，含不导出的局部函数。点名表补上：直播监听的唯一判定、身份索引、`formatViewers`、`posts/` 里作品文字的取段函数、contract 里的叫法函数（没定名的施工时定）；面板不许自带路由键表（今天首页自抄 4 键 `LIVE_ROUTING_KEYS`）。不扫 extensions/ 与测试夹具，TS 重载不算多次定义 | 家以外出现同名定义。改了名的抄本拦不住，靠审查 | 随各项 |
 | 12 不读 `bilibili` 段（加固） | 核心代码不许读设置的 `bilibili` 段；加固后覆盖解构（`const { bilibili } = …`）与下标（`settings["bilibili"]`） | 核心读了 B 站的设置 | 1⑥（连同解构与下标） |
+| 出网点名表 | 范围是服务端进程里跑的代码：`packages/*/src`（ui 除外）、`apps/server/src`、`extensions/*/src`，不含测试；先剥注释。出站原语：全局 `fetch(`（含 `globalThis.fetch(`，`x.fetch(` 这种自家方法不算）、当客户端用的 `new WebSocket(`、`http` / `https` 的 `request` / `get`、`net.connect` / `createConnection`、`tls.connect`、`http2.connect`、`undici` 的值 import；入站的 `WebSocketServer` 与 `import type` 不算。白名单按文件，只有两类：集成的请求客户端（今天 `packages/api/src/http-client.ts`，第 2 期起 `packages/http/src`）；BN 自己的出口（`update/fetch-through-mirrors.ts` 管更新、拓展市场、签名清单，`packages/ai/src/web-search.ts` 管联网搜索，AI 服务商走 OpenAI SDK、不扫第三方）与开发版的 `devtools/fake-bridge.ts`。棘轮按文件计数，白名单外出现新文件就红 | 集成绕过 `ctx.http` 自己发请求，或核心随手长出一个出口（今天出图器拉 `hdslb`、设置页的 AI 连通测试写在路由里）。规矩本身早有（ADR-0025 决策 6、集成副作用规范第 4 条），只是一直靠审查。勘察时白名单外 7 个文件 15 处：`platforms/` 四个文件 12 处、`blive` 的 `new WebSocket`、出图器 1 处、`routes/globals.ts` 的 AI 连通测试 1 处 | 1④ 棘轮开，3b 末清零 |
 | 错误体 | 契约测试：错误体与失败结果的 `code` 只装 snake 字符串，平台的数字码只在 `upstreamCode` | 平台的错误码塞进 `code`（今天 `routes/subs.ts` 两处） | 1④（随契约骨架） |
 
 ### 第三层：对拍
