@@ -68,6 +68,8 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 				};
 			},
 			onDispose: () => {},
+			signal: new AbortController().signal,
+			track: () => {},
 		};
 
 		const push = new BilibiliPush({
@@ -118,6 +120,8 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 				};
 			},
 			onDispose: () => {},
+			signal: new AbortController().signal,
+			track: () => {},
 		};
 
 		// available 初始 false → 进入 sleep retry;stop()+start() 后翻 true:

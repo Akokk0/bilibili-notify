@@ -83,6 +83,8 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 			};
 		},
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 
 	const mocks: MockBag = {

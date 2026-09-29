@@ -86,6 +86,8 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const m: CtxMocks = {
 		recordDanmaku: vi.fn(),
@@ -853,6 +855,8 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			setInterval: () => ({ dispose() {} }),
 			setTimeout: () => ({ dispose() {} }),
 			onDispose: () => {},
+			signal: new AbortController().signal,
+			track: () => {},
 		};
 		const broadcastToTargets = vi.fn(async () => {});
 		const ctx = new RoomContext({

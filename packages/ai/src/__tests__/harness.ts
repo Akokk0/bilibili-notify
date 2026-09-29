@@ -29,6 +29,8 @@ export function fakeServiceCtx(): ServiceContext {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

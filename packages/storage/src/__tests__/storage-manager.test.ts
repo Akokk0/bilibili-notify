@@ -17,6 +17,8 @@ function makeFakeServiceCtx(): ServiceContext {
 		setInterval: () => ({ dispose: vi.fn() }),
 		setTimeout: () => ({ dispose: vi.fn() }),
 		onDispose: () => undefined,
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

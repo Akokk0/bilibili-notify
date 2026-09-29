@@ -24,6 +24,8 @@ function makeServiceCtx(): ServiceContext {
 			return { dispose: () => clearInterval(h) };
 		},
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

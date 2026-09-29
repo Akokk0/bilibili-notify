@@ -106,6 +106,8 @@ function makeServiceCtx(): {
 		onDispose: (fn) => {
 			disposers.push(fn);
 		},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return { ctx, disposers, logs };
 }

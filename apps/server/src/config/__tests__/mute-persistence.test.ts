@@ -43,6 +43,8 @@ function makeCtx(): ServiceContext {
 		setInterval: () => ({ dispose: vi.fn() }),
 		setTimeout: () => ({ dispose: vi.fn() }),
 		onDispose: vi.fn(),
+		signal: new AbortController().signal,
+		track: vi.fn(),
 	};
 }
 

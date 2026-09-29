@@ -60,6 +60,8 @@ const host: ServiceContext = {
 	setInterval: () => ({ dispose() {} }),
 	setTimeout: () => ({ dispose() {} }),
 	onDispose() {},
+	signal: new AbortController().signal,
+	track: () => {},
 };
 
 /** 起一个真装载器;`events` 按先后记下「停了」与「报上来了」。 */

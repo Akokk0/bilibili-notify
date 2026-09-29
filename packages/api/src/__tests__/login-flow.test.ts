@@ -70,6 +70,8 @@ function makeFakeServiceCtx() {
 		onDispose(fn) {
 			disposeHooks.push(fn);
 		},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 
 	return { sc, intervals, timeouts, disposeHooks, logger };

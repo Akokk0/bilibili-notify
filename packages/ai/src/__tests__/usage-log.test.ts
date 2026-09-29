@@ -72,6 +72,8 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const gen = new CommentaryGenerator({
 		serviceCtx,

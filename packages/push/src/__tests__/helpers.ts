@@ -35,6 +35,8 @@ function realTimerCtx(): ServiceContext {
 			return { dispose: () => clearTimeout(id) };
 		},
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

@@ -46,6 +46,8 @@ function fakeHost() {
 			return { dispose: () => timers.delete(fn) };
 		},
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return { ctx, lines, pending: () => timers.size };
 }

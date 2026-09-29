@@ -64,6 +64,8 @@ function makeCtx() {
 			return { dispose: captured.dispose };
 		}) as ServiceContext["setTimeout"],
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const sendLiveNotifyCard = vi.fn(async () => {});
 	const ctx = {

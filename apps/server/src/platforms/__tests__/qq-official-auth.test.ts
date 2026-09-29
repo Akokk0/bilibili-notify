@@ -74,6 +74,8 @@ function makeTestCtx() {
 			return { dispose() {} };
 		},
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return { ctx, timers, logger };
 }

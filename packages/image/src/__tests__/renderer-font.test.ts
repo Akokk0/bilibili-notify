@@ -35,6 +35,8 @@ function makeRenderer(
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return new ImageRenderer({
 		serviceCtx: ctx,

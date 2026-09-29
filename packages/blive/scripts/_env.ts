@@ -37,6 +37,8 @@ export function makeServiceCtx(logger: Logger = consoleLogger): ServiceContext {
 			return { dispose: () => clearTimeout(h) };
 		},
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

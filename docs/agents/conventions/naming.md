@@ -37,6 +37,7 @@
 | 供人挑选、还没成为实体的候选 | `Candidate` | — |
 | 种类的取值；说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格） | `Kind` | `Type`（只留给外部协议里的原名） |
 | 发出去的改动 / schema 的全可选版 / 按订阅覆盖的那一层 / 一步操作 | `Patch` / `Partial` / `Overrides` / `Op` | — |
+| 一个过程里先后排开的一段（一段里可以有多个动作，如关停的 `DisposePhase`） | `Phase` | `Stage`（面板里是动画舞台 `CardMotionStage`）、当它用的 `Step`（`Step` 只指一个动作：引导的一步、装载卡在哪一步） |
 | 为了解耦写的第三方窄接口 | `…Like` | 自己领域里的 `…Like` |
 | 装配根交出来的一组运行中部件 | `Runtime` | 别的意思 |
 | 长期运行的部件 | 按职责起名（`Engine`、`Poller`、`Runner`、`Dispatcher`、`Flow`、`Queue`、`Cache`，以及各种 `-er` / `-or` 角色名）；说不出具体职责的叫 `Service` | `Manager`、`Info`、`Data`（太虚） |

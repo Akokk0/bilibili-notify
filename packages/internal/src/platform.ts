@@ -17,16 +17,33 @@ export interface Logger {
 }
 
 /**
+ * 关停分四段，按这个先后跑:
+ * - `stop`:停生产者(来源、拓展、定时任务),之后不再有新活进来
+ * - `drain`:排空 HTTP 在途请求
+ * - `flush`:先等 {@link ServiceContext.track} 登记的后台活落定，再让各写道落盘并关门
+ * - `dispose`:其余收尾(浏览器、连接之类);不写段的 `onDispose` 都在这
+ */
+export type DisposePhase = "stop" | "drain" | "flush" | "dispose";
+
+/**
  * Service runtime 上下文 —— 业务代码不直接吃任何宿主框架的 Context。
  * - logger：日志门面
+ * - signal:关停一开始(`stop` 段之前)就中止;手上的请求、轮询接着它停
  * - setInterval / setTimeout：返回 Disposable，dispose 后停止
- * - onDispose：注册关闭钩子（adapter 在生命周期结束时调用）
+ * - onDispose：按 {@link DisposePhase} 分段登记收尾钩子，同一段里后登记的先跑
+ * - track:登记一件发出去不等的后台活，关停时在 `flush` 段之前等它落定
  */
 export interface ServiceContext {
 	readonly logger: Logger;
+	readonly signal: AbortSignal;
 	setInterval(fn: () => void, ms: number): Disposable;
 	setTimeout(fn: () => void, ms: number): Disposable;
-	onDispose(fn: () => void | Promise<void>): void;
+	onDispose(fn: () => void | Promise<void>, phase?: DisposePhase): void;
+	/**
+	 * 「发出去不管」的写入一律经这里登记，关停时才等得到它 —— 否则它会在关停返回以后才落进数据目录。
+	 * 它失败了不挡关停。调用方该自己 `.catch` 记下原因;没接住的，这里记一条 error,不静默吞掉。
+	 */
+	track(task: Promise<unknown>): void;
 }
 
 /**

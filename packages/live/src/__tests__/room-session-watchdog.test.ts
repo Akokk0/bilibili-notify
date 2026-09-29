@@ -101,6 +101,8 @@ function makeMockCtx(): {
 			};
 		},
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const m = {
 		intervals,

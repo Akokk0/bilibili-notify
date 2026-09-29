@@ -109,6 +109,8 @@ const SERVICE_CTX: ServiceContext = {
 	setInterval: () => ({ dispose() {} }),
 	setTimeout: () => ({ dispose() {} }),
 	onDispose: () => {},
+	signal: new AbortController().signal,
+	track: () => {},
 };
 
 /** 截图那一步的替身:把灌进去的 HTML 留下来。 */

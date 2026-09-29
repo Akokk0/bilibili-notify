@@ -52,6 +52,8 @@ function makeCtx() {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const sendLiveNotifyCard = vi.fn(
 		async (_params: { pushId?: string; liveType: LiveType; cardSkin?: string }) => {},

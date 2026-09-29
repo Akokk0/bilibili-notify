@@ -42,6 +42,8 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const api = {
 		getLiveRoomInfoStreamKey: vi.fn(streamKeyImpl),

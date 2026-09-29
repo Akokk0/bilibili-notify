@@ -91,6 +91,8 @@ async function boot(
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	let rows = opts.subscriptions ?? [];
 	const listeners = new Set<() => void>();

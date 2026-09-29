@@ -151,6 +151,8 @@ async function boot(
 			return { dispose: () => timers.delete(fn) };
 		},
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const seen: Seen = { activations: 0, changes: [] };
 	const activate = opts.activate ?? standard;

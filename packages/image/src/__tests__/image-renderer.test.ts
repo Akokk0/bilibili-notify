@@ -34,6 +34,8 @@ function makeRenderer(
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const puppeteer = {
 		page: async () => ({}) as never,
@@ -489,6 +491,8 @@ describe("ImageRenderer.updateConfig", () => {
 			setInterval: () => ({ dispose() {} }),
 			setTimeout: () => ({ dispose() {} }),
 			onDispose: () => {},
+			signal: new AbortController().signal,
+			track: () => {},
 		};
 		return { r: makeRenderer(config, { serviceCtx }), info };
 	}

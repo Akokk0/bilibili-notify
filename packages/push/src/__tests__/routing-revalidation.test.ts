@@ -44,6 +44,8 @@ function makeControlledServiceCtx(): { ctx: ServiceContext; pending: Array<() =>
 			};
 		},
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return { ctx, pending };
 }

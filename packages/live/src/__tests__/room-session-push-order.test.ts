@@ -54,6 +54,8 @@ function makeCtx(events: string[]) {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	// 下播卡送达一开始就放出信号 —— 测试用它精确卡在「下播卡在途」的窗口里触发重开,
 	// 轮询式等待(vi.waitFor)会晚几十毫秒,窗口早关了。

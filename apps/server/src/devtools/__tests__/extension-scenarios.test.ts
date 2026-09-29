@@ -74,6 +74,8 @@ function hostStubs() {
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose() {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	return {
 		host,

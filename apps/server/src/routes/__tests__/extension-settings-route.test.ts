@@ -127,6 +127,8 @@ function quietHost(): ServiceContext {
 		setInterval: () => ({ dispose: noop }),
 		setTimeout: () => ({ dispose: noop }),
 		onDispose: noop,
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 }
 

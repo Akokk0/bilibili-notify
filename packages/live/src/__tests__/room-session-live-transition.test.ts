@@ -90,6 +90,8 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 			return { dispose() {} };
 		}) as ServiceContext["setTimeout"],
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 
 	const mocks = {

@@ -26,6 +26,8 @@ const SERVICE_CTX: ServiceContext = {
 	setInterval: () => ({ dispose() {} }),
 	setTimeout: () => ({ dispose() {} }),
 	onDispose: () => {},
+	signal: new AbortController().signal,
+	track: () => {},
 };
 
 function makeRenderer(

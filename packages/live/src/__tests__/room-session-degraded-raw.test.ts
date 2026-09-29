@@ -55,6 +55,8 @@ function makeSession(): { session: TestSession; warn: ReturnType<typeof vi.fn> }
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const ctx = {
 		serviceCtx: fakeServiceCtx,

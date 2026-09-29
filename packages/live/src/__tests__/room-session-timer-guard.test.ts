@@ -54,6 +54,8 @@ function makeCtx(opts?: { disposed?: boolean }) {
 		setInterval: () => ({ dispose: intervalDispose }),
 		setTimeout: (() => ({ dispose() {} })) as ServiceContext["setTimeout"],
 		onDispose: () => {},
+		signal: new AbortController().signal,
+		track: () => {},
 	};
 	const ctx = {
 		serviceCtx: fakeServiceCtx,
