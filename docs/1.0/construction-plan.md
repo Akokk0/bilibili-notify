@@ -90,6 +90,7 @@
 - 第二次 Ctrl-C 直接杀。
 - 关停期日志 hook 被还原成 `undefined`。
 - `api.stop` 不加 `refreshGeneration`。
+- 关停返回以后还有写入落进数据目录：`roast-legacy-drafts-boot-e2e.test.ts` 收尾先关服务再删数据目录，偶发 `ENOTEMPTY`（在 `state/` 下），疑似某个存储关停时没等正在写的内容写完。守卫 8 要能抓到它；别给删目录加重试糊过去。
 
 ## 分支与发 alpha
 
