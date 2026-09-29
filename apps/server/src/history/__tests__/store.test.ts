@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createHistoryStore,
@@ -28,6 +29,12 @@ import {
 	type HistoryStore,
 	listDayFiles,
 } from "../store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -403,5 +410,60 @@ describe("listDayFiles / deleteDayFile", () => {
 		await writeFile(join(dataDir, "history", "2026-04-30.jsonl"), "x\n");
 		await deleteDayFile(dataDir, "2026-04-30.jsonl");
 		expect(await listDayFiles(dataDir)).not.toContain("2026-04-30.jsonl");
+	});
+});
+
+describe("close — 关停时等在途的写、关门后拒写", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	const dayRows = async (entry: HistoryEntry): Promise<string[]> =>
+		(await readFile(join(dataDir, "history", `${entry.ts.slice(0, 10)}.jsonl`), "utf8"))
+			.split("\n")
+			.filter((line) => line.trim() !== "");
+
+	it("close 等在途的写落盘", async () => {
+		storageWriteGate.hold();
+		const recording = store.record(baseInput());
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = store.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		const entry = await recording;
+		expect(await dayRows(entry)).toHaveLength(1);
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		const entry = await store.record(baseInput());
+		const before = await dayRows(entry);
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		const closed = { code: "queue_closed" };
+		await expect(store.record(baseInput())).rejects.toMatchObject(closed);
+		await expect(
+			store.appendToRow(entry.id, entry.ts, [
+				{
+					payload: { kind: "text", text: "补" },
+					role: "main",
+					result: { ok: true, latencyMs: 1 },
+					retryOf: 0,
+				},
+			]),
+		).rejects.toMatchObject(closed);
+		await expect(store.deleteRange({ fromMs: 0, toMs: Date.now() + 1000 })).rejects.toMatchObject(
+			closed,
+		);
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await dayRows(entry)).toEqual(before);
+		expect(recorded).toHaveLength(1);
 	});
 });

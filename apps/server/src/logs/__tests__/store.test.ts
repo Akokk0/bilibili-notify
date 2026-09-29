@@ -13,9 +13,16 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createLogStore } from "../store.js";
+
+// 落盘函数前的闸默认敞开;只有「最终落盘」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -123,9 +130,15 @@ describe("createLogStore — 落盘的行格式(冻结)", () => {
 		expect(await readDay("2020-01-02")).toBe(
 			'{"ts":"2020-01-02T00:00:00.000Z","level":"debug","msg":"次日"}\n',
 		);
-		// 再来一批:追加在原有内容之后,不覆盖、不多空行。
-		store.ingest(entry({ msg: "later", ts: "2020-01-02T00:00:05.000Z" }));
-		await fireDispose();
+		// 再来一批(下一个进程起的新 store,上面那个最终落盘后已经关门):追加在原有内容之后,不覆盖、不多空行。
+		const next = makeCtx();
+		const store2 = createLogStore({
+			dataDir,
+			serviceCtx: next.ctx,
+			logger: makeLogger(),
+		});
+		store2.ingest(entry({ msg: "later", ts: "2020-01-02T00:00:05.000Z" }));
+		await next.fireDispose();
 		expect(await readDay("2020-01-02")).toBe(
 			'{"ts":"2020-01-02T00:00:00.000Z","level":"debug","msg":"次日"}\n' +
 				'{"ts":"2020-01-02T00:00:05.000Z","level":"info","msg":"later"}\n',
@@ -171,5 +184,49 @@ describe("createLogStore — ingest 无条件 + query", () => {
 		await fireDispose();
 		const only = await store.query({ day: "2020-01-01" });
 		expect(only.map((r) => r.msg)).toEqual(["d1"]);
+	});
+});
+
+describe("createLogStore — 最终落盘等在途的那次、写完再关门", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	it("在途的 flush 还没落盘时关停:返回以后在途那批与之后进来的条目都已在盘上", async () => {
+		const { ctx, fireDispose } = makeCtx();
+		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		store.ingest(entry({ msg: "在途", ts: `${today}T06:00:00.000Z` }));
+		storageWriteGate.hold();
+		void store.flush(); // 定时器那一发:批已取走、卡在写盘上
+		await storageWriteGate.arrived();
+		store.ingest(entry({ msg: "之后进来", ts: `${today}T06:00:01.000Z` }));
+
+		let finished = false;
+		const finishing = Promise.resolve(fireDispose()).then(() => {
+			finished = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(finished).toBe(false);
+
+		storageWriteGate.release();
+		await finishing;
+		const content = await readDay(today);
+		expect(content).toContain('"msg":"在途"');
+		expect(content).toContain('"msg":"之后进来"');
+	});
+
+	it("最终落盘之后关门:再来的条目不缓冲、不写盘", async () => {
+		const { ctx, fireDispose } = makeCtx();
+		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		store.ingest(entry({ msg: "关门前", ts: `${today}T07:00:00.000Z` }));
+		await fireDispose();
+		const before = await readDay(today);
+		const writesAtClose = storageWriteGate.writes;
+
+		store.ingest(entry({ msg: "关门后", ts: `${today}T07:00:01.000Z` }));
+		await store.flush();
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readDay(today)).toBe(before);
+		expect(await store.query({ limit: 10 })).toHaveLength(1);
 	});
 });

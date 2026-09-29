@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	createSerialQueue,
 	type Disposable,
 	isExtensionSubscription,
 	type Logger,
@@ -119,6 +120,11 @@ export interface SubAvatarStore {
 	remove(subId: string): Promise<void>;
 	/** 开机清扫:不在 `keepIds` 里的订阅的头像、写到一半留下的临时文件都删掉。不认得的文件不碰。 */
 	sweep(keepIds: Iterable<string>): Promise<void>;
+	/**
+	 * 关停:先等在途与已排队的写 / 删 / 清扫全部做完,再关门 —— 此后的 write / writeBytes / remove / sweep
+	 * 一律以 `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
+	 */
+	close(): Promise<void>;
 }
 
 export interface CreateSubAvatarStoreOptions {
@@ -148,16 +154,17 @@ async function unlinkIfPresent(path: string): Promise<void> {
 	}
 }
 
+/** 写道的唯一一个键:写 / 删 / 清扫全排一队(清扫要的就是「没有哪次写正写到一半」)。 */
+const WRITE_KEY = "avatars";
+
 export function createSubAvatarStore(opts: CreateSubAvatarStoreOptions): SubAvatarStore {
 	const dir = join(opts.dataDir, "avatars");
 	const fileOf = (subId: string, ext: AvatarExt) => join(dir, `${subId}.${ext}`);
 
-	// 一条 FIFO:同一条订阅的写 / 删 / 清扫不交错(新建时写一次、以后报资料再写,删订阅与之并发)。
-	let queue: Promise<unknown> = Promise.resolve();
+	// 单键写道:同一条订阅的写 / 删 / 清扫不交错(新建时写一次、以后报资料再写,删订阅与之并发)。
+	const writes = createSerialQueue();
 	function runSerial<T>(task: () => Promise<T>): Promise<T> {
-		const next = queue.then(task, task);
-		queue = next.catch(() => undefined);
-		return next;
+		return writes.run(WRITE_KEY, task);
 	}
 
 	/** 两条写的路汇到这儿:核 id → 核图 → 落盘(内容没变就不写)→ 回地址。在队里跑。 */
@@ -214,6 +221,8 @@ export function createSubAvatarStore(opts: CreateSubAvatarStoreOptions): SubAvat
 				throw err;
 			}
 		},
+
+		close: () => writes.close(),
 
 		remove(subId) {
 			return runSerial(async () => {

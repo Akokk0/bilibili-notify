@@ -1,10 +1,11 @@
-import type {
-	CachedProfile,
-	Disposable,
-	Logger,
-	MessageBus,
-	SubscriptionReportDelivery,
-	SubscriptionReportValue,
+import {
+	type CachedProfile,
+	createSerialQueue,
+	type Disposable,
+	type Logger,
+	type MessageBus,
+	type SubscriptionReportDelivery,
+	type SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import type { SubAvatarStore } from "./sub-avatar-store.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -23,6 +24,10 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  * - 面板看得见的那几格真变了,才发 `subscription-profiles-changed`(按窗口合并),面板据此重取订阅列表。
  *
  * 处理**排成一条队**:两条资料交错着读改写同一条订阅,后落地的那条会把先落地那条改的格冲回去。
+ *
+ * 关停分两步:`dispose()`(stop 段)摘监听、置标记,在途那条的剩余订阅不再处理;`close()`(flush 段)
+ * 等在途的那条把头像与资料缓存写完再关门。它往头像仓与资料缓存仓写,所以它的 `close()` 得排在那两个仓
+ * 的 `close()` **之前**跑 —— 见 `bootstrap.ts` 的登记。
  */
 
 /**
@@ -45,9 +50,17 @@ export interface BindReportedProfilesOptions {
 export interface ReportedProfilesHandle extends Disposable {
 	/** 队里已经排上的都处理完时落定。测试用。 */
 	idle(): Promise<void>;
+	/**
+	 * 关停的 flush 段调:等队里在途与已排队的都处理完(它们写头像仓与资料缓存仓),再关门 ——
+	 * 此后再来的资料不处理、不碰盘。先 `dispose()` 摘掉监听,才不会有新的进来。
+	 */
+	close(): Promise<void>;
 }
 
 type ProfileValue = SubscriptionReportValue<"profile">;
+
+/** 写道的唯一一个键:所有资料更新排一队。 */
+const WRITE_KEY = "reported-profiles";
 
 /** 面板看得见的那几格变没变。 */
 function visiblyChanged(prev: CachedProfile | undefined, next: CachedProfile): boolean {
@@ -57,7 +70,7 @@ function visiblyChanged(prev: CachedProfile | undefined, next: CachedProfile): b
 export function bindReportedProfiles(opts: BindReportedProfilesOptions): ReportedProfilesHandle {
 	const log = opts.logger;
 	const windowMs = opts.coalesceMs ?? PROFILES_CHANGED_COALESCE_MS;
-	let queue: Promise<void> = Promise.resolve();
+	const queue = createSerialQueue();
 	let disposed = false;
 	/** 窗口里攒着的、变了的订阅 id。 */
 	const pending = new Set<string>();
@@ -119,14 +132,15 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 
 	const sub = opts.bus.on("subscription-reported", (delivery) => {
 		if (delivery.report.kind !== "profile") return;
-		// 一条抛了不许卡住后面的:队尾永远是落定了的。
-		queue = queue
-			.then(() => apply(delivery))
+		// 一条抛了不许卡住后面的(写道自己保证);关门之后交进来的被拒,也只记一句。
+		queue
+			.run(WRITE_KEY, () => apply(delivery))
 			.catch((err) => log.warn(`[sub-profile] 处理一条资料更新时抛了: ${String(err)}`));
 	});
 
 	return {
-		idle: () => queue,
+		idle: () => queue.flush(),
+		close: () => queue.close(),
 		dispose() {
 			disposed = true;
 			sub.dispose();

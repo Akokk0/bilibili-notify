@@ -625,6 +625,7 @@ export async function startStandaloneServer(
 					?.id,
 		});
 		await roastDrafts.load();
+		runtime.serviceCtx.onDispose(() => roastDrafts.close(), "flush");
 
 		let statsRoute: Hono | null = null;
 		/** 私聊主人。发不出去由调用方各自兜住(调度器与指令处理器都不让它拖垮流程)。 */

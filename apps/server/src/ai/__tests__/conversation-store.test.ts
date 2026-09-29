@@ -13,7 +13,14 @@ import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { type ConversationStore, createConversationStore } from "../conversation-store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -769,5 +776,53 @@ describe("卡片皮肤工坊", () => {
 		const [, done, idle] = (await store.get(conv.id))?.messages ?? [];
 		expect(done?.cardSkins).toEqual([{ id: "a1", kinds: ["live", "sc"] }]);
 		expect(idle && "cardSkins" in idle).toBe(false);
+	});
+});
+
+describe("ConversationStore.close", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	const chatFiles = async (): Promise<string[]> =>
+		(await readdir(join(dataDir, "ai", "chat"))).sort();
+
+	it("close 等在途的写落盘", async () => {
+		storageWriteGate.hold();
+		const creating = store.create();
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = store.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		const created = await creating;
+		expect(await chatFiles()).toEqual([`${created.id}.json`]);
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [{ role: "user", content: "问1" }]);
+		const file = join(dataDir, "ai", "chat", `${c.id}.json`);
+		const before = await readFile(file, "utf8");
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		const closed = { code: "queue_closed" };
+		await expect(store.create()).rejects.toMatchObject(closed);
+		await expect(
+			store.appendMessages(c.id, [{ role: "user", content: "问2" }]),
+		).rejects.toMatchObject(closed);
+		await expect(store.setTitle(c.id, "改名")).rejects.toMatchObject(closed);
+		await expect(store.recordCardSkin(c.id, { owned: "skin-1" })).rejects.toMatchObject(closed);
+		await expect(store.remove(c.id)).rejects.toMatchObject(closed);
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readFile(file, "utf8")).toBe(before);
+		expect(await chatFiles()).toEqual([`${c.id}.json`]);
 	});
 });

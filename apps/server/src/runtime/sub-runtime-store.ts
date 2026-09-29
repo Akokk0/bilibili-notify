@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { CachedProfile, FansBaseline, Logger } from "@bilibili-notify/internal";
+import {
+	type CachedProfile,
+	createSerialQueue,
+	type FansBaseline,
+	type Logger,
+} from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
@@ -20,7 +25,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
  *
  * Topology: single JSON file `<dataDir>/state/sub-runtime.json` keyed by
  * `Subscription.id`, atomic tmpfile+rename writes, all mutations serialized
- * through one private FIFO promise chain (mirrors `ConfigStore.runScoped`).
+ * through one private write queue (mirrors `ConfigStore.runScoped`).
  *
  * Record shape (sibling keys, NOT baseline-inside-profile): keeping
  * `fansBaseline` a sibling of `cachedProfile` lets `/api/subs` join the
@@ -73,6 +78,11 @@ export interface SubRuntimeStore {
 	prune(keepIds: readonly string[]): Promise<void>;
 	/** Load `<dataDir>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
 	load(): Promise<void>;
+	/**
+	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的 patch / prune 一律以
+	 * `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
+	 */
+	close(): Promise<void>;
 }
 
 /**
@@ -96,6 +106,9 @@ export interface CreateSubRuntimeStoreOptions {
 	logger: Logger;
 }
 
+/** 写道的唯一一个键:整份只有一个文件。 */
+const WRITE_KEY = "sub-runtime";
+
 function cloneRuntime(r: SubRuntime): SubRuntime {
 	return structuredClone(r);
 }
@@ -104,17 +117,13 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 	const file = join(opts.dataDir, "state", "sub-runtime.json");
 	let records: Record<string, SubRuntime> = {};
 	let loaded = false;
-	// Single private FIFO chain so concurrent patch/prune (a FansPoller tick
-	// vs. a POST self-seed) never interleave their read-modify-write of the
-	// whole-file JSON. Errors propagate to the caller without poisoning the
-	// chain. Same idiom as ConfigStore.runScoped, collapsed to one scope
-	// (there is only one file).
-	let queue: Promise<unknown> = Promise.resolve();
+	// Single private write queue (one key — there is only one file) so concurrent patch/prune
+	// (a FansPoller tick vs. a POST self-seed) never interleave their read-modify-write of the
+	// whole-file JSON. Errors propagate to the caller without poisoning the queue.
+	const writes = createSerialQueue();
 
 	function runSerial<T>(task: () => Promise<T>): Promise<T> {
-		const next = queue.then(task, task);
-		queue = next.catch(() => undefined);
-		return next;
+		return writes.run(WRITE_KEY, task);
 	}
 
 	async function persist(): Promise<void> {
@@ -175,6 +184,8 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				opts.logger.debug(`[sub-runtime] pruned ${dropped} orphan entr(ies)`);
 			});
 		},
+
+		close: () => writes.close(),
 
 		async load() {
 			if (loaded) return;

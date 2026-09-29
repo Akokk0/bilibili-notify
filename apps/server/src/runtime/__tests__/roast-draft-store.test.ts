@@ -9,11 +9,18 @@
  * 就是把不该发的发出去了,而这正是审批要防的事。
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createRoastDraftStore, DRAFT_TTL_MS, type RoastDraftStore } from "../roast-draft-store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 const logger = {
 	debug() {},
@@ -255,5 +262,48 @@ describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
 		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
 		await reopened.load();
 		expect(reopened.get(d.id)).toEqual(d);
+	});
+});
+
+describe("RoastDraftStore.close", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	const draftsOnDisk = async (): Promise<Array<{ id: string }>> =>
+		JSON.parse(await readFile(join(dir, "state", "roast-drafts.json"), "utf8"));
+
+	it("close 等在途的写落盘", async () => {
+		storageWriteGate.hold();
+		const writing = store.add(board());
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = store.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		const draft = await writing;
+		expect((await draftsOnDisk()).map((d) => d.id)).toEqual([draft.id]);
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		const kept = await store.add(board());
+		const before = await readFile(join(dir, "state", "roast-drafts.json"), "utf8");
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		await expect(store.add(board())).rejects.toMatchObject({ code: "queue_closed" });
+		await expect(store.take(kept.id)).rejects.toMatchObject({ code: "queue_closed" });
+		await expect(store.sweep(Date.now() + DRAFT_TTL_MS * 2)).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readFile(join(dir, "state", "roast-drafts.json"), "utf8")).toBe(before);
+		expect(store.get(kept.id)?.id).toBe(kept.id);
 	});
 });

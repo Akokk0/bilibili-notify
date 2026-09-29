@@ -103,9 +103,16 @@ const LEGACY_LEFTOVER = /\.(?:tmp|deleting)$/;
 
 /**
  * 写道。**模块级、键 = 皮肤目录的绝对路径**(根级文件用皮肤根目录自己):同一份盘上状态的每次
- * 读改写都得排进同一条队,而队列不能住在 store 实例里。整个模块只有这一条队,关停时只 flush 它。
+ * 读改写都得排进同一条队,而队列不能住在 store 实例里。整个模块只有这一条队,关停时只 flush 它
+ * ({@link flushSkinWrites}),**不关门** —— 同一个进程里下一个起的服务(测试里、重启不换进程的
+ * 宿主里)还要往同一条队写,关了它们就写不进了。
  */
 const skinQueue = createSerialQueue();
+
+/** 等到所有皮肤门面已经交进来的写全部落盘(成功失败都算)。只 flush、不关门,理由见 {@link skinQueue}。 */
+export function flushSkinWrites(): Promise<void> {
+	return skinQueue.flush();
+}
 
 /** 皮肤 id:时间戳 36 进制 + 随机 hex(面板与卡片的 id schema 都认得这个形状)。 */
 function newId(): string {

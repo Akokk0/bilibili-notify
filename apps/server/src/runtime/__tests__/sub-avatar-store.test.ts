@@ -20,7 +20,14 @@ import {
 	PNG_BYTES,
 	WEBP_BYTES,
 } from "../../__tests__/support/avatar-fixtures.js";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createSubAvatarStore, type SubAvatarStore } from "../sub-avatar-store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 const KEEP = "a0000000-0000-4000-8000-000000000001";
 const GONE = "a0000000-0000-4000-8000-000000000002";
@@ -176,6 +183,47 @@ describe("删", () => {
 		await store.write(GONE, avatarDataUrl("jpeg", JPEG_BYTES));
 		await store.remove(GONE);
 		await store.remove(GONE);
+		expect(await files()).toEqual([`${KEEP}.png`]);
+	});
+});
+
+describe("SubAvatarStore.close", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	it("close 等在途的写落盘", async () => {
+		storageWriteGate.hold();
+		const writing = store.write(KEEP, avatarDataUrl("png", PNG_BYTES));
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = store.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		await writing;
+		expect(await files()).toEqual([`${KEEP}.png`]);
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		await store.write(KEEP, avatarDataUrl("png", PNG_BYTES));
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		await expect(store.write(GONE, avatarDataUrl("jpeg", JPEG_BYTES))).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+		await expect(store.writeBytes(GONE, WEBP_BYTES)).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+		await expect(store.remove(KEEP)).rejects.toMatchObject({ code: "queue_closed" });
+		await expect(store.sweep([])).rejects.toMatchObject({ code: "queue_closed" });
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
 		expect(await files()).toEqual([`${KEEP}.png`]);
 	});
 });

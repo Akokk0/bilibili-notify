@@ -8,7 +8,7 @@ import {
 	type AiChatMode,
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
-import type { Logger } from "@bilibili-notify/internal";
+import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 
 /**
@@ -185,6 +185,11 @@ export interface ConversationStore {
 	 * 返回的函数**可以重复调**(只销自己那一笔),catch 与 finally 都调不会串账。
 	 */
 	markBusy(id: string): () => void;
+	/**
+	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的 create / appendMessages / setTitle /
+	 * recordCardSkin / remove 一律以 `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
+	 */
+	close(): Promise<void>;
 }
 
 export interface ConversationStoreOptions {
@@ -231,6 +236,9 @@ const TITLE_MAX_CHARS = 24;
 const DEFAULT_MAX_MESSAGES = 200;
 const DEFAULT_MAX_CONVERSATIONS = 50;
 
+/** 写道的唯一一个键:所有会话的写排一队(create 的修剪要读全部会话,不能与别的写交错)。 */
+const WRITE_KEY = "conversations";
+
 export function createConversationStore(opts: ConversationStoreOptions): ConversationStore {
 	const { dataDir, logger } = opts;
 	const maxMessages = opts.maxMessages ?? DEFAULT_MAX_MESSAGES;
@@ -240,18 +248,11 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 
 	/**
 	 * 同一时刻创建 / 追加的两次写不能交错。会话文件是「读—改—写」整体重写,
-	 * 并发下后写会拿着过期快照覆盖前写,丢掉一整轮问答。用一条串行链排队,
+	 * 并发下后写会拿着过期快照覆盖前写,丢掉一整轮问答。用一条串行写道排队,
 	 * 而不是丢弃式锁 —— 每一条消息都必须落盘,不能因为忙就扔掉。
 	 */
-	let chain: Promise<unknown> = Promise.resolve();
-	const serial = <T>(fn: () => Promise<T>): Promise<T> => {
-		const next = chain.then(fn, fn);
-		chain = next.then(
-			() => {},
-			() => {},
-		);
-		return next;
-	};
+	const writes = createSerialQueue();
+	const serial = <T>(fn: () => Promise<T>): Promise<T> => writes.run(WRITE_KEY, fn);
 
 	async function readOne(file: string): Promise<Conversation | null> {
 		let raw: string;
@@ -507,6 +508,8 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				}
 			});
 		},
+
+		close: () => writes.close(),
 	};
 }
 

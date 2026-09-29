@@ -19,6 +19,7 @@ import type {
 import {
 	countsAsDelivery,
 	countsAsFailure,
+	createSerialQueue,
 	HistoryEntrySchema,
 	HistoryPatchSchema,
 	PushKindSchema,
@@ -138,6 +139,11 @@ export interface HistoryStore {
 	 * 删的同时有行在追加,补丁会补到一行刚被删掉的本体上。
 	 */
 	deleteRange(opts: DeleteRangeOptions): Promise<number>;
+	/**
+	 * 关停:先等在途与已排队的写(落行 / 追加 / 删区间)全部落盘,再关门 —— 此后的 record /
+	 * appendToRow / deleteRange 一律以 `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
+	 */
+	close(): Promise<void>;
 }
 
 function zeroCounts(): Record<PushKind, number> {
@@ -177,6 +183,9 @@ export function computeStatus(targetId: string | null, messages: HistoryMessage[
 /** 同 pushId 同目标的行还在内存里时才能追加;保留最近这些,够一次推送从头到尾。 */
 const OPEN_ROWS_CAP = 2000;
 
+/** 写道的唯一一个键:历史的写全局串行,是刻意的。 */
+const WRITE_KEY = "history";
+
 export interface CreateHistoryStoreOptions {
 	dataDir: string;
 	bus: MessageBus;
@@ -193,8 +202,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	const imgRoot = join(root, "img");
 	/** 还可能被追加的行,键 = `${pushId}|${targetId}`;满了丢最久没碰的。 */
 	const open = new RecencyTable<HistoryEntry>(OPEN_ROWS_CAP);
-	/** 写串行化:同一次推送的两段(卡片、紧随其后的 @全体)不会同时建两行。 */
-	let tail: Promise<unknown> = Promise.resolve();
+	/**
+	 * 写串行化:同一次推送的两段(卡片、紧随其后的 @全体)不会同时建两行。**全局单键**(`WRITE_KEY`)——
+	 * 历史的全局串行是刻意的,别按推送或目标拆键。关停时 `close()` 等它走空再关门。
+	 */
+	const writes = createSerialQueue();
 	/**
 	 * **刚补完的那一行**,给 `appendToRow` 连着补下一条时当 base 用。
 	 *
@@ -203,7 +215,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	 * `HistoryEntrySchema` / `HistoryPatchSchema`。日文件是「一次推送 × 一个目标」一行,
 	 * 高推送量实例一天几千行,于是补一个 6 条的行就是 7 遍全份解析(`start()` 的
 	 * `findRow` 还占一遍)。同一个文件的 `readTailEntries` 早就为 `query()` 躲开过
-	 * 这笔钱,重推这条路又把它整个请了回来 —— 而且这几遍都排在写队列 `tail` 上,
+	 * 这笔钱,重推这条路又把它整个请了回来 —— 而且这几遍都排在写道 `writes` 上,
 	 * 期间所有正常推送的落行都在后面等着。
 	 *
 	 * 🔴 **只在这份日文件自那以后一个字节都没被动过时才算数**:每次用之前 `stat` 一下
@@ -443,9 +455,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	}
 
 	function record(input: HistoryRecordInput): Promise<HistoryEntry> {
-		const job = tail.then(() => recordSerialized(input));
-		tail = job.catch(() => {});
-		return job;
+		return writes.run(WRITE_KEY, () => recordSerialized(input));
 	}
 
 	async function findRow(rowId: string, ts: string): Promise<HistoryEntry | null> {
@@ -493,9 +503,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		ts: string,
 		messages: readonly HistoryRetryMessage[],
 	): Promise<HistoryEntry | null> {
-		const job = tail.then(() => appendToRowSerialized(rowId, ts, messages));
-		tail = job.catch(() => {});
-		return job;
+		return writes.run(WRITE_KEY, () => appendToRowSerialized(rowId, ts, messages));
 	}
 
 	async function query(q: HistoryQuery): Promise<HistoryEntry[]> {
@@ -756,9 +764,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	}
 
 	function deleteRange(options: DeleteRangeOptions): Promise<number> {
-		const job = tail.then(() => deleteRangeSerialized(options));
-		tail = job.catch(() => {});
-		return job;
+		return writes.run(WRITE_KEY, () => deleteRangeSerialized(options));
 	}
 
 	return {
@@ -769,6 +775,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		aggregateDaily,
 		imageDir: () => imgRoot,
 		deleteRange,
+		close: () => writes.close(),
 	};
 }
 

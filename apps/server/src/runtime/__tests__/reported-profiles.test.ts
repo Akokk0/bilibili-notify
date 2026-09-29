@@ -6,16 +6,23 @@
  *  - 头像存不下来,名字与粉丝照样更新。
  */
 
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { bindReportedProfiles, type ReportedProfilesHandle } from "../reported-profiles.js";
 import { createSubAvatarStore, type SubAvatarStore } from "../sub-avatar-store.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "../sub-runtime-store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 const A = "d0000000-0000-4000-8000-000000000001";
 const B = "d0000000-0000-4000-8000-000000000002";
@@ -140,5 +147,49 @@ describe("bindReportedProfiles", () => {
 		});
 		await handle.idle();
 		expect(subRuntime.get(A)).toBeUndefined();
+	});
+});
+
+describe("bindReportedProfiles.close", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	const runtimeFile = () => join(dataDir, "state", "sub-runtime.json");
+
+	it("close 等在途的资料落盘(dispose 只摘监听、置标记,不等队列)", async () => {
+		bind();
+		storageWriteGate.hold();
+		bus.emit("subscription-reported", profileReport([A], { name: "甲" }));
+		await storageWriteGate.arrived();
+		// 关停的 stop 段:摘监听、置标记,在途的那一条照样落。
+		handle.dispose();
+
+		let closed = false;
+		const closing = handle.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		const onDisk = JSON.parse(await readFile(runtimeFile(), "utf8")) as Record<string, unknown>;
+		expect(onDisk[A]).toMatchObject({ cachedProfile: { name: "甲" } });
+	});
+
+	it("close 之后再来的资料不处理、不碰盘", async () => {
+		bind();
+		bus.emit("subscription-reported", profileReport([A], { name: "甲" }));
+		await handle.idle();
+		const before = await readFile(runtimeFile(), "utf8");
+		await handle.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		bus.emit("subscription-reported", profileReport([A], { name: "乙", avatar: PNG_BYTES }));
+		await handle.idle();
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readFile(runtimeFile(), "utf8")).toBe(before);
+		await expect(readdir(join(dataDir, "avatars"))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 });

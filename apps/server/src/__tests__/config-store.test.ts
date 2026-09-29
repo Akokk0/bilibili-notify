@@ -24,6 +24,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { createBackupService } from "../backup/service.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, ConfigValidationError, createConfigStore } from "../config/store.js";
+import { storageWriteGate } from "./support/storage-write-gate.js";
+
+// 落盘函数前的闸默认敞开;只有「close 等在途的写」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("./support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -1659,5 +1666,108 @@ describe("ConfigStore", () => {
 			"{uname} 成为了 {mname} 的舰长！",
 		);
 		await rm(dir2, { recursive: true, force: true });
+	});
+});
+
+describe("ConfigStore.close", () => {
+	let dataDir: string;
+	let stateDir: string;
+	let store: ConfigStore;
+
+	beforeEach(async () => {
+		storageWriteGate.reset();
+		dataDir = await mkdtemp(join(tmpdir(), "bn-config-close-"));
+		stateDir = join(dataDir, "state");
+		store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store.load();
+	});
+
+	afterEach(async () => {
+		storageWriteGate.reset();
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	/** 挂起 `promise` 之后过一小会儿它还没落定 —— 用来断言「close 还在等」。 */
+	async function stillPending(promise: Promise<unknown>): Promise<boolean> {
+		let settled = false;
+		void promise.then(
+			() => {
+				settled = true;
+			},
+			() => {
+				settled = true;
+			},
+		);
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		return !settled;
+	}
+
+	it("close 等在途的写落盘", async () => {
+		await store.upsertConnection(makeWebhookConnection());
+		const target = store.getTargets()[0] as PushTarget;
+		storageWriteGate.hold();
+		const writing = store.recordTargetTestStatus(target.id, {
+			ok: true,
+			lastCheckedAt: "2026-06-06T00:00:00.000Z",
+			latencyMs: 12,
+		});
+		await storageWriteGate.arrived();
+
+		const closing = store.close();
+		expect(await stillPending(closing)).toBe(true);
+
+		storageWriteGate.release();
+		await closing;
+		await writing;
+		const onDisk = JSON.parse(
+			await readFile(join(stateDir, "targets.json"), "utf8"),
+		) as PushTarget[];
+		expect(onDisk.find((t) => t.id === target.id)?.testStatus).toMatchObject({
+			ok: true,
+			latencyMs: 12,
+		});
+	});
+
+	it("close 等得到嵌套排队的写(replaceSections 排在 globals 的写后面、关门时才轮到它去拿其余分区)", async () => {
+		const sub = makeSampleSubscription("33333");
+		storageWriteGate.hold();
+		const patching = store.patchGlobals({ app: { userAgent: "UA/3" } });
+		await storageWriteGate.arrived();
+		// 外层任务排在 globals 的队里干等:内层四个分区的写要等它跑起来才会一层层交进来。
+		const replacing = store.replaceSections({ subscriptions: [sub] });
+
+		const closing = store.close();
+		expect(await stillPending(closing)).toBe(true);
+
+		storageWriteGate.release();
+		await closing;
+		await patching;
+		await expect(replacing).resolves.toEqual(["subscriptions"]);
+		const onDisk = JSON.parse(
+			await readFile(join(stateDir, "subscriptions.json"), "utf8"),
+		) as Array<{ id: string }>;
+		expect(onDisk.map((s) => s.id)).toEqual([sub.id]);
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		await store.upsertConnection(makeWebhookConnection());
+		const before = await readFile(join(stateDir, "targets.json"), "utf8");
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		await expect(store.upsertConnection(makeWebhookConnection())).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+		await expect(store.patchGlobals({ app: { userAgent: "UA/2" } })).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readFile(join(stateDir, "targets.json"), "utf8")).toBe(before);
+		expect(store.getConnections()).toHaveLength(1);
 	});
 });

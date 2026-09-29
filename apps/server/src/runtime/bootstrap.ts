@@ -3,6 +3,7 @@ import { buildFontFace } from "@bilibili-notify/image";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
+import { flushAssetLabelWrites } from "../assets/asset-store.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
@@ -11,6 +12,7 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore } from "../history/repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
+import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder } from "../stats/recorder.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
@@ -161,6 +163,13 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		logger: serviceCtx.logger,
 	});
 	const configStore = createConfigStore({ bootstrap, bus, serviceCtx, secretStore });
+	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
+	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。
+	serviceCtx.onDispose(() => configStore.close(), "flush");
+	// 模块级的两条写道(皮肤门面、资产库的原名清单)住在同一个进程的所有实例之间,所以只 flush、不关门 ——
+	// 关了它们,同一进程里下一个起的服务就写不进了。
+	serviceCtx.onDispose(() => flushSkinWrites(), "flush");
+	serviceCtx.onDispose(() => flushAssetLabelWrites(), "flush");
 	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
 	// 它没有内部状态,retention 那边按同一个 `historyRetentionDays` 自己建一个来淘汰。
 	const repushStore = createRepushStore({
@@ -173,6 +182,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		logger: serviceCtx.logger,
 		repush: repushStore,
 	});
+	serviceCtx.onDispose(() => historyStore.close(), "flush");
 	const fansStore = createFansStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
@@ -211,10 +221,12 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	serviceCtx.onDispose(() => subRuntimeStore.close(), "flush");
 	const subAvatarStore = createSubAvatarStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	serviceCtx.onDispose(() => subAvatarStore.close(), "flush");
 	// 删订阅的路不止一条(面板删、恢复备份整份覆盖、级联),都汇到 `subscription-changed` 上 ——
 	// 只听总线,所以在这儿就能起,不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const subAvatarCleanup = bindSubAvatarCleanup({
@@ -232,10 +244,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => reportedProfiles.dispose(), "stop");
+	// 🔴 顺序承重:它往头像仓与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
+	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
+	serviceCtx.onDispose(() => reportedProfiles.close(), "flush");
 	const conversationStore = createConversationStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	serviceCtx.onDispose(() => conversationStore.close(), "flush");
 	const logStore = createLogStore({
 		dataDir: bootstrap.dataDir,
 		serviceCtx,

@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Logger } from "@bilibili-notify/internal";
+import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 
 /**
@@ -10,7 +10,7 @@ import { atomicWriteJson } from "@bilibili-notify/storage";
  * 审批开着时,到点生成出来的稿子不能只待在内存里:主人可能过几个小时才回一句 `y`,
  * 中间容器重启过一次。所以落盘,拓扑与 {@link SubRuntimeStore} 同款 —— 单个 JSON
  * 文件 `<dataDir>/state/roast-drafts.json`、tmpfile+rename 原子写、全部写操作走
- * 一条私有 FIFO 链(两条流水线可能在同一分钟里各自生成一份)。
+ * 一条私有写道(两条流水线可能在同一分钟里各自生成一份)。
  *
  * 它**不发任何 config 事件** —— 草稿是 apps/server 自己的运行时产物,不是配置。
  *
@@ -67,6 +67,11 @@ export interface RoastDraftStore {
 	take(id: string, now?: number): Promise<RoastDraft | undefined>;
 	/** 清掉过期的并交还给调用方(据此私聊主人)。交还过一次就不再交还。 */
 	sweep(now?: number): Promise<RoastDraft[]>;
+	/**
+	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的 add / take / sweep 一律以
+	 * `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
+	 */
+	close(): Promise<void>;
 }
 
 export interface CreateRoastDraftStoreOptions {
@@ -132,18 +137,19 @@ function upgradeLegacyDraft(
 	};
 }
 
+/** 写道的唯一一个键:整份只有一个文件。 */
+const WRITE_KEY = "roast-drafts";
+
 export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): RoastDraftStore {
 	const file = join(opts.dataDir, "state", "roast-drafts.json");
 	let records: RoastDraft[] = [];
 	let loaded = false;
-	// 单条 FIFO —— 两条流水线(榜单 / 某位 UP)可能在同一分钟里各自落一份草稿,
+	// 单键写道 —— 两条流水线(榜单 / 某位 UP)可能在同一分钟里各自落一份草稿,
 	// 整文件的 read-modify-write 交错就会丢掉其中一份。同 SubRuntimeStore。
-	let queue: Promise<unknown> = Promise.resolve();
+	const writes = createSerialQueue();
 
 	function runSerial<T>(task: () => Promise<T>): Promise<T> {
-		const next = queue.then(task, task);
-		queue = next.catch(() => undefined);
-		return next;
+		return writes.run(WRITE_KEY, task);
 	}
 
 	async function persist(): Promise<void> {
@@ -222,6 +228,8 @@ export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): Roast
 				return dead.map((d) => structuredClone(d));
 			});
 		},
+
+		close: () => writes.close(),
 
 		async load() {
 			if (loaded) return;

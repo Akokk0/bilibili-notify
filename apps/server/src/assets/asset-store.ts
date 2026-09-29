@@ -89,8 +89,16 @@ const HEX32_STEM = /^[a-f0-9]{32}$/;
  * 都得排进同一条队。队列不能住在 store 实例里 —— 调用方按数据目录就地建 store 时,
  * 同一个目录上必然有不止一个实例,各排各的队等于没排。资产字节的写不排,各写各的文件、
  * 原子改名,互不相干。
+ *
+ * 关停时只 flush 它({@link flushAssetLabelWrites}),**不关门**:队列是模块级的,同一个进程里下一个起的
+ * 服务还要往同一条队写,关了它们就写不进了。
  */
 const labelsQueue = createSerialQueue();
+
+/** 等到所有资产库已经交进来的原名清单写全部落盘(成功失败都算)。只 flush、不关门,理由见 {@link labelsQueue}。 */
+export function flushAssetLabelWrites(): Promise<void> {
+	return labelsQueue.flush();
+}
 
 const isKnownExt = (formats: Readonly<Record<string, string>>, ext: string): boolean =>
 	Object.hasOwn(formats, ext);

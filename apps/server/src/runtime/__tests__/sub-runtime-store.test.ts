@@ -23,12 +23,19 @@ import { type Logger, makeEmptySubscription } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import {
 	createSubRuntimeStore,
 	pruneOrphanSubRuntime,
 	type SubRuntimeStore,
 } from "../sub-runtime-store.js";
+
+// 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
+	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
+});
 
 function makeLogger(): Logger {
 	return {
@@ -407,5 +414,46 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		await expect(store.patch("b", { cachedProfile: PROFILE_A2 })).rejects.toBeDefined();
 		expect(store.get("a")).toEqual({ cachedProfile: PROFILE_A });
 		expect(store.get("b")).toEqual({ cachedProfile: PROFILE_A2 });
+	});
+});
+
+describe("SubRuntimeStore.close", () => {
+	beforeEach(() => storageWriteGate.reset());
+	afterEach(() => storageWriteGate.reset());
+
+	it("close 等在途的写落盘", async () => {
+		const store = make();
+		storageWriteGate.hold();
+		const writing = store.patch("s1", { cachedProfile: PROFILE_A });
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = store.close().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		await closing;
+		await writing;
+		await expect(readFileJson()).resolves.toEqual({ s1: { cachedProfile: PROFILE_A } });
+	});
+
+	it("close 之后的写被拒且不碰盘", async () => {
+		const store = make();
+		await store.patch("s1", { cachedProfile: PROFILE_A });
+		const before = await readFile(file, "utf8");
+		await store.close();
+		const writesAtClose = storageWriteGate.writes;
+
+		await expect(store.patch("s1", { cachedProfile: PROFILE_A2 })).rejects.toMatchObject({
+			code: "queue_closed",
+		});
+		await expect(store.prune([])).rejects.toMatchObject({ code: "queue_closed" });
+
+		expect(storageWriteGate.writes).toBe(writesAtClose);
+		expect(await readFile(file, "utf8")).toBe(before);
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A });
 	});
 });

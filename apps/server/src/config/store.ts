@@ -9,6 +9,7 @@ import {
 	type Connection,
 	ConnectionPlatformSchema,
 	ConnectionSchema,
+	createSerialQueue,
 	DEFAULT_MESSAGE_LAYOUT,
 	type Disposable,
 	deterministicUuid,
@@ -134,6 +135,12 @@ export interface ConfigStore {
 	 * 详见实现处的注释。
 	 */
 	replaceSections(next: ConfigSections): Promise<ConfigScope[]>;
+
+	/**
+	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的写一律以 `SerialQueueClosedError` 拒绝、不碰盘。
+	 * 关停的 `flush` 段调它;返回以后数据目录里的 `state/` 不会再有本店的写入。
+	 */
+	close(): Promise<void>;
 }
 
 export interface CreateConfigStoreOptions {
@@ -172,9 +179,6 @@ interface ScopeMetaInternal {
 	exists: boolean;
 	lastUpdatedAt: string | null;
 }
-
-/** A FIFO queue per scope so concurrent writes to the same scope serialize. */
-type Queue = Promise<unknown>;
 
 function deepClone<T>(value: T): T {
 	// structuredClone is in node 20+; falls back to JSON for stubborn shapes.
@@ -819,13 +823,8 @@ class NodeConfigStore implements ConfigStore {
 		secrets: { exists: false, lastUpdatedAt: null },
 	};
 
-	private readonly queues: Record<ConfigScope, Queue> = {
-		globals: Promise.resolve(),
-		subscriptions: Promise.resolve(),
-		connections: Promise.resolve(),
-		targets: Promise.resolve(),
-		secrets: Promise.resolve(),
-	};
+	/** 写道:键 = scope,同一个 scope 的写排成一队,不同 scope 互不等待。关停时由 {@link close} 关门。 */
+	private readonly writes = createSerialQueue();
 
 	private loaded = false;
 
@@ -1862,16 +1861,19 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * Per-scope FIFO queue. We chain `task` onto `this.queues[scope]` so that
-	 * concurrent writes on the same scope serialize. Different scopes proceed
-	 * in parallel. Errors propagate to the caller without poisoning the queue.
+	 * Per-scope FIFO queue: concurrent writes on the same scope serialize, different scopes proceed
+	 * in parallel. Errors propagate to the caller without poisoning the queue. 关门之后交进来的写
+	 * 以 `SerialQueueClosedError` 拒绝、一个字节都不碰盘。
 	 */
 	private runScoped<T>(scope: ConfigScope, task: () => Promise<T>): Promise<T> {
-		const prev = this.queues[scope];
-		const next = prev.then(task, task);
-		// Keep the queue alive even if the task threw — swallow on the chain root.
-		this.queues[scope] = next.catch(() => undefined);
-		return next;
+		return this.writes.run(scope, task);
+	}
+
+	async close(): Promise<void> {
+		// 先等空再关门:`runAllScopes` 是四层嵌套的 `runScoped`,外层任务已经在跑、内层还没交进来的时候
+		// 就关门的话,内层会被拒,一次恢复备份半路夭折。先 flush 把嵌套交进来的也等完,再关。
+		await this.writes.flush();
+		await this.writes.close();
 	}
 }
 

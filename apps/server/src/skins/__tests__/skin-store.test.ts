@@ -14,6 +14,7 @@ import { isLeftoverName } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
 	createSkinStore,
+	flushSkinWrites,
 	type ManifestResult,
 	type SkinPackageStore,
 	type SkinPackageStoreOptions,
@@ -504,5 +505,40 @@ describe("runRoot:门面自己的根级文件", () => {
 		const settled = await Promise.allSettled(tasks);
 		expect(seen).toEqual([1, 2, 3]);
 		expect(settled.map((s) => s.status)).toEqual(["fulfilled", "rejected", "fulfilled"]);
+	});
+});
+
+describe("flushSkinWrites:关停时只等、不关门", () => {
+	it("等到在途的写做完才落定", async () => {
+		const store = makeStore();
+		await store.ensureReady();
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let wrote = false;
+		const writing = store.runRoot(async () => {
+			await held;
+			wrote = true;
+		});
+
+		let flushed = false;
+		const flushing = flushSkinWrites().then(() => {
+			flushed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(flushed).toBe(false);
+
+		release();
+		await flushing;
+		await writing;
+		expect(wrote).toBe(true);
+	});
+
+	it("flush 过之后队列照样收写:模块级的队被同一进程里下一个起的服务接着用", async () => {
+		const store = makeStore();
+		await store.ensureReady();
+		await flushSkinWrites();
+		await expect(store.runRoot(async () => "还能写")).resolves.toBe("还能写");
 	});
 });
