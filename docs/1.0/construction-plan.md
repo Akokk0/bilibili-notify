@@ -25,7 +25,7 @@
 
 | 期 | 做什么 | 方式 | 出期条件 | 规模（④′ 轮） |
 | --- | --- | --- | --- | --- |
-| 0 ✅ | 测试拦外网（守卫 2，`scripts/network-guard.mjs`） | 改造 | 已落 | 0.2 |
+| 0 ✅ | 测试拦外网（守卫 2，`scripts/network-guard.mjs`）；09-29 补上 DNS 查询（第 2 期抓图拦内网要先解析，不补就漏） | 改造 | 已落 | 0.2 |
 | 1 | 地基：身份、持久化底层与关停、资产与皮肤存储合一；**迁移地基**（数据代、先 listen 再迁、回退指纹、首访页、全新开始、订阅合一、设置分段）；迁移耗时测试。切片 ①–⑨ 见下 | 持久化局部重写，其余改造 | 迁移耗时测试绿 | 施工时重估 |
 | 2 | 数据模型：作品卡与直播卡、**抽 `packages/http`**（请求客户端、cookie 罐、浏览器身份，从 B 站的实现里抽出，抽出去的直接按 naming.md 起名），抓图核心服务建在它上面（安全防护逐跳查重定向 + 图库）与图库引用、皮肤字段、特性键；新类型直接用新名。并入：`LiveCardInput` 人数只收精确数；`formatCount` 带符号变体、`formatAgo`、`formatDuration`（连删 `{time}` 兜底与 `getTimeDifference` 钩子）；卡种中文名收一份；出图字节门按「批准的像素差清单」裁决（ADR-0028 决策 2） | 出卡前半段局部重写 | 守卫 10 扩到五种卡、清单外的差异为零；出图器零联网绿 | 约 4（估于 `packages/http` 并入之前） |
 | 3a | 接口先行：`SubscriptionSource` 与横切接口、登记表、`SourceContext`（建在 `IntegrationContext` 上：state / secrets / settings / http / report / fetchImage 挂上 ctx；`reportProblem` 进全在内存的问题表，ADR-0025 决策 11）；B 站四个包搬进 `bilibili/`（先纯搬、只改 import 路径；紧接着单独一个提交按 naming.md 改名，含词表、外部接口回应的起名、原字段名只留在回应上；再做中立化） 并实现，中立部分同时拆进 `posts/` 与 `live/`；`accounts/` 与 `bilibili/auth/`；设置坏了只停那一处（集成段只停那个集成，`core` 段逐格退默认）。推送侧：`PlatformAdapter` 接口与登记表（登记即 `start`）、OneBot / QQ 官方机器人 / webhook 作为内置适配器登记并带模板候选、`/api/adapters`、连接与目标的新形状（连接 `adapterKey` / `settings` / `platformSnapshot`，目标删 `platform`）与迁移条目、只有 `TargetDispatcher` 能发送（链接回复与指令回复改走 `sendToAddress`，`notifyMaster` 返回结果形状；咽喉 e2e 在本期就要驱动这几条路）。schema 标 `secret: true`、服务端按 `MaskedSecret` 下发。本期开的守卫见「中立性守卫的归期」 | 改造 | 检查点：B 站全经中立接口运行、行为不变；守卫 21b 绿 | 施工时重估 |

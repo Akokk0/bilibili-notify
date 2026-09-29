@@ -1,13 +1,18 @@
+import dns from "node:dns";
+import { syncBuiltinESMExports } from "node:module";
 import net from "node:net";
 
 /**
- * 测试拦外网:vitest 运行里连向非本机地址的连接一律拦下,只放行本机(回环地址与 unix socket)。
+ * 测试拦外网:vitest 运行里连向非本机地址的连接、查外网名字的 DNS 查询一律拦下,只放行本机
+ * (回环地址与 unix socket)。
  *
- * 只挂一处:`net.Socket.prototype.connect`。fetch(Node 自带的 undici)、`http` / `https`、
+ * 连接挂一处:`net.Socket.prototype.connect`。fetch(Node 自带的 undici)、`http` / `https`、
  * `ws`、全局 WebSocket、`tls.connect` 最后都落到它 —— 挂 `net.connect` 不够,`http` 的
- * Agent 在模块加载时就把 `net.createConnection` 抄走了。
+ * Agent 在模块加载时就把 `net.createConnection` 抄走了。拦法仿「连接被拒」:下一拍 destroy
+ * 并带上错误,调用方原有的 error 处理照常触发。
  *
- * 拦法仿「连接被拒」:下一拍 destroy 并带上错误,调用方原有的 error 处理照常触发。
+ * DNS 另挂:只解析、不连接也会往外发查询(拦内网之类要先解析再比地址的代码就是这样)。
+ * 连接那一处管不到它 —— 连外网名字时连接先被拦下,轮不到解析;直接调解析的根本不经过连接。
  */
 
 export const BLOCKED_CODE = "BN_TEST_NETWORK_BLOCKED";
@@ -55,6 +60,61 @@ export function assertNoBlockedConnections(blocked) {
 	throw new Error(`测试连了外网(已拦下;被测代码吞掉了报错也照样判失败):\n${lines.join("\n")}`);
 }
 
+/**
+ * DNS 的四处入口各挂一遍:模块上的 `resolve*` / `reverse` 是默认解析器的绑定副本,和
+ * `Resolver.prototype` 上的不是同一个函数;promises 那一侧同样两处(`node:dns/promises` 就是
+ * `dns.promises`)。`lookup` 放行本机名与 IP 字面量(字面量 Node 直接返回,不发查询),其余只放行本机。
+ * 第一个参数不是字符串的交回原函数,让 Node 自己的参数校验报错。
+ *
+ * 换掉的是 CJS 导出对象上的属性,ESM 的具名导入(`import { lookup } from "node:dns"`)读的是另一份
+ * 快照,要 `syncBuiltinESMExports()` 才跟上。
+ */
+function guardDns(blocked) {
+	const methods = Object.getOwnPropertyNames(dns.Resolver.prototype).filter(
+		(name) => name !== "constructor",
+	);
+	const allowed = (name, host) =>
+		isLoopbackHost(host) || (name === "lookup" && net.isIP(host) !== 0);
+	const refuse = (host) => {
+		const err = new Error(
+			`测试里不许查外网名字:${host}(DNS)。只放行本机地址,要解析的逻辑请注入解析函数或换成 mock`,
+		);
+		err.code = BLOCKED_CODE;
+		blocked.push({ target: `dns:${host}`, stack: new Error().stack });
+		return err;
+	};
+	const wrapCallback = (name, original) =>
+		function guardedDnsCall(...args) {
+			const [host] = args;
+			const callback = args.at(-1);
+			if (typeof host !== "string" || typeof callback !== "function" || allowed(name, host)) {
+				return original.apply(this, args);
+			}
+			const err = refuse(host);
+			process.nextTick(() => callback(err));
+		};
+	const wrapPromise = (name, original) =>
+		function guardedDnsQuery(...args) {
+			const [host] = args;
+			if (typeof host !== "string" || allowed(name, host)) return original.apply(this, args);
+			return Promise.reject(refuse(host));
+		};
+	for (const [target, wrap] of [
+		[dns.Resolver.prototype, wrapCallback],
+		[dns.promises.Resolver.prototype, wrapPromise],
+	]) {
+		for (const name of methods) target[name] = wrap(name, target[name]);
+	}
+	for (const [target, wrap] of [
+		[dns, wrapCallback],
+		[dns.promises, wrapPromise],
+	]) {
+		for (const name of [...methods, "lookup", "lookupService"])
+			target[name] = wrap(name, target[name]);
+	}
+	syncBuiltinESMExports();
+}
+
 /** 本进程的守卫,首次调用时装上。setupFiles 每个测试文件都会重跑,装过就复用,不叠第二层。 */
 export function networkGuard() {
 	if (globalThis[GUARD]) return globalThis[GUARD];
@@ -72,6 +132,7 @@ export function networkGuard() {
 		process.nextTick(() => this.destroy(err));
 		return this;
 	};
+	guardDns(blocked);
 	const guard = { drain: () => blocked.splice(0) };
 	globalThis[GUARD] = guard;
 	return guard;

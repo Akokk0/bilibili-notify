@@ -347,7 +347,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 
 | # | 守卫 |
 | --- | --- |
-| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片（第 0 期，见 [construction-plan.md](./construction-plan.md)）。已落：`scripts/network-guard.mjs`，挂在根配置的 `test.setupFiles`；拦在 `net.Socket#connect`（fetch、http、ws、WebSocket 都经过它），每条测试收尾查账，被测代码吞掉了报错也判失败。管不到：测试起的子进程（Chrome、脚本；Chrome 那一半由「出图器零联网」补）、直接调 `dns.lookup`、在包目录里跑 `vp test`、本机代理转发 |
+| 2 | 测试进程对外请求一律失败（只放行本机地址）——施工第一片（第 0 期，见 [construction-plan.md](./construction-plan.md)）。已落：`scripts/network-guard.mjs`，挂在根配置的 `test.setupFiles`；拦在 `net.Socket#connect`（fetch、http、ws、WebSocket 都经过它），DNS 查询另拦（`lookup`、`lookupService`、`resolve*`、`reverse`，含 promises 与 `Resolver`；`lookup` 放行 IP 字面量），每条测试收尾查账，被测代码吞掉了报错也判失败。管不到：测试起的子进程（Chrome、脚本；Chrome 那一半由「出图器零联网」补）、在包目录里跑 `vp test`、本机代理转发 |
 | 3 | 服务端除了持久化底层（`packages/storage`），不许直接写文件。按 import 认、不按调用名：从 fs 拿了写入口（writeFile、appendFile、rename、copyFile、cp、createWriteStream、truncate 及 Sync 版，带写标志的 open）就点名；mkdir、rm、unlink、link、symlink 不管（只动名字，留不下写了一半的内容）。底层要接住原子写 JSON、追加 JSONL、原子写二进制、整目录替换；没有白名单，config/persist.ts 那份保留注释的 YAML 也走 `atomicWriteFile`。已落：`apps/server/src/__tests__/disk-write-boundary.test.ts`，切片 ② 收尾时清零（迁移期间的待迁名单已删） |
 | 5 | 面板里 `"/api/"` 字面量只许出现在 `services/` |
 | 6 | 注释里写的仓内路径必须指向真实存在的文件 |

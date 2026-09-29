@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import dns, { lookup as esmLookup } from "node:dns";
+import { resolve4 as esmResolve4 } from "node:dns/promises";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -36,6 +38,13 @@ function errorOf(emitter) {
 		emitter.once("connect", () => reject(new Error("预期被拦下,结果连上了")));
 		emitter.once("response", () => reject(new Error("预期被拦下,结果连上了")));
 	});
+}
+
+/** 回调式的 dns 调用包成 promise:第一个参数是错误。 */
+function viaCallback(call) {
+	return new Promise((resolve, reject) =>
+		call((err, value) => (err ? reject(err) : resolve(value))),
+	);
 }
 
 /** 被拦的连接都要进账本;这里核对完顺手清账,免得查账钩子把故意去连的测试判失败。 */
@@ -105,6 +114,47 @@ describe("测试拦外网", () => {
 			});
 			socket.destroy();
 		});
+	});
+});
+
+describe("DNS 查询也拦", () => {
+	// 不连接、只解析也会往外发查询:解析结果还随网络环境变,测试会跟着飘。
+	it.each([
+		["dns.lookup", () => viaCallback((cb) => dns.lookup(PROBE_HOST, cb)), PROBE_HOST],
+		["dns.promises.lookup", () => dns.promises.lookup(PROBE_HOST), PROBE_HOST],
+		["具名导入的 lookup", () => viaCallback((cb) => esmLookup(PROBE_HOST, cb)), PROBE_HOST],
+		["dns.resolve4", () => viaCallback((cb) => dns.resolve4(PROBE_HOST, cb)), PROBE_HOST],
+		["dns.promises.resolveTxt", () => dns.promises.resolveTxt(PROBE_HOST), PROBE_HOST],
+		["具名导入的 promises resolve4", () => esmResolve4(PROBE_HOST), PROBE_HOST],
+		[
+			"new dns.Resolver().resolve4",
+			() => viaCallback((cb) => new dns.Resolver().resolve4(PROBE_HOST, cb)),
+			PROBE_HOST,
+		],
+		[
+			"new dns.promises.Resolver().resolveAny",
+			() => new dns.promises.Resolver().resolveAny(PROBE_HOST),
+			PROBE_HOST,
+		],
+		["dns.reverse", () => viaCallback((cb) => dns.reverse("192.0.2.1", cb)), "192.0.2.1"],
+		["dns.promises.lookupService", () => dns.promises.lookupService("192.0.2.1", 80), "192.0.2.1"],
+	])("%s 查外网被拦下", async (_name, query, host) => {
+		const err = await failureOf(query());
+		expect(err.code).toBe("BN_TEST_NETWORK_BLOCKED");
+		expect(err.message).toContain(host);
+		expectLedger(`dns:${host}`);
+	});
+
+	it("本机名照常解析", async () => {
+		const { address } = await dns.promises.lookup("localhost");
+		expect(["127.0.0.1", "::1"]).toContain(address);
+		expectLedger();
+	});
+
+	it("lookup 一个 IP 字面量不发查询,放行", async () => {
+		const { address } = await dns.promises.lookup("192.0.2.1");
+		expect(address).toBe("192.0.2.1");
+		expectLedger();
 	});
 });
 
