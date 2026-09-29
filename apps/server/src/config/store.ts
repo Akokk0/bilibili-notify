@@ -1,6 +1,6 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
 	type BiliSubscription,
 	BiliSubscriptionSchema,
@@ -34,6 +34,7 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
+import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import type { z } from "zod";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
@@ -214,13 +215,13 @@ function deepMerge<T>(base: T, patch: unknown): T {
 	return out as T;
 }
 
-async function atomicWriteJson(absPath: string, value: unknown): Promise<void> {
-	await mkdir(dirname(absPath), { recursive: true });
-	const suffix = `${process.pid}.${randomBytes(6).toString("hex")}`;
-	const tmp = `${absPath}.tmp.${suffix}`;
-	const body = `${JSON.stringify(value, null, 2)}\n`;
-	await writeFile(tmp, body, { encoding: "utf8" });
-	await rename(tmp, absPath);
+/**
+ * 整份字节拷贝(留 `.bak` / 从 `.bak` 退回用):读出来再原子写到目标,拷到一半断电不会留下
+ * 半份 `.bak`。权限跟着源文件走 —— 连接里有 token,不能因为备份放宽。
+ */
+async function copyFileAtomic(from: string, to: string): Promise<void> {
+	const { mode } = await stat(from);
+	await atomicWriteFile(to, await readFile(from), { mode: mode & 0o777 });
 }
 
 /**
@@ -1185,11 +1186,11 @@ class NodeConfigStore implements ConfigStore {
 				await atomicWriteJson(this.path("connections"), migrated.connections);
 			} else if (migrated.changed.connections) {
 				// 原件留一份 —— 迁移错了主人还能自己捞回去。
-				await copyFile(this.path("connections"), `${this.path("connections")}.bak`);
+				await copyFileAtomic(this.path("connections"), `${this.path("connections")}.bak`);
 				await atomicWriteJson(this.path("connections"), migrated.connections);
 			}
 			if (migrated.changed.targets) {
-				await copyFile(this.path("targets"), `${this.path("targets")}.bak`);
+				await copyFileAtomic(this.path("targets"), `${this.path("targets")}.bak`);
 				await atomicWriteJson(this.path("targets"), migrated.targets);
 			}
 
@@ -1787,14 +1788,14 @@ class NodeConfigStore implements ConfigStore {
 				// 还能自己捞回去」),而这里这份是写一半用来推回去的临时件、`finally` 里无条件
 				// 删掉 —— 同名的话,恢复一次备份就把那份原件顺手抹了,没有一行日志。
 				const bak = `${path}.restore.bak`;
-				await copyFile(path, bak);
+				await copyFileAtomic(path, bak);
 				backups.push([path, bak]);
 			}
 			try {
 				for (const [path, value] of writes) await atomicWriteJson(path, value);
 				if (globals) await this.writeGlobals(globals);
 			} catch (e) {
-				for (const [path, bak] of backups) await copyFile(bak, path).catch(() => {});
+				for (const [path, bak] of backups) await copyFileAtomic(bak, path).catch(() => {});
 				for (const path of created) await rm(path, { force: true }).catch(() => {});
 				throw e;
 			} finally {

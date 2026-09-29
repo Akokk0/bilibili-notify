@@ -26,7 +26,7 @@
  *   - BN_DASHBOARD_USER/PASS 必须成对才写 basicAuth
  */
 
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -234,6 +234,57 @@ describe("loadBootstrapConfig — B 模型异常处理(Q5)", () => {
 			log: () => {},
 		});
 		expect(second.server.host).toBe("1.2.3.4");
+	});
+});
+
+/**
+ * 落盘方式:种文件与迁移写回都得是「原子 + 权限对 + 不留临时文件」。
+ *
+ * 这几条钉的是**写盘那一步的行为**(而不是写出来的内容,内容前面各条已经验过):
+ *   - 种文件 0o600 —— 里面可能有 cookieEncryptionKey / dashboard 密码,只许 owner 读
+ *   - 改用户自己的文件时沿用他设好的权限,不顺手改 mode
+ *   - 父目录不存在时要一并建出来(种文件是第一次落盘,目录常常还没有)
+ *   - 写完目录里只剩目标文件,没有遗留的临时文件
+ * 权限位在 Windows 上没有意义,那几条跳过。
+ */
+describe("loadBootstrapConfig — 落盘方式(种文件 / 迁移写回)", () => {
+	const posixOnly = it.skipIf(process.platform === "win32");
+	const modeOf = async (path: string) => (await stat(path)).mode & 0o777;
+
+	posixOnly("首启动种的 yaml:权限 0o600,目录里没有遗留的临时文件", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+		loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+		expect(await modeOf(cfgPath)).toBe(0o600);
+		expect(await readdir(cwd)).toEqual(["bn.config.yaml"]);
+	});
+
+	posixOnly("首启动种的 .json:权限同样是 0o600", async () => {
+		const cfgPath = join(cwd, "bn.config.json");
+		loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+		expect(await modeOf(cfgPath)).toBe(0o600);
+		expect(await readdir(cwd)).toEqual(["bn.config.json"]);
+	});
+
+	it("父目录不存在:种文件时一并建出来", async () => {
+		const cfgPath = join(cwd, "config", "nested", "bn.config.yaml");
+		loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+		expect(await readFile(cfgPath, "utf8")).toContain("auto-generated on first boot");
+	});
+
+	posixOnly("迁移掉 webDistDir 写回时沿用用户文件自己的权限,不留临时文件", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+		await writeFile(
+			cfgPath,
+			["dataDir: /data", "webDistDir: /app/web-dist", ""].join("\n"),
+			"utf8",
+		);
+		await chmod(cfgPath, 0o640);
+
+		loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+
+		expect(await readFile(cfgPath, "utf8")).not.toContain("webDistDir");
+		expect(await modeOf(cfgPath)).toBe(0o640);
+		expect(await readdir(cwd)).toEqual(["bn.config.yaml"]);
 	});
 });
 

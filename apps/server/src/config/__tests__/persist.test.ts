@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -55,6 +55,19 @@ describe("persistChromeSource", () => {
 		expect(raw).toContain("# 卡片渲染需要本地 Chrome");
 		expect(raw).toContain("chromePath: /usr/bin/google-chrome");
 	});
+
+	// 钉的是写盘那一步:文件里可能有 dashboard 凭据,写回后权限必须收成 0o600(哪怕原来是 0o644),
+	// 而且写完目录里只剩配置文件本身。权限位在 Windows 上没有意义。
+	it.skipIf(process.platform === "win32")(
+		"写回后权限收成 0o600,目录里没有遗留的临时文件",
+		async () => {
+			await writeFile(cfg, "dataDir: ./data\n", "utf8");
+			await chmod(cfg, 0o644);
+			await persistChromeSource(cfg, { chromePath: "/usr/bin/google-chrome" });
+			expect((await stat(cfg)).mode & 0o777).toBe(0o600);
+			expect(await readdir(dir)).toEqual(["bn.config.yaml"]);
+		},
+	);
 
 	it("overwrites an existing chromePath", async () => {
 		await writeFile(cfg, "chromePath: /old/chrome\ndataDir: ./data\n", "utf8");

@@ -48,10 +48,6 @@ const FS_MODULE = String.raw`["'](?:node:)?fs(?:\/promises)?["']`;
 const PENDING_MIGRATION = new Set<string>([
 	"ai/conversation-store.ts",
 	"card-skins/store.ts",
-	"config/loader.ts",
-	"config/persist.ts",
-	"config/secret-store.ts",
-	"config/store.ts",
 	"devtools/scenarios/extensions.ts",
 	"extensions/install.ts",
 	"fans/store.ts",

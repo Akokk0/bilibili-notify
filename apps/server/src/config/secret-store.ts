@@ -1,8 +1,11 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
-import { gcmDecrypt, gcmEncrypt, type KeyProvider } from "@bilibili-notify/storage";
+import {
+	atomicWriteFile,
+	gcmDecrypt,
+	gcmEncrypt,
+	type KeyProvider,
+} from "@bilibili-notify/storage";
 
 /**
  * Encrypted at-rest bag for runtime config secrets that must never sit in the
@@ -83,12 +86,8 @@ export function createSecretStore(opts: CreateSecretStoreOptions): SecretStore {
 
 		async save(next: ConfigSecrets): Promise<void> {
 			const blob = gcmEncrypt(await key(), JSON.stringify(next));
-			await mkdir(dirname(opts.filePath), { recursive: true });
-			// P2 fold-in: 固定 `.tmp` 名在并发 save() 下两进程/两调用会互踩同一
-			// 临时文件。改 `.tmp.{pid}.{rand}`,对齐 store.ts#atomicWriteJson。
-			const tmp = `${opts.filePath}.tmp.${process.pid}.${randomBytes(6).toString("hex")}`;
-			await writeFile(tmp, JSON.stringify(blob), "utf8");
-			await rename(tmp, opts.filePath);
+			// 加密袋里是各家 AI 的 apiKey:只许 owner 读(0o600)。临时名 / fsync / 失败清理都在原语里。
+			await atomicWriteFile(opts.filePath, JSON.stringify(blob), { mode: 0o600 });
 		},
 	};
 }

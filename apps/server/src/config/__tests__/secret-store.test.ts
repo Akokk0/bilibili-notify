@@ -10,7 +10,7 @@
  *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -90,6 +90,27 @@ describe("createSecretStore", () => {
 		const raw = await readFile(join(dataDir, "secrets", "config-secrets.enc"), "utf8");
 		expect(JSON.parse(raw).v).toBe(2);
 		expect(raw).not.toContain("sk-PLAINTEXT-LEAK");
+	});
+
+	// 钉的是写盘那一步。加密袋里是各家 AI 的 apiKey,落盘只许 owner 读;
+	// 权限位在 Windows 上没有意义。
+	it.skipIf(process.platform === "win32")("落盘权限是 0o600(只许 owner 读)", async () => {
+		const s = mkSecretStore();
+		await s.save({ aiApiKey: "sk-x" });
+		expect((await stat(join(dataDir, "secrets", "config-secrets.enc"))).mode & 0o777).toBe(0o600);
+		// 覆盖写一次也一样:每次都是新建临时文件再改名盖上去。
+		await s.save({ aiApiKey: "sk-y" });
+		expect((await stat(join(dataDir, "secrets", "config-secrets.enc"))).mode & 0o777).toBe(0o600);
+	});
+
+	it("并发 save 各写各的临时文件:落下来的是完整的一份,目录里没有遗留", async () => {
+		const s = mkSecretStore();
+		await Promise.all([s.save({ aiApiKey: "sk-a" }), s.save({ aiApiKey: "sk-b" })]);
+		const loaded = await s.load();
+		expect(["sk-a", "sk-b"]).toContain(loaded.aiApiKey);
+		const names = await readdir(join(dataDir, "secrets"));
+		expect(names.filter((n) => n.includes("tmp"))).toEqual([]);
+		expect(names).toContain("config-secrets.enc");
 	});
 
 	it("文件存在但读不了(EISDIR,非 ENOENT)→ load() 抛,绝不退化为 {}", async () => {
