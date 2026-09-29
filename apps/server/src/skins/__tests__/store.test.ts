@@ -415,6 +415,22 @@ describe("remove 的 id 不可信", () => {
 	});
 });
 
+describe("init 跳过落盘底层留下的残骸", () => {
+	it("暂存目录与整目录替换换下来的旧目录(bn-tmp / bn-old)不进索引,哪怕里面是一份合格的清单", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const good = await readFile(join(dir, id, "skin.json"), "utf8");
+		for (const name of [`${id}.bn-tmp.123.abcdef`, `${id}.bn-old.123.abcdef`]) {
+			await mkdir(join(dir, name), { recursive: true });
+			await writeFile(join(dir, name, "skin.json"), good);
+		}
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+
+		expect((await reborn.list()).map((e) => e.id)).toEqual([id]);
+	});
+});
+
 describe("ensureReady:一份两处用,谁先来谁补上", () => {
 	/**
 	 * 这家店 `/api/skins` 与聊天里的 create_skin 共用一个实例,而读盘重建索引原先
@@ -589,5 +605,97 @@ describe("读盘时摘掉旧版烙印", () => {
 
 		expect(snap?.css).not.toContain("pointer-events");
 		expect(snap?.css).toContain("inset:0");
+	});
+});
+
+/**
+ * 并发写。路由与聊天里的 create_skin 共用一个实例,一次点击可以同时打出好几个请求;
+ * 这家店的写全是「读内存 → 写盘 → 改内存」,交错起来就是后写的覆盖先写的、或者一起越过上限。
+ * 每条都是「几个请求同时到」,不是「一个接一个」。
+ */
+describe("并发写", () => {
+	it("并发 addAsset 不会一起越过份数上限 —— 数份数与写盘之间不许有别人的写钻进来", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		for (let i = 0; i < MAX_SKIN_ASSETS - 1; i++) await store.addAsset(id, PNG, "png");
+
+		const settled = await Promise.allSettled(
+			Array.from({ length: 4 }, () => store.addAsset(id, PNG, "png")),
+		);
+
+		expect(settled.filter((s) => s.status === "fulfilled")).toHaveLength(1);
+		expect(await store.listAssets(id)).toHaveLength(MAX_SKIN_ASSETS);
+	});
+
+	it("并发 addAsset 各记各的原名 —— 清单是整份读整份写,不能丢条", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const labels = Array.from({ length: 8 }, (_, i) => `文件-${i}.png`);
+
+		const names = await Promise.all(labels.map((label) => store.addAsset(id, PNG, "png", label)));
+
+		expect(await store.assetNames(id)).toEqual(
+			Object.fromEntries(names.map((name, i) => [name, labels[i]])),
+		);
+	});
+
+	it("并发 setActiveSlot:亮槽与暗槽各设各的,谁也不覆盖谁,重启后仍在", async () => {
+		const { id: lightSkin } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { id: darkSkin } = await store.save({
+			manifest: makeManifest({ name: "夜装", modes: { dark: {} } }),
+			assets: new Map(),
+		});
+
+		await Promise.all([
+			store.setActiveSlot("light", lightSkin),
+			store.setActiveSlot("dark", darkSkin),
+		]);
+
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: darkSkin });
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		expect(reborn.getActive()).toEqual({ light: lightSkin, dark: darkSkin });
+	});
+
+	it("并发 activate:纯亮皮肤与纯暗皮肤同时启用,两个槽都得落下", async () => {
+		const { id: lightSkin } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { id: darkSkin } = await store.save({
+			manifest: makeManifest({ name: "夜装", modes: { dark: {} } }),
+			assets: new Map(),
+		});
+
+		await Promise.all([store.activate(lightSkin), store.activate(darkSkin)]);
+
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: darkSkin });
+	});
+
+	it("removeMode 与编辑器保存同时到:保存过的那一色不许被 removeMode 拿旧清单顶回去", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest({
+				modes: {
+					light: { colors: { accent: "#fb7299" } },
+					dark: { colors: { accent: "#00e5ff" } },
+				},
+			}),
+			assets: new Map(),
+		});
+		const edited = makeManifest({
+			modes: { light: { colors: { accent: "#fb7299" } }, dark: { colors: { accent: "#123456" } } },
+		});
+
+		await Promise.all([store.updateManifest(id, edited), store.removeMode(id, "light")]);
+
+		const expected = { dark: { colors: { accent: "#123456" } } };
+		expect((await store.get(id))?.modes).toEqual(expected);
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		expect((await reborn.get(id))?.modes).toEqual(expected);
+	});
+
+	it("remove 排在前面的话,随后到的 addAsset 只能落空,不能把刚删掉的皮肤目录又写出来", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+
+		const [, added] = await Promise.allSettled([store.remove(id), store.addAsset(id, PNG, "png")]);
+
+		expect(added.status).toBe("rejected");
+		expect(existsSync(join(dir, id))).toBe(false);
 	});
 });

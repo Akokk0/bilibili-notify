@@ -1,13 +1,18 @@
 /**
  * 皮肤库存储:`<skinsDir>/<id>/skin.json + assets/*`,active 指针在
- * `<skinsDir>/active.json`。写入走 tmp → rename(目录级原子);init() 全量读盘
- * 重建,重启不丢。资产路径永远经白名单正则再拼接,杜绝路径穿越。
+ * `<skinsDir>/active.json`。整包落盘、清单原子写、删除先改名,全部经皮肤包目录
+ * (`skin-store.ts`,盘上那一层与卡片皮肤库共用);init() 全量读盘重建,重启不丢。
+ * 资产路径永远经白名单正则再拼接,杜绝路径穿越。
+ *
+ * 这一层只管面板皮肤自己的规矩:出厂快照 default.json、资产原名清单、深浅双槽的
+ * active 指针(含旧格式读时迁移)、删一色、两条体积线。
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { atomicWriteFile } from "@bilibili-notify/storage";
 import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
@@ -15,6 +20,7 @@ import { ASSET_NAMES_FILE } from "./asset-names.js";
 import { stripDecorationResidue } from "./css-sanitizer.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
+import { createSkinStore, type ManifestResult, type SkinPackageStore } from "./skin-store.js";
 
 /**
  * 读盘迁移:摘掉旧版清洗层烙进 css 字段的两句硬规矩(详见 stripDecorationResidue)。
@@ -32,12 +38,30 @@ function stripManifestResidue(m: SkinManifest): SkinManifest {
 	return m;
 }
 
+/** 皮肤包目录读盘时的解析:只摘旧烙印,不做 schema 校验(旧格式 / 手改的清单照样进索引)。 */
+function parseSkinManifest(raw: unknown): ManifestResult<SkinManifest> {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+		return { ok: false, code: "invalid", message: "skin.json 不是一份清单" };
+	}
+	return { ok: true, manifest: stripManifestResidue(raw as SkinManifest) };
+}
+
+/** 清单与出厂快照落盘的字面:带缩进,主人 / 第三方是要手看手改它们的。 */
+function serializeJson(value: unknown): string {
+	return JSON.stringify(value, null, "\t");
+}
+
 interface SavedSkin {
 	manifest: SkinManifest;
 	assets: Map<string, Uint8Array>;
 	/** 资产原名清单(`assets/<生成名>` → 主人上传时叫什么);只做显示,见 asset-names.ts。 */
 	names?: Record<string, string>;
 }
+
+/** 出厂快照在皮肤目录里的文件名。 */
+const DEFAULT_SNAPSHOT_FILE = "default.json";
+/** active 指针在皮肤根目录里的文件名。 */
+const ACTIVE_FILE = "active.json";
 
 /**
  * 一套皮肤最多放几份资产 —— 与 zip 那道闸**同一个数**,定义在 package.ts。
@@ -75,11 +99,22 @@ export interface ActiveSlots {
 export class SkinStore {
 	private readonly skinsDir: string;
 	private active: ActiveSlots = { light: null, dark: null };
-	/** id → manifest 内存索引;盘是唯一权威,这里只是读缓存。 */
-	private index = new Map<string, SkinManifest>();
+	/** 盘上那一层:id → manifest 内存索引、整包落盘、按 id 串行的写道。盘是唯一权威。 */
+	private readonly pkg: SkinPackageStore<SkinManifest>;
 
 	constructor(opts: { skinsDir: string }) {
 		this.skinsDir = opts.skinsDir;
+		this.pkg = createSkinStore<SkinManifest>({
+			dir: opts.skinsDir,
+			manifestFile: "skin.json",
+			parse: parseSkinManifest,
+			serialize: serializeJson,
+			assets: {
+				formats: { ...EXT_TO_MIME, ...FONT_EXT_TO_MIME },
+				maxBytes: (ext) => (SKIN_FONT_EXTS.has(ext) ? MAX_FONT_BYTES : MAX_ASSET_BYTES),
+				naming: { kind: "given", isValidName: (name) => isSkinAssetName(`assets/${name}`) },
+			},
+		});
 	}
 
 	/** {@link ensureReady} 的一次性凭据 —— init 只该真的跑一遍。 */
@@ -99,28 +134,18 @@ export class SkinStore {
 	}
 
 	async init(): Promise<void> {
-		await mkdir(this.skinsDir, { recursive: true });
-		this.index.clear();
-		for (const entry of await readdir(this.skinsDir, { withFileTypes: true })) {
-			if (!entry.isDirectory() || entry.name.endsWith(".tmp")) continue;
-			try {
-				const raw = await readFile(join(this.skinsDir, entry.name, "skin.json"), "utf8");
-				this.index.set(entry.name, stripManifestResidue(JSON.parse(raw) as SkinManifest));
-			} catch {
-				// 残缺目录(写入中断等)不进索引,也不动它 —— 交给人查,别静默删数据。
-			}
-		}
+		await this.pkg.init();
 		this.active = { light: null, dark: null };
 		try {
-			const raw = JSON.parse(await readFile(join(this.skinsDir, "active.json"), "utf8"));
+			const raw = JSON.parse(await readFile(join(this.skinsDir, ACTIVE_FILE), "utf8"));
 			for (const theme of ["light", "dark"] as const) {
 				const id = raw[theme];
-				if (typeof id === "string" && this.index.get(id)?.modes[theme]) this.active[theme] = id;
+				if (typeof id === "string" && this.pkg.get(id)?.modes[theme]) this.active[theme] = id;
 			}
 			// 旧单指针格式 {id}:按该皮肤具备的模式落槽,一次读盘即完成迁移语义
 			// (落盘格式在下次 set 时自然升级,这里不主动回写)。
 			if (typeof raw.id === "string") {
-				const m = this.index.get(raw.id);
+				const m = this.pkg.get(raw.id);
 				for (const theme of ["light", "dark"] as const) {
 					if (m?.modes[theme]) this.active[theme] = raw.id;
 				}
@@ -131,38 +156,40 @@ export class SkinStore {
 	}
 
 	async save(pkg: SavedSkin): Promise<{ id: string }> {
-		const id = `${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
-		const tmpDir = join(this.skinsDir, `${id}.tmp`);
-		await mkdir(join(tmpDir, "assets"), { recursive: true });
-		await writeFile(join(tmpDir, "skin.json"), JSON.stringify(pkg.manifest, null, "\t"));
+		// 附带文件都是相对皮肤目录的路径;资产名本身就是 `assets/<名>`,原样当路径用。
+		const files = new Map<string, string | Uint8Array>();
 		// 出厂快照 = 上传时的 manifest;之后编辑只动 skin.json,快照是「恢复默认」的基准。
-		await writeFile(join(tmpDir, "default.json"), JSON.stringify(pkg.manifest, null, "\t"));
+		files.set(DEFAULT_SNAPSHOT_FILE, serializeJson(pkg.manifest));
 		for (const [name, data] of pkg.assets) {
 			if (!isSkinAssetName(name)) continue;
-			await writeFile(join(tmpDir, "assets", name.slice("assets/".length)), data);
+			files.set(name, data);
 		}
 		// 空清单不落文件 —— 没有原名可记的包(聊天里生成的、手工压的)不该多带一个空壳。
 		if (pkg.names && Object.keys(pkg.names).length > 0) {
-			await writeFile(join(tmpDir, ASSET_NAMES_FILE), JSON.stringify(pkg.names, null, "\t"));
+			files.set(ASSET_NAMES_FILE, serializeJson(pkg.names));
 		}
-		await rename(tmpDir, join(this.skinsDir, id));
-		this.index.set(id, pkg.manifest);
-		return { id };
+		return { id: await this.pkg.create(pkg.manifest, files) };
 	}
 
 	async list(): Promise<SkinListEntry[]> {
-		return [...this.index.entries()].map(([id, m]) => ({
-			id,
-			name: m.name,
-			...(m.author !== undefined ? { author: m.author } : {}),
-			...(m.description !== undefined ? { description: m.description } : {}),
-			modes: (["light", "dark"] as const).filter((k) => m.modes[k]),
-			hasWallpaper: Boolean(m.modes.light?.wallpaper?.image || m.modes.dark?.wallpaper?.image),
-		}));
+		return this.pkg.ids().flatMap((id) => {
+			const m = this.pkg.get(id);
+			if (!m) return [];
+			return [
+				{
+					id,
+					name: m.name,
+					...(m.author !== undefined ? { author: m.author } : {}),
+					...(m.description !== undefined ? { description: m.description } : {}),
+					modes: (["light", "dark"] as const).filter((k) => m.modes[k]),
+					hasWallpaper: Boolean(m.modes.light?.wallpaper?.image || m.modes.dark?.wallpaper?.image),
+				},
+			];
+		});
 	}
 
 	async get(id: string): Promise<SkinManifest | null> {
-		return this.index.get(id) ?? null;
+		return this.pkg.get(id);
 	}
 
 	/**
@@ -175,6 +202,9 @@ export class SkinStore {
 	 * 图与字体走**两条各自的大小线**:一款完整中文 woff2 就有八九兆,拿图片那条
 	 * 5MB 卡它等于自带字体这功能不存在;而壁纸没有大到 20MB 的理由,不跟着放宽。
 	 * 名字前缀(`img-` / `font-`)只是让盘上一眼分得清,分流靠的是后缀。
+	 *
+	 * **数份数、存字节、记原名整个排在这套皮肤的写道里**:分开做的话,几个请求同时到
+	 * 会一起数到「还差一份」、一起越过上限,原名清单也是整份读整份写、后写的顶掉先写的。
 	 */
 	async addAsset(
 		id: string,
@@ -183,7 +213,7 @@ export class SkinStore {
 		/** 主人上传时这个文件叫什么;只做显示,过 sanitizeAssetLabel 后记进原名清单。 */
 		originalName?: string,
 	): Promise<string> {
-		if (!this.index.has(id)) throw new Error("皮肤不存在或已被删除");
+		if (!this.pkg.has(id)) throw new Error("皮肤不存在或已被删除");
 		const clean = ext.toLowerCase().replace(/^\./, "");
 		const isFont = SKIN_FONT_EXTS.has(clean);
 		if (!isFont && !SKIN_ASSET_EXTS.has(clean)) {
@@ -200,20 +230,24 @@ export class SkinStore {
 					: `图片过大(上限 ${mb}MB)`,
 			);
 		}
-		const existing = await this.listAssets(id);
-		if (existing.length >= MAX_SKIN_ASSETS) {
-			throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`);
-		}
-		const name = `assets/${isFont ? "font" : "img"}-${randomBytes(4).toString("hex")}.${clean}`;
-		const dir = join(this.skinsDir, id, "assets");
-		await mkdir(dir, { recursive: true });
-		await writeFile(join(dir, name.slice("assets/".length)), bytes);
-		const label = sanitizeAssetLabel(originalName);
-		if (label !== null) {
-			// 先读后写:清单里已有的几条不能被这一次上传顶掉。
-			await this.writeAssetNames(id, { ...(await this.readAssetNames(id)), [name]: label });
-		}
-		return name;
+		return await this.pkg.run(id, async () => {
+			// 排队的这段时间里,前面的写可能已经把这套皮肤删了。
+			if (!this.pkg.has(id)) throw new Error("皮肤不存在或已被删除");
+			const existing = await this.listAssets(id);
+			if (existing.length >= MAX_SKIN_ASSETS) {
+				throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`);
+			}
+			const fileName = `${isFont ? "font" : "img"}-${randomBytes(4).toString("hex")}.${clean}`;
+			const put = await this.pkg.assetsOf(id).put({ bytes, ext: clean, name: fileName });
+			if (!put.ok) throw new Error(put.message);
+			const name = `assets/${fileName}`;
+			const label = sanitizeAssetLabel(originalName);
+			if (label !== null) {
+				// 先读后写:清单里已有的几条不能被这一次上传顶掉。
+				await this.writeAssetNames(id, { ...(await this.readAssetNames(id)), [name]: label });
+			}
+			return name;
+		});
 	}
 
 	/**
@@ -233,10 +267,10 @@ export class SkinStore {
 
 	/** 裸读清单文件(不与目录对账);缺失 / 损坏 / 皮肤不存在一律回空表。 */
 	private async readAssetNames(id: string): Promise<Record<string, string>> {
-		if (!this.index.has(id)) return {};
+		if (!this.pkg.has(id)) return {};
 		try {
 			const raw: unknown = JSON.parse(
-				await readFile(join(this.skinsDir, id, ASSET_NAMES_FILE), "utf8"),
+				await readFile(this.pkg.pathOf(id, ASSET_NAMES_FILE), "utf8"),
 			);
 			return parseAssetNames(raw, isSkinAssetName);
 		} catch {
@@ -244,13 +278,13 @@ export class SkinStore {
 		}
 	}
 
+	/**
+	 * 写原名清单。**只在这套皮肤的写道里调**(读改写要在同一条队里)。清单的键带 `assets/`
+	 * 前缀、缩进用 tab —— 这是皮肤 zip 的包内格式,导出 / 导入照着它读写,不能换成资产存储
+	 * 自己那份清单的写法(键是裸文件名)。
+	 */
 	private async writeAssetNames(id: string, names: Record<string, string>): Promise<void> {
-		const dir = join(this.skinsDir, id, "assets");
-		await mkdir(dir, { recursive: true });
-		await this.writeAtomic(
-			join(this.skinsDir, id, ASSET_NAMES_FILE),
-			JSON.stringify(names, null, "\t"),
-		);
+		await atomicWriteFile(this.pkg.pathOf(id, ASSET_NAMES_FILE), serializeJson(names));
 	}
 
 	/**
@@ -261,10 +295,10 @@ export class SkinStore {
 	 * 用的时候按后缀做的事 —— 编辑器那两个下拉各自筛一遍。
 	 */
 	async listAssets(id: string): Promise<string[]> {
-		if (!this.index.has(id)) return [];
+		if (!this.pkg.has(id)) return [];
 		let names: string[];
 		try {
-			names = await readdir(join(this.skinsDir, id, "assets"));
+			names = await readdir(this.pkg.pathOf(id, "assets"));
 		} catch {
 			return [];
 		}
@@ -277,12 +311,7 @@ export class SkinStore {
 	 * 与资产引用校验,这里只管原子落盘。
 	 */
 	async updateManifest(id: string, manifest: SkinManifest): Promise<void> {
-		if (!this.index.has(id)) throw new Error(`皮肤不存在: ${id}`);
-		await this.writeAtomic(
-			join(this.skinsDir, id, "skin.json"),
-			JSON.stringify(manifest, null, "\t"),
-		);
-		this.index.set(id, manifest);
+		if (!(await this.pkg.saveManifest(id, manifest))) throw new Error(`皮肤不存在: ${id}`);
 	}
 
 	/**
@@ -302,48 +331,51 @@ export class SkinStore {
 	 *
 	 * **资产一张不动**:那一色用的图,另一色可能马上就要接着用;而资产 URL 的
 	 * immutable 长缓存契约也不该为一次删色破例。
+	 *
+	 * 前两件在这套皮肤的写道里一气呵成(读清单、存清单、改快照之间不许别人的保存钻进来,
+	 * 否则会拿旧清单把别人刚存的东西顶回去);第三件是根级的 active 指针,排进根级写道。
 	 */
 	async removeMode(id: string, theme: keyof ActiveSlots): Promise<void> {
-		const manifest = this.index.get(id);
-		// 不认识的 id 一律不动手 —— 与 remove 同一条纪律,这里同样要写盘。
-		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
-		if (!manifest.modes[theme]) throw new Error(`这套皮肤没有${MODE_LABEL[theme]}模式`);
-		const other = theme === "light" ? "dark" : "light";
-		if (!manifest.modes[other]) {
-			throw new Error(`这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」`);
-		}
+		await this.pkg.run(id, async (saveManifest) => {
+			const manifest = this.pkg.get(id);
+			// 不认识的 id 一律不动手 —— 与 remove 同一条纪律,这里同样要写盘。
+			if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+			if (!manifest.modes[theme]) throw new Error(`这套皮肤没有${MODE_LABEL[theme]}模式`);
+			const other = theme === "light" ? "dark" : "light";
+			if (!manifest.modes[other]) {
+				throw new Error(`这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」`);
+			}
 
-		const next: SkinManifest = { ...manifest, modes: { [other]: manifest.modes[other] } };
-		await this.updateManifest(id, next);
+			const next: SkinManifest = { ...manifest, modes: { [other]: manifest.modes[other] } };
+			await saveManifest(next);
 
-		const snapshot = await this.getDefault(id);
-		if (snapshot?.modes[theme]) {
-			const trimmed: SkinManifest = { ...snapshot, modes: {} };
-			if (snapshot.modes[other]) trimmed.modes[other] = snapshot.modes[other];
-			await this.writeAtomic(
-				join(this.skinsDir, id, "default.json"),
-				JSON.stringify(trimmed, null, "\t"),
-			);
-		}
+			const snapshot = await this.getDefault(id);
+			if (snapshot?.modes[theme]) {
+				const trimmed: SkinManifest = { ...snapshot, modes: {} };
+				if (snapshot.modes[other]) trimmed.modes[other] = snapshot.modes[other];
+				await atomicWriteFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), serializeJson(trimmed));
+			}
+		});
 
-		if (this.active[theme] === id) await this.writeActive({ ...this.active, [theme]: null });
+		await this.pkg.runRoot(async () => {
+			if (this.active[theme] === id) await this.writeActive({ ...this.active, [theme]: null });
+		});
 	}
 
 	/** 把当前 manifest 钉成出厂快照(「设为默认值」);皮肤不存在 → 抛错。 */
 	async setDefault(id: string): Promise<void> {
-		const manifest = this.index.get(id);
-		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
-		await this.writeAtomic(
-			join(this.skinsDir, id, "default.json"),
-			JSON.stringify(manifest, null, "\t"),
-		);
+		await this.pkg.run(id, async () => {
+			const manifest = this.pkg.get(id);
+			if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+			await atomicWriteFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), serializeJson(manifest));
+		});
 	}
 
 	/** 出厂快照;皮肤不存在或(存量目录)从未钉过 → null。读频率低,不进内存索引。 */
 	async getDefault(id: string): Promise<SkinManifest | null> {
-		if (!this.index.has(id)) return null;
+		if (!this.pkg.has(id)) return null;
 		try {
-			const raw = await readFile(join(this.skinsDir, id, "default.json"), "utf8");
+			const raw = await readFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), "utf8");
 			// 出厂快照同样可能带着旧烙印 —— 「恢复默认值」会把它灌回草稿再保存,
 			// 不摘的话恢复一次就又刷一排警告。
 			return stripManifestResidue(JSON.parse(raw) as SkinManifest);
@@ -355,45 +387,51 @@ export class SkinStore {
 	/**
 	 * 删一套皮肤。**不认识的 id 一律不动手** —— 这道守卫不是可有可无的:路由把
 	 * `:id` 原样交进来,而 `%2e%2e%2f` 这种写法 URL 解析器不折叠、Hono 的 param
-	 * 却会解码,`join(skinsDir, "../..")` 就跑出了皮肤目录,而这里干的是 `rm -rf`。
+	 * 却会解码,`join(skinsDir, "../..")` 就跑出了皮肤目录,而这里干的是整目录删除。
 	 *
 	 * 实测(2026-08-19 审计):`DELETE /%2e%2e%2fconversations` 回 200,
 	 * `<dataDir>/conversations` 整个没了。店里每个方法都拿 index 认过 id,
-	 * 唯独这个没有 —— 而它是破坏力最大的那个。
+	 * 唯独这个没有 —— 而它是破坏力最大的那个。守卫现在在皮肤包目录里
+	 * (`SkinPackageStore.remove` 只认索引里的 id)。
 	 */
 	async remove(id: string): Promise<void> {
-		if (!this.index.has(id)) return;
-		await rm(join(this.skinsDir, id), { recursive: true, force: true });
-		this.index.delete(id);
-		if (this.active.light === id || this.active.dark === id) {
-			await this.writeActive({
-				light: this.active.light === id ? null : this.active.light,
-				dark: this.active.dark === id ? null : this.active.dark,
-			});
-		}
+		if (!(await this.pkg.remove(id))) return;
+		await this.pkg.runRoot(async () => {
+			if (this.active.light === id || this.active.dark === id) {
+				await this.writeActive({
+					light: this.active.light === id ? null : this.active.light,
+					dark: this.active.dark === id ? null : this.active.dark,
+				});
+			}
+		});
 	}
 
 	/** 设置单个主题槽;皮肤必须提供该模式(纯暗皮肤进不了亮槽,反之亦然)。 */
 	async setActiveSlot(theme: keyof ActiveSlots, id: string | null): Promise<void> {
-		if (id !== null) {
-			const m = this.index.get(id);
-			if (!m) throw new Error(`皮肤不存在: ${id}`);
-			if (!m.modes[theme]) throw new Error(`皮肤没有 ${theme} 模式: ${id}`);
-		}
-		await this.writeActive({ ...this.active, [theme]: id });
+		// 读 active、判断、写 active 整个排进根级写道:两个槽同时设,后到的得看得见先到的。
+		await this.pkg.runRoot(async () => {
+			if (id !== null) {
+				const m = this.pkg.get(id);
+				if (!m) throw new Error(`皮肤不存在: ${id}`);
+				if (!m.modes[theme]) throw new Error(`皮肤没有 ${theme} 模式: ${id}`);
+			}
+			await this.writeActive({ ...this.active, [theme]: id });
+		});
 	}
 
 	/** 整套启用:按皮肤具备的模式落槽,不具备的槽保持原样;null 清空两槽。 */
 	async activate(id: string | null): Promise<void> {
-		if (id === null) {
-			await this.writeActive({ light: null, dark: null });
-			return;
-		}
-		const m = this.index.get(id);
-		if (!m) throw new Error(`皮肤不存在: ${id}`);
-		await this.writeActive({
-			light: m.modes.light ? id : this.active.light,
-			dark: m.modes.dark ? id : this.active.dark,
+		await this.pkg.runRoot(async () => {
+			if (id === null) {
+				await this.writeActive({ light: null, dark: null });
+				return;
+			}
+			const m = this.pkg.get(id);
+			if (!m) throw new Error(`皮肤不存在: ${id}`);
+			await this.writeActive({
+				light: m.modes.light ? id : this.active.light,
+				dark: m.modes.dark ? id : this.active.dark,
+			});
 		});
 	}
 
@@ -401,28 +439,20 @@ export class SkinStore {
 		return { ...this.active };
 	}
 
-	private async writeActive(next: ActiveSlots): Promise<void> {
-		await this.writeAtomic(join(this.skinsDir, "active.json"), JSON.stringify(next));
-		this.active = next;
-	}
-
 	/**
-	 * 先写 `.tmp` 再 rename —— 目录级原子,断电/崩溃不会留下半截 JSON。
-	 *
-	 * 这家店的三份盘上状态(skin.json / default.json / active.json)都靠它,
-	 * 所以只留一份实现:哪天要加 fsync 或失败清理,不必记得改三处。
+	 * 写 active 指针。**只在根级写道里调**(读内存、算下一份、落盘要在同一条队里);
+	 * 落盘成功才改内存,写失败内存还是旧的。字节保持一行紧凑 JSON,与旧版一致。
 	 */
-	private async writeAtomic(path: string, data: string): Promise<void> {
-		const tmp = `${path}.tmp`;
-		await writeFile(tmp, data);
-		await rename(tmp, path);
+	private async writeActive(next: ActiveSlots): Promise<void> {
+		await atomicWriteFile(join(this.skinsDir, ACTIVE_FILE), JSON.stringify(next));
+		this.active = next;
 	}
 
 	/** 资产的磁盘绝对路径;名字不合白名单或文件不存在 → null。 */
 	async assetPath(id: string, name: string): Promise<string | null> {
-		if (!this.index.has(id)) return null;
+		if (!this.pkg.has(id)) return null;
 		if (!isSkinAssetName(name)) return null;
-		const p = join(this.skinsDir, id, "assets", name.slice("assets/".length));
+		const p = this.pkg.pathOf(id, name);
 		try {
 			await stat(p);
 			return p;

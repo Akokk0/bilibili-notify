@@ -58,7 +58,7 @@
 | 片 | 做什么 | 状态 |
 | --- | --- | --- |
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
-| ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | |
+| ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | ✅ 已落 |
 | ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | |
 | ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走 | |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |

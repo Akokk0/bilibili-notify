@@ -106,8 +106,8 @@ describe("install", () => {
 		);
 		expect(await readdir(join(dir, id, "assets"))).toEqual(["bg.png"]);
 		expect(await store.readAsset(id, "assets/bg.png")).toEqual(PNG);
-		// 临时目录不许留下 —— 它会被下一次 init 当成半套皮肤。
-		expect((await readdir(dir)).some((n) => n.endsWith(".tmp"))).toBe(false);
+		// 暂存目录不许留下 —— 它会被下一次 init 当成半套皮肤;整个皮肤根目录里只该有这一套。
+		expect(await readdir(dir)).toEqual([id]);
 	});
 
 	it("重启(重建一家店 init 一次)之后索引还在", async () => {
@@ -336,6 +336,23 @@ describe("坏皮肤不拖死 init", () => {
 	});
 });
 
+describe("坏皮肤不拖死 init:落盘底层留下的残骸", () => {
+	it("暂存目录与整目录替换换下来的旧目录(bn-tmp / bn-old)同样静默跳过,哪怕里面是一份合格的清单", async () => {
+		const { id } = await store.install(pack());
+		const good = await readFile(join(dir, id, CARD_SKIN_MANIFEST_FILE), "utf8");
+		for (const name of [`${id}.bn-tmp.123.abcdef`, `${id}.bn-old.123.abcdef`]) {
+			await mkdir(join(dir, name), { recursive: true });
+			await writeFile(join(dir, name, CARD_SKIN_MANIFEST_FILE), good);
+		}
+
+		const reopened = new CardSkinStore({ dir });
+		await reopened.init();
+
+		expect(reopened.list().map((s) => s.id)).toEqual([DEFAULT_CARD_SKIN_ID, id]);
+		expect(reopened.warnings()).toEqual([]);
+	});
+});
+
 describe("readAsset", () => {
 	/**
 	 * ⚠️ 穿越的例子**必须真能穿到一个存在的文件上**:`assets/../../../etc/passwd` 从
@@ -495,5 +512,68 @@ describe("写路径:存进去的东西重启之后还得在", () => {
 		await store.ensureReady();
 		await store.ensureReady();
 		expect(reread).toBe(0);
+	});
+});
+
+/**
+ * 并发写。编辑器传字体、聊天里做皮肤可以同时打出好几个请求;「同名检查 → 写盘」「数份数 → 写盘」
+ * 之间要是留着空隙,几个请求就一起穿过闸门 —— 同名的互相覆盖(覆盖掉的那份可能正被清单引用着),
+ * 份数也会一起越过上限。每条都是「几个请求同时到」,不是「一个接一个」。
+ */
+describe("并发 addAsset", () => {
+	const TTF = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00]);
+
+	it("同名的同时来:只进去一份,另一个被拒并说清楚", async () => {
+		const { id } = await store.install(pack());
+
+		const settled = await Promise.allSettled([
+			store.addAsset(id, "song.ttf", TTF),
+			store.addAsset(id, "song.ttf", TTF),
+		]);
+
+		expect(settled.filter((s) => s.status === "fulfilled")).toHaveLength(1);
+		const rejected = settled.find((s) => s.status === "rejected") as PromiseRejectedResult;
+		expect(String(rejected.reason)).toMatch(/已经有/);
+	});
+
+	it("不同名的同时来也不会一起越过份数上限", async () => {
+		const { id } = await store.install(pack());
+		for (let i = 0; i < CARD_SKIN_LIMITS.maxAssets - 1; i++) {
+			await store.addAsset(id, `f${i}.ttf`, TTF);
+		}
+
+		const settled = await Promise.allSettled(
+			Array.from({ length: 4 }, (_, i) => store.addAsset(id, `late${i}.ttf`, TTF)),
+		);
+
+		expect(settled.filter((s) => s.status === "fulfilled")).toHaveLength(1);
+		expect(await store.listAssets(id)).toHaveLength(CARD_SKIN_LIMITS.maxAssets);
+	});
+
+	it("remove 排在前面的话,随后到的 addAsset 只能落空,不能把刚删掉的皮肤目录又写出来", async () => {
+		const { id } = await store.install(pack());
+
+		const [, added] = await Promise.allSettled([
+			store.remove(id),
+			store.addAsset(id, "a.ttf", TTF),
+		]);
+
+		expect(added.status).toBe("rejected");
+		expect(await readdir(dir)).toEqual([]);
+	});
+
+	it("save 与 addAsset 同时到:save 看到的资产清单就是它落盘那一刻的清单", async () => {
+		// 清单引用了一份「这一刻刚传进来」的字体:save 排在 addAsset 后面才认得它。
+		const { id } = await store.install(pack());
+		const withFont = { ...manifest(), fonts: [{ family: "Song", asset: "asset:assets/song.ttf" }] };
+
+		const [added, saved] = await Promise.allSettled([
+			store.addAsset(id, "song.ttf", TTF),
+			store.save(id, withFont),
+		]);
+
+		expect(added.status).toBe("fulfilled");
+		expect(saved.status).toBe("fulfilled");
+		expect(store.get(id)?.fonts?.[0]?.family).toBe("Song");
 	});
 });

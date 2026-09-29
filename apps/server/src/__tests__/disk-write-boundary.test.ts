@@ -33,12 +33,6 @@ const OPEN_APIS = new Set(["open", "openSync"]);
 
 const FS_MODULE = String.raw`["'](?:node:)?fs(?:\/promises)?["']`;
 
-/**
- * 切片 ② 迁移中还没迁完的文件。每迁完一个就删掉那一行;名单里的文件已经不再直接写盘时这里也红,
- * 逼着把行删掉。切片 ② 收尾时名单为空。
- */
-const PENDING_MIGRATION = new Set<string>(["card-skins/store.ts", "skins/store.ts"]);
-
 /** 去掉注释:守卫只认代码,注释里写 `fs.writeFile(` 不算。 */
 function stripComments(source: string): string {
 	return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
@@ -202,19 +196,12 @@ describe("守卫 3:服务端只经持久化底层写盘", () => {
 		).toEqual([]);
 	});
 
-	it("服务端源码除了待迁名单,没有直接写盘的", async () => {
+	it("服务端源码没有直接写盘的", async () => {
 		const offenders: Record<string, string[]> = {};
-		const stillPending: string[] = [];
 		for (const path of await serverSourceFiles()) {
 			const writes = directDiskWrites(await readFile(join(SERVER_SRC, path), "utf8"));
-			if (PENDING_MIGRATION.has(path)) {
-				if (writes.length > 0) stillPending.push(path);
-			} else if (writes.length > 0) {
-				offenders[path] = writes;
-			}
+			if (writes.length > 0) offenders[path] = writes;
 		}
 		expect(offenders).toEqual({});
-		// 名单里已经迁完的行要删掉,名单只减不增。
-		expect(stillPending.sort()).toEqual([...PENDING_MIGRATION].sort());
 	});
 });
