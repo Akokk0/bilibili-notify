@@ -17,12 +17,14 @@
  * 判据写成纯函数 + 样例,因为判据本身也会写错:一条永远判 OK 的规则跟没有一样。
  */
 
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-
-const SERVER_SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import {
+	findNodes,
+	listSources,
+	parseSource,
+	type Source,
+	ts,
+} from "../../../../scripts/source-scan.mjs";
 
 const WRITE_APIS = new Set(
 	["writeFile", "appendFile", "rename", "copyFile", "cp", "createWriteStream", "truncate"].flatMap(
@@ -30,176 +32,167 @@ const WRITE_APIS = new Set(
 	),
 );
 const OPEN_APIS = new Set(["open", "openSync"]);
+const OPEN_WRITE_FLAGS = new Set(["O_WRONLY", "O_RDWR", "O_APPEND", "O_CREAT", "O_TRUNC"]);
 
-const FS_MODULE = String.raw`["'](?:node:)?fs(?:\/promises)?["']`;
+const FS_MODULE = /^(?:node:)?fs(?:\/promises)?$/;
 
-/** 去掉注释:守卫只认代码,注释里写 `fs.writeFile(` 不算。 */
-function stripComments(source: string): string {
-	return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
-}
-
-/** 从 `(` 起取到配对的 `)` 为止的参数原文。 */
-function callArgs(source: string, openParen: number): string {
-	let depth = 0;
-	for (let i = openParen; i < source.length; i++) {
-		const ch = source[i];
-		if (ch === "(") depth++;
-		else if (ch === ")") {
-			depth--;
-			if (depth === 0) return source.slice(openParen + 1, i);
-		}
-	}
-	return source.slice(openParen + 1);
+/** 子树里有没有满足 `match` 的节点(含自己)。 */
+function someNode(node: ts.Node, match: (node: ts.Node) => boolean): boolean {
+	return (
+		match(node) || ts.forEachChild(node, (child) => someNode(child, match) || undefined) === true
+	);
 }
 
 /** open 的参数里有没有写标志:字符串标志含 w / a / +,或者用了写方向的 O_ 常量。 */
-function opensForWriting(args: string): boolean {
-	for (const match of args.matchAll(/["']([rwaxs+]{1,3})["']/g)) {
-		if (/[wa+]/.test(match[1] ?? "")) return true;
-	}
-	return /\bO_(?:WRONLY|RDWR|APPEND|CREAT|TRUNC)\b/.test(args);
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function opensForWriting(args: readonly ts.Expression[]): boolean {
+	return args.some((arg) =>
+		someNode(arg, (node) => {
+			if (ts.isStringLiteralLike(node)) {
+				return /^[rwaxs+]{1,3}$/.test(node.text) && /[wa+]/.test(node.text);
+			}
+			return ts.isIdentifier(node) && OPEN_WRITE_FLAGS.has(node.text);
+		}),
+	);
 }
 
 /** 一份源码直接写盘的地方(按写入口去重、排好序);没有就是空数组。 */
-export function directDiskWrites(source: string): string[] {
-	const code = stripComments(source);
+export function directDiskWrites(source: Source): string[] {
 	const found = new Set<string>();
-	const openAliases: string[] = [];
-	const namespaces: string[] = [];
+	const openAliases = new Set<string>();
+	const namespaces = new Set<string>();
 
-	for (const match of code.matchAll(
-		new RegExp(String.raw`import\s+(type\s+)?([^;]*?)\s+from\s*${FS_MODULE}`, "g"),
-	)) {
-		if (match[1]) continue;
-		const clause = match[2] ?? "";
-		const named = clause.match(/\{([^}]*)\}/);
-		const outside = clause.replace(/\{[^}]*\}/, "");
-		const ns = outside.match(/\*\s*as\s+([A-Za-z_$][\w$]*)/);
-		if (ns?.[1]) namespaces.push(ns[1]);
-		const def = outside.match(/^\s*([A-Za-z_$][\w$]*)/);
-		if (def?.[1]) namespaces.push(def[1]);
-		for (const part of (named?.[1] ?? "").split(",")) {
-			const spec = part.trim();
-			if (!spec || spec.startsWith("type ")) continue;
-			const [imported = "", local = imported] = spec.split(/\s+as\s+/).map((s) => s.trim());
-			if (WRITE_APIS.has(imported)) found.add(imported);
-			else if (OPEN_APIS.has(imported)) openAliases.push(local);
-			else if (imported === "promises") namespaces.push(local);
+	// 先看 import:从 fs 模块拿到了什么名字。`import type` 与逐项 `type` 不带值,不算。
+	for (const statement of source.ast.statements) {
+		if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+			continue;
 		}
-	}
-
-	for (const alias of openAliases) {
-		for (const call of code.matchAll(
-			new RegExp(String.raw`(?<![\w$.])${escapeRegExp(alias)}\s*\(`, "g"),
-		)) {
-			if (opensForWriting(callArgs(code, (call.index ?? 0) + call[0].length - 1)))
-				found.add("open");
-		}
-	}
-
-	for (const ns of namespaces) {
-		const member = new RegExp(
-			String.raw`(?<![\w$.])${escapeRegExp(ns)}\s*\.\s*(?:promises\s*\.\s*)?([A-Za-z_$][\w$]*)\s*\(`,
-			"g",
-		);
-		for (const call of code.matchAll(member)) {
-			const api = call[1] ?? "";
-			if (WRITE_APIS.has(api)) found.add(api);
-			else if (
-				OPEN_APIS.has(api) &&
-				opensForWriting(callArgs(code, (call.index ?? 0) + call[0].length - 1))
-			) {
-				found.add("open");
+		if (!FS_MODULE.test(statement.moduleSpecifier.text)) continue;
+		const clause = statement.importClause;
+		if (!clause || clause.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
+		if (clause.name) namespaces.add(clause.name.text);
+		const bindings = clause.namedBindings;
+		if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+		if (bindings && ts.isNamedImports(bindings)) {
+			for (const element of bindings.elements) {
+				if (element.isTypeOnly) continue;
+				const imported = (element.propertyName ?? element.name).text;
+				const local = element.name.text;
+				if (WRITE_APIS.has(imported)) found.add(imported);
+				else if (OPEN_APIS.has(imported)) openAliases.add(local);
+				else if (imported === "promises") namespaces.add(local);
 			}
 		}
+	}
+
+	// 再看调用:拿到的写入口是不是被调了,open 是不是带写标志。
+	for (const { node } of findNodes(source, ts.isCallExpression)) {
+		const call = node as ts.CallExpression;
+		const callee = call.expression;
+		if (ts.isIdentifier(callee)) {
+			if (openAliases.has(callee.text) && opensForWriting(call.arguments)) found.add("open");
+			continue;
+		}
+		if (!ts.isPropertyAccessExpression(callee)) continue;
+		// `ns.api(…)` 与 `ns.promises.api(…)`
+		let owner = callee.expression;
+		if (ts.isPropertyAccessExpression(owner) && owner.name.text === "promises") {
+			owner = owner.expression;
+		}
+		if (!ts.isIdentifier(owner) || !namespaces.has(owner.text)) continue;
+		const api = callee.name.text;
+		if (WRITE_APIS.has(api)) found.add(api);
+		else if (OPEN_APIS.has(api) && opensForWriting(call.arguments)) found.add("open");
 	}
 
 	return [...found].sort();
 }
 
-async function serverSourceFiles(): Promise<string[]> {
-	const entries = await readdir(SERVER_SRC, { recursive: true });
-	return entries
-		.map((entry) => entry.split(sep).join("/"))
-		.filter(
-			(path) =>
-				path.endsWith(".ts") &&
-				!path.split("/").includes("__tests__") &&
-				!path.endsWith(".test.ts"),
-		)
-		.sort();
-}
+/** 把一段样例当成一份 `.ts` 源码喂给判据。 */
+const writesIn = (text: string) => directDiskWrites(parseSource("sample.ts", text));
 
 describe("守卫 3:服务端只经持久化底层写盘", () => {
 	it("认法:从 fs 拿了写入口就点名,自家同名方法与只读、删除不算", () => {
+		expect(writesIn(`import { readFile, mkdir, rm, unlink } from "node:fs/promises";`)).toEqual([]);
 		expect(
-			directDiskWrites(`import { readFile, mkdir, rm, unlink } from "node:fs/promises";`),
-		).toEqual([]);
-		expect(
-			directDiskWrites(
-				`import {\n\treadFile,\n\twriteFile,\n\trename,\n} from "node:fs/promises";`,
-			),
+			writesIn(`import {\n\treadFile,\n\twriteFile,\n\trename,\n} from "node:fs/promises";`),
 		).toEqual(["rename", "writeFile"]);
-		expect(directDiskWrites(`import { renameSync as mv, existsSync } from "node:fs";`)).toEqual([
+		expect(writesIn(`import { renameSync as mv, existsSync } from "node:fs";`)).toEqual([
 			"renameSync",
 		]);
-		expect(directDiskWrites(`import { createWriteStream } from "fs";`)).toEqual([
-			"createWriteStream",
-		]);
-		expect(directDiskWrites(`import type { WriteStream } from "node:fs";`)).toEqual([]);
-		expect(directDiskWrites(`import { link, symlink } from "node:fs/promises";`)).toEqual([]);
+		expect(writesIn(`import { createWriteStream } from "fs";`)).toEqual(["createWriteStream"]);
+		expect(writesIn(`import type { WriteStream } from "node:fs";`)).toEqual([]);
+		// 类型导入拿不到值:语法上写得出来、运行时不存在,判据不能被它骗过去。
 		expect(
-			directDiskWrites(
+			writesIn(`import type { writeFile } from "node:fs/promises";\nwriteFile(p, x);`),
+		).toEqual([]);
+		expect(
+			writesIn(`import { type rename, readFile } from "node:fs/promises";\nrename(a, b);`),
+		).toEqual([]);
+		expect(writesIn(`import type * as fs from "node:fs";\nfs.writeFileSync(p, x);`)).toEqual([]);
+		expect(writesIn(`import { link, symlink } from "node:fs/promises";`)).toEqual([]);
+		// 只认 fs:别的模块里同名的函数不归这条管。
+		expect(writesIn(`import { writeFile } from "some-lib";\nwriteFile(p, x);`)).toEqual([]);
+		expect(writesIn(`import path from "node:path";\npath.rename(a, b);`)).toEqual([]);
+		expect(
+			writesIn(
 				`import { readFile } from "node:fs/promises";\nawait store.rename(id, name);\nsink.write(x);`,
 			),
 		).toEqual([]);
 	});
 
 	it("认法:命名空间、默认导入与 promises 别名照样点名", () => {
-		expect(directDiskWrites(`import * as fs from "node:fs";\nfs.writeFileSync(p, "x");`)).toEqual([
+		expect(writesIn(`import * as fs from "node:fs";\nfs.writeFileSync(p, "x");`)).toEqual([
 			"writeFileSync",
 		]);
-		expect(
-			directDiskWrites(`import fs from "node:fs";\nawait fs.promises.appendFile(p, "x");`),
-		).toEqual(["appendFile"]);
-		expect(
-			directDiskWrites(`import { promises as fsp } from "node:fs";\nawait fsp.rename(a, b);`),
-		).toEqual(["rename"]);
-		expect(directDiskWrites(`import * as fs from "node:fs";\nfs.readFileSync(p);`)).toEqual([]);
+		expect(writesIn(`import fs from "node:fs";\nawait fs.promises.appendFile(p, "x");`)).toEqual([
+			"appendFile",
+		]);
+		expect(writesIn(`import { promises as fsp } from "node:fs";\nawait fsp.rename(a, b);`)).toEqual(
+			["rename"],
+		);
+		expect(writesIn(`import * as fs from "node:fs";\nfs.readFileSync(p);`)).toEqual([]);
 	});
 
 	it("认法:open 只在带写标志时算写盘", () => {
 		expect(
-			directDiskWrites(
+			writesIn(
 				`import { open } from "node:fs/promises";\nconst h = await open(join(dir, name), "w");`,
 			),
 		).toEqual(["open"]);
 		expect(
-			directDiskWrites(`import { open } from "node:fs/promises";\nconst h = await open(dir, "r");`),
+			writesIn(`import { open } from "node:fs/promises";\nconst h = await open(dir, "r");`),
 		).toEqual([]);
 		expect(
-			directDiskWrites(
+			writesIn(
 				`import { openSync, constants } from "node:fs";\nopenSync(p, constants.O_WRONLY | constants.O_CREAT);`,
 			),
 		).toEqual(["open"]);
 	});
 
-	it("认法:注释里的写法不算", () => {
+	it("认法:注释、字符串与模板里的写法不算", () => {
 		expect(
-			directDiskWrites(
+			writesIn(
 				`import * as fs from "node:fs";\n// 以前是 fs.writeFileSync(p, x)\n/* fs.renameSync(a, b) */\nfs.statSync(p);`,
+			),
+		).toEqual([]);
+		expect(
+			writesIn(
+				[
+					`import * as fs from "node:fs";`,
+					`const hint = "别写 fs.writeFileSync(p, x)";`,
+					`const doc = \`fs.renameSync(a, b) // \${fs.statSync(p).size}\`;`,
+				].join("\n"),
 			),
 		).toEqual([]);
 	});
 
-	it("服务端源码没有直接写盘的", async () => {
+	it("服务端源码没有直接写盘的", () => {
+		const files = listSources(["apps/server/src"]);
+		// 一份都没扫到 = 这条守卫在空转,那比没有还糟。
+		expect(files.length).toBeGreaterThan(0);
 		const offenders: Record<string, string[]> = {};
-		for (const path of await serverSourceFiles()) {
-			const writes = directDiskWrites(await readFile(join(SERVER_SRC, path), "utf8"));
+		for (const path of files) {
+			const writes = directDiskWrites(parseSource(path));
 			if (writes.length > 0) offenders[path] = writes;
 		}
 		expect(offenders).toEqual({});

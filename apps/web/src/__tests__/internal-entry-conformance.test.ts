@@ -1,4 +1,3 @@
-/// <reference types="node" />
 /**
  * internal 入口 conformance —— 扫 `apps/web/src` 全部非测试源码,断言对
  * `@bilibili-notify/internal` **根入口**的引用一律是 `import type` / `export type`
@@ -18,74 +17,97 @@
  * 值走 `/constants`)。测试留在 web 是因为这里的引用点最多、最容易顺手写错。
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { listSources } from "./walk.js";
+import {
+	type ImportRef,
+	importsOf,
+	listSources,
+	parseSource,
+} from "../../../../scripts/source-scan.mjs";
 
-/** 连 `.ts` 一起收:从根入口取值的写法在纯逻辑文件里一样会把 zod 拖进 bundle。
- *  测试自己可以从根入口拿值 —— 它们不进 bundle。 */
-const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true, exts: [".ts", ".tsx"] });
-
-const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const SRC_DIR = join(TEST_DIR, "..");
-
-/**
- * 一条 import / export … from **根入口** 的语句。`[\s\S]` 吃跨行的具名列表,`^`/`$`
- * 锚在**按分号切出来的单条语句**上。
- *
- * 不能直接拿全文去松匹配:那样 `from "@bilibili-notify/internal/constants"` 那条
- * (合法)语句的开头会跟后面某条根入口语句的结尾配成一对,报出一片假阳性。同理
- * 注释里出现「`import type`」四个字也会被卷进来 —— 所以先剥注释再切。
- */
-const STATEMENT_RE = /^\s*(import|export)\b([\s\S]*?)\bfrom\s+"@bilibili-notify\/internal"\s*$/;
-
-/** 剥掉块注释与行注释。`[^:]` 那一手是为了别把 `https://` 当行注释切了。 */
-function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
+/** 根入口:把 zod 拽进来的那一个。子路径(`/constants` 等)是零依赖的,不在此列。 */
+const INTERNAL_ROOT = "@bilibili-notify/internal";
 
 /**
- * 这条语句是不是**类型专用**。
+ * 对根入口的引用里,哪些**不是**类型专用的 —— 编译后会留下一条真实引用的那些。
  *
- * 两种写法都算:整句 `import type { … }`,以及逐项 `import { type A, type B }`。
- * 只要有一项不带 `type`,编译后就会留下一条真实 import —— 那就是把 zod 拖进来的
- * 那一条。default / namespace 导入(`import x from`、`import * as x from`)一律算值。
+ * 类型专用有两种写法:整句 `import type { … }` / `export type { … }`,以及逐项
+ * `import { type A, type B }`。只要有一项不带 `type`,编译后就会留下一条真实 import ——
+ * 那就是把 zod 拖进来的那一条。default / namespace 导入、`export *`、裸副作用导入、
+ * 字面量的动态 `import()` 一律算值;类型位置的 `import("…").T` 会擦除,不算。
  */
-function isTypeOnly(clause: string): boolean {
-	const body = clause.trim();
-	if (body.startsWith("type ")) return true;
-	const braced = body.match(/^\{([\s\S]*)\}$/);
-	if (!braced) return false; // default / namespace / 裸副作用导入
-	const specifiers = (braced[1] ?? "")
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
-	return specifiers.length > 0 && specifiers.every((s) => s.startsWith("type "));
+function valueRefsToInternalRoot(refs: readonly ImportRef[]): ImportRef[] {
+	return refs.filter((ref) => ref.specifier === INTERNAL_ROOT && !ref.typeOnly);
 }
+
+/** 一段样例源码里对根入口的取值引用。 */
+const offendersIn = (text: string, path = "sample.tsx") =>
+	valueRefsToInternalRoot(importsOf(parseSource(path, text)));
 
 describe("apps/web 不得从 internal 根入口拿值", () => {
 	it("对根入口的引用一律 import type / export type —— 否则 zod 进 bundle", () => {
+		// 连 `.ts` 一起收:从根入口取值的写法在纯逻辑文件里一样会把 zod 拖进 bundle。
+		// 默认不含测试:测试自己可以从根入口拿值 —— 它们不进 bundle。
+		const files = listSources(["apps/web/src"]);
+		// 一份都没扫到 = 这条守卫在空转,那比没有还糟。
+		expect(files.length).toBeGreaterThan(0);
+
 		const offenders: string[] = [];
-		for (const file of listTsx(SRC_DIR)) {
-			for (const chunk of stripComments(readFileSync(file, "utf8")).split(";")) {
-				const m = chunk.match(STATEMENT_RE);
-				if (!m || isTypeOnly(m[2] ?? "")) continue;
-				offenders.push(`${relative(SRC_DIR, file)}: ${m[0].replace(/\s+/g, " ").trim()}`);
+		for (const file of files) {
+			const source = parseSource(file);
+			const lines = source.text.split("\n");
+			for (const ref of valueRefsToInternalRoot(importsOf(source))) {
+				offenders.push(`${file}:${ref.line}: ${lines[ref.line - 1]?.trim()}`);
 			}
 		}
 		expect(offenders).toEqual([]);
 	});
 
 	it("护栏本身认得出违规写法 —— 免得它悄悄退化成一条永远通过的测试", () => {
-		// 这条测的是 `isTypeOnly` 而不是仓库现状:上面那条在仓库干净时无论判据对不对
-		// 都是绿的,所以判据得自己有一条测试。
-		expect(isTypeOnly("type { GlobalConfig }")).toBe(true);
-		expect(isTypeOnly("{ type A, type B }")).toBe(true);
-		expect(isTypeOnly("{ colorFromUid, UP_COLORS }")).toBe(false);
-		expect(isTypeOnly("{ type A, colorFromUid }")).toBe(false);
-		expect(isTypeOnly(" everything ")).toBe(false); // default 导入
-		expect(isTypeOnly(" * as internal ")).toBe(false); // namespace 导入
+		// 这条测的是判据而不是仓库现状:上面那条在仓库干净时无论判据对不对都是绿的,
+		// 所以判据得自己有一条测试。
+		const from = (clause: string) => offendersIn(`import ${clause} from "${INTERNAL_ROOT}";`);
+		expect(from("type { GlobalConfig }")).toEqual([]);
+		expect(from("{ type A, type B }")).toEqual([]);
+		expect(from("type Everything")).toEqual([]);
+		expect(from("{ colorFromUid, UP_COLORS }")).toHaveLength(1);
+		expect(from("{ type A, colorFromUid }")).toHaveLength(1);
+		expect(from("everything")).toHaveLength(1); // default 导入
+		expect(from("* as internal")).toHaveLength(1); // namespace 导入
+	});
+
+	it("护栏认得 export … from、跨行列表、副作用与动态引用;认不得的是注释、字符串和别的入口", () => {
+		expect(offendersIn(`export { colorFromUid } from "${INTERNAL_ROOT}";`)).toHaveLength(1);
+		expect(offendersIn(`export * from "${INTERNAL_ROOT}";`)).toHaveLength(1);
+		expect(offendersIn(`export type { GlobalConfig } from "${INTERNAL_ROOT}";`)).toEqual([]);
+		// 跨行的具名列表:最后一项不带 type 就是值。
+		expect(
+			offendersIn(`import {\n\ttype A,\n\ttype B,\n\tcolorFromUid,\n} from "${INTERNAL_ROOT}";`),
+		).toHaveLength(1);
+		expect(offendersIn(`import {\n\ttype A,\n\ttype B,\n} from "${INTERNAL_ROOT}";`)).toEqual([]);
+		expect(offendersIn(`import "${INTERNAL_ROOT}";`)).toHaveLength(1);
+		expect(offendersIn(`const m = await import("${INTERNAL_ROOT}");`)).toHaveLength(1);
+		expect(offendersIn(`type T = import("${INTERNAL_ROOT}").GlobalConfig;`)).toEqual([]);
+
+		// 零依赖子路径是合法的取值入口;别的包不归这条管。
+		expect(offendersIn(`import { UP_COLORS } from "${INTERNAL_ROOT}/constants";`)).toEqual([]);
+		expect(offendersIn(`import { z } from "zod";`)).toEqual([]);
+
+		// 注释、字符串里写得再像也不算(原先的按分号切语句会被它们绊倒)。
+		expect(
+			offendersIn(
+				[
+					`// import { colorFromUid } from "${INTERNAL_ROOT}";`,
+					`/* import type 与 export { x } from "${INTERNAL_ROOT}" */`,
+					`const hint = 'import { x } from "${INTERNAL_ROOT}"';`,
+				].join("\n"),
+			),
+		).toEqual([]);
+		// 分号相邻的两条:合法的子路径语句不会和后面的根入口语句配成一对。
+		expect(
+			offendersIn(
+				`import { a } from "${INTERNAL_ROOT}/constants"; import type { B } from "${INTERNAL_ROOT}";`,
+			),
+		).toEqual([]);
 	});
 });

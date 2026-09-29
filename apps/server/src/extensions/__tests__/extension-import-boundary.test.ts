@@ -15,29 +15,14 @@
  * 判据写成纯函数 + 样例,是因为**判据本身也会写错**:一条永远判 OK 的规则跟没有一样。
  */
 
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { importsOf, listSources, parseSource } from "../../../../../scripts/source-scan.mjs";
 
 /** 宿主给拓展的那一面。ctx 从这儿拿,不从核心里掏。 */
 const EXTENSION_PACKAGE = "@bilibili-notify/extension";
-
-/**
- * 从一份源码里抠出所有 import / re-export 的目标。
- *
- * 正则够用:这是一道**结构守卫**,不是编译器 —— 它要判的是「有没有人写了一条够到核心的
- * 路径」,而那种写法一律长成 `from "…"` 或 `import("…")`。真有人用拼字符串绕过去,那不是
- * 手滑,是刻意。
- */
-export function importSpecifiersIn(source: string): string[] {
-	const found: string[] = [];
-	for (const match of source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
-		const spec = match[1];
-		if (spec) found.push(spec);
-	}
-	return found;
-}
 
 export interface BoundaryViolation {
 	specifier: string;
@@ -116,41 +101,46 @@ describe("拓展越界判据", () => {
 	});
 });
 
+/** 一段样例源码里所有 import 类引用的目标。 */
+const specifiersIn = (text: string) =>
+	importsOf(parseSource("sample.ts", text)).map((ref) => ref.specifier);
+
 describe("抠 import 目标", () => {
-	it("import / re-export / 动态 import 都认得", () => {
+	it("import / re-export / 动态 import / require 都认得", () => {
 		expect(
-			importSpecifiersIn(
+			specifiersIn(
 				[
 					`import type { ExtensionContext } from "${EXTENSION_PACKAGE}";`,
 					`import { z } from 'zod';`,
+					`import "./side-effect.js";`,
 					`export type { Frame } from "./protocol.js";`,
 					`const mod = await import("node:crypto");`,
+					`const legacy = require("./legacy.cjs");`,
 				].join("\n"),
 			),
-		).toEqual([EXTENSION_PACKAGE, "zod", "./protocol.js", "node:crypto"]);
+		).toEqual([
+			EXTENSION_PACKAGE,
+			"zod",
+			"./side-effect.js",
+			"./protocol.js",
+			"node:crypto",
+			"./legacy.cjs",
+		]);
+	});
+
+	it("注释、字符串与模板里的写法不算(哪怕写得像一条越界的 import)", () => {
+		expect(
+			specifiersIn(
+				[
+					`// import { x } from "@bilibili-notify/internal";`,
+					`/* const m = await import("../../apps/server/src/runtime/message-bus.js"); */`,
+					`const hint = 'from "@bilibili-notify/server"';`,
+					'const doc = `import("@bilibili-notify/contract")`;',
+				].join("\n"),
+			),
+		).toEqual([]);
 	});
 });
-
-/** 仓根的 `extensions/` —— 从本文件往上四级(`apps/server/src/extensions/__tests__`)。 */
-const EXTENSIONS_ROOT = join(
-	fileURLToPath(dirname(import.meta.url)),
-	"..",
-	"..",
-	"..",
-	"..",
-	"..",
-	"extensions",
-);
-
-async function tsFilesIn(dir: string): Promise<string[]> {
-	const out: string[] = [];
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) out.push(...(await tsFilesIn(full)));
-		else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(full);
-	}
-	return out;
-}
 
 /**
  * 🔴 **真去扫仓里的拓展。**
@@ -159,20 +149,20 @@ async function tsFilesIn(dir: string): Promise<string[]> {
  * 只有样例的话,判据再对也拦不住实际写下去的那一行。
  */
 describe("仓里的拓展没有越界", () => {
-	it("每一条 import 要么是那扇门 / 第三方,要么在自己那棵树里", async () => {
-		const files = await tsFilesIn(EXTENSIONS_ROOT);
+	it("每一条 import 要么是那扇门 / 第三方,要么在自己那棵树里", () => {
+		// 连测试文件一起扫:测试里越界同样是越界。
+		const files = listSources(["extensions"], { tests: true });
 		// 一个拓展都没扫到 = 这条守卫在空转,那比没有还糟。
 		expect(files.length).toBeGreaterThan(0);
 
 		const violations: string[] = [];
 		for (const file of files) {
-			// `extensions/<id>/...` —— 拓展根是第一段。
-			const parts = relative(EXTENSIONS_ROOT, file).split(sep);
-			const extensionRoot = join(EXTENSIONS_ROOT, parts[0] ?? "");
-			const fromDir = relative(extensionRoot, dirname(file)).split(sep).join("/");
-			for (const specifier of importSpecifiersIn(await readFile(file, "utf8"))) {
-				const bad = boundaryViolation(specifier, fromDir);
-				if (bad) violations.push(`${relative(EXTENSIONS_ROOT, file)}: ${specifier} —— ${bad.why}`);
+			// `extensions/<id>/...` —— 拓展根是前两段。
+			const extensionRoot = file.split("/").slice(0, 2).join("/");
+			const fromDir = posix.relative(extensionRoot, posix.dirname(file));
+			for (const ref of importsOf(parseSource(file))) {
+				const bad = boundaryViolation(ref.specifier, fromDir);
+				if (bad) violations.push(`${file}:${ref.line}: ${ref.specifier} —— ${bad.why}`);
 			}
 		}
 		expect(violations).toEqual([]);
@@ -236,19 +226,14 @@ describe("核心越界判据", () => {
 /** 仓根 —— 从本文件往上五级(`apps/server/src/extensions/__tests__`)。 */
 const REPO_ROOT = join(fileURLToPath(dirname(import.meta.url)), "..", "..", "..", "..", "..");
 
-/** 核心那一侧要扫的源码根:每个 app / package 自己的 `src`(`extensions/*` 不在其中)。 */
-async function coreSourceRoots(): Promise<string[]> {
+/** 核心那一侧要扫的源码根:每个 app / package 自己的 `src`(`extensions/*` 不在其中),仓库相对路径。 */
+function coreSourceRoots(): string[] {
 	const roots: string[] = [];
 	for (const group of ["apps", "packages"]) {
-		const base = join(REPO_ROOT, group);
-		for (const entry of await readdir(base, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const src = join(base, entry.name, "src");
-			try {
-				await readdir(src);
-				roots.push(src);
-			} catch {
-				// 没有 src/ 的(桌面壳那种)跳过。
+		for (const entry of readdirSync(join(REPO_ROOT, group), { withFileTypes: true })) {
+			// 没有 src/ 的(桌面壳那种)跳过。
+			if (entry.isDirectory() && existsSync(join(REPO_ROOT, group, entry.name, "src"))) {
+				roots.push(`${group}/${entry.name}/src`);
 			}
 		}
 	}
@@ -256,24 +241,24 @@ async function coreSourceRoots(): Promise<string[]> {
 }
 
 describe("核心没有伸手进拓展", () => {
-	it("apps/**/src 与 packages/**/src 里没有一条 import 够到 extensions/", async () => {
+	it("apps/**/src 与 packages/**/src 里没有一条 import 够到 extensions/", () => {
 		const extensionsRoot = join(REPO_ROOT, "extensions");
-		const roots = await coreSourceRoots();
+		const roots = coreSourceRoots();
 		// 一个源码根都没扫到 = 这条守卫在空转,那比没有还糟。
 		expect(roots.length).toBeGreaterThan(0);
 
+		// 连测试文件一起扫,范围同迁移之前。
+		const files = listSources(roots, { tests: true });
+		expect(files.length).toBeGreaterThan(0);
+
 		const violations: string[] = [];
-		let scanned = 0;
-		for (const root of roots) {
-			for (const file of await tsFilesIn(root)) {
-				scanned += 1;
-				for (const specifier of importSpecifiersIn(await readFile(file, "utf8"))) {
-					if (!reachesIntoExtensions(specifier, dirname(file), extensionsRoot)) continue;
-					violations.push(`${relative(REPO_ROOT, file)}: ${specifier}`);
-				}
+		for (const file of files) {
+			const fromDir = dirname(join(REPO_ROOT, file));
+			for (const ref of importsOf(parseSource(file))) {
+				if (!reachesIntoExtensions(ref.specifier, fromDir, extensionsRoot)) continue;
+				violations.push(`${file}:${ref.line}: ${ref.specifier}`);
 			}
 		}
-		expect(scanned).toBeGreaterThan(0);
 		expect(violations).toEqual([]);
 	});
 });
