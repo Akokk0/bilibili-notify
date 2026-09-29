@@ -10,7 +10,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 ## 工具链与命令
 
-工具链统一 **vp (vite-plus)** —— Node + 包管理器 + 任务运行的统一入口。它包裹 pnpm(读 `package.json#packageManager`),但**不在 PATH 暴露 `pnpm` shim**,一律走 `vp`。简写:`vpr <script>` ≡ `vp run <script>`;`vpx <bin>` 跑二进制(本地 `node_modules/.bin` 优先,否则 `vp dlx`)。
+工具链统一 **vp (vite-plus)** —— Node + 包管理器 + 任务运行的统一入口。它包裹 pnpm(读 `package.json#packageManager`);vp 1.0 起 PATH 上也有它托管的 `pnpm` shim(解析到同一个版本),但命令一律走 `vp`。简写:`vpr <script>` ≡ `vp run <script>`;`vpx <bin>` 跑二进制(本地 `node_modules/.bin` 优先,否则 `vp dlx`)。
 
 ```bash
 vp install
