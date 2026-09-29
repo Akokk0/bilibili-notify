@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:拓展提供的连接走 `kind: "extension"` 那一支 —— **一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(从桥报的 bot 上抄,枚举不了),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,不留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:按 ADR-0024 决策 1,这个闭集要删掉 —— 内置的 OneBot / QQ 官方机器人 / webhook 与拓展改成同一个 `PlatformAdapter` 接口、同一张登记表,连接上的 `kind` 换成 `adapterKey`(决策 7);改完之前,拓展提供的连接仍走 `kind: "extension"` 那一支。不变的是:**一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(今天从桥报的 bot 上抄,改完取自挑中的候选),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
