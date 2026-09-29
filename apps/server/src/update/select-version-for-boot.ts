@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { readJsonFile, writeJsonAtomic } from "./durable-json.js";
+import { readBestEffortJson, writeBestEffortJson } from "./durable-json.js";
 import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
 
@@ -55,7 +55,7 @@ const STATE_FILE = "boot-state.json";
 
 function readState(versionsRoot: string): BootState {
 	// 文件不在、读不动、被写坏了都会走到这条默认值上 —— 一律当作「还没有任何记录」。
-	const raw = readJsonFile(versionsRoot, STATE_FILE) as Partial<BootState> | undefined;
+	const raw = readBestEffortJson(versionsRoot, STATE_FILE) as Partial<BootState> | undefined;
 	return {
 		attempts: raw?.attempts ?? {},
 		failed: Array.isArray(raw?.failed) ? raw.failed : [],
@@ -75,7 +75,7 @@ function unbootable(state: BootState): string[] {
 }
 
 function writeState(versionsRoot: string, state: BootState): void {
-	writeJsonAtomic(versionsRoot, STATE_FILE, state);
+	writeBestEffortJson(versionsRoot, STATE_FILE, state);
 }
 
 export interface BootSelection {

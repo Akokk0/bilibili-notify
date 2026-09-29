@@ -18,7 +18,7 @@ import {
 	MarketplaceIndexSchema,
 	type MarketplaceSource,
 } from "@bilibili-notify/internal";
-import { readJsonFile, writeJsonAtomic } from "../update/durable-json.js";
+import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
@@ -134,7 +134,9 @@ interface LoadedSource {
 }
 
 function readProvenance(root: string): Provenance {
-	const raw = readJsonFile(root, MARKETPLACE_PROVENANCE_FILE) as Partial<Provenance> | undefined;
+	const raw = readBestEffortJson(root, MARKETPLACE_PROVENANCE_FILE) as
+		| Partial<Provenance>
+		| undefined;
 	const installed: Record<string, ProvenanceRecord> = {};
 	if (raw && typeof raw === "object" && raw.installed && typeof raw.installed === "object") {
 		for (const [id, record] of Object.entries(raw.installed)) {
@@ -258,7 +260,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			// 不许有 await。
 			const current = readProvenance(deps.root);
 			if ((current.officialIssuedAt ?? 0) < issuedAt) {
-				writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, {
+				writeBestEffortJson(deps.root, MARKETPLACE_PROVENANCE_FILE, {
 					...current,
 					officialIssuedAt: issuedAt,
 				});
@@ -373,7 +375,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		// 读-改-写之间没有 await:上面那一串拉取早就跑完了。
 		const current = readProvenance(deps.root);
 		if (JSON.stringify(current.namespaces) === JSON.stringify(next)) return;
-		writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, { ...current, namespaces: next });
+		writeBestEffortJson(deps.root, MARKETPLACE_PROVENANCE_FILE, { ...current, namespaces: next });
 	}
 
 	async function loadAll(refresh: boolean): Promise<LoadedSource[]> {
@@ -549,7 +551,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					version: entry.version,
 					installedAt: now(),
 				};
-				writeJsonAtomic(deps.root, MARKETPLACE_PROVENANCE_FILE, provenance);
+				writeBestEffortJson(deps.root, MARKETPLACE_PROVENANCE_FILE, provenance);
 			});
 		} catch (err) {
 			return { ok: false, err: (err as Error).message };

@@ -1,9 +1,9 @@
-import { readJsonFile, writeJsonAtomic } from "../update/durable-json.js";
+import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 
 /**
  * 拓展的失败记账 —— 一点点持久状态,住在装载根目录里(`<dataDir>/extensions/`)。
  *
- * 读写纪律复用 `update/durable-json`:**tmp + rename**,而且**两头都吞掉失败** ——
+ * 读写纪律复用 `update/durable-json`:**原子写**,而且**两头都吞掉失败** ——
  * 读不出来当没记过,写不进去也不拦着加载。这份状态是启发,坏了不该让拓展起不来。
  */
 interface LoadState {
@@ -27,7 +27,7 @@ function ledgerKey(id: string, version: string): string {
 }
 
 function readState(root: string): LoadState {
-	const raw = readJsonFile(root, STATE_FILE) as Partial<LoadState> | undefined;
+	const raw = readBestEffortJson(root, STATE_FILE) as Partial<LoadState> | undefined;
 	return {
 		attempts: raw?.attempts ?? {},
 		blocked: Array.isArray(raw?.blocked) ? raw.blocked : [],
@@ -73,7 +73,7 @@ export function recordLoadAttempt({
 	const key = ledgerKey(id, version);
 	const attempts = (state.attempts[key] ?? 0) + 1;
 	const blocked = attempts >= maxFailures;
-	writeJsonAtomic(
+	writeBestEffortJson(
 		root,
 		STATE_FILE,
 		{
@@ -100,7 +100,7 @@ export function markLoadSucceeded({
 	const key = ledgerKey(id, version);
 	if (state.attempts[key] === undefined && !state.blocked.includes(key)) return;
 	const { [key]: _cleared, ...rest } = state.attempts;
-	writeJsonAtomic(
+	writeBestEffortJson(
 		root,
 		STATE_FILE,
 		{

@@ -210,11 +210,11 @@
 
 所有存储都收到三件东西上，挂在已有的件上、不另开一套：
 
-1. **原子写**（新建，家在 `packages/storage`，叫 `atomicWriteJson`；现在是服务端三份逐字相同的私有副本，另有约 8 种各写各的临时文件写法）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件解析不了仍挡开机，见「设置坏了怎么办」）；开机清掉上个进程留下的临时文件。服务端 `update/durable-json.ts`（`readJsonFile` / `writeJsonAtomic`，`select-version-for-boot`、`manifest-freshness`、`extensions/load-ledger`、`extensions/marketplace` 在用）也并进来：它现在读坏了当没有、写失败只回调不抛，并进来后读到坏文件改走改名隔离。它导出的 `readJsonFile` 和 storage 的新原语同名，不并掉守卫 4 一上线就红。
+1. **原子写**（新建，家在 `packages/storage`，叫 `atomicWriteJson`；现在是服务端三份逐字相同的私有副本，另有约 8 种各写各的临时文件写法）：临时文件统一命名，写完 fsync 文件与目录，失败删临时文件，可选文件权限；读到坏文件先改名成 `.corrupt-<时刻>` 隔离（配置文件解析不了仍挡开机，见「设置坏了怎么办」）；开机清掉上个进程留下的临时文件。服务端 `update/durable-json.ts`（`select-version-for-boot`、`manifest-freshness`、`extensions/load-ledger`、`extensions/marketplace` 在用）已并进来（第 1 期切片 ②）：它留作四处共用的「两头都吞掉失败」策略层，底下改用 storage 的同步原语，读到坏文件改名隔离、仍当没记过，写失败仍只回调不抛；导出改名 `readBestEffortJson` / `writeBestEffortJson`，不再和 storage 的 `readJsonFile` 同名（守卫 4）。
 2. **写道** = `createSerialQueue`（新建，家在 internal 的零依赖子路径；现在只有面板里一个小的，服务端至少 11 处手写 `prev.then` 队列）带 `flush` 与关门：按键串行，支持单一全局键（历史的全局串行是刻意的）；关门后的写入直接拒绝、不碰盘。
 3. **后台任务登记** = ServiceContext 加 `track(promise)` 与分阶段的 onDispose：「发出去不管」的写入改成登记在案、能被取消。
 
-原语已落（第 1 期第一片，见 [construction-plan.md](./construction-plan.md)）：`packages/storage` 导出 `atomicWriteFile` / `atomicWriteJson`（临时名 `<目标>.bn-tmp.<pid>.<随机>`，fsync 文件与目录，Windows 跳过目录 fsync）、`readJsonFile`（结果分 `ok` / `missing` / `corrupt`，坏文件改名 `.corrupt-<ISO 时刻>`）、`appendJsonl`（不 fsync，读方要容得下末尾半行）、`replaceDirectory`（换下来的旧目录叫 `.bn-old.*`）、`sweepTempFiles`（只认这两种标记；Docker 里 pid 常常相同，所以必须在任何写入之前跑）；internal 导出 `createSerialQueue`（`run(key, task)`、`flush`、`close`，关门后拒绝，错误码 `queue_closed`）。fsync 本身没法用不崩溃的夹具验证（残余风险）。
+原语已落（第 1 期切片 ①，切片 ② 补齐，见 [construction-plan.md](./construction-plan.md)）：`packages/storage` 导出 `atomicWriteFile` / `atomicWriteJson` 及同步版（临时名 `<目标>.bn-tmp.<pid>.<随机>`，fsync 文件与目录，Windows 跳过目录 fsync；同步版给开机早期的选版与装载账本）、`readJsonFile` 及同步版（结果分 `ok` / `missing` / `corrupt`，坏文件改名 `.corrupt-<ISO 时刻>`）、`appendLines` / `appendJsonl`（不 fsync，读方要容得下末尾半行；日志自己序列化，走 `appendLines`）、`replaceDirectory`（换下来的旧目录叫 `.bn-old.*`；暂存与旧目录名可指定，`versions/` 与拓展装载根沿用点开头的老名字，因为已发出去的代码与装载器按它们认残留）、`removeDirectory`（先改成临时名再删）、`isLeftoverName`（扫目录建索引时跳过原语的残留）、`sweepTempFiles`（只认这两种标记；Docker 里 pid 常常相同，所以必须在任何写入之前跑；已接在服务端启动最早处、`createAppRuntime` 之前，清扫失败只记一行、不挡开机）；internal 导出 `createSerialQueue`（`run(key, task)`、`flush`、`close`，关门后拒绝，错误码 `queue_closed`）。fsync 本身没法用不崩溃的夹具验证（残余风险）。
 
 关停顺序（服务端预算 8 秒，给桌面壳与 Docker 默认的 10 秒留余量；compose 样例写上 `stop_grace_period`）：
 

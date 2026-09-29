@@ -10,9 +10,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { replaceDirectory } from "@bilibili-notify/storage";
 import { strToU8, zipSync } from "fflate";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { installPayload } from "../install-payload.js";
+import { LEFTOVER_DIR_RE } from "../version-dirs.js";
+
+// 透传真实现,只为看清 installPayload 递给它的暂存 / 旧目录名(见下面「暂存名与旧目录名」那条)。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/storage")>();
+	return { ...actual, replaceDirectory: vi.fn(actual.replaceDirectory) };
+});
 
 /**
  * 升级包落盘。**唯一的一条保证:要么 `versions/<ver>/` 完整出现,要么现场一个
@@ -29,6 +37,10 @@ function tempRoot(): string {
 	return dir;
 }
 
+beforeEach(() => {
+	vi.mocked(replaceDirectory).mockClear();
+});
+
 afterEach(() => {
 	for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -42,7 +54,7 @@ function sha256(bytes: Uint8Array): string {
 }
 
 describe("installPayload", () => {
-	it("versionsRoot 是相对路径也装得上 —— 越界判定得先把根算成绝对路径", () => {
+	it("versionsRoot 是相对路径也装得上 —— 越界判定得先把根算成绝对路径", async () => {
 		// 配置里 dataDir 默认是 `./data`,用户手写 yaml 也常写相对路径。越界判定拿
 		// 绝对路径去跟相对根比前缀,会把**每一个**条目都判成越界 —— 好包永远装不上,
 		// 而且报出来的 unsafe-entry 像是供应链告警。
@@ -50,7 +62,7 @@ describe("installPayload", () => {
 		const versionsRoot = relative(process.cwd(), absolute);
 		const zip = makeZip({ "index.mjs": "console.log('payload')" });
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip,
 			expectedSha256: sha256(zip),
 			version: "0.9.0",
@@ -61,28 +73,33 @@ describe("installPayload", () => {
 		expect(existsSync(join(absolute, "0.9.0", "index.mjs"))).toBe(true);
 	});
 
-	it("同一版本已经装过、包也是同一份 → alreadyInstalled,盘上一个字节不动", () => {
+	it("同一版本已经装过、包也是同一份 → alreadyInstalled,盘上一个字节不动", async () => {
 		const versionsRoot = tempRoot();
 		const zip = makeZip({ "index.mjs": "// A" });
 		const input = { zip, expectedSha256: sha256(zip), version: "0.9.0", versionsRoot };
 
-		expect(installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: false });
-		expect(installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: true });
+		expect(await installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: false });
+		expect(await installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: true });
 		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// A");
 	});
 
-	it("同一版本号、但清单里的包换了(发版侧重传了资产)→ 换成新的,旧目录不留", () => {
+	it("同一版本号、但清单里的包换了(发版侧重传了资产)→ 换成新的,旧目录不留", async () => {
 		// 只凭「目录存在」就当装好了的话,service 那套「版本 + sha256」双判据被彻底架空:
 		// 下了 7MB 全丢掉、盘上还是旧那份、内存里却记着新 sha —— 面板说 0.9.0 已就绪,
 		// 重启跑的是旧的。目录里记一份包的 sha,对不上就换。
 		const versionsRoot = tempRoot();
 		const zipA = makeZip({ "index.mjs": "// A" });
 		expect(
-			installPayload({ zip: zipA, expectedSha256: sha256(zipA), version: "0.9.0", versionsRoot }),
+			await installPayload({
+				zip: zipA,
+				expectedSha256: sha256(zipA),
+				version: "0.9.0",
+				versionsRoot,
+			}),
 		).toMatchObject({ ok: true });
 
 		const zipB = makeZip({ "index.mjs": "// B", "extra.txt": "new" });
-		const result = installPayload({
+		const result = await installPayload({
 			zip: zipB,
 			expectedSha256: sha256(zipB),
 			version: "0.9.0",
@@ -96,13 +113,13 @@ describe("installPayload", () => {
 		expect(readdirSync(versionsRoot).filter((n) => n.startsWith(".old-"))).toEqual([]);
 	});
 
-	it("目录在、但没有 sha 记录(更早的版本装的)→ 当作不一致,换成新的", () => {
+	it("目录在、但没有 sha 记录(更早的版本装的)→ 当作不一致,换成新的", async () => {
 		const versionsRoot = tempRoot();
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 		writeFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "// legacy");
 		const zip = makeZip({ "index.mjs": "// fresh" });
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip,
 			expectedSha256: sha256(zip),
 			version: "0.9.0",
@@ -113,10 +130,10 @@ describe("installPayload", () => {
 		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// fresh");
 	});
 
-	it("sha256 对不上 → 拒绝,而且 versions/ 下一个字节都不多", () => {
+	it("sha256 对不上 → 拒绝,而且 versions/ 下一个字节都不多", async () => {
 		const versionsRoot = tempRoot();
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip: makeZip({ "index.mjs": "console.log('payload')" }),
 			expectedSha256: sha256(strToU8("完全是别的东西")),
 			version: "0.9.0",
@@ -130,14 +147,14 @@ describe("installPayload", () => {
 		expect(readdirSync(versionsRoot)).toEqual([]);
 	});
 
-	it("一切正常 → versions/<ver>/ 完整出现,内容与包一致(含嵌套目录)", () => {
+	it("一切正常 → versions/<ver>/ 完整出现,内容与包一致(含嵌套目录)", async () => {
 		const versionsRoot = tempRoot();
 		const zip = makeZip({
 			"index.mjs": "console.log('payload')",
 			"web-dist/index.html": "<!doctype html>",
 		});
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip,
 			expectedSha256: sha256(zip),
 			version: "0.9.0",
@@ -153,7 +170,7 @@ describe("installPayload", () => {
 		);
 	});
 
-	it("zip 里有逃出目标目录的条目 → 整包拒绝,不是跳过那一条", () => {
+	it("zip 里有逃出目标目录的条目 → 整包拒绝,不是跳过那一条", async () => {
 		// 我们解的是**要被执行的代码**。一个 `../` 条目就能把文件写到版本目录外面 ——
 		// 覆盖掉隔壁版本、甚至镜像自带那份。所以发现一条就整包不要:一个会往外写的
 		// 包,剩下那些条目也不值得信。
@@ -165,7 +182,7 @@ describe("installPayload", () => {
 			"../../escaped.mjs": "console.log('pwned')",
 		});
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip,
 			expectedSha256: sha256(zip),
 			version: "0.9.0",
@@ -178,7 +195,7 @@ describe("installPayload", () => {
 		expect(existsSync(join(root, "escaped.mjs"))).toBe(false);
 	});
 
-	it("这个版本已经装过 → 不碰磁盘,报『已存在』让上层去切指针", () => {
+	it("这个版本已经装过 → 不碰磁盘,报『已存在』让上层去切指针", async () => {
 		// 两条真实路径会走到这里:① 装完了但没来得及切指针就挂了;② 用户回退到上一版
 		// 之后又想升回来(而我们保留当前+上一版,那个目录根本没删)。
 		// 两种情况下那个目录都是**完整**的 —— 它只可能通过原子 rename 出现 —— 而且是
@@ -186,14 +203,14 @@ describe("installPayload", () => {
 		// 重下 25MB 再装一遍。包换了(同版本号重传)是另一回事,见上面那条。
 		const versionsRoot = tempRoot();
 		const first = makeZip({ "index.mjs": "第一次装的" });
-		installPayload({
+		await installPayload({
 			zip: first,
 			expectedSha256: sha256(first),
 			version: "0.9.0",
 			versionsRoot,
 		});
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip: first,
 			expectedSha256: sha256(first),
 			version: "0.9.0",
@@ -207,14 +224,14 @@ describe("installPayload", () => {
 		expect(readdirSync(versionsRoot)).toEqual(["0.9.0"]);
 	});
 
-	it("解压写到一半炸了 → staging 清干净,不留半个树,也不抛", () => {
+	it("解压写到一半炸了 → staging 清干净,不留半个树,也不抛", async () => {
 		// 「app」先作为文件写下去,紧接着「app/index.mjs」又要拿它当目录 —— 必然
 		// ENOTDIR,而且是在**已经写了几个文件之后**才炸。这是「半个树」唯一真正
 		// 可能出现的时机。
 		const versionsRoot = tempRoot();
 		const zip = makeZip({ app: "我是文件", "app/index.mjs": "我要拿上面那个当目录" });
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip,
 			expectedSha256: sha256(zip),
 			version: "0.9.0",
@@ -227,13 +244,13 @@ describe("installPayload", () => {
 		expect(readdirSync(versionsRoot)).toEqual([]);
 	});
 
-	it("下下来的根本不是个 ZIP → 拒绝,不抛", () => {
+	it("下下来的根本不是个 ZIP → 拒绝,不抛", async () => {
 		// sha256 对得上只证明「字节是清单说的那一份」,**不证明那份字节是个能解开的包**
 		// —— 我们自己发错东西的时候就长这样。
 		const versionsRoot = tempRoot();
 		const notAZip = strToU8("这不是压缩包,只是一串字");
 
-		const result = installPayload({
+		const result = await installPayload({
 			zip: notAZip,
 			expectedSha256: sha256(notAZip),
 			version: "0.9.0",
@@ -243,5 +260,94 @@ describe("installPayload", () => {
 		expect(result.ok).toBe(false);
 		expect(result.ok === false && result.reason).toBe("extract-failed");
 		expect(readdirSync(versionsRoot)).toEqual([]);
+	});
+
+	it("落盘的每个文件字节与包里一致(含非 UTF-8 的二进制),整棵树里没有留下任何临时文件", async () => {
+		// 逐文件走原子写(写临时名 → fsync → 改名):中途的临时名一个都不能留在版本目录里 ——
+		// 启动选版把这个目录当成整体,开机清扫又会去删带临时标记的名字。
+		const versionsRoot = tempRoot();
+		const binary = Uint8Array.from([0x00, 0xff, 0xfe, 0x80, 0x0a, 0x00]);
+		const zip = zipSync({
+			"index.mjs": strToU8("console.log('payload')"),
+			"assets/deep/blob.wasm": binary,
+			"web-dist/index.html": strToU8("<!doctype html>"),
+		});
+
+		const result = await installPayload({
+			zip,
+			expectedSha256: sha256(zip),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		expect(new Uint8Array(readFileSync(join(result.path, "assets", "deep", "blob.wasm")))).toEqual(
+			binary,
+		);
+		expect(readFileSync(join(result.path, ".payload-sha256"), "utf8")).toBe(sha256(zip));
+		const everything = readdirSync(versionsRoot, { recursive: true }).map(String);
+		expect(everything.filter((name) => name.includes(".bn-tmp."))).toEqual([]);
+		expect(everything.filter((name) => LEFTOVER_DIR_RE.test(name))).toEqual([]);
+	});
+
+	it("暂存名与旧目录名是 .staging-<版本>-<uuid> / .old-<版本>-<uuid>,而且都在 versionsRoot 里", async () => {
+		// 🔴 `prune-versions` 与 `version-dirs` 的 LEFTOVER_DIR_RE(冻住的 boot.mjs 也一样)按这两个前缀
+		// 认「进程被杀留下的残留」。换成存储层默认的 `.bn-tmp.` / `.bn-old.`,残留就再没人收,
+		// 而装出来的东西、测试、构建全绿 —— 暂存目录装完就没了,只有钉住递给存储层的名字才看得见。
+		const versionsRoot = tempRoot();
+		const zipA = makeZip({ "index.mjs": "// A" });
+		await installPayload({
+			zip: zipA,
+			expectedSha256: sha256(zipA),
+			version: "0.9.0",
+			versionsRoot,
+		});
+		const zipB = makeZip({ "index.mjs": "// B" });
+		await installPayload({
+			zip: zipB,
+			expectedSha256: sha256(zipB),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		const calls = vi.mocked(replaceDirectory).mock.calls;
+		expect(calls).toHaveLength(2);
+		for (const [target, , opts] of calls) {
+			expect(target).toBe(join(versionsRoot, "0.9.0"));
+			const stagingName = (opts?.stagingPath ?? "").slice(versionsRoot.length + 1);
+			const oldName = (opts?.oldPath ?? "").slice(versionsRoot.length + 1);
+			expect(stagingName).toMatch(/^\.staging-0\.9\.0-[0-9a-f-]{36}$/);
+			expect(oldName).toMatch(/^\.old-0\.9\.0-[0-9a-f-]{36}$/);
+			expect(LEFTOVER_DIR_RE.test(stagingName)).toBe(true);
+			expect(LEFTOVER_DIR_RE.test(oldName)).toBe(true);
+			expect(opts?.stagingPath?.startsWith(`${versionsRoot}/`)).toBe(true);
+		}
+	});
+
+	it("同版本换包时搭建中途炸了 → 旧目录原样还在,暂存与旧目录名都没留下", async () => {
+		// 「要么完整出现,要么现场一个字节没动」在换包这条路上的样子:旧的那份不能因为新包装不上就没了。
+		const versionsRoot = tempRoot();
+		const zipA = makeZip({ "index.mjs": "// A", "extra.txt": "old" });
+		await installPayload({
+			zip: zipA,
+			expectedSha256: sha256(zipA),
+			version: "0.9.0",
+			versionsRoot,
+		});
+		const broken = makeZip({ app: "我是文件", "app/index.mjs": "我要拿上面那个当目录" });
+
+		const result = await installPayload({
+			zip: broken,
+			expectedSha256: sha256(broken),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe("extract-failed");
+		expect(readdirSync(versionsRoot)).toEqual(["0.9.0"]);
+		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// A");
+		expect(readFileSync(join(versionsRoot, "0.9.0", "extra.txt"), "utf8")).toBe("old");
+		expect(readFileSync(join(versionsRoot, "0.9.0", ".payload-sha256"), "utf8")).toBe(sha256(zipA));
 	});
 });

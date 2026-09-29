@@ -1,4 +1,4 @@
-import { readJsonFile, writeJsonAtomic } from "./durable-json.js";
+import { readBestEffortJson, writeBestEffortJson } from "./durable-json.js";
 
 /**
  * 每个渠道见过的最大清单签发时间,落在 `<versionsRoot>/manifest-freshness.json`。
@@ -11,7 +11,7 @@ import { readJsonFile, writeJsonAtomic } from "./durable-json.js";
  * 按渠道分开记:stable 与 alpha 各有各的清单,签发时间互不可比。
  *
  * 和 boot-state 一样是启发式状态:读不出来当没见过(退化成第一次,不是错误);写不进去
- * 也不拦着检查更新。写走 tmp + rename,撕裂写不会把记忆清零。
+ * 也不拦着检查更新。写走原子写,撕裂写不会把记忆清零。
  */
 
 const FILE = "manifest-freshness.json";
@@ -21,7 +21,7 @@ export type FreshnessChannel = "stable" | "prerelease";
 type Seen = Partial<Record<FreshnessChannel, number>>;
 
 function read(versionsRoot: string): Seen {
-	const raw = readJsonFile(versionsRoot, FILE);
+	const raw = readBestEffortJson(versionsRoot, FILE);
 	if (typeof raw !== "object" || raw === null) return {};
 	const seen: Seen = {};
 	for (const channel of ["stable", "prerelease"] as const) {
@@ -48,5 +48,5 @@ export function rememberIssuedAt(
 	const current = seen[channel];
 	if (current !== undefined && current >= issuedAt) return;
 	// 写不进去(只读挂载、磁盘满)不拦着检查更新;代价是下次少一层防回放。
-	writeJsonAtomic(versionsRoot, FILE, { ...seen, [channel]: issuedAt });
+	writeBestEffortJson(versionsRoot, FILE, { ...seen, [channel]: issuedAt });
 }

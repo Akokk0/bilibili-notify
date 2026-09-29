@@ -43,8 +43,6 @@ const PENDING_MIGRATION = new Set<string>([
 	"runtime/chat-assets.ts",
 	"runtime/font-assets.ts",
 	"skins/store.ts",
-	"update/durable-json.ts",
-	"update/install-payload.ts",
 ]);
 
 /** 去掉注释:守卫只认代码,注释里写 `fs.writeFile(` 不算。 */

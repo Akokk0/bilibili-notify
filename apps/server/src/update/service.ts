@@ -244,7 +244,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			);
 		}
 
-		const installed = installPayload({
+		const installed = await installPayload({
 			zip: fetched.value,
 			expectedSha256: manifest.payload.sha256,
 			version: manifest.version,

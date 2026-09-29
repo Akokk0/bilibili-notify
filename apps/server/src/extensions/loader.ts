@@ -429,7 +429,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	const imported = new Map<string, Map<string, string>>();
 	/** 起来的次序,见 `Slot.running.order`。 */
 	let started = 0;
-	/** 上一次记过的记账写盘错 —— 同一个错只记一行(每个拓展每次起都要写两回)。 */
+	/** 上一次记过的记账写盘错(按错误码认)—— 同一个错只记一行(每个拓展每次起都要写两回)。 */
 	let ledgerError: string | undefined;
 
 	/**
@@ -462,8 +462,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 */
 	function ledgerUnwritable(err: unknown): void {
 		const message = err instanceof Error ? err.message : String(err);
-		if (message === ledgerError) return;
-		ledgerError = message;
+		// 按错误码与出错的那一步认「同一个错」,不按文字:报错文字里带着存储层的临时文件名,
+		// 每次写都不一样,按文字比会每次都记一行。没有错误码的才退回比文字。
+		const { code, syscall } = err as NodeJS.ErrnoException;
+		const key = code ? `${code}:${syscall ?? ""}` : message;
+		if (key === ledgerError) return;
+		ledgerError = key;
 		host.logger.warn(
 			`[ext] 失败记账写不进去(${message})—— 拓展照常加载,但「连着失败就自动停用」此刻不起作用`,
 		);

@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import {
@@ -14,6 +14,7 @@ import {
 	isExtensionSubscription,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
+import { type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp, createCardSkinStore } from "./app.js";
@@ -115,6 +116,14 @@ export async function startStandaloneServer(
 	const env = options.env ?? process.env;
 	const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	const bootstrap = loadBootstrapConfig({ argv: options.argv, env });
+	// 开机清扫:收掉上个进程被杀留下的临时文件与暂存目录。**必须赶在任何写入之前** —— 它认不出哪些
+	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
+	// 下面的 createAppRuntime 起,所以放在它前面;logger 此刻还没有,结果先留着,等它起来再记一行。
+	// 清扫失败不挡开机(比如 /data 里有主人丢进来的、读不动的目录):留下的只是些垃圾。
+	const bootSweep = await sweepTempFiles(bootstrap.dataDir).then(
+		(report) => ({ report }) as const,
+		(error: unknown) => ({ error }) as const,
+	);
 	let runtime: AppRuntime | undefined;
 	let authSystem: AuthSystem | undefined;
 	let puppeteer: StandalonePuppeteer | null = null;
@@ -168,6 +177,14 @@ export async function startStandaloneServer(
 		log.info(
 			`starting bilibili-notify standalone server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
 		);
+		if ("error" in bootSweep) {
+			log.warn(
+				`[storage] 开机清扫没做完(${bootSweep.error instanceof Error ? bootSweep.error.message : String(bootSweep.error)})—— 上次留下的临时文件可能还在,不影响启动`,
+			);
+		} else {
+			const swept = describeBootSweep(bootSweep.report, bootstrap.dataDir);
+			if (swept) log.info(swept);
+		}
 
 		// Load the at-rest secrets key during startup, not on the first settings write.
 		// Without this eager touch, zero-auth local runs only hit the key lazily when
@@ -1118,6 +1135,22 @@ async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promis
 	const { dir, source } = resolveWebDistDir(input);
 	if (source === "explicit" || (await hasReadableIndexHtml(dir))) return { dir, source };
 	return { source: "disabled", payloadDir: dir };
+}
+
+/** 开机清扫的结果写成一行日志;什么都没清返回 `null`(常态,不占日志)。 */
+function describeBootSweep(report: SweepReport, dataDir: string): string | null {
+	const list = (paths: readonly string[]): string => {
+		const shown = paths.slice(0, 5).map((path) => relative(dataDir, path));
+		return paths.length > shown.length ? `${shown.join("、")} 等` : shown.join("、");
+	};
+	const parts: string[] = [];
+	if (report.removed.length > 0) {
+		parts.push(`清掉 ${report.removed.length} 个临时文件 / 暂存目录(${list(report.removed)})`);
+	}
+	if (report.restored.length > 0) {
+		parts.push(`把 ${report.restored.length} 个换到一半的目录挪回原位(${list(report.restored)})`);
+	}
+	return parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:${parts.join(",")}` : null;
 }
 
 async function hasReadableIndexHtml(dir: string): Promise<boolean> {

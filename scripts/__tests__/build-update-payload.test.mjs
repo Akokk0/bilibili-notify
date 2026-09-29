@@ -70,7 +70,7 @@ describe("buildUpdatePayload", () => {
 
 		// 直接交给客户端那半边去装 —— 布局对不对由它说了算,不由我们自己复述。
 		const versionsRoot = join(root, "versions");
-		const installed = installPayload({
+		const installed = await installPayload({
 			zip: await readFile(outFile),
 			expectedSha256: built.sha256,
 			version: "0.9.0",
