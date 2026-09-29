@@ -1,7 +1,8 @@
-import { randomBytes, randomInt } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { randomInt } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Logger } from "@bilibili-notify/internal";
+import { atomicWriteJson } from "@bilibili-notify/storage";
 
 /**
  * RoastDraftStore —— 等主人点头的锐评草稿。
@@ -129,15 +130,6 @@ function upgradeLegacyDraft(
 			scores: list("scores"),
 		},
 	};
-}
-
-async function atomicWriteJson(absPath: string, value: unknown): Promise<void> {
-	await mkdir(dirname(absPath), { recursive: true });
-	const suffix = `${process.pid}.${randomBytes(6).toString("hex")}`;
-	const tmp = `${absPath}.tmp.${suffix}`;
-	const body = `${JSON.stringify(value, null, 2)}\n`;
-	await writeFile(tmp, body, { encoding: "utf8" });
-	await rename(tmp, absPath);
 }
 
 export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): RoastDraftStore {

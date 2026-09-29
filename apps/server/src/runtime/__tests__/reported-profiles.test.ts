@@ -45,14 +45,14 @@ let alive: string[];
 let handle: ReportedProfilesHandle;
 let announced: string[][];
 
-function bind(over: { avatars?: SubAvatarStore } = {}): void {
+function bind(over: { avatars?: SubAvatarStore; coalesceMs?: number } = {}): void {
 	handle = bindReportedProfiles({
 		bus,
 		subRuntime,
 		avatars: over.avatars ?? avatars,
 		subscriptionIds: () => alive,
 		logger: makeLogger(),
-		coalesceMs: 30,
+		coalesceMs: over.coalesceMs ?? 30,
 	});
 }
 
@@ -75,14 +75,18 @@ afterEach(async () => {
 
 describe("bindReportedProfiles", () => {
 	it("一阵连着报了好几条:面板只被叫一次,带上变了的全部订阅", async () => {
-		bind();
+		// 三条是排队一条条落盘的,每条一次原子写(带 fsync):合并窗口从第一条变了开始计时,窄了的话
+		// 机器一忙,后面几条还没落完窗口就到了,一阵被拆成两次叫面板。这里要断言的是「一个窗口里
+		// 攒齐」,所以窗口给宽、等的时间跟着放宽;别的用例不看合并,仍用默认的窄窗口。
+		const coalesceMs = 300;
+		bind({ coalesceMs });
 		bus.emit("subscription-reported", profileReport([A], { name: "甲" }));
 		bus.emit("subscription-reported", profileReport([B], { name: "乙" }));
 		bus.emit("subscription-reported", profileReport([A], { fans: 3 }));
 		await handle.idle();
 
-		await vi.waitFor(() => expect(announced).toEqual([[A, B]]));
-		await new Promise((resolve) => setTimeout(resolve, 60));
+		await vi.waitFor(() => expect(announced).toEqual([[A, B]]), { timeout: coalesceMs * 10 });
+		await new Promise((resolve) => setTimeout(resolve, coalesceMs + 50));
 		expect(announced).toHaveLength(1);
 		// 后报的粉丝没把先报的名字冲掉 —— 排成一条队处理。
 		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({ name: "甲", fans: 3 });

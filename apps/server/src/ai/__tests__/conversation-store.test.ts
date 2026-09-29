@@ -9,7 +9,7 @@
  *   - 坏文件 / 缺文件不炸整个列表 —— 一条脏 JSON 不该让侧栏整个空掉
  */
 
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -288,6 +288,42 @@ describe("ConversationStore — list", () => {
 		const ids = (await store.list()).map((m) => m.id);
 		expect(ids).toEqual([good.id]);
 		expect(logger.warn).toHaveBeenCalled();
+	});
+});
+
+/**
+ * 落盘走存储层的原子写:先写同目录临时文件、再改名盖到会话文件上 —— 进程在写的中途被杀,
+ * 盘上是旧的整份或新的整份,不会是半截 JSON(半截的会被当脏记录跳过,主人的整场对话就没了)。
+ * 判据是 inode:就地截断重写不换 inode,先写临时文件再改名一定换。
+ */
+describe("ConversationStore — 落盘是原子的", () => {
+	const chatDir = () => join(dataDir, "ai", "chat");
+
+	it("重写一个会话 → 换了文件(inode 变),不是就地截断重写", async () => {
+		const c = await store.create();
+		const file = join(chatDir(), `${c.id}.json`);
+		const before = (await stat(file)).ino;
+		await store.appendMessages(c.id, [{ role: "user", content: "问" }]);
+		expect((await stat(file)).ino).not.toBe(before);
+		expect((await store.get(c.id))?.messages.map((m) => m.content)).toEqual(["问"]);
+	});
+
+	it("写完目录里只有会话文件,读得回来的是合法 JSON", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [{ role: "user", content: "问" }]);
+		await store.setTitle(c.id, "新标题");
+		await store.recordCardSkin(c.id, { owned: "a1" });
+		expect(await readdir(chatDir())).toEqual([`${c.id}.json`]);
+		expect(JSON.parse(await readFile(join(chatDir(), `${c.id}.json`), "utf8")).title).toBe(
+			"新标题",
+		);
+	});
+
+	it("写失败(会话目录被一个文件占着)→ 错误抛给调用方,不留临时文件", async () => {
+		await mkdir(join(dataDir, "ai"), { recursive: true });
+		await writeFile(join(dataDir, "ai", "chat"), "占着", "utf8");
+		await expect(store.create()).rejects.toBeDefined();
+		expect(await readdir(join(dataDir, "ai"))).toEqual(["chat"]);
 	});
 });
 

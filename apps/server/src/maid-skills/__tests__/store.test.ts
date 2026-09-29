@@ -8,12 +8,12 @@
  *    跟「我没放对地方」长得一模一样,主人无从查起。
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_SKILLS } from "../builtin.js";
-import { formatSkillFile } from "../parse.js";
+import { formatSkillFile, parseSkillFile } from "../parse.js";
 import { MaidSkillStore } from "../store.js";
 
 let dir: string;
@@ -134,6 +134,39 @@ describe("增删改", () => {
 			await expect(store.create({ ...sample, name: bad })).rejects.toThrow();
 			await expect(store.remove(bad)).rejects.toThrow();
 		}
+	});
+});
+
+describe("落盘", () => {
+	/**
+	 * SKILL.md 是给人看、给人手改的 markdown,不是状态 JSON:落的就是 `formatSkillFile` 的那份字节,
+	 * 不加缩进、不加换行。目录里只有它自己 —— 写到一半的临时文件不许留在技能目录里。
+	 */
+	it("写的就是 formatSkillFile 那份字节,技能目录里只有 SKILL.md", async () => {
+		await store.create(sample);
+		expect(await readFile(join(dir, "my-skill", "SKILL.md"), "utf-8")).toBe(
+			formatSkillFile(sample),
+		);
+		expect(await readdir(join(dir, "my-skill"))).toEqual(["SKILL.md"]);
+	});
+
+	/**
+	 * 🔴 两个标签页(或一个陈旧标签页 + 一次自动保存)同时存同一条技能:写盘各用各的临时名,
+	 * 谁也不该踩到谁 —— 以前共用一个固定名的临时文件,后改名的那次撞上「文件已经被先改名的
+	 * 那次拿走了」直接抛 ENOENT。
+	 */
+	it("同一条技能并发存几次 → 都成功,盘上是完整的一份,不留临时文件", async () => {
+		await store.create(sample);
+		const bodies = Array.from({ length: 8 }, (_, i) => `第 ${i} 版的正文`);
+		const results = await Promise.allSettled(
+			bodies.map((body) => store.update("my-skill", { ...sample, body })),
+		);
+		expect(results.map((r) => r.status)).toEqual(bodies.map(() => "fulfilled"));
+
+		expect(await readdir(join(dir, "my-skill"))).toEqual(["SKILL.md"]);
+		const onDisk = parseSkillFile(await readFile(join(dir, "my-skill", "SKILL.md"), "utf-8"));
+		expect(onDisk.ok).toBe(true);
+		if (onDisk.ok) expect(bodies).toContain(onDisk.skill.body);
 	});
 });
 

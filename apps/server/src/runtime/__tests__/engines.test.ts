@@ -18,6 +18,7 @@
  *   dispose():                stop 全引擎 + 解绑 bus(dispose 后 config-changed 不再生效)
  */
 
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BiliLoginStatus } from "@bilibili-notify/api";
@@ -285,7 +286,7 @@ function makeServiceCtx() {
 	};
 }
 
-function makeConfigStore(initial: GlobalConfig) {
+function makeConfigStore(initial: GlobalConfig, dataDir?: string) {
 	let g = initial;
 	let targets: PushTarget[] = [];
 	let connections: Connection[] = [];
@@ -293,7 +294,7 @@ function makeConfigStore(initial: GlobalConfig) {
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
 		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
-		bootstrap: { dataDir: join(tmpdir(), "bn-engines-test-no-such-dir") },
+		bootstrap: { dataDir: dataDir ?? join(tmpdir(), "bn-engines-test-no-such-dir") },
 		getGlobals: () => g,
 		getTargets: () => targets,
 		getConnections: () => connections,
@@ -339,9 +340,11 @@ function setup(opts?: {
 	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
 	loginStatus?: BiliLoginStatus;
+	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
+	dataDir?: string;
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
-	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
+	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig(), opts?.dataDir);
 	if (opts?.connections) configStore._setConnections(opts.connections);
 	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
 	const api = {
@@ -1172,6 +1175,59 @@ describe("createEngines — dispose", () => {
 		expect(dyn.stop).toHaveBeenCalledTimes(1);
 		expect(live.stop).toHaveBeenCalledTimes(1);
 		expect(push.stop).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 背景轮换游标:每次推送在推送点同步推进,只标脏;落盘由 30 秒的定时器与 dispose 那一次负责。
+ * 走存储层的原子写 —— 写到一半被杀,盘上是旧的整份或新的整份,游标不会被半截 JSON 清零。
+ */
+describe("createEngines — 背景轮换游标落盘", () => {
+	const ids = ["a", "b", "c"].map((ch) => `${ch.repeat(32)}.png`);
+	let dataDir: string;
+
+	beforeEach(async () => {
+		dataDir = await mkdtemp(join(tmpdir(), "bn-engines-cursors-"));
+		await mkdir(join(dataDir, "assets", "card-bg"), { recursive: true });
+		for (const id of ids) await writeFile(join(dataDir, "assets", "card-bg", id), "x");
+	});
+	afterEach(async () => {
+		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("dispose 把推进过的游标写进 card-bg-cursors.json,目录里不留临时文件", async () => {
+		const c = setup({ dataDir });
+		active = c;
+		const pick = H.live[0].opts.pickCardBackground;
+		expect([pick("u1:live", ids), pick("u1:live", ids)]).toEqual([ids[0], ids[1]]);
+		c.runtime.dispose();
+		active = null;
+		expect(JSON.parse(await readFile(join(dataDir, "card-bg-cursors.json"), "utf8"))).toEqual({
+			"u1:live": 2,
+		});
+		expect((await readdir(dataDir)).sort()).toEqual(["assets", "card-bg-cursors.json"]);
+	});
+
+	it("重启续接:下一轮从盘上的游标接着轮换,不归零", async () => {
+		const first = setup({ dataDir });
+		active = first;
+		const pickFirst = H.live[0].opts.pickCardBackground;
+		pickFirst("u1:live", ids);
+		pickFirst("u1:live", ids);
+		first.runtime.dispose();
+		active = null;
+
+		const second = setup({ dataDir });
+		active = second;
+		expect(H.live[1].opts.pickCardBackground("u1:live", ids)).toBe(ids[2]);
+	});
+
+	it("没推进过就不写盘(游标不脏)", () => {
+		const c = setup({ dataDir });
+		active = c;
+		c.runtime.dispose();
+		active = null;
+		return expect(readdir(dataDir)).resolves.toEqual(["assets"]);
 	});
 });
 

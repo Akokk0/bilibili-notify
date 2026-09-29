@@ -71,6 +71,22 @@ describe("开机清扫", () => {
 		expect((await store.read(KEEP))?.bytes.equals(PNG_BYTES)).toBe(true);
 	});
 
+	/**
+	 * 现在头像走存储层的原子写,写到一半被杀留下的是 `<id>.<后缀>.bn-tmp.<pid>.<随机>`(上一个
+	 * 用例里的 `.tmp.` 是升级之前留下的老残留,照样得扫)。两种都得收,不然升级前后各漏一批。
+	 */
+	it("存储层原子写留下的临时文件也扫掉;还在的头像不碰", async () => {
+		await store.write(KEEP, avatarDataUrl("png", PNG_BYTES));
+		await writeFile(join(avatarsDir, `${KEEP}.png.bn-tmp.123.abcdef`), PNG_BYTES);
+		await writeFile(join(avatarsDir, `${GONE}.webp.bn-tmp.456.0123ab`), WEBP_BYTES);
+		await writeFile(join(avatarsDir, "README.txt"), "主人放的");
+
+		await store.sweep([KEEP]);
+
+		expect(await files()).toEqual(["README.txt", `${KEEP}.png`]);
+		expect((await store.read(KEEP))?.bytes.equals(PNG_BYTES)).toBe(true);
+	});
+
 	it("还没有头像目录 → 什么都不做,也不替它建", async () => {
 		await store.sweep([KEEP]);
 		await expect(readdir(avatarsDir)).rejects.toMatchObject({ code: "ENOENT" });

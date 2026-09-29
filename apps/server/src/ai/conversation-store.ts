@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	AI_CARD_WORKSHOP_TOOLS,
@@ -9,6 +9,7 @@ import {
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
+import { atomicWriteJson } from "@bilibili-notify/storage";
 
 /**
  * 女仆 AI 聊天的会话持久化 —— dashboard 聊天侧栏「最近」的数据源。
@@ -281,8 +282,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 	}
 
 	async function writeOne(conv: Conversation): Promise<void> {
-		await mkdir(dir, { recursive: true });
-		await writeFile(fileOf(conv.id), JSON.stringify(conv), "utf8");
+		await atomicWriteJson(fileOf(conv.id), conv);
 	}
 
 	/**

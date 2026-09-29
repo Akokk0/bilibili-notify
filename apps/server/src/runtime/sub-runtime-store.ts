@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { CachedProfile, FansBaseline, Logger } from "@bilibili-notify/internal";
+import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
@@ -98,15 +98,6 @@ export interface CreateSubRuntimeStoreOptions {
 
 function cloneRuntime(r: SubRuntime): SubRuntime {
 	return structuredClone(r);
-}
-
-async function atomicWriteJson(absPath: string, value: unknown): Promise<void> {
-	await mkdir(dirname(absPath), { recursive: true });
-	const suffix = `${process.pid}.${randomBytes(6).toString("hex")}`;
-	const tmp = `${absPath}.tmp.${suffix}`;
-	const body = `${JSON.stringify(value, null, 2)}\n`;
-	await writeFile(tmp, body, { encoding: "utf8" });
-	await rename(tmp, absPath);
 }
 
 export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRuntimeStore {

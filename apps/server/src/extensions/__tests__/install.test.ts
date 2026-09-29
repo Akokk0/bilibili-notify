@@ -8,6 +8,7 @@
  * 另一条硬规矩:**软链不许覆盖** —— 那是 devtools 链进来的工作树,往里写等于写进 git 仓库。
  */
 
+import { readdirSync } from "node:fs";
 import {
 	lstat,
 	mkdir,
@@ -410,6 +411,55 @@ describe("落盘", () => {
 		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
 			"1.0.1",
 		);
+	});
+
+	/**
+	 * 「一个字节都不留」:落到一半失败(这里是入口写不进去,清单那时已经写进暂存了)—— 新装的话目标
+	 * 名字根本不会出现;盖已经装着的话旧的原样还在;两种情况下装载根里都不剩暂存目录。目标名字只经
+	 * 最后那一下改名出现,所以从来看不到「清单是新的、代码是旧的」的半成品。
+	 */
+	it("落到一半失败 → 新装不冒出目录,盖旧的时旧的原样还在,都不留暂存", async () => {
+		const { pkg } = await open();
+		const broken = { ...pkg, entry: 123 as unknown as Uint8Array };
+
+		await expect(installExtensionPackage({ root, pkg: broken })).rejects.toBeDefined();
+		expect(await readdir(root)).toEqual([]);
+
+		await installExtensionPackage({ root, pkg });
+		const installed = await readFile(join(root, "bridge", "index.mjs"), "utf8");
+		await expect(
+			installExtensionPackage({
+				root,
+				pkg: { ...broken, manifestBytes: strToU8(manifest({ version: "9.9.9" })) },
+			}),
+		).rejects.toBeDefined();
+		expect(await readdir(root)).toEqual(["bridge"]);
+		expect(await readFile(join(root, "bridge", "index.mjs"), "utf8")).toBe(installed);
+		expect(JSON.parse(await readFile(join(root, "bridge", "extension.json"), "utf8")).version).toBe(
+			"1.0.0",
+		);
+	});
+
+	/**
+	 * 🔴 暂存目录就建在装载根里,而装载器扫根时**只按「点开头」跳过**(`discover.ts`)—— 名字不带点,
+	 * 进程在改名之前被杀,它就带着一份合法清单留在盘上,变成每次开机多出来的一张删不掉的 unreadable 卡。
+	 * 所以落盘过程中装载根里出现的东西,除了将要装成的那个目录,名字都得点开头。
+	 */
+	it("落盘过程中,装载根里的暂存目录是点开头的 —— 装载器不会把它当拓展扫出来", async () => {
+		const { pkg } = await open();
+		let during: string[] | undefined;
+		// 入口是清单之后才读的:读到它时暂存目录已经建好、里面有清单了。
+		const spying = {
+			...pkg,
+			get entry() {
+				during = readdirSync(root);
+				return pkg.entry;
+			},
+		};
+		await installExtensionPackage({ root, pkg: spying });
+		expect(during).toBeDefined();
+		expect(during?.length).toBe(1);
+		expect(during?.every((name) => name.startsWith("."))).toBe(true);
 	});
 
 	it("装载根还不存在时自己建 —— 头一次装本来就没有它", async () => {

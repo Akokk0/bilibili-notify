@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
-import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type Disposable,
@@ -11,6 +11,7 @@ import {
 	SubscriptionAvatarSchema,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
+import { atomicWriteFile } from "@bilibili-notify/storage";
 import { z } from "zod";
 
 /**
@@ -46,8 +47,11 @@ const SubIdSchema = z.uuid();
 /** 地址里 `v` 取内容 sha256 的前几位。 */
 const DIGEST_CHARS = 12;
 
-/** 盘上认得的文件名:`<id>.<后缀>`,或者写到一半留下的 `<id>.<后缀>.tmp.<…>`。 */
-const FILE_NAME_RE = /^([0-9a-fA-F-]{36})\.(png|jpeg|webp)(\.tmp\..+)?$/;
+/**
+ * 盘上认得的文件名:`<id>.<后缀>`,或者写到一半留下的临时文件 `<id>.<后缀>.bn-tmp.<…>`(存储层
+ * 原子写的临时名)。`.tmp.` 那个是升级之前的写法留下的老残留,也照样认。
+ */
+const FILE_NAME_RE = /^([0-9a-fA-F-]{36})\.(png|jpeg|webp)(\.(?:bn-tmp|tmp)\..+)?$/;
 
 export interface DecodedAvatar {
 	bytes: Buffer;
@@ -166,18 +170,8 @@ export function createSubAvatarStore(opts: CreateSubAvatarStoreOptions): SubAvat
 			if (!decoded.ok) throw new Error(decoded.reason);
 			const { bytes, ext } = decoded.avatar;
 			const final = fileOf(subId, ext);
-			if (!(await sameContent(final, bytes))) {
-				await mkdir(dir, { recursive: true });
-				// 先写临时文件再改名(同 SubRuntimeStore 的 atomicWriteJson):读的人永远看不见半张图。
-				const tmp = `${final}.tmp.${process.pid}.${randomBytes(6).toString("hex")}`;
-				try {
-					await writeFile(tmp, bytes);
-					await rename(tmp, final);
-				} catch (err) {
-					await unlinkIfPresent(tmp).catch(() => undefined);
-					throw err;
-				}
-			}
+			// 原子写(先写临时文件再改名):读的人永远看不见半张图。
+			if (!(await sameContent(final, bytes))) await atomicWriteFile(final, bytes);
 			// 换了类型(png → webp)的话,旧类型那个文件就成了残留 —— 改名成功之后再删,
 			// 中途失败时手里至少还有一张。内容没变那一趟也照删:上次改名之后、删旧类型之前崩了的话,
 			// 残留就是这时候收掉的。

@@ -10,8 +10,9 @@
  * {@link MaidSkillStore.problems},交给界面显示。
  */
 
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
 import { formatSkillFile, isValidSkillName, type ParsedSkill, parseSkillFile } from "./parse.js";
 
@@ -58,9 +59,9 @@ export class MaidSkillStore {
 		for (const entry of await readdir(this.dir, { withFileTypes: true })) {
 			if (!entry.isDirectory()) continue;
 			const dirName = entry.name;
-			// 点开头的是系统 / 编辑器留下的东西,报出来只会刷屏。`.tmp` 是我们自己
-			// 写盘写到一半的残留。
-			if (dirName.startsWith(".") || dirName.endsWith(".tmp")) continue;
+			// 点开头的是系统 / 编辑器留下的东西,报出来只会刷屏。带存储层暂存 / 旧目录标记的是
+			// 我们自己写盘、换目录写到一半的残留。
+			if (dirName.startsWith(".") || isLeftoverName(dirName)) continue;
 			if (!isValidSkillName(dirName)) {
 				issues.push({
 					dir: dirName,
@@ -179,7 +180,7 @@ export class MaidSkillStore {
 		if (await this.fileExists(name)) throw new Error(`「${name}」已经有了`);
 	}
 
-	/** 盘上有没有这个名字的 SKILL.md。空目录 / `.tmp` 残留不算占用 —— 那儿没有主人的东西可丢。 */
+	/** 盘上有没有这个名字的 SKILL.md。空目录 / 临时文件残留不算占用 —— 那儿没有主人的东西可丢。 */
 	private async fileExists(name: string): Promise<boolean> {
 		return await stat(join(this.dir, name, SKILL_FILE)).then(
 			() => true,
@@ -193,12 +194,12 @@ export class MaidSkillStore {
 		if (BUILTIN_SKILL_NAMES.has(name)) throw new Error(`「${name}」是内置技能,改不动也删不掉`);
 	}
 
-	/** 落盘。先写同目录下的 `.tmp` 再 rename —— 半份 SKILL.md 下次读盘就是一条问题。 */
+	/**
+	 * 落盘。走存储层的原子写(同目录临时文件 + 改名)—— 半份 SKILL.md 下次读盘就是一条问题;
+	 * 临时名各写各的,同一条技能并发存也不会互相踩。它是给人看、给人手改的 markdown,
+	 * 所以写的就是 `formatSkillFile` 那份字节,不是状态 JSON。
+	 */
 	private async writeSkill(skill: ParsedSkill): Promise<void> {
-		const dir = join(this.dir, skill.name);
-		await mkdir(dir, { recursive: true });
-		const tmp = join(dir, `${SKILL_FILE}.tmp`);
-		await writeFile(tmp, formatSkillFile(skill), "utf-8");
-		await rename(tmp, join(dir, SKILL_FILE));
+		await atomicWriteFile(join(this.dir, skill.name, SKILL_FILE), formatSkillFile(skill));
 	}
 }

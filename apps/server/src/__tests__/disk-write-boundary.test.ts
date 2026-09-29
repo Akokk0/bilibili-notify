@@ -8,11 +8,11 @@
  * 判据看 import,不看调用名:一个文件从 fs 模块拿了写入口(具名、改名、命名空间、默认导入、
  * `promises as`),或者经命名空间调了写入口,就点名。按调用名扫会把 `store.rename(…)`、
  * `avatarStore.write(…)` 这类自家方法当成写盘。写入口 = writeFile / appendFile / rename /
- * copyFile / cp / createWriteStream / truncate / link / symlink(及 Sync 版),外加带写标志
- * (`w` / `a` / `+`)的 open。
+ * copyFile / cp / createWriteStream / truncate(及 Sync 版),外加带写标志(`w` / `a` / `+`)
+ * 的 open。
  *
- * 不管 mkdir / rm / unlink / rmdir:它们留不下写了一半的内容;「关停返回以后数据目录不再变化」
- * 是守卫 8 的事。
+ * 不管 mkdir / rm / unlink / rmdir / link / symlink:它们只动名字,留不下写了一半的内容;
+ * 「关停返回以后数据目录不再变化」是守卫 8 的事。
  *
  * 判据写成纯函数 + 样例,因为判据本身也会写错:一条永远判 OK 的规则跟没有一样。
  */
@@ -25,17 +25,9 @@ import { describe, expect, it } from "vite-plus/test";
 const SERVER_SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const WRITE_APIS = new Set(
-	[
-		"writeFile",
-		"appendFile",
-		"rename",
-		"copyFile",
-		"cp",
-		"createWriteStream",
-		"truncate",
-		"link",
-		"symlink",
-	].flatMap((name) => [name, `${name}Sync`]),
+	["writeFile", "appendFile", "rename", "copyFile", "cp", "createWriteStream", "truncate"].flatMap(
+		(name) => [name, `${name}Sync`],
+	),
 );
 const OPEN_APIS = new Set(["open", "openSync"]);
 
@@ -46,18 +38,10 @@ const FS_MODULE = String.raw`["'](?:node:)?fs(?:\/promises)?["']`;
  * 逼着把行删掉。切片 ② 收尾时名单为空。
  */
 const PENDING_MIGRATION = new Set<string>([
-	"ai/conversation-store.ts",
 	"card-skins/store.ts",
-	"devtools/scenarios/extensions.ts",
-	"extensions/install.ts",
-	"maid-skills/store.ts",
 	"runtime/card-assets.ts",
 	"runtime/chat-assets.ts",
-	"runtime/engines.ts",
 	"runtime/font-assets.ts",
-	"runtime/roast-draft-store.ts",
-	"runtime/sub-avatar-store.ts",
-	"runtime/sub-runtime-store.ts",
 	"skins/store.ts",
 	"update/durable-json.ts",
 	"update/install-payload.ts",
@@ -181,6 +165,7 @@ describe("守卫 3:服务端只经持久化底层写盘", () => {
 			"createWriteStream",
 		]);
 		expect(directDiskWrites(`import type { WriteStream } from "node:fs";`)).toEqual([]);
+		expect(directDiskWrites(`import { link, symlink } from "node:fs/promises";`)).toEqual([]);
 		expect(
 			directDiskWrites(
 				`import { readFile } from "node:fs/promises";\nawait store.rename(id, name);\nsink.write(x);`,

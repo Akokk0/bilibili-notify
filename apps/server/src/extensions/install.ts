@@ -13,13 +13,15 @@
  * 一次 ssh。UI 上那句「只装信得过的包」不是客套。
  */
 
-import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { lstat, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
+import { atomicWriteFile, replaceDirectory } from "@bilibili-notify/storage";
 import { strFromU8, unzipSync } from "fflate";
 import { isJunkZipEntry } from "../zip-junk.js";
 import {
@@ -256,9 +258,16 @@ export async function uninstallExtension({
 /**
  * 把拆好的包落到 `<root>/<id>/`。
  *
- * **先写到一个临时目录再整体换过去**:直接往目标目录里逐个写的话,写到一半失败会留下
- * 一个「清单是新的、代码是旧的」的拓展,而那正是最难查的一种状态。同一个道理,覆盖时
- * 先把旧目录整个删掉 —— 留着上一版的残余文件,下一次谁也说不清跑的是哪一份。
+ * **先写到一个暂存目录再整体换过去**(存储层的整目录替换):直接往目标目录里逐个写的话,
+ * 写到一半失败会留下一个「清单是新的、代码是旧的」的拓展,而那正是最难查的一种状态。同一个
+ * 道理,覆盖时旧目录整个换下去、不在新目录里留一个字节 —— 留着上一版的残余文件,下一次谁也
+ * 说不清跑的是哪一份。失败不留暂存,原来装着的那份原样还在;目标名字只经最后那一下改名出现。
+ *
+ * 🔴 暂存与被换下来的旧目录**沿用点开头的名字**(`.staging-<id>-…` / `.old-<id>-…`),不用存储层
+ * 的默认名:装载器扫根时只按「点开头」跳过(`discover.ts`),默认名 `<id>.bn-tmp.…` 不带点,
+ * 进程在改名之间被杀,它带着一份合法清单留下来,就是一张删不掉的 unreadable 卡。代价是存储层的
+ * 开机清扫认不出这两种名字:两次改名之间被杀,会留下目标不在(「没装上」)、外加 `.staging-…` 与
+ * `.old-…` 两个点开头的目录(装载器跳过、不显示),旧版本留在 `.old-…` 里不会自动挪回 —— 重传一次就好。
  *
  * 盖掉一份已经装着的**不等于「换不上」**:关着、从没跑过的那份盘上换了就是换了。换不换得上
  * 由装载器按入口指纹判(ADR-0012 决策 47),面板那句话照重扫之后装载器那一行的 `staged` 说。
@@ -277,7 +286,6 @@ export async function installExtensionPackage(input: InstallExtensionPackageInpu
 async function installExtensionPackageUnlocked(input: InstallExtensionPackageInput): Promise<void> {
 	const { root, pkg } = input;
 	const at = join(root, pkg.id);
-	await mkdir(root, { recursive: true });
 
 	const existing = await lstat(at).catch(() => undefined);
 	// 🔴 软链 = devtools 链进来的仓库工作树。往里写就是往 git 仓库里写。
@@ -287,23 +295,25 @@ async function installExtensionPackageUnlocked(input: InstallExtensionPackageInp
 		);
 	}
 
-	const staging = await mkdtemp(join(root, `.staging-${pkg.id}-`));
-	try {
-		await writeFile(join(staging, EXTENSION_MANIFEST_FILE), pkg.manifestBytes);
-		await writeFile(join(staging, EXTENSION_ENTRY_FILE), pkg.entry);
-		// 没带就**一个文件都不建** —— 空的 README.md 和没有 README 在面板上是两回事:
-		// 前者会画出一块空白,后者整块不画。
-		if (pkg.docs.readme) await writeFile(join(staging, EXTENSION_README_FILE), pkg.docs.readme);
-		if (pkg.docs.changelog) {
-			await writeFile(join(staging, EXTENSION_CHANGELOG_FILE), pkg.docs.changelog);
-		}
-		// rename 到一个已存在的目录在各平台上表现不一,一律先删。这一步之后到 rename 之间
-		// 断电会留下「没装上」—— 那是三种结局里最好说清的一种。
-		if (existing) await rm(at, { recursive: true, force: true });
-		await rename(staging, at);
-	} finally {
-		// rename 成功之后 staging 已经不在了;失败时它必须消失 —— 装载器会把留在装载根里的
-		// 任何一个目录当成一个拓展去扫。
-		await rm(staging, { recursive: true, force: true });
-	}
+	// 暂存目录建在装载根里(与目标同一个文件系统,改名才是原子的);根不存在时它一并建出来。
+	const tag = randomBytes(6).toString("hex");
+	await replaceDirectory(
+		at,
+		async (staging) => {
+			await atomicWriteFile(join(staging, EXTENSION_MANIFEST_FILE), pkg.manifestBytes);
+			await atomicWriteFile(join(staging, EXTENSION_ENTRY_FILE), pkg.entry);
+			// 没带就**一个文件都不建** —— 空的 README.md 和没有 README 在面板上是两回事:
+			// 前者会画出一块空白,后者整块不画。
+			if (pkg.docs.readme) {
+				await atomicWriteFile(join(staging, EXTENSION_README_FILE), pkg.docs.readme);
+			}
+			if (pkg.docs.changelog) {
+				await atomicWriteFile(join(staging, EXTENSION_CHANGELOG_FILE), pkg.docs.changelog);
+			}
+		},
+		{
+			stagingPath: join(root, `.staging-${pkg.id}-${tag}`),
+			oldPath: join(root, `.old-${pkg.id}-${tag}`),
+		},
+	);
 }

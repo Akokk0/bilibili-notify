@@ -17,7 +17,7 @@
  * propagates correctly.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
@@ -83,6 +83,7 @@ import {
 	rotateLiveCover,
 } from "@bilibili-notify/live";
 import { BilibiliPush, type BroadcastOptions } from "@bilibili-notify/push";
+import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
@@ -508,7 +509,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const flushCursors = (): void => {
 		if (!cardBgRotator.isDirty()) return;
 		try {
-			writeFileSync(cursorFile, JSON.stringify(cardBgRotator.snapshot()));
+			atomicWriteJsonSync(cursorFile, cardBgRotator.snapshot());
 			cardBgRotator.clearDirty();
 		} catch (e) {
 			log.warn(`[engines] 背景轮换游标落盘失败: ${String(e)}`);
