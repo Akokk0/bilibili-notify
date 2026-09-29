@@ -383,7 +383,7 @@ export class DynamicEngine {
 			}),
 		);
 
-		this.serviceCtx.onDispose(() => this.stop());
+		this.serviceCtx.onDispose(() => this.stop(), "stop");
 	}
 
 	/** 停止钩子。停止 cron、释放事件订阅。 */

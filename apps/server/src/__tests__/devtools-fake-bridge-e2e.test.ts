@@ -139,7 +139,6 @@ describe("devtools 的假桥 → 真桥", () => {
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

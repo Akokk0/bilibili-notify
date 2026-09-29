@@ -125,7 +125,6 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

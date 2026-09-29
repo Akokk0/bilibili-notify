@@ -82,6 +82,11 @@ export interface WsServer extends Disposable {
 	readonly wss: WebSocketServer;
 	/** Direct access to the log channel — bootstrap installs it as serviceCtx.onLog. */
 	readonly logChannel: LogChannel;
+	/**
+	 * `dispose()` 只发关闭帧;关停排空到点还没关掉的连接用它直接断开,回断了几个。
+	 * 不回关闭帧的对端会一直占着 HTTP server,关停就关不下去。
+	 */
+	terminate(): number;
 }
 
 interface WsClient {
@@ -473,8 +478,18 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		}
 	};
 
+	const terminate = (): number => {
+		let dropped = 0;
+		for (const socket of wss.clients) {
+			socket.terminate();
+			dropped += 1;
+		}
+		return dropped;
+	};
+
 	return {
 		dispose,
+		terminate,
 		get clientCount() {
 			return clients.size;
 		},

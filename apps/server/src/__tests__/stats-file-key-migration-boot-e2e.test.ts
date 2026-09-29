@@ -136,7 +136,6 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	});
 

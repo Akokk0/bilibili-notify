@@ -1111,7 +1111,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		for (const tm of tokenOnly.values()) tm.dispose();
 		tokenOnly.clear();
 	}
-	serviceCtx.onDispose(disposeAll);
+	serviceCtx.onDispose(disposeAll, "stop");
 
 	/** 发一个片段。返回 REST `{status, body}` 或前置 `{err}`(上传失败)。 */
 	async function sendPart(

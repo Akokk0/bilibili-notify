@@ -12,6 +12,7 @@ import {
 	isBiliSubscription,
 	isExtensionEnabled,
 	isExtensionSubscription,
+	type Logger,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
 import { type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
@@ -87,9 +88,14 @@ import {
 } from "./update/trusted-keys.js";
 import { versionsRootIn } from "./update/versions-root.js";
 import { createWsServer } from "./ws/server.js";
-import type { LogEntry } from "./ws/types.js";
 
-const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+/**
+ * 关停总预算。桌面壳与 Docker 默认都等 10 秒再硬杀,留 2 秒余量(compose 样例写了 `stop_grace_period`)。
+ * 预算按比例分,测试传的小预算也照这个比例:HTTP 排空最多占 30%,`flush` 之前的等待至少给它留 25%。
+ */
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 8_000;
+const HTTP_DRAIN_SHARE = 0.3;
+const FLUSH_RESERVE_SHARE = 0.25;
 
 export interface StandaloneServerHandle {
 	readonly host: string;
@@ -135,7 +141,6 @@ export async function startStandaloneServer(
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
 	let resourceMonitor: ResourceMonitor | undefined;
 	let loadedExtensions: LoadedExtensions | undefined;
-	let previousLogHook: ((entry: LogEntry) => void) | undefined;
 	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
 	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
 	const qqSessionRegistry = createQQSessionRegistry();
@@ -150,25 +155,16 @@ export async function startStandaloneServer(
 		if (shutdownPromise) return shutdownPromise;
 		shutdownPromise = (async () => {
 			log.info(`received ${reason}, shutting down…`);
-			try {
-				processHandlerCleanup?.();
-				processHandlerCleanup = undefined;
-				runtime?.serviceCtx.setLogHook(previousLogHook);
-				wsServer?.dispose();
-				// 拓展先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
-				// 才不会在核心已经拆了之后还被回调进去。
-				await loadedExtensions?.dispose();
-				wsTicketStore?.dispose();
-				subBinding?.dispose();
-				engines?.dispose();
-				if (puppeteer) await puppeteer.dispose();
-				authSystem?.dispose();
-				await closeHttpServer(server, shutdownTimeoutMs, (msg) => log.warn(msg));
-				await runtime?.dispose();
-			} catch (err) {
-				log.error("error during shutdown", err);
-				throw err;
-			}
+			// 各部件装配时就把自己的收尾登记进了 serviceCtx 的那一段(DisposePhase),这里只给预算。
+			// 一个钩子抛错只记一条、不连累后面的 —— 统计补帧、日志落盘以前会被前面一处抛错整个跳过。
+			// 日志 hook 一直挂着,关停期的日志照样进归档;归档自己在最后一段落盘。
+			await runtime?.dispose({
+				timeoutMs: shutdownTimeoutMs,
+				flushReserveMs: shutdownTimeoutMs * FLUSH_RESERVE_SHARE,
+			});
+			// 处理器挂到收完才摘:关停期间再来的信号与未捕获错误由它们接住、只记一笔,不按默认动作杀进程。
+			processHandlerCleanup?.();
+			processHandlerCleanup = undefined;
 		})();
 		return shutdownPromise;
 	};
@@ -230,6 +226,7 @@ export async function startStandaloneServer(
 			log.error("auth system init failed", err);
 			throw err;
 		}
+		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
 
 		// Dashboard 鉴权策略:监听 loopback 时允许 bare(本地 dev / 反代后端);否则
 		// fail-closed 拒绝启动,避免裸暴露公网。绕过开关是 BN_ALLOW_NO_AUTH=1 — 留给
@@ -271,6 +268,8 @@ export async function startStandaloneServer(
 			: bootstrap.chromePath
 				? { chromePath: bootstrap.chromePath }
 				: undefined;
+		// 浏览器排在最后一段:HTTP 排空期间在途的出图请求还要用它。热启用会换掉 `puppeteer`,所以现取。
+		runtime.serviceCtx.onDispose(() => puppeteer?.dispose());
 		if (chromeSource) {
 			puppeteer = createPuppeteerAdapter({
 				chromePath: bootstrap.chromePath,
@@ -291,6 +290,7 @@ export async function startStandaloneServer(
 		//   3. createEngines() builds Sink → BilibiliPush → DynamicEngine + LiveEngine
 		//      and registers serviceCtx.onDispose for graceful shutdown.
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
+		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
@@ -329,7 +329,7 @@ export async function startStandaloneServer(
 			try {
 				await close(reason);
 			} catch (err) {
-				// close() 是 rethrow 的。停机里某一处 dispose 抛了也得退 0:这时进程反正
+				// close() 自己不抛(钩子各自兜错),这里只是兜底。真抛了也得退 0:这时进程反正
 				// 要没了,非 0 只会让编排系统当成崩溃去退避重启。
 				log.error(
 					`${reason}: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
@@ -497,7 +497,7 @@ export async function startStandaloneServer(
 		const reportProblems = createReportProblemLog({
 			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", id),
 		});
-		runtime.serviceCtx.onDispose(() => reportProblems.dispose());
+		runtime.serviceCtx.onDispose(() => reportProblems.dispose(), "stop");
 
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
@@ -611,7 +611,7 @@ export async function startStandaloneServer(
 			serviceCtx: runtime.serviceCtx,
 		});
 		runtime.attachFansPoller(fansPoller);
-		runtime.serviceCtx.onDispose(() => fansPoller.dispose());
+		runtime.serviceCtx.onDispose(() => fansPoller.dispose(), "stop");
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
@@ -826,7 +826,7 @@ export async function startStandaloneServer(
 			// 处理器变成一次进程退出。
 			if (scope === "globals") commandDispatcher.reconcile();
 		});
-		runtime.serviceCtx.onDispose(() => roastScheduler.stop());
+		runtime.serviceCtx.onDispose(() => roastScheduler.stop(), "stop");
 
 		// 过期草稿:每小时清一轮,清掉的**告诉主人一声**。悄悄消失的话他只会以为
 		// 这期又没发 —— 那正是这个功能要消除的沉默。
@@ -875,6 +875,7 @@ export async function startStandaloneServer(
 		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
 		// 完成 WS upgrade,避免把真实凭证拼进 URL 落进反代日志。
 		wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
+		runtime.serviceCtx.onDispose(() => wsTicketStore?.dispose(), "stop");
 
 		// Dashboard session codec. Signing key = HKDF over the runtime's stable key
 		// material (the same key infra StorageManager uses — passphrase-derived from
@@ -957,6 +958,9 @@ export async function startStandaloneServer(
 			},
 			upgrades: extensionUpgrades,
 		});
+		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
+		// 才不会在核心已经拆了之后还被回调进去。
+		runtime.serviceCtx.onDispose(() => loadedExtensions?.dispose(), "stop");
 		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把
 		// 开机时没起来的说出来。
 		for (const entry of loadedExtensions.list()) {
@@ -1095,8 +1099,12 @@ export async function startStandaloneServer(
 		// Single fan-out point: redact ONCE, then tee to the WS ring (live tail) +
 		// the on-disk archive. Both receive exactly what passed the upstream fanOut
 		// level gate (Tab == archive == console, per-module pino level).
-		previousLogHook = runtime.serviceCtx.setLogHook(
+		runtime.serviceCtx.setLogHook(
 			createLogSink({ ring: wsServer.logChannel, store: runtime.logStore }),
+		);
+		runtime.serviceCtx.onDispose(
+			() => drainHttp(server, wsServer, shutdownTimeoutMs * HTTP_DRAIN_SHARE, log),
+			"drain",
 		);
 
 		const handle: StandaloneServerHandle = {
@@ -1110,7 +1118,7 @@ export async function startStandaloneServer(
 			close,
 		};
 		if (options.installProcessHandlers)
-			processHandlerCleanup = installProcessHandlers(handle, log.error);
+			processHandlerCleanup = installProcessHandlers(handle, log, shutdownTimeoutMs);
 		return handle;
 	} catch (err) {
 		await close("startup failure").catch((shutdownErr) => {
@@ -1175,35 +1183,35 @@ async function hasReadableIndexHtml(dir: string): Promise<boolean> {
 	}
 }
 
-async function closeHttpServer(
+/**
+ * HTTP 排空:不再接新连接,空闲的 keep-alive 当场关,在途请求等它答完;WS 客户端先发关闭帧。
+ * 到 `capMs` 还没关完的一律强断 —— 不回关闭帧的 WS 对端、挂着半截请求的连接,不断的话会把整个
+ * 关停预算吃光。拓展自己挂的 upgrade 连接由拓展收摊时关,不归这里等。
+ */
+async function drainHttp(
 	server: ServerType | undefined,
-	timeoutMs: number,
-	onTimeout: (msg: string) => void,
+	wsServer: ReturnType<typeof createWsServer> | undefined,
+	capMs: number,
+	log: Logger,
 ): Promise<void> {
+	wsServer?.dispose();
 	if (!server) return;
-	await new Promise<void>((resolveClose, rejectClose) => {
-		let settled = false;
-		const finish = (err?: Error): void => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timer);
-			if (err) rejectClose(err);
-			else resolveClose();
-		};
-		const timer = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			onTimeout(`HTTP server close timed out after ${timeoutMs}ms; continuing shutdown`);
-			resolveClose();
-		}, timeoutMs);
+	const http = server as unknown as HttpServer;
+	const closed = new Promise<boolean>((resolve) => http.close(() => resolve(true)));
+	http.closeIdleConnections();
+	let timer: NodeJS.Timeout | undefined;
+	const timedOut = new Promise<boolean>((resolve) => {
+		timer = setTimeout(() => resolve(false), capMs);
 		timer.unref?.();
-		try {
-			const close = server.close.bind(server) as (callback: (err?: Error) => void) => void;
-			close(finish);
-		} catch (err) {
-			finish(err as Error);
-		}
 	});
+	const inTime = await Promise.race([closed, timedOut]);
+	clearTimeout(timer);
+	if (inTime) return;
+	const droppedWs = wsServer?.terminate() ?? 0;
+	http.closeAllConnections();
+	log.warn(
+		`[shutdown] HTTP 排空超过 ${Math.round(capMs)}ms,强制断开剩下的连接(其中 ${droppedWs} 个是没回关闭帧的 WS)`,
+	);
 }
 
 function normalizeOptionalEnv(value: string | undefined): string | undefined {
@@ -1221,11 +1229,21 @@ function mergeAllowedOrigins(
 
 function installProcessHandlers(
 	handle: StandaloneServerHandle,
-	logError: (msg: string, ...args: unknown[]) => void,
+	log: Logger,
+	shutdownTimeoutMs: number,
 ): () => void {
+	const logError = log.error.bind(log);
 	let exiting = false;
 	const closeThenExit = (reason: string, code: number): void => {
-		if (exiting) return;
+		// 再来的信号(连按两次 Ctrl-C、外壳补一发 SIGTERM)与关停期的未捕获错误只记一笔:
+		// 关停有总预算兜着,到点一定退;这时硬杀只会把正在落盘的写道截断。记 info 不记 warn:
+		// `vp run dev:apps` 下按一次 Ctrl-C 服务端就收到两发(实测相隔几毫秒),这是常态。
+		if (exiting) {
+			log.info(
+				`[shutdown] 收到 ${reason},已在收尾,最多 ${Math.ceil(shutdownTimeoutMs / 1000)} 秒后退出`,
+			);
+			return;
+		}
 		exiting = true;
 		handle.close(reason).then(
 			() => process.exit(code),

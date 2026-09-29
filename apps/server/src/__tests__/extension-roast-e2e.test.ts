@@ -79,7 +79,6 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

@@ -165,7 +165,6 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			],
 			// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
-			shutdownTimeoutMs: 1_000,
 		});
 		await ok(
 			await api("/api/globals", {

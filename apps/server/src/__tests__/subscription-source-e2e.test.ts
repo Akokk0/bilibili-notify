@@ -98,7 +98,6 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

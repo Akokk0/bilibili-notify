@@ -134,7 +134,6 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 		// 面板那条路拨开关:拨完紧接着列一次拓展,那一口会先把热装落实掉。
 		const toggled = await api("/api/globals", {

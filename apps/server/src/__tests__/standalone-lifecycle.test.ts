@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { connect, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -43,6 +43,45 @@ async function eventually(assertion: () => void): Promise<void> {
 	}
 	if (lastError) throw lastError;
 	assertion();
+}
+
+/**
+ * 一个握完手就再也不说话的 WS 对端:收到的帧照读,关闭帧也不回。它会一直占着 HTTP server,
+ * 关停只能靠到点强断才关得掉。
+ */
+async function openSilentWsPeer(port: number): Promise<Socket> {
+	const socket = connect(port, "127.0.0.1");
+	await new Promise<void>((resolve, reject) => {
+		socket.once("error", reject);
+		socket.once("connect", () => {
+			socket.write(
+				[
+					"GET /ws HTTP/1.1",
+					`Host: 127.0.0.1:${port}`,
+					"Upgrade: websocket",
+					"Connection: Upgrade",
+					"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+					"Sec-WebSocket-Version: 13",
+					"",
+					"",
+				].join("\r\n"),
+			);
+		});
+		socket.once("data", (chunk) => {
+			if (chunk.toString().startsWith("HTTP/1.1 101")) resolve();
+			else reject(new Error(`upgrade refused: ${chunk.toString().split("\r\n")[0]}`));
+		});
+	});
+	// 读走、不回话。暂停着的话,对面断开它也看不见。
+	socket.on("data", () => {});
+	return socket;
+}
+
+async function readLogArchive(dataDir: string): Promise<string> {
+	const dir = join(dataDir, "logs");
+	const names = (await readdir(dir)).filter((name) => name.endsWith(".jsonl"));
+	const parts = await Promise.all(names.map((name) => readFile(join(dir, name), "utf8")));
+	return parts.join("");
 }
 
 describe("standalone server lifecycle", () => {
@@ -516,5 +555,76 @@ describe("standalone server lifecycle", () => {
 
 		process.emit("unhandledRejection", new Error("boom"), Promise.resolve());
 		await eventually(() => expect(exitSpy).toHaveBeenCalledWith(1));
+	});
+	it("有不回关闭帧的 WS 对端也在预算里关完,关停期的日志照样进归档", async () => {
+		const port = await findFreePort();
+		handle = await startStandaloneServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"info",
+			],
+			env: makeEnv(),
+			shutdownTimeoutMs: 1_000,
+		});
+		const peer = await openSilentWsPeer(port);
+		const peerClosed = new Promise<void>((resolve) => peer.once("close", () => resolve()));
+
+		const started = Date.now();
+		await handle.close("test shutdown");
+		const elapsed = Date.now() - started;
+		// 到点是真断开了,不是不等它了:留着的话进程外面还挂着一条活连接。
+		const closedByServer = await Promise.race([
+			peerClosed.then(() => true),
+			new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 200)),
+		]);
+		peer.destroy();
+
+		expect(elapsed).toBeLessThan(900);
+		expect(closedByServer).toBe(true);
+		const archive = await readLogArchive(dataDir);
+		expect(archive).toContain("received test shutdown, shutting down");
+		expect(archive).toContain("强制断开");
+	});
+
+	it("installProcessHandlers:关停中处理器一直挂着,再来的信号不另起一次关停", async () => {
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+		const port = await findFreePort();
+
+		handle = await startStandaloneServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: makeEnv(),
+			installProcessHandlers: true,
+			shutdownTimeoutMs: 1_000,
+		});
+		const installed = {
+			SIGTERM: process.listenerCount("SIGTERM"),
+			SIGINT: process.listenerCount("SIGINT"),
+			uncaughtException: process.listenerCount("uncaughtException"),
+		};
+
+		process.emit("SIGTERM");
+		// 摘掉了的话，真信号会按默认动作当场杀进程，关停期的未捕获错误也会直接崩掉它。
+		expect(process.listenerCount("SIGTERM")).toBe(installed.SIGTERM);
+		expect(process.listenerCount("SIGINT")).toBe(installed.SIGINT);
+		expect(process.listenerCount("uncaughtException")).toBe(installed.uncaughtException);
+		process.emit("SIGINT");
+
+		await eventually(() => expect(exitSpy).toHaveBeenCalledWith(0));
+		expect(exitSpy).toHaveBeenCalledTimes(1);
 	});
 });

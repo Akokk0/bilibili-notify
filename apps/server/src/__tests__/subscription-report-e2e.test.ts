@@ -140,7 +140,6 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

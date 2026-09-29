@@ -1082,7 +1082,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			}
 		}
 	};
-	opts.serviceCtx.onDispose(dispose);
+	opts.serviceCtx.onDispose(dispose, "stop");
 
 	return {
 		dynamic,

@@ -215,6 +215,7 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 	opts.serviceCtx.setInterval(() => {
 		void flush();
 	}, LOG_FLUSH_INTERVAL_MS);
+	// 最后一段(`dispose`)里最早登记的,所以最后跑:关停期各段打的日志都赶得上这一次落盘。
 	opts.serviceCtx.onDispose(async () => {
 		await flush();
 	});

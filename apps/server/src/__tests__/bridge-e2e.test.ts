@@ -240,7 +240,6 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

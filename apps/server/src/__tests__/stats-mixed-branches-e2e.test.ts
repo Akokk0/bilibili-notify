@@ -173,7 +173,6 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			],
 			// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

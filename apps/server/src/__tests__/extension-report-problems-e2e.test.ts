@@ -140,7 +140,6 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 		const toggled = await api("/api/globals", {
 			method: "PATCH",

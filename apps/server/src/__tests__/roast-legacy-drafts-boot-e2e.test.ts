@@ -82,7 +82,6 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 

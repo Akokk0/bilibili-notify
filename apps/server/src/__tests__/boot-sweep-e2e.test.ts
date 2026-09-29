@@ -65,7 +65,6 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 				"info",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 		await handle.close("test");
 		handle = undefined;

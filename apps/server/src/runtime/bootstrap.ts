@@ -115,8 +115,8 @@ export interface AppRuntime {
 	 */
 	fansPoller: FansPollerHandle | null;
 	attachFansPoller(poller: FansPollerHandle): void;
-	/** Tear down everything (timers, onDispose hooks). Idempotent. */
-	dispose(): Promise<void>;
+	/** 关停:分段跑收尾钩子,预算见 `NodeServiceContext.dispose`。再调一次拿到的是同一次关停。 */
+	dispose(options?: { timeoutMs?: number; flushReserveMs?: number }): Promise<void>;
 }
 
 /**
@@ -199,13 +199,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		subscriptions: () => configStore.getSubscriptions(),
 	});
 	serviceCtx.onDispose(async () => {
+		// 排在 flush 段:生产者都停了、后台活都落定了,这时补的下播帧才是最后一帧。
 		// 先给在播的场次补下播帧,再解绑 —— 顺序反了就没人记得谁还在播。
 		// dispose() 会 await 这个钩子,所以写盘赶得及在进程退出前完成。拓展直播的场次在更早的关机步骤里
 		// (拓展收摊、引擎拆)就结束了、下播帧已经交出去;closeOpenSessions 等到它们也落地才返回,
 		// 且不会给它们补第二帧。
 		await statsRecorder.closeOpenSessions();
 		statsRecorder.dispose();
-	});
+	}, "flush");
 	const subRuntimeStore = createSubRuntimeStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
@@ -221,7 +222,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		avatars: subAvatarStore,
 		logger: serviceCtx.logger,
 	});
-	serviceCtx.onDispose(() => subAvatarCleanup.dispose());
+	serviceCtx.onDispose(() => subAvatarCleanup.dispose(), "stop");
 	// 拓展报的资料更新 → 资料缓存 + 头像文件(ADR-0019 决策 7 / 49 / 62)。同上只听总线。
 	const reportedProfiles = bindReportedProfiles({
 		bus,
@@ -230,7 +231,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
 		logger: serviceCtx.logger,
 	});
-	serviceCtx.onDispose(() => reportedProfiles.dispose());
+	serviceCtx.onDispose(() => reportedProfiles.dispose(), "stop");
 	const conversationStore = createConversationStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
@@ -243,7 +244,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	// 拓展订阅的在播表:只听总线,早起不漏拓展开机第一轮报上来的直播状态(拓展在 index.ts 里装载,
 	// 晚于这里)。合并那一发走 serviceCtx 的定时器,关机时一起清。
 	const extensionLive = createExtensionLiveTable({ bus, timers: serviceCtx });
-	serviceCtx.onDispose(() => extensionLive.dispose());
+	serviceCtx.onDispose(() => extensionLive.dispose(), "stop");
 
 	let engines: EnginesRuntime | null = null;
 	let fansPoller: FansPollerHandle | null = null;
@@ -254,7 +255,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	 * 失效,惰性重建(为什么不能预建见 target-scope.ts 文件头)。
 	 */
 	const targetScope = createTargetScope({ configStore, bus });
-	serviceCtx.onDispose(() => targetScope.dispose());
+	serviceCtx.onDispose(() => targetScope.dispose(), "stop");
 
 	/**
 	 * 重推的执行器。发送口**惰性**拿 `engines` —— 它是后挂的(见 AppRuntime 那段分期
@@ -306,6 +307,6 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		attachFansPoller(next: FansPollerHandle) {
 			fansPoller = next;
 		},
-		dispose: () => serviceCtx.dispose(),
+		dispose: (options) => serviceCtx.dispose(options),
 	};
 }

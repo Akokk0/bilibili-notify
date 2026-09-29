@@ -97,7 +97,6 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 		const toggled = await api("/api/globals", {
 			method: "PATCH",

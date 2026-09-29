@@ -823,7 +823,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		capabilityFingerprints.clear();
 	}
 	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
-	serviceCtx.onDispose(disposeAll);
+	serviceCtx.onDispose(disposeAll, "stop");
 
 	/**
 	 * OneBot v11 `get_login_info` 返回 `{ user_id: number, nickname: string }`,

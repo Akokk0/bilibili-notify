@@ -93,7 +93,6 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	});
 

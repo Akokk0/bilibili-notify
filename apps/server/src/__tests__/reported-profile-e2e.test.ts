@@ -170,7 +170,6 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 		// 面板那条路拨开关:拨完紧接着列一次拓展,那一口会先把热装落实掉。
 		const toggled = await api("/api/globals", {

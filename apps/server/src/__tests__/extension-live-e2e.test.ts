@@ -79,7 +79,6 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-			shutdownTimeoutMs: 1_000,
 		});
 	}
 
