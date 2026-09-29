@@ -1,10 +1,11 @@
 import type { QQBindStartResponse } from "@bilibili-notify/contract";
 import type { QQOfficialConnectionConfig } from "@bilibili-notify/internal";
-import { isConnectionOn } from "@bilibili-notify/internal";
+import { fail, isConnectionOn } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
 import { createBindTask, pollBindTask } from "../platforms/qq-bind.js";
 import { fetchQQGuildChannels } from "../platforms/qq-official.js";
+import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /** 绑定任务 TTL —— 腾讯侧二维码本身会过期,这里只兜「弹层开着人走了」的泄漏。 */
@@ -23,7 +24,15 @@ const BIND_POLL_INTERVAL_SEC = 2;
  * - `POST /bind/start` / `POST /bind/poll` — 扫码一键建 bot(借道腾讯 OpenClaw lite
  *   通道,见 `platforms/qq-bind.ts`)。bindKey 只存本路由内存,不出响应、不落盘;
  *   凭据由前端回填表单草稿,保存走既有 PATCH 链路。
+ *
+ * 失败一律经 `respondFailure`(ADR-0026):任务不在 / 连接不在 `not_found`;腾讯或 QQ 开放平台那头
+ * 出岔子 `unavailable`,话里带上游的原话(`Error.message`,不是 `String(err)`)。
  */
+
+/** 上游抛的错取它的话;不是 Error 就没话可取。 */
+function upstreamWords(err: unknown): string {
+	return err instanceof Error && err.message ? err.message : "上游没说原因";
+}
 export function createQQRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
@@ -53,7 +62,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 			return c.json(body);
 		} catch (err) {
 			log.warn(`POST /api/qq/bind/start failed: ${String(err)}`);
-			return c.json({ error: "bind_start_failed", message: (err as Error).message }, 502);
+			return respondFailure(c, fail("unavailable", `发起绑定失败：${upstreamWords(err)}`));
 		}
 	});
 
@@ -62,7 +71,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 		const { taskId } = (await c.req.json().catch(() => ({}))) as { taskId?: string };
 		const task = taskId ? bindTasks.get(taskId) : undefined;
 		if (!taskId || !task) {
-			return c.json({ error: "not_found", message: "绑定任务不存在或已过期" }, 404);
+			return respondFailure(c, fail("not_found", "绑定任务不存在或已过期"));
 		}
 		try {
 			const result = await pollBindTask(taskId, task.bindKey, bindHost());
@@ -71,7 +80,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 		} catch (err) {
 			// 上游故障保留任务,前端下一轮继续问。
 			log.warn(`POST /api/qq/bind/poll failed: ${String(err)}`);
-			return c.json({ error: "bind_poll_failed", message: (err as Error).message }, 502);
+			return respondFailure(c, fail("unavailable", `查询绑定结果失败：${upstreamWords(err)}`));
 		}
 	});
 
@@ -84,14 +93,14 @@ export function createQQRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("connectionId");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
 		if (!connection || !isConnectionOn(connection, "qq-official")) {
-			return c.json({ error: "not_found", message: "qq-official connection not found", id }, 404);
+			return respondFailure(c, fail("not_found", "没有这个 QQ 官方机器人连接"));
 		}
 		try {
 			const guilds = await fetchQQGuildChannels(connection.config as QQOfficialConnectionConfig);
 			return c.json(guilds);
 		} catch (err) {
 			log.warn(`GET /api/qq/guilds/${id} failed: ${String(err)}`);
-			return c.json({ error: "enumerate_failed", message: String(err) }, 502);
+			return respondFailure(c, fail("unavailable", `列出频道失败：${upstreamWords(err)}`));
 		}
 	});
 

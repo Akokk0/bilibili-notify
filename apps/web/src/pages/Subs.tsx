@@ -195,7 +195,7 @@ function NewSubDialog({
 		onError: (err) => {
 			setProfile(null);
 			setSearchData(null);
-			setOpErr(formatApiError(err, "lookup"));
+			setOpErr(formatApiError(err));
 		},
 	});
 
@@ -210,7 +210,7 @@ function NewSubDialog({
 		onError: (err) => {
 			setSearchData(null);
 			setProfile(null);
-			setOpErr(formatApiError(err, "search"));
+			setOpErr(formatApiError(err));
 		},
 	});
 
@@ -643,14 +643,11 @@ function truncate(s: string, max: number): string {
 	return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-function formatApiError(err: unknown, kind: "lookup" | "search"): string {
-	if (err instanceof ApiError) {
-		if (err.status === 404) return "未找到该 UP 主,请检查 UID 是否正确";
-		if (err.status === 503) return "B 站 API 尚未就绪,请等待登录完成或稍后再试";
-		if (err.status === 502) return `无法访问 B 站: ${err.message}`;
-		if (err.status === 400 && kind === "search") return "搜索关键词不能为空";
-		return err.message;
-	}
+/**
+ * 查人失败显示什么:服务端的 `message` 本身就是给人看的中文(查无此人、B 站没就绪、搜索词为空、
+ * 无法访问 B 站……各说各的),原样显示。从前这里按状态码换成固定句子,会把服务端的原话盖掉。
+ */
+function formatApiError(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 

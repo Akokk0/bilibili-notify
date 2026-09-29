@@ -1,15 +1,23 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { ApiError } from "../../services/api";
 import { pollDelayMs, QQQrBindButton } from "../qq-qr-bind";
 
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
 
 vi.mock("../../services/api", () => ({
 	api: { post: postMock },
+	// 与真 ApiError 同一个构造签名 `(status, body, message)`:`code` 从解析好的体里来。
 	ApiError: class ApiError extends Error {
-		constructor(public readonly status: number) {
-			super(`http ${status}`);
+		readonly code?: string;
+		constructor(
+			public readonly status: number,
+			body?: { code?: string },
+			message = `http ${status}`,
+		) {
+			super(message);
+			this.code = body?.code;
 		}
 	},
 }));
@@ -23,7 +31,11 @@ const START_OK = { taskId: "T1", qr: "data:image/png;base64,QR", interval: 1 };
 const POLLED = { timeout: 4000 };
 
 describe("QQQrBindButton", () => {
-	beforeEach(() => postMock.mockReset());
+	// 花括号不能省:箭头函数直接返回 mockReset() 的结果,vitest 会把返回的函数当清理钩子,
+	// 收摊时多调一发 postMock(undefined)。
+	beforeEach(() => {
+		postMock.mockReset();
+	});
 	afterEach(() => cleanup());
 
 	it("初始只有入口按钮 + 实验性徽章,不见弹窗", () => {
@@ -105,8 +117,53 @@ describe("QQQrBindButton", () => {
 		expect(postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length).toBe(polls);
 	});
 
+	/**
+	 * 任务不在了(server 重启 / 10 分钟 TTL 清了)服务端回 `not_found`:当过期处理,请用户重开。
+	 * 面板按**错误码**判、不看状态码 —— 这里状态码故意给个不相干的 409,码才是判据。
+	 */
+	it("轮询遇到 not_found(任务已不在)→ 当过期处理,给「重新生成」", async () => {
+		postMock.mockImplementation(async (path: string) => {
+			if (path === "/api/qq/bind/poll")
+				throw new ApiError(
+					409,
+					{ code: "not_found", message: "绑定任务不存在或已过期" },
+					"绑定任务不存在或已过期",
+				);
+			return START_OK;
+		});
+		render(<QQQrBindButton onCredentials={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
+		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
+		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
+	});
+
+	it("轮询遇到瞬时故障(unavailable)→ 服务端保留了任务,下一轮接着问", async () => {
+		const got = vi.fn();
+		let polls = 0;
+		postMock.mockImplementation(async (path: string) => {
+			if (path === "/api/qq/bind/start") return START_OK;
+			polls += 1;
+			// 状态码故意给 404:只有错误码是 unavailable,不能被当成「任务不在了」。
+			if (polls === 1) {
+				throw new ApiError(
+					404,
+					{ code: "unavailable", message: "查询绑定结果失败" },
+					"查询绑定结果失败",
+				);
+			}
+			return { status: "created", appId: "102000001", appSecret: "S3cret" };
+		});
+		render(<QQQrBindButton onCredentials={got} />);
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
+		await waitFor(
+			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
+			{ timeout: 6000 },
+		);
+		expect(screen.queryByText(/二维码已过期/)).toBeNull();
+	});
+
 	it("start 失败 → 报错并可重试", async () => {
-		postMock.mockRejectedValueOnce(new Error("bind_start_failed"));
+		postMock.mockRejectedValueOnce(new Error("发起绑定失败：系统繁忙"));
 		render(<QQQrBindButton onCredentials={() => {}} />);
 		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());

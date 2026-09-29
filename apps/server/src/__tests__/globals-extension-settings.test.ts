@@ -130,8 +130,8 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 		});
 		const res = await patch({ extensions: { douyin: { settings: { interval: 120 } } } });
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe("extension_settings_moved");
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("invalid");
 		expect(body.message).toContain("/api/ext/douyin/settings");
 		expect(stored("douyin")).toEqual({
 			enabled: false,
@@ -147,7 +147,7 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 		});
 		const res = await patch({ extensions: { douyin: { enabled: true, settings: {} } } });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("extension_settings_moved");
+		expect(((await res.json()) as { code: string }).code).toBe("invalid");
 		expect(stored("douyin")).toEqual({ enabled: false, settings: { interval: 90 } });
 		await runtime.dispose();
 	});
@@ -165,7 +165,7 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 		});
 		const res = await patch(body);
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("extension_settings_moved");
+		expect(((await res.json()) as { code: string }).code).toBe("invalid");
 		expect(stored("douyin")).toEqual({ enabled: true, settings: { interval: 90 } });
 		await runtime.dispose();
 	});

@@ -98,7 +98,7 @@ export function QQQrBindButton({
 				timer = setTimeout(tick, delay);
 			} catch (e) {
 				if (!alive) return;
-				if (e instanceof ApiError && e.status === 404) {
+				if (e instanceof ApiError && e.code === "not_found") {
 					// server 重启/任务超时被清,任务已不在 —— 当过期处理,请用户重开。
 					setPhase("expired");
 					return;

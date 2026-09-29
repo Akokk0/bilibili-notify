@@ -5,9 +5,12 @@ import {
 	type CachedProfile,
 	type ExtensionSubscription,
 	ExtensionSubscriptionSchema,
+	type Failure,
+	fail,
 	formatZodIssues,
 	isBiliSubscription,
 	isExtensionSubscription,
+	issuesFromZod,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
@@ -15,8 +18,13 @@ import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { decodeSubscriptionAvatar } from "../runtime/sub-avatar-store.js";
+import { readJsonBody, readJsonObject } from "./request-body.js";
+import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
 import type { RouteDeps } from "./types.js";
+
+/** B 站接口没就绪(启动中 / 没登录,引擎还没挂上)时,查人的两个接口回的那一句。 */
+const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成或稍后再试";
 
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
 // SubRuntimeStore join 回来的外置运行时字段。`state` 发常量 —— 唯一活字段
@@ -74,6 +82,10 @@ const CreateProfileBodySchema = z.object({
  * 同一个拓展名下同一个外部 id 只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile`
  * 一起交,头像存成文件(决策 49)。已经存在的拓展订阅可以整份 POST 回来改(面板的启用开关就是
  * 这么发的),身份几格改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站订阅。
+ *
+ * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
+ * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
+ * `upstreamCode`,不占 `code`(风控 / 未登录的分类留到 3a 的 `searchCreators`,这里不扩大)。
  */
 export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): Hono {
 	const app = new Hono();
@@ -156,18 +168,20 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		const parsed = ExtensionSubscriptionSchema.safeParse(subBody);
 		if (!parsed.success) {
 			// 与 store 拒收时同一个形状(下面 upsert 失败走的也是它)。
-			return c.json(
-				{ error: "validation_failed", scope: "subscriptions", issues: parsed.error.issues },
-				400,
+			return respondFailure(
+				c,
+				ConfigValidationError.fromZod("subscriptions", parsed.error).toFailure(),
 			);
 		}
 		const sub = parsed.data;
 
 		const profile = CreateProfileBodySchema.safeParse({ cachedProfile: rawProfile });
 		if (!profile.success) {
-			return c.json(
-				{ error: "invalid_profile", message: formatZodIssues(profile.error).join(";") },
-				400,
+			return respondFailure(
+				c,
+				fail("invalid", `随订阅交来的资料不合规：${formatZodIssues(profile.error).join("；")}`, {
+					issues: issuesFromZod(profile.error),
+				}),
 			);
 		}
 		const seed = profile.data.cachedProfile;
@@ -176,15 +190,17 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		if (avatarDataUrl) {
 			const decoded = decodeSubscriptionAvatar(avatarDataUrl);
 			if (!decoded.ok) {
-				return c.json(
-					{ error: "invalid_profile", message: `cachedProfile.avatar: ${decoded.reason}` },
-					400,
+				return respondFailure(
+					c,
+					fail("invalid", `随订阅交来的头像不合规：${decoded.reason}`, {
+						issues: [{ path: ["cachedProfile", "avatar"], message: decoded.reason }],
+					}),
 				);
 			}
 		}
 
 		const refusal = subscriptionSourceRefusal(sub.extensionId, opts.extensions?.() ?? []);
-		if (refusal) return c.json(refusal, 400);
+		if (refusal) return respondFailure(c, refusal);
 
 		// 身份判重(决策 50):同一个人订两条,等 ④ 按订阅 id 推送时就会推两遍。
 		const duplicate = deps.store
@@ -198,13 +214,12 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		if (duplicate) {
 			const name =
 				duplicate.name ?? deps.runtime.subRuntimeStore.get(duplicate.id)?.cachedProfile?.name;
-			return c.json(
-				{
-					error: "duplicate_subscription",
-					id: duplicate.id,
-					message: `拓展「${sub.extensionId}」名下的「${sub.externalId}」已经订阅过了${name ? `(${name})` : ""}`,
-				},
-				409,
+			return respondFailure(
+				c,
+				fail(
+					"conflict",
+					`拓展「${sub.extensionId}」名下的「${sub.externalId}」已经订阅过了${name ? `(${name})` : ""}`,
+				),
 			);
 		}
 
@@ -212,9 +227,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			// upsertSubscription validates via Zod internally
 			await deps.store.upsertSubscription(subBody as never);
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/subs (extension) failed", err);
 			throw err;
 		}
@@ -263,10 +276,10 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	app.get("/:id/avatar", async (c) => {
 		const id = c.req.param("id");
 		if (!z.uuid().safeParse(id).success) {
-			return c.json({ error: "invalid_id", message: "订阅 id 要是 uuid" }, 400);
+			return respondFailure(c, fail("invalid", "订阅 id 要是 uuid"));
 		}
 		const avatar = await deps.runtime.subAvatarStore.read(id);
-		if (!avatar) return c.json({ error: "not_found", id }, 404);
+		if (!avatar) return respondFailure(c, fail("not_found", "这条订阅没有头像"));
 		return c.body(new Uint8Array(avatar.bytes), 200, {
 			"Content-Type": avatar.contentType,
 			// app 那头给整片 /api 挂过一道;这里再写一遍:这口发的是拓展交来的字节,不依赖挂在哪。
@@ -298,13 +311,9 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		const pageParam = Number(c.req.query("page") ?? 1);
 		const page =
 			Number.isFinite(pageParam) && pageParam >= 1 ? Math.min(Math.floor(pageParam), 200) : 1;
-		if (!q) {
-			return c.json({ error: "invalid_query", message: "搜索关键词不能为空" }, 400);
-		}
+		if (!q) return respondFailure(c, fail("invalid", "搜索关键词不能为空"));
 		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json({ error: "api_not_ready", message: "B 站 API 尚未就绪" }, 503);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		try {
 			const res = (await engines.api.searchByType("bili_user", q, {
 				page,
@@ -315,8 +324,14 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 				data?: { result?: unknown[]; numResults?: number };
 			};
 			if (res?.code !== 0) {
+				// B 站的话(`message`)是平台的业务说明,可以给人看;它的数字码只放 upstreamCode。
 				const message = res?.message ?? "搜索失败";
-				return c.json({ error: "upstream_failed", code: res?.code, message }, 502);
+				return respondFailure(
+					c,
+					fail("unavailable", `无法访问 B 站：${message}`, {
+						...(typeof res?.code === "number" ? { upstreamCode: res.code } : {}),
+					}),
+				);
 			}
 			const raw = (Array.isArray(res.data?.result) ? res.data.result : []) as Array<
 				Record<string, unknown>
@@ -335,26 +350,31 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 				total: typeof res.data?.numResults === "number" ? res.data.numResults : results.length,
 			});
 		} catch (err) {
+			// 抛出来的是原始报错:原话只进日志,回给面板一句固定的中文。
 			const message = err instanceof Error ? err.message : String(err);
 			log.warn(`/api/subs/search q=${q} failed: ${message}`);
-			return c.json({ error: "upstream_failed", message }, 502);
+			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
 		}
 	});
 
 	app.get("/lookup", async (c) => {
 		const uid = c.req.query("uid")?.trim();
 		if (!uid || !/^\d+$/.test(uid)) {
-			return c.json({ error: "invalid_uid", message: "uid 必须是纯数字 UID" }, 400);
+			return respondFailure(c, fail("invalid", "uid 必须是纯数字 UID"));
 		}
 		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json({ error: "api_not_ready", message: "B 站 API 尚未就绪" }, 503);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		try {
 			const res = await engines.api.getUserCardInfo(uid);
 			if (res.code !== 0 || !res.data?.card) {
-				const message = (res as { message?: string }).message ?? "未找到该 UP 主";
-				return c.json({ error: "not_found", code: res.code, message }, 404);
+				// 现在的意思照旧:B 站回了非 0 就当「查无此人」(风控 / 未登录也在里头 —— 分类是 3a 的
+				// `searchCreators` 的事)。B 站的数字码只放 upstreamCode。
+				return respondFailure(
+					c,
+					fail("not_found", "未找到该 UP 主，请检查 UID 是否正确", {
+						...(typeof res.code === "number" ? { upstreamCode: res.code } : {}),
+					}),
+				);
 			}
 			const card = res.data.card;
 			return c.json({
@@ -367,17 +387,14 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			log.warn(`/api/subs/lookup uid=${uid} failed: ${message}`);
-			return c.json({ error: "upstream_failed", message }, 502);
+			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
 		}
 	});
 
 	app.post("/", async (c) => {
-		let body: unknown;
-		try {
-			body = await c.req.json();
-		} catch (_err) {
-			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
-		}
+		const read = await readJsonBody(c);
+		if (!read.ok) return respondFailure(c, read);
+		const body = read.body;
 		// 新建拓展订阅走宿主把关的那条路(见 createExtensionSubscription)。已有的那条整份 POST
 		// 回来改照常走下面 —— 身份改不动由 store 把关,带来的 cachedProfile 被 schema 剥掉。
 		if (isPlainObject(body) && body.kind === "extension") {
@@ -398,9 +415,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			}
 			return c.json(deps.store.getSubscriptions().map(toDTO), 200);
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/subs failed", err);
 			throw err;
 		}
@@ -408,26 +423,11 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 
 	app.patch("/:id", async (c) => {
 		const id = c.req.param("id");
-		let body: unknown;
-		try {
-			body = await c.req.json();
-		} catch (_err) {
-			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
-		}
-		const shapeCheck = z.record(z.string(), z.unknown()).safeParse(body);
-		if (!shapeCheck.success) {
-			return c.json(
-				{
-					error: "invalid_payload",
-					message: "PATCH body must be a JSON object",
-					issues: shapeCheck.error.issues,
-				},
-				400,
-			);
-		}
+		const read = await readJsonObject(c);
+		if (!read.ok) return respondFailure(c, read);
 		// per-UP 审批的前置检查 —— 与全局那条(checkApprovalEnable)同一道闸。
 		// 只拦一半的话,主人换个地方开同一个开关就绕过去了。
-		const roastPatch = shapeCheck.data.roastSchedule;
+		const roastPatch = read.body.roastSchedule;
 		if (isPlainObject(roastPatch)) {
 			const cur = deps.store.getSubscriptions().find((s) => s.id === id);
 			// 单人定时锐评两支订阅都有(ADR-0020 决策 14),闸也两支都拦:这次没带 approval 就看它现在那一格。
@@ -440,21 +440,13 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 				masterTargetId: deps.store.getGlobals().master.targetId,
 				targets: deps.store.getTargets(),
 			});
-			if (!gate.ok) {
-				return c.json(
-					{ error: "enable_check_failed", scope: "roastSchedule", message: gate.message },
-					400,
-				);
-			}
+			if (!gate.ok) return respondFailure(c, gate);
 		}
 		try {
-			const next = await deps.store.patchSubscription(id, shapeCheck.data);
+			const next = await deps.store.patchSubscription(id, read.body);
 			return c.json(toDTO(next));
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				const status = isNotFound(err) ? 404 : 400;
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, status);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/subs/:id failed", err);
 			throw err;
 		}
@@ -463,7 +455,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
 		const removed = await deps.store.deleteSubscription(id);
-		if (!removed) return c.json({ error: "not_found", id }, 404);
+		if (!removed) return respondFailure(c, fail("not_found", "没有这条订阅"));
 		return c.body(null, 204);
 	});
 
@@ -478,39 +470,29 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 function subscriptionSourceRefusal(
 	extensionId: string,
 	entries: readonly ExtensionEntry[],
-): { error: string; message: string } | undefined {
+): Failure | undefined {
 	const entry = entries.find((e) => e.id === extensionId);
-	if (!entry) {
-		return {
-			error: "extension_not_installed",
-			message: `拓展「${extensionId}」没装,建不了它的订阅`,
-		};
-	}
+	if (!entry) return fail("not_found", `拓展「${extensionId}」没装,建不了它的订阅`);
 	const manifest = entry.manifest;
 	if (!manifest) {
-		return {
-			error: "not_subscription_source",
-			message: `拓展「${extensionId}」的清单读不出来(${entry.state}),认不出它是不是订阅源`,
-		};
+		return fail(
+			"unsupported",
+			`拓展「${extensionId}」的清单读不出来(${entry.state}),认不出它是不是订阅源`,
+		);
 	}
 	if (manifest.apiVersion !== 2) {
-		return {
-			error: "not_subscription_source",
-			message: `拓展「${manifest.name}」(${extensionId})是 v1 清单,v1 的契约里没有订阅源`,
-		};
+		return fail(
+			"unsupported",
+			`拓展「${manifest.name}」(${extensionId})是 v1 清单,v1 的契约里没有订阅源`,
+		);
 	}
 	if (!manifest.contributes.subscription) {
-		return {
-			error: "not_subscription_source",
-			message: `拓展「${manifest.name}」(${extensionId})的清单没开订阅源这一口(contributes.subscription)`,
-		};
+		return fail(
+			"unsupported",
+			`拓展「${manifest.name}」(${extensionId})的清单没开订阅源这一口(contributes.subscription)`,
+		);
 	}
 	return undefined;
-}
-
-function isNotFound(err: ConfigValidationError): boolean {
-	const issues = err.issues as { message?: string } | undefined;
-	return issues?.message === "subscription not found" || issues?.message === "target not found";
 }
 
 /** B-station search wraps matched keywords with `<em class="keyword">…</em>`. */

@@ -369,9 +369,11 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		const frame = await client.next();
 		client.send({ type: "result", id: frame.id, ok: false, err: "telegram 说这个群不存在" });
 
-		expect(await (await pushed).json()).toMatchObject({
+		// 线上的形状是 `Result`:桥的话原样进 `message`;没送达就没有耗时,不带一个假的 `latencyMs`。
+		expect(await (await pushed).json()).toEqual({
 			ok: false,
-			err: "telegram 说这个群不存在",
+			code: "unavailable",
+			message: "telegram 说这个群不存在",
 		});
 	});
 

@@ -1,4 +1,5 @@
 import type {
+	ConnectionTestResponse,
 	ExtensionBotsResponse,
 	ExtensionBotView,
 	ExtensionDTO,
@@ -1721,7 +1722,7 @@ export default function Targets() {
 				});
 				setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
 				setTargetTesting((p) => ({ ...p, [target.id]: res.ok ? "ok" : "fail" }));
-				showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.err ?? "未知错误"}`, res.ok);
+				showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
 				qc.invalidateQueries({ queryKey: ["targets"] });
 			} catch (err) {
 				setTesting((p) => ({ ...p, [a.id]: "fail" }));
@@ -1747,21 +1748,19 @@ export default function Targets() {
 		// Connection-only probe — calls platformAdapter.probe(), no real message sent.
 		setTesting((p) => ({ ...p, [a.id]: "pending" }));
 		try {
-			const res = await api.post<{ ok: boolean | null; latencyMs: number; err?: string }>(
-				`/api/connections/${a.id}/test`,
-				{},
-			);
-			if (res.ok === null) {
+			const res = await api.post<ConnectionTestResponse>(`/api/connections/${a.id}/test`, {});
+			// 这个平台没有探测协议(如 webhook):既不是通、也不是不通 —— 清掉进行中的状态,只提示一句。
+			if (!res.ok && res.code === "unsupported") {
 				setTesting((p) => {
 					const next = { ...p };
 					delete next[a.id];
 					return next;
 				});
-				showToast("该平台不支持连接探测", false);
+				showToast(res.message, false);
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
-			showToast(res.ok ? `连通 · ${res.latencyMs}ms` : `失败:${res.err ?? "未知错误"}`, res.ok);
+			showToast(res.ok ? `连通 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
 			qc.invalidateQueries({ queryKey: ["connections"] });
 		} catch (err) {
 			setTesting((p) => ({ ...p, [a.id]: "fail" }));
@@ -1785,7 +1784,7 @@ export default function Targets() {
 				kind: "text",
 			});
 			setTargetTesting((p) => ({ ...p, [t.id]: res.ok ? "ok" : "fail" }));
-			showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.err ?? "未知错误"}`, res.ok);
+			showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
 			qc.invalidateQueries({ queryKey: ["targets"] });
 		} catch (err) {
 			setTargetTesting((p) => ({ ...p, [t.id]: "fail" }));

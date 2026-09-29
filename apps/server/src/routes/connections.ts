@@ -1,12 +1,11 @@
+import type { ConnectionTestResponse } from "@bilibili-notify/contract";
 import type { ConnectionCapabilities } from "@bilibili-notify/internal";
-import { isDirectConnection } from "@bilibili-notify/internal";
+import { fail, isDirectConnection } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { z } from "zod";
-import {
-	CONNECTION_NOT_FOUND,
-	ConfigValidationError,
-	isConnectionNotFound,
-} from "../config/store.js";
+import { ConfigValidationError } from "../config/store.js";
+import { readJsonBody, readJsonObject } from "./request-body.js";
+import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { testResultOfProbe } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -16,6 +15,9 @@ import type { RouteDeps } from "./types.js";
  * endpoint, a webhook URL. PushTargets reference one by `connectionId`, so
  * deleting a connection any target still points at is rejected with 409 and
  * the caller detaches first.
+ *
+ * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码,
+ * 路由按码回(不合规 400、没这条 404、还被目标引用着 409),不嗅文案。
  */
 export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -48,19 +50,13 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	});
 
 	app.post("/", async (c) => {
-		let body: unknown;
+		const read = await readJsonBody(c);
+		if (!read.ok) return respondFailure(c, read);
 		try {
-			body = await c.req.json();
-		} catch (_err) {
-			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
-		}
-		try {
-			await deps.store.upsertConnection(body as never);
+			await deps.store.upsertConnection(read.body as never);
 			return c.json(deps.store.getConnections(), 200);
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/connections failed", err);
 			throw err;
 		}
@@ -68,31 +64,13 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 
 	app.patch("/:id", async (c) => {
 		const id = c.req.param("id");
-		let body: unknown;
+		const read = await readJsonObject(c);
+		if (!read.ok) return respondFailure(c, read);
 		try {
-			body = await c.req.json();
-		} catch (_err) {
-			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
-		}
-		const shapeCheck = z.record(z.string(), z.unknown()).safeParse(body);
-		if (!shapeCheck.success) {
-			return c.json(
-				{
-					error: "invalid_payload",
-					message: "PATCH body must be a JSON object",
-					issues: shapeCheck.error.issues,
-				},
-				400,
-			);
-		}
-		try {
-			const next = await deps.store.patchConnection(id, shapeCheck.data);
+			const next = await deps.store.patchConnection(id, read.body);
 			return c.json(next);
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				const status = isConnectionNotFound(err) ? 404 : 400;
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, status);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/connections/:id failed", err);
 			throw err;
 		}
@@ -101,16 +79,16 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.post("/:id/test", async (c) => {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (!connection) return c.json({ ok: false, latencyMs: 0, err: CONNECTION_NOT_FOUND }, 404);
+		if (!connection) return respondFailure(c, fail("not_found", "没有这条连接"));
 		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json({ ok: false, latencyMs: 0, err: "engines not yet attached" }, 503);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const result = await engines.probeConnection(id);
 		// Persist the probe outcome to the connection's testStatus so the dashboard's
 		// status dot reflects this click without waiting for the 5-min poller.
 		// `ok: null` (probe unsupported) deliberately doesn't write back — we
 		// want the UI to remain "pending / unsupported" rather than green.
+		// 🔴 写盘这条路照旧读引擎给的 `err`:`testStatus.err` 是盘上的老格式,随改盘上形状的那一期
+		// 带迁移条目改(④b 只改线上)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
 		if (result.ok !== null) {
 			try {
 				await deps.store.patchConnection(id, {
@@ -125,19 +103,17 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 				log.warn(`POST /api/connections/${id}/test patchConnection failed: ${String(err)}`);
 			}
 		}
-		return c.json(result);
+		return c.json<ConnectionTestResponse>(testResultOfProbe(result));
 	});
 
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
 		try {
 			const removed = await deps.store.deleteConnection(id);
-			if (!removed) return c.json({ error: "not_found", id }, 404);
+			if (!removed) return respondFailure(c, fail("not_found", "没有这条连接"));
 			return c.body(null, 204);
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 409);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("DELETE /api/connections/:id failed", err);
 			throw err;
 		}

@@ -36,7 +36,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 
 | 键 | 回答 | 用在 |
 |---|---|---|
-| **身份**：B 站 `uid` / 拓展 `(extensionId, externalId)` | 这是谁 | 判重（新建拓展订阅撞了回 409 `duplicate_subscription`）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
+| **身份**：B 站 `uid` / 拓展 `(extensionId, externalId)` | 这是谁 | 判重（新建拓展订阅撞了回 409 `conflict`）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
 | **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`broadcastToFeature`）、历史行的 `subscriptionId`、资料缓存、头像文件、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
 
 - 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `upColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。

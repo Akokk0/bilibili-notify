@@ -255,6 +255,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 			body: "{not json",
 		});
 		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "请求体不是合法的 JSON" });
 		expect(h.upsertSubscription).not.toHaveBeenCalled();
 	});
 });
@@ -276,12 +277,10 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 		expect(h.patchSubscription).toHaveBeenCalledWith(SUB.id, { enabled: false });
 	});
 
-	it("patchSubscription 抛 ConfigValidationError(not found)→ 404", async () => {
+	it("patchSubscription 抛 ConfigValidationError(not_found)→ 404,按码回、不嗅文案", async () => {
 		const h = makeHarness();
-		// isNotFound() 读 err.issues.message(把 issues 当对象,非数组),
-		// 见 subs.ts:236-239 —— 这里照其契约构造。
 		h.patchSubscription.mockRejectedValueOnce(
-			new ConfigValidationError("subscriptions", { message: "subscription not found" }),
+			ConfigValidationError.notFound("subscriptions", `没有 id 为 ${SUB.id} 的订阅`),
 		);
 		const res = await h.app.request(`/${SUB.id}`, {
 			method: "PATCH",
@@ -289,6 +288,56 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 			body: JSON.stringify({ enabled: false }),
 		});
 		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({
+			code: "not_found",
+			message: `没有 id 为 ${SUB.id} 的订阅`,
+		});
+	});
+
+	it("patchSubscription 抛校验不过 → 400 invalid,逐格 issues 原样带上、scope 不上线", async () => {
+		const h = makeHarness();
+		h.patchSubscription.mockRejectedValueOnce(
+			ConfigValidationError.invalid("subscriptions", "订阅有 1 格不合法：uid：不能为空", [
+				{ path: ["uid"], message: "不能为空" },
+			]),
+		);
+		const res = await h.app.request(`/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ uid: "" }),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message: "订阅有 1 格不合法：uid：不能为空",
+			issues: [{ path: ["uid"], message: "不能为空" }],
+		});
+	});
+
+	it("PATCH 体不是对象 → 400 invalid,不进 store", async () => {
+		const h = makeHarness();
+		const res = await h.app.request(`/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: "[1]",
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: "invalid" });
+		expect(h.patchSubscription).not.toHaveBeenCalled();
+	});
+
+	it("DELETE 没这条订阅 → 404 not_found", async () => {
+		const app = createSubsRoute({
+			store: { getSubscriptions: () => [], deleteSubscription: async () => false },
+			runtime: {
+				serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
+				subRuntimeStore: { get: () => undefined },
+				engines: null,
+			},
+		} as unknown as RouteDeps);
+		const res = await app.request("/ghost", { method: "DELETE" });
+		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "没有这条订阅" });
 	});
 });
 
@@ -406,15 +455,15 @@ describe("/api/subs × 拓展订阅", () => {
 		expect("followError" in (body[1] ?? {})).toBe(false);
 	});
 
-	it("POST 一条新的拓展订阅,宿主没递装着的拓展名单 → 当作没装,400,不落盘", async () => {
+	it("POST 一条新的拓展订阅,宿主没递装着的拓展名单 → 当作没装,404 not_found,不落盘", async () => {
 		// 新建的完整路径(核订阅源、判重、种资料、存头像)见 subs-extension-create.test.ts。
 		const h = makeHarness({ subs: [SUB] });
 		const res = await postJson(
 			h,
 			makeExtensionSubscription({ id: EXT.id, extensionId: EXT.extensionId }),
 		);
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("extension_not_installed");
+		expect(res.status).toBe(404);
+		expect(await res.json()).toMatchObject({ code: "not_found" });
 		expect(h.upsertSubscription).not.toHaveBeenCalled();
 	});
 
@@ -428,13 +477,69 @@ describe("/api/subs × 拓展订阅", () => {
 		expect(h.rtPatch).not.toHaveBeenCalled();
 	});
 
+	it("新建拓展订阅时 store 拒收 → 也是按码回(400 invalid,逐格 issues 带上)", async () => {
+		// 宿主先核的那几道(装着的订阅源、判重、资料)都过了,落盘那一步 store 又拒 —— 与别的写入同一个出口。
+		const h = makeHarness({ subs: [SUB] });
+		h.upsertSubscription.mockRejectedValueOnce(
+			ConfigValidationError.invalid("subscriptions", "订阅有 1 格不合法：externalId：不能为空", [
+				{ path: ["externalId"], message: "不能为空" },
+			]),
+		);
+		const app = createSubsRoute(
+			{
+				store: {
+					getSubscriptions: () => [SUB],
+					upsertSubscription: h.upsertSubscription,
+				},
+				runtime: {
+					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
+					subRuntimeStore: { get: () => undefined, patch: vi.fn() },
+					engines: null,
+				},
+			} as unknown as RouteDeps,
+			{
+				extensions: () => [
+					{
+						id: "douyin",
+						dir: "/data/extensions/douyin",
+						state: "running",
+						manifest: {
+							id: "douyin",
+							name: "抖音订阅",
+							description: "测试用",
+							version: "0.1.0",
+							apiVersion: 2,
+							contributes: {
+								subscription: {
+									display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+									events: ["post"],
+								},
+							},
+						},
+					},
+				],
+			},
+		);
+		const res = await app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(
+				makeExtensionSubscription({ id: EXT.id, extensionId: "douyin", externalId: "sec-9" }),
+			),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message: "订阅有 1 格不合法：externalId：不能为空",
+			issues: [{ path: ["externalId"], message: "不能为空" }],
+		});
+	});
+
 	it("store 拒了身份改动 → 400(PATCH 与 POST 同一个出口)", async () => {
 		const identity = () =>
-			new ConfigValidationError("subscriptions", {
-				id: SUB.id,
-				key: "uid",
-				message: "subscription identity cannot be changed",
-			});
+			ConfigValidationError.invalid("subscriptions", "订阅的 uid 不能改（12345 → 999）", [
+				{ path: ["uid"], message: "身份格不许改" },
+			]);
 		const h = makeHarness();
 		h.patchSubscription.mockRejectedValueOnce(identity());
 		const patched = await h.app.request(`/${SUB.id}`, {
@@ -443,7 +548,10 @@ describe("/api/subs × 拓展订阅", () => {
 			body: JSON.stringify({ uid: "999" }),
 		});
 		expect(patched.status).toBe(400);
+		expect(await patched.json()).toMatchObject({ code: "invalid" });
 		h.upsertSubscription.mockRejectedValueOnce(identity());
-		expect((await postJson(h, { ...SUB, uid: "999" })).status).toBe(400);
+		const posted = await postJson(h, { ...SUB, uid: "999" });
+		expect(posted.status).toBe(400);
+		expect(await posted.json()).toMatchObject({ code: "invalid" });
 	});
 });

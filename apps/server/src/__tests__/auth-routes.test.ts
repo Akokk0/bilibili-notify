@@ -124,8 +124,10 @@ describe("auth routes", () => {
 
 		const res = await app.request("/api/auth/qr", { method: "POST" });
 		expect(res.status).toBe(409);
-		const body = (await readJson(res)) as { error: string };
-		expect(body.error).toBe("qr_already_active");
+		expect(await readJson(res)).toEqual({
+			code: "conflict",
+			message: "已经有一个扫码登录在进行了，先重置再重新开始",
+		});
 		expect(fake.beginLogin).not.toHaveBeenCalled();
 
 		await runtime.dispose();
@@ -138,6 +140,7 @@ describe("auth routes", () => {
 
 		const res = await app.request("/api/auth/qr", { method: "POST" });
 		expect(res.status).toBe(409);
+		expect(await readJson(res)).toMatchObject({ code: "conflict" });
 		expect(fake.beginLogin).not.toHaveBeenCalled();
 
 		await runtime.dispose();
@@ -149,6 +152,7 @@ describe("auth routes", () => {
 
 		const res = await app.request("/api/auth/cookies/refresh", { method: "POST" });
 		expect(res.status).toBe(200);
+		expect(await readJson(res)).toEqual({ ok: true });
 		expect(fake.refreshCookies).toHaveBeenCalledTimes(1);
 
 		await runtime.dispose();
@@ -164,6 +168,7 @@ describe("auth routes", () => {
 
 		const logoutRes = await app.request("/api/auth/logout", { method: "POST" });
 		expect(logoutRes.status).toBe(200);
+		expect(await readJson(logoutRes)).toEqual({ ok: true });
 		expect(fake.logout).toHaveBeenCalledTimes(1);
 
 		const after = await app.request("/api/auth/status");
@@ -172,7 +177,7 @@ describe("auth routes", () => {
 		await runtime.dispose();
 	});
 
-	it("returns 500 with a safe message when beginLogin throws (no stack in body)", async () => {
+	it("returns 503 with a safe message when beginLogin throws (no stack in body)", async () => {
 		const fake = makeFakeAuthSystem();
 		fake.beginLogin.mockImplementationOnce(async () => {
 			throw new Error("internal-explosion: secret-token-leak");
@@ -180,10 +185,9 @@ describe("auth routes", () => {
 		const { app, runtime } = await buildApp(fake);
 
 		const res = await app.request("/api/auth/qr", { method: "POST" });
-		expect(res.status).toBe(500);
-		const body = (await readJson(res)) as { error: string; message: string };
-		expect(body.error).toBe("auth_failed");
-		expect(body.message).toBe("failed to start QR login");
+		expect(res.status).toBe(503);
+		const body = (await readJson(res)) as { code: string; message: string };
+		expect(body).toEqual({ code: "unavailable", message: "发起扫码登录失败，详情在日志里" });
 		// The thrown message must not appear in the response body.
 		expect(JSON.stringify(body)).not.toContain("internal-explosion");
 		expect(JSON.stringify(body)).not.toContain("secret-token-leak");
@@ -191,7 +195,7 @@ describe("auth routes", () => {
 		await runtime.dispose();
 	});
 
-	it("returns 500 with a safe message when refreshCookies throws", async () => {
+	it("returns 503 with a safe message when refreshCookies throws", async () => {
 		const fake = makeFakeAuthSystem();
 		fake.refreshCookies.mockImplementationOnce(async () => {
 			throw new Error("network down");
@@ -199,10 +203,26 @@ describe("auth routes", () => {
 		const { app, runtime } = await buildApp(fake);
 
 		const res = await app.request("/api/auth/cookies/refresh", { method: "POST" });
-		expect(res.status).toBe(500);
-		const body = (await readJson(res)) as { error: string; message: string };
-		expect(body.error).toBe("auth_failed");
-		expect(body.message).toBe("failed to refresh cookies");
+		expect(res.status).toBe(503);
+		const body = (await readJson(res)) as { code: string; message: string };
+		expect(body).toEqual({ code: "unavailable", message: "刷新 Cookie 失败，详情在日志里" });
+		expect(JSON.stringify(body)).not.toContain("network down");
+
+		await runtime.dispose();
+	});
+
+	it("returns 503 with a safe message when logout throws", async () => {
+		const fake = makeFakeAuthSystem();
+		fake.logout.mockImplementationOnce(async () => {
+			throw new Error("disk full while writing cookies.enc");
+		});
+		const { app, runtime } = await buildApp(fake);
+
+		const res = await app.request("/api/auth/logout", { method: "POST" });
+		expect(res.status).toBe(503);
+		const body = (await readJson(res)) as { code: string; message: string };
+		expect(body).toEqual({ code: "unavailable", message: "退出登录失败，详情在日志里" });
+		expect(JSON.stringify(body)).not.toContain("cookies.enc");
 
 		await runtime.dispose();
 	});

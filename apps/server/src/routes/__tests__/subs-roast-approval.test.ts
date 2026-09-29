@@ -31,7 +31,7 @@ describe("checkApprovalReachable", () => {
 
 	it("没配主人私聊目标 → 拦下(没人可审)", () => {
 		const r = checkApprovalReachable({ approvalOn: true, masterTargetId: undefined, targets: [] });
-		expect(r.ok).toBe(false);
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 		expect(r.ok === false && r.message).toContain("主人私聊目标");
 	});
 
@@ -88,14 +88,16 @@ const patchRoast = (body: unknown) => ({
 });
 
 describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
-	it("在收不到回复的通道上开审批 → 400,而且**没落盘**", async () => {
+	it("在收不到回复的通道上开审批 → 409 not_configured,而且**没落盘**", async () => {
 		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
 			"/s1",
 			patchRoast({ roastSchedule: { approval: true } }) as RequestInit,
 		);
-		expect(res.status).toBe(400);
-		// 拦下就得真拦住 —— 回了 400 却已经写进去,是最坏的一种「拦截」。
+		// 要主人去把私聊目标换成收得到回复的通道 —— 等是等不好的,所以是 not_configured(409)。
+		expect(res.status).toBe(409);
+		expect(await res.json()).toMatchObject({ code: "not_configured", message: expect.any(String) });
+		// 拦下就得真拦住 —— 回了错却已经写进去,是最坏的一种「拦截」。
 		expect(patchSubscription).not.toHaveBeenCalled();
 	});
 
@@ -128,13 +130,14 @@ describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
 });
 
 describe("PATCH /api/subs/:id — 拓展订阅同一道闸(ADR-0020 决策 14)", () => {
-	it("在收不到回复的通道上给拓展订阅开审批 → 400,没落盘", async () => {
+	it("在收不到回复的通道上给拓展订阅开审批 → 409 not_configured,没落盘", async () => {
 		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
 			"/e1",
 			patchRoast({ roastSchedule: { approval: true } }) as RequestInit,
 		);
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
+		expect(await res.json()).toMatchObject({ code: "not_configured" });
 		expect(patchSubscription).not.toHaveBeenCalled();
 	});
 
@@ -146,7 +149,7 @@ describe("PATCH /api/subs/:id — 拓展订阅同一道闸(ADR-0020 决策 14)",
 			"/e1",
 			patchRoast({ roastSchedule: { cron: "0 9 * * 1" } }) as RequestInit,
 		);
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
 		expect(patchSubscription).not.toHaveBeenCalled();
 	});
 

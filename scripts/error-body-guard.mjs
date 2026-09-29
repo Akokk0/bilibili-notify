@@ -37,20 +37,14 @@ const ISSUE_KEYS = new Set(["path", "message", "op"]);
  */
 export const LEGACY_UNMIGRATED_FILES = [
 	"apps/server/src/routes/ai.ts",
-	"apps/server/src/routes/auth.ts",
 	"apps/server/src/routes/backup.ts",
 	"apps/server/src/routes/card-skins.ts",
 	"apps/server/src/routes/cards.ts",
-	"apps/server/src/routes/connections.ts",
 	"apps/server/src/routes/extension-settings.ts",
 	"apps/server/src/routes/extensions.ts",
-	"apps/server/src/routes/globals.ts",
 	"apps/server/src/routes/maid-skills.ts",
-	"apps/server/src/routes/qq.ts",
 	"apps/server/src/routes/skins.ts",
 	"apps/server/src/routes/stats.ts",
-	"apps/server/src/routes/subs.ts",
-	"apps/server/src/routes/targets.ts",
 ];
 
 // 不用 `new URL("..", import.meta.url)`:jsdom 环境里全局 URL 是 jsdom 的,fileURLToPath 不认它的实例。

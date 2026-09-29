@@ -284,10 +284,12 @@ describe("身份改不动(ADR-0019 决策 50)", () => {
 			(e: unknown) => e,
 		);
 		expect(err).toBeInstanceOf(ConfigValidationError);
-		expect((err as ConfigValidationError).issues).toMatchObject({
-			key,
-			message: "subscription identity cannot be changed",
-		});
+		// 身份改不动是「请求不合规矩」(invalid),点名是哪一格;不是「与状态冲突」。
+		expect(err).toMatchObject({ code: "invalid", scope: "subscriptions" });
+		expect((err as ConfigValidationError).issues).toEqual([
+			{ path: [key], message: "身份格不许改" },
+		]);
+		expect((err as ConfigValidationError).message).toContain(key);
 	}
 
 	it.each([

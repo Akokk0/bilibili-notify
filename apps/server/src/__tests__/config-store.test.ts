@@ -1107,11 +1107,77 @@ describe("ConfigStore", () => {
 			address: "10001",
 		});
 
-		await expect(store.deleteConnection(connection.id)).rejects.toBeInstanceOf(
-			ConfigValidationError,
-		);
+		// 「还被用着」是与当前状态冲突(conflict),话里说清该怎么办。
+		await expect(store.deleteConnection(connection.id)).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "conflict",
+			message: expect.stringContaining("先解除引用"),
+		});
 		expect(store.getConnections()).toHaveLength(1);
 		expect(store.getTargets()).toHaveLength(1);
+	});
+
+	it("改 / 补丁一条不存在的订阅、连接、推送目标 → not_found,话里点名是哪一种", async () => {
+		const ghost = randomUUID();
+		await expect(store.patchSubscription(ghost, { enabled: false })).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "not_found",
+			scope: "subscriptions",
+			message: expect.stringContaining("订阅"),
+		});
+		await expect(store.patchConnection(ghost, { name: "x" })).rejects.toMatchObject({
+			code: "not_found",
+			scope: "connections",
+			message: expect.stringContaining("连接"),
+		});
+		await expect(store.patchTarget(ghost, { name: "x" })).rejects.toMatchObject({
+			code: "not_found",
+			scope: "targets",
+			message: expect.stringContaining("推送目标"),
+		});
+		await expect(store.recordTargetTestStatus(ghost, undefined)).rejects.toMatchObject({
+			code: "not_found",
+		});
+	});
+
+	it("目标挂着不存在的连接 / 平台和连接对不上 → invalid,issues 点名那一格", async () => {
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
+		const target = {
+			id: randomUUID(),
+			name: "群聊",
+			connectionId: connection.id,
+			kind: "session" as const,
+			platform: "onebot" as const,
+			scope: "group" as const,
+			enabled: true,
+			address: "10001",
+		};
+		await expect(
+			store.upsertTarget({ ...target, connectionId: randomUUID() } as PushTarget),
+		).rejects.toMatchObject({
+			code: "invalid",
+			scope: "targets",
+			issues: [{ path: ["connectionId"], message: "没有这条连接" }],
+		});
+		await expect(
+			store.upsertTarget({ ...target, platform: "telegram" } as PushTarget),
+		).rejects.toMatchObject({
+			code: "invalid",
+			issues: [{ path: ["platform"], message: "要和连接的平台一致" }],
+		});
+	});
+
+	it("schema 校验不过 → invalid,逐格原因进 issues,顶上一句中文", async () => {
+		await expect(
+			store.patchGlobals({ app: { dynamicCron: 42 as unknown as string } }),
+		).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "invalid",
+			scope: "globals",
+			message: expect.stringMatching(/^全局设置有 \d+ 格不合法：app\.dynamicCron：/),
+			issues: [expect.objectContaining({ path: ["app", "dynamicCron"] })],
+		});
 	});
 
 	it("deleteTarget(managed) 拒绝直接删除托管 target", async () => {
@@ -1120,9 +1186,10 @@ describe("ConfigStore", () => {
 		const targetId = store.getTargets()[0]?.id;
 		expect(targetId).toBeDefined();
 
-		await expect(store.deleteTarget(targetId as string)).rejects.toBeInstanceOf(
-			ConfigValidationError,
-		);
+		await expect(store.deleteTarget(targetId as string)).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "conflict",
+		});
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
@@ -1131,7 +1198,10 @@ describe("ConfigStore", () => {
 		await store.upsertConnection(connection);
 		const manual = makeWebhookTarget(connection, { id: randomUUID(), name: "额外 Webhook" });
 
-		await expect(store.upsertTarget(manual)).rejects.toBeInstanceOf(ConfigValidationError);
+		await expect(store.upsertTarget(manual)).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "invalid",
+		});
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
@@ -1189,12 +1259,12 @@ describe("ConfigStore", () => {
 
 		await expect(
 			store.patchTarget(target?.id as string, { name: "用户改名" }),
-		).rejects.toBeInstanceOf(ConfigValidationError);
+		).rejects.toMatchObject({ name: "ConfigValidationError", code: "conflict" });
 		await expect(
 			store.patchTarget(target?.id as string, {
 				testStatus: { ok: true, lastCheckedAt: "2026-06-06T00:00:00.000Z", latencyMs: 12 },
 			}),
-		).rejects.toBeInstanceOf(ConfigValidationError);
+		).rejects.toMatchObject({ name: "ConfigValidationError", code: "conflict" });
 		const patched = await store.recordTargetTestStatus(target?.id as string, {
 			ok: true,
 			lastCheckedAt: "2026-06-06T00:00:00.000Z",
@@ -1326,9 +1396,13 @@ describe("ConfigStore", () => {
 
 	it("拓展连接也不许换 platform —— 底下的目标还挂在原来那个平台上", async () => {
 		await store.upsertConnection(bridgeConnection("onebot") as never);
-		await expect(store.upsertConnection(bridgeConnection("telegram") as never)).rejects.toThrow(
-			/platform cannot be changed/,
-		);
+		await expect(
+			store.upsertConnection(bridgeConnection("telegram") as never),
+		).rejects.toMatchObject({
+			name: "ConfigValidationError",
+			code: "invalid",
+			issues: [{ path: ["platform"], message: "身份格不许改" }],
+		});
 		expect(store.getConnections()[0]?.platform).toBe("onebot");
 	});
 

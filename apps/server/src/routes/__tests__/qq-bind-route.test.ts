@@ -75,12 +75,12 @@ describe("POST /api/qq/bind/start", () => {
 		expect(body).not.toHaveProperty("bindKey");
 	});
 
-	it("上游 retcode 非 0 → 502 带上游话", async () => {
+	it("上游 retcode 非 0 → 503 unavailable,带上游话", async () => {
 		fetchMock.mockResolvedValueOnce(res(200, { retcode: 1001, msg: "系统繁忙" }));
 		const app = createQQRoute(makeDeps());
 		const r = await app.request("/bind/start", { method: "POST" });
-		expect(r.status).toBe(502);
-		expect(((await r.json()) as { message: string }).message).toContain("系统繁忙");
+		expect(r.status).toBe(503);
+		expect(await r.json()).toEqual({ code: "unavailable", message: "发起绑定失败：系统繁忙" });
 	});
 
 	it("BN_QQ_BIND_HOST 逃生口:打到注入的 host", async () => {
@@ -95,10 +95,11 @@ describe("POST /api/qq/bind/start", () => {
 });
 
 describe("POST /api/qq/bind/poll", () => {
-	it("未知 taskId → 404", async () => {
+	it("未知 taskId → 404 not_found", async () => {
 		const app = createQQRoute(makeDeps());
 		const r = await poll(app, "nope");
 		expect(r.status).toBe(404);
+		expect(await r.json()).toEqual({ code: "not_found", message: "绑定任务不存在或已过期" });
 	});
 
 	it("pending → 保留任务,可继续轮", async () => {
@@ -136,11 +137,16 @@ describe("POST /api/qq/bind/poll", () => {
 		expect((await poll(app, taskId)).status).toBe(404);
 	});
 
-	it("上游故障 → 502 且保留任务(下轮可重试)", async () => {
+	it("上游故障 → 503 unavailable 且保留任务(下轮可重试)", async () => {
 		const app = createQQRoute(makeDeps());
 		const taskId = await startTask(app);
 		fetchMock.mockResolvedValueOnce(res(500, {}));
-		expect((await poll(app, taskId)).status).toBe(502);
+		const failed = await poll(app, taskId);
+		expect(failed.status).toBe(503);
+		expect(await failed.json()).toEqual({
+			code: "unavailable",
+			message: "查询绑定结果失败：QQ 绑定接口 HTTP 500",
+		});
 		fetchMock.mockResolvedValueOnce(res(200, { retcode: 0, data: { status: 1 } }));
 		expect(await (await poll(app, taskId)).json()).toEqual({ status: "pending" });
 	});

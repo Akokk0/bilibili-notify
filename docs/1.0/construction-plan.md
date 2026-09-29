@@ -170,7 +170,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 毛病 | 期 | 怎么修掉 |
 | --- | --- | --- |
 | 面板的错误提示只认 `err` / `message` / `errors`，`{ error, scope, issues }`、`{ error, id }` 这些形状的原因全被吞掉（读代码得出，未真机验） | 1（切片 ④） | 错误体统一以后，`errorMessage` 只认 `code` + `message` 一种 |
-| 搜人时风控与未登录都报成 404：`/api/subs/lookup` 把任何非 0 码都回成 `not_found`，还把 B 站的码塞在 `code` 里 | 1（切片 ④）挪码；3a 修分类 | 切片 ④ 先把 B 站的码挪进 `upstreamCode`；3a `searchCreators` 返回结果形状、路由合成 `GET /api/sources/:sourceKey/creators?q=`，风控回 `rate_limited`、未登录回 `unauthorized` |
+| 搜人时风控与未登录都报成 404：`/api/subs/lookup` 把任何非 0 码都回成 `not_found`，还把 B 站的码塞在 `code` 里 | 1（切片 ④）挪码；3a 修分类 | ✅ 切片 ④ 已把 B 站的码挪进 `upstreamCode`，面板不再按状态码换成固定文案、直接显示服务端的话；3a `searchCreators` 返回结果形状、路由合成 `GET /api/sources/:sourceKey/creators?q=`，风控回 `rate_limited`、未登录回 `unauthorized`（HTTP 403：401 只留给看板自己的登录失效，面板见 401 就踢回登录框） |
 | 拿登录二维码失败却回 `ok: true`：网络异常只打 warn 就返回、状态不变；其余抛错回 500 与一句固定英文，原因被吞 | 3a | 登录搬进 `bilibili/auth/`、走 `SourceAuth` 状态机时，`beginLogin` 按结果形状回失败 |
 | 晚登记的适配器收不到对账：拓展的推送适配器在开机对账之后才登记，对账（今天的 `reconcile`）就调不到它 | 3a | 登记即 `start`（ADR-0024 决策 3） |
 | AI 工具失败在面板上显示成功：工具失败时返回一段字符串，只有抛错才记失败 | 3b | AI 工具随 ADR-0030 改写时按结果形状返回 |

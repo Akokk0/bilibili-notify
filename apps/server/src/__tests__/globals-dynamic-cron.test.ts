@@ -46,9 +46,11 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 			body: JSON.stringify({ app: { dynamicCron: "not a cron expr" } }),
 		});
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe("invalid_payload");
+		const body = (await res.json()) as { code: string; message: string; issues: unknown[] };
+		expect(body.code).toBe("invalid");
 		expect(body.message).toContain("dynamicCron");
+		// 逐格原因点名那一格,面板可以据此标红。
+		expect(body.issues).toEqual([{ path: ["app", "dynamicCron"], message: "无效的 cron 表达式" }]);
 		// 拒绝的值绝不能落地。
 		expect(runtime.configStore.getGlobals().app.dynamicCron).toBe(before);
 

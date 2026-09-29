@@ -301,3 +301,94 @@ describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", (
 		}
 	});
 });
+
+/**
+ * 启用前的探活没过,回的是带标准码的失败(ADR-0026):要主人回去改配置的 `not_configured`,
+ * 对端暂时不行的 `unavailable`,限速 `rate_limited`,超时 `timeout`。平台自己的 HTTP 状态放
+ * `upstreamCode`,不占 `code`。
+ */
+describe("checkAiEnable — 没过的带标准码", () => {
+	const fields = { apiKey: "k", baseUrl: "https://api.example.com", model: "m", apiFlavor: "chat" };
+
+	function stubFetch(handler: () => Promise<Response>): void {
+		vi.stubGlobal("fetch", handler);
+	}
+	const httpResponse = (status: number, text = "boom") =>
+		({ ok: false, status, text: async () => text }) as unknown as Response;
+
+	it.each(["apiKey", "baseUrl", "model"] as const)("%s 是空的 → not_configured", async (field) => {
+		const { checkAiEnable } = await import("../globals.js");
+		const r = await checkAiEnable({ ...fields, [field]: "" });
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+		expect(r.ok === false && r.message).toContain(field);
+	});
+
+	it.each([
+		[401, "not_configured"],
+		[403, "not_configured"],
+		[404, "not_configured"],
+		[429, "rate_limited"],
+		[500, "unavailable"],
+		[503, "unavailable"],
+		[400, "unavailable"],
+	] as const)("HTTP %i → %s,状态码放 upstreamCode", async (status, code) => {
+		const { checkAiEnable } = await import("../globals.js");
+		stubFetch(async () => httpResponse(status));
+		try {
+			const r = await checkAiEnable(fields);
+			expect(r).toMatchObject({ ok: false, code, upstreamCode: status });
+			expect(r.ok === false && r.message).toContain(`HTTP ${status}`);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("连不上 → unavailable,话里带底层的原因", async () => {
+		const { checkAiEnable } = await import("../globals.js");
+		stubFetch(async () => {
+			throw new TypeError("fetch failed");
+		});
+		try {
+			const r = await checkAiEnable(fields);
+			expect(r).toMatchObject({ ok: false, code: "unavailable" });
+			expect(r.ok === false && r.message).toContain("fetch failed");
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("超时 → timeout", async () => {
+		const { checkAiEnable } = await import("../globals.js");
+		stubFetch(async () => {
+			const err = new Error("aborted");
+			err.name = "AbortError";
+			throw err;
+		});
+		try {
+			const r = await checkAiEnable(fields);
+			expect(r).toMatchObject({ ok: false, code: "timeout" });
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
+	function withApproval(on: boolean) {
+		const g = makeDefaultGlobalConfig();
+		g.roastSchedule = { ...g.roastSchedule, approval: on };
+		return g;
+	}
+	const patchOn = { roastSchedule: { approval: true } };
+
+	it.each([
+		["没配主人私聊目标", undefined, []],
+		["主人私聊目标已经不存在了", "gone", []],
+		["主人私聊目标走 webhook(没有回程)", "m1", [{ id: "m1", platform: "webhook" }]],
+	] as const)("%s → not_configured", (_what, masterTargetId, targets) => {
+		const g = withApproval(false);
+		g.master.targetId = masterTargetId;
+		const r = checkApprovalEnable(g, patchOn, targets as never);
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+	});
+});

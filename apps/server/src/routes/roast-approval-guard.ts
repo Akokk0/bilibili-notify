@@ -12,13 +12,20 @@
  */
 
 import {
+	fail,
 	INBOUND_CAPABLE_PLATFORMS,
 	inboundGapReason,
+	ok,
 	type PushTarget,
 	platformCanReceiveReply,
+	type Result,
 } from "@bilibili-notify/internal";
 
-export type ApprovalReachability = { ok: true } | { ok: false; message: string };
+/**
+ * 审批开得成开不成。开不成的一律是 `not_configured`(ADR-0026):要主人先去配好主人私聊目标 /
+ * 换一条收得到回复的通道,等是等不好的 —— 全局与 per-UP 两处共用这一个码,同一句话。
+ */
+export type ApprovalReachability = Result;
 
 export function checkApprovalReachable(args: {
 	/** 这次保存之后审批到底是不是开着的(调用方自己 merge 好 patch 与现值)。 */
@@ -27,24 +34,24 @@ export function checkApprovalReachable(args: {
 	masterTargetId: string | undefined;
 	targets: readonly PushTarget[];
 }): ApprovalReachability {
-	if (!args.approvalOn) return { ok: true };
+	if (!args.approvalOn) return ok();
 
 	if (!args.masterTargetId) {
-		return {
-			ok: false,
-			message: "审批需要先配好「主人私聊目标」—— 草稿要发给主人过目，没有这个目标就没人能批。",
-		};
+		return fail(
+			"not_configured",
+			"审批需要先配好「主人私聊目标」—— 草稿要发给主人过目，没有这个目标就没人能批。",
+		);
 	}
 	const target = args.targets.find((t) => t.id === args.masterTargetId);
 	if (!target) {
-		return { ok: false, message: "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。" };
+		return fail("not_configured", "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。");
 	}
 	if (!platformCanReceiveReply(target.platform)) {
-		return {
-			ok: false,
+		return fail(
+			"not_configured",
 			// 可选平台从常量里取,不手写 —— 手写的那份哪天补了平台就会漏。
-			message: `审批打不开：${inboundGapReason(target.platform)}。请把主人私聊目标换成收得到回复的通道（${INBOUND_CAPABLE_PLATFORMS.join(" / ")}），或者关掉审批直接发送。`,
-		};
+			`审批打不开：${inboundGapReason(target.platform)}。请把主人私聊目标换成收得到回复的通道（${INBOUND_CAPABLE_PLATFORMS.join(" / ")}），或者关掉审批直接发送。`,
+		);
 	}
-	return { ok: true };
+	return ok();
 }

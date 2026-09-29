@@ -40,6 +40,7 @@ import type { z } from "zod";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
+import { ConfigValidationError } from "./validation-error.js";
 
 /**
  * ConfigStore — central runtime config holder for the standalone end.
@@ -159,17 +160,9 @@ export interface CreateConfigStoreOptions {
 	secretStore?: SecretStore;
 }
 
-/** Thrown when an incoming write fails Zod validation. Routes catch and map to 400. */
-export class ConfigValidationError extends Error {
-	readonly scope: ConfigScope;
-	readonly issues: unknown;
-	constructor(scope: ConfigScope, issues: unknown, message?: string) {
-		super(message ?? `config validation failed (scope=${scope})`);
-		this.name = "ConfigValidationError";
-		this.scope = scope;
-		this.issues = issues;
-	}
-}
+// 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
+// 这里再导出一遍,别处 `import { ConfigValidationError } from "../config/store.js"` 照旧。
+export { ConfigValidationError };
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -279,20 +272,15 @@ function parseSubscriptionFile<T extends Subscription>(
 	schema: z.ZodType<T>,
 ): T[] {
 	if (!Array.isArray(value)) {
-		throw new ConfigValidationError(
-			"subscriptions",
-			{ message: `${fileName} must be an array` },
-			`${fileName} on disk is not an array`,
-		);
+		throw ConfigValidationError.invalid("subscriptions", `${fileName} 里的内容不是数组`);
 	}
 	return value.map((raw, idx) => {
 		const r = schema.safeParse(raw);
 		if (!r.success) {
-			throw new ConfigValidationError(
-				"subscriptions",
-				{ index: idx, issues: r.error.issues },
-				`${fileName}[${idx}] failed schema validation`,
-			);
+			throw ConfigValidationError.fromZod("subscriptions", r.error, {
+				subject: `${fileName} 第 ${idx + 1} 行`,
+				prefix: [idx],
+			});
 		}
 		return r.data;
 	});
@@ -491,46 +479,29 @@ function isRetiredTargetRecord(raw: unknown): boolean {
  */
 function assertConnectionIdentityStable(current: Connection, next: Connection): void {
 	if (current.kind !== next.kind) {
-		throw new ConfigValidationError(
+		throw ConfigValidationError.invalid(
 			"connections",
-			{
-				id: next.id,
-				from: current.kind,
-				to: next.kind,
-				message: "connection kind cannot be changed",
-			},
-			`connection ${next.id} kind cannot be changed`,
+			`连接的类型不能改（${current.kind} → ${next.kind}），要换就删了重建`,
+			[{ path: ["kind"], message: "身份格不许改" }],
 		);
 	}
 	if (current.platform !== next.platform) {
-		throw new ConfigValidationError(
+		throw ConfigValidationError.invalid(
 			"connections",
-			{
-				id: next.id,
-				from: current.platform,
-				to: next.platform,
-				message: "connection platform cannot be changed",
-			},
-			`connection ${next.id} platform cannot be changed`,
+			`连接的平台不能改（${current.platform} → ${next.platform}），要换就删了重建`,
+			[{ path: ["platform"], message: "身份格不许改" }],
 		);
 	}
 }
 
 /**
- * 「这条连接不存在」那一句。
+ * 「这条连接不存在」在投递结果里的那一句。
  *
- * 🔴 **它是被别的模块读的**(路由拿它把错分成 404 还是 400),所以不能只是一句文案:
- * 两处各写一遍字符串,改一个字就静默变成 500 —— 类型、测试、门禁全绿。要判「是不是
- * 没找到」走 {@link isConnectionNotFound},别再拿 message 做相等比较。
+ * 🔴 **它落盘**:`sink/multiplex.ts` 拿它填 `DeliveryResult.err`,历史每条消息的 `err` 里存的就是它
+ * (盘上存的失败字段随改盘上形状的那一期带迁移条目改,不在这里动)。配置写入这边不用它 ——
+ * 找不到连接是 `ConfigValidationError` 的 `not_found` 码,路由按码回,不嗅文案。
  */
 export const CONNECTION_NOT_FOUND = "connection not found";
-
-/** 这个错是不是「没有这条连接」。跨模块的判据只此一处。 */
-export function isConnectionNotFound(err: unknown): boolean {
-	if (!(err instanceof ConfigValidationError)) return false;
-	const issues = err.issues as { message?: string } | undefined;
-	return issues?.message === CONNECTION_NOT_FOUND;
-}
 
 /**
  * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
@@ -546,22 +517,17 @@ export function isConnectionNotFound(err: unknown): boolean {
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
 	const owner = connections.find((a) => a.id === target.connectionId);
 	if (!owner) {
-		throw new ConfigValidationError(
+		throw ConfigValidationError.invalid(
 			"targets",
-			{ id: target.id, connectionId: target.connectionId, message: CONNECTION_NOT_FOUND },
-			`target ${target.id} references unknown connection ${target.connectionId}`,
+			`推送目标挂着的连接不存在（connectionId=${target.connectionId}）`,
+			[{ path: ["connectionId"], message: "没有这条连接" }],
 		);
 	}
 	if (owner.platform !== target.platform) {
-		throw new ConfigValidationError(
+		throw ConfigValidationError.invalid(
 			"targets",
-			{
-				id: target.id,
-				connectionPlatform: owner.platform,
-				targetPlatform: target.platform,
-				message: "platform mismatch",
-			},
-			`target ${target.id} platform ${target.platform} does not match connection ${owner.platform}`,
+			`推送目标的平台（${target.platform}）和它挂着的连接（${owner.platform}）对不上`,
+			[{ path: ["platform"], message: "要和连接的平台一致" }],
 		);
 	}
 }
@@ -755,16 +721,17 @@ function partitionChanged<T>(prev: readonly T[], next: readonly T[]): boolean {
 /** 订阅的身份几格(决策 50):B 站是 uid,拓展是 `(extensionId, externalId)`;`kind` 本身也算。 */
 const SUBSCRIPTION_IDENTITY_KEYS = ["kind", "uid", "extensionId", "externalId"] as const;
 
-function subscriptionIdentityError(
-	id: string,
-	key: string,
-	from: unknown,
-	to: unknown,
-): ConfigValidationError {
-	return new ConfigValidationError(
+/** 拼进给人看的话里的一个值:字符串原样,别的转 JSON,没有就说「空」。 */
+function showValue(v: unknown): string {
+	if (typeof v === "string") return v;
+	return v === undefined ? "空" : (JSON.stringify(v) ?? "空");
+}
+
+function subscriptionIdentityError(key: string, from: unknown, to: unknown): ConfigValidationError {
+	return ConfigValidationError.invalid(
 		"subscriptions",
-		{ id, key, from, to, message: "subscription identity cannot be changed" },
-		`subscription ${id} ${key} cannot be changed`,
+		`订阅的 ${key} 不能改（${showValue(from)} → ${showValue(to)}），要换人就删了重加`,
+		[{ path: [key], message: "身份格不许改" }],
 	);
 }
 
@@ -787,7 +754,7 @@ function assertSubscriptionIdentityUnchanged(
 	for (const key of SUBSCRIPTION_IDENTITY_KEYS) {
 		const sent = key === "kind" && !("kind" in fields) ? kindDefault : fields[key];
 		if (sent === undefined || sent === cur[key]) continue;
-		throw subscriptionIdentityError(current.id, key, cur[key], sent);
+		throw subscriptionIdentityError(key, cur[key], sent);
 	}
 }
 
@@ -987,11 +954,7 @@ class NodeConfigStore implements ConfigStore {
 			);
 			const parsed = GlobalConfigSchema.safeParse(value);
 			if (!parsed.success) {
-				throw new ConfigValidationError(
-					"globals",
-					parsed.error.issues,
-					`globals.json on disk failed schema validation`,
-				);
+				throw ConfigValidationError.fromZod("globals", parsed.error, { subject: "globals.json" });
 			}
 			this.globals = parsed.data;
 			this.meta.globals.exists = true;
@@ -1145,22 +1108,14 @@ class NodeConfigStore implements ConfigStore {
 		if (connectionsExist || legacyOnly) {
 			const connectionsRaw = JSON.parse(await readFile(sourcePath, "utf8"));
 			if (!Array.isArray(connectionsRaw)) {
-				throw new ConfigValidationError(
-					"connections",
-					{ message: "connections.json must be an array" },
-					"connections.json on disk is not an array",
-				);
+				throw ConfigValidationError.invalid("connections", "connections.json 里的内容不是数组");
 			}
 			const { value, existed } = await readJsonOrInit<unknown[]>(
 				this.path("targets"),
 				() => [] as PushTarget[],
 			);
 			if (!Array.isArray(value)) {
-				throw new ConfigValidationError(
-					"targets",
-					{ message: "targets.json must be an array" },
-					"targets.json on disk is not an array",
-				);
+				throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
 			}
 
 			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`、目标没有 `kind`,schema 会当场
@@ -1199,11 +1154,10 @@ class NodeConfigStore implements ConfigStore {
 				if (!r.success) {
 					// 已撤下平台的存量连接静默丢弃 —— 判据见 isRetiredConnectionRecord。
 					if (isRetiredConnectionRecord(raw)) continue;
-					throw new ConfigValidationError(
-						"connections",
-						{ index: idx, issues: r.error.issues },
-						`connections.json[] failed schema validation`,
-					);
+					throw ConfigValidationError.fromZod("connections", r.error, {
+						subject: `connections.json 第 ${idx + 1} 行`,
+						prefix: [idx],
+					});
 				}
 				connections.push(r.data);
 			}
@@ -1217,11 +1171,10 @@ class NodeConfigStore implements ConfigStore {
 					// 已撤下平台的存量目标同理丢弃 —— 但判据是**另一条**(目标的平台是开放词表),
 					// 见 isRetiredTargetRecord。
 					if (isRetiredTargetRecord(raw)) continue;
-					throw new ConfigValidationError(
-						"targets",
-						{ index: idx, issues: r.error.issues },
-						`targets.json[${idx}] failed schema validation`,
-					);
+					throw ConfigValidationError.fromZod("targets", r.error, {
+						subject: `targets.json 第 ${idx + 1} 行`,
+						prefix: [idx],
+					});
 				}
 				targets.push(r.data);
 			}
@@ -1258,11 +1211,7 @@ class NodeConfigStore implements ConfigStore {
 
 		const targetsRaw = JSON.parse(await readFile(this.path("targets"), "utf8"));
 		if (!Array.isArray(targetsRaw)) {
-			throw new ConfigValidationError(
-				"targets",
-				{ message: "targets.json must be an array" },
-				"targets.json on disk is not an array",
-			);
+			throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
 		}
 
 		// Two possibilities: (a) already-new shape but the user manually deleted
@@ -1271,10 +1220,9 @@ class NodeConfigStore implements ConfigStore {
 		if (tryNew && targetsRaw.length > 0) {
 			// New shape but no connections file → bail with an explicit error so the
 			// user notices something is off rather than us silently inventing data.
-			throw new ConfigValidationError(
+			throw ConfigValidationError.invalid(
 				"connections",
-				{ message: "connections.json missing but targets.json is in new format" },
-				"connections.json missing but targets.json already in new format; cannot rebuild connections automatically",
+				"connections.json 不见了，但 targets.json 已经是新格式，连接没法自动重建",
 			);
 		}
 
@@ -1373,7 +1321,7 @@ class NodeConfigStore implements ConfigStore {
 		await this.runScoped("globals", async () => {
 			const parsed = GlobalConfigSchema.safeParse(next);
 			if (!parsed.success) {
-				throw new ConfigValidationError("globals", parsed.error.issues);
+				throw ConfigValidationError.fromZod("globals", parsed.error);
 			}
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
@@ -1386,7 +1334,7 @@ class NodeConfigStore implements ConfigStore {
 			const merged = deepMerge(this.globals, patch);
 			const parsed = GlobalConfigSchema.safeParse(merged);
 			if (!parsed.success) {
-				throw new ConfigValidationError("globals", parsed.error.issues);
+				throw ConfigValidationError.fromZod("globals", parsed.error);
 			}
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
@@ -1405,7 +1353,7 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("globals", async () => {
 			const parsed = GlobalConfigSchema.safeParse(update(deepClone(this.globals)));
 			if (!parsed.success) {
-				throw new ConfigValidationError("globals", parsed.error.issues);
+				throw ConfigValidationError.fromZod("globals", parsed.error);
 			}
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
@@ -1419,7 +1367,7 @@ class NodeConfigStore implements ConfigStore {
 		await this.runScoped("subscriptions", async () => {
 			const parsed = SubscriptionSchema.safeParse(sub);
 			if (!parsed.success) {
-				throw new ConfigValidationError("subscriptions", parsed.error.issues);
+				throw ConfigValidationError.fromZod("subscriptions", parsed.error);
 			}
 			const existing = this.subscriptions.find((s) => s.id === parsed.data.id);
 			if (existing) assertSubscriptionIdentityUnchanged(existing, sub, "bilibili");
@@ -1433,11 +1381,7 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("subscriptions", async () => {
 			const idx = this.subscriptions.findIndex((s) => s.id === id);
 			if (idx < 0) {
-				throw new ConfigValidationError(
-					"subscriptions",
-					{ id, message: "subscription not found" },
-					`subscription ${id} not found`,
-				);
+				throw ConfigValidationError.notFound("subscriptions", `没有 id 为 ${id} 的订阅`);
 			}
 			const current = this.subscriptions[idx] as Subscription;
 			// 补丁里没提的身份格就是「不改」,所以 kind 缺省不补。
@@ -1445,7 +1389,7 @@ class NodeConfigStore implements ConfigStore {
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = SubscriptionSchema.safeParse(merged);
 			if (!parsed.success) {
-				throw new ConfigValidationError("subscriptions", parsed.error.issues);
+				throw ConfigValidationError.fromZod("subscriptions", parsed.error);
 			}
 			const next = [...this.subscriptions];
 			next[idx] = parsed.data;
@@ -1499,7 +1443,7 @@ class NodeConfigStore implements ConfigStore {
 		const saved = await this.runScoped("connections", async () => {
 			const parsed = ConnectionSchema.safeParse(connection);
 			if (!parsed.success) {
-				throw new ConfigValidationError("connections", parsed.error.issues);
+				throw ConfigValidationError.fromZod("connections", parsed.error);
 			}
 			const existing = this.connections.find((a) => a.id === parsed.data.id);
 			if (existing) assertConnectionIdentityStable(existing, parsed.data);
@@ -1516,17 +1460,13 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("connections", async () => {
 			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) {
-				throw new ConfigValidationError(
-					"connections",
-					{ id, message: CONNECTION_NOT_FOUND },
-					`connection ${id} not found`,
-				);
+				throw ConfigValidationError.notFound("connections", `没有 id 为 ${id} 的连接`);
 			}
 			const current = this.connections[idx] as Connection;
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = ConnectionSchema.safeParse(merged);
 			if (!parsed.success) {
-				throw new ConfigValidationError("connections", parsed.error.issues);
+				throw ConfigValidationError.fromZod("connections", parsed.error);
 			}
 			assertConnectionIdentityStable(current, parsed.data);
 			const next = [...this.connections];
@@ -1551,10 +1491,9 @@ class NodeConfigStore implements ConfigStore {
 			// (互补:upsertTarget 侧 assertTargetOwner 也校验连接存在。)
 			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
 			if (!isWebhookConnection(connection) && referencing.length > 0) {
-				throw new ConfigValidationError(
+				throw ConfigValidationError.conflict(
 					"connections",
-					{ id, targetIds: referencing, message: "connection still in use" },
-					`connection ${id} is still referenced by ${referencing.length} target(s)`,
+					`这条连接还被 ${referencing.length} 个推送目标用着，先解除引用再删`,
 				);
 			}
 			const next = this.connections.filter((_, i) => i !== idx);
@@ -1598,7 +1537,7 @@ class NodeConfigStore implements ConfigStore {
 		await this.runScoped("targets", async () => {
 			const parsed = PushTargetSchema.safeParse(target);
 			if (!parsed.success) {
-				throw new ConfigValidationError("targets", parsed.error.issues);
+				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
@@ -1606,10 +1545,9 @@ class NodeConfigStore implements ConfigStore {
 			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
 			// 的,炸在这一步时 globals / 订阅 / 连接已经落盘,配置只剩半新半旧)。
 			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "connection") {
-				throw new ConfigValidationError(
+				throw ConfigValidationError.invalid(
 					"targets",
-					{ message: "webhook target is managed by its connection" },
-					"webhook targets are created from webhook connections automatically",
+					"webhook 目标由它的连接自动创建，不能手动新建",
 				);
 			}
 			let next = upsertById(this.targets, parsed.data);
@@ -1636,28 +1574,19 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) {
-				throw new ConfigValidationError(
-					"targets",
-					{ id, message: "target not found" },
-					`target ${id} not found`,
-				);
+				throw ConfigValidationError.notFound("targets", `没有 id 为 ${id} 的推送目标`);
 			}
 			const current = this.targets[idx] as PushTarget;
 			if (current.kind === "endpoint" && current.managedBy === "connection") {
-				throw new ConfigValidationError(
+				throw ConfigValidationError.conflict(
 					"targets",
-					{
-						id,
-						keys: Object.keys(patch as Record<string, unknown>),
-						message: "managed target cannot be edited directly",
-					},
-					`target ${id} is managed by its connection and cannot be edited directly`,
+					"这个推送目标由它的连接托管，不能直接改，改它的连接就行",
 				);
 			}
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = PushTargetSchema.safeParse(merged);
 			if (!parsed.success) {
-				throw new ConfigValidationError("targets", parsed.error.issues);
+				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
 			const next = [...this.targets];
@@ -1675,11 +1604,7 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) {
-				throw new ConfigValidationError(
-					"targets",
-					{ id, message: "target not found" },
-					`target ${id} not found`,
-				);
+				throw ConfigValidationError.notFound("targets", `没有 id 为 ${id} 的推送目标`);
 			}
 			const next = [...this.targets];
 			next[idx] = { ...(this.targets[idx] as PushTarget), testStatus: status };
@@ -1698,10 +1623,9 @@ class NodeConfigStore implements ConfigStore {
 			if (idx < 0) return false;
 			const target = this.targets[idx] as PushTarget;
 			if (target.managedBy === "connection") {
-				throw new ConfigValidationError(
+				throw ConfigValidationError.conflict(
 					"targets",
-					{ id, message: "managed target cannot be deleted directly" },
-					`target ${id} is managed by its connection and cannot be deleted directly`,
+					"这个推送目标由它的连接托管，不能直接删，删它的连接就行",
 				);
 			}
 			const next = this.targets.filter((_, i) => i !== idx);
@@ -1744,7 +1668,7 @@ class NodeConfigStore implements ConfigStore {
 			let globals: GlobalConfig | undefined;
 			if (next.globals !== undefined) {
 				const r = GlobalConfigSchema.safeParse(next.globals);
-				if (!r.success) throw new ConfigValidationError("globals", r.error.issues);
+				if (!r.success) throw ConfigValidationError.fromZod("globals", r.error);
 				globals = r.data;
 			}
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
@@ -1894,11 +1818,7 @@ function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
 	return items.map((item, idx) => {
 		const r = schema.safeParse(item);
 		if (!r.success) {
-			throw new ConfigValidationError(
-				scope,
-				{ index: idx, issues: r.error.issues },
-				`${scope}[${idx}] failed schema validation`,
-			);
+			throw ConfigValidationError.fromZod(scope, r.error, { prefix: [idx] });
 		}
 		return r.data;
 	});

@@ -1,10 +1,12 @@
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import { fail, type GlobalConfig, ok, type Result } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
+import { readJsonObject } from "./request-body.js";
+import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
 import type { RouteDeps } from "./types.js";
 
@@ -42,9 +44,11 @@ const DynamicCronSchema = z.string().refine(
  * `defaults.ai.enabled = true`, we actively probe before letting the patch
  * land. For image we require puppeteer to be wired AND able to spawn a page;
  * for AI we require apiKey/baseUrl/model + a successful OpenAI-compatible
- * chat completion. Failures surface as `400 enable_check_failed` with a
- * `message` the dashboard renders inline (Cards.tsx / Ai.tsx already wire
- * `ApiError.message` into their existing error bar).
+ * chat completion. 没过的一律是带标准码的失败(ADR-0026),`message` 面板原样内联显示
+ * (Cards.tsx / Ai.tsx 已把 `ApiError.message` 接进各自的错误条):要主人先去配的
+ * (没配 Chrome / key 是空的 / key 被拒 / 审批没有可用的私聊通道)是 `not_configured` 409,
+ * 对端暂时不通的是 `unavailable`,超时是 `timeout`,被限速是 `rate_limited`。
+ * 别名撞名是 `conflict` 409,拓展设置走错了口子是 `invalid`。
  */
 export function createGlobalsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -53,32 +57,17 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 	app.get("/", (c) => c.json(publicGlobals(deps.store.getGlobals())));
 
 	app.patch("/", async (c) => {
-		let body: unknown;
-		try {
-			body = await c.req.json();
-		} catch (_err) {
-			return c.json({ error: "invalid_json", message: "request body must be valid JSON" }, 400);
-		}
 		// We accept any shape here; the merged result is re-validated by Zod inside the store.
 		// Cheap upfront guard: must be an object (not array / scalar).
-		const shapeCheck = z.record(z.string(), z.unknown()).safeParse(body);
-		if (!shapeCheck.success) {
-			return c.json(
-				{
-					error: "invalid_payload",
-					message: "PATCH /api/globals body must be a JSON object",
-					issues: shapeCheck.error.issues,
-				},
-				400,
-			);
-		}
+		const read = await readJsonObject(c);
+		if (!read.ok) return respondFailure(c, read);
 		// 拓展设置有自己的口了(ADR-0019 决策 35),这里一格都不收 —— 老面板(应用内更新那几秒里
 		// 还开着的那一页)会整份写回,得拒掉并说清去哪儿写。先于别的检查:这一发整个作废。
-		const moved = extensionSettingsWriteOf(shapeCheck.data);
-		if (moved) return c.json({ error: "extension_settings_moved", message: moved }, 400);
+		const moved = extensionSettingsWriteOf(read.body);
+		if (moved) return respondFailure(c, fail("invalid", moved));
 		// 把 REDACTED sentinel 从 patch 里剥掉:前端 GET 拿到的是 redact 占位,如果
 		// 用户没在 UI 改 apiKey,PATCH body 会把占位原样回传 — 视为"保留原值"。
-		const patch = stripRedactedSecrets(shapeCheck.data);
+		const patch = stripRedactedSecrets(read.body);
 		// dynamicCron 是自由文本框,GlobalConfigSchema 只校验它是 string(迁移友好,
 		// 不能对已落盘的旧值变严格 —— 否则 load() 会在下次启动时对着别人存量数据
 		// 抛 ConfigValidationError,重新炸穿独立端)。写路径在这里单独拦一道:用
@@ -92,13 +81,14 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 		if (typeof cronPatch === "string") {
 			const parsed = DynamicCronSchema.safeParse(cronPatch);
 			if (!parsed.success) {
-				return c.json(
-					{
-						error: "invalid_payload",
-						message: `app.dynamicCron 不是合法的 cron 表达式："${cronPatch}"`,
-						issues: parsed.error.issues,
-					},
-					400,
+				return respondFailure(
+					c,
+					fail("invalid", `app.dynamicCron 不是合法的 cron 表达式："${cronPatch}"`, {
+						issues: parsed.error.issues.map((i) => ({
+							path: ["app", "dynamicCron"],
+							message: i.message,
+						})),
+					}),
 				);
 			}
 		}
@@ -109,9 +99,7 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			patch,
 			commands: deps.commands ?? [],
 		});
-		if (!aliasCheck.ok) {
-			return c.json({ error: "alias_conflict", message: aliasCheck.message }, 400);
-		}
+		if (!aliasCheck.ok) return respondFailure(c, aliasCheck);
 		// Enable-check pre-flight. Runs against the *merged* view so a request
 		// that only toggles `enabled=true` without restating apiKey still works
 		// (we read the still-persisted value as the effective field).
@@ -121,19 +109,12 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			puppeteer: deps.puppeteer,
 			targets: deps.store.getTargets(),
 		});
-		if (!enableCheck.ok) {
-			return c.json(
-				{ error: "enable_check_failed", scope: enableCheck.scope, message: enableCheck.message },
-				400,
-			);
-		}
+		if (!enableCheck.ok) return respondFailure(c, enableCheck);
 		try {
 			const next = await deps.store.patchGlobals(patch);
 			return c.json(publicGlobals(next));
 		} catch (err) {
-			if (err instanceof ConfigValidationError) {
-				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
-			}
+			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/globals failed", err);
 			throw err;
 		}
@@ -188,10 +169,6 @@ function publicGlobals(g: GlobalConfig): GlobalConfig {
 // Enable check
 // ---------------------------------------------------------------------------
 
-type EnableCheckResult =
-	| { ok: true }
-	| { ok: false; scope: "cardStyle" | "ai" | "roastSchedule"; message: string };
-
 interface EnableCheckArgs {
 	current: import("@bilibili-notify/internal").GlobalConfig;
 	patch: Record<string, unknown>;
@@ -213,26 +190,25 @@ export function checkApprovalEnable(
 	current: import("@bilibili-notify/internal").GlobalConfig,
 	patch: Record<string, unknown>,
 	targets: readonly import("@bilibili-notify/internal").PushTarget[],
-): EnableCheckResult {
+): Result {
 	// 同 per-scope gating:这次 patch 没碰 roastSchedule 就别插手,
 	// 否则存别的 tab 会被一个早就存在的 approval=true 拦住。
-	if (pluck(patch, ["roastSchedule"]) === undefined) return { ok: true };
+	if (pluck(patch, ["roastSchedule"]) === undefined) return ok();
 	const approval = mergedFlag(
 		current.roastSchedule.approval,
 		pluck(patch, ["roastSchedule", "approval"]),
 	);
-	if (!approval) return { ok: true };
+	if (!approval) return ok();
 
-	// 判据与话术住在 roast-approval-guard —— per-UP 那条(subs PATCH)用的是同一份。
-	const r = checkApprovalReachable({
+	// 判据、话术与码(`not_configured`)住在 roast-approval-guard —— per-UP 那条(subs PATCH)用的是同一份。
+	return checkApprovalReachable({
 		approvalOn: true,
 		masterTargetId: current.master.targetId,
 		targets,
 	});
-	return r.ok ? { ok: true } : { ok: false, scope: "roastSchedule", message: r.message };
 }
 
-async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult> {
+async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 	// Per-scope gating: the check only fires when *this* PATCH actually touches
 	// the scope. Otherwise saving the Cards tab would re-validate the live AI
 	// connection (and vice versa) simply because the persisted state already had
@@ -273,7 +249,7 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 		if (!r.ok) return r;
 	}
 
-	return { ok: true };
+	return ok();
 }
 
 /** 本次 patch 生效后当前用哪份实例 —— 指针可能就在这个 patch 里被换掉。 */
@@ -321,14 +297,13 @@ export function shouldRunAiEnableCheck(
 
 // ── Image / puppeteer probe ────────────────────────────────────────────────
 
-async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<EnableCheckResult> {
+async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<Result> {
 	if (!puppeteer) {
-		return {
-			ok: false,
-			scope: "cardStyle",
-			message:
-				"chromePath / chromeEndpoint 均未配置，无法启用卡片渲染。请在服务端 yaml 或环境变量（BN_CHROME_PATH 本地浏览器路径 / BN_CHROME_ENDPOINT 远程浏览器端点）中配置后重启。",
-		};
+		// 要主人先去配,等是等不好的。
+		return fail(
+			"not_configured",
+			"chromePath / chromeEndpoint 均未配置，无法启用卡片渲染。请在服务端 yaml 或环境变量（BN_CHROME_PATH 本地浏览器路径 / BN_CHROME_ENDPOINT 远程浏览器端点）中配置后重启。",
+		);
 	}
 	try {
 		const page = await puppeteer.page();
@@ -337,14 +312,15 @@ async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<E
 		} catch {
 			// best-effort; closing the probe page should not surface
 		}
-		return { ok: true };
+		return ok();
 	} catch (err) {
+		// 探活的目的就是告诉主人「为什么起不来」,所以底层的话(err.message)留在 message 里;
+		// 分不清是路径配错还是浏览器一时起不来,按「暂时不可用」回。
 		const detail = err instanceof Error ? err.message : String(err);
-		return {
-			ok: false,
-			scope: "cardStyle",
-			message: `puppeteer 启动失败：${detail}。请确认 chromePath 指向可执行的 Chromium / Chrome 二进制，或 chromeEndpoint 指向可达的远程浏览器。`,
-		};
+		return fail(
+			"unavailable",
+			`puppeteer 启动失败：${detail}。请确认 chromePath 指向可执行的 Chromium / Chrome 二进制，或 chromeEndpoint 指向可达的远程浏览器。`,
+		);
 	}
 }
 
@@ -358,16 +334,10 @@ interface AiProbeFields {
 }
 
 /** exported for tests —— 端点必须跟实例的接口风味走,这条契约要能被钉住。 */
-export async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckResult> {
-	if (!fields.apiKey) {
-		return { ok: false, scope: "ai", message: "apiKey 字段为空，启用 AI 前请先填写。" };
-	}
-	if (!fields.baseUrl) {
-		return { ok: false, scope: "ai", message: "baseUrl 字段为空，启用 AI 前请先填写。" };
-	}
-	if (!fields.model) {
-		return { ok: false, scope: "ai", message: "model 字段为空，启用 AI 前请先填写。" };
-	}
+export async function checkAiEnable(fields: AiProbeFields): Promise<Result> {
+	if (!fields.apiKey) return fail("not_configured", "apiKey 字段为空，启用 AI 前请先填写。");
+	if (!fields.baseUrl) return fail("not_configured", "baseUrl 字段为空，启用 AI 前请先填写。");
+	if (!fields.model) return fail("not_configured", "model 字段为空，启用 AI 前请先填写。");
 
 	// 探活打的端点跟实例的接口风味走 —— responses-only 的模型(o1-pro 这类)在
 	// /chat/completions 上是 404,打错端点等于把用户永久挡在自己的探活门外,
@@ -401,43 +371,61 @@ export async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckR
 			body: JSON.stringify(body),
 			signal: controller.signal,
 		});
-		if (res.ok) return { ok: true };
+		if (res.ok) return ok();
 		const text = await res.text().catch(() => "");
-		return { ok: false, scope: "ai", message: mapAiHttpError(res.status, text, fields) };
+		return failureOfAiHttpError(res.status, text, fields);
 	} catch (err) {
 		if (err instanceof Error && err.name === "AbortError") {
-			return {
-				ok: false,
-				scope: "ai",
-				message: `连接 ${fields.baseUrl} 超时（10s），请检查 baseUrl 与网络。`,
-			};
+			return fail("timeout", `连接 ${fields.baseUrl} 超时（10s），请检查 baseUrl 与网络。`);
 		}
 		const detail = err instanceof Error ? err.message : String(err);
-		return {
-			ok: false,
-			scope: "ai",
-			message: `连接 ${fields.baseUrl} 失败：${detail}。请检查 baseUrl 拼写、网络可达性与 TLS 证书。`,
-		};
+		return fail(
+			"unavailable",
+			`连接 ${fields.baseUrl} 失败：${detail}。请检查 baseUrl 拼写、网络可达性与 TLS 证书。`,
+		);
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
-function mapAiHttpError(status: number, text: string, fields: AiProbeFields): string {
+/**
+ * 探活遇到的 HTTP 错 → 带码的失败,状态码原样放 `upstreamCode`(平台自己的码不占 `code`)。
+ * key 被拒 / model 或路径不对是要主人回去改的配置 → `not_configured`(不是 `unauthorized`:那个码
+ * 留给「看板自己没登录」一类,而面板对 401 有全局反应);被限速 `rate_limited`;服务端错和别的
+ * 一律 `unavailable`。
+ */
+function failureOfAiHttpError(status: number, text: string, fields: AiProbeFields): Result {
 	const truncated = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+	const upstreamCode = status;
 	if (status === 401 || status === 403) {
-		return `apiKey 鉴权失败（HTTP ${status}）。响应：${truncated || "(空)"}`;
+		return fail(
+			"not_configured",
+			`apiKey 鉴权失败（HTTP ${status}）。响应：${truncated || "(空)"}`,
+			{
+				upstreamCode,
+			},
+		);
 	}
 	if (status === 404) {
-		return `model "${fields.model}" 不存在或 baseUrl 路径不对（HTTP 404）。响应：${truncated || "(空)"}`;
+		return fail(
+			"not_configured",
+			`model "${fields.model}" 不存在或 baseUrl 路径不对（HTTP 404）。响应：${truncated || "(空)"}`,
+			{ upstreamCode },
+		);
 	}
 	if (status === 429) {
-		return `请求被限速（HTTP 429）。响应：${truncated || "(空)"}`;
+		return fail("rate_limited", `请求被限速（HTTP 429）。响应：${truncated || "(空)"}`, {
+			upstreamCode,
+		});
 	}
 	if (status >= 500) {
-		return `服务端错误（HTTP ${status}）。响应：${truncated || "(空)"}`;
+		return fail("unavailable", `服务端错误（HTTP ${status}）。响应：${truncated || "(空)"}`, {
+			upstreamCode,
+		});
 	}
-	return `请求失败（HTTP ${status}）。响应：${truncated || "(空)"}`;
+	return fail("unavailable", `请求失败（HTTP ${status}）。响应：${truncated || "(空)"}`, {
+		upstreamCode,
+	});
 }
 
 // ── Merge helpers ──────────────────────────────────────────────────────────

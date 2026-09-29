@@ -80,10 +80,11 @@ describe("GET /api/qq/guilds/:connectionId", () => {
 		expect(body[0]?.guildId).toBe("G1");
 	});
 
-	it("adapter 不存在 → 404", async () => {
+	it("adapter 不存在 → 404 not_found", async () => {
 		const app = createQQRoute(makeDeps());
 		const r = await app.request("/guilds/nope");
 		expect(r.status).toBe(404);
+		expect(await r.json()).toEqual({ code: "not_found", message: "没有这个 QQ 官方机器人连接" });
 	});
 
 	it("非 qq-official adapter → 404", async () => {
@@ -94,9 +95,10 @@ describe("GET /api/qq/guilds/:connectionId", () => {
 		);
 		const r = await app.request("/guilds/a1");
 		expect(r.status).toBe(404);
+		expect(await r.json()).toMatchObject({ code: "not_found" });
 	});
 
-	it("枚举抛错 → 502", async () => {
+	it("枚举抛错 → 503 unavailable,带上游的话(不是 `Error: ` 打头的 String(err))", async () => {
 		fetchMock.mockImplementation(async (url: string) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
@@ -104,6 +106,10 @@ describe("GET /api/qq/guilds/:connectionId", () => {
 		});
 		const app = createQQRoute(makeDeps());
 		const r = await app.request("/guilds/a1");
-		expect(r.status).toBe(502);
+		expect(r.status).toBe(503);
+		expect(await r.json()).toEqual({
+			code: "unavailable",
+			message: "列出频道失败：列频道服务器 HTTP 401",
+		});
 	});
 });

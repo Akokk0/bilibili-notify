@@ -24,6 +24,7 @@ import type {
 	HistoryMessageRole,
 	PushKind,
 	PushStatus,
+	Result,
 	SubscriptionReportKind,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
@@ -486,9 +487,10 @@ export type BiliSubscriptionDTO = BiliSubscription &
  *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatar?, fans? }`,`avatar` 就是候选
  *   里那个位图 data URL。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),头像存成文件后资料里
  *   换成上面那个地址。宿主先核,都过了才落盘:`extensionId` 得是装着的 v2 订阅源(**不要求在跑**,
- *   决策 10),否则 400 `extension_not_installed` / `not_subscription_source`;同一拓展名下同一
- *   `externalId` 已经有了 → 409 `duplicate_subscription`;资料不合规矩(头像不是 png / jpeg / webp、
- *   魔数对不上、超过 128 KiB……)→ 400 `invalid_profile`。已有的整份 POST 回来(启用开关)照旧,
+ *   决策 10),没装是 404 `not_found`,装着但不是订阅源(v1 清单 / 没开订阅源那一口 / 清单读不出来)
+ *   是 400 `unsupported`;同一拓展名下同一 `externalId` 已经有了 → 409 `conflict`;资料不合规矩
+ *   (头像不是 png / jpeg / webp、魔数对不上、超过 128 KiB……)→ 400 `invalid`,`issues` 点名
+ *   `cachedProfile.*`。失败体一律是 {@link ErrorResponse}。已有的整份 POST 回来(启用开关)照旧,
  *   带来的 `cachedProfile` 不收。
  */
 export type ExtensionSubscriptionDTO = ExtensionSubscription & SubscriptionRuntimeDTO;
@@ -831,14 +833,22 @@ export interface FansResponse {
 
 // ---- 测试推送类端点(/api/push /api/cards /api/ai) --------------------------
 
-/** `POST /api/push/test` 响应(targetId 在 body 里);cards/test-push 与它同形。 */
-export interface TestResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
+/**
+ * `POST /api/push/test` 响应(targetId 在 body 里):试了一次、回报结果,**照旧回 200**,
+ * 体是 `Result<{ latencyMs }>` —— 送达了是 `{ ok: true, latencyMs }`,没送达是 `{ ok: false, code, message }`,
+ * 面板读 `message` 显示。耗时只在成功那一支:没真发出去的失败不带一个假的 `latencyMs: 0`。
+ *
+ * 请求本身不成(体不对、没这个目标、引擎没起)是非 2xx 的 {@link ErrorResponse},不在这里。
+ */
+export type TestResponse = Result<{ latencyMs: number }>;
 
-/** `POST /api/cards/test-push` 响应 —— 与 push 的 TestResponse 同形。 */
+/**
+ * `POST /api/connections/:id/test` 响应:探一次连接通不通,形状同 {@link TestResponse}。
+ * 这个平台没有探测协议(比如 webhook)是失败那一支的 `unsupported`,不是通、也不是不通。
+ */
+export type ConnectionTestResponse = Result<{ latencyMs: number }>;
+
+/** `POST /api/cards/test-push` 响应(还没迁到 `Result`)。 */
 export interface TestPushResponse {
 	ok: boolean;
 	latencyMs: number;

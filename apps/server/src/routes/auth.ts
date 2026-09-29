@@ -1,6 +1,8 @@
 import { BiliLoginStatus } from "@bilibili-notify/api";
+import { fail, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
+import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 export interface AuthRouteDeps extends RouteDeps {
@@ -19,6 +21,10 @@ export interface AuthRouteDeps extends RouteDeps {
  *
  * Note: the QR PNG itself is NOT returned over HTTP — it is published as a
  * `login-status-report` event over the WS `auth` channel by `LoginFlow.beginLogin`.
+ *
+ * 失败一律经 `respondFailure`(ADR-0026):已经有扫码在进行 `conflict` 409;流程抛错(bug 或没料到的故障)
+ * 回 `unavailable` 503 与一句固定的话,原因只进日志 —— 抛出来的原话不外泄。登录流程改走
+ * `SourceAuth` 后按结果形状回失败(construction-plan「施工中顺手修」,第 3a 期)。
  */
 export function createAuthRoute(deps: AuthRouteDeps): Hono {
 	const app = new Hono();
@@ -44,40 +50,34 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 			current.status === BiliLoginStatus.LOGIN_QR ||
 			current.status === BiliLoginStatus.LOGGING_QR
 		) {
-			return c.json(
-				{
-					error: "qr_already_active",
-					message: "A QR-login session is already in progress. Reset before starting a new one.",
-				},
-				409,
-			);
+			return respondFailure(c, fail("conflict", "已经有一个扫码登录在进行了，先重置再重新开始"));
 		}
 		try {
 			await deps.authSystem.beginLogin();
-			return c.json({ ok: true });
+			return c.json(ok());
 		} catch (err) {
 			log.error("POST /api/auth/qr failed", err);
-			return c.json({ error: "auth_failed", message: "failed to start QR login" }, 500);
+			return respondFailure(c, fail("unavailable", "发起扫码登录失败，详情在日志里"));
 		}
 	});
 
 	app.post("/cookies/refresh", async (c) => {
 		try {
 			await deps.authSystem.refreshCookies();
-			return c.json({ ok: true });
+			return c.json(ok());
 		} catch (err) {
 			log.error("POST /api/auth/cookies/refresh failed", err);
-			return c.json({ error: "auth_failed", message: "failed to refresh cookies" }, 500);
+			return respondFailure(c, fail("unavailable", "刷新 Cookie 失败，详情在日志里"));
 		}
 	});
 
 	app.post("/logout", async (c) => {
 		try {
 			await deps.authSystem.logout();
-			return c.json({ ok: true });
+			return c.json(ok());
 		} catch (err) {
 			log.error("POST /api/auth/logout failed", err);
-			return c.json({ error: "auth_failed", message: "failed to log out" }, 500);
+			return respondFailure(c, fail("unavailable", "退出登录失败，详情在日志里"));
 		}
 	});
 

@@ -59,6 +59,9 @@ export function respondFailure(
 /** 全局出错处理回给客户端的那一句:原话只进日志,不外泄。 */
 export const UNHANDLED_ERROR_MESSAGE = "服务端出错了，详情在日志里";
 
+/** 引擎还没挂上(启动中 / 没登录)时,要引擎才做得了的接口回的那一句。 */
+export const ENGINES_NOT_READY_MESSAGE = "服务还没准备好，请稍后重试";
+
 /** `notFound` 回的那一句。 */
 export const ROUTE_NOT_FOUND_MESSAGE = "没有这个接口";
 

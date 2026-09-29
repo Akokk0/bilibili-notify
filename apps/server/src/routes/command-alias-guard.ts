@@ -9,7 +9,7 @@
  * 各写一份的话,这里放行的配置到了那边照样撞,而那边只会记一行日志。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import { fail, type GlobalConfig, ok, type Result } from "@bilibili-notify/internal";
 import { effectiveAliases } from "../runtime/command-dispatcher.js";
 
 /** 检查只需要主名和内置别名,不需要 handler。 */
@@ -18,7 +18,8 @@ export interface AliasCheckCommand {
 	aliases?: readonly string[];
 }
 
-export type AliasCheckResult = { ok: true } | { ok: false; message: string };
+/** 撞名是 `conflict`(ADR-0026):一个词只能归一条指令,与现有的指令冲突。 */
+export type AliasCheckResult = Result;
 
 /**
  * @param commands 注册表。给不出时(路由没接上)只能退化成「别名之间互查」,
@@ -36,7 +37,7 @@ export function checkCommandAliases(args: {
 			commands?: { aliases?: Record<string, string[] | null> | null };
 		}
 	).commands;
-	if (incoming?.aliases === undefined) return { ok: true };
+	if (incoming?.aliases === undefined) return ok();
 
 	// deepMerge 语义:传了哪个键就替换哪个键的整份数组,没传的沿用盘上那份,
 	// **显式 `null` 是删除** —— 面板上的「恢复默认」就是删掉这个键、回落到内置别名。
@@ -59,16 +60,15 @@ export function checkCommandAliases(args: {
 			// 直接 throw,独立端就起不来了。报错文案仍用主人写的原样(见下)。
 			const prev = owner.get(trigger.toLowerCase());
 			if (prev !== undefined) {
-				return {
-					ok: false,
-					message:
-						prev === spec.name
-							? `「${spec.name}」的别名「${trigger}」和它自己重复了`
-							: `别名「${trigger}」被「${spec.name}」和「${prev}」同时占用了，一个词只能归一条指令`,
-				};
+				return fail(
+					"conflict",
+					prev === spec.name
+						? `「${spec.name}」的别名「${trigger}」和它自己重复了`
+						: `别名「${trigger}」被「${spec.name}」和「${prev}」同时占用了，一个词只能归一条指令`,
+				);
 			}
 			owner.set(trigger.toLowerCase(), spec.name);
 		}
 	}
-	return { ok: true };
+	return ok();
 }

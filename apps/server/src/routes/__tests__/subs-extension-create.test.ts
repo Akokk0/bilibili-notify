@@ -228,17 +228,19 @@ describe("新建拓展订阅", () => {
 	});
 
 	it.each([
-		["没装", "nope", "extension_not_installed"],
-		["v1 拓展", "oldie", "not_subscription_source"],
-		["只开了推送那一口", "pusher", "not_subscription_source"],
-	])("%s → 400,点名为什么,一样都不落", async (_label, extensionId, code) => {
+		["没装", "nope", "not_found", 404],
+		["v1 拓展", "oldie", "unsupported", 400],
+		["只开了推送那一口", "pusher", "unsupported", 400],
+		["清单读不出来", "broken", "unsupported", 400],
+	] as const)("%s → %i,点名为什么,一样都不落", async (_label, extensionId, code, status) => {
+		entries = [...entries, { id: "broken", dir: "/data/extensions/broken", state: "failed" }];
 		const res = await post({
 			...extSub({ extensionId }),
 			cachedProfile: { name: "某人", avatar: avatarDataUrl("png", PNG_BYTES) },
 		});
-		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe(code);
+		expect(res.status).toBe(status);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe(code);
 		expect(body.message).toContain(extensionId);
 		expect(await listed()).toEqual([]);
 		expect(await avatarFiles()).toEqual([]);
@@ -250,8 +252,10 @@ describe("新建拓展订阅", () => {
 
 		const dup = await post(extSub({ id: OTHER_ID }));
 		expect(dup.status).toBe(409);
-		const body = (await dup.json()) as { error: string; message: string };
-		expect(body.error).toBe("duplicate_subscription");
+		const body = (await dup.json()) as { code: string; message: string };
+		expect(body.code).toBe("conflict");
+		// 撞的是谁不再靠附加的 `id` 字段说,话里点名。
+		expect(body).not.toHaveProperty("id");
 		expect(body.message).toContain("douyin");
 		expect(body.message).toContain("sec-1");
 		expect((await listed()).map((s) => s.id)).toEqual([SUB_ID]);
@@ -269,9 +273,16 @@ describe("新建拓展订阅", () => {
 	])("头像是%s → 400,点名 cachedProfile.avatar,一样都不落", async (_label, avatar) => {
 		const res = await post({ ...extSub(), cachedProfile: { name: "某人", avatar } });
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe("invalid_profile");
-		expect(body.message).toContain("cachedProfile.avatar");
+		const body = (await res.json()) as {
+			code: string;
+			message: string;
+			issues: Array<{ path: string[]; message: string }>;
+		};
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("头像");
+		expect(body.issues).toEqual([
+			{ path: ["cachedProfile", "avatar"], message: expect.any(String) },
+		]);
 		expect(await listed()).toEqual([]);
 		expect(await avatarFiles()).toEqual([]);
 	});
@@ -283,14 +294,24 @@ describe("新建拓展订阅", () => {
 	])("资料里%s → 400", async (_label, cachedProfile) => {
 		const res = await post({ ...extSub(), cachedProfile });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("invalid_profile");
+		const body = (await res.json()) as { code: string; message: string; issues: unknown[] };
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("资料不合规");
+		expect(body.issues.length).toBeGreaterThan(0);
 		expect(await listed()).toEqual([]);
 	});
 
-	it("订阅本身形状不对(外部 id 是空串)→ 400 validation_failed,与 store 同一个口径", async () => {
+	it("订阅本身形状不对(外部 id 是空串)→ 400 invalid,与 store 同一个口径(中文话 + 逐格 issues)", async () => {
 		const res = await post({ ...extSub({ externalId: "" }), cachedProfile: { name: "某人" } });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("validation_failed");
+		const body = (await res.json()) as {
+			code: string;
+			message: string;
+			issues: Array<{ path: string[] }>;
+		};
+		expect(body.code).toBe("invalid");
+		expect(body.message).toMatch(/^订阅有 \d+ 格不合法：/);
+		expect(body.issues).toEqual([expect.objectContaining({ path: ["externalId"] })]);
 		expect(await listed()).toEqual([]);
 	});
 
@@ -334,9 +355,13 @@ describe("已有的照旧", () => {
 });
 
 describe("GET /api/subs/:id/avatar", () => {
-	it("没有头像 → 404;id 不是 uuid → 400", async () => {
-		expect((await app.request(`/api/subs/${SUB_ID}/avatar`)).status).toBe(404);
-		expect((await app.request("/api/subs/not-a-uuid/avatar")).status).toBe(400);
+	it("没有头像 → 404 not_found;id 不是 uuid → 400 invalid", async () => {
+		const missing = await app.request(`/api/subs/${SUB_ID}/avatar`);
+		expect(missing.status).toBe(404);
+		expect(await missing.json()).toEqual({ code: "not_found", message: "这条订阅没有头像" });
+		const bad = await app.request("/api/subs/not-a-uuid/avatar");
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toEqual({ code: "invalid", message: "订阅 id 要是 uuid" });
 	});
 });
 
