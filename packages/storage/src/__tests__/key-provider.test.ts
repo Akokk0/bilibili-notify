@@ -8,7 +8,7 @@
  *     getKey 生成 master.key 并缓存
  */
 
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -155,5 +155,17 @@ describe("FileKeyProvider", () => {
 		await p.getKey(); // 后续 SecretStore.save / CookieStore.init 复用缓存
 		expect(logger.info).toHaveBeenCalledTimes(1);
 		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("主密钥加载成功"));
+	});
+});
+
+describe("PassphraseKeyProvider — kdf.salt 原子写", () => {
+	it("写完 secrets 目录里只有 kdf.salt,不留临时文件", async () => {
+		await createKeyProvider({ passphrase: "pw", logger: makeLogger(), ...paths() }).getKey();
+		expect(await readdir(join(dir, "secrets"))).toEqual(["kdf.salt"]);
+	});
+
+	it.skipIf(process.platform === "win32")("POSIX 上 kdf.salt 权限是 0o600", async () => {
+		await createKeyProvider({ passphrase: "pw", logger: makeLogger(), ...paths() }).getKey();
+		expect((await stat(paths().saltPath)).mode & 0o777).toBe(0o600);
 	});
 });

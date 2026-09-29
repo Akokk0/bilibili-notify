@@ -8,7 +8,7 @@
  *   - 清除 cookie:两种模式都不动主密钥(文件模式下 master.key 内容不变)
  */
 
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
@@ -148,4 +148,41 @@ describe("CookieStore — 清除 cookie 不动主密钥", () => {
 		const reopened = await mkStore("pass-X"); // 同 passphrase + 磁盘 salt
 		expect((await reopened.sm.cookieStore.load())?.cookiesJson).toBe("after");
 	});
+});
+
+describe("CookieStore — 原子写", () => {
+	it("反复保存后 cookies.json 是最后一份完整内容,目录里不留临时文件", async () => {
+		const { sm } = await mkStore();
+		for (let i = 0; i < 5; i++) await sm.cookieStore.save({ cookiesJson: `v${i}` });
+		expect((await sm.cookieStore.load())?.cookiesJson).toBe("v4");
+		// master.key 是文件模式下 init 时生成的;除它与 cookies.json 之外不该有别的。
+		expect((await readdir(join(dataDir, "bilibili-notify"))).sort()).toEqual([
+			"cookies.json",
+			"master.key",
+		]);
+	});
+
+	it("写下去的仍是紧凑 JSON(不是 2 空格缩进、末尾无换行)", async () => {
+		const { sm } = await mkStore();
+		await sm.cookieStore.save({ cookiesJson: "x" });
+		const raw = await readFile(cookiePath(), "utf8");
+		expect(raw).toBe(JSON.stringify(JSON.parse(raw)));
+	});
+
+	it.skipIf(process.platform === "win32")("POSIX 上 cookies.json 权限是 0o600", async () => {
+		const { sm } = await mkStore();
+		await sm.cookieStore.save({ cookiesJson: "x" });
+		expect((await stat(cookiePath())).mode & 0o777).toBe(0o600);
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"覆盖一份旧的 0o644 cookies.json 后,权限收紧成 0o600",
+		async () => {
+			const { sm } = await mkStore();
+			await sm.cookieStore.save({ cookiesJson: "old" });
+			await chmod(cookiePath(), 0o644);
+			await sm.cookieStore.save({ cookiesJson: "new" });
+			expect((await stat(cookiePath())).mode & 0o777).toBe(0o600);
+		},
+	);
 });

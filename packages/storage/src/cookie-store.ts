@@ -1,6 +1,6 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile, unlink } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
+import { atomicWriteFile } from "./atomic-file";
 import type { KeyProvider } from "./key-provider";
 import { gcmDecrypt, gcmEncrypt } from "./secret-box";
 import type { StoredCookies } from "./types";
@@ -48,8 +48,9 @@ export class CookieStore {
 		if (data.refreshToken) {
 			stored.refreshToken = gcmEncrypt(key, data.refreshToken);
 		}
-		await mkdir(dirname(this.cookiePath), { recursive: true });
-		await writeFile(this.cookiePath, JSON.stringify(stored), "utf8");
+		// 原子写:写到一半被杀不会留下半截密文(半截 JSON 读回是"无法解密",等于无声掉线)。
+		// 内容仍是紧凑 JSON;0o600 —— 密文虽已加密,登录态文件也只给属主读。
+		await atomicWriteFile(this.cookiePath, JSON.stringify(stored), { mode: 0o600 });
 		this.logger.info("[cookie] Cookie 已保存到磁盘");
 	}
 

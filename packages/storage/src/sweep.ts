@@ -10,6 +10,17 @@ const TEMP_NAME = new RegExp(`${escapeRegExp(TEMP_MARKER)}\\d+\\.[0-9a-f]+$`);
 /** 整目录替换换下来的旧目录:`<名>.bn-old.<pid>.<十六进制>`(见 replace-directory)。 */
 const OLD_NAME = new RegExp(`^(.+)${escapeRegExp(OLD_MARKER)}\\d+\\.[0-9a-f]+$`);
 
+/**
+ * 名字里含 {@link TEMP_MARKER} 或 {@link OLD_MARKER} → 是原子写 / 整目录替换留下的暂存 / 旧目录。
+ * 给「开机扫一遍子目录建索引」的地方(皮肤库这类)跳过它们用,不必各自手写 `endsWith(".tmp")`。
+ *
+ * 判据比清扫宽:清扫要连 pid 与十六进制后缀都对上才动手删(删错了没法救),这里只是跳过,
+ * 宁可多跳一个。
+ */
+export function isLeftoverName(name: string): boolean {
+	return name.includes(TEMP_MARKER) || name.includes(OLD_MARKER);
+}
+
 export interface SweepReport {
 	/** 删掉的临时文件、暂存目录与多余的旧目录。 */
 	removed: string[];

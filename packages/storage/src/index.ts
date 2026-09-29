@@ -3,8 +3,14 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { CookieStore } from "./cookie-store";
 import { createKeyProvider, type KeyProvider } from "./key-provider";
 
-export { appendJsonl } from "./append-jsonl";
-export { type AtomicWriteOptions, atomicWriteFile, atomicWriteJson } from "./atomic-file";
+export { appendJsonl, appendLines } from "./append-jsonl";
+export {
+	type AtomicWriteOptions,
+	atomicWriteFile,
+	atomicWriteFileSync,
+	atomicWriteJson,
+	atomicWriteJsonSync,
+} from "./atomic-file";
 export type { CookieData } from "./cookie-store";
 export { CookieStore } from "./cookie-store";
 export { KeyManager } from "./key-manager";
@@ -14,8 +20,15 @@ export {
 	type KeyProvider,
 	PassphraseKeyProvider,
 } from "./key-provider";
-export { type JsonFileRead, quarantineFile, readJsonFile } from "./read-json";
-export { replaceDirectory } from "./replace-directory";
+export {
+	type JsonFileRead,
+	quarantineFile,
+	quarantineFileSync,
+	readJsonFile,
+	readJsonFileSync,
+} from "./read-json";
+export { removeDirectory } from "./remove-directory";
+export { type ReplaceDirectoryOptions, replaceDirectory } from "./replace-directory";
 export {
 	deriveKeyFromPassphrase,
 	type GcmBlob,
@@ -23,7 +36,7 @@ export {
 	gcmEncrypt,
 	isGcmBlob,
 } from "./secret-box";
-export { type SweepReport, sweepTempFiles } from "./sweep";
+export { isLeftoverName, type SweepReport, sweepTempFiles } from "./sweep";
 export type { StoredCookies } from "./types";
 
 export interface StorageManagerOptions {

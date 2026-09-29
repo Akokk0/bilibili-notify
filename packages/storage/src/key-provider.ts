@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
+import { atomicWriteFile } from "./atomic-file";
 import { KeyManager } from "./key-manager";
 import { deriveKeyFromPassphrase } from "./secret-box";
 
@@ -87,17 +87,10 @@ export class PassphraseKeyProvider implements KeyProvider {
 			);
 		}
 		const salt = randomBytes(16);
-		await mkdir(dirname(this.saltPath), { recursive: true });
-		// P2:唯一 tmp(pid + rand),对齐他处写盘约定。固定 `${saltPath}.tmp`
-		// 在并发首启(两进程同时无 salt)时互相覆盖 tmp → rename 出错乱 salt。
-		const tmp = `${this.saltPath}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
-		await writeFile(tmp, salt.toString("hex"), "utf8");
-		try {
-			await rename(tmp, this.saltPath);
-		} catch (e) {
-			await unlink(tmp).catch(() => {});
-			throw e;
-		}
+		// P2:原子写用唯一 tmp(pid + rand)。固定 `${saltPath}.tmp` 在并发首启
+		// (两进程同时无 salt)时互相覆盖 tmp → rename 出错乱 salt。
+		// salt 不是秘密,但与 master.key 同住 secrets 目录,权限一并收成 0o600。
+		await atomicWriteFile(this.saltPath, salt.toString("hex"), { mode: 0o600 });
 		return salt;
 	}
 }

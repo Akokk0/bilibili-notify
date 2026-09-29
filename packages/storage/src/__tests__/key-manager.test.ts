@@ -10,7 +10,7 @@
  * 「非缺失读错 → rethrow 不重生成」这条立刻挂。
  */
 
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -70,5 +70,27 @@ describe("KeyManager.loadOrCreate — ENOENT-discriminate (P0-A)", () => {
 		// 关键:keyPath 仍是目录(没有被 createNew 的原子 rename 覆盖成新 key 文件)
 		const { stat } = await import("node:fs/promises");
 		expect((await stat(keyPath())).isDirectory()).toBe(true);
+	});
+});
+
+describe("KeyManager.createNew — 原子写", () => {
+	it("写完 secrets 目录里只有 master.key,不留临时文件", async () => {
+		await new KeyManager(keyPath(), makeLogger()).loadOrCreate();
+		expect(await readdir(join(dir, "secrets"))).toEqual(["master.key"]);
+	});
+
+	it.skipIf(process.platform === "win32")("POSIX 上 master.key 权限是 0o600", async () => {
+		await new KeyManager(keyPath(), makeLogger()).loadOrCreate();
+		expect((await stat(keyPath())).mode & 0o777).toBe(0o600);
+	});
+
+	it("并发首启(两个实例同时没有 key):都不抛,落下一份合法 64 hex,不留临时文件", async () => {
+		// 固定名 `master.key.tmp` 时,两个写者互踩同一个临时文件,后改名的那个 ENOENT。
+		const results = await Promise.allSettled(
+			Array.from({ length: 8 }, () => new KeyManager(keyPath(), makeLogger()).loadOrCreate()),
+		);
+		expect(results.map((r) => r.status)).toEqual(Array(8).fill("fulfilled"));
+		expect(await readFile(keyPath(), "utf8")).toMatch(/^[0-9a-f]{64}$/);
+		expect(await readdir(join(dir, "secrets"))).toEqual(["master.key"]);
 	});
 });

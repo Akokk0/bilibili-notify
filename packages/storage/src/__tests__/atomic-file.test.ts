@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { atomicWriteFile, atomicWriteJson } from "../atomic-file";
+import {
+	atomicWriteFile,
+	atomicWriteFileSync,
+	atomicWriteJson,
+	atomicWriteJsonSync,
+} from "../atomic-file";
 
 /**
  * 持久化底层:原子写。都在真实的临时目录里跑,不桩文件系统 —— 要钉的正是「盘上最后长什么样」。
@@ -56,5 +61,57 @@ describe("atomicWriteFile", () => {
 		const bytes = new Uint8Array([0, 255, 1, 254]);
 		await atomicWriteFile(path, bytes);
 		expect(new Uint8Array(await readFile(path))).toEqual(bytes);
+	});
+});
+
+/**
+ * 同步版:开机早期的小状态(选版状态、拓展装载账本)今天是同步读写,改异步会一路传染,
+ * 所以补一份语义逐条一致的同步版。每条对着异步版的同名用例写。
+ */
+describe("atomicWriteJsonSync", () => {
+	it("写成 2 空格缩进、末尾换行;父目录不存在就建", async () => {
+		const path = join(dir, "config", "settings.json");
+		atomicWriteJsonSync(path, { a: 1, b: ["x"] });
+		expect(await readFile(path, "utf8")).toBe('{\n  "a": 1,\n  "b": [\n    "x"\n  ]\n}\n');
+		expect(await readdir(join(dir, "config"))).toEqual(["settings.json"]);
+	});
+
+	it("改名失败:抛出错误,临时文件删掉,原来的东西原样不动", async () => {
+		const path = join(dir, "state.json");
+		await mkdir(path); // 目标位置被一个目录占着,改名必失败
+		await writeFile(join(path, "keep"), "old");
+		expect(() => atomicWriteJsonSync(path, { a: 1 })).toThrow();
+		expect(await readdir(dir)).toEqual(["state.json"]);
+		expect(await readFile(join(path, "keep"), "utf8")).toBe("old");
+	});
+
+	it("反复覆盖:落下最后一份完整内容,不留临时文件", async () => {
+		const path = join(dir, "state.json");
+		for (let i = 0; i < 20; i++) atomicWriteJsonSync(path, { i, pad: "x".repeat(i * 100) });
+		expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ i: 19, pad: "x".repeat(1900) });
+		expect(await readdir(dir)).toEqual(["state.json"]);
+	});
+
+	it.skipIf(process.platform === "win32")("mode:新文件按给的权限位建", async () => {
+		const path = join(dir, "secrets", "master.key");
+		atomicWriteJsonSync(path, "k", { mode: 0o600 });
+		expect((await stat(path)).mode & 0o777).toBe(0o600);
+	});
+});
+
+describe("atomicWriteFileSync", () => {
+	it("字节原样写;覆盖已有文件", async () => {
+		const path = join(dir, "img.bin");
+		await writeFile(path, "old");
+		const bytes = new Uint8Array([0, 255, 1, 254]);
+		atomicWriteFileSync(path, bytes);
+		expect(new Uint8Array(await readFile(path))).toEqual(bytes);
+		expect(await readdir(dir)).toEqual(["img.bin"]);
+	});
+
+	it("字符串按 UTF-8 写", async () => {
+		const path = join(dir, "note.txt");
+		atomicWriteFileSync(path, "二");
+		expect(new Uint8Array(await readFile(path))).toEqual(new Uint8Array([0xe4, 0xba, 0x8c]));
 	});
 });
