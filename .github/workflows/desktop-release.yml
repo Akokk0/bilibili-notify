@@ -64,11 +64,11 @@ jobs:
 
       - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node + deps
         uses: voidzero-dev/setup-vp@v1.21.1
@@ -81,7 +81,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-standalone-version.sh
 
       # Rust 的质量门(fmt / clippy / test / check)**不在这儿** —— 搬去了
       # `rust-check.yml`,只在 `apps/desktop/**` 真的动了时跑。从前每打一个 tag 都在
@@ -113,7 +113,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: bash .github/scripts/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-standalone-version.sh
 
       - name: Build self-contained payload (server bundle + dashboard)
         env:
@@ -122,31 +122,31 @@ jobs:
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
-        run: bash .github/scripts/verify-macos-arm64-runner.sh
+        run: bash .github/scripts/desktop-release/verify-macos-arm64-runner.sh
 
       - name: Build Tauri bundle
         shell: bash
         env:
           TAURI_BUNDLES: ${{ matrix.bundles }}
-        run: bash .github/scripts/build-tauri-bundle.sh
+        run: bash .github/scripts/desktop-release/build-tauri-bundle.sh
 
       - name: Collect macOS artifacts
         if: matrix.id == 'mac-arm64'
-        run: bash .github/scripts/collect-macos-desktop-artifacts.sh
+        run: bash .github/scripts/desktop-release/collect-macos-desktop-artifacts.sh
 
       - name: Collect Windows artifacts
         if: matrix.id == 'win-x64'
         shell: pwsh
-        run: ./.github/scripts/collect-windows-desktop-artifacts.ps1
+        run: ./.github/scripts/desktop-release/collect-windows-desktop-artifacts.ps1
 
       - name: Assert macOS artifact contents
         if: matrix.id == 'mac-arm64'
-        run: bash .github/scripts/assert-macos-desktop-artifact.sh
+        run: bash .github/scripts/desktop-release/assert-macos-desktop-artifact.sh
 
       - name: Assert Windows portable artifact contents
         if: matrix.id == 'win-x64'
         shell: pwsh
-        run: ./.github/scripts/assert-windows-desktop-artifact.ps1
+        run: ./.github/scripts/desktop-release/assert-windows-desktop-artifact.ps1
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7
@@ -171,7 +171,7 @@ jobs:
           persist-credentials: false
 
       - name: Assert release commit is on dev
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       # release 正文经 scripts/changelog-section.mjs 抽 CHANGELOG 段,要 node;不装依赖。
       - name: Setup Vite+ (vp) + Node
@@ -182,7 +182,7 @@ jobs:
       - name: Validate release token
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: bash .github/scripts/validate-release-token.sh
+        run: bash .github/scripts/shared/validate-release-token.sh
 
       - name: Download desktop artifacts
         uses: actions/download-artifact@v8
@@ -193,13 +193,13 @@ jobs:
 
       - name: Read standalone version
         id: ver
-        run: bash .github/scripts/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-standalone-version.sh
 
       - name: Assert version tag compatibility
         env:
           VERSION: ${{ steps.ver.outputs.value }}
           REQUIRE_EXISTING_TAG: "1"
-        run: bash .github/scripts/assert-version-tag-compatible.sh
+        run: bash .github/scripts/shared/assert-version-tag-compatible.sh
 
       - name: Create GitHub release
         env:
@@ -207,7 +207,7 @@ jobs:
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/create-standalone-github-release.sh
+        run: bash .github/scripts/shared/create-standalone-github-release.sh
 
       - name: Upload release assets
         env:

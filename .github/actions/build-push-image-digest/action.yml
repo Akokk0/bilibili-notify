@@ -59,7 +59,7 @@ runs:
       shell: bash
       env:
         IMAGE_REF: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
-      run: bash .github/scripts/smoke-image.sh
+      run: bash .github/scripts/image-release/smoke-image.sh
 
     - name: Export digest
       if: inputs.dry_run == 'false'
@@ -68,4 +68,4 @@ runs:
         ARCH: ${{ inputs.arch }}
         DIGEST: ${{ steps.build.outputs.digest }}
         DIGESTS_DIR: ${{ inputs.digests_dir }}
-      run: bash .github/scripts/export-image-digest.sh
+      run: bash .github/scripts/image-release/export-image-digest.sh

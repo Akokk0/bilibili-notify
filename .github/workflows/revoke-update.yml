@@ -115,7 +115,7 @@ jobs:
         if: inputs.dry_run == false
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: bash .github/scripts/validate-release-token.sh
+        run: bash .github/scripts/shared/validate-release-token.sh
 
       # 逐条渠道刷。`issuedAt` 在上一步自动盖成现在,所以客户端的新鲜度记忆会接受这份、
       # 并从此拒收被撤回那版的旧清单 —— 加速站缓存或回放都推不回去。
@@ -129,7 +129,7 @@ jobs:
           set -euo pipefail
           for channel in $CHANNELS; do
             CHANNEL="$channel" FILE=dist/manifest.sig.json \
-              bash .github/scripts/publish-update-channel.sh
+              bash .github/scripts/shared/publish-update-channel.sh
           done
 
       - name: Summary

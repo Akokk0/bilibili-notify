@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { repoRoot } from "../desktop-release-gates.mjs";
 
 /**
- * `.github/scripts/create-standalone-github-release.sh` 被 desktop-release 与 update-payload
+ * `.github/scripts/shared/create-standalone-github-release.sh` 被 desktop-release 与 update-payload
  * **两条** workflow 调用,谁先到谁建 —— 所以它必须幂等,连「两边同时 create、一边报已存在」
  * 也得算成功。这里用一个假 `gh`(和假 `git`)把这几种时序在本地跑一遍。
  *
@@ -22,7 +22,7 @@ import { repoRoot } from "../desktop-release-gates.mjs";
  * 用 `CHANGELOG_FILE` 指到一份夹具,不读仓库里真的那份。
  */
 
-const script = join(repoRoot, ".github/scripts/create-standalone-github-release.sh");
+const script = join(repoRoot, ".github/scripts/shared/create-standalone-github-release.sh");
 const temps = [];
 afterEach(() => {
 	for (const t of temps.splice(0)) rmSync(t, { recursive: true, force: true });

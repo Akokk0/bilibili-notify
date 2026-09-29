@@ -86,11 +86,11 @@ jobs:
 
       - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node
         uses: voidzero-dev/setup-vp@v1.21.1
@@ -101,7 +101,7 @@ jobs:
       - name: Sync standalone version metadata
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-standalone-version.sh
 
       # 就地生成 apps/web/public/sponsors.json,经 Dockerfile `COPY . .` 进 builder →
       # vite build 打进 web dist/镜像。不回写仓库(同 sync-standalone-version)。未配
@@ -226,7 +226,7 @@ jobs:
           persist-credentials: false
 
       - name: Assert release commit is on dev
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       - name: Download digests
         uses: actions/download-artifact@v8
@@ -254,10 +254,10 @@ jobs:
 
       # 独立端版本号来自当前 v<VERSION> tag。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
-      # 脚本本体在 .github/scripts/read-standalone-version.sh。
+      # 脚本本体在 .github/scripts/shared/read-standalone-version.sh。
       - name: Read standalone version
         id: ver
-        run: bash .github/scripts/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-standalone-version.sh
 
       - name: Read checkout commit
         id: commit
@@ -269,7 +269,7 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.value }}
           REQUIRE_EXISTING_TAG: "1"
-        run: bash .github/scripts/assert-version-tag-compatible.sh
+        run: bash .github/scripts/shared/assert-version-tag-compatible.sh
 
       # 每 registry × variant(full / -slim)算一遍 tag 元数据、拼一次 manifest list 推出去。
       # 步骤本体见 .github/actions/create-manifest-for-variant —— 四份原本近乎逐字复制的

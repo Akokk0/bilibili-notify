@@ -223,7 +223,7 @@ node scripts/sign-update-manifest.mjs --version 0.9.0 --revoked 0.9.1 \
   --sha256 <那份 zip 的 sha256> --size <字节数> \
   --release-url https://github.com/Akokk0/bilibili-notify/releases/tag/v0.9.0 --out dist/manifest
 CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-notify \
-  bash .github/scripts/publish-update-channel.sh   # 预发布渠道再来一遍 CHANNEL=alpha
+  bash .github/scripts/shared/publish-update-channel.sh   # 预发布渠道再来一遍 CHANNEL=alpha
 ```
 
 ## 几条不许动的约定

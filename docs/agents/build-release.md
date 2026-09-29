@@ -28,6 +28,10 @@
 
 - **`assert-release-ref-on-dev.sh` 不是门禁。** 它只断言 tag 指向的 commit 在 `origin/dev` 上 —— 防的是「拿旁支 commit 发版」,不保证那个 commit 是绿的。dev 上一个测试红的 commit 照样能打 tag。堵这个口子的是 `gate`。
 
+## workflow 的脚本(`.github/scripts/`)
+
+`.github/scripts/` 下的脚本按「谁在用」分目录:只被一个 workflow 用的放 `.github/scripts/<workflow 文件名>/`(经它的 composite action 调的也算它的),两个及以上 workflow 用的放 `shared/`。`scripts/__tests__/github-scripts-layout.test.mjs` 钉着:没有从 workflow 走不到的孤儿脚本、workflow 只调自己目录和 `shared/` 里的、跨 workflow 目录互调也不行。
+
 ## 分支模型
 
 单主干,不按产品形态分叉。
@@ -42,7 +46,7 @@
 
 ### git tag = 唯一发布事实源
 
-独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/sync-standalone-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
+独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/shared/sync-standalone-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
 
 - `apps/server/package.json#version` —— 后端运行时 `/api/health.version` 与 Docker 镜像内版本。
 - `apps/web/package.json#version` —— 前端概览页展示。
@@ -113,7 +117,7 @@ bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、j
 `apps/desktop/layout.json` —— 起哪个入口、dashboard 摆哪、闸要查哪些文件,**只写在这里**。
 
 有四个消费者:生产端 `apps/desktop/scripts/prepare-resources.mjs`(摆文件)、两个发版闸
-`.github/scripts/assert-{macos,windows}-desktop-artifact.*`(查文件)、以及外壳
+`.github/scripts/desktop-release/assert-{macos,windows}-desktop-artifact.*`(查文件)、以及外壳
 `apps/desktop/src-tauri/src/main.rs`(决定起什么)。前三个**运行时读同一份 JSON**;
 外壳是 Rust,读不到(为一份三行的声明引 build.rs 不值当),所以那边留字面量,由
 `scripts/__tests__/desktop-release-gates.test.mjs` 核对它和声明说的是同一套。

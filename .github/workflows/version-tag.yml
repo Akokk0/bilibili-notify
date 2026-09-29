@@ -49,13 +49,13 @@ jobs:
         id: ver
         env:
           VERSION: ${{ inputs.version }}
-        run: bash .github/scripts/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-standalone-version.sh
 
       - name: Check existing version tag
         if: inputs.dry_run
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: bash .github/scripts/assert-version-tag-compatible.sh
+        run: bash .github/scripts/shared/assert-version-tag-compatible.sh
 
       - name: Dry-run summary
         if: inputs.dry_run
@@ -67,7 +67,7 @@ jobs:
         if: inputs.dry_run == false
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: bash .github/scripts/validate-release-token.sh
+        run: bash .github/scripts/shared/validate-release-token.sh
 
       - name: Create or verify version tag
         if: inputs.dry_run == false
@@ -75,4 +75,4 @@ jobs:
           VERSION: ${{ steps.ver.outputs.value }}
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/tag-commit-with-version.sh
+        run: bash .github/scripts/version-tag/tag-commit-with-version.sh

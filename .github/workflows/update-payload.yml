@@ -66,11 +66,11 @@ jobs:
 
       - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node
         uses: voidzero-dev/setup-vp@v1.21.1
@@ -87,7 +87,7 @@ jobs:
         id: ver
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-standalone-version.sh
 
       # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见
       # .claude/skills/release/changelog.md)。放在构建之前:找不到该段 / 概述为空 / 超长
@@ -108,7 +108,7 @@ jobs:
       - name: Sync standalone version metadata
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: bash .github/scripts/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-standalone-version.sh
 
       - name: Fetch afdian sponsors
         env:
@@ -167,7 +167,7 @@ jobs:
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: bash .github/scripts/validate-release-token.sh
+        run: bash .github/scripts/shared/validate-release-token.sh
 
       # 与 desktop-release 共用同一个幂等脚本:已存在就跳过,并发建了也算成功。
       - name: Create GitHub release (if missing)
@@ -177,7 +177,7 @@ jobs:
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/create-standalone-github-release.sh
+        run: bash .github/scripts/shared/create-standalone-github-release.sh
 
       # 载荷先于渠道清单上传(下面两步):清单一旦发布就有客户端来拉,它指的包必须已经在。
       - name: Upload payload + manifest to the version release
@@ -199,7 +199,7 @@ jobs:
           FILE: dist/manifest.sig.json
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/publish-update-channel.sh
+        run: bash .github/scripts/shared/publish-update-channel.sh
 
       - name: Publish alpha channel manifest
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
@@ -208,4 +208,4 @@ jobs:
           FILE: dist/manifest.sig.json
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/publish-update-channel.sh
+        run: bash .github/scripts/shared/publish-update-channel.sh

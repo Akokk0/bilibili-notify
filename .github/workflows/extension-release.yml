@@ -58,11 +58,11 @@ jobs:
         env:
           EXT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.id || '' }}
           EXT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/assert-extension-tag.sh
+        run: bash .github/scripts/extension-release/assert-extension-tag.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/extension/')
-        run: bash .github/scripts/assert-release-ref-on-dev.sh
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node
         uses: voidzero-dev/setup-vp@v1.21.1
@@ -122,7 +122,7 @@ jobs:
         if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: bash .github/scripts/validate-release-token.sh
+        run: bash .github/scripts/shared/validate-release-token.sh
 
       # 包先于索引上传:索引一旦发布就有客户端来拉,它指的包必须已经在。同名 release 已存在
       # 就是重跑,资产 --clobber 覆盖成同样的字节(打包是可复现的)。
@@ -150,7 +150,7 @@ jobs:
         if: steps.key.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-        run: bash .github/scripts/fetch-marketplace-index.sh
+        run: bash .github/scripts/extension-release/fetch-marketplace-index.sh
 
       - name: Merge this entry and sign the index
         if: steps.key.outputs.present == 'true'
@@ -178,4 +178,4 @@ jobs:
           FILE: dist/marketplace-next.sig.json
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/publish-extension-marketplace.sh
+        run: bash .github/scripts/extension-release/publish-extension-marketplace.sh

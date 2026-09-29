@@ -1,7 +1,7 @@
 // 桌面产物的布局**只声明一次**:`apps/desktop/layout.json`。
 //
 // 生产端(apps/desktop/scripts/prepare-resources.mjs)按它摆文件,两个发版闸
-// (.github/scripts/assert-*-desktop-artifact.*)按它查文件 —— 都是运行时读同一份 JSON,
+// (.github/scripts/desktop-release/assert-*-desktop-artifact.*)按它查文件 —— 都是运行时读同一份 JSON,
 // 不会飘。**外壳(apps/desktop/src-tauri/src/main.rs)是唯一读不到它的那个**:为一份
 // 三行的路径声明引一个 build.rs 不值当,所以那边留字面量,由这里核对两者说的是同一套。
 //
@@ -19,8 +19,8 @@ export { repoRoot };
 
 export const DESKTOP_GATE_FILES = {
 	mainRs: "apps/desktop/src-tauri/src/main.rs",
-	windows: ".github/scripts/assert-windows-desktop-artifact.ps1",
-	macos: ".github/scripts/assert-macos-desktop-artifact.sh",
+	windows: ".github/scripts/desktop-release/assert-windows-desktop-artifact.ps1",
+	macos: ".github/scripts/desktop-release/assert-macos-desktop-artifact.sh",
 	/** 真正**摆文件**的那一个。以前它一次都没被审过 —— 它挪一下,闸和外壳全绿,产物是坏的。 */
 	producer: "apps/desktop/scripts/prepare-resources.mjs",
 };

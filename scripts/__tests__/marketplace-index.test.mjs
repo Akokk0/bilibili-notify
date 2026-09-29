@@ -284,7 +284,7 @@ describe("签出来的索引,客户端验得过、读得出、过得了官方源
 });
 
 /**
- * tag 守卫(`.github/scripts/assert-extension-tag.sh`)里那两条 id / semver 正则是这边的
+ * tag 守卫(`.github/scripts/extension-release/assert-extension-tag.sh`)里那两条 id / semver 正则是这边的
  * **手抄**——它是 bash 的 `[[ =~ ]]`,import 不进来。松紧漂开的代价不对称:守卫**松**了,
  * 包会先被传上一个不可变 release,然后在并索引这一步才炸,市场上那条还停在老版本;
  * 守卫**紧**了,一个合法的 tag 打了等于没打,而错误信息说的是「id 不合规」。
@@ -297,7 +297,7 @@ describe("tag 守卫里那两条正则没跟这边漂开", () => {
 		join(
 			dirname(fileURLToPath(import.meta.url)),
 			"../..",
-			".github/scripts/assert-extension-tag.sh",
+			".github/scripts/extension-release/assert-extension-tag.sh",
 		),
 		"utf8",
 	);

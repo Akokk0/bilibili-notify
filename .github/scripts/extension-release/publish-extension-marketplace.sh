@@ -19,4 +19,4 @@ export NOTES="Signed index of official extensions. Maintained automatically."
 export ASSET="marketplace.json"
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-exec bash "$script_dir/publish-rolling-asset.sh"
+exec bash "$script_dir/../shared/publish-rolling-asset.sh"

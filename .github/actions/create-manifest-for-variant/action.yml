@@ -55,4 +55,4 @@ runs:
         IMAGE: ${{ inputs.image }}
         TAGS: ${{ steps.meta.outputs.tags }}
         DIGESTS_DIR: ${{ inputs.digests_dir }}
-      run: bash .github/scripts/create-manifest-list.sh
+      run: bash .github/scripts/image-release/create-manifest-list.sh

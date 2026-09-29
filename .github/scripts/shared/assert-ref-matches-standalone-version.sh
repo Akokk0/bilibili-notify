@@ -10,7 +10,7 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck source=.github/scripts/standalone-version-lib.sh
+# shellcheck source=.github/scripts/shared/standalone-version-lib.sh
 source "$script_dir/standalone-version-lib.sh"
 
 : "${GITHUB_REF_NAME:?GITHUB_REF_NAME env 必填(GHA 自动注入)}"

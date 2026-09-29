@@ -4,7 +4,7 @@
 # 由 .github/workflows/image-release.yml 的 build matrix(amd64)调用,也支持
 # 本地手动跑:
 #
-#   IMAGE_REF=bilibili-notify:dev bash .github/scripts/smoke-image.sh
+#   IMAGE_REF=bilibili-notify:dev bash .github/scripts/image-release/smoke-image.sh
 #
 # 必需 env:
 #   IMAGE_REF  镜像 ref(GHA 传 <IMAGE>@<digest>,本地可以 <name>:<tag>)

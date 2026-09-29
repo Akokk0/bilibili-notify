@@ -34,7 +34,7 @@ describe("载荷资产名只有一份声明", () => {
 	});
 
 	it("release 正文里给用户念的那个文件名也一致", () => {
-		const sh = read(".github/scripts/create-standalone-github-release.sh");
+		const sh = read(".github/scripts/shared/create-standalone-github-release.sh");
 		expect(sh).toContain(withVersion(payloadAssetName("0.0.0")));
 	});
 
@@ -71,7 +71,7 @@ describe("拼出来的地址", () => {
 describe("拓展包的名字只有一份声明", () => {
 	const shellVar = (name) => `$\{${name}}`;
 	const wf = () => read(".github/workflows/extension-release.yml");
-	const assertTag = () => read(".github/scripts/assert-extension-tag.sh");
+	const assertTag = () => read(".github/scripts/extension-release/assert-extension-tag.sh");
 	// tag 的前缀(含斜杠)从声明里现切,别手写 —— 手写的字面量只会复述现状,
 	// `extensionTag()` 改成别的形状它照样绿。
 	const prefix = `${extensionTag("x", "1.0.0").split("/")[0]}/`;

@@ -53,7 +53,7 @@ if gh release view "$tag" >/dev/null 2>&1; then
 fi
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-repo_root=$(cd "$script_dir/../.." && pwd)
+repo_root=$(cd "$script_dir/../../.." && pwd)
 changelog_file="${CHANGELOG_FILE:-$repo_root/apps/CHANGELOG.md}"
 if ! section=$(node "$repo_root/scripts/changelog-section.mjs" --version "$VERSION" --part section --file "$changelog_file"); then
 	echo "::error::CHANGELOG 里没有 [$VERSION] 这一段,release 正文没法写 —— 先补 CHANGELOG 再打 tag"
