@@ -96,11 +96,7 @@ jobs:
         id: notes
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          summary=$(node scripts/changelog-section.mjs --version "$VERSION" --part summary)
-          echo "summary: $summary"
-          echo "value=$summary" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/shared/read-release-summary.sh
 
       # 版本号只在构建前临时写进各处元数据,不回写仓库(同 Docker / Desktop 两条路)。
       # 载荷里那份 package.json 的 version 就是从这来的 —— 也就是客户端升级后
@@ -125,13 +121,7 @@ jobs:
         id: payload
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          out="dist/bilibili-notify-payload-${VERSION}.zip"
-          node scripts/build-update-payload.mjs --out "$out" > /tmp/payload.json
-          echo "path=$out" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(node -p "require('/tmp/payload.json').sha256")" >> "$GITHUB_OUTPUT"
-          echo "size=$(node -p "require('/tmp/payload.json').size")" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/update-payload/pack-update-payload.sh
 
       # 私钥没配就整条跳过,并把 warning 摆到 run summary 上。让发版红着的代价更大:
       # Docker / Desktop 都发出去了,唯独这条红,看着像发版失败。
@@ -144,24 +134,7 @@ jobs:
           SHA256: ${{ steps.payload.outputs.sha256 }}
           SIZE: ${{ steps.payload.outputs.size }}
           NOTES: ${{ steps.notes.outputs.value }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
-            echo "::warning::未配置 BN_UPDATE_SIGNING_KEY,跳过清单签名 —— 本次发版不会有应用内更新。生成方法见 docs/agents/self-update.md"
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          node scripts/sign-update-manifest.mjs \
-            --version "$VERSION" \
-            --payload-url "https://github.com/${REPO}/releases/download/v${VERSION}/bilibili-notify-payload-${VERSION}.zip" \
-            --sha256 "$SHA256" \
-            --size "$SIZE" \
-            --release-url "https://github.com/${REPO}/releases/tag/v${VERSION}" \
-            --notes "$NOTES" \
-            --out dist/manifest
-          # 清单本来就是公开发布的东西,打进日志让 dry-run 也能核对 notes 进没进去。
-          cat dist/manifest.json
-          echo "signed=true" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/update-payload/sign-payload-manifest.sh
 
       - name: Validate release token
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'

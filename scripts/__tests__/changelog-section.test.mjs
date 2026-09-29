@@ -155,11 +155,32 @@ describe("CLI:workflow 用的入口", () => {
 // 发版链两端隔着一次发版才各跑一次:这里核对 workflow 真的把概述喂进了签名脚本 ——
 // 抽概述那步被删、或 `--notes` 被漏掉,清单会带着空 notes 静默过关,只有下一版的
 // 通知卡上少了那句话才有人发现。
+// 抽概述与签清单都在 `.github/scripts/` 的脚本里,workflow 只剩调用与 env 接线,
+// 所以三处都要看:workflow 调了它们、NOTES 从抽概述那步的输出接进签清单那步、脚本里真的用上。
 describe("update-payload.yml 把概述喂进清单", () => {
-	const wf = readFileSync(join(repoRoot, ".github/workflows/update-payload.yml"), "utf8");
+	const read = (p) => readFileSync(join(repoRoot, p), "utf8");
+	const wf = read(".github/workflows/update-payload.yml");
+	/** 按 `id:` 取 workflow 里的一整个 step(从 `- name:` 到下一个 `- name:` 前)。 */
+	const stepOf = (id) => {
+		const found = wf
+			.split(/\n(?= {6}- name: )/)
+			.find((step) => new RegExp(`^ {8}id: ${id}$`, "m").test(step));
+		if (!found) throw new Error(`update-payload.yml 里找不到 id 为 ${id} 的 step`);
+		return found;
+	};
 
 	it("从 CHANGELOG 抽概述,再传给 sign-update-manifest 的 --notes", () => {
-		expect(wf).toContain('node scripts/changelog-section.mjs --version "$VERSION" --part summary');
-		expect(wf).toMatch(/sign-update-manifest\.mjs[\s\S]*--notes "\$NOTES"/);
+		expect(stepOf("notes")).toContain("run: bash .github/scripts/shared/read-release-summary.sh");
+		const readSummary = read(".github/scripts/shared/read-release-summary.sh");
+		expect(readSummary).toContain("node scripts/changelog-section.mjs");
+		expect(readSummary).toContain('--version "$VERSION"');
+		expect(readSummary).toContain("--part summary");
+
+		const sign = stepOf("sign");
+		expect(sign).toContain("run: bash .github/scripts/update-payload/sign-payload-manifest.sh");
+		expect(sign).toMatch(/NOTES: \$\{\{ steps\.notes\.outputs\.value \}\}/);
+		expect(read(".github/scripts/update-payload/sign-payload-manifest.sh")).toMatch(
+			/sign-update-manifest\.mjs[\s\S]*--notes "\$NOTES"/,
+		);
 	});
 });

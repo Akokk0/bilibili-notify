@@ -47,11 +47,7 @@ jobs:
       - name: Validate tag format
         env:
           TAG: ${{ inputs.tag }}
-        run: |
-          if ! printf '%s' "$TAG" | grep -Eq '^b[0-9]+$'; then
-            echo "::error::tag 必须形如 b1 / b2(不可变递增),得到: $TAG"
-            exit 1
-          fi
+        run: bash .github/scripts/base-image/assert-base-image-tag.sh
 
       # base 只有一层 apt 安装、无编译,QEMU 模拟 arm64 跑 dpkg 慢但可接受
       # (分钟级、且本 workflow 极少跑),不值得复制 image-release 的
@@ -63,16 +59,11 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       # 不可变 tag 不允许覆盖 —— 已存在同名 tag 时直接失败,换下一个编号。
-      # imagetools inspect 对公共仓库无需登录;镜像 / tag 不存在时非零退出。
       - name: Refuse overwriting an existing immutable tag
         if: ${{ !inputs.dry_run }}
         env:
           TAG: ${{ inputs.tag }}
-        run: |
-          if docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${TAG}" >/dev/null 2>&1; then
-            echo "::error::${DOCKERHUB_IMAGE}:${TAG} 已存在,不可变 tag 不允许覆盖"
-            exit 1
-          fi
+        run: bash .github/scripts/base-image/assert-base-image-tag-unused.sh
 
       - name: Log in to Docker Hub
         if: ${{ !inputs.dry_run }}

@@ -30,7 +30,7 @@
 
 ## workflow 的脚本(`.github/scripts/`)
 
-`.github/scripts/` 下的脚本按「谁在用」分目录:只被一个 workflow 用的放 `.github/scripts/<workflow 文件名>/`(经它的 composite action 调的也算它的),两个及以上 workflow 用的放 `shared/`。`scripts/__tests__/github-scripts-layout.test.mjs` 钉着:没有从 workflow 走不到的孤儿脚本、workflow 只调自己目录和 `shared/` 里的、跨 workflow 目录互调也不行。
+workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条命令算一行),更长的写成脚本,按「谁在用」分目录:只被一个 workflow 用的放 `.github/scripts/<workflow 文件名>/`(经它的 composite action 调的也算它的),两个及以上 workflow 用的放 `shared/`。`${{ }}` 表达式经 step 的 `env:` 传进脚本,不拼进 shell 文本。`scripts/__tests__/github-scripts-layout.test.mjs` 钉着:没有从 workflow 走不到的孤儿脚本、workflow 只调自己目录和 `shared/` 里的、跨 workflow 目录互调也不行。
 
 ## 分支模型
 

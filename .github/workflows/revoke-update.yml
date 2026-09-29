@@ -75,17 +75,7 @@ jobs:
           TARGET: ${{ inputs.target }}
           REVOKED: ${{ inputs.revoked }}
           CHANNEL: ${{ inputs.channel }}
-        run: |
-          set -euo pipefail
-          node scripts/revocation.mjs \
-            --repo "$REPO" \
-            --target "$TARGET" \
-            --revoked "$REVOKED" \
-            --channel "$CHANNEL" > /tmp/revoke.json
-          cat /tmp/revoke.json
-          for k in version revoked channels payloadUrl releaseUrl sha256 size; do
-            echo "$k=$(node -p "require('/tmp/revoke.json').$k")" >> "$GITHUB_OUTPUT"
-          done
+        run: bash .github/scripts/revoke-update/resolve-revocation.sh
 
       - name: Sign the revocation manifest
         env:
@@ -96,20 +86,7 @@ jobs:
           SIZE: ${{ steps.plan.outputs.size }}
           RELEASE_URL: ${{ steps.plan.outputs.releaseUrl }}
           REVOKED: ${{ steps.plan.outputs.revoked }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
-            echo "::error::未配置 BN_UPDATE_SIGNING_KEY —— 撤回必须签名,没有私钥就只能离线手跑(见 docs/agents/self-update.md)"
-            exit 1
-          fi
-          node scripts/sign-update-manifest.mjs \
-            --version "$VERSION" \
-            --payload-url "$PAYLOAD_URL" \
-            --sha256 "$SHA256" \
-            --size "$SIZE" \
-            --release-url "$RELEASE_URL" \
-            --revoked "$REVOKED" \
-            --out dist/manifest
+        run: bash .github/scripts/revoke-update/sign-revocation-manifest.sh
 
       - name: Validate release token
         if: inputs.dry_run == false
@@ -125,12 +102,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
           CHANNELS: ${{ steps.plan.outputs.channels }}
-        run: |
-          set -euo pipefail
-          for channel in $CHANNELS; do
-            CHANNEL="$channel" FILE=dist/manifest.sig.json \
-              bash .github/scripts/shared/publish-update-channel.sh
-          done
+        run: bash .github/scripts/revoke-update/publish-revoked-channels.sh
 
       - name: Summary
         env:
@@ -138,12 +110,4 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           CHANNELS: ${{ steps.plan.outputs.channels }}
           DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          {
-            echo "### 撤回"
-            echo ""
-            echo "- 撤回:\`$REVOKED\`"
-            echo "- 用户会被送到:\`$VERSION\`"
-            echo "- 渠道:\`$CHANNELS\`"
-            echo "- dry-run:\`$DRY_RUN\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/revoke-update/summarize-revocation.sh

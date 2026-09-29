@@ -28,10 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Explain allowed ref
-        run: |
-          echo "::error::version-tag can only run on dev; got $GITHUB_REF"
-          echo "::error::switch the workflow ref to dev before creating or dry-running a standalone tag"
-          exit 1
+        run: bash .github/scripts/version-tag/explain-version-tag-ref.sh
 
   tag:
     name: Create version tag

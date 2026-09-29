@@ -27,10 +27,16 @@ describe("载荷资产名只有一份声明", () => {
 	const withVersion = (s) => s.replaceAll("0.0.0", shellVar("VERSION"));
 
 	it("update-payload.yml 打包与签清单用的名字与声明一致", () => {
+		// 打包与签清单都挪进了脚本,workflow 里只剩 `bash …` 的调用:名字得去脚本里核对,
+		// 同时核对 workflow 真的还在调它们(否则脚本成了没人调的死文件,测试照样绿)。
 		const wf = read(".github/workflows/update-payload.yml");
-		expect(wf).toContain(withVersion(payloadAssetName("0.0.0")));
-		expect(wf).toContain(withVersion(payloadUrl(shellVar("REPO"), "0.0.0")));
-		expect(wf).toContain(withVersion(releaseUrl(shellVar("REPO"), "0.0.0")));
+		expect(wf).toContain("run: bash .github/scripts/update-payload/pack-update-payload.sh");
+		expect(wf).toContain("run: bash .github/scripts/update-payload/sign-payload-manifest.sh");
+		const pack = read(".github/scripts/update-payload/pack-update-payload.sh");
+		const sign = read(".github/scripts/update-payload/sign-payload-manifest.sh");
+		expect(pack).toContain(withVersion(payloadAssetName("0.0.0")));
+		expect(sign).toContain(withVersion(payloadUrl(shellVar("REPO"), "0.0.0")));
+		expect(sign).toContain(withVersion(releaseUrl(shellVar("REPO"), "0.0.0")));
 	});
 
 	it("release 正文里给用户念的那个文件名也一致", () => {
@@ -72,20 +78,35 @@ describe("拓展包的名字只有一份声明", () => {
 	const shellVar = (name) => `$\{${name}}`;
 	const wf = () => read(".github/workflows/extension-release.yml");
 	const assertTag = () => read(".github/scripts/extension-release/assert-extension-tag.sh");
+	const createRelease = () => read(".github/scripts/extension-release/create-extension-release.sh");
+	/** workflow 里 `run: bash .github/scripts/<dir>/<x>.sh` 调用的脚本路径。 */
+	const calledScripts = () =>
+		[...wf().matchAll(/run: bash (\.github\/scripts\/[\w-]+\/[\w.-]+\.sh)/g)].map((m) => m[1]);
 	// tag 的前缀(含斜杠)从声明里现切,别手写 —— 手写的字面量只会复述现状,
 	// `extensionTag()` 改成别的形状它照样绿。
 	const prefix = `${extensionTag("x", "1.0.0").split("/")[0]}/`;
 	const count = (haystack, needle) => haystack.split(needle).length - 1;
 
-	it("workflow 不再自己拼资产名与下载地址", () => {
-		expect(wf()).not.toContain("releases/download");
-		expect(wf()).not.toContain(extensionAssetName(shellVar("ID"), shellVar("VERSION")));
+	// 「不再自己拼」要扫**整条链**:workflow 里的 run 块已经挪进脚本,只扫 workflow 的话,
+	// 有人在脚本里把下载地址拼回来,这条照样绿。所以被扫的是 workflow 加上它调的每个脚本,
+	// 并先钉住「确实扫到了那几个脚本」—— 否则调用的写法一变、匹配不到,就又成了空转。
+	it("workflow 与它调的脚本都不再自己拼资产名与下载地址", () => {
+		const scripts = calledScripts();
+		for (const name of ["pack-extension", "create-extension-release", "sign-extension-index"])
+			expect(scripts).toContain(`.github/scripts/extension-release/${name}.sh`);
+		for (const source of [wf(), ...scripts.map(read)]) {
+			expect(source).not.toContain("releases/download");
+			expect(source).not.toContain(extensionAssetName(shellVar("ID"), shellVar("VERSION")));
+		}
 	});
 
 	it("`gh release create` 用的 tag 与声明的是同一个形状", () => {
-		expect(wf()).toContain(`tag="${extensionTag(shellVar("ID"), shellVar("VERSION"))}"`);
+		expect(calledScripts()).toContain(
+			".github/scripts/extension-release/create-extension-release.sh",
+		);
+		expect(createRelease()).toContain(`tag="${extensionTag(shellVar("ID"), shellVar("VERSION"))}"`);
 		// 标题就是那个 tag 变量本身,别再拼第二遍。
-		expect(wf()).toContain('--title "$tag"');
+		expect(createRelease()).toContain('--title "$tag"');
 	});
 
 	// 下面三条盯的是「发不出去、但也不红」那一类:tag 形状改了却漏改某处判据,打了 tag

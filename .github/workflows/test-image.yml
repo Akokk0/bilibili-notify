@@ -77,9 +77,4 @@ jobs:
             ${{ env.GHCR_IMAGE }}:test
 
       - name: Print pull instructions
-        run: |
-          echo "### 可以拉取测试了 🐾" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "docker pull ${{ env.DOCKERHUB_IMAGE }}:test" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/test-image/summarize-test-image.sh
