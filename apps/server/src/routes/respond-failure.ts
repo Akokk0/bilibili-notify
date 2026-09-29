@@ -16,6 +16,8 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * `unauthorized` 是 403 而不是 401:面板见 401 就把人踢回登录框,那只该是**看板自己**的登录失效;
  * 来源、平台的凭据失效(比如 B 站没登录)是一次操作失败了,回 403。看板鉴权那几处显式传 401。
  *
+ * `not_configured` 是 409:请求本身没错,是当前的配置不满足;503 带着「稍后再来」的意思,不对。
+ *
  * `unavailable` 是 503 而不是 500:全局出错处理把「抛出来的」都按它回,而抛错只留给 bug ——
  * 对客户端来说都是「服务这一下没成、稍后可以再来」。`indeterminate` 用 502:对端给了个说不清的结果。
  */
@@ -25,6 +27,7 @@ const STATUS_OF_CODE = {
 	unauthorized: 403,
 	rate_limited: 429,
 	unavailable: 503,
+	not_configured: 409,
 	timeout: 504,
 	unsupported: 400,
 	conflict: 409,

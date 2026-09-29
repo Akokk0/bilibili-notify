@@ -28,7 +28,8 @@
     | `invalid` | 输入或形状不对 | 否 |
     | `unauthorized` | 没登录或凭据失效 | 否 |
     | `rate_limited` | 被限流或风控 | 稍后 |
-    | `unavailable` | 对端或本地暂时不可用 | 稍后 |
+    | `unavailable` | 对端或本地暂时不可用（等一会儿就好） | 稍后 |
+    | `not_configured` | 要主人先去配好某样东西（装 Chrome、填 key、打开开关），等是等不好的 | 否 |
     | `timeout` | 超时 | 稍后 |
     | `unsupported` | 这个对端不支持这项操作 | 否 |
     | `conflict` | 与当前状态冲突（版本号对不上、重复） | 看场合 |

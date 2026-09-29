@@ -1858,6 +1858,9 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 /**
  * 标准码表(决策 3)。`retry` 是「自动重试」那一列:`no` 不重试,`later` 稍后重试,
  * `depends` 看场合,`never` 绝不重试(结果不明,可能已经成功,重来会重复)。
+ *
+ * `unavailable` 与 `not_configured` 别混:前者等一会儿就好(引擎还没挂上、库还没读完),
+ * 后者等多久都不会好,得主人先去配(装 Chrome、填 key、打开开关)。
  */
 export const FAILURE_CODES = {
 	not_found: { retry: "no" },
@@ -1865,6 +1868,7 @@ export const FAILURE_CODES = {
 	unauthorized: { retry: "no" },
 	rate_limited: { retry: "later" },
 	unavailable: { retry: "later" },
+	not_configured: { retry: "no" },
 	timeout: { retry: "later" },
 	unsupported: { retry: "no" },
 	conflict: { retry: "depends" },

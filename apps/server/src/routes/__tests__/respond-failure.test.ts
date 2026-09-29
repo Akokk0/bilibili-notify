@@ -11,6 +11,7 @@ describe("statusOf:失败码 → HTTP 状态码", () => {
 		["unauthorized", 403],
 		["rate_limited", 429],
 		["unavailable", 503],
+		["not_configured", 409],
 		["timeout", 504],
 		["unsupported", 400],
 		["conflict", 409],

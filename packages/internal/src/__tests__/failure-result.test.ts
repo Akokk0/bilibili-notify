@@ -10,13 +10,14 @@ import { z } from "zod";
 import { FAILURE_CODES, type Failure, fail, issuesFromZod, ok, type Result } from "../constants";
 
 describe("标准码表", () => {
-	it("十个码、按文档的顺序,各带「自动重试」那一列", () => {
+	it("十一个码、按文档的顺序,各带「自动重试」那一列", () => {
 		expect(FAILURE_CODES).toStrictEqual({
 			not_found: { retry: "no" },
 			invalid: { retry: "no" },
 			unauthorized: { retry: "no" },
 			rate_limited: { retry: "later" },
 			unavailable: { retry: "later" },
+			not_configured: { retry: "no" },
 			timeout: { retry: "later" },
 			unsupported: { retry: "no" },
 			conflict: { retry: "depends" },
@@ -29,6 +30,7 @@ describe("标准码表", () => {
 			"unauthorized",
 			"rate_limited",
 			"unavailable",
+			"not_configured",
 			"timeout",
 			"unsupported",
 			"conflict",
