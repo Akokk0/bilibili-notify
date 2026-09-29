@@ -5,7 +5,11 @@ import { argv, env, platform } from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
-const shutdownGraceMs = 8_000;
+/**
+ * 宽限期到了整组 SIGKILL。必须比服务端的关停预算(8 秒)长，不然服务端还在落盘就被杀了;
+ * 与桌面壳、Docker 的 10 秒对齐(scripts/__tests__/shutdown-budget.test.mjs 钉着)。
+ */
+export const shutdownGraceMs = 10_000;
 const backendReadyUrl = "http://127.0.0.1:8787/api/health";
 const backendReadyTimeoutMs = 20_000;
 const backendReadyIntervalMs = 200;

@@ -28,6 +28,8 @@ services:
     # 只是卡片图片渲染退化为文字推送。
     container_name: bilibili-notify
     restart: unless-stopped
+    # 停容器时等它收尾的时长。服务端关停最多 8 秒(落盘、关连接),到点才 SIGKILL。
+    stop_grace_period: 10s
     ports:
       - "8787:8787"
       # 用 OneBot 反向 WS 连接时,把它的监听端口也映射出来,如 "9797:9797"
