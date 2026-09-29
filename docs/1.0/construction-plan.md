@@ -60,7 +60,7 @@
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
 | ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | ✅ 已落 |
 | ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | ✅ 已落 |
-| ④a | 扫源码守卫的共用工具（`scripts/` 平铺的 `.mjs` 配 `.d.mts`，认字符串 / 模板 / 正则字面量、保行号），收编守卫 3、拓展边界、面板 internal 入口三份私抄；出网点名表（棘轮开） | |
+| ④a | 扫源码守卫的共用工具（`scripts/` 平铺的 `.mjs` 配 `.d.mts`，认字符串 / 模板 / 正则字面量、保行号），收编守卫 3、拓展边界、面板 internal 入口三份私抄；出网点名表（棘轮开） | ✅ 已落 |
 | ④b | 失败规矩落地（ADR-0026 决策 6）：`internal` 的标准码表、`Result` / `Failure` / `Issue`、`ok()` / `fail()`、`issuesFromZod`；服务端 `respondFailure` 与全局出错处理；非 2xx 与「做一件事回报结果」的回应、SSE 错误帧、WS 控制帧改形（现 `routes/subs.ts` 两处 B 站的码挪进 `upstreamCode`）；面板 `ApiError` 只解析一次、`errorMessage` 只认 `code` + `message`、删掉各处私有解析；守卫「错误体」（记账式）与「结果不手写」（棘轮）。盘上存的失败字段不动（决策 5） | |
 | ④c | `BiliEvents` → `BusEvents`，载荷一律具名对象（今天 3 个事件是位置参数、几个是裸 id 或数组）；contract 的 WS 事件表从它推导，面板 hook 去掉手写的类型断言；`log` 频道里日志行的字段不动（冻结格式）；事件载荷守卫（棘轮） | |
 | ④d | `/api/health` 进契约，删 4 个恒为 `null` 的死字段，面板 4 份私有的健康类型收成一份；面板把 contract 移进 `dependencies` | |
