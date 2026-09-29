@@ -165,6 +165,8 @@ export class BilibiliAPI {
 	}
 
 	stop(): void {
+		// 作废在途的 cookie 刷新:停下以后它不得再 onCookiesRefreshed 回写(关停返回后还落盘)。
+		this.refreshGeneration++;
 		this.ticketJob?.stop();
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;

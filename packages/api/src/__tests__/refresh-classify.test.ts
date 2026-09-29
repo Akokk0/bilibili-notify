@@ -66,3 +66,25 @@ describe("loadCookies — 损坏 JSON 不崩启动链 (P1)", () => {
 		expect(api.isLoginInfoLoaded()).toBe(false);
 	});
 });
+
+describe("stop — 作废在途的 cookie 刷新", () => {
+	it("stop 之后,在途那轮等到回应也不再往下刷(关停返回后不许再回写 cookie)", async () => {
+		const { ctx } = makeCtx();
+		const api = new BilibiliAPI({ serviceCtx: ctx, config: {} });
+		let answer!: (info: unknown) => void;
+		vi.spyOn(
+			api as unknown as { getCookieInfo: () => Promise<unknown> },
+			"getCookieInfo",
+		).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+		const importKey = vi.spyOn(globalThis.crypto.subtle, "importKey");
+
+		const running = api.checkIfTokenNeedRefresh("refresh-token", "csrf");
+		api.stop();
+		answer({ code: 0, data: { refresh: true, timestamp: Date.now() } });
+		await running;
+
+		// 刷新链的下一步就是拿公钥算 correspond path;走到这里说明这轮没被作废。
+		expect(importKey).not.toHaveBeenCalled();
+		importKey.mockRestore();
+	});
+});
