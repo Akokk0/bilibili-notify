@@ -352,7 +352,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 5 | 面板里 `"/api/"` 字面量只许出现在 `services/` |
 | 6 | 注释里写的仓内路径必须指向真实存在的文件 |
 | 7 | 测试只放 `__tests__/`；文件名一律 kebab-case（biome `useFilenamingConvention`）。前半已落：`scripts/__tests__/test-file-layout.test.mjs`，全仓无例外（`scripts/` 也搬进了 `__tests__/`） |
-| 8 | 服务关停返回以后，数据目录不再变化（端到端） |
+| 8 | 服务关停返回以后，数据目录不再变化（端到端）。已落：`apps/server/src/__tests__/data-dir-still-after-close-e2e.test.ts`，按写入发出的时刻垫延迟（关停开始前在路上的慢），没被关停等到的写一定落在返回之后，每次都红、不靠运气 |
 | 9 | 存储层拒收同一身份的第二条订阅，所有写入路径各一条测试 |
 | 13 | 迁移清单完整：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；对数据根的 `join(dataDir, …)` 前缀都必须在目录表里。加固（随各项）：重推原件的每个载荷 kind（`forward-images`、`miniapp-card`）与字段（`picUrl`、`path`）都要有去向 |
 | 14 | devtools 换桩表写死两项目录（`src/devtools`、`src/bilibili/devtools`，⛔ 不用通配），隔离测试认两个引用点。构建后自检不动。 |

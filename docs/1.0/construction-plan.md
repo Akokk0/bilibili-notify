@@ -59,7 +59,7 @@
 | --- | --- | --- |
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
 | ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | ✅ 已落 |
-| ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | |
+| ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | ✅ 已落 |
 | ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走 | |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |
 | ⑥ | 数据代、`.partial`、先 listen 再迁、第 0 步收编 0.x 升级链、订阅合一 + `Identity`、设置分段、身份唯一闸 + 守卫 9、守卫 12、B 站替身棘轮开 | |
@@ -82,15 +82,22 @@
 - `update/durable-json.ts` 并进原语（已做：留作策略层，导出改名 `readBestEffortJson` / `writeBestEffortJson`，底下是 storage 的同步原语）时注意：`boot.ts` 直接 import `select-version-for-boot`（它用 durable-json），所以这次改动会打进新载荷与新镜像里的选版代码；`boot-state.json` / `manifest-freshness.json` 在宿主根、格式冻结，改的只能是写法，不许动文件格式与位置。
 - `bn.config.yaml` 两处写（`config/loader.ts` 的 `writeFileAtomic`，写首启动的种文件与迁移后的用户文件；`config/persist.ts`）也走原子写底层：两处都改用 storage 的 `atomicWriteFile`（原子写字节，不碰 YAML 注释），守卫 3 不留白名单。
 
-③ 关停：
+③ 关停（已落，逐条对过）：
 
-- HTTP 排空排在第 9 步；顺序改成 data-and-migration「持久化底层与关停」那一条。
-- 一个 try 包住全程，任一步抛错后面全跳（含 stats 收尾）。
-- 没有总时限。
-- 第二次 Ctrl-C 直接杀。
-- 关停期日志 hook 被还原成 `undefined`。
-- `api.stop` 不加 `refreshGeneration`。
-- 关停返回以后还有写入落进数据目录：`roast-legacy-drafts-boot-e2e.test.ts` 收尾先关服务再删数据目录，偶发 `ENOTEMPTY`（在 `state/` 下），疑似某个存储关停时没等正在写的内容写完。守卫 8 要能抓到它；别给删目录加重试糊过去。
+- HTTP 排空排在第 9 步（实测是 11 步里的第 10 步）：改成按段跑，`stop` → `drain` → 等后台活 → `flush` → `dispose`，见 data-and-migration「持久化底层与关停」。
+- 一个 try 包住全程，任一步抛错后面全跳（含 stats 收尾）：钩子各自兜错，一个抛了只记一条。
+- 没有总时限：8 秒；HTTP 排空最多占 30%，`flush` 之前的等待至少给它留 25%。dev 启动器、compose 样例、桌面壳的硬杀时限都比它长，有守卫。
+- 第二次 Ctrl-C 直接杀：信号处理器挂到关停收完才摘，再来的信号与关停期的未捕获错误只记一笔。
+- 关停期日志 hook 被还原成 `undefined`：不再摘；日志归档排在最后一段，最终落盘先等在途的那一次。
+- `api.stop` 不加 `refreshGeneration`：已加，在途的 cookie 刷新随之作废。
+- 关停返回以后还有写入落进数据目录：守卫 8 把关停开始时还在路上的写入垫慢，稳定红在 `state/targets.json`（送达回调写回可达性，发出去就不管）；写道在 `flush` 段落盘并关门、发出去不管的写入改走 `track()` 之后转绿。那条 `ENOTEMPTY` 直接跑 44 次没复现过，按守卫 8 的红判定是同一个原因。
+
+施工中发现的（盘点时没列、这次一并修了或定了）：
+
+- `createSerialQueue` 全仓零个 flush / close 调用点，另有 11 条手写队列同样没人 flush：迁上原语、各 store 加 `close()`；皮肤与资产原名清单那两条是模块级、同进程的所有 store 共用，只 flush 不关门。
+- WS 关停只发关闭帧不断开，不回帧的对端能把 HTTP 排空拖满；拓展收摊每个最多等 30 秒；浏览器在 HTTP 排空之前就关了：都已按段与预算改掉。
+- 20 类发出去不管的写入，其中几处连 `.catch` 都没有；长跑的补发、关注同步、更新下载不接中止：都已接上。
+- `index.ts` 里两处 `config-changed` 监听的把手没人收（勘察报了五处，另三处其实交给拓展 ctx 收着）：写道在 `flush` 段关门以后不会再有 `config-changed`，没有能观察到的后果，不修。
 
 ## 分支与发 alpha
 

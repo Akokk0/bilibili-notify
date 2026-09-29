@@ -82,7 +82,7 @@ src/
   config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <dataDir>/state/*.json,emit config-changed)+ schema
   runtime/
     bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...)
-    service-context.ts    NodeServiceContext(pino + setInterval/setTimeout/onDispose)
+    service-context.ts    NodeServiceContext(pino + setInterval/setTimeout + 分段的 onDispose / track / signal,见下「关停」)
     message-bus.ts        NodeMessageBus(mitt 风格 BiliEvents emitter)
     engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
@@ -104,6 +104,22 @@ src/
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter + `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛);推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```
+
+#### 关停
+
+`close()` 只给预算(默认 8 秒,每个宿主的硬杀时限都比它长,`scripts/__tests__/shutdown-budget.test.mjs` 钉着)。收尾全靠各部件装配时往 serviceCtx 登记的钩子,按 `DisposePhase` 分段跑,同一段里后登记的先跑;一个钩子抛错只记一条,不连累后面的。
+
+| 段 | 放什么 |
+| --- | --- |
+| `stop` | 生产者:来源、拓展、引擎、平台连接、定时任务、鉴权。`serviceCtx.signal` 在这段之前就中止,挂着的 ctx 定时器也清掉 |
+| `drain` | HTTP 排空,最多占预算的 30%,到点强断剩下的连接(含不回关闭帧的 WS) |
+| (段间) | 等 `track()` 登记的后台活落定 |
+| `flush` | 统计补下播帧;各写道落盘并关门,关门后再交进来的写一律 `queue_closed` 拒绝、不碰盘 |
+| `dispose` | 其余:浏览器;日志归档排最后,关停期打的日志都赶得上它 |
+
+- 新加一个存盘的仓:写道用 internal 的 `createSerialQueue`,给仓一个 `close()`,在创建它的地方登记进 `flush` 段。它若往别的仓写,它的等待要登记在下游的 close **之后**(同段后登记的先跑),资料处理链与头像仓 / 资料缓存仓就是这样排的,有接线测试钉着。
+- 发出去不管的写入不许裸 `void`:交给 `serviceCtx.track(...)`,交进去的 promise 要把那笔写包在里面、失败自己接住;长跑的(重试退避、下载)接 `serviceCtx.signal` 叫停,别指望预算硬等。
+- 守卫 8(`__tests__/data-dir-still-after-close-e2e.test.ts`):关停返回以后数据目录不再变化。它把关停开始时还在路上的写入垫慢,没被等到的写一定落在关停之后;加了新的晚到写入,就在它的场景里补一步。
 
 ### `apps/web`
 
