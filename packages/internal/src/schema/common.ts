@@ -459,11 +459,11 @@ const AISettingsObjectSchema = z.object({
 				})
 				.default({ dynamic: false, live: false, roast: false }),
 		})
-		.default({
-			backend: "bocha",
+		.default(() => ({
+			backend: "bocha" as const,
 			keys: { bocha: "", tavily: "" },
 			engines: { dynamic: false, live: false, roast: false },
-		}),
+		})),
 	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
 	 * 填了就用 `presets` 里那一份。

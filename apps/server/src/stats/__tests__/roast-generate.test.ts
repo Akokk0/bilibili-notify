@@ -12,7 +12,7 @@
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import type { GlobalDefaults } from "@bilibili-notify/internal";
 import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { RoastGenDeps, RoastGenError } from "../roast-generate";
 import {
 	generateBoardRoast,
@@ -264,6 +264,12 @@ describe("失败分类 → 人话与状态码", () => {
 });
 
 describe("联网搜索 override(engines.roast)", () => {
+	// 下面读的是这一条自己打出去的调用:两个替身是模块级的,别指望跑测的默认替我们清。
+	beforeEach(() => {
+		comment.mockClear();
+		setWebSearchSource.mockClear();
+	});
+
 	it("engines.roast 开着 → comment 的 override 带 webSearch:true,且生成器接了搜索源", async () => {
 		const deps = makeDeps(["1", "2"]);
 		deps.store.getGlobals().defaults.ai.search.engines.roast = true;

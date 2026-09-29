@@ -325,7 +325,7 @@ const BiliSubscriptionObjectSchema = z
 		 *
 		 * UP 退订时这条配置跟着一起消失,不留孤儿调度。
 		 */
-		roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
+		roastSchedule: RoastScheduleSchema.default(() => structuredClone(DEFAULT_ROAST_SCHEDULE)),
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
 	.superRefine(refineExtrasWithinRouting);
@@ -366,7 +366,7 @@ export const ExtensionSubscriptionSchema = z
 		extras: SubscriptionExtrasSchema.default(emptyExtras),
 		overrides: SubscriptionOverridesSchema,
 		/** 这位的单人锐评定时推送 —— 同 B 站那一格(放顶层、不参与 `resolve()` 折叠的理由也同)。 */
-		roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
+		roastSchedule: RoastScheduleSchema.default(() => structuredClone(DEFAULT_ROAST_SCHEDULE)),
 	})
 	.superRefine(refineExtrasWithinRouting);
 export type ExtensionSubscription = z.infer<typeof ExtensionSubscriptionSchema>;
@@ -413,7 +413,7 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): BiliSu
 		extras: emptyExtras(),
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
-		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
+		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: [],
 	};
 }

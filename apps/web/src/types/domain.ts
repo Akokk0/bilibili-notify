@@ -249,7 +249,7 @@ export function makeEmptySubscription(uid: string): BiliSubscription {
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		// 与服务端的 makeEmptySubscription 保持一致。
-		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
+		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: [],
 		state: {
 			lastDynamicId: undefined,
@@ -282,7 +282,7 @@ export function makeEmptyExtensionSubscription(
 		routing: emptyRouting(),
 		extras: emptyExtras(),
 		overrides: {},
-		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
+		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
 		state: {
 			lastDynamicId: undefined,
 			lastPushedAt: {},

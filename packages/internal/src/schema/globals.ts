@@ -141,7 +141,7 @@ export const GlobalDefaultsSchema = z.object({
 	cardSkinKnobs: z.record(CardSkinIdSchema, CardSkinKnobOverridesSchema).default({}),
 	// 消息版式(发送侧结构):与 cardLayout 同款迁移友好策略,缺字段的老 globals.json
 	// load 时自动补默认(= 复刻现状:卡片+文本+链接合并一条)。
-	messageLayout: MessageLayoutSchema.default(DEFAULT_MESSAGE_LAYOUT),
+	messageLayout: MessageLayoutSchema.default(() => structuredClone(DEFAULT_MESSAGE_LAYOUT)),
 	// `.default(...)` 让缺 imageGroup 字段的老 globals.json(在加 imageGroup 子段
 	// 之前持久化的)load 时被 zod 自动补全 —— 否则 ConfigValidationError 让独立端
 	// 启动直接挂。新字段加 GlobalDefaults 时都该带 default,保留迁移友好性。
@@ -273,7 +273,7 @@ export const GlobalConfigSchema = z.object({
 	 * `.default(...)` 同 imageGroup / cardLayout:缺这个字段的老 globals.json 在
 	 * 独立端启动时被 `parse` 自动补全,否则直接 ConfigValidationError 开不了机。
 	 */
-	roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
+	roastSchedule: RoastScheduleSchema.default(() => structuredClone(DEFAULT_ROAST_SCHEDULE)),
 	/**
 	 * 全局静音到哪一刻(epoch ms)。`0` = 没在静音。
 	 *
@@ -291,12 +291,12 @@ export const GlobalConfigSchema = z.object({
 	 *
 	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
 	 */
-	commands: CommandConfigSchema.default(DEFAULT_COMMAND_CONFIG),
+	commands: CommandConfigSchema.default(() => structuredClone(DEFAULT_COMMAND_CONFIG)),
 	/**
 	 * 链接解析(群里贴视频链接自动出卡片)。独立端专有,放顶层同 `commands`。
 	 * `.default(...)` 是老配置兜底:少了它,存量实例升上来第一件事就是开不了机。
 	 */
-	linkParsing: LinkParsingConfigSchema.default(DEFAULT_LINK_PARSING),
+	linkParsing: LinkParsingConfigSchema.default(() => structuredClone(DEFAULT_LINK_PARSING)),
 	/**
 	 * 新手指引的持久状态。
 	 *
@@ -310,7 +310,7 @@ export const GlobalConfigSchema = z.object({
 	 * 时的回退」。`.default(...)` 是老配置兜底:独立端启动时 `parse` 会补上,
 	 * 少了它,存量实例升上来第一件事就是开不了机。
 	 */
-	update: UpdateSettingsSchema.default(DEFAULT_UPDATE_SETTINGS),
+	update: UpdateSettingsSchema.default(() => structuredClone(DEFAULT_UPDATE_SETTINGS)),
 	/**
 	 * 拓展的开关,键是拓展 id(= 装载目录名 = 挂载点那一段)。
 	 *
@@ -322,7 +322,9 @@ export const GlobalConfigSchema = z.object({
 	 */
 	extensions: z.record(z.string(), ExtensionStateSchema).default({}),
 	/** 拓展市场的第三方源。老配置没有这一段 → 空表。 */
-	marketplace: MarketplaceSettingsSchema.default(DEFAULT_MARKETPLACE_SETTINGS),
+	marketplace: MarketplaceSettingsSchema.default(() =>
+		structuredClone(DEFAULT_MARKETPLACE_SETTINGS),
+	),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
