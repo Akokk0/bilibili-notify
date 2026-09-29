@@ -358,7 +358,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 14 | devtools 换桩表写死两项目录（`src/devtools`、`src/bilibili/devtools`，⛔ 不用通配），隔离测试认两个引用点。构建后自检不动。 |
 | 15 | 桥协议的帧形状与通用 webhook 的 JSON 各一条快照守卫；webhook JSON 里的 `private` 写死 `false`（主人目标不可能是 webhook） |
 | 16 | 改名收尾：每批改完旧名 grep 为零（桥协议、webhook、`bilibili/` 里 B 站原字段、卡片皮肤包清单的 `author`（指皮肤作者）进白名单） |
-| 17 | 来源不读写文件：`bilibili/` 里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红 |
+| 17 | 集成不读写文件：`bilibili/` 与 `platforms/`（内置平台适配器也是集成，ADR-0025 决策 1）里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红 |
 | 18 | 保留 id：`bilibili` 与内置平台适配器的键（`onebot`、`qq-official`、`webhook`）`ExtensionIdSchema` 拒收，同拒绝原型名的写法 |
 | 19 | 主人目标必须是私聊目标：`master.targetId` 指向群目标时 schema 校验不过；面板选主人的下拉只列私聊目标。加固（随各项，ADR-0024 决策 14）：PATCH 把主人目标改成群目标直接拒收；`notifyMaster` 发送时复检，不是私聊就拒发（`invalid`） |
 | 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 |

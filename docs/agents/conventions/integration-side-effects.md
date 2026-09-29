@@ -46,10 +46,10 @@
 
 ## 怎么钉住
 
-- **守卫 17**（[docs/1.0/architecture.md](../../1.0/architecture.md)「其余守卫」，3a 期开，[construction-plan.md](../../1.0/construction-plan.md)「中立性守卫的归期」）：`bilibili/` 里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红。写法仿 `extension-import-boundary.test.ts`。**它只扫 `bilibili/`。**
+- **守卫 17**（[docs/1.0/architecture.md](../../1.0/architecture.md)「其余守卫」，3a 期开，[construction-plan.md](../../1.0/construction-plan.md)「中立性守卫的归期」）：`bilibili/` 与 `platforms/` 里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红。写法仿 `extension-import-boundary.test.ts`。拓展不在它的范围里，见下一条。
 - **守卫 3**（第 1 期切片 ②）：服务端除了持久化底层，不许直接写文件（`writeFile`、`rename`、`appendFile`）。管的是服务端整体，不专门管集成读文件。
 - **拓展**：官方市场发布时做静态检查，打包产物 import 了 `fs`（`fs`、`node:fs`、`fs/promises`）就不收；手动安装的第三方拓展安装时警告。
-- **靠审查**：内置平台适配器（`platforms/`）也是集成，目前没有守卫管它们读文件，拓展里的裸 `setInterval`、裸挂端点也没有单独编号的守卫。审 PR 时逐条看：
+- **靠审查**：拓展里的裸 `setInterval`、裸挂端点没有单独编号的守卫。审 PR 时逐条看：
   1. 集成目录里有没有 `fs`、`node:fs`、`fs/promises`、`path` 拼数据目录的痕迹。
   2. 状态是不是都经 `ctx.state`，凭据是不是都经 `ctx.secrets`；`set` / `delete` 的返回值有没有被看。
   3. 有没有模块顶层或 `activate` 里直接 `setInterval` / `setTimeout`、`http.createServer`、`new WebSocket(`、`new ws.Server(` 之类。

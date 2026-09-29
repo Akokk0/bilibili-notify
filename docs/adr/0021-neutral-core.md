@@ -214,6 +214,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - **B 站**：和拓展用同一个 `SourceContext`。cookie 走 `ctx.secrets`；`roomId`、`followed`、`followError` 搬出核心的订阅运行态，放进 B 站自己的 `ctx.state`。`bilibili/` 下 import `fs`，门禁判红，守卫写法同 `extension-import-boundary.test.ts`。
     - **拓展**：「不读写文件」写进契约；官方市场发布时做静态检查，打包产物 import 了 `fs` 就不收；手动安装的第三方拓展在安装时警告。
     - **真正的强制要靠沙箱**：拓展与 BN 在同一个进程里，现在拦不住，见「以后再说」。
+    🔗 **2026-09-29**：守卫 17 扩到 `platforms/`：内置平台适配器也是集成（ADR-0025 决策 1），同样不读写文件。
 
 ### 配置与密钥
 
