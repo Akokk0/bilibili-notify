@@ -71,6 +71,7 @@
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
 
 - 契约骨架归第 1 期切片 ④（主人 09-27 拍板）；错误体的防撞规矩见 [architecture.md](./architecture.md)。
+- ④b 只改线上的形状（HTTP 回应、SSE 与 WS 控制帧、契约类型），**盘上存的失败字段一个不碰**（ADR-0026 决策 5，随改盘上形状的那一期带迁移条目改）：历史每条消息的投递结果 `HistoryMessageResult.err` 与喂它的 `DeliveryResult.err`、`targets.json` 里连接与目标的 `testStatus`、应用内更新的 kebab `reason`。历史接口回的是存档的视图（`HistoryEntryView`），也照旧。
 - 契约做实的其余部分随契约骨架走（moduleVersions 删 api / dynamic / live 要等这几个包在 3a 删掉，那一小项留到 3a）：`/api/health` 补进契约、moduleVersions 删掉 api / dynamic / live、面板把 contract 移进 `dependencies`。`/api/health` 按 ADR-0025 决策 12 拆成短版（只留 `status`、`version`、`startedAt`、`uptime`）与 `/api/health/details` 随第 4 期健康卡做（拆了首页要先改读法，09-29 定）；moduleVersions 拆完以后去哪，到时候定。
 
 ### 切片 ② / ③ 的验收清单
