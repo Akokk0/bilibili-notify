@@ -154,8 +154,8 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 | `SubscriptionSource` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
 | `start(ctx)` / `stop()` | def 里的 `start` 拿到 `SourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
-| `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchPlaceholder?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了 |
-| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 改名 `searchPlaceholder`。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`） |
+| `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了 |
+| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`） |
 | `fetchProfile` | 可选；不实现就靠主动报资料。返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；整轮要不要刹车由拓展自己定 | 宿主适配补齐 |
 | `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选；`health()` 只交一行字 `{ summary }`，给健康卡与 `status` 指令 | 形状同中立接口 |
 | `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |

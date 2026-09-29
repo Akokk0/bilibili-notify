@@ -46,7 +46,7 @@ interface SourceHealth { summary: string }
 
 `SubscriptionSource` 共 10 个成员：descriptor、必备 4 个、可选 5 个。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
 
-新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字取 `descriptor.searchPlaceholder`（B 站「UID、主页链接或名字」，没写就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
+新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
 ## SourceDescriptor
 
@@ -59,7 +59,7 @@ interface SourceDescriptor {
   postNoun?: string;               // 这个平台管作品叫什么；缺省「作品」，B 站「动态」
   creatorNoun?: string;            // 这个平台管创作者叫什么；缺省「创作者」，B 站「UP主」
   externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」
-  searchPlaceholder?: string;      // 搜人输入框的提示；缺省「搜索{creatorNoun}」，B 站「UID、主页链接或名字」
+  searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」
   supportedFeatures: FeatureKey[]; // 支持哪些特性（开关、规则节按它铺）；订阅上「开没开」才叫 features
   supportedExtras?: ExtraKey[];    // 支持哪些附加项
   featureHints?: Partial<Record<FeatureKey, string>>;   // 特性开关下的小字；唯一允许写自由文字的一格
@@ -100,7 +100,7 @@ interface MembershipTier {
 | 创作者叫法：导航「订阅 UP 主」、「添加 UP 主」、「全部 UP 主」、空态、历史搜索框、模板变量说明「UP 主名字」 | `creatorNoun` | 「创作者」 |
 | 作品叫法：特性分组「动态」、规则节「动态过滤 / 图集 / 消息」、推送种类、统计列、雷达「动态量」、皮肤分类 | `postNoun` | 「作品」 |
 | 外部 id：卡上「UID 123」、「复制 UID」、「该 UID 已在订阅中」、单人页身份、特别关注「纯数字 UID」 | `externalIdNoun` | 「{label} · 123」、「复制 ID」 |
-| 搜人输入框提示 | `searchPlaceholder` | 「搜索{creatorNoun}」 |
+| 搜人输入框提示 | `searchAccepts`（只声明收哪几种输入，句子由叫法函数拼） | 「搜索{creatorNoun}」 |
 | 露出哪些特性开关、规则节、特别关注节 | `supportedFeatures` | — |
 | 露出哪些附加项（词云、总结）；「词云与总结只有 B 站有」这类小贴士也改看它（`BILI_ONLY_EXTRAS` 删掉） | `supportedExtras` | 不露 |
 | 特性开关下的小字 | `featureHints`（B 站写回「投稿 / 转发 / 专栏」「Super Chat 提醒」） | 能推导的推导：会员行 = 档名连起来，下播行 = 「下播卡片」加上挂在下面、且 `supportedExtras` 里有的附加项名；其余用核心的中性默认（「开播提醒」「醒目留言提醒」…） |

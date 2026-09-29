@@ -676,7 +676,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | --- | --- |
 | `Identity` 判别联合 `{ kind, uid }` / `{ kind, extensionId, externalId }`；`SourceKey` 的 `ext:<id>`；`sourceKeyOf` | `{ sourceKey, externalId }`；`bilibili` 或拓展 id，不加前缀；读 `identity.sourceKey` |
 | `SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription`；`EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX` | 删掉，按 `sourceKey` 判；`EXTERNAL_ID_MAX` |
-| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchPlaceholder`；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
+| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchAccepts`（提示句改由核心拼）；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
 | `fetchProfile` 查无此人回 `null` | 返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败 |
 | `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscriptionView{ externalId, features }`（从订阅现算、给来源看的只读形状；只列启用中） |
 | `reportSubscriptionsChanged` | 删掉（关注同步是 BN → B 站单向） |

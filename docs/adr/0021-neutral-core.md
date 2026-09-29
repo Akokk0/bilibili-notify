@@ -84,6 +84,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
    理由：原先按订阅 `kind` 分派认不出是哪个拓展，所以一度给拓展的键加 `ext:` 前缀；身份摊平（决策 14）以后分派直接读 `sourceKey`。前缀只是为了防拓展 id 恰好叫 `bilibili`，而不带点的 id 本就只留给官方源（ADR-0013），再把 `bilibili` 列为保留 id（`ExtensionIdSchema` 拒收），手动放进目录的拓展也撞不上，前缀就不需要了。
 10. **来源用 `descriptor` 做自我介绍（Q61、Q74、Q10；09-27 S5 修订）**：字段有 `label`、`shortLabel`、`color`、`postNoun`、`creatorNoun`、`searchPlaceholder`、`supportedFeatures`、`supportedExtras`、`membershipPrograms`。「支持哪些」加 `supported` 前缀，和订阅上表示「开没开」的 `features` 分开。拓展清单的 `contributes.subscription` 直接写这些同名字段，删掉 `display` 那一层与 `events`，宿主的对照表 `SUBSCRIPTION_EVENT_FEATURES` 删掉。面板、锐评、模板都只读它，所有 `isBili` 分叉删掉。B 站那一行的平台徽章，只在装了第二个订阅源时才画。
     🔗 **2026-09-28 ADR-0027**：描述符加 `externalIdNoun?`（决策 5）、`icon?` 与 `featureHints?`（决策 6）。
+    🔗 **2026-09-29**：`searchPlaceholder` 删掉，换成 `searchAccepts?: ("id" | "link" | "name")[]`：来源只声明搜人输入框收哪几种输入，提示句由 contract 的叫法函数拼（id 用 `externalIdNoun`，B 站三种都收，拼成「UID、主页链接或名字」），不声明就是「搜索{creatorNoun}」。描述符里的自由文字仍只有 `featureHints` 一格（ADR-0027 决策 6）。
 11. **资料刷新由核心定时拉取（Q54）**：
     - 核心按「资料刷新间隔」调 `fetchProfile`，这个间隔从 `fansCron` 迁来；
     - 对同一来源串行调用，防风控的间隔由来源自己管，B 站的 200ms 留在 `bilibili/`；
@@ -193,6 +194,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - `ctx`：`subscriptions`（改形状，决策 56）、`fetchImage`、`storeImage`、`state`、`secrets`、`redact`、`reportProblem` / `resolveProblem`。
     - 拓展的 `supportedFeatures` 只能声明 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因（09-27 S5）。
     - 契约里拓展的 `lookup` / `lookupPlaceholder` 改名 `searchCreators` / `searchPlaceholder`（09-27 S8）。
+      🔗 **2026-09-29**：`searchPlaceholder` 又换成声明式的 `searchAccepts`，见决策 10 下的 🔗。
 
     `linkResolver`、`commands`、`aiTools` 暂不对拓展开放：核心的接口与登记表照做，B 站照用，等写抖音拓展时再定。以后加进来，只是清单里多几个可选键，不用抬大版本。
     🔗 **2026-09-28**：ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`；上报类改成 `void`，被拒记进 `reportRejections`（ADR-0025 决策 1、6、10）。
