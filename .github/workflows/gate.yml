@@ -17,12 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Installs Vite+ (vp) globally, the repo-pinned Node from .node-version,
-      # and runs `vp install`. On GitHub Actions CI=true → the underlying pnpm
-      # install is frozen-lockfile automatically (= old `pnpm install
-      # --frozen-lockfile`). `cache: true` keys off pnpm-lock.yaml.
+      # Installs Vite+ (vp) globally at the version the root `vite-plus`
+      # devDependency names (setup-vp reads it by itself), the repo-pinned Node
+      # from .node-version, and runs `vp install`. On GitHub Actions CI=true →
+      # the underlying pnpm install is frozen-lockfile automatically (= old
+      # `pnpm install --frozen-lockfile`). `cache: true` keys off pnpm-lock.yaml.
+      # Every workflow pins setup-vp to an exact tag: its floating `v1` tag
+      # stopped at 1.15.0, before the install script was pinned to the requested
+      # vp version (1.18) and Windows cache links were restored correctly (1.21).
       - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
           cache: true

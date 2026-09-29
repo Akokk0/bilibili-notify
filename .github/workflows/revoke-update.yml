@@ -59,7 +59,7 @@ jobs:
       # 不装依赖:这条路上跑的两个脚本(revocation / sign-update-manifest)只用
       # node 内建。急事少一步是一步。
       - name: Setup Vite+ (vp) + Node
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
 

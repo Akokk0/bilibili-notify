@@ -53,7 +53,7 @@ jobs:
       # test → check)定义在 `apps/desktop/package.json`,本机 `vp run -F ... check:rust`
       # 跑的就是这一串。在这儿抄一遍 cargo 命令,迟早与本机那份飘。
       - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
           cache: true

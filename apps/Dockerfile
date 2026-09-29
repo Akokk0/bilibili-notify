@@ -28,7 +28,7 @@ ARG NODE_VERSION=24
 # 清单见 pnpm-workspace.yaml 顶部大注释)。官方只发 ghcr.io(amd64+arm64);CI 在
 # GHA 上拉 ghcr 走 GitHub 内网、很快。国内本地构建嫌慢时用 --build-arg 整体换成
 # 任意镜像加速源,风格同下方 BN_BASE_IMAGE。
-ARG VP_BUILDER_IMAGE=ghcr.io/voidzero-dev/vite-plus:0.3.0
+ARG VP_BUILDER_IMAGE=ghcr.io/voidzero-dev/vite-plus:1.0.0
 
 # runtime 底座:预装 chromium + CJK/emoji 字体 + tini 的自建 base(见
 # apps/base.Dockerfile)。这 ~300MB 冻结在 base 里,digest 只随 base 显式重建

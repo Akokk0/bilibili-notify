@@ -11,7 +11,7 @@ packages:
 #      pnpm describing ITSELF — `packageManagerDependencies` plus a `@pnpm/exe.*`
 #      entry per platform, with integrity hashes. So a pnpm bump now shows up as
 #      a lockfile diff; that is expected, not drift. It is a record only, nothing
-#      gets materialized: there is still no `pnpm` in node_modules or on PATH.
+#      gets materialized in node_modules.
 #   2. pnpm 12 errors on unknown keys here (ERR_PNPM_UNRECOGNIZED_WORKSPACE_
 #      SETTINGS) instead of silently ignoring them, so a typo'd setting fails the
 #      install rather than quietly doing nothing. Every key in this file is valid
@@ -33,6 +33,8 @@ packages:
 #   2. the overrides below (else the React frontends keep the old core)
 #   3. apps/Dockerfile `VP_BUILDER_IMAGE` ARG — the Docker builder builds on the
 #      official toolchain image and must run the same vp as everywhere else.
+# CI needs no edit: setup-vp installs whatever vp version the root `vite-plus`
+# devDep names. The action itself is pinned by exact tag (see gate.yml).
 # Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
 # declarations — installing a newer vite-plus package with an older CLI has
 # corrupted the lockfile before (biome's entry took on vite-plus's resolution).
@@ -52,8 +54,8 @@ packages:
 # those are published in the same minute. Otherwise: just wait 24h, which is the
 # entire point of the policy.
 overrides:
-  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
-  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
+  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@1.0.0"
+  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@1.0.0"
 
 # Shared dependency versions. Every package declares these as `"<dep>": "catalog:"`;
 # the version lives only here, so a bump is one edit and per-package drift (the

@@ -65,7 +65,7 @@ jobs:
         run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
           cache: true
