@@ -1,0 +1,51 @@
+name: 报告问题
+description: 哪里坏了，或者和预期不一样
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: Bilibili-Notify 的版本号
+      placeholder: v0.12.0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 部署方式
+      options:
+        - Docker
+        - 桌面版（macOS）
+        - 桌面版（Windows）
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 看到了什么，和预期哪里不一样
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: 按什么顺序做了什么；说不清就写「偶发」
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 出问题前后的日志。贴之前检查一下有没有 token、密钥这类不想公开的内容
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充
+      description: 截图、推送用的平台（NapCat、QQ 官方机器人、webhook 等）、相关的设置

@@ -1,0 +1,29 @@
+name: 功能建议
+description: 想要一个现在没有的功能，或者现有功能换个做法
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 现在哪里不方便，在什么场景下遇到
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 希望怎么做
+      description: 理想中它该怎么工作
+    validations:
+      required: true
+  - type: textarea
+    id: fallback
+    attributes:
+      label: 退一步也能接受的做法
+      description: 上面那样不好做的话，什么样的简化版也够用（可以不填）
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充
+      description: 截图、参考（别的工具是怎么做的）等
