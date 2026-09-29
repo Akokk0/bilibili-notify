@@ -30,7 +30,7 @@
 
 ### 失败
 
-一次操作的结果只有一种形状（ADR-0026）：成功是 `{ ok: true, … }`，失败是 `{ ok: false, code, message, upstreamCode? }`。通用类型的正式名字施工时定。
+一次操作的结果只有一种形状（ADR-0026）：成功是 `{ ok: true, … }`，失败是 `{ ok: false, code, message, upstreamCode? }`。通用类型叫 `Result<T>`（失败那一支 `Failure`，码 `FailureCode`，逐条原因 `Issue`），造的时候一律用 `ok()` / `fail()`（ADR-0026 决策 6）。
 
 - **抛错只留给 bug**。宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志。
 - **上游平台自己的错误码放 `upstreamCode`**，不占 `code`（B 站接口的数字码就放这里）。

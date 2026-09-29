@@ -71,6 +71,8 @@
 | 作品 | 核心里 `post`；B 站里 `dynamic`（动态） | `work` |
 | 走网络取数 | `fetch…`；`get…` 只留给不走网络的读取（`ctx.state.get`） | 走网络却叫 `get…` 的 |
 | 单个 / 一批 | `fetchUserCard` / `fetchUserCards` | `…Batch`、单复数对不上 |
+| 一次操作失败的那一支 | `Failure`（`{ ok: false, code, message, … }`）；整个结果 `Result<T>`，标准码 `FailureCode`；HTTP 非 2xx 的回应体 `ErrorResponse`（装的是去掉 `ok` 的 `Failure`） | `err`、`reason`、`why`（只管失败原因，ADR-0026 决策 2） |
+| 校验或检查不过的一条原因 | `Issue`（`{ path?, message }`） | 当原因清单用的 `errors: string[]`；`Problem` 只指问题表里的一条 |
 
 ## 不管的
 

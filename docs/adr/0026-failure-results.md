@@ -1,6 +1,6 @@
 # ADR-0026：失败规矩 —— 一次操作的结果与标准码
 
-- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**未施工**。
+- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）；09-29 施工前补决策 6。**未施工**。
 - **记录方式**：拷问当场落的定案；拍板前先做了一次全仓只读勘察。标准码表的正本放在 `internal`，施工参考见 [docs/1.0/](../1.0/)。
 - **影响面**：全仓的接口方法、HTTP 错误体、WS 控制帧、面板的错误提示、历史与重推里存的失败。
 - **依赖**：[ADR-0023](0023-neutral-naming.md) 决策 10、11（错误码大小写、`ok` 与 `code` + `message`）。
@@ -41,6 +41,12 @@
     - `searchCreators` 改成返回结果形状，失败不再靠抛。
     - 按决策 2 同样管到的：`fetchLiveStatus`（`LiveStatusResult` 改成 `{ ok: true, kind: "live" | "offline", … } | { ok: false, code, message }`）、`fetchPreview`、`SourceAuth.beginLogin` / `logout`。
 5. **旧数据**：历史里存的旧失败转成 `{ code: "unknown", message: 原话 }`；连接的探测状态不迁移，开机重探。
+6. **错误体与造结果的统一写法**（09-29，切片 ④ 勘察之后）：
+    - HTTP 非 2xx 的错误体 `{ code, message }` 之外只许两格附加：`issues`（`{ path?, message }[]`，拓展设置那处多一个 `op?`）与 `upstreamCode`；要加别的先问主人。勘察时的 `scope`、`id`、`revision`、`usedBy`、`detail` 面板不读或只拿来拼句子，删掉；`referencedBy` 并进 `message`；只装一句话的 `errors: string[]` 改成 `message`，真正的原因清单改成 `issues`。
+    - 造结果一律用 `internal` 的 `ok()` / `fail()`，不手写对象字面量。类型叫 `Result<T>`、`Failure`、`FailureCode`、`Issue`；HTTP 的错误体叫 `ErrorResponse`。路由经 `respondFailure` 回，状态码从 `code` 推；全局出错处理把抛出来的按 `unavailable` 回并记错误日志。
+    - 面板把非 2xx 解析一次成 `ApiError { status, code, message, issues }`，界面只按 `code` 分支，不再按状态码换文案。
+    - 理由：19 种形状里真离不开结构的只有逐格标红；其余附加字段不是没人读，就是把一句话拆成了几块。清单封闭，免得又长回 19 种。
+    - 盘上存的失败字段（历史的投递结果、`targets.json` 的探测状态、更新的 `reason`）仍按决策 5，随改盘上形状的那一期改。
 
 ## 取代与修订的旧条款
 
@@ -49,6 +55,7 @@
 | ADR-0021 决策 7「`searchCreators` 的错误文案由来源给」 | 修订：返回结果形状 | 4 |
 | ADR-0023 决策 10「错误码与问题码用 snake」 | 延伸：更新的 `reason` 也是失败原因，改 snake | 3 |
 | ADR-0023 决策 11「`reason` / `err` / `why` 不再出现」 | 收窄：只管失败原因 | 2 |
+| ADR-0023 决策 6「错误体统一成 `{ code, message }`」 | 延伸：可选 `issues`、`upstreamCode` 两格，清单封闭 | 6 |
 
 ## 明确不做
 

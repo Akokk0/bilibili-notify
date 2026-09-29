@@ -44,12 +44,12 @@
 
 | 期 | 开启 | 清零 / 必须绿 |
 | --- | --- | --- |
-| 1 | 切片 ④：事件载荷（总线事件载荷里不许有 `uid` 键、`Bili*` 类型、平台原始值的裸 string）、错误体的 `code` 只装 snake 字符串、出网点名表（棘轮）；切片 ⑥：守卫 12（连同解构与下标的读法）、B 站替身（棘轮） | — |
+| 1 | 切片 ④：出网点名表（棘轮，④a）、错误体（④b）、结果不手写（棘轮，④b）、事件载荷（棘轮，④c；总线事件载荷里不许有 `uid` 键、`Bili*` 类型、平台原始值的裸 string）；切片 ⑥：守卫 12（连同解构与下标的读法）、B 站替身（棘轮） | — |
 | 2 | 出图器零联网；守卫 10 扩到五种卡（直播、醒目留言、会员、词云、榜单），差异按「批准的像素差清单」裁决 | 两条都绿 |
 | 3a | 咽喉三道：入口咽喉、出口咽喉、咽喉 e2e（逐条驱动全部发送路径，每条恰好一条截流记录、零外连）；守卫 1、17、22；守卫 11 修订版（边界匹配、词表自动生成、扫 contract；3a 开头以棘轮开）；uid 棘轮；`.platform` 决定棘轮（推送侧）；推送守卫①；推送守卫②（棘轮，词表同期加宽并扫 contract）；守卫 18 的保留 id 加上三个内置适配器的键 | 守卫 21b（进程内对拍）绿，即 3a 检查点 |
-| 3b | 守卫 21a（契约层对拍）、推送守卫③（假适配器对拍）、模板变量可满足性、AI 工具与技能约束 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫②、出网点名表清零 |
+| 3b | 守卫 21a（契约层对拍）、推送守卫③（假适配器对拍）、模板变量可满足性、AI 工具与技能约束 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫②、出网点名表、事件载荷清零 |
 | 4 | 中文叫法棘轮 | B 站替身清零 |
-| 5 | 守卫补齐 | 中文叫法棘轮清零 |
+| 5 | 守卫补齐 | 中文叫法棘轮、结果不手写清零 |
 | 随各项 | 守卫 4 点名表补项（监听判定、身份索引、`displayNameOf`、`formatViewers`、作品文字的取段函数、叫法函数；禁面板自带路由键表）；守卫 19 在 PATCH 与发送时复检；守卫 13 补上重推原件的 `kind` | 随所在那一项 |
 | 施工时定 | 类型名后缀（ADR-0023 决策 15，扫我们写的全部类型名） | 施工时定 |
 
@@ -60,7 +60,10 @@
 | ① | storage / internal 的持久化原语（见 data-and-migration「持久化底层与关停」） | ✅ 已落 |
 | ② | 守卫 3 先红；它点名的 25 个直接写盘的文件迁上原语；`createAssetStore` / `createSkinStore` 合一 | ✅ 已落 |
 | ③ | ServiceContext `track()` + 分阶段 dispose + 8 秒关停 + 守卫 8 | ✅ 已落 |
-| ④ | 契约骨架：统一错误体 `{ code, message }` / `{ ok: false, code, message }`（ADR-0026；`code` 取 internal 里唯一那张标准码表，可选的 `upstreamCode` 装平台数字码，现 `routes/subs.ts` 两处改掉）+ WS 事件表（载荷一律具名对象、类型从总线事件表推导）+ 事件载荷守卫；面板 `errorMessage` 收成只认一种；契约做实的其余部分随它走；出网点名表（棘轮开）；本片新增的扫源码守卫与现有三份私抄（守卫 3、拓展边界、面板 internal 入口）收成一套共用工具 | |
+| ④a | 扫源码守卫的共用工具（`scripts/` 平铺的 `.mjs` 配 `.d.mts`，认字符串 / 模板 / 正则字面量、保行号），收编守卫 3、拓展边界、面板 internal 入口三份私抄；出网点名表（棘轮开） | |
+| ④b | 失败规矩落地（ADR-0026 决策 6）：`internal` 的标准码表、`Result` / `Failure` / `Issue`、`ok()` / `fail()`、`issuesFromZod`；服务端 `respondFailure` 与全局出错处理；非 2xx 与「做一件事回报结果」的回应、SSE 错误帧、WS 控制帧改形（现 `routes/subs.ts` 两处 B 站的码挪进 `upstreamCode`）；面板 `ApiError` 只解析一次、`errorMessage` 只认 `code` + `message`、删掉各处私有解析；守卫「错误体」（记账式）与「结果不手写」（棘轮）。盘上存的失败字段不动（决策 5） | |
+| ④c | `BiliEvents` → `BusEvents`，载荷一律具名对象（今天 3 个事件是位置参数、几个是裸 id 或数组）；contract 的 WS 事件表从它推导，面板 hook 去掉手写的类型断言；`log` 频道里日志行的字段不动（冻结格式）；事件载荷守卫（棘轮） | |
+| ④d | `/api/health` 进契约，删 4 个恒为 `null` 的死字段，面板 4 份私有的健康类型收成一份；面板把 contract 移进 `dependencies` | |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |
 | ⑥ | 数据代、`.partial`、先 listen 再迁、第 0 步收编 0.x 升级链、订阅合一 + `Identity`、设置分段、身份唯一闸 + 守卫 9、守卫 12、B 站替身棘轮开 | |
 | ⑦ | 回退指纹与重迁 | |
@@ -68,7 +71,7 @@
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
 
 - 契约骨架归第 1 期切片 ④（主人 09-27 拍板）；错误体的防撞规矩见 [architecture.md](./architecture.md)。
-- 契约做实的其余部分随契约骨架走（moduleVersions 删 api / dynamic / live 要等这几个包在 3a 删掉，那一小项留到 3a）：`/api/health` 补进契约、moduleVersions 删掉 api / dynamic / live、面板把 contract 移进 `dependencies`。`/api/health` 按 ADR-0025 决策 12 拆成短版（只留 `status`、`version`、`startedAt`、`uptime`）与 `/api/health/details` 放在哪一期、moduleVersions 拆完以后去哪，施工时定。
+- 契约做实的其余部分随契约骨架走（moduleVersions 删 api / dynamic / live 要等这几个包在 3a 删掉，那一小项留到 3a）：`/api/health` 补进契约、moduleVersions 删掉 api / dynamic / live、面板把 contract 移进 `dependencies`。`/api/health` 按 ADR-0025 决策 12 拆成短版（只留 `status`、`version`、`startedAt`、`uptime`）与 `/api/health/details` 随第 4 期健康卡做（拆了首页要先改读法，09-29 定）；moduleVersions 拆完以后去哪，到时候定。
 
 ### 切片 ② / ③ 的验收清单
 

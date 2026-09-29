@@ -10,7 +10,7 @@
 | # | 规范 | 管什么 |
 | --- | --- | --- |
 | 1 | [命名](naming.md) | 一个概念只用一个词：类型名的后缀表、词表，外部接口回应的起名；我们写的代码都管，第三方的管不到 |
-| 2 | [失败规矩](failure-results.md) | 可预期的失败回 `{ ok: false, code, message }`，`code` 只取标准码表；抛错只留给 bug |
+| 2 | [失败规矩](failure-results.md) | 结果一律用 `ok()` / `fail()` 造，失败是 `{ ok: false, code, message }`，`code` 只取标准码表；错误体只多 `issues`；抛错只留给 bug |
 | 3 | [中立性](neutrality.md) | 核心里不出现「B 站」这个概念：不按平台分叉，身份只有 `{ sourceKey, externalId }`，B 站只经登记表进核心，只有 `TargetDispatcher` 能发送 |
 | 4 | [叫法](nouns.md) | 创作者、作品、会员、ID 怎么叫：一个来源用它的叫法，混着用中性词，由 contract 里一个函数给；句子绕开量词；描述符不装句子 |
 | 5 | [集成副作用只经 ctx](integration-side-effects.md) | 集成不读写文件、不裸开定时器与端点；状态、凭据、请求、图、日志、收尾都经 ctx |

@@ -8,11 +8,15 @@
 
     ```ts
     // 对
-    return { ok: false, code: "not_found", message: "查无此人" };
+    return fail("not_found", "查无此人");
+    return ok({ profile });
     // 错
     return null;
     throw new Error("not found");
+    return { ok: false, code: "not_found", message: "查无此人" }; // 手写字面量
     ```
+
+    造结果一律用 `internal` 的 `ok()` / `fail()`，不手写对象字面量。类型：整个结果 `Result<T>`，失败那一支 `Failure`，码 `FailureCode`，逐条原因 `Issue`（`{ path?, message }`）。
 
 2. **抛错只留给 bug。** 宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志。调用方不该靠 `catch` 判断「查无此人」还是「暂时不可用」。
 
@@ -35,7 +39,7 @@
 
     ```ts
     // 对
-    return { ok: false, code: "rate_limited", message: "被风控了", upstreamCode: -352 };
+    return fail("rate_limited", "被风控了", { upstreamCode: -352 });
     // 错：平台的数字码塞进 code
     return { ok: false, code: -352, message: "被风控了" };
     ```
@@ -44,7 +48,7 @@
 
 6. **`unknown` 只用在两处**：迁移来的旧记录，以及冻结格式翻译过来、说不清原因的失败（如桥的回执）。
 
-7. **HTTP 非 2xx 的错误体是平铺的 `{ code, message }`**，不嵌套成 `{ error: { code, message } }`，也不用 `err`、`error`、`issues` 这类别的形状。面板的错误提示只读 `code` + `message` 这一处。
+7. **HTTP 非 2xx 的错误体是平铺的 `{ code, message }`**，可选附加只有两格：`issues`（逐条原因，`Issue[]`；拓展设置那处多一个 `op?`）与 `upstreamCode`。不嵌套成 `{ error: { code, message } }`，不用 `err`、`error` 代替 `code` + `message`；要加别的附加字段先问主人。路由一律经服务端的 `respondFailure(c, failure, status?)` 回，状态码从 `code` 推，类型叫 `ErrorResponse`；4xx 的错误体不带 `ok`。「做一件事、回报结果」的接口（测试推送、预览）照旧回 200，体是 `Result<T>`。面板把非 2xx 解析一次成 `ApiError`，错误提示只读 `code` + `message`，逐格标红读 `issues`，分情况只按 `code` 判。
 
 8. **ctx 上「请求类」的调用回结果形状，不抛。** 例：`state` / `secrets` 的写与删、`fetchImage`、`storeImage`。超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`，取图 404 回 `not_found`，超时回 `timeout`。「上报类」调用（`reportProblem`、`resolveProblem` 等）保持 `void`，被拒记进 `reportRejections`，不把结果回给来源。
 
@@ -70,7 +74,8 @@
 
 ## 怎么钉住
 
-- **守卫「错误体」**（[docs/1.0/architecture.md](../../1.0/architecture.md)「守卫」表，第 1 期切片 ④ 随契约骨架开）：契约测试，错误体与失败结果的 `code` 只装 snake 字符串，平台的数字码只在 `upstreamCode`。
+- **守卫「错误体」**（[docs/1.0/architecture.md](../../1.0/architecture.md)「守卫」表，第 1 期切片 ④b）：记账式，仿守卫 2。服务端测试的 app 外包一层，每个非 2xx 的 JSON 回应都对一遍 `ErrorResponse`（`code` 是 snake 字符串、`message` 非空、附加只有 `issues` / `upstreamCode`），不合的记账，每条测试收尾查账；现有的路由测试就是驱动。
+- **守卫「结果不手写」**（同表，④b 以棘轮开、第 5 期末清零）：非测试代码里手写 `ok: true` / `ok: false` 的对象字面量就红，`ok()` / `fail()` 所在的文件除外；类型里的 `{ ok: true }` 不算。
 - 「抛错只留给 bug」、问题码的写法，没有守卫，靠审查。
 
 审查时逐条看：
@@ -78,12 +83,12 @@
 - 新增的失败路径是不是回了结果形状，有没有 `return null` 或为了「查无此人」抛错。
 - `code` 是不是在标准码表里；自定义码是不是 snake_case。
 - 平台数字码有没有漏进 `code`；平台的原始响应有没有绕过来源层直接转给面板。
-- 新的 HTTP 错误体是不是平铺 `{ code, message }`。
+- 新的 HTTP 错误体是不是经 `respondFailure` 回的；附加字段有没有超出 `issues` / `upstreamCode`。
 - 自动重试的逻辑有没有按「自动重试」那一列判：`indeterminate` 绝不重试。
 
 ## 出处
 
-- [ADR-0026](../../adr/0026-failure-results.md)：决策 1（结果形状、抛错只留给 bug）、2（管与不管、`can`）、3（标准码表、自定义码、问题码、`reason` 改 snake、`unknown`）、4（改到的接口）、5（旧数据）、「明确不做」。
+- [ADR-0026](../../adr/0026-failure-results.md)：决策 1（结果形状、抛错只留给 bug）、2（管与不管、`can`）、3（标准码表、自定义码、问题码、`reason` 改 snake、`unknown`）、4（改到的接口）、5（旧数据）、6（错误体的附加字段、`ok()` / `fail()` 与类型名）、「明确不做」。
 - [ADR-0023](../../adr/0023-neutral-naming.md)：决策 6（错误体统一成 `{ code, message }`）、10（枚举值大小写）、11（`ok` 的例外、`upstreamCode`）。
 - [ADR-0025](../../adr/0025-integrations.md)：决策 10（ctx 上的调用被拒或失败）。
 - [ADR-0024](../../adr/0024-push-platform-adapter.md)：决策 14（`notifyMaster` 返回结果形状）。
