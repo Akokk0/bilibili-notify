@@ -126,9 +126,9 @@ describe("POST /font-asset —— 上传", () => {
 			const huge = new Uint8Array(21 * 1024 * 1024);
 			const res = await upload(route(makeDeps({ dataDir: dir })), "巨无霸.ttf", huge);
 			expect(res.status).toBe(413);
-			const json = (await res.json()) as { ok: boolean; err: string };
-			expect(json.ok).toBe(false);
-			expect(json.err).toContain("过大");
+			const json = (await res.json()) as { code: string; message: string };
+			expect(json.code).toBe("invalid");
+			expect(json.message).toContain("过大");
 			expect(await listFontAssets(dir)).toEqual([]);
 		});
 	});

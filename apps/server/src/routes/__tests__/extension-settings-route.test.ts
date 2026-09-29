@@ -24,6 +24,7 @@ import type {
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import type { ExtensionContext } from "../../extensions/context.js";
@@ -181,7 +182,7 @@ async function boot(opts: {
 			extensions: { douyin: { settings: opts.settings } },
 		} as never);
 	}
-	const mounts = createExtensionMounts();
+	const mounts = createExtensionMounts({ logger: silentLogger });
 	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
 	let activations = 0;
 	const loader = await loadExtensions({

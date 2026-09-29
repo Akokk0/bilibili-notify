@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { ExtensionContext } from "../context.js";
 import { type LoadedExtensions, loadExtensions } from "../loader.js";
@@ -100,7 +101,7 @@ async function boot(
 	const loaded: LoadedExtensions = await loadExtensions({
 		root,
 		host,
-		mounts: createExtensionMounts(),
+		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),

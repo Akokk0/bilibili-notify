@@ -12,6 +12,7 @@ import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-not
 import type { GlobalConfig, ServiceContext } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import type { ConfigStore } from "../../config/store.js";
 import type { ActionOutcome, LookupOutcome } from "../../extensions/context.js";
 import {
@@ -116,7 +117,7 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 	return loadExtensions({
 		root: installRoot,
 		host: quietHost(),
-		mounts: createExtensionMounts(),
+		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),

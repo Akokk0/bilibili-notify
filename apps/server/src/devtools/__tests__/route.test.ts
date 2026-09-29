@@ -4,7 +4,7 @@ import { createDevRoute } from "../route.js";
 
 /**
  * `/api/dev` 的 wire 层:列、跑、收摊。判断全在注册表,这里只把三种失败翻成状态码 ——
- * 没这个场景 404、参数不合法 400、场景自己抛了 500(交给 app 级 onError)。
+ * 没这个场景 404 `not_found`、参数不合法 400 `invalid`、场景自己抛了 503 `unavailable`(交给 app 级 onError)。
  */
 
 function fakeRegistry(overrides: Partial<DevRegistry> = {}): DevRegistry {
@@ -49,7 +49,7 @@ describe("dev 路由", () => {
 		expect(run).toHaveBeenCalledWith("a", {});
 	});
 
-	it("没这个场景 404、参数不合法 400,都带一句 err", async () => {
+	it("没这个场景 404、参数不合法 400,都是 { code, message } 的错误体", async () => {
 		const app = createDevRoute({
 			registry: fakeRegistry({
 				run: async (id) => {
@@ -60,11 +60,14 @@ describe("dev 路由", () => {
 		});
 		const missing = await app.request("/run/zzz", { method: "POST" });
 		expect(missing.status).toBe(404);
-		expect(await missing.json()).toMatchObject({ err: expect.stringContaining("zzz") });
+		expect(await missing.json()).toEqual({
+			code: "not_found",
+			message: expect.stringContaining("zzz"),
+		});
 
 		const bad = await app.request("/run/a", { method: "POST" });
 		expect(bad.status).toBe(400);
-		expect(await bad.json()).toMatchObject({ err: expect.stringContaining("nope") });
+		expect(await bad.json()).toEqual({ code: "invalid", message: expect.stringContaining("nope") });
 	});
 
 	it("params 不是对象 → 400,不交给注册表", async () => {
@@ -76,6 +79,7 @@ describe("dev 路由", () => {
 			body: JSON.stringify({ params: [1, 2] }),
 		});
 		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: "invalid" });
 		expect(run).not.toHaveBeenCalled();
 	});
 
@@ -102,7 +106,9 @@ describe("dev 路由", () => {
 				},
 			}),
 		});
-		expect((await app.request("/reset/zzz", { method: "POST" })).status).toBe(404);
+		const res = await app.request("/reset/zzz", { method: "POST" });
+		expect(res.status).toBe(404);
+		expect(await res.json()).toMatchObject({ code: "not_found" });
 	});
 });
 

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOG_LEVEL_TONE, LOG_LEVEL_TONE_CONSOLE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
-import { api } from "../services/api";
+import { api, apiErrorOf } from "../services/api";
 import {
 	type LogLineLevel,
 	type LogLineView,
@@ -43,8 +43,12 @@ async function downloadRawLog(day: string): Promise<void> {
 		credentials: "include",
 	});
 	if (!res.ok) {
-		const message = await res.text().catch(() => `${res.status}`);
-		throw new Error(message || `download failed: ${res.status}`);
+		// 服务端的失败是 `{ code, message }` 的 JSON(那句 `message` 就是该给主人看的话),不是纯文本。
+		throw apiErrorOf(
+			res.status,
+			await res.json().catch(() => undefined),
+			`下载失败（HTTP ${res.status}）`,
+		);
 	}
 	const blob = await res.blob();
 	const url = URL.createObjectURL(blob);

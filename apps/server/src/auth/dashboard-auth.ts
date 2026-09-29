@@ -1,4 +1,6 @@
+import { fail } from "@bilibili-notify/internal";
 import type { Context, MiddlewareHandler } from "hono";
+import { respondFailure } from "../routes/respond-failure.js";
 import type { SessionCodec } from "./session.js";
 
 /**
@@ -7,7 +9,9 @@ import type { SessionCodec } from "./session.js";
  *
  * - Validates the `bn_session` cookie via {@link SessionCodec}. Valid → slides
  *   the idle window (re-issues a fresh Set-Cookie past half-life) and proceeds.
- * - Invalid/absent → `401 {error:"unauthorized"}` JSON, deliberately **without**
+ * - Invalid/absent → `401 { code: "unauthorized", message }` JSON (the 401 is explicit —
+ *   `unauthorized` defaults to 403; the SPA kicks back to the login dialog on 401 only,
+ *   so only the dashboard's own session expiry may answer it), deliberately **without**
  *   `WWW-Authenticate` (that header's only effect is to make browsers pop the
  *   native credential box — the very thing the SPA login dialog replaces).
  * - **No** `Authorization: Basic` acceptance (Q4: cookie-only, Basic dropped).
@@ -39,7 +43,7 @@ export function createDashboardAuth(codec: SessionCodec): MiddlewareHandler {
 
 		const token = codec.readCookie(c.req.header("cookie"));
 		if (!codec.verify(token)) {
-			return c.json({ error: "unauthorized", message: "dashboard session required" }, 401);
+			return respondFailure(c, fail("unauthorized", "需要先登录面板"), 401);
 		}
 
 		// Sliding renewal: a still-valid token past half-life gets a fresh

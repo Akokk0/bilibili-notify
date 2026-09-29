@@ -43,6 +43,8 @@ describe("dashboard cookie auth", () => {
 		const res = await app.request("/api/globals");
 		expect(res.status).toBe(401);
 		expect(res.headers.get("www-authenticate")).toBeNull();
+		// 错误体平铺 `{ code, message }`;401 是显式给的(`unauthorized` 默认回 403)。
+		expect(await res.json()).toEqual({ code: "unauthorized", message: "需要先登录面板" });
 
 		await runtime.dispose();
 	});
@@ -111,6 +113,10 @@ describe("dashboard cookie auth", () => {
 
 		const sessionMissing = await app.request("/api/session");
 		expect(sessionMissing.status).toBe(401);
+		expect(await sessionMissing.json()).toEqual({
+			code: "unauthorized",
+			message: "缺少桌面壳的访问令牌",
+		});
 
 		const session = await app.request("/api/session", {
 			headers: { "x-bn-desktop-token": "desktop-secret" },

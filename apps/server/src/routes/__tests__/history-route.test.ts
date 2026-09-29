@@ -8,8 +8,9 @@
  * 末尾还有 `POST /:id/repush`(ADR-0017):这一层只管**接住请求、把结果翻成状态码**,
  * 判断全在 `RepushRunner` 里(它自己有一整份测试)。三个码各有各的意思:
  * **202** 收下了、女仆去补(不是 200 —— 消息还没发出去,`sendToTarget` 光退避就可能
- * 走 190s);**404** 没这一行;**409** 有这一行但现在不能补(全送到了 / 路由改了 /
- * 目标停用 / 正在补 / 原件没了),理由原样交给面板显示。
+ * 走 190s);**404** `not_found` 没这一行;**409** `conflict` 有这一行但现在不能补(全送到了 /
+ * 路由改了 / 目标停用 / 正在补 / 原件没了),理由原样放进 `message` 交给面板显示。
+ * 失败一律是平铺的 `{ code, message }`,不再有 `{ ok: false, err }`。
  */
 
 import { tmpdir } from "node:os";
@@ -58,12 +59,17 @@ describe("history route — limit/since 校验 (P2-J)", () => {
 	it("limit 非数字 → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?limit=abc");
 		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "limit 要是数字：abc" });
 		expect(query).not.toHaveBeenCalled();
 	});
 
 	it("since 非 ISO → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?since=notadate");
 		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("since"),
+		});
 		expect(query).not.toHaveBeenCalled();
 	});
 
@@ -172,9 +178,41 @@ describe("history /daily — 按日聚合(本周推送趋势数据源)", () => {
 
 	it("days / tzOffset 非数字 → 400,不调用 aggregateDaily", async () => {
 		const app = makeApp();
-		expect((await app.request("/daily?days=abc")).status).toBe(400);
-		expect((await app.request("/daily?tzOffset=abc")).status).toBe(400);
+		const badDays = await app.request("/daily?days=abc");
+		expect(badDays.status).toBe(400);
+		expect(await badDays.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("days"),
+		});
+		const badTz = await app.request("/daily?tzOffset=abc");
+		expect(badTz.status).toBe(400);
+		expect(await badTz.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("tzOffset"),
+		});
 		expect(aggregateDaily).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 给 `<img>` 用的 GET:浏览器照样显示不出图,但错误体和别的路由一个样 ——
+ * 平铺的 `{ code, message }` JSON,不是一行纯文本 `not found`。
+ */
+describe("history route — /img/:name 的失败", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("文件名不合规 → 400 invalid(路径穿越之类进不了磁盘)", async () => {
+		const res = await makeApp().request("/img/bad%20name.png");
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "图片文件名不合规" });
+	});
+
+	it("图片不在 → 404 not_found", async () => {
+		const res = await makeApp().request("/img/definitely-not-here.png");
+		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "没有这张图片" });
 	});
 });
 
@@ -200,24 +238,28 @@ describe("history route — POST /:id/repush", () => {
 		expect(startRepush).toHaveBeenCalledWith(ROW, TS, "all");
 	});
 
-	it("没这一行 → 404", async () => {
-		const res = await repush(makeApp({ ok: false, notFound: true, reason: "找不到" }), {
-			ts: TS,
-			mode: "missing",
-		});
+	it("没这一行 → 404 not_found,话原样带回去", async () => {
+		const res = await repush(
+			makeApp({ ok: false, notFound: true, reason: "找不到这一行推送记录了" }),
+			{
+				ts: TS,
+				mode: "missing",
+			},
+		);
 		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "找不到这一行推送记录了" });
 	});
 
 	/** 拒绝的理由**原样**交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。 */
-	it("有这一行但不能补 → 409,理由原样带回去", async () => {
+	it("有这一行但不能补 → 409 conflict,理由原样带回去", async () => {
 		const res = await repush(
 			makeApp({ ok: false, reason: "这个目标（或者它所在的连接）停用了，先启用再补" }),
 			{ ts: TS, mode: "missing" },
 		);
 		expect(res.status).toBe(409);
-		expect((await res.json()) as { err?: string }).toEqual({
-			ok: false,
-			err: "这个目标（或者它所在的连接）停用了，先启用再补",
+		expect(await res.json()).toEqual({
+			code: "conflict",
+			message: "这个目标（或者它所在的连接）停用了，先启用再补",
 		});
 	});
 
@@ -230,6 +272,7 @@ describe("history route — POST /:id/repush", () => {
 		const app = makeApp();
 		const res = await repush(app, body);
 		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: "invalid" });
 		expect(startRepush).not.toHaveBeenCalled();
 	});
 });

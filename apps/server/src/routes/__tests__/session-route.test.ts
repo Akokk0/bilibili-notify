@@ -30,6 +30,11 @@ function makeApp(opts: {
 	return app;
 }
 
+/** 非 2xx 的错误体是平铺的 `{ code, message }`(ADR-0026),面板按 `code` 分情况。 */
+async function failureOf(res: Response): Promise<{ code: string; message: string }> {
+	return (await res.json()) as { code: string; message: string };
+}
+
 function cookieFrom(res: Response): string {
 	const setCookie = res.headers.get("set-cookie") ?? "";
 	return setCookie.split(";")[0] ?? "";
@@ -72,6 +77,7 @@ describe("session route — POST /api/session/login", () => {
 			body: JSON.stringify(CREDS),
 		});
 		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
 		const cookie = cookieFrom(res);
 		expect(cookie).toMatch(/^bn_session=/);
 
@@ -80,7 +86,7 @@ describe("session route — POST /api/session/login", () => {
 		expect(await gated.text()).toBe("ok");
 	});
 
-	it("wrong password → 401", async () => {
+	it("wrong password → 401 unauthorized(显式 401:/api/session/* 不触发面板的会话过期钩子)", async () => {
 		const app = makeApp({ auth: true });
 		const res = await app.request("/api/session/login", {
 			method: "POST",
@@ -89,9 +95,10 @@ describe("session route — POST /api/session/login", () => {
 		});
 		expect(res.status).toBe(401);
 		expect(res.headers.get("www-authenticate")).toBeNull();
+		expect(await failureOf(res)).toEqual({ code: "unauthorized", message: "账号或密码错误" });
 	});
 
-	it("bad body → 400", async () => {
+	it("bad body → 400 invalid", async () => {
 		const app = makeApp({ auth: true });
 		const res = await app.request("/api/session/login", {
 			method: "POST",
@@ -99,9 +106,10 @@ describe("session route — POST /api/session/login", () => {
 			body: "not json",
 		});
 		expect(res.status).toBe(400);
+		expect((await failureOf(res)).code).toBe("invalid");
 	});
 
-	it("auth disabled → 400 auth_not_required", async () => {
+	it("auth disabled → 400 unsupported(面板据此关掉登录框)", async () => {
 		const app = makeApp({ auth: false });
 		const res = await app.request("/api/session/login", {
 			method: "POST",
@@ -109,7 +117,7 @@ describe("session route — POST /api/session/login", () => {
 			body: JSON.stringify(CREDS),
 		});
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { error: string }).error).toBe("auth_not_required");
+		expect((await failureOf(res)).code).toBe("unsupported");
 	});
 
 	it("rate-limit: blocked after maxFailures with Retry-After, correct creds still 429", async () => {
@@ -129,6 +137,7 @@ describe("session route — POST /api/session/login", () => {
 		});
 		expect(blocked.status).toBe(429);
 		expect(blocked.headers.get("Retry-After")).toBeTruthy();
+		expect((await failureOf(blocked)).code).toBe("rate_limited");
 	});
 });
 
@@ -166,7 +175,7 @@ describe("session route — Origin gate (F3, defence-in-depth)", () => {
 		expect(res.status).toBe(200);
 	});
 
-	it("configured + disallowed Origin → 403 before rate-limit / creds", async () => {
+	it("configured + disallowed Origin → 403 invalid before rate-limit / creds", async () => {
 		const app = makeApp({ auth: true, allowedOrigins: ALLOW });
 		const res = await app.request("/api/session/login", {
 			method: "POST",
@@ -174,7 +183,7 @@ describe("session route — Origin gate (F3, defence-in-depth)", () => {
 			body: JSON.stringify(CREDS),
 		});
 		expect(res.status).toBe(403);
-		expect(((await res.json()) as { error: string }).error).toBe("forbidden_origin");
+		expect(await failureOf(res)).toEqual({ code: "invalid", message: "请求来源不被允许" });
 	});
 
 	it("configured + missing Origin → 403 (non-browser automation unsupported with gate)", async () => {
@@ -290,6 +299,7 @@ describe("session route — Origin gate (F3, defence-in-depth)", () => {
 			body: JSON.stringify(CREDS),
 		});
 		expect(denied.status).toBe(403);
+		expect((await failureOf(denied)).code).toBe("invalid");
 		// Whitelisted origin → falls through to the inert 400.
 		const inert = await app.request("/api/session/login", {
 			method: "POST",
@@ -297,7 +307,7 @@ describe("session route — Origin gate (F3, defence-in-depth)", () => {
 			body: JSON.stringify(CREDS),
 		});
 		expect(inert.status).toBe(400);
-		expect(((await inert.json()) as { error: string }).error).toBe("auth_not_required");
+		expect((await failureOf(inert)).code).toBe("unsupported");
 	});
 });
 
@@ -307,6 +317,8 @@ describe("dashboard-auth gate", () => {
 		const noCookie = await app.request("/api/probe");
 		expect(noCookie.status).toBe(401);
 		expect(noCookie.headers.get("www-authenticate")).toBeNull();
+		// 显式 401(`unauthorized` 默认回 403):面板见 401 才回登录框,只有看板自己的会话失效才回它。
+		expect(await failureOf(noCookie)).toEqual({ code: "unauthorized", message: "需要先登录面板" });
 
 		const basic = await app.request("/api/probe", {
 			headers: {

@@ -12,8 +12,10 @@
  * (谎报 Content-Length)还得靠后者兜住。
  */
 
+import { fail } from "@bilibili-notify/internal";
 import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { respondFailure } from "./respond-failure.js";
 
 /**
  * multipart 信封的余量:boundary、part 头、文件名。几百字节足够,给到 64KB 是为了
@@ -25,12 +27,13 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
  * 造一道上传闸。`maxBytes` 传那条路由自己的资产上限,文案与后面那道校验对齐,
  * 免得同一个文件在两处得到两种说法。
  *
- * 413 而不是 400:这是「超出上限」的标准语义,与「文件类型不对」区分得开。
+ * 413 而不是 400:这是「超出上限」的标准语义,与「文件类型不对」区分得开。码是 `invalid`(输入不对),
+ * 状态码显式给 413 —— `statusOf` 里没有这一档。
  */
 export function uploadBodyLimit(maxBytes: number, what: string): MiddlewareHandler {
 	const mb = Math.round(maxBytes / 1024 / 1024);
 	return bodyLimit({
 		maxSize: maxBytes + MULTIPART_OVERHEAD_BYTES,
-		onError: (c) => c.json({ ok: false, err: `${what}过大（上限 ${mb}MB）` }, 413),
+		onError: (c) => respondFailure(c, fail("invalid", `${what}过大（上限 ${mb}MB）`), 413),
 	});
 }

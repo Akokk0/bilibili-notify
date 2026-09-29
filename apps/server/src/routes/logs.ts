@@ -1,7 +1,9 @@
 import { createReadStream, statSync } from "node:fs";
 import type { LogsResponse } from "@bilibili-notify/contract";
+import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
+import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -28,16 +30,13 @@ export function createLogsRoute(deps: RouteDeps): Hono {
 		if (limitRaw !== undefined) {
 			const n = Number(limitRaw);
 			if (!Number.isFinite(n)) {
-				return c.json({ error: "invalid_query", message: `invalid limit: ${limitRaw}` }, 400);
+				return respondFailure(c, fail("invalid", `limit 要是数字：${limitRaw}`));
 			}
 			limit = Math.max(1, Math.min(500, Math.trunc(n)));
 		}
 		const day = c.req.query("day");
 		if (day !== undefined && !DAY_RE.test(day)) {
-			return c.json(
-				{ error: "invalid_query", message: `invalid day (expect YYYY-MM-DD): ${day}` },
-				400,
-			);
+			return respondFailure(c, fail("invalid", `day 要是 YYYY-MM-DD 的日期：${day}`));
 		}
 
 		const entries = await deps.runtime.logStore.query({ limit, day });
@@ -47,15 +46,15 @@ export function createLogsRoute(deps: RouteDeps): Hono {
 	app.get("/raw", async (c) => {
 		const day = c.req.query("day");
 		if (!day || !DAY_RE.test(day)) {
-			return c.json(
-				{ error: "invalid_query", message: `day required (YYYY-MM-DD): ${day ?? ""}` },
-				400,
+			return respondFailure(
+				c,
+				fail("invalid", day ? `day 要是 YYYY-MM-DD 的日期：${day}` : "要带 day 参数（YYYY-MM-DD）"),
 			);
 		}
 		const path = deps.runtime.logStore.dayFilePath(day);
 		try {
 			const stat = statSync(path);
-			if (!stat.isFile()) return c.text("not found", 404);
+			if (!stat.isFile()) return respondFailure(c, fail("not_found", "没有这一天的日志文件"));
 			c.header("Content-Type", "application/x-ndjson; charset=utf-8");
 			c.header("Content-Length", String(stat.size));
 			c.header("Content-Disposition", `attachment; filename="bilibili-notify-${day}.jsonl"`);
@@ -64,7 +63,7 @@ export function createLogsRoute(deps: RouteDeps): Hono {
 				for await (const chunk of file) s.write(chunk as Buffer);
 			});
 		} catch {
-			return c.text("not found", 404);
+			return respondFailure(c, fail("not_found", "没有这一天的日志文件"));
 		}
 	});
 

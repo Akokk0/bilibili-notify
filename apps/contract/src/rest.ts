@@ -567,6 +567,9 @@ export type HistoryRepushInfo =
  *
  * 回 **202** 表示「收下了」:消息一条都还没发出去(发送层光退避就可能走 190s),真正的
  * 结果随后经 WS 的 `history-updated` 一条条回来。
+ *
+ * 拒了(没这一行 404 `not_found`、现在补不了 409 `conflict`、请求不成形 400 `invalid`)是非 2xx 的
+ * {@link ErrorResponse}:`message` 是**给人看的原话**,直接显示 —— 自编一句「重推失败」等于让人对着黑盒猜。
  */
 export interface HistoryRepushRequest {
 	/** 这一行的 `ts` —— 服务端拿它定位日文件。 */
@@ -575,11 +578,8 @@ export interface HistoryRepushRequest {
 	mode: "all" | "missing";
 }
 
-export type HistoryRepushResponse =
-	/** 收下了(202)。`count` = 这一趟要补几条 —— 回来时一条都还没发出去。 */
-	| { ok: true; count: number }
-	/** 拒了。`err` **直接显示给用户** —— 自编一句「重推失败」等于让人对着黑盒猜。 */
-	| { ok: false; err: string };
+/** 收下了(202)。`count` = 这一趟要补几条 —— 回来时一条都还没发出去。 */
+export type HistoryRepushResponse = { ok: true; count: number };
 
 export interface HistoryResponse {
 	entries: HistoryEntryView[];

@@ -27,12 +27,17 @@ describe("logs route — limit/day 校验", () => {
 	it("limit 非数字 → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?limit=abc");
 		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ code: "invalid", message: "limit 要是数字：abc" });
 		expect(query).not.toHaveBeenCalled();
 	});
 
 	it("day 非 YYYY-MM-DD → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?day=2026_05_17");
 		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("day"),
+		});
 		expect(query).not.toHaveBeenCalled();
 	});
 
@@ -60,7 +65,18 @@ describe("logs route — limit/day 校验", () => {
 	});
 
 	it("/raw 缺 day / 非法 day → 400", async () => {
-		expect((await makeApp().request("/raw")).status).toBe(400);
-		expect((await makeApp().request("/raw?day=bad")).status).toBe(400);
+		const missing = await makeApp().request("/raw");
+		expect(missing.status).toBe(400);
+		expect(await missing.json()).toMatchObject({ code: "invalid" });
+		const bad = await makeApp().request("/raw?day=bad");
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toMatchObject({ code: "invalid" });
+	});
+
+	/** 这条下载是 GET,失败也是平铺的 `{ code, message }` JSON —— 面板下载时读 `message`,不是一段纯文本。 */
+	it("/raw 那一天没有日志文件 → 404 not_found", async () => {
+		const res = await makeApp().request("/raw?day=1999-01-01");
+		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "没有这一天的日志文件" });
 	});
 });

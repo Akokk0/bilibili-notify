@@ -12,9 +12,11 @@ import {
 	isMirrorPrefix,
 	type UpdateApplyResponse,
 } from "@bilibili-notify/contract";
+import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { UpdateService } from "../update/service.js";
+import { respondFailure } from "./respond-failure.js";
 
 /**
  * 「测一遍」的请求体。只收空串(直连)或合法的 `https://` 前缀 —— 这是要去真连的地址,
@@ -50,7 +52,12 @@ export function createUpdateRoute({
 
 	app.post("/mirrors/probe", async (c) => {
 		const parsed = ProbeBody.safeParse(await c.req.json().catch(() => null));
-		if (!parsed.success) return c.json({ err: "prefixes 不成形" }, 400);
+		if (!parsed.success) {
+			return respondFailure(
+				c,
+				fail("invalid", "测速前缀要是空串或 https:// 开头的地址（最多 20 个）"),
+			);
+		}
 		return c.json({ results: await service.probeMirrors(parsed.data.prefixes) });
 	});
 
@@ -58,7 +65,7 @@ export function createUpdateRoute({
 		// 判定在契约里,面板决定按钮出不出用的是同一个函数 —— 见 `canApplyUpdate`。
 		const { state } = service.getStatus();
 		if (!canApplyUpdate(state)) {
-			return c.json({ err: "没有可应用的版本" }, 409);
+			return respondFailure(c, fail("conflict", "没有可应用的版本"));
 		}
 		// 回话里带上要换掉的是哪个进程、换到哪:这些都在这一头,面板不必先探一次再猜。
 		const body: UpdateApplyResponse = {

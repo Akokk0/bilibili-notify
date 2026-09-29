@@ -36,10 +36,6 @@ const ISSUE_KEYS = new Set(["path", "message", "op"]);
  * 到时候要么把那个文件迁掉,要么记进名单(并在迁移清单里补上)。
  */
 export const LEGACY_UNMIGRATED_FILES = [
-	"apps/server/src/auth/dashboard-auth.ts",
-	"apps/server/src/auth/desktop-token.ts",
-	"apps/server/src/devtools/route.ts",
-	"apps/server/src/extensions/mount.ts",
 	"apps/server/src/routes/ai.ts",
 	"apps/server/src/routes/auth.ts",
 	"apps/server/src/routes/backup.ts",
@@ -49,18 +45,12 @@ export const LEGACY_UNMIGRATED_FILES = [
 	"apps/server/src/routes/extension-settings.ts",
 	"apps/server/src/routes/extensions.ts",
 	"apps/server/src/routes/globals.ts",
-	"apps/server/src/routes/history.ts",
-	"apps/server/src/routes/logs.ts",
 	"apps/server/src/routes/maid-skills.ts",
 	"apps/server/src/routes/qq.ts",
-	"apps/server/src/routes/session.ts",
 	"apps/server/src/routes/skins.ts",
 	"apps/server/src/routes/stats.ts",
 	"apps/server/src/routes/subs.ts",
-	"apps/server/src/routes/system.ts",
 	"apps/server/src/routes/targets.ts",
-	"apps/server/src/routes/update.ts",
-	"apps/server/src/routes/upload-limit.ts",
 ];
 
 // 不用 `new URL("..", import.meta.url)`:jsdom 环境里全局 URL 是 jsdom 的,fileURLToPath 不认它的实例。

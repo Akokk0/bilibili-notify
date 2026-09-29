@@ -1,6 +1,8 @@
 import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
-import { Hono } from "hono";
+import { fail, type Logger } from "@bilibili-notify/internal";
+import { type Context, Hono } from "hono";
+import { respondFailure } from "../routes/respond-failure.js";
 import { createClaimTable } from "./claim-table.js";
 
 export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
@@ -34,30 +36,35 @@ export function extensionMountPrefix(id: string): string {
  *
  * 卸载一个拓展就是从表里删一行 —— Hono 注册过的路由拆不掉,所以可拆的那一层做在表上,
  * 而不是去覆写框架的注册方法(那是拿框架内部结构换便利,一次升级就炸)。
+ *
+ * 两种失败都经 `respondFailure` 回:没装 / 没启用 / 刚被撤下 → `not_found`;拓展处理请求时抛了 →
+ * `unavailable`,**原话只进日志**(`logger`),不回给对家 —— 那是拓展自己的报错,可能带路径。
  */
-export function createExtensionMounts(): ExtensionMounts {
+export function createExtensionMounts(options: { logger: Logger }): ExtensionMounts {
 	const table = createClaimTable<ExtensionFetchHandler>((id) => `extension ${id} already mounted`);
 	const route = new Hono();
 
-	route.all("/:id{[^/]+}/*", (c) => dispatch(c.req.raw, c.req.param("id")));
-	route.all("/:id{[^/]+}", (c) => dispatch(c.req.raw, c.req.param("id")));
+	route.all("/:id{[^/]+}/*", (c) => dispatch(c, c.req.param("id")));
+	route.all("/:id{[^/]+}", (c) => dispatch(c, c.req.param("id")));
 
-	async function dispatch(raw: Request, id: string): Promise<Response> {
+	async function dispatch(c: Context, id: string): Promise<Response> {
 		const handler = table.get(id);
 		// 没装 / 没启用 / 刚被撤下 —— 对外都是「这条路不存在」。
-		if (!handler) return Response.json({ ok: false, err: "not found" }, { status: 404 });
+		if (!handler) return respondFailure(c, fail("not_found", "没有这个拓展"));
 
 		// 前缀在这里剥掉:拓展注册的是 `/blob/:id`,它从不写 `/ext/bridge`。
+		const raw = c.req.raw;
 		const url = new URL(raw.url);
 		url.pathname = url.pathname.slice(extensionMountPrefix(id).length) || "/";
 		try {
 			return await handler(new Request(url, raw));
 		} catch (err) {
 			// 一个拓展炸了只炸它自己这一条请求 —— 别让它带走整个进程或别的拓展。
-			return Response.json(
-				{ ok: false, err: "extension failed", detail: (err as Error).message },
-				{ status: 500 },
+			options.logger?.error(
+				`extension ${id} failed to handle ${raw.method} ${new URL(raw.url).pathname}`,
+				err,
 			);
+			return respondFailure(c, fail("unavailable", "拓展处理这次请求时出错了，详情在日志里"));
 		}
 	}
 

@@ -17,6 +17,7 @@ import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
@@ -125,7 +126,7 @@ describe("加载拓展", () => {
 	it("启用着的正常拓展 → 跑起来,它注册的东西真的在", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 
@@ -144,7 +145,7 @@ describe("加载拓展", () => {
 		await plant("bridge", `throw new Error("不该被 import");`);
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => false,
 		});
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "disabled"]]);
@@ -160,7 +161,7 @@ describe("加载拓展", () => {
 			}`,
 		);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 
@@ -175,13 +176,19 @@ describe("加载拓展", () => {
 
 	it("代码 import 不进来(语法错)→ 也是 failed,身份还在", async () => {
 		await plant("broken", `export function activate( {`);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["broken", "failed"]]);
 	});
 
 	it("没有 activate 导出 → failed,不是「跑起来了」", async () => {
 		await plant("silent", `export const nothing = 1;`);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		const entry = loaded.list()[0];
 		expect(entry?.state).toBe("failed");
 		expect(entry?.detail).toContain("activate");
@@ -190,7 +197,10 @@ describe("加载拓展", () => {
 	it("一个炸了,别的照样加载", async () => {
 		await plant("bad", `throw new Error("炸");`);
 		await plant("good", HEALTHY);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
 			["bad", "failed"],
 			["good", "running"],
@@ -200,9 +210,17 @@ describe("加载拓展", () => {
 	it("连着失败到上限 → 自动停用,再开机直接不 import", async () => {
 		await plant("bad", `throw new Error("炸");`);
 		for (let i = 0; i < 2; i++) {
-			await run({ host: fakeHost(), mounts: createExtensionMounts(), maxFailures: 2 });
+			await run({
+				host: fakeHost(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				maxFailures: 2,
+			});
 		}
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts(), maxFailures: 2 });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			maxFailures: 2,
+		});
 		const entry = loaded.list()[0];
 		expect(entry?.state).toBe("blocked");
 		expect(entry?.detail).toContain("连续");
@@ -225,7 +243,7 @@ describe("加载拓展", () => {
 			loadExtensions({
 				root,
 				host: fakeHost().ctx,
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				isEnabled: () => true,
 				maxFailures: 2,
 				importModule,
@@ -249,7 +267,7 @@ describe("加载拓展", () => {
 		let alphaOn = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: (id) => id !== "alpha" || alphaOn,
 			importModule: async () => ({
 				activate(ctx: ExtensionContext) {
@@ -274,7 +292,10 @@ describe("加载拓展", () => {
 		await plant("future", HEALTHY, { apiVersion: EXTENSION_API_RANGE.current + 1 });
 		await mkdir(join(root, "junk"), { recursive: true });
 		await writeFile(join(root, "junk", "extension.json"), "{ 半个");
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
 			["future", "incompatible"],
 			["junk", "unreadable"],
@@ -302,7 +323,7 @@ describe("加载拓展", () => {
 		const imported: string[] = [];
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			importModule: async (specifier) => {
 				imported.push(specifier);
 				return {};
@@ -325,7 +346,7 @@ describe("拓展声明的密钥字段", () => {
 		const loaded = await loadExtensions({
 			root,
 			host: fakeHost().ctx,
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			upgrades: createExtensionUpgrades(),
 			adapters: registry,
 			connections: () => [],
@@ -381,7 +402,7 @@ describe("拓展声明的密钥字段", () => {
 		});
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => false,
 		});
 		expect(loaded.list()[0]?.state).toBe("disabled");
@@ -409,7 +430,7 @@ describe("拓展声明的密钥字段", () => {
 		const loaded = await loadExtensions({
 			root,
 			host: fakeHost().ctx,
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			...coreStubs(),
 			isEnabled: () => true,
 			maxFailures: 3,
@@ -438,7 +459,10 @@ describe("装载目录", () => {
 	/** 两份同名的摆在盘上时,「我改的是不是跑着的那个」只有全路径答得了。 */
 	it("每条都带着自己的目录", async () => {
 		await plant("bridge", HEALTHY);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => e.dir)).toEqual([join(root, "bridge")]);
 	});
 
@@ -460,7 +484,7 @@ describe("装载目录", () => {
 		await mkdir(join(root, "load-state.json"));
 		const host = fakeHost();
 
-		const loaded = await run({ host, mounts: createExtensionMounts() });
+		const loaded = await run({ host, mounts: createExtensionMounts({ logger: silentLogger }) });
 
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
 			["alpha", "running"],
@@ -476,7 +500,7 @@ describe("装载目录", () => {
 		await loadExtensions({
 			root,
 			host: fakeHost().ctx,
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			isEnabled: () => true,
 			maxFailures: 3,
 			importModule: async () => {
@@ -512,7 +536,7 @@ describe("重载(开发版换代码)", () => {
 		let on = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => on,
 			importModule: async (specifier) => {
 				seen.push(specifier);
@@ -539,7 +563,7 @@ describe("重载(开发版换代码)", () => {
 	it("重载先收摊 —— 旧那份注册的东西不会留下", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 
@@ -562,7 +586,7 @@ describe("重载(开发版换代码)", () => {
 		let boom = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			maxFailures: 3,
 			importModule: async () => {
 				if (boom) throw new Error("炸");
@@ -583,7 +607,7 @@ describe("重载(开发版换代码)", () => {
 		await plant("bridge", HEALTHY);
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => false,
 		});
 		await expect(loaded.reload("bridge")).rejects.toThrow(/关着/);
@@ -596,11 +620,17 @@ describe("重载(开发版换代码)", () => {
 	 */
 	it("重载抛过之后,开关照样拨得动", async () => {
 		await plant("bridge", HEALTHY);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		await expect(loaded.reload("nobody")).rejects.toThrow();
 
 		let on = true;
-		const again = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const again = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		await expect(again.reload("nobody")).rejects.toThrow();
 		on = false;
 		void on;
@@ -609,7 +639,10 @@ describe("重载(开发版换代码)", () => {
 	});
 
 	it("没这个拓展 → 抛,别装作重载过了", async () => {
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		await expect(loaded.reload("nobody")).rejects.toThrow(/nobody/);
 	});
 });
@@ -628,7 +661,7 @@ describe("拨开关即热装卸", () => {
 	it("关掉 → 它注册的东西当场没了,身份还列得出来", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		let on = true;
@@ -647,7 +680,7 @@ describe("拨开关即热装卸", () => {
 	it("再打开 → activate 又跑了一遍(ESM 模块缓存不挡二次启用)", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		let on = true;
@@ -669,7 +702,7 @@ describe("拨开关即热装卸", () => {
 		const imported: string[] = [];
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			importModule: (specifier) => {
 				imported.push(specifier);
 				return import(specifier);
@@ -685,7 +718,10 @@ describe("拨开关即热装卸", () => {
 
 	it("加载失败的那个,开关不动就不重试 —— 否则每存一次全局设置就烧一次失败记账", async () => {
 		await plant("bad", `export function activate() { throw new Error("炸"); }`);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
 
 		await loaded.sync();
@@ -702,7 +738,11 @@ describe("拨开关即热装卸", () => {
 		let on = true;
 		// 开机那次算第 1 笔,底下每拨一轮再来一笔。第 3 笔**当场**还是 failed(报的是真
 		// 原因,比「已停用」有用),自动停用从第 4 次尝试起生效 —— 开机那条路也是这个次序。
-		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => on,
+		});
 		for (let i = 0; i < 3; i++) {
 			on = false;
 			await loaded.sync();
@@ -725,7 +765,7 @@ describe("拨开关即热装卸", () => {
 		let on = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			// 开关是**现读**配置的:读那一下抛了(盘上那份正被换掉),整趟 sync 就是一发拒绝。
 			enabled: () => {
 				if (boom) throw new Error("读开关炸了");
@@ -757,7 +797,7 @@ describe("拨开关即热装卸", () => {
 describe("重扫(装 / 卸不必重启)", () => {
 	it("新装进来的当场跑起来 —— 不用重启", async () => {
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 
@@ -775,7 +815,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 	it("卸掉的当场收摊 —— 定时器与端点跟着走,列表里也没了", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 
@@ -799,7 +839,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 		const imported: string[] = [];
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			importModule: (specifier) => {
 				imported.push(specifier);
 				return import(specifier);
@@ -819,7 +859,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 	it("新装进来但开关关着 → 列得出来,一行代码都不 import", async () => {
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => false,
 		});
 		// import 一下就会抛的代码:只要它没被 import,这条就绿。
@@ -836,7 +876,11 @@ describe("重扫(装 / 卸不必重启)", () => {
 	it("新装进来的进得了热装卸名单 —— 拨开关当场装上", async () => {
 		let on = false;
 		const host = fakeHost();
-		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => on,
+		});
 
 		await plant("bridge", HEALTHY);
 		await loaded.rescan();
@@ -852,7 +896,11 @@ describe("重扫(装 / 卸不必重启)", () => {
 		await plant("bridge", HEALTHY);
 		let on = true;
 		const host = fakeHost();
-		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => on,
+		});
 
 		on = false;
 		await loaded.sync();
@@ -873,7 +921,10 @@ describe("重扫(装 / 卸不必重启)", () => {
 	it("清单坏了的那条重扫会重读 —— 主人修好了当场就装得上", async () => {
 		await mkdir(join(root, "bridge"), { recursive: true });
 		await writeFile(join(root, "bridge", "extension.json"), "{ 不是 JSON");
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		expect(loaded.list().map((e) => e.state)).toEqual(["unreadable"]);
 
 		await plant("bridge", HEALTHY);
@@ -888,7 +939,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 		const imported: string[] = [];
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			maxFailures: 2,
 			importModule: (specifier) => {
 				imported.push(specifier);
@@ -912,7 +963,10 @@ describe("重扫(装 / 卸不必重启)", () => {
 	 * 真去起它。写完、紧跟着那一遍重扫,两步之间谁都插不进来。
 	 */
 	it("改盘那一步在队里:写到一半时,排在后面的重扫看不见半个目录", async () => {
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -952,7 +1006,10 @@ describe("重扫(装 / 卸不必重启)", () => {
 
 	/** 写完不必自己再叫重扫:装进来的当场跑起来。写那一步抛了,原话交回调用方。 */
 	it("改完盘紧跟着重扫;写那一步抛了,原话交回去", async () => {
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 
 		await loaded.changeDisk(() => plant("bridge", HEALTHY));
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["bridge", "running"]]);
@@ -984,7 +1041,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 			importing = resolve;
 		});
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		const loaded = await run({
@@ -1020,7 +1077,10 @@ describe("重扫(装 / 卸不必重启)", () => {
 
 	it("新装的按 id 归位 —— 现在这个次序就是重启之后的次序", async () => {
 		await plant("zeta", HEALTHY);
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 
 		await plant("alpha", HEALTHY);
 		await loaded.rescan();
@@ -1029,7 +1089,10 @@ describe("重扫(装 / 卸不必重启)", () => {
 	});
 
 	it("新装进来的清单坏了 → 照样列出来说清楚,不是一声不响地没有", async () => {
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 
 		await mkdir(join(root, "junk"), { recursive: true });
 		await writeFile(join(root, "junk", "extension.json"), "{ 不是 JSON");
@@ -1064,7 +1127,7 @@ describe("换了代码(等着换上)", () => {
 
 	it("删了再装、代码变了 → 不拿缓存里的旧代码跑,等着换上;只重载之后跑的是新的", async () => {
 		await plant("bridge", says("旧的"));
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts });
 		expect(await body()).toBe("旧的");
@@ -1090,7 +1153,7 @@ describe("换了代码(等着换上)", () => {
 
 	it("删了再装、代码没变 → 直接跑起来,不问(模块缓存里那份就是它)", async () => {
 		await plant("bridge", says("同一份"));
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts });
 
@@ -1105,7 +1168,7 @@ describe("换了代码(等着换上)", () => {
 
 	it("跑着的时候被覆盖 → 旧的照跑、标上新版本号;只重载之后换成新的", async () => {
 		await plant("bridge", says("旧的"));
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts });
 
@@ -1132,7 +1195,7 @@ describe("换了代码(等着换上)", () => {
 		const seen: string[] = [];
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			importModule: (specifier) => {
 				seen.push(specifier);
 				return import(specifier);
@@ -1152,7 +1215,10 @@ describe("换了代码(等着换上)", () => {
 
 	it("盘上又换回跑着的那一份 → 「等着换上」撤掉", async () => {
 		await plant("bridge", says("旧的"));
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 
 		await plant("bridge", says("新的"), { version: "2.0.0" });
 		await loaded.rescan();
@@ -1166,7 +1232,7 @@ describe("换了代码(等着换上)", () => {
 	it("关着时被覆盖、从没跑过 → 打开时跑的是新代码、配新清单", async () => {
 		await plant("bridge", says("旧的"));
 		let on = false;
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
 
@@ -1183,7 +1249,7 @@ describe("换了代码(等着换上)", () => {
 	it("只重载之后再拨一次开关 → 跑的还是换上去的那份", async () => {
 		await plant("bridge", says("旧的"));
 		let on = true;
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
 
@@ -1208,7 +1274,7 @@ describe("换了代码(等着换上)", () => {
 		let on = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => on,
 		});
 		on = false;
@@ -1228,7 +1294,7 @@ describe("换了代码(等着换上)", () => {
 	it("关着的带着等着换上也不给只重载 —— 按下去等于替主人把它跑起来", async () => {
 		await plant("bridge", says("旧的"));
 		let on = true;
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
 		on = false;
@@ -1243,7 +1309,10 @@ describe("换了代码(等着换上)", () => {
 
 	it("没有等着换上的新代码 → 不给只重载(每换一次漏一份旧模块,不白漏)", async () => {
 		await plant("bridge", says("旧的"));
-		const loaded = await run({ host: fakeHost(), mounts: createExtensionMounts() });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+		});
 
 		await expect(loaded.swap("bridge")).rejects.toThrow(/没有等着换上/);
 		await expect(loaded.swap("nobody")).rejects.toThrow();
@@ -1259,7 +1328,7 @@ describe("换了代码(等着换上)", () => {
 		let on = true;
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => on,
 		});
 		await plant("bridge", says("新的"), { version: "1.1.0" });
@@ -1276,7 +1345,7 @@ describe("换了代码(等着换上)", () => {
 
 	it("换上新的之后又装回旧的、再拨关拨开 → 旧代码配旧清单,不配刚才那份新清单", async () => {
 		await plant("bridge", says("旧的"));
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const body = serve(mounts);
 		let on = true;
 		const loaded = await run({ host: fakeHost(), mounts, enabled: () => on });
@@ -1315,7 +1384,7 @@ describe("挂住了的拓展", () => {
 		await plant("good", "export function activate() {}");
 		const loaded = await run({
 			host: fakeHost(),
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			// 上限 1:记了一笔、没销账 = 当场在停用名单里。
 			maxFailures: 1,
 			activateTimeoutMs: 20,
@@ -1337,7 +1406,7 @@ describe("挂住了的拓展", () => {
 	it("超时之后 activate 才回来 → 不登记成在跑;它的收摊已经跑过,后注册的一律不收", async () => {
 		await plant("hang", "export function activate() {}");
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		let release!: () => void;
@@ -1382,7 +1451,7 @@ describe("挂住了的拓展", () => {
 	it("收摊钩子迟迟不回 → 记一行,按已收摊处理;机件照样拆掉,队接着走", async () => {
 		await plant("bridge", "export function activate() {}");
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		let on = true;
@@ -1432,7 +1501,11 @@ describe("宿主日志:跑的是哪一份代码看得见", () => {
 		const host = fakeHost();
 		const said = (re: RegExp) => host.lines.some((line) => re.test(line));
 		let on = true;
-		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => on,
+		});
 		const oldPrint = await printOnDisk();
 		expect(said(new RegExp(`^info .*bridge v1\\.0\\.0 已加载.*${oldPrint}`))).toBe(true);
 
@@ -1458,7 +1531,11 @@ describe("宿主日志:跑的是哪一份代码看得见", () => {
 		await plant("bridge", says("旧的"));
 		const host = fakeHost();
 		let on = true;
-		const loaded = await run({ host, mounts: createExtensionMounts(), enabled: () => on });
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => on,
+		});
 		on = false;
 		await loaded.sync();
 		await plant("bridge", says("新的"), { version: "2.0.0" });

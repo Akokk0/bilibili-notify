@@ -9,6 +9,7 @@
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
@@ -73,7 +74,7 @@ function coreStubs() {
 
 function makeRuntime(id = "bridge") {
 	const host = fakeHost();
-	const mounts = createExtensionMounts();
+	const mounts = createExtensionMounts({ logger: silentLogger });
 	const app = new Hono();
 	app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 	const runtime = createExtensionContext({ id, host: host.ctx, mounts, ...coreStubs() });
@@ -165,7 +166,7 @@ describe("拓展 ctx", () => {
 
 	it("一个拓展收摊不碰另一个", async () => {
 		const host = fakeHost();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		const a = createExtensionContext({ id: "a", host: host.ctx, mounts, ...coreStubs() });

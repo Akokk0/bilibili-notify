@@ -92,6 +92,7 @@ describe("update 路由", () => {
 		const res = await app.request("/apply", { method: "POST" });
 
 		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({ code: "conflict", message: "没有可应用的版本" });
 		expect(applyUpdate).not.toHaveBeenCalled();
 	});
 
@@ -256,6 +257,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 				body,
 			});
 			expect(res.status, body).toBe(400);
+			expect(await res.json(), body).toMatchObject({ code: "invalid" });
 		}
 		expect(probeMirrors).not.toHaveBeenCalled();
 	});

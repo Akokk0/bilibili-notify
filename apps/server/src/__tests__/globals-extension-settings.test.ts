@@ -20,6 +20,7 @@ import type { BootstrapConfig } from "../config/schema.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { createExtensionMounts } from "../extensions/mount.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
+import { silentLogger } from "./support/silent-logger.js";
 
 const V2: ExtensionManifest = {
 	id: "douyin",
@@ -72,7 +73,7 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [entry(V2, "running")],
 				status: () => undefined,
 				pushSource: () => undefined,

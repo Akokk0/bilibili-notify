@@ -19,6 +19,7 @@ import type { BootstrapConfig } from "../config/schema.js";
 import type { LookupOutcome } from "../extensions/context.js";
 import { createExtensionMounts } from "../extensions/mount.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
+import { silentLogger } from "./support/silent-logger.js";
 
 function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
@@ -46,7 +47,7 @@ describe("拓展挂载点接线", () => {
 	it("装了就通,而且**不在 /api/* 底下** —— 那道会话鉴权够不着它", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
@@ -74,7 +75,7 @@ describe("拓展挂载点接线", () => {
 				status: () => undefined,
 				pushSource: () => undefined,
 				bots: () => undefined,
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [
 					{
 						id: "junk",
@@ -121,7 +122,7 @@ describe("拓展动作的接线", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
 				pushSource: () => undefined,
@@ -166,7 +167,7 @@ describe("解析门的接线", () => {
 		lookup: (id: string, query: string) => Promise<LookupOutcome | undefined>,
 	) {
 		return {
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => [],
 			status: () => undefined,
 			pushSource: () => undefined,
@@ -238,7 +239,7 @@ describe("只重载的接线", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [
 					{
 						id: "bridge",
@@ -277,7 +278,7 @@ describe("面板上传装拓展的接线", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
 			extensions: {
-				mounts: createExtensionMounts(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
 				pushSource: () => undefined,

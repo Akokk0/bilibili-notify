@@ -5,7 +5,7 @@
  * ① **先回话再关自己**(照 `/api/update/apply`):顺序反了,浏览器只看得到一个网络错误,
  *    然后他会去按第二次、第三次 —— 每一次都真的重启了一遍。
  * ② **拉不起来的环境上,POST 也得拦**:按钮藏起来 ≠ 没人发这个请求(旧标签页、curl),
- *    而这一发的后果是把 BN 关了、没人拉。
+ *    而这一发的后果是把 BN 关了、没人拉。拦下来回 `unsupported`(这台机器不支持重启)。
  */
 
 import type { RestartAbility, RestartResponse } from "@bilibili-notify/contract";
@@ -36,12 +36,13 @@ describe("POST /api/system/restart", () => {
 		expect(restart).toHaveBeenCalledOnce();
 	});
 
-	it("拉不起来的环境 → 409,一下都不关", async () => {
+	it("拉不起来的环境 → 400 unsupported,一下都不关", async () => {
 		const { app, restart } = boot({ can: false, reason: "source-run" });
 
 		const res = await app.request("/restart", { method: "POST" });
 
-		expect(res.status).toBe(409);
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: "unsupported" });
 		await new Promise((r) => setTimeout(r, 5));
 		expect(restart).not.toHaveBeenCalled();
 	});
@@ -49,9 +50,11 @@ describe("POST /api/system/restart", () => {
 	it("拒绝时说清楚是哪一种拉不起来 —— 那句话是面板唯一的线索", async () => {
 		const { app } = boot({ can: false, reason: "unsupervised" });
 		const body = (await (await app.request("/restart", { method: "POST" })).json()) as {
-			err: string;
+			code: string;
+			message: string;
 		};
-		expect(body.err).toContain("没人");
+		expect(body.code).toBe("unsupported");
+		expect(body.message).toContain("没人");
 	});
 
 	/**

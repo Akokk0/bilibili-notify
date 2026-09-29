@@ -930,7 +930,7 @@ export async function startStandaloneServer(
 
 		// 拓展装载。**在 createApp 之前**:总入口要随 app 一起挂上,而拓展在 `activate`
 		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
-		const extensionMounts = createExtensionMounts();
+		const extensionMounts = createExtensionMounts({ logger: log });
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),

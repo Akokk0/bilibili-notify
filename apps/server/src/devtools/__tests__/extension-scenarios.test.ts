@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
@@ -79,7 +80,7 @@ function hostStubs() {
 	};
 	return {
 		host,
-		mounts: createExtensionMounts(),
+		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),

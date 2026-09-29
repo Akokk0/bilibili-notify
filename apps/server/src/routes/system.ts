@@ -11,7 +11,9 @@
  */
 
 import type { RestartAbility, RestartResponse } from "@bilibili-notify/contract";
+import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { respondFailure } from "./respond-failure.js";
 
 export interface CreateSystemRouteInput {
 	/** 这台机器上按重启还回不回得来 —— 判据见 `runtime/restart-ability.ts`。 */
@@ -37,7 +39,8 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 	app.post("/restart", (c) => {
 		// 🔴 按钮藏起来 ≠ 没人发这个请求(旧标签页、curl)。放过去就是把 BN 关了没人拉,
 		// 而那台机器上界面只会显示连不上 —— 最难猜的一种「功能坏了」。
-		if (!input.ability.can) return c.json({ err: refusal(input.ability) }, 409);
+		// `unsupported`:这台机器不支持重启;`message` 说清是哪一种(面板原样显示)。
+		if (!input.ability.can) return respondFailure(c, fail("unsupported", refusal(input.ability)));
 
 		const body: RestartResponse = {
 			restarting: true,

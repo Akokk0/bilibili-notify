@@ -8,7 +8,7 @@ import type {
 	AiConversationResponse,
 	AiSkinTarget,
 } from "@bilibili-notify/contract";
-import { ApiError, api } from "./api";
+import { ApiError, api, apiErrorOf } from "./api";
 import { withDesktopTokenHeader } from "./desktop-token";
 
 /**
@@ -282,7 +282,9 @@ export async function uploadChatImage(file: File): Promise<string> {
 		| { ok?: boolean; id?: string; err?: string }
 		| undefined;
 	if (!res.ok || !payload?.ok || !payload.id) {
-		throw new ApiError(res.status, payload, payload?.err ?? "图片上传失败");
+		// 上传闸(413「图片过大」)回 `{ code, message }`,路由自己的拒绝还是 `{ err }`(迁移期) ——
+		// 两种都经同一处解析,原话不丢。
+		throw apiErrorOf(res.status, payload, "图片上传失败");
 	}
 	return payload.id;
 }

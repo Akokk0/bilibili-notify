@@ -10,7 +10,8 @@
  */
 
 import { Hono } from "hono";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 
 function appWith(mounts: ReturnType<typeof createExtensionMounts>): Hono {
@@ -22,7 +23,7 @@ function appWith(mounts: ReturnType<typeof createExtensionMounts>): Hono {
 describe("拓展挂载点", () => {
 	it("挂上之后打得进去,而且 handler 看到的是**去掉前缀**的路径", async () => {
 		const seen: string[] = [];
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const handle = mounts.mount("bridge", async (req) => {
 			seen.push(new URL(req.url).pathname);
 			return new Response("ok");
@@ -36,7 +37,7 @@ describe("拓展挂载点", () => {
 	});
 
 	it("方法、查询串、请求体都原样透传 —— 这一层只改路径", async () => {
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async (req) => {
 			const url = new URL(req.url);
 			return Response.json({
@@ -55,45 +56,72 @@ describe("拓展挂载点", () => {
 	});
 
 	it("光打前缀本身也算它的 —— 路径给 `/`", async () => {
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async (req) => new Response(new URL(req.url).pathname));
 		expect(await (await appWith(mounts).request("/ext/bridge")).text()).toBe("/");
 	});
 
 	it("撤下之后同一条路径就 404 了 —— 卸载 = 从表里删一行", async () => {
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		const handle = mounts.mount("bridge", async () => new Response("ok"));
 		const app = appWith(mounts);
 		expect((await app.request("/ext/bridge/x")).status).toBe(200);
 		handle.dispose();
 		const res = await app.request("/ext/bridge/x");
 		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ ok: false, err: "not found" });
+		expect(await res.json()).toEqual({ code: "not_found", message: "没有这个拓展" });
 	});
 
-	it("没装过的 id → 404,不是 500", async () => {
-		expect((await appWith(createExtensionMounts()).request("/ext/nobody/x")).status).toBe(404);
+	it("没装过的 id → 404,不是 503", async () => {
+		expect(
+			(await appWith(createExtensionMounts({ logger: silentLogger })).request("/ext/nobody/x"))
+				.status,
+		).toBe(404);
 	});
 
-	it("一个拓展抛了,只有它自己 500;别的拓展照走", async () => {
-		const mounts = createExtensionMounts();
+	it("一个拓展抛了,只有它自己 503;别的拓展照走", async () => {
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bad", () => {
 			throw new Error("boom");
 		});
 		mounts.mount("good", async () => new Response("still here"));
 		const app = appWith(mounts);
-		expect((await app.request("/ext/bad/x")).status).toBe(500);
+		const res = await app.request("/ext/bad/x");
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({
+			code: "unavailable",
+			message: "拓展处理这次请求时出错了，详情在日志里",
+		});
 		expect(await (await app.request("/ext/good/x")).text()).toBe("still here");
 	});
 
+	it("拓展抛的原话只进日志,不回给对家 —— 那是它自己的报错,可能带路径或密钥", async () => {
+		const error = vi.fn();
+		const logger = { info: vi.fn(), warn: vi.fn(), error, debug: vi.fn() };
+		const mounts = createExtensionMounts({ logger });
+		const boom = new Error("db password hunter2 exploded");
+		mounts.mount("bad", () => {
+			throw boom;
+		});
+		const res = await appWith(mounts).request("/ext/bad/x?token=s3cret");
+		expect(JSON.stringify(await res.json())).not.toContain("exploded");
+		expect(error).toHaveBeenCalledTimes(1);
+		const [line, err] = error.mock.calls[0] as [string, unknown];
+		expect(line).toContain("bad");
+		// 路径进日志,查询串不进:token 之类只该待在请求里。
+		expect(line).toContain("/ext/bad/x");
+		expect(line).not.toContain("s3cret");
+		expect(err).toBe(boom);
+	});
+
 	it("同一个 id 挂两次 → 拒绝 —— 一条总入口只能有一个主人", () => {
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async () => new Response("ok"));
 		expect(() => mounts.mount("bridge", async () => new Response("其他人"))).toThrow();
 	});
 
 	it("撤下之后可以重挂 —— 停用再启用走的就是这条", async () => {
-		const mounts = createExtensionMounts();
+		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async () => new Response("一")).dispose();
 		mounts.mount("bridge", async () => new Response("二"));
 		expect(await (await appWith(mounts).request("/ext/bridge")).text()).toBe("二");

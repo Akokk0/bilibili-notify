@@ -358,9 +358,8 @@ function RepushBar({
 				ts: entry.ts,
 				mode,
 			});
-			// 非 2xx 由 `api` 抛,走到这儿的只可能是 202 —— 判别联合让这件事在类型上也
-			// 成立,成功那支不必再判一次「count 会不会是 undefined」。
-			if (!res.ok) throw new Error(res.err);
+			// 拒了(没这一行 / 现在补不了 / 请求不成形)是非 2xx,由 `api` 抛成 `ApiError`、
+			// `message` 就是服务端的原话;走到这儿的只可能是 202。
 			return { count: res.count };
 		},
 	});

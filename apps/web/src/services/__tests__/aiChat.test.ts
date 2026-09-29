@@ -7,7 +7,13 @@
 
 import type { AiConversationMetaDTO } from "@bilibili-notify/contract";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { createSseParser, groupConversations, groupLabel, sendChatMessage } from "../aiChat";
+import {
+	createSseParser,
+	groupConversations,
+	groupLabel,
+	sendChatMessage,
+	uploadChatImage,
+} from "../aiChat";
 
 describe("createSseParser — 分片边界不认帧边界", () => {
 	/**
@@ -282,5 +288,51 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 		expect("thinking" in body).toBe(false);
 		expect("search" in body).toBe(false);
 		vi.unstubAllGlobals();
+	});
+});
+
+/**
+ * 聊天附件走上传闸(`uploadBodyLimit`):太大在读进内存之前就被回绝,体是新形状 `{ code, message }`。
+ * 而路由自己的拒绝(格式不对、存盘被拒)迁移期还是旧形状 `{ err }`。两种都得把服务端那句原话带出来
+ * —— 只认 `err` 的话,「图片过大（上限 5MB）」会被降级成一句泛泛的「图片上传失败」。
+ */
+describe("uploadChatImage — 失败的原话", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const respond = (status: number, body: unknown) =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(JSON.stringify(body), { status })),
+		);
+	const file = () => new File(["x"], "a.png", { type: "image/png" });
+
+	it("上传闸的 413({ code, message })→ 抛出服务端那句,带 code", async () => {
+		respond(413, { code: "invalid", message: "图片过大（上限 5MB）" });
+		await expect(uploadChatImage(file())).rejects.toMatchObject({
+			name: "ApiError",
+			status: 413,
+			code: "invalid",
+			message: "图片过大（上限 5MB）",
+		});
+	});
+
+	it("路由自己的拒绝(旧形状 { err })→ 原话照旧带出来", async () => {
+		respond(400, { ok: false, err: "只收 PNG / JPEG / WebP" });
+		await expect(uploadChatImage(file())).rejects.toMatchObject({
+			status: 400,
+			message: "只收 PNG / JPEG / WebP",
+		});
+	});
+
+	it("体里什么话都没有 → 退回「图片上传失败」", async () => {
+		respond(500, { nope: 1 });
+		await expect(uploadChatImage(file())).rejects.toThrow("图片上传失败");
+	});
+
+	it("成功 → 资产 id", async () => {
+		respond(200, { ok: true, id: "abc" });
+		expect(await uploadChatImage(file())).toBe("abc");
 	});
 });

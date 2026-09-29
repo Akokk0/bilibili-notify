@@ -26,6 +26,7 @@ import {
 	WEBP_BYTES,
 } from "../../__tests__/support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { EXTENSION_SUBSCRIPTIONS_FILE } from "../../config/store.js";
@@ -110,7 +111,7 @@ beforeEach(async () => {
 	app = createApp(runtime, {
 		cardSkins: { store: createCardSkinStore(dataDir) },
 		extensions: {
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => entries,
 			status: () => undefined,
 			pushSource: () => undefined,

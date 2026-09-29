@@ -5,12 +5,13 @@ import type {
 	HistoryRepushResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
-import { type PushKind, PushKindSchema } from "@bilibili-notify/internal";
+import { fail, ok, type PushKind, PushKindSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
 import { originalCount, unsentIndices } from "../history/repush.js";
 import { toHistoryView } from "../history/view.js";
+import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -44,16 +45,13 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			if (!Number.isFinite(n)) {
 				// 此前 Number("abc")=NaN 经 Math.min/max 透传成 limit=NaN 静默喂给
 				// query() → 行为未定义。显式 400 而非静默 no-op。
-				return c.json({ error: "invalid_query", message: `invalid limit: ${limitRaw}` }, 400);
+				return respondFailure(c, fail("invalid", `limit 要是数字：${limitRaw}`));
 			}
 			limit = Math.max(1, Math.min(500, Math.trunc(n)));
 		}
 		const since = c.req.query("since");
 		if (since !== undefined && Number.isNaN(Date.parse(since))) {
-			return c.json(
-				{ error: "invalid_query", message: `invalid since (expect ISO timestamp): ${since}` },
-				400,
-			);
+			return respondFailure(c, fail("invalid", `since 要是 ISO 时间戳：${since}`));
 		}
 		const kindParam = c.req.query("kind");
 		const kind = kindParam && VALID_KINDS.has(kindParam) ? (kindParam as PushKind) : undefined;
@@ -96,7 +94,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (daysRaw !== undefined) {
 			const n = Number(daysRaw);
 			if (!Number.isFinite(n)) {
-				return c.json({ error: "invalid_query", message: `invalid days: ${daysRaw}` }, 400);
+				return respondFailure(c, fail("invalid", `days 要是数字：${daysRaw}`));
 			}
 			days = Math.max(1, Math.min(90, Math.trunc(n)));
 		}
@@ -105,7 +103,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (tzRaw !== undefined) {
 			const n = Number(tzRaw);
 			if (!Number.isFinite(n)) {
-				return c.json({ error: "invalid_query", message: `invalid tzOffset: ${tzRaw}` }, 400);
+				return respondFailure(c, fail("invalid", `tzOffset 要是数字（分钟）：${tzRaw}`));
 			}
 			tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(n)));
 		}
@@ -119,12 +117,13 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 	// `<entryId>.<ext>` so the lookup is direct.
 	app.get("/img/:name", async (c) => {
 		const name = c.req.param("name");
-		if (!/^[A-Za-z0-9_.-]+$/.test(name)) return c.text("bad request", 400);
+		if (!/^[A-Za-z0-9_.-]+$/.test(name))
+			return respondFailure(c, fail("invalid", "图片文件名不合规"));
 		const dir = deps.runtime.historyStore.imageDir();
 		const path = join(dir, name);
 		try {
 			const stat = statSync(path);
-			if (!stat.isFile()) return c.text("not found", 404);
+			if (!stat.isFile()) return respondFailure(c, fail("not_found", "没有这张图片"));
 			const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
 			const mime = extToMime(ext);
 			c.header("Content-Type", mime);
@@ -134,7 +133,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 				for await (const chunk of file) s.write(chunk as Buffer);
 			});
 		} catch {
-			return c.text("not found", 404);
+			return respondFailure(c, fail("not_found", "没有这张图片"));
 		}
 	});
 
@@ -144,19 +143,23 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 	 * - **202** 收下了,女仆去补。**不是 200** —— 回来的时候消息一条都还没发出去
 	 *   (发送层光退避就可能走满 190s,一行补几条就是几倍),真正的结果随后经 WS 的
 	 *   `history-updated` 一条条回来。
-	 * - **404** 没这一行。
-	 * - **409** 有这一行但现在不能补(全送到了 / 路由里去掉了 / 目标停用 / 正在补 /
-	 *   原件没了)。理由**原样**交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。
+	 * - **404** 没这一行(`not_found`)。
+	 * - **409** 有这一行但现在不能补(`conflict`:全送到了 / 路由里去掉了 / 目标停用 / 正在补 /
+	 *   原件没了)。理由**原样**放进 `message` 交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。
 	 */
 	app.post("/:id/repush", async (c) => {
 		const parsed = RepushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return c.json<HistoryRepushResponse>({ ok: false, err: "请求格式不正确" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "重推请求要带 ts（这一行的 ISO 时间戳）和 mode（all 或 missing）"),
+			);
 		}
 		const { ts, mode } = parsed.data;
 		const res = await deps.runtime.repushRunner.start(c.req.param("id"), ts, mode);
-		if (res.ok) return c.json<HistoryRepushResponse>({ ok: true, count: res.count }, 202);
-		return c.json<HistoryRepushResponse>({ ok: false, err: res.reason }, res.notFound ? 404 : 409);
+		if (res.ok) return c.json<HistoryRepushResponse>(ok({ count: res.count }), 202);
+		// runner 还在用 `reason` / `notFound` 这套旧说法(不在本组范围),在这里译成标准码。
+		return respondFailure(c, fail(res.notFound ? "not_found" : "conflict", res.reason));
 	});
 
 	return app;

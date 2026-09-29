@@ -25,6 +25,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../platforms/dispatch.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionContext, STATUS_CHANGED_COALESCE_MS } from "../context.js";
@@ -95,7 +96,7 @@ function harness(
 		id: "bridge",
 		manifest: opts.manifest ?? V1_PUSH,
 		host,
-		mounts: createExtensionMounts(),
+		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters,
 		connections: () => {
 			connectionsReads += 1;
@@ -1091,7 +1092,7 @@ describe("认领 WS upgrade", () => {
 				setTimeout: () => ({ dispose() {} }),
 				onDispose() {},
 			} as unknown as ServiceContext,
-			mounts: createExtensionMounts(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
 			adapters: createAdapterRegistry(),
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
