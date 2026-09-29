@@ -119,7 +119,7 @@ export async function startStandaloneServer(
 	// 开机清扫:收掉上个进程被杀留下的临时文件与暂存目录。**必须赶在任何写入之前** —— 它认不出哪些
 	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
 	// 下面的 createAppRuntime 起,所以放在它前面;logger 此刻还没有,结果先留着,等它起来再记一行。
-	// 清扫失败不挡开机(比如 /data 里有主人丢进来的、读不动的目录):留下的只是些垃圾。
+	// 读不动 / 清不掉的地方清扫自己跳过、记进报告;万一它整个抛了也不挡开机:留下的只是些垃圾。
 	const bootSweep = await sweepTempFiles(bootstrap.dataDir).then(
 		(report) => ({ report }) as const,
 		(error: unknown) => ({ error }) as const,
@@ -183,7 +183,8 @@ export async function startStandaloneServer(
 			);
 		} else {
 			const swept = describeBootSweep(bootSweep.report, bootstrap.dataDir);
-			if (swept) log.info(swept);
+			if (swept.cleaned) log.info(swept.cleaned);
+			if (swept.skipped) log.warn(swept.skipped);
 		}
 
 		// Load the at-rest secrets key during startup, not on the first settings write.
@@ -1137,10 +1138,15 @@ async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promis
 	return { source: "disabled", payloadDir: dir };
 }
 
-/** 开机清扫的结果写成一行日志;什么都没清返回 `null`(常态,不占日志)。 */
-function describeBootSweep(report: SweepReport, dataDir: string): string | null {
+/**
+ * 开机清扫的结果写成日志:清掉 / 挪回的一行 info,跳过的一行 warn;哪样都没有就不写(常态,不占日志)。
+ */
+function describeBootSweep(
+	report: SweepReport,
+	dataDir: string,
+): { cleaned: string | null; skipped: string | null } {
 	const list = (paths: readonly string[]): string => {
-		const shown = paths.slice(0, 5).map((path) => relative(dataDir, path));
+		const shown = paths.slice(0, 5).map((path) => relative(dataDir, path) || ".");
 		return paths.length > shown.length ? `${shown.join("、")} 等` : shown.join("、");
 	};
 	const parts: string[] = [];
@@ -1150,7 +1156,14 @@ function describeBootSweep(report: SweepReport, dataDir: string): string | null 
 	if (report.restored.length > 0) {
 		parts.push(`把 ${report.restored.length} 个换到一半的目录挪回原位(${list(report.restored)})`);
 	}
-	return parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:${parts.join(",")}` : null;
+	const skipped = report.skipped;
+	return {
+		cleaned: parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:${parts.join(",")}` : null,
+		skipped:
+			skipped.length > 0
+				? `[storage] 开机清扫没做完:${skipped.length} 处读不动或清不掉,跳过了(${list(skipped.map((s) => s.path))};第一处:${skipped[0]?.message})—— 那里上次留下的临时文件可能还在,不影响启动`
+				: null,
+	};
 }
 
 async function hasReadableIndexHtml(dir: string): Promise<boolean> {

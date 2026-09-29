@@ -26,6 +26,8 @@ export interface SweepReport {
 	removed: string[];
 	/** 换到一半、挪回原位的旧目录(挪回后的路径)。 */
 	restored: string[];
+	/** 读不动或清不掉、只好跳过的地方(路径与原因);那里的残留下次开机再试。 */
+	skipped: { path: string; message: string }[];
 }
 
 /**
@@ -34,9 +36,12 @@ export interface SweepReport {
  *
  * 必须在任何写入开始之前跑:它认不出哪些临时文件是这个进程正在写的
  * (Docker 里每次开机 pid 常常一样,不能靠 pid 区分)。
+ *
+ * 读不动的目录、删不掉 / 挪不回的残留只跳过那一处、记进报告,别处照清,整个清扫不抛:数据目录里
+ * 常有主人自己丢进来、权限不对的东西,不能因为它就一处都不清。
  */
 export async function sweepTempFiles(root: string): Promise<SweepReport> {
-	const report: SweepReport = { removed: [], restored: [] };
+	const report: SweepReport = { removed: [], restored: [], skipped: [] };
 	await sweepDir(root, report);
 	return report;
 }
@@ -46,30 +51,39 @@ async function sweepDir(dir: string, report: SweepReport): Promise<void> {
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-		throw err;
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") skip(report, dir, err);
+		return;
 	}
 	for (const entry of entries) {
 		const path = join(dir, entry.name);
-		if (TEMP_NAME.test(entry.name)) {
-			await rm(path, { recursive: true, force: true });
-			report.removed.push(path);
-			continue;
-		}
-		const old = OLD_NAME.exec(entry.name);
-		if (old) {
-			const target = join(dir, old[1] as string);
-			if (await exists(target)) {
+		try {
+			if (TEMP_NAME.test(entry.name)) {
 				await rm(path, { recursive: true, force: true });
 				report.removed.push(path);
-			} else {
-				await rename(path, target);
-				report.restored.push(target);
+				continue;
 			}
+			const old = OLD_NAME.exec(entry.name);
+			if (old) {
+				const target = join(dir, old[1] as string);
+				if (await exists(target)) {
+					await rm(path, { recursive: true, force: true });
+					report.removed.push(path);
+				} else {
+					await rename(path, target);
+					report.restored.push(target);
+				}
+				continue;
+			}
+		} catch (err) {
+			skip(report, path, err);
 			continue;
 		}
 		if (entry.isDirectory()) await sweepDir(path, report);
 	}
+}
+
+function skip(report: SweepReport, path: string, err: unknown): void {
+	report.skipped.push({ path, message: err instanceof Error ? err.message : String(err) });
 }
 
 async function exists(path: string): Promise<boolean> {

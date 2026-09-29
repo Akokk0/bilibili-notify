@@ -109,25 +109,54 @@ export function atomicWriteJsonSync(
 }
 
 /**
- * fsync 目录,让刚做的改名 / 新建本身落盘。Windows 打不开目录句柄,NTFS 也不需要这一步,直接跳过。
+ * 文件系统不支持 fsync 目录时报的错。部分 NAS / SMB / FUSE 挂载打不开目录来 fsync,或者 fsync
+ * 目录报 EINVAL / ENOTSUP。这一步只是让改名本身更早落盘,走到这里时改名已经做完、文件好好地在
+ * 目标位置 —— 当成写失败的话,挂在这类盘上的数据目录每次写都「失败」。别的错(EIO 等)照抛。
+ */
+const DIR_SYNC_UNSUPPORTED = new Set([
+	"EINVAL",
+	"ENOTSUP",
+	"EOPNOTSUPP",
+	"ENOSYS",
+	"EISDIR",
+	"EBADF",
+	"EPERM",
+	"EACCES",
+]);
+
+function isDirSyncUnsupported(err: unknown): boolean {
+	return DIR_SYNC_UNSUPPORTED.has((err as NodeJS.ErrnoException).code ?? "");
+}
+
+/**
+ * fsync 目录,让刚做的改名 / 新建本身落盘。Windows 打不开目录句柄,NTFS 也不需要这一步,直接跳过;
+ * 文件系统不支持时也跳过(见 {@link DIR_SYNC_UNSUPPORTED})。
  */
 export async function syncDirectory(dir: string): Promise<void> {
 	if (process.platform === "win32") return;
-	const handle = await open(dir, "r");
 	try {
-		await handle.sync();
-	} finally {
-		await handle.close();
+		const handle = await open(dir, "r");
+		try {
+			await handle.sync();
+		} finally {
+			await handle.close();
+		}
+	} catch (err) {
+		if (!isDirSyncUnsupported(err)) throw err;
 	}
 }
 
 /** {@link syncDirectory} 的同步版。 */
 export function syncDirectorySync(dir: string): void {
 	if (process.platform === "win32") return;
-	const fd = openSync(dir, "r");
 	try {
-		fsyncSync(fd);
-	} finally {
-		closeSync(fd);
+		const fd = openSync(dir, "r");
+		try {
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+	} catch (err) {
+		if (!isDirSyncUnsupported(err)) throw err;
 	}
 }

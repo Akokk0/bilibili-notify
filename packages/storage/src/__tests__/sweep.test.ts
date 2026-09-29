@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -64,8 +64,33 @@ describe("sweepTempFiles", () => {
 	});
 
 	it("根目录不存在 → 什么都不做", async () => {
-		expect(await sweepTempFiles(join(dir, "nope"))).toEqual({ removed: [], restored: [] });
+		expect(await sweepTempFiles(join(dir, "nope"))).toEqual({
+			removed: [],
+			restored: [],
+			skipped: [],
+		});
 	});
+
+	// 主人往 /data 里丢一个权限不对的目录很常见:清扫整个中止的话,别处的残留也清不到,
+	// 而调用方只能在「开机失败」和「整个没清」之间选。
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"读不动的子目录跳过、记进报告,别处照清,不抛",
+		async () => {
+			const locked = join(dir, "locked");
+			await mkdir(locked);
+			await writeFile(join(locked, "x.json.bn-tmp.7.abcdef"), "{");
+			await writeFile(join(dir, "y.json.bn-tmp.7.abcdef"), "{");
+			await chmod(locked, 0o000);
+			try {
+				const report = await sweepTempFiles(dir);
+				expect(report.removed).toEqual([join(dir, "y.json.bn-tmp.7.abcdef")]);
+				expect(report.skipped.map((s) => s.path)).toEqual([locked]);
+				expect(report.skipped[0]?.message).toMatch(/EACCES/);
+			} finally {
+				await chmod(locked, 0o755);
+			}
+		},
+	);
 
 	it("原子写真的会起的临时名,清扫认得", async () => {
 		const leftover = tempPathFor(join(dir, "a.json"));
