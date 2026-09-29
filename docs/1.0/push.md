@@ -15,8 +15,8 @@
 | 段 | 住哪 | 干什么 |
 | --- | --- | --- |
 | ① 来源 | 服务端 `bilibili/`；拓展经 `extensions/` 收件口 | 把平台数据翻成 `PostReport` / `LiveSignalReport`，只带 externalId 上报（来源不知道订阅 id）；图先用 `ctx.fetchImage` / `ctx.storeImage` 存进图库，上报里只交 `ImageRef` |
-| ② 装配 | 服务端 `posts/`（作品）、`live/`（直播与直播附加项） | 过滤 → 出卡 → AI 点评 → 套文案 → 按版式分组 → 交给发送 |
-| ③ 路由与闸 | `packages/push` 的 `PushRouter` | 按订阅 id 查路由、过闸、选目标、收窄附加项 |
+| ② 装配 | 服务端 `posts/`（作品）、`live/`（直播与直播附加项） | 过滤 → 出卡 → AI 正文 → 套文案 → 按版式分组 → 交给发送 |
+| ③ 路由与闸 | `packages/push` 的 `PushRouter` | 按订阅 id 查路由、过闸、选目标、收窄附加项、逐目标挑正文 |
 | ④ 发送 | 同上 | 分条、按目标重试、@全体 分流 |
 | ⑤ 投递 | 服务端 `push/` 的 `TargetDispatcher` → `platforms/` 里的 `PlatformAdapter` | 按目标所在的连接找适配器，真发出去；适配器登记表与分发在 `push/` |
 | ⑥ 历史 | `history/` | 一行 = 一次推送 × 一个目标，失败带 code；存重推原件 |
@@ -37,14 +37,14 @@
 | --- | --- |
 | 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。文字取自 `posts/` 里唯一的取段函数（过滤与 AI 看同一份字）。被挡时的「屏蔽后提醒」带 `postNoun` |
 | 出卡 | `packages/image` 的 `generatePostCard` / `generateLiveCard`，只吃中立形状、只内联图库引用、不联网。出卡失败就降级成纯文字 |
-| AI 点评 | `packages/ai`，按订阅设置。失败就不带点评 |
+| AI 正文 | `packages/ai`。动态点评与直播总结都是「正文用 AI 写还是用模板写」，按目标选（`core.ai.writing`，ADR-0032）：模板正文总备好；默认开着或任一例外开着才生成 AI 正文；没配、AI 总开关关着或生成失败，全部用模板正文 |
 | 套文案 | 全仓唯一的 `interpolate`（internal）；变量 `{name}`、`{postNoun}`、`{viewer}`、`{key}`，会员档名 `{tier}`（原 `{guard}`）、粉丝团名 `{fanclub}`（原 `{mdn}`） |
 | 按版式分组 | internal 的版式分组，作品与直播共用一份；版式块：卡片、文字、链接（作品本身的地址）、正文链接、分条符。**正文链接**（09-27 拍板）：默认显示、默认跟在「链接」块后面同一条消息；把正文里 `kind: "link"` 的片段一个一行写成「显示文字 地址」，同一地址只列一次，没有就不占行；只认片段类型，不认来源（卡片上的链接点不了，靠它把地址带出去） |
 | 交给发送 | 收成一个入口 `broadcast(subscriptionId, messages, feature)`（推送种类就是特性键，ADR-0023 决策 12）；`PushLike` 全仓一份 |
 
 - **装配不管静音和免扰**：那是路由层的事。代价：免扰期间照样出卡、照样调 AI（花钱）再丢——主人知情拍板，推翻了先定的「装配前先判」（Q20）。
 - **没配目标照样出卡**（不动）：引擎不许知道目标，发不出去是下游的事。
-- **失败降级，不回给来源**：出卡失败发纯文字、AI 失败不带点评，都不整条重来。作品装配入口是 `deliverPost`，它不把投递结果交回来源；投递失败由推送层按目标处理（④）、按目标落历史（⑥）。图集（`PostPushPart` 的 `post-images`）是 `role: "extra"`、不许 @全体；它没送到，那一行记成 `partial`。
+- **失败降级，不回给来源**：出卡失败发纯文字、AI 失败就全用模板正文，都不整条重来。作品装配入口是 `deliverPost`，它不把投递结果交回来源；投递失败由推送层按目标处理（④）、按目标落历史（⑥）。图集（`PostPushPart` 的 `post-images`）是 `role: "extra"`、不许 @全体；它没送到，那一行记成 `partial`。
 - 串行：送达次序 = 发起次序，按订阅过 `createSerialQueue`，防「下播卡晚于新一场开播卡」。渲染闸另叫 `createRenderGate`。
 - 直播附加项（词云、直播总结）的生产在 `live/`。
 
@@ -67,6 +67,7 @@
 
 - 只有「时间上的挡」（静音、免扰）才落 `silenced`；总开关关着、附加项收窄成空、目标所在的连接不支持 @全体，照旧静默、不落行。
 - 支不支持 @全体 问适配器的能力 `atAll`，不按平台名判（见 ⑤「成员」）。
+- **逐目标挑正文**（ADR-0032）：目标定了以后，按 `core.ai.writing` 逐个目标挑 AI 正文还是模板正文，例外写了听例外，没写用默认；这一维和 @全体 的分组叠在一起，@全体「先发、不等」的时序不变。直播总结发不发仍归附加项 `liveSummary`，这里只挑发出去的那条用哪份字。
 - `silenced` 连带三处：不算「今日推送」与趋势（现 `countsAsDelivery`），追加补丁（词云、总结）时不被 `computeStatus` 重算成 failed，补发闸（`repushDenial`）放行。
 - ⛔ 被挡时不弹警告卡，历史页也不加按状态筛选（09-05 否过）。
 
@@ -239,6 +240,7 @@ type PushTarget =
 **重推原件与图**：
 
 - 每行存重推原件，原件类型叫 `RepushSnapshot`（代码里的 `DraftSchema` / `DRAFT_GONE`，和锐评草稿撞词；字段 `v` → `version`）；原件里的图（卡片图、自存图）与头像快照都按内容摘要存进统一图库 `images/<sha256>.<ext>`，行里只存引用。取消 `history/img/`。
+- 按目标挑过正文的，行里存的是那个目标实际收到的正文，重推照它发（ADR-0032）。
 - 原件图上的 `own`（标「复用历史那份 / 原件自己存的」）删掉：图按摘要进图库、按引用清扫，两处不再有区别。
 - 原件里的载荷种类与字段（`forward-images` → `image-group`；小程序卡那一种按原生分享的中立描述改字段）由迁移改写，进守卫 13 的清单。
 - 保留期清理那一趟按引用全局清扫图库，引用方含历史行、重推原件、资料缓存、AI 会话。不再「按日删日文件时连图一起删」。

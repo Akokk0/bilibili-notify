@@ -46,3 +46,5 @@
 - docs/1.0/push.md：② 装配里「AI 点评 按订阅设置」那行改成本份；③ 路由与闸多一步「逐目标挑正文」。
 - docs/1.0/data-model.md：`core` 的 AI 设置加这两份。
 - docs/1.0/construction-plan.md：推送层那期带上它。
+
+🔗 **2026-09-29**：字段定为 `core.ai.writing { post, liveSummary }`（类型 `AiWritingSettings`）；面板在 AI 设置页「女仆写正文」一节，第 4 期画。上面三份文档已同步。

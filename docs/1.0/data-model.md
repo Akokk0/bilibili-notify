@@ -462,7 +462,7 @@ interface Settings {
     master: { targetId?: string };    // 主人目标必须是私聊目标，见下「主人通知」
     defaults: GlobalDefaults;         // 按订阅覆盖的回退层，订阅上的覆盖与它同形
     templatesSeen: TemplatesSeen;     // 出厂文案账本（原 defaults.templateDefaultsSeen）
-    ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处
+    ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处；writing: AiWritingSettings（AI 写正文按目标选，`{ post, liveSummary }` 各一份 `{ enabled, byTarget }`，byTarget 的键是目标 id，ADR-0032）
     rankingReport: RankingReportSettings;   // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
     muteEndsAt?: string;              // 原 mutedUntil；没在静音就缺键
     commands: CommandSettings;
