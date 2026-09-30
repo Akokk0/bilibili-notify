@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ResourceSample, ResourcesHydrate } from "@bilibili-notify/contract";
-import type { Disposable, MessageBus } from "@bilibili-notify/internal";
+import { type Disposable, issuesFromZod, type MessageBus } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
@@ -374,7 +374,8 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			} catch (_err) {
 				sendRaw(client, {
 					type: "error",
-					message: "invalid_json",
+					code: "invalid",
+					message: "控制消息不是合法的 JSON",
 					ts: new Date().toISOString(),
 				});
 				return;
@@ -383,8 +384,10 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			if (!result.success) {
 				sendRaw(client, {
 					type: "error",
-					message: "invalid_control_message",
-					issues: result.error.issues,
+					code: "invalid",
+					message: "控制消息不合规矩",
+					// 只留路径与原话:zod 自己的字段(code / expected / received …)不往外甩。
+					issues: issuesFromZod(result.error),
 					ts: new Date().toISOString(),
 				});
 				return;

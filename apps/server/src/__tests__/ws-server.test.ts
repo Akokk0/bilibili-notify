@@ -289,13 +289,42 @@ describe("WS server", () => {
 		ws.close();
 	});
 
-	it("invalid control message → error frame, connection stays open", async () => {
+	/**
+	 * 控制帧的错误与 HTTP 错误体同一个形状(ADR-0026 决策 6):`code` 取标准码表,`message` 是给人看的
+	 * 中文,`issues` 只有路径与原话 —— 不再是 `message: "invalid_control_message"` 这种机器串,
+	 * 也不把 zod 自己的字段(`code` / `expected` / `received` …)原样甩出去。
+	 */
+	it("invalid control message → error frame { code: invalid, message, issues }, connection stays open", async () => {
 		const ws = await connect(port);
 		const c = collect(ws);
 		send(ws, { type: "subscribe", channels: ["nope"] });
 		const err = await c.waitFor((m) => m?.type === "error");
-		expect(err.message).toBe("invalid_control_message");
+		expect(err.code).toBe("invalid");
+		expect(err.message).toBe("控制消息不合规矩");
+		expect(typeof err.ts).toBe("string");
+		// 只有路径与原话:每条的键集合钉死,zod 的原始 issue 不往外甩。
+		const issues = err.issues as Array<Record<string, unknown>>;
+		expect(issues.length).toBeGreaterThan(0);
+		for (const issue of issues) {
+			expect(Object.keys(issue).every((key) => key === "path" || key === "message")).toBe(true);
+			expect(typeof issue.message).toBe("string");
+		}
+		expect(issues[0]?.path).toEqual(["channels", 0]);
 		// Confirm the socket is still alive by issuing a valid subscribe afterwards.
+		send(ws, { type: "subscribe", channels: ["state"] });
+		const ack = await c.waitFor((m) => m?.type === "subscribed");
+		expect(ack.channels).toContain("state");
+		ws.close();
+	});
+
+	it("not JSON → error frame { code: invalid, message }, connection stays open", async () => {
+		const ws = await connect(port);
+		const c = collect(ws);
+		ws.send("这不是 JSON{");
+		const err = await c.waitFor((m) => m?.type === "error");
+		expect(err.code).toBe("invalid");
+		expect(err.message).toBe("控制消息不是合法的 JSON");
+		expect(err).not.toHaveProperty("issues");
 		send(ws, { type: "subscribe", channels: ["state"] });
 		const ack = await c.waitFor((m) => m?.type === "subscribed");
 		expect(ack.channels).toContain("state");

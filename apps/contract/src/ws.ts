@@ -14,12 +14,14 @@
  *   { type: 'unsubscribed', channels: [...] }
  *   { type: 'pong', ts }                          (response to client ping)
  *   { type: 'ping' }                              (heartbeat)
- *   { type: 'error', message, issues? }           (bad control msg)
+ *   { type: 'error', code, message, issues?, ts } (bad control msg —— 与 HTTP 错误体同一个形状)
  *   { type: <channel>, event, ts, data }          (server-pushed event)
  *
  * 客户端控制帧的 zod 校验 schema 与心跳/背压参数是服务端实现细节,
  * 在 `apps/server/src/ws/types.ts`。
  */
+
+import type { FailureCode, Issue } from "@bilibili-notify/internal";
 
 // ---------------------------------------------------------------------------
 // Channel registry
@@ -66,8 +68,16 @@ export interface ServerEventEnvelope<TData = unknown> {
 export interface ServerControlEnvelope {
 	type: "subscribed" | "unsubscribed" | "ping" | "pong" | "error";
 	channels?: ChannelName[];
+	/**
+	 * 仅 `error` 帧:标准码(ADR-0026)。控制帧的错误与 HTTP 错误体同一个形状 ——
+	 * `{ code, message, issues? }`,只是搭在 `type: "error"` 上;现在只有 `invalid`
+	 * (发来的不是合法 JSON,或不合控制消息的规矩)。
+	 */
+	code?: FailureCode;
+	/** 仅 `error` 帧:给人看的中文原因。 */
 	message?: string;
-	issues?: unknown;
+	/** 仅 `error` 帧:逐条原因,只有路径与原话(zod 自己的字段不往外甩)。 */
+	issues?: Issue[];
 	ts?: string;
 }
 
