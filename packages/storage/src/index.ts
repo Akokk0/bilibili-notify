@@ -9,15 +9,19 @@ export {
 	atomicWriteFileSync,
 	atomicWriteJson,
 	atomicWriteJsonSync,
+	syncDirectory,
 } from "./atomic-file";
 export type { CookieData } from "./cookie-store";
 export { CookieStore } from "./cookie-store";
+export { copyFileAtomic, linkOrCopyFile } from "./copy-file";
 export { KeyManager } from "./key-manager";
 export {
 	createKeyProvider,
 	FileKeyProvider,
+	type KeyMaterialRead,
 	type KeyProvider,
 	PassphraseKeyProvider,
+	readKeyMaterial,
 } from "./key-provider";
 export {
 	type JsonFileRead,

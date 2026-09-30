@@ -24,9 +24,10 @@ export class KeyManager {
 			// ENOENT → 首次运行,正常创建
 		}
 		if (hex !== null) {
-			if (/^[0-9a-f]{64}$/i.test(hex)) {
+			const key = parseMasterKeyHex(hex);
+			if (key) {
 				this.logger.info("[key] 主密钥加载成功");
-				return Buffer.from(hex, "hex");
+				return key;
 			}
 			this.logger.warn(
 				"[key] 主密钥文件格式非法（非 64 位十六进制），将重新生成 —— " +
@@ -48,4 +49,10 @@ export class KeyManager {
 		this.logger.info("[key] 新密钥已生成并写入磁盘");
 		return key;
 	}
+}
+
+/** 主密钥文件的内容:精确 64 位十六进制(32 字节)。别的一律不认。 */
+export function parseMasterKeyHex(text: string): Buffer | null {
+	const hex = text.trim();
+	return /^[0-9a-f]{64}$/i.test(hex) ? Buffer.from(hex, "hex") : null;
 }

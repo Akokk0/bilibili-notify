@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "./atomic-file";
-import { KeyManager } from "./key-manager";
+import { KeyManager, parseMasterKeyHex } from "./key-manager";
 import { deriveKeyFromPassphrase } from "./secret-box";
 
 /**
@@ -78,9 +78,8 @@ export class PassphraseKeyProvider implements KeyProvider {
 			// ENOENT → 首次运行,正常创建
 		}
 		if (hex !== null) {
-			// 精确 32 位十六进制 = 16 字节(本类只写 randomBytes(16))。放宽到
-			// {32,} 会接受被截断/拼接的 salt,静默派生出错 key → 无声重登。
-			if (/^[0-9a-f]{32}$/i.test(hex)) return Buffer.from(hex, "hex");
+			const salt = parseSaltHex(hex);
+			if (salt) return salt;
 			this.logger.warn(
 				"[key] kdf.salt 格式非法（非 32 位十六进制），将重新生成 —— " +
 					"既有用注入密钥加密的 secrets（B 站 cookie / AI apiKey）届时无法解密、需重新登录。",
@@ -117,4 +116,46 @@ export function createKeyProvider(opts: CreateKeyProviderOptions): KeyProvider {
 			"且密钥与密文同目录 —— 仅为混淆，不构成真正的静态加密。",
 	);
 	return new FileKeyProvider(opts.keyPath, opts.logger);
+}
+
+/**
+ * 口令派生用的盐:精确 32 位十六进制 = 16 字节(本模块只写 randomBytes(16))。放宽到
+ * {32,} 会接受被截断 / 拼接的 salt,静默派生出错 key → 无声重登。
+ */
+function parseSaltHex(text: string): Buffer | null {
+	const hex = text.trim();
+	return /^[0-9a-f]{32}$/i.test(hex) ? Buffer.from(hex, "hex") : null;
+}
+
+export type KeyMaterialRead = { kind: "ok"; key: Buffer } | { kind: "missing" };
+
+/**
+ * 只读地取这一处的密钥:和 {@link createKeyProvider} 选同一种(有口令就派生,否则读 master.key),
+ * 拿到的是同一把;缺了、或者文件内容不认,回 `missing`,**绝不写盘**。
+ *
+ * 给迁移开新代用(ADR-0022):会话签名要的密钥得从迁移来源取,而来源(第 0 代)一个字节都不许动,
+ * `getKey()` 缺文件就当场造一把写进去,不能拿来读来源。缺了的,由新代里的 provider 自己去建。
+ */
+export async function readKeyMaterial(
+	opts: Omit<CreateKeyProviderOptions, "logger">,
+): Promise<KeyMaterialRead> {
+	const pass = opts.passphrase?.trim();
+	const text = await readTextIfExists(pass ? opts.saltPath : opts.keyPath);
+	if (text === null) return { kind: "missing" };
+	if (pass) {
+		const salt = parseSaltHex(text);
+		return salt ? { kind: "ok", key: deriveKeyFromPassphrase(pass, salt) } : { kind: "missing" };
+	}
+	const key = parseMasterKeyHex(text);
+	return key ? { kind: "ok", key } : { kind: "missing" };
+}
+
+/** 读得到就回内容,文件不在回 null;别的读错(EACCES / EIO…)照抛,和 provider 一样不当缺失。 */
+async function readTextIfExists(path: string): Promise<string | null> {
+	try {
+		return await readFile(path, "utf8");
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw e;
+	}
 }

@@ -12,7 +12,12 @@ import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createKeyProvider, FileKeyProvider, PassphraseKeyProvider } from "../key-provider";
+import {
+	createKeyProvider,
+	FileKeyProvider,
+	PassphraseKeyProvider,
+	readKeyMaterial,
+} from "../key-provider";
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -167,5 +172,51 @@ describe("PassphraseKeyProvider — kdf.salt 原子写", () => {
 	it.skipIf(process.platform === "win32")("POSIX 上 kdf.salt 权限是 0o600", async () => {
 		await createKeyProvider({ passphrase: "pw", logger: makeLogger(), ...paths() }).getKey();
 		expect((await stat(paths().saltPath)).mode & 0o777).toBe(0o600);
+	});
+});
+
+/**
+ * 迁移开新代时,会话签名要的密钥得从迁移来源(第 0 代)取,而第 0 代一个字节都不许动:
+ * `getKey()` 缺文件就当场造一把、写进去,不能拿来读来源。缺了回 missing,由新代自己去建。
+ */
+describe("readKeyMaterial — 只读地取密钥,缺了不造", () => {
+	it("文件模式:有 master.key → 和 FileKeyProvider 拿到的是同一把", async () => {
+		const expected = await new FileKeyProvider(paths().keyPath, makeLogger()).getKey();
+
+		const read = await readKeyMaterial(paths());
+
+		expect(read).toEqual({ kind: "ok", key: expected });
+	});
+
+	it("文件模式:缺 master.key → missing,盘上一个文件都没多", async () => {
+		const read = await readKeyMaterial(paths());
+
+		expect(read).toEqual({ kind: "missing" });
+		expect(await readdir(dir)).toEqual([]);
+	});
+
+	it("口令模式:有 kdf.salt → 和 PassphraseKeyProvider 拿到的是同一把", async () => {
+		const expected = await new PassphraseKeyProvider("pw", paths().saltPath, makeLogger()).getKey();
+
+		const read = await readKeyMaterial({ passphrase: "pw", ...paths() });
+
+		expect(read).toEqual({ kind: "ok", key: expected });
+	});
+
+	it("口令模式:缺 kdf.salt → missing,不写 salt", async () => {
+		const read = await readKeyMaterial({ passphrase: "pw", ...paths() });
+
+		expect(read).toEqual({ kind: "missing" });
+		expect(await readdir(dir)).toEqual([]);
+	});
+
+	it("master.key 格式不对 → missing(新代照活的 provider 那样重造),原文件不动", async () => {
+		await mkdir(join(dir, "secrets"), { recursive: true });
+		await writeFile(paths().keyPath, "not-a-key");
+
+		const read = await readKeyMaterial(paths());
+
+		expect(read).toEqual({ kind: "missing" });
+		expect(await readFile(paths().keyPath, "utf8")).toBe("not-a-key");
 	});
 });
