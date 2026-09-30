@@ -13,15 +13,15 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore } from "../../fans/store.js";
+import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
 import { dailyFansSeries, summarizeLiveSessions } from "../aggregate.js";
 import { migrateStatsFileKeys } from "../migrate-file-keys.js";
-import { createStatsStore } from "../store.js";
+import { createStatsStore, STATS_DYN_DIR, STATS_LIVE_DIR } from "../store.js";
 
 const ID_A = "a0000000-0000-4000-8000-00000000000a";
 const ID_B = "b0000000-0000-4000-8000-00000000000b";
 const ID_EXT = "e0000000-0000-4000-8000-00000000000e";
-const DIRS = [join("stats", "dyn"), join("stats", "live"), "fans"] as const;
+const DIRS = [join(...STATS_DYN_DIR), join(...STATS_LIVE_DIR), join(...FOLLOWERS_DIR)] as const;
 
 const bili = (id: string, uid: string, enabled = true) => ({
 	kind: "bilibili" as const,

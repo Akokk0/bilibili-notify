@@ -12,7 +12,7 @@ import { createRepushStore } from "../history/repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
-import { createStatsRecorder } from "../stats/recorder.js";
+import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "./extension-live.js";
@@ -70,6 +70,8 @@ export interface AppRuntime {
 	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
 	 */
 	statsStore: StatsStore;
+	/** 统计采集。构造时只挂上总线、不碰盘;开机数据段迁完再 `start()`,钉下水位线。 */
+	statsRecorder: Pick<StatsRecorderHandle, "start">;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
 	 * out of the persisted `Subscription` config so FansPoller's per-tick
@@ -134,15 +136,22 @@ export interface AppRuntime {
  *
  * Stage 2.1 keeps this minimal — no engines, no API client, no sink. Those wire in stage 2.2+.
  */
-export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
+export interface AppRuntimeRoots {
+	/**
+	 * 这次开机用的那一代(`runtime/generations.ts` 选出来的 `generations/<序号>/`)。要开新代时,它是
+	 * 还没改名的正式路径:构造期不读盘,数据段迁完、改完名才有人去读。宿主根照旧取 `bootstrap.dataDir`。
+	 */
+	dataRoot: string;
+}
+
+export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRoots): AppRuntime {
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
 		level: bootstrap.logLevel,
 	});
 	const bus = createNodeMessageBus();
 	const hostRoot = bootstrap.dataDir;
-	// 第 0 代就是宿主根;数据代落地时换成选中的那一代。
-	const dataRoot = hostRoot;
+	const { dataRoot } = roots;
 
 	// Shared at-rest encryption key. Injected passphrase (BN_COOKIE_KEY) →
 	// scrypt-derived key, never written to disk = real protection. Absent →
@@ -319,6 +328,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		repushRunner,
 		fansStore,
 		statsStore,
+		statsRecorder,
 		subRuntimeStore,
 		subAvatarStore,
 		conversationStore,

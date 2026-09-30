@@ -22,9 +22,15 @@ import { dataPath } from "./roots.js";
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
 export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
 
-/** 背景图资产目录 `<dataRoot>/assets/card-bg`。 */
+/** 背景图资产在代里的位置(素材库)。 */
+export const CARD_BG_DIR = ["library", "images"] as const;
+
+/** 直播封面的轮换游标在代里的位置。 */
+export const CARD_BG_CURSORS_FILE = ["runtime", "card-bg-cursors.json"] as const;
+
+/** 背景图资产目录 `<dataRoot>/library/images`。 */
 export function cardBgDir(dataRoot: string): string {
-	return dataPath(dataRoot, "assets", "card-bg");
+	return dataPath(dataRoot, ...CARD_BG_DIR);
 }
 
 const RULES = {

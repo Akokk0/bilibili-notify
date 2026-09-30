@@ -42,9 +42,12 @@ const MANIFEST = "index.json";
  */
 const DEFAULT_FONT_CACHE_IDLE_MS = 5 * 60_000;
 
-/** 字体资产目录 `<dataRoot>/assets/font`。 */
+/** 字体资产在代里的位置(素材库,名字清单 index.json 也在这里)。 */
+export const FONT_DIR = ["library", "fonts"] as const;
+
+/** 字体资产目录 `<dataRoot>/library/fonts`。 */
 export function fontAssetDir(dataRoot: string): string {
-	return dataPath(dataRoot, "assets", "font");
+	return dataPath(dataRoot, ...FONT_DIR);
 }
 
 const RULES = {

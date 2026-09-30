@@ -34,8 +34,11 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeEmptySubscription, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
+import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
@@ -134,6 +137,8 @@ const jsonl = (rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\
 
 describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按订阅 id 认人,两支各算各的", () => {
 	let dataDir: string;
+	/** 开机后在用的那一代;盘上读写都对它。 */
+	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 	let aiServer: Server;
@@ -179,7 +184,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 	/** 盘上一个 jsonl 的每一行;文件不在是 `undefined`。 */
 	async function lines(...path: string[]): Promise<Array<Record<string, unknown>> | undefined> {
 		try {
-			const raw = await readFile(join(dataDir, ...path), "utf8");
+			const raw = await readFile(join(gen, ...path), "utf8");
 			return raw
 				.split("\n")
 				.filter((line) => line.trim())
@@ -192,7 +197,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 	async function exists(...path: string[]): Promise<boolean> {
 		try {
-			await stat(join(dataDir, ...path));
+			await stat(join(gen, ...path));
 			return true;
 		} catch {
 			return false;
@@ -275,8 +280,9 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		webhookTarget = found.id;
 		await handle?.close("seed");
 		handle = undefined;
+		gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as {
 			extensions: Record<string, unknown>;
 			defaults: { ai: Record<string, unknown> };
@@ -303,7 +309,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			...makeEmptySubscription({ id: S_BILI, uid: UID }),
 			enabled: false,
 		};
-		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify([bili]));
+		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify([bili]));
 		// 拓展那位:开着,主人起过别名(资料里的名字要压过它,决策 3);单人锐评发到那条 webhook。
 		const ext = makeExtensionSubscription({
 			id: S_EXT,
@@ -312,24 +318,24 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			name: "别名乙",
 		});
 		await writeFile(
-			join(dataDir, "state", "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
 			JSON.stringify([
 				{ ...ext, roastSchedule: { ...ext.roastSchedule, targets: [webhookTarget] } },
 			]),
 		);
 
 		// 采集水位线:六天前(第一趟开机盖的是「现在」,B 站那几天的老数据会被它整片遮掉)。
-		await writeFile(join(dataDir, "stats", "since"), at(6));
-		for (const dir of [["fans"], ["stats", "dyn"], ["stats", "live"], ["stats", "seen"]]) {
-			await mkdir(join(dataDir, ...dir), { recursive: true });
+		await writeFile(join(gen, "stats", "since"), at(6));
+		for (const dir of [FOLLOWERS_DIR, ["stats", "dyn"], ["stats", "live"], ["stats", "seen"]]) {
+			await mkdir(join(gen, ...dir), { recursive: true });
 		}
 		// B 站老数据(升级之前的写法,按 uid 命名)。粉丝采样五天前到昨天,今天没有(停用的不采)。
 		await writeFile(
-			join(dataDir, "fans", `${UID}.jsonl`),
+			join(gen, ...FOLLOWERS_DIR, `${UID}.jsonl`),
 			jsonl([5, 4, 3, 2, 1].map((d, i) => ({ ts: at(d), value: 1000 + 10 * i }))),
 		);
 		await writeFile(
-			join(dataDir, "stats", "dyn", `${UID}.jsonl`),
+			join(gen, "stats", "dyn", `${UID}.jsonl`),
 			jsonl([
 				{ id: "b-av", type: "DYNAMIC_TYPE_AV", ts: at(2) },
 				{ id: "b-draw", type: "DYNAMIC_TYPE_DRAW", ts: at(3) },
@@ -337,7 +343,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			]),
 		);
 		await writeFile(
-			join(dataDir, "stats", "live", `${UID}.jsonl`),
+			join(gen, "stats", "live", `${UID}.jsonl`),
 			jsonl([
 				{ k: "start", ts: at(4) },
 				{ k: "end", ts: at(4, 2), peak: "1.2万" },
@@ -345,15 +351,15 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		);
 		// 拓展前几天的(按订阅 id 命名):三天前、昨天在记;三天前一支视频;两条粉丝样本。
 		await writeFile(
-			join(dataDir, "stats", "seen", `${S_EXT}.jsonl`),
+			join(gen, "stats", "seen", `${S_EXT}.jsonl`),
 			jsonl([{ ts: at(3) }, { ts: at(1) }]),
 		);
 		await writeFile(
-			join(dataDir, "stats", "dyn", `${S_EXT}.jsonl`),
+			join(gen, "stats", "dyn", `${S_EXT}.jsonl`),
 			jsonl([{ id: "e-video", kind: "video", ts: at(3) }]),
 		);
 		await writeFile(
-			join(dataDir, "fans", `${S_EXT}.jsonl`),
+			join(gen, ...FOLLOWERS_DIR, `${S_EXT}.jsonl`),
 			jsonl([
 				{ ts: at(3), value: 1000 },
 				{ ts: at(1), value: 1050 },
@@ -376,7 +382,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await vi.waitFor(
 			async () => {
 				expect(await lines("stats", "seen", `${S_EXT}.jsonl`)).toHaveLength(3);
-				expect((await lines("fans", `${S_EXT}.jsonl`))?.map((row) => row.value)).toEqual([
+				expect((await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.value)).toEqual([
 					1000, 1050, 1111,
 				]);
 				const profile = (await extSub())?.cachedProfile;
@@ -537,7 +543,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			{ timeout: 3_000, interval: 100 },
 		);
 		for (const path of [
-			["fans", `${S_EXT}.jsonl`],
+			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
 			["stats", "seen", `${S_EXT}.jsonl`],
 			["stats", "dyn", `${S_EXT}.jsonl`],
 		]) {
@@ -551,10 +557,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			expect(res.status).toBe(204);
 		}
 		const files = [
-			["fans", `${S_EXT}.jsonl`],
+			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
 			["stats", "seen", `${S_EXT}.jsonl`],
 			["stats", "dyn", `${S_EXT}.jsonl`],
-			["fans", `${S_BILI}.jsonl`],
+			[...FOLLOWERS_DIR, `${S_BILI}.jsonl`],
 			["stats", "dyn", `${S_BILI}.jsonl`],
 			["stats", "live", `${S_BILI}.jsonl`],
 		];

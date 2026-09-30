@@ -82,7 +82,7 @@ vi.mock("../../stats/roast-deliver.js", async (orig) => ({
 }));
 
 const { createRoastScheduler } = await import("../roast-scheduler.js");
-const { createRoastDraftStore } = await import("../roast-draft-store.js");
+const { createRoastDraftStore, ROAST_DRAFTS_FILE } = await import("../roast-draft-store.js");
 
 const BOARD_RESULT = {
 	pushText: "本周榜单",
@@ -372,11 +372,11 @@ describe("调度器 — 到点之后", () => {
 		expect(ctx.tracked).toHaveLength(1);
 		await storageWriteGate.arrived(); // 草稿的写停在了半路
 		expect(await stillPending(ctx.settled())).toBe(true);
-		expect(existsSync(join(dataDir, "state", "roast-drafts.json"))).toBe(false);
+		expect(existsSync(join(dataDir, ...ROAST_DRAFTS_FILE))).toBe(false);
 
 		storageWriteGate.release();
 		await ctx.settled();
-		expect(existsSync(join(dataDir, "state", "roast-drafts.json"))).toBe(true);
+		expect(existsSync(join(dataDir, ...ROAST_DRAFTS_FILE))).toBe(true);
 		expect(drafts.list()).toHaveLength(1);
 	});
 

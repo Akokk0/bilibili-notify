@@ -176,7 +176,7 @@ async function boot(opts: {
 	await plant(DOUYIN);
 	await plant(LEGACY_V1);
 	await plant(BARE_V2);
-	const rt = createAppRuntime(makeBootstrap(dataDir));
+	const rt = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 	runtime = rt;
 	await rt.configStore.load();
 	if (opts.settings !== undefined) {

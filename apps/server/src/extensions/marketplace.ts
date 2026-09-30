@@ -64,7 +64,7 @@ export interface MarketplaceOfficialSource {
 }
 
 export interface MarketplaceDeps {
-	/** 装载根 —— `<dataDir>/extensions/`。 */
+	/** 装载根 —— `<数据根>/extensions/`。 */
 	root: string;
 	/** 没有 = 这个构建没有官方源(fork 出去没有信任公钥的构建)。 */
 	official?: MarketplaceOfficialSource;

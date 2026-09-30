@@ -11,10 +11,15 @@
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
-import { createRoastDraftStore, DRAFT_TTL_MS, type RoastDraftStore } from "../roast-draft-store.js";
+import {
+	createRoastDraftStore,
+	DRAFT_TTL_MS,
+	ROAST_DRAFTS_FILE,
+	type RoastDraftStore,
+} from "../roast-draft-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -123,8 +128,8 @@ describe("RoastDraftStore", () => {
 
 	it("盘上文件坏了 → 当空的起,不让服务起不来", async () => {
 		const { writeFile, mkdir } = await import("node:fs/promises");
-		await mkdir(join(dir, "state"), { recursive: true });
-		await writeFile(join(dir, "state", "roast-drafts.json"), "{ 这不是 json");
+		await mkdir(dirname(join(dir, ...ROAST_DRAFTS_FILE)), { recursive: true });
+		await writeFile(join(dir, ...ROAST_DRAFTS_FILE), "{ 这不是 json");
 
 		const reopened = createRoastDraftStore({
 			dataRoot: dir,
@@ -152,8 +157,8 @@ describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
 	const SUBS: Record<string, string> = { "100": "sub-100", "200": "sub-200" };
 
 	async function openWith(records: unknown[]) {
-		await mkdir(join(dir, "state"), { recursive: true });
-		await writeFile(join(dir, "state", "roast-drafts.json"), JSON.stringify(records));
+		await mkdir(dirname(join(dir, ...ROAST_DRAFTS_FILE)), { recursive: true });
+		await writeFile(join(dir, ...ROAST_DRAFTS_FILE), JSON.stringify(records));
 		const debug = vi.fn();
 		const reopened = createRoastDraftStore({
 			dataRoot: dir,
@@ -282,7 +287,7 @@ describe("RoastDraftStore.close", () => {
 	afterEach(() => storageWriteGate.reset());
 
 	const draftsOnDisk = async (): Promise<Array<{ id: string }>> =>
-		JSON.parse(await readFile(join(dir, "state", "roast-drafts.json"), "utf8"));
+		JSON.parse(await readFile(join(dir, ...ROAST_DRAFTS_FILE), "utf8"));
 
 	it("close 等在途的写落盘", async () => {
 		storageWriteGate.hold();
@@ -304,7 +309,7 @@ describe("RoastDraftStore.close", () => {
 
 	it("close 之后的写被拒且不碰盘", async () => {
 		const kept = await store.add(board());
-		const before = await readFile(join(dir, "state", "roast-drafts.json"), "utf8");
+		const before = await readFile(join(dir, ...ROAST_DRAFTS_FILE), "utf8");
 		await store.close();
 		const writesAtClose = storageWriteGate.writes;
 
@@ -315,7 +320,7 @@ describe("RoastDraftStore.close", () => {
 		});
 
 		expect(storageWriteGate.writes).toBe(writesAtClose);
-		expect(await readFile(join(dir, "state", "roast-drafts.json"), "utf8")).toBe(before);
+		expect(await readFile(join(dir, ...ROAST_DRAFTS_FILE), "utf8")).toBe(before);
 		expect(store.get(kept.id)?.id).toBe(kept.id);
 	});
 });

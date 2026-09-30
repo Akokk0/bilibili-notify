@@ -16,8 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 
 /** bus 上收到的每一条 `subscription-reported`。 */
 const heard = vi.hoisted(() => [] as SubscriptionReportDelivery[]);
@@ -148,13 +150,14 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 		dataDir = await mkdtemp(join(tmpdir(), "bn-sub-report-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [FIXTURE_ID]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
 
-		const extDir = join(dataDir, "extensions", FIXTURE_ID);
+		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),
@@ -184,7 +187,7 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		await writeFile(
-			join(dataDir, "state", "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
 			JSON.stringify([ON_A, ON_B, OFF, FOREIGN]),
 		);
 

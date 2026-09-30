@@ -9,7 +9,7 @@
  * ③ 层数、大小、文件数都封顶。
  *
  * ⚠️ 装的时候**不验签**:签名分发那条链(ADR-0005 那套)还没建。所以第一版信的是「能登进
- * 这个面板的人」—— 与「主人自己把目录拷进 `<dataDir>/extensions/`」同一档信任,只是省了
+ * 这个面板的人」—— 与「主人自己把目录拷进 `<数据根>/extensions/`」同一档信任,只是省了
  * 一次 ssh。UI 上那句「只装信得过的包」不是客套。
  */
 
@@ -211,7 +211,7 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 }
 
 export interface InstallExtensionPackageInput {
-	/** 装载根 —— `<dataDir>/extensions/`。不存在就建。 */
+	/** 装载根 —— `<数据根>/extensions/`。不存在就建。 */
 	root: string;
 	pkg: OpenedExtensionPackage;
 }
@@ -226,7 +226,7 @@ export interface InstallExtensionPackageInput {
 const installQueues = new Map<string, Promise<unknown>>();
 
 export interface UninstallExtensionInput {
-	/** 装载根(`<dataDir>/extensions`)。 */
+	/** 装载根(`<数据根>/extensions`)。 */
 	root: string;
 	/** 拓展 id。调用方**必须**先按 `ExtensionIdSchema` 验过 —— 它同时是目录名。 */
 	id: string;

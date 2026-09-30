@@ -209,7 +209,7 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
 export const ACTIVATE_TIMEOUT_MS = 30_000;
 
 export interface LoadExtensionsOptions {
-	/** 装载目录 —— **只有一个**(`<dataDir>/extensions/`,见 `discover.ts` 文件头)。 */
+	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
 	host: ServiceContext;
 	mounts: ExtensionMounts;
@@ -411,7 +411,7 @@ function unreadableDetail(manifest: ExtensionManifest, why: string): string {
  */
 export async function loadExtensions(opts: LoadExtensionsOptions): Promise<LoadedExtensions> {
 	const { root, host, mounts, isEnabled, maxFailures } = opts;
-	// 记账落在**装载目录本身**(`<dataDir>/extensions/load-state.json`),绝不写进某个拓展
+	// 记账落在**装载目录本身**(`<数据根>/extensions/load-state.json`),绝不写进某个拓展
 	// 自己的目录:「它连炸了几次」是这一台机器的状态,而那个目录随时会被换掉 —— 开发版
 	// 装进来的那份还是仓库工作树的软链,往里写等于往 `git status` 里拉屎。
 	const ledgerRoot = root;

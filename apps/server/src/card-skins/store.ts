@@ -90,6 +90,9 @@ const ASSET_DIR = "assets";
 /** `assets/` 前缀的长度 —— 包内名字 → 盘上文件名只差这一截。 */
 const ASSET_PREFIX_LEN = `${ASSET_DIR}/`.length;
 
+/** 卡片皮肤在代里的位置。 */
+export const CARD_SKINS_DIR = ["skins", "card"] as const;
+
 export class CardSkinStore {
 	/** 盘上那一层:id → 清单的内存索引、整包落盘、按 id 串行的写道。内置那份**不在**里面。 */
 	private readonly pkg: SkinPackageStore<CardSkinManifest>;

@@ -217,13 +217,13 @@ function isBareRuntimeImport(specifier) {
  * (`/ext/bridge` 没人认领)。收到 401 = 包是自包含的(装外没有 node_modules)+ 清单读得懂
  * + 入口 import 得动 + `activate` 跑完了 + upgrade 认领上了,一次问清。
  */
-describe("拓展不进载荷,手放进 <dataDir> 就能跑", () => {
+describe("拓展不进载荷,手放进在用的那一代就能跑", () => {
 	it("载荷里一个拓展都没有", async () => {
 		const { files } = JSON.parse(await readFile(join(distDir, "bundle-manifest.json"), "utf8"));
 		expect(files.filter((file) => file.startsWith("extensions/"))).toEqual([]);
 	});
 
-	it("把构建好的包放进 <dataDir>/extensions/bridge/、拨开开关 → 桥认领了 /ext/bridge", async () => {
+	it("把构建好的包放进在用的那一代的 extensions/bridge/、拨开开关 → 桥认领了 /ext/bridge", async () => {
 		const tempRoot = await mkdtemp(join(tmpdir(), "bn-payload-ext-"));
 		const appDir = join(tempRoot, "app");
 		await cp(distDir, appDir, { recursive: true });
@@ -263,15 +263,21 @@ describe("拓展不进载荷,手放进 <dataDir> 就能跑", () => {
 			seed.kill("SIGTERM");
 			await waitForExit(seed);
 
-			// **主人手放的那一下**:构建出来的 dist/ 原样拷成 <dataDir>/extensions/bridge/。
+			// **主人手放的那一下**:构建出来的 dist/ 原样拷进在用的那一代的 extensions/bridge/
+			// (1.0 起数据在 <dataDir>/generations/<序号>/,拓展包跟着代走,ADR-0022 决策 8)。
+			const generationsDir = join(dataDir, "generations");
+			const seq = Math.max(
+				...(await readdir(generationsDir)).filter((name) => /^\d+$/.test(name)).map(Number),
+			);
+			const generationDir = join(generationsDir, String(seq));
 			await cp(
 				join(repoRoot, "extensions", "bridge", "dist"),
-				join(dataDir, "extensions", "bridge"),
+				join(generationDir, "extensions", "bridge"),
 				{
 					recursive: true,
 				},
 			);
-			const globalsPath = join(dataDir, "state", "globals.json");
+			const globalsPath = join(generationDir, "config", "globals.json");
 			const globals = JSON.parse(await readFile(globalsPath, "utf8"));
 			globals.extensions = { bridge: { enabled: true } };
 			await writeFile(globalsPath, JSON.stringify(globals));

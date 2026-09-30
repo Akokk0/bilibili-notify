@@ -19,10 +19,10 @@ import { join } from "node:path";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createConversationStore } from "../../ai/conversation-store.js";
+import { CONVERSATIONS_DIR, createConversationStore } from "../../ai/conversation-store.js";
 import { CARD_WORKSHOP_MAX_TOOL_ROUNDS } from "../../card-skins/chat-tools.js";
-import { CardSkinStore } from "../../card-skins/store.js";
-import { SkinStore } from "../../skins/store.js";
+import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
+import { PANEL_SKINS_DIR, SkinStore } from "../../skins/store.js";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
 
@@ -92,9 +92,9 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 			engines: { api: {}, commentary: { chatStatelessStream } },
 		},
 	} as unknown as RouteDeps;
-	const skinStore = new SkinStore({ skinsDir: join(dataDir, "skins") });
+	const skinStore = new SkinStore({ skinsDir: join(dataDir, ...PANEL_SKINS_DIR) });
 	await skinStore.init();
-	const cardSkinStore = new CardSkinStore({ dir: join(dataDir, "card-skins") });
+	const cardSkinStore = new CardSkinStore({ dir: join(dataDir, ...CARD_SKINS_DIR) });
 	await cardSkinStore.init();
 	const shot = vi.fn(async () => null);
 	const app = createAiRoute(deps, {
@@ -303,7 +303,7 @@ describe("落盘", () => {
 		const start = events.find((e) => e.event === "tool" && e.data.phase === "start");
 		expect(start?.data.args).toEqual({ skin: id, kind: "live" });
 
-		const file = await readFile(join(dataDir, "ai", "chat", `${conv.id}.json`), "utf8");
+		const file = await readFile(join(dataDir, ...CONVERSATIONS_DIR, `${conv.id}.json`), "utf8");
 		expect(file).not.toContain(marker);
 		const trace = JSON.parse(file).messages.at(-1).tools[0];
 		expect(trace).toMatchObject({ name: T.writeCard, args: { skin: id, kind: "live" }, ok: true });

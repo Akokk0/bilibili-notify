@@ -6,7 +6,9 @@ import { pathToFileURL } from "node:url";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { activeGeneration, openTestGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 async function findFreePort(): Promise<number> {
@@ -151,7 +153,9 @@ describe("server lifecycle", () => {
 	 * 漏一步的症状是「装了拓展但面板上什么都没有」,而进程照常启动、日志一个字都不说。
 	 */
 	it("装在 <dataDir>/extensions/ 里的拓展:关着不 import,开了就真的跑起来", async () => {
-		const extDir = join(dataDir, "extensions", "demo");
+		// 拓展装在开机要用的那一代里(开机前先开好一代,ADR-0022)。
+		const gen = await openTestGeneration(dataDir);
+		const extDir = join(gen, "extensions", "demo");
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),
@@ -201,7 +205,7 @@ describe("server lifecycle", () => {
 		await handle.close("test");
 
 		// 把开关拨开,重启 —— 换代码要重启,换开关本来不用,但这里连开机接线一起验。
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { demo: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
@@ -233,7 +237,7 @@ describe("server lifecycle", () => {
 			});
 		const says = (word: string) =>
 			`export function activate(ctx) { ctx.mount(async () => new Response(${JSON.stringify(word)})); }`;
-		const extDir = join(dataDir, "extensions", "demo");
+		const extDir = join(await openTestGeneration(dataDir), "extensions", "demo");
 		await mkdir(extDir, { recursive: true });
 		await writeFile(join(extDir, "extension.json"), manifest("1.0.0"));
 		await writeFile(join(extDir, "index.mjs"), says("旧的"));
@@ -322,7 +326,7 @@ describe("server lifecycle", () => {
 		// 头一趟只为把 globals 落到盘上 —— 开关缺失 = 关着(决策 34:开箱即有 ≠ 默认开着)。
 		handle = (await boot()).started;
 		await handle.close("test");
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(await activeGeneration(dataDir), ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { bridge: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));

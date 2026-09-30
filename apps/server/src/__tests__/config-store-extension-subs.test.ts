@@ -25,6 +25,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
 import {
+	CONFIG_DIR,
 	type ConfigStore,
 	ConfigValidationError,
 	createConfigStore,
@@ -118,7 +119,7 @@ let biliFile: string;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-config-ext-subs-"));
-	stateDir = join(dataDir, "state");
+	stateDir = join(dataDir, ...CONFIG_DIR);
 	await mkdir(stateDir, { recursive: true });
 	extFile = join(stateDir, EXTENSION_SUBSCRIPTIONS_FILE);
 	biliFile = join(stateDir, "subscriptions.json");

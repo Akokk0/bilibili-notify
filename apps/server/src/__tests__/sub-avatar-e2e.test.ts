@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl, PNG_BYTES } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { openTestGeneration } from "./support/generation.js";
 
 const FIXTURE_ID = "avatar-probe";
 const ORPHAN_ID = "b0000000-0000-4000-8000-00000000000f";
@@ -54,9 +55,11 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 	 */
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-sub-avatar-e2e-"));
-		avatarsDir = join(dataDir, "avatars");
+		// 开机前先开好一代,摆的东西都进这一代(ADR-0022)。
+		const gen = await openTestGeneration(dataDir);
+		avatarsDir = join(gen, "avatars");
 
-		const extDir = join(dataDir, "extensions", FIXTURE_ID);
+		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),

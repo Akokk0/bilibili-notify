@@ -65,7 +65,7 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 
 	/** 起一个真 app;拓展那一格先按 `seed` 摆进 globals(存储仍在那儿)。 */
 	async function boot(seed?: Record<string, { enabled: boolean; settings?: unknown }>) {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		if (seed) {
 			await runtime.configStore.updateGlobals((globals) => ({ ...globals, extensions: seed }));

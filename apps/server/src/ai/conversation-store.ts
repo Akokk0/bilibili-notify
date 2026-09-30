@@ -240,11 +240,14 @@ const DEFAULT_MAX_CONVERSATIONS = 50;
 /** 写道的唯一一个键:所有会话的写排一队(create 的修剪要读全部会话,不能与别的写交错)。 */
 const WRITE_KEY = "conversations";
 
+/** 女仆对话在代里的位置。 */
+export const CONVERSATIONS_DIR = ["ai", "conversations"] as const;
+
 export function createConversationStore(opts: ConversationStoreOptions): ConversationStore {
 	const { dataRoot, logger } = opts;
 	const maxMessages = opts.maxMessages ?? DEFAULT_MAX_MESSAGES;
 	const maxConversations = opts.maxConversations ?? DEFAULT_MAX_CONVERSATIONS;
-	const dir = dataPath(dataRoot, "ai", "chat");
+	const dir = dataPath(dataRoot, ...CONVERSATIONS_DIR);
 	const fileOf = (id: string) => join(dir, `${encodeURIComponent(id)}.json`);
 
 	/**

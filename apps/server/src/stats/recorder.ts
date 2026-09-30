@@ -64,6 +64,8 @@ export interface StatsRecorderCoreOptions {
 const UNKEYED = "\u0000";
 
 export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRecorderCore & {
+	/** 采集开始:钉下水位线。见 {@link StatsRecorderHandle.start}。 */
+	start(): void;
 	/** 给还在播的场次补一帧下播,时刻取「现在」,并等全部写入落地。见 {@link StatsRecorderHandle.closeOpenSessions}。 */
 	closeOpenSessions(): Promise<void>;
 	/** 等已经交出去的写入全部落地。见 {@link StatsRecorderHandle.flush}。 */
@@ -155,21 +157,22 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		return latest;
 	};
 
-	// 采集一开始就把水位线钉下来。**这里就是「采集开始」的定义** —— 记录器
-	// 在位才有人往盘上写活动。
-	//
-	// 留给首次 overview 请求去惰性创建的话,盖下的是「第一次有人打开统计页」的
-	// 时刻:升级后过几天才点开,这几天真采到的活动全部落在水位线之前,被判成
-	// 「无记录」—— 数据在盘上,界面上却是空白,而且水位线一旦落下就恒定,这段
-	// 永远显示不出来。
-	enqueue(UNKEYED, "recordingSince", () => opts.store.recordingSince());
-
 	const forget = (key: string) => {
 		peaks.delete(key);
 		openLive.delete(key);
 	};
 
 	return {
+		start() {
+			// **这里就是「采集开始」的定义** —— 记录器在位才有人往盘上写活动。开机在数据段迁完、
+			// 引擎起来之前调它;放在构造里的话,建运行时那一刻就往还没迁好的那一代里写盘。
+			//
+			// 留给首次 overview 请求去惰性创建的话,盖下的是「第一次有人打开统计页」的
+			// 时刻:升级后过几天才点开,这几天真采到的活动全部落在水位线之前,被判成
+			// 「无记录」—— 数据在盘上,界面上却是空白,而且水位线一旦落下就恒定,这段
+			// 永远显示不出来。
+			enqueue(UNKEYED, "recordingSince", () => opts.store.recordingSince());
+		},
 		recordPost(key, post) {
 			enqueue(key, "appendDynamic", () => opts.store.appendDynamic(key, post));
 		},
@@ -283,6 +286,10 @@ export interface StatsRecorderOptions {
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
 export interface StatsRecorderHandle extends Disposable {
 	/**
+	 * 采集开始:钉下水位线(「从这天起在记」)。开机数据段迁完、引擎起来之前调一次;构造时不碰盘。
+	 */
+	start(): void;
+	/**
 	 * 给当前仍在播的场次补一帧下播,时刻取「现在」。**关服前调用**。
 	 *
 	 * 关服路径(`teardown` / `stop` / `cancel`)都不翻 `liveStatus`,所以不会有
@@ -327,6 +334,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	];
 
 	return {
+		start: () => recorder.start(),
 		closeOpenSessions: () => recorder.closeOpenSessions(),
 		flush: () => recorder.flush(),
 

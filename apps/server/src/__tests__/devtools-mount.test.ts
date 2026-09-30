@@ -27,7 +27,7 @@ describe("devtools 挂载", () => {
 	});
 
 	it("没给 devtools → /api/dev 404", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -37,7 +37,7 @@ describe("devtools 挂载", () => {
 	});
 
 	it("给了 → /api/dev 列得出场景", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const registry = createDevRegistry([
 			{ id: "a", group: "event", title: "A", params: [], run: () => ({}) },

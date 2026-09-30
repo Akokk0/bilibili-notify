@@ -91,7 +91,11 @@ import type { HistoryStore } from "../history/store.js";
 import type { AdapterRegistry } from "../platforms/registry.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
 import { toGeneratorConfig } from "./ai-config.js";
-import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
+import {
+	CARD_BG_CURSORS_FILE,
+	makeExistingCardBgPicker,
+	readCardBgDataUrl,
+} from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentContentBuilder, segmentToPayload } from "./content-builder.js";
 import type { ExtensionLiveTable } from "./extension-live.js";
@@ -495,10 +499,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	}
 
 	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
-	// 游标按 `uid:kind` 独立,落盘 `<dataRoot>/card-bg-cursors.json`,重启续接不归零。
+	// 游标按 `uid:kind` 独立,落盘 `<dataRoot>/runtime/card-bg-cursors.json`,重启续接不归零。
 	// pick 在推送点(room-session / DynamicEngine)同步推进;脏标记驱动定时 flush,避免每
 	// 推送写盘。注入给两个引擎。
-	const cursorFile = dataPath(opts.dataRoot, "card-bg-cursors.json");
+	const cursorFile = dataPath(opts.dataRoot, ...CARD_BG_CURSORS_FILE);
 	const loadCursors = (): Record<string, number> => {
 		try {
 			const parsed: unknown = JSON.parse(readFileSync(cursorFile, "utf8"));

@@ -486,12 +486,19 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 });
 
 describe("StatsRecorder — 采集水位线", () => {
-	it("recorder 一建起来就钉下水位线,不等第一次有人来读", async () => {
+	it("start() 就钉下水位线,不等第一次有人来读", async () => {
 		// 惰性创建的话,水位线盖的是「第一次打开统计页」的时刻。升级后过几天才
 		// 点开统计页,这几天真采到的活动会全被判成「无记录」—— 数据在盘上,
 		// 界面上却是空白,而且水位线一旦落下就恒定,永远显示不出来。
-		const { store } = setup();
+		const { store, handle } = setup();
+		handle.start();
 		await vi.waitFor(() => expect(store.recordingSince).toHaveBeenCalled());
+	});
+
+	it("只建不 start,不碰盘:建运行时的时候数据那一代可能还没迁好", async () => {
+		const { store, handle } = setup();
+		await handle.flush();
+		expect(store.recordingSince).not.toHaveBeenCalled();
 	});
 });
 

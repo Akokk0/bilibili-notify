@@ -16,7 +16,11 @@ import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js"
 import { createNodeMessageBus } from "../message-bus.js";
 import { bindReportedProfiles, type ReportedProfilesHandle } from "../reported-profiles.js";
 import { createSubAvatarStore, type SubAvatarStore } from "../sub-avatar-store.js";
-import { createSubRuntimeStore, type SubRuntimeStore } from "../sub-runtime-store.js";
+import {
+	createSubRuntimeStore,
+	SUB_RUNTIME_FILE,
+	type SubRuntimeStore,
+} from "../sub-runtime-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -154,7 +158,7 @@ describe("bindReportedProfiles.close", () => {
 	beforeEach(() => storageWriteGate.reset());
 	afterEach(() => storageWriteGate.reset());
 
-	const runtimeFile = () => join(dataDir, "state", "sub-runtime.json");
+	const runtimeFile = () => join(dataDir, ...SUB_RUNTIME_FILE);
 
 	it("close 等在途的资料落盘(dispose 只摘监听、置标记,不等队列)", async () => {
 		bind();

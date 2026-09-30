@@ -15,7 +15,7 @@ import {
 	type Logger,
 	type NotificationPayload,
 } from "@bilibili-notify/internal";
-import { type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
+import { createKeyProvider, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp, createCardSkinStore, createStartupApp } from "./app.js";
@@ -46,6 +46,13 @@ import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
+import {
+	MIGRATION_REVISION,
+	migrateZeroGeneration,
+	readZeroGenerationKey,
+	type ZeroMigrationReport,
+	zeroGenerationExists,
+} from "./migration/zero-generation.js";
 import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
@@ -63,6 +70,12 @@ import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
+import {
+	createGeneration,
+	FORMAT_VERSION,
+	type GenerationSelection,
+	selectGeneration,
+} from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
@@ -75,6 +88,7 @@ import { resolveRestartAbility, runningInContainer } from "./runtime/restart-abi
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
+import { dataPath, hostPath } from "./runtime/roots.js";
 import { createStatusCommand } from "./runtime/status-command.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
@@ -121,15 +135,37 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	const env = options.env ?? process.env;
 	const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	const bootstrap = loadBootstrapConfig({ argv: options.argv, env });
+	// 这时运行时还没建,宿主根就直接取配置键(建好之后一律读 `runtime.hostRoot`)。
+	const hostRoot = bootstrap.dataDir;
+	// 选这次开机用哪一代(ADR-0022 决策 1–3),只读盘。宿主根上 0.x 的文件是第 0 代,一个字节都不动。
+	const selection = await selectGeneration({
+		hostRoot,
+		formatVersion: FORMAT_VERSION,
+		migrationRevision: MIGRATION_REVISION,
+		zeroGenerationExists: await zeroGenerationExists(hostRoot),
+	});
 	// 开机清扫:收掉上个进程被杀留下的临时文件与暂存目录。**必须赶在任何写入之前** —— 它认不出哪些
 	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
 	// 下面的 createAppRuntime 起,所以放在它前面;logger 此刻还没有,结果先留着,等它起来再记一行。
 	// 读不动 / 清不掉的地方清扫自己跳过、记进报告;万一它整个抛了也不挡开机:留下的只是些垃圾。
-	// 它扫整棵树,所以传宿主根;这时运行时还没建,宿主根就直接取配置键(建好之后一律读 `runtime.hostRoot`)。
-	const bootSweep = await sweepTempFiles(bootstrap.dataDir).then(
+	// 只扫宿主根的 versions/ 和要用的那一代:第 0 代与别的旧代都是备份,不碰;要开的新代这时还不存在。
+	const bootSweep = await sweepBootRoots([
+		hostPath(hostRoot, "versions"),
+		...(selection.kind === "use" ? [selection.dir] : []),
+	]).then(
 		(report) => ({ report }) as const,
 		(error: unknown) => ({ error }) as const,
 	);
+	// 空的一代(新装)当场开:什么都不用搬,不必等到 listen 之后。
+	const generation: GenerationSelection =
+		selection.kind === "create" && selection.source.kind === "empty"
+			? await createGeneration(selection, {
+					formatVersion: FORMAT_VERSION,
+					migrationRevision: MIGRATION_REVISION,
+					createdBy: APP_VERSION,
+					fill: async () => {},
+				}).then(() => ({ kind: "use", seq: selection.seq, dir: selection.dir }) as const)
+			: selection;
 	let runtime: AppRuntime | undefined;
 	let authSystem: AuthSystem | undefined;
 	let puppeteer: PuppeteerAdapter | null = null;
@@ -148,7 +184,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	let shutdownPromise: Promise<void> | null = null;
 	let listeningPort = bootstrap.server.port;
 
-	runtime = createAppRuntime(bootstrap);
+	runtime = createAppRuntime(bootstrap, { dataRoot: generation.dir });
 	const log = runtime.serviceCtx.logger;
 	// 日志从运行时建好那一刻起就进归档与 WS 的环形缓冲:开机那一段(以后的迁移)出了事也查得到。
 	// 环形缓冲先建好,WS 起来时交给它。
@@ -177,6 +213,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		log.info(
 			`starting bilibili-notify server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
 		);
+		log.info(
+			generation.kind === "use"
+				? `[data] 用第 ${generation.seq} 代:${generation.dir}`
+				: `[data] 这次开机要从第 0 代迁出第 ${generation.seq} 代:${generation.dir}`,
+		);
 		if ("error" in bootSweep) {
 			log.warn(
 				`[storage] 开机清扫没做完(${bootSweep.error instanceof Error ? bootSweep.error.message : String(bootSweep.error)})—— 上次留下的临时文件可能还在,不影响启动`,
@@ -186,12 +227,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			if (swept.cleaned) log.info(swept.cleaned);
 			if (swept.skipped) log.warn(swept.skipped);
 		}
-
-		// Load the at-rest secrets key during startup, not on the first settings write.
-		// Without this eager touch, zero-auth local runs only hit the key lazily when
-		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
-		// the normal "主密钥加载成功" log look like it was caused by that setting.
-		await runtime.keyProvider.getKey();
 
 		// Dashboard 鉴权策略:监听 loopback 时允许 bare(本地 dev / 反代后端);否则
 		// fail-closed 拒绝启动,避免裸暴露公网。绕过开关是 BN_ALLOW_NO_AUTH=1 — 留给
@@ -250,6 +285,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
 		runtime.serviceCtx.onDispose(() => wsTicketStore?.dispose(), "stop");
 
+		// 会话签名的密钥。这一代已经在,就是它自己那把。要从第 0 代迁的话这一代还没搭:只读地取第 0 代那把
+		// (迁移逐字节搬过去,是同一把),第 0 代一个字节都不许动;第 0 代里没有(手删过)就在 `.partial` 里
+		// 造一把,迁移不会盖掉它。还没改名的正式路径碰不得:那里一有东西,迁完改名就撞上。
+		const { keyProvider } = runtime;
+		const sessionKeyMaterial = async (): Promise<Buffer> => {
+			if (generation.kind === "use") return keyProvider.getKey();
+			const zeroKey = await readZeroGenerationKey(hostRoot, bootstrap.cookieEncryptionKey);
+			if (zeroKey.kind === "ok") return zeroKey.key;
+			return createKeyProvider({
+				passphrase: bootstrap.cookieEncryptionKey,
+				keyPath: dataPath(generation.partialDir, "secrets", "master.key"),
+				saltPath: dataPath(generation.partialDir, "secrets", "kdf.salt"),
+				logger: log,
+			}).getKey();
+		};
+
 		// Dashboard session codec. Signing key = HKDF over the runtime's stable key
 		// material (the same key infra StorageManager uses — passphrase-derived from
 		// BN_COOKIE_KEY when set, else the persisted random master.key), so cookies
@@ -258,7 +309,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// rotating the dashboard password invalidates every old cookie.
 		const sessionCodec = basicAuthCredentials
 			? createSessionCodec({
-					keyMaterial: await runtime.keyProvider.getKey(),
+					keyMaterial: await sessionKeyMaterial(),
 					creds: basicAuthCredentials,
 				})
 			: undefined;
@@ -273,9 +324,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			sessionCodec,
 			allowedOrigins,
 		};
+		let startupMessage =
+			generation.kind === "create" ? "BN 正在搬家,稍等一下" : "BN 正在启动,稍等一下";
 		let currentApp = createStartupApp(runtime, {
 			...appShell,
-			message: () => "BN 正在启动,稍等一下",
+			message: () => startupMessage,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(
@@ -298,7 +351,45 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			"drain",
 		);
 
-		// Load on-disk runtime config (state/globals.json, state/subscriptions.json, state/targets.json).
+		// 要开新代的话在这里迁(ADR-0022 决策 2):listen 之后、读数据之前。迁移期间别的接口回 503,
+		// 话里带进度;迁移抛错就和别的开机失败一样关掉 HTTP 再抛,boot.mjs 退回预装的那一版。
+		if (generation.kind === "create") {
+			let report: ZeroMigrationReport | undefined;
+			await createGeneration(generation, {
+				formatVersion: FORMAT_VERSION,
+				migrationRevision: MIGRATION_REVISION,
+				createdBy: APP_VERSION,
+				fill: async (partialDir) => {
+					report = await migrateZeroGeneration({
+						zeroRoot: hostRoot,
+						targetDir: partialDir,
+						onProgress: ({ done, total, label }) => {
+							startupMessage = `BN 正在搬家(${done}/${total}):${label}`;
+						},
+					});
+				},
+			});
+			startupMessage = "BN 正在启动,稍等一下";
+			log.info(
+				`[data] 第 ${generation.seq} 代迁好了:搬了 ${report?.transfers.length ?? 0} 个文件,第 0 代原样留着当备份`,
+			);
+			if (report && report.skipped.length > 0) {
+				log.info(
+					`[data] 没带过来的:${report.skipped.map((s) => `${s.path}(${s.reason})`).join("、")}`,
+				);
+			}
+		}
+
+		// Load the at-rest secrets key during startup, not on the first settings write.
+		// Without this eager touch, zero-auth local runs only hit the key lazily when
+		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
+		// the normal "主密钥加载成功" log look like it was caused by that setting.
+		await runtime.keyProvider.getKey();
+		// 统计采集从这一刻算起:数据那一代已经就位,引擎还没起(ADR-0022 决策 2 —— 建运行时那会儿
+		// 不许碰盘)。
+		runtime.statsRecorder.start();
+
+		// Load on-disk runtime config (config/globals.json, state/subscriptions.json, state/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
 		await runtime.configStore.load();
@@ -1201,6 +1292,18 @@ async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promis
 /**
  * 开机清扫的结果写成日志:清掉 / 挪回的一行 info,跳过的一行 warn;哪样都没有就不写(常态,不占日志)。
  */
+/** 开机清扫几个根,报告合成一份。 */
+async function sweepBootRoots(roots: readonly string[]): Promise<SweepReport> {
+	const merged: SweepReport = { removed: [], restored: [], skipped: [] };
+	for (const root of roots) {
+		const report = await sweepTempFiles(root);
+		merged.removed.push(...report.removed);
+		merged.restored.push(...report.restored);
+		merged.skipped.push(...report.skipped);
+	}
+	return merged;
+}
+
 function describeBootSweep(
 	report: SweepReport,
 	hostRoot: string,

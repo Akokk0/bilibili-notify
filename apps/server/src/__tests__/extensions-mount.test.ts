@@ -35,7 +35,7 @@ describe("拓展挂载点接线", () => {
 	});
 
 	it("没装拓展 → /ext/* 404", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -45,7 +45,7 @@ describe("拓展挂载点接线", () => {
 	});
 
 	it("装了就通,而且**不在 /api/* 底下** —— 那道会话鉴权够不着它", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
@@ -67,7 +67,7 @@ describe("拓展挂载点接线", () => {
 	});
 
 	it("拓展页列的就是加载器交上来的那份名单", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -116,7 +116,7 @@ describe("拓展动作的接线", () => {
 	});
 
 	it("按钮打到 /api/ext/:id/actions/:name,落到加载器的 runAction", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const runAction = vi.fn(async () => ({ ok: true as const }));
 		const app = createApp(runtime, {
@@ -177,7 +177,7 @@ describe("解析门的接线", () => {
 	}
 
 	it("打到 /api/ext/:id/lookup,落到加载器的 lookup;鉴权外的 /ext 底下没有这一口", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const lookup = vi.fn(
 			async (_id: string, _query: string): Promise<LookupOutcome> => ({
@@ -198,7 +198,7 @@ describe("解析门的接线", () => {
 	});
 
 	it("配了面板密码、没带会话 → 401,解析门一次都没被问", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const creds = { username: "admin", password: "s3cret" };
 		const lookup = vi.fn(
@@ -233,7 +233,7 @@ describe("只重载的接线", () => {
 	});
 
 	it("按钮打到 /api/ext/:id/swap,落到加载器的 swap", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const swap = vi.fn(async () => {});
 		const app = createApp(runtime, {
@@ -271,7 +271,7 @@ describe("面板上传装拓展的接线", () => {
 	});
 
 	it("传上去 → 落进装载根,并且当场重扫", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const rescan = vi.fn(async () => {});
 		const root = join(dataDir, "extensions");
@@ -327,7 +327,7 @@ describe("面板上传装拓展的接线", () => {
 	});
 
 	it("没接装载器的构建 → 400 unsupported,而不是装进一个没人加载的目录", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

@@ -2,7 +2,7 @@
  * 单元测试 — `createFansStore`(真实 tmpdir FS)。
  *
  * 守护契约:
- *   - append:按需建 fans 目录 + 追加一行;多次 append 累积
+ *   - append:按需建粉丝时序目录 + 追加一行;多次 append 累积
  *   - findNearestBefore:前向扫描,返回 ts<=target 的最近一条;遇首个 ts>target 停止;
  *     坏行 / 空行 / 缺字段行跳过;目标早于所有样本 → undefined;文件缺失 → undefined(不 warn)
  *   - drop:删文件;缺文件时静默(不抛、不 warn)
@@ -12,7 +12,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore, type FansStore } from "../store.js";
+import { createFansStore, type FansStore, FOLLOWERS_DIR } from "../store.js";
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -37,7 +37,7 @@ describe("append", () => {
 	it("按需建目录并追加 jsonl 行", async () => {
 		await store.append("u1", { ts: T(1), value: 100 });
 		await store.append("u1", { ts: T(2), value: 110 });
-		const raw = await readFile(join(dataDir, "fans", "u1.jsonl"), "utf8");
+		const raw = await readFile(join(dataDir, ...FOLLOWERS_DIR, "u1.jsonl"), "utf8");
 		const lines = raw.trim().split("\n");
 		expect(lines).toHaveLength(2);
 		expect(JSON.parse(lines[0] as string)).toEqual({ ts: T(1), value: 100 });
@@ -46,18 +46,18 @@ describe("append", () => {
 	it("盘上逐字节:紧凑 JSON、一行一条、末尾换行,下一次追加接在后面", async () => {
 		await store.append("u1", { ts: T(1), value: 100 });
 		await store.append("u1", { ts: T(2), value: 110 });
-		expect(await readFile(join(dataDir, "fans", "u1.jsonl"), "utf8")).toBe(
+		expect(await readFile(join(dataDir, ...FOLLOWERS_DIR, "u1.jsonl"), "utf8")).toBe(
 			`{"ts":"${T(1)}","value":100}\n{"ts":"${T(2)}","value":110}\n`,
 		);
 	});
 
 	it("目录里没有多余文件(不留临时名)", async () => {
 		await store.append("u1", { ts: T(1), value: 100 });
-		expect(await readdir(join(dataDir, "fans"))).toEqual(["u1.jsonl"]);
+		expect(await readdir(join(dataDir, ...FOLLOWERS_DIR))).toEqual(["u1.jsonl"]);
 	});
 
 	it("写不进去只 warn、不抛(键名对上的是个目录)", async () => {
-		await mkdir(join(dataDir, "fans", "u1.jsonl"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR, "u1.jsonl"), { recursive: true });
 		await expect(store.append("u1", { ts: T(1), value: 100 })).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("[fans-store] append u1 failed");
@@ -95,7 +95,7 @@ describe("findNearestBefore", () => {
 
 	it("坏行 / 空行 / 缺字段行被跳过", async () => {
 		await writeFile(
-			join(dataDir, "fans", "u2.jsonl"),
+			join(dataDir, ...FOLLOWERS_DIR, "u2.jsonl"),
 			`${[
 				"{not json",
 				"",
@@ -112,9 +112,9 @@ describe("findNearestBefore", () => {
 
 describe("findEarliest", () => {
 	beforeEach(async () => {
-		// fans/ 目录由 append 内部 ensureRoot 创建;findEarliest 测试直接 writeFile
+		// 粉丝时序目录由 append 内部 ensureRoot 创建;findEarliest 测试直接 writeFile
 		// 不经 append,需要手动建目录避免 ENOENT。
-		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 	});
 
 	it("返回 jsonl 第一条有效样本(早返回,不扫整个文件)", async () => {
@@ -131,7 +131,7 @@ describe("findEarliest", () => {
 
 	it("文件全是坏行 → undefined", async () => {
 		await writeFile(
-			join(dataDir, "fans", "u2.jsonl"),
+			join(dataDir, ...FOLLOWERS_DIR, "u2.jsonl"),
 			["{not json", "", JSON.stringify({ ts: T(1) }), "   "].join("\n"),
 			"utf8",
 		);
@@ -140,7 +140,7 @@ describe("findEarliest", () => {
 
 	it("跳过开头的坏行,返回第一条合法样本", async () => {
 		await writeFile(
-			join(dataDir, "fans", "u3.jsonl"),
+			join(dataDir, ...FOLLOWERS_DIR, "u3.jsonl"),
 			[
 				"{not json",
 				"",
@@ -184,9 +184,9 @@ describe("listSamplesSince", () => {
 	});
 
 	it("坏行 / 空行 / 缺字段行跳过", async () => {
-		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		await writeFile(
-			join(dataDir, "fans", "u2.jsonl"),
+			join(dataDir, ...FOLLOWERS_DIR, "u2.jsonl"),
 			[
 				"{not json",
 				"",

@@ -49,7 +49,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 			dataDir,
 			logLevel: "silent",
 		};
-		const runtime = createAppRuntime(bootstrap);
+		const runtime = createAppRuntime(bootstrap, { dataRoot: bootstrap.dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({ defaults: { ai: { enabled: true } } });
 		const app = createApp(runtime, {

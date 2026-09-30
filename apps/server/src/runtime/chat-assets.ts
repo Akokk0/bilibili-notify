@@ -31,9 +31,12 @@ export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 /** 一条消息最多带几张图。与动态点评那条路的上限一致(`extractDynamicImages`)。 */
 export const MAX_CHAT_IMAGES_PER_MESSAGE = 4;
 
+/** 聊天附件在代里的位置。过渡:第 2 期并进图库 images/。 */
+export const CHAT_ASSETS_DIR = ["assets", "chat"] as const;
+
 /** 聊天附件目录 `<dataRoot>/assets/chat`。 */
 export function chatImageDir(dataRoot: string): string {
-	return dataPath(dataRoot, "assets", "chat");
+	return dataPath(dataRoot, ...CHAT_ASSETS_DIR);
 }
 
 /**

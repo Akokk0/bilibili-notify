@@ -16,8 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsRoastResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
 const prompts = vi.hoisted(() => [] as string[]);
@@ -87,8 +89,9 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 		dataDir = await mkdtemp(join(tmpdir(), "bn-extension-roast-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as {
 			extensions: Record<string, unknown>;
 			defaults: { ai: Record<string, unknown> };
@@ -112,7 +115,7 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 		await writeFile(
-			join(dataDir, "state", "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
 			JSON.stringify([
 				makeExtensionSubscription({ id: A, extensionId: FAKE, externalId: "ext-a", name: "甲号" }),
 				makeExtensionSubscription({ id: B, extensionId: FAKE, externalId: "ext-b", name: "乙号" }),

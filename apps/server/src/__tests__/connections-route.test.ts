@@ -68,11 +68,14 @@ describe("connections route — PATCH 一条不存在的", () => {
 	});
 
 	it("404,而且判据来自 store 自己抛的那个错", async () => {
-		const runtime = createAppRuntime({
-			server: { host: "127.0.0.1", port: 8787 },
-			dataDir,
-			logLevel: "silent",
-		});
+		const runtime = createAppRuntime(
+			{
+				server: { host: "127.0.0.1", port: 8787 },
+				dataDir,
+				logLevel: "silent",
+			},
+			{ dataRoot: dataDir },
+		);
 		await runtime.configStore.load();
 		const app = createConnectionsRoute({
 			runtime: {
@@ -110,11 +113,14 @@ describe("connections route — 写入的失败(真 store)", () => {
 	let app: ReturnType<typeof createConnectionsRoute>;
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-conn-route-w-"));
-		runtime = createAppRuntime({
-			server: { host: "127.0.0.1", port: 8787 },
-			dataDir,
-			logLevel: "silent",
-		});
+		runtime = createAppRuntime(
+			{
+				server: { host: "127.0.0.1", port: 8787 },
+				dataDir,
+				logLevel: "silent",
+			},
+			{ dataRoot: dataDir },
+		);
 		await runtime.configStore.load();
 		app = createConnectionsRoute({
 			runtime: {

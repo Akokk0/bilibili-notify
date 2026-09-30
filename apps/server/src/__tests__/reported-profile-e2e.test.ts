@@ -19,6 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-
 import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { openTestGeneration } from "./support/generation.js";
 
 /** bus 上旁听到的:资料变了的那几帧、配置变了的那几档。 */
 const heard = vi.hoisted(() => ({
@@ -93,6 +94,8 @@ async function findFreePort(): Promise<number> {
 
 describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅列表", () => {
 	let dataDir: string;
+	/** 开机要用的那一代(开机前先开好,拓展就装在里面)。 */
+	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 
@@ -116,7 +119,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		expect(res.status, await res.clone().text()).toBe(200);
 	}
 
-	const avatarFile = () => join(dataDir, "avatars", `${SUB.id}.png`);
+	const avatarFile = () => join(gen, "avatars", `${SUB.id}.png`);
 
 	/** 这一条的资料。 */
 	async function profile() {
@@ -136,7 +139,8 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-reported-profile-e2e-"));
-		const extDir = join(dataDir, "extensions", FIXTURE_ID);
+		gen = await openTestGeneration(dataDir);
+		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),

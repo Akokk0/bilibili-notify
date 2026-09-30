@@ -41,7 +41,7 @@ describe("globals apiKey redact — P0-3", () => {
 	});
 
 	it("a) GET /api/globals 返回 apiKey 时是 __BN_REDACTED__ 占位(且仅当原值非空)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
 		await runtime.configStore.patchGlobals({
@@ -66,7 +66,7 @@ describe("globals apiKey redact — P0-3", () => {
 	});
 
 	it("a') 原 apiKey 为空时 GET 返回空字符串(不返回 redact 占位,前端能区分'未配置')", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -83,7 +83,7 @@ describe("globals apiKey redact — P0-3", () => {
 	});
 
 	it("b) PATCH 回传 REDACTED 占位 → store 保留原 apiKey(不被破坏)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-original-key" } } } },
@@ -110,7 +110,7 @@ describe("globals apiKey redact — P0-3", () => {
 	});
 
 	it("c) PATCH 带新 apiKey → store 更新为新值(不被 strip 误删)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-old-key" } } } },
@@ -138,7 +138,7 @@ describe("globals apiKey redact — P0-3", () => {
 		// deepMerge 据此删键。要紧的是**加密袋**要跟着掉:writeGlobals 每次都用
 		// collectAiSecrets 整袋重算,所以桶没了钥匙自然不再写入 —— 这条就是钉住
 		// 「删了却没真删」的那道锁(主人明确要的是一并抹掉)。
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
 			defaults: {
@@ -182,7 +182,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.dispose();
 
 		// 再从盘上冷启一次:删除与邻居的 key 都得是真落了盘,而不是只活在内存里。
-		const reopened = createAppRuntime(makeBootstrap(dataDir));
+		const reopened = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await reopened.configStore.load();
 		const after = reopened.configStore.getGlobals().defaults.ai.providers;
 		expect(after.deepseek?.apiKey).toBe("");

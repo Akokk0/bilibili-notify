@@ -18,7 +18,7 @@
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type Logger, makeEmptySubscription } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -28,6 +28,7 @@ import { createNodeMessageBus } from "../message-bus.js";
 import {
 	createSubRuntimeStore,
 	pruneOrphanSubRuntime,
+	SUB_RUNTIME_FILE,
 	type SubRuntimeStore,
 } from "../sub-runtime-store.js";
 
@@ -62,7 +63,7 @@ let logger: Logger;
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "sub-runtime-test-"));
-	file = join(dir, "state", "sub-runtime.json");
+	file = join(dir, ...SUB_RUNTIME_FILE);
 	logger = makeLogger();
 });
 
@@ -237,7 +238,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 		await writeFile(file, "{ this is not json", "utf8").catch(async () => {
 			// 目录可能还没建,先建再写
 			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(dir, "state"), { recursive: true });
+			await mkdir(dirname(file), { recursive: true });
 			await writeFile(file, "{ this is not json", "utf8");
 		});
 		const store = make();
@@ -248,7 +249,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 
 	it("数组 JSON → 起始为空,不抛", async () => {
 		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(dir, "state"), { recursive: true });
+		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, JSON.stringify([1, 2, 3]), "utf8");
 		const store = make();
 		await store.load();
@@ -258,7 +259,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 
 	it("非对象 JSON(字符串/数字)→ 起始为空,不抛", async () => {
 		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(dir, "state"), { recursive: true });
+		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, JSON.stringify("hello"), "utf8");
 		const store = make();
 		await store.load();
@@ -268,7 +269,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 
 	it("合法对象 JSON → 加载进 records", async () => {
 		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(dir, "state"), { recursive: true });
+		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, JSON.stringify({ s1: { cachedProfile: PROFILE_A } }), "utf8");
 		const store = make();
 		await store.load();
@@ -277,7 +278,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 
 	it("load 幂等:二次 load 不覆盖已发生的 patch", async () => {
 		const { mkdir } = await import("node:fs/promises");
-		await mkdir(join(dir, "state"), { recursive: true });
+		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, JSON.stringify({ s1: { cachedProfile: PROFILE_A } }), "utf8");
 		const store = make();
 		await store.load();

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore } from "../../fans/store.js";
+import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
@@ -40,7 +40,7 @@ function biliSub(id: string, uid: string, enabled = true) {
 }
 
 function fanFile(key: string): string {
-	return join(dataDir, "fans", `${key}.jsonl`);
+	return join(dataDir, ...FOLLOWERS_DIR, `${key}.jsonl`);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -128,7 +128,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 
 describe("fans poller:粉丝文件按订阅 id 读写", () => {
 	it("开机恢复读的是订阅 id 那份:面板首屏就有上次的粉丝数", async () => {
-		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		await writeFile(
 			fanFile("a"),
 			`${JSON.stringify({ ts: "2026-05-16T00:00:00.000Z", value: 777 })}\n`,

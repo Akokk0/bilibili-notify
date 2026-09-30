@@ -13,7 +13,7 @@ import { dataPath } from "../runtime/roots.js";
 import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
 
 /**
- * ⛔ **只有一个装载根:`<dataDir>/extensions/`。**
+ * ⛔ **只有一个装载根:`<数据根>/extensions/`。**
  *
  * 曾经有过三档(载荷自带 / 仓里源码 / `<dataDir>`)。载荷那档 2026-09-09 被主人推翻
  * (本体一个拓展都不带),仓里源码那档 2026-09-10 也去掉了 —— 开发版改由 devtools 把仓里
@@ -24,7 +24,7 @@ import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
  */
 
 /**
- * 主人装的拓展落在 `<dataDir>/extensions/`。
+ * 主人装的拓展落在 `<数据根>/extensions/`。
  *
  * 🔴 **刻意不在 `<dataDir>/versions/` 底下**:那个目录归自主升级管,`pruneOldVersions`
  * 只留当前 + 上一版,会**主动删掉不在名单里的目录** —— 拓展装进去等于下次升级被清掉。

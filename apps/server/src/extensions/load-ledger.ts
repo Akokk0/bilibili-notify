@@ -1,7 +1,7 @@
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 
 /**
- * 拓展的失败记账 —— 一点点持久状态,住在装载根目录里(`<dataDir>/extensions/`)。
+ * 拓展的失败记账 —— 一点点持久状态,住在装载根目录里(`<数据根>/extensions/`)。
  *
  * 读写纪律复用 `update/durable-json`:**原子写**,而且**两头都吞掉失败** ——
  * 读不出来当没记过,写不进去也不拦着加载。这份状态是启发,坏了不该让拓展起不来。

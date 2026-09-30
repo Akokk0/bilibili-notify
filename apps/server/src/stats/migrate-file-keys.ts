@@ -2,7 +2,7 @@ import { open, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isBiliSubscription, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
-import { FANS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import type { KeyedSubscription } from "./file-key.js";
 import { STATS_DYN_DIR, STATS_LIVE_DIR } from "./store.js";
@@ -53,7 +53,7 @@ export interface MigrateStatsFileKeysOptions {
 const KEYED_DIRS: readonly (readonly [DataRootKey, ...string[]])[] = [
 	STATS_DYN_DIR,
 	STATS_LIVE_DIR,
-	[FANS_DIR],
+	FOLLOWERS_DIR,
 ];
 
 /**

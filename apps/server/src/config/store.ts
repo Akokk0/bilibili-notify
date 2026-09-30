@@ -802,7 +802,7 @@ class NodeConfigStore implements ConfigStore {
 		this.bootstrap = opts.bootstrap;
 		this.bus = opts.bus;
 		this.serviceCtx = opts.serviceCtx;
-		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, "state");
+		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, ...CONFIG_DIR);
 		this.secretStore = opts.secretStore;
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
@@ -1838,6 +1838,9 @@ function upsertById<T extends { id: string }>(arr: readonly T[], item: T): T[] {
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
+
+/** 主人填的设置、订阅、连接、目标所在的目录(代的布局)。 */
+export const CONFIG_DIR = ["config"] as const;
 
 export function createConfigStore(opts: CreateConfigStoreOptions): ConfigStore {
 	return new NodeConfigStore(opts);

@@ -57,7 +57,7 @@ export interface FansStore {
 }
 
 /** 粉丝时序住的目录(数据根下的一级项)。开机迁移认的也是这一处。 */
-export const FANS_DIR = "fans";
+export const FOLLOWERS_DIR = ["stats", "followers"] as const;
 
 export interface CreateFansStoreOptions {
 	dataRoot: string;
@@ -65,7 +65,7 @@ export interface CreateFansStoreOptions {
 }
 
 export function createFansStore(opts: CreateFansStoreOptions): FansStore {
-	const root = dataPath(opts.dataRoot, FANS_DIR);
+	const root = dataPath(opts.dataRoot, ...FOLLOWERS_DIR);
 	let ensured = false;
 
 	async function ensureRoot(): Promise<void> {

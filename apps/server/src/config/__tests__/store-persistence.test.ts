@@ -1,8 +1,8 @@
 /**
- * ConfigStore 落盘方式:state/*.json 怎么写、备份怎么留、写坏了怎么退。
+ * ConfigStore 落盘方式:config/*.json 怎么写、备份怎么留、写坏了怎么退。
  *
  * 这些钉的是**写盘那一步**(内容对不对由 `__tests__/config-store.test.ts` 管):
- *   - state 文件是 2 空格缩进 + 末尾换行的 JSON
+ *   - config 文件是 2 空格缩进 + 末尾换行的 JSON
  *   - 迁移留下的 `.bak` 是原件的**逐字节**拷贝,权限跟着原件走(连接里有 token)
  *   - `replaceSections` 写到一半失败:已写好的分区**逐字节**退回原样,回滚副本不留
  *   - 写失败(目标被占成目录)不留临时文件
@@ -15,7 +15,7 @@ import { join } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
-import { type ConfigStore, createConfigStore } from "../store.js";
+import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
 	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
@@ -89,7 +89,7 @@ let dataDir: string;
 let stateDir: string;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-store-persist-"));
-	stateDir = join(dataDir, "state");
+	stateDir = join(dataDir, ...CONFIG_DIR);
 	await mkdir(stateDir, { recursive: true });
 });
 afterEach(async () => {
@@ -100,7 +100,7 @@ const modeOf = async (path: string) => (await stat(path)).mode & 0o777;
 /** 名字里带 tmp 的:新旧两种临时文件命名(`.tmp.` / `.bn-tmp.`)都算。 */
 const tempLeftovers = async (dir: string) => (await readdir(dir)).filter((n) => n.includes("tmp"));
 
-describe("ConfigStore 落盘:state 文件格式", () => {
+describe("ConfigStore 落盘:config 文件格式", () => {
 	it("首次 load 播种与之后的写入都是 2 空格缩进 + 末尾换行", async () => {
 		const store = mkStore(dataDir);
 		await store.load();
@@ -205,7 +205,7 @@ describe("ConfigStore 落盘:replaceSections 写到一半失败", () => {
 });
 
 describe("ConfigStore 落盘:写失败不留临时文件", () => {
-	it("目标被占成目录 → 写抛错,state 目录里没有遗留的临时文件", async () => {
+	it("目标被占成目录 → 写抛错,config 目录里没有遗留的临时文件", async () => {
 		const store = mkStore(dataDir);
 		await store.load();
 		const globalsPath = join(stateDir, "globals.json");

@@ -46,7 +46,7 @@ describe("/api/card-skins/:id/ai-css 的引擎接线", () => {
 			dataDir,
 			logLevel: "silent",
 		};
-		const runtime = createAppRuntime(bootstrap);
+		const runtime = createAppRuntime(bootstrap, { dataRoot: bootstrap.dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -101,11 +101,14 @@ describe("createApp 的卡片皮肤店", () => {
 	it("经 HTTP 装进去的皮肤，调用方手里那家店立刻看得见", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-cardskin-wiring-"));
 		try {
-			const runtime = createAppRuntime({
-				server: { host: "127.0.0.1", port: 8787 },
-				dataDir: dir,
-				logLevel: "silent",
-			});
+			const runtime = createAppRuntime(
+				{
+					server: { host: "127.0.0.1", port: 8787 },
+					dataDir: dir,
+					logLevel: "silent",
+				},
+				{ dataRoot: dir },
+			);
 			await runtime.configStore.load();
 			// 宿主手里的那一家 —— 出图那头问的就是它。
 			const mine = createCardSkinStore(runtime.dataRoot);

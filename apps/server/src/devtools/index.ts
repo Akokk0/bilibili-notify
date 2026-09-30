@@ -67,7 +67,7 @@ export interface CreateDevtoolsInput {
 	/**
 	 * 拓展那三条场景要的两个目录 + 装载器本体(**现取**,拓展比 devtools 后起来)。
 	 *
-	 * 装载器只认 `<dataDir>/extensions/` 一个根,所以「开发时怎么让仓里那份跑起来」
+	 * 装载器只认 `<数据根>/extensions/` 一个根,所以「开发时怎么让仓里那份跑起来」
 	 * 从宿主的一条特例变成了这里的一个动作 —— 见 `scenarios/extensions.ts`。
 	 *
 	 * 要的两个把手:`rescan()` 让装 / 卸当场生效,`reload()` 换掉已经跑着那份的代码。
@@ -75,7 +75,7 @@ export interface CreateDevtoolsInput {
 	extensions: {
 		/** 仓里那个 `extensions/`。 */
 		repoDir: string;
-		/** `<dataDir>/extensions/`。 */
+		/** `<数据根>/extensions/`。 */
 		installRoot: string;
 		/** 「拓展有更新」还要它的名单:装着哪一版,假新版就比它高一格。 */
 		loaded: () => Pick<LoadedExtensions, "reload" | "rescan" | "list"> | undefined;

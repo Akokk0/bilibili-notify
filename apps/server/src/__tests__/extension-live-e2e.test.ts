@@ -15,8 +15,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveListeningEntry } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 
 const FIXTURE_ID = "live-probe";
 const EXTERNAL = "douyin-live-1";
@@ -87,13 +89,14 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-live-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [FIXTURE_ID]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
 
-		const extDir = join(dataDir, "extensions", FIXTURE_ID);
+		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),
@@ -114,7 +117,10 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		);
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
-		await writeFile(join(dataDir, "state", "extension-subscriptions.json"), JSON.stringify([SUB]));
+		await writeFile(
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
+			JSON.stringify([SUB]),
+		);
 
 		port = await findFreePort();
 		handle = await boot(port);

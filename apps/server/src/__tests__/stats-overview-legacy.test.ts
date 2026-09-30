@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore } from "../fans/store.js";
+import { createFansStore, FOLLOWERS_DIR } from "../fans/store.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
 import { migrateStatsFileKeys } from "../stats/migrate-file-keys.js";
@@ -103,7 +103,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 	async function writeLegacyFixture() {
 		await mkdir(join(dataDir, "stats", "dyn"), { recursive: true });
 		await mkdir(join(dataDir, "stats", "live"), { recursive: true });
-		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		await writeFile(join(dataDir, "stats", "since"), at(3, 2));
 		const w = (p: string, rows: unknown[]) => writeFile(join(dataDir, p), jsonl(rows));
 		// 101:直播推送全关(没有场次),最近的动静是一条开播公告。
@@ -114,7 +114,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			{ id: "d", type: "DYNAMIC_TYPE_DRAW", ts: at(40) },
 		]);
 		await w(
-			"fans/101.jsonl",
+			join(...FOLLOWERS_DIR, "101.jsonl"),
 			Array.from({ length: 12 }, (_, i) => ({ ts: at(11 - i, 2), value: 1000 + 10 * i })),
 		);
 		// 102:窗口里只有开播公告,没有粉丝采样、没有场次 —— 计数该是 0,不是 null。
@@ -137,7 +137,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			{ id: "r", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: at(0, 2, 5) },
 		]);
 		await w(
-			"fans/103.jsonl",
+			join(...FOLLOWERS_DIR, "103.jsonl"),
 			Array.from({ length: 4 }, (_, i) => ({ ts: at(3 - i, 1), value: 50_000 + 300 * i })),
 		);
 		// 104:一无所知。105:窗口外的老开播公告、坏行、孤立的 end、解析不出的峰值、亿。
@@ -374,6 +374,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			now,
 			subscriptions: () => bilibili(uids) as never,
 		});
+		// 采集开始:水位线钉在此刻(改之前是构造时就钉,现在开机迁完数据才调 start)。
+		recorder.start();
 		// 落盘是 fire-and-forget,每条事件之后让它写完,免得同一文件的「先读再追加」互相踩。
 		const fire = async (ev: string, payload?: unknown) => {
 			for (const h of handlers.get(ev) ?? []) h(payload);
@@ -419,10 +421,10 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		clock = NOW - H;
 		await recorder.closeOpenSessions();
 
-		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		for (const uid of ["201", "202", "203"]) {
 			await writeFile(
-				join(dataDir, "fans", `s${uid}.jsonl`),
+				join(dataDir, ...FOLLOWERS_DIR, `s${uid}.jsonl`),
 				jsonl(Array.from({ length: 4 }, (_, i) => ({ ts: at(3 - i, 1), value: 10 * i }))),
 			);
 		}

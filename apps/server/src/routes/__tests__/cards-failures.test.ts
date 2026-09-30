@@ -20,7 +20,8 @@ import { join } from "node:path";
 import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CardSkinStore } from "../../card-skins/store.js";
+import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
+import { CARD_BG_DIR } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { createCardsRoute } from "../cards.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
@@ -139,7 +140,9 @@ describe("POST /skin-shot", () => {
 			deps: makeDeps(),
 			puppeteer,
 			api: null,
-			cardSkins: withStore ? new CardSkinStore({ dir: join(dataDir, "card-skins") }) : undefined,
+			cardSkins: withStore
+				? new CardSkinStore({ dir: join(dataDir, ...CARD_SKINS_DIR) })
+				: undefined,
 		});
 	}
 
@@ -312,8 +315,8 @@ describe("背景图上传与读取", () => {
 	});
 
 	it("磁盘写失败 → 不当成 400 把原话甩出去:走全局出错处理,只回固定一句", async () => {
-		// `assets` 是个文件而不是目录 —— 建图廊目录必然失败。
-		await writeFile(join(dataDir, "assets"), "占位");
+		// `library` 是个文件而不是目录 —— 建图廊目录必然失败。
+		await writeFile(join(dataDir, CARD_BG_DIR[0]), "占位");
 		const app = new Hono()
 			.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
 			.route("/", bgApp());

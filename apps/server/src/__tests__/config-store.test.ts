@@ -23,7 +23,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createBackupService } from "../backup/service.js";
 import type { BootstrapConfig } from "../config/schema.js";
-import { type ConfigStore, ConfigValidationError, createConfigStore } from "../config/store.js";
+import {
+	CONFIG_DIR,
+	type ConfigStore,
+	ConfigValidationError,
+	createConfigStore,
+} from "../config/store.js";
 import { storageWriteGate } from "./support/storage-write-gate.js";
 
 // 落盘函数前的闸默认敞开;只有「close 等在途的写」那组用例才 hold(见 support/storage-write-gate.ts)。
@@ -172,7 +177,7 @@ describe("ConfigStore", () => {
 
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-config-test-"));
-		stateDir = join(dataDir, "state");
+		stateDir = join(dataDir, ...CONFIG_DIR);
 		bus = makeFakeBus();
 		store = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
@@ -527,7 +532,7 @@ describe("ConfigStore", () => {
 		// 存量连接就 parse 不过、开机直接 ConfigValidationError。夹具刻意写成
 		// 「史前」形状(连 transport 都没有),走的是与 schema `.default("http")` 同一个回落。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-migrate-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const legacy = {
 			id: randomUUID(),
@@ -563,7 +568,7 @@ describe("ConfigStore", () => {
 		// 与连接侧同一条路径:schema 一旦要求 kind,存量 targets.json 就 parse 不过、
 		// 开机直接炸。两支各验一条 —— webhook 那条要落到 endpoint、群那条要落到 session。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-target-migrate-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeOnebotConnection();
 		const legacyTarget = {
@@ -599,7 +604,7 @@ describe("ConfigStore", () => {
 
 	it("load() 把老 webhook 目标迁成 endpoint —— 托管同步认的是形态,迁错就会重造一张", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-target-migrate-wh-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeWebhookConnection();
 		const legacyId = managedWebhookTargetId(connection.id);
@@ -631,7 +636,7 @@ describe("ConfigStore", () => {
 
 	it("load() 对已经是新形状的 connections.json 不回写 —— 也就不会每次开机都留一份 .bak", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-nomigrate-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		await writeFile(
 			join(state2, "connections.json"),
@@ -667,7 +672,7 @@ describe("ConfigStore", () => {
 
 		it("只有老文件名时照样读得到连接,并写出一份 connections.json", async () => {
 			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-"));
-			const state2 = join(dir2, "state");
+			const state2 = join(dir2, ...CONFIG_DIR);
 			await mkdir(state2, { recursive: true });
 			const connection = makeOnebotConnection();
 			await writeFile(join(state2, "adapters.json"), JSON.stringify([connection]), "utf8");
@@ -683,7 +688,7 @@ describe("ConfigStore", () => {
 
 		it("老文件原地不动 —— 它就是回退那条路要读的东西,不留 .bak 也不删", async () => {
 			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-keep-"));
-			const state2 = join(dir2, "state");
+			const state2 = join(dir2, ...CONFIG_DIR);
 			await mkdir(state2, { recursive: true });
 			// 刻意用**老形状**:回退回去的旧构建认得的正是这个形状。
 			const legacy = {
@@ -707,7 +712,7 @@ describe("ConfigStore", () => {
 
 		it("两个文件都在时只认新的 —— 老的是快照,不该再被读", async () => {
 			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-both-"));
-			const state2 = join(dir2, "state");
+			const state2 = join(dir2, ...CONFIG_DIR);
 			await mkdir(state2, { recursive: true });
 			const current = makeOnebotConnection();
 			const stale = makeOnebotConnection({ id: randomUUID(), name: "升级前那份" });
@@ -723,7 +728,7 @@ describe("ConfigStore", () => {
 
 		it("两个都没有、targets.json 也没有 = 全新安装,建的是 connections.json", async () => {
 			const dir2 = await mkdtemp(join(tmpdir(), "bn-config-rename-fresh-"));
-			const state2 = join(dir2, "state");
+			const state2 = join(dir2, ...CONFIG_DIR);
 			await mkdir(state2, { recursive: true });
 
 			await loadFrom(dir2);
@@ -736,7 +741,7 @@ describe("ConfigStore", () => {
 
 	it("load() 回填缺失的 webhook 托管 target", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-empty-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeWebhookConnection();
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
@@ -768,7 +773,7 @@ describe("ConfigStore", () => {
 		{ platform: "astrbot", config: {}, session: {} },
 	])("load() 静默丢弃已撤下平台 $platform 的存量 adapter 与 target", async (stale) => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-removed-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const webhook = makeWebhookConnection();
 		const connection = {
@@ -815,7 +820,7 @@ describe("ConfigStore", () => {
 	 */
 	it("load() 丢掉没有 platform 的老拓展连接,留下带 platform 的新形状", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-ext-shape-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const stale = {
 			id: randomUUID(),
@@ -855,7 +860,7 @@ describe("ConfigStore", () => {
 	 */
 	it("load() 不把桥借来的 onebot bot 当成史前直连去迁移", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-ext-onebot-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const bot = {
 			id: randomUUID(),
@@ -888,7 +893,7 @@ describe("ConfigStore", () => {
 		// 但它是合法的。判据换成「认不得的平台**又** parse 不过才是存量」,所以这一条
 		// 必须活下来 —— 上一条用例(已撤下平台)与这一条一起才把那个判据钉住。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-open-platform-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeOnebotConnection();
 		const bridged = {
@@ -917,7 +922,7 @@ describe("ConfigStore", () => {
 
 	it("load() 对认得的平台上坏掉的 target 照旧抛错 —— 别把真损坏当存量吃掉", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-broken-target-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeOnebotConnection();
 		const broken = {
@@ -953,7 +958,7 @@ describe("ConfigStore", () => {
 	 */
 	it("load() 对桥驮来的 telegram 目标上的真损坏照旧抛错 —— 别拿连接的闭集判目标", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-broken-bridged-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeOnebotConnection();
 		const broken = {
@@ -981,7 +986,7 @@ describe("ConfigStore", () => {
 
 	it("load() 标记既有 webhook target 且保留 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeWebhookConnection();
 		const target = makeWebhookTarget(connection, { id: randomUUID(), name: "旧 Webhook" });
@@ -1304,7 +1309,7 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("22222");
 		sub.routing.dynamic = [legacyId];
 		const dirA = await mkdtemp(join(tmpdir(), "bn-config-backup-src-"));
-		const stateA = join(dirA, "state");
+		const stateA = join(dirA, ...CONFIG_DIR);
 		await mkdir(stateA, { recursive: true });
 		await writeFile(join(stateA, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(
@@ -1453,7 +1458,7 @@ describe("ConfigStore", () => {
 	 */
 	it("replaceSections 不碰迁移留下的 .bak 原件", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-bak-collide-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		// 老形状(没有 kind / connector)→ 开机迁移,原件留成 connections.json.bak。
 		const legacy = {
@@ -1590,7 +1595,7 @@ describe("ConfigStore", () => {
 
 	it("load() 合并同一 webhook adapter 下多余 targets 并把订阅引用迁到托管 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-duplicates-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const connection = makeWebhookConnection();
 		const primary = makeWebhookTarget(connection, { id: randomUUID(), name: "主 Webhook" });
@@ -1647,7 +1652,7 @@ describe("ConfigStore", () => {
 		// 若 TemplateBundleSchema 把它们设为 required 无默认,旧用户升级后 load() 会
 		// ConfigValidationError 直接拒绝启动。.default(...) 兜底保证旧配置仍可加载。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-old-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const old = makeDefaultGlobalConfig() as unknown as {
 			defaults: { templates: Record<string, unknown> };
@@ -1671,7 +1676,7 @@ describe("ConfigStore", () => {
 
 	it("一次性迁移:老 globals.json 旧默认直播/上舰模板 → 改写为当前默认,自定义值保留", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-tpl-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		const old = makeDefaultGlobalConfig() as unknown as {
 			defaults: {
@@ -1712,7 +1717,7 @@ describe("ConfigStore", () => {
 		// ② dynamic/dynamicVideo 字段是新加的 → .default() 回填;③ 旧 {title} 默认 liveStart
 		// → 一次性迁移成新默认。三件事叠加后顺序/交互不能互相打架。
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-legacy-"));
-		const state2 = join(dir2, "state");
+		const state2 = join(dir2, ...CONFIG_DIR);
 		await mkdir(state2, { recursive: true });
 		// 从当前默认起步,再"退化"成 alpha.x 磁盘形态:抹掉 dynamic/dynamicVideo(老数据
 		// 没这俩字段)、塞 liveMsgEnabled(schema 已删的旧键)、写回旧 {title}/{duration}
@@ -1778,7 +1783,7 @@ describe("ConfigStore.close", () => {
 	beforeEach(async () => {
 		storageWriteGate.reset();
 		dataDir = await mkdtemp(join(tmpdir(), "bn-config-close-"));
-		stateDir = join(dataDir, "state");
+		stateDir = join(dataDir, ...CONFIG_DIR);
 		store = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
 			dataRoot: dataDir,

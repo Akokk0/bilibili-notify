@@ -10,7 +10,7 @@
  * **停用**的 —— 迁移照样要管它(统计页照样列着停用的),而停用的订阅不会让引擎或轮询去连 B 站。
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -18,7 +18,9 @@ import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { activeGeneration } from "./support/generation.js";
 
 const SUB_ID = "5a000000-0000-4000-8000-000000000101";
 const UID = "101";
@@ -31,11 +33,28 @@ const probe = vi.hoisted(() => ({
 	atEngines: undefined as Record<string, boolean> | undefined,
 }));
 
+/**
+ * 开机从 0.x 的根上迁出来的那一代(建造函数是同步的,所以同步看盘)。数据根是它,不是 `dataDir` 本身;
+ * 还没有一代就回 `dataDir`(下面的存在性判断于是全是 false)。
+ */
+function generationDirSync(dataDir: string): string {
+	try {
+		const seqs = readdirSync(join(dataDir, "generations"))
+			.filter((name) => /^\d+$/.test(name))
+			.map(Number);
+		return seqs.length > 0 ? join(dataDir, "generations", String(Math.max(...seqs))) : dataDir;
+	} catch {
+		return dataDir;
+	}
+}
+
 function look(): Record<string, boolean> {
-	const at = (dir: string, key: string) => existsSync(join(probe.dataDir, dir, `${key}.jsonl`));
+	const root = generationDirSync(probe.dataDir);
+	const at = (dir: string, key: string) => existsSync(join(root, dir, `${key}.jsonl`));
+	const fans = join(...FOLLOWERS_DIR);
 	return {
-		fansUid: at("fans", UID),
-		fansId: at("fans", SUB_ID),
+		fansUid: at(fans, UID),
+		fansId: at(fans, SUB_ID),
 		dynUid: at(join("stats", "dyn"), UID),
 		dynId: at(join("stats", "dyn"), SUB_ID),
 		liveUid: at(join("stats", "live"), UID),
@@ -104,6 +123,8 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 	beforeAll(async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-stats-migrate-e2e-"));
 		probe.dataDir = dataDir;
+		// 0.x 的布局原样摆在根上(第 0 代):开机先把它迁进新的一代,再由统计迁移改按订阅 id 命名。
+		// 所以开机前不能先开一代(有了合用的一代就不迁了)。
 		await mkdir(join(dataDir, "state"), { recursive: true });
 		await mkdir(join(dataDir, "fans"), { recursive: true });
 		await mkdir(join(dataDir, "stats", "dyn"), { recursive: true });
@@ -153,7 +174,12 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 	});
 
 	it("找不到订阅的 uid 文件原样留着", async () => {
-		expect(await readFile(join(probe.dataDir, "fans", `${ORPHAN_UID}.jsonl`), "utf-8")).toBe(FANS);
+		expect(
+			await readFile(
+				join(await activeGeneration(probe.dataDir), ...FOLLOWERS_DIR, `${ORPHAN_UID}.jsonl`),
+				"utf-8",
+			),
+		).toBe(FANS);
 	});
 
 	it("统计页读得到挪过去的数据(停用的订阅照样列着)", async () => {

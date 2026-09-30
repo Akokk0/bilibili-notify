@@ -13,14 +13,17 @@
  * 目标挂在一条**停用**的 OneBot 连接上 —— 认主人只看目标的平台与地址,连接停着就不会去连一个不存在的 bot。
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
+import { activeGeneration } from "./support/generation.js";
 
 const S101 = "5b000000-0000-4000-8000-000000000101";
 const S102 = "5b000000-0000-4000-8000-000000000102";
@@ -53,6 +56,8 @@ async function findFreePort(): Promise<number> {
 
 describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得动、发出去写的是对的人", () => {
 	let dataDir: string;
+	/** 第一趟开机之后在用的那一代;老草稿摆进它、之后的盘上读写都对它。 */
+	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 	let hookServer: Server;
@@ -93,7 +98,7 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 	}
 
 	async function draftsOnDisk(): Promise<Array<Record<string, unknown>>> {
-		return JSON.parse(await readFile(join(dataDir, "state", "roast-drafts.json"), "utf8"));
+		return JSON.parse(await readFile(join(gen, ...ROAST_DRAFTS_FILE), "utf8"));
 	}
 
 	beforeAll(async () => {
@@ -172,13 +177,16 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		webhookTarget = found.id;
 		await handle?.close("seed");
 		handle = undefined;
+		// 第一趟已经开出了一代:再往 `dataDir` 根上摆 0.x 的文件不会被迁。这条守的是草稿**内容**的老格式(按 uid 记)
+		// 开机翻得动,不是 0.x 目录搬进代 —— 所以老文件直接摆进这一代、照代的布局(仍是老格式的内容)。
+		gen = await activeGeneration(dataDir);
 
 		// 两位 B 站 UP(停用,不连 B 站);盘上的订阅没有 kind(ADR-0019 决策 47)。
 		const subs = [
 			{ ...makeEmptySubscription({ id: S101, uid: "101" }), enabled: false },
 			{ ...makeEmptySubscription({ id: S102, uid: "102" }), enabled: false },
 		].map(({ kind: _kind, ...onDisk }) => onDisk);
-		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
+		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify(subs));
 
 		// 升级之前写下的三份待审草稿 —— 按 uid 记。第三份的 uid 已经对不上任何订阅(期间退订了)。
 		const now = Date.now();
@@ -186,8 +194,9 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 			createdAt: new Date(now).toISOString(),
 			expiresAt: new Date(now + 3_600_000).toISOString(),
 		};
+		await mkdir(dirname(join(gen, ...ROAST_DRAFTS_FILE)), { recursive: true });
 		await writeFile(
-			join(dataDir, "state", "roast-drafts.json"),
+			join(gen, ...ROAST_DRAFTS_FILE),
 			JSON.stringify([
 				{
 					id: "s2",

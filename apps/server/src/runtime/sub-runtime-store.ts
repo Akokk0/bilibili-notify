@@ -113,8 +113,11 @@ function cloneRuntime(r: SubRuntime): SubRuntime {
 	return structuredClone(r);
 }
 
+/** 订阅运行态在代里的位置。 */
+export const SUB_RUNTIME_FILE = ["runtime", "sub-runtime.json"] as const;
+
 export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRuntimeStore {
-	const file = dataPath(opts.dataRoot, "state", "sub-runtime.json");
+	const file = dataPath(opts.dataRoot, ...SUB_RUNTIME_FILE);
 	let records: Record<string, SubRuntime> = {};
 	let loaded = false;
 	// Single private write queue (one key — there is only one file) so concurrent patch/prune

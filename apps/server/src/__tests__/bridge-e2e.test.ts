@@ -27,7 +27,9 @@ import { join } from "node:path";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { activeGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 const CONNECTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -167,8 +169,9 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-bridge-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = {
 			bridge: {
@@ -192,7 +195,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		await writeFile(globalsPath, JSON.stringify(globals));
 
 		await writeFile(
-			join(dataDir, "state", "connections.json"),
+			join(gen, ...CONFIG_DIR, "connections.json"),
 			JSON.stringify([
 				{
 					id: CONNECTION_ID,
@@ -207,7 +210,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 			]),
 		);
 		await writeFile(
-			join(dataDir, "state", "targets.json"),
+			join(gen, ...CONFIG_DIR, "targets.json"),
 			JSON.stringify([
 				{
 					id: TARGET_ID,

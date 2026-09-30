@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore } from "../../fans/store.js";
+import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
@@ -12,7 +12,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
 /**
  * 首页粉丝面板也列拓展订阅(ADR-0020 决策 8)。
  *
- * - 有粉丝时序(`<dataDir>/fans/<订阅 id>.jsonl`,统计的拓展适配按资料里的粉丝数写)的、启用着的拓展订阅进
+ * - 有粉丝时序(`<数据根>/stats/followers/<订阅 id>.jsonl`,统计的拓展适配按资料里的粉丝数写)的、启用着的拓展订阅进
  *   `fans-refreshed` 快照 / `GET /api/fans`:键是订阅 id,带拓展 id + 外部 id、不带 uid。
  * - 起点 / 24h / 7d 与 B 站同一个意思、从时序里算:起点 = **第一条样本**(B 站的 fansBaseline 是第一次采到的
  *   值、开机按时序最早一条自愈 —— 同一件事);24h / 7d = 那一刻之前最近的一条样本。
@@ -41,9 +41,9 @@ afterEach(async () => {
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 
 async function writeSeries(key: string, samples: Array<{ ts: string; value: number }>) {
-	await mkdir(join(dataDir, "fans"), { recursive: true });
+	await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 	await writeFile(
-		join(dataDir, "fans", `${key}.jsonl`),
+		join(dataDir, ...FOLLOWERS_DIR, `${key}.jsonl`),
 		samples.map((s) => `${JSON.stringify(s)}\n`).join(""),
 	);
 }
@@ -216,7 +216,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		const p = await start([extSub("e1", "sec-1", false)], { e1: profile(450) });
 		await p.handle.pollNow();
 		expect(p.handle.getLastEntries()).toEqual([]);
-		expect(await exists(join(dataDir, "fans", "e1.jsonl"))).toBe(true);
+		expect(await exists(join(dataDir, ...FOLLOWERS_DIR, "e1.jsonl"))).toBe(true);
 
 		p.setSubs([extSub("e1", "sec-1", true)]);
 		await p.handle.pollNow();
@@ -301,7 +301,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 		p.bus.emit("subscription-changed", { ops: [{ type: "remove", sub: sub as never }] });
 		expect(p.entryOf("e1")).toBeUndefined();
 		expect(p.snapshots.at(-1)).toEqual([]);
-		expect(await exists(join(dataDir, "fans", "e1.jsonl"))).toBe(true);
+		expect(await exists(join(dataDir, ...FOLLOWERS_DIR, "e1.jsonl"))).toBe(true);
 	});
 
 	it("B 站风控退避期间,拓展条目照样刷新(拓展不问 B 站),B 站不再敲", async () => {

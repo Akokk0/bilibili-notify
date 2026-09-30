@@ -29,7 +29,7 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
-import { EXTENSION_SUBSCRIPTIONS_FILE } from "../../config/store.js";
+import { CONFIG_DIR, EXTENSION_SUBSCRIPTIONS_FILE } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
@@ -101,7 +101,7 @@ let entries: ExtensionEntry[];
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-subs-ext-create-"));
-	runtime = createAppRuntime(makeBootstrap(dataDir));
+	runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 	await runtime.configStore.load();
 	await runtime.subRuntimeStore.load();
 	// index.ts 同一步:订阅仓镜像配置、改动转成 subscription-changed。
@@ -189,7 +189,7 @@ describe("新建拓展订阅", () => {
 
 		// 落了盘:拓展订阅那个文件里有它,头像文件在。
 		const disk = JSON.parse(
-			await readFile(join(dataDir, "state", EXTENSION_SUBSCRIPTIONS_FILE), "utf8"),
+			await readFile(join(dataDir, ...CONFIG_DIR, EXTENSION_SUBSCRIPTIONS_FILE), "utf8"),
 		) as Array<{ id: string }>;
 		expect(disk.map((s) => s.id)).toEqual([SUB_ID]);
 		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);

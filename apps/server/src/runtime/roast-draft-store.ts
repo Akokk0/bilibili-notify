@@ -137,11 +137,14 @@ function upgradeLegacyDraft(
 	};
 }
 
+/** 锐评草稿在代里的位置。 */
+export const ROAST_DRAFTS_FILE = ["runtime", "roast-drafts.json"] as const;
+
 /** 写道的唯一一个键:整份只有一个文件。 */
 const WRITE_KEY = "roast-drafts";
 
 export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): RoastDraftStore {
-	const file = dataPath(opts.dataRoot, "state", "roast-drafts.json");
+	const file = dataPath(opts.dataRoot, ...ROAST_DRAFTS_FILE);
 	let records: RoastDraft[] = [];
 	let loaded = false;
 	// 单键写道 —— 两条流水线(榜单 / 某位 UP)可能在同一分钟里各自落一份草稿,

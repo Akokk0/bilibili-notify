@@ -14,7 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
-import { type ConversationStore, createConversationStore } from "../conversation-store.js";
+import {
+	CONVERSATIONS_DIR,
+	type ConversationStore,
+	createConversationStore,
+} from "../conversation-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -290,8 +294,8 @@ describe("ConversationStore — list", () => {
 	it("一条脏 JSON 不该让整个侧栏空掉,只跳过它", async () => {
 		const good = await store.create();
 		await store.appendMessages(good.id, [{ role: "user", content: "问" }]);
-		await mkdir(join(dataDir, "ai", "chat"), { recursive: true });
-		await writeFile(join(dataDir, "ai", "chat", "broken.json"), "{不是 json", "utf8");
+		await mkdir(join(dataDir, ...CONVERSATIONS_DIR), { recursive: true });
+		await writeFile(join(dataDir, ...CONVERSATIONS_DIR, "broken.json"), "{不是 json", "utf8");
 		const ids = (await store.list()).map((m) => m.id);
 		expect(ids).toEqual([good.id]);
 		expect(logger.warn).toHaveBeenCalled();
@@ -304,7 +308,7 @@ describe("ConversationStore — list", () => {
  * 判据是 inode:就地截断重写不换 inode,先写临时文件再改名一定换。
  */
 describe("ConversationStore — 落盘是原子的", () => {
-	const chatDir = () => join(dataDir, "ai", "chat");
+	const chatDir = () => join(dataDir, ...CONVERSATIONS_DIR);
 
 	it("重写一个会话 → 换了文件(inode 变),不是就地截断重写", async () => {
 		const c = await store.create();
@@ -327,10 +331,10 @@ describe("ConversationStore — 落盘是原子的", () => {
 	});
 
 	it("写失败(会话目录被一个文件占着)→ 错误抛给调用方,不留临时文件", async () => {
-		await mkdir(join(dataDir, "ai"), { recursive: true });
-		await writeFile(join(dataDir, "ai", "chat"), "占着", "utf8");
+		await mkdir(join(dataDir, CONVERSATIONS_DIR[0]), { recursive: true });
+		await writeFile(join(dataDir, ...CONVERSATIONS_DIR), "占着", "utf8");
 		await expect(store.create()).rejects.toBeDefined();
-		expect(await readdir(join(dataDir, "ai"))).toEqual(["chat"]);
+		expect(await readdir(join(dataDir, CONVERSATIONS_DIR[0]))).toEqual([CONVERSATIONS_DIR[1]]);
 	});
 });
 
@@ -397,13 +401,13 @@ describe("ConversationStore — 上限裁剪", () => {
 		// 新建的那个稳稳落在「最旧」的位置上 —— 修剪若不把它摘出去,就会出现
 		// 「点了新对话,对话没了」。用可控 id 构造,免得靠随机 uuid 的运气。
 		const now = new Date(useClockStart).toISOString();
-		await mkdir(join(dataDir, "ai", "chat"), { recursive: true });
+		await mkdir(join(dataDir, ...CONVERSATIONS_DIR), { recursive: true });
 		for (const id of [
 			"zzzzzzzz-0000-4000-8000-000000000001",
 			"zzzzzzzz-0000-4000-8000-000000000002",
 		]) {
 			await writeFile(
-				join(dataDir, "ai", "chat", `${id}.json`),
+				join(dataDir, ...CONVERSATIONS_DIR, `${id}.json`),
 				JSON.stringify({
 					id,
 					title: "旧",
@@ -462,7 +466,7 @@ describe("会话的模式与人格", () => {
 	});
 
 	it("老会话文件没这两个字段 → 按聊天 + 有人格读,别让主人的旧会话集体变脸", async () => {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, "legacy.json"),
@@ -493,7 +497,7 @@ describe("会话的模式与人格", () => {
 	 * 只在**读**的时候认,不回写盘 —— 推断是幂等的,而改主人的存档不是。
 	 */
 	it("老会话里有 create_skin 痕迹 → 认成工坊", async () => {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, "oldskin.json"),
@@ -522,7 +526,7 @@ describe("会话的模式与人格", () => {
 	});
 
 	it("只调过只读工具的老会话仍是聊天 —— 别把查订阅认成做皮肤", async () => {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, "oldchat.json"),
@@ -548,7 +552,7 @@ describe("会话的模式与人格", () => {
 	});
 
 	it("盘上写着 mode 就照它走,推断不许翻案", async () => {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, "explicit.json"),
@@ -691,7 +695,7 @@ describe("卡片皮肤工坊", () => {
 	});
 
 	async function legacy(id: string, toolName: string): Promise<void> {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, `${id}.json`),
@@ -724,7 +728,7 @@ describe("卡片皮肤工坊", () => {
 	});
 
 	it("连 mode 都没有的老文件,有卡片工坊的痕迹也认成工坊", async () => {
-		const dir = join(dataDir, "ai", "chat");
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
 		await mkdir(dir, { recursive: true });
 		await writeFile(
 			join(dir, "nomode.json"),
@@ -784,7 +788,7 @@ describe("ConversationStore.close", () => {
 	afterEach(() => storageWriteGate.reset());
 
 	const chatFiles = async (): Promise<string[]> =>
-		(await readdir(join(dataDir, "ai", "chat"))).sort();
+		(await readdir(join(dataDir, ...CONVERSATIONS_DIR))).sort();
 
 	it("close 等在途的写落盘", async () => {
 		storageWriteGate.hold();
@@ -807,7 +811,7 @@ describe("ConversationStore.close", () => {
 	it("close 之后的写被拒且不碰盘", async () => {
 		const c = await store.create();
 		await store.appendMessages(c.id, [{ role: "user", content: "问1" }]);
-		const file = join(dataDir, "ai", "chat", `${c.id}.json`);
+		const file = join(dataDir, ...CONVERSATIONS_DIR, `${c.id}.json`);
 		const before = await readFile(file, "utf8");
 		await store.close();
 		const writesAtClose = storageWriteGate.writes;

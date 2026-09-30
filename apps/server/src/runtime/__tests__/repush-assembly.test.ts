@@ -32,7 +32,9 @@ afterEach(async () => {
 
 describe("createAppRuntime", () => {
 	it("落一行历史 → 盘上同时多出一份重推原件", async () => {
-		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
+			dataRoot: dataDir,
+		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			kind: "dynamic",
@@ -64,7 +66,9 @@ describe("createAppRuntime", () => {
 	 * 测试把发送语义全覆盖了,这里只证明它被装进了 runtime、接的是真配置。
 	 */
 	it("repushRunner 接的是真历史仓与真配置", async () => {
-		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
+			dataRoot: dataDir,
+		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			kind: "dynamic",
@@ -99,7 +103,9 @@ describe("createAppRuntime", () => {
 	 * 把 `target-scope` 那张表换回「每次现问」这条就红(200 → 600 次)。
 	 */
 	it("200 行失败历史各问一次闸 → 三个 deepClone getter 各只被问一次", async () => {
-		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
+			dataRoot: dataDir,
+		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			kind: "dynamic",

@@ -17,8 +17,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionLookupResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 
 const FIXTURE_ID = "sub-probe";
 /** 别的拓展名下的一条 —— 它不该出现在 fixture 读到的名单里。那个拓展装都没装,不影响。 */
@@ -109,13 +111,14 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		dataDir = await mkdtemp(join(tmpdir(), "bn-sub-source-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [FIXTURE_ID]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
 
-		const extDir = join(dataDir, "extensions", FIXTURE_ID);
+		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),
@@ -136,7 +139,7 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		await writeFile(
-			join(dataDir, "state", "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
 			JSON.stringify([ENABLED_ROW, DISABLED_ROW, FOREIGN_ROW]),
 		);
 

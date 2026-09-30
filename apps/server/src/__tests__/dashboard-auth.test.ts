@@ -31,7 +31,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: no cookie → 401 without WWW-Authenticate", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -50,7 +50,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: valid bn_session cookie → 200", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -68,7 +68,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: Authorization: Basic is NOT accepted (cookie-only)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -88,7 +88,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth NOT configured: /api/globals is open (local dev / bare)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -101,7 +101,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("desktop token configured: /api/* requires the launcher token but /api/health stays probeable", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -138,7 +138,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: /api/health is also gated by the cookie", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -159,7 +159,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("login → returned cookie unlocks /api/globals end-to-end", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -184,7 +184,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("exemption is exact: /api/sessionXYZ-style prefixes are NOT exempt (gated)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -202,7 +202,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("/api/auth/ws-ticket stays gated (no cookie → 401)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -218,7 +218,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("sliding renewal: past-half-life cookie → 200 + fresh Set-Cookie; fresh → none", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const ttlMs = 10_000;
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS, ttlMs });
@@ -246,7 +246,7 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("createApp fail-closed: exactly one of creds/codec set → throws", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 

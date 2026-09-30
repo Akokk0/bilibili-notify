@@ -26,8 +26,10 @@ import type {
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
 const FAKE = "fake-source";
@@ -53,6 +55,8 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上、按订阅 id 命名", () => {
 	let dataDir: string;
+	/** 开机后在用的那一代;盘上读写都对它。 */
+	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 
@@ -70,7 +74,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 	/** 一个 jsonl 的每一行;文件不在是 `undefined`。 */
 	async function lines(...path: string[]): Promise<Record<string, unknown>[] | undefined> {
 		try {
-			const raw = await readFile(join(dataDir, ...path), "utf8");
+			const raw = await readFile(join(gen, ...path), "utf8");
 			return raw
 				.split("\n")
 				.filter((line) => line.trim())
@@ -84,6 +88,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-extension-stats-e2e-"));
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
+		gen = await activeGeneration(dataDir);
 		port = await findFreePort();
 		handle = await startServer({
 			argv: [
@@ -192,7 +197,9 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		}
 
 		// 两份资料是紧挨着报的,不密过 B 站粉丝轮询(默认每 10 分钟):只留先到的那份。
-		expect(await lines("fans", `${ON}.jsonl`)).toEqual([{ ts: expect.any(String), value: 1111 }]);
+		expect(await lines(...FOLLOWERS_DIR, `${ON}.jsonl`)).toEqual([
+			{ ts: expect.any(String), value: 1111 },
+		]);
 
 		// 六条上报都在 10 分钟里:一条,它就是这位的开始记录。
 		expect(await lines("stats", "seen", `${ON}.jsonl`)).toEqual([{ ts: expect.any(String) }]);
@@ -205,9 +212,9 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		]);
 
 		// 停用的乙一份都没有;盘上只有甲那几份。
-		for (const dir of [["stats", "dyn"], ["stats", "live"], ["stats", "seen"], ["fans"]]) {
-			expect(await readdir(join(dataDir, ...dir))).toEqual([`${ON}.jsonl`]);
+		for (const dir of [["stats", "dyn"], ["stats", "live"], ["stats", "seen"], FOLLOWERS_DIR]) {
+			expect(await readdir(join(gen, ...dir))).toEqual([`${ON}.jsonl`]);
 		}
-		expect(await lines("fans", `${OFF}.jsonl`)).toBeUndefined();
+		expect(await lines(...FOLLOWERS_DIR, `${OFF}.jsonl`)).toBeUndefined();
 	});
 });

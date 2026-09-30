@@ -9,7 +9,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
 /**
  * 开发版怎么装拓展。
  *
- * 🔴 **装载器只有一个根**(`<dataDir>/extensions/`),仓里那个 `extensions/` 不再是根 ——
+ * 🔴 **装载器只有一个根**(`<数据根>/extensions/`),仓里那个 `extensions/` 不再是根 ——
  * 于是「开发时怎么让它跑起来」这件事从**宿主的一条特例**变成了 devtools 的一个动作:
  * 把仓里构建好的 `dist` **链**进那个唯一的根。链完之后,它与主人手放的、日后从插件市场
  * 下载的**长得一模一样**:一个目录,里头是清单 + 一个自包含的 `index.mjs`。
@@ -24,7 +24,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
 export interface ExtensionScenariosInput {
 	/** 仓里那个 `extensions/`。devtools 只在源码运行时存在,所以这条路一定在。 */
 	repoDir: string;
-	/** 唯一那个装载根 —— `<dataDir>/extensions/`。 */
+	/** 唯一那个装载根 —— `<数据根>/extensions/`。 */
 	installRoot: string;
 	/** 装载器。**现取**:拓展比 devtools 后装起来。 */
 	extensions: () =>
@@ -78,7 +78,7 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 			id: "ext.install",
 			group: "ext",
 			title: "装一个仓里的拓展",
-			desc: "把仓里构建好的 dist 链进 <dataDir>/extensions/,当场生效。要先 vp run -F <包名> build。",
+			desc: "把仓里构建好的 dist 链进 <数据根>/extensions/,当场生效。要先 vp run -F <包名> build。",
 			icon: "download",
 			params: [pick],
 			async run(params) {

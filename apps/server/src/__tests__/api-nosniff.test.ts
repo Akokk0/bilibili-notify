@@ -41,7 +41,7 @@ describe("API 响应带 nosniff", () => {
 	});
 
 	async function makeApp() {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		return {
 			app: createApp(runtime, {

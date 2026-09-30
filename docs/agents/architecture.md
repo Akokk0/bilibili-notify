@@ -79,24 +79,26 @@ src/
   index.ts              CLI / bootstrap 入口
   app.ts                Hono app 组装 + 鉴权 + 路由挂载
   auth/                 经 @bilibili-notify/api LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
-  config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <dataDir>/state/*.json,emit config-changed)+ schema
+  config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <数据根>/config/*.json,emit config-changed)+ schema
+  migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,按代布局搬进 <序号>.partial;旧格式的知识最后只住这里(ADR-0022)
   runtime/
-    bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...);推一次 hostRoot / dataRoot
-    roots.ts              宿主根(versions/ logs/)与数据根的目录表 + hostPath / dataPath;本文写的 <dataDir>/… 除 versions、logs 外都在数据根下(数据代落地前两个根是同一个目录)
+    bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...);宿主根取配置的 dataDir,数据根由开机选代交进来(构造期不碰盘)
+    roots.ts              宿主根(versions/ logs/ generations/)与数据根(一代)的目录表 + hostPath / dataPath;本文写的 <数据根>/… 就是选中的那一代 <dataDir>/generations/<序号>/
+    generations.ts        数据代:选代(格式版本 ≤ 我里序号最大的)、在 <序号>.partial 里开代再原子改名;迁移修订号对不上就重开(ADR-0022)
     service-context.ts    NodeServiceContext(pino + setInterval/setTimeout + 分段的 onDispose / track / signal,见下「关停」)
     message-bus.ts        NodeMessageBus(mitt 风格,事件表 BusEvents)
     engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)
-    sub-runtime-store.ts  资料缓存 <dataDir>/state/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
-    fans-poller.ts        FansPoller —— 问 B 站、写 <dataDir>/fans/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
+    sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
+    fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
-  fans/store.ts         append-only jsonl 时序(<dataDir>/fans/<订阅 id>.jsonl)
+  fans/store.ts         append-only jsonl 时序(<数据根>/stats/followers/<订阅 id>.jsonl)
   stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评;migrate-file-keys.ts 每次开机把老的 <uid>.jsonl 并进订阅 id 那份(ADR-0020)
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
-  skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
+  skins/                皮肤库(<数据根>/skins/panel/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
   routes/               REST:auth / subs / targets / connections / globals / history / logs / fans / live / cards / push / health
                         / ai / skins / maid-skills / ext(拓展清单与每个拓展的面板数据)
@@ -110,8 +112,8 @@ src/
 
 开机分两段(ADR-0022 决策 2 与它下面的 🔗),桌面壳 30 秒等的只是健康检查:
 
-1. **先 listen**:读启动配置、开机清扫、建运行时(构造期不读数据)、挂日志钩子(从这一刻起进归档与 WS 的环形缓冲)、鉴权策略、会话签名,然后 listen。这时由 `createStartupApp` 应答:健康检查照答(模块全是 false),别的 `/api/*` 与拓展挂载点回 503 `unavailable`。它和完整的 app 同出 `createAppShell`,鉴权闸是同一套(`__tests__/boot-listen-first-e2e.test.ts` 钉着)。HTTP 排空紧跟着 listen 登记。
-2. **再读数据、起引擎**:配置、鉴权子系统、引擎、拓展……建完完整的 app,请求切过去,再挂拓展的 upgrade 分发与 WS。
+1. **先 listen**:读启动配置、选代(只读盘;新装的空代当场开)、开机清扫(只扫 `versions/` 与要用的那一代,第 0 代与旧代是备份不碰)、建运行时(**构造期不碰盘** —— 要开新代时数据根还是一条没改名的路径,构造里一写就撞)、挂日志钩子(从这一刻起进归档与 WS 的环形缓冲)、鉴权策略、会话签名(要迁的话,密钥从第 0 代只读地取),然后 listen。这时由 `createStartupApp` 应答:健康检查照答(模块全是 false),别的 `/api/*` 与拓展挂载点回 503 `unavailable`。它和完整的 app 同出 `createAppShell`,鉴权闸是同一套(`__tests__/boot-listen-first-e2e.test.ts` 钉着)。HTTP 排空紧跟着 listen 登记。
+2. **再读数据、起引擎**:要开新代的话先迁(`migration/zero-generation.ts`,503 那句话带进度),再统计采集 `start()`、配置、鉴权子系统、引擎、拓展……建完完整的 app,请求切过去,再挂拓展的 upgrade 分发与 WS。`__tests__/boot-generations-e2e.test.ts` 钉着:迁完之前那一代不存在、第 0 代一个字节不变、迁移期间登录的 cookie 迁完照样有效。
 
 `startServer` 等第 2 段做完才返回。第 2 段抛错就关掉 HTTP 再抛:冻住的 boot.mjs 会在同一进程里起预装的那一版,端口必须已经放掉。往开机里加一步时先想清楚放哪一段:碰数据、会慢、要联网的放第 2 段;和数据无关、又得在 listen 之前定下来的(比如鉴权)才放第 1 段。
 

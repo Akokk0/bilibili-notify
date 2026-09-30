@@ -33,7 +33,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 	});
 
 	it("无法解析的 cron 表达式 → 400,store 不落地新值", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const before = runtime.configStore.getGlobals().app.dynamicCron;
 		const app = createApp(runtime, {
@@ -58,7 +58,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 	});
 
 	it("合法 cron 表达式 → 200,store 更新为新值", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -76,7 +76,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 	});
 
 	it("patch 不涉及 dynamicCron → 不校验,正常放行", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

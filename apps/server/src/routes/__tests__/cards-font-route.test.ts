@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { CARD_SKIN_UPLOAD_PREFIX, fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
+import { FONT_DIR, listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
 import { createCardsRoute } from "../cards.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
@@ -170,8 +170,8 @@ describe("POST /font-asset —— 上传", () => {
 	 */
 	it("磁盘写失败 → 不当成 400 把原话甩出去:走全局出错处理,只回固定一句", async () => {
 		await withDir(async (dir) => {
-			// `assets` 是个文件而不是目录 —— 建字体目录必然失败。
-			await writeFile(join(dir, "assets"), "占位");
+			// `library` 是个文件而不是目录 —— 建字体目录必然失败。
+			await writeFile(join(dir, FONT_DIR[0]), "占位");
 			const app = new Hono()
 				.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
 				.route("/", route(makeDeps({ dataDir: dir })));

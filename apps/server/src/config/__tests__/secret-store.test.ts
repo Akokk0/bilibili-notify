@@ -24,7 +24,7 @@ import { createKeyProvider } from "@bilibili-notify/storage";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
 import { createSecretStore, type SecretStore } from "../secret-store.js";
-import { type ConfigStore, createConfigStore } from "../store.js";
+import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
 	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
@@ -158,11 +158,15 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		ai.baseUrl = "https://api.deepseek.com";
 		ai.model = "deepseek-v4-pro";
 		defaults.ai = ai;
-		await mkdir(join(dataDir, "state"), { recursive: true });
-		await writeFile(join(dataDir, "state", "globals.json"), JSON.stringify(g, null, 2), "utf8");
+		await mkdir(join(dataDir, ...CONFIG_DIR), { recursive: true });
+		await writeFile(
+			join(dataDir, ...CONFIG_DIR, "globals.json"),
+			JSON.stringify(g, null, 2),
+			"utf8",
+		);
 	}
 	const diskGlobals = async () =>
-		JSON.parse(await readFile(join(dataDir, "state", "globals.json"), "utf8"));
+		JSON.parse(await readFile(join(dataDir, ...CONFIG_DIR, "globals.json"), "utf8"));
 	/** 盘上那份里,某个桶的主 key。 */
 	const diskKey = async (id: string) =>
 		(await diskGlobals())?.defaults?.ai?.providers?.[id]?.apiKey;
@@ -306,7 +310,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 
 		// 破坏 globals.json 路径(占成目录)→ 下次 atomicWriteJson rename 必失败,
 		// 而 secretStore.save(写 secrets/config-secrets.enc,另一路径)仍成功。
-		const gp = join(dataDir, "state", "globals.json");
+		const gp = join(dataDir, ...CONFIG_DIR, "globals.json");
 		await rm(gp);
 		await mkdir(gp, { recursive: true });
 

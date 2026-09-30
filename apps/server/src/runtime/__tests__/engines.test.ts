@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { BiliLoginStatus } from "@bilibili-notify/api";
 import type {
 	Connection,
@@ -47,8 +47,10 @@ import {
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
+import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import { dataPath } from "../roots.js";
 import type { NodeServiceContext } from "../service-context.js";
 
 // ---- 引擎包 spy mocks(每次构造把实例塞进 H.<engine>,字段方法均为 vi.fn)----
@@ -1227,24 +1229,27 @@ describe("createEngines — 背景轮换游标落盘", () => {
 
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-engines-cursors-"));
-		await mkdir(join(dataDir, "assets", "card-bg"), { recursive: true });
-		for (const id of ids) await writeFile(join(dataDir, "assets", "card-bg", id), "x");
+		await mkdir(dataPath(dataDir, ...CARD_BG_DIR), { recursive: true });
+		for (const id of ids) await writeFile(dataPath(dataDir, ...CARD_BG_DIR, id), "x");
 	});
 	afterEach(async () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("dispose 把推进过的游标写进 card-bg-cursors.json,目录里不留临时文件", async () => {
+	it("dispose 把推进过的游标写进 runtime/card-bg-cursors.json,目录里不留临时文件", async () => {
 		const c = setup({ dataDir });
 		active = c;
 		const pick = H.live[0].opts.pickCardBackground;
 		expect([pick("u1:live", ids), pick("u1:live", ids)]).toEqual([ids[0], ids[1]]);
 		c.runtime.dispose();
 		active = null;
-		expect(JSON.parse(await readFile(join(dataDir, "card-bg-cursors.json"), "utf8"))).toEqual({
+		expect(JSON.parse(await readFile(join(dataDir, ...CARD_BG_CURSORS_FILE), "utf8"))).toEqual({
 			"u1:live": 2,
 		});
-		expect((await readdir(dataDir)).sort()).toEqual(["assets", "card-bg-cursors.json"]);
+		expect((await readdir(dataDir)).sort()).toEqual(["library", "runtime"]);
+		expect(await readdir(dirname(join(dataDir, ...CARD_BG_CURSORS_FILE)))).toEqual([
+			"card-bg-cursors.json",
+		]);
 	});
 
 	it("重启续接:下一轮从盘上的游标接着轮换,不归零", async () => {
@@ -1266,7 +1271,7 @@ describe("createEngines — 背景轮换游标落盘", () => {
 		active = c;
 		c.runtime.dispose();
 		active = null;
-		return expect(readdir(dataDir)).resolves.toEqual(["assets"]);
+		return expect(readdir(dataDir)).resolves.toEqual(["library"]);
 	});
 });
 

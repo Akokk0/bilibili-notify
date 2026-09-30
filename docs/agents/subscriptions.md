@@ -18,7 +18,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 | 身份 | `uid`（纯数字串） | `extensionId` + `externalId`（拓展给的不透明串，1–256 字，BN 从不解读） |
 | 独有 | `specialUsers` | —— |
 | 共有 | `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` / `roastSchedule`（拓展那支是 ADR-0020 决策 14 加的，老文件缺这一格读进来补出厂默认） | 同左 |
-| 盘上 | `<dataDir>/state/subscriptions.json` | `<dataDir>/state/extension-subscriptions.json` |
+| 盘上 | `<数据根>/config/subscriptions.json` | `<数据根>/config/extension-subscriptions.json` |
 
 - **拓展那支连 `uid` 这个键都没有**（不写 `uid?: never`）：键不在，编译器才会把每一处直接读 `sub.uid` 的地方列出来逐个分流，「遍历订阅去 B 站拉资料」不会拿别的平台的 id 去问 B 站。
 - 解析是 `SubscriptionSchema` **按 `kind` 分派**（不用 `z.union` / `discriminatedUnion`：B 站那支 `kind` 可缺、前面还挂着老数据迁移的 preprocess；挨个试会把一行坏 B 站订阅报成两份错）。
@@ -58,7 +58,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 
 ## 资料与头像
 
-**资料缓存**是 `SubRuntimeStore`（`apps/server/src/runtime/sub-runtime-store.ts`，`<dataDir>/state/sub-runtime.json`，按订阅 id）里的 `cachedProfile { name, avatar, sign, fans?, lastRefreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile）。`GET /api/subs` 在 `toDTO` 里把它 join 进 DTO。
+**资料缓存**是 `SubRuntimeStore`（`apps/server/src/runtime/sub-runtime-store.ts`，`<数据根>/runtime/sub-runtime.json`，按订阅 id）里的 `cachedProfile { name, avatar, sign, fans?, lastRefreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile）。`GET /api/subs` 在 `toDTO` 里把它 join 进 DTO。
 
 | | B 站 | 拓展 |
 |---|---|---|

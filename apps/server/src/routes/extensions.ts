@@ -130,7 +130,7 @@ export interface ExtensionsRouteOptions {
 	 * 省略 → `POST /install` 回 `unsupported`(装载器没接上来的构建里,装了也没人加载)。
 	 */
 	install?: {
-		/** 装载根 —— `<dataDir>/extensions/`。 */
+		/** 装载根 —— `<数据根>/extensions/`。 */
 		root: string;
 		/**
 		 * **在装载器那条队里改盘**(装载器的 `changeDisk()`):`write` 落盘 / 抹盘,紧跟着再扫一遍。

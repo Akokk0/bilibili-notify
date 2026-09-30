@@ -24,8 +24,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 
 const PROBE = "restart-probe";
 /** 推送全关(决策 4):统计照记。 */
@@ -108,6 +110,8 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之后都按开播时刻认成同一场,峰值留大的", () => {
 	let dataDir: string;
+	/** 开机后在用的那一代;盘上读写都对它。 */
+	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 
@@ -173,7 +177,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 	/** 盘上一个 jsonl 的每一行;文件不在是空的。 */
 	async function lines(dir: string, id: string): Promise<Array<Record<string, unknown>>> {
 		try {
-			const raw = await readFile(join(dataDir, "stats", dir, `${id}.jsonl`), "utf8");
+			const raw = await readFile(join(gen, "stats", dir, `${id}.jsonl`), "utf8");
 			return raw
 				.split("\n")
 				.filter((line) => line.trim())
@@ -205,13 +209,14 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-live-restart-e2e-"));
 		await boot();
 		await shutdown();
+		gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [PROBE]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
 
-		const extDir = join(dataDir, "extensions", PROBE);
+		const extDir = join(gen, "extensions", PROBE);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
 			join(extDir, "extension.json"),
@@ -239,7 +244,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		);
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 		await writeFile(
-			join(dataDir, "state", "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
 			JSON.stringify([SUB, FLICKER]),
 		);
 	});

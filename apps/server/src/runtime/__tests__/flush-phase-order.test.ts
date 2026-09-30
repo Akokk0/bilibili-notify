@@ -18,6 +18,7 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
+import { SUB_RUNTIME_FILE } from "../sub-runtime-store.js";
 
 // 落盘函数前的闸默认敞开;只有「先后」那条用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -34,7 +35,9 @@ let runtime: AppRuntime;
 beforeEach(async () => {
 	storageWriteGate.reset();
 	dataDir = await mkdtemp(join(tmpdir(), "bn-flush-order-"));
-	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }));
+	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
+		dataRoot: dataDir,
+	});
 	await runtime.configStore.load();
 	await runtime.subRuntimeStore.load();
 	await runtime.configStore.upsertSubscription(SUB);
@@ -90,9 +93,10 @@ describe("createAppRuntime 的 flush 段", () => {
 
 		storageWriteGate.release();
 		await closing;
-		const onDisk = JSON.parse(
-			await readFile(join(dataDir, "state", "sub-runtime.json"), "utf8"),
-		) as Record<string, { cachedProfile?: { name: string } }>;
+		const onDisk = JSON.parse(await readFile(join(dataDir, ...SUB_RUNTIME_FILE), "utf8")) as Record<
+			string,
+			{ cachedProfile?: { name: string } }
+		>;
 		expect(onDisk[SUB.id]?.cachedProfile).toMatchObject({
 			name: "甲",
 			avatar: expect.stringContaining(`/api/subs/${SUB.id}/avatar?v=`),

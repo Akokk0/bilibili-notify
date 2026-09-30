@@ -356,7 +356,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 7 | 测试只放 `__tests__/`；文件名一律 kebab-case（biome `useFilenamingConvention`）。前半已落：`scripts/__tests__/test-file-layout.test.mjs`，全仓无例外（`scripts/` 也搬进了 `__tests__/`） |
 | 8 | 服务关停返回以后，数据目录不再变化（端到端）。已落：`apps/server/src/__tests__/data-dir-still-after-close-e2e.test.ts`，按写入发出的时刻垫延迟（关停开始前在路上的慢），没被关停等到的写一定落在返回之后，每次都红、不靠运气 |
 | 9 | 存储层拒收同一身份的第二条订阅，所有写入路径各一条测试 |
-| 13 | 迁移清单完整：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；对数据根的 `join(dataDir, …)` 前缀都必须在目录表里（后半已落：`apps/server/src/__tests__/data-roots.test.ts`，目录表在 `runtime/roots.ts`，现在登记第 0 代的布局）。加固（随各项）：重推原件的每个载荷 kind（`forward-images`、`miniapp-card`）与字段（`picUrl`、`path`）都要有去向 |
+| 13 | 迁移清单完整：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；对数据根的 `join(dataDir, …)` 前缀都必须在目录表里（后半已落：`apps/server/src/__tests__/data-roots.test.ts`，目录表在 `runtime/roots.ts`，登记代的布局；0.x 的布局在迁移模块里只作输入）。加固（随各项）：重推原件的每个载荷 kind（`forward-images`、`miniapp-card`）与字段（`picUrl`、`path`）都要有去向 |
 | 14 | devtools 换桩表写死两项目录（`src/devtools`、`src/bilibili/devtools`，⛔ 不用通配），隔离测试认两个引用点。构建后自检不动。 |
 | 15 | 桥协议的帧形状与通用 webhook 的 JSON 各一条快照守卫；webhook JSON 里的 `private` 写死 `false`（主人目标不可能是 webhook） |
 | 16 | 改名收尾：每批改完旧名 grep 为零（桥协议、webhook、`bilibili/` 里 B 站原字段、卡片皮肤包清单的 `author`（指皮肤作者）进白名单） |

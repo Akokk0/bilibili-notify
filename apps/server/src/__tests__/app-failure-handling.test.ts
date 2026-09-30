@@ -32,7 +32,7 @@ describe("全局出错处理与 notFound", () => {
 	});
 
 	async function makeApp(options: { staticDir?: string } = {}) {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

@@ -27,7 +27,7 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("没给 → 404,那台机器上就当没有重启这回事", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -37,7 +37,7 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("给了 → 重启这条按得动", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const restart = vi.fn(async () => {});
 		const app = createApp(runtime, {

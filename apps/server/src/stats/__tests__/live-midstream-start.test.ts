@@ -140,6 +140,8 @@ describe("采集水位线钉在采集起点", () => {
 			now: () => START,
 			subscriptions: () => [],
 		});
+		// 采集开始:水位线在 `start()` 时钉下(构造时不碰盘,见 recorder.test.ts)。
+		recorder.start();
 		await recorder.flush();
 
 		// 五天后才第一次有人打开统计页。

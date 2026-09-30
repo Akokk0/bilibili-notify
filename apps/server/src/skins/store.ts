@@ -122,6 +122,9 @@ export class SkinStoreError extends Error {
 	}
 }
 
+/** 界面皮肤在代里的位置。 */
+export const PANEL_SKINS_DIR = ["skins", "panel"] as const;
+
 export class SkinStore {
 	private readonly skinsDir: string;
 	private active: ActiveSlots = { light: null, dark: null };

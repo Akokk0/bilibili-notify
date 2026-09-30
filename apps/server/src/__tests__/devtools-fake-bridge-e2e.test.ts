@@ -21,8 +21,10 @@ import type {
 } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
+import { CONFIG_DIR } from "../config/store.js";
 import { STATUS_CHANGED_COALESCE_MS } from "../extensions/context.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { activeGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 const LINK_ID = "link-home";
@@ -98,8 +100,9 @@ describe("devtools 的假桥 → 真桥", () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-fake-bridge-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
+		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(dataDir, "state", "globals.json");
+		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		// 接入(token)住桥自己的设置里 —— 场景从那儿挑(ADR-0012 决策 45)。
 		globals.extensions = {

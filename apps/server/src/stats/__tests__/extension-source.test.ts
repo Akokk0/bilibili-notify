@@ -23,7 +23,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore } from "../../fans/store.js";
+import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
 import { createExtensionLiveTable } from "../../runtime/extension-live.js";
 import {
 	createExtensionLiveSessions,
@@ -185,7 +185,7 @@ async function lines(dir: string, id: string): Promise<unknown[] | undefined> {
 }
 const dynRows = (id = SUB.id) => lines(join("stats", "dyn"), id);
 const liveFrames = (id = SUB.id) => lines(join("stats", "live"), id);
-const fansRows = (id = SUB.id) => lines("fans", id);
+const fansRows = (id = SUB.id) => lines(join(...FOLLOWERS_DIR), id);
 const seenRows = (id = SUB.id) => lines(join("stats", "seen"), id);
 
 async function exists(path: string): Promise<boolean> {
