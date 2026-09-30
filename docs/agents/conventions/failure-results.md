@@ -47,7 +47,7 @@
 
 5. **自定义码算失败、不自动重试。** 它必须是 snake_case 字符串。
 
-6. **`unknown` 只用在两处**：迁移来的旧记录，以及冻结格式翻译过来、说不清原因的失败（如桥的回执）。
+6. **`unknown` 只用在两处**：迁移来的旧记录，以及冻结格式翻译过来、说不清原因的失败（如只带 `err` 的旧写法桥回执；桥协议的回执改成结果形状见 ADR-0026 决策 7）。
 
 7. **HTTP 非 2xx 的错误体是平铺的 `{ code, message }`**，可选附加只有两格：`issues`（逐条原因，`Issue[]`；拓展设置那处多一个 `op?`）与 `upstreamCode`。不嵌套成 `{ error: { code, message } }`，不用 `err`、`error` 代替 `code` + `message`；要加别的附加字段先问主人。路由一律经服务端的 `respondFailure(c, failure, status?)` 回，状态码从 `code` 推，类型叫 `ErrorResponse`；4xx 的错误体不带 `ok`。「做一件事、回报结果」的接口（测试推送、预览）照旧回 200，体是 `Result<T>`。面板把非 2xx 解析一次成 `ApiError`，错误提示只读 `code` + `message`，逐格标红读 `issues`，分情况只按 `code` 判。
 

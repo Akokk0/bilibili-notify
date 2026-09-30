@@ -41,7 +41,8 @@ export const ALLOWLIST = {
  *   订阅源上报、拓展设置、指令参数):更新的 kebab `reason` 改 snake 码(决策 3),其余改 `code` + `message`。
  * - 面板:登录的 `{ ok, kind, message }` 与 devtools 的几处。
  * - 桥拓展:拓展只能从 `@bilibili-notify/extension` 拿东西,那个包还没有 `ok()` / `fail()`,等 3b 的契约 v3。
- * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧;devtools 假桥发的 `result` 帧(桥协议冻结的格式)。
+ * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
+ * - devtools 假桥发的 `result` 帧:3b 桥协议的回执统一成结果形状后改用 `fail()` 展开(ADR-0026 决策 7)。
  * - `packages/api/src/follow.ts`:B 站的码塞在 `code` 里,3a 随 api 包删掉。
  */
 export const RATCHET = {
