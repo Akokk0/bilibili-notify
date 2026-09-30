@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,6 @@ import {
 	checkErrorBody,
 	createErrorBodyLedger,
 	findOwner,
-	LEGACY_UNMIGRATED_FILES,
 	readBody,
 } from "../error-body-guard.mjs";
 
@@ -216,11 +215,10 @@ describe("归属:这个回应是谁造的", () => {
 describe("账本", () => {
 	const repoRoot = "/repo/";
 	const serverRoot = "/repo/apps/server/src/";
-	const legacyFiles = ["apps/server/src/routes/old.ts"];
 	const stackIn = (file) => `Error\n    at handler (/repo/${file}:10:5)`;
 	const OLD_SHAPE = JSON.stringify({ error: "boom" });
 	const GOOD = JSON.stringify({ code: "invalid", message: "不对" });
-	const ledger = () => createErrorBodyLedger({ repoRoot, serverRoot, legacyFiles });
+	const ledger = () => createErrorBodyLedger({ repoRoot, serverRoot });
 
 	it("服务端代码造的旧形状 4xx / 5xx:记账,带文件:行、状态码、体的摘要", () => {
 		const l = ledger();
@@ -260,10 +258,24 @@ describe("账本", () => {
 		expect(entry.body).toContain("ReadableStream");
 	});
 
-	it("白名单里的文件(还没迁的路由)造的违规不记账", () => {
+	/**
+	 * 没有白名单:服务端的每个文件一视同仁。曾经有过一份「还没迁的文件」名单(④b 迁移期),
+	 * 迁完就拿掉了 —— 谁再手写旧形状,不论在哪个文件,那条测试都红并点名它。
+	 */
+	it("服务端的任何文件(含原先迁移期放行过的两个路由)手写旧形状,一样记账", () => {
 		const l = ledger();
-		l.observe({ status: 500, body: OLD_SHAPE, stack: stackIn("apps/server/src/routes/old.ts") });
-		expect(l.drain()).toEqual([]);
+		for (const file of [
+			"apps/server/src/routes/extensions.ts",
+			"apps/server/src/routes/extension-settings.ts",
+			"apps/server/src/routes/old.ts",
+		]) {
+			l.observe({ status: 500, body: OLD_SHAPE, stack: stackIn(file) });
+		}
+		expect(l.drain().map((e) => e.file)).toEqual([
+			"apps/server/src/routes/extensions.ts",
+			"apps/server/src/routes/extension-settings.ts",
+			"apps/server/src/routes/old.ts",
+		]);
 	});
 
 	it("测试自己造的、拓展造的、认不出是谁造的:不记账", () => {
@@ -312,18 +324,6 @@ describe("查账", () => {
 			problems: ["缺 code(字符串)"],
 		};
 		expect(() => assertNoErrorBodyViolations([entry, entry, entry])).toThrow(/×3/);
-	});
-});
-
-describe("迁移期白名单", () => {
-	it("名单里的每个文件都真实存在(迁掉或改名的,名单要跟着删)", () => {
-		const missing = LEGACY_UNMIGRATED_FILES.filter((f) => !existsSync(join(REPO_ROOT, f)));
-		expect(missing).toEqual([]);
-	});
-
-	it("名单按文件名排序、没有重复,都在服务端源码里", () => {
-		expect([...LEGACY_UNMIGRATED_FILES]).toEqual([...new Set(LEGACY_UNMIGRATED_FILES)].sort());
-		for (const f of LEGACY_UNMIGRATED_FILES) expect(f).toMatch(/^apps\/server\/src\//);
 	});
 });
 

@@ -26,20 +26,6 @@ const TOP_KEYS = new Set(["code", "message", "issues", "upstreamCode"]);
 /** 一条原因的键:`op` 只有拓展设置那处带(第几步惹出来的,ADR-0026 决策 6)。 */
 const ISSUE_KEYS = new Set(["path", "message", "op"]);
 
-/**
- * 迁移期白名单:**还没迁到 `respondFailure` 的文件**照旧会造出旧形状,名单内的文件造的违规
- * 不记账。按文件名排序、每个一行;每迁完一组就删一组,④b 末清空(空数组就是守卫全开)。
- * 有一条测试钉着名单里每个文件都还存在。
- *
- * 名单是实测的,不是按源码猜的:开张那天(2026-09-29)用空名单跑 `vp test apps/server`,把违规归属的
- * 文件全收进来。所以没有测试走到的旧形状不在名单里 —— 日后谁的测试走到了,那条测试会红并点名它,
- * 到时候要么把那个文件迁掉,要么记进名单(并在迁移清单里补上)。
- */
-export const LEGACY_UNMIGRATED_FILES = [
-	"apps/server/src/routes/extension-settings.ts",
-	"apps/server/src/routes/extensions.ts",
-];
-
 // 不用 `new URL("..", import.meta.url)`:jsdom 环境里全局 URL 是 jsdom 的,fileURLToPath 不认它的实例。
 const REPO_ROOT = `${slash(resolve(dirname(fileURLToPath(import.meta.url)), "..")).replace(/\/$/, "")}/`;
 const SERVER_ROOT_ENV = "BN_ERROR_BODY_GUARD_SERVER_ROOT";
@@ -186,15 +172,11 @@ function summarize(read) {
 
 /**
  * 账本:`observe` 收一个回应(状态码、体的初始化参数、构造处的调用栈),≥ 400 且归服务端代码、
- * 不在白名单、体不合规就记一笔;`drain` 交出账并清空。与 `Response` 的挂接分开,好单测。
+ * 体不合规就记一笔 —— 服务端的每个文件一视同仁,没有白名单;`drain` 交出账并清空。
+ * 与 `Response` 的挂接分开,好单测。
  */
-export function createErrorBodyLedger({
-	repoRoot = REPO_ROOT,
-	serverRoot,
-	legacyFiles = LEGACY_UNMIGRATED_FILES,
-}) {
+export function createErrorBodyLedger({ repoRoot = REPO_ROOT, serverRoot }) {
 	const entries = [];
-	const legacy = new Set(legacyFiles);
 	const root = `${slash(repoRoot).replace(/\/$/, "")}/`;
 	return {
 		observe({ status, body, stack }) {
@@ -202,7 +184,6 @@ export function createErrorBodyLedger({
 			const owner = findOwner(stack, { serverRoot });
 			if (!owner) return;
 			const file = owner.file.startsWith(root) ? owner.file.slice(root.length) : owner.file;
-			if (legacy.has(file)) return;
 			const read = readBody(body);
 			const problems = read.opaque
 				? [`回应体是 ${read.opaque},当场读不出来 —— 非 2xx 的体必须是 JSON 字符串`]
