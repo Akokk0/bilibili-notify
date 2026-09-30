@@ -26,7 +26,7 @@ import type {
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
@@ -53,7 +53,7 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上、按订阅 id 命名", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
@@ -85,7 +85,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		dataDir = await mkdtemp(join(tmpdir(), "bn-extension-stats-e2e-"));
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

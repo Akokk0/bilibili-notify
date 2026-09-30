@@ -20,7 +20,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 
 const IN_FLIGHT_DELAY_MS = 1_500;
 const DURING_CLOSE_DELAY_MS = 50;
@@ -110,7 +110,7 @@ async function snapshot(root: string): Promise<string[]> {
 
 describe("守卫 8:关停返回以后数据目录不再变化", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let hookServer: Server;
 	let port: number;
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
@@ -130,7 +130,7 @@ describe("守卫 8:关停返回以后数据目录不再变化", () => {
 
 		dataDir = await mkdtemp(join(tmpdir(), "bn-data-dir-still-e2e-"));
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /** bus 上收到的每一条 `subscription-reported`。 */
@@ -124,11 +124,11 @@ async function findFreePort(): Promise<number> {
 
 describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 bus 上", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
-	function boot(at: number): Promise<StandaloneServerHandle> {
-		return startStandaloneServer({
+	function boot(at: number): Promise<ServerHandle> {
+		return startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

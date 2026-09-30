@@ -23,7 +23,7 @@ import type {
 } from "@bilibili-notify/contract";
 import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
@@ -71,7 +71,7 @@ async function findFreePort(): Promise<number> {
 
 describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上报问题都跟着变", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 	/** 三条订阅各自的外部 id(解析门候选的 id)。 */
 	const external = { a: "", b: "", c: "" };
@@ -122,7 +122,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 async function findFreePort(): Promise<number> {
@@ -84,12 +84,12 @@ async function readLogArchive(dataDir: string): Promise<string> {
 	return parts.join("");
 }
 
-describe("standalone server lifecycle", () => {
+describe("server lifecycle", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 
 	beforeEach(async () => {
-		dataDir = await mkdtemp(join(tmpdir(), "bn-standalone-"));
+		dataDir = await mkdtemp(join(tmpdir(), "bn-server-lifecycle-"));
 	});
 
 	/**
@@ -118,7 +118,7 @@ describe("standalone server lifecycle", () => {
 		}) as never);
 		const port = await findFreePort();
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -171,7 +171,7 @@ describe("standalone server lifecycle", () => {
 
 		const boot = async () => {
 			const port = await findFreePort();
-			return startStandaloneServer({
+			return startServer({
 				argv: [
 					"--host",
 					"127.0.0.1",
@@ -239,7 +239,7 @@ describe("standalone server lifecycle", () => {
 		await writeFile(join(extDir, "index.mjs"), says("旧的"));
 
 		const port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -302,7 +302,7 @@ describe("standalone server lifecycle", () => {
 	it("桥拓展开着:`/ext/bridge` 的无 token upgrade 回 401,取图口回 404", async () => {
 		const boot = async () => {
 			const port = await findFreePort();
-			const started = await startStandaloneServer({
+			const started = await startServer({
 				argv: [
 					"--host",
 					"127.0.0.1",
@@ -385,7 +385,7 @@ describe("standalone server lifecycle", () => {
 		const port = await findFreePort();
 
 		await expect(
-			startStandaloneServer({
+			startServer({
 				argv: [
 					"--host",
 					"0.0.0.0",
@@ -414,7 +414,7 @@ describe("standalone server lifecycle", () => {
 			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\n`,
 		);
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [],
 			env: { BN_CONFIG: configPath, BN_WEB_DIST: webDistDir },
 			shutdownTimeoutMs: 1_000,
@@ -439,7 +439,7 @@ describe("standalone server lifecycle", () => {
 			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\n`,
 		);
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [],
 			env: { BN_CONFIG: configPath },
 			bundleUrl: payload.bundleUrl,
@@ -468,7 +468,7 @@ describe("standalone server lifecycle", () => {
 			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\nwebDistDir: /app/web-dist\n`,
 		);
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [],
 			env: { BN_CONFIG: configPath },
 			bundleUrl: payload.bundleUrl,
@@ -493,7 +493,7 @@ describe("standalone server lifecycle", () => {
 			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\nwebDistDir: ${JSON.stringify(ownDir)}\n`,
 		);
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [],
 			env: { BN_CONFIG: configPath },
 			bundleUrl: payload.bundleUrl,
@@ -509,7 +509,7 @@ describe("standalone server lifecycle", () => {
 		const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 		const port = await findFreePort();
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -537,7 +537,7 @@ describe("standalone server lifecycle", () => {
 		const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 		const port = await findFreePort();
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -558,7 +558,7 @@ describe("standalone server lifecycle", () => {
 	});
 	it("有不回关闭帧的 WS 对端也在预算里关完,关停期的日志照样进归档", async () => {
 		const port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -596,7 +596,7 @@ describe("standalone server lifecycle", () => {
 		const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 		const port = await findFreePort();
 
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

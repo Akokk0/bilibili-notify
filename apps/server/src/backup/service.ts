@@ -21,7 +21,7 @@ import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
 
 /**
  * BackupService — the IO seam wiring the pure backup core to the running
- * standalone end.
+ * server.
  *
  * Export reads the four config scopes (and, for a full backup, the cookie
  * store) and assembles an envelope. Import runs the pure {@link planImport},

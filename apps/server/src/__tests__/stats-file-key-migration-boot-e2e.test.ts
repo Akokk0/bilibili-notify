@@ -18,7 +18,7 @@ import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 
 const SUB_ID = "5a000000-0000-4000-8000-000000000101";
 const UID = "101";
@@ -98,7 +98,7 @@ const FANS = jsonl([
 ]);
 
 describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就挪到了 <订阅 id>.jsonl", () => {
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	beforeAll(async () => {
@@ -124,7 +124,7 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 		);
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

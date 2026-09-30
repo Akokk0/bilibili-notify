@@ -16,7 +16,7 @@ import { join } from "node:path";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type { ConfigScope } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
@@ -93,7 +93,7 @@ async function findFreePort(): Promise<number> {
 
 describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅列表", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
@@ -158,7 +158,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

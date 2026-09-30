@@ -1,5 +1,5 @@
 /**
- * Standalone-side engine wiring: the engines from packages/dynamic + packages/live,
+ * Server-side engine wiring: the engines from packages/dynamic + packages/live,
  * driven by the file-backed ConfigStore + MultiplexSink.
  *
  * Construction order:
@@ -93,7 +93,7 @@ import { createMultiplexSink } from "../sink/multiplex.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
-import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
+import { segmentContentBuilder, segmentToPayload } from "./content-builder.js";
 import type { ExtensionLiveTable } from "./extension-live.js";
 import { bindExtensionLivePush } from "./extension-live-push.js";
 import {
@@ -194,7 +194,7 @@ export interface CreateEnginesOptions {
 	/**
 	 * NodeServiceContext (not the platform-neutral ServiceContext) — engines.ts
 	 * uses `forSubsystem(name, level)` to give each engine its own pino instance
-	 * driven by globals.app.logLevels.{dynamic,live,image,ai}. The standalone
+	 * driven by globals.app.logLevels.{dynamic,live,image,ai}. The server
 	 * runtime constructs the parent context once at boot.
 	 */
 	serviceCtx: NodeServiceContext;
@@ -625,7 +625,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		serviceCtx: liveCtx,
 		api: opts.api,
 		push: livePushLike,
-		contentBuilder: standaloneContentBuilder,
+		contentBuilder: segmentContentBuilder,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),
@@ -1305,7 +1305,7 @@ export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
  * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):装配交来的消息组 → 推送层的载荷,特性键与推送
  * 选项照 B 站的映射({@link liveTypeToFeature} / {@link liveBroadcastOpts}:只有开播 @全体、周期「正在直播」
  * 在历史里单列一类)。拓展订阅的直播用它(ADR-0019 决策 67);B 站的直播间经 {@link makeLivePushLike} 走同一
- * 套映射,段也照同一个口子翻(`standaloneContentBuilder` → `segmentToPayload`)。
+ * 套映射,段也照同一个口子翻(`segmentContentBuilder` → `segmentToPayload`)。
  *
  * 一组是一条消息:一组交一条载荷,几组交一串(推送层的序列语义,同 B 站的「分条」)。
  */
@@ -1314,11 +1314,11 @@ export function boundLivePush(send: SubscriptionPush): LiveNotifySend {
 		const payloads = groups.map((segs) =>
 			collapseSegments(
 				segmentToPayload(
-					standaloneContentBuilder.message(
+					segmentContentBuilder.message(
 						segs.map((seg) =>
 							seg.type === "image"
-								? standaloneContentBuilder.image(seg.buffer, seg.mime)
-								: standaloneContentBuilder.text(seg.text),
+								? segmentContentBuilder.image(seg.buffer, seg.mime)
+								: segmentContentBuilder.text(seg.text),
 						),
 					),
 				),

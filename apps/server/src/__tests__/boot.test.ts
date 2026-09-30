@@ -12,8 +12,8 @@ import { bootSelectedPayload } from "../boot.js";
  * 的目录 —— dashboard 资源和版本号因此自动跟着走(见 config/web-dist.ts)。
  *
  * 代价是**镜像里这段启动代码是冻住的**:它必须能启动任何未来版本的载荷。所以
- * 「载荷导出 startStandaloneServer」是一条向前兼容契约,而不是内部约定 —— 下面
- * 那条「缺导出就回落」的用例守的就是它。
+ * 载荷导出的启动入口是一条向前兼容契约,而不是内部约定 —— 下面「缺导出就回落」
+ * 与「冻住的启动契约」两处守的就是它。
  */
 
 const created: string[] = [];
@@ -105,7 +105,7 @@ describe("bootSelectedPayload", () => {
 		expect(state.attempts["0.9.0"]).toBe(1);
 	});
 
-	it("载荷没导出 startStandaloneServer → 当它起不来,回落", async () => {
+	it("两个名字都没导出 → 当它起不来,回落", async () => {
 		// 镜像里这段代码是冻住的,它得能启动**未来**的载荷。哪天有人把这个导出改名,
 		// 老镜像上的用户就会拿到一个「更新完打不开」的实例。宁可回落。
 		const { versionsRoot, imagePath } = scaffold("0.9.0");
@@ -115,6 +115,28 @@ describe("bootSelectedPayload", () => {
 		const result = await bootSelectedPayload(deps({ versionsRoot, imagePath, loadPayload }));
 
 		expect(result).toMatchObject({ version: "0.8.0", isImageVersion: true });
+	});
+
+	it("载荷只导出新名 startServer → 照样起得来", async () => {
+		// 冻住的旧名只是给老镜像留的别名;新镜像认新名,哪天旧名删了照样起得来。
+		const { versionsRoot, imagePath } = scaffold("0.9.0");
+		const loadPayload = async () => ({ startServer: async () => ({}) });
+
+		const result = await bootSelectedPayload(deps({ versionsRoot, imagePath, loadPayload }));
+
+		expect(result).toMatchObject({ version: "0.9.0", isImageVersion: false });
+	});
+
+	it("两个名字都导出 → 调新名,不调旧名", async () => {
+		const { versionsRoot, imagePath } = scaffold("0.9.0");
+		const startServer = vi.fn(async () => ({}));
+		const startStandaloneServer = vi.fn(async () => ({}));
+		const loadPayload = async () => ({ startServer, startStandaloneServer });
+
+		await bootSelectedPayload(deps({ versionsRoot, imagePath, loadPayload }));
+
+		expect(startServer).toHaveBeenCalledWith({ installProcessHandlers: true });
+		expect(startStandaloneServer).not.toHaveBeenCalled();
 	});
 
 	it("镜像那份也起不来 → 抛出去,别静默退出 0", async () => {
@@ -165,5 +187,15 @@ describe("bootSelectedPayload", () => {
 
 		expect(logged.join("\n")).toContain("0.9.0");
 		expect(logged.join("\n")).toContain("缺个文件");
+	});
+});
+
+describe("冻住的启动契约", () => {
+	it("服务端入口两个名字都导出,旧名就是新名那个函数", async () => {
+		// 0.x 的镜像与安装包里,冻住的 boot.mjs 只认 startStandaloneServer(ADR-0005 决策 4)。
+		// 删了它,老镜像上的用户应用内更新以后就起不来;要删得等换 Node 大版本那一版。
+		const entry = await import("../index.js");
+		expect(typeof entry.startServer).toBe("function");
+		expect(entry.startStandaloneServer).toBe(entry.startServer);
 	});
 });

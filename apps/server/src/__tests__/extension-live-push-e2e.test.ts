@@ -22,7 +22,7 @@ import type {
 	HistoryResponse,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
@@ -105,7 +105,7 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到目标、落历史", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 	let hookServer: Server;
 	let hookUrl: string;
@@ -147,7 +147,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

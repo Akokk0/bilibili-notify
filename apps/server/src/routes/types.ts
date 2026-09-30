@@ -3,7 +3,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { QQSessionRegistry } from "../platforms/qq-official.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import type { HelpEntry } from "../runtime/command-help.js";
-import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 
 /**
  * Shared dependency bag passed to each route module's factory. Avoids a global
@@ -17,7 +17,7 @@ export interface RouteDeps {
 	 * `BN_CHROME_PATH` / `chromePath` is unset; the globals enable-check uses
 	 * this presence to gate `cardStyle.enabled = true` saves.
 	 */
-	puppeteer: StandalonePuppeteer | null;
+	puppeteer: PuppeteerAdapter | null;
 	/**
 	 * WS upgrade 鉴权 ticket 签发器。`POST /api/auth/ws-ticket` 调 issue();
 	 * `ws/server.ts` upgrade handler 调 consume() 完成一次性鉴权。null = basicAuth

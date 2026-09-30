@@ -44,7 +44,7 @@ import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 import { ConfigValidationError } from "./validation-error.js";
 
 /**
- * ConfigStore — central runtime config holder for the standalone end.
+ * ConfigStore — central runtime config holder.
  *
  * Stage 2.2: implements the runtime-write layer for globals / subscriptions /
  * targets, persisted as JSON under `<dataRoot>/state/` with atomic-rename writes.

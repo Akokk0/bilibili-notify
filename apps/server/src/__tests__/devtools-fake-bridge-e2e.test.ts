@@ -22,7 +22,7 @@ import type {
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
 import { STATUS_CHANGED_COALESCE_MS } from "../extensions/context.js";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 const LINK_ID = "link-home";
@@ -91,7 +91,7 @@ async function stateSubscriber(port: number) {
 
 describe("devtools 的假桥 → 真桥", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	beforeAll(async () => {
@@ -126,8 +126,8 @@ describe("devtools 的假桥 → 真桥", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	function boot(at: number): Promise<StandaloneServerHandle> {
-		return startStandaloneServer({
+	function boot(at: number): Promise<ServerHandle> {
+		return startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

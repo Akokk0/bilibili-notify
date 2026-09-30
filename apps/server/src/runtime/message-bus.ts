@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import type { BusEvents, MessageBus } from "@bilibili-notify/internal";
 
 /**
- * In-process MessageBus for the standalone end. Backed by a single Node EventEmitter.
+ * In-process MessageBus. Backed by a single Node EventEmitter.
  *
  * Critical invariant (regression-tested in __tests__/message-bus.test.ts):
  * `bus.emit("X")` must fire each `bus.on("X", h)` listener EXACTLY ONCE. We deliberately

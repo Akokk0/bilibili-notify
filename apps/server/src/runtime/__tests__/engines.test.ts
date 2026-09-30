@@ -47,7 +47,7 @@ import {
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
-import { standaloneContentBuilder } from "../content-builder.js";
+import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { NodeServiceContext } from "../service-context.js";
 
@@ -1530,10 +1530,10 @@ describe("createEngines — 消息版式", () => {
 		active = c;
 		const seq = H.live[0].opts.push.broadcastSequenceToTargets;
 		expect(seq).toBeDefined();
-		const msg1 = standaloneContentBuilder.message([
-			standaloneContentBuilder.image(Buffer.from("img"), "image/jpeg"),
+		const msg1 = segmentContentBuilder.message([
+			segmentContentBuilder.image(Buffer.from("img"), "image/jpeg"),
 		]);
-		const msg2 = standaloneContentBuilder.message([standaloneContentBuilder.text("开播文案")]);
+		const msg2 = segmentContentBuilder.message([segmentContentBuilder.text("开播文案")]);
 		await seq("1", [msg1, msg2], 3);
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
 		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];

@@ -12,7 +12,7 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
-import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid, testPushCaption } from "../cards.js";
 import type { RouteDeps } from "../types.js";
 
@@ -56,7 +56,7 @@ function makeDeps(): RouteDeps {
 /** 灌进去的 HTML 留一份 —— 「喂给 Chrome 的到底是什么」只能从这儿看。 */
 const capturedHtml: string[] = [];
 
-function makeFakePuppeteer(): StandalonePuppeteer {
+function makeFakePuppeteer(): PuppeteerAdapter {
 	const fakePage = {
 		setContent: vi.fn(async (html: string) => {
 			capturedHtml.push(html);
@@ -68,7 +68,7 @@ function makeFakePuppeteer(): StandalonePuppeteer {
 		screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
 		close: vi.fn(async () => {}),
 	};
-	return { page: vi.fn(async () => fakePage) } as unknown as StandalonePuppeteer;
+	return { page: vi.fn(async () => fakePage) } as unknown as PuppeteerAdapter;
 }
 
 describe("cards route — 图廊列表 GET /assets", () => {
@@ -469,7 +469,7 @@ describe("cards route — enable-rendering", () => {
 	}
 
 	it("POST /enable-rendering: 构造 puppeteer + 热启用引擎 + 写回配置 + 通知", async () => {
-		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
 		const persistChromeSource = vi.fn(async () => {});
@@ -500,7 +500,7 @@ describe("cards route — enable-rendering", () => {
 		const fakePup = {
 			page: vi.fn(async () => probePage),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
 		const persistChromeSource = vi.fn(async () => {});
@@ -535,7 +535,7 @@ describe("cards route — enable-rendering", () => {
 				throw new Error("connect ECONNREFUSED browser:3000");
 			}),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
 		const persistChromeSource = vi.fn(async () => {});
@@ -564,12 +564,12 @@ describe("cards route — enable-rendering", () => {
 	});
 
 	it("已启用后换来源(本地→远程):探测新 adapter → swap → dispose 旧 → 写回", async () => {
-		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const probePage = { close: vi.fn(async () => {}) };
 		const newPup = {
 			page: vi.fn(async () => probePage),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => newPup);
 		const enableImageRendering = vi.fn(() => false);
 		const swapImageRendering = vi.fn();
@@ -608,12 +608,12 @@ describe("cards route — enable-rendering", () => {
 	});
 
 	it("已启用后换本地路径:同样先探测(launch 一次)再 swap", async () => {
-		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const probePage = { close: vi.fn(async () => {}) };
 		const newPup = {
 			page: vi.fn(async () => probePage),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		const swapImageRendering = vi.fn();
 		const app = createCardsRoute({
 			deps: depsWithEngines(
@@ -638,7 +638,7 @@ describe("cards route — enable-rendering", () => {
 	});
 
 	it("已启用后提交相同来源 → alreadyEnabled,不构造新 adapter 不写回", async () => {
-		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn();
 		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
@@ -667,12 +667,12 @@ describe("cards route — enable-rendering", () => {
 	it("热切换持久化写盘失败:不 dispose 旧浏览器,如实报「已生效但写盘失败」", async () => {
 		// 顺序契约:swap 已生效之后才 persist,写盘失败时旧浏览器故意不销毁 —— 不能
 		// 出现"报切换失败,但其实新浏览器已经在用、旧的已经没了"的错觉(旧根因)。
-		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const probePage = { close: vi.fn(async () => {}) };
 		const newPup = {
 			page: vi.fn(async () => probePage),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		const swapImageRendering = vi.fn();
 		const persistChromeSource = vi.fn(async () => {
 			throw new Error("EACCES: permission denied");
@@ -716,7 +716,7 @@ describe("cards route — enable-rendering", () => {
 	});
 
 	it("已启用:enableImageRendering 返回 false → dispose 多余 adapter,不写回", async () => {
-		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
@@ -796,7 +796,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 	}
 
 	/** 假 puppeteer:page() 每次都返回新页面对象,screenshot() 吐带标记的字节。 */
-	function makeMarkedPuppeteer(marker: string): StandalonePuppeteer & { pageCalls: number } {
+	function makeMarkedPuppeteer(marker: string): PuppeteerAdapter & { pageCalls: number } {
 		const state = { pageCalls: 0 };
 		const puppeteer = {
 			page: vi.fn(async () => {
@@ -813,9 +813,9 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 				};
 			}),
 			dispose: vi.fn(async () => {}),
-		} as unknown as StandalonePuppeteer;
+		} as unknown as PuppeteerAdapter;
 		Object.defineProperty(puppeteer, "pageCalls", { get: () => state.pageCalls });
-		return puppeteer as StandalonePuppeteer & { pageCalls: number };
+		return puppeteer as PuppeteerAdapter & { pageCalls: number };
 	}
 
 	it("热切换(/enable-rendering)后,下一次 /preview 用新 adapter 渲染,不再打到已销毁的旧 adapter", async () => {
@@ -831,7 +831,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 			puppeteer: pupA,
 			initialChromeSource: { chromePath: "/old/chrome" },
 			api: null,
-			createPuppeteer: vi.fn(() => pupB as unknown as StandalonePuppeteer),
+			createPuppeteer: vi.fn(() => pupB as unknown as PuppeteerAdapter),
 			persistChromeSource: vi.fn(async () => {}),
 		});
 
@@ -975,7 +975,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				screenshot: vi.fn(async () => Buffer.from("png")),
 				close: vi.fn(async () => {}),
 			};
-			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const puppeteer = { page: async () => page } as unknown as PuppeteerAdapter;
 			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
 			const res = await postPreview(app, {
 				kind: "live",
@@ -1008,7 +1008,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				screenshot: vi.fn(async () => Buffer.from("png")),
 				close: vi.fn(async () => {}),
 			};
-			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const puppeteer = { page: async () => page } as unknown as PuppeteerAdapter;
 			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
 			const res = await postPreview(app, {
 				kind: "live",
@@ -1040,7 +1040,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				screenshot: vi.fn(async () => Buffer.from("png")),
 				close: vi.fn(async () => {}),
 			};
-			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const puppeteer = { page: async () => page } as unknown as PuppeteerAdapter;
 			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
 			const res = await postPreview(app, {
 				kind: "live",
@@ -1129,7 +1129,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 					data: { info: { uname: "真实UP", face: "data:image/png;base64,FACE" } },
 				})),
 			} as unknown as BilibiliAPI;
-			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const puppeteer = { page: async () => page } as unknown as PuppeteerAdapter;
 			const app = createCardsRoute({ deps: makeDeps(), puppeteer, api });
 			const res = await postPreview(app, {
 				kind: "live",
@@ -1385,7 +1385,7 @@ describe("cards route — /preview 走皮肤", () => {
 			screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
 			close: vi.fn(async () => {}),
 		};
-		return { captured, pup: { page: vi.fn(async () => page) } as unknown as StandalonePuppeteer };
+		return { captured, pup: { page: vi.fn(async () => page) } as unknown as PuppeteerAdapter };
 	}
 
 	function globalsDeps(activeSkin: string): RouteDeps {
@@ -1626,7 +1626,7 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		issues?: Array<{ message: string }>;
 	};
 
-	async function shot(body: unknown, puppeteer: StandalonePuppeteer | null) {
+	async function shot(body: unknown, puppeteer: PuppeteerAdapter | null) {
 		const dir = join(tmpdir(), "bn-test-skin-shot-no-such-dir");
 		const app = createCardsRoute({
 			deps: depsWithDataDir(dir),

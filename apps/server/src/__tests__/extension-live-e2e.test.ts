@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveListeningEntry } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 const FIXTURE_ID = "live-probe";
@@ -63,11 +63,11 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
-	function boot(at: number): Promise<StandaloneServerHandle> {
-		return startStandaloneServer({
+	function boot(at: number): Promise<ServerHandle> {
+		return startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

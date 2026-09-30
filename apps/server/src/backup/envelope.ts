@@ -10,7 +10,7 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 /**
  * Backup envelope — the single-file, self-describing container for the
- * standalone end's "一键备份 / 恢复" feature.
+ * "一键备份 / 恢复" feature.
  *
  * A backup is one JSON document with a stable {@link BACKUP_FORMAT} marker and
  * a {@link BACKUP_SCHEMA_VERSION}. Two kinds:

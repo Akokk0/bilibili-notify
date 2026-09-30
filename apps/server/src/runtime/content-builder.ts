@@ -2,7 +2,7 @@ import type { PayloadSegment } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "@bilibili-notify/live";
 
 /**
- * Standalone {@link LiveContentBuilder} — produces tagged plain objects that
+ * The server's {@link LiveContentBuilder} — produces tagged plain objects that
  * the {@link buildPushLike} adapter unpacks into a NotificationPayload.
  *
  * Each fragment is one of:
@@ -22,7 +22,7 @@ export type SegmentValue =
 	| { kind: "atAll" }
 	| { kind: "message"; segments: SegmentValue[] };
 
-export const standaloneContentBuilder: LiveContentBuilder = {
+export const segmentContentBuilder: LiveContentBuilder = {
 	text(text: string): SegmentValue {
 		return { kind: "text", text };
 	},

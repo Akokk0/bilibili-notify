@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `standaloneContentBuilder` + `segmentToPayload`(独立端直播 payload 段构造)。
+ * 单元测试 — `segmentContentBuilder` + `segmentToPayload`(独立端直播 payload 段构造)。
  *
  * 守护契约:
  *   - builder factory:text / image(string→url, Buffer→buf+默认 mime) / atAll / message(过滤 null)
@@ -10,15 +10,11 @@
 
 import type { PayloadSegment } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	type SegmentValue,
-	segmentToPayload,
-	standaloneContentBuilder,
-} from "../content-builder.js";
+import { type SegmentValue, segmentContentBuilder, segmentToPayload } from "../content-builder.js";
 
-const B = standaloneContentBuilder;
+const B = segmentContentBuilder;
 
-describe("standaloneContentBuilder — factory", () => {
+describe("segmentContentBuilder — factory", () => {
 	it("text / atAll", () => {
 		expect(B.text("hi")).toEqual({ kind: "text", text: "hi" });
 		expect(B.atAll()).toEqual({ kind: "atAll" });

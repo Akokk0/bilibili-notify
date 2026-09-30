@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MarketplaceResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { EXTENSION_MARKETPLACE_URL } from "../update/trusted-keys.js";
 
 async function findFreePort(): Promise<number> {
@@ -33,13 +33,13 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展市场 e2e", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle;
+	let handle: ServerHandle;
 	let port: number;
 
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-marketplace-e2e-"));
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

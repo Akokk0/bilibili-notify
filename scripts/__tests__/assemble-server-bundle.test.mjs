@@ -63,7 +63,9 @@ describe("assemble-server-bundle", () => {
 		expect(await readFile(join(distDir, "static", "render.js"), "utf8")).toContain("词云渲染函数");
 		expect(await readFile(join(distDir, "bn.config.example.yaml"), "utf8")).toContain("server");
 		// 镜像的 CMD 指着它。少了这个文件,整个镜像连启动都做不到。
-		expect(await readFile(join(distDir, "boot.mjs"), "utf8")).toContain("startStandaloneServer");
+		const boot = await readFile(join(distDir, "boot.mjs"), "utf8");
+		expect(boot).toContain("startServer");
+		expect(boot).toContain("startStandaloneServer");
 		const pkg = JSON.parse(await readFile(join(distDir, "package.json"), "utf8"));
 		expect(pkg.name).toBe("@bilibili-notify/server");
 		// 自包含产物的 manifest 不携带依赖声明:deps 已内联进 bundle,照抄源

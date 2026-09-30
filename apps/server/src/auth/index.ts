@@ -8,7 +8,7 @@ import { dataPath } from "../runtime/roots.js";
 const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
 
 /**
- * Standalone auth subsystem. Boot order: load cookies → LoginFlow → health probe.
+ * Auth subsystem. Boot order: load cookies → LoginFlow → health probe.
  *
  * Construction order (must remain stable for cookie-load → api.start → flow.reportAccountInfo):
  *   1. StorageManager (with `paths` under <dataRoot>/secrets/) → init() loads-or-creates master.key

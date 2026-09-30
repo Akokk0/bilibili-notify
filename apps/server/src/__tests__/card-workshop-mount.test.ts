@@ -18,10 +18,10 @@ import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import type { EnginesRuntime } from "../runtime/engines.js";
-import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 
 /** 假 Chrome:截图吐一段固定字节。 */
-function fakePuppeteer(): StandalonePuppeteer {
+function fakePuppeteer(): PuppeteerAdapter {
 	const page = {
 		setContent: vi.fn(async () => {}),
 		$: vi.fn(async () => ({
@@ -31,7 +31,7 @@ function fakePuppeteer(): StandalonePuppeteer {
 		screenshot: vi.fn(async () => Buffer.from("shot")),
 		close: vi.fn(async () => {}),
 	};
-	return { page: vi.fn(async () => page) } as unknown as StandalonePuppeteer;
+	return { page: vi.fn(async () => page) } as unknown as PuppeteerAdapter;
 }
 
 describe("卡片皮肤工坊的装配接线", () => {

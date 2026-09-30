@@ -27,7 +27,7 @@ import { join } from "node:path";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
 const CONNECTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -152,7 +152,7 @@ function botsFrame() {
 
 describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 	let client: Peer | undefined;
 
@@ -227,8 +227,8 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	function boot(at: number): Promise<StandaloneServerHandle> {
-		return startStandaloneServer({
+	function boot(at: number): Promise<ServerHandle> {
+		return startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

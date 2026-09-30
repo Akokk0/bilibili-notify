@@ -31,7 +31,7 @@ export interface MultiplexSink extends NotificationSink {
 }
 
 /**
- * Standalone {@link NotificationSink} implementation.
+ * The server's {@link NotificationSink} implementation.
  *
  * Resolves `targetId → PushTarget → Connection` against the live ConfigStore,
  * looks up the matching {@link PlatformAdapter} by `connection.platform`, and

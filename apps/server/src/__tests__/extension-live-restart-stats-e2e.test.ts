@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 const PROBE = "restart-probe";
@@ -108,12 +108,12 @@ async function findFreePort(): Promise<number> {
 
 describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之后都按开播时刻认成同一场,峰值留大的", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	async function boot(): Promise<void> {
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

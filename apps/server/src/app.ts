@@ -58,7 +58,7 @@ import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
 import { createUpdateRoute } from "./routes/update.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
-import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
 import { dataPath } from "./runtime/roots.js";
 import { SkinStore } from "./skins/store.js";
@@ -185,7 +185,7 @@ export interface CreateAppOptions {
 	 * BN_CHROME_PATH configured) the cards route still mounts but reports 503
 	 * with an actionable hint.
 	 */
-	puppeteer?: StandalonePuppeteer | null;
+	puppeteer?: PuppeteerAdapter | null;
 	/**
 	 * Persist the runtime-selected browser source (chromePath / chromeEndpoint)
 	 * back to the bootstrap yaml so card rendering stays enabled across
@@ -197,7 +197,7 @@ export interface CreateAppOptions {
 	 * Notified after /api/cards/enable-rendering hot-enables rendering, so
 	 * index.ts can update its global puppeteer reference for graceful dispose.
 	 */
-	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
+	onPuppeteerEnabled?: (puppeteer: PuppeteerAdapter) => void;
 	/**
 	 * Idle auto-close budget (ms) for adapters built by the hot-enable path,
 	 * mirroring bootstrap.chromeIdleSeconds. Unset = adapter default.

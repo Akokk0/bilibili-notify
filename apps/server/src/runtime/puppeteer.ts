@@ -1,5 +1,5 @@
 /**
- * Standalone-side `PuppeteerLike` adapter — wraps `puppeteer-core` (the lean
+ * The server's `PuppeteerLike` adapter — wraps `puppeteer-core` (the lean
  * variant that does NOT bundle a chromium binary) so the operator brings their
  * own. The browser binary path is resolved at boot from
  * `bootstrap.chromePath` (BN_CHROME_PATH env / chromePath yaml field). When
@@ -159,7 +159,7 @@ export interface BrowserProcessInfo {
 	pid: number | null;
 }
 
-export interface StandalonePuppeteer extends PuppeteerLike {
+export interface PuppeteerAdapter extends PuppeteerLike {
 	dispose(): Promise<void>;
 	/**
 	 * 浏览器进程的状态与 pid。四态各有各的话要说:`none` 没配 / 没起过、`running` 本地跑着、
@@ -179,7 +179,7 @@ export interface StandalonePuppeteer extends PuppeteerLike {
 	renderQueueDepth(): number;
 }
 
-export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): StandalonePuppeteer {
+export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): PuppeteerAdapter {
 	const launcher = opts.launcher ?? defaultLauncher;
 	const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_CHROME_IDLE_MS;
 	let browser: BrowserHandle | null = null;

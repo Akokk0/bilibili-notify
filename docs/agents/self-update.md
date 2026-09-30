@@ -228,8 +228,10 @@ CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-not
 
 ## 几条不许动的约定
 
-- **`startStandaloneServer` 这个导出是向前兼容契约。** 镜像里的 `boot.mjs` 是冻住的,
-  它得能启动任何未来版本的载荷。改名 = 老镜像上的用户更新完打不开。
+- **载荷的启动入口是向前兼容契约。** 镜像里的 `boot.mjs` 是冻住的,它得能启动任何
+  未来版本的载荷。0.x 镜像只认 `startStandaloneServer`,所以载荷一直把它当 `startServer`
+  的别名导出;新的 boot.mjs 先认新名、找不到再认旧名。删旧名 = 老镜像上的用户更新完打不开,
+  要等换 Node 大版本那一版(清单抬 `requires.nodeMajor`,旧镜像报「需要新镜像」、装不上)。
 - **清单以字符串放进信封,信封本身从不被签。** 展开成对象就要求验签时重新序列化,
   而 JSON 的重新序列化不唯一(键序/空白/数字写法/unicode 转义)—— 两边差一点就验不过,
   且完全查不出原因。

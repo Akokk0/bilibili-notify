@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionLookupResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 const FIXTURE_ID = "sub-probe";
@@ -82,11 +82,11 @@ async function findFreePort(): Promise<number> {
 
 describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那一份", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
-	function boot(at: number): Promise<StandaloneServerHandle> {
-		return startStandaloneServer({
+	function boot(at: number): Promise<ServerHandle> {
+		return startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

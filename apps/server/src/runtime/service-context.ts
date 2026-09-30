@@ -25,7 +25,7 @@ export interface NodeServiceContextOptions {
 }
 
 /**
- * Standalone-end ServiceContext:
+ * ServiceContext:
  *  - logger: pino (real production logger, not console)
  *  - setInterval / setTimeout: returns Disposable that clears the underlying timer
  *  - onDispose: queues a teardown hook into its {@link DisposePhase}; run by `dispose()`

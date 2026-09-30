@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl, PNG_BYTES } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
@@ -41,7 +41,7 @@ async function findFreePort(): Promise<number> {
 describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带走头像", () => {
 	let dataDir: string;
 	let avatarsDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	async function avatarFiles(): Promise<string[]> {
@@ -81,7 +81,7 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 		await writeFile(join(avatarsDir, `${ORPHAN_ID}.png.tmp.1.abc`), PNG_BYTES);
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

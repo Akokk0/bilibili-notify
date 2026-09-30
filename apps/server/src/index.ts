@@ -68,7 +68,7 @@ import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
 import { browserSubtreeRss } from "./runtime/process-tree.js";
-import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
+import { createPuppeteerAdapter, type PuppeteerAdapter } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
 import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
 import { resolveRestartAbility, runningInContainer } from "./runtime/restart-ability.js";
@@ -97,14 +97,14 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 8_000;
 const HTTP_DRAIN_SHARE = 0.3;
 const FLUSH_RESERVE_SHARE = 0.25;
 
-export interface StandaloneServerHandle {
+export interface ServerHandle {
 	readonly host: string;
 	readonly port: number;
 	readonly url: string;
 	close(reason?: string): Promise<void>;
 }
 
-export interface StartStandaloneServerOptions {
+export interface StartServerOptions {
 	argv?: readonly string[];
 	env?: NodeJS.ProcessEnv;
 	installProcessHandlers?: boolean;
@@ -116,9 +116,7 @@ export interface StartStandaloneServerOptions {
 	bundleUrl?: string;
 }
 
-export async function startStandaloneServer(
-	options: StartStandaloneServerOptions = {},
-): Promise<StandaloneServerHandle> {
+export async function startServer(options: StartServerOptions = {}): Promise<ServerHandle> {
 	const env = options.env ?? process.env;
 	const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	const bootstrap = loadBootstrapConfig({ argv: options.argv, env });
@@ -133,7 +131,7 @@ export async function startStandaloneServer(
 	);
 	let runtime: AppRuntime | undefined;
 	let authSystem: AuthSystem | undefined;
-	let puppeteer: StandalonePuppeteer | null = null;
+	let puppeteer: PuppeteerAdapter | null = null;
 	let subBinding: ReturnType<typeof bindSubscriptionStore> | undefined;
 	let engines: ReturnType<typeof createEngines> | undefined;
 	let cardSkinStore: CardSkinStore | undefined;
@@ -172,7 +170,7 @@ export async function startStandaloneServer(
 
 	try {
 		log.info(
-			`starting bilibili-notify standalone server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
+			`starting bilibili-notify server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
 		);
 		if ("error" in bootSweep) {
 			log.warn(
@@ -1142,7 +1140,7 @@ export async function startStandaloneServer(
 			"drain",
 		);
 
-		const handle: StandaloneServerHandle = {
+		const handle: ServerHandle = {
 			host: bootstrap.server.host,
 			get port() {
 				return listeningPort;
@@ -1162,6 +1160,14 @@ export async function startStandaloneServer(
 		throw err;
 	}
 }
+
+/**
+ * 冻住的旧名。0.x 镜像与安装包里的 boot.mjs 不随应用内更新替换,它只认这个名字
+ * (ADR-0005 决策 4):删了它,老镜像上的用户更新完就起不来。新的 boot.mjs 先调
+ * `startServer`。旧名等下次换 Node 大版本那一版再删 —— 清单抬了 `requires.nodeMajor`,
+ * 旧镜像会报「需要新镜像」、不会装上它。
+ */
+export const startStandaloneServer = startServer;
 
 /**
  * {@link resolveWebDistDir} 之上再加一道存在性探测。
@@ -1263,7 +1269,7 @@ function mergeAllowedOrigins(
 }
 
 function installProcessHandlers(
-	handle: StandaloneServerHandle,
+	handle: ServerHandle,
 	log: Logger,
 	shutdownTimeoutMs: number,
 ): () => void {
@@ -1311,7 +1317,7 @@ function installProcessHandlers(
 }
 
 if (isEntrypoint(import.meta.url)) {
-	startStandaloneServer({ installProcessHandlers: true }).catch((err) => {
+	startServer({ installProcessHandlers: true }).catch((err) => {
 		console.error("fatal startup error", err);
 		process.exit(1);
 	});

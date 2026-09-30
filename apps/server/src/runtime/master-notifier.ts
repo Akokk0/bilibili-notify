@@ -22,7 +22,7 @@ export interface MasterNotifierOptions {
 }
 
 /**
- * standalone 端的 master 私聊聚合器。同时观察两个事件源：
+ * master 私聊聚合器。同时观察两个事件源：
  *   - `engine-error({ source, message })`：业务 engine 报告的运行时错误
  *   - `auth-lost()`：登录态失效（独立 sourceKey="auth"）
  *

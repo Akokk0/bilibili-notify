@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 
 const S101 = "5b000000-0000-4000-8000-000000000101";
 const S102 = "5b000000-0000-4000-8000-000000000102";
@@ -53,7 +53,7 @@ async function findFreePort(): Promise<number> {
 
 describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得动、发出去写的是对的人", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 	let hookServer: Server;
 	let webhookTarget: string;
@@ -70,7 +70,7 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 
 	async function boot(): Promise<void> {
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

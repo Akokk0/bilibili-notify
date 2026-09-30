@@ -158,7 +158,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 			"[secrets] 已启用注入密钥（BN_COOKIE_KEY）→ cookie / AI apiKey 使用 AES-256-GCM 静态加密",
 		);
 	} else {
-		// 通用「仅混淆」告警已由 createKeyProvider 统一发出;这里只补 standalone
+		// 通用「仅混淆」告警已由 createKeyProvider 统一发出;这里只补服务端
 		// 专属的可执行指引(设置 BN_COOKIE_KEY)。
 		serviceCtx.logger.warn(
 			"[secrets] 生产部署请设置环境变量 BN_COOKIE_KEY（生成命令：openssl rand -base64 32），" +

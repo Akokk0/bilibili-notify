@@ -13,8 +13,9 @@
  * 因此自动跟着走(见 `config/web-dist.ts`、`routes/health.ts`)。
  *
  * **镜像里这段代码是冻住的**:用户不重拉镜像的话,它得能启动任何未来版本的载荷。
- * 所以「载荷导出 `startStandaloneServer`」是一条**向前兼容契约**,不是内部约定 ——
- * 改它就等于让老镜像上的用户更新完打不开。
+ * 所以载荷导出的启动入口是一条**向前兼容契约**,不是内部约定。0.x 镜像里的这段只认
+ * `startStandaloneServer`,所以载荷一直把它当别名导出;这里先认新名 `startServer`,
+ * 找不到再认旧名(ADR-0005 决策 4)。
  */
 
 import { readFileSync } from "node:fs";
@@ -25,9 +26,13 @@ import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
 import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
-/** 载荷必须长成这样才起得来。少了这个导出就当它坏了 —— 见文件头那条契约。 */
+type StartEntry = (options: { installProcessHandlers: boolean }) => Promise<unknown>;
+
+/** 载荷必须长成这样才起得来。两个名字都没有就当它坏了 —— 见文件头那条契约。 */
 interface PayloadModule {
-	startStandaloneServer?: (options: { installProcessHandlers: boolean }) => Promise<unknown>;
+	startServer?: StartEntry;
+	/** 冻住的旧名,载荷一直当别名导出。 */
+	startStandaloneServer?: StartEntry;
 }
 
 export interface BootSelectedPayloadInput {
@@ -62,10 +67,12 @@ async function start(
 	env.BN_IMAGE_VERSION = image.version;
 	env.BN_IMAGE_PATH = image.path;
 	const mod = (await loadPayload(join(dir, "index.mjs"))) as PayloadModule;
-	if (typeof mod.startStandaloneServer !== "function") {
-		throw new Error(`载荷没有导出 startStandaloneServer:${dir}`);
+	const startEntry =
+		typeof mod.startServer === "function" ? mod.startServer : mod.startStandaloneServer;
+	if (typeof startEntry !== "function") {
+		throw new Error(`载荷没有导出 startServer / startStandaloneServer:${dir}`);
 	}
-	await mod.startStandaloneServer({ installProcessHandlers: true });
+	await startEntry({ installProcessHandlers: true });
 }
 
 export async function bootSelectedPayload({

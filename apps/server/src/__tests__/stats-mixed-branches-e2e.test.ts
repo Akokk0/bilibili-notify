@@ -34,7 +34,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeEmptySubscription, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
@@ -134,7 +134,7 @@ const jsonl = (rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\
 
 describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按订阅 id 认人,两支各算各的", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 	let aiServer: Server;
 	let hookServer: Server;
@@ -160,7 +160,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 	async function boot(): Promise<void> {
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

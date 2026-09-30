@@ -15,7 +15,7 @@
  *
  * ⚠️ 宿主这一侧是**照着真宿主搭的替身**(拓展 import 不到 `apps/`,那条边不该有)。
  * 「真宿主真的这么接线」由 `apps/server/src/__tests__/bridge-e2e.test.ts` 与
- * `standalone-lifecycle.test.ts` 钉住,两边合起来才是完整的一根线。
+ * `server-lifecycle.test.ts` 钉住,两边合起来才是完整的一根线。
  */
 
 import { createServer, type Server as HttpServer } from "node:http";

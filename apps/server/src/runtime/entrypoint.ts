@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 /**
  * 判断当前模块是否为 node 直接启动的主入口(`node <entry>`)。
- * index.ts 用它守卫 startStandaloneServer —— 被 import(测试 / 组合)时不自启。
+ * index.ts 用它守卫 startServer —— 被 import(测试 / 组合)时不自启。
  */
 export function isEntrypoint(
 	metaUrl: string,

@@ -33,7 +33,7 @@ function makePush() {
 	} as unknown as BilibiliPush & { sendPrivateMsg: ReturnType<typeof vi.fn> };
 }
 
-describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", () => {
+describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});

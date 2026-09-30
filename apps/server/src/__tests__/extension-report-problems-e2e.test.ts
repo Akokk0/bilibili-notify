@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /** bus 上旁听到的:「上报问题变了」与「拓展的视图变了」(都是拓展 id)。 */
@@ -89,7 +89,7 @@ async function findFreePort(): Promise<number> {
 
 describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 	let port: number;
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
@@ -128,7 +128,7 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		port = await findFreePort();
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",

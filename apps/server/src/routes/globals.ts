@@ -3,7 +3,7 @@ import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
-import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
 import { readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
@@ -172,7 +172,7 @@ function publicGlobals(g: GlobalConfig): GlobalConfig {
 interface EnableCheckArgs {
 	current: import("@bilibili-notify/internal").GlobalConfig;
 	patch: Record<string, unknown>;
-	puppeteer: StandalonePuppeteer | null;
+	puppeteer: PuppeteerAdapter | null;
 	targets: readonly import("@bilibili-notify/internal").PushTarget[];
 }
 
@@ -297,7 +297,7 @@ export function shouldRunAiEnableCheck(
 
 // ── Image / puppeteer probe ────────────────────────────────────────────────
 
-async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<Result> {
+async function checkCardEnable(puppeteer: PuppeteerAdapter | null): Promise<Result> {
 	if (!puppeteer) {
 		// 要主人先去配,等是等不好的。
 		return fail(

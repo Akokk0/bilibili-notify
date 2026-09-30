@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
+import { type ServerHandle, startServer } from "../index.js";
 
 async function findFreePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
@@ -37,7 +37,7 @@ async function findFreePort(): Promise<number> {
 
 describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目录,开机后没了,别的原样", () => {
 	let dataDir: string;
-	let handle: StandaloneServerHandle | undefined;
+	let handle: ServerHandle | undefined;
 
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-boot-sweep-e2e-"));
@@ -53,7 +53,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 	async function bootAndClose(): Promise<string> {
 		const port = await findFreePort();
 		const stdout = vi.spyOn(process.stdout, "write");
-		handle = await startStandaloneServer({
+		handle = await startServer({
 			argv: [
 				"--host",
 				"127.0.0.1",
@@ -118,7 +118,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 
 		const logged = await bootAndClose();
 
-		expect(logged).toContain("starting bilibili-notify standalone server");
+		expect(logged).toContain("starting bilibili-notify server");
 		expect(logged).not.toContain("开机清扫");
 	});
 
@@ -152,7 +152,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 				const logged = await bootAndClose();
 
 				expect(logged).toContain("开机清扫没做完");
-				expect(logged).toContain("starting bilibili-notify standalone server");
+				expect(logged).toContain("starting bilibili-notify server");
 			} finally {
 				await chmod(locked, 0o755);
 			}

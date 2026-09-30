@@ -21,7 +21,7 @@ import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinStore } from "../../card-skins/store.js";
-import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
+import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { createCardsRoute } from "../cards.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
@@ -58,7 +58,7 @@ function makeDeps(opts: { engines?: unknown } = {}): RouteDeps {
 }
 
 /** 渲染能跑通的假 puppeteer。 */
-function workingPuppeteer(): StandalonePuppeteer {
+function workingPuppeteer(): PuppeteerAdapter {
 	const page = {
 		setContent: vi.fn(async () => {}),
 		$: vi.fn(async () => ({
@@ -68,16 +68,16 @@ function workingPuppeteer(): StandalonePuppeteer {
 		screenshot: vi.fn(async () => Buffer.from("fake-png-bytes")),
 		close: vi.fn(async () => {}),
 	};
-	return { page: vi.fn(async () => page) } as unknown as StandalonePuppeteer;
+	return { page: vi.fn(async () => page) } as unknown as PuppeteerAdapter;
 }
 
 /** 一开页就炸的假 puppeteer —— 「Chrome 起不来」。 */
-function crashingPuppeteer(): StandalonePuppeteer {
+function crashingPuppeteer(): PuppeteerAdapter {
 	return {
 		page: vi.fn(async () => {
 			throw new Error("Failed to launch the browser process");
 		}),
-	} as unknown as StandalonePuppeteer;
+	} as unknown as PuppeteerAdapter;
 }
 
 function post(app: Pick<Hono, "request">, path: string, body: unknown) {
@@ -134,7 +134,7 @@ describe("POST /preview", () => {
 describe("POST /skin-shot", () => {
 	const shotBody = { skinId: "default", kind: "live", manifest: {} };
 
-	function shotApp(puppeteer: StandalonePuppeteer | null, withStore = true) {
+	function shotApp(puppeteer: PuppeteerAdapter | null, withStore = true) {
 		return createCardsRoute({
 			deps: makeDeps(),
 			puppeteer,

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 /**
  * WS protocol — single endpoint at /ws, four logical channels multiplexed
- * over JSON envelopes. Stage 2.3 of the standalone end. See plan §5 (BusEvents)
+ * over JSON envelopes. See plan §5 (BusEvents)
  * for the channel ↔ event mapping.
  *
  * Wire 形状(channel 名 / envelope / LogEntry)的单一来源是

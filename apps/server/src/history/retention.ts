@@ -5,7 +5,7 @@ import { deleteDayFile, listDayFiles } from "./store.js";
 
 /**
  * Daily retention pass — drops history jsonl files older than
- * `globals.app.historyRetentionDays`. Driven by the standalone runtime's
+ * `globals.app.historyRetentionDays`. Driven by the server runtime's
  * ServiceContext interval; reads the live retention horizon from ConfigStore
  * each tick so config changes apply on the next pass without restart.
  *

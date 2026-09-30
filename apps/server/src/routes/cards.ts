@@ -93,8 +93,8 @@ import {
 } from "../runtime/font-assets.js";
 import {
 	createPuppeteerAdapter,
+	type PuppeteerAdapter,
 	resolveChromePath,
-	type StandalonePuppeteer,
 } from "../runtime/puppeteer.js";
 import { describeUsers, failureOfChecks } from "../util/failure-text.js";
 import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
@@ -104,7 +104,7 @@ import { uploadBodyLimit } from "./upload-limit.js";
 
 export interface CardsRouteOptions {
 	deps: RouteDeps;
-	puppeteer: StandalonePuppeteer | null;
+	puppeteer: PuppeteerAdapter | null;
 	/**
 	 * 启动时实际生效的浏览器来源(bootstrap 里 endpoint 赢过 path 的那一个),
 	 * 供 GET /render-source 展示与同源幂等判断;未启用时缺省。
@@ -124,7 +124,7 @@ export interface CardsRouteOptions {
 	 * 构造 puppeteer adapter(默认 createPuppeteerAdapter,懒启动);注入便于测试。
 	 * 供 POST /enable-rendering 运行时热启用,source 为本地路径或远程端点。
 	 */
-	createPuppeteer?: (source: ChromeSource) => StandalonePuppeteer;
+	createPuppeteer?: (source: ChromeSource) => PuppeteerAdapter;
 	/**
 	 * 热启用路径新建 adapter 时沿用 bootstrap 的空闲关闭配置(chromeIdleSeconds),
 	 * 与启动时构造的 adapter 行为一致;未设走 adapter 默认。
@@ -138,7 +138,7 @@ export interface CardsRouteOptions {
 	/**
 	 * 热启用成功后回调,通知 index.ts 更新全局 puppeteer 引用(供进程退出时 dispose)。
 	 */
-	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
+	onPuppeteerEnabled?: (puppeteer: PuppeteerAdapter) => void;
 	/**
 	 * 卡片皮肤库(ADR-0014)。预览两条路都要它:走 ImageRenderer 的那条把它接成渲染器的
 	 * 皮肤解析口,虚构 mock 那条直接拿清单调 `renderCardWithSkin`。不给 = 只有内置默认皮肤。
@@ -656,7 +656,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
 	// 旧 adapter(ImageRenderer.puppeteer 是 readonly,updateConfig 换不了它)。
-	let imageRendererPuppeteer: StandalonePuppeteer | null = null;
+	let imageRendererPuppeteer: PuppeteerAdapter | null = null;
 	async function getImageRenderer(style: PreviewStyle): Promise<ImageRenderer | null> {
 		if (!currentPuppeteer) return null;
 		const config = {
@@ -1309,7 +1309,7 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 	};
 }
 
-async function screenshotHtml(pup: StandalonePuppeteer, html: string): Promise<Buffer> {
+async function screenshotHtml(pup: PuppeteerAdapter, html: string): Promise<Buffer> {
 	const page = await pup.page();
 	try {
 		await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
