@@ -1,4 +1,9 @@
-import type { ExtensionDTO, LogLevel, UpdateStatusDTO } from "@bilibili-notify/contract";
+import type {
+	ExtensionDTO,
+	HealthResponse,
+	LogLevel,
+	UpdateStatusDTO,
+} from "@bilibili-notify/contract";
 import { upColor } from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
@@ -26,11 +31,7 @@ import {
 } from "../components/update/status";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../config/push-kinds";
-import {
-	HEALTH_QUERY_KEY,
-	HEALTH_QUERY_OPTIONS,
-	useBackendReachable,
-} from "../hooks/useBackendReachable";
+import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { api } from "../services/api";
@@ -59,24 +60,6 @@ import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
-
-interface HealthSnapshot {
-	status: string;
-	version: string;
-	/** 每个模块自己的 package.json#version,由 /api/health 在启动期一次读出。 */
-	moduleVersions?: Record<
-		"api" | "storage" | "subscription" | "push" | "dynamic" | "live" | "image" | "ai",
-		string
-	>;
-	uptime: number;
-	startedAt: string;
-	modules?: {
-		dynamic: boolean;
-		live: boolean;
-		image: boolean;
-		ai: boolean;
-	};
-}
 
 function formatViewers(n: string | undefined): string {
 	if (!n) return "—";
@@ -718,7 +701,7 @@ export function SystemHealthCard({
 	aiEnabled,
 	update,
 }: {
-	health: HealthSnapshot | undefined;
+	health: Pick<HealthResponse, "status" | "version"> | undefined;
 	reachable: boolean;
 	/** 应用内更新的状态;有比现在新的一版就在版本号旁边说一句、给个直达按钮。 */
 	update?: UpdateStatusDTO;
@@ -871,11 +854,7 @@ export default function Dashboard() {
 	const loggedIn = snapshot?.status === BiliLoginStatus.LOGGED_IN;
 	const reachable = useBackendReachable();
 
-	const health = useQuery({
-		queryKey: HEALTH_QUERY_KEY,
-		queryFn: () => api.get<HealthSnapshot>("/api/health"),
-		...HEALTH_QUERY_OPTIONS,
-	});
+	const health = useQuery(HEALTH_QUERY_OPTIONS);
 	const updateQuery = useUpdateStatus();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -1043,10 +1022,10 @@ export default function Dashboard() {
 					loggedIn={loggedIn}
 					subCount={subs.length}
 					targetCount={targets.length}
-					dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
-					liveEnabled={health.data?.modules?.live ?? false}
-					imageEnabled={health.data?.modules?.image ?? false}
-					aiEnabled={health.data?.modules?.ai ?? false}
+					dynamicEnabled={health.data?.modules.dynamic ?? loggedIn}
+					liveEnabled={health.data?.modules.live ?? false}
+					imageEnabled={health.data?.modules.image ?? false}
+					aiEnabled={health.data?.modules.ai ?? false}
 					update={updateQuery.data}
 				/>
 				<SystemResourceCard state={resources} reachable={reachable} />

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import serverPkg from "../../../package.json" with { type: "json" };
-import { MODULE_VERSIONS, resolveAppVersion } from "../health.js";
+import { createHealthRoute, MODULE_VERSIONS, resolveAppVersion } from "../health.js";
+import type { RouteDeps } from "../types.js";
 
 const serverPkgVersion = serverPkg.version;
 
@@ -85,5 +86,25 @@ describe("MODULE_VERSIONS — 与 workspace 核心包版本一致", () => {
 			expect(MODULE_VERSIONS[id], `模块 ${id}`).toBe(pkg.version);
 			expect(MODULE_VERSIONS[id], `模块 ${id} 不应是降级值`).not.toBe("0.0.0");
 		}
+	});
+});
+
+/**
+ * 短版 `/api/health` 线上只有这几格:存活探测(`status`)、应用内更新认新进程(`version`、
+ * `startedAt`)、`uptime`,外加第 4 期才搬去 `/details` 的 `moduleVersions` 与 `modules`。
+ * 恒为 null 的格子不许回来 —— 面板读到 null 分不清「没有」和「坏了」。
+ */
+describe("GET /api/health — 回应的格子", () => {
+	it("恰好是契约里那几格", async () => {
+		const app = createHealthRoute({ runtime: { engines: undefined } } as unknown as RouteDeps);
+		const body = (await (await app.request("/")).json()) as Record<string, unknown>;
+		expect(Object.keys(body).sort()).toEqual([
+			"moduleVersions",
+			"modules",
+			"startedAt",
+			"status",
+			"uptime",
+			"version",
+		]);
 	});
 });

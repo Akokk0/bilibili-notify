@@ -22,7 +22,7 @@ import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import { type BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
-import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
+import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
 import {
 	type BoundWorkPush,
 	broadcastOptsForDynamicKind,
@@ -112,17 +112,6 @@ import { historyRecordFromSend } from "./push-history.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
-export interface ModuleStatus {
-	/** DynamicEngine cron is wired. Always true once the runtime boots. */
-	dynamic: boolean;
-	/** LiveEngine has at least one subscription that would open a listener. */
-	live: boolean;
-	/** ImageRenderer is wired (puppeteer available) AND `cardStyle.enabled`. */
-	image: boolean;
-	/** CommentaryGenerator is wired (apiKey + baseUrl present) AND `ai.enabled`. */
-	ai: boolean;
-}
-
 export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;
@@ -182,8 +171,8 @@ export interface EnginesRuntime extends Disposable {
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
-	/** Per-module readiness snapshot exposed via `/api/health`. */
-	getModuleStatus(): ModuleStatus;
+	/** 各引擎模块开没开,`/api/health` 的 `modules` 那一格。 */
+	getModuleState(): ModuleState;
 	/**
 	 * Runtime hot-enable of card image rendering. When the server booted without
 	 * a chromePath the engines run text-only; once the operator detects/sets a
@@ -1150,7 +1139,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			colors: resolveDynamicColorOptions(linkCard.style),
 			cardSkin: linkCard.cardSkin,
 		}),
-		getModuleStatus: (): ModuleStatus => {
+		getModuleState: (): ModuleState => {
 			const g = globals();
 			// "live ready" = at least one enabled subscription has any live-related
 			// feature routed to a target. Mirrors the LIVE_ROOM_MASTER_KEYS set

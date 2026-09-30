@@ -26,7 +26,7 @@ function renderCard(over: { update?: UpdateStatusDTO; reachable?: boolean } = {}
 	return render(
 		<MemoryRouter initialEntries={["/"]}>
 			<SystemHealthCard
-				health={{ status: "ok", version: "0.8.0", uptime: 1, startedAt: "2026-09-02T00:00:00Z" }}
+				health={{ status: "ok", version: "0.8.0" }}
 				reachable={over.reachable ?? true}
 				logLevel="info"
 				logLevels={undefined}

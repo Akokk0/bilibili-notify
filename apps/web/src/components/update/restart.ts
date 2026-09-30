@@ -13,15 +13,13 @@
  * - 等到截止时间都没回来 → 多半是容器没开 `restart:` 策略,进程退了没人拉。
  */
 
+import type { HealthResponse } from "@bilibili-notify/contract";
 import { create } from "zustand";
 import { api } from "../../services/api";
 import type { NoticeView } from "../../store/notifications";
 
-export interface RestartProbe {
-	version: string;
-	/** 进程启动时刻,`/api/health` 给的 ISO 串。换了进程它才会变。 */
-	startedAt: string;
-}
+/** 等重启时从 `/api/health` 读的两格:`startedAt` 换了才算换了进程,`version` 说换到了哪版。 */
+export type RestartProbe = Pick<HealthResponse, "version" | "startedAt">;
 
 export type RestartOutcome =
 	| { kind: "switched"; version: string }

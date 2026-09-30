@@ -40,6 +40,7 @@ export type {
 export * from "./card-skin";
 export * from "./devtools";
 export * from "./extension-view";
+export * from "./health";
 export * from "./maid-skill";
 export * from "./resources";
 export * from "./rest";

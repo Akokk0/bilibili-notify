@@ -769,7 +769,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | live 的 `LiveEngineConfig`、`ListenerManagerConfig`、`ListenerManager`、`LiveNotifyParams`、`LivePushTimerManager`、`UserInfoInLiveData`；种类取值 `LiveType`、`LivePushType`、`LiveNotifyPushType` | 场次引擎合一以后消失（推送种类就是特性键；`bilibili/` 里还要的种类照表叫 `…Kind`） |
 | 面板：`RestartOutcome`；`SectionMeta`；`PushKindMeta`；`WebDevScenario`（带 `run`）；`CardStatus`（`{ tone, text }`） | `RestartResult`；`SectionDescriptor`；`FeatureDescriptor`（推送种类改成特性键以后）；`WebDevScenarioDef`；`CardStatusView` |
 | 面板：`DetectState` / `ViewState` / `DraftUiState` / `TestState`（装的都是取值） | `DetectStatus` / `ViewStatus` / `DraftUiStatus` / 探测三态 `ProbeStatus` |
-| 面板：手抄四份的 `HealthSnapshot`；`GlobalConfigPatch` | contract 里一份 `HealthResponse`；`SettingsPatch` |
+| 面板：手抄四份的 `HealthSnapshot` 与重启那份 `RestartProbe`；`GlobalConfigPatch` | contract 里一份 `HealthResponse`；`SettingsPatch` |
 | 推送层的 `PushSendInfo`（一次广播对每个目标回调一次的载荷）；`SendContext`（跟着一次发送走的一包字段，不是宿主环境） | `PushSendResult`；`SendMeta` |
 | 服务端 `MuteState`（带 `isMuted()` / `muteFor()` 的部件，不是状态对象） | `MuteGate` |
 | 服务端 `ExtensionRuntime`（宿主这边握着的拓展把手） | `ExtensionHandle` |

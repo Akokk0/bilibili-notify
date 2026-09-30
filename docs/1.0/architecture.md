@@ -98,7 +98,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 - 生效特性：面板 3 处以写死的默认值为底 → internal 零依赖入口；`SubItemView` 由它产出
 - 原子写：服务端三份逐字相同的私有副本 + 约 8 种各写各的临时文件写法 → storage 的 `atomicWriteJson`；`update/durable-json.ts` 并进来（见 data-and-migration「持久化底层与关停」）
 - 资产存储三份 → 一份 `createAssetStore`；两个皮肤库 → 一份 `createSkinStore`
-- 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状（中立的只有 `AuthState`）→ contract
+- 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份（④d 已收）、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状（中立的只有 `AuthState`）→ contract
 - 密钥打码：服务端 `maskSecret`、contract 的 `MaskedSecret`、面板 `SecretChip` 已成套，面板组件进 ui
 - 零碎：webhook URL 打码两份、`LogLevel` 两份（只在 internal 留一份，contract 转口）、`PushKind` 同名不同义（见 data-model「特性键与推送种类」）、`escapeRegExp` 两份、HTML 去标签两份（一个解实体一个不解，合并前先定解不解）
 - 大航海等级表与等级名、`GuardLevel` → `bilibili/`
@@ -282,7 +282,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
 - 设置拆进 `config/settings.json` 的三类段以后，系统页的字段路径与 `PATCH /api/globals` 跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。
 - 删掉死字段 `SubscriptionDTO.state`；订阅卡上永远不亮的「播」角标改用真实的在播数据。
-- `/api/health` 补进契约。面板把 contract 移进 `dependencies`。
+- `/api/health` 补进契约（`HealthResponse`），面板把 contract 移进 `dependencies`：④d 已落。
 - 密钥下发只用 `MaskedSecret`，见 [data-model.md](./data-model.md)「凭据字段标 secret: true」。
 
 ## 守卫

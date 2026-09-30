@@ -8,12 +8,6 @@ import type { Connection, PushTarget, Subscription } from "../../types/domain";
 import { deriveOnboarding, type OnboardingView } from "./derive";
 import { useOnboardingInputsOverride } from "./inputs-override";
 
-interface HealthSnapshot {
-	status: string;
-	uptime: number;
-	modules?: { dynamic: boolean; live: boolean; image: boolean; ai: boolean };
-}
-
 /** 导览进行中的判据轮询间隔。 */
 const POLL_MS = 3_000;
 
@@ -34,8 +28,8 @@ const POLLED_KEYS: readonly (readonly unknown[])[] = [
 
 /**
  * 新手进度的数据装配 —— 左缘导览小卡与 /guide 页共用这一份。全部复用站内
- * 既有 queryKey(与对应页面共享缓存);health 行为选项走 HEALTH_QUERY_OPTIONS
- * 单一权威(三处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
+ * 既有 queryKey(与对应页面共享缓存);health 整份选项走 HEALTH_QUERY_OPTIONS
+ * 单一权威(几处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
  *
  * `poll`(导览小卡传「小卡正展开着」)= **导览进行中**,每 3s invalidate 全部
  * 判据 query(见 POLLED_KEYS)+ auth-status(useAuthHydrate 的 effect 把新快照
@@ -77,8 +71,6 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 		enabled,
 	});
 	const healthQ = useQuery({
-		queryKey: HEALTH_QUERY_KEY,
-		queryFn: () => api.get<HealthSnapshot>("/api/health"),
 		...HEALTH_QUERY_OPTIONS,
 		enabled,
 	});

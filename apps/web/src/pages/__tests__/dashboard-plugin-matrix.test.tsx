@@ -24,7 +24,7 @@ function renderCard(over: { logLevel?: string; logLevels?: ModuleLogLevels } = {
 	return render(
 		<MemoryRouter initialEntries={["/"]}>
 			<SystemHealthCard
-				health={{ status: "ok", version: "0.9.0", uptime: 1, startedAt: "2026-09-07T00:00:00Z" }}
+				health={{ status: "ok", version: "0.9.0" }}
 				reachable
 				logLevel={over.logLevel ?? "debug"}
 				logLevels={over.logLevels}
@@ -114,7 +114,7 @@ describe("就绪数", () => {
 		render(
 			<MemoryRouter initialEntries={["/"]}>
 				<SystemHealthCard
-					health={{ status: "ok", version: "0.9.0", uptime: 1, startedAt: "2026-09-07T00:00:00Z" }}
+					health={{ status: "ok", version: "0.9.0" }}
 					reachable
 					logLevel="debug"
 					logLevels={undefined}
@@ -136,7 +136,7 @@ describe("就绪数", () => {
 		render(
 			<MemoryRouter initialEntries={["/"]}>
 				<SystemHealthCard
-					health={{ status: "ok", version: "0.9.0", uptime: 1, startedAt: "2026-09-07T00:00:00Z" }}
+					health={{ status: "ok", version: "0.9.0" }}
 					reachable={false}
 					logLevel="debug"
 					logLevels={undefined}

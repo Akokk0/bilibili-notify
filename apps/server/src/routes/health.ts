@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 // 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
 import aiPkg from "@bilibili-notify/ai/package.json" with { type: "json" };
 import apiPkg from "@bilibili-notify/api/package.json" with { type: "json" };
+import type { HealthResponse } from "@bilibili-notify/contract";
 import dynamicPkg from "@bilibili-notify/dynamic/package.json" with { type: "json" };
 import imagePkg from "@bilibili-notify/image/package.json" with { type: "json" };
 import livePkg from "@bilibili-notify/live/package.json" with { type: "json" };
@@ -14,37 +15,19 @@ import storagePkg from "@bilibili-notify/storage/package.json" with { type: "jso
 import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
 import { Hono } from "hono";
 import type { ConfigScopeMeta } from "../config/store.js";
-import type { ModuleStatus } from "../runtime/engines.js";
 import { findNearestPackageJson } from "../runtime/nearest-package-json.js";
 import type { RouteDeps } from "./types.js";
 
-type ModuleId = "api" | "storage" | "subscription" | "push" | "dynamic" | "live" | "image" | "ai";
-type ModuleVersions = Record<ModuleId, string>;
+type ModuleVersions = HealthResponse["moduleVersions"];
 
-interface HealthBody {
-	status: "ok";
-	version: string;
-	moduleVersions: ModuleVersions;
-	uptime: number;
-	startedAt: string;
-	login: string | null;
-	push: string | null;
-	dynamicCron: string | null;
-	history: string | null;
-	modules: ModuleStatus;
-}
-
+/** 第 4 期随健康卡重做(ADR-0025 决策 12),面板现在不读它,所以不进契约。 */
 interface HealthDetailsBody {
 	status: "ok";
 	version: string;
 	moduleVersions: ModuleVersions;
 	uptime: number;
 	startedAt: string;
-	login: null;
-	push: null;
 	dynamicCron: string;
-	history: { entries: number };
-	lastError: null;
 	configScopes: {
 		globals: ConfigScopeMeta;
 		subscriptions: ConfigScopeMeta & { count: number };
@@ -111,20 +94,15 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 
 	app.get("/", (c) => {
 		const engines = deps.runtime.engines;
-		const modules: ModuleStatus = engines
-			? engines.getModuleStatus()
-			: { dynamic: false, live: false, image: false, ai: false };
-		const body: HealthBody = {
+		const body: HealthResponse = {
 			status: "ok",
 			version: APP_VERSION,
 			moduleVersions: MODULE_VERSIONS,
 			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
 			startedAt: STARTED_AT,
-			login: null,
-			push: null,
-			dynamicCron: null,
-			history: null,
-			modules,
+			modules: engines
+				? engines.getModuleState()
+				: { dynamic: false, live: false, image: false, ai: false },
 		};
 		return c.json(body);
 	});
@@ -139,11 +117,7 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 			moduleVersions: MODULE_VERSIONS,
 			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
 			startedAt: STARTED_AT,
-			login: null,
-			push: null,
 			dynamicCron: globals.app.dynamicCron,
-			history: { entries: 0 },
-			lastError: null,
 			configScopes: {
 				globals: deps.store.getGlobalsMeta(),
 				subscriptions: { ...deps.store.getSubscriptionsMeta(), count: subs.length },

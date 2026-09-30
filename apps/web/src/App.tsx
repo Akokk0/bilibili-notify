@@ -14,7 +14,7 @@ import { ToastShell } from "./components/toast-shell";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { useAuthHydrate } from "./hooks/useAuthHydrate";
-import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
+import { HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
@@ -34,7 +34,6 @@ import Stats from "./pages/Stats";
 import Subs from "./pages/Subs";
 import System from "./pages/System";
 import Targets from "./pages/Targets";
-import { api } from "./services/api";
 
 /**
  * devtools 只在开发期存在:`import.meta.env.DEV` 是编译期常量,生产构建里这一句折成 `null`,
@@ -46,11 +45,6 @@ import { api } from "./services/api";
 const DevDock = import.meta.env.DEV
 	? lazy(() => import("./devtools/dock").then((m) => ({ default: m.DevDock })))
 	: null;
-
-interface HealthSnapshot {
-	status: string;
-	uptime: number;
-}
 
 export default function App() {
 	return (
@@ -83,11 +77,7 @@ function AuthedApp() {
 	// fast (TCP ECONNREFUSED resolves in <100 ms); retrying with exponential
 	// backoff just keeps the UI in "loading" for several seconds before
 	// committing to the error banner.
-	const health = useQuery({
-		queryKey: HEALTH_QUERY_KEY,
-		queryFn: () => api.get<HealthSnapshot>("/api/health"),
-		...HEALTH_QUERY_OPTIONS,
-	});
+	const health = useQuery(HEALTH_QUERY_OPTIONS);
 
 	// Show ShellLoading only on the very first attempt (no data and no error
 	// yet). After ANY error, stay on ShellError until a successful refetch
