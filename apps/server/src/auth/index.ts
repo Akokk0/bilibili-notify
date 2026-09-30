@@ -64,7 +64,6 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	// 1. StorageManager → secrets layout. Must initialise before any cookie I/O.
 	const storage = new StorageManager({
 		serviceCtx: opts.serviceCtx,
-		dataDir: opts.bootstrap.dataDir,
 		// Reuse the runtime's shared provider so cookie + config secrets share
 		// one key/salt. Fallback (tests) builds its own legacy key file.
 		keyProvider: opts.keyProvider,

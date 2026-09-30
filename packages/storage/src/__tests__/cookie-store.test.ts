@@ -38,9 +38,16 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 });
 
+/** 三个文件的位置由调用方给:这里统一放在临时目录的 `bilibili-notify/` 下。 */
+const pathsIn = (dir: string) => ({
+	keyPath: join(dir, "bilibili-notify", "master.key"),
+	cookiePath: join(dir, "bilibili-notify", "cookies.json"),
+	saltPath: join(dir, "bilibili-notify", "kdf.salt"),
+});
+
 async function mkStore(encryptionKey?: string) {
 	const { ctx, logger } = makeCtx();
-	const sm = new StorageManager({ serviceCtx: ctx, dataDir, encryptionKey });
+	const sm = new StorageManager({ serviceCtx: ctx, paths: pathsIn(dataDir), encryptionKey });
 	await sm.init();
 	return { sm, logger };
 }
@@ -127,7 +134,7 @@ describe("CookieStore — 清除 cookie 不动主密钥", () => {
 		const { ctx } = makeCtx();
 		const keyPath = join(dataDir, "bilibili-notify", "master.key");
 		const keyProvider = new FileKeyProvider(keyPath, ctx.logger);
-		const sm = new StorageManager({ serviceCtx: ctx, dataDir, keyProvider });
+		const sm = new StorageManager({ serviceCtx: ctx, paths: pathsIn(dataDir), keyProvider });
 		await sm.init();
 		await sm.cookieStore.save({ cookiesJson: "old" });
 		const before = await readFile(keyPath, "utf8");

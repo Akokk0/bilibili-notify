@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { CookieStore } from "./cookie-store";
 import { createKeyProvider, type KeyProvider } from "./key-provider";
@@ -41,13 +40,11 @@ export type { StoredCookies } from "./types";
 
 export interface StorageManagerOptions {
 	serviceCtx: ServiceContext;
-	dataDir: string;
 	/**
-	 * Override default file locations; missing fields fall back to
-	 * `<dataDir>/bilibili-notify/{master.key,cookies.json,kdf.salt}`. The
-	 * standalone end passes `<dataDir>/secrets/...`.
+	 * 主密钥、cookie、口令派生盐三个文件放在哪。布局归宿主(独立端在数据根的 `secrets/` 下),
+	 * storage 不替它另安排一处。
 	 */
-	paths?: { keyPath?: string; cookiePath?: string; saltPath?: string };
+	paths: { keyPath: string; cookiePath: string; saltPath: string };
 	/**
 	 * Injected at-rest encryption passphrase (standalone:
 	 * `bootstrap.cookieEncryptionKey` ← `BN_COOKIE_KEY`). When present, the AES
@@ -69,10 +66,7 @@ export class StorageManager {
 	readonly keyProvider: KeyProvider;
 
 	constructor(opts: StorageManagerOptions) {
-		const base = join(opts.dataDir, "bilibili-notify");
-		const keyPath = opts.paths?.keyPath ?? join(base, "master.key");
-		const cookiePath = opts.paths?.cookiePath ?? join(base, "cookies.json");
-		const saltPath = opts.paths?.saltPath ?? join(base, "kdf.salt");
+		const { keyPath, cookiePath, saltPath } = opts.paths;
 		this.keyProvider =
 			opts.keyProvider ??
 			createKeyProvider({

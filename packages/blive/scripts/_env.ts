@@ -49,7 +49,6 @@ export function makeServiceCtx(logger: Logger = consoleLogger): ServiceContext {
 export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<BilibiliAPI> {
 	const storage = new StorageManager({
 		serviceCtx,
-		dataDir,
 		paths: {
 			keyPath: join(dataDir, "secrets", "master.key"),
 			cookiePath: join(dataDir, "secrets", "cookies.json"),

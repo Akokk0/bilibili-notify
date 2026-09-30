@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
@@ -22,7 +22,7 @@ function makeFakeServiceCtx(): ServiceContext {
 	};
 }
 
-describe("StorageManager paths option", () => {
+describe("StorageManager — 文件位置", () => {
 	let dataDir: string;
 
 	beforeEach(async () => {
@@ -33,62 +33,18 @@ describe("StorageManager paths option", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("defaults to <dataDir>/bilibili-notify/{master.key,cookies.json}", async () => {
-		const sm = new StorageManager({ serviceCtx: makeFakeServiceCtx(), dataDir });
-		await sm.init();
-
-		// init() loads or creates the master key — verify it landed at the default path.
-		const defaultKey = join(dataDir, "bilibili-notify", "master.key");
-		const keyContent = await readFile(defaultKey, "utf8");
-		expect(keyContent).toMatch(/^[0-9a-f]{64}$/i);
-
-		// Save a cookie payload to confirm cookiePath default also resolves correctly.
-		await sm.cookieStore.save({ cookiesJson: "[]" });
-		const defaultCookies = join(dataDir, "bilibili-notify", "cookies.json");
-		const stats = await stat(defaultCookies);
-		expect(stats.isFile()).toBe(true);
-	});
-
-	it("paths.keyPath override actually writes to the requested location", async () => {
-		const customKey = join(dataDir, "secrets", "master.key");
-		const customCookie = join(dataDir, "secrets", "cookies.json");
+	it("主密钥与 cookie 落在调用方给的位置,不另开目录", async () => {
+		const keyPath = join(dataDir, "secrets", "master.key");
+		const cookiePath = join(dataDir, "secrets", "cookies.json");
 		const sm = new StorageManager({
 			serviceCtx: makeFakeServiceCtx(),
-			dataDir,
-			paths: { keyPath: customKey, cookiePath: customCookie },
+			paths: { keyPath, cookiePath, saltPath: join(dataDir, "secrets", "kdf.salt") },
 		});
 		await sm.init();
+		expect(await readFile(keyPath, "utf8")).toMatch(/^[0-9a-f]{64}$/i);
 
-		// Custom location must contain a valid 32-byte hex key.
-		const keyContent = await readFile(customKey, "utf8");
-		expect(keyContent).toMatch(/^[0-9a-f]{64}$/i);
-
-		// Default location must NOT have been created.
-		await expect(stat(join(dataDir, "bilibili-notify", "master.key"))).rejects.toThrow();
-
-		// Cookie path override is honoured on save.
 		await sm.cookieStore.save({ cookiesJson: '[{"k":"v"}]' });
-		const customCookieStat = await stat(customCookie);
-		expect(customCookieStat.isFile()).toBe(true);
-	});
-
-	it("partial paths override (only cookiePath) leaves keyPath at default", async () => {
-		const customCookie = join(dataDir, "elsewhere", "c.json");
-		const sm = new StorageManager({
-			serviceCtx: makeFakeServiceCtx(),
-			dataDir,
-			paths: { cookiePath: customCookie },
-		});
-		await sm.init();
-
-		// Default key path was used.
-		const defaultKey = join(dataDir, "bilibili-notify", "master.key");
-		const keyContent = await readFile(defaultKey, "utf8");
-		expect(keyContent).toMatch(/^[0-9a-f]{64}$/i);
-
-		// Custom cookie path is used on save.
-		await sm.cookieStore.save({ cookiesJson: "[]" });
-		const stats = await stat(customCookie);
-		expect(stats.isFile()).toBe(true);
+		expect((await stat(cookiePath)).isFile()).toBe(true);
+		expect(await readdir(dataDir)).toEqual(["secrets"]);
 	});
 });
