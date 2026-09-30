@@ -27,7 +27,7 @@
 | --- | --- | --- | --- | --- |
 | 0 ✅ | 测试拦外网（守卫 2，`scripts/network-guard.mjs`）；09-29 补上 DNS 查询（第 2 期抓图拦内网要先解析，不补就漏） | 改造 | 已落 | 0.2 |
 | 1 | 地基：身份、持久化底层与关停、资产与皮肤存储合一；**迁移地基**（数据代、先 listen 再迁、回退指纹、首访页、全新开始、订阅合一、设置分段）；迁移耗时测试。切片 ①–⑨ 见下 | 持久化局部重写，其余改造 | 迁移耗时测试绿 | 施工时重估 |
-| 2 | 数据模型：作品卡与直播卡、**抽 `packages/http`**（请求客户端、cookie 罐、浏览器身份，从 B 站的实现里抽出，抽出去的直接按 naming.md 起名），抓图核心服务建在它上面（安全防护逐跳查重定向 + 图库）与图库引用、皮肤字段、特性键；新类型直接用新名。并入：`LiveCardInput` 人数只收精确数；`formatCount` 带符号变体、`formatAgo`、`formatDuration`（连删 `{time}` 兜底与 `getTimeDifference` 钩子）；卡种中文名收一份；出图字节门按「批准的像素差清单」裁决（ADR-0028 决策 2） | 出卡前半段局部重写 | 守卫 10 扩到五种卡、清单外的差异为零；出图器零联网绿 | 约 4（估于 `packages/http` 并入之前） |
+| 2 | 数据模型：作品卡与直播卡、**抽 `packages/http`**（请求客户端、cookie 罐、浏览器身份，从 B 站的实现里抽出，抽出去的直接按 naming.md 起名），抓图核心服务建在它上面（安全防护逐跳查重定向 + 图库）与图库引用、皮肤字段、特性键；新类型直接用新名。并入：`LiveCardInput` 人数只收精确数；`formatCount` 带符号变体、`formatAgo`、`formatDuration`（连删 `{time}` 兜底与 `getTimeDifference` 钩子）；卡种中文名收一份；出图字节门按「批准的像素差清单」裁决（ADR-0028 决策 2）；⑥b 留在代里的三处过渡（`avatars/`、`history/img/`、`assets/chat/`）随图库并进 `images/`，目录表里那三个过渡键随之删掉 | 出卡前半段局部重写 | 守卫 10 扩到五种卡、清单外的差异为零；出图器零联网绿 | 约 4（估于 `packages/http` 并入之前） |
 | 3a | 接口先行：`SubscriptionSource` 与横切接口、登记表、`SourceContext`（建在 `IntegrationContext` 上：state / secrets / settings / http / report / fetchImage 挂上 ctx；`reportProblem` 进全在内存的问题表，ADR-0025 决策 11）；B 站四个包搬进 `bilibili/`（先纯搬、只改 import 路径；紧接着单独一个提交按 naming.md 改名，含词表、外部接口回应的起名、原字段名只留在回应上；再做中立化） 并实现，中立部分同时拆进 `posts/` 与 `live/`；`accounts/` 与 `bilibili/auth/`；设置坏了只停那一处（集成段只停那个集成，`core` 段逐格退默认）。推送侧：`PlatformAdapter` 接口与登记表（登记即 `start`）、OneBot / QQ 官方机器人 / webhook 作为内置适配器登记并带模板候选、`/api/adapters`、连接与目标的新形状（连接 `adapterKey` / `settings` / `platformSnapshot`，目标删 `platform`）与迁移条目、只有 `TargetDispatcher` 能发送（链接回复与指令回复改走 `sendToAddress`，`notifyMaster` 返回结果形状；咽喉 e2e 在本期就要驱动这几条路）。schema 标 `secret: true`、服务端按 `MaskedSecret` 下发。本期开的守卫见「中立性守卫的归期」 | 改造 | 检查点：B 站全经中立接口运行、行为不变；守卫 21b 绿 | 施工时重估 |
 | 3b | 各块中立化：先 e2e 钉直播四种行为，把醒目留言 / 会员 / 特别弹幕 / 特别进场的装配从 `room-session.ts` 抽进 `live/`，再合场次引擎；直播监听的唯一判定；B 站改存 `WATCHED_CHANGE` 的 `num`；资料刷新；链接预览（ADR-0029）、指令（`CommandDef` 与通用的 `login [来源]`，ADR-0031）、AI 工具与女仆技能（ADR-0030）；DevtoolsProvider（场景 `DevScenarioDef`）与假桥搬家；拓展契约 v3（含推送侧加宽）、`pickPerId` 与索引规则；桥迁 v3 | 链接预览与指令重写，其余改造 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫② 清零；守卫 21a、推送守卫③、模板变量可满足性、AI 工具与技能约束绿 | 施工时重估 |
 | 4 | 面板按描述画：来源按 descriptor 渲染（面板只从描述符拿来源信息，ADR-0027 决策 5–7）、连接 / 目标表单、候选 / 扫码 / 地址控件、B 站设置 tab（含「换一个身份」按钮）、功能页指向拓展设置的入口、两种「设置不合法」态（连接的、集成的）、健康卡（**先出设计稿，主人认了再照稿写**）；AI 设置页「女仆写正文」一节（picker 切动态 / 直播，默认一行 + 按群例外表，例外表与链接预览共用一个件，ADR-0032）；账号排序、预览、问题框、日志筛选、密钥打码（统一密钥输入框）、素材库界面、旧版本数据清理界面；首页改用直播监听的唯一判定 | — | B 站替身清零 | 施工时重估 |
@@ -66,7 +66,7 @@
 | ④d | `/api/health` 进契约（`HealthResponse`、`ModuleState`），删 4 个恒为 `null` 的死字段（`/details` 里恒为 `null` 的与写死的 `history: { entries: 0 }` 一并删），面板 5 份私有的健康类型（4 份 `HealthSnapshot` 与重启的 `RestartProbe`）收成一份、4 处各写一遍的查询选项收成一份；面板把 contract 移进 `dependencies` | ✅ 已落 |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半）：`runtime/roots.ts` 的两张表与带类型的 `hostPath` / `dataPath`，`AppRuntime` 上推一次 `hostRoot` / `dataRoot`，下游只认这两个名字；目录表登记的是第 0 代（0.x）的布局，也是 ⑥ 迁移的输入清单；`packages/storage` 不再自带缺省布局（三条路径由宿主给全） | ✅ 已落 |
 | ⑥a | 开机分两段：先 listen（鉴权闸与完整的 app 同一套，健康检查照答，其余 `/api` 回 503 `unavailable`），再读数据、起引擎，就绪后切到完整的 app；启动入口仍等全部起来才返回（ADR-0022 决策 2 下的 🔗） | ✅ 已落 |
-| ⑥b | 数据代：`generations/<序号>/` 与 `generation.json`、选代、`.partial` 原子改名、半截重来；第一版迁移器 = 0.x 升级链原样跑 + 按新目录树搬位置，格式一律不动；目录表换成代布局；守卫「第 0 代一个字节不变」（也是 ⑤ 欠的「两个根不同」那条） | |
+| ⑥b | 数据代：`generations/<序号>/` 与 `generation.json`、选代、`.partial` 原子改名、半截重来；第一版迁移器 = 0.x 升级链原样跑 + 按新目录树搬位置，格式一律不动；目录表换成代布局；守卫「第 0 代一个字节不变」（也是 ⑤ 欠的「两个根不同」那条）；开发期迁移修订号对不上就重迁 | b1（零件：选代开代、迁移器、storage 的只读取密钥与复制 / 硬链接）已落，b2（接线）未做 |
 | ⑥c | 第 0 步收编 0.x 升级链：先给零测试的 `migrateLegacyTargets` 补刻画测试，再把 schema 里的 preprocess 与读时翻译连同夹具搬进迁移模块，活 schema 删兼容分支 | |
 | ⑥d | 订阅合一 + `Identity`：一个 `config/subscriptions.json`，行带 `identity`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉，wire 跟着变；B 站替身棘轮开 | |
 | ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | |
@@ -202,4 +202,5 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 存盘的待发队列：补上「推送进行到一半进程崩了，这一条可能漏掉（最多一次）」（ADR-0024 决策 15 认下的代价） | 没定 |
 | `listAddressCandidates`、`connectionAuth` 对拓展开放（ADR-0024 决策 11） | alpha 之后桥帧改名时一起看 |
 | 来源自带指令与指令重名的规矩；`CommandProvider` 登记表到那时连同设计（1.0 不造，ADR-0031 决策 1） | 第一个真要自带指令的拓展 |
+| alpha 之间还改盘上格式的话怎么迁：格式版本加 1、从上一代迁，还是继续用迁移修订号从第 0 代重迁（测试者在 alpha 期间的数据会丢）；修订号在 alpha.1 冻住 | 发 alpha 前定 |
 | 删掉冻住的别名 `startStandaloneServer` 与旧环境变量名 `BN_IMAGE_VERSION` / `BN_IMAGE_PATH`（那时跑着的 boot.mjs 都写新名）：那一版在清单里抬 `requires.nodeMajor`，旧镜像报「需要新镜像」、不会装上；0.9.0 起每个更新器都认这一格（ADR-0005 决策 4 下的 🔗） | 下次换 Node 大版本 |
