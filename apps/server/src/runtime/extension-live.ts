@@ -215,12 +215,12 @@ export function createExtensionLiveTable(
 
 	const watches: Disposable[] = [
 		bus.on("subscription-reported", apply),
-		bus.on("extension-stopped", (id) => {
+		bus.on("extension-stopped", ({ extensionId }) => {
 			for (const row of [...rows.values()]) {
-				if (row.extensionId === id) put(row.subscriptionId, undefined);
+				if (row.extensionId === extensionId) put(row.subscriptionId, undefined);
 			}
 		}),
-		bus.on("subscription-changed", (ops) => {
+		bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
 				if (op.type === "remove" || (op.type === "update" && !op.sub.enabled)) {
 					put(op.sub.id, undefined);

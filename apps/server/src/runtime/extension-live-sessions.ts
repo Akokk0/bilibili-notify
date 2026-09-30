@@ -383,12 +383,12 @@ export function createExtensionLiveSessions(
 			}
 		}),
 		// 拓展停了(决策 61):它名下的全部当场结束,等着的下播不再等。重新跑起来后靠直播状态接上。
-		opts.bus.on("extension-stopped", (extensionId) => {
+		opts.bus.on("extension-stopped", ({ extensionId }) => {
 			for (const [id, session] of [...sessions]) {
 				if (session.extensionId === extensionId) end(id, "extension-stopped");
 			}
 		}),
-		opts.bus.on("subscription-changed", (ops) => {
+		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
 				if (op.type === "remove") end(op.sub.id, "removed");
 				else if (op.type === "update" && !op.sub.enabled) end(op.sub.id, "disabled");

@@ -447,7 +447,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
 			reportProblems: options.extensions?.reportProblems,
 			// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。
-			settingsChanged: (id) => runtime.bus.emit("extension-settings-changed", id),
+			settingsChanged: (id) => runtime.bus.emit("extension-settings-changed", { extensionId: id }),
 			swap: options.extensions?.swap,
 			settle: options.extensions?.settle,
 			install: options.extensions?.install,

@@ -22,10 +22,10 @@ import { createStatsRecorder, createStatsRecorderCore } from "../recorder.js";
 import type { StatsStore } from "../store.js";
 
 function makeBus() {
-	const handlers = new Map<string, Array<(...a: unknown[]) => void>>();
+	const handlers = new Map<string, Array<(payload?: unknown) => void>>();
 	const bus = {
 		emit: () => {},
-		on: (event: string, handler: (...a: unknown[]) => void) => {
+		on: (event: string, handler: (payload?: unknown) => void) => {
 			const arr = handlers.get(event) ?? [];
 			arr.push(handler);
 			handlers.set(event, arr);
@@ -45,8 +45,8 @@ function makeBus() {
 	} as unknown as MessageBus;
 	return {
 		bus,
-		trigger: (event: string, ...a: unknown[]) => {
-			for (const h of handlers.get(event) ?? []) h(...a);
+		trigger: (event: string, payload?: unknown) => {
+			for (const h of handlers.get(event) ?? []) h(payload);
 		},
 	};
 }
@@ -183,40 +183,40 @@ describe("StatsRecorder — 直播场次", () => {
 		// 服务器 10:00 启动时 UP 已经播了 40 分钟。记成 10:00 会平白吞掉这 40 分钟 ——
 		// 「直播时长 Top」在这种情况下会显示成 0。
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:20:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:20:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		expect(store.openLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T09:20:00.000Z");
 	});
 
 	it("开播时间缺失 / 不可解析时回退到注入时钟,不写坏数据", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		expect(store.openLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T10:00:00.000Z");
 	});
 
 	it("开播时间晚于现在(时钟漂移)时同样回退 —— 不接受未来的开播时间", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T11:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T11:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		expect(store.openLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T10:00:00.000Z");
 	});
 
 	it("live → openLiveSession,时间取注入时钟", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
+		trigger("live-state-changed", { uid: "1", status: "live" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		expect(store.openLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T10:00:00.000Z");
 	});
 
 	it("idle → closeLiveSession,带本场峰值观看", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-viewers-changed", "1", "8000");
-		trigger("live-viewers-changed", "1", "1.2万");
-		trigger("live-viewers-changed", "1", "9500");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "8000" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "1.2万" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "9500" });
 		clock = "2026-05-16T13:00:00.000Z";
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		// "1.2万" = 12000 > 9500 > 8000 —— 压缩字符串要参与数值比较,落盘的是解析好的数
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T13:00:00.000Z", 12_000);
@@ -224,8 +224,8 @@ describe("StatsRecorder — 直播场次", () => {
 
 	it("没采到 viewers → 不带峰值收场", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith(
 			"id-1",
@@ -236,23 +236,23 @@ describe("StatsRecorder — 直播场次", () => {
 
 	it("新一场直播重置峰值,不串上一场的数字", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-viewers-changed", "1", "50万");
-		trigger("live-state-changed", "1", "idle");
-		trigger("live-state-changed", "1", "live");
-		trigger("live-viewers-changed", "1", "100");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "50万" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "100" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
 		expect(store.closeLiveSession.mock.calls[1]?.[2]).toBe(100);
 	});
 
 	it("不同 UP 的峰值互不干扰", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-state-changed", "2", "live");
-		trigger("live-viewers-changed", "1", "3万");
-		trigger("live-viewers-changed", "2", "500");
-		trigger("live-state-changed", "2", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-state-changed", { uid: "2", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "3万" });
+		trigger("live-viewers-changed", { uid: "2", viewers: "500" });
+		trigger("live-state-changed", { uid: "2", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-2", expect.any(String), 500);
 	});
@@ -264,11 +264,11 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		// 再观测同一场 —— 两个「此刻」差着几秒,store 按 startedAt 精确认场次,
 		// 同一场就裂成两条区间重叠的记录(正是那条 HIGH 的残余缺口)。
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "不是时间"); // 解析不出 → 回退到此刻
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" }); // 解析不出 → 回退到此刻
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T10:00:07.000Z"; // 7 秒后重连成功,再观测一次
-		trigger("live-state-changed", "1", "live", "还是不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "还是不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
 
 		const [first, second] = store.openLiveSession.mock.calls;
@@ -277,11 +277,11 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 
 	it("下播之后开的是新一场,身份重新认定", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		clock = "2026-05-16T15:00:00.000Z";
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
 
 		const [first, second] = store.openLiveSession.mock.calls;
@@ -300,11 +300,11 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		// 「同一场又被观测到」,周二的下播帧于是配到周一的开播上 —— 两场约 3 小时
 		// 被并成一场 27 小时,而且写进的是 append-only 文件,事后改不了。
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-17T12:00:00.000Z"; // 隔天,期间经历 auth-lost / auth-restored
-		trigger("live-state-changed", "1", "live", "2026-05-17T11:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-17T11:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
 
 		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-17T11:00:00.000Z");
@@ -315,12 +315,12 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		// 都得回退到「此刻」。auth-lost 是明确的「从现在起没人在观测了」信号,在这里
 		// 把在飞状态清干净,下一场才认得出是新的一场。
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		trigger("auth-lost");
 		clock = "2026-05-17T12:00:00.000Z";
-		trigger("live-state-changed", "1", "live", "还是不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "还是不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
 
 		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-17T12:00:00.000Z");
@@ -328,11 +328,11 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 
 	it("退订会清掉记住的身份,不残留到重新订阅之后", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
-		trigger("subscription-changed", [{ type: "remove", sub: { id: "id-1", uid: "1" } }]);
+		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
 		clock = "2026-05-16T16:00:00.000Z";
-		trigger("live-state-changed", "1", "live", "不是时间");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
 		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-16T16:00:00.000Z");
 	});
@@ -344,11 +344,11 @@ describe("StatsRecorder — 下播时刻", () => {
 		// 用收到事件的此刻落盘,每场直播都平白多出整个 grace 窗口(默认 2 分钟,
 		// 最长 10 分钟),而下播卡上写的是定格时长 —— 同一场两个数对不上。
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T12:02:00.000Z"; // grace 到期,事件此刻才发出
-		trigger("live-state-changed", "1", "idle", "2026-05-16T12:00:00.000Z"); // 真实下播
+		trigger("live-state-changed", { uid: "1", status: "idle", at: "2026-05-16T12:00:00.000Z" }); // 真实下播
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith(
 			"id-1",
@@ -359,11 +359,11 @@ describe("StatsRecorder — 下播时刻", () => {
 
 	it("没带时刻(WS 即时下播)→ 回退到收到事件的此刻", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T12:00:00.000Z";
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith(
 			"id-1",
@@ -376,10 +376,12 @@ describe("StatsRecorder — 下播时刻", () => {
 describe("StatsRecorder — 订阅删除清理", () => {
 	it("subscription-changed 的 remove → drop,不留孤儿文件", async () => {
 		const { trigger, store } = setup();
-		trigger("subscription-changed", [
-			{ type: "remove", sub: { id: "id-1", uid: "1" } },
-			{ type: "add", sub: { uid: "2" } },
-		]);
+		trigger("subscription-changed", {
+			ops: [
+				{ type: "remove", sub: { id: "id-1", uid: "1" } },
+				{ type: "add", sub: { uid: "2" } },
+			],
+		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
 		expect(store.drop).toHaveBeenCalledTimes(1);
 		expect(store.drop).toHaveBeenCalledWith("id-1");
@@ -387,10 +389,12 @@ describe("StatsRecorder — 订阅删除清理", () => {
 
 	it("一次删掉一条拓展订阅、一条 B 站订阅 → 两支的适配各删各的,每条恰好删一次(ADR-0020 S3)", async () => {
 		const { trigger, store } = setup();
-		trigger("subscription-changed", [
-			{ type: "remove", sub: { kind: "extension", id: "ext-1", externalId: "1" } },
-			{ type: "remove", sub: { id: "id-2", uid: "2" } },
-		]);
+		trigger("subscription-changed", {
+			ops: [
+				{ type: "remove", sub: { kind: "extension", id: "ext-1", externalId: "1" } },
+				{ type: "remove", sub: { id: "id-2", uid: "2" } },
+			],
+		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledTimes(2));
 		expect(store.drop.mock.calls.map((c) => c[0]).sort()).toEqual(["ext-1", "id-2"]);
 	});
@@ -401,10 +405,10 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		// 再 append 一帧 end,把 stats/live/<uid>.jsonl 整个重新创建出来,从此成为
 		// 一份谁也不会再读、也不会再被清理的孤儿。
 		const { trigger, store, handle } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
-		trigger("subscription-changed", [{ type: "remove", sub: { id: "id-1", uid: "1" } }]);
+		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
 
 		await handle.closeOpenSessions();
@@ -413,12 +417,12 @@ describe("StatsRecorder — 订阅删除清理", () => {
 
 	it("被删 UP 的开播峰值一并丢弃,不会漏进下一位 UP", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-viewers-changed", "1", "50万");
-		trigger("subscription-changed", [{ type: "remove", sub: { id: "id-1", uid: "1" } }]);
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "50万" });
+		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
 		// 重新订阅同一 uid 后开播又下播 —— 峰值必须是新场自己的
-		trigger("live-state-changed", "1", "live");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", expect.any(String), undefined);
 	});
@@ -429,7 +433,7 @@ describe("StatsRecorder — dispose", () => {
 		const { trigger, store, handle } = setup();
 		handle.dispose();
 		trigger("dynamic-detected", { uid: "1", id: "a", type: "T", ts: "2026-05-16T09:00:00.000Z" });
-		trigger("live-state-changed", "1", "live");
+		trigger("live-state-changed", { uid: "1", status: "live" });
 		await handle.flush();
 		expect(store.appendDynamic).not.toHaveBeenCalled();
 		expect(store.openLiveSession).not.toHaveBeenCalled();
@@ -441,7 +445,7 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 		// 关服路径不会触发真实下播事件(teardown/cancel 都不翻 liveStatus),
 		// 不补这一帧的话,这一场永远等不到 end,已观测到的时长就白丢了。
 		const { trigger, store, handle } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T12:00:00.000Z";
@@ -455,8 +459,8 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 
 	it("带上本场峰值 —— 与正常下播同款口径", async () => {
 		const { trigger, store, handle } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
-		trigger("live-viewers-changed", "1", "1.2万");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "1.2万" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T12:00:00.000Z";
@@ -472,8 +476,8 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 
 	it("已经正常下播的场次不会在关服时被重复闭合", async () => {
 		const { trigger, store, handle } = setup();
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(1));
 
 		await handle.closeOpenSessions();
@@ -494,10 +498,10 @@ describe("StatsRecorder — 采集水位线", () => {
 describe("StatsRecorder — 观看数解析不出", () => {
 	it("解析不出的 viewers 不参与峰值,也不把已有的峰值冲掉", async () => {
 		const { trigger, store } = setup();
-		trigger("live-state-changed", "1", "live");
-		trigger("live-viewers-changed", "1", "3万");
-		trigger("live-viewers-changed", "1", "看不懂");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "3万" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "看不懂" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", expect.any(String), 30_000);
 	});
@@ -539,7 +543,7 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		const store = makeStore();
 		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
 		attachBiliStatsSource({ bus, recorder, now, subscriptions: () => SUBS as never });
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		recorder.openSession("ext-x", "2026-05-16T09:30:00.000Z");
 		recorder.reportViewers("ext-x", 42);
 		trigger("auth-lost");
@@ -569,9 +573,9 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		trigger("live-state-changed", "404", "live", "2026-05-16T09:00:00.000Z");
-		trigger("live-viewers-changed", "404", "3万");
-		trigger("live-state-changed", "404", "idle");
+		trigger("live-state-changed", { uid: "404", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		trigger("live-viewers-changed", { uid: "404", viewers: "3万" });
+		trigger("live-state-changed", { uid: "404", status: "idle" });
 		// 对照:同一串事件换成订阅着的 uid 就记 —— 证明监听确实在跑、不是空转。
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -597,9 +601,9 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_WORD",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
-		trigger("live-viewers-changed", "1", "500");
-		trigger("live-state-changed", "1", "idle");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		trigger("live-viewers-changed", { uid: "1", viewers: "500" });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
 		expect(store.appendDynamic.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-1b"]);
 		expect(store.closeLiveSession.mock.calls.map((c) => [c[0], c[2]])).toEqual([
@@ -632,7 +636,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		subs = [{ kind: "bilibili", id: "id-7", uid: "7" }];
-		trigger("subscription-changed", [{ type: "add", sub: subs[0] }]);
+		trigger("subscription-changed", { ops: [{ type: "add", sub: subs[0] }] });
 		trigger("dynamic-detected", {
 			uid: "7",
 			id: "late",
@@ -670,11 +674,11 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 	it("删掉的订阅不再记:之后同 uid 的事件不会把文件重新写出来", async () => {
 		let subs: unknown[] = [...SUBS];
 		const { trigger, store, handle } = setup(() => subs);
-		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		subs = [SUBS[1]];
-		trigger("subscription-changed", [{ type: "remove", sub: SUBS[0] }]);
-		trigger("live-state-changed", "1", "idle");
+		trigger("subscription-changed", { ops: [{ type: "remove", sub: SUBS[0] }] });
+		trigger("live-state-changed", { uid: "1", status: "idle" });
 		trigger("dynamic-detected", {
 			uid: "1",
 			id: "z",

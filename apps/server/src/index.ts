@@ -496,7 +496,7 @@ export async function startStandaloneServer(
 		// 决策 61)写进来,拓展列表那一口读出去。只在内存。记了新的 → bus → WS `state` 频道 → 面板让拓展表
 		// 失效(按拓展合并过)。建在引擎之前:引擎里的计时器也往里记。
 		const reportProblems = createReportProblemLog({
-			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", id),
+			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", { extensionId: id }),
 		});
 		runtime.serviceCtx.onDispose(() => reportProblems.dispose(), "stop");
 
@@ -838,7 +838,7 @@ export async function startStandaloneServer(
 		};
 
 		roastScheduler.start();
-		runtime.bus.on("config-changed", (scope) => {
+		runtime.bus.on("config-changed", ({ scope }) => {
 			// 全局那条(roastSchedule)与 per-UP 那些(subscriptions)各自都可能增删改。
 			if (scope === "globals" || scope === "subscriptions") roastScheduler.reconcile();
 			// 别名进了触发词表,得重建;前缀与总开关是现读的,不用管。
@@ -950,13 +950,13 @@ export async function startStandaloneServer(
 			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
 			onConnectionsChanged: (fn) =>
-				runtime.bus.on("config-changed", (scope) => {
+				runtime.bus.on("config-changed", ({ scope }) => {
 					if (scope === "connections") fn();
 				}),
 			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
 			subscriptions: () => runtime.configStore.getSubscriptions().filter(isExtensionSubscription),
 			onSubscriptionsChanged: (fn) =>
-				runtime.bus.on("config-changed", (scope) => {
+				runtime.bus.on("config-changed", ({ scope }) => {
 					if (scope === "subscriptions") fn();
 				}),
 			// 订阅源报上来、核过、对上了订阅的一条 → bus(ADR-0019 决策 7 / 62)。出卡、存资料、首页在播都从
@@ -967,14 +967,14 @@ export async function startStandaloneServer(
 			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
 			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,
 			onSettingsChanged: (fn) =>
-				runtime.bus.on("config-changed", (scope) => {
+				runtime.bus.on("config-changed", ({ scope }) => {
 					if (scope === "globals") fn();
 				}),
 			// 拓展喊「面板数据变了」→ bus → WS `state` 频道 → 面板按 id 失效缓存(不用切页)。
-			onStatusChanged: (id) => runtime.bus.emit("extension-status-changed", id),
+			onStatusChanged: (id) => runtime.bus.emit("extension-status-changed", { extensionId: id }),
 			// 拓展不在跑了(停用 / 卸载 / 换代码 / 加载失败 / 关机)→ bus;替它记着的在播状态据此作废
 			// (ADR-0019 决策 61),在播表从那里接。
-			onStopped: (id) => runtime.bus.emit("extension-stopped", id),
+			onStopped: (id) => runtime.bus.emit("extension-stopped", { extensionId: id }),
 			inbound: {
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
@@ -996,7 +996,7 @@ export async function startStandaloneServer(
 		// 拨开关即热装卸(决策 10)。`sync()` 自己吞异常、自己排队,这里只负责把「全局配置
 		// 动过了」转过去 —— 它认的是开关**变没变**,别的全局设置存一百次也不会惊动拓展。
 		const extensions = loadedExtensions;
-		runtime.bus.on("config-changed", (scope) => {
+		runtime.bus.on("config-changed", ({ scope }) => {
 			// 装卸拓展落盘、起停它的定时器:登记进 track,关停等这一趟装卸做完。
 			if (scope === "globals") {
 				runtime.serviceCtx.track(

@@ -60,33 +60,41 @@ export type SubscriptionOp =
 	| { type: "update"; sub: Subscription };
 
 /**
- * 业务核心唯一事件源。独立端 WS channel 都源自这里;宿主 adapter 以 mitt-like 实现。
+ * 总线的事件表:事件名 → 载荷。业务核心唯一事件源,独立端 WS channel 都源自这里。
+ *
+ * 载荷一律是一个具名对象(没有载荷的写 `undefined`):`bus.emit("engine-error", { source, message })`、
+ * `bus.on("engine-error", ({ source, message }) => …)`。不用位置参数 —— 加一格不会挪动别的格,
+ * WS 帧的 `data` 也能直接从这里推导(`apps/contract` 的事件表),面板不用再手写类型断言。
  */
-export interface BiliEvents {
-	"auth-lost": () => void;
-	"auth-restored": () => void;
-	"cookies-refreshed": (data: unknown) => void;
-	"subscription-changed": (ops: SubscriptionOp[]) => void;
-	"login-status-report": (snapshot: LoginSnapshot) => void;
+export interface BusEvents {
+	"auth-lost": undefined;
+	"auth-restored": undefined;
+	/**
+	 * 登录 cookie 刷新并落了盘。只带刷新的时刻:cookie 本身是密钥,不上总线 —— 盘上那份由刷新的
+	 * 回调自己写,总线上的消费方只需要知道「刷新过了」。
+	 */
+	"cookies-refreshed": { refreshedAt: string };
+	"subscription-changed": { ops: SubscriptionOp[] };
+	"login-status-report": LoginSnapshot;
 	/**
 	 * Surface a runtime error from a business engine / subsystem.
 	 * `source` 是逻辑发射源标识(e.g. "dynamic-engine" / "live-engine" / "image" / "ai")
 	 * 用于消费方（master-notifier / AlertShell）做按域节流与展示。
 	 */
-	"engine-error": (source: string, message: string) => void;
-	ready: () => void;
-	"config-changed": (scope: ConfigScope) => void;
+	"engine-error": { source: string; message: string };
+	ready: undefined;
+	"config-changed": { scope: ConfigScope };
 	/**
 	 * 某个拓展喊了「面板数据变了」(`ctx.statusChanged`)。载荷只有拓展 id:面板按 id 失效
 	 * `/api/ext/<id>/status` 与 bot 名单的缓存、自己去取,数据本身不上 bus。
 	 */
-	"extension-status-changed": (id: string) => void;
+	"extension-status-changed": { extensionId: string };
 	/**
 	 * 某个拓展的设置经 `/api/ext/<id>/settings` 写进去了(ADR-0019 决策 35)。载荷只有拓展 id:
 	 * 面板按 id 失效它的设置与视图、自己去取 —— 设置里有密钥,数据本身不上 bus、不进帧。
 	 * 这是宿主自己知道的事实,不替拓展判它的视图变没变(那是 `extension-status-changed`)。
 	 */
-	"extension-settings-changed": (id: string) => void;
+	"extension-settings-changed": { extensionId: string };
 	/**
 	 * 某个订阅源拓展的「上报问题」(ADR-0019 决策 60:丢格、整条拒)新记了几条。载荷只有拓展 id,**按拓展
 	 * 合并过**(`REPORT_PROBLEMS_CHANGED_COALESCE_MS`)。独立端转成 `state` WS channel 的同名帧,面板只让
@@ -94,7 +102,7 @@ export interface BiliEvents {
 	 *
 	 * 不借 `extension-status-changed`:那一声说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表。
 	 */
-	"extension-report-problems-changed": (id: string) => void;
+	"extension-report-problems-changed": { extensionId: string };
 	/**
 	 * 订阅源拓展报上来一条、宿主核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 57 / 62)。五种都走这一个
 	 * 事件,按 `report.kind` 分:三种事件(`post` / `liveStart` / `liveEnd`)与两种不触发推送的上报
@@ -105,7 +113,7 @@ export interface BiliEvents {
 	 *
 	 * 🔴 载荷里的图是字节(`Uint8Array`),**不进 WS 帧**、不落盘 —— 出卡、存头像这些消费方自己取用。
 	 */
-	"subscription-reported": (delivery: SubscriptionReportDelivery) => void;
+	"subscription-reported": SubscriptionReportDelivery;
 	/**
 	 * 拓展报的资料更新(ADR-0019 决策 7 / 62)落进资料缓存与头像文件之后,面板看得见的那几格(名字 /
 	 * 头像 / 粉丝数)真变了的订阅 id。**按窗口合并过**:拓展起来时可能一口气报一百条资料,一阵只发一次。
@@ -114,18 +122,18 @@ export interface BiliEvents {
 	 * "subscriptions"`**:那一档会重建路由表、通知拓展「名下订阅变了」、让引擎 reconcile —— 资料缓存
 	 * 不是配置,那些全是白干。
 	 */
-	"subscription-profiles-changed": (subscriptionIds: string[]) => void;
+	"subscription-profiles-changed": { subscriptionIds: string[] };
 	/**
 	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
 	 * 无需前端再二次 fetch detail。
 	 */
-	"history-recorded": (entry: HistoryEntry) => void;
+	"history-recorded": HistoryEntry;
 	/**
 	 * 同一次推送的后续消息(词云 / 总结 / 图集 / @全体)追加到已有那一行之后 emit。
 	 * 载荷是合并后的整行;前端按 id 换缓存、小卡同 id 换字,不重弹。
 	 */
-	"history-updated": (entry: HistoryEntry) => void;
+	"history-updated": HistoryEntry;
 	/**
 	 * 直播状态翻转。
 	 *
@@ -141,13 +149,13 @@ export interface BiliEvents {
 	 *
 	 * 缺失时(接口没返回 / 解析失败 / 非 grace 路径)消费方回退到「收到事件的此刻」。
 	 */
-	"live-state-changed": (uid: string, status: "live" | "idle", at?: string) => void;
+	"live-state-changed": { uid: string; status: "live" | "idle"; at?: string };
 	/**
 	 * 直播间累计观看人数变化(B 站 WS `WATCHED_CHANGE` 帧 → live engine 节流后转发)。
 	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是 B 站预格式化
 	 * 后的中文压缩字符串(如 "1.2万");消费方直接展示,不二次转换。
 	 */
-	"live-viewers-changed": (uid: string, viewers: string) => void;
+	"live-viewers-changed": { uid: string; viewers: string };
 	/**
 	 * 某个拓展不在跑了 —— 停用、卸载、换代码、加载失败、设置读不了、宿主关机,一律在它那面 ctx
 	 * **开始收摊的那一刻**发(每面 ctx 只发一次),之后它再报什么都不收。
@@ -155,7 +163,7 @@ export interface BiliEvents {
 	 * BN 手里替它记着的在播状态据此作废(ADR-0019 决策 61):它名下的订阅从首页在播里出去,重新跑起来
 	 * 之后靠直播状态上报接上。
 	 */
-	"extension-stopped": (id: string) => void;
+	"extension-stopped": { extensionId: string };
 	/**
 	 * 拓展订阅的在播表变了(进表 / 出表 / 面板看得见的那几格变了,ADR-0019 决策 12 / 57)。**拓展订阅的
 	 * 在播不走 `live-state-changed`** —— 统计按 uid 订着那一个记场次,而统计不含拓展(决策 12)。
@@ -163,7 +171,7 @@ export interface BiliEvents {
 	 * 载荷为空,面板让 `/api/live/listening` 失效、自己重取。按窗口合并过:直播状态可能每轮都报,一阵
 	 * 连着的变化只发一次(`EXTENSION_LIVE_COALESCE_MS`)。
 	 */
-	"extension-live-changed": () => void;
+	"extension-live-changed": undefined;
 	/**
 	 * 拓展订阅的一场直播开始 / 结束了(ADR-0020 决策 4 / 6)—— 场次(`runtime/extension-live-sessions.ts`)
 	 * 算出来的边界,按订阅 id。统计据此记拓展订阅的场次;拓展直播的推送吃的是同一份场次(不经总线)。
@@ -171,14 +179,14 @@ export interface BiliEvents {
 	 * 与推送开关无关:订阅在、启用着、拓展在跑就记。断流接续里的那一下、直播状态、下播进等待都**不是**边界,
 	 * 不发。同一场的开始帧与结束帧带同一个 `startedAt`。不进 WS。
 	 */
-	"extension-live-session": (event: ExtensionLiveSessionEvent) => void;
+	"extension-live-session": ExtensionLiveSessionEvent;
 	/**
 	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
 	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020
 	 * 决策 8),各带当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
 	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
 	 */
-	"fans-refreshed": (entries: FansRefreshEntry[]) => void;
+	"fans-refreshed": { entries: FansRefreshEntry[] };
 	/**
 	 * 一条此前未见过的动态首次越过 per-uid 时间线闸门时 emit。
 	 *
@@ -190,7 +198,7 @@ export interface BiliEvents {
 	 * 重判会把同一条再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
 	 * 靠 `StatsStore.appendDynamic` 的 id 去重挡掉,新消费方别忘了这一层。
 	 */
-	"dynamic-detected": (event: DynamicDetectedEvent) => void;
+	"dynamic-detected": DynamicDetectedEvent;
 }
 
 /**
@@ -301,9 +309,13 @@ export interface LoginSnapshot {
 }
 
 /** 事件总线接口。on 返回 Disposable 用于 unsubscribe。 */
+/** 总线。载荷为 `undefined` 的事件 `emit` 时不带第二个参数。 */
 export interface MessageBus {
-	emit<E extends keyof BiliEvents>(event: E, ...args: Parameters<BiliEvents[E]>): void;
-	on<E extends keyof BiliEvents>(event: E, handler: BiliEvents[E]): Disposable;
+	emit<E extends keyof BusEvents>(
+		event: E,
+		...payload: BusEvents[E] extends undefined ? [] : [payload: BusEvents[E]]
+	): void;
+	on<E extends keyof BusEvents>(event: E, handler: (payload: BusEvents[E]) => void): Disposable;
 }
 
 /** 单段消息载荷类型。composite 中的 segment 之一。 */

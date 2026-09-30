@@ -104,7 +104,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	);
 
 	handles.push(
-		bus.on("live-viewers-changed", (uid, viewers) => {
+		bus.on("live-viewers-changed", ({ uid, viewers }) => {
 			const value = parseBiliViewers(viewers);
 			if (!Number.isFinite(value)) return;
 			for (const key of keysOf(uid)) {
@@ -115,7 +115,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	);
 
 	handles.push(
-		bus.on("live-state-changed", (uid, status, startedAt) => {
+		bus.on("live-state-changed", ({ uid, status, at: startedAt }) => {
 			const at = now();
 			const ts = at.toISOString();
 			const targets = keysOf(uid);
@@ -130,7 +130,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 			}
 			// 这一场到此为止,下一场重新认身份。
 			openStart.delete(uid);
-			// 下播侧的第三个参数是**真实下播时刻**:走断流接续时它在进入挂起那刻就
+			// 下播侧的 `at` 是**真实下播时刻**:走断流接续时它在进入挂起那刻就
 			// 定格了,而事件要等 N 分钟窗口到期才发得出来。用 `ts`(收到事件的此刻)
 			// 会把整个 grace 窗口算进直播时长,与下播卡上的时长对不上。缺省才回退。
 			const endIso = liveStartIso(startedAt, at) ?? ts;
@@ -154,7 +154,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	);
 
 	handles.push(
-		bus.on("subscription-changed", (ops) => {
+		bus.on("subscription-changed", ({ ops }) => {
 			// 事件到的时候订阅仓已经是改完的样子;uid → 订阅 id 的索引下次用到时重建。
 			idsByUid = undefined;
 			for (const op of ops) {

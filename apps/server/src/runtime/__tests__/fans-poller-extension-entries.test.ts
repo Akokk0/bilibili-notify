@@ -78,7 +78,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 	const runtime = new Map<string, SubRuntime>(Object.entries(runtimeSeed));
 	const bus = createNodeMessageBus();
 	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", (entries) => {
+	bus.on("fans-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	const getRelationStat = vi.fn(async (_uid: string) => ({
@@ -273,7 +273,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 
 		p.runtime.set("e1", profile(500));
 		// 不是拓展订阅的 id、没有时序的 id 混在里面也不碍事。
-		p.bus.emit("subscription-profiles-changed", ["e1", "e2", "b-unknown"]);
+		p.bus.emit("subscription-profiles-changed", { subscriptionIds: ["e1", "e2", "b-unknown"] });
 		await vi.waitFor(() => expect(p.snapshots.length).toBeGreaterThan(before));
 		expect(p.snapshots.at(-1)).toEqual([
 			expect.objectContaining({ subscriptionId: "e1", current: 500 }),
@@ -284,7 +284,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 	it("停用着的报了资料也不上面板", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([extSub("e1", "sec-1", false)], { e1: profile(450) });
-		p.bus.emit("subscription-profiles-changed", ["e1"]);
+		p.bus.emit("subscription-profiles-changed", { subscriptionIds: ["e1"] });
 		// 给它一点时间:要是会上面板,这里早该有了。
 		await new Promise((r) => setTimeout(r, 50));
 		expect(p.handle.getLastEntries()).toEqual([]);
@@ -298,7 +298,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 		expect(p.entryOf("e1")).toBeDefined();
 
 		p.setSubs([]);
-		p.bus.emit("subscription-changed", [{ type: "remove", sub: sub as never }]);
+		p.bus.emit("subscription-changed", { ops: [{ type: "remove", sub: sub as never }] });
 		expect(p.entryOf("e1")).toBeUndefined();
 		expect(p.snapshots.at(-1)).toEqual([]);
 		expect(await exists(join(dataDir, "fans", "e1.jsonl"))).toBe(true);

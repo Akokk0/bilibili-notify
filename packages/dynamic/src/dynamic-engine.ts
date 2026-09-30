@@ -357,7 +357,7 @@ export class DynamicEngine {
 			this.logger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
 		}
 
-		// `subscription-changed` 是无负载事件（参见 internal/platform.ts BiliEvents）。
+		// `subscription-changed` 的载荷是 `{ ops }`（参见 internal/platform.ts BusEvents）。
 		// 宿主应当先调用 engine.applyOps(ops) 再 emit MessageBus 事件用于其他下游;
 		// engine 自身只需在 auth-restored 时重建快照。
 		this.busHandles.push(
@@ -870,7 +870,8 @@ export class DynamicEngine {
 						ai: this.ai,
 						cardFailures: this.cardFailures,
 						sendErrorMsg: (text) => this.push.sendErrorMsg(text),
-						emitEngineError: (message) => this.bus.emit("engine-error", LOG_TAG, message),
+						emitEngineError: (message) =>
+							this.bus.emit("engine-error", { source: LOG_TAG, message }),
 					},
 					logLabel: `UID=${uid}`,
 				});
@@ -924,7 +925,8 @@ export class DynamicEngine {
 				// 已经收过 auth-lost 就闭嘴:上层那条「账号登录已失效,请到控制台重新
 				// 扫码登录」既先到又更有用,这里再报一句只是同一件事的第二次通知。
 				// 详见 `authLost` 字段说明 —— 没有 auth-lost 的 -101 仍必须报。
-				if (!this.authLost) this.bus.emit("engine-error", LOG_TAG, "账号未登录");
+				if (!this.authLost)
+					this.bus.emit("engine-error", { source: LOG_TAG, message: "账号未登录" });
 				this.authLost = true;
 				// 上面只停了 job,挂着的退避重启还得作废 —— 见 suspendDetector。
 				this.suspendDetector();
@@ -946,7 +948,7 @@ export class DynamicEngine {
 					this.riskControlled = true;
 					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
 					await this.tellMaster("账号被风控，请使用 `bili cap` 指令解除风控");
-					this.bus.emit("engine-error", LOG_TAG, "账号被风控");
+					this.bus.emit("engine-error", { source: LOG_TAG, message: "账号被风控" });
 				} else {
 					this.logger.debug("[api] 仍处于风控态，退避后继续重探(不重复告警)");
 				}
@@ -961,7 +963,10 @@ export class DynamicEngine {
 					this.transientErrorCode = code;
 					this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
 					await this.tellMaster(`获取动态信息失败，错误码：${code}`);
-					this.bus.emit("engine-error", LOG_TAG, `获取动态失败，错误码：${code}`);
+					this.bus.emit("engine-error", {
+						source: LOG_TAG,
+						message: `获取动态失败，错误码：${code}`,
+					});
 				} else {
 					this.logger.debug(`[api] 仍是错误码 ${code}，退避后继续重试(不重复告警)`);
 				}

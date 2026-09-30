@@ -325,7 +325,7 @@ describe("断流接续", () => {
 		await settle();
 		liveEnd();
 		running = false;
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		running = true;
 		await vi.advanceTimersByTimeAsync(10 * MINUTE);
 		await settle();
@@ -426,10 +426,10 @@ describe("周期「正在直播」", () => {
 		await settle();
 		const disabled = { ...SUB, enabled: false };
 		subs.set(SUB.id, disabled);
-		bus.emit("subscription-changed", [{ type: "update", sub: disabled }]);
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: disabled }] });
 		// 马上又启用回来:停用那一刻这一场就作废了,启用不会把它的计时器救回来。
 		subs.set(SUB.id, SUB);
-		bus.emit("subscription-changed", [{ type: "update", sub: SUB }]);
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: SUB }] });
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
@@ -441,7 +441,7 @@ describe("周期「正在直播」", () => {
 		liveStart();
 		await settle();
 		subs.delete(SUB.id);
-		bus.emit("subscription-changed", [{ type: "remove", sub: SUB }]);
+		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB }] });
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
@@ -452,7 +452,7 @@ describe("周期「正在直播」", () => {
 		start();
 		liveStart();
 		await settle();
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
@@ -554,7 +554,7 @@ describe("重启补推", () => {
 		start();
 		liveStatus();
 		await settle();
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		// 停着的时候开的播(或者一直在播):重新跑起来报的第一份就是在播。
 		liveStatus();
 		await settle();
@@ -566,7 +566,7 @@ describe("重启补推", () => {
 		start();
 		liveStatus();
 		await settle();
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		report({ kind: "liveStatus", value: { live: false } });
 		liveStatus();
 		await settle();
@@ -581,7 +581,7 @@ describe("重启补推", () => {
 		// 下播把这一场收掉,之后再报在播时手里没有这一场,补不补推只看「见过」。
 		liveEnd();
 		await settle();
-		bus.emit("extension-stopped", "kuaishou");
+		bus.emit("extension-stopped", { extensionId: "kuaishou" });
 		liveStatus();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([0, 9]);
@@ -620,7 +620,7 @@ describe("推送中途关掉又打开", () => {
 		liveStart();
 		await settle();
 		settings = baseSettings({ pushTime: 1, live: false, liveEnd: false });
-		bus.emit("config-changed", "globals");
+		bus.emit("config-changed", { scope: "globals" });
 		profile = { name: "抖音甲", fans: 12_345 + 55 };
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
@@ -628,7 +628,7 @@ describe("推送中途关掉又打开", () => {
 		expect(sent.map((s) => s.type)).toEqual([3]);
 
 		settings = baseSettings();
-		bus.emit("config-changed", "globals");
+		bus.emit("config-changed", { scope: "globals" });
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		profile = { name: "抖音甲", fans: 12_345 + 100 };

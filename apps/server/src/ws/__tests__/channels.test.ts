@@ -1,9 +1,9 @@
 /**
- * 单元测试 — `attachChannelWiring` / `buildStateHydrate`(WS BiliEvents → envelope 桥)。
+ * 单元测试 — `attachChannelWiring` / `buildStateHydrate`(WS BusEvents → envelope 桥)。
  *
  * 守护契约:
- *   - envelope() 参数 unwrap:0 参 → data=null;1 参 → 直接 unwrap;N 参 → 保留 tuple
- *   - `cookies-refreshed` **安全脱敏**:绝不转发 cookiesJson/refreshToken,只发 {refreshedAt, ok?}
+ *   - 帧的 data 形状:无载荷 → data=null;单值载荷 → 直接是那个值;多值事件 → 保留 tuple(线上帧不随总线载荷的形状变)
+ *   - `cookies-refreshed` 只有 {refreshedAt}(cookie 不上总线,源头由 auth 的测试钉着),原样成帧
  *   - `history-recorded` / `history-updated` 投影成精简 view(非 raw HistoryEntry)
  *   - `config-changed` 按 scope 带快照;secrets scope → snapshot=null
  *   - log channel:LogChannel.push → {type:"log",event:level,ts:entry.ts,data:{msg,args}}
@@ -97,21 +97,21 @@ describe("attachChannelWiring — envelope 参数 unwrap", () => {
 		expect(h.last().data).toBe(snap);
 
 		const entries = [{ uid: "u1", current: 1 }];
-		h.bus.emit("fans-refreshed", entries as never);
+		h.bus.emit("fans-refreshed", { entries: entries as never });
 		expect(h.last()).toMatchObject({ type: "push-events", event: "fans-refreshed" });
 		expect(h.last().data).toBe(entries);
 	});
 
 	it("N 参事件:保留 tuple", () => {
-		h.bus.emit("live-state-changed", "u1", "live");
+		h.bus.emit("live-state-changed", { uid: "u1", status: "live" });
 		expect(h.last()).toMatchObject({
 			type: "push-events",
 			event: "live-state-changed",
 			data: ["u1", "live"],
 		});
-		h.bus.emit("live-viewers-changed", "u1", "1.2万");
+		h.bus.emit("live-viewers-changed", { uid: "u1", viewers: "1.2万" });
 		expect(h.last().data).toEqual(["u1", "1.2万"]);
-		h.bus.emit("engine-error", "dynamic-engine", "boom");
+		h.bus.emit("engine-error", { source: "dynamic-engine", message: "boom" });
 		expect(h.last()).toMatchObject({
 			type: "log",
 			event: "engine-error",
@@ -201,37 +201,17 @@ describe("attachChannelWiring — history-recorded / history-updated 投影", ()
 	});
 });
 
-describe("attachChannelWiring — cookies-refreshed 安全脱敏", () => {
-	let h: Harness;
-	beforeEach(() => {
-		h = wire();
-	});
-
-	it("绝不转发 cookiesJson / refreshToken,只发 {refreshedAt, ok}", () => {
-		h.bus.emit("cookies-refreshed", {
-			cookiesJson: "SUPER_SECRET_COOKIE",
-			refreshToken: "SECRET_REFRESH",
-			ok: true,
-		} as never);
-		const data = h.last().data as Record<string, unknown>;
+describe("attachChannelWiring — cookies-refreshed", () => {
+	/**
+	 * cookie 本身不上总线:载荷只有刷新的时刻(源头上的这一条由 `auth/__tests__/
+	 * cookies-refreshed-payload.test.ts` 钉着)。所以这里不再有「脱敏」这一步,总线上的载荷
+	 * 原样成帧 —— 帧里就是那一格。
+	 */
+	it("总线上的 {refreshedAt} 原样成帧", () => {
+		const h = wire();
+		h.bus.emit("cookies-refreshed", { refreshedAt: "2026-05-16T00:00:00.000Z" });
 		expect(h.last()).toMatchObject({ type: "auth", event: "cookies-refreshed" });
-		expect(typeof data.refreshedAt).toBe("string");
-		expect(data.ok).toBe(true);
-		expect(data).not.toHaveProperty("cookiesJson");
-		expect(data).not.toHaveProperty("refreshToken");
-		expect(JSON.stringify(data)).not.toContain("SECRET");
-	});
-
-	it("ok 非 boolean 时不带 ok 字段", () => {
-		h.bus.emit("cookies-refreshed", { cookiesJson: "x", ok: "yes" } as never);
-		const data = h.last().data as Record<string, unknown>;
-		expect(data).not.toHaveProperty("ok");
-		expect(typeof data.refreshedAt).toBe("string");
-	});
-
-	it("payload 非对象时只发 {refreshedAt}", () => {
-		h.bus.emit("cookies-refreshed", null as never);
-		expect(Object.keys(h.last().data as object)).toEqual(["refreshedAt"]);
+		expect(h.last().data).toEqual({ refreshedAt: "2026-05-16T00:00:00.000Z" });
 	});
 });
 
@@ -248,7 +228,7 @@ describe("attachChannelWiring — config-changed 按 scope 带快照", () => {
 	 */
 	it("四个 scope 都只带 scope 标记,不带快照", () => {
 		for (const scope of ["globals", "subscriptions", "targets", "secrets"] as const) {
-			h.bus.emit("config-changed", scope);
+			h.bus.emit("config-changed", { scope });
 			expect(h.last()).toMatchObject({ type: "state", event: "config-changed" });
 			expect(h.last().data).toEqual({ scope });
 		}
@@ -262,7 +242,7 @@ describe("attachChannelWiring — 拓展喊「面板数据变了」", () => {
 	 */
 	it("extension-status-changed → state/extension-changed,只带 id", () => {
 		const h = wire();
-		h.bus.emit("extension-status-changed", "bridge");
+		h.bus.emit("extension-status-changed", { extensionId: "bridge" });
 		expect(h.last()).toMatchObject({ type: "state", event: "extension-changed" });
 		expect(h.last().data).toEqual({ id: "bridge" });
 	});
@@ -275,7 +255,7 @@ describe("attachChannelWiring — 拓展的上报问题变了", () => {
 	 */
 	it("extension-report-problems-changed → state 频道同名帧,只带 id", () => {
 		const h = wire();
-		h.bus.emit("extension-report-problems-changed", "douyin");
+		h.bus.emit("extension-report-problems-changed", { extensionId: "douyin" });
 		expect(h.last()).toMatchObject({ type: "state", event: "extension-report-problems-changed" });
 		expect(h.last().data).toEqual({ id: "douyin" });
 	});
@@ -288,7 +268,7 @@ describe("attachChannelWiring — 拓展订阅的资料变了", () => {
 	 */
 	it("subscription-profiles-changed → state 频道同名帧,带订阅 id", () => {
 		const h = wire();
-		h.bus.emit("subscription-profiles-changed", ["a", "b"]);
+		h.bus.emit("subscription-profiles-changed", { subscriptionIds: ["a", "b"] });
 		expect(h.last()).toMatchObject({ type: "state", event: "subscription-profiles-changed" });
 		expect(h.last().data).toEqual({ ids: ["a", "b"] });
 	});
@@ -312,7 +292,7 @@ describe("attachChannelWiring — log channel + dispose", () => {
 		const before = h.publish.mock.calls.length;
 		h.dispose();
 		h.bus.emit("auth-lost");
-		h.bus.emit("config-changed", "globals");
+		h.bus.emit("config-changed", { scope: "globals" });
 		h.log.push({ level: "info", msg: "x", args: [], ts: "t" });
 		expect(h.publish.mock.calls.length).toBe(before);
 	});

@@ -103,24 +103,24 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 				// P2:内容未变则不发 update op(此前必发,engine 无谓 reconcile)。
 				if (sameSubscription(subs[idx] as Subscription, sub)) return;
 				subs = [...subs.slice(0, idx), sub, ...subs.slice(idx + 1)];
-				bus.emit("subscription-changed", [{ type: "update", sub }]);
+				bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 				return;
 			}
 			subs = [...subs, sub];
-			bus.emit("subscription-changed", [{ type: "add", sub }]);
+			bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 		},
 		removeById(id) {
 			const idx = subs.findIndex((s) => s.id === id);
 			if (idx === -1) return undefined;
 			const removed = subs[idx];
 			subs = [...subs.slice(0, idx), ...subs.slice(idx + 1)];
-			bus.emit("subscription-changed", [{ type: "remove", sub: removed }]);
+			bus.emit("subscription-changed", { ops: [{ type: "remove", sub: removed }] });
 			return removed;
 		},
 		replaceAll(next) {
 			const ops = diff(subs, next);
 			subs = [...next];
-			if (ops.length > 0) bus.emit("subscription-changed", ops);
+			if (ops.length > 0) bus.emit("subscription-changed", { ops });
 		},
 	};
 }

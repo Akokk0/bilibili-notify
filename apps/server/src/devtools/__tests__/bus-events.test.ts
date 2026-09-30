@@ -12,7 +12,7 @@ import { busEventScenarios } from "../scenarios/bus-events.js";
 function setup() {
 	const bus = createNodeMessageBus();
 	const seen: Array<[string, unknown[]]> = [];
-	bus.on("engine-error", (source, message) => seen.push(["engine-error", [source, message]]));
+	bus.on("engine-error", ({ source, message }) => seen.push(["engine-error", [source, message]]));
 	bus.on("auth-lost", () => seen.push(["auth-lost", []]));
 	bus.on("auth-restored", () => seen.push(["auth-restored", []]));
 	const reg = createDevRegistry(busEventScenarios({ bus }));

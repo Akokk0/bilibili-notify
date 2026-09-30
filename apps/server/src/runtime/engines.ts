@@ -641,10 +641,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),
-		emitEngineError: (msg) => opts.bus.emit("engine-error", "live-engine", msg),
+		emitEngineError: (message) => opts.bus.emit("engine-error", { source: "live-engine", message }),
 		emitLiveState: (uid, status, startedAt) =>
-			opts.bus.emit("live-state-changed", uid, status, startedAt),
-		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", uid, viewers),
+			opts.bus.emit("live-state-changed", { uid, status, at: startedAt }),
+		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", { uid, viewers }),
 		pickCardBackground: pickExistingCardBg,
 		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
 		// 省掉逐 UP 的 getUserInfo 房号解析请求。
@@ -705,7 +705,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					sendErrorMsg: (text) => push.sendErrorMsg(text),
 					// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)
 					// 共用一个的话,一边刚报过,另一边这次出图失败的告警就被吞了。
-					emitEngineError: (message) => opts.bus.emit("engine-error", "extension-post", message),
+					emitEngineError: (message) =>
+						opts.bus.emit("engine-error", { source: "extension-post", message }),
 				}),
 			}),
 		);
@@ -758,7 +759,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	}
 
 	handles.push(
-		opts.bus.on("subscription-changed", (ops) => {
+		opts.bus.on("subscription-changed", ({ ops }) => {
 			const dynOps = subscriptionOpsToDynamic(
 				ops,
 				opts.subscriptionStore,
@@ -883,7 +884,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	let linkPolicies = linkPoliciesOf();
 
 	handles.push(
-		opts.bus.on("config-changed", (scope) => {
+		opts.bus.on("config-changed", ({ scope }) => {
 			if (scope === "connections") {
 				linkPolicies = linkPoliciesOf();
 				// 有状态 adapter(OneBot ws / ws-reverse)按新 adapter 集合 reconcile

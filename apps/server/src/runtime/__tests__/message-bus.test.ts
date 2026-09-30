@@ -9,9 +9,12 @@
  *     rejection —— 兜成一条 console.error(该 infra 原语不持 logger)
  */
 
-import type { BiliEvents } from "@bilibili-notify/internal";
+import type { BusEvents } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus";
+
+/** `ready` 没有载荷(`void`);监听者类型上是同步的。 */
+type ReadyHandler = (payload: BusEvents["ready"]) => void;
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -22,8 +25,8 @@ describe("createNodeMessageBus", () => {
 		const bus = createNodeMessageBus();
 		const h1 = vi.fn();
 		const h2 = vi.fn();
-		const d1 = bus.on("ready", h1 as unknown as BiliEvents["ready"]);
-		bus.on("ready", h2 as unknown as BiliEvents["ready"]);
+		const d1 = bus.on("ready", h1 as unknown as ReadyHandler);
+		bus.on("ready", h2 as unknown as ReadyHandler);
 
 		bus.emit("ready");
 		expect(h1).toHaveBeenCalledTimes(1);
@@ -38,10 +41,10 @@ describe("createNodeMessageBus", () => {
 	it("A4:async handler reject → 不成 unhandled,兜成 console.error", async () => {
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const bus = createNodeMessageBus();
-		// BiliEvents handler 类型上同步;此处 as 强转模拟某处注册了 async handler。
+		// MessageBus handler 类型上同步;此处 as 强转模拟某处注册了 async handler。
 		bus.on("ready", (async () => {
 			throw new Error("boom");
-		}) as unknown as BiliEvents["ready"]);
+		}) as unknown as ReadyHandler);
 
 		expect(() => bus.emit("ready")).not.toThrow();
 		// 等 microtask 链:wrapped 捕获 thenable 后 .catch → console.error。
@@ -58,7 +61,7 @@ describe("createNodeMessageBus", () => {
 		const bus = createNodeMessageBus();
 		bus.on("ready", (() => {
 			throw new Error("sync-throw");
-		}) as unknown as BiliEvents["ready"]);
+		}) as unknown as ReadyHandler);
 		expect(() => bus.emit("ready")).toThrow(/sync-throw/);
 	});
 });

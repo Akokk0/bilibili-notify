@@ -88,7 +88,8 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			// (旧实现 fire-and-forget + 自吞,refresh 仍判成功;现由 api 调用点
 			// try/catch 统一处理,内存已刷新而盘上为旧值的状态被显式 error 标注)。
 			onCookiesRefreshed: async (data) => {
-				opts.bus.emit("cookies-refreshed", data);
+				// 总线上只报「刷新过了」:cookie 本身是密钥,盘上那份由这里自己写,不经总线。
+				opts.bus.emit("cookies-refreshed", { refreshedAt: new Date().toISOString() });
 				await storage.cookieStore.save(data);
 			},
 			// handleAuthLost() 是 Promise:此前 void 丢弃 → reject 成 unhandled

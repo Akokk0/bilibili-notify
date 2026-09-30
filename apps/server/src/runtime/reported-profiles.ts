@@ -83,7 +83,7 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 			timer = undefined;
 			const changed = [...pending];
 			pending.clear();
-			opts.bus.emit("subscription-profiles-changed", changed);
+			opts.bus.emit("subscription-profiles-changed", { subscriptionIds: changed });
 		}, windowMs);
 	}
 

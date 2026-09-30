@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type BiliEvents,
+	type BusEvents,
 	type ConfigScope,
 	type Connection,
 	connectionDispatchKey,
@@ -36,16 +36,16 @@ vi.mock("@bilibili-notify/storage", async (importOriginal) => {
 // Test doubles
 // ---------------------------------------------------------------------------
 
-function makeFakeBus(): MessageBus & { events: Array<[keyof BiliEvents, unknown[]]> } {
-	const events: Array<[keyof BiliEvents, unknown[]]> = [];
-	const listeners = new Map<keyof BiliEvents, Set<(...a: unknown[]) => void>>();
+function makeFakeBus(): MessageBus & { events: Array<[keyof BusEvents, unknown]> } {
+	const events: Array<[keyof BusEvents, unknown]> = [];
+	const listeners = new Map<keyof BusEvents, Set<(payload?: unknown) => void>>();
 	return {
 		events,
-		emit(event, ...args) {
-			events.push([event, args as unknown[]]);
+		emit(event, payload?: unknown) {
+			events.push([event, payload]);
 			const set = listeners.get(event);
 			if (!set) return;
-			for (const h of [...set]) (h as (...a: unknown[]) => void)(...args);
+			for (const h of [...set]) h(payload);
 		},
 		on(event, handler): Disposable {
 			let set = listeners.get(event);
@@ -53,7 +53,7 @@ function makeFakeBus(): MessageBus & { events: Array<[keyof BiliEvents, unknown[
 				set = new Set();
 				listeners.set(event, set);
 			}
-			const wrapped = (...a: unknown[]) => (handler as (...x: unknown[]) => void)(...a);
+			const wrapped = (payload?: unknown) => (handler as (payload?: unknown) => void)(payload);
 			set.add(wrapped);
 			return {
 				dispose() {
@@ -151,6 +151,13 @@ function makeWebhookTarget(
 
 function managedWebhookTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
+}
+
+/** 假总线上按序收到的 `config-changed` 的 scope。 */
+function configScopes(bus: ReturnType<typeof makeFakeBus>): unknown[] {
+	return bus.events
+		.filter(([e]) => e === "config-changed")
+		.map(([, payload]) => (payload as { scope: ConfigScope }).scope);
 }
 
 // ---------------------------------------------------------------------------
@@ -320,9 +327,7 @@ describe("ConfigStore", () => {
 		const onDisk = JSON.parse(await readFile(join(stateDir, "globals.json"), "utf8"));
 		expect(onDisk).toEqual(final);
 		// All three writes emitted exactly one 'config-changed' for globals
-		const globalEvents = bus.events.filter(
-			([e, args]) => e === "config-changed" && args[0] === "globals",
-		);
+		const globalEvents = configScopes(bus).filter((scope) => scope === "globals");
 		expect(globalEvents).toHaveLength(3);
 	});
 
@@ -406,7 +411,7 @@ describe("ConfigStore", () => {
 
 	it("emits 'config-changed' exactly once per successful write with correct scope", async () => {
 		const captured: ConfigScope[] = [];
-		const sub = bus.on("config-changed", (scope) => {
+		const sub = bus.on("config-changed", ({ scope }) => {
 			captured.push(scope);
 		});
 
@@ -435,9 +440,7 @@ describe("ConfigStore", () => {
 		};
 		await store.upsertTarget(target);
 		expect(store.getTargets()).toHaveLength(1);
-		const events1 = bus.events.filter(
-			([e, args]) => e === "config-changed" && args[0] === "targets",
-		);
+		const events1 = configScopes(bus).filter((scope) => scope === "targets");
 		expect(events1).toHaveLength(1);
 
 		const removed = await store.deleteTarget(target.id);
@@ -491,7 +494,7 @@ describe("ConfigStore", () => {
 		expect(nextSub?.extras.atAllDynamic).toEqual({ [keptTarget.id]: false });
 		expect(nextSub?.extras.atAllLive).toEqual({ [keptTarget.id]: true });
 		expect(SubscriptionSchema.safeParse(nextSub).success).toBe(true);
-		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["targets", "subscriptions"]);
 	});
 
@@ -512,7 +515,7 @@ describe("ConfigStore", () => {
 			enabled: true,
 			managedBy: "connection",
 		});
-		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["connections", "targets"]);
 	});
 
@@ -1044,7 +1047,7 @@ describe("ConfigStore", () => {
 		expect(nextSub?.routing.live).toEqual([]);
 		expect(nextSub?.extras.atAllDynamic).toEqual({});
 		expect(nextSub?.extras.atAllLive).toEqual({});
-		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["connections", "targets", "subscriptions"]);
 	});
 

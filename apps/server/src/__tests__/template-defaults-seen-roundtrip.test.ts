@@ -12,13 +12,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BiliEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
 
 function makeFakeBus(): MessageBus {
-	const listeners = new Map<keyof BiliEvents, Set<(...a: unknown[]) => void>>();
+	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
 	return {
 		emit(event, ...args) {
 			for (const h of [...(listeners.get(event) ?? [])]) {

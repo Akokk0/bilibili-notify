@@ -2,7 +2,6 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
 	type BiliSubscription,
 	type CachedProfile,
-	type ConfigScope,
 	type Disposable,
 	type ExtensionSubscription,
 	type FansRefreshEntry,
@@ -213,7 +212,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	function emitSnapshot(): void {
-		bus.emit("fans-refreshed", Array.from(lastBySub.values()));
+		bus.emit("fans-refreshed", { entries: Array.from(lastBySub.values()) });
 	}
 
 	/**
@@ -584,14 +583,14 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		}),
 	);
 
-	const offConfig = bus.on("config-changed", (scope: ConfigScope) => {
+	const offConfig = bus.on("config-changed", ({ scope }) => {
 		if (scope !== "globals") return;
 		reconcileCron();
 	});
 
 	// 订阅被删除时立即清理 in-memory entry + jsonl 时序,并 emit 一次空 diff 让
 	// dashboard 立刻把该 UP 从面板上撤掉(无需等下一 cron tick)。
-	const offSubs = bus.on("subscription-changed", (ops) => {
+	const offSubs = bus.on("subscription-changed", ({ ops }) => {
 		let removedAny = false;
 		let hadRemove = false;
 		for (const op of ops) {
@@ -623,8 +622,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// 那几条拓展订阅的那一行重算一遍。只动那几条、读几次时序,不碰 B 站。B 站的资料是这里自己写的,不经这条。
 	// 资料是先落盘、窗口满了才发这一声,所以当前数一定是新的;时序那一条样本可能还在记录器的队里 —— 第一条
 	// 样本没落盘之前这一行还上不来,等下一轮 tick。
-	const offProfiles = bus.on("subscription-profiles-changed", (ids) => {
-		const wanted = new Set(ids);
+	const offProfiles = bus.on("subscription-profiles-changed", ({ subscriptionIds }) => {
+		const wanted = new Set(subscriptionIds);
 		if (!enabledExtensionSubs().some((s) => wanted.has(s.id))) return;
 		void refreshExtensionEntries(wanted)
 			.then((changed) => {

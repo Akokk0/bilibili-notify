@@ -170,7 +170,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 				);
 			}
 		}),
-		opts.bus.on("subscription-changed", (ops) => {
+		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) if (op.type === "remove") gates.delete(op.sub.id);
 		}),
 	];

@@ -256,9 +256,9 @@ describe("bindSubAvatarCleanup × ctx.track", () => {
 		const writing = store.write(GONE, avatarDataUrl("jpeg", JPEG_BYTES));
 		await storageWriteGate.arrived();
 
-		bus.emit("subscription-changed", [
-			{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) },
-		]);
+		bus.emit("subscription-changed", {
+			ops: [{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) }],
+		});
 
 		expect(ctx.tracked).toHaveLength(1);
 		expect(await stillPending(ctx.settled())).toBe(true);
@@ -277,9 +277,9 @@ describe("bindSubAvatarCleanup × ctx.track", () => {
 		bindSubAvatarCleanup({ bus, avatars: store, logger, serviceCtx: ctx });
 		await store.close();
 
-		bus.emit("subscription-changed", [
-			{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) },
-		]);
+		bus.emit("subscription-changed", {
+			ops: [{ type: "remove", sub: makeExtensionSubscription({ id: KEEP }) }],
+		});
 
 		expect(ctx.tracked).toHaveLength(1);
 		await expect(ctx.tracked[0]).resolves.toBeUndefined();
@@ -291,9 +291,11 @@ describe("bindSubAvatarCleanup × ctx.track", () => {
 		const bus = createNodeMessageBus();
 		bindSubAvatarCleanup({ bus, avatars: store, logger: makeLogger(), serviceCtx: ctx });
 
-		bus.emit("subscription-changed", [
-			{ type: "remove", sub: { kind: "bilibili", id: KEEP, uid: "1", enabled: true } as never },
-		]);
+		bus.emit("subscription-changed", {
+			ops: [
+				{ type: "remove", sub: { kind: "bilibili", id: KEEP, uid: "1", enabled: true } as never },
+			],
+		});
 
 		expect(ctx.tracked).toHaveLength(0);
 	});

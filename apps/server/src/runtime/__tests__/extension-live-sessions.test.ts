@@ -323,8 +323,8 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		start();
 		liveStart();
 		settings = { ...settings, live: false, liveEnd: false };
-		bus.emit("config-changed", "globals");
-		bus.emit("subscription-changed", [{ type: "update", sub: SUB }]);
+		bus.emit("config-changed", { scope: "globals" });
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: SUB }] });
 		liveStatus();
 		expect(summary().map((c) => c.type)).toEqual(["start", "status"]);
 		expect(sessions.get(SUB.id)?.startedAt).toBe(T0);
@@ -339,7 +339,7 @@ describe("作废(决策 61)", () => {
 		liveStart({}, OTHER);
 		await vi.advanceTimersByTimeAsync(HOUR);
 		liveEnd();
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		await vi.advanceTimersByTimeAsync(HOUR);
 
 		const ends = changes.filter((c) => c.type === "end");
@@ -359,8 +359,8 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		liveStart({}, OTHER);
 		const disabled = { ...SUB, enabled: false };
-		bus.emit("subscription-changed", [{ type: "update", sub: disabled }]);
-		bus.emit("subscription-changed", [{ type: "remove", sub: OTHER }]);
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: disabled }] });
+		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: OTHER }] });
 		expect(changes.filter((c) => c.type === "end")).toEqual([
 			expect.objectContaining({ subscriptionId: SUB.id, reason: "disabled" }),
 			expect.objectContaining({ subscriptionId: OTHER.id, reason: "removed" }),
@@ -473,8 +473,10 @@ describe("总线上的场次事件(给统计)", () => {
 		liveStart({}, third);
 		vi.advanceTimersByTime(MINUTE);
 		liveStart({ startedAt: Date.now() }, third);
-		bus.emit("subscription-changed", [{ type: "update", sub: { ...OTHER, enabled: false } }]);
-		bus.emit("extension-stopped", EXT);
+		bus.emit("subscription-changed", {
+			ops: [{ type: "update", sub: { ...OTHER, enabled: false } }],
+		});
+		bus.emit("extension-stopped", { extensionId: EXT });
 		const endsSoFar = frames.filter((f) => f.phase === "end");
 		expect(endsSoFar.map((f) => [f.subscriptionId, f.phase === "end" && f.reason])).toEqual([
 			[third.id, "superseded"],
@@ -484,7 +486,7 @@ describe("总线上的场次事件(给统计)", () => {
 		]);
 
 		liveStart({}, OTHER);
-		bus.emit("subscription-changed", [{ type: "remove", sub: OTHER }]);
+		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: OTHER }] });
 		liveStart();
 		sessions.dispose();
 		const last = frames.filter((f) => f.phase === "end").slice(4);
@@ -498,7 +500,7 @@ describe("总线上的场次事件(给统计)", () => {
 		start();
 		liveStart({ startedAt: T0 - HOUR });
 		vi.advanceTimersByTime(MINUTE);
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		vi.advanceTimersByTime(MINUTE);
 		liveStatus({ startedAt: T0 - HOUR });
 		expect(frames).toEqual([
@@ -643,8 +645,10 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 		start();
 		liveStart({ totalViewers: 1 });
 		liveStart({ totalViewers: 2 }, OTHER);
-		bus.emit("subscription-changed", [{ type: "update", sub: { ...OTHER, enabled: false } }]);
-		bus.emit("extension-stopped", EXT);
+		bus.emit("subscription-changed", {
+			ops: [{ type: "update", sub: { ...OTHER, enabled: false } }],
+		});
+		bus.emit("extension-stopped", { extensionId: EXT });
 		subs.set(SUB.id, SUB);
 		liveStart({ startedAt: Date.now(), totalViewers: 3 });
 		expect(

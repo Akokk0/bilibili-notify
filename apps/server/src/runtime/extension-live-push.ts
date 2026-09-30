@@ -547,12 +547,12 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		opts.sessions.onChange(onChange),
 		// 拓展停了(决策 61):「见过」一并作废 —— 重新跑起来后靠直播状态接上,收到的第一份就是在播的照开机那样
 		// 补推(它停着的时候开的播)。它名下的场次由场次那边收掉,推送这头跟着放下。
-		opts.bus.on("extension-stopped", (extensionId) => {
+		opts.bus.on("extension-stopped", ({ extensionId }) => {
 			for (const [id, owner] of [...seen]) {
 				if (owner === extensionId) seen.delete(id);
 			}
 		}),
-		opts.bus.on("subscription-changed", (ops) => {
+		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
 				if (op.type === "remove") {
 					dropRun(op.sub.id, "订阅删了");
@@ -565,7 +565,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			}
 		}),
 		// 全局设置改了(推送频率、特性开关……):每一场对着现折的设置理一遍。
-		opts.bus.on("config-changed", (scope) => {
+		opts.bus.on("config-changed", ({ scope }) => {
 			if (scope !== "globals") return;
 			for (const id of [...runs.keys()]) reconcile(id);
 		}),

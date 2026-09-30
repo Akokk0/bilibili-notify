@@ -23,7 +23,7 @@ export interface MasterNotifierOptions {
 
 /**
  * standalone 端的 master 私聊聚合器。同时观察两个事件源：
- *   - `engine-error(source, message)`：业务 engine 报告的运行时错误
+ *   - `engine-error({ source, message })`：业务 engine 报告的运行时错误
  *   - `auth-lost()`：登录态失效（独立 sourceKey="auth"）
  *
  * 两个事件**独立订阅**，但共用一张以"逻辑 source"为 key 的节流表。Per-source
@@ -31,7 +31,7 @@ export interface MasterNotifierOptions {
  *
  * 设计取舍参考 plan §"engine-error 与 auth-lost"对齐讨论 —— 事件本身保持各自
  * 纯粹语义，master-notifier 是消费端的聚合内部实现细节，sourceKey 命名空间
- * 与 BiliEvents 事件名无耦合。
+ * 与 BusEvents 事件名无耦合。
  */
 export class MasterNotifier {
 	private readonly opts: MasterNotifierOptions;
@@ -44,7 +44,7 @@ export class MasterNotifier {
 
 	install(): void {
 		this.handles.push(
-			this.opts.bus.on("engine-error", (source, message) => {
+			this.opts.bus.on("engine-error", ({ source, message }) => {
 				// 每条 engine-error 都先落 warn(不节流) —— 主人 push 未配置 / send
 				// PrivateMsg no-op 时,日志是唯一可观测通道,丢日志=运行时错误对运维
 				// 彻底静默。DM 仍走 notify() 的 per-source 60s 节流避免刷屏。两端对称。

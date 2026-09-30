@@ -1250,7 +1250,7 @@ class NodeConfigStore implements ConfigStore {
 	// ---- read accessors -------------------------------------------------
 
 	onChange(handler: (scope: ConfigScope) => void): Disposable {
-		return this.bus.on("config-changed", handler);
+		return this.bus.on("config-changed", ({ scope }) => handler(scope));
 	}
 
 	getGlobals(): GlobalConfig {
@@ -1326,7 +1326,7 @@ class NodeConfigStore implements ConfigStore {
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
 		});
-		this.bus.emit("config-changed", "globals");
+		this.bus.emit("config-changed", { scope: "globals" });
 	}
 
 	async patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig> {
@@ -1340,7 +1340,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("globals");
 			return parsed.data;
 		});
-		this.bus.emit("config-changed", "globals");
+		this.bus.emit("config-changed", { scope: "globals" });
 		return deepClone(result);
 	}
 
@@ -1359,7 +1359,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("globals");
 			return parsed.data;
 		});
-		this.bus.emit("config-changed", "globals");
+		this.bus.emit("config-changed", { scope: "globals" });
 		return deepClone(result);
 	}
 
@@ -1374,7 +1374,7 @@ class NodeConfigStore implements ConfigStore {
 			await this.writeSubscriptions(upsertById(this.subscriptions, parsed.data));
 			this.touch("subscriptions");
 		});
-		this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "subscriptions" });
 	}
 
 	async patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription> {
@@ -1397,7 +1397,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("subscriptions");
 			return parsed.data;
 		});
-		this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "subscriptions" });
 		return deepClone(result);
 	}
 
@@ -1409,7 +1409,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("subscriptions");
 			return true;
 		});
-		if (removed) this.bus.emit("config-changed", "subscriptions");
+		if (removed) this.bus.emit("config-changed", { scope: "subscriptions" });
 		return removed;
 	}
 
@@ -1434,9 +1434,9 @@ class NodeConfigStore implements ConfigStore {
 				})
 			: false;
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "connections");
-		if (targetsChanged) this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "connections" });
+		if (targetsChanged) this.bus.emit("config-changed", { scope: "targets" });
+		if (subscriptionsChanged) this.bus.emit("config-changed", { scope: "subscriptions" });
 	}
 
 	async upsertConnection(connection: Connection): Promise<void> {
@@ -1526,9 +1526,9 @@ class NodeConfigStore implements ConfigStore {
 			});
 		}
 
-		this.bus.emit("config-changed", "connections");
-		if (targetsChanged) this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "connections" });
+		if (targetsChanged) this.bus.emit("config-changed", { scope: "targets" });
+		if (subscriptionsChanged) this.bus.emit("config-changed", { scope: "subscriptions" });
 		return true;
 	}
 
@@ -1566,8 +1566,8 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("targets");
 		});
 		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
-		this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "targets" });
+		if (subscriptionsChanged) this.bus.emit("config-changed", { scope: "subscriptions" });
 	}
 
 	async patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget> {
@@ -1596,7 +1596,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("targets");
 			return parsed.data;
 		});
-		this.bus.emit("config-changed", "targets");
+		this.bus.emit("config-changed", { scope: "targets" });
 		return deepClone(result);
 	}
 
@@ -1613,7 +1613,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("targets");
 			return next[idx] as PushTarget;
 		});
-		this.bus.emit("config-changed", "targets");
+		this.bus.emit("config-changed", { scope: "targets" });
 		return deepClone(result);
 	}
 
@@ -1642,8 +1642,8 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("subscriptions");
 			return true;
 		});
-		this.bus.emit("config-changed", "targets");
-		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		this.bus.emit("config-changed", { scope: "targets" });
+		if (subscriptionsChanged) this.bus.emit("config-changed", { scope: "subscriptions" });
 		return removed;
 	}
 
@@ -1749,7 +1749,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			return touched;
 		});
-		for (const scope of changed) this.bus.emit("config-changed", scope);
+		for (const scope of changed) this.bus.emit("config-changed", { scope });
 		return changed;
 	}
 

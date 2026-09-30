@@ -123,7 +123,7 @@ export interface TargetScope extends TargetScopeTable {
  */
 export function createTargetScope(opts: CreateTargetScopeOptions): TargetScope {
 	let table: TargetScopeTable | null = null;
-	const handle = opts.bus.on("config-changed", (scope) => {
+	const handle = opts.bus.on("config-changed", ({ scope }) => {
 		if (scope === "subscriptions" || scope === "targets" || scope === "connections") table = null;
 	});
 	const current = (): TargetScopeTable => {

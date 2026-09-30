@@ -60,7 +60,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const logger = makeSilentLogger();
 		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
-		bus.emit("engine-error", "dynamic", "服务出错");
+		bus.emit("engine-error", { source: "dynamic", message: "服务出错" });
 		await vi.runAllTimersAsync();
 
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1);
@@ -75,15 +75,15 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		const logger = makeSilentLogger();
 		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
-		bus.emit("engine-error", "dynamic", "first");
+		bus.emit("engine-error", { source: "dynamic", message: "first" });
 		await vi.runAllTimersAsync();
 		vi.advanceTimersByTime(30_000);
-		bus.emit("engine-error", "dynamic", "second");
+		bus.emit("engine-error", { source: "dynamic", message: "second" });
 		await vi.runAllTimersAsync();
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 
 		vi.advanceTimersByTime(31_000); // 累计 >60s
-		bus.emit("engine-error", "dynamic", "third");
+		bus.emit("engine-error", { source: "dynamic", message: "third" });
 		await vi.runAllTimersAsync();
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 		expect(push.sendPrivateMsg).toHaveBeenLastCalledWith("[dynamic] third");
@@ -98,8 +98,8 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
 
 		bus.emit("auth-lost");
-		bus.emit("engine-error", "dynamic", "d-err");
-		bus.emit("engine-error", "live", "l-err");
+		bus.emit("engine-error", { source: "dynamic", message: "d-err" });
+		bus.emit("engine-error", { source: "live", message: "l-err" });
 		await vi.runAllTimersAsync();
 
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(3);
@@ -122,7 +122,7 @@ describe("MasterNotifier (standalone) — auth-lost / engine-error → 私聊", 
 		notifier.dispose();
 		vi.advanceTimersByTime(60_001); // 清节流避免与 dispose 行为混淆
 		bus.emit("auth-lost");
-		bus.emit("engine-error", "dynamic", "after-dispose");
+		bus.emit("engine-error", { source: "dynamic", message: "after-dispose" });
 		await vi.runAllTimersAsync();
 
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1); // 未涨
@@ -176,8 +176,8 @@ describe("MasterNotifier — 登记进 track", () => {
 		const ctx = makeTrackingContext();
 		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx: ctx }).install();
 
-		bus.emit("engine-error", "dynamic", "first");
-		bus.emit("engine-error", "dynamic", "second"); // 60s 内同 source:吞掉
+		bus.emit("engine-error", { source: "dynamic", message: "first" });
+		bus.emit("engine-error", { source: "dynamic", message: "second" }); // 60s 内同 source:吞掉
 
 		expect(ctx.tracked).toHaveLength(2);
 		expect(push.sendPrivateMsg).toHaveBeenCalledTimes(1);

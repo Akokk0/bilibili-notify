@@ -207,7 +207,7 @@ describe("作废", () => {
 	it("拓展停了 → 它名下的全部出表,别的拓展的留着", () => {
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_A]);
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B], "kuaishou");
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_B]);
 	});
 
@@ -216,13 +216,13 @@ describe("作废", () => {
 		const a = makeExtensionSubscription({ id: SUB_A, extensionId: EXT, externalId: "sec-1" });
 		const b = makeExtensionSubscription({ id: SUB_B, extensionId: EXT, externalId: "sec-1" });
 
-		bus.emit("subscription-changed", [{ type: "update", sub: { ...a, notes: "备注" } }]);
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: { ...a, notes: "备注" } }] });
 		expect(table.get(SUB_A)).toBeDefined();
 
-		bus.emit("subscription-changed", [{ type: "update", sub: { ...a, enabled: false } }]);
+		bus.emit("subscription-changed", { ops: [{ type: "update", sub: { ...a, enabled: false } }] });
 		expect(table.get(SUB_A)).toBeUndefined();
 
-		bus.emit("subscription-changed", [{ type: "remove", sub: b }]);
+		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: b }] });
 		expect(table.list()).toEqual([]);
 	});
 });
@@ -238,7 +238,7 @@ describe("「在播表变了」", () => {
 		expect(changed).toBe(1);
 
 		// 窗口过了,下一处变化另起一个窗口。
-		bus.emit("extension-stopped", EXT);
+		bus.emit("extension-stopped", { extensionId: EXT });
 		timers.flush();
 		expect(changed).toBe(2);
 	});
@@ -269,7 +269,7 @@ describe("「在播表变了」", () => {
 		expect(table.get(SUB_A)?.updatedAt).toBe(T0 + 60_000);
 		// 不在表里的下播、停了一个名下什么都没有的拓展:什么都没变。
 		report({ kind: "liveEnd", value: { url: LIVE_URL } }, [SUB_B]);
-		bus.emit("extension-stopped", "kuaishou");
+		bus.emit("extension-stopped", { extensionId: "kuaishou" });
 		expect(timers.pending).toEqual([]);
 		expect(changed).toBe(0);
 	});

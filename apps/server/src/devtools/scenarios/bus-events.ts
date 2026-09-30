@@ -41,7 +41,7 @@ export function busEventScenarios(deps: BusEventDeps): DevScenarioDef[] {
 				typeof params.message === "string" && params.message !== ""
 					? params.message
 					: DEFAULT_MESSAGE;
-			deps.bus.emit("engine-error", source, message);
+			deps.bus.emit("engine-error", { source, message });
 			return { summary: `已发射 engine-error(${source})。` };
 		},
 	};

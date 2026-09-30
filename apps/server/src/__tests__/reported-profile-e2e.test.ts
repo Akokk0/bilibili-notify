@@ -32,10 +32,10 @@ vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 		...real,
 		createNodeMessageBus: () => {
 			const bus = real.createNodeMessageBus();
-			bus.on("subscription-profiles-changed", (ids) => {
-				heard.profiles.push([...ids].sort());
+			bus.on("subscription-profiles-changed", ({ subscriptionIds }) => {
+				heard.profiles.push([...subscriptionIds].sort());
 			});
-			bus.on("config-changed", (scope) => {
+			bus.on("config-changed", ({ scope }) => {
 				heard.config.push(scope);
 			});
 			return bus;

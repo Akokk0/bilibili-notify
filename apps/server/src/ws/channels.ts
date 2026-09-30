@@ -1,4 +1,4 @@
-import type { BiliEvents, ConfigScope, Disposable, MessageBus } from "@bilibili-notify/internal";
+import type { BusEvents, ConfigScope, Disposable, MessageBus } from "@bilibili-notify/internal";
 import { toHistoryView } from "../history/view.js";
 import type { LogChannel } from "./log-channel.js";
 import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } from "./types.js";
@@ -71,19 +71,12 @@ function buildConfigChangedEnvelope(
 	};
 }
 
-function envelope<E extends keyof BiliEvents>(
+function envelope(
 	channel: ChannelName,
-	event: E,
-	args: Parameters<BiliEvents[E]>,
+	event: keyof BusEvents,
+	data: unknown,
 ): ServerEventEnvelope {
-	// For 0-arg events (auth-lost, auth-restored, ready, subscription-changed) data is null.
-	// For single-arg events we unwrap and pass the value directly.
-	// For multi-arg events (live-state-changed: uid, status) we pass the full tuple.
-	let data: unknown;
-	if (args.length === 0) data = null;
-	else if (args.length === 1) data = args[0];
-	else data = args;
-	return { type: channel, event: event as string, ts: new Date().toISOString(), data };
+	return { type: channel, event, ts: new Date().toISOString(), data };
 }
 
 /** All bus subscriptions taken for the lifetime of the WS server. */
@@ -93,39 +86,18 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	// auth channel ----------------------------------------------------------
 	subs.push(
 		deps.bus.on("login-status-report", (snapshot) =>
-			deps.publish(envelope("auth", "login-status-report", [snapshot])),
+			deps.publish(envelope("auth", "login-status-report", snapshot)),
 		),
 	);
-	subs.push(deps.bus.on("auth-lost", () => deps.publish(envelope("auth", "auth-lost", []))));
+	subs.push(deps.bus.on("auth-lost", () => deps.publish(envelope("auth", "auth-lost", null))));
 	subs.push(
-		deps.bus.on("auth-restored", () => deps.publish(envelope("auth", "auth-restored", []))),
+		deps.bus.on("auth-restored", () => deps.publish(envelope("auth", "auth-restored", null))),
 	);
 	subs.push(
-		deps.bus.on("cookies-refreshed", (data) => {
-			// SECURITY: the bus payload is `{ cookiesJson, refreshToken }` (see
-			// packages/api → CookiesRefreshedPayload). Forwarding it verbatim to
-			// every dashboard client would leak the full session cookie to anyone
-			// connected. We strip to a minimal "refresh happened" signal — the
-			// frontend doesn't need the cookie itself, just to know the refresh
-			// occurred so it can re-fetch auth status if desired. Plan §4.2 Fix 5.
-			const safe: { refreshedAt: string; ok?: boolean } = {
-				refreshedAt: new Date().toISOString(),
-			};
-			if (
-				data &&
-				typeof data === "object" &&
-				"ok" in data &&
-				typeof (data as { ok: unknown }).ok === "boolean"
-			) {
-				safe.ok = (data as { ok: boolean }).ok;
-			}
-			deps.publish({
-				type: "auth",
-				event: "cookies-refreshed",
-				ts: new Date().toISOString(),
-				data: safe,
-			});
-		}),
+		// 总线上本来就只有刷新的时刻(cookie 是密钥,不上总线,见 `BusEvents`),原样转给面板。
+		deps.bus.on("cookies-refreshed", (refreshed) =>
+			deps.publish(envelope("auth", "cookies-refreshed", refreshed)),
+		),
 	);
 
 	// push-events channel ---------------------------------------------------
@@ -146,25 +118,25 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		);
 	}
 	subs.push(
-		deps.bus.on("live-state-changed", (uid, status) =>
+		deps.bus.on("live-state-changed", ({ uid, status }) =>
 			deps.publish(envelope("push-events", "live-state-changed", [uid, status])),
 		),
 	);
 	subs.push(
-		deps.bus.on("live-viewers-changed", (uid, viewers) =>
+		deps.bus.on("live-viewers-changed", ({ uid, viewers }) =>
 			deps.publish(envelope("push-events", "live-viewers-changed", [uid, viewers])),
 		),
 	);
 	subs.push(
-		deps.bus.on("fans-refreshed", (entries) =>
-			deps.publish(envelope("push-events", "fans-refreshed", [entries])),
+		deps.bus.on("fans-refreshed", ({ entries }) =>
+			deps.publish(envelope("push-events", "fans-refreshed", entries)),
 		),
 	);
 	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):不带载荷,面板让「正在直播」重取。在播表那头
 	// 已经按窗口合并过,这里一发一帧。
 	subs.push(
 		deps.bus.on("extension-live-changed", () =>
-			deps.publish(envelope("push-events", "extension-live-changed", [])),
+			deps.publish(envelope("push-events", "extension-live-changed", null)),
 		),
 	);
 
@@ -173,7 +145,7 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	//   1. engine-error events from the bus (any business engine reporting a failure)
 	//   2. logger.<level> calls (via the LogChannel that NodeServiceContext feeds)
 	subs.push(
-		deps.bus.on("engine-error", (source, message) =>
+		deps.bus.on("engine-error", ({ source, message }) =>
 			deps.publish(envelope("log", "engine-error", [source, message])),
 		),
 	);
@@ -191,51 +163,51 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 
 	// state channel ---------------------------------------------------------
 	subs.push(
-		deps.bus.on("config-changed", (scope) => deps.publish(buildConfigChangedEnvelope(scope))),
+		deps.bus.on("config-changed", ({ scope }) => deps.publish(buildConfigChangedEnvelope(scope))),
 	);
 	// 拓展喊「面板数据变了」:只带 id,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存。
 	subs.push(
-		deps.bus.on("extension-status-changed", (id) =>
+		deps.bus.on("extension-status-changed", ({ extensionId }) =>
 			deps.publish({
 				type: "state",
 				event: "extension-changed",
 				ts: new Date().toISOString(),
-				data: { id },
+				data: { id: extensionId },
 			}),
 		),
 	);
 	// 拓展的设置写进去了:同样只带 id(设置里有密钥,不进帧),面板按 id 失效设置与视图。
 	subs.push(
-		deps.bus.on("extension-settings-changed", (id) =>
+		deps.bus.on("extension-settings-changed", ({ extensionId }) =>
 			deps.publish({
 				type: "state",
 				event: "extension-settings-changed",
 				ts: new Date().toISOString(),
-				data: { id },
+				data: { id: extensionId },
 			}),
 		),
 	);
 	// 拓展的「上报问题」新记了几条(ADR-0019 决策 60):只带 id,面板让拓展表失效(那个框住在那一行上)。
 	// 不借 `extension-changed` —— 那一帧说的是视图变了。
 	subs.push(
-		deps.bus.on("extension-report-problems-changed", (id) =>
+		deps.bus.on("extension-report-problems-changed", ({ extensionId }) =>
 			deps.publish({
 				type: "state",
 				event: "extension-report-problems-changed",
 				ts: new Date().toISOString(),
-				data: { id },
+				data: { id: extensionId },
 			}),
 		),
 	);
 	// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
 	// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。
 	subs.push(
-		deps.bus.on("subscription-profiles-changed", (ids) =>
+		deps.bus.on("subscription-profiles-changed", ({ subscriptionIds }) =>
 			deps.publish({
 				type: "state",
 				event: "subscription-profiles-changed",
 				ts: new Date().toISOString(),
-				data: { ids },
+				data: { ids: subscriptionIds },
 			}),
 		),
 	);

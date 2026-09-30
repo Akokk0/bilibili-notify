@@ -355,9 +355,9 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 	async function recordEvents() {
 		let clock = NOW - 3 * D;
 		const now = () => new Date(clock);
-		const handlers = new Map<string, Array<(...a: unknown[]) => void>>();
+		const handlers = new Map<string, Array<(payload?: unknown) => void>>();
 		const bus = {
-			on: (ev: string, h: (...a: unknown[]) => void) => {
+			on: (ev: string, h: (payload?: unknown) => void) => {
 				handlers.set(ev, [...(handlers.get(ev) ?? []), h]);
 				return { dispose() {} };
 			},
@@ -375,8 +375,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			subscriptions: () => bilibili(uids) as never,
 		});
 		// 落盘是 fire-and-forget,每条事件之后让它写完,免得同一文件的「先读再追加」互相踩。
-		const fire = async (ev: string, ...a: unknown[]) => {
-			for (const h of handlers.get(ev) ?? []) h(...a);
+		const fire = async (ev: string, payload?: unknown) => {
+			for (const h of handlers.get(ev) ?? []) h(payload);
 			await new Promise((r) => setTimeout(r, 15));
 		};
 		const dyn = (uid: string, id: string, type: string, ts: string) =>
@@ -400,22 +400,22 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		}
 		// 203:一场完整直播,观看数有万、有裸数字、有解析不出的;下播带真实时刻。
 		clock = NOW - 2 * D;
-		await fire("live-state-changed", "203", "live", at(2, 1));
+		await fire("live-state-changed", { uid: "203", status: "live", at: at(2, 1) });
 		await dyn("203", "r1", "DYNAMIC_TYPE_LIVE_RCMD", at(2, 1, 1));
-		await fire("live-viewers-changed", "203", "8000");
-		await fire("live-viewers-changed", "203", "1.2万");
-		await fire("live-viewers-changed", "203", "9500");
-		await fire("live-viewers-changed", "203", "看不懂");
+		await fire("live-viewers-changed", { uid: "203", viewers: "8000" });
+		await fire("live-viewers-changed", { uid: "203", viewers: "1.2万" });
+		await fire("live-viewers-changed", { uid: "203", viewers: "9500" });
+		await fire("live-viewers-changed", { uid: "203", viewers: "看不懂" });
 		clock = NOW - 2 * D + 2 * H;
-		await fire("live-state-changed", "203", "idle", at(2, -1, 58));
+		await fire("live-state-changed", { uid: "203", status: "idle", at: at(2, -1, 58) });
 		// 204:开播时刻解析不出 → 回退此刻;auth-lost 之后再开一场;关服收尾。
 		clock = NOW - D;
-		await fire("live-state-changed", "204", "live", "不是时间");
-		await fire("live-viewers-changed", "204", "3万");
+		await fire("live-state-changed", { uid: "204", status: "live", at: "不是时间" });
+		await fire("live-viewers-changed", { uid: "204", viewers: "3万" });
 		await fire("auth-lost");
 		clock = NOW - 5 * H;
-		await fire("live-state-changed", "204", "live", "还是不是时间");
-		await fire("live-viewers-changed", "204", "1.5亿");
+		await fire("live-state-changed", { uid: "204", status: "live", at: "还是不是时间" });
+		await fire("live-viewers-changed", { uid: "204", viewers: "1.5亿" });
 		clock = NOW - H;
 		await recorder.closeOpenSessions();
 

@@ -146,7 +146,7 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	);
 
 	handles.push(
-		bus.on("subscription-changed", (ops) => {
+		bus.on("subscription-changed", ({ ops }) => {
 			enabledById = undefined;
 			for (const op of ops) {
 				// B 站那一支由 B 站适配删;这里只管拓展这一支。停用的文件留着。

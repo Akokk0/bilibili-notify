@@ -13,7 +13,7 @@
  */
 
 import {
-	type BiliEvents,
+	type BusEvents,
 	type Disposable,
 	type MessageBus,
 	makeEmptySubscription,
@@ -23,16 +23,16 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import { createSubscriptionStore, diff } from "../index";
 
-function makeFakeBus(): MessageBus & { events: Array<[keyof BiliEvents, unknown[]]> } {
-	const events: Array<[keyof BiliEvents, unknown[]]> = [];
-	const listeners = new Map<keyof BiliEvents, Set<(...a: unknown[]) => void>>();
+function makeFakeBus(): MessageBus & { events: Array<[keyof BusEvents, unknown]> } {
+	const events: Array<[keyof BusEvents, unknown]> = [];
+	const listeners = new Map<keyof BusEvents, Set<(payload?: unknown) => void>>();
 	return {
 		events,
-		emit(event, ...args) {
-			events.push([event, args as unknown[]]);
+		emit(event, payload?: unknown) {
+			events.push([event, payload]);
 			const set = listeners.get(event);
 			if (!set) return;
-			for (const h of [...set]) (h as (...a: unknown[]) => void)(...args);
+			for (const h of [...set]) h(payload);
 		},
 		on(event, handler): Disposable {
 			let set = listeners.get(event);
@@ -40,7 +40,7 @@ function makeFakeBus(): MessageBus & { events: Array<[keyof BiliEvents, unknown[
 				set = new Set();
 				listeners.set(event, set);
 			}
-			const wrapped = (...a: unknown[]) => (handler as (...x: unknown[]) => void)(...a);
+			const wrapped = (payload?: unknown) => (handler as (payload?: unknown) => void)(payload);
 			set.add(wrapped);
 			return { dispose: () => set?.delete(wrapped) };
 		},
@@ -68,7 +68,7 @@ function makeExtSub(externalId: string, id = `ext-${externalId}`): Subscription 
 function lastOps(bus: ReturnType<typeof makeFakeBus>): SubscriptionOp[] | undefined {
 	const last = bus.events.at(-1);
 	if (last?.[0] !== "subscription-changed") return undefined;
-	return last[1][0] as SubscriptionOp[];
+	return (last[1] as { ops: SubscriptionOp[] }).ops;
 }
 
 describe("SubscriptionStore — CRUD + diff", () => {

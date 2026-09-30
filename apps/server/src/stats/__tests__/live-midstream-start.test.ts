@@ -30,16 +30,16 @@ const subscriptions = () => [{ kind: "bilibili", id: SUB_ID, uid: "1" }] as neve
 describe("服务器在 UP 已开播时启动", () => {
 	let dir: string;
 	const logger = { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } as never;
-	const handlers = new Map<string, (...a: never[]) => void>();
+	const handlers = new Map<string, (payload?: never) => void>();
 	const bus = {
-		on: (ev: string, h: (...a: never[]) => void) => {
+		on: (ev: string, h: (payload?: never) => void) => {
 			handlers.set(ev, h);
 			return { dispose() {} };
 		},
 	} as never;
 	/** 直接触发 recorder 注册的 handler,替代真实 bus。 */
-	const emit = (ev: string, ...args: unknown[]) =>
-		(handlers.get(ev) as ((...a: unknown[]) => void) | undefined)?.(...args);
+	const emit = (ev: string, payload?: unknown) =>
+		(handlers.get(ev) as ((payload?: unknown) => void) | undefined)?.(payload);
 
 	beforeEach(async () => {
 		handlers.clear();
@@ -61,7 +61,7 @@ describe("服务器在 UP 已开播时启动", () => {
 			now: () => BOOT,
 			subscriptions,
 		});
-		emit("live-state-changed", "1", "live", REAL_START);
+		emit("live-state-changed", { uid: "1", status: "live", at: REAL_START });
 		// 落盘是 fire-and-forget,等 recorder 把交出去的写入落完。
 		await recorder.flush();
 		return { store, recorder };
@@ -91,7 +91,7 @@ describe("服务器在 UP 已开播时启动", () => {
 
 	it("下播后定格在真实总时长,不再随时间变", async () => {
 		const { store, recorder } = await bootWhileLive();
-		emit("live-state-changed", "1", "idle");
+		emit("live-state-changed", { uid: "1", status: "idle" });
 		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		// 下播帧用的是 recorder 的注入时钟(BOOT),所以这一场是 20:00→22:00 共 2h。
@@ -104,7 +104,7 @@ describe("服务器在 UP 已开播时启动", () => {
 	it("直播中再次重启服务器 → 仍是一场,时长不翻倍", async () => {
 		// 重启后从 B 站拿到的还是同一个 live_time,于是又发了一条开播事件。
 		const { store, recorder } = await bootWhileLive();
-		emit("live-state-changed", "1", "live", REAL_START);
+		emit("live-state-changed", { uid: "1", status: "live", at: REAL_START });
 		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		const got = summarizeLiveSessions(sessions, { now: hoursLater(1), isLive: true });

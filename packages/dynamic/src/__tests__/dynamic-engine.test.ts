@@ -112,18 +112,23 @@ function makeServiceCtx(): {
 	return { ctx, disposers, logs };
 }
 
+/** `engine-error` 的载荷是 `{ source, message }`;这里取 message 好按文案筛。 */
+function engineErrorMessage(e: { payload: unknown }): string {
+	return String((e.payload as { message?: unknown } | undefined)?.message ?? "");
+}
+
 function makeBus(): {
 	bus: MessageBus;
-	emits: Array<{ event: string; args: unknown[] }>;
-	trigger: (event: string, ...args: unknown[]) => void;
+	emits: Array<{ event: string; payload: unknown }>;
+	trigger: (event: string, payload?: unknown) => void;
 } {
-	const emits: Array<{ event: string; args: unknown[] }> = [];
-	const handlers = new Map<string, Array<(...a: unknown[]) => void>>();
+	const emits: Array<{ event: string; payload: unknown }> = [];
+	const handlers = new Map<string, Array<(payload?: unknown) => void>>();
 	const bus = {
-		emit: (event: string, ...args: unknown[]) => {
-			emits.push({ event, args });
+		emit: (event: string, payload?: unknown) => {
+			emits.push({ event, payload });
 		},
-		on: (event: string, handler: (...a: unknown[]) => void) => {
+		on: (event: string, handler: (payload?: unknown) => void) => {
 			const arr = handlers.get(event) ?? [];
 			arr.push(handler);
 			handlers.set(event, arr);
@@ -133,8 +138,8 @@ function makeBus(): {
 	return {
 		bus,
 		emits,
-		trigger: (event, ...a) => {
-			for (const h of handlers.get(event) ?? []) h(...a);
+		trigger: (event, payload) => {
+			for (const h of handlers.get(event) ?? []) h(payload);
 		},
 	};
 }
@@ -222,8 +227,8 @@ interface EngineBag {
 		sendPrivateMsg: ReturnType<typeof vi.fn>;
 		sendErrorMsg: ReturnType<typeof vi.fn>;
 	};
-	emits: Array<{ event: string; args: unknown[] }>;
-	trigger: (event: string, ...args: unknown[]) => void;
+	emits: Array<{ event: string; payload: unknown }>;
+	trigger: (event: string, payload?: unknown) => void;
 	disposers: Array<() => void | Promise<void>>;
 	generateDynamicCard: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
@@ -325,7 +330,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		expect(b.emits).toContainEqual(
 			expect.objectContaining({
 				event: "engine-error",
-				args: expect.arrayContaining(["账号未登录"]),
+				payload: expect.objectContaining({ message: "账号未登录" }),
 			}),
 		);
 	});
@@ -339,7 +344,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		expect(b.emits).toContainEqual(
 			expect.objectContaining({
 				event: "engine-error",
-				args: expect.arrayContaining(["账号被风控"]),
+				payload: expect.objectContaining({ message: "账号被风控" }),
 			}),
 		);
 	});
@@ -349,9 +354,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		const ecCount = () =>
 			b.emits.filter(
-				(e) =>
-					e.event === "engine-error" &&
-					(e.args as unknown[]).some((a) => String(a).includes("账号被风控")),
+				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号被风控"),
 			).length;
 		// 数的是**风控告警**这一种私聊,不是私聊总数 —— 恢复时还会来一条「已恢复」
 		// (见「故障恢复通知」),拿总数计这条边沿会被那条报喜带偏。
@@ -383,9 +386,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		const riskEc = () =>
 			b.emits.filter(
-				(e) =>
-					e.event === "engine-error" &&
-					(e.args as unknown[]).some((a) => String(a).includes("账号被风控")),
+				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号被风控"),
 			).length;
 
 		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
@@ -492,9 +493,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 		expect(
 			b.emits.filter(
-				(e) =>
-					e.event === "engine-error" &&
-					(e.args as unknown[]).some((a) => String(a).includes("4101132")),
+				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("4101132"),
 			),
 		).toHaveLength(1);
 	});
@@ -580,9 +579,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 	const oneSub = { subs: { "1": { uid: "1", uname: "UP", dynamic: true } } } as const;
 	const authEc = (b: ReturnType<typeof makeEngine>) =>
 		b.emits.filter(
-			(e) =>
-				e.event === "engine-error" &&
-				(e.args as unknown[]).some((a) => String(a).includes("账号未登录")),
+			(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号未登录"),
 		).length;
 
 	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
@@ -1591,7 +1588,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 		await detect(b.engine);
 		const detected = b.emits.filter((e) => e.event === "dynamic-detected");
 		expect(detected).toHaveLength(1);
-		expect(detected[0]?.args[0]).toMatchObject({ type: "DYNAMIC_TYPE_LIVE_RCMD" });
+		expect(detected[0]?.payload).toMatchObject({ type: "DYNAMIC_TYPE_LIVE_RCMD" });
 	});
 });
 
@@ -2117,7 +2114,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(detected(b)).toHaveLength(1);
-		expect(detected(b)[0]?.args[0]).toEqual({
+		expect(detected(b)[0]?.payload).toEqual({
 			uid: "1",
 			id: "id-1",
 			type: "DYNAMIC_TYPE_AV",

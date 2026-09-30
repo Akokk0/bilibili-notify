@@ -84,11 +84,6 @@ function tryConnect(
 /** Loose envelope type for inbound WS frames; same shape as ws-server.test.ts. */
 type WsMsg = Record<string, unknown>;
 
-/** Typed accessor for the WS frame's `data` envelope; tests assert on the runtime shape. */
-function dataOf(m: WsMsg): Record<string, unknown> {
-	return (m.data ?? {}) as Record<string, unknown>;
-}
-
 function collectFrames(ws: WebSocket): {
 	waitFor: (pred: (msg: WsMsg) => boolean, timeoutMs?: number) => Promise<WsMsg>;
 } {
@@ -384,10 +379,10 @@ describe("WS upgrade gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite — Fix 5: cookies-refreshed payload redaction
+// Suite — Fix 5: cookies-refreshed carries no cookie material
 // ---------------------------------------------------------------------------
 
-describe("WS cookies-refreshed redaction", () => {
+describe("WS cookies-refreshed frame", () => {
 	let dataDir: string;
 	let bus: MessageBus;
 	let store: ConfigStore;
@@ -421,7 +416,10 @@ describe("WS cookies-refreshed redaction", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("strips cookiesJson + refreshToken from the WS envelope", async () => {
+	// The cookie itself never rides the bus (the refresh callback in auth/index.ts emits only
+	// `{ refreshedAt }`, pinned by auth/__tests__/cookies-refreshed-payload.test.ts), so the
+	// frame is exactly that one field — nothing to strip on the way to the dashboard.
+	it("puts only { refreshedAt } on the WS envelope", async () => {
 		const result = await tryConnect(`ws://127.0.0.1:${port}/ws`);
 		expect(result.outcome).toBe("open");
 		const ws = result.ws as WebSocket;
@@ -429,53 +427,14 @@ describe("WS cookies-refreshed redaction", () => {
 		ws.send(JSON.stringify({ type: "subscribe", channels: ["auth"] }));
 		await c.waitFor((m) => m?.type === "subscribed");
 
-		// Mirror of CookiesRefreshedPayload from packages/api: this is what the
-		// real api callback emits onto the bus today.
-		const sensitivePayload = {
-			cookiesJson:
-				'[{"key":"SESSDATA","value":"super-secret-session-token-do-not-leak"},{"key":"bili_jct","value":"csrf-token-also-secret"}]',
-			refreshToken: "refresh-token-also-secret",
-		};
-		bus.emit("cookies-refreshed", sensitivePayload);
+		bus.emit("cookies-refreshed", { refreshedAt: "2026-05-16T00:00:00.000Z" });
 
 		const evt = await c.waitFor((m) => m?.type === "auth" && m?.event === "cookies-refreshed");
-
-		// Envelope's `data` must not contain any cookie/token fields.
+		expect(evt.data).toEqual({ refreshedAt: "2026-05-16T00:00:00.000Z" });
 		const dataStr = JSON.stringify(evt.data);
-		expect(dataStr).not.toContain("super-secret-session-token-do-not-leak");
-		expect(dataStr).not.toContain("csrf-token-also-secret");
-		expect(dataStr).not.toContain("refresh-token-also-secret");
 		expect(dataStr).not.toContain("cookiesJson");
 		expect(dataStr).not.toContain("refreshToken");
-		expect(dataStr).not.toContain("SESSDATA");
-		expect(dataStr).not.toContain("bili_jct");
 
-		// Positive shape — minimal "refresh happened" signal.
-		expect(evt.data).toHaveProperty("refreshedAt");
-		expect(typeof dataOf(evt).refreshedAt).toBe("string");
-
-		ws.close();
-	});
-
-	it("preserves the optional ok boolean if upstream sets it", async () => {
-		const result = await tryConnect(`ws://127.0.0.1:${port}/ws`);
-		expect(result.outcome).toBe("open");
-		const ws = result.ws as WebSocket;
-		const c = collectFrames(ws);
-		ws.send(JSON.stringify({ type: "subscribe", channels: ["auth"] }));
-		await c.waitFor((m) => m?.type === "subscribed");
-
-		bus.emit("cookies-refreshed", {
-			cookiesJson: "[]",
-			refreshToken: "x",
-			ok: true,
-		});
-
-		const evt = await c.waitFor((m) => m?.type === "auth" && m?.event === "cookies-refreshed");
-		expect(dataOf(evt).ok).toBe(true);
-		expect(dataOf(evt).refreshedAt).toBeDefined();
-		expect(JSON.stringify(evt.data)).not.toContain("refreshToken");
-		expect(JSON.stringify(evt.data)).not.toContain("cookiesJson");
 		ws.close();
 	});
 });

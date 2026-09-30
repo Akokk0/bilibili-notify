@@ -14,7 +14,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type BiliEvents,
+	type BusEvents,
 	type Disposable,
 	type MessageBus,
 	makeEmptySubscription,
@@ -25,7 +25,7 @@ import type { BootstrapConfig } from "../schema.js";
 import { type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
-	const listeners = new Map<keyof BiliEvents, Set<(...a: unknown[]) => void>>();
+	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
 	return {
 		emit(event, ...args) {
 			for (const h of [...(listeners.get(event) ?? [])]) (h as (...a: unknown[]) => void)(...args);

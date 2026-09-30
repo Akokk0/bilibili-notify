@@ -270,7 +270,7 @@ export function bindSubAvatarCleanup(opts: {
 	/** 删头像是发出去就不等的写:登记进 track,关停等它删完才让头像仓关门。 */
 	serviceCtx: Pick<ServiceContext, "track">;
 }): Disposable {
-	return opts.bus.on("subscription-changed", (ops) => {
+	return opts.bus.on("subscription-changed", ({ ops }) => {
 		for (const op of ops) {
 			if (op.type !== "remove" || !isExtensionSubscription(op.sub)) continue;
 			const id = op.sub.id;

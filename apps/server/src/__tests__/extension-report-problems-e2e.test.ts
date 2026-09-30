@@ -28,11 +28,11 @@ vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 		...real,
 		createNodeMessageBus: () => {
 			const bus = real.createNodeMessageBus();
-			bus.on("extension-report-problems-changed", (id) => {
-				heard.problems.push(id);
+			bus.on("extension-report-problems-changed", ({ extensionId }) => {
+				heard.problems.push(extensionId);
 			});
-			bus.on("extension-status-changed", (id) => {
-				heard.status.push(id);
+			bus.on("extension-status-changed", ({ extensionId }) => {
+				heard.status.push(extensionId);
 			});
 			return bus;
 		},

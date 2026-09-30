@@ -83,14 +83,14 @@ function makeFakeServiceCtx() {
 
 interface RecordedEvent {
 	event: string;
-	args: unknown[];
+	payload: unknown;
 }
 
 function makeFakeBus(): { bus: MessageBus; events: RecordedEvent[] } {
 	const events: RecordedEvent[] = [];
 	const bus: MessageBus = {
-		emit(event, ...args) {
-			events.push({ event: event as string, args: args as unknown[] });
+		emit(event, payload?: unknown) {
+			events.push({ event, payload });
 		},
 		on() {
 			return { dispose: vi.fn() };
@@ -145,7 +145,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 		const reports = eventsOfKind(h.events, "login-status-report");
 		expect(reports).toHaveLength(1);
-		expect(reports[0].args[0]).toMatchObject({ status: BiliLoginStatus.LOGGED_IN });
+		expect(reports[0].payload).toMatchObject({ status: BiliLoginStatus.LOGGED_IN });
 	});
 
 	it("code === -101 transitions to NOT_LOGIN and emits auth-lost only when previously LOGGED_IN", async () => {
@@ -209,7 +209,7 @@ describe("LoginFlow.transition() dedupe", () => {
 
 		const reports = eventsOfKind(h.events, "login-status-report");
 		expect(reports).toHaveLength(1);
-		expect(reports[0].args[0]).toMatchObject({ status: BiliLoginStatus.NOT_LOGIN });
+		expect(reports[0].payload).toMatchObject({ status: BiliLoginStatus.NOT_LOGIN });
 	});
 });
 

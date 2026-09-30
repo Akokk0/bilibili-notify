@@ -486,8 +486,8 @@ afterEach(() => {
 //
 // packages/live 侧钉住了 RoomSession **发出** startedAt,recorder 侧钉住了它**消费**
 // startedAt,live-midstream-start 还把 recorder→store→aggregate 三层串起来测了。
-// 唯独把两头缝上的这一行没有任何测试:它是 adapter 里的一句 lambda,少写第三个参数
-// 依然类型正确(签名上 startedAt 是可选的)、构建全绿、2483 条测试全过,而整个特性
+// 唯独把两头缝上的这一行没有任何测试:它是 adapter 里的一句 lambda,少写 `at`
+// 依然类型正确(载荷上 at 是可选的)、构建全绿、2483 条测试全过,而整个特性
 // 静默退回「我们发现的时刻」—— 统计侧按 startedAt 认场次,同一场随即被记成两条。
 // ---------------------------------------------------------------------------
 
@@ -496,7 +496,7 @@ describe("createEngines — live-state-changed 接线", () => {
 		const c = setup();
 		active = c;
 		const seen: unknown[][] = [];
-		c.bus.on("live-state-changed", (uid, status, startedAt) => {
+		c.bus.on("live-state-changed", ({ uid, status, at: startedAt }) => {
 			seen.push([uid, status, startedAt]);
 		});
 		// 直接调 adapter 交给引擎的那个回调 —— 被测的就是这句 lambda 本身。
@@ -508,7 +508,7 @@ describe("createEngines — live-state-changed 接线", () => {
 		const c = setup();
 		active = c;
 		const seen: unknown[][] = [];
-		c.bus.on("live-state-changed", (uid, status, startedAt) => {
+		c.bus.on("live-state-changed", ({ uid, status, at: startedAt }) => {
 			seen.push([uid, status, startedAt]);
 		});
 		H.live[0].opts.emitLiveState("u1", "idle", undefined);
@@ -816,7 +816,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			g.app.dynamicCron = "*/9 * * * *";
 			g.app.healthCheckMinutes = 45;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(45 * 60_000);
@@ -838,7 +838,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			// 必须与默认值不同 —— DEFAULT_DYNAMIC_CRON 现在就是 "30 */2 * * * *"。
 			g.app.dynamicCron = "*/9 * * * *";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 本身要生效
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:185)
@@ -856,7 +856,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.imageGroup.enable = !g.defaults.imageGroup.enable;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
 		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
@@ -869,7 +869,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.app.userAgent = "Mozilla/5.0 (custom)";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(2);
 		expect(c.api.setUserAgent).toHaveBeenLastCalledWith("Mozilla/5.0 (custom)");
@@ -882,7 +882,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.app.logLevel = "debug";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
@@ -899,7 +899,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.app.dynamicCron = "30 */2 * * * *";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
 	});
@@ -919,7 +919,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			g.defaults.ai.activeProfile = ai.activeProfile;
 			g.defaults.ai.providers = ai.providers;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(H.ai).toHaveLength(1); // 实例确实建起来了
 		expect(c.runtime.commentary).not.toBeNull(); // 读得到的必须是同一个
@@ -935,7 +935,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.ai.providers = {};
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.runtime.commentary).toBeNull();
 	});
@@ -946,7 +946,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.app.dynamicCron = "*/7 * * * *";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(cfg.dynamicCron).toBe("*/7 * * * *");
 	});
@@ -961,7 +961,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			g.defaults.templates.dynamic = "🔔 {name} {url}";
 			g.defaults.templates.dynamicVideo = "🎬 {name} {url}";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
 		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(cfg.dynamicTemplate).toBe("🔔 {name} {url}");
@@ -977,7 +977,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardStyle.liveCoverImages = ["a", "b"];
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(liveCfg.defaultLiveCoverImages).toEqual(["a", "b"]);
 	});
@@ -996,7 +996,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.templates.guardBuy = guardBuy;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(liveCfg.customGuardBuy).toEqual(guardBuy);
 	});
@@ -1007,7 +1007,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.ai.persona.name = "恶魔兔";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		// boot 各 1 次;改 AI 人设不应再扇出到 app section。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
@@ -1023,7 +1023,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.ai.persona.name = "恶魔兔";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
@@ -1038,7 +1038,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardSkin = "skin-abc";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
@@ -1054,7 +1054,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("no-op:globals 未变的 config-changed 不热推任何子系统", () => {
 		const c = setup();
 		active = c;
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
@@ -1066,7 +1066,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("targets scope:仅 push.setMaster,早退不触发 dynamic.updateConfig", () => {
 		const c = setup();
 		active = c;
-		c.bus.emit("config-changed", "targets");
+		c.bus.emit("config-changed", { scope: "targets" });
 		expect(H.push[0].setMaster).toHaveBeenCalledTimes(1);
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
@@ -1074,8 +1074,8 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("subscriptions / secrets scope:不 setMaster 不 updateConfig", () => {
 		const c = setup();
 		active = c;
-		c.bus.emit("config-changed", "subscriptions");
-		c.bus.emit("config-changed", "secrets");
+		c.bus.emit("config-changed", { scope: "subscriptions" });
+		c.bus.emit("config-changed", { scope: "secrets" });
 		expect(H.push[0].setMaster).not.toHaveBeenCalled();
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
@@ -1092,7 +1092,7 @@ describe("createEngines — AI 热重载三态", () => {
 			g.defaults.ai.activeProfile = "deepseek";
 			g.defaults.ai.providers = aiGlobals().defaults.ai.providers;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai).toHaveLength(1);
 		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
 		expect(H.dynamic[0].setAi).toHaveBeenCalledWith(H.ai[0]);
@@ -1107,7 +1107,7 @@ describe("createEngines — AI 热重载三态", () => {
 			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
 			if (p) p.apiKey = "";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.dynamic[0].setAi).toHaveBeenCalledWith(undefined);
 		expect(H.live[0].setCommentary).toHaveBeenCalledWith(null);
 		// 不应构造新实例。
@@ -1121,7 +1121,7 @@ describe("createEngines — AI 热重载三态", () => {
 			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
 			if (p) p.model = "gpt-4o";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai).toHaveLength(1);
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
 	});
@@ -1134,7 +1134,7 @@ describe("createEngines — image 配色热更", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardStyle.liveCoverImages = ["cover-1"];
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.image[0].updateConfig).toHaveBeenCalled();
 		// cardStyle 变更不在 app section → 不扇出重设 UA(仅 boot 1 次)。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
@@ -1158,7 +1158,7 @@ describe("createEngines — image 配色热更", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardSkinKnobs = { default: { font: "Noto Sans CJK SC" } };
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(last).toMatchObject({
 			cardSkinKnobs: { default: { font: "Noto Sans CJK SC" } },
@@ -1170,7 +1170,7 @@ describe("createEngines — 订阅 / 鉴权事件转译", () => {
 	it("subscription-changed:dynamic.applyOps + live.applyOps", () => {
 		const c = setup();
 		active = c;
-		c.bus.emit("subscription-changed", []);
+		c.bus.emit("subscription-changed", { ops: [] });
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
 		expect(H.live[0].applyOps).toHaveBeenCalledTimes(1);
 	});
@@ -1198,7 +1198,7 @@ describe("createEngines — dispose", () => {
 		expect(live.stop).toHaveBeenCalledTimes(1);
 		expect(push.stop).toHaveBeenCalledTimes(1);
 		// bus handle 已解绑:dispose 后再发 config-changed 不应再 updateConfig。
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(dyn.updateConfig).not.toHaveBeenCalled();
 	});
 
@@ -1285,7 +1285,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("100", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "100" }]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
@@ -1297,7 +1297,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("200", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
@@ -1319,12 +1319,12 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.cardSkinKnobs = { default: { "glass-opacity": 0.4 } };
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps[0].changes[0].cardSkinKnobs).toEqual({ default: { "glass-opacity": 0.4 } });
 
 		delete sub.overrides.cardSkinKnobs;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 		const cleared = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
 		expect(Object.hasOwn(cleared, "cardSkinKnobs")).toBe(true);
 		expect(cleared.cardSkinKnobs).toBeUndefined();
@@ -1334,7 +1334,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("300", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
@@ -1348,7 +1348,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.templates = { dynamic: "🔔 {name} {url}", dynamicVideo: "🎬 {name} {url}" };
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
@@ -1367,7 +1367,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.cardSkin = "k9zzz-0badf00d";
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 
 		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
 		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
@@ -1382,7 +1382,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardSkin = "k1aaa-11111111";
 		});
-		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
@@ -1395,7 +1395,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("700", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
 
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
@@ -1408,7 +1408,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("400", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", [{ type: "remove", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "remove", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
@@ -1418,11 +1418,13 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const ext = makeExtensionSubscription({ externalId: "400" });
 		const c = setup({ subs: [ext] });
 		active = c;
-		c.bus.emit("subscription-changed", [
-			{ type: "add", sub: ext },
-			{ type: "update", sub: ext },
-			{ type: "remove", sub: ext },
-		]);
+		c.bus.emit("subscription-changed", {
+			ops: [
+				{ type: "add", sub: ext },
+				{ type: "update", sub: ext },
+				{ type: "remove", sub: ext },
+			],
+		});
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
@@ -1436,18 +1438,18 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 
 		// disable
 		sub.enabled = false;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 		expect(liveOpsOf()).toEqual([{ type: "delete", uid: "500" }]);
 
 		// re-enable → 完整 update(LiveEngine.applyOps 见无 listener 走 lookupFullSub 重建)
 		sub.enabled = true;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 		expect(liveOpsOf()).toHaveLength(1);
 		expect(liveOpsOf()[0].type).toBe("update");
 
 		// disable again
 		sub.enabled = false;
-		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
 		expect(liveOpsOf()).toEqual([{ type: "delete", uid: "500" }]);
 	});
 });
@@ -1554,7 +1556,7 @@ describe("createEngines — 消息版式", () => {
 			expect(block).toBeDefined();
 			if (block) block.visible = false;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
@@ -1631,7 +1633,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 			};
 			g.defaults.cardSkin = "skin-link";
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.runtime.linkParsing()).toEqual({
 			enabled: true,
@@ -1685,23 +1687,23 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				groups: { [TARGET]: { parse: true } },
 			};
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(c.runtime.linkPolicyFor(KEY)).toEqual({ parse: true, form: "image" });
 		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(false);
 
 		// 目标停用 → 那群不再解析;只发 targets 的变更,不发 globals。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: false } as PushTarget]);
-		c.bus.emit("config-changed", "targets");
+		c.bus.emit("config-changed", { scope: "targets" });
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 
 		// 目标恢复、但连接停用 → 同样不算;只发 connections 的变更。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
-		c.bus.emit("config-changed", "targets");
+		c.bus.emit("config-changed", { scope: "targets" });
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
 		c.configStore._setConnections([
 			{ ...c.configStore.getConnections()[0], enabled: false } as any,
 		]);
-		c.bus.emit("config-changed", "connections");
+		c.bus.emit("config-changed", { scope: "connections" });
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 	});
 
@@ -1713,7 +1715,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } } as any;
 		});
-		c.bus.emit("config-changed", "globals");
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(c.runtime.linkCardPresentation().colors).toMatchObject({
 			liveCoverImages: ["dyn.png"],
 		});

@@ -90,12 +90,12 @@ export interface RoomContextOptions {
 	emitEngineError: (message: string) => void;
 	/**
 	 * 推送 per-UID 直播状态变化(`onLiveStart` / `onLiveEnd` / `bootstrap 已开播` /
-	 * `stopMonitoring 时挂掉的活房间`)。宿主实现:`(uid, status) => bus.emit("live-state-changed", uid, status)`。
+	 * `stopMonitoring 时挂掉的活房间`)。宿主实现:`(uid, status) => bus.emit("live-state-changed", { uid, status })`。
 	 */
 	emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
 	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧节流后转发)。宿主实现:
-	 * `(uid, viewers) => bus.emit("live-viewers-changed", uid, viewers)`。room-session 在调用前
+	 * `(uid, viewers) => bus.emit("live-viewers-changed", { uid, viewers })`。room-session 在调用前
 	 * 做 per-UID 2s throttle,所以这里收到的频率已经稀疏(每个直播间最多每 2s 一次)。
 	 */
 	emitViewers: (uid: string, viewers: string) => void;

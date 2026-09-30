@@ -70,8 +70,8 @@ beforeEach(async () => {
 	avatars = createSubAvatarStore({ dataDir, logger: makeLogger() });
 	alive = [A, B];
 	announced = [];
-	bus.on("subscription-profiles-changed", (ids) => {
-		announced.push([...ids].sort());
+	bus.on("subscription-profiles-changed", ({ subscriptionIds }) => {
+		announced.push([...subscriptionIds].sort());
 	});
 });
 

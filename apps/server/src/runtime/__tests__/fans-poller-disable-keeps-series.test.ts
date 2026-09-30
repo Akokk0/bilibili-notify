@@ -66,7 +66,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	const runtime = new Map<string, SubRuntime>();
 	const bus = createNodeMessageBus();
 	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", (entries) => {
+	bus.on("fans-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	const getRelationStat = vi.fn(async (uid: string) => ({
@@ -157,7 +157,9 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 
 		// 删掉 a、立刻又订了同一个 uid(新订阅 id c)。
 		p.setSubs([biliSub("c", "1")]);
-		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
+		p.bus.emit("subscription-changed", {
+			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+		});
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		release();
 		await inFlight;
@@ -214,7 +216,9 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 
 		// 事件到的时候订阅仓已经是删完的样子(config-changed → replaceAll → subscription-changed)。
 		p.setSubs([biliSub("b", "2")]);
-		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
+		p.bus.emit("subscription-changed", {
+			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+		});
 
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		expect(p.lastSnapshotUids()).toEqual(["2"]);
@@ -239,7 +243,9 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		await vi.waitFor(() => expect(p.getRelationStat).toHaveBeenCalledTimes(1));
 
 		p.setSubs([]);
-		p.bus.emit("subscription-changed", [{ type: "remove", sub: biliSub("a", "1") as never }]);
+		p.bus.emit("subscription-changed", {
+			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+		});
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 
 		release();

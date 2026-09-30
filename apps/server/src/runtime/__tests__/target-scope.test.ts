@@ -274,7 +274,7 @@ describe("createTargetScope — 什么时候重折", () => {
 	it("config-changed:targets → 整张作废,答案跟着新配置变", () => {
 		expect(scope.targetEnabled(T_OK)).toBe(true);
 		targets = [target(T_OK, CONN_ON, false)];
-		bus.emit("config-changed", "targets");
+		bus.emit("config-changed", { scope: "targets" });
 		expect(scope.targetEnabled(T_OK)).toBe(false);
 		expect(getTargets).toHaveBeenCalledTimes(2);
 	});
@@ -282,20 +282,20 @@ describe("createTargetScope — 什么时候重折", () => {
 	it("config-changed:subscriptions → 路由跟着变", () => {
 		expect(scope.routedTargets(S1, "dynamic")).toEqual([T_OK]);
 		subscriptions = [sub(S1, "u1", { dynamic: [] })];
-		bus.emit("config-changed", "subscriptions");
+		bus.emit("config-changed", { scope: "subscriptions" });
 		expect(scope.routedTargets(S1, "dynamic")).toEqual([]);
 	});
 
 	it("config-changed:connections → 连接停用立刻算数", () => {
 		expect(scope.targetEnabled(T_OK)).toBe(true);
 		targets = [target(T_OK, CONN_OFF)];
-		bus.emit("config-changed", "connections");
+		bus.emit("config-changed", { scope: "connections" });
 		expect(scope.targetEnabled(T_OK)).toBe(false);
 	});
 
 	it("config-changed:globals 不作废这张表(改个 AI 人设也重折就是白付那 600 份副本)", () => {
 		scope.targetEnabled(T_OK);
-		bus.emit("config-changed", "globals");
+		bus.emit("config-changed", { scope: "globals" });
 		scope.targetEnabled(T_OK);
 		expect(getTargets).toHaveBeenCalledTimes(1);
 	});
@@ -303,7 +303,7 @@ describe("createTargetScope — 什么时候重折", () => {
 	it("dispose 之后不再跟着 config-changed 走", () => {
 		scope.targetEnabled(T_OK);
 		scope.dispose();
-		bus.emit("config-changed", "targets");
+		bus.emit("config-changed", { scope: "targets" });
 		scope.targetEnabled(T_OK);
 		expect(getTargets).toHaveBeenCalledTimes(1);
 	});

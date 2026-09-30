@@ -322,17 +322,21 @@ describe("直播场次(决策 6)", () => {
 		const world = boot();
 		report(world.bus, liveStart({ startedAt: T0 }));
 		clock = T0 + 10 * MINUTE;
-		world.bus.emit("extension-stopped", EXT);
+		world.bus.emit("extension-stopped", { extensionId: EXT });
 		// 拓展又跑起来、又开一场;这回是订阅停用了。
 		clock = T0 + 20 * MINUTE;
 		report(world.bus, liveStart({ startedAt: T0 + 20 * MINUTE }));
 		clock = T0 + 30 * MINUTE;
 		const disabled = { ...SUB, enabled: false };
 		subs = [disabled, OFF];
-		world.bus.emit("subscription-changed", [{ type: "update", sub: disabled, prev: SUB }] as never);
+		world.bus.emit("subscription-changed", {
+			ops: [{ type: "update", sub: disabled, prev: SUB }] as never,
+		});
 		// 再启用、再开一场;这回是关机。
 		subs = [SUB, OFF];
-		world.bus.emit("subscription-changed", [{ type: "update", sub: SUB, prev: disabled }] as never);
+		world.bus.emit("subscription-changed", {
+			ops: [{ type: "update", sub: SUB, prev: disabled }] as never,
+		});
 		clock = T0 + 40 * MINUTE;
 		report(world.bus, liveStart({ startedAt: T0 + 40 * MINUTE }));
 		clock = T0 + 50 * MINUTE;
@@ -450,7 +454,7 @@ describe("关机(决策 6):开着的一场恰好一帧下播,关机返回时已�
 		report(world.bus, liveStart({ startedAt: T0, totalViewers: 321 }));
 		clock = T0 + 5 * MINUTE;
 		// index.ts 的关机次序:拓展先收(它那面 ctx 收摊时发 extension-stopped),再拆引擎,最后 runtime 的钩子。
-		world.bus.emit("extension-stopped", EXT);
+		world.bus.emit("extension-stopped", { extensionId: EXT });
 		// 记录器收尾那一步晚一点到 —— 那一帧得是拓展停下那一刻的,而且只有它一帧。
 		clock = T0 + 6 * MINUTE;
 		await world.shutdown();
@@ -621,7 +625,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		const world = boot();
 		await fillAll(world);
 		subs = [OFF];
-		world.bus.emit("subscription-changed", [{ type: "remove", sub: SUB }]);
+		world.bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB }] });
 		await world.recorder.flush();
 		expect(await dynRows()).toBeUndefined();
 		expect(await liveFrames()).toBeUndefined();
@@ -638,7 +642,9 @@ describe("删订阅 / 停用(决策 10)", () => {
 		clock = T0 + 7 * MINUTE;
 		const disabled = { ...SUB, enabled: false };
 		subs = [disabled, OFF];
-		world.bus.emit("subscription-changed", [{ type: "update", sub: disabled, prev: SUB }] as never);
+		world.bus.emit("subscription-changed", {
+			ops: [{ type: "update", sub: disabled, prev: SUB }] as never,
+		});
 		await world.recorder.flush();
 		expect(await dynRows()).toHaveLength(1);
 		expect(await fansRows()).toHaveLength(1);

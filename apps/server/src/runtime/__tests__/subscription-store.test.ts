@@ -39,7 +39,7 @@ let changes: unknown[];
 beforeEach(() => {
 	bus = createNodeMessageBus();
 	changes = [];
-	bus.on("subscription-changed", (ops) => changes.push(ops));
+	bus.on("subscription-changed", ({ ops }) => changes.push(ops));
 });
 
 describe("bindSubscriptionStore", () => {
