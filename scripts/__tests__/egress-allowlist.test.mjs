@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { auditRatchet } from "../ratchet-audit.mjs";
 import { findNodes, importsOf, listSources, parseSource, ts } from "../source-scan.mjs";
 
 /**
@@ -16,7 +17,7 @@ import { findNodes, importsOf, listSources, parseSource, ts } from "../source-sc
  * - 判据看语法树,不看字样:注释、字符串里的 `fetch(` 不是节点。
  * - 白名单按文件,只有两类:集成的请求客户端;BN 自己的出口(和开发版的假桥)。
  * - 棘轮按文件记上限:多一处就红,**上限高于实数也红** —— 棘轮只许往下走,清理完的那一格
- *   当场调低。3b 末清零,那时棘轮表是空的。
+ *   当场调低。3b 末清零,那时棘轮表是空的。对账与「结果不手写」共用 `scripts/ratchet-audit.mjs`。
  *
  * 判据写成纯函数 + 样例,因为判据本身也会写错:一条永远判 OK 的规则跟没有一样。
  */
@@ -141,42 +142,6 @@ export function egressCalls(source) {
 		hits.push({ line: ref.line, text: lines[ref.line - 1].trim(), primitive: "undici" });
 	}
 	return hits.sort((a, b) => a.line - b.line);
-}
-
-/**
- * 拿各文件的命中对照白名单与棘轮表。
- *
- * @param found `{ [文件]: 命中[] }`,没有命中的文件可以不出现
- * @returns 人话描述的问题清单;空数组 = 通过
- */
-export function auditEgress(found, { allowlist, ratchet }) {
-	const problems = [];
-	for (const file of Object.keys(allowlist)) {
-		if (file in ratchet) {
-			problems.push(`${file}: 既在白名单又在棘轮表里 —— 两张表打架,留一张`);
-		}
-	}
-	for (const [file, hits] of Object.entries(found)) {
-		if (file in allowlist) continue;
-		const limit = ratchet[file];
-		if (limit === undefined) {
-			for (const hit of hits) {
-				problems.push(`${file}:${hit.line}: ${hit.text} —— 出站原语,文件不在白名单也不在棘轮表里`);
-			}
-		} else if (hits.length > limit) {
-			problems.push(`${file}: 出站原语 ${hits.length} 处,超过棘轮上限 ${limit} —— 只许少不许多`);
-			for (const hit of hits) problems.push(`${file}:${hit.line}: ${hit.text}`);
-		} else if (hits.length < limit) {
-			problems.push(
-				`${file}: 实数 ${hits.length},上限还写着 ${limit} —— 把上限调低到 ${hits.length}`,
-			);
-		}
-	}
-	for (const [file, limit] of Object.entries(ratchet)) {
-		if (file in found || file in allowlist) continue;
-		problems.push(`${file}: 实数 0,上限还写着 ${limit} —— 把这一行从棘轮表里删掉`);
-	}
-	return problems;
 }
 
 /** 把一段样例当成一份 `.ts` 源码,返回命中的原语名。 */
@@ -362,61 +327,6 @@ describe("出站原语的判据:不算", () => {
 	});
 });
 
-describe("对照白名单与棘轮表", () => {
-	const hit = (line) => ({ line, text: `fetch(u${line})`, primitive: "fetch" });
-	const tables = {
-		allowlist: { "lib/client.ts": "请求客户端" },
-		ratchet: { "src/old.ts": 2 },
-	};
-
-	it("白名单里的文件放行,多少处都行", () => {
-		expect(
-			auditEgress({ "lib/client.ts": [hit(1), hit(2), hit(3)] }, { ...tables, ratchet: {} }),
-		).toEqual([]);
-	});
-
-	it("表外的文件出现出站原语:每一处报 file:line 与那一行", () => {
-		expect(
-			auditEgress({ "src/old.ts": [hit(1), hit(2)], "src/new.ts": [hit(7), hit(9)] }, tables),
-		).toEqual([
-			"src/new.ts:7: fetch(u7) —— 出站原语,文件不在白名单也不在棘轮表里",
-			"src/new.ts:9: fetch(u9) —— 出站原语,文件不在白名单也不在棘轮表里",
-		]);
-	});
-
-	it("棘轮表里的文件超过上限就红,并点名每一处", () => {
-		const problems = auditEgress({ "src/old.ts": [hit(1), hit(2), hit(3)] }, tables);
-		expect(problems[0]).toContain("src/old.ts");
-		expect(problems[0]).toContain("3");
-		expect(problems[0]).toContain("上限 2");
-		expect(problems.join("\n")).toContain("src/old.ts:3: fetch(u3)");
-	});
-
-	it("上限高于实数也红:棘轮只许往下走,提示调低到几", () => {
-		expect(auditEgress({ "src/old.ts": [hit(1)] }, tables)).toEqual([
-			"src/old.ts: 实数 1,上限还写着 2 —— 把上限调低到 1",
-		]);
-		// 清零了:整行删掉。
-		expect(auditEgress({}, tables)).toEqual([
-			"src/old.ts: 实数 0,上限还写着 2 —— 把这一行从棘轮表里删掉",
-		]);
-	});
-
-	it("实数等于上限就过", () => {
-		expect(auditEgress({ "src/old.ts": [hit(1), hit(2)] }, tables)).toEqual([]);
-	});
-
-	it("同一个文件不许既在白名单又在棘轮表:两张表打架", () => {
-		const problems = auditEgress(
-			{},
-			{ allowlist: { "src/both.ts": "x" }, ratchet: { "src/both.ts": 1 } },
-		);
-		expect(problems.join("\n")).toContain("src/both.ts");
-		expect(problems.join("\n")).toContain("白名单");
-		expect(problems.join("\n")).toContain("棘轮表");
-	});
-});
-
 /** 范围:`packages/<包>/src`(ui 除外)、`apps/server/src`、`extensions/<拓展>/src`,仓库相对路径。 */
 function scopeRoots() {
 	const roots = ["apps/server/src"];
@@ -476,6 +386,8 @@ describe("仓里的出网点都点了名", () => {
 	});
 
 	it("表外没有出站原语,棘轮表里的文件不多于上限、也不少于上限", () => {
-		expect(auditEgress(scanRepo(), { allowlist: ALLOWLIST, ratchet: RATCHET })).toEqual([]);
+		expect(
+			auditRatchet(scanRepo(), { allowlist: ALLOWLIST, ratchet: RATCHET, what: "出站原语" }),
+		).toEqual([]);
 	});
 });
