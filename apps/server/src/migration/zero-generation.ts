@@ -132,7 +132,7 @@ export interface MigrationProgress {
 	label: string;
 }
 
-export interface ZeroMigrationReport {
+export interface ZeroMigrationResult {
 	/**
 	 * 搬过去的每个文件(相对第 0 代根 / 新代根,`/` 分隔)与搬法:`copy` 复制、`link` 硬链接(链接不了会
 	 * 回落成复制)、`symlink` 重建同样的一条软链。
@@ -175,8 +175,8 @@ export async function zeroGenerationExists(zeroRoot: string): Promise<boolean> {
 
 export async function migrateZeroGeneration(
 	opts: MigrateZeroGenerationOptions,
-): Promise<ZeroMigrationReport> {
-	const report: ZeroMigrationReport = { transfers: [], skipped: [] };
+): Promise<ZeroMigrationResult> {
+	const report: ZeroMigrationResult = { transfers: [], skipped: [] };
 	const context = { zeroRoot: opts.zeroRoot, targetDir: opts.targetDir, report };
 	const moves = Object.entries(ZERO_GENERATION_MOVES) as [ZeroGenerationKey, ZeroMove][];
 	const total = moves.length;
@@ -222,7 +222,7 @@ export async function migrateZeroGeneration(
 interface MigrationContext {
 	zeroRoot: string;
 	targetDir: string;
-	report: ZeroMigrationReport;
+	report: ZeroMigrationResult;
 }
 
 /** 搬一个文件或一整棵目录。目录搬完 fsync 一次,新代改名之前它的每一层都落了盘。 */

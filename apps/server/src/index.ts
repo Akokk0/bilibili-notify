@@ -50,7 +50,7 @@ import {
 	MIGRATION_REVISION,
 	migrateZeroGeneration,
 	readZeroGenerationKey,
-	type ZeroMigrationReport,
+	type ZeroMigrationResult,
 	zeroGenerationExists,
 } from "./migration/zero-generation.js";
 import { adapterForConnection } from "./platforms/dispatch.js";
@@ -354,7 +354,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 要开新代的话在这里迁(ADR-0022 决策 2):listen 之后、读数据之前。迁移期间别的接口回 503,
 		// 话里带进度;迁移抛错就和别的开机失败一样关掉 HTTP 再抛,boot.mjs 退回预装的那一版。
 		if (generation.kind === "create") {
-			let report: ZeroMigrationReport | undefined;
+			let report: ZeroMigrationResult | undefined;
 			await createGeneration(generation, {
 				formatVersion: FORMAT_VERSION,
 				migrationRevision: MIGRATION_REVISION,
