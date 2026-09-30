@@ -76,7 +76,7 @@
 ## 怎么钉住
 
 - **守卫「错误体」**（[docs/1.0/architecture.md](../../1.0/architecture.md)「守卫」表，第 1 期切片 ④b）：记账式，仿守卫 2（`scripts/error-body-guard.mjs`）。测试进程里把全局 `Response` 换成 Proxy，按构造时的调用栈认出服务端代码造的非 2xx 回应，逐个对一遍 `ErrorResponse`（`code` 在码表里、`message` 非空、附加只有 `issues` / `upstreamCode`），不合的记账，每条测试收尾查账；现有的路由测试就是驱动。
-- **守卫「结果不手写」**（同表，④b 以棘轮开、第 5 期末清零）：非测试代码里手写 `ok: true` / `ok: false` 的对象字面量就红，`ok()` / `fail()` 所在的文件除外；类型里的 `{ ok: true }` 不算。
+- **守卫「结果不手写」**（同表，④b 以棘轮开、第 5 期末清零，`scripts/__tests__/hand-written-results.test.mjs`）：非测试代码里手写 `ok: true` / `ok: false` 的对象字面量就红（`true as const` 这类只改类型的外壳照样认得），`ok()` / `fail()` 所在的文件除外；类型里的 `{ ok: true }` 不算。
 - 「抛错只留给 bug」、问题码的写法，没有守卫，靠审查。
 
 审查时逐条看：
