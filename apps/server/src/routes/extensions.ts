@@ -248,6 +248,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		const body: ExtensionsResponse = {
 			extensions,
 			restart: opts.install?.restartAbility ?? RESTART_UNKNOWN,
+			// 手放拓展的去处:装载器读的那一个根。面板猜不出在用的是哪一代。
+			...(opts.install ? { root: opts.install.root } : {}),
 		};
 		return c.json(body);
 	});

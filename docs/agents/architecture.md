@@ -160,9 +160,9 @@ src/
 - **一扇门**:拓展只从 `@bilibili-notify/extension` 拿 BN 的东西(见 CLAUDE.md 硬约束),
   反方向核心也不 import 拓展。两条都有可执行守卫。
 - ⛔ **本体一个拓展都不带。** 拓展只有两条来路:下载,或者主人自己放进
-  `<dataDir>/extensions/<id>/`。载荷里没有 `extensions/`,装载器也**没有那个根** ——
+  `<数据根>/extensions/<id>/`。载荷里没有 `extensions/`,装载器也**没有那个根** ——
   这一条是结构性的,不是约定(主人 2026-09-09 推翻了 ADR-0012 决策 34 的「随载荷预装」)。
-- **只有一个根**:`<dataDir>/extensions/`,入口只认 `index.mjs`。曾经还有个仓里的源码根,
+- **只有一个根**:`<数据根>/extensions/`,入口只认 `index.mjs`。曾经还有个仓里的源码根,
   2026-09-10 去掉了 —— 开发时改由 **devtools 把仓里构建好的 `dist` 链进那个根**
   (左下角 dock 的「拓展」一组:装 / 卸 / 重载)。一个根意味着没有优先级、没有「同一个 id
   有两份」,开发时跑的东西与手放的、日后市场下载的**形状一模一样**。清单里**没有 `entry`
@@ -177,7 +177,7 @@ src/
   `"onebot"` 就能把内置连接的推送整个截走。
 - **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
   —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
-  `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<dataDir>/extensions/<id>/`
+  `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<数据根>/extensions/<id>/`
   就能跑,日后的下载分发发的也是它。开发时由 devtools 把它**链**进去(`vp pack -w` 一改
   就重打包,链着的那份当场是新的)。
 - **换代码走显式「重载」**:收摊 → 换一个按指纹定的 URL 重新 `import` → 重新 `activate`。
@@ -202,7 +202,7 @@ src/
 - 眼下**还做不到的**:干净地换代码(ESM 换不掉已加载的模块 —— 只重载是换一个 URL 再 import,
   旧模块留在内存里;第二次启用跑的只有 `activate`,所以拓展的模块顶层不许存状态);**按需下载(签名镜像链)还没建** ——
   所以今天要在构建产物上跑桥,只有「自己 `vp pack` 出包、手放进
-  `<dataDir>/extensions/bridge/`」这一条路。
+  `<数据根>/extensions/bridge/`」这一条路。
 
 ## 女仆技能(Agent Skill)
 

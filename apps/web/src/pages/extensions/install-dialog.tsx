@@ -1,4 +1,6 @@
-import { Btn, HintNote, ModalShell, Pill } from "@bilibili-notify/ui";
+import { Btn, HintNote, ModalShell, MonoChip, Pill } from "@bilibili-notify/ui";
+import { useExtensions } from "../../hooks/useExtensions";
+import { CopyControl } from "./declarative/parts";
 import { ExtensionInstallSlot } from "./install-slot";
 
 /**
@@ -8,9 +10,16 @@ import { ExtensionInstallSlot } from "./install-slot";
  * 拓展页必然是空的**:这里不是「上传」两个字,它是这台机器上唯一一份「拓展怎么来」的说明。
  *
  * 两条来路都写,而且**都能走通**:就在这儿传一个包上来(装完当场就跑),或者自己把目录
- * 放进 `<dataDir>/extensions/`(服务器上更顺手,代价是要重启一次)。
+ * 放进装载根(服务器上更顺手,代价是要重启一次)。
+ *
+ * 🔴 装载根印**服务端报的那一串**(`ExtensionsResponse.root`):1.0 起数据在
+ * `<dataDir>/generations/<序号>/` 里,在用的是哪一代只有服务端知道;照老说法放进
+ * `<dataDir>/extensions/` 的包永远不会被装上。服务端没报(回退到了老版本)才照老说法写 ——
+ * 那种服务端用的正是老位置。
  */
 export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
+	// 与拓展页同一个键,弹窗是从那一页开的,这一口通常已经在缓存里。
+	const root = useExtensions().data?.root;
 	return (
 		<ModalShell
 			width={540}
@@ -44,10 +53,21 @@ export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
 							拿到拓展包(一个目录,里头是 <span className="font-mono">extension.json</span> 与{" "}
 							<span className="font-mono">index.mjs</span>)
 						</li>
-						<li>
-							整个放进{" "}
-							<span className="font-mono">&lt;dataDir&gt;/extensions/&lt;拓展 id&gt;/</span>
-						</li>
+						{root ? (
+							<li>
+								整个放进下面这个目录里,包的目录名就是拓展 id:
+								{/* 不拼 `/<拓展 id>/`:Windows 上这一串是反斜杠分隔的。路径要照抄,不截断。 */}
+								<div className="mt-1 flex items-center gap-1.5">
+									<MonoChip className="min-w-0 flex-1 break-all px-[9px] py-[5px]">{root}</MonoChip>
+									<CopyControl iconOnly label="复制拓展目录" text={root} />
+								</div>
+							</li>
+						) : (
+							<li>
+								整个放进{" "}
+								<span className="font-mono">&lt;dataDir&gt;/extensions/&lt;拓展 id&gt;/</span>
+							</li>
+						)}
 						<li>
 							重启 BN 一次 —— 它就出现在列表里,
 							<strong className="text-bn-text-primary">默认是关着的</strong>

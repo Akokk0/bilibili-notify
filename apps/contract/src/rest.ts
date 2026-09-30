@@ -138,13 +138,13 @@ export interface ExtensionDTO {
 	settings?: { fields: readonly ExtensionField[] };
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
-	/** 它自己那个目录,绝对路径(`<dataDir>/extensions/<id>`)。 */
+	/** 它自己那个目录,绝对路径(`<数据根>/extensions/<id>`)。 */
 	dir: string;
 	/**
 	 * 那个目录要是条**软链**,它指到哪去。
 	 *
 	 * 🔴 开发版就是这么装的:devtools 把仓里的 `dist` 链进装载目录。跑的代码到底是哪一份,
-	 * 只有这一格答得了 —— 少了它,面板上写着 `<dataDir>/extensions/bridge`,而那其实是
+	 * 只有这一格答得了 —— 少了它,面板上写着 `<数据根>/extensions/bridge`,而那其实是
 	 * 主人正在改的工作树。
 	 */
 	linkedTo?: string;
@@ -337,6 +337,16 @@ export interface ExtensionsResponse {
 	 * 只在某一行带着 `staged` 时才被读 —— 老服务端两格都没有,面板也就不会去读它。
 	 */
 	restart: RestartAbility;
+	/**
+	 * 装载根的绝对路径:在用那一代的 `extensions/`(ADR-0022 决策 8),装载器读的就是这一个。「装拓展」
+	 * 弹窗照它印出「自己放进去」该放到哪儿 —— 1.0 起数据在 `<dataDir>/generations/<序号>/` 里,主人
+	 * 自己猜不出序号,照老路放进 `<dataDir>/extensions/` 的包永远不会被装上。
+	 *
+	 * **可选**,同 {@link ExtensionInstallResponse.docs}:回退到老版本时,面板可能是新的、服务端是老的。
+	 * 缺这一格的服务端正是还用 `<dataDir>/extensions/` 的那种,面板照老说法写就是对的。没接装载器的构建
+	 * 也没有这一格(那里装了也没人加载)。
+	 */
+	root?: string;
 }
 
 /**

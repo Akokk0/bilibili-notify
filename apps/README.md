@@ -209,11 +209,11 @@ B 站 cookie 与 AI apiKey 存在 `<dataDir>/secrets/`,AES-256-GCM 加密。密�
 - **拓展市场** —— 这一页最底下那一节。官方源的条目点「装」就行,装完当场生效。
 - **传一个包上来** —— 把 `.zip` 拖进「装拓展」弹窗。**只装信得过的**:拓展在 BN 进程里跑,装的时候不验签。
 
-还有第三条不走面板的路:把解开的目录放进 `<数据目录>/extensions/<id>/`(里面只能有 `extension.json` 与 `index.mjs`)。**这条要重启一次**才认得到。
+还有第三条不走面板的路:把解开的目录放进**拓展目录**,目录名就是拓展 id(里面只能有 `extension.json` 与 `index.mjs`)。**这条要重启一次**才认得到。拓展目录在数据目录里在用的那一代底下,即 `<数据目录>/generations/<序号>/extensions/`;「装拓展」弹窗里印着这台机器上的完整路径,点一下就能复制。
 
 | 形态 | 数据目录 |
 | --- | --- |
-| Docker | `/data` —— 即 `/data/extensions/`,在 volume 里 |
+| Docker | `/data`,在 volume 里 |
 | 桌面 macOS | `~/Library/Application Support/bilibili-notify/data` |
 | 桌面 Windows | `%LOCALAPPDATA%\bilibili-notify\data` |
 

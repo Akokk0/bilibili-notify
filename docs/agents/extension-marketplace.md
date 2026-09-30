@@ -9,7 +9,7 @@
 | 地址 | 内置:`https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json` | 主人在拓展页「源」里加的任意 `https://` 地址 |
 | 文件 | 签名信封 `{ "manifest": "<索引原文>", "signature": "<base64>" }`,与升级清单同一对 Ed25519 密钥 | 裸的索引 JSON |
 | 走镜像 | 走(`update.mirrors`,同本体) | 不走 |
-| 新鲜度 | `issuedAt` 只增不减,记在 `<dataDir>/extensions/.marketplace.json` | 不查 |
+| 新鲜度 | `issuedAt` 只增不减,记在 `<数据根>/extensions/.marketplace.json` | 不查 |
 | id | 不带命名空间(`bridge`) | 必须是 `<namespace>.<名字>`,且索引要声明 `namespace` |
 | 装之前 | 一键 | 先确认一次 |
 
@@ -65,7 +65,7 @@
 
 ## 装了之后
 
-- `<dataDir>/extensions/.marketplace.json` 记着每个 id 从哪个源装的哪一版、官方索引见过的最大 `issuedAt`,以及**每个源上次报的命名空间**(`namespaces`)。「有新版」只认原来源;手放的 / devtools 链的没有记录,不提示更新。
+- `<数据根>/extensions/.marketplace.json` 记着每个 id 从哪个源装的哪一版、官方索引见过的最大 `issuedAt`,以及**每个源上次报的命名空间**(`namespaces`)。「有新版」只认原来源;手放的 / devtools 链的没有记录,不提示更新。
 - 命名空间的占位是**记在盘上**的:拉索引之前就按配置顺序占好,先配的源这一趟超时也不会让后配的源抢走它的命名空间(那个源装着的拓展 id 全在那底下)。源删掉了占位才还回去。
 - 更新 = 从市场再装一次;盖掉一份正在跑的要重启一次(同上传装包)。「有新版」按**这个渠道挑出来的那一条**算:稳定渠道装着正式版,不会被索引里那条预发布顶成「有新版」。
 - 契约不合(`apiVersion` 对不上,或 `apiRevision` 比 BN 的契约小号高)的条目标灰「先升级 BN」;撤回的标红。**索引里那个新版自己装不了的(被撤回 / 要更高一格的契约)不画「有新版」** —— 画出来的钮就得按得动。

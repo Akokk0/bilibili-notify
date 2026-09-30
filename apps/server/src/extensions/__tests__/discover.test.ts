@@ -7,7 +7,7 @@
  *
  * ⚠️ 拿不到清单时**身份取目录名** —— 失败记账要有个键,而最容易炸的恰恰是读清单这一步。
  *
- * ⛔ **只有一个根**:`<dataDir>/extensions/`。本体一个拓展都不带;仓里那个源码根也去掉了
+ * ⛔ **只有一个根**:`<数据根>/extensions/`。本体一个拓展都不带;仓里那个源码根也去掉了
  * (2026-09-10)—— 开发版改由 devtools 把仓里的 `dist` **装**进这个根(软链)。
  * 于是没有优先级、没有「同一个 id 有两份」,入口也只剩 `index.mjs` 一种。
  */
@@ -303,7 +303,7 @@ describe("discoverExtensions", () => {
 	 * 软链 `isDirectory()` 是 **false**、`isSymbolicLink()` 才是 true —— 只认前者的话,
 	 * 装进来的拓展在这一页上**根本不出现,而且不报错**。
 	 *
-	 * 开发版正是这么装的:devtools 把仓里那份 `dist` 软链进 `<dataDir>/extensions/<id>`。
+	 * 开发版正是这么装的:devtools 把仓里那份 `dist` 软链进 `<数据根>/extensions/<id>`。
 	 */
 	it("软链进来的拓展照样扫得到 —— readdir 里它不是目录", async () => {
 		const elsewhere = await mkdtemp(join(tmpdir(), "bn-ext-real-"));
@@ -312,7 +312,7 @@ describe("discoverExtensions", () => {
 			await symlink(join(elsewhere, "bridge"), join(root, "bridge"), "dir");
 			const found = await discoverExtensions(root);
 			expect(found.map((r) => [r.id, r.state])).toEqual([["bridge", "ready"]]);
-			// 🔴 **落点也要报出来**:装载目录里写着 `<dataDir>/extensions/bridge`,而跑的
+			// 🔴 **落点也要报出来**:装载目录里写着 `<数据根>/extensions/bridge`,而跑的
 			// 其实是主人正在改的那份工作树 —— 少了这一句,「我改的是不是它」没法回答。
 			const only = found[0];
 			if (only?.state !== "ready") throw new Error("unreachable");

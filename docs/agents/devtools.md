@@ -55,7 +55,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 加一个场景 = 写一个 `DevScenarioDef` 塞进 `createDevtools` 那张表,面板一行不改。
 
 **「拓展」那一组是个例外,它做的是真事**(`scenarios/extensions.ts`):装载器只认
-`<dataDir>/extensions/` 一个根,于是「开发时怎么让仓里那份跑起来」从宿主的一条特例变成了
+`<数据根>/extensions/` 一个根,于是「开发时怎么让仓里那份跑起来」从宿主的一条特例变成了
 这里的三个动作 —— **装**(把仓里构建好的 `dist` 软链进那个根)、**卸**(只删自己链的那条,
 真目录不碰)、**重载**(收摊 → 换个 URL 重新 import → 重新 activate,不用重启)。
 三条都**当场生效**:装 / 卸完自己叫装载器 `rescan()` 再扫一遍盘(新出现的 id 从没被 import 过,

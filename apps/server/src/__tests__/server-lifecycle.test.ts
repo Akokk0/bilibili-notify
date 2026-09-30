@@ -152,7 +152,7 @@ describe("server lifecycle", () => {
 	 * 扫目录、开关、ctx、挂载点各自的单元测试都是在自己搭的零件上跑的。
 	 * 漏一步的症状是「装了拓展但面板上什么都没有」,而进程照常启动、日志一个字都不说。
 	 */
-	it("装在 <dataDir>/extensions/ 里的拓展:关着不 import,开了就真的跑起来", async () => {
+	it("装在 <数据根>/extensions/ 里的拓展:关着不 import,开了就真的跑起来", async () => {
 		// 拓展装在开机要用的那一代里(开机前先开好一代,ADR-0022)。
 		const gen = await openTestGeneration(dataDir);
 		const extDir = join(gen, "extensions", "demo");

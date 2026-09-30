@@ -9,6 +9,7 @@
  * - 迁移期间登录拿到的 cookie,迁完照样有效:会话签名的密钥是从第 0 代只读取的那一把,和迁过去的是同一把。
  * - 再开机用同一代,不再迁;迁移修订号对不上就从第 0 代重迁、开第 2 代,第 1 代原地留着。
  * - 新装(宿主根上没有 0.x 数据):开一代空的,不迁。
+ * - 拓展页拿到的手放拓展目录是在用那一代的 `extensions/`(装载器读的那一个),不是宿主根上 0.x 的那个。
  * - 迁移抛错:启动入口抛出去,不留下半截的一代。
  *
  * 迁移卡在哪由测试决定:包一层真的迁移器(不换掉它),让它等测试放行,或者直接抛错。
@@ -19,7 +20,8 @@ import { existsSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { MIGRATION_REVISION } from "../migration/zero-generation.js";
@@ -252,6 +254,15 @@ describe("数据代接在开机路径上 e2e", () => {
 			await readFile(join(generationsDir(), "1", GENERATION_FILE), "utf8"),
 		) as GenerationFile;
 		expect(file.source).toEqual({ kind: "empty" });
+	});
+
+	it("拓展页拿到的手放拓展目录是在用那一代的 extensions/,不是宿主根上的", async () => {
+		handle = await start();
+
+		const res = await fetch(url("/api/ext"));
+		expect(res.status, await res.clone().text()).toBe(200);
+		const body = (await res.json()) as ExtensionsResponse;
+		expect(body.root).toBe(resolve(generationsDir(), "1", "extensions"));
 	});
 
 	it("迁移抛错 → 启动入口抛出去,不留下一代,也不留半截", async () => {
