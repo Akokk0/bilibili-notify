@@ -115,7 +115,7 @@
 
 **第 0 步：收编 0.x 兼容代码**，原样跑现有的 0.x 升级链，所以输入可以是任意 0.x 版本。它们大多已是 raw → raw 的纯函数，老测试搬成迁移模块的夹具（约 59 个文件）：各 schema 的 preprocess、`migration.ts`（连接 / 目标 v1 → v2）、`migrateLegacyTargets` 与 `adapters.json`、apiKey 明文迁出、history 读时映射、锐评老 uid 草稿、统计读时翻译、`migrate-file-keys`。
 
-迁移器因此分两遍：先把文件搬进代的布局，再一族一族改写成 0.x 最新的形状，各个 store 开机只认最新的形状。改写写的是新文件（原子换名）：搬过来的文件多半是指向第 0 代的硬链接，原地写会改到第 0 代。顺序有依赖：连接与目标 → 设置 → 订阅 → 要订阅列表的统计文件名与锐评草稿 → 皮肤、对话、密钥。已收：连接与目标（`migration/connections.ts`；最老单文件 targets 拆出来的连接 id 改成确定的，重迁拆出同一批 id）；推送特性这一组（`migration/features.ts`：附加项的两代老数据、第一代 routing、订阅上的 @全体，照 zod 当年外层先、里层后的顺序跑，由设置与订阅两族的改写调用）。
+迁移器因此分两遍：先把文件搬进代的布局，再一族一族改写成 0.x 最新的形状，各个 store 开机只认最新的形状。改写写的是新文件（原子换名）：搬过来的文件多半是指向第 0 代的硬链接，原地写会改到第 0 代。顺序有依赖：连接与目标 → 设置 → 订阅 → 要订阅列表的统计文件名与锐评草稿 → 皮肤、对话、密钥。已收：连接与目标（`migration/connections.ts`；最老单文件 targets 拆出来的连接 id 改成确定的，重迁拆出同一批 id）；推送特性这一组（`migration/features.ts`：附加项的两代老数据、第一代 routing、订阅上的 @全体，照 zod 当年外层先、里层后的顺序跑，由设置与订阅两族的改写调用）；设置里的 AI（扁平连接字段、「一家一桶」、手改的人格，`migration/ai.ts`）、链接解析（0.9.1 的范围 + 白名单，`migration/link-parsing.ts`）、历代旧默认模板（`migration/templates.ts`，原先在配置仓开机时做）。卡片样式退役的 `hideDesc` / `hideFollower` 不迁：schema 不是 strict，读的时候自己剥掉。全新安装的人格指针原先靠 preprocess 每次 parse 补出来，现在直接写在默认值里。
 
 **第 1 步：1.0 改名表。**
 

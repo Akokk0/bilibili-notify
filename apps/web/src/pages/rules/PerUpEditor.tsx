@@ -1143,9 +1143,8 @@ function AiOverrideBox({
 	 * 开它,写回去的是一个干干净净的新对象,当年残留的 persona / prompt 顺手就没了。
 	 */
 	const enabled = hasAiPersonaOverride(value, baseline.presets);
-	// 开关打开时落到第一份。`presets` 恒非空是 schema 保证的不变量
-	// (见 ai-persona-pointer.test.ts:「presets 空 → 把内置四份补齐」),
-	// 所以这里不必为空列表留一条永远走不到的分支。
+	// 开关打开时落到第一份。`presets` 按约定恒非空(出厂默认、迁移器补齐 0.x 的空列表、设置页删不掉
+	// 最后一份,见 `AISettingsObjectSchema` 里 presets 的注释),所以这里不必为空列表留一条走不到的分支。
 	const firstPresetId = baseline.presets[0]?.id ?? "";
 
 	return (

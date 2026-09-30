@@ -707,8 +707,8 @@ class NodeConfigStore implements ConfigStore {
 		if (!this.secretStore) return;
 		this.secretBag = await this.secretStore.load();
 
-		// 上一版的**单把** aiApiKey → 新的多把袋子。schema 那边把扁平旧配置整份
-		// 迁进了 `providers.custom`,所以这把 key 的去处正是 custom 槽。
+		// 上一版的**单把** aiApiKey → 新的多把袋子。迁移器把扁平旧配置整份迁进了
+		// `providers.custom`(`migration/ai.ts`),所以这把 key 的去处正是 custom 槽。
 		if (this.secretBag.aiApiKey) {
 			const { aiApiKey, ...rest } = this.secretBag;
 			this.secretBag = {
@@ -788,75 +788,8 @@ class NodeConfigStore implements ConfigStore {
 				},
 			};
 
-			// 「presets: [] 的老 globals.json 补齐内置四份」这件事**已经移到 schema 层**
-			// (`AISettingsSchema` 的 migratePersonaPointer)。那道迁移必然把列表填成非空,
-			// 所以这里原先那个 `presets.length === 0` 判据永远不成立 —— 留着是死代码,
-			// 更糟的是会让人以为补齐还归 store 管。见
-			// packages/internal/src/schema/__tests__/ai-persona-pointer.test.ts。
-
-			// ⚠️ **这张表已冻结,不要再往里加条目。**
-			//
-			// 它是「改了默认怎么惠及老用户」的**上一代**解法:手写一张历代旧默认,
-			// 值对得上就判定「他没改过」,悄悄改写成当前默认。毛病是这张表跟当前默认
-			// (`DEFAULT_TEMPLATES`,另一个包)分居两处,改默认时没有任何东西提醒你来补
-			// 一条 —— `liveSummary` 已经这么漏过一次(改了占位符语法却没进表)。
-			//
-			// 现在这件事归 `templateDefaultsSeen` 账本 + 规则页的逐字段提示管:不再猜
-			// 「他改没改过」,只问「**这一版**默认他见过没有」,于是历代表整张不需要了。
-			// 见 `packages/internal/src/template-defaults.ts`。
-			//
-			// 留着不删是因为**它对还停在老版本、将来才升级的用户仍然生效** —— 删掉
-			// 那些人就从自动迁移退化成「打开页面看见提示再点一下」。新的默认变更一律
-			// 走提示,不要再碰这张表。
-			//
-			// 一次性迁移:历代「旧默认原值」→ 当前默认。覆盖两代:① 占位符语法统一前
-			// (alpha.x)的 {title}/{duration}/{user}/{mastername} 旧变量默认;② 消息版式
-			// 引入前「链接内嵌模板」的 {url}/{link} 默认(链接已改为版式的独立部件,
-			// 模板默认不再带链接)。检测到用户从未改过(值 == 任一代旧默认)时一次性
-			// 改写成当前默认;用户自定义过的值(≠旧默认)原样保留。
-			if (existed) {
-				const tpl = this.globals.defaults.templates;
-				const fresh = makeDefaultGlobalConfig().defaults.templates;
-				let tplMigrated = false;
-				const OLD_TPL_DEFAULTS: Partial<
-					Record<"liveStart" | "liveOngoing" | "liveEnd" | "dynamic" | "dynamicVideo", string[]>
-				> = {
-					liveStart: [
-						"{name} 开播了！\n直播间标题：{title}\n直播间链接：{link}",
-						"{name} 开播啦，当前粉丝数：{follower}\n{link}",
-					],
-					liveOngoing: [
-						"{name} 仍在直播中（已直播 {duration}）\n标题：{title}\n看过：{watched}",
-						"{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
-					],
-					liveEnd: ["{name} 下播了，直播时长 {duration}"],
-					dynamic: ["{name}发布了一条动态：{url}"],
-					dynamicVideo: ["{name}发布了新视频：{url}"],
-				};
-				for (const [k, olds] of Object.entries(OLD_TPL_DEFAULTS) as Array<
-					[keyof typeof OLD_TPL_DEFAULTS, string[]]
-				>) {
-					if (olds.includes(tpl[k])) {
-						tpl[k] = fresh[k];
-						tplMigrated = true;
-					}
-				}
-				const OLD_GUARD = {
-					captain: "{user} 成为了 {mastername} 的舰长！",
-					commander: "{user} 成为了 {mastername} 的提督！",
-					governor: "{user} 成为了 {mastername} 的总督！",
-				} as const;
-				for (const role of ["captain", "commander", "governor"] as const) {
-					if (tpl.guardBuy[role].template === OLD_GUARD[role]) {
-						tpl.guardBuy[role].template = fresh.guardBuy[role].template;
-						tplMigrated = true;
-					}
-				}
-				if (tplMigrated) {
-					await this.persistGlobals(this.globals);
-					this.touch("globals");
-				}
-			}
+			// 0.x 的老形状(AI 的扁平字段与人格指针、历代旧默认模板……)在开新代时由迁移器改写好了
+			// (`migration/settings.ts`),这里只认最新的形状。
 
 			// Move apiKey out of plaintext globals.json into encrypted secrets
 			// (+ one-time lift), then hydrate it back in memory.

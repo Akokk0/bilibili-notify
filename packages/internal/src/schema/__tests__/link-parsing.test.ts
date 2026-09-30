@@ -3,7 +3,8 @@
  *
  * 守四条:① 老 globals.json 没有这一段照样能读(独立端启动 parse 失败是直接挂掉);
  * ② **默认关**。开着就意味着同群任何人都能让机器人出图,这得是主人自己按下去的;
- * ③ 0.9.1 的「范围 + 白名单」读时按形迁移成默认行 + 例外,行为一字不变;
+ * ③ 0.9.1 的「范围 + 白名单」由迁移器改写成默认行 + 例外(`apps/server/src/migration/link-parsing.ts`,
+ *    用例在服务端的 `migration/__tests__/settings.test.ts`),活 schema 只认新形状,见文末那一组;
  * ④ 折叠:逐群例外缺省继承默认行,写了哪个字段只覆盖哪个字段。
  */
 
@@ -49,61 +50,6 @@ describe("linkParsing 配置段", () => {
 			...FRESH,
 			enabled: true,
 			cooldownSeconds: 30,
-		});
-	});
-});
-
-/**
- * 0.9.1 存的是 `scope: all | selected` + `targets: [{ targetId }]`。现在没有「范围」这个
- * 概念了:所有群 = 默认行解析开;仅以下群 = 默认行解析关 + 列出的群显式开。读的时候
- * 按形状认出来迁,盘上那份不动。
- */
-describe("0.9.1 的范围 + 白名单按形迁移", () => {
-	it("scope=all → 默认行解析开、没有例外;all 下的 targets 本来就不起作用,不带过来", () => {
-		expect(
-			LinkParsingConfigSchema.parse({
-				enabled: true,
-				cooldownSeconds: 30,
-				scope: "all",
-				targets: [{ targetId: A }],
-			}),
-		).toEqual({ ...FRESH, enabled: true, cooldownSeconds: 30 });
-	});
-
-	it("scope=selected + 两个群(其中一个写了两遍)→ 默认行解析关、两群显式开", () => {
-		expect(
-			LinkParsingConfigSchema.parse({
-				enabled: true,
-				scope: "selected",
-				targets: [{ targetId: A }, { targetId: B }, { targetId: A }],
-			}),
-		).toEqual({
-			...FRESH,
-			enabled: true,
-			defaults: { parse: false, form: "image" },
-			groups: { [A]: { parse: true }, [B]: { parse: true } },
-		});
-	});
-
-	it("scope=selected 且列表为空 → 默认关、没有例外 = 一个群都不解析", () => {
-		expect(LinkParsingConfigSchema.parse({ scope: "selected", targets: [] })).toEqual({
-			...FRESH,
-			defaults: { parse: false, form: "image" },
-		});
-	});
-
-	it("新旧键同时出现(补丁合并进老数据)→ 认新的,老键丢掉", () => {
-		expect(
-			LinkParsingConfigSchema.parse({
-				scope: "selected",
-				targets: [{ targetId: A }],
-				defaults: { parse: true, form: "miniapp" },
-				groups: { [B]: { form: "image" } },
-			}),
-		).toEqual({
-			...FRESH,
-			defaults: { parse: true, form: "miniapp" },
-			groups: { [B]: { form: "image" } },
 		});
 	});
 });
@@ -162,5 +108,21 @@ describe("linkParsingFor —— 折叠出这个群解不解析、回什么", () 
 		});
 		expect(linkParsingFor(wl, A).parse).toBe(true);
 		expect(linkParsingFor(wl, B).parse).toBe(false);
+	});
+});
+
+describe("活 schema 不再认老形状(那是迁移器的事)", () => {
+	// schema 上没有 preprocess:喂 0.9.1 的「范围 + 白名单」进来,得到的是剥掉老键的默认行,而不是「悄悄帮你迁」。
+	// 这正是老形状绕过迁移的后果 —— 白名单悄悄变成「所有群都解析」。0.x 的老形状只在开新代时由迁移器改写一次;
+	// 谁把老数据的兜底加回 schema,这一条就红(那会让同一份迁移逻辑在 schema 和迁移器里各住一份)。
+	it("scope=selected + targets → scope / targets 被剥掉,defaults.parse 取默认 true、groups 留空", () => {
+		const parsed = LinkParsingConfigSchema.parse({
+			enabled: true,
+			scope: "selected",
+			targets: [{ targetId: A }],
+		});
+		expect(parsed).toEqual({ ...FRESH, enabled: true });
+		expect(parsed).not.toHaveProperty("scope");
+		expect(parsed).not.toHaveProperty("targets");
 	});
 });

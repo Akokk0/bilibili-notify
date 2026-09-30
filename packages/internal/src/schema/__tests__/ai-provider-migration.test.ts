@@ -11,26 +11,23 @@
  *    设置页左栏据此只列已添加的那几块。
  * ② **方言归属只认桶里写明的 `provider`,绝不按 baseUrl 猜。** 猜错就是替主人
  *    往别家发方言参数,几乎必然 400。
- * ③ **两代老配置各有一级迁移,且键名一律原样保留**:更早的扁平连接字段整份落进
+ * ③ **两代老配置由迁移器改写,且键名一律原样保留**(`apps/server/src/migration/ai.ts`,
+ *    用例在服务端的 `migration/__tests__/settings.test.ts`):更早的扁平连接字段整份落进
  *    `custom` 桶;上一代「一家一桶」的配置,桶键就是服务商名 —— 按键名盖
  *    `provider` 章、指针 `provider` 改名 `activeProfile`。键名不动意味着密钥
- *    加密袋(袋键=桶键)与老备份都无需搬迁。
- * ④ **认不出方言归属的桶直接拒**:键不是认得的服务商名、桶里又没写 `provider`,
- *    说明数据被手改坏了 —— 悄悄吞掉或猜一个都比报错更糟。
+ *    加密袋(袋键=桶键)与老备份都无需搬迁。活 schema 只认当代形状,见文末那一组。
+ * ④ **认不出方言归属的桶直接拒**:桶里没写 `provider`,说明数据被手改坏了(或是绕过了迁移的
+ *    上一代形状)—— 悄悄吞掉或猜一个都比报错更糟。
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import { EMPTY_AI_PROVIDER_PROFILE, resolveAIProfile } from "../../constants";
 import { AIProviderProfileSchema, AISettingsSchema } from "../common";
 
-/** 最老一代配置的形状:扁平的连接字段,没有 provider / providers。 */
-function legacy(over: Record<string, unknown> = {}) {
+/** 当代形状的骨架(桶里写明 `provider`、指针叫 `activeProfile`);`over` 覆盖各条测试关心的那几项。 */
+function modern(over: Record<string, unknown> = {}) {
 	return {
 		enabled: true,
-		baseUrl: "https://api.deepseek.com",
-		apiKey: "sk-old",
-		model: "deepseek-v4-pro",
-		temperature: 0.3,
 		persona: {
 			name: "",
 			addressUser: "",
@@ -46,84 +43,6 @@ function legacy(over: Record<string, unknown> = {}) {
 		...over,
 	};
 }
-
-/** 桶已分家的形状(上一代按服务商一家一桶,或当代按实例)。 */
-function modern(over: Record<string, unknown> = {}) {
-	const { baseUrl, apiKey, model, temperature, ...rest } = legacy();
-	return { ...rest, ...over };
-}
-
-describe("最老一代:扁平连接字段", () => {
-	it("整份落进 custom 桶,并盖上 provider 章", () => {
-		const ai = AISettingsSchema.parse(legacy());
-		expect(ai.providers.custom).toMatchObject({
-			provider: "custom",
-			apiKey: "sk-old",
-			baseUrl: "https://api.deepseek.com",
-			model: "deepseek-v4-pro",
-		});
-	});
-
-	it("指针指向 custom —— 哪怕地址一眼就能认出是哪家", () => {
-		expect(AISettingsSchema.parse(legacy()).activeProfile).toBe("custom");
-	});
-
-	it("迁移只造这一个桶,别家仍是「没添加过」", () => {
-		expect(Object.keys(AISettingsSchema.parse(legacy()).providers)).toEqual(["custom"]);
-	});
-
-	it("上一版的思考三件套也跟着进 custom 桶,不丢", () => {
-		const ai = AISettingsSchema.parse(
-			legacy({ enableThinking: true, thinkingLevel: "high", extraParams: '{"top_k":40}' }),
-		);
-		expect(ai.providers.custom).toMatchObject({
-			enableThinking: true,
-			thinkingLevel: "high",
-			extraParams: '{"top_k":40}',
-		});
-	});
-
-	it("看图那两条路也一并搬进桶里", () => {
-		const ai = AISettingsSchema.parse(
-			legacy({ enableVision: true, vision: { baseUrl: "", apiKey: "sk-v", model: "qwen-vl" } }),
-		);
-		expect(ai.providers.custom?.enableVision).toBe(true);
-		expect(ai.providers.custom?.vision).toMatchObject({ apiKey: "sk-v", model: "qwen-vl" });
-	});
-});
-
-describe("上一代:一家一桶、provider 指针", () => {
-	it("桶键原样保留、按键名盖 provider 章,指针改名 activeProfile", () => {
-		// 键名不动是③的核心:密钥加密袋的袋键就是桶键,搬键名等于重启后密钥对不上号。
-		const ai = AISettingsSchema.parse(
-			modern({
-				provider: "deepseek",
-				providers: { deepseek: { apiKey: "sk-ds", model: "deepseek-v4-pro" } },
-			}),
-		);
-		expect(ai.activeProfile).toBe("deepseek");
-		expect(Object.keys(ai.providers)).toEqual(["deepseek"]);
-		expect(ai.providers.deepseek).toMatchObject({ provider: "deepseek", apiKey: "sk-ds" });
-	});
-
-	it("多家并存时每桶各盖各的章", () => {
-		const ai = AISettingsSchema.parse(
-			modern({
-				provider: "siliconflow",
-				providers: { deepseek: { apiKey: "sk-ds" }, siliconflow: { apiKey: "sk-sf" } },
-			}),
-		);
-		expect(ai.providers.deepseek?.provider).toBe("deepseek");
-		expect(ai.providers.siliconflow?.provider).toBe("siliconflow");
-		expect(ai.activeProfile).toBe("siliconflow");
-	});
-
-	it("全新配置什么桶都没有 —— 左栏该是空的,指针悬空", () => {
-		const ai = AISettingsSchema.parse(modern());
-		expect(ai.providers).toEqual({});
-		expect(ai.activeProfile).toBe("");
-	});
-});
 
 describe("当代:实例桶", () => {
 	it("同一家可以有多份实例 —— 这正是分实例的意义", () => {
@@ -161,7 +80,9 @@ describe("当代:实例桶", () => {
 
 describe("桶内字段的默认值与拒收", () => {
 	it("只填了 provider 和 apiKey 的桶,其余项自动补齐", () => {
-		const ai = AISettingsSchema.parse(modern({ providers: { deepseek: { apiKey: "sk-ds" } } }));
+		const ai = AISettingsSchema.parse(
+			modern({ providers: { deepseek: { provider: "deepseek", apiKey: "sk-ds" } } }),
+		);
 		expect(ai.providers.deepseek).toMatchObject({
 			label: "",
 			baseUrl: "",
@@ -174,12 +95,6 @@ describe("桶内字段的默认值与拒收", () => {
 		});
 	});
 
-	it("键认不出、桶里又没写 provider → 直接拒,不猜也不吞", () => {
-		expect(
-			AISettingsSchema.safeParse(modern({ providers: { openai: { apiKey: "sk" } } })).success,
-		).toBe(false);
-	});
-
 	it("provider 写了个不认识的名字 → 直接拒", () => {
 		expect(
 			AISettingsSchema.safeParse(modern({ providers: { x: { provider: "openai", apiKey: "sk" } } }))
@@ -188,10 +103,14 @@ describe("桶内字段的默认值与拒收", () => {
 	});
 
 	it("非法的思考等级直接拒", () => {
-		expect(
-			AISettingsSchema.safeParse(modern({ providers: { deepseek: { thinkingLevel: "ultra" } } }))
-				.success,
-		).toBe(false);
+		const r = AISettingsSchema.safeParse(
+			modern({ providers: { deepseek: { provider: "deepseek", thinkingLevel: "ultra" } } }),
+		);
+		expect(r.success).toBe(false);
+		// 拒的得是「等级不合法」,不是别的格子。
+		expect(r.error?.issues.map((i) => i.path.join("."))).toContain(
+			"providers.deepseek.thinkingLevel",
+		);
 	});
 });
 
@@ -226,5 +145,46 @@ describe("零依赖的空档案与 schema 默认值同步", () => {
 		expect(EMPTY_AI_PROVIDER_PROFILE).toEqual(
 			AIProviderProfileSchema.parse({ provider: "custom" }),
 		);
+	});
+});
+
+describe("活 schema 不再认老形状(那是迁移器的事)", () => {
+	// schema 上没有 preprocess:喂老形状进来得到的是「不认」或「剥掉老键」,而不是「悄悄帮你迁」。
+	// 这正是老形状绕过迁移的后果 —— 0.x 的老形状只在开新代时由迁移器改写一次。谁把老数据的兜底加回 schema,
+	// 这几条就红(那会让同一份迁移逻辑在 schema 和迁移器里各住一份)。
+
+	it("最老一代的扁平连接字段(没有 providers)→ 扁平键被剥掉,不会造出 custom 桶,指针也不会被选上", () => {
+		const ai = AISettingsSchema.parse(
+			modern({
+				baseUrl: "https://api.deepseek.com",
+				apiKey: "sk-old",
+				model: "deepseek-v4-pro",
+				enableThinking: true,
+			}),
+		);
+		expect(ai.providers).toEqual({});
+		expect(ai.activeProfile).toBe("");
+		for (const key of ["baseUrl", "apiKey", "model", "enableThinking"]) {
+			expect(ai, `扁平键 ${key} 应当被剥掉`).not.toHaveProperty(key);
+		}
+	});
+
+	it("上一代「一家一桶」:桶里没写 provider → 拒收,不会按键名盖章", () => {
+		const r = AISettingsSchema.safeParse(
+			modern({ provider: "deepseek", providers: { deepseek: { apiKey: "sk-ds" } } }),
+		);
+		expect(r.success).toBe(false);
+		expect(r.error?.issues.map((i) => i.path.join("."))).toContain("providers.deepseek.provider");
+	});
+
+	it("上一代的 provider 指针不会被改名成 activeProfile:老键被剥掉,指针留空", () => {
+		const ai = AISettingsSchema.parse(
+			modern({
+				provider: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-ds" } },
+			}),
+		);
+		expect(ai.activeProfile).toBe("");
+		expect(ai).not.toHaveProperty("provider");
 	});
 });

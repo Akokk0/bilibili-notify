@@ -60,15 +60,4 @@ describe("schema:ai.search", () => {
 		const r = AISettingsSchema.safeParse({ ...BASE, search: { backend: "bing" } });
 		expect(r.success).toBe(false);
 	});
-
-	it("走过 provider 迁移链的老配置同样补齐 search 段", () => {
-		// 上一代「一家一桶」形状:桶键即服务商名,指针字段还叫 provider。
-		const ai = AISettingsSchema.parse({
-			...BASE,
-			provider: "deepseek",
-			providers: { deepseek: { apiKey: "k", baseUrl: "https://api.deepseek.com" } },
-		});
-		expect(ai.activeProfile).toBe("deepseek");
-		expect(ai.search.backend).toBe("bocha");
-	});
 });

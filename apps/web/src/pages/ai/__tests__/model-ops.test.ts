@@ -306,8 +306,8 @@ describe("removeProfile", () => {
 //
 // 人格只住在 `presets[]` 里,`activePreset` 指着全局用的那一份。曾经还有个「默认」项
 // 对应 `ai.persona` —— 但它与 `presets[0]`「温柔女仆」本就是同一份东西,摆两个入口是
-// 重复。schema 那边的迁移保证 presets 恒非空、指针恒有着落
-// (见 packages/internal/src/schema/__tests__/ai-persona-pointer.test.ts)。
+// 重复。presets 恒非空、指针恒有着落:出厂默认自带,0.x 的存量配置由迁移器补齐
+// (见 apps/server/src/migration/ai.ts)。
 
 const TSUNDERE: AIPersona = { ...PERSONA, name: "傲娇", traits: "毒舌" };
 
@@ -500,7 +500,7 @@ describe("renamePersona", () => {
 });
 
 describe("全局人格指针", () => {
-	it("没设指针 → 落在第一份(schema 迁移保证它是「温柔女仆」)", () => {
+	it("没设指针 → 落在第一份(出厂默认的第一份是「温柔女仆」)", () => {
 		expect(globalPersonaRailId(withPresets("温柔女仆", "傲娇"))).toBe("preset:p0");
 	});
 

@@ -5,21 +5,16 @@
  *   - save→load round-trip;缺文件→{};换 key→{}+warn;落盘是 GCM blob 非明文
  * 守护契约(ConfigStore + secretStore):
  *   - 一次性 lift:磁盘明文 apiKey → getGlobals 仍可读(注水),globals.json 抹掉,secret 文件持有
+ *     (0.x 扁平老形状的那一条走迁移器接缝,见 `migration/__tests__/zero-generation-settings.test.ts`)
  *   - patchGlobals 改 apiKey → 新值生效;globals.json 始终无 apiKey;新实例同 key 可重新注水
  *   - 清空 apiKey → bag 清除
  *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
  */
 
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	type BusEvents,
-	type Disposable,
-	type MessageBus,
-	makeDefaultGlobalConfig,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
+import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
@@ -143,28 +138,9 @@ describe("createSecretStore", () => {
 	});
 });
 
+// 夹具一律是当代形状:`providers.<实例 id>` 的桶里写明 `provider`(配置仓不再按键名替它盖章,那是迁移器的事),
+// `activeProfile` 指着当前那份。这一组测的是密钥袋 —— 明文 / 注水 / 回滚,不是老形状的迁移。
 describe("ConfigStore + secretStore — apiKey 拆分", () => {
-	/**
-	 * 写一份**上一版形状**的 globals.json:AI 连接是一套扁平字段,密钥明文在盘上。
-	 * 这是升级路径的起点 —— schema 迁移会把它整份搬进 `providers.custom`,
-	 * 密钥则该被抬进加密袋的 `custom` 槽。刻意绕过类型:新 schema 已经没有这些字段了。
-	 */
-	async function seedLegacyPlaintextGlobals(apiKey: string) {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
-		const defaults = g.defaults as Record<string, unknown>;
-		const ai = { ...(defaults.ai as Record<string, unknown>) };
-		delete ai.providers;
-		ai.apiKey = apiKey;
-		ai.baseUrl = "https://api.deepseek.com";
-		ai.model = "deepseek-v4-pro";
-		defaults.ai = ai;
-		await mkdir(join(dataDir, ...CONFIG_DIR), { recursive: true });
-		await writeFile(
-			join(dataDir, ...CONFIG_DIR, "globals.json"),
-			JSON.stringify(g, null, 2),
-			"utf8",
-		);
-	}
 	const diskGlobals = async () =>
 		JSON.parse(await readFile(join(dataDir, ...CONFIG_DIR, "globals.json"), "utf8"));
 	/** 盘上那份里,某个桶的主 key。 */
@@ -180,23 +156,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 			secretStore,
 		});
 	}
-	/** 当前生效那家的主 key(测试里一律用 deepseek 桶,除迁移那条)。 */
+	/** 当前生效那家的主 key(测试里一律用 deepseek 桶)。 */
 	const memKey = (store: ConfigStore, id = "deepseek") =>
 		store.getGlobals().defaults.ai.providers[id as "deepseek"]?.apiKey;
-
-	it("一次性 lift:上一版明文 apiKey 迁进 custom 桶 + 加密袋,globals.json 抹掉", async () => {
-		await seedLegacyPlaintextGlobals("sk-legacy-plain");
-		const secret = mkSecretStore();
-		const store = mkStore(secret);
-		await store.load();
-		// 扁平配置整份进 custom 桶(schema 迁移),密钥注水回内存。
-		expect(memKey(store, "custom")).toBe("sk-legacy-plain");
-		expect(store.getGlobals().defaults.ai.providers.custom?.model).toBe("deepseek-v4-pro");
-		// 磁盘上那把被抠成空串 —— 不留明文,也不动键序。
-		expect(await diskKey("custom")).toBe("");
-		// 加密文件持有,键是 custom(与 schema 迁移的去处一致)。
-		expect((await secret.load()).aiApiKeys).toEqual({ custom: "sk-legacy-plain" });
-	});
 
 	it("上一版加密袋里的单把 aiApiKey 也迁进 custom 槽", async () => {
 		// 已经启用过加密的老用户:明文早就不在盘上了,那把 key 在袋子里叫 aiApiKey。
@@ -214,7 +176,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-new" } } } },
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-new" } },
+				},
+			},
 		});
 		expect(memKey(store)).toBe("sk-new");
 		expect(await diskKey("deepseek")).toBe("");
@@ -233,9 +200,14 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store.patchGlobals({
 			defaults: {
 				ai: {
+					activeProfile: "deepseek",
 					providers: {
-						deepseek: { apiKey: "sk-ds", vision: { apiKey: "sk-ds-vision" } },
-						openrouter: { apiKey: "sk-or" },
+						deepseek: {
+							provider: "deepseek",
+							apiKey: "sk-ds",
+							vision: { apiKey: "sk-ds-vision" },
+						},
+						openrouter: { provider: "openrouter", apiKey: "sk-or" },
 					},
 				},
 			},
@@ -259,7 +231,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-x" } } } },
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
+				},
+			},
 		});
 
 		// 重启:密钥已从盘上剥离,这一次是靠 secretBag 注水回内存的。
@@ -278,7 +255,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-x" } } } },
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
+				},
+			},
 		});
 		await store.patchGlobals({ defaults: { ai: { providers: { deepseek: { apiKey: "" } } } } });
 		expect(memKey(store)).toBe("");
@@ -289,7 +271,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(); // 不传 secretStore
 		await store.load();
 		await store.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-legacy-mode" } } } },
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-legacy-mode" } },
+				},
+			},
 		});
 		expect(await diskKey("deepseek")).toBe("sk-legacy-mode");
 	});
@@ -304,7 +291,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store.load();
 		// 先成功落一个 apiKey:bag 里是 sk-good,globals.json 已写。
 		await store.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-good" } } } },
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-good" } },
+				},
+			},
 		});
 		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-good" });
 

@@ -50,7 +50,18 @@ const ZERO_FILES: Record<string, string> = {
 	// 老形状的设置与订阅(第二代附加项、第一代 routing + @全体):第二遍会改写它们。
 	"state/globals.json": JSON.stringify({
 		app: {},
-		defaults: { features: { liveEnd: true, liveEndExtras: { wordcloud: true } } },
+		defaults: {
+			features: { liveEnd: true, liveEndExtras: { wordcloud: true } },
+			// 最老一代的扁平 AI 连接字段、历代旧默认模板
+			ai: { apiKey: "sk-old", baseUrl: "https://api.example.com", model: "m" },
+			templates: { liveEnd: "{name} 下播了，直播时长 {duration}" },
+		},
+		// 0.9.1 的「范围 + 白名单」
+		linkParsing: {
+			enabled: true,
+			scope: "selected",
+			targets: [{ targetId: "22222222-2222-4222-8222-222222222222" }],
+		},
 	}),
 	"state/subscriptions.json": JSON.stringify([
 		{
@@ -338,8 +349,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 5,
-			output: "23e89322056635ede6f639675a02ed8ac3267e19d409010729ee72f36aa29465",
+			revision: 6,
+			output: "1852a9342ac57d9ab79bb993d2dfd6c665f0e03011539f9700e2c2f4318aade9",
 		});
 	});
 });

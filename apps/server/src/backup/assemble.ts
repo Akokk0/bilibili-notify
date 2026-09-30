@@ -89,8 +89,8 @@ export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBack
 	const sections: BackupSections = structuredClone(env.sections);
 
 	if (sections.globals) {
-		// 老备份里是单把 aiApiKey → 落 custom 槽(那份备份的配置本身也是扁平的,
-		// schema 迁移会把它整份放进 providers.custom,两边对得上)。
+		// 老备份里是单把 aiApiKey → 落 custom 槽(那份备份的配置本身也是扁平的。活 schema 已不再把扁平
+		// 形状迁进 providers.custom,这种备份下游 parse 会拒;⑧ 拒收 1.0 之前的备份时这一支随之删掉)。
 		const keys = {
 			...(bag.aiApiKey !== undefined ? { custom: bag.aiApiKey } : {}),
 			...(bag.aiApiKeys ?? {}),

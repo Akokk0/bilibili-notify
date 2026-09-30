@@ -850,7 +850,7 @@ const PRESET_GENTLE_MAID = {
  * 内置人格清单 —— **纯数据,住在零依赖的 constants 里**,三方都要用它:
  *
  * - `schema/globals.ts` 的 `DEFAULT_AI`(默认配置 = 首份)
- * - `schema/common.ts` 的迁移(老配置 `presets: []` 时补齐这四份)
+ * - 服务端迁移器(`apps/server/src/migration/ai.ts`:0.x 老配置 `presets: []` 时补齐这四份)
  * - `apps/web` 的设置页(「从内置恢复」列出缺的那几份、判断哪些是锁死的)
  *
  * 前端那条路是把它放这儿的硬理由:从根入口拿会把 zod 拽进浏览器 bundle。

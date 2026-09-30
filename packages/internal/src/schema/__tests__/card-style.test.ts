@@ -69,7 +69,8 @@ describe("CardStyle 字体资产", () => {
 describe("CardStyle — 更老那两个键照旧剥掉", () => {
 	// `hideDesc` / `hideFollower` 是 show* 之前的写法。show* 这一批已随旧版式整个退役
 	// (ADR-0014 决策 17 的 2026-09-18 🔗:升级上来的一律用出厂默认皮肤,显不显示哪一件
-	// 归皮肤的块序列),但这两个更老的键仍要**剥干净**再交出去 —— 留着会一路漏进别处。
+	// 归皮肤的块序列),这两个更老的键也没有新键接得住,所以不迁。schema 不是 `.strict()`,
+	// zod 读的时候把未知键剥掉 —— 要钉的是「剥干净再交出去」,留着会一路漏进别处。
 	it("drops the legacy hideDesc / hideFollower flags", () => {
 		const parsed = CardStyleSchema.parse({
 			...DEFAULT_CARD_STYLE,

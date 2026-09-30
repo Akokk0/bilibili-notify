@@ -11,6 +11,9 @@
  * (redactGlobals / stripRedactedSecrets)自己的单测在 `routes/__tests__/
  * globals-redact-fns.test.ts`,那边按「每家一桶、每桶两把」逐一遍历。
  *
+ * 夹具是当代形状:新建的桶写明 `provider`(面板的 `addProfile` 也是这么建的;从前靠 schema 的 preprocess
+ * 按键名盖章,那是给 0.x 老配置的,⑥c 搬进了迁移器)。
+ *
  * 密钥现在住在 `defaults.ai.providers.<provider>.apiKey` —— 各家一套配置之后
  * 不再有全局那一把。这里固定用 deepseek 桶做样本。
  */
@@ -45,7 +48,9 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-secret-real-key" } } } },
+			defaults: {
+				ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-secret-real-key" } } },
+			},
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -86,7 +91,9 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-original-key" } } } },
+			defaults: {
+				ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-original-key" } } },
+			},
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -113,7 +120,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { apiKey: "sk-old-key" } } } },
+			defaults: { ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-old-key" } } } },
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -145,8 +152,8 @@ describe("globals apiKey redact — P0-3", () => {
 				ai: {
 					activeProfile: "deepseek",
 					providers: {
-						deepseek: { apiKey: "sk-going-away" },
-						openrouter: { apiKey: "sk-staying" },
+						deepseek: { provider: "deepseek", apiKey: "sk-going-away" },
+						openrouter: { provider: "openrouter", apiKey: "sk-staying" },
 					},
 				},
 			},
@@ -159,7 +166,7 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { provider: "openrouter", providers: { deepseek: null } } },
+				defaults: { ai: { activeProfile: "openrouter", providers: { deepseek: null } } },
 			}),
 		});
 		expect(patchRes.status).toBe(200);
@@ -175,7 +182,9 @@ describe("globals apiKey redact — P0-3", () => {
 		await app.request("/api/globals", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ defaults: { ai: { providers: { deepseek: { model: "ds-v4" } } } } }),
+			body: JSON.stringify({
+				defaults: { ai: { providers: { deepseek: { provider: "deepseek", model: "ds-v4" } } } },
+			}),
 		});
 		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe("");
 

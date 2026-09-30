@@ -351,6 +351,9 @@ export const DEFAULT_AI = {
 	activeProfile: "",
 	providers: {},
 	presets: BUILTIN_AI_PRESETS,
+	// 全新安装的人格指针直接指着首份内置人格。从前靠 schema 的 preprocess 每次 parse 时按内容匹配补出来;
+	// 那道 preprocess 是给 0.x 老配置的,⑥c 搬进迁移器之后默认值得自己完整。
+	activePreset: BUILTIN_AI_PRESETS[0].id,
 } as const;
 
 export const DEFAULT_CARD_STYLE = {

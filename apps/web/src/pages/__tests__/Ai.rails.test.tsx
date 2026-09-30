@@ -396,7 +396,7 @@ describe("女仆性格左栏", () => {
 
 	it("左栏就是人格清单本身,没有多余的「默认」项", async () => {
 		// 「默认」曾经是 ai.persona 的入口,而它与 presets[0]「温柔女仆」本就是同一份 ——
-		// 同一份东西摆两遍还得解释哪个算数。schema 迁移保证清单恒非空。
+		// 同一份东西摆两遍还得解释哪个算数。清单恒非空(迁移器补齐、出厂默认自带)。
 		mount(globalsWith(() => {}));
 		await gotoPersona();
 		expect(screen.queryByText("默认")).toBeNull();

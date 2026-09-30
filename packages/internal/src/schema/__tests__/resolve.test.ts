@@ -298,8 +298,8 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	};
 
 	it("不填 → 回落 ai.persona。这是**安全网**,不是常态", () => {
-		// schema 保证 parse 出来的配置恒带指针(见 ai-persona-pointer.test.ts),所以这条
-		// 路只在指针被就地抹掉时走到 —— 它存在的意义是「无论如何都得有份人格」,
+		// 出厂默认值自带指针(`DEFAULT_AI.activePreset`),存量配置的指针由迁移器补上
+		// (`apps/server/src/migration/ai.ts`),所以这条路只在指针被就地抹掉时走到 —— 它存在的意义是「无论如何都得有份人格」,
 		// 而不是让人靠改 ai.persona 来换全局人格(那条路已经没有界面入口了)。
 		const globals = makeDefaultGlobalConfig();
 		globals.defaults.ai.activePreset = undefined;

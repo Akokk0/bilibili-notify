@@ -8,6 +8,10 @@
  * 三处所在的 schema 都是裸 `z.object`(未知键 strip),不是 `.strict()` 那种「多一个键
  * 整份拒收」—— 所以字段直接删、不做迁移:老存档照样解析成功,那个键在下次写盘时消失。
  * 这里钉的是两半:**解析成功**(装不进来 = 启动期 throw),且**结果里没有它**。
+ *
+ * 最老一代的扁平连接字段现在由迁移器搬进 `providers.custom`(`apps/server/src/migration/ai.ts`),
+ * 迁移器刻意把 `temperature` 留在 ai 这一层、由 schema 剥掉;那一条连同迁移一起在服务端的
+ * `migration/__tests__/settings.test.ts`,这里只留活 schema 直接读到的两处。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -41,26 +45,6 @@ describe("temperature 退役 —— 老配置照样装得进来", () => {
 			model: "deepseek-v4-pro",
 		});
 		expect(bucket && "temperature" in bucket).toBe(false);
-	});
-
-	it("最老一代的扁平字段带着 temperature → 解析成功,哪一层都没留下它", () => {
-		const raw = rawGlobals();
-		delete raw.defaults.ai.providers;
-		delete raw.defaults.ai.activeProfile;
-		Object.assign(raw.defaults.ai, {
-			apiKey: "sk-old",
-			baseUrl: "https://api.deepseek.com",
-			model: "deepseek-v4-pro",
-			temperature: 0.3,
-		});
-
-		const r = GlobalConfigSchema.safeParse(raw);
-		expect(r.success).toBe(true);
-		const ai = r.data?.defaults.ai;
-		// 连接字段照旧搬进 custom 桶 —— 退役的只是 temperature 这一格。
-		expect(ai?.providers.custom).toMatchObject({ apiKey: "sk-old", model: "deepseek-v4-pro" });
-		expect(ai && "temperature" in ai).toBe(false);
-		expect(ai?.providers.custom && "temperature" in ai.providers.custom).toBe(false);
 	});
 
 	it("per-UP 的 AI 覆盖带着 temperature → 解析成功,覆盖里只剩挑的那份人格", () => {
