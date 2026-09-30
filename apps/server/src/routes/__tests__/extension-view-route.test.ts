@@ -120,8 +120,13 @@ describe("GET /api/ext/:id/status —— v2 视图", () => {
 		]);
 	});
 
-	it("没交过视图 —— 404", async () => {
+	it("没交过视图 —— 404 not_found,平铺的 { code, message }", async () => {
 		const { app } = boot();
-		expect((await app.request("/douyin/status")).status).toBe(404);
+		const res = await app.request("/douyin/status");
+		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({
+			code: "not_found",
+			message: "拓展 douyin 没在跑,或者还没交过面板数据",
+		});
 	});
 });

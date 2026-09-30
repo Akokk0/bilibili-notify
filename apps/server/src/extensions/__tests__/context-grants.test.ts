@@ -586,12 +586,13 @@ describe("动作", () => {
 	 * 🔴 「声明过没有」只认清单那一串里的名字 —— 哪天退回拿普通对象按下标查,`constructor` /
 	 * `toString` 会顺着原型链被判成「声明了」。清单校验那头已经拒这些名字,这里是第二道。
 	 */
-	it("Object.prototype 上的名字不算声明过:注册当场抛,跑是 undeclared", async () => {
+	it("Object.prototype 上的名字不算声明过:注册当场抛,跑是 unsupported(清单里没有)", async () => {
 		const h = harness({ manifest: V2 });
 		expect(() => h.ctx.onAction("constructor", () => {})).toThrow(/没有 constructor/);
 		expect(await h.runtime.runAction("toString")).toMatchObject({
 			ok: false,
-			reason: "undeclared",
+			code: "unsupported",
+			message: expect.stringContaining("清单里没有动作 toString"),
 		});
 	});
 
@@ -599,26 +600,45 @@ describe("动作", () => {
 		expect(() => harness().ctx.onAction("poll.now", () => {})).toThrow(/actions/);
 	});
 
-	it("跑的结果分清四种:没声明 / 声明了没接 / 抛了(带原话)/ 超时", async () => {
+	it("跑的结果分清四种码:没声明 / 声明了没接(unsupported,话不同)/ 抛了(unavailable,带原话)/ 超时", async () => {
 		const h = harness({ manifest: V2 });
-		expect(await h.runtime.runAction("nope")).toMatchObject({ ok: false, reason: "undeclared" });
-		expect(await h.runtime.runAction("login.start")).toMatchObject({
+		expect(await h.runtime.runAction("nope")).toEqual({
 			ok: false,
-			reason: "unhandled",
+			code: "unsupported",
+			message: "拓展 bridge 的清单里没有动作 nope",
+		});
+		expect(await h.runtime.runAction("login.start")).toEqual({
+			ok: false,
+			code: "unsupported",
+			message: "拓展 bridge 声明了动作 login.start,代码却没接",
 		});
 		h.ctx.onAction("poll.now", async () => {
 			throw new Error("抖音网关回了 403");
 		});
 		expect(await h.runtime.runAction("poll.now")).toEqual({
 			ok: false,
-			reason: "failed",
+			code: "unavailable",
 			message: "抖音网关回了 403",
 		});
 		const slow = harness({ manifest: V2 });
 		slow.ctx.onAction("poll.now", () => new Promise(() => {}));
-		expect(await slow.runtime.runAction("poll.now", { timeoutMs: 20 })).toMatchObject({
+		// 话里的秒数是这一发实际等的,不是常量。
+		expect(await slow.runtime.runAction("poll.now", { timeoutMs: 20 })).toEqual({
 			ok: false,
-			reason: "timeout",
+			code: "timeout",
+			message: "动作 poll.now 超过 0.02 秒没回",
+		});
+	});
+
+	it("拓展抛了个没写原话的错 —— 失败的话不许是空的", async () => {
+		const h = harness({ manifest: V2 });
+		h.ctx.onAction("poll.now", async () => {
+			throw new Error("");
+		});
+		expect(await h.runtime.runAction("poll.now")).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "动作 poll.now 抛了,没留原话",
 		});
 	});
 
@@ -636,7 +656,7 @@ describe("动作", () => {
 		const pending = h.runtime.runAction("poll.now", { timeoutMs: 20 });
 		if (!seen) throw new Error("handler 应该当场被叫到,并拿到一个 signal");
 		expect(seen.aborted).toBe(false);
-		expect(await pending).toMatchObject({ ok: false, reason: "timeout" });
+		expect(await pending).toMatchObject({ ok: false, code: "timeout" });
 		expect(seen.aborted).toBe(true);
 		expect((seen.reason as Error).name).toBe("TimeoutError");
 	});
@@ -666,14 +686,14 @@ describe("动作", () => {
 		expect((seen.reason as Error).name).toBe("AbortError");
 		expect(abortedWhenHookRan).toBe(true);
 		// 它听了 signal 抛出来 —— 面板那一发照常收到它的原话,不会挂到超时。
-		expect(await pending).toMatchObject({ ok: false, reason: "failed" });
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 	});
 
 	/**
-	 * 同一个动作在跑时再按 → busy(路由回 409),**不排队、不并发**(决策 42):两发一起跑,扫码登录
+	 * 同一个动作在跑时再按 → conflict(路由回 409),**不排队、不并发**(决策 42):两发一起跑,扫码登录
 	 * 就是两张码、两份轮询抢着存账号;排队的话,主人连按三下就在背后多跑两轮。不同的动作互不相干。
 	 */
-	it("同一个动作在跑时再按 —— busy;第一发照常跑完;不同的动作不互相挡;回来了又按得动", async () => {
+	it("同一个动作在跑时再按 —— conflict;第一发照常跑完;不同的动作不互相挡;回来了又按得动", async () => {
 		const h = harness({ manifest: V2 });
 		let calls = 0;
 		let finish: (() => void) | undefined;
@@ -691,8 +711,8 @@ describe("动作", () => {
 		const first = h.runtime.runAction("poll.now");
 		expect(await h.runtime.runAction("poll.now")).toEqual({
 			ok: false,
-			reason: "busy",
-			aborted: false,
+			code: "conflict",
+			message: "动作 poll.now 的上一发还没回来 —— 回来之前不接新的一发",
 		});
 		expect(calls).toBe(1);
 		expect(await h.runtime.runAction("login.start")).toEqual({ ok: true });
@@ -708,9 +728,9 @@ describe("动作", () => {
 
 	/**
 	 * 「在跑」算到 handler 真的回来为止:超时叫停了它却不听,它就还在背后跑 —— 放第二发进去就是两发
-	 * 并发。回 busy 时说清「已经叫停过了」,主人才知道不是自己按得太快。
+	 * 并发。回 conflict 时说清「已经叫停过了」,主人才知道不是自己按得太快。
 	 */
-	it("超时叫停了却不停的 —— 仍算在跑,再按是 busy,并说明已经叫停过", async () => {
+	it("超时叫停了却不停的 —— 仍算在跑,再按是 conflict,并说明已经叫停过", async () => {
 		const h = harness({ manifest: V2 });
 		let calls = 0;
 		h.ctx.onAction("poll.now", () => {
@@ -718,12 +738,13 @@ describe("动作", () => {
 			return new Promise(() => {});
 		});
 		expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toMatchObject({
-			reason: "timeout",
+			code: "timeout",
 		});
 		expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toEqual({
 			ok: false,
-			reason: "busy",
-			aborted: true,
+			code: "conflict",
+			message:
+				"动作 poll.now 的上一发超过 0.02 秒没回,已经叫它停下,可它还没停 —— 停下之前不接新的一发",
 		});
 		expect(calls).toBe(1);
 	});
@@ -743,7 +764,11 @@ describe("动作", () => {
 				}),
 		);
 		const disposing = h.runtime.dispose();
-		expect(await h.runtime.runAction("poll.now")).toMatchObject({ ok: false, reason: "unhandled" });
+		expect(await h.runtime.runAction("poll.now")).toMatchObject({
+			ok: false,
+			code: "unsupported",
+			message: expect.stringContaining("代码却没接"),
+		});
 		expect(calls).toBe(0);
 		release?.();
 		await disposing;
@@ -753,7 +778,11 @@ describe("动作", () => {
 		const h = harness({ manifest: V2 });
 		h.ctx.onAction("poll.now", () => {});
 		await h.runtime.dispose();
-		expect(await h.runtime.runAction("poll.now")).toMatchObject({ ok: false, reason: "unhandled" });
+		expect(await h.runtime.runAction("poll.now")).toMatchObject({
+			ok: false,
+			code: "unsupported",
+			message: expect.stringContaining("代码却没接"),
+		});
 	});
 });
 

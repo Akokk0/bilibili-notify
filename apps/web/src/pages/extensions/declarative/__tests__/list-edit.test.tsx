@@ -206,8 +206,8 @@ describe("编辑没成", () => {
 			new ApiError(
 				400,
 				{
-					error: "validation_failed",
-					message: "不合规矩",
+					code: "invalid",
+					message: "拓展设置没通过检查（共 1 条）",
 					issues: [{ op: 0, path: ["links", "c1", "name"], message: "名字重了" }],
 				},
 				"PATCH /api/ext/bridge/settings → 400",

@@ -4,27 +4,28 @@
  * is served from the same origin, so relative paths just work.
  */
 
-import type { FailureCode, Issue } from "@bilibili-notify/contract";
+import type { ExtensionSettingsIssue, FailureCode } from "@bilibili-notify/contract";
 import { FAILURE_CODES } from "@bilibili-notify/internal/constants";
 import { withDesktopTokenHeader } from "./desktop-token";
 
 /**
- * 一条逐格原因。`op` 只有拓展设置那处带(第几步惹出来的,ADR-0026 决策 6),标准的 `Issue` 里没有。
+ * 一条逐格原因:标准的 `Issue` 加一格 `op`(只有拓展设置那处带,第几步惹出来的,ADR-0026 决策 6)。
+ * 形状的正本是契约的 {@link ExtensionSettingsIssue}。
  */
-export type ApiIssue = Issue & { op?: number };
+export type ApiIssue = ExtensionSettingsIssue;
 
 /**
  * 非 2xx 的错误响应,**只在这里解析一次**(ADR-0026 决策 6):界面读 `code` + `message`,逐格标红读
- * `issues`,分情况只按 `code` 判,不再按状态码或旧的机器串换文案。`body` 留着原始响应体 ——
- * 给还没迁完的旧读法用,以及 `upstreamCode` 这类 ApiError 不另开一格的附加。
+ * `issues`,分情况只按 `code` 判,不再按状态码或机器串换文案。`body` 留着原始响应体 ——
+ * 给 `upstreamCode` 这类 ApiError 不另开一格的附加。
  *
  * 构造时从 `body` 里读出 `code` / `issues`,所以自己 `new ApiError(status, body, message)` 的
  * 出口(聊天、皮肤流)也拿得到,不必各写一遍。
  */
 export class ApiError extends Error {
-	/** 标准码。只有新形状才有;旧形状(迁移期)与断线(`status` 为 0)都没有。 */
+	/** 标准码。响应体是 `{ code, message }` 才有;断线(`status` 为 0)与认不出的体都没有。 */
 	readonly code?: FailureCode;
-	/** 逐条原因。新形状的 `issues`;旧形状只认 `validation_failed` 带的那一份。 */
+	/** 逐条原因,即响应体的 `issues`。 */
 	readonly issues?: ApiIssue[];
 
 	constructor(
@@ -71,44 +72,20 @@ function issueOf(raw: unknown): ApiIssue {
 	return issue;
 }
 
-/** 新形状 `{ code, message, issues? }`。`code` 得在码表里 —— 不在的不冒充标准码。 */
-function modernErrorBody(payload: Record<string, unknown>): ParsedErrorBody | null {
+/**
+ * 错误体只认一种形状:平铺的 `{ code, message, issues? }`(服务端一律经 `respondFailure` 回)。
+ * `code` 得在码表里 —— 不在的不冒充标准码;认不出的体交空,调用方拿兜底那句。
+ */
+function readErrorBody(payload: unknown): ParsedErrorBody {
+	if (!isRecord(payload)) return {};
 	const { code } = payload;
 	const message = textOf(payload.message);
 	if (typeof code !== "string" || !Object.hasOwn(FAILURE_CODES, code) || message === undefined) {
-		return null;
+		return {};
 	}
 	const parsed: ParsedErrorBody = { code: code as FailureCode, message };
 	if (Array.isArray(payload.issues)) parsed.issues = payload.issues.map(issueOf);
 	return parsed;
-}
-
-/**
- * 旧形状的兼容 —— **④b 末删**(第 1 期切片 ④b 最后一组路由迁完,服务端不会再回这三种了)。
- *
- * 迁移期服务端还有没迁的路由:`{err}`(锐评 / 推送测试 / 卡片测试…)、`{message}`(备份…)、
- * `{errors: string[]}`(皮肤上传 / 编辑保存的字段级校验),都要认 —— 漏认一种,那一路的失败就被降级成
- * 「POST /api/… → 400」这种线格式噪音,用户看不到真正可操作的原因。`code` 一律留空。
- * 逐格标红那一路是 `{ error: "validation_failed", issues }`(拓展设置)。
- */
-function legacyErrorBody(payload: Record<string, unknown>): ParsedErrorBody {
-	const parsed: ParsedErrorBody = {};
-	const message = textOf(payload.err) ?? textOf(payload.message);
-	if (message !== undefined) {
-		parsed.message = message;
-	} else if (Array.isArray(payload.errors)) {
-		const lines = payload.errors.filter((e): e is string => textOf(e) !== undefined);
-		if (lines.length > 0) parsed.message = lines.join(";");
-	}
-	if (payload.error === "validation_failed" && Array.isArray(payload.issues)) {
-		parsed.issues = payload.issues.map(issueOf);
-	}
-	return parsed;
-}
-
-function readErrorBody(payload: unknown): ParsedErrorBody {
-	if (!isRecord(payload)) return {};
-	return modernErrorBody(payload) ?? legacyErrorBody(payload);
 }
 
 /**
@@ -121,7 +98,7 @@ export function apiErrorOf(status: number, payload: unknown, fallback: string): 
 }
 
 /**
- * 逐条原因:新形状取 `issues`,旧形状兼容 `validation_failed` + `issues`(都在构造时读好了)。
+ * 逐条原因:响应体的 `issues`(构造时读好了)。
  * 不是 `ApiError`、或这次失败没带逐条原因的交 `null` —— 那种失败的原话(`message`)就是该说的。
  */
 export function issuesOf(err: unknown): ApiIssue[] | null {

@@ -268,7 +268,7 @@ describe("解析门", () => {
 		expect(await loaded.lookup("douyin", "x")).toEqual({ ok: true, candidates });
 	});
 
-	it("拓展抛了(同步或异步)→ failed,带它的原话", async () => {
+	it("拓展抛了(同步或异步)→ unavailable,话里带它的原话", async () => {
 		await plant("douyin", { subscription: SUBSCRIPTION });
 		const { loaded } = await boot({
 			douyin(ctx) {
@@ -282,13 +282,13 @@ describe("解析门", () => {
 		});
 		expect(await loaded.lookup("douyin", "sync")).toEqual({
 			ok: false,
-			reason: "failed",
-			message: "cookie 过期了",
+			code: "unavailable",
+			message: "拓展查询出错:cookie 过期了",
 		});
 		expect(await loaded.lookup("douyin", "async")).toEqual({
 			ok: false,
-			reason: "failed",
-			message: "抖音网关回了 403",
+			code: "unavailable",
+			message: "拓展查询出错:抖音网关回了 403",
 		});
 	});
 
@@ -296,7 +296,7 @@ describe("解析门", () => {
 	 * 超时那一刻宿主已经不等了(面板那头是一句「超时」),它还接着问平台只是白挨风控 —— 所以 signal
 	 * 当场中止,`reason` 是 `TimeoutError`(`AbortSignal.timeout()` 那个名字,拓展照惯例认得)。
 	 */
-	it("超时 → timeout;交给它的 signal 当场中止(TimeoutError),之前没中止", async () => {
+	it("超时 → timeout(话里是实际等的秒数);交给它的 signal 当场中止(TimeoutError),之前没中止", async () => {
 		await plant("douyin", { subscription: SUBSCRIPTION });
 		let seen: AbortSignal | undefined;
 		const { loaded } = await boot({
@@ -312,7 +312,11 @@ describe("解析门", () => {
 		const pending = loaded.lookup("douyin", "x", { timeoutMs: 20 });
 		if (!seen) throw new Error("解析门应该当场被叫到,并拿到一个 signal");
 		expect(seen.aborted).toBe(false);
-		expect(await pending).toEqual({ ok: false, reason: "timeout" });
+		expect(await pending).toEqual({
+			ok: false,
+			code: "timeout",
+			message: "拓展 douyin 的解析门超过 0.02 秒没回",
+		});
 		expect(seen.aborted).toBe(true);
 		expect((seen.reason as Error).name).toBe("TimeoutError");
 	});
@@ -370,7 +374,7 @@ describe("解析门", () => {
 		expect(seen.aborted).toBe(true);
 		expect((seen.reason as Error).name).toBe("AbortError");
 		// 它听了 signal 抛出来 —— 那一发照常收到它的原话,不会挂到超时。
-		expect(await pending).toMatchObject({ ok: false, reason: "failed" });
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 		expect(await h.loaded.lookup("douyin", "x")).toBeUndefined();
 	});
 
@@ -423,8 +427,9 @@ describe("解析门", () => {
 			},
 		});
 		const outcome = await loaded.lookup("douyin", "x");
-		expect(outcome).toMatchObject({ ok: false, reason: "invalid" });
-		expect(outcome?.ok === false && "message" in outcome ? outcome.message : "").toContain(why);
+		expect(outcome).toMatchObject({ ok: false, code: "invalid" });
+		expect(outcome?.ok === false ? outcome.message : "").toContain("拓展交回的候选不合规矩:");
+		expect(outcome?.ok === false ? outcome.message : "").toContain(why);
 		// 日志里也有一行 —— 面板那一句关掉了,还查得到。
 		expect(lines.some((line) => line.startsWith("warn") && line.includes(why))).toBe(true);
 	});

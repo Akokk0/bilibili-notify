@@ -8,9 +8,14 @@
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionInstallResponse, ExtensionsResponse } from "@bilibili-notify/contract";
-import type { GlobalConfig, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	ErrorResponse,
+	ExtensionInstallResponse,
+	ExtensionsResponse,
+} from "@bilibili-notify/contract";
+import { fail, type GlobalConfig, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
+import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import type { ConfigStore } from "../../config/store.js";
@@ -26,6 +31,19 @@ import { createReportProblemLog, type ReportProblemLog } from "../../extensions/
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createExtensionsRoute } from "../extensions.js";
+import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+
+/**
+ * 非 2xx 的体:平铺的 `{ code, message }`(+ 可选 `issues`),键集合钉死 —— 旧形状的 `err` /
+ * `errors` / `ok: false` 一个都不许再出现(ADR-0026 决策 6)。
+ */
+async function failureOf(res: Response): Promise<ErrorResponse> {
+	const body = (await res.json()) as ErrorResponse;
+	expect(Object.keys(body).every((key) => ["code", "message", "issues"].includes(key))).toBe(true);
+	expect(typeof body.message).toBe("string");
+	expect(body.message).not.toBe("");
+	return body;
+}
 
 let installRoot: string;
 let rescan: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -53,6 +71,8 @@ function boot(
 		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
 		/** 解析门(`GET /:id/lookup`)。不给就是那一口没接上。 */
 		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
+		/** 换掉「只重载」那一口 —— 只有要看「装载器拒绝以外的抛错」的用例给。 */
+		swap?: (id: string) => Promise<void>;
 		/** 「上报问题」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
 		reportProblems?: ReportProblemLog;
 	} = {},
@@ -95,8 +115,16 @@ function boot(
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
 		lookup: over.lookup,
 		reportProblems: over.reportProblems,
-		...(loader ? { swap: (id: string) => loader.swap(id) } : {}),
+		...(over.swap ? { swap: over.swap } : loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
+}
+
+/** 挂上全局出错处理再问 —— 路由里往外抛的错在生产上就是这么被接住的。 */
+function withGlobalHandler(route: Hono, logged: unknown[] = []): Hono {
+	const parent = new Hono();
+	parent.onError(requestErrorHandler({ error: (...args) => logged.push(args) }));
+	parent.route("/", route);
+	return parent;
 }
 
 /** 一个什么都不说的宿主 —— 这里只关心装载器认的是哪一份代码。 */
@@ -618,8 +646,12 @@ describe("GET /api/ext/:id/bots", () => {
 		expect(await res.json()).toEqual({ bots });
 	});
 
-	it("没跑 / 没这个口 → 404,不是空名单 —— 面板要分得开「没 bot」与「问不到」", async () => {
-		expect((await boot({ entries: [running("bridge")] }).request("/bridge/bots")).status).toBe(404);
+	it("没跑 / 没这个口 → 404 not_found,不是空名单 —— 面板要分得开「没 bot」与「问不到」", async () => {
+		const res = await boot({ entries: [running("bridge")] }).request("/bridge/bots");
+		expect(res.status).toBe(404);
+		const body = await failureOf(res);
+		expect(body.code).toBe("not_found");
+		expect(body.message).toContain("bridge");
 	});
 });
 
@@ -637,11 +669,15 @@ describe("GET /api/ext/:id/status", () => {
 	 * 「没这个拓展」与「它没交过数据」都是 404 而不是空对象 —— 面板要能把这两件事
 	 * 与「交上来的就是一张空表」分开说。
 	 */
-	it("没跑 / 没交过 → 404,不是空对象", async () => {
-		expect((await boot({ entries: [running("bridge")] }).request("/bridge/status")).status).toBe(
-			404,
-		);
-		expect((await boot().request("/nobody/status")).status).toBe(404);
+	it("没跑 / 没交过 → 404 not_found,不是空对象", async () => {
+		const notRunning = await boot({ entries: [running("bridge")] }).request("/bridge/status");
+		expect(notRunning.status).toBe(404);
+		const body = await failureOf(notRunning);
+		expect(body.code).toBe("not_found");
+		expect(body.message).toContain("bridge");
+		const nobody = await boot().request("/nobody/status");
+		expect(nobody.status).toBe(404);
+		expect((await failureOf(nobody)).code).toBe("not_found");
 	});
 
 	it("**现取** —— 拓展给的是个函数,两次问拿到的是两次的真相", async () => {
@@ -804,18 +840,70 @@ describe("POST /api/ext/install", () => {
 		expect(landed).toEqual([false, true]);
 	});
 
-	it("包不合规 → 400,拆包那几句原样送到面板上,而且一个字节都没落盘", async () => {
+	it("包不合规 → 400 invalid,拆包那句话原样送到面板上,而且一个字节都没落盘", async () => {
 		const res = await upload(boot(), form(new Blob([strToU8("这不是 zip")])));
 
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("zip");
+		const body = await failureOf(res);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("zip");
+		expect(body.issues).toBeUndefined();
 		expect(rescan).not.toHaveBeenCalled();
 	});
 
-	it("压根没带文件 → 400,说清楚少的是哪个字段", async () => {
+	/** 意见不止一条:message 一句概括,每条问题放 issues —— 面板摆成清单,主人照着改那个包。 */
+	it("包里不止一处不合规 → message 一句概括,issues 逐条", async () => {
+		const zip = zipSync({
+			"extension.json": strToU8("{}"),
+			"index.mjs": strToU8("//"),
+			"a.mjs": strToU8("//"),
+			"b.mjs": strToU8("//"),
+		});
+		const res = await upload(boot(), form(new Blob([zip])));
+
+		expect(res.status).toBe(400);
+		const body = await failureOf(res);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toMatch(/没通过检查（共 \d+ 条）/);
+		expect(body.issues?.map((issue) => issue.message).join("\n")).toMatch(/a\.mjs[\s\S]*b\.mjs/);
+		expect(rescan).not.toHaveBeenCalled();
+	});
+
+	it("压根没带文件 → 400 invalid,说清楚少的是哪个字段", async () => {
 		const res = await upload(boot(), form(undefined));
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as { errors: string[] }).errors.join()).toContain("file");
+		const body = await failureOf(res);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("file");
+	});
+
+	/**
+	 * 🔴 落盘那头**可预期**的拒绝(目标是 devtools 链进来的工作树)是 `conflict`;磁盘写失败之类是 bug
+	 * 或环境的事,往外抛给全局出错处理 —— 客户端只拿一句固定的话,原话进日志,不冒充成主人的操作有毛病。
+	 */
+	it("目标是软链 → 409 conflict,那句话原样给主人;别的落盘失败 → 全局出错处理", async () => {
+		const target = join(installRoot, "__worktree");
+		await mkdir(target, { recursive: true });
+		await symlink(target, join(installRoot, "bridge"));
+		const refused = await upload(boot(), form(pack()));
+		expect(refused.status).toBe(409);
+		const body = await failureOf(refused);
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("devtools");
+
+		const logged: unknown[] = [];
+		const app = withGlobalHandler(
+			boot({
+				changeDisk: async () => {
+					throw new Error("ENOSPC: no space left on device");
+				},
+			}),
+			logged,
+		);
+		const crashed = await upload(app, form(pack()));
+		expect(crashed.status).toBe(503);
+		expect(await crashed.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(logged).toHaveLength(1);
 	});
 });
 
@@ -892,17 +980,40 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 	 * 🔴 生产上**不给随手重载的口子**:每换一份新代码漏一份旧模块,没有新代码时白漏(决策 47)。
 	 * 装载器那句「为什么不给」原样交出去,别自编一句「重载失败」。
 	 */
-	it("没有等着换上的 → 409,装载器那句原话", async () => {
+	it("没有等着换上的 → 409 conflict,装载器那句原话", async () => {
 		await plant("bridge", "旧的");
 		const loader = await realLoader();
 
 		const res = await boot({ enabled: true, loader }).request("/bridge/swap", { method: "POST" });
 
 		expect(res.status).toBe(409);
-		const body = (await res.json()) as { ok: boolean; err: string };
-		expect(body.ok).toBe(false);
-		expect(body.err).toContain("没有等着换上");
+		const body = await failureOf(res);
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("没有等着换上");
 		await loader.dispose();
+	});
+
+	/**
+	 * 🔴 装载器**拒绝**(conflict)与换代码时**出了 bug** 要分开:后者不能也被伪装成一个 409、把 bug
+	 * 的原话当成给主人的操作提示 —— 交给全局出错处理,客户端只拿一句固定的话。
+	 */
+	it("换代码时出了 bug(不是装载器的拒绝)→ 全局出错处理,不冒充 409", async () => {
+		const logged: unknown[] = [];
+		const app = withGlobalHandler(
+			boot({
+				entries: [running("bridge")],
+				swap: async () => {
+					throw new TypeError("Cannot read properties of undefined (reading 'dispose')");
+				},
+			}),
+			logged,
+		);
+
+		const res = await app.request("/bridge/swap", { method: "POST" });
+
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(logged).toHaveLength(1);
 	});
 
 	/**
@@ -927,14 +1038,25 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 		});
 		const res = await app.request("/bridge/swap", { method: "POST" });
 		expect(res.status).toBe(409);
-		expect(((await res.json()) as { err: string }).err).toContain("关着");
+		const failure = await failureOf(res);
+		expect(failure.code).toBe("conflict");
+		expect(failure.message).toContain("关着");
 		await loader.dispose();
 	});
 
-	it("没装这个 id → 404", async () => {
+	it("没装这个 id → 404 not_found", async () => {
 		const loader = await realLoader();
 		const res = await boot({ loader }).request("/nobody/swap", { method: "POST" });
 		expect(res.status).toBe(404);
+		expect((await failureOf(res)).code).toBe("not_found");
+		await loader.dispose();
+	});
+
+	it("id 不合规矩 → 400 invalid", async () => {
+		const loader = await realLoader();
+		const res = await boot({ loader }).request("/Bad_ID/swap", { method: "POST" });
+		expect(res.status).toBe(400);
+		expect((await failureOf(res)).code).toBe("invalid");
 		await loader.dispose();
 	});
 });
@@ -985,7 +1107,9 @@ describe("DELETE /api/ext/:id", () => {
 		const res = await app.request("/bridge", { method: "DELETE" });
 
 		expect(res.status).toBe(409);
-		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("2");
+		const body = await failureOf(res);
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("2");
 		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).not.toBeNull();
 		expect(patchGlobals).not.toHaveBeenCalled();
 	});
@@ -1002,7 +1126,7 @@ describe("DELETE /api/ext/:id", () => {
 	 * 🔴 开发版里装载根下那条 `bridge` 是 devtools **软链**进来的仓库工作树。
 	 * 顺着删下去就是删主人的源码 —— 同传包装那头,认出软链就拒。
 	 */
-	it("软链(devtools 链进来的工作树)→ 拒,并说清去哪卸", async () => {
+	it("软链(devtools 链进来的工作树)→ 409 conflict,并说清去哪卸", async () => {
 		const { symlink, mkdir } = await import("node:fs/promises");
 		const target = join(installRoot, "__worktree");
 		await mkdir(target, { recursive: true });
@@ -1010,8 +1134,10 @@ describe("DELETE /api/ext/:id", () => {
 
 		const res = await boot().request("/bridge", { method: "DELETE" });
 
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("devtools");
+		expect(res.status).toBe(409);
+		const body = await failureOf(res);
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("devtools");
 		// 软链的落点还在 —— 没顺着删下去。
 		expect(await lstat(target).catch(() => null)).not.toBeNull();
 		// 🔴 拒了就什么都别动:先清配置再抹盘的话,这条路上配置已经没了而拓展还在。
@@ -1089,10 +1215,11 @@ describe("DELETE /api/ext/:id", () => {
 		expect(gone).toEqual([false, true]);
 	});
 
-	it("id 不合法 → 400,不碰盘", async () => {
+	it("id 不合法 → 400 invalid,不碰盘", async () => {
 		const res = await boot().request("/..%2F..%2Fetc", { method: "DELETE" });
 
 		expect(res.status).toBe(400);
+		expect((await failureOf(res)).code).toBe("invalid");
 		expect(patchGlobals).not.toHaveBeenCalled();
 	});
 });
@@ -1113,18 +1240,21 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		};
 	}
 
-	it("没接市场的构建 → 404", async () => {
+	it("没接市场的构建 → 400 unsupported,并说清是这个构建没接", async () => {
 		const app = boot();
-		expect((await app.request("/marketplace")).status).toBe(404);
-		expect(
-			(
-				await app.request("/marketplace/install", {
-					method: "POST",
-					body: "{}",
-					headers: { "content-type": "application/json" },
-				})
-			).status,
-		).toBe(404);
+		const list = await app.request("/marketplace");
+		expect(list.status).toBe(400);
+		expect(await failureOf(list)).toEqual({
+			code: "unsupported",
+			message: "这个构建没接拓展市场",
+		});
+		const install = await app.request("/marketplace/install", {
+			method: "POST",
+			body: "{}",
+			headers: { "content-type": "application/json" },
+		});
+		expect(install.status).toBe(400);
+		expect((await failureOf(install)).code).toBe("unsupported");
 	});
 
 	it("GET 原样下发 list();?refresh=1 无视缓存", async () => {
@@ -1177,9 +1307,9 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		expect(((await res.json()) as ExtensionInstallResponse).staged).toBe(false);
 	});
 
-	it("POST 装不了 → 400,原因原样;缺参数 → 400", async () => {
+	it("POST 装不了 → 原因原样,码是什么状态码就是什么;缺参数 → 400 invalid", async () => {
 		const m = market();
-		m.install.mockResolvedValueOnce({ ok: false, err: "下载到的包校验和与索引写的对不上" });
+		m.install.mockResolvedValueOnce(fail("invalid", "下载到的包校验和与索引写的对不上"));
 		const app = boot({ marketplace: m });
 		const res = await app.request("/marketplace/install", {
 			method: "POST",
@@ -1187,14 +1317,38 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 			headers: { "content-type": "application/json" },
 		});
 		expect(res.status).toBe(400);
-		expect(await res.json()).toEqual({ errors: ["下载到的包校验和与索引写的对不上"] });
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message: "下载到的包校验和与索引写的对不上",
+		});
 		const bad = await app.request("/marketplace/install", {
 			method: "POST",
 			body: JSON.stringify({ id: "bridge" }),
 			headers: { "content-type": "application/json" },
 		});
 		expect(bad.status).toBe(400);
+		expect(await failureOf(bad)).toEqual({ code: "invalid", message: "要给 source 与 id" });
 		expect(m.install).toHaveBeenCalledTimes(1);
+	});
+
+	it.each<[string, MarketplaceInstallOutcome, number]>([
+		["没这个源 / 源里没有 / 被撤回", fail("not_found", "没有这个源:nope"), 404],
+		["源的索引没拿到 / 包下不下来", fail("unavailable", "源「官方」现在不可用:拿不到"), 503],
+		["这台 BN 的档位装不了", fail("unsupported", "桥:先升级 BN"), 400],
+		["包不合规矩", fail("invalid", "包拆不开:这不是一个合法的 zip 文件"), 400],
+		["目标是软链", fail("conflict", "bridge 现在是一条软链"), 409],
+	])("POST 装不了(%s)—— 状态码从码推,话原样", async (_label, outcome, status) => {
+		const m = market();
+		m.install.mockResolvedValueOnce(outcome);
+		const res = await boot({ marketplace: m }).request("/marketplace/install", {
+			method: "POST",
+			body: JSON.stringify({ source: "official", id: "bridge" }),
+			headers: { "content-type": "application/json" },
+		});
+		expect(res.status).toBe(status);
+		const body = await failureOf(res);
+		if (outcome.ok) throw new Error("fixture");
+		expect(body).toEqual({ code: outcome.code, message: outcome.message });
 	});
 });
 
@@ -1295,7 +1449,9 @@ describe("拓展自己的文档", () => {
 			const res = await boot().request("/..%2Fbn-ext-route-sibling/docs");
 
 			expect(res.status).toBe(400);
-			expect(await res.text()).not.toContain("SIBLING-SECRET");
+			const text = await res.text();
+			expect(text).not.toContain("SIBLING-SECRET");
+			expect(JSON.parse(text).code).toBe("invalid");
 		} finally {
 			await rm(sibling, { recursive: true, force: true });
 		}
@@ -1322,8 +1478,13 @@ describe("拓展自己的文档", () => {
 	});
 
 	/** 「没装这个」与「装了但没写」是两回事 —— 面板正是靠这两档分开的。 */
-	it("没装这个拓展 → 404", async () => {
-		expect((await boot().request("/nobody/docs")).status).toBe(404);
+	it("没装这个拓展 → 404 not_found", async () => {
+		const res = await boot().request("/nobody/docs");
+		expect(res.status).toBe(404);
+		expect(await failureOf(res)).toEqual({
+			code: "not_found",
+			message: "没有装名叫 nobody 的拓展",
+		});
 	});
 
 	it("装了但两份都没写 → 200,交一个空的回去(不是 404)", async () => {
@@ -1336,7 +1497,7 @@ describe("拓展自己的文档", () => {
 	});
 
 	/** 没接装载器的构建(没有装载根)读不了文档,但得说清是为什么,别装作没这个拓展。 */
-	it("这个构建没接装载器 → 404,并说清原因", async () => {
+	it("这个构建没接装载器 → 400 unsupported,并说清原因", async () => {
 		const app = createExtensionsRoute({
 			store: {
 				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
@@ -1350,8 +1511,10 @@ describe("拓展自己的文档", () => {
 
 		const res = await app.request("/bridge/docs");
 
-		expect(res.status).toBe(404);
-		expect(((await res.json()) as { errors: string[] }).errors[0]).toContain("装载器");
+		expect(res.status).toBe(400);
+		const body = await failureOf(res);
+		expect(body.code).toBe("unsupported");
+		expect(body.message).toContain("装载器");
 	});
 });
 
@@ -1372,33 +1535,55 @@ describe("POST /api/ext/:id/actions/:name", () => {
 		expect(await res.json()).toEqual({ ok: true });
 	});
 
-	it.each<[string, ActionOutcome | undefined, number, string]>([
-		["拓展没在跑", undefined, 404, "没在跑"],
-		["清单里没这个动作", { ok: false, reason: "undeclared" }, 404, "没有"],
-		["声明了、代码没接", { ok: false, reason: "unhandled" }, 501, "没接"],
+	// 话在 `runAction` 里造(那儿才知道动作名与实际等了多久),路由原样交出去、状态码从码推。
+	it.each<[string, ActionOutcome | undefined, number, string, string]>([
+		["拓展没在跑", undefined, 404, "not_found", "没在跑"],
 		[
-			"拓展抛了",
-			{ ok: false, reason: "failed", message: "抖音网关回了 403" },
-			500,
-			"抖音网关回了 403",
+			"清单里没这个动作",
+			fail("unsupported", "拓展 douyin 的清单里没有动作 poll.now"),
+			400,
+			"unsupported",
+			"没有动作",
 		],
-		["超时", { ok: false, reason: "timeout" }, 504, "秒"],
+		[
+			"声明了、代码没接",
+			fail("unsupported", "拓展 douyin 声明了动作 poll.now,代码却没接"),
+			400,
+			"unsupported",
+			"没接",
+		],
+		["拓展抛了", fail("unavailable", "抖音网关回了 403"), 503, "unavailable", "抖音网关回了 403"],
+		["超时", fail("timeout", "动作 poll.now 超过 30 秒没回"), 504, "timeout", "30 秒"],
 		// 决策 42:同一个动作在跑时再按,不排队、不并发 —— 说清「还在跑」,不是笼统的失败。
-		["同一个动作还在跑", { ok: false, reason: "busy", aborted: false }, 409, "还没回来"],
-		["上一发超时叫停了却还没停", { ok: false, reason: "busy", aborted: true }, 409, "已经叫它停下"],
-	])("%s —— %s", async (_label, outcome, status, text) => {
+		[
+			"同一个动作还在跑",
+			fail("conflict", "动作 poll.now 的上一发还没回来 —— 回来之前不接新的一发"),
+			409,
+			"conflict",
+			"还没回来",
+		],
+		[
+			"上一发超时叫停了却还没停",
+			fail("conflict", "动作 poll.now 的上一发超过 30 秒没回,已经叫它停下,可它还没停"),
+			409,
+			"conflict",
+			"已经叫它停下",
+		],
+	])("%s —— %s", async (_label, outcome, status, code, text) => {
 		const res = await call(
 			boot({ actions: outcome ? { "douyin/poll.now": outcome } : {} }),
 			"/douyin/actions/poll.now",
 		);
 		expect(res.status).toBe(status);
-		const body = (await res.json()) as { ok: boolean; err: string };
-		expect(body.ok).toBe(false);
-		expect(body.err).toContain(text);
+		const body = await failureOf(res);
+		expect(body.code).toBe(code);
+		expect(body.message).toContain(text);
 	});
 
-	it("拓展 id 或动作名不合规矩 —— 400,不往下问", async () => {
-		expect((await call(boot(), "/Douyin/actions/poll.now")).status).toBe(400);
+	it("拓展 id 或动作名不合规矩 —— 400 invalid,不往下问", async () => {
+		const badId = await call(boot(), "/Douyin/actions/poll.now");
+		expect(badId.status).toBe(400);
+		expect((await failureOf(badId)).code).toBe("invalid");
 		expect((await call(boot(), "/douyin/actions/Poll%20Now")).status).toBe(400);
 	});
 
@@ -1409,7 +1594,11 @@ describe("POST /api/ext/:id/actions/:name", () => {
 	 */
 	it("动作名是 Object.prototype 上的名字(toString)—— 400,不往下问", async () => {
 		const res = await call(
-			boot({ actions: { "douyin/toString": { ok: false, reason: "unhandled" } } }),
+			boot({
+				actions: {
+					"douyin/toString": fail("unsupported", "拓展 douyin 声明了动作 toString,代码却没接"),
+				},
+			}),
 			"/douyin/actions/toString",
 		);
 		expect(res.status).toBe(400);
@@ -1418,8 +1607,8 @@ describe("POST /api/ext/:id/actions/:name", () => {
 
 /**
  * 新建订阅时的解析门(ADR-0019 决策 11 / 52):主人粘的东西交给那个拓展,回候选。走 `/api/*`,吃面板
- * 会话鉴权。每种失败各有状态码与原话 —— 两种 502(拓展自己抛了 / 交回来的不合规矩)要分得开:
- * 前者是平台那头的事(cookie 过期、被风控),后者是拓展的 bug。
+ * 会话鉴权。每种失败各有码与原话 —— 两种(拓展自己抛了 `unavailable` / 交回来的不合规矩 `invalid`)
+ * 要分得开:前者是平台那头的事(cookie 过期、被风控),后者是拓展的 bug。
  */
 describe("GET /api/ext/:id/lookup", () => {
 	const CANDIDATE = { id: "MS4wLjABAAAA-x", name: "抖音作者", fans: 12 };
@@ -1429,7 +1618,7 @@ describe("GET /api/ext/:id/lookup", () => {
 	}
 
 	it("问到了 —— 200,{ candidates } 原样下发;交给拓展的是 id 与主人输入的原话", async () => {
-		const lookup = stub({ ok: true, candidates: [CANDIDATE] });
+		const lookup = stub(ok({ candidates: [CANDIDATE] }));
 		const res = await boot({ lookup }).request(
 			`/douyin/lookup?q=${encodeURIComponent("https://v.douyin.com/abc/")}`,
 		);
@@ -1439,7 +1628,7 @@ describe("GET /api/ext/:id/lookup", () => {
 	});
 
 	it("一个都认不出 —— 200 加一张空表,不是 404", async () => {
-		const res = await boot({ lookup: stub({ ok: true, candidates: [] }) }).request(
+		const res = await boot({ lookup: stub(ok({ candidates: [] })) }).request(
 			"/douyin/lookup?q=nobody",
 		);
 		expect(res.status).toBe(200);
@@ -1448,7 +1637,7 @@ describe("GET /api/ext/:id/lookup", () => {
 
 	/** 粘链接时带进来的首尾空白去掉;除此之外一个字不动 —— 怎么解读是拓展的事。 */
 	it("q 首尾的空白去掉再交给拓展,中间的原样", async () => {
-		const lookup = stub({ ok: true, candidates: [] });
+		const lookup = stub(ok({ candidates: [] }));
 		await boot({ lookup }).request(`/douyin/lookup?q=${encodeURIComponent("  \t抖音 作者 名\n ")}`);
 		expect(lookup).toHaveBeenCalledWith("douyin", "抖音 作者 名");
 	});
@@ -1459,63 +1648,68 @@ describe("GET /api/ext/:id/lookup", () => {
 		["q 只有空白", `/douyin/lookup?q=${encodeURIComponent("   ")}`],
 		["q 超过 1024 字", `/douyin/lookup?q=${"字".repeat(1025)}`],
 		["拓展 id 不合规矩", "/Douyin/lookup?q=x"],
-	])("%s —— 400,不往下问", async (_label, path) => {
-		const lookup = stub({ ok: true, candidates: [] });
+	])("%s —— 400 invalid,不往下问", async (_label, path) => {
+		const lookup = stub(ok({ candidates: [] }));
 		const res = await boot({ lookup }).request(path);
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { ok: boolean; err: string };
-		expect(body.ok).toBe(false);
-		expect(body.err.length).toBeGreaterThan(0);
+		expect((await failureOf(res)).code).toBe("invalid");
 		expect(lookup).not.toHaveBeenCalled();
 	});
 
 	it("q 正好 1024 字 —— 照常问", async () => {
-		const lookup = stub({ ok: true, candidates: [] });
+		const lookup = stub(ok({ candidates: [] }));
 		const res = await boot({ lookup }).request(`/douyin/lookup?q=${"字".repeat(1024)}`);
 		expect(res.status).toBe(200);
 		expect(lookup).toHaveBeenCalledOnce();
 	});
 
-	it.each<[string, LookupOutcome | undefined, number, string[]]>([
+	// 话在 `lookup` 里造,路由原样交出去、状态码从码推。
+	it.each<[string, LookupOutcome | undefined, number, string, string[]]>([
 		// 没在跑 / 不是订阅源 / 没装 —— 说清是哪个拓展。
-		["问不到", undefined, 404, ["douyin"]],
-		["超时", { ok: false, reason: "timeout" }, 504, ["15 秒"]],
+		["问不到", undefined, 404, "not_found", ["douyin"]],
+		["超时", fail("timeout", "拓展 douyin 的解析门超过 15 秒没回"), 504, "timeout", ["15 秒"]],
 		[
 			"拓展自己抛了",
-			{ ok: false, reason: "failed", message: "cookie 过期了" },
-			502,
+			fail("unavailable", "拓展查询出错:cookie 过期了"),
+			503,
+			"unavailable",
 			["拓展查询出错:", "cookie 过期了"],
 		],
 		[
 			"交回来的候选不合规矩",
-			{ ok: false, reason: "invalid", message: "0.avatar: 头像只收 png / jpeg / webp" },
+			fail("invalid", "拓展交回的候选不合规矩:0.avatar: 头像只收 png / jpeg / webp"),
+			// 请求本身没错,是对端(拓展)交回了不合格的东西 —— 502,不是怪发请求那头的 400。
 			502,
+			"invalid",
 			["拓展交回的候选不合规矩:", "0.avatar: 头像只收 png / jpeg / webp"],
 		],
-	])("%s —— %s", async (_label, outcome, status, texts) => {
+	])("%s —— %s", async (_label, outcome, status, code, texts) => {
 		const res = await boot({ lookup: stub(outcome) }).request("/douyin/lookup?q=x");
 		expect(res.status).toBe(status);
-		const body = (await res.json()) as { ok: boolean; err: string };
-		expect(body.ok).toBe(false);
-		for (const text of texts) expect(body.err).toContain(text);
+		const body = await failureOf(res);
+		expect(body.code).toBe(code);
+		for (const text of texts) expect(body.message).toContain(text);
 	});
 
-	/** 两种 502 的原话不能混:一个是平台那头的事,一个是拓展的 bug,主人与作者要一眼分得开。 */
-	it("两种 502 的说法分得开", async () => {
-		const failed = (await (
+	/** 拓展抛了与交回来的不合规矩不能混:一个是平台那头的事,一个是拓展的 bug,主人与作者要一眼分得开。 */
+	it("拓展抛了与候选不合规矩的码不同", async () => {
+		const failed = await failureOf(
 			await boot({
-				lookup: stub({ ok: false, reason: "failed", message: "同一句" }),
-			}).request("/douyin/lookup?q=x")
-		).json()) as { err: string };
-		const invalid = (await (
+				lookup: stub(fail("unavailable", "拓展查询出错:同一句")),
+			}).request("/douyin/lookup?q=x"),
+		);
+		const invalid = await failureOf(
 			await boot({
-				lookup: stub({ ok: false, reason: "invalid", message: "同一句" }),
-			}).request("/douyin/lookup?q=x")
-		).json()) as { err: string };
-		expect(failed.err).not.toBe(invalid.err);
+				lookup: stub(fail("invalid", "拓展交回的候选不合规矩:同一句")),
+			}).request("/douyin/lookup?q=x"),
+		);
+		expect(failed.code).not.toBe(invalid.code);
+		expect(failed.message).not.toBe(invalid.message);
 	});
 
-	it("这个构建没接解析门 —— 404", async () => {
-		expect((await boot().request("/douyin/lookup?q=x")).status).toBe(404);
+	it("这个构建没接解析门 —— 404 not_found", async () => {
+		const res = await boot().request("/douyin/lookup?q=x");
+		expect(res.status).toBe(404);
+		expect((await failureOf(res)).code).toBe("not_found");
 	});
 });

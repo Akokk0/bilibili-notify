@@ -27,6 +27,7 @@ import ExtensionDetail from "../ExtensionDetail";
 const { apiGetMock, apiPatchMock, NotFound } = vi.hoisted(() => {
 	class NotFound extends Error {
 		readonly status = 404;
+		readonly code = "not_found";
 	}
 	return { apiGetMock: vi.fn(), apiPatchMock: vi.fn(), NotFound };
 });

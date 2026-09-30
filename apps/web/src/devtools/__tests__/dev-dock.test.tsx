@@ -79,7 +79,9 @@ afterEach(cleanup);
 
 describe("DevDock", () => {
 	it("服务端没有 /api/dev(404)→ 什么都不渲染", async () => {
-		vi.mocked(api.get).mockRejectedValue(new ApiError(404, { error: "not_found" }, "GET → 404"));
+		vi.mocked(api.get).mockRejectedValue(
+			new ApiError(404, { code: "not_found", message: "没有这个接口" }, "GET → 404"),
+		);
 		renderDock();
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/dev"));
 		expect(screen.queryByRole("button", { name: "devtools" })).toBeNull();
@@ -221,7 +223,7 @@ describe("DevDock", () => {
 	it("跑失败 → 那张卡里红字说原因", async () => {
 		vi.mocked(api.get).mockResolvedValue(STATUS);
 		vi.mocked(api.post).mockRejectedValue(
-			new ApiError(400, { err: "相位没有「x」这一档" }, "相位没有「x」这一档"),
+			new ApiError(400, { code: "invalid", message: "相位没有「x」这一档" }, "相位没有「x」这一档"),
 		);
 		renderDock();
 		const user = userEvent.setup();

@@ -7,6 +7,7 @@ import type {
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionViewFault,
+	Result,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -618,11 +619,12 @@ export function useExtensionAction(extensionId: string) {
 		// 按的是哪一颗走 variables,不从闭包里拿 —— 失败那句要说出**这一发**的名字。
 		mutationFn: async (button: ActionButton) => {
 			const name = button.action;
-			const answer = await api.post<{ ok?: boolean; err?: string } | undefined>(
+			const answer = await api.post<Result | undefined>(
 				`/api/ext/${extensionId}/actions/${encodeURIComponent(name)}`,
 			);
-			// 服务端的失败都带非 2xx(404 / 409 / 501 / 504 / 500),这一条防的是哪天回了 200 却说没成。
-			if (answer?.ok === false) throw new Error(answer.err ?? `动作 ${name} 没成`);
+			// 服务端的失败都带非 2xx(400 / 404 / 409 / 503 / 504),这一条防的是哪天回了 200 却说没成:
+			// 造成 `ApiError`,让下面按 `code` / `message` 读的地方与非 2xx 走同一条路。
+			if (answer && !answer.ok) throw new ApiError(200, answer, answer.message);
 			return answer;
 		},
 		// 🔴 **取消重发,别并到在飞的那一发上**:宿主不替状态那一口发失效帧,在飞的可能是动作之前
@@ -637,11 +639,11 @@ export function useExtensionAction(extensionId: string) {
  * 🔴 失败的原因不许吞:服务端那句原话(没声明 / 代码没接 / 超时 / 拓展自己抛的)是主人唯一能
  * 照着做的线索,换成一句「操作失败」等于让人对着黑盒再按一下。
  *
- * 409 不算失败:同一个动作的上一发还没回来(ADR-0019 决策 42:不排队、不并发)—— 说「还在跑」,
+ * `conflict` 不算失败:同一个动作的上一发还没回来(ADR-0019 决策 42:不排队、不并发)—— 说「还在跑」,
  * 主人等一等就好,不用去查。服务端那句照样接在后面(超时叫停了却还没停的,那句话里说着)。
  */
 export function ActionFailure({ label, error }: { label: string; error: unknown }) {
-	if (error instanceof ApiError && error.status === 409) {
+	if (error instanceof ApiError && error.code === "conflict") {
 		return (
 			// WarnNote 自己不带角色 —— 包一层 status,读屏的人按下去也听得到这一句。
 			<div role="status">

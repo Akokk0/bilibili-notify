@@ -80,7 +80,7 @@ const MISMATCH: ExtensionPanelView = shown({
 function invalid(issues: unknown[]): ApiError {
 	return new ApiError(
 		400,
-		{ error: "validation_failed", message: "不合规矩", issues },
+		{ code: "invalid", message: "拓展设置没通过检查", issues },
 		"PATCH /api/ext/bridge/settings → 400",
 	);
 }

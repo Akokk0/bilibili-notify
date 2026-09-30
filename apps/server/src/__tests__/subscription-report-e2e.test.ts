@@ -201,13 +201,15 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 		heard.length = 0;
 	});
 
-	/** 面板按一下那个动作钮:回状态码与原话。 */
-	async function press(action: string): Promise<{ status: number; err?: string }> {
+	/** 面板按一下那个动作钮:回状态码,失败时带标准码与原话(`{ code, message }`)。 */
+	async function press(
+		action: string,
+	): Promise<{ status: number; code?: string; message?: string }> {
 		const res = await fetch(`http://127.0.0.1:${port}/api/ext/${FIXTURE_ID}/actions/${action}`, {
 			method: "POST",
 		});
-		const body = (await res.json()) as { ok: boolean; err?: string };
-		return { status: res.status, err: body.err };
+		const body = (await res.json()) as { ok?: boolean; code?: string; message?: string };
+		return { status: res.status, code: body.code, message: body.message };
 	}
 
 	const ids = (delivery: SubscriptionReportDelivery | undefined) =>
@@ -251,10 +253,12 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 	});
 
 	it("清单没声明的种类(下播):整条拒,拓展拿到的错带着原因;bus 上什么都没有", async () => {
-		const { status, err } = await press("report.liveEnd");
-		expect(status).toBe(500);
-		expect(err).toContain("liveEnd");
-		expect(err).toContain("没声明");
+		const { status, code, message } = await press("report.liveEnd");
+		// 拓展自己抛了(BN 拒收它的上报,抛回给它,它没接住)—— 对端的失败,`unavailable`,原话给主人。
+		expect(status).toBe(503);
+		expect(code).toBe("unavailable");
+		expect(message).toContain("liveEnd");
+		expect(message).toContain("没声明");
 		expect(heard).toEqual([]);
 	});
 

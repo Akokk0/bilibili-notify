@@ -50,9 +50,9 @@ export function isRunning(ext: ExtensionDTO): boolean {
 }
 
 /**
- * 这一发失败是不是 404 —— 面板的 `ApiError` 带着状态码。跑着却 404 = **还没交过视图**
+ * 这一发失败是不是 `not_found` —— 面板的 `ApiError` 带着标准码。跑着却 `not_found` = **还没交过视图**
  * (只有设置项的拓展一辈子都这样),不是出错。
  */
 export function isNotFound(err: unknown): boolean {
-	return (err as { status?: unknown } | null)?.status === 404;
+	return (err as { code?: unknown } | null)?.code === "not_found";
 }

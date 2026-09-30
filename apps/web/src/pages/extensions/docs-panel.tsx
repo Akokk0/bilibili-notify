@@ -73,7 +73,8 @@ export function useExtensionDocs(extensionId: string): ExtensionDocsView {
 		readme: docs.data?.readme?.trim() || undefined,
 		changelog: docs.data?.changelog?.trim() || undefined,
 	};
-	const quiet = !docs.isError || (docs.error instanceof ApiError && docs.error.status === 404);
+	const quiet =
+		!docs.isError || (docs.error instanceof ApiError && docs.error.code === "not_found");
 	return {
 		kinds: DOC_KINDS.filter((k) => text[k]),
 		text,

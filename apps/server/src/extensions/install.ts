@@ -19,11 +19,16 @@ import { join } from "node:path";
 import {
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
+	fail,
+	ok,
 	parseExtensionManifest,
+	type Result,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, replaceDirectory } from "@bilibili-notify/storage";
 import { strFromU8, unzipSync } from "fflate";
+import { failureOfChecks } from "../util/failure-text.js";
 import { isJunkZipEntry } from "../zip-junk.js";
+import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	apiVersionMismatch,
 	EXTENSION_CHANGELOG_FILE,
@@ -76,9 +81,12 @@ export function docsPresence(docs: OpenedExtensionPackage["docs"]): {
 	return { readme: has(docs.readme), changelog: has(docs.changelog) };
 }
 
-export type OpenExtensionPackageResult =
-	| { ok: true; pkg: OpenedExtensionPackage }
-	| { ok: false; errors: string[] };
+/**
+ * 拆包的结果。拆不开一律是 `invalid`(版本对不上是 `unsupported`):一句话就是 `message`;
+ * 一串检查意见(白名单外的文件、清单没过校验)`message` 概括、`issues` 逐条 —— 那几句是主人手里
+ * 那个包**哪里不对**的唯一线索。
+ */
+export type OpenExtensionPackageResult = Result<{ pkg: OpenedExtensionPackage }>;
 
 /**
  * 剥掉「把目录整个拖进压缩软件」多出来的那一层。
@@ -124,16 +132,16 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 			},
 		});
 	} catch {
-		return { ok: false, errors: ["这不是一个合法的 zip 文件"] };
+		return fail("invalid", "这不是一个合法的 zip 文件");
 	}
-	if (precheck) return { ok: false, errors: [precheck] };
+	if (precheck) return fail("invalid", precheck);
 
 	const names = Object.keys(entries);
-	if (names.length === 0) return { ok: false, errors: ["这个 zip 是空的"] };
+	if (names.length === 0) return fail("invalid", "这个 zip 是空的");
 	// 🔴 `..` 一律不认,而且是在**剥前缀之前**判:`../` 也可能被当成共有前缀。
 	const traversal = names.filter((name) => name.split("/").includes(".."));
 	if (traversal.length > 0) {
-		return { ok: false, errors: [`包里的路径不许带 ..:${traversal.join("、")}`] };
+		return fail("invalid", `包里的路径不许带 ..:${traversal.join("、")}`);
 	}
 
 	const prefix = commonPrefix(names);
@@ -172,35 +180,34 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	}
 	if (!manifestBytes && errors.length === 0) errors.push(`包里少了 ${EXTENSION_MANIFEST_FILE}`);
 	if (!entry && errors.length === 0) errors.push(`包里少了 ${EXTENSION_ENTRY_FILE}`);
-	if (errors.length > 0 || !manifestBytes || !entry) return { ok: false, errors };
+	if (errors.length > 0 || !manifestBytes || !entry) {
+		return failureOfChecks("invalid", "这个拓展包", errors);
+	}
 
 	let raw: unknown;
 	try {
 		raw = JSON.parse(strFromU8(manifestBytes));
 	} catch (err) {
-		return {
-			ok: false,
-			errors: [`${EXTENSION_MANIFEST_FILE} 不是合法 JSON:${(err as Error).message}`],
-		};
+		return fail("invalid", `${EXTENSION_MANIFEST_FILE} 不是合法 JSON:${(err as Error).message}`);
 	}
 	// 版本不合就在这儿拦,而且**先判它**:为将来的宿主写的清单,格式本来就可能是我们不认识
 	// 的,挑它的毛病只会把「先升级 BN」说成一串「读不了」。装进去再在页面上显示 incompatible
 	// 也不是不行,但**此刻**这句话最清楚:主人正拿着那个包,还能去换一个对的。
 	const read = parseExtensionManifest(raw, EXTENSION_API_RANGE);
 	if (!read.ok) {
-		return {
-			ok: false,
-			errors:
-				read.reason === "incompatible"
-					? [apiVersionMismatch(read.requires, EXTENSION_API_RANGE)]
-					: read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue}`),
-		};
+		if (read.reason === "incompatible") {
+			return fail("unsupported", apiVersionMismatch(read.requires, EXTENSION_API_RANGE));
+		}
+		return failureOfChecks(
+			"invalid",
+			"这个拓展包",
+			read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue}`),
+		);
 	}
 
-	return {
-		ok: true,
+	return ok({
 		pkg: { id: read.manifest.id, manifest: read.manifest, manifestBytes, entry, docs },
-	};
+	});
 }
 
 export interface InstallExtensionPackageInput {
@@ -225,9 +232,11 @@ export interface UninstallExtensionInput {
 	id: string;
 }
 
-export type UninstallExtensionResult =
-	/** `removed: false` = 盘上本来就没有。面板上的列表可能是上一秒的,这不算错。 */
-	{ ok: true; removed: boolean } | { ok: false; err: string };
+/**
+ * 卸的结果。`removed: false` = 盘上本来就没有,面板上的列表可能是上一秒的,这不算错;
+ * 目标是软链则回 `conflict`。
+ */
+export type UninstallExtensionResult = Result<{ removed: boolean }>;
 
 /**
  * 把一个拓展从装载根上抹掉。
@@ -244,15 +253,15 @@ export async function uninstallExtension({
 }: UninstallExtensionInput): Promise<UninstallExtensionResult> {
 	const at = join(root, id);
 	const existing = await lstat(at).catch(() => undefined);
-	if (!existing) return { ok: true, removed: false };
+	if (!existing) return ok({ removed: false });
 	if (existing.isSymbolicLink()) {
-		return {
-			ok: false,
-			err: `${id} 现在是一条软链(开发版 devtools 装的)—— 在 devtools 里卸掉它,别从这里删`,
-		};
+		return fail(
+			"conflict",
+			`${id} 现在是一条软链(开发版 devtools 装的)—— 在 devtools 里卸掉它,别从这里删`,
+		);
 	}
 	await rm(at, { recursive: true, force: true });
-	return { ok: true, removed: true };
+	return ok({ removed: true });
 }
 
 /**
@@ -271,6 +280,9 @@ export async function uninstallExtension({
  *
  * 盖掉一份已经装着的**不等于「换不上」**:关着、从没跑过的那份盘上换了就是换了。换不换得上
  * 由装载器按入口指纹判(ADR-0012 决策 47),面板那句话照重扫之后装载器那一行的 `staged` 说。
+ *
+ * 目标是 devtools 链进来的软链时抛 {@link ExtensionConflictError}(可预期的拒绝,路由回 `conflict`);
+ * 别的抛错是磁盘写失败之类,不是它,交给全局出错处理。
  */
 export async function installExtensionPackage(input: InstallExtensionPackageInput): Promise<void> {
 	const previous = installQueues.get(input.root) ?? Promise.resolve();
@@ -290,7 +302,7 @@ async function installExtensionPackageUnlocked(input: InstallExtensionPackageInp
 	const existing = await lstat(at).catch(() => undefined);
 	// 🔴 软链 = devtools 链进来的仓库工作树。往里写就是往 git 仓库里写。
 	if (existing?.isSymbolicLink()) {
-		throw new Error(
+		throw new ExtensionConflictError(
 			`${pkg.id} 现在是一条软链(开发版 devtools 装的)—— 先在 devtools 里卸掉它,再传包`,
 		);
 	}

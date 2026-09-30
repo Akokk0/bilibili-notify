@@ -1,5 +1,5 @@
 import type { MarketplaceEntryDTO, MarketplaceResponse } from "@bilibili-notify/contract";
-import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE, ok } from "@bilibili-notify/internal";
 import type { Marketplace } from "../extensions/marketplace.js";
 
 /**
@@ -145,14 +145,13 @@ export function injectableMarketplace(
 			fake = null;
 			const wait = downloadMs;
 			if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-			return {
-				ok: true,
+			return ok({
 				id,
 				name: onDisk.name ?? id,
 				version: bumpedVersion(onDisk.version),
 				// 包是假的,哪来的说明。报「有」的话,「看看更新日志」会领人去读盘上那份旧的。
 				docs: { readme: false, changelog: false },
-			};
+			});
 		},
 	};
 

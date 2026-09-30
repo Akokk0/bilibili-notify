@@ -12,6 +12,7 @@ import { ApiError } from "../../../../services/api";
 import {
 	CONFLICT_TEXT,
 	dialogIssuesOf,
+	isConflict,
 	type ListItem,
 	settingsIssuesOf,
 	settingsValuesOf,
@@ -36,11 +37,11 @@ const ITEMS: ListItem[] = [
 	{ id: "c2", name: "" },
 ];
 
-/** 一份 400:`issues` 原样放进响应体。 */
+/** 一份 400:平铺的 `{ code: "invalid", message, issues }`,`issues` 原样放进响应体。 */
 function invalid(issues: unknown): ApiError {
 	return new ApiError(
 		400,
-		{ error: "validation_failed", message: "不合规矩", issues },
+		{ code: "invalid", message: "拓展设置没通过检查", issues },
 		"PATCH /api/ext/bridge/settings → 400",
 	);
 }
@@ -96,7 +97,7 @@ describe("writeFailureOf", () => {
 	it("409:说被改过了 —— 不照搬服务端那句「重新读一遍再改」(面板已经重读了)", () => {
 		const conflict = new ApiError(
 			409,
-			{ error: "revision_conflict", message: "重新读一遍再改", revision: "r2" },
+			{ code: "conflict", message: "重新读一遍再改" },
 			"重新读一遍再改",
 		);
 		expect(failureOf(conflict)).toBe(CONFLICT_TEXT);
@@ -106,7 +107,9 @@ describe("writeFailureOf", () => {
 	it("拆不出一条的(issues 空 / 不是数组 / 别的 400):原话照搬", () => {
 		expect(failureOf(invalid([]))).toBe("PATCH /api/ext/bridge/settings → 400");
 		expect(failureOf(invalid("坏了"))).toBe("PATCH /api/ext/bridge/settings → 400");
-		expect(failureOf(new ApiError(400, { err: "只读盘" }, "只读盘"))).toBe("只读盘");
+		expect(failureOf(new ApiError(400, { code: "invalid", message: "只读盘" }, "只读盘"))).toBe(
+			"只读盘",
+		);
 		expect(failureOf(new ApiError(0, undefined, "连接中断"))).toBe("连接中断");
 		expect(failureOf(new Error("配置目录是只读的"))).toBe("配置目录是只读的");
 	});
@@ -122,7 +125,9 @@ describe("writeReasonOf", () => {
 				]),
 			),
 		).toBe("links.c1.name:太长了;interval:太小了");
-		expect(writeReasonOf(new ApiError(409, {}, "x"))).toBe(CONFLICT_TEXT);
+		expect(writeReasonOf(new ApiError(409, { code: "conflict", message: "x" }, "x"))).toBe(
+			CONFLICT_TEXT,
+		);
 		expect(writeReasonOf(new Error("断网了"))).toBe("断网了");
 	});
 });
@@ -174,9 +179,39 @@ describe("settingsIssuesOf", () => {
 	it("只认面板的 ApiError:长得像的(带着 body)不拆", () => {
 		const lookalike = Object.assign(new Error("400"), {
 			status: 400,
-			body: { error: "validation_failed", issues: [{ path: [], message: "x" }] },
+			body: { code: "invalid", message: "x", issues: [{ path: [], message: "x" }] },
+			issues: [{ path: [], message: "x" }],
 		});
 		expect(settingsIssuesOf(lookalike)).toBeNull();
+	});
+
+	it("这次失败没带逐条原因(只有 message)→ null,该说的是它的原话", () => {
+		expect(
+			settingsIssuesOf(new ApiError(400, { code: "invalid", message: "只读盘" }, "只读盘")),
+		).toBeNull();
+	});
+
+	/** 旧形状(`error: "validation_failed"`)不再被认:服务端一律回 `{ code, message, issues }`。 */
+	it("旧形状 { error: 'validation_failed', issues } 不再被认", () => {
+		const legacy = new ApiError(
+			400,
+			{ error: "validation_failed", message: "x", issues: [{ path: ["a"], message: "m" }] },
+			"400",
+		);
+		expect(settingsIssuesOf(legacy)).toBeNull();
+	});
+});
+
+describe("isConflict", () => {
+	it("只看 code:409 但不是 conflict(如 not_configured)不算;别的状态码回了 conflict 也算", () => {
+		expect(isConflict(new ApiError(409, { code: "conflict", message: "x" }, "x"))).toBe(true);
+		expect(isConflict(new ApiError(409, { code: "not_configured", message: "x" }, "x"))).toBe(
+			false,
+		);
+		expect(isConflict(new ApiError(200, { code: "conflict", message: "x" }, "x"))).toBe(true);
+		// 认不出的体(没有 code)不按状态码猜。
+		expect(isConflict(new ApiError(409, {}, "x"))).toBe(false);
+		expect(isConflict(new Error("conflict"))).toBe(false);
 	});
 });
 

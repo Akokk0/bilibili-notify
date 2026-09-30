@@ -1,4 +1,5 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
@@ -30,7 +31,7 @@ const updateService: UpdateService = {
 /** 真市场的替身:什么都不列,装只记账 —— 装饰那一层的规矩在 marketplace-update-scenario 里钉。 */
 const REAL_MARKET: Marketplace = {
 	list: async () => ({ available: true, sources: [], extensions: [], fetchedAt: 0 }),
-	install: async () => ({ ok: false, err: "真市场的替身不装东西" }),
+	install: async () => fail("unavailable", "真市场的替身不装东西"),
 };
 
 const BARE = {

@@ -16,17 +16,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("../../../services/api", () => ({
+// `ApiError` 用**真的**那个类:失败的话怎么念(`message` + 逐条 `issues`)是它构造时从响应体里读的。
+vi.mock("../../../services/api", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../../services/api")>()),
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
-	ApiError: class ApiError extends Error {
-		constructor(
-			public readonly status: number,
-			public readonly body: unknown,
-			message: string,
-		) {
-			super(message);
-		}
-	},
 }));
 
 import { useRestartStore } from "../../../components/update/restart";
@@ -150,8 +143,17 @@ describe("传包装拓展", () => {
 	});
 
 	it("包不合规 → 把服务端那几句逐条摆出来,别只说一句失败", async () => {
+		const message = "这个拓展包没通过检查（共 2 条）";
 		vi.mocked(api.upload).mockRejectedValue(
-			new ApiError(400, { errors: ["包里少了 index.mjs", "sneaky.mjs:拓展包里只能有…"] }, "400"),
+			new ApiError(
+				400,
+				{
+					code: "invalid",
+					message,
+					issues: [{ message: "包里少了 index.mjs" }, { message: "sneaky.mjs:拓展包里只能有…" }],
+				},
+				message,
+			),
 		);
 		const { container } = renderSlot();
 
@@ -159,5 +161,17 @@ describe("传包装拓展", () => {
 
 		expect(await screen.findByText(/少了 index.mjs/)).toBeTruthy();
 		expect(screen.getByText(/sneaky.mjs/)).toBeTruthy();
+	});
+
+	it("只有一句话的拒绝(没有 issues)→ 摆 message 那一句", async () => {
+		const message = "bridge 现在是一条软链(开发版 devtools 装的)—— 先在 devtools 里卸掉它,再传包";
+		vi.mocked(api.upload).mockRejectedValue(
+			new ApiError(409, { code: "conflict", message }, message),
+		);
+		const { container } = renderSlot();
+
+		await pick(container);
+
+		expect(await screen.findByText(/一条软链/)).toBeTruthy();
 	});
 });

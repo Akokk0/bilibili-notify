@@ -1,5 +1,4 @@
 import type {
-	ExtensionSettingsConflict,
 	ExtensionSettingsIssue,
 	ExtensionSettingsResponse,
 	ExtensionSettingsWriteResponse,
@@ -7,9 +6,13 @@ import type {
 import {
 	ExtensionIdSchema,
 	type ExtensionManifestField,
+	fail,
 	formatZodIssues,
+	issuesFromZod,
+	ok,
+	type Result,
 } from "@bilibili-notify/internal";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
@@ -20,6 +23,7 @@ import {
 	newExtensionIssues,
 	settingsRevision,
 } from "../extensions/settings-io.js";
+import { respondFailure } from "./respond-failure.js";
 
 export interface ExtensionSettingsRouteOptions {
 	store: Pick<ConfigStore, "getGlobals" | "updateGlobals">;
@@ -67,9 +71,8 @@ const PatchSchema = z
 		});
 	});
 
-type Resolved =
-	| { ok: true; id: string; fields: readonly ExtensionManifestField[] }
-	| { ok: false; status: 400 | 404; message: string };
+/** 这个 id 有没有一份能照着管的设置声明:有就交出 id 与设置项,没有是 `invalid`(id 不合规矩)或 `not_found`。 */
+type Resolved = Result<{ id: string; fields: readonly ExtensionManifestField[] }>;
 
 /**
  * 拓展设置自己的读写口(ADR-0019 决策 35)—— 挂在 `/api/ext` 底下,吃面板会话鉴权。
@@ -84,53 +87,38 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 	/** 这个 id 有没有一份能照着管的设置声明 —— 没有的每一种都说清为什么。 */
 	function resolve(raw: string): Resolved {
 		const parsed = ExtensionIdSchema.safeParse(raw);
-		if (!parsed.success) return { ok: false, status: 400, message: "拓展 id 不合规矩" };
+		if (!parsed.success) return fail("invalid", "拓展 id 不合规矩");
 		const id = parsed.data;
 		const entry = opts.extensions().find((candidate) => candidate.id === id);
-		if (!entry) return { ok: false, status: 404, message: `没有装名叫 ${id} 的拓展` };
+		if (!entry) return fail("not_found", `没有装名叫 ${id} 的拓展`);
 		const { manifest } = entry;
 		if (!manifest) {
-			return {
-				ok: false,
-				status: 404,
-				message: `拓展 ${id} 的清单读不出来(或版本不合),没有能照着管的设置项`,
-			};
+			return fail("not_found", `拓展 ${id} 的清单读不出来(或版本不合),没有能照着管的设置项`);
 		}
 		if (manifest.apiVersion === 1) {
-			return {
-				ok: false,
-				status: 404,
-				message: `拓展 ${id} 是老格式(v1)清单,设置不在清单里、不走这里 —— 去市场更新之后才能在这里管理`,
-			};
+			return fail(
+				"not_found",
+				`拓展 ${id} 是老格式(v1)清单,设置不在清单里、不走这里 —— 去市场更新之后才能在这里管理`,
+			);
 		}
 		const fields = manifest.settings?.fields ?? [];
-		if (fields.length === 0) {
-			return { ok: false, status: 404, message: `拓展 ${id} 的清单里没声明设置项` };
-		}
-		return { ok: true, id, fields };
+		if (fields.length === 0) return fail("not_found", `拓展 ${id} 的清单里没声明设置项`);
+		return ok({ id, fields });
 	}
 
-	function refuse(c: Context, target: Extract<Resolved, { ok: false }>) {
-		const error = target.status === 404 ? "not_found" : "invalid_id";
-		return c.json({ error, message: target.message }, target.status);
-	}
+	/**
+	 * 版本号对不上:只说这句话,不带现在的版本号 —— 面板据 `code` 重读一遍(GET 里有现在的)再改,
+	 * 而不是把别人刚写的盖掉。
+	 */
+	const conflict = () =>
+		fail("conflict", "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉");
 
-	function conflict(c: Context, revision: string) {
-		const body: ExtensionSettingsConflict = {
-			error: "revision_conflict",
-			message: "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉",
-			revision,
-		};
-		return c.json(body, 409);
-	}
-
-	function invalid(c: Context, issues: ExtensionSettingsIssue[]) {
-		// `message` 是给只认一句话的调用方的(ApiError 取它);面板按 `issues` 逐格画。
-		const message = issues
-			.map((issue) => `${issue.path.join(".") || "(根)"}:${issue.message}`)
-			.join(";");
-		return c.json({ error: "validation_failed", message, issues }, 400);
-	}
+	/**
+	 * 校验不过:`message` 一句概括,逐条原因放 `issues`(每条 `{ path, message, op? }`)—— 面板按
+	 * `path` 逐格标红,`op` 认得出是这次写的第几步惹的。一条也要放:没有 `path` 面板落不到那一格。
+	 */
+	const invalid = (issues: ExtensionSettingsIssue[]) =>
+		fail("invalid", `拓展设置没通过检查（共 ${issues.length} 条）`, { issues });
 
 	/** 下发的那一份:密钥遮着,带版本号。GET 与 PATCH 的回应共用这一段,两边不许说成两种样子。 */
 	function view(fields: readonly ExtensionManifestField[], stored: unknown) {
@@ -139,7 +127,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 
 	app.get("/:id/settings", (c) => {
 		const target = resolve(c.req.param("id"));
-		if (!target.ok) return refuse(c, target);
+		if (!target.ok) return respondFailure(c, target);
 		const body: ExtensionSettingsResponse = view(
 			target.fields,
 			opts.store.getGlobals().extensions[target.id]?.settings,
@@ -149,17 +137,16 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 
 	app.patch("/:id/settings", async (c) => {
 		const target = resolve(c.req.param("id"));
-		if (!target.ok) return refuse(c, target);
+		if (!target.ok) return respondFailure(c, target);
 		const { id, fields } = target;
 		const parsed = PatchSchema.safeParse(await c.req.json().catch(() => undefined));
 		if (!parsed.success) {
-			return c.json(
-				{
-					error: "invalid_payload",
-					message: formatZodIssues(parsed.error).join(";"),
-					issues: parsed.error.issues,
-				},
-				400,
+			// 请求体本身不成形(面板不会发这样的)。zod 自己的字段不往外甩:只留路径与原话。
+			return respondFailure(
+				c,
+				fail("invalid", `请求体不合规矩：${formatZodIssues(parsed.error).join(";")}`, {
+					issues: issuesFromZod(parsed.error),
+				}),
 			);
 		}
 		const { revision, ops } = parsed.data;
@@ -168,10 +155,10 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		// `commitSettings` 里、在排队里。
 		const stored = opts.store.getGlobals().extensions[id]?.settings;
 		const current = settingsRevision(stored);
-		if (revision !== current) return conflict(c, current);
+		if (revision !== current) return respondFailure(c, conflict());
 
 		const applied = applySettingsOps(fields, stored, ops);
-		if (!applied.ok) return invalid(c, applied.issues);
+		if (!applied.ok) return respondFailure(c, invalid(applied.issues));
 
 		// 拓展在跑时再过它自己那份 zod(决策 35 第三点)。在队外跑:它是异步的、是拓展的代码,
 		// 挂住的话不能连累之后所有的全局设置写入。
@@ -181,28 +168,32 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 			try {
 				fresh = await newExtensionIssues(schemas, fields, stored, applied.next);
 			} catch (err) {
+				// 拓展自己的校验代码抛了:不是「不合规矩」,是它出错 —— 对端的错,原话给主人(与动作
+				// 抛了同一档:`unavailable`)。
 				const reason = err instanceof Error ? err.message : String(err);
-				return c.json(
-					{
-						error: "extension_check_failed",
-						message: `拓展 ${id} 自己的设置校验抛了(不是「不合规矩」,是它的代码出错):${reason}`,
-					},
-					500,
+				return respondFailure(
+					c,
+					fail(
+						"unavailable",
+						`拓展 ${id} 自己的设置校验抛了(不是「不合规矩」,是它的代码出错):${reason}`,
+					),
 				);
 			}
 			if (fresh.length > 0) {
-				return invalid(
+				return respondFailure(
 					c,
-					fresh.map(({ path, message }) => {
-						const op = applied.opOf(path);
-						return op === undefined ? { path, message } : { op, path, message };
-					}),
+					invalid(
+						fresh.map(({ path, message }): ExtensionSettingsIssue => {
+							const op = applied.opOf(path);
+							return op === undefined ? { path, message } : { op, path, message };
+						}),
+					),
 				);
 			}
 		}
 
 		const committed = await commitSettings(opts.store, id, revision, applied.next);
-		if (!committed.ok) return conflict(c, committed.revision);
+		if (!committed.ok) return respondFailure(c, conflict());
 		opts.settingsChanged?.(id);
 		const body: ExtensionSettingsWriteResponse = {
 			...view(fields, committed.settings),

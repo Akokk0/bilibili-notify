@@ -141,7 +141,7 @@ describe("列表卡上的 summary", () => {
 	 */
 	it.each([
 		["500", Object.assign(new Error("拓展炸了"), { status: 500 })],
-		["404", Object.assign(new Error("not found"), { status: 404 })],
+		["404", Object.assign(new Error("not found"), { status: 404, code: "not_found" })],
 	])("先读到过、再读出错(%s):旧的那句不画", async (_code, failure) => {
 		const { qc } = renderPage([DOUYIN], {
 			douyin: { summary: { tone: "ok", text: "12 位作者在看" } },

@@ -17,6 +17,7 @@ import {
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
+	fail,
 	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
@@ -24,7 +25,9 @@ import {
 	isSecretField,
 	type Logger,
 	manifestProvides,
+	ok,
 	type PlatformAdapter,
+	type Result,
 	type ServiceContext,
 	SubscriptionCandidatesSchema,
 	type SubscriptionReport,
@@ -61,18 +64,17 @@ export type {
 } from "@bilibili-notify/extension";
 
 /**
- * 跑一个动作的结果。失败分五种,各有各的说法 —— 并成一句「出错了」的话,面板只能对着黑盒猜:
- * 清单里没这个名字、声明了代码却没接、拓展自己抛了(带原话)、超时、同一个动作还在跑。
+ * 跑一个动作的结果。失败各有各的码与原话(规矩见 docs/agents/conventions/failure-results.md),
+ * 并成一句「出错了」的话,面板只能对着黑盒猜:
+ * - `unsupported`:清单里没这个名字,或声明了代码却没接;
+ * - `timeout`:超时;
+ * - `unavailable`:拓展自己抛了(`message` 是它的原话);
+ * - `conflict`:同一个动作的上一发还没回来(决策 42:不排队、不并发)。上一发超时后已经叫停过、
+ *   它却还没停的,话里说着 —— 主人要知道这不是自己按得太快。
+ *
+ * `message` 在这里造:这一层才知道动作名、拓展 id 和实际等了多久。路由原样交给 `respondFailure`。
  */
-export type ActionOutcome =
-	| { ok: true }
-	| { ok: false; reason: "undeclared" | "unhandled" | "timeout" }
-	| { ok: false; reason: "failed"; message: string }
-	/**
-	 * 同一个动作的上一发还没回来(决策 42:不排队、不并发)。`aborted`:上一发超时后已经叫停过,
-	 * 它却还没停 —— 主人要知道这不是自己按得太快。
-	 */
-	| { ok: false; reason: "busy"; aborted: boolean };
+export type ActionOutcome = Result;
 
 /**
  * `ctx.settings(schema)` 那一下,存着的那份过不了这份 zod(ADR-0019 决策 36)—— 拓展不该拿着
@@ -84,13 +86,11 @@ export type ActionOutcome =
 export class ExtensionSettingsUnreadable extends Error {}
 
 /**
- * 问一次解析门的结果(ADR-0019 决策 52)。失败分三种,各有各的说法:超时、拓展自己抛了(带原话)、
- * 交回来的候选形状不对(带点名哪儿不对的原因)—— 并成一句「出错了」的话,面板只能对着黑盒猜。
+ * 问一次解析门的结果(ADR-0019 决策 52)。失败各有各的码与原话:`timeout` 超时,`unavailable` 拓展自己
+ * 抛了(平台那头的事:cookie 过期、被风控),`invalid` 交回来的候选形状不对(拓展的 bug,`message`
+ * 点名哪儿不对)—— 并成一句「出错了」的话,面板与作者都不知道该找谁。
  */
-export type LookupOutcome =
-	| { ok: true; candidates: readonly ExtensionSubscriptionCandidate[] }
-	| { ok: false; reason: "timeout" }
-	| { ok: false; reason: "failed" | "invalid"; message: string };
+export type LookupOutcome = Result<{ candidates: readonly ExtensionSubscriptionCandidate[] }>;
 
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
@@ -239,7 +239,7 @@ export interface ExtensionRuntime {
 	verifySettings(): Promise<string | undefined>;
 	/**
 	 * 跑面板按下的那个动作(ADR-0019 决策 22 / 42)。超时与收摊时经 `signal` 叫停 handler;同一个动作
-	 * 在跑时回 `busy`,不同的动作互不相干。
+	 * 在跑时回 `conflict`,不同的动作互不相干。
 	 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/**
@@ -993,15 +993,24 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			return undefined;
 		},
 		async runAction(name, runOpts = {}) {
-			if (!declaredActions?.has(name)) return { ok: false, reason: "undeclared" };
+			if (!declaredActions?.has(name)) {
+				return fail("unsupported", `拓展 ${id} 的清单里没有动作 ${name}`);
+			}
 			// 收摊一开始就把在跑的都叫停了 —— 钩子还没跑完时再起一发,就没人叫停它。
 			const handler = disposed ? undefined : actionHandlers.get(name);
-			if (!handler) return { ok: false, reason: "unhandled" };
+			if (!handler) return fail("unsupported", `拓展 ${id} 声明了动作 ${name},代码却没接`);
+			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
 			// 不排队、不并发(决策 42):两发一起跑,扫码登录就是两张码、两份轮询抢着存账号;排队的话,
 			// 主人连按三下就在背后多跑两轮。
 			const running = runningActions.get(name);
-			if (running) return { ok: false, reason: "busy", aborted: running.signal.aborted };
-			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
+			if (running) {
+				return fail(
+					"conflict",
+					running.signal.aborted
+						? `动作 ${name} 的上一发超过 ${timeoutMs / 1000} 秒没回,已经叫它停下,可它还没停 —— 停下之前不接新的一发`
+						: `动作 ${name} 的上一发还没回来 —— 回来之前不接新的一发`,
+				);
+			}
 			const controller = new AbortController();
 			runningActions.set(name, controller);
 			let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1015,17 +1024,21 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 							"TimeoutError",
 						),
 					);
-					resolve({ ok: false, reason: "timeout" });
+					resolve(fail("timeout", `动作 ${name} 超过 ${timeoutMs / 1000} 秒没回`));
 				}, timeoutMs);
 			});
 			const run = (async (): Promise<ActionOutcome> => {
 				try {
 					await handler(controller.signal);
-					return { ok: true };
+					return ok();
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
 					logger.warn(`动作 ${name} 抛了:${message}`);
-					return { ok: false, reason: "failed", message };
+					// 拓展抛了个没写原话的错时也得给一句:失败的话不许是空的。
+					return fail(
+						"unavailable",
+						message.trim() === "" ? `动作 ${name} 抛了,没留原话` : message,
+					);
 				} finally {
 					// 收摊时整张表已经清掉了 —— 只摘自己这一格。
 					if (runningActions.get(name) === controller) runningActions.delete(name);
@@ -1051,7 +1064,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					controller.abort(
 						new DOMException(`解析门超过 ${timeoutMs / 1000} 秒没回,BN 不等了`, "TimeoutError"),
 					);
-					resolve({ ok: false, reason: "timeout" });
+					resolve(fail("timeout", `拓展 ${id} 的解析门超过 ${timeoutMs / 1000} 秒没回`));
 				}, timeoutMs);
 			});
 			const run = (async (): Promise<LookupOutcome> => {
@@ -1063,13 +1076,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 						// 🔴 点名哪儿不对:吞成一句「出错了」的话,拓展作者只能对着黑盒猜。
 						const message = formatZodIssues(parsed.error).join(";");
 						logger.warn(`解析门交回的候选形状不对:${message}`);
-						return { ok: false, reason: "invalid", message };
+						return fail("invalid", `拓展交回的候选不合规矩:${message}`);
 					}
-					return { ok: true, candidates: parsed.data };
+					return ok({ candidates: parsed.data });
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
 					logger.warn(`解析门抛了:${message}`);
-					return { ok: false, reason: "failed", message };
+					return fail("unavailable", `拓展查询出错:${message}`);
 				} finally {
 					runningLookups.delete(controller);
 				}

@@ -10,6 +10,7 @@ import {
 	checkMarketplaceIndex,
 	EXTENSION_API_RANGE,
 	type ExtensionApiRange,
+	fail,
 	isMarketplaceRevoked,
 	isPrereleaseEntry,
 	type Logger,
@@ -17,11 +18,14 @@ import {
 	type MarketplaceIndex,
 	MarketplaceIndexSchema,
 	type MarketplaceSource,
+	ok,
+	type Result,
 } from "@bilibili-notify/internal";
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
+import { ExtensionConflictError } from "./conflict-error.js";
 import { apiVersionMismatch } from "./discover.js";
 import {
 	docsPresence,
@@ -88,16 +92,19 @@ export interface MarketplaceDeps {
 	now?: () => number;
 }
 
-export type MarketplaceInstallOutcome =
-	| {
-			ok: true;
-			id: string;
-			name: string;
-			version: string;
-			/** 包里带没带那两份说明 —— 拆包时就知道,一路带回给面板。 */
-			docs: { readme: boolean; changelog: boolean };
-	  }
-	| { ok: false; err: string };
+/**
+ * 从市场装的结果。失败各有各的码(规矩见 docs/agents/conventions/failure-results.md):
+ * `not_found` 没这个源 / 源里没这个拓展 / 这一版已被撤回,`unavailable` 源的索引没拿到或包下不下来,
+ * `unsupported` 这台 BN 的档位装不了它,`invalid` 包超上限 / 校验和对不上 / 拆不开 / 清单与索引说的不是一个,
+ * `conflict` 目标是 devtools 链进来的软链。`message` 是给主人看的中文原话。
+ */
+export type MarketplaceInstallOutcome = Result<{
+	id: string;
+	name: string;
+	version: string;
+	/** 包里带没带那两份说明 —— 拆包时就知道,一路带回给面板。 */
+	docs: { readme: boolean; changelog: boolean };
+}>;
 
 export interface Marketplace {
 	list(opts?: { refresh?: boolean }): Promise<MarketplaceResponse>;
@@ -483,33 +490,31 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	async function install(sourceId: string, id: string): Promise<MarketplaceInstallOutcome> {
 		const loaded = await loadAll(false);
 		const source = loaded.find((candidate) => candidate.view.id === sourceId);
-		if (!source) return { ok: false, err: `没有这个源:${sourceId}` };
-		if (!source.index)
-			return {
-				ok: false,
-				err: `源「${source.view.name}」现在不可用:${source.view.err ?? "索引没拿到"}`,
-			};
+		if (!source) return fail("not_found", `没有这个源:${sourceId}`);
+		if (!source.index) {
+			return fail(
+				"unavailable",
+				`源「${source.view.name}」现在不可用:${source.view.err ?? "索引没拿到"}`,
+			);
+		}
 		// 🔴 挑条目必须与 list() 用**同一把尺子**:索引里同一个 id 有两档,拿 find() 取第一条
 		// 的话,面板上那张卡写着 A、按下去装的是 B —— 而两边都全绿。
 		const entry = pickPerId(source.index.extensions, deps.prerelease()).get(id);
-		if (!entry) return { ok: false, err: `源「${source.view.name}」里没有 ${id}` };
+		if (!entry) return fail("not_found", `源「${source.view.name}」里没有 ${id}`);
 		if (!fitsHost(entry)) {
-			return {
-				ok: false,
-				err: `${entry.name}:${apiVersionMismatch(entry, hostApiRange)}`,
-			};
+			return fail("unsupported", `${entry.name}:${apiVersionMismatch(entry, hostApiRange)}`);
 		}
 		if (isMarketplaceRevoked(source.index, entry.id, entry.version)) {
-			return { ok: false, err: `${entry.name} ${entry.version} 已被这个源撤回` };
+			return fail("not_found", `${entry.name} ${entry.version} 已被这个源撤回`);
 		}
 		// 索引自己写了包有多大,那就是这一次的上限 —— 拿 10MB 硬顶当上限等于允许对面
 		// 灌到 10MB 才停,而我们本来就知道该收多少。超过本机上限的得说清是上限:
 		// 报「下不下来」会把主人支去查网络。
 		if (entry.package.size > MAX_EXTENSION_PACKAGE_BYTES) {
-			return {
-				ok: false,
-				err: `索引写的 ${entry.name} 包有 ${mib(entry.package.size)} MB,超过本机上限 ${mib(MAX_EXTENSION_PACKAGE_BYTES)} MB`,
-			};
+			return fail(
+				"invalid",
+				`索引写的 ${entry.name} 包有 ${mib(entry.package.size)} MB,超过本机上限 ${mib(MAX_EXTENSION_PACKAGE_BYTES)} MB`,
+			);
 		}
 
 		const downloaded = await fetchThroughMirrors<Uint8Array, "checksum">({
@@ -524,22 +529,21 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					: { ok: false, reason: "checksum" },
 		});
 		if (!downloaded.ok) {
-			return {
-				ok: false,
-				err:
-					downloaded.reason === "checksum"
-						? `下载到的包校验和与索引写的对不上 —— 中途被换过,或源那头发错了包`
-						: `下不下来 ${entry.name} 的包(${entry.package.url})`,
-			};
+			return downloaded.reason === "checksum"
+				? fail("invalid", `下载到的包校验和与索引写的对不上 —— 中途被换过,或源那头发错了包`)
+				: fail("unavailable", `下不下来 ${entry.name} 的包(${entry.package.url})`);
 		}
 
 		const opened = openExtensionPackage(downloaded.value);
-		if (!opened.ok) return { ok: false, err: `包拆不开:${opened.errors.join(";")}` };
+		if (!opened.ok) {
+			// 拆包那几句(哪一处不合规矩)原样带上:主人手里没有这个包,它们是源作者唯一的线索。
+			return fail(opened.code, `包拆不开:${opened.message}`, { issues: opened.issues });
+		}
 		if (opened.pkg.id !== entry.id || opened.pkg.manifest.version !== entry.version) {
-			return {
-				ok: false,
-				err: `包里的清单是 ${opened.pkg.id}@${opened.pkg.manifest.version},索引说的是 ${entry.id}@${entry.version} —— 源那头发错了包`,
-			};
+			return fail(
+				"invalid",
+				`包里的清单是 ${opened.pkg.id}@${opened.pkg.manifest.version},索引说的是 ${entry.id}@${entry.version} —— 源那头发错了包`,
+			);
 		}
 		// 落盘 → 记来源,在装载器的队里是一件事,紧跟着那一遍重扫由队替我们做。
 		try {
@@ -554,20 +558,21 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				writeBestEffortJson(deps.root, MARKETPLACE_PROVENANCE_FILE, provenance);
 			});
 		} catch (err) {
-			return { ok: false, err: (err as Error).message };
+			// 只接可预期的拒绝(目标是软链);磁盘写失败之类是 bug 或环境的事,往外抛给全局出错处理。
+			if (err instanceof ExtensionConflictError) return err.toFailure();
+			throw err;
 		}
 		deps.logger.info(
 			`marketplace: installed ${entry.id}@${entry.version} from ${source.view.name}`,
 		);
-		return {
-			ok: true,
+		return ok({
 			id: entry.id,
 			name: opened.pkg.manifest.name,
 			version: entry.version,
 			// 「新版等着换上」不在这儿判:换不换得上只有装载器答得了(决策 47),路由照重扫之后
 			// 那一行说 —— 与上传装包同一把尺子。
 			docs: docsPresence(opened.pkg.docs),
-		};
+		});
 	}
 
 	return {

@@ -20,17 +20,10 @@ const { apiGetMock, apiPostMock, apiPatchMock } = vi.hoisted(() => ({
 	apiPatchMock: vi.fn(),
 }));
 
-vi.mock("../../../services/api", () => ({
+// `ApiError` 用**真的**那个类:失败的话怎么念(`message` + 逐条 `issues`)是它构造时从响应体里读的。
+vi.mock("../../../services/api", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../../services/api")>()),
 	api: { get: apiGetMock, post: apiPostMock, patch: apiPatchMock, upload: vi.fn() },
-	ApiError: class ApiError extends Error {
-		constructor(
-			public readonly status: number,
-			public readonly body: unknown,
-			message: string,
-		) {
-			super(message);
-		}
-	},
 }));
 
 import { type CardMotion, useCardMotionStore } from "../card-motion";
@@ -398,9 +391,8 @@ describe("拓展市场", () => {
 
 	it("装不了 → 服务端那句原样摆出来", async () => {
 		const { ApiError } = await import("../../../services/api");
-		apiPostMock.mockRejectedValueOnce(
-			new ApiError(400, { errors: ["下载到的包校验和与索引写的对不上"] }, "400"),
-		);
+		const message = "下载到的包校验和与索引写的对不上";
+		apiPostMock.mockRejectedValueOnce(new ApiError(400, { code: "invalid", message }, message));
 		renderSection();
 		await userEvent.click(
 			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
@@ -416,7 +408,9 @@ describe("拓展市场", () => {
 	/** 「更新不了」那一半搬去了 `Extensions.render.test.tsx` —— 更新钮现在只长在已装卡上。 */
 	it("装砸了说「装不了」", async () => {
 		const { ApiError } = await import("../../../services/api");
-		apiPostMock.mockRejectedValue(new ApiError(400, { errors: ["下不动"] }, "400"));
+		apiPostMock.mockRejectedValue(
+			new ApiError(400, { code: "unavailable", message: "下不动" }, "下不动"),
+		);
 
 		renderSection();
 		await userEvent.click(

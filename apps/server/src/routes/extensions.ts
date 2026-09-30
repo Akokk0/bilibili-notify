@@ -13,16 +13,17 @@ import type {
 import {
 	ActionNameSchema,
 	ExtensionIdSchema,
+	fail,
 	isExtensionEnabled,
 	manifestProvides,
+	ok,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
+import { ExtensionConflictError } from "../extensions/conflict-error.js";
 import {
-	ACTION_TIMEOUT_MS,
 	type ActionOutcome,
-	LOOKUP_TIMEOUT_MS,
 	type LookupOutcome,
 	manifestPushView,
 	manifestSubscriptionView,
@@ -39,6 +40,7 @@ import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { ReportProblemLog } from "../extensions/report-problems.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
+import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
 const MarketplaceInstallRequestSchema = z.object({
@@ -80,18 +82,19 @@ export interface ExtensionsRouteOptions {
 	 */
 	pushSource: (id: string) => ExtensionPushView | undefined;
 	/**
-	 * 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`(→ 404)。没接这一格
-	 * 的话那一口永远 404。
+	 * 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`(→ `not_found`)。没接这
+	 * 一格的话那一口永远 `not_found`。
 	 */
 	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
 	/**
-	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52)。没在跑 / 不是订阅源 / 没装就是 `undefined`(→ 404)。
-	 * 没接这一格的话那一口永远 404。
+	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52)。没在跑 / 不是订阅源 / 没装就是 `undefined`
+	 * (→ `not_found`)。没接这一格的话那一口永远 `not_found`。
 	 */
 	lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
 	/**
 	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
-	 * 抛,那句话原样交给面板(→ 409)。没接这一格的话那一口永远 404。
+	 * 抛 {@link ExtensionConflictError},那句话原样交给面板(→ `conflict`)。别的抛错是 bug,交给全局
+	 * 出错处理。没接这一格的话那一口永远 `not_found`。
 	 */
 	swap?: (id: string) => Promise<void>;
 	/**
@@ -99,7 +102,7 @@ export interface ExtensionsRouteOptions {
 	 * 它那一段。不给就是没接上:哪一行都不带这一格。
 	 */
 	reportProblems?: Pick<ReportProblemLog, "list" | "clear">;
-	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ 404,与空名单分开)。 */
+	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ `not_found`,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
@@ -118,13 +121,13 @@ export interface ExtensionsRouteOptions {
 	settle?: () => Promise<void>;
 	/**
 	 * 拓展市场(ADR-0013):列索引、按源装。逻辑在 `extensions/marketplace.ts`,这里只做 wire。
-	 * 省略 → 两口都 404(没接市场的构建)。
+	 * 省略 → 两口都是 `unsupported`(没接市场的构建)。
 	 */
 	marketplace?: Marketplace;
 	/**
 	 * 面板上传装拓展要的三样。闸与拆包在 `extensions/install.ts`,这里只做 wire。
 	 *
-	 * 省略 → `POST /install` 回 404(装载器没接上来的构建里,装了也没人加载)。
+	 * 省略 → `POST /install` 回 `unsupported`(装载器没接上来的构建里,装了也没人加载)。
 	 */
 	install?: {
 		/** 装载根 —— `<dataDir>/extensions/`。 */
@@ -255,20 +258,21 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 三条各自的理由:
 	 * - **闸在 `parseBody()` 之前**(同皮肤那条):整个 multipart 实体化进堆之后再拦,拦到的
 	 *   不是那句「过大」而是一次 OOM —— 进程被杀、面板断线重连,该收到的提示永远不来。
-	 * - **拆包那几句原样交出去**:它们是主人手里那个包**哪里不对**的唯一线索。
+	 * - **拆包那几句原样交出去**(一句是 `message`,不止一句则 `message` 概括、`issues` 逐条):它们是
+	 *   主人手里那个包**哪里不对**的唯一线索。
 	 * - **装完当场重扫**,于是新拓展立刻出现在这一页;而**盖掉一份跑过的**要如实说「新版等着
 	 *   换上」—— 那份代码已经 import 过,ESM 在这个进程里干净地换不掉(决策 10 / 47)。
 	 */
 	app.post("/install", uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, "拓展包"), async (c) => {
 		const install = opts.install;
-		if (!install) return c.json({ errors: ["这个构建没接装载器,装不了"] }, 404);
+		if (!install) return respondFailure(c, fail("unsupported", "这个构建没接装载器,装不了"));
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
-			return c.json({ errors: ["缺少拓展包文件(multipart 字段 file)"] }, 400);
+			return respondFailure(c, fail("invalid", "缺少拓展包文件(multipart 字段 file)"));
 		}
 		const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
-		if (!opened.ok) return c.json({ errors: opened.errors }, 400);
+		if (!opened.ok) return respondFailure(c, opened);
 
 		// 落盘与随后那一遍重扫在装载器的队里是一件事。新装的当场跑起来;盖掉一份跑着的,旧代码
 		// 照跑、那一行标上「等着换上」(装载器不偷偷换跑着的代码,决策 47)。
@@ -277,8 +281,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				installExtensionPackage({ root: install.root, pkg: opened.pkg }),
 			);
 		} catch (err) {
-			// 落盘那头拒绝的只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
-			return c.json({ errors: [(err as Error).message] }, 400);
+			// 落盘那头**可预期**的拒绝只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
+			// 别的抛错(磁盘写失败)是 bug 或环境的事,往外抛给全局出错处理。
+			if (err instanceof ExtensionConflictError) return respondFailure(c, err.toFailure());
+			throw err;
 		}
 
 		const answer: ExtensionInstallResponse = {
@@ -310,42 +316,41 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.delete("/:id", async (c) => {
 		const install = opts.install;
-		if (!install) return c.json({ errors: ["这个构建没接装载器,删不了"] }, 404);
+		if (!install) return respondFailure(c, fail("unsupported", "这个构建没接装载器,删不了"));
 
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return c.json({ errors: ["拓展 id 不合法"] }, 400);
+		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合法"));
 		const id = parsed.data;
 
 		const inUse = opts.store
 			.getConnections()
 			.filter((conn) => conn.kind === "extension" && conn.extensionId === id);
 		if (inUse.length > 0) {
-			return c.json(
-				{
-					errors: [
-						`还有 ${inUse.length} 条连接在用它 —— 先去推送目标页把它们删掉,再回来卸这个拓展`,
-					],
-				},
-				409,
+			return respondFailure(
+				c,
+				fail(
+					"conflict",
+					`还有 ${inUse.length} 条连接在用它 —— 先去推送目标页把它们删掉,再回来卸这个拓展`,
+				),
 			);
 		}
 
 		// 抹盘在前:它是**唯一会被拒**的一步(软链)。反过来先清配置的话,被拒的那条路上
 		// 配置已经没了而拓展还在盘上跑着 —— 界面与实际当场对不上。
 		const removed = await install.changeDisk(() => uninstallExtension({ root: install.root, id }));
-		if (!removed.ok) return c.json({ errors: [removed.err] }, 400);
+		if (!removed.ok) return respondFailure(c, removed);
 		// 它那一段上报问题跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。抹盘时它已经
 		// 收摊,不会再有新的一条补进来。
 		opts.reportProblems?.clear(id);
 
 		await opts.store.patchGlobals({ extensions: { [id]: null } } as never);
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	// 市场那两口要排在 `/:id/*` 前面 —— 路由按注册顺序匹配。
 	app.get("/marketplace", async (c) => {
 		const marketplace = opts.marketplace;
-		if (!marketplace) return c.json({ ok: false, err: "not found" }, 404);
+		if (!marketplace) return respondFailure(c, fail("unsupported", "这个构建没接拓展市场"));
 		const refresh = c.req.query("refresh") === "1";
 		const body: MarketplaceResponse = await marketplace.list({ refresh });
 		return c.json(body);
@@ -355,11 +360,13 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	app.post("/marketplace/install", async (c) => {
 		const marketplace = opts.marketplace;
 		const install = opts.install;
-		if (!marketplace || !install) return c.json({ ok: false, err: "not found" }, 404);
+		if (!marketplace || !install) {
+			return respondFailure(c, fail("unsupported", "这个构建没接拓展市场(或装载器),装不了"));
+		}
 		const parsed = MarketplaceInstallRequestSchema.safeParse(await c.req.json().catch(() => null));
-		if (!parsed.success) return c.json({ errors: ["要给 source 与 id"] }, 400);
+		if (!parsed.success) return respondFailure(c, fail("invalid", "要给 source 与 id"));
 		const outcome = await marketplace.install(parsed.data.source, parsed.data.id);
-		if (!outcome.ok) return c.json({ errors: [outcome.err] }, 400);
+		if (!outcome.ok) return respondFailure(c, outcome);
 		const answer: ExtensionInstallResponse = {
 			id: outcome.id,
 			name: outcome.name,
@@ -380,7 +387,12 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.get("/:id/bots", (c) => {
 		const bots = opts.bots(c.req.param("id"));
-		if (bots === undefined) return c.json({ ok: false, err: "not found" }, 404);
+		if (bots === undefined) {
+			return respondFailure(
+				c,
+				fail("not_found", `问不到拓展 ${c.req.param("id")} 的 bot:它没在跑,或者它没有 bot 这回事`),
+			);
+		}
 		const body: ExtensionBotsResponse = { bots };
 		return c.json(body);
 	});
@@ -393,56 +405,35 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.get("/:id/docs", async (c) => {
 		const install = opts.install;
-		if (!install) return c.json({ errors: ["这个构建没接装载器,读不到拓展的文档"] }, 404);
+		if (!install) {
+			return respondFailure(c, fail("unsupported", "这个构建没接装载器,读不到拓展的文档"));
+		}
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return c.json({ errors: ["拓展 id 不合法"] }, 400);
+		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合法"));
 		const docs = await readExtensionDocs({ root: install.root, id: parsed.data });
-		// 没装 → 404;装了但两份都没写 → 200 加两个空格子,面板据此整块不画。
-		if (!docs) return c.json({ errors: [`没有装名叫 ${parsed.data} 的拓展`] }, 404);
+		// 没装 → not_found;装了但两份都没写 → 200 加两个空格子,面板据此整块不画。
+		if (!docs) return respondFailure(c, fail("not_found", `没有装名叫 ${parsed.data} 的拓展`));
 		return c.json(docs);
 	});
 
 	/**
 	 * 面板上的「调拓展」按钮。🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 绝不挂到
 	 * `/ext/<id>`(那里刻意在鉴权外,ADR-0012 决策 36 / 38):否则任何够得着 BN 的人都能替主人
-	 * 按这些钮(比如发起一次扫码登录,用自己的手机扫)。每种失败各有状态码与原话。
+	 * 按这些钮(比如发起一次扫码登录,用自己的手机扫)。每种失败各有码与原话:话在
+	 * `extensions/context.ts` 的 `runAction` 里造(那儿才知道动作名与实际等了多久),这里原样交出去。
 	 */
 	app.post("/:id/actions/:name", async (c) => {
 		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
 		const name = ActionNameSchema.safeParse(c.req.param("name"));
 		if (!id.success || !name.success) {
-			return c.json({ ok: false, err: "拓展 id 或动作名不合规矩" }, 400);
+			return respondFailure(c, fail("invalid", "拓展 id 或动作名不合规矩"));
 		}
-		const outcome = await opts.runAction?.(id.data, name.data);
-		if (!outcome) return c.json({ ok: false, err: `拓展 ${id.data} 没在跑` }, 404);
-		if (outcome.ok) return c.json({ ok: true });
-		switch (outcome.reason) {
-			case "undeclared":
-				return c.json({ ok: false, err: `拓展 ${id.data} 的清单里没有动作 ${name.data}` }, 404);
-			case "unhandled":
-				return c.json(
-					{ ok: false, err: `拓展 ${id.data} 声明了动作 ${name.data},代码却没接` },
-					501,
-				);
-			case "timeout":
-				return c.json(
-					{ ok: false, err: `动作 ${name.data} 超过 ${ACTION_TIMEOUT_MS / 1000} 秒没回` },
-					504,
-				);
-			case "failed":
-				return c.json({ ok: false, err: outcome.message }, 500);
-			// 决策 42:不排队、不并发。面板照 409 说「还在跑」,不当成失败 —— 这句话接在它后面。
-			case "busy":
-				return c.json(
-					{
-						ok: false,
-						err: outcome.aborted
-							? `动作 ${name.data} 的上一发超过 ${ACTION_TIMEOUT_MS / 1000} 秒没回,已经叫它停下,可它还没停 —— 停下之前不接新的一发`
-							: `动作 ${name.data} 的上一发还没回来 —— 回来之前不接新的一发`,
-					},
-					409,
-				);
-		}
+		const outcome: ActionOutcome | undefined = await opts.runAction?.(id.data, name.data);
+		if (!outcome) return respondFailure(c, fail("not_found", `拓展 ${id.data} 没在跑`));
+		// 同一个动作的上一发还没回来是 `conflict`(决策 42:不排队、不并发),面板据此说「还在跑」,
+		// 不当成失败。
+		if (!outcome.ok) return respondFailure(c, outcome);
+		return c.json(ok());
 	});
 
 	/**
@@ -450,38 +441,30 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 拓展拿它去问平台用的是主人的 cookie,挂到鉴权外
 	 * 就是谁都能借主人的号去平台上查人。
 	 *
-	 * 每种失败各有状态码与原话;两种 502 要分得开:「拓展查询出错」是平台那头的事(cookie 过期、被
-	 * 风控),「交回的候选不合规矩」是拓展的 bug —— 并成一句的话,主人与作者都不知道该找谁。
+	 * 每种失败各有码与原话(话在 `extensions/context.ts` 的 `lookup` 里造);两种要分得开:「拓展查询
+	 * 出错」(`unavailable`)是平台那头的事(cookie 过期、被风控),「交回的候选不合规矩」(`invalid`)
+	 * 是拓展的 bug —— 并成一句的话,主人与作者都不知道该找谁。
 	 */
 	app.get("/:id/lookup", async (c) => {
 		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!id.success) return c.json({ ok: false, err: "拓展 id 不合规矩" }, 400);
+		if (!id.success) return respondFailure(c, fail("invalid", "拓展 id 不合规矩"));
 		const query = LookupQuerySchema.safeParse(c.req.query("q"));
 		if (!query.success) {
-			return c.json({ ok: false, err: query.error.issues[0]?.message ?? "q 不合规矩" }, 400);
+			return respondFailure(c, fail("invalid", query.error.issues[0]?.message ?? "q 不合规矩"));
 		}
-		const outcome = await opts.lookup?.(id.data, query.data);
+		const outcome: LookupOutcome | undefined = await opts.lookup?.(id.data, query.data);
 		if (!outcome) {
-			return c.json(
-				{ ok: false, err: `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门` },
-				404,
+			return respondFailure(
+				c,
+				fail("not_found", `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门`),
 			);
 		}
-		if (outcome.ok) {
-			const body: ExtensionLookupResponse = { candidates: outcome.candidates };
-			return c.json(body);
-		}
-		switch (outcome.reason) {
-			case "timeout":
-				return c.json(
-					{ ok: false, err: `拓展 ${id.data} 的解析门超过 ${LOOKUP_TIMEOUT_MS / 1000} 秒没回` },
-					504,
-				);
-			case "failed":
-				return c.json({ ok: false, err: `拓展查询出错:${outcome.message}` }, 502);
-			case "invalid":
-				return c.json({ ok: false, err: `拓展交回的候选不合规矩:${outcome.message}` }, 502);
-		}
+		// 走到这里的 `invalid` 只会是拓展交回的候选不合规矩(`q` 不合规矩在上面就拦了):请求本身
+		// 没错,是对端交回了不合格的东西,所以显式回 502,不回怪发请求那头的 400。
+		if (!outcome.ok)
+			return respondFailure(c, outcome, outcome.code === "invalid" ? 502 : undefined);
+		const body: ExtensionLookupResponse = { candidates: outcome.candidates };
+		return c.json(body);
 	});
 
 	/**
@@ -494,17 +477,20 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.post("/:id/swap", async (c) => {
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return c.json({ ok: false, err: "拓展 id 不合规矩" }, 400);
+		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合规矩"));
 		const id = parsed.data;
 		if (!opts.swap || !opts.extensions().some((entry) => entry.id === id)) {
-			return c.json({ ok: false, err: `没有装名叫 ${id} 的拓展` }, 404);
+			return respondFailure(c, fail("not_found", `没有装名叫 ${id} 的拓展`));
 		}
 		try {
 			await opts.swap(id);
 		} catch (err) {
-			return c.json({ ok: false, err: (err as Error).message }, 409);
+			// 装载器拒绝(没有等着换上的新代码 / 开关关着)是可预期的,那句话原样给主人;别的抛错是
+			// 换代码时的 bug,往外抛给全局出错处理 —— 不能把它也伪装成一个 409。
+			if (err instanceof ExtensionConflictError) return respondFailure(c, err.toFailure());
+			throw err;
 		}
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	// 设置自己的读写口(ADR-0019 决策 35)。wire 在 `extension-settings.ts`,逻辑在
@@ -530,7 +516,12 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));
-		if (status === undefined) return c.json({ ok: false, err: "not found" }, 404);
+		if (status === undefined) {
+			return respondFailure(
+				c,
+				fail("not_found", `拓展 ${c.req.param("id")} 没在跑,或者还没交过面板数据`),
+			);
+		}
 		return c.json(status);
 	});
 

@@ -64,7 +64,7 @@ export function ExtensionStateDetail({ ext }: { ext: ExtensionDTO }) {
 	return null;
 }
 
-/** 「为什么没成」那句话。服务端的三种错误体已由 `ApiError` 归一成 message。 */
+/** 「为什么没成」那句话。服务端的错误体是平铺的 `{ code, message }`,`ApiError` 已经取好 message。 */
 export function reasonOf(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }

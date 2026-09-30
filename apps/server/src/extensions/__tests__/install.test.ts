@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { strFromU8, strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { ExtensionConflictError } from "../conflict-error.js";
 import { EXTENSION_DOC_MAX_BYTES } from "../discover.js";
 import { installExtensionPackage, openExtensionPackage } from "../install.js";
 
@@ -83,6 +84,11 @@ function forgeUncompressedSize(zip: Uint8Array, name: string, size: number): Uin
 	return out;
 }
 
+/** 失败的全部话:一句概括,加上逐条(检查意见多于一条时分在 `issues` 里)。 */
+function textOf(failure: { message: string; issues?: { message: string }[] }): string {
+	return [failure.message, ...(failure.issues ?? []).map((issue) => issue.message)].join("\n");
+}
+
 beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "bn-ext-install-"));
 });
@@ -118,7 +124,21 @@ describe("拆包", () => {
 		const opened = openExtensionPackage(pack({ ...GOOD, "sneaky.mjs": "//" }));
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
-		expect(opened.errors.join()).toContain("sneaky.mjs");
+		// 只有一句检查意见:话就是 message,不再另摆一份 issues。
+		expect(opened.code).toBe("invalid");
+		expect(opened.message).toContain("sneaky.mjs");
+		expect(opened.issues).toBeUndefined();
+	});
+
+	/** 意见不止一条:message 一句概括,逐条放 issues —— 面板把它们摆成清单,主人照着一处处改。 */
+	it("夹带了不止一个文件 → message 一句概括,每个文件一条 issues", () => {
+		const opened = openExtensionPackage(pack({ ...GOOD, "a.mjs": "//", "b.mjs": "//" }));
+		expect(opened.ok).toBe(false);
+		if (opened.ok) return;
+		expect(opened.code).toBe("invalid");
+		expect(opened.message).toBe("这个拓展包没通过检查（共 2 条）");
+		expect(opened.issues).toHaveLength(2);
+		expect(opened.issues?.map((issue) => issue.message).join("\n")).toMatch(/a\.mjs[\s\S]*b\.mjs/);
 	});
 
 	/**
@@ -165,16 +185,22 @@ describe("拆包", () => {
 	it("缺入口 / 缺清单 → 各说各的", () => {
 		const noCode = openExtensionPackage(pack({ "extension.json": manifest() }));
 		expect(noCode.ok).toBe(false);
-		if (!noCode.ok) expect(noCode.errors.join()).toContain("index.mjs");
+		if (!noCode.ok) {
+			expect(noCode.code).toBe("invalid");
+			expect(textOf(noCode)).toContain("index.mjs");
+		}
 		const noManifest = openExtensionPackage(pack({ "index.mjs": "//" }));
 		expect(noManifest.ok).toBe(false);
-		if (!noManifest.ok) expect(noManifest.errors.join()).toContain("extension.json");
+		if (!noManifest.ok) expect(textOf(noManifest)).toContain("extension.json");
 	});
 
 	it("清单不合法 → 把哪一格不合法说出来", () => {
 		const opened = openExtensionPackage(pack({ ...GOOD, "extension.json": manifest({ id: "" }) }));
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toContain("id");
+		if (!opened.ok) {
+			expect(opened.code).toBe("invalid");
+			expect(textOf(opened)).toContain("id");
+		}
 	});
 
 	/** 装一个跑不起来的东西没有意义,而**这一刻**的错误信息是最清楚的一次。 */
@@ -186,7 +212,11 @@ describe("拆包", () => {
 			}),
 		);
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toContain("先升级 BN");
+		if (!opened.ok) {
+			// 版本对不上是「这个宿主不认」,不是包的内容写错了。
+			expect(opened.code).toBe("unsupported");
+			expect(opened.message).toContain("先升级 BN");
+		}
 	});
 
 	/**
@@ -206,8 +236,9 @@ describe("拆包", () => {
 		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
-		expect(opened.errors).toHaveLength(1);
-		expect(opened.errors[0]).toContain("先升级 BN");
+		expect(opened.code).toBe("unsupported");
+		expect(opened.issues).toBeUndefined();
+		expect(opened.message).toContain("先升级 BN");
 	});
 
 	it("v2 清单的包 → 收下", () => {
@@ -245,10 +276,11 @@ describe("拆包", () => {
 		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
-		expect(opened.errors).toHaveLength(1);
-		expect(opened.errors[0]).toContain(`小号 ${wants}`);
-		expect(opened.errors[0]).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
-		expect(opened.errors[0]).toContain("先升级 BN");
+		expect(opened.code).toBe("unsupported");
+		expect(opened.issues).toBeUndefined();
+		expect(opened.message).toContain(`小号 ${wants}`);
+		expect(opened.message).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
+		expect(opened.message).toContain("先升级 BN");
 	});
 
 	/** 🔴 zip 里的路径是攻击者写的,`..` 一律不认 —— 落盘那一步不该再自己防一遍。 */
@@ -261,7 +293,7 @@ describe("拆包", () => {
 		const huge = "x".repeat(9 * 1024 * 1024);
 		const opened = openExtensionPackage(pack({ ...GOOD, "index.mjs": huge }));
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toContain("过大");
+		if (!opened.ok) expect(textOf(opened)).toContain("过大");
 	});
 
 	/**
@@ -273,8 +305,9 @@ describe("拆包", () => {
 		const opened = openExtensionPackage(forged);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) {
-			expect(opened.errors.join()).toContain("过大");
-			expect(opened.errors.join()).not.toContain("zip");
+			expect(opened.code).toBe("invalid");
+			expect(textOf(opened)).toContain("过大");
+			expect(textOf(opened)).not.toContain("zip");
 		}
 	});
 
@@ -292,20 +325,23 @@ describe("拆包", () => {
 		}
 		const opened = openExtensionPackage(zip);
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toContain("总量");
+		if (!opened.ok) expect(textOf(opened)).toContain("总量");
 	});
 
 	it("压根不是 zip → 一句人话,别把 fflate 的异常摊出去", () => {
 		const opened = openExtensionPackage(strToU8("这不是 zip"));
 		expect(opened.ok).toBe(false);
-		if (!opened.ok) expect(opened.errors.join()).toContain("zip");
+		if (!opened.ok) {
+			expect(opened.code).toBe("invalid");
+			expect(textOf(opened)).toContain("zip");
+		}
 	});
 });
 
 describe("落盘", () => {
 	async function open(): Promise<Extract<ReturnType<typeof openExtensionPackage>, { ok: true }>> {
 		const opened = openExtensionPackage(pack(GOOD));
-		if (!opened.ok) throw new Error(opened.errors.join());
+		if (!opened.ok) throw new Error(textOf(opened));
 		return opened;
 	}
 
@@ -315,7 +351,7 @@ describe("落盘", () => {
 		const opened = openExtensionPackage(
 			pack({ ...GOOD, "README.md": "# 桥接", "CHANGELOG.md": "## [1.0.0]" }),
 		);
-		if (!opened.ok) throw new Error(opened.errors.join());
+		if (!opened.ok) throw new Error(textOf(opened));
 		return opened;
 	}
 
@@ -378,7 +414,14 @@ describe("落盘", () => {
 		await symlink(elsewhere, join(root, "bridge"), "dir");
 		const { pkg } = await open();
 
-		await expect(installExtensionPackage({ root, pkg })).rejects.toThrow(/软链/);
+		// 这是可预期的拒绝,自带 conflict 码 —— 路由只接这一种,别的抛错(磁盘写失败)不是它。
+		const refused = await installExtensionPackage({ root, pkg }).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(refused).toBeInstanceOf(ExtensionConflictError);
+		expect((refused as ExtensionConflictError).code).toBe("conflict");
+		expect((refused as ExtensionConflictError).message).toMatch(/软链/);
 		expect(await readlink(join(root, "bridge"))).toBe(elsewhere);
 		await rm(elsewhere, { recursive: true, force: true });
 	});

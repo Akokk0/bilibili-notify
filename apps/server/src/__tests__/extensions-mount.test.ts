@@ -326,7 +326,7 @@ describe("面板上传装拓展的接线", () => {
 		await runtime.dispose();
 	});
 
-	it("没接装载器的构建 → 404,而不是装进一个没人加载的目录", async () => {
+	it("没接装载器的构建 → 400 unsupported,而不是装进一个没人加载的目录", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
@@ -334,7 +334,12 @@ describe("面板上传装拓展的接线", () => {
 		});
 		const body = new FormData();
 		body.append("file", new File([new Uint8Array()], "x.zip"));
-		expect((await app.request("/api/ext/install", { method: "POST", body })).status).toBe(404);
+		const res = await app.request("/api/ext/install", { method: "POST", body });
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			code: "unsupported",
+			message: "这个构建没接装载器,装不了",
+		});
 		await runtime.dispose();
 	});
 });

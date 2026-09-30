@@ -458,8 +458,8 @@ describe("创建", () => {
 			new ApiError(
 				400,
 				{
-					error: "validation_failed",
-					message: "不合规矩",
+					code: "invalid",
+					message: "拓展设置没通过检查（共 2 条）",
 					issues: [
 						{ op: 0, path: ["links", "4f1c-新的", "name"], message: "名字里不许有空格" },
 						{ path: ["links"], message: "最多十条" },

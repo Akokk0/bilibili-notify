@@ -9,7 +9,7 @@
 
 import { createHash, sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_RANGE, type ExtensionApiRange } from "@bilibili-notify/internal";
@@ -142,6 +142,8 @@ interface HarnessOptions {
 	hostApiRange?: ExtensionApiRange;
 	/** 包在装载器那条队里写的时候,盘上各是什么样(写之前 / 写完)。 */
 	landed?: boolean[];
+	/** 落盘时抛这个(磁盘写失败之类,不是可预期的拒绝)。 */
+	writeFails?: Error;
 }
 
 function harness(opts: HarnessOptions = {}) {
@@ -152,6 +154,7 @@ function harness(opts: HarnessOptions = {}) {
 	const changeDisk = async <T>(write: () => Promise<T>): Promise<T> => {
 		opts.landed?.push(await onDisk());
 		try {
+			if (opts.writeFails) throw opts.writeFails;
 			return await write();
 		} finally {
 			opts.landed?.push(await onDisk());
@@ -327,9 +330,10 @@ describe("list():官方源", () => {
 		const outcome = await h.marketplace.install("official", "bridge");
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.err).toContain(`小号 ${wants}`);
-			expect(outcome.err).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
-			expect(outcome.err).toContain("先升级 BN");
+			expect(outcome.code).toBe("unsupported");
+			expect(outcome.message).toContain(`小号 ${wants}`);
+			expect(outcome.message).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
+			expect(outcome.message).toContain("先升级 BN");
 		}
 		expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(ZIP_URL);
 	});
@@ -387,8 +391,9 @@ describe("list():官方源", () => {
 		const outcome = await h.marketplace.install("official", "bridge");
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.err).not.toContain("升级 BN");
-			expect(outcome.err).toContain("v1");
+			expect(outcome.code).toBe("unsupported");
+			expect(outcome.message).not.toContain("升级 BN");
+			expect(outcome.message).toContain("v1");
 		}
 	});
 });
@@ -751,7 +756,11 @@ describe("install()", () => {
 		});
 		const h = harness();
 		const outcome = await h.marketplace.install("official", "bridge");
-		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("校验") });
+		expect(outcome).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("校验"),
+		});
 		await expect(readFile(join(root, "bridge", "extension.json"))).rejects.toThrow();
 		expect(h.rescan).not.toHaveBeenCalled();
 	});
@@ -766,10 +775,14 @@ describe("install()", () => {
 			[ZIP_URL]: wrong,
 		});
 		const outcome = await harness().marketplace.install("official", "bridge");
-		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("0.0.1") });
+		expect(outcome).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("0.0.1"),
+		});
 	});
 
-	it("不认识的源 / 源里没这个 id / 契约不合 / 撤回的 → 各自说清", async () => {
+	it("不认识的源 / 源里没这个 id / 契约不合 → 各自说清,各有各的码", async () => {
 		serve({
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
@@ -783,16 +796,67 @@ describe("install()", () => {
 		const h = harness();
 		expect(await h.marketplace.install("nope", "bridge")).toMatchObject({
 			ok: false,
-			err: expect.stringContaining("源"),
+			code: "not_found",
+			message: expect.stringContaining("源"),
 		});
 		expect(await h.marketplace.install("official", "ghost")).toMatchObject({
 			ok: false,
-			err: expect.stringContaining("ghost"),
+			code: "not_found",
+			message: expect.stringContaining("ghost"),
 		});
 		expect(await h.marketplace.install("official", "bridge")).toMatchObject({
 			ok: false,
-			err: expect.stringContaining("升级"),
+			code: "unsupported",
+			message: expect.stringContaining("升级"),
 		});
+	});
+
+	it("装着那版被这个源撤回了,又没有别的版本可装 → not_found,说是被撤回", async () => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ revoked: ["bridge@0.0.2"], extensions: [entry("bridge", "0.0.2", bridgeZip)] }),
+			),
+		});
+		expect(await harness().marketplace.install("official", "bridge")).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "拓展 bridge 0.0.2 已被这个源撤回",
+		});
+	});
+
+	it("源的索引没拿到 → unavailable,话里带着源那头的原因", async () => {
+		serve({});
+		const outcome = await harness().marketplace.install("official", "bridge");
+		expect(outcome).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: expect.stringContaining("现在不可用"),
+		});
+	});
+
+	/**
+	 * 落盘那头只有「目标是 devtools 链进来的软链」是可预期的拒绝(conflict);磁盘写失败之类是 bug 或环境的
+	 * 事,得往外抛给全局出错处理 —— 不能被吞成一句 4xx 冒充主人的操作有毛病。
+	 */
+	it("目标是软链 → conflict;别的落盘失败 → 往外抛,不装成失败的结果", async () => {
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()), [ZIP_URL]: bridgeZip });
+		const elsewhere = join(root, "elsewhere");
+		await mkdir(elsewhere);
+		await symlink(elsewhere, join(root, "bridge"), "dir");
+		expect(await harness().marketplace.install("official", "bridge")).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("软链"),
+		});
+
+		await rm(join(root, "bridge"));
+		await expect(
+			harness({ writeFails: new Error("ENOSPC: no space left on device") }).marketplace.install(
+				"official",
+				"bridge",
+			),
+		).rejects.toThrow(/ENOSPC/);
 	});
 
 	it("索引写的包超过本机上限 → 说清是上限,别报成「下不下来」", async () => {
@@ -814,7 +878,11 @@ describe("install()", () => {
 			[ZIP_URL]: bridgeZip,
 		});
 		const outcome = await harness().marketplace.install("official", "bridge");
-		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("上限") });
+		expect(outcome).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("上限"),
+		});
 	});
 
 	it("下载上限按索引写的 size 收,不是 10MB 硬顶 —— 发来的比写的大就当场停", async () => {
@@ -825,7 +893,11 @@ describe("install()", () => {
 		});
 		const outcome = await harness().marketplace.install("official", "bridge");
 		// 读到索引写的那个数就断了,拿不到完整字节 —— 而不是「收完 64KB 再说校验和不对」。
-		expect(outcome).toMatchObject({ ok: false, err: expect.stringContaining("下不下来") });
+		expect(outcome).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: expect.stringContaining("下不下来"),
+		});
 	});
 
 	it("第三方源的包不走镜像,官方的走", async () => {

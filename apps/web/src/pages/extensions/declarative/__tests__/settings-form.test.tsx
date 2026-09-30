@@ -109,11 +109,7 @@ function applyPatch(body: unknown) {
 	if (patch.revision !== `rev-${revision}`) {
 		throw new ApiError(
 			409,
-			{
-				error: "revision_conflict",
-				message: "设置在你打开之后被改过了",
-				revision: `rev-${revision}`,
-			},
+			{ code: "conflict", message: "设置在你打开之后被改过了" },
 			"设置在你打开之后被改过了",
 		);
 	}
@@ -530,8 +526,8 @@ describe("校验", () => {
 			new ApiError(
 				400,
 				{
-					error: "validation_failed",
-					message: "note:备注太长了",
+					code: "invalid",
+					message: "拓展设置没通过检查（共 1 条）",
 					issues: [{ op: 0, path: ["note"], message: "备注太长了" }],
 				},
 				"note:备注太长了",
@@ -554,7 +550,7 @@ describe("校验", () => {
 		vi.mocked(api.patch).mockRejectedValue(
 			new ApiError(
 				400,
-				{ error: "validation_failed", issues: [] },
+				{ code: "invalid", message: "拓展设置没通过检查（共 0 条）", issues: [] },
 				"PATCH /api/ext/douyin/settings → 400",
 			),
 		);
@@ -572,7 +568,8 @@ describe("校验", () => {
 			new ApiError(
 				400,
 				{
-					error: "validation_failed",
+					code: "invalid",
+					message: "拓展设置没通过检查（共 1 条）",
 					issues: [{ path: ["links", "c1"], message: "少了 id" }],
 				},
 				"PATCH /api/ext/douyin/settings → 400",
@@ -646,7 +643,8 @@ describe("校验", () => {
 				new ApiError(
 					400,
 					{
-						error: "validation_failed",
+						code: "invalid",
+						message: "拓展设置没通过检查（共 1 条）",
 						issues: [{ op: 0, path: ["constructor"], message: "构造不对" }],
 					},
 					"PATCH /api/ext/douyin/settings → 400",

@@ -149,7 +149,7 @@ function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
 }
 
 /**
- * 校验不过那份 400(`{ error: "validation_failed", issues }`,路径从设置那一层数)拆成两半。一条都拆
+ * 校验不过那份 400(`{ code: "invalid", issues }`,路径从设置那一层数)拆成两半。一条都拆
  * 不出来的交 `null`,与别的失败一样说原话 —— 与列表那一节(`writeFailureOf`)同一个口径。
  */
 interface SaveIssues {

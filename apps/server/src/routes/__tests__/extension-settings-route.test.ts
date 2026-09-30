@@ -16,7 +16,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	ExtensionSettingsConflict,
+	ErrorResponse,
 	ExtensionSettingsIssue,
 	ExtensionSettingsResponse,
 	ExtensionSettingsWriteResponse,
@@ -170,6 +170,8 @@ async function boot(opts: {
 	running: boolean;
 	settings?: unknown;
 	state?: "running" | "disabled" | "settings-invalid";
+	/** 拓展交的 zod,缺省是 {@link DOUYIN_ZOD}。 */
+	zod?: z.ZodType;
 }) {
 	await plant(DOUYIN);
 	await plant(LEGACY_V1);
@@ -207,7 +209,7 @@ async function boot(opts: {
 		importModule: async () => ({
 			activate(ctx: ExtensionContext) {
 				activations += 1;
-				ctx.settings(DOUYIN_ZOD);
+				ctx.settings(opts.zod ?? DOUYIN_ZOD);
 			},
 		}),
 	});
@@ -263,6 +265,18 @@ const BAD_LINK = { id: "bad-1", name: "", token: "", enabled: true };
 
 function issuesOf(body: unknown): ExtensionSettingsIssue[] {
 	return (body as { issues: ExtensionSettingsIssue[] }).issues;
+}
+
+/**
+ * 非 2xx 的体是平铺的 `{ code, message }`(+ 可选 `issues`):键集合钉死 —— 旧形状的 `error` /
+ * `revision` 一个都不许再出现(ADR-0026 决策 6)。
+ */
+async function failureOf(res: Response): Promise<ErrorResponse> {
+	const body = (await res.json()) as ErrorResponse;
+	expect(Object.keys(body).every((key) => ["code", "message", "issues"].includes(key))).toBe(true);
+	expect(typeof body.message).toBe("string");
+	expect(body.message).not.toBe("");
+	return body;
 }
 
 describe("GET /api/ext/:id/settings", () => {
@@ -329,26 +343,43 @@ describe("GET /api/ext/:id/settings", () => {
 		["没装这个拓展", "nope", /没有装/],
 		["v1 拓展(设置不在清单里)", "legacy", /v1|老格式/],
 		["清单没声明设置项", "bare", /没声明设置项/],
-	])("%s —— 404,并说清为什么", async (_label, id, reason) => {
+	])("%s —— 404 not_found,并说清为什么", async (_label, id, reason) => {
 		const h = await boot({ running: false });
 		const res = await h.get(id);
 		expect(res.status).toBe(404);
-		expect(((await res.json()) as { message: string }).message).toMatch(reason);
+		const body = await failureOf(res);
+		expect(body.code).toBe("not_found");
+		expect(body.message).toMatch(reason);
+	});
+
+	it("id 不合规矩 —— 400 invalid,读与写都一样", async () => {
+		const h = await boot({ running: false });
+		const read = await h.get("Bad_ID");
+		expect(read.status).toBe(400);
+		expect(await failureOf(read)).toEqual({ code: "invalid", message: "拓展 id 不合规矩" });
+		const write = await h.patch(
+			{ revision: "x", ops: [{ op: "set", key: "interval", value: 90 }] },
+			"Bad_ID",
+		);
+		expect(write.status).toBe(400);
+		expect((await failureOf(write)).code).toBe("invalid");
 	});
 });
 
 describe("PATCH /api/ext/:id/settings —— 版本号", () => {
-	it("对不上 → 409,带上现在的版本号,一个字都没写", async () => {
+	it("对不上 → 409 conflict,只有 { code, message }(不再带现在的版本号),一个字都没写", async () => {
 		const h = await boot({ running: false, settings: { interval: 90 } });
-		const current = await h.revision();
 		const res = await h.patch({
 			revision: "stale",
 			ops: [{ op: "set", key: "interval", value: 120 }],
 		});
 		expect(res.status).toBe(409);
-		const body = (await res.json()) as ExtensionSettingsConflict;
-		expect(body.error).toBe("revision_conflict");
-		expect(body.revision).toBe(current);
+		const body = await res.json();
+		expect(body).toEqual({
+			code: "conflict",
+			message: "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉",
+		});
+		expect(body).not.toHaveProperty("revision");
 		expect(h.stored()).toEqual({ interval: 90 });
 	});
 
@@ -363,6 +394,9 @@ describe("PATCH /api/ext/:id/settings —— 版本号", () => {
 			h.patch({ revision: rev, ops: [{ op: "add", list: "links", item: { name } }] });
 		const [a, b] = await Promise.all([add("甲"), add("乙")]);
 		expect([a.status, b.status].sort()).toEqual([200, 409]);
+		// 输的那一发在排队里比对,回的也是同一个 conflict。
+		const loser = a.status === 409 ? a : b;
+		expect((await failureOf(loser)).code).toBe("conflict");
 		const links = (h.stored() as { links: Array<{ name: string }> }).links;
 		expect(links.map((link) => link.name)).toHaveLength(2);
 		expect(links[0]?.name).toBe("家里那台");
@@ -516,9 +550,10 @@ describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都
 		const before = structuredClone(h.stored());
 		const res = await h.patch({ revision: await h.revision(), ops: [op] });
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe("validation_failed");
-		expect(body.message).not.toBe("");
+		const body = await failureOf(res);
+		expect(body.code).toBe("invalid");
+		// message 一句概括;逐条原因(路径 + op)在 issues 里,面板据此标红。
+		expect(body.message).toBe("拓展设置没通过检查（共 1 条）");
 		expect(issuesOf(body)).toEqual([expect.objectContaining(expected)]);
 		expect(h.stored()).toEqual(before);
 		expect(h.settingsFrames()).toEqual([]);
@@ -537,8 +572,8 @@ describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都
 		const [issue, ...rest] = issuesOf(await res.json());
 		expect(rest).toEqual([]);
 		expect(issue?.op).toBe(1);
-		expect(issue?.path[0]).toBe("links");
-		expect(issue?.path.at(-1)).toBe("name");
+		expect(issue?.path?.[0]).toBe("links");
+		expect(issue?.path?.at(-1)).toBe("name");
 		// 一步不合规矩,整发都不写 —— 前面那步合规矩的 set 也不写。
 		expect(h.stored()).toEqual({ links: [GOOD_LINK] });
 	});
@@ -550,7 +585,7 @@ describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都
 			ops: [{ op: "add", list: "links", item: { id: "mine", name: "x" } }],
 		});
 		expect(res.status).toBe(400);
-		expect(issuesOf(await res.json())[0]?.path.at(-1)).toBe("id");
+		expect(issuesOf(await res.json())[0]?.path?.at(-1)).toBe("id");
 		expect(h.stored()).toBeUndefined();
 	});
 
@@ -563,6 +598,13 @@ describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都
 		]) {
 			const res = await h.patch(body);
 			expect(res.status).toBe(400);
+			const failure = await failureOf(res);
+			expect(failure.code).toBe("invalid");
+			// zod 自己的字段(code / expected / received …)不往外甩:每条只有路径与原话。
+			for (const issue of failure.issues ?? []) {
+				expect(Object.keys(issue).every((key) => key === "path" || key === "message")).toBe(true);
+			}
+			expect(failure.issues?.length).toBeGreaterThan(0);
 		}
 		expect(h.stored()).toBeUndefined();
 	});
@@ -598,6 +640,31 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 		expect(issue?.op).toBe(0);
 		expect(issue?.message).toMatch(/坏/);
 		expect(h.stored()).toEqual({ links: [GOOD_LINK] });
+	});
+
+	// 拓展的校验代码自己抛了(不是 zod 的报错):对端的错,原话给主人 —— unavailable,不是 500。
+	it("拓展自己的校验抛了 —— 503 unavailable,话里点名是哪个拓展、带它的原话;一个字不写", async () => {
+		const h = await boot({
+			running: true,
+			settings: { interval: 90 },
+			// 与清单声明的格对得上(宿主起拓展时要对表),再多一道会抛的规矩。
+			zod: DOUYIN_ZOD.refine((value) => {
+				if (value.interval === 111) throw new Error("校验里访问了 undefined");
+				return true;
+			}),
+		});
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "set", key: "interval", value: 111 }],
+		});
+		expect(res.status).toBe(503);
+		expect(await failureOf(res)).toEqual({
+			code: "unavailable",
+			message:
+				"拓展 douyin 自己的设置校验抛了(不是「不合规矩」,是它的代码出错):校验里访问了 undefined",
+		});
+		expect(h.stored()).toEqual({ interval: 90 });
+		expect(h.settingsFrames()).toEqual([]);
 	});
 
 	const ROTTEN = { ...GOOD_LINK, id: "rotten", name: "坏的那台" };

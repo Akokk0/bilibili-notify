@@ -66,12 +66,11 @@ describe("api.patch wire format", () => {
 });
 
 /**
- * 错误信息的取字段(迁移期兼容)。
+ * 错误信息的取字段。
  *
- * 迁完的路由回 `{ code, message }`;还没迁的(拓展动作与设置)仍有旧形状 `{err}` / `{message}` /
- * `{errors:[…]}`。`request` 原来只认 `message`,于是所有 `{err}` 类失败都被降级成
- * 「POST /api/… → 400」这种线格式噪音 —— 用户看到的不是那句原因,而是一个毫无指向的状态码,
- * 只能来问「功能是不是没写」。旧形状的兼容在 ④b 最后一组删,这一块跟着删。
+ * 服务端的非 2xx 一律回平铺的 `{ code, message }`(可选 `issues`)。旧形状 `{err}` / `{error, message}` /
+ * `{errors:[…]}` 不再被认 —— 服务端不会再回它们(④b 最后一组路由迁完),兼容代码已删。认不出的体退回
+ * 线格式 `方法 路径 → 状态码`,至少带上状态码。
  */
 describe("api 错误信息", () => {
 	const fail = (status: number, body: unknown) =>
@@ -86,38 +85,31 @@ describe("api 错误信息", () => {
 			),
 		);
 
-	it("读得出 {err} 形状的原因", async () => {
-		fail(400, { ok: false, err: "动作没有执行成功" });
-		await expect(api.post("/api/ext/demo/actions/run", {})).rejects.toThrow("动作没有执行成功");
-	});
-
-	it("读得出 {message} 形状的原因", async () => {
-		fail(400, { error: "invalid_manifest", message: "清单里缺少 id" });
+	it("读得出 {code, message} 形状的原因", async () => {
+		fail(400, { code: "invalid", message: "清单里缺少 id" });
 		await expect(api.post("/api/ext/install", {})).rejects.toThrow("清单里缺少 id");
 	});
 
-	it("读得出 {errors:[…]} 形状(皮肤上传/编辑保存的字段级校验),逐条拼给用户", async () => {
-		fail(400, {
-			ok: false,
-			errors: ["modes.light.colors.accent: 不是合法颜色值", "texts.headerTitle: 必须是 1~60 字"],
-		});
-		await expect(api.put("/api/skins/s1/manifest", {})).rejects.toThrow(
-			"modes.light.colors.accent: 不是合法颜色值;texts.headerTitle: 必须是 1~60 字",
-		);
+	it.each([
+		["{ ok: false, err }", { ok: false, err: "动作没有执行成功" }],
+		["{ error, message }", { error: "invalid_manifest", message: "清单里缺少 id" }],
+		["{ ok: false, errors: […] }", { ok: false, errors: ["甲不对", "乙不对"] }],
+	])("旧形状 %s 不再被认:退回线格式,至少带上状态码", async (_label, body) => {
+		fail(400, body);
+		await expect(api.post("/api/ext/install", {})).rejects.toThrow("POST /api/ext/install → 400");
 	});
 
-	it("两个字段都没有时退回线格式,至少带上状态码", async () => {
+	it("什么都没有时退回线格式,至少带上状态码", async () => {
 		fail(500, { nope: 1 });
 		await expect(api.post("/api/whatever", {})).rejects.toThrow("500");
 	});
 });
 
 /**
- * 非 2xx 只解析一次成 `ApiError`(ADR-0026 决策 6):新形状 `{ code, message, issues? }` 直接取;
- * 迁移期还没迁的路由回旧形状(`err` / `message` / `errors[]`),`code` 为空。旧形状的兼容
- * 在 ④b 最后一组删,所以两种样例各钉一份 —— 删兼容的那一天,旧形状那半跟着删。
+ * 非 2xx 只解析一次成 `ApiError`(ADR-0026 决策 6):只认平铺的 `{ code, message, issues? }`,
+ * `code` 得在标准码表里。旧形状(`err` / `error` / `errors[]`)不再被认。
  */
-describe("ApiError 解析非 2xx(新旧两种形状)", () => {
+describe("ApiError 解析非 2xx(只认平铺的 { code, message })", () => {
 	const respond = (status: number, body: unknown) =>
 		vi.stubGlobal(
 			"fetch",
@@ -171,33 +163,43 @@ describe("ApiError 解析非 2xx(新旧两种形状)", () => {
 		expect(err.body).toMatchObject({ upstreamCode: -352 });
 	});
 
-	it("码表里没有的 code 不冒充标准码 —— 落到 message 上照常说话", async () => {
+	it("码表里没有的 code 不冒充标准码 —— 这份体不算认得,退回线格式", async () => {
 		respond(400, { code: "no_such_code", message: "还是能读到这句" });
 		const err = await caught(() => api.get("/api/x"));
 		expect(err.code).toBeUndefined();
-		expect(err.message).toBe("还是能读到这句");
+		expect(err.message).toBe("GET /api/x → 400");
 	});
 
-	it("旧形状 {err}:message 取 err,code 为空", async () => {
-		respond(400, { ok: false, err: "动作没有执行成功" });
+	it("数字 code(平台的码塞进 code 的旧写法)不冒充标准码", async () => {
+		respond(502, { code: -352, message: "无法访问 B 站" });
+		const err = await caught(() => api.get("/api/x"));
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("GET /api/x → 502");
+	});
+
+	it("没有 message 的体不算认得:只有 code 说明不了什么", async () => {
+		respond(400, { code: "invalid" });
+		const err = await caught(() => api.get("/api/x"));
+		expect(err.code).toBeUndefined();
+		expect(err.message).toBe("GET /api/x → 400");
+	});
+
+	/** 旧形状不再被认:服务端一律回平铺的 { code, message },这几种不会再出现,认它们只会掩盖漏迁的路由。 */
+	it.each([
+		["{ ok: false, err }", { ok: false, err: "动作没有执行成功" }],
+		["{ error, message }", { error: "upstream_failed", message: "无法访问 B 站" }],
+		["{ ok: false, errors: […] }", { ok: false, errors: ["甲不对", "乙不对"] }],
+		[
+			"{ error: 'validation_failed', issues }",
+			{ error: "validation_failed", issues: [{ path: ["a"], message: "不对" }] },
+		],
+	])("旧形状 %s 不再被认:code / issues 为空,message 退回线格式", async (_label, body) => {
+		respond(400, body);
 		const err = await caught(() => api.post("/api/x", {}));
 		expect(err.status).toBe(400);
 		expect(err.code).toBeUndefined();
-		expect(err.message).toBe("动作没有执行成功");
-	});
-
-	it("旧形状 {error, message}:message 取 message,code 为空(B 站的数字 code 也不冒充)", async () => {
-		respond(502, { error: "upstream_failed", code: -352, message: "无法访问 B 站" });
-		const err = await caught(() => api.get("/api/x"));
-		expect(err.code).toBeUndefined();
-		expect(err.message).toBe("无法访问 B 站");
-	});
-
-	it("旧形状 {errors:[…]}:逐条拼起来,code 为空", async () => {
-		respond(400, { ok: false, errors: ["甲不对", "乙不对"] });
-		const err = await caught(() => api.put("/api/x", {}));
-		expect(err.code).toBeUndefined();
-		expect(err.message).toBe("甲不对;乙不对");
+		expect(err.issues).toBeUndefined();
+		expect(err.message).toBe("POST /api/x → 400");
 	});
 
 	it("什么形状都不是:退回线格式 `方法 路径 → 状态码`", async () => {
@@ -235,9 +237,10 @@ describe("issuesOf", () => {
 		expect(issuesOf(err)).toEqual([{ path: ["a"], message: "不对" }]);
 	});
 
-	it("旧形状:兼容 validation_failed + issues(逐格标红那一路),路径里非 string / number 的段丢掉", () => {
+	it("路径里非 string / number 的段丢掉,缺话给兜底句,op 有才带", () => {
 		const err = errorWith(400, {
-			error: "validation_failed",
+			code: "invalid",
+			message: "拓展设置没通过检查",
 			issues: [
 				{ path: ["links", 1, { x: 1 }], message: "不对", op: 3 },
 				{ message: "整体不对" },
@@ -251,9 +254,9 @@ describe("issuesOf", () => {
 		]);
 	});
 
-	it("旧形状里别的 error 串带 issues 不算(只认 validation_failed)", () => {
+	it("旧形状(error: 'validation_failed')带 issues 不再被认", () => {
 		expect(
-			issuesOf(errorWith(400, { error: "invalid_payload", issues: [{ message: "x" }] })),
+			issuesOf(errorWith(400, { error: "validation_failed", issues: [{ message: "x" }] })),
 		).toBeNull();
 	});
 
@@ -297,10 +300,10 @@ describe("全局 401 钩子", () => {
 		expect(hook).toHaveBeenCalledTimes(1);
 	});
 
-	it("401(旧形状)同样触发", async () => {
+	it("401 只看状态码:体认不出来也触发", async () => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
-		respond(401, { error: "unauthorized", message: "dashboard session required" });
+		respond(401, { nope: "dashboard session required" });
 		await expect(api.get("/api/globals")).rejects.toMatchObject({ status: 401 });
 		expect(hook).toHaveBeenCalledTimes(1);
 	});

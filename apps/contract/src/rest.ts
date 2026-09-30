@@ -23,6 +23,7 @@ import type {
 	FailureCode,
 	FansRefreshEntry,
 	HistoryMessageRole,
+	Issue,
 	PushKind,
 	PushStatus,
 	Result,
@@ -269,28 +270,17 @@ export interface ExtensionSettingsWriteResponse extends ExtensionSettingsRespons
 }
 
 /**
- * PATCH 被拒(400 `{ error: "validation_failed", message, issues }`)时的一条。
+ * PATCH 校验不过(400 `{ code: "invalid", message, issues }`)时 `issues` 里的一条 —— 标准的 {@link Issue}
+ * 加一格 `op`(ADR-0026 决策 6:全仓只有这一处的原因带 `op`)。
  *
  * `path` 从**这个拓展的设置**那一层往下数,列表项**按 id 点名**(`["links", "<id>", "name"]`)
  * —— 增删之后下标会挪,按第几项说会指错。`add` 那一项的 id 是这次现生成的、面板不认识,
  * 所以每条尽量带上 `op`(第几步惹出来的):对不上某一步的(拓展自己的校验里跨格的规矩)
  * 就没有。
+ *
+ * 版本号对不上(409)是普通的 `{ code: "conflict", message }`,不带别的:面板据 `code` 重读一遍再改。
  */
-export interface ExtensionSettingsIssue {
-	op?: number;
-	path: (string | number)[];
-	message: string;
-}
-
-/**
- * PATCH 带的版本号与存着的对不上(409)。带上**现在的**版本号 —— 面板重取之后照着新的那份
- * 再改,而不是把别人刚写的盖掉。
- */
-export interface ExtensionSettingsConflict {
-	error: "revision_conflict";
-	message: string;
-	revision: string;
-}
+export type ExtensionSettingsIssue = Issue & { op?: number };
 
 /**
  * `POST /api/ext/install` 装完之后的回话。

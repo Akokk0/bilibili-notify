@@ -17,6 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { AdapterRegistry } from "../platforms/registry.js";
+import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	type ActionOutcome,
 	createExtensionContext,
@@ -165,9 +166,10 @@ export interface LoadedExtensions {
 	 * **只重载这个拓展**(生产那颗按钮,ADR-0012 决策 47):现读盘上那份 → 收摊 → 换一个按
 	 * 指纹定的 URL 重新 `import` → 重新 `activate`。
 	 *
-	 * 🔴 **只在「开着 && 带 `staged`」时给按**,否则抛:ESM 的模块缓存删不掉,每换一份新代码就漏
-	 * 一份旧模块 —— 漏可以,但不该在没有新代码的时候白漏;关着的带着 `staged` 也不给,换上去就是
-	 * 把它跑起来,那是开关的活。不记账(理由同 `reload`)。
+	 * 🔴 **只在「开着 && 带 `staged`」时给按**,否则抛 {@link ExtensionConflictError}(可预期的拒绝,
+	 * 路由回 `conflict`、话原样交给面板):ESM 的模块缓存删不掉,每换一份新代码就漏一份旧模块 ——
+	 * 漏可以,但不该在没有新代码的时候白漏;关着的带着 `staged` 也不给,换上去就是把它跑起来,
+	 * 那是开关的活。别的抛错是换代码时的 bug,不是它。不记账(理由同 `reload`)。
 	 */
 	swap(id: string): Promise<void>;
 	/**
@@ -942,11 +944,15 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			return enqueue(async () => {
 				const slot = slots.get(id);
 				if (!slot || !stagedOf(slot)) {
-					throw new Error(`${id} 没有等着换上的新代码 —— 每重载一次漏一份旧模块,不白漏`);
+					throw new ExtensionConflictError(
+						`${id} 没有等着换上的新代码 —— 每重载一次漏一份旧模块,不白漏`,
+					);
 				}
 				// 🔴 关着的也带 `staged`,可换上去就是把它跑起来 —— 那是开关的活,不是这颗钮的。
 				if (!isEnabled(id)) {
-					throw new Error(`${id} 的开关关着 —— 只重载会把它跑起来;要换就重启 BN,或者先打开它`);
+					throw new ExtensionConflictError(
+						`${id} 的开关关着 —— 只重载会把它跑起来;要换就重启 BN,或者先打开它`,
+					);
 				}
 				await replaceCode(slot);
 			});

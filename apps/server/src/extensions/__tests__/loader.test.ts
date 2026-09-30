@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
+import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
 import { loadExtensions } from "../loader.js";
@@ -1302,7 +1303,10 @@ describe("换了代码(等着换上)", () => {
 		await plant("bridge", says("新的"), { version: "2.0.0" });
 		await loaded.rescan();
 
-		await expect(loaded.swap("bridge")).rejects.toThrow(/关着/);
+		// 可预期的拒绝,自带 conflict 码 —— 路由只接这一种,换代码时的 bug 不会被当成 409。
+		const refused = await loaded.swap("bridge").catch((err: unknown) => err);
+		expect(refused).toBeInstanceOf(ExtensionConflictError);
+		expect((refused as ExtensionConflictError).message).toMatch(/关着/);
 		expect(loaded.list()[0]?.state).toBe("disabled");
 		expect(await body()).toBe(404);
 	});
@@ -1314,8 +1318,10 @@ describe("换了代码(等着换上)", () => {
 			mounts: createExtensionMounts({ logger: silentLogger }),
 		});
 
-		await expect(loaded.swap("bridge")).rejects.toThrow(/没有等着换上/);
-		await expect(loaded.swap("nobody")).rejects.toThrow();
+		const refused = await loaded.swap("bridge").catch((err: unknown) => err);
+		expect(refused).toBeInstanceOf(ExtensionConflictError);
+		expect((refused as ExtensionConflictError).message).toMatch(/没有等着换上/);
+		await expect(loaded.swap("nobody")).rejects.toBeInstanceOf(ExtensionConflictError);
 		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
 	});
 

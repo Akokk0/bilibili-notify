@@ -237,7 +237,9 @@ describe("卡上的状态", () => {
 	 */
 	it.each([
 		["出错", Object.assign(new Error("连接中断"), { status: 500 }), "状态未知"],
-		["404", Object.assign(new Error("not found"), { status: 404 }), null],
+		["not_found", Object.assign(new Error("not found"), { status: 404, code: "not_found" }), null],
+		// 只认标准码不认状态码:没有码的 404(如反代吞了的)不是「没交过视图」,是读挂了。
+		["没有码的 404", Object.assign(new Error("反代回了 404"), { status: 404 }), "状态未知"],
 	])("先读到过视图、再读%s:旧的那份一样都不画", async (_what, failure, status) => {
 		const { qc } = renderList({ items: [HOME], view: CONNECTED });
 		const card = await findCard("c1");

@@ -14,11 +14,11 @@
  */
 
 import type {
+	ErrorResponse,
 	ExtensionDTO,
 	ExtensionField,
 	ExtensionListField,
 	ExtensionPanelView,
-	ExtensionSettingsConflict,
 	ExtensionSettingsOp,
 	ExtensionSettingsPatch,
 	ExtensionSettingsResponse,
@@ -141,9 +141,10 @@ export function shown(view: ExtensionView): ExtensionPanelView {
 	};
 }
 
-/** 状态那一口的 404:拓展跑着、但还没交过视图。 */
+/** 状态那一口的 `not_found`:拓展跑着、但还没交过视图。面板认的是标准码,不是状态码。 */
 export class NotFound extends Error {
 	readonly status = 404;
+	readonly code = "not_found";
 }
 
 export interface ListSetup {
@@ -268,10 +269,9 @@ export async function answerPatch(url: string, body?: unknown): Promise<unknown>
 	if (url !== `/api/ext/${served.ext.id}/settings`) throw new Error(`写去了别处:${url}`);
 	const { revision, ops } = body as ExtensionSettingsPatch;
 	if (revision !== servedRevision()) {
-		const conflict: ExtensionSettingsConflict = {
-			error: "revision_conflict",
+		const conflict: ErrorResponse = {
+			code: "conflict",
 			message: "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉",
-			revision: servedRevision(),
 		};
 		throw new ApiError(409, conflict, conflict.message);
 	}

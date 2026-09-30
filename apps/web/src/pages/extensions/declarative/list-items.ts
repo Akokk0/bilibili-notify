@@ -187,9 +187,9 @@ export function isSecretSub(sub: ExtensionScalarField): boolean {
  */
 export const CONFLICT_TEXT = "设置在你打开之后被改过了 —— 已经重新读了一遍,看一眼现在的样子再改";
 
-/** 这一发是不是撞上了版本号(`409 revision_conflict`,别的标签页刚写过一笔)。 */
+/** 这一发是不是撞上了版本号(`code === "conflict"`,别的标签页刚写过一笔)。 */
 export function isConflict(err: unknown): boolean {
-	return err instanceof ApiError && err.status === 409;
+	return err instanceof ApiError && err.code === "conflict";
 }
 
 /**
@@ -205,33 +205,18 @@ export interface SettingsIssue {
 }
 
 /**
- * 服务端校验不过时回 400 `{ error: "validation_failed", issues }`。设置表单与列表那一节**共用这一份
+ * 服务端校验不过时回 400 `{ code: "invalid", message, issues }`,`issues` 每条 `{ path, message, op? }`
+ * (`ApiError` 已经整理过:路径只留字符串与数字段,缺话给兜底句)。设置表单与列表那一节**共用这一份
  * 拆法**:哪一条算「我这一格的」、落不到某一格时怎么说,两边各拆一份的话迟早说成两种话。
  *
- * 不是那份 400 的交 `null` —— 那种失败的原话(`reasonOf`)就是该说的。
+ * 这次失败没带逐条原因的交 `null` —— 那种失败的原话(`reasonOf`)就是该说的。
  */
 export function settingsIssuesOf(err: unknown): SettingsIssue[] | null {
-	if (!(err instanceof ApiError)) return null;
-	const { body } = err;
-	if (!isRecord(body) || body.error !== "validation_failed" || !Array.isArray(body.issues)) {
-		return null;
-	}
-	return body.issues.map((issue: unknown) => {
-		const bag = isRecord(issue) ? issue : {};
-		const path = Array.isArray(bag.path)
-			? (bag.path as unknown[]).filter(
-					(segment): segment is string | number =>
-						typeof segment === "string" || typeof segment === "number",
-				)
-			: [];
-		const message = typeof bag.message === "string" ? bag.message : "不合规矩";
+	// 直接读 `ApiError.issues`(与 `issuesOf` 同一格):这一族测试把 `services/api` 换成只留真 `ApiError` 的替身。
+	if (!(err instanceof ApiError) || err.issues === undefined) return null;
+	return err.issues.map(({ op, path = [], message }) => {
 		const where = path.join(".");
-		return {
-			op: typeof bag.op === "number" ? bag.op : undefined,
-			path,
-			message,
-			text: where ? `${where}:${message}` : message,
-		};
+		return { op, path, message, text: where ? `${where}:${message}` : message };
 	});
 }
 

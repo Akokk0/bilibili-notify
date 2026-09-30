@@ -26,6 +26,8 @@ const { FakeApiError } = vi.hoisted(() => {
 		constructor(
 			readonly status: number,
 			message: string,
+			/** 服务端回的标准码 —— 面板分情况只认它,不认状态码。 */
+			readonly code?: string,
 		) {
 			super(message);
 		}
@@ -193,23 +195,30 @@ describe("读不到文档的时候", () => {
 	 * 服务端在重启。仓里的规矩:失败的原因不许吞,更不许连那句话都不说。
 	 */
 	it("读挂了 → 把服务端那句话原样摆出来,还给一颗重试", async () => {
-		docs.value = new FakeApiError(500, "上游炸了:ECONNRESET");
+		docs.value = new FakeApiError(503, "上游炸了:ECONNRESET", "unavailable");
 		renderDetail();
 		expect(await screen.findByText(/ECONNRESET/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
 	});
 
 	/**
-	 * 404 是**例外,它不是失败**:老服务端压根没有这条路由(应用内自更新那几秒,面板可能
+	 * `not_found` 是**例外,它不是失败**:老服务端压根没有这条路由(应用内自更新那几秒,面板可能
 	 * 比服务端新一版),或者这个拓展刚被删掉。两种都该安静。
 	 */
-	it("404 → 安静地整块不画,别摆一句吓人的错", async () => {
-		docs.value = new FakeApiError(404, "没有这条路由");
+	it("not_found → 安静地整块不画,别摆一句吓人的错", async () => {
+		docs.value = new FakeApiError(404, "没有这条路由", "not_found");
 		renderDetail();
 		// ⚠️ 得**等着看它会不会冒出来**。第一版拿「`api.get` 被调过」当信号,那一刻请求
 		// 才刚发出去、错误还没传到渲染,断言在什么都没发生的时候就通过了 —— 把 404 那条
 		// 分支整个删掉它照样绿。`findByText` 会一直等到超时,这才是真的在守。
 		await expect(screen.findByText(/读不到这个拓展的说明/)).rejects.toThrow();
+	});
+
+	/** 只认码不认状态码:404 却没有标准码(如被反代吞了的 HTML)不是「没装」,是读挂了,要说。 */
+	it("404 但没有标准码 → 不当作没装,照样摆出原话", async () => {
+		docs.value = new FakeApiError(404, "反代回了个 404");
+		renderDetail();
+		expect(await screen.findByText(/反代回了个 404/)).toBeTruthy();
 	});
 });
 

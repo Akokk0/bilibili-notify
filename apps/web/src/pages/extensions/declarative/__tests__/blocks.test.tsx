@@ -402,13 +402,15 @@ describe("button", () => {
 	});
 
 	/**
-	 * 同一个动作的上一发还没回来,服务端回 409(ADR-0019 决策 42:不排队、不并发)—— 那颗钮底下说
+	 * 同一个动作的上一发还没回来,服务端回 `conflict`(ADR-0019 决策 42:不排队、不并发)—— 那颗钮底下说
 	 * 「还在跑」,不是笼统的「没成」:主人要知道等一等就好,不是出了错要去查。服务端那句照样摆出来
 	 * (超时叫停了却还没停的,那句话里说着)。
 	 */
-	it("撞 409(同一个动作还在跑)—— 钮底下说「还在跑」,不当成失败", async () => {
+	it("撞 conflict(同一个动作还在跑)—— 钮底下说「还在跑」,不当成失败", async () => {
 		const reason = "动作 poll.now 的上一发还没回来 —— 回来之前不接新的一发";
-		vi.mocked(api.post).mockRejectedValue(new ApiError(409, { ok: false, err: reason }, reason));
+		vi.mocked(api.post).mockRejectedValue(
+			new ApiError(409, { code: "conflict", message: reason }, reason),
+		);
 		renderBlocks([
 			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
 		]);
@@ -418,8 +420,28 @@ describe("button", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("回话说没成(ok: false)也算失败", async () => {
-		vi.mocked(api.post).mockResolvedValue({ ok: false, err: "拓展 douyin 没在跑" });
+	/**
+	 * 只认 `code`,不认状态码:409 但不是 `conflict`(如别的原因)照样是失败,不许说成「还在跑」。
+	 */
+	it("409 但码不是 conflict —— 照样是「没成」", async () => {
+		const reason = "先去配好那样东西";
+		vi.mocked(api.post).mockRejectedValue(
+			new ApiError(409, { code: "not_configured", message: reason }, reason),
+		);
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
+		]);
+		fireEvent.click(screen.getByRole("button", { name: "现在检查一次" }));
+		expect((await screen.findByRole("alert")).textContent).toBe(`「现在检查一次」没成:${reason}`);
+		expect(screen.queryByRole("status")).toBeNull();
+	});
+
+	it("回话说没成(200 加失败那一支)也算失败", async () => {
+		vi.mocked(api.post).mockResolvedValue({
+			ok: false,
+			code: "not_found",
+			message: "拓展 douyin 没在跑",
+		});
 		renderBlocks([
 			{ type: "button", button: { kind: "action", label: "现在检查一次", action: "poll.now" } },
 		]);
