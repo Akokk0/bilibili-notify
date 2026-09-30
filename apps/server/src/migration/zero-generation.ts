@@ -33,13 +33,15 @@ import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.j
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { migrateConnectionFiles } from "./connections.js";
+import { migrateSettingsFile } from "./settings.js";
+import { migrateSubscriptionFiles } from "./subscriptions.js";
 
 /**
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 4;
+export const MIGRATION_REVISION = 5;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -244,7 +246,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 订阅 → 要订阅列表的统计文件名与锐评草稿。每一项回它改写过的文件(绝对路径)。
+ * 开机时做)→ 设置 → 订阅 → 要订阅列表的统计文件名与锐评草稿。每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
 	label: string;
@@ -257,6 +259,11 @@ const REWRITES: readonly {
 				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
 				adaptersPath: zeroPath(opts.zeroRoot, "state", "adapters.json"),
 			}),
+	},
+	{ label: "设置", run: (opts) => migrateSettingsFile(dataPath(opts.targetDir, ...CONFIG_DIR)) },
+	{
+		label: "订阅",
+		run: (opts) => migrateSubscriptionFiles(dataPath(opts.targetDir, ...CONFIG_DIR)),
 	},
 ];
 

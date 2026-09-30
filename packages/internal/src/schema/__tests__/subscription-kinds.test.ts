@@ -1,7 +1,8 @@
 /**
  * 订阅分两支(ADR-0019 决策 9 / 12 / 47 / 50):B 站订阅与拓展订阅在内存里是一份联合列表。
  *
- * - B 站那支「一个字不动」:盘上没有 `kind`,读进来补成 `"bilibili"`;老数据迁移照旧。
+ * - B 站那支「一个字不动」:盘上没有 `kind`,读进来补成 `"bilibili"`。(0.x 老形状的 features / routing / @全体
+ *   不在这里认 —— 它们开新代时由迁移器改写一次,见 `apps/server/src/migration/features.ts`。)
  * - 拓展那支:身份是 `(extensionId, externalId)`,**没有 uid**,也没有特别关注;单人定时锐评两支都有(ADR-0020 决策 14)。
  * - 联合那一份按 `kind` 分派,错误只报那一支自己的。
  */
@@ -63,15 +64,6 @@ describe("B 站那支", () => {
 		const { kind, ...rest } = BiliSubscriptionSchema.parse(raw);
 		expect(kind).toBe("bilibili");
 		expect(Object.keys(rest)).toEqual(Object.keys(raw));
-	});
-
-	it("老数据迁移经联合那一份照样跑(第二代 @全体 → extras)", () => {
-		const parsed = SubscriptionSchema.parse({
-			...diskBiliRow(),
-			routing: { ...emptyRouting(), dynamic: [T1] },
-			atAll: { dynamic: { [T1]: true } },
-		});
-		expect(parsed.extras.atAllDynamic).toEqual({ [T1]: true });
 	});
 
 	it("makeEmptySubscription 造的是 B 站订阅", () => {

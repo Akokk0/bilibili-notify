@@ -47,8 +47,19 @@ afterEach(async () => {
 
 /** 0.x 夹具:相对第 0 代根的路径 → 内容。 */
 const ZERO_FILES: Record<string, string> = {
-	"state/globals.json": '{"app":{}}',
-	"state/subscriptions.json": "[]",
+	// 老形状的设置与订阅(第二代附加项、第一代 routing + @全体):第二遍会改写它们。
+	"state/globals.json": JSON.stringify({
+		app: {},
+		defaults: { features: { liveEnd: true, liveEndExtras: { wordcloud: true } } },
+	}),
+	"state/subscriptions.json": JSON.stringify([
+		{
+			id: "33333333-3333-4333-8333-333333333333",
+			uid: "12345",
+			routing: { liveEnd: [], wordcloud: ["22222222-2222-4222-8222-222222222222"] },
+			atAll: { live: { "22222222-2222-4222-8222-222222222222": true } },
+		},
+	]),
 	"state/extension-subscriptions.json": "[]",
 	// v1 的连接与目标:第二遍会把它们改写成最新的形状。
 	"state/connections.json": JSON.stringify([
@@ -152,7 +163,12 @@ const EXPECTED_MOVES: Record<string, string> = {
 };
 
 /** 第二遍改写成最新形状的(相对新代根):不再和第 0 代共用一个文件。 */
-const REWRITTEN = ["config/connections.json", "config/targets.json"];
+const REWRITTEN = [
+	"config/connections.json",
+	"config/globals.json",
+	"config/subscriptions.json",
+	"config/targets.json",
+];
 
 async function placeZeroGeneration(): Promise<void> {
 	for (const [path, content] of Object.entries(ZERO_FILES)) {
@@ -322,8 +338,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 4,
-			output: "dc93dac7669e5312a41f477177f8f0f1764f4e2bb8a92157bf11b054b23f3297",
+			revision: 5,
+			output: "23e89322056635ede6f639675a02ed8ac3267e19d409010729ee72f36aa29465",
 		});
 	});
 });

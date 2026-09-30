@@ -9,12 +9,10 @@ import {
 	CardStylePartialSchema,
 	ContentFiltersPartialSchema,
 	EXTRA_KEYS,
-	type ExtraKey,
 	FEATURE_KEYS,
 	FeatureFlagsPartialSchema,
 	type FeatureKey,
 	ImageGroupSettingsPartialSchema,
-	migrateLegacyFeatureFlagsPartial,
 	PUSH_EXTRAS,
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
@@ -35,101 +33,15 @@ const SubscriptionRoutingObjectSchema = z.object(
 export type SubscriptionRouting = z.infer<typeof SubscriptionRoutingObjectSchema>;
 
 /**
- * 第一代 routing 的形状:词云 / 总结曾各是一把特性键、各有一份目标列表。迁成
- * 「下播目标 = 下播 ∪ 词云 ∪ 总结」(保序:先下播、再词云、再总结;去重交给下面的
- * transform),老键不留。新形状(没这两把键)原样过。
- *
- * 键表私有:与 schema/common.ts 那份同理 —— 「下播的两个附加项」已经退役成 `extras` 里
- * 的两行,这两个名字今天只剩认老数据这一个用处。
- */
-const LEGACY_ROUTING_KEYS = ["wordcloud", "liveSummary"] as const;
-
-function isLegacyRouting(raw: unknown): raw is Record<string, unknown> {
-	return typeof raw === "object" && raw !== null && LEGACY_ROUTING_KEYS.some((k) => k in raw);
-}
-
-function migrateLegacyRouting(raw: unknown): unknown {
-	if (!isLegacyRouting(raw)) return raw;
-	const { wordcloud, liveSummary, ...rest } = raw;
-	const lists = [rest.liveEnd, wordcloud, liveSummary].filter(Array.isArray);
-	return { ...rest, liveEnd: lists.flat() };
-}
-
-/** @全体 那两把附加项当年住在订阅上,按 scope 存 —— `atAll.<scope>` / `atAllDefaults.<scope>`。 */
-const LEGACY_AT_ALL_SCOPES = [
-	["dynamic", "atAllDynamic"],
-	["live", "atAllLive"],
-] as const satisfies ReadonlyArray<readonly [string, ExtraKey]>;
-
-/**
- * 整条老订阅的迁移,两件事:
- *
- * 1. **第一代的 features 覆盖**。routing 自己认得出新老(见 {@link migrateLegacyRouting});
- *    `overrides.features` 单看分不出 —— `{ liveEnd: false }` 在第一代与新形状里长得一样,
- *    含义却不同:第一代只关了下播卡(词云 / 总结照收),新的是整个下播都关。所以 routing
- *    是第一代就把这份覆盖也按老规矩迁(`force`),别让那位 UP 的词云 / 总结跟着没了。
- *
- * 2. **@全体 并进附加项**(ADR-0016 决策 2)。`atAll.<scope>` 是 per-目标 三态表,1:1 搬到
- *    `extras.atAll<Scope>`;`atAllDefaults.<scope>` 是 per-UP 的值,搬进 per-UP 覆盖层。
- *    ⚠️ `atAllDefaults` 是必填带默认的,**老数据里人人都有** —— 等于出厂默认就不写,
- *    否则每条订阅都会凭空长出一份无意义的 per-UP 覆盖。
- *
- * 新形状(没有 `atAll` / `atAllDefaults`)这两件事都不做。
- */
-function migrateLegacySubscription(raw: unknown): unknown {
-	if (!isPlainObject(raw)) return raw;
-	const sub = raw;
-	const legacyRouting = isLegacyRouting(sub.routing);
-	const atAll = isPlainObject(sub.atAll) ? sub.atAll : undefined;
-	const atAllDefaults = isPlainObject(sub.atAllDefaults) ? sub.atAllDefaults : undefined;
-	if (!legacyRouting && !atAll && !atAllDefaults) return raw;
-
-	const overrides = isPlainObject(sub.overrides) ? sub.overrides : undefined;
-	// features 覆盖先就地归一(第一代要 force,第二代只改名),@全体 的默认值再往上加 ——
-	// 否则那个 preprocess 后跑,会拿老形状重算一遍 `extras` 把刚写进去的 @全体 抹掉。
-	let features =
-		overrides?.features === undefined
-			? undefined
-			: migrateLegacyFeatureFlagsPartial(overrides.features, legacyRouting);
-
-	const perUpDefaults: Record<string, unknown> = {};
-	for (const [scope, key] of LEGACY_AT_ALL_SCOPES) {
-		const value = atAllDefaults?.[scope];
-		if (typeof value !== "boolean" || value === PUSH_EXTRAS[key].default) continue;
-		perUpDefaults[key] = value;
-	}
-	if (Object.keys(perUpDefaults).length > 0) {
-		const base = isPlainObject(features) ? features : {};
-		const baseExtras = isPlainObject(base.extras) ? base.extras : {};
-		features = { ...base, extras: { ...baseExtras, ...perUpDefaults } };
-	}
-
-	const { atAll: _a, atAllDefaults: _d, ...rest } = sub;
-	const out: Record<string, unknown> = { ...rest };
-	if (features !== undefined) out.overrides = { ...(overrides ?? {}), features };
-
-	if (atAll) {
-		const extras = isPlainObject(sub.extras) ? { ...sub.extras } : {};
-		for (const [scope, key] of LEGACY_AT_ALL_SCOPES) {
-			if (scope in atAll) extras[key] = atAll[scope];
-		}
-		out.extras = extras;
-	}
-	return out;
-}
-
-/**
  * 解析时按 feature 去重 target UUID。重复 UUID 会让同一 feature 对同一目标
  * 重复推送 + 重复 delivery 记录。用**幂等 transform**而非 refine:既归一化
  * 当前/历史数据,又不会让既有含重复项的持久化配置在 parse 时直接 reject。
  */
-export const SubscriptionRoutingSchema = z
-	.preprocess(migrateLegacyRouting, SubscriptionRoutingObjectSchema)
-	.transform((r) => {
-		const out = {} as SubscriptionRouting;
-		for (const k of FEATURE_KEYS) out[k] = [...new Set(r[k])];
-		return out;
-	});
+export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transform((r) => {
+	const out = {} as SubscriptionRouting;
+	for (const k of FEATURE_KEYS) out[k] = [...new Set(r[k])];
+	return out;
+});
 
 /**
  * 缓存的 UP 主档案，用于 UI 显示。non-authoritative。
@@ -329,10 +241,7 @@ const BiliSubscriptionObjectSchema = z
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
 	.superRefine(refineExtrasWithinRouting);
-export const BiliSubscriptionSchema = z.preprocess(
-	migrateLegacySubscription,
-	BiliSubscriptionObjectSchema,
-);
+export const BiliSubscriptionSchema = BiliSubscriptionObjectSchema;
 export type BiliSubscription = z.infer<typeof BiliSubscriptionObjectSchema>;
 
 /**
@@ -382,7 +291,7 @@ export type Subscription = BiliSubscription | ExtensionSubscription;
  * B 站订阅会报出两份错(另一支的「kind 不对」混在里面)。`kind === "extension"` 走拓展那支,
  * 其余(包括没有 `kind` 的老行)走 B 站那支;认不得的 `kind` 由 B 站那支的字面量报错。
  *
- * 不用 `z.discriminatedUnion`:B 站那支的 `kind` 可以缺,且它前面还挂着老数据迁移的 preprocess。
+ * 不用 `z.discriminatedUnion`:B 站那支的 `kind` 可以缺(落盘时剥掉了)。
  */
 export const SubscriptionSchema = z.unknown().transform((raw, ctx): Subscription => {
 	const r =

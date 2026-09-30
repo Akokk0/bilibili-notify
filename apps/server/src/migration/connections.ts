@@ -12,7 +12,6 @@
  * 拒收,那一处随之删掉。
  */
 
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type Connection,
@@ -30,7 +29,7 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
-import { atomicWriteJson } from "@bilibili-notify/storage";
+import { readJsonFile, rewriteJsonFile } from "./files.js";
 
 /**
  * v1 → v2 是纯函数,吃 raw JSON 吐 raw JSON,不碰磁盘也不 parse。判据是**数据形状**,不是版本号:版本文件
@@ -512,31 +511,6 @@ export interface ConnectionFilesInput {
 	adaptersPath: string;
 }
 
-type JsonFile = { kind: "missing" } | { kind: "unreadable" } | { kind: "ok"; value: unknown };
-
-async function modeOf(path: string): Promise<number | undefined> {
-	try {
-		return (await stat(path)).mode & 0o777;
-	} catch {
-		return undefined;
-	}
-}
-
-async function readJsonFile(path: string): Promise<JsonFile> {
-	let text: string;
-	try {
-		text = await readFile(path, "utf8");
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return { kind: "missing" };
-		throw err;
-	}
-	try {
-		return { kind: "ok", value: JSON.parse(text) as unknown };
-	} catch {
-		return { kind: "unreadable" };
-	}
-}
-
 /**
  * 新代里连接与目标两份文件迁成最新的形状,回改写过的文件(绝对路径)。
  *
@@ -547,10 +521,8 @@ export async function migrateConnectionFiles(input: ConnectionFilesInput): Promi
 	const connectionsPath = join(input.configDir, "connections.json");
 	const targetsPath = join(input.configDir, "targets.json");
 	const rewritten: string[] = [];
-	/** 改写沿用原件的权限(`modeFrom`):连接里有 token,主人收紧过的文件不能因为迁移这一跳放宽。 */
 	const write = async (path: string, value: unknown, modeFrom: string) => {
-		const mode = await modeOf(modeFrom);
-		await atomicWriteJson(path, value, mode === undefined ? {} : { mode });
+		await rewriteJsonFile(path, value, modeFrom);
 		rewritten.push(path);
 	};
 

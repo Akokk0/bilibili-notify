@@ -60,8 +60,6 @@ describe("SubscriptionRouting — 重复 UUID 去重 (P1)", () => {
 			liveEnd: [],
 			liveGuardBuy: [],
 			superchat: [],
-			wordcloud: [],
-			liveSummary: [],
 			specialDanmaku: [],
 			specialUserEnter: [],
 		});
