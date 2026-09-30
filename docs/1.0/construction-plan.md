@@ -67,12 +67,12 @@
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半）：`runtime/roots.ts` 的两张表与带类型的 `hostPath` / `dataPath`，`AppRuntime` 上推一次 `hostRoot` / `dataRoot`，下游只认这两个名字；目录表登记的是第 0 代（0.x）的布局，也是 ⑥ 迁移的输入清单；`packages/storage` 不再自带缺省布局（三条路径由宿主给全） | ✅ 已落 |
 | ⑥a | 开机分两段：先 listen（鉴权闸与完整的 app 同一套，健康检查照答，其余 `/api` 回 503 `unavailable`），再读数据、起引擎，就绪后切到完整的 app；启动入口仍等全部起来才返回（ADR-0022 决策 2 下的 🔗） | ✅ 已落 |
 | ⑥b | 数据代：`generations/<序号>/` 与 `generation.json`、选代、`.partial` 原子改名、半截重来；第一版迁移器 = 0.x 升级链原样跑 + 按新目录树搬位置，格式一律不动；目录表换成代布局；守卫「第 0 代一个字节不变」（也是 ⑤ 欠的「两个根不同」那条）；开发期迁移修订号对不上就重迁 | ✅ 已落（b1 零件、b2 接线） |
-| ⑥c | 第 0 步收编 0.x 升级链：先给零测试的 `migrateLegacyTargets` 补刻画测试，再把 schema 里的 preprocess 与读时翻译连同夹具搬进迁移模块，活 schema 删兼容分支 | |
+| ⑥c | 第 0 步收编 0.x 升级链：先给零测试的 `migrateLegacyTargets` 补刻画测试，再把 schema 里的 preprocess 与读时翻译连同夹具搬进迁移模块，活 schema 删兼容分支。迁移器分两遍：先搬位置，再一族一族改写成 0.x 最新的形状，顺序是连接与目标 → 设置 → 订阅 → 历史、统计、锐评草稿 → 皮肤、对话、密钥 | 进行中（刻画测试、连接与目标已收） |
 | ⑥d | 订阅合一 + `Identity`：一个 `config/subscriptions.json`，行带 `identity`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉，wire 跟着变；B 站替身棘轮开 | |
 | ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | |
 | ⑥f | 设置分段 + 守卫 12（连同解构与下标）：`config/settings.json` 分 `core` / `bilibili` / `extensions` 三段，只挪位置、不改键名（改名随第 2、3 期）；`userAgent` 先落 `bilibili` 段，第 2 期随 `packages/http` 删 | |
 | ⑦ | 回退指纹与重迁 | |
-| ⑧ | 全新开始 + 首访页 API + 拒收 1.0 之前的备份 | |
+| ⑧ | 全新开始 + 首访页 API + 拒收 1.0 之前的备份（连带删掉恢复路径上的 0.x 形状迁移：`backup/service.ts` 调的 `migrateConfigSections` 与信封里 `adapters` 旧键的折叠） | |
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
 
 - 契约骨架归第 1 期切片 ④（主人 09-27 拍板）；错误体的防撞规矩见 [architecture.md](./architecture.md)。

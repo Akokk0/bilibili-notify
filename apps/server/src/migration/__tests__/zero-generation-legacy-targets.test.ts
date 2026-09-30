@@ -2,24 +2,14 @@
  * 最老的单文件 `targets.json`(0.x 早期:连接参数和会话捆在一条目标的 `config` 里,没有 `connections.json`
  * 也没有 `adapters.json`)迁成「连接 + 目标」。
  *
- * ⑥c 第 0 步的刻画测试:这条路原本一条测试都没有。接缝是「第 0 代 → 迁移器 → 新的一代上配置仓开机」——
- * 今天由配置仓开机时拆,⑥c 起由迁移器拆,两边这几条都得绿。连接 id 今天是随机的,所以只比关系、不比值。
+ * ⑥c 第 0 步先补的刻画测试:这条路原本一条测试都没有。接缝是「第 0 代 → 迁移器 → 新的一代上配置仓开机」,
+ * 拆法从配置仓开机时搬进迁移器(`migration/connections.ts`)前后,这几条原样都绿。拆出来的连接 id 由第一条用到
+ * 它的老目标算出来(确定的),这里只比关系、不比值。
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import {
-	type Connection,
-	makeEmptySubscription,
-	type PushTarget,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { CONFIG_DIR, createConfigStore } from "../../config/store.js";
-import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { migrateZeroGeneration } from "../zero-generation.js";
+import { type Connection, makeEmptySubscription, type PushTarget } from "@bilibili-notify/internal";
+import { describe, expect, it } from "vite-plus/test";
+import { useZeroSandbox } from "./support.js";
 
 /** 0.x 的目标 id 本来就是 UUID(订阅的路由表只收 UUID)。 */
 const ID = {
@@ -92,53 +82,8 @@ const LEGACY_TARGETS = [
 	},
 ];
 
-function makeServiceCtx(): ServiceContext {
-	return {
-		logger: silentLogger,
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose() {},
-		signal: new AbortController().signal,
-		track() {},
-	};
-}
-
 describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
-	let root: string;
-	let zero: string;
-	let target: string;
-
-	beforeEach(async () => {
-		root = await mkdtemp(join(tmpdir(), "bn-legacy-targets-"));
-		zero = join(root, "zero");
-		target = join(root, "generation");
-	});
-
-	afterEach(async () => {
-		await rm(root, { recursive: true, force: true });
-	});
-
-	async function placeZero(rel: string, body: unknown): Promise<void> {
-		await mkdir(dirname(join(zero, rel)), { recursive: true });
-		await writeFile(join(zero, rel), JSON.stringify(body));
-	}
-
-	/** 迁一代,再在新的一代上开一次配置仓。 */
-	async function migrateAndLoad() {
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
-		const store = createConfigStore({
-			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir: zero, logLevel: "info" },
-			dataRoot: target,
-			bus: createNodeMessageBus(),
-			serviceCtx: makeServiceCtx(),
-		});
-		await store.load();
-		return store;
-	}
-
-	async function readConfig<T>(name: string): Promise<T> {
-		return JSON.parse(await readFile(join(target, ...CONFIG_DIR, name), "utf8")) as T;
-	}
+	const { placeZero, migrateAndLoad, readConfig } = useZeroSandbox("bn-legacy-targets-");
 
 	it("同一个 OneBot 的群与私聊并进一条连接,另一个 OneBot 单开;地址按会话范围取", async () => {
 		await placeZero("state/targets.json", LEGACY_TARGETS);

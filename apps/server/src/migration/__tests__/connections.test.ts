@@ -1,6 +1,10 @@
+import { ConnectionSchema, PushTargetSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { CONFIG_SCHEMA_VERSION, detectConfigVersion, migrateConfigSections } from "../migration.js";
-import { ConnectionSchema, PushTargetSchema } from "../targets.js";
+import {
+	CONFIG_SCHEMA_VERSION,
+	detectConfigVersion,
+	migrateConfigSections,
+} from "../connections.js";
 
 /**
  * 配置形状迁移 —— 两根轴从「一个字段兼三职」里提上来:连接的 `connector`
@@ -11,7 +15,7 @@ import { ConnectionSchema, PushTargetSchema } from "../targets.js";
  * 而「这条连接有没有 connector」「这个目标有没有 kind」是自明的。
  * 版本号只用来挡降级(旧载荷读到更新的盘)。
  *
- * 迁移必须**幂等** —— 启动路径与备份恢复路径都会调它,同一份数据可能被走两遍。
+ * 迁移必须**幂等** —— 迁移器与备份恢复路径都会调它,同一份数据可能被走两遍。
  */
 const onebotV1 = (over: Record<string, unknown> = {}) => ({
 	id: "11111111-1111-4111-8111-111111111111",

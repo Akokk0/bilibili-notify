@@ -4,10 +4,11 @@ import {
 	type GlobalConfig,
 	isBiliSubscription,
 	isExtensionSubscription,
-	migrateConfigSections,
 	type PushTarget,
 	type Subscription,
 } from "@bilibili-notify/internal";
+// 1.0 之前的备份在 ⑧ 起拒收,这一处连同 envelope 里 `adapters` 旧键的折叠随之删掉。
+import { migrateConfigSections } from "../migration/connections.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,

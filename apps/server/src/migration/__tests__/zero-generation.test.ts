@@ -50,8 +50,27 @@ const ZERO_FILES: Record<string, string> = {
 	"state/globals.json": '{"app":{}}',
 	"state/subscriptions.json": "[]",
 	"state/extension-subscriptions.json": "[]",
-	"state/connections.json": "[]",
-	"state/targets.json": "[]",
+	// v1 的连接与目标:第二遍会把它们改写成最新的形状。
+	"state/connections.json": JSON.stringify([
+		{
+			id: "11111111-1111-4111-8111-111111111111",
+			name: "NapCat",
+			enabled: true,
+			platform: "onebot",
+			config: { transport: "http", baseUrl: "http://127.0.0.1:3000" },
+		},
+	]),
+	"state/targets.json": JSON.stringify([
+		{
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "主群",
+			adapterId: "11111111-1111-4111-8111-111111111111",
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "111" },
+		},
+	]),
 	"state/adapters.json": "[]",
 	"state/sub-runtime.json": "{}",
 	"state/roast-drafts.json": "[]",
@@ -102,7 +121,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"state/extension-subscriptions.json": "config/extension-subscriptions.json",
 	"state/connections.json": "config/connections.json",
 	"state/targets.json": "config/targets.json",
-	"state/adapters.json": "config/adapters.json",
 	"state/sub-runtime.json": "runtime/sub-runtime.json",
 	"state/roast-drafts.json": "runtime/roast-drafts.json",
 	"secrets/master.key": "secrets/master.key",
@@ -132,6 +150,9 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"extensions/.marketplace.json": "extensions/.marketplace.json",
 	"card-bg-cursors.json": "runtime/card-bg-cursors.json",
 };
+
+/** 第二遍改写成最新形状的(相对新代根):不再和第 0 代共用一个文件。 */
+const REWRITTEN = ["config/connections.json", "config/targets.json"];
 
 async function placeZeroGeneration(): Promise<void> {
 	for (const [path, content] of Object.entries(ZERO_FILES)) {
@@ -180,17 +201,38 @@ describe("zeroGenerationExists", () => {
 });
 
 describe("migrateZeroGeneration", () => {
-	it("每条 0.x 路径都到了代布局里该去的地方,内容不变", async () => {
+	it("每条 0.x 路径都到了代布局里该去的地方;没被改写的内容不变", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
 
 		expect(await listTree(target)).toEqual(
 			[...Object.values(EXPECTED_MOVES), "extensions/dev-bridge"].sort(),
 		);
+		expect([...report.rewritten].sort()).toEqual(REWRITTEN);
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
+			if (REWRITTEN.includes(to)) continue;
 			expect(await readFile(join(target, to), "utf8"), to).toBe(ZERO_FILES[from]);
 		}
+	});
+
+	it("连接与目标改写成最新的形状", async () => {
+		await placeZeroGeneration();
+
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+
+		const read = async (name: string) =>
+			JSON.parse(await readFile(join(target, "config", name), "utf8")) as unknown[];
+		expect(await read("connections.json")).toEqual([
+			expect.objectContaining({ kind: "direct", connector: "http", platform: "onebot" }),
+		]);
+		expect(await read("targets.json")).toEqual([
+			expect.objectContaining({
+				connectionId: "11111111-1111-4111-8111-111111111111",
+				kind: "session",
+				address: "111",
+			}),
+		]);
 	});
 
 	it("追加写的 jsonl 是复制,其余是硬链接", async () => {
@@ -200,9 +242,9 @@ describe("migrateZeroGeneration", () => {
 
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
 			const same = (await stat(join(target, to))).ino === (await stat(join(zero, from))).ino;
-			expect(same, `${to} 应当${from.endsWith(".jsonl") ? "复制" : "硬链接"}`).toBe(
-				!from.endsWith(".jsonl"),
-			);
+			// 改写过的是新文件:原地写的话,改的就是第 0 代那一份。
+			const shared = !from.endsWith(".jsonl") && !REWRITTEN.includes(to);
+			expect(same, `${to} 应当${shared ? "硬链接" : "是另一个文件"}`).toBe(shared);
 		}
 	});
 
@@ -227,6 +269,7 @@ describe("migrateZeroGeneration", () => {
 				"card-skins",
 				"history/2026-09-29.jsonl.tmp.99",
 				"notes.txt",
+				"state/adapters.json",
 				"state/globals.json.bn-tmp.123.abcdef",
 				"state/targets.json.bak",
 				"state/targets.json.restore.bak",
@@ -272,12 +315,15 @@ describe("migrateZeroGeneration", () => {
 		for (const s of [...report.skipped].sort((a, b) => a.path.localeCompare(b.path))) {
 			hash.update(`skip ${s.path}\n`);
 		}
+		for (const path of [...report.rewritten].sort()) {
+			hash.update(`rewrite ${path}\n`).update(await readFile(join(target, path)));
+		}
 
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 3,
-			output: "24f17184f1786f975ee7e9444c47f91051abf9a852a5a3c7e6da839800bdd01a",
+			revision: 4,
+			output: "dc93dac7669e5312a41f477177f8f0f1764f4e2bb8a92157bf11b054b23f3297",
 		});
 	});
 });

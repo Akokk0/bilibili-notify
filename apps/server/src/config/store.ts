@@ -1,13 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type BiliSubscription,
 	BiliSubscriptionSchema,
-	CONFIG_SCHEMA_VERSION,
 	type ConfigScope,
 	type Connection,
-	ConnectionPlatformSchema,
 	ConnectionSchema,
 	createSerialQueue,
 	DEFAULT_MESSAGE_LAYOUT,
@@ -23,7 +20,6 @@ import {
 	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
-	migrateConfigSections,
 	normalizeMessageLayout,
 	type PushTarget,
 	PushTargetSchema,
@@ -31,10 +27,6 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
-import {
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/constants";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import type { z } from "zod";
 import { dataPath } from "../runtime/roots.js";
@@ -300,178 +292,6 @@ async function fileExists(absPath: string): Promise<boolean> {
 }
 
 /**
- * Splits the legacy `PushTarget` shape (config bundled connection + session)
- * into the new (Connection, PushTarget) pair. Targets with the same platform
- * and connection params share a connection so the user doesn't end up with N
- * identical NapCat connection entries after migrating N groups.
- */
-interface LegacyPushTarget {
-	id: string;
-	name: string;
-	platform: string;
-	scope: "group" | "private" | "channel";
-	enabled: boolean;
-	config: Record<string, unknown>;
-}
-
-function migrateLegacyTargets(raw: unknown[]): {
-	connections: Connection[];
-	targets: PushTarget[];
-} {
-	const connections: Connection[] = [];
-	const targets: PushTarget[] = [];
-	// connection-key → connectionId, so duplicate connections collapse.
-	const connectionIdByKey = new Map<string, string>();
-
-	for (const item of raw) {
-		const legacy = item as LegacyPushTarget;
-		if (legacy.platform === "onebot") {
-			const cfg = legacy.config as {
-				baseUrl?: string;
-				accessToken?: string;
-				groupId?: string;
-				userId?: string;
-				protocolVersion?: "v11";
-			};
-			const baseUrl = cfg.baseUrl ?? "";
-			const accessToken = cfg.accessToken ?? "";
-			const key = `onebot|${baseUrl}|${accessToken}`;
-			let connectionId = connectionIdByKey.get(key);
-			if (!connectionId) {
-				connectionId = randomUUID();
-				connectionIdByKey.set(key, connectionId);
-				connections.push({
-					id: connectionId,
-					name: deriveConnectionName(legacy.name, baseUrl),
-					enabled: true,
-					kind: "direct",
-					connector: "http",
-					platform: "onebot",
-					config: {
-						transport: "http",
-						baseUrl,
-						accessToken: accessToken || undefined,
-						protocolVersion: cfg.protocolVersion ?? "v11",
-						headers: {},
-						timeoutMs: 15_000,
-						imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-						forwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-						retryTimes: 0,
-						retryIntervalMs: 1_000,
-					},
-				});
-			}
-			targets.push({
-				id: legacy.id,
-				name: legacy.name,
-				connectionId,
-				kind: "session",
-				platform: "onebot",
-				scope: legacy.scope,
-				enabled: legacy.enabled,
-				address: (legacy.scope === "private" ? cfg.userId : cfg.groupId) ?? "",
-			});
-		} else if (legacy.platform === "webhook") {
-			const cfg = legacy.config as {
-				url?: string;
-				secret?: string;
-				headers?: Record<string, string>;
-			};
-			const url = cfg.url ?? "";
-			const key = `webhook|${url}|${cfg.secret ?? ""}`;
-			let connectionId = connectionIdByKey.get(key);
-			if (!connectionId) {
-				connectionId = randomUUID();
-				connectionIdByKey.set(key, connectionId);
-				connections.push({
-					id: connectionId,
-					name: deriveConnectionName(legacy.name, url),
-					enabled: true,
-					kind: "direct",
-					connector: "webhook",
-					// 这条遗留路径来自「webhook 是一个平台」那一代,当时连 provider 都还没有
-					// (它是后来才加进 config 的)—— 所以一律落 generic。
-					platform: "generic",
-					config: {
-						url,
-						secret: cfg.secret || undefined,
-						headers: cfg.headers ?? {},
-					},
-				});
-			}
-			targets.push({
-				id: legacy.id,
-				name: legacy.name,
-				connectionId,
-				kind: "endpoint",
-				platform: "generic",
-				scope: legacy.scope,
-				enabled: legacy.enabled,
-			});
-		}
-		// Unknown legacy platform (incl. the removed web-dashboard) — drop silently;
-		// the user sees the target disappear and can re-create it under a supported platform.
-	}
-
-	return { connections, targets };
-}
-
-/**
- * 随宿主一起撤下的那些平台 —— 盘上还留着它们的存量条目。
- *
- * 当年的 schema 是收它们的(面板不给建,但直调 API / 旧备份都能留下),今天没有任何
- * adapter 认领,加载时一律静默丢掉:safeParse 一失败就是启动期 throw,而那时没有面板
- * 可以进去改,boot 三振回落也救不回来。
- *
- * **写成显式名单,不用「词表里没有」反推** —— 目标的平台是开放词表(桥驮来什么算什么),
- * 反推在那一侧等于「认不得的平台上的损坏一律吃掉」。
- */
-const RETIRED_PLATFORMS: ReadonlySet<string> = new Set(["web-dashboard", "koishi-bot", "astrbot"]);
-
-/**
- * 盘上这条**连接**是不是「已撤下平台留下的存量」—— 该静默丢掉的那种。
- *
- * 判据是:**我们认得的平台必须能 parse;认不得的平台又 parse 不过,才是存量。**
- * 所以它**只在 parse 失败之后**才问,永远不跑在 parse 之前。
- *
- * ⚠️ **别再把它挪回 parse 之前。** 拿原始 JSON 用闭集问「这个平台认得吗」,等于
- * 「词表里没有 = 不存在」:桥接入根本没有 `platform` 那一格,拓展带来的连接平台也不在
- * 闭集里 —— 两者都会在**开机时被静默丢光**,而且下一次任何写入都会把这个丢弃**写实到
- * 盘上**。主人看到的是配置自己消失,没有一行报错。换成「parse 得过就留下」之后,以后
- * 新增哪一支都不必回来改这里。
- *
- * ⚠️ **目标那一侧不用这条**(见 {@link isRetiredTargetRecord}):连接的平台是闭集、目标的
- * 是开放词表,同一条判据套过去就变成「桥驮来的平台上的真损坏一律静默吃掉」。
- *
- * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃(与从前同样的行为)
- * - 没有 `platform` 的拓展连接(桥接入还是连接那一版的形状,未发版):丢弃
- * - 桥借来的 telegram bot 那条连接:parse 得过 → 走不到这里
- * - onebot 的坏条目:词表内 → 照旧 throw,不许静默吃掉真正的损坏
- */
-function isRetiredConnectionRecord(raw: unknown): boolean {
-	const record = raw as { kind?: unknown; platform?: unknown } | undefined;
-	// 拓展连接曾经**没有** `platform`(那时它是「一条桥接入」,ADR-0012 决策 27);连接改成
-	// 「一个 bot」之后这一格必填(决策 45)。老形状没发过版,不写迁移 —— 当作已撤下的形状
-	// 丢掉,主人在拓展页重建一条接入即可。带 platform 的拓展连接 parse 得过,走不到这里。
-	if (record?.kind === "extension") return record.platform === undefined;
-	return !ConnectionPlatformSchema.safeParse(record?.platform).success;
-}
-
-/**
- * 盘上这条**目标**是不是已撤下平台留下的存量。
- *
- * 🔴 判据只有一条:**平台名在那份显式的撤下名单里**。目标的平台是开放词表
- * (`TargetPlatformSchema`),所以「认不认得」根本不能靠词表答 —— 拿连接那份闭集去反推
- * 的话,一条桥借来的 telegram bot 底下的目标只要有任何真实损坏(地址没了、scope 打错)
- * 就会被当成「老形状」静默丢掉,下一次写盘再把这个丢弃变成永久的;而同样的损坏落在
- * onebot 目标上却是照旧 throw。同一种坏数据两种下场,且丢掉那一侧没有任何一行报错。
- */
-function isRetiredTargetRecord(raw: unknown): boolean {
-	const record = raw as { platform?: unknown } | undefined;
-	return typeof record?.platform === "string" && RETIRED_PLATFORMS.has(record.platform);
-}
-
-/**
  * 连接的**身份轴**不许改 —— 换 `kind` 或换 `platform` 都等于换了另一条连接,而目标还
  * 挂在原来那个 id 上。允许改的话,「onebot 群目标」会一夜之间挂在一条飞书连接下面。
  *
@@ -533,18 +353,6 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 			[{ path: ["platform"], message: "要和连接的平台一致" }],
 		);
 	}
-}
-
-function deriveConnectionName(targetName: string, addr: string): string {
-	if (addr) {
-		try {
-			const u = new URL(addr);
-			return `${targetName} · ${u.host}`;
-		} catch {
-			/* fall through */
-		}
-	}
-	return targetName || "默认连接";
 }
 
 /** 靠 webhook 连的那族连接 —— 判据是**连接器**,平台是飞书 / 钉钉 / 企微 / 未指明中的一个。 */
@@ -1093,114 +901,24 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * Loads connections.json + targets.json. If neither connections.json nor the
-	 * file it replaced (adapters.json) is present AND the existing targets.json is
-	 * in the legacy single-blob format (config field holding both connection and
-	 * session params), runs a one-shot migration that extracts connections and
-	 * rewrites targets to reference them.
+	 * 读 connections.json + targets.json。只认最新的形状:0.x 各个版本的形状(`adapters.json`、最老的单文件
+	 * `targets.json`、v1 的连接 / 目标、已撤下平台的存量)由迁移器在开新代时改写好(`migration/connections.ts`)。
+	 * 任何一条过不了 schema 都整个拒(开机报错),不静默丢。
 	 */
 	private async loadConnectionsAndTargets(): Promise<void> {
-		const connectionsExist = await fileExists(this.path("connections"));
-		// 这个文件从前叫 adapters.json。搬名字的方式是**读老的、写新的、老的一动不动** ——
-		// 老那份于是既是原件备份,又让回退到旧载荷这条路仍然能开机:旧构建找的正是它,
-		// 而它还是迁移前的形状。代价是升级后的编辑不会回流过去,回退等于退回升级那一刻。
-		const legacyPath = join(this.stateDir, "adapters.json");
-		const legacyOnly = !connectionsExist && (await fileExists(legacyPath));
-		const sourcePath = connectionsExist ? this.path("connections") : legacyPath;
-
-		if (connectionsExist || legacyOnly) {
-			const connectionsRaw = JSON.parse(await readFile(sourcePath, "utf8"));
-			if (!Array.isArray(connectionsRaw)) {
-				throw ConfigValidationError.invalid("connections", "connections.json 里的内容不是数组");
-			}
-			const { value, existed } = await readJsonOrInit<unknown[]>(
-				this.path("targets"),
-				() => [] as PushTarget[],
-			);
-			if (!Array.isArray(value)) {
+		if (!(await fileExists(this.path("connections")))) {
+			const targetsRaw = await readJsonIfExists(this.path("targets"));
+			if (targetsRaw !== undefined && !Array.isArray(targetsRaw)) {
 				throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
 			}
-
-			// 形状迁移 —— 老盘上的连接没有 `kind` / `connector`、目标没有 `kind`,schema 会当场
-			// 拒,开机就起不来。判据是数据形状不是版本号,且迁移幂等,所以「上次写到一半掉电」
-			// 重来一遍无害;两个分区一起判,只有都迁完才算新形状。
-			// 🔴 **回退到旧载荷不安全** —— strip 掉不认识的键并不会把**缺失的必填键**变出来。
-			// 迁移后的 targets 没有 v1 必需的 `adapterId` / `session`,0.10.x 读到直接抛
-			// `targets.json[N] failed schema validation`、起不来;而 webhook 目标的平台已经是
-			// feishu / dingtalk / wecom / generic,旧版词表里没有,会先被 `isKnownPlatform`
-			// **静默丢弃**。要回退得先把 `targets.json.bak` 覆盖回去(所以那份 .bak 不能省)。
-			// connections 那一侧确实安全:adapters.json 原地留着,旧版读的正是它。
-			const migrated = migrateConfigSections({ connections: connectionsRaw, targets: value });
-			if (legacyOnly || migrated.changed.connections || migrated.changed.targets) {
-				this.serviceCtx.logger.info(
-					`config-store migrating config v${migrated.from} → v${CONFIG_SCHEMA_VERSION}` +
-						" (原件留在同名 .bak;adapters.json 原地不动)",
+			// 目标还在、连接没了:不凭空造连接,让主人看见。
+			if (Array.isArray(targetsRaw) && targetsRaw.length > 0) {
+				throw ConfigValidationError.invalid(
+					"connections",
+					"connections.json 不见了，但 targets.json 里还有目标，连接没法凭空重建",
 				);
 			}
-			// 从老文件名读来的那趟一定要写:connections.json 还不存在。它自己的原件就是没被
-			// 动过的 adapters.json,所以这条路不留 .bak。
-			if (legacyOnly) {
-				await atomicWriteJson(this.path("connections"), migrated.connections);
-			} else if (migrated.changed.connections) {
-				// 原件留一份 —— 迁移错了主人还能自己捞回去。
-				await copyFileAtomic(this.path("connections"), `${this.path("connections")}.bak`);
-				await atomicWriteJson(this.path("connections"), migrated.connections);
-			}
-			if (migrated.changed.targets) {
-				await copyFileAtomic(this.path("targets"), `${this.path("targets")}.bak`);
-				await atomicWriteJson(this.path("targets"), migrated.targets);
-			}
-
-			const connections: Connection[] = [];
-			for (const [idx, raw] of migrated.connections.entries()) {
-				const r = ConnectionSchema.safeParse(raw);
-				if (!r.success) {
-					// 已撤下平台的存量连接静默丢弃 —— 判据见 isRetiredConnectionRecord。
-					if (isRetiredConnectionRecord(raw)) continue;
-					throw ConfigValidationError.fromZod("connections", r.error, {
-						subject: `connections.json 第 ${idx + 1} 行`,
-						prefix: [idx],
-					});
-				}
-				connections.push(r.data);
-			}
-			this.connections = connections;
-			this.meta.connections.exists = true;
-
-			const targets: PushTarget[] = [];
-			for (const [idx, raw] of migrated.targets.entries()) {
-				const r = PushTargetSchema.safeParse(raw);
-				if (!r.success) {
-					// 已撤下平台的存量目标同理丢弃 —— 但判据是**另一条**(目标的平台是开放词表),
-					// 见 isRetiredTargetRecord。
-					if (isRetiredTargetRecord(raw)) continue;
-					throw ConfigValidationError.fromZod("targets", r.error, {
-						subject: `targets.json 第 ${idx + 1} 行`,
-						prefix: [idx],
-					});
-				}
-				targets.push(r.data);
-			}
-			const synced = syncManagedWebhookTargets(this.connections, targets);
-			this.targets = synced.next;
-			this.meta.targets.exists = true;
-			this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
-			if (synced.changed) {
-				await atomicWriteJson(this.path("targets"), this.targets);
-				this.touch("targets");
-			}
-			const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
-			if (replaced.changed) {
-				await this.writeSubscriptions(replaced.next);
-				this.touch("subscriptions");
-			}
-			return;
-		}
-
-		// Legacy migration path: neither connections.json nor adapters.json is there. Inspect targets.json.
-		const targetsExist = await fileExists(this.path("targets"));
-		if (!targetsExist) {
-			// Brand-new install: write empty files and continue.
+			// 全新安装。
 			await atomicWriteJson(this.path("connections"), []);
 			await atomicWriteJson(this.path("targets"), []);
 			this.connections = [];
@@ -1212,42 +930,53 @@ class NodeConfigStore implements ConfigStore {
 			return;
 		}
 
-		const targetsRaw = JSON.parse(await readFile(this.path("targets"), "utf8"));
+		const connectionsRaw = JSON.parse(await readFile(this.path("connections"), "utf8"));
+		if (!Array.isArray(connectionsRaw)) {
+			throw ConfigValidationError.invalid("connections", "connections.json 里的内容不是数组");
+		}
+		const { value: targetsRaw, existed } = await readJsonOrInit<unknown[]>(
+			this.path("targets"),
+			() => [] as PushTarget[],
+		);
 		if (!Array.isArray(targetsRaw)) {
 			throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
 		}
 
-		// Two possibilities: (a) already-new shape but the user manually deleted
-		// connections.json — try parsing each entry against the new schema first.
-		const tryNew = targetsRaw.every((t) => PushTargetSchema.safeParse(t).success);
-		if (tryNew && targetsRaw.length > 0) {
-			// New shape but no connections file → bail with an explicit error so the
-			// user notices something is off rather than us silently inventing data.
-			throw ConfigValidationError.invalid(
-				"connections",
-				"connections.json 不见了，但 targets.json 已经是新格式，连接没法自动重建",
-			);
-		}
+		this.connections = connectionsRaw.map((raw, idx) => {
+			const r = ConnectionSchema.safeParse(raw);
+			if (!r.success) {
+				throw ConfigValidationError.fromZod("connections", r.error, {
+					subject: `connections.json 第 ${idx + 1} 行`,
+					prefix: [idx],
+				});
+			}
+			return r.data;
+		});
+		this.meta.connections.exists = true;
 
-		// Run migration: targetsRaw is the legacy shape.
-		this.serviceCtx.logger.info(
-			`config-store migrating ${targetsRaw.length} legacy push target(s) → connection + target split`,
-		);
-		const { connections, targets } = migrateLegacyTargets(targetsRaw);
-		const synced = syncManagedWebhookTargets(connections, targets);
-		const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
-		this.connections = connections;
+		const targets = targetsRaw.map((raw, idx) => {
+			const r = PushTargetSchema.safeParse(raw);
+			if (!r.success) {
+				throw ConfigValidationError.fromZod("targets", r.error, {
+					subject: `targets.json 第 ${idx + 1} 行`,
+					prefix: [idx],
+				});
+			}
+			return r.data;
+		});
+		const synced = syncManagedWebhookTargets(this.connections, targets);
 		this.targets = synced.next;
-		await atomicWriteJson(this.path("connections"), connections);
-		await atomicWriteJson(this.path("targets"), this.targets);
+		this.meta.targets.exists = true;
+		this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
+		if (synced.changed) {
+			await atomicWriteJson(this.path("targets"), this.targets);
+			this.touch("targets");
+		}
+		const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
 		if (replaced.changed) {
 			await this.writeSubscriptions(replaced.next);
 			this.touch("subscriptions");
 		}
-		this.meta.connections.exists = true;
-		this.meta.connections.lastUpdatedAt = new Date().toISOString();
-		this.meta.targets.exists = true;
-		this.meta.targets.lastUpdatedAt = new Date().toISOString();
 	}
 
 	// ---- read accessors -------------------------------------------------

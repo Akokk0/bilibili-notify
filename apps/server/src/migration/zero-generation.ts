@@ -2,9 +2,10 @@
  * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。第 0 代就是 0.x 留在宿主根上的那些文件,它只读、一个字节不动;
  * 新的一代由调用方(`runtime/generations.ts` 的 `createGeneration`)在 `.partial` 里交给这里填。
  *
- * ⑥b 这一版**只搬位置,格式一律不动**:0.x 的布局(`ZERO_GENERATION_LAYOUT`)照 `ZERO_GENERATION_MOVES`
- * 搬进代的布局(`runtime/roots.ts` 的 `DATA_ROOT_LAYOUT`),读到的旧格式仍由各个 store 自己认。格式的变换随改盘上形状的那一片加进来,
- * 旧格式的知识最后只住在这个模块里(⑥c 起)。
+ * 两遍:先照 `ZERO_GENERATION_MOVES` 把 0.x 的布局(`ZERO_GENERATION_LAYOUT`)搬进代的布局(`runtime/roots.ts`
+ * 的 `DATA_ROOT_LAYOUT`),再逐文件把 0.x 各个版本留下的形状改写成 0.x 最新的形状(⑥c 起,一族一族收进来)。
+ * 旧格式的知识只住在这个模块里,各个 store 开机只认最新的形状。改写写的是新文件(原子换名):搬过来的文件
+ * 多半是指向第 0 代的硬链接,原地写会改到第 0 代。
  *
  * 怎么搬:追加写的 jsonl 一律复制(硬链接的话,新代往里追加会改到旧代的文件),其余硬链接、链接不了
  * 回落成复制;软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、
@@ -31,13 +32,14 @@ import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.js";
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
+import { migrateConnectionFiles } from "./connections.js";
 
 /**
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 3;
+export const MIGRATION_REVISION = 4;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -71,8 +73,16 @@ type Destination = readonly [DataRootKey, ...string[]];
 type ZeroMove =
 	/** 整个搬到一处。 */
 	| { kind: "move"; to: Destination; label: string }
-	/** 一级项底下的东西各去各处(`state/` 里的文件分进 config / runtime)。 */
-	| { kind: "split"; children: Readonly<Record<string, Destination>>; label: string }
+	/**
+	 * 一级项底下的东西各去各处(`state/` 里的文件分进 config / runtime)。`inputs` 是只作迁移输入、
+	 * 不进新代的那几个(名字 → 为什么)。
+	 */
+	| {
+			kind: "split";
+			children: Readonly<Record<string, Destination>>;
+			inputs?: Readonly<Record<string, string>>;
+			label: string;
+	  }
 	/** 不迁。 */
 	| { kind: "drop"; reason: string };
 
@@ -91,10 +101,11 @@ const ZERO_GENERATION_MOVES = {
 			"extension-subscriptions.json": [...CONFIG_DIR, "extension-subscriptions.json"],
 			"connections.json": [...CONFIG_DIR, "connections.json"],
 			"targets.json": [...CONFIG_DIR, "targets.json"],
-			// 最老的推送目标格式,只作输入:没有 connections.json 时由配置仓读它迁一次。
-			"adapters.json": [...CONFIG_DIR, "adapters.json"],
 			"sub-runtime.json": SUB_RUNTIME_FILE,
 			"roast-drafts.json": ROAST_DRAFTS_FILE,
+		},
+		inputs: {
+			"adapters.json": "connections.json 的旧名:没有 connections.json 时迁移读它一次,不进新代",
 		},
 	},
 	secrets: { kind: "move", to: ["secrets"], label: "密钥" },
@@ -140,6 +151,8 @@ export interface ZeroMigrationResult {
 	transfers: { from: string; to: string; method: "copy" | "link" | "symlink" }[];
 	/** 没带过来的,和为什么。 */
 	skipped: { path: string; reason: string }[];
+	/** 搬过来之后改写成最新形状的文件(相对新代根,`/` 分隔)。 */
+	rewritten: string[];
 }
 
 export interface MigrateZeroGenerationOptions {
@@ -176,10 +189,10 @@ export async function zeroGenerationExists(zeroRoot: string): Promise<boolean> {
 export async function migrateZeroGeneration(
 	opts: MigrateZeroGenerationOptions,
 ): Promise<ZeroMigrationResult> {
-	const report: ZeroMigrationResult = { transfers: [], skipped: [] };
+	const report: ZeroMigrationResult = { transfers: [], skipped: [], rewritten: [] };
 	const context = { zeroRoot: opts.zeroRoot, targetDir: opts.targetDir, report };
 	const moves = Object.entries(ZERO_GENERATION_MOVES) as [ZeroGenerationKey, ZeroMove][];
-	const total = moves.length;
+	const total = moves.length + REWRITES.length;
 
 	await mkdir(opts.targetDir, { recursive: true });
 	for (const [index, [key, move]] of moves.entries()) {
@@ -196,7 +209,10 @@ export async function migrateZeroGeneration(
 		}
 		for (const name of (await readdir(from)).sort()) {
 			const destination = move.children[name];
-			if (destination) {
+			const input = move.inputs?.[name];
+			if (input) {
+				skip(context, join(from, name), input);
+			} else if (destination) {
 				await transfer(context, join(from, name), dataPath(opts.targetDir, ...destination));
 			} else {
 				skip(context, join(from, name), leftoverReason(name) ?? "认不得,没带过来");
@@ -214,10 +230,35 @@ export async function migrateZeroGeneration(
 				: (leftoverReason(name) ?? "认不得,没带过来"),
 		);
 	}
+
+	for (const [index, rewrite] of REWRITES.entries()) {
+		opts.onProgress?.({ done: moves.length + index, total, label: rewrite.label });
+		for (const path of await rewrite.run(opts)) {
+			report.rewritten.push(portable(relative(opts.targetDir, path)));
+		}
+	}
 	await syncDirectory(opts.targetDir);
 	opts.onProgress?.({ done: total, total, label: "搬完了" });
 	return report;
 }
+
+/**
+ * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
+ * 开机时做)→ 订阅 → 要订阅列表的统计文件名与锐评草稿。每一项回它改写过的文件(绝对路径)。
+ */
+const REWRITES: readonly {
+	label: string;
+	run: (opts: MigrateZeroGenerationOptions) => Promise<string[]>;
+}[] = [
+	{
+		label: "连接与推送目标",
+		run: (opts) =>
+			migrateConnectionFiles({
+				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
+				adaptersPath: zeroPath(opts.zeroRoot, "state", "adapters.json"),
+			}),
+	},
+];
 
 interface MigrationContext {
 	zeroRoot: string;

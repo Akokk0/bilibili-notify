@@ -1,15 +1,13 @@
 /**
- * ConfigStore 落盘方式:config/*.json 怎么写、备份怎么留、写坏了怎么退。
+ * ConfigStore 落盘方式:config/*.json 怎么写、写坏了怎么退。
  *
  * 这些钉的是**写盘那一步**(内容对不对由 `__tests__/config-store.test.ts` 管):
  *   - config 文件是 2 空格缩进 + 末尾换行的 JSON
- *   - 迁移留下的 `.bak` 是原件的**逐字节**拷贝,权限跟着原件走(连接里有 token)
  *   - `replaceSections` 写到一半失败:已写好的分区**逐字节**退回原样,回滚副本不留
  *   - 写失败(目标被占成目录)不留临时文件
- * 权限位在 Windows 上没有意义,那一条跳过。
  */
 
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
@@ -62,7 +60,7 @@ function mkStore(dataDir: string): ConfigStore {
 
 const ID_A = "11111111-1111-4111-8111-111111111111";
 
-/** 新形状的 onebot 连接(不会触发开机迁移)。 */
+/** 新形状的 onebot 连接。 */
 function onebotConnection(name = "NapCat") {
 	return {
 		id: ID_A,
@@ -96,7 +94,6 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true }).catch(() => {});
 });
 
-const modeOf = async (path: string) => (await stat(path)).mode & 0o777;
 /** 名字里带 tmp 的:新旧两种临时文件命名(`.tmp.` / `.bn-tmp.`)都算。 */
 const tempLeftovers = async (dir: string) => (await readdir(dir)).filter((n) => n.includes("tmp"));
 
@@ -113,66 +110,6 @@ describe("ConfigStore 落盘:config 文件格式", () => {
 		}
 		expect(await tempLeftovers(stateDir)).toEqual([]);
 	});
-});
-
-describe("ConfigStore 落盘:迁移留的 .bak", () => {
-	// 老形状(没有 kind / connector)→ 开机迁移,原件留成 .bak。写成紧凑一行、无末尾换行,
-	// 这样「逐字节拷贝」与「读出来再序列化」两种做法会差出来。
-	const legacyConnection = {
-		id: ID_A,
-		name: "老 NapCat",
-		platform: "onebot",
-		enabled: true,
-		config: { transport: "http", baseUrl: "http://127.0.0.1:3000" },
-	};
-
-	it("连接的 .bak 是原件逐字节拷贝", async () => {
-		const original = JSON.stringify([legacyConnection]);
-		await writeFile(join(stateDir, "connections.json"), original, "utf8");
-		await writeFile(join(stateDir, "targets.json"), "[]", "utf8");
-
-		await mkStore(dataDir).load();
-
-		expect(await readFile(join(stateDir, "connections.json.bak"), "utf8")).toBe(original);
-		expect(await tempLeftovers(stateDir)).toEqual([]);
-	});
-
-	it("目标的 .bak 是原件逐字节拷贝", async () => {
-		const target = {
-			id: "22222222-2222-4222-8222-222222222222",
-			name: "老群目标",
-			adapterId: ID_A,
-			platform: "onebot",
-			scope: "group",
-			enabled: true,
-			session: { groupId: "10001" },
-		};
-		const original = JSON.stringify([target]);
-		await writeFile(
-			join(stateDir, "connections.json"),
-			JSON.stringify([onebotConnection()]),
-			"utf8",
-		);
-		await writeFile(join(stateDir, "targets.json"), original, "utf8");
-
-		await mkStore(dataDir).load();
-
-		expect(await readFile(join(stateDir, "targets.json.bak"), "utf8")).toBe(original);
-	});
-
-	it.skipIf(process.platform === "win32")(
-		".bak 的权限跟着原件走(连接里有 token,不能因为备份放宽)",
-		async () => {
-			const path = join(stateDir, "connections.json");
-			await writeFile(path, JSON.stringify([legacyConnection]), "utf8");
-			await writeFile(join(stateDir, "targets.json"), "[]", "utf8");
-			await chmod(path, 0o600);
-
-			await mkStore(dataDir).load();
-
-			expect(await modeOf(`${path}.bak`)).toBe(0o600);
-		},
-	);
 });
 
 describe("ConfigStore 落盘:replaceSections 写到一半失败", () => {
