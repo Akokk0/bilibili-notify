@@ -70,6 +70,8 @@
 | 会员档 | 核心里 `tier`；B 站里 `guard`（大航海） | — |
 | 粉丝团 | 核心里 `fanClub`；B 站里 `medal`（粉丝牌） | `badge` |
 | 作品 | 核心里 `post`；B 站里 `dynamic`（动态） | `work` |
+| 产品形态 | 不加限定词，只剩一种 | `Standalone…`、「独立端」（冻住的 `startStandaloneServer` 除外，见 ADR-0005 决策 4） |
+| 镜像或安装包里预装的那一版载荷 | `preinstalled`（预装版本） | `image…`（桌面版没有镜像；环境变量旧名 `BN_IMAGE_*` 只作兜底，随换 Node 大版本那一版删，见 ADR-0005 决策 4） |
 | 走网络取数 | `fetch…`；`get…` 只留给不走网络的读取（`ctx.state.get`） | 走网络却叫 `get…` 的 |
 | 单个 / 一批 | `fetchUserCard` / `fetchUserCards` | `…Batch`、单复数对不上 |
 | 一次操作失败的那一支 | `Failure`（`{ ok: false, code, message, … }`）；整个结果 `Result<T>`，标准码 `FailureCode`；HTTP 非 2xx 的回应体 `ErrorResponse`（装的是去掉 `ok` 的 `Failure`） | `err`、`reason`、`why`（只管失败原因，ADR-0026 决策 2） |

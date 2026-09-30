@@ -65,7 +65,12 @@
 | ④c | `BiliEvents` → `BusEvents`，载荷一律具名对象（今天 3 个事件是位置参数、几个是裸 id 或数组）；contract 的 WS 事件表从它推导，面板 hook 去掉手写的类型断言；`log` 频道里日志行的字段不动（冻结格式）；事件载荷守卫（棘轮） | ✅ 已落 |
 | ④d | `/api/health` 进契约（`HealthResponse`、`ModuleState`），删 4 个恒为 `null` 的死字段（`/details` 里恒为 `null` 的与写死的 `history: { entries: 0 }` 一并删），面板 5 份私有的健康类型（4 份 `HealthSnapshot` 与重启的 `RestartProbe`）收成一份、4 处各写一遍的查询选项收成一份；面板把 contract 移进 `dependencies` | ✅ 已落 |
 | ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半）：`runtime/roots.ts` 的两张表与带类型的 `hostPath` / `dataPath`，`AppRuntime` 上推一次 `hostRoot` / `dataRoot`，下游只认这两个名字；目录表登记的是第 0 代（0.x）的布局，也是 ⑥ 迁移的输入清单；`packages/storage` 不再自带缺省布局（三条路径由宿主给全） | ✅ 已落 |
-| ⑥ | 数据代、`.partial`、先 listen 再迁、第 0 步收编 0.x 升级链、订阅合一 + `Identity`、设置分段、身份唯一闸 + 守卫 9、守卫 12、B 站替身棘轮开 | |
+| ⑥a | 开机分两段：先 listen（鉴权闸与完整的 app 同一套，健康检查照答，其余 `/api` 回 503 `unavailable`），再读数据、起引擎，就绪后切到完整的 app；启动入口仍等全部起来才返回（ADR-0022 决策 2 下的 🔗） | |
+| ⑥b | 数据代：`generations/<序号>/` 与 `generation.json`、选代、`.partial` 原子改名、半截重来；第一版迁移器 = 0.x 升级链原样跑 + 按新目录树搬位置，格式一律不动；目录表换成代布局；守卫「第 0 代一个字节不变」（也是 ⑤ 欠的「两个根不同」那条） | |
+| ⑥c | 第 0 步收编 0.x 升级链：先给零测试的 `migrateLegacyTargets` 补刻画测试，再把 schema 里的 preprocess 与读时翻译连同夹具搬进迁移模块，活 schema 删兼容分支 | |
+| ⑥d | 订阅合一 + `Identity`：一个 `config/subscriptions.json`，行带 `identity`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉，wire 跟着变；B 站替身棘轮开 | |
+| ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | |
+| ⑥f | 设置分段 + 守卫 12（连同解构与下标）：`config/settings.json` 分 `core` / `bilibili` / `extensions` 三段，只挪位置、不改键名（改名随第 2、3 期）；`userAgent` 先落 `bilibili` 段，第 2 期随 `packages/http` 删 | |
 | ⑦ | 回退指纹与重迁 | |
 | ⑧ | 全新开始 + 首访页 API + 拒收 1.0 之前的备份 | |
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
@@ -148,6 +153,10 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | 全仓包版本统一 `0.0.0-dev`：剩 push、subscription、internal、image、ai、storage、extension 7 个包（api / blive / dynamic / live 在 3a 随包删掉；第 2 期新建的 `packages/http` 建时就用 `0.0.0-dev`）。⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本） | 5 |
 | 进程托管文档：孤儿自检、stdin 关停、数据目录与端口、载荷选版；桌面版和以后的插件照同一份 | 5 |
 | `docs/agents/self-update.md`：数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样 | 5 |
+| 去掉 Standalone（只剩一种形态）之一：服务端代码。启动入口两个名字一起导出，`startServer` 为主，`startStandaloneServer` 作冻住的别名（ADR-0005 决策 4 下的 🔗），新 boot.mjs 先调新名、调不到再调旧名；`StandaloneServerHandle`、启动选项类型、`StandalonePuppeteer`、`standaloneContentBuilder`、`standalone-lifecycle.test.ts` 去掉前缀 | 1（⑥a 之前，⑥a 要重写的正是这个函数） |
+| 去掉 Standalone 之二：「镜像 / 安装包自带的那一版」改叫预装版本 `preinstalled`（`imageVersion` / `imagePath` / `isImageVersion` 等）；环境变量改成 `BN_PREINSTALLED_VERSION` / `BN_PREINSTALLED_PATH`：0.x 的 boot.mjs 只写旧名 `BN_IMAGE_*`，所以新 boot.mjs 新旧两套都写，载荷先读新名、读不到再读旧名，旧名随换 Node 大版本那一版删；ADR-0022 决策 14 的冻结名单补上旧名与这个期限 | 5 |
+| 去掉 Standalone 之三：中文「独立端」（CHANGELOG、ADR、发布公告这类历史记录不动）、面板连不上后端时那句「standalone 服务」、CLAUDE.md | 5 |
+| 去掉 Standalone 之四：流水线脚本 `*standalone-version*.sh`、`create-standalone-github-release.sh` 与 `BN_STANDALONE_VERSION` 改名；流水线只能靠 dry-run 验，和打 alpha 前那一轮 dry-run 一起 | 6 |
 | 文档同步：CLAUDE.md 与 `docs/agents/` 的 push、architecture、commands、events、devtools、self-update、extension-marketplace；补上 `subscriptions.md`（整篇讲 B 站 / 拓展两支、两个文件、两种键，1.0 后全错）、`build-release.md`（没有 dev-next 与 alpha 的打法）与 CLAUDE.md 的「分支」一节；CLAUDE.md「项目」一节里「`CONNECTION_PLATFORMS` 不加档、拓展连接走 `kind: "extension"`」那条（闭集与 `kind` 都已删掉，ADR-0024）；示例 yaml 写清每个键对应的环境变量（ADR-0022 决策 14） | 5 |
 
 ### 还没归期的（施工时定）
@@ -193,3 +202,4 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 存盘的待发队列：补上「推送进行到一半进程崩了，这一条可能漏掉（最多一次）」（ADR-0024 决策 15 认下的代价） | 没定 |
 | `listAddressCandidates`、`connectionAuth` 对拓展开放（ADR-0024 决策 11） | alpha 之后桥帧改名时一起看 |
 | 来源自带指令与指令重名的规矩；`CommandProvider` 登记表到那时连同设计（1.0 不造，ADR-0031 决策 1） | 第一个真要自带指令的拓展 |
+| 删掉冻住的别名 `startStandaloneServer` 与旧环境变量名 `BN_IMAGE_VERSION` / `BN_IMAGE_PATH`（那时跑着的 boot.mjs 都写新名）：那一版在清单里抬 `requires.nodeMajor`，旧镜像报「需要新镜像」、不会装上；0.9.0 起每个更新器都认这一格（ADR-0005 决策 4 下的 🔗） | 下次换 Node 大版本 |

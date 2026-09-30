@@ -25,8 +25,8 @@
 ├─ versions/            载荷版本 + boot-state.json + manifest-freshness.json；冻住的 boot.mjs 认这里，不分代
 ├─ logs/                日志跨代连续；冻住的桌面壳写死了这里，行格式冻结
 ├─ （0.x 旧文件）       第 0 代：原样不动，只作迁移输入
-└─ <代>/
-   ├─ generation.json   schema 版本、lastActiveAt
+└─ generations/<序号>/  一代一个目录，序号递增；写到一半的叫 <序号>.partial/
+   ├─ generation.json   格式版本、从哪一代迁来、lastActiveAt
    ├─ config/           settings.json  subscriptions.json  connections.json  targets.json
    ├─ secrets/          master.key  kdf.salt  config-secrets.enc
    │                    bilibili/secrets.enc  extensions/<id>/secrets.enc
@@ -50,7 +50,7 @@
 - **第二层按集成**（ADR-0025 决策 1）：内置集成直接用它的键，B 站就叫 `bilibili/`；拓展在 `extensions/<id>/`；一个集成在 `runtime/` 下一个 `state.json`，在 `secrets/` 下一个 `secrets.enc`。内置平台适配器（OneBot、QQ 官方机器人、webhook）也是集成，要存 `state` / `secrets` 时照 B 站的样子放在 `runtime/<键>/`、`secrets/<键>/`（ADR-0025 决策 9）。不设 `sources/` 这一层：内置集成的键都是保留 id，拓展又一律落在 `extensions/` 下，两边撞不上。
 - **大块内容按领域分**：`history/`、`stats/`、`ai/`、`skins/`、`library/`、`images/`、`maid-skills/`、`extensions/`。已装的拓展包跟着代走，回退时拿回旧版拓展。
 - **跨代共享的一律冻结格式**。
-- 代目录的具体名字施工时定。
+- 代目录按递增序号起名（ADR-0022 决策 3 下的 🔗）：开新代一律拿下一个号，旧代原地不动、永不改名；选代在「格式版本 ≤ 我」的代里取序号最大的。
 
 ## 逐目录
 
@@ -82,9 +82,9 @@
 
 ## 开机顺序
 
-1. **先 listen**：起 HTTP，健康检查立刻返回，这次开机算成功——避开桌面壳 30 秒就绪超时与 3 次判死。
-2. 选代：「schema ≤ 我」的最新一代；检查回退指纹（见「回退与重迁」）。
-3. 需要迁移就**在同一进程全量迁移**。新代先写成 `<代>.partial`，完成后原子改名；中途被杀，下次开机删掉半截重来。
+1. **先 listen**：起 HTTP，健康检查立刻返回，桌面壳眼里这次开机就算成功——避开它 30 秒的就绪超时与 3 次判死。载荷的启动入口要等第 4 步做完才返回；迁移或起引擎抛错就先关 HTTP 再抛，冻住的 boot.mjs 照旧退回预装的那一版（ADR-0022 决策 2 下的 🔗）。迁移期间其余 `/api` 回 503 `unavailable`，鉴权闸与完整的 app 是同一套。
+2. 选代：「格式版本 ≤ 我」里序号最大的一代；检查回退指纹（见「回退与重迁」）。
+3. 需要迁移就**在同一进程全量迁移**。新代先写成 `generations/<序号>.partial`，完成后原子改名；中途被杀，下次开机删掉半截重来。
 4. 迁完才起引擎。迁移期间面板显示「正在搬家」进度，**不推送**。
 
 被否的备选：分两段迁（小文件先迁，大块内容 listen 之后接着跑）——同一个文件两头同时写、要写合并逻辑，还有一段「数据不全」的状态。
@@ -165,7 +165,7 @@
 
 - 每代在 `generation.json` 记 `lastActiveAt`。
 - 0.x 的根目录没法改代码：迁移时记下关键文件的修改时间与大小，当作**指纹**。
-- 开机发现旧代在新代之后又被用过（`lastActiveAt` 更新，或第 0 代指纹变了）→ 从旧代重迁、开新代；被替下的那一代挪到一边，不删。
+- 开机发现旧代在新代之后又被用过（`lastActiveAt` 更新，或第 0 代指纹变了）→ 从旧代重迁、开下一个号的新代；被替下的那一代原地留着，不删。
 - 新版在回退之前产生的那段数据不带过来，面板说清；cookie 与订阅跟回来。
 
 被否的备选：两代合并。订阅、历史、统计要各写一套合并规则，还有两边都改过同一份数据的冲突。
