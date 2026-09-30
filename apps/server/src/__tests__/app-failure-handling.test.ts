@@ -35,7 +35,7 @@ describe("全局出错处理与 notFound", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			...options,
 		});
 		return { app, runtime };

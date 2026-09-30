@@ -170,6 +170,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	function mkStore(secretStore?: SecretStore): ConfigStore {
 		return createConfigStore({
 			bootstrap: bootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: makeBus(),
 			serviceCtx: makeCtx(),
 			secretStore,

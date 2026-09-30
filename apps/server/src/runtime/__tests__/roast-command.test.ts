@@ -57,7 +57,7 @@ async function seedDraft(kind: "board" | "solo" = "board") {
 
 beforeEach(async () => {
 	dir = mkdtempSync(join(tmpdir(), "roast-cmd-"));
-	drafts = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: () => undefined });
+	drafts = createRoastDraftStore({ dataRoot: dir, logger, subscriptionIdOfUid: () => undefined });
 	await drafts.load();
 });
 

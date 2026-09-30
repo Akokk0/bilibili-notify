@@ -176,6 +176,7 @@ describe("ConfigStore", () => {
 		bus = makeFakeBus();
 		store = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus,
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -260,6 +261,7 @@ describe("ConfigStore", () => {
 		const bus2 = makeFakeBus();
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: bus2,
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -286,6 +288,7 @@ describe("ConfigStore", () => {
 		const bus2 = makeFakeBus();
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: bus2,
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -538,6 +541,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -576,6 +580,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -613,6 +618,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -636,6 +642,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -650,6 +657,7 @@ describe("ConfigStore", () => {
 		async function loadFrom(dir2: string) {
 			const store2 = createConfigStore({
 				bootstrap: makeBootstrap(dir2),
+				dataRoot: dir2,
 				bus: makeFakeBus(),
 				serviceCtx: makeFakeServiceCtx(),
 			});
@@ -736,6 +744,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -787,6 +796,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -829,6 +839,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -861,6 +872,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -894,6 +906,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -922,6 +935,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -957,6 +971,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -978,6 +993,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1299,6 +1315,7 @@ describe("ConfigStore", () => {
 		await writeFile(join(stateA, "subscriptions.json"), JSON.stringify([sub]), "utf8");
 		const source = createConfigStore({
 			bootstrap: makeBootstrap(dirA),
+			dataRoot: dirA,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1318,6 +1335,7 @@ describe("ConfigStore", () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-restore-"));
 		const fresh = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1450,6 +1468,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1587,6 +1606,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1612,6 +1632,7 @@ describe("ConfigStore", () => {
 		const bus2 = makeFakeBus();
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: bus2,
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1637,6 +1658,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1671,6 +1693,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1724,6 +1747,7 @@ describe("ConfigStore", () => {
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
+			dataRoot: dir2,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});
@@ -1757,6 +1781,7 @@ describe("ConfigStore.close", () => {
 		stateDir = join(dataDir, "state");
 		store = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});

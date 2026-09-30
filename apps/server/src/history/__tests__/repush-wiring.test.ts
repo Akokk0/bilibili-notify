@@ -37,8 +37,8 @@ const FAIL = { ok: false, latencyMs: 7, err: "boom" };
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-wire-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-	repush = createRepushStore({ dataDir, logger });
-	store = createHistoryStore({ dataDir, bus: createNodeMessageBus(), logger, repush });
+	repush = createRepushStore({ dataRoot: dataDir, logger });
+	store = createHistoryStore({ dataRoot: dataDir, bus: createNodeMessageBus(), logger, repush });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -114,7 +114,7 @@ describe("record → 原件", () => {
 
 	it("没给 repush 的历史仓照常工作,只是不留原件", async () => {
 		const bare = createHistoryStore({
-			dataDir,
+			dataRoot: dataDir,
 			bus: createNodeMessageBus(),
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 		});

@@ -50,7 +50,7 @@ let store: SubAvatarStore;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-sub-avatar-"));
 	avatarsDir = join(dataDir, "avatars");
-	store = createSubAvatarStore({ dataDir, logger: makeLogger() });
+	store = createSubAvatarStore({ dataRoot: dataDir, logger: makeLogger() });
 });
 
 afterEach(async () => {

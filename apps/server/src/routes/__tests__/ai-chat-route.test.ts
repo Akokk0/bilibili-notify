@@ -114,7 +114,7 @@ interface StubOpts {
 async function makeDeps(opts: StubOpts = {}) {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-airoute-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-	const conversationStore = createConversationStore({ dataDir, logger });
+	const conversationStore = createConversationStore({ dataRoot: dataDir, logger });
 	const deps = {
 		store: {
 			getGlobals: () => ({

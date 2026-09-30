@@ -150,7 +150,12 @@ describe("WS upgrade gate", () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ws-auth-"));
 		serviceCtx = createNodeServiceContext({ name: "ws-auth", level: "silent", pretty: false });
 		bus = createNodeMessageBus();
-		store = createConfigStore({ bootstrap: makeBootstrap(dataDir), bus, serviceCtx });
+		store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx,
+		});
 		await store.load();
 		const started = await startHttpServer();
 		httpServer = started.server;
@@ -395,7 +400,12 @@ describe("WS cookies-refreshed frame", () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ws-redact-"));
 		serviceCtx = createNodeServiceContext({ name: "ws-redact", level: "silent", pretty: false });
 		bus = createNodeMessageBus();
-		store = createConfigStore({ bootstrap: makeBootstrap(dataDir), bus, serviceCtx });
+		store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx,
+		});
 		await store.load();
 		const started = await startHttpServer();
 		httpServer = started.server;

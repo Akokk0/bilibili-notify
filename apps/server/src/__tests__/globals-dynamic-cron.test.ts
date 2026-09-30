@@ -37,7 +37,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 		await runtime.configStore.load();
 		const before = runtime.configStore.getGlobals().app.dynamicCron;
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals", {
@@ -61,7 +61,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals", {
@@ -79,7 +79,7 @@ describe("PATCH /api/globals — dynamicCron 校验", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals", {

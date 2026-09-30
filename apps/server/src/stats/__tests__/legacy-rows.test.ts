@@ -51,7 +51,7 @@ beforeEach(async () => {
 	await mkdir(join(dataDir, "stats", "live"), { recursive: true });
 	await writeFile(join(dataDir, "stats", "dyn", "1.jsonl"), jsonl(LEGACY_DYN));
 	await writeFile(join(dataDir, "stats", "live", "1.jsonl"), jsonl(LEGACY_LIVE));
-	store = createStatsStore({ dataDir, logger });
+	store = createStatsStore({ dataRoot: dataDir, logger });
 	vi.clearAllMocks();
 });
 afterEach(async () => {

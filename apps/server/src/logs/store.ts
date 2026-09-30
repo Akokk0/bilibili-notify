@@ -6,13 +6,14 @@ import type { LogArchiveEntry } from "@bilibili-notify/contract";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { appendLines } from "@bilibili-notify/storage";
 import { z } from "zod";
+import { hostPath } from "../runtime/roots.js";
 import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
 
 /**
  * jsonl-by-day log archive — the on-disk half of the Logs tab.
  *
  * Mirrors {@link HistoryStore}/{@link FansStore} layout: one append-only file
- * per day at `<dataDir>/logs/<YYYY-MM-DD>.jsonl`. Unlike those two, ingest is
+ * per day at `<hostRoot>/logs/<YYYY-MM-DD>.jsonl`. Unlike those two, ingest is
  * BUFFERED — when a module is cranked to `debug` entries can arrive dozens/sec
  * and a per-entry `await appendFile` would serialise I/O onto the business hot
  * path. Entries accumulate in memory and flush on a ~1s timer or when the
@@ -70,7 +71,8 @@ export interface LogStore {
 }
 
 export interface CreateLogStoreOptions {
-	dataDir: string;
+	/** 宿主根:日志 `logs/` 是宿主件,冻住的桌面壳认这个位置,不随数据代走。 */
+	hostRoot: string;
 	serviceCtx: ServiceContext;
 	logger: Logger;
 }
@@ -78,7 +80,7 @@ export interface CreateLogStoreOptions {
 const DAY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
 
 export function createLogStore(opts: CreateLogStoreOptions): LogStore {
-	const root = join(opts.dataDir, "logs");
+	const root = hostPath(opts.hostRoot, "logs");
 	let ensured = false;
 	let buffer: LogArchiveEntry[] = [];
 	/** 正在写盘的那一次;没有就是 undefined。 */
@@ -269,16 +271,16 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 	return { ingest, flush, query, dayFilePath };
 }
 
-/** Day-file names under `<dataDir>/logs`. Used by log retention. */
-export async function listLogDayFiles(dataDir: string): Promise<string[]> {
+/** Day-file names under `<hostRoot>/logs`. Used by log retention. */
+export async function listLogDayFiles(hostRoot: string): Promise<string[]> {
 	try {
-		return (await readdir(join(dataDir, "logs"))).filter((f) => DAY_FILE_RE.test(f));
+		return (await readdir(hostPath(hostRoot, "logs"))).filter((f) => DAY_FILE_RE.test(f));
 	} catch {
 		return [];
 	}
 }
 
-/** Delete one day file under `<dataDir>/logs`. Used by log retention. */
-export async function deleteLogDayFile(dataDir: string, fileName: string): Promise<void> {
-	await unlink(join(dataDir, "logs", fileName));
+/** Delete one day file under `<hostRoot>/logs`. Used by log retention. */
+export async function deleteLogDayFile(hostRoot: string, fileName: string): Promise<void> {
+	await unlink(hostPath(hostRoot, "logs", fileName));
 }

@@ -1,8 +1,8 @@
-import { join } from "node:path";
 import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
 import type { BootstrapConfig } from "../config/schema.js";
+import { dataPath } from "../runtime/roots.js";
 
 /** Default health-probe cadence: 30 minutes. */
 const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
@@ -11,7 +11,7 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
  * Standalone auth subsystem. Boot order: load cookies → LoginFlow → health probe.
  *
  * Construction order (must remain stable for cookie-load → api.start → flow.reportAccountInfo):
- *   1. StorageManager (with `paths` under <dataDir>/secrets/) → init() loads-or-creates master.key
+ *   1. StorageManager (with `paths` under <dataRoot>/secrets/) → init() loads-or-creates master.key
  *   2. BilibiliAPI(callbacks: onCookiesRefreshed → cookieStore.save, onAuthLost → flow.handleAuthLost)
  *      — `flow` is captured by reference; constructed in step 4, so the callback closes over `let flow`.
  *   3. api.start()
@@ -47,6 +47,8 @@ export interface CreateAuthSystemOptions {
 	serviceCtx: ServiceContext;
 	bus: MessageBus;
 	bootstrap: BootstrapConfig;
+	/** 数据根(`AppRuntime.dataRoot`):cookie、主密钥、盐都在它底下的 `secrets/`。 */
+	dataRoot: string;
 	/** Optional override for the QR poll/health check interval (ms). Tests use this. */
 	healthCheckMs?: number;
 	/**
@@ -69,9 +71,9 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		keyProvider: opts.keyProvider,
 		encryptionKey: opts.keyProvider ? undefined : opts.bootstrap.cookieEncryptionKey,
 		paths: {
-			keyPath: join(opts.bootstrap.dataDir, "secrets", "master.key"),
-			cookiePath: join(opts.bootstrap.dataDir, "secrets", "cookies.json"),
-			saltPath: join(opts.bootstrap.dataDir, "secrets", "kdf.salt"),
+			keyPath: dataPath(opts.dataRoot, "secrets", "master.key"),
+			cookiePath: dataPath(opts.dataRoot, "secrets", "cookies.json"),
+			saltPath: dataPath(opts.dataRoot, "secrets", "kdf.salt"),
 		},
 	});
 	await storage.init();

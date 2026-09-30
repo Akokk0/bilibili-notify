@@ -54,6 +54,7 @@ function bootstrap(dataDir: string): BootstrapConfig {
 function mkStore(dataDir: string): ConfigStore {
 	return createConfigStore({
 		bootstrap: bootstrap(dataDir),
+		dataRoot: dataDir,
 		bus: makeBus(),
 		serviceCtx: makeCtx(),
 	});

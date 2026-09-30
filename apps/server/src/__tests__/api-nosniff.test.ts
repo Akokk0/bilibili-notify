@@ -45,7 +45,7 @@ describe("API 响应带 nosniff", () => {
 		await runtime.configStore.load();
 		return {
 			app: createApp(runtime, {
-				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 				staticDir,
 			}),
 			runtime,

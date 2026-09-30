@@ -30,7 +30,7 @@ describe("devtools 挂载", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 		expect((await app.request("/api/dev")).status).toBe(404);
 		await runtime.dispose();
@@ -43,7 +43,7 @@ describe("devtools 挂载", () => {
 			{ id: "a", group: "event", title: "A", params: [], run: () => ({}) },
 		]);
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			devtools: createDevRoute({ registry }),
 		});
 		const res = await app.request("/api/dev");

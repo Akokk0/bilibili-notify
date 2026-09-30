@@ -60,6 +60,7 @@ beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-seen-"));
 	store = createConfigStore({
 		bootstrap: makeBootstrap(dataDir),
+		dataRoot: dataDir,
 		bus: makeFakeBus(),
 		serviceCtx: makeFakeServiceCtx(),
 	});
@@ -75,6 +76,7 @@ describe("templateDefaultsSeen 的保存往返", () => {
 		await store.patchGlobals({ defaults: { templateDefaultsSeen: { liveStart: "aaa" } } });
 		const reopened = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
 			bus: makeFakeBus(),
 			serviceCtx: makeFakeServiceCtx(),
 		});

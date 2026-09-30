@@ -78,6 +78,7 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 			serviceCtx: ctx,
 			bus,
 			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
+			dataRoot: dataDir,
 			keyProvider,
 		});
 		await auth.logout();

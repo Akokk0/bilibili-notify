@@ -94,7 +94,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 			load: vi.fn(async () => {}),
 		} as never,
 		fansStore: createFansStore({
-			dataDir,
+			dataRoot: dataDir,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {

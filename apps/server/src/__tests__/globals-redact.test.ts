@@ -48,7 +48,7 @@ describe("globals apiKey redact — P0-3", () => {
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-secret-real-key" } } } },
 		});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals");
@@ -69,7 +69,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals");
@@ -89,7 +89,7 @@ describe("globals apiKey redact — P0-3", () => {
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-original-key" } } } },
 		});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const patchRes = await app.request("/api/globals", {
@@ -116,7 +116,7 @@ describe("globals apiKey redact — P0-3", () => {
 			defaults: { ai: { providers: { deepseek: { apiKey: "sk-old-key" } } } },
 		});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const patchRes = await app.request("/api/globals", {
@@ -152,7 +152,7 @@ describe("globals apiKey redact — P0-3", () => {
 			},
 		});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const patchRes = await app.request("/api/globals", {

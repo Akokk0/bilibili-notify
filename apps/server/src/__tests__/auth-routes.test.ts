@@ -77,7 +77,7 @@ describe("auth routes", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			authSystem: asAuthSystem(fake),
 		});
 		return { app, runtime };

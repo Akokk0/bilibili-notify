@@ -76,6 +76,7 @@ describe("AuthSystem — cookies-refreshed 的总线载荷", () => {
 			serviceCtx: ctx,
 			bus,
 			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
+			dataRoot: dataDir,
 			keyProvider: new FileKeyProvider(join(dataDir, "secrets", "master.key"), ctx.logger),
 		});
 		expect(captured.callbacks?.onCookiesRefreshed).toBeTypeOf("function");

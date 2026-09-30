@@ -469,7 +469,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return c.json(ok(source));
 	});
 
-	// 图片上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进皮肤的图旋钮
+	// 图片上传 → 落盘 `<dataRoot>/assets/card-bg/<id>`,返回资产 id 写进皮肤的图旋钮
 	// (或 `cardStyle.liveCoverImages`)。目录名 `card-bg` 是历史,今天这套图廊两家共用。
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
@@ -478,7 +478,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
-			const id = await saveCardBg(opts.deps.store.bootstrap.dataDir, bytes, file.type);
+			const id = await saveCardBg(opts.deps.runtime.dataRoot, bytes, file.type);
 			return c.json(ok({ id }));
 		} catch (err) {
 			// 只接「上传的东西不合规矩」(格式不认、超上限,消息是给主人看的中文);磁盘写失败之类往上抛,
@@ -490,13 +490,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	// 图廊列表 —— 列出已上传的所有背景图 id,供前端图廊选择。
 	app.get("/assets", async (c) => {
-		const ids = await listCardBg(opts.deps.store.bootstrap.dataDir);
+		const ids = await listCardBg(opts.deps.runtime.dataRoot);
 		return c.json(ok({ ids }));
 	});
 
-	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。
+	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataRoot,内有 secrets)。
 	app.get("/asset/:id", async (c) => {
-		const res = await readCardBg(opts.deps.store.bootstrap.dataDir, c.req.param("id"));
+		const res = await readCardBg(opts.deps.runtime.dataRoot, c.req.param("id"));
 		if (!res) return respondFailure(c, fail("not_found", "背景图不存在"));
 		return new Response(res.bytes, {
 			headers: {
@@ -523,7 +523,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				fail("conflict", `该背景图${describeUsers(referencedBy)}，请先在卡片设置里移除再删除`),
 			);
 		}
-		await deleteCardBg(opts.deps.store.bootstrap.dataDir, id);
+		await deleteCardBg(opts.deps.runtime.dataRoot, id);
 		return c.json(ok());
 	});
 
@@ -533,7 +533,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 一套目录与一套端点,不与背景图混:两者的合法后缀、体积上限、以及「列表里显示什么」
 	// 都不一样(字体没有缩略图可看,列表得带原始文件名)。
 
-	// 字体上传 → 落盘 `<dataDir>/assets/font/<id>`,返回资产 id 写进 cardStyle.fontAsset。
+	// 字体上传 → 落盘 `<dataRoot>/assets/font/<id>`,返回资产 id 写进 cardStyle.fontAsset。
 	// 后缀取自**原始文件名**而不是 mime —— 浏览器给字体的 mime 一塌糊涂(同一个 .ttf 可能
 	// 是 font/ttf、application/x-font-ttf、application/octet-stream 甚至空串)。
 	app.post("/font-asset", uploadBodyLimit(MAX_FONT_ASSET_BYTES, "字体文件"), async (c) => {
@@ -542,7 +542,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少字体文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
-			const id = await saveFontAsset(opts.deps.store.bootstrap.dataDir, bytes, file.name);
+			const id = await saveFontAsset(opts.deps.runtime.dataRoot, bytes, file.name);
 			return c.json(ok({ id, name: file.name }));
 		} catch (err) {
 			// 同背景图那条:只接「上传的东西不合规矩」,磁盘的事往上抛。
@@ -553,14 +553,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	// 字体图廊列表 —— 带原始文件名,否则设置页上只剩一串 hex,主人认不出哪个是哪个。
 	app.get("/font-assets", async (c) => {
-		const fonts = await listFontAssets(opts.deps.store.bootstrap.dataDir);
+		const fonts = await listFontAssets(opts.deps.runtime.dataRoot);
 		return c.json(ok({ fonts }));
 	});
 
-	// 字体文件服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。
+	// 字体文件服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataRoot,内有 secrets)。
 	// 设置页拿它做预览:同一款字体在页面上和出图里得是同一款。
 	app.get("/font-asset/:id", async (c) => {
-		const res = await readFontAsset(opts.deps.store.bootstrap.dataDir, c.req.param("id"));
+		const res = await readFontAsset(opts.deps.runtime.dataRoot, c.req.param("id"));
 		if (!res) return respondFailure(c, fail("not_found", "字体不存在"));
 		return new Response(res.bytes, {
 			headers: {
@@ -587,7 +587,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				fail("conflict", `该字体${describeUsers(referencedBy)}，请先换掉再删除`),
 			);
 		}
-		await deleteFontAsset(opts.deps.store.bootstrap.dataDir, id);
+		await deleteFontAsset(opts.deps.runtime.dataRoot, id);
 		return c.json(ok());
 	});
 
@@ -605,9 +605,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 缓存里留的是**拼好的规则**而不是 data URL:规则本身就把 data URL 包在里头,存前者
 	// 就等于让后者可被回收,同一串东西不必占两份。
 	//
-	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰 store,它们的测试
-	// 给的也是不带 store 的最小 deps —— 在这儿直接取 `bootstrap.dataDir` 会让整条路由
-	// 建不起来。真要读字体时再取,那条路径上 store 必然在。
+	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰字体,它们的测试给的
+	// 是最小 deps —— 路由建起来的这一刻别去读 runtime 上的东西,真要读字体时再取。
 	const loadFontFace = (id: string): Promise<string> => {
 		if (!id) return Promise.resolve("");
 		return opts.deps.runtime.loadFontFace(id);
@@ -674,9 +673,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				serviceCtx: opts.deps.runtime.serviceCtx,
 				puppeteer: currentPuppeteer,
 				config,
-				// 背景图 id → data URL(读 <dataDir>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
-				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
-				// 字体 id → 拼好的 @font-face(读 <dataDir>/assets/font)。
+				// 背景图 id → data URL(读 <dataRoot>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
+				resolveAsset: (id) => readCardBgDataUrl(opts.deps.runtime.dataRoot, id),
+				// 字体 id → 拼好的 @font-face(读 <dataRoot>/assets/font)。
 				resolveFontFace: loadFontFace,
 				// 皮肤:与推送出图问的是同一家店(app.ts 传进来的那一个实例)。
 				resolveCardSkin: (id) => opts.cardSkins?.get(id) ?? undefined,
@@ -854,7 +853,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					renderer,
 					roomId,
 					style,
-					opts.deps.store.bootstrap.dataDir,
+					opts.deps.runtime.dataRoot,
 					skin,
 				);
 				return { buffer, mime: "image/jpeg" };
@@ -885,12 +884,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// (不经 ImageRenderer,未登录也能调色)。直播封面在此解析成 data URL 注入;
 		// 取「第一张盘上存在的图」,跳过悬空引用。卡片背景图不在这条路上了 —— 它归皮肤的
 		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
-		const dataDir = opts.deps.store.bootstrap.dataDir;
+		const dataRoot = opts.deps.runtime.dataRoot;
 		// 直播封面与自带字体互不依赖(各自独立的资产解析),并发发起省一次串行 I/O。
 		const [coverDataUrl, fontFace] = await Promise.all([
 			kind === "live"
-				? firstExistingCardBg(dataDir, style.liveCoverImages).then((id) =>
-						readCardBgDataUrl(dataDir, id),
+				? firstExistingCardBg(dataRoot, style.liveCoverImages).then((id) =>
+						readCardBgDataUrl(dataRoot, id),
 					)
 				: Promise.resolve(""),
 			loadFontFace(style.fontAsset ?? ""),
@@ -910,7 +909,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 「预览好看、推出去变样」的镜像版,2026-09-19 审查抓到。
 		const knobValues = previewKnobValues(skinId, requested.cardSkinKnobs);
 		const knobAssets = await resolveKnobAssets(manifest.knobs, knobValues, {
-			image: (id) => readCardBgDataUrl(dataDir, id),
+			image: (id) => readCardBgDataUrl(dataRoot, id),
 			fontFace: loadFontFace,
 			// 超出 CSS 自定义属性 2 MiB 上限的图要压一下,否则 Chrome 整条丢弃、
 			// 预览画兜底渐变 —— 而推送那头压了,两边就分家了。
@@ -1118,7 +1117,7 @@ async function renderRealLive(
 	renderer: ImageRenderer,
 	roomId: string,
 	style: PreviewStyle,
-	dataDir: string,
+	dataRoot: string,
 	skin: CardSkinChoice = {},
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
@@ -1158,7 +1157,7 @@ async function renderRealLive(
 			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
 			// B 站原始封面,即便后面还有张有效图。
-			liveCoverImage: await firstExistingCardBg(dataDir, style.liveCoverImages),
+			liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImages),
 			...skin,
 		},
 	);

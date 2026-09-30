@@ -53,7 +53,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({ defaults: { ai: { enabled: true } } });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			puppeteer: fakePuppeteer(),
 		});
 

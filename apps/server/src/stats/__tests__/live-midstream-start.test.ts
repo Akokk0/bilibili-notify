@@ -51,11 +51,11 @@ describe("服务器在 UP 已开播时启动", () => {
 
 	/** 建一套 recorder + store,并把「已在播」那条 bootstrap 事件喂进去。 */
 	async function bootWhileLive() {
-		const store = createStatsStore({ dataDir: dir, logger });
+		const store = createStatsStore({ dataRoot: dir, logger });
 		const recorder = createStatsRecorder({
 			bus,
 			store,
-			fans: createFansStore({ dataDir: dir, logger }),
+			fans: createFansStore({ dataRoot: dir, logger }),
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now: () => BOOT,
@@ -130,11 +130,11 @@ describe("采集水位线钉在采集起点", () => {
 		// 统计页,盖下的是「打开那一刻」,于是这几天真采到的活动全被判成
 		// 「无记录」—— 数据在盘上却永远显示不出来。
 		const START = new Date("2026-05-10T00:00:00.000Z");
-		const store = createStatsStore({ dataDir: dir, logger, now: () => START });
+		const store = createStatsStore({ dataRoot: dir, logger, now: () => START });
 		const recorder = createStatsRecorder({
 			bus,
 			store,
-			fans: createFansStore({ dataDir: dir, logger }),
+			fans: createFansStore({ dataRoot: dir, logger }),
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now: () => START,
@@ -144,7 +144,7 @@ describe("采集水位线钉在采集起点", () => {
 
 		// 五天后才第一次有人打开统计页。
 		const later = createStatsStore({
-			dataDir: dir,
+			dataRoot: dir,
 			logger,
 			now: () => new Date("2026-05-15T00:00:00.000Z"),
 		});

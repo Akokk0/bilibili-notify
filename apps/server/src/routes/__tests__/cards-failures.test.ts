@@ -43,13 +43,13 @@ function makeDeps(opts: { engines?: unknown } = {}): RouteDeps {
 	const engines = "engines" in opts ? opts.engines : { push: { sendToTarget: vi.fn() } };
 	return {
 		runtime: {
+			dataRoot: dataDir,
 			engines,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
 		store: {
-			bootstrap: { dataDir },
 			getGlobals: () => EMPTY_GLOBALS,
 			getSubscriptions: () => [],
 			getTargets: () => [{ id: TARGET_ID, name: "群一", enabled: true }],

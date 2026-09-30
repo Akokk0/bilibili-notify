@@ -30,7 +30,7 @@ describe("/api/system 挂载", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 		expect((await app.request("/api/system/restart", { method: "POST" })).status).toBe(404);
 		await runtime.dispose();
@@ -41,7 +41,7 @@ describe("/api/system 挂载", () => {
 		await runtime.configStore.load();
 		const restart = vi.fn(async () => {});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			system: {
 				ability: { can: true, how: "container" },
 				startedAt: "2026-09-10T00:00:00.000Z",

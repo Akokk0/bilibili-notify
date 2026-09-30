@@ -56,8 +56,8 @@ function bilibili(uids: string[]) {
 function makeDeps(dataDir: string, uids: string[], liveUids: string[]): RouteDeps {
 	return {
 		runtime: {
-			fansStore: createFansStore({ dataDir, logger }),
-			statsStore: createStatsStore({ dataDir, logger }),
+			fansStore: createFansStore({ dataRoot: dataDir, logger }),
+			statsStore: createStatsStore({ dataRoot: dataDir, logger }),
 			engines: {
 				listLiveRooms: () => uids.map((uid) => ({ uid, isLive: liveUids.includes(uid) })),
 			},
@@ -158,7 +158,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		const uids = ["101", "102", "103", "104", "105"];
 		// 老数据按 uid 命名;开机迁移把它们改成订阅 id(`s101` …),路由按订阅 id 读。
 		const moved = await migrateStatsFileKeys({
-			dataDir,
+			dataRoot: dataDir,
 			subscriptions: bilibili(uids) as never,
 			logger,
 		});
@@ -363,12 +363,12 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			},
 			emit() {},
 		} as never;
-		const store = createStatsStore({ dataDir, logger, now });
+		const store = createStatsStore({ dataRoot: dataDir, logger, now });
 		const uids = ["201", "202", "203", "204"];
 		const recorder = createStatsRecorder({
 			bus,
 			store,
-			fans: createFansStore({ dataDir, logger }),
+			fans: createFansStore({ dataRoot: dataDir, logger }),
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now,

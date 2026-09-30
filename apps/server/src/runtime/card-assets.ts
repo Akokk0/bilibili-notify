@@ -1,6 +1,6 @@
 /**
- * 卡片背景图的本地资产存储。落盘到 `<dataDir>/assets/card-bg/`,资产 id = 文件名
- * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataDir(里面有 secrets);只经此模块
+ * 卡片背景图的本地资产存储。落盘到 `<dataRoot>/assets/card-bg/`,资产 id = 文件名
+ * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataRoot(里面有 secrets);只经此模块
  * 的定向读取 + 路由的 id 校验访问,杜绝路径穿越。渲染期由服务端把 id 解析成 data URL
  * 内联给模版(packages/image 不碰文件系统)。
  *
@@ -10,7 +10,6 @@
 
 import { existsSync } from "node:fs";
 import { access, readdir } from "node:fs/promises";
-import { join } from "node:path";
 import {
 	AssetRejectedError,
 	type AssetStore,
@@ -18,13 +17,14 @@ import {
 	isValidAssetId,
 } from "../assets/asset-store.js";
 import { MIME_TO_EXT, UPLOAD_EXT_TO_MIME } from "./image-mime.js";
+import { dataPath } from "./roots.js";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
 export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
 
-/** 背景图资产目录 `<dataDir>/assets/card-bg`。 */
-export function cardBgDir(dataDir: string): string {
-	return join(dataDir, "assets", "card-bg");
+/** 背景图资产目录 `<dataRoot>/assets/card-bg`。 */
+export function cardBgDir(dataRoot: string): string {
+	return dataPath(dataRoot, "assets", "card-bg");
 }
 
 const RULES = {
@@ -33,8 +33,8 @@ const RULES = {
 	naming: { kind: "random" },
 } as const;
 
-const storeOf = (dataDir: string): AssetStore =>
-	createAssetStore({ ...RULES, dir: cardBgDir(dataDir) });
+const storeOf = (dataRoot: string): AssetStore =>
+	createAssetStore({ ...RULES, dir: cardBgDir(dataRoot) });
 
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidCardBgId(id: string): boolean {
@@ -42,25 +42,25 @@ export function isValidCardBgId(id: string): boolean {
 }
 
 /** 从图廊删除一张背景图。id 非法 / 文件不存在返回 false(幂等);删成功返回 true。 */
-export async function deleteCardBg(dataDir: string, id: string): Promise<boolean> {
-	return await storeOf(dataDir).remove(id);
+export async function deleteCardBg(dataRoot: string, id: string): Promise<boolean> {
+	return await storeOf(dataRoot).remove(id);
 }
 
 /** 列出图廊里所有合法背景图 id;目录不存在或读失败返回 []。供图廊列表路由。 */
-export async function listCardBg(dataDir: string): Promise<string[]> {
-	return (await storeOf(dataDir).list()).map((asset) => asset.id);
+export async function listCardBg(dataRoot: string): Promise<string[]> {
+	return (await storeOf(dataRoot).list()).map((asset) => asset.id);
 }
 
 /** 保存上传的背景图,返回资产 id(= 文件名)。非图片 mime 或超限抛 {@link AssetRejectedError}(消息面向用户)。 */
 export async function saveCardBg(
-	dataDir: string,
+	dataRoot: string,
 	bytes: Uint8Array,
 	mime: string,
 ): Promise<string> {
 	const ext = MIME_TO_EXT[mime];
 	if (!ext) throw new AssetRejectedError(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
 	if (bytes.byteLength > MAX_CARD_BG_BYTES) throw new AssetRejectedError("图片过大（上限 5MB）");
-	const result = await storeOf(dataDir).put({ bytes, ext });
+	const result = await storeOf(dataRoot).put({ bytes, ext });
 	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
 	if (!result.ok) throw new Error(result.message);
 	return result.id;
@@ -68,16 +68,16 @@ export async function saveCardBg(
 
 /** 读背景图原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */
 export async function readCardBg(
-	dataDir: string,
+	dataRoot: string,
 	id: string,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-	return await storeOf(dataDir).read(id);
+	return await storeOf(dataRoot).read(id);
 }
 
 /** 读背景图并转 data URL;id 为空 / 非法 / 缺失时返回 ""(供渲染期内联)。 */
-export async function readCardBgDataUrl(dataDir: string, id: string): Promise<string> {
+export async function readCardBgDataUrl(dataRoot: string, id: string): Promise<string> {
 	if (!id) return "";
-	const res = await readCardBg(dataDir, id);
+	const res = await readCardBg(dataRoot, id);
 	if (!res) return "";
 	return `data:${res.mime};base64,${res.bytes.toString("base64")}`;
 }
@@ -88,10 +88,10 @@ export async function readCardBgDataUrl(dataDir: string, id: string): Promise<st
  * 静默回退渐变 / 原封面,预览与静态兜底取图一律经此跳过死条目。
  */
 export async function firstExistingCardBg(
-	dataDir: string,
+	dataRoot: string,
 	ids: string[] | undefined,
 ): Promise<string> {
-	const store = storeOf(dataDir);
+	const store = storeOf(dataRoot);
 	for (const id of ids ?? []) {
 		const path = store.pathOf(id);
 		if (path === null) continue;
@@ -118,16 +118,16 @@ const EXISTING_IDS_TTL_MS = 5_000;
  * 仅缓存冷启动(尚未有过一次成功 readdir)时退化到同步 existsSync 兜底,保正确性。
  */
 export function makeExistingCardBgPicker(
-	dataDir: string,
+	dataRoot: string,
 	pick: (scopeKey: string, images: string[]) => string | undefined,
 ): (scopeKey: string, images: string[]) => string | undefined {
-	const store = storeOf(dataDir);
+	const store = storeOf(dataRoot);
 	let cachedIds: Set<string> | null = null;
 	let cachedAt = 0;
 	let refreshing: Promise<void> | null = null;
 	const refresh = (): void => {
 		if (refreshing) return;
-		refreshing = readdir(cardBgDir(dataDir))
+		refreshing = readdir(cardBgDir(dataRoot))
 			.then((names) => {
 				cachedIds = new Set(names.filter(isValidCardBgId));
 				cachedAt = Date.now();

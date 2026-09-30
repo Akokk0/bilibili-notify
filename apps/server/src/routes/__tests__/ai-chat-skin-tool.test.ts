@@ -70,11 +70,11 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 				},
 			}),
 			getTargets: () => [],
-			bootstrap: { dataDir },
 		},
 		runtime: {
+			dataRoot: dataDir,
 			serviceCtx: { logger },
-			conversationStore: createConversationStore({ dataDir, logger }),
+			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
 			engines: { api: {}, commentary: { chatStatelessStream, generateRaw } },
 		},
 	} as unknown as RouteDeps;

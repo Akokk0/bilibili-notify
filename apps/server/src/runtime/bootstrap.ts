@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { buildFontFace } from "@bilibili-notify/image";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
@@ -21,6 +20,7 @@ import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { bindReportedProfiles } from "./reported-profiles.js";
+import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import {
 	bindSubAvatarCleanup,
@@ -32,6 +32,13 @@ import { createTargetScope } from "./target-scope.js";
 
 export interface AppRuntime {
 	bootstrap: BootstrapConfig;
+	/**
+	 * 宿主根:只放冻住的外壳认的宿主件(`versions/`、`logs/`),拼路径经 `hostPath`。
+	 * 两个根只在 {@link createAppRuntime} 推这一次,下游一律读这里,不各自从配置里再推。
+	 */
+	readonly hostRoot: string;
+	/** 数据根:其余一切,拼路径经 `dataPath`。 */
+	readonly dataRoot: string;
 	serviceCtx: NodeServiceContext;
 	bus: MessageBus;
 	/**
@@ -72,7 +79,7 @@ export interface AppRuntime {
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	/**
-	 * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataDir>/avatars/<订阅 id>.<后缀>`。新建订阅那条路写、
+	 * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataRoot>/avatars/<订阅 id>.<后缀>`。新建订阅那条路写、
 	 * `GET /api/subs/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
 	 */
 	subAvatarStore: SubAvatarStore;
@@ -133,15 +140,17 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		level: bootstrap.logLevel,
 	});
 	const bus = createNodeMessageBus();
+	const hostRoot = bootstrap.dataDir;
+	// 第 0 代就是宿主根;数据代落地时换成选中的那一代。
+	const dataRoot = hostRoot;
 
 	// Shared at-rest encryption key. Injected passphrase (BN_COOKIE_KEY) →
 	// scrypt-derived key, never written to disk = real protection. Absent →
 	// co-located random key file (obfuscation only; loud warning below).
-	const secretsDir = join(bootstrap.dataDir, "secrets");
 	const keyProvider = createKeyProvider({
 		passphrase: bootstrap.cookieEncryptionKey,
-		keyPath: join(secretsDir, "master.key"),
-		saltPath: join(secretsDir, "kdf.salt"),
+		keyPath: dataPath(dataRoot, "secrets", "master.key"),
+		saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
 		logger: serviceCtx.logger,
 	});
 	if (keyProvider.protected) {
@@ -158,11 +167,11 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	}
 
 	const secretStore = createSecretStore({
-		filePath: join(secretsDir, "config-secrets.enc"),
+		filePath: dataPath(dataRoot, "secrets", "config-secrets.enc"),
 		keyProvider,
 		logger: serviceCtx.logger,
 	});
-	const configStore = createConfigStore({ bootstrap, bus, serviceCtx, secretStore });
+	const configStore = createConfigStore({ bootstrap, dataRoot, bus, serviceCtx, secretStore });
 	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
 	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。
 	serviceCtx.onDispose(() => configStore.close(), "flush");
@@ -173,22 +182,22 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
 	// 它没有内部状态,retention 那边按同一个 `historyRetentionDays` 自己建一个来淘汰。
 	const repushStore = createRepushStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	const historyStore = createHistoryStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		bus,
 		logger: serviceCtx.logger,
 		repush: repushStore,
 	});
 	serviceCtx.onDispose(() => historyStore.close(), "flush");
 	const fansStore = createFansStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	const statsStore = createStatsStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
@@ -218,12 +227,12 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		statsRecorder.dispose();
 	}, "flush");
 	const subRuntimeStore = createSubRuntimeStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subRuntimeStore.close(), "flush");
 	const subAvatarStore = createSubAvatarStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subAvatarStore.close(), "flush");
@@ -249,12 +258,12 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
 	serviceCtx.onDispose(() => reportedProfiles.close(), "flush");
 	const conversationStore = createConversationStore({
-		dataDir: bootstrap.dataDir,
+		dataRoot,
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => conversationStore.close(), "flush");
 	const logStore = createLogStore({
-		dataDir: bootstrap.dataDir,
+		hostRoot,
 		serviceCtx,
 		logger: serviceCtx.logger,
 	});
@@ -297,12 +306,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 
 	return {
 		bootstrap,
+		hostRoot,
+		dataRoot,
 		serviceCtx,
 		bus,
 		keyProvider,
 		// 缓存里留拼好的 `@font-face` 而不是 data URL —— 规则本身就把 data URL 包在
 		// 里头,只留它就少留一整份几十兆的串。闲置到点自动放掉,见读取器内部说明。
-		loadFontFace: createFontAssetReader(bootstrap.dataDir, { transform: buildFontFace }),
+		loadFontFace: createFontAssetReader(dataRoot, { transform: buildFontFace }),
 		configStore,
 		historyStore,
 		repushRunner,

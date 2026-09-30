@@ -81,7 +81,8 @@ src/
   auth/                 经 @bilibili-notify/api LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
   config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <dataDir>/state/*.json,emit config-changed)+ schema
   runtime/
-    bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...)
+    bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...);推一次 hostRoot / dataRoot
+    roots.ts              宿主根(versions/ logs/)与数据根的目录表 + hostPath / dataPath;本文写的 <dataDir>/… 除 versions、logs 外都在数据根下(数据代落地前两个根是同一个目录)
     service-context.ts    NodeServiceContext(pino + setInterval/setTimeout + 分段的 onDispose / track / signal,见下「关停」)
     message-bus.ts        NodeMessageBus(mitt 风格,事件表 BusEvents)
     engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)

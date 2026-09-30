@@ -64,8 +64,13 @@ const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-runner-"));
 	const log = logger();
-	repush = createRepushStore({ dataDir, logger: log });
-	history = createHistoryStore({ dataDir, bus: createNodeMessageBus(), logger: log, repush });
+	repush = createRepushStore({ dataRoot: dataDir, logger: log });
+	history = createHistoryStore({
+		dataRoot: dataDir,
+		bus: createNodeMessageBus(),
+		logger: log,
+		repush,
+	});
 	sent = [];
 	failOn = () => false;
 	gate = null;

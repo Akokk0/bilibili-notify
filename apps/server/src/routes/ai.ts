@@ -213,8 +213,8 @@ export function createAiRoute(
 		if (!removed) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
 		const doomedImages = (doomed?.messages ?? []).flatMap((m) => m.images ?? []);
 		if (doomedImages.length > 0) {
-			const dataDir = deps.store.bootstrap.dataDir;
-			for (const img of doomedImages) await deleteChatImage(dataDir, img);
+			const dataRoot = deps.runtime.dataRoot;
+			for (const img of doomedImages) await deleteChatImage(dataRoot, img);
 		}
 		return c.json(ok());
 	});
@@ -224,7 +224,7 @@ export function createAiRoute(
 	// 与卡片背景图的图廊分开:那边是主人精心挑的长期素材,这边是随手一发、跟着
 	// 会话生灭的。照抄那套「落盘 + id 引用 + 定向读取」的形状,但各用各的目录。
 
-	/** 上传一张附件 → 落盘 `<dataDir>/assets/chat/<id>`,返回 id 供随消息带上。 */
+	/** 上传一张附件 → 落盘 `<dataRoot>/assets/chat/<id>`,返回 id 供随消息带上。 */
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
@@ -232,7 +232,7 @@ export function createAiRoute(
 		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
-			const id = await saveChatImage(deps.store.bootstrap.dataDir, bytes, file.type);
+			const id = await saveChatImage(deps.runtime.dataRoot, bytes, file.type);
 			return c.json(ok({ id }));
 		} catch (err) {
 			// 格式不认、超上限是主人递进来的东西不合规矩,话是给他看的中文;磁盘写失败之类是环境的事,
@@ -245,11 +245,11 @@ export function createAiRoute(
 	/**
 	 * 附件服务 —— 供页面显示缩略图。
 	 *
-	 * 经 id 正则校验的**定向读取**,绝不 serveStatic 整个 dataDir —— 那里面躺着
+	 * 经 id 正则校验的**定向读取**,绝不 serveStatic 整个 dataRoot —— 那里面躺着
 	 * `bn.config.yaml`,带 apiKey 与 cookie。
 	 */
 	app.get("/assets/:id", async (c) => {
-		const res = await readChatImage(deps.store.bootstrap.dataDir, c.req.param("id"));
+		const res = await readChatImage(deps.runtime.dataRoot, c.req.param("id"));
 		if (!res) return respondFailure(c, fail("not_found", "图片不存在"));
 		return c.body(res.bytes as unknown as ArrayBuffer, 200, {
 			"content-type": res.mime,
@@ -368,7 +368,7 @@ export function createAiRoute(
 		}
 		// 主人这一问贴的图(见 readImageUrls:为什么带字节而不是地址)。
 		const resolved =
-			attached.length > 0 ? await readImageUrls(deps.store.bootstrap.dataDir, attached) : [];
+			attached.length > 0 ? await readImageUrls(deps.runtime.dataRoot, attached) : [];
 
 		/**
 		 * 这一问自己没带图时,**捎上最近那一次的**。
@@ -384,10 +384,10 @@ export function createAiRoute(
 		let carried: Array<{ id: string; url: string }> = [];
 		if (resolved.length === 0) {
 			// 先找有没有这么一条,再去碰磁盘 —— 一句话都不带图的普通聊天(绝大多数)
-			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataDir。
+			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataRoot。
 			const recent = [...conv.messages].reverse().find((m) => m.images?.length);
 			if (recent?.images?.length) {
-				carried = await readImageUrls(deps.store.bootstrap.dataDir, recent.images);
+				carried = await readImageUrls(deps.runtime.dataRoot, recent.images);
 			}
 		}
 
@@ -448,10 +448,10 @@ export function createAiRoute(
 						 * URL,拿它再解一次 base64 只是绕远路。
 						 */
 						attachedImage: async (): Promise<ChatSkinImage | null> => {
-							const dataDir = deps.store.bootstrap.dataDir;
+							const dataRoot = deps.runtime.dataRoot;
 							// 读到一张就收手:壁纸只要一张,后面那几张(每张上限 5MB)读进来也是扔。
 							for (const { id } of visible) {
-								const img = await readChatImage(dataDir, id);
+								const img = await readChatImage(dataRoot, id);
 								if (img) return { bytes: img.bytes, ext: id.split(".").pop() ?? "png" };
 							}
 							return null;
@@ -500,7 +500,7 @@ export function createAiRoute(
 		 * 工具也不带),技能正文串进去只会跟工坊自己的 system 打架。
 		 *
 		 * 每个请求现读盘:主人刚在编辑器里改完一条,下一句话就该用上新的;更要紧的是
-		 * 他可能刚往 dataDir 里手放了一份(ADR 决策 3)。
+		 * 他可能刚往 dataRoot 里手放了一份(ADR 决策 3)。
 		 */
 		let skillTool: ReturnType<typeof createSkillChatTool> = null;
 		let pickedSkill: MaidSkillEntry | undefined;
@@ -794,12 +794,12 @@ export function resolveDraftApiKey(draft: string | undefined, stored: string | u
  * 所以那条路直接传 URL。
  */
 async function readImageUrls(
-	dataDir: string,
+	dataRoot: string,
 	ids: readonly string[],
 ): Promise<Array<{ id: string; url: string }>> {
 	const out: Array<{ id: string; url: string }> = [];
 	for (const id of ids) {
-		const url = await readChatImageDataUrl(dataDir, id);
+		const url = await readChatImageDataUrl(dataRoot, id);
 		if (url) out.push({ id, url });
 	}
 	return out;

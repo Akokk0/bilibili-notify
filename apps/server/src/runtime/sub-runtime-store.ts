@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
 	type CachedProfile,
 	createSerialQueue,
@@ -8,6 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { dataPath } from "./roots.js";
 
 /**
  * SubRuntimeStore — per-subscription **runtime** data, externalized out of the
@@ -23,7 +23,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
  * with its own write path that emits **no** config/subscription events —
  * breaks that chain entirely.
  *
- * Topology: single JSON file `<dataDir>/state/sub-runtime.json` keyed by
+ * Topology: single JSON file `<dataRoot>/state/sub-runtime.json` keyed by
  * `Subscription.id`, atomic tmpfile+rename writes, all mutations serialized
  * through one private write queue (mirrors `ConfigStore.runScoped`).
  *
@@ -76,7 +76,7 @@ export interface SubRuntimeStore {
 	patch(id: string, partial: SubRuntime): Promise<void>;
 	/** Drop any entry whose id is not in `keepIds` (orphan cleanup). */
 	prune(keepIds: readonly string[]): Promise<void>;
-	/** Load `<dataDir>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
+	/** Load `<dataRoot>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
 	load(): Promise<void>;
 	/**
 	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的 patch / prune 一律以
@@ -102,7 +102,7 @@ export function pruneOrphanSubRuntime(
 }
 
 export interface CreateSubRuntimeStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 }
 
@@ -114,7 +114,7 @@ function cloneRuntime(r: SubRuntime): SubRuntime {
 }
 
 export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRuntimeStore {
-	const file = join(opts.dataDir, "state", "sub-runtime.json");
+	const file = dataPath(opts.dataRoot, "state", "sub-runtime.json");
 	let records: Record<string, SubRuntime> = {};
 	let loaded = false;
 	// Single private write queue (one key — there is only one file) so concurrent patch/prune

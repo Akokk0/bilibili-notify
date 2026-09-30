@@ -59,7 +59,12 @@ function makeStore(): ConfigStore {
 		dataDir,
 		logLevel: "info",
 	};
-	return createConfigStore({ bootstrap: b, bus: makeBus(), serviceCtx: makeCtx() });
+	return createConfigStore({
+		bootstrap: b,
+		dataRoot: dataDir,
+		bus: makeBus(),
+		serviceCtx: makeCtx(),
+	});
 }
 
 beforeEach(async () => {

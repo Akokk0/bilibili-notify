@@ -33,7 +33,7 @@ let store: ConversationStore;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-aichat-"));
 	logger = makeLogger();
-	store = createConversationStore({ dataDir, logger });
+	store = createConversationStore({ dataRoot: dataDir, logger });
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -283,7 +283,7 @@ describe("ConversationStore — list", () => {
 
 	it("目录还不存在时 → 空列表,不抛", async () => {
 		// 全新安装、一次都没聊过。
-		const fresh = createConversationStore({ dataDir: join(dataDir, "never-written"), logger });
+		const fresh = createConversationStore({ dataRoot: join(dataDir, "never-written"), logger });
 		expect(await fresh.list()).toEqual([]);
 	});
 
@@ -336,7 +336,7 @@ describe("ConversationStore — 落盘是原子的", () => {
 
 describe("ConversationStore — 上限裁剪", () => {
 	it("单会话消息数超上限 → 丢最旧的,保留最近的", async () => {
-		const s = createConversationStore({ dataDir, logger, maxMessages: 4 });
+		const s = createConversationStore({ dataRoot: dataDir, logger, maxMessages: 4 });
 		const c = await s.create();
 		for (const n of [1, 2, 3, 4, 5, 6]) {
 			await s.appendMessages(c.id, [{ role: "user", content: `第${n}条` }]);
@@ -347,7 +347,7 @@ describe("ConversationStore — 上限裁剪", () => {
 
 	it("会话总数超上限 → create 时删掉最旧的那个", async () => {
 		const tick = useClock();
-		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const s = createConversationStore({ dataRoot: dataDir, logger, maxConversations: 2 });
 		const a = await s.create();
 		await s.appendMessages(a.id, [{ role: "user", content: "最旧" }]);
 		tick();
@@ -368,7 +368,7 @@ describe("ConversationStore — 上限裁剪", () => {
 		// 壳**比真会话新**才是坏情况:按 updatedAt 修剪时它稳稳留下,被挤掉的是
 		// 主人真聊过的那条。(壳恰好最旧时数量修剪会顺手带走它,那种排列验不出问题。)
 		const tick = useClock();
-		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const s = createConversationStore({ dataRoot: dataDir, logger, maxConversations: 2 });
 		const a = await s.create();
 		await s.appendMessages(a.id, [{ role: "user", content: "真的一" }]);
 		tick();
@@ -385,7 +385,7 @@ describe("ConversationStore — 上限裁剪", () => {
 		// 此刻盘上它确实是零消息,但判它是垃圾得等它凉透:皮肤生成一趟就要几分钟,
 		// 中途另开一个对话把它清掉,主人回来会发现刚才那轮凭空没了。
 		useClock();
-		const s = createConversationStore({ dataDir, logger });
+		const s = createConversationStore({ dataRoot: dataDir, logger });
 		const inflight = await s.create();
 		await s.create();
 		expect(await s.get(inflight.id)).toBeTruthy();
@@ -415,7 +415,7 @@ describe("ConversationStore — 上限裁剪", () => {
 			);
 		}
 		useClock();
-		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const s = createConversationStore({ dataRoot: dataDir, logger, maxConversations: 2 });
 		const newest = await s.create();
 		await s.appendMessages(newest.id, [{ role: "user", content: "新问" }]);
 
@@ -629,7 +629,7 @@ describe("正在进行的那一轮不算空壳", () => {
 		// 认了 busy 这本账,回收这头却只看时间 —— 于是另开一个对话就能把主人正
 		// 等着的那一轮连文件一起删掉,几分钟的生成血本无归,回来只见「会话不存在」。
 		useClock();
-		const s = createConversationStore({ dataDir, logger });
+		const s = createConversationStore({ dataRoot: dataDir, logger });
 		const inflight = await s.create();
 		const done = s.markBusy(inflight.id);
 		try {
@@ -645,7 +645,7 @@ describe("正在进行的那一轮不算空壳", () => {
 		// 它跑得越久 updatedAt 越沉,主人在别处多开几个对话就把它压成了「最旧」。
 		// 回收那道闸放它过去了,数量这道闸照样能删掉它。
 		const tick = useClock();
-		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const s = createConversationStore({ dataRoot: dataDir, logger, maxConversations: 2 });
 		const inflight = await s.create();
 		const done = s.markBusy(inflight.id);
 		try {

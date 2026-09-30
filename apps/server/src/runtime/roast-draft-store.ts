@@ -1,15 +1,15 @@
 import { randomInt } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
+import { dataPath } from "./roots.js";
 
 /**
  * RoastDraftStore —— 等主人点头的锐评草稿。
  *
  * 审批开着时,到点生成出来的稿子不能只待在内存里:主人可能过几个小时才回一句 `y`,
  * 中间容器重启过一次。所以落盘,拓扑与 {@link SubRuntimeStore} 同款 —— 单个 JSON
- * 文件 `<dataDir>/state/roast-drafts.json`、tmpfile+rename 原子写、全部写操作走
+ * 文件 `<dataRoot>/state/roast-drafts.json`、tmpfile+rename 原子写、全部写操作走
  * 一条私有写道(两条流水线可能在同一分钟里各自生成一份)。
  *
  * 它**不发任何 config 事件** —— 草稿是 apps/server 自己的运行时产物,不是配置。
@@ -75,7 +75,7 @@ export interface RoastDraftStore {
 }
 
 export interface CreateRoastDraftStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 	/**
 	 * 老草稿翻译用:这个 uid 现在是哪条 B 站订阅(同一个 uid 订了几条时取第一条 —— 改之前按 uid 找订阅
@@ -141,7 +141,7 @@ function upgradeLegacyDraft(
 const WRITE_KEY = "roast-drafts";
 
 export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): RoastDraftStore {
-	const file = join(opts.dataDir, "state", "roast-drafts.json");
+	const file = dataPath(opts.dataRoot, "state", "roast-drafts.json");
 	let records: RoastDraft[] = [];
 	let loaded = false;
 	// 单键写道 —— 两条流水线(榜单 / 某位 UP)可能在同一分钟里各自落一份草稿,

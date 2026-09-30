@@ -39,7 +39,7 @@ const DAY = "2026-09-20";
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-"));
 	store = createRepushStore({
-		dataDir,
+		dataRoot: dataDir,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	});
 });

@@ -35,7 +35,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -54,7 +54,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -72,7 +72,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -91,7 +91,7 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await app.request("/api/globals");
@@ -104,7 +104,7 @@ describe("dashboard cookie auth", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			desktopToken: "desktop-secret",
 		});
 
@@ -142,7 +142,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -163,7 +163,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -188,7 +188,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -206,7 +206,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -223,7 +223,7 @@ describe("dashboard cookie auth", () => {
 		const ttlMs = 10_000;
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS, ttlMs });
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: CREDS,
 			sessionCodec: codec,
 		});
@@ -252,13 +252,13 @@ describe("dashboard cookie auth", () => {
 
 		expect(() =>
 			createApp(runtime, {
-				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 				basicAuthCredentials: CREDS,
 			}),
 		).toThrow();
 		expect(() =>
 			createApp(runtime, {
-				cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+				cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 				sessionCodec: codec,
 			}),
 		).toThrow();

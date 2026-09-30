@@ -41,7 +41,7 @@ beforeEach(async () => {
 	bus = createNodeMessageBus();
 	updated = [];
 	bus.on("history-updated", (e) => updated.push(e));
-	store = createHistoryStore({ dataDir, bus, logger: logger() });
+	store = createHistoryStore({ dataRoot: dataDir, bus, logger: logger() });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -103,7 +103,7 @@ describe("appendToRow", () => {
 	 */
 	it("内存里那张表早没了(重启过)也照样找得到这一行", async () => {
 		const entry = await store.record(input());
-		const afterRestart = createHistoryStore({ dataDir, bus, logger: logger() });
+		const afterRestart = createHistoryStore({ dataRoot: dataDir, bus, logger: logger() });
 		const merged = await afterRestart.appendToRow(entry.id, entry.ts, [
 			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
 		]);

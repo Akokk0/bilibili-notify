@@ -1,6 +1,6 @@
 /**
- * 主人上传的字体文件的本地资产存储。落盘到 `<dataDir>/assets/font/`,资产 id = 文件名
- * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataDir(里面有 secrets);只经此模块
+ * 主人上传的字体文件的本地资产存储。落盘到 `<dataRoot>/assets/font/`,资产 id = 文件名
+ * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataRoot(里面有 secrets);只经此模块
  * 的定向读取 + 路由的 id 正则校验访问,杜绝路径穿越。渲染期由服务端把 id 解析成 data URL
  * 拼进 `@font-face` 内联给模版(`packages/image` 不碰文件系统)。
  *
@@ -13,7 +13,6 @@
  *    清单丢了照样列得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
  */
 
-import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import {
 	AssetRejectedError,
@@ -22,6 +21,7 @@ import {
 	isValidAssetId,
 } from "../assets/asset-store.js";
 import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
+import { dataPath } from "./roots.js";
 
 /**
  * 单款字体上限 —— 与前端共用一个数(`@bilibili-notify/internal/constants`),否则两边各写
@@ -42,9 +42,9 @@ const MANIFEST = "index.json";
  */
 const DEFAULT_FONT_CACHE_IDLE_MS = 5 * 60_000;
 
-/** 字体资产目录 `<dataDir>/assets/font`。 */
-export function fontAssetDir(dataDir: string): string {
-	return join(dataDir, "assets", "font");
+/** 字体资产目录 `<dataRoot>/assets/font`。 */
+export function fontAssetDir(dataRoot: string): string {
+	return dataPath(dataRoot, "assets", "font");
 }
 
 const RULES = {
@@ -59,8 +59,8 @@ const RULES = {
  * 每次调用就地建一个存储,不必记忆化:名字清单是整份读、整份写,它的串行队列按清单文件走、
  * 住在 `asset-store` 的模块级(同一个目录上建几个存储都共用一条)。
  */
-const storeOf = (dataDir: string): AssetStore =>
-	createAssetStore({ ...RULES, dir: fontAssetDir(dataDir) });
+const storeOf = (dataRoot: string): AssetStore =>
+	createAssetStore({ ...RULES, dir: fontAssetDir(dataRoot) });
 
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidFontAssetId(id: string): boolean {
@@ -83,8 +83,8 @@ export interface FontAsset {
  * 列出图廊里所有字体。**以目录为真相**:盘上有的才列,清单只贡献名字。
  * 目录不存在或读失败返回 []。
  */
-export async function listFontAssets(dataDir: string): Promise<FontAsset[]> {
-	const assets = await storeOf(dataDir).list();
+export async function listFontAssets(dataRoot: string): Promise<FontAsset[]> {
+	const assets = await storeOf(dataRoot).list();
 	return assets.map((asset) => ({
 		id: asset.id,
 		name: asset.label ?? asset.id,
@@ -97,7 +97,7 @@ export async function listFontAssets(dataDir: string): Promise<FontAsset[]> {
  * 原始文件名记进清单,供设置页显示。
  */
 export async function saveFontAsset(
-	dataDir: string,
+	dataRoot: string,
 	bytes: Uint8Array,
 	filename: string,
 ): Promise<string> {
@@ -113,7 +113,7 @@ export async function saveFontAsset(
 	}
 	// 原始文件名交给存储记进清单(它记之前会洗:浏览器给的这一串可能是整条桌面路径,
 	// 也可能带着双向覆盖符)。
-	const result = await storeOf(dataDir).put({ bytes, ext, label: filename });
+	const result = await storeOf(dataRoot).put({ bytes, ext, label: filename });
 	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
 	if (!result.ok) throw new Error(result.message);
 	return result.id;
@@ -121,10 +121,10 @@ export async function saveFontAsset(
 
 /** 读字体原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */
 export async function readFontAsset(
-	dataDir: string,
+	dataRoot: string,
 	id: string,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-	return await storeOf(dataDir).read(id);
+	return await storeOf(dataRoot).read(id);
 }
 
 /**
@@ -133,9 +133,9 @@ export async function readFontAsset(
  * 返回空串而不是抛错:主人把字体删了、卷丢了,出图该静静回落到家族名那条路,
  * 而不是整张卡渲染失败 —— 与背景图同一条纪律。
  */
-export async function readFontAssetDataUrl(dataDir: string, id: string): Promise<string> {
+export async function readFontAssetDataUrl(dataRoot: string, id: string): Promise<string> {
 	if (!id) return "";
-	const res = await readFontAsset(dataDir, id);
+	const res = await readFontAsset(dataRoot, id);
 	if (!res) return "";
 	return `data:${res.mime};base64,${res.bytes.toString("base64")}`;
 }
@@ -157,7 +157,7 @@ export async function readFontAssetDataUrl(dataDir: string, id: string): Promise
  * 是为了重新传一份还能拿回来,后者是别把一个 rejected promise 焊死在那儿。
  */
 export function createFontAssetReader(
-	dataDir: string,
+	dataRoot: string,
 	opts: {
 		/**
 		 * data URL → **缓存里真正留下的那个串**。缺省原样留 data URL。
@@ -167,7 +167,7 @@ export function createFontAssetReader(
 		 */
 		transform?: (dataUrl: string) => string;
 		/** 底层读取,默认真读盘;注入便于单测观察读了几次。 */
-		read?: (dataDir: string, id: string) => Promise<string>;
+		read?: (dataRoot: string, id: string) => Promise<string>;
 		/**
 		 * 闲置多久就把缓存放掉(ms),默认 5 分钟。
 		 *
@@ -204,8 +204,8 @@ export function createFontAssetReader(
 			cached = {
 				id,
 				pending: transform
-					? read(dataDir, id).then((v) => (v ? transform(v) : ""))
-					: read(dataDir, id),
+					? read(dataRoot, id).then((v) => (v ? transform(v) : ""))
+					: read(dataRoot, id),
 				lastUsedAt: now(),
 			};
 		}
@@ -229,6 +229,6 @@ export function createFontAssetReader(
  * 从图廊删除一款字体。id 非法 / 文件不存在返回 false(幂等);删成功返回 true。
  * 清单里那条一并抹掉 —— 留着就是个永远对不上的名字。
  */
-export async function deleteFontAsset(dataDir: string, id: string): Promise<boolean> {
-	return await storeOf(dataDir).remove(id);
+export async function deleteFontAsset(dataRoot: string, id: string): Promise<boolean> {
+	return await storeOf(dataRoot).remove(id);
 }

@@ -71,7 +71,7 @@ afterEach(async () => {
 });
 
 function make(): SubRuntimeStore {
-	return createSubRuntimeStore({ dataDir: dir, logger });
+	return createSubRuntimeStore({ dataRoot: dir, logger });
 }
 
 async function readFileJson(): Promise<Record<string, unknown>> {
@@ -79,7 +79,7 @@ async function readFileJson(): Promise<Record<string, unknown>> {
 }
 
 describe("SubRuntimeStore — 构造契约 (Bug 1 结构证明)", () => {
-	it("createSubRuntimeStore 选项只有 dataDir/logger,不接收任何 MessageBus/事件汇", () => {
+	it("createSubRuntimeStore 选项只有 dataRoot/logger,不接收任何 MessageBus/事件汇", () => {
 		// 纯结构断言:构造选项里没有 bus,所以 patch/prune 在源头上就不可能
 		// fan-out 成 config-changed / subscription-changed —— Bug 1 链被切断。
 		const store = make() as unknown as Record<string, unknown>;
@@ -390,14 +390,14 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		// 抛 ENOTDIR —— 确定性地走 persist 的 catch→rethrow 分支。
 		const collisionFile = join(dir, "not-a-dir");
 		await writeFile(collisionFile, "x", "utf8");
-		const store = createSubRuntimeStore({ dataDir: collisionFile, logger });
+		const store = createSubRuntimeStore({ dataRoot: collisionFile, logger });
 
 		await expect(store.patch("bad", { cachedProfile: PROFILE_A })).rejects.toBeDefined();
 		// 错误已抛给调用方且 logger.warn 记了一笔
 		expect(logger.warn).toHaveBeenCalled();
 		// 队列没被毒化:把 dataDir 换成正常目录的新实例可正常工作
 		// (同实例下 records 已就地改但盘写失败 —— get 反映内存态,验证不毒化即可)
-		const ok = createSubRuntimeStore({ dataDir: dir, logger });
+		const ok = createSubRuntimeStore({ dataRoot: dir, logger });
 		await ok.patch("ok", { cachedProfile: PROFILE_A });
 		expect(ok.get("ok")).toEqual({ cachedProfile: PROFILE_A });
 	});
@@ -407,7 +407,7 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		// 已就地改 → 内存态可见,且 catch→rethrow 不毒化 FIFO 队列。
 		const collisionFile = join(dir, "poison-probe");
 		await writeFile(collisionFile, "x", "utf8");
-		const store = createSubRuntimeStore({ dataDir: collisionFile, logger });
+		const store = createSubRuntimeStore({ dataRoot: collisionFile, logger });
 		await expect(store.patch("a", { cachedProfile: PROFILE_A })).rejects.toBeDefined();
 		// 队列未毒化:下一笔 task 仍被调度执行(仍会 persist 失败,但 task 跑了 →
 		// 内存 records 反映该写入,证明 queue.then 链没被永久 reject 卡死)。

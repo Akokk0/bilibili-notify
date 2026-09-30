@@ -38,7 +38,7 @@ const noLegacy = () => undefined;
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "roast-draft-"));
-	store = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
+	store = createRoastDraftStore({ dataRoot: dir, logger, subscriptionIdOfUid: noLegacy });
 	await store.load();
 });
 
@@ -108,7 +108,11 @@ describe("RoastDraftStore", () => {
 	it("重启后草稿还在 —— 主人隔夜回的那句 y 得还有东西可批", async () => {
 		const d = await store.add(board(["t1", "t2"]));
 
-		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
+		const reopened = createRoastDraftStore({
+			dataRoot: dir,
+			logger,
+			subscriptionIdOfUid: noLegacy,
+		});
 		await reopened.load();
 		const got = reopened.get(d.id);
 		expect(got?.id).toBe(d.id);
@@ -122,7 +126,11 @@ describe("RoastDraftStore", () => {
 		await mkdir(join(dir, "state"), { recursive: true });
 		await writeFile(join(dir, "state", "roast-drafts.json"), "{ 这不是 json");
 
-		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
+		const reopened = createRoastDraftStore({
+			dataRoot: dir,
+			logger,
+			subscriptionIdOfUid: noLegacy,
+		});
 		await reopened.load();
 		expect(reopened.list()).toEqual([]);
 		// 还得能继续用,不是只读一个废墟。
@@ -148,7 +156,7 @@ describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
 		await writeFile(join(dir, "state", "roast-drafts.json"), JSON.stringify(records));
 		const debug = vi.fn();
 		const reopened = createRoastDraftStore({
-			dataDir: dir,
+			dataRoot: dir,
 			logger: { ...logger, debug },
 			subscriptionIdOfUid: (uid) => SUBS[uid],
 		});
@@ -259,7 +267,11 @@ describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
 			result: { subscriptionId: "ext-1", verdict: "v", score: 1, highlights: [], pushText: "" },
 		});
 		expect(d.subscriptionId).toBe("ext-1");
-		const reopened = createRoastDraftStore({ dataDir: dir, logger, subscriptionIdOfUid: noLegacy });
+		const reopened = createRoastDraftStore({
+			dataRoot: dir,
+			logger,
+			subscriptionIdOfUid: noLegacy,
+		});
 		await reopened.load();
 		expect(reopened.get(d.id)).toEqual(d);
 	});

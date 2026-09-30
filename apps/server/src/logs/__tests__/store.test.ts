@@ -77,7 +77,7 @@ const today = new Date().toISOString().slice(0, 10);
 describe("createLogStore — dispose final-flush(数据完整性)", () => {
 	it("ingest 后不等定时器,dispose 钩子 final flush 写出全部尾批", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "a", ts: `${today}T01:00:00.000Z` }));
 		store.ingest(entry({ msg: "b", ts: `${today}T01:00:01.000Z` }));
 		expect(await readDay(today)).toBe(""); // 还没 flush
@@ -90,7 +90,7 @@ describe("createLogStore — dispose final-flush(数据完整性)", () => {
 
 	it("满 MAX_BATCH 立即触发一次 flush(不等 1s 定时器)", async () => {
 		const { ctx } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		for (let i = 0; i < 100; i++)
 			store.ingest(entry({ msg: `n${i}`, ts: `${today}T02:00:00.000Z` }));
 		await vi.waitFor(async () => {
@@ -107,7 +107,7 @@ describe("createLogStore — 落盘的行格式(冻结)", () => {
 	// 循环引用的 args 换成 ["[unserializable]"] 而不是丢整行 —— 换写盘方式时这些一个字节都不许变。
 	it("一批日志(含循环引用 args、跨两天)落盘后逐字节不变", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		const loop: Record<string, unknown> = {};
 		loop.self = loop;
 		store.ingest(entry({ msg: "plain", ts: "2020-01-01T00:00:00.000Z" }));
@@ -146,7 +146,7 @@ describe("createLogStore — 落盘的行格式(冻结)", () => {
 		// 再来一批(下一个进程起的新 store,上面那个最终落盘后已经关门):追加在原有内容之后,不覆盖、不多空行。
 		const next = makeCtx();
 		const store2 = createLogStore({
-			dataDir,
+			hostRoot: dataDir,
 			serviceCtx: next.ctx,
 			logger: makeLogger(),
 		});
@@ -162,7 +162,7 @@ describe("createLogStore — 落盘的行格式(冻结)", () => {
 describe("createLogStore — ingest 无条件 + query", () => {
 	it("store 不再有 floor:debug/info/warn/error 全部照写(过滤已上移 fanOut)", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ level: "debug", msg: "DBG", ts: `${today}T03:00:00.000Z` }));
 		store.ingest(entry({ level: "info", msg: "INF", ts: `${today}T03:00:01.000Z` }));
 		store.ingest(entry({ level: "warn", msg: "WRN", ts: `${today}T03:00:02.000Z` }));
@@ -179,7 +179,7 @@ describe("createLogStore — ingest 无条件 + query", () => {
 
 	it("query 新→旧、封顶 500、未刷 buffer 也可见", async () => {
 		const { ctx } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "old", ts: `${today}T05:00:00.000Z` }));
 		store.ingest(entry({ msg: "new", ts: `${today}T05:00:01.000Z` }));
 		// 没 flush,仅在 buffer 里。
@@ -191,7 +191,7 @@ describe("createLogStore — ingest 无条件 + query", () => {
 
 	it("query day 过滤:只回该天文件", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "d1", ts: "2020-01-01T00:00:00.000Z" }));
 		store.ingest(entry({ msg: "d2", ts: "2020-01-02T00:00:00.000Z" }));
 		await fireDispose();
@@ -206,7 +206,7 @@ describe("createLogStore — 最终落盘等在途的那次、写完再关门", 
 
 	it("在途的 flush 还没落盘时关停:返回以后在途那批与之后进来的条目都已在盘上", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "在途", ts: `${today}T06:00:00.000Z` }));
 		storageWriteGate.hold();
 		void store.flush(); // 定时器那一发:批已取走、卡在写盘上
@@ -229,7 +229,7 @@ describe("createLogStore — 最终落盘等在途的那次、写完再关门", 
 
 	it("最终落盘之后关门:再来的条目不缓冲、不写盘", async () => {
 		const { ctx, fireDispose } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "关门前", ts: `${today}T07:00:00.000Z` }));
 		await fireDispose();
 		const before = await readDay(today);
@@ -254,7 +254,7 @@ describe("createLogStore — 后台落盘登记进 track", () => {
 
 	it("定时落盘:写落盘之后它才落定", async () => {
 		const { ctx, tracked, fireTimer } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		store.ingest(entry({ msg: "timer-batch", ts: `${today}T03:00:00.000Z` }));
 		storageWriteGate.hold();
 
@@ -271,7 +271,7 @@ describe("createLogStore — 后台落盘登记进 track", () => {
 
 	it("满 MAX_BATCH 触发的落盘同样登记", async () => {
 		const { ctx, tracked } = makeCtx();
-		const store = createLogStore({ dataDir, serviceCtx: ctx, logger: makeLogger() });
+		const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger: makeLogger() });
 		storageWriteGate.hold();
 
 		for (let i = 0; i < 100; i++)
@@ -293,7 +293,7 @@ describe("createLogStore — 后台落盘登记进 track", () => {
 		it("落盘失败被接住:登记进去的这件事不拒,记一条 warn,这一批丢掉", async () => {
 			const { ctx, tracked, fireTimer } = makeCtx();
 			const logger = makeLogger();
-			const store = createLogStore({ dataDir, serviceCtx: ctx, logger });
+			const store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger });
 			store.ingest(entry({ msg: "lost" }));
 
 			fireTimer();
@@ -311,7 +311,7 @@ describe("createLogStore — 后台落盘登记进 track", () => {
 			logger.warn.mockImplementation((msg: string) => {
 				store?.ingest(entry({ level: "warn", name: "log-store", msg }));
 			});
-			store = createLogStore({ dataDir, serviceCtx: ctx, logger });
+			store = createLogStore({ hostRoot: dataDir, serviceCtx: ctx, logger });
 			store.ingest(entry({ msg: "first" }));
 
 			fireTimer();

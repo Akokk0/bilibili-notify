@@ -66,8 +66,8 @@ function start(days: number, intervalMs?: number) {
 		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: {
 			getGlobals: () => ({ app: { logRetentionDays: days } }),
-			bootstrap: { dataDir },
 		} as never,
+		hostRoot: dataDir,
 		logger,
 		intervalMs,
 	});
@@ -152,8 +152,8 @@ describe("startLogRetention", () => {
 				getGlobals: () => {
 					throw new Error("boom");
 				},
-				bootstrap: { dataDir },
 			} as never,
+			hostRoot: dataDir,
 			logger,
 		});
 

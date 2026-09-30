@@ -18,7 +18,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import { type BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
@@ -109,6 +108,7 @@ import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import { historyRecordFromSend } from "./push-history.js";
+import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
@@ -198,6 +198,8 @@ export interface CreateEnginesOptions {
 	 * runtime constructs the parent context once at boot.
 	 */
 	serviceCtx: NodeServiceContext;
+	/** 数据根(`AppRuntime.dataRoot`):背景图资产与轮换游标住在它底下。 */
+	dataRoot: string;
 	/**
 	 * 自带字体的读取口(`AppRuntime.loadFontFace`)。刻意由外面传进来而不是自建:
 	 * 缓存里留的就是那条几十兆的 `@font-face`,建两个就在堆里存两遍。
@@ -478,7 +480,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 读盘解析(见 `skin/knob-assets.ts`)。这里不再喂那两样。
 				cardSkinKnobs: globals().defaults.cardSkinKnobs,
 			},
-			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
+			resolveAsset: (id) => readCardBgDataUrl(opts.dataRoot, id),
 			resolveFontFace: loadFontFace,
 			// 皮肤库那三口(接线层给);没给就是「只有内置默认皮肤」。
 			resolveCardSkin: opts.cardSkins?.get,
@@ -493,10 +495,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	}
 
 	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
-	// 游标按 `uid:kind` 独立,落盘 `<dataDir>/card-bg-cursors.json`,重启续接不归零。
+	// 游标按 `uid:kind` 独立,落盘 `<dataRoot>/card-bg-cursors.json`,重启续接不归零。
 	// pick 在推送点(room-session / DynamicEngine)同步推进;脏标记驱动定时 flush,避免每
 	// 推送写盘。注入给两个引擎。
-	const cursorFile = join(opts.configStore.bootstrap.dataDir, "card-bg-cursors.json");
+	const cursorFile = dataPath(opts.dataRoot, "card-bg-cursors.json");
 	const loadCursors = (): Record<string, number> => {
 		try {
 			const parsed: unknown = JSON.parse(readFileSync(cursorFile, "utf8"));
@@ -520,10 +522,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 轮换前过滤盘上已不存在的资产(配置里的悬空引用):死条目不占游标位、不会渲染成
 	// 原封面;全悬空返回 undefined → 推送点静态兜底。今天只剩直播封面在轮 —— 卡片背景图
 	// 那条链 2026-09-20 删掉(背景图归皮肤的 `image` 旋钮)。
-	const pickExistingCardBg = makeExistingCardBgPicker(
-		opts.configStore.bootstrap.dataDir,
-		cardBgRotator.pick,
-	);
+	const pickExistingCardBg = makeExistingCardBgPicker(opts.dataRoot, cardBgRotator.pick);
 
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid);

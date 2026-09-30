@@ -37,6 +37,7 @@ import {
 } from "@bilibili-notify/internal/constants";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import type { z } from "zod";
+import { dataPath } from "../runtime/roots.js";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
@@ -46,13 +47,13 @@ import { ConfigValidationError } from "./validation-error.js";
  * ConfigStore — central runtime config holder for the standalone end.
  *
  * Stage 2.2: implements the runtime-write layer for globals / subscriptions /
- * targets, persisted as JSON under `<dataDir>/state/` with atomic-rename writes.
+ * targets, persisted as JSON under `<dataRoot>/state/` with atomic-rename writes.
  * Every successful write emits `'config-changed'` on the MessageBus carrying the
  * affected scope. A per-scope FIFO queue serializes concurrent writes so two
  * PATCHes on the same scope can never interleave their read-modify-write pair.
  *
  * Secrets layer: when a `SecretStore` is injected, the AI apiKey is lifted out
- * of `globals.json` into `<dataDir>/secrets/config-secrets.enc` (AES-256-GCM via
+ * of `globals.json` into `<dataRoot>/secrets/config-secrets.enc` (AES-256-GCM via
  * the shared `KeyProvider`) on first `load()`; the on-disk globals are scrubbed
  * while `this.globals` keeps the real value so engines/routes see it unchanged.
  * Cookie/WBI secrets stay inside `@bilibili-notify/storage`, sharing the same
@@ -146,9 +147,11 @@ export interface ConfigStore {
 
 export interface CreateConfigStoreOptions {
 	bootstrap: BootstrapConfig;
+	/** 数据根:设置、订阅、连接、目标这些 JSON 住在它底下的 `state/`。 */
+	dataRoot: string;
 	bus: MessageBus;
 	serviceCtx: ServiceContext;
-	/** Where globals/subs/targets JSON files live. Defaults to `<bootstrap.dataDir>/state`. */
+	/** Where globals/subs/targets JSON files live. Defaults to `<dataRoot>/state`. */
 	stateDir?: string;
 	/**
 	 * Encrypted bag for secret fields (currently `defaults.ai.apiKey`). When
@@ -799,7 +802,7 @@ class NodeConfigStore implements ConfigStore {
 		this.bootstrap = opts.bootstrap;
 		this.bus = opts.bus;
 		this.serviceCtx = opts.serviceCtx;
-		this.stateDir = opts.stateDir ?? join(opts.bootstrap.dataDir, "state");
+		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, "state");
 		this.secretStore = opts.secretStore;
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();

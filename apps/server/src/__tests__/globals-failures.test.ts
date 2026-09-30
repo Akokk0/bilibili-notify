@@ -37,7 +37,7 @@ describe("PATCH /api/globals 的失败", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			commands: commands as never,
 			puppeteer: puppeteer as never,
 		});

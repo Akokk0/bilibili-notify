@@ -24,7 +24,7 @@ let store: HistoryStore;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-hist-format-"));
 	store = createHistoryStore({
-		dataDir,
+		dataRoot: dataDir,
 		bus: createNodeMessageBus(),
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	});

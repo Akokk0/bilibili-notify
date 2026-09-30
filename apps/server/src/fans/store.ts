@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 import { appendJsonl } from "@bilibili-notify/storage";
+import { dataPath } from "../runtime/roots.js";
 
 /**
  * 按订阅分文件的 fans 时序持久化。
@@ -55,16 +56,16 @@ export interface FansStore {
 	drop(key: string): Promise<void>;
 }
 
-/** 粉丝时序住的目录(相对 dataDir)。开机迁移认的也是这一处。 */
+/** 粉丝时序住的目录(数据根下的一级项)。开机迁移认的也是这一处。 */
 export const FANS_DIR = "fans";
 
 export interface CreateFansStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 }
 
 export function createFansStore(opts: CreateFansStoreOptions): FansStore {
-	const root = join(opts.dataDir, FANS_DIR);
+	const root = dataPath(opts.dataRoot, FANS_DIR);
 	let ensured = false;
 
 	async function ensureRoot(): Promise<void> {

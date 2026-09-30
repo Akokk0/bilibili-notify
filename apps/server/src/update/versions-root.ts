@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { hostPath } from "../runtime/roots.js";
 
 /**
  * 已装载荷放在哪 —— `<dataDir>/versions`。
@@ -66,15 +67,15 @@ export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootInput): st
 }
 
 /**
- * 已装载荷放在 `dataDir` 的哪个子目录下。
+ * 已装载荷放在宿主根(就是 `dataDir`)的哪个子目录下。
  *
  * 服务端(index.ts,dataDir 由 loader 算好)和 boot(自己解 dataDir)都得回答这一问,
  * 而**这段路径没有任何理由分两处写**:上面那份刻意的重实现只覆盖 `dataDir` 的优先级
  * (boot 加载不了 zod),不覆盖这一段。写岔了的症状与 dataDir 写岔了完全一样 ——
  * 服务端装到 A 目录、boot 去 B 目录找,两边都不报错。
  */
-export function versionsRootIn(dataDir: string): string {
-	return resolve(dataDir, "versions");
+export function versionsRootIn(hostRoot: string): string {
+	return resolve(hostPath(hostRoot, "versions"));
 }
 
 export function resolveVersionsRoot(input: ResolveVersionsRootInput): string {

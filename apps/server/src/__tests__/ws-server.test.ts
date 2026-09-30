@@ -178,7 +178,12 @@ describe("WS server", () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ws-test-"));
 		serviceCtx = createNodeServiceContext({ name: "ws-test", level: "fatal", pretty: false });
 		bus = createNodeMessageBus();
-		store = createConfigStore({ bootstrap: makeBootstrap(dataDir), bus, serviceCtx });
+		store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx,
+		});
 		await store.load();
 		const started = await startHttpServer();
 		httpServer = started.server;
@@ -435,7 +440,12 @@ describe("WS server heartbeat", () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-ws-hb-"));
 		const serviceCtx = createNodeServiceContext({ name: "hb", level: "fatal", pretty: false });
 		const bus = createNodeMessageBus();
-		const store = createConfigStore({ bootstrap: makeBootstrap(dataDir), bus, serviceCtx });
+		const store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx,
+		});
 		await store.load();
 		const { server, port } = await startHttpServer();
 		const wsServer = createWsServer({
@@ -472,7 +482,12 @@ describe("WS server heartbeat", () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-ws-hb2-"));
 		const serviceCtx = createNodeServiceContext({ name: "hb2", level: "fatal", pretty: false });
 		const bus = createNodeMessageBus();
-		const store = createConfigStore({ bootstrap: makeBootstrap(dataDir), bus, serviceCtx });
+		const store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx,
+		});
 		await store.load();
 		const { server, port } = await startHttpServer();
 		const wsServer = createWsServer({

@@ -53,10 +53,9 @@ async function makeDeps(
 ) {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-chatimg-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-	const conversationStore = createConversationStore({ dataDir, logger });
+	const conversationStore = createConversationStore({ dataRoot: dataDir, logger });
 	const deps = {
 		store: {
-			bootstrap: { dataDir },
 			getGlobals: () => ({
 				defaults: {
 					ai: {
@@ -85,6 +84,7 @@ async function makeDeps(
 			getSubscriptions: () => [],
 		},
 		runtime: {
+			dataRoot: dataDir,
 			serviceCtx: { logger },
 			conversationStore,
 			engines: {
@@ -135,7 +135,7 @@ describe("发图 — 主模型自己就支持多模态", () => {
 		// 不支持时才填」)。
 		const { app, deps } = await makeDeps({ enableVision: true, visionModel: "" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -154,7 +154,7 @@ describe("发图 — 主模型自己就支持多模态", () => {
 			visionModel: "",
 		});
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -167,7 +167,7 @@ describe("发图 — 主模型自己就支持多模态", () => {
 	it("但配了视觉副模型就照常放行 —— 副模型正是给 DeepSeek 这种主力准备的", async () => {
 		const { app, deps } = await makeDeps({ provider: "deepseek", visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -180,7 +180,7 @@ describe("发图 — 两条路都没开", () => {
 	it("明确拒绝并指向那两个设置,绝不静默吞掉", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -211,7 +211,7 @@ describe("发图 — 配了视觉模型", () => {
 	it("交给模型的是 base64 data URL,不是本地链接", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -224,7 +224,7 @@ describe("发图 — 配了视觉模型", () => {
 	it("非法 id 与盘上不存在的 id 都不混进去", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const real = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const real = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		await chat(app, id, {
 			message: "看看",
@@ -239,7 +239,7 @@ describe("发图 — 配了视觉模型", () => {
 		const id = await newConv(app);
 		const imgs: string[] = [];
 		for (let i = 0; i < 5; i++) {
-			imgs.push(await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png"));
+			imgs.push(await saveChatImage(deps.runtime.dataRoot, PNG, "image/png"));
 		}
 
 		const res = await chat(app, id, { message: "看看", images: imgs });
@@ -252,7 +252,7 @@ describe("发图 — 配了视觉模型", () => {
 	it("图 id 落进消息,重开会话还看得见", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 
 		await chat(app, id, { message: "这是什么", images: [img] });
 
@@ -273,7 +273,7 @@ describe("接着聊 — 上一次的图捎上", () => {
 	it("这一问没带图、历史里有 → 把最近那次的图捎上", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "这是什么", images: [img] });
 
 		H.lastImageUrls = null;
@@ -287,7 +287,7 @@ describe("接着聊 — 上一次的图捎上", () => {
 		// 落盘要如实:记成带了图,删会话时的图片回收、以及重开会话的缩略图都会跟着错。
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "这是什么", images: [img] });
 		await chat(app, id, { message: "接着说" });
 
@@ -302,9 +302,9 @@ describe("接着聊 — 上一次的图捎上", () => {
 		// 还要多付一份钱。
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const older = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const older = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "这是什么", images: [older] });
-		const newer = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const newer = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "那这张呢", images: [newer] });
 
 		expect(H.lastImageUrls).toHaveLength(1);
@@ -313,8 +313,8 @@ describe("接着聊 — 上一次的图捎上", () => {
 	it("只捎**最近**那一次 —— 不是把整段对话的图全端上来", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const a = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
-		const b = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const a = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
+		const b = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "第一张", images: [a] });
 		await chat(app, id, { message: "第二张", images: [b] });
 
@@ -336,25 +336,25 @@ describe("删会话 — 图跟着走", () => {
 	it("删掉带图的会话,它的图从磁盘上消失", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const id = await newConv(app);
-		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const img = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, id, { message: "这是什么", images: [img] });
 
 		await app.request(`/conversations/${id}`, { method: "DELETE" });
 
-		expect(await readdir(chatImageDir(deps.store.bootstrap.dataDir))).toEqual([]);
+		expect(await readdir(chatImageDir(deps.runtime.dataRoot))).toEqual([]);
 	});
 
 	it("删别的会话不误伤本会话的图", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
 		const keep = await newConv(app);
 		const drop = await newConv(app);
-		const keepImg = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
-		const dropImg = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const keepImg = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
+		const dropImg = await saveChatImage(deps.runtime.dataRoot, PNG, "image/png");
 		await chat(app, keep, { message: "留着", images: [keepImg] });
 		await chat(app, drop, { message: "删掉", images: [dropImg] });
 
 		await app.request(`/conversations/${drop}`, { method: "DELETE" });
 
-		expect(await readdir(chatImageDir(deps.store.bootstrap.dataDir))).toEqual([keepImg]);
+		expect(await readdir(chatImageDir(deps.runtime.dataRoot))).toEqual([keepImg]);
 	});
 });

@@ -9,6 +9,7 @@ import {
 	type ExtensionManifest,
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
+import { dataPath } from "../runtime/roots.js";
 import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
 
 /**
@@ -28,8 +29,8 @@ import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
  * 🔴 **刻意不在 `<dataDir>/versions/` 底下**:那个目录归自主升级管,`pruneOldVersions`
  * 只留当前 + 上一版,会**主动删掉不在名单里的目录** —— 拓展装进去等于下次升级被清掉。
  */
-export function extensionsRootIn(dataDir: string): string {
-	return resolve(dataDir, "extensions");
+export function extensionsRootIn(dataRoot: string): string {
+	return resolve(dataPath(dataRoot, "extensions"));
 }
 
 /** 拓展包里**必需**那两个文件的名字 —— 清单 + 代码(ADR-0012 决策 8)。 */

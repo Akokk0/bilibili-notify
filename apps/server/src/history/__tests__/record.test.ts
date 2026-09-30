@@ -34,7 +34,7 @@ beforeEach(async () => {
 	bus.on("history-recorded", (e) => recorded.push(e));
 	bus.on("history-updated", (e) => updated.push(e));
 	store = createHistoryStore({
-		dataDir,
+		dataRoot: dataDir,
 		bus,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	});

@@ -47,12 +47,12 @@ function makeDeps(opts: {
 }): RouteDeps {
 	return {
 		runtime: {
+			dataRoot: opts.dataDir,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
 		store: {
-			bootstrap: { dataDir: opts.dataDir },
 			getGlobals: () => ({
 				defaults: {
 					cardStyle: {

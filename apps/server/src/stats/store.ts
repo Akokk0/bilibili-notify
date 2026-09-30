@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
+import { dataPath } from "../runtime/roots.js";
 import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
 
 /**
@@ -166,24 +167,27 @@ function readFramePeak(peak: unknown): number | undefined | "absent" {
 	return "absent";
 }
 
-/** 两类文件各住的目录(相对 dataDir)。开机迁移认的也是这两处,别各写一份。 */
-export const STATS_DYN_DIR = join("stats", "dyn");
-export const STATS_LIVE_DIR = join("stats", "live");
+/**
+ * 两类文件各住的目录(数据根下的路径段,展开进 `dataPath`)。开机迁移认的也是这两处,别各写一份。
+ * 写成元组而不是拼好的串,是为了让第一段能被 `dataPath` 的类型认出是目录表里的键。
+ */
+export const STATS_DYN_DIR = ["stats", "dyn"] as const;
+export const STATS_LIVE_DIR = ["stats", "live"] as const;
 /** 「在记」住的目录。从一开始就按订阅 id 命名,开机迁移不认它。 */
-export const STATS_SEEN_DIR = join("stats", "seen");
+export const STATS_SEEN_DIR = ["stats", "seen"] as const;
 
 export interface CreateStatsStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
 }
 
 export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
-	const statsRoot = join(opts.dataDir, "stats");
-	const dynRoot = join(opts.dataDir, STATS_DYN_DIR);
-	const liveRoot = join(opts.dataDir, STATS_LIVE_DIR);
-	const seenRoot = join(opts.dataDir, STATS_SEEN_DIR);
+	const statsRoot = dataPath(opts.dataRoot, "stats");
+	const dynRoot = dataPath(opts.dataRoot, ...STATS_DYN_DIR);
+	const liveRoot = dataPath(opts.dataRoot, ...STATS_LIVE_DIR);
+	const seenRoot = dataPath(opts.dataRoot, ...STATS_SEEN_DIR);
 	const sinceFile = join(statsRoot, "since");
 	const now = opts.now ?? (() => new Date());
 	let ensured = false;

@@ -23,8 +23,8 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 function mount(dataDir: string) {
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 	const deps = {
-		store: { bootstrap: { dataDir } },
-		runtime: { serviceCtx: { logger } },
+		store: {},
+		runtime: { dataRoot: dataDir, serviceCtx: { logger } },
 	} as unknown as RouteDeps;
 	// 与 app.ts 一样:路由挂在带全局出错处理的父实例下,抛出来的错才会被接住。
 	const app = new Hono();
@@ -78,7 +78,7 @@ describe("POST /api/ai/assets", () => {
 	});
 
 	it("磁盘写失败是环境的事 → 503 + 固定一句话;带路径的原话进日志,不回给客户端", async () => {
-		// dataDir 指到一个普通文件上:`<file>/assets/chat` 建不出来,抛的是带路径的 ENOTDIR。
+		// dataRoot 指到一个普通文件上:`<file>/assets/chat` 建不出来,抛的是带路径的 ENOTDIR。
 		const dir = await mkdtemp(join(tmpdir(), "bn-chatassets-"));
 		const notADir = join(dir, "i-am-a-file");
 		await writeFile(notADir, "x");

@@ -10,11 +10,12 @@ import {
 } from "@bilibili-notify/contract";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
+import { dataPath } from "../runtime/roots.js";
 
 /**
  * 女仆 AI 聊天的会话持久化 —— dashboard 聊天侧栏「最近」的数据源。
  *
- * 文件布局:`<dataDir>/ai/chat/<id>.json`,一会话一个文件,整体读写。
+ * 文件布局:`<dataRoot>/ai/chat/<id>.json`,一会话一个文件,整体读写。
  *
  * 与 FansStore / StatsStore 的 append-only jsonl **刻意不同**。那两者是不断
  * 追加的时序采样,只增不改;会话不是 —— 标题会补、旧消息会被裁掉,都是对
@@ -193,7 +194,7 @@ export interface ConversationStore {
 }
 
 export interface ConversationStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 	/** 单会话保留的最大消息条数,超出丢最旧的。默认 200。 */
 	maxMessages?: number;
@@ -240,10 +241,10 @@ const DEFAULT_MAX_CONVERSATIONS = 50;
 const WRITE_KEY = "conversations";
 
 export function createConversationStore(opts: ConversationStoreOptions): ConversationStore {
-	const { dataDir, logger } = opts;
+	const { dataRoot, logger } = opts;
 	const maxMessages = opts.maxMessages ?? DEFAULT_MAX_MESSAGES;
 	const maxConversations = opts.maxConversations ?? DEFAULT_MAX_CONVERSATIONS;
-	const dir = join(dataDir, "ai", "chat");
+	const dir = dataPath(dataRoot, "ai", "chat");
 	const fileOf = (id: string) => join(dir, `${encodeURIComponent(id)}.json`);
 
 	/**

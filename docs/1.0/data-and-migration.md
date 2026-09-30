@@ -16,7 +16,7 @@
 - **自愈会无条件退回镜像 / 安装包自带的版本**：1.0 起不来就跑回 0.12，0.12 必须还能读自己的数据。
 - **用户会主动回退**。已发出去的 0.x 之间回退报错这类问题修不了，但 1.0 往后不能再犯。
 
-「写新目录」「迁移前备份」「全新开始挪到一边」原本是三套各管一段的写法，收成一种机制。复用应用内更新现成的版本目录、比版本、保留规则（version-dirs / compareVersions / prune）。代码里把 dataDir 拆成「宿主根」与「数据根」两个名字，versions-root 的对拍测试跟着扩。
+「写新目录」「迁移前备份」「全新开始挪到一边」原本是三套各管一段的写法，收成一种机制。复用应用内更新现成的版本目录、比版本、保留规则（version-dirs / compareVersions / prune）。代码里把 dataDir 拆成「宿主根」与「数据根」两个名字（⑤ 已落：`apps/server/src/runtime/roots.ts`，`AppRuntime.hostRoot` / `dataRoot`）。宿主根就是 dataDir，boot 与服务端的 `versions/` 都经 `versionsRootIn` → `hostPath`，所以对拍测试钉住 dataDir 的解析就够；要扩的是「两个根分开以后没有传混」，这条随 ⑥ 补（两个根都是 `string`，⑤ 里它们是同一个目录，传混了看不出来）。
 
 ## 目录布局
 
@@ -148,7 +148,7 @@
 
 **链接与复制**：迁移时任何链接失败都回落复制（不只是跨分区）。追加写的 jsonl 一律复制、不做硬链接——否则新版往里追加会改到旧代的文件。
 
-**守卫**（守卫 13）：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；重推原件 `RepushSnapshot` 的每种载荷 kind 与每个字段都要有去向；全仓对数据根的 `join(dataDir, …)` 前缀都必须在上面的目录表里。漏一个就红。另有一条迁移耗时测试，用 365 天合成数据跑。
+**守卫**（守卫 13）：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；重推原件 `RepushSnapshot` 的每种载荷 kind 与每个字段都要有去向；全仓对数据根的 `join(dataDir, …)` 前缀都必须在上面的目录表里。漏一个就红。后半 ⑤ 先落了：代码里的目录表（`runtime/roots.ts` 的 `DATA_ROOT_LAYOUT`）现在登记的是 0.x 的布局（第 0 代），兼作迁移的输入清单，⑥ 换成上面的代布局；前缀由 `dataPath` 的类型守，`apps/server/src/__tests__/data-roots.test.ts` 钉住没人绕开它自己拼、配置键 `dataDir` 只在边界上出现、宿主表的 `logs` 与桌面壳写死的那处对得上。另有一条迁移耗时测试，用 365 天合成数据跑。
 
 ### 首访询问页
 

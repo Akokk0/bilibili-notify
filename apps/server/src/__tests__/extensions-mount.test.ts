@@ -38,7 +38,7 @@ describe("拓展挂载点接线", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 		expect((await app.request("/ext/bridge/x")).status).toBe(404);
 		await runtime.dispose();
@@ -50,7 +50,7 @@ describe("拓展挂载点接线", () => {
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		mounts.mount("bridge", async () => new Response("桥在这儿"));
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				mounts,
 				loaded: () => [],
@@ -70,7 +70,7 @@ describe("拓展挂载点接线", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				status: () => undefined,
 				pushSource: () => undefined,
@@ -120,7 +120,7 @@ describe("拓展动作的接线", () => {
 		await runtime.configStore.load();
 		const runAction = vi.fn(async () => ({ ok: true as const }));
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
@@ -186,7 +186,7 @@ describe("解析门的接线", () => {
 			}),
 		);
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: extensionsWith(lookup),
 		});
 		const res = await app.request("/api/ext/douyin/lookup?q=%E6%8A%96%E9%9F%B3");
@@ -208,7 +208,7 @@ describe("解析门的接线", () => {
 			}),
 		);
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			basicAuthCredentials: creds,
 			sessionCodec: createSessionCodec({
 				keyMaterial: Buffer.from("test-key-material-32-bytes-long!!", "utf8"),
@@ -237,7 +237,7 @@ describe("只重载的接线", () => {
 		await runtime.configStore.load();
 		const swap = vi.fn(async () => {});
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [
@@ -276,7 +276,7 @@ describe("面板上传装拓展的接线", () => {
 		const rescan = vi.fn(async () => {});
 		const root = join(dataDir, "extensions");
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
@@ -330,7 +330,7 @@ describe("面板上传装拓展的接线", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 		const body = new FormData();
 		body.append("file", new File([new Uint8Array()], "x.zip"));

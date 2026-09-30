@@ -25,6 +25,7 @@ import {
 	PushKindSchema,
 } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
+import { dataPath } from "../runtime/roots.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { latestByIdentity } from "./repush.js";
 import type { RepushStore } from "./repush-store.js";
@@ -187,7 +188,7 @@ const OPEN_ROWS_CAP = 2000;
 const WRITE_KEY = "history";
 
 export interface CreateHistoryStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	bus: MessageBus;
 	logger: Logger;
 	/**
@@ -198,7 +199,7 @@ export interface CreateHistoryStoreOptions {
 }
 
 export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStore {
-	const root = join(opts.dataDir, "history");
+	const root = dataPath(opts.dataRoot, "history");
 	const imgRoot = join(root, "img");
 	/** 还可能被追加的行,键 = `${pushId}|${targetId}`;满了丢最久没碰的。 */
 	const open = new RecencyTable<HistoryEntry>(OPEN_ROWS_CAP);
@@ -833,8 +834,8 @@ export function mimeToExt(mime: string): string {
 }
 
 /** Internal helper used by retention.ts. */
-export async function listDayFiles(dataDir: string): Promise<string[]> {
-	const root = join(dataDir, "history");
+export async function listDayFiles(dataRoot: string): Promise<string[]> {
+	const root = dataPath(dataRoot, "history");
 	try {
 		const all = await readdir(root);
 		return all.filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f));
@@ -853,8 +854,8 @@ export async function listDayFiles(dataDir: string): Promise<string[]> {
  * 顺序是**先收集、再删 jsonl、最后删图**:中途崩了顶多剩几张孤儿图(与从前同样的下场),
  * 反过来则会留下一份图全裂的历史。图删不掉不算失败 —— 它是附属物。
  */
-export async function deleteDayFile(dataDir: string, fileName: string): Promise<void> {
-	const root = join(dataDir, "history");
+export async function deleteDayFile(dataRoot: string, fileName: string): Promise<void> {
+	const root = dataPath(dataRoot, "history");
 	const path = join(root, fileName);
 	const images = await collectImageRefs(path);
 	await unlink(path);

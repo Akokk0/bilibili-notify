@@ -60,6 +60,7 @@ import { createUpdateRoute } from "./routes/update.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
+import { dataPath } from "./runtime/roots.js";
 import { SkinStore } from "./skins/store.js";
 import type { UpdateService } from "./update/service.js";
 
@@ -87,7 +88,7 @@ export interface CreateAppOptions {
 	 * 发生的拓扑:面板装得进、列得出,而出图那头拿的仍是宿主传给引擎的那一家,于是
 	 * 「装了新皮肤、推送不变」,**且症状完全静默**。生产侧一直传了,所以没出过真事故;
 	 * 2026-09-20 主人拍板改成必填,把那个口子焊死。没有店可传的宿主用
-	 * {@link createCardSkinStore} 按 `<dataDir>` 约定开一家。
+	 * {@link createCardSkinStore} 按 `<dataRoot>` 约定开一家。
 	 */
 	cardSkins: {
 		store: CardSkinStore;
@@ -97,7 +98,7 @@ export interface CreateAppOptions {
 		clearFallbacks?: () => void;
 	};
 	/**
-	 * 开机装载起来的拓展。在 `index.ts` 组装(那里才知道 `<dataDir>`)。
+	 * 开机装载起来的拓展。在 `index.ts` 组装(那里才知道 `<dataRoot>`)。
 	 *
 	 * `mounts` 是那条动态挂载点的总入口,`loaded` 是拓展页要列的那份名单。不给就当这台
 	 * 机器一个拓展都没装:`/ext/*` 一律 404,拓展页空着。
@@ -266,7 +267,7 @@ export interface CreateAppOptions {
 }
 
 /**
- * 按约定开一家卡片皮肤店:`<dataDir>/card-skins`。**这个目录名只声明在这一处** ——
+ * 按约定开一家卡片皮肤店:`<dataRoot>/card-skins`。**这个目录名只声明在这一处** ——
  * 宿主与测试共用它,两边各抄一份字面量迟早会漂。
  *
  * 目录叫 `card-skins` 而不是 `skins`:与隔壁 dashboard 皮肤分开 —— 两种包长得像
@@ -275,8 +276,8 @@ export interface CreateAppOptions {
  * ⚠️ 开一家**不等于**可以随手开:全进程只该有一家(见 `CreateAppOptions.cardSkins`)。
  * 这个函数是给「还没有店的那个宿主」用的,不是给已经有店的调用方再开一家。
  */
-export function createCardSkinStore(dataDir: string): CardSkinStore {
-	return new CardSkinStore({ dir: joinPath(dataDir, "card-skins") });
+export function createCardSkinStore(dataRoot: string): CardSkinStore {
+	return new CardSkinStore({ dir: dataPath(dataRoot, "card-skins") });
 }
 
 /**
@@ -399,12 +400,12 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	// 皮肤库一份两处用:`/api/skins` 是它的主场,聊天路由拿它挂 `create_skin`
 	// (「女仆,做套皮肤」)。两处必须是**同一个实例** —— 各 new 一个的话,内存
 	// 索引各存各的,聊天里刚做好的皮肤在皮肤页上要等到重启才出现。
-	const skinStore = new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") });
+	const skinStore = new SkinStore({ skinsDir: dataPath(runtime.dataRoot, "skins") });
 	// 技能库同样一份两处用:`/api/maid-skills` 是编辑器那一端,聊天路由拿它挂
 	// `load_skill`。盘上目录特意叫 `maid-skills` 而不是 `skills` —— 它跟隔壁的
 	// `skins` 只差一个字母,而这是主人要亲手往里放文件的地方。
 	const skillStore = new MaidSkillStore({
-		dir: joinPath(runtime.bootstrap.dataDir, "maid-skills"),
+		dir: dataPath(runtime.dataRoot, "maid-skills"),
 	});
 	app.route("/api/maid-skills", createMaidSkillsRoute({ skillStore }));
 	// 卡片皮肤库(ADR-0014)。**只用传进来的那一家**,这里不 `new`(理由见

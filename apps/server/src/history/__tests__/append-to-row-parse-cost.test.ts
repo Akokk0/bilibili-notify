@@ -46,7 +46,7 @@ const reads = (): number => vi.mocked(createReadStream).mock.calls.length;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-append-cost-"));
-	store = createHistoryStore({ dataDir, bus: createNodeMessageBus(), logger: logger() });
+	store = createHistoryStore({ dataRoot: dataDir, bus: createNodeMessageBus(), logger: logger() });
 	vi.mocked(createReadStream).mockClear();
 });
 afterEach(() => vi.restoreAllMocks());

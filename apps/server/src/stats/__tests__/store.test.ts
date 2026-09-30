@@ -35,7 +35,7 @@ let store: StatsStore;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-stats-"));
 	logger = makeLogger();
-	store = createStatsStore({ dataDir, logger });
+	store = createStatsStore({ dataRoot: dataDir, logger });
 });
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -241,28 +241,28 @@ describe("StatsStore — 「在记」(ADR-0020 决策 9 / 16)", () => {
 
 describe("StatsStore — 采集水位线", () => {
 	it("首次调用落盘「此刻」,之后恒定不动", async () => {
-		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(5)) });
+		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
 		expect(await s.recordingSince()).toBe(T(5));
 		// 时钟往前走,水位线不该跟着漂 —— 它记的是「从哪天开始记的」。
 		expect(await s.recordingSince()).toBe(T(5));
 	});
 
 	it("跨实例(重启)沿用同一条水位线,不被重启刷新", async () => {
-		const first = createStatsStore({ dataDir, logger, now: () => new Date(T(5)) });
+		const first = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
 		await first.recordingSince();
-		const restarted = createStatsStore({ dataDir, logger, now: () => new Date(T(9)) });
+		const restarted = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(9)) });
 		expect(await restarted.recordingSince()).toBe(T(5));
 	});
 
 	it("水位线文件损坏 → 重新落一个,不抛错也不返回坏值", async () => {
 		await mkdir(join(dataDir, "stats"), { recursive: true });
 		await writeFile(join(dataDir, "stats", "since"), "不是时间", "utf-8");
-		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(7)) });
+		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(7)) });
 		expect(await s.recordingSince()).toBe(T(7));
 	});
 
 	it("盘上就是裸的 ISO 串:不带引号、不带换行(读的一方 trim 后 Date.parse)", async () => {
-		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(5)) });
+		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
 		await s.recordingSince();
 		expect(await readFile(join(dataDir, "stats", "since"), "utf-8")).toBe(T(5));
 		// 目录里只有三个子目录与它,没有落下临时文件。
@@ -277,7 +277,7 @@ describe("StatsStore — 采集水位线", () => {
 	it("水位线写不进去 → 只 warn、这次按「此刻」算,不抛、不留临时文件", async () => {
 		// 占位:`since` 是个目录,读它报 EISDIR、写它也报 EISDIR。
 		await mkdir(join(dataDir, "stats", "since"), { recursive: true });
-		const s = createStatsStore({ dataDir, logger, now: () => new Date(T(7)) });
+		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(7)) });
 		expect(await s.recordingSince()).toBe(T(7));
 		expect(logger.warn.mock.calls.map((c) => String(c[0])).join("\n")).toContain(
 			"[stats-store] write since failed",

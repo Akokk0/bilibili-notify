@@ -64,7 +64,7 @@
 | ④b | 失败规矩落地（ADR-0026 决策 6）：`internal` 的标准码表、`Result` / `Failure` / `Issue`、`ok()` / `fail()`、`issuesFromZod`；服务端 `respondFailure` 与全局出错处理；非 2xx 与「做一件事回报结果」的回应、SSE 错误帧、WS 控制帧改形（现 `routes/subs.ts` 两处 B 站的码挪进 `upstreamCode`）；面板 `ApiError` 只解析一次、`errorMessage` 只认 `code` + `message`、删掉各处私有解析；守卫「错误体」（记账式）与「结果不手写」（棘轮）。盘上存的失败字段不动（决策 5） | ✅ 已落 |
 | ④c | `BiliEvents` → `BusEvents`，载荷一律具名对象（今天 3 个事件是位置参数、几个是裸 id 或数组）；contract 的 WS 事件表从它推导，面板 hook 去掉手写的类型断言；`log` 频道里日志行的字段不动（冻结格式）；事件载荷守卫（棘轮） | ✅ 已落 |
 | ④d | `/api/health` 进契约（`HealthResponse`、`ModuleState`），删 4 个恒为 `null` 的死字段（`/details` 里恒为 `null` 的与写死的 `history: { entries: 0 }` 一并删），面板 5 份私有的健康类型（4 份 `HealthSnapshot` 与重启的 `RestartProbe`）收成一份、4 处各写一遍的查询选项收成一份；面板把 contract 移进 `dependencies` | ✅ 已落 |
-| ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半） | |
+| ⑤ | 宿主根 / 数据根拆分 + 目录表（守卫 13 后半）：`runtime/roots.ts` 的两张表与带类型的 `hostPath` / `dataPath`，`AppRuntime` 上推一次 `hostRoot` / `dataRoot`，下游只认这两个名字；目录表登记的是第 0 代（0.x）的布局，也是 ⑥ 迁移的输入清单；`packages/storage` 不再自带缺省布局（三条路径由宿主给全） | ✅ 已落 |
 | ⑥ | 数据代、`.partial`、先 listen 再迁、第 0 步收编 0.x 升级链、订阅合一 + `Identity`、设置分段、身份唯一闸 + 守卫 9、守卫 12、B 站替身棘轮开 | |
 | ⑦ | 回退指纹与重迁 | |
 | ⑧ | 全新开始 + 首访页 API + 拒收 1.0 之前的备份 | |

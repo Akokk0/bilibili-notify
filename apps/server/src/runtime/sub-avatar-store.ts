@@ -15,9 +15,10 @@ import {
 } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
 import { z } from "zod";
+import { dataPath } from "./roots.js";
 
 /**
- * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataDir>/avatars/<订阅 id>.<png|jpeg|webp>`,面板从
+ * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataRoot>/avatars/<订阅 id>.<png|jpeg|webp>`,面板从
  * `/api/subs/<id>/avatar?v=<摘要>` 取(走面板鉴权;内容一变地址就变,浏览器不会拿旧缓存)。
  *
  * - 进来的有两条路:新建订阅时解析门候选带的位图 data URL(`SubscriptionAvatarSchema`:png / jpeg /
@@ -129,7 +130,7 @@ export interface SubAvatarStore {
 }
 
 export interface CreateSubAvatarStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 }
 
@@ -159,7 +160,7 @@ async function unlinkIfPresent(path: string): Promise<void> {
 const WRITE_KEY = "avatars";
 
 export function createSubAvatarStore(opts: CreateSubAvatarStoreOptions): SubAvatarStore {
-	const dir = join(opts.dataDir, "avatars");
+	const dir = dataPath(opts.dataRoot, "avatars");
 	const fileOf = (subId: string, ext: AvatarExt) => join(dir, `${subId}.${ext}`);
 
 	// 单键写道:同一条订阅的写 / 删 / 清扫不交错(新建时写一次、以后报资料再写,删订阅与之并发)。

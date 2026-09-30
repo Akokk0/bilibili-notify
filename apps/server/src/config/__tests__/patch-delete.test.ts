@@ -64,7 +64,12 @@ beforeEach(async () => {
 		dataDir,
 		logLevel: "info",
 	};
-	store = createConfigStore({ bootstrap: b, bus: makeBus(), serviceCtx: makeCtx() });
+	store = createConfigStore({
+		bootstrap: b,
+		dataRoot: dataDir,
+		bus: makeBus(),
+		serviceCtx: makeCtx(),
+	});
 	await store.load();
 });
 

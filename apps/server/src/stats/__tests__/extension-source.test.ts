@@ -85,7 +85,7 @@ const timers = {
 function boot(opts: { slowDiskMs?: number } = {}): World {
 	const now = () => new Date(clock);
 	const bus = createNodeMessageBus();
-	const real = createStatsStore({ dataDir, logger, now });
+	const real = createStatsStore({ dataRoot: dataDir, logger, now });
 	const delay = opts.slowDiskMs;
 	const store: typeof real =
 		delay === undefined
@@ -112,7 +112,7 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 	const recorder = createStatsRecorder({
 		bus,
 		store,
-		fans: createFansStore({ dataDir, logger }),
+		fans: createFansStore({ dataRoot: dataDir, logger }),
 		fansCron: () => fansCron,
 		logger,
 		now,
@@ -276,7 +276,8 @@ describe("记谁(决策 4)", () => {
 });
 
 /** 盘上配好的场次(读的人看到的样子)。 */
-const sessionsOnDisk = () => createStatsStore({ dataDir, logger }).listLiveSessions(SUB.id, "");
+const sessionsOnDisk = () =>
+	createStatsStore({ dataRoot: dataDir, logger }).listLiveSessions(SUB.id, "");
 
 describe("直播场次(决策 6)", () => {
 	it("开播事件开一场、下播关一场:开播时刻取事件的,结束时刻是下播到达那一刻", async () => {

@@ -9,6 +9,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
+import { dataPath } from "../runtime/roots.js";
 import { mimeToExt } from "./store.js";
 
 /**
@@ -126,13 +127,13 @@ export interface RepushStore {
 }
 
 export interface CreateRepushStoreOptions {
-	dataDir: string;
+	dataRoot: string;
 	logger: Logger;
 }
 
 export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
-	const root = join(opts.dataDir, "history", "repush");
-	const historyImgRoot = join(opts.dataDir, "history", "img");
+	const root = dataPath(opts.dataRoot, "history", "repush");
+	const historyImgRoot = dataPath(opts.dataRoot, "history", "img");
 
 	const dayOf = (ts: string): string => ts.slice(0, 10);
 	const dayDir = (ts: string): string => join(root, dayOf(ts));
@@ -341,9 +342,9 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 }
 
 /** 盘上现有哪些日子的原件 —— 保留期拿它对表。 */
-export async function listRepushDays(dataDir: string): Promise<string[]> {
+export async function listRepushDays(dataRoot: string): Promise<string[]> {
 	try {
-		const all = await readdir(join(dataDir, "history", "repush"));
+		const all = await readdir(dataPath(dataRoot, "history", "repush"));
 		return all.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
 	} catch {
 		return [];

@@ -49,7 +49,6 @@ afterEach(() => vi.restoreAllMocks());
 function makeStore(historyRetentionDays: number) {
 	return {
 		getGlobals: () => ({ app: { historyRetentionDays } }),
-		bootstrap: { dataDir },
 	};
 }
 
@@ -57,6 +56,7 @@ function start(days: number, intervalMs?: number, repush?: RepushStore) {
 	return startHistoryRetention({
 		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: makeStore(days) as never,
+		dataRoot: dataDir,
 		logger,
 		intervalMs,
 		repush,
@@ -65,7 +65,7 @@ function start(days: number, intervalMs?: number, repush?: RepushStore) {
 
 /** 造一份某一天的重推原件。 */
 async function seedDraft(day: string): Promise<void> {
-	const repush = createRepushStore({ dataDir, logger });
+	const repush = createRepushStore({ dataRoot: dataDir, logger });
 	await repush.append(`row-${day}`, day, [
 		{ payload: { kind: "text", text: "x" }, role: "main", reduced: { kind: "text" } },
 	]);
@@ -127,8 +127,8 @@ describe("startHistoryRetention — 登记进 track", () => {
 				getGlobals: () => {
 					throw new Error("boom");
 				},
-				bootstrap: { dataDir },
 			} as never,
+			dataRoot: dataDir,
 			logger,
 		});
 
@@ -184,7 +184,7 @@ describe("startHistoryRetention", () => {
 	it("旧日子的重推原件跟着日文件一起淘汰,今天的留着", async () => {
 		await seedDraft("2000-01-01");
 		await seedDraft(today);
-		start(30, undefined, createRepushStore({ dataDir, logger }));
+		start(30, undefined, createRepushStore({ dataRoot: dataDir, logger }));
 		await vi.waitFor(async () => {
 			const days = await listRepushDays(dataDir);
 			expect(days).not.toContain("2000-01-01");
@@ -194,7 +194,7 @@ describe("startHistoryRetention", () => {
 
 	it("days<=0:原件也整轮跳过", async () => {
 		await seedDraft("2000-01-01");
-		start(0, undefined, createRepushStore({ dataDir, logger }));
+		start(0, undefined, createRepushStore({ dataRoot: dataDir, logger }));
 		await new Promise((r) => setTimeout(r, 20));
 		expect(await listRepushDays(dataDir)).toContain("2000-01-01");
 	});

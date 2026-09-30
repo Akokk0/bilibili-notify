@@ -71,7 +71,7 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 			await runtime.configStore.updateGlobals((globals) => ({ ...globals, extensions: seed }));
 		}
 		const app = createApp(runtime, {
-			cardSkins: { store: createCardSkinStore(runtime.bootstrap.dataDir) },
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [entry(V2, "running")],

@@ -16,11 +16,13 @@ import { deleteDayFile, listDayFiles } from "./store.js";
 export interface RetentionRunnerOptions {
 	serviceCtx: ServiceContext;
 	store: ConfigStore;
+	/** 数据根:历史日文件与重推原件都在它底下。 */
+	dataRoot: string;
 	logger: Logger;
 	/** Tick interval (ms). Defaults to 6 hours. */
 	intervalMs?: number;
 	/**
-	 * 重推原件。**缺省自己建一个** —— 它没有内部状态,`dataDir` 这儿本来就有,
+	 * 重推原件。**缺省自己建一个** —— 它没有内部状态,`dataRoot` 这儿本来就有,
 	 * 于是「起 retention 时记得把 repush 传进来」这根会漏的线根本不存在。
 	 * 注入口只留给测试。
 	 */
@@ -54,13 +56,13 @@ async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
 	const cutoff = new Date();
 	cutoff.setUTCDate(cutoff.getUTCDate() - days);
 	const cutoffStr = cutoff.toISOString().slice(0, 10);
-	const files = await listDayFiles(opts.store.bootstrap.dataDir);
+	const files = await listDayFiles(opts.dataRoot);
 	let deleted = 0;
 	for (const f of files) {
 		const date = f.slice(0, 10);
 		if (date < cutoffStr) {
 			try {
-				await deleteDayFile(opts.store.bootstrap.dataDir, f);
+				await deleteDayFile(opts.dataRoot, f);
 				deleted++;
 			} catch (err) {
 				opts.logger.warn(`[history] failed to delete ${f}: ${String(err)}`);
@@ -70,11 +72,9 @@ async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
 	if (deleted > 0) {
 		opts.logger.info(`[history] retention dropped ${deleted} day file(s) older than ${cutoffStr}`);
 	}
-	const repush =
-		opts.repush ??
-		createRepushStore({ dataDir: opts.store.bootstrap.dataDir, logger: opts.logger });
+	const repush = opts.repush ?? createRepushStore({ dataRoot: opts.dataRoot, logger: opts.logger });
 	let draftDays = 0;
-	for (const day of await listRepushDays(opts.store.bootstrap.dataDir)) {
+	for (const day of await listRepushDays(opts.dataRoot)) {
 		if (day >= cutoffStr) continue;
 		try {
 			await repush.dropDay(day);

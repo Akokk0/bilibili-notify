@@ -126,6 +126,7 @@ export async function startStandaloneServer(
 	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
 	// 下面的 createAppRuntime 起,所以放在它前面;logger 此刻还没有,结果先留着,等它起来再记一行。
 	// 读不动 / 清不掉的地方清扫自己跳过、记进报告;万一它整个抛了也不挡开机:留下的只是些垃圾。
+	// 它扫整棵树,所以传宿主根;这时运行时还没建,宿主根就直接取配置键(建好之后一律读 `runtime.hostRoot`)。
 	const bootSweep = await sweepTempFiles(bootstrap.dataDir).then(
 		(report) => ({ report }) as const,
 		(error: unknown) => ({ error }) as const,
@@ -178,7 +179,7 @@ export async function startStandaloneServer(
 				`[storage] 开机清扫没做完(${bootSweep.error instanceof Error ? bootSweep.error.message : String(bootSweep.error)})—— 上次留下的临时文件可能还在,不影响启动`,
 			);
 		} else {
-			const swept = describeBootSweep(bootSweep.report, bootstrap.dataDir);
+			const swept = describeBootSweep(bootSweep.report, runtime.hostRoot);
 			if (swept.cleaned) log.info(swept.cleaned);
 			if (swept.skipped) log.warn(swept.skipped);
 		}
@@ -204,7 +205,7 @@ export async function startStandaloneServer(
 		// 引擎在下面 createEngines 才建)。HTTP 也要到最后才 serve。挪位置之前先看
 		// __tests__/stats-file-key-migration-boot-e2e.test.ts。
 		await migrateStatsFileKeys({
-			dataDir: bootstrap.dataDir,
+			dataRoot: runtime.dataRoot,
 			subscriptions: runtime.configStore.getSubscriptions(),
 			logger: log,
 		});
@@ -216,6 +217,7 @@ export async function startStandaloneServer(
 				serviceCtx: runtime.serviceCtx,
 				bus: runtime.bus,
 				bootstrap,
+				dataRoot: runtime.dataRoot,
 				keyProvider: runtime.keyProvider,
 				// 从 globals.app.healthCheckMinutes 计算初始 ms;后续 config-changed
 				// 会通过 engines.ts 调 flow.setHealthCheckMs 热更。
@@ -338,9 +340,9 @@ export async function startStandaloneServer(
 				process.exit(0);
 			}
 		};
-		// **唯一那个装载根**(`<dataDir>/extensions/`)。市场、装载器、面板上传装包、开发版
+		// **唯一那个装载根**(`<dataRoot>/extensions/`)。市场、装载器、面板上传装包、开发版
 		// devtools 认的是同一个目录 —— 算四遍等于给「拓展装在哪」留了四个改错的机会。
-		const extensionsRoot = extensionsRootIn(bootstrap.dataDir);
+		const extensionsRoot = extensionsRootIn(runtime.dataRoot);
 		// 拓展市场(ADR-0013):官方源与自主升级共用同一对信任公钥与同一份加速前缀;没有公钥的
 		// 构建(fork 出去自己构建的)就没有官方源,第三方源照用。
 		const marketplace = createMarketplace({
@@ -368,7 +370,7 @@ export async function startStandaloneServer(
 			imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
 			// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
 			// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
-			versionsRoot: versionsRootIn(bootstrap.dataDir),
+			versionsRoot: versionsRootIn(runtime.hostRoot),
 			nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
 			trustedKeys: TRUSTED_UPDATE_KEYS,
 			manifestUrls: UPDATE_MANIFEST_URLS,
@@ -486,7 +488,7 @@ export async function startStandaloneServer(
 		// 真正的代价不是那点 I/O:`init()` 开头一句 `index.clear()`,之后一串 await 才填满,
 		// 而出图那头 `get(id)` 是**同步**读同一个实例的索引 —— 这个窗口里撞上一次推送就回落
 		// 默认皮肤并记一笔 fallback(2026-09-19 审查)。
-		cardSkinStore = createCardSkinStore(bootstrap.dataDir);
+		cardSkinStore = createCardSkinStore(runtime.dataRoot);
 		await cardSkinStore.ensureReady();
 		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
@@ -502,6 +504,7 @@ export async function startStandaloneServer(
 
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
+			dataRoot: runtime.dataRoot,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
 			loadFontFace: runtime.loadFontFace,
 			api: devtools?.api ?? authSystem.api,
@@ -589,6 +592,7 @@ export async function startStandaloneServer(
 		startHistoryRetention({
 			serviceCtx: runtime.serviceCtx,
 			store: runtime.configStore,
+			dataRoot: runtime.dataRoot,
 			logger: log,
 		});
 
@@ -596,6 +600,7 @@ export async function startStandaloneServer(
 		startLogRetention({
 			serviceCtx: runtime.serviceCtx,
 			store: runtime.configStore,
+			hostRoot: runtime.hostRoot,
 			logger: log,
 		});
 
@@ -618,7 +623,7 @@ export async function startStandaloneServer(
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
 		// (statsRoute 要等 createApp,engines 上面刚建好)。
 		const roastDrafts = createRoastDraftStore({
-			dataDir: bootstrap.dataDir,
+			dataRoot: runtime.dataRoot,
 			logger: log,
 			// 升级之前写下的待审草稿按 uid 记,读盘时按 uid 找回那位 B 站订阅(ADR-0020 决策 18)。
 			subscriptionIdOfUid: (uid) =>
@@ -1181,10 +1186,10 @@ async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promis
  */
 function describeBootSweep(
 	report: SweepReport,
-	dataDir: string,
+	hostRoot: string,
 ): { cleaned: string | null; skipped: string | null } {
 	const list = (paths: readonly string[]): string => {
-		const shown = paths.slice(0, 5).map((path) => relative(dataDir, path) || ".");
+		const shown = paths.slice(0, 5).map((path) => relative(hostRoot, path) || ".");
 		return paths.length > shown.length ? `${shown.join("、")} 等` : shown.join("、");
 	};
 	const parts: string[] = [];

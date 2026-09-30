@@ -11,6 +11,8 @@ import { deleteLogDayFile, listLogDayFiles } from "./store.js";
 export interface LogRetentionRunnerOptions {
 	serviceCtx: ServiceContext;
 	store: ConfigStore;
+	/** 宿主根:日志 `logs/` 住在这里,跨代连续。 */
+	hostRoot: string;
 	logger: Logger;
 	/** Tick interval (ms). Defaults to 6 hours. */
 	intervalMs?: number;
@@ -42,13 +44,13 @@ async function runOnce(opts: LogRetentionRunnerOptions): Promise<void> {
 	const cutoff = new Date();
 	cutoff.setUTCDate(cutoff.getUTCDate() - days);
 	const cutoffStr = cutoff.toISOString().slice(0, 10);
-	const files = await listLogDayFiles(opts.store.bootstrap.dataDir);
+	const files = await listLogDayFiles(opts.hostRoot);
 	let deleted = 0;
 	for (const f of files) {
 		const date = f.slice(0, 10);
 		if (date < cutoffStr) {
 			try {
-				await deleteLogDayFile(opts.store.bootstrap.dataDir, f);
+				await deleteLogDayFile(opts.hostRoot, f);
 				deleted++;
 			} catch (err) {
 				opts.logger.warn(`[log] failed to delete ${f}: ${String(err)}`);

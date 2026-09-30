@@ -309,15 +309,11 @@ function makeServiceCtx() {
 	};
 }
 
-function makeConfigStore(initial: GlobalConfig, dataDir?: string) {
+function makeConfigStore(initial: GlobalConfig) {
 	let g = initial;
 	let targets: PushTarget[] = [];
 	let connections: Connection[] = [];
 	return {
-		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
-		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
-		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
-		bootstrap: { dataDir: dataDir ?? join(tmpdir(), "bn-engines-test-no-such-dir") },
 		getGlobals: () => g,
 		getTargets: () => targets,
 		getConnections: () => connections,
@@ -379,7 +375,7 @@ function setup(opts?: {
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = Object.assign(
-		makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig(), opts?.dataDir),
+		makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig()),
 		opts?.overrides?.configStore,
 	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
@@ -400,6 +396,10 @@ function setup(opts?: {
 	const subs = opts?.subs ?? [];
 	const runtime = createEngines({
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
+		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
+		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
+		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
+		dataRoot: opts?.dataDir ?? join(tmpdir(), "bn-engines-test-no-such-dir"),
 		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
 		loadFontFace: async () => "",
 		api: api as any,
@@ -1853,7 +1853,7 @@ describe("createEngines — 后台写登记进 track", () => {
 		try {
 			const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
 			const historyStore = createHistoryStore({
-				dataDir,
+				dataRoot: dataDir,
 				bus: createNodeMessageBus(),
 				logger: makeLogger() as never,
 			});

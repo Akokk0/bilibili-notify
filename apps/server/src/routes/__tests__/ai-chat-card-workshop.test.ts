@@ -84,11 +84,11 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 				},
 			}),
 			getTargets: () => [],
-			bootstrap: { dataDir },
 		},
 		runtime: {
+			dataRoot: dataDir,
 			serviceCtx: { logger },
-			conversationStore: createConversationStore({ dataDir, logger }),
+			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
 			engines: { api: {}, commentary: { chatStatelessStream } },
 		},
 	} as unknown as RouteDeps;

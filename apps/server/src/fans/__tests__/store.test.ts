@@ -25,7 +25,7 @@ let store: FansStore;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-fans-"));
 	logger = makeLogger();
-	store = createFansStore({ dataDir, logger });
+	store = createFansStore({ dataRoot: dataDir, logger });
 });
 afterEach(() => {
 	vi.restoreAllMocks();

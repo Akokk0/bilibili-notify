@@ -27,17 +27,19 @@ const EMPTY_GLOBALS = { defaults: { cardSkin: "default", cardSkinKnobs: {} } };
 function depsWithDataDir(dataDir: string): RouteDeps {
 	return {
 		runtime: {
+			dataRoot: dataDir,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
-		store: { bootstrap: { dataDir }, getGlobals: () => EMPTY_GLOBALS },
+		store: { getGlobals: () => EMPTY_GLOBALS },
 	} as unknown as RouteDeps;
 }
 
 function makeDeps(): RouteDeps {
 	return {
 		runtime: {
+			dataRoot: join(tmpdir(), "bn-test-cards-route-no-such-dir"),
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
@@ -45,7 +47,6 @@ function makeDeps(): RouteDeps {
 		// 这些用例只打 /detect-chrome 与 /preview(无背景图),dataDir 从不真正落 fs。
 		// 用 OS 临时目录下的不存在子目录(跨平台:不硬编码 POSIX /tmp,无真实路径/密钥)。
 		store: {
-			bootstrap: { dataDir: join(tmpdir(), "bn-test-cards-route-no-such-dir") },
 			getGlobals: () => EMPTY_GLOBALS,
 		},
 	} as unknown as RouteDeps;
@@ -115,12 +116,12 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 	}): RouteDeps {
 		return {
 			runtime: {
+				dataRoot: opts.dataDir,
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
 			},
 			store: {
-				bootstrap: { dataDir: opts.dataDir },
 				getGlobals: () => ({
 					defaults: {
 						cardSkin: "default",
@@ -782,13 +783,13 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 	function depsWithEnginesAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
 		return {
 			runtime: {
+				dataRoot: join(tmpdir(), "bn-test-hotswap-no-such-dir"),
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
 				engines: { enableImageRendering: vi.fn(() => false), swapImageRendering },
 			},
 			store: {
-				bootstrap: { dataDir: join(tmpdir(), "bn-test-hotswap-no-such-dir") },
 				getGlobals: () => EMPTY_GLOBALS,
 			},
 		} as unknown as RouteDeps;
@@ -1762,12 +1763,12 @@ describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", ()
 	function depsWithKnobs(dataDir: string, knobs: Record<string, unknown>): RouteDeps {
 		return {
 			runtime: {
+				dataRoot: dataDir,
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
 			},
 			store: {
-				bootstrap: { dataDir },
 				getGlobals: () => ({
 					defaults: {
 						cardSkin: DEFAULT_CARD_SKIN_ID,
@@ -1920,12 +1921,12 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 	function depsWithGlobalKnobs(dataDir: string): RouteDeps {
 		return {
 			runtime: {
+				dataRoot: dataDir,
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
 			},
 			store: {
-				bootstrap: { dataDir },
 				getGlobals: () => ({
 					defaults: {
 						cardSkin: DEFAULT_CARD_SKIN_ID,

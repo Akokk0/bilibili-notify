@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { isBiliSubscription, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
 import { FANS_DIR } from "../fans/store.js";
+import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import type { KeyedSubscription } from "./file-key.js";
 import { STATS_DYN_DIR, STATS_LIVE_DIR } from "./store.js";
 
@@ -42,14 +43,18 @@ export interface StatsFileKeyMigrationResult {
 }
 
 export interface MigrateStatsFileKeysOptions {
-	dataDir: string;
+	dataRoot: string;
 	/** 全部订阅(拓展的会被跳过)。 */
 	subscriptions: readonly KeyedSubscription[];
 	logger: Logger;
 }
 
 /** 这三处按文件键分文件。 */
-const KEYED_DIRS = [STATS_DYN_DIR, STATS_LIVE_DIR, FANS_DIR] as const;
+const KEYED_DIRS: readonly (readonly [DataRootKey, ...string[]])[] = [
+	STATS_DYN_DIR,
+	STATS_LIVE_DIR,
+	[FANS_DIR],
+];
 
 /**
  * 老版本手写的临时文件后缀。新写法的临时文件叫 `.bn-tmp.…`、由开机清扫收走;这一处只为清掉
@@ -70,12 +75,14 @@ export async function migrateStatsFileKeys(
 	}
 
 	for (const dir of KEYED_DIRS) {
-		const root = join(opts.dataDir, dir);
+		const root = dataPath(opts.dataRoot, ...dir);
 		for (const [uid, ids] of idsByUid) {
 			try {
 				await migrateOne(root, uid, ids, result);
 			} catch (err) {
-				opts.logger.warn(`[stats-migrate] ${dir}/${uid}.jsonl 没迁成,下次开机再试: ${String(err)}`);
+				opts.logger.warn(
+					`[stats-migrate] ${dir.join("/")}/${uid}.jsonl 没迁成,下次开机再试: ${String(err)}`,
+				);
 			}
 		}
 	}

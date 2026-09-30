@@ -11,7 +11,7 @@ import {
  * Encrypted at-rest bag for runtime config secrets that must never sit in the
  * plaintext `state/*.json` files. Currently the AI apiKeys (每家两把).
  *
- * On disk: `<dataDir>/secrets/config-secrets.enc` — a single AES-256-GCM blob
+ * On disk: `<dataRoot>/secrets/config-secrets.enc` — a single AES-256-GCM blob
  * keyed off the same {@link KeyProvider} as the cookie store (so one
  * `BN_COOKIE_KEY` protects everything).
  *
@@ -46,7 +46,7 @@ export interface SecretStore {
 }
 
 export interface CreateSecretStoreOptions {
-	/** `<dataDir>/secrets/config-secrets.enc` */
+	/** `<dataRoot>/secrets/config-secrets.enc` */
 	filePath: string;
 	keyProvider: KeyProvider;
 	logger: Logger;

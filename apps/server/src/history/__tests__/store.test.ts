@@ -52,7 +52,7 @@ beforeEach(async () => {
 	logger = makeLogger();
 	recorded = [];
 	bus.on("history-recorded", (e) => recorded.push(e));
-	store = createHistoryStore({ dataDir, bus, logger });
+	store = createHistoryStore({ dataRoot: dataDir, bus, logger });
 });
 afterEach(() => {
 	vi.restoreAllMocks();

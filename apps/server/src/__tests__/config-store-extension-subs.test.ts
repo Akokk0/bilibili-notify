@@ -132,6 +132,7 @@ afterEach(async () => {
 async function open(): Promise<ConfigStore> {
 	const store = createConfigStore({
 		bootstrap: makeBootstrap(dataDir),
+		dataRoot: dataDir,
 		bus,
 		serviceCtx: makeServiceCtx(),
 	});

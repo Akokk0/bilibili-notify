@@ -53,7 +53,7 @@ const read = (dir: string, key: string) => readFile(file(dir, key), "utf-8");
 const ls = async (dir: string) => (await readdir(join(dataDir, dir))).sort();
 
 const run = (subscriptions: readonly unknown[]) =>
-	migrateStatsFileKeys({ dataDir, subscriptions: subscriptions as never, logger });
+	migrateStatsFileKeys({ dataRoot: dataDir, subscriptions: subscriptions as never, logger });
 
 const DYN = jsonl([{ id: "p1", type: "DYNAMIC_TYPE_AV", ts: T(10) }]);
 const LIVE = jsonl([
@@ -214,8 +214,8 @@ describe("半路崩了", () => {
 		await put(DIRS[1], "dup", jsonl([...liveRows, ...liveRows.slice(2)]));
 		await put(DIRS[2], "dup", jsonl([...fansRows, ...tail]));
 
-		const stats = createStatsStore({ dataDir, logger });
-		const fans = createFansStore({ dataDir, logger });
+		const stats = createStatsStore({ dataRoot: dataDir, logger });
+		const fans = createFansStore({ dataRoot: dataDir, logger });
 		const since = T(1);
 		expect(await stats.listDynamics("dup", since)).toEqual(
 			await stats.listDynamics("clean", since),

@@ -110,7 +110,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 			load: vi.fn(async () => {}),
 		} as never,
 		fansStore: createFansStore({
-			dataDir,
+			dataRoot: dataDir,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
