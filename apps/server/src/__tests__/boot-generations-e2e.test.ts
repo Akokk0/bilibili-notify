@@ -72,9 +72,23 @@ async function waitForResponse(url: string, timeoutMs = 3_000): Promise<Response
 	}
 }
 
-/** 第 0 代的样子:几样 0.x 的文件(配置不摆,开机时由配置仓在新的一代里补默认值)。 */
+/**
+ * 第 0 代的样子:几样 0.x 的文件(设置不摆,开机时由配置仓在新的一代里补默认值)。`state/targets.json` 是最老的
+ * 单文件形状,新的一代里会被改写成连接 + 目标 —— 摆它是为了让「第 0 代一个字节没变」也盯住改写:
+ * 它在新代里是硬链接,不另写成新文件而是原地写的话,第 0 代跟着变。
+ */
 const ZERO_FILES: Record<string, string> = {
 	"secrets/master.key": "ab".repeat(32),
+	"state/targets.json": JSON.stringify([
+		{
+			id: "00000000-0000-4000-8000-000000000001",
+			name: "主群",
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			config: { baseUrl: "http://127.0.0.1:5700", groupId: "111" },
+		},
+	]),
 	"history/2026-09-30.jsonl": '{"id":"row-1"}\n',
 	"maid-skills/weekly/SKILL.md": "# 周报",
 	"stats/since": "2026-09-01",
