@@ -1903,13 +1903,16 @@ export function ok(value?: object): { ok: true } {
 	return { ok: true, ...value };
 }
 
-/** 失败的结果。没给的附加格不出现(不留值为 undefined 的键)。 */
-export function fail(
-	code: FailureCode,
+/**
+ * 失败的结果。没给的附加格不出现(不留值为 undefined 的键)。
+ * 码保留字面量,只会拒收的地方可以把失败那一支写成 `Failure & { code: "invalid" }`。
+ */
+export function fail<C extends FailureCode>(
+	code: C,
 	message: string,
 	extras: { upstreamCode?: number | string; issues?: Issue[] } = {},
-): Failure {
-	const failure: Failure = { ok: false, code, message };
+): Failure & { code: C } {
+	const failure: Failure & { code: C } = { ok: false, code, message };
 	if (extras.upstreamCode !== undefined) failure.upstreamCode = extras.upstreamCode;
 	if (extras.issues !== undefined) failure.issues = extras.issues;
 	return failure;

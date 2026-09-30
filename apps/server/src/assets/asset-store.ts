@@ -15,7 +15,7 @@
 import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createSerialQueue } from "@bilibili-notify/internal";
+import { createSerialQueue, type Failure, fail, ok } from "@bilibili-notify/internal";
 import {
 	atomicWriteFile,
 	atomicWriteJson,
@@ -63,9 +63,7 @@ export class AssetRejectedError extends Error {
 }
 
 /** 存一件资产的结果:成功给 id,可预期的拒收回 `invalid`。磁盘写失败是抛错。 */
-export type AssetPutResult =
-	| { ok: true; id: string }
-	| { ok: false; code: "invalid"; message: string };
+export type AssetPutResult = { ok: true; id: string } | (Failure & { code: "invalid" });
 
 /** 列表里的一件资产。 */
 export interface AssetView {
@@ -130,7 +128,7 @@ async function sizeOf(path: string): Promise<number> {
 }
 
 function invalid(message: string): AssetPutResult {
-	return { ok: false, code: "invalid", message };
+	return fail("invalid", message);
 }
 
 /**
@@ -218,7 +216,7 @@ export function createAssetStore(options: AssetStoreOptions): AssetStore {
 				delete labels[id];
 				return true;
 			});
-			return { ok: true, id };
+			return ok({ id });
 		},
 
 		async read(id) {

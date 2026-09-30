@@ -24,6 +24,8 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Failure,
 	type FailureCode,
+	fail,
+	ok,
 	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
@@ -418,21 +420,13 @@ export class CardSkinStore {
  */
 function parseStoredManifest(raw: unknown, id: string): ManifestResult<CardSkinManifest> {
 	if (id === DEFAULT_CARD_SKIN_ID) {
-		return {
-			ok: false,
-			code: "invalid",
-			message: "这个 id 是内置皮肤的保留字,盘上这份目录不会被加载",
-		};
+		return fail("invalid", "这个 id 是内置皮肤的保留字,盘上这份目录不会被加载");
 	}
 	const parsed = parseCardSkin(raw);
 	if (!parsed.ok) {
-		return {
-			ok: false,
-			code: "invalid",
-			message: `清单不合格式(${parsed.errors[0] ?? "未知原因"}),跳过`,
-		};
+		return fail("invalid", `清单不合格式(${parsed.errors[0] ?? "未知原因"}),跳过`);
 	}
-	return { ok: true, manifest: parsed.manifest };
+	return ok({ manifest: parsed.manifest });
 }
 
 function summary(

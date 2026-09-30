@@ -90,6 +90,13 @@ describe("fail()", () => {
 		const typed: Failure = { ok: false, code: "nope", message: "不在表里" };
 		expect(typed.ok).toBe(false);
 	});
+
+	it("码保留字面量:只会拒收的地方可以把失败那一支收窄到自己的码", () => {
+		const rejected: Failure & { code: "invalid" } = fail("invalid", "形状不对");
+		// @ts-expect-error —— 收窄到 invalid 的位置不收别的码
+		const wrong: Failure & { code: "invalid" } = fail("not_found", "查无此人");
+		expect([rejected.code, wrong.code]).toEqual(["invalid", "not_found"]);
+	});
 });
 
 describe("Result", () => {

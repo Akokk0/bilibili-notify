@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
-import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
+import { type Failure, type FailureCode, fail, ok } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
 import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
@@ -42,9 +42,9 @@ function stripManifestResidue(m: SkinManifest): SkinManifest {
 /** 皮肤包目录读盘时的解析:只摘旧烙印,不做 schema 校验(旧格式 / 手改的清单照样进索引)。 */
 function parseSkinManifest(raw: unknown): ManifestResult<SkinManifest> {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-		return { ok: false, code: "invalid", message: "skin.json 不是一份清单" };
+		return fail("invalid", "skin.json 不是一份清单");
 	}
-	return { ok: true, manifest: stripManifestResidue(raw as SkinManifest) };
+	return ok({ manifest: stripManifestResidue(raw as SkinManifest) });
 }
 
 /** 清单与出厂快照落盘的字面:带缩进,主人 / 第三方是要手看手改它们的。 */

@@ -21,7 +21,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { createSerialQueue } from "@bilibili-notify/internal";
+import { createSerialQueue, type Failure, fail } from "@bilibili-notify/internal";
 import {
 	atomicWriteFile,
 	isLeftoverName,
@@ -35,9 +35,7 @@ import {
 } from "../assets/asset-store.js";
 
 /** `parse` 的结果:成功给清单,拒收给一句人话(会原样交给 `onSkip`)。 */
-export type ManifestResult<M> =
-	| { ok: true; manifest: M }
-	| { ok: false; code: "invalid"; message: string };
+export type ManifestResult<M> = { ok: true; manifest: M } | (Failure & { code: "invalid" });
 
 export interface SkinPackageStoreOptions<M> {
 	/** 皮肤根目录的绝对路径。不必事先存在,就绪时建。 */
@@ -172,11 +170,10 @@ export function createSkinStore<M>(options: SkinPackageStoreOptions<M>): SkinPac
 			try {
 				parsed = options.parse(raw, id);
 			} catch (err) {
-				parsed = {
-					ok: false,
-					code: "invalid",
-					message: `清单解析出错(${err instanceof Error ? err.message : String(err)}),跳过`,
-				};
+				parsed = fail(
+					"invalid",
+					`清单解析出错(${err instanceof Error ? err.message : String(err)}),跳过`,
+				);
 			}
 			if (!parsed.ok) {
 				options.onSkip?.(id, parsed.message);
