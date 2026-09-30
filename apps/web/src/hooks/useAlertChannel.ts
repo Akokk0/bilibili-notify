@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { WsEnvelope } from "../services/ws";
+import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { useAlertStore } from "../store/alerts";
 
@@ -9,16 +9,13 @@ import { useAlertStore } from "../store/alerts";
  * silent-drop 契约,无需渲染 hook。
  *
  * Server contract (apps/server/src/ws/channels.ts):
- *   envelope = { type: "log", event: "engine-error", data: [source, message] }
+ *   envelope = { type: "log", event: "engine-error", data: { source, message } }
  */
 export function handleLogEnvelope(env: WsEnvelope): void {
-	if (env.type !== "log") return;
-	if (env.event !== "engine-error") return;
+	if (!isWsEvent(env, "log", "engine-error")) return;
 	const data = env.data;
-	if (!Array.isArray(data) || data.length < 2) return;
-	const [source, message] = data as [unknown, unknown];
-	if (typeof source !== "string" || typeof message !== "string") return;
-	useAlertStore.getState().push({ source, message });
+	if (typeof data?.source !== "string" || typeof data.message !== "string") return;
+	useAlertStore.getState().push({ source: data.source, message: data.message });
 }
 
 export function useAlertChannel(): void {

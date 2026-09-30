@@ -4,6 +4,7 @@
  * 守护契约:
  *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
  *   - config-changed scope=globals       → invalidate ["globals"]、拓展表 ["extensions"] 与各拓展的设置
+ *   - extension-status-changed          → 那个拓展的 status 与 bots
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - extension-report-problems-changed → 仅拓展表(上报问题框住在那一行上)
  *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
@@ -17,10 +18,15 @@ import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { WsEnvelope } from "../../services/ws";
 import { handleStateEnvelope } from "../useStateChannel";
+import { eventFrameMaker } from "./ws-frames";
 
-function env(over: Partial<WsEnvelope> & { type: string }): WsEnvelope {
-	return { ts: "2026-05-16T00:00:00.000Z", ...over };
-}
+const TS = "2026-05-16T00:00:00.000Z";
+
+/** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
+const env = eventFrameMaker(TS);
+
+/** 故意违反类型的坏帧(`data` 缺格、事件名不存在、频道与事件名对不上),测 hook 的防御。 */
+const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
 
 interface SpyClient {
 	qc: QueryClient;
@@ -45,7 +51,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	it("非 state 频道:不 invalidate", () => {
-		handleStateEnvelope(env({ type: "auth", event: "login-status-report" }), sc.qc);
+		handleStateEnvelope(malformed({ type: "auth", event: "login-status-report" }), sc.qc);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
@@ -55,7 +61,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 * 或刷新才回来,而界面看上去一切正常。
 	 */
 	it("hydrate:每一张会被服务端改的表都在清单里 —— 漏一张就停在断线那一刻", () => {
-		handleStateEnvelope(env({ type: "state", event: "hydrate" }), sc.qc);
+		handleStateEnvelope(env({ type: "state", event: "hydrate", data: null }), sc.qc);
 		const keys = keysOf(sc.invalidate).map((k) => k[0]);
 		expect(new Set(keys)).toEqual(
 			new Set([
@@ -77,7 +83,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 */
 	it("extension-settings-changed:只失效那个拓展的设置与状态", () => {
 		handleStateEnvelope(
-			env({ type: "state", event: "extension-settings-changed", data: { id: "bridge" } }),
+			env({ type: "state", event: "extension-settings-changed", data: { extensionId: "bridge" } }),
 			sc.qc,
 		);
 		expect(keysOf(sc.invalidate)).toEqual([
@@ -86,17 +92,17 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		]);
 	});
 
-	it("extension-settings-changed 没带 id:不动", () => {
+	it("extension-settings-changed 没带 extensionId:不动", () => {
 		handleStateEnvelope(
-			env({ type: "state", event: "extension-settings-changed", data: { id: "" } }),
+			env({ type: "state", event: "extension-settings-changed", data: { extensionId: "" } }),
 			sc.qc,
 		);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
-	it("extension-changed:只失效那个拓展的 status 与 bots", () => {
+	it("extension-status-changed:只失效那个拓展的 status 与 bots", () => {
 		handleStateEnvelope(
-			env({ type: "state", event: "extension-changed", data: { id: "bridge" } }),
+			env({ type: "state", event: "extension-status-changed", data: { extensionId: "bridge" } }),
 			sc.qc,
 		);
 		expect(keysOf(sc.invalidate)).toEqual([
@@ -105,8 +111,11 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		]);
 	});
 
-	it("extension-changed 没带 id:不动", () => {
-		handleStateEnvelope(env({ type: "state", event: "extension-changed", data: {} }), sc.qc);
+	it("extension-status-changed 没带 extensionId:不动", () => {
+		handleStateEnvelope(
+			malformed({ type: "state", event: "extension-status-changed", data: {} }),
+			sc.qc,
+		);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
@@ -116,7 +125,11 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 */
 	it("extension-report-problems-changed:只失效拓展表", () => {
 		handleStateEnvelope(
-			env({ type: "state", event: "extension-report-problems-changed", data: { id: "douyin" } }),
+			env({
+				type: "state",
+				event: "extension-report-problems-changed",
+				data: { extensionId: "douyin" },
+			}),
 			sc.qc,
 		);
 		expect(keysOf(sc.invalidate)).toEqual([["extensions"]]);
@@ -154,7 +167,11 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 */
 	it("subscription-profiles-changed:仅 invalidate [subscriptions]", () => {
 		handleStateEnvelope(
-			env({ type: "state", event: "subscription-profiles-changed", data: { ids: ["a"] } }),
+			env({
+				type: "state",
+				event: "subscription-profiles-changed",
+				data: { subscriptionIds: ["a"] },
+			}),
 			sc.qc,
 		);
 		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"]]);
@@ -198,12 +215,12 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	it("config-changed 但缺 scope:不 invalidate", () => {
-		handleStateEnvelope(env({ type: "state", event: "config-changed", data: {} }), sc.qc);
+		handleStateEnvelope(malformed({ type: "state", event: "config-changed", data: {} }), sc.qc);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
 	it("不识别的 event:不 invalidate", () => {
-		handleStateEnvelope(env({ type: "state", event: "subscribed" }), sc.qc);
+		handleStateEnvelope(malformed({ type: "state", event: "subscribed" }), sc.qc);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 });

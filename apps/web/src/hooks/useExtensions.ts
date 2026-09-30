@@ -32,7 +32,7 @@ export function isExtensionPresent(ext: ExtensionDTO): boolean {
  * 一个拓展的状态那一口(`/api/ext/:id/status`,v2 拓展交上来的视图)。
  *
  * 🔴 **与 WS 那条失效是同一个键**:拓展喊 `ctx.statusChanged()` 时,`useStateChannel` 按它失效
- * (`extension-changed` 那一支),重连时按整个前缀失效。换一个键的话,页面照样画得出来,只是
+ * (`extension-status-changed` 那一支),重连时按整个前缀失效。换一个键的话,页面照样画得出来,只是
  * 再也不跟着拓展刷新 —— 而且不会有任何报错。
  */
 export const EXTENSION_STATUS_QUERY_PREFIX = ["extension-status"] as const;

@@ -83,7 +83,7 @@ src/
   runtime/
     bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...)
     service-context.ts    NodeServiceContext(pino + setInterval/setTimeout + 分段的 onDispose / track / signal,见下「关停」)
-    message-bus.ts        NodeMessageBus(mitt 风格 BiliEvents emitter)
+    message-bus.ts        NodeMessageBus(mitt 风格,事件表 BusEvents)
     engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)

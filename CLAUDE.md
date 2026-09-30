@@ -62,7 +62,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - `architecture.md` —— 包清单、独立端模块图、服务依赖图
 - `conventions/` —— 仓库规范:索引 `README.md` + 8 篇(命名:后缀表与词表、失败规矩、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造),每篇带出处与守卫
-- `events.md` —— BiliEvents 契约、MessageBus 语义、WS channel 契约
+- `events.md` —— BusEvents 契约(事件名 → 具名载荷)、MessageBus 语义、WS channel 契约
 - `push.md` —— 推送链路:引擎 → 适配 → 路由与闸 → 发送 → 投递 → 历史;闸的顺序、附加项的「生产 vs 推送」、不走这条链的三条旁路
 - `subscriptions.md` —— 订阅:B 站 / 拓展两支与两个文件、身份 vs 订阅 id 两种键、资料与头像、订阅源拓展(清单 / 契约小号 / 解析门 / 上报的丢格与拒收)
 - `build-release.md` —— 工具链、分支模型、Docker 镜像与 tag 方案、桌面产物布局

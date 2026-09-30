@@ -21,7 +21,9 @@
  * 在 `apps/server/src/ws/types.ts`。
  */
 
-import type { FailureCode, Issue } from "@bilibili-notify/internal";
+import type { BusEvents, FailureCode, Issue } from "@bilibili-notify/internal";
+import type { ResourceSample, ResourcesHydrate } from "./resources";
+import type { HistoryEntryView } from "./rest";
 
 // ---------------------------------------------------------------------------
 // Channel registry
@@ -57,15 +59,59 @@ export interface LogEntry {
 // Server envelope types
 // ---------------------------------------------------------------------------
 
-/** Envelope used for every server-pushed channel event. */
-export interface ServerEventEnvelope<TData = unknown> {
-	type: ChannelName;
-	event: string;
-	ts: string;
-	data: TData;
+/**
+ * 服务端推给面板的事件表:频道 → 事件名 → `data`。
+ *
+ * 从总线转来的直接取 `BusEvents` 的载荷,线上的事件名与总线同名;总线上没有载荷的,帧里是 `null`。
+ * 服务端投影过(历史行)或自己造的(`hydrate`、资源采样、日志行)写明。面板照这张表拿 `data`,
+ * 不再各自手写类型断言。
+ */
+export interface WsEvents {
+	auth: {
+		"login-status-report": BusEvents["login-status-report"];
+		"auth-lost": null;
+		"auth-restored": null;
+		"cookies-refreshed": BusEvents["cookies-refreshed"];
+	};
+	"push-events": {
+		/** 历史那一行的 wire 视图(与 `GET /api/history` 同一投影),图片留文件名。 */
+		"history-recorded": HistoryEntryView;
+		"history-updated": HistoryEntryView;
+		"live-state-changed": BusEvents["live-state-changed"];
+		"live-viewers-changed": BusEvents["live-viewers-changed"];
+		"fans-refreshed": BusEvents["fans-refreshed"];
+		"extension-live-changed": null;
+	};
+	/** 日志行按级别当事件名发,字段是冻结格式。 */
+	log: { "engine-error": BusEvents["engine-error"] } & Record<
+		LogLevel,
+		Pick<LogEntry, "msg" | "args" | "name">
+	>;
+	state: {
+		/** 订阅与重连时推一帧,面板据此失效自己的查询;不带数据(配置里有密钥)。 */
+		hydrate: null;
+		"config-changed": BusEvents["config-changed"];
+		"extension-status-changed": BusEvents["extension-status-changed"];
+		"extension-settings-changed": BusEvents["extension-settings-changed"];
+		"extension-report-problems-changed": BusEvents["extension-report-problems-changed"];
+		"subscription-profiles-changed": BusEvents["subscription-profiles-changed"];
+	};
+	resources: {
+		hydrate: ResourcesHydrate;
+		sample: ResourceSample;
+	};
 }
 
-export interface ServerControlEnvelope {
+/**
+ * 一帧服务端推送的事件。按 `type`(频道)与 `event` 收窄之后,`data` 的类型就定了;`C` 限定频道。
+ */
+export type WsEventEnvelope<C extends ChannelName = ChannelName> = {
+	[K in C]: {
+		[E in keyof WsEvents[K]]: { type: K; event: E; ts: string; data: WsEvents[K][E] };
+	}[keyof WsEvents[K]];
+}[C];
+
+export interface WsControlEnvelope {
 	type: "subscribed" | "unsubscribed" | "ping" | "pong" | "error";
 	channels?: ChannelName[];
 	/**
@@ -81,4 +127,4 @@ export interface ServerControlEnvelope {
 	ts?: string;
 }
 
-export type ServerEnvelope = ServerEventEnvelope | ServerControlEnvelope;
+export type WsEnvelope = WsEventEnvelope | WsControlEnvelope;

@@ -1,19 +1,15 @@
+import { LOG_LEVELS } from "@bilibili-notify/contract";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import {
-	type LogLineLevel,
-	type LogLineView,
-	type LogsResponse,
-	logsQueryKey,
-} from "../services/dashboard";
-import type { WsEnvelope } from "../services/ws";
+import { type LogLineView, type LogsResponse, logsQueryKey } from "../services/dashboard";
+import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 
 /**
  * WS `log` 频道 → `["logs",{day:"live"}]` 缓存 prepend(镜像
  * usePushEventsChannel 的 setQueryData patch)。两类帧都收:
  *   - 级别帧 { type:"log", event:<level>, data:{ msg,args,name } }
- *   - engine-error { type:"log", event:"engine-error", data:[source,message] }
+ *   - engine-error { type:"log", event:"engine-error", data:{ source, message } }
  *     合成成一条 level=error / name=source 的行,让引擎错误也进日志流。
  *
  * 提取为 export 纯函数:测试注入 `qc = new QueryClient()` 即可覆盖形状校验
@@ -25,33 +21,23 @@ import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
  */
 export const LOG_CACHE_CAP = 1000;
 
-const WIRE_LEVELS: ReadonlySet<string> = new Set(["debug", "info", "warn", "error"]);
-
 /** Parse one WS `log` envelope into a LogLineView, or null if not a log line. */
 export function parseLogEnvelope(env: WsEnvelope): LogLineView | null {
-	if (env.type !== "log") return null;
-	const event = env.event;
-	if (typeof event !== "string") return null;
-
-	if (WIRE_LEVELS.has(event)) {
-		const d = env.data as { msg?: unknown; args?: unknown; name?: unknown } | undefined;
+	// 级别当事件名:逐个级别问一遍,判中的那个级别就是这一行的 level。
+	for (const level of LOG_LEVELS) {
+		if (!isWsEvent(env, "log", level)) continue;
+		const d = env.data;
 		if (!d || typeof d.msg !== "string") return null;
-		const line: LogLineView = {
-			ts: env.ts,
-			level: event as LogLineLevel,
-			msg: d.msg,
-		};
+		const line: LogLineView = { ts: env.ts, level, msg: d.msg };
 		if (typeof d.name === "string") line.name = d.name;
 		if (Array.isArray(d.args)) line.args = d.args;
 		return line;
 	}
 
-	if (event === "engine-error") {
-		const data = env.data;
-		if (!Array.isArray(data) || data.length < 2) return null;
-		const [source, message] = data as [unknown, unknown];
-		if (typeof source !== "string" || typeof message !== "string") return null;
-		return { ts: env.ts, level: "error", name: source, msg: message };
+	if (isWsEvent(env, "log", "engine-error")) {
+		const d = env.data;
+		if (typeof d?.source !== "string" || typeof d.message !== "string") return null;
+		return { ts: env.ts, level: "error", name: d.source, msg: d.message };
 	}
 
 	return null;

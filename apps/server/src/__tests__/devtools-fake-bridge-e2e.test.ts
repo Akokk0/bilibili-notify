@@ -262,16 +262,16 @@ describe("devtools 的假桥 → 真桥", () => {
 
 	/**
 	 * 🔴 「桥握完手 → 面板当场变绿」整条接线:桥 `ctx.statusChanged()` → 宿主 bus
-	 * `extension-status-changed` → WS `state` 频道一帧 `extension-changed`。零件各自的测试
+	 * `extension-status-changed` → WS `state` 频道同名的一帧。零件各自的测试
 	 * 证明不了它们真的接上了 —— index.ts 那一行漏接,四层全绿而面板照旧要切页。
 	 */
-	it("桥握完手 → state 频道推一帧 extension-changed(面板据此重取,不用切页)", async () => {
+	it("桥握完手 → state 频道推一帧 extension-status-changed(面板据此重取,不用切页)", async () => {
 		const panel = await stateSubscriber(port);
 		try {
 			await runScenario("bridge.connect");
-			const frame = await panel.waitFor((f) => f.event === "extension-changed", 3_000);
+			const frame = await panel.waitFor((f) => f.event === "extension-status-changed", 3_000);
 			expect(frame.type).toBe("state");
-			expect(frame.data).toEqual({ id: "bridge" });
+			expect(frame.data).toEqual({ extensionId: "bridge" });
 		} finally {
 			panel.close();
 		}
@@ -293,7 +293,7 @@ describe("devtools 的假桥 → 真桥", () => {
 	 */
 	it("握手连着探完能力的名单 → 连喊合并成尾沿那一帧,照最后一帧重取看到的是探完那份", async () => {
 		const panel = await stateSubscriber(port);
-		const changed = (f: StateFrame) => f.event === "extension-changed";
+		const changed = (f: StateFrame) => f.event === "extension-status-changed";
 		try {
 			await runScenario("bridge.connect");
 			// 面板的做法:收到帧就重取一次。一直跟到安静下来(两个窗口没有新帧),记下最后那次重取。

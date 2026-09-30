@@ -18,8 +18,8 @@ export {
 	LOG_LEVELS,
 	type LogEntry,
 	type LogLevel,
-	type ServerEnvelope,
-	type ServerEventEnvelope,
+	type WsEnvelope,
+	type WsEventEnvelope,
 } from "@bilibili-notify/contract";
 
 const ChannelNameSchema = z.enum(CHANNELS);

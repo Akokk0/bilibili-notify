@@ -338,7 +338,12 @@ describe("新建连接里的拓展那一档", () => {
 
 		act(() =>
 			handleStateEnvelope(
-				{ type: "state", event: "extension-changed", ts: "", data: { id: "bridge" } },
+				{
+					type: "state",
+					event: "extension-status-changed",
+					ts: "",
+					data: { extensionId: "bridge" },
+				},
 				qc,
 			),
 		);

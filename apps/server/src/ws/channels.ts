@@ -1,7 +1,8 @@
-import type { BusEvents, ConfigScope, Disposable, MessageBus } from "@bilibili-notify/internal";
+import type { WsEvents } from "@bilibili-notify/contract";
+import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { toHistoryView } from "../history/view.js";
 import type { LogChannel } from "./log-channel.js";
-import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } from "./types.js";
+import { CHANNELS, type ChannelName, type LogEntry, type WsEventEnvelope } from "./types.js";
 
 /**
  * Channel ↔ event wiring.
@@ -12,7 +13,7 @@ import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } f
  * cheap regardless of dashboard population.
  */
 
-type ChannelPublisher = (envelope: ServerEventEnvelope) => void;
+type ChannelPublisher = (envelope: WsEventEnvelope) => void;
 
 export interface ChannelWiringDeps {
 	bus: MessageBus;
@@ -42,61 +43,43 @@ export interface ChannelWiringDeps {
  * If the round-trip saving is ever wanted, the client must read a **redacted**
  * snapshot (see `redactGlobals` in routes/globals.ts) — never `getGlobals()`.
  */
-export function buildStateHydrate(): ServerEventEnvelope<null> {
-	return {
-		type: "state",
-		event: "hydrate",
-		ts: new Date().toISOString(),
-		data: null,
-	};
+export function buildStateHydrate(): WsEventEnvelope<"state"> {
+	return envelope("state", "hydrate", null);
 }
 
 /**
- * Build a `state/config-changed` envelope. Carries the scope marker only.
- *
- * Same reasoning as {@link buildStateHydrate}: the client reads `.scope` and
- * nothing else, and the `globals` scope would otherwise put plaintext keys on
- * the wire on every config write. The `secrets` scope was already exempted
- * when this was first written — the other scopes just never got the same
- * treatment once redaction landed.
+ * 造一帧。`data` 的类型按 contract 的事件表(`WsEvents`)查 —— 频道、事件名、载荷三者对不上就
+ * 编译不过。
  */
-function buildConfigChangedEnvelope(
-	scope: ConfigScope,
-): ServerEventEnvelope<{ scope: ConfigScope }> {
-	return {
-		type: "state",
-		event: "config-changed",
-		ts: new Date().toISOString(),
-		data: { scope },
-	};
+export function envelope<C extends ChannelName, E extends keyof WsEvents[C]>(
+	channel: C,
+	event: E,
+	data: WsEvents[C][E],
+): WsEventEnvelope<C> {
+	// 泛型的映射联合 TS 验不了,参数那一侧已经按表钉住。
+	return { type: channel, event, ts: new Date().toISOString(), data } as WsEventEnvelope<C>;
 }
 
-function envelope(
-	channel: ChannelName,
-	event: keyof BusEvents,
-	data: unknown,
-): ServerEventEnvelope {
-	return { type: channel, event, ts: new Date().toISOString(), data };
-}
-
-/** All bus subscriptions taken for the lifetime of the WS server. */
+/**
+ * All bus subscriptions taken for the lifetime of the WS server.
+ *
+ * 总线事件原样成帧:线上的事件名与总线同名,`data` 就是总线的载荷(没有载荷的是 `null`)。
+ * 只有历史行要投影成 wire 视图。
+ */
 export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	const subs: Disposable[] = [];
+	const { bus, publish } = deps;
 
 	// auth channel ----------------------------------------------------------
 	subs.push(
-		deps.bus.on("login-status-report", (snapshot) =>
-			deps.publish(envelope("auth", "login-status-report", snapshot)),
+		bus.on("login-status-report", (snapshot) =>
+			publish(envelope("auth", "login-status-report", snapshot)),
 		),
-	);
-	subs.push(deps.bus.on("auth-lost", () => deps.publish(envelope("auth", "auth-lost", null))));
-	subs.push(
-		deps.bus.on("auth-restored", () => deps.publish(envelope("auth", "auth-restored", null))),
-	);
-	subs.push(
-		// 总线上本来就只有刷新的时刻(cookie 是密钥,不上总线,见 `BusEvents`),原样转给面板。
-		deps.bus.on("cookies-refreshed", (refreshed) =>
-			deps.publish(envelope("auth", "cookies-refreshed", refreshed)),
+		bus.on("auth-lost", () => publish(envelope("auth", "auth-lost", null))),
+		bus.on("auth-restored", () => publish(envelope("auth", "auth-restored", null))),
+		// 总线上只有刷新的时刻(cookie 是密钥,不上总线,见 `BusEvents`)。
+		bus.on("cookies-refreshed", (refreshed) =>
+			publish(envelope("auth", "cookies-refreshed", refreshed)),
 		),
 	);
 
@@ -107,36 +90,21 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	// /api/history/img 解析。
 	for (const event of ["history-recorded", "history-updated"] as const) {
 		subs.push(
-			deps.bus.on(event, (entry) => {
-				deps.publish({
-					type: "push-events",
-					event,
-					ts: new Date().toISOString(),
-					data: toHistoryView(entry),
-				});
-			}),
+			bus.on(event, (entry) => publish(envelope("push-events", event, toHistoryView(entry)))),
 		);
 	}
 	subs.push(
-		deps.bus.on("live-state-changed", ({ uid, status }) =>
-			deps.publish(envelope("push-events", "live-state-changed", [uid, status])),
+		bus.on("live-state-changed", (change) =>
+			publish(envelope("push-events", "live-state-changed", change)),
 		),
-	);
-	subs.push(
-		deps.bus.on("live-viewers-changed", ({ uid, viewers }) =>
-			deps.publish(envelope("push-events", "live-viewers-changed", [uid, viewers])),
+		bus.on("live-viewers-changed", (change) =>
+			publish(envelope("push-events", "live-viewers-changed", change)),
 		),
-	);
-	subs.push(
-		deps.bus.on("fans-refreshed", ({ entries }) =>
-			deps.publish(envelope("push-events", "fans-refreshed", entries)),
-		),
-	);
-	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):不带载荷,面板让「正在直播」重取。在播表那头
-	// 已经按窗口合并过,这里一发一帧。
-	subs.push(
-		deps.bus.on("extension-live-changed", () =>
-			deps.publish(envelope("push-events", "extension-live-changed", null)),
+		bus.on("fans-refreshed", (fans) => publish(envelope("push-events", "fans-refreshed", fans))),
+		// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):不带载荷,面板让「正在直播」重取。在播表那头
+		// 已经按窗口合并过,这里一发一帧。
+		bus.on("extension-live-changed", () =>
+			publish(envelope("push-events", "extension-live-changed", null)),
 		),
 	);
 
@@ -144,13 +112,9 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	// Two sources merge here:
 	//   1. engine-error events from the bus (any business engine reporting a failure)
 	//   2. logger.<level> calls (via the LogChannel that NodeServiceContext feeds)
-	subs.push(
-		deps.bus.on("engine-error", ({ source, message }) =>
-			deps.publish(envelope("log", "engine-error", [source, message])),
-		),
-	);
+	subs.push(bus.on("engine-error", (error) => publish(envelope("log", "engine-error", error))));
 	const unsubLog = deps.log.subscribe((entry: LogEntry) => {
-		deps.publish({
+		publish({
 			type: "log",
 			event: entry.level,
 			ts: entry.ts,
@@ -163,52 +127,26 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 
 	// state channel ---------------------------------------------------------
 	subs.push(
-		deps.bus.on("config-changed", ({ scope }) => deps.publish(buildConfigChangedEnvelope(scope))),
-	);
-	// 拓展喊「面板数据变了」:只带 id,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存。
-	subs.push(
-		deps.bus.on("extension-status-changed", ({ extensionId }) =>
-			deps.publish({
-				type: "state",
-				event: "extension-changed",
-				ts: new Date().toISOString(),
-				data: { id: extensionId },
-			}),
+		// 只带 scope:和 hydrate 同一个理由,`globals` 那一档要是带上内容,每次写配置都会把明文密钥
+		// 送上线。客户端也只读 scope。
+		bus.on("config-changed", (change) => publish(envelope("state", "config-changed", change))),
+		// 拓展喊「面板数据变了」:只带拓展 id,面板按 id 失效 `/api/ext/<id>/status` 与 bot 名单的缓存。
+		bus.on("extension-status-changed", (change) =>
+			publish(envelope("state", "extension-status-changed", change)),
 		),
-	);
-	// 拓展的设置写进去了:同样只带 id(设置里有密钥,不进帧),面板按 id 失效设置与视图。
-	subs.push(
-		deps.bus.on("extension-settings-changed", ({ extensionId }) =>
-			deps.publish({
-				type: "state",
-				event: "extension-settings-changed",
-				ts: new Date().toISOString(),
-				data: { id: extensionId },
-			}),
+		// 拓展的设置写进去了:同样只带拓展 id(设置里有密钥,不进帧),面板按 id 失效设置与视图。
+		bus.on("extension-settings-changed", (change) =>
+			publish(envelope("state", "extension-settings-changed", change)),
 		),
-	);
-	// 拓展的「上报问题」新记了几条(ADR-0019 决策 60):只带 id,面板让拓展表失效(那个框住在那一行上)。
-	// 不借 `extension-changed` —— 那一帧说的是视图变了。
-	subs.push(
-		deps.bus.on("extension-report-problems-changed", ({ extensionId }) =>
-			deps.publish({
-				type: "state",
-				event: "extension-report-problems-changed",
-				ts: new Date().toISOString(),
-				data: { id: extensionId },
-			}),
+		// 拓展的「上报问题」新记了几条(ADR-0019 决策 60):只带拓展 id,面板让拓展表失效(那个框住在
+		// 那一行上)。不借 `extension-status-changed` —— 那一帧说的是视图变了。
+		bus.on("extension-report-problems-changed", (change) =>
+			publish(envelope("state", "extension-report-problems-changed", change)),
 		),
-	);
-	// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
-	// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。
-	subs.push(
-		deps.bus.on("subscription-profiles-changed", ({ subscriptionIds }) =>
-			deps.publish({
-				type: "state",
-				event: "subscription-profiles-changed",
-				ts: new Date().toISOString(),
-				data: { ids: subscriptionIds },
-			}),
+		// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
+		// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。
+		bus.on("subscription-profiles-changed", (change) =>
+			publish(envelope("state", "subscription-profiles-changed", change)),
 		),
 	);
 

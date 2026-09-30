@@ -5,8 +5,8 @@
  *   - live-state-changed   → invalidate ["live","listening"](触发 dashboard refetch)
  *   - live-viewers-changed → setQueryData(["live","listening"]) patch 该房间 viewers
  *                            房间不在快照里 → 静默(返回 old,等下次 invalidate)
- *                            tuple shape 不对 → silent-drop
- *   - fans-refreshed       → setQueryData(["fans"]) 整体覆盖;data 非数组 → drop
+ *                            data 缺 uid / viewers → silent-drop
+ *   - fans-refreshed       → setQueryData(["fans"]) 整体覆盖;data.entries 非数组 → drop
  *   - history-recorded     → push toast + setQueryData(historyQueryKey(100)) prepend + dedup id + cap
  *   - history-updated      → 同 id 换缓存里那一行 + toast 同 id 换字(不在就不弹);
  *                            成败翻面时日桶的失败数 ±1,缓存里没有旧行则不动
@@ -31,10 +31,15 @@ import {
 import type { WsEnvelope } from "../../services/ws";
 import type { PushEventView } from "../../store/notifications";
 import { HISTORY_CACHE_CAP, handlePushEnvelope } from "../usePushEventsChannel";
+import { eventFrameMaker } from "./ws-frames";
 
-function env(over: Partial<WsEnvelope> & { type: string }): WsEnvelope {
-	return { ts: "2026-05-16T00:00:00.000Z", ...over };
-}
+const TS = "2026-05-16T00:00:00.000Z";
+
+/** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
+const env = eventFrameMaker(TS);
+
+/** 故意违反类型的坏帧(`data` 缺格 / 类型不对、事件名不存在),测 hook 的防御。 */
+const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
 
 function harness() {
 	const qc = new QueryClient();
@@ -79,14 +84,22 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	});
 
 	it("非 push-events 频道:不 push,不动 qc", () => {
-		handlePushEnvelope(env({ type: "state", event: "hydrate" }), h.qc, h.toast);
+		handlePushEnvelope(env({ type: "state", event: "hydrate", data: null }), h.qc, h.toast);
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});
 
 	describe("live-state-changed", () => {
 		it("invalidate ['live','listening']", () => {
-			handlePushEnvelope(env({ type: "push-events", event: "live-state-changed" }), h.qc, h.toast);
+			handlePushEnvelope(
+				env({
+					type: "push-events",
+					event: "live-state-changed",
+					data: { uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" },
+				}),
+				h.qc,
+				h.toast,
+			);
 			expect(h.invalidate).toHaveBeenCalledTimes(1);
 			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: ["live", "listening"] });
 			expect(h.push).not.toHaveBeenCalled();
@@ -115,7 +128,11 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "live-viewers-changed", data: ["u1", "1.2万"] }),
+				env({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { uid: "u1", viewers: "1.2万" },
+				}),
 				h.qc,
 				h.toast,
 			);
@@ -130,7 +147,11 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "live-viewers-changed", data: ["uX", "999"] }),
+				env({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { uid: "uX", viewers: "999" },
+				}),
 				h.qc,
 				h.toast,
 			);
@@ -140,25 +161,29 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("快照不存在(undefined):返回 undefined 不创建新数组", () => {
 			handlePushEnvelope(
-				env({ type: "push-events", event: "live-viewers-changed", data: ["u1", "999"] }),
+				env({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { uid: "u1", viewers: "999" },
+				}),
 				h.qc,
 				h.toast,
 			);
 			expect(h.qc.getQueryData(["live", "listening"])).toBeUndefined();
 		});
 
-		it("tuple shape 不对:silent-drop,不动 qc", () => {
+		it("缺 uid / viewers:silent-drop,不动 qc", () => {
 			const initial: LiveListenerSnapshot[] = [
 				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1万" },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "live-viewers-changed", data: ["u1"] }),
+				malformed({ type: "push-events", event: "live-viewers-changed", data: { uid: "u1" } }),
 				h.qc,
 				h.toast,
 			);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "live-viewers-changed", data: null }),
+				malformed({ type: "push-events", event: "live-viewers-changed", data: null }),
 				h.qc,
 				h.toast,
 			);
@@ -167,7 +192,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	});
 
 	describe("fans-refreshed", () => {
-		it("data 是数组:整体覆盖 ['fans']", () => {
+		it("data.entries 是数组:整体覆盖 ['fans']", () => {
 			const entries: FansEntry[] = [
 				{
 					subscriptionId: "s1",
@@ -180,17 +205,21 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				},
 			];
 			handlePushEnvelope(
-				env({ type: "push-events", event: "fans-refreshed", data: entries }),
+				env({ type: "push-events", event: "fans-refreshed", data: { entries } }),
 				h.qc,
 				h.toast,
 			);
 			expect(h.qc.getQueryData<FansResponse>(["fans"])).toEqual({ entries });
 		});
 
-		it("data 非数组:silent-drop", () => {
+		it("data.entries 非数组:silent-drop", () => {
 			h.qc.setQueryData<FansResponse>(["fans"], { entries: [] });
 			handlePushEnvelope(
-				env({ type: "push-events", event: "fans-refreshed", data: { not: "array" } }),
+				malformed({
+					type: "push-events",
+					event: "fans-refreshed",
+					data: { entries: { not: "array" } },
+				}),
 				h.qc,
 				h.toast,
 			);
@@ -212,7 +241,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				],
 			});
 			handlePushEnvelope(
-				env({ type: "push-events", event: "fans-refreshed", data: [] }),
+				env({ type: "push-events", event: "fans-refreshed", data: { entries: [] } }),
 				h.qc,
 				h.toast,
 			);
@@ -237,12 +266,12 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("缺 id / data:silent-drop", () => {
 			handlePushEnvelope(
-				env({ type: "push-events", event: "history-recorded", data: undefined }),
+				malformed({ type: "push-events", event: "history-recorded", data: undefined }),
 				h.qc,
 				h.toast,
 			);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "history-recorded", data: { ts: "t" } }),
+				malformed({ type: "push-events", event: "history-recorded", data: { ts: "t" } }),
 				h.qc,
 				h.toast,
 			);
@@ -485,7 +514,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	});
 
 	it("不识别的 event:不 push,不动 qc", () => {
-		handlePushEnvelope(env({ type: "push-events", event: "subscribed" }), h.qc, h.toast);
+		handlePushEnvelope(malformed({ type: "push-events", event: "subscribed" }), h.qc, h.toast);
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});

@@ -4,7 +4,7 @@
  * 守护契约:
  *   - 非 log 频道帧 silent-drop
  *   - engine-error 之外的 event 不动 store
- *   - data 形状不符合 [source, message] 元组的 silent-drop(数组短 / 元素非 string)
+ *   - data 形状不符合 { source, message } 的 silent-drop(不是对象 / 缺格 / 格非 string)
  *   - 合法帧 push 到 useAlertStore
  */
 
@@ -12,31 +12,44 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { WsEnvelope } from "../../services/ws";
 import { useAlertStore } from "../../store/alerts";
 import { handleLogEnvelope } from "../useAlertChannel";
+import { eventFrameMaker } from "./ws-frames";
 
 function resetStore(): void {
 	useAlertStore.getState().clear();
 }
 
-function env(over: Partial<WsEnvelope> & { type: string }): WsEnvelope {
-	return { ts: "2026-05-16T00:00:00.000Z", ...over };
-}
+const TS = "2026-05-16T00:00:00.000Z";
+
+/** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
+const env = eventFrameMaker(TS);
+
+/** 故意违反类型的坏帧(`data` 缺格 / 类型不对、事件名不存在、频道与事件名对不上),测 hook 的防御。 */
+const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
 
 describe("handleLogEnvelope — log 频道 engine-error", () => {
 	beforeEach(resetStore);
 
 	it("非 log 频道帧:不 push", () => {
-		handleLogEnvelope(env({ type: "auth", event: "engine-error", data: ["x", "y"] }));
+		handleLogEnvelope(
+			malformed({ type: "auth", event: "engine-error", data: { source: "x", message: "y" } }),
+		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("log 频道但 event 不是 engine-error:不 push", () => {
-		handleLogEnvelope(env({ type: "log", event: "log-line", data: ["x", "y"] }));
+		handleLogEnvelope(
+			malformed({ type: "log", event: "log-line", data: { source: "x", message: "y" } }),
+		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
-	it("合法 [source, message]:push 到 store", () => {
+	it("合法 { source, message }:push 到 store", () => {
 		handleLogEnvelope(
-			env({ type: "log", event: "engine-error", data: ["dynamic-engine", "boom"] }),
+			env({
+				type: "log",
+				event: "engine-error",
+				data: { source: "dynamic-engine", message: "boom" },
+			}),
 		);
 		const items = useAlertStore.getState().items;
 		expect(items).toHaveLength(1);
@@ -44,25 +57,35 @@ describe("handleLogEnvelope — log 频道 engine-error", () => {
 		expect(items[0].message).toBe("boom");
 	});
 
-	it("data 不是数组:silent-drop", () => {
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: "oops" }));
+	it("data 不是对象:silent-drop", () => {
+		handleLogEnvelope(malformed({ type: "log", event: "engine-error", data: "oops" }));
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
-	it("data 数组长度 < 2:silent-drop", () => {
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: ["only-source"] }));
+	it("data 缺 message:silent-drop", () => {
+		handleLogEnvelope(
+			malformed({ type: "log", event: "engine-error", data: { source: "only-source" } }),
+		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("source / message 任一非 string:silent-drop", () => {
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: ["src", 42] }));
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: [null, "msg"] }));
+		handleLogEnvelope(
+			malformed({ type: "log", event: "engine-error", data: { source: "src", message: 42 } }),
+		);
+		handleLogEnvelope(
+			malformed({ type: "log", event: "engine-error", data: { source: null, message: "msg" } }),
+		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("连续 push:按时间倒序累计,id 不重复", () => {
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: ["a", "1"] }));
-		handleLogEnvelope(env({ type: "log", event: "engine-error", data: ["b", "2"] }));
+		handleLogEnvelope(
+			env({ type: "log", event: "engine-error", data: { source: "a", message: "1" } }),
+		);
+		handleLogEnvelope(
+			env({ type: "log", event: "engine-error", data: { source: "b", message: "2" } }),
+		);
 		const items = useAlertStore.getState().items;
 		expect(items).toHaveLength(2);
 		// 新条目顶部插入,id 各不相同

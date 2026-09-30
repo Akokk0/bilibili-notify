@@ -90,7 +90,7 @@ interface MembershipTier {
   - `descriptor` 由服务端备好：B 站的写在 `bilibili/` 的代码里，由 `compose.ts` 静态登记完整的 `SourceDescriptor`，B 站设置坏了（集成没起）照样下发；拓展的取清单 `contributes.subscription`；装上就有，停用、启动失败、设置不合法时照样有。
   - `has { auth, liveStatus, preview }`：来源实现了 `auth` / `fetchLiveStatus` / `fetchPreview` 中的哪些，由宿主推算，不让来源自报。
   - `status`：该集成运行状态的取值（内置集成只取 `running` / `failed` / `settings-invalid`，见「健康与运行状态」）。
-- 面板进来拉一次进缓存，订阅按 `identity.sourceKey` 取；`extension-changed` 时缓存失效。加载中「不知道」不等于「没有」，按中性默认画。
+- 面板进来拉一次进缓存，订阅按 `identity.sourceKey` 取；`extension-status-changed` 时缓存失效。加载中「不知道」不等于「没有」，按中性默认画。
 
 **从描述符直接拿**：
 

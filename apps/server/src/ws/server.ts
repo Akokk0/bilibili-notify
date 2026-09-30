@@ -17,8 +17,8 @@ import {
 	DEFAULT_HEARTBEAT_TIMEOUT_MS,
 	MAX_CONTROL_MESSAGE_BYTES,
 	SEND_BACKPRESSURE_THRESHOLD_BYTES,
-	type ServerEnvelope,
-	type ServerEventEnvelope,
+	type WsEnvelope,
+	type WsEventEnvelope,
 } from "./types.js";
 
 /**
@@ -212,7 +212,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 	opts.httpServer.on("upgrade", onUpgrade);
 
 	// ---------------- Send helpers ---------------------------------------------
-	function sendRaw(client: WsClient, envelope: ServerEnvelope): void {
+	function sendRaw(client: WsClient, envelope: WsEnvelope): void {
 		if (client.socket.readyState !== WebSocket.OPEN) return;
 		// Backpressure: if the kernel send buffer is over threshold, drop and warn once.
 		if (client.socket.bufferedAmount > SEND_BACKPRESSURE_THRESHOLD_BYTES) {
@@ -262,7 +262,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		}
 	}
 
-	function broadcast(envelope: ServerEventEnvelope): void {
+	function broadcast(envelope: WsEventEnvelope): void {
 		const channelClients = roster[envelope.type];
 		if (!channelClients || channelClients.size === 0) return;
 		// Snapshot to avoid mutation-during-iteration if a send triggers a close.

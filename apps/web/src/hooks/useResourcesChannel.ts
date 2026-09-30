@@ -1,6 +1,6 @@
-import type { ResourceSample, ResourceStatic, ResourcesHydrate } from "@bilibili-notify/contract";
+import type { ResourceSample, ResourceStatic } from "@bilibili-notify/contract";
 import { useEffect, useState } from "react";
-import type { WsEnvelope } from "../services/ws";
+import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels, unsubscribeChannels } from "../services/wsSingleton";
 
 /**
@@ -29,20 +29,17 @@ export const EMPTY_RESOURCES: ResourcesState = { static: null, history: [] };
  *
  * 认不出的帧**原样返回同一个对象**,别造一个内容相同的新对象 —— React 靠引用判重渲染。
  */
-export function reduceResources(
-	state: ResourcesState,
-	env: { event: string; data: unknown },
-): ResourcesState {
-	if (env.event === "hydrate") {
-		const data = env.data as ResourcesHydrate;
+export function reduceResources(state: ResourcesState, env: WsEnvelope): ResourcesState {
+	if (isWsEvent(env, "resources", "hydrate")) {
+		const data = env.data;
 		// 整份换掉,不与断线前的接在一起:断线那几分钟是空的,拼起来的曲线会把一段
 		// 不存在的平直读成「稳定」。
 		return { static: data.static, history: data.history.slice(-HISTORY_KEEP) };
 	}
-	if (env.event === "sample") {
+	if (isWsEvent(env, "resources", "sample")) {
 		// 没有静态量就算不出占比(堆上限从 hydrate 来),画出来的环是假的 —— 丢掉。
 		if (!state.static) return state;
-		const history = [...state.history, env.data as ResourceSample];
+		const history = [...state.history, env.data];
 		return {
 			static: state.static,
 			history: history.length > HISTORY_KEEP ? history.slice(-HISTORY_KEEP) : history,
@@ -60,9 +57,7 @@ export function useResourcesChannel(): ResourcesState {
 		subscribeChannels(["resources"]);
 		const off = onWsEvent((env: WsEnvelope) => {
 			if (env.type !== "resources") return;
-			// WsEnvelope 的 event 是可选的(不信任服务端形状那一层的防御);没有 event
-			// 的帧本来就落不了地,给个空串走到 reducer 的兜底分支。
-			setState((prev) => reduceResources(prev, { event: env.event ?? "", data: env.data }));
+			setState((prev) => reduceResources(prev, env));
 		});
 		return () => {
 			off();

@@ -2,25 +2,55 @@
  * Reconnecting WS client for /ws. One socket per `connectWs(...)`; channels are
  * remembered across reconnects so hooks don't have to re-subscribe.
  *
- * Wire 契约(channel 名 / envelope)见 `@bilibili-notify/contract` 的 ws 部分;
+ * Wire 契约(channel 名 / envelope / 事件表 `WsEvents`)见 `@bilibili-notify/contract` 的 ws 部分;
  * 服务端的控制帧校验在 apps/server/src/ws/types.ts。
  */
 
-import type { ChannelName } from "@bilibili-notify/contract";
+import {
+	CHANNELS,
+	type ChannelName,
+	type WsControlEnvelope,
+	type WsEnvelope,
+	type WsEventEnvelope,
+} from "@bilibili-notify/contract";
 import { withDesktopTokenHeader, withDesktopTokenQuery } from "./desktop-token";
 
-export type { ChannelName };
+export type { ChannelName, WsEnvelope };
+
+/** 控制帧的 `type`。写成按类型穷举的表:contract 加一种控制帧,这里不补就编译不过。 */
+const CONTROL_TYPES: Record<WsControlEnvelope["type"], true> = {
+	subscribed: true,
+	unsubscribed: true,
+	ping: true,
+	pong: true,
+	error: true,
+};
+const CHANNEL_NAMES: ReadonlySet<string> = new Set(CHANNELS);
 
 /**
- * 收帧的**防御性宽松视图**:hook 层只关心 type/event/data,且不信任服务端
- * 一定发合法帧(`type: string` 而非 ChannelName 联合)。严格 wire 形状是
- * contract 的 `ServerEnvelope`。
+ * 收到的一帧:外形对得上 contract 的 `WsEnvelope` 才交出去,对不上回 `null`(丢掉)。
+ *
+ * 服务端不一定总发合法帧(版本错开、代理改包),所以这里只核外形 —— 控制帧认 `type`,事件帧认
+ * 频道与事件名是字符串。**`data` 不在这里核**:hook 读它的时候照旧按格判空,那一层防御别删。
  */
-export interface WsEnvelope {
-	type: string;
-	event?: string;
-	ts: string;
-	data?: unknown;
+export function wsEnvelopeOf(raw: unknown): WsEnvelope | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const { type, event } = raw as { type?: unknown; event?: unknown };
+	if (typeof type !== "string") return null;
+	if (Object.hasOwn(CONTROL_TYPES, type)) return raw as WsControlEnvelope;
+	if (CHANNEL_NAMES.has(type) && typeof event === "string") return raw as WsEventEnvelope;
+	return null;
+}
+
+/**
+ * 这一帧是不是 `channel` 频道的 `event`;是的话 `data` 按 contract 的事件表(`WsEvents`)定型。
+ */
+export function isWsEvent<C extends ChannelName, E extends WsEventEnvelope<C>["event"]>(
+	env: WsEnvelope,
+	channel: C,
+	event: E,
+): env is WsEnvelope & Extract<WsEventEnvelope<C>, { event: E }> {
+	return env.type === channel && "event" in env && env.event === event;
 }
 
 export type WsStatus = "connecting" | "open" | "closed";
@@ -126,12 +156,13 @@ export function connectWs(baseUrl = defaultBaseUrl()): WsClient {
 			});
 
 			s.addEventListener("message", (ev) => {
-				let env: WsEnvelope;
+				let env: WsEnvelope | null;
 				try {
-					env = JSON.parse(ev.data) as WsEnvelope;
+					env = wsEnvelopeOf(JSON.parse(ev.data));
 				} catch {
 					return;
 				}
+				if (!env) return;
 				if (env.type === "ping") {
 					send({ type: "pong" });
 					return;

@@ -2,7 +2,7 @@
  * 单元测试 — `attachChannelWiring` / `buildStateHydrate`(WS BusEvents → envelope 桥)。
  *
  * 守护契约:
- *   - 帧的 data 形状:无载荷 → data=null;单值载荷 → 直接是那个值;多值事件 → 保留 tuple(线上帧不随总线载荷的形状变)
+ *   - 总线事件原样成帧:线上事件名与总线同名,`data` 就是总线的载荷(具名对象),没有载荷的是 null
  *   - `cookies-refreshed` 只有 {refreshedAt}(cookie 不上总线,源头由 auth 的测试钉着),原样成帧
  *   - `history-recorded` / `history-updated` 投影成精简 view(非 raw HistoryEntry)
  *   - `config-changed` 按 scope 带快照;secrets scope → snapshot=null
@@ -14,15 +14,15 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { ALL_CHANNELS, attachChannelWiring, buildStateHydrate } from "../channels.js";
 import { createLogChannel } from "../log-channel.js";
-import type { ServerEventEnvelope } from "../types.js";
+import type { WsEventEnvelope } from "../types.js";
 
 interface Harness {
 	bus: ReturnType<typeof createNodeMessageBus>;
 	log: ReturnType<typeof createLogChannel>;
 	publish: ReturnType<typeof vi.fn>;
 	dispose: () => void;
-	last(): ServerEventEnvelope;
-	all(): ServerEventEnvelope[];
+	last(): WsEventEnvelope;
+	all(): WsEventEnvelope[];
 }
 
 function wire(): Harness {
@@ -35,8 +35,8 @@ function wire(): Harness {
 		log,
 		publish,
 		dispose: () => handle.dispose(),
-		last: () => publish.mock.calls.at(-1)?.[0] as ServerEventEnvelope,
-		all: () => publish.mock.calls.map((c) => c[0] as ServerEventEnvelope),
+		last: () => publish.mock.calls.at(-1)?.[0] as WsEventEnvelope,
+		all: () => publish.mock.calls.map((c) => c[0] as WsEventEnvelope),
 	};
 }
 
@@ -64,13 +64,13 @@ describe("buildStateHydrate", () => {
 	});
 });
 
-describe("attachChannelWiring — envelope 参数 unwrap", () => {
+describe("attachChannelWiring — 总线载荷原样成帧", () => {
 	let h: Harness;
 	beforeEach(() => {
 		h = wire();
 	});
 
-	it("0 参事件(auth-lost / auth-restored):data=null", () => {
+	it("无载荷事件(auth-lost / auth-restored):data=null", () => {
 		h.bus.emit("auth-lost");
 		expect(h.last()).toMatchObject({ type: "auth", event: "auth-lost", data: null });
 		h.bus.emit("auth-restored");
@@ -90,33 +90,48 @@ describe("attachChannelWiring — envelope 参数 unwrap", () => {
 		});
 	});
 
-	it("1 参事件:直接 unwrap 为值本身", () => {
+	it("载荷是单个对象的事件:data 就是总线上那一个对象", () => {
 		const snap = { status: 5, msg: "ok" };
-		h.bus.emit("login-status-report", snap as never);
+		h.bus.emit("login-status-report", snap);
 		expect(h.last()).toMatchObject({ type: "auth", event: "login-status-report" });
 		expect(h.last().data).toBe(snap);
 
-		const entries = [{ uid: "u1", current: 1 }];
-		h.bus.emit("fans-refreshed", { entries: entries as never });
+		const fans = { entries: [{ uid: "u1", current: 1 }] as never };
+		h.bus.emit("fans-refreshed", fans);
 		expect(h.last()).toMatchObject({ type: "push-events", event: "fans-refreshed" });
-		expect(h.last().data).toBe(entries);
+		expect(h.last().data).toBe(fans);
 	});
 
-	it("N 参事件:保留 tuple", () => {
+	it("具名载荷:live-state-changed / live-viewers-changed / engine-error 各自带命名的格子", () => {
 		h.bus.emit("live-state-changed", { uid: "u1", status: "live" });
 		expect(h.last()).toMatchObject({
 			type: "push-events",
 			event: "live-state-changed",
-			data: ["u1", "live"],
+			data: { uid: "u1", status: "live" },
 		});
 		h.bus.emit("live-viewers-changed", { uid: "u1", viewers: "1.2万" });
-		expect(h.last().data).toEqual(["u1", "1.2万"]);
+		expect(h.last()).toMatchObject({
+			type: "push-events",
+			event: "live-viewers-changed",
+			data: { uid: "u1", viewers: "1.2万" },
+		});
 		h.bus.emit("engine-error", { source: "dynamic-engine", message: "boom" });
 		expect(h.last()).toMatchObject({
 			type: "log",
 			event: "engine-error",
-			data: ["dynamic-engine", "boom"],
+			data: { source: "dynamic-engine", message: "boom" },
 		});
+	});
+
+	/**
+	 * `at` 是这次状态翻转的真实发生时刻(开播时刻 / 下播时刻),总线上有它、帧里就得有 ——
+	 * 面板与拓展凭它认场次。帧以前只发 `[uid, status]`,这一格在线上被吞掉。
+	 */
+	it("live-state-changed 总线载荷带 at:帧里也带 at", () => {
+		h.bus.emit("live-state-changed", { uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		expect(h.last().data).toEqual({ uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		h.bus.emit("live-state-changed", { uid: "u1", status: "idle", at: "2026-05-16T11:30:00.000Z" });
+		expect(h.last().data).toEqual({ uid: "u1", status: "idle", at: "2026-05-16T11:30:00.000Z" });
 	});
 });
 
@@ -195,9 +210,7 @@ describe("attachChannelWiring — history-recorded / history-updated 投影", ()
 			status: "no-targets",
 			messages: [{ text: "卡片", role: "main" }],
 		});
-		expect(
-			(h.last().data as { messages: Array<Record<string, unknown>> }).messages[0],
-		).not.toHaveProperty("ok");
+		expect(h.last().data).not.toHaveProperty(["messages", 0, "ok"]);
 	});
 });
 
@@ -238,26 +251,26 @@ describe("attachChannelWiring — config-changed 按 scope 带快照", () => {
 describe("attachChannelWiring — 拓展喊「面板数据变了」", () => {
 	/**
 	 * 拓展交给面板的数据是现取的(`/api/ext/:id/status`),面板不知道什么时候该再取 ——
-	 * 桥那头握完手,面板上那张卡还灰着。这一帧只带 id:面板按 id 失效缓存、自己去取。
+	 * 桥那头握完手,面板上那张卡还灰着。这一帧只带拓展 id:面板按 id 失效缓存、自己去取。
 	 */
-	it("extension-status-changed → state/extension-changed,只带 id", () => {
+	it("extension-status-changed → state 频道同名帧,只带 extensionId", () => {
 		const h = wire();
 		h.bus.emit("extension-status-changed", { extensionId: "bridge" });
-		expect(h.last()).toMatchObject({ type: "state", event: "extension-changed" });
-		expect(h.last().data).toEqual({ id: "bridge" });
+		expect(h.last()).toMatchObject({ type: "state", event: "extension-status-changed" });
+		expect(h.last().data).toEqual({ extensionId: "bridge" });
 	});
 });
 
 describe("attachChannelWiring — 拓展的上报问题变了", () => {
 	/**
 	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60)住在拓展表那一行上。这一帧只叫面板重取拓展表 ——
-	 * 不借 `extension-changed`:那一帧说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表。
+	 * 不借 `extension-status-changed`:那一帧说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表。
 	 */
-	it("extension-report-problems-changed → state 频道同名帧,只带 id", () => {
+	it("extension-report-problems-changed → state 频道同名帧,只带 extensionId", () => {
 		const h = wire();
 		h.bus.emit("extension-report-problems-changed", { extensionId: "douyin" });
 		expect(h.last()).toMatchObject({ type: "state", event: "extension-report-problems-changed" });
-		expect(h.last().data).toEqual({ id: "douyin" });
+		expect(h.last().data).toEqual({ extensionId: "douyin" });
 	});
 });
 
@@ -270,7 +283,7 @@ describe("attachChannelWiring — 拓展订阅的资料变了", () => {
 		const h = wire();
 		h.bus.emit("subscription-profiles-changed", { subscriptionIds: ["a", "b"] });
 		expect(h.last()).toMatchObject({ type: "state", event: "subscription-profiles-changed" });
-		expect(h.last().data).toEqual({ ids: ["a", "b"] });
+		expect(h.last().data).toEqual({ subscriptionIds: ["a", "b"] });
 	});
 });
 

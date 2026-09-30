@@ -14,14 +14,21 @@ import { describe, expect, it } from "vite-plus/test";
 import { type LogsResponse, logsQueryKey } from "../../services/dashboard";
 import type { WsEnvelope } from "../../services/ws";
 import { handleLogStreamEnvelope, LOG_CACHE_CAP, parseLogEnvelope } from "../useLogChannel";
+import { eventFrameMaker } from "./ws-frames";
 
-function env(over: Partial<WsEnvelope> & { type: string }): WsEnvelope {
-	return { ts: "2026-05-17T00:00:00.000Z", ...over };
-}
+const TS = "2026-05-17T00:00:00.000Z";
+
+/** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
+const env = eventFrameMaker(TS);
+
+/** 故意违反类型的坏帧(`data` 缺格 / 类型不对、事件名不存在、频道与事件名对不上),测 hook 的防御。 */
+const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
 
 describe("parseLogEnvelope", () => {
 	it("非 log 频道 → null", () => {
-		expect(parseLogEnvelope(env({ type: "auth", event: "info", data: { msg: "x" } }))).toBeNull();
+		expect(
+			parseLogEnvelope(malformed({ type: "auth", event: "info", data: { msg: "x" } })),
+		).toBeNull();
 	});
 
 	it("级别帧:取 msg/name/args", () => {
@@ -38,13 +45,19 @@ describe("parseLogEnvelope", () => {
 	});
 
 	it("级别帧 msg 非 string → null(silent-drop)", () => {
-		expect(parseLogEnvelope(env({ type: "log", event: "info", data: { msg: 42 } }))).toBeNull();
-		expect(parseLogEnvelope(env({ type: "log", event: "info", data: undefined }))).toBeNull();
+		expect(
+			parseLogEnvelope(malformed({ type: "log", event: "info", data: { msg: 42 } })),
+		).toBeNull();
+		expect(parseLogEnvelope(malformed({ type: "log", event: "info", data: undefined }))).toBeNull();
 	});
 
 	it("engine-error → 合成 level=error / name=source", () => {
 		const line = parseLogEnvelope(
-			env({ type: "log", event: "engine-error", data: ["dynamic-engine", "boom"] }),
+			env({
+				type: "log",
+				event: "engine-error",
+				data: { source: "dynamic-engine", message: "boom" },
+			}),
 		);
 		expect(line).toEqual({
 			ts: "2026-05-17T00:00:00.000Z",
@@ -55,26 +68,32 @@ describe("parseLogEnvelope", () => {
 	});
 
 	it("engine-error data 形状不符 → null", () => {
-		expect(parseLogEnvelope(env({ type: "log", event: "engine-error", data: "x" }))).toBeNull();
 		expect(
-			parseLogEnvelope(env({ type: "log", event: "engine-error", data: ["only"] })),
+			parseLogEnvelope(malformed({ type: "log", event: "engine-error", data: "x" })),
 		).toBeNull();
 		expect(
-			parseLogEnvelope(env({ type: "log", event: "engine-error", data: [1, "m"] })),
+			parseLogEnvelope(malformed({ type: "log", event: "engine-error", data: { source: "only" } })),
+		).toBeNull();
+		expect(
+			parseLogEnvelope(
+				malformed({ type: "log", event: "engine-error", data: { source: 1, message: "m" } }),
+			),
 		).toBeNull();
 	});
 
 	it("未知 event → null", () => {
-		expect(parseLogEnvelope(env({ type: "log", event: "trace", data: { msg: "x" } }))).toBeNull();
+		expect(
+			parseLogEnvelope(malformed({ type: "log", event: "trace", data: { msg: "x" } })),
+		).toBeNull();
 	});
 });
 
 describe("handleLogStreamEnvelope", () => {
 	it("合法帧 prepend(新→旧),非法帧不动缓存", () => {
 		const qc = new QueryClient();
-		handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: "a" } }), qc);
-		handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: "b" } }), qc);
-		handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: 99 } }), qc); // drop
+		handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: "a", args: [] } }), qc);
+		handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: "b", args: [] } }), qc);
+		handleLogStreamEnvelope(malformed({ type: "log", event: "info", data: { msg: 99 } }), qc); // drop
 		const cached = qc.getQueryData<LogsResponse>(logsQueryKey());
 		expect(cached?.entries.map((e) => e.msg)).toEqual(["b", "a"]);
 	});
@@ -82,7 +101,10 @@ describe("handleLogStreamEnvelope", () => {
 	it("超过 LOG_CACHE_CAP 截尾", () => {
 		const qc = new QueryClient();
 		for (let i = 0; i < LOG_CACHE_CAP + 50; i++) {
-			handleLogStreamEnvelope(env({ type: "log", event: "info", data: { msg: `m${i}` } }), qc);
+			handleLogStreamEnvelope(
+				env({ type: "log", event: "info", data: { msg: `m${i}`, args: [] } }),
+				qc,
+			);
 		}
 		const cached = qc.getQueryData<LogsResponse>(logsQueryKey());
 		expect(cached?.entries).toHaveLength(LOG_CACHE_CAP);

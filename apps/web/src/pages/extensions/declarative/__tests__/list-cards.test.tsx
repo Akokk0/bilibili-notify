@@ -595,7 +595,7 @@ describe("别处改了设置", () => {
 				type: "state",
 				event: "extension-settings-changed",
 				ts: new Date().toISOString(),
-				data: { id: "bridge" },
+				data: { extensionId: "bridge" },
 			},
 			qc,
 		);
@@ -613,7 +613,7 @@ describe("别处改了设置", () => {
 				type: "state",
 				event: "extension-settings-changed",
 				ts: new Date().toISOString(),
-				data: { id: "douyin" },
+				data: { extensionId: "douyin" },
 			},
 			qc,
 		);

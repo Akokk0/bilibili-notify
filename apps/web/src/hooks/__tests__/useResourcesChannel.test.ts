@@ -1,6 +1,8 @@
 import type { ResourceSample, ResourcesHydrate } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
+import type { WsEnvelope } from "../../services/ws";
 import { HISTORY_KEEP, type ResourcesState, reduceResources } from "../useResourcesChannel";
+import { eventFrameMaker } from "./ws-frames";
 
 /**
  * `resources` 频道的落地规则 —— 概览页资源卡看到的那份状态。
@@ -40,51 +42,59 @@ function hydrate(history: ResourceSample[]): ResourcesHydrate {
 
 const EMPTY: ResourcesState = { static: null, history: [] };
 
+const TS = "2026-05-17T00:00:00.000Z";
+
+/** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
+const env = eventFrameMaker(TS);
+
+/** `resources` 频道的 hydrate 帧 / sample 帧。 */
+const hydrateFrame = (data: ResourcesHydrate) => env({ type: "resources", event: "hydrate", data });
+const sampleFrame = (data: ResourceSample) => env({ type: "resources", event: "sample", data });
+
+/** 故意违反类型的坏帧(事件名不存在),测 reducer 的防御。 */
+const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
+
 describe("reduceResources", () => {
 	it("hydrate 落地静态量与那段历史", () => {
-		const next = reduceResources(EMPTY, {
-			event: "hydrate",
-			data: hydrate([sample(1), sample(2)]),
-		});
+		const next = reduceResources(EMPTY, hydrateFrame(hydrate([sample(1), sample(2)])));
 		expect(next.static?.hostCores).toBe(4);
 		expect(next.history.map((s) => s.ts)).toEqual([1, 2]);
 	});
 
 	it("sample 追加在末尾", () => {
-		const base = reduceResources(EMPTY, { event: "hydrate", data: hydrate([sample(1)]) });
-		const next = reduceResources(base, { event: "sample", data: sample(2) });
+		const base = reduceResources(EMPTY, hydrateFrame(hydrate([sample(1)])));
+		const next = reduceResources(base, sampleFrame(sample(2)));
 		expect(next.history.map((s) => s.ts)).toEqual([1, 2]);
 		// 静态量不会被样本帧冲掉。
 		expect(next.static?.heapLimit).toBe(512 * MB);
 	});
 
 	it("缓冲有上限:这一页可以开着一整天,不封顶就是一路涨的数组", () => {
-		let state = reduceResources(EMPTY, { event: "hydrate", data: hydrate([]) });
+		let state = reduceResources(EMPTY, hydrateFrame(hydrate([])));
 		for (let i = 0; i < HISTORY_KEEP + 50; i++) {
-			state = reduceResources(state, { event: "sample", data: sample(i) });
+			state = reduceResources(state, sampleFrame(sample(i)));
 		}
 		expect(state.history).toHaveLength(HISTORY_KEEP);
 		expect(state.history[0]?.ts).toBe(50);
 	});
 
 	it("重连后的 hydrate 整份换掉,不跟断线前的接在一起", () => {
-		const base = reduceResources(EMPTY, {
-			event: "hydrate",
-			data: hydrate([sample(1), sample(2)]),
-		});
-		const after = reduceResources(base, { event: "hydrate", data: hydrate([sample(90)]) });
+		const base = reduceResources(EMPTY, hydrateFrame(hydrate([sample(1), sample(2)])));
+		const after = reduceResources(base, hydrateFrame(hydrate([sample(90)])));
 		// 断线那几分钟是空的,拼起来的曲线会把一段不存在的平直读成「稳定」。
 		expect(after.history.map((s) => s.ts)).toEqual([90]);
 	});
 
 	it("还没 hydrate 就先来了 sample:丢掉,不拿没有静态量的样本画图", () => {
 		// 没有堆上限就算不出占比,画出来的环是假的。
-		const next = reduceResources(EMPTY, { event: "sample", data: sample(1) });
+		const next = reduceResources(EMPTY, sampleFrame(sample(1)));
 		expect(next).toBe(EMPTY);
 	});
 
 	it("不认识的 event 原样返回同一个对象 —— 不触发无谓重渲染", () => {
-		const base = reduceResources(EMPTY, { event: "hydrate", data: hydrate([sample(1)]) });
-		expect(reduceResources(base, { event: "whatever", data: null })).toBe(base);
+		const base = reduceResources(EMPTY, hydrateFrame(hydrate([sample(1)])));
+		expect(
+			reduceResources(base, malformed({ type: "resources", event: "whatever", data: null })),
+		).toBe(base);
 	});
 });

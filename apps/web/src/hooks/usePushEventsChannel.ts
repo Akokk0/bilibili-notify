@@ -2,7 +2,6 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import {
 	type DailyHistoryCountView,
-	type FansEntry,
 	type FansResponse,
 	HISTORY_DAILY_QUERY_KEY,
 	HISTORY_QUERY_LIMITS,
@@ -12,7 +11,7 @@ import {
 	type LiveListeningEntry,
 	localDayKey,
 } from "../services/dashboard";
-import type { WsEnvelope } from "../services/ws";
+import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { type PushEventView, useToastStore } from "../store/notifications";
 import { countsAsDelivery, countsAsFailure } from "../types/domain";
@@ -33,8 +32,9 @@ import { countsAsDelivery, countsAsFailure } from "../types/domain";
  * fetch limit so we don't unboundedly grow the in-memory list during long-
  * running dashboards.
  *
- * Server contract (apps/server/src/ws/channels.ts): envelope.data is a
- * {@link PushEventView} — the history row view, image refs as filenames.
+ * Server contract (apps/server/src/ws/channels.ts): `history-*` 帧的 `data` 是一份
+ * {@link PushEventView} —— 历史行的 view,图片留文件名。各事件 `data` 的形状以 contract 的
+ * `WsEvents` 为准。
  */
 export const HISTORY_CACHE_CAP = 200;
 
@@ -48,8 +48,9 @@ export interface PushToastSink {
  * 处理 `push-events` 频道的单条 envelope。逻辑大表盘:
  *   - `live-state-changed`        → invalidate ["live","listening"]
  *   - `extension-live-changed`    → invalidate ["live","listening"](拓展订阅的在播表变了)
- *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent)
- *   - `fans-refreshed`            → setQueryData 整体覆盖 ["fans"]
+ *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent);
+ *                                    data 是 `{ uid, viewers }`
+ *   - `fans-refreshed`            → setQueryData 整体覆盖 ["fans"];data 是 `{ entries }`
  *   - `history-recorded`          → push 进 toast + prepend 到 ["history"] 并 dedup 截尾
  *                                    + ["history-daily"] 今日桶就地 +1(跨零点则 invalidate;
  *                                    无目标行不计)
@@ -59,18 +60,16 @@ export interface PushToastSink {
  * 提取成 export 纯函数,测试注入 `qc = new QueryClient()` + spy toast 即可覆盖。
  */
 export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: PushToastSink): void {
-	if (env.type !== "push-events") return;
-
 	// 直播状态翻转 → 让 ["live","listening"] 失效,Dashboard 立即重 fetch。
 	// 后端只在真实 transition 时 emit("live-state-changed"),所以这里不会刷屏。
-	if (env.event === "live-state-changed") {
+	if (isWsEvent(env, "push-events", "live-state-changed")) {
 		qc.invalidateQueries({ queryKey: ["live", "listening"] });
 		return;
 	}
 
 	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):进表 / 出表 / 人数变了都是这一帧,不带载荷,
 	// 服务端已经按窗口合并过 —— 整份重取。
-	if (env.event === "extension-live-changed") {
+	if (isWsEvent(env, "push-events", "extension-live-changed")) {
 		qc.invalidateQueries({ queryKey: ["live", "listening"] });
 		return;
 	}
@@ -79,10 +78,10 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	// 局部 patch 该房间的 viewers 字段。0 额外 HTTP,Dashboard 数字即时跳。
 	// 房间不在快照里(可能刚下播 / 列表还没拉)就静默跳过,下一次 invalidate
 	// 会顺带刷上。
-	if (env.event === "live-viewers-changed") {
-		const tuple = env.data as [string, string] | undefined;
-		if (tuple?.length !== 2) return;
-		const [uid, viewers] = tuple;
+	if (isWsEvent(env, "push-events", "live-viewers-changed")) {
+		const uid = env.data?.uid;
+		const viewers = env.data?.viewers;
+		if (typeof uid !== "string" || typeof viewers !== "string") return;
 		qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
 			if (!old) return old;
 			let touched = false;
@@ -100,15 +99,15 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	// FansPoller 每轮 cron tick / 订阅删除时推「本轮 enabled subs 的完整快照」。
 	// 直接覆盖 ["fans"] 缓存 —— 被删除订阅的 uid 不在 payload 里,自然从面板撤掉。
 	// 后端已保证"本轮失败保留旧值"语义在快照里完成,前端不需要 upsert。
-	if (env.event === "fans-refreshed") {
-		const incoming = env.data as FansEntry[] | undefined;
+	if (isWsEvent(env, "push-events", "fans-refreshed")) {
+		const incoming = env.data?.entries;
 		if (!Array.isArray(incoming)) return;
 		qc.setQueryData<FansResponse>(["fans"], { entries: incoming });
 		return;
 	}
 
-	if (env.event === "history-updated") {
-		const data = env.data as PushEventView | undefined;
+	if (isWsEvent(env, "push-events", "history-updated")) {
+		const data = env.data;
 		if (!data || typeof data.id !== "string") return;
 		// 只换不插:不在缓存里说明它比缓存里最老的还老,塞进来会乱序。
 		let prev: PushEventView | undefined;
@@ -128,8 +127,8 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 		return;
 	}
 
-	if (env.event !== "history-recorded") return;
-	const data = env.data as PushEventView | undefined;
+	if (!isWsEvent(env, "push-events", "history-recorded")) return;
+	const data = env.data;
 	if (!data || typeof data.id !== "string") return;
 	toast.push(data);
 	// HI1:history 缓存现按 limit 分键 —— Dashboard ["history",{limit:100}]、

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { WsEnvelope } from "../services/ws";
+import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus, type LoginSnapshot } from "../types/auth";
@@ -9,20 +9,20 @@ import { BiliLoginStatus, type LoginSnapshot } from "../types/auth";
  * 通过 React 渲染就能覆盖事件分发逻辑 —— hook 本体只剩 effect 调度壳。
  */
 export function handleAuthEnvelope(env: WsEnvelope): void {
-	if (env.type !== "auth") return;
-	if (env.event === "login-status-report" && env.data) {
+	if (isWsEvent(env, "auth", "login-status-report") && env.data) {
+		// 唯一留下的断言:表里的 `status` 是 `number`(internal 不认 api 的登录状态枚举),面板侧把它
+		// 收窄成已知的几个值(`BiliLoginStatusValue`)。不在这里加运行时校验 —— 未知状态码照旧存进去。
 		useAuthStore.getState().setSnapshot(env.data as LoginSnapshot);
 		return;
 	}
-	if (env.event === "cookies-refreshed") {
-		const refreshedAt =
-			typeof (env.data as { refreshedAt?: unknown })?.refreshedAt === "string"
-				? (env.data as { refreshedAt: string }).refreshedAt
-				: env.ts;
-		useAuthStore.getState().setCookiesRefreshed(refreshedAt);
+	if (isWsEvent(env, "auth", "cookies-refreshed")) {
+		const refreshedAt = env.data?.refreshedAt;
+		useAuthStore
+			.getState()
+			.setCookiesRefreshed(typeof refreshedAt === "string" ? refreshedAt : env.ts);
 		return;
 	}
-	if (env.event === "auth-lost") {
+	if (isWsEvent(env, "auth", "auth-lost")) {
 		// P2:保留既有 snapshot.data(用户卡片)。瞬时 lost→restored 抖动若清掉
 		// data,卡片会闪没;restored 后端通常不立刻重发完整 card,体验更差。
 		const prev = useAuthStore.getState().snapshot;

@@ -35,7 +35,7 @@ import { createAdapterRegistry } from "../../platforms/registry.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
 import { attachChannelWiring } from "../../ws/channels.js";
 import { createLogChannel } from "../../ws/log-channel.js";
-import type { ServerEventEnvelope } from "../../ws/types.js";
+import type { WsEventEnvelope } from "../../ws/types.js";
 
 /** 一枚 32 位小写十六进制 token —— BN 生成的就是这个格式。 */
 const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -217,7 +217,7 @@ async function boot(opts: {
 	const douyin = () => loader.list().find((entry) => entry.id === "douyin");
 	expect(douyin()?.state).toBe(opts.state ?? (opts.running ? "running" : "disabled"));
 
-	const frames: ServerEventEnvelope[] = [];
+	const frames: WsEventEnvelope[] = [];
 	attachChannelWiring({ bus: rt.bus, log: createLogChannel(), publish: (e) => frames.push(e) });
 
 	const app = createApp(rt, {
@@ -802,7 +802,7 @@ describe("PATCH /api/ext/:id/settings —— 拓展处在「设置读不了」",
 });
 
 describe("PATCH /api/ext/:id/settings —— 写完发一帧", () => {
-	it("写成了 → WS state 频道一帧 extension-settings-changed,只带 id", async () => {
+	it("写成了 → WS state 频道一帧 extension-settings-changed,只带 extensionId", async () => {
 		const h = await boot({ running: false });
 		const res = await h.patch({
 			revision: await h.revision(),
@@ -813,7 +813,7 @@ describe("PATCH /api/ext/:id/settings —— 写完发一帧", () => {
 			expect.objectContaining({
 				type: "state",
 				event: "extension-settings-changed",
-				data: { id: "douyin" },
+				data: { extensionId: "douyin" },
 			}),
 		]);
 	});
