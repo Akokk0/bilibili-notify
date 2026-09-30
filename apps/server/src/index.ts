@@ -18,7 +18,7 @@ import {
 import { type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
-import { createApp, createCardSkinStore } from "./app.js";
+import { createApp, createCardSkinStore, createStartupApp } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
@@ -87,6 +87,7 @@ import {
 	UPDATE_MANIFEST_URLS,
 } from "./update/trusted-keys.js";
 import { versionsRootIn } from "./update/versions-root.js";
+import { createLogChannel } from "./ws/log-channel.js";
 import { createWsServer } from "./ws/server.js";
 
 /**
@@ -149,6 +150,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 	runtime = createAppRuntime(bootstrap);
 	const log = runtime.serviceCtx.logger;
+	// 日志从运行时建好那一刻起就进归档与 WS 的环形缓冲:开机那一段(以后的迁移)出了事也查得到。
+	// 环形缓冲先建好,WS 起来时交给它。
+	const logChannel = createLogChannel();
+	runtime.serviceCtx.setLogHook(createLogSink({ ring: logChannel, store: runtime.logStore }));
 
 	const close = async (reason = "shutdown"): Promise<void> => {
 		if (shutdownPromise) return shutdownPromise;
@@ -187,6 +192,111 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
 		// the normal "主密钥加载成功" log look like it was caused by that setting.
 		await runtime.keyProvider.getKey();
+
+		// Dashboard 鉴权策略:监听 loopback 时允许 bare(本地 dev / 反代后端);否则
+		// fail-closed 拒绝启动,避免裸暴露公网。绕过开关是 BN_ALLOW_NO_AUTH=1 — 留给
+		// 明确知道自己在做什么的运维(例如已经在 nginx 层做了 IP 白名单 / mTLS)。
+		// 决策本身在 auth/bare-auth-policy.ts 做纯函数测试。
+		const basicAuthCredentials = bootstrap.auth?.basicAuth;
+		const host = bootstrap.server.host;
+		const allowNoAuth = env.BN_ALLOW_NO_AUTH === "1";
+		const desktopToken = normalizeOptionalEnv(env.BN_DESKTOP_TOKEN);
+		const allowedOrigins = mergeAllowedOrigins(
+			bootstrap.auth?.allowedOrigins,
+			normalizeOptionalEnv(env.BN_DESKTOP_ALLOWED_ORIGIN),
+		);
+		if (!basicAuthCredentials) {
+			if (shouldRefuseBareAuth({ host, hasBasicAuth: false, allowNoAuth })) {
+				const message = `auth not configured but listening on ${host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`;
+				log.error(message);
+				throw new Error(message);
+			}
+			log.warn(
+				`auth not configured, dashboard exposed without auth (host=${host}${allowNoAuth ? " allow_no_auth=1" : ""})`,
+			);
+		}
+		if (allowedOrigins.length === 0 && !desktopToken) {
+			log.warn(
+				"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
+			);
+		}
+
+		const webDist = await resolveEffectiveWebDistDir({
+			configured: bootstrap.webDistDir,
+			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
+			bundleUrl: options.bundleUrl ?? import.meta.url,
+		});
+		const effectiveWebDistDir = webDist.dir;
+		// 两条告警都只对 B 模型(容器)说 —— 桌面壳是拿 `--web-dist` 指着自己安装目录
+		// 里那份资源起 sidecar 的,那是设计,不是配错,不该每次启动都被念一遍。
+		const isBootstrapFileModel = Boolean(normalizeOptionalEnv(env.BN_CONFIG));
+		if (webDist.source === "explicit" && isBootstrapFileModel) {
+			// 钉死一个绝对路径 = 前端不再跟着载荷走。在线升级之后这里仍指着旧那份,
+			// 症状是「升完了界面没变 / 某个新功能点了没反应」,而且服务端一声不吭。
+			log.warn(
+				`webDistDir is pinned to ${webDist.dir}; dashboard assets will NOT follow in-app updates. 想让它跟着升级走,就把 webDistDir(或 BN_WEB_DIST)删掉。`,
+			);
+		} else if (webDist.source === "disabled" && isBootstrapFileModel) {
+			log.warn(
+				`dashboard static assets disabled: ${webDist.payloadDir}/index.html was not found. Dashboard GET / will return 404;载荷似乎不完整,建议重拉镜像或重装。`,
+			);
+		}
+		if (effectiveWebDistDir) {
+			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
+		}
+		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
+		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
+		// 完成 WS upgrade,避免把真实凭证拼进 URL 落进反代日志。
+		wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
+		runtime.serviceCtx.onDispose(() => wsTicketStore?.dispose(), "stop");
+
+		// Dashboard session codec. Signing key = HKDF over the runtime's stable key
+		// material (the same key infra StorageManager uses — passphrase-derived from
+		// BN_COOKIE_KEY when set, else the persisted random master.key), so cookies
+		// survive a restart without a new required config knob. Built only when auth
+		// is configured; the credential fingerprint is folded into the HKDF salt so
+		// rotating the dashboard password invalidates every old cookie.
+		const sessionCodec = basicAuthCredentials
+			? createSessionCodec({
+					keyMaterial: await runtime.keyProvider.getKey(),
+					creds: basicAuthCredentials,
+				})
+			: undefined;
+
+		// 开机先 listen,再读数据(ADR-0022 决策 2 与它下面的 🔗):数据与引擎起来之前由开机那一段的
+		// app 应答 —— 健康检查照答,别的接口 503 `unavailable`,鉴权闸与完整的 app 是同一套。桌面壳 30 秒
+		// 等的就是健康检查;启动入口本身仍等全部起来才返回,数据段抛错时 boot.mjs 还能当场退回预装的那一版。
+		const appShell = {
+			staticDir: effectiveWebDistDir,
+			desktopToken,
+			basicAuthCredentials,
+			sessionCodec,
+			allowedOrigins,
+		};
+		let currentApp = createStartupApp(runtime, {
+			...appShell,
+			message: () => "BN 正在启动,稍等一下",
+		});
+		await new Promise<void>((resolveServe) => {
+			server = serve(
+				{
+					fetch: (request, env) => currentApp.fetch(request, env),
+					hostname: bootstrap.server.host,
+					port: bootstrap.server.port,
+				},
+				(info) => {
+					listeningPort = info.port;
+					log.info(`listening on http://${info.address}:${info.port}`);
+					resolveServe();
+				},
+			);
+		});
+		// 排空登记紧跟着 listen:数据段一抛错,关停就得把这个端口放掉 —— boot.mjs 要在同一进程里
+		// 起预装的那一版,端口还占着的话它连 listen 都做不到。WS 这时还没建,排空时现取。
+		runtime.serviceCtx.onDispose(
+			() => drainHttp(server, wsServer, shutdownTimeoutMs * HTTP_DRAIN_SHARE, log),
+			"drain",
+		);
 
 		// Load on-disk runtime config (state/globals.json, state/subscriptions.json, state/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
@@ -227,34 +337,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			throw err;
 		}
 		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
-
-		// Dashboard 鉴权策略:监听 loopback 时允许 bare(本地 dev / 反代后端);否则
-		// fail-closed 拒绝启动,避免裸暴露公网。绕过开关是 BN_ALLOW_NO_AUTH=1 — 留给
-		// 明确知道自己在做什么的运维(例如已经在 nginx 层做了 IP 白名单 / mTLS)。
-		// 决策本身在 auth/bare-auth-policy.ts 做纯函数测试。
-		const basicAuthCredentials = bootstrap.auth?.basicAuth;
-		const host = bootstrap.server.host;
-		const allowNoAuth = env.BN_ALLOW_NO_AUTH === "1";
-		const desktopToken = normalizeOptionalEnv(env.BN_DESKTOP_TOKEN);
-		const allowedOrigins = mergeAllowedOrigins(
-			bootstrap.auth?.allowedOrigins,
-			normalizeOptionalEnv(env.BN_DESKTOP_ALLOWED_ORIGIN),
-		);
-		if (!basicAuthCredentials) {
-			if (shouldRefuseBareAuth({ host, hasBasicAuth: false, allowNoAuth })) {
-				const message = `auth not configured but listening on ${host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`;
-				log.error(message);
-				throw new Error(message);
-			}
-			log.warn(
-				`auth not configured, dashboard exposed without auth (host=${host}${allowNoAuth ? " allow_no_auth=1" : ""})`,
-			);
-		}
-		if (allowedOrigins.length === 0 && !desktopToken) {
-			log.warn(
-				"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
-			);
-		}
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
@@ -874,48 +956,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			60 * 60 * 1000,
 		);
 
-		const webDist = await resolveEffectiveWebDistDir({
-			configured: bootstrap.webDistDir,
-			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
-			bundleUrl: options.bundleUrl ?? import.meta.url,
-		});
-		const effectiveWebDistDir = webDist.dir;
-		// 两条告警都只对 B 模型(容器)说 —— 桌面壳是拿 `--web-dist` 指着自己安装目录
-		// 里那份资源起 sidecar 的,那是设计,不是配错,不该每次启动都被念一遍。
-		const isBootstrapFileModel = Boolean(normalizeOptionalEnv(env.BN_CONFIG));
-		if (webDist.source === "explicit" && isBootstrapFileModel) {
-			// 钉死一个绝对路径 = 前端不再跟着载荷走。在线升级之后这里仍指着旧那份,
-			// 症状是「升完了界面没变 / 某个新功能点了没反应」,而且服务端一声不吭。
-			log.warn(
-				`webDistDir is pinned to ${webDist.dir}; dashboard assets will NOT follow in-app updates. 想让它跟着升级走,就把 webDistDir(或 BN_WEB_DIST)删掉。`,
-			);
-		} else if (webDist.source === "disabled" && isBootstrapFileModel) {
-			log.warn(
-				`dashboard static assets disabled: ${webDist.payloadDir}/index.html was not found. Dashboard GET / will return 404;载荷似乎不完整,建议重拉镜像或重装。`,
-			);
-		}
-		if (effectiveWebDistDir) {
-			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
-		}
-		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
-		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
-		// 完成 WS upgrade,避免把真实凭证拼进 URL 落进反代日志。
-		wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
-		runtime.serviceCtx.onDispose(() => wsTicketStore?.dispose(), "stop");
-
-		// Dashboard session codec. Signing key = HKDF over the runtime's stable key
-		// material (the same key infra StorageManager uses — passphrase-derived from
-		// BN_COOKIE_KEY when set, else the persisted random master.key), so cookies
-		// survive a restart without a new required config knob. Built only when auth
-		// is configured; the credential fingerprint is folded into the HKDF salt so
-		// rotating the dashboard password invalidates every old cookie.
-		const sessionCodec = basicAuthCredentials
-			? createSessionCodec({
-					keyMaterial: await runtime.keyProvider.getKey(),
-					creds: basicAuthCredentials,
-				})
-			: undefined;
-
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
@@ -1011,6 +1051,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 
 		const app = createApp(runtime, {
+			...appShell,
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
 			authSystem: devtools?.authSystem ?? authSystem,
 			// 显式给一份:`authSystem.api` 是数据属性,取出来的是没装饰过的那个,卡片预览
@@ -1022,8 +1063,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				fallbacks: () => cardSkinFallbacks.list(),
 				clearFallbacks: () => cardSkinFallbacks.clear(),
 			},
-			basicAuthCredentials,
-			sessionCodec,
 			puppeteer,
 			persistChromeSource: configPath
 				? (source: ChromeSource) => persistChromeSource(configPath, source)
@@ -1034,10 +1073,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 			chromeIdleTimeoutMs,
 			chromeSource,
-			staticDir: effectiveWebDistDir,
 			wsTicketStore,
-			allowedOrigins,
-			desktopToken,
 			qqSessionRegistry,
 			extensions: {
 				mounts: extensionMounts,
@@ -1096,28 +1132,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				restart: () => stopAndExit("restart requested"),
 			},
 		});
-		await new Promise<void>((resolveServe) => {
-			server = serve(
-				{
-					fetch: app.fetch,
-					hostname: bootstrap.server.host,
-					port: bootstrap.server.port,
-				},
-				(info) => {
-					listeningPort = info.port;
-					log.info(`listening on http://${info.address}:${info.port}`);
-					resolveServe();
-				},
-			);
-		});
 
-		// Mount WebSocket layer on top of the same HTTP server. Chicken-and-egg
-		// resolution: the serviceCtx is built first (no log hook), the WS server's
-		// log channel is then installed back onto the serviceCtx via setLogHook so
-		// every subsequent `logger.<level>(...)` call also lands on the `log` channel.
+		currentApp = app;
+
+		// 拓展的 upgrade 分发与 WebSocket 都从这一刻起才收连接(`ws://<BN>/ext/<id>`、`/ws`):
+		// 数据段做完之前,它们要的东西还不在。
 		const httpServer = server as unknown as HttpServer;
-		// 拓展的 upgrade 分发从这一刻起开始收连接(`ws://<BN>/ext/<id>`)。放在这儿而不是
-		// 构造那会儿:HTTP server 要等 serve()。
 		extensionUpgrades.attach(httpServer);
 		wsServer = createWsServer({
 			httpServer,
@@ -1128,17 +1148,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			wsTicketStore,
 			allowedOrigins,
 			desktopToken,
+			logChannel,
 		});
-		// Single fan-out point: redact ONCE, then tee to the WS ring (live tail) +
-		// the on-disk archive. Both receive exactly what passed the upstream fanOut
-		// level gate (Tab == archive == console, per-module pino level).
-		runtime.serviceCtx.setLogHook(
-			createLogSink({ ring: wsServer.logChannel, store: runtime.logStore }),
-		);
-		runtime.serviceCtx.onDispose(
-			() => drainHttp(server, wsServer, shutdownTimeoutMs * HTTP_DRAIN_SHARE, log),
-			"drain",
-		);
 
 		const handle: ServerHandle = {
 			host: bootstrap.server.host,

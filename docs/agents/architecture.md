@@ -106,6 +106,15 @@ src/
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```
 
+#### 开机
+
+开机分两段(ADR-0022 决策 2 与它下面的 🔗),桌面壳 30 秒等的只是健康检查:
+
+1. **先 listen**:读启动配置、开机清扫、建运行时(构造期不读数据)、挂日志钩子(从这一刻起进归档与 WS 的环形缓冲)、鉴权策略、会话签名,然后 listen。这时由 `createStartupApp` 应答:健康检查照答(模块全是 false),别的 `/api/*` 与拓展挂载点回 503 `unavailable`。它和完整的 app 同出 `createAppShell`,鉴权闸是同一套(`__tests__/boot-listen-first-e2e.test.ts` 钉着)。HTTP 排空紧跟着 listen 登记。
+2. **再读数据、起引擎**:配置、鉴权子系统、引擎、拓展……建完完整的 app,请求切过去,再挂拓展的 upgrade 分发与 WS。
+
+`startServer` 等第 2 段做完才返回。第 2 段抛错就关掉 HTTP 再抛:冻住的 boot.mjs 会在同一进程里起预装的那一版,端口必须已经放掉。往开机里加一步时先想清楚放哪一段:碰数据、会慢、要联网的放第 2 段;和数据无关、又得在 listen 之前定下来的(比如鉴权)才放第 1 段。
+
 #### 关停
 
 `close()` 只给预算(默认 8 秒,每个宿主的硬杀时限都比它长,`scripts/__tests__/shutdown-budget.test.mjs` 钉着)。收尾全靠各部件装配时往 serviceCtx 登记的钩子,按 `DisposePhase` 分段跑,同一段里后登记的先跑;一个钩子抛错只记一条,不连累后面的。

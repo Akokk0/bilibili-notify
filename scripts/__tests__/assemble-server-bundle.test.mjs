@@ -152,6 +152,24 @@ async function waitForHealth(url, child, output) {
 	throw new Error(`timed out waiting for health: ${output.join("")}`);
 }
 
+/**
+ * 开机第二段做完了没有。🔴 健康检查不算:先 listen 以后(ADR-0022 决策 2 下的 🔗),它在迁移与起引擎
+ * 期间就回 200,那时 `/api/*` 与 `/ext/*` 回 503。换上正式的 app 与挂上拓展的 upgrade 是同步挨着的,
+ * 所以 `/api/ext` 不回 503 了,`/ext/<id>` 也就认领上了;回什么(401 / 200)不管。
+ */
+async function waitForBooted(port, child, output) {
+	const deadline = Date.now() + 15_000;
+	while (Date.now() < deadline) {
+		if (child.exitCode !== null) {
+			throw new Error(`server exited early (${child.exitCode}): ${output.join("")}`);
+		}
+		const response = await fetch(`http://127.0.0.1:${port}/api/ext`);
+		if (response.status !== 503) return;
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
+	}
+	throw new Error(`timed out waiting for boot: ${output.join("")}`);
+}
+
 async function waitForExit(child) {
 	if (child.exitCode !== null) return;
 	await new Promise((resolvePromise) => {
@@ -229,6 +247,7 @@ describe("拓展不进载荷,手放进 <dataDir> 就能跑", () => {
 			child.stderr?.on("data", (chunk) => output.push(String(chunk)));
 			try {
 				await waitForHealth(`http://127.0.0.1:${port}/api/health`, child, output);
+				await waitForBooted(port, child, output);
 			} catch (err) {
 				// 起不来就把它收掉再抛,别给 CI 留一个占着端口的孤儿。
 				child.kill("SIGKILL");

@@ -15,6 +15,7 @@ import storagePkg from "@bilibili-notify/storage/package.json" with { type: "jso
 import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
 import { Hono } from "hono";
 import type { ConfigScopeMeta } from "../config/store.js";
+import type { AppRuntime } from "../runtime/bootstrap.js";
 import { findNearestPackageJson } from "../runtime/nearest-package-json.js";
 import type { RouteDeps } from "./types.js";
 
@@ -85,6 +86,24 @@ const startedAtMs = Date.now();
 export const STARTED_AT = new Date(startedAtMs).toISOString();
 
 /**
+ * 短版健康回应。开机那一段(数据与引擎还没起来,`engines` 是空的)与完整的 app 答的是同一份,
+ * 只是那时模块全是 false。
+ */
+export function healthResponseOf(runtime: Pick<AppRuntime, "engines">): HealthResponse {
+	const engines = runtime.engines;
+	return {
+		status: "ok",
+		version: APP_VERSION,
+		moduleVersions: MODULE_VERSIONS,
+		uptime: Math.floor((Date.now() - startedAtMs) / 1000),
+		startedAt: STARTED_AT,
+		modules: engines
+			? engines.getModuleState()
+			: { dynamic: false, live: false, image: false, ai: false },
+	};
+}
+
+/**
  * Mounts:
  *   GET /api/health           — short shape, used as a liveness probe (unchanged from 2.1)
  *   GET /api/health/details   — richer report drawing on the config store + (later) sinks
@@ -92,20 +111,7 @@ export const STARTED_AT = new Date(startedAtMs).toISOString();
 export function createHealthRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 
-	app.get("/", (c) => {
-		const engines = deps.runtime.engines;
-		const body: HealthResponse = {
-			status: "ok",
-			version: APP_VERSION,
-			moduleVersions: MODULE_VERSIONS,
-			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
-			startedAt: STARTED_AT,
-			modules: engines
-				? engines.getModuleState()
-				: { dynamic: false, live: false, image: false, ai: false },
-		};
-		return c.json(body);
-	});
+	app.get("/", (c) => c.json(healthResponseOf(deps.runtime)));
 
 	app.get("/details", (c) => {
 		const globals = deps.store.getGlobals();
