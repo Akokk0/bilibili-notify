@@ -1,7 +1,7 @@
 import type { ErrorResponse } from "@bilibili-notify/contract";
-import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
-import type { Context } from "hono";
-import type { HTTPException } from "hono/http-exception";
+import { type Failure, type FailureCode, fail, type Logger } from "@bilibili-notify/internal";
+import type { Context, ErrorHandler } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 /**
@@ -105,4 +105,26 @@ export function failureOfHttpException(err: HTTPException): {
 	const message =
 		err.message.trim() === "" ? (DEFAULT_MESSAGE_OF_CODE[code] ?? "请求不对") : err.message;
 	return { failure: fail(code, message), status: err.status };
+}
+
+/**
+ * 全局出错处理(ADR-0026 决策 2、6):抛错只留给 bug,这里接住 —— 原始错误进错误日志,客户端只拿一句
+ * 固定的话,`String(err)` 不再外泄(里头可能带路径、内部状态)。`HTTPException` 是中间件 / 路由主动
+ * 抛的,按它的状态码挑码、状态码与 message 照原样。
+ *
+ * 挂在 `app.onError`,`app.ts` 一处、**还有被进程内直接 `request` 的子实例**(统计路由:定时锐评的
+ * 调度器与手动锐评都内部代理它的 `/overview`)各挂一份:子实例自己没有 onError 的话,它抛的错走的是
+ * Hono 的默认处理,回一份纯文本 500 —— 直接调它的人拿到的不是失败的形状。挂载进父实例后子实例自带的
+ * onError 优先,所以两处必须是**同一份**,免得挂载前后抛错的样子不一样。
+ */
+export function requestErrorHandler(logger: Pick<Logger, "error">): ErrorHandler {
+	return (err, c) => {
+		if (err instanceof HTTPException) {
+			const { failure, status } = failureOfHttpException(err);
+			if (status >= 500) logger.error("http exception", err);
+			return respondFailure(c, failure, status);
+		}
+		logger.error("unhandled request error", err);
+		return respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE));
+	};
 }

@@ -14,6 +14,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Field, TArea, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import type { PushTarget } from "../../types/domain";
 import type { AISettings } from "../../types/globals";
 
@@ -44,12 +45,13 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 			setErr(null);
 		},
 		onSuccess: (r) => {
-			// 后端把失败也包成 200 之外的码 + {ok:false};两条路都得显式接住,
+			// 「试了没成」(女仆没答上来、投递没成)是 200 + { ok: false, code, message };请求本身不对
+			// (体不对、没这个目标、引擎没起)是非 2xx,走 onError。两条路都得显式接住,
 			// 否则失败会静静地什么都不显示,用户以为没点上。
-			if (r.ok) setReply(r.reply ?? "(女仆没说话)");
-			else setErr(r.err ?? "未知错误");
+			if (r.ok) setReply(r.reply || "(女仆没说话)");
+			else setErr(r.message);
 		},
-		onError: (e: unknown) => setErr(e instanceof Error ? e.message : String(e)),
+		onError: (e: unknown) => setErr(errorTextOf(e)),
 	});
 
 	const canSend = targetId !== "" && message.trim() !== "" && !test.isPending;
@@ -83,10 +85,8 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 				<Btn variant="primary" disabled={!canSend} onClick={() => test.mutate()}>
 					{test.isPending ? "女仆思考中…" : "试一句"}
 				</Btn>
-				{test.isSuccess && reply !== null && (
-					<span className="text-bn-xs text-bn-text-tertiary">
-						已送达 · {test.data?.latencyMs}ms
-					</span>
+				{test.data?.ok && reply !== null && (
+					<span className="text-bn-xs text-bn-text-tertiary">已送达 · {test.data.latencyMs}ms</span>
 				)}
 			</div>
 

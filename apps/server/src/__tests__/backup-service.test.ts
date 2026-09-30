@@ -7,7 +7,9 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
+import { BackupPinError } from "../backup/crypto.js";
 import type { BackupEnvelope } from "../backup/envelope.js";
+import { BackupRejectedError } from "../backup/rejected-error.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
@@ -314,7 +316,7 @@ describe("BackupService", () => {
 
 		await expect(
 			svc.importBackup({ envelope: env, pin: "0000", mode: "overwrite" }),
-		).rejects.toThrow();
+		).rejects.toBeInstanceOf(BackupPinError);
 	});
 });
 
@@ -392,14 +394,17 @@ describe("BackupService × 拓展订阅", () => {
 	it.each([
 		["B 站那节里混进一条拓展订阅", { subscriptions: [sub("1"), ext("e1")] }],
 		["拓展那节里混进一条 B 站订阅", { extensionSubscriptions: [ext("e1"), sub("1")] }],
-	])("%s → 整份拒,一个字都不写", async (_label, sections) => {
+	])("%s → 整份拒(自带 invalid 码的中文原因),一个字都不写", async (_label, sections) => {
 		const store = makeFakeStore({ subscriptions: [sub("0")] });
-		await expect(
-			service(store).importBackup({
+		const rejected = await service(store)
+			.importBackup({
 				envelope: { ...oldBackup([]), sections: sections as never },
 				mode: "overwrite",
-			}),
-		).rejects.toThrow();
+			})
+			.catch((err: unknown) => err);
+		expect(rejected).toBeInstanceOf(BackupRejectedError);
+		expect(rejected).toMatchObject({ code: "invalid" });
+		expect((rejected as Error).message).toMatch(/[一-鿿]/);
 		expect(store.replaceSections).not.toHaveBeenCalled();
 	});
 });

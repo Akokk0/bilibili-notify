@@ -12,6 +12,7 @@
  */
 
 import {
+	type FailureCode,
 	isBiliSubscription,
 	isTargetPaused,
 	type Logger,
@@ -32,7 +33,6 @@ import {
 	generateSoloRoast,
 	type OverviewFetcher,
 	type RoastGenDeps,
-	roastGenErrorText,
 } from "../stats/roast-generate.js";
 import { roastSubjectName } from "../stats/roast-subject.js";
 import type { RoastDraftStore } from "./roast-draft-store.js";
@@ -66,7 +66,7 @@ export type RoastRunOutcome =
 	/** 一个推送目标都没配,连模型都没调。 */
 	| { kind: "no-targets" }
 	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
-	| { kind: "gen-failed"; why: string }
+	| { kind: "gen-failed"; code: FailureCode; message: string }
 	/** 审批开着:已经生成并私聊给主人了,群里还没发。 */
 	| { kind: "pending-approval"; draftId: string }
 	/** 发了。`failed` 非空表示部分目标没成 —— 那也算发过了,不是整轮失败。 */
@@ -76,7 +76,7 @@ export type RoastRunOutcome =
 			sent: number;
 			/** 因停用而跳过的目标 —— 不算失败,面板上单独说一句。 */
 			skipped: string[];
-			failed: Array<{ targetId: string; err: string }>;
+			failed: Array<{ targetId: string; message: string }>;
 	  };
 
 export interface RoastScheduler {
@@ -152,7 +152,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		label: string,
 		subscriptionId?: string,
 	): Promise<RoastRunOutcome> {
-		if (stopped) return { kind: "gen-failed", why: "调度器已停止" };
+		if (stopped) return { kind: "gen-failed", code: "unavailable", message: "调度器已停止" };
 
 		// 一个目标都没配、或配的全都停用了 —— 先拦住,别白调一次模型再把结果扔掉。
 		// 两句话分开说:「没配」和「都停用了」对主人是两件事,后者他明明配过。
@@ -178,11 +178,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 					});
 
 		if (!gen.ok) {
-			const why = roastGenErrorText(gen);
-			logger.warn(`[roast-sched] ${label} 生成失败:${why}`);
+			// 失败自带给人看的话(码与话在 roast-generate.ts 产生的地方定好);这里只取话。
+			logger.warn(`[roast-sched] ${label} 生成失败:${gen.message}`);
 			// 「这周没发」后面必须跟得上原因,否则主人对着沉默猜。
-			if (cfg.notifyOnError) await tell(`${label}没有发出去：${why}`);
-			return { kind: "gen-failed", why };
+			if (cfg.notifyOnError) await tell(`${label}没有发出去：${gen.message}`);
+			return { kind: "gen-failed", code: gen.code, message: gen.message };
 		}
 
 		// 审批开着:先落草稿,等主人点头。**目标是此刻的快照** —— 他点头的是
@@ -253,7 +253,9 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			mode: out.mode,
 			sent: out.sent.length,
 			skipped: out.skipped,
-			failed: out.failed,
+			// 投递那层的失败原因还叫 `err`(和盘上的投递结果同形,ADR-0026 决策 5 随改盘那一期改);
+			// 回给面板与指令的结局按失败规矩叫 `message`。
+			failed: out.failed.map((f) => ({ targetId: f.targetId, message: f.err })),
 		};
 	}
 
@@ -370,7 +372,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (!sub) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。
 			logger.debug(`[roast-sched] 订阅 ${subscriptionId} 已不在订阅列表,跳过`);
-			return { kind: "gen-failed", why: "这位 UP 已经不在订阅列表里了" };
+			return { kind: "gen-failed", code: "not_found", message: "这位 UP 已经不在订阅列表里了" };
 		}
 		return await runOnce("solo", sub.roastSchedule, soloLabel(sub), sub.id);
 	}

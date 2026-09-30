@@ -45,7 +45,7 @@ export function SoloRoastCard({
 		roast.reset();
 	}, [days]);
 
-	const result: StatsSoloRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
+	const result: StatsSoloRoastResult | undefined = roast.data?.result;
 
 	return (
 		<RoastShell

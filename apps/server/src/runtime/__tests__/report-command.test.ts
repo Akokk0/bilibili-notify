@@ -186,7 +186,11 @@ describe("report 指令", () => {
 	});
 
 	it("生成失败 → 带上原因", async () => {
-		const { replies, fire } = setup({ kind: "gen-failed", why: "AI 还没配好" });
+		const { replies, fire } = setup({
+			kind: "gen-failed",
+			code: "not_configured",
+			message: "AI 还没配好",
+		});
 		await fire();
 		expect(replies.at(-1)).toContain("AI 还没配好");
 	});
@@ -206,7 +210,7 @@ describe("report 指令", () => {
 			kind: "sent",
 			mode: "text",
 			sent: 1,
-			failed: [{ targetId: "t2", err: "timeout" }],
+			failed: [{ targetId: "t2", message: "timeout" }],
 		});
 		await fire();
 		expect(replies.at(-1)).toContain("1");

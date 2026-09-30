@@ -36,11 +36,8 @@ const ISSUE_KEYS = new Set(["path", "message", "op"]);
  * 到时候要么把那个文件迁掉,要么记进名单(并在迁移清单里补上)。
  */
 export const LEGACY_UNMIGRATED_FILES = [
-	"apps/server/src/routes/ai.ts",
-	"apps/server/src/routes/backup.ts",
 	"apps/server/src/routes/extension-settings.ts",
 	"apps/server/src/routes/extensions.ts",
-	"apps/server/src/routes/stats.ts",
 ];
 
 // 不用 `new URL("..", import.meta.url)`:jsdom 环境里全局 URL 是 jsdom 的,fileURLToPath 不认它的实例。

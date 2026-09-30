@@ -14,6 +14,7 @@ import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { AssetRejectedError } from "../../assets/asset-store.js";
 import {
 	chatImageDir,
 	deleteChatImage,
@@ -64,14 +65,19 @@ describe("saveChatImage — 落盘", () => {
 		expect(await readdir(chatImageDir(dataDir))).toEqual([id]);
 	});
 
-	it("非图片类型直接拒 —— SVG 能带脚本,不进白名单", async () => {
+	it("非图片类型直接拒 —— SVG 能带脚本,不进白名单;拒收是 AssetRejectedError(路由据此回 invalid)", async () => {
 		await expect(saveChatImage(dataDir, PNG, "image/svg+xml")).rejects.toThrow(/不支持/);
-		await expect(saveChatImage(dataDir, PNG, "text/html")).rejects.toThrow(/不支持/);
+		await expect(saveChatImage(dataDir, PNG, "text/html")).rejects.toBeInstanceOf(
+			AssetRejectedError,
+		);
 	});
 
-	it("超过 5MB 拒收", async () => {
+	it("超过 5MB 拒收(AssetRejectedError)", async () => {
 		const huge = new Uint8Array(5 * 1024 * 1024 + 1);
 		await expect(saveChatImage(dataDir, huge, "image/png")).rejects.toThrow(/过大/);
+		await expect(saveChatImage(dataDir, huge, "image/png")).rejects.toBeInstanceOf(
+			AssetRejectedError,
+		);
 	});
 
 	it("两次上传同一张图也得到不同 id —— 删一个不该带走另一个", async () => {

@@ -15,6 +15,7 @@ import {
 	type BackupSections,
 	buildBackup,
 } from "./envelope.js";
+import { BACKUP_PIN_REQUIRED_MESSAGE, BackupRejectedError } from "./rejected-error.js";
 import { foldPlan, type ImportMode, planImport } from "./restore.js";
 import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
 
@@ -123,14 +124,15 @@ function assertSubscriptionSectionKinds(sections: BackupSections): void {
 		Array.isArray(raw.subscriptions) &&
 		raw.subscriptions.some((s) => kindOf(s) === "extension")
 	) {
-		throw new Error("backup section `subscriptions` contains an extension subscription");
+		throw new BackupRejectedError("invalid", "备份的「订阅」一节里混进了拓展订阅，整份没有恢复");
 	}
 	if (
 		Array.isArray(raw.extensionSubscriptions) &&
 		raw.extensionSubscriptions.some((s) => kindOf(s) !== "extension")
 	) {
-		throw new Error(
-			"backup section `extensionSubscriptions` contains a non-extension subscription",
+		throw new BackupRejectedError(
+			"invalid",
+			"备份的「拓展订阅」一节里混进了 B 站订阅，整份没有恢复",
 		);
 	}
 }
@@ -152,7 +154,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const createdAt = opts.createdAt ?? now();
 
 		if (opts.kind === "full") {
-			if (!opts.pin) throw new Error("full backup requires a PIN");
+			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
 			const cookies = (await deps.cookieStore.load()) ?? undefined;
 			return assembleFullBackup(
 				{
@@ -179,7 +181,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		let sections: BackupSections;
 		let cookies: { cookiesJson?: string; refreshToken?: string } | undefined;
 		if (opts.envelope.kind === "full") {
-			if (!opts.pin) throw new Error("full backup requires a PIN");
+			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
 			const opened = openFullBackup(opts.envelope, opts.pin);
 			sections = opened.sections;
 			cookies = opened.cookies;

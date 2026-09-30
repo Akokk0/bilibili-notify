@@ -66,12 +66,12 @@ describe("api.patch wire format", () => {
 });
 
 /**
- * 错误信息的取字段。
+ * 错误信息的取字段(迁移期兼容)。
  *
- * 服务端有**两种**错误体形状:`{err}`(锐评 / 推送测试 …)和 `{message}`
- * (backup …)。`request` 原来只认 `message`,于是所有 `{err}` 类失败都被降级成
- * 「POST /api/… → 400」这种线格式噪音 —— 用户看到的不是「智能女仆尚未启用」,
- * 而是一个毫无指向的状态码,只能来问「功能是不是没写」。
+ * 迁完的路由回 `{ code, message }`;还没迁的(拓展动作与设置)仍有旧形状 `{err}` / `{message}` /
+ * `{errors:[…]}`。`request` 原来只认 `message`,于是所有 `{err}` 类失败都被降级成
+ * 「POST /api/… → 400」这种线格式噪音 —— 用户看到的不是那句原因,而是一个毫无指向的状态码,
+ * 只能来问「功能是不是没写」。旧形状的兼容在 ④b 最后一组删,这一块跟着删。
  */
 describe("api 错误信息", () => {
 	const fail = (status: number, body: unknown) =>
@@ -87,15 +87,13 @@ describe("api 错误信息", () => {
 		);
 
 	it("读得出 {err} 形状的原因", async () => {
-		fail(400, { ok: false, err: "智能女仆尚未启用" });
-		await expect(api.post("/api/stats/roast/1", {})).rejects.toThrow("智能女仆尚未启用");
+		fail(400, { ok: false, err: "动作没有执行成功" });
+		await expect(api.post("/api/ext/demo/actions/run", {})).rejects.toThrow("动作没有执行成功");
 	});
 
 	it("读得出 {message} 形状的原因", async () => {
-		fail(400, { error: "pin_required", message: "a full backup requires a PIN" });
-		await expect(api.post("/api/backup/export", {})).rejects.toThrow(
-			"a full backup requires a PIN",
-		);
+		fail(400, { error: "invalid_manifest", message: "清单里缺少 id" });
+		await expect(api.post("/api/ext/install", {})).rejects.toThrow("清单里缺少 id");
 	});
 
 	it("读得出 {errors:[…]} 形状(皮肤上传/编辑保存的字段级校验),逐条拼给用户", async () => {
@@ -181,11 +179,11 @@ describe("ApiError 解析非 2xx(新旧两种形状)", () => {
 	});
 
 	it("旧形状 {err}:message 取 err,code 为空", async () => {
-		respond(400, { ok: false, err: "智能女仆尚未启用" });
+		respond(400, { ok: false, err: "动作没有执行成功" });
 		const err = await caught(() => api.post("/api/x", {}));
 		expect(err.status).toBe(400);
 		expect(err.code).toBeUndefined();
-		expect(err.message).toBe("智能女仆尚未启用");
+		expect(err.message).toBe("动作没有执行成功");
 	});
 
 	it("旧形状 {error, message}:message 取 message,code 为空(B 站的数字 code 也不冒充)", async () => {

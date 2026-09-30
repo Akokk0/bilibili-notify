@@ -1,8 +1,9 @@
 import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
-import { sealSecrets } from "../backup/crypto.js";
+import { BackupPinError, sealSecrets } from "../backup/crypto.js";
 import type { BackupEnvelope } from "../backup/envelope.js";
+import { BackupRejectedError } from "../backup/rejected-error.js";
 
 /**
  * 完整档组装:明文段走 redactSecretKeys(连完整档明文都零机密),真机密(apiKey /
@@ -94,9 +95,24 @@ describe("full backup assemble/open", () => {
 		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 	});
 
-	it("open with the wrong PIN throws", () => {
+	it("open with the wrong PIN throws BackupPinError (invalid,中文原因)", () => {
 		const env = assembleFullBackup({ globals: globalsWithApiKey("sk-1") }, "123456", "t");
-		expect(() => openFullBackup(env, "0000")).toThrow();
+		expect(() => openFullBackup(env, "0000")).toThrow(BackupPinError);
+		expect(() => openFullBackup(env, "0000")).toThrow(/PIN/);
+	});
+
+	it("a full backup with its secrets block stripped is rejected as invalid (not a raw Error)", () => {
+		const env = assembleFullBackup({ globals: globalsWithApiKey("sk-1") }, "123456", "t");
+		const { secrets: _secrets, ...stripped } = env;
+		let thrown: unknown;
+		try {
+			openFullBackup(stripped as typeof env, "123456");
+		} catch (err) {
+			thrown = err;
+		}
+		expect(thrown).toBeInstanceOf(BackupRejectedError);
+		expect(thrown).toMatchObject({ code: "invalid" });
+		expect((thrown as Error).message).toMatch(/密钥/);
 	});
 
 	/**

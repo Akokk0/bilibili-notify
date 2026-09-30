@@ -6,6 +6,7 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import type { EncryptedSecrets } from "./crypto.js";
+import { BackupRejectedError } from "./rejected-error.js";
 
 /**
  * Backup envelope — the single-file, self-describing container for the
@@ -78,7 +79,8 @@ export function buildBackup(input: BuildBackupInput): BackupEnvelope {
 
 /**
  * Validate an already-parsed backup object — the import trust boundary. Throws
- * on anything that is not a well-formed, this-build-understands-it envelope:
+ * a {@link BackupRejectedError} (自带码、message 是给人看的中文)on anything that is
+ * not a well-formed, this-build-understands-it envelope:
  *   - wrong/absent `format` marker → not our file
  *   - unknown `kind`
  *   - `schemaVersion` newer than {@link BACKUP_SCHEMA_VERSION} → refuse (a newer
@@ -98,18 +100,21 @@ export function buildBackup(input: BuildBackupInput): BackupEnvelope {
 export function validateBackup(raw: unknown): BackupEnvelope {
 	const o = (raw ?? {}) as Partial<BackupEnvelope>;
 	if (o.format !== BACKUP_FORMAT) {
-		throw new Error("not a bilibili-notify backup file");
+		throw new BackupRejectedError("invalid", "这不是 bilibili-notify 导出的备份文件");
 	}
 	if (o.kind !== "full" && o.kind !== "sanitized") {
-		throw new Error(`unknown backup kind: ${String(o.kind)}`);
+		throw new BackupRejectedError(
+			"invalid",
+			"备份文件里的类型不认识（只有 full 与 sanitized 两种）",
+		);
 	}
 	if (typeof o.schemaVersion !== "number") {
-		throw new Error("backup is missing schemaVersion");
+		throw new BackupRejectedError("invalid", "备份文件缺少格式版本号（schemaVersion）");
 	}
 	if (o.schemaVersion > BACKUP_SCHEMA_VERSION) {
-		throw new Error(
-			`backup schemaVersion ${o.schemaVersion} is newer than this build supports ` +
-				`(max ${BACKUP_SCHEMA_VERSION}); please update bilibili-notify before restoring`,
+		throw new BackupRejectedError(
+			"unsupported",
+			`这份备份的格式版本（${o.schemaVersion}）比当前版本认得的（最高 ${BACKUP_SCHEMA_VERSION}）新，请先升级 bilibili-notify 再恢复`,
 		);
 	}
 	return foldLegacySectionKeys(o as BackupEnvelope);

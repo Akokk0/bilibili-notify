@@ -27,6 +27,8 @@ const H = vi.hoisted(() => ({
 	chunks: null as string[] | null,
 	/** 置上就让这一轮在吐完分片之后抛 —— 模拟 401 / 模型不存在 / 网络断。 */
 	error: null as Error | null,
+	/** 置上就在这一轮**进行中**先跑一下 —— 模拟聊天期间会话被另一个标签页删了。 */
+	during: null as (() => Promise<void>) | null,
 	/** 最后一次收到的历史,用来验「上文有没有真的带过去」。 */
 	lastHistory: null as Array<{ role: string; content: string }> | null,
 	/** AI 起的标题;置 Error 就模拟起名失败(余额不足 / 模型抽风)。 */
@@ -72,6 +74,7 @@ const chatStatelessStream = vi.fn(
 		H.lastHistory = messages;
 		H.lastThinking = opts.thinking ?? null;
 		H.lastWebSearch = opts.webSearch;
+		await H.during?.();
 		for (const t of H.reasoningChunks ?? []) opts.onReasoning?.(t);
 		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
@@ -141,6 +144,7 @@ async function makeDeps(opts: StubOpts = {}) {
 
 beforeEach(() => {
 	H.error = null;
+	H.during = null;
 	H.chunks = null;
 	H.reply = "主人晚上好呀~(*´∀`)~♡";
 	H.lastHistory = null;
@@ -241,20 +245,24 @@ describe("会话增删查", () => {
 		expect(list.map((c: any) => c.id)).toEqual([created.id]);
 	});
 
-	it("GET 不存在的会话 → 404 带一句人话", async () => {
+	it("GET 不存在的会话 → 404 not_found 带一句人话", async () => {
 		const { deps } = await makeDeps();
 		const res = await getConv(createAiRoute(deps), "11111111-1111-4111-8111-111111111111");
 		expect(res.status).toBe(404);
-		expect((await readJson(res)).err).toBeTruthy();
+		expect(await readJson(res)).toEqual({ code: "not_found", message: "会话不存在或已被删除" });
 	});
 
 	it("DELETE 删掉后就查不到了;再删一次 404", async () => {
 		const { deps } = await makeDeps();
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
-		expect((await delConv(app, id)).status).toBe(200);
+		const deleted = await delConv(app, id);
+		expect(deleted.status).toBe(200);
+		expect(await readJson(deleted)).toEqual({ ok: true });
 		expect((await getConv(app, id)).status).toBe(404);
-		expect((await delConv(app, id)).status).toBe(404);
+		const again = await delConv(app, id);
+		expect(again.status).toBe(404);
+		expect((await readJson(again)).code).toBe("not_found");
 	});
 });
 
@@ -344,7 +352,10 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const events = await readSse(await chat(app, id, { message: "在吗" }));
 
 		expect(events.map((e) => e.event)).toEqual(["delta", "error"]);
-		expect(events[1]?.data.err).toContain("connection reset");
+		// error 帧与非 2xx 的错误体同形:{ code, message },模型那头的原因进 message。
+		expect(events[1]?.data.code).toBe("unavailable");
+		expect(events[1]?.data.message).toContain("connection reset");
+		expect(Object.keys(events[1]?.data).sort()).toEqual(["code", "message"]);
 		const stored = (await readJson(await getConv(app, id))).conversation;
 		expect(stored.messages).toEqual([]);
 	});
@@ -355,8 +366,9 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		const res = await chat(app, id, { message: "在吗" });
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
 		expect(res.headers.get("content-type")).toContain("application/json");
+		expect((await readJson(res)).code).toBe("not_configured");
 	});
 
 	it("AI 那一跳失败 → error 事件,且磁盘上不留半轮", async () => {
@@ -368,7 +380,11 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		H.error = new Error("401 Unauthorized");
 		const res = await chat(app, id, { message: "在吗" });
 		const events = await readSse(res);
-		expect(events.find((e) => e.event === "error")?.data.err).toContain("401");
+		const failure = events.find((e) => e.event === "error")?.data;
+		expect(failure.code).toBe("unavailable");
+		expect(failure.message).toContain("401");
+		// 帧体是平铺的 { code, message },没有旧的 `err`。
+		expect(failure).not.toHaveProperty("err");
 		expect(events.some((e) => e.event === "done")).toBe(false);
 
 		const stored = (await readJson(await getConv(app, id))).conversation;
@@ -399,16 +415,75 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 			message: "喂",
 		});
 		expect(res.status).toBe(404);
+		expect((await readJson(res)).code).toBe("not_found");
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 
-	it("空消息 → 400,不浪费一次模型调用", async () => {
+	it("空消息 → 400 invalid,不浪费一次模型调用", async () => {
 		const { deps } = await makeDeps();
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
-		const res = await chat(app, id, { message: "   " });
-		expect(res.status).toBe(400);
+		for (const message of ["   ", ""]) {
+			const res = await chat(app, id, { message });
+			expect(res.status).toBe(400);
+			expect(await readJson(res)).toEqual({ code: "invalid", message: "消息不能为空" });
+		}
 		expect(chatStatelessStream).not.toHaveBeenCalled();
+	});
+
+	it("请求体不是 JSON / 没带 message → 一样是「消息不能为空」,不抛", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		const garbled = await app.request(`/conversations/${id}/chat`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: "{oops",
+		});
+		expect(garbled.status).toBe(400);
+		expect((await readJson(garbled)).code).toBe("invalid");
+		const missing = await chat(app, id, { thinking: true });
+		expect(missing.status).toBe(400);
+		expect((await readJson(missing)).message).toBe("消息不能为空");
+	});
+
+	it("消息过长 / 图片张数超限 → 400 invalid,话里点名上限、issues 指到哪一格(不再谎称「消息不能为空」)", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+
+		const tooLong = await chat(app, id, { message: "长".repeat(4001) });
+		expect(tooLong.status).toBe(400);
+		const longBody = await readJson(tooLong);
+		expect(longBody.code).toBe("invalid");
+		expect(longBody.message).toContain("4000");
+		expect(longBody.message).not.toBe("消息不能为空");
+		expect(longBody.issues.some((i: any) => i.path?.includes("message"))).toBe(true);
+
+		const tooMany = await chat(app, id, { message: "看图", images: ["a", "b", "c", "d", "e"] });
+		expect(tooMany.status).toBe(400);
+		const manyBody = await readJson(tooMany);
+		expect(manyBody.message).toContain("图片");
+		expect(manyBody.issues.some((i: any) => i.path?.[0] === "images")).toBe(true);
+		expect(chatStatelessStream).not.toHaveBeenCalled();
+	});
+
+	it("聊天期间会话被删了 → 补一个 not_found 的 error 事件(帧体同 HTTP 错误体),不发 done", async () => {
+		// 另一个标签页 / 超出会话数上限被修剪:这一轮回复已经拿到了,可落盘时会话没了。
+		const { deps, conversationStore } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.during = async () => {
+			await conversationStore.remove(id);
+		};
+
+		const events = await readSse(await chat(app, id, { message: "在吗" }));
+
+		expect(events.some((e) => e.event === "done")).toBe(false);
+		expect(events.find((e) => e.event === "error")?.data).toEqual({
+			code: "not_found",
+			message: "会话不存在或已被删除",
+		});
 	});
 });
 
@@ -686,15 +761,28 @@ describe("POST /conversations/:id/title — AI 起标题", () => {
 		expect((await readJson(await retitle(app, id))).conversation.autoTitled).toBeFalsy();
 	});
 
-	it("会话不存在 → 404", async () => {
+	it("会话不存在 → 404 not_found", async () => {
 		const { deps } = await makeDeps();
-		expect((await retitle(createAiRoute(deps), "没这个人")).status).toBe(404);
+		const res = await retitle(createAiRoute(deps), "没这个人");
+		expect(res.status).toBe(404);
+		expect((await readJson(res)).code).toBe("not_found");
 	});
 
-	it("没配 key → 400,跟聊天那条一个说法", async () => {
+	it("没配 key → 409 not_configured,跟聊天那条一个说法(同一句话、同一个码)", async () => {
 		const { deps } = await makeDeps({ noCommentary: true });
 		const app = createAiRoute(deps);
-		expect((await retitle(app, "任意 id")).status).toBe(400);
+		const res = await retitle(app, "任意 id");
+		expect(res.status).toBe(409);
+		const body = await readJson(res);
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toMatch(/baseUrl|apiKey/i);
+	});
+
+	it("engines 还没起来 → 503 unavailable", async () => {
+		const { deps } = await makeDeps({ noEngines: true });
+		const res = await retitle(createAiRoute(deps), "任意 id");
+		expect(res.status).toBe(503);
+		expect((await readJson(res)).code).toBe("unavailable");
 	});
 });
 
@@ -704,26 +792,33 @@ describe("POST /conversations/:id/chat — 前置条件", () => {
 		const app = createAiRoute(deps);
 		// 会话存储不依赖 engines,建会话仍然应该成功。
 		const id = (await readJson(await createConv(app))).conversation.id;
-		expect((await chat(app, id, { message: "在吗" })).status).toBe(503);
+		const res = await chat(app, id, { message: "在吗" });
+		expect(res.status).toBe(503);
+		expect((await readJson(res)).code).toBe("unavailable");
 	});
 
-	it("智能女仆总开关关着 → 400,说清是没启用", async () => {
+	it("智能女仆总开关关着 → 409 not_configured,说清是没启用(要主人去开,等是等不好的)", async () => {
 		const { deps } = await makeDeps({ aiEnabled: false });
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		const res = await chat(app, id, { message: "在吗" });
-		expect(res.status).toBe(400);
-		expect((await readJson(res)).err).toContain("启用");
+		expect(res.status).toBe(409);
+		const body = await readJson(res);
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toContain("启用");
 	});
 
-	it("开着但 baseUrl/apiKey 没填齐 → 400,指向该去填什么", async () => {
+	it("开着但 baseUrl/apiKey 没填齐 → 409 not_configured,指向该去填什么", async () => {
 		// 光说「未启用」会把人支去翻开关,而开关明明是开的。
 		const { deps } = await makeDeps({ noCommentary: true });
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		const res = await chat(app, id, { message: "在吗" });
-		expect(res.status).toBe(400);
-		expect((await readJson(res)).err).toMatch(/baseUrl|apiKey/i);
+		expect(res.status).toBe(409);
+		const body = await readJson(res);
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toMatch(/baseUrl|apiKey/i);
+		expect(body.message).not.toContain("启用");
 	});
 });
 

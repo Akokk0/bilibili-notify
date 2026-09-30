@@ -1,8 +1,8 @@
 /**
  * 服务端自主生成锐评 —— 不经 HTTP 直接调的那条路。
  *
- * 定时推送没有前端也没有人在场,所有失败都得**能被分类**:路由要把它转成状态码,
- * 调度器要把它转成私聊里的一句人话。所以这里守的不是「会不会挂」,而是「挂了以后
+ * 定时推送没有前端也没有人在场,所有失败都得**带着码和一句人话**:路由直接把它当错误体回
+ * (状态码从码推),调度器直接把话私聊给主人。所以这里守的不是「会不会挂」,而是「挂了以后
  * 说得清是哪一种挂法」——「这周的周报没发」后面必须跟得上原因,否则主人对着沉默
  * 猜,正是他刚让女仆修掉的那种体验。
  *
@@ -11,15 +11,14 @@
 
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import type { GlobalDefaults } from "@bilibili-notify/internal";
-import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { RoastGenDeps, RoastGenError } from "../roast-generate";
 import {
-	generateBoardRoast,
-	generateSoloRoast,
-	roastGenErrorStatus,
-	roastGenErrorText,
-} from "../roast-generate";
+	EMPTY_AI_PROVIDER_PROFILE,
+	FAILURE_CODES,
+	makeDefaultGlobalConfig,
+} from "@bilibili-notify/internal";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { RoastGenDeps } from "../roast-generate";
+import { generateBoardRoast, generateSoloRoast } from "../roast-generate";
 
 // 显式标注参数,否则 vi.fn 推出空参元组,.mock.calls[0][3] 会触发 TS2493。
 const comment = vi.fn(
@@ -126,8 +125,8 @@ const overviewOf = (uids: string[]) => async () =>
 	({ rows: uids.map(row) }) as unknown as StatsOverviewResponse;
 const overviewFails = async () => null;
 
-describe("generateBoardRoast — 失败得说得清是哪一种", () => {
-	it("引擎没起来 → not-ready", async () => {
+describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () => {
+	it("引擎没起来 → unavailable(等一会儿就好)", async () => {
 		const deps = makeDeps(["1", "2"]);
 		(deps.runtime as { engines: unknown }).engines = null;
 		const r = await generateBoardRoast(deps, {
@@ -135,62 +134,82 @@ describe("generateBoardRoast — 失败得说得清是哪一种", () => {
 			tz: 0,
 			fetchOverview: overviewOf(["1", "2"]),
 		});
-		expect(r).toMatchObject({ ok: false, kind: "not-ready" });
+		expect(r).toMatchObject({ ok: false, code: "unavailable", message: "服务尚未就绪,请稍后重试" });
 	});
 
-	it("AI 没启用 → ai-disabled(不白烧一次取数)", async () => {
+	it("AI 没启用 → not_configured(要主人去开,等是等不好的;不白烧一次取数)", async () => {
 		const fetchOverview = vi.fn(overviewOf(["1", "2"]));
 		const r = await generateBoardRoast(makeDeps(["1", "2"], false), {
 			days: 7,
 			tz: 0,
 			fetchOverview,
 		});
-		expect(r).toMatchObject({ ok: false, kind: "ai-disabled" });
+		expect(r).toMatchObject({ ok: false, code: "not_configured", message: "智能女仆尚未启用" });
 		expect(fetchOverview).not.toHaveBeenCalled();
 	});
 
-	it("取数失败 → overview-failed", async () => {
+	it("取数失败 → unavailable", async () => {
 		const r = await generateBoardRoast(makeDeps(["1", "2"]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: overviewFails,
 		});
-		expect(r).toMatchObject({ ok: false, kind: "overview-failed" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: "统计数据读取失败,请稍后重试",
+		});
 	});
 
-	it("只订阅 1 位 → too-few-ups(评鸽王要有对照组)", async () => {
+	it("只订阅 1 位 → not_configured(评鸽王要有对照组,先去订阅够 2 位)", async () => {
 		const r = await generateBoardRoast(makeDeps(["1"]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: overviewOf(["1"]),
 		});
-		expect(r).toMatchObject({ ok: false, kind: "too-few-ups" });
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+		expect(!r.ok && r.message).toContain("2 位");
 	});
 
-	it("AI 抛错 → ai-error,且原文带着(主人要据此判断是限流还是没配对)", async () => {
+	it("AI 抛错 → unavailable,且原文带着(主人要据此判断是限流还是没配对)", async () => {
 		comment.mockRejectedValueOnce(new Error("429 rate limited"));
 		const r = await generateBoardRoast(makeDeps(["1", "2"]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: overviewOf(["1", "2"]),
 		});
-		expect(r).toMatchObject({ ok: false, kind: "ai-error" });
-		expect(r.ok === false && r.kind === "ai-error" && r.message).toContain("429");
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(!r.ok && r.message).toContain("429");
 	});
 
-	it("回复解析不出来 → parse-failed(不把半截结构渲染成一张像模像样的卡)", async () => {
+	it("AI 抛出来的错没有话可说 → 给一句兜底,不回空 message(错误体的 message 不许为空)", async () => {
+		comment.mockRejectedValueOnce(new Error(""));
+		const r = await generateBoardRoast(makeDeps(["1", "2"]), {
+			days: 7,
+			tz: 0,
+			fetchOverview: overviewOf(["1", "2"]),
+		});
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(!r.ok && r.message.trim()).not.toBe("");
+	});
+
+	it("回复解析不出来 → unavailable(不把半截结构渲染成一张像模像样的卡)", async () => {
 		comment.mockResolvedValueOnce("模型今天想聊点别的");
 		const r = await generateBoardRoast(makeDeps(["1", "2"]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: overviewOf(["1", "2"]),
 		});
-		expect(r).toMatchObject({ ok: false, kind: "parse-failed" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: "女仆的回复解析失败,请重试",
+		});
 	});
 });
 
 describe("generateSoloRoast — 单人特有的两道闸", () => {
-	it("订阅 id 对不上任何订阅 → not-subscribed(不拿空数据去烧 token)", async () => {
+	it("订阅 id 对不上任何订阅 → not_found(不拿空数据去烧 token)", async () => {
 		const fetchOverview = vi.fn(overviewOf(["1"]));
 		const r = await generateSoloRoast(makeDeps(["1"]), {
 			// 恰好是某位 B 站 UP 的 uid 也不算:路由参数是订阅 id,不再认 uid。
@@ -199,11 +218,11 @@ describe("generateSoloRoast — 单人特有的两道闸", () => {
 			tz: 0,
 			fetchOverview,
 		});
-		expect(r).toMatchObject({ ok: false, kind: "not-subscribed" });
+		expect(r).toMatchObject({ ok: false, code: "not_found", message: "该 UP 主不在订阅列表里" });
 		expect(fetchOverview).not.toHaveBeenCalled();
 	});
 
-	it("订阅着但窗口内没数据 → no-data", async () => {
+	it("订阅着但窗口内没数据 → not_found", async () => {
 		const r = await generateSoloRoast(makeDeps(["1"]), {
 			subscriptionId: biliId("1"),
 			days: 7,
@@ -211,7 +230,7 @@ describe("generateSoloRoast — 单人特有的两道闸", () => {
 			fetchOverview: overviewOf([]),
 			tz: 0,
 		});
-		expect(r).toMatchObject({ ok: false, kind: "no-data" });
+		expect(r).toMatchObject({ ok: false, code: "not_found", message: "该 UP 主暂无统计数据" });
 	});
 
 	it("单人没有「至少 2 位」那道闸 —— 只订阅 1 位照样评得出来", async () => {
@@ -232,34 +251,76 @@ describe("generateSoloRoast — 单人特有的两道闸", () => {
 	});
 });
 
-describe("失败分类 → 人话与状态码", () => {
-	const ALL: RoastGenError[] = [
-		{ kind: "not-ready" },
-		{ kind: "ai-disabled" },
-		{ kind: "overview-failed" },
-		{ kind: "too-few-ups" },
-		{ kind: "not-subscribed" },
-		{ kind: "no-data" },
-		{ kind: "ai-error", message: "boom" },
-		{ kind: "parse-failed" },
-	];
+describe("失败一律是标准码表里的码,话不空 —— 路由的错误体与调度器的私聊共用这一份", () => {
+	/** 把每一种失败都逼出来一次:靠输入造,不靠手写失败对象(手写的话就测不到产生失败的那一处)。 */
+	async function everyFailure() {
+		const asOffline = (deps: RoastGenDeps) => {
+			(deps.runtime as { engines: unknown }).engines = null;
+			return deps;
+		};
+		const args = { days: 7, tz: 0 };
+		comment.mockRejectedValueOnce(new Error("boom"));
+		const aiError = await generateBoardRoast(makeDeps(["1", "2"]), {
+			...args,
+			fetchOverview: overviewOf(["1", "2"]),
+		});
+		comment.mockResolvedValueOnce("不是 JSON");
+		const parseFailed = await generateBoardRoast(makeDeps(["1", "2"]), {
+			...args,
+			fetchOverview: overviewOf(["1", "2"]),
+		});
+		return [
+			await generateBoardRoast(asOffline(makeDeps(["1", "2"])), {
+				...args,
+				fetchOverview: overviewOf(["1", "2"]),
+			}),
+			await generateBoardRoast(makeDeps(["1", "2"], false), {
+				...args,
+				fetchOverview: overviewOf(["1", "2"]),
+			}),
+			await generateBoardRoast(makeDeps(["1", "2"]), { ...args, fetchOverview: overviewFails }),
+			await generateBoardRoast(makeDeps(["1"]), { ...args, fetchOverview: overviewOf(["1"]) }),
+			await generateSoloRoast(makeDeps(["1"]), {
+				...args,
+				subscriptionId: "nope",
+				fetchOverview: overviewOf(["1"]),
+			}),
+			await generateSoloRoast(makeDeps(["1"]), {
+				...args,
+				subscriptionId: biliId("1"),
+				fetchOverview: overviewOf([]),
+			}),
+			aiError,
+			parseFailed,
+		];
+	}
 
-	it("每一种都有话可说 —— 私聊里不能出现空字符串或 undefined", () => {
-		for (const e of ALL) {
-			const text = roastGenErrorText(e);
-			expect(text, `${e.kind} 没有文案`).toBeTruthy();
-			expect(text).not.toContain("undefined");
+	it("八种失败都是 { ok: false, code, message }:码在码表里,话不空、不含 undefined", async () => {
+		const all = await everyFailure();
+		expect(all).toHaveLength(8);
+		for (const f of all) {
+			expect(f.ok).toBe(false);
+			if (f.ok) continue;
+			expect(Object.hasOwn(FAILURE_CODES, f.code), `${f.code} 不在码表里`).toBe(true);
+			expect(f.message.trim(), `${f.code} 没有话`).not.toBe("");
+			expect(f.message).not.toContain("undefined");
+			// 失败对象不再带旧的 `kind` 分类,也不带 `err` / `why`:码与话是唯一的原因。
+			expect(Object.keys(f).sort()).toEqual(["code", "message", "ok"]);
 		}
 	});
 
-	it("每一种都映射到一个真实状态码", () => {
-		for (const e of ALL) {
-			expect([400, 404, 500, 502, 503], `${e.kind} 的状态码不对`).toContain(roastGenErrorStatus(e));
-		}
-	});
-
-	it("ai-error 把模型原文透出去,而不是笼统一句「生成失败」", () => {
-		expect(roastGenErrorText({ kind: "ai-error", message: "429 rate limited" })).toContain("429");
+	it("「没配 / 没开」归 not_configured,「稍后再试」归 unavailable,「查无此人」归 not_found", async () => {
+		const codes = (await everyFailure()).map((f) => (f.ok ? "ok" : f.code));
+		expect(codes).toEqual([
+			"unavailable", // 引擎没起
+			"not_configured", // 智能女仆没开
+			"unavailable", // 取数失败
+			"not_configured", // 订阅不够 2 位
+			"not_found", // 订阅 id 对不上
+			"not_found", // 窗口内没数据
+			"unavailable", // 模型出错
+			"unavailable", // 回复读不懂
+		]);
 	});
 });
 
@@ -369,14 +430,14 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		expect(r.ok).toBe(true);
 	});
 
-	it("一共只有 1 位(拓展那位)→ too-few-ups", async () => {
+	it("一共只有 1 位(拓展那位)→ 订阅不够 2 位(not_configured)", async () => {
 		const calls = comment.mock.calls.length;
 		const r = await generateBoardRoast(makeDeps([], true, [DY]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: async () => ({ rows: [extRow(DY)] }) as unknown as StatsOverviewResponse,
 		});
-		expect(r).toMatchObject({ ok: false, kind: "too-few-ups" });
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 		expect(comment.mock.calls.length).toBe(calls);
 	});
 

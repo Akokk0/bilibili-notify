@@ -14,7 +14,10 @@ import {
 	type AISettings,
 	AISettingsSchema,
 	type CardSkinKind,
+	fail,
+	issuesFromZod,
 	type NotificationPayload,
+	ok,
 	providerMeta,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
@@ -23,6 +26,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import { AssetRejectedError } from "../assets/asset-store.js";
 import {
 	buildCardWorkshopSystem,
 	CARD_WORKSHOP_MAX_TOOL_ROUNDS,
@@ -48,6 +52,8 @@ import {
 } from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
 import { REDACTED_API_KEY } from "./globals.js";
+import { ENGINES_NOT_READY_MESSAGE, errorBodyOf, respondFailure } from "./respond-failure.js";
+import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
@@ -66,6 +72,30 @@ const TestPushRequestSchema = z.object({
 });
 
 // AiTestPushResponse 在 @bilibili-notify/contract(web 同源消费)。
+
+// ---- 失败的话 ---------------------------------------------------------------
+//
+// 这几句在好几处要说同一件事(请求前置、SSE 帧),抄多份总有一天只改了一边。码由使用处给:
+// 「没配 / 没开」都是 `not_configured`(要主人去配,等是等不好的),「服务还没起」是 `unavailable`。
+
+/** 智能女仆的开关没打开。 */
+const AI_DISABLED_MESSAGE = "智能女仆尚未启用,请先到「智能女仆」页打开开关";
+/**
+ * 开关开着但实例是 null,只有一个原因:baseUrl / apiKey 没填齐。这时回「尚未启用」会把人支去翻开关 ——
+ * 而开关明明是开的,于是变成一个查不出原因的死胡同。直接指向该填的那两栏。
+ */
+const AI_KEY_MISSING_MESSAGE = "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上";
+/** 会话不在了(被删 / 从没有过)。 */
+const CONVERSATION_GONE_MESSAGE = "会话不存在或已被删除";
+/**
+ * 想带图,但主模型看不见、也没配视觉副模型。这句是**按控件名指路**的,两个引号里的名字必须与设置页
+ * FIELD_LABELS 里的 label 一字不差 —— 指向一个叫不出名字的控件,比不给指引更让人打转。
+ * 它是在叫主人去配置,所以是 `not_configured`,不是 `unsupported`。
+ */
+const VISION_NOT_SET_MESSAGE =
+	"女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」";
+/** 聊天一条消息的字数上限。 */
+const CHAT_MESSAGE_MAX_CHARS = 4000;
 
 export function createAiRoute(
 	deps: RouteDeps,
@@ -100,21 +130,19 @@ export function createAiRoute(
 		const body = (await c.req.json().catch(() => null)) as unknown;
 		const parsed = TestPushRequestSchema.safeParse(body);
 		if (!parsed.success) {
-			return c.json<AiTestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "试一句的请求格式不对：要带推送目标（uuid）和 1~500 字的话，以及 AI 配置", {
+					issues: issuesFromZod(parsed.error),
+				}),
+			);
 		}
 		const { targetId, message, ai } = parsed.data;
 
 		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json<AiTestPushResponse>(
-				{ ok: false, latencyMs: 0, err: "engines not yet attached" },
-				503,
-			);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) {
-			return c.json<AiTestPushResponse>({ ok: false, latencyMs: 0, err: "target not found" }, 404);
-		}
+		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
 
 		// 用草稿配置**临时**造一个 generator,用完即弃 —— 绝不碰正在跑的 commentary 实例,
 		// 否则「试一句」会把未保存的人格泄进真实推送。
@@ -126,17 +154,24 @@ export function createAiRoute(
 			config: toGeneratorConfig(withStoredApiKey(ai, deps.store.getGlobals().defaults.ai)),
 		});
 
+		// 试一次、回报结果(同 cards / push 的测试推送):女仆没答上来、投递没成都是 200 + 失败那一支。
 		let reply: string;
 		try {
 			reply = await generator.chat(message);
 		} catch (err) {
+			// 模型那头的错(密钥不对、余额不足、网络)—— 对端给的原因就是主人要看的,原话进 `message`。
 			const msg = err instanceof Error ? err.message : String(err);
-			return c.json<AiTestPushResponse>({ ok: false, latencyMs: 0, err: msg }, 500);
+			deps.runtime.serviceCtx.logger.warn(`[ai] 试一句:女仆没答上来: ${msg}`);
+			return c.json<AiTestPushResponse>(fail("unavailable", `女仆那边没答上来：${msg}`));
 		}
 
 		const payload: NotificationPayload = { kind: "text", text: reply };
 		const result = await engines.push.sendToTarget(target.id, payload);
-		return c.json<AiTestPushResponse>({ ...result, reply });
+		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / 目标的 `testStatus`),只在这个出口翻成线上的。
+		const delivered = testResultOfDelivery(result);
+		return c.json<AiTestPushResponse>(
+			delivered.ok ? ok({ latencyMs: delivered.latencyMs, reply }) : delivered,
+		);
 	});
 
 	// ---- 女仆 AI 聊天 ------------------------------------------------------
@@ -165,7 +200,7 @@ export function createAiRoute(
 
 	app.get("/conversations/:id", async (c) => {
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
 		return c.json<AiConversationResponse>({ conversation: toDetail(conv) });
 	});
 
@@ -175,13 +210,13 @@ export function createAiRoute(
 		// 那些文件会在磁盘上永远留着,而这种泄漏要很久之后才会被发现。
 		const doomed = await store().get(id);
 		const removed = await store().remove(id);
-		if (!removed) return c.json({ err: "会话不存在或已被删除" }, 404);
+		if (!removed) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
 		const doomedImages = (doomed?.messages ?? []).flatMap((m) => m.images ?? []);
 		if (doomedImages.length > 0) {
 			const dataDir = deps.store.bootstrap.dataDir;
 			for (const img of doomedImages) await deleteChatImage(dataDir, img);
 		}
-		return c.json({ ok: true });
+		return c.json(ok());
 	});
 
 	// ---- 聊天附件 ---------------------------------------------------------
@@ -194,13 +229,16 @@ export function createAiRoute(
 	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
-		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);
+		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
 			const id = await saveChatImage(deps.store.bootstrap.dataDir, bytes, file.type);
-			return c.json({ ok: true, id });
+			return c.json(ok({ id }));
 		} catch (err) {
-			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
+			// 格式不认、超上限是主人递进来的东西不合规矩,话是给他看的中文;磁盘写失败之类是环境的事,
+			// 往外抛交给全局出错处理(原话进日志,`String(err)` 里可能带路径)。
+			if (err instanceof AssetRejectedError) return respondFailure(c, fail("invalid", err.message));
+			throw err;
 		}
 	});
 
@@ -212,7 +250,7 @@ export function createAiRoute(
 	 */
 	app.get("/assets/:id", async (c) => {
 		const res = await readChatImage(deps.store.bootstrap.dataDir, c.req.param("id"));
-		if (!res) return c.json({ err: "图片不存在" }, 404);
+		if (!res) return respondFailure(c, fail("not_found", "图片不存在"));
 		return c.body(res.bytes as unknown as ArrayBuffer, 200, {
 			"content-type": res.mime,
 			// 内容按 id 寻址,id 是随机的、永不复用 —— 可以放心长缓存。
@@ -234,14 +272,12 @@ export function createAiRoute(
 	 */
 	app.post("/conversations/:id/title", async (c) => {
 		const engines = deps.runtime.engines;
-		if (!engines) return c.json({ err: "服务尚未就绪,请稍后重试" }, 503);
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const commentary = engines.commentary;
-		if (!commentary) {
-			return c.json({ err: "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上" }, 400);
-		}
+		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
 
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
 
 		const firstRound = conv.messages.slice(0, 2);
 		// 起过就不再起 —— 侧栏那行是主人认会话的路标,不该被反复挪。判据是这个
@@ -275,35 +311,44 @@ export function createAiRoute(
 	 * 聊天。响应是 **SSE**,不是一次性 JSON。
 	 *
 	 * 三种事件:`delta`(正文分片,来一段发一段)、`done`(落盘后的两条消息 +
-	 * 会话元信息)、`error`(一句给人看的话)。一次回答动辄十几秒,攒到最后一次性
-	 * 甩出来的话,那十几秒里页面上只有三个跳动的点,读起来像卡住了。
+	 * 会话元信息)、`error`(失败的原因,与非 2xx 的错误体同形)。一次回答动辄十几秒,
+	 * 攒到最后一次性甩出来的话,那十几秒里页面上只有三个跳动的点,读起来像卡住了。
 	 *
 	 * **前置条件仍然走普通 JSON + 非 200 状态码。**这类错误("还没配 key")跟
 	 * 「聊到一半断了」是两回事:前者应该像任何一个失败的请求那样被 fetch 直接
 	 * 拒掉,而不是先回一个 200 的流、再在流里说其实不行 —— 那样调用方得把两种
-	 * 失败分两处处理。所以 SSE 只在真的要开始生成时才开。
+	 * 失败分两处处理。所以 SSE 只在真的要开始生成时才开。两处的失败都是
+	 * `{ code, message, issues? }`,一头经 `respondFailure`、一头经 `errorBodyOf`。
 	 */
 	app.post("/conversations/:id/chat", async (c) => {
-		const parsed = ChatRequestSchema.safeParse(await c.req.json().catch(() => null));
-		if (!parsed.success) return c.json({ err: "消息不能为空" }, 400);
+		const raw = (await c.req.json().catch(() => null)) as { message?: unknown } | null;
+		// 空话单独说:这是最常见的一种"不对",zod 的英文默认话("Too small…")不该出现在主人眼前。
+		if (typeof raw?.message !== "string" || raw.message.trim() === "") {
+			return respondFailure(c, fail("invalid", "消息不能为空"));
+		}
+		const parsed = ChatRequestSchema.safeParse(raw);
+		if (!parsed.success) {
+			return respondFailure(
+				c,
+				fail(
+					"invalid",
+					`聊天请求的格式不对：消息最多 ${CHAT_MESSAGE_MAX_CHARS} 字，图片最多 ${MAX_CHAT_IMAGES_PER_MESSAGE} 张`,
+					{ issues: issuesFromZod(parsed.error) },
+				),
+			);
+		}
 		const message = parsed.data.message.trim();
-		if (!message) return c.json({ err: "消息不能为空" }, 400);
 
 		const engines = deps.runtime.engines;
-		if (!engines) return c.json({ err: "服务尚未就绪,请稍后重试" }, 503);
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		if (!deps.store.getGlobals().defaults.ai.enabled) {
-			return c.json({ err: "智能女仆尚未启用,请先到「智能女仆」页打开开关" }, 400);
+			return respondFailure(c, fail("not_configured", AI_DISABLED_MESSAGE));
 		}
-		// 开关开着但实例是 null,只有一个原因:baseUrl / apiKey 没填齐。这时回
-		// 「尚未启用」会把人支去翻开关 —— 而开关明明是开的,于是变成一个查不出
-		// 原因的死胡同。直接指向该填的那两栏。
 		const commentary = engines.commentary;
-		if (!commentary) {
-			return c.json({ err: "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上" }, 400);
-		}
+		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
 
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
 
 		// 附件。看图有**两条路**:主模型自己看(enableVision),或交给副模型转文字
 		// (vision.model)。两条都没开的话图是彻底没人看的 —— 静默吞掉会让主人看着
@@ -318,15 +363,7 @@ export function createAiRoute(
 			const mainModelCanSee =
 				aiProfile.enableVision && providerMeta(aiProfile.provider).supportsVision;
 			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
-				return c.json(
-					{
-						// 这句是**按控件名指路**的,两个引号里的名字必须与设置页
-						// FIELD_LABELS 里的 label 一字不差 —— 指向一个叫不出名字的
-						// 控件,比不给指引更让人打转。
-						err: "女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」",
-					},
-					400,
-				);
+				return respondFailure(c, fail("not_configured", VISION_NOT_SET_MESSAGE));
 			}
 		}
 		// 主人这一问贴的图(见 readImageUrls:为什么带字节而不是地址)。
@@ -390,7 +427,10 @@ export function createAiRoute(
 		if (skinMode && !(cardMode ? opts?.cardSkinStore : opts?.skinStore)) {
 			// 静默退回普通聊天(或另一种工坊)的话,主人会在一个根本做不了这种皮肤的
 			// 窗口里反复说「做套皮肤」,而女仆一本正经地打太极。
-			return c.json({ err: "皮肤工坊在这个部署里没有装配好,请改用聊天模式" }, 400);
+			return respondFailure(
+				c,
+				fail("unsupported", "皮肤工坊在这个部署里没有装配好,请改用聊天模式"),
+			);
 		}
 		const skinTools =
 			skinMode && !cardMode && opts?.skinStore
@@ -468,7 +508,7 @@ export function createAiRoute(
 		// `/weekly-report` 发了出去、女仆却当普通话回了一句,而消息流里连一枚
 		// 痕迹都没有 —— 他没法从界面上看出技能压根没生效。
 		if (skinMode && parsed.data.skill !== undefined) {
-			return c.json({ err: "皮肤工坊里用不了技能,请回普通聊天窗口" }, 400);
+			return respondFailure(c, fail("unsupported", "皮肤工坊里用不了技能,请回普通聊天窗口"));
 		}
 		if (!skinMode && opts?.skillStore) {
 			await opts.skillStore.reload();
@@ -478,7 +518,7 @@ export function createAiRoute(
 				// 认不得就当场拒。静默发出去的话,主人以为在用技能、其实在跟模型说
 				// 一句它不认识的暗号 —— 老 `/锐评 只看这三个人` 栽的正是这个坑。
 				// 这一步在 markBusy 之前,所以没有账要销。
-				if (!pickedSkill) return c.json({ err: `没有叫「${named}」的技能` }, 400);
+				if (!pickedSkill) return respondFailure(c, fail("not_found", `没有叫「${named}」的技能`));
 			} else {
 				// 主人自己点名了就不必再挂「读技能」那把工具 —— 正文这一轮已经在
 				// system 里了,再让模型去调一次是白烧一轮。
@@ -603,9 +643,12 @@ export function createAiRoute(
 						},
 					});
 				} catch (err) {
+					// 模型那头的错(密钥不对、余额不足、网络、中途断流)—— 对端给的原因就是主人要看的,
+					// 原话进 `message`。帧体与非 2xx 的错误体同形。
+					const reason = err instanceof Error ? err.message : String(err);
 					await sse.writeSSE({
 						event: "error",
-						data: JSON.stringify({ err: err instanceof Error ? err.message : String(err) }),
+						data: JSON.stringify(errorBodyOf(fail("unavailable", `女仆那边没答上来：${reason}`))),
 					});
 					return;
 				}
@@ -630,7 +673,7 @@ export function createAiRoute(
 					// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。
 					await sse.writeSSE({
 						event: "error",
-						data: JSON.stringify({ err: "会话不存在或已被删除" }),
+						data: JSON.stringify(errorBodyOf(fail("not_found", CONVERSATION_GONE_MESSAGE))),
 					});
 					return;
 				}
@@ -660,7 +703,7 @@ export function createAiRoute(
  * 可能整段贴一份文案进来让女仆改。
  */
 const ChatRequestSchema = z.object({
-	message: z.string().min(1).max(4000),
+	message: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 	/**
 	 * 这一问带的图片资产 id。上限与动态点评那条路一致(4 张)—— 超了在这里就拒,
 	 * 而不是悄悄截断:主人明明挑了 6 张,只有 4 张被看了却什么都不说,比报错更难查。

@@ -39,7 +39,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 		roast.reset();
 	}, [days]);
 
-	const result: StatsRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
+	const result: StatsRoastResult | undefined = roast.data?.result;
 
 	const nameOf = (id: string) => meta.get(id)?.name ?? UNKNOWN_UP_NAME;
 	const colorOf = (id: string) => meta.get(id)?.color ?? AI_PURPLE;

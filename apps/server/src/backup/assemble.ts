@@ -8,6 +8,7 @@ import type {
 import { applyAiSecrets, collectAiSecrets } from "../config/ai-secrets.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
+import { BackupRejectedError } from "./rejected-error.js";
 import {
 	applyRedactions,
 	collectRedactions,
@@ -82,7 +83,7 @@ export function assembleFullBackup(
 
 export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBackup {
 	if (env.kind !== "full" || !env.secrets) {
-		throw new Error("not a full backup (no encrypted secrets block)");
+		throw new BackupRejectedError("invalid", "这份完整备份缺少加密的密钥段，文件可能被改动过");
 	}
 	const bag = openSecrets(pin, env.secrets);
 	const sections: BackupSections = structuredClone(env.sections);

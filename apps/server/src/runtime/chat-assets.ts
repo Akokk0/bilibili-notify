@@ -17,7 +17,12 @@
  */
 
 import { join } from "node:path";
-import { type AssetStore, createAssetStore, isValidAssetId } from "../assets/asset-store.js";
+import {
+	AssetRejectedError,
+	type AssetStore,
+	createAssetStore,
+	isValidAssetId,
+} from "../assets/asset-store.js";
 import { MIME_TO_EXT, UPLOAD_EXT_TO_MIME } from "./image-mime.js";
 
 /** 单张附件上限 5MB —— 与卡片背景图同口径。 */
@@ -51,15 +56,15 @@ export function isValidChatImageId(id: string): boolean {
 	return isValidAssetId(RULES, id);
 }
 
-/** 保存一张附件,返回资产 id(= 文件名)。非白名单 mime 或超限抛错(消息面向用户)。 */
+/** 保存一张附件,返回资产 id(= 文件名)。非白名单 mime 或超限抛 {@link AssetRejectedError}(消息面向用户)。 */
 export async function saveChatImage(
 	dataDir: string,
 	bytes: Uint8Array,
 	mime: string,
 ): Promise<string> {
 	const ext = MIME_TO_EXT[mime];
-	if (!ext) throw new Error(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
-	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) throw new Error("图片过大（上限 5MB）");
+	if (!ext) throw new AssetRejectedError(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
+	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) throw new AssetRejectedError("图片过大（上限 5MB）");
 	const result = await storeOf(dataDir).put({ bytes, ext });
 	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
 	if (!result.ok) throw new Error(result.message);

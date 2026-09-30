@@ -14,6 +14,7 @@ import {
 	sendChatMessage,
 	uploadChatImage,
 } from "../aiChat";
+import { ApiError } from "../api";
 
 describe("createSseParser — 分片边界不认帧边界", () => {
 	/**
@@ -292,9 +293,9 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 });
 
 /**
- * 聊天附件走上传闸(`uploadBodyLimit`):太大在读进内存之前就被回绝,体是新形状 `{ code, message }`。
- * 而路由自己的拒绝(格式不对、存盘被拒)迁移期还是旧形状 `{ err }`。两种都得把服务端那句原话带出来
- * —— 只认 `err` 的话,「图片过大（上限 5MB）」会被降级成一句泛泛的「图片上传失败」。
+ * 聊天附件的失败:上传闸(`uploadBodyLimit`)太大在读进内存之前就被回绝,路由自己的拒绝(格式不认)
+ * 也一样 —— 体都是 `{ code, message }`。两种都得把服务端那句原话带出来,码也在 `ApiError` 上,
+ * 不然「图片过大（上限 5MB）」会被降级成一句泛泛的「图片上传失败」。
  */
 describe("uploadChatImage — 失败的原话", () => {
 	afterEach(() => {
@@ -318,11 +319,24 @@ describe("uploadChatImage — 失败的原话", () => {
 		});
 	});
 
-	it("路由自己的拒绝(旧形状 { err })→ 原话照旧带出来", async () => {
-		respond(400, { ok: false, err: "只收 PNG / JPEG / WebP" });
+	it("路由自己的拒绝(格式不认,{ code, message })→ 原话与码都带出来", async () => {
+		respond(400, {
+			code: "invalid",
+			message: "不支持的图片类型：image/gif（仅 PNG / JPEG / WebP）",
+		});
 		await expect(uploadChatImage(file())).rejects.toMatchObject({
 			status: 400,
-			message: "只收 PNG / JPEG / WebP",
+			code: "invalid",
+			message: "不支持的图片类型：image/gif（仅 PNG / JPEG / WebP）",
+		});
+	});
+
+	it("磁盘写失败(503 + 固定一句话)→ 原样抛出那句,不当成上传成功", async () => {
+		respond(503, { code: "unavailable", message: "服务端出错了，详情在日志里" });
+		await expect(uploadChatImage(file())).rejects.toMatchObject({
+			status: 503,
+			code: "unavailable",
+			message: "服务端出错了，详情在日志里",
 		});
 	});
 
@@ -334,5 +348,124 @@ describe("uploadChatImage — 失败的原话", () => {
 	it("成功 → 资产 id", async () => {
 		respond(200, { ok: true, id: "abc" });
 		expect(await uploadChatImage(file())).toBe("abc");
+	});
+
+	it("200 却没有 id → 当失败(别把 undefined 当资产 id 塞进消息)", async () => {
+		respond(200, { ok: true });
+		await expect(uploadChatImage(file())).rejects.toThrow("图片上传失败");
+	});
+});
+
+/**
+ * 聊天流的失败两条路都抛成 `ApiError`,面板按同一套读法读 `code` / `message`:
+ * 开流之前的拒绝(没配 key、会话不存在、消息不对)是普通 JSON 的错误体;开流之后聊到一半出错
+ * (模型那头的错、会话被删)是流上的 `error` 帧,帧体与错误体同形。
+ */
+describe("sendChatMessage — 失败", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	/** 把事件排成线格式,切成小块 —— 网络给的分片不认帧边界。 */
+	function sse(events: Array<{ event: string; data: unknown }>, split = 9): Response {
+		const text = events
+			.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`)
+			.join("");
+		const bytes = new TextEncoder().encode(text);
+		const body = new ReadableStream<Uint8Array>({
+			start(ctl) {
+				for (let i = 0; i < bytes.length; i += split) ctl.enqueue(bytes.slice(i, i + split));
+				ctl.close();
+			},
+		});
+		return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+	}
+
+	async function failureOf(): Promise<ApiError> {
+		try {
+			await sendChatMessage("c1", "问", { onDelta: () => {} });
+		} catch (e) {
+			expect(e).toBeInstanceOf(ApiError);
+			return e as ApiError;
+		}
+		throw new Error("本该抛错却没抛");
+	}
+
+	it("error 帧({ code, message })→ 抛成 ApiError:码与模型给的原因都在上面,已吐的分片照常回调过", async () => {
+		const deltas: string[] = [];
+		vi.stubGlobal("fetch", async () =>
+			sse([
+				{ event: "delta", data: { text: "前半句" } },
+				{
+					event: "error",
+					data: { code: "unavailable", message: "女仆那边没答上来：connection reset" },
+				},
+			]),
+		);
+		await expect(
+			sendChatMessage("c1", "问", { onDelta: (t) => deltas.push(t) }),
+		).rejects.toMatchObject({
+			name: "ApiError",
+			code: "unavailable",
+			message: "女仆那边没答上来：connection reset",
+		});
+		expect(deltas).toEqual(["前半句"]);
+	});
+
+	it("error 帧:聊天期间会话被删 → not_found", async () => {
+		vi.stubGlobal("fetch", async () =>
+			sse([{ event: "error", data: { code: "not_found", message: "会话不存在或已被删除" } }]),
+		);
+		const err = await failureOf();
+		expect(err.code).toBe("not_found");
+		expect(err.message).toBe("会话不存在或已被删除");
+	});
+
+	it("开流之前被拒:没配 key → 抛服务端那句,码 not_configured 带着(面板据码分情况)", async () => {
+		vi.stubGlobal(
+			"fetch",
+			async () =>
+				new Response(
+					JSON.stringify({
+						code: "not_configured",
+						message: "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上",
+					}),
+					{ status: 409 },
+				),
+		);
+		const err = await failureOf();
+		expect(err.status).toBe(409);
+		expect(err.code).toBe("not_configured");
+		expect(err.message).toContain("baseUrl");
+	});
+
+	it("开流之前被拒:请求格式不对 → 逐条原因挂在 ApiError.issues 上", async () => {
+		vi.stubGlobal(
+			"fetch",
+			async () =>
+				new Response(
+					JSON.stringify({
+						code: "invalid",
+						message: "聊天请求的格式不对：消息最多 4000 字，图片最多 4 张",
+						issues: [{ path: ["images"], message: "Too big" }],
+					}),
+					{ status: 400 },
+				),
+		);
+		const err = await failureOf();
+		expect(err.code).toBe("invalid");
+		expect(err.issues).toEqual([{ path: ["images"], message: "Too big" }]);
+	});
+
+	it("开流之前被拒但体读不出来 → 退回带状态码的一句,不吞成空话", async () => {
+		vi.stubGlobal("fetch", async () => new Response("bad gateway", { status: 502 }));
+		const err = await failureOf();
+		expect(err.message).toBe("聊天请求失败(502)");
+		expect(err.code).toBeUndefined();
+	});
+
+	it("流断了既没 done 也没 error → 当失败,别当成聊完了", async () => {
+		vi.stubGlobal("fetch", async () => sse([{ event: "delta", data: { text: "半句" } }]));
+		await expect(sendChatMessage("c1", "问", { onDelta: () => {} })).rejects.toThrow(/中断/);
 	});
 });

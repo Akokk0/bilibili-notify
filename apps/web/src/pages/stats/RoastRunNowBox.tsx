@@ -3,6 +3,7 @@ import { Btn, ConfirmDialog } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 
 /**
  * 「试一次」—— 立刻按现在这套配置跑一轮定时周报。
@@ -45,11 +46,9 @@ export function RoastRunNowBox({
 			),
 	});
 
-	const err = run.isError
-		? ((run.error as Error)?.message ?? "跑不起来")
-		: run.data && !run.data.ok
-			? run.data.err
-			: undefined;
+	// 这一轮没跑起来(服务没就绪 / 出了 bug)是非 2xx 的 { code, message },走 isError;跑完了(哪怕是
+	// 「生成没成」「没配目标」)是 200 + 结局,由 OutcomeLine 说。
+	const err = run.isError ? errorTextOf(run.error) : undefined;
 
 	const noun = subscriptionId ? "锐评" : "周报";
 	const confirmMessage = approval ? (
@@ -90,7 +89,7 @@ export function RoastRunNowBox({
 
 			{err ? (
 				<div className="mt-2 text-bn-xs text-bn-danger-text">跑不起来:{err}</div>
-			) : run.data?.ok && run.data.outcome ? (
+			) : run.data ? (
 				<OutcomeLine outcome={run.data.outcome} targetName={targetName} />
 			) : null}
 
@@ -131,7 +130,7 @@ export function OutcomeLine({
 		);
 	}
 	if (outcome.kind === "gen-failed") {
-		return <div className="mt-2 text-bn-xs text-bn-danger-text">没生成出来:{outcome.why}</div>;
+		return <div className="mt-2 text-bn-xs text-bn-danger-text">没生成出来:{outcome.message}</div>;
 	}
 	if (outcome.kind === "pending-approval") {
 		return (
@@ -151,7 +150,7 @@ export function OutcomeLine({
 		return (
 			<div className="mt-2 text-bn-xs text-bn-warning-text">
 				{outcome.sent} 个目标成功、{outcome.failed.length} 个失败（{mode}）：
-				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.err}`).join("；")}
+				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.message}`).join("；")}
 				{skipped}
 			</div>
 		);

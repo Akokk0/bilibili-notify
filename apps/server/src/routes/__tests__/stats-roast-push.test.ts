@@ -33,6 +33,8 @@ const SOLO = {
 };
 
 interface StubOpts {
+	/** 引擎还没挂上(启动早期 / 没登录)。 */
+	noEngines?: boolean;
 	/** 有没有 puppeteer(未装 Chrome 时为 null)。 */
 	renderer?: boolean;
 	/** 全局图片渲染总开关。 */
@@ -94,11 +96,13 @@ function makeDeps(opts: StubOpts = {}) {
 			getConnections: () => [{ id: ADAPTER, enabled: true }],
 		},
 		runtime: {
-			engines: {
-				push: { sendToTarget },
-				imageRenderer:
-					opts.renderer === false ? null : { generateRoastBoardCard, generateRoastSoloCard },
-			},
+			engines: opts.noEngines
+				? null
+				: {
+						push: { sendToTarget },
+						imageRenderer:
+							opts.renderer === false ? null : { generateRoastBoardCard, generateRoastSoloCard },
+					},
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 		},
@@ -133,6 +137,10 @@ describe("POST /roast/push — 图片优先", () => {
 		const res = await push(createStatsRoute(deps), boardBody({ targetId: "not-a-uuid" }));
 
 		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("invalid");
+		// 逐格原因在 issues 里,指到 targetId。
+		expect(body.issues.some((i: any) => i.path?.includes("targetId"))).toBe(true);
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 
@@ -142,7 +150,8 @@ describe("POST /roast/push — 图片优先", () => {
 		const res = await push(createStatsRoute(deps), boardBody());
 
 		expect(res.status).toBe(200);
-		expect(((await res.json()) as any).mode).toBe("image");
+		// 送达是 Result 的成功那一支:{ ok: true, mode },没有假的 latencyMs、也没有 err。
+		expect(await res.json()).toEqual({ ok: true, mode: "image" });
 		const [targetId, payload] = sendToTarget.mock.calls[0] as any;
 		expect(targetId).toBe(TARGET);
 		expect(payload.kind).toBe("image");
@@ -280,37 +289,57 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 });
 
 describe("POST /roast/push — 诚实失败", () => {
-	it("推送目标不存在 → 404", async () => {
+	it("引擎还没挂上 → 503 unavailable,不碰推送管线", async () => {
+		const { deps } = makeDeps({ noEngines: true });
+		const res = await push(createStatsRoute(deps), boardBody());
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as any;
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toMatch(/准备好|稍后/);
+	});
+
+	it("推送目标不存在 → 404 not_found", async () => {
 		const { deps } = makeDeps({ targets: [] });
 		const res = await push(createStatsRoute(deps), boardBody());
 		expect(res.status).toBe(404);
-		expect(((await res.json()) as any).ok).toBe(false);
+		expect(await res.json()).toEqual({ code: "not_found", message: "推送目标不存在" });
 	});
 
-	it("请求体缺字段 → 400,不带着半截数据去渲染", async () => {
+	it("请求体缺字段 → 400 invalid,不带着半截数据去渲染", async () => {
 		const { deps, generateRoastBoardCard } = makeDeps();
 		const res = await push(createStatsRoute(deps), { targetId: TARGET, kind: "board" });
 		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
 		expect(generateRoastBoardCard).not.toHaveBeenCalled();
 	});
 
-	it("投递失败 → ok:false 并带上原因,不谎报成功", async () => {
+	it("请求体不是 JSON → 400 invalid(不抛)", async () => {
+		const { deps } = makeDeps();
+		const res = await createStatsRoute(deps).request("/roast/push", {
+			method: "POST",
+			body: "{oops",
+		});
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
+	});
+
+	it("投递失败 → 照旧 200,体是失败的 Result:带码与投递那头的原话,不谎报成功,也没有 err / mode", async () => {
 		const { deps } = makeDeps({ sendFails: true });
 		const res = await push(createStatsRoute(deps), boardBody());
-		const body = (await res.json()) as any;
-		expect(body.ok).toBe(false);
-		expect(body.err).toContain("目标不可达");
+		// 「试一次、回报结果」:请求没问题,是投递没成 —— 不是 HTTP 失败。
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: false, code: "unavailable", message: "目标不可达" });
 	});
 });
 
 describe("POST /roast/push — 停用的目标", () => {
 	// 「停用」在周报与链接解析里是同一个意思:目标暂停,勾着也不发。手动推送选中一个停用的
 	// 目标,得明说是停用,不能是一句含糊的「推送失败」—— 那会让人去查网络。
-	it("目标已停用 → 409 + 明说已停用,不碰推送管线", async () => {
+	it("目标已停用 → 409 not_configured + 明说已停用(要去把开关打开),不碰推送管线", async () => {
 		const { deps, sendToTarget } = makeDeps({ targets: [{ id: TARGET, enabled: false }] });
 		const res = await push(createStatsRoute(deps), boardBody());
 		expect(res.status).toBe(409);
-		expect(((await res.json()) as any).err).toBe("推送目标已停用");
+		expect(await res.json()).toEqual({ code: "not_configured", message: "推送目标已停用" });
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 });

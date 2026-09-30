@@ -6,6 +6,17 @@ import {
 	buildBackup,
 	parseBackup,
 } from "../backup/envelope.js";
+import { BackupRejectedError } from "../backup/rejected-error.js";
+
+/** 抛出来的东西(没抛就是 undefined)。 */
+function thrownBy(fn: () => unknown): unknown {
+	try {
+		fn();
+	} catch (err) {
+		return err;
+	}
+	return undefined;
+}
 
 function makeSub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, uid });
@@ -30,20 +41,40 @@ describe("backup envelope", () => {
 		expect(parsed.sections.subscriptions).toEqual(subs);
 	});
 
-	it("rejects a document that is not a backup file", () => {
-		expect(() => parseBackup(JSON.stringify({ hello: "world" }))).toThrow();
+	/** 拒收自带码、话是中文:路由靠码回给面板,不嗅文案。 */
+	function rejection(json: string): { code: string; message: string } {
+		const err = thrownBy(() => parseBackup(json));
+		expect(err).toBeInstanceOf(BackupRejectedError);
+		return err as { code: string; message: string };
+	}
+
+	it("rejects a document that is not a backup file → invalid", () => {
+		const err = rejection(JSON.stringify({ hello: "world" }));
+		expect(err.code).toBe("invalid");
+		expect(err.message).toMatch(/不是.*备份文件/);
 	});
 
-	it("rejects an unknown kind", () => {
+	it("rejects an unknown kind → invalid", () => {
 		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: {} });
-		const bad = JSON.stringify({ ...env, kind: "weird" });
-		expect(() => parseBackup(bad)).toThrow();
+		const err = rejection(JSON.stringify({ ...env, kind: "weird" }));
+		expect(err.code).toBe("invalid");
+		expect(err.message).toMatch(/类型/);
 	});
 
-	it("rejects a schemaVersion newer than this build understands", () => {
+	it("rejects a missing schemaVersion → invalid", () => {
 		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: {} });
-		const future = JSON.stringify({ ...env, schemaVersion: BACKUP_SCHEMA_VERSION + 1 });
-		expect(() => parseBackup(future)).toThrow(/version/i);
+		const { schemaVersion: _dropped, ...rest } = env;
+		const err = rejection(JSON.stringify(rest));
+		expect(err.code).toBe("invalid");
+		expect(err.message).toMatch(/schemaVersion/);
+	});
+
+	it("rejects a schemaVersion newer than this build understands → unsupported (not invalid)", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: {} });
+		const err = rejection(JSON.stringify({ ...env, schemaVersion: BACKUP_SCHEMA_VERSION + 1 }));
+		expect(err.code).toBe("unsupported");
+		expect(err.message).toContain(String(BACKUP_SCHEMA_VERSION + 1));
+		expect(err.message).toMatch(/升级/);
 	});
 
 	it("accepts the current schemaVersion", () => {

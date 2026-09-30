@@ -276,7 +276,8 @@ describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => 
 
 	it("拓展行的单人锐评:按编码过的订阅 id 请求", async () => {
 		mockApi([BILI_ROW, ODD_ROW], [BILI_SUB, ODD_SUB]);
-		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, err: "占位" });
+		// 只要请求发出去了就行,回什么不重要:让它失败(生成没成是非 2xx 的错误)。
+		(api.post as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("占位"));
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
 		await userEvent.click(tableRow("抖音乙"));
@@ -288,7 +289,11 @@ describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => 
 
 	it("拓展行的定时锐评「试一次」:按编码过的订阅 id 跑那一条,不是榜单", async () => {
 		mockApi([BILI_ROW, ODD_ROW], [BILI_SUB, ODD_SUB]);
-		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, err: "占位" });
+		// 回一个合规的结局(200 + { ok: true, outcome }):回什么不重要,但得是这个接口真会回的形状。
+		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+			ok: true,
+			outcome: { kind: "no-targets" },
+		});
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
 		await userEvent.click(tableRow("抖音乙"));

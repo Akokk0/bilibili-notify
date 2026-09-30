@@ -20,6 +20,7 @@ import type {
 	ExtensionRunState,
 	ExtensionSubscription,
 	Failure,
+	FailureCode,
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PushKind,
@@ -731,11 +732,13 @@ export interface StatsRoastResult {
 	pushText: string;
 }
 
-/** `POST /api/stats/roast` 响应。`ok:false` 时只有 `err` 有意义。 */
+/**
+ * `POST /api/stats/roast` 响应(200)。生成没成 —— 没开智能女仆 / 订阅不够 / 取数或模型出错 / 回复读不懂 ——
+ * 一律是非 2xx 的 {@link ErrorResponse}(`message` 是给人看的原因,面板原样显示),不在这里。
+ */
 export interface StatsRoastResponse {
-	ok: boolean;
-	err?: string;
-	result?: StatsRoastResult;
+	ok: true;
+	result: StatsRoastResult;
 }
 
 /**
@@ -757,11 +760,10 @@ export interface StatsSoloRoastResult {
 	pushText: string;
 }
 
-/** `POST /api/stats/roast/:subscriptionId` 响应。 */
+/** `POST /api/stats/roast/:subscriptionId` 响应(200);失败同 {@link StatsRoastResponse},是非 2xx 的 {@link ErrorResponse}。 */
 export interface StatsSoloRoastResponse {
-	ok: boolean;
-	err?: string;
-	result?: StatsSoloRoastResult;
+	ok: true;
+	result: StatsSoloRoastResult;
 }
 
 /**
@@ -777,16 +779,20 @@ export type StatsRoastPushRequest = {
 	days: number;
 } & ({ kind: "board"; result: StatsRoastResult } | { kind: "solo"; result: StatsSoloRoastResult });
 
-/** `POST /api/stats/roast/push` 响应。 */
-export interface StatsRoastPushResponse {
-	ok: boolean;
-	err?: string;
+/**
+ * `POST /api/stats/roast/push` 响应:试了一次、回报结果,**照旧回 200**,体是 `Result<{ mode }>` ——
+ * 送达了是 `{ ok: true, mode }`,一个目标都没送到是 `{ ok: false, code, message }`(原因是投递那头给的原话),
+ * 面板读 `message` 显示。
+ *
+ * 请求本身不成 —— 引擎没起、体不对、没这个目标、目标已停用 —— 是非 2xx 的 {@link ErrorResponse}。
+ */
+export type StatsRoastPushResponse = Result<{
 	/**
 	 * 实际投递形态。图片渲染开着且渲染成功 = `"image"`,否则回退 `"text"` ——
 	 * 前端据此告诉用户「推的是图还是文字」,渲染悄悄失败时不至于看起来一切正常。
 	 */
-	mode?: "image" | "text";
-}
+	mode: "image" | "text";
+}>;
 
 /**
  * 一轮定时周报跑完的结局。与服务端 `RoastRunOutcome` 同构 —— 那边是权威定义,
@@ -799,7 +805,7 @@ export type StatsRoastRunOutcome =
 	/** 一个推送目标都没配,连模型都没调。 */
 	| { kind: "no-targets" }
 	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
-	| { kind: "gen-failed"; why: string }
+	| { kind: "gen-failed"; code: FailureCode; message: string }
 	/** 审批开着:已经生成并私聊给主人了,群里还没发,等主人回 y。 */
 	| { kind: "pending-approval"; draftId: string }
 	/** 发了。`failed` 非空 = 部分目标没成,那也算发过了,不是整轮失败。 */
@@ -809,14 +815,16 @@ export type StatsRoastRunOutcome =
 			sent: number;
 			/** 因停用而跳过的目标 id —— 不算失败,面板单独说一句「跳过 N 个已停用」。 */
 			skipped: string[];
-			failed: Array<{ targetId: string; err: string }>;
+			failed: Array<{ targetId: string; message: string }>;
 	  };
 
-/** `POST /api/stats/roast/run-now` 响应。`ok:false` 只用于服务没就绪 / 这一轮抛了异常。 */
+/**
+ * `POST /api/stats/roast/run-now` 响应(200):这一轮跑完的结局。服务还没就绪是非 2xx 的
+ * {@link ErrorResponse};这一轮里抛了异常是 bug,交给全局出错处理(原话进日志,面板只拿一句固定的话)。
+ */
 export interface StatsRoastRunNowResponse {
-	ok: boolean;
-	err?: string;
-	outcome?: StatsRoastRunOutcome;
+	ok: true;
+	outcome: StatsRoastRunOutcome;
 }
 
 export interface StatsOverviewResponse {
@@ -857,13 +865,14 @@ export type ConnectionTestResponse = Result<{ latencyMs: number }>;
  */
 export type TestPushResponse = Result<{ latencyMs: number }>;
 
-/** `POST /api/ai/test-push` 响应(还没迁到 `Result`)—— 旧形状 `{ ok, latencyMs, err? }` 多一个 `reply` 供页面回显。 */
-export interface AiTestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	reply?: string;
-	err?: string;
-}
+/**
+ * `POST /api/ai/test-push` 响应:让女仆回一句、真实推给所选目标,试了一次、回报结果,**照旧回 200**,
+ * 体是 `Result<…>` —— 送达了是 `{ ok: true, latencyMs, reply }`(`reply` 供页面回显,耗时只在成功那一支),
+ * 女仆没答上来(模型那头的错、网络)或没送达是 `{ ok: false, code, message }`,`message` 带对端给的原因。
+ *
+ * 请求本身不成(体不对、引擎没起、没这个目标)是非 2xx 的 {@link ErrorResponse}。
+ */
+export type AiTestPushResponse = Result<{ latencyMs: number; reply: string }>;
 
 // ---- /api/ai/conversations(女仆 AI 聊天)------------------------------------
 
@@ -1023,6 +1032,10 @@ export interface AiConversationMetaResponse {
  *
  * 回的是**两条**消息而不只是回复:用户那条的 id / ts 由服务端生成,前端乐观
  * 渲染的那条只是占位,拿回真身才能把 key 对上,刷新后也不会出现两条一样的话。
+ *
+ * 响应是 SSE(`delta` / `reasoning` / `tool` / `done` / `error`),这个类型是 `done` 帧的体。开流之前的拒绝
+ * (没配模型 / 没开开关 / 会话不存在 / 消息不对)是非 2xx 的 {@link ErrorResponse};开流之后聊到一半出错
+ * (模型那头的错、会话被删)是 `error` 帧,帧体与它**同形**(`{ code, message, issues? }`),面板一并解析成 `ApiError`。
  */
 export interface AiChatReplyResponse {
 	/** 落盘后的用户消息(id / ts 已定)。 */

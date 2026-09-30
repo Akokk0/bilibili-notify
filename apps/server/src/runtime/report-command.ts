@@ -13,19 +13,24 @@
  * 面板上的「试一次」是另一条路,不共用这道闸 —— 那边点下去有自己的按钮态反馈。
  */
 
-import { type Logger, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
+import {
+	type FailureCode,
+	type Logger,
+	ROAST_MAX_DAYS,
+	ROAST_MIN_DAYS,
+} from "@bilibili-notify/internal";
 import { type CommandSpec, command } from "./command-dispatcher.js";
 
 /** 与 `RoastRunOutcome` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
 export type ReportOutcome =
 	| { kind: "no-targets" }
-	| { kind: "gen-failed"; why: string }
+	| { kind: "gen-failed"; code: FailureCode; message: string }
 	| { kind: "pending-approval"; draftId: string }
 	| {
 			kind: "sent";
 			mode: "text" | "image";
 			sent: number;
-			failed: Array<{ targetId: string; err: string }>;
+			failed: Array<{ targetId: string; message: string }>;
 	  };
 
 export interface ReportCommandOptions {
@@ -46,7 +51,7 @@ function describeOutcome(outcome: ReportOutcome): string | null {
 		case "no-targets":
 			return "还没配推送目标呢，周报没地方发～";
 		case "gen-failed":
-			return `周报没生成出来：${outcome.why}`;
+			return `周报没生成出来：${outcome.message}`;
 		case "pending-approval":
 			return null;
 		case "sent":

@@ -4,18 +4,21 @@
  * 它**不是模拟**:调的就是 cron 到点调的那个函数,所以审批关着的时候会真的把周报
  * 发进群里。测试守两件事:
  *   1. 每种结局都如实转述给前端(点了之后总得知道发生了什么);
- *   2. 调度器还没起来时给一句人话,而不是 500 或一片空白。
+ *   2. 调度器还没起来时给一句人话,而不是 500 或一片空白;
+ *   3. 这一轮里抛出来的是 bug —— 不回原话(可能带路径),原话进错误日志。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { RoastRunOutcome } from "../../runtime/roast-scheduler.js";
+import { UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
+const logger = { debug() {}, info() {}, warn() {}, error: vi.fn() };
 const deps = {
 	store: { getSubscriptions: () => [], getGlobals: () => ({ defaults: { ai: {} } }) },
-	runtime: { serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } } },
+	runtime: { serviceCtx: { logger } },
 } as unknown as RouteDeps;
 
 function appWith(outcome: RoastRunOutcome | null) {
@@ -29,7 +32,7 @@ const post = (app: ReturnType<typeof createStatsRoute>) =>
 	app.request("/roast/run-now", { method: "POST" });
 
 describe("POST /roast/run-now", () => {
-	it("发出去了 → 如实带上条数与投递形态", async () => {
+	it("发出去了 → 如实带上条数与投递形态(200 + { ok: true, outcome })", async () => {
 		const { app, runBoardNow } = appWith({
 			kind: "sent",
 			mode: "image",
@@ -52,11 +55,11 @@ describe("POST /roast/run-now", () => {
 			mode: "text",
 			sent: 1,
 			skipped: [],
-			failed: [{ targetId: "t2", err: "机器人不在群里" }],
+			failed: [{ targetId: "t2", message: "机器人不在群里" }],
 		});
 		const body = (await (await post(app)).json()) as any;
 		expect(body.ok).toBe(true);
-		expect(body.outcome.failed).toEqual([{ targetId: "t2", err: "机器人不在群里" }]);
+		expect(body.outcome.failed).toEqual([{ targetId: "t2", message: "机器人不在群里" }]);
 	});
 
 	it("审批开着 → 说清楚在等主人回 y,别让人以为发过了", async () => {
@@ -66,11 +69,15 @@ describe("POST /roast/run-now", () => {
 	});
 
 	it("生成失败 → ok:true 但结局是 gen-failed —— HTTP 层没出错,是业务没成", async () => {
-		const { app } = appWith({ kind: "gen-failed", why: "AI 还没开" });
+		const { app } = appWith({ kind: "gen-failed", code: "not_configured", message: "AI 还没开" });
 		const res = await post(app);
 		// 200 + 结构化结局:4xx/5xx 会让前端的 error 分支吞掉原因(锐评卡踩过)。
 		expect(res.status).toBe(200);
-		expect(((await res.json()) as any).outcome).toEqual({ kind: "gen-failed", why: "AI 还没开" });
+		expect(((await res.json()) as any).outcome).toEqual({
+			kind: "gen-failed",
+			code: "not_configured",
+			message: "AI 还没开",
+		});
 	});
 
 	it("没配目标 → no-targets", async () => {
@@ -78,23 +85,28 @@ describe("POST /roast/run-now", () => {
 		expect(((await (await post(app)).json()) as any).outcome).toEqual({ kind: "no-targets" });
 	});
 
-	it("调度器还没起来 → 503 + 一句人话,不是 500", async () => {
+	it("调度器还没起来 → 503 unavailable + 一句人话,不是 500", async () => {
 		const { app } = appWith(null);
 		const res = await post(app);
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as any;
-		expect(body.ok).toBe(false);
-		expect(String(body.err)).toMatch(/就绪|稍后/);
+		expect(body.code).toBe("unavailable");
+		expect(String(body.message)).toMatch(/准备好|稍后/);
+		// 错误体是平铺的 { code, message },没有 ok / err。
+		expect(Object.keys(body).sort()).toEqual(["code", "message"]);
 	});
 
-	it("跑这一轮时抛异常 → 502 + 原因,不把异常漏成未处理拒绝", async () => {
+	it("跑这一轮时抛异常是 bug → 503 + 固定一句话;原话进错误日志,不回给面板(可能带路径)", async () => {
+		logger.error.mockClear();
+		const boom = new Error("EACCES: permission denied, open 'state/roast-drafts.json'");
 		const runRoastNow = vi.fn(async () => {
-			throw new Error("盘挂了");
+			throw boom;
 		});
 		const app = createStatsRoute(deps, { runRoastNow });
 		const res = await app.request("/roast/run-now", { method: "POST" });
-		expect(res.status).toBe(502);
-		expect(String(((await res.json()) as any).err)).toContain("盘挂了");
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
 	});
 });
 

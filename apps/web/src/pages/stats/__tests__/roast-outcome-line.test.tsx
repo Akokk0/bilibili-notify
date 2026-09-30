@@ -46,7 +46,7 @@ describe("OutcomeLine", () => {
 					mode: "text",
 					sent: 1,
 					skipped: ["t3"],
-					failed: [{ targetId: "t2", err: "机器人不在群里" }],
+					failed: [{ targetId: "t2", message: "机器人不在群里" }],
 				}}
 				targetName={targetName}
 			/>,

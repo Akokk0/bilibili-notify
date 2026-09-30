@@ -158,7 +158,9 @@ describe("发图 — 主模型自己就支持多模态", () => {
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
-		expect(res.status).toBe(400);
+		// 叫主人去配置(打开看图 / 填视觉模型),等是等不好的:409 not_configured。
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).code).toBe("not_configured");
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 
@@ -182,9 +184,14 @@ describe("发图 — 两条路都没开", () => {
 
 		const res = await chat(app, id, { message: "这是什么", images: [img] });
 
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
-		expect(body.err).toMatch(/视觉模型|看图/);
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toMatch(/视觉模型|看图/);
+		// 这句是按设置页控件名指路的,两个引号里的名字不许被润色 —— 与 FIELD_LABELS 一字不差。
+		expect(body.message).toContain("「图片理解」");
+		expect(body.message).toContain("「主模型支持看图」");
+		expect(body.message).toContain("「视觉模型 ID」");
 		// 没配就一次都不该往模型那儿跳 —— 跳了也是白烧钱,图根本带不过去。
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
@@ -238,6 +245,7 @@ describe("发图 — 配了视觉模型", () => {
 		const res = await chat(app, id, { message: "看看", images: imgs });
 
 		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).code).toBe("invalid");
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 

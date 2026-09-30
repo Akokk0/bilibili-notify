@@ -1,13 +1,14 @@
 import { Btn, GlassPanel, Icon, LoadingBlock } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { AI_PURPLE } from "../../config/colors";
+import { errorTextOf } from "../../services/error-text";
 
 /**
  * 两张 AI 锐评卡(榜单版 / 单人版)共用的外壳。
  *
- * 抽出来的是**状态机**而不是版式:待生成 / 生成中 / 失败三种状态的处理完全一样,
- * 而且都有同一个容易翻的坑 —— 后端 4xx/5xx 走 mutation 的 error 分支,业务性
- * 失败(AI 没开、解析失败)却以 `ok:false` 正常返回,两条路都必须能显示原因。
+ * 抽出来的是**状态机**而不是版式:待生成 / 生成中 / 失败三种状态的处理完全一样。
+ * 失败只有一条路 —— 生成没成(AI 没开、订阅不够、模型出错、回复读不懂)一律是非 2xx 的
+ * `{ code, message }`,走 mutation 的 error 分支,`message` 就是要显示的原因(ADR-0026)。
  * 结果本身的版式两张卡差得很远,交给 children。
  */
 
@@ -75,17 +76,11 @@ export function RoastShell({
 }
 
 /**
- * 把 mutation 的两种失败路径归一成一条错误信息。
+ * mutation 失败时要显示的那句原因,没失败交 `undefined`。
  *
- * `isError` 是 HTTP 层的(4xx/5xx 抛异常),`data.ok === false` 是业务层的。
- * 漏掉任何一条都会变成「点了没反应」。
+ * 生成锐评的失败只有 HTTP 那一条路(非 2xx 的 `{ code, message }`,见 RoastShell 头上的说明),
+ * 所以只看 `isError`;有逐条原因(`issues`)的接在 `message` 后面。
  */
-export function roastError(m: {
-	isError: boolean;
-	error: unknown;
-	data?: { ok: boolean; err?: string };
-}): string | undefined {
-	if (m.isError) return (m.error as Error)?.message ?? "生成失败";
-	if (m.data && !m.data.ok) return m.data.err;
-	return undefined;
+export function roastError(m: { isError: boolean; error: unknown }): string | undefined {
+	return m.isError ? errorTextOf(m.error) : undefined;
 }

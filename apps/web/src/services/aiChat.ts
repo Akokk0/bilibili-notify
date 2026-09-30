@@ -7,8 +7,9 @@ import type {
 	AiConversationMetaResponse,
 	AiConversationResponse,
 	AiSkinTarget,
+	ErrorResponse,
 } from "@bilibili-notify/contract";
-import { ApiError, api, apiErrorOf } from "./api";
+import { api, apiErrorOf } from "./api";
 import { withDesktopTokenHeader } from "./desktop-token";
 
 /**
@@ -146,7 +147,9 @@ export interface ChatStreamHandlers {
  * 那套鉴权头。所以走 fetch + 手读 `body` 流。
  *
  * 前置条件类错误(没配 key、会话不存在)仍是普通的非 200 JSON —— 服务端刻意
- * 没把它们塞进流里,这里也就照常抛 {@link ApiError},与其它接口一个样。
+ * 没把它们塞进流里,这里也就照常抛 `ApiError`,与其它接口一个样。流上的 `error` 帧
+ * (聊到一半模型出错、会话被删)与它**同形**(`{ code, message, issues? }`),也抛成 `ApiError`,
+ * 调用方按同一套读法读 `code` / `message`。
  */
 export async function sendChatMessage(
 	id: string,
@@ -181,14 +184,14 @@ export async function sendChatMessage(
 	});
 	if (!res.ok || !res.body) {
 		const payload = await res.json().catch(() => undefined);
-		throw new ApiError(res.status, payload, errorText(payload, res.status));
+		throw apiErrorOf(res.status, payload, `聊天请求失败(${res.status})`);
 	}
 
 	const reader = res.body.getReader();
 	const decoder = new TextDecoder();
 	const parse = createSseParser();
 	let done: AiChatReplyResponse | null = null;
-	let failure: string | null = null;
+	let failure: ErrorResponse | null = null;
 
 	while (true) {
 		const { value, done: finished } = await reader.read();
@@ -204,26 +207,16 @@ export async function sendChatMessage(
 			} else if (frame.event === "done") {
 				done = JSON.parse(frame.data) as AiChatReplyResponse;
 			} else if (frame.event === "error") {
-				failure = (JSON.parse(frame.data) as { err: string }).err;
+				failure = JSON.parse(frame.data) as ErrorResponse;
 			}
 		}
 	}
 
-	if (failure !== null) throw new Error(failure);
+	if (failure !== null) throw apiErrorOf(res.status, failure, failure.message);
 	// 流结束了却既没 done 也没 error:服务端进程被掐了 / 反代掐了连接。
 	// 这时磁盘上什么都没落,当失败处理才与服务端状态一致。
 	if (!done) throw new Error("连接中断,女仆没能把话说完");
 	return done;
-}
-
-/** 与 api.ts 的错误取句逻辑同约定:服务端两种错误体形状都认。 */
-function errorText(payload: unknown, status: number): string {
-	if (payload && typeof payload === "object") {
-		const p = payload as { err?: unknown; message?: unknown };
-		if (typeof p.err === "string") return p.err;
-		if (typeof p.message === "string") return p.message;
-	}
-	return `聊天请求失败(${status})`;
 }
 
 /**
@@ -278,13 +271,9 @@ export async function uploadChatImage(file: File): Promise<string> {
 		body: form,
 		credentials: "include",
 	});
-	const payload = (await res.json().catch(() => undefined)) as
-		| { ok?: boolean; id?: string; err?: string }
-		| undefined;
-	if (!res.ok || !payload?.ok || !payload.id) {
-		// 上传闸(413「图片过大」)回 `{ code, message }`,路由自己的拒绝还是 `{ err }`(迁移期) ——
-		// 两种都经同一处解析,原话不丢。
-		throw apiErrorOf(res.status, payload, "图片上传失败");
-	}
+	const payload = (await res.json().catch(() => undefined)) as { id?: string } | undefined;
+	// 失败不论是上传闸的 413(「图片过大」)还是路由自己的拒绝(格式不认),体都是 `{ code, message }`,
+	// 经同一处解析,原话不丢。
+	if (!res.ok || !payload?.id) throw apiErrorOf(res.status, payload, "图片上传失败");
 	return payload.id;
 }

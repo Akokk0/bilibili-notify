@@ -89,7 +89,7 @@ async function say(
 	body: Record<string, unknown> = {},
 	/** 建会话时定下的面孔 —— 模式与人格开局锁定,不再随每条消息走。 */
 	init: Record<string, unknown> = {},
-): Promise<Response> {
+): Promise<Response & { bodyText: string }> {
 	const conv = (await (
 		await app.request("/conversations", {
 			method: "POST",
@@ -102,9 +102,9 @@ async function say(
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ message: "给我做套皮肤", ...body }),
 	});
-	// 流抽干,handler 才算跑完(落盘在流的末尾)。
-	await res.text();
-	return res;
+	// 流抽干,handler 才算跑完(落盘在流的末尾);读出来的正文留在 bodyText 上,要看错误体的用例用。
+	const bodyText = await res.text();
+	return Object.assign(res, { bodyText });
 }
 
 const inSkinMode = (app: ReturnType<typeof createAiRoute>, body: Record<string, unknown> = {}) =>
@@ -232,13 +232,14 @@ describe("皮肤工坊模式", () => {
 		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
 	});
 
-	it("没装皮肤库却点了皮肤模式 → 400,不静默退回普通聊天", async () => {
+	it("没装皮肤库却点了皮肤模式 → 400 unsupported,不静默退回普通聊天", async () => {
 		// 静默降级的话,主人会在一个根本做不了皮肤的窗口里一直说「做套皮肤」,
 		// 而女仆一本正经地打太极。
 		const { app } = await makeDeps({ skins: false });
 		const res = await inSkinMode(app);
 
 		expect(res.status).toBe(400);
+		expect(JSON.parse(res.bodyText).code).toBe("unsupported");
 	});
 
 	it("工具真能落盘:执行一次,皮肤进了库", async () => {

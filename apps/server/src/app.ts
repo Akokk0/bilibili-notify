@@ -10,7 +10,6 @@ import type {
 import { type CardSkinKind, fail } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 import type { ZodType } from "zod";
 import { createDashboardAuth } from "./auth/dashboard-auth.js";
 import { createDesktopTokenAuth } from "./auth/desktop-token.js";
@@ -46,10 +45,9 @@ import { createMaidSkillsRoute } from "./routes/maid-skills.js";
 import { createPushRoute } from "./routes/push.js";
 import { createQQRoute } from "./routes/qq.js";
 import {
-	failureOfHttpException,
 	ROUTE_NOT_FOUND_MESSAGE,
+	requestErrorHandler,
 	respondFailure,
-	UNHANDLED_ERROR_MESSAGE,
 } from "./routes/respond-failure.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSkinsRoute } from "./routes/skins.js";
@@ -304,17 +302,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	};
 
 	// 全局出错处理(ADR-0026 决策 2、6):抛错只留给 bug,这里接住 —— 原始错误进错误日志,
-	// 客户端只拿一句固定的话,`String(err)` 不再外泄(里头可能带路径、内部状态)。
-	// `HTTPException` 是中间件 / 路由主动抛的,按它的状态码挑码、状态码与 message 照原样。
-	app.onError((err, c) => {
-		if (err instanceof HTTPException) {
-			const { failure, status } = failureOfHttpException(err);
-			if (status >= 500) runtime.serviceCtx.logger.error("http exception", err);
-			return respondFailure(c, failure, status);
-		}
-		runtime.serviceCtx.logger.error("unhandled request error", err);
-		return respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE));
-	});
+	// 客户端只拿一句固定的话。统计子路由因为会被进程内直接 `request`,自己也挂着同一份。
+	app.onError(requestErrorHandler(runtime.serviceCtx.logger));
 
 	// SPA fallback — when staticDir is configured, any non-`/api/*` GET that
 	// reaches notFound is treated as a client-side route and served the

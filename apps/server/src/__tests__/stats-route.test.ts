@@ -464,21 +464,25 @@ describe("POST /api/stats/roast/:subscriptionId — 单 UP 锐评", () => {
 		const deps = withAi(true, { subs: [{ uid: "1" }] });
 		const res = await createStatsRoute(deps).request("/roast/999", { method: "POST" });
 		expect(res.status).toBe(404);
+		expect(((await res.json()) as { code?: string }).code).toBe("not_found");
 	});
 
 	it("路径参数是订阅 id,不再认 uid(ADR-0020 决策 18):传一位 B 站 UP 的 uid → 404", async () => {
 		const deps = withAi(true, { subs: [{ uid: "1" }] });
 		const res = await createStatsRoute(deps).request("/roast/1", { method: "POST" });
 		expect(res.status).toBe(404);
-		expect(((await res.json()) as { err?: string }).err).toContain("不在订阅列表里");
+		expect(((await res.json()) as { message?: string }).message).toContain("不在订阅列表里");
 	});
 
 	it("只订阅 1 位也能评 —— 单人锐评不需要对照组", async () => {
 		const deps = withAi(false, { subs: [{ uid: "1" }] });
 		const res = await createStatsRoute(deps).request(`/roast/${subId("1")}`, { method: "POST" });
-		// AI 没开是 400,但至少已经越过了「至少 2 位」那道只属于榜单的闸门。
-		expect(res.status).toBe(400);
-		expect(((await res.json()) as { err?: string }).err).toContain("智能女仆");
+		// AI 没开是 409 not_configured(要主人去开,等是等不好的),但至少已经越过了「至少 2 位」那道
+		// 只属于榜单的闸门。
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { code?: string; message?: string };
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toContain("智能女仆");
 	});
 });
 

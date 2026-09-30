@@ -91,8 +91,12 @@ function draftAi(
 	};
 }
 
-function makeDeps() {
-	const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 12 }));
+function makeDeps(opts: { sendFails?: boolean } = {}) {
+	const sendToTarget = vi.fn(async () =>
+		opts.sendFails
+			? { ok: false as const, latencyMs: 3, err: "OneBot 连接已断开" }
+			: { ok: true as const, latencyMs: 12 },
+	);
 	const globals = makeDefaultGlobalConfig();
 	// store 里已存的那把 —— 必须与草稿选中的**同一个桶**,否则会拿 A 家的 key
 	// 去打 B 家的接口。
@@ -152,10 +156,8 @@ describe("POST /api/ai/test-push", () => {
 		});
 
 		expect(res.status).toBe(200);
-		const json = (await res.json()) as { ok: boolean; reply?: string; latencyMs: number };
-		expect(json.ok).toBe(true);
-		// 页面要能就地看到女仆回了什么。
-		expect(json.reply).toBe(H.reply);
+		// 成功是 Result 的成功那一支:{ ok: true, latencyMs, reply },耗时是这次投递真实的耗时。
+		expect(await res.json()).toEqual({ ok: true, latencyMs: 12, reply: H.reply });
 
 		// 而且是真的推出去了 —— 推的正是那段回复。
 		expect(sendToTarget).toHaveBeenCalledTimes(1);
@@ -251,21 +253,30 @@ describe("POST /api/ai/test-push", () => {
 		});
 
 		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "没有这个推送目标" });
 		expect(H.instances).toHaveLength(0); // 白问一次 AI 是要花钱的
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 
-	it("空消息 → 400", async () => {
+	it("空消息 → 400 invalid,逐格原因指到 message", async () => {
 		const { deps, sendToTarget } = makeDeps();
 		const app = createAiRoute(deps);
 
 		const res = await post(app, { targetId: TARGET_ID, message: "", ai: draftAi() });
 
 		expect(res.status).toBe(400);
+		const json = (await res.json()) as {
+			code: string;
+			message: string;
+			issues: Array<{ path?: string[] }>;
+		};
+		expect(json.code).toBe("invalid");
+		expect(json.message).toMatch(/试一句/);
+		expect(json.issues.some((i) => i.path?.includes("message"))).toBe(true);
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 
-	it("engines 未挂载 → 503", async () => {
+	it("engines 未挂载 → 503 unavailable,不问 AI", async () => {
 		const { deps, sendToTarget } = makeDeps();
 		(deps.runtime as { engines?: unknown }).engines = undefined;
 		const app = createAiRoute(deps);
@@ -273,21 +284,41 @@ describe("POST /api/ai/test-push", () => {
 		const res = await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi() });
 
 		expect(res.status).toBe(503);
+		expect(((await res.json()) as { code: string }).code).toBe("unavailable");
+		expect(H.instances).toHaveLength(0);
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 
-	it("AI 调用失败 → 500 带错因,且不推送半条消息", async () => {
+	it("AI 调用失败 → 照旧 200,体是失败的 Result:带对端给的错因,没有假的耗时;不推送半条消息", async () => {
 		const { deps, sendToTarget } = makeDeps();
 		const app = createAiRoute(deps);
 		H.chatError = new Error("401 Incorrect API key provided");
 
 		const res = await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi() });
 
-		expect(res.status).toBe(500);
-		const json = (await res.json()) as { ok: boolean; err?: string };
-		expect(json.ok).toBe(false);
-		expect(json.err).toContain("401");
+		// 「试一次、回报结果」:请求没问题,是女仆那头没答上来 —— 不是 HTTP 失败。
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as Record<string, unknown>;
+		expect(json).toMatchObject({ ok: false, code: "unavailable" });
+		expect(json.message).toContain("401 Incorrect API key provided");
+		// 失败那一支不带 latencyMs / reply / err。
+		expect(Object.keys(json).sort()).toEqual(["code", "message", "ok"]);
 		// AI 都没答上来,别推一条空消息去骚扰主人。
 		expect(sendToTarget).not.toHaveBeenCalled();
+	});
+
+	it("女仆答了、投递没成 → 200 + 失败的 Result,原因是投递那头的原话;回复不假装送达", async () => {
+		const { deps, sendToTarget } = makeDeps({ sendFails: true });
+		const app = createAiRoute(deps);
+
+		const res = await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi() });
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "OneBot 连接已断开",
+		});
+		expect(sendToTarget).toHaveBeenCalledTimes(1);
 	});
 });

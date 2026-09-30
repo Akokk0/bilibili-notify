@@ -20,6 +20,16 @@ vi.mock("../../../services/api", () => ({
 
 import { api } from "../../../services/api";
 
+/** 非 2xx 的请求失败:面板读 `message`,有 `issues` 就接在后面(与真 ApiError 同形)。 */
+class FakeApiError extends Error {
+	constructor(
+		message: string,
+		readonly issues?: Array<{ path?: (string | number)[]; message: string }>,
+	) {
+		super(message);
+	}
+}
+
 const TARGETS = [
 	{ id: "11111111-1111-4111-8111-111111111111", name: "我的私聊", platform: "onebot" },
 	{ id: "22222222-2222-4222-8222-222222222222", name: "订阅群", platform: "onebot" },
@@ -74,24 +84,51 @@ describe("AI 试一句面板", () => {
 
 		// 回复就地显示,不必跑去 QQ 里翻。
 		expect(await screen.findByText(/在的主人~已经帮您盯着啦/)).toBeTruthy();
+		// 耗时只在送达那一支上,面板照着它说「已送达」。
+		expect(screen.getByText(/已送达 · 42ms/)).toBeTruthy();
 	});
 
-	it("后端报错 → 就地显示错因,不装作成功", async () => {
-		vi.mocked(api.get).mockResolvedValue(TARGETS);
-		vi.mocked(api.post).mockResolvedValue({
-			ok: false,
-			latencyMs: 0,
-			err: "401 Incorrect API key provided",
-		});
-
+	async function sendOnce() {
 		renderPanel();
 		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(TARGETS.length));
-
 		fireEvent.change(screen.getByRole("combobox"), { target: { value: TARGETS[0]?.id } });
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "在吗?" } });
 		fireEvent.click(screen.getByRole("button", { name: /试一句/ }));
+	}
+
+	it("女仆没答上来(200 + 失败的 Result)→ 就地显示 message 里对端给的错因,不装作成功", async () => {
+		vi.mocked(api.get).mockResolvedValue(TARGETS);
+		vi.mocked(api.post).mockResolvedValue({
+			ok: false,
+			code: "unavailable",
+			message: "女仆那边没答上来：401 Incorrect API key provided",
+		});
+
+		await sendOnce();
 
 		expect(await screen.findByText(/401 Incorrect API key/)).toBeTruthy();
+		// 失败那一支没有耗时,面板不能凭空摆出「已送达」。
+		expect(screen.queryByText(/已送达/)).toBeNull();
+	});
+
+	it("请求本身不对(非 2xx 的 ApiError)→ 一样显示原因,逐条原因接在后面", async () => {
+		vi.mocked(api.get).mockResolvedValue(TARGETS);
+		vi.mocked(api.post).mockRejectedValue(
+			new FakeApiError("试一句的请求格式不对", [{ path: ["message"], message: "太长" }]),
+		);
+
+		await sendOnce();
+
+		expect(await screen.findByText(/试一句的请求格式不对：message：太长/)).toBeTruthy();
+	});
+
+	it("引擎还没起(非 2xx,没有逐条原因)→ 只显示 message", async () => {
+		vi.mocked(api.get).mockResolvedValue(TARGETS);
+		vi.mocked(api.post).mockRejectedValue(new FakeApiError("服务还没准备好，请稍后重试"));
+
+		await sendOnce();
+
+		expect(await screen.findByText("服务还没准备好，请稍后重试")).toBeTruthy();
 	});
 
 	it("没写话 / 没选目标 → 按钮禁用,不白打一次 AI", async () => {

@@ -1,12 +1,14 @@
 import { FAILURE_CODES, type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	errorBodyOf,
 	failureOfHttpException,
+	requestErrorHandler,
 	respondFailure,
 	statusOf,
+	UNHANDLED_ERROR_MESSAGE,
 } from "../respond-failure.js";
 
 describe("statusOf:失败码 → HTTP 状态码", () => {
@@ -130,5 +132,58 @@ describe("failureOfHttpException:Hono 抛出的 HTTPException 按状态码挑码
 			expect(failure.message, String(status)).toMatch(/\S/);
 			expect(failure.message, String(status)).toMatch(/[一-鿿]/);
 		}
+	});
+});
+
+describe("requestErrorHandler:全局出错处理(app.ts 与被进程内直接 request 的子实例共用这一份)", () => {
+	function appThatThrows(err: Error) {
+		const logger = { error: vi.fn() };
+		const app = new Hono().onError(requestErrorHandler(logger)).get("/", () => {
+			throw err;
+		});
+		return { app, logger };
+	}
+
+	it("普通抛错是 bug:503 unavailable + 固定一句话,原始错误进错误日志、不回给客户端", async () => {
+		const boom = new Error("ENOENT: no such file or directory, open 'state/x.json'");
+		const { app, logger } = appThatThrows(boom);
+
+		const res = await app.request("/");
+
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
+	});
+
+	it("HTTPException 按它的状态码挑码,状态码与 message 照原样;4xx 不记错误日志", async () => {
+		const { app, logger } = appThatThrows(new HTTPException(409, { message: "撞名了" }));
+
+		const res = await app.request("/");
+
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({ code: "conflict", message: "撞名了" });
+		expect(logger.error).not.toHaveBeenCalled();
+	});
+
+	it("5xx 的 HTTPException 记错误日志", async () => {
+		const { app, logger } = appThatThrows(new HTTPException(502, { message: "上游挂了" }));
+
+		const res = await app.request("/");
+
+		expect(res.status).toBe(502);
+		expect(((await res.json()) as { code: string }).code).toBe("unavailable");
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("子实例挂了它以后,直接 request 抛的错也是失败的形状(不是 Hono 默认的纯文本 500)", async () => {
+		const bare = new Hono().get("/", () => {
+			throw new Error("盘挂了");
+		});
+		const bareRes = await bare.request("/");
+		expect(bareRes.headers.get("content-type")).not.toContain("application/json");
+
+		const { app } = appThatThrows(new Error("盘挂了"));
+		const res = await app.request("/");
+		expect(res.headers.get("content-type")).toContain("application/json");
 	});
 });

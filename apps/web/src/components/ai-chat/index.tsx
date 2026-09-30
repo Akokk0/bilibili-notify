@@ -25,6 +25,7 @@ import {
 	uploadChatImage,
 } from "../../services/aiChat";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import {
 	listMaidSkillsSafe,
 	type MaidSkillDTO,
@@ -567,7 +568,8 @@ export function ChatPage() {
 			// —— 让主人回来重挑一遍图,纯属白丢。
 			// 已经又挑了新图就不覆盖:那是主人这会儿正想发的,比上一轮的更要紧。
 			setAttachments((cur) => (cur.length > 0 ? cur : [...outgoingFiles]));
-			setError(err.message);
+			// message 一句话,有逐条原因(消息太长 / 图片太多这类请求格式不对)就接在后面。
+			setError(errorTextOf(err));
 		},
 	});
 
@@ -687,7 +689,7 @@ export function ChatPage() {
 				const id = await uploadChatImage(file);
 				setAttachments((prev) => [...prev, { id, url: chatImageUrl(id) }]);
 			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e));
+				setError(errorTextOf(e));
 			}
 		}
 	};

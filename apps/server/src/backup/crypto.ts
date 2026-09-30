@@ -5,6 +5,7 @@ import {
 	gcmDecrypt,
 	gcmEncrypt,
 } from "@bilibili-notify/storage";
+import { BackupRejectedError } from "./rejected-error.js";
 
 /**
  * The secret payload of a full backup — everything that must never sit in the
@@ -55,10 +56,14 @@ export interface EncryptedSecrets {
 	cipher: GcmBlob;
 }
 
-/** Thrown when a full backup cannot be opened: wrong PIN, or tampered/corrupt blob. */
-export class BackupPinError extends Error {
+/**
+ * Thrown when a full backup cannot be opened: wrong PIN, or tampered/corrupt blob.
+ * 是一种 {@link BackupRejectedError}(`invalid`):GCM 认证失败分不出「PIN 错了」与「密文被改过」,
+ * 所以话里两种都说。
+ */
+export class BackupPinError extends BackupRejectedError {
 	constructor(message = "备份 PIN 错误，或文件已损坏") {
-		super(message);
+		super("invalid", message);
 		this.name = "BackupPinError";
 	}
 }

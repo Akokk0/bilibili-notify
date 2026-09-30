@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import {
@@ -57,6 +57,13 @@ vi.mock("@bilibili-notify/storage", async (importOriginal) => {
 	const { gateStorageWrites } = await import("../../__tests__/support/storage-write-gate.js");
 	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
 });
+
+/**
+ * 生成失败的两个样本 —— 与 roast-generate.ts 里那两种失败同码同话(生成失败自带码与给人看的话,
+ * 调度器只取 `message` 私聊,不再翻 `kind`)。
+ */
+const TOO_FEW_UPS = fail("not_configured", "至少要订阅 2 位 UP 主才评得出鸽王");
+const NO_DATA = fail("not_found", "该 UP 主暂无统计数据");
 
 const generateBoardRoast = vi.hoisted(() => vi.fn());
 const generateSoloRoast = vi.hoisted(() => vi.fn());
@@ -231,7 +238,7 @@ describe("调度器 — 到点之后", () => {
 	});
 
 	it("生成失败 + notifyOnError 开 → 私聊说清原因,不是干等着", async () => {
-		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		generateBoardRoast.mockResolvedValue(TOO_FEW_UPS);
 		const { sched } = armed({ notifyOnError: true });
 		await sched.runBoardOnce();
 		expect(deliverRoast).not.toHaveBeenCalled();
@@ -240,7 +247,7 @@ describe("调度器 — 到点之后", () => {
 	});
 
 	it("生成失败 + notifyOnError 关 → 只记日志,不打扰", async () => {
-		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		generateBoardRoast.mockResolvedValue(TOO_FEW_UPS);
 		const { sched } = armed({ notifyOnError: false });
 		await sched.runBoardOnce();
 		expect(tellMaster).not.toHaveBeenCalled();
@@ -393,7 +400,7 @@ describe("调度器 — 到点之后", () => {
 
 	it("私聊自己抛错 → 不影响这一轮的结论(通知是锦上添花)", async () => {
 		// 借一条一定会私聊的路(生成失败 + notifyOnError)来触发。
-		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		generateBoardRoast.mockResolvedValue(TOO_FEW_UPS);
 		const { sched } = armed({ notifyOnError: true });
 		tellMaster.mockRejectedValue(new Error("master unreachable"));
 		await expect(sched.runBoardOnce()).resolves.not.toThrow();
@@ -477,7 +484,9 @@ describe("调度器 — 一轮的结论", () => {
 		const { sched } = armed();
 		const out = await sched.runBoardOnce();
 		expect(out).toMatchObject({ kind: "sent", sent: 1 });
-		expect(out.kind === "sent" && out.failed).toEqual([{ targetId: "t2", err: "机器人不在群里" }]);
+		expect(out.kind === "sent" && out.failed).toEqual([
+			{ targetId: "t2", message: "机器人不在群里" },
+		]);
 	});
 
 	it("一个目标都没配 → no-targets", async () => {
@@ -486,11 +495,13 @@ describe("调度器 — 一轮的结论", () => {
 	});
 
 	it("生成失败 → gen-failed,带上给人看的原因", async () => {
-		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		generateBoardRoast.mockResolvedValue(TOO_FEW_UPS);
 		const { sched } = armed();
 		const out = await sched.runBoardOnce();
 		expect(out.kind).toBe("gen-failed");
-		expect(out.kind === "gen-failed" && out.why).toContain("2 位");
+		expect(out.kind === "gen-failed" && out.message).toContain("2 位");
+		// 码从生成那一步原样带过来,不在调度器里另挑。
+		expect(out.kind === "gen-failed" && out.code).toBe("not_configured");
 	});
 
 	it("审批开 → pending-approval,带上主人要回的那个编号", async () => {
@@ -537,7 +548,7 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 	});
 
 	it("日志与私聊里写它的名字:资料里的名字优先,没有退主人起的别名", async () => {
-		generateSoloRoast.mockResolvedValue({ ok: false, kind: "no-data" });
+		generateSoloRoast.mockResolvedValue(NO_DATA);
 		const withProfile = makeScheduler({ subs: [EXT], profiles: { e1: { name: "抖音乙" } } });
 		await withProfile.sched.runSoloOnce("e1");
 		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("抖音乙 的锐评");

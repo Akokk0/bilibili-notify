@@ -117,13 +117,14 @@ describe("模型自选", () => {
 		expect(toolNames()).toContain("load_skill");
 	});
 
-	it("工坊里硬塞一个 skill → 400,不静默吞掉", async () => {
+	it("工坊里硬塞一个 skill → 400 unsupported,不静默吞掉", async () => {
 		// 静默忽略的话,主人看着自己打的 `/weekly-report` 发了出去、女仆却当普通话
 		// 回了一句,消息流里连一枚痕迹都没有 —— 他没法看出技能压根没生效。
 		const { app, skillStore } = await makeDeps();
 		await skillStore.create(MINE);
 		const res = await say(app, { skill: "my-skill" }, { mode: "skin" });
 		expect(res.status).toBe(400);
+		expect(JSON.parse(res.text).code).toBe("unsupported");
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 
@@ -163,12 +164,13 @@ describe("主人打斜杠", () => {
 		expect(H.lastOpts.systemSuffix).toContain("先列订阅");
 	});
 
-	it("带一个不存在的技能名 → 400,不静默当普通聊天发出去", async () => {
+	it("带一个不存在的技能名 → 404 not_found,不静默当普通聊天发出去", async () => {
 		// 静默发出去的话,主人以为在用技能、其实在跟模型说一句它不认识的暗号 ——
 		// 老 `/锐评 只看这三个人` 栽的正是这个坑。
 		const { app } = await makeDeps();
 		const res = await say(app, { skill: "nope" });
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(404);
+		expect(JSON.parse(res.text)).toEqual({ code: "not_found", message: "没有叫「nope」的技能" });
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 

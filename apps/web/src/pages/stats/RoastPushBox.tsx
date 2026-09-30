@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import type { PushTarget } from "../../types/domain";
 
 /**
@@ -57,10 +58,12 @@ export function RoastPushBox({
 		push.reset();
 	};
 
+	// 两条失败的路:请求本身不对(引擎没起 / 目标没了 / 目标已停用)是非 2xx,走 isError;
+	// 请求没问题、一个目标都没送到是 200 + { ok: false, code, message },`message` 是投递那头的原话。
 	const err = push.isError
-		? ((push.error as Error)?.message ?? "推送失败")
+		? errorTextOf(push.error)
 		: push.data && !push.data.ok
-			? push.data.err
+			? push.data.message
 			: undefined;
 
 	return (

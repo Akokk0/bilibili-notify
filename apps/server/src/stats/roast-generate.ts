@@ -18,7 +18,7 @@ import type {
 	StatsSoloRoastResult,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
-import type { Subscription } from "@bilibili-notify/internal";
+import { type Failure, fail, ok, type Result, type Subscription } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import { resolveAiOverride } from "../runtime/engines.js";
@@ -38,66 +38,35 @@ export type RoastGenDeps = Pick<RouteDeps, "runtime" | "store">;
 export type OverviewFetcher = (days: number, tz: number) => Promise<StatsOverviewResponse | null>;
 
 /**
- * 生成失败的分类。
+ * 生成的结果:`{ ok: true, result }` 或一个失败(`code` + `message`,ADR-0026)。
  *
- * 分类而不是直接给字符串:同一个失败,路由要转成 HTTP 状态码,调度器要转成私聊里
- * 的一句人话。留成字符串的话两边各写一套措辞,改一处忘一处。
+ * 失败在**产生的地方**就带上码与给人看的话,路由直接 `respondFailure`、调度器直接拿 `message` 私聊
+ * —— 从前这里只留一个分类 `kind`,路由与调度器再各拿它去翻文案与状态码,措辞改一处忘一处。
  */
-export type RoastGenError =
-	| { kind: "not-ready" }
-	| { kind: "ai-disabled" }
-	| { kind: "overview-failed" }
-	/** 榜单特有:评鸽王需要对照组。 */
-	| { kind: "too-few-ups" }
-	/** 单人特有:订阅 id 对不上任何一条订阅。 */
-	| { kind: "not-subscribed" }
-	/** 单人特有:订阅着但这个窗口内没有任何统计数据。 */
-	| { kind: "no-data" }
-	| { kind: "ai-error"; message: string }
-	| { kind: "parse-failed" };
+export type RoastGenResult<T> = Result<{ result: T }>;
 
-export type RoastGenResult<T> = { ok: true; result: T } | ({ ok: false } & RoastGenError);
-
-/** 每种失败对用户说的话。路由的 `err` 与调度器的私聊共用这一套措辞。 */
-export function roastGenErrorText(e: RoastGenError): string {
-	switch (e.kind) {
-		case "not-ready":
-			return "服务尚未就绪,请稍后重试";
-		case "ai-disabled":
-			return "智能女仆尚未启用";
-		case "overview-failed":
-			return "统计数据读取失败,请稍后重试";
-		case "too-few-ups":
-			return "至少要订阅 2 位 UP 主才评得出鸽王";
-		case "not-subscribed":
-			return "该 UP 主不在订阅列表里";
-		case "no-data":
-			return "该 UP 主暂无统计数据";
-		case "ai-error":
-			return e.message;
-		case "parse-failed":
-			return "女仆的回复解析失败,请重试";
-	}
-}
-
-/** 失败分类 → HTTP 状态码。只有路由用得上。 */
-export function roastGenErrorStatus(e: RoastGenError): 400 | 404 | 500 | 502 | 503 {
-	switch (e.kind) {
-		case "not-ready":
-			return 503;
-		case "ai-disabled":
-		case "too-few-ups":
-			return 400;
-		case "not-subscribed":
-		case "no-data":
-			return 404;
-		case "overview-failed":
-		case "ai-error":
-			return 500;
-		case "parse-failed":
-			return 502;
-	}
-}
+/**
+ * 每种失败的码与话。话是路由的错误体、调度器私聊的那一句共用的一套措辞。
+ *
+ * - 「没配 / 没开」是 `not_configured`(要主人去配,等是等不好的):智能女仆没开,以及榜单要至少 2 位
+ *   订阅才评得出鸽王(先去订阅够);
+ * - 服务没起、取数失败、模型出错、回复读不懂是 `unavailable`(稍后重试);
+ * - 订阅 id 对不上、该 UP 这个窗口没数据是 `not_found`。
+ */
+const GEN_FAILURE = {
+	notReady: () => fail("unavailable", "服务尚未就绪,请稍后重试"),
+	aiDisabled: () => fail("not_configured", "智能女仆尚未启用"),
+	overviewFailed: () => fail("unavailable", "统计数据读取失败,请稍后重试"),
+	tooFewUps: () => fail("not_configured", "至少要订阅 2 位 UP 主才评得出鸽王"),
+	notSubscribed: () => fail("not_found", "该 UP 主不在订阅列表里"),
+	noData: () => fail("not_found", "该 UP 主暂无统计数据"),
+	parseFailed: () => fail("unavailable", "女仆的回复解析失败,请重试"),
+	/** 模型那头的错(密钥不对、余额不足、网络):对端给的原因就是主人要看的,原话进 `message`。 */
+	aiError: (err: unknown): Failure => {
+		const reason = err instanceof Error ? err.message : String(err);
+		return fail("unavailable", reason.trim() === "" ? "模型没有说明原因" : reason);
+	},
+} as const;
 
 /**
  * overview 的一行 → 喂给 prompt 的输入。两处生成同一套字段。
@@ -164,18 +133,18 @@ export async function generateBoardRoast(
 	opts: { days: number; tz: number; fetchOverview: OverviewFetcher },
 ): Promise<RoastGenResult<StatsRoastResult>> {
 	const engines = deps.runtime.engines;
-	if (!engines) return { ok: false, kind: "not-ready" };
+	if (!engines) return GEN_FAILURE.notReady();
 
 	const aiSettings = deps.store.getGlobals().defaults.ai;
-	if (!aiSettings.enabled) return { ok: false, kind: "ai-disabled" };
+	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
-	if (!overview) return { ok: false, kind: "overview-failed" };
+	if (!overview) return GEN_FAILURE.overviewFailed();
 
 	// 行与订阅都以订阅 id 为键(ADR-0020 决策 1 的 🔗):按它对,外部 id 恰好等于某个 uid 也不串。
 	const subById = new Map(deps.store.getSubscriptions().map((s) => [s.id, s]));
 	const ups = overview.rows.map((r) => toRoastInput(deps, r, subById.get(r.subscriptionId)));
-	if (ups.length < 2) return { ok: false, kind: "too-few-ups" };
+	if (ups.length < 2) return GEN_FAILURE.tooFewUps();
 
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	let reply: string;
@@ -190,17 +159,13 @@ export async function generateBoardRoast(
 			roastSearchOverride(aiSettings),
 		);
 	} catch (err) {
-		return {
-			ok: false,
-			kind: "ai-error",
-			message: err instanceof Error ? err.message : String(err),
-		};
+		return GEN_FAILURE.aiError(err);
 	}
 
 	const result = parseRoastReply(reply, ups);
 	// 解析不出来就直说,不把半截结构渲染成一张看着像模像样的卡。
-	if (!result) return { ok: false, kind: "parse-failed" };
-	return { ok: true, result };
+	if (!result) return GEN_FAILURE.parseFailed();
+	return ok({ result });
 }
 
 /**
@@ -212,20 +177,20 @@ export async function generateSoloRoast(
 	opts: { subscriptionId: string; days: number; tz: number; fetchOverview: OverviewFetcher },
 ): Promise<RoastGenResult<StatsSoloRoastResult>> {
 	const engines = deps.runtime.engines;
-	if (!engines) return { ok: false, kind: "not-ready" };
+	if (!engines) return GEN_FAILURE.notReady();
 
 	// 先确认这条订阅真的在。不校验的话,任何人构造一个 id 就能让我们拿着
 	// 一份空数据去请求模型 —— 白烧 token,还会渲染出一张查无此人的卡。
 	const sub = deps.store.getSubscriptions().find((s) => s.id === opts.subscriptionId);
-	if (!sub) return { ok: false, kind: "not-subscribed" };
+	if (!sub) return GEN_FAILURE.notSubscribed();
 
 	const aiSettings = deps.store.getGlobals().defaults.ai;
-	if (!aiSettings.enabled) return { ok: false, kind: "ai-disabled" };
+	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
-	if (!overview) return { ok: false, kind: "overview-failed" };
+	if (!overview) return GEN_FAILURE.overviewFailed();
 	const row = overview.rows.find((r) => r.subscriptionId === sub.id);
-	if (!row) return { ok: false, kind: "no-data" };
+	if (!row) return GEN_FAILURE.noData();
 
 	const up = toRoastInput(deps, row, sub);
 
@@ -243,14 +208,10 @@ export async function generateSoloRoast(
 			roastSearchOverride(aiSettings, aiOverride),
 		);
 	} catch (err) {
-		return {
-			ok: false,
-			kind: "ai-error",
-			message: err instanceof Error ? err.message : String(err),
-		};
+		return GEN_FAILURE.aiError(err);
 	}
 
 	const result = parseSoloRoastReply(reply, up);
-	if (!result) return { ok: false, kind: "parse-failed" };
-	return { ok: true, result };
+	if (!result) return GEN_FAILURE.parseFailed();
+	return ok({ result });
 }

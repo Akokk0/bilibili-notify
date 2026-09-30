@@ -231,7 +231,7 @@ describe("锐评带谁的人格", () => {
 		const res = await createStatsRoute(deps).request(`/roast/${encodeURIComponent(extId)}`, {
 			method: "POST",
 		});
-		expect(res.status).toBe(502); // 替身回的是 "{}",解析失败 —— 但已经实打实调过模型。
+		expect(res.status).toBe(503); // 替身回的是 "{}",解析失败(unavailable)—— 但已经实打实调过模型。
 		expect(comment).toHaveBeenCalledTimes(1);
 		expect(String(comment.mock.calls[0]?.[0])).toContain("抖音");
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
@@ -243,5 +243,71 @@ describe("锐评带谁的人格", () => {
 		const deps = makeDeps([makeSub("s1", "1", true), makeSub("s2", "2", true)]);
 		await createStatsRoute(deps).request("/roast", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]).toBeUndefined();
+	});
+});
+
+/**
+ * 响应的形状(ADR-0026):生成成功是 200 + `{ ok: true, result }`;生成没成一律是非 2xx 的
+ * `{ code, message }`(状态码从码推),`message` 就是面板要显示的那句原因。
+ */
+describe("锐评生成的响应形状", () => {
+	const SOLO_REPLY = JSON.stringify({ verdict: "还行", score: 60, highlights: [], pushText: "" });
+
+	it("单人锐评成功 → 200 + { ok: true, result },订阅 id 由服务端带出", async () => {
+		comment.mockResolvedValueOnce(SOLO_REPLY);
+		const deps = makeDeps([makeSub("s1", "1")]);
+		const res = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; result: { subscriptionId: string } };
+		expect(body.ok).toBe(true);
+		expect(body.result.subscriptionId).toBe("s1");
+	});
+
+	it("模型抛错 → 503 unavailable,模型给的原因原样进 message(面板据此判断是限流还是没配对)", async () => {
+		comment.mockRejectedValueOnce(new Error("429 rate limited"));
+		const deps = makeDeps([makeSub("s1", "1")]);
+		const res = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ code: "unavailable", message: "429 rate limited" });
+	});
+
+	it("模型回的读不懂 → 503 unavailable + 一句话,不把半截结构当成功", async () => {
+		comment.mockResolvedValueOnce("我今天不想输出 JSON");
+		const deps = makeDeps([makeSub("s1", "1")]);
+		const res = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toContain("解析失败");
+	});
+
+	it("智能女仆没开 → 409 not_configured(要主人去开;不是 400,也不是「稍后再试」)", async () => {
+		const deps = makeDeps([makeSub("s1", "1"), makeSub("s2", "2")]);
+		(deps.store.getGlobals().defaults.ai as { enabled: boolean }).enabled = false;
+		const single = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
+		const board = await createStatsRoute(deps).request("/roast", { method: "POST" });
+		for (const res of [single, board]) {
+			expect(res.status).toBe(409);
+			expect(((await res.json()) as { code: string }).code).toBe("not_configured");
+		}
+		expect(comment).not.toHaveBeenCalled();
+	});
+
+	it("榜单只订阅了 1 位 → 409 not_configured,话里说清要 2 位(先去订阅够)", async () => {
+		const deps = makeDeps([makeSub("s1", "1")]);
+		const res = await createStatsRoute(deps).request("/roast", { method: "POST" });
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("not_configured");
+		expect(body.message).toContain("2 位");
+		expect(comment).not.toHaveBeenCalled();
+	});
+
+	it("引擎还没起 → 503 unavailable", async () => {
+		const deps = makeDeps([makeSub("s1", "1")]);
+		(deps.runtime as unknown as { engines: unknown }).engines = null;
+		const res = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
+		expect(res.status).toBe(503);
+		expect(((await res.json()) as { code: string }).code).toBe("unavailable");
 	});
 });

@@ -7,8 +7,11 @@ import type {
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import {
+	fail,
 	isBiliSubscription,
 	isExtensionSubscription,
+	issuesFromZod,
+	ok,
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 	type Subscription,
@@ -26,12 +29,12 @@ import {
 } from "../stats/aggregate.js";
 import { statsFileKey } from "../stats/file-key.js";
 import { deliverRoast } from "../stats/roast-deliver.js";
+import { generateBoardRoast, generateSoloRoast } from "../stats/roast-generate.js";
 import {
-	generateBoardRoast,
-	generateSoloRoast,
-	roastGenErrorStatus,
-	roastGenErrorText,
-} from "../stats/roast-generate.js";
+	ENGINES_NOT_READY_MESSAGE,
+	requestErrorHandler,
+	respondFailure,
+} from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -118,10 +121,9 @@ function sumTail(series: Array<number | null>, n: number): number | null {
  * 两处锐评共用的取数:内部代理一次自己的 `/overview`。
  *
  * **必须先看状态码再 `.json()`。** `/overview` 一旦抛错(某个 store 方法在 try 之外
- * reject),Hono 默认的 onError 回的是纯文本 `Internal Server Error`,对它调 `.json()`
- * 会 reject 出 `SyntaxError: Unexpected token 'I'`;那个异常逃出 handler 后变成一个
- * 没有 body 的裸 500,前端只能显示一行生硬的 `POST /api/stats/roast → 500`。
- * 这条路由里其他每一个错误分支都精心返回了可读的 `err`,这里不能例外。
+ * reject),回的是一份失败的错误体(子实例自己挂着全局出错处理,见 `createStatsRoute`),
+ * 不是一份 `StatsOverviewResponse`;不看状态码就把它当成功体读,拿到的是一份没有 `rows` 的东西。
+ * 取数失败在这里收成 `null`,由生成那头翻成一条可读的失败(`overview-failed`)。
  */
 async function fetchOverview(
 	app: Hono,
@@ -151,6 +153,11 @@ export interface StatsRouteOptions {
 
 export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
 	const app = new Hono();
+	// 全局出错处理(app.ts 挂的那份)的同一份,子实例自己再挂一遍:定时锐评的调度器与手动锐评都是**进程内**
+	// 直接 `request` 这个子实例的 `/overview`(见 `onStatsRoute`),不经父实例,不挂的话它抛的错走 Hono 默认
+	// 处理、回纯文本 500。挂进父实例后子实例自带的 onError 优先,所以必须是同一份。logger 现取:
+	// 只有抛错时才用得上。
+	app.onError((err, c) => requestErrorHandler(deps.runtime.serviceCtx.logger)(err, c));
 	const cache = new Map<string, CacheEntry>();
 
 	app.get("/overview", async (c) => {
@@ -450,13 +457,9 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			tz: parseTz(c.req.query("tz")),
 			fetchOverview: (d, t) => fetchOverview(app, d, t),
 		});
-		if (!gen.ok) {
-			return c.json<StatsRoastResponse>(
-				{ ok: false, err: roastGenErrorText(gen) },
-				roastGenErrorStatus(gen),
-			);
-		}
-		return c.json<StatsRoastResponse>({ ok: true, result: gen.result });
+		// 生成没成:码与话在 roast-generate.ts 产生的地方定好,这里直接回(状态码从码推)。
+		if (!gen.ok) return respondFailure(c, gen);
+		return c.json<StatsRoastResponse>(ok({ result: gen.result }));
 	});
 
 	/**
@@ -472,40 +475,42 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 *
 	 * 开着图片渲染就推卡片图,否则推文字;渲染路上任何一步出问题都**降级成文字**
 	 * 而不是整条失败 —— 一份已经生成好的周报,不该因为服务器上没装 Chrome 就发不出去。
+	 *
+	 * 试一次、回报结果:请求本身不成(引擎没起、体不对、没这个目标、目标已停用)是非 2xx 的错误体;
+	 * 请求没问题、可是一个目标都没送到,照旧回 200 + `Result`(`message` 是投递那头给的原话)。
 	 */
 	app.post("/roast/push", async (c) => {
 		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json<StatsRoastPushResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
-		}
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 
 		const parsed = RoastPushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return c.json<StatsRoastPushResponse>({ ok: false, err: "请求格式不正确" }, 400);
+			return respondFailure(
+				c,
+				fail("invalid", "锐评推送的请求格式不对", { issues: issuesFromZod(parsed.error) }),
+			);
 		}
 		const { targetId, days, kind, result } = parsed.data;
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) {
-			return c.json<StatsRoastPushResponse>({ ok: false, err: "推送目标不存在" }, 404);
-		}
+		if (!target) return respondFailure(c, fail("not_found", "推送目标不存在"));
 
 		// 渲染与投递的本体在 `../stats/roast-deliver.ts` —— 定时推送走同一份,
 		// 免得「渲染挂了降级成文字」这类行为将来只剩一条路上还留着。
 		const out = await deliverRoast(deps, { kind, result, days, targetIds: [target.id] });
 		// 停用的目标投递层会跳过(与周报同一条判定)。单目标手动推送遇到它得明说,不能是一句
 		// 含糊的「推送失败」—— 那会让人去查网络。
+		// 停用要主人去把开关打开,等是等不好的:`not_configured`。
 		if (out.skipped.length > 0) {
-			return c.json<StatsRoastPushResponse>({ ok: false, err: "推送目标已停用" }, 409);
+			return respondFailure(c, fail("not_configured", "推送目标已停用"));
 		}
 		if (out.sent.length === 0) {
+			// `DeliveryResult.err` 还是老形状(且落盘进历史),只在这个出口读它的话当 `message`。
 			return c.json<StatsRoastPushResponse>(
-				{ ok: false, err: out.failed[0]?.err ?? "推送失败" },
-				502,
+				fail("unavailable", out.failed[0]?.err || "没有送达，对端没说原因"),
 			);
 		}
-		const mode = out.mode;
-		return c.json<StatsRoastPushResponse>({ ok: true, mode });
+		return c.json<StatsRoastPushResponse>(ok({ mode: out.mode }));
 	});
 	/**
 	 * `POST /api/stats/roast/run-now` —— 立刻跑一轮定时周报(面板上的「试一次」)。
@@ -522,22 +527,17 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 *
 	 * 业务性失败(生成不出来、没配目标)一律 **200 + 结构化结局**,不用 4xx ——
 	 * 前端的 error 分支只拿得到一句 HTTP 错误,原因就丢了(锐评卡踩过这个坑)。
+	 *
+	 * 这一轮里**抛出来**的不是业务性失败而是 bug:不在这里吞,交给出错处理(原话进错误日志,面板只拿
+	 * 一句固定的话),`String(err)` 里可能带路径、内部状态。
 	 */
 	async function runNow(c: Context, subscriptionId?: string): Promise<Response> {
 		if (!options.runRoastNow) {
-			return c.json<StatsRoastRunNowResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
+			return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		}
-		try {
-			return c.json<StatsRoastRunNowResponse>({
-				ok: true,
-				outcome: await options.runRoastNow(subscriptionId),
-			});
-		} catch (err) {
-			// 这一轮里任何一步炸了都收在这儿:端点是给人点的,不能把异常漏出去。
-			const why = err instanceof Error ? err.message : String(err);
-			deps.runtime.serviceCtx.logger.warn(`[stats] 手动跑锐评失败: ${why}`);
-			return c.json<StatsRoastRunNowResponse>({ ok: false, err: why }, 502);
-		}
+		return c.json<StatsRoastRunNowResponse>(
+			ok({ outcome: await options.runRoastNow(subscriptionId) }),
+		);
 	}
 
 	app.post("/roast/run-now", (c) => runNow(c));
@@ -560,13 +560,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			tz: parseTz(c.req.query("tz")),
 			fetchOverview: (d, t) => fetchOverview(app, d, t),
 		});
-		if (!gen.ok) {
-			return c.json<StatsSoloRoastResponse>(
-				{ ok: false, err: roastGenErrorText(gen) },
-				roastGenErrorStatus(gen),
-			);
-		}
-		return c.json<StatsSoloRoastResponse>({ ok: true, result: gen.result });
+		if (!gen.ok) return respondFailure(c, gen);
+		return c.json<StatsSoloRoastResponse>(ok({ result: gen.result }));
 	});
 
 	return app;
