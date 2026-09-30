@@ -30,14 +30,14 @@ import { FONT_DIR } from "../runtime/font-assets.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.js";
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
-import { PANEL_SKINS_DIR } from "../skins/store.js";
+import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 
 /**
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 2;
+export const MIGRATION_REVISION = 3;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -111,7 +111,7 @@ const ZERO_GENERATION_MOVES = {
 		},
 	},
 	avatars: { kind: "move", to: ["avatars"], label: "头像" },
-	skins: { kind: "move", to: PANEL_SKINS_DIR, label: "界面皮肤" },
+	skins: { kind: "move", to: DASHBOARD_SKINS_DIR, label: "界面皮肤" },
 	"card-skins": { kind: "drop", reason: "卡片皮肤不迁(ADR-0022 决策 12)" },
 	"maid-skills": { kind: "move", to: ["maid-skills"], label: "女仆技能" },
 	ai: { kind: "split", label: "女仆对话", children: { chat: CONVERSATIONS_DIR } },

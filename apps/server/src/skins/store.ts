@@ -122,8 +122,8 @@ export class SkinStoreError extends Error {
 	}
 }
 
-/** 界面皮肤在代里的位置。 */
-export const PANEL_SKINS_DIR = ["skins", "panel"] as const;
+/** 界面皮肤在代里的位置(整个前端在代码里叫 dashboard)。 */
+export const DASHBOARD_SKINS_DIR = ["skins", "dashboard"] as const;
 
 export class SkinStore {
 	private readonly skinsDir: string;

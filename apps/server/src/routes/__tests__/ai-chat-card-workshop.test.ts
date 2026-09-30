@@ -22,7 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CONVERSATIONS_DIR, createConversationStore } from "../../ai/conversation-store.js";
 import { CARD_WORKSHOP_MAX_TOOL_ROUNDS } from "../../card-skins/chat-tools.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
-import { PANEL_SKINS_DIR, SkinStore } from "../../skins/store.js";
+import { DASHBOARD_SKINS_DIR, SkinStore } from "../../skins/store.js";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
 
@@ -92,7 +92,7 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 			engines: { api: {}, commentary: { chatStatelessStream } },
 		},
 	} as unknown as RouteDeps;
-	const skinStore = new SkinStore({ skinsDir: join(dataDir, ...PANEL_SKINS_DIR) });
+	const skinStore = new SkinStore({ skinsDir: join(dataDir, ...DASHBOARD_SKINS_DIR) });
 	await skinStore.init();
 	const cardSkinStore = new CardSkinStore({ dir: join(dataDir, ...CARD_SKINS_DIR) });
 	await cardSkinStore.init();

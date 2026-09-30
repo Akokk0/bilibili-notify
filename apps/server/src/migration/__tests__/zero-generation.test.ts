@@ -72,7 +72,7 @@ const ZERO_FILES: Record<string, string> = {
 	"assets/font/f1.woff2": "font",
 	"assets/chat/att-1.png": "chat",
 	"avatars/sub-2.png": "avatar",
-	"skins/panel-1/skin.json": "{}",
+	"skins/skin-1/skin.json": "{}",
 	"skins/active.json": '{"id":"panel-1"}',
 	"card-skins/card-1/card-skin.json": "{}",
 	"maid-skills/weekly/SKILL.md": "# weekly",
@@ -122,8 +122,8 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"assets/font/f1.woff2": "library/fonts/f1.woff2",
 	"assets/chat/att-1.png": "assets/chat/att-1.png",
 	"avatars/sub-2.png": "avatars/sub-2.png",
-	"skins/panel-1/skin.json": "skins/panel/panel-1/skin.json",
-	"skins/active.json": "skins/panel/active.json",
+	"skins/skin-1/skin.json": "skins/dashboard/skin-1/skin.json",
+	"skins/active.json": "skins/dashboard/active.json",
 	"maid-skills/weekly/SKILL.md": "maid-skills/weekly/SKILL.md",
 	"ai/chat/conv-1.json": "ai/conversations/conv-1.json",
 	"extensions/probe/extension.json": "extensions/probe/extension.json",
@@ -276,8 +276,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 2,
-			output: "9263c58762ab18bee17764a4065bd817a9d7760f64444bc2c46533bbf160c969",
+			revision: 3,
+			output: "24f17184f1786f975ee7e9444c47f91051abf9a852a5a3c7e6da839800bdd01a",
 		});
 	});
 });

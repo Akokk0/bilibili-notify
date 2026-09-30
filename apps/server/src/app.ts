@@ -61,7 +61,7 @@ import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { PuppeteerAdapter } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
 import { dataPath } from "./runtime/roots.js";
-import { PANEL_SKINS_DIR, SkinStore } from "./skins/store.js";
+import { DASHBOARD_SKINS_DIR, SkinStore } from "./skins/store.js";
 import type { UpdateService } from "./update/service.js";
 
 interface BasicAuthCredentials {
@@ -319,7 +319,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		// 皮肤库一份两处用:`/api/skins` 是它的主场,聊天路由拿它挂 `create_skin`
 		// (「女仆,做套皮肤」)。两处必须是**同一个实例** —— 各 new 一个的话,内存
 		// 索引各存各的,聊天里刚做好的皮肤在皮肤页上要等到重启才出现。
-		const skinStore = new SkinStore({ skinsDir: dataPath(runtime.dataRoot, ...PANEL_SKINS_DIR) });
+		const skinStore = new SkinStore({
+			skinsDir: dataPath(runtime.dataRoot, ...DASHBOARD_SKINS_DIR),
+		});
 		// 技能库同样一份两处用:`/api/maid-skills` 是编辑器那一端,聊天路由拿它挂
 		// `load_skill`。盘上目录特意叫 `maid-skills` 而不是 `skills` —— 它跟隔壁的
 		// `skins` 只差一个字母,而这是主人要亲手往里放文件的地方。

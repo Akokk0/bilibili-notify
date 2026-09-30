@@ -98,7 +98,7 @@ src/
   stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评;migrate-file-keys.ts 每次开机把老的 <uid>.jsonl 并进订阅 id 那份(ADR-0020)
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
-  skins/                皮肤库(<数据根>/skins/panel/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
+  skins/                皮肤库(<数据根>/skins/dashboard/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
   routes/               REST:auth / subs / targets / connections / globals / history / logs / fans / live / cards / push / health
                         / ai / skins / maid-skills / ext(拓展清单与每个拓展的面板数据)

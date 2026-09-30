@@ -72,7 +72,7 @@
 | `stats/` | 作品（`PostEntry`）、直播场次（`LiveSessionEntry`）、粉丝时序、seen（留不留见「迁移步骤」的统计那行）、水位线 | 否 | 无（删订阅才删） | 清 | 变换；追加写的文件一律复制 |
 | `ai/` | 女仆对话（附件在图库） | 否 | 对话上限与空会话回收 | 清 | 对话变换（剥皮肤引用、附件 id 换成图库引用） |
 | `skins/card/` | 卡片皮肤 | 否 | 无 | 清 | **不迁**，指针回默认 |
-| `skins/panel/` · `library/` · `maid-skills/` | 界面皮肤、素材、主人的女仆技能 | 否 | 无 | 清 | 拷 / 硬链接；技能 `allowedTools` 按新工具名变换 |
+| `skins/dashboard/` · `library/` · `maid-skills/` | 界面皮肤、素材、主人的女仆技能 | 否 | 无 | 清 | 拷 / 硬链接；技能 `allowedTools` 按新工具名变换 |
 | `extensions/` | 已装拓展包、连败记账 | 否（设置随 config） | 无 | 清 | 拷；devtools 软链重建不拷；v2 拓展列进首访页 |
 
 - 备份里订阅只有一节，备份 schema 抬版。
@@ -143,7 +143,7 @@
 | 统计与粉丝 | `stats/dyn` → `stats/posts`，行叫 `PostEntry`（`video` → `post` + `hasVideo`，老的 `type: DYNAMIC_TYPE_*` 行同样改写，开播公告行不搬）；根目录 `fans/` → `stats/followers`；`<uid>.jsonl` → `<订阅 id>.jsonl`；直播帧 `{ k, ts, peak }` → `{ kind, occurredAt, peakTotalViewers }`，peak 的「1.2万」转精确数；场次行叫 `LiveSessionEntry`，`peakViewers` → `peakTotalViewers`；粉丝样本 `value` → `followers`；`ts` → `publishedAt` / `sampledAt`；旧日子的「在记」按旧规则推：作品看那天有没有旧记录，直播用现在的直播开关近似（ADR-0027 决策 3）；热力图也读「在记」，seen 不再单独当判据，所以不再从老粉丝样本补 seen；每天的开关与运行状态怎么记、`seen/` 留不留，施工时定 |
 | AI 对话 | `ai/chat` → `ai/conversations`；`assets/chat` 的附件按内容摘要搬进图库 `images/`，会话里的附件 id 改写成图库引用（ADR-0030 决策 2）；消息上的卡片皮肤引用去掉、对话文字全部保留；皮肤账本（`CardSkinLedger`）清空 |
 | 女仆技能 | `maid-skills` 拷、`allowedTools` 按新工具名变换。内置技能 `find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名（ADR-0030 决策 1）；内置技能写在代码里、不在盘上，迁移不用改写。主人自己建过同名的 `find-creator` / `creator-pk`，改名后会被内置的顶掉，怎么处理施工时定 |
-| 皮肤、素材、拓展 | 卡片皮肤不迁；`skins/` → `skins/panel/` 原样拷；`assets/card-bg`、`assets/font` → `library/images`、`library/fonts`；`extensions/` 拷、devtools 软链重建、v2 拓展列进首访页。皮肤字段 `membership.text` → `membership.announcement`（ADR-0028 决策 4）只动 1.0 的字段表：卡片皮肤不迁、老包拒收，盘上没有要改写的 |
+| 皮肤、素材、拓展 | 卡片皮肤不迁；`skins/` → `skins/dashboard/` 原样拷；`assets/card-bg`、`assets/font` → `library/images`、`library/fonts`；`extensions/` 拷、devtools 软链重建、v2 拓展列进首访页。皮肤字段 `membership.text` → `membership.announcement`（ADR-0028 决策 4）只动 1.0 的字段表：卡片皮肤不迁、老包拒收，盘上没有要改写的 |
 | 遗留物：`state/adapters.json`、`*.json.bak`、`*.restore.bak`、`*.tmp.*`、`.staging-*`、`*.migrating`、storage 默认路径 `bilibili-notify/` | 只作输入读一次或丢弃，不进新代 |
 
 **链接与复制**：迁移时任何链接失败都回落复制（不只是跨分区）。追加写的 jsonl 一律复制、不做硬链接——否则新版往里追加会改到旧代的文件。
@@ -206,7 +206,7 @@
 
 - **素材库 `library/`** 只收主人主动上传、反复挑选的图与字体（卡片旋钮、直播封面）。接口 `/api/library` + 通用素材选择器，**删前查引用**。女仆做皮肤、界面皮肤、拓展选图以后再接进来。
 - 对话附件进图库（见上节），皮肤包自带的资产留在包内——它们随对话或皮肤包一起生死，进素材库只会塞满一次性的东西。素材库与皮肤包资产共用一份资产存储实现 `createAssetStore`（参数：目录、id 取法随机或 sha256、允许的格式、大小上限）。
-- **皮肤**：卡片与界面皮肤合目录（`skins/card/`、`skins/panel/`）、合存储代码（`createSkinStore<清单>`），不合概念——清单、「用哪套」的指针、渲染各走各的。
+- **皮肤**：卡片与界面皮肤合目录（`skins/card/`、`skins/dashboard/`）、合存储代码（`createSkinStore<清单>`），不合概念——清单、「用哪套」的指针、渲染各走各的。
 
 ## 持久化底层与关停
 

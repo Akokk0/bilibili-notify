@@ -1,5 +1,5 @@
 /**
- * 皮肤库存储:`<数据根>/skins/panel/<id>/` 一皮肤一目录 + active.json 指针。
+ * 皮肤库存储:`<数据根>/skins/dashboard/<id>/` 一皮肤一目录 + active.json 指针。
  * 契约:save/list/get/remove/setActive 全走盘,新实例 init() 后状态完整重建
  * (重启不丢);删除当前启用的皮肤时 active 归 null(逃生舱兜底)。
  */
