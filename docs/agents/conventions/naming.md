@@ -29,6 +29,7 @@
 | 存下来、以后拿来比对或重放的副本 | `Snapshot` | 当「当前状态」用的（那是 `View` 或 `State`） |
 | 一条消息、事件或令牌里装的内容 / 包在它外面、带路由或元数据的那一层 | `Payload` / `Envelope` | — |
 | 发生了一件事 / 某样东西的状态变了 | `Event` / `Change` | — |
+| 事件名 → 载荷的对照表（总线的、WS 帧的） | `Events`（`BusEvents`、`WsEvents`） | `EventMap`、当它用的 `Table` |
 | 列表、日志、账本里的一条 | `Entry` | `Record`、`Row` |
 | 时序里的一个采样点 | `Sample` | — |
 | 负责存盘的仓库 | `Store` | 不存盘的（按职责改名，如 `…Cache`） |
