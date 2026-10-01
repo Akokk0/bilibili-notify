@@ -8,11 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../../store/draft";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
 import { makeDefaults } from "./fixtures";
@@ -54,13 +50,16 @@ const PROFILE = { name: "某位", avatar: "", sign: "", fans: 1, lastRefreshedAt
 
 describe("PerUpEditor 头部的「是谁」", () => {
 	it("B 站订阅:UID xxx", () => {
-		renderEditor({ ...makeEmptySubscription("123456"), cachedProfile: PROFILE });
+		renderEditor({
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+			cachedProfile: PROFILE,
+		});
 		expect(screen.getByText(/^UID 123456 · 关闭一个分组/)).toBeTruthy();
 	});
 
 	it("拓展订阅:平台名 · 外部 id;没传平台就写拓展 id", () => {
 		const sub: Subscription = {
-			...makeEmptyExtensionSubscription("douyin", "sec-2"),
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
 			cachedProfile: PROFILE,
 		};
 		const platform: SubscriptionPlatform = {

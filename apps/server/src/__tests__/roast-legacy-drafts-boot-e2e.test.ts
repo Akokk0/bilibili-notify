@@ -24,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { activeGeneration } from "./support/generation.js";
+import { legacyBiliRow } from "./support/legacy-subscription.js";
 
 const S101 = "5b000000-0000-4000-8000-000000000101";
 const S102 = "5b000000-0000-4000-8000-000000000102";
@@ -116,15 +117,27 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		const address = hookServer.address();
 		if (!address || typeof address === "string") throw new Error("webhook 没起来");
 
-		// 0.x 的布局原样摆在根上(第 0 代):两位 B 站 UP(停用,不连 B 站;盘上的订阅没有 kind,ADR-0019 决策 47)
+		// 0.x 的布局原样摆在根上(第 0 代):两位 B 站 UP(停用,不连 B 站;盘上的订阅身份在顶层 uid、没有 identity)
 		// 与升级之前写下的三份待审草稿(按 uid 记,第三份的 uid 已经对不上任何订阅 —— 期间退订了)。开机前不能先开
 		// 一代 —— 有了合用的一代就不迁了。第一趟开机把它们迁进新的一代:订阅的 uid 找回订阅 id、草稿翻成新形状。
 		dataDir = await mkdtemp(join(tmpdir(), "bn-roast-legacy-drafts-e2e-"));
 		await mkdir(join(dataDir, "state"), { recursive: true });
 		const subs = [
-			{ ...makeEmptySubscription({ id: S101, uid: "101" }), enabled: false },
-			{ ...makeEmptySubscription({ id: S102, uid: "102" }), enabled: false },
-		].map(({ kind: _kind, ...onDisk }) => onDisk);
+			{
+				...makeEmptySubscription({
+					id: S101,
+					identity: { sourceKey: "bilibili", externalId: "101" },
+				}),
+				enabled: false,
+			},
+			{
+				...makeEmptySubscription({
+					id: S102,
+					identity: { sourceKey: "bilibili", externalId: "102" },
+				}),
+				enabled: false,
+			},
+		].map(legacyBiliRow);
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
 
 		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedWebhookTargetId`,那个种子是

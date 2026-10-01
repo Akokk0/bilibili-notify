@@ -17,11 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
-import {
-	type ExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
 import { makeDefaults } from "../rules/__tests__/fixtures";
@@ -49,25 +45,15 @@ function source(events: SubscriptionEventKind[]): ExtensionDTO {
 	};
 }
 
-function extSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
+function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
-		...common,
-		kind: "extension",
-		extensionId: "douyin",
-		externalId: "sec-2",
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
 		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 3, lastRefreshedAt: "t" },
 		...over,
 	};
 }
 
-const BILI: Subscription = makeEmptySubscription("111");
+const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" });
 
 function globals(): GlobalConfig {
 	const defaults = makeDefaults();

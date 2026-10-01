@@ -70,7 +70,7 @@ function extSub(id: string, externalId: string, enabled = true): Subscription {
 }
 
 function biliSub(id: string, uid: string, enabled = true): Subscription {
-	return { kind: "bilibili", id, uid, enabled } as never;
+	return { id, identity: { sourceKey: "bilibili", externalId: uid }, enabled } as never;
 }
 
 async function start(initial: Subscription[], runtimeSeed: Record<string, SubRuntime> = {}) {

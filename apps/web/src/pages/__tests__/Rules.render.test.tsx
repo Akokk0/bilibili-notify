@@ -23,7 +23,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const CUSTOMIZED: Subscription = {
-	...makeEmptySubscription("123456"),
+	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 	overrides: { imageGroup: { enable: true, forward: false } },
 };
 
@@ -74,6 +74,18 @@ describe("高级规则 tab 关闭确认", () => {
 
 		expect(await screen.findByText("移除该 UP 的个性化配置?")).toBeTruthy();
 		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("只配了特别关注、没有任何覆盖项的 UP 也算已定制:有 tab 可关", async () => {
+		const onlySpecial: Subscription = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "654321" }),
+			specialUsers: [{ uid: "7", kinds: ["enter"] }],
+		};
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			Promise.resolve(url.includes("/api/subs") ? [onlySpecial] : GLOBALS),
+		);
+		renderRules();
+		expect(await screen.findByTitle(/移除 .* 的个性化配置/)).toBeTruthy();
 	});
 
 	it("B 站订阅的确认文案说「所有覆盖项与特别关注」", async () => {

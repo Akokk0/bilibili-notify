@@ -54,14 +54,7 @@ vi.mock("../../services/api", () => ({
 }));
 
 function extSub(extensionId: string, externalId: string): Subscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
-	return { ...common, kind: "extension", extensionId, externalId };
+	return makeEmptySubscription({ sourceKey: extensionId, externalId });
 }
 
 function renderDetail() {
@@ -89,7 +82,7 @@ describe("卸订阅源拓展:名下的订阅", () => {
 			extSub("douyin", "a"),
 			extSub("douyin", "b"),
 			extSub("kuaishou", "c"),
-			makeEmptySubscription("123"),
+			makeEmptySubscription({ sourceKey: "bilibili", externalId: "123" }),
 		];
 		renderDetail();
 
@@ -99,7 +92,10 @@ describe("卸订阅源拓展:名下的订阅", () => {
 	});
 
 	it("名下一条都没有 → 不多这一句", async () => {
-		disk.subs = [extSub("kuaishou", "c"), makeEmptySubscription("123")];
+		disk.subs = [
+			extSub("kuaishou", "c"),
+			makeEmptySubscription({ sourceKey: "bilibili", externalId: "123" }),
+		];
 		renderDetail();
 
 		await userEvent.click(await screen.findByRole("button", { name: "删除拓展" }));

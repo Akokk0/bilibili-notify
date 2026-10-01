@@ -117,10 +117,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		);
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
-		await writeFile(
-			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
-			JSON.stringify([SUB]),
-		);
+		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify([SUB]));
 
 		port = await findFreePort();
 		handle = await boot(port);

@@ -32,7 +32,11 @@ const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as unknown as GlobalConfig;
-const SUB = { id: "s1", uid: "1", enabled: true };
+const SUB = {
+	id: "s1",
+	identity: { sourceKey: "bilibili", externalId: "1" },
+	enabled: true,
+};
 
 let handle: { dispose(): void } | undefined;
 

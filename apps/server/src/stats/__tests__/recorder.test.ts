@@ -92,8 +92,8 @@ beforeEach(() => {
 
 /** 两位 UP:uid "1" / "2",订阅 id "id-1" / "id-2"。 */
 const SUBS = [
-	{ kind: "bilibili", id: "id-1", uid: "1" },
-	{ kind: "bilibili", id: "id-2", uid: "2" },
+	{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+	{ id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" } },
 ];
 
 function setup(subs: () => readonly unknown[] = () => SUBS) {
@@ -330,7 +330,14 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
-		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
+		trigger("subscription-changed", {
+			ops: [
+				{
+					type: "remove",
+					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+				},
+			],
+		});
 		clock = "2026-05-16T16:00:00.000Z";
 		trigger("live-state-changed", { uid: "1", status: "live", at: "不是时间" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
@@ -378,8 +385,11 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		const { trigger, store } = setup();
 		trigger("subscription-changed", {
 			ops: [
-				{ type: "remove", sub: { id: "id-1", uid: "1" } },
-				{ type: "add", sub: { uid: "2" } },
+				{
+					type: "remove",
+					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+				},
+				{ type: "add", sub: { identity: { sourceKey: "bilibili", externalId: "2" } } },
 			],
 		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
@@ -391,8 +401,14 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		const { trigger, store } = setup();
 		trigger("subscription-changed", {
 			ops: [
-				{ type: "remove", sub: { kind: "extension", id: "ext-1", externalId: "1" } },
-				{ type: "remove", sub: { id: "id-2", uid: "2" } },
+				{
+					type: "remove",
+					sub: { id: "ext-1", identity: { sourceKey: "douyin", externalId: "1" } },
+				},
+				{
+					type: "remove",
+					sub: { id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" } },
+				},
 			],
 		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledTimes(2));
@@ -408,7 +424,14 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
-		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
+		trigger("subscription-changed", {
+			ops: [
+				{
+					type: "remove",
+					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+				},
+			],
+		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
 
 		await handle.closeOpenSessions();
@@ -419,7 +442,14 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
 		trigger("live-viewers-changed", { uid: "1", viewers: "50万" });
-		trigger("subscription-changed", { ops: [{ type: "remove", sub: { id: "id-1", uid: "1" } }] });
+		trigger("subscription-changed", {
+			ops: [
+				{
+					type: "remove",
+					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+				},
+			],
+		});
 		// 重新订阅同一 uid 后开播又下播 —— 峰值必须是新场自己的
 		trigger("live-state-changed", { uid: "1", status: "live" });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
@@ -599,8 +629,8 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 
 	it("同一个 uid 两条 B 站订阅(服务端不判重)→ 两条都记", async () => {
 		const { trigger, store } = setup(() => [
-			{ kind: "bilibili", id: "id-1", uid: "1" },
-			{ kind: "bilibili", id: "id-1b", uid: "1" },
+			{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
+			{ id: "id-1b", identity: { sourceKey: "bilibili", externalId: "1" } },
 		]);
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -621,7 +651,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 
 	it("拓展订阅的外部 id 撞上 uid 也不认 —— 只查 B 站那一支", async () => {
 		const { trigger, store, handle } = setup(() => [
-			{ kind: "extension", id: "ext-x", externalId: "1" },
+			{ id: "ext-x", identity: { sourceKey: "douyin", externalId: "1" } },
 		]);
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -642,7 +672,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		subs = [{ kind: "bilibili", id: "id-7", uid: "7" }];
+		subs = [{ id: "id-7", identity: { sourceKey: "bilibili", externalId: "7" } }];
 		trigger("subscription-changed", { ops: [{ type: "add", sub: subs[0] }] });
 		trigger("dynamic-detected", {
 			uid: "7",

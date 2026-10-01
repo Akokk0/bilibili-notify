@@ -293,7 +293,14 @@ describe("bindSubAvatarCleanup × ctx.track", () => {
 
 		bus.emit("subscription-changed", {
 			ops: [
-				{ type: "remove", sub: { kind: "bilibili", id: KEEP, uid: "1", enabled: true } as never },
+				{
+					type: "remove",
+					sub: {
+						id: KEEP,
+						identity: { sourceKey: "bilibili", externalId: "1" },
+						enabled: true,
+					} as never,
+				},
 			],
 		});
 

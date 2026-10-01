@@ -2,7 +2,7 @@
  * 路由测试 — `GET /api/stats/overview` 里的**拓展订阅行**(ADR-0020 决策 1 / 9 / 18)。
  *
  * 守的是四件事:
- *   - 行以订阅 id 为键,身份两支随行带着(B 站 `uid`,拓展 `extensionId` + `externalId`);
+ *   - 行以订阅 id 为键,身份两支随行带着(B 站 `uid`,拓展 `extensionId` + `externalId`;订阅本身只有一种形状、读 `identity`);
  *   - 计数、场次、峰值、粉丝与 B 站走同一套聚合,只是按订阅 id 从仓里取;
  *   - 「那天有没有记录」各算各的(决策 9):拓展行只认它自己的「在记」,第一条之前没有 0;
  *     两支互不借覆盖,B 站没登录 / 一条 B 站订阅都没有也照常出数;
@@ -93,11 +93,13 @@ function makeDeps(f: Fixture): RouteDeps {
 		},
 		store: {
 			getSubscriptions: () => [
-				...(f.bili ?? []).map((s) => ({ kind: "bilibili", enabled: true, ...s })),
-				...(f.ext ?? []).map((s) => ({
-					kind: "extension",
-					extensionId: EXT,
-					externalId: `ext-${s.id.slice(-1)}`,
+				...(f.bili ?? []).map(({ uid, ...s }) => ({
+					enabled: true,
+					identity: { sourceKey: "bilibili", externalId: uid },
+					...s,
+				})),
+				...(f.ext ?? []).map(({ externalId, ...s }) => ({
+					identity: { sourceKey: EXT, externalId: externalId ?? `ext-${s.id.slice(-1)}` },
 					enabled: true,
 					...s,
 				})),

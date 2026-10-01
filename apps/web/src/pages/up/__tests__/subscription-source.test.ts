@@ -8,9 +8,7 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
-import type { ExtensionSubscription } from "../../../types/domain";
 import {
 	featuresForEvents,
 	runningSubscriptionSources,
@@ -34,29 +32,9 @@ function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 	};
 }
 
-function sub(extensionId = "douyin"): ExtensionSubscription {
-	return {
-		kind: "extension",
-		id: "22222222-2222-4222-8222-222222222222",
-		extensionId,
-		externalId: "MS4wLjAB-sec",
-		enabled: true,
-		groups: [],
-		routing: {
-			dynamic: [],
-			live: [],
-			liveEnd: [],
-			liveGuardBuy: [],
-			superchat: [],
-			specialDanmaku: [],
-			specialUserEnter: [],
-		},
-		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
-		overrides: {},
-		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
-		specialUsers: [],
-		state: { lastPushedAt: {}, liveStatus: "unknown" },
-	};
+/** `subscriptionPlatformOf` 只看订阅记在哪个拓展名下,手里只要拓展 id。 */
+function sub(extensionId = "douyin"): { extensionId: string } {
+	return { extensionId };
 }
 
 describe("事件 → 特性", () => {

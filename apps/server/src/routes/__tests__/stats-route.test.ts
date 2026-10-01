@@ -27,7 +27,7 @@ function makeDeps(opts: StubOpts = {}) {
 	const state = { liveUids: opts.liveUids ?? [], fans: 100 };
 	const deps = {
 		store: {
-			getSubscriptions: () => [{ id: "s1", uid: "1" }],
+			getSubscriptions: () => [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }],
 			getGlobals: () => ({ defaults: { ai: { enabled: opts.aiEnabled ?? true } } }),
 		},
 		runtime: {

@@ -50,7 +50,10 @@ const FIELDS = [
 ] as const;
 
 function bilibili(uids: string[]) {
-	return uids.map((uid) => ({ kind: "bilibili", id: `s${uid}`, uid }));
+	return uids.map((uid) => ({
+		id: `s${uid}`,
+		identity: { sourceKey: "bilibili", externalId: uid },
+	}));
 }
 
 function makeDeps(dataDir: string, uids: string[], liveUids: string[]): RouteDeps {
@@ -102,7 +105,7 @@ afterEach(async () => {
 describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 	async function writeLegacyFixture() {
 		// 0.x 的布局原样摆在第 0 代里(`zero`):作品 / 直播在 `stats/`、粉丝在 `fans/`、订阅在 `state/`
-		// (盘上的 B 站订阅没有 kind),迁移器把它们迁进新的一代(`generation`),路由在新的一代上读。
+		// (盘上的 B 站订阅身份在顶层 uid),迁移器把它们迁进新的一代(`generation`),路由在新的一代上读。
 		const zero = join(dataDir, "zero");
 		const generation = join(dataDir, "generation");
 		await mkdir(join(zero, "stats", "dyn"), { recursive: true });
@@ -163,7 +166,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		const uids = ["101", "102", "103", "104", "105"];
 		await writeFile(
 			join(zero, "state", "subscriptions.json"),
-			JSON.stringify(bilibili(uids).map(({ kind: _kind, ...onDisk }) => onDisk)),
+			// 0.x 盘上的 B 站订阅:身份在顶层 uid、没有 identity(迁移器在迁移时收进去)。
+			JSON.stringify(uids.map((uid) => ({ id: `s${uid}`, uid }))),
 		);
 		// 老数据按 uid 命名;迁移器把它们改成订阅 id(`s101` …)、行翻成现在的形状,路由按订阅 id 读。
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: generation });

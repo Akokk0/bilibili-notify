@@ -34,7 +34,7 @@ function targetFor(platform: PushTarget["platform"]): PushTarget {
  * 「若平台支持则默认会 @全体」,以验证 QQ 官方仍被强制禁用。
  */
 function customSubFor(targetId: string): Subscription {
-	const sub = makeEmptySubscription("100");
+	const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 	sub.routing.dynamic = [targetId];
 	sub.overrides = { features: { extras: { atAllDynamic: true } } };
 	return sub;
@@ -84,7 +84,7 @@ describe("UpDialog · QQ 官方 @全体 提示", () => {
 describe("UpDialog · B 站订阅的头部", () => {
 	it("写「UID xxx」", () => {
 		const sub = {
-			...makeEmptySubscription("100"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
 		};
 		render(

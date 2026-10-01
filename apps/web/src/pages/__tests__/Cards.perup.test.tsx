@@ -29,7 +29,7 @@ import { api } from "../../services/api";
 // 已定制 UP:只有 cardStyle 覆盖(无 cardSkin),并带一个无关 slice(imageGroup)
 // 用来确认 per-UP 保存不会动它。
 const CUSTOMIZED: Subscription = {
-	...makeEmptySubscription("123456"),
+	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 	overrides: {
 		cardStyle: { font: "PerUP Sans" },
 		imageGroup: { enable: false },
@@ -245,7 +245,7 @@ describe("Cards per-UP 作用域接线", () => {
 	 */
 	it("per-UP 指了皮肤 → 预览请求带上它", async () => {
 		const skinned: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
@@ -322,7 +322,7 @@ describe("Cards per-UP 作用域接线", () => {
 		// 仅含 cardStyleByKind 覆盖的 UP(无基准 cardStyle)：确认它进 tab、seed 进草稿、
 		// 保存时按类型覆盖原样回传,基准 cardStyle 仍下发 null。
 		const byKindSub: Subscription = {
-			...makeEmptySubscription("654321"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "654321" }),
 			overrides: {
 				cardStyleByKind: { sc: { font: "SC Sans" } },
 				imageGroup: { enable: false },
@@ -356,7 +356,7 @@ describe("Cards per-UP 作用域接线", () => {
 		// 字段不相交(外观 omitCover、封面 pickCover)→ seed 同时含两类覆盖时往返保留。
 		// 从前的第三族「数据区 show」2026-09-14 随三个开关一起退役。
 		const mixedSub: Subscription = {
-			...makeEmptySubscription("555666"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "555666" }),
 			overrides: { cardStyleByKind: { live: { font: "Abc Sans", liveCoverImages: ["c1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
@@ -445,7 +445,7 @@ describe("Cards per-UP 作用域接线", () => {
 
 	it("per-UP 选回「跟随全局」→ PATCH 把 cardSkin 清成 null(不是键消失)", async () => {
 		const skinned: Subscription = {
-			...makeEmptySubscription("999000"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "999000" }),
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {

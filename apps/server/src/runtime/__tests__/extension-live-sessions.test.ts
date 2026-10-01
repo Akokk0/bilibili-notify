@@ -82,11 +82,9 @@ function start(): void {
 const iso = (ms: number) => new Date(ms).toISOString();
 
 function report(r: SubscriptionReport, sub: Subscription = SUB): void {
-	const extensionId = sub.kind === "extension" ? sub.extensionId : "";
-	const externalId = sub.kind === "extension" ? sub.externalId : "";
 	bus.emit("subscription-reported", {
-		extensionId,
-		externalId,
+		extensionId: sub.identity.sourceKey,
+		externalId: sub.identity.externalId,
 		subscriptionIds: [sub.id],
 		report: r,
 	});

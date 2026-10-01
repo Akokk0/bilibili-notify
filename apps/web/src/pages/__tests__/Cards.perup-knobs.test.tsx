@@ -141,7 +141,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 	 */
 	it("没单独指皮肤 → 摆全局那套的旋钮,全部标「跟随全局」,起始位置取全局那份", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardSkin: undefined, cardStyle: { font: "x" } },
 		};
 		mockApi(sub);
@@ -158,7 +158,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 
 	it("单独指了一套 → 摆的是那一套的旋钮,不是全局那套", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardSkin: "aurora" },
 		};
 		mockApi(sub);
@@ -176,7 +176,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 	 */
 	it("拧一枚 → PATCH 带上它,预览请求也带着草稿;那一行不再标「跟随全局」", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardStyle: { font: "x" } },
 		};
 		mockApi(sub);
@@ -214,7 +214,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 	 */
 	it("还原 → PATCH 里那一枚是显式 null,别的那枚不动,那一行回到「跟随全局」", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: {
 				cardSkinKnobs: { default: { "glass-opacity": 0.3, "gradient-start": "#123456" } },
 			},
@@ -239,7 +239,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 
 	it("最后一枚也还原了 → 整份 cardSkinKnobs 发 null,不留一个空壳", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardSkinKnobs: { default: { "glass-opacity": 0.3 } } },
 		};
 		mockApi(sub);
@@ -253,7 +253,10 @@ describe("per-UP 那侧的旋钮面板", () => {
 	});
 
 	it("全局作用域的预览不带 per-UP 草稿 —— 全局那份服务端自己从配置里读", async () => {
-		mockApi({ ...makeEmptySubscription("123456"), overrides: {} });
+		mockApi({
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+			overrides: {},
+		});
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		await waitFor(
@@ -310,7 +313,7 @@ describe("测试推送带着与预览同一份皮肤", () => {
 	/** 验红:把 TestPushCard 请求体里的 `cardSkin` / `cardSkinKnobs` 删掉,这条红。 */
 	it("per-UP:测试推送带着这位 UP 的皮肤与草稿旋钮(没保存的那一拧也在)", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardSkin: "aurora", cardSkinKnobs: { aurora: { neon: "#123456" } } },
 		};
 		mockWithTarget(sub);
@@ -329,7 +332,10 @@ describe("测试推送带着与预览同一份皮肤", () => {
 	});
 
 	it("全局作用域:测试推送与预览一样,皮肤与旋钮都不传", async () => {
-		mockWithTarget({ ...makeEmptySubscription("123456"), overrides: {} });
+		mockWithTarget({
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+			overrides: {},
+		});
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 

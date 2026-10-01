@@ -144,11 +144,11 @@ export const IdSegmentSchema = z
  * (字母开头照样拼得出 `toString`),所以单独拒;查表那头也用 Map / Set(或 `Object.hasOwn`)
  * 而不是裸下标,两道都在。
  */
-function isPrototypeName(name: string): boolean {
+export function isPrototypeName(name: string): boolean {
 	return Object.hasOwn(Object.prototype, name);
 }
 
-function prototypeNameMessage(what: string): string {
+export function prototypeNameMessage(what: string): string {
 	return `${what}不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数`;
 }
 

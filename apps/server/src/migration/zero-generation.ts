@@ -51,7 +51,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 10;
+export const MIGRATION_REVISION = 11;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -110,7 +110,6 @@ const ZERO_GENERATION_MOVES = {
 		children: {
 			"globals.json": [...CONFIG_DIR, "globals.json"],
 			"subscriptions.json": [...CONFIG_DIR, "subscriptions.json"],
-			"extension-subscriptions.json": [...CONFIG_DIR, "extension-subscriptions.json"],
 			"connections.json": [...CONFIG_DIR, "connections.json"],
 			"targets.json": [...CONFIG_DIR, "targets.json"],
 			"sub-runtime.json": SUB_RUNTIME_FILE,
@@ -118,6 +117,8 @@ const ZERO_GENERATION_MOVES = {
 		},
 		inputs: {
 			"adapters.json": "connections.json 的旧名:没有 connections.json 时迁移读它一次,不进新代",
+			"extension-subscriptions.json":
+				"拓展订阅:迁移读它一次、和 subscriptions.json 合成一个文件(ADR-0021 决策 15),不进新代",
 		},
 	},
 	secrets: { kind: "move", to: ["secrets"], label: "密钥" },
@@ -280,7 +281,15 @@ const REWRITES: readonly {
 	{ label: "设置", run: (opts) => migrateSettingsFile(dataPath(opts.targetDir, ...CONFIG_DIR)) },
 	{
 		label: "订阅",
-		run: (opts) => migrateSubscriptionFiles(dataPath(opts.targetDir, ...CONFIG_DIR)),
+		run: (opts) =>
+			migrateSubscriptionFiles({
+				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
+				extensionSubscriptionsPath: zeroPath(
+					opts.zeroRoot,
+					"state",
+					"extension-subscriptions.json",
+				),
+			}),
 	},
 	{ label: "推送历史", run: (opts) => migrateHistoryFiles(opts.targetDir) },
 	{

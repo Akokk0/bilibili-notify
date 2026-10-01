@@ -5,8 +5,8 @@
  *
  * 两支订阅在这里分流:
  * - **B 站**照旧:资料里的名字 → `UID xxx`(改之前锐评就是这条链,一个字不动)。
- * - **拓展**走卡片与历史那同一条链(ADR-0019 决策 77,少了事件里的作者名):资料里的名字 → 主人起的
- *   别名 → 外部 id(`extensionSubscriptionName`)。
+ * - **拓展**走卡片与历史那同一条链(ADR-0019 决策 77,少了事件里的作者名):资料里的名字 → 外部 id
+ *   (`extensionSubscriptionName`;别名已退役,ADR-0021 决策 16)。
  */
 
 import type { UpStatsRow } from "@bilibili-notify/contract";

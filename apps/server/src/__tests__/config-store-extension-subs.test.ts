@@ -1,12 +1,12 @@
 /**
- * ConfigStore × 拓展订阅(ADR-0019 决策 47 / 50)。
+ * ConfigStore × 订阅里的两种来源(ADR-0021 决策 14、15;身份不许改见 ADR-0019 决策 50)。
  *
- * - 内存里**一份**联合列表(B 站在前、拓展在后),盘上**两个**文件:`subscriptions.json` 只装
- *   B 站订阅、形状与旧载荷写的一字不差(不带 `kind`);拓展订阅住 `extension-subscriptions.json`。
- * - 哪个文件的行变了才写哪个:改 B 站订阅不重写、也不凭空建出拓展那份。
- * - 两个文件任何一个读坏了都是开机报错(与另外几份同一个口径)。
- * - 身份(`kind` / uid / `extensionId` / `externalId`)改不动。
- * - 跨分区的级联(删目标清引用、托管目标改名、整体替换)两支都得覆盖到。
+ * - 订阅只有一种形状:每行带 `identity`。内存里**一份**列表,盘上**一个**文件 `config/subscriptions.json`,
+ *   B 站与拓展来源的行同在、顺序就是写入的顺序;每次写都是一次原子写 —— 写不下去时盘上与内存都停在原样。
+ * - 那个文件读坏了是开机报错(与另外几份同一个口径):跳过坏行,下次写回那几行就永久没了。0.x 的老形状
+ *   (身份在顶层 `uid` / `extensionId` + `externalId`)活 schema 不认 —— 那是迁移器的事,不在这里。
+ * - 身份(`identity.sourceKey` / `identity.externalId`)改不动。
+ * - 跨分区的级联(删目标清引用、托管目标改名、整体替换)对两种来源的行都得覆盖到。
  */
 
 import { randomUUID } from "node:crypto";
@@ -14,13 +14,12 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type BiliSubscription,
-	type ExtensionSubscription,
 	FEATURE_KEYS,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type ServiceContext,
+	type Subscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
@@ -29,10 +28,10 @@ import {
 	type ConfigStore,
 	ConfigValidationError,
 	createConfigStore,
-	EXTENSION_SUBSCRIPTIONS_FILE,
 } from "../config/store.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { legacyBiliRow } from "./support/legacy-subscription.js";
 
 function makeServiceCtx(): ServiceContext {
 	return {
@@ -49,10 +48,9 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "info" };
 }
 
-/** 旧载荷写出来的那种 B 站行:没有 `kind`。 */
-function diskBiliRow(uid: string, id = randomUUID()): Omit<BiliSubscription, "kind"> {
-	const { kind: _kind, ...row } = makeEmptySubscription({ id, uid });
-	return row;
+/** 一条 B 站来源的订阅。 */
+function biliSub(uid: string, id = randomUUID()): Subscription {
+	return makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } });
 }
 
 function makeOnebotConnection() {
@@ -114,15 +112,14 @@ async function exists(path: string): Promise<boolean> {
 let dataDir: string;
 let stateDir: string;
 let bus: MessageBus;
-let extFile: string;
-let biliFile: string;
+/** 订阅的那一个文件。 */
+let subsFile: string;
 
 beforeEach(async () => {
-	dataDir = await mkdtemp(join(tmpdir(), "bn-config-ext-subs-"));
+	dataDir = await mkdtemp(join(tmpdir(), "bn-config-subs-"));
 	stateDir = join(dataDir, ...CONFIG_DIR);
 	await mkdir(stateDir, { recursive: true });
-	extFile = join(stateDir, EXTENSION_SUBSCRIPTIONS_FILE);
-	biliFile = join(stateDir, "subscriptions.json");
+	subsFile = join(stateDir, "subscriptions.json");
 	bus = createNodeMessageBus();
 });
 
@@ -141,122 +138,160 @@ async function open(): Promise<ConfigStore> {
 	return store;
 }
 
-describe("开机读两个文件", () => {
-	it("没有拓展订阅那份 = 一条都没有,且不替它建文件", async () => {
-		await writeFile(biliFile, JSON.stringify([diskBiliRow("1")]), "utf8");
+/** 盘上那个文件里的行。 */
+async function rowsOnDisk(): Promise<Array<Record<string, unknown>>> {
+	return JSON.parse(await readFile(subsFile, "utf8")) as Array<Record<string, unknown>>;
+}
+
+describe("开机读一个文件", () => {
+	it("B 站与拓展来源的行同在一个文件:一份列表,顺序就是文件里的顺序,身份原样", async () => {
+		const b1 = biliSub("1");
+		const e1 = makeExtensionSubscription({ id: randomUUID(), externalId: "x" });
+		const b2 = biliSub("2");
+		const e2 = makeExtensionSubscription({ id: randomUUID(), externalId: "y" });
+		await writeFile(subsFile, JSON.stringify([b1, e1, b2, e2]), "utf8");
 		const store = await open();
-		expect(store.getSubscriptions().map((s) => s.kind)).toEqual(["bilibili"]);
-		expect(await exists(extFile)).toBe(false);
+		expect(store.getSubscriptions().map((s) => s.id)).toEqual([b1.id, e1.id, b2.id, e2.id]);
+		expect(store.getSubscriptions().map((s) => s.identity)).toEqual([
+			{ sourceKey: "bilibili", externalId: "1" },
+			{ sourceKey: "douyin", externalId: "x" },
+			{ sourceKey: "bilibili", externalId: "2" },
+			{ sourceKey: "douyin", externalId: "y" },
+		]);
 	});
 
-	it("拼成一份:B 站在前、拓展在后,各按文件里的顺序;B 站行补上 kind", async () => {
-		const b1 = diskBiliRow("1");
-		const b2 = diskBiliRow("2");
-		const e1 = makeExtensionSubscription({ id: randomUUID(), externalId: "x" });
-		const e2 = makeExtensionSubscription({ id: randomUUID(), externalId: "y" });
-		await writeFile(biliFile, JSON.stringify([b1, b2]), "utf8");
-		await writeFile(extFile, JSON.stringify([e1, e2]), "utf8");
+	it("没有文件 = 一条都没有;拓展订阅不再有自己的文件,开机也不会建它", async () => {
 		const store = await open();
-		expect(store.getSubscriptions().map((s) => s.id)).toEqual([b1.id, b2.id, e1.id, e2.id]);
-		expect(store.getSubscriptions()[0]).toMatchObject({ kind: "bilibili", uid: "1" });
+		expect(store.getSubscriptions()).toEqual([]);
+		expect(await exists(join(stateDir, "extension-subscriptions.json"))).toBe(false);
+	});
+
+	it("盘上留着一份 extension-subscriptions.json 也不读它(它只是 0.x 的迁移输入)", async () => {
+		const ext = makeExtensionSubscription();
+		await writeFile(join(stateDir, "extension-subscriptions.json"), JSON.stringify([ext]), "utf8");
+		const store = await open();
+		expect(store.getSubscriptions()).toEqual([]);
 	});
 
 	it.each([
-		["一行坏的", [{ kind: "extension", id: randomUUID(), externalId: "" }]],
+		[
+			"一行坏的(外部 id 是空串)",
+			[{ ...biliSub("1"), identity: { ...biliSub("1").identity, externalId: "" } }],
+		],
 		["不是数组", { not: "an array" }],
-		["混进一行 B 站订阅", [diskBiliRow("1")]],
-	])("拓展订阅那份%s → 开机报错,不跳过", async (_label, content) => {
-		await writeFile(extFile, JSON.stringify(content), "utf8");
+		["0.x 的老形状(身份在顶层 uid、没有 identity)", [legacyBiliRow(biliSub("1"))]],
+		[
+			"identity 里多一格",
+			[{ ...biliSub("1"), identity: { ...biliSub("1").identity, extra: "x" } }],
+		],
+	])("订阅文件里有%s → 开机报错,不跳过", async (_label, content) => {
+		await writeFile(subsFile, JSON.stringify(content), "utf8");
 		await expect(open()).rejects.toBeInstanceOf(ConfigValidationError);
 	});
 
-	it("subscriptions.json 里混进一行拓展订阅 → 开机报错", async () => {
-		await writeFile(biliFile, JSON.stringify([makeExtensionSubscription()]), "utf8");
-		await expect(open()).rejects.toBeInstanceOf(ConfigValidationError);
+	it("好行后面跟一行坏的 → 整份拒,报错点名第几行", async () => {
+		await writeFile(
+			subsFile,
+			JSON.stringify([
+				biliSub("1"),
+				{ ...biliSub("2"), identity: { sourceKey: "Bad!", externalId: "2" } },
+			]),
+			"utf8",
+		);
+		const err = await open().then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(ConfigValidationError);
+		expect((err as ConfigValidationError).message).toContain("第 2 行");
 	});
 });
 
-describe("写:哪个文件的行变了才写哪个", () => {
-	it("B 站订阅落盘不带 kind —— 与旧载荷写的一字不差;拓展那份不被建出来", async () => {
+describe("写:一个文件、一次原子写", () => {
+	it("落盘的就是订阅本体:两格缩进、行里有 identity,没有 kind / uid / extensionId 这些老键", async () => {
 		const store = await open();
-		const sub = makeEmptySubscription({ id: randomUUID(), uid: "42" });
+		const sub = biliSub("42");
 		await store.upsertSubscription(sub);
-		const { kind: _kind, ...row } = sub;
-		expect(await readFile(biliFile, "utf8")).toBe(`${JSON.stringify([row], null, 2)}\n`);
-		expect(await exists(extFile)).toBe(false);
+		expect(await readFile(subsFile, "utf8")).toBe(`${JSON.stringify([sub], null, 2)}\n`);
+		const [row] = await rowsOnDisk();
+		for (const key of ["kind", "uid", "extensionId"]) expect(row, key).not.toHaveProperty(key);
+		expect(row).toHaveProperty("identity", { sourceKey: "bilibili", externalId: "42" });
 	});
 
-	it("改 B 站订阅不重写拓展那份", async () => {
-		const bili = diskBiliRow("1");
-		const ext = makeExtensionSubscription();
-		await writeFile(biliFile, JSON.stringify([bili]), "utf8");
-		// 故意写成紧凑格式:被重写过的话,缩进会变回两格。
-		const extBytes = JSON.stringify([ext]);
-		await writeFile(extFile, extBytes, "utf8");
-		const store = await open();
-
-		await store.patchSubscription(bili.id, { enabled: false });
-		await store.deleteSubscription(bili.id);
-
-		expect(await readFile(extFile, "utf8")).toBe(extBytes);
-		expect(store.getSubscriptions().map((s) => s.id)).toEqual([ext.id]);
-	});
-
-	it("加 / 改 / 删拓展订阅只写拓展那份", async () => {
-		const bili = diskBiliRow("1");
-		const biliBytes = JSON.stringify([bili]);
-		await writeFile(biliFile, biliBytes, "utf8");
+	it("B 站与拓展来源的订阅落同一个文件,顺序按写入;拓展那份不被建出来", async () => {
 		const store = await open();
 		const ext = makeExtensionSubscription();
-
+		const bili = biliSub("7");
 		await store.upsertSubscription(ext);
-		expect(JSON.parse(await readFile(extFile, "utf8"))).toEqual([ext]);
-		await store.patchSubscription(ext.id, { enabled: false, name: "抖音那位" });
-		expect(JSON.parse(await readFile(extFile, "utf8"))).toEqual([
-			{ ...ext, enabled: false, name: "抖音那位" },
-		]);
-		await store.deleteSubscription(ext.id);
-		expect(JSON.parse(await readFile(extFile, "utf8"))).toEqual([]);
-
-		expect(await readFile(biliFile, "utf8")).toBe(biliBytes);
-	});
-
-	it("新加的 B 站订阅排在拓展订阅前面(内存里 B 站在前)", async () => {
-		const store = await open();
-		const ext = makeExtensionSubscription();
-		await store.upsertSubscription(ext);
-		const bili = makeEmptySubscription({ id: randomUUID(), uid: "7" });
 		await store.upsertSubscription(bili);
-		expect(store.getSubscriptions().map((s) => s.id)).toEqual([bili.id, ext.id]);
+		// 谁先写谁在前 —— 不再有「B 站在前、拓展在后」的分区。
+		expect(store.getSubscriptions().map((s) => s.id)).toEqual([ext.id, bili.id]);
+		expect((await rowsOnDisk()).map((r) => r.id)).toEqual([ext.id, bili.id]);
+		expect(await exists(join(stateDir, "extension-subscriptions.json"))).toBe(false);
+	});
+
+	it("加 / 改 / 删各来源的订阅,每一步盘上就是内存里的那一份", async () => {
+		const store = await open();
+		const bili = biliSub("1");
+		const ext = makeExtensionSubscription();
+
+		await store.upsertSubscription(bili);
+		await store.upsertSubscription(ext);
+		expect(await rowsOnDisk()).toEqual([bili, ext]);
+
+		await store.patchSubscription(ext.id, { enabled: false, notes: "抖音那位" });
+		expect(await rowsOnDisk()).toEqual([bili, { ...ext, enabled: false, notes: "抖音那位" }]);
+
+		await store.deleteSubscription(bili.id);
+		expect(await rowsOnDisk()).toEqual([{ ...ext, enabled: false, notes: "抖音那位" }]);
+		await store.deleteSubscription(ext.id);
+		expect(await rowsOnDisk()).toEqual([]);
 	});
 
 	it("一个新 store 读回同样的一份", async () => {
 		const store = await open();
-		const bili = makeEmptySubscription({ id: randomUUID(), uid: "7" });
-		const ext = makeExtensionSubscription();
-		await store.upsertSubscription(ext);
-		await store.upsertSubscription(bili);
+		await store.upsertSubscription(makeExtensionSubscription());
+		await store.upsertSubscription(biliSub("7"));
 		const again = await open();
 		expect(again.getSubscriptions()).toEqual(store.getSubscriptions());
 	});
+
+	it("写不下去 → 盘上与内存都停在原样,不留半新半旧", async () => {
+		const store = await open();
+		const before = biliSub("5");
+		await store.upsertSubscription(before);
+		const bytes = await readFile(subsFile, "utf8");
+		// 原子写是先写临时文件再改名:把目标的位置换成一个非空目录,改名必炸。
+		await rm(subsFile);
+		await mkdir(join(subsFile, "blocker"), { recursive: true });
+
+		await expect(store.upsertSubscription(makeExtensionSubscription())).rejects.toThrow();
+		await expect(store.patchSubscription(before.id, { enabled: false })).rejects.toThrow();
+		await expect(store.deleteSubscription(before.id)).rejects.toThrow();
+
+		expect(store.getSubscriptions()).toEqual([before]);
+		await rm(subsFile, { recursive: true });
+		await writeFile(subsFile, bytes, "utf8");
+		expect((await open()).getSubscriptions()).toEqual([before]);
+	});
 });
 
-describe("拓展订阅的单人定时锐评(ADR-0020 决策 14)", () => {
-	it("上一版写的拓展订阅没有 roastSchedule → 读进来补出厂默认;改了它落进拓展那份,新 store 读得回来", async () => {
-		// 上一版写出来的那种行:拓展订阅上没有这一格。
+describe("拓展来源订阅的单人定时锐评(ADR-0020 决策 14)", () => {
+	it("上一版写的行没有 roastSchedule → 读进来补出厂默认;改了它落进那一个文件,新 store 读得回来", async () => {
+		// 上一版写出来的那种行:订阅上没有这一格。
 		const { roastSchedule: _r, ...legacy } = makeExtensionSubscription({ id: randomUUID() });
-		await writeFile(extFile, JSON.stringify([legacy]), "utf8");
+		await writeFile(subsFile, JSON.stringify([legacy]), "utf8");
 		const store = await open();
 		const loaded = store.getSubscriptions()[0];
-		expect(loaded?.kind).toBe("extension");
-		expect(loaded && "roastSchedule" in loaded && loaded.roastSchedule.enabled).toBe(false);
+		expect(loaded?.identity.sourceKey).toBe("douyin");
+		expect(loaded?.roastSchedule.enabled).toBe(false);
 
 		const target = makeSessionTarget(randomUUID()).id;
 		await store.patchSubscription(legacy.id, {
 			roastSchedule: { enabled: true, cron: "0 9 * * 1", days: 14, targets: [target] },
 		});
-		const onDisk = JSON.parse(await readFile(extFile, "utf8"))[0];
-		expect(onDisk.roastSchedule).toMatchObject({
+		const onDisk = (await rowsOnDisk())[0];
+		expect(onDisk?.roastSchedule).toMatchObject({
 			enabled: true,
 			cron: "0 9 * * 1",
 			days: 14,
@@ -269,12 +304,12 @@ describe("拓展订阅的单人定时锐评(ADR-0020 决策 14)", () => {
 
 describe("身份改不动(ADR-0019 决策 50)", () => {
 	let store: ConfigStore;
-	let bili: BiliSubscription;
-	let ext: ExtensionSubscription;
+	let bili: Subscription;
+	let ext: Subscription;
 
 	beforeEach(async () => {
 		store = await open();
-		bili = makeEmptySubscription({ id: randomUUID(), uid: "100" });
+		bili = biliSub("100");
 		ext = makeExtensionSubscription({ id: randomUUID(), externalId: "sec-1" });
 		await store.upsertSubscription(bili);
 		await store.upsertSubscription(ext);
@@ -286,57 +321,87 @@ describe("身份改不动(ADR-0019 决策 50)", () => {
 			(e: unknown) => e,
 		);
 		expect(err).toBeInstanceOf(ConfigValidationError);
-		// 身份改不动是「请求不合规矩」(invalid),点名是哪一格;不是「与状态冲突」。
+		// 身份改不动是「请求不合规矩」(invalid),点名是 identity 的哪一格;不是「与状态冲突」。
 		expect(err).toMatchObject({ code: "invalid", scope: "subscriptions" });
 		expect((err as ConfigValidationError).issues).toEqual([
-			{ path: [key], message: "身份格不许改" },
+			{ path: ["identity", key], message: "身份格不许改" },
 		]);
-		expect((err as ConfigValidationError).message).toContain(key);
+		expect((err as ConfigValidationError).message).toContain(`identity.${key}`);
 	}
 
 	it.each([
-		["B 站换 uid", "bili", { uid: "200" }, "uid"],
-		["B 站换成拓展", "bili", { kind: "extension", extensionId: "douyin", externalId: "z" }, "kind"],
-		["B 站塞一个 extensionId", "bili", { extensionId: "douyin" }, "extensionId"],
-		["拓展换外部 id", "ext", { externalId: "sec-2" }, "externalId"],
-		["拓展换拓展", "ext", { extensionId: "kuaishou" }, "extensionId"],
-		["拓展塞一个 uid", "ext", { uid: "100" }, "uid"],
-		["拓展把 kind 清掉", "ext", { kind: null }, "kind"],
+		["B 站换外部 id", "bili", { identity: { externalId: "200" } }, "externalId"],
+		["B 站换成拓展来源", "bili", { identity: { sourceKey: "douyin" } }, "sourceKey"],
+		["拓展换外部 id", "ext", { identity: { externalId: "sec-2" } }, "externalId"],
+		["拓展换拓展", "ext", { identity: { sourceKey: "kuaishou" } }, "sourceKey"],
+		["拓展换成 bilibili", "ext", { identity: { sourceKey: "bilibili" } }, "sourceKey"],
+		[
+			"两格一起换(先点名来源那格)",
+			"bili",
+			{ identity: { sourceKey: "douyin", externalId: "200" } },
+			"sourceKey",
+		],
 	] as const)("patch:%s → 拒", async (_label, which, patch, key) => {
 		const id = which === "bili" ? bili.id : ext.id;
 		await expectIdentityRejected(store.patchSubscription(id, patch as never), key);
 		expect(store.getSubscriptions()).toEqual([bili, ext]);
 	});
 
-	it("upsert 同一个 id:换 uid / 换成拓展 → 拒", async () => {
-		await expectIdentityRejected(store.upsertSubscription({ ...bili, uid: "200" }), "uid");
+	it("upsert 同一个 id:改来源 / 改外部 id → 拒", async () => {
 		await expectIdentityRejected(
-			store.upsertSubscription({ ...ext, id: bili.id } as ExtensionSubscription),
-			"kind",
-		);
-		await expectIdentityRejected(
-			store.upsertSubscription({ ...ext, externalId: "sec-2" }),
+			store.upsertSubscription({ ...bili, identity: { ...bili.identity, externalId: "200" } }),
 			"externalId",
 		);
+		await expectIdentityRejected(
+			store.upsertSubscription({ ...ext, identity: { ...ext.identity, sourceKey: "kuaishou" } }),
+			"sourceKey",
+		);
+		// 拿拓展的身份顶掉 B 站那一条的位置(同一个 id)也是换人。
+		await expectIdentityRejected(store.upsertSubscription({ ...ext, id: bili.id }), "sourceKey");
 		expect(store.getSubscriptions()).toEqual([bili, ext]);
 	});
 
-	it("身份几格原样送回来(面板整份 POST)不算改;别的字段照改", async () => {
+	it("身份两格原样送回来(面板整份 POST)不算改;别的字段照改", async () => {
 		await store.upsertSubscription({ ...ext, enabled: false });
-		await store.patchSubscription(bili.id, { uid: "100", kind: "bilibili", notes: "改个备注" });
-		expect(store.getSubscriptions()[0]).toEqual({ ...bili, notes: "改个备注" });
-		// 老客户端送来的整条没有 kind —— 缺省就是 B 站。
-		const { kind: _kind, ...noKind } = { ...bili, groups: ["g"] };
-		await store.upsertSubscription(noKind as BiliSubscription);
+		await store.patchSubscription(bili.id, {
+			identity: { sourceKey: "bilibili", externalId: "100" },
+			notes: "改个备注",
+		});
 		expect(store.getSubscriptions()).toEqual([
-			{ ...bili, groups: ["g"] },
+			{ ...bili, notes: "改个备注" },
 			{ ...ext, enabled: false },
 		]);
+		// 补丁里只送了一格、且与现有的一样,也不算改。
+		await store.patchSubscription(ext.id, { identity: { externalId: "sec-1" }, notes: "同一个人" });
+		expect(store.getSubscriptions()[1]).toEqual({ ...ext, enabled: false, notes: "同一个人" });
+	});
+
+	it("没送身份的补丁照常改别的字段;整条 upsert 缺 identity 则过不了 schema,盘上不变", async () => {
+		await store.patchSubscription(bili.id, { groups: ["g"] });
+		expect(store.getSubscriptions()[0]).toEqual({ ...bili, groups: ["g"] });
+
+		const { identity: _identity, ...noIdentity } = bili;
+		const err = await store.upsertSubscription(noIdentity as never).then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(ConfigValidationError);
+		expect((err as ConfigValidationError).issues?.[0]?.path).toEqual(["identity"]);
+		expect(store.getSubscriptions()[0]).toEqual({ ...bili, groups: ["g"] });
+	});
+
+	it("补丁把 identity 整个清成 null → 拒,身份清不掉", async () => {
+		const err = await store.patchSubscription(bili.id, { identity: null } as never).then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(ConfigValidationError);
+		expect(store.getSubscriptions()).toEqual([bili, ext]);
 	});
 });
 
-describe("跨分区的级联两支都覆盖", () => {
-	it("删目标:拓展订阅里的引用一并清掉,拓展那份落盘", async () => {
+describe("跨分区的级联对两种来源的行都覆盖", () => {
+	it("删目标:拓展来源订阅里的引用一并清掉,落盘", async () => {
 		const store = await open();
 		const connection = makeOnebotConnection();
 		await store.upsertConnection(connection);
@@ -351,30 +416,35 @@ describe("跨分区的级联两支都覆盖", () => {
 
 		await store.deleteTarget(gone.id);
 
-		const onDisk = JSON.parse(await readFile(extFile, "utf8")) as ExtensionSubscription[];
+		const onDisk = (await rowsOnDisk()) as unknown as Subscription[];
 		for (const sub of [store.getSubscriptions()[0], onDisk[0]]) {
 			for (const k of FEATURE_KEYS) expect(sub?.routing[k]).toEqual([kept.id]);
 			expect(sub?.extras.atAllDynamic).toEqual({ [kept.id]: false });
 		}
 	});
 
-	it("删 webhook 连接:托管目标跟着走,拓展订阅里的引用一并清掉", async () => {
+	it("删 webhook 连接:托管目标跟着走,两种来源订阅里的引用一并清掉", async () => {
 		const store = await open();
 		const connection = makeWebhookConnection();
 		await store.upsertConnection(connection);
 		const managedId = store.getTargets()[0]?.id as string;
 		const ext = makeExtensionSubscription();
 		ext.routing.live = [managedId];
+		const bili = biliSub("9");
+		bili.routing.live = [managedId];
 		await store.upsertSubscription(ext);
+		await store.upsertSubscription(bili);
 
 		await store.deleteConnection(connection.id);
 
-		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
-		const onDisk = JSON.parse(await readFile(extFile, "utf8")) as ExtensionSubscription[];
-		expect(onDisk[0]?.routing.live).toEqual([]);
+		expect(store.getSubscriptions().map((s) => s.routing.live)).toEqual([[], []]);
+		expect(((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.live)).toEqual([
+			[],
+			[],
+		]);
 	});
 
-	it("开机合并托管目标:拓展订阅里的老 id 一并迁到托管 id", async () => {
+	it("开机合并托管目标:两种来源订阅里的老 id 一并迁到托管 id", async () => {
 		const connection = makeWebhookConnection();
 		const primary = {
 			id: randomUUID(),
@@ -388,33 +458,55 @@ describe("跨分区的级联两支都覆盖", () => {
 		const extra = { ...primary, id: randomUUID(), name: "多余" };
 		const ext = makeExtensionSubscription();
 		ext.routing.dynamic = [extra.id];
+		const bili = biliSub("9");
+		bili.routing.dynamic = [extra.id];
 		await writeFile(join(stateDir, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(stateDir, "targets.json"), JSON.stringify([primary, extra]), "utf8");
-		await writeFile(extFile, JSON.stringify([ext]), "utf8");
+		await writeFile(subsFile, JSON.stringify([bili, ext]), "utf8");
 
 		const store = await open();
 
-		expect(store.getSubscriptions()[0]?.routing.dynamic).toEqual([primary.id]);
-		const onDisk = JSON.parse(await readFile(extFile, "utf8")) as ExtensionSubscription[];
-		expect(onDisk[0]?.routing.dynamic).toEqual([primary.id]);
+		expect(store.getSubscriptions().map((s) => s.routing.dynamic)).toEqual([
+			[primary.id],
+			[primary.id],
+		]);
+		expect(
+			((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.dynamic),
+		).toEqual([[primary.id], [primary.id]]);
 	});
+});
 
-	it("整体替换:两支各落各的文件;B 站那份不带 kind", async () => {
+describe("恢复备份(整体替换)", () => {
+	it("两种来源的订阅一次整体替换,落进同一个文件、顺序照给的", async () => {
 		const store = await open();
-		const bili = makeEmptySubscription({ id: randomUUID(), uid: "5" });
+		const bili = biliSub("5");
 		const ext = makeExtensionSubscription();
-		await store.replaceSections({ subscriptions: [bili, ext] });
-		expect(store.getSubscriptions()).toEqual([bili, ext]);
-		const { kind: _kind, ...row } = bili;
-		expect(JSON.parse(await readFile(biliFile, "utf8"))).toEqual([row]);
-		expect(JSON.parse(await readFile(extFile, "utf8"))).toEqual([ext]);
+		await store.replaceSections({ subscriptions: [ext, bili] });
+		expect(store.getSubscriptions()).toEqual([ext, bili]);
+		expect(await rowsOnDisk()).toEqual([ext, bili]);
+		expect(await exists(join(stateDir, "extension-subscriptions.json"))).toBe(false);
 	});
 
-	it("整体替换写到一半炸了:订阅那份推回原样,刚建出来的拓展那份删掉", async () => {
+	it("订阅那一节给了空表 → 真清空;没给 → 一条不动", async () => {
 		const store = await open();
-		const before = makeEmptySubscription({ id: randomUUID(), uid: "5" });
+		const bili = biliSub("5");
+		const ext = makeExtensionSubscription();
+		await store.upsertSubscription(bili);
+		await store.upsertSubscription(ext);
+		await store.replaceSections({ globals: store.getGlobals() });
+		expect(store.getSubscriptions()).toEqual([bili, ext]);
+		await store.replaceSections({ subscriptions: [] });
+		expect(store.getSubscriptions()).toEqual([]);
+		expect(await rowsOnDisk()).toEqual([]);
+	});
+
+	it("整体替换写到一半炸了:订阅那份推回原样,内存也不变", async () => {
+		const store = await open();
+		const before = biliSub("5");
+		const ext = makeExtensionSubscription();
 		await store.upsertSubscription(before);
-		const biliBytes = await readFile(biliFile, "utf8");
+		await store.upsertSubscription(ext);
+		const bytes = await readFile(subsFile, "utf8");
 		// globals 最后写:把它的位置换成一个非空目录,写它必炸。
 		await rm(join(stateDir, "globals.json"));
 		await mkdir(join(stateDir, "globals.json", "blocker"), { recursive: true });
@@ -422,22 +514,18 @@ describe("跨分区的级联两支都覆盖", () => {
 		await expect(
 			store.replaceSections({
 				globals: store.getGlobals(),
-				subscriptions: [
-					makeEmptySubscription({ id: randomUUID(), uid: "6" }),
-					makeExtensionSubscription(),
-				],
+				subscriptions: [biliSub("6"), makeExtensionSubscription({ id: randomUUID() })],
 			}),
 		).rejects.toThrow();
 
-		expect(await readFile(biliFile, "utf8")).toBe(biliBytes);
-		expect(await exists(extFile)).toBe(false);
-		expect(store.getSubscriptions()).toEqual([before]);
+		expect(await readFile(subsFile, "utf8")).toBe(bytes);
+		expect(store.getSubscriptions()).toEqual([before, ext]);
 	});
 
-	it("整体替换写到一半炸了:已有的拓展那份也推回原样", async () => {
+	it("整体替换(清空订阅)写到一半炸了:已有的行也推回原样", async () => {
 		const ext = makeExtensionSubscription();
-		const extBytes = JSON.stringify([ext]);
-		await writeFile(extFile, extBytes, "utf8");
+		const bytes = JSON.stringify([ext]);
+		await writeFile(subsFile, bytes, "utf8");
 		const store = await open();
 		await rm(join(stateDir, "globals.json"));
 		await mkdir(join(stateDir, "globals.json", "blocker"), { recursive: true });
@@ -446,13 +534,13 @@ describe("跨分区的级联两支都覆盖", () => {
 			store.replaceSections({ globals: store.getGlobals(), subscriptions: [] }),
 		).rejects.toThrow();
 
-		expect(await readFile(extFile, "utf8")).toBe(extBytes);
+		expect(await readFile(subsFile, "utf8")).toBe(bytes);
 		expect(store.getSubscriptions()).toEqual([ext]);
 	});
 });
 
-describe("按 UP 覆盖(ADR-0019 决策 64):拓展订阅存得进、清得掉", () => {
-	it("高级规则页给拓展订阅开的那几格照收;发 null 的那一格清掉,盘上也跟着没了", async () => {
+describe("按 UP 覆盖(ADR-0019 决策 64):拓展来源的订阅存得进、清得掉", () => {
+	it("高级规则页给拓展来源订阅开的那几格照收;发 null 的那一格清掉,盘上也跟着没了", async () => {
 		const store = await open();
 		const ext = makeExtensionSubscription();
 		await store.upsertSubscription(ext);
@@ -481,6 +569,6 @@ describe("按 UP 覆盖(ADR-0019 决策 64):拓展订阅存得进、清得掉", 
 			overrides: { schedule: null, templates: null },
 		} as never);
 		expect(store.getSubscriptions().find((s) => s.id === ext.id)?.overrides).toEqual(kept);
-		expect(JSON.parse(await readFile(extFile, "utf8"))[0].overrides).toEqual(kept);
+		expect((await rowsOnDisk())[0]?.overrides).toEqual(kept);
 	});
 });

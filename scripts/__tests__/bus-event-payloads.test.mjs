@@ -32,14 +32,11 @@ const EVENT_TABLE = "BusEvents";
  * 只许删,3b 末清零。路径从载荷的根往下数,数组元素写 `[]`。
  *
  * 3b 的去向:直播状态、观看人数、动态改成按订阅 id 发中立事件(ADR-0021 决策 52);粉丝快照与历史行
- * 的身份改成 `{ sourceKey, externalId }`;订阅变更里的订阅换成中立的订阅形状(B 站的 uid 进 externalId)。
+ * 的身份改成 `{ sourceKey, externalId }`。订阅变更里的订阅已经是中立的订阅形状(⑥d d2:身份读 `identity`,
+ * 没有 `uid` 键、没有 `Bili*` 类型了),只剩特别关注表里那一格 `uid`(它认的是 B 站用户 id,不是订阅的身份)。
  */
 export const RATCHET = {
-	"subscription-changed": [
-		"bili:ops[].sub",
-		"uid:ops[].sub.specialUsers[].uid",
-		"uid:ops[].sub.uid",
-	],
+	"subscription-changed": ["uid:ops[].sub.specialUsers[].uid"],
 	"history-recorded": ["uid:uid"],
 	"history-updated": ["uid:uid"],
 	"live-state-changed": ["uid:uid"],

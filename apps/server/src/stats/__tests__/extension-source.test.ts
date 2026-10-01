@@ -138,8 +138,8 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 
 function report(bus: World["bus"], r: SubscriptionReport, sub: Subscription = SUB): void {
 	bus.emit("subscription-reported", {
-		extensionId: sub.kind === "extension" ? sub.extensionId : "",
-		externalId: sub.kind === "extension" ? sub.externalId : "",
+		extensionId: sub.identity.sourceKey,
+		externalId: sub.identity.externalId,
 		subscriptionIds: [sub.id],
 		report: r,
 	});
@@ -595,7 +595,10 @@ describe("「在记」(决策 9 / 16)", () => {
 	});
 
 	it("只有拓展订阅写:B 站订阅的事件不留「在记」", async () => {
-		subs = [SUB, makeEmptySubscription({ id: "b-7", uid: "7" })];
+		subs = [
+			SUB,
+			makeEmptySubscription({ id: "b-7", identity: { sourceKey: "bilibili", externalId: "7" } }),
+		];
 		const world = boot();
 		world.bus.emit("dynamic-detected", {
 			uid: "7",

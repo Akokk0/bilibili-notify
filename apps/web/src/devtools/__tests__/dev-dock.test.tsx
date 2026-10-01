@@ -292,8 +292,17 @@ describe("DevDock", () => {
 			switch (path) {
 				case "/api/subs":
 					return [
-						{ id: "s1", uid: "100", enabled: true, cachedProfile: { name: "甲" } },
-						{ id: "s2", uid: "200", enabled: false, name: "乙别名" },
+						{
+							id: "s1",
+							identity: { sourceKey: "bilibili", externalId: "100" },
+							enabled: true,
+							cachedProfile: { name: "甲" },
+						},
+						{
+							id: "s2",
+							identity: { sourceKey: "bilibili", externalId: "200" },
+							enabled: false,
+						},
 					];
 				case "/api/targets":
 					return [{ id: "t1", name: "测试群", enabled: true }];
@@ -328,7 +337,7 @@ describe("DevDock", () => {
 		expect([...sub.options].map((o) => o.textContent)).toEqual([
 			"（服务端默认）",
 			"甲 · 100",
-			"乙别名 · 200（停用）",
+			"200 · 200（停用）",
 		]);
 		expect(
 			[

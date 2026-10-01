@@ -334,7 +334,10 @@ describe("重推认的是哪一条订阅", () => {
 
 	it("行的订阅删了、同 uid 又加了一条 → 闸放行,发送认的是新那条", async () => {
 		const entry = await seedPartial();
-		const readded = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
+		const readded = makeEmptySubscription({
+			id: randomUUID(),
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		readded.routing.dynamic = [T1];
 		const r = runnerOver([readded]);
 		expect(await r.canRepush(entry)).toBeNull();
@@ -346,8 +349,14 @@ describe("重推认的是哪一条订阅", () => {
 	it("同 uid 两条都在 → 用行自己那条的路由,不是先出现的那条", async () => {
 		const entry = await seedPartial();
 		// 先出现的那条不路由到 T1;行自己那条(SUB)路由着。
-		const first = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
-		const own = makeEmptySubscription({ id: SUB, uid: "u1" });
+		const first = makeEmptySubscription({
+			id: randomUUID(),
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
+		const own = makeEmptySubscription({
+			id: SUB,
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		own.routing.dynamic = [T1];
 		const r = runnerOver([first, own]);
 		expect(await r.canRepush(entry)).toBeNull();
@@ -358,7 +367,10 @@ describe("重推认的是哪一条订阅", () => {
 
 	it("id 与 uid 都对不上 → 按「路由是空」拒,理由还是「路由里把它去掉了」那句", async () => {
 		const entry = await seedPartial();
-		const other = makeEmptySubscription({ id: randomUUID(), uid: "u2" });
+		const other = makeEmptySubscription({
+			id: randomUUID(),
+			identity: { sourceKey: "bilibili", externalId: "u2" },
+		});
 		other.routing.dynamic = [T1];
 		const r = runnerOver([other]);
 		expect(await r.canRepush(entry)).toContain("路由");
@@ -398,7 +410,10 @@ describe("重推认的是哪一条订阅", () => {
 
 	it("拓展行的外部 id 恰好等于某个 B 站 uid → 不认成那条 B 站订阅,按「路由是空」拒", async () => {
 		const entry = await seedExtensionPartial();
-		const bili = makeEmptySubscription({ id: randomUUID(), uid: "u1" });
+		const bili = makeEmptySubscription({
+			id: randomUUID(),
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		bili.routing.dynamic = [T1];
 		const r = runnerOver([bili]);
 		expect(await r.canRepush(entry)).toContain("路由");

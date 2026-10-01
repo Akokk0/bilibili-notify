@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { type BiliSubscription, makeEmptySubscription } from "../../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import { isSectionCustomized } from "../section-scope";
 
 /**
@@ -9,8 +9,8 @@ import { isSectionCustomized } from "../section-scope";
  * 小点也亮起来 —— 必须按各自域内的字段判定。
  */
 
-function subWith(overrides: BiliSubscription["overrides"]): BiliSubscription {
-	return { ...makeEmptySubscription("123456"), overrides };
+function subWith(overrides: Subscription["overrides"]): Subscription {
+	return { ...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }), overrides };
 }
 
 describe("isSectionCustomized filter / live 分域", () => {
@@ -54,6 +54,36 @@ describe("isSectionCustomized filter / live 分域", () => {
 		const sub = subWith({ imageGroup: { enable: true, forward: false } });
 		expect(isSectionCustomized(sub, "imageGroup")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
+	});
+});
+
+/**
+ * 特别关注是订阅的公共格(不分来源),侧栏小点直接读 `specialUsers`:哪一类事件配了人,
+ * 对应那一节的小点就亮,与 overrides 里有没有模板无关;来源不支持的订阅这一格恒空。
+ */
+describe("isSectionCustomized — 特别关注", () => {
+	const withSpecialUsers = (
+		identity: Subscription["identity"],
+		specialUsers: Subscription["specialUsers"],
+	): Subscription => ({ ...makeEmptySubscription(identity), specialUsers });
+	const BILI = { sourceKey: "bilibili", externalId: "123456" };
+
+	it("配了特别弹幕的人 → 特别弹幕小点亮、特别进场小点不亮", () => {
+		const sub = withSpecialUsers(BILI, [{ uid: "7", kinds: ["danmaku"] }]);
+		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(true);
+		expect(isSectionCustomized(sub, "specialEnter")).toBe(false);
+	});
+
+	it("配了特别进场的人 → 特别进场小点亮、特别弹幕小点不亮", () => {
+		const sub = withSpecialUsers(BILI, [{ uid: "7", kinds: ["enter"] }]);
+		expect(isSectionCustomized(sub, "specialEnter")).toBe(true);
+		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(false);
+	});
+
+	it("别的来源的订阅这一格是空的 → 两个小点都不亮", () => {
+		const sub = withSpecialUsers({ sourceKey: "douyin", externalId: "sec-1" }, []);
+		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(false);
+		expect(isSectionCustomized(sub, "specialEnter")).toBe(false);
 	});
 });
 

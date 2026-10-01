@@ -12,19 +12,14 @@
 import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-	type BiliSubscription,
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 
 afterEach(cleanup);
 
-function makeSub(uid: string, name: string): BiliSubscription {
+function makeSub(uid: string, name: string): Subscription {
 	return {
-		...makeEmptySubscription(uid),
+		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		cachedProfile: {
 			name,
 			avatar: "",
@@ -109,7 +104,7 @@ describe("ScopeTabs 的两种 tab 说同一句选中语汇", () => {
  */
 describe("ScopeTabs 的「是谁」那一行", () => {
 	const EXT: Subscription = {
-		...makeEmptyExtensionSubscription("douyin", "sec-2"),
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
 		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
 	};
 

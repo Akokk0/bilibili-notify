@@ -37,8 +37,8 @@ import { displayName, subscriptionColor } from "../utils/up-display";
 export type Scope = "__global" | string;
 
 /**
- * 收哪一支由调用方定:高级规则页两支都收(ADR-0019 决策 64),卡片页第一版只收 B 站订阅(卡片页的
- * 按 UP 预览放到 ⑤ 再定),调用方先筛过。泛型让卡片页的回调照旧拿到收窄过的 B 站订阅。
+ * 收哪些订阅由调用方定:高级规则页全收(ADR-0019 决策 64),卡片页第一版只收 B 站订阅(卡片页的
+ * 按 UP 预览放到 ⑤ 再定),调用方先筛过。泛型让回调拿到调用方传进来的那个类型。
  */
 export interface ScopeTabsProps<S extends Subscription = Subscription> {
 	scope: Scope;

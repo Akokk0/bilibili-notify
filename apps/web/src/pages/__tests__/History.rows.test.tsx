@@ -12,11 +12,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({
@@ -132,7 +128,7 @@ describe("推送历史 · 行", () => {
 /** 一条 B 站订阅,资料缓存里的名字就是面板上显示的名字。 */
 function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
-		...makeEmptySubscription(uid),
+		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
 		cachedProfile: { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00Z" },
 	};
@@ -200,7 +196,7 @@ describe("推送历史 · 拓展行", () => {
 
 	it("订阅删了、同一个拓展同一个外部 id 又加了一条 → 显示现在那条的名字", async () => {
 		const readded: Subscription = {
-			...makeEmptyExtensionSubscription("douyin", "sec-1"),
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 			id: "s-readded",
 			cachedProfile: {
 				name: "现在的抖音号",

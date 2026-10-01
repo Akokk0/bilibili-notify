@@ -90,7 +90,7 @@ describe("关掉某个卡种的覆盖", () => {
 	 */
 	it("per-UP:关掉直播封面覆盖 → PATCH 里那一格显式为 null(否则后端当没说)", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardStyleByKind: { live: { liveCoverImages: ["img1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
@@ -161,7 +161,7 @@ describe("全家福上那颗「单独」药丸", () => {
 	// 反面:per-UP 这半边的覆盖仍有入口、仍生效,药丸照挂 —— 不是把药丸整个删掉。
 	it("per-UP 作用域:该 UP 的那一格有覆盖 → 药丸照挂", async () => {
 		const sub: Subscription = {
-			...makeEmptySubscription("123456"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 			overrides: { cardStyleByKind: { live: { liveCoverImages: ["img1"] } } },
 		};
 		mockGet([sub], {});

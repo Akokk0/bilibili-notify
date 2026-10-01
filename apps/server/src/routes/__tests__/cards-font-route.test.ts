@@ -67,7 +67,7 @@ function makeDeps(opts: {
 			}),
 			getSubscriptions: () =>
 				(opts.subs ?? []).map((s) => ({
-					uid: s.uid,
+					identity: { sourceKey: "bilibili", externalId: s.uid },
 					overrides: {
 						cardStyle: s.font ? { fontAsset: s.font } : undefined,
 						cardStyleByKind: s.kindFont ? { guard: { fontAsset: s.kindFont } } : undefined,

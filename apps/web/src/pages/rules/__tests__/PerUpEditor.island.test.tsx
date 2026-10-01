@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../../store/draft";
-import { type BiliSubscription, makeEmptySubscription } from "../../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import { PerUpEditor } from "../PerUpEditor";
 import type { SectionId } from "../sections";
 import { makeDefaults } from "./fixtures";
@@ -30,11 +30,11 @@ function resetStore(): void {
 	});
 }
 
-function makeSub(overrides: BiliSubscription["overrides"]): BiliSubscription {
-	return { ...makeEmptySubscription("123456"), overrides };
+function makeSub(overrides: Subscription["overrides"]): Subscription {
+	return { ...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }), overrides };
 }
 
-function renderEditor(sub: BiliSubscription, section: SectionId) {
+function renderEditor(sub: Subscription, section: SectionId) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>

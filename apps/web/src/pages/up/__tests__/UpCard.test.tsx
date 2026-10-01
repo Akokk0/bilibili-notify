@@ -2,7 +2,7 @@
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { type ExtensionSubscription, makeEmptySubscription } from "../../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../subscription-source";
 import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "../UpCard";
 
@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 function props(overrides: Partial<UpCardProps> = {}): UpCardProps {
 	return {
-		sub: makeEmptySubscription("100"),
+		sub: makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 		selected: false,
 		onClick: vi.fn(),
 		onToggleSelect: vi.fn(),
@@ -65,7 +65,7 @@ describe("UpCard 菜单触发", () => {
 describe("UpCard 未关注警告", () => {
 	it("followed=false → 显眼告知「收不到动态」,并带上原因", () => {
 		const sub = {
-			...makeEmptySubscription("100"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			followed: false,
 			followError: "对方已将你拉黑",
 		};
@@ -76,7 +76,10 @@ describe("UpCard 未关注警告", () => {
 	});
 
 	it("followed=true → 什么都不显示", () => {
-		const sub = { ...makeEmptySubscription("100"), followed: true };
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			followed: true,
+		};
 		const { queryByText } = render(<UpCard {...props({ sub })} />);
 
 		expect(queryByText(/收不到动态/)).toBeNull();
@@ -105,19 +108,9 @@ describe("UpCard 的高度不靠邻居撑着", () => {
  * 拓展订阅(ADR-0019 决策 9)那一行:没有 uid —— 不出「UID …」、不出「未关注」(关注是 B 站
  * 的事);名字按「资料缓存 → 主人起的名字 → 外部 id」取,总得认得出是哪一个。
  */
-function makeExtSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
+function makeExtSub(over: Partial<Subscription> = {}): Subscription {
 	return {
-		...common,
-		kind: "extension",
-		extensionId: "douyin",
-		externalId: "MS4wLjAB-sec",
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
 		...over,
 	};
 }
@@ -129,12 +122,8 @@ describe("UpCard × 拓展订阅", () => {
 		expect(getAllByText("MS4wLjAB-sec").length).toBeGreaterThan(0);
 	});
 
-	it("有名字用名字,有资料缓存用资料缓存", () => {
-		const named = render(<UpCard {...props({ sub: makeExtSub({ name: "抖音那位" }) })} />);
-		expect(named.getAllByText("抖音那位").length).toBeGreaterThan(0);
-		named.unmount();
+	it("有资料缓存用资料缓存里的名字", () => {
 		const cached = makeExtSub({
-			name: "抖音那位",
 			cachedProfile: { name: "资料里的名字", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
 		});
 		const { getAllByText } = render(<UpCard {...props({ sub: cached })} />);
@@ -202,7 +191,7 @@ describe("UpCard × 订阅源的平台", () => {
 describe("UpCard × B 站订阅的身份行", () => {
 	it("写「UID xxx」", () => {
 		const sub = {
-			...makeEmptySubscription("100"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
 		};
 		const { getByText } = render(<UpCard {...props({ sub })} />);

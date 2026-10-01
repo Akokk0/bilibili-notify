@@ -77,7 +77,10 @@ function loopbackDefaults(): GlobalDefaults {
 
 /** 三个目标都收下播本体的订阅;附加项的三态表由各用例自己填。 */
 function subWithThreeLiveEndTargets(): Subscription {
-	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+	const sub = makeEmptySubscription({
+		id: "s1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
+	});
 	sub.routing.liveEnd = ["t1", "t2", "t3"];
 	return sub;
 }
@@ -157,7 +160,10 @@ describe("附加项按目标收窄", () => {
 	});
 
 	it("主特性本来就没目标 → 仍照旧落「无目标」那一行(与收窄成空区分开)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.liveEnd = [];
 		const seen: PushSendInfo[] = [];
 		const { push, calls } = makePush(sub, seen);
@@ -190,7 +196,10 @@ describe("附加项按目标收窄", () => {
 	});
 
 	it("行模型:本体发给两个目标、附加项只收窄到其中一个 → 那一个的行多一条消息", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.liveEnd = ["t1", "t2"];
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extras.wordcloud = { t1: false };

@@ -88,7 +88,7 @@ describe("挂在页面上的相对时间会走", () => {
 
 	it("订阅卡:「更新于」过了一分钟就变", () => {
 		const sub = {
-			...makeEmptySubscription("100"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			cachedProfile: {
 				name: "某UP",
 				avatar: "",

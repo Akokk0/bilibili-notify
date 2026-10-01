@@ -94,7 +94,7 @@ const PER_UP_PRESET = {
 function makeSub(id: string, uid: string, perUpPersona?: boolean) {
 	return {
 		id,
-		uid,
+		identity: { sourceKey: "bilibili", externalId: uid },
 		overrides: perUpPersona ? { ai: { preset: PER_UP_PRESET_ID } } : {},
 	};
 }
@@ -102,10 +102,8 @@ function makeSub(id: string, uid: string, perUpPersona?: boolean) {
 /** 一条拓展订阅(ADR-0020:单人锐评两支都有)。id 带着要转义的字符,验路由按编码后的订阅 id 认。 */
 function makeExtSub(id: string, perUpPersona?: boolean) {
 	return {
-		kind: "extension",
 		id,
-		extensionId: "douyin",
-		externalId: "sec-1",
+		identity: { sourceKey: "douyin", externalId: "sec-1" },
 		enabled: true,
 		overrides: perUpPersona ? { ai: { preset: PER_UP_PRESET_ID } } : {},
 	};
@@ -208,7 +206,7 @@ describe("锐评带谁的人格", () => {
 		// 同归都落到全局。这不是回归,是迁移决定,别再「修」回去。
 		const legacy = {
 			id: "s1",
-			uid: "1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
 			overrides: { ai: { preset: "custom", persona: { baseRole: PER_UP_ROLE } } },
 		} as unknown as ReturnType<typeof makeSub>;
 		const deps = makeDeps([legacy]);

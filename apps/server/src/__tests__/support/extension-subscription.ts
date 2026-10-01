@@ -1,24 +1,26 @@
-import { type ExtensionSubscription, makeEmptySubscription } from "@bilibili-notify/internal";
+import { makeEmptySubscription, type Subscription } from "@bilibili-notify/internal";
 
 /**
- * 测试用的一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 `(extensionId, externalId)`。
+ * 测试用的一条拓展来源的订阅(ADR-0021 决策 14):身份是 `identity: { sourceKey: <拓展 id>, externalId }`。
  *
- * 从 B 站那支的空订阅上摘掉 B 站的身份再补上拓展的身份 —— 共有的那些字段
- * (routing / extras / overrides / roastSchedule …)两支长得一样,跟着出厂默认走,不必在这儿再抄一份。
+ * 订阅只有一种形状,所以就是一条空订阅换上拓展的身份 —— 其余字段(routing / extras / overrides /
+ * roastSchedule …)跟着出厂默认走,不必在这儿再抄一份。`opts` 里除了身份三项,其余照盖在空订阅上。
  */
 export function makeExtensionSubscription(
 	opts: {
 		id?: string;
 		extensionId?: string;
 		externalId?: string;
-	} & Partial<Omit<ExtensionSubscription, "kind" | "id" | "extensionId" | "externalId">> = {},
-): ExtensionSubscription {
+	} & Partial<Omit<Subscription, "id" | "identity">> = {},
+): Subscription {
 	const {
 		id = "e0000000-0000-4000-8000-000000000001",
 		extensionId = "douyin",
 		externalId = "sec-uid-1",
 		...rest
 	} = opts;
-	const { kind: _kind, uid: _uid, ...common } = makeEmptySubscription({ id, uid: "0" });
-	return { ...common, ...rest, kind: "extension", id, extensionId, externalId };
+	return {
+		...makeEmptySubscription({ id, identity: { sourceKey: extensionId, externalId } }),
+		...rest,
+	};
 }

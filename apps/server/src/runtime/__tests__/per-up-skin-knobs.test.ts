@@ -17,7 +17,6 @@
 
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import {
-	type BiliSubscription,
 	DEFAULT_CARD_SKIN_ID,
 	type GlobalConfig,
 	makeDefaultGlobalConfig,
@@ -52,8 +51,11 @@ function globalsWith(knobs: GlobalConfig["defaults"]["cardSkinKnobs"] = {}): Glo
 	return g;
 }
 
-const biliSub = (overrides: Subscription["overrides"] = {}): BiliSubscription => ({
-	...makeEmptySubscription({ id: "11111111-1111-4111-8111-111111111111", uid: "12345" }),
+const biliSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
+	...makeEmptySubscription({
+		id: "11111111-1111-4111-8111-111111111111",
+		identity: { sourceKey: "bilibili", externalId: "12345" },
+	}),
 	enabled: true,
 	overrides,
 });
@@ -198,8 +200,8 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 		);
 
 		bus.emit("subscription-reported", {
-			extensionId: sub.extensionId,
-			externalId: sub.externalId,
+			extensionId: sub.identity.sourceKey,
+			externalId: sub.identity.externalId,
 			subscriptionIds: [sub.id],
 			report: {
 				kind: "liveStart",

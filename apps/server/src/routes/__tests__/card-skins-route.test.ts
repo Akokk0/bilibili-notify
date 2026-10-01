@@ -56,8 +56,8 @@ function pack(
 	return zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(m)), ...assets });
 }
 
-/** B 站订阅带 uid;拓展订阅(ADR-0019 决策 9)没有 uid,带的是外部 id。 */
-type SubStub = { name?: string; cardSkin?: string } & (
+/** 夹具的简写:B 站订阅写 uid,拓展来源的订阅写外部 id;喂给路由前都换成订阅的 `identity`。 */
+type SubStub = { cardSkin?: string } & (
 	| { uid: string }
 	| { kind: "extension"; externalId: string }
 );
@@ -85,8 +85,10 @@ function mount(): void {
 		getGlobals: () => ({ defaults: { cardSkin: active, cardSkinKnobs: knobs } }),
 		getSubscriptions: () =>
 			subs.map((s) => ({
-				...("uid" in s ? { kind: "bilibili", uid: s.uid } : s),
-				...(s.name === undefined ? {} : { name: s.name }),
+				identity:
+					"uid" in s
+						? { sourceKey: "bilibili", externalId: s.uid }
+						: { sourceKey: "douyin", externalId: s.externalId },
 				overrides: s.cardSkin === undefined ? {} : { cardSkin: s.cardSkin },
 			})),
 		patchGlobals,
@@ -426,22 +428,19 @@ describe("DELETE /:id —— 删一套", () => {
 		expect(store.has(id)).toBe(true);
 	});
 
-	it("某个 UP 单独指着它 → conflict(409),并把这个 UP 的名字列出来", async () => {
+	it("某个 UP 单独指着它 → conflict(409),并只把这个 UP 的 uid 列出来(别名已退役,ADR-0021 决策 16)", async () => {
 		const id = await install();
-		subs = [
-			{ uid: "111", name: "阿夸" },
-			{ uid: "222", name: "小白", cardSkin: id },
-		];
+		subs = [{ uid: "111" }, { uid: "222", cardSkin: id }];
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
 		expect(body.code).toBe("conflict");
-		expect(body.message).toContain("小白");
-		expect(body.message).not.toContain("阿夸");
+		expect(body.message).toContain("222");
+		expect(body.message).not.toContain("111");
 		expect(store.has(id)).toBe(true);
 	});
 
-	it("没填昵称的 UP 用 uid 顶上 —— 主人得认得出是哪一个", async () => {
+	it("UP 一律用 uid 指认 —— 主人得认得出是哪一个", async () => {
 		const id = await install();
 		subs = [{ uid: "333", cardSkin: id }];
 		const body = (await (await app.request(`/${id}`, { method: "DELETE" })).json()) as any;
@@ -456,16 +455,16 @@ describe("DELETE /:id —— 删一套", () => {
 		expect(body.message).not.toContain("44");
 	});
 
-	it("拓展订阅单独指着它也算在用 —— 没起名字就用它的外部 id 指认(ADR-0019 决策 47)", async () => {
+	it("拓展订阅单独指着它也算在用 —— 用它的外部 id 指认(ADR-0019 决策 47;别名已退役,ADR-0021 决策 16)", async () => {
 		const id = await install();
 		subs = [
 			{ kind: "extension", externalId: "MS4wLjAB-sec", cardSkin: id },
-			{ kind: "extension", externalId: "sec-2", name: "抖音那位", cardSkin: id },
+			{ kind: "extension", externalId: "sec-2", cardSkin: id },
 		];
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as any;
-		expect(body.message).toContain("MS4wLjAB-sec、抖音那位");
+		expect(body.message).toContain("MS4wLjAB-sec、sec-2");
 		expect(store.has(id)).toBe(true);
 	});
 

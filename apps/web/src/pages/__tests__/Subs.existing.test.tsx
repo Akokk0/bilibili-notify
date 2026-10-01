@@ -16,11 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
 
 vi.mock("../../services/api", () => ({
@@ -38,7 +34,7 @@ const named = (sub: Subscription, name: string): Subscription => ({
 	cachedProfile: { name, avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
 });
 
-const BILI = named(makeEmptySubscription("111"), "UP甲");
+const BILI = named(makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }), "UP甲");
 
 function douyin(): ExtensionDTO {
 	return {
@@ -164,7 +160,10 @@ describe("B 站这一支:订阅过的 uid 是已订阅", () => {
 
 describe("绝不跨来源", () => {
 	it("拓展订阅的外部 id 恰好等于输入的 uid → 不算已订阅(输入框、搜索结果行都不拦)", async () => {
-		subs = [BILI, named(makeEmptyExtensionSubscription("douyin", "222"), "抖音乙")];
+		subs = [
+			BILI,
+			named(makeEmptySubscription({ sourceKey: "douyin", externalId: "222" }), "抖音乙"),
+		];
 		const dialog = await openNewDialog();
 		const input = screen.getByPlaceholderText("搜索 UID 或 UP 主名字");
 

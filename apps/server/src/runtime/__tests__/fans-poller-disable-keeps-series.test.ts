@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 function biliSub(id: string, uid: string, enabled = true) {
-	return { kind: "bilibili", id, uid, enabled };
+	return { id, identity: { sourceKey: "bilibili", externalId: uid }, enabled };
 }
 
 function fanFile(key: string): string {

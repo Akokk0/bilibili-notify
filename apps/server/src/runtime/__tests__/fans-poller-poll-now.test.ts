@@ -8,7 +8,11 @@ import { createNodeMessageBus } from "../message-bus.js";
  */
 
 const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
-const SUB = { id: "s1", uid: "1", enabled: true } as never;
+const SUB = {
+	id: "s1",
+	identity: { sourceKey: "bilibili", externalId: "1" },
+	enabled: true,
+} as never;
 
 let handle: FansPollerHandle | undefined;
 afterEach(() => {

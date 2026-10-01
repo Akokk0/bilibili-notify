@@ -36,7 +36,7 @@ function extraToggle(label: string): HTMLButtonElement {
 
 describe("UpDialog · 下播的附加项", () => {
 	it("下播下面挂着「弹幕词云」「AI 总结」两个子开关,默认都开", () => {
-		renderDialog(makeEmptySubscription("100"));
+		renderDialog(makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }));
 		expect(extraToggle("弹幕词云 · 下播").getAttribute("aria-pressed")).toBe("true");
 		expect(extraToggle("AI 总结 · 下播").getAttribute("aria-pressed")).toBe("true");
 		expect(screen.queryByText("词云")).toBeNull();
@@ -44,7 +44,9 @@ describe("UpDialog · 下播的附加项", () => {
 	});
 
 	it("关掉词云 → 保存时只写 extras.wordcloud:false", async () => {
-		const { onSave } = renderDialog(makeEmptySubscription("100"));
+		const { onSave } = renderDialog(
+			makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+		);
 		await userEvent.click(extraToggle("弹幕词云 · 下播"));
 		await userEvent.click(screen.getByRole("button", { name: /保存/ }));
 		const saved = onSave.mock.calls[0]?.[0] as Subscription;
@@ -52,7 +54,7 @@ describe("UpDialog · 下播的附加项", () => {
 	});
 
 	it("再开回来 → override 清干净", async () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.overrides = { features: { extras: { wordcloud: false } } };
 		const { onSave } = renderDialog(sub);
 		await userEvent.click(extraToggle("弹幕词云 · 下播"));
@@ -62,7 +64,7 @@ describe("UpDialog · 下播的附加项", () => {
 	});
 
 	it("下播关着 → 两个子开关灰掉、显示为关,点了也不写(草稿没动,保存钮不可点)", async () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.overrides = { features: { liveEnd: false } };
 		const { onSave } = renderDialog(sub);
 		expect(extraToggle("弹幕词云 · 下播").disabled).toBe(true);
@@ -109,7 +111,7 @@ function renderWithTarget(sub: Subscription, target: PushTarget) {
 
 /** 只订了下播的订阅 = 该目标 routing 不完整 = 自定义态。 */
 function liveEndOnlySub(targetId: string): Subscription {
-	const sub = makeEmptySubscription("100");
+	const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 	sub.routing.liveEnd = [targetId];
 	return sub;
 }
@@ -152,7 +154,7 @@ describe("UpDialog · 某个推送目标自己的附加项", () => {
 
 	it("下播没给这个目标 → 两个附加项灰掉,点了也不写(草稿没动,保存钮不可点)", async () => {
 		const t = customTarget();
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.routing.dynamic = [t.id]; // 挂着这个目标,但没给它下播
 		const { onSave } = renderWithTarget(sub, t);
 		expect(extraToggle("弹幕词云 · 群 A").disabled).toBe(true);

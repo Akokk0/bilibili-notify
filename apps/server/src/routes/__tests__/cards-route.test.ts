@@ -111,7 +111,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				cover?: string[];
 				/** 这位 UP 自己那层旋钮覆盖(ADR-0014 决策 17 的 🔗)。 */
 				knobs?: Record<string, Record<string, unknown>>;
-			} & ({ uid: string } | { kind: "extension"; externalId: string; name?: string })
+			} & ({ uid: string } | { kind: "extension"; externalId: string })
 		>;
 	}): RouteDeps {
 		return {
@@ -138,8 +138,8 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				getSubscriptions: () =>
 					(opts.subs ?? []).map((s) => ({
 						...("uid" in s
-							? { kind: "bilibili", uid: s.uid }
-							: { kind: s.kind, externalId: s.externalId, name: s.name }),
+							? { identity: { sourceKey: "bilibili", externalId: s.uid } }
+							: { identity: { sourceKey: "douyin", externalId: s.externalId } }),
 						overrides: {
 							cardStyle:
 								s.legacyBg || s.cover
@@ -279,7 +279,6 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 						{
 							kind: "extension",
 							externalId: "sec-1",
-							name: "抖音甲",
 							knobs: { neon: { wallpaper: [id] } },
 						},
 					],
@@ -292,7 +291,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			const json = (await res.json()) as { code: string; message: string };
 			expect(json.code).toBe("conflict");
 			expect(json.message).toBe(
-				"该背景图还有 2 处在用：UP 10086 · 皮肤「neon」、订阅「抖音甲」 · 皮肤「neon」，请先在卡片设置里移除再删除",
+				"该背景图还有 2 处在用：UP 10086 · 皮肤「neon」、订阅「sec-1」 · 皮肤「neon」，请先在卡片设置里移除再删除",
 			);
 			expect(await listCardBg(dir)).toEqual([id]);
 		} finally {
@@ -336,7 +335,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被拓展订阅引用的封面图 → conflict(409),message 用名字 / 外部 id 指认(ADR-0019 决策 47)", async () => {
+	it("删除被拓展订阅引用的封面图 → conflict(409),message 用外部 id 指认(ADR-0019 决策 47;别名已退役,ADR-0021 决策 16)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-ext-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -345,7 +344,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 					dataDir: dir,
 					subs: [
 						{ kind: "extension", externalId: "MS4wLjAB-sec", cover: [id] },
-						{ kind: "extension", externalId: "sec-2", name: "抖音那位", kindCover: [id] },
+						{ kind: "extension", externalId: "sec-2", kindCover: [id] },
 					],
 				}),
 				puppeteer: null,
@@ -354,7 +353,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { message: string };
-			expect(json.message).toContain("订阅「MS4wLjAB-sec」、订阅「抖音那位」");
+			expect(json.message).toContain("订阅「MS4wLjAB-sec」、订阅「sec-2」");
 			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
 		} finally {
 			await rm(dir, { recursive: true, force: true });

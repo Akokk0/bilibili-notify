@@ -139,7 +139,7 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		await writeFile(
-			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "subscriptions.json"),
 			JSON.stringify([ENABLED_ROW, DISABLED_ROW, FOREIGN_ROW]),
 		);
 

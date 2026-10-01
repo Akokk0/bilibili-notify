@@ -51,7 +51,7 @@ function useOptions(kind: PickKind): Option[] {
 				return [
 					{
 						value: s.id,
-						label: `${s.name ?? s.cachedProfile?.name ?? uid} · ${uid}${disabledTag(s.enabled)}`,
+						label: `${s.cachedProfile?.name ?? uid} · ${uid}${disabledTag(s.enabled)}`,
 					},
 				];
 			});

@@ -204,12 +204,12 @@ describe("调度器 — 排程", () => {
 		const subs = [
 			{
 				id: "s1",
-				uid: "1",
+				identity: { sourceKey: "bilibili", externalId: "1" },
 				roastSchedule: { enabled: true, cron: "0 9 * * 2", days: 7, targets: [] },
 			},
 			{
 				id: "s2",
-				uid: "2",
+				identity: { sourceKey: "bilibili", externalId: "2" },
 				roastSchedule: { enabled: false, cron: "0 9 * * 3", days: 7, targets: [] },
 			},
 		];
@@ -513,15 +513,12 @@ describe("调度器 — 一轮的结论", () => {
 
 /**
  * 拓展订阅的单人定时锐评(ADR-0020 决策 14 / 18):排程两支都排,到点按**订阅 id** 跑、按订阅 id 发;
- * 日志与私聊里那条叫什么走名字链(资料 → 别名 → 外部 id),不写成「UID undefined」。
+ * 日志与私聊里那条叫什么走名字链(资料 → 外部 id;别名已退役,ADR-0021 决策 16),不写成「UID undefined」。
  */
 describe("调度器 — 拓展订阅的单人锐评", () => {
 	const EXT = {
-		kind: "extension",
 		id: "e1",
-		extensionId: "douyin",
-		externalId: "sec-1",
-		name: "别名甲",
+		identity: { sourceKey: "douyin", externalId: "sec-1" },
 		overrides: {},
 		roastSchedule: {
 			enabled: true,
@@ -547,25 +544,23 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 		});
 	});
 
-	it("日志与私聊里写它的名字:资料里的名字优先,没有退主人起的别名", async () => {
+	it("日志与私聊里写它的名字:资料里的名字优先,没有退外部 id(别名已退役,ADR-0021 决策 16)", async () => {
 		generateSoloRoast.mockResolvedValue(NO_DATA);
 		const withProfile = makeScheduler({ subs: [EXT], profiles: { e1: { name: "抖音乙" } } });
 		await withProfile.sched.runSoloOnce("e1");
 		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("抖音乙 的锐评");
 
-		const aliasOnly = makeScheduler({ subs: [EXT] });
-		await aliasOnly.sched.runSoloOnce("e1");
-		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("别名甲 的锐评");
+		const noProfile = makeScheduler({ subs: [EXT] });
+		await noProfile.sched.runSoloOnce("e1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("sec-1 的锐评");
 		expect(String(tellMaster.mock.calls[0]?.[0])).not.toContain("UID");
 	});
 
-	it("B 站订阅的名字:主人起的别名优先,没有就写 UID(与改成按身份读之前一字不差)", async () => {
+	it("B 站订阅的名字:资料里的名字优先,没有就写 UID(别名已退役,ADR-0021 决策 16)", async () => {
 		generateSoloRoast.mockResolvedValue(NO_DATA);
-		const bili = (name?: string) => ({
-			kind: "bilibili",
+		const bili = () => ({
 			id: "b1",
-			uid: "42",
-			name,
+			identity: { sourceKey: "bilibili", externalId: "42" },
 			overrides: {},
 			roastSchedule: { ...EXT.roastSchedule },
 		});
@@ -573,14 +568,14 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 		await bare.sched.runSoloOnce("b1");
 		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("UID 42 的锐评");
 
-		const aliased = makeScheduler({ subs: [bili("别名乙")] });
-		await aliased.sched.runSoloOnce("b1");
-		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("别名乙 的锐评");
+		const withProfile = makeScheduler({ subs: [bili()], profiles: { b1: { name: "资料乙" } } });
+		await withProfile.sched.runSoloOnce("b1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("资料乙 的锐评");
 	});
 
 	it("审批开着 → 草稿记的是订阅 id;批下来之后按这条订阅的出错通知开关发,失败明细写它的名字", async () => {
 		const sub = { ...EXT, roastSchedule: { ...EXT.roastSchedule, approval: true } };
-		const { sched, drafts } = makeScheduler({ subs: [sub] });
+		const { sched, drafts } = makeScheduler({ subs: [sub], profiles: { e1: { name: "抖音乙" } } });
 		const out = await sched.runSoloOnce("e1");
 		expect(out.kind).toBe("pending-approval");
 		const draft = drafts.list()[0];
@@ -595,7 +590,7 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 			text: "x",
 		});
 		await sched.deliverApproved(draft);
-		expect(String(tellMaster.mock.calls.at(-1)?.[0])).toContain("别名甲 的锐评");
+		expect(String(tellMaster.mock.calls.at(-1)?.[0])).toContain("抖音乙 的锐评");
 	});
 
 	it("订阅 id 对不上(期间删了)→ gen-failed,不拿别人的配置跑", async () => {
@@ -607,9 +602,8 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 
 	it("同一个 uid 订了两条 B 站订阅:各跑各的那条排程(按订阅 id,不按 uid 找第一条)", async () => {
 		const twin = (id: string, cron: string, days: number) => ({
-			kind: "bilibili",
 			id,
-			uid: "42",
+			identity: { sourceKey: "bilibili", externalId: "42" },
 			overrides: {},
 			roastSchedule: { enabled: true, cron, days, targets: ["t1"], approval: false },
 		});

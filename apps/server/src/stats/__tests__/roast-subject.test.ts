@@ -24,18 +24,19 @@ function depsWith(profiles: Record<string, string> = {}): RoastSubjectDeps {
 }
 
 describe("roastSubjectName", () => {
-	it("B 站:有资料名用资料名(去掉首尾空白),没有写 UID —— 别名不当名字用", () => {
-		const sub = { ...makeEmptySubscription({ id: "b1", uid: "12345" }), name: "主人起的别名" };
+	it("B 站:有资料名用资料名(去掉首尾空白),没有写 UID", () => {
+		const sub = makeEmptySubscription({
+			id: "b1",
+			identity: { sourceKey: "bilibili", externalId: "12345" },
+		});
 		expect(roastSubjectName(depsWith({ b1: "  资料名 " }), sub)).toBe("资料名");
 		expect(roastSubjectName(depsWith({ b1: "   " }), sub)).toBe("UID 12345");
 		expect(roastSubjectName(depsWith(), sub)).toBe("UID 12345");
 	});
 
-	it("拓展:资料名 → 别名 → 外部 id", () => {
-		const named = makeExtensionSubscription({ id: "e1", externalId: "sec-1", name: "别名甲" });
-		const bare = makeExtensionSubscription({ id: "e2", externalId: "sec-2" });
-		expect(roastSubjectName(depsWith({ e1: "抖音乙" }), named)).toBe("抖音乙");
-		expect(roastSubjectName(depsWith(), named)).toBe("别名甲");
-		expect(roastSubjectName(depsWith(), bare)).toBe("sec-2");
+	it("拓展:资料名 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
+		const sub = makeExtensionSubscription({ id: "e1", externalId: "sec-1" });
+		expect(roastSubjectName(depsWith({ e1: "抖音乙" }), sub)).toBe("抖音乙");
+		expect(roastSubjectName(depsWith(), sub)).toBe("sec-1");
 	});
 });

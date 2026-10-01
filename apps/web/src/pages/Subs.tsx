@@ -28,9 +28,7 @@ import { useExtensions } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
 import {
 	BILIBILI_SOURCE_KEY,
-	type ExtensionSubscription,
 	type Identity,
-	makeEmptyExtensionSubscription,
 	makeEmptySubscription,
 	type PushTarget,
 	type SourceKey,
@@ -51,7 +49,7 @@ import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
 
-/** 两支订阅都有的那几格 —— 右键菜单只改这些,乐观更新时整条的类型不会被抹成一坨。 */
+/** 右键菜单只改这两格(启用开关与分组),补丁类型只带它们。 */
 type SubscriptionCommonPatch = Partial<Pick<Subscription, "enabled" | "groups">>;
 
 type FilterId = "all" | "enabled" | "disabled";
@@ -641,7 +639,7 @@ function CandidateList({
  */
 function candidateProfile(
 	candidate: ExtensionSubscriptionCandidate,
-): NonNullable<ExtensionSubscription["cachedProfile"]> {
+): NonNullable<Subscription["cachedProfile"]> {
 	return {
 		name: candidate.name,
 		avatar: candidate.avatar ?? "",
@@ -908,7 +906,10 @@ export default function Subs() {
 	function handleNew(profile: UpProfileLookup): void {
 		// 不立即 upsert——构造草稿放进 newDraft,关 NewSubDialog,打开 UpDialog(create 模式)
 		// 让用户先配 routing/features/template,点「创建订阅」才走 upsert.mutate 落盘。
-		const fresh = makeEmptySubscription(profile.uid);
+		const fresh = makeEmptySubscription({
+			sourceKey: BILIBILI_SOURCE_KEY,
+			externalId: profile.uid,
+		});
 		fresh.cachedProfile = {
 			name: profile.name,
 			avatar: profile.avatar,
@@ -920,12 +921,12 @@ export default function Subs() {
 		setShowNewDialog(false);
 	}
 
-	/** 同 {@link handleNew},草稿换成拓展订阅:身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
+	/** 同 {@link handleNew},草稿的身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
 	function handleNewCandidate(
 		source: SubscriptionSourceExtension,
 		candidate: ExtensionSubscriptionCandidate,
 	): void {
-		const fresh = makeEmptyExtensionSubscription(source.id, candidate.id);
+		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.id });
 		fresh.cachedProfile = candidateProfile(candidate);
 		setNewDraft(fresh);
 		setShowNewDialog(false);

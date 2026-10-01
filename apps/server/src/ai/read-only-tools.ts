@@ -120,13 +120,13 @@ export function buildAiSubsView(
 			identity.sourceKey === BILIBILI_SOURCE_KEY
 				? {
 						uid: identity.externalId,
-						uname: sub.name?.trim() || cached || `UID ${identity.externalId}`,
+						uname: cached || `UID ${identity.externalId}`,
 						...common,
 					}
 				: {
 						platform: platforms?.label(identity.sourceKey) || identity.sourceKey,
 						externalId: identity.externalId,
-						uname: sub.name?.trim() || cached || identity.externalId,
+						uname: cached || identity.externalId,
 						...common,
 						...(extensionLive
 							? { liveNow: extensionLiveNow(extensionLive, sub.id, identity.sourceKey) }

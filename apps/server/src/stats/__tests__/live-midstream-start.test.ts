@@ -25,7 +25,8 @@ const BOOT = new Date("2026-05-16T14:00:00.000Z");
 const hoursLater = (h: number) => new Date(BOOT.getTime() + h * 3_600_000);
 /** uid "1" 的那条 B 站订阅;盘上按订阅 id 记(ADR-0020 决策 2 的 🔗)。 */
 const SUB_ID = "sub-of-1";
-const subscriptions = () => [{ kind: "bilibili", id: SUB_ID, uid: "1" }] as never;
+const subscriptions = () =>
+	[{ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "1" } }] as never;
 
 describe("服务器在 UP 已开播时启动", () => {
 	let dir: string;

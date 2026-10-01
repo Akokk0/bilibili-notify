@@ -1,10 +1,4 @@
-import type {
-	Connection,
-	ExtensionSubscription,
-	GlobalConfig,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 import type { EncryptedSecrets } from "./crypto.js";
 import { BackupRejectedError } from "./rejected-error.js";
 
@@ -37,15 +31,8 @@ export type BackupKind = "full" | "sanitized";
 /** Non-secret config payload carried in plaintext in every backup. */
 export interface BackupSections {
 	globals?: GlobalConfig;
-	/** B 站订阅。 */
+	/** 订阅:B 站与拓展同一节,行行带 `identity`(ADR-0021 决策 15)。 */
 	subscriptions?: Subscription[];
-	/**
-	 * 拓展订阅(ADR-0019 决策 48)。**单独一节,不抬 `schemaVersion`**:旧版 BN 不认识这一节,
-	 * 整个跳过、照常恢复其余几节;混进 `subscriptions` 的话,旧版恢复时那几行过不了 uid 校验,
-	 * 整份恢复被拒。导出时与 `subscriptions` 同一个勾选管着;勾了就一定有这一节(哪怕是空的),
-	 * 这样「新备份里一条拓展订阅都没有」与「老备份根本不知道拓展订阅」分得开。
-	 */
-	extensionSubscriptions?: ExtensionSubscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }

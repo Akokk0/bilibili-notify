@@ -8,9 +8,11 @@
  * `overrides.features`),迁一代,再在新代上开配置仓。摆放与开机的辅助见 `./support.ts`。
  *
  * 钉三件事:
- * - 迁出来的是新代 `config/` 里的**文件本身**(配置仓开机只认最新的形状,文件没迁好开机就直接拒收),且三份都进了 `rewritten`;
+ * - 迁出来的是新代 `config/` 里的**文件本身**(配置仓开机只认最新的形状,文件没迁好开机就直接拒收),
+ *   globals 与订阅都进了 `rewritten`;两份订阅(B 站与拓展)合成了新代里的**一个** `subscriptions.json`
+ *   (ADR-0021 决策 15),拓展那份自己不进新代;
  * - 配置仓开机读出来的值是最新的形状;
- * - 第 0 代那三份一个字节没变(迁移写的是新文件,不是原地改那条硬链接);已经是新形状的不改写。
+ * - 第 0 代那三份一个字节没变(迁移写的是新文件,不是原地改那条硬链接);已经是新形状的设置不改写。
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -140,7 +142,7 @@ const LEGACY_EXTENSION_SUBSCRIPTION = {
 	overrides: { features: { liveEnd: false, liveEndExtras: { wordcloud: false } } },
 };
 
-/** 两个订阅文件里的行,按 id 取。 */
+/** 订阅文件里的行,按 id 取。 */
 type Row = Record<string, unknown>;
 function rowById(rows: Row[], id: string): Row {
 	const row = rows.find((r) => r.id === id);
@@ -161,7 +163,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		await sandbox.placeZero("state/targets.json", TARGETS);
 	}
 
-	it("第一代的全局 features、老订阅与拓展订阅一起迁:新代里是最新的形状,第 0 代那三份一个字节没变", async () => {
+	it("第一代的全局 features、老订阅与拓展订阅一起迁:新代里是最新的形状(订阅合成一个文件),第 0 代那三份一个字节没变", async () => {
 		await placeConnectionsAndTargets();
 		const originals = {
 			"globals.json": JSON.stringify(globalsWithFeatures(GEN1_FEATURES)),
@@ -174,20 +176,20 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		// 三份都是迁移器改写的(不是搬过来的那个文件)。
+		// globals 与订阅都是迁移器改写的(不是搬过来的那个文件);拓展那份只作输入,新代里没有它。
 		expect(report.rewritten).toEqual(
-			expect.arrayContaining([
-				"config/globals.json",
-				"config/subscriptions.json",
-				"config/extension-subscriptions.json",
-			]),
+			expect.arrayContaining(["config/globals.json", "config/subscriptions.json"]),
 		);
-		for (const name of Object.keys(originals)) {
+		expect(report.rewritten).not.toContain("config/extension-subscriptions.json");
+		for (const name of ["globals.json", "subscriptions.json"]) {
 			expect(
 				await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(name)),
 				name,
 			).toBe(false);
 		}
+		await expect(stat(sandbox.configPath("extension-subscriptions.json"))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
 		// 第 0 代那三份一个字节没变。
 		for (const [name, text] of Object.entries(originals)) {
 			expect(await readFile(join(sandbox.zero, "state", name), "utf8"), name).toBe(text);
@@ -207,7 +209,12 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			specialUserEnter: false,
 			extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false },
 		});
-		const subRow = rowById(await sandbox.readConfig<Row[]>("subscriptions.json"), SUB_ID);
+		const subRows = await sandbox.readConfig<Row[]>("subscriptions.json");
+		// 两份订阅合成一个文件:B 站的在前、拓展的在后,行行带 identity。
+		expect(subRows.map((r) => r.id)).toEqual([SUB_ID, EXT_SUB_ID]);
+		const subRow = rowById(subRows, SUB_ID);
+		expect(subRow.identity).toEqual({ sourceKey: "bilibili", externalId: "12345" });
+		expect(subRow).not.toHaveProperty("uid");
 		expect(subRow).not.toHaveProperty("atAll");
 		expect(subRow).not.toHaveProperty("atAllDefaults");
 		expect(subRow.routing).not.toHaveProperty("wordcloud");
@@ -218,10 +225,11 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			liveEnd: true,
 			extras: { wordcloud: true, atAllDynamic: true },
 		});
-		const extRow = rowById(
-			await sandbox.readConfig<Row[]>("extension-subscriptions.json"),
-			EXT_SUB_ID,
-		);
+		const extRow = rowById(subRows, EXT_SUB_ID);
+		expect(extRow.identity).toEqual({ sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" });
+		expect(extRow).not.toHaveProperty("kind");
+		expect(extRow).not.toHaveProperty("extensionId");
+		expect(extRow).not.toHaveProperty("externalId");
 		expect((extRow.overrides as Record<string, unknown>).features).toEqual({
 			liveEnd: false,
 			extras: { wordcloud: false },
@@ -234,7 +242,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(subs.map((s) => s.id).sort()).toEqual([SUB_ID, EXT_SUB_ID].sort());
 		const sub = subs.find((s) => s.id === SUB_ID);
 		expect(sub).toMatchObject({
-			kind: "bilibili",
+			identity: { sourceKey: "bilibili", externalId: "12345" },
 			// 下播目标 = 下播 ∪ 词云 ∪ 总结;老键不留。
 			routing: { dynamic: [T1], live: [T1, T2], liveEnd: [T1, T2] },
 			extras: {
@@ -255,7 +263,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			"superchat",
 		]);
 		expect(subs.find((s) => s.id === EXT_SUB_ID)).toMatchObject({
-			kind: "extension",
+			identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
 			overrides: { features: { liveEnd: false, extras: { wordcloud: false } } },
 		});
 	});
@@ -285,7 +293,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.features).toEqual(onDisk.defaults.features);
 	});
 
-	it("已经是新形状的设置与订阅不改写 —— 新代里还是搬过来的那个文件", async () => {
+	it("已经是新形状的设置不改写(新代里还是搬过来的那个文件);订阅的新形状字段原样过去,只有身份收进 identity", async () => {
 		await placeConnectionsAndTargets();
 		const fresh = {
 			id: SUB_ID,
@@ -317,13 +325,32 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		for (const name of ["globals.json", "subscriptions.json", "extension-subscriptions.json"]) {
-			expect(report.rewritten, name).not.toContain(`config/${name}`);
-			expect(
-				await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(name)),
-				name,
-			).toBe(true);
-		}
+		expect(report.rewritten).not.toContain("config/globals.json");
+		expect(
+			await sameFile(
+				join(sandbox.zero, "state", "globals.json"),
+				sandbox.configPath("globals.json"),
+			),
+		).toBe(true);
+		// 订阅:身份换了位置(0.x 的 uid / extensionId / externalId → identity)、退役的别名 `name` 丢掉,别的格一个都
+		// 没被当老形状再改一遍。
+		const { id: _freshId, uid: _uid, name: _name, ...freshRest } = fresh;
+		const {
+			id: _extId,
+			kind: _kind,
+			extensionId: _e,
+			externalId: _x,
+			...extRest
+		} = LEGACY_EXTENSION_SUBSCRIPTION;
+		expect(await sandbox.readConfig<Row[]>("subscriptions.json")).toEqual([
+			{ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "12345" }, ...freshRest },
+			{
+				...extRest,
+				id: EXT_SUB_ID,
+				identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
+				overrides: { features: { extras: { wordcloud: false } } },
+			},
+		]);
 		const store = await sandbox.load();
 		expect(store.getSubscriptions().map((s) => s.id)).toEqual([SUB_ID, EXT_SUB_ID]);
 	});

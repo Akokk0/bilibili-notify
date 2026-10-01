@@ -15,11 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-	type ExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
 
 const { FakeApiError } = vi.hoisted(() => {
@@ -59,26 +55,16 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 	};
 }
 
-function extSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
+function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
-		...common,
-		kind: "extension",
-		extensionId: "douyin",
-		externalId: "sec-2",
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
 		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 3, lastRefreshedAt: "t" },
 		...over,
 	};
 }
 
 const BILI: Subscription = {
-	...makeEmptySubscription("111"),
+	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }),
 	cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
 };
 
@@ -265,9 +251,7 @@ describe("选了订阅源", () => {
 		];
 		expect(path).toBe("/api/subs");
 		expect(body).toMatchObject({
-			kind: "extension",
-			extensionId: "douyin",
-			externalId: "sec-1",
+			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			enabled: true,
 			groups: [],
 			cachedProfile: { name: "抖音甲", avatar: AVATAR, fans: 12_345, sign: "" },
@@ -319,7 +303,7 @@ describe("列表里的拓展订阅", () => {
 	});
 
 	it("拓展没装 → 拿不到名字,写拓展 id", async () => {
-		subs = [BILI, extSub({ extensionId: "kuaishou" })];
+		subs = [BILI, extSub({ identity: { sourceKey: "kuaishou", externalId: "sec-2" } })];
 		renderSubs();
 		expect(await screen.findByText("kuaishou拓展没在跑")).toBeTruthy();
 	});

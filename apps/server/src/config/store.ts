@@ -1,8 +1,6 @@
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	type BiliSubscription,
-	BiliSubscriptionSchema,
 	type ConfigScope,
 	type Connection,
 	ConnectionSchema,
@@ -11,12 +9,8 @@ import {
 	type Disposable,
 	deterministicUuid,
 	EXTRA_KEYS,
-	type ExtensionSubscription,
-	ExtensionSubscriptionSchema,
 	type GlobalConfig,
 	GlobalConfigSchema,
-	isBiliSubscription,
-	isExtensionSubscription,
 	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -28,7 +22,6 @@ import {
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
-import type { z } from "zod";
 import { dataPath } from "../runtime/roots.js";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
@@ -258,19 +251,14 @@ async function readJsonIfExists(absPath: string): Promise<unknown> {
 }
 
 /**
- * 盘上一个订阅文件 → 一份订阅。不是数组、或任何一行过不了 schema,都整个拒(开机报错)。
- * 两个文件各用各的那一支校验:`subscriptions.json` 里混进一行拓展订阅同样是坏数据。
+ * 盘上的订阅文件 → 一份订阅。不是数组、或任何一行过不了 schema,都整个拒(开机报错)。
  */
-function parseSubscriptionFile<T extends Subscription>(
-	fileName: string,
-	value: unknown,
-	schema: z.ZodType<T>,
-): T[] {
+function parseSubscriptionFile(fileName: string, value: unknown): Subscription[] {
 	if (!Array.isArray(value)) {
 		throw ConfigValidationError.invalid("subscriptions", `${fileName} 里的内容不是数组`);
 	}
 	return value.map((raw, idx) => {
-		const r = schema.safeParse(raw);
+		const r = SubscriptionSchema.safeParse(raw);
 		if (!r.success) {
 			throw ConfigValidationError.fromZod("subscriptions", r.error, {
 				subject: `${fileName} 第 ${idx + 1} 行`,
@@ -511,26 +499,8 @@ function replaceTargetIdsInSubscriptions(
 	return { next, changed };
 }
 
-/** 拓展订阅住的那个文件(ADR-0019 决策 47)。B 站订阅仍在 `subscriptions.json`。 */
-export const EXTENSION_SUBSCRIPTIONS_FILE = "extension-subscriptions.json";
-
-/**
- * B 站订阅落盘的样子:**剥掉 `kind`**。`subscriptions.json` 的形状与旧载荷写出来的一字不差
- * (决策 47:「B 站那支一个字不动」)—— 回退到旧载荷时它读到的就是它自己写的东西。读回来
- * 缺 `kind` 就是 B 站,schema 会补上。
- */
-function toDiskBiliRow(sub: BiliSubscription): Omit<BiliSubscription, "kind"> {
-	const { kind: _kind, ...row } = sub;
-	return row;
-}
-
-/** 一个分区变没变:条数、或任何一格换了对象。级联那几个函数对没动的行原样交回同一个对象。 */
-function partitionChanged<T>(prev: readonly T[], next: readonly T[]): boolean {
-	return prev.length !== next.length || next.some((item, i) => item !== prev[i]);
-}
-
-/** 订阅的身份几格(决策 50):B 站是 uid,拓展是 `(extensionId, externalId)`;`kind` 本身也算。 */
-const SUBSCRIPTION_IDENTITY_KEYS = ["kind", "uid", "extensionId", "externalId"] as const;
+/** 订阅的身份两格(ADR-0021 决策 14)。 */
+const SUBSCRIPTION_IDENTITY_KEYS = ["sourceKey", "externalId"] as const;
 
 /** 拼进给人看的话里的一个值:字符串原样,别的转 JSON,没有就说「空」。 */
 function showValue(v: unknown): string {
@@ -541,31 +511,23 @@ function showValue(v: unknown): string {
 function subscriptionIdentityError(key: string, from: unknown, to: unknown): ConfigValidationError {
 	return ConfigValidationError.invalid(
 		"subscriptions",
-		`订阅的 ${key} 不能改（${showValue(from)} → ${showValue(to)}），要换人就删了重加`,
-		[{ path: [key], message: "身份格不许改" }],
+		`订阅的 identity.${key} 不能改（${showValue(from)} → ${showValue(to)}），要换人就删了重加`,
+		[{ path: ["identity", key], message: "身份格不许改" }],
 	);
 }
 
 /**
- * 订阅的**身份**不许改(ADR-0019 决策 50)—— 换了 uid / 外部 id / 平台就是另一个人,而运行期
- * 的一切(资料缓存、历史、头像文件)都挂在这条订阅的 `id` 上。要换人就删了重加。
+ * 订阅的**身份**不许改(ADR-0019 决策 50)—— 换了来源或外部 id 就是另一个人,而运行期的一切(资料缓存、
+ * 历史、头像文件)都挂在这条订阅的 `id` 上。要换人就删了重加。
  *
- * 看的是调用方送来的那一份(补丁或整条),**在 schema 之前**:给 B 站订阅送一个 `extensionId`、
- * 给拓展订阅送一个 `uid`,schema 会一声不吭地剥掉 —— 那也是想改身份,照样拒;而把 `kind`
- * 清掉的补丁会先在 schema 那儿撞成一堆「缺 uid」,主人看不出是哪一格惹的。值与现有的一样
- * (面板整份送回来)不算改。`kind` 在整条 upsert 里缺省 = B 站,在补丁里缺省 = 不改。
+ * 看的是调用方送来的那一份(补丁或整条),**在 schema 之前**:报错能点名是哪一格,而不是 schema 那边一堆
+ * 不相干的话。没送 `identity`、或送了而某一格缺着,那一格算不改;值与现有的一样(面板整份送回来)不算改。
  */
-function assertSubscriptionIdentityUnchanged(
-	current: Subscription,
-	raw: unknown,
-	kindDefault: "bilibili" | undefined,
-): void {
-	const cur = current as Record<string, unknown>;
-	const fields = isPlainObject(raw) ? raw : {};
+function assertSubscriptionIdentityUnchanged(current: Subscription, raw: unknown): void {
+	const sent = isPlainObject(raw) && isPlainObject(raw.identity) ? raw.identity : {};
 	for (const key of SUBSCRIPTION_IDENTITY_KEYS) {
-		const sent = key === "kind" && !("kind" in fields) ? kindDefault : fields[key];
-		if (sent === undefined || sent === cur[key]) continue;
-		throw subscriptionIdentityError(key, cur[key], sent);
+		if (sent[key] === undefined || sent[key] === current.identity[key]) continue;
+		throw subscriptionIdentityError(key, current.identity[key], sent[key]);
 	}
 }
 
@@ -584,12 +546,8 @@ class NodeConfigStore implements ConfigStore {
 	private plaintextApiKeyWarned = false;
 
 	private globals: GlobalConfig;
-	/**
-	 * 订阅在内存里是**一份**联合列表(决策 47),盘上是两个文件 —— 所以分两格存,读的时候拼:
-	 * B 站那几行在前、拓展的在后,各按文件里的顺序。写一律走 {@link writeSubscriptions}。
-	 */
-	private biliSubscriptions: BiliSubscription[];
-	private extensionSubscriptions: ExtensionSubscription[];
+	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
+	private subscriptions: Subscription[];
 	private connections: Connection[];
 	private targets: PushTarget[];
 
@@ -614,8 +572,7 @@ class NodeConfigStore implements ConfigStore {
 		this.secretStore = opts.secretStore;
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
-		this.biliSubscriptions = [];
-		this.extensionSubscriptions = [];
+		this.subscriptions = [];
 		this.connections = [];
 		this.targets = [];
 	}
@@ -638,44 +595,10 @@ class NodeConfigStore implements ConfigStore {
 		}
 	}
 
-	/** 两个文件拼成的那一份联合列表(只读视图;写走 {@link writeSubscriptions})。 */
-	private get subscriptions(): Subscription[] {
-		return [...this.biliSubscriptions, ...this.extensionSubscriptions];
-	}
-
-	private extensionSubscriptionsPath(): string {
-		return join(this.stateDir, EXTENSION_SUBSCRIPTIONS_FILE);
-	}
-
-	/**
-	 * 把一份新的联合列表落盘并换进内存。**只写真的变了的那个文件**:改一条 B 站订阅不会
-	 * 重写、更不会凭空建出 `extension-subscriptions.json`(旧载荷不认得它,多一份也无妨,
-	 * 但没有理由去碰)。
-	 *
-	 * 两个文件不是一次原子写:两个都要写而后一个炸了,把前一个推回原样再抛,盘上不留
-	 * 半新半旧。调用方都在 `subscriptions` 那条队里。
-	 */
+	/** 把一份新的订阅列表落盘(一次原子写)并换进内存。调用方都在 `subscriptions` 那条队里。 */
 	private async writeSubscriptions(next: readonly Subscription[]): Promise<void> {
-		const bili = next.filter(isBiliSubscription);
-		const ext = next.filter(isExtensionSubscription);
-		const biliChanged = partitionChanged(this.biliSubscriptions, bili);
-		const extChanged = partitionChanged(this.extensionSubscriptions, ext);
-		if (biliChanged) await atomicWriteJson(this.path("subscriptions"), bili.map(toDiskBiliRow));
-		if (extChanged) {
-			try {
-				await atomicWriteJson(this.extensionSubscriptionsPath(), ext);
-			} catch (e) {
-				if (biliChanged) {
-					await atomicWriteJson(
-						this.path("subscriptions"),
-						this.biliSubscriptions.map(toDiskBiliRow),
-					).catch(() => {});
-				}
-				throw e;
-			}
-		}
-		this.biliSubscriptions = bili;
-		this.extensionSubscriptions = ext;
+		await atomicWriteJson(this.path("subscriptions"), next);
+		this.subscriptions = [...next];
 	}
 
 	/** Write globals.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
@@ -783,29 +706,14 @@ class NodeConfigStore implements ConfigStore {
 			await this.hydrateSecrets();
 		}
 
-		// subscriptions —— 两个文件,一个分区(决策 47)。任何一个读坏了都是开机报错:跳过坏行
-		// 更糟,下次写回那几行就永久没了。
+		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
+		// 那几行就永久没了。
 		{
 			const { value, existed } = await readJsonOrInit<unknown[]>(
 				this.path("subscriptions"),
 				() => [] as Subscription[],
 			);
-			this.biliSubscriptions = parseSubscriptionFile(
-				"subscriptions.json",
-				value,
-				BiliSubscriptionSchema,
-			);
-			// 拓展订阅那份不存在 = 一条都没有。**不在这里建它**:没有拓展订阅的机器上,盘上
-			// 就和旧载荷那时一模一样。
-			const extRaw = await readJsonIfExists(this.extensionSubscriptionsPath());
-			this.extensionSubscriptions =
-				extRaw === undefined
-					? []
-					: parseSubscriptionFile(
-							EXTENSION_SUBSCRIPTIONS_FILE,
-							extRaw,
-							ExtensionSubscriptionSchema,
-						);
+			this.subscriptions = parseSubscriptionFile("subscriptions.json", value);
 			this.meta.subscriptions.exists = true;
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
 		}
@@ -1022,7 +930,7 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.fromZod("subscriptions", parsed.error);
 			}
 			const existing = this.subscriptions.find((s) => s.id === parsed.data.id);
-			if (existing) assertSubscriptionIdentityUnchanged(existing, sub, "bilibili");
+			if (existing) assertSubscriptionIdentityUnchanged(existing, sub);
 			await this.writeSubscriptions(upsertById(this.subscriptions, parsed.data));
 			this.touch("subscriptions");
 		});
@@ -1036,8 +944,7 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.notFound("subscriptions", `没有 id 为 ${id} 的订阅`);
 			}
 			const current = this.subscriptions[idx] as Subscription;
-			// 补丁里没提的身份格就是「不改」,所以 kind 缺省不补。
-			assertSubscriptionIdentityUnchanged(current, patch, undefined);
+			assertSubscriptionIdentityUnchanged(current, patch);
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = SubscriptionSchema.safeParse(merged);
 			if (!parsed.success) {
@@ -1336,23 +1243,14 @@ class NodeConfigStore implements ConfigStore {
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
-			// 订阅一个分区两个文件(决策 47),各自只在那一支真变了时才写。
 			const writes: Array<[string, unknown]> = [];
 			const subsTouched = Boolean(subscriptions) || replaced.changed;
-			const nextBili = replaced.next.filter(isBiliSubscription);
-			const nextExt = replaced.next.filter(isExtensionSubscription);
-			if (subsTouched && partitionChanged(this.biliSubscriptions, nextBili)) {
-				writes.push([this.path("subscriptions"), nextBili.map(toDiskBiliRow)]);
-			}
-			if (subsTouched && partitionChanged(this.extensionSubscriptions, nextExt)) {
-				writes.push([this.extensionSubscriptionsPath(), nextExt]);
-			}
+			if (subsTouched) writes.push([this.path("subscriptions"), replaced.next]);
 			if (connections) writes.push([this.path("connections"), effConnections]);
 			if (targets || synced.changed) writes.push([this.path("targets"), synced.next]);
 
 			const backups: Array<[string, string]> = [];
-			// 写之前还不存在的(拓展订阅那份可能从没建过):推回去 = 删掉它,否则开机时
-			// 读到的是「订阅退回去了、拓展订阅却是备份里那份」的半新半旧。
+			// 写之前还不存在的:推回去 = 删掉它,否则开机时读到的是半新半旧。
 			const created: string[] = [];
 			for (const [path] of writes) {
 				if (!(await fileExists(path))) {
@@ -1380,8 +1278,7 @@ class NodeConfigStore implements ConfigStore {
 			// ---- 4) 双写都成了才更新内存 -----------------------------------
 			const touched: ConfigScope[] = [];
 			if (subsTouched) {
-				this.biliSubscriptions = nextBili;
-				this.extensionSubscriptions = nextExt;
+				this.subscriptions = replaced.next;
 				this.touch("subscriptions");
 				touched.push("subscriptions");
 			}

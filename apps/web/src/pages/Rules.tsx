@@ -19,12 +19,7 @@ import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import {
-	BILIBILI_SOURCE_KEY,
-	isBiliSubscription,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../types/domain";
+import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
@@ -68,9 +63,9 @@ function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
 	return keys;
 }
 
-/** 特别关注只有 B 站订阅有;拓展订阅那一支没有这一格,恒 false。 */
+/** 特别关注是订阅的公共格;来源不支持的(今天只有 B 站支持)这一格恒空,所以恒 false。 */
 function hasSpecialUsers(sub: Subscription): boolean {
-	return isBiliSubscription(sub) && sub.specialUsers.length > 0;
+	return sub.specialUsers.length > 0;
 }
 
 function hasAnyCustomization(sub: Subscription): boolean {

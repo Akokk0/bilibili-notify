@@ -11,11 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
 
 vi.mock("../../services/api", () => ({
@@ -36,8 +32,8 @@ const named = (sub: Subscription, name: string): Subscription => ({
 	cachedProfile: { name, avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
 });
 
-const BILI = named(makeEmptySubscription("111"), "UP甲");
-const EXT = named(makeEmptyExtensionSubscription("douyin", "Sec-Abc"), "抖音乙");
+const BILI = named(makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }), "UP甲");
+const EXT = named(makeEmptySubscription({ sourceKey: "douyin", externalId: "Sec-Abc" }), "抖音乙");
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {

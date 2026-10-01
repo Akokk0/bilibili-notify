@@ -1,15 +1,14 @@
 import { ensureFollowed } from "@bilibili-notify/api";
-import type { BiliSubscriptionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
-	type ExtensionSubscription,
-	ExtensionSubscriptionSchema,
 	type Failure,
 	fail,
 	formatZodIssues,
 	issuesFromZod,
 	type Subscription,
+	SubscriptionSchema,
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -73,15 +72,15 @@ const CreateProfileBodySchema = z.object({
  * - PATCH /api/subs/:id → DeepPartial<Subscription>; merged onto current then validated
  *
  * We deliberately require the full Subscription on POST rather than letting the
- * server fill in defaults — `makeEmptySubscription({id, uid})` exists in
+ * server fill in defaults — `makeEmptySubscription({id, identity})` exists in
  * `@bilibili-notify/internal` and clients (the dashboard) call that locally.
  * Keeps the server stateless about defaults.
  *
- * 两支订阅(ADR-0019 决策 9):GET 两支都回。**新建拓展订阅**由宿主把关(见
- * {@link createExtensionSubscription}):`extensionId` 得是装着的 v2 订阅源(不要求在跑,决策 10),
- * 同一个拓展名下同一个外部 id 只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile`
- * 一起交,头像存成文件(决策 49)。已经存在的拓展订阅可以整份 POST 回来改(面板的启用开关就是
- * 这么发的),身份几格改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站订阅。
+ * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建拓展的订阅**(`identity.sourceKey`
+ * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v2 订阅源(不要求在跑,
+ * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
+ * 头像存成文件(决策 49)。**新建 B 站的订阅**核外部 id 是不是数字 uid。已经存在的订阅可以整份 POST 回来改
+ * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
  * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
@@ -98,16 +97,10 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			cachedProfile: rt?.cachedProfile,
 			state: { lastPushedAt: {}, liveStatus: "unknown" as const },
 		};
-		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流)。
+		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流);别的来源这两格缺着。
 		if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
 			return { ...sub, ...runtime };
-		// 身份是读出来的、不再靠 `kind` 收窄:TS 认不出这一支是 B 站的 DTO,在这里断言一次。
-		return {
-			...sub,
-			...runtime,
-			followed: rt?.followed,
-			followError: rt?.followError,
-		} as BiliSubscriptionDTO;
+		return { ...sub, ...runtime, followed: rt?.followed, followError: rt?.followError };
 	}
 
 	/**
@@ -174,7 +167,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		body: Record<string, unknown>,
 	): Promise<Response> {
 		const { cachedProfile: rawProfile, ...subBody } = body;
-		const parsed = ExtensionSubscriptionSchema.safeParse(subBody);
+		const parsed = SubscriptionSchema.safeParse(subBody);
 		if (!parsed.success) {
 			// 与 store 拒收时同一个形状(下面 upsert 失败走的也是它)。
 			return respondFailure(
@@ -217,8 +210,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			.getSubscriptions()
 			.find((s) => sameIdentity(subscriptionIdentityOf(s), identity));
 		if (duplicate) {
-			const name =
-				duplicate.name ?? deps.runtime.subRuntimeStore.get(duplicate.id)?.cachedProfile?.name;
+			const name = deps.runtime.subRuntimeStore.get(duplicate.id)?.cachedProfile?.name;
 			return respondFailure(
 				c,
 				fail(
@@ -245,7 +237,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	 * 就先不带头像,等 ④ 的「报资料更新」再来。
 	 */
 	async function seedExtensionProfile(
-		sub: ExtensionSubscription,
+		sub: Subscription,
 		seed: z.infer<typeof CreateProfileSchema>,
 		avatarDataUrl: string | undefined,
 	): Promise<void> {
@@ -400,11 +392,16 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		const read = await readJsonBody(c);
 		if (!read.ok) return respondFailure(c, read);
 		const body = read.body;
-		// 新建拓展订阅走宿主把关的那条路(见 createExtensionSubscription)。已有的那条整份 POST
-		// 回来改照常走下面 —— 身份改不动由 store 把关,带来的 cachedProfile 被 schema 剥掉。
-		if (isPlainObject(body) && body.kind === "extension") {
-			const exists = deps.store.getSubscriptions().some((s) => s.id === body.id);
-			if (!exists) return createExtensionSubscription(c, body);
+		// 新建的订阅按来源分:拓展的走宿主把关的那条路(见 createExtensionSubscription),B 站的先核 uid。
+		// 已有的那条整份 POST 回来改照常走下面 —— 身份改不动由 store 把关,带来的 cachedProfile 被 schema 剥掉。
+		const sourceKey =
+			isPlainObject(body) && isPlainObject(body.identity) ? body.identity.sourceKey : undefined;
+		const exists =
+			isPlainObject(body) && deps.store.getSubscriptions().some((s) => s.id === body.id);
+		if (isPlainObject(body) && !exists && typeof sourceKey === "string") {
+			if (sourceKey !== BILIBILI_SOURCE_KEY) return createExtensionSubscription(c, body);
+			const refusal = biliExternalIdRefusal(body.identity);
+			if (refusal) return respondFailure(c, refusal);
 		}
 		try {
 			// upsertSubscription validates via Zod internally
@@ -501,6 +498,18 @@ function subscriptionSourceRefusal(
 }
 
 /** B-station search wraps matched keywords with `<em class="keyword">…</em>`. */
+/**
+ * B 站订阅的外部 id 就是 uid,只能是数字。核在新建这一处:身份建好以后改不动(store 拒),中立的订阅 schema
+ * 不认得哪个来源的 id 长什么样(ADR-0021 决策 14)。
+ */
+function biliExternalIdRefusal(identity: unknown): Failure | undefined {
+	const externalId = isPlainObject(identity) ? identity.externalId : undefined;
+	if (typeof externalId === "string" && /^\d+$/.test(externalId)) return undefined;
+	return fail("invalid", "B 站订阅的外部 id 就是 UID,只能是数字", {
+		issues: [{ path: ["identity", "externalId"], message: "B 站的 UID 只能是数字" }],
+	});
+}
+
 function stripHtmlTags(s: string): string {
 	return s.replace(/<[^>]+>/g, "");
 }

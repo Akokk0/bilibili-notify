@@ -28,7 +28,10 @@ const lookups = {
 	subscriptionOf: (subscriptionId: string) =>
 		subscriptionId === SUB_ID
 			? {
-					subscription: makeEmptySubscription({ id: SUB_ID, uid: "u1" }),
+					subscription: makeEmptySubscription({
+						id: SUB_ID,
+						identity: { sourceKey: "bilibili", externalId: "u1" },
+					}),
 					profile: { name: "某UP", avatar: "http://a/x.jpg" },
 				}
 			: subscriptionId === EXT_ID
@@ -155,9 +158,9 @@ describe("historyRecordFromSend", () => {
 		expect(input).not.toHaveProperty("uavatarSnapshot");
 	});
 
-	// 拓展还没报过资料时(订阅刚加、拓展没报资料更新)订阅上没有资料名字:行的名字快照退到主人填的
-	// 别名(决策 77 的名字链,事件里的作者名这一层拿不到)。`notes` 是自由文字,不当名字用。
-	describe("拓展行的名字快照:资料里没名字 → 主人填的别名", () => {
+	// 拓展还没报过资料时(订阅刚加、拓展没报资料更新)订阅上没有资料名字:行的名字快照就留空 —— 主人
+	// 填的别名已退役(ADR-0021 决策 16),外部 id 在行上另有一格。`notes` 是自由文字,不当名字用。
+	describe("拓展行的名字快照:只取资料里的名字,没有就留空(别名已退役,ADR-0021 决策 16)", () => {
 		const EXT_NO_PROFILE = "55555555-5555-4555-8555-555555555555";
 		const info: PushSendInfo = {
 			pushId: "p7",
@@ -168,7 +171,7 @@ describe("historyRecordFromSend", () => {
 			messages: [],
 		};
 		const lookupsWith = (
-			over: { name?: string; notes?: string },
+			over: { notes?: string },
 			profile?: { name?: string; avatar?: string },
 		) => ({
 			subscriptionOf: (id: string) =>
@@ -180,39 +183,39 @@ describe("historyRecordFromSend", () => {
 					: undefined,
 		});
 
-		it("没有资料 → 别名", () => {
-			expect(historyRecordFromSend(info, lookupsWith({ name: "主人起的名" }))).toMatchObject({
-				unameSnapshot: "主人起的名",
-			});
-		});
-
-		it("资料里名字是空的 → 别名", () => {
-			expect(
-				historyRecordFromSend(info, lookupsWith({ name: "主人起的名" }, { name: "" })),
-			).toMatchObject({ unameSnapshot: "主人起的名" });
-		});
-
-		it("资料里有名字 → 资料的名字压过别名", () => {
-			expect(
-				historyRecordFromSend(info, lookupsWith({ name: "主人起的名" }, { name: "报来的名" })),
-			).toMatchObject({ unameSnapshot: "报来的名" });
-		});
-
-		it("别名也是空白 → 没有名字快照;备注不当名字用", () => {
-			const input = historyRecordFromSend(
-				info,
-				lookupsWith({ name: "  ", notes: "推给一群,周末别推" }),
-			);
+		it("没有资料 → 没有名字快照", () => {
+			const input = historyRecordFromSend(info, lookupsWith({}));
 			expect(input?.unameSnapshot).toBeUndefined();
 		});
 
-		it("B 站行不受影响:资料里没名字就没有快照,不拿别名顶", () => {
+		it("资料里名字是空的(或只有空白)→ 没有名字快照", () => {
+			for (const name of ["", "  "]) {
+				const input = historyRecordFromSend(info, lookupsWith({}, { name }));
+				expect(input?.unameSnapshot).toBeUndefined();
+			}
+		});
+
+		it("资料里有名字 → 就是资料的名字", () => {
+			expect(historyRecordFromSend(info, lookupsWith({}, { name: "报来的名" }))).toMatchObject({
+				unameSnapshot: "报来的名",
+			});
+		});
+
+		it("备注不当名字用:没有资料名时备注也进不了名字快照", () => {
+			const input = historyRecordFromSend(info, lookupsWith({ notes: "推给一群,周末别推" }));
+			expect(input?.unameSnapshot).toBeUndefined();
+		});
+
+		it("B 站行不受影响:资料里没名字就没有快照", () => {
 			const BILI = "66666666-6666-4666-8666-666666666666";
 			const input = historyRecordFromSend(
 				{ ...info, subscriptionId: BILI },
 				{
 					subscriptionOf: () => ({
-						subscription: { ...makeEmptySubscription({ id: BILI, uid: "9" }), name: "别名" },
+						subscription: makeEmptySubscription({
+							id: BILI,
+							identity: { sourceKey: "bilibili", externalId: "9" },
+						}),
 					}),
 				},
 			);

@@ -58,7 +58,7 @@ export interface ExtensionNameSources {
 
 /**
  * 这条拓展订阅此刻叫什么 —— 模板的 `{name}`(决策 77)与卡上的作者名都用它:事件里的作者名 → 订阅资料里
- * 的名字 → 主人手填的别名(订阅的 `name`)→ 外部 id。外部 id 恒有,所以总有个名字(与历史「没有名字就写
+ * 的名字 → 外部 id(别名已退役,ADR-0021 决策 16)。外部 id 恒有,所以总有个名字(与历史「没有名字就写
  * 外部 id」同一口径,决策 73)。
  *
  * ⚠️ 面板上标「备注」的是 `notes`,那是自由文字(「推给一群,周末别推」),**不当名字用** —— 印进卡里、
@@ -66,10 +66,7 @@ export interface ExtensionNameSources {
  */
 export function extensionSubscriptionName(sub: Subscription, from: ExtensionNameSources): string {
 	return (
-		filled(from.eventName) ??
-		filled(from.profileName) ??
-		filled(sub.name) ??
-		subscriptionIdentityOf(sub).externalId
+		filled(from.eventName) ?? filled(from.profileName) ?? subscriptionIdentityOf(sub).externalId
 	);
 }
 

@@ -39,7 +39,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const BILI = {
-	...makeEmptySubscription("111"),
+	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }),
 	cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
 };
 

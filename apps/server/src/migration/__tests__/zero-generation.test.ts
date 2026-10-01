@@ -72,6 +72,7 @@ const ZERO_FILES: Record<string, string> = {
 			atAll: { live: { "22222222-2222-4222-8222-222222222222": true } },
 		},
 	]),
+	// 拓展订阅:只作迁移输入,迁移时和上面那份合成新代里的一个 `config/subscriptions.json`,自己不进新代。
 	"state/extension-subscriptions.json": "[]",
 	// v1 的连接与目标:第二遍会把它们改写成最新的形状。
 	"state/connections.json": JSON.stringify([
@@ -179,7 +180,6 @@ const ZERO_FILES: Record<string, string> = {
 const EXPECTED_MOVES: Record<string, string> = {
 	"state/globals.json": "config/globals.json",
 	"state/subscriptions.json": "config/subscriptions.json",
-	"state/extension-subscriptions.json": "config/extension-subscriptions.json",
 	"state/connections.json": "config/connections.json",
 	"state/targets.json": "config/targets.json",
 	"state/sub-runtime.json": "runtime/sub-runtime.json",
@@ -391,7 +391,7 @@ describe("migrateZeroGeneration", () => {
 		expect(await readlink(link)).toBe(join(root, "elsewhere"));
 	});
 
-	it("残留、卡片皮肤、宿主的东西不带过来,都记进报告;认不得的一级项也记", async () => {
+	it("残留、卡片皮肤、宿主的东西不带过来,都记进报告;认不得的一级项也记;拓展订阅只作输入、也记进报告", async () => {
 		await placeZeroGeneration();
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
@@ -403,6 +403,7 @@ describe("migrateZeroGeneration", () => {
 				"history/2026-09-29.jsonl.tmp.99",
 				"notes.txt",
 				"state/adapters.json",
+				"state/extension-subscriptions.json",
 				"state/globals.json.bn-tmp.123.abcdef",
 				"state/targets.json.bak",
 				"state/targets.json.restore.bak",
@@ -455,8 +456,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 10,
-			output: "fce4ded0624e8847eedef58b66af20c5f4b41826c8ddf7a5e458441823d49f36",
+			revision: 11,
+			output: "17790ff3d12be63731b946a3d39f0ace8a9a15de34fc4b4ea2699b18575a8908",
 		});
 	});
 });

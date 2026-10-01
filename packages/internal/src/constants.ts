@@ -1176,33 +1176,6 @@ export function isExtensionConnection(
 	return extensionId === undefined || connection.extensionId === extensionId;
 }
 
-// ---- 订阅的两支(ADR-0019 决策 9 / 47)的零依赖判据 ----------------------------------
-//
-// 与上面连接那几个同理:面板也要按这一格分流(列表那一行、统计 / 锐评 / 卡片页只列 B 站订阅),
-// 而它只能 `import type` 域模型。schema 那边从这里引,两边是同一份判据。
-
-/** 订阅的两支:B 站订阅、拓展提供的订阅。 */
-export type SubscriptionKind = "bilibili" | "extension";
-
-/**
- * 这条是 B 站订阅吗。泛型:订阅本体、wire DTO、折叠后的视图都能用它收窄。
- *
- * 判据写成「不是拓展的」而不是「kind 等于 bilibili」:与盘上的规矩同一个口径 —— 没有 `kind`
- * 就是 B 站(决策 47)。两个判据因此互斥且合起来覆盖全部。
- */
-export function isBiliSubscription<T extends { kind: SubscriptionKind }>(
-	sub: T,
-): sub is Extract<T, { kind: "bilibili" }> {
-	return sub.kind !== "extension";
-}
-
-/** 这条是拓展订阅吗。同 {@link isBiliSubscription}。 */
-export function isExtensionSubscription<T extends { kind: SubscriptionKind }>(
-	sub: T,
-): sub is Extract<T, { kind: "extension" }> {
-	return sub.kind === "extension";
-}
-
 // ---- 订阅的身份(ADR-0021 决策 14)-------------------------------------------------
 //
 // 「这条订阅订的是谁」只看两格:哪个来源、来源那头的 id。分派、查找、取色都从这里取,不再按订阅
@@ -1236,22 +1209,10 @@ export interface Identity {
 }
 
 /**
- * {@link subscriptionIdentityOf} 认得的订阅形状:订阅本体、wire DTO、折叠后的视图都是。
- *
- * ⚠️ 过渡写法(⑥d):订阅还分 B 站 / 拓展两支时才需要它。订阅每行直接带 `identity` 以后,这个类型删掉,
- * 函数只剩读那一格 —— 中立包里不留按来源分支的代码。
+ * 这条订阅订的是谁 —— 全仓唯一的读法,别处一律经它取(ADR-0023:取订阅身份的函数叫这个名字)。
  */
-export type SubscriptionIdentitySource =
-	| { kind: "bilibili"; uid: string }
-	| { kind: "extension"; extensionId: string; externalId: string };
-
-/**
- * 这条订阅订的是谁 —— 全仓唯一认得订阅两支身份格的函数,别处一律读它的结果(过渡写法,见上)。
- */
-export function subscriptionIdentityOf(sub: SubscriptionIdentitySource): Identity {
-	return sub.kind === "extension"
-		? { sourceKey: sub.extensionId, externalId: sub.externalId }
-		: { sourceKey: BILIBILI_SOURCE_KEY, externalId: sub.uid };
+export function subscriptionIdentityOf(sub: { identity: Identity }): Identity {
+	return sub.identity;
 }
 
 /** 两个身份是不是同一个人。 */

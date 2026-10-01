@@ -465,11 +465,13 @@ describe("StatsStore — 不认老形状(0.x 的老行归迁移器改写,这一�
 
 describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 16)", () => {
 	const BILI_SUB = {
-		kind: "bilibili",
 		id: "0b1c2d3e-0000-4000-8000-000000000001",
-		uid: "12345",
+		identity: { sourceKey: "bilibili", externalId: "12345" },
 	} as const;
-	const EXT_SUB = { kind: "extension", id: "3f2c1a9e-8b7d-4c6e-9a1f-0b2c3d4e5f60" } as const;
+	const EXT_SUB = {
+		id: "3f2c1a9e-8b7d-4c6e-9a1f-0b2c3d4e5f60",
+		identity: { sourceKey: "douyin", externalId: "sec-1" },
+	} as const;
 
 	it("statsFileKey:两支都是订阅 id —— B 站不再用 uid,拓展不再加 ext- 前缀", () => {
 		expect(statsFileKey(BILI_SUB)).toBe(BILI_SUB.id);

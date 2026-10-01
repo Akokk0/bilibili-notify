@@ -26,7 +26,11 @@ const apiGet = vi.hoisted(() =>
 	vi.fn(async (path: string) => {
 		if (path === "/api/health") return { status: "ok", uptime: 1 };
 		// 两个计数都给非零 —— 0 也照样渲染气泡,但非零更贴近主人截图里的样子。
-		if (path === "/api/subs") return [{ uid: "1" }, { uid: "2" }, { uid: "3" }];
+		if (path === "/api/subs") {
+			return ["1", "2", "3"].map((externalId) => ({
+				identity: { sourceKey: "bilibili", externalId },
+			}));
+		}
 		if (path === "/api/targets") return [{ id: "a" }, { id: "b" }];
 		return null;
 	}),

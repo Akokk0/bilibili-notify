@@ -12,11 +12,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS } from "../../constants";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
-import {
-	BiliSubscriptionSchema,
-	ExtensionSubscriptionSchema,
-	makeEmptySubscription,
-} from "../subscriptions";
+import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 /** 值里能被原地改的容器,连同它在树里的路径。 */
 function containers(value: unknown, path = "$", out = new Map<object, string>()) {
@@ -40,21 +36,10 @@ function sharedPaths(a: unknown, b: unknown): string[] {
 
 const emptyRouting = () => Object.fromEntries(FEATURE_KEYS.map((k) => [k, [] as string[]]));
 
-/** 盘上一条 B 站订阅的最小形状:带默认值的键(groups / extras / roastSchedule / specialUsers)都缺着。 */
-const diskBiliRow = () => ({
+/** 盘上一条订阅的最小形状:带默认值的键(groups / extras / roastSchedule / specialUsers)都缺着。 */
+const diskRow = (identity: { sourceKey: string; externalId: string }) => ({
 	id: "11111111-1111-4111-8111-111111111111",
-	uid: "12345",
-	enabled: true,
-	routing: emptyRouting(),
-	overrides: {},
-});
-
-/** 盘上一条拓展订阅的最小形状,同上。 */
-const diskExtensionRow = () => ({
-	kind: "extension",
-	id: "22222222-2222-4222-8222-222222222222",
-	extensionId: "douyin",
-	externalId: "MS4wLjABAAAA-sec_uid",
+	identity,
 	enabled: true,
 	routing: emptyRouting(),
 	overrides: {},
@@ -81,19 +66,19 @@ describe("出厂配置与解析结果不共用可变容器", () => {
 	});
 
 	it("makeEmptySubscription 两次", () => {
-		const opts = { id: "11111111-1111-4111-8111-111111111111", uid: "12345" };
+		const opts = {
+			id: "11111111-1111-4111-8111-111111111111",
+			identity: { sourceKey: "bilibili", externalId: "12345" },
+		};
 		expect(sharedPaths(makeEmptySubscription(opts), makeEmptySubscription(opts))).toEqual([]);
 	});
 
-	it("缺默认键的 B 站订阅解析两次", () => {
-		const a = BiliSubscriptionSchema.parse(diskBiliRow());
-		const b = BiliSubscriptionSchema.parse(diskBiliRow());
-		expect(sharedPaths(a, b)).toEqual([]);
-	});
-
-	it("缺默认键的拓展订阅解析两次", () => {
-		const a = ExtensionSubscriptionSchema.parse(diskExtensionRow());
-		const b = ExtensionSubscriptionSchema.parse(diskExtensionRow());
+	it.each([
+		["B 站", { sourceKey: "bilibili", externalId: "12345" }],
+		["拓展", { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" }],
+	])("缺默认键的%s订阅解析两次", (_label, identity) => {
+		const a = SubscriptionSchema.parse(diskRow(identity));
+		const b = SubscriptionSchema.parse(diskRow(identity));
 		expect(sharedPaths(a, b)).toEqual([]);
 	});
 });

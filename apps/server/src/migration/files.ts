@@ -100,9 +100,9 @@ async function modeOf(path: string): Promise<number | undefined> {
 }
 
 /**
- * 普通对象(`JSON.parse` 出来的对象落在 `Object.prototype` 上)。判据和 internal 的 `util/plain-object.ts` 逐字
- * 相同 —— 收进来的 preprocess 用的就是那一份,换一种判据等于对同一坨老数据给出另一种答案。那一份刻意不进
- * internal 的根入口,所以这里留一份。
+ * 普通对象(`JSON.parse` 出来的对象落在 `Object.prototype` 或 `null` 上)。判据带原型检查:数组、`Date`、类实例都不算,
+ * 迁移只往普通对象里递归改写。从前 internal 也有一份同判据的,给收进迁移器之前的 preprocess 用;preprocess 搬进来以后
+ * 那份没人用了,已删。
  */
 export function isPlainObject(x: unknown): x is Record<string, unknown> {
 	if (x === null || typeof x !== "object" || Array.isArray(x)) return false;

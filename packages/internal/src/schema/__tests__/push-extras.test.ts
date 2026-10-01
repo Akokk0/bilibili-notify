@@ -14,10 +14,10 @@ import { FeatureFlagsPartialSchema, FeatureFlagsSchema } from "../common";
 import { makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
 import {
-	BiliSubscriptionSchema,
 	makeEmptySubscription,
 	type Subscription,
 	SubscriptionRoutingSchema,
+	SubscriptionSchema,
 } from "../subscriptions";
 
 const T1 = "10000000-0000-4000-8000-000000000001";
@@ -26,7 +26,7 @@ const T3 = "10000000-0000-4000-8000-000000000003";
 
 const SUB_BASE: Subscription = makeEmptySubscription({
 	id: "11111111-1111-4111-8111-111111111111",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
 
 const NEW_KEYS = [
@@ -161,7 +161,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 
 	it("订阅上的 atAll / atAllDefaults 不会并进 extras / overrides:老键被剥掉,extras 留空表", () => {
 		const { extras: _gone, ...base } = SUB_BASE;
-		const parsed = BiliSubscriptionSchema.parse({
+		const parsed = SubscriptionSchema.parse({
 			...base,
 			routing: { ...SUB_BASE.routing, live: [T1] },
 			atAllDefaults: { dynamic: true, live: false },

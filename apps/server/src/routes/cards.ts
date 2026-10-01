@@ -245,12 +245,12 @@ export function testPushCaption(kind: PreviewKind): string {
 	return `【bilibili-notify 测试推送】${KIND_LABEL[kind]}卡片`;
 }
 
-/** 引用列表里怎么称呼一条订阅。B 站的写 `UP <uid>`,别的来源用名字 / 外部 id 指认。 */
+/** 引用列表里怎么称呼一条订阅。B 站的写 `UP <uid>`,别的来源用外部 id 指认。 */
 function subscriptionLabel(s: Subscription): string {
 	const identity = subscriptionIdentityOf(s);
 	return identity.sourceKey === BILIBILI_SOURCE_KEY
 		? `UP ${identity.externalId}`
-		: `订阅「${s.name || identity.externalId}」`;
+		: `订阅「${identity.externalId}」`;
 }
 
 /**

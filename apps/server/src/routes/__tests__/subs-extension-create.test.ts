@@ -1,5 +1,5 @@
 /**
- * 新建拓展订阅 + 它的头像文件(ADR-0019 决策 9 / 10 / 49 / 50)。
+ * 新建订阅(拓展来源的 + B 站来源的)+ 拓展来源订阅的头像文件(ADR-0019 决策 9 / 10 / 49 / 50;ADR-0021 决策 14)。
  *
  * 真的 ConfigStore / SubRuntimeStore / 头像仓(`createAppRuntime`,临时 dataDir)、真的 `createApp` ——
  * 装了哪些拓展从 `extensions.loaded` 那一格递进来,与 `index.ts` 同一条线,所以 app 那头漏接的话
@@ -7,10 +7,11 @@
  * `bindSubscriptionStore` → `subscription-changed` 的 remove → 头像跟着删。
  *
  *  - 宿主核 `extensionId`:装着、v2、清单开了订阅源那一口;**没在跑也行**(订阅是数据,决策 10)。
- *  - 同一个拓展名下同一个外部 id 只许一条(决策 50:身份判重)→ 409。
+ *  - 同一个身份(来源 + 外部 id 两格都相等)只许一条(决策 50:身份判重)→ 409。
  *  - 候选带来的资料(名字 / 头像 / 粉丝)种进资料缓存;头像存成文件,资料里是同源的相对地址。
  *  - 头像只收位图,魔数要对得上;不合规矩的整次 400、一样都不落。
- *  - B 站那条新建、已有那条整份 POST 回来(启用开关),照旧。
+ *  - 新建 B 站来源的订阅:外部 id 就是 UID,得是数字(中立的订阅 schema 不认得这条规矩,核在新建这一处);
+ *    已有那条整份 POST 回来(启用开关),照旧。
  */
 
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -29,7 +30,7 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
-import { CONFIG_DIR, EXTENSION_SUBSCRIPTIONS_FILE } from "../../config/store.js";
+import { CONFIG_DIR } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
@@ -181,17 +182,18 @@ describe("新建拓展订阅", () => {
 		expect(res.status, await res.clone().text()).toBe(200);
 
 		const row = (await listed()).find((s) => s.id === SUB_ID);
-		expect(row).toMatchObject({ kind: "extension", extensionId: "douyin", externalId: "sec-1" });
+		expect(row).toMatchObject({ identity: { sourceKey: "douyin", externalId: "sec-1" } });
 		const profile = row?.cachedProfile;
 		expect(profile).toMatchObject({ name: "抖音某人", sign: "", fans: 42 });
 		expect(profile?.avatar).toMatch(new RegExp(`^/api/subs/${SUB_ID}/avatar\\?v=[0-9a-f]{12}$`));
 		expect(Date.parse(profile?.lastRefreshedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
 
-		// 落了盘:拓展订阅那个文件里有它,头像文件在。
+		// 落了盘:订阅那个文件里有它(带 identity),头像文件在。
 		const disk = JSON.parse(
-			await readFile(join(dataDir, ...CONFIG_DIR, EXTENSION_SUBSCRIPTIONS_FILE), "utf8"),
-		) as Array<{ id: string }>;
+			await readFile(join(dataDir, ...CONFIG_DIR, "subscriptions.json"), "utf8"),
+		) as Array<{ id: string; identity: unknown }>;
 		expect(disk.map((s) => s.id)).toEqual([SUB_ID]);
+		expect(disk[0]?.identity).toEqual({ sourceKey: "douyin", externalId: "sec-1" });
 		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);
 
 		const img = await app.request(profile?.avatar ?? "");
@@ -264,6 +266,44 @@ describe("新建拓展订阅", () => {
 		expect((await post(extSub({ id: OTHER_ID, extensionId: "kuaishou" }))).status).toBe(200);
 	});
 
+	it("判重看身份两格:B 站来源与拓展来源的外部 id 是同一串数字也不算重(两个方向都一样)", async () => {
+		// 拓展先、B 站后。
+		expect((await post(extSub({ externalId: "12345" }))).status).toBe(200);
+		expect(
+			(
+				await post(
+					makeEmptySubscription({
+						id: OTHER_ID,
+						identity: { sourceKey: "bilibili", externalId: "12345" },
+					}),
+				)
+			).status,
+		).toBe(200);
+		// B 站先、另一个拓展后。
+		entries = [sourceEntry("douyin"), sourceEntry("kuaishou")];
+		expect(
+			(
+				await post(
+					extSub({
+						id: "e1000000-0000-4000-8000-000000000003",
+						extensionId: "kuaishou",
+						externalId: "12345",
+					}),
+				)
+			).status,
+		).toBe(200);
+		expect((await listed()).map((s) => s.identity)).toEqual([
+			{ sourceKey: "douyin", externalId: "12345" },
+			{ sourceKey: "bilibili", externalId: "12345" },
+			{ sourceKey: "kuaishou", externalId: "12345" },
+		]);
+		// 同一身份再来一次才是重。
+		const dup = await post(
+			extSub({ id: "e1000000-0000-4000-8000-000000000004", externalId: "12345" }),
+		);
+		expect(dup.status).toBe(409);
+	});
+
 	it.each([
 		["SVG", avatarDataUrl("svg+xml", Buffer.from("<svg/>"))],
 		["http 地址", "https://p3.douyinpic.com/a.jpeg"],
@@ -311,7 +351,7 @@ describe("新建拓展订阅", () => {
 		};
 		expect(body.code).toBe("invalid");
 		expect(body.message).toMatch(/^订阅有 \d+ 格不合法：/);
-		expect(body.issues).toEqual([expect.objectContaining({ path: ["externalId"] })]);
+		expect(body.issues).toEqual([expect.objectContaining({ path: ["identity", "externalId"] })]);
 		expect(await listed()).toEqual([]);
 	});
 
@@ -332,6 +372,68 @@ describe("新建拓展订阅", () => {
 	});
 });
 
+describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () => {
+	const bili = (externalId: unknown, id = OTHER_ID) => ({
+		...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: "1" } }),
+		identity: { sourceKey: "bilibili", externalId },
+	});
+
+	it.each([
+		["字母", "abc"],
+		["数字夹字母", "12a"],
+		["空串", ""],
+		["带空格", " 123"],
+		["小数", "1.5"],
+		["负数", "-1"],
+		["数字类型(不是字符串)", 12345],
+	])(
+		"外部 id 是 %s → 400 invalid,点名 identity.externalId,一样都不落",
+		async (_label, externalId) => {
+			const res = await post(bili(externalId));
+			expect(res.status, await res.clone().text()).toBe(400);
+			const body = (await res.json()) as {
+				code: string;
+				message: string;
+				issues: Array<{ path: string[]; message: string }>;
+			};
+			expect(body.code).toBe("invalid");
+			expect(body.message).toContain("UID");
+			expect(body.issues).toEqual([
+				{ path: ["identity", "externalId"], message: expect.any(String) },
+			]);
+			expect(await listed()).toEqual([]);
+			expect(await exists(join(dataDir, "avatars"))).toBe(false);
+		},
+	);
+
+	it("是数字 → 照常建;身份原样进盘", async () => {
+		for (const [id, uid] of [
+			[OTHER_ID, "12345"],
+			["e1000000-0000-4000-8000-000000000005", "0"],
+		] as const) {
+			const res = await post(bili(uid, id));
+			expect(res.status, await res.clone().text()).toBe(200);
+		}
+		expect((await listed()).map((s) => s.identity)).toEqual([
+			{ sourceKey: "bilibili", externalId: "12345" },
+			{ sourceKey: "bilibili", externalId: "0" },
+		]);
+	});
+
+	it("只核新建:已有的 B 站订阅整份 POST 回来(身份不变)不再核,别的字段照改", async () => {
+		// 盘上已经有一条外部 id 不是数字的 B 站来源订阅(比如手改过文件):它不是「新建」,这一道不拦它。
+		const odd = bili("not-a-number");
+		await runtime.configStore.upsertSubscription(odd as never);
+		const res = await post({ ...odd, enabled: false });
+		expect(res.status, await res.clone().text()).toBe(200);
+		expect((await listed()).find((s) => s.id === OTHER_ID)?.enabled).toBe(false);
+	});
+
+	it("拓展来源的订阅不核数字:外部 id 什么字符都行", async () => {
+		expect((await post(extSub({ externalId: "MS4wLjABAAAA-sec_uid" }))).status).toBe(200);
+	});
+});
+
 describe("已有的照旧", () => {
 	it("已有的拓展订阅整份 POST 回来(启用开关)→ 改得动;带着资料也不重种、不写头像", async () => {
 		expect((await post({ ...extSub(), cachedProfile: { name: "原来的名字" } })).status).toBe(200);
@@ -347,7 +449,10 @@ describe("已有的照旧", () => {
 	});
 
 	it("B 站订阅新建照旧,不碰头像目录", async () => {
-		const bili = makeEmptySubscription({ id: OTHER_ID, uid: "12345" });
+		const bili = makeEmptySubscription({
+			id: OTHER_ID,
+			identity: { sourceKey: "bilibili", externalId: "12345" },
+		});
 		expect((await post(bili)).status).toBe(200);
 		expect((await listed()).map((s) => s.id)).toEqual([OTHER_ID]);
 		expect(await exists(join(dataDir, "avatars"))).toBe(false);

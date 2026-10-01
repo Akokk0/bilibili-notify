@@ -389,7 +389,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 不许碰盘)。
 		runtime.statsRecorder.start();
 
-		// Load on-disk runtime config (config/globals.json, state/subscriptions.json, state/targets.json).
+		// Load on-disk runtime config (config/globals.json, config/subscriptions.json, config/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
 		await runtime.configStore.load();
@@ -606,7 +606,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						return {
 							id: sub.id,
 							uid,
-							name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
+							name: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 							enabled: sub.enabled,
 							roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
 							specialUsers: sub.specialUsers.map((u) => u.uid),

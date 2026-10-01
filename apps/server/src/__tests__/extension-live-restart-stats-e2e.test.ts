@@ -65,8 +65,8 @@ const T2 = ${T2};
 const URL = "https://live.restart-probe.invalid/1";
 export function activate(ctx) {
 	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
-	const id = ${JSON.stringify(SUB.externalId)};
-	const flicker = ${JSON.stringify(FLICKER.externalId)};
+	const id = ${JSON.stringify(SUB.identity.externalId)};
+	const flicker = ${JSON.stringify(FLICKER.identity.externalId)};
 	ctx.onAction("report.post", () =>
 		handle.reportPost(id, { id: "restart-post-1", url: URL, publishedAt: Date.now(), text: "推送关着也记" }),
 	);
@@ -243,10 +243,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 			}),
 		);
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
-		await writeFile(
-			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
-			JSON.stringify([SUB, FLICKER]),
-		);
+		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify([SUB, FLICKER]));
 	});
 
 	afterAll(async () => {

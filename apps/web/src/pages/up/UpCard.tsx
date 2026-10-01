@@ -2,12 +2,7 @@ import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notif
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
-import {
-	BILIBILI_SOURCE_KEY,
-	isBiliSubscription,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../../types/domain";
+import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../../types/domain";
 import { displayName, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
 import {
@@ -191,9 +186,9 @@ export function UpCard({
 				 * 这条订阅看着正常,实际是哑的。所以是**故障**不是提示:显眼、常驻,而不是创建
 				 * 时一闪而过的 toast。followed===undefined(服务端没检查过 / 老数据)不显示,
 				 * 那不等于「未关注」,别凭空吓人。
-				 * 关注状态是 B 站支独有的非身份字段(DTO 形状这一片不动),所以这一处仍靠收窄来读。
+				 * 关注状态只有能关注的来源才有(今天只有 B 站),别的来源 `followed` 缺着,所以先判是 B 站。
 				 */}
-				{isBiliSubscription(sub) && sub.followed === false ? (
+				{isBili && sub.followed === false ? (
 					<ErrorNote size="sm" icon={<Icon.warning size={12} />} className="mb-2.5">
 						未关注该 UP —— 收不到动态
 						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}

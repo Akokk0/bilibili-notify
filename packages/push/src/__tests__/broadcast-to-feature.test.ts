@@ -102,7 +102,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("routing 空数组 → 不调 sink", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
 			...pushBase(),
@@ -116,7 +119,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("routing 命中两个 target → sink.send 调两次", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1", "t2"];
 		setExtraDefault(sub, "atAllLive", false); // 排除 @全体 路径的额外 send 调用,只验证路由
 		const { sink, calls } = makeSink();
@@ -132,7 +138,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("features.X=false(defaults provider)→ 短路,不调 sink", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		const defaults = loopbackDefaults();
 		defaults.features.live = false;
@@ -150,7 +159,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("quietHours 命中(0-24)→ 全天免扰,不发", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		const defaults = loopbackDefaults();
 		defaults.schedule.quietHours = [{ start: 0, end: 0 }]; // 整天免扰
@@ -168,7 +180,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("quietHours 按 quietHoursNow 给的那一刻判,不按真时钟 —— devtools「当作现在是 xx:xx」靠它", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		const defaults = loopbackDefaults();
 		defaults.schedule.quietHours = [{ start: 2, end: 4 }]; // 凌晨 2-4 点免扰
@@ -193,7 +208,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("extras.atAllDynamic 默认为 true → @全体单独一条 + 原 payload 两条独立消息", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["t1"];
 		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
@@ -216,7 +234,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("atAll tristate 覆写:per-target false 强 OFF + 顺序 plain → @全体 → 原 payload", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1", "t2"];
 		setExtraDefault(sub, "atAllLive", true);
 		sub.extras.atAllLive = { t1: false }; // 显式关 t1 的 @全体,t2 走 default=true
@@ -247,7 +268,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// 以前照样进 @全体 分支,单发一条只含 at-all 段的消息 —— 官机适配器把那一段丢掉,
 		// 剩下空消息,每次开播都记一条「empty payload」失败;抽屉里这种目标的 @全体开关
 		// 却一直显示为关、还写着「发送时会自动跳过」。
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink({ platform: "qq-official" });
@@ -269,7 +293,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=live 且 extras.atAllLive 默认为 true(本次 bug 修复:周期「正在直播」)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1", "t2"];
 		setExtraDefault(sub, "atAllLive", true);
 		sub.extras.atAllLive = { t1: true }; // 即便 per-target 显式 true 也得被抑制
@@ -293,7 +320,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 
 	it("opts.allowAtAll=true(显式)或不传 → 维持按 feature 决定的旧行为(开播仍 @全体)", async () => {
 		const mk = () => {
-			const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+			const sub = makeEmptySubscription({
+				id: "s1",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			});
 			sub.routing.live = ["t1"];
 			setExtraDefault(sub, "atAllLive", true);
 			return sub;
@@ -341,7 +371,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("@全体 单独一条 → composite [image,text] 原 payload 第二条(live)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink();
@@ -373,7 +406,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("@全体 单独一条对 dynamic 同样生效(共用 broadcastToFeature 分支)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["t1"];
 		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
@@ -401,7 +437,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("@全体 单独一条:image+caption / text-only 原 payload 都保持原样不变", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", true);
 		const { sink, calls } = makeSink();
@@ -439,7 +478,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 
 	it("forward-images + atAllTargets:同样先发独立 @全体 再发合并转发", async () => {
 		// 合并转发节点跟外层独立 @全体 不冲突,一视同仁两条发出,@ 提醒在前。
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["t1"];
 		setExtraDefault(sub, "atAllDynamic", true);
 		const { sink, calls } = makeSink();
@@ -466,7 +508,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("非 dynamic / live 的 feature 不进入 atAll 分支(superchat 即使 extras.atAllDynamic=true)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.superchat = ["t1"];
 		setExtraDefault(sub, "atAllDynamic", true); // 无效字段,不应影响 superchat
 		const { sink, calls } = makeSink();
@@ -485,7 +530,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// 回归:无管理权限的群发 @全体 会触发协议端拒绝 + adapter 重试,旧版顺序
 		// await @全体 会把卡片正文连同 broadcastToFeature 一起拖到重试结束。现在
 		// @全体 best-effort 即发不 await,卡片不再被它拖住。
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", true);
 		const calls: SendCall[] = [];
@@ -532,7 +580,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	// 关停(切片 ③):@全体 即发不等,它落地后追加的那次 onSend 会把这条落进历史。不登记进 track 的话,
 	// 关停返回、历史写道关门之后这次回调才到 —— 那条 @全体 的历史就丢了。
 	it("@全体 落地后追加的那次 onSend 登记进 track:回调交出去它才落定", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", true);
 		const isAtAll = (p: NotificationPayload) =>
@@ -590,7 +641,10 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	});
 
 	it("onSend 每个 target 触发一次,target 字段填", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["t1", "t2"];
 		const onSend = vi.fn();
 		const { sink } = makeSink();
@@ -618,9 +672,15 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
  */
 describe("BilibiliPush.broadcastToFeature — 按订阅 id 找订阅", () => {
 	it("两条 uid 相同、路由不同的 B 站订阅:按 B 的 id 广播只发到 B 的目标", async () => {
-		const a = makeEmptySubscription({ id: "sA", uid: "u1" });
+		const a = makeEmptySubscription({
+			id: "sA",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		a.routing.live = ["tA"];
-		const b = makeEmptySubscription({ id: "sB", uid: "u1" });
+		const b = makeEmptySubscription({
+			id: "sB",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		b.routing.live = ["tB"];
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
@@ -634,7 +694,7 @@ describe("BilibiliPush.broadcastToFeature — 按订阅 id 找订阅", () => {
 		expect(calls.map((c) => c.targetId)).toEqual(["tB"]);
 	});
 
-	it("拓展订阅(没有 uid)按 id 广播能路由到它的目标,onSend 带的是它的订阅 id", async () => {
+	it("拓展来源的订阅(外部 id 不是 uid)按 id 广播能路由到它的目标,onSend 带的是它的订阅 id", async () => {
 		const ext = makeExtensionSub({ id: "sE", externalId: "u1" });
 		ext.routing.dynamic = ["tE"];
 		setExtraDefault(ext, "atAllDynamic", false);
@@ -677,7 +737,10 @@ describe("BilibiliPush.broadcastToFeature — 日志里的订阅标签", () => {
 	}
 
 	it("B 站订阅 → uid=<uid>", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		expect(await gateLogLine(sub)).toBe("[push] uid=u1 feature=live 总开关 OFF，跳过");
 	});

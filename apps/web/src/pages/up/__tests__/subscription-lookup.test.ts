@@ -8,20 +8,16 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import { createSubscriptionLookup } from "../subscription-lookup";
 
 function bili(id: string, uid: string): Subscription {
-	return { ...makeEmptySubscription(uid), id };
+	return { ...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }), id };
 }
 
 const FIRST = bili("s-first", "u1");
 const SECOND = bili("s-second", "u1");
-const EXT = { ...makeEmptyExtensionSubscription("douyin", "u9"), id: "s-ext" };
+const EXT = { ...makeEmptySubscription({ sourceKey: "douyin", externalId: "u9" }), id: "s-ext" };
 
 describe("createSubscriptionLookup", () => {
 	const lookup = createSubscriptionLookup([FIRST, SECOND, EXT]);
@@ -54,9 +50,18 @@ describe("createSubscriptionLookup", () => {
  * **拓展**订阅;绝不跨支 —— 与服务端重推的 `currentSubscriptionOf` 同一条规矩。
  */
 describe("createSubscriptionLookup — 拓展行", () => {
-	const OTHER_EXT = { ...makeEmptyExtensionSubscription("kuaishou", "sec-1"), id: "s-kuaishou" };
-	const EXT_A = { ...makeEmptyExtensionSubscription("douyin", "sec-1"), id: "s-ext-a" };
-	const EXT_B = { ...makeEmptyExtensionSubscription("douyin", "sec-1"), id: "s-ext-b" };
+	const OTHER_EXT = {
+		...makeEmptySubscription({ sourceKey: "kuaishou", externalId: "sec-1" }),
+		id: "s-kuaishou",
+	};
+	const EXT_A = {
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
+		id: "s-ext-a",
+	};
+	const EXT_B = {
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
+		id: "s-ext-b",
+	};
 	const BILI = bili("s-bili", "123");
 	const lookup = createSubscriptionLookup([BILI, OTHER_EXT, EXT_A, EXT_B]);
 	const extRow = (subscriptionId: string, externalId = "sec-1") => ({

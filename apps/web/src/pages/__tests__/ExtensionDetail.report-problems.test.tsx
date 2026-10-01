@@ -56,19 +56,9 @@ vi.mock("../../services/api", () => ({
 }));
 
 function extSub(id: string, externalId: string, name?: string): Subscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
 	return {
-		...common,
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: externalId }),
 		id,
-		kind: "extension",
-		extensionId: "douyin",
-		externalId,
 		cachedProfile: name
 			? { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" }
 			: undefined,

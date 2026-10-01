@@ -12,14 +12,12 @@
  */
 
 import {
-	BILIBILI_SOURCE_KEY,
 	type FailureCode,
 	isTargetPaused,
 	type Logger,
 	type NotificationPayload,
 	type RoastSchedule,
 	type Subscription,
-	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import {
@@ -307,16 +305,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	}
 
 	/**
-	 * 日志与私聊里这条单人锐评叫什么。B 站照旧(主人起的别名 → `UID xxx`);拓展走名字链(资料 → 别名 →
-	 * 外部 id,`roast-subject.ts`)—— 拓展订阅没有 uid,写成「UID undefined」主人认不出是谁。
+	 * 日志与私聊里这条单人锐评叫什么:与生成、投递同一条名字链(`roast-subject.ts`)。从前 B 站这里读别名,
+	 * 别名退役(ADR-0021 决策 16)后统一走资料名。
 	 */
 	function soloLabel(sub: Subscription): string {
-		const identity = subscriptionIdentityOf(sub);
-		const name =
-			identity.sourceKey === BILIBILI_SOURCE_KEY
-				? sub.name?.trim() || `UID ${identity.externalId}`
-				: roastSubjectName(deps, sub);
-		return `${name} 的锐评`;
+		return `${roastSubjectName(deps, sub)} 的锐评`;
 	}
 
 	/**

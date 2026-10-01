@@ -144,7 +144,7 @@ function start(): void {
 function report(r: SubscriptionReport, ids: readonly string[] = [SUB.id]): void {
 	bus.emit("subscription-reported", {
 		extensionId: EXT,
-		externalId: SUB.externalId,
+		externalId: SUB.identity.externalId,
 		subscriptionIds: [...ids],
 		report: r,
 	});
@@ -377,7 +377,7 @@ describe("周期「正在直播」", () => {
 		expect(problems[0]).toMatchObject({
 			extensionId: EXT,
 			kind: "liveStatus",
-			externalId: SUB.externalId,
+			externalId: SUB.identity.externalId,
 			subscriptionIds: [SUB.id],
 			outcome: "skipped",
 		});

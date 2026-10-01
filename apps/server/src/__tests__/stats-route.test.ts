@@ -54,7 +54,11 @@ function makeDeps(f: Fixture): RouteDeps {
 		},
 		store: {
 			getSubscriptions: () =>
-				(f.subs ?? []).map((s) => ({ kind: "bilibili", id: subId(s.uid), ...s })),
+				(f.subs ?? []).map(({ uid, ...s }) => ({
+					id: subId(uid),
+					identity: { sourceKey: "bilibili", externalId: uid },
+					...s,
+				})),
 		},
 		puppeteer: null,
 		wsTicketStore: null,

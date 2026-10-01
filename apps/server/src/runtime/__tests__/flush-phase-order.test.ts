@@ -77,8 +77,8 @@ describe("createAppRuntime 的 flush 段", () => {
 		// 资料缓存仓要是已经先关了门,它就被拒、这条资料丢掉。光是「在途的写等得到」测不出先后。
 		storageWriteGate.hold();
 		runtime.bus.emit("subscription-reported", {
-			extensionId: SUB.extensionId,
-			externalId: SUB.externalId,
+			extensionId: SUB.identity.sourceKey,
+			externalId: SUB.identity.externalId,
 			subscriptionIds: [SUB.id],
 			report: { kind: "profile", value: { name: "甲", avatar: PNG_BYTES } },
 		});

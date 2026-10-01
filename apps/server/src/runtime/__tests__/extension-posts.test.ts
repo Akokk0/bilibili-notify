@@ -94,8 +94,8 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 
 		for (const n of [1, 2]) {
 			bus.emit("subscription-reported", {
-				extensionId: SUB.extensionId,
-				externalId: SUB.externalId,
+				extensionId: SUB.identity.sourceKey,
+				externalId: SUB.identity.externalId,
 				subscriptionIds: [SUB.id],
 				report: { kind: "post", value: post(n) },
 			});
@@ -163,8 +163,8 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 		const checked = checkSubscriptionReport("post", { ...post(1), text });
 		if (!checked.ok) throw new Error(checked.reason);
 		bus.emit("subscription-reported", {
-			extensionId: SUB.extensionId,
-			externalId: SUB.externalId,
+			extensionId: SUB.identity.sourceKey,
+			externalId: SUB.identity.externalId,
 			subscriptionIds: [SUB.id],
 			report: { kind: "post", value: checked.value },
 		});
@@ -216,8 +216,8 @@ describe("bindExtensionPosts — 登记进 track", () => {
 		});
 		const emit = (n: number) =>
 			bus.emit("subscription-reported", {
-				extensionId: SUB.extensionId,
-				externalId: SUB.externalId,
+				extensionId: SUB.identity.sourceKey,
+				externalId: SUB.identity.externalId,
 				subscriptionIds: [SUB.id],
 				report: { kind: "post", value: post(n) },
 			});
@@ -286,7 +286,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 				running: () => true,
 				postNoun: (extensionId) => {
 					asked.push(extensionId);
-					return extensionId === SUB.extensionId ? "视频" : undefined;
+					return extensionId === SUB.identity.sourceKey ? "视频" : undefined;
 				},
 				readAvatar: async () => undefined,
 			},
@@ -302,14 +302,14 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 		});
 
 		bus.emit("subscription-reported", {
-			extensionId: SUB.extensionId,
-			externalId: SUB.externalId,
+			extensionId: SUB.identity.sourceKey,
+			externalId: SUB.identity.externalId,
 			subscriptionIds: [SUB.id],
 			report: { kind: "post", value: { ...post(1), text: "今天去海边" } },
 		});
 
 		await vi.waitFor(() => expect(sent).toHaveLength(1));
-		expect(asked).toEqual([SUB.extensionId]);
+		expect(asked).toEqual([SUB.identity.sourceKey]);
 		expect(sent[0]).toEqual([{ type: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
 		handle.dispose();
 	});

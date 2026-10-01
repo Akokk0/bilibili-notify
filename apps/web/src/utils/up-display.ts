@@ -14,15 +14,15 @@ import {
 } from "../types/domain";
 
 /**
- * B 站订阅没拿到资料时回落到「UID xxx」;拓展订阅(ADR-0019 决策 9)没有 uid,回落到主人起的
- * 名字、再回落到它的外部 id —— 总得认得出是哪一个。
+ * B 站订阅没拿到资料时回落到「UID xxx」;拓展订阅(ADR-0019 决策 9)没有 uid,回落到它的外部 id ——
+ * 总得认得出是哪一个(别名已退役,ADR-0021 决策 16)。
  */
 export function displayName(sub: Subscription): string {
 	const cached = sub.cachedProfile?.name?.trim();
 	if (cached) return cached;
 	const identity = subscriptionIdentityOf(sub);
 	if (identity.sourceKey === BILIBILI_SOURCE_KEY) return `UID ${identity.externalId}`;
-	return sub.name?.trim() || identity.externalId;
+	return identity.externalId;
 }
 
 /**

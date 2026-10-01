@@ -58,12 +58,11 @@ function row(uid: string) {
 	};
 }
 
-/** 一条拓展订阅的夹具。`profileName` 是拓展报来的资料里的名字,`name` 是主人起的别名。 */
+/** 一条拓展订阅的夹具。`profileName` 是拓展报来的资料里的名字(主人起的别名已退役,ADR-0021 决策 16)。 */
 interface ExtFixture {
 	id: string;
 	extensionId: string;
 	externalId: string;
-	name?: string;
 	profileName?: string;
 }
 
@@ -114,8 +113,16 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 		store: {
 			getGlobals: () => globals,
 			getSubscriptions: () => [
-				...uids.map((uid) => ({ kind: "bilibili", id: biliId(uid), uid, overrides: {} })),
-				...exts.map((e) => ({ kind: "extension", overrides: {}, ...e })),
+				...uids.map((uid) => ({
+					id: biliId(uid),
+					identity: { sourceKey: "bilibili", externalId: uid },
+					overrides: {},
+				})),
+				...exts.map(({ extensionId, externalId, ...e }) => ({
+					overrides: {},
+					identity: { sourceKey: extensionId, externalId },
+					...e,
+				})),
 			],
 		},
 	} as unknown as RoastGenDeps;
@@ -441,25 +448,25 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		expect(comment.mock.calls.length).toBe(calls);
 	});
 
-	it("拓展行的名字链:资料里的名字 → 主人起的别名 → 外部 id;平台名取不到(拓展卸了)写拓展 id", async () => {
+	it("拓展行的名字链:资料里的名字 → 外部 id(别名已退役,ADR-0021 决策 16);平台名取不到(拓展卸了)写拓展 id", async () => {
 		comment.mockResolvedValueOnce(
 			JSON.stringify({ pigeon: { i: 0, reason: "鸽" }, diligent: { i: 1, reason: "勤" } }),
 		);
-		const aliased: ExtFixture = {
+		const named: ExtFixture = {
 			id: "ext-a",
 			extensionId: "douyin",
 			externalId: "sec-a",
-			name: "别名甲",
+			profileName: "资料甲",
 		};
 		const bare: ExtFixture = { id: "ext-z", extensionId: "gone", externalId: "sec-z" };
-		await generateBoardRoast(makeDeps([], true, [aliased, bare]), {
+		await generateBoardRoast(makeDeps([], true, [named, bare]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: async () =>
-				({ rows: [extRow(aliased), extRow(bare)] }) as unknown as StatsOverviewResponse,
+				({ rows: [extRow(named), extRow(bare)] }) as unknown as StatsOverviewResponse,
 		});
 		expect(tableOf(promptOfLastCall()).map((t) => [t.名称, t.平台])).toEqual([
-			["别名甲", "抖音"],
+			["资料甲", "抖音"],
 			["sec-z", "gone"],
 		]);
 	});

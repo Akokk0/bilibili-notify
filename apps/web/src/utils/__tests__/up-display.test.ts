@@ -8,7 +8,7 @@
 
 import { colorFromUid } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
-import { makeEmptyExtensionSubscription, makeEmptySubscription } from "../../types/domain";
+import { makeEmptySubscription } from "../../types/domain";
 import { historyRowColor, historyRowIdentity, subscriptionColor } from "../up-display";
 
 const BILI_ROW = { subscriptionId: "s-gone", uid: "12345" };
@@ -16,11 +16,13 @@ const EXT_ROW = { subscriptionId: "s-gone", extensionId: "douyin", externalId: "
 
 describe("historyRowColor", () => {
 	it("B 站行与它那条订阅卡同一个颜色(按 uid)", () => {
-		expect(historyRowColor(BILI_ROW)).toBe(subscriptionColor(makeEmptySubscription("12345")));
+		expect(historyRowColor(BILI_ROW)).toBe(
+			subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" })),
+		);
 	});
 
 	it("拓展行与同一个人的订阅卡同一个颜色 —— 订阅删了又加(id 变了)也一样", () => {
-		const readded = makeEmptyExtensionSubscription("douyin", "12345");
+		const readded = makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" });
 		expect(historyRowColor(EXT_ROW)).toBe(subscriptionColor(readded));
 	});
 
@@ -54,14 +56,17 @@ describe("颜色与搬家之前一字不差", () => {
 
 	it("B 站:订阅卡与历史行都是搬之前那个颜色", () => {
 		for (const [uid, color] of BILI) {
-			expect(subscriptionColor(makeEmptySubscription(uid)), uid).toBe(color);
+			expect(
+				subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: uid })),
+				uid,
+			).toBe(color);
 			expect(historyRowColor({ subscriptionId: "s", uid }), uid).toBe(color);
 		}
 	});
 
 	it("拓展:订阅卡与历史行都是搬之前那个颜色", () => {
 		for (const [extensionId, externalId, color] of EXT) {
-			const sub = makeEmptyExtensionSubscription(extensionId, externalId);
+			const sub = makeEmptySubscription({ sourceKey: extensionId, externalId: externalId });
 			expect(subscriptionColor(sub), externalId).toBe(color);
 			expect(historyRowColor({ subscriptionId: "s", extensionId, externalId }), externalId).toBe(
 				color,

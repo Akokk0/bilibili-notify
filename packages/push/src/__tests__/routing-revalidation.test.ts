@@ -73,7 +73,10 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 	it("重试等待期间 target 被移出 routing → 恢复可达后不再发送(sink.send 从未被调)", async () => {
 		const { ctx, pending } = makeControlledServiceCtx();
 
-		const sub = makeEmptySubscription({ id: "sub-1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["target-a", "target-b"];
 		const store = makeStore(sub);
 
@@ -131,7 +134,10 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 	it("routing 期间保持不变 → 重试成功后正常发送(不误伤正常场景)", async () => {
 		const { ctx, pending } = makeControlledServiceCtx();
 
-		const sub = makeEmptySubscription({ id: "sub-1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.dynamic = ["target-a"];
 		const store = makeStore(sub);
 
@@ -182,9 +188,15 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 	it("同 uid 的 A、B 都路由到同一目标,重试中把 B 删掉 → B 那条放弃(A 还路由着也不算)", async () => {
 		const { ctx, pending } = makeControlledServiceCtx();
 
-		const a = makeEmptySubscription({ id: "sub-a", uid: "u1" });
+		const a = makeEmptySubscription({
+			id: "sub-a",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		a.routing.dynamic = ["target-a"];
-		const b = makeEmptySubscription({ id: "sub-b", uid: "u1" });
+		const b = makeEmptySubscription({
+			id: "sub-b",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		b.routing.dynamic = ["target-a"];
 		const store = makeStore(a, b);
 

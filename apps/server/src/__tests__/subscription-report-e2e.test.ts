@@ -187,7 +187,7 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
 
 		await writeFile(
-			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
+			join(gen, ...CONFIG_DIR, "subscriptions.json"),
 			JSON.stringify([ON_A, ON_B, OFF, FOREIGN]),
 		);
 

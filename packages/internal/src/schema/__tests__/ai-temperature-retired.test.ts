@@ -49,7 +49,10 @@ describe("temperature 退役 —— 老配置照样装得进来", () => {
 
 	it("per-UP 的 AI 覆盖带着 temperature → 解析成功,覆盖里只剩挑的那份人格", () => {
 		const raw = {
-			...makeEmptySubscription({ id: "550e8400-e29b-41d4-a716-446655440000", uid: "12345" }),
+			...makeEmptySubscription({
+				id: "550e8400-e29b-41d4-a716-446655440000",
+				identity: { sourceKey: "bilibili", externalId: "12345" },
+			}),
 			overrides: { ai: { preset: "tsundere", temperature: 1.5 } },
 		};
 

@@ -8,11 +8,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import {
-	type ExtensionSubscription,
-	makeEmptySubscription,
-	type PushTarget,
-} from "../../../types/domain";
+import { makeEmptySubscription, type PushTarget, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
@@ -29,19 +25,9 @@ const TARGET: PushTarget = {
 	address: "123",
 };
 
-function extSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscription {
-	const {
-		kind: _k,
-		uid: _u,
-		followed: _f,
-		followError: _e,
-		...common
-	} = makeEmptySubscription("0");
+function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
-		...common,
-		kind: "extension",
-		extensionId: "douyin",
-		externalId: "MS4wLjAB-sec",
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
 		cachedProfile: { name: "抖音那位", avatar: "", sign: "", fans: 12, lastRefreshedAt: "t" },
 		...over,
 	};
@@ -59,11 +45,7 @@ function platform(over: Partial<SubscriptionPlatform> = {}): SubscriptionPlatfor
 	};
 }
 
-function renderDialog(
-	sub: ExtensionSubscription,
-	p: SubscriptionPlatform,
-	targets: PushTarget[] = [],
-) {
+function renderDialog(sub: Subscription, p: SubscriptionPlatform, targets: PushTarget[] = []) {
 	return render(
 		<UpDialog
 			sub={sub}

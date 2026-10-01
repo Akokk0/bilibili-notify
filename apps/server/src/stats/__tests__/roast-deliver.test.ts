@@ -122,25 +122,24 @@ describe("deliverRoast — 停用的目标", () => {
  * - 拓展的头像在资料里是面板的同源相对地址(`/api/subs/<id>/avatar?v=…`),截图的浏览器加载不到 —— 出卡前
  *   读存下的头像文件、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像照旧是 CDN 图链。
  * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
- * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 别名 → 外部 id)。
+ * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
  */
 describe("buildRoastPayload — 卡上的人", () => {
 	/** 最小的 PNG 文件头就够 `sniffImageFormat` 认出来。 */
 	const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-	const BILI = { kind: "bilibili", id: "s-bili", uid: "12345", overrides: {} };
+	const BILI = {
+		id: "s-bili",
+		identity: { sourceKey: "bilibili", externalId: "12345" },
+		overrides: {},
+	};
 	const EXT = {
-		kind: "extension",
 		id: "s-dy",
-		extensionId: "douyin",
-		externalId: "12345",
+		identity: { sourceKey: "douyin", externalId: "12345" },
 		overrides: {},
 	};
 	const EXT_BARE = {
-		kind: "extension",
 		id: "s-bare",
-		extensionId: "douyin",
-		externalId: "sec-bare",
-		name: "别名乙",
+		identity: { sourceKey: "douyin", externalId: "sec-bare" },
 		overrides: {},
 	};
 
@@ -215,8 +214,8 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(data.pigeon?.color).toBe(upColor({ extensionId: "douyin", externalId: "12345" }));
 		expect(data.pigeon?.color).not.toBe(data.diligent?.color);
 		expect(String(data.pigeon?.avatar)).toMatch(/^data:image\/png;base64,/);
-		// 没存头像、资料里也没名字的拓展那位:名字退主人起的别名,头像留空(卡上画首字母),不塞相对地址。
-		expect(data.roast?.[0]).toMatchObject({ name: "别名乙", avatar: undefined });
+		// 没存头像、资料里也没名字的拓展那位:名字退外部 id,头像留空(卡上画首字母),不塞相对地址。
+		expect(data.roast?.[0]).toMatchObject({ name: "sec-bare", avatar: undefined });
 	});
 
 	it("读头像文件抛了 → 头像留空,照样出卡(不因一张头像整张卡降级成文字)", async () => {

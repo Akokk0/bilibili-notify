@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus.js";
 import { bindSubscriptionStore } from "../subscription-store.js";
 
-const sub = (uid: string): Subscription => makeEmptySubscription({ id: `sub-${uid}`, uid });
+const sub = (uid: string): Subscription =>
+	makeEmptySubscription({ id: `sub-${uid}`, identity: { sourceKey: "bilibili", externalId: uid } });
 
 function makeConfigStore(initial: Subscription[]) {
 	let subs = initial;

@@ -10,11 +10,17 @@
  * - **第二代**(0.10.0 起):`features.liveEndExtras` 小对象 + 订阅上的 `atAll` /
  *   `atAllDefaults`。只改名搬家,下播开关不动;`atAllDefaults` 等于出厂默认就不写进覆盖。
  *
- * 这批用例原先住在 `packages/internal`(`push-extras.test.ts` / `subscription-kinds.test.ts` /
- * `p1-internal-guards.test.ts`),当时老数据的兜底挂在 schema 的 preprocess 上、用例是
+ * 这批用例原先住在 `packages/internal`(`push-extras.test.ts` / `subscription-kinds.test.ts`(后来改名
+ * `subscription-identity-shape.test.ts`)/ `p1-internal-guards.test.ts`),当时老数据的兜底挂在 schema 的 preprocess 上、用例是
  * 「`XxxSchema.parse(老形状)`」。兜底搬到迁移器以后它们跟着搬过来:「先过迁移函数、再 `XxxSchema.parse(…)`」,
  * **期望值一个字没改**(它们是独立的真源)。活 schema 现在只认新形状(那边的反面用例在 internal 的
  * `push-extras.test.ts` 末尾)。
+ *
+ * 身份格(0.x 的 `uid` / `extensionId` + `externalId` → `identity`)与这里钉的推送特性无关:行级的迁移函数不碰它,
+ * 收进 `identity` 与两份合成一个文件是文件级的那一步(`migrateSubscriptionFiles`,用例在
+ * `./zero-generation-subscriptions.test.ts` 与 `./zero-generation-features.test.ts`)。所以 B 站这几组的输入行带着现在的
+ * `identity`,行级迁移函数原样把它带过去;拓展那一组用 0.x 盘上真有的形状(`kind` + `extensionId` + `externalId`),
+ * 过 schema 之前借一步 {@link parseExtension} 换成 `identity`。
  *
  * 下面几个 `parseXxx` 除了先迁移、再过 schema,还钉三件事 —— 这才是「迁移器把老键收拾干净了」:
  * 迁出来的东西里没有老键(活 schema 对老键是剥掉或拒收,漏迁的老键在 parse 出来的值里只会悄悄不见,
@@ -23,8 +29,6 @@
  */
 
 import {
-	BiliSubscriptionSchema,
-	ExtensionSubscriptionSchema,
 	FEATURE_KEYS,
 	FeatureFlagsPartialSchema,
 	FeatureFlagsSchema,
@@ -41,7 +45,11 @@ import {
 	migrateLegacyRouting,
 } from "../features.js";
 import { migrateGlobals } from "../settings.js";
-import { migrateBiliSubscriptionRow, migrateExtensionSubscriptionRow } from "../subscriptions.js";
+import {
+	migrateBiliSubscriptionRow,
+	migrateExtensionSubscriptionRow,
+	toIdentityRow,
+} from "../subscriptions.js";
 
 const T1 = "10000000-0000-4000-8000-000000000001";
 const T2 = "10000000-0000-4000-8000-000000000002";
@@ -49,7 +57,7 @@ const T3 = "10000000-0000-4000-8000-000000000003";
 
 const SUB_BASE = makeEmptySubscription({
 	id: "11111111-1111-4111-8111-111111111111",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
 
 const NEW_KEYS = [
@@ -129,12 +137,20 @@ function parseRouting(old: unknown) {
 	return SubscriptionRoutingSchema.parse(migrated);
 }
 
-/** 整条 B 站订阅:先迁移、再过 schema(盘上读这份用的就是 `BiliSubscriptionSchema`)。 */
+/** 整条 B 站订阅:先迁移、再过 schema(盘上读这份用的就是 `SubscriptionSchema`)。 */
 function parseBili(old: unknown) {
 	const migrated = migrateBiliSubscriptionRow(old);
 	expectNoLegacyRowKeys(migrated);
 	expect(migrateBiliSubscriptionRow(migrated)).toEqual(migrated);
-	return BiliSubscriptionSchema.parse(migrated);
+	return SubscriptionSchema.parse(migrated);
+}
+
+/**
+ * 迁完的拓展订阅行(0.x 最新的形状:`kind` + `extensionId` + `externalId`)换成现在 schema 认的样子再过 schema。
+ * 身份收进 `identity` 那一步归文件级的合并(见头部的说明),这里只借它过 schema。
+ */
+function parseExtension(migrated: unknown) {
+	return SubscriptionSchema.parse(toIdentityRow(migrated, "extension"));
 }
 
 // ── 全局 features ────────────────────────────────────────────────────────────────
@@ -499,24 +515,26 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 	});
 
 	// 原出自 subscription-kinds.test.ts,当时钉的是「老数据迁移经联合那一份也跑」(迁移挂在 schema 上)。现在钉的是盘上真实的
-	// 形状:`subscriptions.json` 的行**没有 `kind`**,迁移器照样认得出是老订阅,迁完联合那一份按 B 站那支收下。
-	it("盘上没有 kind 的第二代订阅行:迁完按 B 站那支收下,@全体 并进 extras", () => {
-		const { kind: _kind, ...diskRow } = SUB_BASE;
+	// 形状:0.x 的行身份在顶层 `uid`、没有 `identity`,迁移器照样认得出是老订阅;身份格行级迁移函数不碰(留给文件那一步
+	// 收进 `identity`),所以过 schema 之前把 `identity` 补上。
+	it("盘上身份还在顶层 uid 的第二代订阅行:@全体 并进 extras,uid 原样留着交给文件级那一步", () => {
+		const { identity, ...diskRow } = SUB_BASE;
 		const migrated = migrateBiliSubscriptionRow({
 			...diskRow,
+			uid: identity.externalId,
 			routing: { ...SUB_BASE.routing, dynamic: [T1] },
 			atAll: { dynamic: { [T1]: true } },
 		});
 		expectNoLegacyRowKeys(migrated);
-		const parsed = SubscriptionSchema.parse(migrated);
-		expect(parsed.kind).toBe("bilibili");
+		expect(migrated).toMatchObject({ uid: "12345" });
+		const parsed = SubscriptionSchema.parse({ ...(migrated as object), identity });
 		expect(parsed.extras.atAllDynamic).toEqual({ [T1]: true });
 	});
 });
 
 // ── 拓展订阅 ─────────────────────────────────────────────────────────────────────
 //
-// 这一组 internal 里没有对应用例(那边没人拿老形状喂过 `ExtensionSubscriptionSchema`):拓展订阅一行只有 routing 与
+// 这一组 internal 里没有对应用例(那边没人拿老形状喂过 schema):拓展订阅一行只有 routing 与
 // `overrides.features` 两步,没有 B 站那行外层的 @全体 / `force` —— 迁移函数把「行」这一层的组合也钉住。
 
 describe("拓展订阅一行的迁移", () => {
@@ -548,7 +566,7 @@ describe("拓展订阅一行的迁移", () => {
 		);
 		expectNoLegacyRowKeys(migrated);
 		expect(migrateExtensionSubscriptionRow(migrated)).toEqual(migrated);
-		const parsed = ExtensionSubscriptionSchema.parse(migrated);
+		const parsed = parseExtension(migrated);
 		expect(parsed.routing.liveEnd).toEqual([T1, T2]);
 		expect(parsed.overrides.features).toEqual({ liveEnd: false, extras: { wordcloud: false } });
 	});
@@ -567,8 +585,8 @@ describe("拓展订阅一行的迁移", () => {
 	it("新形状的拓展订阅原样不变", () => {
 		const fresh = extRow({ overrides: { features: { extras: { wordcloud: false } } } });
 		expect(migrateExtensionSubscriptionRow(fresh)).toEqual(fresh);
-		expect(
-			ExtensionSubscriptionSchema.parse(migrateExtensionSubscriptionRow(fresh)).overrides,
-		).toEqual({ features: { extras: { wordcloud: false } } });
+		expect(parseExtension(migrateExtensionSubscriptionRow(fresh)).overrides).toEqual({
+			features: { extras: { wordcloud: false } },
+		});
 	});
 });

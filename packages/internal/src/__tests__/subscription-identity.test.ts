@@ -1,6 +1,6 @@
 /**
- * 订阅的身份(ADR-0021 决策 14):`subscriptionIdentityOf` 是全仓唯一认得订阅两支身份格的函数;`identityColor`
- * 换读法不换颜色;拓展 id 不许用内置集成的保留 id。
+ * 订阅的身份(ADR-0021 决策 14):每条订阅带 `identity`,`subscriptionIdentityOf` 是全仓唯一的读法;
+ * `identityColor` 换读法不换颜色;拓展 id 不许用内置集成的保留 id。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -13,28 +13,36 @@ import {
 	upColor,
 } from "../constants";
 import { ExtensionIdSchema } from "../schema/extension-manifest";
-import { ExtensionSubscriptionSchema, makeEmptySubscription } from "../schema/subscriptions";
+import { makeEmptySubscription, SubscriptionSchema } from "../schema/subscriptions";
 
 describe("subscriptionIdentityOf", () => {
 	it("B 站订阅:来源是 bilibili,外部 id 是 uid", () => {
-		expect(subscriptionIdentityOf({ kind: "bilibili", uid: "12345" })).toEqual({
-			sourceKey: "bilibili",
-			externalId: "12345",
+		const sub = makeEmptySubscription({
+			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
+			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
 		});
+		expect(subscriptionIdentityOf(sub)).toEqual({ sourceKey: "bilibili", externalId: "12345" });
 	});
 
 	it("拓展订阅:来源是拓展 id(不加前缀),外部 id 原样", () => {
-		expect(
-			subscriptionIdentityOf({ kind: "extension", extensionId: "douyin", externalId: "MS4w" }),
-		).toEqual({ sourceKey: "douyin", externalId: "MS4w" });
+		const sub = makeEmptySubscription({
+			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
+			identity: { sourceKey: "douyin", externalId: "MS4w" },
+		});
+		expect(subscriptionIdentityOf(sub)).toEqual({ sourceKey: "douyin", externalId: "MS4w" });
+	});
+
+	it("就是读订阅上的那一格,什么都不推断(不看别的键)", () => {
+		const identity = { sourceKey: "douyin", externalId: "MS4w" };
+		expect(subscriptionIdentityOf({ identity })).toBe(identity);
 	});
 
 	it("同一串外部 id 挂在不同来源下是两个人", () => {
-		const bili = subscriptionIdentityOf({ kind: "bilibili", uid: "12345" });
+		const bili = subscriptionIdentityOf({
+			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
+		});
 		const ext = subscriptionIdentityOf({
-			kind: "extension",
-			extensionId: "douyin",
-			externalId: "12345",
+			identity: { sourceKey: "douyin", externalId: "12345" },
 		});
 		expect(sameIdentity(bili, ext)).toBe(false);
 		expect(sameIdentity(bili, { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" })).toBe(true);
@@ -68,15 +76,16 @@ describe("保留 id", () => {
 	});
 });
 
-describe("特别关注两支都有", () => {
-	it("拓展订阅没写这一格,读进来是空表", () => {
-		const bili = makeEmptySubscription({ id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e", uid: "1" });
-		const { kind: _kind, uid: _uid, specialUsers: _special, ...common } = bili;
-		const parsed = ExtensionSubscriptionSchema.parse({
+describe("特别关注是公共形状", () => {
+	it("拓展来源的订阅没写这一格,读进来是空表", () => {
+		const bili = makeEmptySubscription({
+			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
+			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "1" },
+		});
+		const { specialUsers: _special, identity: _identity, ...common } = bili;
+		const parsed = SubscriptionSchema.parse({
 			...common,
-			kind: "extension",
-			extensionId: "douyin",
-			externalId: "MS4w",
+			identity: { sourceKey: "douyin", externalId: "MS4w" },
 		});
 		expect(parsed.specialUsers).toEqual([]);
 	});

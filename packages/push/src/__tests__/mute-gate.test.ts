@@ -60,7 +60,10 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 const MASTER = { id: "master", name: "master", connectionId: "a" } as unknown as PushTarget;
 
 function setup(muted: () => boolean) {
-	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+	const sub = makeEmptySubscription({
+		id: "s1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
+	});
 	sub.routing.live = ["t1"];
 	sub.routing.dynamic = ["t1"];
 	setExtraDefault(sub, "atAllLive", false);
@@ -126,7 +129,10 @@ describe("全局静音闸", () => {
 	});
 
 	it("不传 provider → 一切照旧(koishi 端没有静音这回事)", async () => {
-		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
 		sub.routing.live = ["t1"];
 		setExtraDefault(sub, "atAllLive", false);
 		const { sink, calls } = makeSink();

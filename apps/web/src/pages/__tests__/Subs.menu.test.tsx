@@ -28,7 +28,7 @@ import { copyToClipboard } from "../../utils/clipboard";
 
 function makeSub(uid: string, name: string): Subscription {
 	return {
-		...makeEmptySubscription(uid),
+		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		cachedProfile: {
 			name,
 			avatar: "",

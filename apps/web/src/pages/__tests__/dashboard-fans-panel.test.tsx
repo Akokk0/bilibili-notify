@@ -12,12 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FansEntry } from "../../services/dashboard";
-import {
-	type ExtensionSubscription,
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -48,14 +43,14 @@ const DOUYIN: ExtensionDTO = {
 
 function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
-		...makeEmptySubscription(uid),
+		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
 		cachedProfile: { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
 	};
 }
 
-function extSub(id: string, externalId: string, over: Partial<ExtensionSubscription> = {}) {
-	return { ...makeEmptyExtensionSubscription("douyin", externalId), id, ...over };
+function extSub(id: string, externalId: string, over: Partial<Subscription> = {}) {
+	return { ...makeEmptySubscription({ sourceKey: "douyin", externalId: externalId }), id, ...over };
 }
 
 const BILI_ENTRY: FansEntry = {
@@ -119,13 +114,23 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 
-	it("名字链:资料里没名字 → 主人起的别名 → 外部 id;不写「UID undefined」", async () => {
+	it("名字链:资料名 → 外部 id(别名已退役,ADR-0021 决策 16);不写「UID undefined」", async () => {
 		renderPanel(
 			[EXT_ENTRY, { ...EXT_ENTRY, subscriptionId: "s-dy2", externalId: "sec-2" }],
-			[extSub("s-dy", "sec-1", { name: "主人起的名" }), extSub("s-dy2", "sec-2")],
+			[
+				extSub("s-dy", "sec-1", {
+					cachedProfile: {
+						name: "资料里的名",
+						avatar: "",
+						sign: "",
+						lastRefreshedAt: "2026-09-24T00:00:00Z",
+					},
+				}),
+				extSub("s-dy2", "sec-2"),
+			],
 			[DOUYIN],
 		);
-		await waitFor(() => expect(screen.getByText("主人起的名")).toBeTruthy());
+		await waitFor(() => expect(screen.getByText("资料里的名")).toBeTruthy());
 		expect(screen.getByText("sec-2")).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
@@ -139,7 +144,17 @@ describe("粉丝数变化 · 拓展订阅", () => {
 	it("外部 id 恰好等于某个 B 站 uid:两行各对各的订阅,不串人", async () => {
 		renderPanel(
 			[BILI_ENTRY, { ...EXT_ENTRY, externalId: "12345" }],
-			[biliSub("s-bili", "12345", "B 站甲"), extSub("s-dy", "12345", { name: "抖音同号" })],
+			[
+				biliSub("s-bili", "12345", "B 站甲"),
+				extSub("s-dy", "12345", {
+					cachedProfile: {
+						name: "抖音同号",
+						avatar: "",
+						sign: "",
+						lastRefreshedAt: "2026-09-24T00:00:00Z",
+					},
+				}),
+			],
 			[DOUYIN],
 		);
 		await waitFor(() => expect(screen.getByText("抖音同号")).toBeTruthy());

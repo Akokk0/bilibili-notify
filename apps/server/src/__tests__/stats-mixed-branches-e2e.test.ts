@@ -40,6 +40,7 @@ import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
+import { legacyBiliRow } from "./support/legacy-subscription.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
 const renderedHtml = vi.hoisted(() => [] as string[]);
@@ -254,17 +255,20 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		});
 		hookServer = hook.server;
 
-		// B 站那位:停用(不连 B 站),盘上的订阅没有 kind(ADR-0019 决策 47)。盘上是升级之前的老数据(按 uid 命名)。
+		// B 站那位:停用(不连 B 站),盘上的订阅身份在顶层 uid、没有 identity。盘上是升级之前的老数据(按 uid 命名)。
 		// 它们原样摆在 0.x 的根布局里(第 0 代):第一趟开机还没有一代,迁移器把它们迁进新的一代 —— 老数据走的
 		// 是真的迁移路径,不是直接写进代目录。粉丝采样五天前到昨天,今天没有(停用的不采)。
 		dataDir = await mkdtemp(join(tmpdir(), "bn-stats-mixed-e2e-"));
 		for (const dir of ["state", "fans", join("stats", "dyn"), join("stats", "live")]) {
 			await mkdir(join(dataDir, dir), { recursive: true });
 		}
-		const { kind: _kind, ...bili } = {
-			...makeEmptySubscription({ id: S_BILI, uid: UID }),
+		const bili = legacyBiliRow({
+			...makeEmptySubscription({
+				id: S_BILI,
+				identity: { sourceKey: "bilibili", externalId: UID },
+			}),
 			enabled: false,
-		};
+		});
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify([bili]));
 		await writeFile(
 			join(dataDir, "fans", `${UID}.jsonl`),
@@ -335,16 +339,16 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await writeFile(globalsPath, JSON.stringify(globals));
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 
-		// 拓展那位:开着,主人起过别名(资料里的名字要压过它,决策 3);单人锐评发到那条 webhook。
-		const ext = makeExtensionSubscription({
-			id: S_EXT,
-			extensionId: FAKE,
-			externalId: EXT_ID,
-			name: "别名乙",
-		});
+		// 拓展那位:开着;单人锐评发到那条 webhook。
+		const ext = makeExtensionSubscription({ id: S_EXT, extensionId: FAKE, externalId: EXT_ID });
+		// 订阅只有一个文件:第一趟开机迁进来的 B 站那位已经在里面,拓展那位追加在后。
+		const subsPath = join(gen, ...CONFIG_DIR, "subscriptions.json");
+		const migrated = JSON.parse(await readFile(subsPath, "utf8")) as unknown[];
+		expect(migrated).toHaveLength(1);
 		await writeFile(
-			join(gen, ...CONFIG_DIR, "extension-subscriptions.json"),
+			subsPath,
 			JSON.stringify([
+				...migrated,
 				{ ...ext, roastSchedule: { ...ext.roastSchedule, targets: [webhookTarget] } },
 			]),
 		);

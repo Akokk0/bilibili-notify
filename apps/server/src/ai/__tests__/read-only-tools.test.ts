@@ -30,16 +30,19 @@ function routing(over: Partial<SubscriptionRouting> = {}): SubscriptionRouting {
 	return { ...base, ...over };
 }
 
-function makeSub(over: Partial<Subscription> & { uid: string }): Subscription {
+/** B 站来源的订阅:夹具里写 `uid` 图省事,落成订阅的 `identity`。 */
+function makeSub(over: Partial<Omit<Subscription, "identity">> & { uid: string }): Subscription {
+	const { uid, ...rest } = over;
 	return {
-		id: `id-${over.uid}`,
+		id: `id-${uid}`,
+		identity: { sourceKey: "bilibili", externalId: uid },
 		enabled: true,
 		groups: [],
 		routing: routing(),
 		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
 		specialUsers: [],
-		...over,
+		...rest,
 	} as Subscription;
 }
 
@@ -78,7 +81,7 @@ describe("attachReadOnlyTools — 查询接线", () => {
 		const getSubs = setSubscriptionsSource.mock.calls[0]?.[0] as () => unknown;
 
 		expect(getSubs()).toEqual({});
-		subs.push(makeSub({ uid: "1", name: "小明" }));
+		subs.push(makeSub({ uid: "1" }));
 		// 接线发生在启动时,而订阅是运行期随时增删的。取快照的话,主人加完订阅
 		// 立刻去问女仆,她会一口咬定「当前没有订阅」。
 		expect(Object.keys(getSubs() as object)).toEqual(["id-1"]);
@@ -101,11 +104,6 @@ describe("buildAiSubsView — 投影", () => {
 		const s = makeStores([makeSub({ uid: "1", enabled: false }), makeSub({ uid: "2" })]);
 		expect(Object.keys(view(s))).toEqual(["id-2"]);
 	});
-
-	it("用户手填的备注名优先于平台缓存 —— 主人自己起的名字最作数", () => {
-		const s = makeStores([makeSub({ uid: "1", name: "老王" })], { "id-1": "平台上的花名" });
-		expect(view(s)["id-1"]?.uname).toBe("老王");
-	});
 });
 
 describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
@@ -123,11 +121,10 @@ describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
 		});
 	});
 
-	it("名字:主人的备注 → 平台资料缓存 → 外部 id", () => {
-		const named = makeExtensionSubscription({ name: "我起的名" });
-		expect(view(makeStores([named], { [EXT_ID]: "资料里的名" }))[EXT_ID]?.uname).toBe("我起的名");
-		const bare = makeExtensionSubscription();
-		expect(view(makeStores([bare]))[EXT_ID]?.uname).toBe("sec-uid-1");
+	it("名字:平台资料缓存 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
+		const sub = makeExtensionSubscription();
+		expect(view(makeStores([sub], { [EXT_ID]: "资料里的名" }))[EXT_ID]?.uname).toBe("资料里的名");
+		expect(view(makeStores([sub]))[EXT_ID]?.uname).toBe("sec-uid-1");
 	});
 
 	it("平台名取不到(拓展卸载了 / 装载器还没起来)→ 写拓展 id", () => {

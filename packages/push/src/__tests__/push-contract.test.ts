@@ -87,7 +87,10 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 }
 
 function subWith(targets: string[], atAll = false): Subscription {
-	const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+	const sub = makeEmptySubscription({
+		id: "s1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
+	});
 	sub.routing.dynamic = [...targets];
 	setExtraDefault(sub, "atAllDynamic", atAll);
 	return sub;

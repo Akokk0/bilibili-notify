@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SubscriptionEventKind } from "./extension-manifest";
 import { SUBSCRIPTION_AVATAR_MAX_CHARS } from "./extension-subscription";
-import { EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX } from "./subscriptions";
+import { EXTERNAL_ID_MAX } from "./subscriptions";
 
 /**
  * 订阅源拓展的**上报**(ADR-0019 决策 4 / 7 / 55–57 / 62):三种**事件**(作品 `post`、开播 `liveStart`、
@@ -357,10 +357,7 @@ export const SubscriptionPostSchema = z.strictObject({
 	id: z
 		.string({ error: "要是字符串" })
 		.min(1, "不能是空串")
-		.max(
-			EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX,
-			`超过 ${EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX} 字`,
-		),
+		.max(EXTERNAL_ID_MAX, `超过 ${EXTERNAL_ID_MAX} 字`),
 	url: UrlSchema,
 	publishedAt: TimeSchema,
 	/** 纯文本,保留换行。超长截断、不丢。 */
@@ -681,10 +678,7 @@ export function undeclaredReportReason(
 const ExternalIdSchema = z
 	.string({ error: "外部 id 要是字符串" })
 	.min(1, "外部 id 不能是空串")
-	.max(
-		EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX,
-		`外部 id 不能超过 ${EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX} 字`,
-	);
+	.max(EXTERNAL_ID_MAX, `外部 id 不能超过 ${EXTERNAL_ID_MAX} 字`);
 
 /** 报的外部 id:与订阅里存的那一格同一把尺子(建订阅时它从解析门交出来的那个 `id`)。 */
 export function checkReportedExternalId(

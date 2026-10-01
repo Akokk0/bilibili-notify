@@ -49,13 +49,15 @@ function makeFakeBus(): MessageBus & { events: Array<[keyof BusEvents, unknown]>
 }
 
 function makeSub(uid: string, id = `sub-${uid}`): Subscription {
-	return makeEmptySubscription({ id, uid });
+	return makeEmptySubscription({
+		id,
+		identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid },
+	});
 }
 
-/** 一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 (extensionId, externalId)。 */
+/** 一条拓展来源的订阅(ADR-0021 决策 14):身份是 (拓展 id, 外部 id)。 */
 function makeExtSub(externalId: string, id = `ext-${externalId}`): Subscription {
-	const { kind: _k, uid: _u, ...common } = makeEmptySubscription({ id, uid: "0" });
-	return { ...common, kind: "extension", extensionId: "douyin", externalId };
+	return makeEmptySubscription({ id, identity: { sourceKey: "douyin", externalId } });
 }
 
 function lastOps(bus: ReturnType<typeof makeFakeBus>): SubscriptionOp[] | undefined {
@@ -137,7 +139,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		);
 	});
 
-	it("删掉拓展订阅 → remove op 带着整条,消费方按 kind 收窄", () => {
+	it("删掉拓展订阅 → remove op 带着整条,消费方按身份认来源", () => {
 		const bus = makeFakeBus();
 		const store = createSubscriptionStore(bus);
 		const ext = makeExtSub("sec-1");

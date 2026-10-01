@@ -1,10 +1,4 @@
-import type {
-	Connection,
-	ExtensionSubscription,
-	GlobalConfig,
-	PushTarget,
-	Subscription,
-} from "@bilibili-notify/internal";
+import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
 
 /**
  * Restore planning — turns (current state + imported sections + mode) into a
@@ -19,20 +13,14 @@ import type {
  *   subscriptions must not clobber your own settings.
  *
  * A scope absent from the backup yields no writes for that scope in either mode.
- *
- * 订阅在备份里是两节(B 站 `subscriptions` / 拓展 `extensionSubscriptions`,ADR-0019 决策 48),
- * **各算各的**:这样凡是没有拓展那一节的备份(改动之前导出的全部)在两种模式下都碰不到现有的
- * 拓展订阅 —— overwrite 只替换它带着的那一支。折回去时两支再拼成 ConfigStore 要的那一份。
+
  */
 
 export type ImportMode = "overwrite" | "merge";
 
 export interface CurrentState {
 	globals: GlobalConfig;
-	/** 现有的 B 站订阅。 */
 	subscriptions: Subscription[];
-	/** 现有的拓展订阅。 */
-	extensionSubscriptions: ExtensionSubscription[];
 	connections: Connection[];
 	targets: PushTarget[];
 }
@@ -40,12 +28,11 @@ export interface CurrentState {
 export interface ImportSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
-	extensionSubscriptions?: ExtensionSubscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }
 
-/** 折好的终态 —— ConfigStore.replaceSections 要的形状:订阅是两支拼成的一份。 */
+/** 折好的终态 —— ConfigStore.replaceSections 要的形状。 */
 export interface FoldedSections {
 	globals?: GlobalConfig;
 	subscriptions?: Subscription[];
@@ -61,7 +48,6 @@ interface ScopePlan<T> {
 export interface ImportPlan {
 	setGlobals?: GlobalConfig;
 	subscriptions: ScopePlan<Subscription>;
-	extensionSubscriptions: ScopePlan<ExtensionSubscription>;
 	connections: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
 }
@@ -85,11 +71,6 @@ export function planImport(
 ): ImportPlan {
 	const plan: ImportPlan = {
 		subscriptions: planScope(current.subscriptions, incoming.subscriptions, mode),
-		extensionSubscriptions: planScope(
-			current.extensionSubscriptions,
-			incoming.extensionSubscriptions,
-			mode,
-		),
 		connections: planScope(current.connections, incoming.connections, mode),
 		targets: planScope(current.targets, incoming.targets, mode),
 	};
@@ -120,15 +101,9 @@ function applyScope<T extends { id: string }>(
  * 真清空(overwrite 模式下备份里给了空分区就是这个意思)。
  */
 export function foldPlan(current: CurrentState, plan: ImportPlan): FoldedSections {
-	const bili = applyScope(current.subscriptions, plan.subscriptions);
-	const ext = applyScope(current.extensionSubscriptions, plan.extensionSubscriptions);
 	return {
 		globals: plan.setGlobals,
-		// 两支哪支都没动就不给(保持不动);动了一支,另一支原样拼上。
-		subscriptions:
-			bili || ext
-				? [...(bili ?? current.subscriptions), ...(ext ?? current.extensionSubscriptions)]
-				: undefined,
+		subscriptions: applyScope(current.subscriptions, plan.subscriptions),
 		connections: applyScope(current.connections, plan.connections),
 		targets: applyScope(current.targets, plan.targets),
 	};

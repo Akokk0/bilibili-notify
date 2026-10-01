@@ -1,6 +1,6 @@
 # 订阅参考
 
-订阅的两支、两种键、资料与头像、订阅源拓展（清单 / 契约 / 解析门 / 上报）。这份是地图与规矩。
+订阅的形状与身份、两种键、资料与头像、订阅源拓展（清单 / 契约 / 解析门 / 上报）。这份是地图与规矩。
 
 **「为什么这么定」在 [ADR-0019](../adr/0019-subscription-source-opening.md)**（下文括号里的「决策 N」都指它）。推送链本身见 [push.md](./push.md)；总线事件的逐条语义见 [events.md](./events.md)，这里只点名、不重抄。拓展的地基（ctx、装载、一扇门）见 [architecture.md](./architecture.md)「拓展」一节。
 
@@ -8,29 +8,22 @@
 
 **B 站也只是一个来源**（决策 1 / 65）：订阅记录、推不推、推给谁、卡片与历史全归 BN；拓展只管「和那个平台打交道」—— 把主人粘的东西解析成候选、判新、报事件与资料。拓展**写不了订阅**，也不知道推给谁。
 
-## 两支订阅
+## 订阅的形状与身份
 
-schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subscription = BiliSubscription | ExtensionSubscription`。
+schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，B 站与拓展的订阅都是它（ADR-0021 决策 14、15）。
 
-| | B 站 `BiliSubscription` | 拓展 `ExtensionSubscription` |
-|---|---|---|
-| `kind` | `"bilibili"` —— 只活在内存与线上，盘上没有这一格，缺了就是 B 站 | `"extension"` |
-| 身份 | `uid`（纯数字串） | `extensionId` + `externalId`（拓展给的不透明串，1–256 字，BN 从不解读） |
-| 独有 | `specialUsers` | —— |
-| 共有 | `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` / `roastSchedule`（拓展那支是 ADR-0020 决策 14 加的，老文件缺这一格读进来补出厂默认） | 同左 |
-| 盘上 | `<数据根>/config/subscriptions.json` | `<数据根>/config/extension-subscriptions.json` |
+- **身份** `identity: { sourceKey, externalId }`：`sourceKey` 是 `bilibili` 或拓展 id（不加前缀），`externalId` 是来源那头的 id（B 站就是 uid；BN 不解读，1–256 字）。订的是谁、分派、查找、取色都只看它，一律经 `subscriptionIdentityOf(sub)` 读。拓展 id 不许用保留 id（`RESERVED_INTEGRATION_KEYS`：`bilibili` 与三个内置平台适配器的键），否则会和 B 站的订阅撞成同一个人。
+- **其余各格** `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` / `roastSchedule` / `specialUsers`：两种来源一样。特别关注是公共形状（ADR-0021 决策 17），来源不支持的（今天是拓展）一直是空的。
+- 中立的 schema 不认得哪个来源的 id 长什么样：B 站「uid 是数字」核在新建订阅那条路上（`routes/subs.ts`），身份建好以后改不动。
+- 判「是不是 B 站的」写 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`：这是过渡写法，第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了，「B 站替身」棘轮盯着。
 
-- **拓展那支连 `uid` 这个键都没有**（不写 `uid?: never`）：键不在，编译器才会把每一处直接读 `sub.uid` 的地方列出来逐个分流，「遍历订阅去 B 站拉资料」不会拿别的平台的 id 去问 B 站。
-- 解析是 `SubscriptionSchema` **按 `kind` 分派**（不用 `z.union` / `discriminatedUnion`：B 站那支 `kind` 可缺、前面还挂着老数据迁移的 preprocess；挨个试会把一行坏 B 站订阅报成两份错）。
-- **分流的惯用法**：`isBiliSubscription` / `isExtensionSubscription`（`packages/internal/src/constants.ts`，零依赖，面板经 `/constants` 用同一份）。判据是 `kind !== "extension"`，与盘上「缺了就是 B 站」同口径，两者互斥且覆盖全部。读任何一支独有的字段之前先收窄；泛型，订阅本体、wire DTO、折叠后的视图都能收。
+### 内存一份，盘上一个文件（ADR-0021 决策 15）
 
-### 内存一份，盘上两个文件（决策 47 / 48）
-
-- `SubscriptionStore`（`packages/subscription`）只握**一份联合列表**，`subscription-changed` 的 diff 两支都发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
-- `ConfigStore`（`apps/server/src/config/store.ts`）的 `writeSubscriptions` 按 `kind` 拆开、**只写真变了的那个文件**（改 B 站订阅不会凭空建出拓展那个文件）。B 站行落盘剥掉 `kind`（`toDiskBiliRow`）—— 应用内更新退回旧载荷时，它读到的就是它自己写的形状。旧载荷不认拓展那个文件，照常开机；再升回来拓展订阅都在。
-- 两个文件**各用各的那支校验**，任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
-- **身份不许改**（`assertSubscriptionIdentityUnchanged`，决策 50）：换 uid / 外部 id / 平台就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。
-- **备份**（`apps/server/src/backup/`）：格式版本 2（1.0 起），1.0 之前导出的一律拒收、提示先装 0.12 恢复再升级（ADR-0022 决策 6）。拓展订阅单独一节 `extensionSubscriptions`，导出与 `subscriptions` 同一个勾选；恢复时两支各算各的。资料缓存与头像文件都不进备份。
+- `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
+- `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅写进 `<数据根>/config/subscriptions.json`，一次原子写。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
+- **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。
+- **备份**（`apps/server/src/backup/`）：格式版本 2（1.0 起），1.0 之前导出的一律拒收、提示先装 0.12 恢复再升级（ADR-0022 决策 6）。订阅一节，行行带 `identity`。资料缓存与头像文件都不进备份。
+- 0.x 的两个文件（`subscriptions.json` 与 `extension-subscriptions.json`）由迁移器合成这一个（`migration/subscriptions.ts`）。
 
 ## 两种键（决策 50）
 
@@ -45,16 +38,16 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 
 ### 哪些地方故意只认 B 站
 
-都写成 `.filter(isBiliSubscription)` 或先收窄再跳过，旁边有一句为什么：
+都按身份的来源过滤（`subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`），旁边有一句为什么：
 
 - **B 站引擎的订阅视图**：`engines.ts` 的 `buildDynamicSubsView` / `buildLiveSubsView`、op 翻译 `subscriptionOpsToDynamic` / `subscriptionOpsToLive`、`getModuleState` 的「直播监听」那一格。拓展订阅的轮询是拓展自己做的。
 - **关注**：`runtime/follow-sync.ts`、新建时的关注与 B 站资料种子（`routes/subs.ts` 的 `followUp` / `seedCachedProfile`）、查 UID / 搜名字（`/api/subs/lookup`、`/api/subs/search`）。
-- **粉丝轮询**：`runtime/fans-poller.ts` 只问 B 站订阅（B 站资料与粉丝曲线的来源）。它发的首页粉丝面板快照两支都有：拓展订阅那一行不问任何人，从统计写下的粉丝时序算（ADR-0020 决策 8，只列启用着、有时序的）。
-- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 别名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run-now/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；盘上 `state/roast-drafts.json` 里升级前按 uid 记的草稿，读盘时按 uid 找回 B 站订阅翻译过来，对不上的丢掉、记 debug。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subs/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），拓展头像读存下的头像文件转 data URL（资料里那个面板相对地址截图加载不到，同 ADR-0019 决策 68 的坑）。
+- **粉丝轮询**：`runtime/fans-poller.ts` 只问 B 站订阅（B 站资料与粉丝曲线的来源）。它发的首页粉丝面板快照两种来源都有：拓展订阅那一行不问任何人，从统计写下的粉丝时序算（ADR-0020 决策 8，只列启用着、有时序的）。
+- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run-now/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；0.x 按 uid 记的草稿由迁移器换成订阅 id（`migration/roast-drafts.ts`），对不上的丢掉。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subs/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），拓展头像读存下的头像文件转 data URL（资料里那个面板相对地址截图加载不到，同 ADR-0019 决策 68 的坑）。
 - devtools 场景挑订阅（`index.ts` 里那段 `subs`）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
-反过来，**遍历所有订阅**的地方两支都要处理（决策 47 把列表合成一份就是为了它们不静默漏掉拓展订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`）与扫孤儿头像（`subAvatarStore.sweep`）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
+反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`）与扫孤儿头像（`subAvatarStore.sweep`）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
 
 ## 资料与头像
 
@@ -74,7 +67,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 - 只收位图、按魔数认格式（`sniffImageFormat`），**不收 SVG** —— 同源地址上的 SVG 被直接打开时会跑脚本；约 96 KiB 封顶（候选的 data URL 是 128 KiB 字，`SUBSCRIPTION_AVATAR_MAX_BYTES` 按它倒推，报上来收下了、存的时候却被拒是最难查的那种）。
 - 内容摘要不同才覆盖，地址的 `?v=` 随之变，所以 `GET /api/subs/:id/avatar` 可以让浏览器长缓存（面板鉴权、`nosniff`）。
 - 删订阅时 `bindSubAvatarCleanup` 听 `subscription-changed` 的 remove 删文件（删的路不止一条，最后都汇到那里）；开机 `sweep` 扫孤儿。
-- 出卡时这个相对地址截图加载不到 —— `runtime/extension-push-common.ts` 的 `extensionCardAuthor` 读文件的**字节**转 data URL（事件带了作者头像就用事件的，哪儿都没有给透明占位，决策 54 / 68）。同一个文件里的 `extensionSubscriptionName` 定卡上作者名与模板 `{name}`：事件里的作者名 → 资料名 → 主人起的别名（`name`）→ 外部 id；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
+- 出卡时这个相对地址截图加载不到 —— `runtime/extension-push-common.ts` 的 `extensionCardAuthor` 读文件的**字节**转 data URL（事件带了作者头像就用事件的，哪儿都没有给透明占位，决策 54 / 68）。同一个文件里的 `extensionSubscriptionName` 定卡上作者名与模板 `{name}`：事件里的作者名 → 资料名 → 外部 id（别名 `name` 已退役，ADR-0021 决策 16）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
 
 **显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
 
@@ -150,9 +143,9 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 |---|---|
 | 加一个平台 | **写一个订阅源拓展，BN 不动**（决策 65）。三条边界：契约只有通用的格（平台多出来的东西由 BN 加格、抬契约小号，拓展不能自己声明字段）；平台专属的玩法第一版不开（决策 5）；决策 64 列的那几样只属于 B 站 |
 | 往契约里加东西（事件表一格、ctx 一个方法、一种积木、清单一格） | 改 `packages/internal` 的 zod + `packages/extension` 的手写镜像（shape-pin 会逼你两边一起改）；BN 发过版就抬 `EXTENSION_API_RANGE.revision`；更新契约形状守卫的摘要。漏了抬小号，老 BN 会照装新拓展、再把它报的东西整条拒掉 |
-| 加一处要遍历所有订阅的地方 | **两支都处理**：先 `isBiliSubscription` / `isExtensionSubscription` 收窄；只该认 B 站的就 `.filter(isBiliSubscription)` 并写一句为什么；绝不拿外部 id 去问 B 站 |
-| 按身份找订阅 | 两层 map、不拼串；「先认订阅 id、再认人、绝不跨支」（`target-scope.ts` / `subscription-lookup.ts`） |
+| 加一处要遍历所有订阅的地方 | **所有来源都处理**；只该认 B 站的就按 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY` 过滤并写一句为什么；绝不拿外部 id 去问 B 站 |
+| 按身份找订阅 | 按 `identity` 两格比（`sameIdentity`），或两层 map、不拼串；「先认订阅 id、再认人、绝不跨来源」（`target-scope.ts` / `subscription-lookup.ts`） |
 | 给订阅挂新的运行期数据 | 按订阅 id 存；高频写的别进配置（`config-changed "subscriptions"` 会整条重建），照 `SubRuntimeStore` 另存；删订阅时的清理听 `subscription-changed` 的 remove |
-| 改订阅的 schema | B 站那支的新格要选填或带默认值、落盘照旧剥 `kind` —— 应用内更新会退回旧载荷，旧版写回时剥掉它不认识的格，再升回来得读得进；拓展那支的文件旧版不读，但一行坏了照样开机报错 |
+| 改订阅的 schema | 新格要选填或带默认值；改了盘上的形状就抬迁移修订号（开发期）或在迁移器里加一步（发版后）—— 回退读的是旧的数据代，不再要求新旧载荷读同一个文件（ADR-0022） |
 | 改拓展作品怎么推 | 步骤在共用的 `deliverWork`，设置在共用的 `dynamicWorkSettings`（都见 [push.md](./push.md)）；拓展这头只有消费者 `extension-posts.ts`、翻译 `extension-post-work.ts`、公共件 `extension-push-common.ts` —— 公共件拓展直播也要用，别写成作品专属 |
 | 让拓展订阅也走某个 B 站功能 | 先看决策 12 / 63 / 64 有没有定过；「看内容的对所有平台生效，看 B 站类型的只对 B 站」（决策 70） |

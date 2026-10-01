@@ -9,7 +9,7 @@
  *
  * 前两大组用例原先钉在读时翻译与开机改名上(`stats/__tests__/legacy-rows.test.ts`、
  * `stats/__tests__/migrate-file-keys.test.ts`,两份已随它们删掉),抄到这里,期望值照旧:只是摆数据的位置从「代目录里
- * 直接写一份 uid 文件」换成「第 0 代(`stats/dyn|live`、`fans/`,订阅在 `state/subscriptions.json`、没有 kind)
+ * 直接写一份 uid 文件」换成「第 0 代(`stats/dyn|live`、`fans/`,订阅在 `state/subscriptions.json`、身份在顶层 uid)
  * → 迁移器 → 在新代上开真的统计仓 / 粉丝仓读回来」。**前提被迁移器推翻、不得不换写法的几处**(盘上字节断言、返回值的
  * 计数、日志、`.migrating` 残留、每次开机都跑)逐条在各用例旁边写明。
  *
@@ -242,7 +242,12 @@ const bili = (id: string, uid: string, enabled = true) => ({
 	uid,
 	enabled,
 });
-const ext = (id: string) => ({ kind: "extension" as const, id });
+const ext = (id: string) => ({
+	kind: "extension" as const,
+	id,
+	extensionId: "douyin",
+	externalId: `sec-${id}`,
+});
 type SubFixture = ReturnType<typeof bili> | ReturnType<typeof ext>;
 
 const T = (d: number, h = 0) =>
@@ -278,7 +283,7 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 	const rewrittenIn = (dir: Dir, ...keys: string[]) =>
 		keys.map((key) => `${dir.report}/${key}.jsonl`);
 
-	/** 订阅摆成 0.x 盘上的样子(B 站订阅没有 kind;拓展订阅在自己那份里),迁一代。 */
+	/** 订阅摆成 0.x 盘上的样子(B 站订阅身份在顶层 uid、没有 kind;拓展订阅在自己那份里),迁一代。 */
 	async function run(subscriptions: readonly SubFixture[]) {
 		await mkdir(sandbox.zero, { recursive: true });
 		const bilibili = subscriptions.flatMap((s) =>

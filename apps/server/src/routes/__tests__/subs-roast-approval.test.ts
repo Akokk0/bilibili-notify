@@ -54,17 +54,23 @@ describe("checkApprovalReachable", () => {
 
 /** 走完整 PATCH 路径 —— 光有纯函数不算数,得确认路由真的问过它。 */
 function routeWith(masterPlatform: string | null) {
-	const patchSubscription = vi.fn(async () => ({}));
+	// 放行时路由要把改完的订阅回成 DTO,所以替身得回一条有身份的订阅,不能是 `{}`。
+	const patchSubscription = vi.fn(async () => ({
+		id: "s1",
+		identity: { sourceKey: "bilibili", externalId: "1" },
+	}));
 	const deps = {
 		store: {
 			getSubscriptions: () => [
-				{ id: "s1", uid: "1", roastSchedule: { approval: false, enabled: false } },
+				{
+					id: "s1",
+					identity: { sourceKey: "bilibili", externalId: "1" },
+					roastSchedule: { approval: false, enabled: false },
+				},
 				// 拓展订阅也有单人定时锐评(ADR-0020 决策 14),审批已经开着。
 				{
-					kind: "extension",
 					id: "e1",
-					extensionId: "douyin",
-					externalId: "sec-1",
+					identity: { sourceKey: "douyin", externalId: "sec-1" },
 					roastSchedule: { approval: true, enabled: true },
 				},
 			],

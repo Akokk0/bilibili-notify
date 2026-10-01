@@ -35,7 +35,7 @@ const alive = {
 };
 const SUBS: Record<string, string> = { "100": "sub-100", "200": "sub-200" };
 
-/** 0.x 盘上的 B 站订阅行(没有 kind)。迁移器只认 id 与 uid 两格。 */
+/** 0.x 盘上的 B 站订阅行(身份在顶层 uid、没有 kind)。迁移器只认 id 与 uid 两格。 */
 const SUBSCRIPTION_ROWS = Object.entries(SUBS).map(([uid, id]) => ({ id, uid, enabled: true }));
 
 /** 在新代上开一次真的草稿库。 */

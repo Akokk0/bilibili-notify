@@ -15,7 +15,6 @@ import { CardStyleSchema } from "../common";
 import { makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
 import {
-	BiliSubscriptionSchema,
 	CachedProfileSchema,
 	FansBaselineSchema,
 	makeEmptySubscription,
@@ -26,7 +25,7 @@ import {
 
 const BASE = makeEmptySubscription({
 	id: "550e8400-e29b-41d4-a716-446655440000",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
 
 /** 模拟一条 release 前的、cachedProfile/state 仍内嵌的旧 subscriptions.json 记录。 */
@@ -49,12 +48,12 @@ const LEGACY_RAW = {
 
 describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 	it("旧记录(内嵌 cachedProfile+state)parse 成功,且结果无这两个键", () => {
-		const parsed = BiliSubscriptionSchema.parse(LEGACY_RAW);
+		const parsed = SubscriptionSchema.parse(LEGACY_RAW);
 		expect("cachedProfile" in parsed).toBe(false);
 		expect("state" in parsed).toBe(false);
 		// 其余配置字段完好
 		expect(parsed.id).toBe(BASE.id);
-		expect(parsed.uid).toBe("12345");
+		expect(parsed.identity).toEqual({ sourceKey: "bilibili", externalId: "12345" });
 		expect(parsed.enabled).toBe(true);
 	});
 
@@ -77,12 +76,12 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 		expect(r.success).toBe(true);
 	});
 
-	it("用户手填 UP 昵称保留在 name(纯配置),makeEmpty 默认不写", () => {
-		expect(BASE.name).toBeUndefined();
+	it("别名退役(ADR-0021 决策 16):盘上残留的 name 读进来被剥掉,折叠出来也没有", () => {
+		expect("name" in BASE).toBe(false);
 		const parsed = SubscriptionSchema.parse({ ...BASE, name: "Asaki大人" });
-		expect(parsed.name).toBe("Asaki大人");
+		expect("name" in parsed).toBe(false);
 		const eff = resolve(parsed, makeDefaultGlobalConfig().defaults);
-		expect(eff.name).toBe("Asaki大人");
+		expect("name" in eff).toBe(false);
 	});
 
 	it("resolve() 输出不含 cachedProfile / state", () => {

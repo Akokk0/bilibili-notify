@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX } from "./subscriptions";
+import { EXTERNAL_ID_MAX } from "./subscriptions";
 
 /**
  * 订阅源拓展的解析门交回来的候选(ADR-0019 决策 11 / 52)—— 宿主**先核形状**再交给面板。
@@ -42,13 +42,7 @@ export const SubscriptionAvatarSchema = z
 
 /** 一个候选:`{ id, name, avatar?, fans? }`。 */
 export const SubscriptionCandidateSchema = z.strictObject({
-	id: z
-		.string()
-		.min(1, "id 不能是空串")
-		.max(
-			EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX,
-			`id 不能超过 ${EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX} 字`,
-		),
+	id: z.string().min(1, "id 不能是空串").max(EXTERNAL_ID_MAX, `id 不能超过 ${EXTERNAL_ID_MAX} 字`),
 	name: z.string().min(1, "名字不能是空串").max(128, "名字不能超过 128 字"),
 	avatar: SubscriptionAvatarSchema.optional(),
 	fans: z.number().int("粉丝数要是整数").nonnegative("粉丝数不能是负的").optional(),

@@ -16,24 +16,24 @@ import {
  */
 describe("subscribedFeatures", () => {
 	it("无 overrides:返回 DEFAULT_FEATURE_FLAGS 中默认开启的特性", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		expect(subscribedFeatures(sub)).toEqual(["dynamic", "live", "liveEnd"]);
 	});
 
 	it("overrides 关掉某默认开启的特性 → 不出现", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.overrides = { features: { dynamic: false } };
 		expect(subscribedFeatures(sub)).not.toContain("dynamic");
 	});
 
 	it("overrides 开启某默认关闭的特性 → 出现", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.overrides = { features: { superchat: true } };
 		expect(subscribedFeatures(sub)).toContain("superchat");
 	});
 
 	it("routing 灌满全部目标也不影响结果 —— 只看主开关,不看 routing", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		// 模拟 follow 模式加推送目标:全部 7 个特性的 routing 都塞了同一个目标。
 		for (const k of Object.keys(sub.routing) as FeatureKey[]) sub.routing[k] = ["t-1"];
 		// 主开关只留 dynamic(其余默认开启的全关掉)。
@@ -72,7 +72,7 @@ describe("routingAlignedToFeatures", () => {
 	];
 
 	it("follow 模式灌满全 7 项 → 对齐后只留生效特性", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1"];
 		const routing = routingAlignedToFeatures(sub, "t-1");
 		for (const k of DEFAULT_ON) expect(routing[k]).toContain("t-1");
@@ -80,14 +80,14 @@ describe("routingAlignedToFeatures", () => {
 	});
 
 	it("target 原本不在任何 routing → 只加进生效特性", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		const routing = routingAlignedToFeatures(sub, "t-1");
 		expect(routing.dynamic).toEqual(["t-1"]);
 		expect(routing.superchat).toEqual([]);
 	});
 
 	it("跟随 overrides:开 superchat 则纳入,关 dynamic 则剔除", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1"];
 		sub.overrides = { features: { superchat: true, dynamic: false } };
 		const routing = routingAlignedToFeatures(sub, "t-1");
@@ -96,7 +96,7 @@ describe("routingAlignedToFeatures", () => {
 	});
 
 	it("不影响其它 target", () => {
-		const sub = makeEmptySubscription("100");
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1", "t-2"];
 		const routing = routingAlignedToFeatures(sub, "t-1");
 		for (const k of FEATURE_KEYS) expect(routing[k]).toContain("t-2");
@@ -108,14 +108,8 @@ describe("routingAlignedToFeatures", () => {
  * 名字回落到外部 id。B 站订阅照旧按 uid —— 同一位 UP 在页面上和服务端画的周报图上是同一个颜色。
  */
 describe("subscriptionColor / displayName × 两支订阅", () => {
-	const bili = makeEmptySubscription("12345");
-	const { kind: _k, uid: _u, ...common } = bili;
-	const ext = {
-		...common,
-		kind: "extension" as const,
-		extensionId: "douyin",
-		externalId: "12345",
-	};
+	const bili = makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" });
+	const ext = makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" });
 
 	it("B 站按 uid,拓展按「拓展 id:外部 id」这一串 —— 带着冒号与拓展名,永远不等于纯数字 uid", () => {
 		expect(subscriptionColor(bili)).toBe(colorFromUid("12345"));
@@ -128,9 +122,8 @@ describe("subscriptionColor / displayName × 两支订阅", () => {
 		expect(subscriptionColor(readded)).toBe(subscriptionColor(original));
 	});
 
-	it("B 站没资料 → 「UID xxx」;拓展没资料 → 名字 → 外部 id", () => {
+	it("B 站没资料 → 「UID xxx」;拓展没资料 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
 		expect(displayName(bili)).toBe("UID 12345");
 		expect(displayName(ext)).toBe("12345");
-		expect(displayName({ ...ext, name: "抖音那位" })).toBe("抖音那位");
 	});
 });

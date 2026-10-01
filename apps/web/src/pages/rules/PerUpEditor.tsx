@@ -34,7 +34,6 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type ContentFiltersOverride,
 	type ImageGroupOverride,
-	isBiliSubscription,
 	type MessageLayoutOverride,
 	type OverridesShape,
 	type ScheduleOverride,
@@ -118,15 +117,11 @@ interface PerUpDraft {
 	specialUsers: SpecialUser[];
 }
 
-/** 拓展订阅没有特别关注那一格 —— 给一个稳定的空数组,别让 effect 每次渲染都当它变了。 */
-const NO_SPECIAL_USERS: SpecialUser[] = [];
-
 export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorProps) {
 	const qc = useQueryClient();
 	const identity = subscriptionIdentityOf(sub);
 	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	// 特别关注是 B 站支独有的非身份字段,DTO 形状这一片不动,所以这一处仍靠收窄来读。
-	const specialUsers = isBiliSubscription(sub) ? sub.specialUsers : NO_SPECIAL_USERS;
+	const specialUsers = sub.specialUsers;
 	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
 	const features = platform?.features;
 	const reportsPost = isBili || !features || features.includes("dynamic");
@@ -145,7 +140,7 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 		mutationFn: () => {
 			// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
 			const overrides = buildOverridesPatch(draft.overrides, sub.overrides);
-			// 特别关注只有 B 站订阅有,拓展订阅那一支根本没有这一格,不发。
+			// 特别关注今天只有 B 站这个来源支持,别的来源不发这一格。
 			return patchSub(
 				sub.id,
 				isBili ? { overrides, specialUsers: draft.specialUsers } : { overrides },

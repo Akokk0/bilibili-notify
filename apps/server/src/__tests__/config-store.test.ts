@@ -94,7 +94,10 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 }
 
 function makeSampleSubscription(uid = "12345"): Subscription {
-	return makeEmptySubscription({ id: randomUUID(), uid });
+	return makeEmptySubscription({
+		id: randomUUID(),
+		identity: { sourceKey: "bilibili", externalId: uid },
+	});
 }
 
 function makeWebhookConnection(
@@ -349,7 +352,7 @@ describe("ConfigStore", () => {
 			externalId: "11111",
 		});
 
-		// Update the same id (cannot mutate uid past schema regex, but we can flip enabled / notes)
+		// Update the same id (the identity cannot change, but we can flip enabled / notes)
 		const updated: Subscription = { ...sub, enabled: false, notes: "paused" };
 		await store.upsertSubscription(updated);
 		expect(store.getSubscriptions()).toHaveLength(1);
@@ -413,7 +416,10 @@ describe("ConfigStore", () => {
 	});
 
 	it("upsertSubscription validates: malformed sub throws, file unchanged", async () => {
-		const broken = { ...makeSampleSubscription(), uid: "not-a-uid" };
+		const broken = {
+			...makeSampleSubscription(),
+			identity: { sourceKey: "bilibili", externalId: "" },
+		};
 		await expect(store.upsertSubscription(broken as never)).rejects.toBeInstanceOf(
 			ConfigValidationError,
 		);

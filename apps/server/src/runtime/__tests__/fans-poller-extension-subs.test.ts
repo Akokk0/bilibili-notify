@@ -12,7 +12,11 @@ import { createNodeMessageBus } from "../message-bus.js";
  */
 
 const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
-const BILI = { kind: "bilibili", id: "b1", uid: "1", enabled: true } as const;
+const BILI = {
+	id: "b1",
+	identity: { sourceKey: "bilibili", externalId: "1" },
+	enabled: true,
+} as const;
 const EXT = makeExtensionSubscription({ id: "e1", externalId: "1" });
 
 let handle: FansPollerHandle | undefined;

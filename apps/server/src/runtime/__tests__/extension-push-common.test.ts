@@ -3,7 +3,7 @@
  *
  * - 卡上的作者:事件带的名字 / 头像优先,没带的那一样用订阅资料(名字取资料缓存,头像取存下的头像
  *   文件)。头像一律转成 data URL —— 存下的是面板里的相对地址,截图时加载不到(决策 68)。
- * - 模板里的 `{name}`:事件作者名 → 资料里的名字 → 主人手填的别名(`name`)→ 外部 id(决策 77)。
+ * - 模板里的 `{name}`:事件作者名 → 资料里的名字 → 外部 id(决策 77;手填的别名已退役,ADR-0021 决策 16)。
  *   面板上标「备注」的 `notes` 是自由文字,不当名字用。
  * - 这条订阅现在还该推吗:订阅还在、启用着、它的拓展还在跑。
  */
@@ -24,11 +24,10 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 
 const SUB = makeExtensionSubscription({
 	externalId: "sec-uid-1",
-	name: "手填的别名",
 	notes: "推给一群和二群,周末别推",
 });
 
-describe("模板里的 {name}:事件作者名 → 资料名 → 别名 → 外部 id(决策 77)", () => {
+describe("模板里的 {name}:事件作者名 → 资料名 → 外部 id(决策 77;别名已退役,ADR-0021 决策 16)", () => {
 	it("一级一级往下退;空串与只有空白的不算有", () => {
 		expect(extensionSubscriptionName(SUB, { eventName: "事件里的", profileName: "资料里的" })).toBe(
 			"事件里的",
@@ -36,12 +35,11 @@ describe("模板里的 {name}:事件作者名 → 资料名 → 别名 → 外�
 		expect(extensionSubscriptionName(SUB, { eventName: " ", profileName: "资料里的" })).toBe(
 			"资料里的",
 		);
-		expect(extensionSubscriptionName(SUB, { profileName: "" })).toBe("手填的别名");
-		expect(extensionSubscriptionName({ ...SUB, name: "  " }, {})).toBe("sec-uid-1");
+		expect(extensionSubscriptionName(SUB, { profileName: "  " })).toBe("sec-uid-1");
 	});
 
-	it("备注(`notes`)是自由文字,从来不当名字:没有别名就直接退到外部 id", () => {
-		expect(extensionSubscriptionName({ ...SUB, name: undefined }, {})).toBe("sec-uid-1");
+	it("备注(`notes`)是自由文字,从来不当名字:没有资料名就直接退到外部 id", () => {
+		expect(extensionSubscriptionName(SUB, {})).toBe("sec-uid-1");
 	});
 });
 
@@ -77,7 +75,7 @@ describe("卡上的作者(决策 54)", () => {
 
 	it("哪儿都没有头像(或读头像文件抛了):给透明占位,不让卡上裂一张图", async () => {
 		const none = await extensionCardAuthor(SUB, { readStoredAvatar: async () => undefined });
-		expect(none).toEqual({ name: "手填的别名", avatarUrl: BLOCKED_IMG_PLACEHOLDER });
+		expect(none).toEqual({ name: "sec-uid-1", avatarUrl: BLOCKED_IMG_PLACEHOLDER });
 		const broken = await extensionCardAuthor(SUB, {
 			readStoredAvatar: async () => {
 				throw new Error("EACCES");
@@ -94,10 +92,18 @@ describe("这条订阅现在还该推吗", () => {
 		expect(extensionSubscriptionPushable(SUB, running)).toBe(true);
 		expect(extensionSubscriptionPushable(undefined, running)).toBe(false);
 		expect(extensionSubscriptionPushable({ ...SUB, enabled: false }, running)).toBe(false);
-		expect(extensionSubscriptionPushable({ ...SUB, extensionId: "other" }, running)).toBe(false);
 		expect(
 			extensionSubscriptionPushable(
-				makeEmptySubscription({ id: SUB.id, uid: "100" }) as never,
+				{ ...SUB, identity: { ...SUB.identity, sourceKey: "other" } },
+				running,
+			),
+		).toBe(false);
+		expect(
+			extensionSubscriptionPushable(
+				makeEmptySubscription({
+					id: SUB.id,
+					identity: { sourceKey: "bilibili", externalId: "100" },
+				}),
 				() => true,
 			),
 		).toBe(false);

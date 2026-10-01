@@ -13,7 +13,6 @@
  * undefined 自动走 this.config 兜底,跟全局 hot-reload 立即同步。
  */
 import {
-	type BiliSubscription,
 	type GlobalConfig,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -36,10 +35,10 @@ const fakeStore = (subs: Subscription[]): SubscriptionStore =>
 		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 list
 	}) as any;
 
-const makeSub = (overrides: Subscription["overrides"] = {}): BiliSubscription => ({
+const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	...makeEmptySubscription({
 		id: "11111111-1111-1111-1111-111111111111",
-		uid: "12345",
+		identity: { sourceKey: "bilibili", externalId: "12345" },
 	}),
 	enabled: true,
 	overrides,

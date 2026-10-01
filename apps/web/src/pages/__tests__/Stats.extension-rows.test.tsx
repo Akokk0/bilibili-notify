@@ -4,7 +4,7 @@
  *
  * - 行以**订阅 id** 为键,选中、聚焦都按它 —— 外部 id 恰好等于某个 B 站 uid 时,点的是谁就是谁。
  * - 颜色跟着人走:与订阅卡同一个颜色(`subscriptionColor`,ADR-0019 决策 73)。
- * - 名字走订阅卡那条链(资料里的名字 → 别名 → 外部 id);单人页头 B 站写「UID xxx」、拓展写「平台名 外部 id」。
+ * - 名字走订阅卡那条链(资料里的名字 → 外部 id;别名已退役,ADR-0021 决策 16);单人页头 B 站写「UID xxx」、拓展写「平台名 外部 id」。
  * - 汇总(总粉丝量、在盯几位)两支一起算。
  * - 「峰值观看 / 场均峰值」改成「单场最高观看 / 场均观看」,旁边一句「按每场累计看过的人数算」。
  * - 锐评两支都管(ADR-0020 决策 12 / 14 / 18):聚焦到拓展行照样出单人锐评与它的定时,请求按(编码过的)订阅 id
@@ -16,12 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-	type ExtensionSubscription,
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { subscriptionColor } from "../../utils/up-display";
 
 vi.mock("../../services/api", () => ({
@@ -72,12 +67,12 @@ const EXT_ROW = row({
 });
 
 const BILI_SUB: Subscription = {
-	...makeEmptySubscription("12345"),
+	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" }),
 	id: "s-bili",
 	cachedProfile: { name: "B 站甲", avatar: "", sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
 };
-const EXT_SUB: ExtensionSubscription = {
-	...makeEmptyExtensionSubscription("douyin", "12345"),
+const EXT_SUB: Subscription = {
+	...makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" }),
 	id: "s-dy",
 	// 拓展的头像是面板里的同源相对地址(资料上报存成文件),页面上照样画得出来。
 	cachedProfile: {
@@ -225,12 +220,14 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(title.textContent).toContain("抖音");
 	});
 
-	it("名字链:资料里没名字的拓展行 → 别名 → 外部 id;订阅列表还没回来也不写「UID undefined」", async () => {
-		const noName = { ...EXT_SUB, cachedProfile: undefined, name: "主人起的名" };
+	it("名字链:资料里没名字的拓展行 → 外部 id(别名已退役,ADR-0021 决策 16);订阅列表还没回来也不写「UID undefined」", async () => {
+		const noName = { ...EXT_SUB, cachedProfile: undefined };
 		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, noName]);
 		const { unmount } = renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-		expect(tableRow("主人起的名")).toBeTruthy();
+		expect(tableRow("12345")).toBeTruthy();
+		expect(screen.queryByText("抖音乙")).toBeNull();
+		expect(screen.queryByText(/UID/)).toBeNull();
 		unmount();
 
 		mockApi([EXT_ROW], []);
@@ -268,7 +265,7 @@ describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => 
 	/** 订阅 id 里带着要转义的字符 —— 验面板把它编码进路径,不是原样拼。 */
 	const ODD_ID = "s/dy 甲";
 	const ODD_ROW = { ...EXT_ROW, subscriptionId: ODD_ID };
-	const ODD_SUB: ExtensionSubscription = {
+	const ODD_SUB: Subscription = {
 		...EXT_SUB,
 		id: ODD_ID,
 		roastSchedule: { ...EXT_SUB.roastSchedule, targets: ["t1"] },

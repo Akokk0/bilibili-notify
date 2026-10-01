@@ -8,7 +8,7 @@ import { type AIOverride, makeEmptySubscription, type Subscription } from "../su
 
 const SUB_BASE: Subscription = makeEmptySubscription({
 	id: "11111111-1111-1111-1111-111111111111",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
 
 describe("resolve()", () => {

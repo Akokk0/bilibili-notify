@@ -41,7 +41,11 @@ const GLOBALS = {
 const PROFILE = { name: "UP", avatar: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
 
 function baseDeps(over: {
-	subs: Array<{ id: string; uid: string; enabled: boolean }>;
+	subs: Array<{
+		id: string;
+		identity: { sourceKey: string; externalId: string };
+		enabled: boolean;
+	}>;
 	getRelationStat: ReturnType<typeof vi.fn>;
 	rtGet?: ReturnType<typeof vi.fn>;
 }) {
@@ -92,7 +96,10 @@ afterEach(() => {
 describe("① fansCron 解耦", () => {
 	it("cron 用 app.fansCron,而不是 dynamicCron", () => {
 		handle = startFansPoller(
-			baseDeps({ subs: [{ id: "s1", uid: "1", enabled: true }], getRelationStat: vi.fn() }),
+			baseDeps({
+				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],
+				getRelationStat: vi.fn(),
+			}),
 		);
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.cronTime).toBe("*/10 * * * *");
@@ -107,8 +114,8 @@ describe("② 风控熔断", () => {
 		handle = startFansPoller(
 			baseDeps({
 				subs: [
-					{ id: "s1", uid: "1", enabled: true },
-					{ id: "s2", uid: "2", enabled: true },
+					{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true },
+					{ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" }, enabled: true },
 				],
 				getRelationStat,
 			}),

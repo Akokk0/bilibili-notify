@@ -75,8 +75,8 @@ function makeDeps(opts: StubOpts = {}) {
 	const deps = {
 		store: {
 			getSubscriptions: () => [
-				{ kind: "bilibili", id: "s100", uid: "100" },
-				{ kind: "bilibili", id: "s200", uid: "200" },
+				{ id: "s100", identity: { sourceKey: "bilibili", externalId: "100" } },
+				{ id: "s200", identity: { sourceKey: "bilibili", externalId: "200" } },
 			],
 			getGlobals: () => ({
 				defaults: {

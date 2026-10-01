@@ -292,7 +292,10 @@ describe("pruneOrphanSubRuntime — 保留名单是两支订阅的全部 id(ADR-
 	it("拓展订阅的资料缓存不被当成孤儿抹掉;真孤儿照丢", async () => {
 		const runtime = make();
 		const subs = createSubscriptionStore(createNodeMessageBus());
-		const bili = makeEmptySubscription({ id: "b1", uid: "1" });
+		const bili = makeEmptySubscription({
+			id: "b1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const ext = makeExtensionSubscription({ id: "e1" });
 		subs.replaceAll([bili, ext]);
 		await runtime.patch("b1", { cachedProfile: PROFILE_A });

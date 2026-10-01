@@ -11,11 +11,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
-import {
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { TimelinePanel } from "../Dashboard";
 
 afterEach(cleanup);
@@ -91,7 +87,7 @@ describe("最近推送活动 · 行是谁", () => {
 
 	it("拓展行的订阅删了、同一个人又加了一条 → 写现在那条的名字", () => {
 		const readded: Subscription = {
-			...makeEmptyExtensionSubscription("douyin", "sec-1"),
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 			cachedProfile: {
 				name: "现在的抖音号",
 				avatar: "",
@@ -105,7 +101,7 @@ describe("最近推送活动 · 行是谁", () => {
 
 	it("拓展行的外部 id 恰好等于某个 B 站 uid → 不认成那位 B 站 UP", () => {
 		const bili: Subscription = {
-			...makeEmptySubscription("u1"),
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "u1" }),
 			cachedProfile: {
 				name: "某B站UP",
 				avatar: "",

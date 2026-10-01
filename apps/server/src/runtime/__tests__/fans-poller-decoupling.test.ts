@@ -49,20 +49,30 @@ const GLOBALS = {
 	app: { dynamicCron: "*/2 * * * *" },
 } as unknown as GlobalConfig;
 
-const SUB = { id: "sub-1", uid: "12345", enabled: true };
+const SUB = {
+	id: "sub-1",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
+	enabled: true,
+};
 
 function makeApi(fans: number) {
 	return {
 		getUserCardInfo: vi.fn(async (_uid: string) => ({
 			code: 0,
 			data: {
-				card: { mid: SUB.uid, name: "测试UP", face: "f.png", sign: "s", fans },
+				card: { mid: SUB.identity.externalId, name: "测试UP", face: "f.png", sign: "s", fans },
 			},
 		})),
 		// 稳态(已有 cachedProfile)走轻量 relation/stat;follower 即 fans。
 		getRelationStat: vi.fn(async (_uid: string) => ({
 			code: 0,
-			data: { mid: Number(SUB.uid), following: 0, whisper: 0, black: 0, follower: fans },
+			data: {
+				mid: Number(SUB.identity.externalId),
+				following: 0,
+				whisper: 0,
+				black: 0,
+				follower: fans,
+			},
 		})),
 		getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
 	};
@@ -204,7 +214,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 
 		expect(patchSubscription).not.toHaveBeenCalled();
 		// 稳态用 relation/stat,不再打 card。
-		expect(api.getRelationStat).toHaveBeenCalledWith(SUB.uid);
+		expect(api.getRelationStat).toHaveBeenCalledWith(SUB.identity.externalId);
 		expect(api.getUserCardInfo).not.toHaveBeenCalled();
 		const [, payload] = rtPatch.mock.calls[0] as unknown as [
 			string,

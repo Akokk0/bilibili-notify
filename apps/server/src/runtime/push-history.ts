@@ -45,9 +45,7 @@ export function historyRecordFromSend(
 	const who = fromBilibili
 		? { uid: identity.externalId, uavatarSnapshot: profile?.avatar }
 		: { extensionId: identity.sourceKey, externalId: identity.externalId };
-	const unameSnapshot = fromBilibili
-		? profile?.name
-		: (filled(profile?.name) ?? filled(subscription.name));
+	const unameSnapshot = fromBilibili ? profile?.name : filled(profile?.name);
 	return {
 		pushId: info.pushId,
 		kind: info.kind,

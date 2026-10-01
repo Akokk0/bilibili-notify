@@ -12,12 +12,7 @@
  * (messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type {
-	BiliSubscriptionDTO,
-	ExtensionBotView,
-	ExtensionSubscriptionDTO,
-	SubscriptionDTO,
-} from "@bilibili-notify/contract";
+import type { ExtensionBotView, SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
@@ -42,8 +37,6 @@ import {
 	type FeatureKey,
 	type Identity,
 	identityColor,
-	isBiliSubscription,
-	isExtensionSubscription,
 	isTargetPaused,
 	isWebhookConnection,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -64,8 +57,6 @@ export {
 	EXTRA_KEYS,
 	FEATURE_KEYS,
 	identityColor,
-	isBiliSubscription,
-	isExtensionSubscription,
 	isTargetPaused,
 	isWebhookConnection,
 	PUSH_EXTRAS,
@@ -76,16 +67,12 @@ export {
 /**
  * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端
  * join 回来的 cachedProfile / state / followed),沿用旧名 Subscription。
+ *
+ * 订阅只有一种形状(ADR-0021 决策 14、15):「这条订阅订的是谁」一律读
+ * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`);`specialUsers` 是公共的,
+ * `followed` / `followError` 是可选格(只有能关注的来源才有)。
  */
 export type Subscription = SubscriptionDTO;
-/**
- * 订阅分两支(ADR-0019 决策 9):B 站订阅带 uid / 特别关注 / 关注状态,拓展订阅带
- * `(extensionId, externalId)`;单人定时锐评两支都有(ADR-0020 决策 14)。「这条订阅订的是谁」一律读
- * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`),别按支分别读 `uid` /
- * `extensionId`;读任何一支独有的**非身份**字段(特别关注、关注状态)前才用 `isBiliSubscription` 收窄。
- */
-export type BiliSubscription = BiliSubscriptionDTO;
-export type ExtensionSubscription = ExtensionSubscriptionDTO;
 
 export type {
 	AIOverride,
@@ -246,11 +233,15 @@ function emptyExtras(): Subscription["extras"] {
 	return out as Subscription["extras"];
 }
 
-export function makeEmptySubscription(uid: string): BiliSubscription {
+/**
+ * 一条订阅的草稿:身份是 `(sourceKey, externalId)`,`externalId` 原样存、从不解读(拓展订阅就是解析门
+ * 交回的那个候选的 `id`)。路由全空、覆写全空 —— 推给谁由配置弹层里挑;单人定时锐评同服务端的
+ * makeEmptySubscription,不自带。
+ */
+export function makeEmptySubscription(identity: Identity): Subscription {
 	return {
-		kind: "bilibili",
 		id: newId(),
-		uid,
+		identity: { ...identity },
 		enabled: true,
 		groups: [],
 		notes: undefined,
@@ -261,40 +252,6 @@ export function makeEmptySubscription(uid: string): BiliSubscription {
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		// 与服务端的 makeEmptySubscription 保持一致。
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
-		specialUsers: [],
-		state: {
-			lastDynamicId: undefined,
-			lastPushedAt: {},
-			liveStatus: "unknown",
-		},
-	};
-}
-
-/**
- * 一条拓展订阅的草稿(ADR-0019 决策 9 / 11):身份是 `(extensionId, externalId)`,`externalId` 就是
- * 解析门交回的那个候选的 `id`,原样存、从不解读。没有 uid、特别关注(决策 12);单人定时锐评有
- * (ADR-0020 决策 14),同 B 站新订阅一样不自带。
- *
- * 与 {@link makeEmptySubscription} 同一个口径:路由全空、覆写全空 —— 推给谁由配置弹层里挑。
- */
-export function makeEmptyExtensionSubscription(
-	extensionId: string,
-	externalId: string,
-): ExtensionSubscription {
-	return {
-		kind: "extension",
-		id: newId(),
-		extensionId,
-		externalId,
-		enabled: true,
-		groups: [],
-		notes: undefined,
-		cachedProfile: undefined,
-		routing: emptyRouting(),
-		extras: emptyExtras(),
-		overrides: {},
-		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
-		// internal 的拓展订阅也带这一格了(特别关注是两支的公共形状),拓展订阅今天恒空。
 		specialUsers: [],
 		state: {
 			lastDynamicId: undefined,

@@ -12,13 +12,11 @@ import type {
 	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
-	BiliSubscription,
 	CachedProfile,
 	CardSkinKind,
 	ConnectionCapabilities,
 	ExtensionProvides,
 	ExtensionRunState,
-	ExtensionSubscription,
 	Failure,
 	FailureCode,
 	FansRefreshEntry,
@@ -27,6 +25,7 @@ import type {
 	PushKind,
 	PushStatus,
 	Result,
+	Subscription,
 	SubscriptionReportKind,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
@@ -454,32 +453,10 @@ export interface MarketplaceInstallRequest {
  * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubRuntimeStore join
  * 回来的外置运行时字段(cachedProfile / state / 关注状态)。
  *
- * 与域模型一样分两支(ADR-0019 决策 9),按 `kind` 收窄。
- */
-export type SubscriptionDTO = BiliSubscriptionDTO | ExtensionSubscriptionDTO;
-
-/** 两支都有的外置运行时字段。 */
-interface SubscriptionRuntimeDTO {
-	cachedProfile?: CachedProfile;
-	state: SubscriptionState;
-}
-
-/**
- * B 站订阅。
+ * 只有这一种形状(ADR-0021 决策 14、15):B 站与拓展提供的订阅同一个形状,订的是谁只读
+ * `identity`(`sourceKey` + `externalId`)。
  *
- * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态
- * 都收不到。`undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**
- * 「未关注」—— 别拿它去吓用户。关注只对 B 站订阅有意义,拓展订阅那支没有这两格。
- */
-export type BiliSubscriptionDTO = BiliSubscription &
-	SubscriptionRuntimeDTO & {
-		followed?: boolean;
-		/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),直接展示给用户。 */
-		followError?: string;
-	};
-
-/**
- * 拓展订阅(ADR-0019 决策 9):身份是 `(extensionId, externalId)`,没有 uid。
+ * `identity.sourceKey` 是拓展 id 时:
  *
  * - `cachedProfile.avatar` 是同源的**相对地址** `/api/subs/<id>/avatar?v=<摘要>`(决策 49:头像存成
  *   文件,走面板鉴权;换了图 `v` 就变,可以放心缓存),没有头像是空串。`cachedProfile.fans` 可能没有
@@ -487,14 +464,30 @@ export type BiliSubscriptionDTO = BiliSubscription &
  * - **新建**(`POST /api/subs`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
  *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatar?, fans? }`,`avatar` 就是候选
  *   里那个位图 data URL。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),头像存成文件后资料里
- *   换成上面那个地址。宿主先核,都过了才落盘:`extensionId` 得是装着的 v2 订阅源(**不要求在跑**,
- *   决策 10),没装是 404 `not_found`,装着但不是订阅源(v1 清单 / 没开订阅源那一口 / 清单读不出来)
- *   是 400 `unsupported`;同一拓展名下同一 `externalId` 已经有了 → 409 `conflict`;资料不合规矩
- *   (头像不是 png / jpeg / webp、魔数对不上、超过 128 KiB……)→ 400 `invalid`,`issues` 点名
- *   `cachedProfile.*`。失败体一律是 {@link ErrorResponse}。已有的整份 POST 回来(启用开关)照旧,
- *   带来的 `cachedProfile` 不收。
+ *   换成上面那个地址。宿主先核,都过了才落盘:`identity.sourceKey` 这个拓展得是装着的 v2 订阅源
+ *   (**不要求在跑**,决策 10),没装是 404 `not_found`,装着但不是订阅源(v1 清单 / 没开订阅源那一口 /
+ *   清单读不出来)是 400 `unsupported`;同一身份已经有了 → 409 `conflict`;资料不合规矩(头像不是
+ *   png / jpeg / webp、魔数对不上、超过 128 KiB……)→ 400 `invalid`,`issues` 点名 `cachedProfile.*`。
+ *   失败体一律是 {@link ErrorResponse}。已有的整份 POST 回来(启用开关)照旧,带来的 `cachedProfile`
+ *   不收。
  */
-export type ExtensionSubscriptionDTO = ExtensionSubscription & SubscriptionRuntimeDTO;
+export type SubscriptionDTO = Subscription &
+	SubscriptionRuntimeDTO & {
+		/**
+		 * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态都收不到。
+		 * `undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**「未关注」—— 别拿它去吓用户。
+		 * 只对能关注的来源有意义(今天只有 B 站),别的来源这一格与 `followError` 缺着。
+		 */
+		followed?: boolean;
+		/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),直接展示给用户。 */
+		followError?: string;
+	};
+
+/** 外置运行时字段(服务端 SubRuntimeStore join 回来的)。 */
+interface SubscriptionRuntimeDTO {
+	cachedProfile?: CachedProfile;
+	state: SubscriptionState;
+}
 
 // ---- /api/history ----------------------------------------------------------
 

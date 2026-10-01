@@ -35,7 +35,11 @@ const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as unknown as GlobalConfig;
-const SUB = { kind: "bilibili", id: "sub-1", uid: "12345", enabled: true } as const;
+const SUB = {
+	id: "sub-1",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
+	enabled: true,
+} as const;
 
 let handle: { dispose(): void } | undefined;
 beforeEach(() => {

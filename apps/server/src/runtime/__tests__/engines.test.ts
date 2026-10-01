@@ -527,7 +527,11 @@ describe("createEngines — live-state-changed 接线", () => {
  */
 describe("createEngines — 在播快照带订阅 id", () => {
 	it("每个在播房间带上对应订阅的 id;uid 翻不到订阅的房间不出现", () => {
-		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+		});
 		active = c;
 		H.live[0].listLiveSnapshots.mockReturnValue([
 			{ uid: "1", roomId: "r1", isLive: true, title: "在播" },
@@ -1022,7 +1026,10 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 
 	it("item 3 — 改全局配置:live.applyOps 收到全部订阅的 update op(刷新 per-sub 视图)", () => {
-		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const c = setup({ globals: aiGlobals(), subs: [sub] });
 		active = c;
 		patchGlobals(c, (g) => {
@@ -1035,7 +1042,10 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 
 	it("回归:只改全局 cardSkin(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(热更 gate 漏掉它的话,换了皮肤要重启才生效)", () => {
-		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const c = setup({ subs: [sub] });
 		active = c;
 		H.dynamic[0].applyOps.mockClear();
@@ -1284,7 +1294,10 @@ describe("createEngines — 背景轮换游标落盘", () => {
 // dynamic 因有 cron getSubs() 兜底才显得「正常」。修复:op 翻译层显式 gate enabled。
 describe("createEngines — 订阅禁用/启用转译", () => {
 	function makeSub(uid: string, enabled: boolean): Subscription {
-		const s = makeEmptySubscription({ id: `sub-${uid}`, uid });
+		const s = makeEmptySubscription({
+			id: `sub-${uid}`,
+			identity: { sourceKey: "bilibili", externalId: uid },
+		});
 		s.enabled = enabled;
 		return s;
 	}
@@ -1477,7 +1490,10 @@ describe("createEngines — 消息版式", () => {
 
 	it("buildDynamicSubViewSingle / buildLiveSubViewSingle 折叠 eff.messageLayout 的对应切片", () => {
 		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
 		expect(dyn.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.dynamic);
 		const live = buildLiveSubViewSingle(sub, subRt, g);
@@ -1486,7 +1502,10 @@ describe("createEngines — 消息版式", () => {
 
 	it("per-UP messageLayout 覆盖折叠进两端视图(整份覆盖 + normalize)", () => {
 		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		sub.overrides.messageLayout = {
 			...DEFAULT_MESSAGE_LAYOUT,
 			dynamic: {
@@ -1509,7 +1528,11 @@ describe("createEngines — 消息版式", () => {
 
 	it("dynamicPushLike.broadcastDynamicSequence → BilibiliPush 收到 payload 数组", async () => {
 		// 引擎说 uid,推送层认订阅 id —— 这个 uid 得真有一条订阅,适配器才往下交。
-		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+		});
 		active = c;
 		const seq = H.dynamic[0].opts.push.broadcastDynamicSequence;
 		expect(seq).toBeDefined();
@@ -1534,7 +1557,11 @@ describe("createEngines — 消息版式", () => {
 	});
 
 	it("livePushLike.broadcastSequenceToTargets → feature 映射 + allowAtAll(开播=3)", async () => {
-		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+		});
 		active = c;
 		const seq = H.live[0].opts.push.broadcastSequenceToTargets;
 		expect(seq).toBeDefined();
@@ -1554,7 +1581,10 @@ describe("createEngines — 消息版式", () => {
 	});
 
 	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {
-		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const c = setup({ subs: [sub] });
 		active = c;
 		H.dynamic[0].applyOps.mockClear();
@@ -1602,14 +1632,20 @@ describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => 
 		const style = resolveDynamicCardStyle(g.defaults, null);
 		expect(style).toMatchObject({ enable: true, liveCoverImages: ["dyn.png"] });
 		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
-		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const subRt = { get: () => undefined } as any;
 		expect(buildDynamicSubViewSingle(sub, subRt, g).customCardStyle).toEqual(style);
 	});
 
 	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
 		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		sub.overrides.cardStyle = { liveCoverImages: ["up.png"] } as any;
 		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
 			enable: true,
@@ -1813,7 +1849,11 @@ describe("createEngines — 连接所在平台的能力", () => {
  */
 describe("createEngines — 开机补关注", () => {
 	it("未登录开机:不查关注关系", async () => {
-		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+		});
 		active = c;
 		await new Promise((r) => setTimeout(r, 0));
 		expect(c.api.getRelations).not.toHaveBeenCalled();
@@ -1821,7 +1861,9 @@ describe("createEngines — 开机补关注", () => {
 
 	it("已登录开机:查一次关注关系", async () => {
 		const c = setup({
-			subs: [makeEmptySubscription({ id: "s1", uid: "1" })],
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
 			loginStatus: BiliLoginStatus.LOGGED_IN,
 		});
 		active = c;
@@ -1829,7 +1871,11 @@ describe("createEngines — 开机补关注", () => {
 	});
 
 	it("未登录开机、之后登录恢复:补上那一次", async () => {
-		const c = setup({ subs: [makeEmptySubscription({ id: "s1", uid: "1" })] });
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+		});
 		active = c;
 		c.bus.emit("auth-restored");
 		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
@@ -1859,7 +1905,10 @@ describe("createEngines — 后台写登记进 track", () => {
 	it("onSend:历史行登记进 track —— 历史写落盘,它才落定", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-engines-track-"));
 		try {
-			const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+			const sub = makeEmptySubscription({
+				id: SUB_ID,
+				identity: { sourceKey: "bilibili", externalId: "1" },
+			});
 			const historyStore = createHistoryStore({
 				dataRoot: dataDir,
 				bus: createNodeMessageBus(),
@@ -1894,7 +1943,10 @@ describe("createEngines — 后台写登记进 track", () => {
 	});
 
 	it("onSend:历史写失败 —— 登记进去的这件事不拒,记一条 warn", async () => {
-		const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+		const sub = makeEmptySubscription({
+			id: SUB_ID,
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const record = vi.fn(async () => {
 			throw new Error("queue closed");
 		});
@@ -1947,7 +1999,10 @@ describe("createEngines — 后台写登记进 track", () => {
 	it("房号解析出来即写盘:登记进 track —— 写交进 sub-runtime 写道,它才落定", async () => {
 		const write = deferred();
 		const patch = vi.fn(() => write.promise);
-		const sub = makeEmptySubscription({ id: SUB_ID, uid: "1" });
+		const sub = makeEmptySubscription({
+			id: SUB_ID,
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
 		const c = setup({ subs: [sub], overrides: { subRuntimeStore: { patch } } });
 		active = c;
 		await new Promise((r) => setTimeout(r, 0));
@@ -2021,8 +2076,11 @@ describe("createEngines — 后台写登记进 track", () => {
 
 	describe("补关注", () => {
 		const twoSubs = [
-			makeEmptySubscription({ id: SUB_ID, uid: "1" }),
-			makeEmptySubscription({ id: "55555555-5555-4555-8555-555555555555", uid: "2" }),
+			makeEmptySubscription({ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "1" } }),
+			makeEmptySubscription({
+				id: "55555555-5555-4555-8555-555555555555",
+				identity: { sourceKey: "bilibili", externalId: "2" },
+			}),
 		];
 		/** 关系查询回「都没关注」→ 走逐个补关注。 */
 		const noneFollowed = vi.fn(async () => ({ code: 0, data: null }));

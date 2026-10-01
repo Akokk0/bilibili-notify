@@ -11,12 +11,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { LiveListenerSnapshot, LiveListeningEntry } from "../../services/dashboard";
-import {
-	type ExtensionSubscription,
-	makeEmptyExtensionSubscription,
-	makeEmptySubscription,
-	type Subscription,
-} from "../../types/domain";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { LiveNowPanel } from "../Dashboard";
 
 afterEach(cleanup);
@@ -24,7 +19,7 @@ afterEach(cleanup);
 /** 一条 B 站订阅,资料缓存里的名字就是面板上显示的名字。 */
 function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
-		...makeEmptySubscription(uid),
+		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
 		cachedProfile: { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00Z" },
 	};
@@ -52,9 +47,9 @@ describe("正在直播 · 房间对到哪条订阅", () => {
 });
 
 /** 一条拓展订阅,资料缓存里的名字与头像就是面板上画的那两样。 */
-function extSub(id: string, name: string): ExtensionSubscription {
+function extSub(id: string, name: string): Subscription {
 	return {
-		...makeEmptyExtensionSubscription("douyin", "sec-1"),
+		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 		id,
 		cachedProfile: {
 			name,

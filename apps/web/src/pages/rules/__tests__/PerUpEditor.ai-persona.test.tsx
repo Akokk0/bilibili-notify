@@ -51,7 +51,7 @@ function defaultsWithPresets(): GlobalDefaults {
 }
 
 function mount(overridesAi?: Subscription["overrides"]["ai"]) {
-	const sub = makeEmptySubscription("123456");
+	const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" });
 	if (overridesAi) sub.overrides.ai = overridesAi;
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(

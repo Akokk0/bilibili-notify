@@ -60,7 +60,11 @@ function sub(
 	uid: string,
 	routing: Partial<Record<FeatureKey, string[]>>,
 ): Subscription {
-	return { kind: "bilibili", id, uid, routing } as unknown as Subscription;
+	return {
+		id,
+		identity: { sourceKey: "bilibili", externalId: uid },
+		routing,
+	} as unknown as Subscription;
 }
 
 const S1 = "51515151-5151-4151-8151-515151515151";

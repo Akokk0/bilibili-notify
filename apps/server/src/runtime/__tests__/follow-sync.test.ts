@@ -38,7 +38,11 @@ function makeDeps(opts?: {
 	return {
 		deps: {
 			api: { getRelations, follow } as never,
-			subs: () => UIDS.map((uid, i) => ({ id: `sub-${i}`, uid })) as never,
+			subs: () =>
+				UIDS.map((uid, i) => ({
+					id: `sub-${i}`,
+					identity: { sourceKey: "bilibili", externalId: uid },
+				})) as never,
 			rt: { patch } as never,
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
 		},

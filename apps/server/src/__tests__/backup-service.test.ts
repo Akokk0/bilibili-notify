@@ -8,8 +8,6 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
 import { BackupPinError } from "../backup/crypto.js";
-import type { BackupEnvelope } from "../backup/envelope.js";
-import { BackupRejectedError } from "../backup/rejected-error.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
@@ -19,7 +17,7 @@ import { makeExtensionSubscription } from "./support/extension-subscription.js";
  * cookie 恢复后回调 onCookiesRestored(bootstrap 接活体重登)。
  */
 function sub(uid: string): Subscription {
-	return makeEmptySubscription({ id: uid, uid });
+	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
 }
 
 function onebot(id: string, token: string): Connection {
@@ -288,11 +286,10 @@ describe("BackupService", () => {
 });
 
 /**
- * 拓展订阅在备份里单独一节(ADR-0019 决策 48),不抬 schemaVersion。与 `subscriptions` 同一个
- * 勾选管着;导入两支各算各的 —— 没有拓展那一节的备份(改动之前导出的全部)两种模式下都碰不到
- * 现有的拓展订阅。
+ * 订阅在备份里只有一节(ADR-0021 决策 15):B 站与拓展来源的订阅同在 `subscriptions`,行行带 `identity`;
+ * 导出一个勾选、恢复一个 scope。没有订阅那一节的备份(只勾了别的)两种模式下都碰不到现有的订阅。
  */
-describe("BackupService × 拓展订阅", () => {
+describe("BackupService × 订阅一节里的两种来源", () => {
 	const ext = (externalId: string) => makeExtensionSubscription({ id: externalId, externalId });
 
 	function service(store: BackupStore) {
@@ -303,53 +300,60 @@ describe("BackupService × 拓展订阅", () => {
 		});
 	}
 
-	/** 改动之前导出的备份:只有 `subscriptions` 那一节。 */
-	function oldBackup(subscriptions: Subscription[]): BackupEnvelope {
-		return {
-			format: "bilibili-notify-backup",
-			schemaVersion: 1,
-			kind: "sanitized",
-			createdAt: "t",
-			sections: { subscriptions },
-		};
-	}
-
 	it.each(["sanitized", "full"] as const)(
-		"%s 导出:B 站一节、拓展一节,schemaVersion 是 1.0 的版本",
+		"%s 导出:B 站与拓展来源的订阅同在 subscriptions 一节,没有第二节;schemaVersion 是 1.0 的版本",
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
 			expect(env.schemaVersion).toBe(2);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
-			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
-			expect(sections.extensionSubscriptions?.map((s) => s.id)).toEqual(["e1"]);
+			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
+			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([
+				"bilibili",
+				"douyin",
+			]);
+			// 节就这四个:订阅只有一节,没有按来源再拆出第二节。
+			expect(Object.keys(sections).sort()).toEqual([
+				"connections",
+				"globals",
+				"subscriptions",
+				"targets",
+			]);
 		},
 	);
 
-	it("勾了订阅、一条拓展订阅都没有 → 照样给一节空的;没勾就两节都没有", async () => {
+	it("没勾订阅 → 没有订阅那一节;勾了、一条拓展来源的都没有 → 照样只有这一节", async () => {
 		const store = makeFakeStore({ subscriptions: [sub("1")] });
 		const withSubs = await service(store).exportBackup({ kind: "sanitized" });
-		expect(withSubs.sections.extensionSubscriptions).toEqual([]);
+		expect(withSubs.sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
+		expect(Object.keys(withSubs.sections).sort()).toEqual([
+			"connections",
+			"globals",
+			"subscriptions",
+			"targets",
+		]);
 		const without = await service(store).exportBackup({
 			kind: "sanitized",
 			sections: { subscriptions: false },
 		});
-		expect(without.sections.subscriptions).toBeUndefined();
-		expect(without.sections.extensionSubscriptions).toBeUndefined();
+		expect(Object.keys(without.sections).sort()).toEqual(["connections", "globals", "targets"]);
 	});
 
 	it.each(["overwrite", "merge"] as const)(
-		"%s 恢复一份老备份 → 现有拓展订阅原样留着",
+		"%s 恢复一份没有订阅那一节的备份 → 现有订阅(B 站与拓展来源的)原样留着",
 		async (mode) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
-			await service(store).importBackup({ envelope: oldBackup([sub("2")]), mode });
-			const ids = store.getSubscriptions().map((s) => s.id);
-			expect(ids).toContain("e1");
-			expect(ids).toContain("2");
+			const source = makeFakeStore({ subscriptions: [sub("2")] });
+			const env = await service(source).exportBackup({
+				kind: "sanitized",
+				sections: { subscriptions: false },
+			});
+			await service(store).importBackup({ envelope: env, mode });
+			expect(store.getSubscriptions().map((s) => s.id)).toEqual(["1", "e1"]);
 		},
 	);
 
-	it("overwrite 恢复一份新备份 → 两支都按备份替换,计数两支合计", async () => {
+	it("overwrite 恢复:B 站与拓展来源的订阅按备份整个替换,计数就是这一节的计数", async () => {
 		const source = makeFakeStore({ subscriptions: [sub("2"), ext("e2")] });
 		const env = await service(source).exportBackup({ kind: "sanitized" });
 		const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
@@ -358,20 +362,17 @@ describe("BackupService × 拓展订阅", () => {
 		expect(result.subscriptions).toEqual({ upserted: 2, deleted: 2 });
 	});
 
-	it.each([
-		["B 站那节里混进一条拓展订阅", { subscriptions: [sub("1"), ext("e1")] }],
-		["拓展那节里混进一条 B 站订阅", { extensionSubscriptions: [ext("e1"), sub("1")] }],
-	])("%s → 整份拒(自带 invalid 码的中文原因),一个字都不写", async (_label, sections) => {
-		const store = makeFakeStore({ subscriptions: [sub("0")] });
-		const rejected = await service(store)
-			.importBackup({
-				envelope: { ...oldBackup([]), sections: sections as never },
-				mode: "overwrite",
-			})
-			.catch((err: unknown) => err);
-		expect(rejected).toBeInstanceOf(BackupRejectedError);
-		expect(rejected).toMatchObject({ code: "invalid" });
-		expect((rejected as Error).message).toMatch(/[一-鿿]/);
-		expect(store.replaceSections).not.toHaveBeenCalled();
+	it("merge 恢复:并集,本地独有的(B 站的、拓展来源的)都还在,身份原样带回来", async () => {
+		const source = makeFakeStore({ subscriptions: [sub("2"), ext("e2")] });
+		const env = await service(source).exportBackup({ kind: "sanitized" });
+		const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
+		const result = await service(store).importBackup({ envelope: env, mode: "merge" });
+		expect(
+			store
+				.getSubscriptions()
+				.map((s) => `${s.id}@${s.identity.sourceKey}`)
+				.sort(),
+		).toEqual(["1@bilibili", "2@bilibili", "e1@douyin", "e2@douyin"]);
+		expect(result.subscriptions).toEqual({ upserted: 2, deleted: 0 });
 	});
 });

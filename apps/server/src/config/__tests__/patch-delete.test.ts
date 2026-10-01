@@ -173,7 +173,12 @@ describe("patchSubscription 的删除语义 —— per-UP 旋钮", () => {
 	const SUB_ID = "11111111-1111-4111-8111-111111111111";
 
 	beforeEach(async () => {
-		await store.upsertSubscription(makeEmptySubscription({ id: SUB_ID, uid: "12345" }));
+		await store.upsertSubscription(
+			makeEmptySubscription({
+				id: SUB_ID,
+				identity: { sourceKey: "bilibili", externalId: "12345" },
+			}),
+		);
 	});
 
 	const knobsOf = () =>

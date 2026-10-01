@@ -18,7 +18,7 @@ import type { RouteDeps } from "../types.js";
 
 const SUB = {
 	id: "11111111-1111-1111-1111-111111111111",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 	enabled: true,
 	groups: [],
 	routing: {},
@@ -70,7 +70,7 @@ function makeHarness(opts?: {
 			code: 0,
 			data: {
 				card: {
-					mid: SUB.uid,
+					mid: SUB.identity.externalId,
 					name: PROFILE.name,
 					face: PROFILE.avatar,
 					sign: PROFILE.sign,
@@ -125,7 +125,7 @@ describe("/api/subs GET — runtime 字段 join", () => {
 		expect(row.state).toEqual({ lastPushedAt: {}, liveStatus: "unknown" });
 		// 配置字段透传
 		expect(row.id).toBe(SUB.id);
-		expect(row.uid).toBe(SUB.uid);
+		expect(row.identity).toEqual(SUB.identity);
 	});
 
 	it("有 cachedProfile 时 join 回 DTO(fansBaseline 永不外泄)", async () => {
@@ -182,7 +182,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 		});
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.getUserCardInfo).toHaveBeenCalledWith(SUB.uid);
+		expect(h.getUserCardInfo).toHaveBeenCalledWith(SUB.identity.externalId);
 		const seeds = seedCalls(h);
 		expect(seeds).toHaveLength(1);
 		const [id, patch] = seeds[0] as [string, { cachedProfile: typeof PROFILE }];
@@ -297,20 +297,22 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 	it("patchSubscription 抛校验不过 → 400 invalid,逐格 issues 原样带上、scope 不上线", async () => {
 		const h = makeHarness();
 		h.patchSubscription.mockRejectedValueOnce(
-			ConfigValidationError.invalid("subscriptions", "订阅有 1 格不合法：uid：不能为空", [
-				{ path: ["uid"], message: "不能为空" },
-			]),
+			ConfigValidationError.invalid(
+				"subscriptions",
+				"订阅有 1 格不合法：identity.externalId：不能为空",
+				[{ path: ["identity", "externalId"], message: "不能为空" }],
+			),
 		);
 		const res = await h.app.request(`/${SUB.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ uid: "" }),
+			body: JSON.stringify({ identity: { externalId: "" } }),
 		});
 		expect(res.status).toBe(400);
 		expect(await res.json()).toEqual({
 			code: "invalid",
-			message: "订阅有 1 格不合法：uid：不能为空",
-			issues: [{ path: ["uid"], message: "不能为空" }],
+			message: "订阅有 1 格不合法：identity.externalId：不能为空",
+			issues: [{ path: ["identity", "externalId"], message: "不能为空" }],
 		});
 	});
 
@@ -364,7 +366,7 @@ describe("/api/subs POST — 自动关注该 UP", () => {
 		const res = await post(h);
 
 		expect(res.status).toBe(200);
-		expect(h.follow).toHaveBeenCalledWith(SUB.uid);
+		expect(h.follow).toHaveBeenCalledWith(SUB.identity.externalId);
 	});
 
 	it("已经关注过(22014) → 视为成功,不当失败报", async () => {
@@ -420,10 +422,8 @@ describe("/api/subs × 拓展订阅", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	const EXT = {
-		kind: "extension",
 		id: "22222222-2222-4222-8222-222222222222",
-		extensionId: "douyin",
-		externalId: "MS4wLjAB-sec",
+		identity: { sourceKey: "douyin", externalId: "MS4wLjAB-sec" },
 		enabled: true,
 		groups: [],
 		routing: {},
@@ -460,7 +460,7 @@ describe("/api/subs × 拓展订阅", () => {
 		const h = makeHarness({ subs: [SUB] });
 		const res = await postJson(
 			h,
-			makeExtensionSubscription({ id: EXT.id, extensionId: EXT.extensionId }),
+			makeExtensionSubscription({ id: EXT.id, extensionId: EXT.identity.sourceKey }),
 		);
 		expect(res.status).toBe(404);
 		expect(await res.json()).toMatchObject({ code: "not_found" });
@@ -481,9 +481,11 @@ describe("/api/subs × 拓展订阅", () => {
 		// 宿主先核的那几道(装着的订阅源、判重、资料)都过了,落盘那一步 store 又拒 —— 与别的写入同一个出口。
 		const h = makeHarness({ subs: [SUB] });
 		h.upsertSubscription.mockRejectedValueOnce(
-			ConfigValidationError.invalid("subscriptions", "订阅有 1 格不合法：externalId：不能为空", [
-				{ path: ["externalId"], message: "不能为空" },
-			]),
+			ConfigValidationError.invalid(
+				"subscriptions",
+				"订阅有 1 格不合法：identity.externalId：不能为空",
+				[{ path: ["identity", "externalId"], message: "不能为空" }],
+			),
 		);
 		const app = createSubsRoute(
 			{
@@ -530,27 +532,32 @@ describe("/api/subs × 拓展订阅", () => {
 		expect(res.status).toBe(400);
 		expect(await res.json()).toEqual({
 			code: "invalid",
-			message: "订阅有 1 格不合法：externalId：不能为空",
-			issues: [{ path: ["externalId"], message: "不能为空" }],
+			message: "订阅有 1 格不合法：identity.externalId：不能为空",
+			issues: [{ path: ["identity", "externalId"], message: "不能为空" }],
 		});
 	});
 
 	it("store 拒了身份改动 → 400(PATCH 与 POST 同一个出口)", async () => {
 		const identity = () =>
-			ConfigValidationError.invalid("subscriptions", "订阅的 uid 不能改（12345 → 999）", [
-				{ path: ["uid"], message: "身份格不许改" },
-			]);
+			ConfigValidationError.invalid(
+				"subscriptions",
+				"订阅的 identity.externalId 不能改（12345 → 999）",
+				[{ path: ["identity", "externalId"], message: "身份格不许改" }],
+			);
 		const h = makeHarness();
 		h.patchSubscription.mockRejectedValueOnce(identity());
 		const patched = await h.app.request(`/${SUB.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ uid: "999" }),
+			body: JSON.stringify({ identity: { externalId: "999" } }),
 		});
 		expect(patched.status).toBe(400);
 		expect(await patched.json()).toMatchObject({ code: "invalid" });
 		h.upsertSubscription.mockRejectedValueOnce(identity());
-		const posted = await postJson(h, { ...SUB, uid: "999" });
+		const posted = await postJson(h, {
+			...SUB,
+			identity: { ...SUB.identity, externalId: "999" },
+		});
 		expect(posted.status).toBe(400);
 		expect(await posted.json()).toMatchObject({ code: "invalid" });
 	});

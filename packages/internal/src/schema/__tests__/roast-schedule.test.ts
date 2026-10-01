@@ -21,7 +21,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
 import { ROAST_MAX_DAYS, ROAST_MIN_DAYS, RoastScheduleSchema } from "../roast-schedule";
-import { BiliSubscriptionSchema, makeEmptySubscription } from "../subscriptions";
+import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 describe("RoastScheduleSchema", () => {
 	it("默认是关的 —— 存量用户升上来不会突然开始发帖", () => {
@@ -75,10 +75,10 @@ describe("roastSchedule 在配置里的落点", () => {
 	it("老订阅没有 roastSchedule → 自动补默认,不是解析失败", () => {
 		const sub = makeEmptySubscription({
 			id: "11111111-1111-4111-8111-111111111111",
-			uid: "123",
+			identity: { sourceKey: "bilibili", externalId: "123" },
 		}) as unknown as Record<string, unknown>;
 		delete sub.roastSchedule;
-		const parsed = BiliSubscriptionSchema.safeParse(sub);
+		const parsed = SubscriptionSchema.safeParse(sub);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.roastSchedule.enabled).toBe(false);
 	});
@@ -86,7 +86,7 @@ describe("roastSchedule 在配置里的落点", () => {
 	it("不参与 resolve() 折叠 —— 单人调度绝不继承榜单调度", () => {
 		const sub = makeEmptySubscription({
 			id: "22222222-2222-4222-8222-222222222222",
-			uid: "456",
+			identity: { sourceKey: "bilibili", externalId: "456" },
 		});
 		const eff = resolve(sub, makeDefaultGlobalConfig().defaults);
 		// 有朝一日谁把它塞进 overrides,这条会红:届时单人锐评会去继承榜单的

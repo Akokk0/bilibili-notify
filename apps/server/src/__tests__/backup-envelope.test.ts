@@ -19,7 +19,7 @@ function thrownBy(fn: () => unknown): unknown {
 }
 
 function makeSub(uid: string): Subscription {
-	return makeEmptySubscription({ id: uid, uid });
+	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
 }
 
 describe("backup envelope", () => {

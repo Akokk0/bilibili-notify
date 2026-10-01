@@ -10,12 +10,7 @@
  * isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import {
-	type ContentFiltersOverride,
-	isBiliSubscription,
-	type ScheduleOverride,
-	type Subscription,
-} from "../../types/domain";
+import type { ContentFiltersOverride, ScheduleOverride, Subscription } from "../../types/domain";
 import type { SectionId } from "./sections";
 
 /**
@@ -116,15 +111,15 @@ export function isSectionCustomized(
 			return sub.overrides.messageLayout !== undefined;
 		case "guard":
 			return sub.overrides.templates?.guardBuy?.enable === true;
-		// 特别关注只有 B 站订阅有(拓展订阅那一支没有 specialUsers)。
+		// 特别关注是订阅的公共格;来源不支持的这一格恒空,自然判成没自定义。
 		case "specialDanmaku":
 			return (
-				(isBiliSubscription(sub) && sub.specialUsers.some((u) => u.kinds.includes("danmaku"))) ||
+				sub.specialUsers.some((u) => u.kinds.includes("danmaku")) ||
 				Boolean(sub.overrides.templates?.specialDanmaku)
 			);
 		case "specialEnter":
 			return (
-				(isBiliSubscription(sub) && sub.specialUsers.some((u) => u.kinds.includes("enter"))) ||
+				sub.specialUsers.some((u) => u.kinds.includes("enter")) ||
 				Boolean(sub.overrides.templates?.specialUserEnter)
 			);
 		case "ai":
