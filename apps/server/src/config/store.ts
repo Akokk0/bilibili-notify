@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type ConfigScope,
@@ -9,6 +9,7 @@ import {
 	type Disposable,
 	deterministicUuid,
 	EXTRA_KEYS,
+	ExtensionIdSchema,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type Issue,
@@ -78,6 +79,8 @@ export interface ConfigSections {
 	globals?: GlobalConfig;
 	/** 各集成的设置,按集成的键;只换给了的那几份。 */
 	integrations?: Record<string, unknown>;
+	/** 各拓展的设置,按拓展 id;只换给了的那几个(原样存,形状归拓展自己)。 */
+	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -127,6 +130,13 @@ export interface ConfigStore {
 	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
 	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/globals` 与备份用。 */
 	getAllIntegrationSettings(): Record<string, unknown>;
+	/**
+	 * 一个拓展存着的设置(`config/settings/extensions/<id>.json`,深拷贝、原样;形状归拓展自己那份 zod);没存过是
+	 * `undefined`。
+	 */
+	getExtensionSettings(id: string): unknown;
+	/** 全部存着的拓展设置,按拓展 id(深拷贝)。备份用。 */
+	getAllExtensionSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
 	getConnections(): Connection[];
 	/** 只拷命中的那一条 —— 入站热路径按 id 校验归属用,别拿 getConnections() 再 find。 */
@@ -153,6 +163,14 @@ export interface ConfigStore {
 	 * 整次拒收。与 globals 的其余写入排在同一条队里。
 	 */
 	patchSettings(patch: SettingsPatch): Promise<SettingsSnapshot>;
+	/**
+	 * 在设置那条排队里「读当前 → 算新值 → 落盘」一气做完(按版本号写拓展设置,见 `extensions/settings-io.ts`):
+	 * `update` 是**同步**的、拿到深拷贝,它抛了就整次作废、一个字都不落盘。拓展 id 不合 id 的形状整次拒收 ——
+	 * 它要拼进文件路径。只广播 `integration-settings`。
+	 */
+	updateExtensionSettings(id: string, update: (current: unknown) => unknown): Promise<unknown>;
+	/** 卸载一个拓展:开关那一格与它的设置文件一起删。 */
+	removeExtension(id: string): Promise<void>;
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
@@ -630,6 +648,8 @@ class NodeConfigStore implements ConfigStore {
 	private readonly segments: ReadonlyMap<string, IntegrationSettingsSegment>;
 	/** 各集成的设置(已按各自的格式解析过),按集成的键。 */
 	private readonly integrationSettings = new Map<string, unknown>();
+	/** 各拓展的设置(原样,形状归拓展自己),按拓展 id。 */
+	private readonly extensionSettings = new Map<string, unknown>();
 	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
 	private subscriptions: Subscription[];
 	private connections: Connection[];
@@ -687,6 +707,16 @@ class NodeConfigStore implements ConfigStore {
 	/** 一个集成的设置文件。 */
 	private integrationPath(key: string): string {
 		return join(this.stateDir, SETTINGS_DIR, `${key}.json`);
+	}
+
+	/** 一个拓展的设置文件。id 要拼进路径:不合拓展 id 的形状整次拒收(`../` 一类不许进来)。 */
+	private extensionSettingsPath(id: string): string {
+		if (!ExtensionIdSchema.safeParse(id).success) {
+			throw ConfigValidationError.invalid("integration-settings", `「${id}」不是合法的拓展 id`, [
+				{ path: [id], message: "拓展 id 的形状不对" },
+			]);
+		}
+		return join(this.stateDir, ...EXTENSION_SETTINGS_IN_CONFIG, `${id}.json`);
 	}
 
 	/**
@@ -840,6 +870,13 @@ class NodeConfigStore implements ConfigStore {
 		}
 		this.meta["integration-settings"].exists = true;
 
+		// 各拓展的设置 —— 一个拓展一个文件。仓不认得它们的形状,原样读进来(核对归拓展自己那份 zod)。
+		for (const [id, value] of await readExtensionSettingsDir(
+			join(this.stateDir, ...EXTENSION_SETTINGS_IN_CONFIG),
+		)) {
+			this.extensionSettings.set(id, value);
+		}
+
 		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
 		// 那几行就永久没了。
 		{
@@ -970,6 +1007,14 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(Object.fromEntries(this.integrationSettings));
 	}
 
+	getExtensionSettings(id: string): unknown {
+		return deepClone(this.extensionSettings.get(id));
+	}
+
+	getAllExtensionSettings(): Record<string, unknown> {
+		return deepClone(Object.fromEntries(this.extensionSettings));
+	}
+
 	getSubscriptions(): Subscription[] {
 		return deepClone(this.subscriptions);
 	}
@@ -1085,6 +1130,44 @@ class NodeConfigStore implements ConfigStore {
 		if (patch.core !== undefined) this.bus.emit("config-changed", { scope: "globals" });
 		if (keys.length > 0) this.bus.emit("config-changed", { scope: "integration-settings" });
 		return deepClone(result);
+	}
+
+	async updateExtensionSettings(
+		id: string,
+		update: (current: unknown) => unknown,
+	): Promise<unknown> {
+		const path = this.extensionSettingsPath(id);
+		const result = await this.runScoped("globals", async () => {
+			const next = update(deepClone(this.extensionSettings.get(id)));
+			await atomicWriteJson(path, next);
+			this.extensionSettings.set(id, next);
+			this.touch("integration-settings");
+			return next;
+		});
+		this.bus.emit("config-changed", { scope: "integration-settings" });
+		return deepClone(result);
+	}
+
+	async removeExtension(id: string): Promise<void> {
+		const path = this.extensionSettingsPath(id);
+		const removed = await this.runScoped("globals", async () => {
+			// 开关先删:设置文件删不掉的话留下的只是一个没人认领的文件,反过来则是一个开着、却没了设置的拓展。
+			const core = id in this.globals.extensions;
+			if (core) {
+				const { [id]: _gone, ...extensions } = this.globals.extensions;
+				await this.writeGlobals({ ...this.globals, extensions });
+				this.touch("globals");
+			}
+			const settings = this.extensionSettings.has(id);
+			if (settings) {
+				await rm(path, { force: true });
+				this.extensionSettings.delete(id);
+				this.touch("integration-settings");
+			}
+			return { core, settings };
+		});
+		if (removed.core) this.bus.emit("config-changed", { scope: "globals" });
+		if (removed.settings) this.bus.emit("config-changed", { scope: "integration-settings" });
 	}
 
 	/**
@@ -1421,6 +1504,12 @@ class NodeConfigStore implements ConfigStore {
 						parseIntegrationSettings(this.segmentOf(key), value, this.integrationSettings.get(key)),
 					]),
 				);
+			// 拓展的设置原样存(形状归拓展自己);id 要拼进路径,不合 id 的形状整份拒收。
+			const extensionSettings = Object.entries(next.extensionSettings ?? {}).map(([id, value]) => ({
+				id,
+				path: this.extensionSettingsPath(id),
+				value,
+			}));
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
 			const connections = next.connections && parseAll("connections", next.connections);
 			const targets = next.targets && parseAll("targets", next.targets);
@@ -1438,6 +1527,7 @@ class NodeConfigStore implements ConfigStore {
 			const writes: Array<[string, unknown]> = [];
 			for (const [key, value] of integrations ?? [])
 				writes.push([this.integrationPath(key), value]);
+			for (const { path, value } of extensionSettings) writes.push([path, value]);
 			const subsTouched = Boolean(subscriptions) || replaced.changed;
 			if (subsTouched) writes.push([this.path("subscriptions"), replaced.next]);
 			if (connections) writes.push([this.path("connections"), effConnections]);
@@ -1471,8 +1561,9 @@ class NodeConfigStore implements ConfigStore {
 
 			// ---- 4) 双写都成了才更新内存 -----------------------------------
 			const touched: ConfigScope[] = [];
-			if (integrations && integrations.size > 0) {
-				for (const [key, value] of integrations) this.integrationSettings.set(key, value);
+			if ((integrations && integrations.size > 0) || extensionSettings.length > 0) {
+				for (const [key, value] of integrations ?? []) this.integrationSettings.set(key, value);
+				for (const { id, value } of extensionSettings) this.extensionSettings.set(id, value);
 				this.touch("integration-settings");
 				touched.push("integration-settings");
 			}
@@ -1593,6 +1684,9 @@ const SETTINGS_DIR = "settings";
 /** 核心的设置在配置目录里的位置。 */
 const CORE_SETTINGS_IN_CONFIG = [SETTINGS_DIR, "core.json"] as const;
 
+/** 各拓展的设置在配置目录里的位置:一个拓展一个文件(ADR-0025 决策 1:拓展一律落在 `extensions/` 下)。 */
+const EXTENSION_SETTINGS_IN_CONFIG = [SETTINGS_DIR, "extensions"] as const;
+
 /** 核心的设置文件(代的布局)。迁移写到哪、仓就从哪读。 */
 export const CORE_SETTINGS_FILE = [...CONFIG_DIR, ...CORE_SETTINGS_IN_CONFIG] as const;
 
@@ -1601,6 +1695,35 @@ export function integrationSettingsFile(
 	key: string,
 ): readonly [...typeof CONFIG_DIR, typeof SETTINGS_DIR, string] {
 	return [...CONFIG_DIR, SETTINGS_DIR, `${key}.json`];
+}
+
+/** 一个拓展的设置文件(代的布局):`config/settings/extensions/<拓展 id>.json`。迁移写到哪、仓就从哪读。 */
+export function extensionSettingsFile(
+	id: string,
+): readonly [...typeof CONFIG_DIR, ...typeof EXTENSION_SETTINGS_IN_CONFIG, string] {
+	return [...CONFIG_DIR, ...EXTENSION_SETTINGS_IN_CONFIG, `${id}.json`];
+}
+
+/**
+ * 读各拓展的设置文件:`<拓展 id>.json` 一个一份,按文件名排。目录不在 = 一个都没存过;文件名不合拓展 id 的形状的
+ * (写到一半的临时文件、手放的别的东西)不认。读坏了是开机报错,同别的配置文件。
+ */
+async function readExtensionSettingsDir(dir: string): Promise<Array<[string, unknown]>> {
+	let names: string[];
+	try {
+		names = await readdir(dir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
+	}
+	const out: Array<[string, unknown]> = [];
+	for (const name of names.sort()) {
+		if (!name.endsWith(".json")) continue;
+		const id = name.slice(0, -".json".length);
+		if (!ExtensionIdSchema.safeParse(id).success) continue;
+		out.push([id, JSON.parse(await readFile(join(dir, name), "utf8")) as unknown]);
+	}
+	return out;
 }
 
 /**

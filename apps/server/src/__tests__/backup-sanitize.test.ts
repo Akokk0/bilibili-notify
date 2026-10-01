@@ -227,11 +227,11 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
  */
 describe("拓展声明的密钥字段", () => {
 	const sections = () => ({
-		globals: {
-			extensions: {
-				bridge: { enabled: true, settings: { links: [{ name: "家里那台", botKey: "s3cret" }] } },
-				other: { enabled: false, settings: { botKey: "别人的" } },
-			},
+		// 开关在核心设置里,各拓展的设置是备份里自己的一节(各在自己的文件,ADR-0021 决策 42)。
+		globals: { extensions: { bridge: { enabled: true }, other: { enabled: false } } },
+		extensionSettings: {
+			bridge: { links: [{ name: "家里那台", botKey: "s3cret" }] },
+			other: { botKey: "别人的" },
 		},
 		connections: [
 			{
@@ -268,11 +268,55 @@ describe("拓展声明的密钥字段", () => {
 	it("声明的键不外溢:别的连接、目标、别的拓展都不受影响", () => {
 		const out = redactBackupSections(sections(), new Map([["bridge", ["name"]]]));
 		// 它自己那一格照抹。
-		expect(out.globals.extensions.bridge.settings.links[0]?.name).toBe("");
+		expect(out.extensionSettings.bridge.links[0]?.name).toBe("");
 		// 旁边这些一个都不许动。
 		expect(out.connections[0]?.name).toBe("阿库娅");
 		expect(out.connections[1]?.config.botKey).toBe("不是拓展的");
 		expect(out.targets[0]?.name).toBe("测试群");
+	});
+
+	/**
+	 * 设置一节里每个拓展只吃**自己**声明的键:`bridge` 声明了 `botKey`,`other`(跑着、一格没声明)的
+	 * 同名键原样留着 —— 否则一个拓展的声明能把别的拓展的设置抹成废的。
+	 */
+	it("设置一节按拓展各吃各的声明:bridge 声明的键不抹 other 的设置", () => {
+		const out = redactBackupSections(
+			sections(),
+			new Map([
+				["bridge", ["botKey"]],
+				["other", []],
+			]),
+		);
+		expect(out.extensionSettings.bridge.links[0]).toEqual({ name: "家里那台", botKey: "" });
+		expect(out.extensionSettings.other).toEqual({ botKey: "别人的" });
+	});
+
+	/**
+	 * 开关(`globals.extensions.<id>.enabled`)不是设置,备份里不在设置那一节 —— 不论字段表问不问得出来,
+	 * 脱敏都不许碰它(抹成空串就等于把主人按下的开关弄坏了)。
+	 */
+	it("核心设置里的拓展开关永远不被抹:问不出来的拓展(整片抹平)也一样", () => {
+		for (const codes of [new Map(), new Map([["bridge", ["botKey"]]])]) {
+			const out = redactBackupSections(sections(), codes);
+			expect(out.globals.extensions).toEqual({
+				bridge: { enabled: true },
+				other: { enabled: false },
+			});
+		}
+	});
+
+	it("没带设置一节(没勾设置)→ 不凭空多出一节,别的照常抹", () => {
+		const { extensionSettings: _gone, ...rest } = sections();
+		const out = redactBackupSections(rest, new Map([["bridge", ["botKey"]]]));
+		expect("extensionSettings" in out).toBe(false);
+		expect(out.connections[0]?.config.botKey).toBe("");
+	});
+
+	it("不改传进来的那份设置一节", () => {
+		const input = sections();
+		redactBackupSections(input, new Map());
+		expect(input.extensionSettings.bridge.links[0]?.botKey).toBe("s3cret");
+		expect(input.extensionSettings.other.botKey).toBe("别人的");
 	});
 
 	/**
@@ -283,7 +327,8 @@ describe("拓展声明的密钥字段", () => {
 	it("拓展没跑起来 → 它的 config 与 settings 整片抹平", () => {
 		const out = redactBackupSections(sections(), new Map());
 		expect(out.connections[0]?.config).toEqual({ botKey: "", note: "" });
-		expect(out.globals.extensions.bridge.settings.links[0]).toEqual({ name: "", botKey: "" });
+		expect(out.extensionSettings.bridge.links[0]).toEqual({ name: "", botKey: "" });
+		expect(out.extensionSettings.other).toEqual({ botKey: "" });
 		// 开关不是设置,不许跟着抹掉。
 		expect(out.globals.extensions.bridge.enabled).toBe(true);
 		// 直连那条与拓展无关,照旧只吃基础黑名单。
@@ -297,7 +342,8 @@ describe("拓展声明的密钥字段", () => {
 	it("拓展 id 撞上 Object.prototype 上的名字 —— 按「问不出来」整片抹平,不漏也不炸", () => {
 		const out = redactBackupSections(
 			{
-				globals: { extensions: { toString: { enabled: true, settings: { botKey: "s3cret" } } } },
+				globals: { extensions: { toString: { enabled: true } } },
+				extensionSettings: { toString: { botKey: "s3cret" } },
 				connections: [
 					{
 						id: "c1",
@@ -310,7 +356,8 @@ describe("拓展声明的密钥字段", () => {
 			},
 			new Map(),
 		);
-		expect(out.globals.extensions.toString.settings).toEqual({ botKey: "" });
+		expect(out.extensionSettings.toString).toEqual({ botKey: "" });
+		expect(out.globals.extensions.toString).toEqual({ enabled: true });
 		expect(out.connections[0]?.config).toEqual({ botKey: "" });
 	});
 

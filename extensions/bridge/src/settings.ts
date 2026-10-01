@@ -3,7 +3,7 @@
  *
  * 一条接入 = 一个 koishi / AstrBot 实例 + 它出示的 token。它**不是连接**:连接是「一个 bot」,
  * 是宿主认识、推送目标能挂上去的东西;而一条接入驮着 N 个 bot。所以接入住拓展自己的设置
- * (`globals.extensions.bridge.settings`,经 `ctx.settings(schema)` 现读),连接从它驮着的
+ * (`config/settings/extensions/bridge.json`,经 `ctx.settings(schema)` 现读),连接从它驮着的
  * bot 里挑(见 `config.ts`)。
  *
  * 写路径只有面板那一条(`/api/ext/bridge/settings`,按项写、带版本号 —— ADR-0019 决策 35),

@@ -144,21 +144,29 @@ describe("full backup assemble/open", () => {
 	});
 
 	/**
-	 * 拓展自己那份设置(桥的接入 token 住这儿)同样在明文段被抹平 —— 袋子里没有它,
-	 * 恢复之后每一条接入都连不上,主人得照着插件那边重抄一遍 token。
+	 * 拓展自己那份设置(桥的接入 token 住这儿,备份里是 `extensionSettings` 一节)同样在明文段被抹平 ——
+	 * 袋子里没有它,恢复之后每一条接入都连不上,主人得照着插件那边重抄一遍 token。开关(`globals.extensions`)
+	 * 不在这一节里,明文与恢复都原样。
 	 */
 	it("拓展 settings 里的密钥原样恢复", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.extensions = {
-			bridge: { enabled: true, settings: { links: [{ name: "家里那台", token: "tok-SECRET" }] } },
-		};
-		const env = assembleFullBackup({ globals }, "123456", "t");
+		globals.extensions = { bridge: { enabled: true } };
+		const env = assembleFullBackup(
+			{
+				globals,
+				extensionSettings: { bridge: { links: [{ name: "家里那台", token: "tok-SECRET" }] } },
+			},
+			"123456",
+			"t",
+		);
 		expect(JSON.stringify(env.sections)).not.toContain("tok-SECRET");
+		expect(env.sections.globals?.extensions.bridge).toEqual({ enabled: true });
 
 		const { sections } = openFullBackup(env, "123456");
-		expect(sections.globals?.extensions.bridge?.settings).toEqual({
+		expect(sections.extensionSettings?.bridge).toEqual({
 			links: [{ name: "家里那台", token: "tok-SECRET" }],
 		});
+		expect(sections.globals?.extensions.bridge).toEqual({ enabled: true });
 	});
 
 	/**

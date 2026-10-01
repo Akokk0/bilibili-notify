@@ -243,7 +243,7 @@ const QQOfficialConnectionSchema = z.object({
  * 拓展提供的连接(ADR-0012 决策 27 / 45)—— **一个借来的 bot**。
  *
  * 与直连同一套操作逻辑:一条连接就是一个 bot,底下的推送目标只填地址。桥那种「一条接入
- * 驮 N 个 bot」的东西不是连接,是拓展自己的**设置**(`globals.extensions.<id>.settings`),
+ * 驮 N 个 bot」的东西不是连接,是拓展自己的**设置**(`config/settings/extensions/<id>.json`),
  * 新建连接时从它驮着的 bot 里挑一个。
  *
  * - **有 `platform`**,开放词表 —— 一个 bot 就是一个平台,这一格从挑中的 bot 上来

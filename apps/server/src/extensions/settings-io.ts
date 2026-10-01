@@ -21,7 +21,8 @@ import type { ConfigStore } from "../config/store.js";
  * 按版本号原子地写进去。路由那头只做 wire。另有一段不走路由:存着的那份过不过得了拓展自己的
  * zod —— ctx 与装载器拿它判「设置读不了」(决策 36)。
  *
- * 存储仍在 globals 的 `extensions.<id>.settings` —— 不搬:应用内更新会退回旧载荷,旧版只认那一格。
+ * 存储在拓展自己的设置文件 `config/settings/extensions/<id>.json`(ADR-0021 决策 42 下 10-01 的 🔗)。从前写的
+ * 「不搬,应用内更新会退回旧载荷、旧版只认 globals 那一格」随数据代(ADR-0022)作废:退回旧版读的是旧的那一代。
  */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -486,32 +487,27 @@ class RevisionMoved extends Error {
 }
 
 /**
- * 按版本号把新的那份写进去:**比对与落盘在 globals 那条排队里是一件事**。
+ * 按版本号把新的那份写进去:**比对与落盘在设置那条排队里是一件事**。
  *
  * 路由在队外先比过一次、算好新值、跑完校验(拓展的 zod 是异步的,不许进队,见
- * `ConfigStore.updateGlobals`);那之后到这里之间,别人可能已经写过这一格。所以到了队里再比一次:
+ * `ConfigStore.updateExtensionSettings`);那之后到这里之间,别人可能已经写过这一份。所以到了队里再比一次:
  * 版本号还是那个,才说明算新值时依据的就是现在这份。对不上回 `{ ok: false, revision: 现在的 }`,
  * 一个字都不写 —— 否则两发带同一个版本号同时到,后落盘的那发拿着它读到的旧名单整份写回,
  * 先写的那条接入静默消失。
  */
 export async function commitSettings(
-	store: Pick<ConfigStore, "updateGlobals">,
+	store: Pick<ConfigStore, "updateExtensionSettings">,
 	id: string,
 	expected: string,
 	next: Record<string, unknown>,
 ): Promise<{ ok: true; settings: unknown } | { ok: false; revision: string }> {
 	try {
-		const saved = await store.updateGlobals((globals) => {
-			const now = settingsRevision(globals.extensions[id]?.settings);
+		const saved = await store.updateExtensionSettings(id, (current) => {
+			const now = settingsRevision(current);
 			if (now !== expected) throw new RevisionMoved(now);
-			// 开关原样留着;还没有这一格(装好还没碰过)就按关着建。
-			globals.extensions[id] = {
-				...(globals.extensions[id] ?? { enabled: false }),
-				settings: next,
-			};
-			return globals;
+			return next;
 		});
-		return { ok: true, settings: saved.extensions[id]?.settings };
+		return { ok: true, settings: saved };
 	} catch (err) {
 		if (err instanceof RevisionMoved) return { ok: false, revision: err.revision };
 		throw err;

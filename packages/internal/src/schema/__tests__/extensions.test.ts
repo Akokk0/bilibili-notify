@@ -52,20 +52,22 @@ describe("globals.extensions", () => {
 	});
 });
 
-describe("globals.extensions.<id>.settings", () => {
+describe("globals.extensions.<id> 不带设置", () => {
 	/**
-	 * 拓展自己的持久设置(桥的接入名单住这儿)。**宿主不认识它的形状**:归拓展自己那份
-	 * zod —— 所以这里只能是原样存、原样取,多一层「清洗」就是核心在猜拓展的形状。
+	 * 拓展自己的持久设置不在核心设置里,住在它自己的文件 `config/settings/extensions/<id>.json`
+	 * (ADR-0021 决策 42)。核心这一格只剩主人按的开关;盘上残留的 `settings` 读的时候被剥掉(schema 不是 strict,
+	 * 整份拒收会让老盘开不了机)—— 迁移器早把它搬进了拓展自己的文件。
 	 */
-	it("原样存、原样取 —— 宿主不认识形状,也不替它清洗", () => {
+	it("盘上残留的 settings 读的时候被剥掉,开关原样留着", () => {
 		const settings = { links: [{ id: "a", name: "家里那台", token: "t0ken", enabled: true }] };
 		const parsed = withExtensions({ bridge: { enabled: true, settings } });
-		expect(parsed.extensions.bridge?.settings).toEqual(settings);
+		expect(parsed.extensions.bridge).toEqual({ enabled: true });
+		expect("settings" in (parsed.extensions.bridge ?? {})).toBe(false);
 	});
 
-	it("没设过就是没有 —— 不补一个空对象,空对象在拓展眼里可能是「形状不对」", () => {
+	it("没有 settings 的开关格读出来还是只有 enabled —— 不补任何别的格", () => {
 		const parsed = withExtensions({ bridge: { enabled: true } });
-		expect(parsed.extensions.bridge?.settings).toBeUndefined();
+		expect(parsed.extensions.bridge).toEqual({ enabled: true });
 	});
 });
 

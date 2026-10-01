@@ -30,8 +30,9 @@ import {
  * Server scopes (`config-changed.scope`):
  *   - "subscriptions" → invalidate ["subscriptions"]
  *   - "targets"       → invalidate ["targets"]
- *   - "globals"       → invalidate ["globals"] + 拓展表(拓展的开关住在 globals 里)+ 各拓展的设置
- *   - "integration-settings" → invalidate ["globals"](各集成的设置挂在 `/api/globals` 下发的那一份里)
+ *   - "globals"       → invalidate ["globals"] + 拓展表(拓展的开关住在 globals 里)
+ *   - "integration-settings" → invalidate ["globals"](各集成的设置挂在 `/api/globals` 下发的那一份里)+ 各拓展的
+ *     设置(拓展的设置也是这一档:备份恢复、卸载这类不经设置口的写只发它)
  *   - "connections"   → invalidate ["connections"]
  *   - "secrets"       → no client cache, ignored
  *
@@ -89,17 +90,18 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	const scope = env.data?.scope;
 	if (scope === "subscriptions") qc.invalidateQueries({ queryKey: ["subscriptions"] });
 	else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
-	else if (scope === "integration-settings") qc.invalidateQueries({ queryKey: ["globals"] });
-	else if (scope === "globals") {
+	else if (scope === "integration-settings") {
+		qc.invalidateQueries({ queryKey: ["globals"] });
+		// 拓展的设置各在自己的文件里,改了发的是这一档(ADR-0021 决策 42 下 10-01 的 🔗)。备份恢复、卸载这类不经
+		// 设置口的写只发这一档;不跟着过期的话,这一页照旧画着旧名单,直到下一发拿着旧版本号撞 409。经设置口写的
+		// 那一发会多失效一次 —— 只有开着的那一页真去重读,换一个不漏。
+		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
+	} else if (scope === "globals") {
 		qc.invalidateQueries({ queryKey: ["globals"] });
 		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页
 		// 把拓展关了,只重读 globals 的话,这一页还把它画成「跑着」,状态那一口的 404 被当成「没交
 		// 视图」,卡上一片空白。
 		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
-		// 拓展的设置也存在 globals 里:备份恢复、卸载这类不经设置口的写只发这一档。不跟着过期的话,
-		// 这一页照旧画着旧名单,直到下一发拿着旧版本号撞 409。经设置口写的那一发会多失效一次 ——
-		// 只有开着的那一页真去重读,换一个不漏。
-		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
 	}
 	// 服务端建 / 改 / 删连接都发这一档(config/store.ts 三处);不接的话别处改了连接,
 	// 这一页要等 staleTime 过去或切页才知道。

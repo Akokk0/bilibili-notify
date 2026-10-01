@@ -34,6 +34,11 @@ export interface BackupSections {
 	globals?: GlobalConfig;
 	/** 各集成的设置(今天只有 B 站),按集成的键;与 `globals` 同一个勾选(「设置」)。 */
 	integrations?: Record<string, unknown>;
+	/**
+	 * 各拓展的设置,按拓展 id(盘上 `config/settings/extensions/<id>.json`);同一个勾选。开关不在这儿,在
+	 * `globals.extensions`。脱敏照拓展各自声明的密钥键(`sanitize.ts`)。
+	 */
+	extensionSettings?: Record<string, unknown>;
 	/** 订阅:B 站与拓展同一节,行行带 `identity`(ADR-0021 决策 15)。 */
 	subscriptions?: Subscription[];
 	connections?: Connection[];

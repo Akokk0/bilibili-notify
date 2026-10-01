@@ -172,7 +172,7 @@ export interface ExtensionConnectionView<TConfig> {
 
 /**
  * 拓展自己的持久设置 —— 主人在面板上给**这个拓展**填的那些(桥的接入名单就住这儿),
- * 落盘在 `globals.extensions.<id>.settings`,**形状归拓展自己那份 zod**,宿主只保证存得住。
+ * 落盘在 `config/settings/extensions/<id>.json`,**形状归拓展自己那份 zod**,宿主只保证存得住。
  *
  * 与连接是两回事:连接是「一个 bot」,是宿主认识、推送目标能挂上去的东西;设置是拓展
  * 为了拿到那些 bot 而需要主人填的东西(token、对家的名字……),宿主一格都不认识。

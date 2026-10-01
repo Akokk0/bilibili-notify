@@ -3,8 +3,9 @@
  *
  * 守护契约:
  *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
- *   - config-changed scope=globals       → invalidate ["globals"]、拓展表 ["extensions"] 与各拓展的设置
- *   - config-changed scope=integration-settings → 仅 invalidate ["globals"](各集成的设置挂在 /api/globals 下发的那一份里)
+ *   - config-changed scope=globals       → invalidate ["globals"] 与拓展表 ["extensions"](不碰各拓展的设置)
+ *   - config-changed scope=integration-settings → invalidate ["globals"](各集成的设置挂在 /api/globals 下发的那一份里)
+ *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
  *   - extension-status-changed          → 那个拓展的 status 与 bots
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - extension-report-problems-changed → 仅拓展表(上报问题框住在那一行上)
@@ -137,15 +138,16 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	/**
-	 * 拓展设置仍存在 globals 里:备份恢复、卸载这类不经设置口的写,只会发这一档 —— 设置那一口也得
-	 * 跟着过期,不然这一页照旧画着旧名单,直到下一发撞 409。
+	 * 拓展的设置不在 globals 里了(各在自己的文件),`globals` 这一档只管核心设置与拓展的开关:
+	 * 失效 [globals] 与拓展表,**不**再碰拓展设置那一口(设置的写发的是 `integration-settings`)。
 	 */
-	it("config-changed scope=globals:invalidate [globals]、[extensions] 与各拓展的设置", () => {
+	it("config-changed scope=globals:invalidate [globals] 与 [extensions],不碰各拓展的设置", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"], ["ext-settings"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"]]);
+		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);
 	});
 
 	/**
@@ -182,14 +184,30 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 * 各集成(今天只有 B 站)的设置一个集成一个文件,服务端改了它们发的是**自己的一档**
 	 * (`integration-settings`),不是 `globals` —— 而面板吃的是 `/api/globals` 下发的那一份(B 站的动态 cron /
 	 * UA / 登录心跳间隔挂在它的 `bilibili` 键下)。这一档没人接的话,别处(另一个标签页、备份恢复)改了 B 站的
-	 * 设置,系统页要等切页或刷新才知道。只失效 globals 那一口:拓展表与拓展的设置没变。
+	 * 设置,系统页要等切页或刷新才知道。拓展表没变(开关不在这一档里),所以不失效它。
+	 *
+	 * 各拓展的设置也各在自己的文件里,改了发的同样是这一档 —— 备份恢复、卸载这类不经设置口的写只发它,
+	 * 拓展设置那一口得跟着过期,否则这一页照旧画着旧名单,直到下一发撞 409。
 	 */
-	it("config-changed scope=integration-settings:仅 invalidate [globals]", () => {
+	it("config-changed scope=integration-settings:invalidate [globals] 与各拓展的设置,不碰拓展表", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "integration-settings" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["ext-settings"]]);
+	});
+
+	it("config-changed scope=integration-settings:拓展设置那一口真的过期了(按前缀,各拓展一起)", () => {
+		sc.qc.setQueryData(["ext-settings", "bridge"], { revision: "r1" });
+		sc.qc.setQueryData(["ext-settings", "douyin"], { revision: "r2" });
+		sc.qc.setQueryData(["extensions"], { extensions: [] });
+		handleStateEnvelope(
+			env({ type: "state", event: "config-changed", data: { scope: "integration-settings" } }),
+			sc.qc,
+		);
+		expect(sc.qc.getQueryState(["ext-settings", "bridge"])?.isInvalidated).toBe(true);
+		expect(sc.qc.getQueryState(["ext-settings", "douyin"])?.isInvalidated).toBe(true);
+		expect(sc.qc.getQueryState(["extensions"])?.isInvalidated).toBe(false);
 	});
 
 	it("config-changed scope=subscriptions:仅 invalidate [subscriptions]", () => {

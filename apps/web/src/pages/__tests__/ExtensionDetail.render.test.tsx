@@ -40,20 +40,16 @@ const LISTED: ExtensionsResponse = {
 	restart: { can: true, how: "container" },
 };
 
-/** 接入住桥的设置里(`globals.extensions.bridge.settings.links`),不在连接表里(ADR-0012 决策 45)。 */
-const GLOBALS = {
-	extensions: {
-		bridge: {
-			enabled: true,
-			settings: {
-				links: [
-					{ id: CONNECTED_ID, name: "家里那台", enabled: true, token: "t1", bridgeKind: "koishi" },
-					{ id: CONFIGURED_ID, name: "公司那台", enabled: true, token: "t2", bridgeKind: "koishi" },
-				],
-			},
-		},
-	},
+/** 接入住桥的设置里(桥自己的文件,经 `/api/ext/bridge/settings` 读写),不在连接表里(ADR-0012 决策 45)。 */
+const BRIDGE_SETTINGS = {
+	links: [
+		{ id: CONNECTED_ID, name: "家里那台", enabled: true, token: "t1", bridgeKind: "koishi" },
+		{ id: CONFIGURED_ID, name: "公司那台", enabled: true, token: "t2", bridgeKind: "koishi" },
+	],
 };
+
+/** `/api/globals` 里每个拓展只有开关;设置不在这里面(ADR-0021 决策 42)。 */
+const GLOBALS = { extensions: { bridge: { enabled: true } } };
 
 /**
  * 桥交来的视图 —— 照 `extensions/bridge/src/view.ts` 算出来的形状写:一条连着、一条没连上。
@@ -126,7 +122,7 @@ function renderDetail(id = "bridge") {
 		if (url === "/api/globals") return GLOBALS;
 		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/globals` 里已经没有设置那一格。
 		if (url === "/api/ext/bridge/settings") {
-			return { revision: "r1", values: GLOBALS.extensions.bridge.settings };
+			return { revision: "r1", values: BRIDGE_SETTINGS };
 		}
 		if (url === "/api/ext/bridge/status") return VIEW;
 		return {};
@@ -275,7 +271,7 @@ describe("拓展详情页 —— 设置读不了", () => {
 		"存着的设置不合它自己的规矩:「桥接入」里「家里那台」这一项的「token」:太短了。在它的「配置」里改对,改对了会自己起来";
 
 	function renderInvalid() {
-		const settings = GLOBALS.extensions.bridge.settings;
+		const settings = BRIDGE_SETTINGS;
 		apiGetMock.mockImplementation(async (url: string) => {
 			if (url === "/api/ext") {
 				return {

@@ -10,7 +10,7 @@
  * (token 怎么读、地址怎么拼、帧长什么样、协议版本认不认)错了,这条就红。
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +21,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
-import { CORE_SETTINGS_FILE } from "../config/store.js";
+import { CORE_SETTINGS_FILE, extensionSettingsFile } from "../config/store.js";
 import { STATUS_CHANGED_COALESCE_MS } from "../extensions/context.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration } from "./support/generation.js";
@@ -104,23 +104,24 @@ describe("devtools 的假桥 → 真桥", () => {
 
 		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
-		// 接入(token)住桥自己的设置里 —— 场景从那儿挑(ADR-0012 决策 45)。
-		globals.extensions = {
-			bridge: {
-				enabled: true,
-				settings: {
-					links: [
-						{
-							id: LINK_ID,
-							name: "家里那台 koishi",
-							enabled: true,
-							token: TOKEN,
-							bridgeKind: "koishi",
-						},
-					],
-				},
-			},
-		};
+		// 接入(token)住桥自己的设置里(它自己的文件,核心设置里只有开关)—— 场景从那儿挑(ADR-0012 决策 45)。
+		globals.extensions = { bridge: { enabled: true } };
+		const settingsPath = join(gen, ...extensionSettingsFile("bridge"));
+		await mkdir(join(settingsPath, ".."), { recursive: true });
+		await writeFile(
+			settingsPath,
+			JSON.stringify({
+				links: [
+					{
+						id: LINK_ID,
+						name: "家里那台 koishi",
+						enabled: true,
+						token: TOKEN,
+						bridgeKind: "koishi",
+					},
+				],
+			}),
+		);
 		await installBridgeInto(dataDir);
 		await writeFile(globalsPath, JSON.stringify(globals));
 	});

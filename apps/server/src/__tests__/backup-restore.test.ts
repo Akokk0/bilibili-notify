@@ -9,8 +9,8 @@ import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
  * planImport 把「当前状态 + 导入段 + 覆盖/合并」算成一组具体写操作(upsert / delete /
- * setGlobals / setIntegrations),纯函数、无 IO。覆盖=整盘替换(删多余),合并=并集(不删),合并不动 globals
- * 与各集成的设置。
+ * setGlobals / setIntegrations / setExtensionSettings),纯函数、无 IO。覆盖=整盘替换(删多余),合并=并集(不删),
+ * 合并不动 globals 与各集成、各拓展的设置。
  */
 function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
@@ -144,6 +144,51 @@ describe("planImport / foldPlan × 各集成的设置", () => {
 		const plan = planImport(current, { subscriptions: [sub("2")] }, "overwrite");
 		expect(plan.setIntegrations).toBeUndefined();
 		expect(foldPlan(current, plan).integrations).toBeUndefined();
+	});
+});
+
+/**
+ * 各拓展的设置(一个拓展一个文件,ADR-0021 决策 42)是备份里单独一节 `extensionSettings`,按拓展 id;
+ * 恢复的口径同上:覆盖才换(带来的那几个整份换),合并不动主人自己的设置;空的、没有这一节都等于没带。
+ */
+describe("planImport / foldPlan × 各拓展的设置", () => {
+	const extensionSettings = {
+		bridge: { links: [{ id: "l1", name: "家里那台", botKey: "s3cret" }] },
+		douyin: { cron: "0 */5 * * * *" },
+	};
+
+	it("overwrite:备份带着 extensionSettings → 计划里整份换,折出来的终态也带着", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { extensionSettings }, "overwrite");
+		expect(plan.setExtensionSettings).toEqual(extensionSettings);
+		expect(foldPlan(current, plan).extensionSettings).toEqual(extensionSettings);
+	});
+
+	it("merge:备份带着 extensionSettings 也不动 —— 合并别人分享的订阅,不能冲掉自己的设置", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { extensionSettings }, "merge");
+		expect(plan.setExtensionSettings).toBeUndefined();
+		expect(foldPlan(current, plan).extensionSettings).toBeUndefined();
+	});
+
+	it("overwrite:备份带着空的 extensionSettings → 当没带(不算「设置恢复了」)", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { extensionSettings: {} }, "overwrite");
+		expect(plan.setExtensionSettings).toBeUndefined();
+		expect(foldPlan(current, plan).extensionSettings).toBeUndefined();
+	});
+
+	it("overwrite:备份没有 extensionSettings 那一节 → 不写,折出来也没有", () => {
+		const current = currentWith([sub("1")]);
+		const plan = planImport(current, { subscriptions: [sub("2")] }, "overwrite");
+		expect(plan.setExtensionSettings).toBeUndefined();
+		expect(foldPlan(current, plan).extensionSettings).toBeUndefined();
+	});
+
+	it("拓展设置与 integrations / globals 各算各的:只带 extensionSettings 时别的都不写", () => {
+		const plan = planImport(currentWith([]), { extensionSettings }, "overwrite");
+		expect(plan.setGlobals).toBeUndefined();
+		expect(plan.setIntegrations).toBeUndefined();
 	});
 });
 

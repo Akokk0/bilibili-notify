@@ -26,7 +26,7 @@ import {
 import { respondFailure } from "./respond-failure.js";
 
 export interface ExtensionSettingsRouteOptions {
-	store: Pick<ConfigStore, "getGlobals" | "updateGlobals">;
+	store: Pick<ConfigStore, "getExtensionSettings" | "updateExtensionSettings">;
 	/** 装着的那些 —— 清单(设置项声明)从这儿读,**没在跑的也有**(「装好 → 填 → 启用」)。 */
 	extensions: () => readonly ExtensionEntry[];
 	/**
@@ -77,7 +77,7 @@ type Resolved = Result<{ id: string; fields: readonly ExtensionManifestField[] }
 /**
  * 拓展设置自己的读写口(ADR-0019 决策 35)—— 挂在 `/api/ext` 底下,吃面板会话鉴权。
  *
- * 存储仍在 globals 的 `extensions.<id>.settings`,逻辑在 `extensions/settings-io.ts`,这里只做 wire。
+ * 存储在拓展自己的文件 `config/settings/extensions/<id>.json`,逻辑在 `extensions/settings-io.ts`,这里只做 wire。
  * 不走 `PATCH /api/globals` 的理由:列表只能整份写回(两发交错就丢一发),`id` 不可变与密钥占位
  * 回填都表达不了;给 globals 补版本号又会让互不相干的全局写入互相 409。
  */
@@ -130,7 +130,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		if (!target.ok) return respondFailure(c, target);
 		const body: ExtensionSettingsResponse = view(
 			target.fields,
-			opts.store.getGlobals().extensions[target.id]?.settings,
+			opts.store.getExtensionSettings(target.id),
 		);
 		return c.json(body);
 	});
@@ -153,7 +153,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 
 		// 队外先比一次:拿着旧版本号来的,不必往下算。**这一道不算数** —— 算数的那道在
 		// `commitSettings` 里、在排队里。
-		const stored = opts.store.getGlobals().extensions[id]?.settings;
+		const stored = opts.store.getExtensionSettings(id);
 		const current = settingsRevision(stored);
 		if (revision !== current) return respondFailure(c, conflict());
 

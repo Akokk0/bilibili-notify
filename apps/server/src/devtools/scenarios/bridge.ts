@@ -31,7 +31,7 @@ interface BridgeLink {
 
 export interface BridgeScenarioDeps {
 	/**
-	 * 桥那个拓展自己的设置(`globals.extensions.bridge.settings`),**原样**。接入名单
+	 * 桥那个拓展自己的设置(`config/settings/extensions/bridge.json`),**原样**。接入名单
 	 * (token 住在里面)在这儿,不在连接表里 —— 连接是「一个 bot」(ADR-0012 决策 45)。
 	 */
 	settings: () => unknown;

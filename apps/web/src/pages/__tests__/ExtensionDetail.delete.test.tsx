@@ -32,7 +32,7 @@ vi.mock("../../services/api", () => ({
 	api: {
 		get: vi.fn(async (url: string) => {
 			if (url === "/api/globals") {
-				return { extensions: { bridge: { enabled: false, settings: { links: [] } } } };
+				return { extensions: { bridge: { enabled: false } } };
 			}
 			if (url.endsWith("/docs")) return {};
 			// 确认框开着时会去读订阅表(名下有几条订阅会保留)—— 桥名下一条都没有。

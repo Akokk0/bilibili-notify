@@ -22,6 +22,7 @@ import {
 export interface FullBackupInput {
 	globals?: GlobalConfig;
 	integrations?: Record<string, unknown>;
+	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -47,6 +48,7 @@ export function assembleFullBackup(
 	const original: BackupSections = {
 		globals: input.globals,
 		integrations: input.integrations,
+		extensionSettings: input.extensionSettings,
 		subscriptions: input.subscriptions,
 		connections: input.connections,
 		targets: input.targets,

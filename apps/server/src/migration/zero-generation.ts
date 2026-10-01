@@ -24,7 +24,12 @@ import {
 	syncDirectory,
 } from "@bilibili-notify/storage";
 import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
-import { CONFIG_DIR, CORE_SETTINGS_FILE, integrationSettingsFile } from "../config/store.js";
+import {
+	CONFIG_DIR,
+	CORE_SETTINGS_FILE,
+	extensionSettingsFile,
+	integrationSettingsFile,
+} from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
 import { CHAT_ASSETS_DIR } from "../runtime/chat-assets.js";
@@ -52,7 +57,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 13;
+export const MIGRATION_REVISION = 14;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -282,10 +287,11 @@ const REWRITES: readonly {
 	{
 		label: "设置",
 		run: (opts) =>
-			migrateSettingsFiles(
-				dataPath(opts.targetDir, ...CORE_SETTINGS_FILE),
-				dataPath(opts.targetDir, ...integrationSettingsFile(BILIBILI_SOURCE_KEY)),
-			),
+			migrateSettingsFiles({
+				core: dataPath(opts.targetDir, ...CORE_SETTINGS_FILE),
+				bilibili: dataPath(opts.targetDir, ...integrationSettingsFile(BILIBILI_SOURCE_KEY)),
+				extension: (id) => dataPath(opts.targetDir, ...extensionSettingsFile(id)),
+			}),
 	},
 	{
 		label: "订阅",

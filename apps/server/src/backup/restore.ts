@@ -36,6 +36,7 @@ export interface CurrentState {
 export interface ImportSections {
 	globals?: GlobalConfig;
 	integrations?: Record<string, unknown>;
+	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -45,6 +46,7 @@ export interface ImportSections {
 export interface FoldedSections {
 	globals?: GlobalConfig;
 	integrations?: Record<string, unknown>;
+	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -59,6 +61,8 @@ export interface ImportPlan {
 	setGlobals?: GlobalConfig;
 	/** 覆盖模式下备份带着的各集成的设置(整份换)。 */
 	setIntegrations?: Record<string, unknown>;
+	/** 覆盖模式下备份带着的各拓展的设置(带来的那几个整份换)。 */
+	setExtensionSettings?: Record<string, unknown>;
 	subscriptions: ScopePlan<Subscription>;
 	connections: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
@@ -122,6 +126,11 @@ export function planImport(
 	) {
 		plan.setIntegrations = incoming.integrations;
 	}
+	// 拓展的设置同一个口径:覆盖才换,带来的那几个整份换,没带的(备份之后才装的拓展)不动。
+	const extensionSettings = incoming.extensionSettings;
+	if (mode === "overwrite" && extensionSettings && Object.keys(extensionSettings).length > 0) {
+		plan.setExtensionSettings = extensionSettings;
+	}
 	return plan;
 }
 
@@ -151,6 +160,7 @@ export function foldPlan(current: CurrentState, plan: ImportPlan): FoldedSection
 	return {
 		globals: plan.setGlobals,
 		integrations: plan.setIntegrations,
+		extensionSettings: plan.setExtensionSettings,
 		subscriptions: applyScope(current.subscriptions, plan.subscriptions),
 		connections: applyScope(current.connections, plan.connections),
 		targets: applyScope(current.targets, plan.targets),

@@ -15,7 +15,7 @@ import { type BackupStore, createBackupService } from "../backup/service.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
- * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope 与各集成的设置(+cookie),
+ * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope 与各集成、各拓展的设置(+cookie),
  * 导入按 plan 逐个写回。写回经 store 的既有方法 → 自动触发 config-changed 热重载;
  * cookie 恢复后回调 onCookiesRestored(bootstrap 接活体重登)。
  */
@@ -54,16 +54,19 @@ function makeFakeStore(
 		subscriptions: Subscription[];
 		connections: Connection[];
 		integrations: Record<string, unknown>;
+		extensionSettings: Record<string, unknown>;
 	}> = {},
 ) {
 	let globals = makeDefaultGlobalConfig();
 	let integrations: Record<string, unknown> = init.integrations ?? { bilibili: BILIBILI_SETTINGS };
+	let extensionSettings: Record<string, unknown> = init.extensionSettings ?? {};
 	let subs = [...(init.subscriptions ?? [])];
 	let connections = [...(init.connections ?? [])];
 	let targets: PushTarget[] = [];
 	const store: BackupStore = {
 		getGlobals: () => globals,
 		getAllIntegrationSettings: () => integrations,
+		getAllExtensionSettings: () => extensionSettings,
 		getSubscriptions: () => subs,
 		getConnections: () => connections,
 		getTargets: () => targets,
@@ -74,6 +77,10 @@ function makeFakeStore(
 			if (next.globals) globals = next.globals;
 			// 各集成的设置按键整份换(和真 store 一样:备份里没带的键不动)。
 			if (next.integrations) integrations = { ...integrations, ...next.integrations };
+			// 各拓展的设置也一样:带来的那几个整份换,没带的不动。
+			if (next.extensionSettings) {
+				extensionSettings = { ...extensionSettings, ...next.extensionSettings };
+			}
 			if (next.subscriptions) subs = next.subscriptions;
 			if (next.connections) connections = next.connections;
 			if (next.targets) targets = next.targets;
@@ -326,9 +333,10 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 				"bilibili",
 				"douyin",
 			]);
-			// 节就这五个:订阅只有一节,没有按来源再拆出第二节;各集成的设置跟「设置」同一个勾选。
+			// 节就这六个:订阅只有一节,没有按来源再拆出第二节;各集成、各拓展的设置跟「设置」同一个勾选。
 			expect(Object.keys(sections).sort()).toEqual([
 				"connections",
+				"extensionSettings",
 				"globals",
 				"integrations",
 				"subscriptions",
@@ -343,6 +351,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		expect(withSubs.sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
 		expect(Object.keys(withSubs.sections).sort()).toEqual([
 			"connections",
+			"extensionSettings",
 			"globals",
 			"integrations",
 			"subscriptions",
@@ -354,6 +363,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		});
 		expect(Object.keys(without.sections).sort()).toEqual([
 			"connections",
+			"extensionSettings",
 			"globals",
 			"integrations",
 			"targets",
@@ -612,6 +622,167 @@ describe("BackupService × 各集成的设置", () => {
 			expect((await restore({ subscriptions: [sub("1")] }, "overwrite")).globalsApplied).toBe(
 				false,
 			);
+		});
+	});
+});
+
+/**
+ * 各拓展的设置(ADR-0021 决策 42:一个拓展一个文件)在备份里是单独一节 `extensionSettings`,按拓展 id。它跟
+ * 核心设置(`globals`)、各集成的设置走**同一个勾选**(「设置」)和**同一种恢复口径**(覆盖才换、合并不动主人
+ * 自己的设置)。开关留在 `globals.extensions`,不在这一节里。
+ *
+ * 这几条钉的是**接线**:纯函数各自的测试证明不了服务真的把这一节读出来、递给脱敏与打包、再递给 `replaceSections`
+ * —— 漏了哪一环,症状都是「恢复完拓展的设置(桥的接入名单)回到空的」或者「拓展的密钥原样躺在备份文件里」,而
+ * 别的测试全绿。
+ */
+describe("BackupService × 各拓展的设置", () => {
+	const SETTINGS = {
+		bridge: { links: [{ id: "l1", name: "家里那台", botKey: "s3cret" }] },
+		other: { note: "另一个拓展", token: "tok-other" },
+	};
+	/** 脱敏档里的样子:bridge 声明了 `botKey`;`other` 不在跑着的拓展表里 = 问不出来 → 整片抹平。 */
+	const REDACTED = {
+		bridge: { links: [{ id: "l1", name: "家里那台", botKey: "" }] },
+		other: { note: "", token: "" },
+	};
+	/** 本机的设置和备份里的不一样,外加一个备份里没有的拓展 —— 恢复换进去了什么、留下了什么一眼看得出。 */
+	const LOCAL = { bridge: { links: [] }, newer: { keep: "me" } };
+	const PIN = "123456";
+
+	function service(store: BackupStore) {
+		return createBackupService({
+			configStore: store,
+			cookieStore: makeCookieStore(null),
+			now: () => "t",
+			extensionSecretCodes: () => new Map([["bridge", ["botKey"]]]),
+		});
+	}
+
+	it("sanitized 导出:勾了「设置」→ extensionSettings 随 globals 一起带上,拓展声明的密钥抹平", async () => {
+		const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+			kind: "sanitized",
+		});
+		expect(env.sections.globals).toBeDefined();
+		expect(env.sections.extensionSettings).toEqual(REDACTED);
+		// 不改本机那份:抹的是拷贝。
+		expect(SETTINGS.bridge.links[0]?.botKey).toBe("s3cret");
+	});
+
+	it("full 导出:明文段同样抹平,真值在加密袋里 —— 用 PIN 打开原样回来", async () => {
+		const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+			kind: "full",
+			pin: PIN,
+		});
+		expect(env.sections.extensionSettings).toEqual(REDACTED);
+		expect(openFullBackup(env, PIN).sections.extensionSettings).toEqual(SETTINGS);
+	});
+
+	it.each(["sanitized", "full"] as const)(
+		"%s 导出:没勾「设置」→ globals 与 extensionSettings 一起不带",
+		async (kind) => {
+			const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+				kind,
+				pin: PIN,
+				sections: { globals: false },
+			});
+			const sections = kind === "full" ? openFullBackup(env, PIN).sections : env.sections;
+			expect(sections.globals).toBeUndefined();
+			expect(sections.extensionSettings).toBeUndefined();
+			// 文件里(JSON)也没有这一节。
+			expect(Object.keys(JSON.parse(JSON.stringify(env)).sections)).not.toContain(
+				"extensionSettings",
+			);
+		},
+	);
+
+	it("overwrite 恢复:备份带着的 extensionSettings 交给 replaceSections,带来的那几个换成备份里的,没带的不动", async () => {
+		const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+			kind: "full",
+			pin: PIN,
+		});
+		const store = makeFakeStore({ extensionSettings: LOCAL });
+
+		await service(store).importBackup({ envelope: env, pin: PIN, mode: "overwrite" });
+
+		expect(store.replaceSections).toHaveBeenCalledTimes(1);
+		expect(store.replaceSections).toHaveBeenCalledWith(
+			expect.objectContaining({ extensionSettings: SETTINGS }),
+		);
+		expect(store.getAllExtensionSettings()).toEqual({ ...LOCAL, ...SETTINGS });
+	});
+
+	it("merge 恢复:不碰本机的各拓展设置(合并不动主人自己的设置)", async () => {
+		const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+			kind: "sanitized",
+		});
+		const store = makeFakeStore({ extensionSettings: LOCAL });
+
+		await service(store).importBackup({ envelope: env, mode: "merge" });
+
+		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
+		expect(folded?.extensionSettings).toBeUndefined();
+		expect(store.getAllExtensionSettings()).toEqual(LOCAL);
+	});
+
+	it.each(["overwrite", "merge"] as const)(
+		"%s 恢复一份没勾「设置」的备份 → 本机各拓展的设置原样留着",
+		async (mode) => {
+			const env = await service(makeFakeStore({ extensionSettings: SETTINGS })).exportBackup({
+				kind: "sanitized",
+				sections: { globals: false },
+			});
+			const store = makeFakeStore({ extensionSettings: LOCAL });
+
+			await service(store).importBackup({ envelope: env, mode });
+
+			const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
+			expect(folded?.extensionSettings).toBeUndefined();
+			expect(store.getAllExtensionSettings()).toEqual(LOCAL);
+		},
+	);
+
+	/**
+	 * 一个拓展设置都没存过时,导出的这一节是空对象 `{}`(勾了「设置」就一定带着)。空的等于没带:覆盖恢复它时
+	 * 不往 `replaceSections` 递任何东西,也不算「设置已应用」。
+	 */
+	it("导出时一个拓展设置都没存过 → 这一节是 {};覆盖恢复它等于没带", async () => {
+		const env = await service(makeFakeStore()).exportBackup({ kind: "sanitized" });
+		expect(env.sections.extensionSettings).toEqual({});
+		const store = makeFakeStore({ extensionSettings: LOCAL });
+
+		await service(store).importBackup({ envelope: env, mode: "overwrite" });
+
+		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
+		expect(folded?.extensionSettings).toBeUndefined();
+		expect(store.getAllExtensionSettings()).toEqual(LOCAL);
+	});
+
+	/**
+	 * 「设置已应用」不能漏看拓展那一节:备份里只有各拓展的设置(没有 `globals` / `integrations`)也是应用了设置
+	 * —— 面板据此说「设置已恢复」。手搭一份只带这一节的备份(导出走勾选,几节同进同出,出不了这种)。
+	 */
+	describe.each([false, true])("globalsApplied(dry run=%s)", (dryRun) => {
+		function restore(sections: BackupSections, mode: ImportMode) {
+			const envelope = buildBackup({ kind: "sanitized", createdAt: "t", sections });
+			return service(makeFakeStore({ extensionSettings: LOCAL })).importBackup({
+				envelope,
+				mode,
+				dryRun,
+			});
+		}
+
+		it("overwrite 只带 extensionSettings → true", async () => {
+			expect((await restore({ extensionSettings: SETTINGS }, "overwrite")).globalsApplied).toBe(
+				true,
+			);
+		});
+
+		it("merge 只带 extensionSettings → false(合并不动设置)", async () => {
+			expect((await restore({ extensionSettings: SETTINGS }, "merge")).globalsApplied).toBe(false);
+		});
+
+		it("overwrite 只带空的 extensionSettings → false(空的等于没带)", async () => {
+			expect((await restore({ extensionSettings: {} }, "overwrite")).globalsApplied).toBe(false);
 		});
 	});
 });

@@ -47,7 +47,7 @@ vi.mock("../../services/api", () => ({
 				return docs.value;
 			}
 			if (url === "/api/globals") {
-				return { extensions: { bridge: { enabled: false, settings: { links: [] } } } };
+				return { extensions: { bridge: { enabled: false } } };
 			}
 			return {
 				extensions: [

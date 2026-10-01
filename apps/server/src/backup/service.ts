@@ -32,12 +32,14 @@ import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
 export interface BackupStore {
 	getGlobals(): GlobalConfig;
 	getAllIntegrationSettings(): Record<string, unknown>;
+	getAllExtensionSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
 	getConnections(): Connection[];
 	getTargets(): PushTarget[];
 	replaceSections(next: {
 		globals?: GlobalConfig;
 		integrations?: Record<string, unknown>;
+		extensionSettings?: Record<string, unknown>;
 		subscriptions?: Subscription[];
 		connections?: Connection[];
 		targets?: PushTarget[];
@@ -51,7 +53,7 @@ interface BackupCookieStore {
 
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
-	/** 设置:核心那份连同各集成的(B 站……)。 */
+	/** 设置:核心那份连同各集成的(B 站……)与各拓展的。 */
 	globals?: boolean;
 	/** 订阅:只有一节,B 站与拓展来源的同在里面(ADR-0021 决策 15)。 */
 	subscriptions?: boolean;
@@ -136,6 +138,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		if (sel.globals) {
 			picked.globals = deps.configStore.getGlobals();
 			picked.integrations = deps.configStore.getAllIntegrationSettings();
+			picked.extensionSettings = deps.configStore.getAllExtensionSettings();
 		}
 		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
 		if (sel.connections) picked.connections = deps.configStore.getConnections();
@@ -149,6 +152,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				{
 					globals: picked.globals,
 					integrations: picked.integrations,
+					extensionSettings: picked.extensionSettings,
 					subscriptions: picked.subscriptions,
 					connections: picked.connections,
 					targets: picked.targets,
@@ -193,7 +197,9 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		if (!opts.dryRun) {
 			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
 			await deps.configStore.replaceSections(folded);
-			globalsApplied = Boolean(plan.setGlobals || plan.setIntegrations);
+			globalsApplied = Boolean(
+				plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
+			);
 
 			if (cookies?.cookiesJson) {
 				await deps.cookieStore.save({
@@ -204,7 +210,9 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				cookiesRestored = true;
 			}
 		} else {
-			globalsApplied = Boolean(plan.setGlobals || plan.setIntegrations);
+			globalsApplied = Boolean(
+				plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
+			);
 			cookiesRestored = Boolean(cookies?.cookiesJson);
 		}
 

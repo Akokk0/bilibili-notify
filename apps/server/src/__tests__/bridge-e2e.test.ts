@@ -20,14 +20,14 @@
  * ↔ 路由认得的路径)由 `extensions/bridge/src/__tests__/e2e.test.ts` 拿真 HTTP GET 钉住。
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE, extensionSettingsFile } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
@@ -173,22 +173,24 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
-		globals.extensions = {
-			bridge: {
-				enabled: true,
-				settings: {
-					links: [
-						{
-							id: LINK_ID,
-							name: "家里那台 koishi",
-							enabled: true,
-							token: TOKEN,
-							bridgeKind: "koishi",
-						},
-					],
-				},
-			},
-		};
+		// 核心设置里只有开关;桥的设置(接入名单,带 token)住它自己的文件。
+		globals.extensions = { bridge: { enabled: true } };
+		const settingsPath = join(gen, ...extensionSettingsFile("bridge"));
+		await mkdir(join(settingsPath, ".."), { recursive: true });
+		await writeFile(
+			settingsPath,
+			JSON.stringify({
+				links: [
+					{
+						id: LINK_ID,
+						name: "家里那台 koishi",
+						enabled: true,
+						token: TOKEN,
+						bridgeKind: "koishi",
+					},
+				],
+			}),
+		);
 		// 拓展是**装进来的**(本体一个都不带,仓里那个目录也不再是根)—— 这一下就是
 		// 开发版 devtools / 日后插件市场做的那件事:把包摆进唯一那个装载根。
 		await installBridgeInto(dataDir);
@@ -409,6 +411,60 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		// 这一发 upgrade 有时会撞在「端点还没挂回来」的那一瞬,报 404。
 		expect(await bridgeState()).toBe("running");
 		await handshake();
+	});
+
+	/**
+	 * 🔴 **设置落盘 → 桥对账**,整条线走一遍:`PATCH /api/ext/bridge/settings` → 桥自己的文件落盘 →
+	 * `config-changed`(`integration-settings` 那一档)→ 宿主通知拓展的 ctx → ctx 重读、重解 → 桥拿新名单对账。
+	 *
+	 * 零件各自的测试证明不了这根线接上了没有:ctx 自己有测试、仓有测试、路由有测试,而**宿主订的是哪一档**
+	 * (拓展设置从核心设置搬进各自的文件之后,不是 `globals` 了)只有从这一头推到那一头才看得见 —— 订错了的症状
+	 * 是面板上把接入停用 / 重新生成 token,活着的那条照旧连着收推送,而一切测试全绿。
+	 *
+	 * 停用不是吊销:配置全留,被踢的收到的是可以退避重连的断连。测完把它启用回来 —— 这个数据目录是整个 describe
+	 * 共用的。
+	 */
+	it("面板上把接入停用(经设置口)→ 活着的桥当场掉线;再启用又连得上", async () => {
+		await handshake();
+		if (!client) throw new Error("unreachable");
+		const wentAway = client.closed();
+
+		const setLinkEnabled = async (enabled: boolean): Promise<void> => {
+			const read = await fetch(`${handle?.url}/api/ext/bridge/settings`);
+			const { revision } = (await read.json()) as { revision: string };
+			const res = await fetch(`${handle?.url}/api/ext/bridge/settings`, {
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					revision,
+					ops: [{ op: "update", list: "links", id: LINK_ID, values: { enabled } }],
+				}),
+			});
+			expect(res.status).toBe(200);
+		};
+
+		try {
+			await setLinkEnabled(false);
+			const outcome = await Promise.race([
+				wentAway.then(() => "kicked"),
+				new Promise<string>((resolve) => setTimeout(() => resolve("still connected"), 3_000)),
+			]);
+			expect(outcome).toBe("kicked");
+		} finally {
+			await setLinkEnabled(true);
+		}
+
+		// 启用回来:新的握手连得上(ctx 重读是异步的,等到它认了为止)。
+		const deadline = Date.now() + 3_000;
+		for (;;) {
+			try {
+				await peerOnce();
+				break;
+			} catch (err) {
+				if (Date.now() > deadline) throw err;
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			}
+		}
 	});
 
 	/** 现在拓展什么状态 —— 这一口会先把还没落地的开关 settle 掉,是「等它装完」的正路。 */

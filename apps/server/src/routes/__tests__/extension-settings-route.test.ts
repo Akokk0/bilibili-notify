@@ -1,7 +1,7 @@
 /**
  * `/api/ext/:id/settings` —— 拓展设置自己的读写口(ADR-0019 决策 35)。
  *
- * 存储仍在 globals 的 `extensions.<id>.settings`;变的是**怎么读、怎么写**:
+ * 存储在拓展自己的文件 `config/settings/extensions/<id>.json`(不在核心设置里);路由管的是**怎么读、怎么写**:
  * - 读:密钥格换成服务端算好的遮挡,原文永不下发;带一个版本号。
  * - 写:按项操作(顶层按格 `set`、列表逐条 `add` / `update` / `remove`),版本号对不上 409;
  *   **只校验这次动到的**,存量里别的不合规的不连坐。
@@ -12,7 +12,7 @@
  * 交 zod,宿主从跑着的那份把手上取)、真的 bus → WS 帧接线。零件各自绿证明不了接上了。
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -27,6 +27,7 @@ import { z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
+import { extensionSettingsFile } from "../../config/store.js";
 import type { ExtensionContext } from "../../extensions/context.js";
 import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
@@ -180,9 +181,7 @@ async function boot(opts: {
 	runtime = rt;
 	await rt.configStore.load();
 	if (opts.settings !== undefined) {
-		await rt.configStore.patchGlobals({
-			extensions: { douyin: { settings: opts.settings } },
-		} as never);
+		await rt.configStore.updateExtensionSettings("douyin", () => opts.settings);
 	}
 	const mounts = createExtensionMounts({ logger: silentLogger });
 	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
@@ -196,11 +195,11 @@ async function boot(opts: {
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => [],
 		onSubscriptionsChanged: () => ({ dispose() {} }),
-		settings: (id) => rt.configStore.getGlobals().extensions[id]?.settings,
-		// 与 index.ts 同一根线:globals 落盘 → 装载器与 ctx 各自判「我这一格动没动」。
+		settings: (id) => rt.configStore.getExtensionSettings(id),
+		// 与 index.ts 同一根线:拓展设置落盘(`integration-settings` 那一档)→ 装载器与 ctx 各自判「我这一份动没动」。
 		onSettingsChanged: (fn) =>
 			rt.bus.on("config-changed", ({ scope }) => {
-				if (scope === "globals") fn();
+				if (scope === "integration-settings") fn();
 			}),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
@@ -239,7 +238,7 @@ async function boot(opts: {
 			body: JSON.stringify(body),
 		});
 	/** 现在存着的那份(原文,不遮)。 */
-	const stored = () => rt.configStore.getGlobals().extensions.douyin?.settings;
+	const stored = () => rt.configStore.getExtensionSettings("douyin");
 	const revision = async () => ((await (await get()).json()) as ExtensionSettingsResponse).revision;
 	const settingsFrames = () =>
 		frames.filter((frame) => frame.event === "extension-settings-changed");
@@ -254,8 +253,7 @@ async function boot(opts: {
 		/** 装载器那条队排空 —— 「设置变了」那一趟对账走完了。 */
 		settled: () => loader.sync(),
 		/** 旁路写一次(恢复备份 / 手改文件那一类):不经这个路由,也就不过拓展的 zod。 */
-		bypass: (settings: unknown) =>
-			rt.configStore.patchGlobals({ extensions: { douyin: { settings } } } as never),
+		bypass: (settings: unknown) => rt.configStore.updateExtensionSettings("douyin", () => settings),
 	};
 }
 
@@ -791,7 +789,7 @@ describe("PATCH /api/ext/:id/settings —— 拓展处在「设置读不了」",
 
 	/**
 	 * 跑着时经这个路由的写入过了它的 zod,撞上的只剩旁路。它的 zod 带**异步** refine:ctx 同步判不完,
-	 * 异步判坏了要自己喊装载器来收 —— 光靠「globals 落盘」那一趟对账,那时候判决还没回来。
+	 * 异步判坏了要自己喊装载器来收 —— 光靠「设置落盘」那一趟对账,那时候判决还没回来。
 	 */
 	it("跑着时被旁路写坏(异步 refine)→ 收掉,那一行变「设置读不了」", async () => {
 		const h = await boot({ running: true, settings: { links: [GOOD_LINK] } });
@@ -826,5 +824,38 @@ describe("PATCH /api/ext/:id/settings —— 写完发一帧", () => {
 		});
 		expect(res.status).toBe(409);
 		expect(h.settingsFrames()).toEqual([]);
+	});
+});
+
+describe("PATCH /api/ext/:id/settings —— 存到哪", () => {
+	/**
+	 * 一个拓展的设置住它自己的文件(ADR-0021 决策 42),不进核心设置:写成了,盘上那个文件就是新的那份;
+	 * 读回来的与盘上的是同一份(从文件里读回的,不是内存里的另一份副本)。
+	 */
+	it("写成了 → config/settings/extensions/<id>.json 就是新的那份", async () => {
+		const h = await boot({ running: false, settings: { interval: 90 } });
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "set", key: "interval", value: 120 }],
+		});
+		expect(res.status).toBe(200);
+		const onDisk = JSON.parse(
+			await readFile(join(dataDir, ...extensionSettingsFile("douyin")), "utf8"),
+		);
+		expect(onDisk).toEqual({ interval: 120 });
+		expect(h.stored()).toEqual(onDisk);
+	});
+
+	it("409 不写盘:文件还是写前那份", async () => {
+		const h = await boot({ running: false, settings: { interval: 90 } });
+		const res = await h.patch({
+			revision: "stale",
+			ops: [{ op: "set", key: "interval", value: 120 }],
+		});
+		expect(res.status).toBe(409);
+		const onDisk = JSON.parse(
+			await readFile(join(dataDir, ...extensionSettingsFile("douyin")), "utf8"),
+		);
+		expect(onDisk).toEqual({ interval: 90 });
 	});
 });

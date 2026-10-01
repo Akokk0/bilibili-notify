@@ -110,6 +110,70 @@ describe("0.x 设置里 B 站的三格 → settings/bilibili.json", () => {
 	});
 });
 
+// ── 各拓展的设置搬进它自己的文件(ADR-0021 决策 42 下 10-01 的 🔗)────────────────────────────
+
+describe("0.x 设置里各拓展的 settings → settings/extensions/<id>.json", () => {
+	const sandbox = useZeroSandbox("bn-extension-settings-");
+
+	function oldGlobalsWithExtensions(extensions: Record<string, unknown>): string {
+		const old = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		old.extensions = extensions;
+		return JSON.stringify(old);
+	}
+
+	it("每个拓展的 settings 原样搬进 settings/extensions/<id>.json;开关留在核心那份", async () => {
+		const original = oldGlobalsWithExtensions({
+			douyin: { enabled: true, settings: { cookie: "c", list: [{ id: "a" }] } },
+			"acme.tiktok": { enabled: false, settings: { token: "t" } },
+			kuaishou: { enabled: true },
+		});
+		await sandbox.placeZeroText("state/globals.json", original);
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten).toEqual(
+			expect.arrayContaining([
+				"config/settings/core.json",
+				"config/settings/extensions/douyin.json",
+				"config/settings/extensions/acme.tiktok.json",
+			]),
+		);
+		await expectZeroGlobalsUntouched(sandbox, original);
+		expect(await sandbox.readConfig("settings/extensions/douyin.json")).toEqual({
+			cookie: "c",
+			list: [{ id: "a" }],
+		});
+		expect(await sandbox.readConfig("settings/extensions/acme.tiktok.json")).toEqual({
+			token: "t",
+		});
+		const core = await sandbox.readConfig<{ extensions: Record<string, unknown> }>(
+			"settings/core.json",
+		);
+		expect(core.extensions).toEqual({
+			douyin: { enabled: true },
+			"acme.tiktok": { enabled: false },
+			kuaishou: { enabled: true },
+		});
+
+		const store = await sandbox.load();
+		expect(store.getExtensionSettings("douyin")).toEqual({ cookie: "c", list: [{ id: "a" }] });
+		expect(store.getExtensionSettings("kuaishou")).toBeUndefined();
+		expect(store.getGlobals().extensions.douyin).toEqual({ enabled: true });
+	});
+
+	it("拓展 id 不合 id 的形状(手改过的配置)→ 不拆、不写文件:它要拼进文件名", async () => {
+		await sandbox.placeZeroText(
+			"state/globals.json",
+			oldGlobalsWithExtensions({ "../evil": { enabled: true, settings: { x: 1 } } }),
+		);
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten.some((path) => path.includes("evil"))).toBe(false);
+		expect((await sandbox.load()).getAllExtensionSettings()).toEqual({});
+	});
+});
+
 // ── 历代旧默认模板(原 config-store.test.ts)────────────────────────────────────────
 
 describe("0.x 历代旧默认模板 → 迁移器接缝", () => {

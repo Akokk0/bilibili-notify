@@ -97,9 +97,9 @@ export function redactSecretKeys<T>(value: T, secrets: ReadonlySet<string> = SEC
  */
 export type ExtensionSecretCodes = ReadonlyMap<string, readonly string[]>;
 
-/** 备份四个分区里,拓展能插手的那两格。只写出用得上的形状。 */
+/** 备份分区里,拓展能插手的那两格。只写出用得上的形状。 */
 interface ExtensionScopedSections {
-	globals?: { extensions?: Record<string, { settings?: unknown } | undefined> };
+	extensionSettings?: Record<string, unknown>;
 	connections?: Array<{ kind?: unknown; extensionId?: unknown; config?: unknown } | undefined>;
 }
 
@@ -122,10 +122,11 @@ function redactExtensionScopes(
 	sections: ExtensionScopedSections,
 	extensionSecrets: ExtensionSecretCodes,
 ): void {
-	for (const [id, state] of Object.entries(sections.globals?.extensions ?? {})) {
-		// 开关(`enabled`)不是设置,不许跟着抹。
-		if (!state || state.settings === undefined) continue;
-		state.settings = redactScoped(state.settings, extensionSecrets.get(id));
+	// 开关(`globals.extensions.<id>.enabled`)不是设置,不在这一节,不会被抹。
+	const settings = sections.extensionSettings ?? {};
+	for (const [id, value] of Object.entries(settings)) {
+		if (value === undefined) continue;
+		settings[id] = redactScoped(value, extensionSecrets.get(id));
 	}
 	for (const connection of sections.connections ?? []) {
 		if (connection?.kind !== "extension") continue;

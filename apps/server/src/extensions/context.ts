@@ -283,7 +283,7 @@ export interface CreateExtensionContextOptions {
 	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
 	/** 「上报问题」的出口(见 {@link SubscriptionReportProblem})。日志 ctx 已经记了;不给就只记日志。 */
 	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
-	/** 它自己那份设置(`globals.extensions.<id>.settings`),**现读**、原样。 */
+	/** 它自己那份设置(`config/settings/extensions/<id>.json`),**现读**、原样。 */
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
@@ -580,8 +580,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 每份 zod 解出来的**最近一份好的** —— `get()` 只从这里拿,解析在「交进来」与「落盘了」那两下
 	 * 做完,不挂在 `get()` 上。
 	 *
-	 * 🔴 不能「每问一次现读现解」:宿主那头是 `getGlobals().extensions[id]?.settings`,每次都
-	 * deepClone 一整份 globals —— 桥每握一次手问一次。
+	 * 🔴 不能「每问一次现读现解」:宿主那头是 `getExtensionSettings(id)`,每次都深拷贝一份、再过一遍
+	 * 拓展的 zod —— 桥每握一次手问一次。
 	 *
 	 * 🔴 **存着的那份变得解不开时这里不动**:拓展永远看不到一份过不了它自己 zod 的设置。在装载器
 	 * 把它收掉之前(那要排队),它读到的还是上一份好的 —— 从前是「按没有算」给一个 `undefined`,

@@ -622,7 +622,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				master: masterIdentity(),
 			}),
 			connectionConfigs: () => runtime.configStore.getConnections(),
-			globals: () => runtime.configStore.getGlobals(),
+			extensionSettings: (id) => runtime.configStore.getExtensionSettings(id),
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			authSystem,
@@ -1095,11 +1095,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			onSubscriptionReport: (delivery) => runtime.bus.emit("subscription-reported", delivery),
 			// 丢格与整条拒(决策 60)。ctx 已经记过日志;叫面板重取的那一声由记录自己发。
 			onSubscriptionReportProblem: (problem) => reportProblems.record(problem),
-			// 拓展自己那份设置住 globals;是不是自己这一格动了由 ctx 比内容判。
-			settings: (id) => runtime.configStore.getGlobals().extensions[id]?.settings,
+			// 拓展自己那份设置住它自己的文件(`config/settings/extensions/<id>.json`);是不是自己这一份动了由 ctx
+			// 比内容判 —— 改动那一档(`integration-settings`)是各集成共用的。
+			settings: (id) => runtime.configStore.getExtensionSettings(id),
 			onSettingsChanged: (fn) =>
 				runtime.bus.on("config-changed", ({ scope }) => {
-					if (scope === "globals") fn();
+					if (scope === "integration-settings") fn();
 				}),
 			// 拓展喊「面板数据变了」→ bus → WS `state` 频道 → 面板按 id 失效缓存(不用切页)。
 			onStatusChanged: (id) => runtime.bus.emit("extension-status-changed", { extensionId: id }),

@@ -1,4 +1,4 @@
-import { fail, type GlobalConfig, ok, type Result } from "@bilibili-notify/internal";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
@@ -152,20 +152,10 @@ function splitSettingsPatch(
  * 集成设置里没有密钥;将来有了,按字段表上的 `secret` 标记打码(ADR-0021 决策 44,随 3b)。
  */
 function publicSettings(snapshot: SettingsSnapshot): Record<string, unknown> {
-	return { ...publicGlobals(snapshot.core), ...snapshot.integrations };
-}
-
-/**
- * 核心那份下发给浏览器的样子:密钥换占位(`redactGlobals`),每个拓展的设置整格抹掉、只留开关。
- *
- * 🔴 拓展设置里有密钥(桥的 token、抖音的 cookie),它们的遮挡在 `/api/ext/:id/settings` 那一口做
- * (服务端算头尾,决策 35)。这里照旧整份下发的话,明文从这一口出门,那边的遮挡就白做了。
- */
-function publicGlobals(g: GlobalConfig): GlobalConfig {
-	const extensions = Object.fromEntries(
-		Object.entries(g.extensions).map(([id, { enabled }]) => [id, { enabled }]),
-	);
-	return redactGlobals({ ...g, extensions });
+	// 核心那份的密钥换占位(`redactGlobals`)。拓展的设置不在这里面(各在自己的文件里,ADR-0021 决策 42 下
+	// 10-01 的 🔗),核心那份只有它们的开关 —— 拓展设置里的密钥(桥的 token、抖音的 cookie)只从
+	// `/api/ext/:id/settings` 那一口出门,在那儿遮(服务端算头尾,决策 35)。
+	return { ...redactGlobals(snapshot.core), ...snapshot.integrations };
 }
 
 // ---------------------------------------------------------------------------

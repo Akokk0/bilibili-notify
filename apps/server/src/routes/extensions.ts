@@ -345,7 +345,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		// 收摊,不会再有新的一条补进来。
 		opts.reportProblems?.clear(id);
 
-		await opts.store.patchGlobals({ extensions: { [id]: null } } as never);
+		// 开关那一格与它的设置文件一起删(设置不住 globals 了,见 `ConfigStore.removeExtension`)。
+		await opts.store.removeExtension(id);
 		return c.json(ok());
 	});
 

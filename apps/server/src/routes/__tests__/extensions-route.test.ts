@@ -5,7 +5,7 @@
  * (ADR-0012 决策 36),把面板数据挂那儿等于公开出去。
  */
 
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -18,7 +18,7 @@ import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import type { ConfigStore } from "../../config/store.js";
+import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
 import type { ActionOutcome, LookupOutcome } from "../../extensions/context.js";
 import {
 	type ExtensionEntry,
@@ -30,6 +30,7 @@ import { createExtensionMounts } from "../../extensions/mount.js";
 import { createReportProblemLog, type ReportProblemLog } from "../../extensions/report-problems.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createExtensionsRoute } from "../extensions.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 
@@ -47,7 +48,7 @@ async function failureOf(res: Response): Promise<ErrorResponse> {
 
 let installRoot: string;
 let rescan: ReturnType<typeof vi.fn<() => Promise<void>>>;
-let patchGlobals: ReturnType<typeof vi.fn>;
+let removeExtension: ReturnType<typeof vi.fn>;
 
 function boot(
 	over: {
@@ -75,14 +76,18 @@ function boot(
 		swap?: (id: string) => Promise<void>;
 		/** 「上报问题」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
 		reportProblems?: ReportProblemLog;
+		/** 换成一个真的配置仓(落盘的)—— 只有要看「卸载真的把盘上的东西清了」的用例给。 */
+		store?: ConfigStore;
 	} = {},
 ) {
-	const store = {
-		getGlobals: () =>
-			({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
-		getConnections: () => over.connections ?? [],
-		patchGlobals,
-	} as unknown as ConfigStore;
+	const store =
+		over.store ??
+		({
+			getGlobals: () =>
+				({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
+			getConnections: () => over.connections ?? [],
+			removeExtension,
+		} as unknown as ConfigStore);
 	const entries = over.entries ?? [];
 	const loader = over.loader;
 	return createExtensionsRoute({
@@ -212,7 +217,7 @@ function form(file: Blob | undefined): FormData {
 beforeEach(async () => {
 	installRoot = await mkdtemp(join(tmpdir(), "bn-ext-route-"));
 	rescan = vi.fn(async () => {});
-	patchGlobals = vi.fn(async () => ({}) as GlobalConfig);
+	removeExtension = vi.fn(async () => {});
 });
 
 afterEach(async () => {
@@ -1086,8 +1091,59 @@ describe("DELETE /api/ext/:id", () => {
 
 		expect(res.status).toBe(200);
 		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).toBeNull();
-		expect(patchGlobals).toHaveBeenCalledWith({ extensions: { bridge: null } });
+		expect(removeExtension).toHaveBeenCalledWith("bridge");
 		expect(rescan).toHaveBeenCalled();
+	});
+
+	/**
+	 * 🔴 卸载要把**两处**都清掉:核心设置里的开关那一格,与拓展自己的设置文件
+	 * (`config/settings/extensions/<id>.json`,里面有桥的长期 token 那类凭据)。只清开关的话,
+	 * 重装回来的是一个新的它却读到旧的接入名单;只清文件的话,留着一个没人认领的开关。
+	 * 这条接的是**真的**配置仓(落盘的),别的拓展的开关与设置一个字都不许动。
+	 */
+	it("卸载 → 开关那一格与设置文件一起清,别的拓展的不动", async () => {
+		await installed();
+		const storeDir = await mkdtemp(join(tmpdir(), "bn-ext-route-store-"));
+		try {
+			const store = createConfigStore({
+				bootstrap: {
+					server: { host: "127.0.0.1", port: 8787 },
+					dataDir: storeDir,
+					logLevel: "silent",
+				},
+				dataRoot: storeDir,
+				bus: createNodeMessageBus(),
+				serviceCtx: quietHost(),
+			});
+			await store.load();
+			await store.patchGlobals({
+				extensions: { bridge: { enabled: true }, douyin: { enabled: true } },
+			});
+			await store.updateExtensionSettings("bridge", () => ({
+				links: [{ id: "l1", token: "tok" }],
+			}));
+			await store.updateExtensionSettings("douyin", () => ({ interval: 90 }));
+			const settingsFile = (id: string) => join(storeDir, ...extensionSettingsFile(id));
+			const onDisk = (path: string) =>
+				stat(path).then(
+					() => true,
+					() => false,
+				);
+			expect(await onDisk(settingsFile("bridge"))).toBe(true);
+
+			const res = await boot({ store }).request("/bridge", { method: "DELETE" });
+
+			expect(res.status).toBe(200);
+			expect(Object.keys(store.getGlobals().extensions)).toEqual(["douyin"]);
+			expect(store.getExtensionSettings("bridge")).toBeUndefined();
+			expect(await onDisk(settingsFile("bridge"))).toBe(false);
+			// 别的拓展的开关与设置原样。
+			expect(store.getGlobals().extensions.douyin?.enabled).toBe(true);
+			expect(store.getExtensionSettings("douyin")).toEqual({ interval: 90 });
+			expect(await onDisk(settingsFile("douyin"))).toBe(true);
+		} finally {
+			await rm(storeDir, { recursive: true, force: true });
+		}
 	});
 
 	/**
@@ -1111,7 +1167,7 @@ describe("DELETE /api/ext/:id", () => {
 		expect(body.code).toBe("conflict");
 		expect(body.message).toContain("2");
 		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).not.toBeNull();
-		expect(patchGlobals).not.toHaveBeenCalled();
+		expect(removeExtension).not.toHaveBeenCalled();
 	});
 
 	/** 别家拓展的连接不算数 —— 拦的是**指着这一个**的那些。 */
@@ -1141,7 +1197,7 @@ describe("DELETE /api/ext/:id", () => {
 		// 软链的落点还在 —— 没顺着删下去。
 		expect(await lstat(target).catch(() => null)).not.toBeNull();
 		// 🔴 拒了就什么都别动:先清配置再抹盘的话,这条路上配置已经没了而拓展还在。
-		expect(patchGlobals).not.toHaveBeenCalled();
+		expect(removeExtension).not.toHaveBeenCalled();
 	});
 
 	/** 卸掉的拓展那一段「上报问题」跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。 */
@@ -1193,7 +1249,7 @@ describe("DELETE /api/ext/:id", () => {
 		const res = await boot().request("/bridge", { method: "DELETE" });
 
 		expect(res.status).toBe(200);
-		expect(patchGlobals).toHaveBeenCalledWith({ extensions: { bridge: null } });
+		expect(removeExtension).toHaveBeenCalledWith("bridge");
 	});
 
 	/** 抹盘也在那条队里 —— 与装包同一条理由。 */
@@ -1220,7 +1276,7 @@ describe("DELETE /api/ext/:id", () => {
 
 		expect(res.status).toBe(400);
 		expect((await failureOf(res)).code).toBe("invalid");
-		expect(patchGlobals).not.toHaveBeenCalled();
+		expect(removeExtension).not.toHaveBeenCalled();
 	});
 });
 

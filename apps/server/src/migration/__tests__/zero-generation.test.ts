@@ -52,6 +52,8 @@ const ZERO_FILES: Record<string, string> = {
 	"state/globals.json": JSON.stringify({
 		// B 站的三格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗)
 		app: { logLevel: "debug", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 },
+		// 各拓展的设置搬进它自己的文件,开关留下(同上)
+		extensions: { "dev-bridge": { enabled: true, settings: { token: "t" } } },
 		defaults: {
 			features: { liveEnd: true, liveEndExtras: { wordcloud: true } },
 			// 最老一代的扁平 AI 连接字段、历代旧默认模板
@@ -222,6 +224,7 @@ const REWRITTEN = [
 	"config/connections.json",
 	"config/settings/bilibili.json",
 	"config/settings/core.json",
+	"config/settings/extensions/dev-bridge.json",
 	"config/subscriptions.json",
 	"config/targets.json",
 	"history/2026-09-30.jsonl",
@@ -286,7 +289,10 @@ describe("migrateZeroGeneration", () => {
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
 
 		// 搬过来的,加上改写时从别的文件拆出来的(B 站的设置从核心那份拆出,ADR-0021 决策 42 下 10-01 的 🔗)。
-		const splitOut = ["config/settings/bilibili.json"];
+		const splitOut = [
+			"config/settings/bilibili.json",
+			"config/settings/extensions/dev-bridge.json",
+		];
 		expect(await listTree(target)).toEqual(
 			[...Object.values(EXPECTED_MOVES), ...splitOut, "extensions/dev-bridge"].sort(),
 		);
@@ -460,8 +466,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 13,
-			output: "eca75cac415e687a5d1646f361f8d179a59b1c36610861a76f6f20d7a662a29e",
+			revision: 14,
+			output: "04bdcb9974f65414a1504bde0dfe30e02447680fc555899a6892375c8d79d967",
 		});
 	});
 });

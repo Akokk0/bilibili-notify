@@ -232,7 +232,7 @@ export interface LoadExtensionsOptions {
 	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
 	/** 「上报问题」(决策 60):丢格、整条拒。ctx 已经记过日志;这里接到拓展详情页那个框上。 */
 	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
-	/** 某个拓展自己那份设置(`globals.extensions.<id>.settings`),现读、原样。 */
+	/** 某个拓展自己那份设置(`config/settings/extensions/<id>.json`),现读、原样。 */
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;

@@ -245,17 +245,13 @@ export type MarketplaceSettings = z.infer<typeof MarketplaceSettingsSchema>;
 export const DEFAULT_MARKETPLACE_SETTINGS: MarketplaceSettings = { sources: [] };
 
 /**
- * 宿主记的一个拓展的持久状态:主人按的开关,加上拓展自己的那份设置。
+ * 宿主记的一个拓展的持久状态:主人按的开关。拓展自己的那份设置不在这儿,在它自己的文件
+ * `config/settings/extensions/<id>.json`(ADR-0021 决策 42 下 10-01 的 🔗):开关归宿主,放进拓展的文件的话,
+ * 那个文件一坏,关掉它的开关也读不出来。盘上残留的 `settings` 这一格读的时候被剥掉(不是 strict),
+ * 迁移器早把它搬进了拓展自己的文件。
  */
 export const ExtensionStateSchema = z.object({
 	enabled: z.boolean().default(false),
-	/**
-	 * 这个拓展自己的持久设置(桥的接入名单住这儿)。**宿主不认识它的形状** —— 归拓展自己
-	 * 那份 zod(经 `ctx.settings(schema)` 现读),这里只保证原样存、原样取。读写都走
-	 * `/api/ext/:id/settings`(ADR-0019 决策 35,按项写、带版本号、密钥下发时只给头尾);
-	 * `/api/globals` 既不下发也不收这一格。
-	 */
-	settings: z.unknown().optional(),
 });
 export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
 

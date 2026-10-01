@@ -207,7 +207,7 @@ export interface ExtensionLookupResponse {
 
 // ---- /api/ext/:id/settings(ADR-0019 决策 35)------------------------------------
 //
-// 拓展设置自己的读写口。存储仍在 globals 的 `extensions.<id>.settings`,只是不再经
+// 拓展设置自己的读写口。存储在拓展自己的文件 `config/settings/extensions/<id>.json`,不经
 // `PATCH /api/globals` 整份写回:列表整份替换时两发交错就丢一发,`id` 不可变与密钥占位回填
 // 也都表达不了。这里按项写、带版本号。
 
