@@ -310,7 +310,7 @@ interface ConnectionCandidate {
 
 - 清单里声明 `settings.fields`，`activate` 里交一份 zod，两份对不上当场抛。凭据字段标 `secret: true`（与核心 schema 同一写法），面板打码、备份脱敏、日志脱敏都读这个标记。
 - 读取：`ctx.settings(schema)` 交回 `SettingsReader<T>`，`get()` 现读、`onChange(fn)` 在内容真的变了时叫。
-- 值存在 `config/settings.json` 的 `extensions.<id>.settings`；开关 `extensions.<id>.enabled` 归宿主。
+- 值存在 `config/settings/extensions/<id>.json`，一个拓展一个文件；开关 `extensions.<id>.enabled` 归宿主，在 `config/settings/core.json` 里。
 - **坏了只停这一个拓展，不挡开机**：拓展段校验不过，宿主只停这一个拓展，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`。面板、健康卡与 `status` 指令都读它。
 - **只有 `activate` 期间读设置失败可以抛错中止启动**，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。
 - 版本号是内容哈希，对不上回 409。

@@ -280,7 +280,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `/api/health`：短版只留存活探测与应用内更新要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程）；B 站的格子（`login`、`dynamicCron`、moduleVersions 里的 api / dynamic / live 等）删掉。`/api/health/details`：分核心、集成两组，给健康卡。
   - `/api/history?feature=`；`?uid=` 删掉（没有调用方），以后要按人查再加 `?identity=`（ADR-0027 决策 7）。
   - `/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
-- 设置拆进 `config/settings.json` 的三类段以后，系统页的字段路径与 `PATCH /api/globals` 跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。
+- 设置拆进 `config/settings/` 的三类文件以后，系统页的字段路径与 `PATCH /api/globals` 跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。⑥f 先只挪 B 站那三格（`bilibili.*`），核心读法与核心那半的路径随第 2、3 期改名再加 `core.`。
 - 删掉死字段 `SubscriptionDTO.state`；订阅卡上永远不亮的「播」角标改用真实的在播数据。
 - `/api/health` 补进契约（`HealthResponse`），面板把 contract 移进 `dependencies`：④d 已落。
 - 密钥下发只用 `MaskedSecret`，见 [data-model.md](./data-model.md)「凭据字段标 secret: true」。

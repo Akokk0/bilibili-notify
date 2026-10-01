@@ -456,7 +456,7 @@ AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sou
 
 ## 配置
 
-主人填的设置只有一个文件 `config/settings.json`，分段存。每段的 schema 由那个集成定义，核心组合成最终 schema。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
+主人填的设置按集成分文件，都在 `config/settings/` 下：`core.json`、`bilibili.json`、`extensions/<拓展 id>.json`，一个文件就是一段（ADR-0021 决策 42 下 10-01 的 🔗）。每段的 schema 由那个集成定义。拓展的开关归宿主，在 `core.json` 里；拓展的文件只装它自己的设置。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
 
 ```ts
 interface Settings {
@@ -479,7 +479,7 @@ interface Settings {
     timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
   };
   bilibili: { dynamicCron; loginCheckIntervalMinutes };   // 由 bilibili/ 定义
-  extensions: Record<ExtensionId, ExtensionSection>;   // ExtensionSection = { enabled: boolean; settings?: unknown }；settings 由拓展自己的 zod 校验
+  extensions: Record<ExtensionId, unknown>;   // 一个拓展一个文件，只装它的设置，由拓展自己的 zod 校验；开关在 core.extensions.<id>.enabled（归宿主）
 }
 
 interface GlobalDefaults {

@@ -27,7 +27,7 @@
 ├─ （0.x 旧文件）       第 0 代：原样不动，只作迁移输入
 └─ generations/<序号>/  一代一个目录，序号递增；写到一半的叫 <序号>.partial/
    ├─ generation.json   格式版本、从哪一代迁来、lastActiveAt
-   ├─ config/           settings.json  subscriptions.json  connections.json  targets.json
+   ├─ config/           settings/{core.json, bilibili.json, extensions/<id>.json}  subscriptions.json  connections.json  targets.json
    ├─ secrets/          master.key  kdf.salt  config-secrets.enc
    │                    bilibili/secrets.enc  extensions/<id>/secrets.enc
    │                    （内置平台适配器要存时同样是 <键>/secrets.enc）
@@ -121,7 +121,7 @@
 
 | 什么 | 怎么迁 |
 | --- | --- |
-| `state/globals.json` | 拆进 `config/settings.json`，按「`defaults` 只是按订阅覆盖的回退层」归位（见 [data-model.md](./data-model.md)「配置」）：`dynamicCron` 进 `bilibili` 段；`userAgent` 由迁移丢掉、新 schema 不留，身份一律由 `packages/http` 生成（ADR-0025 决策 7）；`healthCheckMinutes` → `bilibili.loginCheckIntervalMinutes`；`app` 拆成 `core.logging` / `core.history` / `core.timezone`；`fansCron` 原值 → `core.profileRefreshCron`；`defaults.ai` 的实例桶、搜索、聊天 → `core.ai`，订阅能覆盖的人格预设留 `defaults.ai.presetId`；`templateDefaultsSeen` → `core.templatesSeen`；全局 `roastSchedule` → `core.rankingReport`；`templates.wordcloudStopWords` → `defaults.wordcloud.stopWords`；`schedule` 解散（`quietHours` 进 defaults，`liveEndGrace` 进 `defaults.liveEnd.grace`）；`mutedUntil` → `muteEndsAt`（ISO，为 0 就缺键）；`master.targetId` 指向群目标的清空、首访页提示重选；`accounts.order` 按登记顺序填；拓展设置进 `extensions.<id>`。⚠️ 原先写的「`installedAt` 转 ISO」在 globals 里查无此字段，施工时查清指的是什么或删掉 |
+| `state/globals.json` | 拆进 `config/settings/` 的三类文件（`core.json`、`bilibili.json`、`extensions/<id>.json`），按「`defaults` 只是按订阅覆盖的回退层」归位（见 [data-model.md](./data-model.md)「配置」）：`dynamicCron` 进 `bilibili` 段；`userAgent` 由迁移丢掉、新 schema 不留，身份一律由 `packages/http` 生成（ADR-0025 决策 7）；`healthCheckMinutes` → `bilibili.loginCheckIntervalMinutes`；`app` 拆成 `core.logging` / `core.history` / `core.timezone`；`fansCron` 原值 → `core.profileRefreshCron`；`defaults.ai` 的实例桶、搜索、聊天 → `core.ai`，订阅能覆盖的人格预设留 `defaults.ai.presetId`；`templateDefaultsSeen` → `core.templatesSeen`；全局 `roastSchedule` → `core.rankingReport`；`templates.wordcloudStopWords` → `defaults.wordcloud.stopWords`；`schedule` 解散（`quietHours` 进 defaults，`liveEndGrace` 进 `defaults.liveEnd.grace`）；`mutedUntil` → `muteEndsAt`（ISO，为 0 就缺键）；`master.targetId` 指向群目标的清空、首访页提示重选；`accounts.order` 按登记顺序填；拓展的设置进 `extensions/<id>.json`，开关留在 `core.json`。⚠️ 原先写的「`installedAt` 转 ISO」在 globals 里查无此字段，施工时查清指的是什么或删掉 |
 | 链接设置 `linkParsing` | `core.linkPreview { enabled, replyForm, byTarget }`（ADR-0029 决策 1）：`defaults.form` → `replyForm`，取值 `miniapp` → `nativeShare`；`groups` → `byTarget`（键仍是目标 id），条目里 `parse` → `enabled`、`form` → `replyForm`。旧的总开关 `enabled` 与默认行的 `defaults.parse` 摊平后怎么并成一个 `enabled`、`cooldownSeconds` 放在哪，施工时定 |
 | 特性键 `dynamic` / `atAllDynamic` / `liveGuardBuy`（订阅路由、全局开关、历史） | `post` / `atAllPost` / `membership` |
 | 直播拆键 | `routing.live` 复制给 `liveStart` 与 `liveStreaming`；`liveStart` 开关沿用 `live`；`liveStreaming` = 原 `live` 开着且 `pushTime > 0`，间隔用原 `pushTime`；`pushTime` 为 0 的 `liveStreaming` 关、间隔填 1 小时；`restartPush` → `liveStart.catchUpOnBoot`；`atAllLive` → `atAllLiveStart`；`templates.liveOngoing` → `templates.liveStreaming`。每条订阅按合并后的值算，只有和全局不同的才写进 overrides |

@@ -70,7 +70,7 @@
 | ⑥c | 第 0 步收编 0.x 升级链：先给零测试的 `migrateLegacyTargets` 补刻画测试，再把 schema 里的 preprocess 与读时翻译连同夹具搬进迁移模块，活 schema 删兼容分支。迁移器分两遍：先搬位置，再一族一族改写成 0.x 最新的形状，顺序是连接与目标 → 设置 → 订阅 → 历史、统计、锐评草稿 → 皮肤、对话、密钥 | ✅ 已落（各族收齐；留在活代码的长期规矩与排到后面的几项见 data-and-migration 第 0 步） |
 | ⑥d | 订阅合一 + `Identity`：一个 `config/subscriptions.json`，行带 `identity`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉，wire 跟着变；B 站替身棘轮开 | ✅ 已落（身份读法、备份只收 1.0 格式、单一形状、棘轮四片） |
 | ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | ✅ 已落（恢复先按身份并入、备份自带重复整份拒收；健康页显示随第 4 期健康卡，见 data-model） |
-| ⑥f | 设置分段 + 守卫 12（连同解构与下标）：`config/settings.json` 分 `core` / `bilibili` / `extensions` 三段，只挪位置、不改键名（改名随第 2、3 期）；`userAgent` 先落 `bilibili` 段，第 2 期随 `packages/http` 删 | |
+| ⑥f | 设置分文件 + 守卫 12：`config/settings/core.json`、`bilibili.json`、`extensions/<id>.json`（ADR-0021 决策 42 下 10-01 的 🔗），只挪位置、不改键名（改名随第 2、3 期）；内存里核心读法不动，B 站与各拓展各有自己的读口；拓展开关留 `core.json`；`userAgent` 先落 `bilibili.json`，第 2 期随 `packages/http` 删 | |
 | ⑦ | 回退指纹与重迁 | |
 | ⑧ | 全新开始 + 首访页 API（拒收 1.0 之前的备份已提前到 ⑥d 落地，见 ADR-0022 决策 6 的 🔗） | |
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
@@ -134,6 +134,9 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | AI 写正文按目标选（ADR-0032）：`core.ai.writing` 两份，默认 `enabled: true`、`byTarget` 为空，升级后行为不变；模板正文总备好，默认开或任一例外开才生成 AI 正文；推送层逐目标挑正文，和 @全体 的分组叠成两维 | 3a（推送层与作品那份）/ 3b（直播总结那份，随 `live/` 装配） |
 | 拓展的定时器收口（与守卫 22 同期）：宿主的 `ctx.setTimeout` 一次性定时器触发后自动从登记里放掉（今天要等拓展卸载才放）；桥的 `pendingTable` 与握手超时改用 `ctx.setTimeout`，结算或断开时 dispose | 3a |
 | 拓展契约 v3：min 抬到 3，删 v1、v2 的退路（`legacy-v1.ts` 连同过时注释）；ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`，上报改 `void`、被拒记进 `reportRejections`；推送侧加宽到 `PlatformAdapterDef`（ADR-0024 决策 3，这一版不开的见决策 11）；`pickPerId` 改成「在当前 BN 装得了的版本里取最高」；索引规则放宽成「每个契约版本各留最新一条」；桥迁 v3，1.0 alpha 期间 v3 的桥只进预发布档 | 3b |
+| 读设置的写法简化（待议，10-01 主人提）：格式只声明一处（写在集成定义里，面板要的字段由打包脚本从它导出进清单，作者不写第二份），ctx 按它定好类型，读只要一行 `ctx.settings.get().x`、读处不再传 schema；不学「改了设置就整个重启」（B 站改个间隔就要断开全部直播间） | 3a（B 站）/ 3b（契约 v3），到时拷问 |
+| 核心读设置加 `core.` 前缀（⑥f 内存里核心读法暂不动）、面板 PATCH 的核心路径改 `core.*`；`/api/globals` 要不要改名 `/api/settings`（命名规矩「设置只有一个词 settings」倾向改），到时问主人 | 随第 2、3 期改名；面板那半随第 4 期 |
+| 日志级别的 `core` 键会和叫 `core` 的拓展撞名（`logging.levels` 是核心模块 + 集成键混放）：`core` 进保留 id 表，或把集成键分开放 | 随 `core.logging` 改名那期 |
 | 桥迁 v3 时必须抬 `extensions/bridge/extension.json` 的 `version`（现在 `0.0.1`，同号发出去市场永远不提示更新）；具体号发 alpha 时定 | 3b 抬号，6 定号 |
 | 渲染器运行时从 `s1.hdslb.com` 拉舰长图标（`packages/image/src/image-renderer.ts` 的 `GUARD_LEVEL_IMG`），改成本地资产：B 站在 `bilibili/` 声明 `guard` 体系时用 `ctx.storeImage` 把三档图标存成 `tier.icon`，出图器只内联引用。守卫 11 的 `hdslb` 会在这里变红 | 3b |
 | 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b |
