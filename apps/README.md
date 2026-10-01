@@ -166,11 +166,12 @@ environment:
 
 ```
 /data
-├── state/      globals.json / subscriptions.json / targets.json / connections.json
-├── secrets/    加密的 B 站 cookie / AI apiKey
-├── history/    推送历史(按日 jsonl)
-├── logs/       日志归档(按日 jsonl)
-└── fans/       粉丝数时序
+├── generations/<序号>/   数据代,一代一个目录(升级时迁出新的一代,旧代原样留着可回退)
+│   ├── config/          设置 settings/、订阅、连接、目标
+│   ├── secrets/         加密的 B 站 cookie / AI apiKey
+│   ├── history/         推送历史(按日 jsonl)
+│   └── stats/           作品、直播、粉丝时序
+└── logs/                日志归档(按日 jsonl,跨代连续)
 ```
 
 ## 登录与安全

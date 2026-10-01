@@ -43,7 +43,7 @@ import { ConfigValidationError } from "./validation-error.js";
  * PATCHes on the same scope can never interleave their read-modify-write pair.
  *
  * Secrets layer: when a `SecretStore` is injected, the AI apiKey is lifted out
- * of `globals.json` into `<dataRoot>/secrets/config-secrets.enc` (AES-256-GCM via
+ * of `config/settings/core.json` into `<dataRoot>/secrets/config-secrets.enc` (AES-256-GCM via
  * the shared `KeyProvider`) on first `load()`; the on-disk globals are scrubbed
  * while `this.globals` keeps the real value so engines/routes see it unchanged.
  * Cookie/WBI secrets stay inside `@bilibili-notify/storage`, sharing the same
@@ -141,13 +141,13 @@ export interface CreateConfigStoreOptions {
 	dataRoot: string;
 	bus: MessageBus;
 	serviceCtx: ServiceContext;
-	/** Where globals/subs/targets JSON files live. Defaults to `<dataRoot>/state`. */
+	/** Where the settings / subscriptions / connections / targets JSON files live. Defaults to `<dataRoot>/config`. */
 	stateDir?: string;
 	/**
 	 * Encrypted bag for secret fields (currently `defaults.ai.apiKey`). When
-	 * given, the apiKey is moved out of plaintext `globals.json` into this store
+	 * given, the apiKey is moved out of plaintext `settings/core.json` into this store
 	 * (and a one-time lift migrates an existing plaintext key). When omitted the
-	 * legacy behaviour (apiKey stays in globals.json) is preserved — used by
+	 * legacy behaviour (apiKey stays in settings/core.json) is preserved — used by
 	 * tests and any non-secret-aware caller.
 	 */
 	secretStore?: SecretStore;
@@ -216,12 +216,12 @@ async function copyFileAtomic(from: string, to: string): Promise<void> {
 
 /**
  * Returns a deep clone of `g` with `defaults.ai.apiKey` removed — the form
- * persisted to `globals.json` when a SecretStore owns the apiKey. The live
+ * persisted to `settings/core.json` when a SecretStore owns the apiKey. The live
  * in-memory `this.globals` keeps the real value (engines read it via
  * getGlobals); only the on-disk copy is stripped.
  */
 /**
- * 落盘前抠掉全部 AI 密钥(每家两把)。`state/globals.json` **不加密**,漏掉任何
+ * 落盘前抠掉全部 AI 密钥(每家两把)。`settings/core.json` **不加密**,漏掉任何
  * 一把就是明文躺在盘上。具体规则见 `./ai-secrets.ts#stripAiSecrets`。
  */
 function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
@@ -616,7 +616,7 @@ class NodeConfigStore implements ConfigStore {
 	private path(scope: ConfigScope): string {
 		switch (scope) {
 			case "globals":
-				return join(this.stateDir, "globals.json");
+				return join(this.stateDir, ...CORE_SETTINGS_IN_CONFIG);
 			case "subscriptions":
 				return join(this.stateDir, "subscriptions.json");
 			case "connections":
@@ -641,9 +641,9 @@ class NodeConfigStore implements ConfigStore {
 		this.subscriptions = [...next];
 	}
 
-	/** Write globals.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
+	/** Write settings/core.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
 	private async persistGlobals(g: GlobalConfig): Promise<void> {
-		// P2:无 SecretStore 的 legacy 路径,apiKey 明文落 globals.json。这是
+		// P2:无 SecretStore 的 legacy 路径,apiKey 明文落 settings/core.json。这是
 		// 既有兼容回退(非缺陷),但此前无任何提示 —— 运维不知密钥在盘上明文。
 		// 首次遇到非空 apiKey 时高可见告警一次(建议配置 passphrase 启用加密)。
 		if (
@@ -653,7 +653,7 @@ class NodeConfigStore implements ConfigStore {
 		) {
 			this.plaintextApiKeyWarned = true;
 			this.serviceCtx.logger.warn(
-				"[secret] AI apiKey 以明文写入 globals.json(未配置加密密钥)。建议设置 passphrase 启用 SecretStore 加密。",
+				"[secret] AI apiKey 以明文写入 settings/core.json(未配置加密密钥)。建议设置 passphrase 启用 SecretStore 加密。",
 			);
 		}
 		await atomicWriteJson(this.path("globals"), this.secretStore ? stripApiKeyForDisk(g) : g);
@@ -667,7 +667,7 @@ class NodeConfigStore implements ConfigStore {
 		if (!this.secretStore) return;
 		this.secretBag = await this.secretStore.load();
 
-		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):globals.json 落盘时 apiKey 一律抠成空串,所以
+		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):settings/core.json 落盘时 apiKey 一律抠成空串,所以
 		// 盘上出现非空的 key 就是明文 —— 主人手改写进去的,或 0.x 加密上线前留下的。开机抬进加密袋、抹掉盘上那份。
 		const plaintext = collectAiSecrets(this.globals);
 		const hadPlaintext = Object.keys(plaintext).length > 0;
@@ -680,7 +680,7 @@ class NodeConfigStore implements ConfigStore {
 			};
 			await this.secretStore.save(this.secretBag);
 			this.serviceCtx.logger.info(
-				"[secrets] 已把明文 apiKey 从 globals.json 迁移进加密 secrets 文件",
+				"[secrets] 已把明文 apiKey 从 settings/core.json 迁移进加密 secrets 文件",
 			);
 		}
 		// Hydrate in-memory (engines/routes keep reading defaults.ai.apiKey).
@@ -715,7 +715,9 @@ class NodeConfigStore implements ConfigStore {
 			);
 			const parsed = GlobalConfigSchema.safeParse(value);
 			if (!parsed.success) {
-				throw ConfigValidationError.fromZod("globals", parsed.error, { subject: "globals.json" });
+				throw ConfigValidationError.fromZod("globals", parsed.error, {
+					subject: "settings/core.json",
+				});
 			}
 			this.globals = parsed.data;
 			this.meta.globals.exists = true;
@@ -741,7 +743,7 @@ class NodeConfigStore implements ConfigStore {
 			// 0.x 的老形状(AI 的扁平字段与人格指针、历代旧默认模板……)在开新代时由迁移器改写好了
 			// (`migration/settings.ts`),这里只认最新的形状。
 
-			// Move apiKey out of plaintext globals.json into encrypted secrets
+			// Move apiKey out of plaintext settings/core.json into encrypted secrets
 			// (+ one-time lift), then hydrate it back in memory.
 			await this.hydrateSecrets();
 		}
@@ -898,13 +900,13 @@ class NodeConfigStore implements ConfigStore {
 
 	/**
 	 * Persist a validated GlobalConfig. With a SecretStore the apiKey is routed
-	 * into the encrypted bag and scrubbed from the on-disk globals.json; the
+	 * into the encrypted bag and scrubbed from the on-disk settings/core.json; the
 	 * in-memory copy keeps the real value so engines/routes are unaffected.
 	 */
 	private async writeGlobals(g: GlobalConfig): Promise<void> {
 		if (this.secretStore) {
 			// P2:此前 save 成功后 persistGlobals 抛错 → 密钥袋已存新 apiKey 但
-			// globals.json/in-memory 仍旧值 → 重启后两边分叉。失败即回滚密钥袋,
+			// settings/core.json/in-memory 仍旧值 → 重启后两边分叉。失败即回滚密钥袋,
 			// 两端始终一致(全旧或全新);in-memory 仅在双写都成功后更新。
 			const prevBag = this.secretBag;
 			// 整份重算而不是并进旧袋:主人删掉一家时,那家的 key 必须跟着消失,
@@ -1436,6 +1438,12 @@ function upsertById<T extends { id: string }>(arr: readonly T[], item: T): T[] {
 
 /** 主人填的设置、订阅、连接、目标所在的目录(代的布局)。 */
 export const CONFIG_DIR = ["config"] as const;
+
+/** 核心的设置在配置目录里的位置:设置按集成分文件,都在 `settings/` 下(ADR-0021 决策 42 下 10-01 的 🔗)。 */
+const CORE_SETTINGS_IN_CONFIG = ["settings", "core.json"] as const;
+
+/** 核心的设置文件(代的布局)。迁移写到哪、仓就从哪读。 */
+export const CORE_SETTINGS_FILE = [...CONFIG_DIR, ...CORE_SETTINGS_IN_CONFIG] as const;
 
 export function createConfigStore(opts: CreateConfigStoreOptions): ConfigStore {
 	return new NodeConfigStore(opts);

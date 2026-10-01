@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { CONFIG_DIR } from "../config/store.js";
+import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration, openTestGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
@@ -205,7 +205,7 @@ describe("server lifecycle", () => {
 		await handle.close("test");
 
 		// 把开关拨开,重启 —— 换代码要重启,换开关本来不用,但这里连开机接线一起验。
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { demo: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
@@ -326,7 +326,7 @@ describe("server lifecycle", () => {
 		// 头一趟只为把 globals 落到盘上 —— 开关缺失 = 关着(决策 34:开箱即有 ≠ 默认开着)。
 		handle = (await boot()).started;
 		await handle.close("test");
-		const globalsPath = join(await activeGeneration(dataDir), ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(await activeGeneration(dataDir), ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { bridge: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));

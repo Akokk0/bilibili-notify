@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CONFIG_DIR } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
@@ -152,7 +152,7 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 		await seed.close("seed");
 		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [FIXTURE_ID]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));

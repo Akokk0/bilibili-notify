@@ -16,7 +16,7 @@ server:
   host: 127.0.0.1   # 仅本机;线上反代后端设 0.0.0.0
   port: 8787
 
-# 状态文件落点：globals.json / subscriptions.json / targets.json / secrets/ / history/
+# 数据目录：数据按代放在 generations/<序号>/ 下（config/、secrets/、history/、stats/…），日志在 logs/
 dataDir: ./data
 
 # 卡片实时预览需要本地 Chrome / Chromium(或下方 chromeEndpoint 远程浏览器)。

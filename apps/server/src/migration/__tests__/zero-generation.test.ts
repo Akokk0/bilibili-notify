@@ -178,7 +178,7 @@ const ZERO_FILES: Record<string, string> = {
 
 /** 期望的去向:相对第 0 代根 → 相对新代根(按 uid 命名的统计文件改名成订阅 id)。 */
 const EXPECTED_MOVES: Record<string, string> = {
-	"state/globals.json": "config/globals.json",
+	"state/globals.json": "config/settings/core.json",
 	"state/subscriptions.json": "config/subscriptions.json",
 	"state/connections.json": "config/connections.json",
 	"state/targets.json": "config/targets.json",
@@ -219,7 +219,7 @@ const EXPECTED_MOVES: Record<string, string> = {
 const REWRITTEN = [
 	"ai/conversations/conv-1.json",
 	"config/connections.json",
-	"config/globals.json",
+	"config/settings/core.json",
 	"config/subscriptions.json",
 	"config/targets.json",
 	"history/2026-09-30.jsonl",
@@ -456,8 +456,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 11,
-			output: "17790ff3d12be63731b946a3d39f0ace8a9a15de34fc4b4ea2699b18575a8908",
+			revision: 12,
+			output: "085d4412588b31ee1bf2a01ac5961d734e4588f76e76f0f8054834242f2ca908",
 		});
 	});
 });

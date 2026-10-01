@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { MIGRATION_REVISION } from "../migration/zero-generation.js";
 import { GENERATION_FILE, type GenerationFile } from "../runtime/generations.js";
@@ -196,9 +197,7 @@ describe("数据代接在开机路径上 e2e", () => {
 		handle = undefined;
 
 		expect(await zeroDigest(dataDir)).toBe(before);
-		const globals = JSON.parse(
-			await readFile(join(generation, "config", "globals.json"), "utf8"),
-		) as {
+		const globals = JSON.parse(await readFile(join(generation, ...CORE_SETTINGS_FILE), "utf8")) as {
 			onboarding: { skipped: boolean };
 		};
 		expect(globals.onboarding.skipped).toBe(true);

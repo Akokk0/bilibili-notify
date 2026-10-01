@@ -23,7 +23,7 @@ import {
 	syncDirectory,
 } from "@bilibili-notify/storage";
 import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
-import { CONFIG_DIR } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
 import { CHAT_ASSETS_DIR } from "../runtime/chat-assets.js";
@@ -51,7 +51,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 11;
+export const MIGRATION_REVISION = 12;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -108,7 +108,7 @@ const ZERO_GENERATION_MOVES = {
 		kind: "split",
 		label: "设置与订阅",
 		children: {
-			"globals.json": [...CONFIG_DIR, "globals.json"],
+			"globals.json": CORE_SETTINGS_FILE,
 			"subscriptions.json": [...CONFIG_DIR, "subscriptions.json"],
 			"connections.json": [...CONFIG_DIR, "connections.json"],
 			"targets.json": [...CONFIG_DIR, "targets.json"],
@@ -278,7 +278,10 @@ const REWRITES: readonly {
 				adaptersPath: zeroPath(opts.zeroRoot, "state", "adapters.json"),
 			}),
 	},
-	{ label: "设置", run: (opts) => migrateSettingsFile(dataPath(opts.targetDir, ...CONFIG_DIR)) },
+	{
+		label: "设置",
+		run: (opts) => migrateSettingsFile(dataPath(opts.targetDir, ...CORE_SETTINGS_FILE)),
+	},
 	{
 		label: "订阅",
 		run: (opts) =>

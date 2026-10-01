@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { CONFIG_DIR } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
@@ -211,7 +211,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		await shutdown();
 		gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = { [PROBE]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));

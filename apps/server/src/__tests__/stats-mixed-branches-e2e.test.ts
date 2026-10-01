@@ -34,7 +34,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeEmptySubscription, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { CONFIG_DIR } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -317,7 +317,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		handle = undefined;
 		gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as {
 			extensions: Record<string, unknown>;
 			defaults: { ai: Record<string, unknown> };

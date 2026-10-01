@@ -6,7 +6,7 @@
  *
  * - **别的设置一保存就把静音清掉** —— 面板保存走 PATCH,键不出现 = 不改。哪天有人把
  *   保存路径改成整份回传,静音就会在主人改任意一个开关时静悄悄消失。
- * - **老 globals.json 里没有这个字段** —— 独立端 load 时是 `parse` 而不是宽松合并,
+ * - **老版本写的设置文件里没有这个字段** —— 独立端 load 时是 `parse` 而不是宽松合并,
  *   缺字段没有 default 就直接 ConfigValidationError,已经装好的用户开不了机。
  */
 
@@ -16,7 +16,7 @@ import { join } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
-import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../store.js";
+import { CORE_SETTINGS_FILE, type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
 	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
@@ -104,10 +104,10 @@ describe("静音状态的存活", () => {
 		expect(reborn.getGlobals().mutedUntil).toBe(UNTIL);
 	});
 
-	// 已经装好的用户盘上那份 globals.json 里没有这个字段。load 走的是 parse,
+	// 已经装好的用户盘上那份 settings/core.json 里没有这个字段。load 走的是 parse,
 	// 缺字段没有 default 就直接开不了机。
-	it("老 globals.json 缺这个字段 → 补 0,而不是启动失败", async () => {
-		const file = join(dataDir, ...CONFIG_DIR, "globals.json");
+	it("老版本写的设置文件缺这个字段 → 补 0,而不是启动失败", async () => {
+		const file = join(dataDir, ...CORE_SETTINGS_FILE);
 		const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
 		delete raw.mutedUntil;
 		await writeFile(file, JSON.stringify(raw), "utf8");

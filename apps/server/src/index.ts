@@ -389,7 +389,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 不许碰盘)。
 		runtime.statsRecorder.start();
 
-		// Load on-disk runtime config (config/globals.json, config/subscriptions.json, config/targets.json).
+		// Load on-disk runtime config (config/settings/core.json, config/subscriptions.json, config/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
 		await runtime.configStore.load();

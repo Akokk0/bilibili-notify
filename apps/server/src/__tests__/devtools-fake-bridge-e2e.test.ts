@@ -21,7 +21,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import WebSocket from "ws";
-import { CONFIG_DIR } from "../config/store.js";
+import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { STATUS_CHANGED_COALESCE_MS } from "../extensions/context.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration } from "./support/generation.js";
@@ -102,7 +102,7 @@ describe("devtools 的假桥 → 真桥", () => {
 		await seed.close("seed");
 		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		// 接入(token)住桥自己的设置里 —— 场景从那儿挑(ADR-0012 决策 45)。
 		globals.extensions = {

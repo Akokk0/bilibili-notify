@@ -12,11 +12,11 @@
  * **读出来的值与写回盘上的值,期望一个字没改**。
  *
  * 钉三件事:
- * - **迁移器自己把活干完了**:每条都在 `migrate()` 之后、`load()` 之前先读新代 `config/globals.json` 这个文件本身 ——
+ * - **迁移器自己把活干完了**:每条都在 `migrate()` 之后、`load()` 之前先读新代 `config/settings/core.json` 这个文件本身 ——
  *   盘上这份是配置仓开机唯一认的形状,文件没迁好,开机读出来的就是老值(或直接拒收),失败的地方不好认,
  *   所以先直接看盘上这份;
  * - 配置仓开机读出来的值(原用例断言的东西);
- * - 第 0 代那份逐字节没变(迁移写的是新文件,不是原地改那条硬链接),`rewritten` 里有 `config/globals.json`;已经是新形状的不改写。
+ * - 第 0 代那份逐字节没变(迁移写的是新文件,不是原地改那条硬链接),`rewritten` 里有 `config/settings/core.json`;已经是新形状的不改写。
  *
  * 另有一组「全新安装」的用例不经迁移器:空的数据根上开机,人格指针指着第一份内置预设。
  */
@@ -33,7 +33,7 @@ import { makeServiceCtx, useZeroSandbox, type ZeroSandbox } from "./support.js";
 
 const GROUP_ID = "22222222-2222-4222-8222-222222222222";
 
-/** 新代 `config/globals.json` 里模板这一格读出来的形状。 */
+/** 新代 `config/settings/core.json` 里模板这一格读出来的形状。 */
 type DiskTemplates = Record<string, unknown> & {
 	guardBuy: { captain: { template: string } };
 };
@@ -85,15 +85,15 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		const report = await sandbox.migrate();
 
 		// 新代里的**文件本身**已经是当前默认(开机读之前)。
-		expect(report.rewritten).toContain("config/globals.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
 			await sameFile(
 				join(sandbox.zero, "state", "globals.json"),
-				sandbox.configPath("globals.json"),
+				sandbox.configPath("settings/core.json"),
 			),
 		).toBe(false);
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const onDisk = (await sandbox.readConfig<DiskGlobals>("globals.json")).defaults.templates;
+		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(onDisk.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
@@ -145,9 +145,9 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 		// 迁移器只动它认得的那几格:盘上这份里旧默认已是当前默认。strip `liveMsgEnabled` 与回填 dynamic / dynamicVideo
 		// 是配置仓开机时 schema 的事(迁移器不碰),所以这两件只在下面开机读出来的值上看。
-		expect(report.rewritten).toContain("config/globals.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const onDisk = (await sandbox.readConfig<DiskGlobals>("globals.json")).defaults.templates;
+		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(onDisk.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
@@ -185,12 +185,12 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("config/globals.json");
+		expect(report.rewritten).not.toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
 		expect(
 			await sameFile(
 				join(sandbox.zero, "state", "globals.json"),
-				sandbox.configPath("globals.json"),
+				sandbox.configPath("settings/core.json"),
 			),
 		).toBe(true);
 		const store = await sandbox.load();
@@ -249,16 +249,16 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 		return JSON.stringify(g, null, 2);
 	}
 
-	it("一次性 lift:上一版明文 apiKey 迁进 custom 桶 + 加密袋,globals.json 抹掉", async () => {
+	it("一次性 lift:上一版明文 apiKey 迁进 custom 桶 + 加密袋,settings/core.json 抹掉", async () => {
 		const original = legacyPlaintextGlobals("sk-legacy-plain");
 		await sandbox.placeZeroText("state/globals.json", original);
 
 		const report = await sandbox.migrate();
 
 		// 第一段:迁移器只搬形状 —— 新代里的文件是改写过的,扁平字段整份进了 custom 桶,明文原样还在桶里(抬密钥是配置仓的事)。
-		expect(report.rewritten).toContain("config/globals.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const migrated = (await sandbox.readConfig<DiskGlobals>("globals.json")).defaults.ai;
+		const migrated = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.ai;
 		for (const key of ["apiKey", "baseUrl", "model", "provider"]) {
 			expect(migrated, `迁出来的 ai 顶层还留着老键 ${key}`).not.toHaveProperty(key);
 		}
@@ -277,10 +277,10 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 		expect(store.getGlobals().defaults.ai.providers.custom?.apiKey).toBe("sk-legacy-plain");
 		expect(store.getGlobals().defaults.ai.providers.custom?.model).toBe("deepseek-v4-pro");
 		// 磁盘上那把被抠成空串 —— 不留明文,也不动键序。
-		const afterLift = (await sandbox.readConfig<DiskGlobals>("globals.json")).defaults.ai;
+		const afterLift = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.ai;
 		expect((afterLift.providers as Record<string, { apiKey?: string }>).custom?.apiKey).toBe("");
 		// 整个文件里都没有明文(不只是 custom 桶那一格)。
-		expect(await readFile(sandbox.configPath("globals.json"), "utf8")).not.toContain(
+		expect(await readFile(sandbox.configPath("settings/core.json"), "utf8")).not.toContain(
 			"sk-legacy-plain",
 		);
 		// 加密文件持有,键是 custom(与迁移的去处一致)。
@@ -291,7 +291,7 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 // ── 三处老形状一起走接缝 ─────────────────────────────────────────────────────────────
 //
 // 这一组没有配置仓测试里的对应用例:三个迁移函数各自的判定在 `./settings.test.ts` 钉过了,这里钉它们经 `migrateSettingsFile`
-// 组合到同一份 `globals.json` 上、配置仓照着最新的形状开机。
+// 组合到同一份 `settings/core.json` 上、配置仓照着最新的形状开机。
 
 describe("0.x 三处老形状一起走迁移器接缝", () => {
 	const sandbox = useZeroSandbox("bn-legacy-settings-all-");
@@ -321,9 +321,9 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).toContain("config/globals.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const onDisk = await sandbox.readConfig<DiskGlobals>("globals.json");
+		const onDisk = await sandbox.readConfig<DiskGlobals>("settings/core.json");
 		for (const key of ["baseUrl", "model", "provider"]) {
 			expect(onDisk.defaults.ai, `迁出来的 ai 顶层还留着老键 ${key}`).not.toHaveProperty(key);
 		}

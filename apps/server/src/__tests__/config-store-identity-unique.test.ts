@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { BootstrapConfig } from "../config/schema.js";
 import {
 	CONFIG_DIR,
+	CORE_SETTINGS_FILE,
 	type ConfigStore,
 	ConfigValidationError,
 	createConfigStore,
@@ -160,7 +161,7 @@ describe("整体替换(恢复备份):新增的重复 → 整份拒,哪一份都�
 		const existing = biliSub("12345");
 		await store.upsertSubscription(existing);
 		const bytes = await subsBytes();
-		const globalsBytes = await readFile(join(stateDir, "globals.json"), "utf8");
+		const globalsBytes = await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8");
 		const globals = store.getGlobals();
 		globals.app.dynamicCron = "*/7 * * * *";
 
@@ -170,7 +171,7 @@ describe("整体替换(恢复备份):新增的重复 → 整份拒,哪一份都�
 		expect(err.code).toBe("conflict");
 		expect(err.message).toContain("12345");
 		expect(await subsBytes()).toBe(bytes);
-		expect(await readFile(join(stateDir, "globals.json"), "utf8")).toBe(globalsBytes);
+		expect(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8")).toBe(globalsBytes);
 		expect(store.getSubscriptions()).toEqual([existing]);
 	});
 

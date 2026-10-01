@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { BootstrapConfig } from "../config/schema.js";
 import {
 	CONFIG_DIR,
+	CORE_SETTINGS_FILE,
 	type ConfigStore,
 	ConfigValidationError,
 	createConfigStore,
@@ -508,8 +509,8 @@ describe("恢复备份(整体替换)", () => {
 		await store.upsertSubscription(ext);
 		const bytes = await readFile(subsFile, "utf8");
 		// globals 最后写:把它的位置换成一个非空目录,写它必炸。
-		await rm(join(stateDir, "globals.json"));
-		await mkdir(join(stateDir, "globals.json", "blocker"), { recursive: true });
+		await rm(join(dataDir, ...CORE_SETTINGS_FILE));
+		await mkdir(join(dataDir, ...CORE_SETTINGS_FILE, "blocker"), { recursive: true });
 
 		await expect(
 			store.replaceSections({
@@ -527,8 +528,8 @@ describe("恢复备份(整体替换)", () => {
 		const bytes = JSON.stringify([ext]);
 		await writeFile(subsFile, bytes, "utf8");
 		const store = await open();
-		await rm(join(stateDir, "globals.json"));
-		await mkdir(join(stateDir, "globals.json", "blocker"), { recursive: true });
+		await rm(join(dataDir, ...CORE_SETTINGS_FILE));
+		await mkdir(join(dataDir, ...CORE_SETTINGS_FILE, "blocker"), { recursive: true });
 
 		await expect(
 			store.replaceSections({ globals: store.getGlobals(), subscriptions: [] }),

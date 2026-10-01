@@ -1,5 +1,5 @@
 /**
- * ConfigStore 落盘方式:config/*.json 怎么写、写坏了怎么退。
+ * ConfigStore 落盘方式:config/*.json(含 config/settings/core.json)怎么写、写坏了怎么退。
  *
  * 这些钉的是**写盘那一步**(内容对不对由 `__tests__/config-store.test.ts` 管):
  *   - config 文件是 2 空格缩进 + 末尾换行的 JSON
@@ -9,11 +9,11 @@
 
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
-import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE, type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
 	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
@@ -103,12 +103,19 @@ describe("ConfigStore 落盘:config 文件格式", () => {
 		await store.load();
 		await store.upsertConnection(onebotConnection());
 
-		for (const name of ["globals.json", "connections.json", "targets.json"]) {
-			const raw = await readFile(join(stateDir, name), "utf8");
+		const files = [
+			join(dataDir, ...CORE_SETTINGS_FILE),
+			join(stateDir, "connections.json"),
+			join(stateDir, "targets.json"),
+		];
+		for (const file of files) {
+			const name = relative(stateDir, file);
+			const raw = await readFile(file, "utf8");
 			expect(raw.endsWith("\n"), `${name} 末尾换行`).toBe(true);
 			expect(raw, `${name} 缩进`).toBe(`${JSON.stringify(JSON.parse(raw), null, 2)}\n`);
 		}
 		expect(await tempLeftovers(stateDir)).toEqual([]);
+		expect(await tempLeftovers(dirname(join(dataDir, ...CORE_SETTINGS_FILE)))).toEqual([]);
 	});
 });
 
@@ -122,8 +129,8 @@ describe("ConfigStore 落盘:replaceSections 写到一半失败", () => {
 		await store.load();
 		expect(await readFile(path, "utf8")).toBe(original); // 前提:load 没动它
 
-		// 数组分区先写、globals 最后写:把 globals.json 占成目录,让最后一步失败。
-		const globalsPath = join(stateDir, "globals.json");
+		// 数组分区先写、globals 最后写:把 settings/core.json 占成目录,让最后一步失败。
+		const globalsPath = join(dataDir, ...CORE_SETTINGS_FILE);
 		await rm(globalsPath);
 		await mkdir(globalsPath);
 		const globals = store.getGlobals();
@@ -145,12 +152,14 @@ describe("ConfigStore 落盘:写失败不留临时文件", () => {
 	it("目标被占成目录 → 写抛错,config 目录里没有遗留的临时文件", async () => {
 		const store = mkStore(dataDir);
 		await store.load();
-		const globalsPath = join(stateDir, "globals.json");
+		const globalsPath = join(dataDir, ...CORE_SETTINGS_FILE);
 		await rm(globalsPath);
 		await mkdir(globalsPath);
 
 		await expect(store.patchGlobals({ app: { dynamicCron: "*/9 * * * *" } })).rejects.toThrow();
 
+		// 临时文件落在目标旁边:设置文件在 config/settings/ 里,两个目录都得干净。
 		expect(await tempLeftovers(stateDir)).toEqual([]);
+		expect(await tempLeftovers(dirname(globalsPath))).toEqual([]);
 	});
 });

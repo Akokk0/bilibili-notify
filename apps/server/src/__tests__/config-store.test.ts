@@ -25,6 +25,7 @@ import { createBackupService } from "../backup/service.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import {
 	CONFIG_DIR,
+	CORE_SETTINGS_FILE,
 	type ConfigStore,
 	ConfigValidationError,
 	createConfigStore,
@@ -198,7 +199,7 @@ describe("ConfigStore", () => {
 	});
 
 	it("seeds default JSON files on first boot", async () => {
-		const globalsRaw = await readFile(join(stateDir, "globals.json"), "utf8");
+		const globalsRaw = await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8");
 		const subsRaw = await readFile(join(stateDir, "subscriptions.json"), "utf8");
 		const tgtsRaw = await readFile(join(stateDir, "targets.json"), "utf8");
 		expect(JSON.parse(globalsRaw)).toEqual(makeDefaultGlobalConfig());
@@ -321,7 +322,7 @@ describe("ConfigStore", () => {
 		const next = await store.patchGlobals({ app: { dynamicCron: "*/5 * * * *" } });
 		expect(next.app.dynamicCron).toBe("*/5 * * * *");
 		expect(store.getGlobals().app.dynamicCron).toBe("*/5 * * * *");
-		const onDisk = JSON.parse(await readFile(join(stateDir, "globals.json"), "utf8"));
+		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 		expect(onDisk).toEqual(next);
 	});
 
@@ -335,7 +336,7 @@ describe("ConfigStore", () => {
 		expect(final.app.dynamicCron).toBe("*/3 * * * *");
 		expect(final.app.healthCheckMinutes).toBe(60);
 		// On-disk matches in-memory
-		const onDisk = JSON.parse(await readFile(join(stateDir, "globals.json"), "utf8"));
+		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 		expect(onDisk).toEqual(final);
 		// All three writes emitted exactly one 'config-changed' for globals
 		const globalEvents = configScopes(bus).filter((scope) => scope === "globals");

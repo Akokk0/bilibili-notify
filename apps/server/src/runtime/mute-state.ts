@@ -31,7 +31,7 @@ export interface MuteStateOptions {
 	 * 每次都现读而不是构造时快照:独立端把它存在 globals 里,网页上也能改。
 	 */
 	read: () => number;
-	/** 写回到期时刻。持久化归调用方(独立端落 globals.json,所以重启不丢)。 */
+	/** 写回到期时刻。持久化归调用方(独立端落 config/settings/core.json,所以重启不丢)。 */
 	write: (until: number) => Promise<void>;
 	/** 可注入的时钟。测试用,生产不传。 */
 	now?: () => number;

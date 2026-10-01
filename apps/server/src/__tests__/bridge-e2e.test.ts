@@ -27,7 +27,7 @@ import { join } from "node:path";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { CONFIG_DIR } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
@@ -171,7 +171,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		await seed.close("seed");
 		const gen = await activeGeneration(dataDir);
 
-		const globalsPath = join(gen, ...CONFIG_DIR, "globals.json");
+		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
 		globals.extensions = {
 			bridge: {

@@ -297,7 +297,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// Base logger boot reconcile. bootstrap.logLevel (BN_LOG_LEVEL / --log-level
 	// / bn.config logLevel) only governs the pre-engines early window (config
-	// load + bootstrap, before globals.json is applied). From engines-up onward
+	// load + bootstrap, before the core settings are applied). From engines-up onward
 	// the base logger is the "core" module bucket — every non-engine log
 	// (push / sink / master-notifier / fans-poller / routes / config / history /
 	// ws) goes through it, so it follows `logLevels.core ?? app.logLevel` just

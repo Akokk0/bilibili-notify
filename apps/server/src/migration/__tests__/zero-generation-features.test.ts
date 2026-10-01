@@ -178,12 +178,17 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		// globals 与订阅都是迁移器改写的(不是搬过来的那个文件);拓展那份只作输入,新代里没有它。
 		expect(report.rewritten).toEqual(
-			expect.arrayContaining(["config/globals.json", "config/subscriptions.json"]),
+			expect.arrayContaining(["config/settings/core.json", "config/subscriptions.json"]),
 		);
 		expect(report.rewritten).not.toContain("config/extension-subscriptions.json");
-		for (const name of ["globals.json", "subscriptions.json"]) {
+		// [第 0 代 state/ 里的文件名, 新代 config/ 里的相对路径]:核心设置挪进了 settings/core.json。
+		const rewrittenFiles: Array<[string, string]> = [
+			["globals.json", "settings/core.json"],
+			["subscriptions.json", "subscriptions.json"],
+		];
+		for (const [name, target] of rewrittenFiles) {
 			expect(
-				await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(name)),
+				await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(target)),
 				name,
 			).toBe(false);
 		}
@@ -197,7 +202,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		// 新代里的**文件本身**已经是最新的形状(不只是开机读得进来)。
 		const globalsOnDisk = await sandbox.readConfig<{ defaults: { features: unknown } }>(
-			"globals.json",
+			"settings/core.json",
 		);
 		expect(globalsOnDisk.defaults.features).toEqual({
 			dynamic: true,
@@ -275,8 +280,10 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).toContain("config/globals.json");
-		const onDisk = await sandbox.readConfig<{ defaults: { features: unknown } }>("globals.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
+		const onDisk = await sandbox.readConfig<{ defaults: { features: unknown } }>(
+			"settings/core.json",
+		);
 		expect(onDisk.defaults.features).toEqual({
 			dynamic: true,
 			live: true,
@@ -325,11 +332,11 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("config/globals.json");
+		expect(report.rewritten).not.toContain("config/settings/core.json");
 		expect(
 			await sameFile(
 				join(sandbox.zero, "state", "globals.json"),
-				sandbox.configPath("globals.json"),
+				sandbox.configPath("settings/core.json"),
 			),
 		).toBe(true);
 		// 订阅:身份换了位置(0.x 的 uid / extensionId / externalId → identity)、退役的别名 `name` 丢掉,别的格一个都

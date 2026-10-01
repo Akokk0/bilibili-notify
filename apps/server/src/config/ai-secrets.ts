@@ -1,5 +1,5 @@
 /**
- * AI 密钥与 globals.json 之间的唯一通道。
+ * AI 密钥与核心设置文件(`config/settings/core.json`)之间的唯一通道。
  *
  * 「按实例分桶」之后密钥不再是一把,而是**每个实例桶两把** —— 主模型的
  * `apiKey` 与看图副模型的 `vision.apiKey`(副模型常在另一家,DeepSeek 没有视觉
@@ -8,7 +8,7 @@
  * 三个函数配成一套:
  *
  * - {@link collectAiSecrets} 收集要存进加密袋的
- * - {@link stripAiSecrets} 落盘前把明文抠掉(`state/globals.json` **不加密**)
+ * - {@link stripAiSecrets} 落盘前把明文抠掉(`config/settings/core.json` **不加密**)
  * - {@link applyAiSecrets} 读回时从袋子灌回内存,引擎照旧读得到
  *
  * 三者必须互为逆运算:`apply(strip(g), collect(g))` 恒等于 `g`。破了这条就意味着

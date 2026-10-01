@@ -257,7 +257,7 @@ describe("拓展不进载荷,手放进在用的那一代就能跑", () => {
 		};
 
 		try {
-			// 先空跑一趟让它把 globals 写全:`app` / `master` / `defaults` 都没有默认值,
+			// 先空跑一趟让它把核心设置写全:`app` / `master` / `defaults` 都没有默认值,
 			// 手写一份缺格的会在开机 parse 时整份被判废。
 			const seed = await run();
 			seed.kill("SIGTERM");
@@ -277,10 +277,12 @@ describe("拓展不进载荷,手放进在用的那一代就能跑", () => {
 					recursive: true,
 				},
 			);
-			const globalsPath = join(generationDir, "config", "globals.json");
-			const globals = JSON.parse(await readFile(globalsPath, "utf8"));
-			globals.extensions = { bridge: { enabled: true } };
-			await writeFile(globalsPath, JSON.stringify(globals));
+			// 核心设置文件在 config/settings/core.json(.mjs 导不了 TS 里的 CORE_SETTINGS_FILE,写字面量)。
+			const corePath = join(generationDir, "config", "settings", "core.json");
+			const core = JSON.parse(await readFile(corePath, "utf8"));
+			core.extensions = { bridge: { enabled: true } };
+			await mkdir(dirname(corePath), { recursive: true });
+			await writeFile(corePath, JSON.stringify(core));
 
 			const live = await run();
 			try {

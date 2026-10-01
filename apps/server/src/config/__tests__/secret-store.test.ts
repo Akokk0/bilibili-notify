@@ -4,12 +4,12 @@
  * 守护契约(SecretStore):
  *   - save→load round-trip;缺文件→{};换 key→{}+warn;落盘是 GCM blob 非明文
  * 守护契约(ConfigStore + secretStore):
- *   - 盘上不留明文:手改写进 globals.json 的 apiKey 开机抬进加密袋、盘上抹掉、内存照用;与袋里同一格冲突时
+ *   - 盘上不留明文:手改写进 settings/core.json 的 apiKey 开机抬进加密袋、盘上抹掉、内存照用;与袋里同一格冲突时
  *     明文优先(盘上的只可能是之后写进去的)。0.x 的老形状走迁移器接缝,见
  *     `migration/__tests__/zero-generation-settings.test.ts` 与 `zero-generation-secrets.test.ts`
- *   - patchGlobals 改 apiKey → 新值生效;globals.json 始终无 apiKey;新实例同 key 可重新注水
+ *   - patchGlobals 改 apiKey → 新值生效;settings/core.json 始终无 apiKey;新实例同 key 可重新注水
  *   - 清空 apiKey → bag 清除
- *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
+ *   - 无 secretStore(legacy)→ apiKey 仍留在 settings/core.json(未破坏旧路径)
  */
 
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -20,7 +20,7 @@ import { createKeyProvider } from "@bilibili-notify/storage";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
 import { createSecretStore, type SecretStore } from "../secret-store.js";
-import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../store.js";
+import { CORE_SETTINGS_FILE, type ConfigStore, createConfigStore } from "../store.js";
 
 function makeBus(): MessageBus {
 	const listeners = new Map<keyof BusEvents, Set<(...a: unknown[]) => void>>();
@@ -146,7 +146,7 @@ describe("createSecretStore", () => {
 // `activeProfile` 指着当前那份。这一组测的是密钥袋 —— 明文 / 注水 / 回滚,不是老形状的迁移。
 describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	const diskGlobals = async () =>
-		JSON.parse(await readFile(join(dataDir, ...CONFIG_DIR, "globals.json"), "utf8"));
+		JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 	/** 盘上那份里,某个桶的主 key。 */
 	const diskKey = async (id: string) =>
 		(await diskGlobals())?.defaults?.ai?.providers?.[id]?.apiKey;
@@ -164,11 +164,11 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	const memKey = (store: ConfigStore, id = "deepseek") =>
 		store.getGlobals().defaults.ai.providers[id as "deepseek"]?.apiKey;
 
-	/** 主人手改盘上的 globals.json:给 deepseek 那家写一把明文 key。 */
+	/** 主人手改盘上的 settings/core.json:给 deepseek 那家写一把明文 key。 */
 	const handEditKey = async (key: string) => {
 		const g = await diskGlobals();
 		g.defaults.ai.providers.deepseek.apiKey = key;
-		await writeFile(join(dataDir, ...CONFIG_DIR, "globals.json"), JSON.stringify(g));
+		await writeFile(join(dataDir, ...CORE_SETTINGS_FILE), JSON.stringify(g));
 	};
 	/** 建好 deepseek 那一家,袋里放 `key`(空串 = 袋里没有)。 */
 	const seedDeepseek = async (key: string) => {
@@ -184,7 +184,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		});
 	};
 
-	it("盘上不留明文:手改写进 globals.json 的 key 开机抬进加密袋,盘上抹掉,内存照用", async () => {
+	it("盘上不留明文:手改写进 settings/core.json 的 key 开机抬进加密袋,盘上抹掉,内存照用", async () => {
 		await seedDeepseek("");
 		await handEditKey("sk-hand");
 
@@ -307,7 +307,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		expect((await secret.load()).aiApiKeys).toEqual({});
 	});
 
-	it("无 secretStore(legacy):apiKey 仍写进 globals.json", async () => {
+	it("无 secretStore(legacy):apiKey 仍写进 settings/core.json", async () => {
 		const store = mkStore(); // 不传 secretStore
 		await store.load();
 		await store.patchGlobals({
@@ -323,13 +323,13 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 
 	// 回归守护 — P2:writeGlobals 双写非原子。secretStore.save 成功但
 	// persistGlobals 抛错时,必须回滚密钥袋 + in-memory 不更新 → 两端始终一致
-	// (绝不 secret 存新 apiKey 而 globals.json/内存留旧 → 重启分叉)。
+	// (绝不 secret 存新 apiKey 而 settings/core.json/内存留旧 → 重启分叉)。
 	// 复发点:去掉 try/catch 回滚,改回 save→persist 顺序无补偿。
 	it("writeGlobals:persist 抛错 → 回滚密钥袋,两端不分叉(P2)", async () => {
 		const secret = mkSecretStore();
 		const store = mkStore(secret);
 		await store.load();
-		// 先成功落一个 apiKey:bag 里是 sk-good,globals.json 已写。
+		// 先成功落一个 apiKey:bag 里是 sk-good,settings/core.json 已写。
 		await store.patchGlobals({
 			defaults: {
 				ai: {
@@ -340,9 +340,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		});
 		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-good" });
 
-		// 破坏 globals.json 路径(占成目录)→ 下次 atomicWriteJson rename 必失败,
+		// 破坏 settings/core.json 路径(占成目录)→ 下次 atomicWriteJson rename 必失败,
 		// 而 secretStore.save(写 secrets/config-secrets.enc,另一路径)仍成功。
-		const gp = join(dataDir, ...CONFIG_DIR, "globals.json");
+		const gp = join(dataDir, ...CORE_SETTINGS_FILE);
 		await rm(gp);
 		await mkdir(gp, { recursive: true });
 

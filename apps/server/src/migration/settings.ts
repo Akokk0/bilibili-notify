@@ -1,6 +1,6 @@
 /**
- * 全局设置 `config/globals.json`:0.x 各个版本留下的形状 → 0.x 最新的形状。一项一项收进来(⑥c),
- * 配置仓开机只认最新的形状。
+ * 核心的设置(0.x 的 `state/globals.json`,新代里在 `config/settings/core.json`):0.x 各个版本留下的形状 → 0.x
+ * 最新的形状。一项一项收进来(⑥c),配置仓开机只认最新的形状。
  *
  * - `defaults.features`:附加项的两代老数据({@link migrateLegacyFeatureFlags});
  * - `defaults.ai`:扁平连接字段、「一家一桶」、手改的人格({@link migrateAiSettings});
@@ -10,7 +10,6 @@
  * 卡片样式那两个退役键(`hideDesc` / `hideFollower`)不用管:schema 不是 strict,读的时候自己剥掉。
  */
 
-import { join } from "node:path";
 import { migrateAiSettings } from "./ai.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
@@ -36,11 +35,10 @@ export function migrateGlobals(raw: unknown): unknown {
 }
 
 /**
- * 新代里的 `globals.json` 迁成最新的形状,回改写过的文件(绝对路径)。没变就不写 —— 新代里还是搬过来的那个文件。
- * 读不懂的原样留着,由配置仓开机时报出来。
+ * 新代里核心的设置文件(`path`)迁成最新的形状,回改写过的文件(绝对路径)。没变就不写 —— 新代里还是搬过来的那个
+ * 文件。读不懂的原样留着,由配置仓开机时报出来。
  */
-export async function migrateSettingsFile(configDir: string): Promise<string[]> {
-	const path = join(configDir, "globals.json");
+export async function migrateSettingsFile(path: string): Promise<string[]> {
 	const file = await readJsonFile(path);
 	if (file.kind !== "ok") return [];
 	const next = migrateGlobals(file.value);
