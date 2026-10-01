@@ -362,6 +362,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					report = await migrateZeroGeneration({
 						zeroRoot: hostRoot,
 						targetDir: partialDir,
+						passphrase: bootstrap.cookieEncryptionKey,
 						onProgress: ({ done, total, label }) => {
 							startupMessage = `BN 正在搬家(${done}/${total}):${label}`;
 						},

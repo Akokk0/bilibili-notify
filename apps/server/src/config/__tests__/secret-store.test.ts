@@ -5,8 +5,8 @@
  *   - save→load round-trip;缺文件→{};换 key→{}+warn;落盘是 GCM blob 非明文
  * 守护契约(ConfigStore + secretStore):
  *   - 盘上不留明文:手改写进 globals.json 的 apiKey 开机抬进加密袋、盘上抹掉、内存照用;与袋里同一格冲突时
- *     明文优先(盘上的只可能是之后写进去的)。0.x 扁平老形状的那一条走迁移器接缝,见
- *     `migration/__tests__/zero-generation-settings.test.ts`
+ *     明文优先(盘上的只可能是之后写进去的)。0.x 的老形状走迁移器接缝,见
+ *     `migration/__tests__/zero-generation-settings.test.ts` 与 `zero-generation-secrets.test.ts`
  *   - patchGlobals 改 apiKey → 新值生效;globals.json 始终无 apiKey;新实例同 key 可重新注水
  *   - 清空 apiKey → bag 清除
  *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
@@ -78,13 +78,13 @@ describe("createSecretStore", () => {
 	it("save→load round-trip;缺文件→{}", async () => {
 		const s = mkSecretStore();
 		expect(await s.load()).toEqual({});
-		await s.save({ aiApiKey: "sk-secret" });
-		expect(await s.load()).toEqual({ aiApiKey: "sk-secret" });
+		await s.save({ aiApiKeys: { deepseek: "sk-secret" } });
+		expect(await s.load()).toEqual({ aiApiKeys: { deepseek: "sk-secret" } });
 	});
 
 	it("落盘是 GCM blob,不含明文 key", async () => {
 		const s = mkSecretStore();
-		await s.save({ aiApiKey: "sk-PLAINTEXT-LEAK" });
+		await s.save({ aiApiKeys: { deepseek: "sk-PLAINTEXT-LEAK" } });
 		const raw = await readFile(join(dataDir, "secrets", "config-secrets.enc"), "utf8");
 		expect(JSON.parse(raw).v).toBe(2);
 		expect(raw).not.toContain("sk-PLAINTEXT-LEAK");
@@ -94,18 +94,21 @@ describe("createSecretStore", () => {
 	// 权限位在 Windows 上没有意义。
 	it.skipIf(process.platform === "win32")("落盘权限是 0o600(只许 owner 读)", async () => {
 		const s = mkSecretStore();
-		await s.save({ aiApiKey: "sk-x" });
+		await s.save({ aiApiKeys: { deepseek: "sk-x" } });
 		expect((await stat(join(dataDir, "secrets", "config-secrets.enc"))).mode & 0o777).toBe(0o600);
 		// 覆盖写一次也一样:每次都是新建临时文件再改名盖上去。
-		await s.save({ aiApiKey: "sk-y" });
+		await s.save({ aiApiKeys: { deepseek: "sk-y" } });
 		expect((await stat(join(dataDir, "secrets", "config-secrets.enc"))).mode & 0o777).toBe(0o600);
 	});
 
 	it("并发 save 各写各的临时文件:落下来的是完整的一份,目录里没有遗留", async () => {
 		const s = mkSecretStore();
-		await Promise.all([s.save({ aiApiKey: "sk-a" }), s.save({ aiApiKey: "sk-b" })]);
+		await Promise.all([
+			s.save({ aiApiKeys: { deepseek: "sk-a" } }),
+			s.save({ aiApiKeys: { deepseek: "sk-b" } }),
+		]);
 		const loaded = await s.load();
-		expect(["sk-a", "sk-b"]).toContain(loaded.aiApiKey);
+		expect(["sk-a", "sk-b"]).toContain(loaded.aiApiKeys?.deepseek);
 		const names = await readdir(join(dataDir, "secrets"));
 		expect(names.filter((n) => n.includes("tmp"))).toEqual([]);
 		expect(names).toContain("config-secrets.enc");
@@ -113,7 +116,7 @@ describe("createSecretStore", () => {
 
 	it("文件存在但读不了(EISDIR,非 ENOENT)→ load() 抛,绝不退化为 {}", async () => {
 		// 数据丢失防护:若静默返 {},随后任一 writeGlobals→save() 会用空 bag
-		// 原子覆盖,永久销毁已存 aiApiKey。
+		// 原子覆盖,永久销毁已存 aiApiKeys。
 		const encPath = join(dataDir, "secrets", "config-secrets.enc");
 		await mkdir(encPath, { recursive: true }); // 占位成目录 → readFile EISDIR
 		const s = mkSecretStore();
@@ -122,7 +125,7 @@ describe("createSecretStore", () => {
 
 	it("换 key → load 退化为 {} 且 warn", async () => {
 		const s1 = mkSecretStore();
-		await s1.save({ aiApiKey: "sk-1" });
+		await s1.save({ aiApiKeys: { deepseek: "sk-1" } });
 		const logger = makeCtx().logger;
 		const wrong = createSecretStore({
 			filePath: join(dataDir, "secrets", "config-secrets.enc"),
@@ -160,17 +163,6 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	/** 当前生效那家的主 key(测试里一律用 deepseek 桶)。 */
 	const memKey = (store: ConfigStore, id = "deepseek") =>
 		store.getGlobals().defaults.ai.providers[id as "deepseek"]?.apiKey;
-
-	it("上一版加密袋里的单把 aiApiKey 也迁进 custom 槽", async () => {
-		// 已经启用过加密的老用户:明文早就不在盘上了,那把 key 在袋子里叫 aiApiKey。
-		const secret = mkSecretStore();
-		await secret.save({ aiApiKey: "sk-in-old-bag" });
-		const store = mkStore(secret);
-		await store.load();
-		const bag = await secret.load();
-		expect(bag.aiApiKeys).toEqual({ custom: "sk-in-old-bag" });
-		expect(bag.aiApiKey).toBeUndefined();
-	});
 
 	/** 主人手改盘上的 globals.json:给 deepseek 那家写一把明文 key。 */
 	const handEditKey = async (key: string) => {

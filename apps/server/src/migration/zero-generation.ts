@@ -36,6 +36,7 @@ import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
 import { migrateHistoryFiles } from "./history.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
+import { migrateSecretBag } from "./secrets.js";
 import { migrateSettingsFile } from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
@@ -50,7 +51,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 8;
+export const MIGRATION_REVISION = 9;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -175,6 +176,8 @@ export interface MigrateZeroGenerationOptions {
 	zeroRoot: string;
 	/** 往这里填:新代的 `.partial`。 */
 	targetDir: string;
+	/** 主密钥的口令(`BN_COOKIE_KEY`,没配就不传):解加密袋要用第 0 代那把密钥。 */
+	passphrase?: string;
 	onProgress?: (progress: MigrationProgress) => void;
 }
 
@@ -259,7 +262,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 皮肤、对话(不依赖别的,放最后)。
+ * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 皮肤、对话、密钥(不依赖别的,放最后)。
  * 每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
@@ -294,6 +297,14 @@ const REWRITES: readonly {
 	},
 	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },
 	{ label: "女仆对话", run: (opts) => migrateConversationFiles(opts.targetDir) },
+	{
+		label: "密钥",
+		run: async (opts) =>
+			migrateSecretBag(
+				dataPath(opts.targetDir, "secrets", "config-secrets.enc"),
+				await readZeroGenerationKey(opts.zeroRoot, opts.passphrase),
+			),
+	},
 ];
 
 /**

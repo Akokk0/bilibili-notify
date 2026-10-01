@@ -704,18 +704,6 @@ class NodeConfigStore implements ConfigStore {
 		if (!this.secretStore) return;
 		this.secretBag = await this.secretStore.load();
 
-		// 上一版的**单把** aiApiKey → 新的多把袋子。迁移器把扁平旧配置整份迁进了
-		// `providers.custom`(`migration/ai.ts`),所以这把 key 的去处正是 custom 槽。
-		if (this.secretBag.aiApiKey) {
-			const { aiApiKey, ...rest } = this.secretBag;
-			this.secretBag = {
-				...rest,
-				aiApiKeys: { custom: aiApiKey, ...(this.secretBag.aiApiKeys ?? {}) },
-			};
-			await this.secretStore.save(this.secretBag);
-			this.serviceCtx.logger.info("[secrets] 已把旧的单把 apiKey 迁进按服务商分桶的密钥袋");
-		}
-
 		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):globals.json 落盘时 apiKey 一律抠成空串,所以
 		// 盘上出现非空的 key 就是明文 —— 主人手改写进去的,或 0.x 加密上线前留下的。开机抬进加密袋、抹掉盘上那份。
 		const plaintext = collectAiSecrets(this.globals);

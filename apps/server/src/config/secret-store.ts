@@ -27,12 +27,6 @@ import {
  */
 export interface ConfigSecrets {
 	/**
-	 * 上一版的**单把** AI 密钥(那时全局只有一套 AI 连接配置)。
-	 * 读到就迁进 {@link aiApiKeys} 的 `custom` 槽 —— 与 schema 那边「扁平旧配置
-	 * 整份落进 providers.custom」正好对上。迁完置 undefined,不再写新值。
-	 */
-	aiApiKey?: string;
-	/**
 	 * 各家各自的 AI 密钥。键是自描述路径:`"<provider>"` = 主模型那把,
 	 * `"<provider>:vision"` = 看图副模型那把(见 `./ai-secrets.ts`)。
 	 * 最多 5 家 × 2 把。
