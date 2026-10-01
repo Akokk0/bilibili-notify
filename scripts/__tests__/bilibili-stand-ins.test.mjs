@@ -33,6 +33,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** 整个目录放行(仓库相对、带结尾斜杠),写明理由。 */
 export const ALLOWED_DIRS = {
 	"apps/server/src/migration/": "迁移模块:0.x 的形状(两支订阅、按 uid 的文件名……)只住这里",
+	"apps/server/src/bilibili/":
+		"B 站自己的代码(设计稿的白名单,architecture.md 守卫表「B 站替身」一行):今天只有它的设置",
 };
 
 /** 白名单:整个文件放行,写明理由。今天没有。 */
@@ -83,7 +85,7 @@ export const RATCHET = {
 	"apps/web/src/pages/Dashboard.tsx": 4,
 	"apps/web/src/pages/Rules.tsx": 6,
 	"apps/web/src/pages/Subs.tsx": 18,
-	"apps/web/src/pages/System.tsx": 25,
+	"apps/web/src/pages/System.tsx": 27,
 	"apps/web/src/pages/rules/PerUpEditor.tsx": 8,
 	"apps/web/src/pages/rules/sections.tsx": 2,
 	"apps/web/src/pages/up/UpCard.tsx": 6,

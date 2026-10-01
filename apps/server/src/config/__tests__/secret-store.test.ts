@@ -264,7 +264,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		// 注水的 spread 把它当**新键追加到对象末尾**,键序就偏离了 zod parse 的声明
 		// 顺序。而 engines.ts 的 config-changed diff 用 JSON.stringify 逐 section
 		// 比较(键序敏感),于是重启后第一次改**任何** globals 字段(哪怕只是
-		// dynamicCron),defaults.ai 都会被误判成「变了」→ 白白热重载一次 AI 实例 +
+		// fansCron),defaults.ai 都会被误判成「变了」→ 白白热重载一次 AI 实例 +
 		// 刷两条日志。只有「配了 AI + 启用加密 + 重启后首次变更」三者同时满足才触发,
 		// 极难撞见,所以钉在这里。现在 stripAiSecrets 抠成空串而非删键,从源头绕开。
 		const secret = mkSecretStore();
@@ -284,7 +284,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store2.load();
 
 		const prev = store2.getGlobals(); // engines 的 initialGlobals / prevGlobals 初值
-		await store2.patchGlobals({ app: { dynamicCron: "*/9 * * * *" } });
+		await store2.patchGlobals({ app: { fansCron: "*/9 * * * *" } });
 		const next = store2.getGlobals();
 
 		expect(JSON.stringify(next.defaults.ai)).toBe(JSON.stringify(prev.defaults.ai));

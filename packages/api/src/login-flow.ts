@@ -440,7 +440,7 @@ export class LoginFlow {
 	// ---- Health check ----
 
 	/**
-	 * 热替换登录健康检查间隔。adapter 在 dashboard 编辑 `app.healthCheckMinutes`
+	 * 热替换登录健康检查间隔。adapter 在 dashboard 编辑 B 站设置的 `healthCheckMinutes`
 	 * 后调用,会 dispose 旧定时器并按新间隔重 arm。`<=0` 等价于关闭健康检查。
 	 */
 	setHealthCheckMs(ms: number): void {

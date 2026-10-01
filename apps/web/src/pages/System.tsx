@@ -37,7 +37,14 @@ import { ApiError, api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus, type BiliLoginStatusValue } from "../types/auth";
 import type { Connection, PushTarget } from "../types/domain";
-import type { AppConfig, GlobalConfig, GlobalConfigPatch, LogLevel } from "../types/globals";
+import type {
+	AppConfig,
+	GlobalConfig,
+	GlobalConfigPatch,
+	GlobalsPatch,
+	GlobalsResponse,
+	LogLevel,
+} from "../types/globals";
 import { BackupSection } from "./backup/BackupSection";
 import { SkinSection } from "./skins/SkinSection";
 import { buildSystemPatch } from "./system-save-patch";
@@ -180,13 +187,23 @@ function SystemSettingsSection({
 	draft,
 	onPatch,
 }: {
-	draft: GlobalConfig;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	draft: GlobalsResponse;
+	onPatch: (delta: GlobalsPatch) => void;
 }) {
 	const app = draft.app;
+	// B 站的三格在它自己的设置里,挂在 `/api/globals` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
+	// 第 4 期起这一节按集成的描述画,这里的形状随之删。
+	const source = draft.bilibili as {
+		dynamicCron: string;
+		userAgent?: string;
+		healthCheckMinutes: number;
+	};
 
 	const setApp = <K extends keyof AppConfig>(key: K, v: AppConfig[K]) => {
 		onPatch({ app: { [key]: v } as Partial<AppConfig> });
+	};
+	const setSource = <K extends keyof typeof source>(key: K, v: (typeof source)[K]) => {
+		onPatch({ bilibili: { [key]: v } });
 	};
 
 	// 只动 `app.logLevels[id]` 这一个键,同格里别的模块不受影响(五个模块都在这一格里设)。
@@ -204,8 +221,8 @@ function SystemSettingsSection({
 			icon={<Icon.sliders size={14} />}
 			badge="app"
 		>
-			<Field code="app.dynamicCron">
-				<TInput value={app.dynamicCron} onChange={(v) => setApp("dynamicCron", v)} mono />
+			<Field code="bilibili.dynamicCron">
+				<TInput value={source.dynamicCron} onChange={(v) => setSource("dynamicCron", v)} mono />
 			</Field>
 
 			<Field code="app.logLevel">
@@ -239,19 +256,19 @@ function SystemSettingsSection({
 				</div>
 			</Field>
 
-			<Field code="app.userAgent" full>
+			<Field code="bilibili.userAgent" full>
 				<TInput
-					value={app.userAgent ?? ""}
-					onChange={(v) => setApp("userAgent", v || undefined)}
+					value={source.userAgent ?? ""}
+					onChange={(v) => setSource("userAgent", v || undefined)}
 					placeholder="留空 = 默认"
 					mono
 				/>
 			</Field>
 
-			<Field code="app.healthCheckMinutes">
+			<Field code="bilibili.healthCheckMinutes">
 				<TNum
-					value={app.healthCheckMinutes}
-					onChange={(v) => setApp("healthCheckMinutes", v)}
+					value={source.healthCheckMinutes}
+					onChange={(v) => setSource("healthCheckMinutes", v)}
 					min={1}
 					max={1440}
 					suffix="min"
@@ -367,7 +384,7 @@ export default function System() {
 
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryFn: () => api.get<GlobalsResponse>("/api/globals"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -384,18 +401,18 @@ export default function System() {
 		refetchInterval: 30_000,
 	});
 
-	const [draft, setDraft] = useState<GlobalConfig | null>(null);
+	const [draft, setDraft] = useState<GlobalsResponse | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data);
 	}, [globalsQuery.data]);
 
-	function patchDraft(delta: GlobalConfigPatch): void {
+	function patchDraft(delta: GlobalsPatch): void {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));
 	}
 
 	const save = useMutation({
-		mutationFn: async (next: GlobalConfig) => {
+		mutationFn: async (next: GlobalsResponse) => {
 			// 改了哪块发哪块(挑块的规则与理由在 system-save-patch.ts)。草稿是从这份基线长出来
 			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
@@ -405,7 +422,7 @@ export default function System() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
 
-	useDirtyDraft<GlobalConfig>({
+	useDirtyDraft<GlobalsResponse>({
 		pageKey: "system",
 		pageLabel: "Core · 应用",
 		draft,

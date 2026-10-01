@@ -1,8 +1,6 @@
 import { fail, type GlobalConfig, ok, type Result } from "@bilibili-notify/internal";
-import { CronTime } from "cron";
 import { Hono } from "hono";
-import { z } from "zod";
-import { ConfigValidationError } from "../config/store.js";
+import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
 import { readJsonObject } from "./request-body.js";
@@ -18,24 +16,13 @@ import type { RouteDeps } from "./types.js";
  */
 export const REDACTED_API_KEY = "__BN_REDACTED__";
 
-/** `app.dynamicCron` 写路径校验:可解析性直接委托给 `cron` 包的 `CronTime`。 */
-const DynamicCronSchema = z.string().refine(
-	(expr) => {
-		try {
-			new CronTime(expr);
-			return true;
-		} catch {
-			return false;
-		}
-	},
-	{ message: "无效的 cron 表达式" },
-);
-
 /**
- * `/api/globals` — read + patch the runtime GlobalConfig.
+ * `/api/globals` — read + patch the runtime settings: the core GlobalConfig plus each registered
+ * integration's settings under its key (today `bilibili`, ADR-0021 decision 42's 10-01 🔗).
  *
- * - GET: returns a snapshot
- * - PATCH: accepts a deep-partial JSON body, merges, validates, persists
+ * - GET: returns a snapshot (core keys at the top level, each integration's settings under its key)
+ * - PATCH: accepts a deep-partial JSON body in the same shape, merges, validates, persists —
+ *   core and integration parts in one go (all validated before anything is written)
  *
  * No PUT (full set) — keep the API surface deliberately small until a UI demands it.
  *
@@ -54,44 +41,30 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(publicGlobals(deps.store.getGlobals())));
+	app.get("/", (c) =>
+		c.json(
+			publicSettings({
+				core: deps.store.getGlobals(),
+				integrations: deps.store.getAllIntegrationSettings(),
+			}),
+		),
+	);
 
 	app.patch("/", async (c) => {
 		// We accept any shape here; the merged result is re-validated by Zod inside the store.
 		// Cheap upfront guard: must be an object (not array / scalar).
 		const read = await readJsonObject(c);
 		if (!read.ok) return respondFailure(c, read);
+		// 各集成的设置按登记过的键拆出去,其余是核心那份。集成那份的格式与写入校验(B 站的 cron 能不能解析)
+		// 都在配置仓按登记的格式做,这里不认得任何一个集成。
+		const { core: body, integrations } = splitSettingsPatch(read.body, deps.store);
 		// 拓展设置有自己的口了(ADR-0019 决策 35),这里一格都不收 —— 老面板(应用内更新那几秒里
 		// 还开着的那一页)会整份写回,得拒掉并说清去哪儿写。先于别的检查:这一发整个作废。
-		const moved = extensionSettingsWriteOf(read.body);
+		const moved = extensionSettingsWriteOf(body);
 		if (moved) return respondFailure(c, fail("invalid", moved));
 		// 把 REDACTED sentinel 从 patch 里剥掉:前端 GET 拿到的是 redact 占位,如果
 		// 用户没在 UI 改 apiKey,PATCH body 会把占位原样回传 — 视为"保留原值"。
-		const patch = stripRedactedSecrets(read.body);
-		// dynamicCron 是自由文本框,GlobalConfigSchema 只校验它是 string(迁移友好,
-		// 不能对已落盘的旧值变严格 —— 否则 load() 会在下次启动时对着别人存量数据
-		// 抛 ConfigValidationError,重新炸穿独立端)。写路径在这里单独拦一道:用
-		// `cron` 包自身的 CronTime 校验可解析性,与 packages/dynamic /
-		// fans-poller.ts 实际排程时用的同一个解析器保持权威一致。此前完全没校验,
-		// 一条解析不了的表达式能被保存,下次启动 `new CronJob` 同步抛错,把整个
-		// 独立端进程崩穿(用户报告"升级后端起不来,清空数据才恢复";见 fix
-		// commit 33c56ea 加的运行期 try/catch —— 那是纵深防御的第二层,这里堵在
-		// 源头,让用户在 Dashboard 保存时就看到明确报错而不是事后进程崩溃)。
-		const cronPatch = pluck(patch, ["app", "dynamicCron"]);
-		if (typeof cronPatch === "string") {
-			const parsed = DynamicCronSchema.safeParse(cronPatch);
-			if (!parsed.success) {
-				return respondFailure(
-					c,
-					fail("invalid", `app.dynamicCron 不是合法的 cron 表达式："${cronPatch}"`, {
-						issues: parsed.error.issues.map((i) => ({
-							path: ["app", "dynamicCron"],
-							message: i.message,
-						})),
-					}),
-				);
-			}
-		}
+		const patch = stripRedactedSecrets(body);
 		// 别名冲突:撞了就静默失灵一条指令,主人根本查不到是别名干的。堵在保存这一刻,
 		// 并说清跟谁撞了。(dispatcher 重建时还有第二道,但那道只能记日志。)
 		const aliasCheck = checkCommandAliases({
@@ -111,8 +84,12 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 		});
 		if (!enableCheck.ok) return respondFailure(c, enableCheck);
 		try {
-			const next = await deps.store.patchGlobals(patch);
-			return c.json(publicGlobals(next));
+			const next = await deps.store.patchSettings({
+				// 只送了集成那份就别碰核心:空补丁也会重写一遍核心、广播一次 globals 改动。
+				...(Object.keys(patch).length > 0 ? { core: patch } : {}),
+				...(Object.keys(integrations).length > 0 ? { integrations } : {}),
+			});
+			return c.json(publicSettings(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/globals failed", err);
@@ -153,7 +130,33 @@ function extensionSettingsWriteOf(patch: Record<string, unknown>): string | unde
 }
 
 /**
- * 下发给浏览器的那一份:密钥换占位(`redactGlobals`),每个拓展的设置整格抹掉、只留开关。
+ * 请求体按登记过的集成键拆开:那几个键的值是各集成那份设置的补丁,其余是核心那份的。集成的键与核心的顶层键
+ * 不会撞名(配置仓登记时就拦了)。
+ */
+function splitSettingsPatch(
+	body: Record<string, unknown>,
+	store: Pick<ConfigStore, "getAllIntegrationSettings">,
+): { core: Record<string, unknown>; integrations: Record<string, unknown> } {
+	const keys = new Set(Object.keys(store.getAllIntegrationSettings()));
+	const core: Record<string, unknown> = {};
+	const integrations: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(body)) {
+		if (keys.has(key)) integrations[key] = value;
+		else core[key] = value;
+	}
+	return { core, integrations };
+}
+
+/**
+ * 下发给浏览器的那一份:核心的顶层键原样摆着,各集成的设置挂在自己的键下(与 PATCH 收的同一个形状)。今天登记的
+ * 集成设置里没有密钥;将来有了,按字段表上的 `secret` 标记打码(ADR-0021 决策 44,随 3b)。
+ */
+function publicSettings(snapshot: SettingsSnapshot): Record<string, unknown> {
+	return { ...publicGlobals(snapshot.core), ...snapshot.integrations };
+}
+
+/**
+ * 核心那份下发给浏览器的样子:密钥换占位(`redactGlobals`),每个拓展的设置整格抹掉、只留开关。
  *
  * 🔴 拓展设置里有密钥(桥的 token、抖音的 cookie),它们的遮挡在 `/api/ext/:id/settings` 那一口做
  * (服务端算头尾,决策 35)。这里照旧整份下发的话,明文从这一口出门,那边的遮挡就白做了。

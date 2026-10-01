@@ -31,6 +31,7 @@ import {
  *   - "subscriptions" → invalidate ["subscriptions"]
  *   - "targets"       → invalidate ["targets"]
  *   - "globals"       → invalidate ["globals"] + 拓展表(拓展的开关住在 globals 里)+ 各拓展的设置
+ *   - "integration-settings" → invalidate ["globals"](各集成的设置挂在 `/api/globals` 下发的那一份里)
  *   - "connections"   → invalidate ["connections"]
  *   - "secrets"       → no client cache, ignored
  *
@@ -88,6 +89,7 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	const scope = env.data?.scope;
 	if (scope === "subscriptions") qc.invalidateQueries({ queryKey: ["subscriptions"] });
 	else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
+	else if (scope === "integration-settings") qc.invalidateQueries({ queryKey: ["globals"] });
 	else if (scope === "globals") {
 		qc.invalidateQueries({ queryKey: ["globals"] });
 		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页

@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { migrateZeroGeneration, type ZeroMigrationResult } from "../zero-generation.js";
@@ -73,6 +74,8 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 			dataRoot: target,
 			bus: createNodeMessageBus(),
 			serviceCtx: makeServiceCtx(),
+			// 与正式组装(`runtime/bootstrap.ts`)登记同样的集成设置。
+			integrationSettings: [settingsSegment],
 		});
 		await store.load();
 		return store;

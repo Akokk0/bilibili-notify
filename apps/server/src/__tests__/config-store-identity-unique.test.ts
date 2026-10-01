@@ -163,7 +163,7 @@ describe("整体替换(恢复备份):新增的重复 → 整份拒,哪一份都�
 		const bytes = await subsBytes();
 		const globalsBytes = await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8");
 		const globals = store.getGlobals();
-		globals.app.dynamicCron = "*/7 * * * *";
+		globals.app.fansCron = "*/7 * * * *";
 
 		const err = await rejection(
 			store.replaceSections({ globals, subscriptions: [existing, biliSub("12345")] }),

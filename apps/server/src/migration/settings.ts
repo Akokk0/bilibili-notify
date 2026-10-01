@@ -8,6 +8,9 @@
  * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing})。
  *
  * 卡片样式那两个退役键(`hideDesc` / `hideFollower`)不用管:schema 不是 strict,读的时候自己剥掉。
+ *
+ * 设置按集成分文件(ADR-0021 决策 42 下 10-01 的 🔗):`app` 里 B 站的三格搬进 `config/settings/bilibili.json`,
+ * 只挪位置、不改键名({@link splitBilibiliSettings})。
  */
 
 import { migrateAiSettings } from "./ai.js";
@@ -34,15 +37,48 @@ export function migrateGlobals(raw: unknown): unknown {
 	return out;
 }
 
+/** 核心设置的 `app` 里归 B 站的三格。 */
+const BILIBILI_APP_KEYS = ["userAgent", "dynamicCron", "healthCheckMinutes"] as const;
+
 /**
- * 新代里核心的设置文件(`path`)迁成最新的形状,回改写过的文件(绝对路径)。没变就不写 —— 新代里还是搬过来的那个
- * 文件。读不懂的原样留着,由配置仓开机时报出来。
+ * 核心设置的 `app` 里归 B 站的三格拆出来:回拿掉它们的核心那份、和它们本身(一格都没有就是空对象)。值原样不动 ——
+ * 一条解析不了的老 cron 也照搬,B 站那份读盘是宽松的。
  */
-export async function migrateSettingsFile(path: string): Promise<string[]> {
-	const file = await readJsonFile(path);
+export function splitBilibiliSettings(core: unknown): {
+	core: unknown;
+	bilibili: Record<string, unknown>;
+} {
+	if (!isPlainObject(core) || !isPlainObject(core.app)) return { core, bilibili: {} };
+	const app: Record<string, unknown> = { ...core.app };
+	const bilibili: Record<string, unknown> = {};
+	for (const key of BILIBILI_APP_KEYS) {
+		if (!(key in app)) continue;
+		bilibili[key] = app[key];
+		delete app[key];
+	}
+	return { core: { ...core, app }, bilibili };
+}
+
+/**
+ * 新代里核心的设置文件(`corePath`)迁成最新的形状,B 站的三格拆进 `bilibiliPath`;回改写过的文件(绝对路径)。
+ * 核心那份没变就不写 —— 新代里还是搬过来的那个文件;一格 B 站的都没有就不建 B 站那份(配置仓开机时按默认值建)。
+ * 读不懂的原样留着,由配置仓开机时报出来。
+ */
+export async function migrateSettingsFiles(
+	corePath: string,
+	bilibiliPath: string,
+): Promise<string[]> {
+	const file = await readJsonFile(corePath);
 	if (file.kind !== "ok") return [];
-	const next = migrateGlobals(file.value);
-	if (JSON.stringify(next) === JSON.stringify(file.value)) return [];
-	await rewriteJsonFile(path, next);
-	return [path];
+	const { core, bilibili } = splitBilibiliSettings(migrateGlobals(file.value));
+	const rewritten: string[] = [];
+	if (Object.keys(bilibili).length > 0) {
+		await rewriteJsonFile(bilibiliPath, bilibili, corePath);
+		rewritten.push(bilibiliPath);
+	}
+	if (JSON.stringify(core) !== JSON.stringify(file.value)) {
+		await rewriteJsonFile(corePath, core);
+		rewritten.push(corePath);
+	}
+	return rewritten;
 }

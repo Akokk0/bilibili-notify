@@ -16,6 +16,17 @@ describe("sectionOf", () => {
 		expect(sectionOf("app.logLevel")).toBe("logging");
 	});
 
+	// B 站的三格住在它自己的设置里(`bilibili` 块),不在核心的 `app` 下 —— 字典的 code 跟着搬了家。
+	it("B 站设置的三格 → 都认得,归「通用」", () => {
+		for (const code of [
+			"bilibili.dynamicCron",
+			"bilibili.userAgent",
+			"bilibili.healthCheckMinutes",
+		]) {
+			expect(sectionOf(code), code).toBe("general");
+		}
+	});
+
 	it("未知 code → other", () => {
 		expect(sectionOf("__nope__")).toBe("other");
 	});
@@ -43,7 +54,7 @@ describe("groupDiffsBySection", () => {
 			D("font"),
 			D("ai.apiKey"),
 			D("blockKeywords"),
-			D("app.dynamicCron"),
+			D("bilibili.dynamicCron"),
 		]);
 		expect(out.map((s) => s.section)).toEqual(["general", "ai", "cardStyle", "filter"]);
 	});
@@ -63,7 +74,7 @@ describe("groupDiffsBySection", () => {
 
 	it("section label 完整(每个 section 的 label 非空)", () => {
 		const out = groupDiffsBySection([
-			D("app.dynamicCron"),
+			D("bilibili.dynamicCron"),
 			D("master.targetId"),
 			D("ai.apiKey"),
 			D("persona.name"),

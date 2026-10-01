@@ -3,6 +3,7 @@ import type { MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
@@ -119,7 +120,7 @@ export interface AppRuntime {
 	engines: EnginesRuntime | null;
 	attachEngines(engines: EnginesRuntime): void;
 	/**
-	 * FansPoller handle (cron 跟 globals.app.dynamicCron 刷新每个 enabled sub 的
+	 * FansPoller handle (cron 跟 globals.app.fansCron 刷新每个 enabled sub 的
 	 * B 站 fans 数并 emit `fans-refreshed`)。`null` 直到 attachEngines 完成 + 启动
 	 * 完成后由 index.ts 注入;Routes 通过 `runtime.fansPoller?.getLastEntries()` 读
 	 * 最近一轮快照。
@@ -180,7 +181,15 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		keyProvider,
 		logger: serviceCtx.logger,
 	});
-	const configStore = createConfigStore({ bootstrap, dataRoot, bus, serviceCtx, secretStore });
+	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
+	const configStore = createConfigStore({
+		bootstrap,
+		dataRoot,
+		bus,
+		serviceCtx,
+		secretStore,
+		integrationSettings: [settingsSegment],
+	});
 	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
 	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。
 	serviceCtx.onDispose(() => configStore.close(), "flush");

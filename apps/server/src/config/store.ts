@@ -11,6 +11,7 @@ import {
 	EXTRA_KEYS,
 	type GlobalConfig,
 	GlobalConfigSchema,
+	type Issue,
 	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -27,6 +28,7 @@ import {
 	findNewIdentityDuplicates,
 	type IdentityDuplicate,
 } from "@bilibili-notify/subscription";
+import type { z } from "zod";
 import { dataPath } from "../runtime/roots.js";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
@@ -74,9 +76,40 @@ export interface ConfigScopeMeta {
  */
 export interface ConfigSections {
 	globals?: GlobalConfig;
+	/** 各集成的设置,按集成的键;只换给了的那几份。 */
+	integrations?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
+}
+
+/**
+ * 一个集成登记进来的设置(今天只有 B 站):一个集成一个文件 `config/settings/<键>.json`(ADR-0021 决策 42 下
+ * 10-01 的 🔗)。仓不认得是哪个集成,只按登记的格式读写;登记在组装处做(今天 `runtime/bootstrap.ts`,3a 起
+ * `compose.ts`)。
+ */
+export interface IntegrationSettingsSegment<T = unknown> {
+	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/globals` 把它们摆在同一层。 */
+	readonly key: string;
+	/** 盘上那份的格式。读盘也按它,所以对存量要宽松:一格坏值让整个开机失败,比退回默认更糟。 */
+	readonly schema: z.ZodType<T>;
+	/**
+	 * 写入前多核的一道(读盘不核),回逐格原因(路径相对这一份设置),空 = 过。`prev` 是写之前那一份(没有就是
+	 * `undefined`):只核这次真改了的格子 —— 盘上留着的一格老坏值,不该挡住主人去改别的格子。
+	 */
+	checkWrite?(next: T, prev: T | undefined): Issue[];
+}
+
+/** 一次设置写入:核心那份的补丁、各集成那份的补丁(按集成的键),给了哪份改哪份。 */
+export interface SettingsPatch {
+	core?: DeepPartial<GlobalConfig>;
+	integrations?: Record<string, unknown>;
+}
+
+/** 一次设置写入之后的两份(深拷贝)。 */
+export interface SettingsSnapshot {
+	core: GlobalConfig;
+	integrations: Record<string, unknown>;
 }
 
 export interface ConfigStore {
@@ -90,6 +123,10 @@ export interface ConfigStore {
 
 	// --- reads ------------------------------------------------------------
 	getGlobals(): GlobalConfig;
+	/** 一个登记过的集成的设置(深拷贝)。没登记过就抛:那是组装处漏了,不是数据的问题。 */
+	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
+	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/globals` 与备份用。 */
+	getAllIntegrationSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
 	getConnections(): Connection[];
 	/** 只拷命中的那一条 —— 入站热路径按 id 校验归属用,别拿 getConnections() 再 find。 */
@@ -111,6 +148,11 @@ export interface ConfigStore {
 	 * 那一发原样交回调用方。详见实现处的注释。
 	 */
 	updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig>;
+	/**
+	 * 核心与各集成的设置一起改(`/api/globals` 的 PATCH):全部校验过才写,写到一半失败推回原样。没登记过的集成键
+	 * 整次拒收。与 globals 的其余写入排在同一条队里。
+	 */
+	patchSettings(patch: SettingsPatch): Promise<SettingsSnapshot>;
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
@@ -151,6 +193,8 @@ export interface CreateConfigStoreOptions {
 	 * tests and any non-secret-aware caller.
 	 */
 	secretStore?: SecretStore;
+	/** 登记进来的各集成的设置(见 {@link IntegrationSettingsSegment})。键不能重复,也不能和核心设置的顶层键同名。 */
+	integrationSettings?: readonly IntegrationSettingsSegment[];
 }
 
 // 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
@@ -180,7 +224,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 function deepMerge<T>(base: T, patch: unknown): T {
 	// SY1:显式 `null` = 清除该字段。`JSON.stringify` 会丢 `undefined`,前端
 	// 无法用 undefined 经线表达"清空一个可选字段"(键直接消失,旧逻辑当作
-	// 未改 → master.targetId / app.userAgent 等永远清不掉)。约定 null 表清除:
+	// 未改 → master.targetId / bilibili.userAgent 等永远清不掉)。约定 null 表清除:
 	// 标量位 → 回落 base 的缺省;对象键 → 删除该键(变回 undefined,Zod
 	// `.optional()` 仍合法)。`undefined` 维持"本字段不改"。
 	if (patch === null) return undefined as T;
@@ -582,6 +626,10 @@ class NodeConfigStore implements ConfigStore {
 	private plaintextApiKeyWarned = false;
 
 	private globals: GlobalConfig;
+	/** 登记进来的各集成的设置格式,按集成的键。 */
+	private readonly segments: ReadonlyMap<string, IntegrationSettingsSegment>;
+	/** 各集成的设置(已按各自的格式解析过),按集成的键。 */
+	private readonly integrationSettings = new Map<string, unknown>();
 	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
 	private subscriptions: Subscription[];
 	private connections: Connection[];
@@ -589,6 +637,7 @@ class NodeConfigStore implements ConfigStore {
 
 	private readonly meta: Record<ConfigScope, ScopeMetaInternal> = {
 		globals: { exists: false, lastUpdatedAt: null },
+		"integration-settings": { exists: false, lastUpdatedAt: null },
 		subscriptions: { exists: false, lastUpdatedAt: null },
 		connections: { exists: false, lastUpdatedAt: null },
 		targets: { exists: false, lastUpdatedAt: null },
@@ -606,6 +655,7 @@ class NodeConfigStore implements ConfigStore {
 		this.serviceCtx = opts.serviceCtx;
 		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, ...CONFIG_DIR);
 		this.secretStore = opts.secretStore;
+		this.segments = segmentsByKey(opts.integrationSettings ?? []);
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
 		this.subscriptions = [];
@@ -617,6 +667,9 @@ class NodeConfigStore implements ConfigStore {
 		switch (scope) {
 			case "globals":
 				return join(this.stateDir, ...CORE_SETTINGS_IN_CONFIG);
+			case "integration-settings":
+				// 一个集成一个文件,按键取({@link integrationPath});这一支只为穷尽。
+				return join(this.stateDir, SETTINGS_DIR);
 			case "subscriptions":
 				return join(this.stateDir, "subscriptions.json");
 			case "connections":
@@ -629,6 +682,29 @@ class NodeConfigStore implements ConfigStore {
 				// exhaustiveness only.
 				return join(this.stateDir, "secrets.json");
 		}
+	}
+
+	/** 一个集成的设置文件。 */
+	private integrationPath(key: string): string {
+		return join(this.stateDir, SETTINGS_DIR, `${key}.json`);
+	}
+
+	/**
+	 * 一个集成的设置打上补丁之后的样子:按它的格式解析、再过它的写入那一道。没登记过的键、不合格式的值都整次拒收,
+	 * 逐格原因的路径带上集成的键(`bilibili.dynamicCron`),面板按它找到那一格。
+	 */
+	private nextIntegrationSettings(key: string, patch: unknown): unknown {
+		const prev = this.integrationSettings.get(key);
+		return parseIntegrationSettings(this.segmentOf(key), deepMerge(prev, patch), prev);
+	}
+
+	/** 登记过的那一份格式;没登记过的键整次拒收(写进来的是一份认不得的设置)。 */
+	private segmentOf(key: string): IntegrationSettingsSegment {
+		const segment = this.segments.get(key);
+		if (segment) return segment;
+		throw ConfigValidationError.invalid("integration-settings", `没有叫「${key}」的集成设置`, [
+			{ path: [key], message: "没有登记过这个集成" },
+		]);
 	}
 
 	/**
@@ -691,7 +767,7 @@ class NodeConfigStore implements ConfigStore {
 		// zod parse 的声明顺序。而 `engines.ts` 的 config-changed diff 是拿
 		// `JSON.stringify` 逐 section 比相等的(键序敏感),它依赖「globals 永远是 zod
 		// parse 的规范形态」这一不变式 —— 不归位的话,重启后第一次改**任何** globals
-		// 字段(哪怕只是 dynamicCron),`defaults.ai` 都会被误判成「变了」,白白热重载一次
+		// 字段(哪怕只是 fansCron),`defaults.ai` 都会被误判成「变了」,白白热重载一次
 		// AI 实例并刷两条日志。走 legacy 明文路径时键还在原位,spread 只覆盖值,所以这个
 		// 坑只在「配了 AI + 启用加密 + 重启后首次变更」三者同时满足时才现形。
 		this.globals = GlobalConfigSchema.parse(
@@ -747,6 +823,22 @@ class NodeConfigStore implements ConfigStore {
 			// (+ one-time lift), then hydrate it back in memory.
 			await this.hydrateSecrets();
 		}
+
+		// 各集成的设置 —— 一个集成一个文件(ADR-0021 决策 42 下 10-01 的 🔗)。没有就按格式的默认值建一份;
+		// 读坏了是开机报错,同核心那份(「坏了只停那一个集成」随 3a 的集成生命周期做)。
+		for (const segment of this.segments.values()) {
+			const { value } = await readJsonOrInit<unknown>(this.integrationPath(segment.key), () =>
+				segment.schema.parse({}),
+			);
+			const parsed = segment.schema.safeParse(value);
+			if (!parsed.success) {
+				throw ConfigValidationError.fromZod("integration-settings", parsed.error, {
+					subject: `settings/${segment.key}.json`,
+				});
+			}
+			this.integrationSettings.set(segment.key, parsed.data);
+		}
+		this.meta["integration-settings"].exists = true;
 
 		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
 		// 那几行就永久没了。
@@ -867,6 +959,17 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.globals);
 	}
 
+	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T {
+		if (!this.segments.has(segment.key)) {
+			throw new Error(`集成「${segment.key}」的设置没有登记进配置仓(组装处漏了)`);
+		}
+		return deepClone(this.integrationSettings.get(segment.key)) as T;
+	}
+
+	getAllIntegrationSettings(): Record<string, unknown> {
+		return deepClone(Object.fromEntries(this.integrationSettings));
+	}
+
 	getSubscriptions(): Subscription[] {
 		return deepClone(this.subscriptions);
 	}
@@ -940,17 +1043,47 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig> {
+		return (await this.patchSettings({ core: patch })).core;
+	}
+
+	async patchSettings(patch: SettingsPatch): Promise<SettingsSnapshot> {
+		const keys = Object.keys(patch.integrations ?? {});
 		const result = await this.runScoped("globals", async () => {
-			const merged = deepMerge(this.globals, patch);
-			const parsed = GlobalConfigSchema.safeParse(merged);
-			if (!parsed.success) {
-				throw ConfigValidationError.fromZod("globals", parsed.error);
+			// ---- 1) 全部校验:任一份不过就整个作废,一个字都不写 ----
+			let core: GlobalConfig | undefined;
+			if (patch.core !== undefined) {
+				const parsed = GlobalConfigSchema.safeParse(deepMerge(this.globals, patch.core));
+				if (!parsed.success) throw ConfigValidationError.fromZod("globals", parsed.error);
+				core = parsed.data;
 			}
-			await this.writeGlobals(parsed.data);
-			this.touch("globals");
-			return parsed.data;
+			const integrations = new Map(
+				keys.map((key) => [key, this.nextIntegrationSettings(key, patch.integrations?.[key])]),
+			);
+
+			// ---- 2) 落盘:集成的先写,核心的最后写;核心那份(连密钥袋)写失败,把写过的集成推回原样 ----
+			const written: string[] = [];
+			try {
+				for (const [key, next] of integrations) {
+					await atomicWriteJson(this.integrationPath(key), next);
+					written.push(key);
+				}
+				if (core) await this.writeGlobals(core);
+			} catch (e) {
+				for (const key of written) {
+					const before = this.integrationSettings.get(key);
+					await atomicWriteJson(this.integrationPath(key), before).catch(() => {});
+				}
+				throw e;
+			}
+
+			// ---- 3) 都写成了才换进内存(核心那份 writeGlobals 已经换了) ----
+			for (const [key, next] of integrations) this.integrationSettings.set(key, next);
+			if (core) this.touch("globals");
+			if (integrations.size > 0) this.touch("integration-settings");
+			return { core: this.globals, integrations: Object.fromEntries(this.integrationSettings) };
 		});
-		this.bus.emit("config-changed", { scope: "globals" });
+		if (patch.core !== undefined) this.bus.emit("config-changed", { scope: "globals" });
+		if (keys.length > 0) this.bus.emit("config-changed", { scope: "integration-settings" });
 		return deepClone(result);
 	}
 
@@ -1280,6 +1413,14 @@ class NodeConfigStore implements ConfigStore {
 				if (!r.success) throw ConfigValidationError.fromZod("globals", r.error);
 				globals = r.data;
 			}
+			const integrations =
+				next.integrations &&
+				new Map(
+					Object.entries(next.integrations).map(([key, value]) => [
+						key,
+						parseIntegrationSettings(this.segmentOf(key), value, this.integrationSettings.get(key)),
+					]),
+				);
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
 			const connections = next.connections && parseAll("connections", next.connections);
 			const targets = next.targets && parseAll("targets", next.targets);
@@ -1295,6 +1436,8 @@ class NodeConfigStore implements ConfigStore {
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[string, unknown]> = [];
+			for (const [key, value] of integrations ?? [])
+				writes.push([this.integrationPath(key), value]);
 			const subsTouched = Boolean(subscriptions) || replaced.changed;
 			if (subsTouched) writes.push([this.path("subscriptions"), replaced.next]);
 			if (connections) writes.push([this.path("connections"), effConnections]);
@@ -1328,6 +1471,11 @@ class NodeConfigStore implements ConfigStore {
 
 			// ---- 4) 双写都成了才更新内存 -----------------------------------
 			const touched: ConfigScope[] = [];
+			if (integrations && integrations.size > 0) {
+				for (const [key, value] of integrations) this.integrationSettings.set(key, value);
+				this.touch("integration-settings");
+				touched.push("integration-settings");
+			}
 			if (subsTouched) {
 				this.subscriptions = replaced.next;
 				this.touch("subscriptions");
@@ -1439,11 +1587,59 @@ function upsertById<T extends { id: string }>(arr: readonly T[], item: T): T[] {
 /** 主人填的设置、订阅、连接、目标所在的目录(代的布局)。 */
 export const CONFIG_DIR = ["config"] as const;
 
-/** 核心的设置在配置目录里的位置:设置按集成分文件,都在 `settings/` 下(ADR-0021 决策 42 下 10-01 的 🔗)。 */
-const CORE_SETTINGS_IN_CONFIG = ["settings", "core.json"] as const;
+/** 设置在配置目录里的子目录:设置按集成分文件,都在这下面(ADR-0021 决策 42 下 10-01 的 🔗)。 */
+const SETTINGS_DIR = "settings";
+
+/** 核心的设置在配置目录里的位置。 */
+const CORE_SETTINGS_IN_CONFIG = [SETTINGS_DIR, "core.json"] as const;
 
 /** 核心的设置文件(代的布局)。迁移写到哪、仓就从哪读。 */
 export const CORE_SETTINGS_FILE = [...CONFIG_DIR, ...CORE_SETTINGS_IN_CONFIG] as const;
+
+/** 一个集成的设置文件(代的布局):`config/settings/<键>.json`。迁移写到哪、仓就从哪读。 */
+export function integrationSettingsFile(
+	key: string,
+): readonly [...typeof CONFIG_DIR, typeof SETTINGS_DIR, string] {
+	return [...CONFIG_DIR, SETTINGS_DIR, `${key}.json`];
+}
+
+/**
+ * 登记进来的集成设置按键排好。键重复、或者和核心设置的顶层键同名(`/api/globals` 把两者摆在同一层),是组装处
+ * 写错了,当场抛。
+ */
+function segmentsByKey(
+	segments: readonly IntegrationSettingsSegment[],
+): ReadonlyMap<string, IntegrationSettingsSegment> {
+	const coreKeys = new Set(Object.keys(GlobalConfigSchema.shape));
+	const byKey = new Map<string, IntegrationSettingsSegment>();
+	for (const segment of segments) {
+		if (byKey.has(segment.key)) throw new Error(`集成设置「${segment.key}」登记了两次`);
+		if (coreKeys.has(segment.key)) {
+			throw new Error(`集成设置的键「${segment.key}」和核心设置的顶层键撞名`);
+		}
+		byKey.set(segment.key, segment);
+	}
+	return byKey;
+}
+
+/** 一份集成设置按它的格式解析、再过它写入的那一道;逐格原因的路径带上集成的键。 */
+function parseIntegrationSettings(
+	segment: IntegrationSettingsSegment,
+	value: unknown,
+	prev: unknown,
+): unknown {
+	const subject = `${segment.key} 的设置`;
+	const prefix = [segment.key];
+	const parsed = segment.schema.safeParse(value);
+	if (!parsed.success) {
+		throw ConfigValidationError.fromZod("integration-settings", parsed.error, { subject, prefix });
+	}
+	const issues = segment.checkWrite?.(parsed.data, prev) ?? [];
+	if (issues.length > 0) {
+		throw ConfigValidationError.fromIssues("integration-settings", issues, { subject, prefix });
+	}
+	return parsed.data;
+}
 
 export function createConfigStore(opts: CreateConfigStoreOptions): ConfigStore {
 	return new NodeConfigStore(opts);

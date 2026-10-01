@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { GlobalConfigPatch } from "../../types/globals";
+import type { GlobalsPatch } from "../../types/globals";
 import System from "../System";
 
 // ── 子节全部换成哑桩:这条测试问的是「哪一格里有什么」,不是各节自己画得对不对 ──
@@ -26,12 +26,12 @@ vi.mock("../../components/commands-settings", () => ({
 		draft,
 		onPatch,
 	}: {
-		draft: { app: { dynamicCron: string } };
-		onPatch: (d: GlobalConfigPatch) => void;
+		draft: { bilibili: { dynamicCron: string } };
+		onPatch: (d: GlobalsPatch) => void;
 	}) => (
 		<div data-testid="sec-commands">
-			<span data-testid="cron-echo">{draft.app.dynamicCron}</span>
-			<button type="button" onClick={() => onPatch({ app: { dynamicCron: "改过了" } })}>
+			<span data-testid="cron-echo">{draft.bilibili.dynamicCron}</span>
+			<button type="button" onClick={() => onPatch({ bilibili: { dynamicCron: "改过了" } })}>
 				改一下草稿
 			</button>
 		</div>
@@ -71,8 +71,10 @@ const { GLOBALS, FakeApiError } = vi.hoisted(() => {
 	class FakeApiError extends Error {}
 	return {
 		FakeApiError,
+		// `bilibili` 是 B 站自己的设置,`/api/globals` 把它挂在核心设置旁边下发;系统页画「运行」格要读它。
 		GLOBALS: {
-			app: { dynamicCron: "0 * * * *", logLevel: "info", logLevels: {} },
+			app: { logLevel: "info", logLevels: {} },
+			bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },
 			master: { targetId: undefined },
 		},
 	};

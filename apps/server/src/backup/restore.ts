@@ -13,7 +13,8 @@ import {
  *
  * - **overwrite**: the backup becomes the state. Each list scope replaces the
  *   current set (upsert everything in the backup, delete current entries the
- *   backup lacks). Globals are applied when the backup carries them.
+ *   backup lacks). Globals and the integrations' settings are applied when the backup
+ *   carries them.
  * - **merge**: additive only. Each list scope upserts the backup entries and
  *   deletes nothing. Globals are left untouched — merging someone's shared
  *   subscriptions must not clobber your own settings.
@@ -34,6 +35,7 @@ export interface CurrentState {
 
 export interface ImportSections {
 	globals?: GlobalConfig;
+	integrations?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -42,6 +44,7 @@ export interface ImportSections {
 /** 折好的终态 —— ConfigStore.replaceSections 要的形状。 */
 export interface FoldedSections {
 	globals?: GlobalConfig;
+	integrations?: Record<string, unknown>;
 	subscriptions?: Subscription[];
 	connections?: Connection[];
 	targets?: PushTarget[];
@@ -54,6 +57,8 @@ interface ScopePlan<T> {
 
 export interface ImportPlan {
 	setGlobals?: GlobalConfig;
+	/** 覆盖模式下备份带着的各集成的设置(整份换)。 */
+	setIntegrations?: Record<string, unknown>;
 	subscriptions: ScopePlan<Subscription>;
 	connections: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
@@ -108,6 +113,15 @@ export function planImport(
 		targets: planScope(current.targets, incoming.targets, mode),
 	};
 	if (mode === "overwrite" && incoming.globals) plan.setGlobals = incoming.globals;
+	// 各集成的设置与核心设置同一个口径:覆盖才换,合并不动主人自己的设置。按集成整份换,备份里没有的集成不动 ——
+	// 集成是代码登记的,不是主人的数据:备份里缺了它,说明备份来自还没有它的版本,本机那份照留。空的这一节等于没带。
+	if (
+		mode === "overwrite" &&
+		incoming.integrations &&
+		Object.keys(incoming.integrations).length > 0
+	) {
+		plan.setIntegrations = incoming.integrations;
+	}
 	return plan;
 }
 
@@ -136,6 +150,7 @@ function applyScope<T extends { id: string }>(
 export function foldPlan(current: CurrentState, plan: ImportPlan): FoldedSections {
 	return {
 		globals: plan.setGlobals,
+		integrations: plan.setIntegrations,
 		subscriptions: applyScope(current.subscriptions, plan.subscriptions),
 		connections: applyScope(current.connections, plan.connections),
 		targets: applyScope(current.targets, plan.targets),

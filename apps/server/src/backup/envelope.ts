@@ -21,16 +21,19 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
- * 2 = 1.0 起导出的备份。1.0 之前(0.x 导出的 1)一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0
- * 走迁移 —— 0.x 的形状只有迁移器认得。
+ * 3 = 1.0 起导出的备份(设置按集成分文件以后,各集成的设置单独一节 `integrations`;2 只在开发期用过、没发布)。
+ * 1.0 之前(0.x 导出的 1)一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 —— 0.x 的形状
+ * 只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 2 as const;
+export const BACKUP_SCHEMA_VERSION = 3 as const;
 
 export type BackupKind = "full" | "sanitized";
 
 /** Non-secret config payload carried in plaintext in every backup. */
 export interface BackupSections {
 	globals?: GlobalConfig;
+	/** 各集成的设置(今天只有 B 站),按集成的键;与 `globals` 同一个勾选(「设置」)。 */
+	integrations?: Record<string, unknown>;
 	/** 订阅:B 站与拓展同一节,行行带 `identity`(ADR-0021 决策 15)。 */
 	subscriptions?: Subscription[];
 	connections?: Connection[];

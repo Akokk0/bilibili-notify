@@ -299,7 +299,17 @@ export interface FansRefreshEntry {
 }
 
 /** ConfigStore 在 set 后 emit 'config-changed' 时携带的范围标识。 */
-export type ConfigScope = "globals" | "subscriptions" | "connections" | "targets" | "secrets";
+/**
+ * 一次配置写入改了哪一块。`integration-settings` 是各集成自己的设置(`config/settings/<键>.json`,今天只有
+ * B 站):不按集成分档,想知道自己那份变没变的集成自己比(同 3a 起 `SettingsReader.onChange` 的语义)。
+ */
+export type ConfigScope =
+	| "globals"
+	| "integration-settings"
+	| "subscriptions"
+	| "connections"
+	| "targets"
+	| "secrets";
 
 /** 用于 'login-status-report' 事件 / Dashboard auth channel；具体 schema 在 packages/api。 */
 export interface LoginSnapshot {

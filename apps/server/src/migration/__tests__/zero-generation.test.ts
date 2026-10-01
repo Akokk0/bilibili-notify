@@ -50,7 +50,8 @@ afterEach(async () => {
 const ZERO_FILES: Record<string, string> = {
 	// 老形状的设置与订阅(第二代附加项、第一代 routing + @全体):第二遍会改写它们。
 	"state/globals.json": JSON.stringify({
-		app: {},
+		// B 站的三格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗)
+		app: { logLevel: "debug", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 },
 		defaults: {
 			features: { liveEnd: true, liveEndExtras: { wordcloud: true } },
 			// 最老一代的扁平 AI 连接字段、历代旧默认模板
@@ -219,6 +220,7 @@ const EXPECTED_MOVES: Record<string, string> = {
 const REWRITTEN = [
 	"ai/conversations/conv-1.json",
 	"config/connections.json",
+	"config/settings/bilibili.json",
 	"config/settings/core.json",
 	"config/subscriptions.json",
 	"config/targets.json",
@@ -283,8 +285,10 @@ describe("migrateZeroGeneration", () => {
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
 
+		// 搬过来的,加上改写时从别的文件拆出来的(B 站的设置从核心那份拆出,ADR-0021 决策 42 下 10-01 的 🔗)。
+		const splitOut = ["config/settings/bilibili.json"];
 		expect(await listTree(target)).toEqual(
-			[...Object.values(EXPECTED_MOVES), "extensions/dev-bridge"].sort(),
+			[...Object.values(EXPECTED_MOVES), ...splitOut, "extensions/dev-bridge"].sort(),
 		);
 		expect([...report.rewritten].sort()).toEqual(REWRITTEN);
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
@@ -456,8 +460,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 12,
-			output: "085d4412588b31ee1bf2a01ac5961d734e4588f76e76f0f8054834242f2ca908",
+			revision: 13,
+			output: "eca75cac415e687a5d1646f361f8d179a59b1c36610861a76f6f20d7a662a29e",
 		});
 	});
 });

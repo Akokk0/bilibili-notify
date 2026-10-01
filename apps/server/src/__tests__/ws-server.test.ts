@@ -342,7 +342,7 @@ describe("WS server", () => {
 		send(ws, { type: "subscribe", channels: ["state"] });
 		await c.waitFor((m) => m?.type === "state" && m?.event === "hydrate");
 
-		await store.patchGlobals({ app: { dynamicCron: "*/15 * * * *" } });
+		await store.patchGlobals({ app: { fansCron: "*/15 * * * *" } });
 		const evt = await c.waitFor((m) => m?.type === "state" && m?.event === "config-changed");
 		expect(dataOf(evt)).toEqual({ scope: "globals" });
 		ws.close();

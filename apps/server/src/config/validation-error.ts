@@ -16,6 +16,7 @@ export type ConfigFailureCode = Extract<FailureCode, "invalid" | "not_found" | "
 /** 面板上一块配置叫什么 —— 拼进给人看的那句话。 */
 const SCOPE_LABEL: Record<ConfigScope, string> = {
 	globals: "全局设置",
+	"integration-settings": "集成的设置",
 	subscriptions: "订阅",
 	connections: "连接",
 	targets: "推送目标",
@@ -82,10 +83,20 @@ export class ConfigValidationError extends Error {
 		error: Parameters<typeof issuesFromZod>[0],
 		opts: { subject?: string; prefix?: (string | number)[] } = {},
 	): ConfigValidationError {
-		const raw = issuesFromZod(error);
+		return ConfigValidationError.fromIssues(scope, issuesFromZod(error), opts);
+	}
+
+	/** 一串逐格原因(zod 之外的核法交上来的)→ 与 {@link fromZod} 同一种话。`prefix` 同上。 */
+	static fromIssues(
+		scope: ConfigScope,
+		raw: readonly Issue[],
+		opts: { subject?: string; prefix?: (string | number)[] } = {},
+	): ConfigValidationError {
 		const prefix = opts.prefix ?? [];
 		const issues =
-			prefix.length > 0 ? raw.map((i) => ({ ...i, path: [...prefix, ...(i.path ?? [])] })) : raw;
+			prefix.length > 0
+				? raw.map((i) => ({ ...i, path: [...prefix, ...(i.path ?? [])] }))
+				: [...raw];
 		const subject = opts.subject ?? SCOPE_LABEL[scope];
 		return ConfigValidationError.invalid(
 			scope,

@@ -24,6 +24,7 @@ import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
+import { settingsOf } from "./bilibili/settings.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
@@ -406,9 +407,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				bootstrap,
 				dataRoot: runtime.dataRoot,
 				keyProvider: runtime.keyProvider,
-				// 从 globals.app.healthCheckMinutes 计算初始 ms;后续 config-changed
-				// 会通过 engines.ts 调 flow.setHealthCheckMs 热更。
-				healthCheckMs: runtime.configStore.getGlobals().app.healthCheckMinutes * 60_000,
+				// 从 B 站设置的 healthCheckMinutes 计算初始 ms;改了之后由 engines.ts 的
+				// `watchSettings` 调 flow.setHealthCheckMs 热更。
+				healthCheckMs: settingsOf(runtime.configStore).healthCheckMinutes * 60_000,
 			});
 		} catch (err) {
 			// Fatal: without StorageManager / BilibiliAPI the dashboard can't function.
@@ -766,7 +767,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 		});
 
-		// 启动 FansPoller — cron 跟 globals.app.dynamicCron,每个 enabled sub
+		// 启动 FansPoller — cron 跟 globals.app.fansCron,每个 enabled sub
 		// 拉一次 B 站 fans 数,写时序 jsonl + emit `fans-refreshed`。
 		const fansPoller = startFansPoller({
 			bus: runtime.bus,

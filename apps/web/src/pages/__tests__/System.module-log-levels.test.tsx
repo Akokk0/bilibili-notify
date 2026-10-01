@@ -61,10 +61,14 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** `logLevels` 是这份配置里已有的按模块覆盖。 */
+/**
+ * `logLevels` 是这份配置里已有的按模块覆盖。`bilibili` 是 B 站自己的设置(动态 cron / UA / 登录心跳间隔),
+ * `/api/globals` 把它挂在核心设置的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
+ */
 function mockApi(logLevels: Record<string, string>): void {
 	const globals = {
-		app: { dynamicCron: "0 * * * *", logLevel: "info", logLevels },
+		app: { logLevel: "info", logLevels },
+		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 		master: { targetId: undefined },
 	};
 	vi.mocked(api.get).mockImplementation(async (url: string) => {

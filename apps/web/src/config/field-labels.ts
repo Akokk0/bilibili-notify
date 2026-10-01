@@ -61,7 +61,7 @@ export interface FieldLabel {
  * 所有 `<Field code="...">` 的元信息表。
  *
  * 部分 code 在不同上下文有不同语义:
- * - `app.healthCheckMinutes` — 此处沿用 schema 真实语义(LoginFlow 登录健康检查
+ * - `bilibili.healthCheckMinutes` — 此处沿用 schema 真实语义(LoginFlow 登录健康检查
  *   间隔),replace sections.tsx 历史上写错的 master 节流文案。
  * - `enable` / `forward` — 取 sections.tsx 的「全局段」详细 hint;per-UP 覆盖
  *   场景如需短版,Field prop 可 hint override。
@@ -73,7 +73,7 @@ export interface FieldLabel {
  */
 export const FIELD_LABELS = {
 	// ── 通用 / 全局(app.*) ────────────────────────────────────────────────
-	"app.dynamicCron": {
+	"bilibili.dynamicCron": {
 		label: "动态检查频率",
 		hint: "cron 表达式 · 默认 30 */2 * * * * (每 2 分钟的第 30 秒,错开整分高峰)",
 		section: "general",
@@ -115,12 +115,12 @@ export const FIELD_LABELS = {
 		hint: "只影响 ai 模块",
 		section: "logging",
 	},
-	"app.userAgent": {
+	"bilibili.userAgent": {
 		label: "User-Agent",
 		hint: "留空使用默认;遇 -352 风控可换",
 		section: "general",
 	},
-	"app.healthCheckMinutes": {
+	"bilibili.healthCheckMinutes": {
 		label: "登录心跳间隔",
 		hint: "每 N 分钟向 B 站 getMyselfInfo 探活;失效会触发 auth-lost + master 通知",
 		section: "general",

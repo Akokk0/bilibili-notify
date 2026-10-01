@@ -9,21 +9,22 @@
  * 这页曾靠一份手抄的块清单挑块,链接解析那张卡就漏过一次 —— 表现为「点了保存,草稿岛又弹
  * 出来」(服务端根本没收到,原样返回,diff 还在)。清单要人记得加,尺子不用。
  *
- * 清空的可选字段(master.targetId / app.userAgent / 各模块 logLevels)由 buildPatch 与基线
+ * 清空的可选字段(master.targetId / bilibili.userAgent / 各模块 logLevels)由 buildPatch 与基线
  * 一比自动变成显式 `null`,不用逐个手写 `?? null`。
  */
 
 import { buildPatch } from "@bilibili-notify/internal/patch";
-import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
+import type { GlobalsPatch, GlobalsResponse } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 
-export function buildSystemPatch(next: GlobalConfig, base: GlobalConfig): GlobalConfigPatch {
+export function buildSystemPatch(next: GlobalsResponse, base: GlobalsResponse): GlobalsPatch {
 	const touched = new Set<string>();
 	for (const d of walkTreeDiff(base, next)) touched.add(d.code.split(".")[0] ?? d.code);
-	const pick = (g: GlobalConfig): Partial<GlobalConfig> => {
+	// 顶层块里也有各集成的设置(`bilibili`):按键挑,不认得是谁的。
+	const pick = (g: GlobalsResponse): Record<string, unknown> => {
 		const out: Record<string, unknown> = {};
-		for (const key of touched) if (key in g) out[key] = g[key as keyof GlobalConfig];
-		return out as Partial<GlobalConfig>;
+		for (const key of touched) if (key in g) out[key] = g[key];
+		return out;
 	};
-	return buildPatch(pick(next), pick(base)) as GlobalConfigPatch;
+	return buildPatch(pick(next), pick(base)) as GlobalsPatch;
 }

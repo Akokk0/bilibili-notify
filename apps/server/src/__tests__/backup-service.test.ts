@@ -8,12 +8,14 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
 import { BackupPinError } from "../backup/crypto.js";
+import { type BackupSections, buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
+import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
- * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope(+cookie),
+ * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope 与各集成的设置(+cookie),
  * 导入按 plan 逐个写回。写回经 store 的既有方法 → 自动触发 config-changed 热重载;
  * cookie 恢复后回调 onCookiesRestored(bootstrap 接活体重登)。
  */
@@ -44,15 +46,24 @@ function onebot(id: string, token: string): Connection {
 	};
 }
 
+/** B 站的设置 —— 各集成的设置在备份里单独一节(`integrations`),按集成的键(今天只有 B 站)。 */
+const BILIBILI_SETTINGS = { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 };
+
 function makeFakeStore(
-	init: Partial<{ subscriptions: Subscription[]; connections: Connection[] }> = {},
+	init: Partial<{
+		subscriptions: Subscription[];
+		connections: Connection[];
+		integrations: Record<string, unknown>;
+	}> = {},
 ) {
 	let globals = makeDefaultGlobalConfig();
+	let integrations: Record<string, unknown> = init.integrations ?? { bilibili: BILIBILI_SETTINGS };
 	let subs = [...(init.subscriptions ?? [])];
 	let connections = [...(init.connections ?? [])];
 	let targets: PushTarget[] = [];
 	const store: BackupStore = {
 		getGlobals: () => globals,
+		getAllIntegrationSettings: () => integrations,
 		getSubscriptions: () => subs,
 		getConnections: () => connections,
 		getTargets: () => targets,
@@ -61,6 +72,8 @@ function makeFakeStore(
 		// 空函数,恰好把 webhook 目标根本恢复不了那个 bug 整个盖住了。
 		replaceSections: vi.fn(async (next) => {
 			if (next.globals) globals = next.globals;
+			// 各集成的设置按键整份换(和真 store 一样:备份里没带的键不动)。
+			if (next.integrations) integrations = { ...integrations, ...next.integrations };
 			if (next.subscriptions) subs = next.subscriptions;
 			if (next.connections) connections = next.connections;
 			if (next.targets) targets = next.targets;
@@ -306,17 +319,18 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(2);
+			expect(env.schemaVersion).toBe(3);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
 			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([
 				"bilibili",
 				"douyin",
 			]);
-			// 节就这四个:订阅只有一节,没有按来源再拆出第二节。
+			// 节就这五个:订阅只有一节,没有按来源再拆出第二节;各集成的设置跟「设置」同一个勾选。
 			expect(Object.keys(sections).sort()).toEqual([
 				"connections",
 				"globals",
+				"integrations",
 				"subscriptions",
 				"targets",
 			]);
@@ -330,6 +344,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		expect(Object.keys(withSubs.sections).sort()).toEqual([
 			"connections",
 			"globals",
+			"integrations",
 			"subscriptions",
 			"targets",
 		]);
@@ -337,7 +352,12 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 			kind: "sanitized",
 			sections: { subscriptions: false },
 		});
-		expect(Object.keys(without.sections).sort()).toEqual(["connections", "globals", "targets"]);
+		expect(Object.keys(without.sections).sort()).toEqual([
+			"connections",
+			"globals",
+			"integrations",
+			"targets",
+		]);
 	});
 
 	it.each(["overwrite", "merge"] as const)(
@@ -445,5 +465,153 @@ describe("BackupService × 同一身份只能有一条订阅", () => {
 		const result = await service(store).importBackup({ envelope: env, mode: "merge" });
 		expect(store.getSubscriptions()).toEqual([person("local", "12345", "备份")]);
 		expect(result.subscriptions).toEqual({ upserted: 1, deleted: 0 });
+	});
+});
+
+/**
+ * 各集成的设置(今天只有 B 站)在备份里是单独一节 `integrations`,按集成的键。它跟核心设置(`globals`)走
+ * **同一个勾选**(「设置」)和**同一种恢复口径**(覆盖才换、合并不动主人自己的设置);完整档与脱敏档一个样。
+ *
+ * 这几条钉的是**接线** —— 纯函数各自的测试证明不了服务真的把这一节读出来、递给打包、再递给 `replaceSections`:
+ * 漏了哪一环,症状都是「恢复完 B 站的设置回到默认值」,而别的测试全绿。
+ */
+describe("BackupService × 各集成的设置", () => {
+	/** 第二个集成是假想的:设置里带一个叫 `token` 的密钥,看脱敏与完整档的往返有没有走到这一节里。 */
+	const SETTINGS = {
+		bilibili: { dynamicCron: "0 */5 * * * *", userAgent: "UA/1", healthCheckMinutes: 45 },
+		other: { token: "tok-other", note: "另一个集成" },
+	};
+	const PIN = "123456";
+
+	function service(store: BackupStore) {
+		return createBackupService({
+			configStore: store,
+			cookieStore: makeCookieStore(null),
+			now: () => "t",
+		});
+	}
+
+	/** 本机的设置是 B 站的默认,和备份里那份不一样 —— 恢复有没有换进去一眼看得出。 */
+	const LOCAL = { bilibili: BILIBILI_SETTINGS };
+
+	it("sanitized 导出:勾了「设置」→ integrations 随 globals 一起带上,密钥照样抹平", async () => {
+		const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+			kind: "sanitized",
+		});
+		expect(env.sections.globals).toBeDefined();
+		expect(env.sections.integrations).toEqual({
+			bilibili: SETTINGS.bilibili,
+			other: { token: "", note: "另一个集成" },
+		});
+	});
+
+	it("full 导出:明文段同样抹平,真值在加密袋里 —— 用 PIN 打开原样回来", async () => {
+		const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+			kind: "full",
+			pin: PIN,
+		});
+		expect(env.sections.integrations).toEqual({
+			bilibili: SETTINGS.bilibili,
+			other: { token: "", note: "另一个集成" },
+		});
+		expect(openFullBackup(env, PIN).sections.integrations).toEqual(SETTINGS);
+	});
+
+	it.each(["sanitized", "full"] as const)(
+		"%s 导出:没勾「设置」→ globals 与 integrations 一起不带",
+		async (kind) => {
+			const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+				kind,
+				pin: PIN,
+				sections: { globals: false },
+			});
+			const sections = kind === "full" ? openFullBackup(env, PIN).sections : env.sections;
+			expect(sections.globals).toBeUndefined();
+			expect(sections.integrations).toBeUndefined();
+			// 文件里(JSON)也没有这一节 —— 完整档的内存形状里没勾的节是 undefined 键,落盘时才丢。
+			expect(Object.keys(JSON.parse(JSON.stringify(env)).sections)).not.toContain("integrations");
+		},
+	);
+
+	it("overwrite 恢复:备份带着的 integrations 交给 replaceSections,本机的换成备份里的", async () => {
+		const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+			kind: "full",
+			pin: PIN,
+		});
+		const store = makeFakeStore({ integrations: LOCAL });
+
+		await service(store).importBackup({ envelope: env, pin: PIN, mode: "overwrite" });
+
+		expect(store.replaceSections).toHaveBeenCalledTimes(1);
+		expect(store.replaceSections).toHaveBeenCalledWith(
+			expect.objectContaining({ integrations: SETTINGS }),
+		);
+		expect(store.getAllIntegrationSettings()).toEqual(SETTINGS);
+	});
+
+	it("merge 恢复:不碰本机的各集成设置(合并不动主人自己的设置)", async () => {
+		const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+			kind: "sanitized",
+		});
+		const store = makeFakeStore({ integrations: LOCAL });
+
+		await service(store).importBackup({ envelope: env, mode: "merge" });
+
+		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
+		expect(folded?.integrations).toBeUndefined();
+		expect(store.getAllIntegrationSettings()).toEqual(LOCAL);
+	});
+
+	it.each(["overwrite", "merge"] as const)(
+		"%s 恢复一份没勾「设置」的备份 → 本机各集成的设置原样留着",
+		async (mode) => {
+			const env = await service(makeFakeStore({ integrations: SETTINGS })).exportBackup({
+				kind: "sanitized",
+				sections: { globals: false },
+			});
+			const store = makeFakeStore({ integrations: LOCAL });
+
+			await service(store).importBackup({ envelope: env, mode });
+
+			const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
+			expect(folded?.integrations).toBeUndefined();
+			expect(store.getAllIntegrationSettings()).toEqual(LOCAL);
+		},
+	);
+
+	/**
+	 * 「设置已应用」不能只看核心那份:备份里只有各集成的设置(没有 `globals`)也是应用了设置 —— 面板据此说
+	 * 「设置已恢复」。手搭一份只带这一节的备份(导出走勾选,两节同进同出,出不了这种)。
+	 */
+	describe.each([false, true])("globalsApplied(dry run=%s)", (dryRun) => {
+		function restore(sections: BackupSections, mode: ImportMode) {
+			const envelope = buildBackup({ kind: "sanitized", createdAt: "t", sections });
+			return service(makeFakeStore({ integrations: LOCAL })).importBackup({
+				envelope,
+				mode,
+				dryRun,
+			});
+		}
+
+		it("overwrite 只带 integrations → true", async () => {
+			expect((await restore({ integrations: SETTINGS }, "overwrite")).globalsApplied).toBe(true);
+		});
+
+		it("overwrite 只带 globals → true", async () => {
+			expect(
+				(await restore({ globals: makeDefaultGlobalConfig() }, "overwrite")).globalsApplied,
+			).toBe(true);
+		});
+
+		it("merge 两样都带着 → false(合并不动设置)", async () => {
+			const sections = { globals: makeDefaultGlobalConfig(), integrations: SETTINGS };
+			expect((await restore(sections, "merge")).globalsApplied).toBe(false);
+		});
+
+		it("overwrite 两样都没带 → false", async () => {
+			expect((await restore({ subscriptions: [sub("1")] }, "overwrite")).globalsApplied).toBe(
+				false,
+			);
+		});
 	});
 });

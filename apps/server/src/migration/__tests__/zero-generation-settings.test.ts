@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { BUILTIN_AI_PRESETS, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
+import { settingsOf } from "../../bilibili/settings.js";
 import { createSecretStore } from "../../config/secret-store.js";
 import { createConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -51,6 +52,63 @@ async function sameFile(a: string, b: string): Promise<boolean> {
 async function expectZeroGlobalsUntouched(sandbox: ZeroSandbox, original: string): Promise<void> {
 	expect(await readFile(join(sandbox.zero, "state", "globals.json"), "utf8")).toBe(original);
 }
+
+// ── B 站那三格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗)──────────────────────────
+
+describe("0.x 设置里 B 站的三格 → settings/bilibili.json", () => {
+	const sandbox = useZeroSandbox("bn-bilibili-settings-");
+
+	/** 一份 0.x 的设置,`app` 里带着给出的几格。 */
+	function oldGlobalsWithApp(app: Record<string, unknown>): string {
+		const old = makeDefaultGlobalConfig() as unknown as { app: Record<string, unknown> };
+		old.app = { ...old.app, ...app };
+		return JSON.stringify(old);
+	}
+
+	it("userAgent / dynamicCron / healthCheckMinutes 原样搬进 settings/bilibili.json,键名不改;核心那份不再有", async () => {
+		const original = oldGlobalsWithApp({
+			userAgent: "UA/1.0",
+			dynamicCron: "*/5 * * * *",
+			healthCheckMinutes: 45,
+		});
+		await sandbox.placeZeroText("state/globals.json", original);
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten).toEqual(
+			expect.arrayContaining(["config/settings/core.json", "config/settings/bilibili.json"]),
+		);
+		await expectZeroGlobalsUntouched(sandbox, original);
+		const moved = { userAgent: "UA/1.0", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
+		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual(moved);
+		const coreApp = (
+			await sandbox.readConfig<{ app: Record<string, unknown> }>("settings/core.json")
+		).app;
+		for (const key of Object.keys(moved)) expect(coreApp, key).not.toHaveProperty(key);
+		expect(coreApp.logLevel).toBe("info"); // 别的格原样留在核心
+
+		expect(settingsOf(await sandbox.load())).toEqual(moved);
+	});
+
+	it("一条解析不了的老 cron 原样搬过去,开机照读 —— 读盘宽松,只有写入才核", async () => {
+		await sandbox.placeZeroText("state/globals.json", oldGlobalsWithApp({ dynamicCron: "坏的" }));
+
+		await sandbox.migrate();
+
+		expect(settingsOf(await sandbox.load()).dynamicCron).toBe("坏的");
+	});
+
+	it("0.x 一格都没写过 → 不建 settings/bilibili.json;开机时按默认值建一份", async () => {
+		await sandbox.placeZeroText("state/globals.json", oldGlobalsWithApp({}));
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten).not.toContain("config/settings/bilibili.json");
+		const settings = settingsOf(await sandbox.load());
+		expect(settings).toEqual({ dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 });
+		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual(settings);
+	});
+});
 
 // ── 历代旧默认模板(原 config-store.test.ts)────────────────────────────────────────
 

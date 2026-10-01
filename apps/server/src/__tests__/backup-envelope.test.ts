@@ -100,7 +100,7 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("1.0 起导出的备份是版本 2", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(2);
+	it("1.0 起导出的备份是版本 3(各集成的设置单独一节 integrations)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(3);
 	});
 });

@@ -35,7 +35,7 @@ const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
-	app: { dynamicCron: "*/2 * * * *", fansCron: "*/10 * * * *" },
+	app: { fansCron: "*/10 * * * *" },
 } as unknown as GlobalConfig;
 
 const PROFILE = { name: "UP", avatar: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
@@ -94,7 +94,7 @@ afterEach(() => {
 });
 
 describe("① fansCron 解耦", () => {
-	it("cron 用 app.fansCron,而不是 dynamicCron", () => {
+	it("cron 用 app.fansCron(动态轮询那条在 B 站自己的设置里,粉丝轮询不碰)", () => {
 		handle = startFansPoller(
 			baseDeps({
 				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],

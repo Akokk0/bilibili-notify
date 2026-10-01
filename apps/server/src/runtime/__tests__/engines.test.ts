@@ -7,9 +7,10 @@
  * 用真实 NodeMessageBus 驱动事件,聚焦验证 engines.ts 的 wiring 与热重载分支:
  *
  *   boot:           push.start / dynamic.start 拉起;默认 globals 下 AI / image 不构造
- *   config-changed globals:  dynamic+live.updateConfig、setLevel、api.setUserAgent、
- *                            loginFlow.setHealthCheckMs、push.setMaster 一并热推,
- *                            且新 dynamicCron 透传进 DynamicEngineConfig
+ *   config-changed globals:  dynamic+live.updateConfig、setLevel、push.setMaster 一并热推
+ *   config-changed integration-settings: B 站自己的设置(cron / UA / 健康检查间隔)按格各开各的门 ——
+ *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicEngineConfig)、
+ *                            api.setUserAgent、loginFlow.setHealthCheckMs;没变的格不动
  *   config-changed targets:  仅 push.setMaster 后早退(不触发 dynamic.updateConfig)
  *   config-changed 其它 scope:no-op
  *   AI 启 / 停 / 改:           lazy 构造 + 失效降级 + 已存在时 updateConfig
@@ -46,7 +47,8 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
-import type { ConfigStore } from "../../config/store.js";
+import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/settings.js";
+import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
@@ -313,18 +315,36 @@ function makeServiceCtx() {
 	};
 }
 
-function makeConfigStore(initial: GlobalConfig) {
+function makeConfigStore(
+	initial: GlobalConfig,
+	bus: ReturnType<typeof createNodeMessageBus>,
+	initialBilibili: BilibiliSettings,
+) {
 	let g = initial;
+	let bilibili = initialBilibili;
 	let targets: PushTarget[] = [];
 	let connections: Connection[] = [];
 	return {
 		getGlobals: () => g,
+		// B 站设置在配置仓里是登记进来的一份(`bilibili/settings.ts`),读它要拿登记过的那个 segment 来取:
+		// 替身与真仓一样,别的键当场抛(组装处漏了登记)。
+		getIntegrationSettings: (segment: IntegrationSettingsSegment) => {
+			if (segment.key !== "bilibili") throw new Error(`集成「${segment.key}」没有登记`);
+			return structuredClone(bilibili);
+		},
+		// 与真仓同一条路:挂在 bus 的 `config-changed` 上,只交 scope。
+		onChange: (handler: (scope: string) => void) =>
+			bus.on("config-changed", ({ scope }) => handler(scope)),
 		getTargets: () => targets,
 		getConnections: () => connections,
 		patchTarget: vi.fn(async () => {}),
 		patchConnection: vi.fn(async () => {}),
 		_set: (next: GlobalConfig) => {
 			g = next;
+		},
+		_getBilibili: () => bilibili,
+		_setBilibili: (next: BilibiliSettings) => {
+			bilibili = next;
 		},
 		_setTargets: (next: PushTarget[]) => {
 			targets = next;
@@ -350,6 +370,8 @@ interface Ctx {
 
 function setup(opts?: {
 	globals?: GlobalConfig;
+	/** 开机那一刻的 B 站设置(只给要改的几格,其余取格式的默认值);不给 = 全默认。 */
+	bilibili?: Partial<BilibiliSettings>;
 	puppeteer?: boolean;
 	subs?: Subscription[];
 	/** 配置表里的连接(开机健康探测会挨个探它们)。 */
@@ -378,8 +400,13 @@ function setup(opts?: {
 	};
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
+	const bus = createNodeMessageBus();
 	const configStore = Object.assign(
-		makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig()),
+		makeConfigStore(
+			opts?.globals ?? makeDefaultGlobalConfig(),
+			bus,
+			BilibiliSettingsSchema.parse(opts?.bilibili ?? {}),
+		),
 		opts?.overrides?.configStore,
 	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
@@ -396,7 +423,6 @@ function setup(opts?: {
 		setHealthCheckMs: vi.fn(),
 		current: () => ({ status: opts?.loginStatus ?? BiliLoginStatus.NOT_LOGIN, msg: "" }),
 	};
-	const bus = createNodeMessageBus();
 	const subs = opts?.subs ?? [];
 	const runtime = createEngines({
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
@@ -445,6 +471,16 @@ function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
 	const next = structuredClone(c.configStore.getGlobals());
 	mutate(next);
 	c.configStore._set(next);
+}
+
+/**
+ * 当前 B 站设置 → mutate → 写回替身(模拟配置仓写入之后的快照)。过一遍格式,与真仓一样永远是规范形态
+ * (`watchSettings` 靠整份比字符串判变没变,键序要稳)。
+ */
+function patchBilibili(c: Ctx, mutate: (b: BilibiliSettings) => void): void {
+	const next = structuredClone(c.configStore._getBilibili());
+	mutate(next);
+	c.configStore._setBilibili(BilibiliSettingsSchema.parse(next));
 }
 
 function aiGlobals(): GlobalConfig {
@@ -818,19 +854,21 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 });
 
 describe("createEngines — config-changed globals 热重载", () => {
-	it("改 app 字段:热推 health + dynamic,不碰 live.updateConfig", () => {
+	it("改 B 站设置(cron + 健康检查间隔):热推 health + dynamic,不碰 live.updateConfig", () => {
 		const c = setup();
 		active = c;
-		patchGlobals(c, (g) => {
-			g.app.dynamicCron = "*/9 * * * *";
-			g.app.healthCheckMinutes = 45;
+		patchBilibili(c, (b) => {
+			b.dynamicCron = "*/9 * * * *";
+			b.healthCheckMinutes = 45;
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
+		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(45 * 60_000);
-		expect(H.push[0].setMaster).toHaveBeenCalledTimes(1);
-		// app 变更不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
+		// B 站设置不是核心设置(scope 是 integration-settings 不是 globals)→ 不重算 master。
+		// (从前这几格住在 `app` 里,走 globals 那一档,setMaster 顺带被调一次。)
+		expect(H.push[0].setMaster).not.toHaveBeenCalled();
+		// B 站设置不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 		// UA / 日志等级这次都没动 → 不该被顺手重设(boot 那 1 次之外不再有)。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
@@ -843,11 +881,11 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("只改 dynamicCron:不重设 UA、不重排健康检查、不动日志等级", () => {
 		const c = setup();
 		active = c;
-		patchGlobals(c, (g) => {
+		patchBilibili(c, (b) => {
 			// 必须与默认值不同 —— DEFAULT_DYNAMIC_CRON 现在就是 "30 */2 * * * *"。
-			g.app.dynamicCron = "*/9 * * * *";
+			b.dynamicCron = "*/9 * * * *";
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
+		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 本身要生效
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:185)
@@ -875,10 +913,10 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("只改 userAgent:重设 UA,不重排健康检查", () => {
 		const c = setup();
 		active = c;
-		patchGlobals(c, (g) => {
-			g.app.userAgent = "Mozilla/5.0 (custom)";
+		patchBilibili(c, (b) => {
+			b.userAgent = "Mozilla/5.0 (custom)";
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
+		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(2);
 		expect(c.api.setUserAgent).toHaveBeenLastCalledWith("Mozilla/5.0 (custom)");
@@ -905,11 +943,13 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.ai).toHaveLength(1); // boot 时已构造
 		H.ai[0].updateConfig.mockClear();
 
-		patchGlobals(c, (g) => {
-			g.app.dynamicCron = "30 */2 * * * *";
+		patchBilibili(c, (b) => {
+			// 要与默认值不同,否则这一发什么都没变,下面的断言就是空转。
+			b.dynamicCron = "*/9 * * * *";
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
+		c.bus.emit("config-changed", { scope: "integration-settings" });
 
+		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 的改动确实被处理了
 		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
 	});
 
@@ -952,10 +992,10 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("新 dynamicCron 透传进 DynamicEngineConfig", () => {
 		const c = setup();
 		active = c;
-		patchGlobals(c, (g) => {
-			g.app.dynamicCron = "*/7 * * * *";
+		patchBilibili(c, (b) => {
+			b.dynamicCron = "*/7 * * * *";
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
+		c.bus.emit("config-changed", { scope: "integration-settings" });
 		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(cfg.dynamicCron).toBe("*/7 * * * *");
 	});
@@ -1097,6 +1137,61 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 });
 
+// B 站自己的设置(`config/settings/bilibili.json`)走 `integration-settings` 这一档,与核心设置的 `globals`
+// 各管各的:这一档只认 B 站那三格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那三样。
+describe("createEngines — config-changed integration-settings(B 站设置)", () => {
+	it("事件来了但 B 站设置没变(别的集成改了):不 updateConfig、不重设 UA、不重排健康检查", () => {
+		const c = setup();
+		active = c;
+		c.bus.emit("config-changed", { scope: "integration-settings" });
+
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
+		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
+	});
+
+	it("只改 healthCheckMinutes:按新间隔重排健康检查,不动 cron、不重设 UA", () => {
+		const c = setup();
+		active = c;
+		patchBilibili(c, (b) => {
+			b.healthCheckMinutes = 90;
+		});
+		c.bus.emit("config-changed", { scope: "integration-settings" });
+
+		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledTimes(1);
+		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(90 * 60_000);
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
+	});
+
+	it("只改核心设置的 logLevel:B 站那三样(cron / UA / 健康检查)一个都不动", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.app.logLevel = "debug";
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2); // 这一发确实被处理了(boot + 这次)
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
+		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
+	});
+
+	it("启动期:userAgent 取自 B 站设置", () => {
+		const c = setup({ bilibili: { userAgent: "Mozilla/5.0 (boot)" } });
+		active = c;
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
+		expect(c.api.setUserAgent).toHaveBeenCalledWith("Mozilla/5.0 (boot)");
+	});
+
+	it("启动期:DynamicEngine 的初始 config 带 B 站设置的 dynamicCron", () => {
+		const c = setup({ bilibili: { dynamicCron: "*/3 * * * *" } });
+		active = c;
+		expect(H.dynamic[0].opts.config.dynamicCron).toBe("*/3 * * * *");
+	});
+});
+
 describe("createEngines — AI 热重载三态", () => {
 	it("启用:lazy 构造 commentary 并下发给 dynamic/live", () => {
 		const c = setup(); // 默认无 AI
@@ -1215,6 +1310,23 @@ describe("createEngines — dispose", () => {
 		// bus handle 已解绑:dispose 后再发 config-changed 不应再 updateConfig。
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(dyn.updateConfig).not.toHaveBeenCalled();
+	});
+
+	it("dispose 同样解绑 B 站设置的监听(后续 integration-settings 不再生效)", () => {
+		const c = setup();
+		active = c;
+		const dyn = H.dynamic[0];
+		c.runtime.dispose();
+		active = null;
+		patchBilibili(c, (b) => {
+			b.dynamicCron = "*/9 * * * *";
+			b.healthCheckMinutes = 45;
+			b.userAgent = "Mozilla/5.0 (after dispose)";
+		});
+		c.bus.emit("config-changed", { scope: "integration-settings" });
+		expect(dyn.updateConfig).not.toHaveBeenCalled();
+		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
 	});
 
 	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", () => {

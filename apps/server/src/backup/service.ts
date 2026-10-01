@@ -31,11 +31,13 @@ import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
 /** The slice of `ConfigStore` the backup service depends on. */
 export interface BackupStore {
 	getGlobals(): GlobalConfig;
+	getAllIntegrationSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
 	getConnections(): Connection[];
 	getTargets(): PushTarget[];
 	replaceSections(next: {
 		globals?: GlobalConfig;
+		integrations?: Record<string, unknown>;
 		subscriptions?: Subscription[];
 		connections?: Connection[];
 		targets?: PushTarget[];
@@ -49,6 +51,7 @@ interface BackupCookieStore {
 
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
+	/** 设置:核心那份连同各集成的(B 站……)。 */
 	globals?: boolean;
 	/** 订阅:只有一节,B 站与拓展来源的同在里面(ADR-0021 决策 15)。 */
 	subscriptions?: boolean;
@@ -130,7 +133,10 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 	async function exportBackup(opts: ExportOptions): Promise<BackupEnvelope> {
 		const sel = { ...ALL_SECTIONS, ...opts.sections };
 		const picked: BackupSections = {};
-		if (sel.globals) picked.globals = deps.configStore.getGlobals();
+		if (sel.globals) {
+			picked.globals = deps.configStore.getGlobals();
+			picked.integrations = deps.configStore.getAllIntegrationSettings();
+		}
 		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
 		if (sel.connections) picked.connections = deps.configStore.getConnections();
 		if (sel.targets) picked.targets = deps.configStore.getTargets();
@@ -142,6 +148,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			return assembleFullBackup(
 				{
 					globals: picked.globals,
+					integrations: picked.integrations,
 					subscriptions: picked.subscriptions,
 					connections: picked.connections,
 					targets: picked.targets,
@@ -186,7 +193,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		if (!opts.dryRun) {
 			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
 			await deps.configStore.replaceSections(folded);
-			globalsApplied = Boolean(plan.setGlobals);
+			globalsApplied = Boolean(plan.setGlobals || plan.setIntegrations);
 
 			if (cookies?.cookiesJson) {
 				await deps.cookieStore.save({
@@ -197,7 +204,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				cookiesRestored = true;
 			}
 		} else {
-			globalsApplied = Boolean(plan.setGlobals);
+			globalsApplied = Boolean(plan.setGlobals || plan.setIntegrations);
 			cookiesRestored = Boolean(cookies?.cookiesJson);
 		}
 

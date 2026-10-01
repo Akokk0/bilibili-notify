@@ -28,7 +28,6 @@ interface HealthDetailsBody {
 	moduleVersions: ModuleVersions;
 	uptime: number;
 	startedAt: string;
-	dynamicCron: string;
 	configScopes: {
 		globals: ConfigScopeMeta;
 		subscriptions: ConfigScopeMeta & { count: number };
@@ -114,7 +113,6 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 	app.get("/", (c) => c.json(healthResponseOf(deps.runtime)));
 
 	app.get("/details", (c) => {
-		const globals = deps.store.getGlobals();
 		const subs = deps.store.getSubscriptions();
 		const targets = deps.store.getTargets();
 		const body: HealthDetailsBody = {
@@ -123,7 +121,6 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 			moduleVersions: MODULE_VERSIONS,
 			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
 			startedAt: STARTED_AT,
-			dynamicCron: globals.app.dynamicCron,
 			configScopes: {
 				globals: deps.store.getGlobalsMeta(),
 				subscriptions: { ...deps.store.getSubscriptionsMeta(), count: subs.length },

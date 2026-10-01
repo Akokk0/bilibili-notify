@@ -9,7 +9,8 @@ import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
  * planImport 把「当前状态 + 导入段 + 覆盖/合并」算成一组具体写操作(upsert / delete /
- * setGlobals),纯函数、无 IO。覆盖=整盘替换(删多余),合并=并集(不删),合并不动 globals。
+ * setGlobals / setIntegrations),纯函数、无 IO。覆盖=整盘替换(删多余),合并=并集(不删),合并不动 globals
+ * 与各集成的设置。
  */
 function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
@@ -105,6 +106,44 @@ describe("planImport", () => {
 		// subscriptions untouched (not in the backup) — no upserts, no deletes
 		expect(plan.subscriptions.upsert).toEqual([]);
 		expect(plan.subscriptions.delete).toEqual([]);
+	});
+});
+
+/**
+ * 各集成的设置(今天只有 B 站)是备份里单独一节 `integrations`,恢复的口径与核心设置(`globals`)一个样:
+ * 覆盖才换,合并不动主人自己的设置;备份里没有这一节就不写。
+ */
+describe("planImport / foldPlan × 各集成的设置", () => {
+	const integrations = {
+		bilibili: { dynamicCron: "0 */5 * * * *", userAgent: "UA/1", healthCheckMinutes: 45 },
+	};
+
+	it("overwrite:备份带着 integrations → 计划里整份换,折出来的终态也带着", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { integrations }, "overwrite");
+		expect(plan.setIntegrations).toEqual(integrations);
+		expect(foldPlan(current, plan).integrations).toEqual(integrations);
+	});
+
+	it("merge:备份带着 integrations 也不动 —— 合并别人分享的订阅,不能冲掉自己的设置", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { integrations }, "merge");
+		expect(plan.setIntegrations).toBeUndefined();
+		expect(foldPlan(current, plan).integrations).toBeUndefined();
+	});
+
+	it("overwrite:备份带着空的 integrations → 当没带(不算「设置恢复了」)", () => {
+		const current = currentWith([]);
+		const plan = planImport(current, { integrations: {} }, "overwrite");
+		expect(plan.setIntegrations).toBeUndefined();
+		expect(foldPlan(current, plan).integrations).toBeUndefined();
+	});
+
+	it("overwrite:备份没有 integrations 那一节 → 不写,折出来也没有", () => {
+		const current = currentWith([sub("1")]);
+		const plan = planImport(current, { subscriptions: [sub("2")] }, "overwrite");
+		expect(plan.setIntegrations).toBeUndefined();
+		expect(foldPlan(current, plan).integrations).toBeUndefined();
 	});
 });
 

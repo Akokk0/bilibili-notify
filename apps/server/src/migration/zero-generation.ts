@@ -14,6 +14,7 @@
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import {
 	copyFileAtomic,
 	isLeftoverName,
@@ -23,7 +24,7 @@ import {
 	syncDirectory,
 } from "@bilibili-notify/storage";
 import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
-import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
+import { CONFIG_DIR, CORE_SETTINGS_FILE, integrationSettingsFile } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
 import { CHAT_ASSETS_DIR } from "../runtime/chat-assets.js";
@@ -37,7 +38,7 @@ import { migrateConversationFiles } from "./conversations.js";
 import { migrateHistoryFiles } from "./history.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
-import { migrateSettingsFile } from "./settings.js";
+import { migrateSettingsFiles } from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
 import {
@@ -51,7 +52,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 12;
+export const MIGRATION_REVISION = 13;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -280,7 +281,11 @@ const REWRITES: readonly {
 	},
 	{
 		label: "设置",
-		run: (opts) => migrateSettingsFile(dataPath(opts.targetDir, ...CORE_SETTINGS_FILE)),
+		run: (opts) =>
+			migrateSettingsFiles(
+				dataPath(opts.targetDir, ...CORE_SETTINGS_FILE),
+				dataPath(opts.targetDir, ...integrationSettingsFile(BILIBILI_SOURCE_KEY)),
+			),
 	},
 	{
 		label: "订阅",

@@ -173,7 +173,7 @@ export class BilibiliAPI {
 	}
 
 	/**
-	 * 热替换 User-Agent。adapter 在 dashboard 编辑 `app.userAgent` 后调用,
+	 * 热替换 User-Agent。adapter 在 dashboard 编辑 B 站设置的 `userAgent` 后调用,
 	 * 直接改客户端默认头,后续请求生效;已 in-flight 的请求仍走旧 UA。
 	 * `undefined` / 空串 → 回退到内置默认 Firefox UA。
 	 */

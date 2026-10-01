@@ -86,6 +86,7 @@ import { BilibiliPush, type BroadcastOptions } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
+import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
@@ -213,7 +214,7 @@ export interface CreateEnginesOptions {
 	api: BilibiliAPI;
 	/**
 	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
-	 * 把 `app.healthCheckMinutes` 热推到登录健康检查定时器。
+	 * 把 B 站设置的 `healthCheckMinutes` 热推到登录健康检查定时器(见 `watchSettings`)。
 	 */
 	loginFlow: import("@bilibili-notify/api").LoginFlow;
 	configStore: ConfigStore;
@@ -305,9 +306,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// NOT wait for the first config-changed. Mirrors the change-path apply below.
 	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
-	// 启动期把 app.userAgent 推到 BilibiliAPI(auth/index.ts 构造时未填,这里补)。
-	// config-changed 路径下方也会再次调用,变更立即生效。
-	opts.api.setUserAgent(globals().app.userAgent);
+	// 启动期把 B 站设置里的 userAgent 推到 BilibiliAPI(auth/index.ts 构造时未填,这里补)。
+	// 改了之后由下方 `watchSettings` 再推一次,变更立即生效。
+	opts.api.setUserAgent(settingsOf(opts.configStore).userAgent);
 
 	// ---------- Sink + push ----------
 	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到订阅 + feature,
@@ -534,7 +535,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	const dynamicConfig = (): DynamicEngineConfig => {
 		return {
-			dynamicCron: globals().app.dynamicCron,
+			dynamicCron: settingsOf(opts.configStore).dynamicCron,
 			dynamicVideoUrlToBV: false,
 			imageGroup: globals().defaults.imageGroup,
 			imageEnabled: globals().defaults.cardStyle.enabled,
@@ -916,7 +917,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 都把 defaults.ai 误判成变了 → 白白热重载 AI)。往 globals 里塞键的新代码
 				// 必须维持这个不变式,否则这里会静默产生假阳性。
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-				const cronChanged = prev.app.dynamicCron !== g.app.dynamicCron;
 				const aiChanged = !eq(prev.defaults.ai, g.defaults.ai);
 				const imageGroupChanged = !eq(prev.defaults.imageGroup, g.defaults.imageGroup);
 				const cardStyleChanged = !eq(prev.defaults.cardStyle, g.defaults.cardStyle);
@@ -932,23 +932,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const skinKnobsChanged = !eq(prev.defaults.cardSkinKnobs, g.defaults.cardSkinKnobs);
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
-				// `app` 是一个 section,但里面装着三件互不相干的事(日志等级 / User-Agent /
-				// 健康检查间隔)。以整个 section 为门会让它们互相牵连 —— 改个 dynamicCron
-				// 就顺手重设 UA(刷一条 info 日志)、还把登录健康检查的 setInterval 销毁重建
-				// (相位白白打乱)。所以这里按字段各开各的门。
+				// `app` 里只按日志等级开门:别的格(粉丝轮询 cron、保留天数……)各有各的读法,不在这里热推。
+				// B 站那三格(cron / UA / 健康检查间隔)在 B 站自己的设置里,见下方 `watchSettings`。
 				if (!eq(prev.app.logLevel, g.app.logLevel) || !eq(prev.app.logLevels, g.app.logLevels)) {
 					opts.serviceCtx.setLevel(resolveLevel(g, "core"));
 					dynamicCtx.setLevel(resolveLevel(g, "dynamic"));
 					liveCtx.setLevel(resolveLevel(g, "live"));
 					aiCtx.setLevel(resolveLevel(g, "ai"));
 					imageCtx.setLevel(resolveLevel(g, "image"));
-				}
-				if (prev.app.userAgent !== g.app.userAgent) {
-					opts.api.setUserAgent(g.app.userAgent);
-				}
-				if (prev.app.healthCheckMinutes !== g.app.healthCheckMinutes) {
-					// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
-					opts.loginFlow.setHealthCheckMs(g.app.healthCheckMinutes * 60_000);
 				}
 				// ImageRenderer 热更(仅在已构造时有意义)。配色 / 字体 / 数据区显示项都已经
 				// 退役成皮肤旋钮,这里只剩旋钮那一份要送下去。
@@ -957,14 +948,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
 				}
-				// dynamicConfig() 的完整输入集:app.dynamicCron + defaults.{filters,
-				// imageGroup,cardStyle.enabled,ai.enabled,
+				// dynamicConfig() 的完整输入集:B 站设置的 dynamicCron(下方 `watchSettings` 那道门)+
+				// defaults.{filters,imageGroup,cardStyle.enabled,ai.enabled,
 				// templates.dynamic/dynamicVideo}。这道门必须**逐项覆盖**该集合 ——
 				// 少一项就是漏热更(用户以为保存生效了,其实要重启;`imageGroup` 就曾经
 				// 整个漏在门外),多一项则是无谓扇出(此前用整个 `appChanged` 当门,
 				// 改 healthCheckMinutes 也会给 DynamicEngine 白换一次 config)。
 				if (
-					cronChanged ||
 					filtersChanged ||
 					imageGroupChanged ||
 					cardStyleChanged ||
@@ -1052,6 +1042,19 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						),
 					);
 				}
+			}
+		}),
+	);
+
+	// B 站自己的设置(cron / UA / 登录健康检查间隔)按格各开各的门:改个 cron 不该顺手重设 UA(刷一条 info
+	// 日志),更不该把健康检查的 setInterval 销毁重建(相位白白打乱)。
+	handles.push(
+		watchSettings(opts.configStore, (prev, next) => {
+			if (prev.dynamicCron !== next.dynamicCron) dynamic.updateConfig(dynamicConfig());
+			if (prev.userAgent !== next.userAgent) opts.api.setUserAgent(next.userAgent);
+			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
+				// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
+				opts.loginFlow.setHealthCheckMs(next.healthCheckMinutes * 60_000);
 			}
 		}),
 	);

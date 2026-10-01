@@ -62,7 +62,8 @@ export const ModuleLogLevelsSchema = z
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
 /**
- * dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。
+ * dynamic 轮询 cron 默认值。B 站设置的 `dynamicCron`(`apps/server/src/bilibili/settings.ts`)用它;3a 随
+ * `packages/dynamic` 搬进 `bilibili/`。
  *
  * **六字段**(秒 分 时 日 月 周),秒位是 `30` —— 每 2 分钟的第 30 秒拉,而不是整分。
  * 整分是全网默认节拍:一堆客户端(以及本项目此前的所有实例)都卡在 `:00` 同时打
@@ -81,17 +82,16 @@ export const DEFAULT_DYNAMIC_CRON = "30 */2 * * * *";
  */
 export const DEFAULT_FANS_CRON = "*/10 * * * *";
 
-/** 登录健康检查间隔(分钟)默认值。对齐 `AppConfigSchema.healthCheckMinutes`。 */
+/** 登录健康检查间隔(分钟)默认值。B 站设置的 `healthCheckMinutes` 用它(同 {@link DEFAULT_DYNAMIC_CRON})。 */
 export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
 
 export const AppConfigSchema = z.object({
 	logLevel: LogLevelSchema.default("info"),
 	logLevels: ModuleLogLevelsSchema,
-	userAgent: z.string().optional(),
-	dynamicCron: z.string().default(DEFAULT_DYNAMIC_CRON),
-	/** 粉丝数轮询 cron(独立端 FansPoller);从 dynamicCron 解耦,默认更慢降风控。 */
+	// B 站那三格(`userAgent` / `dynamicCron` / `healthCheckMinutes`)在 B 站自己的设置文件里
+	// (`apps/server/src/bilibili/settings.ts`,ADR-0021 决策 42 下 10-01 的 🔗)。
+	/** 粉丝数轮询 cron(独立端 FansPoller);从动态轮询的 cron 解耦,默认更慢降风控。 */
 	fansCron: z.string().default(DEFAULT_FANS_CRON),
-	healthCheckMinutes: z.number().int().min(5).max(180).default(DEFAULT_HEALTH_CHECK_MINUTES),
 	historyRetentionDays: z.number().int().min(1).max(365).default(30),
 	/**
 	 * 日志归档保留天数。`startLogRetention` 每轮按此删除更旧的 day 文件。

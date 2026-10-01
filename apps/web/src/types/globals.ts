@@ -34,3 +34,12 @@ export type {
  */
 type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> | null } : T;
 export type GlobalConfigPatch = DeepPartial<GlobalConfig>;
+
+/**
+ * `/api/globals` 下发的那一份:核心设置的顶层键,各集成的设置挂在自己的键下(今天只有 B 站,ADR-0021 决策 42 下
+ * 10-01 的 🔗)。集成那几份的形状由各集成定,面板只在画到它的那一处认得(系统页;第 4 期起按集成的描述画)。
+ */
+export type GlobalsResponse = GlobalConfig & { readonly [integrationKey: string]: unknown };
+
+/** `/api/globals` 的 PATCH:核心那份的补丁,各集成的补丁挂在自己的键下(与 {@link GlobalsResponse} 同一个形状)。 */
+export type GlobalsPatch = GlobalConfigPatch & { [integrationKey: string]: unknown };
