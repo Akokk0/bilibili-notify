@@ -954,16 +954,16 @@ export type AiSkinTarget = "dashboard" | "card";
  * 「做一套皮肤」那把工具的名字 —— **三层共用的 wire 标识**,与 {@link AiChatMode}
  * 同层。
  *
- * 服务端拿它建工具、拿它给没有 `mode` 的老会话认面孔;web 拿它判断「这轮跑完要不要
- * 回灌皮肤状态」。三处各写一份字面量的话,改名会**静默**失效两处:侧栏的「工坊」
- * 牌子和聊完的状态回灌都不报错,只是不生效。
+ * 服务端拿它建工具;web 拿它判断「这轮跑完要不要回灌皮肤状态」。两处各写一份字面量的话,
+ * 改名会**静默**失效一处:聊完的状态回灌不报错,只是不生效。(迁移器给 0.x 老会话认面孔用的
+ * 是自己冻住的那份 0.x 工具名,不跟着这里改。)
  */
 export const AI_TOOL_CREATE_SKIN = "create_skin";
 
 /**
  * 卡片皮肤工坊的工具名(ADR-0015 决策 13 / 14 与它们的 🔗)—— 与 {@link AI_TOOL_CREATE_SKIN}
- * 同理是**三层共用的 wire 标识**:服务端拿它建工具、给老会话认「做的是哪种皮肤」,web 拿它
- * 配中文标签、判断这轮跑完要不要刷新卡片皮肤库。
+ * 同理是**三层共用的 wire 标识**:服务端拿它建工具,web 拿它配中文标签、判断这轮跑完要不要
+ * 刷新卡片皮肤库。
  */
 export const AI_CARD_WORKSHOP_TOOLS = {
 	listSkins: "list_skins",
@@ -983,16 +983,16 @@ export interface AiConversationMetaDTO {
 	updatedAt: string;
 	messageCount: number;
 	/**
-	 * 见 {@link AiChatMode}。**必填** —— 老会话文件里没有这个字段,但缺省是在读盘
-	 * 那一处补齐的(见 conversation-store),wire 上永远带着。契约描述的是线上真会
-	 * 出现的形状,把「可能缺」写进来只会让边界另一侧再各判一遍。
+	 * 见 {@link AiChatMode}。**必填** —— 0.x 早期的会话文件里没有这个字段,迁移器已经补齐,
+	 * wire 上永远带着。契约描述的是线上真会出现的形状,把「可能缺」写进来只会让边界另一侧
+	 * 再各判一遍。
 	 */
 	mode: AiChatMode;
-	/** 见 {@link AiSkinTarget}。与 `mode` 同理,缺省在读盘那一处补齐,wire 上永远带着。 */
+	/** 见 {@link AiSkinTarget}。与 `mode` 同理,wire 上永远带着。 */
 	skinTarget: AiSkinTarget;
 	/**
-	 * 带不带女仆人格。同 `mode`,缺省在读盘那一处补齐(老会话按 `true` 算,那正是
-	 * 它们一直以来的样子)。皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。
+	 * 带不带女仆人格。同 `mode`(0.x 的老会话迁移时按 `true` 补,那正是它们一直以来的
+	 * 样子)。皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。
 	 */
 	persona: boolean;
 	/**

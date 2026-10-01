@@ -76,10 +76,10 @@ export function parseJsonLine(line: string): unknown {
 	}
 }
 
-/** 一个目录里的 `*.jsonl`(按名字排好);目录不在回空。 */
-export async function listJsonlFiles(dir: string): Promise<string[]> {
+/** 一个目录里以 `suffix` 结尾的文件名(按名字排好);目录不在回空。 */
+export async function listFiles(dir: string, suffix: string): Promise<string[]> {
 	try {
-		return (await readdir(dir)).filter((name) => name.endsWith(".jsonl")).sort();
+		return (await readdir(dir)).filter((name) => name.endsWith(suffix)).sort();
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 		throw err;

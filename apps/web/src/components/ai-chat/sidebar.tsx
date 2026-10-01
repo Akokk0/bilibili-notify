@@ -180,8 +180,6 @@ export function ChatSidebar(props: ChatSidebarProps) {
  *
  * 默认(聊天 + 有人格)什么都不挂:一列全是标签的话,真正特殊的那几行反而淹了。
  * 工坊会话也只挂一块 —— 那条路本来就没有人格,再标一次「无人格」是废话。
- *
- * 两个字段缺失都按默认算(老会话文件里没有它们),与服务端读盘时补的那套默认同口径。
  */
 function ConversationLabel({
 	mode,

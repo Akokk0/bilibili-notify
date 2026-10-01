@@ -19,7 +19,7 @@ import { classifyBiliDynamic, parseBiliViewers } from "../stats/bili-format.js";
 import { STATS_DYN_DIR, STATS_LIVE_DIR } from "../stats/store.js";
 import {
 	isPlainObject,
-	listJsonlFiles,
+	listFiles,
 	parseJsonLine,
 	rewriteJsonlFile,
 	rewriteTextFile,
@@ -46,7 +46,7 @@ export async function migrateStatsFiles(
 	];
 	for (const [dir, rewrite] of rows) {
 		const root = dataPath(dataRoot, ...dir);
-		for (const name of await listJsonlFiles(root)) {
+		for (const name of await listFiles(root, ".jsonl")) {
 			if (await rewriteJsonlFile(join(root, name), rewrite)) rewritten.add(join(root, name));
 		}
 	}

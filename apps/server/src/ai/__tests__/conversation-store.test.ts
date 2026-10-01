@@ -413,6 +413,9 @@ describe("ConversationStore — 上限裁剪", () => {
 					title: "旧",
 					createdAt: now,
 					updatedAt: now,
+					mode: "chat",
+					persona: true,
+					skinTarget: "dashboard",
 					messages: [{ role: "user", content: "旧问" }],
 				}),
 				"utf8",
@@ -436,9 +439,9 @@ describe("ConversationStore — 上限裁剪", () => {
  * **锁定**:开局选定,整个会话不再改,侧栏那一行还要标出来。于是它们成了会话
  * 自己的属性,得跟着 JSON 一起活。
  *
- * 缺省口径是要紧的:功能上线前就存在的会话文件里没有这两个字段,读出来必须是
- * 「日常聊天 + 有人格」—— 也就是它们一直以来的样子。往任何别的方向兜,主人一屋子
- * 老会话会集体变脸。
+ * 功能上线前就存在的会话文件里没有这两个字段:那是 0.x 的老形状,由迁移器按工具痕迹补齐
+ * (`migration/conversations.ts`,用例在 `migration/__tests__/zero-generation-conversations.test.ts`)。
+ * 会话库自己不推断 —— 盘上缺了面孔的文件当坏文件跳过。
  */
 describe("会话的模式与人格", () => {
 	it("建的时候定下来,读回来一字不差", async () => {
@@ -465,121 +468,43 @@ describe("会话的模式与人格", () => {
 		expect(meta?.persona).toBe(false);
 	});
 
-	it("老会话文件没这两个字段 → 按聊天 + 有人格读,别让主人的旧会话集体变脸", async () => {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, "legacy.json"),
-			JSON.stringify({
-				id: "legacy",
-				title: "老会话",
-				createdAt: "2026-01-01T00:00:00.000Z",
-				updatedAt: "2026-01-01T00:00:00.000Z",
-				messages: [{ role: "user", content: "老问题" }],
-			}),
-			"utf8",
-		);
+	it.each(["mode", "persona", "skinTarget"] as const)(
+		"会话库不推断面孔:盘上缺 %s 的文件(哪怕留着 create_skin 的痕迹)当坏文件跳过,不进列表也 get 不到",
+		async (missing) => {
+			// 0.x 的老会话由迁移器补面孔;库读盘不再替它们认。哪天读时推断回来了,迁移器就成了摆设。
+			// 三格各缺一回、另两格都带着:任何一格的检查被拿掉都会有一回红。
+			const dir = join(dataDir, ...CONVERSATIONS_DIR);
+			await mkdir(dir, { recursive: true });
+			const face = { mode: "skin", persona: false, skinTarget: "card" };
+			delete (face as Partial<typeof face>)[missing];
+			await writeFile(
+				join(dir, "faceless.json"),
+				JSON.stringify({
+					id: "faceless",
+					title: "没有面孔",
+					createdAt: "2026-08-17T00:00:00.000Z",
+					updatedAt: "2026-08-17T00:00:00.000Z",
+					...face,
+					messages: [
+						{
+							id: "a",
+							role: "assistant",
+							content: "好",
+							ts: "2026-08-17T00:00:01.000Z",
+							tools: [{ name: "create_skin", args: {}, ok: true }],
+						},
+					],
+				}),
+				"utf8",
+			);
+			const real = await store.create();
+			await store.appendMessages(real.id, [{ role: "user", content: "问" }]);
 
-		expect((await store.get("legacy"))?.mode).toBe("chat");
-		expect((await store.get("legacy"))?.persona).toBe(true);
-		const [meta] = await store.list();
-		expect(meta?.mode).toBe("chat");
-		expect(meta?.persona).toBe(true);
-	});
-
-	/**
-	 * 上线前的会话文件里没有 mode,一律按「聊天」读 —— 于是主人一屋子做过皮肤的
-	 * 老会话在侧栏里一块牌都不挂,看不出哪场是工坊的(真机反馈,2026-08-19)。
-	 *
-	 * 但工具痕迹是铁证:`create_skin` **只有皮肤工坊挂得出来**(日常聊天那个窗口
-	 * 一个写工具都没有)。有它就是工坊,这不是猜。
-	 *
-	 * 只在**读**的时候认,不回写盘 —— 推断是幂等的,而改主人的存档不是。
-	 */
-	it("老会话里有 create_skin 痕迹 → 认成工坊", async () => {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, "oldskin.json"),
-			JSON.stringify({
-				id: "oldskin",
-				title: "雷姆主题皮肤设计",
-				createdAt: "2026-08-17T00:00:00.000Z",
-				updatedAt: "2026-08-17T00:00:00.000Z",
-				messages: [
-					{ id: "u", role: "user", content: "做套皮肤", ts: "2026-08-17T00:00:00.000Z" },
-					{
-						id: "a",
-						role: "assistant",
-						content: "好",
-						ts: "2026-08-17T00:00:01.000Z",
-						tools: [{ name: "create_skin", args: {}, ok: true }],
-					},
-				],
-			}),
-			"utf8",
-		);
-
-		expect((await store.get("oldskin"))?.mode).toBe("skin");
-		const [meta] = await store.list();
-		expect(meta?.mode).toBe("skin");
-	});
-
-	it("只调过只读工具的老会话仍是聊天 —— 别把查订阅认成做皮肤", async () => {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, "oldchat.json"),
-			JSON.stringify({
-				id: "oldchat",
-				title: "查看订阅的 UP 主",
-				createdAt: "2026-08-17T00:00:00.000Z",
-				updatedAt: "2026-08-17T00:00:00.000Z",
-				messages: [
-					{
-						id: "a",
-						role: "assistant",
-						content: "好",
-						ts: "2026-08-17T00:00:01.000Z",
-						tools: [{ name: "list_subscriptions", args: {}, ok: true }],
-					},
-				],
-			}),
-			"utf8",
-		);
-
-		expect((await store.get("oldchat"))?.mode).toBe("chat");
-	});
-
-	it("盘上写着 mode 就照它走,推断不许翻案", async () => {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, "explicit.json"),
-			JSON.stringify({
-				id: "explicit",
-				title: "明写着是聊天",
-				createdAt: "2026-08-17T00:00:00.000Z",
-				updatedAt: "2026-08-17T00:00:00.000Z",
-				mode: "chat",
-				persona: true,
-				// 现实里凑不出这种文件,但「显式值优先」这条得钉死:哪天推断改宽了,
-				// 主人明确建成聊天的会话不该被它改判。
-				messages: [
-					{
-						id: "a",
-						role: "assistant",
-						content: "好",
-						ts: "2026-08-17T00:00:01.000Z",
-						tools: [{ name: "create_skin", args: {}, ok: true }],
-					},
-				],
-			}),
-			"utf8",
-		);
-
-		expect((await store.get("explicit"))?.mode).toBe("chat");
-	});
+			expect(await store.get("faceless")).toBeNull();
+			expect((await store.list()).map((c) => c.id)).toEqual([real.id]);
+			expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("faceless.json"));
+		},
+	);
 
 	it("聊过之后模式不变 —— 「锁定」就是这个意思", async () => {
 		const conv = await store.create({ mode: "skin", persona: false });
@@ -692,66 +617,6 @@ describe("卡片皮肤工坊", () => {
 	it("不给 = dashboard 皮肤", async () => {
 		const conv = await store.create({ mode: "skin", persona: false });
 		expect(conv.skinTarget).toBe("dashboard");
-	});
-
-	async function legacy(id: string, toolName: string): Promise<void> {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, `${id}.json`),
-			JSON.stringify({
-				id,
-				title: "老工坊",
-				createdAt: "2026-08-17T00:00:00.000Z",
-				updatedAt: "2026-08-17T00:00:00.000Z",
-				mode: "skin",
-				persona: false,
-				messages: [
-					{
-						id: "a",
-						role: "assistant",
-						content: "好",
-						ts: "2026-08-17T00:00:01.000Z",
-						tools: [{ name: toolName, args: {}, ok: true }],
-					},
-				],
-			}),
-			"utf8",
-		);
-	}
-
-	it("文件里缺这一格 → 按工具痕迹认:有卡片工坊的工具就是 card,否则 dashboard", async () => {
-		await legacy("cardish", "write_card");
-		await legacy("dashish", "create_skin");
-		expect((await store.get("cardish"))?.skinTarget).toBe("card");
-		expect((await store.get("dashish"))?.skinTarget).toBe("dashboard");
-	});
-
-	it("连 mode 都没有的老文件,有卡片工坊的痕迹也认成工坊", async () => {
-		const dir = join(dataDir, ...CONVERSATIONS_DIR);
-		await mkdir(dir, { recursive: true });
-		await writeFile(
-			join(dir, "nomode.json"),
-			JSON.stringify({
-				id: "nomode",
-				title: "x",
-				createdAt: "2026-08-17T00:00:00.000Z",
-				updatedAt: "2026-08-17T00:00:00.000Z",
-				messages: [
-					{
-						id: "a",
-						role: "assistant",
-						content: "好",
-						ts: "2026-08-17T00:00:01.000Z",
-						tools: [{ name: "set_block", args: {}, ok: true }],
-					},
-				],
-			}),
-			"utf8",
-		);
-		const conv = await store.get("nomode");
-		expect(conv?.mode).toBe("skin");
-		expect(conv?.skinTarget).toBe("card");
 	});
 
 	it("账本当场落盘:建过的、复制过的都记下,不动 updatedAt", async () => {

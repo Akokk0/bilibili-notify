@@ -5,7 +5,8 @@
  * 资产路径永远经白名单正则再拼接,杜绝路径穿越。
  *
  * 这一层只管面板皮肤自己的规矩:出厂快照 default.json、资产原名清单、深浅双槽的
- * active 指针(含旧格式读时迁移)、删一色、两条体积线。
+ * active 指针、删一色、两条体积线。0.x 的旧单指针与 css 上的旧烙印由迁移器改好
+ * (`migration/skins.ts`),这里只认现在的形状。
  */
 
 import { randomBytes } from "node:crypto";
@@ -18,33 +19,16 @@ import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js"
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
 import { ASSET_NAMES_FILE } from "./asset-names.js";
-import { stripDecorationResidue } from "./css-sanitizer.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
 import { createSkinStore, type ManifestResult, type SkinPackageStore } from "./skin-store.js";
 
-/**
- * 读盘迁移:摘掉旧版清洗层烙进 css 字段的两句硬规矩(详见 stripDecorationResidue)。
- * 只改内存里的这份 —— 编辑器、导出、注入立即干净;磁盘在下一次保存时自然升级,
- * 不主动回写(与 init 里 active.json 旧格式迁移同一套哲学)。
- */
-function stripManifestResidue(m: SkinManifest): SkinManifest {
-	if (m.css) m.css = stripDecorationResidue(m.css);
-	for (const theme of ["light", "dark"] as const) {
-		// 手改过/旧格式的 manifest 可能没有 modes —— 清洁工不抛:抛出去会被 init
-		// 的 catch 当「残缺目录」,整套皮肤从索引里无声消失(改动前它是能进索引的)。
-		const mode = m.modes?.[theme];
-		if (mode?.css) mode.css = stripDecorationResidue(mode.css);
-	}
-	return m;
-}
-
-/** 皮肤包目录读盘时的解析:只摘旧烙印,不做 schema 校验(旧格式 / 手改的清单照样进索引)。 */
+/** 皮肤包目录读盘时的解析:不做 schema 校验(手改的清单照样进索引)。 */
 function parseSkinManifest(raw: unknown): ManifestResult<SkinManifest> {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
 		return fail("invalid", "skin.json 不是一份清单");
 	}
-	return ok({ manifest: stripManifestResidue(raw as SkinManifest) });
+	return ok({ manifest: raw as SkinManifest });
 }
 
 /** 清单与出厂快照落盘的字面:带缩进,主人 / 第三方是要手看手改它们的。 */
@@ -59,10 +43,12 @@ interface SavedSkin {
 	names?: Record<string, string>;
 }
 
+/** 清单在皮肤目录里的文件名。 */
+export const SKIN_MANIFEST_FILE = "skin.json";
 /** 出厂快照在皮肤目录里的文件名。 */
-const DEFAULT_SNAPSHOT_FILE = "default.json";
+export const DEFAULT_SNAPSHOT_FILE = "default.json";
 /** active 指针在皮肤根目录里的文件名。 */
-const ACTIVE_FILE = "active.json";
+export const ACTIVE_FILE = "active.json";
 
 /**
  * 一套皮肤最多放几份资产 —— 与 zip 那道闸**同一个数**,定义在 package.ts。
@@ -135,7 +121,7 @@ export class SkinStore {
 		this.skinsDir = opts.skinsDir;
 		this.pkg = createSkinStore<SkinManifest>({
 			dir: opts.skinsDir,
-			manifestFile: "skin.json",
+			manifestFile: SKIN_MANIFEST_FILE,
 			parse: parseSkinManifest,
 			serialize: serializeJson,
 			assets: {
@@ -170,14 +156,6 @@ export class SkinStore {
 			for (const theme of ["light", "dark"] as const) {
 				const id = raw[theme];
 				if (typeof id === "string" && this.pkg.get(id)?.modes[theme]) this.active[theme] = id;
-			}
-			// 旧单指针格式 {id}:按该皮肤具备的模式落槽,一次读盘即完成迁移语义
-			// (落盘格式在下次 set 时自然升级,这里不主动回写)。
-			if (typeof raw.id === "string") {
-				const m = this.pkg.get(raw.id);
-				for (const theme of ["light", "dark"] as const) {
-					if (m?.modes[theme]) this.active[theme] = raw.id;
-				}
 			}
 		} catch {
 			// 没有 active.json = 没启用皮肤。
@@ -417,9 +395,7 @@ export class SkinStore {
 		if (!this.pkg.has(id)) return null;
 		try {
 			const raw = await readFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), "utf8");
-			// 出厂快照同样可能带着旧烙印 —— 「恢复默认值」会把它灌回草稿再保存,
-			// 不摘的话恢复一次就又刷一排警告。
-			return stripManifestResidue(JSON.parse(raw) as SkinManifest);
+			return JSON.parse(raw) as SkinManifest;
 		} catch {
 			return null;
 		}

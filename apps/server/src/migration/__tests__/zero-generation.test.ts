@@ -144,11 +144,19 @@ const ZERO_FILES: Record<string, string> = {
 	"assets/font/f1.woff2": "font",
 	"assets/chat/att-1.png": "chat",
 	"avatars/sub-2.png": "avatar",
-	"skins/skin-1/skin.json": "{}",
-	"skins/active.json": '{"id":"panel-1"}',
+	// 只有浅色模式的界面皮肤,css 上带着 v0.7.0 及之前清洗层烙进去的两句;0.x 的单指针指着它。
+	"skins/skin-1/skin.json": JSON.stringify({
+		modes: { light: { css: '.x::before{content:"";pointer-events:none;z-index:-1}' } },
+	}),
+	"skins/active.json": '{"id":"skin-1"}',
 	"card-skins/card-1/card-skin.json": "{}",
 	"maid-skills/weekly/SKILL.md": "# weekly",
-	"ai/chat/conv-1.json": "{}",
+	// 0.x 早期的会话:没有面孔那三格,用过做皮肤的工具。
+	"ai/chat/conv-1.json": JSON.stringify({
+		id: "conv-1",
+		title: "做个皮肤",
+		messages: [{ role: "assistant", tools: [{ name: "create_skin" }] }],
+	}),
 	"extensions/probe/extension.json": "{}",
 	"extensions/probe/index.mjs": "export {}",
 	"extensions/load-state.json": "{}",
@@ -209,12 +217,15 @@ const EXPECTED_MOVES: Record<string, string> = {
 
 /** 第二遍改写成最新形状的(相对新代根):不再和第 0 代共用一个文件。 */
 const REWRITTEN = [
+	"ai/conversations/conv-1.json",
 	"config/connections.json",
 	"config/globals.json",
 	"config/subscriptions.json",
 	"config/targets.json",
 	"history/2026-09-30.jsonl",
 	"runtime/roast-drafts.json",
+	"skins/dashboard/active.json",
+	"skins/dashboard/skin-1/skin.json",
 	"stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
 	"stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
 	"stats/live/33333333-3333-4333-8333-333333333333.jsonl",
@@ -338,6 +349,25 @@ describe("migrateZeroGeneration", () => {
 		]);
 	});
 
+	it("界面皮肤与女仆对话改写成最新的形状", async () => {
+		await placeZeroGeneration();
+
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+
+		const read = async (...path: string[]) =>
+			JSON.parse(await readFile(join(target, ...path), "utf8")) as Record<string, unknown>;
+		expect(await read("skins", "dashboard", "active.json")).toEqual({ light: "skin-1" });
+		const css = JSON.stringify(await read("skins", "dashboard", "skin-1", "skin.json"));
+		expect(css).toContain("content");
+		expect(css).not.toContain("pointer-events");
+		expect(css).not.toContain("z-index");
+		expect(await read("ai", "conversations", "conv-1.json")).toMatchObject({
+			mode: "skin",
+			persona: true,
+			skinTarget: "dashboard",
+		});
+	});
+
 	it("追加写的 jsonl 是复制,其余是硬链接", async () => {
 		await placeZeroGeneration();
 
@@ -425,8 +455,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 7,
-			output: "60002f8e6a942860dfeffc14f8dd63ff1c46ba3004803697b3065d3983cad865",
+			revision: 8,
+			output: "fce4ded0624e8847eedef58b66af20c5f4b41826c8ddf7a5e458441823d49f36",
 		});
 	});
 });

@@ -1,13 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	AI_CARD_WORKSHOP_TOOLS,
-	AI_TOOL_CREATE_SKIN,
-	type AiCardSkinTouchDTO,
-	type AiChatMode,
-	type AiSkinTarget,
-} from "@bilibili-notify/contract";
+import type { AiCardSkinTouchDTO, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
@@ -99,16 +93,13 @@ export interface Conversation {
 	updatedAt: string;
 	messages: StoredMessage[];
 	/**
-	 * 这场对话的面孔,开局定下、整场锁定(见 {@link AiChatMode})。
-	 *
-	 * 读的时候**一律补默认**,不让 undefined 流出去:上线前的会话文件里没有这个
-	 * 字段,而下游(路由挑 system、侧栏画 label)每一处都得自己想一遍「没有算什么」
-	 * 的话,迟早有一处想反 —— 那就是老会话集体变成皮肤工坊。
+	 * 这场对话的面孔,开局定下、整场锁定(见 {@link AiChatMode})。0.x 早期的会话文件里没有
+	 * 这三格,由迁移器按工具痕迹补齐(`migration/conversations.ts`);盘上缺了的文件会话库当坏文件跳过。
 	 */
 	mode: AiChatMode;
-	/** 带不带女仆人格;同样读时补默认(老会话 = true)。 */
+	/** 带不带女仆人格。 */
 	persona: boolean;
-	/** 皮肤工坊做哪种皮肤(见 {@link AiSkinTarget});同样读时补默认。 */
+	/** 皮肤工坊做哪种皮肤(见 {@link AiSkinTarget})。 */
 	skinTarget: AiSkinTarget;
 	/** 卡片工坊的账本;没记过就整个字段缺席。 */
 	cardSkinLedger?: CardSkinLedger;
@@ -202,34 +193,6 @@ export interface ConversationStoreOptions {
 	maxConversations?: number;
 }
 
-/**
- * 老会话(文件里没有 `mode`)的面孔 —— 从工具痕迹里认。
- *
- * 上线前的会话一律按「聊天」读的话,主人一屋子做过皮肤的老会话在侧栏里一块牌都
- * 不挂,看不出哪场是工坊的。而 `create_skin` 的痕迹是**结论级**的证据,不是猜。
- *
- * 只在读的时候认,**不回写盘**:推断幂等,而改主人的存档不是。显式值永远优先 ——
- * 这一层只补「文件里没写」的那种情况。
- */
-function inferMode(conv: Conversation): AiChatMode {
-	const workshop = conv.messages.some((m) =>
-		m.tools?.some((t) => t.name === AI_TOOL_CREATE_SKIN || CARD_TOOL_NAMES.has(t.name)),
-	);
-	return workshop ? "skin" : "chat";
-}
-
-/** 卡片工坊的工具名 —— 只有那一档挂得出来,见过就是结论。 */
-const CARD_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(AI_CARD_WORKSHOP_TOOLS));
-
-/**
- * 老会话(文件里没有 `skinTarget`)做的是哪种皮肤 —— 同样按工具痕迹认(ADR-0015 决策 12)。
- * 没有卡片工坊的痕迹就是 dashboard:这一格上线之前,工坊只做得了 dashboard 皮肤。
- */
-function inferSkinTarget(conv: Conversation): AiSkinTarget {
-	const card = conv.messages.some((m) => m.tools?.some((t) => CARD_TOOL_NAMES.has(t.name)));
-	return card ? "card" : "dashboard";
-}
-
 /** 新会话的占位标题。首条用户消息落下来之前一直显示它。 */
 const PLACEHOLDER_TITLE = "新对话";
 /** 标题从首问截取的最大字数。侧栏一行放得下,再长也是省略号。 */
@@ -267,18 +230,19 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 		}
 		try {
 			const parsed = JSON.parse(raw) as Conversation;
-			if (!parsed || typeof parsed.id !== "string" || !Array.isArray(parsed.messages)) {
+			// 面孔那三格缺了也算坏:下游(路由挑 system、侧栏画 label)拿到 undefined 就得各自想一遍
+			// 「没有算什么」,想反一处主人的会话就变了脸。0.x 的老文件迁移器已经补齐了。
+			if (
+				!parsed ||
+				typeof parsed.id !== "string" ||
+				!Array.isArray(parsed.messages) ||
+				parsed.mode == null ||
+				parsed.persona == null ||
+				parsed.skinTarget == null
+			) {
 				throw new Error("shape mismatch");
 			}
-			// 面孔在**读的这一处**补默认,一次补齐、下游全都拿到实值。上线前的
-			// 会话文件里没这两个字段,让 undefined 流出去的话,每一个下游都得自己
-			// 想一遍「没有算什么」—— 想反一处,主人的老会话就集体变了面孔。
-			return {
-				...parsed,
-				mode: parsed.mode ?? inferMode(parsed),
-				persona: parsed.persona ?? true,
-				skinTarget: parsed.skinTarget ?? inferSkinTarget(parsed),
-			};
+			return parsed;
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。
 			logger.warn(`[ai-chat] 跳过损坏的会话文件 ${file}: ${String(err)}`);
