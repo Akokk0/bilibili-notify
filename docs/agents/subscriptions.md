@@ -30,7 +30,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 - `ConfigStore`（`apps/server/src/config/store.ts`）的 `writeSubscriptions` 按 `kind` 拆开、**只写真变了的那个文件**（改 B 站订阅不会凭空建出拓展那个文件）。B 站行落盘剥掉 `kind`（`toDiskBiliRow`）—— 应用内更新退回旧载荷时，它读到的就是它自己写的形状。旧载荷不认拓展那个文件，照常开机；再升回来拓展订阅都在。
 - 两个文件**各用各的那支校验**，任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
 - **身份不许改**（`assertSubscriptionIdentityUnchanged`，决策 50）：换 uid / 外部 id / 平台就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。
-- **备份**（`apps/server/src/backup/`）：拓展订阅单独一节 `extensionSubscriptions`，**不抬 `schemaVersion`** —— 旧版 BN 跳过不认识的这一节照常恢复；混进 `subscriptions` 的话旧版那几行过不了 uid 校验，整份恢复被拒。导出与 `subscriptions` 同一个勾选；恢复时两支各算各的，没有这一节的备份 overwrite 也碰不到现有的拓展订阅。资料缓存与头像文件都不进备份。
+- **备份**（`apps/server/src/backup/`）：格式版本 2（1.0 起），1.0 之前导出的一律拒收、提示先装 0.12 恢复再升级（ADR-0022 决策 6）。拓展订阅单独一节 `extensionSubscriptions`，导出与 `subscriptions` 同一个勾选；恢复时两支各算各的。资料缓存与头像文件都不进备份。
 
 ## 两种键（决策 50）
 

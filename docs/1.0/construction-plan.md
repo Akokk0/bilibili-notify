@@ -72,7 +72,7 @@
 | ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | |
 | ⑥f | 设置分段 + 守卫 12（连同解构与下标）：`config/settings.json` 分 `core` / `bilibili` / `extensions` 三段，只挪位置、不改键名（改名随第 2、3 期）；`userAgent` 先落 `bilibili` 段，第 2 期随 `packages/http` 删 | |
 | ⑦ | 回退指纹与重迁 | |
-| ⑧ | 全新开始 + 首访页 API + 拒收 1.0 之前的备份（连带删掉恢复路径上的 0.x 形状迁移：`backup/service.ts` 调的 `migrateConfigSections`、信封里 `adapters` 旧键的折叠、`backup/assemble.ts` 里单把 `aiApiKey` 落 custom 槽那一支。⑥c 起活 schema 不再认 0.x 老形状，拒收落地之前恢复一份很老的备份报的是校验错，不是那句「先装 0.12」） | |
+| ⑧ | 全新开始 + 首访页 API（拒收 1.0 之前的备份已提前到 ⑥d 落地，见 ADR-0022 决策 6 的 🔗） | |
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
 
 - 契约骨架归第 1 期切片 ④（主人 09-27 拍板）；错误体的防撞规矩见 [architecture.md](./architecture.md)。

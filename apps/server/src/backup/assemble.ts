@@ -5,7 +5,6 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
-import { applyAiSecrets, collectAiSecrets } from "../config/ai-secrets.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
 import { BackupRejectedError } from "./rejected-error.js";
@@ -48,18 +47,8 @@ export function assembleFullBackup(
 	extensionSecrets: ExtensionSecretCodes = new Map(),
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
-	// 每家两把,全收。`redactBackupSections` 会按键名把明文段里的 apiKey 一律抹平
-	// (它是深度遍历的,桶里那些自动覆盖到),所以真值只存在于这个加密袋里。
-	if (input.globals) {
-		const aiApiKeys = collectAiSecrets(input.globals);
-		if (Object.keys(aiApiKeys).length > 0) bag.aiApiKeys = aiApiKeys;
-	}
 	if (input.cookies?.cookiesJson) bag.cookiesJson = input.cookies.cookiesJson;
 	if (input.cookies?.refreshToken) bag.refreshToken = input.cookies.refreshToken;
-	if (input.connections?.length) {
-		bag.connectionConfigs = {};
-		for (const c of input.connections) bag.connectionConfigs[c.id] = c.config;
-	}
 
 	const original: BackupSections = {
 		globals: input.globals,
@@ -71,10 +60,9 @@ export function assembleFullBackup(
 	// redactBackupSections deep-clones, so `input` is left intact and the plaintext
 	// sections come out credential-free.
 	const sections = redactBackupSections<BackupSections>(original, extensionSecrets);
-	// 🔴 **不变式:凡是明文段被抹掉的,袋子里都要有对应项**(见 `collectRedactions`)。
-	// 上面那三格是手抄的,只覆盖了当年想到的那几样;这一格是照着脱敏的结果现算的,
-	// 以后脱敏那边再加规则,恢复自动跟上。手抄那三格留着,是为了**旧版本也打得开**
-	// 这份新备份(回退一版是真实存在的路)。
+	// 🔴 **不变式:凡是明文段被抹掉的,袋子里都要有对应项**(见 `collectRedactions`)。照着脱敏的结果现算,
+	// 以后脱敏那边再加规则,恢复自动跟上 —— apiKey、连接与拓展的凭据都在这一格里,不另手抄。从前另抄过
+	// apiKey 与连接 config 两格,是为了旧版本也打得开新备份;1.0 的备份版本是 2,旧版本见了就拒,那两格没用了。
 	const redacted = collectRedactions(original, sections);
 	if (redacted.length > 0) bag.redacted = redacted;
 
@@ -88,26 +76,7 @@ export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBack
 	const bag = openSecrets(pin, env.secrets);
 	const sections: BackupSections = structuredClone(env.sections);
 
-	if (sections.globals) {
-		// 老备份里是单把 aiApiKey → 落 custom 槽(那份备份的配置本身也是扁平的。活 schema 已不再把扁平
-		// 形状迁进 providers.custom,这种备份下游 parse 会拒;⑧ 拒收 1.0 之前的备份时这一支随之删掉)。
-		const keys = {
-			...(bag.aiApiKey !== undefined ? { custom: bag.aiApiKey } : {}),
-			...(bag.aiApiKeys ?? {}),
-		};
-		sections.globals = applyAiSecrets(sections.globals, keys);
-	}
-	// 老备份的袋子里这一格叫 `adapterConfigs`。
-	const connectionConfigs = bag.connectionConfigs ?? bag.adapterConfigs;
-	if (sections.connections && connectionConfigs) {
-		for (const c of sections.connections) {
-			const cfg = connectionConfigs[c.id];
-			if (cfg !== undefined) (c as { config: unknown }).config = cfg;
-		}
-	}
-
-	// 最后照不变式那一份把**所有**被抹掉的地方填回去 —— 上面两格是老备份才有的形状,
-	// 这一格是新备份的全集(URL、拓展的 settings 与 config,以及往后新加的任何规则)。
+	// 照不变式那一份把**所有**被抹掉的地方填回去(apiKey、连接与拓展的凭据,以及往后新加的任何规则)。
 	if (bag.redacted) applyRedactions(sections, bag.redacted);
 
 	return {

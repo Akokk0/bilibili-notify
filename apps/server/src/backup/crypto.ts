@@ -9,34 +9,16 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 /**
  * The secret payload of a full backup — everything that must never sit in the
- * plaintext sections. Assembled at the service layer from the config store
- * (每家两把 apiKey、连接的 config) 与 cookie store (cookiesJson/refreshToken)。
+ * plaintext sections: the cookie store (cookiesJson/refreshToken) plus every
+ * value the plaintext sections had redacted (apiKey、连接与拓展的凭据)。
  */
 export interface BackupSecretBag {
-	/**
-	 * 上一版备份里的**单把** AI 密钥(那时全局只有一套 AI 连接)。只读不写:
-	 * 恢复老备份时迁进 {@link aiApiKeys} 的 `custom` 槽,与 schema 那边
-	 * 「扁平旧配置整份落进 providers.custom」对上。
-	 */
-	aiApiKey?: string;
-	/**
-	 * 各家各自的 AI 密钥,键是自描述路径(`"<provider>"` / `"<provider>:vision"`,
-	 * 见 `../config/ai-secrets.ts`)。最多 5 家 × 2 把。
-	 */
-	aiApiKeys?: Record<string, string>;
 	cookiesJson?: string;
 	refreshToken?: string;
-	/** Full per-connection configs keyed by connection id (they carry credentials). */
-	connectionConfigs?: Record<string, unknown>;
-	/**
-	 * 这一格从前叫 `adapterConfigs`。**只读不写** —— 加密袋在老的 full 备份里就是这个键名,
-	 * 认不出它等于把主人那份备份里的连接凭据全丢掉(明文段是抹平过的,真值只在袋里)。
-	 */
-	adapterConfigs?: Record<string, unknown>;
 	/**
 	 * 明文段**每一处**被脱敏改掉的地方(路径 + 原值),见 `./sanitize.ts` 的
-	 * `collectRedactions`。上面那几格是手抄的清单,这一格是照脱敏结果现算的全集 ——
-	 * 完整档「原样恢复」这件事由它兜底。老备份没有这一格。
+	 * `collectRedactions`:照脱敏结果现算的全集,apiKey、连接与拓展的凭据都在这里 ——
+	 * 完整档「原样恢复」这件事由它兜底。
 	 */
 	redacted?: Array<{ path: ReadonlyArray<string | number>; value: unknown }>;
 }

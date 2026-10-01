@@ -1,8 +1,7 @@
 import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
-import { BackupPinError, sealSecrets } from "../backup/crypto.js";
-import type { BackupEnvelope } from "../backup/envelope.js";
+import { BackupPinError } from "../backup/crypto.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 
 /**
@@ -181,23 +180,5 @@ describe("full backup assemble/open", () => {
 
 		const { sections } = openFullBackup(env, "123456");
 		expect(sections.connections?.[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
-	});
-
-	it("老备份的加密袋里那格叫 adapterConfigs,也要认", () => {
-		// 明文段的凭据是抹平过的,真值只在袋里 —— 认不出老键名不会报错,只会让主人
-		// 恢复出一堆没有 token 的连接,而他要到发第一条推送时才发现。
-		const bag = {
-			connectionConfigs: undefined,
-			adapterConfigs: { a1: { accessToken: "tok-old" } },
-		};
-		const env = assembleFullBackup(
-			{ connections: [onebot("a1", "tok-1")] },
-			"123456",
-			"t",
-		) as BackupEnvelope;
-		env.secrets = sealSecrets("123456", bag);
-
-		const { sections } = openFullBackup(env, "123456");
-		expect(sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-old" });
 	});
 });

@@ -26,7 +26,11 @@ import { BackupRejectedError } from "./rejected-error.js";
  */
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
-export const BACKUP_SCHEMA_VERSION = 1 as const;
+/**
+ * 2 = 1.0 起导出的备份。1.0 之前(0.x 导出的 1)一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0
+ * 走迁移 —— 0.x 的形状只有迁移器认得。
+ */
+export const BACKUP_SCHEMA_VERSION = 2 as const;
 
 export type BackupKind = "full" | "sanitized";
 
@@ -85,14 +89,9 @@ export function buildBackup(input: BuildBackupInput): BackupEnvelope {
  *   - unknown `kind`
  *   - `schemaVersion` newer than {@link BACKUP_SCHEMA_VERSION} → refuse (a newer
  *     export may carry fields/semantics this build cannot safely apply; never
- *     silently down-migrate). Older versions are accepted and would run through
- *     a forward migration once one exists (v1 is the floor, so none yet).
- *
- * It is also where the plaintext sections get their **key** normalised: the
- * connections section used to be called `adapters`. Folding it here rather than
- * at each reader means the rest of the import path — plan, migrate, apply —
- * only ever sees one name, and a full backup's encrypted block is folded the
- * same way where it is opened.
+ *     silently down-migrate).
+ *   - `schemaVersion` older → refuse too: a pre-1.0 backup carries 0.x shapes
+ *     only the migrator understands (ADR-0022 决策 6).
  *
  * Use this on the JSON body of an import request (already parsed by the HTTP
  * layer); {@link parseBackup} is the string convenience wrapper.
@@ -117,15 +116,13 @@ export function validateBackup(raw: unknown): BackupEnvelope {
 			`这份备份的格式版本（${o.schemaVersion}）比当前版本认得的（最高 ${BACKUP_SCHEMA_VERSION}）新，请先升级 bilibili-notify 再恢复`,
 		);
 	}
-	return foldLegacySectionKeys(o as BackupEnvelope);
-}
-
-/** 连接那一段从前叫 `adapters`。老备份里只有老键,新的只写新键。 */
-function foldLegacySectionKeys(env: BackupEnvelope): BackupEnvelope {
-	const sections = env.sections as (BackupSections & { adapters?: Connection[] }) | undefined;
-	if (!sections?.adapters) return env;
-	const { adapters, ...rest } = sections;
-	return { ...env, sections: { ...rest, connections: rest.connections ?? adapters } };
+	if (o.schemaVersion < BACKUP_SCHEMA_VERSION) {
+		throw new BackupRejectedError(
+			"unsupported",
+			"这是 1.0 之前导出的备份，1.0 不能直接恢复：请先装 0.12 恢复这份备份，再升级到 1.0，旧数据会自动迁移过来",
+		);
+	}
+	return o as BackupEnvelope;
 }
 
 /** Parse a backup document from JSON text, then {@link validateBackup} it. */

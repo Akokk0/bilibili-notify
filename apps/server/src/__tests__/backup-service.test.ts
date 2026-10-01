@@ -265,39 +265,6 @@ describe("BackupService", () => {
 		expect(onCookiesRestored).not.toHaveBeenCalled();
 	});
 
-	it("老形状的备份先迁移再落盘 —— 三个月前导出的那份不能一恢复就报 schema 错", async () => {
-		// 磁盘状态与备份是同一个形状问题,不该有两套答案:启动路径迁,恢复路径也得迁。
-		// 备份里的连接是明文段直接带过来的,没走过任何 schema。
-		const store = makeFakeStore();
-		const svc = createBackupService({
-			configStore: store,
-			cookieStore: makeCookieStore(null),
-			now: () => "t",
-		});
-		const legacy = {
-			id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-			name: "老 NapCat",
-			platform: "onebot",
-			enabled: true,
-			config: { transport: "ws-reverse", port: 6199, protocolVersion: "v11" },
-		} as unknown as Connection;
-
-		await svc.importBackup({
-			envelope: {
-				format: "bilibili-notify-backup",
-				schemaVersion: 1,
-				kind: "sanitized",
-				createdAt: "t",
-				sections: { connections: [legacy] },
-			},
-			mode: "overwrite",
-		});
-
-		expect(store.getConnections()).toEqual([
-			expect.objectContaining({ id: legacy.id, kind: "direct", connector: "ws-reverse" }),
-		]);
-	});
-
 	it("importing a full backup with the wrong PIN throws", async () => {
 		const source = makeFakeStore({ subscriptions: [sub("1")] });
 		const srcSvc = createBackupService({
@@ -348,11 +315,11 @@ describe("BackupService × 拓展订阅", () => {
 	}
 
 	it.each(["sanitized", "full"] as const)(
-		"%s 导出:B 站一节、拓展一节,schemaVersion 不动",
+		"%s 导出:B 站一节、拓展一节,schemaVersion 是 1.0 的版本",
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(1);
+			expect(env.schemaVersion).toBe(2);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1"]);
 			expect(sections.extensionSubscriptions?.map((s) => s.id)).toEqual(["e1"]);

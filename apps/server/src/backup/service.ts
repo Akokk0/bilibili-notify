@@ -7,8 +7,6 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "@bilibili-notify/internal";
-// 1.0 之前的备份在 ⑧ 起拒收,这一处连同 envelope 里 `adapters` 旧键的折叠随之删掉。
-import { migrateConfigSections } from "../migration/connections.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,
@@ -190,37 +188,13 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			sections = opts.envelope.sections;
 		}
 
-		// 盘上那份连接表 —— 迁移的补位与 planImport 的「现状」都读它。取两次拿到的是两份
-		// 深拷贝,而中间没有任何写入:一次取完共用,省掉一次整表克隆。
-		const currentConnections = deps.configStore.getConnections();
-
-		// 形状迁移 —— 与启动路径同一个纯函数。备份的明文段是**原样带过来的**,没过任何
-		// schema,所以一份三个月前导出的备份和一份三个月前的磁盘状态是同一个形状问题。
-		// 放在 planImport 之前:计划要按迁移后的形状算,否则 overwrite 的删除集会对不上。
-		if (sections.connections || sections.targets) {
-			const migrated = migrateConfigSections({
-				// 🔴 只勾了 targets 那一段导出的老备份:v1 的 `platform: "webhook"` 得跟着
-				// **它那条连接**降格(飞书 / 钉钉 / 企微),而连接不在这份备份里 —— 查不到表
-				// 就整份落成 `generic`,落地时被 `assertTargetOwner` 判「平台对不上」,整份
-				// 恢复被拒(托管目标的归一化排在那道校验之后,救不回来)。备份没带的那一段,
-				// 拿**现在盘上那份**补位。
-				connections: sections.connections ?? currentConnections,
-				targets: sections.targets,
-			});
-			sections = {
-				...sections,
-				...(sections.connections ? { connections: migrated.connections as Connection[] } : {}),
-				...(sections.targets ? { targets: migrated.targets as PushTarget[] } : {}),
-			};
-		}
-
 		assertSubscriptionSectionKinds(sections);
 		const currentSubs = deps.configStore.getSubscriptions();
 		const current = {
 			globals: deps.configStore.getGlobals(),
 			subscriptions: currentSubs.filter(isBiliSubscription),
 			extensionSubscriptions: currentSubs.filter(isExtensionSubscription),
-			connections: currentConnections,
+			connections: deps.configStore.getConnections(),
 			targets: deps.configStore.getTargets(),
 		};
 		const plan = planImport(current, sections, opts.mode);

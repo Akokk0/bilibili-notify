@@ -8,8 +8,7 @@
  * - 已撤下平台的存量条目丢掉({@link isRetiredConnectionRecord}、{@link isRetiredTargetRecord})。
  *
  * 连接从新代里的 `connections.json` 读,没有就读第 0 代的 `state/adapters.json`(它的旧名,只作输入、不进
- * 新代)。`migrateConfigSections` 另有恢复备份那一处在调(老备份的明文段原样带过来);⑧ 起 1.0 之前的备份
- * 拒收,那一处随之删掉。
+ * 新代)。
  */
 
 import { join } from "node:path";

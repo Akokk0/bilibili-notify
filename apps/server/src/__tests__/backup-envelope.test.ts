@@ -84,42 +84,23 @@ describe("backup envelope", () => {
 });
 
 /**
- * 连接那一段从前叫 `adapters`。老备份文件里只有老键,而 schemaVersion 没跟着涨 ——
- * 涨了会让老版本读不了新备份,而这次改动并不需要那样。所以判据只能是**键在不在**,
- * 折叠点定在 `validateBackup` 这一处:再往里走的每一步(计划、形状迁移、落盘)都只
- * 认一个名字,漏折的后果是整段连接被当成没导出、overwrite 时把主人的连接全删光。
+ * 1.0 之前导出的备份(schemaVersion 1)一律拒收(ADR-0022 决策 6):0.x 的形状只有迁移器认得,要恢复就先装
+ * 0.12 恢复、再升级到 1.0 走迁移。放过去的话,老备份里拓展订阅那一节在新版里没人认,B 站那节是空的时候
+ * overwrite 会把现有订阅全删光,而且不报错。
  */
-describe("backup envelope —— 老备份里的 adapters 段", () => {
-	const legacyEnvelope = (sections: Record<string, unknown>) =>
-		JSON.stringify({
-			format: BACKUP_FORMAT,
-			schemaVersion: BACKUP_SCHEMA_VERSION,
-			kind: "sanitized",
-			createdAt: "x",
-			sections,
-		});
-
-	it("老键折进 connections,老键自己不留下", () => {
-		const parsed = parseBackup(legacyEnvelope({ adapters: [{ id: "a1" }] }));
-		expect(parsed.sections.connections).toEqual([{ id: "a1" }]);
-		expect(parsed.sections).not.toHaveProperty("adapters");
-	});
-
-	it("两个键都在时以新的为准", () => {
-		const parsed = parseBackup(
-			legacyEnvelope({ adapters: [{ id: "old" }], connections: [{ id: "new" }] }),
+describe("backup envelope —— 1.0 之前的备份", () => {
+	it("schemaVersion 比当前旧 → unsupported,告诉主人先装 0.12 恢复再升级", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() =>
+			parseBackup(JSON.stringify({ ...env, schemaVersion: BACKUP_SCHEMA_VERSION - 1 })),
 		);
-		expect(parsed.sections.connections).toEqual([{ id: "new" }]);
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).toMatch(/0\.12/);
+		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("别的段一个不动", () => {
-		const subs = [makeSub("111")];
-		const parsed = parseBackup(legacyEnvelope({ adapters: [{ id: "a1" }], subscriptions: subs }));
-		expect(parsed.sections.subscriptions).toEqual(subs);
-	});
-
-	it("没有老键的新备份原样通过", () => {
-		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { connections: [] } });
-		expect(parseBackup(JSON.stringify(env)).sections.connections).toEqual([]);
+	it("1.0 起导出的备份是版本 2", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(2);
 	});
 });

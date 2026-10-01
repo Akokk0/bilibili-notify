@@ -958,41 +958,6 @@ describe("ConfigStore", () => {
 	 *
 	 * 备份没有的那一段,拿**现在盘上那份**补位。
 	 */
-	it("只导了 targets 的老备份:webhook 目标跟着现有连接降格,不落成 generic", async () => {
-		const connection = makeWebhookConnection();
-		await store.upsertConnection(connection);
-		const legacyId = randomUUID();
-		const noCookies = { load: async () => null, save: async () => {} };
-
-		await createBackupService({ configStore: store, cookieStore: noCookies }).importBackup({
-			envelope: {
-				format: "bilibili-notify-backup",
-				schemaVersion: 1,
-				kind: "sanitized",
-				createdAt: "t",
-				sections: {
-					targets: [
-						{
-							id: legacyId,
-							name: "老 webhook 目标",
-							adapterId: connection.id,
-							platform: "webhook",
-							scope: "channel",
-							enabled: true,
-							managedBy: "adapter",
-							session: {},
-						},
-					],
-				},
-			} as never,
-			mode: "overwrite",
-		});
-
-		expect(store.getTargets()).toEqual([
-			expect.objectContaining({ connectionId: connection.id, platform: connection.platform }),
-		]);
-	});
-
 	/**
 	 * 🔴 **拓展连接的 platform 同样是身份轴。**
 	 *
